@@ -562,13 +562,6 @@ go_noop_carry() {
 #     but never shrink it: a changed file matching a core line the list lacks
 #     refuses `list core-missing <pattern>`, and a missing list refuses instead
 #     of `not-adopted`. A list holding every core line is already the union.
-#     ponytail: an anchor without the core file (a test fixture, a partial
-#     tree) skips the core-line check; refuse there once every fixture carries
-#     it. A missing list in an adopted repo refuses either way.
-# rc 0 prints one line: `none`, `not-adopted`, or `hit <first matching path>`.
-# rc 2 prints `<phase> <reason>` (phase: tmp, list, files or anchor) — refused.
-# gh is ${GH:-gh}. The body is a subshell, so its temp-file trap, its helper
-# and its `exit`s never reach the sourcing caller.
 trust_path_check() (
     tp_nwo=$1 tp_pr=$2 tp_sha=$3 tp_branch=$4 anchor=$5 gh_bin=${GH:-gh}
     # Scrub: `git -C "$anchor"` below must read the anchor, not an
@@ -774,14 +767,6 @@ EOF
 # creates a key. The key's *.key name puts it under block-read-secrets (a
 # worker's cat/Read/Grep of it is hook-denied), and it sits outside every worker's
 # additionalDirectories grant.
-# ponytail: same-uid ceiling — workers run as the chief's Unix user, so a worker
-# that deliberately evades can still (1) write a helper script that reads the
-# key indirectly, (2) run go.sh under `env -u HIMMEL_CONSOLE_LEG`, (3) re-point
-# the verifier with a HOME= prefix, (4) overwrite the key (no hook denies a
-# Write to ~/.config/himmel/go-hmac.key), or (5) plant a key before the
-# chief's first GO (go.sh only tests -e, not owner or mode) — each a
-# deliberate evasion the classifier sees, not an accidental two-line write,
-# upgrade path: a separate-uid or OS-keyring signer.
 
 # go_key_file — path of the chief's GO signing key.
 go_key_file() {
@@ -870,9 +855,6 @@ go_msg_mac() {
 # evidence byte. Consumers (review-round.sh's scope and NO-GO paths,
 # go_trust_verdict) verify with go_verdict_mac_ok; a record without a valid mac
 # buys nothing.
-# ponytail: same-uid ceiling - the key sits in the operator's HOME like the GO
-# key, so a same-uid process that reads it can sign; the upgrade path is a
-# separate-uid or keyring signer.
 
 # _go_sha256 — sha256 of stdin as 64 lowercase hex.
 _go_sha256() {

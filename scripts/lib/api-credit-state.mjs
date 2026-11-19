@@ -2,8 +2,6 @@
 // Amounts are decimal-string USD with at most six places; arithmetic is BigInt.
 // One shared ledger/lock covers both accounts. Locks are never reclaimed by age
 // or PID: a crashed holder requires operator recovery, not guessed free credit.
-// ponytail: launcher-supplied cost/completion evidence is trusted; task 2 must
-// bound requests and prove terminal outcomes before API dispatch is enabled.
 import {
   closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync,
   lstatSync, realpathSync, renameSync, rmdirSync, unlinkSync, writeFileSync,
@@ -37,9 +35,6 @@ const SNAPSHOT_UNUSABLE = new Set(['missing-snapshot', 'invalid-snapshot', 'unre
 const CALL_TIMEOUT = 3600;
 // The launcher stops a call at its timeout and kills what ignored TERM this many seconds later.
 const KILL_GRACE = 5;
-// ponytail: the cost report cannot separate promotional from card spend, so
-// 'automatic-snapshot' treats all spend since the grant start as grant spend; upgrade
-// path: a promotional-credit balance endpoint, if Anthropic exposes one.
 const SOURCES = ['operator-console-snapshot', 'automatic-snapshot'];
 // parallel admissions queue on the ledger lock instead of failing; the
 // wait is bounded so a crashed holder still refuses, never admits.
@@ -505,10 +500,6 @@ function accountRows(env, config) {
 // of the local spend and the billed spend added since the previous reading, so
 // spend billed earlier (outside the ledger) never hides a settlement the Console
 // does not show yet. A new grant row starts the watermark at zero (conservative).
-// ponytail: billed spend from outside the ledger that lands in the same window
-// as an unbilled settlement is read as that settlement (exclusive_org attests
-// there is none), upgrade path: the Admin cost_report collector (task 6 of the
-// plan).
 export function refreshSnapshot(env, account, { remaining, grant, starts, expires, source = 'operator-console-snapshot', expect, pulled = false }) {
   let lock = null;
   try {

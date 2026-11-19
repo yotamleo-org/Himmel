@@ -7,11 +7,11 @@
 # ]
 # ///
 """
-VM SDK (HIMMEL-491) — an easy-to-use class over scripts/lib/vbox.py for driving
+VM SDK — an easy-to-use class over scripts/lib/vbox.py for driving
 the cross-OS test VMs: power, snapshots (so we don't re-provision), shallow
 clone, and provision + e2e delegation.
 
-Also covers physical SSH "stations" (HIMMEL-870, registry `kind: "station"`) —
+Also covers physical SSH "stations" (registry `kind: "station"`) —
 reached via an SSH alias + key auth resolved through ~/.ssh/config instead of
 loopback port-forward + password env. Stations share the SSH-generic surface
 (run/ssh/trigger_claude/sync_repo/drive_claude) but have no VirtualBox
@@ -19,7 +19,7 @@ lifecycle; up/down/snapshot/provision/e2e raise StationLifecycleError.
 
 Stdlib + paramiko + python-dotenv (already deps of the *-vm-setup.py scripts;
 invoke via `uv run scripts/lib/vmsdk.py`, which reads the bounded PEP 723
-block above, HIMMEL-2471). Loopback-only for VM entries. Reads SSH creds from the PRIMARY
+block above). Loopback-only for VM entries. Reads SSH creds from the PRIMARY
 checkout's .env (the gitignored .env is NOT copied into worktrees, so it is
 resolved via the parent of `git rev-parse --git-common-dir`, matching
 scripts/lib/load-dotenv.sh).
@@ -65,8 +65,7 @@ SECRET_EXCLUDES = (".env", ".env.*", "*.local.json")
 # Snapshot scan surface: the home dir plus the fixed staging dirs the tracked VM
 # scripts use (REMOTE_DIR in test-install-symmetry-vm.sh / test-luna-upgrade-vm.sh).
 # Not all of /tmp: find exits non-zero on root-owned 0700 dirs (systemd-private-*),
-# which would refuse every clean running guest. Coverage limits: see the ponytail
-# note in scripts/lib/vm-guest-excludes.sh.
+# which would refuse every clean running guest.
 _SNAPSHOT_HOME_ROOT = "~"
 _SNAPSHOT_STAGING_ROOTS = ("/tmp/himmel-symmetry-vm", "/tmp/himmel-luna-upgrade-vm")
 _SCAN_PROFILES = {
@@ -79,8 +78,7 @@ _SCAN_PROFILES = {
 
 
 # the scan follows nested DIRECTORY symlinks (a checkout linked into
-# the home dir from outside the scanned roots), bounded — see the ponytail note in
-# vm-guest-excludes.sh. One POSIX-sh function; the two spellings must stay
+# the home dir from outside the scanned roots), bounded. One POSIX-sh function; the two spellings must stay
 # byte-identical (test_scan_command_parity_with_the_bash_helper).
 _SCAN_SKIPPED_PREFIX = "scan-skipped: "
 _SCAN_SYSTEM_TREES = ("//|/proc/*|/sys/*|/dev/*|/run/*|/usr/*|/bin/*|/sbin/*|/lib/*|"
@@ -140,7 +138,7 @@ def _guest_path(root):
 
 
 def _inert_lanes_test():
-    """HIMMEL-3252: the find sub-expression that is TRUE for the one file the `full`
+    """The find sub-expression that is TRUE for the one file the `full`
     scan may let through -- himmelctl's own lane-profile persistence writes
     scripts/lanes/lanes.local.json during an install, so a guest that has ever been
     through one would otherwise fail every full scan of the clone on the NAME alone.
@@ -188,7 +186,7 @@ class VMError(RuntimeError):
 class StationLifecycleError(VMError):
     """A VM-lifecycle/provisioning op was invoked on a station entry.
 
-    Stations (HIMMEL-870) are physical SSH hosts — they have no VirtualBox
+    Stations are physical SSH hosts — they have no VirtualBox
     power/snapshot/provision surface, only the SSH-generic exec/trigger surface.
     Subclasses VMError so the CLI's ``except VMError`` handler still reports it
     cleanly instead of dumping a traceback. The message names the entry as a
@@ -215,7 +213,7 @@ def _env_path():
 _DEPS_HINT = (
     "run vmsdk.py as `uv run scripts/lib/vmsdk.py <vm> <verb>` (the script "
     "block pins python-dotenv>=1.0,<2 and paramiko>=3.4,<6) or `pip install "
-    "'python-dotenv>=1.0,<2' 'paramiko>=3.4,<6'` (HIMMEL-2471)")
+    "'python-dotenv>=1.0,<2' 'paramiko>=3.4,<6'`")
 
 
 def _running_vms():
@@ -650,7 +648,7 @@ class VM:
     def assert_guest_clean(self, root="~", profile="env"):
         """Refuse (VMError) if the guest holds a secret-bearing file under
         `root`, or cannot be scanned — an unverified guest is not a clean one.
-        HIMMEL-2540: a snapshot is durable, so it must never carry a host .env."""
+        A snapshot is durable, so it must never carry a host .env."""
         try:
             rc, out = self.run(secret_scan_cmd(root, profile))
         except VMError:
@@ -986,7 +984,7 @@ class VM:
            rc 124 = guest timeout kill; caller decides whether to retry/raise.
 
         Positional prompt (not -p/--print) keeps the invocation non-headless
-        and billing-safe per HIMMEL-128.
+        and billing-safe.
         """
         # Step 1: locate claude (login shell so ~/.local/bin is on PATH)
         rc, claude_path = self.run("bash -lc 'command -v claude'")
@@ -1114,7 +1112,7 @@ class VM:
                        when=None, timeout=600, inbox="~/handover-inbox",
                        long_gap=False):
         """Fire a claude session ON the guest from a HOST handover file
-        (HIMMEL-835 — the host->VM session-trigger seam).
+        (the host->VM session-trigger seam).
 
         Delivers the handover via push_file, then either:
         - when=None: drives an immediate bounded session (drive_claude, which
@@ -1123,7 +1121,7 @@ class VM:
           (rc 124 = guest timeout kill, caller decides).
         - when=<time>: arms the GUEST's own scheduler through the guest
           checkout's arm-resume.sh (Linux at/atd backend — never a hand-rolled
-          scheduler, HIMMEL-647). Raises VMError if arming fails; returns
+          scheduler). Raises VMError if arming fails; returns
           (0, out) on success.
 
         cwd=None (sentinel, codex-adv CR): the caller did NOT ask for a
@@ -1141,7 +1139,7 @@ class VM:
         and commits with the guest's own credentials. Single-writer stays with
         the caller: do not trigger a ticket another writer owns.
 
-        long_gap (HIMMEL-1475): forward arm-resume.sh's --long-gap so a far
+        long_gap: forward arm-resume.sh's --long-gap so a far
           --at TIME (more than 60 min out) does not trip the long-gap guard
           (rc 9). Only meaningful for a SCHEDULED arm (when is set); passing it
           with when=None raises VMError rather than silently ignoring a flag
@@ -1218,8 +1216,7 @@ class VM:
         self._require_vm("e2e")
         if self.os != "ubuntu":
             raise NotImplementedError(
-                "run_e2e is Ubuntu-only today; no host-driven Windows e2e exists "
-                "(HIMMEL-494 / CI track)")
+                "run_e2e is Ubuntu-only today")
         # Run the e2e script that ships in THIS checkout. The script resolves the
         # repo it copies to the VM via its own BASH_SOURCE, so invoking the
         # colocated copy tests the SDK's own tree (the worktree/branch), matching
@@ -1267,7 +1264,7 @@ def _parse_trigger_args(rest):
     """Parse `trigger HANDOVER [--at TIME] [--cwd DIR] [--long-gap] [--timeout N]`.
 
     Returns (handover, kwargs) or raises ValueError on a malformed flag.
-    --long-gap (HIMMEL-1475) is a bare flag (forwards arm-resume.sh's --long-gap
+    --long-gap is a bare flag (forwards arm-resume.sh's --long-gap
     past the long-gap guard) and is only valid alongside --at; on its own it
     raises ValueError so the CLI surfaces exit 2 rather than arming an immediate
     drive with a meaningless flag.

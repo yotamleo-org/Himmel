@@ -18,11 +18,6 @@
 # SCORECARD_MAIN_KEYS_CMD (prints the HIMMEL keys in main squash subjects),
 # SCORECARD_DENIALS_FILE, SCORECARD_CRONTAB, SCORECARD_RUNNER_DIR, SCORECARD_VERSION.
 #
-# ponytail: residual_added counts every ticket created in the window on the current version (SCORECARD_VERSION, default v1.1.3), upgrade path = count only residual-depth labels once HIMMEL-6115 ships
-# ponytail: shipped_strict counts Done non-Epic tickets resolved in the window whose key is in a main squash subject `(#N)` of the last 30 days, so fork-repo PRs and body-only keys are missed, upgrade path = the fresh/broad forms in throughput-model-2026-10-17.md section 1 once the undercount matters
-# ponytail: the per-class and per-priority escape split rides the free-text note cell (the column schema stays fixed), upgrade path = own columns once a reader parses it
-# Escapes are labelled by scripts/cr/mark-deferred-escape.sh (class-<id> copied from the residual).
-# OFF by default: only `arm` installs the cron entry. Platform: cron (Linux/macOS).
 set -uo pipefail
 
 TASK_NAME="HIMMEL-StabilityScorecard"
@@ -151,7 +146,6 @@ cmd_run() {
     row="$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\tn/a\t%s\t%s\t%s\t%s\t%s\tdaily, 24h window ending %s%s' \
         "$date_arg" "$ts" "$q50" "$q90" "$pct" "$red" "$den" "$resid" "$esc" "$share" "$shipped" "$admin" "$ts" "$escnote")"
     mkdir -p "$(dirname "$tsv")" || return 1
-    # ponytail: mkdir lock, 30s wait; a kill -9 mid-append leaves tsv.lock to remove by hand, upgrade to flock if it recurs
     locked=0
     # prim-ok: the wait is bounded at 30 s and each early return releases it; with_lock waits unbounded and cannot return from this function
     for _ in $(seq 1 30); do mkdir "$tsv.lock" 2>/dev/null && { locked=1; break; }; sleep 1; done

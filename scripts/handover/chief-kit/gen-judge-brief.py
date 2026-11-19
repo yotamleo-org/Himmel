@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""gen-judge-brief.py — HIMMEL-3746. Fill docs/handover/judge-brief-template.md for one judge
+"""gen-judge-brief.py — fill docs/handover/judge-brief-template.md for one judge
 session from a spec, so a judge dispatch is one call instead of the ad-hoc mk_j*.py script every
 chief rewrites. It NEVER launches: it writes the brief and prints its path and nonce.
 

@@ -10,7 +10,8 @@
 #
 # Run: bash scripts/handover/chief-kit/test-gen-briefs.sh
 set -u
-export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch fixtures; guard rows drop it
+KP=HIMMEL
+export UNGUARDED_LAUNCH_OK=1
 unset CLAUDE_GLM_CONFIG_DIR  # the classifier reads it for its claude-glm lists: an inherited one would redirect every salus row
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="${GEN_BRIEFS:-$HERE/gen-briefs.py}"
@@ -154,7 +155,7 @@ has "brief 1 defaults the notes query to the title" "$(tr '\n' ' ' < "$D1" | tr 
 has "brief 1 defaults the graph symbol to the first Writes path" "$(tr '\n' ' ' < "$D1" | tr -s ' ')" 'worker-graph.sh explain "scripts/x/"'
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["search_query"]="brief prior art cite duty"; l[0]["search_symbol"]="brief-lint.sh"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/named.json"
 nout="$(python3 "$SUT" "$WORK/named.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/named-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/wn" --deadline 1791475000 2>&1)"; rc=$?
-NB="$(tr '\n' ' ' < "$WORK/named-bucket/HIMMEL-9001-N901-plain-fix-2026-10-08.md" | tr -s ' ')"
+NB="$(tr '\n' ' ' < "$WORK/named-bucket/$KP-9001-N901-plain-fix-2026-10-08.md" | tr -s ' ')"
 bash "$HERE/brief-lint.sh" "$WORK/named-bucket/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>"$WORK/lintn.err"; lrc=$?
 { [ "$rc" = 0 ] && [ "$lrc" = 0 ]; } && pass "a leg that names its search_query and search_symbol generates and lints" || fail "named-search generation rc=$rc lint rc=$lrc: $nout $(cat "$WORK/lintn.err")"
 has "the named notes query reaches both collections" "$NB" 'query -c jira-himmel "brief prior art cite duty"'
@@ -162,17 +163,17 @@ has "the named notes query reaches the luna collection" "$NB" 'query -c luna "br
 has "the named graph symbol reaches the directive" "$NB" 'worker-graph.sh explain "brief-lint.sh"'
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["writes"]="none named"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/nowrites.json"
 python3 "$SUT" "$WORK/nowrites.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/nowrites-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/wnw" --deadline 1791475000 >/dev/null 2>&1; rc=$?
-NW="$(tr '\n' ' ' < "$WORK/nowrites-bucket/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>/dev/null | tr -s ' ')"
+NW="$(tr '\n' ' ' < "$WORK/nowrites-bucket/$KP-9001-N901-plain-fix-2026-10-08.md" 2>/dev/null | tr -s ' ')"
 bash "$HERE/brief-lint.sh" "$WORK/nowrites-bucket/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>"$WORK/lint-nw.err"; lrc=$?
 { [ "$rc" = 0 ] && [ "$lrc" = 0 ]; } && pass "a no-writes leg generates and lints" || fail "no-writes rc=$rc lint rc=$lrc: $(cat "$WORK/lint-nw.err")"
 has "a no-writes leg says it has no graph lookup" "$NW" "no graph lookup"
 lacks "a no-writes leg never asks the graph to explain none" "$NW" 'explain "none"'
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["writes"]="Makefile scripts/x/"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/rootfile.json"
 python3 "$SUT" "$WORK/rootfile.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/rootfile-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/wrf" --deadline 1791475000 >/dev/null 2>&1
-has "a root-level Writes file (no slash, no dot) still gets the graph lookup" "$(tr '\n' ' ' < "$WORK/rootfile-bucket/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>/dev/null)" 'worker-graph.sh explain "Makefile"'
+has "a root-level Writes file (no slash, no dot) still gets the graph lookup" "$(tr '\n' ' ' < "$WORK/rootfile-bucket/$KP-9001-N901-plain-fix-2026-10-08.md" 2>/dev/null)" 'worker-graph.sh explain "Makefile"'
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["writes"]="none named"; l[0]["search_symbol"]="gen-briefs.py"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/nowrites-sym.json"
 python3 "$SUT" "$WORK/nowrites-sym.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/nwsym-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/wns" --deadline 1791475000 >/dev/null 2>&1
-has "a no-writes leg that names a search_symbol gets the graph lookup" "$(tr '\n' ' ' < "$WORK/nwsym-bucket/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>/dev/null)" 'worker-graph.sh explain "gen-briefs.py"'
+has "a no-writes leg that names a search_symbol gets the graph lookup" "$(tr '\n' ' ' < "$WORK/nwsym-bucket/$KP-9001-N901-plain-fix-2026-10-08.md" 2>/dev/null)" 'worker-graph.sh explain "gen-briefs.py"'
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["search_query"]="has <topic> in it"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/badq.json"
 python3 "$SUT" "$WORK/badq.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/badq-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/wq" --deadline 1791475000 >/dev/null 2>&1; rc=$?
 [ "$rc" = 1 ] && pass "a search_query with an angle bracket is refused (rc 1)" || fail "bad search_query rc=$rc"
@@ -183,7 +184,7 @@ python3 "$SUT" "$WORK/subst.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae31
 # shellcheck disable=SC2016  # literal command substitution and backticks in the fixture title
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["title"]="fix $(touch /tmp/x) and `id`"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/dtitle.json"
 python3 "$SUT" "$WORK/dtitle.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/dtitle-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/wd" --deadline 1791475000 >/dev/null 2>&1; rc=$?
-DT="$(tr '\n' ' ' < "$WORK/dtitle-bucket/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>/dev/null)"
+DT="$(tr '\n' ' ' < "$WORK/dtitle-bucket/$KP-9001-N901-plain-fix-2026-10-08.md" 2>/dev/null)"
 { [ "$rc" = 0 ] && case "$DT" in *'query -c luna "fix (touch /tmp/x) and id"'*) true ;; *) false ;; esac; } \
     && pass "a title with command substitution is sanitized in the default query, never pasted live" || fail "title substitution rc=$rc: $DT"
 
@@ -219,7 +220,7 @@ has "the worker preface's HALT/WRAP step passes --queue-doc" "$(tr '\n' ' ' < "$
 # (a copy whose resume_cwd is a plain directory: the worktree check is a later gate and the copy leaves D1 alone; the lint needs an absolute one)
 printf '%s\n' '#!/usr/bin/env bash' 'echo PROCEED' > "$WORK/preflight.sh"
 mkdir -p "$WORK/arm"; sed "s|^resume_cwd:.*|resume_cwd: $WORK|" "$D1" > "$WORK/arm/HIMMEL-9001-N901-copy.md"
-rc=0; arm_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --profile worker-impl HIMMEL-9001-N901 "$WORK/arm/HIMMEL-9001-N901-copy.md" "$WORK/arm/signal" 9999999999 "$WORK/arm/log" claude-sonnet-5-5 2>&1)" || rc=$?
+rc=0; arm_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --profile worker-impl $KP-9001-N901 "$WORK/arm/$KP-9001-N901-copy.md" "$WORK/arm/signal" 9999999999 "$WORK/arm/log" claude-sonnet-5-5 2>&1)" || rc=$?
 [ "$rc" = 0 ] && pass "a generated brief arms through headed-arm-worker.sh (brief-lint gate)" || fail "generated brief refused by headed-arm-worker.sh rc=$rc: $arm_out"
 
 b1="$(cat "$D1" 2>/dev/null)"; b2="$(cat "$D2" 2>/dev/null)"
@@ -233,9 +234,9 @@ has "a hook worker's brief says it is launched with the bypass" "$b2" "hook-inte
 lacks "a plain worker's brief does not" "$b1" "hook-integrity bypass flag"
 has "a judge worker's brief announces the opus judge" "$b2" "chief runs an opus judge"
 has "the other worker's scope is listed under 'other live workers'" "$b1" "N902 (h.sh)"
-has "the brief puts the write list on its own '> **Writes:**' line (HIMMEL-7469)" "$(grep -c '^> \*\*Writes:\*\* ' "$D1")" "1"
-[ "$(grep '^> \*\*Writes:\*\* ' "$D1")" = "> **Writes:** scripts/x/" ] && pass "the Writes line is the scope's paths only (HIMMEL-7469)" || fail "the Writes line is not exactly the scope's paths: $(grep '^> \*\*Writes:\*\* ' "$D1")"
-lacks "the Writes line carries no backtick prose (HIMMEL-7469)" "$(grep '^> \*\*Writes:\*\* ' "$D1")" '`'
+has "the brief puts the write list on its own '> **Writes:**' line" "$(grep -c '^> \*\*Writes:\*\* ' "$D1")" "1"
+[ "$(grep '^> \*\*Writes:\*\* ' "$D1")" = "> **Writes:** scripts/x/" ] && pass "the Writes line is the scope's paths only" || fail "the Writes line is not exactly the scope's paths: $(grep '^> \*\*Writes:\*\* ' "$D1")"
+lacks "the Writes line carries no backtick prose" "$(grep '^> \*\*Writes:\*\* ' "$D1")" '`'
 # a worker flagged for CI, infra or the environment gets a RED-first line requiring a real-environment fixture.
 has "a flagged worker's brief requires a fixture copied from the real environment" "$b2" "copied from the real environment"
 lacks "an unflagged worker's brief does not" "$b1" "copied from the real environment"
@@ -292,29 +293,29 @@ printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s"\n' "$WORK/arm7811.log"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$WORK/bin7811/sleep"; chmod +x "$WORK/bin7811/sleep"
 python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/b7811" --repo "$R7811" --handover-root /h --no-worktree --manifest "$WORK/f7811.fleet.json" >/dev/null 2>&1
 PATH="$WORK/bin7811:$PATH" bash "$WORK/b7811/launch-N901.sh" >/dev/null 2>&1; rc7811=$?
-[ "$rc7811" -eq 0 ] && pass "the generated launcher exits 0 (HIMMEL-7811)" || fail "the generated launcher exited $rc7811"
-d7811="$(find "$WORK/b7811" -maxdepth 1 -name 'HIMMEL-9001-N901-plain-fix-*.md' 2>/dev/null | head -n1)"
-[ -n "$d7811" ] && bash "$HERE/fleet-manifest.sh" list "$WORK/f7811.fleet.json" 2>&1 | grep -Fxq -- "$d7811" && pass "the generated launcher leaves its exact worker doc in the fleet manifest (HIMMEL-7811)" || fail "the fleet manifest does not list the exact worker doc [$d7811]"
+[ "$rc7811" -eq 0 ] && pass "the generated launcher exits 0" || fail "the generated launcher exited $rc7811"
+d7811="$(find "$WORK/b7811" -maxdepth 1 -name "$KP-9001-N901-plain-fix-*.md" 2>/dev/null | head -n1)"
+[ -n "$d7811" ] && bash "$HERE/fleet-manifest.sh" list "$WORK/f7811.fleet.json" 2>&1 | grep -Fxq -- "$d7811" && pass "the generated launcher leaves its exact worker doc in the fleet manifest" || fail "the fleet manifest does not list the exact worker doc [$d7811]"
 l7811="$(cat "$WORK/b7811/launch-N901.sh" 2>/dev/null)"
 add_pos="${l7811%%fleet-manifest.sh add*}"; arm_pos="${l7811%%headed-arm-worker.sh*}"
-[ "${#add_pos}" -lt "${#arm_pos}" ] && pass "the launcher adds the worker to the manifest before it arms (HIMMEL-7811)" || fail "manifest add does not precede the arm in the launcher"
+[ "${#add_pos}" -lt "${#arm_pos}" ] && pass "the launcher adds the worker to the manifest before it arms" || fail "manifest add does not precede the arm in the launcher"
 PATH="$WORK/bin7811:$PATH" bash "$WORK/b7811/launch-N901.sh" >/dev/null 2>&1; rc7811=$?
-[ "$rc7811" -eq 0 ] && pass "the re-run launcher exits 0 (HIMMEL-7811)" || fail "the re-run launcher exited $rc7811"
-[ "$(bash "$HERE/fleet-manifest.sh" list "$WORK/f7811.fleet.json" 2>&1 | grep -c N901)" = 1 ] && pass "running the launcher twice adds the worker once (HIMMEL-7811)" || fail "launcher re-run duplicated the manifest row"
+[ "$rc7811" -eq 0 ] && pass "the re-run launcher exits 0" || fail "the re-run launcher exited $rc7811"
+[ "$(bash "$HERE/fleet-manifest.sh" list "$WORK/f7811.fleet.json" 2>&1 | grep -c N901)" = 1 ] && pass "running the launcher twice adds the worker once" || fail "launcher re-run duplicated the manifest row"
 # A failed manifest add stops the launch: the arm never runs.
 R7811f="$WORK/repo7811f"; mkdir -p "$R7811f/scripts/handover/chief-kit"
 cp -R "$REPO_ROOT/scripts/lib" "$R7811f/scripts/lib"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$R7811f/scripts/handover/chief-kit/fleet-manifest.sh"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s"\n' "$WORK/arm7811f.log" > "$R7811f/scripts/handover/chief-kit/headed-arm-worker.sh"
 python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/b7811f" --repo "$R7811f" --handover-root /h --no-worktree --manifest "$WORK/f7811f.fleet.json" >/dev/null 2>&1
-has "the launcher for the failed-add check carries the manifest add (HIMMEL-7811)" "$(cat "$WORK/b7811f/launch-N901.sh" 2>/dev/null)" "fleet-manifest.sh"
+has "the launcher for the failed-add check carries the manifest add" "$(cat "$WORK/b7811f/launch-N901.sh" 2>/dev/null)" "fleet-manifest.sh"
 PATH="$WORK/bin7811:$PATH" bash "$WORK/b7811f/launch-N901.sh" >/dev/null 2>&1; rc7811f=$?
-[ "$rc7811f" -ne 0 ] && pass "a failed manifest add makes the launcher exit non-zero (HIMMEL-7811)" || fail "launcher exited 0 after a failed manifest add"
-[ ! -s "$WORK/arm7811f.log" ] && pass "a failed manifest add stops the launch before the arm (HIMMEL-7811)" || fail "the arm ran after a failed manifest add"
+[ "$rc7811f" -ne 0 ] && pass "a failed manifest add makes the launcher exit non-zero" || fail "launcher exited 0 after a failed manifest add"
+[ ! -s "$WORK/arm7811f.log" ] && pass "a failed manifest add stops the launch before the arm" || fail "the arm ran after a failed manifest add"
 python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/b7811n" --repo "$R7811" --handover-root /h --no-worktree >/dev/null 2>&1; rc7811n=$?
-[ "$rc7811n" -eq 0 ] && pass "generation without --manifest succeeds (HIMMEL-7811)" || fail "generation without --manifest exited $rc7811n"
-has "the launcher generated without --manifest still arms (HIMMEL-7811)" "$(cat "$WORK/b7811n/launch-N901.sh" 2>/dev/null)" "headed-arm-worker.sh"
-lacks "a launcher generated without --manifest adds nothing (HIMMEL-7811)" "$(cat "$WORK/b7811n/launch-N901.sh" 2>/dev/null)" "fleet-manifest.sh"
+[ "$rc7811n" -eq 0 ] && pass "generation without --manifest succeeds" || fail "generation without --manifest exited $rc7811n"
+has "the launcher generated without --manifest still arms" "$(cat "$WORK/b7811n/launch-N901.sh" 2>/dev/null)" "headed-arm-worker.sh"
+lacks "a launcher generated without --manifest adds nothing" "$(cat "$WORK/b7811n/launch-N901.sh" 2>/dev/null)" "fleet-manifest.sh"
 else
   echo "SKIP launcher manifest rows (no flock on this host)"
 fi
@@ -373,9 +374,9 @@ has "a worker's lane key is printed as --lane" "$lout" "--lane claudex"
 has "a claudex worker's launcher passes --lane claudex" "$(cat "$WORK/b5/launch-N901.sh")" "--lane claudex "
 has "and its sidecar sha matches the launcher bytes" "$(cat "$WORK/f5.launchers.sha256" 2>/dev/null)" "$(sha_of "$WORK/b5/launch-N901.sh")  $WORK/b5/launch-N901.sh"
 python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/b5n" --repo "$REPO" --handover-root /h --no-worktree --manifest "$WORK/f5n.json" >/dev/null 2>&1; rc5n=$?
-[ "$rc5n" -eq 0 ] && pass "a native worker's generation succeeds (HIMMEL-7811)" || fail "native worker generation exited $rc5n"
+[ "$rc5n" -eq 0 ] && pass "a native worker's generation succeeds" || fail "native worker generation exited $rc5n"
 has "a native worker's launcher has an arm line to check" "$(grep 'headed-arm-worker.sh' "$WORK/b5n/launch-N901.sh" 2>/dev/null)" "headed-arm-worker.sh"
-lacks "a native worker's arm line has no --lane (its manifest add line carries --lane native, HIMMEL-7811)" "$(grep 'headed-arm-worker.sh' "$WORK/b5n/launch-N901.sh")" "--lane"
+lacks "a native worker's arm line has no --lane (its manifest add line carries --lane native)" "$(grep 'headed-arm-worker.sh' "$WORK/b5n/launch-N901.sh")" "--lane"
 has "and its sidecar sha matches the launcher bytes" "$(cat "$WORK/f5n.launchers.sha256" 2>/dev/null)" "$(sha_of "$WORK/b5n/launch-N901.sh")  $WORK/b5n/launch-N901.sh"
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="Bad Lane"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/lane-bad.json"
 python3 "$SUT" "$WORK/lane-bad.json" --base 4ccb59d --chief BZ --bucket "$WORK/b6" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/lane-bad.err"; rc=$?
@@ -393,13 +394,13 @@ python3 "$SUT" "$WORK/lane-nl.json" --base 4ccb59d --chief BZ --bucket "$WORK/b8
 # and passes --arm on the printed manifest add line; a bad value is refused; no key changes nothing.
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["ab_arm"]="400k"; l[0]["profile"]="worker-docs"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ab-ok.json"
 about="$(python3 "$SUT" "$WORK/ab-ok.json" --base 4ccb59d --chief BZ --bucket "$WORK/b9" --repo "$REPO" --handover-root /h --no-worktree --manifest "$WORK/f9.json" 2>&1)"
-abdoc="$(cat "$WORK/b9/HIMMEL-9001-N901-plain-fix-"*.md 2>/dev/null)"
-has "ab_arm 400k: the brief carries the ruling line" "$abdoc" "> **Context:** ab-400k — operator-ruling: HIMMEL-5193"
+abdoc="$(cat "$WORK/b9/$KP-9001-N901-plain-fix-"*.md 2>/dev/null)"
+has "ab_arm 400k: the brief carries the ruling line" "$abdoc" "> **Context:** ab-400k — operator-ruling: the operator sanctioned this A/B arm"
 has "ab_arm 400k: the launcher exports WORKER_SESSION_AUTOCOMPACT_AB=400000" "$(cat "$WORK/b9/launch-N901.sh" 2>/dev/null)" "export WORKER_SESSION_AUTOCOMPACT_AB=400000"
 has "ab_arm 400k: the manifest add line passes --arm 400k" "$about" "--arm 400k"
 bash "$HERE/brief-lint.sh" "$WORK/b9/HIMMEL-9001-N901-plain-fix-"*.md 2>"$WORK/lint-ab.err"; rc=$?
 [ "$rc" = 0 ] && pass "ab_arm brief passes brief-lint.sh" || fail "ab_arm brief-lint rc=$rc: $(cat "$WORK/lint-ab.err")"
-lacks "no ab_arm: the plain brief has no Context line" "$b1" "operator-ruling: HIMMEL-5193"
+lacks "no ab_arm: the plain brief has no Context line" "$b1" "> **Context:** ab-"
 lacks "no ab_arm: the plain launcher exports no arm" "$l1" "WORKER_SESSION_AUTOCOMPACT_AB"
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["ab_arm"]="500k"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ab-bad.json"
 python3 "$SUT" "$WORK/ab-bad.json" --base 4ccb59d --chief BZ --bucket "$WORK/b10" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ab-bad.err"; rc=$?
@@ -421,11 +422,11 @@ python3 "$SUT" "$WORK/opus-no.json" --base 4ccb59d --chief BZ --bucket "$WORK/b1
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["model"]="claude-opus-5-5"; l[0]["tier"]={"category":"design","reason":"multi-step design: the gate shape is open"}; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/opus-ok.json"
 python3 "$SUT" "$WORK/opus-ok.json" --base 4ccb59d --chief BZ --bucket "$WORK/b12" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/opus-ok.err"; rc=$?
 [ "$rc" = 0 ] && pass "an opus worker with a tier generates (rc 0)" || fail "opus with tier rc=$rc: $(cat "$WORK/opus-ok.err")"
-TD="$(find "$WORK/b12" -name 'HIMMEL-9001-N901-plain-fix-*.md' 2>/dev/null | head -n 1)"
+TD="$(find "$WORK/b12" -name "$KP-9001-N901-plain-fix-*.md" 2>/dev/null | head -n 1)"
 has "the opus brief carries the Tier line" "$(cat "$TD" 2>/dev/null)" "> **Tier:** opus — design: multi-step design: the gate shape is open"
 # the launcher's own gate is the check: a copy without resume_cwd (as in the arming row above) arms, not refused.
 mkdir -p "$WORK/tier-arm"; sed "s|^resume_cwd:.*|resume_cwd: $WORK|" "$TD" > "$WORK/tier-arm/HIMMEL-9001-N901-copy.md"
-rc=0; tier_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --profile worker-impl HIMMEL-9001-N901 "$WORK/tier-arm/HIMMEL-9001-N901-copy.md" "$WORK/tier-arm/signal" 9999999999 "$WORK/tier-arm/log" claude-opus-5-5 2>&1)" || rc=$?
+rc=0; tier_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --profile worker-impl $KP-9001-N901 "$WORK/tier-arm/$KP-9001-N901-copy.md" "$WORK/tier-arm/signal" 9999999999 "$WORK/tier-arm/log" claude-opus-5-5 2>&1)" || rc=$?
 [ "$rc" = 0 ] && pass "headed-arm-worker.sh's Tier gate accepts the generated opus brief" || fail "opus brief refused by headed-arm-worker.sh rc=$rc: $tier_out"
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["model"]="claude-opus-5-5"; l[0]["tier"]={"category":"cheap","reason":"x"}; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/tier-badcat.json"
 python3 "$SUT" "$WORK/tier-badcat.json" --base 4ccb59d --chief BZ --bucket "$WORK/b13" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/tier-badcat.err"; rc=$?
@@ -460,21 +461,21 @@ python3 "$SUT" "$WORK/lane-writes.json" --base 4ccb59d --chief BZ --bucket "$WOR
 # A non-native worker with no model key takes the lane's model: no native model argument in the launcher, the lane model in the brief header.
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/lane-nomodel.json"
 python3 "$SUT" "$WORK/lane-nomodel.json" --base 4ccb59d --chief BZ --bucket "$WORK/b20" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/lane-nomodel.err"; rc=$?
-[ "$rc" = 0 ] && [ -s "$WORK/b20/launch-N901.sh" ] && [ -n "$(find "$WORK/b20" -name 'HIMMEL-9001-N901-*.md')" ] && pass "a claudex worker with no model key generates its brief and launcher (rc 0)" || fail "claudex no-model rc=$rc: $(cat "$WORK/lane-nomodel.err")"
+[ "$rc" = 0 ] && [ -s "$WORK/b20/launch-N901.sh" ] && [ -n "$(find "$WORK/b20" -name "$KP-9001-N901-*.md")" ] && pass "a claudex worker with no model key generates its brief and launcher (rc 0)" || fail "claudex no-model rc=$rc: $(cat "$WORK/lane-nomodel.err")"
 # claudex is a live lane: nothing the generator writes or prints calls it dormant.
-lacks "a claudex worker's brief carries no dormant text" "$(tr '[:upper:]' '[:lower:]' < "$(find "$WORK/b20" -name 'HIMMEL-9001-N901-*.md' | head -n 1)")" "dormant"
+lacks "a claudex worker's brief carries no dormant text" "$(tr '[:upper:]' '[:lower:]' < "$(find "$WORK/b20" -name "$KP-9001-N901-*.md" | head -n 1)")" "dormant"
 lacks "a claudex worker's launcher carries no dormant text" "$(tr '[:upper:]' '[:lower:]' < "$WORK/b20/launch-N901.sh")" "dormant"
 lacks "a claudex worker's generation prints no dormant text" "$(tr '[:upper:]' '[:lower:]' < "$WORK/lane-nomodel.err")" "dormant"
 lacks "a claudex worker with no model key passes no native model argument" "$(cat "$WORK/b20/launch-N901.sh")" "claude-sonnet-5-5"
 lacks "a claudex worker with no model key leaves the lane default to headed-arm-worker" "$(cat "$WORK/b20/launch-N901.sh")" "gpt-6.1-sol"
-has "its brief header names the lane model and the lane" "$(cat "$WORK/b20"/HIMMEL-9001-N901-*.md)" "gpt-6.1-sol, claudex"
+has "its brief header names the lane model and the lane" "$(cat "$WORK/b20"/$KP-9001-N901-*.md)" "gpt-6.1-sol, claudex"
 # A claudex worker's named model is the launcher's trailing model argument, and headed-arm-worker.sh hands it to
 # scripts/claude-codex as CODEX_MODEL: the launcher's own arguments, run as a dry run.
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["model"]="gpt-6-astra"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/lane-astra.json"
 python3 "$SUT" "$WORK/lane-astra.json" --base 4ccb59d --chief BZ --bucket "$WORK/b20a" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>&1
 has "a claudex worker with a model key passes it as the launcher's model argument" "$(grep -F headed-arm-worker.sh "$WORK/b20a/launch-N901.sh")" '.log" gpt-6-astra >'
-mkdir -p "$WORK/astra-arm"; sed "s|^resume_cwd:.*|resume_cwd: $WORK|" "$(find "$WORK/b20a" -name 'HIMMEL-9001-N901-*.md' | head -n 1)" > "$WORK/astra-arm/HIMMEL-9001-N901-copy.md"
-rc=0; astra_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --lane claudex --profile worker-impl HIMMEL-9001-N901 "$WORK/astra-arm/HIMMEL-9001-N901-copy.md" "$WORK/astra-arm/signal" 9999999999 "$WORK/astra-arm/log" gpt-6-astra 2>&1)" || rc=$?
+mkdir -p "$WORK/astra-arm"; sed "s|^resume_cwd:.*|resume_cwd: $WORK|" "$(find "$WORK/b20a" -name "$KP-9001-N901-*.md" | head -n 1)" > "$WORK/astra-arm/$KP-9001-N901-copy.md"
+rc=0; astra_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --lane claudex --profile worker-impl $KP-9001-N901 "$WORK/astra-arm/$KP-9001-N901-copy.md" "$WORK/astra-arm/signal" 9999999999 "$WORK/astra-arm/log" gpt-6-astra 2>&1)" || rc=$?
 [ "$rc" = 0 ] && pass "the generated claudex brief arms with the named model" || fail "claudex brief refused by headed-arm-worker.sh rc=$rc: $astra_out"
 has "and the named model reaches the worker as CODEX_MODEL" "$astra_out" "CODEX_MODEL=gpt-6-astra"
 lacks "and the claudex launch prints no dormant warning" "$(printf '%s' "$astra_out" | tr '[:upper:]' '[:lower:]')" "dormant"
@@ -494,12 +495,12 @@ ct_brief() { # <scope text> <bucket>
     python3 "$SUT" "$WORK/ct.json" --base 4ccb59d --chief BZ --bucket "$2" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ct.err" || fail "completes-ticket scope generation rc=$?: $(cat "$WORK/ct.err")"
     cat "$2"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null
 }
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["writes"]="scripts/wr/a.sh docs/writes-only.md"; l[0]["scope"]="scripts/wr-context/read.sh. Stay off scripts/lib/. completes-ticket: no"; l[0]["prior"]="HIMMEL-9000: docs/prior.md"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/wr.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["writes"]="scripts/wr/a.sh docs/writes-only.md"; l[0]["scope"]="scripts/wr-context/read.sh. Stay off scripts/lib/. completes-ticket: no"; l[0]["prior"]="'"$KP"'-9000: docs/prior.md"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/wr.json"
 python3 "$SUT" "$WORK/wr.json" --base 4ccb59d --chief BZ --bucket "$WORK/wr1" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/wr.err"; wr_rc=$?
 [ "$wr_rc" = 0 ] && pass "explicit ticket Writes text generates" || fail "explicit Writes generation rc=$wr_rc: $(cat "$WORK/wr.err")"
-wr_brief="$(cat "$WORK/wr1"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
+wr_brief="$(cat "$WORK/wr1"/$KP-9001-N901-plain-fix-*.md 2>/dev/null)"
 wr_line="$(printf '%s\n' "$wr_brief" | grep '^> \*\*Writes:\*\* ')"
-[ "$wr_line" = "> **Writes:** scripts/wr/a.sh docs/writes-only.md" ] && pass "Writes derives only from the ticket Writes text, never scope or prior (HIMMEL-7949)" || fail "Writes must use the explicit writes key only: $wr_line"
+[ "$wr_line" = "> **Writes:** scripts/wr/a.sh docs/writes-only.md" ] && pass "Writes derives only from the ticket Writes text, never scope or prior" || fail "Writes must use the explicit writes key only: $wr_line"
 wr_note="$(printf '%s\n' "$wr_brief" | grep '^> \*\*Writes note:\*\* ')"
 has "Writes note retains scope context" "$wr_note" "scripts/wr-context/read.sh"
 has "Writes note retains stay-off paths" "$wr_note" "Stay off scripts/lib/"
@@ -907,9 +908,9 @@ has "the adopter launcher names himmel's headed-arm-worker.sh" "$al" "$KIT/scrip
 lacks "and not a copy under the adopter" "$al" "$ADP/scripts/handover/chief-kit/"
 has "the adopter launcher exports the adopter worktree as WORKER_SESSION_REPO" "$al" "export WORKER_SESSION_REPO=$ADP/.claude/worktrees/fix+himmel-9001-plain-fix"
 has "the adopter launcher's manifest add uses himmel's fleet-manifest.sh" "$al" "$KIT/scripts/handover/chief-kit/fleet-manifest.sh add"
-has "the adopter brief's ticket-read line uses himmel's jira CLI" "$(cat "$WORK"/hr/tester/adp/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)" "node $KIT/scripts/jira/dist/index.js get HIMMEL-9001"
+has "the adopter brief's ticket-read line uses himmel's jira CLI" "$(cat "$WORK"/hr/tester/adp/$KP-9001-N901-plain-fix-*.md 2>/dev/null)" "node $KIT/scripts/jira/dist/index.js get $KP-9001"
 lacks "RED control: a himmel-repo launcher exports no WORKER_SESSION_REPO" "$l1" "WORKER_SESSION_REPO"
-AB="$(tr '\n' ' ' < "$WORK"/hr/tester/adp/HIMMEL-9001-N901-plain-fix-*.md | tr -s ' ')"
+AB="$(tr '\n' ' ' < "$WORK"/hr/tester/adp/$KP-9001-N901-plain-fix-*.md | tr -s ' ')"
 has "the adopter brief searches luna" "$AB" 'query -c luna "a plain fix"'
 has "the adopter brief says it has no Jira mirror" "$AB" "no Jira mirror"
 has "the adopter brief says it has no graph lookup" "$AB" "no graph lookup"
@@ -921,7 +922,7 @@ bash "$HERE/brief-lint.sh" "$WORK"/hr/tester/adp/HIMMEL-9001-N901-plain-fix-*.md
 SAL="$WORK/salus-repo"; git init -q "$SAL"; : > "$SAL/.salus"
 rc=0; GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_CHECK=1 python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/sal" --repo "$SAL" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >"$WORK/sal.out" 2>"$WORK/sal.err" || rc=$?
 [ "$rc" = 0 ] && pass "a .salus-marked repo generates (rc 0)" || fail "salus repo rc=$rc: $(cat "$WORK/sal.err")"
-SB="$(tr '\n' ' ' < "$WORK"/hr/tester/sal/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null | tr -s ' ')"
+SB="$(tr '\n' ' ' < "$WORK"/hr/tester/sal/$KP-9001-N901-plain-fix-*.md 2>/dev/null | tr -s ' ')"
 lacks "the salus brief names no luna search" "$SB" "query -c luna"
 lacks "the salus brief names no jira-himmel search" "$SB" "-c jira-himmel"
 lacks "the salus brief names no worker-graph lookup" "$SB" "worker-graph.sh"
@@ -930,27 +931,27 @@ bash "$HERE/brief-lint.sh" "$WORK"/hr/tester/sal/HIMMEL-9001-N901-plain-fix-*.md
 [ "$rc" = 0 ] && pass "the salus brief passes brief-lint.sh" || fail "salus brief brief-lint rc=$rc: $(cat "$WORK/lint-sal.err")"
 PHI="$WORK/phi-repo"; git init -q "$PHI"; mkdir -p "$WORK/home/.config/claude-codex"; printf '%s\n' "$PHI" > "$WORK/home/.config/claude-codex/phi-roots"
 rc=0; HOME="$WORK/home" GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_CHECK=1 python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/phi" --repo "$PHI" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >"$WORK/phi.out" 2>"$WORK/phi.err" || rc=$?
-PB="$(tr '\n' ' ' < "$WORK"/hr/tester/phi/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
+PB="$(tr '\n' ' ' < "$WORK"/hr/tester/phi/$KP-9001-N901-plain-fix-*.md 2>/dev/null)"
 has "a phi-roots repo says it searches nothing" "$PB" "no notes search"
 lacks "and names no luna search" "$PB" "query -c luna"
 WTR="$WORK/wt-marked-repo"; git init -q "$WTR"; mkdir -p "$WTR/.claude/worktrees/fix+himmel-9001-plain-fix"; : > "$WTR/.claude/worktrees/fix+himmel-9001-plain-fix/.salus"
 rc=0; GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_CHECK=1 python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/wtm" --repo "$WTR" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >"$WORK/wtm.out" 2>"$WORK/wtm.err" || rc=$?
-has "a marker on the worker's own worktree (the repo unmarked) makes that worker's brief search nothing" "$(tr '\n' ' ' < "$WORK"/hr/tester/wtm/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)" "no notes search"
+has "a marker on the worker's own worktree (the repo unmarked) makes that worker's brief search nothing" "$(tr '\n' ' ' < "$WORK"/hr/tester/wtm/$KP-9001-N901-plain-fix-*.md 2>/dev/null)" "no notes search"
 DEN="$WORK/deny-repo"; git init -q "$DEN"; mkdir -p "$WORK/home2/.config/claude-glm"; printf '%s\n' "$DEN" > "$WORK/home2/.config/claude-glm/egress-denylist"
 rc=0; HOME="$WORK/home2" GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_CHECK=1 python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/den" --repo "$DEN" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >"$WORK/den.out" 2>"$WORK/den.err" || rc=$?
-has "an egress-denylist repo says it searches nothing" "$(tr '\n' ' ' < "$WORK"/hr/tester/den/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)" "no notes search"
+has "an egress-denylist repo says it searches nothing" "$(tr '\n' ' ' < "$WORK"/hr/tester/den/$KP-9001-N901-plain-fix-*.md 2>/dev/null)" "no notes search"
 # The generator and the lint share one classifier, so they agree on a linked worktree outside a marked primary and on a repo that holds a listed root.
 GPR="$WORK/marked-primary"; git init -q "$GPR"; : > "$GPR/.salus"; git -C "$GPR" -c user.name=t -c user.email=t@t -c core.hooksPath=/dev/null -c commit.gpgsign=false commit -q --allow-empty -m init
 git -C "$GPR" worktree add -q "$WORK/outside-wt" -b outside-wt
 rc=0; GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_CHECK=1 python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/owt" --repo "$WORK/outside-wt" --handover-root "$WORK/hr" >/dev/null 2>"$WORK/owt.err" || rc=$?
-OB="$(tr '\n' ' ' < "$WORK"/hr/tester/owt/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
+OB="$(tr '\n' ' ' < "$WORK"/hr/tester/owt/$KP-9001-N901-plain-fix-*.md 2>/dev/null)"
 has "a linked worktree outside a marked primary: the brief says it searches nothing" "$OB" "no notes search"
 lacks "and names no luna search" "$OB" "query -c luna"
 bash "$HERE/brief-lint.sh" "$WORK"/hr/tester/owt/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/lint-owt.err"; rc=$?
 [ "$rc" = 0 ] && pass "and the lint agrees (passes it)" || fail "outside-worktree brief brief-lint rc=$rc: $(cat "$WORK/lint-owt.err")"
 HLR="$WORK/holds-root"; git init -q "$HLR"; mkdir -p "$HLR/vault" "$WORK/home3/.config/claude-codex"; printf '%s\n' "$HLR/vault" > "$WORK/home3/.config/claude-codex/phi-roots"
 rc=0; HOME="$WORK/home3" GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_CHECK=1 python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/hlr" --repo "$HLR" --handover-root "$WORK/hr" >/dev/null 2>"$WORK/hlr.err" || rc=$?
-has "a repo that holds a listed root: the brief says it searches nothing" "$(tr '\n' ' ' < "$WORK"/hr/tester/hlr/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)" "no notes search"
+has "a repo that holds a listed root: the brief says it searches nothing" "$(tr '\n' ' ' < "$WORK"/hr/tester/hlr/$KP-9001-N901-plain-fix-*.md 2>/dev/null)" "no notes search"
 HOME="$WORK/home3" bash "$HERE/brief-lint.sh" "$WORK"/hr/tester/hlr/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/lint-hlr.err"; rc=$?
 [ "$rc" = 0 ] && pass "and the lint agrees (passes it)" || fail "holds-root brief brief-lint rc=$rc: $(cat "$WORK/lint-hlr.err")"
 ADP2="$WORK/adapter2"; git init -q "$ADP2"
@@ -970,7 +971,7 @@ EOF
 # an rm worker with an ab_arm is refused: its launcher applies no A/B arm
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["ab_arm"]="400k"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/rm.json" "$WORK/rm-ab.json"
 rc=0; python3 "$SUT" "$WORK/rm-ab.json" --base 4ccb59d --chief BZ --bucket "$WORK/rmb-ab" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >/dev/null 2>"$WORK/rm-ab.err" || rc=$?
-[ "$rc" = 1 ] && grep -q 'ab_arm' "$WORK/rm-ab.err" && [ ! -e "$WORK/rmb-ab/launch-N910.sh" ] && pass "an rm worker with an ab_arm is refused before anything is written (HIMMEL-7811)" || fail "rm ab_arm rc=$rc"
+[ "$rc" = 1 ] && grep -q 'ab_arm' "$WORK/rm-ab.err" && [ ! -e "$WORK/rmb-ab/launch-N910.sh" ] && pass "an rm worker with an ab_arm is refused before anything is written" || fail "rm ab_arm rc=$rc"
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["release"]="r"*120; l[0]["state_dir"]=sys.argv[3]+"/"+"r"*120; json.dump(l,open(sys.argv[2],"w"))' "$WORK/rm.json" "$WORK/rm-long.json" "$WORK/hr/tester/himmel/release"
 rc=0; python3 "$SUT" "$WORK/rm-long.json" --base 4ccb59d --chief BZ --bucket "$WORK/rmb-long" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >/dev/null 2>"$WORK/rm-long.err" || rc=$?
 [ "$rc" = 1 ] && grep -q '128' "$WORK/rm-long.err" && [ ! -e "$WORK/rmb-long/launch-N910.sh" ] && pass "9537 e: an rm worker whose name is over the bus limit is refused naming 128, nothing written" || fail "9537 e: rm over-limit rc=$rc: $(cat "$WORK/rm-long.err")"
@@ -1035,8 +1036,8 @@ python3 "$SUT" "$WORK/rm-q.json" --base 4ccb59d --chief BZ --bucket "$WORK/rmq" 
 python3 -I -c "import json,sys; l=json.load(open(sys.argv[1])); l[0]['why']='the install must be proven on a test VM first'; json.dump(l,open(sys.argv[2],'w'))" "$WORK/workers.json" "$WORK/vmlegs.json"
 rc=0; python3 "$SUT" "$WORK/vmlegs.json" --base 4ccb59d --chief BZ --bucket "$WORK/vmb" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >"$WORK/vm.out" 2>&1 || rc=$?
 [ "$rc" = 0 ] && pass "a workers file naming VM work generates (rc 0)" || fail "vm workers rc=$rc: $(cat "$WORK/vm.out")"
-VMB1="$(tr '\n' ' ' < "$WORK/vmb/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>/dev/null | tr -s ' ')"
-VMB2="$(tr '\n' ' ' < "$WORK/vmb/HIMMEL-9002-N902-hook-fix-2026-10-08.md" 2>/dev/null | tr -s ' ')"
+VMB1="$(tr '\n' ' ' < "$WORK/vmb/$KP-9001-N901-plain-fix-2026-10-08.md" 2>/dev/null | tr -s ' ')"
+VMB2="$(tr '\n' ' ' < "$WORK/vmb/$KP-9002-N902-hook-fix-2026-10-08.md" 2>/dev/null | tr -s ' ')"
 has "a brief naming VM work says to drive the guest only through guest-exec.sh" "$VMB1" "drive the guest only through guest-exec.sh"
 lacks "a brief that names no VM work does not carry the guest-exec line" "$VMB2" "guest-exec.sh"
 bash "$HERE/brief-lint.sh" "$WORK/vmb/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>"$WORK/vmlint.err"; rc=$?
@@ -1046,8 +1047,8 @@ bash "$HERE/brief-lint.sh" "$WORK/vmb/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["grants"]=[{"text":"add the RED row to the harness suite","paths":["scripts/handover/chief-kit/test-gen-briefs.sh"]},{"text":"mirror the change in the twin","paths":["scripts/a.sh","scripts/b.sh"]}]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/gr.json" || fail "grants fixture setup failed"
 python3 "$SUT" "$WORK/gr.json" --base 4ccb59d --chief BZ --bucket "$WORK/gr" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/gr.err"; rc=$?
 [ "$rc" = 0 ] && pass "a worker with grants generates (rc 0)" || fail "grants rc=$rc: $(cat "$WORK/gr.err")"
-GR="$(cat "$WORK"/gr/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
-has "a brief with grants carries the Pre-granted follow-ups block" "$GR" "> **Pre-granted follow-ups** (HIMMEL-7091)"
+GR="$(cat "$WORK"/gr/$KP-9001-N901-plain-fix-*.md 2>/dev/null)"
+has "a brief with grants carries the Pre-granted follow-ups block" "$GR" "> **Pre-granted follow-ups**"
 # shellcheck disable=SC2016 # literal backticks in the sed pattern
 GR_NONCE="$(sed -n 's/^> \*\*RETASK:\*\* your nonce is `\([^`]*\)`.*/\1/p' "$WORK"/gr/HIMMEL-9001-N901-plain-fix-*.md)"
 if [ -n "$GR_NONCE" ]; then has "the grants block binds the ruling to the worker's own nonce" "$GR" "\`RULING $GR_NONCE grant=<Gn> :: <action>\`"; else fail "no RETASK nonce in the grants brief"; fi
@@ -1127,7 +1128,7 @@ json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/inh.json" "$1" |
     python3 "$SUT" "$WORK/inh.json" --base 4ccb59d --chief BZ --bucket "$WORK/inh" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/inh.err"; inh_rc=$?
 }
 inh_gen "{'pr': 4033, 'authors': ['Ada Lovelace', 'Alan Turing'], 'mode': 'takeover'}"
-inh_brief="$(cat "$WORK/inh"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
+inh_brief="$(cat "$WORK/inh"/$KP-9001-N901-plain-fix-*.md 2>/dev/null)"
 [ "$inh_rc" = 0 ] && pass "a worker with a valid inherited key generates (rc 0)" || fail "inherited worker rc=$inh_rc: $(cat "$WORK/inh.err")"
 has "a worker with inherited renders the Inherited PR block" "$inh_brief" "> **Inherited PR (the resume of an \`ORPHAN PR\`"
 has "the Inherited PR block names the PR number" "$inh_brief" "PR \`4033\`"
@@ -1135,7 +1136,7 @@ has "the Inherited PR block names every original author" "$inh_brief" "by \`Ada 
 has "the Inherited PR block carries the mode" "$inh_brief" "Mode: \`takeover\`"
 has "the Inherited PR block keeps the disposition rule" "$inh_brief" "**Before the first push, decide a disposition**"
 inh_gen -
-plain_brief="$(cat "$WORK/inh"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
+plain_brief="$(cat "$WORK/inh"/$KP-9001-N901-plain-fix-*.md 2>/dev/null)"
 [ "$inh_rc" = 0 ] && [ -n "$plain_brief" ] && lacks "a worker without inherited renders no Inherited PR block" "$plain_brief" "Inherited PR" || fail "plain worker rc=$inh_rc or no brief written"
 inhbad() { # <name> <python expr for the inherited value>: refused, rc 1, nothing written
     inh_gen "$2"
@@ -1157,7 +1158,7 @@ if sys.argv[3] != "-": l[0]["writes"]=sys.argv[3]
 if sys.argv[4] != "-": l[0]["profile"]=sys.argv[4]
 json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ui.json" "$1" "$2" || return 1
     python3 "$SUT" "$WORK/ui.json" --base 4ccb59d --chief BZ --bucket "$WORK/ui" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ui.err"; ui_rc=$?
-    ui_launch="$(cat "$WORK/ui"/launch-N901.sh 2>/dev/null)"; ui_brief="$(cat "$WORK/ui"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
+    ui_launch="$(cat "$WORK/ui"/launch-N901.sh 2>/dev/null)"; ui_brief="$(cat "$WORK/ui"/$KP-9001-N901-plain-fix-*.md 2>/dev/null)"
 }
 ui_mcp() { # the mcp= field a dry-run launch with <profile> reports for the generated brief
     mkdir -p "$WORK/uiarm"; sed "s|^resume_cwd:.*|resume_cwd: $WORK|" "$WORK/ui"/HIMMEL-9001-N901-plain-fix-*.md > "$WORK/uiarm/HIMMEL-9001-N901-copy.md"
@@ -1260,7 +1261,7 @@ cat > "$WORK/pm.json" <<'EOF'
 EOF
 pm_out="$(MERGE_ROWS_GH="$WORK/mrgh-stub.sh" TICKET_STATUS_STATE_DIR="$WORK/pm-state" GEN_BRIEFS_GH_CMD="$WORK/gh-stub.sh" python3 "$SUT" "$WORK/pm.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/pm-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/pmw" --deadline 1791475000 2>&1)"; pm_rc=$?
 [ "$pm_rc" = 0 ] && pass "a ticket with partial merges generates (rc 0)" || fail "partial-merge gen rc=$pm_rc: $pm_out"
-PM1="$(tr '\n' ' ' < "$WORK/pm-bucket/HIMMEL-9101-N911-pm-fix-2026-10-08.md" | tr -s ' ')"
+PM1="$(tr '\n' ' ' < "$WORK/pm-bucket/$KP-9101-N911-pm-fix-2026-10-08.md" | tr -s ' ')"
 has "the brief names the merged contract=no PR and its Remaining: text" "$PM1" "PR \`#4313\`: Remaining: slices C1b and C4 (the {brace} readers)"
 has "a partial PR whose body has no Remaining: line is marked as needing a chief note" "$PM1" "PR \`#4320\`: needs a chief note"
 has "an empty Remaining: line does not borrow the text of the next line" "$PM1" "PR \`#4340\`: needs a chief note"
@@ -1274,7 +1275,7 @@ lacks "a pre-merge row followed by a not-merged row is not named" "$PM1" '#4380'
 lacks "another ticket's partial merge is not listed" "$PM1" '#4399'
 bash "$HERE/brief-lint.sh" "$WORK/pm-bucket/HIMMEL-9101-N911-pm-fix-2026-10-08.md" 2>"$WORK/lintpm.err"; rc=$?
 [ "$rc" = 0 ] && pass "the partial-merge brief passes brief-lint.sh" || fail "partial-merge brief-lint rc=$rc: $(cat "$WORK/lintpm.err")"
-lacks "a ticket with no partial merge gets no Already merged block" "$(cat "$WORK/pm-bucket/HIMMEL-9103-N912-pm-none-2026-10-08.md")" "Already merged"
+lacks "a ticket with no partial merge gets no Already merged block" "$(cat "$WORK/pm-bucket/$KP-9103-N912-pm-none-2026-10-08.md")" "Already merged"
 # a status log that exists but cannot be read is reported, not read as "no partial merges"
 mkdir -p "$WORK/pm-state-bad/status-events.jsonl"
 pm_bad="$(TICKET_STATUS_STATE_DIR="$WORK/pm-state-bad" GEN_BRIEFS_GH_CMD="$WORK/gh-stub.sh" python3 "$SUT" "$WORK/pm.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/pm-bucket2" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/pmw2" --deadline 1791475000 2>&1)"
@@ -1287,33 +1288,33 @@ T=$'\t'
 rdr() { printf '%b' "$2" | python3 -I "$RDR" "$1"; }
 same() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (got '$2', want '$3')"; fi; }
 H=$'## Ticket coverage\n'
-same "reader: a body with neither form is none" "$(rdr HIMMEL-1 'just a summary')" "none"
-same "reader: a Remaining: line stays remaining" "$(rdr HIMMEL-1 'Remaining: slice 2')" "remaining${T}slice 2"
-same "reader: Remaining: is read in any case, indented" "$(rdr HIMMEL-1 '  remaining: slice 2')" "remaining${T}slice 2"
-same "reader: an empty Remaining: line records nothing" "$(rdr HIMMEL-1 'Remaining:\n\nnot this')" "none"
-same "reader: a deferred arrow line hands off" "$(rdr HIMMEL-1 "$H- rest: deferred → HIMMEL-9")" "handed-off${T}HIMMEL-9${T}rest: deferred → HIMMEL-9"
-same "reader: the ascii arrow and a trailing period hand off" "$(rdr HIMMEL-1 "$H- rest: deferred -> HIMMEL-9.")" "handed-off${T}HIMMEL-9${T}rest: deferred -> HIMMEL-9."
-same "reader: a deferred line with no key stays remaining" "$(rdr HIMMEL-1 "$H- rest: deferred -> later")" "remaining${T}rest: deferred -> later"
-same "reader: a key that is not last stays remaining" "$(rdr HIMMEL-1 "$H- rest: deferred -> after HIMMEL-9 merges, stays here")" "remaining${T}rest: deferred -> after HIMMEL-9 merges, stays here"
-same "reader: a key that is not first stays remaining" "$(rdr HIMMEL-1 "$H- rest: deferred -> slice-2 then HIMMEL-9 too")" "remaining${T}rest: deferred -> slice-2 then HIMMEL-9 too"
-same "reader: two keys on one line stay remaining" "$(rdr HIMMEL-1 "$H- rest: deferred -> HIMMEL-9, HIMMEL-10")" "remaining${T}rest: deferred -> HIMMEL-9, HIMMEL-10"
-same "reader: a deferral to the ticket itself stays remaining" "$(rdr HIMMEL-1 "$H- rest: deferred -> HIMMEL-1")" "remaining${T}rest: deferred -> HIMMEL-1"
-same "reader: the own key is compared upper-cased" "$(rdr himmel-1 "$H- rest: deferred -> HIMMEL-1")" "remaining${T}rest: deferred -> HIMMEL-1"
-same "reader: a lower-case key in the body is named upper-cased" "$(rdr HIMMEL-1 "$H- rest: deferred -> himmel-9")" "handed-off${T}HIMMEL-9${T}rest: deferred -> himmel-9"
-same "reader: two lines naming one ticket name it once" "$(rdr HIMMEL-1 "$H- a: deferred -> HIMMEL-9\n- b: deferred -> HIMMEL-9")" "handed-off${T}HIMMEL-9${T}a: deferred -> HIMMEL-9; b: deferred -> HIMMEL-9"
-same "reader: two lines naming two tickets name both in order" "$(rdr HIMMEL-1 "$H- a: deferred -> HIMMEL-9\n- b: deferred -> HIMMEL-10")" "handed-off${T}HIMMEL-9, HIMMEL-10${T}a: deferred -> HIMMEL-9; b: deferred -> HIMMEL-10"
-same "reader: one handed-off line and one keyless line stay remaining" "$(rdr HIMMEL-1 "$H- a: deferred -> HIMMEL-9\n- b: deferred -> later")" "remaining${T}a: deferred -> HIMMEL-9; b: deferred -> later"
-same "reader: a Remaining: line beside a handed-off line stays remaining" "$(rdr HIMMEL-1 "Remaining: x\n$H- a: deferred -> HIMMEL-9")" "remaining${T}x; a: deferred -> HIMMEL-9"
-same "reader: a * bullet is read and its marker dropped" "$(rdr HIMMEL-1 "$H* a: deferred -> HIMMEL-9")" "handed-off${T}HIMMEL-9${T}a: deferred -> HIMMEL-9"
-same "reader: a + bullet is read and its marker dropped" "$(rdr HIMMEL-1 "$H+ a: deferred -> HIMMEL-9")" "handed-off${T}HIMMEL-9${T}a: deferred -> HIMMEL-9"
-same "reader: the coverage heading and the word deferred match in any case" "$(rdr HIMMEL-1 "## TICKET COVERAGE\n- a: DEFERRED -> HIMMEL-9")" "handed-off${T}HIMMEL-9${T}a: DEFERRED -> HIMMEL-9"
-same "reader: a deferred line outside the coverage section is not read" "$(rdr HIMMEL-1 '- a: deferred -> HIMMEL-9')" "none"
-same "reader: a level-one heading ends the coverage section" "$(rdr HIMMEL-1 "$H- a: done\n# Other\n- b: deferred -> HIMMEL-9")" "none"
-same "reader: a level-two heading ends the coverage section" "$(rdr HIMMEL-1 "$H- a: done\n## Other\n- b: deferred -> HIMMEL-9")" "none"
-same "reader: a level-three heading stays inside the coverage section" "$(rdr HIMMEL-1 "$H### Sub\n- b: deferred -> HIMMEL-9")" "handed-off${T}HIMMEL-9${T}b: deferred -> HIMMEL-9"
-same "reader: an empty heading ends the coverage section" "$(rdr HIMMEL-1 "$H##\n- b: deferred -> HIMMEL-9")" "none"
-same "reader: a #123 reference line is not a heading" "$(rdr HIMMEL-1 "$H#4587 merged\n- b: deferred -> HIMMEL-9")" "handed-off${T}HIMMEL-9${T}b: deferred -> HIMMEL-9"
-same "reader: a tab inside the text does not split the answer line" "$(rdr HIMMEL-1 'Remaining: a\tb')" "remaining${T}a b"
+same "reader: a body with neither form is none" "$(rdr $KP-1 'just a summary')" "none"
+same "reader: a Remaining: line stays remaining" "$(rdr $KP-1 'Remaining: slice 2')" "remaining${T}slice 2"
+same "reader: Remaining: is read in any case, indented" "$(rdr $KP-1 '  remaining: slice 2')" "remaining${T}slice 2"
+same "reader: an empty Remaining: line records nothing" "$(rdr $KP-1 'Remaining:\n\nnot this')" "none"
+same "reader: a deferred arrow line hands off" "$(rdr $KP-1 "$H- rest: deferred → $KP-9")" "handed-off${T}$KP-9${T}rest: deferred → $KP-9"
+same "reader: the ascii arrow and a trailing period hand off" "$(rdr $KP-1 "$H- rest: deferred -> $KP-9.")" "handed-off${T}$KP-9${T}rest: deferred -> $KP-9."
+same "reader: a deferred line with no key stays remaining" "$(rdr $KP-1 "$H- rest: deferred -> later")" "remaining${T}rest: deferred -> later"
+same "reader: a key that is not last stays remaining" "$(rdr $KP-1 "$H- rest: deferred -> after $KP-9 merges, stays here")" "remaining${T}rest: deferred -> after $KP-9 merges, stays here"
+same "reader: a key that is not first stays remaining" "$(rdr $KP-1 "$H- rest: deferred -> slice-2 then $KP-9 too")" "remaining${T}rest: deferred -> slice-2 then $KP-9 too"
+same "reader: two keys on one line stay remaining" "$(rdr $KP-1 "$H- rest: deferred -> $KP-9, $KP-10")" "remaining${T}rest: deferred -> $KP-9, $KP-10"
+same "reader: a deferral to the ticket itself stays remaining" "$(rdr $KP-1 "$H- rest: deferred -> $KP-1")" "remaining${T}rest: deferred -> $KP-1"
+same "reader: the own key is compared upper-cased" "$(rdr himmel-1 "$H- rest: deferred -> $KP-1")" "remaining${T}rest: deferred -> $KP-1"
+same "reader: a lower-case key in the body is named upper-cased" "$(rdr $KP-1 "$H- rest: deferred -> himmel-9")" "handed-off${T}$KP-9${T}rest: deferred -> himmel-9"
+same "reader: two lines naming one ticket name it once" "$(rdr $KP-1 "$H- a: deferred -> $KP-9\n- b: deferred -> $KP-9")" "handed-off${T}$KP-9${T}a: deferred -> $KP-9; b: deferred -> $KP-9"
+same "reader: two lines naming two tickets name both in order" "$(rdr $KP-1 "$H- a: deferred -> $KP-9\n- b: deferred -> $KP-10")" "handed-off${T}$KP-9, $KP-10${T}a: deferred -> $KP-9; b: deferred -> $KP-10"
+same "reader: one handed-off line and one keyless line stay remaining" "$(rdr $KP-1 "$H- a: deferred -> $KP-9\n- b: deferred -> later")" "remaining${T}a: deferred -> $KP-9; b: deferred -> later"
+same "reader: a Remaining: line beside a handed-off line stays remaining" "$(rdr $KP-1 "Remaining: x\n$H- a: deferred -> $KP-9")" "remaining${T}x; a: deferred -> $KP-9"
+same "reader: a * bullet is read and its marker dropped" "$(rdr $KP-1 "$H* a: deferred -> $KP-9")" "handed-off${T}$KP-9${T}a: deferred -> $KP-9"
+same "reader: a + bullet is read and its marker dropped" "$(rdr $KP-1 "$H+ a: deferred -> $KP-9")" "handed-off${T}$KP-9${T}a: deferred -> $KP-9"
+same "reader: the coverage heading and the word deferred match in any case" "$(rdr $KP-1 "## TICKET COVERAGE\n- a: DEFERRED -> $KP-9")" "handed-off${T}$KP-9${T}a: DEFERRED -> $KP-9"
+same "reader: a deferred line outside the coverage section is not read" "$(rdr $KP-1 "- a: deferred -> $KP-9")" "none"
+same "reader: a level-one heading ends the coverage section" "$(rdr $KP-1 "$H- a: done\n# Other\n- b: deferred -> $KP-9")" "none"
+same "reader: a level-two heading ends the coverage section" "$(rdr $KP-1 "$H- a: done\n## Other\n- b: deferred -> $KP-9")" "none"
+same "reader: a level-three heading stays inside the coverage section" "$(rdr $KP-1 "$H### Sub\n- b: deferred -> $KP-9")" "handed-off${T}$KP-9${T}b: deferred -> $KP-9"
+same "reader: an empty heading ends the coverage section" "$(rdr $KP-1 "$H##\n- b: deferred -> $KP-9")" "none"
+same "reader: a #123 reference line is not a heading" "$(rdr $KP-1 "$H#4587 merged\n- b: deferred -> $KP-9")" "handed-off${T}$KP-9${T}b: deferred -> $KP-9"
+same "reader: a tab inside the text does not split the answer line" "$(rdr $KP-1 'Remaining: a\tb')" "remaining${T}a b"
 if python3 -I "$RDR" >/dev/null 2>&1 </dev/null; then fail "reader: no key argument is a usage error"; else pass "reader: no key argument is a usage error"; fi
 if python3 -I "$RDR" HIMMEL-1 extra >/dev/null 2>&1 </dev/null; then fail "reader: a second argument is a usage error"; else pass "reader: a second argument is a usage error"; fi
 
@@ -1599,7 +1600,7 @@ sro="$(srrun ok)"; rc=$?
 [ "$rc" = 0 ] && pass "S2a: a series writer with stacked_series on generates (rc 0)" || fail "S2a ok rc=$rc: $sro"
 SRB="$WORK/sr-b-ok"; SRD="$SRB/HIMMEL-9301-N931-sr-a-2026-10-08.md"; SRL="$SRB/series/HIMMEL-9301-N931.json"
 [ -f "$SRD" ] && pass "S2a: the writer's brief is written" || fail "S2a: no brief $SRD"
-[ ! -e "$SRB/launch-N932.sh" ] && [ ! -e "$SRB/launch-N933.sh" ] && [ -z "$(find "$SRB" -name 'HIMMEL-9302-*' -o -name 'HIMMEL-9303-*')" ] && pass "S2a: the named workers get no brief and no launcher" || fail "S2a: a named worker got a file: $(ls "$SRB")"
+[ ! -e "$SRB/launch-N932.sh" ] && [ ! -e "$SRB/launch-N933.sh" ] && [ -z "$(find "$SRB" -name "$KP-9302-*" -o -name "$KP-9303-*")" ] && pass "S2a: the named workers get no brief and no launcher" || fail "S2a: a named worker got a file: $(ls "$SRB")"
 [ -f "$SRB/launch-N931.sh" ] && pass "S2a: the writer gets its launcher" || fail "S2a: no writer launcher"
 srbrief="$(cat "$SRD" 2>/dev/null)"  # read-sink-ok: SRD is a fixture path under this test's own mktemp dir
 has "S2a: the Series line carries the sid, the ledger path and the series.md path" "$srbrief" "> **Series:** HIMMEL-9301-N931 $SRL — read docs/handover/worker-sections/series.md"
@@ -1671,8 +1672,8 @@ sroff="$(srrun off 0)"; rc=$?
 srmut plain 'for x in w: x.pop("series", None); x.pop("series_grant", None)'
 srrun plain 0 >/dev/null
 norm() { sed -E 's#BZ-N[0-9]+-[0-9a-f]{8}#NONCE#g; s#sr-b-[a-z]+#BUCKET#g' "$1"; }
-[ "$(norm "$WORK/sr-b-off/HIMMEL-9301-N931-sr-a-2026-10-08.md")" = "$(norm "$WORK/sr-b-plain/HIMMEL-9301-N931-sr-a-2026-10-08.md")" ] && pass "S2a: flag off, the writer's brief is byte-identical to the one without the series keys (I8)" || fail "S2a: flag off changed the writer's brief"
-lacks "S2a: flag off, the brief carries no Series line" "$(cat "$WORK/sr-b-off/HIMMEL-9301-N931-sr-a-2026-10-08.md")" "**Series"
+[ "$(norm "$WORK/sr-b-off/$KP-9301-N931-sr-a-2026-10-08.md")" = "$(norm "$WORK/sr-b-plain/$KP-9301-N931-sr-a-2026-10-08.md")" ] && pass "S2a: flag off, the writer's brief is byte-identical to the one without the series keys (I8)" || fail "S2a: flag off changed the writer's brief"
+lacks "S2a: flag off, the brief carries no Series line" "$(cat "$WORK/sr-b-off/$KP-9301-N931-sr-a-2026-10-08.md")" "**Series"
 unset HIMMEL_CONFIG_DIR
 
 # ---- the core gate (spec section 3 and 4) ----
@@ -1712,9 +1713,9 @@ has "the refusal names the spec-check line (NO-SPEC <KEY>)" "$cgo" "NO-SPEC HIMM
 has "the refusal names the matched path" "$cgo" "$CORE_WRITES"
 has "the refusal says how to sign: minerva, then jira release operator spec" "$cgo" "run minerva, then jira release operator spec"
 [ -z "$(cg_brief nospec)" ] && [ ! -e "$CG/b-nospec/launch-N941.sh" ] && pass "a refused core worker gets no brief and no launcher" || fail "a refused core worker was written"
-[ "$(cg_rows nospec HIMMEL-9411)" = 1 ] && [ "$(cg_field nospec HIMMEL-9411 outcome)" = refused ] && pass "the refusal appends one refused row" || fail "refused row: $(cat "$(cg_log nospec)" 2>/dev/null)"
+[ "$(cg_rows nospec $KP-9411)" = 1 ] && [ "$(cg_field nospec $KP-9411 outcome)" = refused ] && pass "the refusal appends one refused row" || fail "refused row: $(cat "$(cg_log nospec)" 2>/dev/null)"
 cgo="$(cgrun nospec)"; rc=$?
-[ "$rc" = 1 ] && [ "$(cg_rows nospec HIMMEL-9411)" = 1 ] && pass "a re-run reaching the same outcome for the same key and brief appends no second row" || fail "re-run rows=$(cg_rows nospec HIMMEL-9411) rc=$rc"
+[ "$rc" = 1 ] && [ "$(cg_rows nospec $KP-9411)" = 1 ] && pass "a re-run reaching the same outcome for the same key and brief appends no second row" || fail "re-run rows=$(cg_rows nospec $KP-9411) rc=$rc"
 
 cg_sign one HIMMEL-9412
 cg_mirror HIMMEL-9412 Task Medium '[]'
@@ -1722,7 +1723,7 @@ cg_workers signed HIMMEL-9412 "$CORE_WRITES" ''
 cgo="$(cgrun signed)"; rc=$?
 [ "$rc" = 0 ] && pass "a core build leg with a signed spec generates (rc 0)" || fail "signed rc=$rc: $cgo"
 has "the signed brief carries a Spec: line with the spec path and record id" "$(cat "$(cg_brief signed)" 2>/dev/null)" "> **Spec:** HIMMEL-9412 $CG/specs/one/spec-one-2026-11-01.md (O-R1-"
-[ "$(cg_rows signed HIMMEL-9412)" = 1 ] && [ "$(cg_field signed HIMMEL-9412 outcome)" = spec ] && pass "the signed spec appends one spec row" || fail "spec row: $(cat "$(cg_log signed)" 2>/dev/null)"
+[ "$(cg_rows signed $KP-9412)" = 1 ] && [ "$(cg_field signed $KP-9412 outcome)" = spec ] && pass "the signed spec appends one spec row" || fail "spec row: $(cat "$(cg_log signed)" 2>/dev/null)"
 BRIEF_LINT_MIRROR="$CG/mirror" bash "$HERE/brief-lint.sh" "$(cg_brief signed)" 2>"$CG/lint.err"; rc=$?
 [ "$rc" = 0 ] && pass "the signed brief passes brief-lint.sh" || fail "signed brief-lint rc=$rc: $(cat "$CG/lint.err")"
 
@@ -1731,7 +1732,7 @@ cg_workers design HIMMEL-9413 "docs/internals/core-gate-fixture.md" ''
 cgo="$(cgrun design)"; rc=$?
 [ "$rc" = 0 ] && pass "a label-only design leg (docs-only Writes) passes (rc 0)" || fail "design rc=$rc: $cgo"
 has "the design leg's brief carries a Core gate bypass=design line" "$(cat "$(cg_brief design)" 2>/dev/null)" "> **Core gate:** HIMMEL-9413 bypass=design"
-[ "$(cg_rows design HIMMEL-9413)" = 1 ] && [ "$(cg_field design HIMMEL-9413 outcome)" = bypass ] && [ "$(cg_field design HIMMEL-9413 bypass)" = design ] && pass "the design leg appends one bypass row of kind design" || fail "design row: $(cat "$(cg_log design)" 2>/dev/null)"
+[ "$(cg_rows design $KP-9413)" = 1 ] && [ "$(cg_field design $KP-9413 outcome)" = bypass ] && [ "$(cg_field design $KP-9413 bypass)" = design ] && pass "the design leg appends one bypass row of kind design" || fail "design row: $(cat "$(cg_log design)" 2>/dev/null)"
 
 NK=HIMMEL-9640
 cg_mirror HIMMEL-9640 Task Medium '[]'
@@ -1763,7 +1764,7 @@ cg_mirror HIMMEL-9440 Task Medium '["core"]'
 cg_workers absdesign HIMMEL-9440 "$WORK/handovers/specs/core-gate-fixture.md" ''
 cgo="$(cgrun absdesign)"; rc=$?
 [ "$rc" = 0 ] && pass "a label-only leg writing an absolute handover-root .md is a design leg (rc 0)" || fail "absolute design rc=$rc: $cgo"
-[ "$(cg_field absdesign HIMMEL-9440 bypass)" = design ] && pass "the absolute-path design leg appends one bypass row of kind design" || fail "absolute design row: $(cat "$(cg_log absdesign)" 2>/dev/null)"
+[ "$(cg_field absdesign $KP-9440 bypass)" = design ] && pass "the absolute-path design leg appends one bypass row of kind design" || fail "absolute design row: $(cat "$(cg_log absdesign)" 2>/dev/null)"
 
 LK_FIX="$HERE/fixtures/leg-kind-lines.txt"
 LK_DESIGN="$(sed -n 1p "$LK_FIX" 2>/dev/null)"; LK_BUILD="$(sed -n 2p "$LK_FIX" 2>/dev/null)"
@@ -1801,21 +1802,21 @@ cg_workers bug HIMMEL-9414 "$CORE_WRITES" ''
 cgo="$(cgrun bug)"; rc=$?
 [ "$rc" = 0 ] && pass "a Bug on core Writes passes (rc 0)" || fail "bug rc=$rc: $cgo"
 has "the Bug's brief carries a Core gate bypass=bug line" "$(cat "$(cg_brief bug)" 2>/dev/null)" "> **Core gate:** HIMMEL-9414 bypass=bug"
-[ "$(cg_rows bug HIMMEL-9414)" = 1 ] && [ "$(cg_field bug HIMMEL-9414 bypass)" = bug ] && pass "the Bug appends one bypass row of kind bug" || fail "bug row: $(cat "$(cg_log bug)" 2>/dev/null)"
+[ "$(cg_rows bug $KP-9414)" = 1 ] && [ "$(cg_field bug $KP-9414 bypass)" = bug ] && pass "the Bug appends one bypass row of kind bug" || fail "bug row: $(cat "$(cg_log bug)" 2>/dev/null)"
 
 cg_mirror HIMMEL-9415 Bug Highest '[]'
 cg_workers emergency HIMMEL-9415 "$CORE_WRITES" ''
 cgo="$(cgrun emergency)"; rc=$?
 [ "$rc" = 0 ] && pass "an emergency (a Bug at Highest) on core Writes passes (rc 0)" || fail "emergency rc=$rc: $cgo"
 has "the emergency's brief carries a Core gate bypass=emergency line" "$(cat "$(cg_brief emergency)" 2>/dev/null)" "> **Core gate:** HIMMEL-9415 bypass=emergency"
-[ "$(cg_rows emergency HIMMEL-9415)" = 1 ] && [ "$(cg_field emergency HIMMEL-9415 bypass)" = emergency ] && pass "the emergency appends one bypass row of kind emergency" || fail "emergency row: $(cat "$(cg_log emergency)" 2>/dev/null)"
+[ "$(cg_rows emergency $KP-9415)" = 1 ] && [ "$(cg_field emergency $KP-9415 bypass)" = emergency ] && pass "the emergency appends one bypass row of kind emergency" || fail "emergency row: $(cat "$(cg_log emergency)" 2>/dev/null)"
 
 # a design leg whose Writes match core-paths is refused, never bypassed (a SKILL.md under the bus plugin is a docs file in a core directory)
 cg_mirror HIMMEL-9416 Task Medium '["core"]'
 cg_workers designcore HIMMEL-9416 "marketplace/plugins/himmel-bus/SKILL.md" ''
 cgo="$(cgrun designcore)"; rc=$?
 [ "$rc" = 1 ] && has "a design leg writing core code is refused, not bypassed" "$cgo" "HIMMEL-9416 is core" || fail "design-core rc=$rc: $cgo"
-[ -z "$(cg_brief designcore)" ] && [ "$(cg_field designcore HIMMEL-9416 outcome)" = refused ] && pass "the refused design-core leg writes no brief and one refused row" || fail "design-core: $(cat "$(cg_log designcore)" 2>/dev/null)"
+[ -z "$(cg_brief designcore)" ] && [ "$(cg_field designcore $KP-9416 outcome)" = refused ] && pass "the refused design-core leg writes no brief and one refused row" || fail "design-core: $(cat "$(cg_log designcore)" 2>/dev/null)"
 
 # a free-text bypass is refused naming the key (the key is in the mirror, so the refusal is the bypass key and nothing else)
 cg_mirror HIMMEL-9417 Task Medium '[]'
@@ -1832,14 +1833,14 @@ touch "$CG_STUB_UNKNOWN/HIMMEL-9418"  # the stand-in answers UNKNOWN for a marke
 cg_workers miss HIMMEL-9418 "$CORE_WRITES" ''
 cgo="$(cgrun miss)"; rc=$?
 [ "$rc" = 1 ] && has "a mirror miss is refused" "$cgo" "HIMMEL-9418" || fail "mirror miss rc=$rc: $cgo"
-[ "$(cg_rows miss HIMMEL-9418)" = 1 ] && [ "$(cg_field miss HIMMEL-9418 outcome)" = unknown ] && pass "the mirror miss appends one unknown row" || fail "unknown row: $(cat "$(cg_log miss)" 2>/dev/null)"
+[ "$(cg_rows miss $KP-9418)" = 1 ] && [ "$(cg_field miss $KP-9418 outcome)" = unknown ] && pass "the mirror miss appends one unknown row" || fail "unknown row: $(cat "$(cg_log miss)" 2>/dev/null)"
 
 # a core-check that cannot run is a refusal
 cg_mirror HIMMEL-9419 Task Medium '[]'
 cg_workers nodist HIMMEL-9419 "$CORE_WRITES" ''
 cgo="$(GEN_BRIEFS_JIRA_CLI="$CG/no-dist/index.js" cgrun nodist)"; rc=$?
 [ "$rc" = 1 ] && has "no dist/: CORE-CHECK-FAILED" "$cgo" "CORE-CHECK-FAILED" || fail "no dist on rc=$rc: $cgo"
-[ "$(cg_field nodist HIMMEL-9419 outcome)" = failed ] && pass "no dist/ appends a failed row" || fail "failed row: $(cat "$(cg_log nodist)" 2>/dev/null)"
+[ "$(cg_field nodist $KP-9419 outcome)" = failed ] && pass "no dist/ appends a failed row" || fail "failed row: $(cat "$(cg_log nodist)" 2>/dev/null)"
 [ -z "$(cg_brief nodist)" ] && pass "a core-check that cannot run writes no brief" || fail "a brief was written with no dist"
 printf '// valid JavaScript that exits 0 and prints no verdict line\n' > "$CG/junk.js"
 cgo="$(GEN_BRIEFS_JIRA_CLI="$CG/junk.js" cgrun nodist)"; rc=$?
@@ -1855,7 +1856,7 @@ cg_mirror HIMMEL-9421 Task Medium '[]'
 cg_workers off HIMMEL-9421 "$CORE_WRITES" ''
 cgo="$(HIMMEL_FLAG_CORE_GATE=0 cgrun off)"; rc=$?
 [ "$rc" = 1 ] && has "the old flag variable set to 0: a core build leg with no spec is refused" "$cgo" "HIMMEL-9421 is core" || fail "old flag 0 rc=$rc: $cgo"
-[ -z "$(cg_brief off)" ] && [ "$(cg_rows off HIMMEL-9421)" = 1 ] && pass "the refusal writes no brief and one refused row" || fail "old flag 0 wrote a brief or a wrong log: $(cat "$(cg_log off)" 2>/dev/null)"
+[ -z "$(cg_brief off)" ] && [ "$(cg_rows off $KP-9421)" = 1 ] && pass "the refusal writes no brief and one refused row" || fail "old flag 0 wrote a brief or a wrong log: $(cat "$(cg_log off)" 2>/dev/null)"
 cg_sign two HIMMEL-9421
 cg_workers on9421 HIMMEL-9421 "$CORE_WRITES" ''
 cgo="$(cgrun on9421)"; rc=$?

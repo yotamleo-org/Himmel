@@ -97,9 +97,6 @@
 # environment names are case-sensitive there. The pin itself strips every
 # mixed-case spelling for the case-insensitive Windows reader, and refuses
 # (non-zero) when one survives.
-# ponytail: the launch gate is exact-case and callers ignore the pin's rc, so on a
-# case-insensitive Windows reader a mixed-case survivor of a shadowed `unset` is
-# not refused at launch; extend the gate when Windows is unparked.
 #
 # What this guarantees: an INHERITED
 # exact-case variable cannot reach a launch through these callers, and a shadowed

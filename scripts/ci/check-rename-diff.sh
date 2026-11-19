@@ -28,9 +28,6 @@
 # path, most hits first), prints the totals and exits 0. Exit 2: usage or git
 # failure.
 #
-# ponytail: an added line that still carries an old name it already had (an
-# edit next to it) is a hit, upgrade path: net the added hits against the
-# removed lines of the same file.
 set -uo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"

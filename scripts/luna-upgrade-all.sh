@@ -380,10 +380,6 @@ is_dirty_owned() {
     if [[ $'\n'"$plan" == *$'\nPLAN-PATH\t'* ]]; then
         owned="$(printf '%s\n' "$plan" | sed -nE $'s/^PLAN-PATH\t[^\t]*\t//p')"
     else
-        # ponytail: a template whose upgrade.sh predates --plan-paths has no path
-        # column, so strip its trailing annotations from the human plan (list
-        # hand-copied from upgrade.sh; an unannotated path ending in a lookalike
-        # is mis-stripped), drop once every shipped template has the flag.
         owned="$(printf '%s\n' "$plan" \
             | sed -nE 's/^ +(WRITE-NEW|WRITE|MERGE-JSON|MERGE-3WAY|REPORT|LOCAL-EDIT|KEEP-MINE) +//p' \
             | sed -E 's/ \((kept —|vault has local edits|template changed;|converged:|clean —|CONFLICT —|ERROR —|\+)[^()]*\)$//')"

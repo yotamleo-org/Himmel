@@ -7,6 +7,7 @@
 #
 # Run: bash scripts/handover/chief-kit/test-version-status-audit.sh
 set -u
+KP=HIMMEL
 unset WORKERS_FROM
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="${VSA:-$HERE/version-status-audit.sh}"
@@ -160,7 +161,7 @@ has "no manifest prints UNKNOWN for an unowned started row" "$out" "LATER-VERSIO
 [ "$rc" = 3 ] && pass "no manifest exits 3" || fail "no manifest exits 3 (rc=$rc)"
 
 # a missing manifest stays unknown even when --owners is also given
-out="$(run --workers-from "$WORK/absent-fleet.json" --owners HIMMEL-7)"; rc=$?
+out="$(run --workers-from "$WORK/absent-fleet.json" --owners "$KP"-7)"; rc=$?
 has "missing manifest with --owners is still ownership unknown" "$out" "LATER-VERSION	HIMMEL-10	In Progress	v1.0.2	none	UNKNOWN"
 [ "$rc" = 3 ] && pass "missing manifest with --owners exits 3" || fail "missing manifest with --owners exits 3 (rc=$rc)"
 

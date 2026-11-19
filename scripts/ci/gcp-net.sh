@@ -30,12 +30,6 @@
 # No service-account key exists (org policy): every gcloud call impersonates
 # the runner SA from the operator's own gcloud login.
 #
-# ponytail: the allowlist is a static host list and a changed one reaches an
-# existing proxy only at its next boot (net-up refreshes the startup script, it
-# does not reset the VM); upgrade to a reset-on-change step if the list churns.
-# ponytail: one e2-micro proxy is a single point of failure with limited
-# throughput; upgrade to a larger machine type or a managed instance group if
-# runner traffic outgrows it.
 set -u
 
 PROJECT="${GCP_NET_PROJECT:-himmel-ci}"
@@ -246,7 +240,6 @@ cmd_net_up() {
     rule "$PRIO_PROXY_OUT" "proxy to the web" --direction=EGRESS --action=allow \
         --layer4-configs=tcp:80,tcp:443 --src-ip-ranges="$PROXY_IP/32" --dest-ip-ranges=0.0.0.0/0 \
         --description="the proxy host's own egress (squid filters by hostname)"
-    # ponytail: an FQDN rule matches the hosts' resolved IPs, which Google shares across *.googleapis.com, so it can admit a sibling API host; move these hosts behind the proxy if that matters
     rule "$PRIO_GCP" "google apis egress" --direction=EGRESS --action=allow \
         --layer4-configs=tcp:443 --dest-fqdns="$(join_csv "${GCP_HOSTS[@]}")" \
         --description="Google APIs, exact hosts, via Private Google Access"

@@ -13,10 +13,6 @@
 #   4. qmd reindex keeps the indexed document count at 0.9 x the sample, and a
 #      known lex query (scripts/lib/qmd-bounded.sh) returns the file it was planted in;
 #   5. qmd update / embed failures and an incomplete embed exit 3 / 4 / 5.
-# ponytail: `qmd embed` and `qmd cleanup` are stubbed (embed needs a model, remote or GPU); update, search, status and graphify run real, add an embed row when a CI model exists.
-# Skips (exit 0) when graphify, qmd, python3 or git is missing; QS_REQUIRE_TOOLS=1 makes a missing tool exit 1 instead.
-# RED replay: QS_SEMANTIC_UPDATE=<file> runs row S1 against that semantic-update.sh.
-# Run: bash scripts/graphify/test-quality-sample.sh
 # shellcheck disable=SC2015  # A && pass || fail is the intentional test-assert idiom
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

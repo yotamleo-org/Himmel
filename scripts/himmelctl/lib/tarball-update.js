@@ -18,10 +18,6 @@
 // has passed. A git clone never reaches this file: versionedLayout() is null
 // for any root with a .git.
 //
-// ponytail: previous version dirs are kept, never pruned. Rollback needs the
-// last one and nothing here can tell which older ones the operator still wants;
-// the update prints the rm line. Upgrade path: prune all but current + previous
-// once an operator asks for it.
 
 const fs = require('fs');
 const path = require('path');

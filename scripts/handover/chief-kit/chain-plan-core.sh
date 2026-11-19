@@ -27,8 +27,6 @@
 # (exit 3 = unknown = REFUSE; a missing HEADS line is unknown too). On a pass it prints `GO-CHECK OK <pr> head=<sha> graph=sha256:<hash of the graph file> at=<UTC>`.
 # Environment: CHAIN_PLAN_JIRA_CMD (the jira CLI: `<cmd> links KEY`, `<cmd> get KEY`; default node <primary
 # checkout>/scripts/jira/dist/index.js), CHAIN_PLAN_PUSH_CHECK (default chain-push-check.sh beside this file).
-# ponytail: --go-check is procedural, the chief runs it before writing GO and nothing forces that; upgrade path is
-# go.sh calling it for chain-registry members.
 #
 # Exit: 0 plan, evidence or GO-CHECK OK  1 cycle among the hard edges, or REFUSE  2 usage or unreadable graph
 # Platform guard: bash, jq, awk; --go-check also gh, git, GNU date and sha256sum (the kit is Linux-only).

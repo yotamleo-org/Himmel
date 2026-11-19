@@ -74,9 +74,6 @@ _af_file_hash() {
 # race and can drop each other's row). mkdir is atomic (like queue-lock.sh's
 # convention) and portable to git-bash, unlike flock. Retries for up to ~10s;
 # a worker-publish cadence is human-paced, so real contention is rare and brief.
-# ponytail: a single registry-wide lock, not per-URL -- fine at this
-# operator's publish cadence; upgrade to per-URL locking if throughput ever
-# makes that a bottleneck.
 _af_lock() {
     local _lockdir="${1}.lock" _tries=0
     # prim-ok: with_lock waits without a deadline; record must give up after ~10s so a stalled holder cannot hang publishing
@@ -152,13 +149,6 @@ _af_record_locked() {
     rm -f "$tmpf"
 }
 
-# ponytail: `record` hashes only the LOCAL file -- it cannot independently
-# re-fetch and verify the just-published artifact, because the Artifact tool
-# (publish/read) is agent-only with no bash-callable API. It trusts the
-# caller published FROM local_path, exactly as documented above. `check` is
-# the structural backstop that catches drift AFTER the fact; a true
-# publish-time verification would need an agent-side step (Artifact read +
-# diff) wrapping this call, not something this script can do alone.
 cmd_record() {
     local url="" local_path="" title=""
     url="${1:-}"; [ $# -ge 1 ] && shift

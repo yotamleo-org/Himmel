@@ -169,7 +169,6 @@ const SKILL_DIRS = ["skills", ".claude/skills"];
 // an absent command/skill dir is normal; any other listing failure leaves content unscanned
 const MISSING_RE = /404|not found|no [A-Z_]*FIXTURE entry/i;
 
-// ponytail: root docs + one level of command/skill dirs only (<=12 files, 200 KB each), not a full tree walk — upgrade path: ghFn tree API when a real miss shows up.
 function listFiles(fullName, ghFn, errors) {
   const wanted = ["README.md"];
   const rootDocs = [];

@@ -71,8 +71,6 @@
 # The whole run is cut off at FOCUS_REFRESH_BUDGET seconds (default 240) and reads
 # FAILED:timeout.
 #
-# ponytail: one current-version page and no per-version refresh, upgrade path = a
-# --version loop over the doc's tracker-<version> lines.
 #
 # Test seams (env): FR_JIRA FR_SWEEP FR_TRACKER FR_DRIFT FR_DRIFT_SUMMARY FR_KNOWN_SYNC FR_CHAIN_GRAPH FR_DISPOSITIONS (each one executable),
 # TICK_TRACKER_MIRROR_DIR.

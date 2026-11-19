@@ -128,9 +128,6 @@ export function isOperatorIdentity(access: Access | null | undefined, fromId: nu
   // Intended: an anonymous-admin line in a trustAnonymousAdmins ticket session is
   // stamped operator:true, so the run acts on it. The opt-in is the operator's
   // statement that every admin of that group speaks for them.
-  // ponytail: any admin of an opted-in group can drive the ticket session, revisit
-  // if a group's admin list stops being operator-controlled or sender_chat stops
-  // being authoritative.
   return Number(chatId) < 0 && isGroupAllowed(access, chatId, fromId);
 }
 

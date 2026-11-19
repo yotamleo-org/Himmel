@@ -12,7 +12,7 @@ scripts/security/test-security-audit-cadence.sh	6
 #   restarted its clock per attempt, so a retried suite's seconds are the LAST
 #   attempt's and it costs more than its row: scripts/handover/chief-kit/test-chief-wait-b.sh
 #   is 509 for ONE attempt, was 265 while the recipe skipped it. The runner now sums
-#   every attempt, so a row refreshed after HIMMEL-8378 carries the whole cost). Timings are a snapshot, not a worst-case bound. Replay on those
+#   every attempt, so a row refreshed since then carries the whole cost). Timings are a snapshot, not a worst-case bound. Replay on those
 #   three runs (scripts/ci/ledger-drift.sh): slowest/floor 1.176 before (the ledger
 #   of d29ec6e1b), 1.003 after (suite time only, excluding setup/waits).
 #   A row for a suite those runs did not print (skip-listed or off-Linux) keeps its

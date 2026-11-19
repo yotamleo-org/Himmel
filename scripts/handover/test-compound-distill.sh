@@ -2,6 +2,7 @@
 # test-compound-distill.sh — hermetic: a stub claude and a stub preflight; no paid or live run.
 # A scratch handover bucket, a scratch Jira mirror and scratch output dirs.
 set -uo pipefail
+KP=HIMMEL
 unset HIMMEL_BILLED_OK
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 SUT="$REPO/scripts/handover/compound-distill.sh"
@@ -97,8 +98,8 @@ check "the weekly note is in the review dir" yes "$([ -f "$REV/2026-W43.md" ] &&
 check "the weekly note has an entry per key" 2 "$(grep -c '^## HIMMEL-' "$REV/2026-W43.md")"
 check "the extract's PR overrides the model's" yes "$(has "$REV/2026-W43.md" 'PR: #3713')"
 check "the extract's sha overrides the model's" yes "$(has "$REV/2026-W43.md" "$SHA")"
-check "a theme note is written with its source key" yes "$(grep -q 'read-only greps must pass.*HIMMEL-1' "$REV/themes/guard-overdeny.md" 2>/dev/null && echo yes || echo no)"
-check "proposals are written to a proposals file" yes "$(grep -q 'HIMMEL-1, HIMMEL-2' "$REV/proposals-2026-W43.md" 2>/dev/null && echo yes || echo no)"
+check "a theme note is written with its source key" yes "$(grep -q "read-only greps must pass.*$KP-1" "$REV/themes/guard-overdeny.md" 2>/dev/null && echo yes || echo no)"
+check "proposals are written to a proposals file" yes "$(grep -q "$KP-1, $KP-2" "$REV/proposals-2026-W43.md" 2>/dev/null && echo yes || echo no)"
 check "a dry run leaves the out dir alone" no "$([ -e "$OUT" ] && echo yes || echo no)"
 check "the summary line reports the JSON usage input tokens (1200+300+50)" yes "$(grep -q 'usage_input_tokens=1550 ' <<< "$o" && echo yes || echo no)"
 check "and the output tokens" yes "$(grep -q 'output_tokens=400' <<< "$o" && echo yes || echo no)"
@@ -169,8 +170,8 @@ printf '# HIMMEL-3\n\n## Results\n\n- 09:05 BLOCKED — x\n- 09:10 HALTED — y\
 envelope "$W/env.json" '{"week":"2026-W43","entries":[{"key":"HIMMEL-3","outcome":"halted","decision":"","lesson":""}],"themes":[],"proposals":[]}'
 HIMMEL_BILLED_OK=1 COMPOUND_CLAUDE="$W/bin/claude-stub" COMPOUND_PREFLIGHT_CMD="$W/bin/pf-ok" bash "$SUT" --root "$W/dn" --bucket "$W/dn/u/himmel" --mirror "$MIR" --since-days 0 --week 2026-W43 --out-dir "$W/dn/out" --apply >/dev/null 2>&1
 check "a doc name with a second key: exit 0" 0 "$?"
-check "and the weekly note does not cite the second key" no "$(has "$W/dn/out/2026-W43.md" 'HIMMEL-99')"
-check "and the weekly note still cites the doc's own key on its docs line" yes "$(has "$W/dn/out/2026-W43.md" '^- docs:.*HIMMEL-3')"
+check "and the weekly note does not cite the second key" no "$(has "$W/dn/out/2026-W43.md" "$KP-99")"
+check "and the weekly note still cites the doc's own key on its docs line" yes "$(has "$W/dn/out/2026-W43.md" "^- docs:.*$KP-3")"
 
 # --- a fenced JSON result is accepted ---------------------------------------------------------------
 rm -rf "$REV"

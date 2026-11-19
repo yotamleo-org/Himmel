@@ -27,8 +27,6 @@
 // `closeOrDispatch` is the sorted unique keys of those rows alone; `unknown` and `stale` say how
 // complete it is.
 //
-// ponytail: fresh for a fixed 3 h because focus refreshes are event driven, upgrade path = read the
-// last refresh's own spacing from focus-state.
 // Platform guard: Node only (shell-only harness).
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';

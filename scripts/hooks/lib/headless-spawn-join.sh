@@ -50,9 +50,6 @@ headless_spawn_join() {
         # holds the code remainder, L[] the raw line). Comments are judged per line: a
         # `/*` with no `*/` on its line stays code, so a stray one (e.g. inside a
         # string) can never blank later lines.
-        # ponytail: a MULTI-line block comment is not recognised (its lines stay code),
-        # so a `)` inside one can still close the depth early; fixing it needs
-        # per-language lexing, no ticket (trigger: a reported evasion).
         {
             L[NR] = $0; s = $0; cmt = 0
             # peel leading comments until real code (or nothing) is left

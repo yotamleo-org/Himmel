@@ -45,9 +45,6 @@ REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 # `timeout` is a GNU coreutil; stock macOS has none, so a bare `timeout` call
 # exits 127 and fails every worker. Resolve it once and degrade to unbounded when
 # absent (a missing lib does the same).
-# ponytail: without a GNU timeout a hung worker or hook is not bounded, so it stalls
-# the run instead of reporting a failed worker; upgrade path is requiring coreutils on
-# the macOS runners.
 _TIMEOUT_BIN=""
 # shellcheck source=scripts/lib/timeout-bin.sh
 [ -r "$REPO/scripts/lib/timeout-bin.sh" ] && . "$REPO/scripts/lib/timeout-bin.sh"

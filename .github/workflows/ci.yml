@@ -2215,8 +2215,6 @@ jobs:
       # /tmp inside secret-scan. Put the SAME pinned, sha-verified release on
       # PATH for every ubuntu shard: the bin-pack (duration ledger) decides
       # which shard holds the suite, so any single-shard pin could go stale.
-      # ponytail: ~8 MB download x8 shards, upgrade by pinning to the shard
-      # the ledger assigns once run-shell-tests.sh can print it.
       # Keep ver/sha in lockstep with secret-scan.
       - name: Put pinned gitleaks on PATH (Linux — retired-org suite)
         if: runner.os == 'Linux' && !job.container.id

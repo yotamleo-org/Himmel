@@ -28,7 +28,6 @@
 #                  comment (a doc or YAML file is not judged for it).
 #   any file       a ponytail marker (the word and a colon, any case) is refused in diff
 #                  mode outside a whole-file row: the ceiling goes to the ledger.
-# The two ceilings of these rules are the ponytail lines in check-history-comments.sh.
 
 function fatal(msg) {
     print "ticket-refs.awk: " msg > "/dev/stderr"

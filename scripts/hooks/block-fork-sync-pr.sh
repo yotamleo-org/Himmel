@@ -32,10 +32,6 @@
 # it is refused, since its base repo cannot be read. `bash -c`, `sh -c` and
 # `eval` scripts are unwrapped (three levels); heredoc bodies are skipped as data
 # unless a shell reads them as its script (`bash <<EOF`, `cat <<EOF | bash`).
-# ponytail: sees `gh pr create` only; a raw `gh api .../pulls` POST is not
-# parsed, upgrade path = parse gh api POST bodies if one is ever seen.
-# ponytail: one unwrap round; xargs, `$(...)` substitution and `python -c` are
-# not unwrapped, upgrade path = unwrap that wrapper if one is ever seen.
 #
 # Hook input arrives on stdin as JSON. Exit codes:
 #   0 - allow

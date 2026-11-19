@@ -115,7 +115,7 @@ fi
 : > "$IMP_LOG"
 out=$(IMP_FAIL=1 bash "$IMPRUN" --scan-repo-of-script --impacted "$CODE_RANGE" 2>&1); rc=$?
 ran=$(cat "$IMP_LOG")
-expect_ran=$(printf 'uninstall\nuninstall')  # HIMMEL-5116: a failed suite is re-run once
+expect_ran=$(printf 'uninstall\nuninstall')
 if [ "$rc" -eq 1 ] && [ "$ran" = "$expect_ran" ]; then
   pass "24c: a failing impacted suite RAN (twice: one retry) and fails the run -> rc 1"
 else

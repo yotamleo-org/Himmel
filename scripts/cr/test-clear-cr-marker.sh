@@ -7,6 +7,7 @@
 # and puts a stub `gh` FIRST on PATH. The ledger + marker are written at the
 # fixed paths under the temp repo's own .git, exactly as the real ones resolve.
 set -uo pipefail
+_TK='HIMMEL-'
 
 # An --automerge-armed launching shell carries ARMAUTOMERGE=1 +
 # CR_MERGE_GATE_OK=1 by design; an ambient value in the operator's shell must
@@ -2165,7 +2166,7 @@ rm -rf "$tmp"
 deferred_finding() { printf '{"kind":"finding","head":"%s","model":"codex","finding_id":"codex-1","severity":"imp","file":"a.sh","line":1,"verdict":"deferred","deferred_to":"%s","reason":"%s"}' "$1" "$2" "$3"; }
 make_repo || exit 1
 write_marker "$tmp" "$sha"
-write_ledger "$tmp" "$(avail_ok "${sha:0:8}")" "$(deferred_finding "${sha:0:8}" HIMMEL-1293 "pre-existing, already public")"
+write_ledger "$tmp" "$(avail_ok "${sha:0:8}")" "$(deferred_finding "${sha:0:8}" "${_TK}1293" "pre-existing, already public")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "tracked deferral (ticket + reason) is not blocking → exit 0"
 rm -rf "$tmp"
@@ -2182,7 +2183,7 @@ rm -rf "$tmp"
 
 make_repo || exit 1
 write_marker "$tmp" "$sha"
-write_ledger "$tmp" "$(avail_ok "${sha:0:8}")" "$(deferred_finding "${sha:0:8}" HIMMEL-1293 "")"
+write_ledger "$tmp" "$(avail_ok "${sha:0:8}")" "$(deferred_finding "${sha:0:8}" "${_TK}1293" "")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 15 "deferral with a ticket but no reason still blocks → exit 15"
 rm -rf "$tmp"
@@ -2201,7 +2202,7 @@ rm -rf "$tmp"
 make_repo || exit 1
 write_marker "$tmp" "$sha"
 write_ledger "$tmp" "$(avail_ok "${sha:0:8}")" "$(finding "${sha:0:8}" imp agreed)" \
-  "$(printf '{"kind":"amend","target_head":"%s","finding_id":"codex-1","artifact":"diff","perspective":"off","set":{"verdict":"deferred","deferred_to":"HIMMEL-1293","reason":"pre-existing, already public"},"reason":"deferred after review"}' "${sha:0:8}")"
+  "$(printf '{"kind":"amend","target_head":"%s","finding_id":"codex-1","artifact":"diff","perspective":"off","set":{"verdict":"deferred","deferred_to":"%s","reason":"pre-existing, already public"},"reason":"deferred after review"}' "${sha:0:8}" "${_TK}1293")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "amend to a TRACKED deferral clears gate 4 → exit 0"
 rm -rf "$tmp"
@@ -2211,7 +2212,7 @@ rm -rf "$tmp"
 make_repo || exit 1
 write_marker "$tmp" "$sha"
 write_ledger "$tmp" "$(avail_ok "${sha:0:8}")" "$(finding "${sha:0:8}" imp agreed)" \
-  "$(printf '{"kind":"amend","target_head":"%s","finding_id":"codex-1","artifact":"diff","perspective":"off","set":{"verdict":"deferred","deferred_to":"HIMMEL-1293"},"reason":"deferred after review"}' "${sha:0:8}")"
+  "$(printf '{"kind":"amend","target_head":"%s","finding_id":"codex-1","artifact":"diff","perspective":"off","set":{"verdict":"deferred","deferred_to":"%s"},"reason":"deferred after review"}' "${sha:0:8}" "${_TK}1293")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 15 "amend deferral without a finding-level reason still blocks → exit 15"
 rm -rf "$tmp"
@@ -4490,7 +4491,7 @@ review_b "$tmp" f.txt "echo the fix"
 write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp disproved)"
 run_clear "$tmp" 0 "13b a disproved Important passes under the assumed GO -> exit 0" --check-findings --tip "$B" --assume-go feat/x
 # control: a TRACKED deferral (ticket key and reason) passes, a bare one blocks.
-write_ledger "$tmp" "$(avail_ok "$sha")" "$(printf '{"kind":"finding","head":"%s","model":"codex","finding_id":"codex-1","severity":"imp","file":"a.sh","line":1,"verdict":"deferred","deferred_to":"HIMMEL-1","reason":"out of scope"}' "$sha")"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(printf '{"kind":"finding","head":"%s","model":"codex","finding_id":"codex-1","severity":"imp","file":"a.sh","line":1,"verdict":"deferred","deferred_to":"%s","reason":"out of scope"}' "$sha" "${_TK}1")"
 run_clear "$tmp" 0 "13b2 a tracked deferral passes under the assumed GO -> exit 0" --check-findings --tip "$B" --assume-go feat/x
 write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp deferred)"
 run_clear "$tmp" 15 "13b3 a bare deferral still blocks under the assumed GO -> exit 15" --check-findings --tip "$B" --assume-go feat/x

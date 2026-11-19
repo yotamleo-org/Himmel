@@ -25,8 +25,6 @@ document that asks it in both:
       than query or search, or a question that does not expand, prints the argv unchanged.
 
 Fails open: an unreadable registry expands nothing.
-ponytail: whole-word swaps from the registry, no stemming beyond a plural s; a word used in
-another sense ("lane worker") is swapped too, which only adds a lex line, never drops one.
 """
 import re
 import sys
@@ -42,7 +40,6 @@ STRING_OPTS = {
 }
 SHORT_STRING = set("cCnl")
 NEGATION = re.compile(r'(^|\s)-[\w"]')
-# ponytail: one fixed English list, no per-corpus tuning; grow it from a miss.
 STOPWORDS = frozenset(
     "a an the is are was were be been being do does did how what why when where who whom whose which "
     "of to in on at for from by with about into and or it its this that these those can could should "

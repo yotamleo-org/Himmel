@@ -86,9 +86,9 @@ run_pf() {
 
 p0="$W/ps0"; mk_ps_stub "$p0"
 p3="$W/ps3"; mk_ps_stub "$p3" \
-  '9001:claude:--model claude-opus-5 -n HIMMEL-1000-worker load doc' \
-  '9002:claude:--model claude-opus-5 -n HIMMEL-1001-worker load doc' \
-  '9003:claude:--model claude-opus-5 -n HIMMEL-1002-worker load doc'
+  '9001:claude:--model claude-opus-5 -n HIMMEL-t1000-worker load doc' \
+  '9002:claude:--model claude-opus-5 -n HIMMEL-t1001-worker load doc' \
+  '9003:claude:--model claude-opus-5 -n HIMMEL-t1002-worker load doc'
 
 # --- (a) cap 4, 3 live, TWO CONCURRENT declared launches -> exactly one
 # PROCEED, one SKIPPED-FLEET. This is the case the chief asked to see RED
@@ -99,9 +99,9 @@ p3="$W/ps3"; mk_ps_stub "$p3" \
 # makes the SECOND caller observe the FIRST caller's reservation.
 slots_a="$(mktemp -d "$W/slots-a.XXXXXX")" || { echo "FAIL - could not create slots-a scratch dir" >&2; exit 1; }
 out_a="$W/out_a"; out_b="$W/out_b"
-( run_pf "$slots_a" "$p3" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-9001-fleetA HIMMEL_FLEET_CAP=4 > "$out_a" ) &
+( run_pf "$slots_a" "$p3" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9001-fleetA HIMMEL_FLEET_CAP=4 > "$out_a" ) &
 pid_a=$!
-( run_pf "$slots_a" "$p3" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-9002-fleetB HIMMEL_FLEET_CAP=4 > "$out_b" ) &
+( run_pf "$slots_a" "$p3" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9002-fleetB HIMMEL_FLEET_CAP=4 > "$out_b" ) &
 pid_b=$!
 wait "$pid_a" "$pid_b"
 va="$(cat "$out_a")"; vb="$(cat "$out_b")"
@@ -119,14 +119,14 @@ check "(a) cap 4, 3 live, two concurrent declared launches -> exactly one PROCEE
 # reservation both counted would silently shrink real headroom).
 slots_b="$(mktemp -d "$W/slots-b.XXXXXX")" || { echo "FAIL - could not create slots-b scratch dir" >&2; exit 1; }
 p2="$W/ps2"; mk_ps_stub "$p2" \
-  '9001:claude:--model claude-opus-5 -n HIMMEL-1000-worker load doc' \
-  '9002:claude:--model claude-opus-5 -n HIMMEL-1001-worker load doc'
-before_b="$(run_pf "$slots_b" "$p2" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-9003-consumeme HIMMEL_FLEET_CAP=4)"
+  '9001:claude:--model claude-opus-5 -n HIMMEL-t1000-worker load doc' \
+  '9002:claude:--model claude-opus-5 -n HIMMEL-t1001-worker load doc'
+before_b="$(run_pf "$slots_b" "$p2" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9003-consumeme HIMMEL_FLEET_CAP=4)"
 check "(b) setup: declared launch under cap -> PROCEED, reservation created" PROCEED "$before_b"
 p3live="$W/ps3live"; mk_ps_stub "$p3live" \
-  '9001:claude:--model claude-opus-5 -n HIMMEL-1000-worker load doc' \
-  '9002:claude:--model claude-opus-5 -n HIMMEL-1001-worker load doc' \
-  '9003:claude:--model claude-opus-5 -n HIMMEL-9003-consumeme load doc'
+  '9001:claude:--model claude-opus-5 -n HIMMEL-t1000-worker load doc' \
+  '9002:claude:--model claude-opus-5 -n HIMMEL-t1001-worker load doc' \
+  '9003:claude:--model claude-opus-5 -n HIMMEL-t9003-consumeme load doc'
 : > "$W/err.log"
 after_b="$(run_pf "$slots_b" "$p3live" HIMMEL_FLEET_CAP=4)"
 check "(b) informational read after the reserved worker goes live -> PROCEED" PROCEED "$after_b"
@@ -138,9 +138,9 @@ fi
 
 # --- (c) an expired reservation is pruned, not counted forever.
 slots_c="$(mktemp -d "$W/slots-c.XXXXXX")" || { echo "FAIL - could not create slots-c scratch dir" >&2; exit 1; }
-mkdir -p "$slots_c/HIMMEL-9004-expiredleg"
-printf '%s\n' "$((NOW - 10))" > "$slots_c/HIMMEL-9004-expiredleg/expires"
-printf '%s\n' "$$" > "$slots_c/HIMMEL-9004-expiredleg/pid"
+mkdir -p "$slots_c/HIMMEL-t9004-expiredleg"
+printf '%s\n' "$((NOW - 10))" > "$slots_c/HIMMEL-t9004-expiredleg/expires"
+printf '%s\n' "$$" > "$slots_c/HIMMEL-t9004-expiredleg/pid"
 : > "$W/err.log"
 c_out="$(run_pf "$slots_c" "$p0" HIMMEL_FLEET_CAP=4)"
 check "(c) expired reservation present, 0 live, cap 4 -> PROCEED" PROCEED "$c_out"
@@ -149,7 +149,7 @@ if grep -q 'FLEET native=0 claudex=0 openrouter=0 reserved=0 total=0/4' "$W/err.
 else
   FAIL=$((FAIL+1)); echo "FAIL - (c) expired reservation still counted"; grep 'FLEET ' "$W/err.log" || true
 fi
-if [ -d "$slots_c/HIMMEL-9004-expiredleg" ]; then
+if [ -d "$slots_c/HIMMEL-t9004-expiredleg" ]; then
   FAIL=$((FAIL+1)); echo "FAIL - (c) expired reservation directory not removed from disk"
 else
   PASS=$((PASS+1)); echo "ok - (c) expired reservation directory removed from disk"
@@ -177,7 +177,7 @@ fi
 # --- (e) an informational run (no CADENCE_USAGE_LAUNCH) counts reservations
 # in the FLEET line but must never CREATE one of its own.
 slots_e="$(mktemp -d "$W/slots-e.XXXXXX")" || { echo "FAIL - could not create slots-e scratch dir" >&2; exit 1; }
-e_out="$(run_pf "$slots_e" "$p3" CADENCE_USAGE_WORKER=HIMMEL-9005-infoleg HIMMEL_FLEET_CAP=4)"
+e_out="$(run_pf "$slots_e" "$p3" CADENCE_USAGE_WORKER=HIMMEL-t9005-infoleg HIMMEL_FLEET_CAP=4)"
 check "(e) informational read (no CADENCE_USAGE_LAUNCH), 3 live, cap 4 -> PROCEED" PROCEED "$e_out"
 # Portable count of reservation dirs (no find -mindepth/-maxdepth): the
 # glob's default no-dotglob behaviour already excludes .admit, matching
@@ -194,10 +194,10 @@ check "(e) informational read creates no reservation directory" 0 "$e_entries"
 # refusal in case (a)), exercising the dedicated `mkdir $SLOTS/$WORKER`
 # duplicate-name branch specifically.
 slots_f="$(mktemp -d "$W/slots-f.XXXXXX")" || { echo "FAIL - could not create slots-f scratch dir" >&2; exit 1; }
-f_first="$(run_pf "$slots_f" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-9006-dupleg HIMMEL_FLEET_CAP=4)"
+f_first="$(run_pf "$slots_f" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9006-dupleg HIMMEL_FLEET_CAP=4)"
 check "(f) setup: first declared launch, 0 live, cap 4 -> PROCEED" PROCEED "$f_first"
 : > "$W/err.log"
-f_second="$(run_pf "$slots_f" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-9006-dupleg HIMMEL_FLEET_CAP=4)"
+f_second="$(run_pf "$slots_f" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9006-dupleg HIMMEL_FLEET_CAP=4)"
 check "(f) same-name second declared launch, well under cap -> SKIPPED-FLEET (duplicate)" SKIPPED-FLEET "$f_second"
 if grep -q 'already exists — refusing as a duplicate declared launch' "$W/err.log" 2>/dev/null; then
   PASS=$((PASS+1)); echo "ok - (f) refused via the duplicate-reservation-name branch, not the at/over-cap branch"
@@ -220,10 +220,10 @@ fi
 slots_f3="$(mktemp -d "$W/slots-f3.XXXXXX")" || { echo "FAIL - could not create slots-f3 scratch dir" >&2; exit 1; }
 : > "$W/err.log"
 p4_f3="$W/ps4-f3"; mk_ps_stub "$p4_f3" \
-  '9001:claude:--model claude-opus-5 -n HIMMEL-1000-worker load doc' \
-  '9002:claude:--model claude-opus-5 -n HIMMEL-1001-worker load doc' \
-  '9003:claude:--model claude-opus-5 -n HIMMEL-1002-worker load doc' \
-  '9004:claude:--model claude-opus-5 -n HIMMEL-1003-worker load doc'
+  '9001:claude:--model claude-opus-5 -n HIMMEL-t1000-worker load doc' \
+  '9002:claude:--model claude-opus-5 -n HIMMEL-t1001-worker load doc' \
+  '9003:claude:--model claude-opus-5 -n HIMMEL-t1002-worker load doc' \
+  '9004:claude:--model claude-opus-5 -n HIMMEL-t1003-worker load doc'
 f3_out="$(run_pf "$slots_f3" "$p4_f3" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=fleetcapleg HIMMEL_FLEET_CAP=4)"
 check "(f3) control: 4 live, cap 4, a declared launch -> SKIPPED-FLEET" SKIPPED-FLEET "$f3_out"
 if grep -q 'fleet at/over cap' "$W/err.log" 2>/dev/null && ! grep -q 'duplicate' "$W/err.log" 2>/dev/null; then
@@ -280,7 +280,7 @@ printf '%s\n' "$((NOW - 61))" > "$slots_h/.admit/acquired"
 printf '%s\n' "$$" > "$slots_h/.admit/pid"
 admit_before="$(cat "$slots_h/.admit/acquired") $(cat "$slots_h/.admit/pid")"
 : > "$W/err.log"
-h_out="$(run_pf "$slots_h" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-9007-livepid HIMMEL_FLEET_CAP=4 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+h_out="$(run_pf "$slots_h" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9007-livepid HIMMEL_FLEET_CAP=4 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
 check "(h) stale .admit (61s old) held by a LIVE pid -> not reclaimed, SKIPPED-FLEET after retries" SKIPPED-FLEET "$h_out"
 admit_after="$(cat "$slots_h/.admit/acquired" 2>/dev/null) $(cat "$slots_h/.admit/pid" 2>/dev/null)"
 check "(h) .admit acquired/pid files untouched (no steal attempted against a live holder)" "$admit_before" "$admit_after"
@@ -313,7 +313,7 @@ slots_i="$(mktemp -d "$W/slots-i.XXXXXX")" || { echo "FAIL - could not create sl
 cnt_i="$W/ps-count-i"
 pi="$W/ps-i"; mk_ps_fail_second_stub "$pi" "$cnt_i"
 : > "$W/err.log"
-i_out="$(run_pf "$slots_i" "$pi" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-9008-censusfail HIMMEL_FLEET_CAP=4)"
+i_out="$(run_pf "$slots_i" "$pi" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9008-censusfail HIMMEL_FLEET_CAP=4)"
 check "(i) in-lock census failure, 0 live, cap 4 -> SKIPPED-FLEET (refuses rather than admit on the stale pre-lock snapshot)" SKIPPED-FLEET "$i_out"
 if grep -q 'in-lock fleet census failed' "$W/err.log" 2>/dev/null; then
   PASS=$((PASS+1)); echo "ok - (i) reports the in-lock-census-failed diagnosis"
@@ -333,7 +333,7 @@ check "(i) no reservation created when the in-lock census fails" 0 "$i_entries"
 slots_i2="$(mktemp -d "$W/slots-i2.XXXXXX")" || { echo "FAIL - could not create slots-i2 scratch dir" >&2; exit 1; }
 cnt_i2="$W/ps-count-i2"
 pi2="$W/ps-i2"; mk_ps_fail_second_stub "$pi2" "$cnt_i2"
-i2_out="$(run_pf "$slots_i2" "$pi2" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-9009-censusfailbypass HIMMEL_FLEET_CAP=4 FLEET_CAP_OK=1)"
+i2_out="$(run_pf "$slots_i2" "$pi2" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9009-censusfailbypass HIMMEL_FLEET_CAP=4 FLEET_CAP_OK=1)"
 check "(i2) in-lock census failure with FLEET_CAP_OK=1 -> PROCEED (bypass still applies)" PROCEED "$i2_out"
 
 # --- (j) a worker name beginning with
@@ -377,10 +377,10 @@ k_out="$(
   # shellcheck disable=SC2317,SC2329,SC2059  # exported into the run_pf bash; shadows the builtin only inside this subshell. No apostrophe here: bash 3.2 reads one inside a $( ) comment as an open quote.
   printf() { if [ "${1:-}" = '%s\n' ] && [ "${2:-}" = 424242 ]; then return 1; fi; builtin printf "$@"; }
   export -f printf
-  run_pf "$slots_k" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-9020-pidwritefail HIMMEL_FLEET_CAP=4 CADENCE_USAGE_CALLER_PID=424242
+  run_pf "$slots_k" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9020-pidwritefail HIMMEL_FLEET_CAP=4 CADENCE_USAGE_CALLER_PID=424242
 )"
 check "(k) a failed pid write is a reservation failure -> SKIPPED-FLEET, not PROCEED" SKIPPED-FLEET "$k_out"
-if [ -e "$slots_k/HIMMEL-9020-pidwritefail" ]; then
+if [ -e "$slots_k/HIMMEL-t9020-pidwritefail" ]; then
   FAIL=$((FAIL+1)); echo "FAIL - (k) a reservation with no pid was left behind (unreleasable until TTL)"
 else
   PASS=$((PASS+1)); echo "ok - (k) no half-written reservation left behind"
@@ -392,7 +392,7 @@ k2_out="$(
   # shellcheck disable=SC2317,SC2329,SC2059  # exported into the run_pf bash; shadows the builtin only inside this subshell (no apostrophe in a $( ) comment, bash 3.2)
   printf() { if [ "${1:-}" = '%s\n' ] && [ "${2:-}" = 424242 ]; then return 1; fi; builtin printf "$@"; }
   export -f printf
-  run_pf "$slots_k2" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-9020-pidwriteok HIMMEL_FLEET_CAP=4 CADENCE_USAGE_CALLER_PID=424243
+  run_pf "$slots_k2" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9020-pidwriteok HIMMEL_FLEET_CAP=4 CADENCE_USAGE_CALLER_PID=424243
 )"
 check "(k) control: a different caller pid, same shim -> PROCEED" PROCEED "$k2_out"
 
@@ -438,21 +438,21 @@ reserve_then_live() {
 }
 # A name with whitespace is a documented over-count, not a fix: the census only
 # exposes the first token, which two different workers can share.
-reserve_then_live "l1 space in name (documented over-count)" "HIMMEL-9500-foo bar" "HIMMEL-9500-foo bar" counted
-reserve_then_live "l2 slash in name (hashed key)" "HIMMEL-9501/x" "HIMMEL-9501/x"
-l3_long="HIMMEL-9502-$(printf 'x%.0s' $(seq 1 300))"
+reserve_then_live "l1 space in name (documented over-count)" "HIMMEL-t9500-foo bar" "HIMMEL-t9500-foo bar" counted
+reserve_then_live "l2 slash in name (hashed key)" "HIMMEL-t9501/x" "HIMMEL-t9501/x"
+l3_long="HIMMEL-t9502-$(printf 'x%.0s' $(seq 1 300))"
 reserve_then_live "l3 over NAME_MAX (hashed key)" "$l3_long" "$l3_long"
 # Control: the plain same-name shape (b) still consumes — it must stay green.
-reserve_then_live "l0 control same name" "HIMMEL-9503-plain" "HIMMEL-9503-plain"
+reserve_then_live "l0 control same name" "HIMMEL-t9503-plain" "HIMMEL-t9503-plain"
 
 # --- (m) a reservation written by the OLD code has no `name` file, and workers
 # launched from older worktrees share $SLOTS — it must still be consumed by
 # the directory-name match.
 slots_m="$(mktemp -d "$W/slots-m.XXXXXX")" || { echo "FAIL - could not create slots-m scratch dir" >&2; exit 1; }
-mkdir -p "$slots_m/HIMMEL-9504-oldcode"
-printf '%s\n' "$((NOW + 600))" > "$slots_m/HIMMEL-9504-oldcode/expires"
-printf '%s\n' "$$" > "$slots_m/HIMMEL-9504-oldcode/pid"
-pm="$W/ps-m"; mk_ps_stub "$pm" '9001:claude:--model claude-opus-5 -n HIMMEL-9504-oldcode load doc'
+mkdir -p "$slots_m/HIMMEL-t9504-oldcode"
+printf '%s\n' "$((NOW + 600))" > "$slots_m/HIMMEL-t9504-oldcode/expires"
+printf '%s\n' "$$" > "$slots_m/HIMMEL-t9504-oldcode/pid"
+pm="$W/ps-m"; mk_ps_stub "$pm" '9001:claude:--model claude-opus-5 -n HIMMEL-t9504-oldcode load doc'
 : > "$W/err.log"
 run_pf "$slots_m" "$pm" HIMMEL_FLEET_CAP=4 >/dev/null
 if grep -q 'FLEET native=1 claudex=0 openrouter=0 reserved=0 total=1/4' "$W/err.log" 2>/dev/null; then
@@ -466,11 +466,11 @@ check "(m) consumed old-code reservation removed from disk" 0 "$(count_resv "$sl
 # STALE reservation that has one is still pruned (and not counted), and a live
 # reservation that has one and matches no live session still counts once.
 slots_n="$(mktemp -d "$W/slots-n.XXXXXX")" || { echo "FAIL - could not create slots-n scratch dir" >&2; exit 1; }
-mkdir -p "$slots_n/HIMMEL-9505-stale" "$slots_n/HIMMEL-9506-fresh"
-printf '%s\n' "$((NOW - 10))" > "$slots_n/HIMMEL-9505-stale/expires"; printf '%s\n' "$$" > "$slots_n/HIMMEL-9505-stale/pid"
-printf '%s\n' "HIMMEL-9505-stale" > "$slots_n/HIMMEL-9505-stale/name"
-printf '%s\n' "$((NOW + 600))" > "$slots_n/HIMMEL-9506-fresh/expires"; printf '%s\n' "$$" > "$slots_n/HIMMEL-9506-fresh/pid"
-printf '%s\n' "HIMMEL-9506-fresh" > "$slots_n/HIMMEL-9506-fresh/name"
+mkdir -p "$slots_n/HIMMEL-t9505-stale" "$slots_n/HIMMEL-t9506-fresh"
+printf '%s\n' "$((NOW - 10))" > "$slots_n/HIMMEL-t9505-stale/expires"; printf '%s\n' "$$" > "$slots_n/HIMMEL-t9505-stale/pid"
+printf '%s\n' "HIMMEL-t9505-stale" > "$slots_n/HIMMEL-t9505-stale/name"
+printf '%s\n' "$((NOW + 600))" > "$slots_n/HIMMEL-t9506-fresh/expires"; printf '%s\n' "$$" > "$slots_n/HIMMEL-t9506-fresh/pid"
+printf '%s\n' "HIMMEL-t9506-fresh" > "$slots_n/HIMMEL-t9506-fresh/name"
 : > "$W/err.log"
 run_pf "$slots_n" "$p0" HIMMEL_FLEET_CAP=4 >/dev/null
 if grep -q 'FLEET native=0 claudex=0 openrouter=0 reserved=1 total=1/4' "$W/err.log" 2>/dev/null; then
@@ -478,7 +478,7 @@ if grep -q 'FLEET native=0 claudex=0 openrouter=0 reserved=1 total=1/4' "$W/err.
 else
   FAIL=$((FAIL+1)); echo "FAIL - (n) prune/count changed by the name file"; grep 'FLEET ' "$W/err.log" || true
 fi
-if [ -e "$slots_n/HIMMEL-9505-stale" ]; then
+if [ -e "$slots_n/HIMMEL-t9505-stale" ]; then
   FAIL=$((FAIL+1)); echo "FAIL - (n) stale reservation with a name file was not removed from disk"
 else
   PASS=$((PASS+1)); echo "ok - (n) stale reservation with a name file removed from disk"
@@ -493,12 +493,12 @@ check "(n) unmatched unexpired reservation with a name file stays on disk" 1 "$(
 # sibling on the second run). Regression for the panel's first-token class.
 slots_o="$(mktemp -d "$W/slots-o.XXXXXX")" || { echo "FAIL - could not create slots-o scratch dir" >&2; exit 1; }
 for sfx in a b; do
-  mkdir -p "$slots_o/HIMMEL-9507-shared_$sfx"
-  printf '%s\n' "$((NOW + 600))" > "$slots_o/HIMMEL-9507-shared_$sfx/expires"
-  printf '%s\n' "$$" > "$slots_o/HIMMEL-9507-shared_$sfx/pid"
-  printf '%s\n' "HIMMEL-9507-shared $sfx" > "$slots_o/HIMMEL-9507-shared_$sfx/name"
+  mkdir -p "$slots_o/HIMMEL-t9507-shared_$sfx"
+  printf '%s\n' "$((NOW + 600))" > "$slots_o/HIMMEL-t9507-shared_$sfx/expires"
+  printf '%s\n' "$$" > "$slots_o/HIMMEL-t9507-shared_$sfx/pid"
+  printf '%s\n' "HIMMEL-t9507-shared $sfx" > "$slots_o/HIMMEL-t9507-shared_$sfx/name"
 done
-po="$W/ps-o"; mk_ps_stub "$po" '9001:claude:--model claude-opus-5 -n HIMMEL-9507-shared load doc'
+po="$W/ps-o"; mk_ps_stub "$po" '9001:claude:--model claude-opus-5 -n HIMMEL-t9507-shared load doc'
 for o_run in first second; do
   : > "$W/err.log"
   run_pf "$slots_o" "$po" HIMMEL_FLEET_CAP=4 >/dev/null
@@ -563,25 +563,25 @@ p_case() {
 }
 # p1: the plain-name shape the ticket names (pre-#920 too): a live
 # `-n "NAME anything"` shares the first token with a NAME reservation.
-p_case "p1 plain reservation, live shares the first token" "HIMMEL-9600" "HIMMEL-9600 anything" "HIMMEL-9600 anything" kept
+p_case "p1 plain reservation, live shares the first token" "HIMMEL-t9600" "HIMMEL-t9600 anything" "HIMMEL-t9600 anything" kept
 # p2: a hashed-key (slash) name, live `-n "<name> other"`.
-p_case "p2 slash reservation, live shares the first token" "HIMMEL-9601/x" "HIMMEL-9601/x other" "HIMMEL-9601/x other" kept
+p_case "p2 slash reservation, live shares the first token" "HIMMEL-t9601/x" "HIMMEL-t9601/x other" "HIMMEL-t9601/x other" kept
 # p3: a whitespace name is now exact — consumed by the identical full name.
-p_case "p3 whitespace reservation, identical live full name" "HIMMEL-9602-foo bar" "HIMMEL-9602-foo bar" "HIMMEL-9602-foo bar" consumed
+p_case "p3 whitespace reservation, identical live full name" "HIMMEL-t9602-foo bar" "HIMMEL-t9602-foo bar" "HIMMEL-t9602-foo bar" consumed
 # p4 control: the plain same-name shape still consumes with a cmdline present.
-p_case "p4 control same name, cmdline present" "HIMMEL-9603-plain" "HIMMEL-9603-plain" "HIMMEL-9603-plain" consumed
+p_case "p4 control same name, cmdline present" "HIMMEL-t9603-plain" "HIMMEL-t9603-plain" "HIMMEL-t9603-plain" consumed
 # p5 guards: a live name with a control character is never a list entry, so it
 # can neither be stripped down to a plain name (a trailing newline lost to `$(...)`)
 # nor forge a second line that consumes another worker's reservation.
 p5a_nl=$'\n'
-p_case "p5a live name with a trailing newline" "HIMMEL-9604-x" "HIMMEL-9604-x?" "HIMMEL-9604-x$p5a_nl" kept
-p5b_exact="$(printf 'HIMMEL-9605-a\nHIMMEL-9606-b')"
-p_case "p5b live name embedding a second line" "HIMMEL-9606-b" "HIMMEL-9605-a?HIMMEL-9606-b" "$p5b_exact" kept
+p_case "p5a live name with a trailing newline" "HIMMEL-t9604-x" "HIMMEL-t9604-x?" "HIMMEL-t9604-x$p5a_nl" kept
+p5b_exact="$(printf 'HIMMEL-t9605-a\nHIMMEL-t9606-b')"
+p_case "p5b live name embedding a second line" "HIMMEL-t9606-b" "HIMMEL-t9605-a?HIMMEL-t9606-b" "$p5b_exact" kept
 
 # p6: a reservation name with a newline or any control character is refused at
 # reserve time — the name file is read as one line, so it could otherwise forge
 # an identity ("foo/bar<LF>other" read as "foo/bar").
-for p6 in "$(printf 'HIMMEL-9607/x\nother')" "$(printf 'HIMMEL-9608\tx')" "$(printf 'HIMMEL-9609\rx')"; do
+for p6 in "$(printf 'HIMMEL-t9607/x\nother')" "$(printf 'HIMMEL-t9608\tx')" "$(printf 'HIMMEL-t9609\rx')"; do
   slots_p6="$(mktemp -d "$W/slots-p6.XXXXXX")" || { echo "FAIL - could not create slots-p6 scratch dir" >&2; exit 1; }
   : > "$W/ledger.jsonl"
   p6_out="$(run_pf "$slots_p6" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER="$p6" HIMMEL_FLEET_CAP=4)"
@@ -596,15 +596,15 @@ done
 # must be escaped in the ledger record, not close the JSON string early.
 slots_p6b="$(mktemp -d "$W/slots-p6b.XXXXXX")" || { echo "FAIL - could not create slots-p6b scratch dir" >&2; exit 1; }
 : > "$W/ledger.jsonl"
-run_pf "$slots_p6b" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER='HIMMEL-9611"x\y' HIMMEL_FLEET_CAP=4 >/dev/null
-check "(p6b) a quote/backslash in the worker name is escaped in the ledger record" 1 "$(grep -cF 'HIMMEL-9611\"x\\y' "$W/ledger.jsonl")"
+run_pf "$slots_p6b" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER='HIMMEL-t9611"x\y' HIMMEL_FLEET_CAP=4 >/dev/null
+check "(p6b) a quote/backslash in the worker name is escaped in the ledger record" 1 "$(grep -cF 'HIMMEL-t9611\"x\\y' "$W/ledger.jsonl")"
 # p7: a PRE-EXISTING (forged / older-copy) name file whose second line differs
 # is not read as its first line: it must not consume the live `NAME/x`.
 slots_p7="$(mktemp -d "$W/slots-p7.XXXXXX")" || { echo "FAIL - could not create slots-p7 scratch dir" >&2; exit 1; }
 mkdir -p "$slots_p7/4242"
 printf '%s\n' "$((NOW + 600))" > "$slots_p7/4242/expires"; printf '%s\n' "$$" > "$slots_p7/4242/pid"
-printf '%s\n%s\n' "HIMMEL-9610/x" "other" > "$slots_p7/4242/name"
-p_live "$slots_p7" "HIMMEL-9610/x" "HIMMEL-9610/x"
+printf '%s\n%s\n' "HIMMEL-t9610/x" "other" > "$slots_p7/4242/name"
+p_live "$slots_p7" "HIMMEL-t9610/x" "HIMMEL-t9610/x"
 p_expect "p7 multi-line name file" "$slots_p7" kept
 # p7b: extra trailing blank lines in a name file must not be normalised away
 # ($(cat) strips ALL trailing newlines): only the single LF the writer emits is
@@ -612,30 +612,30 @@ p_expect "p7 multi-line name file" "$slots_p7" kept
 slots_p7b="$(mktemp -d "$W/slots-p7b.XXXXXX")" || { echo "FAIL - could not create slots-p7b scratch dir" >&2; exit 1; }
 mkdir -p "$slots_p7b/4243"
 printf '%s\n' "$((NOW + 600))" > "$slots_p7b/4243/expires"; printf '%s\n' "$$" > "$slots_p7b/4243/pid"
-printf '%s\n\n' "HIMMEL-9611-x" > "$slots_p7b/4243/name"
-p_live "$slots_p7b" "HIMMEL-9611-x" "HIMMEL-9611-x"
+printf '%s\n\n' "HIMMEL-t9611-x" > "$slots_p7b/4243/name"
+p_live "$slots_p7b" "HIMMEL-t9611-x" "HIMMEL-t9611-x"
 p_expect "p7b name file with extra trailing blank lines" "$slots_p7b" kept
 # p7c: a NUL byte in a name file is not a complete identity — `read -d ''`
 # stops at it, so the prefix must not be accepted as the whole name.
 slots_p7c="$(mktemp -d "$W/slots-p7c.XXXXXX")" || { echo "FAIL - could not create slots-p7c scratch dir" >&2; exit 1; }
 mkdir -p "$slots_p7c/4244"
 printf '%s\n' "$((NOW + 600))" > "$slots_p7c/4244/expires"; printf '%s\n' "$$" > "$slots_p7c/4244/pid"
-printf 'HIMMEL-9612-x\0other\n' > "$slots_p7c/4244/name"
-p_live "$slots_p7c" "HIMMEL-9612-x" "HIMMEL-9612-x"
+printf 'HIMMEL-t9612-x\0other\n' > "$slots_p7c/4244/name"
+p_live "$slots_p7c" "HIMMEL-t9612-x" "HIMMEL-t9612-x"
 p_expect "p7c name file with an embedded NUL" "$slots_p7c" kept
 # p8: the reservation DIRECTORY name is an identity too. `$(basename)` strips a
 # trailing newline ("NAME-x<LF>" -> "NAME-x") and a multi-line
 # name handed to `grep -F` is a LIST of patterns, so either shape would consume
 # a plain live name. A control-character directory name matches nothing.
 p8_i=0
-for p8 in $'HIMMEL-9613-x\n' $'HIMMEL-9614-y\nHIMMEL-9615-z'; do
+for p8 in $'HIMMEL-t9613-x\n' $'HIMMEL-t9614-y\nHIMMEL-t9615-z'; do
   p8_i=$((p8_i + 1))
   slots_p8="$(mktemp -d "$W/slots-p8.XXXXXX")" || { echo "FAIL - could not create slots-p8 scratch dir" >&2; exit 1; }
   mkdir -p "$slots_p8/$p8"
   printf '%s\n' "$((NOW + 600))" > "$slots_p8/$p8/expires"; printf '%s\n' "$$" > "$slots_p8/$p8/pid"
   case $p8_i in
-    1) p_live "$slots_p8" "HIMMEL-9613-x" "HIMMEL-9613-x" ;;
-    2) p_live "$slots_p8" "HIMMEL-9615-z" "HIMMEL-9615-z" ;;
+    1) p_live "$slots_p8" "HIMMEL-t9613-x" "HIMMEL-t9613-x" ;;
+    2) p_live "$slots_p8" "HIMMEL-t9615-z" "HIMMEL-t9615-z" ;;
   esac
   p_expect "p8.$p8_i reservation directory name with a newline" "$slots_p8" kept
 done
@@ -682,7 +682,7 @@ q_run() { # <label> <doc-body> <lock-state> <expect: 0|1 native count>
   printf '%s\n' "$body" > "$doc"
   ql_lockdir_stub "$qdir" "$doc" "$lock"
   local pdir="$W/q-$label-ps"
-  mk_wrapped_stub "$pdir" 9701 "HIMMEL-9701-wrapped" "$doc"
+  mk_wrapped_stub "$pdir" 9701 "HIMMEL-t9701-wrapped" "$doc"
   local slots; slots="$(mktemp -d "$W/q-$label-slots.XXXXXX")" || { echo "FAIL - could not create q-$label slots dir" >&2; exit 1; }
   : > "$W/err.log"
   run_pf "$slots" "$pdir" HIMMEL_FLEET_CAP=4 FLEET_HANDOVER_ROOT_OVERRIDE="$qdir" >/dev/null
@@ -731,7 +731,7 @@ mkdir -p "$slots_s/.admit"
 printf '%s\n' "$((NOW - 150))" > "$slots_s/.admit/acquired"
 printf '%s\n' "$s_holder" > "$slots_s/.admit/pid"
 : > "$W/err.log"
-s_out="$(run_pf "$slots_s" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-9020-below HIMMEL_FLEET_CAP=4 FLEET_ADMIT_MAX_HOLD_SECS=600 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+s_out="$(run_pf "$slots_s" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9020-below HIMMEL_FLEET_CAP=4 FLEET_ADMIT_MAX_HOLD_SECS=600 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
 check "(s) live holder 150s old, ceiling 600s -> not reclaimed, SKIPPED-FLEET" SKIPPED-FLEET "$s_out"
 if grep -q "holder pid $s_holder .*age 1[0-9][0-9]s, command: sleep" "$W/err.log"; then
   PASS=$((PASS+1)); echo "ok - (t) the refusal names the live holder (pid, age, command name)"
@@ -739,7 +739,7 @@ else
   FAIL=$((FAIL+1)); echo "FAIL - (t) refusal does not name the live holder"; tail -3 "$W/err.log"
 fi
 : > "$W/err.log"
-u_out="$(run_pf "$slots_s" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-9021-past HIMMEL_FLEET_CAP=4 FLEET_ADMIT_MAX_HOLD_SECS=100 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+u_out="$(run_pf "$slots_s" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9021-past HIMMEL_FLEET_CAP=4 FLEET_ADMIT_MAX_HOLD_SECS=100 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
 check "(u) live holder 150s old, ceiling 100s -> reclaimed, PROCEED" PROCEED "$u_out"
 if grep -q "reclaiming .*holder pid $s_holder .*age 1[0-9][0-9]s" "$W/err.log"; then
   PASS=$((PASS+1)); echo "ok - (u) the reclaim logs the holder pid and age"
@@ -755,7 +755,7 @@ slots_v="$(mktemp -d "$W/slots-v.XXXXXX")" || { echo "FAIL - could not create sl
 p_steal="$W/ps-steal"; mk_ps_stub "$p_steal"
 printf '%s\n' '#!/usr/bin/env bash' "[ -f '$slots_v/.admit/pid' ] && printf '%s\n' 1 > '$slots_v/.admit/pid'" "cat '$p_steal/ps.data'" > "$p_steal/ps"
 : > "$W/err.log"
-v_out="$(run_pf "$slots_v" "$p_steal" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-9022-stolen HIMMEL_FLEET_CAP=4)"
+v_out="$(run_pf "$slots_v" "$p_steal" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9022-stolen HIMMEL_FLEET_CAP=4)"
 check "(v) lock reclaimed mid-section -> resumed holder refuses, SKIPPED-FLEET" SKIPPED-FLEET "$v_out"
 if grep -q "was reclaimed while this preflight held it" "$W/err.log"; then
   PASS=$((PASS+1)); echo "ok - (v) the refusal says the lock was reclaimed"
@@ -770,10 +770,10 @@ slots_w="$(mktemp -d "$W/slots-w.XXXXXX")" || { echo "FAIL - could not create sl
 mkdir -p "$slots_w/.admit"
 printf '%s\n' "$w_holder" > "$slots_w/.admit/pid"
 printf '%s\n' "$(( $(date +%s) - 97 ))" > "$slots_w/.admit/acquired"
-w_below="$(run_pf "$slots_w" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-9023-below HIMMEL_FLEET_CAP=4 FLEET_ADMIT_MAX_HOLD_SECS=100 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+w_below="$(run_pf "$slots_w" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9023-below HIMMEL_FLEET_CAP=4 FLEET_ADMIT_MAX_HOLD_SECS=100 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
 check "(w) age just under the ceiling -> not reclaimed" SKIPPED-FLEET "$w_below"
 printf '%s\n' "$(( $(date +%s) - 100 ))" > "$slots_w/.admit/acquired"
-w_at="$(run_pf "$slots_w" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-9024-at HIMMEL_FLEET_CAP=4 FLEET_ADMIT_MAX_HOLD_SECS=100 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+w_at="$(run_pf "$slots_w" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9024-at HIMMEL_FLEET_CAP=4 FLEET_ADMIT_MAX_HOLD_SECS=100 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
 check "(w) age at the ceiling -> reclaimed" PROCEED "$w_at"
 
 # --- (x) the default ceiling is 10 x FLEET_ADMIT_STALE_SECS, read base 10
@@ -781,10 +781,10 @@ check "(w) age at the ceiling -> reclaimed" PROCEED "$w_at"
 rm -rf "$slots_w/.admit"; mkdir -p "$slots_w/.admit"
 printf '%s\n' "$w_holder" > "$slots_w/.admit/pid"
 printf '%s\n' "$(( $(date +%s) - 70 ))" > "$slots_w/.admit/acquired"
-x_below="$(run_pf "$slots_w" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-9025-xlow HIMMEL_FLEET_CAP=4 FLEET_ADMIT_STALE_SECS=08 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+x_below="$(run_pf "$slots_w" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9025-xlow HIMMEL_FLEET_CAP=4 FLEET_ADMIT_STALE_SECS=08 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
 check "(x) default ceiling 10 x 08s: 70s old -> not reclaimed" SKIPPED-FLEET "$x_below"
 printf '%s\n' "$(( $(date +%s) - 90 ))" > "$slots_w/.admit/acquired"
-x_past="$(run_pf "$slots_w" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-9026-xhigh HIMMEL_FLEET_CAP=4 FLEET_ADMIT_STALE_SECS=08 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+x_past="$(run_pf "$slots_w" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9026-xhigh HIMMEL_FLEET_CAP=4 FLEET_ADMIT_STALE_SECS=08 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
 check "(x) default ceiling 10 x 08s: 90s old -> reclaimed" PROCEED "$x_past"
 kill "$w_holder" 2>/dev/null; wait "$w_holder" 2>/dev/null
 
@@ -797,7 +797,7 @@ printf '%s\n' '#!/bin/sh' 'case "$*" in *broken*) sleep 8; exit 0 ;; esac' 'exec
 chmod +x "$W/rmbin/rm"
 : > "$W/err.log"
 y_start="$(date +%s)"
-y_out="$(run_pf "$slots_y" "$p0" PATH="$W/rmbin:$PATH" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-9027-rm HIMMEL_FLEET_CAP=4 FLEET_ADMIT_BROKEN_RM_SECS=1 FLEET_ADMIT_RELEASE_ITERS=2 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+y_out="$(run_pf "$slots_y" "$p0" PATH="$W/rmbin:$PATH" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9027-rm HIMMEL_FLEET_CAP=4 FLEET_ADMIT_BROKEN_RM_SECS=1 FLEET_ADMIT_RELEASE_ITERS=2 FLEET_ADMIT_RETRY_SLEEP=0.01)"
 y_secs=$(( $(date +%s) - y_start ))
 check "(y) a hung debris sweep is abandoned at the deadline" 1 "$([ "$y_secs" -le 6 ] && echo 1 || echo 0)"
 if grep -q "could not take the admit-lock gate" "$W/err.log"; then

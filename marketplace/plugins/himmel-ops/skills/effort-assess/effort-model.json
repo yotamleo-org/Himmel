@@ -1,6 +1,6 @@
 {
   "version": "B-2026-10-01",
-  "source": "HIMMEL-3992 variant B (log-normal effort model), calibrated on 24 tickets; sigma is biased low by survivorship",
+  "source": "variant B (log-normal effort model), calibrated on 24 tickets; sigma is biased low by survivorship",
   "sizes": {"XS": 0.44, "S": 1.0, "M": 2.2, "L": 5.0, "XL": 11.1},
   "size_order": ["XS", "S", "M", "L", "XL"],
   "floor": 1.0,

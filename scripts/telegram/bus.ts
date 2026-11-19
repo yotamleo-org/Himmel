@@ -463,13 +463,6 @@ export async function drainPeerInbox(root: string, seat: string, emit: (line: st
 export const streamEmit = (out: { write(s: string, cb: (e?: Error | null) => void): unknown }) =>
   (line: string) => new Promise<void>((res, rej) => { out.write(line + "\n", (e) => (e ? rej(e) : res())); });
 
-// ponytail: polls the cursor in-process instead of `tail -c +N -F`, the cursor
-// must be committed by the same code that prints (a tail pipe can't advance it
-// at print time, and tail -F around truncateFullyConsumed's rename is fragile);
-// ceiling = up to intervalMs latency per message; upgrade path = fs.watch
-// wakeup if latency matters.
-// NOTE: a flooded seat can hit Monitor's event rate limit, documenting that
-// behaviour is a precondition still open.
 export async function followPeerInbox(root: string, seat: string, emit: (line: string) => void | Promise<void>,
     intervalMs = 1000, signal?: AbortSignal): Promise<void> {
   // oxlint-disable-next-line eslint/no-unmodified-loop-condition -- signal.aborted is flipped by the caller's AbortController

@@ -21,7 +21,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LIB="$HERE/lib/shell-tokenize.sh"
 HOOKS=("$HERE/block-edit-live-settings.sh" "$HERE/guard-pr-check-literal.sh")
-BEGIN_LINE='# >>> BEGIN shell-tokenize (HIMMEL-3546; canonical: scripts/hooks/lib/shell-tokenize.sh) >>>'
+BEGIN_LINE='# >>> BEGIN shell-tokenize (canonical: scripts/hooks/lib/shell-tokenize.sh) >>>'
 END_LINE='# <<< END shell-tokenize <<<'
 
 # block FILE — the marker block of FILE, markers included.
@@ -120,7 +120,7 @@ dec='-r'
 if [ "${BASH_VERSINFO[0]}" -lt 4 ] || { [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; then
     dec='\x2dr'
 fi
-tok "rm \$'\\x2dr' d"; check "\$'…' is decoded the way bash runs it (HIMMEL-4576)" "$R:${ST_W[1]}:${ST_Q[1]}" "0:$dec:1"
+tok "rm \$'\\x2dr' d"; check "\$'…' is decoded the way bash runs it" "$R:${ST_W[1]}:${ST_Q[1]}" "0:$dec:1"
 tok 'echo a # c; d'; check "a comment sets COMMENT and ends the command" "$R:$ST_COMMENT:$ST_NSEG:$ST_N" "0:1:1:2"
 tok $'cat <<EOF\nbody $(x)\nEOF\necho after'; check "an unquoted heredoc body with \$(…) sets SUBST" "$R:$ST_HEREDOC:$ST_SUBST" "0:1:1"
 tok $'cat <<\'EOF\'\nbody $(x)\nEOF'; check "a quoted heredoc body is inert" "$R:$ST_HEREDOC:$ST_SUBST" "0:1:0"

@@ -15,8 +15,6 @@
 //   block = {"type":"text","text":"…"} | {"type":"tool_use","name":"Bash","input":{…}}
 // A request takes the first UNUSED turn whose match (if any) occurs in its body;
 // when none is left it gets a plain-text reply and is logged turn:null.
-// No record mode (MVP). ponytail: sequential/substring matching only, regex or
-// request-shape matchers when a scenario needs them.
 import http from "node:http";
 import fs from "node:fs";
 

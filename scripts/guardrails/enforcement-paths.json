@@ -1,6 +1,5 @@
 {
   "version": 1,
-  "jira": "HIMMEL-767",
   "updated": "2026-07-08",
   "doc": "docs/internals/lesson-provenance.md",
   "semantics": {
@@ -38,7 +37,7 @@
       "why": "shared guard primitive (hermes)" },
     { "match": "basename", "value": "phi-egress-guard.ts", "class": "parity-guard",
       "why": "shared guard primitive (hermes) — renamed from glm-guard.ts on this machine",
-      "_note": "HIMMEL-2622: the old glm-guard.ts key above is kept because a copy may still exist under that name in a hermes checkout not visible from this machine; drop it in a follow-up once a hermes copy is confirmed renamed or confirmed nonexistent." },
+      "_note": "The old glm-guard.ts key above is kept because a copy may still exist under that name in a hermes checkout not visible from this machine; drop it in a follow-up once a hermes copy is confirmed renamed or confirmed nonexistent." },
     { "match": "basename", "value": "CLAUDE.md", "class": "claude-md",
       "why": "frame-shaping rules, root + every subtree" },
     { "match": "basename", "value": "AGENTS.md", "class": "claude-md",

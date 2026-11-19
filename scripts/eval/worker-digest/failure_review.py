@@ -181,7 +181,7 @@ def build(a, rows, seen_before, rc, decisions, boxed):
     out += ["", "### Trajectory signals", ""]
     traj = sorted(c for c in fails if c.startswith("traj/"))
     out += ["- %s: %d" % (c, len(fails[c])) for c in traj] or ["- none"]
-    out.append("- excluded until HIMMEL-4698: %s" % ", ".join(sorted(EXCLUDED.values())))
+    out.append("- excluded for now: %s" % ", ".join(sorted(EXCLUDED.values())))
     # The same figures as structured data: the morning report draws them as a table.
     route = {}
     for d in decisions:
@@ -373,9 +373,6 @@ def main(argv=None):
     os.makedirs(os.path.dirname(npath), exist_ok=True)
     with open(npath + ".lock", "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        # ponytail: one-time carry of the HIMMEL-4790 stem-named file so its pending line is not dropped; two
-        # states that shared it give it to whichever runs first. Drop once no station can still hold one
-        # (a few weeks after merge).
         legacy = legacy_notify_path(a)
         # Only a v1 file is legacy: every file this version writes is v2, so another state's new sidecar that
         # happens to carry this legacy name (routes.json.notify.json for routes.json.state) is never taken.

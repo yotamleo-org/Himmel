@@ -41,49 +41,6 @@
 # its command text says or however early it started: every command a worker runs
 # is in one, so worker-spawned work is always counted. The session pid must itself be a `claude` process: an
 # arbitrary live pid (a leaf, another tool) is refused, never called CLOSABLE.
-# ponytail: only DESCENDANTS of the session are seen. A shell reparented to
-# init/systemd (an intermediate process died first) is not attributed to the
-# session and does not withhold CLOSABLE; attributing it would mean reading
-# /proc/<pid>/environ, which is credential-adjacent, so it is deliberately not
-# done. Tool-call shells are direct children of the session (the N35 leak
-# class), so they stay visible; the complementary check is tick's orphans=
-# field (chief-kit/orphan-loops.sh), which lists such shells as owner `orphan`.
-# ponytail: the start-time rule is a conjunction (direct child AND non-wrapper
-# AND forked inside the window, from etime at 1s resolution). Its errors fall
-# toward WITHHELD: an MCP server started lazily or after a `/mcp` reconnect is
-# outside the window and withholds (the WITHHELD text says not to stop it). A
-# cold `uv` cache makes that the COMMON case, not an exotic one: `uvx`/`uv run`
-# may download and build for well over the window before the server forks.
-# Observed delta on real sessions is 0-1s; the 10s default is chosen slack.
-# The unsafe direction needs a worker-spawned process that is a non-wrapper direct
-# child forked inside the window — i.e. a Bash tool call with no shell-snapshot
-# wrapper AND a first tool call within seconds of session start; not observed.
-# The same hole opens if a shell wrapper exec()s its command inside the window:
-# pid, ppid and etime stay put but argv stops matching iswrap, so the replacement
-# process and everything beneath it would read as harness (false CLOSABLE). Real
-# wrappers keep the shell as parent of the command (a `source … && eval …` list
-# is not exec-optimised), so it was not observed either; nothing here detects it.
-# The launcher's own argv (the configured MCP commands) or the supervisor were
-# not used: claude spawns MCP servers itself (ppid = the session, no
-# supervisor), and the config that names them (~/.claude.json) holds tokens.
-# ponytail: the default harness match is a heuristic over argv, so a leaked
-# process literally named like an MCP server (`node …/mcp-server-x/y.js`) would
-# be exempt; the leak class this gate exists for is a tool-call shell, which
-# is never exempt. `caffeinate` is anchored more tightly than
-# mcp-server/qmd: it only matches as the PROGRAM itself (optionally
-# path-prefixed) followed by nothing but flags, never a job argument — so
-# `caffeinate ./long-job.sh` and `sleep 999 caffeinate` withhold (a regression
-# the word-anywhere match let through, caught by an Opus judge on this
-# ticket's own PR before merge) where the original match exempted them. The
-# same tradeoff as mcp-server remains at the narrower anchor: a genuine
-# `caffeinate` binary invoked with no job is still exempt by name alone, no
-# new mechanism to fix it here.
-# GH #1337 also reported a `claude-hud` statusline tree false WITHHELD. A loose
-# by-path exemption (`^([^ ]*/)?(node|bun) [^ ]*/claude-hud/[^ ]*`) was rejected
-# on that PR's re-judge: it exempted ANY node/bun script under any directory
-# merely named claude-hud. It was fixed with a tight anchor on the real
-# statusLine launch shape, widened to the whole per-render chain
-# (see chain_re below).
 #
 # READ-ONLY: this script never signals a process. Bash 3.2-compatible.
 # WRAP_SUBTREE_SELF overrides the pid treated as "this script" (test seam).
@@ -161,9 +118,6 @@ chain_re='^([^ ]*/)?node /[^ ]*/marketplace/plugins/claude-hud/dist/index[.]js$|
 # and -C are stripped before the verb is read, and the three core.* flags may sit in any order.
 # A git whose cwd cannot be read (exited between ps and the read, or not ours) withholds;
 # the next run sees a fresh table.
-# ponytail: a worker that types a hardened git with this cwd as a DIRECT child of the session
-# (not under a shell-tool wrapper) would be exempt; workers run git inside a wrapper, so not
-# observed; tighten with the marketplace registry if it ever happens.
 # No backslashes: the value crosses awk -v.
 mkt_top_re='^([^ ]*/)?git (-c [A-Za-z0-9_.-]+=[^ ]* )*(clone|fetch|ls-remote|read-tree)( |$)'
 mkt_cwd_re='^(marketplaces|cache)(/[^ ]*)?$|^/tmp/claude-lsremote-[A-Za-z0-9]+$'

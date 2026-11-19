@@ -233,9 +233,6 @@ class Broker:
         `proof` is a TOTP code the operator typed with the request. A valid unspent one is spent here (the
         approval then needs the next step's code) and the request may take the last slot, skips the
         one-per-session rule and is not counted against max_per_hour; anything else is refused `bad-proof`.
-        ponytail: a bad proof counts towards nothing, so a same-uid caller can guess codes at filing (about
-        2 in 10^6 a guess) to take the reserved slot for one window; upgrade path: a per-hour cap on failed
-        proofs that blocks unproven filing, never the proven path.
 
         The nonce is held in the state file only (never a ledger row, never the requester's output):
         the caller sends it to the operator through the root-only notice bot, and approve() needs it

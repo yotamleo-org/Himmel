@@ -110,7 +110,7 @@ split_row
 # file_line_count: prints a file's line count, or nothing (and fails) if the
 # file cannot be read -- callers must allow on failure, never deny on a guess.
 file_line_count() {
-    [ -f "$1" ] || return 1  # regular files only -- wc on a FIFO/device can block indefinitely (HIMMEL-2993 CR)
+    [ -f "$1" ] || return 1  # regular files only -- wc on a FIFO/device can block indefinitely
     wc -l < "$1" 2>/dev/null  # fail-open-ok: an unreadable-but-regular file returns empty/rc!=0 here, and the caller's `|| exit 0` already treats that as allow -- documented fail-open (never deny on a guess)
 }
 

@@ -1,4 +1,4 @@
-# LUNA-27 — tools/ runtime artifacts. Source files only ship in git.
+# tools/ runtime artifacts. Source files only ship in git.
 node_modules/
 bun.lock
 bun.lockb

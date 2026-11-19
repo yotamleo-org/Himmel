@@ -183,16 +183,16 @@ check "D0: row rule" "$(row rule)" D0
 stale_live() { jq -c '.state = "live"' "$REC" > "$tmp/rec.t" && mv "$tmp/rec.t" "$REC"; }
 reset "Done"; owned WRAPPED; stale_live
 fn "$K" --event sweep
-check "D0: a Done ticket's live record is refreshed from a wrapped doc (HIMMEL-7353)" "$(jq -r .state "$REC")" wrapped
-check "D0: the refresh moves no status (HIMMEL-7353)" "$(ntrans)" 0
+check "D0: a Done ticket's live record is refreshed from a wrapped doc" "$(jq -r .state "$REC")" wrapped
+check "D0: the refresh moves no status" "$(ntrans)" 0
 reset "Done"; owned LIVE; stale_live
 fn "$K" --event sweep
-check "D0: a Done ticket's record stays live while its doc is live (HIMMEL-7353)" "$(jq -r .state "$REC")" live
+check "D0: a Done ticket's record stays live while its doc is live" "$(jq -r .state "$REC")" live
 reset "Done"; owned WRAPPED; stale_live
 printf '%s\n' "$K" > "$FX/list.key"
 printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' > "$FX/graphql-all.json"
 bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/out" 2>&1
-check "sweep: a Done ticket's stale live record is cleared by the sweep (HIMMEL-7353)" "$(jq -r .state "$REC")" wrapped
+check "sweep: a Done ticket's stale live record is cleared by the sweep" "$(jq -r .state "$REC")" wrapped
 reset "Done"; owned WRAPPED; jq -c '.state = "IDLE-HELD"' "$REC" > "$tmp/rec.t" && mv "$tmp/rec.t" "$REC"
 printf '%s\n' "$K" > "$FX/list.key"
 printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' > "$FX/graphql-all.json"
@@ -378,7 +378,7 @@ fn "$K" --event wrapped --doc "$DOC"
 check "D4b (HIMMEL-8522): a derive row under event merge after a contract=yes miss row stays pending" "$(row stage)" done-pending
 reset "In Progress"; owned LIVE 11 0
 fn "$K" --event merge --pr 11 --head abc
-check "HIMMEL-8522: a funnel row for the merge event is not written under event merge" "$(row event)" derive
+check "a funnel row for the merge event is not written under event merge" "$(row event)" derive
 
 d5d_merge() { printf '{"ts":"t","event":"merge","key":"%s","pr":"11","repo":"octo/repo","contract":"no","result":"noop"}\n' "$K" >> "$LOG"; }
 reset "In Progress"; owned WRAPPED 0; d5d_merge

@@ -24,8 +24,6 @@
 #   low-label          backlog, unscheduled, residual*, stale, needs-standard, fu-*, cr-deferred -> backlog
 #   sector-active      High or Highest, and its sector has an open ticket in the current version -> current
 #   no-signal          none of the above                                             -> backlog
-# ponytail: a fixed rule table over labels and sector; upgrade to a ranking from the roadmap fields once the
-# operator has read a first batch of proposals.
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -70,7 +70,6 @@
 # its count at the base ref (HEAD, or the left side of the range), or a new row,
 # fails unless the row carries a 4th column holding a reason. A row that follows a
 # renamed file inherits the old row's count. [prim-*] growth only warns.
-# ponytail: a count cannot tell WHICH line of an over-budget tag is new; upgrade to per-line fingerprints if that bites.
 #
 # Exit: 0 = clean, 1 = findings, 2 = usage error.
 # bash 3.2-safe; shellcheck-clean; cross-platform (macOS / Linux).
@@ -181,7 +180,6 @@ EOF
 # Print "lineno:line" for every arithmetic use ($(( )), (( )), let) of a variable
 # that was assigned from a leading-zero date field (see [octal-arith] above) and
 # is not 10#-normalized there. A same-line `octal-ok` marker exempts the line.
-# ponytail: same-file single-pass scan, nesting-blind, cross-file values unseen; upgrade path the portable primitives lib
 _octal_arith_hits() {
     awk '
     function isname(c) { return c ~ /[A-Za-z0-9_]/ }
@@ -241,7 +239,6 @@ _octal_arith_hits() {
 # Print "lineno:line" for the fixed sleep of every soft-kill / sleep / hard-kill
 # sequence (see [kill-after] above). Comment lines between the three are skipped;
 # any other line breaks the sequence, so a poll loop around the sleep is clean.
-# ponytail: consecutive-line state machine; a sleep behind a function call or variable is unseen
 _kill_after_hits() {
     awk '
     function hard(l) { return l ~ /(^|[;&|[:space:]])kill[[:space:]]+-(9|KILL|s[[:space:]]+KILL)([^A-Za-z0-9]|$)/ }
@@ -364,7 +361,6 @@ if [ "$STAGED" -eq 1 ] || [ -n "$CHANGED" ]; then
     _rc=""
     while IFS= read -r -d '' _f || { _rc="$_f"; false; }; do
         [ -n "$_f" ] || continue
-        # ponytail: the file list is newline-separated, so a newline in a name is refused, not linted; carry NUL-separated lists through if one is ever real
         case "$_f" in *$'\n'*) printf 'shell-lint: a path containing a newline cannot be linted; rename it\n' >&2; exit 2 ;; esac
         _abs="$_root/$_f"
         [ -f "$_abs" ] || continue
@@ -613,7 +609,7 @@ EOF
 
     if [ "$file_issues" -gt 0 ] && [ -n "$BASELINE" ]; then
         _key="${f#"$_root"/}"
-        _key="${_key#./}"   # ponytail: only a leading ./ is normalised, a subdirectory-relative path misses its row; resolve against the toplevel if that bites
+        _key="${_key#./}"
         # write mode records the baselinable counts and keeps only the findings no baseline can accept
         [ "$WRITE_BASELINE" -eq 1 ] && WB_OUT="$WB_OUT$(printf '%s' "$file_report" | _baseline_counts "$_key")"$'\n'
         file_report="$(printf '%s' "$file_report" | _baseline_filter "$_key")"

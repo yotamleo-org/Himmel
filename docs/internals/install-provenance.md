@@ -227,9 +227,9 @@ and decides by comparing its sha with `eff_post`:
 
 The strip re-verifies the block at apply time, so an edit made between the
 verdict and the strip is refused, not overwritten. The re-check and the strip
-are two steps, not one atomic operation: `ponytail: an edit landing in the few
-milliseconds between the re-check and the rewrite can still be lost, upgrade
-path is a flock on the file around both steps (planned follow-up)`. The helper's own refusals and
+are two steps, not one atomic operation: an edit landing in the few
+milliseconds between the re-check and the rewrite can still be lost; a flock on
+the file around both steps would close it. The helper's own refusals and
 `<path>.himmel-uninstall-backup` sidecar are reused; `restore` is not supported
 for a block (there is no pre-state to restore).
 
@@ -260,7 +260,7 @@ run that later refuses or halts still shows it.
 
 Exit code is unchanged: 0 when every unit is resolved or kept-and-reported, the
 `fail_step` path for refusals and failures. The held count covers units this run
-visited (`ponytail:` in the function; the purge scan is the complete check).
+visited (the purge scan is the complete check).
 
 ## Known limits
 

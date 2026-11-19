@@ -264,7 +264,7 @@ git_push_force_with_lease_is_safe() {
         t="${g[$j]}"
         case "${CW[$j]}" in
             -c|--config-env|--config-env=*|--exec-path|--exec-path=*) return 1 ;;
-            -*) [ "$t" = "${CW[$j]}" ] || return 1 ;;   # HIMMEL-3894: quoted global flag
+            -*) [ "$t" = "${CW[$j]}" ] || return 1 ;;
         esac
         case "$t" in
             --git-dir=*|--work-tree=*|--namespace=*) j=$((j + 1)); continue ;;
@@ -408,13 +408,6 @@ tokenize_seg_words() {
             # split on bash's IFS word separators (space, tab,
             # newline); FF, VT and U+2028 are word bytes to bash, so a root
             # walk needs a real separator.
-            # ponytail: splits on CR where bash does not, so a CR-separated
-            # `find / <CR>-maxdepth 1` read as a bounded find (the old "safe direction" claim was false for -maxdepth, whose
-            # presence is a SAFE signal). The root-walk checks tokenize with
-            # TOK_CR_WORD=1 (CR is a word byte, as in bash); every other
-            # reader keeps the CR split so CRLF inputs keep their verdict.
-            # Revisit when a flag check that gates ALLOW reads a word's END
-            # or suffix.
             $'\r')
                 if [ "${TOK_CR_WORD:-0}" = 1 ]; then
                     word+="$c"; have=1
@@ -737,8 +730,6 @@ brace_word_is_rootwalk() {
     case "$w" in '{'*'}') ;; *) return 1 ;; esac
     inner="${w#\{}"; inner="${inner%\}}"
     case "$inner" in *'{'*|*'}'*) return 1 ;; esac
-    # ponytail: (HIMMEL-3753) nested brace words (e.g. {{/,a},b}) stay opaque
-    # here — a one-level comma split, not a recursive brace-expansion parser.
     local IFS=',' norm
     for part in $inner; do
         # // is POSIX root too (is_root_anchor).
@@ -897,10 +888,6 @@ is_redirect_word() {
 # (any abbreviation), an unknown short letter in a cluster or a glued CR all
 # fall to PASS: an over-PASS costs one prompt, an ALLOW of a walk is the defect.
 # Tokenized with CR as a word byte (bash's view); `~` and `~/x` stay allowed.
-# ponytail: the shared tokenizer splits on CR where bash does not, so a reader
-# that gates ALLOW on a CR-glued operand sees it as an option; only the
-# root-walk checks read CR as a word byte, upgrade: make CR a word byte in
-# every ALLOW-gating reader once test-crlf-boundary.sh tolerates it.
 SW_REC=0 SW_UNK=0
 # 1 when the working directory is root or cannot be proven
 # non-root (payload cwd is `/`, or an earlier `cd` in this command went to a
@@ -1141,7 +1128,7 @@ segment_walks_root() {
 
 segment_is_safe() {
     resolve_seg_binary "$1"
-    case "$RB_STATUS:$RB_BIN" in bin:cd) ;; *) SW_SEEN_NONCD=1 ;; esac   # HIMMEL-5187: leading-cd rule
+    case "$RB_STATUS:$RB_BIN" in bin:cd) ;; *) SW_SEEN_NONCD=1 ;; esac
     # the JIRA_PROJECT_KEY= prefix is approvable on node only.
     if [ "$RB_JIRA_KEY" = 1 ] && { [ "$RB_STATUS" != bin ] || [ "$RB_BIN" != node ]; }; then
         return 1
@@ -1200,7 +1187,7 @@ segment_is_safe() {
             find)                          # find can execute / delete — guard it
                 for k in "${a[@]}"; do
                     shell_word_value "$k" || return 1
-                    [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # HIMMEL-3660: a glob could expand into -delete/-exec
+                    [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # a glob could expand into -delete/-exec
                     case "$SW_VALUE" in
                         -exec|-execdir|-ok|-okdir|-delete|-fprint|-fprintf|-fprint0|-fls)
                             return 1 ;;
@@ -1216,14 +1203,14 @@ segment_is_safe() {
                 local sdd=0 sskip=0 ssv sln ssc srt=0 ssd0 ssk0 sre='^([0-9]*|&)[<>]+&?$'
                 for k in "${a[@]}"; do
                     shell_word_value "$k" || return 1
-                    [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # HIMMEL-3660: a glob could expand into -o/--output
+                    [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # a glob could expand into -o/--output
                     # bash ends a word at an unquoted `<`/`>`, this tokenizer
                     # does not, so a glued redirect (`-T</dev/null`) hides that the option
                     # consumed the next word; a heredoc/herestring (`<<-`, `<<<`) makes
                     # the next word a delimiter, not an argument. Neither is modelled: PASS.
                     case "$k" in *'<<'*) return 1 ;; esac
                     case "$k" in *'<'*|*'>'*) is_redirect_word "$k" "$SW_VALUE" || return 1 ;; esac
-                    [ "$sdd" = 1 ] && continue    # HIMMEL-3655: after a literal `--` every word is positional
+                    [ "$sdd" = 1 ] && continue    # after a literal `--` every word is positional
                     # A redirect operator and its target are not sort arguments: neither
                     # may start or end `--` handling nor consume an option value. Both are
                     # still checked for -o/--output (fail closed), only the state is kept.
@@ -1263,7 +1250,7 @@ segment_is_safe() {
                 local xops=0               # a 2nd positional = output file → write
                 for k in "${a[@]:$((i + 1))}"; do
                     shell_word_value "$k" || return 1
-                    [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # HIMMEL-3660: a glob could expand into -r/-revert or a 2nd positional
+                    [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # a glob could expand into -r/-revert or a 2nd positional
                     case "$SW_VALUE" in
                         # reverse = write binary. xxd takes any `-r…` word as
                         # -r, so any flag word holding an r falls through.
@@ -1273,7 +1260,7 @@ segment_is_safe() {
                     esac
                 done
                 [ "$xops" -ge 2 ] && return 1 ;;         # infile + outfile = write
-            uniq)                          # HIMMEL-3668: `uniq in out` — a 2nd operand
+            uniq)                          # `uniq in out` — a 2nd operand
                                            # is an OUTPUT file. Value-taking options'
                                            # values are not operands.
                 local uops=0 uskip=0 udd=0
@@ -1300,7 +1287,7 @@ segment_is_safe() {
                     esac
                 done
                 [ "$uops" -ge 2 ] && return 1 ;;     # input + output = write
-            rg|ripgrep|ag)                 # HIMMEL-3668: `--pre`/`--hostname-bin` run a
+            rg|ripgrep|ag)                 # `--pre`/`--hostname-bin` run a
                                            # program per file, `-z` runs decompressors,
                                            # `ag --pager` runs a program. FAIL CLOSED.
                 local zc zi zv='gGpmW'     # ag letters that take a value
@@ -1330,28 +1317,28 @@ segment_is_safe() {
             tree)                          # `tree -o FILE` / `--output FILE` writes
                 for k in "${a[@]}"; do
                     shell_word_value "$k" || return 1
-                    [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # HIMMEL-3660: a glob could expand into -o/--output
+                    [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # a glob could expand into -o/--output
                     case "$SW_VALUE" in
                         --*) guard_is_long_abbrev "output" "$SW_VALUE" && return 1 ;;
-                        -*) case "${SW_VALUE#-}" in *o*) return 1 ;; esac ;;  # HIMMEL-3894: clustered -o
+                        -*) case "${SW_VALUE#-}" in *o*) return 1 ;; esac ;;
                     esac
                 done ;;
             base64)                        # BSD `base64 -o FILE` writes a file
                 for k in "${a[@]}"; do
                     shell_word_value "$k" || return 1
-                    [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # HIMMEL-3660: a glob could expand into -o/--output
+                    [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # a glob could expand into -o/--output
                     case "$SW_VALUE" in
                         --*) guard_is_long_abbrev "output" "$SW_VALUE" && return 1 ;;
-                        -*) case "${SW_VALUE#-}" in *o*) return 1 ;; esac ;;  # HIMMEL-3894: clustered -o
+                        -*) case "${SW_VALUE#-}" in *o*) return 1 ;; esac ;;
                     esac
                 done ;;
             file)                          # `file -C [-m mf]` compiles/writes <mf>.mgc
                 for k in "${a[@]}"; do
                     shell_word_value "$k" || return 1
-                    [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # HIMMEL-3660: a glob could expand into -C
+                    [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # a glob could expand into -C
                     case "$SW_VALUE" in
                         --*) guard_is_long_abbrev "compile" "$SW_VALUE" && return 1 ;;
-                        -*) case "${SW_VALUE#-}" in *C*) return 1 ;; esac ;;  # HIMMEL-3894: clustered -C
+                        -*) case "${SW_VALUE#-}" in *C*) return 1 ;; esac ;;
                     esac
                 done ;;
         esac
@@ -1401,11 +1388,7 @@ segment_is_safe() {
 # Quote-aware structural scan of a Bash command. Walks char by
 # char tracking single/double-quote state so command separators (; | || &&
 # newline, bare &) and output redirects appearing INSIDE quotes are treated as
-# the literal text they are — not as shell structure. The previous sed split
-# was quote-blind: a newline / ';' / '>' inside a quoted jira-comment body
-# shredded the command into junk segments ("LUNA-36 (catch-up) …") that failed
-# is_safe_bin, so a fully-safe write fell through to the auto-mode classifier
-# and was DENIED.
+# the literal text they are — not as shell structure.
 #
 # Sets two globals, returns 1 (fail closed) on unbalanced quotes:
 #   SCAN_SEGS — top-level segments (ORIGINAL text, one per line) split ONLY at
@@ -1567,12 +1550,6 @@ scan_cmd() {
 # resolves into must be a real one of this repo (ql_root_is_own_checkout) — for
 # the relative form that is the payload `cwd`, which must be absolute (never the
 # hook's own $PWD), since bash resolves it there.
-# ponytail: HANDOVER_DIR is not checked against the registered handover root —
-# a stray root only lets queue-lock write a `.locks/queue/` dir there — and the
-# relative form only accepts a cwd that IS a checkout root: from a sub-directory
-# (where the relative path would not resolve anyway) it falls through to a prompt.
-# On Windows Git Bash a drive-letter payload cwd or script path also falls
-# through to a prompt (as cmd_is_impacted_suites does).
 ql_word_literal() {   # $1 raw word → QW (cooked); fails on any expansion/glob/`..`
     case "$1" in *'$'*) return 1 ;; esac
     shell_word_value "$1" || return 1
@@ -1593,10 +1570,6 @@ ql_word_literal() {   # $1 raw word → QW (cooked); fails on any expansion/glob
 # drive spelling cannot dodge containment) — and QC, the spelling `cd` is given.
 # A backslash is a separator only in a drive path; a `/`-prefixed path carrying
 # one is refused, since MSYS reads it as a separator that would hide a `..`.
-# ponytail: on a POSIX host `C:/x` is really a cwd-relative name, which is why
-# segment_is_queue_lock refuses it in the executed script position
-# and only lets it name a lock dir; the drive-relative `C:x`, UNC `//host/x` and an upper-case `/C/x` are
-# not accepted (they fall through to a prompt).
 ql_abs_path() {
     local p="$1" d
     case "$p" in
@@ -1731,10 +1704,6 @@ segment_is_queue_lock() {
 # same blob as both the anchor's working-tree copy and refs/heads/main's, with
 # the anchor on refs/heads/main. The script sources nothing, so that one file
 # is every byte it runs.
-# ponytail: checked at match time only - the bytes can change between this
-# check and the exec (TOCTOU), as in guard-pr-check-literal.sh; and a
-# docs-audit lane's `origin/main..<head>` range is not accepted (it falls
-# through to the classifier).
 IS_LINE1_RE="^bash +(\"[^\"]*\"|[^ \"]+) +(--check +)?[0-9a-f]{40}\\.\\.[0-9a-f]{40}( +<<'IMPACTED_EOF')? *\$"
 cmd_is_impacted_suites() {
     local c="${1%$'\n'}" l1 body word root
@@ -2090,7 +2059,7 @@ esac
 # the tokenizers below split on [[:space:]],
 # but bash splits words only on space, tab and newline, so a raw FF or VT
 # makes them see different words than the shell runs. No allow for those
-# bytes. CR is left to tokenize_seg_words' ponytail note (CRLF inputs must
+# bytes. CR is left to tokenize_seg_words (CRLF inputs must
 # keep their verdict, test-crlf-boundary.sh; the root-walk checks read CR as a
 # word byte).
 # abstain AFTER the root-walk DENY below, never before it -- an
@@ -2157,7 +2126,7 @@ case "${FIND_ROOTWALK_OK:-}" in
     1|true|yes|on) ;;  # explicit truthy bypass — skip the deny scan entirely
     *)
         while IFS= read -r seg; do
-            seg="${seg#"${seg%%[! $'\t']*}"}"   # ltrim space/tab only (HIMMEL-5034)
+            seg="${seg#"${seg%%[! $'\t']*}"}"
             [ -z "$seg" ] && continue
             if segment_is_rootwalk_find "$seg"; then
                 emit_deny "a root-anchored find with no -maxdepth walks the WHOLE disk and can outlive its parent for 20+ minutes in headless/cadence sessions, where the fall-through prompt is unattended. Use the Glob tool, or scope it to a repo-rooted directory: find <dir> ... -maxdepth N. One-run bypass: set FIND_ROOTWALK_OK=1 in the LAUNCHING shell."
@@ -2278,7 +2247,7 @@ ql_unquoted_sep=0
 case "$SCAN_MASK" in *';'*|*'|'*|*'&'*|*$'\n'*) ql_unquoted_sep=1 ;; esac
 ql_segs=0; ql_only=""
 while IFS= read -r seg; do
-    seg="${seg#"${seg%%[! $'\t']*}"}"   # ltrim space/tab only, same as the root-walk loop (HIMMEL-5034)
+    seg="${seg#"${seg%%[! $'\t']*}"}"
     [ -z "$seg" ] && continue
     ql_segs=$((ql_segs + 1)); ql_only="$seg"
 done <<EOF
@@ -2316,7 +2285,7 @@ fi
 
 all_safe=1
 while IFS= read -r seg; do
-    seg="${seg#"${seg%%[! $'\t']*}"}"   # ltrim space/tab only, same as the root-walk loop (HIMMEL-5034)
+    seg="${seg#"${seg%%[! $'\t']*}"}"
     [ -z "$seg" ] && continue
     if ! segment_is_safe "$seg"; then all_safe=0; break; fi
 done <<EOF

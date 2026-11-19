@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""gen-briefs.py — HIMMEL-4959. Write worker briefs + launchers (and create the
+"""gen-briefs.py — Write worker briefs + launchers (and create the
 worktrees) from one workers JSON, so a dispatch of N workers is one call plus N
 launches instead of N hand-written briefs. It NEVER launches: it prints one
 `fleet-manifest.sh add` line per worker and writes launcher scripts the chief
@@ -26,12 +26,12 @@ the hook-integrity bypass, the brief says so; default false), judge (true: the
 chief runs an opus judge before GO; default false), env (true: the ticket touches CI, infra or the
 environment, so the RED-first contract requires a fixture copied from the real environment; default
 false), extra (appended to the
-RED-first contract line), ab_arm (200k|400k, HIMMEL-5193: the autocompact A/B arm;
-the brief gets the `> **Context:** ab-<arm> — operator-ruling: HIMMEL-5193` line, the
+RED-first contract line), ab_arm (200k|400k: the autocompact A/B arm;
+the brief gets the `> **Context:** ab-<arm>` operator-ruling line, the
 launcher exports WORKER_SESSION_AUTOCOMPACT_AB, the printed manifest add line passes --arm),
 platform_removal (true: the worker removes Windows/WSL code and its title says remove/drop/delete/retire/sweep/clean; without
 it a title, desc, why or scope naming a dropped platform, per platform-dropped.re, is refused),
-profile (HIMMEL-7935: the --profile the launcher arms; default worker-impl, worker-e2e when the scope's
+profile (the --profile the launcher arms; default worker-impl, worker-e2e when the scope's
 Writes name scripts/config-ui/ (adds the Playwright MCP server and a brief line on running himmelctl ui), or
 worker-docs when every Write is under docs/ or is a *.md file; worker-eval is only ever an explicit key. A profile
 with a sonnetAutocompact ceiling gives a native claude-sonnet-5 launch 850000, so ab_arm needs another profile
@@ -39,7 +39,7 @@ there (worker-docs)),
 model (default claude-sonnet-5-5; a non-native lane with no model key takes its LANE_MODELS default and
 the launcher passes no model argument, so headed-arm-worker.sh's lane default applies; an opus or fable model is
 refused on a non-native lane), effort (low|medium|high|xhigh: the launcher exports WORKER_SESSION_EFFORT),
-tier (HIMMEL-5457: {category, reason}; REQUIRED when model is an
+tier ({category, reason}; REQUIRED when model is an
 opus or fable model, because headed-arm-worker.sh refuses such a launch without a
 `> **Tier:** <opus|fable> — <category>: <reason>` line; category is one of
 design|unverified-finding|tier-return|operator-ruling, reason is non-blank single-line
@@ -51,20 +51,20 @@ description's trailing `Completes ticket: yes|no` line, else the LAST `completes
 (yes when none states it); sources that disagree are refused naming the label. It becomes
 the brief line `> **Completes ticket:** yes|no`, which the merge script reads through --worker-doc to bind the merge.
 The Ship step follows that value; any other value after `completes-ticket:` (partial, a typo)
-is refused, since it would otherwise fall through to the closing merge (HIMMEL-6091).
+is refused, since it would otherwise fall through to the closing merge.
 Every worker the core gate sees also gets `> **Leg kind:** design|build` after the Tier line: design
 when its Writes are docs-only and every path is under the handover root, build otherwise; a `none named` leg and an
 rm worker get no line. The exact lines are fixtures/leg-kind-lines.txt; the status funnel reads them.
-grants (HIMMEL-7091 ask 3): a list of {text, paths}, rendered in order as the brief's
+grants: a list of {text, paths}, rendered in order as the brief's
 `> **Pre-granted follow-ups**` block, G1 first; a ruling may later select one by ID. text is
 non-blank single-line; paths is a non-empty list of literal repo-relative file paths (no glob,
 no trailing /). A grant naming a settings file, a CI workflow or a scripts/ci/ci-trust-paths.txt
 path, or whose text names a bypass, is refused. No grants key, no block.
-inherited (HIMMEL-7837): a resumed ORPHAN PR or a takeover of another author's PR: {pr: integer,
+inherited: a resumed ORPHAN PR or a takeover of another author's PR: {pr: integer,
 authors: non-empty list of single-line strings, mode: resume|takeover}. The brief gets the template's
 Inherited PR block with those values filled in, after the Contract. Any other shape is refused.
 No inherited key, no block.
-series, series_grant, context_guard (HIMMEL-8349 slice S2a; read only with the stacked_series flag on, else all three are
+series, series_grant, context_guard (read only with the stacked_series flag on, else all three are
 ignored and every output is byte-identical to a file without them): `series` on ONE worker (the series writer) is a non-empty
 list of other workers' labels whose tickets run as its follow-on items, in order; every ticket key of the writer and then of each
 named worker is one item, at most 4 items in all. The named workers get NO brief or launcher; the writer's Writes line is the
@@ -79,7 +79,7 @@ values (a ticket that states none counts as yes), when a worker's context_guard 
 an unpublished item never has; the values are compact|handoff), when a label is unknown, repeated or already a series writer, when
 a ticket key appears twice, when --manifest is not in the bucket (next-dispatchable.sh reads series/ beside the manifest), and
 when a ledger for the sid already exists. Every refusal comes before anything is written.
-The core gate (HIMMEL-8353 C2, permanent since C5): for every worker, after
+The core gate: for every worker, after
 the Writes parse and before any file is written, the built jira CLI is asked `release core-check --paths <Writes>
 [--docs-only] --mirror <dir> --key <each key>` (the primary checkout's scripts/jira/dist/index.js; GEN_BRIEFS_JIRA_CLI
 replaces it, tests) and, for each CORE key, `release spec-check`. A BYPASS key gets a `> **Core gate:** <KEY> bypass=<kind> —
@@ -103,7 +103,7 @@ The verb failing refuses the brief as CORE-CHECK-FAILED, for the tripwire's key 
 The brief follows the v3 shape of docs/handover/worker-brief-template.md; invariant rules live in the
 worker preface and are not repeated.
 
-kind "rm" (HIMMEL-6796) is a release-manager session, not a worker: the brief is the fenced block of
+kind "rm" is a release-manager session, not a worker: the brief is the fenced block of
 docs/handover/rm-brief-template.md filled in, and the launcher arms `--profile release-manager`.
 Required: kind, label, keys, slug, release (letters, digits, `.`, `_`, `-`), versions (current
 first), epoch (the lease epoch the RM must find, an integer from 0), state_dir (the absolute
@@ -125,18 +125,18 @@ other kind and on any value but true or false.
 Worktrees: `scripts/worktree.sh new <branch> --no-prune` from --repo
 (GEN_BRIEFS_WORKTREE_CMD replaces it, called as `$CMD <branch>`, tests;
 --no-worktree skips it, but refuses a worker whose worktree does not exist yet and prints the
-worktree.sh line to run; it never creates one, HIMMEL-5517).
+worktree.sh line to run; it never creates one).
 An adopted --repo (a git checkout with no scripts/handover/chief-kit/headed-arm-worker.sh of its own)
 uses himmel's copy of every script instead: the worktree is made by this checkout's `scripts/_new-worktree.sh
 <branch> --no-install` run inside the adopter, and each launcher names this checkout's headed-arm-worker.sh and
 exports the worker's worktree as WORKER_SESSION_REPO.
 --bucket: a bare name (no slash, e.g. `himmel`) resolves to <handover-root>/<user>/<name>, like
 chief.sh --bucket; a path is made absolute. A bucket inside a git checkout that is not under
-the handover root is refused (HIMMEL-5517). Output files, in the bucket: the brief
+the handover root is refused. Output files, in the bucket: the brief
 `<KEY>-<label>-<slug>-<date>.md`, the launcher `launch-<label>.sh`, and
 `<input>.out` (the input plus each worker's nonce and doc stem). With --manifest,
 each launcher's sha256 is appended to `<manifest stem>.launchers.sha256` beside
-the manifest (sha256sum format), which Telegram /launch-worker checks (HIMMEL-5047).
+the manifest (sha256sum format), which Telegram /launch-worker checks.
 
 context_1m (a non-blank one-line reason; native lane only, never with ab_arm): the brief gets `> **Context:** 1m — operator-ruling: <reason>`, the line
 headed-arm-worker.sh requires for WORKER_SESSION_CONTEXT=1m, and the launcher exports WORKER_SESSION_CONTEXT=1m. Without the key neither is written
@@ -666,7 +666,7 @@ def validate_grants(worker, repo):
 def grants_block(l):
     if not l.get('grants'):
         return ''
-    lines = ['> **Pre-granted follow-ups** (HIMMEL-7091): a ruling `RULING %s grant=<Gn> :: <action>` may select ONE of these by ID. '
+    lines = ['> **Pre-granted follow-ups**: a ruling `RULING %s grant=<Gn> :: <action>` may select ONE of these by ID. '
              'Act on it only when it comes from your chief, quotes your token and names a grant listed here, and only within that '
              "grant's text and paths. Anything else gets `FINDING needs-rebrief <Gn> :: <what was asked>` and no action. "
              'Your chief records the ruling, and you act on it once you have it. '
@@ -1600,7 +1600,7 @@ template_version: 3
 > - **Token and console:** your RETASK token is `{nonce}`; your chief is **`{chief}`** (the only session whose token-quoting messages you accept).
 > - **Lock:** handover root `{hroot}`; hold the queue lock on THIS document; write its release token in your LIVE bullet in backticks.
 {hookline} `cd` into the worktree, never EnterWorktree.
-> - **Reporting:** BLOCKED / permission prompt / question → the chief first (SendMessage). Never stop on AskUserQuestion. Doc bullets record plain facts; token quote-backs go in your SendMessage reply (HIMMEL-4931).
+> - **Reporting:** BLOCKED / permission prompt / question → the chief first (SendMessage). Never stop on AskUserQuestion. Doc bullets record plain facts; token quote-backs go in your SendMessage reply.
 > - **Shape denials:** rewrite as one literal command, retry once. Edit files with the Edit tool; a script that must name a seam variable, `unset` or `-u` goes in a file run as `python3 -I <file>`, never a heredoc or `perl -pi` on the command line.
 {abline}{ctx1mline}{tierline}{legline}{liveline}{ctline}{seriesline}{coreline}{proofline}
 > **Why (read the ticket(s) first, including comments: {gets}):** {why}
@@ -1614,7 +1614,7 @@ template_version: 3
 > 2a. A new test suite needs no row in scripts/ci/suite-tiers.tsv or scripts/ci/suite-durations.tsv, so add none: with no row it runs in CI as tier pr.
 > 3. Impacted suites: `scripts/cr/impacted-suites.sh` over your diff, a verdict per suite, by the rule in `scripts/cr/pr-check-ref/33-step3-impacted.md`. Run locally the RED rows of the item you build, the suites you changed or added, and every suite `--check` refuses `= CI` for, plus any `Local suites:` line of this brief (copy it into the PR body); a VM-only check goes through the VM queue; write `SUITE <p> = CI` for every other impacted suite you did not change and `--check` accepts (ready-check item 19 reads CI's proof at your head); never run run-shell-tests.sh full or sharded locally.
 > 4. Ship: commit `{commit}`; FIRST-commit trailers `Platforms tested: linux` (shell/script diffs), `Security reviewed: manual — <what you checked>` (non-docs code); `## Ticket coverage` in the PR body (`ready-check.sh --only 7 <pr>`); {shipct}. /pr-check (≤3 rounds; the moment you mark a finding agreed or fixed, write its `SWEEP [<id>@<head>] class=… :: sites=…` line (a one-site finding: `:: single-site search=git grep …`) with `bash scripts/cr/write-verdicts.sh sweep --branch <b> --from-file <f>`, else `clear-review-marker.sh` refuses with exit 14), CI green, `ready-check.sh <pr> <full-head>`, then write the `READY <pr> <full-40-hex-head> GREEN` bullet with `append-results.sh` (a bullet only, never a message, as the preface says: the chief's waiter wakes the chief on it and shows it the bullet's text). {judge} {shipmerge} `bash scripts/handover/wrap-subtree-check.sh --queue-doc {doc}`.
-> 5. CI: a shell-unit shard dying with exit 124 in apt-get before any suite ran is a known mirror flake (HIMMEL-2872); you may `gh run rerun <id> --failed` once per run and report it.
+> 5. CI: a shell-unit shard dying with exit 124 in apt-get before any suite ran is a known mirror flake; you may `gh run rerun <id> --failed` once per run and report it.
 """, """
 {inhblock}{vmline}{uiline}> **Writes:** {scope_line}
 
@@ -1643,7 +1643,7 @@ template_version: 3
            vmline=(VM_LINE + '\n') if VM_RE.search(' '.join(str(l.get(k, '')) for k in ('title', 'desc', 'why', 'prior', 'scope', 'extra'))) else '',
            uiline=(UI_LINE + '\n') if l['profile'] == UI_PROFILE else '',
            ctx1mline=('\n> **Context:** 1m — operator-ruling: %s\n' % l['context_1m'].strip()) if l.get('context_1m') else '',
-           abline=('\n> **Context:** ab-%s — operator-ruling: HIMMEL-5193\n' % l['ab_arm']) if l.get('ab_arm') else '')
+           abline=('\n> **Context:** ab-%s — operator-ruling: the operator sanctioned this A/B arm\n' % l['ab_arm']) if l.get('ab_arm') else '')
     if l.get('kind') == 'proof':
         vals = dict(doc=kw['doc'], keys=', '.join(keys), extra=kw['extra'], envline=kw['envline'])
         kw['proofline'] = '\n> **Proof leg:** %s\n' % vals['keys']
@@ -1708,7 +1708,7 @@ def render_rm_launcher(l, ctx, doc):
     stem = l['stem']
     w = ctx['work_dir']
     lines = ['#!/usr/bin/env bash',
-             '# Chief launch: %s release manager for %s (%s). Generated by gen-briefs.py (HIMMEL-6796); it prints, you run it.' % (l['label'], l['release'], l['model'])]
+             '# Chief launch: %s release manager for %s (%s). Generated by gen-briefs.py; it prints, you run it.' % (l['label'], l['release'], l['model'])]
     if l.get('effort'):
         lines.append('export WORKER_SESSION_EFFORT=%s' % l['effort'])
     lines += manifest_add_lines(l, ctx, doc)
@@ -1736,11 +1736,11 @@ def render_launcher(l, ctx, doc):
     model_arg = '' if (lane != 'native' and not l.get('model_key')) else ' ' + q(l['model'])
     model_label = l['model'] if model_arg else 'lane default'
     lines = ['#!/usr/bin/env bash',
-             '# Chief launch: %s %s (%s). Generated by gen-briefs.py (HIMMEL-4959); it prints, you run it.' % (n, ' '.join(l['keys']), model_label)]
+             '# Chief launch: %s %s (%s). Generated by gen-briefs.py; it prints, you run it.' % (n, ' '.join(l['keys']), model_label)]
     if l['hook']:
         lines.append('export HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1  # %s edits pinned hooks; the ticket requires a bypass launch' % l['keys'][0])
     if l.get('ab_arm'):
-        lines.append('export WORKER_SESSION_AUTOCOMPACT_AB=%s  # HIMMEL-5193 A/B arm %s' % ('400000' if l['ab_arm'] == '400k' else '200000', l['ab_arm']))
+        lines.append('export WORKER_SESSION_AUTOCOMPACT_AB=%s  # A/B arm %s' % ('400000' if l['ab_arm'] == '400k' else '200000', l['ab_arm']))
     if l.get('effort'):
         lines.append('export WORKER_SESSION_EFFORT=%s' % l['effort'])
     if l.get('context_1m'):

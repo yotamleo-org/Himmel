@@ -21,18 +21,7 @@
 # no special-case parsing - they land WIRED, never USED (hooks are not called
 # via a transcript tool_use).
 #
-# ponytail: a hook's WIRED row never gets a denial-count annotation - the
-# brief allows skipping this "if not cheap", and
-# joining this script's static pass against the hook-denial log the way
-# tool-usage.sh does is exactly the shared code this script is told not to
-# have. WIRED count=0 is reported instead; the real denial counts belong to
-# tool-usage.sh's own table.
 #
-# ponytail: a test file discovered only by a runner's directory glob (e.g. a
-# hypothetical `for f in test-*.sh`) carries no textual reference to its own
-# filename anywhere in tracked content, so it shows DEAD here even though it
-# runs in CI/pre-commit. Accepted given "report only, no deletions" - a human
-# reviews every DEAD row before acting.
 #
 # `.ts` source files are discovered like `.sh`/`.js`.
 # A TS-ESM import specifier names the compiled `.js` extension
@@ -266,22 +255,12 @@ if [ "$BAD_EDGE_TIMESTAMPS" -gt 0 ]; then
     echo "dead-parts: WARNING: $BAD_EDGE_TIMESTAMPS transcript(s) had a malformed head/tail timestamp - fell back to the nearest valid one instead of skipping the file" >&2
 fi
 
-# ponytail: a transcript's Skill tool_use may name a plugin-qualified skill
-# (`plugin:name`) while discovery's `name` is bare, so a used skill is matched
-# by taking the suffix after the last `:` - same tradeoff as tool-usage.sh's
-# own USED-skill matching, same accepted collision risk.
 awk -F'\t' '$1=="SKILL" && $2!=""{print $2}' "$TAGGED" | sed 's/.*://' | sort -u > "$RUN/used-skill-names.txt"
 awk -F'\t' '$1=="AGENT" && $2!=""{print $2}' "$TAGGED" | sort -u > "$RUN/used-agent-names.txt"
 awk -F'\t' '$1=="BASH"{print $2}' "$TAGGED" > "$RUN/bash-commands.txt"
 awk -F'\t' '$1=="CMD"{print $2}' "$TAGGED" > "$RUN/command-strings.txt"
 grep -o '<command-name>/\?[^<]*' "$RUN/command-strings.txt" 2>/dev/null \
     | sed -E 's#^<command-name>/?##' | sort -u > "$RUN/used-command-names.txt"
-# ponytail: USED-script detection is a path-substring match against raw Bash
-# command text, so a `cat`/`grep` on a script's own path also counts as USED,
-# not only its execution. Accepted: the same over-counting risk already
-# applies to the WIRED git-grep pass (a mention anywhere in tracked content
-# also counts), and this metric's job is "does anything reference this path
-# at all", not "does anything execute it" - a human reviews every DEAD row.
 : > "$RUN/used-script-paths.txt"
 awk -F'\t' '$1=="script"{print $3}' "$ENTRIES" | while IFS= read -r sp; do
     grep -qF -- "$sp" "$RUN/bash-commands.txt" 2>/dev/null && echo "$sp" >> "$RUN/used-script-paths.txt"
@@ -335,18 +314,6 @@ while IFS=$'\t' read -r kind name path; do
     # git-grep output, so the exclusion must also match a path that STARTS
     # with fixtures/, not only .../fixtures/... .
     hits=$(printf '%s\n' "$hits" | grep -vE '(^|/)fixtures/')
-    # ponytail: this basename search (script entries only, always run and
-    # unioned with the full-path hits rather than gated on the full-path
-    # search coming up empty - a doc's full-path reference must never
-    # suppress a code caller that only spells the path relatively, e.g.
-    # ./foo.sh next to a docs/*.md hit on scripts/foo.sh) is a literal
-    # substring search, so it also over-counts: a basename that is itself a
-    # substring of another tracked file's name or prose (e.g. `caller.sh`
-    # inside `test-caller.sh`, or inside a comment like "called from
-    # caller.sh") counts as a hit too. Accepted for the same reason as the
-    # USED-script ponytail above - the job is "does anything reference this
-    # name at all", and the direction of the error (false WIRED, not false
-    # DEAD) is the safe one for a report a human reviews before acting.
     if [ "$kind" = "script" ]; then
         bn_hits=$(git -C "$REPO_ROOT" grep -lF -- "$(basename "$path")" 2>/dev/null); bgrc=$?
         [ "$bgrc" -gt 1 ] && GIT_GREP_FAILS=$((GIT_GREP_FAILS + 1))

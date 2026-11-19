@@ -831,12 +831,6 @@ PATH="$PATH:/usr/local/bin:/usr/bin:/bin" bash "$REPO_ROOT/scripts/lib/test-run-
 # AST rebuild (17 and 12 minutes seen), and a takeover let its closing restore
 # re-add the nodes this refresh had just replaced. The wait on a live holder
 # ends at GRAPHIFY_PROMOTE_LOCK_LIVE_WAIT_SECONDS (default 2700), then rc 2.
-# ponytail: kill -0 trusts the pid in the token, so a reused pid reads as
-# live and costs the wait (up to 2700 s) on EVERY run while that pid lives,
-# which also delays a capped run's keep step; upgrade to a pid start-time stamp.
-# The three seconds values below must be whole numbers of at most 6 digits
-# (999999 s): anything else warns and takes the default, because the wait loop's
-# [ -ge ] tests error forever on text or on a number past the shell's range.
 _promote_lock_seconds() { # <env-var-name> <default>
   local v="${!1-$2}" # no colon: a variable set but empty reaches the case below and warns
   case "$v" in
@@ -2424,8 +2418,6 @@ for p in sys.stdin.buffer.read().split(b"\0"):
     fi
   fi
 
-  # ponytail: a slimmer copy of semantic-update.sh's sync shim (no addendum, no run-spend file; the lane's per-call
-  # budget bounds each chunk), upgrade path: one shared shim file both scripts install.
   if [ "$BACKEND" = "claude-api" ]; then
     GRAPHIFY_MAP_SHIM_ACCOUNTS=1
     # shellcheck source=../lib/llm-backend.sh
@@ -2743,12 +2735,6 @@ SHIM
   # chunks are counted against the one cap: the full run gets what is left, and a
   # stop (cap, hollow, deadline) in the pre-pass skips the full run and is
   # reported by the handlers below exactly as a full-run stop.
-  # ponytail: mtime only, so a git corpus whose checkout reset every mtime has
-  # no recent subset and keeps the sorted order (the pre-pass is skipped when
-  # every note is recent); upgrade is `git log --since` for tracked corpora.
-  # Uncapped runs (cap 0) skip it. A pre-pass that spends the whole cap stops
-  # the run at exit 4 even when the full run had nothing left; the next run
-  # then completes it.
   _RECENT_DAYS=7
   _SKIP_MAIN=0
   _prepass_recent() {
@@ -2955,11 +2941,6 @@ fi   # DO_EXTRACT -- end of the copy + extraction region (--promote-only rejoins
   SCRATCH_ABS="$(cd "$SCRATCH" && pwd)"
   MANIFEST_ROOT="$SCRATCH_ABS"
   if [ "$PROMOTE_ONLY_SHAPE" = quarantine ]; then
-    # ponytail: a *.quarantine holds only graphify-out's contents, no corpus
-    # copy, so the freshness manifest is keyed from the LIVE corpus instead --
-    # it attests the corpus as it is now, not as the graph saw it (and does not
-    # apply the extraction's derived-page exclusions). check-graph-freshness.sh
-    # only needs the keys to exist, so it verifies; the mtimes are provenance.
     MANIFEST_ROOT="$(cd "$CORPUS_ROOT" && pwd)"
   fi
   # Acquire the exclusive per-out-dir lock (see its definition
@@ -3137,11 +3118,6 @@ fi   # DO_EXTRACT -- end of the copy + extraction region (--promote-only rejoins
     # treating a NUL as just another byte is correct here, not a workaround.
     leak_line=""
     grep_rc=0
-    # ponytail: BSD/macOS grep matches on C strings, so a NUL truncates the
-    # line it sits on and a leak AFTER the NUL is missed (T20 on macOS). Scan a
-    # NUL-stripped copy (newlines untouched, so the line number still indexes
-    # $scan_target); a failed strip fails CLOSED like an unreadable scan. Cost is
-    # one extra artifact copy per scan, revisit if the artifacts grow past RAM.
     scan_nonul="$SCRATCH_OUT/.leak-scan-nonul"
     if tr -d '\0' < "$scan_target" > "$scan_nonul" 2>/dev/null; then
       leak_line="$(grep -a -m1 -inE "$leak_pattern" "$scan_nonul")" || grep_rc=$?
@@ -3251,10 +3227,6 @@ PYEOF
   # on.
   _graphify_version=""
   if [ -n "$PROMOTE_ONLY" ]; then
-    # ponytail: --promote-only never invokes graphify (no extraction, and the
-    # stub/real binary may not even be installed on the recovering box), so it
-    # cannot know which version produced the orphan. Left empty = "unknown",
-    # which the shrink guard treats as never gating on a version change.
     :
   elif [ -n "$_deadline_bin" ]; then
     _graphify_version="$("$_deadline_bin" -k 2 5 "$GRAPHIFY_MAP" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | tail -n1)" || _graphify_version=""
@@ -3549,7 +3521,6 @@ PYEOF
   mv "$PROMOTE_STAGE/graph.json" "$OUT_DIR/graph.json"
   # A merged graph keeps the live report and analysis: the staged ones describe only
   # the markdown extraction, and the next AST pass reclusters the merged graph.
-  # ponytail: the report/MOC keeps the last full-graph counts until that pass; revisit if the MOC must show the merged totals at once.
   if [ "$MERGED" -eq 1 ] && [ -f "$REPORT" ]; then :; else mv "$PROMOTE_STAGE/GRAPH_REPORT.md" "$REPORT"; fi
   if [ "$MERGED" -eq 1 ]; then
     rm -f "$PROMOTE_STAGE/.graphify_analysis.json"
@@ -3745,11 +3716,6 @@ elif [ -n "$MAPS_PARENT_ID" ]; then
   # window is JUST the gap between mkdir returning and cd running: a
   # genuinely-fresh mkdir can only ever be EMPTY, so verifying that
   # immediately after cd catches a swap onto any already-populated
-  # substitute. ponytail: a decoy target pre-staged as an empty directory
-  # elsewhere would still pass this check -- closing that needs an
-  # openat()-style atomic create+enter bash does not expose; upgrade path is
-  # a small native helper (mkdirat/O_DIRECTORY) if this residual is ever
-  # judged worth it.
   ( cd "$VAULT_DIR" && _verify_fs_id "maps-dir parent" "." "$MAPS_PARENT_ID" \
       && mkdir "$MAPS_LEAF" \
       && cd "$MAPS_LEAF" \

@@ -26,7 +26,7 @@
 #      classifier crash refuses too; worktrees, plain directories and .single-writer repos pass; the lint agrees with
 #      the guard's main_checkout_verdict on a tracked file at the directory's top.
 set -u
-export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch fixtures; guard rows drop it
+export UNGUARDED_LAUNCH_OK=1
 unset CLAUDE_GLM_CONFIG_DIR  # the classifier reads it for its claude-glm lists: an inherited one would redirect every row
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LINT="$HERE/brief-lint.sh"
@@ -132,7 +132,7 @@ rc=0; out="$(run_worker "$tmp/tmpl_ok.md" --profile worker-impl)" || rc=$?
 [ "$rc" -eq 0 ] && ok "4d filled template brief passes" || bad "4d filled template brief (rc=$rc): $out"
 rc=0; out="$(run_worker "$tmp/fixture_plain.md" --profile worker-impl)" || rc=$?
 { [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q -- '--no-prior-art-check'; } \
-    && ok "4e a brief with no Contract/Completion field and no Prior art is refused (HIMMEL-4619)" || bad "4e field-less brief is refused (rc=$rc): $out"
+    && ok "4e a brief with no Contract/Completion field and no Prior art is refused" || bad "4e field-less brief is refused (rc=$rc): $out"
 rc=0; out="$(run_worker "$tmp/fixture_plain.md" --profile worker-impl --no-prior-art-check)" || rc=$?
 [ "$rc" -eq 0 ] && ok "4e2 --no-prior-art-check lets a field-less brief through" || bad "4e2 field-less brief with the flag (rc=$rc): $out"
 rc=0; out="$(run_worker "$tmp/fixture_plain_ok.md" --profile worker-impl)" || rc=$?

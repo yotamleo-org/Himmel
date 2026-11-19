@@ -24,8 +24,6 @@ such as Need or Token and the file that answers it is missing. worker-graph.sh u
       a seed that weak starts graphify from a common word, not from the answer.
 
 Fails open: an unreadable graph prints no seeds and says so on stderr.
-ponytail: word overlap with stemming over graph.json text, no embeddings; a paraphrase sharing no
-word with the file stays missed, qmd vectors over the same per-file text are the upgrade path.
 """
 import importlib.util
 import json

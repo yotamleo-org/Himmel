@@ -39,14 +39,8 @@ CONTENT = r"[ \t]*(?!#|(?:DoD|Definition of Done|Proof|Plan|What|Why)[ \t]*:?[ \
 GAP = r"[ \t]*\n(?:[ \t]*\n)*"  # the heading line's end, then any blank lines
 DOD_RE = re.compile(r"^[ \t]*(?:#+[ \t]*)?(?:DoD|Definition of Done)[ \t]*:?" + GAP + CONTENT, re.M | re.I)
 PROOF_RE = re.compile(r"^[ \t]*(?:#+[ \t]*)?Proof[ \t]*:?" + GAP + CONTENT, re.M | re.I)
-# ponytail: the words stand for the evidence - real bodies write "RED first, ...", "RED before the implementation,
-# GREEN after:" and "## RED / GREEN", so a line-structured match loses 39 of 110 real RED mentions; a sentence that
-# only mentions the words still counts. Upgrade: require a result (a pass/fail count) on the RED and GREEN line.
 RED_RE = re.compile(r"\bRED\b")
 GREEN_RE = re.compile(r"\b(?:GREEN|[Gg]reen)\b")
-# ponytail: the list is cut by updated time (a merge bumps it, so every PR merged after the cut-off is in), and the
-# extra PRs absorb older PRs touched later; more than POOL_EXTRA such PRs would push one out. Upgrade: page the
-# GraphQL search by `merged:` date.
 POOL_EXTRA = 40
 CR_BLOCK = "<!-- This is an auto-generated comment"
 
@@ -70,9 +64,7 @@ def default_mirror():
 
 
 def ticket_proof_ts(mirror, key):
-    """(found, ts): the mirror holds `key`, and when its DoD and Proof existed (None when it lacks either section).
-    ponytail: the mirror keeps no description history, so the ticket's created time stands for it - a section
-    added after creation reads as early; upgrade by reading the Jira changelog for the description field."""
+    """(found, ts): the mirror holds `key`, and when its DoD and Proof existed (None when it lacks either section)."""
     try:
         with open(os.path.join(mirror, key + ".md"), encoding="utf-8", errors="replace") as fh:
             text = fh.read()

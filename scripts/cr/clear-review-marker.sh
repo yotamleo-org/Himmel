@@ -619,10 +619,6 @@ ledger="$git_dir/cr-critic-scores.jsonl"
 # ledger gate below is evaluated at that reviewed head instead. A tip a panel ran
 # on is judged on its own rows, and any other unreviewed delta keeps the
 # no-responders refusal.
-# ponytail: the substitute head is read from <branch>.head, written by
-# review-round.sh start --head and writable by the same uid; what
-# it can buy is the clearance of a tests-paths-only delta over a head a critic
-# did review, never of a head with non-test changes. Upgrade path: sign the file.
 review_head="$tip"
 # Set only by the judge-go branch below: a `fixed` crit|imp at the reviewed head
 # is the delta the signed GO at the tip rules on, so gate 4 does not block on it.
@@ -1007,12 +1003,6 @@ verdict=$(JG_FIXED_OK="$jg_fixed_ok" IMPL_FAMILY="$impl_family" LEDGER="$ledger"
   //    least two text files (a search scoped to the finding file alone cannot
   //    find a sibling), and its hits may only be the finding file (or one file
   //    at most when the finding names none).
-  // ponytail: (HIMMEL-5364) residual forgeability - a search with zero hits still passes, and
-  // a sites list may name real files nobody opened; the gate proves the record
-  // is consistent with the tree, not that a sweep happened. Zero hits is kept
-  // on purpose: a sweep of a FIXED class legitimately finds
-  // nothing, so requiring one hit would refuse the honest record. Upgrade
-  // path: a second writer countersigning sweeps.
   const SQ = String.fromCharCode(39), DQ = String.fromCharCode(34);
   const BS = String.fromCharCode(92), BQ = String.fromCharCode(96);
   const META = ";|&$()<>" + BQ + String.fromCharCode(10, 13, 0);
@@ -1073,9 +1063,6 @@ verdict=$(JG_FIXED_OK="$jg_fixed_ok" IMPL_FAMILY="$impl_family" LEDGER="$ledger"
   // level. Its cost is bounded: a -P pattern over GREP_P_MAX chars is refused up
   // front, and each search gets GREP_MS (below the 20 s default) and fails
   // CLOSED as search-timeout.
-  // ponytail: the cap is a pattern length, not a regex complexity measure, so a
-  // short catastrophic -P pattern is bounded only by GREP_MS; upgrade path: a
-  // complexity check if one is ever seen to burn the budget.
   const GREP_P_MAX = 200, GREP_MS = 5000;
   let top;
   try { top = gitRun(["rev-parse", "--show-toplevel"]).trim() || undefined; } catch { top = undefined; }
@@ -1335,16 +1322,6 @@ fi
 # other diff never unlocks the floor - AND its ed25519 stamp verifies against
 # the floor signing PUBLIC key (claude-floor.mjs verify), so a
 # hand-written artifact (correct hash, invented session id) is refused.
-# ponytail: the signer runs as the authoring worker's uid, so any same-uid process
-# can still sign a forgery: run `claude-floor.mjs sign` with a registry row it
-# wrote itself, read the private key (~/.himmel/cr-floor-key/signing.key), or
-# swap the key pair. Even the headless reviewer is kept from the key only by
-# Claude Code's cwd permission model (no grant outside its snapshot under
-# acceptEdits), not by OS isolation, and that is unproven without a live
-# run. The stamp stops the hand-written
-# artifact, not a determined same-uid forger; the real fix is a signer on a
-# separate uid workers cannot become (verification here is public-key only, so
-# that move needs no gate change). Trust boundary: scripts/cr/claude-floor.mjs.
 floor_provenance_ok() {
     local _art="$git_dir/cr-floor/$tip.json" _fields _base _want _got
     [ -s "$_art" ] || { floor_provenance_why="no floor artifact at $_art"; return 1; }
@@ -1662,8 +1639,6 @@ esac
 # panel row (head not a commit hex) and a row at the base or off the branch did
 # not review this branch's code. A merge-base or a commit-shaped head that
 # cannot be read never reports ok. Read-only, so it runs under --dry-run too.
-# ponytail: the cutoff is a constant, not a ledger-recorded ship date. Upgrade
-# path: drop it once no in-flight branch predates it.
 if [ "$marker_lane" = "full" ]; then
     preflight_verdict=$(LEDGER="$ledger" BRANCH="$branch" BASE="$marker_base" TIP="$tip" PREFLIGHT_GATE_SINCE="2026-10-22T00:00:00Z" node -e '
       const fs = require("fs"), cp = require("child_process"), e = process.env;
@@ -1727,9 +1702,6 @@ fi
 # and, as in 4e, so is a branch whose first `score` row predates it (or
 # carries no ts); a branch with no `score` row at all (a Claude-floor-only
 # review) is not. Read-only, so it runs under --dry-run too.
-# ponytail: the row is self-attested, the same trust as `preflight`. Upgrade
-# path: run the pass as a context-free headless reviewer with a provenance
-# artifact, as claude-floor-review.sh does.
 if [ "$marker_lane" = "full" ]; then
     blast_verdict="error"
     _blastdiff="$(mktemp "${TMPDIR:-/tmp}/blast-diff.XXXXXX" 2>/dev/null || true)" # swallow-ok: an empty path keeps blast_verdict=error and gate 4f refuses (fail-closed)
@@ -1774,9 +1746,6 @@ if [ "$marker_lane" = "full" ]; then
     esac
 fi
 
-# ponytail: the row is self-attested, the same trust as `blast`. Upgrade path:
-# run the review as a context-free headless reviewer with a provenance artifact,
-# as claude-floor-review.sh does.
 cmt_count() {
     local _n _anchor="${HIMMEL_REPO:-}"
     case "$_anchor" in /*) ;; *) return 1 ;; esac
@@ -1925,8 +1894,6 @@ pr_rc=0
 # rather than let the lookup fail into `pr-lookup-failed`. A reset beyond the
 # bound refuses with the SAME exit 16 an unreadable PR state already gets, so
 # no exit code changes meaning.
-# ponytail: a missing helper file skips this ADVISORY wait (fail-open on the
-# preflight only); the lookup and check-ci below still fail closed on their own.
 GHB_LIB="$SCRIPT_DIR/../lib/gh-graphql-budget.sh"
 if [ -f "$GHB_LIB" ]; then
     # shellcheck source=scripts/lib/gh-graphql-budget.sh
@@ -2285,7 +2252,7 @@ marker_claim=""
 # cross-model nor floor evidence; the detail names the head it inherits from.
 if [ "$review_head" != "$tip" ]; then
     bash "$SCRIPT_DIR/ledger-append.sh" avail --branch "$branch" --head "$tip" --model claude --status ok \
-        --detail "trivial-descendant of reviewed head $review_head (HIMMEL-5856)" >/dev/null 2>&1 \
+        --detail "trivial-descendant of reviewed head $review_head (carried by clear-cr-marker)" >/dev/null 2>&1 \
         || echo "clear-cr-marker: WARNING: could not record the status=ok ledger row for ${tip:0:8}; ready-check item 4 will read it as missing." >&2
 fi
 if [ "$stale_marker" -eq 1 ]; then

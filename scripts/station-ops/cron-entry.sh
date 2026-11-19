@@ -50,10 +50,6 @@ re_sched='^[0-9*/,-]+( [0-9*/,-]+){4}$'
 case $action in set | remove) ;; *) bad action "must be set or remove" ;; esac
 [[ $tag =~ $re_tag ]] || bad tag "A-Za-z0-9- and at most 40 characters"
 
-# ponytail: any root-owned executable in /usr/local/bin passes, not only the message-session opener (none is
-# installed yet); upgrade path: pin command to the installed opener once one ships. /usr/local/libexec/himmel is
-# not offered: the never-remote floor refuses any parameter that names it. Upgrade path for that: offer
-# /usr/local/libexec/himmel once the floor exempts an op's own parameters there.
 opener_ok() {
     local p=$1 rel real owner mode
     [[ $p =~ ^/[A-Za-z0-9._/-]{1,250}$ ]] || return 1

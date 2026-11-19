@@ -273,7 +273,7 @@ assert_rc 'commit "echo x -exec rm -rf" denied' 2 "$(run_case "$(j_bash 'git com
 assert_rc 'commit "find -delete" allowed' 0 "$(run_case "$(j_bash 'git commit -m "docs: find -delete is now refused"')")"
 assert_rc 'commit "xargs rm -rf" allowed' 0 "$(run_case "$(j_bash 'git commit -m "a xargs rm -rf b"')")"
 assert_rc 'xargs echo allowed'           0 "$(run_case "$(j_bash 'ls | xargs echo')")"
-assert_rc 'xargs rm -f denied (HIMMEL-4255)' 2 "$(run_case "$(j_bash 'ls | xargs rm -f')")"
+assert_rc 'xargs rm -f denied' 2 "$(run_case "$(j_bash 'ls | xargs rm -f')")"
 assert_rc 'for; do echo allowed'         0 "$(run_case "$(j_bash 'for f in x; do echo; done')")"
 assert_rc 'for; do rm -f allowed'        0 "$(run_case "$(j_bash 'for f in x; do rm -f "x"; done')")"
 assert_rc 'if; then echo rm -r allowed'  0 "$(run_case "$(j_bash 'if true; then echo rm -r d; fi')")"

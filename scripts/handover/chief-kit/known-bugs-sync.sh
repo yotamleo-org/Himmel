@@ -18,8 +18,6 @@
 # One sync at a time: focus-refresh runs it inside its own exclusive refresh lock; a hand run needs
 # no refresh in flight.
 #
-# ponytail: a row deleted from the file by hand comes back as class `unset` on the next sync,
-# upgrade path = a tombstone row with an edit time.
 # Platform guard: bash 3.2+ with jq and GNU or BSD date (the Jira times are read with GNU date -d, else BSD date -j -f).
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

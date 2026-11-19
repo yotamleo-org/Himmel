@@ -85,12 +85,6 @@ export type TranscriptStats = {
 // `type:"tool_use"`; tool results arrive as `type:"tool_result"` blocks with
 // `.is_error`.
 //
-// ponytail: two known ceilings, both deliberate. (1) Subagent (`isSidechain`)
-// records live in the SAME transcript, so tool_calls / tool_call_errors are
-// whole-session totals including fan-out, not parent-only. (2) `duration_s`
-// spans the first to the last record this pass parses — first model turn to
-// last — not the true SessionStart instant, which the transcript never
-// records. Join against the session start row if that gap ever matters.
 export function readTranscriptStats(path: string | null): TranscriptStats | null {
   if (!path || !existsSync(path)) return null;
   if (statSync(path).size > TRANSCRIPT_MAX_BYTES) return null;

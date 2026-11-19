@@ -117,7 +117,7 @@ SHELL:scripts/lanes/worker-pr-open.sh
 SHELL:scripts/lanes/stop-worker.sh
 
 # --- Findings that appeared when the gate was tightened. Each is a
-# --- real call site, baselined (not exempted) and tracked for widening by HIMMEL-5403.
+# --- real call site, baselined (not exempted).
 
 # Shell: unsets only the original four vars (full 14-var set required now).
 SHELL:scripts/cr/live-gate-e2e.sh

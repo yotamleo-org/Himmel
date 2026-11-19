@@ -1,4 +1,4 @@
-# Optional CUDA runtime for transcribe.py (HIMMEL-7680): cuBLAS + cuDNN 9 wheels, ~1.3 GB.
+# Optional CUDA runtime for transcribe.py: cuBLAS + cuDNN 9 wheels, ~1.3 GB.
 # transcribe.py adds this file to its `uv run` only when a CUDA device is visible and
 # the libs are absent (a one-time re-exec); CPU-only hosts never download it.
 # Direct pins: nvidia-cublas-cu12, nvidia-cudnn-cu12==9.* (linux x86_64 only; the rest is the hashed closure).

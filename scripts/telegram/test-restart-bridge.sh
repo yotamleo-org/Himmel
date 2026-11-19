@@ -668,8 +668,6 @@ if [ -n "$REAL_STAT" ]; then
   # `stat -c %Y` first and falls back to BSD `stat -f %m`; on a BSD host the GNU
   # try fails (rc 1) before the read that works, so counting every invocation
   # reported 2 for one scan. A failed try reads nothing, so it is not a read.
-  # ponytail: static-only for macOS -- no BSD stat/bash 3.2 here; Linux (GNU stat
-  # succeeds first try, so the count is unchanged) is the run evidence.
   cat > "$STAT_COUNT_DIR/stat" <<EOF
 #!/usr/bin/env bash
 "$REAL_STAT" "\$@"
@@ -978,8 +976,6 @@ elif command -v lsof >/dev/null 2>&1; then
   # `-a` ANDs the selectors. Without it lsof ORs `-p` and `-d`, so
   # it lists EVERY fd of the pid plus every process's fd 200 -- always non-empty
   # on macOS, a false "leaked".
-  # ponytail: static-only -- the /proc branch above is what runs on Linux, so this
-  # lsof branch has no local run evidence; the macOS nightly is the proof.
   if [ -n "$(lsof -a -p "$run_pid" -d 200 -Fn 2>/dev/null)" ]; then
     fail "run: the lock fd 200 is not leaked into the exec'd supervisor" "lsof still reports fd 200 open on pid $run_pid"
   else

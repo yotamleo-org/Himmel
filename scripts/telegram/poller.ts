@@ -26,9 +26,6 @@ import { checkStaleHeartbeats, censusSessionAlive, DEFAULT_STALE_MS, type Alerte
 // dispatch below is the ONLY wired entry point. It resolves via
 // the fresh-import loader (resolveTelegramProfileSettings), never spawn-glm's
 // static import of plugin-profiles.mjs.
-// ponytail: the skill-cost SCANNER stays a static import (it produces data,
-// it validates nothing, so it cannot fail a dispatch); route it through the
-// cachebust dir too if its entries shape ever changes in step with skill-listing.
 import { scanSkillCosts } from "../lanes/skill-cost.mjs";
 
 // Poller logs are captured into vault notes, so no raw chat id may reach one
@@ -1072,8 +1069,6 @@ export const MAX_DOC_BYTES = 50 * 1024 * 1024;
 // of the file it copied. A tagged line goes only if the bytes the document sender holds have that sha256
 // (makeSendDoc compares them before the upload). An untagged line goes unless the file is a page type;
 // the bridge sends a report as .txt, .pdf, .png, .csv, .json or plain text.
-// ponytail: a session that writes both fields and the right sha256 by hand still passes (the bridge can
-// append to its own outbox); the upgrade path is a hook denying the bridge outbox writes of those fields.
 export const SEND_FILE_VIA = "send-file";
 const PAGE_TYPE = /\.(html?|md|markdown)$/i;
 const untaggedPageRefusal = (path: string): string | null => PAGE_TYPE.test(path)

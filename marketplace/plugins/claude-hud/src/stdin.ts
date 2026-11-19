@@ -124,7 +124,7 @@ export function resolveModelName(
   modelSource: 'auto' | 'stdin' | 'transcript' = 'stdin',
 ): string {
   const stdinModel = getModelName(stdin);
-  // himmel delta (HIMMEL-2900): the claudex lane drives Codex, not Claude, so
+  // himmel delta: the claudex lane drives Codex, not Claude, so
   // stdin's model fields describe the harness, not the model serving the session.
   if (isClaudexLane()) {
     return process.env.CODEX_MODEL?.trim() || process.env.ANTHROPIC_MODEL?.trim() || `${stdinModel}?`;

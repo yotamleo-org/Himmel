@@ -182,7 +182,7 @@ rm -rf "$t"
 t="$(fixture_mktemp_dir)" || exit 1
 mkmergeref "$t" "build(deps): bump the group across 6 directories" "fix(api): HIMMEL-5 pr commit"
 out="$(run_cr "$t")"; rc=$?
-if [ "$rc" -eq 1 ]; then pass "control: stale base without --merge-ref -> rc1 (the HIMMEL-3413 shape)"; else fail "expected rc1, got $rc: $out"; fi
+if [ "$rc" -eq 1 ]; then pass "control: stale base without --merge-ref -> rc1"; else fail "expected rc1, got $rc: $out"; fi
 rm -rf "$t"
 
 # control: a non-conforming commit ON the PR branch still fails under --merge-ref

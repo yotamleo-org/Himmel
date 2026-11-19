@@ -8,6 +8,7 @@
 # chief-kit dir. It carries no `test-` prefix, so it is not a suite and has no tier row.
 # No state outside $W: a suite that sources it never reaches the real ~/.himmel, queue or vault.
 HERE="$(cd "$(dirname "$0")" && pwd)"
+fx_kp=HIMMEL fx_lp=LUNA
 SUT="$HERE/tick.sh"
 W="$(mktemp -d "${TMPDIR:-/tmp}/tick-test.XXXXXX")" || exit 1  # prim-ok: the suite's own private temp root, removed by the EXIT trap below
 trap 'rm -rf "$W"' EXIT
@@ -77,14 +78,15 @@ STUB
 # never touches ~/.claude/projects: N61 has a transcript, N66 does not.
 cat > "$W/repo/scripts/lanes/worker-burn.sh" <<'STUB'
 #!/usr/bin/env bash
+kp=HIMMEL
 case "$1" in
-  HIMMEL-111-legN61)
+  "$kp"-111-legN61)
     printf 'worker-burn x.jsonl: calls=4 avg-ctx=128.1k first-turn=74.3k out=185 compactions=2 text-only=2\n' ;;
-  HIMMEL-555-N41-thing)
+  "$kp"-555-N41-thing)
     printf 'worker-burn y.jsonl: calls=9 avg-ctx=90.0k first-turn=60.0k out=100 compactions=0 text-only=1\n' ;;
-  HIMMEL-777-legN77)
+  "$kp"-777-legN77)
     printf 'worker-burn s.jsonl: calls=90 avg-ctx=100.0k first-turn=32.3k out=900 compactions=2 text-only=0 cost-eq=3100.5k floor-share=9.0%%\n' ;;
-  HIMMEL-888-legN88)
+  "$kp"-888-legN88)
     printf 'worker-burn h.jsonl: calls=400 avg-ctx=106.0k first-turn=32.3k out=900 compactions=7 text-only=0 cost-eq=7689.4k floor-share=9.0%%\n' ;;
   *) printf 'worker-burn: no transcript found for session name: %s\n' "$1" >&2; exit 2 ;;
 esac
@@ -101,8 +103,8 @@ STUB
 # ceiling= which scans every session regardless of --workers), 103 (the chief
 # -- no --autocompact, exempt from drift).
 # launch-guard-ok: test fixture (process cmdline stubs), nothing is launched
-mkcmdline 101 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-111-legN61 work
-mkcmdline 102 claude --model claude-opus-5 --autocompact 200000 -n LUNA-222-legN9 work
+mkcmdline 101 claude --model claude-sonnet-5 --autocompact 200000 -n "$fx_kp"-111-legN61 work
+mkcmdline 102 claude --model claude-opus-5 --autocompact 200000 -n "$fx_lp"-222-legN9 work
 mkcmdline 103 claude --model claude-sonnet-5 -n HIMMEL-next-chief work
 mk_pgrep_x "$W/bin" 101 102 103
 
@@ -198,8 +200,8 @@ printf '%s\n' '{"five_hour":{"utilization":30},"seven_day":{"utilization":28}}' 
 # N61 has no PR; its description field is what --verbose prints beside the label.
 # worker_description reads the tracker and forge seams: pin both off so no row reaches Jira or GitHub.
 export TRACKER=none FORGE=none
-doc_n61="$W/handover/HIMMEL-111-legN61.md"
-doc_n65="$W/handover/HIMMEL-222-legN65.md"
+doc_n61="$W/handover/$fx_kp-111-legN61.md"
+doc_n65="$W/handover/$fx_kp-222-legN65.md"
 printf '%s\n' '---' 'description: Add a login form' '---' '# worker' '- LIVE — working' > "$doc_n61"
 printf '%s\n' '# worker' '- READY — done' > "$doc_n65"
 printf '123456789\n' > "$W/handover/inbox/N61.md"
@@ -213,7 +215,7 @@ export HOME="$W/home"
 mkdir -p "$HOME"
 export DOC="$W/handover/chief.md"
 export TOKEN=test-token
-export WORKERS='HIMMEL-111-legN61 HIMMEL-222-legN65'
+export WORKERS="$fx_kp-111-legN61 $fx_kp-222-legN65"
 export HANDOVER_DIR="$W/handover"
 # parked= reads the trust shadow ledger; never the real ~/.claude/himmel one.
 export HIMMEL_TRUST_LEDGER_DIR="$W/trust-ledger"

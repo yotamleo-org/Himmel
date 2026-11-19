@@ -26,10 +26,6 @@
 # `eval`, or a quoted/escaped command word, and otherwise falls back to the
 # hook's own scan alone.
 #
-# ponytail: a `$(…)` or backtick that splits a pipeline renders as `;`, so a
-# variant loses the pipe across a substitution; a heredoc body is not
-# rendered. Both stay covered by the hook's scan of the original text. Upgrade
-# path: carry the pipe edge across substitution segments if a leak shows.
 #
 # Exports to the caller after guard_unwrap returns 0:
 #   GU_CWD_UNKNOWN  1 when this command (cd, pushd, popd, env -C, sudo -D) or

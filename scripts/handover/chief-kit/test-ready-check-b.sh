@@ -408,7 +408,7 @@ chmod 600 "$LEDGER"
 chain_head() { printf '%040x' "$1"; }
 # seed_hop <head> <reviewed head>: the avail row of a tip cleared as a trivial descendant of <reviewed head>
 seed_hop() {
-    printf '{"kind":"avail","ts":"2026-01-01T00:00:02Z","branch":"%s","head":"%s","model":"claude","status":"ok","detail":"trivial-descendant of reviewed head %s (HIMMEL-5856)"}\n' "$SEED_BRANCH" "$1" "$2" >> "$LEDGER"
+    printf '{"kind":"avail","ts":"2026-01-01T00:00:02Z","branch":"%s","head":"%s","model":"claude","status":"ok","detail":"trivial-descendant of reviewed head %s (carried by clear-cr-marker)"}\n' "$SEED_BRANCH" "$1" "$2" >> "$LEDGER"
 }
 # seed_clean_at <head>: a critic's ok avail row at <head>, a full round that found nothing
 seed_clean_at() {

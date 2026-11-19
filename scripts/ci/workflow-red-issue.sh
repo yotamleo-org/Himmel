@@ -23,9 +23,6 @@
 # Closing an issue stamps the run id into its body, and the lookup
 # pages through closed issues too, so an older red run finishing after a newer
 # green one is ignored.
-# ponytail: a run `cancelled` by timeout-minutes is no verdict here (main-sweep
-# reads the job annotations for it), upgrade the same way if a hung job in a
-# listed workflow goes unreported.
 #
 # Usage:  workflow-red-issue.sh <run-id>
 # Env:

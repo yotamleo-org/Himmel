@@ -186,7 +186,7 @@ assert_rc "main rc=0" "0" "$rc"
 ( cd "$REPO" || exit 99; git checkout -q feat/test )
 
 # Test 1b: master branch -> exit 0 -----------------------
-echo "TEST: master branch exits 0 (HIMMEL-297 — master is a protected default too)"
+echo "TEST: master branch exits 0 (master is a protected default too)"
 ( cd "$REPO" || exit 99; git checkout -q -b master )
 rc=0
 out=$( cd "$REPO" || exit 99; printf '' | bash "$HOOK" 2>&1 ) || rc=$?

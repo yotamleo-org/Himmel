@@ -36,7 +36,7 @@ echo "TEST: a conventional title with no ticket is refused"
 err_c=$(bash "$SUT" "fix(x): foo with no ticket" 2>&1); rc_c=$?
 if [ "$rc_c" -ne 0 ]; then pass "ticketless title refused (rc!=0)"; else fail "ticketless title refused (rc!=0)" "got rc=$rc_c err=$err_c"; fi
 
-echo "TEST: a dependabot-authored ticket-less title passes when TICKET_ID_AUTHOR is threaded (HIMMEL-3616 judge J1284O F1)"
+echo "TEST: a dependabot-authored ticket-less title passes when TICKET_ID_AUTHOR is threaded"
 out_e=$(TICKET_ID_AUTHOR='dependabot[bot]' TICKET_ID_TRUSTED_AUTHOR='dependabot[bot]' bash "$SUT" "build(deps): bump foo from 1 to 2" 2>&1); rc_e=$?
 if [ "$rc_e" -eq 0 ]; then pass "threaded dependabot author passes (rc=0)"; else fail "threaded dependabot author passes (rc=0)" "got rc=$rc_e out=$out_e"; fi
 
@@ -44,7 +44,7 @@ echo "TEST: the same ticket-less title is still refused for a non-exempt author"
 err_f=$(TICKET_ID_AUTHOR='yotamleo' TICKET_ID_TRUSTED_AUTHOR='yotamleo' bash "$SUT" "build(deps): bump foo from 1 to 2" 2>&1); rc_f=$?
 if [ "$rc_f" -ne 0 ]; then pass "non-exempt author still refused (rc!=0)"; else fail "non-exempt author still refused (rc!=0)" "got rc=$rc_f err=$err_f"; fi
 
-echo "TEST: GitHub's revert-button title shape is accepted (HIMMEL-3616 judge J1284O F5)"
+echo "TEST: GitHub's revert-button title shape is accepted"
 out_g=$(bash "$SUT" 'Revert "fix(x): [HIMMEL-1] foo"' 2>&1); rc_g=$?
 if [ "$rc_g" -eq 0 ]; then pass "revert-button title accepted (rc=0)"; else fail "revert-button title accepted (rc=0)" "got rc=$rc_g out=$out_g"; fi
 

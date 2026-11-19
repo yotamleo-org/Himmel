@@ -26,8 +26,6 @@ CC_KEY_RE_SED='([Hh][Ii][Mm][Mm][Ee][Ll]|[Ll][Uu][Nn][Aa])-[0-9]+(/[0-9]+)*'
 # key and no trailing `(#n)`: bracket tags and scope or parenthesis groups
 # holding only keys go first, then bare keys, then trailing PR numbers (one
 # or several). Mid-text `#n` stays.
-# ponytail: a key inside prose strands its words, as in "(deferred from )",
-# upgrade path a by-hand reword.
 cc_strip_keys() {
     local k="$CC_KEY_RE_SED"
     sed -E \

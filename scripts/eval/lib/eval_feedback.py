@@ -695,7 +695,6 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None, repo=None
                 if is_split(new):
                     verdict, extra = keep_rule(c, series, by_id.get(c["baseline_run_id"]), new, after)
                 else:
-                    # ponytail: a bare sign test, no noise band; the split rows' keep rule is the upgrade path.
                     verdict = "flat" if delta == 0 else "improved" if worse(c["value"], after, c["better"]) \
                         else "regressed"
                 m = envelope(id=c["id"], eval=ev, metric=c["metric"], status="measured", before=c["value"],

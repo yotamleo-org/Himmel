@@ -13,7 +13,7 @@
 #   macos-cadence run 38401182192 (d0123766, shards 1-8)
 # and failed in neither, minus three wall-clock-budget suites (hook-chain-latency,
 # run-shell-tests-timing, session-end-timeout-budget) that a shared macOS runner
-# can flake. Every suite left out stays tracked on HIMMEL-3183 (the ratchet).
+# can flake. Every suite left out joins later through the same ratchet.
 
 # --- hooks (scripts/hooks)
 # PreToolUse/stop hooks and guards run under macOS bash 3.2 and BSD userland; a guard that fails open there is a silent safety hole.

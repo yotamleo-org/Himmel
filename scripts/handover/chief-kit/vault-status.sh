@@ -15,8 +15,6 @@
 # (HANDOVER_DIR, e.g. <luna>/handovers). Thresholds, minutes:
 # TICK_VAULT_STALL_MIN (default 20), TICK_VAULT_PUSHLAG_MIN (default 60).
 # Git plumbing only, no index refresh, read-only (--no-optional-locks), bounded.
-# ponytail: age is the oldest file mtime / oldest unpushed commit time, not the
-# moment the hook began failing; the thresholds absorb that, a stage-time ledger is overkill.
 # bash 3.2-safe (the chief kit is Linux-only).
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,7 +22,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
 # shellcheck source=../../lib/git-clean.sh
 . "$HERE/../../lib/git-clean.sh"
-git_env_scrub   # not a git hook - safe to scrub GIT_INDEX_FILE too (HIMMEL-3570)
+git_env_scrub
 
 want_path=0
 [ "${1:-}" = "--path" ] && want_path=1
@@ -55,8 +53,7 @@ case "$lag_min" in ''|*[!0-9]*) lag_min=60 ;; esac
 stall_min=$((10#$stall_min)); lag_min=$((10#$lag_min))   # 08/09 are not octal
 
 g rev-parse --git-dir >/dev/null 2>&1 || { printf 'unknown\n'; exit 0; }
-# -z turns off path quoting; tr then makes it line-based (ponytail: a path with a
-# newline in its name splits in two, parse NUL-delimited if one ever shows up)
+# -z turns off path quoting; tr then makes it line-based
 staged="$(g diff --cached --name-only -z 2>/dev/null | tr '\0' '\n'; exit "${PIPESTATUS[0]}")" || { printf 'unknown\n'; exit 0; }
 dirty="$(g diff --name-only -z 2>/dev/null | tr '\0' '\n'; exit "${PIPESTATUS[0]}")" || { printf 'unknown\n'; exit 0; }
 idx="$(g rev-parse --path-format=absolute --git-path index 2>/dev/null)" || idx=""

@@ -41,9 +41,8 @@
 # show-environment` (with or without --user), `systemctl show` with no operand
 # or a -p / --property list naming Environment, and a busctl/gdbus/dbus-send
 # clause on the systemd Manager with Environment, GetAll or introspect are denied
-# the same way. This is an open list of shapes, not a closed class: `show -P NAME`,
-# wrappers and relays (ssh, systemd-run, machinectl, rtk proxy, ...) are not read;
-# the ponytail by the systemctl arm names them. Another entry adds
+# the same way.
+# Another entry adds
 # shell tracing that can print the inherited environment (`bash -x`, `-o xtrace`,
 # `set -x`, SHELLOPTS=xtrace, BASH_XTRACEFD; denied even under `env -i`). Another entry adds
 # a python/node/bun/deno command that prints the whole environment or reads
@@ -69,84 +68,6 @@
 #     reaches the reader via `$1`. That is the variable-indirection gap below,
 #     not a literal arg. Scanning stops at the body's closing quote, so a
 #     trailing positional after a NON-secret body read is not over-blocked.
-#     ponytail: variable bodies (`bash -c "$CMD"`), `eval` bodies
-#     (`eval 'cat .env'`, not rescanned), process substitution
-#     (`bash <(echo 'cat .env')`), `-c` after a non-flag operand,
-#     and nested quoting the quote-naive body close misreads stay unscanned
-#     (a glob in a later body statement, `bash -c 'echo; cat .e*'`, IS
-#     expanded: rs_tokens drops the body's closing quote first), revisit
-#     when the first real leak of that shape appears.
-#   * `git show HEAD:.env` and `git cat-file -p HEAD:.env` ARE now caught
-#     (a `REV:path` operand whose path is a secret); git stays out of the
-#     reader list, so `git log -p` or `git diff` over a committed secret is not.
-#   * Secret stores: `secret-tool lookup|search|store`, `security
-#     find-*-password -w|-g` and `dump-keychain`, `kwallet-query -r`, any
-#     busctl/gdbus/dbus-send call naming GetSecret, `systemd-creds
-#     decrypt|cat`, `op read|inject|run`, `sops` decrypt shapes, `age -d`, and
-#     scripts/lib/himmel-secrets get|put|import-env|export-env are denied;
-#     `himmel-secrets status|exec|same-value|names` and the keyring's Locked
-#     property read pass (same-value answers by exit code alone and prints no
-#     value; the secrets migration needs it; names prints names only).
-#     ponytail: a store reached through python/node bindings (secretstorage,
-#     keytar) is not read, revisit on the first real call of that shape.
-#   * Cross-command exfil: `mv .env /tmp/x; cat /tmp/x` — mv is write-only,
-#     and the second command targets a non-secret path. (`cp .env /tmp/x`
-#     itself is denied.)
-#   * accepted false positives: `env | grep PATH` (a bare `env`
-#     is a dump) and `echo '$MY_TOKEN'` (a quoted `$VAR` is still named).
-#     The verbs run on quote-aware segments, so a quoted `env` in a commit
-#     message or `--body` is NOT a dump; a command the tokenizer will not read
-#     falls back to the raw clause split, where it is. READ_SECRETS_OK=1 is the
-#     bypass. The G4 follow-up closed `{ env; }`, loop-body `env`, unquoted glob
-#     sources (`cat .en*`), `gzip -c`/`xz -c`, `gh gist`, `aws s3 cp`, `.AWS`
-#     case variants and `<<< "$TOKEN"`; it also made `rsync -f '- .env'` (an
-#     exclude filter) a false positive and stopped denying `declare -fx`.
-#     ponytail: `bash <<'EOF'` with an env body is not read (needs the
-#     tokenizer's heredoc bodies, lib/ is out of scope), upgrade path
-#     once the tokenizer exposes heredoc bodies.
-#   * Variable indirection: `F=.env; cat $F` — no `.env` token after `cat`.
-#   * Inline interpreter bodies (`node -e`, `python -c`): command-position
-#     fixes the COMMON false positive (coincidental `obj.key` property access
-#     and reader-named identifiers like `file`/`type`). A body that literally
-#     contains `<separator><reader-name><secretfile>` adjacent (e.g.
-#     `node -e "x; cat .env"`) still fragments to a `cat .env` clause and
-#     blocks — same class as `bash -c 'cat .env'`.
-#   * A reader whose own filter/arg equals a secret name: `jq .env file.json`
-#     (filter literally `.env`) blocks — jq is the command, `.env` its arg;
-#     command-position can't tell a jq filter path from a filename. grep/rg/
-#     sed/awk have the identical ambiguity for their PATTERN/script argument
-#     (`grep '.env' file.txt` searches file.txt FOR the text ".env") and it
-#     IS fixed for that family, narrowly: a QUOTED
-#     (`'...'`/`"..."`) argument is exempt from the secret-path check ONLY
-#     when it is the token IMMEDIATELY after the bare reader command — ZERO
-#     flags in between — or, as the one explicit exception, immediately
-#     after an `-e`/`--regexp` flag (grep's own explicit-pattern flag; its
-#     value is unambiguously always a pattern, at any position) AND ONLY
-#     for a grep/sed/awk-family command (`-e` means something
-#     unrelated for other readers — GNU cat's `-e` is `-vE`, and
-#     `cat -e .env` genuinely reads .env; an earlier cut applied the -e
-#     exemption regardless of command, false-ALLOWing it). ANY other
-#     flag before an otherwise-implicit pattern (`-rn '.env'`, `-m 1
-#     '.env'`) is NOT exempt and falls back to the ordinary (blocking) scan.
-#     This is deliberately narrower than "the first non-flag argument",
-#     which rounds 1-4 each tried and each broke in a different way a panel
-#     review found: `rg --ignore-file .env TOKEN src/` and
-#     `rg --ignore-file '.env' TOKEN src/` both false-ALLOWED a
-#     real secret read (an unrecognised flag's value consumed the
-#     exemption), `grep -m 1 '.env' file.txt` false-BLOCKED (an
-#     unquoted flag VALUE like `-m`'s count consumed the sole exemption
-#     before the real pattern arrived), and `grep TOKEN '.env'`
-#     false-ALLOWED once more (an unquoted IMPLICIT pattern didn't close the
-#     slot, leaving a later quoted argument — the real target — free to
-#     claim it). Distinguishing "a flag's value operand" from "a genuine
-#     positional pattern" requires an arity table per flag per tool
-#     (grep/egrep/fgrep/rg/ripgrep/ag/sed/awk/gawk/mawk/nawk each differ),
-#     which is unbounded scope; restricting the exemption to position ZERO
-#     (or right after -e/--regexp specifically) sidesteps the whole
-#     ambiguity class instead of chasing one more instance of it. `-f`/
-#     `--file` (grep/sed/awk's pattern/script-FROM-a-file flag) gets its own
-#     explicit-state handling too — always scanned as a
-#     real target, never exempt.
 #
 #     rounds 5-6 checked `prev` against RAW TEXT
 #     ("-e"/"--regexp", or the command's own name for position 0). That is
@@ -244,47 +165,6 @@
 #     and timeout's one DURATION operand, so `timeout 5 cat .env`,
 #     `nice -n5 cat .env` and `sudo -u u cat .env` deny. The command word is
 #     matched with its quotes removed, so `'cat' .env` denies too.
-#     ponytail: wrappers outside the set (`strace`, `stdbuf`, `ionice`,
-#     `flatpak-spawn`) and a value-taking wrapper flag missing from the table
-#     still make their operand the command token, revisit
-#     when a real call shows one of them.
-#   * `cat <<< .env` here-string normalises to `cat < < < .env` and trips the
-#     `<`-redirect path though it reads no file.
-#   * NTFS alternate data streams: `.env:stream` is not matched (low risk —
-#     POSIX toolchains don't address ADS via the colon syntax).
-#   * 8.3 short names: `ENV~1` is not matched (short-name generation is off
-#     by default on modern NTFS volumes).
-#   * glued option tokens. Everything above tokenized whole
-#     shell words and matched each one AS a candidate secret path — it never
-#     looked INSIDE a token, so a GLUED option — `--file=.env` / `-f.env`
-#     (bundled `-rf.env` too) / PowerShell's `-Path:.env` — matched no glob
-#     and was ALLOWED, even though `grep -f.env` genuinely opens and reads
-#     that file as its pattern source. `glued_opt_secret()` now splits a
-#     glued token at its FIRST `=`/`:` (or past a bundled short `f`) and
-#     scans the value half, in both the outer clause and the
-#     recursed `-c` body. It is checked in its own `if`, outside the
-#     exemption chain, so — EXCEPT for the armed-state skip
-#     described below — a glued value is scanned UNCONDITIONALLY: including
-#     for -e/--regexp, whose separate-token value would be exempt (`grep
-#     --regexp=.env file.txt` now denies: an ACCEPTED false positive, named
-#     via `glued_hint` on the denial), and for a value that is a glob rather
-#     than a file (`--exclude=*.pem`). `sed --in-place=.env file.txt` also
-#     now denies for the same reason — a real in-place rewrite that leaks
-#     nothing, but the glued value can't be told apart from a real read
-#     target without per-tool knowledge. The one exception: a token already
-#     consumed as a preceding `-f`/`-e`'s own value (`grep -f --file=.env` —
-#     `-f` opens a file literally named `--file=.env`) is skipped, using the
-#     same round-7 armed state (`expect_file_val`/`expect_pattern_val`), so
-#     the ordinary consumption rule still wins there. Because the short-glue
-#     split (`-*f?*`) matches at the FIRST `f` in the token regardless of
-#     what precedes it, a bundle whose earlier letter would really have
-#     consumed the rest (`grep -m1f.env` — plain getopt bundling reads this
-#     as `-m 1f.env`, `-m`'s own value) still gets split and denied anyway:
-#     over-blocking, never a leak, so it needs no fix. The genuine residual,
-#     same "unbounded per-tool arity table" class the rest of this header
-#     already declines to enter: a glued value on a single-letter
-#     file-taking flag that is NOT `f` (the short-glue split recognises only
-#     `f`) is never split and falls back to the ordinary whole-token scan.
 #
 # Hook input arrives on stdin as JSON. Exit codes:
 #   0 — allow (default)
@@ -501,7 +381,7 @@ g4_secret_path() {
     done
     b="${p##*/}"; b="${b##*\\}"
     _tolower_ascii "$b"; b="$_TOLOWER_OUT"
-    _tolower_ascii "$p"; p="$_TOLOWER_OUT"   # HIMMEL-5292: `.AWS/credentials` is the same file on a case-folding volume
+    _tolower_ascii "$p"; p="$_TOLOWER_OUT"   # `.AWS/credentials` is the same file on a case-folding volume
     case "$b" in
         .netrc|_netrc|.npmrc|.pgpass|.pypirc|.git-credentials|.credentials.json) return 0 ;;
         terraform.tfstate|terraform.tfstate.backup|.ssh|.aws|.kube|.gnupg)       return 0 ;;
@@ -1223,12 +1103,6 @@ G4_SD_HINT='Check one setting with: printenv NAME (a non-credential name, e.g. p
 # must name the option (a brace may split it, `x{,}trace`) AND hold a word that
 # can consume it: set/shopt/setopt/unsetopt/eval/trap, a shell, SHELLOPTS,
 # BASHOPTS or BASH_XTRACEFD. `text ~ "xtrace"` in a JQL string holds none.
-# ponytail: a JQL or chat text that also holds the word `set` or `sh` stays
-# refused, upgrade path a parse of the one command that receives the text. The
-# option name and the word that consumes it in different words (`o=' xtrace'; set -o $o`,
-# `printf '%s -o xtrace\n' set | bash`, `bash -c 'set -o $1' _ ' xtrace'`) are
-# not joined, so tracing turned on that way is not seen; upgrade path: join one
-# segment's words before the check.
 g4_text_traces() {
     local t="${1//_/}"
     local cont='[xX][tT][rR][aA][cC][eE]'
@@ -1457,7 +1331,7 @@ g4_scan() {
                 case "$d" in -*) ;; *) if g4_envish_name "$d"; then hit=1; note="printenv of a credential variable"; fi ;; esac ;;
             declare|typeset|export|readonly)
                 case "$d" in
-                    -*[fF]*) ;;     # HIMMEL-5292: function mode, not variables
+                    -*[fF]*) ;;     # function mode, not variables
                     -*[px]*) pflag=1 ;;
                     -*)   ;;
                     SHELLOPTS=*xtrace*|BASH_XTRACEFD=*) xt=1 ;;
@@ -1554,17 +1428,6 @@ g4_scan() {
             if [ "$nargs" = 0 ] && [ "$nflags" = 0 ]; then hit=1; note="bare $cmd dumps variables"; fi
             if [ "$pflag" = 1 ] && [ "$nnames" = 0 ]; then hit=1; note="$cmd -p dumps variables"; fi ;;
         gh) if [ "$a1" = auth ] && { [ "$a2" = token ] || [ "$showtok" = 1 ]; }; then hit=1; note="gh auth token prints a credential"; fi ;;
-        # ponytail: the shapes covered are `systemctl [flags] show-environment`, `systemctl
-        # show` with no operand or a -p / --property list naming Environment (so a unit's
-        # own Environment is denied too, an accepted false positive), and a busctl, gdbus or
-        # dbus-send clause naming org.freedesktop.systemd1 with Environment, GetAll or
-        # introspect. Open list, NOT read: `show -P NAME` (and `-PNAME`), a variable-built
-        # command, an alias, a short flag glued to others (`-ap Environment`), a flag value
-        # before the verb (`-H host show`) or after it (`show -n 1`, `show -o json`), an
-        # abbreviated long option (`show --prop`), and a wrapper or relay: rtk proxy, ssh,
-        # run0, systemd-run, machinectl, watch, script -c, a heredoc, xargs from stdin.
-        # Upgrade path: stop importing credentials into the manager (the install side of this
-        # fix), so no dump has anything to print, instead of parsing more shapes.
         busctl|gdbus|dbus-send)
             if [ "$sd1" = 1 ] && [ "$sdenv" = 1 ]; then
                 hit=1; note="$cmd read of the systemd manager environment prints credentials. $G4_SD_HINT"
@@ -1616,15 +1479,6 @@ g4_scan() {
 # Bun and Deno: `Bun.env` and `Deno.env.toObject()` are the whole mapping;
 # `Bun.env.HOME`, `Bun.env[`, `Deno.env.get(` / `Deno.env.has(` are single keys.
 # Python's bytes twin `os.environb` counts the same as `os.environ`.
-# ponytail: an accepted false positive on a membership test (`"CI" in
-# os.environ`) and on handing the mapping to a child (`env={**os.environ}`);
-# perl %ENV, ruby ENV and `uv run python` are not read. Revisit on the first
-# real call of either shape. TEXT is the whole command, not the interpreter's
-# own clause, so a later clause naming os.environ (a commit message) also
-# denies; per-clause scanning that keeps the heredoc body is not done.
-# Also (not matched here): an interpreter shell-out to `env`
-# (`os.system('env')`, `execSync('env')`), `process['env']` and a destructured
-# `const {env} = process`.
 interp_env_dump() {
     local t="$1" k
     if [[ $t =~ /proc/[^/[:space:]]+/environ ]]; then return 0; fi
@@ -1734,9 +1588,6 @@ is_transcript_path() {
 # per-project `memory/` subtree stays allowed, and only with no `..` in the
 # path (`memory/..` is the project directory again). A slug can hold a dot
 # (`-home-u-repo.example`), so a basename is never taken as "a file".
-# ponytail: a Grep rooted ABOVE projects (`~/.claude`, `~`) still walks into
-# transcripts, and a Bash reader (`cat`/`grep -r`/`jq` on a transcript) is not
-# matched: both need a per-token path check across scan_clause's reader sites,
 is_transcript_tree() {
     local p="${1%/}"
     is_transcript_path "$p" && return 0
@@ -1774,7 +1625,7 @@ SCAN_MAX_DEPTH=4
 scan_clause() {
     local clause="$1" depth="$2"
     local cmdtok="" reader=0 secret_after=0 inplace=0 prev=""
-    local pattern_cmd=0     # cmdtok is grep/sed/awk-family (HIMMEL-2213)
+    local pattern_cmd=0
     local grep_cmd=0        # cmdtok is grep/egrep/fgrep: boolean flags keep the pattern slot
     local at_pos0=0             # the NEXT token is the one right after cmdtok
     local expect_pattern_val=0  # the NEXT token is -e/--regexp's value (always data)
@@ -2253,10 +2104,6 @@ EOF
 
         # Run last, once this pass's own verdict is in: a denial here is final,
         # and the list carries what a re-run needs from this pass.
-        # ponytail: a command over 30000 characters hands its re-runs no skip list (a
-        # multibyte character is up to 4 bytes and one exec argument is capped at
-        # 128 KB), so they rescan in full;
-        # upgrade path: a temp file for the list.
         if [ "$block" != 1 ]; then
             _rs_skip=
             if [ "${#normalized}" -le 30000 ]; then _rs_skip="${GU_TOKENIZED:-0} $g4_interp"$'\n'$normalized; fi

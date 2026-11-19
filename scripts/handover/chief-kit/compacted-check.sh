@@ -22,12 +22,6 @@
 # backticks (the template mandates one backtick span per token, and anything
 # comparing them strips backticks first).
 #
-# ponytail: the snap also records `lock` and `go-file` (the queue-lock token
-# and the newest .locks/go/ file) but the shipped bullet format carries
-# neither, so they are NOT compared here - they exist for forensics and for a
-# successor that needs the lock token the compacted chief held. Adding
-# `lock:` to the bullet would need a chief-template.md edit plus a one-line
-# addition to FIELDS below.
 #
 # Platform guard: POSIX bash 3.2+, sha256sum or shasum.
 set -uo pipefail

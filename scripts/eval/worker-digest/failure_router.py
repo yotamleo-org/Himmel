@@ -104,7 +104,7 @@ SHAPE = ("## Impact", "Workers lost time to the same failure class, so the harne
          "## DoD", "- The class stops recurring in the failure review.",
          "## Proof", "The next daily failure review shows the class gone against today's count.",
          "## Agent detail")
-HEADS = ("Failure-loop recurrence (HIMMEL-4670 router).", "Failure-loop recurrence update.", "") + SHAPE
+HEADS = ("Failure-loop recurrence (router).", "Failure-loop recurrence update.", "") + SHAPE
 INBOX_LINE = re.compile(r"^- \d{4}-\d{2}-\d{2} (denied|suite|blocked|error|run_error|traj)/%s workers=\d+ "
                         r"topic=[a-z0-9-]+\.md: candidate line, classifier denials recurred, check the allow-rule shape$"
                         % SUB)

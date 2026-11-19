@@ -110,7 +110,7 @@ printf 'rc3\n' > "$W/wstate/HIMMEL-9811-N811-other"
 check 'several workers list rc3 and rc4 side by side' 'N810:rc4,N811:rc3' "$(field wakerstate "$(run "$held,$held2")")"
 
 printf 'capped\n' > "$W/wstate/HIMMEL-9811-N811-other"
-check 'a waker stopped at its rewake cap reads wakerstate=<label>:capped (HIMMEL-8863)' 'N810:rc4,N811:capped' "$(field wakerstate "$(run "$held,$held2")")"
+check 'a waker stopped at its rewake cap reads wakerstate=<label>:capped' 'N810:rc4,N811:capped' "$(field wakerstate "$(run "$held,$held2")")"
 printf 'rc3\n' > "$W/wstate/HIMMEL-9811-N811-other"
 
 printf 'rc3\n' > "$W/wstate/HIMMEL-9801-N801-free"

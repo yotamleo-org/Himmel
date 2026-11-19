@@ -13,6 +13,7 @@
 #
 # Platform guard: POSIX bash 3.2+ (shell-only harness).
 set -uo pipefail
+KP=HIMMEL
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="$HERE/worker-jira-status.sh"
@@ -1526,7 +1527,7 @@ reset "Done"
 owned "HIMMEL-901"; owned "HIMMEL-902"; jl "HIMMEL-901" Done
 drift; rc=$?
 check "3b: a fallback pass exits 0" "$rc" 0
-check "3b: a key the search does not return is read by its own get" "$(grep -c '^get HIMMEL-902' "$STUB_LOG")" 1
+check "3b: a key the search does not return is read by its own get" "$(grep -c "^get $KP-902" "$STUB_LOG")" 1
 contains "3b: and the status that get returned is used, so the pass is clean" "$(dlast)" "sdrift=0:"
 
 # the drift pass reads the sweep's snapshot instead of gh per key, and falls back to gh without one

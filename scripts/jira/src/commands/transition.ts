@@ -54,8 +54,6 @@ export async function transitionIssue(
   const { transitions } = await req<{ transitions: JiraTransition[] }>('GET', `/issue/${key}/transitions`);
   const match = findTransition(transitions, status);
   if (!match) throw new TransitionNotFound(status, transitions.map((t) => t.name));
-  // ponytail: only the `Done` status stamps; Closed / wont do / wont fix never do, and
-  // another Done-category status would need statusCategory from the transition payload.
   let unstamped: string | undefined;
   if (options.version && match.name.toLowerCase() === 'done') {
     const fixVersions = (

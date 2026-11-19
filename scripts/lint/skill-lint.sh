@@ -147,7 +147,6 @@ CHANGED=""
 # printed; content-path is what gets linted. They differ only under --staged,
 # where content-path is a temp copy of the file's INDEX content, not the
 # working-tree file. Not TAB-delimited pairs: a path can hold a TAB.
-# ponytail: a path containing a NEWLINE still mis-splits (bash 3.2 strings cannot hold NUL), upgrade to NUL-delimited `read -d ''` streams if such a path ever needs linting
 FILES=""
 STAGE_TMP=""
 _cleanup_stage_tmp() { [ -n "$STAGE_TMP" ] && rm -rf "$STAGE_TMP" 2>/dev/null; :; }
@@ -194,7 +193,6 @@ if [ -n "$CHANGED" ] && { [ "$STAGED" -eq 1 ] || [ "$EXPLICIT" -eq 1 ]; }; then
 fi
 
 if [ -n "$CHANGED" ]; then
-    # ponytail: a non-ASCII path is C-quoted by core.quotePath and so skipped here (as under --staged), switch to `git diff -z` + `read -d ''` so non-ASCII paths are linted
     if ! _changed="$(cd "$_root" && git diff --name-only --diff-filter=ACMR "$CHANGED" -- 2>/dev/null)"; then
         printf 'skill-lint: --changed: git diff failed for range: %s\n' "$CHANGED" >&2; exit 2
     fi
@@ -218,7 +216,6 @@ elif [ "$STAGED" -eq 1 ]; then
     STAGE_TMP="$(tmpdir)" || {
         printf 'skill-lint: --staged: could not create a scratch directory\n' >&2; exit 2
     }
-    # ponytail: --staged sees C-quoted names for paths with TAB/newline (core.quotePath) and so skips them, switch to `git diff -z` + `read -d ''` if one is ever staged
     while IFS= read -r _f; do
         [ -n "$_f" ] || continue
         [[ "$_f" =~ $IN_SCOPE_RE ]] || continue

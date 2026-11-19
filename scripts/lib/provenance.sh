@@ -113,14 +113,6 @@ prov_last_himmel_root() {
 # uninstall-begin writer) and marketplace_preexisted's caller never run in
 # the same process.
 #
-# ponytail: a standalone `uninstall-plugins.sh` invocation (run directly,
-# bypassing uninstall.sh -- scripts/machine-setup/test-uninstall-plugins-scope.sh
-# drives exactly this path) writes no uninstall-begin row at all, so a
-# marketplace it removes and an operator then manually re-adds would still
-# read as ours on the next install via this scan. Upgrade path: give
-# uninstall-plugins.sh its own minimal session marker if standalone
-# invocation becomes a documented operator workflow rather than a test/
-# rescue-only path.
 prov_ledger_registered_ours() {
     local kind="$1" unit="$2" ledger="${3:-}" found
     [ -n "$ledger" ] || ledger=$(prov_ledger_path) || return 1
@@ -398,7 +390,6 @@ _prov_backup() {
 # _PROV_SNAP_PATH; rc 1 sets _PROV_SNAP_REASON (too-large | unsafe-iid | backups-dir |
 # write-failed) -- a skip, never an install failure: the caller records
 # snap:null,snap_skip:<reason>.
-# ponytail: 1 MiB cap, raise it on a real >1 MiB unit (design §2).
 _PROV_SNAP_MAX=1048576
 _PROV_SNAP_PATH="" _PROV_SNAP_REASON=""
 _prov_snapshot() {

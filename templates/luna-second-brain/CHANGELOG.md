@@ -8,6 +8,12 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.110] — 2026-11-18
+
+### Changed
+- The upgrade script and its test drop their last code-comment ceiling notes
+  and ticket numbers; no behaviour changes.
+
 ## [0.4.109] — 2026-11-18
 
 ### Fixed

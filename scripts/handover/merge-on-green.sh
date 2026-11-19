@@ -317,14 +317,6 @@
 # (`bash scripts/handover/merge-on-green.sh`, still pre-approved, retirement planned) now hands off to the anchor's own copy on a
 # relative invocation too, the same one-hop, fail-closed pattern
 # scripts/cr/anchor-handoff.sh uses for the scripts/cr/ gate writers.
-# ponytail: HIMMEL-3437 — that hand-off is DEFENCE IN DEPTH, not a closure. Unlike
-# scripts/cr/, where guard-pr-check-literal.sh byte-compares the entry script
-# and anchor-handoff.sh against the anchor before allowing a relative run,
-# the guard's TARGETS do not cover scripts/handover/ — a branch
-# can still defeat this hand-off by deleting the one `.` line that sources it,
-# and the relative literal still runs the (now hand-off-less) branch copy.
-# Closing that needs extending guard-pr-check-literal's TARGETS to
-# scripts/handover/, a scripts/hooks/ edit out of this worker's scope.
 # HIMMEL_REPO is the anchor the rest of the harness already trusts
 # (himmel-doctor.sh, luna-upgrade-all.sh, ...), set at install time by
 # setup.sh/adopt.sh, never by a branch under review; a missing or unreadable
@@ -384,7 +376,6 @@ selector=""
 DRY_RUN=0
 JIRA_TRANSITION_OPT_IN=0
 GO_FLAG=""
-# ponytail: the worker doc is supplied by the caller (--worker-doc, else HIMMEL_WORKER_SESSION_DOC); the chief must pass it, upgrade path: discover it from the PR branch through the fleet manifest (HIMMEL-5843 follow-up)
 WORKER_SESSION_DOC="${HIMMEL_WORKER_SESSION_DOC:-}"
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -1371,9 +1362,6 @@ main_red_refuse() {
 # reached by the PR's diff, per scripts/cr/impacted-suites.sh over the fetched base
 # tip and PR head (private refs, deleted again); a reached suite is cap-overlap and
 # a diff that cannot be computed is cap-unverified, both merge as an advisory.
-# ponytail: the selector is text references and source/import closures, so a suite
-# that reaches a changed file another way is not seen; upgrade path is the
-# selector's own miss ledger (--selector-miss).
 main_red_classify() {
     mr_cls="" mr_list=""
     if [ "$mr_log_rc" -lt 0 ]; then
@@ -1573,11 +1561,6 @@ fi
 # The base-tip checker is what this gate executes, so scripts/check-plugin-drift.sh
 # is in ci-trust-paths.txt (scripts/lib/vm-mode.sh is covered by ^scripts/lib/)
 # and an empty or missing checker blob refuses.
-# ponytail: HIMMEL-1105, HIMMEL-5203 — the base tip is read once here, so a sibling PR that merges between
-# this recheck and `gh pr merge` is not seen (the base re-verification below
-# re-reads the base branch name, not its tip); upgrade path is a server-side
-# merge queue or required up-to-date branch, as for the base-retarget window
-# (not narrowed, no cheap client-side seam exists).
 bp_ns="refs/himmel-mog-bump/$pr_num"
 bp_tmp=""
 bp_cleanup() {
@@ -1683,14 +1666,7 @@ fi
 # Fetch targets are private refs under refs/himmel-mog-static/ in the anchor,
 # deleted again. Placed after the plugin-bump gate and before the marker clear /
 # DRY_RUN, so a refusal mutates nothing and a dry run reports it.
-# ponytail: a PR can edit a check it is judged by (the merge result's copy runs,
-# as main's sweep will run it) and its code runs here with the merger's rights;
-# acceptable because the gate is same-repo and private-repo only and CI already
-# ran that head; upgrade path is overlaying the base tip's check scripts.
-# ponytail: the base tip is read once here, so a sibling PR that merges between
-# this recheck and `gh pr merge` is not seen (a re-fetch would only narrow that
-# window); upgrade path is a server-side merge queue or required up-to-date
-# branch. MERGE_STATIC_RECHECK is a registered chokepoint seam
+# MERGE_STATIC_RECHECK is a registered chokepoint seam
 # (scripts/chokepoints.json), so a per-call prefix is denied by the seam guard.
 sr_ns="refs/himmel-mog-static/$pr_num"
 sr_tmp=""
@@ -2725,8 +2701,6 @@ record_conflicts() {
 # _jira_fold_request <repo_root> <key> <version> <pr> <sha> <what failed> — a closed
 # ticket the merge could not place: print a WARN and file a Done-fold INTAKE into
 # <version> for the release manager. The outcome rides the audit line as fold-request=.
-# ponytail: the release is named after the version, upgrade path = a release lookup
-# in the CLI once a release declares several versions.
 _jira_fold_request() {
     local repo_root="$1" key="$2" cur="$3" pr_num="$4" pr_sha="$5" what="$6" out rc=0 req
     if [ -z "$cur" ]; then
@@ -2751,8 +2725,6 @@ _jira_fold_request() {
 # later than the current one (earliest unreleased by date, archived never) gets an INTAKE request into the current
 # version, so worked tickets fold in without a hand edit. The CLI answers a key already queued with its open request,
 # so one key holds at most one. The outcome rides the audit line as intake=. Best-effort, never fails the merge.
-# ponytail: the release is named after the version, upgrade path = a release lookup in the CLI once a release
-# declares several versions.
 _jira_intake_to_current() {
     local repo_root="$1" key="$2" json="$3" pr_num="$4" pr_sha="$5" versions_out pick cur from out rc=0 req
     versions_out=$(cd "$repo_root" && node scripts/jira/dist/index.js versions --project "${key%%-*}" 2>/dev/null) || return 0  # swallow-ok: an unread version list files no request

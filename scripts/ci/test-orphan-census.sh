@@ -232,7 +232,7 @@ fi
 if grepq "$out" -E '^ +208 '; then
     fail "208 listed — a same-layout FOREIGN repo was claimed as ours: $out"
 else
-    pass "208 excluded — outside this himmel checkout (HIMMEL-1995 root anchor)"
+    pass "208 excluded — outside this himmel checkout (root anchor)"
 fi
 if grepq "$out" -E '^ +209 '; then
     fail "209 listed — a foreign suite that only NAMES this checkout was claimed: $out"

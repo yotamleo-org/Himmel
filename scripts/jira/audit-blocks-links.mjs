@@ -7,10 +7,6 @@
 //
 // Usage: node audit-blocks-links.mjs [--project HIMMEL] [--jira-cli <dist/index.js>]
 //
-// Heuristic (ponytail: text match only, operator reviews every row; upgrade is
-// a per-ticket read of the description): propose `flip` when the stored blocker's
-// summary names the stored blocked key as its prerequisite
-// ("after|requires|needs|depends on|follow-up to|blocked by <KEY>").
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';

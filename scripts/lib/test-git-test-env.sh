@@ -98,7 +98,7 @@ find_value_for_key() {
   return 1
 }
 
-echo "test-git-test-env (HIMMEL-2231)"
+echo "test-git-test-env"
 
 # --- case 1: negative control -- the exact reproduction ---------------------
 echo

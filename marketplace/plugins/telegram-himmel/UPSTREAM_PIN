@@ -4,7 +4,7 @@
 version=0.0.7
 server_sha256=d902d7195a527b579b889cfdbf251fc24fd224a68e319ac6b7c3b691515c3458
 
-# Generic fields read by scripts/check-plugin-drift.sh (HIMMEL-322) — the
+# Generic fields read by scripts/check-plugin-drift.sh — the
 # proactive, network-based cross-fork checker. upstream_sha256 mirrors
 # server_sha256 (sha256 of the upstream server.ts the fork is synced to).
 upstream_repo=anthropics/claude-plugins-official

@@ -290,9 +290,9 @@ secret, only role names and account letters:
   section, run `bash scripts/vm/multi-accounts-e2e.sh <vm>` on a free test VM that holds this checkout: it starts the
   config UI once per role-map state on a throwaway HOME and asserts the route and what auto routing reads.
 
-ponytail: auto routes only from the himmel repo even for a mapped role, upgrade path: plan P1 widens it per repo once the launcher reads the egress matrix (`scripts/guardrails/egress-matrix.json`).
+Limit: auto routes only from the himmel repo even for a mapped role, upgrade path: plan P1 widens it per repo once the launcher reads the egress matrix (`scripts/guardrails/egress-matrix.json`).
 
-ponytail: nothing stops an agent with Write or Bash from creating `roles.json` and widening auto to the judge; hand edits are supported and validated on read, upgrade path: plan P4's write guard on `~/.himmel/state/api-credit/` plus a sha256 attestation sidecar and a doctor WARN.
+Limit: nothing stops an agent with Write or Bash from creating `roles.json` and widening auto to the judge; hand edits are supported and validated on read, upgrade path: plan P4's write guard on `~/.himmel/state/api-credit/` plus a sha256 attestation sidecar and a doctor WARN.
 
 ### Caching recommendation for the graph pass
 
@@ -400,9 +400,9 @@ record row. A caller names one account, and a failure shows only as the exit cod
 
 ## Known limits
 
-- ponytail: a SIGKILL or an OOM kill of the launcher leaves the mode-600 stdin prompt file in `TMPDIR`, because the EXIT trap cannot run, upgrade path: sweep `claude-api-prompt.*` files older than the call timeout at launch.
-- ponytail: two failures of the same kind and class at the same moment can both send an alert (the stamp is checked, then written after the send, up to 30 seconds later), upgrade path: an atomic `mkdir` lock if duplicate alerts show up.
-- ponytail: the fallback has no watchdog of its own; it is bounded by the caller's timeout (judge-call's `--timeout`) and its budget cap, upgrade path: reuse the launcher's watchdog for the fallback.
-- ponytail: a looping caller (bulk, graphify) continues item by item on the subscription after the API account is marked, one alert per hour, upgrade path: a per-run circuit breaker if the subscription draw becomes a problem. graphify's own breaker trips only when the fallback does not run (`HIMMEL_API_FALLBACK=off` or a skipped usage preflight, the lane's exit 6), and it books a replayed chunk's cost to neither its API spend nor its reserve file.
-- ponytail: fallback rows carry no API cost, so the shift-spend report does not price them, upgrade path: price `sub_cost_usd` in the subscription spend view.
-- ponytail: a call stopped by the API watchdog (`HIMMEL_API_CALL_TIMEOUT_S`) counts as a failed call, so its prompt reruns on the subscription, upgrade path: skip the fallback for a timeout if reruns of long calls cost too much.
+- A SIGKILL or an OOM kill of the launcher leaves the mode-600 stdin prompt file in `TMPDIR`, because the EXIT trap cannot run, upgrade path: sweep `claude-api-prompt.*` files older than the call timeout at launch.
+- Two failures of the same kind and class at the same moment can both send an alert (the stamp is checked, then written after the send, up to 30 seconds later), upgrade path: an atomic `mkdir` lock if duplicate alerts show up.
+- The fallback has no watchdog of its own; it is bounded by the caller's timeout (judge-call's `--timeout`) and its budget cap, upgrade path: reuse the launcher's watchdog for the fallback.
+- A looping caller (bulk, graphify) continues item by item on the subscription after the API account is marked, one alert per hour, upgrade path: a per-run circuit breaker if the subscription draw becomes a problem. graphify's own breaker trips only when the fallback does not run (`HIMMEL_API_FALLBACK=off` or a skipped usage preflight, the lane's exit 6), and it books a replayed chunk's cost to neither its API spend nor its reserve file.
+- Fallback rows carry no API cost, so the shift-spend report does not price them, upgrade path: price `sub_cost_usd` in the subscription spend view.
+- A call stopped by the API watchdog (`HIMMEL_API_CALL_TIMEOUT_S`) counts as a failed call, so its prompt reruns on the subscription, upgrade path: skip the fallback for a timeout if reruns of long calls cost too much.

@@ -6,9 +6,6 @@ import {
 import { dirname } from 'node:path';
 
 // The signed, hash-chained store behind every authority file (design §5.2).
-// ponytail: same-uid trust, a process that reads the key can mint a valid row
-// (accepted by decision 109 for v1.1.3/v1.1.4); upgrade path is a broker
-// running as a separate OS user that holds the key.
 
 export const GENESIS = 'genesis';
 
@@ -147,9 +144,6 @@ interface LockHandle { lock: string; fd: number; ino: number }
 // the lock name is never vacated for anyone but its own breaker. A breaker that finds the
 // mutex held leaves the lock alone and lets the acquire loop retry. `beforeBreak` is a
 // test seam: it runs under the mutex, between the staleness decision and the recheck.
-// ponytail: a live holder that releases between the recheck and the unlink lets a new
-// writer's lock be removed (microseconds, and only for a holder slower than staleMs);
-// upgrade path is an advisory flock held for the life of the writer.
 export function breakStaleLock(lock: string, staleMs: number, beforeBreak?: () => void): void {
   let seen;
   try {

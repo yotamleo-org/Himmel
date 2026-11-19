@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""holds.py - the single-writer holds register (HIMMEL-8725, slice 1).
+"""holds.py - the single-writer holds register.
 
 One hold is one small file: ~/.himmel/state/holds/<slug>/<escaped repo path>. <slug> is the primary
 checkout's absolute path, escaped the same way, so a linked worktree and its primary share a directory.
@@ -29,7 +29,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GRACE = 15 * 60          # a row this young is alive: the worker is still arming
-RESUME_AGE = 24 * 3600   # ponytail: a RESUME doc younger than this keeps its key's rows; a successor parked longer loses them, upgrade path: the chief re-points or grants
+RESUME_AGE = 24 * 3600
 SEED_BUDGET = 60         # seconds a launch gives repoint and seed together, under the 120 s claim window of headed-arm.sh
 GH_TIMEOUT = 5
 QL_TIMEOUT = 15
@@ -525,7 +525,6 @@ class Judge:
                 continue
             # a WRAPPED doc that names the RESUME doc outside its last bullet consumes it; a last bullet that names it hands
             # off to it. The file mtime, the leg number and the stem are no link: a RESUME doc made after its stem doc wrapped is live work.
-            # ponytail: a successor that never names the doc holds for up to RESUME_AGE, a stem-named wrapped doc included; a recorded parent link is the upgrade path.
             b = os.path.basename(d)
             if any(m2 == 'WRAPPED' and b not in l2 and successor_of(b, r2)
                    for d2, _mt2, m2, l2, r2 in info if d2 != d):
@@ -1090,8 +1089,6 @@ def chief_session(doc):
         pass  # swallow-ok: no liveness marker names no holder session; holder stays '' and the grant is refused
     if not holder:
         return None, 'the queue lock on %s names no holder Claude session (no liveness marker)' % doc
-    # ponytail: the liveness marker and ~/.claude/sessions/<pid>.json are files of this user, so a same-user process can
-    # forge either; this binds a session that uses the kit's own paths, upgrade path: the lock records the holder claude pid
     if holder != caller_session():
         return None, 'the queue lock on %s is held by Claude session %s, which is not this caller' % (doc, holder)
     return clean(owner['session']), ''
@@ -1099,8 +1096,6 @@ def chief_session(doc):
 
 def operator_confirm(p):
     """The operator route: a human at a terminal types the path back. ('ok' | 'no-tty' | 'mismatch', session)."""
-    # ponytail: a terminal plus a typed-back path proves a human only as far as an agent cannot fake a pty with the Claude
-    # Code markers unset; the barrier is a coordination guard and a trust-path PR still needs a trust judge, upgrade path: a TOTP-confirmed operator approval
     marked = any(k == 'CLAUDECODE' or k.startswith('CLAUDE_CODE_') for k in os.environ)  # the marker set of chokepoint-seam-guard.sh
     if marked or not (sys.stdin.isatty() and sys.stderr.isatty()):
         return 'no-tty', ''

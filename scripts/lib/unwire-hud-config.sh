@@ -15,10 +15,6 @@
 # rest of the file. Any other file (own config, unparseable) is left
 # untouched and says why. Only config.json goes: the hud's runtime cache
 # beside it is the plugin's own.
-# ponytail: the byte-identity check compares against the plain template only,
-# not an env prefix an older wire-statusline.sh carried forward -- a
-# prefixed-but-otherwise-himmel's-own file is kept rather than removed;
-# follow-up if that false negative matters.
 #
 # Requires jq. Source it to call unwire_hud_config directly, or invoke via bash.
 set -euo pipefail

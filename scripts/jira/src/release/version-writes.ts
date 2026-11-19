@@ -16,8 +16,6 @@ export interface WriterRow { site: string; mechanism: string; machine: boolean }
 // Every file that writes a Fix Version, with the name each write carries. The classifier reads `machine`;
 // a mechanism not on this list, or a write that names nothing, is `hand`. The enumerating test
 // (version-writes.test.ts, I17) fails on a writing file missing here.
-// ponytail: file grain, so a new write inside create.ts or edit.ts passes the test and reads as hand, the
-// safe direction; upgrade path: make writer a required argument of setFixVersion and requestAt's write path.
 const CREATE = 'scripts/jira/src/commands/create.ts';
 export const WRITER_TABLE: readonly WriterRow[] = [
   { site: CREATE, mechanism: 'create-residual', machine: true },

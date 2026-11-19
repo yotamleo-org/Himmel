@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""cache-health-line.py - the one-line prompt-cache summary for /morning-report (HIMMEL-668).
+"""cache-health-line.py - the one-line prompt-cache summary for /morning-report.
 
 Zero-token and local: reads the files scripts/eval/cache-health.py writes under
 ~/.himmel/state/cache-health/ and prints exactly one line.

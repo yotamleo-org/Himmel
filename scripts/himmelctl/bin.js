@@ -69,8 +69,6 @@ const RETIRED_CADENCE_IDS = ['codex-sweep', 'repo-sync'];
 // install provenance (lib/provenance.js; contract in
 // docs/internals/install-provenance.md). Recording is best-effort. A ledger
 // failure warns on stderr and never fails the install or the command.
-// ponytail: provStep names only the plan step in flight, so install-end's
-// failed_step is the step that RETURNED non-zero, not a finer-grained cause.
 const provLib = require('./lib/provenance.js');
 const behaviourConfigLib = require('./lib/behaviour-config.js');
 let provStep = '';
@@ -3319,23 +3317,6 @@ function previewHandoverAndPlugins(answers) {
 // case) so `path.join(ctx.targetPath, file)` still reconstructs the exact
 // configured path, fixed ONCE here rather than at each of the two call
 // sites, since both derive from the same bare-basename mistake.
-// ponytail: the `./` prefix can collide back to a bare basename only if the
-// env file sits at a filesystem root (dirname(dir)===dir), not a real-world
-// bridge .env location; not defended against.
-// TELEGRAM_ENV is the SAME
-// process-env override poller.ts/session-status.ts already read
-// (`process.env.TELEGRAM_ENV ?? join(homedir(), ".claude/channels/telegram/
-// .env")`) and probes.js's own resolveBridgeEnvFilePath() (used by
-// cmd:telegram_getme/telegram-access/bridge-health) already honors it ahead
-// of bridge.envPath. distinct-tokens has no such awareness built into
-// probes.js. It just resolves whatever envFileA/envFileB strings it's
-// given, so the SAME three-tier precedence (process-env override >
-// configured value > hardcoded default) has to be applied on THIS side too,
-// here in the one shared helper, rather than invented a second way for one
-// call site. `runBridgeReadinessProbes`'s distinct-tokens call gets this via
-// this function; probeOneSecret's cmd:telegram_getme call gets it too (a
-// harmless no-op agreement. probes.js's own TELEGRAM_ENV check already
-// wins there regardless of what `file` says).
 //
 // `(bridge && bridge.envPath) || ''` skipped straight
 // to the EMPTY string when the profile legitimately omits the optional
@@ -3917,7 +3898,6 @@ function mergePhiRoot(root) {
   // last rename() still wins, so a root added by a concurrent process can
   // still be lost. That half is deliberately OUT of scope here, so do not
   // read this atomic write as closing it.
-  // ponytail: last rename wins under concurrent writers, upgrade path: take a lock around the phi-roots read-modify-write.
   //
   // create tmp owner-only (mode 0o600) from
   // the very first write, not via a chmod afterward. A default-mode create
@@ -4648,8 +4628,6 @@ function applyWorkspaceTrust() {
     const why = r.error ? r.error.message : (r.stderr || `exited rc=${r.status}`).trim();
     return { applied: false, dir: dir, reason: why };
   }
-  // ponytail: a key that pre-existed as `false` is recorded as absent (the
-  // helper flips it to true either way); only "already true" reads preexisted.
   if (preKnown) prov([preexisted ? 'noop' : 'create', 'json-key', trustCfg,
     '--unit', `/projects/${dir.replace(/~/g, '~0').replace(/\//g, '~1')}/hasTrustDialogAccepted`,
     ...(preexisted ? ['--pre-json', 'true'] : ['--pre-absent']), '--post-json', 'true',
@@ -5153,7 +5131,6 @@ function uiHandoffEnabled() {
   return Boolean(process.stdout.isTTY);
 }
 
-// ponytail: a browser counts as reachable unless this is an SSH session or a Linux box with no display, upgrade path is asking the operator.
 function browserReachable() {
   if (process.env.SSH_CONNECTION || process.env.SSH_TTY) return false;
   return process.platform !== 'linux' || Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
@@ -6937,8 +6914,6 @@ async function cmdEnsure(args) {
   // recognizes (a recorded profile that simply doesn't declare items this
   // target visibly has running); see for one concrete way a
   // record goes stale (a non-hermetic test suite run overwriting real
-  // state). ponytail: a flat constant, not a percentage/config knob, raise
-  // it if it proves too eager in practice.
   //
   // this guard used to have NO escape
   // hatch. An operator doing a genuine, deliberate downgrade (`ensure
@@ -7824,8 +7799,6 @@ async function cmdScopeSet(args) {
   // already deleted, which the CWD guard above then refuses to retry (stuck).
   // The hard invariant (no item wired in BOTH scopes) already holds here.
   // The wiring converged on disk above, before either write.
-  // ponytail: no journal/recovery marker, the two writes are not transactional, upgrade path: commit state and cache through one journal with a recovery marker.
-  // Gated behind !dryRun (dry-run returned above).
   writeCache(Object.assign({}, cachedAnswers, { scope: newScope }));
   delete state.targets[oldTargetKey];
   stateLib.save(state);

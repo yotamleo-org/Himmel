@@ -435,9 +435,6 @@ function parseDotEnv(raw) {
 // tokenizer) keeps this simple and matches what actually gets written;
 // anything else can't be resolved with confidence, so it degrades rather
 // than reading a script it can't actually locate.
-// ponytail: never executes the command, only resolves the interpreter (on
-// PATH) and the script path (readable file), which is enough to catch a
-// missing/moved/unbuilt script without any side effect.
 const STATUSLINE_COMMAND_RE = /^(\S+)\s+"([^"]+)"$/;
 // the guarded form wire-statusline.sh writes now,
 // `[ -f "<js>" ] && exec <interpreter> "<js>" || true`, is reduced to the bare
@@ -1523,9 +1520,6 @@ function probeHandoverDir(item, ctx) {
   // ordinary state, not a fault. Flag exactly that: no explicit HANDOVER_DIR
   // AND the resolver's "inline default '...' does not exist" refusal. A
   // HANDOVER_DIR that points nowhere, or a non-git cwd, never carries the flag.
-  // ponytail: keys on the resolver's stderr wording (handover-path.sh has no
-  // machine-readable code for this rc=2 case); the probe suite pins the
-  // message against the real resolver so a rewording fails loud, not quiet.
   const env = ctx.env || process.env;
   if (!env.HANDOVER_DIR && /inline default '.*' does not exist/.test(detail)) {
     return { actual: 'absent', detail, cleanAbsence: true };
@@ -3263,12 +3257,6 @@ function probeCadenceRuns(item, ctx) {
 // posture below. No fail tier by design (§3.5): pass when both markers
 // agree (present or absent together), warn on a mismatch.
 //
-// ponytail: the phi-roots comparison below is a SIMPLIFIED prefix match
-// (resolve + backslash-normalize + lowercase), not the fence's full
-// CRLF/whitespace-tolerant matcher, good enough for a coherence hint, not
-// a security boundary; upgrade to a shared matcher only if this probe's own
-// false mismatches become a real complaint (avoids a second, driftable copy
-// of security-relevant matching logic for a probe that enforces nothing).
 function walkForSalusMarker(startDir) {
   let dir = path.resolve(startDir);
   for (;;) {
@@ -4183,8 +4171,6 @@ const PROBES = {
 // file himmel's tracked .claude/settings.json can never carry
 // (enabledPlugins / statusLine), so they are read from user scope instead.
 // Set per-process by cmdStatus (read-only); status-report.js builds the ctx and
-// is not touched. ponytail: module flag, upgrade path is a ctx field set in
-// ctxForItem once that file is free of other open work.
 const LEGACY_USER_SETTINGS_IDS = new Set(['claude-plugins-pluginSet', 'himmel-ops-plugin', 'wiring-statusline']);
 let legacyUserSettings = false;
 function setLegacyUserSettings(on) { legacyUserSettings = Boolean(on); }

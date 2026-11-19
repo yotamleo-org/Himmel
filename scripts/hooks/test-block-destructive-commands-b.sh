@@ -333,7 +333,7 @@ assert_rc 'rm -f \<NL>"report.txt" allowed' 0 "$(run_case "$(j_bash 'rm -f '"$BS
 assert_rc 'ls \<NL>-"r" allowed'         0 "$(run_case "$(j_bash 'ls '"$BSNL"'-"r"')")"
 # Find running rm is a mass delete now, so the `\;` row keeps its
 # point (the escaped `;` is no continuation) with ls instead.
-assert_rc 'find -exec rm {} \; -prune denied (HIMMEL-4255)' 2 "$(run_case "$(j_bash 'find . -name x -exec rm {} \; -prune')")"
+assert_rc 'find -exec rm {} \; -prune denied' 2 "$(run_case "$(j_bash 'find . -name x -exec rm {} \; -prune')")"
 assert_rc 'find -exec ls {} \; -prune allowed' 0 "$(run_case "$(j_bash 'find . -name x -exec ls {} \; -prune')")"
 assert_rc 'heredoc body rm -rf \<NL> allowed' 0 "$(run_case "$(j_bash 'cat <<'\''EOF'\'' > f.sh'$'\n''rm -rf build '"$BSNL"'  dist'$'\n''EOF')")"
 

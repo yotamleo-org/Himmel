@@ -135,9 +135,6 @@ chmod 600 "$OUT" "$OUT.1" 2>/dev/null || true
 # generation, so at most two files ever exist) and a fresh log starts with
 # this row. Best-effort: a failed rename never skips the append. tick.sh reads
 # <log>.1 then the live file, so a window straddling a rotation still counts.
-# ponytail: unlocked, so two workers rotating in the same instant can drop one
-# generation's rows, upgrade: flock (not on macOS) if that ever shows up as a
-# missed PAUSE-RISK.
 max_bytes="${HIMMEL_CLASSIFIER_DENIALS_MAX_BYTES:-1048576}"
 case "$max_bytes" in ''|*[!0-9]*) max_bytes=1048576 ;; esac
 if [ -f "$OUT" ]; then  # fail-open-ok: observability tap, not a guard; an unreadable log reads size 0 so it only skips rotation
@@ -153,10 +150,6 @@ fi
 # capped above (not just "usually short" — denial_reason and cwd are
 # classifier/session text, not bounded by us), so a plain O_APPEND >> is
 # atomic against concurrent workers without needing a lock.
-# ponytail: the caps count characters, so a row of pure 4-byte characters can
-# pass 4096 bytes; O_APPEND on a regular file is still one atomic write on
-# Linux, so this only matters on a filesystem that splits it, upgrade: byte
-# caps (LC_ALL=C cut -b) if one is ever in use.
 jq -n -c \
     --arg ts "$ts" \
     --arg session_id "$session_id" \

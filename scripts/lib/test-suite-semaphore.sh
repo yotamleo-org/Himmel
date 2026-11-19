@@ -373,9 +373,9 @@ START=$(date +%s)
 ERR=$(qr "$SEM" -- true 2>&1 >/dev/null); RC=$?
 ELAPSED=$(( $(date +%s) - START ))
 if [ "$RC" = "0" ] && grep -q reclaimed <<<"$ERR" && [ "$ELAPSED" -lt 30 ]; then
-    pass "HIMMEL-3778: dead holder with empty identity reclaimed in ${ELAPSED}s, not the ${HIMMEL_SUITE_SLOT_TTL:-14400}s TTL"
+    pass "dead holder with empty identity reclaimed in ${ELAPSED}s, not the ${HIMMEL_SUITE_SLOT_TTL:-14400}s TTL"
 else
-    fail "HIMMEL-3778: dead holder with empty identity -- expected rc 0 + reclaimed note within seconds, got rc=$RC after ${ELAPSED}s: $ERR"
+    fail "dead holder with empty identity -- expected rc 0 + reclaimed note within seconds, got rc=$RC after ${ELAPSED}s: $ERR"
 fi
 
 # --- 17: while a LIVE holder's identity is empty (fault-injected
@@ -411,9 +411,9 @@ if [ ! -s "$SNAP" ]; then
 elif [ -n "$OWNER_ID" ]; then
     fail "HIMMEL-3778 fault-injection setup: holder's owner identity is [$OWNER_ID], expected empty -- the ps shim was not exercised, skip is not a pass"
 elif [ "$RC" = "0" ]; then
-    pass "HIMMEL-3778: nested quiet-run under an empty-identity live holder proceeds (re-entrant)"
+    pass "nested quiet-run under an empty-identity live holder proceeds (re-entrant)"
 else
-    fail "HIMMEL-3778: nested quiet-run under an empty-identity live holder -- expected rc 0, got rc=$RC: $OUT"
+    fail "nested quiet-run under an empty-identity live holder -- expected rc 0, got rc=$RC: $OUT"
 fi
 
 # --- 18: the scan-root lock (run-shell-tests.sh)

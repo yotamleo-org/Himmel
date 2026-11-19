@@ -22,20 +22,6 @@
 # Section 5 (never-used) and section 7 (memory join) draw from different
 # inputs (skill-cost.mjs discovery; the traps file) and print their own line.
 #
-# ponytail: guardrail-friction "hook" denials are every is_error text starting
-# `Pre/PostToolUse:` (the himmel hook-wrapper shape) - confirmed against a real
-# 7-day run that some hooks (e.g. block-jira-compound-write) never emit the
-# `\xe2\x9b\x94` glyph, so the hook name is pulled from right after the
-# wrapper's closing `]:` instead of anchoring on the glyph. "classifier"
-# denials require one of the two confirmed real Stage-2 wrapper phrases
-# (`Stage 2 classifier error:` or `Permission for this action was denied by
-# the Claude Code auto mode classifier`), not merely a bracketed tag - a real
-# 7-day run showed plenty of unrelated is_error text carrying a bracketed
-# Title-Case-ish token with neither phrase (test-runner `[PASS]`/`[FAIL]`,
-# `--help` usage `[OPTIONS]`, pre-commit `[WARNING]`, a regex literal
-# `[A-Za-z]`) that the old bracket-only heuristic misread as a classifier
-# category. The category name itself is still pulled via the same bracket
-# regex, now scoped to text already confirmed to be a classifier denial.
 set -u
 
 usage() { echo "usage: tool-usage.sh --since <ISO8601> [--until <ISO8601>] [--memory-traps <path>] [--skill-cwd <path>] [--skill-config-dir <path>]" >&2; }
@@ -194,13 +180,6 @@ fi
 # results are unioned, with the jira invocation itself excluded from the
 # generic scan so it is never counted twice.
 #
-# ponytail: every script matched in one chained command shares that single
-# Bash tool_result's `is_error`, since the join has only one exit status for
-# the whole compound command - an earlier script that actually succeeded can
-# be reported as an error when a later `&&`-chained one fails (codex-2, round
-# 10). Disambiguating per-sub-command outcome needs shell-semantics parsing
-# of the chain, out of scope here; revisit if error_rate on a heavily-chained
-# script proves misleading in a real 7-day run.
 SCRIPTED="$RUN/scripted.ndjson"
 if ! jq -c '
     def jira_scripts: if .tool=="Bash" and (.key | test("scripts/jira/dist/index\\.js")) then
@@ -284,12 +263,6 @@ SKILL_JSON_ARGS=()
 [ -n "$SKILL_CONFIG_DIR" ] && SKILL_JSON_ARGS+=(--config-dir "$SKILL_CONFIG_DIR")
 node "$HERE/../../skill-cost.mjs" --json "${SKILL_JSON_ARGS[@]}" > "$RUN/skill-cost.json" 2>"$RUN/skill-cost.err" \
     || { echo "tool-usage: skill-cost.mjs discovery failed:" >&2; cat "$RUN/skill-cost.err" >&2; exit 1; }
-# ponytail: a transcript's Skill tool_use may name a plugin-qualified skill
-# (`plugin:name`) while skill-cost.mjs's discovered `name` is bare, so a used
-# skill is matched by taking the suffix after the last `:`. This under-counts
-# never-used if two different plugins install same-named skills (both would
-# read as used once either is invoked) - accepted because that collision has
-# not been observed in this repo's installed skill set.
 jq -s -r --slurpfile events "$EVENTS" '
     ($events // []) as $ev
     | ($ev | map(select(.tool=="Skill" and .key!="")) | map(.key | split(":") | .[-1]) | unique) as $used_skills
@@ -342,12 +315,6 @@ else
     echo "tool-usage: memory-traps file not readable: $MEMORY_TRAPS" >&2
 fi
 
-# ponytail: the default MEM_DIR is hardcoded to this repo's own project-hash
-# path (not portable to another checkout without --skill-cwd-style overriding
-# via SCORECARD_MEMORY_DIR), and the `/memory/` substring test below matches
-# any Read path containing that segment, not only this project's memory dir -
-# both accepted since every real run on this station sets neither override and
-# reads only this repo's own memory files.
 MEM_DIR="${SCORECARD_MEMORY_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/-home-overlord-Documents-github-himmel/memory}"
 if [ -d "$MEM_DIR" ]; then
     jq -s -r --arg memdir_marker "/memory/" '

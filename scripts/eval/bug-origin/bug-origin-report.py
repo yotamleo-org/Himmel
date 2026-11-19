@@ -88,7 +88,6 @@ REPORT_FIELDS = ("number", "title", "body", "mergedAt", "headRefName", "headRefO
 # The ERE of ready-check.sh's bug_origin_state; line-table.tsv runs through both. Classes: test-gap, design-gap,
 # review-deferred, unknown, review-miss:<layers> (cr, judge, panel, comma-separated), residual:<token>, trigger:<token>
 # and commit:<hex sha>. The payload forms are the chief's reading of the operator's R3 list, which gives no payloads.
-# ponytail: one class per fix, upgrade path repeatable lines counted per class
 LINE = re.compile(r"^bug-origin:[ \t]+(?:(#[0-9]+|[0-9a-f]{7,40})[ \t]+(" + judge_accuracy.CLASS_PATTERN + r")"
                   r"|(unknown)[ \t]+(unknown))[ \t]+(?:—|-)[ \t]+([^ \t].*)$")
 JIRA_TIMEOUT = 60
@@ -420,9 +419,7 @@ def write_once(path, text):
 
 
 def cmd_ingest(a):
-    """Write one ledger row per merged PR whose body (else the seed) carries a bug-origin line; a PR with a row is kept as it is.
-
-    ponytail: rows are write-once, so a body edited after its ingest is not re-read; upgrade path an --update flag."""
+    """Write one ledger row per merged PR whose body (else the seed) carries a bug-origin line; a PR with a row is kept as it is."""
     path = a.ledger_dir or judge_accuracy.ledger_dir()
     if not path:
         print("bug-origin-report: refused: no ledger directory: set HANDOVER_DIR or pass --ledger-dir", file=sys.stderr)

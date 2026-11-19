@@ -139,18 +139,6 @@ trap cleanup EXIT
 # streams them one at a time, so a multi-hundred-megabyte transcript does not
 # have to be slurped into memory.
 #
-# ponytail: the denial classifier is a first-line prefix/keyword match, not a
-# hook registry. It resolves the four shapes that actually occur (PreToolUse
-# hook error, auto-mode classifier, operator rejection, and a hook whose deny
-# reason leads with its own `name:` token) and files anything else it cannot
-# name under `hook-unclassified` rather than guessing. The bare-token branch
-# requires a HYPHENATED token — every himmel hook name is hyphenated, while
-# the ordinary-failure prefixes that would otherwise collide (`error:`,
-# `conflict:`, `warning:`) are single words — so a plain tool failure stays an
-# error and never becomes a denial class. A hook that denies with free prose
-# and no leading token is likewise counted as an error but not as a denial;
-# upgrade path is emitting the hook name from the hook itself (a
-# `himmel-deny: <hook>` prefix convention) rather than growing regexes here.
 # shellcheck disable=SC2016  # jq program: $session/$project are jq --arg names.
 JQ_PROGRAM='
 def content_of($r):
@@ -262,10 +250,6 @@ mkdir -p "$(dirname "$OUT")"
 # The merge below is a read-modify-write of a shared file: two overlapping runs
 # would each read the same old census and the second `mv` would drop the first
 # one's rows. `mkdir` is the atomic claim (no flock on macOS, no lockfile(1)
-# everywhere). ponytail: a run hard-killed past its EXIT trap leaves the dir
-# behind and the next run refuses until it is removed by hand — acceptable for
-# a lean-invoke extractor; if this ever gets a cadence, stamp the pid in the
-# dir and let a later run reclaim a dead owner's lock.
 LOCK="$OUT.lock"
 lock_tries=0
 # prim-ok: preserve the 50-attempt directory-lock refusal and external recovery path; with_lock would block on a different record.

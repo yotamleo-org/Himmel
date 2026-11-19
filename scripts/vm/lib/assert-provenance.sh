@@ -20,9 +20,6 @@
 # after install). RT_PURGE=1 when the uninstall ran with --purge-state.
 # Exit 0 after reporting; 2 when an input is missing (nothing is judged).
 #
-# ponytail: residue is grouped by its first three path components under HOME
-# and printed with one sample path per group, so a group hiding several
-# unrelated leftovers reads as one line; the full lists are the inventories.
 # shellcheck disable=SC2016 # jq programs and literal shell lines are single-quoted on purpose.
 set -u
 export LC_ALL=C
@@ -95,11 +92,6 @@ done < <(led_units marketplace)
 # The keys the Claude Code CLI writes into ~/.claude.json on its own start (the
 # uninstall runs `claude plugin ...`), none of them ever written by himmel:
 # first-run stamps, the machine/user ids, and its settings migrations.
-# ponytail: an exact list, so a future CLI key fails claude-json-restored until
-# it is added here (the safe direction); re-derive from the RT's A-vs-C diff.
-# The CLI also saves ~/.claude.json without every key equal to its default
-# (Claude Code 2.1.281 saveGlobalConfig keeps only keys whose JSON differs from
-# its default config), so a key at one of these defaults counts as absent.
 CLI_DEFAULTS='{"theme":"dark","preferredNotifChannel":"auto","verbose":false,"editorMode":"normal","autoCompactEnabled":true,"autoScrollEnabled":true,"showTurnDuration":true,"numStartups":0}'
 CLI_KEYS='["firstStartTime","firstStartVersion","hasResetAutoModeOptInForDefaultOffer","machineID","migrationVersion","opusProMigrationComplete","seenNotifications","sonnet1m45MigrationComplete","userID"]'
 

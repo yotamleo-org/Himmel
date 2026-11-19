@@ -28,10 +28,7 @@
 # Step 6 CANNOT run here: /pr-check is a runbook a model session drives (panel,
 # adjudication, ledger, marker clear). The script only reads the ledger; with no
 # ok row for the head it says "panel: NOT-RUN" and the PR needs a /pr-check
-# round. ponytail: a PR is a READY-CANDIDATE only once /pr-check already ran at
-# its head, non-shell suites (mjs/ts) are listed but never run here, upgrade
-# path: a lean Haiku shepherd for the PRs this flags.
-# ponytail: upgrade path HIMMEL-4942 lever 2.
+# round.
 #
 # Output (stable):
 #   SHEPHERD <pr> <head> READY-CANDIDATE
@@ -132,7 +129,6 @@ else
     add_line "worktree: created $WT"
     # Own tree only, and only while clean AND free of ignored files (git worktree remove would
     # delete those): any other tree is left for worktree.sh prune to checkpoint.
-    # ponytail: any ignored file keeps the tree, upgrade path the disposable-class allowlist in worktree.sh.
     # shellcheck disable=SC2329 # invoked from the EXIT trap below
     remove_clean_wt() {
         st=$(git -C "$WT" status --porcelain --ignored 2>&1) || return 0

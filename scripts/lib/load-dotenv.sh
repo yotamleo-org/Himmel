@@ -18,8 +18,6 @@
 #   load_dotenv [KEY ...]
 #   load_dotenv --root <dir> [KEY ...]
 # With no keys, does nothing: every consumer must name its allowlist.
-# ponytail: HIMMEL-4915 audits launch sites and passes --no-env-file;
-# Bun auto-loads cwd .env before any explicit reader.
 #
 # The .env path is resolved like the Jira CLI: the parent of
 # `git rev-parse --git-common-dir`, so from inside a git worktree it still
@@ -390,8 +388,6 @@ _load_dotenv_extract() {
 # (scripts/chokepoints.json), so a per-call prefix is refused there.
 # HIMMEL_CONFIG_DIR redirects only the himmel.conf read (tests use it to stay
 # off the station's file).
-# ponytail: policy keys live in config.json, not the tracked himmel.conf,
-# because no guard covers writes to himmel.conf yet; move them once one does.
 
 # Keys this layer serves. Anything else is a secret and stays in .env.
 _himmel_key_class() {

@@ -91,10 +91,10 @@ rc=$(run_case "$(j_read "$BIG_FILE" sess-wholefile)" "HIMMEL_CONSOLE_LEG=1")
 assert_rc "whole-file read over limit denies" 2 "$rc"
 assert_stderr_contains "whole-file deny names line count" "10 lines"
 assert_stderr_contains "whole-file deny names range shape" "offset=<n> limit=<m>"
-assert_stderr_contains "whole-file deny names the literal retry (HIMMEL-4815)" "Retry: Read file_path=$BIG_FILE offset=1 limit=5"
+assert_stderr_contains "whole-file deny names the literal retry" "Retry: Read file_path=$BIG_FILE offset=1 limit=5"
 assert_stderr_contains "whole-file deny names the first page" "offset=1 limit=5"
-assert_stderr_contains "whole-file deny names the second page (HIMMEL-6783)" "offset=6 limit=5"
-assert_stderr_contains "whole-file deny says read in pages, not stop (HIMMEL-6783)" "read it in pages"
+assert_stderr_contains "whole-file deny names the second page" "offset=6 limit=5"
+assert_stderr_contains "whole-file deny says read in pages, not stop" "read it in pages"
 
 # 3. whole-file read <= N lines -> allow.
 rc=$(run_case "$(j_read "$SMALL_FILE" sess-smallfile)" "HIMMEL_CONSOLE_LEG=1")

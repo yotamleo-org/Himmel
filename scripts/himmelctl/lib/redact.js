@@ -11,8 +11,6 @@
 //   - any other 32+ char mixed letter+digit run that is not a path segment or
 //     a pure-hex digest (git shas stay readable) or a hyphenated session name
 //
-// ponytail: shape-based, so a short or low-entropy secret is caught only
-// through the .env-value literals; the config UI must keep passing envValues.
 
 const fs = require('fs');
 const path = require('path');

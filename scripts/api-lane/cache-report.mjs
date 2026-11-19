@@ -5,8 +5,6 @@
 // Hit rate = cache_read / (input + cache_creation + cache_read), the same share docs/internals/prompt-cache.md uses.
 // TTL pick, in base-input-token equivalents (write 5m 1.25x, write 1h 2x, read per model: 0.05x Opus and Sonnet 5.5, 0.025x Fable 5.1, else 0.1x): a run whose gap since the previous run
 // of its kind is within the TTL reads its prefix P (cache_creation + cache_read) at that read price, otherwise it writes it again.
-// ponytail: P is the prefix a run touched, not the share it re-sent, and the first run of a kind pays the write on both
-// tiers; upgrade path: per-turn usage once claude-api.sh keeps more than the summed split.
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';

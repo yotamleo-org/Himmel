@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""chain-graph.py (HIMMEL-7707, slice 1 of HIMMEL-7701): print the hard and soft edges of a chain.
+"""chain-graph.py: print the hard and soft edges of a chain.
 
 Read-only report. Builds the pairwise dependency graph of a set of PRs and prints it. No Jira or GitHub
 write, no lock write, no dispatch or merge behaviour changes. Slices 3 and 4 read the --json form.
@@ -7,12 +7,12 @@ write, no lock write, no dispatch or merge behaviour changes. Slices 3 and 4 rea
 USAGE
     chain-graph.py --prs 3972,3971,3969 [--base origin/main] [--json]
     chain-graph.py --open                     every open PR
-    chain-graph.py --keys HIMMEL-7539,HIMMEL-7504   the open PR of each key (a key with no PR is a PR-less node)
+    chain-graph.py --keys <KEY>,<KEY>               the open PR of each key (a key with no PR is a PR-less node)
     chain-graph.py --pair 3971@<premerge sha> 3972   one pair, both heads pinned; a merged 3971 is read against the
                                                      main it merged into (merge-forward-check.sh --chain-s2)
         [--head PR=SHA] [--repo-dir DIR] [--repo OWNER/NAME] [--trust-file FILE] [--cache-dir DIR] [--all]
 
-Edge kinds (design HIMMEL-7701 section 2): H1 hard-start, H2 hard-merge, S1 soft-text, S2 soft-coupled,
+Edge kinds: H1 hard-start, H2 hard-merge, S1 soft-text, S2 soft-coupled,
 independent. Detections: D1 Jira Blocks link; D3 changed files (paginated files API); D4 git merge-tree on the
 real heads (a conflict is H2, clean confirms S1); D6 registry and vocabulary scan; D7 introduces (a file or
 symbol A adds that B's added lines name). D2 and D5 (planned scope, graphify) are not implemented.

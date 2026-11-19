@@ -349,7 +349,7 @@ for p in 'plain.txt' 'dir/sub/file.sh' 'a b c.txt' '100%.txt' '%2F.txt' '%25x' '
     if [ -e "$(slugdir)/$want" ]; then pass "escape is byte-equal to holds.py: $p"; else fail "escape is byte-equal to holds.py: $p (no $want)"; fi
 done
 
-# ponytail row: the common path does not fold rename-aliases.tsv, so the old spelling is its own row until the commit check.
+# the common path does not fold rename-aliases.tsv, so the old spelling is its own row until the commit check.
 printf 'scripts/oldx\tscripts/newx\tdirectory\tfail\tx\tx\n' > "$R/scripts/lib/rename-aliases.tsv"
 w "$KA" "$R/scripts/newx/f.sh"
 w "$KB" "$R/scripts/oldx/f.sh"

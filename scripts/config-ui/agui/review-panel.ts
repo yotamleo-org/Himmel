@@ -86,7 +86,6 @@ const VERDICT_LINE = /^\s*VERDICT \[([^\]]+)\] = (?:(agreed|disproved|conflict|u
 // A script run in command position: at the start of the command or after a
 // shell separator, optionally through bash/sh/exec and a (quoted) path. A
 // mention inside an echo or a quoted string is not a run.
-// ponytail: a heredoc body line starting with the script still counts, swap in a shell tokenizer if a real journal shows one
 const scriptCall = (script: string) =>
   new RegExp(`(?:^|[;&|\\n(])\\s*(?:(?:bash|sh|exec)\\s+)?(?:"[^"\\n]*|'[^'\\n]*|[^\\s;&|'"]*)${script}["']?\\s+`);
 const WRITE_VERDICTS = scriptCall("write-verdicts\\.sh");

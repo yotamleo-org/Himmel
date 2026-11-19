@@ -24,8 +24,6 @@
 # append-only chain-log.jsonl beside it (change hold | release): chain-state.mjs reads
 # it for the Chains tab and the order check (board v4 ruling L4).
 #
-# ponytail: the Jira calls run unbounded, upgrade path = the re-exec under a
-# timeout that worker-jira-status.sh uses.
 #
 # Platform guard: POSIX bash 3.2+ (shell-only harness).
 set -u

@@ -16,9 +16,6 @@ file arguments count every record.
 Output: a TSV (session, turns, lone_batchable, bullet, message, bus, lone_safety) with its header, one
 `CLASS<TAB><marker><TAB>batchable|safety<TAB><n>` row per class, and one `TOTAL ...` line.
 
-ponytail: marker classes are the audit's regexes, so a LIVE bullet whose first 400 chars say "new chief" counts
-as SUCCESSION (safety); that undercounts batchable. Upgrade path = hand-label a sample.
-
 Exit: 0 ok, 2 usage error or no session files.
 """
 

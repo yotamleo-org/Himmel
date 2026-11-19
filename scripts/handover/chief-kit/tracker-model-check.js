@@ -31,49 +31,49 @@ const D = { V: ['v1.0.1', 'v1.0.2', 'v2/v3'], T: ['tooling', 'handover'], P, VC:
 const M = model(D);
 
 // Every number drills to its tickets.
-eq('the version tally counts done, in progress, to do and live workers (HIMMEL-3990)', M.tally(M.inV(0)),
+eq('the version tally counts done, in progress, to do and live workers', M.tally(M.inV(0)),
     { n: 4, done: 1, prog: 1, todo: 2, live: 1, left: 3 });
-eq('done % drills to the done tickets (HIMMEL-3990)', nums(M.drill('done', { v: 0 })), [10]);
-eq('what is left drills to open tickets, live worker first (HIMMEL-3990)', nums(M.drill('left', { v: 0 })), [11, 12, 13]);
-eq('the workers figure drills to the tickets a worker is on (HIMMEL-3990)', nums(M.drill('live', { v: 0 })), [11]);
-eq('the started-no-worker figure drills to started tickets without a worker (HIMMEL-3990)', nums(M.drill('prog', { v: 0 })), []);
-eq('a done ticket shows no worker even if its doc lingers (HIMMEL-3990)', M.worker(P[0]), null);
-eq('a theme drills across the train only (HIMMEL-3990)', nums(M.drill('all', { t: 0 })), [11, 14, 10]);
-eq('the train figure spans every v1.0.x version (HIMMEL-3990)', M.tally(M.inTrain()).n, 5);
+eq('done % drills to the done tickets', nums(M.drill('done', { v: 0 })), [10]);
+eq('what is left drills to open tickets, live worker first', nums(M.drill('left', { v: 0 })), [11, 12, 13]);
+eq('the workers figure drills to the tickets a worker is on', nums(M.drill('live', { v: 0 })), [11]);
+eq('the started-no-worker figure drills to started tickets without a worker', nums(M.drill('prog', { v: 0 })), []);
+eq('a done ticket shows no worker even if its doc lingers', M.worker(P[0]), null);
+eq('a theme drills across the train only', nums(M.drill('all', { t: 0 })), [11, 14, 10]);
+eq('the train figure spans every v1.0.x version', M.tally(M.inTrain()).n, 5);
 
 // Budget by kind and by ticket, against the version's own caps.
 const ld = M.load(0);
-eq('the version budget sums planned tickets only (HIMMEL-3990)', [ld.used, ld.cap, ld.planned, ld.tcap], [0.036, 0.6, 3, 20]);
-eq('a kind carries its tickets, heaviest first (HIMMEL-3990)', nums(ld.kinds[0].tickets), [11, 10]);
-eq('a kind over its cap is flagged with negative headroom (HIMMEL-3990)', [ld.kinds[0].used, ld.kinds[0].over, ld.kinds[0].head], [0.027, true, -0.017]);
-eq('a kind under its cap has headroom (HIMMEL-3990)', [ld.kinds[1].used, ld.kinds[1].over, ld.kinds[1].head], [0.009, false, 0.091]);
-eq('an off-plan ticket adds no budget (HIMMEL-3990)', nums(ld.kinds[1].tickets), [12]);
-eq('the deferred bucket has no cap (HIMMEL-3990)', [M.load(2).deferred, M.load(2).cap], [true, null]);
+eq('the version budget sums planned tickets only', [ld.used, ld.cap, ld.planned, ld.tcap], [0.036, 0.6, 3, 20]);
+eq('a kind carries its tickets, heaviest first', nums(ld.kinds[0].tickets), [11, 10]);
+eq('a kind over its cap is flagged with negative headroom', [ld.kinds[0].used, ld.kinds[0].over, ld.kinds[0].head], [0.027, true, -0.017]);
+eq('a kind under its cap has headroom', [ld.kinds[1].used, ld.kinds[1].over, ld.kinds[1].head], [0.009, false, 0.091]);
+eq('an off-plan ticket adds no budget', nums(ld.kinds[1].tickets), [12]);
+eq('the deferred bucket has no cap', [M.load(2).deferred, M.load(2).cap], [true, null]);
 
 // Summaries: deterministic words from user impact.
 const s0 = M.summary(M.inV(0), 'theme');
-eq('the version summary leads with user changes by theme (HIMMEL-3990)', s0.lead,
+eq('the version summary leads with user changes by theme', s0.lead,
     'Ships 2 changes for users and 1 internal one; mostly tooling (2).');
-eq('the summary quotes the top ticket of each theme verbatim (HIMMEL-3990)', s0.quotes.map((q) => q.text), ['Users get A']);
-eq('an internal-only set reads as housekeeping (HIMMEL-3990)', M.summary([P[2]], 'theme').lead, 'Housekeeping only: 1 internal change.');
-eq('a theme summary names its version span (HIMMEL-3990)', M.summary(M.inT(0), 'version').lead,
+eq('the summary quotes the top ticket of each theme verbatim', s0.quotes.map((q) => q.text), ['Users get A']);
+eq('an internal-only set reads as housekeeping', M.summary([P[2]], 'theme').lead, 'Housekeeping only: 1 internal change.');
+eq('a theme summary names its version span', M.summary(M.inT(0), 'version').lead,
     'Ships 3 changes for users, from v1.0.1 to v1.0.2.');
 
 // Remaining only: done tickets leave every list, and every figure recomputes.
-eq('remaining-only drops done tickets from the tally (HIMMEL-3990)', M.tally(M.inV(0, true)),
+eq('remaining-only drops done tickets from the tally', M.tally(M.inV(0, true)),
     { n: 3, done: 0, prog: 1, todo: 2, live: 1, left: 3 });
-eq('remaining-only empties the done drill-down (HIMMEL-3990)', M.drill('done', { v: 0 }, true), []);
-eq('remaining-only recomputes the budget (HIMMEL-3990)', [M.load(0, true).used, nums(M.load(0, true).kinds[0].tickets)], [0.027, [11]]);
-eq('remaining-only recomputes the summary (HIMMEL-3990)', [M.summary(M.inV(0, true), 'theme').lead, M.summary(M.inV(0, true), 'theme').quotes[0].text],
+eq('remaining-only empties the done drill-down', M.drill('done', { v: 0 }, true), []);
+eq('remaining-only recomputes the budget', [M.load(0, true).used, nums(M.load(0, true).kinds[0].tickets)], [0.027, [11]]);
+eq('remaining-only recomputes the summary', [M.summary(M.inV(0, true), 'theme').lead, M.summary(M.inV(0, true), 'theme').quotes[0].text],
     ['Ships 1 change for users and 1 internal one; mostly tooling (1).', 'Users get B']);
 
 // Trail versions: a trail reads as its parent's overflow, belongs to the train, and shows its P90 (cautious load).
 const M2 = model({ V: ['v1.0.1', 'v1.0.1b', 'v1.0.2', 'v1.0.2c', 'v2/v3'], T: ['tooling'], P: [],
     VC: [caps, Object.assign({ p9: 0.8 }, caps), caps, caps, null], VP: [0.7, 0.05, null, null, null] });
-eq('a trail is named as its parent overflow (HIMMEL-3990)', [0, 1, 2, 3, 4].map(M2.vname),
+eq('a trail is named as its parent overflow', [0, 1, 2, 3, 4].map(M2.vname),
     ['v1.0.1', 'v1.0.1 · overflow', 'v1.0.2', 'v1.0.2 · overflow 2', 'v2/v3']);
-eq('a trail rides the v1.0.x train (HIMMEL-3990)', [M2.train(1), M2.train(3), M2.train(4)], [true, true, false]);
-eq('the budget carries the P90 and its cap (HIMMEL-3990)', [M2.load(1).p90, M2.load(1).p90cap, M2.load(0).p90cap], [0.05, 0.8, null]);
+eq('a trail rides the v1.0.x train', [M2.train(1), M2.train(3), M2.train(4)], [true, true, false]);
+eq('the budget carries the P90 and its cap', [M2.load(1).p90, M2.load(1).p90cap, M2.load(0).p90cap], [0.05, 0.8, null]);
 
 // Steering (the release desk): a peel moves the lowest-return movable tickets out until every cap holds; pinned, worker and
 // done tickets never move; the what-if shows both versions before and after; the decisions queue orders what needs input.
@@ -85,30 +85,30 @@ const M3 = model({ V: ['v1.0.1', 'v1.0.1b', 'v1.0.2', 'v2/v3'], T: ['tooling'], 
     VC: [c3, c3, c3, null], VP: [0.1, null, null, null], U: [[30, 'x', 0, 'why']],
     WORKER: { 24: ['N1', 'LIVE', 5], 25: ['N2', 'BLOCKED', null] } });
 const r3 = (x) => Math.round(x * 1e4) / 1e4;
-eq('a trail follows its parent, the next letter follows a trail (HIMMEL-3990)', [M3.trail(0), M3.trail(2), M3.trail(1)],
+eq('a trail follows its parent, the next letter follows a trail', [M3.trail(0), M3.trail(2), M3.trail(1)],
     [{ i: 1, name: 'v1.0.1b' }, { i: -1, name: 'v1.0.2b' }, { i: -1, name: 'v1.0.1c' }]);
-eq('the full version breaches its mean, ticket and P90 caps (HIMMEL-3990)', M3.breaches(0, M3.stats(0, M3.inV(0))).map((b) => b.what),
+eq('the full version breaches its mean, ticket and P90 caps', M3.breaches(0, M3.stats(0, M3.inV(0))).map((b) => b.what),
     ['mean', 'tickets', 'P90']);
 const pk = M3.peel(0);
-eq('a peel moves the lowest-return movable tickets until every cap holds (HIMMEL-3990)', [nums(pk.moved), pk.left, nums(pk.held)], [[21, 22], [], [23]]);
-eq('unpinning a ticket lets the peel take it (HIMMEL-3990)', nums(M3.peel(0, { unpin: [23] }).moved), [21, 23]);
+eq('a peel moves the lowest-return movable tickets until every cap holds', [nums(pk.moved), pk.left, nums(pk.held)], [[21, 22], [], [23]]);
+eq('unpinning a ticket lets the peel take it', nums(M3.peel(0, { unpin: [23] }).moved), [21, 23]);
 const pk2 = M3.peel(0, { keep: [21] });
-eq('keeping a ticket that is needed leaves the caps breached (HIMMEL-3990)', [nums(pk2.moved), pk2.left.map((b) => b.what)], [[22], ['mean', 'tickets', 'P90']]);
+eq('keeping a ticket that is needed leaves the caps breached', [nums(pk2.moved), pk2.left.map((b) => b.what)], [[22], ['mean', 'tickets', 'P90']]);
 const w = M3.whatIf(0, pk.moved, 1);
-eq('the what-if shows the source before and after (HIMMEL-3990)', [w.from.before.n, r3(w.from.before.m), w.from.after.n, r3(w.from.after.m), r3(w.from.after.p9), w.from.after.b],
+eq('the what-if shows the source before and after', [w.from.before.n, r3(w.from.before.m), w.from.after.n, r3(w.from.after.m), r3(w.from.after.p9), w.from.after.b],
     [5, 0.072, 3, 0.045, 0.0625, []]);
-eq('the what-if shows the target before and after, under its own caps (HIMMEL-3990)', [w.to.before.n, r3(w.to.before.m), w.to.after.n, r3(w.to.after.m), w.to.after.b],
+eq('the what-if shows the target before and after, under its own caps', [w.to.before.n, r3(w.to.before.m), w.to.after.n, r3(w.to.after.m), w.to.after.b],
     [1, 0.009, 3, 0.036, []]);
-eq('a new trail starts empty and keeps its parent caps (HIMMEL-3990)', [M3.whatIf(2, [], -1).to.before.n, M3.whatIf(0, pk.moved, -1).to.after.b], [0, []]);
-eq('decisions: a stopped worker first, the running version cap, then drift and the unplaced (HIMMEL-3990)',
+eq('a new trail starts empty and keeps its parent caps', [M3.whatIf(2, [], -1).to.before.n, M3.whatIf(0, pk.moved, -1).to.after.b], [0, []]);
+eq('decisions: a stopped worker first, the running version cap, then drift and the unplaced',
     M3.decisions().map((d) => d.type + ':' + d.band + ':' + (d.p ? d.p[0] : d.i)), ['worker:0:25', 'cap:1:0', 'drift:2:26', 'unplaced:2:1']);
 const M6 = model({ V: ["v1.0.1"], T: ["tooling"], CUR: 0, PIN: [], P: [row(50, 0, 0, 1, 1, 2)], VC: [null], VP: [null], U: [], WORKER: {} });
-eq('an open ticket outside the plan is a flag, not a decision (HIMMEL-4930)', M6.decisions().map((d) => d.type), []);
-eq('what we gained lists done work by version, newest first (HIMMEL-3990)', M3.gains().map((g) => [g.i, nums(g.done)]), [[0, [20]]]);
+eq('an open ticket outside the plan is a flag, not a decision', M6.decisions().map((d) => d.type), []);
+eq('what we gained lists done work by version, newest first', M3.gains().map((g) => [g.i, nums(g.done)]), [[0, [20]]]);
 const M4 = model({ V: ['v1.0.1', 'v1.0.1b'], T: ['tooling'], CUR: 0, P: [row(40, 0, 0, 1, 2), row(41, 0, 1, 1, 5), row(42, 0, 1, 4, 1)],
     VC: [c3, c3], VP: [null, null], U: [], WORKER: {} });
-eq('fold back takes trail work by best return while the parent stays in its caps (HIMMEL-3990)', nums(M4.fold(1)), [41]);
-eq('a trail whose parent has room is a decision (HIMMEL-3990)', M4.decisions().map((d) => d.type + ':' + d.i), ['fold:1']);
+eq('fold back takes trail work by best return while the parent stays in its caps', nums(M4.fold(1)), [41]);
+eq('a trail whose parent has room is a decision', M4.decisions().map((d) => d.type + ':' + d.i), ['fold:1']);
 
 // Estimate vs actual: a done ticket's wrapped workers and minutes, grouped by its size estimate, smallest size first.
 const sized = (r, e) => { r[10] = e; return r; };
@@ -116,20 +116,20 @@ const M5 = model({ V: ['v1.0.1'], T: ['tooling'], CUR: 0, VC: [c3], U: [], WORKE
     P: [sized(row(50, 2, 0, 1, 3), 'S'), sized(row(51, 2, 0, 1, 3), 'S'), sized(row(52, 2, 0, 1, 3), 'M–L'),
         sized(row(53, 0, 0, 1, 3), 'S'), sized(row(54, 2, 0, 1, 3), 'S'), sized(row(55, 2, 0, 1, 3), 'XS–S')],
     ACT: { 50: [1, 60], 51: [1, 40], 52: [2, 200], 53: [1, 10], 55: [1, 15] } });
-eq('a done ticket carries what it took; an open one does not (HIMMEL-3990)', [M5.act(M5.inV(0)[0]), M5.act(M5.inV(0)[3])], [[1, 60], null]);
-eq('accuracy groups measured done tickets by estimate, smallest first, with medians (HIMMEL-3990)',
+eq('a done ticket carries what it took; an open one does not', [M5.act(M5.inV(0)[0]), M5.act(M5.inV(0)[3])], [[1, 60], null]);
+eq('accuracy groups measured done tickets by estimate, smallest first, with medians',
     M5.accuracy().map((x) => [x.size, x.n, x.med, x.workers, nums(x.rows.map((r) => r.p))]),
     [['XS–S', 1, 15, 1, [55]], ['S', 2, 50, 1, [51, 50]], ['M–L', 1, 200, 2, [52]]]);
-eq('the in-progress column drills to every started ticket, worker or not (HIMMEL-3990)', nums(M.drill('doing', { v: 0 })), [11]);
-eq('a page without actuals measures nothing (HIMMEL-3990)', M.accuracy(), []);
+eq('the in-progress column drills to every started ticket, worker or not', nums(M.drill('doing', { v: 0 })), [11]);
+eq('a page without actuals measures nothing', M.accuracy(), []);
 
 // The page's own data runs through the same model (the Python blob and the JS agree on shapes).
 const m = /<script type="application\/json" id="data">([\s\S]*?)<\/script>/.exec(html);
 const R = model(JSON.parse(m[1]));
 const r1 = R.drill('live', { v: 0 });
-eq('the rendered data: the live worker ticket drills from the workers figure (HIMMEL-3990)', [nums(r1), R.worker(r1[0])], [[1], ['N55', 'LIVE', 1525]]);
-eq('the rendered data: the planned ticket loads its kind (HIMMEL-3990)', [R.load(0).kinds[0].used, nums(R.load(0).kinds[0].tickets)], [0.009, [1]]);
-eq('the rendered data: the row text is the user impact (HIMMEL-3990)', r1[0][9], 'changed impact');
+eq('the rendered data: the live worker ticket drills from the workers figure', [nums(r1), R.worker(r1[0])], [[1], ['N55', 'LIVE', 1525]]);
+eq('the rendered data: the planned ticket loads its kind', [R.load(0).kinds[0].used, nums(R.load(0).kinds[0].tickets)], [0.009, [1]]);
+eq('the rendered data: the row text is the user impact', r1[0][9], 'changed impact');
 
 console.log(fails + ' failure(s)');
 process.exit(fails ? 1 : 0);

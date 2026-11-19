@@ -44,23 +44,11 @@
 // merged PRs go to <out>-archive.html beside it: local,
 // never published, one item per line so a grep finds a ticket key, a PR or a last bullet.
 //
-// ponytail: the archive is rebuilt from the fleet manifest and the 24 h merged-PR list each
-// render, so a merged PR older than 24 h survives there only as its worker's line; upgrade
-// path: merge the previous archive's PR lines into the new one.
 //
 // PLATFORM GUARD: The chief kit is Linux-only (tick.sh
 // reads pgrep, atq and the konsole launch logs). Node ESM, no dependencies.
 //
-// ponytail: the epic "merged" count is PRs whose title cites [KEY], from one
-// `gh pr list --search "KEY in:title"` (200 max); an epic whose PRs cite it only
-// in the branch name, or with more than 200 merged PRs, undercounts. The declared
-// total in `epics:` is the chief's own number -- nothing derives it from Jira.
 //
-// ponytail: a Release panel is one Jira `list` per version (limit 1000; a version
-// with more tickets undercounts), a ticket is done when its status reads Done /
-// Closed / Resolved, and tick.sh never sees these counts, so tick's board= cannot go
-// STALE on one -- only --changed (the versions fingerprint meta) reports it. Upgrade
-// path: have tick.sh fold the counts into board-fp once #1421 lands.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
@@ -147,8 +135,6 @@ const liveField = (key) => {
 // WORKER_SESSION_LABEL_CLASS (scripts/lib/worker-identity.sh: letters, digits, `_`, `.`, `-`),
 // so a worker doc stem parses too. Only the label and the nonce are kept: the nonce
 // picks the worker's doc among docs sharing a label, and is never rendered.
-// ponytail: a malformed span (tick reports it MALFORMED by label) is not an entry
-// here, so a worker named only by one is missing from the board's Live-state set.
 const WORKER_SESSION_LABEL_CLASS = /^[A-Za-z0-9_.-]+$/;
 const liveEntries = [];
 {
@@ -191,7 +177,6 @@ const splitTopLevel = (s) => {
 // A `decisions:` line naming bucket decisions files lists the `(N) ` entries of
 // those files and of the line itself, never the path as one row; a named file
 // that does not exist is one row saying so.
-// ponytail: every numbered entry is listed, superseded ones too; an open/closed mark on the entry is the upgrade.
 const numberedEntries = (text) => text.split('\n')
     .flatMap((l) => l.split(/(?=\(\d+\) )/)).filter((e) => /^\(\d+\) /.test(e)).map((e) => e.trim());
 const decisionsLine = liveField('decisions');
@@ -301,8 +286,6 @@ for (const f of legFiles) {
     // A worker's PR comes only from the canonical grammar, anchored at the bullet's own
     // marker: `LIVE — PR <n> open`, `READY <pr> <head>`, `MERGED #<n>`. A FINDING or
     // prose that merely cites a PR (`#1039`, `PR 1039 merged`, a /pull/ URL) owns none.
-    // ponytail: a worker that opened a PR without ever writing one of these bullets has no
-    // PR here; the board does not join open PRs on headRefName to recover it.
     for (const b of bullets) {
         const m = /^- (?:\d{1,2}:\d{2}\s+)?(?:LIVE\s*[-–—:]?\s*PR\s*#?(\d{2,})\s+open\b|READY\s+#?(\d{2,})\s+[0-9a-f]{7,}|MERGED\s+#(\d{2,})\b)/.exec(b);
         if (m) pr = Number(m[1] || m[2] || m[3]);
@@ -449,8 +432,6 @@ const ciOf = (pr) => {
 const openByNum = new Map((openPrs || []).map((p) => [p.number, p]));
 // Merge state is asked of each PR a worker names (`gh pr view`), not read off the
 // 24 h merged panel: a worker whose PR merged yesterday must still read MERGED.
-// ponytail: a PR gh cannot answer for (gh down, not a PR of this repo) reads not
-// merged, so its worker falls back to LIVE / READY.
 const mergedNums = new Set((mergedPrs || []).map((p) => p.number));
 const mergedAtByNum = new Map((mergedPrs || []).map((p) => [p.number, Date.parse(p.mergedAt)]).filter(([, t]) => Number.isFinite(t)));
 for (const n of new Set([...legInfo.values()].map((i) => i.pr).filter(Boolean))) {
@@ -908,7 +889,6 @@ const redMainSection = (() => {
 // created or updated, stale past CR_CADENCE_STALE_DAYS; CR_TUNE_DIR is the proposals seam),
 // and the plan's "before" row. CR_LEDGER and BOARD_MIRROR are the seams. Anything unreadable is n/a (null),
 // never a failure; not part of the fingerprint. The mirror's `updated` is no proxy for Done.
-// ponytail: outflow and net read n/a while any Done residual lacks a `resolved:` mirror date, upgrade path: HIMMEL-6390 (mirror writer emits it).
 const CR_SOFT_CAP = 15;
 const CR_CADENCE_STALE_DAYS = 8;
 const CR_BEFORE = { window: '2026-10-04..2026-10-18', rounds_mean: 2.71, rounds_p50: 2, rounds_p90: 5, residuals_per_merged_pr: 0.41, residual_inflow_per_week: 200 };
@@ -921,7 +901,7 @@ const boardMirrorDir = () => {
 };
 const crLoopSection = (() => {
     const out = { window_days: 7, soft_cap: CR_SOFT_CAP, rounds: { prs: 0, mean: null, p90: null }, preflight: { hits: null, per_pr: null, prs: null, merged: null },
-        residual: { inflow: null, outflow: null, net: null, per_merged_pr: null, labelled_share: null, outflow_note: 'outflow needs a resolved date in the mirror (HIMMEL-6390)' },
+        residual: { inflow: null, outflow: null, net: null, per_merged_pr: null, labelled_share: null, outflow_note: 'outflow needs a resolved date in the mirror' },
         versions: [], restructure_open: null, before: CR_BEFORE,
         cadence: { stale_after_days: CR_CADENCE_STALE_DAYS, proposals_days: null, proposals_stale: true, restructure_days: null, restructure_stale: true } };
     trend.cr_loop = out;

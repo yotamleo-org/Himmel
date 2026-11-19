@@ -24,9 +24,6 @@ never scored. cost_eq = input + 1.25 x cache-write + 0.1 x cache-read + 5 x outp
 by message id, plus each compaction estimated as pre_tokens read from cache and a 5000-token summary
 (the compaction call is not in the stream).
 
-ponytail: one rep per cell is a noisy sample and the defect classifier is the Phase 1 heuristic;
-upgrade path = --reps 3 once the weekly budget allows, and a judge pass over sampled windows.
-
 Env (test seams): AB_CLAUDE (default claude), AB_PREFLIGHT (default scripts/lib/usage-preflight.sh).
 Billed: run, sweep and judge make real model calls and need HIMMEL_BILLED_OK=1.
 Exit: 0 done; 2 usage; 3 stopped (bank refusal or the ceiling).

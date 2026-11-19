@@ -163,8 +163,6 @@ echo "merge-fork-pr: merged $NWO PR #$PR at $SHA into $HBRANCH"
 # merge-on-green.sh's flag. Best-effort and last: the merge has landed, so no outcome here
 # changes the exit code. Same steps and CLI as merge-on-green.sh's _jira_close_on_merge:
 # an Epic is never touched, the comment goes first, the target status is reconcile-config's.
-# ponytail: skips that function's per-key status flock and fixVersion fold, upgrade path =
-# lift _jira_close_on_merge into scripts/lib/ so both merge paths call one copy.
 [ "$JIRA_TRANSITION" -eq 1 ] || exit 0
 jira_result() { echo "merge-fork-pr: jira-transition=$*"; exit 0; }
 jira() { ( cd "$ANCHOR" && node scripts/jira/dist/index.js "$@" ); }

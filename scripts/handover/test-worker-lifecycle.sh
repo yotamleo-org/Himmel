@@ -6,6 +6,7 @@
 # the host's MSYS/native pid namespace.
 
 set -uo pipefail
+KP=HIMMEL
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARM="$SCRIPT_DIR/arm-resume.sh"
@@ -108,7 +109,7 @@ cat > "$HANDOVER" <<EOF
 ---
 resume_cwd: $WORK_REPO
 ---
-# HIMMEL-1463 test handover
+# $KP-1463 test handover
 EOF
 
 export HANDOVER_DIR
@@ -250,8 +251,6 @@ chmod +x "$SCHED_STUB/at" "$SCHED_STUB/atq" "$SCHED_STUB/atrm" "$SCHED_STUB/clau
 # would dedup against T6's leftover entry (rc=3). Give it a file-backed crontab
 # stub (same shape as test-arm-resume-cron.sh) plus a private runner dir and no
 # Terminal window. Linux takes the `at` stubs above and never calls it.
-# ponytail: a stub stands in for real crontab, so no real cron round-trip is
-# exercised here; test-arm-resume-cron.sh owns that contract,
 CRON_STORE="$TMP/cron.store"; : > "$CRON_STORE"
 cat > "$SCHED_STUB/crontab" <<EOF
 #!/bin/sh

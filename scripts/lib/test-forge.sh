@@ -130,7 +130,7 @@ assert_eq "gh issue_create url" "https://github.com/owner/repo/issues/5" "$(FORG
 # synchronous field read, stubbed here) and computes the conflict locally with
 # `git merge-tree`. So this exercises a REAL merge against real commits, not a
 # mocked mergeable string.
-echo "TEST: github pr_mergeable computes conflicts locally (git merge-tree, HIMMEL-1232)"
+echo "TEST: github pr_mergeable computes conflicts locally (git merge-tree)"
 MREPO="$TMP_ROOT/mergerepo"
 git init -q -b main "$MREPO" 2>/dev/null || { git init -q "$MREPO"; git -C "$MREPO" checkout -q -b main; }
 git -C "$MREPO" config user.email t@t.t
@@ -278,7 +278,7 @@ esac
 # (they match the bash command string), so the seam itself must post the
 # `@coderabbitai review` trigger — exactly once per head SHA, via the SAME
 # ledger the hooks use, and never on an unarmed repo or on bitbucket.
-echo "TEST: github seam triggers CodeRabbit once per head SHA (HIMMEL-1924)"
+echo "TEST: github seam triggers CodeRabbit once per head SHA"
 TRIG_LOG="$TMP_ROOT/trigger-comments.log"
 : > "$TRIG_LOG"
 export TRIG_LOG

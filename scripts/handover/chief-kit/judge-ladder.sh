@@ -13,7 +13,6 @@
 # <handover_root>/.judge-ladder). Knobs: JUDGE_LADDER_{SONNET,OPUS,FABLE}_CAP per seat per
 # JUDGE_LADDER_WINDOW seconds; JUDGE_LADDER_NOW pins the clock for tests. bash 3.2-safe.
 #
-# ponytail: a flat per-seat count with no refill curve; HIMMEL-1864 slices 2+ (cross-model check per layer) revisit it.
 set -u
 
 SONNET_CAP="${JUDGE_LADDER_SONNET_CAP:-20}"

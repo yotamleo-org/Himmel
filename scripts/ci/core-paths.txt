@@ -1,8 +1,8 @@
-# core-paths.txt — HIMMEL-8353: the ship loop, the files a change to which needs a signed minerva spec first.
+# core-paths.txt — the ship loop, the files a change to which needs a signed minerva spec first.
 #
 # Core is the ship loop: how a ticket travels from one side of the workflow to the other
 # (the chief, version keeping, work splitting, the workers, the lock). It is NOT "everything
-# important": test-*.sh suites and fixtures stay out. Operator ruling 10-31 on HIMMEL-8353.
+# important": test-*.sh suites and fixtures stay out. Operator ruling 10-31.
 #
 # One anchored extended regex per line, same format as ci-trust-paths.txt. A line holds at most
 # one group, prefix(a|b|...)suffix, with no nesting: core.test.ts splits each line into its

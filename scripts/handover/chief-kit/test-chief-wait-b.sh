@@ -17,6 +17,7 @@
 #
 # Run: bash scripts/handover/chief-kit/test-chief-wait-b.sh
 set -u
+KP=HIMMEL
 HERE="$(cd "$(dirname "$0")" && pwd)"
 WAIT="${CHIEF_WAIT:-$HERE/chief-wait.sh}"
 
@@ -367,7 +368,7 @@ under_line "UNDERFILLED:12"
 wait_exit "$WPID"
 check "(u4959) a sustained UNDERFILLED capacity wakes the console (rc 0)" "0" "$rc"
 check "(u4959) the wake names the slack" "WAKE underfilled capacity=UNDERFILLED:12 pool=?" "$(head -n1 "$WORK/u4959.out")"
-check "(u4959) the wake carries the dispatchable list" "yes" "$(grep -q '^LOCAL HIMMEL-9001' "$WORK/u4959.out" && echo yes)"
+check "(u4959) the wake carries the dispatchable list" "yes" "$(grep -q "^LOCAL $KP-9001" "$WORK/u4959.out" && echo yes)"
 timeout 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u4959b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(u4959) the re-arm in the same streak does not wake again" "" "$(cat "$WORK/u4959b.out")"
 check "(u4959) and is still waiting (rc 124)" "124" "$rc"
@@ -416,7 +417,7 @@ wait_hb "$I" || fail "(6478) no baseline heartbeat"
 under_line "UNDERFILLED:7"
 wait_exit "$WPID"
 check "(6478) an empty priority pool still prints POOL-EMPTY" "1" "$(grep -c '^POOL-EMPTY' "$WORK/u6478.out")"
-check "(6478) an empty priority pool prints the version backlog from a second pass" "1" "$(grep -c '^LOCAL.HIMMEL-9002' "$WORK/u6478.out")"
+check "(6478) an empty priority pool prints the version backlog from a second pass" "1" "$(grep -c "^LOCAL.$KP-9002" "$WORK/u6478.out")"
 check "(6478) the second pass keeps --top and --workers-from but drops --priority-pool-only" "args=--top 7 --workers-from $WORK/u4959-fleet.json" "$(grep -o 'args=.*' "$WORK/u6478.out")"
 printf '#!/usr/bin/env bash\nprintf "ARGS %%s\\n" "$*"\n' > "$STUB/dispatch.sh"
 

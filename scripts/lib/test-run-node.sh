@@ -41,7 +41,7 @@ if ! PATH="$UTILS_DIR" bash -c 'sort </dev/null >/dev/null 2>&1 && command -v di
     # the apt-node class): the PATH-cleared cases below will fail;
     # say why up front instead of leaving a puzzling red run.
     if [ -x "$UTILS_DIR/node" ] || [ -x "$UTILS_DIR/node.exe" ]; then
-        echo "WARN: curated utils dir unusable AND fallback $UTILS_DIR carries node — PATH-cleared cases will fail (HIMMEL-966)" >&2
+        echo "WARN: curated utils dir unusable AND fallback $UTILS_DIR carries node — PATH-cleared cases will fail" >&2
     fi
 fi
 
@@ -246,7 +246,7 @@ else
         # UNSPECIFIED; dash drops them, busybox ash does not) — so a
         # busybox/zsh/mksh/etc PASS below is NEVER evidence dash would also
         # pass. Say so loudly instead of a silent green tick.
-        echo "  SKIP: dash absent — busybox ash is NOT a dash substitute for parameter-expansion or dot-with-operands bashisms (HIMMEL-2741/2758)"
+        echo "  SKIP: dash absent — busybox ash is NOT a dash substitute for parameter-expansion or dot-with-operands bashisms"
     fi
     # Under $UTILS_ROOT so the file-scope EXIT trap cleans it up.
     ptmp="$UTILS_ROOT/posix"; mkdir -p "$ptmp/hooks"
@@ -671,7 +671,6 @@ printf '%s|%s' "$(gh)" "$PATH"
 EOF
         chmod +x "$hook_dir/gh-which-hook.sh"
 
-        # ponytail: the three PATH-order cases exec /bin/sh, not `command -p sh`, because bash 3.2 (macOS) leaves the confstr default PATH in the child's env, hiding the inherited order under test; the `command -p sh` wiring stays covered by the launcher-chain cases above, revisit if macOS ships bash >= 4.
         cmd="/bin/sh \"$REPO_ROOT/scripts/lib/run-node.sh\" \"$REPO_ROOT/scripts/hooks/run-hook-with-bash.js\" \"$hook_dir/gh-which-hook.sh\""
         # Starting PATH = wrapper dir first, then UTILS_DIR; the fallback list
         # names UTILS_DIR again (already present — must not be duplicated) and

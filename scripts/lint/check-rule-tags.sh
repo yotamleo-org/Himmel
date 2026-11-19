@@ -11,8 +11,6 @@
 #   [prose]              nothing enforces it: the escalation backlog
 # Why: an agent cannot tell a hard rule from a soft one, and an operator cannot prune
 # prose safely; the tag makes both answers a grep. Doctrine: docs/internals/context-architecture.md.
-# ponytail: only list items are rule lines, so a rule written as a plain paragraph is not
-# seen; upgrade to a per-section marker if paragraph rules start to appear in the tagged files.
 #
 # Usage:
 #   check-rule-tags.sh [--enforced-list <file>] [<file>...]

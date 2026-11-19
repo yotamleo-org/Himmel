@@ -17,7 +17,7 @@
 # a "never wait for it" next to the reviewer's name trips too — so state the
 # rule without those words ("CodeRabbit is best effort, not gating"). The one
 # escape is an
-# explicit same-line marker for quoted history, like the ponytail convention:
+# explicit same-line marker for quoted history:
 #     cr-best-effort-ok: <why this line quotes the old behaviour>
 #
 # Scope (gate mode = tracked files, so a fresh clone with an empty memory
@@ -25,9 +25,6 @@
 # .agents/skills/**, scripts/** (.sh and .md), CLAUDE.md, README.md.
 # `*/fixtures/*` is excluded: frozen red-control copies of old scripts must
 # stay byte-identical; so is this guard's own suite, whose RED controls are
-# the old text by design. ponytail: single-line co-occurrence only — a sentence
-# that wraps "CodeRabbit" and "slot" onto two lines is missed. Every instance
-# this ticket removed sat on one line; revisit if a wrapped one appears.
 #
 # Usage:
 #   check-cr-best-effort.sh            # gate mode: every tracked in-scope file

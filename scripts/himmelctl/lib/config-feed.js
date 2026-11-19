@@ -141,7 +141,6 @@ function fallbackRemedy(o) {
 // it), 'operator' (only the operator can run the command: a login) or 'chief' (the default).
 // A doctor row carries the scope its check declares (himmel-doctor.sh --json `scope`, `repo`); an item row may carry its
 // manifest item's `healthScope`/`repo`, else its kind decides. An undeclared doctor row is the project's.
-// ponytail: the operator doctor checks are a hand list, upgrade: each probe declares its own owner.
 const OPERATOR_DOCTOR = /^C12-/;
 const SCOPES = new Set(['shared', 'project']);
 const PROJECT_SECRETS = new Set(['JIRA_PROJECT_KEY']);

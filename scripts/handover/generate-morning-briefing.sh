@@ -356,9 +356,6 @@ fi
 # Done tickets via jira (best-effort): the tickets whose status moved to Done inside the report day, from Jira's own
 # transition history (the commits no longer filter them). A merged PR of the day that names the key adds its number.
 # A window with no end is never queried: without a next day the section says so.
-# ponytail: the Done window is bounded in the Jira profile's zone, not the report zone; ceiling = with report_day=utc and a
-# non-UTC Jira profile, transitions within the zone offset of midnight land on the neighbouring day; upgrade path = pass
-# "yyyy/MM/dd HH:mm" bounds converted to the Jira profile's zone (read once from /myself) and add a VM row with a non-UTC profile.
 done_block=""
 done_skipped=0
 if [ -n "$JIRA_CMD" ]; then
@@ -834,8 +831,6 @@ fi
 # Worker names never print on the table path: workers_sample is not read, and the raw markdown is not pasted.
 # The check, in one place: the file parses; it is an object with window.start and window.end strings, classes and routing arrays,
 # a totals object, and every classes[] row has class, kind, rows, workers and recurring; a schema_version key, if present, is 1.
-# ponytail: the reader pins no version because the writer emits none; ceiling = a writer that changes a field without adding
-# a version is read wrongly; upgrade path = failure_review.py adds schema_version (its open follow-up ticket owns that file).
 # shellcheck disable=SC2016  # the jq programs: $d, $nc and the rest are jq variables, not shell ones
 fr_shape_jq='(.window | type == "object" and (.start | type == "string") and (.end | type == "string"))
     and (.classes | type == "array") and (.routing | type == "array") and (.totals | type == "object")

@@ -2,6 +2,7 @@
 # shellcheck disable=SC2015
 # Hermetic tests for resume.sh — no git repo needed (uses --repo-root override).
 set -uo pipefail
+KP=HIMMEL
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
@@ -77,7 +78,7 @@ RR="C:/Work/Himmel"   # mixed-case to prove case-insensitive registry match
 run(){ HANDOVER_DIR="$root" HANDOVER_REGISTRY="$reg" bash "$R" --repo-root "$RR" "$@"; }
 
 # 1. Key form -> latest session's Cold-Start block, trimmed at the next ## heading.
-o="$(run HIMMEL-389)"
+o="$(run "$KP"-389)"
 has "key form: latest block"     "$o" "RESUME-389-V2 line one"
 hasnt "key form: excludes overnight" "$o" "Overnight Mode Trigger"
 hasnt "key form: not the older v1"   "$o" "RESUME-389-V1"
@@ -93,7 +94,7 @@ has "bare 77 -> shows-brief notice" "$o" "no session file yet"
 has "hash form 77 -> #77 fallback"  "$(run '#77')" "BRIEF-77-MARKER"
 
 # 3b. Epic-task path (own KEY-N) -> resolves + falls back to brief.
-o="$(run HIMMEL-501)"
+o="$(run "$KP"-501)"
 has "epic-task resolves"       "$o" "TASK-501-MARKER"
 has "epic-task id not truncated" "$o" "for HIMMEL-501"
 
@@ -102,7 +103,7 @@ o="$(run --list)"
 has "list: live standalone"  "$o" "HIMMEL-389"
 has "list: #77 item"         "$o" "#77"
 has "list: live epic"        "$o" "HIMMEL-500"
-has "list: epic-task row"    "$o" "$(printf 'HIMMEL-501\tfirst-task\tin-progress\ttask')"
+has "list: epic-task row"    "$o" "$(printf '%s\tfirst-task\tin-progress\ttask' "$KP-501")"
 hasnt "list: excludes done"  "$o" "HIMMEL-414"
 
 # 5. Error paths.
@@ -164,8 +165,6 @@ hasnt "env matches: no warning" "$err" "exported HANDOVER_DIR"
 
 # BSD sed (macOS) has no `\|` alternation in a BRE, so the list
 # id split silently fell through. Keep resume.sh free of it (use sed -E).
-# ponytail: a source grep, because Linux CI cannot execute BSD sed; the macOS
-# shard's --list epic-task row is the behavioural proof,
 o="$(grep -nE 'sed .*\\\|' "$R")"
 check "resume.sh: no GNU-only \\| alternation in sed" "$o" ""
 

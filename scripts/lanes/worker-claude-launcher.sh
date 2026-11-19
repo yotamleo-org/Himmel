@@ -85,7 +85,7 @@ WORKER_SESSION_PROFILE_NO_SETTING_SOURCES="${WORKER_SESSION_PROFILE_NO_SETTING_S
 # `type -P` below is a plain PATH search. WORKER_SESSION_CLAUDE_BIN stays the suite's
 # seam: headed-arm-worker.sh scrubs it (var + token) and refuses its
 # HEADED_ARM_WORKER_CLAUDE_BIN source before a consult launches, so no consult
-# reaches here with it set. The ponytail for the pinned dirs is in consult-env.sh.
+# reaches here with it set.
 if [ "${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-}" = 1 ] && [ -z "${WORKER_SESSION_CLAUDE_BIN:-}" ]; then
     # shellcheck source=consult-env.sh
     if ! . "${BASH_SOURCE[0]%/*}/consult-env.sh"; then

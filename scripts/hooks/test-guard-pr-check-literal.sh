@@ -472,13 +472,13 @@ no_spelling_deny "literal anchor prefix onto go.sh"
 # hazard main's pr-check.md documents: "$HIMMEL_REPO/..." then resolves to a
 # root-relative, user-plantable path) still hit the exemption and allowed.
 # shellcheck disable=SC2016 # the literal `$HIMMEL_REPO` text, never expanded here
-run 'control: HIMMEL_REPO unset -> anchor-prefix step0 call still denies (HIMMEL-3798 codex-1)' 2 \
+run 'control: HIMMEL_REPO unset -> anchor-prefix step0 call still denies' 2 \
     "$(payload 'bash "$HIMMEL_REPO/scripts/cr/pr-check-step0.sh"' "$WT")"
 # shellcheck disable=SC2016 # the literal `$HIMMEL_REPO` text, never expanded here
-run 'control: HIMMEL_REPO empty -> anchor-prefix step0 call still denies (HIMMEL-3798 codex-1)' 2 \
+run 'control: HIMMEL_REPO empty -> anchor-prefix step0 call still denies' 2 \
     "$(payload 'bash "$HIMMEL_REPO/scripts/cr/pr-check-step0.sh"' "$WT")" "HIMMEL_REPO="
 # shellcheck disable=SC2016 # the literal `$HIMMEL_REPO` text, never expanded here
-run 'HIMMEL_REPO correctly set to the anchor -> step0 call still allows (HIMMEL-3798 codex-1)' 0 \
+run 'HIMMEL_REPO correctly set to the anchor -> step0 call still allows' 0 \
     "$(payload 'bash "$HIMMEL_REPO/scripts/cr/pr-check-step0.sh"' "$WT")" "$HR"
 no_spelling_deny 'step0 call through the anchor prefix'
 
@@ -967,7 +967,7 @@ for v in \
 done
 run "1813: redirect-only here-string (no command word) -> no-op" 0 \
     "$(payload "<<< hello" "$WT")" "$HR"
-run "1813/3917: cat of a here-string naming a target -> deny (any <<< beside a target, HIMMEL-3917)" 2 \
+run "1813/3917: cat of a here-string naming a target -> deny (any <<< beside a target)" 2 \
     "$(payload "cat <<< \"env -S 'bash scripts/handover/merge-on-green.sh\\c'\"" "$WT")" "$HR"
 run "1813: unresolvable env -S with no target mention -> no-op" 0 \
     "$(payload "env -S 'bash scripts/other/x.sh\\c'" "$WT")" "$HR"
@@ -1445,12 +1445,12 @@ MENTIONS
 # must not flag $VAR tokens elsewhere in the same command as unresolved,
 # and -execdir with a non-interpreter command word keeps the {} carve-out.
 # shellcheck disable=SC2016 # command text, verbatim
-run "bash scripts/cr/test-cr-scores.sh \"\$TMP\" -> allow (HIMMEL-3517)" 0 \
+run "bash scripts/cr/test-cr-scores.sh \"\$TMP\" -> allow" 0 \
     "$(payload 'bash scripts/cr/test-cr-scores.sh "$TMP"' "$WT")" "$HR"
 # shellcheck disable=SC2016 # command text, verbatim
-run "CR_LEDGER=\$T/l.jsonl bash scripts/cr/test-ledger-append.sh -> allow (HIMMEL-3517)" 0 \
+run "CR_LEDGER=\$T/l.jsonl bash scripts/cr/test-ledger-append.sh -> allow" 0 \
     "$(payload 'CR_LEDGER=$T/l.jsonl bash scripts/cr/test-ledger-append.sh' "$WT")" "$HR"
-run "find -execdir grep (non-interpreter) -> allow (HIMMEL-3517)" 0 \
+run "find -execdir grep (non-interpreter) -> allow" 0 \
     "$(payload "find . -name '*.md' -execdir grep foo {} \\;" "$WT")" "$HR"
 
 # codex-2 (/pr-check critic panel, Important, 2026-09-23): -execdir's
@@ -1460,7 +1460,7 @@ run "find -execdir grep (non-interpreter) -> allow (HIMMEL-3517)" 0 \
 # though it runs from find's changed cwd and can itself resolve and execute
 # a guarded relative script there. Fixed by treating any path-qualified
 # (contains /) next-word as unverifiable, same as a known wrapper -> deny.
-run "find -execdir ./wrapper (path-qualified, unrecognized) -> deny (HIMMEL-3517, codex-2)" 2 \
+run "find -execdir ./wrapper (path-qualified, unrecognized) -> deny" 2 \
     "$(payload "find . -maxdepth 0 -execdir ./wrapper {} \\;" "$WT")" "$HR"
 
 # codex-1: a BARE
@@ -1472,9 +1472,9 @@ run "find -execdir ./wrapper (path-qualified, unrecognized) -> deny (HIMMEL-3517
 # fixed-behavior read-only allowlist (grep, cat, head, tail, wc, ls, stat,
 # file, sha256sum, md5sum) to keep the relaxed {} carve-out; any other bare
 # word is now chdir-gated like a path-qualified one -> deny.
-run "find -execdir randomtool (bare, unrecognized, not allowlisted) -> deny (HIMMEL-3517, codex-1 round 4)" 2 \
+run "find -execdir randomtool (bare, unrecognized, not allowlisted) -> deny" 2 \
     "$(payload "find . -maxdepth 0 -execdir randomtool {} \\;" "$WT")" "$HR"
-run "find -execdir sed -i (never allowlisted) -> deny (HIMMEL-3517, codex-1 round 4)" 2 \
+run "find -execdir sed -i (never allowlisted) -> deny" 2 \
     "$(payload "find . -maxdepth 0 -execdir sed -i s/a/b/ {} \\;" "$WT")" "$HR"
 
 # codex-1: an
@@ -1492,9 +1492,9 @@ run "find -execdir sed -i (never allowlisted) -> deny (HIMMEL-3517, codex-1 roun
 # off the chdir gate (is_target("sed"/"awk") is false), so these ALLOWED
 # despite sed's `e` command / awk's `system()` being able to execute
 # anything - the exact gap this closes.
-run "find -execdir sed e (no -i, but sed's e command executes) -> deny (HIMMEL-3517, codex-1 round 5)" 2 \
+run "find -execdir sed e (no -i, but sed's e command executes) -> deny" 2 \
     "$(payload "find . -maxdepth 0 -execdir sed -n 'e ls' {} \\;" "$WT")" "$HR"
-run "find -execdir awk system() (no -i, but system() executes) -> deny (HIMMEL-3517, codex-1 round 5)" 2 \
+run "find -execdir awk system() (no -i, but system() executes) -> deny" 2 \
     "$(payload "find . -maxdepth 0 -execdir awk 'BEGIN{system(\"ls\")}' {} \\;" "$WT")" "$HR"
 # Positive controls: the shapes these fixes must NOT widen stay denied.
 # shellcheck disable=SC2016 # command text, verbatim
@@ -1513,14 +1513,14 @@ run "control: bash scripts/cr/\$X (real unresolved target) -> still deny" 2 \
 # and still denies. (Target is a literal path, not $TMP, so the deny is
 # provably the backtick-span misread and not the unrelated unresolved-var
 # check that a $VAR-suffixed path would also trip.)
-run "sed-i backtick span in single-quoted replacement text allows (HIMMEL-3546 quote-aware)" 0 \
+run "sed-i backtick span in single-quoted replacement text allows (quote-aware)" 0 \
     "$(payload "sed -i 's|x|y \`bash scripts/cr/review-round.sh\` z|' handover.md" "$WT")" "$HR" # gnu-ok: fixture text fed to the hook as tool_input.command, never executed
-run "control: same span but a malformed s command (unescaped / ends it) -> still deny (HIMMEL-3546)" 2 \
+run "control: same span but a malformed s command (unescaped / ends it) -> still deny" 2 \
     "$(payload "sed -i 's/x/y \`bash scripts/cr/review-round.sh\` z/' handover.md" "$WT")" "$HR" # gnu-ok: fixture text fed to the hook as tool_input.command, never executed
 # ---- quoted text that is provably inert is data, not a command.
 # pr-check-context.sh is branch-edited here; ledger-append.sh is clean.
 while IFS= read -r v; do
-    run "inert quoted text [$v] on an edited branch -> allow (HIMMEL-3546)" 0 "$(payload "$v" "$WT")" "$HR"
+    run "inert quoted text [$v] on an edited branch -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done <<'INERT'
 echo 'bash scripts/cr/pr-check-context.sh'
 printf '%s\n' 'bash scripts/cr/pr-check-context.sh; x'
@@ -1538,7 +1538,7 @@ need_in_err "3917: quoted '>' deny names the arrow remedy" "use '→' / 'to' ins
 # second command is not inert - every one still denies.
 # the 2>&1 fd-dup forms stay denied too.
 while IFS= read -r v; do
-    run "not inert [$v] on an edited branch -> deny (HIMMEL-3546)" 2 "$(payload "$v" "$WT")" "$HR"
+    run "not inert [$v] on an edited branch -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done <<'NOTINERT'
 echo 'bash scripts/cr/pr-check-context.sh' | bash
 cat 'scripts/cr/pr-check-context.sh' | bash
@@ -1698,7 +1698,7 @@ case "$item_rc" in
     3) echo '"'"'4.6/4.7: no active handover item for feat/x — handover bridges SKIPPED (not a failure)'"'"' ;;
     *) echo "4.6/4.7: resolve-active-item.sh errored (rc=$item_rc) — handover bridges skipped, best-effort" >&2 ;;
 esac'
-run "base pr-check.md 4.6/4.7 case-fence literal, clean tree -> still denied (HIMMEL-3707, guard unchanged)" 2 \
+run "base pr-check.md 4.6/4.7 case-fence literal, clean tree -> still denied (guard unchanged)" 2 \
     "$(payload "$OLD_ITEM_FENCE" "$WT")" "$HR"
 # a tokenizer failure is now unsafe on its own, so this
 # fence is refused by the generic git-option deny before the operand check.
@@ -1723,7 +1723,7 @@ VERDICT [f1] = agreed
 WV_STDIN_EOF
 ENVELOPE
 )
-run "write-verdicts.sh heredoc shape denies post-cut (HIMMEL-3798 round 3)" 2 \
+run "write-verdicts.sh heredoc shape denies post-cut" 2 \
     "$(payload "$WV_HEREDOC" "$WT")" "$HR"
 
 IS_HEREDOC=$(cat <<'ENVELOPE'
@@ -1732,7 +1732,7 @@ SUITE scripts/hooks/test-foo.sh = PASS
 IS_STDIN_EOF
 ENVELOPE
 )
-run "impacted-suites.sh --check heredoc shape denies post-cut (HIMMEL-3798 round 3)" 2 \
+run "impacted-suites.sh --check heredoc shape denies post-cut" 2 \
     "$(payload "$IS_HEREDOC" "$WT")" "$HR"
 
 WV_EMPTY_HEREDOC=$(cat <<'ENVELOPE'
@@ -1740,12 +1740,12 @@ bash scripts/cr/write-verdicts.sh prior-blocking --branch 'feat/x' <<'WV_STDIN_E
 WV_STDIN_EOF
 ENVELOPE
 )
-run "write-verdicts.sh empty heredoc denies post-cut (HIMMEL-3798 round 3)" 2 \
+run "write-verdicts.sh empty heredoc denies post-cut" 2 \
     "$(payload "$WV_EMPTY_HEREDOC" "$WT")" "$HR"
 
-run "write-verdicts.sh via < file redirect denies post-cut (HIMMEL-3798 round 3)" 2 \
+run "write-verdicts.sh via < file redirect denies post-cut" 2 \
     "$(payload "bash scripts/cr/write-verdicts.sh prior-blocking --branch 'feat/x' < /dev/null" "$WT")" "$HR"
-run "impacted-suites.sh --check via < file redirect denies post-cut (HIMMEL-3798 round 3)" 2 \
+run "impacted-suites.sh --check via < file redirect denies post-cut" 2 \
     "$(payload "bash scripts/cr/impacted-suites.sh --check aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa..bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb < /dev/null" "$WT")" "$HR"
 
 # case (ii) is moot post-cut: a heredoc body is never parsed as a heredoc
@@ -1758,7 +1758,7 @@ SUITE scripts/cr/write-verdicts.sh = BLOCKED denial mentioning scripts/cr/write-
 IS_STDIN_EOF
 ENVELOPE
 )
-run "impacted-suites.sh heredoc body mentions another script's name still denies post-cut (HIMMEL-3798 round 3)" 2 \
+run "impacted-suites.sh heredoc body mentions another script's name still denies post-cut" 2 \
     "$(payload "$IS_HEREDOC_MENTIONS" "$WT")" "$HR"
 
 # ---- --from-file <literal-path> replaces the cut
@@ -1769,18 +1769,18 @@ run "impacted-suites.sh heredoc body mentions another script's name still denies
 # fail-closed validation (missing/symlink/unreadable/empty) is exercised in
 # the writer scripts' own test suites, not here - this hook only judges the
 # command SHAPE.
-run "write-verdicts.sh --from-file with a clean literal path -> allow (HIMMEL-3798 round 3)" 0 \
+run "write-verdicts.sh --from-file with a clean literal path -> allow" 0 \
     "$(payload "bash scripts/cr/write-verdicts.sh prior-blocking --branch 'feat/x' --from-file /tmp/wv-verdicts.txt" "$WT")" "$HR"
-run "impacted-suites.sh --check --from-file with a clean literal path -> allow (HIMMEL-3798 round 3)" 0 \
+run "impacted-suites.sh --check --from-file with a clean literal path -> allow" 0 \
     "$(payload "bash scripts/cr/impacted-suites.sh --check aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa..bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb --from-file /tmp/is-suites.txt" "$WT")" "$HR"
-run "control: --from-file value with a trailing ;id denies (HIMMEL-3798 round 3)" 2 \
+run "control: --from-file value with a trailing ;id denies" 2 \
     "$(payload "bash scripts/cr/write-verdicts.sh prior-blocking --branch 'feat/x' --from-file /tmp/x;id" "$WT")" "$HR"
 # shellcheck disable=SC2016 # the literal $(id) text, never expanded here
-run "control: --from-file value containing \$(id) denies (HIMMEL-3798 round 3)" 2 \
+run "control: --from-file value containing \$(id) denies" 2 \
     "$(payload 'bash scripts/cr/write-verdicts.sh prior-blocking --branch '"'"'feat/x'"'"' --from-file /tmp/x$(id)' "$WT")" "$HR"
-run "control: --from-file value with a glob denies (HIMMEL-3798 round 3)" 2 \
+run "control: --from-file value with a glob denies" 2 \
     "$(payload "bash scripts/cr/write-verdicts.sh prior-blocking --branch 'feat/x' --from-file /tmp/*.txt" "$WT")" "$HR"
-run "control: quoted --from-file value denies, unquoted-literal only (HIMMEL-3798 round 3)" 2 \
+run "control: quoted --from-file value denies, unquoted-literal only" 2 \
     "$(payload 'bash scripts/cr/write-verdicts.sh prior-blocking --branch '"'"'feat/x'"'"' --from-file "/tmp/wv-verdicts.txt"' "$WT")" "$HR"
 
 # case (iii): a plain node .../jira call whose --summary happens to mention a
@@ -1788,26 +1788,26 @@ run "control: quoted --from-file value denies, unquoted-literal only (HIMMEL-379
 # interpreter word, no scripts/cr candidate as the command word) - allow,
 # unaffected by this fix; this hook is not what denies that shape in
 # production (a different hook, block-jira-compound-write.sh, is).
-run "node jira --summary mentions a writer's name -> allow, not this hook's concern (HIMMEL-3798)" 0 \
+run "node jira --summary mentions a writer's name -> allow, not this hook's concern" 0 \
     "$(payload "node $PRIMARY/scripts/jira/dist/index.js create --type Bug --summary 'guard denies scripts/cr/write-verdicts.sh heredoc'" "$WT")" "$HR"
 
 # ---- controls: must stay denied ---------------------------------------------
-run "control: pipe into write-verdicts.sh still denies (HIMMEL-3798)" 2 \
+run "control: pipe into write-verdicts.sh still denies" 2 \
     "$(payload "printf '' | bash scripts/cr/write-verdicts.sh prior-blocking --branch 'feat/x'" "$WT")" "$HR"
-run "control: pipe into impacted-suites.sh --check still denies (HIMMEL-3798)" 2 \
+run "control: pipe into impacted-suites.sh --check still denies" 2 \
     "$(payload "printf '' | bash scripts/cr/impacted-suites.sh --check aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa..bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" "$WT")" "$HR"
 # shellcheck disable=SC2016 # the literal `$X` text inside the payload, never expanded here
-run "control: \$VAR path with a heredoc still denies (HIMMEL-3798)" 2 \
+run "control: \$VAR path with a heredoc still denies" 2 \
     "$(payload 'X="scripts/cr/write-verdicts.sh"; bash "$X" prior-blocking --branch feat/x <<'"'"'WV_STDIN_EOF'"'"'
 VERDICT [f1] = agreed
 WV_STDIN_EOF' "$WT")" "$HR"
 # shellcheck disable=SC2016 # the literal `$F` text inside the payload, never expanded here
-run "control: \$VAR redirect file still denies (HIMMEL-3798)" 2 \
+run "control: \$VAR redirect file still denies" 2 \
     "$(payload 'F=/dev/null; bash scripts/cr/write-verdicts.sh prior-blocking --branch feat/x < "$F"' "$WT")" "$HR"
-run "control: trailing command after the heredoc closes still denies (HIMMEL-3798)" 2 \
+run "control: trailing command after the heredoc closes still denies" 2 \
     "$(payload "$WV_HEREDOC"'
 rm -rf /' "$WT")" "$HR"
-run "control: trailing command after the redirect target still denies (HIMMEL-3798)" 2 \
+run "control: trailing command after the redirect target still denies" 2 \
     "$(payload "bash scripts/cr/write-verdicts.sh prior-blocking --branch 'feat/x' < /dev/null; rm -rf /" "$WT")" "$HR"
 
 # codex-2: the unquoted redirect-file
@@ -1815,21 +1815,21 @@ run "control: trailing command after the redirect target still denies (HIMMEL-37
 # captured as part of the "filename" and passed validation - the guard
 # classified a two-command line as one simple redirect, letting the second
 # command run unguarded. Each of these must deny.
-run "control: redirect file with trailing ;id still denies (HIMMEL-3798 codex-2)" 2 \
+run "control: redirect file with trailing ;id still denies" 2 \
     "$(payload "bash scripts/cr/write-verdicts.sh prior-blocking --branch 'feat/x' < /dev/null;id" "$WT")" "$HR"
-run "control: redirect file with trailing &&id still denies (HIMMEL-3798 codex-2)" 2 \
+run "control: redirect file with trailing &&id still denies" 2 \
     "$(payload "bash scripts/cr/write-verdicts.sh prior-blocking --branch 'feat/x' < /dev/null&&id" "$WT")" "$HR"
-run "control: redirect file with trailing |id still denies (HIMMEL-3798 codex-2)" 2 \
+run "control: redirect file with trailing |id still denies" 2 \
     "$(payload "bash scripts/cr/write-verdicts.sh prior-blocking --branch 'feat/x' < /dev/null|id" "$WT")" "$HR"
-run "control: redirect file with trailing ) still denies (HIMMEL-3798 codex-2)" 2 \
+run "control: redirect file with trailing ) still denies" 2 \
     "$(payload "bash scripts/cr/write-verdicts.sh prior-blocking --branch 'feat/x' < /dev/null)" "$WT")" "$HR"
-run "control: redirect file with trailing >g still denies (HIMMEL-3798 codex-2)" 2 \
+run "control: redirect file with trailing >g still denies" 2 \
     "$(payload "bash scripts/cr/write-verdicts.sh prior-blocking --branch 'feat/x' < /dev/null>g" "$WT")" "$HR"
 # shellcheck disable=SC2016 # the literal backtick-id-backtick text, never expanded here
-run "control: redirect file with trailing backtick-id-backtick still denies (HIMMEL-3798 codex-2)" 2 \
+run "control: redirect file with trailing backtick-id-backtick still denies" 2 \
     "$(payload 'bash scripts/cr/write-verdicts.sh prior-blocking --branch '"'"'feat/x'"'"' < /dev/null`id`' "$WT")" "$HR"
 # shellcheck disable=SC2016 # the literal $(id) text, never expanded here
-run "control: redirect file with trailing \$(id) still denies (HIMMEL-3798 codex-2)" 2 \
+run "control: redirect file with trailing \$(id) still denies" 2 \
     "$(payload 'bash scripts/cr/write-verdicts.sh prior-blocking --branch '"'"'feat/x'"'"' < /dev/null$(id)' "$WT")" "$HR"
 # codex-1: the line1 regexes' exclusion
 # class [^;&|()<>`] does not exclude '#'. A '#' starting a new word makes
@@ -1846,7 +1846,7 @@ VERDICT [f1] = $(id)
 WV_STDIN_EOF
 ENVELOPE
 )
-run "control: '#' before <<'WV_STDIN_EOF' swallows the heredoc op, still denies (HIMMEL-3798 codex-1)" 2 \
+run "control: '#' before <<'WV_STDIN_EOF' swallows the heredoc op, still denies" 2 \
     "$(payload "$WV_COMMENT_SWALLOWS_HEREDOC" "$WT")" "$HR"
 IS_COMMENT_SWALLOWS_HEREDOC=$(cat <<'ENVELOPE'
 bash scripts/cr/impacted-suites.sh --check aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa..bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb # <<'IS_STDIN_EOF'
@@ -1854,13 +1854,13 @@ SUITE $(id)
 IS_STDIN_EOF
 ENVELOPE
 )
-run "control: '#' before <<'IS_STDIN_EOF' swallows the heredoc op, still denies (HIMMEL-3798 codex-1)" 2 \
+run "control: '#' before <<'IS_STDIN_EOF' swallows the heredoc op, still denies" 2 \
     "$(payload "$IS_COMMENT_SWALLOWS_HEREDOC" "$WT")" "$HR"
 # Same exclusion gap on the file-redirect regexes: a trailing '#' before the
 # ` < <file>` should not be able to swallow the redirect either (defense in
 # depth - no trailing extra command follows here, but the exclusion class
 # should be consistent across both alternatives).
-run "control: '#' before < file redirect still denies (HIMMEL-3798 codex-1)" 2 \
+run "control: '#' before < file redirect still denies" 2 \
     "$(payload "bash scripts/cr/write-verdicts.sh prior-blocking --branch 'feat/x' # < /dev/null" "$WT")" "$HR"
 
 # A worktree whose write-verdicts.sh copy differs from the anchor's still
@@ -1870,7 +1870,7 @@ run "control: '#' before < file redirect still denies (HIMMEL-3798 codex-1)" 2 \
 # the unconditional "not one simple command" fallback, before ever reaching
 # the byte-equality check this control means to exercise.
 echo tampered >>"$WT/scripts/cr/write-verdicts.sh"
-run "control: --from-file shape on a tampered worktree copy still denies (HIMMEL-3798)" 2 \
+run "control: --from-file shape on a tampered worktree copy still denies" 2 \
     "$(payload "bash scripts/cr/write-verdicts.sh prior-blocking --branch 'feat/x' --from-file /tmp/wv-verdicts.txt" "$WT")" "$HR"
 need_in_err "deny names the byte mismatch, not the shape" "differs from the HIMMEL_REPO anchor's"
 g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh

@@ -271,7 +271,6 @@ wall_after() {
 # Walk the HH:MM bullets, first LIVE .. last WRAPPED, as real instants: LIVE is
 # its earliest reading on the doc's day, each later bullet the first instant at
 # or after the one before it.
-# ponytail: a >24h gap with no bullet in between still counts as one day, upgrade path: full dates in the Results bullets if such a worker is seen
 lo="$(date -d "$day $live" +%s)"
 cur="" hi=""
 while read -r _ hm word _; do

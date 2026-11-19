@@ -9,8 +9,6 @@
 # token gated so an empty SNYK_TOKEN skips with a notice, the scan and the forks
 # scan run through scripts/security/snyk-scan.sh, and the JSON uploaded as an artifact.
 #
-# ponytail: line-oriented text checks, not a YAML parse, upgrade to a real parser
-# if the repo ever vendors one for workflows (as test-main-sweep-red-workflow.sh).
 #
 # Usage: bash scripts/ci/test-snyk-weekly-workflow.sh
 # Env:   SNYK_WEEKLY_YML  workflow under test (default: the tracked file).

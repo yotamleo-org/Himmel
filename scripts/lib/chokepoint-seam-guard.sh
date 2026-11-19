@@ -72,23 +72,6 @@
 # outside the marker rule. On Linux an unreadable /proc, or a /proc that is not
 # a procfs mount (stat -f %T), denies (a fake view via unshare -rm
 # + tmpfs is not a real platform).
-# ponytail: R1 a detached launch with no Claude Code marker in its env (env -i,
-# systemd-run, cron) and no claude ancestor is allowed; R2 a fresh `claude`
-# launched with a forged env is indistinguishable from a legit launch; R3
-# macOS/Git Bash (no /proc) keeps the unchanged hook-only posture - no guard
-# runs there; R4 an operator (or an obfuscated Bash write the hook's text scan
-# misses) editing a guarded settings file changes the baseline; R5 external
-# tools come from fixed system dirs, but bash itself still honours inherited
-# state before this lib runs: an exported BASH_FUNC_* shadowing a builtin
-# (printf, read, [), BASH_ENV sourced at startup, SHELLOPTS/BASHOPTS turning on
-# options, and an extdebug DEBUG trap - the hook's text layer
-# refuses those names beside a chokepoint word; R6 the pure-bash double-fork
-# `( (sleep 1; exec <chokepoint>) & )` detaches a chokepoint from its claude
-# ancestor into the orphan path, and the "clear, don't set" variant (`env -u
-# HIMMEL_CONSOLE_LEG merge-on-green.sh`) removes a marker instead of setting a
-# seam, so the orphan rule never fires - only the hook's text deny (env -u /
-# unset of a seam or marker beside a chokepoint word) covers it, and an
-# obfuscated seam NAME (`export "$n=1"`) stays a residual of that layer.
 
 CSG_DENY_RC=96
 

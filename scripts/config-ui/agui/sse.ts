@@ -110,7 +110,6 @@ type Source = { path: string; fh?: FileHandle; offset: number; size: number; tai
 // Opens a validated realpath, then checks that the fd is still that file: the containment check in
 // resolveJournal/subagentFiles and this open are separate steps, so a swap in between must not be served.
 // O_NOFOLLOW refuses a final-component symlink everywhere; procfs also catches a swapped parent directory.
-// ponytail: no procfs (macOS) leaves only O_NOFOLLOW, so a parent-directory swap there is unchecked; upgrade to an fstat dev/ino match against the validated stat if config-ui ever serves off Linux/WSL.
 const PROC_FD = existsSync("/proc/self/fd");
 async function openVerified(path: string): Promise<FileHandle> {
   const h = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);

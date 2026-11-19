@@ -312,7 +312,6 @@ export function readRoadmap(o: Opts): Roadmap {
 
   const prop = (t: Ticket, proposal: string): Proposal => ({ k: t.k, ...(t.id ? { id: t.id } : {}), title: t.t, proposal, needsApproval: true });
   const runOf = (t: Ticket) => versions[own.get(t.project ?? "")?.cur ?? -1]?.n;
-  // ponytail: duplicates are an exact match on the normalized title only (within one project), upgrade path: token-similarity when the librarian lane runs.
   const byTitle = new Map<string, Ticket[]>();
   for (const t of open) { const n = normTitle(t.t); if (n) byTitle.set(`${t.project ?? ""}\u0000${n}`, [...(byTitle.get(`${t.project ?? ""}\u0000${n}`) ?? []), t]); }
   const librarian = {

@@ -361,9 +361,6 @@ fi
 # closed it and the last one opened a span that hid the rest of the command
 # (`echo $'\'' > <primary>/f`). _BWIMC_DL is 1 when the previous character was
 # an active `$` (not the second `$` of `$$`, the PID); a caller that jumps over a substitution body clears it.
-# ponytail: a backslash-newline between `$` and `'` (`$\<LF>'…'`, one ANSI-C
-# string to Bash) clears _BWIMC_DL, so it scans as a plain quote; carry the
-# state across the continuation.
 _BWIMC_NL=$'\n'
 _BWIMC_NLENC=0
 
@@ -506,10 +503,6 @@ _bwimc_plain_run() {
 # Anything the nested walk cannot follow with confidence (a comment,
 # backtick, `${`, a case/esac word or an unbalanced paren inside the substitution,
 # or an opener left unresolved) makes it print the flat reading instead.
-# ponytail: a case/esac, comment, backtick or `${` inside that `$(…)` falls
-# back to the flat reading, so a body apostrophe there still hides a later
-# write as before; count case arms the way _bwimc_subst_paren_end does if a
-# real command hits it.
 _bwimc_blank_heredocs() {
     local _ww="" _wb=0 _we=0
     local text="$1" nest="${2:-}"
@@ -1766,9 +1759,6 @@ _bwimc_expand_token_raw_set() {
     # false DENY on an ordinary command. Fail OPEN on this one candidate
     # (return 1), matching every other unparseable-candidate path here —
     # scanning continues on every other candidate in the same command.
-    # ponytail: edge whitespace and newlines in a real name (a symlink `f ` or
-    # `nl<LF>` into the primary) are lost here and in $(…) captures, so the
-    # write is checked under the wrong name; carry them as sentinels.
     t="${t#"${t%%[![:space:]]*}"}"
     t="${t%"${t##*[![:space:]]}"}"
     [ -n "$t" ] || return 1
@@ -2060,9 +2050,6 @@ _bwimc_mode_for_operand_set() {
     _BWIMC_MODE="$mode"
 }
 
-# ponytail: the denial rides this hook's text scan, whose shapes are not
-# finite; ceiling: a write shape the scan misses still creates the marker;
-# upgrade path: the doctor WARN for a marker repo with a live worker row.
 _bwimc_worker_session() {
     local LC_ALL=C
     [ "${HIMMEL_CONSOLE_LEG:-0}" = "1" ] || return 1
@@ -2216,12 +2203,6 @@ _bwimc_check_canon() {
 # ROOT), so a root that is an ANCESTOR of the primary cannot reach it through
 # a link the host would resolve elsewhere (`chroot ~/github touch /lnk/f`,
 # lnk -> /himmel). An unknown root fails closed.
-# ponytail: a chroot into an UNRELATED root allows. That is safe on the
-# filesystem alone, since in-jail resolution never leaves ROOT, but a bind
-# mount or mount namespace can expose the primary inside an unrelated jail,
-# and this host-side check cannot see it (chroot also needs CAP_SYS_CHROOT,
-# which an agent session rarely has); upgrade path = fail closed on any write
-# behind a chroot, or read /proc/self/mountinfo for mounts under ROOT.
 _bwimc_check_abs() {
     local abs="$1" raw="$2" mode="${3:-follow}"
     local lc canon root="${_bwimc_chroot:-}" jc
@@ -2301,11 +2282,6 @@ _bwimc_check_glob_operand() {
 # Any other stub's output is unknown, so the token's static prefix decides:
 # the directory it names (`P/n$(date)` = P/, `f$(date)` = the cwd) is checked
 # as a write-through directory, like a glob's prefix.
-# ponytail: a target that STARTS with a non-pwd substitution (`"$(mktemp)"`)
-# or a `$VAR`, or whose substitution output climbs out with `..` or names a
-# symlink (`/tmp/x$(pwd)/f`), is checked only as far as its static prefix —
-# the same dynamic-operand residual as `$VAR`;
-# revisit only with a real expansion model.
 _bwimc_check_target() {
     local raw="$1" cwd="$2" mode="${3:-follow}" abs eff pfx h lq="" rest
     case "$raw" in
@@ -2854,10 +2830,6 @@ _bwimc_ecwd_track() {
                             # been skipped by a failed `&&` clause (`cd P &&
                             # mkdir W && cd W` with W existing stays in P), so
                             # both keep failing closed.
-                            # ponytail: the missing part is read lexically, like
-                            # an absolute write target under a missing directory;
-                            # a symlink another process plants there between
-                            # hook and run is not seen.
                             if [ "$_BWIMC_CDW_MISSING" = 1 ] && [ "${_bwimc_ecwd_pure:-0}" = 1 ] \
                                && [ "$_bwimc_ecwd_unres" = 0 ] && [ "$_bwimc_ecwd" = "$_bwimc_cwd" ] \
                                && r=$(_bwimc_resolve_abs "$carg" "$_bwimc_ecwd") && ! _bwimc_fsmut_hit "$r"; then
@@ -2984,10 +2956,6 @@ _bwimc_ecwd_track() {
 # spellings, and only with an ABSOLUTE HOME (a relative HOME makes ~ follow the
 # cd again): `~user`, `~+`, `~-` and a quoted `"~"`
 # stay relative here and keep failing closed behind an unresolved cd.
-# ponytail: an `=`-value `~/` (`--opt=~/x`, or `of=~/x` under zsh) stays
-# literal in the shell but is read as $HOME here, the reading
-# _bwimc_expand_token already gives it; revisit if a literal `~` directory
-# ever appears inside a checkout.
 _bwimc_cd_guard() {
     # after an in-command HOME assignment a ~ / $HOME write
     # target resolves against a HOME this hook cannot see — fail closed.
@@ -3274,10 +3242,6 @@ _bwimc_ambig_check() {
 # adds an EXTRA reading (deny-only, like the comment-stripped one): every
 # brace-balanced `${…}` body is replaced by `p`, which keeps the quoting
 # outside it intact. No `${` or no closing brace leaves the text unchanged.
-# ponytail: braces are counted blind to quotes, so a `}` inside a quoted
-# default (`${x:-"}"}`) closes early and the tail reads as plain text, a
-# false-negative only on this extra reading; upgrade = a nested quote stack in
-# _bwimc_scan_step (follow-up).
 _bwimc_flatten_pe() {
     local t="$1" o="" k=0 n=${#1} c d j q=0
     _BWIMC_PE="$t"
@@ -3313,8 +3277,6 @@ _bwimc_flatten_pe() {
 # after the `)`/backtick that closes a substitution (`$(true)#a` is a word).
 # Only ever an EXTRA reading: the unstripped text is still scanned, so a
 # misread here can add a deny, never remove one.
-# ponytail: a `case` item's `)` inside `$(…)` closes the body early here, so a
-# comment after it stays unstripped (the old reading),.
 _bwimc_strip_comments() {
     local t="$1" o="" k=0 n c nx st="C" top prev="" run=0
     local hdok=1 hd=() hdd=() hdk=() hi j w q1 q2 dash body line chk found
@@ -3511,10 +3473,6 @@ fi
 # shell-tokenize precedent). test-block-write-into-main-checkout.sh fails
 # when the copy drifts; regenerate it with
 # `bash scripts/hooks/lib/bash-ast-replay-bwimc.sh --sync`.
-# ponytail: the default stays regex because the ast engine changes the verdict
-# of dozens of rows the shards pin (the cd left of a pipe, the cd behind ||, a
-# coproc, heredoc and comment forms), upgrade path: reconcile each row with a
-# ruling on which reading is right, then flip the default here.
 _bwimc_engine="${BWIMC_ENGINE:-regex}"
 case "$_bwimc_engine" in
     regex|ast|both) ;;
@@ -3630,10 +3588,6 @@ IFS= read -r -d '' _BWIMC_AST_PROG <<'BWIMC_AST_EOF' || true # swallow-ok: read 
 #
 # Fail closed: a node kind this module does not know raises an error, and so
 # does any jq failure, so the caller denies rather than guessing.
-#
-# ponytail: the alias table, `shopt` state and a function shadowing a builtin
-# (`touch(){ :; }`) are not modelled — every call is read by its literal
-# program name; upgrade path = a definitions pass over FuncDecl names.
 
 def _known: ["File","CallExpr","IfClause","WhileClause","ForClause","CaseClause",
   "Block","Subshell","BinaryCmd","FuncDecl","ArithmCmd","TestClause","DeclClause",
@@ -3940,12 +3894,6 @@ def calls:
 # A relative path is checked against EVERY directory the command may be in
 # at that point: each cwd a cd may have reached and the payload cwd, since a
 # cd can fail. An unknown cwd denies a relative target (unresolved-cd).
-#
-# ponytail: a command whose program word is itself dynamic (`$(echo rm) f`),
-# a target that STARTS dynamic (`"$(mktemp)"`, `$X/f`), a pipe into a bare
-# shell (`… | bash`), a user function or alias shadowing a verb, and a
-# command fed by xargs' stdin are not resolved — the same residuals the
-# regex engine carries; upgrade path = a value model for `$VAR` assignments.
 
 
 def isabs: test("^(/|[A-Za-z]:[/\\\\])");
@@ -4653,9 +4601,6 @@ _bwimc_readings=("$_bwimc_hb"); _bwimc_rmodes=(0)
 # apostrophe nor a quoted newline can hide a write. They only ADD readings:
 # the raw split still resynchronises the quote scan line by line where a
 # body the flat blanker cannot parse (`<<\E`) leaves a stray quote open.
-# ponytail: a long quoted multi-line span is one long clause here, so a
-# multi-line single-quoted message costs about 2x the char scan of base (no
-# size gate: padding past one would reopen), perf fix.
 _bwimc_hbq=0
 _bwimc_hbn=$(_bwimc_blank_heredocs "$cmd" nest) || { _bwimc_hbq=$?; [ "$_bwimc_hbq" = 7 ] || exit "$_bwimc_hbq"; }
 case "$_bwimc_hbn" in
@@ -4857,9 +4802,6 @@ _bwimc_is_shc_cflag() {
 # modelling", and a check that ALSO looks at a benign source token can only
 # ever ADD a false-positive deny on an already-primary path, never miss a
 # real write into it.
-# ponytail: a dynamic token ($VAR, `cmd`) inside BODY does not resolve and
-# is not further modelled — same residual _bwimc_check_target already
-# accepts for every other arm.
 _bwimc_check_interp_body() {
     local kind="$2" toks=() t t2 n i j0 cidx body="" _bwimc_ibody_clause="" _bwimc_ib_text="" _bwimc_ib_texts=() \
         _bwimc_ibody_clause_sp="" _bwimc_ibc_toks=() _bwimc_ibc_n=0 _bwimc_m="" _bwimc_ib_cw=0 _bwimc_ib_ro=0 \
@@ -5526,40 +5468,6 @@ _bwimc_fsmut=""
 # Bypass: EDIT_ON_MAIN_OK=1 in the launching shell, or a repo-root
 # `.single-writer` (both honoured inside main_checkout_verdict).
 #
-# ponytail: command-text scanning, not a shell parser — a git invocation
-# displaced behind a wrapper _bwimc_strip_prefix does not model (setsid,
-# watch, parallel, `find -exec`; the modelled ones are covered and
-# xargs, see _bwimc_git_wrapped) or inside an interpreter body is missed, the
-# same residual as every other arm. A `cd` inside a conditional (`false && cd <primary>`) is assumed
-# to have run, and a write is ALSO checked from every cwd a cd left, so
-# `false && cd <worker>; git merge x` from the primary is still caught; the cost
-# is that `cd <worker> && git merge x` typed from the primary is denied too.
-# Shared-ref writes from the worker's own worktree (no -C) are checked against
-# the common dir's owning primary for `config`/`remote`/`branch
-# -u|--unset-upstream|-M|-C|-f`/`checkout -B`/`switch -C`/`update-ref`/
-# `symbolic-ref` on refs/heads/main|master (above); `tag`,
-# `reflog expire|delete`, and any other branch create/delete/plain-rename are
-# still reachable that way — narrower residual, same ticket. `git -c alias.x=…` and repo-level
-# hooks are code execution in the worker's own process, not a primary-state
-# write, and are out of scope. `worktree move|remove` of the primary is left
-# to git itself, which refuses to move or remove a main working tree.
-# a read aimed at the primary that RUNS A PROGRAM there (a -c /
-# --config-env key off a safe allowlist, a pager, --exec-path=, --ext-diff /
-# --textconv, `grep -O`, a GIT_PAGER/GIT_EXTERNAL_DIFF/GIT_EXEC_PATH-style
-# env) loses the read relief; `worktree move|add` get their destination's
-# file verdict. ponytail: a program named by config set in an EARLIER
-# command (~/.gitconfig, the primary's own config) or reached via a foreign
-# --git-dir is not seen, and plain `git diff` runs diff.external by default;
-# revisit if a config-provenance check lands (follow-up).
-# `git clone`/`init` into a path INSIDE the primary from a worker cwd is not
-# modelled. `push` is write-shaped only by DESTINATION: a local path, `.`, a
-# `file://` URL or a `--repo=` path that resolves into the primary is denied,
-# and so is any `--receive-pack`/`--exec` (it names a program run on the
-# receiving side, e.g. `receive.denyCurrentBranch=updateInstead`). A remote
-# NAME or a network URL passes; a remote name whose configured URL points at
-# the primary is not resolved. A repoint made in the SAME command (-c key,
-# GIT_CONFIG_COUNT/PARAMETERS/KEY_* env, `git remote add|set-url`) is
-# denied by key name; one made by an earlier, separate command is not seen
 
 # _bwimc_ansic BODY — the text bash's $'BODY' yields. A code point that is
 # NUL or non-ASCII, and a \c control letter, become `?`: none spells a word
@@ -6191,10 +6099,6 @@ _bwimc_git_check_common_owner() {
 # does not resolve, or an `xargs -I/-i/--replace` string that appears in the
 # git words (the target or subcommand may come from stdin); `xargs git` with
 # no subcommand fails closed the same way.
-# ponytail: wrappers _bwimc_strip_prefix does not model (setsid after another
-# wrapper — _bwimc_git_clause reads only a leading one —, watch, parallel,
-# `find -exec`) still hide a git; upgrade path: a wrapper added there is
-# covered here for free.
 _bwimc_git_wrapped() {
     local wsp wsp0 wdir apfx strip wu=0 t wl k xt=() xi=0 xg="" xa=0 xr="" xj=0
     [ "${_bwimc_g_wrap:-0}" = 0 ] || return 0
@@ -6949,22 +6853,6 @@ _bwimc_git_clause() {
             # (git branch -D main is inert from a linked worktree — git
             # itself refuses to delete a branch checked out in another
             # worktree — and is deliberately not modelled here; see the
-            # pinning test row. ponytail: static text scanning cannot special-
-            # case every branch/git version's exact flag-value shape, revisit
-            # if a shared tokenizer lands and can replace this
-            # scan outright.)
-            # A move (-m/-M/--move) DELETES
-            # its source ref (real git moves refs/heads/<old> to
-            # refs/heads/<new>, repointing HEAD if <old> was checked out
-            # elsewhere) — unlike copy, <old> is a write target too, and
-            # unlike -M, bare -m is a real rename whenever <new> does not
-            # already exist, so it belongs in br_danger even without -f.
-            # Track br_move separately from br_movecopy so the SOURCE check
-            # below applies only to move, never to copy (copy's <old> really
-            # is read-only). A bundled short cluster (-fu/-qu/-vu) hides -u
-            # the same way -M/-C hide inside -*[MC]* already handled below —
-            # -u still consumes the NEXT token as its mandatory value (never
-            # a branch-name operand) once found anywhere in the cluster.
             local br_danger=0 br_upstream=0 br_movecopy=0 br_move=0 br_want_val=0
             local br_first="" br_last="" br_target
             for v in ${args[@]+"${args[@]}"}; do
@@ -7550,10 +7438,6 @@ while IFS= read -r _bwimc_clause; do
         # the gap a round-f688778c critic found live:
         # `rsync SRC /primary/dest --exclude pattern` used to let `pattern`
         # fall through as the "last operand", masking the real destination.
-        # ponytail: only the SEPARATED form of those options is modelled — a
-        # bundled/immediate-joined short-opt value (`-eCMD`) is not, and
-        # falls through to the generic operand scan below. Escalate only if
-        # a real gap surfaces.
         _bwimc_verb=$(printf '%s' "$_bwimc_clause_lc" | sed -E 's/^[[:space:]]*(install|rsync).*/\1/')
         _bwimc_toks=()
         while IFS= read -r _bwimc_t; do _bwimc_toks+=("$_bwimc_t"); done < <(_bwimc_tokenize "$_bwimc_clause_sp")
@@ -7604,9 +7488,6 @@ while IFS= read -r _bwimc_clause; do
                     # `-d`'s single operand from _bwimc_ops entirely,
                     # leaving neither branch of the resolution below able to
                     # fire.
-                    # ponytail: only the bare `-d`/`--directory` spelling is
-                    # modelled, not a bundled short-opt form (`-vd`) —
-                    # escalate only if a real gap surfaces.
                     -d|--directory)
                         _bwimc_install_dmode=1
                         _bwimc_i=$((_bwimc_i+1))
@@ -7626,19 +7507,6 @@ while IFS= read -r _bwimc_clause; do
                         ;;
                 esac
             fi
-            # (codex-3, round f688778c): rsync's other
-            # value-taking options were previously left un-skipped (see the
-            # ponytail note above), so an option's VALUE fell through to the
-            # generic `-*) : ;;` / bare-word split below and was picked up as
-            # if it were a real operand — `rsync SRC /primary/dest --exclude
-            # pattern` misread `pattern` as the LAST operand, masking the
-            # true destination. Skip each one's separated value exactly like
-            # install's -t/--target-directory above, so only real operands
-            # ever reach _bwimc_ops.
-            #: -T/--temp-dir's short form, -B
-            # (--block-size), -M (--remote-option) and --suffix were missing
-            # from this list — the same "value falls through as a bogus
-            # operand" gap the comment above already covers for the rest.
             if [ "$_bwimc_verb" = "rsync" ]; then
                 case "$_bwimc_t" in
                     -e|-f|--filter|--exclude|--exclude-from|--include|--include-from|--files-from|--temp-dir|-T|--backup-dir|--link-dest|--compare-dest|--copy-dest|--partial-dir|--log-file|--log-file-format|--out-format|--password-file|--bwlimit|--timeout|--contimeout|--port|--address|--sockopts|--usermap|--groupmap|--chown|--rsync-path|--rsh|--protocol|--checksum-seed|--max-size|--min-size|--modify-window|--skip-compress|--chmod|-B|--block-size|-M|--remote-option|--suffix|--max-delete|--iconv|--compress-level|--checksum-choice|--write-batch|--only-write-batch|--read-batch|--stop-after)
@@ -8356,7 +8224,7 @@ while IFS= read -r _bwimc_clause; do
     fi
 done < <([ "$_bwimc_engine" = ast ] || _bwimc_verb_clauses "$_bwimc_hb")
 _bwimc_chroot=""
-done  # HIMMEL-4138 readings
+done
 
 if [ "$_bwimc_sourced" = 1 ]; then
     return 0

@@ -29,14 +29,6 @@
 # against each other for the same (repo, PR, SHA) — the cross-hook no-op a
 # compound `git push && gh pr create` relies on is unchanged.
 #
-# ponytail: check-then-post is NOT atomic — two concurrent hook processes
-# (exactly what a compound `git push && gh pr create` fires) can both read
-# "not yet triggered" before either records it, so worst case both post.
-# Accepted: a duplicate trigger costs one extra CodeRabbit review; a missed
-# trigger costs one PR with no CodeRabbit review. Upgrade path if
-# that ever stops holding (e.g. CodeRabbit review credits become the scarce
-# resource): a per-key mkdir claim, same primitive as
-# scripts/graphify/refresh-graph-map.sh's _promote_lock_acquire.
 #
 # Ledger location: `$(git rev-parse --git-common-dir)/cr-triggered-heads`
 # (a flat, append-only, greppable audit file) — --git-common-dir (not

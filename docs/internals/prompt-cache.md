@@ -56,9 +56,9 @@ TRUE / FALSE / UNVERIFIED, each with the eval scenario (a fixture in
 | 6 | the statusline's per-tier cache-expiry countdown | **TRUE** — the TTL model holds on both tiers | live run L4; fixtures put a 10-minute gap warm on 1h and cold on 5m | `idle-ttl-5m`, `idle-ttl-1h`, `idle-ttl-violated` |
 | 7 | a cache-read collapse after a compaction or a long idle is not an external invalidation (the reading the probe applies) | **TRUE** — measured, not assumed | L1 classed 1 session `compacted`; fixtures | `compaction-lookalike`, `ttl-expiry`, `late-rewrite-unrelated`, `idle-compaction-lookalike` |
 | 8 | "the 76.5% read-ratio / `<40%` = structural issue" figures (`token-economy.md`) | **UNVERIFIED** — one-tweet heuristics from another workspace; himmel's measured 98.2% neither confirms nor refutes the threshold | — | none (no fixture: a threshold from elsewhere) |
-| 9 | "one extra cache write (~4k tokens) per session started or compacted after an index edit" (this doc, `SKILL.md` rail 6) | **UNVERIFIED** — an estimate from the index size, not a measured delta | — | none; ponytail: an estimate, upgrade path = a probe mode that diffs first-turn `cache_creation` before/after an edit (follow-up) |
-| 10 | "edits that invalidate thinking also restart the prompt cache; append-only with fixed system and tools is the cache-safe shape" (this doc) | **UNVERIFIED** — reported from the preserved-thinking docs page, not measured | — | none; ponytail: reported, not measured, upgrade path = a `scripts/eval/cache-probe.sh` scenario that edits an earlier turn / the system prompt and asserts the rewrite |
-| 11 | "an account switch rewrites the full prefix of running sessions" (token-maxxing guide technique 3) | **UNVERIFIED** — no account switch has been measured. L5 is a weekly subscription usage budget reset on the SAME account (not a switch): 2 live sessions kept their prefix and survived the change, 0 invalidated, 0 compacted. It rules out "any subscription-usage budget/login-adjacent event rewrites the prefix", not the per-account claim | live run L5 | `account-switch` (the probe reads a kept pair); ponytail: needs a real switch to another account, re-run `invalidation --event <switch ISO>` over sessions live across it (follow-up) |
+| 9 | "one extra cache write (~4k tokens) per session started or compacted after an index edit" (this doc, `SKILL.md` rail 6) | **UNVERIFIED** — an estimate from the index size, not a measured delta | — | none; an estimate, upgrade path = a probe mode that diffs first-turn `cache_creation` before/after an edit (follow-up) |
+| 10 | "edits that invalidate thinking also restart the prompt cache; append-only with fixed system and tools is the cache-safe shape" (this doc) | **UNVERIFIED** — reported from the preserved-thinking docs page, not measured | — | none; reported, not measured, upgrade path = a `scripts/eval/cache-probe.sh` scenario that edits an earlier turn / the system prompt and asserts the rewrite |
+| 11 | "an account switch rewrites the full prefix of running sessions" (token-maxxing guide technique 3) | **UNVERIFIED** — no account switch has been measured. L5 is a weekly subscription usage budget reset on the SAME account (not a switch): 2 live sessions kept their prefix and survived the change, 0 invalidated, 0 compacted. It rules out "any subscription-usage budget/login-adjacent event rewrites the prefix", not the per-account claim | live run L5 | `account-switch` (the probe reads a kept pair); needs a real switch to another account, re-run `invalidation --event <switch ISO>` over sessions live across it (follow-up) |
 
 Counts: 3 TRUE, 4 FALSE (all fixed), 4 UNVERIFIED (noted, not guessed).
 Unrelated caches (gh, graphify, qmd, npm, `USAGE_CACHE_TTL`,
@@ -176,7 +176,7 @@ bash scripts/eval/judge-cache-row.sh --header --ledger <ledger.tsv> \
 Drop `--header` after the first row. `agent` comes from the sibling
 `.meta.json`, so an Explore row and a `judge-ro` row land in one
 ledger. Re-decide the TTL from the ledger: score each row against the break-even
-above (1.15 Σ`P`ᵢ over its 5m-expiring gaps vs 0.75 `W` ). `ponytail:` the row
+above (1.15 Σ`P`ᵢ over its 5m-expiring gaps vs 0.75 `W` ). Limit: the row
 holds the longest gap and the count over 300 s, not each gap's context size,
 so a late-vs-early gap is read from the transcript when a row is close;
 upgrade path: add a per-gap context column when a judge lands within 10 % of
@@ -266,7 +266,7 @@ system prompt once made the CLI answer conversationally, and that answer parses 
 nothing. The proof needs paid calls, so no live number exists yet and the 3 % above
 is still this path's reading.
 
-`ponytail:` opt-in until the paid quality proof. Upgrade path: flip the default once
+Limit: opt-in until the paid quality proof. Upgrade path: flip the default once
 the proof passes.
 
 ## Re-run
@@ -296,7 +296,7 @@ A fix to a cache claim without a named scenario is not done.
 
 ## Limits
 
-`ponytail:` the rewrite and compaction thresholds are fixed (read < 0.5× the
+The rewrite and compaction thresholds are fixed (read < 0.5× the
 previous turn, create > read, context drop > 25 %), chosen to separate the
 fixtures and the 2026-09-29 measurements; upgrade path: make them flags when a
 real run lands within 10 % of one. `invalidation` judges only the first
@@ -304,7 +304,7 @@ transition after the event (a prefix change shows on the next turn; a later
 rewrite is unrelated). Timestamps are whole seconds. A helper call that never
 reaches the transcript is invisible to the probe.
 
-- `ponytail:` one TTL tier per session: any 1-hour write in a file sets 3600 s
+- One TTL tier per session: any 1-hour write in a file sets 3600 s
   for every gap in it, inferred from `usage`, not from the request. A session
   that mixes tiers can have a 5-minute expiry read as `invalidated` (or a
   `warm` idle gap that rewrote), so the error is toward over-flagging, never

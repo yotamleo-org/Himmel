@@ -18,8 +18,7 @@
                                 until rescore
   inputs-sha                    hash of the text a child reads (run.sh pins it in run-config.json)
 
-Cost: tokens are UTF-8 bytes // 4 per side. ponytail: a bytes/4 estimate, not the tokenizer's
-count; upgrade path: the count_tokens API on the baseline and cut files.
+Cost: tokens are UTF-8 bytes // 4 per side, an estimate, not the tokenizer's count.
 A session pays a steering token once as a cache write (1.25) and then once per later turn as a
 cache read (0.1), the cost-eq weights of lib/burn-weights.sh. The repo file is counted without
 its `## graphify` section, which the graphify installer owns. AGENTS.md is regenerated from both

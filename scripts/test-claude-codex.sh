@@ -251,7 +251,7 @@ esac
 
 # Every reseed starts from the source copy, so the stanza never accumulates.
 run_launcher "double seed does not double-append" --reseed
-count="$(grep -c '^## Claudex lane model identity (HIMMEL-1927)$' "$seeded")"
+count="$(grep -c '^## Claudex lane model identity$' "$seeded")"
 [ "$count" -eq 1 ] || { echo "FAIL: double seed produced $count identity stanzas"; FAILS=$((FAILS + 1)); }
 
 # With no user settings file the seed carries no deny rules (the classifier alone can allow a
@@ -296,7 +296,7 @@ seeded_sentinel5="$FAKEHOME/.claude-codex/.seeded"
 printf 'operator rules\n' > "$seeded5"
 printf '0\n' > "$seeded_sentinel5"
 run_launcher "old SEED_VERSION forces a reseed"
-grep -qF 'HIMMEL-1927' "$seeded5" || { echo "FAIL: old SEED_VERSION did not force the stanza to land"; FAILS=$((FAILS + 1)); }
+grep -qF 'Claudex lane model identity' "$seeded5" || { echo "FAIL: old SEED_VERSION did not force the stanza to land"; FAILS=$((FAILS + 1)); }
 
 # --- T5b: a machine seeded at the previous generation (v4, matching model)
 # reseeds once at v5 — the bump is what lets a pre-5792 seed pick up the
@@ -308,7 +308,7 @@ run_launcher "seed before v4 reseed test"
 printf 'operator rules\n' > "$FAKEHOME/.claude-codex/CLAUDE.md"
 printf '4|gpt-5.6-sol\n' > "$FAKEHOME/.claude-codex/.seeded"
 run_launcher "v4 sentinel reseeds once"
-grep -qF 'HIMMEL-1927' "$FAKEHOME/.claude-codex/CLAUDE.md" || { echo "FAIL: v4 sentinel did not force a reseed"; FAILS=$((FAILS + 1)); }
+grep -qF 'Claudex lane model identity' "$FAKEHOME/.claude-codex/CLAUDE.md" || { echo "FAIL: v4 sentinel did not force a reseed"; FAILS=$((FAILS + 1)); }
 grep -q '^5|' "$FAKEHOME/.claude-codex/.seeded" || { echo "FAIL: v4 reseed did not stamp v5"; FAILS=$((FAILS + 1)); }
 
 # --- T6: an EMPTY/legacy sentinel — the exact shape every currently-installed
@@ -324,7 +324,7 @@ printf 'operator rules\n' > "$seeded6"
 : > "$seeded_sentinel6"
 [ -s "$seeded_sentinel6" ] && { echo "FAIL: test setup did not produce an empty legacy sentinel"; FAILS=$((FAILS + 1)); }
 run_launcher "empty legacy sentinel forces a reseed"
-grep -qF 'HIMMEL-1927' "$seeded6" || { echo "FAIL: empty legacy sentinel did not force the stanza to land"; FAILS=$((FAILS + 1)); }
+grep -qF 'Claudex lane model identity' "$seeded6" || { echo "FAIL: empty legacy sentinel did not force the stanza to land"; FAILS=$((FAILS + 1)); }
 
 # --- T7: a sentinel already carrying the CURRENT SEED_VERSION does NOT reseed
 # on a plain launch when no source changed — no double-append regression guard.
@@ -338,7 +338,7 @@ touch -t 202001010000 "$FAKEHOME/.claude/CLAUDE.md"
 touch "$FAKEHOME/.claude-codex/.seeded"
 run_launcher "plain launch with fresh current-version sentinel skips reseed"
 grep -qF 'tamper-marker-should-survive' "$seeded7" || { echo "FAIL: current-version sentinel still triggered a reseed"; FAILS=$((FAILS + 1)); }
-count7="$(grep -c '^## Claudex lane model identity (HIMMEL-1927)$' "$seeded7")"
+count7="$(grep -c '^## Claudex lane model identity$' "$seeded7")"
 [ "$count7" -eq 1 ] || { echo "FAIL: skipped-reseed CLAUDE.md carries $count7 identity stanzas (expected 1)"; FAILS=$((FAILS + 1)); }
 
 # --- T8: a MODEL CHANGE alone (same SEED_VERSION, no source file touched) must
@@ -358,13 +358,13 @@ MODEL="gpt-5.6-terra"
 run_launcher "different CODEX_MODEL forces a reseed"
 grep -qF 'Your backend model is gpt-5.6-terra' "$seeded8" || { echo "FAIL: reseeded stanza does not name the new model"; FAILS=$((FAILS + 1)); }
 grep -qF 'Your backend model is gpt-5.6-sol' "$seeded8" && { echo "FAIL: reseeded stanza still names the OLD model"; FAILS=$((FAILS + 1)); }
-count8="$(grep -c '^## Claudex lane model identity (HIMMEL-1927)$' "$seeded8")"
+count8="$(grep -c '^## Claudex lane model identity$' "$seeded8")"
 [ "$count8" -eq 1 ] || { echo "FAIL: model-change reseed produced $count8 identity stanzas (expected 1)"; FAILS=$((FAILS + 1)); }
 
 # --- T9: relaunching with the SAME (new) model does NOT reseed again — the
 # existing double-seed guard must still hold under the composite stamp.
 run_launcher "same CODEX_MODEL after a model-change reseed does not reseed again"
-count9="$(grep -c '^## Claudex lane model identity (HIMMEL-1927)$' "$seeded8")"
+count9="$(grep -c '^## Claudex lane model identity$' "$seeded8")"
 [ "$count9" -eq 1 ] || { echo "FAIL: same-model relaunch produced $count9 identity stanzas (expected 1)"; FAILS=$((FAILS + 1)); }
 
 # --- T9b: the un-swept claude-hud.json path (new, alongside

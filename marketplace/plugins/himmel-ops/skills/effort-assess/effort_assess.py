@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""effort-assess (HIMMEL-3995): reference-class effort record for one ticket, or the tail of a version.
+"""effort-assess: reference-class effort record for one ticket, or the tail of a version.
 
   effort_assess.py ticket  --low S --high M --g1 yes|no --deps none|<list> --scope-file F ... --red TEXT
   effort_assess.py version --in records.json
@@ -13,9 +13,6 @@ Every number lives in effort-model.json (stdlib only, no constant in code). The 
   median = kappa * (floor + sqrt(Seq(lo) * Seq(hi))) * g1_mult (non-trivial G1 only)
   sigma  = (sigma_g1 | sigma_base) + sigma_step * (range steps - 1, floored at 0)
   mean   = median * exp(sigma^2 / 2);  P(q) = median * exp(z_q * sigma)
-
-ponytail: the roadmap placer and checksum (outside this repo) still carry their own copy of these
-numbers, so the config is the source of truth only for this skill; HIMMEL-4001 moves them onto it.
 """
 import argparse
 import json

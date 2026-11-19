@@ -138,9 +138,6 @@ _wire_statusline_record_hud() {
 }
 
 # _wire_statusline_record_purge <hud dir> <file listing the dropped entries>
-# ponytail: the vocabulary has no delete op, so a purge is a `replace` of the
-# hud dir with no backup and no post (class state: uninstall leaves it alone);
-# pre.sha hashes the dropped entry NAMES, not their bytes, which are not kept.
 _wire_statusline_record_purge() {
   local dir="$1" list="$2"
   prov_record replace tree "$dir" --scope user --class state --row hud-config \

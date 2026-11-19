@@ -518,9 +518,6 @@ export function judgeApiEnv(processEnv: NodeJS.ProcessEnv, repoDir: string = aut
   };
 }
 
-// ponytail: the API judge loads the operator's full plugin set and user memory and has no turn cap (the launcher refuses
-// --settings, --max-turns and --mcp-config); its budget cap (JUDGE_API_BUDGET_USD) bounds the cost; plan P5
-// proposes a launcher allowlist entry for --settings under the profile settings dir, with a mutation test.
 const SIGNALLED_EXIT = new Set([128 + 1, 128 + 2, 128 + 15]);
 
 function launcherStopped(e: unknown): boolean {
@@ -528,10 +525,6 @@ function launcherStopped(e: unknown): boolean {
   return Boolean(k.signal) || SIGNALLED_EXIT.has(k.status as number);
 }
 
-// ponytail: the pre-read and the launcher read roles.json separately; a hand edit between the two reads can make the
-// launcher refuse on policy after routedJudge saw "mapped", which writes one policy-refusals line and lands on liveJudge;
-// the window is one node start; a UI save landing in that window has the same effect; plan P4's write guard covers
-// agent writes only, not that race.
 // `fallback`, `callTimeoutS` and `spawnTimeoutMs` are the test seams; production passes nothing and gets liveJudge, the
 // launcher's 900 s call timeout and node's 930 s kill.
 // Any other API-route failure (a policy refusal, no room, an API error, an unparseable reply) ends in the fallback, once.

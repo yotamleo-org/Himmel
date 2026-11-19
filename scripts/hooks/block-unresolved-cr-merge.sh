@@ -143,7 +143,6 @@ for _n in "$cmd_norm" "$cmd_sq"; do
             if (w == "api") api = 1; else if (w == "alias") al = 1; else g = 0 } }
         END { exit !f }' && fires=1
 done
-# ponytail: text detection covers the common mistake (a plain or quoted `gh pr merge`, `gh api` merge, `mergePullRequest`) and not spellings that compute the program or verb in the shell (HIMMEL-3945: gh- or credential-level merge gate).
 [ "$fires" = "1" ] || exit 0
 # A head pin is one word to bash whether or not it is quoted: unquote a hex-only
 # value (`--match-head-commit "<sha>"`, `'<sha>'`, `=` form) before the plain-command
@@ -246,9 +245,6 @@ fi
 # <outfile> (stderr to $_gate4_err when set, else discarded), killed after <secs>; rc is the command's, or 124 on timeout. Bash
 # native (no timeout binary) so it bounds a shell function the same way on
 # every platform.
-# ponytail: kill -9 reaches the backgrounded subshell, not an in-flight gh it
-# spawned (orphaned, it finishes on its own), upgrade path: a process-group
-# kill if an orphaned gh is ever seen outliving its hook.
 _gate4_bounded() {
     local secs=$1 out=$2 pid ticks=0
     shift 2

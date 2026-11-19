@@ -106,8 +106,6 @@ if [ -z "${TICKET_STATUS_SWEEP_IN_BUDGET:-}" ] && [ -n "$_TIMEOUT_BIN" ]; then
     exit 0
 fi
 
-# ponytail: the no-flock lease expires after 300s even for a live pid; upgrade
-# path = a heartbeat for sweeps configured to run longer than five minutes.
 lock_dir="$SDIR/lock.d"
 lock_owner=""
 release_mkdir_lock() {

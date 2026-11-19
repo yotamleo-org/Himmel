@@ -21,10 +21,6 @@
 # widen cr_guarded (and cr_pathspecs, and the runbook precheck) or prove the
 # site is not reached on the "no" path.
 #
-# ponytail: the edge extraction is lexical. A path assembled at runtime from
-# pieces that never appear as one `<prefix>/<name>.<ext>` literal on the
-# source/exec line is invisible to it; the whole-directory entries in
-# cr_guarded (scripts/cr, scripts/lib) are what keep that gap fail-safe.
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$DIR/../.." && pwd)"

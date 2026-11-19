@@ -1,5 +1,5 @@
 # escape-class-corpus.shapes — the shared escape-class corpus for every PreToolUse
-# Bash guard (HIMMEL-5327). Read by scripts/hooks/test-escape-class-corpus.sh;
+# Bash guard. Read by scripts/hooks/test-escape-class-corpus.sh;
 # a guard author may also read it to see the class a splitter must survive.
 #
 # WHY: five guard PRs on 2026-10-11 (2397, 2409 x2, 2411, 2413) each regressed on
@@ -53,7 +53,7 @@ expansion-indirect-empty|||${!R} with R=Q and Q unset is empty (an unset R is a 
 expansion-adjacent-empty|||$V${Z} of two unset names is empty|||$V${Z}@@P@@
 expansion-empty-word|||an unset $V as its own word vanishes|||$V @@P@@
 expansion-empty-arg|||${V:-} between words is an empty argument|||@@P1@@ ${V:-} @@PR@@
-# zsh class (HIMMEL-5327 retask): the station shell, and Claude Code's Bash
+# zsh class: the station shell, and Claude Code's Bash
 # tool, is zsh. These cut a value WITHOUT braces or with zsh-only flags; a
 # guard that models bash reads them as literal text. Rows named zsh-* are
 # self-checked under `zsh -f` (SKIP when zsh is absent); the guards under test

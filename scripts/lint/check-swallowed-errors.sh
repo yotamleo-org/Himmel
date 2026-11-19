@@ -14,9 +14,6 @@
 # A line is exempt with `swallow-ok: <reason>` on it or on the comment line above.
 # Existing findings live in the baseline (path, shape, count); only a count ABOVE
 # its baseline row fails, so the lint lands green and refuses only new ones.
-# ponytail: per-line regexes, so a $(...) split over lines or a || on a continuation
-# line slips through, and a count baseline cannot tell WHICH line of a file is new
-# (every line of an over-budget shape is listed); upgrade to a tokenizer if either bites.
 #
 # Usage: check-swallowed-errors.sh [--root DIR] [--baseline FILE] [--write-baseline]
 # Exit: 0 clean · 1 new findings (path:line: shape: text) · 2 cannot evaluate (fail-closed)

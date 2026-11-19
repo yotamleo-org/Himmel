@@ -53,10 +53,6 @@
 # still verified). Nothing else is relaxed: the accounting below still demands
 # every selected suite ran exactly once, so a shard wrongly left out is red.
 #
-# ponytail: <list> is taken on the aggregator's runner, so a capability skip
-# of a non-pr-tier suite (a tool present on the shards but absent here) reads
-# as SKIP and a shard's matching skip stays a NOTE; the shards and the
-# aggregator share one image (ubuntu-latest). Revisit if they ever diverge.
 #
 # Platform guard: bash 3.2+ and POSIX awk; the aggregator runs on Linux.
 set -uo pipefail

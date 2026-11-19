@@ -4,6 +4,7 @@
 #
 # Run: bash scripts/handover/chief-kit/test-intake-backfill.sh
 set -u
+KP=HIMMEL
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="$HERE/intake-backfill.sh"
 
@@ -42,17 +43,17 @@ before="$(cat "$M"/*.md | cksum)"  # cksum is POSIX; md5sum is absent on stock m
 
 out="$(bash "$SUT" --mirror "$M" 2>&1)"; rc=$?
 check "the dry run exits 0" "0" "$rc"
-has "an operator-directed ticket is proposed to the current version" "$out" "$(printf 'HIMMEL-701\tv1.0.1\toperator-directed')"
-has "a High Bug is proposed to the current version" "$out" "$(printf 'HIMMEL-702\tv1.0.1\thigh-bug')"
-has "a scope-<open version> label wins, even over the backlog label" "$out" "$(printf 'HIMMEL-703\tv1.2.0\tscope-label')"
-has "an In Progress ticket is proposed to the current version" "$out" "$(printf 'HIMMEL-704\tv1.0.1\tin-progress')"
-has "a residual-depth backlog ticket is proposed to the backlog" "$out" "$(printf 'HIMMEL-705\tbacklog\tlow-label')"
-has "a High ticket in a sector with work in the current version is proposed to it" "$out" "$(printf 'HIMMEL-706\tv1.0.1\tsector-active')"
-has "a Medium ticket in an active sector has no signal and is proposed to the backlog" "$out" "$(printf 'HIMMEL-715\tbacklog\tno-signal')"
-has "a plain ticket in a quiet sector is proposed to the backlog" "$out" "$(printf 'HIMMEL-708\tbacklog\tno-signal')"
-has "a scope label for a released version does not place the ticket there" "$out" "$(printf 'HIMMEL-713\tv1.0.1\toperator-directed')"
-has "a scope label for an archived version does not place the ticket there" "$out" "$(printf 'HIMMEL-714\tbacklog\tno-signal')"
-has "a proposed label is not proof that an INTAKE was queued" "$out" "$(printf 'HIMMEL-709\tv1.0.1\tproposed-label')"
+has "an operator-directed ticket is proposed to the current version" "$out" "$(printf '%s\tv1.0.1\toperator-directed' "$KP-701")"
+has "a High Bug is proposed to the current version" "$out" "$(printf '%s\tv1.0.1\thigh-bug' "$KP-702")"
+has "a scope-<open version> label wins, even over the backlog label" "$out" "$(printf '%s\tv1.2.0\tscope-label' "$KP-703")"
+has "an In Progress ticket is proposed to the current version" "$out" "$(printf '%s\tv1.0.1\tin-progress' "$KP-704")"
+has "a residual-depth backlog ticket is proposed to the backlog" "$out" "$(printf '%s\tbacklog\tlow-label' "$KP-705")"
+has "a High ticket in a sector with work in the current version is proposed to it" "$out" "$(printf '%s\tv1.0.1\tsector-active' "$KP-706")"
+has "a Medium ticket in an active sector has no signal and is proposed to the backlog" "$out" "$(printf '%s\tbacklog\tno-signal' "$KP-715")"
+has "a plain ticket in a quiet sector is proposed to the backlog" "$out" "$(printf '%s\tbacklog\tno-signal' "$KP-708")"
+has "a scope label for a released version does not place the ticket there" "$out" "$(printf '%s\tv1.0.1\toperator-directed' "$KP-713")"
+has "a scope label for an archived version does not place the ticket there" "$out" "$(printf '%s\tbacklog\tno-signal' "$KP-714")"
+has "a proposed label is not proof that an INTAKE was queued" "$out" "$(printf '%s\tv1.0.1\tproposed-label' "$KP-709")"
 lacks "a Done ticket is skipped" "$out" "HIMMEL-710"
 lacks "a Sub-task is skipped" "$out" "HIMMEL-711"
 lacks "a ticket already in a version is skipped" "$(printf '%s\n' "$out" | grep -v '^#')" "HIMMEL-712"

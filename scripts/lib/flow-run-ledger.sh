@@ -238,12 +238,6 @@ _fr_script_operand() {
 
 # _fr_suite_ancestor -- 0 when a shell running a test-*.sh script is among this
 # process's ancestors, i.e. a suite run directly (no HIMMEL_SUITE_LOCK_HELD) is
-# spawning this wrapper. ponytail: only a shell's script operand counts (a
-# suite run through another interpreter is missed), argv is whitespace-split
-# where /proc is absent (a script path with spaces is missed), a suite
-# re-parented away from its fixture (a double fork) is not seen, depth is
-# capped at 16; upgrade is a marker the suite helpers export, if direct runs
-# keep leaking.
 _fr_suite_ancestor() {
     local pid="$$" depth=0 ppid
     local -a _fr_av

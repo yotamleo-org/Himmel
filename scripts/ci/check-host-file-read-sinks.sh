@@ -30,10 +30,6 @@
 # compared with ==, =~ or a # prefix strip), or when the line (or the one above)
 # carries `# read-sink-ok: <why>`.
 #
-# ponytail: shell readers only, and a window heuristic rather than data flow;
-# python/node readers (open(sys.argv[1]), readFileSync(process.env.X)) are not
-# scanned, upgrade path is an AST rule in the swallowed-error lint family.
-#
 # Exit: 0 clean; 1 sink(s) found (file:line printed); 2 usage / git error.
 # Platform guard: POSIX bash 3.2+, git, awk.
 set -uo pipefail
@@ -126,7 +122,6 @@ while IFS= read -r -d '' status; do
       hrun($0)
       for (k = 1; k <= HCNT; k++) assigned[HN[k]] = 1
     }
-    # ponytail: a name counts as assigned only from the head of a line (plain, command-prefix or an export/local/readonly/declare/typeset list); NAME=x anywhere else (a run argument, a case arm, a comment, a usage string) is not, so such a read is flagged and takes a read-sink-ok marker, upgrade path is real shell parsing
     END {
       OPER = "\"?\\$(\\{[^}]*\\}|[A-Za-z0-9_@*]+)\"?"
       CMD  = "(^|[;&|({`]|[ \t](then|do|else))[ \t]*(cat|head|tail|less|more|source|\\.)([ \t]+(-[A-Za-z0-9]+([ \t]+[0-9]+)?|--))*[ \t]+"

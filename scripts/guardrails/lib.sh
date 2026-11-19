@@ -502,10 +502,6 @@ _tolower_ascii() {
 # The run includes the compound keywords (do, then,
 # else, elif, if, while, until, !, {) and the wrappers exec, timeout, nohup,
 # nice, time and xargs, each with its own flags.
-# ponytail: upgrade path HIMMEL-912 (word-level tokenizer); wrappers still outside the run are command/builtin (rm handles
-# `command` itself; `command -v X` is a lookup, not a call), setsid, stdbuf,
-# ionice, taskset, chrt, chroot, doas, flock, watch, parallel, `env -S`,
-# `su -c`, `sh -c`, and a `case` arm's `pat)`.
 #
 # Callers: append their own atom alternation directly after `"$CMDPOS"`, e.g.
 #   grep -Eq "${CMDPOS}graphify(\.exe)?([^[:alnum:]_.-]|\$)"

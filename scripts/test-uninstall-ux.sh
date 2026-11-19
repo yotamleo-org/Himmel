@@ -192,12 +192,6 @@ else fail "M1 manifest covers steps '$m1_steps', expected 1..8"; fi
 # either a colon-separated list of source files that contain a
 # provenance-writing call, or PENDING(<slice/ticket/reason>) when no writer
 # was found anywhere in the tree (a real gap, not this row's to fix).
-# ponytail: the file check greps for ANY provenance-writing call in the named
-# file, not a call that specifically emits THIS row's kind — a file wired for
-# an unrelated row would false-pass. Tightening this to a per-kind/per-row
-# match would mean parsing bash and JS call sites structurally; out of scope
-# for a regression guard whose job is to catch a row losing its writer
-# entirely (the file deleted, renamed, or never grep-matching again).
 w1_map_ids=""
 w1_writer() { # <id> <PENDING(...)|file[:file...]>
     w1_map_ids="$w1_map_ids $1"

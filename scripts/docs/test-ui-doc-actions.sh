@@ -16,8 +16,6 @@ fail=0
 ok() { pass=$((pass + 1)); }
 bad() { echo "FAIL: $*" >&2; fail=$((fail + 1)); }
 
-# ponytail: routes are read only from the single 404 guard line and the Handled-in column is unchecked, add a handler-name check if routes ever move out of that line.
-# The POST routes are the paths the 404 guard lets through (the one `path !== ... return 404` line).
 routes=$(grep -E 'return new Response\("not found", \{ status: 404 \}\)' "$SERVER" | grep -oE '"/api/[^"]+"' | tr -d '"' | sort -u)
 if [ -z "$routes" ]; then
   bad "no POST routes found in scripts/config-ui/server.ts (the guard line moved?)"

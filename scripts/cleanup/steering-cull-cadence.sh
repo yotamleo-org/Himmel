@@ -28,8 +28,6 @@
 # sessions are renamed on every succession and a general user has none. No live
 # chief, or no inbox for it, alerts via cadence-alert.sh instead.
 #
-# ponytail: LOW repo cuts are listed in the proposal doc but not auto-opened as a PR, upgrade path: follow-up ticket for an apply pass in a worktree.
-# ponytail: a cut whose path the model mis-spells is escalated rather than counted low (fails safe), upgrade path: none needed unless the escalation volume grows.
 #
 # OFF by default: only `arm` installs it; arming on a station is an operator
 # step after a VM proof. Unattended claude -p draws the same subscription

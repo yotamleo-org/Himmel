@@ -297,14 +297,6 @@ _mkrepo() {  # _mkrepo <path> <branch> — a real commit, not an unborn HEAD:
     git -C "$1" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 }
 
-# ponytail: this section spawns dozens of nested bash+env+git+gh processes: a
-# known MSYS/Git-Bash flake wedges ONE of them after enough prior forks in the
-# same process (reproduces standalone every time; only wedges here, under
-# load — the class scripts/hooks/test-block-merged-pr-commit.sh's own T11
-# hang-guard already documents). check() itself is untouched; every row below
-# goes through this bounded twin instead, so a wedge fails loudly in ~20s
-# rather than hanging the suite. Upgrade path: none needed — a rare bounded
-# retry is cheaper than chasing an upstream MSYS bug.
 _TIMEOUT_BIN=""
 if command -v timeout >/dev/null 2>&1; then
     _TIMEOUT_BIN="timeout"

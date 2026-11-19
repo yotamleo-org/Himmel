@@ -43,9 +43,6 @@
 #
 # Test seams: PR_STALL_NOW (ISO-8601 clock), PR_STALL_INBOX_SEND (sender).
 #
-# ponytail: updatedAt stands in for the push time, so a comment resets the
-# no-ci clock and delays detection; upgrade: read the head's push event from
-# the PR timeline.
 # tick.sh folds the STALL rows into a stall= field (cached, fail-soft) and
 # chief-wait.sh wakes once per new conflict or no-ci token.
 #
@@ -157,8 +154,6 @@ sent_dir="${XDG_RUNTIME_DIR:-/tmp}/himmel-chief"
 sent_file="$sent_dir/pr-stall.sent"
 send="${PR_STALL_INBOX_SEND:-$HERE/inbox-send.sh}"
 # one notifying run at a time, so check-send-record below cannot double-send
-# ponytail: the no-flock lease expires after 300s even for a live pid; upgrade
-# path = a heartbeat for notifications that can take longer than five minutes.
 lock_dir="$sent_dir/pr-stall.lock.d"
 lock_owner=""
 release_mkdir_lock() {

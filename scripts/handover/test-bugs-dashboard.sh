@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
 set -uo pipefail
+KP=HIMMEL
 HERE="$(cd "$(dirname "$0")" && pwd)"; D="$HERE/bugs-dashboard.sh"; B="$HERE/bug.sh"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 fails=0; check(){ [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
@@ -15,8 +16,8 @@ bash "$B" status --bugs "$bb" --id BUG-1 --to resolved
 
 out="$(bash "$D" --root "$root")"
 check "table header"   "$(printf '%s' "$out" | grep -c '^| Item | Bug | Status | Symptom | Fixes |')" "1"
-check "alpha row"      "$(printf '%s' "$out" | grep -c '| epics/HIMMEL-1-alpha | BUG-1 | open | alpha race | 1 |')" "1"
-check "beta row"       "$(printf '%s' "$out" | grep -c '| standalones/HIMMEL-2-beta | BUG-1 | resolved | beta leak | 0 |')" "1"
+check "alpha row"      "$(printf '%s' "$out" | grep -c "| epics/$KP-1-alpha | BUG-1 | open | alpha race | 1 |")" "1"
+check "beta row"       "$(printf '%s' "$out" | grep -c "| standalones/$KP-2-beta | BUG-1 | resolved | beta leak | 0 |")" "1"
 check "totals all"     "$(printf '%s' "$out" | grep -c '\*\*Totals:\*\* 2 bug(s), 1 open/fixing\.')" "1"
 
 # sort: alpha (epics/) sorts before beta (standalones/)
@@ -43,8 +44,8 @@ bash "$B" add --bugs "$m" --symptom "first open" >/dev/null     # BUG-1 open
 bash "$B" add --bugs "$m" --symptom "second done" >/dev/null    # BUG-2
 bash "$B" status --bugs "$m" --id BUG-2 --to resolved
 mout="$(bash "$D" --root "$root4")"
-check "multi: BUG-1 row" "$(printf '%s' "$mout" | grep -c '| epics/HIMMEL-7-multi | BUG-1 | open | first open | 0 |')" "1"
-check "multi: BUG-2 row" "$(printf '%s' "$mout" | grep -c '| epics/HIMMEL-7-multi | BUG-2 | resolved | second done | 0 |')" "1"
+check "multi: BUG-1 row" "$(printf '%s' "$mout" | grep -c "| epics/$KP-7-multi | BUG-1 | open | first open | 0 |")" "1"
+check "multi: BUG-2 row" "$(printf '%s' "$mout" | grep -c "| epics/$KP-7-multi | BUG-2 | resolved | second done | 0 |")" "1"
 ml1=$(printf '%s' "$mout" | grep -n 'first open'  | head -1 | cut -d: -f1)
 ml2=$(printf '%s' "$mout" | grep -n 'second done' | head -1 | cut -d: -f1)
 check "multi: id order"  "$( [ "$ml1" -lt "$ml2" ] && echo yes )" "yes"

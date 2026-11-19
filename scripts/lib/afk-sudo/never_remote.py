@@ -1,4 +1,4 @@
-"""never_remote — the floor of what an AFK `run` request may never name (HIMMEL-8067 §7).
+"""never_remote — the floor of what an AFK `run` request may never name.
 
 Installed root-owned next to the helper, so a config cannot remove it; changing it
 takes a himmel PR plus a re-install at the station. `/etc/himmel/afk-sudo.json`
@@ -12,10 +12,6 @@ any reason but a missing name or a name under a non-directory), is refused as `o
 there is no shell syntax or word order to model and no shape list to keep closing.
 Co-occurrence over-blocks (an unrelated `main` next to `git push -f`); that cost
 is accepted.
-
-ponytail: word-set membership, not a semantic policy; blind to computed paths,
-wrappers that fetch or assemble text, and files over 64 KiB; upgrade path is mode
-allowlist with classes from suggest-allowlist (slice 3), which removes free-form runs.
 """
 import fnmatch
 import os

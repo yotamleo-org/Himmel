@@ -11,6 +11,7 @@
 # Platform guard: any POSIX bash 3.2+. Pure bash + jq over a temp sandbox; see
 # guard-relay-writes.sh's own header (the relay lane is Linux-only).
 set -uo pipefail
+KEY_PFX=HIMMEL
 
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
@@ -178,7 +179,7 @@ ROWS_JSON=(
     "$(bash_payload "cat $ROOT/inbox/chmodx.md")"
     "$(bash_payload "cat $ROOT/inbox/chownx.md")"
     "$(bash_payload "grep -c address $ROOT/inbox/X.md")"
-    "$(bash_payload "cat $ROOT/yotamleo/himmel/HIMMEL-1-form-legN9-2026-09-12-RESUME.md")"
+    "$(bash_payload "cat $ROOT/yotamleo/himmel/${KEY_PFX}-1-form-legN9-2026-09-12-RESUME.md")"
     # ...while a REAL verb stays denied in every shape a command word can take
     # (bare, absolute path, after sudo/xargs, in a subshell, after ; or a newline).
     "$(bash_payload "dd of=$ROOT/inbox/X.md if=/dev/null")"
@@ -335,10 +336,6 @@ expect_row root-tmpdir-chief-rundir 2 "$(run_relay_with root-tmpdir-chief-rundir
 # known; a write through the link path itself still denies (its parent is gone: unresolved-path).
 expect_row removed-tmpdir-link-write 2 "$(run_relay_with removed-tmpdir-link-write "$(write_payload Write "$TMP/removedlink/himmel-chief-7120")" "TMPDIR=$TMP/removedlink")" unresolved-path
 
-# ponytail: on a GNU host the BSD readlink is modelled as `readlink -e` (every
-# component must exist, as realpath(3) requires), not BSD's exact errno set;
-# upgrade path: the macOS os-verify shard runs these same rows on the real BSD
-# readlink, unshimmed.
 mkdir "$TMP/probe-dir"
 BSD_PATH="$PATH"
 if readlink -f -- "$TMP/probe-dir/leaf" >/dev/null 2>&1; then
@@ -373,7 +370,7 @@ done
 echo ""
 echo "=== HIMMEL-3872: BSD readlink — guarded matches through the fallback, fail-closed ==="
 expect_row bsd-new-inbox-file 2 "$(run_relay_with bsd-new-inbox-file "$(write_payload Write "$ROOT/inbox/new.md")" "$BSD")" inbox-write
-expect_row bsd-new-worker-doc 2 "$(run_relay_with bsd-new-worker-doc "$(write_payload Write "$ROOT/yotamleo/himmel/HIMMEL-1-b-legN4-2026-09-29-RESUME.md")" "$BSD")" worker-doc-write
+expect_row bsd-new-worker-doc 2 "$(run_relay_with bsd-new-worker-doc "$(write_payload Write "$ROOT/yotamleo/himmel/${KEY_PFX}-1-b-legN4-2026-09-29-RESUME.md")" "$BSD")" worker-doc-write
 expect_row bsd-alias-parent-into-inbox 2 "$(run_relay_with bsd-alias-parent-into-inbox "$(write_payload Write "$TMP/inbox-alias/new.md")" "$BSD")" inbox-write
 expect_row bsd-dangling-symlink 2 "$(run_relay_with bsd-dangling-symlink "$(write_payload Write "$TMP/dangling.md")" "$BSD")" unresolved-path
 expect_row bsd-dangling-into-inbox 2 "$(run_relay_with bsd-dangling-into-inbox "$(write_payload Write "$SYMLINK_INTO_INBOX")" "$BSD")" unresolved-path

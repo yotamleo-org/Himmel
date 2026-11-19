@@ -395,14 +395,14 @@ test('Chinese labels translate the session token summary in both layouts', () =>
   setLanguage('zh-Hans');
   const transcript = { sessionTokens: { inputTokens: 12345, outputTokens: 6789, cacheCreationTokens: 0, cacheReadTokens: 4321 } };
   const config = { display: { showSessionTokens: true } };
-  // himmel delta (HIMMEL-2161): cache write and read are separate figures, so the label is 缓存读.
+  // himmel delta: cache write and read are separate figures, so the label is 缓存读.
   assert.equal(lines(ctx({ transcript, config })).at(-1), '词元 23k (输入: 12k, 输出: 7k, 缓存读: 4k)');
   assert.match(lines(ctx({ transcript, config: compact(config) }))[0], /\| 词元: 23k \(输入: 12k, 输出: 7k, 缓存读: 4k\)$/);
 });
 
 test('the session token summary keeps its last line until elementOrder places it', () => {
   const transcript = { sessionTokens: { inputTokens: 12345, outputTokens: 6789, cacheCreationTokens: 0, cacheReadTokens: 4321 } };
-  // himmel delta (HIMMEL-2161): the cache-read figure is labelled cache-r.
+  // himmel delta: the cache-read figure is labelled cache-r.
   const tokens = 'Tokens 23k (in: 12k, out: 7k, cache-r: 4k)';
   const show = { showSessionTokens: true };
   assert.equal(lines(ctx({ transcript, config: { display: show } })).at(-1), tokens, 'the default order leaves it last');

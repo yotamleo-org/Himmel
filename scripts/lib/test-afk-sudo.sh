@@ -1921,7 +1921,7 @@ assert_contains "install.sh removes never_remote.py on uninstall" 'rm -f "$SUDOE
 assert_contains "the default config ships mode allowlist" '"mode": "allowlist"' "$(cat "$INSTALL" "$LIB/afk-sudo.json.template")"
 assert_contains "the default config ships the run block off" '"run": {"enabled": false' "$(cat "$INSTALL" "$LIB/afk-sudo.json.template")"
 assert_contains "the default config ships the grant block off" '"grant": {"enabled": false' "$(cat "$INSTALL" "$LIB/afk-sudo.json.template")"
-assert_contains "HIMMEL-7686: install.sh creates the root-owned grant marker directory" '-m 0755 /var/lib/himmel/afk-grants' "$(cat "$INSTALL")"
+assert_contains "install.sh creates the root-owned grant marker directory" '-m 0755 /var/lib/himmel/afk-grants' "$(cat "$INSTALL")"
 # shellcheck disable=SC2016 # matched literally, as above
 assert_contains "slice 1b: install.sh creates a root 0600 notice-bot.env from its template" 'install -o root -g "$ROOT_GROUP" -m 0600 "$src/notice-bot.env.template" "$f"' "$(cat "$INSTALL")"
 assert_contains "slice 1b: install.sh says runs stay refused while notice-bot.env holds no token" "run requests are refused until it holds one" "$(cat "$INSTALL")"

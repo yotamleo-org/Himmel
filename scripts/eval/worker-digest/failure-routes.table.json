@@ -1,6 +1,5 @@
 {
   "v": 1,
-  "jira": "HIMMEL-4670",
   "doc": "spec 4.2 routing table, as data; failure_router.py reads it. Rows are tried in order: a row with `when` fires only when the rows its filter keeps reach its threshold in distinct workers, else the next row is tried; the first matching row without `when` decides the class. `summary` and `row` are the only template text a Jira body or summary may carry.",
   "window_days": 14,
   "sector": "Quality & proof",

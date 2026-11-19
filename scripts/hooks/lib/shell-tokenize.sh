@@ -11,7 +11,7 @@
 # `bash scripts/quiet-run.sh suite -- bash scripts/hooks/test-shell-tokenize.sh
 # --sync` to rewrite both copies (require-quiet-run refuses a bare suite run).
 #
-# >>> BEGIN shell-tokenize (HIMMEL-3546; canonical: scripts/hooks/lib/shell-tokenize.sh) >>>
+# >>> BEGIN shell-tokenize (canonical: scripts/hooks/lib/shell-tokenize.sh) >>>
 # st_tokenize CMD — split CMD into words and segments the way bash reads it,
 # expanding nothing. Returns 0 (ST_OK=1) on success, 1 (ST_OK=0) on anything
 # it does not model — an unterminated quote, an unmatched `)`, `;;`, a

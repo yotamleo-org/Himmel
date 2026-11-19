@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-VM posture / forensic check tool (HIMMEL-495, epic HIMMEL-483) — the
+VM posture / forensic check tool — the
 security-posture half of the e2e VM harness.
 
 Replaces the throwaway ``$TEMP`` paramiko forensic sweeps with ONE reusable,
@@ -12,7 +12,7 @@ Five read-only checks (the ticket's exact dimensions):
   1. authorized_keys audit       — only the harness host key may be present
   2. listening sockets + NIC     — nothing world-bound except sshd
   3. auth.log non-local auth      — Accepted only from loopback / VBox NAT gw
-  4. sudoers audit                — only the HIMMEL-492 scoped NOPASSWD drop-in
+  4. sudoers audit                — only the scoped NOPASSWD drop-in
   5. IP forwarding / forward      — net.*.forwarding must be off
 
 Cardinal invariant (D5): every command is a READ. Enforced by an explicit
@@ -28,7 +28,7 @@ CLI: python scripts/lib/vm_posture.py <vm> [--json]
 
 The check functions are pure ``(runner, ...) -> CheckResult`` so the suite
 (``test-vm_posture.py``) injects a fake runner over captured fixtures and needs
-no VM. See the design/plan specs (HIMMEL-495) for the full rationale.
+no VM.
 """
 import ipaddress
 import json
@@ -331,7 +331,7 @@ def check_sudoers(runner, user, sudo_ok):
                            "unexpected NOPASSWD grant(s): " + " | ".join(foreign))
     if nopasswd:
         return CheckResult(sid, title, sev, PASS,
-                           "only the HIMMEL-492 scoped NOPASSWD drop-in present")
+                           "only the scoped NOPASSWD drop-in present")
     return CheckResult(sid, title, sev, PASS, "no NOPASSWD grants")
 
 

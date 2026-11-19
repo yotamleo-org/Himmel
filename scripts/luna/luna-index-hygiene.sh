@@ -85,9 +85,6 @@ rc=$?
 [ "$rc" -eq 0 ] || exit "$rc"
 
 # --- 1. qmd ignore list -------------------------------------------------------
-# ponytail: line-based edit of the two-level index.yml (qmd's own writer has no
-# ignore verb), block-style `ignore:` lists only; upgrade path is a qmd
-# `collection ignore` verb.
 python3 -I - "$CFG" "$COLLECTION" "$APPLY" "${QMD_IGNORE[@]}" <<'PY'
 import os, sys
 cfg, coll, apply = sys.argv[1], sys.argv[2], sys.argv[3] == "1"
@@ -147,8 +144,6 @@ rc=$?
 [ "$rc" -eq 0 ] || exit "$rc"
 
 # --- 1b. the cold archive collection -----------------------------------------
-# ponytail: same line-based edit as step 1, appended to the `collections:` block; upgrade
-# path is a qmd `collection add --pattern` call.
 python3 -I - "$CFG" "$ARCHIVE_COLLECTION" "$VAULT" "$ARCHIVE_PATTERN" "$APPLY" <<'PY'
 import os, sys
 cfg, name, vault, pattern, apply = sys.argv[1:6]

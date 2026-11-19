@@ -4,6 +4,7 @@
 #
 # Usage: bash scripts/hooks/test-guard-implementor-dispatch.sh
 set -uo pipefail
+KEY_PFX=HIMMEL
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
@@ -293,7 +294,7 @@ combined_output() {
 
 echo "=== lane-routing policy ==="
 
-RC1=$(run_hook impl-claudex "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the guard and commit the changes.')")
+RC1=$(run_hook impl-claudex "$REG_CLAUDEX" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1513" 'Write the guard and commit the changes.')")
 assert_rc "implementation + claudex available refuses" 2 "$RC1"
 ERR1=$(cat "$TMP/err-impl-claudex")
 assert_contains "claudex refusal names dispatcher" "bun scripts/telegram/spawn-claudex.ts '<prompt>' --name <slug> --timeout-mins <n> --effort high" "$ERR1"
@@ -340,11 +341,11 @@ RC2=$(run_hook impl-glm "$REG_GLM" "$(payload claude sonnet 'Fix the failing she
 assert_rc "implementation + registered glm never refuses toward dropped glm" 0 "$RC2"
 assert_not_contains "registered glm never names spawn-glm" "spawn-glm" "$(combined_output impl-glm)"
 
-RC3=$(run_hook research "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Research HIMMEL-1513' 'Investigate how to fix the routing drift; report findings only, read-only.')")
+RC3=$(run_hook research "$REG_CLAUDEX" "$(payload general-purpose sonnet "Research ${KEY_PFX}-1513" 'Investigate how to fix the routing drift; report findings only, read-only.')")
 assert_rc "research-shaped dispatch allowed" 0 "$RC3"
 assert_empty "research-shaped dispatch silent" "$(combined_output research)"
 
-RC4=$(run_hook research-then-fix "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Investigate and fix HIMMEL-1513' 'Research the cause and then implement the fix.')")
+RC4=$(run_hook research-then-fix "$REG_CLAUDEX" "$(payload general-purpose sonnet "Investigate and fix ${KEY_PFX}-1513" 'Research the cause and then implement the fix.')")
 assert_rc "research followed by implementation refuses" 2 "$RC4"
 
 # data is not an action verb, and the refusal names the Plan route.
@@ -403,11 +404,11 @@ assert_empty "pure lane-router research remains silent" "$(combined_output pure-
 # operational_context=0 -- so the OLD first gate exited 0 straight through,
 # bypassing lane routing and the bank guard. followed_by_action
 # must now be a third disjunct in that gate.
-RC81=$(run_hook research-then-edit "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Research the parser module, then edit the config file.')")
+RC81=$(run_hook research-then-edit "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-1534 dispatch" 'Research the parser module, then edit the config file.')")
 assert_rc "'research X, then edit Y' is governed like a direct implementation dispatch" 2 "$RC81"
 assert_contains "'research X, then edit Y' names the claudex dispatcher" "bun scripts/telegram/spawn-claudex.ts" "$(combined_output research-then-edit)"
 
-RC82=$(run_hook investigate-then-modify "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Investigate the routing logic, then modify the config.')")
+RC82=$(run_hook investigate-then-modify "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-1534 dispatch" 'Investigate the routing logic, then modify the config.')")
 assert_rc "'investigate X, then modify Y' is governed like a direct implementation dispatch" 2 "$RC82"
 
 # Unaffected controls: these phrasings already trip the bare-verb
@@ -423,7 +424,7 @@ assert_rc "'investigate; afterwards implement' stays governed (unaffected by the
 # GREEN control: a pure read-only research brief with no action transition and
 # no operational context keeps its exemption -- no followed_by_action signal
 # is present, so the gate reorder cannot affect it.
-RC87=$(run_hook pure-research-himmel-1534 "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Research HIMMEL-1534' 'Research the parser module. Report findings only, read-only.')")
+RC87=$(run_hook pure-research-himmel-1534 "$REG_CLAUDEX" "$(payload general-purpose sonnet "Research ${KEY_PFX}-1534" 'Research the parser module. Report findings only, read-only.')")
 assert_rc "pure research with no action transition remains allowed" 0 "$RC87"
 assert_empty "pure research with no action transition is silent" "$(combined_output pure-research-himmel-1534)"
 
@@ -437,10 +438,10 @@ RC88=$(run_hook fix-colon-in-table "$REG_CLAUDEX" "$(payload general-purpose son
 | fix: | 112 |
 | feat: | 70 |
 Every open ticket must land in exactly one theme.')")
-assert_rc "'fix:' in a table row still refuses (table rows are not stripped, HIMMEL-1608 judge I1)" 2 "$RC88"
+assert_rc "'fix:' in a table row still refuses (table rows are not stripped)" 2 "$RC88"
 
 RC88P=$(run_hook land-in-theme "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Cluster tickets' 'Cluster these tickets by subject. Every open ticket must land in exactly one theme.')")
-assert_rc "'must land in exactly one theme' over-refuses, no modal strip (HIMMEL-1608 judge C1, HIMMEL-3922)" 2 "$RC88P"
+assert_rc "'must land in exactly one theme' over-refuses, no modal strip" 2 "$RC88P"
 
 # Every integration-target spelling refuses, because the modal
 # "land in" strip is gone. One row per known bypass.
@@ -497,42 +498,42 @@ assert_rc "'must land in the main branch' stays refused" 2 "$RC88Q"
 # write. Narrow the write-verb match: a report-type direct object
 # (summary/report/findings/notes/answer/overview/write-up) with nothing
 # path-like in the same clause is prose, not an action.
-RC89=$(run_hook write-summary-readonly "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Research the parser, then write a summary of findings. Read-only analysis.')")
+RC89=$(run_hook write-summary-readonly "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-1534 dispatch" 'Research the parser, then write a summary of findings. Read-only analysis.')")
 assert_rc "'then write a summary of findings' (read-only) stays allowed" 0 "$RC89"
 assert_empty "'then write a summary of findings' (read-only) is silent" "$(combined_output write-summary-readonly)"
 
-RC90=$(run_hook write-report-no-path "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Investigate the routing logic and write a report.')")
+RC90=$(run_hook write-report-no-path "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-1534 dispatch" 'Investigate the routing logic and write a report.')")
 assert_rc "'and write a report' with no path-like object stays allowed" 0 "$RC90"
 
-RC91=$(run_hook write-report-to-path "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Research the routing logic, then write a report to scripts/router.sh.')")
+RC91=$(run_hook write-report-to-path "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-1534 dispatch" 'Research the routing logic, then write a report to scripts/router.sh.')")
 assert_rc "'then write a report to <path>' is governed -- a file write, not prose" 2 "$RC91"
 
-RC92=$(run_hook write-the-fix "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Research the parser then write the fix.')")
+RC92=$(run_hook write-the-fix "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-1534 dispatch" 'Research the parser then write the fix.')")
 assert_rc "'then write the fix' is governed -- not a report-type object" 2 "$RC92"
 
-RC93=$(run_hook write-code-for "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Look at the router then write code for the parser.')")
+RC93=$(run_hook write-code-for "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-1534 dispatch" 'Look at the router then write code for the parser.')")
 assert_rc "'then write code for B' is governed -- not a report-type object" 2 "$RC93"
 
-RC94=$(run_hook write-summary-and-edit "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Research the parser, then write the summary and edit the config.')")
+RC94=$(run_hook write-summary-and-edit "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-1534 dispatch" 'Research the parser, then write the summary and edit the config.')")
 assert_rc "'write the summary AND edit Y' is governed -- the edit half still trips followed_by_action" 2 "$RC94"
 
 # codex: a first-match-only extraction missed a SECOND
 # then/and-write occurrence, and a clause boundary cut at a literal "."
 # hid a file extension right after the report noun.
-RC95=$(run_hook write-report-and-write-code "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Research the parser, then write a report and write code for the fix.')")
+RC95=$(run_hook write-report-and-write-code "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-1534 dispatch" 'Research the parser, then write a report and write code for the fix.')")
 assert_rc "'write a report AND write code' is governed -- the second write is a real action" 2 "$RC95"
 
-RC96=$(run_hook write-report-dot-extension "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Research the parser, then write a report.md.')")
+RC96=$(run_hook write-report-dot-extension "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-1534 dispatch" 'Research the parser, then write a report.md.')")
 assert_rc "'then write a report.md' is governed -- the extension is a file write, not prose" 2 "$RC96"
 
 # codex: the round-2 fix-up's own remedy was itself
 # bounded -- a 1-5 char extension cap, and a fixed 60-char window per
 # occurrence -- so a longer extension or a long intervening phrase could
 # push the path-like signal out of view.
-RC97=$(run_hook write-report-long-extension "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Research the parser, then write a report.markdown.')")
+RC97=$(run_hook write-report-long-extension "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-1534 dispatch" 'Research the parser, then write a report.markdown.')")
 assert_rc "'then write a report.markdown' is governed -- a >5-char extension is still a file write" 2 "$RC97"
 
-RC98=$(run_hook write-report-long-phrase-then-path "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Research the parser, then write a report about all of the various nuances and detailed considerations discussed above to scripts/router.sh.')")
+RC98=$(run_hook write-report-long-phrase-then-path "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-1534 dispatch" 'Research the parser, then write a report about all of the various nuances and detailed considerations discussed above to scripts/router.sh.')")
 assert_rc "'then write a report <60+ char phrase> to <path>' is governed -- the path outlives any fixed window" 2 "$RC98"
 
 # The write-clause exemption above cleared
@@ -544,16 +545,16 @@ assert_rc "'then write a report <60+ char phrase> to <path>' is governed -- the 
 # first-gate disjunct, narrowed by the exemption) and followed_by_action
 # (bare "write" included, feeding only the
 # research/read-only vetoes). These 6 rows pin that split.
-RC99=$(run_hook readonly-implement-then-summary "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Read-only review. Assess whether we should implement caching, then write a summary.')")
+RC99=$(run_hook readonly-implement-then-summary "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-1534 dispatch" 'Read-only review. Assess whether we should implement caching, then write a summary.')")
 assert_rc "read-only + implement + exempted 'then write a summary' is governed (J1388A row 1)" 2 "$RC99"
 
-RC100=$(run_hook readonly-implement-summary-then-implement "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Read-only review. Assess whether we should implement caching, then write a summary; after that implement caching in the client.')")
+RC100=$(run_hook readonly-implement-summary-then-implement "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-1534 dispatch" 'Read-only review. Assess whether we should implement caching, then write a summary; after that implement caching in the client.')")
 assert_rc "read-only + implement + exempted write + second implement is governed (J1388A row 2)" 2 "$RC100"
 
-RC101=$(run_hook readonly-summary-then-write-code "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Read-only review of the cache layer, then write a summary; afterwards write the code for caching.')")
+RC101=$(run_hook readonly-summary-then-write-code "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-1534 dispatch" 'Read-only review of the cache layer, then write a summary; afterwards write the code for caching.')")
 assert_rc "read-only + exempted write + ';afterwards write the code' is governed (J1388A row 3)" 2 "$RC101"
 
-RC102=$(run_hook readonly-summary-next-write-implementation "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Read-only task. Review the parser, then write a summary. Next, write the implementation of the retry loop.')")
+RC102=$(run_hook readonly-summary-next-write-implementation "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-1534 dispatch" 'Read-only task. Review the parser, then write a summary. Next, write the implementation of the retry loop.')")
 assert_rc "read-only + exempted write + '. Next, write the implementation' is governed (J1388A row 4)" 2 "$RC102"
 
 RC103=$(run_hook readonly-write-code-second-line "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Read-only task. Review the parser, then write the code
@@ -571,11 +572,11 @@ assert_rc "read-only + numbered-list 'write the code for retries' is governed (J
 # summary module"/"then write up my notes file" (Finding 2's own examples).
 # "write up your findings" now falls through to gate_action and is GOVERNED
 # again, matching main; that loss is an accepted trade, not a regression.
-RC105=$(run_hook writeup-report "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Investigate why the suite is flaky and write up your findings.')")
-assert_rc "'then write up your findings' (no 'up' idiom support, matches main) governed (HIMMEL-3784, J1398B)" 2 "$RC105"
+RC105=$(run_hook writeup-report "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Investigate why the suite is flaky and write up your findings.')")
+assert_rc "'then write up your findings' (no 'up' idiom support, matches main) governed" 2 "$RC105"
 
-RC106=$(run_hook write-overview "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Plan only: design the retry policy and write an overview.')")
-assert_rc "'and write an overview' (report brief) allows (HIMMEL-3784)" 0 "$RC106"
+RC106=$(run_hook write-overview "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Plan only: design the retry policy and write an overview.')")
+assert_rc "'and write an overview' (report brief) allows" 0 "$RC106"
 assert_empty "write-overview report brief silent" "$(combined_output write-overview)"
 
 # The adjective slot ("(a|an|the|your|my)
@@ -583,8 +584,8 @@ assert_empty "write-overview report brief silent" "$(combined_output write-overv
 # -- "write a short summary" no longer
 # matches the bare determiner+noun branch and is GOVERNED again, matching
 # main. Accepted trade, not a regression.
-RC107=$(run_hook write-short-summary "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Locate where the lane router reads its config and write a short summary.')")
-assert_rc "'and write a short summary' (adjective slot dropped) governed (HIMMEL-3784, J1398A)" 2 "$RC107"
+RC107=$(run_hook write-short-summary "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Locate where the lane router reads its config and write a short summary.')")
+assert_rc "'and write a short summary' (adjective slot dropped) governed" 2 "$RC107"
 
 # The gate_text commit-history/edit-distance
 # strip is deleted entirely (its tightened boundary still admitted a literal
@@ -592,21 +593,21 @@ assert_rc "'and write a short summary' (adjective slot dropped) governed (HIMMEL
 # $text again, byte-identical to main. "commit history"/"edit distance" as a
 # research noun is GOVERNED again on both main and head; that loss is an
 # accepted trade, not a regression.
-RC108=$(run_hook commit-history "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Review the PR description and commit history for the parser module.')")
-assert_rc "'commit history' (gate_text strip deleted, matches main) governed (HIMMEL-3784, J1398A)" 2 "$RC108"
+RC108=$(run_hook commit-history "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Review the PR description and commit history for the parser module.')")
+assert_rc "'commit history' (gate_text strip deleted, matches main) governed" 2 "$RC108"
 
-RC109=$(run_hook edit-distance "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Research the parser and edit distance heuristics used elsewhere.')")
-assert_rc "'edit distance' (gate_text strip deleted, matches main) governed (HIMMEL-3784, J1398A)" 2 "$RC109"
+RC109=$(run_hook edit-distance "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Research the parser and edit distance heuristics used elsewhere.')")
+assert_rc "'edit distance' (gate_text strip deleted, matches main) governed" 2 "$RC109"
 
 # codex-1: the commit-history/edit-distance
 # exclusions above must not be checked against the WHOLE brief -- an
 # unrelated "then/and commit history" or "then/and edit distance" phrase
 # elsewhere must not suppress a genuine, separate "then commit"/"then edit"
 # action transition in the same brief.
-RC110=$(run_hook commit-history-plus-action "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Then commit the change to the config file. Then commit history matters here.')")
+RC110=$(run_hook commit-history-plus-action "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Then commit the change to the config file. Then commit history matters here.')")
 assert_rc "genuine 'then commit' action still governed despite unrelated 'then commit history' elsewhere (codex-1)" 2 "$RC110"
 
-RC111=$(run_hook edit-distance-plus-action "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Then edit the config file. Also and edit distance heuristics come up here.')")
+RC111=$(run_hook edit-distance-plus-action "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Then edit the config file. Also and edit distance heuristics come up here.')")
 assert_rc "genuine 'then edit' action still governed despite unrelated 'and edit distance' elsewhere (codex-1)" 2 "$RC111"
 
 # codex-1: the write-clause exemption's
@@ -616,7 +617,7 @@ assert_rc "genuine 'then edit' action still governed despite unrelated 'and edit
 # "write code for report" phrasing also trips the independent bare
 # "write code" implementation detector, so it doesn't isolate this exact
 # regex bug on its own; "write patch for report" avoids that overlap.)
-RC112=$(run_hook write-patch-for-report "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Investigate the bug, then write patch for report.')")
+RC112=$(run_hook write-patch-for-report "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Investigate the bug, then write patch for report.')")
 assert_rc "'then write patch for report' (genuine implementation, not a report noun phrase) still governed (codex-1 round 2)" 2 "$RC112"
 
 # path_scope (the sentence-boundary truncation)
@@ -625,34 +626,34 @@ assert_rc "'then write patch for report' (genuine implementation, not a report n
 # as main, and the same as a path naming a real write target in a later
 # sentence (RC113 below). Accepted known over-breadth,
 # not a regression: correctness on the write-target direction matters more.
-RC110=$(run_hook write-summary-unrelated-later-path "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Research the parser, then write a summary. Also check scripts/router.sh for reference.')")
-assert_rc "path in an unrelated LATER sentence governs again (path_scope reverted, HIMMEL-3784, J1398A)" 2 "$RC110"
+RC110=$(run_hook write-summary-unrelated-later-path "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Research the parser, then write a summary. Also check scripts/router.sh for reference.')")
+assert_rc "path in an unrelated LATER sentence governs again (path_scope reverted)" 2 "$RC110"
 
-RC111=$(run_hook write-summary-version-number "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Research the parser, then write a summary mentioning version 1.0 of the API.')")
-assert_rc "a version number is not a file extension (HIMMEL-3784, codex round 4)" 0 "$RC111"
+RC111=$(run_hook write-summary-version-number "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Research the parser, then write a summary mentioning version 1.0 of the API.')")
+assert_rc "a version number is not a file extension" 0 "$RC111"
 assert_empty "version-number brief silent" "$(combined_output write-summary-version-number)"
 
-RC112=$(run_hook commit-history-still-governed "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Investigate the routing logic, then commit the change to history.log.')")
-assert_rc "a real path after 'commit' still governs (HIMMEL-3784 exclusion stays narrow)" 2 "$RC112"
+RC112=$(run_hook commit-history-still-governed "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Investigate the routing logic, then commit the change to history.log.')")
+assert_rc "a real path after 'commit' still governs (exclusion stays narrow)" 2 "$RC112"
 
-RC113=$(run_hook write-summary-then-second-write "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Research the parser, then write a summary. Then create the file src/tok.ts.')")
-assert_rc "a genuine second write clause chained by 'Then' still governs (HIMMEL-3784, whole write_tail veto)" 2 "$RC113"
+RC113=$(run_hook write-summary-then-second-write "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Research the parser, then write a summary. Then create the file src/tok.ts.')")
+assert_rc "a genuine second write clause chained by 'Then' still governs (whole write_tail veto)" 2 "$RC113"
 
-RC114=$(run_hook modify-bare-object-still-governed "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Investigate the routing logic, then modify the config.')")
-assert_rc "'then modify <bare object>' still governs (HIMMEL-3784 exclusion is phrase-literal, not grammatical)" 2 "$RC114"
+RC114=$(run_hook modify-bare-object-still-governed "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Investigate the routing logic, then modify the config.')")
+assert_rc "'then modify <bare object>' still governs (exclusion is phrase-literal, not grammatical)" 2 "$RC114"
 
 # CodeRabbit (this PR, PR #1398): "then edit distance.py" is a genuine file
 # edit, not the descriptive "edit distance" phrase -- the exclusion's old
 # trailing boundary treated the "." before "py" as the end of the phrase and
 # stripped "then", losing the action trigger.
-RC115=$(run_hook edit-distance-dot-py-still-governed "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Investigate the routine, then edit distance.py.')")
+RC115=$(run_hook edit-distance-dot-py-still-governed "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Investigate the routine, then edit distance.py.')")
 assert_rc "'then edit distance.py' (a real file, not the descriptive phrase) still governed (CodeRabbit)" 2 "$RC115"
 
 # CodeRabbit (this PR, PR #1398): the sentence-boundary "Z" placeholder is a
 # letter, so a genuine read-only chain ("write a summary. Then explain the
 # findings") produced "summary.Zthen...", which the extension check then
 # misread as a file extension and wrongly gated the chain.
-RC116=$(run_hook write-summary-then-explain-chain-allows "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Research the parser, then write a summary. Then explain the findings.')")
+RC116=$(run_hook write-summary-then-explain-chain-allows "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Research the parser, then write a summary. Then explain the findings.')")
 assert_rc "'write a summary. Then explain the findings' (a read-only chain, not a file write) allows (CodeRabbit)" 0 "$RC116"
 assert_empty "write-summary-then-explain-chain-allows brief silent" "$(combined_output write-summary-then-explain-chain-allows)"
 
@@ -663,50 +664,50 @@ assert_empty "write-summary-then-explain-chain-allows brief silent" "$(combined_
 # veto and mask this exact bug, so the fixture avoids it.) The "up" idiom exemption is now cut entirely,
 # so this row is governed because
 # "write up" has no exemption at all.
-RC117=$(run_hook write-up-shell-script-still-governed "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Investigate the bug, then write up a shell script.')")
+RC117=$(run_hook write-up-shell-script-still-governed "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Investigate the bug, then write up a shell script.')")
 assert_rc "'then write up a shell script' (genuine implementation, not a report) still governed (codex-1 round 4)" 2 "$RC117"
 
 # codex-2: the commit-history/edit-distance
 # exclusion's trailing boundary accepted "/" as closing the descriptive
 # phrase, so a real path with a slash ("distance/parser.py") lost its "then"
 # the same way a bare extension did.
-RC118=$(run_hook edit-distance-slash-path-still-governed "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Investigate the routine, then edit distance/parser.py.')")
+RC118=$(run_hook edit-distance-slash-path-still-governed "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Investigate the routine, then edit distance/parser.py.')")
 assert_rc "'then edit distance/parser.py' (a real path, not the descriptive phrase) still governed (codex-2 round 4)" 2 "$RC118"
 
 # codex-1: a hyphen closed the boundary the
 # same way "." and "/" did, so a real hyphenated filename lost its "then".
-RC119=$(run_hook edit-distance-hyphen-path-still-governed "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Investigate the routine, then edit distance-parser.py.')")
+RC119=$(run_hook edit-distance-hyphen-path-still-governed "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Investigate the routine, then edit distance-parser.py.')")
 assert_rc "'then edit distance-parser.py' (a real file, not the descriptive phrase) still governed (codex-1 round 5)" 2 "$RC119"
 
 # The write TARGET is in a sentence after the report clause; path_scope used
 # to truncate at the first sentence boundary and miss it entirely. Reverted
 # to main's whole-write_tail veto -- governed again.
-RC120=$(run_hook j1398a-finding1-later-sentence-target "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Research the tokenizer, then write a summary. Afterwards create src/tok.ts with the new class.')")
+RC120=$(run_hook j1398a-finding1-later-sentence-target "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Research the tokenizer, then write a summary. Afterwards create src/tok.ts with the new class.')")
 assert_rc "J1398A Finding 1 example: write target in a later sentence governs (path_scope reverted)" 2 "$RC120"
 
 # Neither uses the adjective slot (determiner sits directly before the
 # noun) -- the escape was the now-deleted "write up" idiom exemption, not
 # the adjective slot. Cutting "write up" entirely governs both,
 # matching main.
-RC121=$(run_hook j1398a-finding2-write-up-summary-module "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Explore X and then write up your summary module.')")
+RC121=$(run_hook j1398a-finding2-write-up-summary-module "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Explore X and then write up your summary module.')")
 assert_rc "J1398A Finding 2 example: 'then write up your summary module' governs ('up' idiom cut)" 2 "$RC121"
 
-RC122=$(run_hook j1398a-finding2-write-up-notes-file "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Investigate the bug, then write up my notes file.')")
+RC122=$(run_hook j1398a-finding2-write-up-notes-file "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Investigate the bug, then write up my notes file.')")
 assert_rc "J1398A Finding 2 example: 'then write up my notes file' governs ('up' idiom cut)" 2 "$RC122"
 
 # Both are a real verb+object continuation, not the descriptive noun phrase
 # the old gate_text strip tried to exempt; the strip is deleted entirely,
 # so gate_action is computed straight off $text, same as main.
-RC123=$(run_hook j1398a-finding3-edit-distance-thresholds "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Investigate the fuzzy matcher, then edit distance thresholds in config/match.yaml to 0.8.')")
+RC123=$(run_hook j1398a-finding3-edit-distance-thresholds "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Investigate the fuzzy matcher, then edit distance thresholds in config/match.yaml to 0.8.')")
 assert_rc "J1398A Finding 3 example: 'then edit distance thresholds in config/match.yaml' governs (gate_text deleted)" 2 "$RC123"
 
-RC124=$(run_hook j1398a-finding3-commit-history-files "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Review the branch, then commit history files to the repo.')")
+RC124=$(run_hook j1398a-finding3-commit-history-files "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-3784 dispatch" 'Review the branch, then commit history files to the repo.')")
 assert_rc "J1398A Finding 3 example: 'then commit history files to the repo' governs (gate_text deleted)" 2 "$RC124"
 
-RC5=$(run_hook worktree "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1513 worker' 'C:/repo/.claude/worktrees/fix-lane; Platforms tested: windows')")
+RC5=$(run_hook worktree "$REG_CLAUDEX" "$(payload general-purpose sonnet "${KEY_PFX}-1513 worker" 'C:/repo/.claude/worktrees/fix-lane; Platforms tested: windows')")
 assert_rc "worktree/trailer-shaped dispatch refuses" 2 "$RC5"
 
-RC6=$(run_hook ticket-only "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Summarize HIMMEL-1513' 'Summarize HIMMEL-1513 for the handover.')")
+RC6=$(run_hook ticket-only "$REG_CLAUDEX" "$(payload general-purpose sonnet "Summarize ${KEY_PFX}-1513" "Summarize ${KEY_PFX}-1513 for the handover.")")
 assert_rc "bare ticket ID does not imply implementation" 0 "$RC6"
 assert_empty "bare ticket summary silent" "$(combined_output ticket-only)"
 
@@ -714,13 +715,13 @@ RC7=$(run_hook large "$REG_CLAUDEX" "$(large_payload)")
 assert_rc "large early-match prompt still classifies" 2 "$RC7"
 
 CACHE_LOW="$TMP/cache-low.json"; mkcache "$CACHE_LOW" 20
-RC8=$(run_hook unavailable-low "$REG_NONE" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC8=$(run_hook unavailable-low "$REG_NONE" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1513" 'Write the code and commit it.')" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "lane unavailable + low bank allows" 0 "$RC8"
 assert_empty "lane unavailable + low bank silent" "$(combined_output unavailable-low)"
 
 RC9=$(run_hook explore "$REG_CLAUDEX" "$(payload Explore sonnet 'Find implementation sites' 'Explore where to implement the fix; do not edit.')")
 assert_rc "Explore agent allowed" 0 "$RC9"
-RC10=$(run_hook lane-wrapper "$REG_CLAUDEX" "$(payload himmel-ops:claudex-subagent sonnet 'Implement HIMMEL-1513' 'Implement and commit the guard.')")
+RC10=$(run_hook lane-wrapper "$REG_CLAUDEX" "$(payload himmel-ops:claudex-subagent sonnet "Implement ${KEY_PFX}-1513" 'Implement and commit the guard.')")
 assert_rc "claudex lane wrapper allowed" 0 "$RC10"
 
 # Plan remains exempt from lane routing, while the independent bank policy can
@@ -733,14 +734,14 @@ echo ""
 echo "=== overrides and fail-open seams ==="
 
 OVERRIDE_LOG="$TMP/override.jsonl"
-RC12=$(run_hook override "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write and commit the fix.')" IMPL_GUARD_OK=1 IMPL_GUARD_LOG="$OVERRIDE_LOG")
+RC12=$(run_hook override "$REG_CLAUDEX" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1513" 'Write and commit the fix.')" IMPL_GUARD_OK=1 IMPL_GUARD_LOG="$OVERRIDE_LOG")
 assert_rc "override allows" 0 "$RC12"
 assert_contains "override warns" "explicit session override" "$(cat "$TMP/err-override")"
 assert_contains "override audit log records env" '"override":"IMPL_GUARD_OK"' "$(cat "$OVERRIDE_LOG" 2>/dev/null || true)"
 assert_contains "override audit log records model" '"model":"sonnet"' "$(cat "$OVERRIDE_LOG" 2>/dev/null || true)"
 
 DISABLE_LOG="$TMP/disable.jsonl"
-RC13=$(run_hook disable "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write and commit the fix.')" IMPL_GUARD_DISABLE=1 IMPL_GUARD_LOG="$DISABLE_LOG")
+RC13=$(run_hook disable "$REG_CLAUDEX" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1513" 'Write and commit the fix.')" IMPL_GUARD_DISABLE=1 IMPL_GUARD_LOG="$DISABLE_LOG")
 assert_rc "kill switch allows" 0 "$RC13"
 assert_contains "kill switch audit log records env" '"override":"IMPL_GUARD_DISABLE"' "$(cat "$DISABLE_LOG" 2>/dev/null || true)"
 
@@ -749,7 +750,7 @@ assert_rc "malformed input allows" 0 "$RC14"
 
 MISSING_ROOT="$TMP/no-repo"
 mkdir -p "$MISSING_ROOT"
-printf '%s' "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code.')" \
+printf '%s' "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1513" 'Write the code.')" \
     | env -u IMPL_GUARD_OK -u IMPL_GUARD_DISABLE -u IMPL_GUARD_HARD -u IMPL_GUARD_WARN -u IMPL_GUARD_WEEKLY_HARD -u IMPL_GUARD_WEEKLY_WARN -u CADENCE_USAGE_MAX_PCT -u IMPL_GUARD_USAGE_STATUS_CMD -u IMPL_GUARD_USAGE_BUDGET_SECS HOME="$TMP/home" CLAUDE_ACCOUNT_CONFIG="$TMP/home/.claude.json" USAGE_LIFT_FILE="$TMP/no-lift.json" CLAUDE_PROJECT_DIR="$MISSING_ROOT" LANES_REGISTRY="$REG_CLAUDEX" IMPL_GUARD_CACHE_PATH="$CACHE_LOW" bash "$HOOK" \
         >"$TMP/out-missing" 2>"$TMP/err-missing"
 RC15=$?
@@ -761,7 +762,7 @@ mkdir -p "$EMPTY_DIR"
 # No producer pipeline: the empty PATH makes cat unavailable, so the hook
 # exits without reading stdin and a producer can fail with SIGPIPE (rc 141).
 env -u IMPL_GUARD_OK -u IMPL_GUARD_DISABLE PATH="$EMPTY_DIR" "$BASH_ABS" "$HOOK" \
-    <<< "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code.')" >"$TMP/out-no-jq" 2>"$TMP/err-no-jq"
+    <<< "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1513" 'Write the code.')" >"$TMP/out-no-jq" 2>"$TMP/err-no-jq"
 RC16=$?
 assert_rc "missing jq allows" 0 "$RC16"
 assert_contains "missing jq reports fail-open" "jq not on PATH" "$(cat "$TMP/err-no-jq")"
@@ -1082,13 +1083,13 @@ echo "=== HIMMEL-1513: a registry-available lane must also be runnable ==="
 # 1. MANDATORY negative test — credential present (registry says claudex is
 # available) but bun is NOT resolvable on PATH. The caller must not be
 # stranded on a refusal toward a command that cannot execute.
-RC31=$(run_hook bun-missing "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" PATH="$STUB_PATH_NO_BUN" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC31=$(run_hook bun-missing "$REG_CLAUDEX" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1513" 'Write the code and commit it.')" PATH="$STUB_PATH_NO_BUN" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "credential present but bun missing does not strand the caller" 0 "$RC31"
 assert_contains "bun-missing warns why claudex was skipped" "bun is not on PATH" "$(cat "$TMP/err-bun-missing")"
 
 # 2. Dispatcher script missing — registry reports claudex, bun exists, but
 # scripts/telegram/spawn-claudex.ts is absent from the (fake) checkout.
-RC32=$(run_hook dispatcher-missing "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" CLAUDE_PROJECT_DIR="$FAKE_REPO_NO_CLAUDEX" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC32=$(run_hook dispatcher-missing "$REG_CLAUDEX" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1513" 'Write the code and commit it.')" CLAUDE_PROJECT_DIR="$FAKE_REPO_NO_CLAUDEX" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "missing dispatcher script does not strand the caller" 0 "$RC32"
 assert_contains "dispatcher-missing warns why claudex was skipped" "dispatcher is missing" "$(cat "$TMP/err-dispatcher-missing")"
 
@@ -1096,13 +1097,13 @@ assert_contains "dispatcher-missing warns why claudex was skipped" "dispatcher i
 # runnable (its dispatcher is missing), glm is registry-available AND its
 # dispatcher exists. glm is dropped, so the guard falls through to the bank
 # guard instead of refusing toward it.
-RC33=$(run_hook fallback-to-glm "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" CLAUDE_PROJECT_DIR="$FAKE_REPO_NO_CLAUDEX" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC33=$(run_hook fallback-to-glm "$REG_BOTH" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1513" 'Write the code and commit it.')" CLAUDE_PROJECT_DIR="$FAKE_REPO_NO_CLAUDEX" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "unrunnable claudex never falls back to glm (low bank -> allow)" 0 "$RC33"
 assert_not_contains "unrunnable claudex never names the glm dispatcher" "spawn-glm" "$(cat "$TMP/err-fallback-to-glm")"
 
 # glm is dropped. With the REAL registry, ZAI_API_KEY set and
 # claudex not runnable, the guard must never steer a dispatch to spawn-glm.
-RC33G=$(run_hook real-registry-zai-no-claudex "$REPO_ROOT/scripts/lanes/lanes.json" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" CLAUDE_PROJECT_DIR="$FAKE_REPO_NO_CLAUDEX" ZAI_API_KEY=fixture-key IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC33G=$(run_hook real-registry-zai-no-claudex "$REPO_ROOT/scripts/lanes/lanes.json" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1513" 'Write the code and commit it.')" CLAUDE_PROJECT_DIR="$FAKE_REPO_NO_CLAUDEX" ZAI_API_KEY=fixture-key IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "ZAI_API_KEY set + claudex unrunnable never refuses toward glm" 0 "$RC33G"
 assert_not_contains "ZAI_API_KEY set + claudex unrunnable never names spawn-glm" "spawn-glm" "$(combined_output real-registry-zai-no-claudex)"
 
@@ -1110,7 +1111,7 @@ assert_not_contains "ZAI_API_KEY set + claudex unrunnable never names spawn-glm"
 # actually runnable (real checkout, real bun), the guard still refuses and
 # still prefers claudex over glm. Proves the runnability check does not
 # defeat the guard or disturb the resolver-preference order.
-RC34=$(run_hook both-runnable "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC34=$(run_hook both-runnable "$REG_BOTH" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1513" 'Write the code and commit it.')" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "both lanes runnable still refuses, prefers claudex" 2 "$RC34"
 assert_contains "preference-order refusal names the claudex dispatcher" "bun scripts/telegram/spawn-claudex.ts '<prompt>' --name <slug> --timeout-mins <n> --effort high" "$(cat "$TMP/err-both-runnable")"
 
@@ -1123,7 +1124,7 @@ echo "=== HIMMEL-1513: a runnable lane must also be FUNDED ==="
 # 1. claudex runnable + bank SPENT, glm runnable + funded -> no lane refusal:
 # glm is dropped, so control falls through to the bank guard
 # and never strands the caller toward the spent claudex lane.
-RC35=$(run_hook claudex-spent-glm-funded "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="$BANK_CLAUDEX_SPENT_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC35=$(run_hook claudex-spent-glm-funded "$REG_BOTH" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1513" 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="$BANK_CLAUDEX_SPENT_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "spent claudex never falls through to glm (low bank -> allow)" 0 "$RC35"
 assert_not_contains "spent-claudex never names the glm dispatcher" "spawn-glm" "$(cat "$TMP/err-claudex-spent-glm-funded")"
 assert_contains "spent-claudex warns why claudex was skipped" "bank is spent" "$(cat "$TMP/err-claudex-spent-glm-funded")"
@@ -1132,17 +1133,17 @@ assert_not_contains "spent-claudex does NOT name the claudex dispatcher" "spawn-
 # 2. BOTH lanes spent -> NO lane refusal is emitted; control falls through to
 # the independent bank guard (low bank here -> allow). This is the
 # intended behaviour: an unfunded lane never produces a new hard-block.
-RC36=$(run_hook both-spent "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="$BANK_BOTH_SPENT_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC36=$(run_hook both-spent "$REG_BOTH" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1513" 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="$BANK_BOTH_SPENT_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "both lanes spent falls through to the bank guard (low bank -> allow)" 0 "$RC36"
 assert_contains "both-spent warns claudex spent" "lane 'claudex' is runnable but its bank is spent" "$(cat "$TMP/err-both-spent")"
 assert_not_contains "both-spent emits NO lane refusal" "refusing implementation-shaped" "$(cat "$TMP/err-both-spent")"
-RC36U=$(run_hook both-spent-usage "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="$BANK_BOTH_SPENT_CMD" IMPL_GUARD_USAGE_BUDGET_SECS=4 IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC36U=$(run_hook both-spent-usage "$REG_BOTH" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1513" 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="$BANK_BOTH_SPENT_CMD" IMPL_GUARD_USAGE_BUDGET_SECS=4 IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "IMPL_GUARD_USAGE_STATUS_CMD: both lanes spent falls through (low bank -> allow)" 0 "$RC36U"
 assert_contains "IMPL_GUARD_USAGE_STATUS_CMD is the probe the guard runs" "lane 'claudex' is runnable but its bank is spent" "$(cat "$TMP/err-both-spent-usage")"
 
 # 2b. A probe that emits `spent` AND exits NON-ZERO has no usable verdict.
 # The lane must be skipped loudly rather than accepted on a partial line.
-RC35B=$(run_hook spent-but-rc-nonzero "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="printf 'claudex spent\\nglm spent\\n'; exit 3" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC35B=$(run_hook spent-but-rc-nonzero "$REG_BOTH" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1513" 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="printf 'claudex spent\\nglm spent\\n'; exit 3" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "spent+rc!=0 leaves both banks unknown and falls through" 0 "$RC35B"
 assert_contains "spent+rc!=0 warns the probe did not finish cleanly" "did not finish cleanly (rc=3)" "$(cat "$TMP/err-spent-but-rc-nonzero")"
 assert_contains "spent+rc!=0 names UNKNOWN" "bank UNKNOWN; skipping it" "$(cat "$TMP/err-spent-but-rc-nonzero")"
@@ -1150,29 +1151,29 @@ assert_not_contains "spent+rc!=0 does NOT accept the partial spent verdict" "ban
 
 # 3. A spent preferred lane with NO other lane available also falls through
 # (no claudex in the registry, glm spent) — no refusal, just the bank guard.
-RC37=$(run_hook glm-spent-no-claudex "$REG_GLM" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="printf 'glm spent\\n'" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC37=$(run_hook glm-spent-no-claudex "$REG_GLM" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1513" 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="printf 'glm spent\\n'" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "spent glm with no claudex falls through (low bank -> allow)" 0 "$RC37"
 assert_not_contains "spent-glm emits NO lane refusal" "refusing implementation-shaped" "$(cat "$TMP/err-glm-spent-no-claudex")"
 
 # 4. Every unreadable-bank shape reports UNKNOWN and skips the lane. Covers an
 # explicit unknown verdict plus helper-missing, timeout, and garbage output.
-RC37B=$(run_hook bank-explicit-unknown "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1768' 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="$BANK_CLAUDEX_UNKNOWN_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC37B=$(run_hook bank-explicit-unknown "$REG_BOTH" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1768" 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="$BANK_CLAUDEX_UNKNOWN_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "unknown claudex never skips to measured-funded glm" 0 "$RC37B"
 assert_contains "explicit unknown is loud at the gate" "lane 'claudex' bank is UNKNOWN" "$(cat "$TMP/err-bank-explicit-unknown")"
 assert_not_contains "explicit unknown never names glm" "spawn-glm" "$(cat "$TMP/err-bank-explicit-unknown")"
 assert_not_contains "explicit unknown never treats claudex as funded" "spawn-claudex" "$(cat "$TMP/err-bank-explicit-unknown")"
 
-RC38=$(run_hook bank-helper-missing "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" CLAUDE_PROJECT_DIR="$FAKE_REPO_NO_BANK" IMPL_GUARD_USAGE_STATUS_CMD="" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC38=$(run_hook bank-helper-missing "$REG_BOTH" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1513" 'Write the code and commit it.')" CLAUDE_PROJECT_DIR="$FAKE_REPO_NO_BANK" IMPL_GUARD_USAGE_STATUS_CMD="" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "missing probe helper leaves both banks unknown and falls through" 0 "$RC38"
 assert_contains "missing-helper names UNKNOWN" "bank UNKNOWN; skipping it" "$(cat "$TMP/err-bank-helper-missing")"
 assert_not_contains "missing-helper emits no lane refusal" "refusing implementation-shaped" "$(cat "$TMP/err-bank-helper-missing")"
 
-RC39=$(run_hook bank-timeout "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="$BANK_HANG_CMD" IMPL_GUARD_USAGE_BUDGET_SECS=1 IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC39=$(run_hook bank-timeout "$REG_CLAUDEX" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1513" 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="$BANK_HANG_CMD" IMPL_GUARD_USAGE_BUDGET_SECS=1 IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "timed-out probe skips claudex and falls through" 0 "$RC39"
 assert_contains "timeout names UNKNOWN" "bank UNKNOWN; skipping it" "$(cat "$TMP/err-bank-timeout")"
 assert_not_contains "timeout emits no lane refusal" "refusing implementation-shaped" "$(cat "$TMP/err-bank-timeout")"
 
-RC40=$(run_hook bank-garbage "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="$BANK_GARBAGE_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC40=$(run_hook bank-garbage "$REG_CLAUDEX" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1513" 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="$BANK_GARBAGE_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "garbage probe output skips claudex and falls through" 0 "$RC40"
 assert_contains "garbage output names UNKNOWN" "bank UNKNOWN; skipping it" "$(cat "$TMP/err-bank-garbage")"
 assert_not_contains "garbage emits no lane refusal" "refusing implementation-shaped" "$(cat "$TMP/err-bank-garbage")"
@@ -1187,7 +1188,7 @@ echo "=== HIMMEL-1626: a runnable+funded lane must also be READY ==="
 # 1. claudex down-listed, glm ready (both runnable + funded) -> no lane
 # refusal: glm is dropped, so control falls through to the bank
 # guard and never strands the caller toward the down-listed claudex lane.
-RC62=$(run_hook claudex-down-glm-ready "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1626' 'Write the code and commit it.')" IMPL_GUARD_READINESS_CMD="$READY_CLAUDEX_DOWN_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC62=$(run_hook claudex-down-glm-ready "$REG_BOTH" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1626" 'Write the code and commit it.')" IMPL_GUARD_READINESS_CMD="$READY_CLAUDEX_DOWN_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "down-listed claudex never falls through to glm (low bank -> allow)" 0 "$RC62"
 assert_not_contains "down-claudex never names the glm dispatcher" "spawn-glm" "$(cat "$TMP/err-claudex-down-glm-ready")"
 assert_contains "down-claudex warns why claudex was skipped" "readiness gate is unmet" "$(cat "$TMP/err-claudex-down-glm-ready")"
@@ -1197,7 +1198,7 @@ assert_not_contains "down-claudex does NOT name the claudex dispatcher" "spawn-c
 # refusal; control falls through to the independent bank guard (low
 # bank here -> allow). A down-listed lane must not veto the in-process
 # Claude-tier dispatch.
-RC63=$(run_hook both-down "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1626' 'Write the code and commit it.')" IMPL_GUARD_READINESS_CMD="$READY_BOTH_DOWN_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC63=$(run_hook both-down "$REG_BOTH" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1626" 'Write the code and commit it.')" IMPL_GUARD_READINESS_CMD="$READY_BOTH_DOWN_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "runnable+funded but down-listed lanes do not veto (low bank -> allow)" 0 "$RC63"
 assert_contains "both-down warns claudex gate unmet" "lane 'claudex' is runnable but its readiness gate is unmet" "$(cat "$TMP/err-both-down")"
 assert_not_contains "both-down emits NO lane refusal" "refusing implementation-shaped" "$(cat "$TMP/err-both-down")"
@@ -1205,7 +1206,7 @@ assert_not_contains "both-down emits NO lane refusal" "refusing implementation-s
 # 2b. A probe that emits `down` AND exits NON-ZERO must be treated as READY —
 # `down` is the one arm that skips a lane, and a crashed probe can still have
 # written a partial `<lane> down` line. rc is checked BEFORE parsing.
-RC64=$(run_hook down-but-rc-nonzero "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1626' 'Write the code and commit it.')" IMPL_GUARD_READINESS_CMD="printf 'claudex down\\nglm down\\n'; exit 3" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC64=$(run_hook down-but-rc-nonzero "$REG_BOTH" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1626" 'Write the code and commit it.')" IMPL_GUARD_READINESS_CMD="printf 'claudex down\\nglm down\\n'; exit 3" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "down+rc!=0 fails OPEN: claudex stays eligible, hook refuses toward it" 2 "$RC64"
 assert_contains "down+rc!=0 warns the probe did not finish cleanly" "did not finish cleanly (rc=3)" "$(cat "$TMP/err-down-but-rc-nonzero")"
 assert_contains "down+rc!=0 treats the lane as ready" "treating it as ready (fail-open)" "$(cat "$TMP/err-down-but-rc-nonzero")"
@@ -1214,19 +1215,19 @@ assert_not_contains "down+rc!=0 does NOT accept the partial down verdict" "readi
 # 3. Fail-open: garbage output, a timed-out probe, a missing helper (default
 # path), and a missing lane line all treat the lane as READY — the refusal is
 # unchanged from pre-1626 behaviour (still refuses toward claudex).
-RC65=$(run_hook ready-garbage "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Implement HIMMEL-1626' 'Write the code and commit it.')" IMPL_GUARD_READINESS_CMD="$READY_GARBAGE_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC65=$(run_hook ready-garbage "$REG_CLAUDEX" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1626" 'Write the code and commit it.')" IMPL_GUARD_READINESS_CMD="$READY_GARBAGE_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "garbage readiness output fail-opens to claudex refusal" 2 "$RC65"
 assert_contains "garbage readiness fail-open warns" "unrecognised state" "$(cat "$TMP/err-ready-garbage")"
 
-RC66=$(run_hook ready-timeout "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Implement HIMMEL-1626' 'Write the code and commit it.')" IMPL_GUARD_READINESS_CMD="$READY_HANG_CMD" IMPL_GUARD_READINESS_BUDGET_SECS=1 IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC66=$(run_hook ready-timeout "$REG_CLAUDEX" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1626" 'Write the code and commit it.')" IMPL_GUARD_READINESS_CMD="$READY_HANG_CMD" IMPL_GUARD_READINESS_BUDGET_SECS=1 IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "timed-out readiness probe fail-opens to claudex refusal" 2 "$RC66"
 assert_contains "readiness timeout fail-open warns" "did not finish cleanly" "$(cat "$TMP/err-ready-timeout")"
 
-RC67=$(run_hook ready-helper-missing "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1626' 'Write the code and commit it.')" CLAUDE_PROJECT_DIR="$FAKE_REPO_NO_BANK" IMPL_GUARD_READINESS_CMD="" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC67=$(run_hook ready-helper-missing "$REG_BOTH" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1626" 'Write the code and commit it.')" CLAUDE_PROJECT_DIR="$FAKE_REPO_NO_BANK" IMPL_GUARD_READINESS_CMD="" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "missing readiness helper fail-opens to claudex refusal" 2 "$RC67"
 assert_contains "missing readiness helper warns" "readiness probe is missing" "$(cat "$TMP/err-ready-helper-missing")"
 
-RC68=$(run_hook ready-no-line "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Implement HIMMEL-1626' 'Write the code and commit it.')" IMPL_GUARD_READINESS_CMD="printf 'glm ready\\n'" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC68=$(run_hook ready-no-line "$REG_CLAUDEX" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1626" 'Write the code and commit it.')" IMPL_GUARD_READINESS_CMD="printf 'glm ready\\n'" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "readiness output without the lane's line fail-opens to refusal" 2 "$RC68"
 assert_contains "missing lane line warns" "returned no 'claudex' line" "$(cat "$TMP/err-ready-no-line")"
 
@@ -1235,11 +1236,11 @@ assert_contains "missing lane line warns" "returned no 'claudex' line" "$(cat "$
 # fixture): a measured 2-pass ledger graduates claudex -> refusal; a missing
 # ledger keeps both gated lanes down -> no veto. Proves the default wiring,
 # LANES_REGISTRY plumbing, and the ledger measurement, not just the stub seam.
-RC69=$(run_hook e2e-measured-ready "$REG_BOTH_GATED" "$(payload general-purpose sonnet 'Implement HIMMEL-1626' 'Write the code and commit it.')" IMPL_GUARD_READINESS_CMD="" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_CLAUDEX_READY" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC69=$(run_hook e2e-measured-ready "$REG_BOTH_GATED" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1626" 'Write the code and commit it.')" IMPL_GUARD_READINESS_CMD="" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_CLAUDEX_READY" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "measured 2-pass ledger graduates claudex, refuses toward it" 2 "$RC69"
 assert_contains "measured-ready refusal names the claudex dispatcher" "spawn-claudex" "$(cat "$TMP/err-e2e-measured-ready")"
 
-RC70=$(run_hook e2e-measured-down "$REG_BOTH_GATED" "$(payload general-purpose sonnet 'Implement HIMMEL-1626' 'Write the code and commit it.')" IMPL_GUARD_READINESS_CMD="" HIMMEL_FLOW_RUNS_LEDGER="$TMP/no-such-ledger.jsonl" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC70=$(run_hook e2e-measured-down "$REG_BOTH_GATED" "$(payload general-purpose sonnet "Implement ${KEY_PFX}-1626" 'Write the code and commit it.')" IMPL_GUARD_READINESS_CMD="" HIMMEL_FLOW_RUNS_LEDGER="$TMP/no-such-ledger.jsonl" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "no ledger evidence keeps gated lanes down, does not veto" 0 "$RC70"
 assert_contains "measured-down warns the gate is unmet" "readiness gate is unmet" "$(cat "$TMP/err-e2e-measured-down")"
 assert_not_contains "measured-down emits NO lane refusal" "refusing implementation-shaped" "$(cat "$TMP/err-e2e-measured-down")"
@@ -1439,7 +1440,7 @@ RG_H1=$(round_head h1); RG_H2=$(round_head h2); RG_H3=$(round_head h3)
     finding_row "$RG_BRANCH_AD" "$RG_H3" crit open f3
 } > "$(round_ledger_path "$RG_REPO_AD")/cr-critic-scores.jsonl"
 
-RC_RG_A=$(run_hook round-3-no-invariant "$REG_NONE" "$(payload_cwd general-purpose sonnet 'Implement HIMMEL-9001' 'Write the code and commit it.' "$RG_REPO_AD")" IMPL_GUARD_CACHE_PATH="$TMP/does-not-exist.json" PATH="$PATH")
+RC_RG_A=$(run_hook round-3-no-invariant "$REG_NONE" "$(payload_cwd general-purpose sonnet "Implement ${KEY_PFX}-9001" 'Write the code and commit it.' "$RG_REPO_AD")" IMPL_GUARD_CACHE_PATH="$TMP/does-not-exist.json" PATH="$PATH")
 assert_rc "(a) 3 blocking rounds, no INVARIANT: implementor dispatch refuses" 2 "$RC_RG_A"
 assert_contains "(a) refusal names the ticket" "HIMMEL-9001" "$(combined_output round-3-no-invariant)"
 assert_contains "(a) refusal cites the round guard" "round guard" "$(combined_output round-3-no-invariant)"
@@ -1456,11 +1457,11 @@ INVARIANT:
   Every prior round left the same retry loop uninstrumented; the fix must add a bounded retry with a logged cause on every exit path.
 FILES:
   scripts/example.sh'
-RC_RG_A2=$(run_hook round-3-invariant-still-refuses "$REG_NONE" "$(payload_cwd general-purpose sonnet 'Implement HIMMEL-9001' "$RG_INVARIANT_A2" "$RG_REPO_AD")" IMPL_GUARD_CACHE_PATH="$TMP/does-not-exist.json" PATH="$PATH")
+RC_RG_A2=$(run_hook round-3-invariant-still-refuses "$REG_NONE" "$(payload_cwd general-purpose sonnet "Implement ${KEY_PFX}-9001" "$RG_INVARIANT_A2" "$RG_REPO_AD")" IMPL_GUARD_CACHE_PATH="$TMP/does-not-exist.json" PATH="$PATH")
 assert_rc "(a2) 3 blocking rounds + substantive INVARIANT still refuses (escalate, no override wired)" 2 "$RC_RG_A2"
 assert_contains "(a2) refusal names the escalation" "consecutive blocking reviews" "$(combined_output round-3-invariant-still-refuses)"
 
-RC_RG_D=$(run_hook round-3-research-exempt "$REG_NONE" "$(payload_cwd general-purpose sonnet 'Research HIMMEL-9001' 'Investigate how to fix the routing drift; report findings only, read-only.' "$RG_REPO_AD")" IMPL_GUARD_CACHE_PATH="$TMP/does-not-exist.json" PATH="$PATH")
+RC_RG_D=$(run_hook round-3-research-exempt "$REG_NONE" "$(payload_cwd general-purpose sonnet "Research ${KEY_PFX}-9001" 'Investigate how to fix the routing drift; report findings only, read-only.' "$RG_REPO_AD")" IMPL_GUARD_CACHE_PATH="$TMP/does-not-exist.json" PATH="$PATH")
 assert_rc "(d) research-shaped dispatch at 3 blocking rounds stays exempt" 0 "$RC_RG_D"
 assert_empty "(d) research-shaped dispatch is silent (round-guard block never reached)" "$(combined_output round-3-research-exempt)"
 
@@ -1480,7 +1481,7 @@ INVARIANT:
   Every prior round left the same retry loop uninstrumented; the fix must add a bounded retry with a logged cause on every exit path.
 FILES:
   scripts/example.sh'
-RC_RG_B=$(run_hook round-2-invariant "$REG_NONE" "$(payload_cwd general-purpose sonnet 'Implement HIMMEL-9002' "$RG_INVARIANT_B" "$RG_REPO_B")" IMPL_GUARD_CACHE_PATH="$TMP/does-not-exist.json" PATH="$PATH")
+RC_RG_B=$(run_hook round-2-invariant "$REG_NONE" "$(payload_cwd general-purpose sonnet "Implement ${KEY_PFX}-9002" "$RG_INVARIANT_B" "$RG_REPO_B")" IMPL_GUARD_CACHE_PATH="$TMP/does-not-exist.json" PATH="$PATH")
 assert_rc "(b) 2 blocking rounds + substantive INVARIANT: allows" 0 "$RC_RG_B"
 assert_contains "(b) round-guard note reaches the transcript" "round guard" "$(combined_output round-2-invariant)"
 
@@ -1495,7 +1496,7 @@ RG_H6=$(round_head h6); RG_H7=$(round_head h7)
     finding_row "$RG_BRANCH_C" "$RG_H7" crit disproved f6
 } > "$(round_ledger_path "$RG_REPO_C")/cr-critic-scores.jsonl"
 
-RC_RG_C=$(run_hook round-2-clean "$REG_NONE" "$(payload_cwd general-purpose sonnet 'Implement HIMMEL-9003' 'Write the code and commit it.' "$RG_REPO_C")" IMPL_GUARD_CACHE_PATH="$TMP/does-not-exist.json" PATH="$PATH")
+RC_RG_C=$(run_hook round-2-clean "$REG_NONE" "$(payload_cwd general-purpose sonnet "Implement ${KEY_PFX}-9003" 'Write the code and commit it.' "$RG_REPO_C")" IMPL_GUARD_CACHE_PATH="$TMP/does-not-exist.json" PATH="$PATH")
 assert_rc "(c) 2 reviewed, non-blocking heads allow without an INVARIANT" 0 "$RC_RG_C"
 
 # --- (e) fixture: 2 real blocking rounds plus a THIRD, more recent avail row
@@ -1517,7 +1518,7 @@ INVARIANT:
   Every prior round left the same retry loop uninstrumented; the fix must add a bounded retry with a logged cause on every exit path.
 FILES:
   scripts/example.sh'
-RC_RG_E=$(run_hook round-avail-nonok-excluded "$REG_NONE" "$(payload_cwd general-purpose sonnet 'Implement HIMMEL-9004' "$RG_INVARIANT_E" "$RG_REPO_E")" IMPL_GUARD_CACHE_PATH="$TMP/does-not-exist.json" PATH="$PATH")
+RC_RG_E=$(run_hook round-avail-nonok-excluded "$REG_NONE" "$(payload_cwd general-purpose sonnet "Implement ${KEY_PFX}-9004" "$RG_INVARIANT_E" "$RG_REPO_E")" IMPL_GUARD_CACHE_PATH="$TMP/does-not-exist.json" PATH="$PATH")
 assert_rc "(e) a non-ok avail row does not count toward the trailing round total" 0 "$RC_RG_E"
 
 # --- (g), chief ruling 2026-09-26: pin "2 blocking
@@ -1533,7 +1534,7 @@ RG_H11=$(round_head h11); RG_H12=$(round_head h12)
     finding_row "$RG_BRANCH_G" "$RG_H12" imp open f12
 } > "$(round_ledger_path "$RG_REPO_G")/cr-critic-scores.jsonl"
 
-RC_RG_G=$(run_hook round-2-no-invariant "$REG_NONE" "$(payload_cwd general-purpose sonnet 'Implement HIMMEL-9005' 'Write the code and commit it.' "$RG_REPO_G")" IMPL_GUARD_CACHE_PATH="$TMP/does-not-exist.json" PATH="$PATH")
+RC_RG_G=$(run_hook round-2-no-invariant "$REG_NONE" "$(payload_cwd general-purpose sonnet "Implement ${KEY_PFX}-9005" 'Write the code and commit it.' "$RG_REPO_G")" IMPL_GUARD_CACHE_PATH="$TMP/does-not-exist.json" PATH="$PATH")
 assert_rc "(g) 2 blocking rounds, no INVARIANT: refuses (self-serviceable)" 2 "$RC_RG_G"
 assert_contains "(g) refusal tells the dispatcher to add an INVARIANT: section" "INVARIANT:" "$(combined_output round-2-no-invariant)"
 
@@ -1550,7 +1551,7 @@ exit 1
 EOF
 chmod +x "$BUN_THROW_DIR/bun"
 
-RC_RG_H=$(run_hook round-runtime-failure "$REG_NONE" "$(payload_cwd general-purpose sonnet 'Implement HIMMEL-9001' 'Write the code and commit it.' "$RG_REPO_AD")" IMPL_GUARD_CACHE_PATH="$TMP/does-not-exist.json" PATH="$BUN_THROW_DIR:$PATH")
+RC_RG_H=$(run_hook round-runtime-failure "$REG_NONE" "$(payload_cwd general-purpose sonnet "Implement ${KEY_PFX}-9001" 'Write the code and commit it.' "$RG_REPO_AD")" IMPL_GUARD_CACHE_PATH="$TMP/does-not-exist.json" PATH="$BUN_THROW_DIR:$PATH")
 assert_rc "(h) round-guard probe crashing (rc=1) fails CLOSED on an implementor dispatch" 2 "$RC_RG_H"
 assert_contains "(h) refusal says it is failing CLOSED" "failing CLOSED" "$(combined_output round-runtime-failure)"
 

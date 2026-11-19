@@ -11,10 +11,6 @@
 # (the function verifyIntegrity uses), and fails on an unresolved source
 # statement or a sourced lib that is missing or outside the project.
 #
-# ponytail: checks the resolution step only, not the per-session pin check
-# (that needs a session record); the pin check can only fail after resolution
-# succeeds. Upgrade path: also drive verifyProjectHookIntegrity with a
-# synthesized record.
 #
 # Usage: bash scripts/hooks/test-wired-hooks-integrity-resolution.sh
 #        bash scripts/hooks/test-wired-hooks-integrity-resolution.sh <tree>   # sweep another tree (RED demos)

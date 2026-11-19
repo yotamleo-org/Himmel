@@ -22,8 +22,6 @@ key=$(printf '%s' "$repository" | cksum | awk '{print $1}')
 lock="$dir/$key.lock"
 # Fail closed under contention rather than fetching outside the lock. Do not
 # steal by age: a slow live fetch must not lose its lock to another writer.
-# ponytail: a polled lock is not first-in-first-out; at four waiters or fewer inside 30 s starvation is unlikely, upgrade path a ticket-queue lock (an ordered waiter file per run) if a station proof ever shows a waiter timing out under contention.
-# ponytail: a dead or hung holder's lock costs each run the full wait before it fails, with no steal, and ready-check still prints only cannot read; upgrade path surface this line in ready-check, then a liveness check on the recorded pid under its own trust review, since that is lock stealing.
 lock_wait="${GH_PR_SNAPSHOT_LOCK_WAIT:-30}"
 case "$lock_wait" in ''|*[!0-9]*|????*) lock_wait=30 ;; esac
 lock_wait=$((10#$lock_wait))

@@ -154,7 +154,7 @@ docs/internals/enforcement.md	`Schedule.Service` COM object, while the read-only
 docs/internals/enforcement.md	`pskill`/`kill -9`), system shutdown/reboot/logoff, Windows registry
 docs/internals/enforcement.md	(`sudo`, `env`, `cmd /c`, `powershell`/`pwsh -c`) and an executable-path
 docs/internals/enforcement.md	Fires on Bash/PowerShell. Every worktree of a checkout shares ONE `refs/stash`,
-docs/internals/enforcement.md	CLOSED on missing `jq` or malformed JSON. PowerShell is unguarded (ponytail in
+docs/internals/enforcement.md	CLOSED on missing `jq` or malformed JSON. PowerShell is unguarded.
 docs/internals/enforcement.md	Fires on Bash/PowerShell. Refuses a tool call that registers an OS scheduler
 docs/internals/enforcement.md	when the command BOTH (a) registers a job — `schtasks /create`,
 docs/internals/enforcement.md	Why: a hand-rolled `schtasks /create … /tr <bat>` whose `.bat` is just

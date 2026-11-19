@@ -33,7 +33,7 @@ check "(a) sourcing reserves nothing" "0" "$(find "$W/slots-a" -mindepth 1 | wc 
 
 # --- (b) key derivation
 hash_of() { printf '%s' "$1" | cksum | awk '{print $1}'; }
-check "(b) a plain name is its own key" "HIMMEL-1234-worker" "$(fleet_reservation_key HIMMEL-1234-worker)"
+check "(b) a plain name is its own key" "ACME-1234-worker" "$(fleet_reservation_key ACME-1234-worker)"
 check "(b) a name containing '/' hashes" "$(hash_of a/b)" "$(fleet_reservation_key a/b)"
 check "(b) a leading-'.' name hashes" "$(hash_of .hidden)" "$(fleet_reservation_key .hidden)"
 n255="$(printf 'x%.0s' $(seq 1 255))"

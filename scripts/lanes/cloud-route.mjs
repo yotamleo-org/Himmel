@@ -78,9 +78,6 @@ export function parseJiraGet(raw) {
 
 // a slashed path (ending in an extension or a trailing slash) that FILE_RE does
 // not recognise is silently dropped from the file list, so it cannot be checked against held
-// files. A URL or a slashed word (and/or, owner/repo) is not one. ponytail: an extensionless
-// path outside the known roots (src/lib/foo) is still invisible, upgrade path: resolve
-// against the tree.
 const PATH_RE = /(?<![\w./:@-])((?:[\w.+@-]+\/)+(?:[\w.+@-]*\.[A-Za-z][A-Za-z0-9]{0,11})?)(?![\w+@-]|\.\w)/g;
 const KNOWN_ROOT = new RegExp(`^${FILE_RE.source}`);
 export function unrecognisedPaths(text) {
@@ -104,8 +101,6 @@ export function extractFiles(text) {
 // a ticket may name a hook or script by its bare name (guard-pr-check-literal,
 // not scripts/hooks/guard-pr-check-literal.sh), so the hook, trust and held checks never saw
 // it. A hyphenated token that is the stem of a script under scripts/ at the base resolves to
-// every such path. ponytail: a hyphenated English word that is also a script stem resolves
-// too, which only over-routes local; narrow when it becomes noise.
 const SCRIPT_EXT = /\.(?:sh|mjs|js|py|ps1)$/;
 export function bareNames(text, tree) {
   const stems = new Map();
@@ -151,8 +146,6 @@ const MERGED_PAGE = 30; // the per-ticket merged search reads this many; a full 
 // fixedBy(ticket, files, ctx) -> [{number, why, mergedAt}]: merged PRs that cite the key
 // (not a longer key sharing its prefix) or touch a named file, merged after the ticket was
 // created. Jira's `get` carries no creation date, so without ticket.created (chief spec)
-// the cutoff is the last STALE_DAYS days. ponytail: a PR that merely lists the key as a
-// deferral also matches, which only costs a local verify; narrow when it becomes noise.
 export function fixedBy(t, files, ctx) {
   const parsed = Date.parse(t.created ?? '');
   const cutoff = Number.isNaN(parsed) ? (ctx.now ?? Date.now()) - STALE_DAYS * 86400e3 : parsed;
@@ -335,7 +328,6 @@ function citedOnMain(key) {
 // names is not searched. Fails closed: a local answer of unknown (null) still searches. What a lagging ref can hide is a
 // merge of the last STALE_DAYS, and the shared window list above reads exactly those from GitHub, so only the key search
 // is skipped, never the window.
-// ponytail: a PR older than the window whose body gained the key after it merged (the squash message never held it) is not found, upgrade path: an indexed key-to-PR map filled once per merge
 // A key whose search fills the page is `truncated`: that ticket alone is BLOCKED, the other tickets of the run still classify.
 function mergedPrs(keys) {
   const gh = process.env.CLOUD_ROUTE_GH_CMD || 'gh';
@@ -343,7 +335,6 @@ function mergedPrs(keys) {
   const since = new Date(Date.now() - STALE_DAYS * 86400e3).toISOString().slice(0, 10);
   const all = new Map();
   const truncated = new Set();
-  // ponytail: the file-overlap window reads at most 200 PRs, so a busier fortnight can hide an overlap, upgrade path: paginate or search per file
   for (const pr of run(['--limit', '200', '--search', `merged:>=${since}`])) all.set(pr.number, pr);
   for (const k of keys) {
     if (citedOnMain(k) === false) continue;

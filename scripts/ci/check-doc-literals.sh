@@ -29,9 +29,6 @@
 # rename batch that changes a parser edits its row here in the same PR
 # (docs/internals/rename-procedure.md).
 #
-# ponytail: a declared list drifts from the parser when the test is skipped or
-# a parser style the test cannot read is added, upgrade path: generate the
-# list from the parser's option table.
 #
 # Exit: 0 clean (or --warn); 1 a doc literal the CLI refuses; 2 usage or git
 # failure.

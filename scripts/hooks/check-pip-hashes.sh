@@ -46,7 +46,7 @@ for file in "$@"; do
             # at EOF (otherwise that line would silently skip validation).
             if (buf != "") check(buf)
         }
-    ' <"$file")  # stdin, not an operand: awk reads `requirements=x.txt` as an assignment (HIMMEL-4132)
+    ' <"$file")  # stdin, not an operand: awk reads `requirements=x.txt` as an assignment
 
     if [ -n "$bad" ]; then
         echo "ERROR: $file has package lines without --hash=sha256: pins:" >&2

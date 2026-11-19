@@ -80,8 +80,7 @@
 #
 # THE single guarantee: himmel_dir may be left pointing
 # at the BRANCH ONLY IF cr_diff_state=no (the diff touches no cr_guarded
-# path and their bytes match the anchor's at step 0 - see the ponytail at
-# the end-of-decision assertion), OR the delegation is provably
+# path and their bytes match the anchor's at step 0), OR the delegation is provably
 # logged (verified_delegate=yes -
 # this run IS a verified delegate a genuine anchor handed off to - OR
 # ledger_written=yes - this run IS the anchor and its own ledger-append.sh
@@ -378,13 +377,6 @@ fi
 # it is the FULLY verified delegate. A stray value, a bare anchor path or a
 # bare `1` hands off like no value at all. A missing anchor copy fails closed
 # rather than letting this copy decide for itself.
-# ponytail: this guard is defense in depth, NOT the trust root. It lives in
-# the branch's own bytes, so a branch that deletes it also deletes the
-# hand-off. The trust root is the runbook condition (chief ruling): the bare
-# literal is permitted only on a diff that touches no cr_guarded path
-# (scripts/cr/, scripts/lib/, scripts/guardrails/lib.sh, scripts/check-ci.sh,
-# scripts/handover/resolve-active-item.sh), and a branch that could delete
-# this guard is exactly such a diff, which must enter by the canonical absolute fence.
 hand_off_to_anchor() {
     if [ ! -f "$anchor/scripts/cr/pr-check-context.sh" ]; then
         echo "pr-check-context: entered through a non-anchor copy ($SCRIPT_DIR) and the anchor carries no scripts/cr/pr-check-context.sh ($anchor) - refusing to let this copy decide; fix HIMMEL_REPO, then re-run" >&2
@@ -1129,25 +1121,6 @@ fi
 #       check-ci.sh, handover/resolve-active-item.sh - the closure
 #       test-cr-guarded-closure.sh pins) matches the anchor's byte for byte
 #       and mode for mode at step 0, OR
-#       ponytail: "at step 0" only. Nothing pins those bytes between this
-#       check and the later fences that execute them, so an edit made to the
-#       branch's guarded files AFTER step 0 (a background job, a swapped
-#       hard link) runs unchecked (TOCTOU). Only running the anchor's copy on
-#       "no" closes that, at the cost of the relative himmel-lane spelling.
-#   (b) verified_delegate=yes     - this run IS the verified delegate a
-#       genuine anchor handed off to (the identity handshake above), OR
-#   (c) ledger_written=yes        - this run IS the anchor and its own
-#       ledger-append.sh call just above succeeded (covers the
-#       never-exercised-in-practice case where the exec on the line above
-#       itself then fails and this process falls through to run the rest of
-#       its OWN script instead of the delegate's - falling back to the
-#       anchor here would be safe but wrong, since the delegation this run
-#       just logged is real).
-# Any other combination - a not-known-clean diff (yes or unknown) with NONE
-# of (a)/(b)/(c) true - forces himmel_dir back to the anchor and warns. This
-# is the ONE place that now guarantees the invariant: a future branch of
-# this decision that forgets to reset himmel_dir is caught HERE, instead of
-# shipping the branch's own scripts/cr/ unlogged.
 if [ "$himmel_dir_is_anchor" = no ] \
    && [ "$cr_diff_state" != no ] \
    && [ "$verified_delegate" != yes ] \

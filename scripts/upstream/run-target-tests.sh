@@ -26,9 +26,6 @@
 # HOME is deliberately NOT redirected: hermes' own conftest documents that
 # redirecting it breaks the target's subprocesses. A caller that must
 # also shield credentials outside HERMES_* still passes its own `env -u`.
-# ponytail: only HERMES_* is scrubbed; provider/bot credentials named without
-# that prefix (TELEGRAM_BOT_TOKEN, ...) are inherited as-is — the hermes test
-# conftest blocklists those itself, this wrapper does not.
 #
 # Exit status: the target's own, 2 on usage error or refusal, 143/130 when
 # TERMed/INTed mid-run.

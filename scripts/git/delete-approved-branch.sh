@@ -15,9 +15,6 @@
 #   HIMMEL_BRANCH_APPROVALS   file (default: $HOME/.himmel/branch-delete-approvals.tsv)
 #   HIMMEL_BRANCH_DELETE_LOG  append-only JSONL delete log (default: $HOME/.himmel/branch-deletes.log)
 #   HIMMEL_DELETE_REMOTE      remote to delete from (default: origin)
-# ponytail: the record is a plain file the bridge writes when the operator
-# approves, so a session that can write it can approve itself; upgrade path is
-# an operator-signed record the script verifies.
 #
 # EXIT: 0 deleted; 1 refused; 2 usage/environment error.
 set -uo pipefail

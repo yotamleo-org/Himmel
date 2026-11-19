@@ -81,7 +81,7 @@ Steps run in this canonical order; only the tokens on the pointer's
   see
   [Park protocol](../../docs/handover/afk-mode.md#park-protocol).
 
-- **public** — RETIRED at the HIMMEL-2705 cutover (2026-09-09): `origin` IS the
+- **public** — RETIRED at the 2026-09-09 cutover: `origin` IS the
   public repo; a merge to `main` (the `merge` step above) is the public
   landing. Nothing to run.
 

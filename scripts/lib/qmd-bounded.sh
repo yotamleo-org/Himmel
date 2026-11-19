@@ -29,11 +29,6 @@
 # the deadline if the caller itself is killed. When the direct child ends
 # first, anything it left in the group is reaped the same way before return.
 #
-# ponytail: bounds the orphan, not the cause (upstream launcher's missing signal forwarding), HIMMEL-3958
-# (tobi/qmd issue) removes that. Only callers
-# that go through this are bounded: ad-hoc agent Bash reaching the `qmd` on
-# PATH is not; block-bare-qmd-query.sh refuses the bare search
-# verbs and names this script as the replacement.
 #
 # Platform guard: POSIX bash 3.2+.
 

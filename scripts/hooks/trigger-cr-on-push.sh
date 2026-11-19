@@ -33,16 +33,6 @@
 # trigger-cr-on-pr-create.sh: a PostToolUse hook cannot un-push, and a failure
 # here must never strand a successful push.
 #
-# ponytail: resolves the PR via `gh pr view` for the CURRENT checked-out
-# branch — it does not parse the pushed ref out of the `git push` command.
-# DELIBERATE (a decision, not an oversight): himmel's structural invariant is one branch per worktree, so
-# "current checked-out branch" and "the branch this push just advanced" are
-# the same thing in every supported workflow. If that assumption ever breaks
-# — a push naming a DIFFERENT remote ref than the checked-out branch — the
-# trigger silently doesn't fire for that PR: its head advances but stays on
-# CodeRabbit's "Review skipped" status until someone
-# triggers it manually. Upgrade path: parse the destination
-# ref from the command if that ceiling is ever actually hit.
 #
 # Input: PostToolUse JSON on stdin. Bash shape:
 #   { "tool_name": "Bash",

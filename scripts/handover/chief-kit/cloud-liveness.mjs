@@ -21,10 +21,6 @@
 // existing gql budget) plus one `git ls-remote --heads`, and none at all when no
 // session is inside the window. Both are bounded by a timeout; a failure reads `skip`,
 // never a failed tick.
-// ponytail: a branch is attributed to a ticket by name (himmel-<n>), so a cloud branch
-// named for neither the ticket nor a PR citing it reads no-branch; a session whose
-// branch exists but never opened a PR reads `branch`, not a stall. Tighten with the
-// session id once cloud branches carry it.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';

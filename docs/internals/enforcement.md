@@ -612,7 +612,7 @@ tool calls: `auto-approve-safe-bash.sh`, `check-cr-marker-on-pr-create.sh`,
 (`auto-approve-safe-bash`) GRANTS permission for safe ones so they don't
 hang; one (`auto-arm-on-cap`) is a fail-open watchdog that decides nothing;
 one (`mcp-policy`) only tracks MCP calls and always allows — see
-[MCP policy tracking](#mcp-policy-tracking-himmel-4676).
+[MCP policy tracking](#mcp-policy-tracking).
 Nine FURTHER guards — `block-docker-privesc.sh`,
 `block-merged-pr-commit.sh`, `block-unresolved-cr-merge.sh`,
 `block-rogue-codex-exec.sh`, `guard-implementor-dispatch.sh`,
@@ -2089,8 +2089,7 @@ against cwd exactly like a top-level one. Wrappers (`timeout`, `nice`, `sudo`
 and their flag values) and quoted command words (`'cat' .env`) no longer hide
 the command. Nesting deeper than 4 levels denies: a body the guard cannot read
 fully counts as unreadable, which is fail-closed. An `eval` body is **not**
-re-scanned: `eval 'cat .env'` is allowed, as it was before. Remaining ceilings are
-named as `ponytail:` notes in the hook header.
+re-scanned: `eval 'cat .env'` is allowed, as it was before.
 
 ### `guard-memory-capture.sh` — auto-memory capture guard
 
@@ -2305,8 +2304,8 @@ Routine git/gh/mv/cp, non-recursive `rm`, `curl` without a remote-exec pipe,
 and normal `git status`/`commit`/`push` are all allowed.
 
 Deliberately NOT a general shell parser: quoted-payload wrappers (`bash -c
-"rm -rf /"`, `su -c`, `env -S`) and the wrappers listed in the `ponytail:`
-note on `guard_cmdpos_grammar` (`setsid`, `stdbuf`, `flock`, …) are an
+"rm -rf /"`, `su -c`, `env -S`) and the wrappers that `guard_cmdpos_grammar`
+does not model (`setsid`, `stdbuf`, `flock`, …) are an
 accepted residual gap — this
 hook plus the auto-mode classifier are the outer defense layers, not an
 arms race against every wrapper permutation. Fails CLOSED on missing `jq`
@@ -2415,14 +2414,14 @@ also runs over the command's words after bash quote removal, so
 `qmd "qu"ery`, `qmd $'query'`, `qmd \query` and `q"md" query` are refused while
 `qmd "query"" notes"` (one non-verb word) passes. An unknown `$'\X'` escape is
 read as zsh reads it (`X`, since the Bash tool may run zsh); a verb held in a variable is
-still a miss (ponytail in the hook). Other verbs
+still a miss. Other verbs
 (`status`, `update`, `embed`, `get`) and non-command-position text
 (`grep 'qmd query' log`) pass. The deny names the bounded replacement,
 `bash scripts/lib/qmd-bounded.sh <verb> …` (deadline `$QMD_TIMEOUT_SECS`, else
 300 s, killing the whole process group), or the `mcp__qmd__query` tool. A
 must-run chain member in `run-hook-with-bash.js`: a starved run denies. Fails
-CLOSED on missing `jq` or malformed JSON. PowerShell is unguarded (ponytail in
-the hook). Bypass: `QMD_UNBOUNDED_OK=1` (launching shell). Spec:
+CLOSED on missing `jq` or malformed JSON. PowerShell is unguarded.
+Bypass: `QMD_UNBOUNDED_OK=1` (launching shell). Spec:
 `scripts/hooks/test-block-bare-qmd-query.sh`.
 
 Before a worker or preflight depends on qmd retrieval, run
@@ -2587,7 +2586,7 @@ one word, as bash does. Over-deny is accepted:
 `test -f <lift> && echo yes`, `cat <lift> > /tmp/copy`, `set -e; bash
 …/usage-lift.sh show`, a heredoc commit message naming the lift, and a
 write to any lift-NAMED file (`/tmp/x/usage-lift.json`) all deny; split the
-command, or put text in a file. Residual (ponytail): a lift name obfuscated
+command, or put text in a file. Residual: a lift name obfuscated
 by a glob or brace inside a substitution does not trigger this layer.
 These gaps are closed:
 - **Repo-anchored script.** `usage-lift.sh show|clear` passes only when the
@@ -2710,7 +2709,7 @@ These gaps are closed:
   dir (`-C "$HOME/projects"`) stays allowed.
 - **Directory symlinks.** tar `--keep-directory-symlink` (and its `--keep-d…`
   abbreviations) follows a directory symlink inside the destination and
-  denies on extraction. Ceiling (a `ponytail:` in the hook): a symlink already
+  denies on extraction. Ceiling: a symlink already
   inside an allowed destination is followed by default for a member's
   intermediate path (GNU tar with no directory member, unzip, cpio); unzip and
   cpio have no opt-in flag to deny.
@@ -2736,8 +2735,8 @@ equals the current user (`set_by` is provenance, not a bound: the same uid
 can write it). So a forged standing lift spends to
 100 % on every account the station logs into, not one. The ceiling still
 holds: five_hour binds under an explicit `CADENCE_USAGE_MAX_PCT`, and either
-window at 100 % refuses, so no lift spends extra_usage. Remaining hook gaps
-(ponytail): an edited or planted copy of `scripts/lib/usage-lift.sh` inside a
+window at 100 % refuses, so no lift spends extra_usage. Remaining hook gaps:
+an edited or planted copy of `scripts/lib/usage-lift.sh` inside a
 worktree is trusted as the repo's script; and a pure-glob source under a
 computed destination (`cp --parents * "$d"`).
 Name rule (chief ruling, applied before the rules above on every clause,
@@ -2763,7 +2762,7 @@ edits a file whose text names `usage-lift.sh`, is refused too (use
 names the remedy — the operator runs `! bash scripts/lib/usage-lift.sh set ...`
 — and there is deliberately no env bypass. A must-run chain member in
 `run-hook-with-bash.js`. Fails CLOSED on missing `jq`, malformed JSON or a
-tokenizer error. Residuals are ponytail-marked in the hook. Spec:
+tokenizer error. Spec:
 `scripts/hooks/test-block-bank-lift-writes.sh`.
 
 ### `guard-pr-check-literal.sh` — relative `scripts/cr/` gate spellings
@@ -2842,7 +2841,7 @@ letter, which a case-insensitive filesystem folds. `busybox` and `toybox`
 count as shells. The
 canonical anchored fence is exempt only in its exact shape; only its echo text
 may vary. Classification uses bash builtins only, so a missing tool cannot turn
-it into a no-op. Text classification has limits, and the hook's `ponytail:` names them.
+it into a no-op. Text classification has limits.
 
 **Nested `env -S`.** The `env -S` split-string test also reads
 inside a nested shell body. A `bash -c '…'` (or `sh`, `zsh`, `dash`, `ksh`,
@@ -2850,7 +2849,7 @@ inside a nested shell body. A `bash -c '…'` (or `sh`, `zsh`, `dash`, `ksh`,
 an `env -S '… \c'` inside them was no word of it. Each such body is joined and run
 through the same test, recursively, so `bash -c "env -S 'bash scripts/cr/… \c'"`
 denies like the unnested form. `su -c`, `script -c`, `watch` and a body held in
-a variable or read from stdin are not re-read (the hook's `ponytail:`).
+a variable or read from stdin are not re-read.
 
 **Write-channel backstop.** Before any of the above,
 the hook reads the raw text. The inert drop and the here-string reader exemption
@@ -2880,8 +2879,8 @@ the file (`-F`, `--body-file`, `--comment-file`), or to use `→` / `to`.
 `append-results.sh` takes its text as an argument only, so a Results bullet
 never contains `>`. Heredocs are not a channel here, because the main path
 judges their body as raw text. The residuals are a file written by the
-Write/Edit tools (this is a Bash matcher) and text that never spells a target;
-the backstop's `ponytail:` names them. Running either matches no allow rule,
+Write/Edit tools (this is a Bash matcher) and text that never spells a target.
+Running either matches no allow rule,
 so the classifier decides. One git exception: a single git command with no
 quotes, substitution or heredoc, with no word starting with `-`, whose words
 are pathspec-only and that redirects into a file not named like a target
@@ -3045,7 +3044,7 @@ comparisons and reads — `(( SEAM == 0 ))`, `>`, `>=`, `<=`, `!=`, `$(( SEAM + 
 — and assignments to a non-seam name (or one that merely shares a prefix,
 `HIMMEL_CONSOLE_LEG_X`) still allow, and a clear inside a real closed subshell
 `( (( SEAM = 0 )) ); …` still allows through #643's positive rule. Known
-residual (`ponytail:` in the source): quotes inside an arithmetic body are not
+residual: quotes inside an arithmetic body are not
 modelled, so a `)` inside a quoted string there mis-balances. Each spelling is
 pinned by a real-bash leak oracle in the suite (a stub sanctioned script prints the four
 merge-on-green seams; a `leak` row must change one, a `noleak` row must leave
@@ -3114,7 +3113,7 @@ real procfs mount (`stat -f -c %T /proc` must be `proc`; a fake view via
 `unshare -rm` + tmpfs is refused); genuine non-Linux stays hook-only.
 Deliberate over-deny: `quiet-run.sh ... -- env -u X bash test` and a
 worker-launch argv whose brief text mentions `env -u` or `extdebug` deny beside
-a sanctioned-script word; put the control in a script file and run that instead. Residuals (ponytail): an obfuscated seam NAME beside a LITERAL
+a sanctioned-script word; put the control in a script file and run that instead. Residuals: an obfuscated seam NAME beside a LITERAL
 sanctioned-script path (`export "$n=1"`), a program word that hides both its
 `scripts/` anchor and its glob, and S2/S4.
 
@@ -4343,11 +4342,11 @@ paragraphs plus `--trailer`) and the BLOCKED route.
 compaction is refused (`{"decision":"block"}`, exit 2) until a CHECKPOINT or
 RESUME unlock holds or the last marker is `WRAPPED`, so WIP is pushed before context is summarised; a `manual`
 compaction is always allowed. What the harness does after a refused
-auto-compaction is undocumented (`ponytail:` in the header). Codex has no
+auto-compaction is undocumented. Codex has no
 PreCompact event. Fails open with one stderr line when fill
 is UNKNOWN/STALE, the transcript or worker doc cannot be found, or the input does
-not parse — a false block strands a worker nobody watches (`ponytail:` in the
-header). Bypass: `WORKER_SESSION_CONTEXT_HANDOFF_OK=1` (old name
+not parse — a false block strands a worker nobody watches.
+Bypass: `WORKER_SESSION_CONTEXT_HANDOFF_OK=1` (old name
 `WORKER_SESSION_CONTEXT_HANDOFF_OK=1`) in the launching shell. Wired in
 `.claude/settings.json` (PreToolUse and PreCompact) and `.codex/hooks.json`
 (PreToolUse only; Codex transcripts carry no claude-hud snapshot, so there it
@@ -4384,8 +4383,8 @@ other model, another tool, or an unparseable payload → exit 0 with **no output
 (workflow nudge, not a security fence: fails open, like `guard-worker-wakeup.sh`).
 The suite asserts `judge.md` and `judge-ro.md` still say `model: opus`, so a tier change
 there fails it. Not covered: a `Workflow` script's `agent()` dispatches — no
-per-dispatch hook seam is known (they run inside the one `Workflow` tool call;
-`ponytail:` in the hook header, follow-up ticket in the PR body). Claude lane only — `.codex/hooks.json` has no PreToolUse `Agent`
+per-dispatch hook seam is known (they run inside the one `Workflow` tool call).
+Claude lane only — `.codex/hooks.json` has no PreToolUse `Agent`
 matcher, so there is no twin.
 Suite: `scripts/hooks/test-guard-agent-model.sh`.
 
@@ -4539,14 +4538,14 @@ Pairs with the pre-commit `mcp-plugin-refs` gate, which catches the
 same Atlassian MCP names in *committed* source files as defense-in-depth
 if this PreToolUse hook is bypassed or disabled.
 
-### MCP policy tracking (HIMMEL-4676)
+### MCP policy tracking
 
 `scripts/hooks/mcp-policy.sh` is a **tracking + gating seam**, not a gate.
 It fires on every MCP call (matcher `mcp__.*`): in `.claude/settings.json` as
 its own entry after `block-backend-tier.sh`; in `.codex/hooks.json`, whose
 PreToolUse matchers must stay disjoint, as one `mcp__.*` chain
 `mcp-policy.sh+block-backend-tier.sh` (so in Codex, backend-tier's fail-closed
-jq branches also cover non-Atlassian MCP calls — a recorded `ponytail:` in
+jq branches also cover non-Atlassian MCP calls, pinned in
 `test-mcp-policy.sh` §8). As shipped it **always allows**. It classifies each
 call against the registry `scripts/guardrails/mcp-policy.json` and records what
 it *would* do:
@@ -5221,7 +5220,7 @@ compares the doc's last `COMPACTED` bullet (shape in `docs/handover/chief-templa
 the worker list, `queue`, `last GO`, and `acked` when present) against the newest snap. rc 0 `G11 ok`; rc 1 `G11 LOSS
 <field>` per differing field; rc 2 `no snapshot` / `snapshot corrupt`, which the
 gate treats as a loss — preservation unverified is never a pass. Known
-simplifications (`ponytail:` in the sources): `## Live state` is read with a
+simplifications: `## Live state` is read with a
 plain fence toggle and single-line `key: value` lines, so a wrapped value is
 truncated to its first line (G11 then reports LOSS, it does not hide it);
 `lock` and `go-file` are recorded for forensics but not compared, because the

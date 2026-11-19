@@ -1092,8 +1092,6 @@ if [ -n "$PYTHON_BIN" ]; then
     # PLATFORM GUARD: the RAM guard reads Linux's /proc/meminfo and deliberately
     # fails open where it does not exist, so on
     # macOS the refusal can never fire and the run would sit out the full ssh
-    # wait (180s). ponytail: T9a is Linux-only, upgrade path is a macOS RAM
-    # probe in after-report.sh; T9b below still runs everywhere.
     if [ ! -r /proc/meminfo ]; then
         echo "SKIP T9a: no /proc/meminfo (the RAM guard fails open off-Linux)"
     else

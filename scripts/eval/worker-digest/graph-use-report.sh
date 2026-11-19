@@ -13,8 +13,6 @@
 # journals, journals that ran any tool, journals with a graph call, the calls per form and per kind (bare = graphify,
 # wrapper = worker-graph.sh or leg-graph.sh) with the failed ones (a tool_result with is_error), journals that searched
 # code and how many of those never called the graph. Nothing is written.
-# ponytail: a regex lead-match, not scripts/hooks/lib/shell-tokenize.sh; the numbers are approximate (the "not counted"
-# line says in which direction). Upgrade = run each command through the tokenizer.
 set -u
 
 DAYS=7

@@ -14,8 +14,6 @@
 #   list-enforced-rules.sh [--settings <file>] [--precommit <file>] [--names]
 #     --names   print only the distinct names, one per line (the lint's input)
 # Exit: 0 ok · 2 cannot evaluate (missing or malformed config; fail-closed)
-# ponytail: a pre-commit hook's `stages:` is read only as an inline list on one line,
-# upgrade to a YAML parser if a config ever uses the block form.
 
 set -uo pipefail
 

@@ -1,5 +1,4 @@
 // The UI login: one operator user whose password is kept as a scrypt hash in the OS keyring, sessions held in memory.
-// ponytail: the keyring is reached by spawning scripts/lib/himmel-secrets (key HIMMEL_UI_LOGIN) on every login and every authed request, ceiling: a blocking child per request (about 30 ms measured), upgrade path: cache the item for a few seconds.
 import { spawnSync } from "node:child_process";
 import { lstatSync, unlinkSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -79,9 +78,6 @@ function removeLegacy(path: string): void {
   }
 }
 
-// createOnly refuses when a login is already stored. ponytail: the check and the put are two steps, so a --set-login
-// racing between them is overwritten (the caller holds the UI write lock, --set-login takes none), ceiling: no link(2)
-// atomicity, upgrade path: an atomic vault create verb.
 export function writeLogin(path: string, user: string, password: string, o: { createOnly?: boolean; env?: Env } = {}): void {
   if (!user || /[\s\x00-\x1f]/.test(user)) throw new Error("the user name must be non-empty with no spaces or control characters");
   if (password.length < 8) throw new Error("the password must be at least 8 characters");

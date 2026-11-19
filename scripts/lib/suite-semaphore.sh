@@ -29,11 +29,6 @@
 # suite the runner spawns. A value copied into an unrelated process's
 # environment names an owner that is not its ancestor, so it takes a slot like
 # anyone else.
-# ponytail: a process that WRITES a slot dir by hand, naming its own ancestor as
-# owner, passes the ancestor check -- the semaphore is a budget, not a security
-# boundary; the deny-hook (block-chokepoint-env-prefix.sh) is the fence, and a
-# hand-written slot is deliberate evasion, not drift. Upgrade trigger: a second
-# observed forgery -> HMAC the owner file with a per-boot secret.
 #
 # API (after sourcing):
 #   suite_sem_acquire <label> <retry-hint>  -> 0 slot held (or re-entrant),
@@ -157,11 +152,6 @@ _suite_sem_stale() {
 # first one's successor just created. mkdir on $slot cannot succeed while
 # this function holds it, so nothing can claim $slot between the recheck and
 # the mv below -- the mv only ever moves the dead owner's own directory.
-# ponytail: the guard only orders reclaimers against EACH OTHER, not against
-# a false-stale verdict -- if _suite_sem_stale wrongly calls a live owner
-# dead (a too-short TTL, clock skew), that owner's own eventual release could
-# still race this mv. Fixing that needs a stronger liveness check than a TTL
-# heuristic (the liveness-owner unification).
 _suite_sem_reclaim() {
     local slot="$1" guard="$1.reclaim" tomb
     if ! mkdir "$guard" 2>/dev/null; then
@@ -318,10 +308,6 @@ suite_sem_acquire() {
     done
 }
 
-# ponytail: release checks the owner record and then removes -- a reclaimer
-# acting between the two (only possible once our slot passed its TTL) could
-# have its fresh slot removed. Window is one stat; upgrade trigger: an
-# observed double-hold -> release via the same reclaim guard.
 suite_sem_release() {
     [ -n "$SUITE_SEM_SLOT" ] || return 0
     if _suite_sem_read_owner "$SUITE_SEM_SLOT" && [ "$SO_PID" = "$SUITE_SEM_OWNER_PID" ]; then

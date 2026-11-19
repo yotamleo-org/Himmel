@@ -1458,11 +1458,6 @@ _c24_cron_has_task() {
 # a separator, inside $( ) or ( ), or behind an interpreter flag. A word that follows a --long option is
 # data, not a script; a word that whitespace splitting cut is skipped. A path that never reaches such a word
 # (inside ${X:-/p}, behind a variable, with a space) is not judged. Read-only.
-# ponytail: word split plus a script-extension filter, so a script with another extension is missed and a
-# generated data file with a script extension that does not exist yet would read as dead; upgrade path is
-# bash -n tokenising or shlex in python.
-# _c24_word_path <word> — sets _c24_p to the path a word names with quotes and backslashes removed; rc 1
-# when the word is one half of a quoted or escaped path that whitespace splitting cut.
 _c24_word_path() {
     local w="$1" dq sq
     _c24_p=""
@@ -3262,7 +3257,6 @@ check_c40_qmd_vec() {
         return
     fi
 
-    # ponytail: the remedy points at the qmd README instead of printing the literal start command, because the ws5 T13(b) marker scan false-positives on that command's flag (HIMMEL-3233); the README carries it verbatim.
     local remedy="see the server log ~/.cache/qmd/mcp.log; restart the qmd server (stop the 'qmd mcp' process, then start a session; start command: see marketplace/plugins/qmd/README.md)"
     # daemon liveness (the initialize round-trip) is owned by
     # `himmelctl status`'s qmd-daemon item; C40 composes it the way C16 composes
@@ -3594,8 +3588,6 @@ check_c83_qmd_embed_backlog() {
 # judge that when the jira CLI, JIRA_PROJECT_KEY or jq is missing, and says so on the OK row.
 # Test seams: HIMMEL_RELEASE_STATE_DIR (the release root; the chief docs sit beside it) and
 # HIMMEL_DOCTOR_RM_STATE_PROBE (a script standing in for `jira release state <R> --json`).
-# ponytail: the newest chief doc by mtime stands in for the live chief, upgrade by reading the
-# chief fleet registry.
 _c84_release_state() {
     local rel="$1" cli json="" rc=0 pk node_bin out
     command -v jq >/dev/null 2>&1 || return 0  # prints nothing: the state cannot be judged here
@@ -4225,8 +4217,6 @@ check_c94_graph_config() {
         "${fix:-run node scripts/himmelctl/lib/graph-choices.js check}${rest:+; $rest}"
 }
 
-# ponytail: a marker repo with only dead rows, or rows holds.py cannot judge (state unknown), does not warn; a worker whose
-# first write has not published a row yet is invisible until it does. Upgrade path: read the worker list as well.
 check_c95_barrier_off() {
     local holds="${HOME:-/tmp}/.himmel/state/holds" py="$REPO_ROOT/scripts/handover/chief-kit/holds.py"
     local name repo rows rc err marker age live bad offline off_sentinel_rx started left warned=0 off="$holds/OFF"
@@ -4349,11 +4339,6 @@ check_c96_jira_test_project() {
 # vendor prefixes, a JWT, a 32+ char alphanumeric mix, a URL query parameter named
 # key/token/secret). It prints the server NAME and the flag / arg index only --
 # NEVER the value.
-# ponytail: only `args` arrays are examined -- a key inside `command` (a `bash -c "... --api-key K"`
-# string) or in `env` is not; flag names split on -/_ and camelCase humps (--api-key,
-# --accessToken) but a credential flag whose words fuse in one case (--authkey,
-# --accesstoken) does not match. Flags ending in file/path/env/name/dir/var/id are
-# treated as pointers, not secrets.
 # Test seam: HIMMEL_DOCTOR_MCP_ROOT (the <root> above, default this checkout).
 check_c41_mcp_argv_key() {
     if ! command -v jq >/dev/null 2>&1; then
@@ -4575,17 +4560,6 @@ check_c44_skill_index() {
 # The /plugin Errors tab reports "enabled in project settings but isn't
 # installed here" for exactly this. WARN, naming the settings file, so the
 # source is findable. Scopes read: user (+ local) under CLAUDE_DIR and this
-# checkout's project/local files. ponytail: parent-directory .claude/ files
-# above the checkout are not scanned, add them if one ever bites.
-# ponytail: each file is scanned on its own, so a true entry that a
-# higher-precedence file overrides to false still WARNs (names the stale
-# source); precedence-resolved reporting is not built, add it if the noise
-# bites.
-# HIMMEL_DOCTOR_CLAUDE_BIN (test seam, mirrors C44's): the claude executable
-# that answers `plugin list --json`; a missing one is an INFO skip.
-# HIMMEL_DOCTOR_PROJECT_CLAUDE_DIR (test seam): the directory read
-# for the project/local settings files instead of "$REPO_ROOT/.claude", so a test
-# never sees the host checkout's own settings.local.json.
 check_c46_plugin_enabled_missing() {
     local proj_dir="${HIMMEL_DOCTOR_PROJECT_CLAUDE_DIR:-$REPO_ROOT/.claude}"
     local bin="${HIMMEL_DOCTOR_CLAUDE_BIN:-claude}"
@@ -4664,8 +4638,6 @@ check_c76_duplicate_plugin_installs() {
 # WARN on a current-user process older than HIMMEL_DOCTOR_RUNAWAY_MIN_AGE_MIN (30) at
 # >= HIMMEL_DOCTOR_RUNAWAY_CPU_PCT (90) whose cmdline is qmd / hook.sh / bash scripts/.
 # Report only (pid, etime, %CPU, cmdline); never kills. Seam: HIMMEL_DOCTOR_RUNAWAY_PS.
-# ponytail: ps pcpu is the lifetime average, not a short sample, and the optional
-# reparented-to-init clause is not built; add either if a miss bites.
 check_c47_runaway_procs() {  # t13b-ok: doctor row that reads ps only, kills nothing
     local ps_bin="${HIMMEL_DOCTOR_RUNAWAY_PS:-ps}"
     local min_age="${HIMMEL_DOCTOR_RUNAWAY_MIN_AGE_MIN:-30}" cpu_min="${HIMMEL_DOCTOR_RUNAWAY_CPU_PCT:-90}"
@@ -5549,8 +5521,6 @@ _c77_fmt() {
 # names the stamp it writes (~/.himmel/state/bridge-restart.ts).
 # Silent when no bridge unit is enabled here (C24/C30 speak to that) or its start time is unknown.
 # Seam: HIMMEL_DOCTOR_SYSTEMCTL (shared with C24/C30); --root picks the checkout whose git log is read.
-# ponytail: the commit time (not the pull time) is compared, so a commit authored before the poller
-# started but pulled after it reads fresh; upgrade is the HEAD reflog's last pull time.
 check_c77_bridge_stale() {
     local systemctl_bin="${HIMMEL_DOCTOR_SYSTEMCTL:-systemctl}" unit="telegram-bridge.service"
     local started started_ts commit_ts subject started_fmt commit_fmt
@@ -5707,8 +5677,6 @@ check_c80_status_drift() {
 # plugin entry that reads the project's .claude/settings.json skip themselves when the project
 # layer covers the script, so neither counts. The plugin layer reads the newest cached
 # hooks/hooks.json of each enabled plugin, else the repo's marketplace copy.
-# ponytail: the newest cache dir by name stands in for the pinned version, upgrade by reading
-# installed_plugins.json.
 check_c81_hook_layers() {
     command -v jq >/dev/null 2>&1 || { emit INFO C81-hook-layers "jq not on PATH -- hook layer scan skipped"; return 0; }
     local rows="" name f c dups
@@ -5942,8 +5910,6 @@ check_c87_stub_handover_state() {
 # plugin-profiles.json mcpCatalog) and the runtime built-ins: plugins compiled into the
 # Claude Code binary that register a tool through $.tool.register, so no file of ours
 # names them (docs/internals/mcp-servers.md#runtime-registered-servers-easel).
-# ponytail: the built-in list is two verified names, upgrade by reading the binary's own
-# plugin table when Claude Code exposes one.
 check_c82_mcp_sources() {
     command -v jq >/dev/null 2>&1 || { emit INFO C82-mcp-sources "jq not on PATH -- MCP source listing skipped"; return 0; }
     local rows="" enabled="" key name mkt f n pin
@@ -6000,8 +5966,6 @@ plugin-authoring [runtime: built-in cc-plugin-plugin-authoring plugin of the Cla
 # Those four run in the background as `himmel-doctor.sh --only <id> --json` under a
 # real `timeout`, and their rows are replayed through emit() at the end so the
 # FAIL/WARN/INFO counts, the issue body and the statusline keys stay exact.
-# ponytail: the heavy set is a fixed list and the bound one value for all, upgrade
-# when a fifth check crosses ~15 s (add it to its run_heavy line).
 doctor_wants() {
     [ -z "$ONLY" ] && return 0
     case "$ONLY" in *",$1,"*) return 0 ;; esac

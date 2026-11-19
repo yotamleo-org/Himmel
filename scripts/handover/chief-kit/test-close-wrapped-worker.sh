@@ -324,7 +324,7 @@ mkcmdline 201 claude -n SOME-OTHER-SESSION work
 pgrep_x_stub 201
 reset_calls
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
-check "zero-match: rc 0 (the window already exited, HIMMEL-7811)" "$rc" "0"
+check "zero-match: rc 0 (the window already exited)" "$rc" "0"
 contains "zero-match: says CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
 check "zero-match: kill never called" "$(cat "$CALLS")" ""
 
@@ -1570,9 +1570,9 @@ not_contains "console: withheld -> nothing signalled" "$(cat "$CALLS")" "kill"
 rm -rf "$W/proc/230"; pgrep_x_stub 231
 reset_calls
 rc=0; out=$(run --chief "$CDOC" 2>&1) || rc=$?
-check "console: zero live sessions -> rc 5, not CLOSED-ALREADY (HIMMEL-7811)" "$rc" "5"
-contains "console: zero live sessions keeps the 'refusing - 0 live session' text (HIMMEL-7811)" "$out" "refusing - 0 live session"
-not_contains "console: zero live sessions is not reported CLOSED-ALREADY (HIMMEL-7811)" "$out" "CLOSED-ALREADY"
+check "console: zero live sessions -> rc 5, not CLOSED-ALREADY" "$rc" "5"
+contains "console: zero live sessions keeps the 'refusing - 0 live session' text" "$out" "refusing - 0 live session"
+not_contains "console: zero live sessions is not reported CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
 mkcmdline 230 claude -n "$CNAME" work
 pgrep_x_stub 230 231
 
@@ -1682,7 +1682,7 @@ mkcmdline 264 claude -n "${SESSION_NAME}-extra" work
 pgrep_x_stub 262 263 264
 reset_calls
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
-check "non -r<N> suffixes are not this worker: CLOSED-ALREADY rc 0 (HIMMEL-7811)" "$rc" "0"
+check "non -r<N> suffixes are not this worker: CLOSED-ALREADY rc 0" "$rc" "0"
 check "non -r<N> suffixes: nothing signaled" "$(cat "$CALLS")" ""
 
 # --- A RESUME doc (label suffix c) closes the ORIGINAL session's window ----
@@ -2330,8 +2330,8 @@ rc=0; out=$(CWL_SCRIPT="$HERE/close-wrapped-workers.sh" HIMMEL_BUCKET_DIR="$W/bu
 check "workers --check, no manifest: sweeps the bucket -> rc 0" "$rc" "0"
 contains "workers --check: the predecessor's worker would close" "$out" "sweep: would close $MS_PRED"
 contains "workers --check: the current chief's worker would close" "$out" "sweep: would close $MS_CUR"
-contains "workers --check: both fresh bucket manifests swept (a gone window is now CLOSED-ALREADY, so gone= stays 0, HIMMEL-7811)" "$out" "sweeps: manifests=2 failed=0 gone=0"
-contains "workers --check: a worker whose window is already gone is a close, not a refusal (HIMMEL-7811)" "$out" "sweep: would close $MS_GONE"
+contains "workers --check: both fresh bucket manifests swept (a gone window is now CLOSED-ALREADY, so gone= stays 0)" "$out" "sweeps: manifests=2 failed=0 gone=0"
+contains "workers --check: a worker whose window is already gone is a close, not a refusal" "$out" "sweep: would close $MS_GONE"
 not_contains "workers --check: a manifest older than the age window is not swept" "$out" "$MS_OLD"
 not_contains "workers --check: signals nothing" "$(cat "$CALLS")" "kill -TERM"
 reset_calls

@@ -22,13 +22,10 @@
 # markers). A bullet that does not start with one carries no status and is skipped:
 # SHIPPED / MERGED are deliberately NOT markers -- a worker between GREEN and READY
 # reports LIVE.
-# ponytail: a status bullet that leads with something other than the marker
-# (`- Sent READY to the chief`) is invisible here; the tick reads the last bullet
-# that does lead with one.
 #
 # WRAPPED is the one exception, and only when the FINAL
-# bullet has no leading marker of its own (so it would otherwise be invisible,
-# per the ponytail above) -- it is the wrap signal a worker never gets a second
+# bullet has no leading marker of its own (so it would otherwise be invisible)
+# -- it is the wrap signal a worker never gets a second
 # chance to send (the window closes right after), so a bullet like
 # `- 10:15 Released lock \`tok\`, appended the WRAPPED bullet, ending turn`
 # still reads WRAPPED instead of falling through to the last bullet that DID

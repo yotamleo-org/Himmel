@@ -323,7 +323,6 @@ function takeLock(dir: string): (() => void) | null {
       }
       if (Number.isInteger(pid) && pid > 0 && alive(pid)) return null;
       // A stale lock is moved aside by one rename, which only one contender wins; a live lock that was grabbed by mistake goes back.
-      // ponytail: a third contender between the rename and the put-back can still start beside the owner; upgrade path: a flock(2) holder if concurrent launches ever show up.
       const aside = `${path}.stale-${process.pid}`;
       try {
         renameSync(path, aside);

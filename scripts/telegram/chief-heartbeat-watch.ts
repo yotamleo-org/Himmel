@@ -96,10 +96,6 @@ export async function checkStaleHeartbeats(
 // re-derivation of that parsing here). Shells out to the thin
 // chief-census.sh wrapper rather than reimplementing the scan.
 //
-// ponytail: a degraded or failed census (script rc>0) and a genuinely absent
-// chief both read as "not found" here. The caller only asks "should I
-// alert," and a census too broken to trust must not manufacture a false
-// "alive" that would then page the operator over nothing.
 //
 // A genuinely hung child (a stuck pgrep, a wedged /proc read)
 // would otherwise block this await indefinitely on one chief, starving

@@ -8,9 +8,6 @@
 // counts chars/4 per kind the way skill-cost.mjs does (name + 2 + description and when_to_use).
 // --seed-broken A,B gives B the description of A in the output only: the eval's seeded-broken
 // control. No file is written.
-// ponytail: renders every description uncapped, as an operator session sees it; a profiled
-// session shrinks non-plugin entries to name-only (skill-listing.mjs) and lists MCP tools by
-// name until ToolSearch. Upgrade path: a --profile flag that applies those overrides.
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';

@@ -134,11 +134,6 @@ WIRE_PRETOOLUSE_MERGE_JQ='
 # record each wired hook element in the install-provenance ledger
 # (docs/internals/install-provenance.md). Called after the mv with the PRE-write
 # settings JSON; recording is best-effort -- a failed record warns and never
-# fails the wire. ponytail: the pre-state of an element is the FIRST pre-existing
-# counterpart (same matcher for the trio; same command basename for SessionStart),
-# so a duplicate the merge strips is not backed up. The container_created field
-# covers only the PreToolUse / SessionStart array itself; the `hooks` parent
-# object is recorded as its own `/hooks` json-key row (below).
 # shellcheck source=scripts/lib/provenance.sh
 . "$(dirname "${BASH_SOURCE[0]}")/provenance.sh"
 # shellcheck source=scripts/lib/claude-config-dir.sh

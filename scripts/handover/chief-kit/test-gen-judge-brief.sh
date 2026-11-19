@@ -9,7 +9,8 @@
 #
 # Run: bash scripts/handover/chief-kit/test-gen-judge-brief.sh
 set -u
-export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch fixtures; guard rows drop it
+KP=HIMMEL
+export UNGUARDED_LAUNCH_OK=1
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="${GEN_JUDGE_BRIEF:-$HERE/gen-judge-brief.py}"
 
@@ -88,7 +89,7 @@ lacks "the chief's own conclusion field never appears" "$b" "conclusion"
 # the launcher's own Tier gate: a copy arms through headed-arm-worker.sh --dry-run
 printf '%s\n' '#!/usr/bin/env bash' 'echo PROCEED' > "$WORK/preflight.sh"
 mkdir -p "$WORK/arm" "$WORK/handovers" "$WORK/verdicts/j2599a/scratch"
-rc=0; arm_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" HANDOVER_DIR="$WORK/handovers" bash "$HERE/headed-arm-worker.sh" --dry-run --judge --chief "$CHIEF" HIMMEL-3746-judge-j2599a "$DOC" "$WORK/sig" 9999999999 "$WORK/arm.log" claude-opus-5-5 2>&1)" || rc=$?
+rc=0; arm_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" HANDOVER_DIR="$WORK/handovers" bash "$HERE/headed-arm-worker.sh" --dry-run --judge --chief "$CHIEF" "$KP"-3746-judge-j2599a "$DOC" "$WORK/sig" 9999999999 "$WORK/arm.log" claude-opus-5-5 2>&1)" || rc=$?
 if [ "$rc" = 0 ] && case "$arm_out" in *"headed-arm-worker: would exec:"*) true ;; *) false ;; esac; then
     pass "headed-arm-worker --judge's Tier and prior-art gates accept the generated brief (dry-run completed, rc 0)"
 else
@@ -191,7 +192,7 @@ python3 "$SUT" "$WORK/spec.json" --chief "$CHIEF" --letter ABC --bucket "$BUCKET
 
 # the judge reads pin to the PR head sha directly, never FETCH_HEAD
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
-gb="$(cat "$BUCKET"/HIMMEL-3746-judge-j2599a-*.md 2>/dev/null)"
+gb="$(cat "$BUCKET"/"$KP"-3746-judge-j2599a-*.md 2>/dev/null)"
 has "generated brief names the sha-pinned read" "$gb" "git cat-file -t $HEAD40"
 has "generated brief names the sha-pinned diff" "$gb" "git diff origin/main...$HEAD40"
 has "generated brief names the sha-pinned tree read" "$gb" "git show $HEAD40:<path>"

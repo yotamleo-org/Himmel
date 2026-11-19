@@ -53,7 +53,6 @@ const text = (s) => (s ? s.blocks.filter((b) => b.t === "p").map((b) => b.text).
 const num = (re, str) => { const m = re.exec(str || ""); return m ? m[1] : null; };
 
 // the five tiles come from the sections the generator leads with; a figure the report did not carry reads "?"
-// ponytail: the page re-parses the briefing's markdown for tile figures; ceiling = a heading reword breaks a tile to "?"; upgrade path = the briefing writes a small JSON front-matter of its counts that the page reads.
 function tiles(sections) {
   const shipped = find(sections, /What shipped/), waits = find(sections, /What waits/), spent = find(sections, /What it spent/), next = find(sections, /What runs next/);
   const wi = items(waits);
@@ -77,7 +76,6 @@ function tiles(sections) {
 // shift's dated span) and the Chiefs table (a chief's HH:MM span, placed on the first such clock time at or after its shift opened). A shift or a
 // chief outside the window is not drawn: the caption above the chart counts them and says they are in the tables. A chief inside it is drawn in as
 // many lanes as its overlaps need; a span that does not fit its shift is a one-cell mark.
-// ponytail: the spans carry no year, so a date is read in the report day's year, or the year before when it lies more than two days after the report day; ceiling = a shift more than a year older than its report; upgrade path = the generator writes ISO spans.
 const UNIT = 5, CELLS = 1440 / UNIT;
 const tableIn = (sections, re) => { const s = find(sections, re); return s ? s.blocks.find((b) => b.t === "table") : null; };
 const stamp = (day, md, hm) => {

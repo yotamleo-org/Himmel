@@ -6,7 +6,7 @@
 # from $H, $LU and $SA at runtime so the widened gate passes this file. Cases:
 #   1-5.  one added comment per history shape (ticket, review-fix note, bot round,
 #         round N, judge qid)                                   -> exit 1, path:line named
-#   6.    ponytail: line citing a ticket                         -> exit 1
+#   6.    a ceiling marker line citing a ticket                  -> exit 1
 #   7.    old (context) line carrying a ticket                   -> exit 0
 #   8.    a ticket in code, data or output is refused in non-test files; test files,
 #         fixtures and clean output pass
@@ -23,7 +23,7 @@
 #   18.   the ship-gate and CI writers print no ticket id
 #   19-20. a key in a doc heading and in a YAML comment
 #   21-23. test files: the four citation shapes are refused, data passes
-#   24-29. key boundaries, ponytail, history rows, other project keys, K6 rows, a swapped list
+#   24-29. key boundaries, marker lines, history rows, other project keys, K6 rows, a swapped list
 #   30.   a missing rule list or classifier -> exit 2
 #   31.   --count-comments shapes
 #   32.   a binary file is skipped by content
@@ -33,7 +33,7 @@
 #   39.   --range with --tip on a branch HEAD is not on
 #   40.   a malformed rule row or a second key row exits 2 (never an exempt-everything row)
 #   41.   a symlink replaced by a regular file is judged
-#   42.   an added ponytail marker is refused in every file type and case; a fixture path
+#   42.   an added ceiling marker is refused in every file type and case; a fixture path
 #         and a deleted line pass; the exempt mode lists whole-file rows
 #
 # Exit: 0 all passed, 1 any failed. bash 3.2-safe.
@@ -47,6 +47,7 @@ LIST="$SELF_DIR/ticket-ref-allow.tsv"
 ONESHOT="$SELF_DIR/../one-shot/check-ticket-refs.sh"
 
 PASS=0; FAIL=0
+PT="pony""tail:"
 pass() { PASS=$((PASS + 1)); echo "  PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
 
@@ -96,8 +97,8 @@ expect_block "CodeRabbit round"   scripts/a.sh "+# CodeRabbit round two asked fo
 expect_block "round N"            scripts/a.sh "+# review round 3 moved the check here"
 expect_block "judge qid"          scripts/a.sh "+# verdict j0042a said keep"
 
-echo "== 6. ponytail is no exemption =="
-expect_block "ponytail line with ticket" scripts/a.sh "+# ponytail: prefix match only, upgrade tracked in ${H}-77"
+echo "== 6. a ceiling marker is no exemption =="
+expect_block "marker line with ticket" scripts/a.sh "+# ${PT} prefix match only, upgrade tracked in ${H}-77"
 
 echo "== 7. unchanged old line =="
 expect_allow "context line" scripts/a.sh "=# ${H}-1234 old history" '+echo new'
@@ -129,7 +130,7 @@ expect_block "stdout write output" scripts/a.cjs "+process.stdout.write('${H}-12
 expect_block "stderr write output" scripts/a.tsx "+process.stderr.write('${H}-123 failed');"
 expect_block "Python print output" scripts/a.py "+print('${H}-123 ready')"
 expect_block "Python stderr output" scripts/a.py "+sys.stderr.write('${H}-123 failed')"
-expect_block "output ponytail" scripts/a.sh "+echo '${H}-123 ready' # ponytail: fixed text only, replace when localized"
+expect_block "output marker" scripts/a.sh "+echo '${H}-123 ready' # ${PT} fixed text only, replace when localized"
 expect_allow "output fixture" scripts/fixtures/a.sh "+echo '${H}-123 fixture'"
 expect_allow "output test file" scripts/test-a.sh "+echo '${H}-123 test'"
 expect_allow "output test directory" scripts/tests/a.py "+print('${H}-123 test')"
@@ -208,10 +209,10 @@ step ""
 if [ "$RC" -ne 0 ]; then pass "step: missing base sha fails closed"; else fail "step empty base -> rc=$RC: $OUT"; fi
 step "0000000000000000000000000000000000000000"
 if [ "$RC" -ne 0 ]; then pass "step: unreachable base sha fails closed"; else fail "step bad base -> rc=$RC: $OUT"; fi
-printf 'echo a\n# ponytail: prefix only, upgrade tracked in %s-77\n' "$H" > "$S/scripts/a.sh"
-git -C "$S" add -A; git -C "$S" commit -q -m ponytail
+printf 'echo a\n# %s prefix only, upgrade tracked in %s-77\n' "$PT" "$H" > "$S/scripts/a.sh"
+git -C "$S" add -A; git -C "$S" commit -q -m marker
 step "$pr_base"
-if [ "$RC" -eq 1 ] && has "scripts/a.sh:2"; then pass "step: ponytail line citing a ticket is refused"; else fail "step ponytail -> rc=$RC: $OUT"; fi
+if [ "$RC" -eq 1 ] && has "scripts/a.sh:2"; then pass "step: marker line citing a ticket is refused"; else fail "step marker -> rc=$RC: $OUT"; fi
 # (a) a base that holds the gate but not the rule list is a red job
 B="$T/boot"; mkdir -p "$B/scripts/lint" "$B/tmp"; git -C "$B" init -q
 git -C "$B" config user.email t@t; git -C "$B" config user.name t
@@ -320,7 +321,7 @@ for f in scripts/check-ci.sh scripts/ci/run-shell-tests.sh scripts/lib/go-gate.s
          scripts/handover/merge-on-green.sh scripts/handover/chief-kit/go.sh \
          scripts/handover/chief-kit/write-verdict.sh; do
     RAW="$(grep -n -E "(echo|printf|die|warn).*${H}-[0-9]+" "$REPO_ROOT/$f")"; GRC=$?
-    OUT="$(printf '%s\n' "$RAW" | grep -v 'ponytail:' | grep -v '^$')"
+    OUT="$(printf '%s\n' "$RAW" | grep -v '^$')"
     if [ "$GRC" -gt 1 ]; then fail "$f: grep could not read it (rc=$GRC)"
     elif [ -z "$OUT" ]; then pass "$f: no output line carries a ticket id"; else fail "$f: $(printf '%s' "$OUT" | cut -c1-120 | head -3)"; fi
 done
@@ -348,11 +349,11 @@ expect_allow "data row" "$TF" "+mk ${H}-28 Task \"To Do\""
 expect_allow "key built at runtime" "$TF" "+echo \"\$H-5 ok\""
 expect_allow "test/ directory data" scripts/himmelctl/test/_hermetic-home.sh "+mk ${H}-1"
 
-echo "== 24-26. key boundaries, ponytail, history rows =="
+echo "== 24-26. key boundaries, marker lines, history rows =="
 expect_allow "key glued to a word" docs/x.md "+foo${H}-1"
 expect_block "key in parentheses" docs/x.md "+see (${H}-1)"
 expect_block "key at line end" docs/x.md "+ends with ${H}-1"
-expect_block "ponytail line carries a key" scripts/a.sh "+# ponytail: x, upgrade when ${H}-1234 lands"
+expect_block "marker line carries a key" scripts/a.sh "+# ${PT} x, upgrade when ${H}-1234 lands"
 expect_allow "release history" docs/release/v1.md "+- shipped ${H}-1"
 expect_allow "fixture markdown" fixtures/x.md "+${H}-1 input"
 
@@ -545,12 +546,12 @@ git -C "$SL" add -A; git -C "$SL" commit -q -m typechange
 OUT="$(cd "$SL" && bash "$GATE" --range "$sl_base" 2>&1)"; RC=$?
 if [ "$RC" -eq 1 ]; then pass "a key in a file that replaced a symlink is refused"; else fail "symlink replaced -> rc=$RC: $OUT"; fi
 
-echo "== 42. an added ponytail marker is refused =="
+echo "== 42. an added ceiling marker is refused =="
 PT="pony""tail:"; PTU="PONY""TAIL:"; PTM="Pony""Tail:"
 expect_marker() { # <label> <path> <added line>
     mkdiff "$2" '+echo ok' "$3"
     run
-    if [ "$RC" -eq 1 ] && has "$2:2: ponytail marker:" && has "ceiling-add.sh" && has "code-comments.md"; then
+    if [ "$RC" -eq 1 ] && has "$2:2: ${PT%:} marker:" && has "ceiling-add.sh" && has "code-comments.md"; then
         pass "$1 refused"
     else fail "$1 -> rc=$RC: $OUT"; fi
 }

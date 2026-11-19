@@ -42,10 +42,6 @@ _CLAUDE_LANE_DIR="${BASH_SOURCE[0]%/*}"
 # any other repo is unclassified and refused, since the matrix default for an
 # unclassified corpus is deny. A LUNA_VAULT/LUNA_VAULT_PATH/HANDOVER_DIR that is set
 # but does not resolve refuses too.
-# ponytail: only hermes-critic.sh and claude-floor-review.sh gate; the shared
-# headless launcher scripts/lib/claude-headless.sh resolves the lane but does not,
-# so a new caller of it would be ungated - move this call into it when a third
-# review site appears.
 claude_lane_egress() {
   local dir="${1:?claude_lane_egress: reviewed repo required}" lane="${HIMMEL_CLAUDE_LANE:-native}"
   local prov corpus="" d prev list line v lroot="" hroot hd out verdict root

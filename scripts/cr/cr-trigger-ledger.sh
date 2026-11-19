@@ -77,8 +77,6 @@ case "$cmd" in
         [ "$#" -ge 1 ] || { echo "usage: cr-trigger-ledger.sh alert-once <key> [<text>]" >&2; exit 2; }
         key="$1"; text="${2:-}"
         f=$(_crl_alerts) || exit 2
-        # ponytail: a plain read-then-append, so two simultaneous callers can both
-        # raise one alert; flock is used when present, upgrade path = a lockdir.
         if command -v flock >/dev/null 2>&1; then
             (
                 flock -w 30 9 || exit 3  # prim-ok: guarded by command -v flock with an unlocked fallback below

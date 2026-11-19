@@ -18,9 +18,6 @@
 #
 # Seams (tests): LIBRARIAN_CRONTAB, LIBRARIAN_RUNNER_DIR, HIMMEL_OBSERVABILITY_CONFIG,
 # plus cadence-alert.sh's own.
-# ponytail: cron only (Windows is parked) and day-of-month `*/N` restarts each
-# month, so N does not divide evenly across a month end; upgrade path is a
-# last-run-age check in the runner.
 set -uo pipefail
 
 TASK_NAME="HIMMEL-Librarian"

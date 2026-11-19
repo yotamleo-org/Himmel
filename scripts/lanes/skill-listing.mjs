@@ -7,10 +7,6 @@
 //     (user, project, bundled). It is INERT for plugin skills under both the bare
 //     and the `plugin:skill` key (the settings docs say so too).
 //   skillListingBudgetFraction raises the cap.
-// ponytail: plugin skills cannot be shrunk, so the fraction is sized for the
-// whole unshrunk enabled-plugin listing, ceiling 0.05 of the window, upgrade
-// path: an upstream Claude Code change making skillOverrides reach plugin skills
-// (then size the fraction on the required set only).
 import { ROLE_REQUIRES } from './role-requires.mjs';
 import { pluginCacheOf, scanCommandTrees, runtimeNamesOf } from './skill-cost.mjs';
 
@@ -25,8 +21,6 @@ const WINDOW = 200_000; // the binding case: 1M windows get 5x the same fraction
 // A caller passing configDir gets its skills-dir command trees scanned plus a
 // small margin for the rest (a synced plugin); an unscannable configDir, or none
 // passed, falls back to the fixed constant.
-// ponytail: chars/4 estimate of the tree commands + 250 tok margin, upgrade path:
-// measure the margin against /context if the cap trips.
 const UNSCANNED_RESERVE = 2500;
 const UNSCANNED_MARGIN = 250;
 
@@ -39,10 +33,6 @@ const commandTreeReserve = (configDir) => {
   return UNSCANNED_MARGIN + cmds.reduce((a, e) => a + describedTokens(e, e.tree), 0);
 };
 
-// ponytail: static list of the bundled/desktop skills seen in a measured listing
-// (2026-10-01, Claude Code 2.1.286); an override for a skill that is absent is
-// harmless, a new bundled skill is simply not shrunk. Upgrade path: none from
-// the scan (bundled skills have no files), revisit if the budget cap trips.
 export const BUILTIN_SKILL_NAMES = [
   'update-config', 'keybindings-help', 'code-review', 'simplify', 'fewer-permission-prompts', 'loop',
   'schedule', 'claude-api', 'workflow-authoring', 'run', 'init', 'security-review', 'built-in-browser',

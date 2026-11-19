@@ -969,7 +969,6 @@ t34_notdir="$TMP/t34-not-a-dir"; printf 'x\n' > "$t34_notdir"
 t34_mktemp_rc=$(TMPDIR="$t34_notdir" mktemp -t luna-upgrade-probe.XXXXXX >/dev/null 2>&1; echo $?)
 # PLATFORM GUARD: macOS `mktemp -t` can succeed under a non-directory TMPDIR, so
 # the abort path cannot be provoked there; skip rather than assert a vacuous pass.
-# ponytail: T34 unexercised on hosts whose mktemp -t survives a bad TMPDIR, needs a mktemp shim on PATH to force the failure (HIMMEL-3699).
 if [ "$t34_mktemp_rc" -eq 0 ]; then
     echo "SKIP T34: mktemp -t succeeds under a non-directory TMPDIR on this platform"
 else

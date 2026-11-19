@@ -38,16 +38,6 @@
 # Rows are deduplicated by message.id (a message streams as several rows that
 # repeat one usage object) and sorted by timestamp. Needs bash 3.2+ and jq.
 #
-# ponytail: the rewrite test is two fixed thresholds (read < 0.5x previous,
-# create > read) and the compaction test a fixed 0.75x context drop, chosen to
-# separate the fixture shapes and the 2026-09-29 measurements; a workload with
-# a much smaller prefix could sit near them. Upgrade path: make them flags when
-# a real run lands within 10% of a threshold.
-# ponytail: timestamps are read to whole seconds (fractions dropped), so a gap
-# is +-1s; TTL tiers are inferred from usage, not from the request.
-# ponytail: usage rows only exist for main-thread and sidechain calls written
-# to the given file; a session's untracked helper calls (title generation) are
-# invisible, so `first-turn` can read warm from a call the file never shows.
 
 set -u
 

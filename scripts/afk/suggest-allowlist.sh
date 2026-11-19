@@ -14,9 +14,6 @@
 # a decimal integer becomes <int> and a path under $HOME becomes <path under $HOME>.
 # A group seen twice or more is a suggestion (with count, last use, exit codes);
 # a group seen once is listed as "seen once, not suggested".
-# ponytail: only <int> and <path under $HOME> fold into slots, a varying plain word
-#   stays its own group (an allowlist must not widen on a word), upgrade path is a
-#   <word> slot once the 8066 class matcher can express one.
 set -uo pipefail
 
 since="30d"

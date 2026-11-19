@@ -93,7 +93,7 @@ _r9_build() {
 }
 
 if [ "$MATRIX_STAT_READY" != 1 ]; then
-    echo "  SKIP HIMMEL-2592 round 9 position x arm matrix — host stat can't give GNU -c '%i|%y' (inode + SUB-SECOND mtime): $MATRIX_STAT_DIAG -- same degraded-oracle risk the main matrix above already refuses to run under."
+    echo "  SKIP position x arm matrix — host stat can't give GNU -c '%i|%y' (inode + SUB-SECOND mtime): $MATRIX_STAT_DIAG -- same degraded-oracle risk the main matrix above already refuses to run under."
 else
 R9_A=0; R9_B=0; R9_C=0; R9_AV=0; R9_BV=0
 R9_DIR="$FIX/r9matrix"

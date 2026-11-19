@@ -30,7 +30,7 @@ export HIMMEL_POLICY_FOLLOWS_HOME=1
 set_cap() { mkdir -p "$HOME/.himmel"; printf '{"policy":{"HIMMEL_FLEET_CAP":%s}}\n' "$1" > "$HOME/.himmel/config.json"; }
 with_cap() { local cap="$1" rc; shift; set_cap "$cap"; "$@"; rc=$?; set_cap 4; return "$rc"; }
 set_cap 4
-export USAGE_LIFT_FILE="$W/home/.himmel/state/usage-lift.json"  # never inherit an operator lift (HIMMEL-4423)
+export USAGE_LIFT_FILE="$W/home/.himmel/state/usage-lift.json"
 printf '%s' '{"oauthAccount":{"accountUuid":"uuid-bank-preflight-test"}}' > "$HOME/.claude.json"
 IDLIB="$REPO/scripts/lib/usage-cache-identity.sh"
 # shellcheck source=usage-cache-identity.sh

@@ -47,7 +47,7 @@ detach_run sh -c "$HELD" held "$RELEASE" "$MARKER"
 if [ ! -e "$MARKER" ]; then
     pass "detach_run returned while the held child was still running"
 else
-    fail "detach_run waited for the child to complete (HIMMEL-623 regression)"
+    fail "detach_run waited for the child to complete"
 fi
 : > "$RELEASE"
 
@@ -75,7 +75,7 @@ DETACH_NO_SETSID=1 HELD="$HELD" bash -c ". '$LIB_DIR/detach.sh'; detach_run sh -
 if [ ! -e "$MARKER3" ]; then
     pass "caller shell exited while the held child was still running"
 else
-    fail "caller shell waited for the child at exit (HIMMEL-623 regression)"
+    fail "caller shell waited for the child at exit"
 fi
 : > "$RELEASE3"
 i=0
