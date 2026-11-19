@@ -210,14 +210,23 @@ test('429 insufficient_quota marks the account exhausted and exits 6', () => wit
   assert.equal(onlyJob(ledger).actual_usd, '0.000000');
 }));
 
-test('a 500 that echoes the key is redacted, one line and settled at zero', () => withFixture({
+test('a 500 that echoes the key is redacted, one line, and leaves the reservation unknown', () => withFixture({
   responder: () => [500, { error: { message: `server broke\nfor key ${KEY} and sk-other-secret-1234567 ${'x'.repeat(400)}` } }],
 }, async (f) => {
   const r = await f.run(args());
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /^openai-api: call failed \(HTTP 500\): server broke for key \[redacted\] and \[redacted\] x+\n$/);
+  assert.match(r.stderr, /^openai-api: call failed \(HTTP 500\): server broke for key \[redacted\] and \[redacted\] x+; its cost is unknown and the reservation is marked unknown\n$/);
   assert.ok(!r.stderr.includes(KEY) && !r.stderr.includes('sk-other'));
-  assert.ok(r.stderr.length < 300);
+  assert.ok(r.stderr.length < 400);
+  assert.equal(onlyJob(f.readLedger()).status, 'unknown');
+}));
+
+test('a 400 is settled at zero', () => withFixture({
+  responder: () => [400, { error: { message: 'bad request' } }],
+}, async (f) => {
+  const r = await f.run(args());
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /^openai-api: call failed \(HTTP 400\): bad request\n$/);
   assert.equal(onlyJob(f.readLedger()).actual_usd, '0.000000');
 }));
 

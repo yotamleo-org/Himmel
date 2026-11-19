@@ -134,7 +134,7 @@ async function main() {
   if (letter === 'auto') refuse('HIMMEL_OPENAI_ACCOUNT=auto is not supported; name one account');
   if (!['A', 'B', 'C', 'D'].includes(letter)) refuse('HIMMEL_OPENAI_ACCOUNT must be A, B, C or D');
   const timeoutRaw = env.HIMMEL_API_CALL_TIMEOUT_S;
-  const timeoutS = /^[1-9][0-9]{0,8}$/.test(timeoutRaw ?? '') ? Number(timeoutRaw) : 3600;
+  const timeoutS = /^[1-9][0-9]{0,5}$/.test(timeoutRaw ?? '') ? Number(timeoutRaw) : 3600;
 
   let prompt = o.prompt ?? await readStdin();
   if (Buffer.byteLength(prompt) > MAX_PROMPT) refuse('prompt over 8 MiB');
@@ -202,6 +202,11 @@ async function main() {
 
   if (status < 200 || status >= 300) {
     const code = data?.error?.code;
+    if (status >= 500) {
+      creditState('unknown', { id: jobId }, ledgerEnv);
+      process.stderr.write(`openai-api: call failed (HTTP ${status}): ${oneLine(data?.error?.message ?? text, key)}; its cost is unknown and the reservation is marked unknown\n`);
+      return 1;
+    }
     warnSettle(creditState('settle', { id: jobId, usd: '0', completion: 'verified' }, ledgerEnv));
     if (status === 401 || code === 'invalid_api_key') {
       creditState('key-rejected', {}, ledgerEnv);
