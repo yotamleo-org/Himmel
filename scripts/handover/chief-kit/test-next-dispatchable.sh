@@ -4109,6 +4109,10 @@ has "9335 U1.h9c: the line shows the label escaped" "$OW_OUT" "# owner unknown: 
 has "9335 U1.h9c: the overlap line shows the label escaped" "$OW_OUT" "# overlap unknown for live worker N9\\nLOCAL\\tHIMMEL-9"
 has "9335 U1.h9c: the drop line shows the label escaped" "$OW_OUT" "# drop HIMMEL-62 owned by live worker N9\\nLOCAL\\tHIMMEL-9"
 check "9335 U1.h9c: no output line is the forged row for the key HIMMEL-9" "0" "$(ow_forged "$OW_OUT")"
+printf '%s\n' '{"schema":1,"workers":[{"label":"N9b","doc":"/x/HIMMEL-62-N9b-a\nLOCAL\tHIMMEL-9-gone.md"}]}' > "$OW/u1h9c/fleet-doc.json"
+ow_go2 --why --workers-from "$OW/u1h9c/fleet-doc.json"
+has "9335 U1.h9c: a doc name holding a line break is escaped in the line" "$OW_OUT" "(doc ${KP}-62-N9b-a\\nLOCAL\\t${KP}-9-gone.md unreadable; keys held: ${KP}-62,${KP}-9)"
+check "9335 U1.h9c: that doc name forges no row for the key HIMMEL-9" "0" "$(ow_forged "$OW_OUT")"
 
 # U4: the IN CI probe is not run while the fleet is unknown (a clean fleet's run asks GitHub for the merged PRs of the IN CI ticket)
 OW_M="$ow_u1m"
