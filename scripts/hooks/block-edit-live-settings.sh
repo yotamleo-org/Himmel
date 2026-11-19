@@ -238,7 +238,7 @@ st_tokenize() {
                         done
                         [ "$j" -lt "$n" ] || return 1
                         # The shell runs the decoded word (`$'\x2dr'` is -r).
-                        _st_ansic_e "$body"; body=$_ST_DEC
+                        _st_ansic_e "$body" || return 1; body=$_ST_DEC
                         _st_q; w=$w$body; i=$((j + 1))
                         ;;
                     '"') _st_q; ctx=${ctx}D; i=$((i + 2)) ;;
@@ -361,8 +361,22 @@ _st_q() { # the next byte appended to the word is quoted or escaped
     wq=1; win=1
 }
 
-# _st_ansic_e BODY — _ST_DEC is BODY decoded the way ${BODY@E} decodes it.
+# _st_ansic_e BODY — _ST_DEC is BODY decoded the way ${BODY@E} decodes it. False for a
+# control-letter escape followed by a backslash: bash 3.2, bash 5 and zsh read the pair
+# three ways, so no decoding of it is safe and the caller refuses the word.
+# shellcheck disable=SC1003 # literal \ bytes, not escaped quotes
 _st_ansic_e() {
+    local r=$1
+    case "$r" in
+        *'\c\'*)
+            while [ -n "$r" ]; do
+                case "$r" in
+                    '\c\'*) return 1 ;;
+                    '\'?*) r=${r:2} ;;
+                    *) r=${r:1} ;;
+                esac
+            done ;;
+    esac
     if [ "${BASH_VERSINFO[0]}" -gt 4 ] \
         || { [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]}" -ge 4 ]; }; then
         eval '_ST_DEC=${1@E}'
@@ -436,7 +450,6 @@ _st_ansic_walk() {
                     _ST_DEC=$_ST_DEC'\c'
                 else
                     k=$((k + 1))
-                    if [ "$d" = '\' ] && [ "${b:k:1}" = '\' ]; then k=$((k + 1)); fi
                     if [ "$d" = '?' ]; then v=127; else printf -v v %d "'$d"; v=$((v & 31)); fi
                     _st_emit "$v" || return 0
                 fi

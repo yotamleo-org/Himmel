@@ -118,7 +118,7 @@ st_tokenize() {
                         done
                         [ "$j" -lt "$n" ] || return 1
                         # The shell runs the decoded word (`$'\x2dr'` is -r).
-                        _st_ansic_e "$body"; body=$_ST_DEC
+                        _st_ansic_e "$body" || return 1; body=$_ST_DEC
                         _st_q; w=$w$body; i=$((j + 1))
                         ;;
                     '"') _st_q; ctx=${ctx}D; i=$((i + 2)) ;;
@@ -241,8 +241,22 @@ _st_q() { # the next byte appended to the word is quoted or escaped
     wq=1; win=1
 }
 
-# _st_ansic_e BODY — _ST_DEC is BODY decoded the way ${BODY@E} decodes it.
+# _st_ansic_e BODY — _ST_DEC is BODY decoded the way ${BODY@E} decodes it. False for a
+# control-letter escape followed by a backslash: bash 3.2, bash 5 and zsh read the pair
+# three ways, so no decoding of it is safe and the caller refuses the word.
+# shellcheck disable=SC1003 # literal \ bytes, not escaped quotes
 _st_ansic_e() {
+    local r=$1
+    case "$r" in
+        *'\c\'*)
+            while [ -n "$r" ]; do
+                case "$r" in
+                    '\c\'*) return 1 ;;
+                    '\'?*) r=${r:2} ;;
+                    *) r=${r:1} ;;
+                esac
+            done ;;
+    esac
     if [ "${BASH_VERSINFO[0]}" -gt 4 ] \
         || { [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]}" -ge 4 ]; }; then
         eval '_ST_DEC=${1@E}'
@@ -316,7 +330,6 @@ _st_ansic_walk() {
                     _ST_DEC=$_ST_DEC'\c'
                 else
                     k=$((k + 1))
-                    if [ "$d" = '\' ] && [ "${b:k:1}" = '\' ]; then k=$((k + 1)); fi
                     if [ "$d" = '?' ]; then v=127; else printf -v v %d "'$d"; v=$((v & 31)); fi
                     _st_emit "$v" || return 0
                 fi
@@ -562,7 +575,7 @@ _stx_walk() {
                         i=$e; continue ;;
                     "'")
                         if [ "$dq" = 0 ]; then
-                            _stx_ansi "$s" $((i + 2))
+                            _stx_ansi "$s" $((i + 2)) || return 1
                             b=$_SX_W
                             b=${b//$sq/$sq\\$sq$sq}; o=$o$sq$b$sq; i=$_SX_E; continue
                         fi ;;
@@ -738,7 +751,7 @@ _stx_end() {
                                 i=$((i + 2)); continue ;;
                             "'")
                                 if [ "$t" != E ]; then
-                                    _stx_ansi "$s" $((i + 2)); i=$_SX_E; continue
+                                    _stx_ansi "$s" $((i + 2)) || return 1; i=$_SX_E; continue
                                 fi ;;
                         esac ;;
                     '(') case $t in P | p) st=${st}p ;; esac ;;
@@ -777,7 +790,7 @@ _stx_ansi() {
             body=$body$c; j=$((j + 1))
         fi
     done
-    _st_ansic_e "$body"
+    _st_ansic_e "$body" || return 1
     _SX_W=$_ST_DEC
     _SX_E=$((j + 1))
 }
@@ -809,7 +822,7 @@ _stx_hdword() {
                 done ;;
             '$')
                 case ${s:j+1:1} in
-                    "'") _stx_ansi "$s" $((j + 2)); w=$w$_SX_W; q=1; j=$_SX_E ;;
+                    "'") _stx_ansi "$s" $((j + 2)) || return 1; w=$w$_SX_W; q=1; j=$_SX_E ;;
                     '"') j=$((j + 1)) ;;
                     *) w=$w'$'; j=$((j + 1)) ;;
                 esac ;;
@@ -850,7 +863,7 @@ _stx_param() {
                         r=${r:1}; t=${r%%"$cl"*}
                         [ "$t" != "$r" ] || return 1
                         r=${r:${#t}+1}
-                        if [ "$pe" = 1 ]; then _st_ansic_e "$t"; t=$_ST_DEC; fi
+                        if [ "$pe" = 1 ]; then _st_ansic_e "$t" || return 1; t=$_ST_DEC; fi
                         case $f in
                             l | r) [ "$a" = 0 ] || { tp[np]=$t; np=$((np + 1)); } ;;
                             j | s) tp[np]=$t; np=$((np + 1)) ;;
