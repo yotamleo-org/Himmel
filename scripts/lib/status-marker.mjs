@@ -24,6 +24,7 @@ export function statusMarkerIsParked(word) {
   return word === 'PARKED-BANK' || word === 'PARKED-USAGE';
 }
 
+const FENCE = /^ {0,3}(```|~~~)/;
 const RESULTS = /^## Results(?:[ \t]|$)/;
 const RULINGS = /^## (?:Chief|Console) Rulings(?:[ \t]|$)/; // old-term-ok
 const ACTIONABLE = /^- (?:[0-9]{1,2}:[0-9]{2}[ \t\n\v\f\r]+)?(?:\*\*)?(READY|BLOCKED|FINDING|MERGED)(?:[^A-Za-z0-9_][\s\S]*)?$/;
@@ -35,7 +36,15 @@ function scopeLines(path) {
   const out = [];
   let scope = false;
   let seen = false;
+  let fence = '';
   for (const raw of readFileSync(path, 'latin1').split('\n')) {
+    const f = FENCE.exec(raw);
+    if (f) {
+      if (!fence) fence = f[1];
+      else if (fence === f[1]) fence = '';
+      continue;
+    }
+    if (fence) continue;
     const head = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
     if (head.startsWith('## ')) {
       const isResults = RESULTS.test(head);

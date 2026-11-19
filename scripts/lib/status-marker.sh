@@ -33,11 +33,17 @@ status_marker_is_parked() {
 }
 
 _status_marker_scope() {
-  local LC_ALL=C doc="${1-}" line head scope=0 seen=0
-  local hre=$'^## Results([ \t]|$)'
+  local LC_ALL=C doc="${1-}" line head scope=0 seen=0 fence="" ftype
+  local hre=$'^## Results([ \t]|$)' fre='^ {0,3}(```|~~~)'
   local rre=$'^## (Chief|Console) Rulings([ \t]|$)'  # old-term-ok
   [ -f "$doc" ] && [ -r "$doc" ] || return 3
   while IFS= read -r line || [ -n "$line" ]; do
+    if [[ $line =~ $fre ]]; then
+      ftype="${BASH_REMATCH[1]}"
+      if [ -z "$fence" ]; then fence="$ftype"; elif [ "$fence" = "$ftype" ]; then fence=""; fi
+      continue
+    fi
+    [ -z "$fence" ] || continue
     head="${line%$'\r'}"
     case "$head" in
       '## '*)
