@@ -112,6 +112,7 @@ export async function runReader(text: string, kind: string, deps: ReaderDeps): P
 }
 
 function spawnReader(input: string, cwd: string, mcp: string, env: NodeJS.ProcessEnv, timeoutMs: number): Promise<Digest> {
+  // launch-profile-ok: --safe-mode loads no plugins, hooks or MCP; launch-guard-ok: a -p print run with no tools, not an interactive launch
   const argv = ["-p", "--safe-mode", "--strict-mcp-config", "--mcp-config", mcp, "--no-session-persistence", "--tools", "", "--model", "haiku", "--permission-mode", "default", "--output-format", "json", "--max-turns", "1"];
   return new Promise(resolve => {
     const child = procHooks.spawn("claude", argv, { cwd, env, detached: true, stdio: ["pipe", "pipe", "ignore"] });
