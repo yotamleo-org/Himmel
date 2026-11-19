@@ -90,6 +90,13 @@ Per-field policy is `chief-wait.sh --rules` (`wake-rules.tsv`): station BEHIND
 entry and 60-minute reminders, CLI repair-off states with the persisted remedy,
 RM queue older than twice its launch gap, and `mon-down` once per down streak.
 Open-count/residual-cap and persistent underfill retain their existing semantics.
+`rm-blocked=` is a plain key field: one wake per distinct set of blocked unfinished
+rulings, `?` keeps the last known set, and the wake is the shared `WAKE tick` line
+naming it in `changed=` with the tick line after it. Like every key field it is
+silent on a waiter's baseline: with no saved key, or a saved key taken under different
+tick args or manifest worker set, the first sample only records what is on the line,
+so a chief that starts or takes over reads the tick line for `rm-blocked=` (the
+release-manager section, "A blocked ruling wakes you").
 The detailed one-shot behavior below remains the default without `--stream`.
 In one-shot mode a printed `WAKE owed-actions` also leaves its notification
 open: after receipt the chief acknowledges with `owe.sh close --bucket <bucket>
