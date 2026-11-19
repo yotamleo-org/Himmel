@@ -32,9 +32,6 @@
 # The diff baseline advances only after the sender reports a delivered alert; a
 # failed send leaves it, so the next run alerts on the same findings again.
 #
-# ponytail: "delivered" means the sender handed the message on: the bridge's
-# outbox send is asynchronous and does not report a later Telegram refusal,
-# upgrade path: have the poller's outbox flush keep an entry its send refused.
 #
 # Seams (tests): HIMMEL_DOCTOR_STATE_DIR, DOCTORCAD_CRONTAB, DOCTORCAD_RUNNER_DIR.
 # Bounds: DOCTORCAD_HOLDS_GC_PASSES (gc passes per register, 12), DOCTORCAD_HOLDS_GC_BUDGET (seconds for all registers, 120).

@@ -24,8 +24,6 @@
 #
 # Exit: 0 every PR owned; 1 at least one orphan; 2 usage; 3 unavailable.
 # PLATFORM GUARD: Linux-only kit, bash 3.2-safe; needs jq.
-# ponytail: ownership is the ticket key in the branch name (as tick.sh's unowned-prs= does) and the
-# record's derived state; upgrade = a held-label read through ticket-hold.sh once holds are labels.
 set -uo pipefail
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
 

@@ -3,6 +3,8 @@
 # where that project's mirror lives. Source it, then call:
 #   jira_project_key   print the project key
 #   jira_mirror_dir    print the mirror directory
+#   jira_project_configured   succeed when a key is set anywhere (env, himmel.conf, .env), so
+#                      the HIMMEL fallback does not count as configured
 #
 # Key: JIRA_PROJECT_KEY from the process env when non-empty, else the value load_dotenv finds
 # (himmel.conf, then .env), else HIMMEL. An exported empty value counts as unset, the same
@@ -32,6 +34,11 @@ jira_project_key() {
             _jp_key=HIMMEL ;;
     esac
     printf '%s\n' "$_jp_key"
+}
+
+jira_project_configured() {
+    [ -n "${JIRA_PROJECT_KEY:-}" ] && return 0
+    [ -n "$(load_dotenv JIRA_PROJECT_KEY; printf '%s' "${JIRA_PROJECT_KEY:-}")" ]
 }
 
 jira_mirror_dir() {

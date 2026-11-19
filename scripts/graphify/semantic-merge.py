@@ -48,7 +48,6 @@ PRICE_IN, PRICE_OUT = 3.0, 15.0
 MAX_ATTEMPTS = 3
 # Directory names graphify's detect never scans: a .md under one is never
 # extracted, so listing it would fail it on every run.
-# ponytail: a copy of graphify detect._SKIP_DIRS (graphifyy at 2026-10-19), re-sync on a graphify bump.
 GRAPHIFY_SKIP_DIRS = {
     "venv", ".venv", "node_modules", "__pycache__", ".git", "dist", "build", "target",
     "site-packages", "lib64", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", ".nox", ".eggs",
@@ -59,7 +58,6 @@ GRAPHIFY_SKIP_DIRS = {
 # Test fixtures are data for a suite, not knowledge; a large mirror of them crowds every chunk.
 SEMANTIC_SKIP_DIRS = GRAPHIFY_SKIP_DIRS | {"fixtures"}
 # graphify's own exported notes (<vault>/60-Maps/graph/): extracting them mints Skills1.md-style duplicate families on every run.
-# ponytail: the luna vault's fixed maps dir, as refresh-graph-map.sh's <maps-dir>/graph and luna-index-hygiene.sh hardcode it; a corpus with another maps dir needs .graphify-corpus-ignore.
 EXPORT_DIRS = ["60-Maps/graph/"]
 # Templates, test data, eval graders and vendored plugin docs never yield content nodes: the model omits
 # them, so each failed on every run. ONE rule for the semantic corpus walk, `noncontent-filter` (the
@@ -129,7 +127,6 @@ def ignored_dirs(root):
                 dirs.append(line + "/")
     # graphify itself drops what .graphifyignore lists, so a .md under one of its
     # plain directory entries would be planned on every run and never extracted.
-    # ponytail: plain `dir/` entries only (no glob), and none at all once the file holds a `!` re-include; a .md under a glob pattern still backs off.
     path = os.path.join(root, ".graphifyignore")
     if os.path.exists(path):
         with open(path, encoding="utf-8") as f:
@@ -147,7 +144,6 @@ def ignored_dirs(root):
 def moved_stub(full):
     # A pointer page ("# Moved: ..." + a link) holds no facts: the model omits it, so it
     # backed off, kept its old nodes and read as stuck on every run.
-    # ponytail: the first line starting "# Moved:" (colon), as a moved-page stub is written; another stub style needs .graphify-corpus-ignore.
     try:
         with open(full, encoding="utf-8", errors="replace") as f:
             return f.read(256).lstrip().startswith("# Moved:")
@@ -343,7 +339,6 @@ def src_key(item, root):
 
 
 def is_file_path(s):
-    # ponytail: a source_file is a file path when it is relative, has an extension and no module-name shape (@scope, node:fs), so a module such as socket.io still reads as a path, add a type check if one is pruned.
     return bool(s) and not s.startswith(("/", "../", "@")) and ":" not in s.split("/")[0] and os.path.splitext(s)[1] != ""
 
 
@@ -522,7 +517,6 @@ def cmd_merge(a):
     # SHRINK_RATIO of its old semantic nodes is refused like a failed chunk --
     # old items kept, file unstamped, retried next run. A model that returns a
     # thin subset must not silently erase real facts (pr-check doc 25 to 1).
-    # ponytail: nodes between 50 and 100 percent of the old count still replace the file's items, add a per-node union if semantic-runs.jsonl shows losses there. A file omitted every run is retried up to MAX_ATTEMPTS, then backed off until its content changes.
     m = load_manifest(a.out)
     files, stuck = m.get("files", {}), m.get("stuck", {})
 

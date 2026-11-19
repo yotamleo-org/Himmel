@@ -61,29 +61,12 @@
 # same Bash, file-tool and apply_patch routes as project.conf. Approvals come from
 # the operator's Telegram approve reply and the allowlist is operator-edited, so a
 # worker that writes either file could approve its own review.
-# ponytail: a text match, so a same-uid worker can still reach them through a spelling
-# it misses; the real protection is the separate-uid store (filed as its own ticket).
-# ALLOWS everything else, silently. Plain reads and himmelctl config set stay
-# allowed; config set is not a prefix bypass for additional shell writes.
 #
 # FAIL MODE: fail-closed only for its one subject. A payload it cannot parse is
 # scanned as raw text and denied when it names the file; otherwise allowed
 # (failing closed on every unparseable call would lock a session out of every
 # tool for a hook bug; scripts/hooks/CLAUDE.md fail-open-vs-closed rule).
 #
-# ponytail: the allow-list over-denies on purpose (a splitter was patched three
-# times and each patch opened the next escape), upgrade path a real
-# shared tokenizer, filed if a benign read is blocked often. The TRIGGER's
-# spelling ceiling stays filed: it needs the literals `.himmel` and `config.j*`
-# (or `config.*`/`conf*`) in the text, so an interpreter that assembles the
-# path from pieces, `conf?g`, `[c]onfig`, split quotes, a script FILE that
-# writes the config without being handed its name, `eval`, a variable holding
-# the path, cwd-indirection across calls (`cd ~/.himmel`, then a later
-# `cp x config.json` names no `.himmel`), and a Bash command reaching it through a symlink alias (only
-# file-tool paths are resolved) are not caught. Text matching, not a sandbox.
-# The graphify fence is the second layer: it refuses a symlinked config or
-# ~/.himmel itself. Upgrade path: an operator-owned (root-owned or separate-uid)
-# store the fence verifies, filed when a forged opt-in is seen.
 #
 # Hook I/O: JSON on stdin; exit 0 = allow, exit 2 = block (stderr shown).
 # Platform guard: bash 3.2-safe (no mapfile, no associative arrays).

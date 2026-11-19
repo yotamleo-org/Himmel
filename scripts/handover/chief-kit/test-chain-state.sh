@@ -19,6 +19,7 @@ python3 -I "$HERE/fixtures/chain-parity/check.py" state || exit 1
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/chain-state-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
 fails=0
+KP=HIMMEL
 check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: [$2] lacks [$3]"; fails=$((fails+1)) ;; esac; }
 
@@ -65,11 +66,11 @@ cs; rc=$?
 check "E25: exits 0" "$rc" 0
 check "E25: the schema is himmel.chains/1" "$(q .schema)" "himmel.chains/1"
 check "E25: a ticket whose only open link is an earlier step of a moving chain waits on that step, not blocked" \
-    "$(tk HIMMEL-2 .state)" "waits on step 1"
-check "E25: the earlier step is in flight" "$(tk HIMMEL-1 .state)" "in flight"
-check "E25: an open blocker outside the version is a real block" "$(tk HIMMEL-3 .state)" "blocked"
-check "E25: nothing open stops a ticket: can launch" "$(tk HIMMEL-4 .state)" "can launch"
-check "E25: a ticket in no chain is not listed" "$(tk HIMMEL-9 .key)" "null"
+    "$(tk "$KP"-2 .state)" "waits on step 1"
+check "E25: the earlier step is in flight" "$(tk "$KP"-1 .state)" "in flight"
+check "E25: an open blocker outside the version is a real block" "$(tk "$KP"-3 .state)" "blocked"
+check "E25: nothing open stops a ticket: can launch" "$(tk "$KP"-4 .state)" "can launch"
+check "E25: a ticket in no chain is not listed" "$(tk "$KP"-9 .key)" "null"
 # Each link carries its blocker's fixVersions so a page narrowed to one version can tell a wait on an earlier version from a block
 check "E25b: a link to a blocker in a later version names that version" "$(tk HIMMEL-3 '.links[0].onVersions | join(",")')" "v2"
 check "E25b: a link to a blocker in the picked version names it" "$(tk HIMMEL-2 '.links[0].onVersions | join(",")')" "v1"
@@ -106,13 +107,13 @@ merge 2026-11-02T09:00:00Z HIMMEL-7380 302 no
 merge 2026-11-04T09:00:00Z HIMMEL-7380 303 no
 cs
 check "E29: a partial PR merged before the hold clears, then the completing PR after it, reads order held" \
-    "$(tk HIMMEL-7379 .state)" "done · order held"
+    "$(tk "$KP"-7379 .state)" "done · order held"
 check "E29: the two partial PRs are ticks with their numbers" "$(tk HIMMEL-7379 '.ticks | map(.pr) | join(" ")')" "101 102"
-check "E29: and their times" "$(tk HIMMEL-7379 '.ticks[0].ts')" "2026-11-01T16:40:00Z"
-check "E29: the check reads the completing merge" "$(tk HIMMEL-7379 '.check.merge | .pr + " " + .ts')" "103 2026-11-02T18:40:00Z"
-check "E29: hold clearing respects the current resolution time" "$(tk HIMMEL-7379 '.check.links[0].at')" "2026-11-02T15:20:00Z"
-check "E29: a ticket completed before the chain existed is not checked" "$(tk HIMMEL-7125 .check.result)" "not-checked"
-check "E29: a ticket closed by hand is read at its last PR merged before Jira went Done" "$(tk HIMMEL-7380 .check.merge.pr)" "302"
+check "E29: and their times" "$(tk "$KP"-7379 '.ticks[0].ts')" "2026-11-01T16:40:00Z"
+check "E29: the check reads the completing merge" "$(tk "$KP"-7379 '.check.merge | .pr + " " + .ts')" "103 2026-11-02T18:40:00Z"
+check "E29: hold clearing respects the current resolution time" "$(tk "$KP"-7379 '.check.links[0].at')" "2026-11-02T15:20:00Z"
+check "E29: a ticket completed before the chain existed is not checked" "$(tk "$KP"-7125 .check.result)" "not-checked"
+check "E29: a ticket closed by hand is read at its last PR merged before Jira went Done" "$(tk "$KP"-7380 .check.merge.pr)" "302"
 
 reset
 reg chain-8004=8005,7379
@@ -123,8 +124,8 @@ cl '{"ts":"2026-10-28T20:56:00Z","change":"hold","key":"HIMMEL-7379","kind":"fil
 merge 2026-11-02T14:00:00Z HIMMEL-7379 103 yes
 merge 2026-11-02T15:10:00Z HIMMEL-8005 200 yes
 cs
-check "E29: the completing PR merging before the hold clears reads out of order" "$(tk HIMMEL-7379 .state)" "done · out of order"
-check "E29: with the hold record that stood open" "$(tk HIMMEL-7379 '.check.links[0] | .on + " " + .kind + " " + .status + " " + .added')" \
+check "E29: the completing PR merging before the hold clears reads out of order" "$(tk "$KP"-7379 .state)" "done · out of order"
+check "E29: with the hold record that stood open" "$(tk "$KP"-7379 '.check.links[0] | .on + " " + .kind + " " + .status + " " + .added')" \
     "HIMMEL-8005 file-collision open 2026-10-28T20:56:00Z"
 
 reset
@@ -136,15 +137,15 @@ issue HIMMEL-7382 "In Progress" parent=HIMMEL-8004
 ev '{"ts":"2026-11-02T14:00:00Z","event":"merge","key":"HIMMEL-7379","pr":"103","contract":"yes","result":"miss","stage":"transition"}'
 ev '{"ts":"2026-11-02T14:00:00Z","event":"merge","key":"HIMMEL-7382","pr":"104","contract":"yes","result":"deferred","stage":"lock"}'
 cs
-check "E29: a completing merge whose Jira transition failed does not read done" "$(tk HIMMEL-7379 .state)" "in flight"
-check "E29: nor one whose transition was deferred" "$(tk HIMMEL-7382 .state)" "in flight"
-check "E29: and its dependent still waits on it" "$(tk HIMMEL-7381 .state)" "waits on step 1"
+check "E29: a completing merge whose Jira transition failed does not read done" "$(tk "$KP"-7379 .state)" "in flight"
+check "E29: nor one whose transition was deferred" "$(tk "$KP"-7382 .state)" "in flight"
+check "E29: and its dependent still waits on it" "$(tk "$KP"-7381 .state)" "waits on step 1"
 issue HIMMEL-7379 Done parent=HIMMEL-8004 resolved=2026-11-02T16:00:00.000+0000
 cs
-check "E29: closed by hand afterwards, the check reads that merge" "$(tk HIMMEL-7379 .check.merge.pr)" "103"
+check "E29: closed by hand afterwards, the check reads that merge" "$(tk "$KP"-7379 .check.merge.pr)" "103"
 ev '{"ts":"2026-11-02T14:00:05Z","event":"merge","key":"HIMMEL-7379","pr":"999","result":"noop","rule":"D3"}'
 cs
-check "E29 (HIMMEL-8522): a contract-less derive row under event merge is not read as the merge" "$(tk HIMMEL-7379 .check.merge.pr)" "103"
+check "E29: a contract-less derive row under event merge is not read as the merge" "$(tk "$KP"-7379 .check.merge.pr)" "103"
 
 # --- E29b: a merge row written before the merge call counts once its PR is proven merged ---
 cat > "$tmp/mrgh" <<'EOF'
@@ -162,11 +163,11 @@ issue HIMMEL-7382 Done parent=HIMMEL-8004 resolved=2026-11-02T16:00:00.000+0000
 ev '{"ts":"2026-11-02T14:00:00Z","event":"merge","key":"HIMMEL-7379","pr":"105","head":"h5","contract":"yes","result":"pending","stage":"pre-merge"}'
 ev '{"ts":"2026-11-02T14:00:00Z","event":"merge","key":"HIMMEL-7382","pr":"106","head":"h6","contract":"yes","result":"pending","stage":"pre-merge"}'
 MERGE_ROWS_GH="$tmp/mrgh" cs
-check "E29b: a pre-merge row whose PR is still open is not read as the merge" "$(tk HIMMEL-7379 .check.merge.pr)" "null"
-check "E29b: a pre-merge row whose PR GitHub reports MERGED is read as the merge" "$(tk HIMMEL-7382 .check.merge.pr)" "106"
+check "E29b: a pre-merge row whose PR is still open is not read as the merge" "$(tk "$KP"-7379 .check.merge.pr)" "null"
+check "E29b: a pre-merge row whose PR GitHub reports MERGED is read as the merge" "$(tk "$KP"-7382 .check.merge.pr)" "106"
 ev '{"ts":"2026-11-02T14:00:01Z","event":"merge","key":"HIMMEL-7382","pr":"106","head":"h6","result":"not-merged","stage":"merge-failed"}'
 MERGE_ROWS_GH="$tmp/mrgh" cs
-check "E29b: a not-merged row after it retires the pre-merge row" "$(tk HIMMEL-7382 .check.merge.pr)" "null"
+check "E29b: a not-merged row after it retires the pre-merge row" "$(tk "$KP"-7382 .check.merge.pr)" "null"
 reset
 reg chain-8004=7379,7381,7382
 issue HIMMEL-8004 "To Do" type=Epic
@@ -175,7 +176,7 @@ ev '{"ts":"2026-11-02T14:00:00Z","event":"merge","key":"HIMMEL-7382","pr":"106",
 pad='{"ts":"2026-11-02T13:00:00Z","event":"hold-release","key":"HIMMEL-1","result":"moved","note":"padding to push the ledger past 1 MiB..................................................."}'
 for _ in $(seq 1 12000); do printf '%s\n' "$pad"; done >> "$S/status-events.jsonl"
 MERGE_ROWS_GH="$tmp/mrgh" cs
-check "E29b: a ledger past 1 MiB still reads the merged PR's pre-merge row" "$(tk HIMMEL-7382 .check.merge.pr)" "106"
+check "E29b: a ledger past 1 MiB still reads the merged PR's pre-merge row" "$(tk "$KP"-7382 .check.merge.pr)" "106"
 
 # --- E30: a chain changes ----------------------------------------------------
 reset
@@ -191,8 +192,8 @@ cl '{"ts":"2026-11-03T12:05:00Z","change":"add","chain":"chain-mem","key":"HIMME
 cl '{"ts":"2026-11-03T12:06:00Z","change":"remove","chain":"chain-mem","key":"HIMMEL-8012","who":"chief","reason":"moved to v2"}'
 merge 2026-11-03T14:02:00Z HIMMEL-8010 400 yes
 cs
-check "E30: a reorder before the merge: the check reads the chain as of the merge (held)" "$(tk HIMMEL-8010 .state)" "done · order held"
-check "E30: the reordered ticket is now the earlier step" "$(tk HIMMEL-8010 '.chains[0].step') $(tk HIMMEL-8009 '.chains[0].step')" "1 2"
+check "E30: a reorder before the merge: the check reads the chain as of the merge (held)" "$(tk "$KP"-8010 .state)" "done · order held"
+check "E30: the reordered ticket is now the earlier step" "$(tk "$KP"-8010 '.chains[0].step') $(tk "$KP"-8009 '.chains[0].step')" "1 2"
 check "E30: the change log lists each change in time order" \
     "$(q '.chains[0].log | map(.change) | join(" ")')" "hold release hold add remove"
 check "E30: with its kind, reason and source" "$(q '.chains[0].log[2] | .kind + " " + .reason + " " + .who')" "chain-order docs land first chief"
@@ -206,7 +207,7 @@ cl '{"ts":"2026-11-03T12:00:00Z","change":"release","key":"HIMMEL-8010","who":"c
 cl '{"ts":"2026-11-06T00:00:00Z","change":"hold","key":"HIMMEL-8009","kind":"chain-order","on":"HIMMEL-8010","who":"chief","reason":"r"}'
 cs
 check "E30: a hold released before its target completed, and one not yet set, add no step" \
-    "$(tk HIMMEL-8010 '.chains[0].step') $(tk HIMMEL-8009 '.chains[0].step')" "1 1"
+    "$(tk "$KP"-8010 '.chains[0].step') $(tk "$KP"-8009 '.chains[0].step')" "1 1"
 
 # --- E33: links across other work ---------------------------------------------
 reset
@@ -238,8 +239,8 @@ issue HIMMEL-8005 "To Do" parent=HIMMEL-8004 bb='["HIMMEL-8016"]' labels='["chai
 issue HIMMEL-8006 "To Do" parent=HIMMEL-8004 bb='["HIMMEL-8005"]'
 cs
 check "E24: a ticket's badge gives its step of the chain's steps" "$(tk HIMMEL-8005 '.chains[] | select(.id == "chain-8004") | "\(.step)/\(.steps)"')" "2/3"
-check "E24: a ticket in three chains shows two badges" "$(tk HIMMEL-8005 '.badges | length')" "2"
-check "E24: then +1" "$(tk HIMMEL-8005 .more)" "1"
+check "E24: a ticket in three chains shows two badges" "$(tk "$KP"-8005 '.badges | length')" "2"
+check "E24: then +1" "$(tk "$KP"-8005 .more)" "1"
 check "E24: next is the lowest step that can launch" "$(q '.chains[] | select(.id == "chain-8004") | .next')" "null"
 
 # --- hold kinds: waits on you, date-gated --------------------------------------
@@ -252,26 +253,26 @@ cl '{"ts":"2026-11-01T00:00:00Z","change":"hold","key":"HIMMEL-1","kind":"operat
 cl '{"ts":"2026-11-01T00:00:00Z","change":"hold","key":"HIMMEL-2","kind":"date","who":"chief","reason":"not before","until":"2026-11-07"}'
 ev '{"ts":"2026-11-01T00:00:00Z","event":"hold","key":"HIMMEL-3","result":"moved"}'
 cs
-check "kinds: an operator hold reads waits on you" "$(tk HIMMEL-1 .state)" "waits on you"
-check "kinds: a date hold before its date reads date-gated" "$(tk HIMMEL-2 .state)" "date-gated"
-check "kinds: a hold set without a kind still waits" "$(tk HIMMEL-3 .state)" "waits on hold"
+check "kinds: an operator hold reads waits on you" "$(tk "$KP"-1 .state)" "waits on you"
+check "kinds: a date hold before its date reads date-gated" "$(tk "$KP"-2 .state)" "date-gated"
+check "kinds: a hold set without a kind still waits" "$(tk "$KP"-3 .state)" "waits on hold"
 check "kinds: the Why fields carry kind, source, added, clears" \
-    "$(tk HIMMEL-2 '.links[0] | .kind + " " + .source + " " + .added + " " + .clears')" "date chain-log 2026-11-01T00:00:00Z 2026-11-07"
+    "$(tk "$KP"-2 '.links[0] | .kind + " " + .source + " " + .added + " " + .clears')" "date chain-log 2026-11-01T00:00:00Z 2026-11-07"
 NOW=2026-11-08T00:00:00Z cs
-check "kinds: past its date the date hold clears" "$(tk HIMMEL-2 .state)" "can launch"
+check "kinds: past its date the date hold clears" "$(tk "$KP"-2 .state)" "can launch"
 check "kinds: next is the lowest step that can launch" "$(q '.chains[0].next | "\(.step) " + (.keys | join(" "))')" "1 HIMMEL-2"
 reset
 reg chain-x=1
 issue HIMMEL-1 "To Do" labels='["chain-x"]'
 ev '{"ts":"2026-11-01T00:00:00Z","event":"hold","key":"HIMMEL-1","kind":"operator","result":"moved"}'
 cs
-check "kinds: a typed hold whose chain-log row is missing still waits, from its event row" "$(tk HIMMEL-1 .state)" "waits on you"
+check "kinds: a typed hold whose chain-log row is missing still waits, from its event row" "$(tk "$KP"-1 .state)" "waits on you"
 reset
 reg chain-x=1
 issue HIMMEL-1 "To Do" labels='["chain-x"]'
 ev '{"ts":"2026-11-01T00:00:00Z","event":"hold","key":"HIMMEL-1","kind":"date","until":"2026-11-07","result":"moved"}'
 NOW=2026-11-08T00:00:00Z cs
-check "kinds: and a date hold read from its event row clears past its date" "$(tk HIMMEL-1 .state)" "can launch"
+check "kinds: and a date hold read from its event row clears past its date" "$(tk "$KP"-1 .state)" "can launch"
 
 # --- an absent chain-log is no holds; one that cannot be read is no answer ------
 reset

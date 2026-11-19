@@ -5,15 +5,6 @@
 # sends nothing anywhere. Weights mirror scripts/lanes/lib/burn-weights.sh
 # (override with the same WORKER_SESSION_BURN_W_* env vars).
 #
-# Model (ponytail: per-call growth replay, ignores 5m/1h TTL expiry and tool
-# result truncation, upgrade path = a real A/B on a held-out week):
-#   a session is a sequence of API calls (context C_i, output o_i, growth
-#   g_i = C_i - C_{i-1}); recorded compaction resets are unrolled by replacing
-#   the reset step's growth with the session median growth. At window W the
-#   replay compacts when C + g would exceed W: one summarise call (reads C as
-#   cache_read, writes SUMMARY_OUT tokens) then the context restarts at POST
-#   tokens, rewritten once as cache_create. mode=handover instead restarts at
-#   FLOOR + REBRIEF with HANDOVER_OUT of ceremony output.
 import argparse, glob, json, os, statistics, sys, time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))

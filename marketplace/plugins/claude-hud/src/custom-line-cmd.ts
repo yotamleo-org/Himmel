@@ -10,7 +10,7 @@ export const TIMEOUT_MS = 3000;
 // Kill the whole process tree, not just the shell wrapper. Under `shell: true`
 // the direct child is the shell (`/bin/sh -c …` / `cmd.exe /c …`); the actual
 // command runs as a grandchild. A plain `child.kill()` reaps only the shell, so
-// a slow command survives the timeout as an orphan — exactly the HIMMEL-717
+// a slow command survives the timeout as an orphan — exactly the
 // leak class this migration exists to eliminate.
 function killChildTree(child: ReturnType<typeof spawn>): void {
   const pid = child.pid;

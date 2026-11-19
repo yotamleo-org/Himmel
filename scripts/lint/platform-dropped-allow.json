@@ -52,7 +52,7 @@
   "scripts/cr/known-findings.json": {
     "reason": "comment that is still true (history or detector scope)",
     "lines": [
-      "      \"coverage\": \"No structural check; shellcheck does not model locale-dependent bracket expressions. Tree sweep 2026-09-02 (LC_ALL=C, positive-controlled): 0 real occurrences — the 26 apparent file hits are all prose comments and JSON string literals, not matcher bracket expressions, which is why the detector is scoped to a grep/sed/awk/=~ context rather than to any `[...]`. Same family as HIMMEL-2236 (pwsh_unicode awk %c locale). Detector-flavour note: `added-line-regex` patterns are compiled by `ere()` in known-findings.sh — POSIX class names ([:space:], [:alnum:], [:alpha:], [:digit:]) are substituted, then the result is handed to JavaScript's `new RegExp`. That is the ONLY consumer of `detector.pattern`; nothing feeds it to `grep -E`. So `\\\\x00`/`\\\\x7F` here are ECMAScript escapes, fully specified rather than implementation-dependent, and the negated class `[^\\\\x00-\\\\x7F]` means exactly 'any non-ASCII code unit'.\","
+      "      \"coverage\": \"No structural check; shellcheck does not model locale-dependent bracket expressions. Tree sweep 2026-09-02 (LC_ALL=C, positive-controlled): 0 real occurrences — the 26 apparent file hits are all prose comments and JSON string literals, not matcher bracket expressions, which is why the detector is scoped to a grep/sed/awk/=~ context rather than to any `[...]`. Same family as the pwsh_unicode awk %c locale case. Detector-flavour note: `added-line-regex` patterns are compiled by `ere()` in known-findings.sh — POSIX class names ([:space:], [:alnum:], [:alpha:], [:digit:]) are substituted, then the result is handed to JavaScript's `new RegExp`. That is the ONLY consumer of `detector.pattern`; nothing feeds it to `grep -E`. So `\\\\x00`/`\\\\x7F` here are ECMAScript escapes, fully specified rather than implementation-dependent, and the negated class `[^\\\\x00-\\\\x7F]` means exactly 'any non-ASCII code unit'.\","
     ]
   },
   "scripts/cr/known-findings.sh": {
@@ -264,7 +264,6 @@
   "scripts/hooks/block-bank-lift-writes.sh": {
     "reason": "comment that is still true (history or detector scope); guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
     "lines": [
-      "# ponytail: the PowerShell tool is not wired, Windows is parked (HIMMEL-4102);",
       "INTERP_RE='^(python[0-9.]*|pypy[0-9.]*|perl[0-9.]*|ruby[0-9.]*|node|nodejs|deno|bun|php[0-9.]*|lua[0-9.]*|luajit|[gmn]?awk|busybox-awk|osascript|pwsh|powershell|rscript|julia|tclsh|wish|jshell|groovy|scala|kotlin|swift)$'"
     ]
   },
@@ -544,7 +543,6 @@
       "# a command PowerShell never pointed there. Caught by the escape-grammar",
       "# PowerShell backtick escapes are not",
       "# PowerShell command like  bash \"C:/dir/`forge.sh\"  -- which really does run",
-      "# ponytail: HIMMEL-2236 -- PowerShell also recognizes `e",
       "function pwsh_unescape(c) {",
       "    # existing forge.sh and the fence denied a command PowerShell would never",
       "# PowerShell also has a",

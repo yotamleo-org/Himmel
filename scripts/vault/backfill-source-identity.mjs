@@ -146,11 +146,6 @@ function ghGraphqlBatch(rawKeys) {
 
 // Authenticated README API — the same endpoint luna-ingest reads — so private
 // repos and non-standard README names resolve and both paths hash one document.
-// ponytail: a README over the API's 1 MB inline limit returns empty `.content`,
-// which hashes as empty bytes here exactly as it does in luna-ingest.
-// Returns { sha256, failed }: a 404 is the one sanctioned omission (no README ->
-// no field, not a failure); any other gh error also omits the field but is
-// flagged `failed` so main() can surface it instead of dropping it silently.
 function fetchReadmeSha256(nameWithOwner) {
   try {
     const out = execFileSync("gh", ["api", `repos/${nameWithOwner}/readme`, "--jq", ".content"], {

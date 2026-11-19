@@ -30,9 +30,6 @@
 # Test seams: STUCK_SCAN_NOW (ISO-8601 clock), STUCK_SCAN_MIRROR,
 # STUCK_SCAN_JIRA_CMD (command run as `<cmd> comment <KEY> --comment-file <f>`).
 #
-# ponytail: an OPERATOR / PARKED / RESUME disposition does not silence the scan,
-# only the comment's own timestamp resets the --min clock; upgrade: honour them
-# until their ref or worker changes.
 # PLATFORM GUARD: the chief kit is Linux-only. needs
 # gh, python3, and node for dispose.
 set -uo pipefail

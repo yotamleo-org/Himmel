@@ -87,8 +87,6 @@ export function readToolHealth(env = process.env, query = new URLSearchParams(),
 
 // Option B (spec 0.3 B1): a guard's denominator is the calls to the tools it is wired to check, not Bash alone.
 // A matcher is an anchored pattern over tool names ('*' or '' = every tool); a wired tool nobody called reads 0 calls.
-// ponytail: anchored regex over the matcher text, Claude Code's own matching of exotic matchers is not mirrored, a matcher that does not compile gives no denominator.
-// The digest splits Skill and Agent calls into Skill:<plugin>:<skill> and Agent:<type>; a matcher names the tool, so both match on the part before the colon.
 const matcherTool = (tool) => /^(?:Skill|Agent):/.test(tool) ? tool.slice(0, tool.indexOf(':')) : tool;
 function eligibleCalls(eligible, name, rows, complete) {
   if (!eligible || typeof eligible !== 'object' || !Object.hasOwn(eligible, name) || !Array.isArray(eligible[name]) || !complete) return null;

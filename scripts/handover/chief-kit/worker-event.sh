@@ -190,8 +190,6 @@ if [ -n "$labels" ]; then
     fi
     # a worker already wrapped has left the manifest; wrap-merged's chief-doc bullet
     # (`<label> WRAPPED, window closed.`) says so, and a re-run is then a noop.
-    # ponytail: a worker closed by close-wrapped (no such bullet) or named only by its
-    # stem still escalates, upgrade to a closed-workers record if such a re-run ever wakes a chief
     if [ -z "$worker" ] && grep -qE "(^|[^A-Za-z0-9_])$label WRAPPED, window closed\." "$DOC" 2>/dev/null; then
         echo "HANDLED noop $label"; exit 0
     fi

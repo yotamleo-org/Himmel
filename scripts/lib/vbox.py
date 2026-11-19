@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-VirtualBox control helper (HIMMEL-491 seed for the cross-OS provisioning SDK).
+VirtualBox control helper, the base of the cross-OS provisioning SDK (vmsdk.py).
 
 Covers two infra needs:
   - power on / off / ensure-running by VM name, so we never run two test VMs

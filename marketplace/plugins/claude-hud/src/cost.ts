@@ -5,7 +5,7 @@ import { isBedrockModelId, isClaudexLane, isVertexModelId } from './stdin.js';
 // so their list-price figure is shown only with display.showRoutedCost, and only once
 // it is positive (it reads $0.00 until the first response).
 export function getNativeCostUsd(stdin: StdinData, options?: { allowRoutedCost?: boolean }): number | null {
-  // himmel delta (HIMMEL-2900): the claudex lane's cost is not Claude's, so it is never reported.
+  // himmel delta: the claudex lane's cost is not Claude's, so it is never reported.
   if (isClaudexLane()) {
     return null;
   }

@@ -257,7 +257,6 @@ fail_over() {
     esac
   fi
   # the preflight and the alert take time: a stop that lands in them still ends the failure path
-  # ponytail: the check before the alert has no test seam in the usage preflight, upgrade path: the follow-up that gives the alert send a test seam, forwards TERM to the subscription fallback and frees the slot before the preflight
   [ "$STOPPED" = 0 ] || { echo "claude-api: stopped by its caller during the failure path; no alert, no fallback" >&2; return 0; }
   send_alert "$class" "$rc" "$reason" "$decision"
   echo "claude-api: fallback: $decision" >&2
@@ -487,7 +486,6 @@ OUT="$(mktemp "${TMPDIR:-/tmp}/claude-api-out.XXXXXX")" || refuse "no scratch fi
 # it from there and the subscription fallback can replay the same bytes. Everything above refuses before stdin is read.
 # The read is bounded by a watchdog at the call timeout on every host, as the call's own stdin read was by its watchdog,
 # and a terminal is refused (nobody types a prompt into a one-shot launcher).
-# ponytail: a SIGKILL or an OOM kill leaves the mode-600 prompt file in TMPDIR (the EXIT trap cannot run), upgrade path: sweep claude-api-prompt.* files older than the call timeout at launch
 CALL_TIMEOUT_S="${HIMMEL_API_CALL_TIMEOUT_S:-3600}"
 [[ "$CALL_TIMEOUT_S" =~ ^[1-9][0-9]{0,8}$ ]] || CALL_TIMEOUT_S=3600
 if [ "$HAS_PROMPT" != 1 ]; then
@@ -594,7 +592,6 @@ RC=$?
 _API_CALL_REAPED=1
 kill "$WATCHDOG_PID" 2>/dev/null
 # a cancel kills the call first and this shell right after: a default TERM here would end it before the settle below
-# ponytail: a tree cancel that lands mid-settle can cut a node step, so the reservation goes unknown or to the sweep, upgrade path: the follow-up that forwards TERM to the subscription fallback and frees the slot before the preflight
 trap 'STOPPED=1' TERM INT HUP
 
 # --- settle on verified cost; a call that exited non-zero is dead and settles too; otherwise unknown ---

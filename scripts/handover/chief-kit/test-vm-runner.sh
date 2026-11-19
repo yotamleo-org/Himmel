@@ -167,7 +167,7 @@ journal 1 10 "ci-runner: runner 4243 registered on yotamleo/Himmel (himmel-vm); 
 rm -f "$TMP/state/tick-vmrun-cache"
 case "$(run status --tick)" in ok:*) ok "a later registered line clears FAILING" ;; *) bad "recovered -> $(run status --tick)" ;; esac
 
-echo "T6b the tick token cross-checks GitHub's online runners and fails closed (HIMMEL-6034)"
+echo "T6b the tick token cross-checks GitHub's online runners and fails closed"
 reset
 : > "$TMP/units/himmel-ci-runner@.service"; echo on > "$TMP/stub/var"
 : > "$TMP/stub/active-1"; : > "$TMP/stub/active-2"
@@ -205,7 +205,7 @@ journal 1 100 "ci-runner: runner 4242 registered on yotamleo/Himmel (himmel-vm);
 journal 1 50 "ci-runner: runner 4242 done (rc=0)"
 [ "$(GH_ONLINE=0 run status --tick)" = "ok:2/2,busy=0" ] && ok "a finished runner with 0 online -> not DISAGREE" || bad "finished runner -> $(GH_ONLINE=0 run status --tick)"
 
-echo "T6c registration grace and an unreadable journal (HIMMEL-6034 slice 2)"
+echo "T6c registration grace and an unreadable journal"
 reset
 : > "$TMP/units/himmel-ci-runner@.service"; echo on > "$TMP/stub/var"
 : > "$TMP/stub/active-1"; : > "$TMP/stub/active-2"
@@ -226,7 +226,7 @@ reset
 : > "$TMP/stub/active-1"; : > "$TMP/stub/active-2"
 [ "$(run status --tick)" = "ok:2/2,busy=0" ] && ok "journalctl ok with no ci-runner lines yet -> not FAILING" || bad "empty journal -> $(run status --tick)"
 
-echo "T6c2 partial outage: fewer runners online than units with a registered, unfinished runner (HIMMEL-6034)"
+echo "T6c2 partial outage: fewer runners online than units with a registered, unfinished runner"
 reset
 : > "$TMP/units/himmel-ci-runner@.service"; echo on > "$TMP/stub/var"
 : > "$TMP/stub/active-1"; : > "$TMP/stub/active-2"
@@ -290,7 +290,7 @@ STUB="$TMP/stub" PATH="$TMP/bin:$PATH" HOME="$TMP/home" HIMMEL_CI_RUNNER_STOP_FI
     env -u HIMMEL_CI_RUNNER_REPO bash "$SUT" doctor >"$TMP/out" 2>&1; rc=$?
 if [ "$rc" -eq 0 ] && grep -q 'repos/yotamleo-org/Himmel/actions/permissions/fork-pr-contributor-approval' "$TMP/stub/gh.argv" && ! grep -q 'repos/yotamleo/Himmel/' "$TMP/stub/gh.argv"; then ok "default slug reads yotamleo-org/Himmel"; else bad "default slug: rc=$rc $(cat "$TMP/stub/gh.argv")"; fi
 
-echo "T10 review fixes (HIMMEL-5037 round 1)"
+echo "T10 review fixes"
 reset
 STUB_CLONE_FAIL=1 run on >"$TMP/out" 2>&1; rc=$?
 if [ "$rc" -ne 0 ] && [ ! -e "$TMP/stub/var" ] && [ ! -e "$TMP/stub/active-2" ] && grep -q '^release himmel-ci-2' "$TMP/stub/vm.calls"; then ok "clone failure: rc!=0, nothing started, lock released"; else bad "clone failure: rc=$rc"; fi
@@ -309,7 +309,7 @@ run on >/dev/null 2>&1
 STUB_STOP_FAIL=1 run off >"$TMP/out" 2>&1; rc=$?
 if [ "$rc" -ne 0 ] && grep -q 'still running' "$TMP/out"; then ok "off: unit that will not stop -> rc!=0"; else bad "off with failed stop: rc=$rc"; fi
 
-echo "T11 review fixes (HIMMEL-5037 round 2)"
+echo "T11 review fixes"
 reset
 run on >/dev/null 2>&1
 STUB_STOP_FAIL=1 run on --vms 1 >"$TMP/out" 2>&1; rc=$?
@@ -340,7 +340,7 @@ STUB_CLONE_FAIL=1 run on >"$TMP/out" 2>&1; rc=$?
 rel="$(grep -c '^release himmel-ci-2' "$TMP/stub/vm.calls" 2>/dev/null)"
 if [ "$rc" -ne 0 ] && [ "$rel" -ge 1 ]; then ok "clone failure releases the lock (rc=$rc, releases=$rel)"; else bad "clone failure: rc=$rc releases=$rel"; fi
 
-echo "T12 review fixes (HIMMEL-5037 round 3)"
+echo "T12 review fixes"
 reset
 STUB_START_DIES=1 run on >"$TMP/out" 2>&1; rc=$?
 if [ "$rc" -ne 0 ] && [ "$(cat "$TMP/stub/var" 2>/dev/null)" = off ] && [ -e "$TMP/stop" ]; then ok "a unit that dies right after start: rc!=0, switched off again"; else bad "dead-after-start: rc=$rc var=$(cat "$TMP/stub/var" 2>/dev/null)"; fi
@@ -349,7 +349,7 @@ echo "T9 usage"
 run bogus >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 2 ] && ok "unknown subcommand: rc=2" || bad "usage rc=$rc"
 
-echo "T15 review notes (HIMMEL-5641, j2574f)"
+echo "T15 review notes"
 reset
 HIMMEL_CI_RUNNER_JOB_MAX='45&0#x' run on >"$TMP/out" 2>&1; rc=$?
 if [ "$rc" -eq 0 ] && grep -qxF 'Environment="HIMMEL_CI_RUNNER_JOB_MAX=45&0#x"' "$TMP/units/himmel-ci-runner@.service"; then ok "install_unit writes sed-special characters literally"; else bad "install_unit escape: rc=$rc $(grep JOB_MAX "$TMP/units/himmel-ci-runner@.service" 2>/dev/null)"; fi

@@ -16,11 +16,6 @@ operator id recorded at enroll, sending from their own private chat. The restore
 itself is `config-audit.sh restore`: it backs up the live set first and writes
 an audit row per file. Output carries key names, never a value.
 
-ponytail: the seed is a file of the same uid as the sessions, so a session that
-reads it can mint a code; the TOTP defends against a forged or hijacked Telegram
-sender, not a local process. Upgrade path: a root-owned config-restore kind of
-the afk-sudo helper (scripts/lib/afk-sudo), once that lands.
-
 Paths: ${HIMMEL_CONFIG_DIR:-~/.himmel}/secrets/config-restore.seed (600) and
 ${HIMMEL_CONFIG_DIR:-~/.himmel}/state/config-restore-mfa/ (700: state.json,
 ledger.jsonl, operator.json). Seams (tests): TELEGRAM_ACCESS_PATH, and

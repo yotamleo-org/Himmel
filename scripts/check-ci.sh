@@ -719,11 +719,6 @@ pr_rows() {
     [ -z "$rows" ] || printf '%s\n' "$rows" | awk -F'\t' -v x="$EXCEPT_CTX" '$2 != x'
 }
 
-# ponytail: the legacy gh --watch path cannot skip a listed context, so a red
-# that is only listed still exits 1 (fail closed), upgrade path = the cached path.
-# _fail_count — how many checks are in the fail bucket, from a decide-grade read
-# (a terminal verdict is never older than CHECK_CI_DECIDE_TTL seconds). Prints
-# nothing when unreadable (callers fail closed on a non-numeric answer).
 _fail_count() {
     local rows
     if [ "$CACHE_ON" -eq 0 ] && [ -z "$EXCEPT_CTX" ]; then
@@ -755,9 +750,6 @@ _alert() { merge_watch_alert "${owner:-?}/${repo:-?}" "${num:-?}" "${head0:-}" "
 # checks not enabled") means "no classic rule". A classic read that fails as rate
 # limited returns 3 (not 1) so the pre-watch gate can defer it; it is still unread.
 #
-# ponytail: a token without admin cannot read the classic endpoint (403), so it
-# reads as unreadable and refuses every merge (exit 5) rather than guessing —
-# there is no opt-out knob; the fail-closed choice is deliberate.
 required_set() {
     local base rules classic
     base=$(pr_view --json baseRefName --jq .baseRefName 2>/dev/null) || return 1
@@ -796,13 +788,6 @@ _producer_rows() {
 # comma-joined ("" when none, or when the status read fails — no cause is guessed).
 # Naming the cause is all this does: a missing check stays missing either way.
 #
-# ponytail: a commit status carries no app id — the REST payload has none and
-# GraphQL StatusContext exposes only `creator`, a login, not the app — so a
-# producer-pinned check published as a status can never be verified here. It is
-# NEVER accepted by name alone (a false pass); a pinned check whose app publishes
-# statuses stays refused (exit 5) until the pin is dropped or the app publishes a
-# check run. himmel's own required checks are all GitHub Actions (app 15368) check
-# runs, so this fires only on another repo's pin.
 _status_only() {
     local ctx label name hit=""
     ctx=$(gh_read api "repos/$owner/$repo/commits/$head0/status?per_page=100" --paginate \

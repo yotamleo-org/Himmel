@@ -207,7 +207,7 @@ export function renderList(ranked, existingFileContent = "") {
  * dossier carries `roster.clip_count === 0` is flagged `low_sample`.
  */
 export function renderScorecard(ranked, dossiers = {}) {
-  const lines = ["# X Follow-List Scorecard (HIMMEL-660)", ""];
+  const lines = ["# X Follow-List Scorecard", ""];
 
   for (const e of ranked) {
     const dossier = dossiers[e.handle];

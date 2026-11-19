@@ -38,11 +38,6 @@
 # CLAUDE_PROJECT_DIR and .salus-profile. A salus session, or one the hook cannot
 # classify, gets no refusal and no log row.
 #
-# ponytail: catches named sweep shapes over known roots, a wrapped or scripted
-# sweep passes; upgrade path is the read-tool route (a backlog follow-up). A heredoc
-# line that is itself a vault sweep is refused (a false refusal, counted by the
-# POC); a quoted mention such as git commit -m "grep -r notes <vault>" is not,
-# because the first word of its segment is not grep.
 #
 # Fail OPEN (exit 0) on every problem of its own: no jq, bad JSON, unwritable
 # state, no resolvable himmel checkout (the deny names an absolute path).
@@ -132,9 +127,6 @@ lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 # script this expects, and nothing can be trusted. The two signals the oracle lacks are added:
 # CLAUDE_PROJECT_DIR (a salus session that cd'd out) and a .salus-profile marker. The canary
 # proves the payload-names-salus signal only.
-# ponytail: this hook is coupled to block-agent-native-egress.sh's higgsfield trigger and exit
-# code; the canary turns a change there into "cannot tell", which is silent and writes nothing.
-# Upgrade path: a shared salus-session library both hooks source.
 ORACLE=$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)/block-agent-native-egress.sh
 
 oracle_rc() { # CWD TEXT -> the oracle's exit code (9 when no payload could be built)

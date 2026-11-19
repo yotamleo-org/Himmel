@@ -147,7 +147,7 @@ CADENCE_FORMAT_MARKER="himmel-cadence-runner-format:"
 # Basename registry for generated cadence runners. Keep explicit: a stray
 # foreign *.sh in a runner dir must not poison the staleness probe.
 # shellcheck disable=SC2034  # consumed by cadence_runner_stamp callers/tests
-CADENCE_RUNNER_BASENAMES="pipeline-harvest pipeline-synthesize pipeline-health graphmap-luna graphmap-himmel qmd-reindex drift-fix fork-resync graphify-update-ggs upstream-watch graphmap-ast-luna graphmap-ast-himmel graphmap-publish-himmel graphmap-semantic-luna doctor-cadence rollup-cadence"
+CADENCE_RUNNER_BASENAMES="pipeline-harvest pipeline-synthesize pipeline-health graphmap-luna graphmap-himmel qmd-reindex drift-fix fork-resync graphify-update-ggs upstream-watch graphmap-ast-luna graphmap-ast-himmel graphmap-publish-himmel graphmap-semantic-luna doctor-cadence rollup-cadence steering-cull-cadence"
 
 # cadence_posix_worker_start <q_flow_lib> <flow> <task>
 # cadence_posix_worker_end <q_flow_lib> <q_alert_lib> <flow> [ok_rcs] [skip_rcs]
@@ -254,12 +254,6 @@ cadence_runner_stamp() {
 # provenance call runs in its own subshell so provenance.sh's/
 # provenance-identity.sh's functions and shell options never leak into the
 # arm script.
-# ponytail: a --force re-arm over a crontab line the operator already had
-# under this same marker still records preexisted=false -- the arm cannot
-# tell a himmel-written line from a hand-written one of that name, and the
-# identity read-back only verifies the LIVE line's content, not who wrote it
-# first. No upgrade planned: closing this needs a preexisted-detection pass
-# at arm time, which no ticket currently covers.
 cadence_prov_record() {
     local marker="$1" dir lib token u
     dir="$(dirname "${BASH_SOURCE[0]}")"

@@ -15,6 +15,7 @@
 #                                 manifest label of the ledger's writer; paths match by realpath; a stranger prints nothing
 # SERIES_LEDGER overrides the script under test (the RED control). Hermetic: temp dir only.
 set -uo pipefail
+KP=HIMMEL
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="${SERIES_LEDGER:-$HERE/series-ledger.py}"
@@ -67,12 +68,12 @@ check "2: item state defaults to planned" "$(jget "$L" 'd["items"][0]["state"]')
 check "2: item writes is a list" "$(jget "$L" 'd["items"][0]["writes"]')" "['a.js', 'b.js']"
 check "2: item branch" "$(jget "$L" 'd["items"][0]["branch"]')" series/s1/HIMMEL-1
 before="$(cat "$L")"
-rc=0; out="$(sl add-item --ledger "$L" --key HIMMEL-1 2>&1)" || rc=$?
+rc=0; out="$(sl add-item --ledger "$L" --key "$KP"-1 2>&1)" || rc=$?
 check "2: duplicate key refuses rc 4" "$rc" 4
-rc=0; out="$(sl add-item --ledger "$L" --key HIMMEL-2 --state bogus 2>&1)" || rc=$?
+rc=0; out="$(sl add-item --ledger "$L" --key "$KP"-2 --state bogus 2>&1)" || rc=$?
 check "2: unknown state refuses rc 2" "$rc" 2
 contains "2: unknown state is named" "$out" bogus
-rc=0; out="$(sl add-item --ledger "$L" --key HIMMEL-2 --colour red 2>&1)" || rc=$?
+rc=0; out="$(sl add-item --ledger "$L" --key "$KP"-2 --colour red 2>&1)" || rc=$?
 check "2: unknown option refuses rc 2" "$rc" 2
 rc=0; sl add-item --ledger "$L" --key "" >/dev/null 2>&1 || rc=$?
 check "2: empty key refuses rc 2" "$rc" 2
@@ -113,7 +114,7 @@ rc=0; sl set --ledger "$L" completes_ticket=yes >/dev/null 2>&1 || rc=$?
 check "3: set top-level rc 0" "$rc" 0
 check "3: set top-level completes_ticket" "$(jget "$L" 'd["completes_ticket"]')" yes
 before="$(cat "$L")"
-rc=0; out="$(sl set --ledger "$L" --key HIMMEL-1 colour=red 2>&1)" || rc=$?
+rc=0; out="$(sl set --ledger "$L" --key "$KP"-1 colour=red 2>&1)" || rc=$?
 check "3: unknown item field refuses rc 2" "$rc" 2
 contains "3: unknown field is named" "$out" colour
 rc=0; sl set --ledger "$L" --key HIMMEL-1 state=bogus >/dev/null 2>&1 || rc=$?
@@ -248,7 +249,7 @@ rc=0; out="$(sl find --bucket "$BK" --doc "$DA" --manifest "$M" 2>&1)" || rc=$?
 check "8: find a passes-from doc: role from, with the current writer's label" "$out" "s8 $BK/series/s8.json from N9"
 rc=0; out="$(sl find --bucket "$BK" --doc "$DX" --manifest "$M" 2>&1)" || rc=$?
 check "8: a doc in no ledger prints nothing, rc 0" "$rc:$out" "0:"
-rc=0; out="$(sl find --bucket "$tmp/bk-link" --doc "$tmp/linkdocs/HIMMEL-1-N9-b.md" --manifest "$M" 2>&1)" || rc=$?
+rc=0; out="$(sl find --bucket "$tmp/bk-link" --doc "$tmp/linkdocs/$KP-1-N9-b.md" --manifest "$M" 2>&1)" || rc=$?
 check "8: a symlinked bucket and a symlinked doc path still match" "$out" "s8 $BK/series/s8.json writer N9"
 printf '{"schema":1,"workers":[{"doc":"%s","label":"N8"}]}\n' "$DA" > "$tmp/m-zero.json"
 check "8: a writer doc in no manifest entry has the dash label" "$(sl find --bucket "$BK" --doc "$DB" --manifest "$tmp/m-zero.json" 2>&1)" "s8 $BK/series/s8.json writer -"

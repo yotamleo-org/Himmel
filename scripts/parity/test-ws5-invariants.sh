@@ -399,9 +399,6 @@ else
     #   - the exact command `systemctl [--user] daemon-reload` is carved out
     #; it reloads unit files and
     #     starts nothing. Known gap, unchanged: `systemctl start` is no shape.
-    # ponytail: a heredoc body or multi-line string holding `#` at line start
-    # reads as a comment, and a C-preprocessor `#define` line likewise
-    # (himmel ships no C).
     t13b_hit=0
     t13b_count="$(awk -v removed_file="$REMOVED" -v kind_file="$SHIPPED_KIND" -v sq="'" '
         function trim(x) { sub(/^[ \t]+/, "", x); sub(/[ \t\r]+$/, "", x); return x }
@@ -444,18 +441,6 @@ else
         # (2) On js lines a slash that opens a regex literal (see
         # js_regex_opens) is skipped whole by js_regex_end, so a quote
         # inside the regex no longer opens a phantom string state.
-        # ponytail: the regex-vs-division call is the classic prev-token
-        # heuristic, not a parser -- a slash after a closing brace or at
-        # the start of a continuation line reads as a regex, and the paren
-        # match behind a ) ignores quoting and does not span lines (a
-        # condition split across lines reads as division). A misread to a
-        # regex usually runs to end of line
-        # unterminated and FAILS CLOSED (no marker), but if a later slash
-        # closes it, the scan resumes there and can itself desync -- the
-        # shapes are contrived and still show the marker text on the line
-        # for review. JS/py single- and double-quoted
-        # strings still take bash quoting rules (a backslash-quote in a
-        # single-quoted JS string closes it here), unchanged by this fix.
         function js_regex_opens(t, i,    j, p, w, d) {
             j = i - 1
             while (j >= 1 && (substr(t, j, 1) == " " || substr(t, j, 1) == "\t")) j--
@@ -735,12 +720,6 @@ else
             # of 3+ letters (kills `12345678`, `.......x`, and whitespace
             # padding), with no second `# t13b-ok: ` / `// t13b-ok: ` nested
             # inside it (a chained marker does not extend the exemption).
-            # ponytail: the scan is per diff LINE with no concept of "this
-            # line is heredoc BODY content, not a shell comment" -- a
-            # heredoc body line whose text happens to spell a real-looking
-            # `# t13b-ok: <reason>` still exempts a daemon shape on that
-            # same line (same limit as the pre-existing heredoc ponytail
-            # above). Out of scope here.
             marker_at = 0
             mp = find_marker_start(t, kind)
             if (mp > 0) marker_at = mp + ((substr(t, mp, 1) == "#") ? 11 : 12)

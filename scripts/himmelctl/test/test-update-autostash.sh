@@ -142,6 +142,7 @@ build_scenario() {
     cp "$SRC_SCRIPTS/lib/load-dotenv.sh"         "$clone/scripts/lib/load-dotenv.sh"
     cp "$SRC_SCRIPTS/lib/resolve-bun.sh"          "$clone/scripts/lib/resolve-bun.sh"
     cp "$SRC_SCRIPTS/lib/claude-version.sh"          "$clone/scripts/lib/claude-version.sh"
+    cp "$SRC_SCRIPTS/lib/update-channel.sh"          "$clone/scripts/lib/update-channel.sh"
     CLONE="$clone"
 }
 

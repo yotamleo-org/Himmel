@@ -106,8 +106,6 @@ handover_mode() {
 # _arm_realpath_walk <path> -- pure-bash `realpath -m`: resolve every existing
 # directory component physically (cd -P) and normalise ./.. lexically past the
 # first missing one. For hosts whose realpath lacks -m (macOS/BSD) and that have
-# no armored python. ponytail: a symlink LEAF that is a file (or
-# dangling) is kept as written, where GNU realpath -m would follow it.
 _arm_realpath_walk() {
     local _in="$1" _cur="" _seg _rest _phys
     [ -n "$_in" ] || return 1

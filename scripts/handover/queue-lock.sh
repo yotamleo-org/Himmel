@@ -653,8 +653,7 @@ _ql_lock_roots() {
 }
 
 # _ql_find_doc <name> -- print every file under a known root named <name>(.md),
-# excluding lock dirs. ponytail: depth-capped at 6 (root/<user>/<bucket>/... is
-# 3-4) and a name with glob characters is matched as a glob by find -path.
+# excluding lock dirs.
 _ql_find_doc() {
     local name="${1%.md}" root
     while IFS= read -r root; do
@@ -754,9 +753,7 @@ _ql_enter() {
 # _ql_doc_matches <lock's recorded handover field> <canonical doc> -- rc 0 when
 # the two name the same doc: equal, or one ends in "/" + the other (a legacy
 # lock recorded the doc as the caller spelled it -- a bare filename or a
-# root-relative path). ponytail: a suffix match is by BASENAME, so two docs
-# sharing a basename across buckets match each other; status reports (fail-
-# closed: "held" over "free") and release/heartbeat additionally need the token.
+# root-relative path).
 _ql_doc_matches() {
     local h="${1//\\//}" d="${2//\\//}"
     h="${h%.md}"; d="${d%.md}"
@@ -893,7 +890,6 @@ _ql_hb_age() {
 # (not live), so the probe can only ever KEEP a lock alive on positive
 # evidence, never invent one. On success the transcript's age is left in
 # $_QL_LIVE_AGE for the caller's message.
-# ponytail: transcript-mtime liveness only, same host only, no holder-pid probe (the acquiring shell's pid dies with the Bash call), upgrade path: record the claude process pid when the harness exposes it
 _ql_holder_live() {
     local lk="$1" ttl="$2" lv_host lv_tr m now age
     _QL_LIVE_AGE=""
@@ -940,7 +936,6 @@ _ql_lock_is_fresh() {
 # on a wrapper's). A missing census, an
 # unreadable field or another host is rc 1 (not proven), so the reap can only
 # ever release a lock whose owner is demonstrably dead.
-# ponytail: the token's pid is the acquiring shell, which dies with its Bash call, so pid-gone alone proves nothing -- the claude-process-names-the-doc check carries the proof, upgrade path: record the claude pid in owner.json when the harness exposes it
 _ql_owner_provably_dead() {
     local lk="$1" ttl="$2" host raw session pid doc stem procs line cpid cargs
     [ -f "$lk/owner.json" ] || return 1
@@ -980,7 +975,6 @@ _ql_owner_provably_dead() {
             *"$stem"*) return 1 ;;
         esac
         # a session handed the doc through its environment rather than argv.
-        # ponytail: a non-dumpable process (password manager, compositor, setuid helper) has an unreadable environ even for its own user and is skipped rather than failing closed -- failing closed would block every reap on a desktop host (5 such processes on the dev box, none an agent session, which is dumpable), upgrade path: revisit if a session launcher ever drops dumpability
         if [ -r "/proc/$cpid/environ" ] && grep -qaF -- "$stem" "/proc/$cpid/environ" 2>/dev/null; then
             return 1
         fi
@@ -998,7 +992,6 @@ EOF
 # marker bullet (not a worker doc) or whose newest marker is already WRAPPED / HALTED. Never
 # fails the caller: a refused append is a WARN, and the lock is freed either way. Output is
 # discarded so acquire's last stdout line stays the release token.
-# ponytail: a taker whose own command line names the doc defeats the proof upstream, so its takeover writes no HALTED (the successor writes its own LIVE), upgrade path: carry the holder's pid in owner.json
 _ql_halted_marker() {
     local doc="$1" session="$2" how="$3" tail=""
     [ -n "$doc" ] && [ -f "$doc" ] || return 0
@@ -1013,7 +1006,6 @@ _ql_halted_marker() {
     # shellcheck source=../lib/timeout-bin.sh
     # shellcheck disable=SC1091
     . "$_QL_SCRIPT_DIR/../lib/timeout-bin.sh" 2>/dev/null || true  # swallow-ok: no timeout binary leaves _TIMEOUT_BIN empty and the append runs unbounded, as the ponytail below says
-    # ponytail: without a GNU timeout (stock macOS) the append runs unbounded, upgrade path: a bash-only watchdog around the append
     if ! env -u HIMMEL_BUS_NAME ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$tmo"} bash "$_QL_SCRIPT_DIR/chief-kit/append-results.sh" "$doc" \
         "HALTED — its queue lock (session=${session:-unknown}) was freed by $how with the holder provably dead and no wrap marker written" >/dev/null 2>&1; then
         echo "WARN queue-lock: could not append the HALTED bullet to '$doc' (timed out after ${tmo}s or refused; the lock is freed anyway)" >&2
@@ -1592,11 +1584,6 @@ _ql_emit_close_evidence() {
 # purpose: owner.json (what `status` prints) keeps its exact format. A lock
 # written before this change has no `gen`; it reads as "" and is fenced the
 # moment a takeover gives the path a real one.
-# ponytail: the re-check and the act are two syscalls, so a stall of
-# microseconds exactly between them is still unfenced (the window shrank from
-# "anywhere after verify" to that gap); closing it needs an atomic
-# compare-and-rename of the lock dir, which rename is not trusted to be
-# (see ATOMIC TAKEOVER). Revisit if a dual-owner incident is ever traced to it.
 
 # _ql_new_gen -- a generation id unique per acquire on this host.
 _ql_new_gen() { printf 'g%s-%s-%s%s' "$(_ql_now_epoch)" "$$" "$RANDOM" "$RANDOM"; }
@@ -1665,7 +1652,6 @@ _ql_takeover_claim_release() {
 }
 
 # _ql_force_claim_cleanup -- trap body of the forced release: drop its release claim while the brand still names it (idempotent).
-# ponytail: SIGKILL cannot be trapped, so it still leaks the claim until a manual rm -rf, upgrade path: an expiry on the release brand
 _ql_force_claim_cleanup() {
     [ -n "${_QL_FORCE_CLAIM:-}" ] || return 0
     _ql_takeover_claim_release "$_QL_FORCE_CLAIM" "${_QL_FORCE_TOKEN:-}" || true  # swallow-ok: a brand that no longer names us means the claim is already gone or another taker's, which is not ours to remove
@@ -1931,9 +1917,6 @@ queue_lock_acquire() {
                     return 2
                     ;;
             esac
-            # ponytail: a stale expirer can remove a replacement release claim; upgrade: HIMMEL-8278.
-            # The release prefix blocks direct TTL expiry, not an ordinary
-            # claim's earlier age/owner snapshot acted on after a stall.
             claim_mtime=$(py_armor_mtime "$claim")
             if [ -n "$claim_mtime" ] && [ -n "$now_epoch" ]; then
                 claim_age=$(( now_epoch - claim_mtime ))
@@ -2933,7 +2916,6 @@ _ql_sweep_one_root() {
                 # Take the same mkdir takeover claim a stale taker holds, so a
                 # concurrent takeover and this reap are mutually exclusive, then
                 # CAS-verify owner.json under it before the rm.
-                # ponytail: same accepted microsecond window as the takeover path (a holder releasing then a third party acquiring between verify and rm), upgrade path: a lock-dir rename primitive once queue-lock has one
                 local rclaim="${lockdir}.claim" rtoken="reap-pid$$-r$RANDOM"
                 local rclaim_ok=0
                 if mkdir "$rclaim" 2>/dev/null; then
@@ -3029,7 +3011,6 @@ _ql_doc_repo_id() {
 # lock, and prints one `COLLISION file=<f> slug=<s> session=<id>` line per
 # overlap. Exit 20 on any overlap (a warning, never a block), 0 when clean.
 # STALE-DEAD locks and this doc's own lock are skipped.
-# ponytail: overlap is file-name equality over git state of the lock owner's resume_cwd, upgrade path: per-session edit telemetry from the HIMMEL-1052 substrate
 queue_lock_preflight() {
     local ho="${1:-}"
     if [ -z "$ho" ]; then

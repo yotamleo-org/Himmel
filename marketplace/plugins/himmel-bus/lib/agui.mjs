@@ -42,7 +42,6 @@ async function delivery(root, name) {
   const file = join(root, 'cur', name);
   try {
     const [cur, st] = await Promise.all([readFile(file, 'utf8'), stat(file)]);
-    // ponytail: the cursor stores no delivery time, so its mtime stands in, upgrade path is a stamped cursor field.
     return { n: JSON.parse(cur).n ?? 0, at: Math.round(st.mtimeMs) };
   } catch { return { n: 0, at: 0 }; }
 }

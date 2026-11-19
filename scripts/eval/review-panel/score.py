@@ -107,8 +107,6 @@ LEAK_MIN = 12  # a fix line shorter than this (fi, done, a brace) is too common 
 # Class keyword patterns, matched case-insensitively against a finding's text.
 # Deliberately broad: location already pins the finding to the seeded lines, so
 # the class check only has to tell "the bug" from "some other remark here".
-# ponytail: hand-written keywords, tuned on canned text only; recall_loc bounds
-# the loss - hand-label the first real sweep's location-only hits and retune.
 CLASS_PATTERNS = {
     "logic": r"off[- ]by[- ]one|one (too many|too few|fewer|extra|more|less)|invert|revers|wrong "
              r"(comparison|condition|operator|direction|count|boundary)|boundary|logic|always "
@@ -140,8 +138,6 @@ CLASSES = sorted(CLASS_PATTERNS)
 # Strings that tie a fixture or a transcript to the key. A fixture carrying any
 # of them (or a hint word) is refused by lint; a transcript carrying one is a
 # leak: the critic saw (or echoed) the answer, so the sweep is inconclusive.
-# ponytail: string evidence only - a critic that read the key and never echoed
-# it is not caught; scan the critic's tool-call log once hermes records one.
 KEY_MARKERS = ("review-panel/key", "seeds.json")
 HINT_WORDS = re.compile(r"\b(seed(ed|s)?|inject(ed|ion)?|planted|defect|canary)\b", re.I)
 
@@ -222,8 +218,7 @@ def added_text(text):
 
 
 def fix_leaks(src, fix, case_text, intent):
-    """Added lines of the fixing commit (>= LEAK_MIN chars) found in the seeded case's added lines or intent.
-    ponytail: exact stripped-line match only; a reworded copy of the fix passes, upgrade = token-overlap score."""
+    """Added lines of the fixing commit (>= LEAK_MIN chars) found in the seeded case's added lines or intent."""
     out = subprocess.run(["git", "-C", src, "show", "--format=", "--no-color", "--no-ext-diff", fix],
                          capture_output=True, text=True, errors="replace")
     if out.returncode != 0:
@@ -1251,12 +1246,7 @@ def panel_mismatch(rows, base_hash, head_hash, confighash):
     more than one roster make a win-or-loss comparison unequal (the panel drops an unavailable critic per case),
     and so do rows that record a roster beside rows that do not: no verdict, and the rows are named. Like
     gate_verdict it keeps the first row of a run_id.
-    ponytail: two partial critics count as alike whatever their case counts, upgrade = compare per-case
-    participation once a row records which cases each critic answered.
-    ponytail: when every counted row has no `responded` the normal verdict stands. That is the state of the
-    callers-and-intent critic change's rows today, so the unequal-panel false alarm on that pair stays until the old rows are replaced in
-    results.jsonl by rows with a roster (export-row appends, and the first row of a run_id wins, so a re-exported
-    row is dropped), upgrade = replace the old baseline and head rows.
+    When every counted row has no `responded` the normal verdict stands.
     The counted rows are gate_verdict's: both call eval_feedback.gate_side."""
     def side(h, skip_ids=(), skip_bundles=()):
         counted, ids, bundles = eval_feedback.gate_side(rows, h, confighash, skip_ids, skip_bundles)

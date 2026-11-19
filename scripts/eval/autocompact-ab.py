@@ -25,10 +25,6 @@
 # per assistant turn. Assistant rows are deduped by message id: a transcript
 # writes one row per content block.
 #
-# ponytail: PR outcome is read from the doc's Results bullets (READY count, PR
-# number, review-round mentions) because CI itself is not in the transcript;
-# upgrade path = join the worker-cost ledger `pr` against gh run history once the
-# A/B has data worth that.
 import argparse, glob, json, os, re, subprocess, sys
 from datetime import datetime
 

@@ -67,7 +67,6 @@ function pick(byName: Map<string, string[]>, name: string): string {
   return ids[0];
 }
 
-// ponytail: one GET /field per command (no id cache), cache it in the breadcrumb dir if roadmap ops get hot.
 export async function resolveRoadmapFields(req: Req = request): Promise<RoadmapIds> {
   return idsFrom(await fieldIndex(req));
 }

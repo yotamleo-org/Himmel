@@ -20,13 +20,6 @@
 # manifest row is never reaped. Never guess: when unsure, keep.
 # Delete order: fixtures, then judge dirs, then dead-session scratch by size.
 #
-# ponytail: a dir held only by an other-uid process (e.g. root) is still invisible
-# to the census (an unreadable same-uid /proc entry refuses --apply unless its ppid chain
-# reads to pid 1 without crossing a live session, i.e. a detached non-dumpable desktop
-# daemon, which only warns; other-uid ones only warn); add a privileged census if a root-held dir is ever reaped. The
-# whitelist is name-based; widen if a kind goes missing.
-# Fixture names with whitespace are not handled (the families are mktemp names);
-# session/judge dirs still cost a du and stat each.
 # shellcheck disable=SC2086  # word-splitting a /proc line and a jq row into positionals is the point
 set -u
 
@@ -121,9 +114,6 @@ CENSUS_WARNED=0
 # a child a DEAD session spawned also reaches pid 1 yet can hold that session's scratch, so a
 # process that started at or after the oldest dead session dir's procStart (same clock ticks) is not detached;
 # an unknown start time is not detached either.
-# ponytail: a dead session dir with no sessions json has no known start and cannot bound this check; the boot
-# clock is not compared, so a procStart from an earlier boot only makes it refuse more (fail closed). Revisit
-# if stale sessions json makes real daemons refuse.
 detached() { # <pid>
     local pid="$1" hops=0 s st
     if [ -n "$DEAD_START_MIN" ]; then
@@ -352,8 +342,6 @@ set +f
 # fixtures, then judge dirs, then session scratch; biggest first inside a tier
 SORTED="$(printf '%s\n' "$CANDS" | grep -v '^$' | sort -k1,1n -k2,2nr)"
 # classification took minutes on a big /tmp: re-take the cwd/fd view once before deleting.
-# ponytail: a full /proc walk costs ~10 s, so it is once per run, not per dir; a dir that
-# goes live within the archive loop itself is not re-checked.
 [ "$APPLY" = 1 ] && census
 total=$fix_total; reaped=$fix_reaped; failed=$fix_failed
 while read -r tier kb kind id path; do

@@ -87,7 +87,6 @@ _tracker_ledger() {
     ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     id=$(printf '%s' "$3" | tr -cd 'A-Za-z0-9._#-')
     now=$(date +%s)
-    # ponytail: whole-second resolution (bash 3.2 and BSD date have no sub-second clock), upgrade path: EPOCHREALTIME once bash 5 is the floor
     printf '{"ts":"%s","tracker":"%s","forge":"%s","op":"%s","id":"%s","rc":%s,"ms":%s}\n' \
         "$ts" "$1" "$forge" "$2" "$id" "$4" "$(( (now - $5) * 1000 ))" >> "$HIMMEL_ADAPTER_LEDGER" 2>/dev/null || true
 }

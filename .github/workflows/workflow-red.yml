@@ -1,6 +1,6 @@
 name: Workflow Red
 
-# HIMMEL-5595. After each COMPLETED non-pull_request run of a tracked workflow
+# After each COMPLETED non-pull_request run of a tracked workflow
 # (the names in scripts/ci/workflow-red-list.txt), open or refresh ONE `ci-red`
 # + `wf:<workflow>` issue per workflow and branch when the run is red, and close
 # it when a later run of the same workflow on the same branch is green
@@ -16,6 +16,7 @@ on:
     # Lockstep with scripts/ci/workflow-red-list.txt (test-workflow-red-workflow.sh).
     workflows: ["CI (os:macos cadence)", os-verify, Pages, Release]
     types: [completed]
+  workflow_dispatch:
 
 permissions:
   actions: read
@@ -26,13 +27,13 @@ permissions:
 # run per group and replaces it, so the group must not span unrelated workflows or
 # branches or a pending report for one would be dropped by another's.
 concurrency:
-  group: workflow-red-${{ github.event.workflow_run.name }}-${{ github.event.workflow_run.head_branch }}
+  group: workflow-red-${{ github.event.workflow_run.name || github.run_id }}-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: false
 
 jobs:
   workflow-red:
     # Legs own PR CI; only non-PR runs are tracked.
-    if: github.event.workflow_run.event != 'pull_request'
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.event != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -41,3 +42,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: bash scripts/ci/workflow-red-issue.sh "${{ github.event.workflow_run.id }}"
+
+  dispatch-check:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Syntax-check the reporter script
+        run: bash -n scripts/ci/workflow-red-issue.sh

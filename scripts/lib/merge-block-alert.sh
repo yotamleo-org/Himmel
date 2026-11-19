@@ -39,9 +39,6 @@
 # after a 0 and records nothing, no sent marker and no failure. A caller that is
 # its own process carries the refusal across the boundary as exit 77.
 #
-# ponytail: "operator" is access.json's first positive allowFrom entry, the same
-# rule operatorChatId() in scripts/telegram/gate.ts applies; an access.json
-# whose first entry is not the person to page gets that person paged.
 
 _MBA_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

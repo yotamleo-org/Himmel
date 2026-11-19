@@ -295,8 +295,6 @@ build_tickets() {
 # (a model with no row is usd null / mark unpriced, never another model's rate). Incremental.
 # phase_rule v1 is the cost-page audit: the phase is the last tool before the call [derived];
 # a judge, critic, release-mgr or chief session has one whole-session phase [counted].
-# ponytail: graph-eval and bots classes need a first-prompt pattern the audit does not give, so
-# those sessions are class "other"; upgrade = add the patterns to toplevel_class.
 PRICES_TSV="$HERE/../lanes/lib/model-prices.tsv"
 [ -r "$PRICES_TSV" ] || die "price table not readable: $PRICES_TSV"
 

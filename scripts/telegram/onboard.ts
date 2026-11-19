@@ -76,11 +76,6 @@ export function checkBridgeArmed(deps: ArmedCheckDeps): string | null {
   return null;
 }
 
-// ponytail: best-effort OS process scan, the pidfile check above is the
-// primary, race-free signal; this only catches a bridge process running
-// WITHOUT (or ahead of) a valid pidfile. Any failure (missing tool, perms)
-// fails to "not found" so a broken scan can never itself hang onboarding;
-// upgrade path if that gap ever bites: read /proc directly on POSIX.
 function defaultBridgeProcessRunning(): boolean {
   const CORE = /(?:^|[\\/\s])(?:supervisor|poller)\.ts(?:\s|$)/;
   try {

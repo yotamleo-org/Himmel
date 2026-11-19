@@ -417,14 +417,14 @@ assert "setup.sh calls fix-qmd-stub.sh" grep -q 'lib/fix-qmd-stub.sh' "$repo_roo
 # (the NOTICE at ubuntu.sh) -- it no longer sources lib/fix-qmd-stub.sh directly.
 # Assert the delegation instead of the removed direct call.
 # shellcheck disable=SC2016
-assert "ubuntu.sh does NOT reference lib/fix-qmd-stub.sh (wiring delegated, HIMMEL-887)" \
+assert "ubuntu.sh does NOT reference lib/fix-qmd-stub.sh (wiring delegated)" \
   bash -c '! grep -qF -- "lib/fix-qmd-stub.sh" "$1"' _ "$repo_root/scripts/machine-setup/ubuntu.sh"
 # The NOTICE alone is not the contract: assert the executable delegation
 # statement too.
 # shellcheck disable=SC2016
-assert "ubuntu.sh execs himmelctl bootstrap.sh (delegation is real, HIMMEL-887)" \
+assert "ubuntu.sh execs himmelctl bootstrap.sh (delegation is real)" \
   grep -qE -- '^[[:space:]]*(HIMMELCTL_REPO_ROOT="\$HIMMEL_PATH"[[:space:]]+)?exec[[:space:]]+bash[[:space:]]+"\$HIMMEL_PATH/scripts/himmelctl/bootstrap\.sh"([[:space:]]+--default-scope[[:space:]]+[A-Za-z]+)?[[:space:]]*$' "$repo_root/scripts/machine-setup/ubuntu.sh"
-assert "ubuntu.sh prints the himmelctl bootstrap delegation NOTICE (HIMMEL-887)" \
+assert "ubuntu.sh prints the himmelctl bootstrap delegation NOTICE" \
   grep -q 'delegating to himmelctl bootstrap' "$repo_root/scripts/machine-setup/ubuntu.sh"
 
 echo

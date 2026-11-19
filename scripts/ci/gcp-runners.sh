@@ -23,9 +23,6 @@
 # the config does not outlive its read; the proxy env of gcp-net.sh rides along as the
 # proxy-env metadata file (the subnet has no other way out).
 #
-# ponytail: pool size is whatever `up` was last told (gcp-runner-autoscale.sh tops it up
-# from the queue depth; `up` preflights the regional CPUS quota, capped at CPU_PIN);
-# upgrade to a budget kill switch (operator-side, after the live proof).
 set -u
 
 REPO="${GCP_RUNNERS_REPO:-yotamleo/Himmel}"

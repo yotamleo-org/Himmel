@@ -335,10 +335,6 @@ _provread_json_present() {
 # this, a SessionStart unit's current element is never found and every
 # verdict on it reads `keep already-absent`, which then falsely PROTECTS it
 # and skips the whole hooks helper -- test-e2e-symmetry.sh caught this).
-# ponytail: fixed at exactly two levels with a hardcoded `.hooks` field name,
-# matching this codebase's one json-elem writer -- not a general recursive
-# JSON walk; a future writer that nests elements any other way needs its own
-# case added here.
 _provread_json_elem_locate() {
     local container="$1" elemsha="$2" n i elem esha sub m j sj
     n=$(printf '%s' "$container" | jq -r 'if type=="array" then length else 0 end')
@@ -574,9 +570,6 @@ prov_read_verdict() {
     if [ "$class" = "keep" ]; then printf 'keep class-keep\n'; return 0; fi
     if [ "$governed" != "true" ]; then
         if [ "$preexisted_only" = "true" ]; then printf 'keep noop-preexisted\n'
-        # ponytail: the design leaves the ungoverned/non-preexisted-only case
-        # to the caller's own heuristic; we surface it as one action word with
-        # no fold-derived reason (the caller decides, the ledger stays silent).
         else printf 'heuristic heuristic\n'
         fi
         return 0
@@ -1035,9 +1028,6 @@ EOF
 # that NEEDS the operator: path, kind, reason in plain words, the kept backup
 # and ours snapshot, and the hand commands. It never prints a command that
 # deletes the live file, and the take-back command saves it beside itself first.
-# ponytail: held backups are counted from THIS run's outcomes only, so a unit
-# in a project this run never visited is not listed (the --purge-state scan
-# still refuses on it); upgrade path is the purge scan's complete held set.
 prov_read_reconcile_report() {
     local iid="${_PROV_READ_IID:-${PROV_READ_LAST_IID:-}}"
     [ -n "$iid" ] || return 0

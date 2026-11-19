@@ -1,6 +1,6 @@
 name: Lockfile Release Age
 
-# HIMMEL-7173: a lockfile entry a PR adds must have been public for 3 days
+# A lockfile entry a PR adds must have been public for 3 days
 # (scripts/ci/check-lockfile-release-age.mjs), unless it is on the security-fix
 # allowlist scripts/ci/release-age-allow.txt. A hijacked release is usually pulled
 # within hours, so CI never reaches a fresh minor or patch release.

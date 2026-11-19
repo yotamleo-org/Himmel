@@ -281,8 +281,6 @@ test('the project list carries every gateAllow quiet-run suite rule, so a consol
 // a backticked span starting `bash ` that names one of the three scripts in any text
 // file under docs/, marketplace/ or scripts/, a `NEXT:` or `GO ` printf under scripts/,
 // and the NEXT lines of a real ready-go run.
-// ponytail: this models the `:*` matcher (ruleMatches above), not the harness matcher;
-// upgrade path a live allow probe in a test VM (spec R12).
 const CHIEF_KIT_SCRIPT = /chief-kit\/(go|ready-check|ready-go)\.sh/;
 const NOT_PRINTED_FORM = /^(cd|timeout|nohup|env|[A-Za-z_][A-Za-z0-9_]*=)\b|^bash\s+["'`]?[/~$<]/;
 function printedFormProblems(command) {
@@ -413,7 +411,6 @@ test('every himmel-script rule in .claude/settings.json is a registry rule with 
 // it must match one allow rule of the profile it is printed for: chief text the chief's rendered
 // chiefAllow (relative form, run from the checkout root), worker text the worker's rendered rules
 // (the anchor-absolute twin, with the doc placeholder replaced by a validated primary path).
-// ponytail: models the `:*` matcher, as above; upgrade path a live allow probe in a test VM (spec R12).
 const MERGE_SCRIPT = /handover\/(merge-on-green|merge-fork-pr)\.sh/;
 const MERGE_SCAN_ROOTS = ['docs', 'marketplace'];
 // A span is excluded only by an entry here: the span names a shape on purpose, as a counter-example.

@@ -779,10 +779,6 @@ fi
 # short question; the chief relaunches one with headed-arm-worker.sh if it must.
 # the read-only --list-temp-arms sweep arms nothing, so it alone passes,
 # and only as the SOLE argument (the flag beside any other mode or arm arg still refuses).
-# ponytail: the consult is identified by these env vars alone, so a consult that unsets
-# WORKER_SESSION_PROFILE_NO_SETTING_SOURCES is not recognised here; the consult's deny rules and
-# sandbox bound that, upgrade path = a process-ancestry check or a consult-workdir
-# token file, trigger = an exploit beyond the sandbox.
 if [ -n "${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-}" ] \
     && ! { [ "${LIST_TEMP_ARMS:-0}" -eq 1 ] && [ "$ARGC_AT_START" -eq 1 ]; }; then
     echo "ERR arm-resume: refusing to arm from inside a consult (WORKER_SESSION_PROFILE_NO_SETTING_SOURCES is set): no arm-resume launch carries the consult's --setting-sources confinement; relaunch it with headed-arm-worker.sh --consult" >&2
@@ -2351,12 +2347,6 @@ _infer_ticket() {
     fi
     # src-3: first H1 line only, first canonical (uppercase) key. H1-only so a
     # stray ticket *mention* in the body can't be welded into the scheduler name.
-    # skip this source entirely for chain files (basename
-    # next-session-<N>.md) -- their H1 is a "# Next Session -- <epic
-    # worker-header>" convention (documented at src-4 below), not a ticket
-    # reference, and a project with a Done ticket numbered like the worker
-    # (e.g. LUNA-64) would otherwise false-match. A chain file's ticket
-    # identity comes from its PARENT DIR (src-4), never its own H1.
     _stem=$(basename "${_ho//\\//}"); _stem="${_stem%.md}"
     if ! printf '%s' "$_stem" | grep -qE '^next-session-[0-9]+$'; then
         # the `q` is `;`-terminated before the closing brace --
@@ -2567,7 +2557,6 @@ fi
 # HIMMEL-<n> ticket comes from the file name or the 'ticket:' frontmatter. A
 # missing resume_cwd: with a ticket also isolates. 'resume_isolation: primary'
 # opts back out; every decline that resolves to the primary prints a WARN.
-# ponytail: headed-arm-worker.sh and headed-arm.sh launches are not defaulted, extend the same rules there under HIMMEL-5845
 if [ -z "$WORKTREE_BRANCH" ] && [ "$_arm_is_chief" -eq 0 ]; then
     _iso_fm=$(awk '/^---[[:space:]]*$/{c++; next} c==1' "$HANDOVER_PATH")
     _iso_mode=$(printf '%s\n' "$_iso_fm" | sed -n 's/^resume_isolation:[[:space:]]*//p' | head -1 | tr -d "\r\"' ")
@@ -4291,14 +4280,6 @@ elif [ "${DRY_RUN:-0}" -eq 1 ]; then
     :   # --dry-run touches nothing and must stay side-effect-free + fast;
         # the network probes above are neither.
 else
-    # use the STRICT ticket (frontmatter, plus the parent-dir
-    # src-4 fallback for chain files), not the loose combined _ho_ticket --
-    # src-3 (H1 worker-header match) is documented
-    # (:1406-1413) as a cosmetic-only heuristic never meant to carry semantic
-    # weight for a BLOCKING check, same rationale the ticket-mutex
-    # check already applies. A chain handover's "# Next Session -- LUNA-64"
-    # worker header was matching an unrelated Done ticket and false-positiving
-    # this refusal.
     _arm_phase_t0 "shipped-work-preflight"
     _arm_shipped_preflight "${_ho_ticket_strict:-}"
     _arm_phase_done "shipped-work-preflight" "$_ARM_PT0"
@@ -4653,14 +4634,13 @@ fi"
     # SIGTERM once its work is done and a successor (if any) is armed -- see
     # docs/handover/afk-mode.md's Launch preamble.
     # launch-profile-ok: q_autocompact above carries --settings (_arm_profile_settings_flag)
-    # ponytail: the folder is checked at arm time only; a folder that loses its guard wiring before the at job fires launches unguarded; upgrade path: the runner calls launch-guard-check.sh before exec
-    local tail="unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED && export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1 && ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact"
+    local tail="unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN NO_COLOR UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED && export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1 && ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact"
     if [ "$HEADROOM_PROXY_ACTIVE" -eq 1 ]; then
         local q_hb q_log q_curl
         q_hb=$(printf '%q' "$HEADROOM_BIN")
         q_log=$(printf '%q' "$HOME/.headroom-proxy.log")
         q_curl=$(printf '%q' "$HEADROOM_CURL")
-        tail="{ unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED; export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1; $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1 || { $q_hb proxy --port $HEADROOM_PROXY_PORT >> $q_log 2>&1 & sleep 3; }; if $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1; then echo \"\$(date) arm=$TASK_NAME mode=proxied\" >> $q_log; ANTHROPIC_BASE_URL=http://127.0.0.1:$HEADROOM_PROXY_PORT HEADROOM_OFFLINE=1 ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact; else echo \"\$(date) arm=$TASK_NAME mode=bare-fallback\" >> $q_log; ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact; fi; }"
+        tail="{ unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN NO_COLOR UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED; export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1; $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1 || { $q_hb proxy --port $HEADROOM_PROXY_PORT >> $q_log 2>&1 & sleep 3; }; if $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1; then echo \"\$(date) arm=$TASK_NAME mode=proxied\" >> $q_log; ANTHROPIC_BASE_URL=http://127.0.0.1:$HEADROOM_PROXY_PORT HEADROOM_OFFLINE=1 ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact; else echo \"\$(date) arm=$TASK_NAME mode=bare-fallback\" >> $q_log; ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact; fi; }"
     fi
     _arm_require_worker_autocompact_argv "$tail"
     # Scheduled bodies re-enter persisted admission when fired, including after restart.
@@ -5072,7 +5052,7 @@ schedule_arm() {
                 # the resumed session self-exit with SIGTERM once a
                 # successor is armed (see afk-mode.md).
                 # launch-profile-ok: q_autocompact above carries --settings (_arm_profile_settings_flag)
-                local launch_lines="unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED
+                local launch_lines="unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN NO_COLOR UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED
 export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1
 ${q_automerge}claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact"
                 if [ "$HEADROOM_PROXY_ACTIVE" -eq 1 ]; then
@@ -5081,7 +5061,7 @@ ${q_automerge}claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact"
                     q_log=$(printf '%q' "$HOME/.headroom-proxy.log")
                     q_curl=$(printf '%q' "$HEADROOM_CURL")
                     # launch-profile-ok: q_autocompact above carries --settings (_arm_profile_settings_flag)
-                    launch_lines="unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED
+                    launch_lines="unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN NO_COLOR UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED
 export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1
 $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1 || { $q_hb proxy --port $HEADROOM_PROXY_PORT >> $q_log 2>&1 & sleep 3; }
 if $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1; then
@@ -5270,8 +5250,6 @@ _ARM_PRIOR_FIRED_ROW=$(_arm_fired_row) || _ARM_PRIOR_FIRED_ROW=""
 # this key's fire (fired_at >= key time). The recorder appends one line (atomic
 # for a line this short; readers take the last line per key) and prunes lines
 # older than a week once the file passes 200 lines.
-# ponytail: a prune racing an append can drop that one key (the pre-key behavior
-# for it), upgrade path a lock if it ever shows.
 _lim_key_time=""
 if [ -n "$LIMIT_RESET" ] && [ -n "${_lim_keys:-}" ]; then
     _lim_key_time=$(date -u +%Y-%m-%dT%H:%M:%SZ) || _lim_key_time=""  # swallow-ok: no clock means no key is recorded; the arm proceeds as before

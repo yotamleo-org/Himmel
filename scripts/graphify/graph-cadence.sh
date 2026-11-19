@@ -918,10 +918,6 @@ mkdir -p "$(dirname "$WORKTREE_DIR")" || _fail "could not create $(dirname "$WOR
 # removed. It lives BESIDE the worktree, never inside it: an in-worktree file
 # would trip graph-publish.sh's clean-tree refusal and be wiped by the very
 # `clean -fdx` it gates (same constraint as the ownership marker, step 5b).
-# ponytail: a holder that is alive but HUNG keeps heartbeating, so every later
-# fire skips until someone kills it; a SIGKILLed holder (or a reboot) stops the
-# cadence until an operator removes the lock directory. Both are deliberate:
-# the ledger names the lock and its pid, and himmel-doctor C33 surfaces it.
 PIPELINE_LOCK="${WORKTREE_DIR}.lock"
 PIPELINE_LOCK_HELD=0
 PIPELINE_LOCK_TOKEN=""

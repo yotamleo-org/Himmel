@@ -627,8 +627,6 @@ covered_in() {  # <file>...: sets covered, the keys these files may lose: every 
         if [ -n "$vals" ]; then printf '%s\n' "$vals"; fi | bash "$hs" same-value "$n" 2>/dev/null && covered="$covered$n "
     done
 }
-# ponytail: one set covers all config copies, so a differing value in any copy keeps the key in all; a per-copy scrub set in config-audit is the upgrade path.
-# ponytail: a kill between the two renames in config-audit's scrub leaves that manifest's checksum stale until the next write; a journaled rename in config-audit is the upgrade path.
 name_kept() {  # names the keys the backups keep, or says why they cannot be compared; prints no value
     local f n k m s all="" would id reason="the keyring's user-scope item does not hold that value, or env-keep names the key, so the line stays."
     local wide_reason="they run over several lines, and the scrub compares single-line entries only, so they stay; remove that copy by hand once the keyring serves the values."
@@ -959,9 +957,6 @@ if [ "${#policy_keys[@]}" -gt 0 ]; then
     fi
     ca_post "$poldir/config.json" migrate
 fi
-# ponytail: with no keyring a secret nothing reads goes to one mode-600 file; upgrade
-# path: a host with a Secret Service never takes this path, and the file is
-# imported into the keyring on the first run after one appears.
 store_secret() {  # <key>
     local line have
     line=$(entry_line "$envfile" "$1" | tr -d '\r') || return 1

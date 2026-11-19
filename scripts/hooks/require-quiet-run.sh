@@ -126,10 +126,7 @@ strip_lead() {
 # Stage 1 - strip heredoc BODIES that are not fed to a shell,
 # before the SUITE/QUIET_RUN regexes ever see them. A heredoc body is DATA,
 # not a command: `cat > handover.md <<'EOF' ... EOF` never executes whatever
-# suite-shaped text sits inside it, but the old whole-text regex scan (this
-# file's previous "ponytail" note here) couldn't tell the difference and
-# denied it anyway - refusing legitimate handover/PR-body/stuck-playbook
-# prose that happens to quote a suite command (observed 2026-08-31). The one
+# suite-shaped text sits inside it. The one
 # shape that DOES need its body kept is a heredoc actually piped/fed to a
 # shell (`bash <<'EOF'`, `cat <<'EOF' | bash`) - that body genuinely
 # executes.
@@ -155,21 +152,6 @@ strip_lead() {
 # unusual, delimiter) - the old identifier-only class captured "END" and
 # left "-MARK" attached to the terminator line, which never matched.
 #
-# ponytail: only the FIRST heredoc intro on a given physical line is
-# detected - two heredocs on the SAME line (`cmd <<A <<B`) isn't a shape
-# this repo's suites/docs/PR bodies use; extend to a loop over multiple
-# intros per line if that ever shows up. Detection (scan_quotes "detect")
-# is quote-aware, but delimiter EXTRACTION still just re-matches the raw
-# line and takes bash's leftmost hit - so a quoted heredoc-lookalike
-# EARLIER on the same line as a real heredoc operator (`echo '<<FAKE' &&
-# cat <<'REAL' > x`) still mis-captures the delimiter as "FAKE" instead of
-# "REAL" (not a shape this repo's
-# docs/PR bodies use). That mis-capture no longer bypasses anything, though
-# - see the unterminated-heredoc posture below, which is exactly what a
-# never-matching mis-captured delimiter degrades into. Upgrade path: locate
-# the match's offset in the blanked ("detect") copy and slice the real
-# delimiter out of the original line at that same offset instead of
-# re-matching the whole line from scratch.
 #
 # An unterminated
 # heredoc (no matching closing-delimiter line before the command ends) used
@@ -499,10 +481,6 @@ cmd_norm=$(tr '\n\r' ';;' <<<"$cmd_stage2")
 # (`until pgrep` / `while ! pgrep` end at once on a self-match), and only the
 # loop head is scanned. The sleepless `do :; done` busy loop is refused by the
 # himmel-ops plugin's block-busy-loop.sh, in every repo.
-# ponytail: the loop gate reads quote-neutralized text, so prose that quotes
-# a whole `until pgrep -f x; do ...` loop can false-positive, and a pgrep
-# option that takes a value (`-u user`) is read as the pattern; tighten with
-# a real shell tokenizer if either shows up.
 PGREP_WAIT_RE='(^|[^[:alnum:]_-])(until[[:space:]]+![^;]*|while[[:space:]]+([^![:space:]][^;]*)?)pgrep[[:space:]]'
 PGREP_HEAD_RE='(until[[:space:]]+!|while[[:space:]]+[^![:space:]])[^;]*'
 PGREP_ARG_RE="pgrep[[:space:]]+((-[[:alnum:]]+[[:space:]]+)*)('([^']*)'|\"([^\"]*)\"|([^[:space:];&|)]+))"

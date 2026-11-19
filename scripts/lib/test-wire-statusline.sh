@@ -139,7 +139,7 @@ grep -qF "$REPO_ROOT" "$dropped" || fail "real himmel path not substituted into 
 [ "$(jq -r .statusLine.command "$sdir/settings.json")" = "$(guarded_cmd "$REPO_ROOT")" ] || fail "command not node w/ real path"
 [ "$(jq -r .display.showPromptCache "$dropped")" = "true" ] || fail "dropped config missing showPromptCache: true"
 [ ! -f "$cfgdir/plugins/claude-hud/config.json" ] \
-  || fail "HIMMEL-3334: a fresh wire also (or instead) wrote the swept plugins/claude-hud/config.json path"
+  || fail "a fresh wire also (or instead) wrote the swept plugins/claude-hud/config.json path"
 echo "ok 10 hud config dropped under CLAUDE_CONFIG_DIR + substituted, nothing under plugins/"
 
 # 11. config drop is idempotent too (deterministic)

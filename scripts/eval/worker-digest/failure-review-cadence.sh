@@ -61,7 +61,6 @@ digest_sessions() {
     # shellcheck source=../../lib/timeout-bin.sh
     # shellcheck disable=SC1091
     . "$ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null
-    # ponytail: no timeout binary means no bound (a stock macOS host), upgrade path: a bash watchdog.
     ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 10 "${FAILURE_REVIEW_DIGEST_BOUND:-1800}"} "${bf[@]}" backfill --since "$since" --live-minutes 360 || rc=$?
     if [ "$rc" -ne 0 ]; then
         echo "failure-review-cadence: session digest failed (exit $rc), the review goes on"

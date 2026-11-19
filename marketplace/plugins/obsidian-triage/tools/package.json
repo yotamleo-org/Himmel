@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "license": "MIT",
   "private": true,
-  "description": "Playwright crawlers + batch tooling for the obsidian-triage plugin. LUNA-27.",
+  "description": "Playwright crawlers + batch tooling for the obsidian-triage plugin.",
   "type": "module",
   "engines": {
     "bun": ">=1.0.0",

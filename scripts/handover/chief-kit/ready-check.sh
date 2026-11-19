@@ -587,7 +587,6 @@ if [ -n "$rollup" ] && [ "$rollup" != "null" ]; then
         # run supersedes nothing). Every other state (queued, in progress, failure,
         # timed out) stays judged whatever a higher run id shows, as does a row
         # with no readable run id or no workflow (fail closed).
-        # ponytail: a CANCELLED row in a job the newer run skipped stays droppable, non-required rows only (the ruleset holds the required contexts), HIMMEL-8239 confirms the run itself through the run API
         | . as $all
         | ($all | map(select(.run != null and .workflow != "")) | group_by([.workflow, .run])
            | map(select(all(.[]; .ok) and any(.[]; .success)) | {workflow: .[0].workflow, run: .[0].run})) as $green
@@ -963,9 +962,6 @@ elif [ -z "$cov_lines" ]; then
 else
     cov_bad=""; cov_shape=0; cov_body_keys=""
     # A deferral must land on a residual-verb ticket or one that predates this PR's own.
-    # ponytail: key order stands for creation order (the branch name's first key is the
-    # PR's ticket; the title is author text and not read); upgrade: compare Jira's created to the first commit date once
-    # `jira get` fetches created.
     cov_own=""
     # an owed line is decided by the anchor's reader alone (the one grammar owner, as item 17 reads it): item 7 checks only its window
     cov_reader="${READY_CHECK_ANCHOR:-$(cd "$SELF_DIR/../../.." && pwd)}/scripts/lib/pr_remainder.py"
@@ -1934,7 +1930,7 @@ check_outside_pr() {
         if [ -z "$o_last" ]; then
             o16_fail b "no full review round at $o_h7 on $o16_branch: run /pr-check at $o_h7 (step 3 runs panel-first-pass.sh --full)"
         elif [ "$o_round" -gt 3 ]; then
-            o16_fail b "only a post-cap delta round at $o_h7: past its three full rounds, hand it to a maintainer takeover (HIMMEL-9019)"
+            o16_fail b "only a post-cap delta round at $o_h7: past its three full rounds, hand it to a maintainer takeover"
         else
             o16_fail b "only a delta round (from ${o_from:0:7}) at $o_h7: run /pr-check at $o_h7 (step 3 runs panel-first-pass.sh --full)"
         fi
@@ -1975,7 +1971,7 @@ check_outside_pr() {
         if [ -z "$o_hits" ]; then
             echo "[PASS] 16d. the PR touches no lint surface"
         else
-            o16_fail d "the PR touches the lint surface, so CI's lint verdict is not trusted:$o_hits: the HIMMEL-9019 takeover"
+            o16_fail d "the PR touches the lint surface, so CI's lint verdict is not trusted:$o_hits: the maintainer takeover"
         fi
     fi
 
@@ -2016,7 +2012,7 @@ check_outside_pr() {
     if [ "$o_last" = "0 0" ]; then
         echo "[PASS] 16f. impacted suites recorded green at $o_h7, none skipped"
     else
-        o16_fail f "no impacted row at $o_h7 on ${o16_branch:-?} with rc 0 and skip_n 0 (newest: ${o_last:-none}): impacted-suites.sh --check <base>..$SHA --from-file <f> --record --branch ${o16_branch:-<branch>} --head $SHA; when an impacted suite has no CI job and no VM run can host it, the HIMMEL-9019 takeover"
+        o16_fail f "no impacted row at $o_h7 on ${o16_branch:-?} with rc 0 and skip_n 0 (newest: ${o_last:-none}): impacted-suites.sh --check <base>..$SHA --from-file <f> --record --branch ${o16_branch:-<branch>} --head $SHA; when an impacted suite has no CI job and no VM run can host it, the maintainer takeover"
     fi
 
     # 16g: a diff touching the blast scope owes a ran blast row
@@ -2212,8 +2208,7 @@ check_open_findings
 # head_sha SHA; when every such row belongs to a cancelled run, the newest other
 # CI run at the head that is not cancelled decides, up to 5 are read). The manifests are read
 # only when some suite lacks local proof. The row comes from o16_ledger (head,
-# headRefName, .pr null or this PR). ponytail: the latest-run pick mirrors check
-# 2's rather than sharing it; upgrade path: one shared latest-run reader.
+# headRefName, .pr null or this PR).
 S17_AGG="shell-unit (ubuntu-latest)"
 s17_bound() {  # <default seconds>: READY_CHECK_ITEM19_BOUND wins only when 1 or more and lower (timeout 0 means no limit)
     local b="${READY_CHECK_ITEM19_BOUND:-}"
@@ -2236,7 +2231,6 @@ s17_run() {
 # A `fail` row is a suite left to CI that failed there at a PR head; a `round` row
 # says that PR moved on to a new head after a failure (an extra round). The rows
 # never change a verdict; scripts/cr/suite-fail-ledger.sh reads them.
-# ponytail: dedupe-then-append is unlocked, so two racing reads can double a row; a lock if the counts drift.
 s17_fl_path() { printf '%s' "${READY_CHECK_FAIL_LEDGER:-${HOME:-/tmp}/.himmel/state/suite-evidence/ci-failures.jsonl}"; }
 s17_fl_add() {  # <json row>: appended once, dir 700, file 600; the registry envelope (v, host, source) is added here
     local f row; f=$(s17_fl_path)

@@ -53,22 +53,6 @@
 # profile default / model alias, which this gate cannot see, so an unresolvable
 # provider is refused rather than assumed sanctioned.
 #
-# ponytail: the snapshot pins the bytes at copy time, not at classification time:
-# a same-inode in-place edit before the copy is not detected (the identity check
-# compares dev:inode:size:mtime, so it catches replacement and size/mtime moves),
-# and the original argument is re-resolved after the copy, so a symlink (final
-# component or ancestor) swapped in and still present then is refused. A shell
-# cannot bind an fd to the classified inode: a swap that is undone again before
-# the post-copy checks, or a plain-file replacement landing before the first
-# identity read, is not detected.
-# Classification is by the prompt FILE's path only. A brief handed over
-# as positional text or stdin (or copied out of the vault into /tmp first)
-# carries no path and is NOT recognised as handover-derived; only a
-# --prompt-file under the handover root / luna vault / a .salus tree is gated.
-# The salus check is the `.salus` marker walk only — the phi-roots /
-# egress-denylist lists are enforced by parity_guard's read-fence, not here.
-# Provider names hermes routes to WITHOUT a matching --provider (e.g. an env
-# override hermes reads itself) are also outside this gate.
 #
 # Usage: egress-gate.sh --prompt-file <path> [--provider <hermes-provider>]
 #                       [--snapshot]

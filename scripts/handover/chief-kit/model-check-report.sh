@@ -159,7 +159,7 @@ else:
     sentence = 'Model checking is incomplete; no bug or shortest path can be ruled out.'
 header = (f'{sentence}\n\nPR: #{pr}\nHead: {head}\nTarget: `{target}`\n'
           f'Statechart tree SHA-256: {runner_sha}\n'
-          'Evidence only: a clean report never replaces the judge (HIMMEL-8273).\n'
+          'Evidence only: a clean report never replaces the judge.\n'
           'Limits: 512 MiB heap, 60 seconds per JVM, 300 seconds total; '
           'model constants and fidelity require judge review.\n\n')
 config = next((p / 'inputs').glob('*.cfg')).read_text()

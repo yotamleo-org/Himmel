@@ -32,8 +32,6 @@
 #   MERGE_BLOCK_ALERT_CMD replaces the DM sender, `$CMD <chat_id> <text>` (merge-block-alert.sh)
 #   TELEGRAM_ACCESS_PATH  access.json with the operator chat id (merge-block-alert.sh)
 #
-# ponytail: the token kinds are GitHub's only (the leak that motivated this);
-# other providers' key shapes are a one-line regex each, add on the first leak.
 
 # `read`, a builtin, so the clean path forks nothing (rc 1 at EOF is expected).
 IFS= read -r -d '' input 2>/dev/null || :

@@ -1253,11 +1253,6 @@ function walkIdentities(candidate, resolvedProject, spelledProject) {
 // assignment ends in such a path. test-hook-rewrite-integrity.sh row 46 proves
 // every member .claude/settings.json and the plugin dispatch resolves
 // completely under PIN_DIRS, which is what makes the fail-closed safe to ship.
-// ponytail: static source-statement walk; `eval`, `bash <file>` and a path
-// built from a variable assigned in ANOTHER file are not followed (an
-// unresolvable command-position source denies, any other spelling is
-// invisible) — upgrade path is a closure manifest recorded at SessionStart if
-// a hook ever needs one.
 //
 // PIN_DIRS mirrors the directories record-hook-integrity.sh pins; a closure
 // file outside them could never carry a pin, so row 46 refuses one.
@@ -1352,9 +1347,6 @@ function isSelfDirSubst(prefix, fileDir, root, assigns, depth) {
   return selfRef && rest === '';
 }
 
-// ponytail: a positional parameter ($1..$9) is caller-supplied and its real
-// value is not modelled, so it resolves like a self-dir; scripts/lib/go-gate.sh
-// sources through one. Upgrade path: pin that call site and drop this form.
 const POSITIONAL_REF = /^\$(?:[1-9]|\{[1-9][^}]*\})$/;
 
 function prefixBases(prefix, fileDir, root, assigns, depth) {

@@ -310,9 +310,6 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
       // approve itself, so the pair must never reach an inbox. A text that is only six or
       // seven digits once spaces and hyphens are removed ("123 456") is held too, whether
       // or not it is a reply (a reply to a live prompt was answered above).
-      // ponytail: ordinary bare six-digit numbers are held too; prefix with "text:".
-      // Upgrade path: an explicit non-code message mode instead of guessing intent.
-      // A caption, a forward and a reply to a message that is not the bot's are held the same way.
       if ((wholeCode(msg.text) || pairCode(msg.text))
         && isOperatorIdentity(deps.access(), msg.from, msg.chat_id, msg.sender_chat)) {
         void deps.reply(msg.chat_id, '⚠️ afk-sudo: held a code-shaped message; nothing ran. To approve, in your private chat with this bot (never in a group) send "approve <request id> <nonce> <code>" as one message, or tap Approve on the request there and reply to that prompt. To send a number as text, prefix it with "text:".').catch(() => deps.log("[afk-sudo] hold notice failed"));

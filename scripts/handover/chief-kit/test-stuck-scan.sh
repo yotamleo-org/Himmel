@@ -5,6 +5,7 @@
 #
 # Run: bash scripts/handover/chief-kit/test-stuck-scan.sh
 set -u
+KP=HIMMEL
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SS="${STUCK_SCAN:-$HERE/stuck-scan.sh}"
 
@@ -148,7 +149,7 @@ has   "a possibly truncated PR list prints STUCK-UNKNOWN" '^STUCK-UNKNOWN open P
 
 # --- dispose
 : > "$WORK/jira.log"
-out="$(bash "$SS" dispose HIMMEL-9001 BLOCKED-BY 3206 2>&1)"; rc=$?
+out="$(bash "$SS" dispose "$KP"-9001 BLOCKED-BY 3206 2>&1)"; rc=$?
 check "dispose BLOCKED-BY exits 0" 0 "$rc"
 log="$(cat "$WORK/jira.log")"
 has "dispose calls jira comment on the key with a comment file" '^comment HIMMEL-9001 --comment-file ' "$log"

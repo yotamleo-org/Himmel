@@ -4,6 +4,7 @@
 # merge-base, failing the same cases, and fixed on latest main; a red the PR
 # introduced never passes.
 set -uo pipefail
+KP=HIMMEL
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 MF="${MF:-$HERE/merge-forward-check.sh}"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/merge-forward-check.XXXXXX")" || exit 1; trap 'rm -rf "$tmp"' EXIT
@@ -604,7 +605,7 @@ if [ "$(ttn '^tok=main argv=pr view --json number,headRefOid$')" = 1 ] && [ "$(t
 printf '#!/usr/bin/env bash\nexit 1\n' > "$tmp/csbin/jira"
 cs "chain-s2: Jira unreadable (a Blocks link may hide an H1 pair): REFUSE" 1 'REFUSE.*Jira links are unreadable'
 printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/csbin/jira"
-MOVED="$(git -C "$tmp/cs" commit-tree "$CSHEAD^{tree}" -p "$CSHEAD" -m "feat: [HIMMEL-2] a later push")"
+MOVED="$(git -C "$tmp/cs" commit-tree "$CSHEAD^{tree}" -p "$CSHEAD" -m "feat: [$KP-2] a later push")"
 prjson 11 "feat: [HIMMEL-2] the successor" "$MOVED" OPEN null 11
 cs "chain-s2: the PR moves while the pair is rebuilt (graph head is not HEAD): REFUSE" 1 'REFUSE.*PR moved'
 prjson 11 "feat: [HIMMEL-2] the successor" "$CSHEAD" OPEN null 11

@@ -59,9 +59,6 @@ const GATE_SUITE_RE = /^Bash\((?:SUITE_LOCK_WAIT=60 )?bash scripts\/quiet-run\.s
 // retired because workers type the ABSOLUTE spelling (the anchor discipline),
 // which this anchor literal matches — the relative form is dead weight, not a
 // spelling any worker still needs. This is the only admitted form.
-// ponytail: unmeasured outside one manual auto-mode check, upgrade path: test it in a live session —
-// whether the harness's own permission matcher accepts this quoted
-// "$HIMMEL_REPO/..." literal against literal typed command text.
 const GATE_ANCHOR_LITERAL = 'Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh":*)';
 // pr-check-context.sh IS /pr-check step
 // 0's own invocation of the trusted-anchor entry point — a worker cannot spell it
@@ -781,9 +778,6 @@ function validatedAnchorPath(anchor, purpose) {
   if (!path.startsWith('/') || path.split('/').includes('..') || path.includes('/.claude/worktrees/')) {
     throw new Error(`plugin-profiles: ${purpose} anchor "${anchor}" must be the absolute primary checkout, not a worktree or relative path`);
   }
-  // ponytail: a primary checkout whose path holds a character the matcher could
-  // read as syntax gets no absolute rule and the gate script still reaches the
-  // classifier; quote-aware emission if such a station appears.
   return /^[A-Za-z0-9._/+-]+$/.test(path) ? path : null;
 }
 

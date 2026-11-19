@@ -62,12 +62,6 @@ HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # with no copy of this script, fails closed rather than letting this copy
 # decide. One hop only: a hand-off that lands on a copy which is still not the
 # anchor would loop forever, so it refuses instead.
-# ponytail: this guard is defense in depth, NOT the trust root. It lives in
-# the branch's own bytes, so a branch that deletes it also deletes the
-# hand-off. The trust root is the runbook condition: the
-# bare literal is permitted only in a himmel checkout at its worktree root and
-# on a diff that touches no scripts/cr/ file; anything else enters by the
-# anchored "<himmel_dir>/scripts/cr/pr-check-env.sh" spelling.
 anchor="${HIMMEL_REPO:-}"
 if [ -z "$anchor" ]; then
     echo "pr-check-env: HIMMEL_REPO is unset or empty - refusing to let this copy ($SCRIPT_DIR) decide; adopt/setup wires it into settings.json env, or export it non-empty in the launching shell, then re-run" >&2

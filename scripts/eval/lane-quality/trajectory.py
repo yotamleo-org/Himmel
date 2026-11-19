@@ -69,8 +69,6 @@ RUNNER_SUBCMD = ("npm", "pnpm", "yarn", "bun", "go", "cargo", "make")
 QUIET_RUN_LINE_RE = re.compile(r"^(OK|ERR) quiet-run ([^\s:]\S*)(?: exit=\d+| \()", re.M)
 # output that reports failures. The suites here print `  FAIL ...` per case and
 # `<n> passed, <m> failed` (also `RESULT(S): ...`); `0 failed` is green.
-# ponytail: line-shape heuristic, a suite printing neither shape and exiting 0 still reads as passing, upgrade by
-# having suites print a quiet-run OK/ERR line or by parsing the runner's own summary.
 OUTPUT_FAIL_RE = re.compile(r"^\s*FAIL\b|\b[1-9]\d* failed\b", re.M)
 WRAPPERS = ("env", "time", "sudo", "command", "exec", "nice", "nohup")
 # Setup whose failure a test's RED is not mistaken for, in `cd d && test`.
@@ -219,10 +217,7 @@ VAR_USE_RE = re.compile(r"(?<!\\)\$(?:\{(\w+)\}|(\w+))")
 
 def _resolve_vars(segs):
     """segs with $VAR / ${VAR} replaced by the value of a bare `VAR=value`
-    segment earlier in the same command (`f=a/test-x.sh; bash $f`).
-    ponytail: simple literal values only, no quoting-aware or nested expansion,
-    upgrade by running the command through a real shell parser if a spelling
-    beyond this shows up in scored transcripts."""
+    segment earlier in the same command (`f=a/test-x.sh; bash $f`)."""
     env, out = {}, []
 
     def sub(m):
@@ -402,8 +397,6 @@ def score_calls(calls, texts, report=None):
             if t and ((passed and t[1]) or t[1] == "pass+fail"):
                 runs.append((c["pos"], t[0], passed, c["mid"]))
     writes = [(c["pos"], p, c["mid"]) for c in calls for p in [_written_path(c)] if p]
-    # ponytail: no code means no main-agent Write/Edit to an implementation path, so code written through Bash or
-    # delegated to a subagent drops out as null, read the Bash command and the subagent transcript to count it
     impl = [(pos, mid) for pos, p, mid in writes if is_impl_path(p)]
 
     # red_before_green

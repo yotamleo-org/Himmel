@@ -362,17 +362,6 @@ fi
 # below), because an edited hooks.json under an already trusted path keeps a
 # stale hash that codex silently drops. A primary checkout that cannot be
 # resolved refuses instead of trusting the worktree's own path.
-# ponytail: the port tracks codex-cli 0.161.0's identity shape (command hooks
-# only; any other hook type refuses as unverifiable); a codex release that
-# changes the identity refuses every dispatch until this is re-ported, which is
-# the fail-closed direction - upgrade path is re-reading discovery.rs on a bump.
-# ponytail: the hooks.json reader is a closed grammar (known keys only, integer
-# tokens of at most 16 digits, nesting at most 32, matchers limited to literals
-# and | ( ) . * + ? ^ $) because JS and serde/Rust parse-semantic differences kept
-# surviving every open-ended refusal list; a valid hooks.json outside it (a
-# bracket class or escape in a matcher, a new handler field) refuses, which is
-# the fail-closed direction. Upgrade path is a Rust-regex-compatible validator
-# and a schema generated from the codex release.
 _hook_trust_check() {
     local wt="$1" hooks_json=""
     local cfg="${CODEX_HOME:-$HOME/.codex}/config.toml" primary_native="$1" primary="" common
@@ -644,9 +633,6 @@ const matcherOk = (m) => {
     // past 250) and no alternative or group is empty.
     // No counted repetition, so the compiled size is linear in the
     // length; a length cap keeps it far under the Rust compile-size limit.
-    // ponytail: a conservative length bound, not the crate real size accounting
-    // (it refuses some matchers codex would compile); revisit if a legitimate
-    // matcher over 1024 chars is ever refused, by compiling in the real crate.
     if (m.length > 1024) return false;
     let prev = "start", depth = 0, lazy = false;
     for (const c of m) {
@@ -807,9 +793,6 @@ fi
 # bypasses) itself. CODEX_BIN is a registered chokepoint seam (scripts/
 # chokepoints.json), and here a resolved script (shebang) naming a refused flag
 # is refused before launch, as is any such flag in the argv finally passed.
-# ponytail: a static text scan of a script wrapper - a compiled wrapper or a
-# flag assembled at run time evades it; upgrade path is pinning CODEX_BIN to the
-# resolved codex install (basename + realpath allowlist, no own CODEX_HOME).
 CODEX_RESOLVED="$(command -v "$CODEX" 2>/dev/null || true)"
 if [ -n "$CODEX_RESOLVED" ] && [ -f "$CODEX_RESOLVED" ] && [ "$(head -c 2 "$CODEX_RESOLVED" 2>/dev/null)" = "#!" ]; then
     if grep -qE -e '--dangerously-bypass-hook-trust|--dangerously-bypass-approvals-and-sandbox|--yolo|--ignore-rules' "$CODEX_RESOLVED" 2>/dev/null; then

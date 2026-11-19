@@ -1649,14 +1649,13 @@ case "$out" in
     *) fail "round-4 C2 refusal should name the fetch/push authority disagreement" "out: $out" ;;
 esac
 
-echo "TEST: HIMMEL-3634 round-4 residual (ponytail, J1277O) — a fork-workflow clone where url AND pushurl both name the same fork has no independent local datum -- documented gap, not a regression"
+echo "TEST: round-4 residual — a fork-workflow clone where url AND pushurl both name the same fork has no independent local datum -- documented gap, not a regression"
 # Unlike the row above, here remote.origin.url is ALSO the fork (no pushurl
 # override at all) -- an ordinary fork-workflow clone, indistinguishable at
 # git's hook boundary from any other origin-nominal push. Both the argv $2
 # fetch and the literal "origin" fetch resolve to the identical repository
 # and trivially agree, so the round-4 dual-authority check cannot catch this
-# shape. Locked in here as documented, not silently improved-on or
-# regressed without updating the ponytail comment + its ticket.
+# shape.
 R4RES_ORIGIN="$TMP_ROOT/r4res-real-origin.git"
 git init -q --bare -b main "$R4RES_ORIGIN"
 R4RES_SEED="$TMP_ROOT/r4res-seed"
@@ -1679,9 +1678,9 @@ rc=0
 out=$(cd "$R4RES_PUSHER" && bash "$HOOK" origin "$R4RES_FORK" <<< "refs/heads/feat/r4ressneaky $r4res_sha refs/heads/feat/r4ressneaky $Z40" 2>&1) || rc=$?
 r4res_marker="$R4RES_PUSHER/.git/cr-pending/feat/r4ressneaky"
 if [ "$rc" -eq 0 ] && [ ! -f "$r4res_marker" ]; then
-    pass "round-4 residual (ponytail): url+pushurl-both-fork is documented as still bypassed, unchanged"
+    pass "round-4 residual: url+pushurl-both-fork is documented as still bypassed, unchanged"
 else
-    fail "round-4 residual: documented gap changed shape -- update the ponytail comment/ticket if this is now fixed" "rc=$rc marker=$([ -f "$r4res_marker" ] && echo present || echo absent) / out: $out"
+    fail "round-4 residual: documented gap changed shape -- update its ceilings ledger row if this is now fixed" "rc=$rc marker=$([ -f "$r4res_marker" ] && echo present || echo absent) / out: $out"
 fi
 
 echo "TEST: HIMMEL-3634 round-6 (J1277O C1/I1, simplified) — a handover-only TAIL on a forged local main is REFUSED, not silently skipped"
@@ -1900,10 +1899,6 @@ if [ "${call_count:-0}" -ge 2 ]; then
 else
     fail "M1: expected >=2 timeout-wrapped git-fetch calls (fork fetch + origin re-fetch), got ${call_count:-0}" "log: $(cat "$M1_LOG" 2>/dev/null) / out: $out"
 fi
-
-# M2 (refs/cr/* scratch-ref comment correction) and M3 (named-remote-equals-
-# own-URL ponytail note) are comment-only changes with no behavioural delta
-# -- no test row, per the contract's "where testable".
 
 # verify_sha_is_reviewed must not merely
 # check that base_sha is an ANCESTOR of a freshly fetched origin -- it

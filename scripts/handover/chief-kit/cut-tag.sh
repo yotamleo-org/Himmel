@@ -77,7 +77,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=scripts/lib/git-clean.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/git-clean.sh"
-git_env_scrub   # not a git hook - safe to scrub GIT_INDEX_FILE too (HIMMEL-3570)
+git_env_scrub
 
 GH="${GH_BIN:-gh}"
 

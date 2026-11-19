@@ -22,9 +22,10 @@
 # commit time. This hook catches it at EDIT time so the operator gets
 # immediate feedback instead of losing changes after a doomed commit.
 #
-# Opt-out: a local `.single-writer` file at a repo's root (gitignored via
-# global excludes, never committed) opts that repo out of the block —
-# personal vaults and state repos that commit straight to main by design.
+# Opt-out: a `.single-writer` file at a repo's root opts that repo out of the
+# block — personal vaults and state repos that commit straight to main by
+# design. The marker is honoured whether it is gitignored (via global
+# excludes) or committed.
 # The check is anchored to repo_real (the EDITED FILE's repo root), so a
 # marker in a parent repo cannot leak the opt-out onto a nested repo.
 #
@@ -34,9 +35,9 @@
 # scripts/cr/critics.local.json overlay). EXCEPT the secret-file class
 # (.env, keys, credentials — mirrored from block-read-secrets.sh): those
 # are gitignored BECAUSE they are sensitive, and stay denied. Also EXCEPT the
-# `.single-writer` basename itself: that marker is gitignored
-# too, but writing it is exactly the "disable this fence" action, so it never
-# takes this exemption either.
+# `.single-writer` basename itself: even when gitignored, writing it is
+# exactly the "disable this fence" action, so it never takes this
+# exemption either.
 #
 # The resolution/branch/exemption/bypass decision itself is the shared
 # `main_checkout_verdict` predicate in scripts/guardrails/lib.sh

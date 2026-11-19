@@ -201,7 +201,7 @@ ts_done_pending HIMMEL-9103; check "merge-rows: ts_done_pending ignores a not-me
 ts_partial_merge HIMMEL-9105; check "merge-rows: ts_partial_merge reads the row that followed the pre-merge row" "$?" 0
 printf '{"ts":"t","event":"merge","key":"HIMMEL-9106","pr":"16","head":"h16","repo":"owner/r16","contract":"yes","result":"pending","stage":"pre-merge"}\n' > "$tmp/repo.jsonl"
 printf '{"ts":"t","event":"merge","key":"HIMMEL-9107","pr":"16","head":"h16","repo":"owner/other","contract":"yes","result":"pending","stage":"pre-merge"}\n' >> "$tmp/repo.jsonl"
-check "merge-rows: the read names the row's repo, so a same-numbered PR elsewhere is not credited" "$(ts_merge_rows "$tmp/repo.jsonl" | grep -c '"key":"HIMMEL-9106"\|"key":"HIMMEL-9107"')" 1
+check "merge-rows: the read names the row's repo, so a same-numbered PR elsewhere is not credited" "$(ts_merge_rows "$tmp/repo.jsonl" | grep -cE '"key":"[A-Z]+-910(6|7)"')" 1
 check "merge-rows: and only the row of the repo that merged is kept" "$(ts_merge_rows "$tmp/repo.jsonl" | grep -c 'owner/r16')" 1
 : > "$MRGH_LOG"
 check "merge-rows: a spent read budget asks GitHub nothing and counts no unproven row" "$(MERGE_ROWS_BUDGET_SECS=0 ts_merge_rows "$tmp/repo.jsonl" 2>/dev/null | wc -l | tr -d ' ')" 0

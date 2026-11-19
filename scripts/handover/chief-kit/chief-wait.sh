@@ -435,11 +435,6 @@
 # `WAKE housekeeping` prints them. READY, BLOCKED, FINDING, Telegram, succession, GO and rulings
 # are never look-only. HOUSEKEEPING_DIGEST_SECS=0 keeps every look-only wake unbatched.
 #
-# ponytail: upgrade path HIMMEL-3510. An external SIGKILL of the waiter re-invokes the session (task
-# notification, measured); the harness-internal "low memory" kill
-# of a background task is unreproduced, so a waiter lost that way
-# is visible only as a stale heartbeat, upgrade: a bridge-side
-# stale-heartbeat alert.
 #
 # PLATFORM GUARD: the chief kit is Linux-only.
 # bash 3.2-safe.
@@ -468,6 +463,8 @@ gate_nwo() {
 . "$REPO/scripts/lib/legacy-names.sh" || exit 2
 # shellcheck source=../../lib/gh-quota.sh
 . "$REPO/scripts/lib/gh-quota.sh" || exit 2
+# shellcheck source=../../lib/jira-project.sh
+. "$REPO/scripts/lib/jira-project.sh" || exit 2
 if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 
 tick_count_mode=0
@@ -482,8 +479,6 @@ inbox="$1"; shift
 # */consoles/<name>.md, and an existing inbox a regular file with one link.
 # A secret (the GO key, .env) never sits at that shape. Checked at start and
 # again before each drain, so an inbox swapped for a link mid-wait is refused.
-# ponytail: a swap between the check and inbox-follow.sh's open still reads
-# the new target; upgrade path is handing inbox-follow.sh the checked fd.
 inbox_fence() {
     local canon name
     # prim-ok: canon_path resolves a directory only; the inbox is a file that may be a symlink or not exist yet
@@ -1454,7 +1449,7 @@ rmlease_wake() {
     [ "$rel" != none ] || return 1
     if [ -e "$rmlease_at_file" ] && [ -n "$(find "$rmlease_at_file" -mmin "-${CHIEF_WAIT_RMLEASE_SAMPLE_MIN:-5}" 2>/dev/null)" ]; then return 1; fi  # swallow-ok: an unreadable marker reads as stale, so the read runs
     : > "$rmlease_at_file" 2>/dev/null
-    pk="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"; pk="${pk##*/}"
+    pk="$(jira_project_key)"
     anchor="$(cd "$REPO" && . "$REPO/scripts/lib/git-clean.sh" && git_env_scrub && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || anchor=""  # swallow-ok: no anchor leaves the CLI unavailable, which reads as an unreadable state
     cli="${anchor%/.git}/scripts/jira/dist/index.js"
     if [ -n "${CHIEF_WAIT_RMLEASE:-}" ]; then
@@ -1519,7 +1514,7 @@ intake_wake() {
     [ "$rel" != none ] || return 1
     if [ -e "$intake_at_file" ] && [ -n "$(find "$intake_at_file" -mmin "-${CHIEF_WAIT_INTAKE_SAMPLE_MIN:-5}" 2>/dev/null)" ]; then return 1; fi  # swallow-ok: an unreadable marker reads as stale, so the read runs
     : > "$intake_at_file" 2>/dev/null
-    pk="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"; pk="${pk##*/}"
+    pk="$(jira_project_key)"
     anchor="$(cd "$REPO" && . "$REPO/scripts/lib/git-clean.sh" && git_env_scrub && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || anchor=""  # swallow-ok: no anchor leaves the CLI unavailable, which reads as an unreadable lease
     cli="${anchor%/.git}/scripts/jira/dist/index.js"
     if [ -n "${CHIEF_WAIT_RMLEASE:-}" ]; then
@@ -2386,7 +2381,6 @@ size_wake() {
     printf '%s\n' "$total" > "$size_file.tmp" && mv -f "$size_file.tmp" "$size_file"
     printf 'WAKE size rows=%s\n%s\n' "$total" "$(printf '%s\n' "$out" | tail -n +2)"
 }
-# ponytail: one page of reviews (100) per PR; upgrade = --paginate if a watched PR ever passes 100.
 prwatch_at_file="$inbox.wait.prwatch.at"
 pr_watch_wake() {
     local rows now last pr head com rev repo st pj rj nh nc nr ns detail repo_arg repo_tag gh_cmd="${CHIEF_WAIT_GH:-$GH_READ_BIN}"
@@ -2512,8 +2506,6 @@ r0_fold_key() {
 # the worker's doc has had no write for CHIEF_WAIT_WORKER_SILENT_MIN minutes, or a --succession
 # tally that stayed short names it. silent_emit does the three acts once per (worker, signal,
 # doc write time): the WAKE line, a `WORKER-SILENT` bullet in --doc, one operator page.
-# ponytail: the doc's mtime stands in for the newest Results bullet (the same stand-in as the tick's
-# hold and READY ages); a doc touched without a bullet hides a silence, upgrade = parse the bullet's HH:MM.
 silent_file="$inbox.wait.silent"
 silent_worker_min="${CHIEF_WAIT_WORKER_SILENT_MIN:-45}"
 case "$silent_worker_min" in ''|*[!0-9]*|???????*) silent_worker_min=45 ;; *) silent_worker_min=$((10#$silent_worker_min)) ;; esac  # 7+ digits would overflow the *60 a caller may add

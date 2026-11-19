@@ -37,8 +37,6 @@ const API = 'https://api.anthropic.com';
 const ID = /^[a-f0-9]{64}$/;
 // Batch price, USD per million tokens (input, output, cache-read multiplier of input): half the list price. Cache reads
 // bill at 0.1 x input (0.05 x on Sonnet 5.5 and Opus 5.5), 5-minute cache writes at 1.25 x input, 1h cache writes at 2 x.
-// ponytail: a hand-kept table of the models graphify extraction uses, from the docs 2026-10-23; an unlisted model is
-// refused rather than priced by guess. Upgrade path: read the price from the provider's cost report.
 const PRICE = {
   'claude-sonnet-5-5': [1, 5, 0.05], 'claude-sonnet-5': [1, 5], 'claude-sonnet-4-6': [1.5, 7.5],
   'claude-haiku-5-5': [0.05, 0.25], 'claude-opus-5-5': [2, 10, 0.05],
@@ -58,9 +56,6 @@ const refuse = (m, code = 2) => { throw new Refusal(code, m); };
 // that happens to open every chunk alike stays in the user message and is not promoted to the system role.
 // Fails closed to the unsplit prompt, which is still correct: a lone prompt, no instruction boundary in the shared
 // head, a prefix under the cache minimum, or a prompt that is nothing but the prefix.
-// ponytail: the boundary is graphify's current wording and MIN_PREFIX is a flat 4000 characters (about 1000 tokens,
-// the smallest cacheable block), not read per model. Upgrade path: the per-model minimum, and a wording change in
-// graphify shows as an unsplit batch, never a wrong one.
 const CACHE_TTL = '1h';
 const MIN_PREFIX = 4000;
 const INSTRUCTION_END = /^Now extract the knowledge graph from the following source file[^\n]*\n\n/m;

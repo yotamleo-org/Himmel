@@ -27,7 +27,6 @@
 # (chief Opus general-purpose helpers rose from $14 to $41-eq/day). Exit 0, no
 # permissionDecision. It fires for any session, not only a chief: the payload
 # carries no role, and a worker's Opus helper is the same spend.
-# ponytail: any-session scope, chief-only needs a role probe like guard-chief-dispatch.sh.
 #
 # EFFORT WARN (never a deny): any Agent dispatch whose `effort` is
 # high, xhigh or max and whose prompt has no `EFFORT: <reason>` line (same
@@ -35,7 +34,6 @@
 # when both fire. A dispatch a deny, an ESCALATION rescue or a DELTA-JUDGE rescue
 # already handles gets no effort warn. A missing or non-string `effort` warns on nothing, and so does
 # an effort equal to the named agent's own `effort:` frontmatter (judge at high).
-# ponytail: the warned levels are hardcoded here, upgrade path a warn_effort_levels key in agent-model-policy.json.
 #
 # Allow prints NOTHING (no stdout, no stderr) unless a marker just rescued a
 # deny or a WARN above fired: zero context cost. A missing `model` is allowed here
@@ -61,7 +59,6 @@
 # for the re-judge of a LATER push. Only sonnet is rescued: haiku and fable stay
 # denied. The guard sees a declaration, it cannot verify the delta class (the chief
 # runs delta-class.sh; docs/handover/chief-sections/judge.md).
-# ponytail: a declaration is trusted, upgrade path a verdict-file probe of the head.
 #
 # Platform guard: jq only, no git/path work beyond the sibling policy file; any
 # POSIX bash 3.2+.
@@ -70,10 +67,6 @@
 # structured hookSpecificOutput.permissionDecision on stdout — same
 # belt-and-braces idiom as guard-worker-wakeup.sh).
 #
-# ponytail: covers the Agent tool only — a Workflow script's agent() dispatches
-# run inside the one Workflow tool call and no per-dispatch hook seam is known,
-# so they are not covered.
-# ponytail: upgrade path HIMMEL-3849.
 set -uo pipefail
 
 command -v jq >/dev/null 2>&1 || exit 0

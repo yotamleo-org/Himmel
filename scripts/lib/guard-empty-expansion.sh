@@ -18,21 +18,7 @@
 # dropping the expansion alone never shows it. A plain `${V}` has
 # no word and is only dropped.
 #
-# ponytail: every `${…}` and `$name` is dropped, empty or not, so a hook can
-# over-deny a command whose expansion was a real, non-empty word that made the
-# protected program a mere argument (`$RUNNER git stash`) — the safe direction;
-# `$(…)` and `$'…'` are untouched. A default word is read as if the variable
-# were unset, so the word of `${V:+x}` is taken even when V is empty (also the
-# safe direction). Upgrade path: track variable values across the command
 #
-# ponytail: a `${…}` body is an ALLOWLIST (letters, digits, `_`, `: - + = ? # % /
-# @ * ^ , . ~`, space, or a nested `${…}`); anything else in it (`$(`, a backtick,
-# a quote, a backslash, `$[`, a bracket or paren, a bare `$`), or a body the
-# scanner cannot prove balanced, is the class five review rounds kept finding new
-# bypass spellings in, so when such a command also names the
-# hook's protected target (TARGET_ERE) it
-# is denied outright, whatever the scanner made of it; this over-denies a real
-# `git stash "${X:-$(cmd)}"`-style call. Upgrade path: a real shell parser
 #
 # guard_expansion_recheck HOOK INPUT_JSON COMMAND [TARGET_ERE]
 #   returns 0 when the command holds no expansion, the stripped form equals it,
@@ -129,8 +115,6 @@ guard_expansion_recheck() {
     # word-or-dropped combination is a form (`${A:-git} ${B:-x} stash drop` with
     # B empty runs `git stash drop`); bit k of the mask picks the word of the
     # k-th one.
-    # ponytail: past 5 default expansions only the all-words form is re-read (2^n
-    # forms), upgrade path a real shell parser.
     if ! count=$(printf '%s' "$cmd" | LC_ALL=C tr '\n' '\001' | LC_ALL=C awk -v mode=count "$_GEE_AWK"); then
         echo "guard-empty-expansion: cannot count default words - failing closed" >&2
         return 2

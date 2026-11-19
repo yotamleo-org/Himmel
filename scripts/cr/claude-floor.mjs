@@ -38,14 +38,6 @@
 // dispatch id and session id. The verifier needs only the public key, so the
 // gate holds no secret: moving the private key to another uid later changes
 // the signer alone.
-// ponytail: the signer runs as the authoring worker's uid, so any same-uid
-// process can still stamp a forged artifact: run `sign` with a registry row it
-// wrote itself, read signing.key, or replace the key pair. The stamp stops the
-// hand-written artifact (correct hash, invented session id); it is not
-// cryptographically out of a same-uid worker's reach. `sign` checking the
-// registry row and block-read-secrets.sh refusing Read/cat of *.key catch the
-// accidental path, not a determined one. The real fix is a signer running as
-// a SEPARATE uid that workers cannot become; the gate side needs no change then.
 import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -86,8 +78,6 @@ export function snapshotPath(dest, name, p = path) {
 // memory is one batch, not the whole tree. A blob larger than <limit> gets a
 // batch of its own. fn(entry, body) runs per verified record; any mismatch
 // throws (the caller fails closed).
-// ponytail: one blob is still read into one Buffer, so a single blob beyond what
-// a Buffer can hold (or than the host has memory for) still fails closed.
 const BATCH_BYTES = 64 << 20, RECORD_SLACK = 128;
 const catBatch = (shas, maxBuffer) => git(["cat-file", "--batch"], { input: shas.join("\n") + "\n", maxBuffer });
 

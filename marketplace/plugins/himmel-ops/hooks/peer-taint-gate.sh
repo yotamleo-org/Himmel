@@ -48,8 +48,6 @@
 # which the deny message names; the path floor has none, since the operator reads
 # those dirs from their own terminal, not through Claude.
 #
-# ponytail: a harness timeout kill allows the call, so the gate stays small enough to finish far inside its timeout, upgrade path the harness denies a PreToolUse call whose hook was killed.
-# ponytail: the path floor is an accidental-leak floor, the same ceiling as block-read-secrets; a relative path from a cwd outside both dirs evades it, upgrade path the bridge state is owned by its own sandboxed user.
 #
 # Bash 3.2-compatible.
 

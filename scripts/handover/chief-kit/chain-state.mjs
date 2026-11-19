@@ -23,12 +23,6 @@
 // completing merge (contract=yes; for a ticket closed by hand, its last PR merged before Jira
 // went Done) against the holds as they stood at that merge, so a later reorder never rewrites it.
 //
-// ponytail: Jira links carry no time, so the order check reads today's blocked_by links as if
-// they stood at every merge; upgrade path = the mirror's link history.
-// ponytail: a release clears every hold on its ticket (ticket-hold.sh releases the one `held`
-// label); upgrade path = a release naming its link.
-// ponytail: no `add`/`remove` writer exists yet; such rows are listed in the change log, and
-// membership is the registry's today.
 //
 // PLATFORM GUARD: the chief kit is Linux-only. Node ESM, no dependencies.
 import { readdirSync, readFileSync, statSync } from 'node:fs';

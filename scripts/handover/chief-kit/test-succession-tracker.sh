@@ -9,6 +9,7 @@
 #
 # Run: bash scripts/handover/chief-kit/test-succession-tracker.sh
 set -u
+KP=HIMMEL
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="${SUCCESSION_TRACKER:-$HERE/succession-tracker.sh}"
 
@@ -293,7 +294,7 @@ printf '# successor\n\n## Results\n\n- 10:01 LIVE - working\n' > "$LC"
 # shellcheck disable=SC2016
 printf '# chief\n\n## Live state\nworkers: `N1:Y-N1-aa:lockA:11` `N84b:Y-N84b-dd:lockD:14`\n' > "$CDOC"
 printf '{"schema":1,"workers":[{"doc":"%s/N1.md","label":"N1","lane":"native"},{"doc":"%s","label":"N84b","lane":"claudex"}]}\n' "$WORK" "$LD" > "$MAN"
-acq_out="$(bash "$QL" acquire "$LD" "HIMMEL-9-N84d-demo-2026-01-01" 2>&1)"
+acq_out="$(bash "$QL" acquire "$LD" "$KP-9-N84d-demo-2026-01-01" 2>&1)"
 # shellcheck disable=SC2016  # literal token delimiters
 token="$(printf '%s' "$acq_out" | sed -n 's/.*release-token: `\([^`]*\)`.*/\1/p')"
 eq "setup: the N84d session holds the doc lock" "$(bash "$QL" status "$LD" >/dev/null 2>&1 && echo free || echo held)" "held"

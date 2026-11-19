@@ -379,7 +379,6 @@ repos:
       # pushed file lists, so a shell write (sed -i) that slipped past the write hook is caught here. The entry stats OFF
       # first and turns anything but "exit 1 with a holds: line on stderr" into 0, so a crash or a SyntaxError in holds.py
       # never refuses a commit or a push. GIT_INDEX_FILE is kept (git commit -a and git commit <path> use a temporary index).
-      # ponytail: git commit --no-verify skips these hooks; ceiling: that commit is unchecked until its push; upgrade path: a server-side check on the PR file list.
       - id: write-hold-commit
         name: single-writer barrier (staged files)
         language: system
@@ -444,7 +443,6 @@ repos:
         always_run: true
         stages: [pre-push]
 
-      # ponytail: the required set is the recorded rules/branches snapshot, so a context added since is not linted, upgrade = read the live ruleset
       - id: required-check-no-cancel
         name: a workflow providing a required check must not cancel a run nothing re-triggers
         language: system

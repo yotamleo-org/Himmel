@@ -202,11 +202,6 @@ fi
 # Codex keeps its PreToolUse matchers disjoint (test-codex-hook-parity.sh), so
 # there the tracker and the Atlassian redirect share ONE mcp__.* chain:
 # mcp-policy.sh first, so a redirect deny still leaves an audit line.
-# ponytail: in Codex only, block-backend-tier's fail-closed branches (jq
-# missing, unparseable hook input) now also cover non-Atlassian MCP calls;
-# upgrade path = a pre-jq tool_name prefix check in block-backend-tier so a
-# non-registered prefix exits allow before those branches (8b pins the
-# well-formed case).
 if jq -e '[.hooks.PreToolUse[] | select(.matcher=="mcp__.*") | .hooks[].command | select(test("--sandbox mcp-policy\\.sh\\+block-backend-tier\\.sh\\z"))] | length == 1' "$REPO_ROOT/.codex/hooks.json" >/dev/null; then
     ok ".codex/hooks.json chains mcp-policy.sh then block-backend-tier.sh on mcp__.*"
 else

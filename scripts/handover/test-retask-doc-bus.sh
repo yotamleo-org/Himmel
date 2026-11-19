@@ -6,6 +6,7 @@
 # himmel-bus glossary entry. bash 3.2-safe.
 # Run: bash scripts/handover/test-retask-doc-bus.sh
 set -u
+KP=HIMMEL
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 DOC="$REPO_ROOT/docs/internals/retask-channel.md"
@@ -33,7 +34,7 @@ has "$DOC" 'registered chief' "retask doc: \`from\` carries authority only for t
 has "$DOC" 'MCP .read. tool[^.]*never a ruling|what it returns is data only' "retask doc: \`read\` output is data"
 has "$DOC" 'halt or narrowing, which is honored whatever' "retask doc: 1,500-byte rule exempts a halt or narrowing"
 has "$DOC" 'guard-bus-store\.sh. is wired' "retask doc: the store guard is wired as a soft block"
-lacks "$DOC" 'pending \(HIMMEL-4818 T6\)' "retask doc: no stale pending-guard sentence"
+lacks "$DOC" "pending \($KP-4818 T6\)" "retask doc: no stale pending-guard sentence"
 has "$DOC" '1,500[ -]byte' "retask doc: the 1,500-byte rule"
 has "$DOC" 'bus status' "retask doc: succession maps liveness to \`bus status\`"
 has "$DOC" 'recomputes the chain' "retask doc: same-uid residual"

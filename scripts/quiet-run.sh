@@ -186,16 +186,6 @@ LOG="${TMPDIR:-/tmp}/quiet-run-${LABEL}-$(date +%Y%m%d-%H%M%S)-$$.log"
 # command spawned) running with no owning session. Run the command as its own
 # process group (`set -m`; unlike a bare `&` it keeps stdin) and, on
 # TERM/INT/HUP, reap that whole group before exiting 128+signal.
-# ponytail: SIGKILL of the wrapper itself cannot be trapped, so a kill -9'd
-# quiet-run still orphans its command; a command that calls setsid/setpgid
-# leaves the group and escapes the reap; and a caller that started quiet-run as
-# a non-interactive `&` job handed it SIGINT already ignored, which bash cannot
-# trap (TERM/HUP still reap). With a tty on stdin the command stays in the
-# foreground group instead: a background group that reads the terminal is
-# stopped by SIGTTIN, and ^C already reaches the whole foreground group there,
-# so that path keeps the earlier shape (a `kill <pid>` of the wrapper
-# alone still orphans it). A command that opens /dev/tty while stdin is not a
-# tty is stopped the same way in the grouped path.
 # shellcheck disable=SC2329,SC2317  # invoked only through the traps below
 reap() {
     local sig="$1" code="$2" i=0

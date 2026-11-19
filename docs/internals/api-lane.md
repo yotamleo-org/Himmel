@@ -290,9 +290,9 @@ secret, only role names and account letters:
   section, run `bash scripts/vm/multi-accounts-e2e.sh <vm>` on a free test VM that holds this checkout: it starts the
   config UI once per role-map state on a throwaway HOME and asserts the route and what auto routing reads.
 
-ponytail: auto routes only from the himmel repo even for a mapped role, upgrade path: plan P1 widens it per repo once the launcher reads the egress matrix (`scripts/guardrails/egress-matrix.json`).
+Limit: auto routes only from the himmel repo even for a mapped role, upgrade path: plan P1 widens it per repo once the launcher reads the egress matrix (`scripts/guardrails/egress-matrix.json`).
 
-ponytail: nothing stops an agent with Write or Bash from creating `roles.json` and widening auto to the judge; hand edits are supported and validated on read, upgrade path: plan P4's write guard on `~/.himmel/state/api-credit/` plus a sha256 attestation sidecar and a doctor WARN.
+Limit: nothing stops an agent with Write or Bash from creating `roles.json` and widening auto to the judge; hand edits are supported and validated on read, upgrade path: plan P4's write guard on `~/.himmel/state/api-credit/` plus a sha256 attestation sidecar and a doctor WARN.
 
 ### Caching recommendation for the graph pass
 
@@ -314,6 +314,83 @@ Recommended, cheapest first:
 
 The measured per-run cost and cache read/write split for C is posted on the account C ticket after the one bounded run.
 
+## The OpenAI lane
+
+`scripts/api-lane/openai-api.mjs` sends one tool-free prompt to the OpenAI Responses API, billed to a named
+OpenAI account, under the same cap / reserve / settle ledger as the Anthropic lane. It keeps its own roster, so
+an OpenAI account and an Anthropic account never share a ledger. It is OFF unless the launching shell sets
+`HIMMEL_API_LANE=on`.
+
+```text
+node scripts/api-lane/openai-api.mjs -p [prompt] --model M --max-budget-usd N [--output-format text|json] \
+    [--effort none|low|medium|high|xhigh] [--append-system-prompt-file F]
+```
+
+With no prompt after `-p` the prompt is read from stdin (a terminal and a prompt over 8 MiB are refused). The
+system-prompt file is sent as `instructions`. Any other flag is refused.
+
+| Env | Meaning |
+|---|---|
+| `HIMMEL_API_LANE=on` | required |
+| `HIMMEL_OPENAI_ACCOUNT=A\|B\|C\|D` | the account to bill; `auto` is refused |
+| `HIMMEL_OPENAI_CREDIT_CONFIG` | the roster, default `~/.himmel/state/api-credit-openai/config.json` |
+| `HIMMEL_OPENAI_BASE_URL` | test seam, default `https://api.openai.com/v1` |
+| `HIMMEL_API_CALL_TIMEOUT_S` | the call is aborted at this age, default 3600 |
+
+### Setup
+
+The roster has the same shape as the Anthropic one; `cap_usd` is the credit left for the month:
+
+```json
+{
+  "version": 1,
+  "ledger_path": "/home/<you>/.himmel/state/api-credit-openai/ledger.json",
+  "accounts": { "A": { "organization_id": "org-openai-a", "cycle_id": "2026-11", "cap_usd": "25.000000" } }
+}
+```
+
+The key lives beside the ledger, in `key-<letter>.env` (`key-A.env` for account A): one line,
+`OPENAI_API_KEY=<key>`, a regular file, mode 600, owned by the user running the launcher. The operator writes
+it, and the launcher refuses any other shape. `OPENAI_API_KEY` in the environment is never used, and the key is
+never printed, logged or put on a command line; a provider error line is redacted before it is shown.
+
+This lane has no credit snapshot, so the ledger and `cap_usd` decide: a budget above the cap minus what is
+settled and reserved is refused. When the monthly credit resets, put the new credit in `cap_usd`, give the
+account a new `cycle_id` and a new `ledger_path` in the same directory (for example `ledger-2026-12.json`, so the
+key file is still found). The ledger refuses a roster whose cycle differs from the one it recorded, so the old
+cycle's spend is never hidden by an edit.
+
+### Spend bound
+
+A call cannot cost more than `--max-budget-usd`. The launcher takes an upper bound of the input (the UTF-8
+bytes of the instructions and the prompt, plus 256), prices it at the model's input rate, and sets
+`max_output_tokens` to what the rest of the budget buys at the output rate, at most 128000. Fewer than 16
+tokens refuses with `budget too small`. The whole budget is reserved before the request, and the call is
+settled afterwards at the priced usage (cached input at the cached rate, reasoning tokens counted as output).
+Costs are whole micro-dollars, rounded up.
+
+### Prices
+
+`scripts/api-lane/openai-prices.json` holds the standard-tier rates in USD per 1M tokens (`input`,
+`cached_input`, `output`) per model, with the date and the source page. A model that is not in the table is
+refused. To add or change a model, edit that file from the pricing page and update `as_of`; a rate may have at
+most three decimal places.
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | the response completed |
+| 1 | an HTTP error, a network error, or an incomplete response (an incomplete one is still settled and its text printed) |
+| 2 | a refusal before any request (the line starts `openai-api: refused:`) |
+| 6 | HTTP 401 or `invalid_api_key` (the account is marked key-rejected), or 429 `insufficient_quota` (marked exhausted) |
+| 124 | the call timed out; its cost is unknown and the reservation is marked unknown |
+
+### Not in this lane yet
+
+There is no `auto` account routing, no role map, no subscription fallback, no Telegram alert and no launch
+record row. A caller names one account, and a failure shows only as the exit code and the stderr line.
+
 ## Test seams
 
 - `HIMMEL_API_ALERT_CMD=<path>` replaces the Telegram sender. Every test that
@@ -323,9 +400,9 @@ The measured per-run cost and cache read/write split for C is posted on the acco
 
 ## Known limits
 
-- ponytail: a SIGKILL or an OOM kill of the launcher leaves the mode-600 stdin prompt file in `TMPDIR`, because the EXIT trap cannot run, upgrade path: sweep `claude-api-prompt.*` files older than the call timeout at launch.
-- ponytail: two failures of the same kind and class at the same moment can both send an alert (the stamp is checked, then written after the send, up to 30 seconds later), upgrade path: an atomic `mkdir` lock if duplicate alerts show up.
-- ponytail: the fallback has no watchdog of its own; it is bounded by the caller's timeout (judge-call's `--timeout`) and its budget cap, upgrade path: reuse the launcher's watchdog for the fallback.
-- ponytail: a looping caller (bulk, graphify) continues item by item on the subscription after the API account is marked, one alert per hour, upgrade path: a per-run circuit breaker if the subscription draw becomes a problem. graphify's own breaker trips only when the fallback does not run (`HIMMEL_API_FALLBACK=off` or a skipped usage preflight, the lane's exit 6), and it books a replayed chunk's cost to neither its API spend nor its reserve file.
-- ponytail: fallback rows carry no API cost, so the shift-spend report does not price them, upgrade path: price `sub_cost_usd` in the subscription spend view.
-- ponytail: a call stopped by the API watchdog (`HIMMEL_API_CALL_TIMEOUT_S`) counts as a failed call, so its prompt reruns on the subscription, upgrade path: skip the fallback for a timeout if reruns of long calls cost too much.
+- A SIGKILL or an OOM kill of the launcher leaves the mode-600 stdin prompt file in `TMPDIR`, because the EXIT trap cannot run, upgrade path: sweep `claude-api-prompt.*` files older than the call timeout at launch.
+- Two failures of the same kind and class at the same moment can both send an alert (the stamp is checked, then written after the send, up to 30 seconds later), upgrade path: an atomic `mkdir` lock if duplicate alerts show up.
+- The fallback has no watchdog of its own; it is bounded by the caller's timeout (judge-call's `--timeout`) and its budget cap, upgrade path: reuse the launcher's watchdog for the fallback.
+- A looping caller (bulk, graphify) continues item by item on the subscription after the API account is marked, one alert per hour, upgrade path: a per-run circuit breaker if the subscription draw becomes a problem. graphify's own breaker trips only when the fallback does not run (`HIMMEL_API_FALLBACK=off` or a skipped usage preflight, the lane's exit 6), and it books a replayed chunk's cost to neither its API spend nor its reserve file.
+- Fallback rows carry no API cost, so the shift-spend report does not price them, upgrade path: price `sub_cost_usd` in the subscription spend view.
+- A call stopped by the API watchdog (`HIMMEL_API_CALL_TIMEOUT_S`) counts as a failed call, so its prompt reruns on the subscription, upgrade path: skip the fallback for a timeout if reruns of long calls cost too much.

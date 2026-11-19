@@ -42,33 +42,11 @@
 # All matching is case-insensitive. Signals 2, 4 and 5 test BOTH the cwd as
 # given and its canonical (symlink-resolved) form, and signal 5 also
 # canonicalizes each listed root, so a symlink in cannot dodge them.
-# ponytail: substring match on "salus" over-blocks (a design prompt that merely
-# mentions the word, a himmel worktree slug containing it). That is the safe
-# direction, and the recovery is to reword. Upgrade path: a corpus classifier
-# shared with graphify-fence.sh, if the false positives show up in practice.
-# ponytail: the cwd comes from the hook payload (falling back to the hook's
-# $PWD). A session that cd's out of salus and then pastes PHI that names no
-# salus path and no listed root is not caught. No path-keyed guard can see
-# content without a path. Upgrade path: a content classifier (the
-# voice-audio residual is the same class).
-# ponytail: git signals trust the repo's own metadata. A salus clone renamed,
-# with its remote renamed and no .salus marker or phi-roots entry, is not
-# recognised. Upgrade path: ship a `.salus` marker in the salus repo itself.
-# No env var can loosen the verdict (EGRESS_HOOK_BUDGET_S only shortens the
-# time budget, for the test suite). GIT_DIR / GIT_WORK_TREE /
-# GIT_COMMON_DIR are unset so an inherited value cannot redirect the git probes.
 #
 # Fail closed (security fence) for everything this script decides: jq missing
 # or malformed JSON that names agent-native denies, git missing denies, an
 # unreadable list denies, and a payload too big to inspect inside the 15 s
 # hook timeout denies (a timed-out hook is ALLOWED by the harness).
-# ponytail: the launcher is NOT fail-closed. hooks.json runs this through
-# run-node.sh, and when run-node.sh finds no node it logs one breadcrumb to
-# himmel-node.log and exits 0 (deliberately fail-open, harness-wide, for
-# every plugin hook), so this hook never runs and the call is allowed.
-# Upgrade path: a content classifier.
-# No bypass: the matrix cell is hard. To run this design work, use the local
-# design skills, which keep content on the machine.
 #
 # Hook contract (PreToolUse): JSON on stdin; exit 0 allows, exit 2 blocks
 # (stderr reaches Claude). bash 3.2-safe.
@@ -227,7 +205,7 @@ fi
 #   - past hook_budget wall-clock seconds (10 s, inside the 15 s harness
 #     timeout): deny; EGRESS_HOOK_BUDGET_S can only LOWER it (test seam). The
 #     budget bounds accumulated slowness across steps, NOT a single hung
-#     resolve (see the ponytail below);
+#     resolve;
 #   - a failure to canonicalize an existing path or leaf symlink, or to
 #     extract the payload text: deny;
 #   - a walk over walk_cap path components: deny;
@@ -237,12 +215,6 @@ fi
 # it costs the existing depth, not the token length. A component over NAME_MAX
 # (255) cannot exist, so the walk looks for each "/" in a bounded prefix and
 # stops there; it never runs pattern expansion over a huge component.
-# ponytail: tokens are split on whitespace only, so a path containing spaces,
-# glued inside a word, or wrapped in more than strip_cap punctuation
-# characters is not resolved. Upgrade path: a content classifier.
-# ponytail: the budget is checked between steps, so one syscall hung in a
-# dead NFS/FUSE mount is not preempted (the harness timeout then allows).
-# Upgrade path: a watchdog process.
 payload_budget=262144
 path_cap=256
 walk_cap=128

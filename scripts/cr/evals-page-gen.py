@@ -26,8 +26,6 @@ The test-first tally is scripts/eval/decision-158-answers.py's q1, imported, not
 Precision is agreed / (agreed + disproved), the definition on docs/evals/review-panel.md.
 --until cuts the CR ledger and the eval-runs ledger alike, so a cut regenerates the same figures.
 Exit 0 written; 2 refused input. Stdlib only; no network, no model call.
-ponytail: the cache figure is one cache-probe run's read ratio over tokens, with no interval (tokens
-within a session are not independent), upgrade path a per-session ratio and a bootstrap by session.
 """
 import argparse
 import datetime

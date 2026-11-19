@@ -43,6 +43,28 @@
 #   QMD_RSS_CEILING_MB        recycle the daemon above this RSS (default 4096;
 #                              0 disables)
 #   QMD_RECYCLE_COOLDOWN_MIN  minimum minutes between recycles (default 30)
+#
+# --recycle-if-stale <stamp>: himmel-update runs this, in the foreground, after it
+# installs a new qmd build (<stamp> is the build-success file). The running server
+# is stale iff its pidfile is OLDER than <stamp>. It is recycled only when the
+# pidfile's pid is that server: an HTTP argv (mcp and --http, so a per-session
+# stdio server never matches) AND a process start no later than the pidfile's
+# mtime (a pid reused after the pidfile was written is never ours). Identity is
+# checked again right before any SIGKILL. A missing or unusable pidfile means
+# "cannot verify": non-zero, nothing signalled, and no process-list search.
+# Unlike the RSS recycle it takes the lock with a bounded retry and ignores the
+# cooldown (a fresh stamp from an RSS recycle must not keep a stale build alive).
+# Exit 0 only when the pidfile is newer than <stamp>, its pid passes the
+# identity check and the server ACCEPTS an MCP initialize: a 401 is up-but-refusing
+# the token, which prints one reason line and exits non-zero. Exit 10 means the
+# recycle was skipped because qmd is switched OFF (the operator opt-out below):
+# nothing was checked or restarted. Exit codes in this mode: 0 a server newer than
+# the stamp is serving, 10 skipped because qmd is off, 2 no stamp path, other non-zero
+# cannot verify or the server is not serving. Worst case ~150s:
+# lock wait 20 + SIGTERM wait 30 + SIGKILL wait 5 + the ~59s start path + verify
+# 10 tries of (2s probe + 1s sleep) + the 4s reason probes.
+#   QMD_STALE_LOCK_WAIT  seconds to wait for the recycle lock (default 20)
+#   QMD_STALE_TERM_WAIT  seconds to wait after SIGTERM before SIGKILL (default 30)
 set -u
 
 # localhost, NOT 127.0.0.1: the daemon binds qmd's own advertised address,
@@ -67,10 +89,12 @@ QMD_RECYCLE_COOLDOWN_MIN=$((10#$QMD_RECYCLE_COOLDOWN_MIN))
 # (one shell) keeps the shared daemon OFF on purpose, e.g. while gaming (its
 # embed/expand/rerank models contend for the GPU). Checked before ANY probe or
 # launch: exit 0, one INFO line, nothing started. qmd-daemon-switch.sh off|on
-# is the operator's one-liner.
+# is the operator's one-liner. Under --recycle-if-stale the same check exits 10
+# instead of 0, so a caller can tell a skipped recycle from a completed one.
 QMD_DAEMON_OFF_FLAG="${QMD_DAEMON_OFF_FLAG:-$HOME/.himmel/state/qmd-daemon.off}"
 if [ "${QMD_DAEMON_DISABLED:-}" = "1" ] || [ -e "$QMD_DAEMON_OFF_FLAG" ]; then
   echo "ensure-qmd-daemon: INFO - qmd is OFF by operator choice; not launching. Turn it back on: bash \"$(dirname -- "${BASH_SOURCE[0]}")/qmd-daemon-switch.sh\" on (or remove $QMD_DAEMON_OFF_FLAG / unset QMD_DAEMON_DISABLED)"
+  [ "${1:-}" = "--recycle-if-stale" ] && exit 10  # t13b-ok: exit code only, starts nothing
   exit 0
 fi
 
@@ -86,9 +110,9 @@ probe_body() {
   # file the daemon creates on first start is picked up. The header goes via a
   # curl config on stdin, never argv (visible in ps).
   local tok
-  tok="$(bash "$(dirname "${BASH_SOURCE[0]}")/qmd-auth-headers.sh" --token 2>/dev/null)"
+  tok="$(bash "$(dirname "${BASH_SOURCE[0]}")/qmd-auth-headers.sh" --token-for "$QMD_MCP_URL" 2>/dev/null)"
   if [ -n "$tok" ]; then
-    printf 'header = "Authorization: Bearer %s"\n' "$tok" | "$QMD_CURL" -s -m "$PROBE_TIMEOUT" -X POST \
+    printf 'header = "Authorization: Bearer %s"\n' "$tok" | "$QMD_CURL" -s -m "$PROBE_TIMEOUT" --noproxy '*' -X POST \
       -K - \
       -H 'Content-Type: application/json' \
       -H 'Accept: application/json, text/event-stream' \
@@ -187,7 +211,6 @@ resolve_qmd() {
 # (--recycle) so the SIGTERM + ~15s unwind + restart never spends the hook's
 # budget. Fleets start many sessions at once, so a mkdir lock admits one
 # recycler and a stamp holds off another for QMD_RECYCLE_COOLDOWN_MIN.
-# ponytail: ceiling is POSIX-ps only (Git Bash's ps has no -o, so the check is a silent no-op there) and no ps1 twin carries it; port it if a native Windows launcher returns.
 qmd_state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/qmd"
 pidfile="$qmd_state_dir/mcp.pid"
 recycle_lock="$qmd_state_dir/recycle.lock"
@@ -286,6 +309,145 @@ if [ "${1:-}" = "--recycle" ]; then
   echo "$(date '+%Y-%m-%d %H:%M:%S') recycle: restart rc=$rc"
   rm -rf "$recycle_lock"
   exit "$rc"
+fi
+
+file_mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
+
+# [[dd-]hh:]mm:ss -> seconds
+etime_secs() {
+  local t="$1" d=0 h=0 a b c m s
+  case "$t" in *-*) d="${t%%-*}"; t="${t#*-}" ;; esac
+  IFS=: read -r a b c <<EOF
+$t
+EOF
+  if [ -n "$c" ]; then h=$a; m=$b; s=$c; else m=$a; s=$b; fi
+  case "$d$h$m$s" in ''|*[!0-9]*) return 1 ;; esac
+  echo $(( (10#$d * 24 + 10#$h) * 3600 + 10#$m * 60 + 10#$s ))
+}
+
+# True iff <pid> is the HTTP server whose start wrote the pidfile of mtime <mtime>.
+# One second of slack each way: etime and the mtime are both truncated to seconds.
+pid_is_ours() {
+  local row etime args secs
+  row="$("$QMD_PS" -o etime= -o args= -p "$1" 2>/dev/null)" || return 1
+  read -r etime args <<EOF
+$row
+EOF
+  case "$args" in *qmd*mcp*--http*) ;; *) return 1 ;; esac
+  secs="$(etime_secs "$etime")" || return 1
+  [ $(( $(date +%s) - secs )) -le $(($2 + 2)) ]
+}
+
+recycle_lock_stale() {
+  local at
+  at="$(cat "$recycle_lock/at" 2>/dev/null)"
+  case "$at" in
+    ''|*[!0-9]*) [ -n "$(find "$recycle_lock" -maxdepth 0 -mmin +2 2>/dev/null)" ] ;; # gnu-ok: BSD find has -maxdepth and -mmin too
+    *) [ $(( $(date +%s) - at )) -gt 120 ] ;;
+  esac
+}
+
+answers_mcp() {
+  local reply
+  reply="$(probe_body)"
+  [ -n "$reply" ] && is_qmd_shaped "$reply"
+}
+
+unserved_reason() {
+  if alive_auth_required; then
+    echo "$1: server is up but rejected the MCP token - not reporting it as serving" >&2
+  else
+    echo "$1: the qmd server is running but answers no MCP initialize - not reporting it as serving" >&2
+  fi
+}
+
+stale_recycle() {
+  local stamp="$1" who="ensure-qmd-daemon" # t13b-ok: message prefix text only, starts nothing
+  local stamp_m pf_m pid lock_wait term_wait w took=0 verdict=1
+  case "$stamp" in '') echo "$who: --recycle-if-stale needs the build stamp path" >&2; return 2 ;; esac
+  stamp_m="$(file_mtime "$stamp")"
+  case "$stamp_m" in ''|*[!0-9]*) echo "$who: cannot read the build stamp $stamp - not recycling" >&2; return 1 ;; esac
+  lock_wait="${QMD_STALE_LOCK_WAIT:-20}"; term_wait="${QMD_STALE_TERM_WAIT:-30}"
+  case "$lock_wait" in ''|*[!0-9]*) lock_wait=20 ;; esac
+  case "$term_wait" in ''|*[!0-9]*) term_wait=30 ;; esac
+
+  read_pidfile() {
+    pid="$(head -n1 "$pidfile" 2>/dev/null)"
+    case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+    pf_m="$(file_mtime "$pidfile")"
+    case "$pf_m" in ''|*[!0-9]*) return 1 ;; esac
+  }
+
+  read_pidfile || { echo "$who: no usable pidfile ($pidfile) - cannot tell which process is the qmd server; not signalling anything" >&2; return 1; }
+  if [ "$pf_m" -ge "$stamp_m" ]; then
+    if pid_is_ours "$pid" "$pf_m"; then
+      answers_mcp && return 0
+      unserved_reason "$who"
+      return 1
+    fi
+    echo "$who: the pidfile is newer than $stamp but PID $pid is not the qmd HTTP server that wrote it - cannot verify" >&2
+    return 1
+  fi
+
+  mkdir -p "$qmd_state_dir" 2>/dev/null
+  w=0
+  # prim-ok: the plugin installs without scripts/lib, so with_lock is absent; a bounded mkdir retry that clears a stale lock itself
+  while ! mkdir "$recycle_lock" 2>/dev/null; do
+    if recycle_lock_stale; then
+      rm -rf "$recycle_lock"
+      echo "$who: cleared a stale recycle lock - not restarting now; run --recycle-if-stale again" >&2
+      return 1
+    fi
+    w=$((w + 1))
+    if [ "$w" -gt "$lock_wait" ]; then
+      echo "$who: another recycler holds $recycle_lock - not restarting the qmd server now" >&2
+      return 1
+    fi
+    sleep 1
+  done
+  echo "$$" > "$recycle_lock/owner"
+  # shellcheck disable=SC2064 # expand now: the lock path and our pid are fixed for this run
+  trap "[ \"\$(cat '$recycle_lock/owner' 2>/dev/null)\" = '$$' ] && rm -rf '$recycle_lock'" EXIT
+  date +%s > "$recycle_lock/at"
+
+  read_pidfile || { echo "$who: the pidfile vanished while waiting for the lock - cannot verify" >&2; return 1; }
+  if [ "$pf_m" -lt "$stamp_m" ] && pid_is_ours "$pid" "$pf_m"; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') recycle-if-stale: SIGTERM qmd server PID $pid (older than $stamp)"
+    kill -TERM "$pid" 2>/dev/null
+    took=0
+    while [ "$took" -lt "$term_wait" ] && kill -0 "$pid" 2>/dev/null; do
+      took=$((took + 1))
+      sleep 1
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      if pid_is_ours "$pid" "$pf_m"; then
+        echo "recycle-if-stale: PID $pid still alive after ${term_wait}s - SIGKILL"
+        kill -KILL "$pid" 2>/dev/null
+        took=0
+        while [ "$took" -lt 5 ] && kill -0 "$pid" 2>/dev/null; do took=$((took + 1)); sleep 1; done
+      else
+        echo "recycle-if-stale: PID $pid no longer passes the identity check - not sending SIGKILL"
+      fi
+    fi
+  fi
+
+  bash "$0" || echo "$who: the start path failed" >&2
+  w=0
+  while [ "$w" -lt 10 ]; do
+    if read_pidfile && [ "$pf_m" -ge "$stamp_m" ] && pid_is_ours "$pid" "$pf_m" && answers_mcp; then verdict=0; break; fi
+    w=$((w + 1))
+    sleep 1
+  done
+  if [ "$verdict" -ne 0 ]; then
+    echo "$who: no qmd server newer than $stamp is serving after the recycle" >&2
+    unserved_reason "$who"
+  fi
+  return "$verdict"
+}
+
+if [ "${1:-}" = "--recycle-if-stale" ]; then
+  stale_recycle "${2:-}"
+  exit $?
 fi
 
 # ---- Healthy path: something already answers -------------------------------

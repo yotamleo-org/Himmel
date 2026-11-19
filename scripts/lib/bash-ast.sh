@@ -65,12 +65,6 @@
 # scripts/hooks/lib/bash-ast.jq (a hook reads no .jq file at run time, so the
 # integrity pin covers it here); test-bash-ast.sh fails when they drift.
 #
-# ponytail: a CDPATH or alias from the user's rc files is not visible to the
-# hook, and zsh-only syntax is read as bash; upgrade path = a per-shell model
-# fed from the shell snapshot.
-# ponytail: with no timeout or gtimeout on PATH the model runs unbounded and
-# only the hook runner's member budget stops it; upgrade path = a bash-only
-# watchdog.
 
 # >>> BEGIN bash-ast (canonical: scripts/hooks/lib/bash-ast.jq) >>>
 IFS= read -r -d '' _BASH_AST_JQ <<'BASH_AST_JQ_EOF' || true # swallow-ok: read -d '' returns 1 at the heredoc's end
@@ -107,10 +101,6 @@ IFS= read -r -d '' _BASH_AST_JQ <<'BASH_AST_JQ_EOF' || true # swallow-ok: read -
 #
 # Fail closed: a node kind this module does not know raises an error, and so
 # does any jq failure, so the caller denies rather than guessing.
-#
-# ponytail: the alias table, `shopt` state and a function shadowing a builtin
-# (`touch(){ :; }`) are not modelled — every call is read by its literal
-# program name; upgrade path = a definitions pass over FuncDecl names.
 
 def _known: ["File","CallExpr","IfClause","WhileClause","ForClause","CaseClause",
   "Block","Subshell","BinaryCmd","FuncDecl","ArithmCmd","TestClause","DeclClause",

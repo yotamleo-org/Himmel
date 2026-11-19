@@ -181,7 +181,7 @@ after="$(wc -c < "$INBOX23" 2>/dev/null | tr -d '[:space:]')"
 if [ "$rc" -eq 3 ] && [ "$before" = "$after" ] && printf '%s' "$out" | grep -qi relay \
     && printf '%s' "$out" | grep -qF 'only the chief sends token-quoting messages' \
     && ! printf '%s' "$out" | grep -qi judge; then
-    pass "relay refuses --token (names the chief, not the judge, as the token sender: HIMMEL-3136)"
+    pass "relay refuses --token (names the chief, not the judge, as the token sender)"
 else
     fail "relay refuses --token (rc=$rc before=$before after=$after out='$out')"
 fi

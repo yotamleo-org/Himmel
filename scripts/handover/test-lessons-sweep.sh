@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
 set -uo pipefail
+KP=HIMMEL
 HERE="$(cd "$(dirname "$0")" && pwd)"; L="$HERE/lessons-sweep.sh"; B="$HERE/bug.sh"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 fails=0; check(){ [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
@@ -25,7 +26,7 @@ printf '%s\n' '## CR Findings' '### 2026-06-20 — HEAD abc (PR 1)' \
 out="$(bash "$L" --root "$root")"
 check "recurring section present" "$(printf '%s' "$out" | grep -c '## Recurring (lesson candidates)')" "1"
 check "recurring catches shared"  "$(printf '%s' "$out" | grep -c '^- flaky timeout  (in: ')" "1"
-check "recurring lists both items" "$(printf '%s' "$out" | grep -c 'epics/HIMMEL-1-a, standalones/HIMMEL-2-b')" "1"
+check "recurring lists both items" "$(printf '%s' "$out" | grep -c "epics/$KP-1-a, standalones/$KP-2-b")" "1"
 check "digest section present"    "$(printf '%s' "$out" | grep -c '## Digest')" "1"
 check "digest lists wontfix bug"  "$(printf '%s' "$out" | grep -c 'unique glitch')" "1"
 check "digest lists CR title"     "$(printf '%s' "$out" | grep -c 'unquoted var in trap')" "1"
@@ -93,7 +94,7 @@ printf '%s\n' '## Resume Point' '- not a lesson' '## Lessons' '' \
   '## Overnight Mode Trigger' '- also not a lesson' > "$rootl/epics/HIMMEL-1-a/next-session-1.md"
 lout="$(bash "$L" --root "$rootl")"
 check "next-session lesson share"   "$(printf '%s' "$lout" | grep -c '^Check share: 1/2 lessons (50%) name a check or guardrail$')" "1"
-check "next-session lesson in digest" "$(printf '%s' "$lout" | grep -c '^- lesson · epics/HIMMEL-1-a · stale lock')" "1"
+check "next-session lesson in digest" "$(printf '%s' "$lout" | grep -c "^- lesson · epics/$KP-1-a · stale lock")" "1"
 check "next-session other sections skipped" "$(printf '%s' "$lout" | grep -c 'not a lesson')" "0"
 
 # Empty root -> digest placeholder, rc 0.

@@ -13,8 +13,6 @@ write-verdict.sh, headed-arm-leg.sh; a Jira create/comment/transition/edit/link;
 token or a ruling word; a Write/Edit to a brief, worker, RESUME, evidence or verdict path), else `relay-only`.
 Operator-facing wakes (operator text, session-load, local commands, WAKE telegram) are not machine wakes.
 
-ponytail: the judgement regex is broad, so relay-only is a lower bound; upgrade path = hand-label a sample.
-
 Output: `consoles=<n> <letters>`, then one `CLASS <name> wakes= pct_wakes= reqs= eq= pct_eq=` row per class
 (operator, machine-relay-only, machine-escalate, esc-judgement-or-think, esc-mechanical, ALL), then one
 `KIND <kind> wakes= reqs= eq= escalate= relay_eq= mech_eq=` row per wake kind, largest eq first. eq is the raw

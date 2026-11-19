@@ -44,11 +44,6 @@
 # checks below, so keep them declared once.
 _HIMMEL_USER_CLAUDE_MD_MARKER="HIMMEL:working-principles"
 _UCM_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# ponytail: distinctive-phrase heuristic, not a real "did the operator already
-# say this" detector -- a hand-written CLAUDE.md that phrases the same idea
-# without ever using these two words together would still get appended to.
-# Upgrade path: none planned, the cost of a rare double-append (operator just
-# deletes the duplicate block) is lower than the cost of a stricter matcher.
 _HIMMEL_USER_CLAUDE_MD_HEURISTIC="simplicity first"
 
 # _ucm_record_block <target> <payload> <file_created true|false>

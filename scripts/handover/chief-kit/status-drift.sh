@@ -78,8 +78,6 @@
 # the whole log, read once per pass. The whole pass is cut off at
 # TICKET_STATUS_DRIFT_BUDGET seconds (default 90).
 #
-# ponytail: without --snapshot the derive reads gh live per key that has a ladder
-# status (~4 s a key), upgrade path = always pass the sweep's snapshot.
 #
 # Env: TICKET_STATUS_STATE_DIR, JIRA_PROJECT_KEY (default HIMMEL); TICKET_STATUS_NOW (epoch, the clock),
 # TICKET_STATUS_AWAIT_TTL_CHIEF (default 24h), TICKET_STATUS_AWAIT_TTL_OPERATOR and _OTHER (default 72h),
@@ -275,8 +273,6 @@ MIRROR_DIR="${TICK_TRACKER_MIRROR_DIR:-$HOME/.himmel/state/jira-mirror/${JIRA_PR
 # A ticket's labels and comments come from its file in the local Jira mirror, as its status and type do for the
 # merged-no-row class below: one live `jira get` or `jira comments` per ticket cost 37 s of a traced pass.
 # A key the mirror lacks, a file with no `labels:` line (labels) or no `## Comments` heading (comments) is read live.
-# ponytail: the mirror is as fresh as the last focus refresh, which mirrors just before this pass; upgrade path =
-# compare the file's updated field with the ticket's before trusting a label.
 # has_label <KEY> <label>: rc 0 labelled, 1 not
 has_label() {
     local line f=$MIRROR_DIR/$1.md
@@ -547,8 +543,6 @@ done <<<"$keys"
 # pass less 25 s for the classes after this one, whichever is less. A Done ticket costs a live read, so
 # once the budget is spent open tickets may be among the PRs left unread; they are one HEALTH row naming
 # the first keys. A cut-off pass loses every row.
-# ponytail: the mirror is as fresh as the last focus refresh, which mirrors just before this pass; upgrade
-# path = compare the file's updated field with the PR's merge time before trusting a Done or open status.
 MNR_LIMIT="${TICKET_STATUS_DRIFT_MNR_LIMIT:-1000}"
 case "$MNR_LIMIT" in ''|*[!0-9]*) MNR_LIMIT=1000 ;; esac
 mday() { date -u -d "$1 days ago" +%Y-%m-%d 2>/dev/null || date -u -v-"$1"d +%Y-%m-%d 2>/dev/null; } # swallow-ok: no date is the unreadable case the merged list check turns into a HEALTH row
@@ -629,8 +623,6 @@ esac
 # A Done or worked ticket held only in a later unreleased version than the current one (the earliest
 # unreleased, unarchived by date) is drift: the release manager's INTAKE request folds it in. One search
 # per later version; a ticket that also carries the current version is left out by the JQL itself.
-# ponytail: the release is named after the version, upgrade path = a release lookup in the CLI once a
-# release declares several versions.
 proj="${JIRA_PROJECT_KEY:-HIMMEL}"
 vd_rulings() { # <keys> - VRUL = "key\tid\tts\tepoch\towner" per key whose latest ruling refused its INTAKE; rc 1 = unreadable
     local root hr common rf

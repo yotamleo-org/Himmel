@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""chain-render.py (HIMMEL-7709, slice 3 of HIMMEL-7701): render focus-chains.json from the chain graph.
+"""chain-render.py: render focus-chains.json from the chain graph.
 
 The file is overwritten from the graph on every run, so a hand edit does not survive a render (no flag gates
 the render any more).

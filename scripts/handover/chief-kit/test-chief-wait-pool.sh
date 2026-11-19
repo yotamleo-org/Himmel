@@ -15,6 +15,7 @@
 #
 # Run: bash scripts/handover/chief-kit/test-chief-wait-pool.sh
 set -u
+KP=HIMMEL
 HERE="$(cd "$(dirname "$0")" && pwd)"
 WAIT="${CHIEF_WAIT:-$HERE/chief-wait.sh}"
 
@@ -328,7 +329,7 @@ printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\nLOCAL\tHIMMEL-9002\tM
 arm "$I" "$WORK/rp3.out" 6
 check "(rp) a pool that grows from empty wakes (rc 0)" "0" "$rc"
 check "(rp) the re-wake is an underfilled wake" "1" "$(wakes "$WORK/rp3.out")"
-check "(rp) and it lists the new pool rows" "2" "$(grep -c '^LOCAL.HIMMEL-900[12]' "$WORK/rp3.out")"
+check "(rp) and it lists the new pool rows" "2" "$(grep -c "^LOCAL.$KP-900[12]" "$WORK/rp3.out")"
 
 arm "$I" "$WORK/rp4.out" 4
 check "(rp) the same pool on the next arm is one wake per change (rc 124)" "124" "$rc"
@@ -336,7 +337,7 @@ check "(rp) the same pool on the next arm is one wake per change (rc 124)" "124"
 printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\nLOCAL\tHIMMEL-9003\tMedium\tv1\tthird\tfiles=c.sh\n' > "$STUB/pool.rows"
 arm "$I" "$WORK/rp5.out" 6
 check "(rp) a changed key set wakes (rc 0)" "0" "$rc"
-check "(rp) the changed pool lists the new key" "1" "$(grep -c '^LOCAL.HIMMEL-9003' "$WORK/rp5.out")"
+check "(rp) the changed pool lists the new key" "1" "$(grep -c "^LOCAL.$KP-9003" "$WORK/rp5.out")"
 
 : > "$STUB/pool.fail"
 c0="$(calls)"
@@ -415,8 +416,8 @@ printf '# chief\n\n## Live state\n\n## Results\n' > "$WORK/replay-chief.md"
 I="$(new_inbox replay)"
 timeout 12 bash "$WAIT" "$I" --doc "$WORK/replay-chief.md" --workers N1.md > "$WORK/replay1.out" 2>/dev/null; rc=$?
 check '(replay) undispositioned tickets wake pool-unresolved' 1 "$(grep -c '^WAKE pool-unresolved .*pool=56/4/21/35' "$WORK/replay1.out")"
-check '(replay) BLOCKED keys are named by class' 1 "$(grep -c '^# pool-unresolved classification HIMMEL-16 ' "$WORK/replay1.out")"
-check '(replay) listed but undispatched keys remain unresolved' 1 "$(grep -c '^# pool-unresolved listed HIMMEL-35 ' "$WORK/replay1.out")"
+check '(replay) BLOCKED keys are named by class' 1 "$(grep -c "^# pool-unresolved classification $KP-16 " "$WORK/replay1.out")"
+check '(replay) listed but undispatched keys remain unresolved' 1 "$(grep -c "^# pool-unresolved listed $KP-35 " "$WORK/replay1.out")"
 arm "$I" "$WORK/replay2.out" 4
 check '(replay) an unchanged unresolved set joins the digest on the bounded cadence, no wake (8197)' 0:1 "$(grep -c '^WAKE ' "$WORK/replay2.out"):$(grep -c '^pool-unresolved ' "$I.wait.housekeeping")"
 # Capacity is no excuse for silently dropping the open pool.
@@ -446,7 +447,7 @@ timeout 8 bash "$WAIT" "$I" --doc "$WORK/tf-chief.md" --workers N1.md > "$WORK/t
 check '(tf) a failing tick sample with an unresolved pool still wakes (rc 0)' 0 "$rc"
 check '(tf) the wake is pool-unresolved and says the tick failed' 1 "$(grep -c '^WAKE pool-unresolved capacity=? ' "$WORK/tickfail.out")"
 check '(tf) the failure stands in for the tick line' 'tick-fail samples=1 step=tick-exit:1' "$(sed -n 2p "$WORK/tickfail.out")"
-check '(tf) the wake names the unresolved key' 1 "$(grep -c '^# pool-unresolved listed HIMMEL-77 ' "$WORK/tickfail.out")"
+check '(tf) the wake names the unresolved key' 1 "$(grep -c "^# pool-unresolved listed $KP-77 " "$WORK/tickfail.out")"
 printf '# disposition HIMMEL-16 classification BLOCKED: needs slicing\n' > "$STUB/dispositions"
 I="$(new_inbox tickfailquiet)"
 timeout 4 bash "$WAIT" "$I" --doc "$WORK/tf-chief.md" --workers N1.md > "$WORK/tickfailquiet.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
@@ -536,7 +537,7 @@ I="$(new_inbox rpreal)"
 timeout 20 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WORK/fleet.json" > "$WORK/rpreal.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(rp-real) the real dispatcher's pool wakes the waiter (rc 0)" "0" "$rc"
 check "(rp-real) the pool in the wake block equals a hand run with the same flags" "$hand" "$(sed '1,2d;/^# version backlog/,$d;/^# rows left in /,$d;/^# disposition /d;/^# pool-unresolved /d;/^# dispatchable in /d' "$WORK/rpreal.out")"
-check "(rp-real) the hand run lists the pool head" "1" "$(printf '%s\n' "$hand" | grep -c 'HIMMEL-1	')"
+check "(rp-real) the hand run lists the pool head" "1" "$(printf '%s\n' "$hand" | grep -c "$KP-1	")"
 check "(rp-real) the wake block carries the drop summary once (a declared release runs no second pass)" "1" "$(grep -c '^# dropped from v1.0.1: 0 of 2 To Do (none)' "$WORK/rpreal.out")"
 
 # --- (rp-workers) a live worker's ticket stays out of the pool: --workers-from reaches the dispatcher ---
@@ -546,8 +547,8 @@ printf '{"schema":1,"legs":[{"label":"held","doc":"%s"}]}\n' "$WORK/HIMMEL-1-hel
 hand="$(bash "$HERE/next-dispatchable.sh" --priority-pool-only --top 7 --doc "$WORK/chief.md" --workers-from "$WORK/fleet-held.json" </dev/null 2>/dev/null)"
 I="$(new_inbox rplegs)"
 timeout 20 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WORK/fleet-held.json" > "$WORK/rplegs.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
-check "(rp-workers) the hand run keeps the held worker's ticket out of the pool" "0" "$(printf '%s\n' "$hand" | grep -c 'HIMMEL-1	')"
-check "(rp-workers) and lists the other pool head" "1" "$(printf '%s\n' "$hand" | grep -c 'HIMMEL-3	')"
+check "(rp-workers) the hand run keeps the held worker's ticket out of the pool" "0" "$(printf '%s\n' "$hand" | grep -c "$KP-1	")"
+check "(rp-workers) and lists the other pool head" "1" "$(printf '%s\n' "$hand" | grep -c "$KP-3	")"
 check "(rp-workers) the pool in the wake block equals that hand run" "$hand" "$(sed '1,2d;/^# version backlog/,$d;/^# rows left in /,$d;/^# disposition /d;/^# pool-unresolved /d;/^# dispatchable in /d' "$WORK/rplegs.out")"
 
 printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
@@ -623,8 +624,8 @@ I="$(new_inbox lp)"
 timeout 20 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WORK/fleet.json" > "$WORK/lp.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(lp) the LOW pool wakes the waiter (rc 0)" "0" "$rc"
 check "(lp) the pool rows are listed" "2" "$(grep -c '^LOCAL.HIMMEL-[13]	' "$WORK/lp.out")"
-check "(lp) every plain current-version To Do row is listed" "5" "$(grep -c '^LOCAL.HIMMEL-1[0-4]	' "$WORK/lp.out")"
-check "(lp) a pool row is not listed twice" "1" "$(grep -c '^LOCAL.HIMMEL-1	' "$WORK/lp.out")"
+check "(lp) every plain current-version To Do row is listed" "5" "$(grep -c "^LOCAL.$KP-1[0-4]	" "$WORK/lp.out")"
+check "(lp) a pool row is not listed twice" "1" "$(grep -c "^LOCAL.$KP-1	" "$WORK/lp.out")"
 check "(lp) a full pool runs no second pass, so the wake line carries no dispatchable count" "WAKE pool-unresolved capacity=UNDERFILLED:7 pool=7/0/0/7" "$(head -n1 "$WORK/lp.out")"
 
 # --- (8134) the plain current-version rows are pool rows: one heading names the version, no
@@ -792,7 +793,7 @@ printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
 I="$(new_inbox intake)"
 arm "$I" "$WORK/intake.out" 8
 check "(8170) an INTAKE pool short of the slots wakes the waiter (rc 0)" "0" "$rc"
-check "(8170) the wake carries the intake candidates line" "1" "$(grep -c '^# intake 3 for v1: HIMMEL-901 HIMMEL-902 HIMMEL-905' "$WORK/intake.out")"
+check "(8170) the wake carries the intake candidates line" "1" "$(grep -c "^# intake 3 for v1: $KP-901 $KP-902 $KP-905" "$WORK/intake.out")"
 check "(8170) the wake names the INTAKE command and the rm-run" "1" "$(grep -c '^# INTAKE: .*release request.*--verb INTAKE --key <KEY> --to v1.*rm-run' "$WORK/intake.out")"
 check "(8170) a short INTAKE pool still runs the second pass: the wake line carries dispatchable=" "1" "$(head -n1 "$WORK/intake.out" | grep -c 'dispatchable=')"
 rm -f "$STUB/pool.intake" "$STUB/pool.rows"
@@ -806,7 +807,7 @@ for form in 'no-version-line:# intake 2: HIMMEL-901 HIMMEL-902' 'old-line:# inta
     printf '%s\n' "${form#*:}" > "$STUB/pool.intake"
     I="$(new_inbox "nov-${form%%:*}")"
     arm "$I" "$WORK/nov-${form%%:*}.out" 8
-    check "(8336) $form: the wake names the intake keys" "1" "$(grep -c '^# intake 2.*HIMMEL-901 HIMMEL-902' "$WORK/nov-${form%%:*}.out")"
+    check "(8336) $form: the wake names the intake keys" "1" "$(grep -c "^# intake 2.*$KP-901 $KP-902" "$WORK/nov-${form%%:*}.out")"
     check "(8336) $form: the wake prints no INTAKE command and no --to value" "0" "$(grep -c -e '^# INTAKE: ' -e '--to ' "$WORK/nov-${form%%:*}.out")"
 done
 # a version name with a space still gets its INTAKE command
@@ -827,7 +828,7 @@ printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\nSERIES\tLOCAL\tHIMMEL
 I="$(new_inbox series)"
 arm "$I" "$WORK/series1.out" 8
 check "(8349) a pool with a SERIES row wakes (rc 0)" "0" "$rc"
-check "(8349) the SERIES row is classed once, under its own heading" "1:1" "$(grep -c '^# dispatchable as one series worker' "$WORK/series1.out"):$(grep -c '^SERIES.LOCAL.HIMMEL-9101,HIMMEL-9102' "$WORK/series1.out")"
+check "(8349) the SERIES row is classed once, under its own heading" "1:1" "$(grep -c '^# dispatchable as one series worker' "$WORK/series1.out"):$(grep -c "^SERIES.LOCAL.$KP-9101,$KP-9102" "$WORK/series1.out")"
 check "(8349) dispatchable= counts the series' tickets" "1" "$(head -n1 "$WORK/series1.out" | grep -c 'dispatchable=3')"
 arm "$I" "$WORK/series2.out" 4
 check "(8349) the same series pool does not wake again (rc 124)" "124" "$rc"
@@ -841,7 +842,7 @@ printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\nSERIES\tLOCAL\tHIMMEL
 I="$(new_inbox seriespass2)"
 arm "$I" "$WORK/seriespass2.out" 8
 check "(8349) a SERIES row only in the second pass is counted" "1" "$(head -n1 "$WORK/seriespass2.out" | grep -c 'dispatchable=3')"
-check "(8349) and listed once in the version backlog" "1" "$(sed -n '/^# version backlog/,$p' "$WORK/seriespass2.out" | grep -c '^SERIES.LOCAL.HIMMEL-9201,HIMMEL-9202')"
+check "(8349) and listed once in the version backlog" "1" "$(sed -n '/^# version backlog/,$p' "$WORK/seriespass2.out" | grep -c "^SERIES.LOCAL.$KP-9201,$KP-9202")"
 printf 'SERIES\tLOCAL\tHIMMEL-9101,HIMMEL-9102\tHigh\tv1\tfiles=s.sh\n' > "$STUB/pool.rows"
 cp "$STUB/pool.rows" "$STUB/pass2.rows"
 I="$(new_inbox seriesboth)"

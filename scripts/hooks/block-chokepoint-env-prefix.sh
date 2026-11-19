@@ -420,15 +420,6 @@ split_bytes() {
 # it balanced) and return 0; return 1 when no adjacent `))` closes it (the
 # `((cmd); cmd)` nested-subshell reading, or an unterminated span -- both
 # keep the segmentation they always had). Quotes are not modelled: a `)`
-# inside a quoted string in an arithmetic body mis-balances (ponytail:
-# documented determined-bypass residual, same posture as the header's
-# string-reconstruction note). Reads segment_cmd's byte array SC (its only
-# caller), so <index> is a byte offset into <text>.
-# The body ends at the first `)` that is unmatched since
-# <index>, which is exactly the stack match of the `(` just before it. One
-# stack pass over SC (first call per segment_cmd text) records every `(`'s
-# match in segment_cmd's AMATCH, so each call is an O(1) lookup: it used to
-# rescan to EOF per unclosed `((` (1500 openers = 40 s, past the hook budget).
 arith_body() {
     local i="$2" j k=0 c
     local -a stk=()
@@ -467,13 +458,6 @@ arith_body() {
 # the name. Whitespace anywhere between the tokens is allowed -- the spaced
 # spelling is the one the no-space assignment-WORD path never saw. Anywhere in
 # the body counts (comma lists, ternary arms, grouping parens).
-# ponytail: the fold is STATIC -- it only sees a seam NAME written in the body.
-# A bare variable in `(( ))` has its VALUE evaluated as arithmetic, so
-# `x=SEAM=0; (( x ))` assigns the seam through a value this fold cannot follow
-# (the value could equally come from a file, `read` or the environment), and
-# the guard ALLOWS it. Accepted as a documented residual (operator
-# ruling 2026-09-19), same class as the header's string-reconstruction note;
-# the test suite pins it as a known ALLOW.
 arith_fold() {
     local body="$1" flat='' n re c i=0 k=0 d=0 ins='' nb=${#1}
     local -a spans
@@ -1278,8 +1262,6 @@ pobf_put() {
 # long option not listed as non-executing voids relief; any stage voids on a
 # word naming an option that runs a program (--pager, --exec, -O, -x, -X ...).
 # git-env-ok: no git invocation; "git" is only a word matched in the screened command text
-# ponytail: a closed non-executing list for git (HIMMEL-4402); a new safe git option is
-# over-denied until listed, never under-denied.
 POBF_GIT_SAFE=' --oneline --stat --name-only --name-status --no-color --color --count --line-number --max-count --all --since --until --after --before --author --committer --grep --format --pretty --abbrev --abbrev-commit --short --porcelain --branch --cached --others --exclude-standard --ignore-case --files-with-matches --files-without-match --fixed-strings --extended-regexp --basic-regexp --perl-regexp --word-regexp --invert-match --no-index --untracked --show-toplevel --git-dir --abbrev-ref --verify --heads --tags --quiet --null --heading --break --and --or --not --all-match --recurse-submodules --text --full-name --first-parent --merges --no-merges --reverse --skip --diff-filter --follow --decorate --graph --date --shortstat --numstat --summary --patch --no-patch --stdin --revs-only --no-flags --flags --sq --default --symbolic --symbolic-full-name --is-inside-work-tree --is-bare-repository --show-cdup --show-prefix --git-common-dir --absolute-git-dir --deleted --modified --ignored --directory --error-unmatch --eol --stage --unmerged --killed '
 # getopt_long and git parse-options accept any unambiguous prefix of a long
 # option (`sort --compr=cat`, `git grep --open-files=less`): a long word whose
@@ -1294,8 +1276,6 @@ POBF_XOPT_LONG='open-files-in-pager pager paginate exec ext-diff textconv output
 # grep egrep fgrep (-x -X), rg (-x), ls (-x -X), diff (-x -X), du (-x -X), file
 # (-X), test and [ (-x -O are tests), rm (-x); the other listed readers have no
 # -O/-x/-X that runs anything. An unlisted command keeps the old screen.
-# ponytail: the reader list is a closed allowlist (HIMMEL-5197); a reader missing from it
-# keeps the old -O/-x/-X void (over-deny, never under-deny).
 pobf_xshort() {
     case "$1" in
         git) [[ $2 =~ ^-[^-]*O ]] ;;
@@ -1347,12 +1327,6 @@ pobf_xopt_scan() {
 # relieved. Fail-closed on a word that starts with { [ ? * , starts with - and
 # carries one before its first =, or holds a { followed by - (or by - after a
 # comma). The bare shell words [ ] { } [[ ]] are not words that expand.
-# ponytail: any stage with relief and such a word is over-denied (HIMMEL-5210; it only
-# matters when the command already names an obfuscated path):
-# a non-rg reader whose word STARTS with a glob (ls *.md) is denied too, while
-# a mid-word glob (grep -r x src/*) keeps relief; the ceiling is one quoted
-# glob, the upgrade path a screen that resolves the glob against the cwd. rg
-# stages additionally get pobf_rgshape.
 pobf_xglob() {
     local w n rc=1 fl=1
     case $- in *f*) fl=0 ;; esac
@@ -1415,11 +1389,6 @@ POBF_NAMES='ls cat grep egrep fgrep head tail wc echo diff uniq cut stat file du
 # functions/dis_functions/aliases/dis_aliases/galiases/saliases/BASH_ALIASES,
 # a PATH/LD_*/IFS/BASH_ENV/ENV/ZDOTDIR assignment, or an unterminated quote or
 # heredoc.
-# ponytail: HIMMEL-3930 -- an allowed interpreter can still assemble a path with no
-# metachar, and the read-only set is a closed list a new exec-capable
-# option would slip past; the structural parse replaces this.
-# '$(' and '\' below are literal case patterns, not missed expansions;
-# the unquoted $g_* in ${rest%%$g_*} are glob patterns on purpose.
 # shellcheck disable=SC2016,SC1003,SC2295
 pobf_relief() {
     local t="$1" F='' L rest q md=U body='' n=0 hn=0 hi=0 hb='' cmp i j k c c2 w s x cls nf ostk bqi sub=0 bq=0 stack='' ap wr=0
@@ -1681,7 +1650,6 @@ pobf_relief() {
     done
     # Class per stage: 2 = skip words and tokens, 1 = skip tokens, 0 = scan.
     local rgcfg=0
-    # ponytail: a RIPGREP_CONFIG_PATH name built from pieces is not matched here (upgrade HIMMEL-3930, then HIMMEL-5233).
     case "$t$F" in *RIPGREP_CONFIG_PATH*) rgcfg=1 ;; esac
     j=0
     while [ "$j" -lt "$i" ]; do
@@ -1849,10 +1817,6 @@ pobf_relief() {
             # quoted or heredoc text counts (sed '1e env -i ..'); any other
             # stage (env, sudo, su, timeout, xargs, $E, a substitution's
             # output) gets no relief.
-            # ponytail: HIMMEL-3930 -- a quoted text an interpreter or sed's e command runs
-            # is read only for a LITERAL token (an escape like \055i slips
-            # past, as it did the old whole-text match), the
-            # structural parse closes it.
             [ "$cls$nf${SS[j]}${ED[j]}" = 0001 ] && cls=1
             case "$cls" in
                 2) ;;
@@ -1909,11 +1873,6 @@ pobf_relief() {
 # seam variable, startup state or a clear the text sees (declare +x,
 # export -n, exec -, ${!) never gets relief; neither does one the model
 # cannot load or parse within its bound.
-# ponytail: an unknown program word keeps the deny, and so does a runner the
-# model does not flag (rtk proxy, npm run); upgrade path = a runner table in
-# bash-ast.jq. The python and node scan is a token list, not a proof: code
-# that reaches a spawn through a primitive missing from it gets the relief;
-# upgrade path = an interpreter AST walk.
 IFS= read -r -d '' OBF_AST_JQ <<'OBF_AST_EOF' || true # swallow-ok: read -d '' returns 1 at the heredoc's end
 def lit: .t == "lit";
 def wv: .v // "";
@@ -2053,10 +2012,6 @@ obf_ast_relief() { # obf_ast_relief <text> <verb regex> <hard 0|1>
 # ./g?.sh, ./g(o).sh or bash g?.sh, $D/g*.sh) and the zsh extendedglob
 # operators # ## ^ ~: any path word with a metachar in any segment, and any
 # glob word handed to a shell or `source`, now counts (second loop below).
-# ponytail: still open until HIMMEL-3930 lands -- a word assembled wholly from variables ($D/$B, no
-# metachar), an obfuscated seam NAME or an obfuscated env word (/usr/bin/en?
-# -i) beside an anchor-less path, and zsh <-> numeric ranges (the tr splits
-# at <); close them with the structural guard.
 raw_obfuscated() {
     local t="$1" w rest v wv vcmd clr d u kw ov tw='' cw='/.claude/worktrees/' xg=0 write=0 obf=0 hard=0 vdata=0 wonly=1 pobf=0 so=0 SQ="'"
     case "$t" in *'('*) xg=1 ;; esac
@@ -2121,7 +2076,7 @@ raw_obfuscated() {
     # So ANY path word (one holding a `/`) with a glob, grouping or
     # extendedglob metachar in any segment counts, scripts/ or not. Only a
     # leading `~` (home) or `#` (comment) is exempt, and `$(` / `${` are
-    # expansions, not groupings (a $var alone stays the ponytail residual).
+    # expansions, not groupings.
     for w in $(printf '%s' "$t" | tr ';|&<>' '     '); do
         case "$w" in *scripts/*) case "${w#*scripts/}" in *'('*) obf=1; hard=1 ;; esac ;; esac
         case "$w" in */*) ;; *) continue ;; esac
@@ -2162,9 +2117,6 @@ raw_obfuscated() {
         # printf -v whose name is assembled ($n, `cmd`), export -n, declare
         # +x, exec -, ${!, or bash startup state; names are read quote-,
         # backslash- and ${}-joined, as raw_mention reads them.
-        # ponytail: HIMMEL-3930 -- a seam name assembled for read/mapfile/getopts/for
-        # (read "$n") beside an anchor-less path is not seen; close it with the
-        # structural parse.
         u=${t//[\'\"\\]/}
         rest=$u
         while [[ $rest =~ ^(.*)\$\{[^}]*\}(.*)$ ]]; do rest="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"; done
@@ -2203,23 +2155,6 @@ raw_obfuscated() {
         obf_ast_relief "$raw_cmd" "$wv" "$hard" && return 0
         deny_text_layer "names a seam or clears the environment beside a path with a glob or grouping in a segment"
     fi
-    # ponytail: HIMMEL-4135 -- the verb scan also matches inside a quoted argument value
-    # (--set 'reason=...exec...'), skipping quoted spans is a parse rule;
-    # a proven-safe shape or a structural parse would close it.
-    # Not even --reason '<no quote inside>' is safe on raw text: in
-    # echo $'a --reason ' ; export SEAM=1 ; echo 'b' that "value" is live code.
-    # A verb is part of a name only when BOTH sides join it to
-    # one, - or / on its left AND - . or / on its right (block-chokepoint-
-    # env-prefix, scripts/eval/, pr-check-env.sh). One joined side is not
-    # enough: -printf and --printf= are printf options that read escapes,
-    # .env is process.env/os.env, /usr/bin/env is env. They still count as
-    # triggers, but are relieved (vdata) in argument position of
-    # read-only stages beside a glob-only path; heading a stage they deny.
-    # A heredoc or quoted body is not
-    # skipped: written and run in one call (cat >f <<EOF .. EOF; bash f) it
-    # is live code, and its printf can feed a shell a seam name no other arm
-    # sees (printf '\101..=1 ..' | sh), so that deny is intended. The refusal
-    # names the trigger, always a word from the fixed sets below.
     if [[ $t =~ $wv ]]; then
         write=1
         tw=${BASH_REMATCH[2]:-${BASH_REMATCH[4]}}
@@ -2502,8 +2437,6 @@ UNSET_NAMES=''
 # pinned a CPU for hours. Dedupe keeps the SET of names unchanged (the words
 # a later unquoted expansion splits out) and bounds its length. Past
 # UNSET_CAP distinct names the hook DENIES: never allow, never truncate.
-# ponytail: 256 distinct names is a fixed ceiling (a longer genuine list
-# over-denies), raise UNSET_CAP if a real payload trips it.
 UNSET_CAP=256
 # UNSET_COUNT is the number of words in UNSET_NAMES, kept in step
 # by unset_add (and restored with UNSET_NAMES by scan_text's subshell
@@ -2526,7 +2459,7 @@ unset_add() {  # unset_add <word>...
     done
 }
 
-deny_unset_cap() {  # OUR text only, never raw command text (HIMMEL-4399).
+deny_unset_cap() {
     local msg reason
     msg="block-chokepoint-env-prefix: refusing a command that assigns or clears more than $UNSET_CAP distinct variable names in the current shell.
 

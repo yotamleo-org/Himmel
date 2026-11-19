@@ -37,13 +37,6 @@
 # A cursor that cannot be written stops the follower with rc 1 instead of
 # replaying the same lines on every poll. So does a failed read of the inbox.
 #
-# ponytail: the cursor is a bare byte offset, so an inbox replaced by a file
-# that is already LONGER than the old cursor is indistinguishable from an
-# append — the reset only fires when the new file is shorter. The bridge only
-# appends and the chief never rotates the file, so this is a hand-edit hazard,
-# not a normal path. Two followers armed on one inbox at once each emit every
-# new line (the cursor is not locked); a re-arm follows an expiry, so they
-# overlap only if the old Monitor's process outlives its expiry.
 set -u
 LC_ALL=C   # ${#line} must count bytes: the cursor is a byte offset
 export LC_ALL

@@ -655,13 +655,6 @@ protected_path() {
   # descendant check below would otherwise do to them — but only when BOTH
   # conditions in the header comment hold (lexical identity AND no symlinked
   # component). Neither check alone is enough.
-  # ponytail: ".himmel" is provenance.sh's own documented
-  # default (`${HIMMEL_PROVENANCE_DIR:-$HOME/.himmel}/provenance.jsonl`) —
-  # this exemption covers only that bare default location. An operator who
-  # points HIMMEL_PROVENANCE_DIR somewhere else still hits the "$HOME is
-  # protected, therefore its descendants are protected" refusal at [8/8]'s
-  # --purge-state step; that's the same fail-closed trade the other three
-  # exemptions accept, not a new gap this slice introduces.
   local _allowed_suffixes=(
     ".claude/himmel" ".claude/channels/telegram" ".claude/handover/bridge"
     ".himmel" ".himmel/state/config-audit/backups"
@@ -1160,12 +1153,6 @@ restore_hook_backups() {
 # passes through to the fence unchanged. Any other spelling that resolves
 # there (`$R/.`, `/home//me`, a symlink) is refused.
 #
-# ponytail: a $HOME that IS literally the real home — reset by systemd-run
-# --user, sudo -u, ssh or su, or a literal HOME=/home/<me> — is
-# indistinguishable here from the operator's own run; the static caller guard
-# stays the only control for that shape. A same-uid process can also fake the
-# lookup itself (a PATH-shadowed `id`, getent or dscl, or an LD_PRELOAD'd
-# getpwnam) and so name a different "real" home.
 
 # real_home_resolve — the invoking user's passwd home, never read from $HOME:
 # bash's own `~<user>` expansion (getpwnam, no external binary), then
@@ -1324,11 +1311,6 @@ real_home_spelling_ok() {
 # real_home_check stays as the early fail-fast; this closes the gap between
 # it and steps [2/8], [5/8] and [8/8]. Unarmed (a dry run, or --source-only)
 # it just runs the command.
-# ponytail: the helpers uninstall calls (unwire-*.sh, `pre-commit uninstall`)
-# get a call-site check of the paths they write (rh_helper_ok), not a check
-# inside them; uninstall-plugins.sh (it drives the `claude` CLI) and the
-# scope-map `mkdir -p` get neither — the spelling rule and the fail-closed
-# real_home_phys are what keep their paths honest.
 RH_ARMED=0
 RH_HP=""
 RH_ROOTS=""
@@ -1384,16 +1366,6 @@ rh_helper_ok() {
 #               home plus the physical location of every path prefix of every
 #               {HOME} row (.claude, .claude/himmel, ...), so a real-home entry
 #               symlinked out at any depth stays protected
-# ponytail: a LEXICAL $HOME under the real home (e.g. ~/tmp/scratch, spelled
-# with no symlink) is a scratch dir by design and passes; only a HOME that
-# resolves somewhere other than where it is spelled is judged by where it
-# lands. That relies on one canonical spelling of every compared path, which
-# is why a leading `//` is collapsed (canonicalize_target, real_home_under):
-# `//R` would otherwise compare unequal to `/R` and skip every check. The
-# lexical pass-through itself still needs the EXACT passwd spelling, so
-# `HOME=//R` is refused, not passed. Session launchers that reset HOME, and step [3/8]'s crontab and
-# `systemctl --user` (which act on the invoking user whatever HOME is), are
-# outside this check.
 real_home_check() {
   local _homes _r _rp _rc _hp _cp _i _t _home _c _comps _roots _root _allroots
   if ! _homes=$(real_home_protected_homes); then
@@ -1596,10 +1568,6 @@ if command -v jq >/dev/null 2>&1; then
       ;;
   esac
 else
-  # ponytail: provenance-read.sh is jq-only by design (see its header) — with
-  # no jq on PATH the ledger cannot be read at all, so this run falls back to
-  # the same no-ledger keep path as a missing ledger rather than failing the
-  # whole uninstall over an optional dependency.
   _prov_ledger_path="${HIMMEL_PROVENANCE_DIR:-$HOME/.himmel}/provenance.jsonl"
   echo "provenance: no ledger at $_prov_ledger_path; pre-existing units cannot be told from himmel's — the six overwrite-prone rows are kept"
   echo "  (jq is not installed; the ledger cannot be read)"
@@ -1936,10 +1904,6 @@ $unit"
               echo "    remove himmel's block by hand: delete the lines from <!-- BEGIN HIMMEL:working-principles --> through <!-- END HIMMEL:working-principles --> in $unit" ;;
           esac
         fi
-        # ponytail: the [k]eep/[r]estore-or-[d]elete override for a
-        # user-modified unit only ever offers itself on a real TTY with no
-        # --yes — a scripted/CI/--yes run always takes the safe default
-        # (keep) rather than prompting into a pipe.
         if [ "$reason" = "user-modified" ] && [ "$YES" -ne 1 ] && [ "$_TTY_FD8" -eq 1 ] \
            && [ "$(printf '%s' "$u" | jq -r '.kind')" != "block" ]; then
           backup=$(printf '%s' "$u" | jq -r '.eff_pre.backup // empty')
@@ -2147,9 +2111,6 @@ ledger_teardown_bridge_unit() {
     return 0
   fi
   if [ "$_act" = "remove" ]; then
-    # ponytail: only the unit himmel itself installed is disabled. A restored
-    # operator unit keeps whatever enablement it has — bridge-persistence.js
-    # does not record the pre-install enablement, so there is nothing to put back.
     if ! run systemctl --user disable --now telegram-bridge.service; then
       echo "  WARN: systemctl --user disable --now telegram-bridge.service failed — unit file kept." >&2
       fail_step "[1/8] telegram bridge unit: could not disable telegram-bridge.service"
@@ -2624,9 +2585,6 @@ elif ! class_removes "$_ix_plug"; then
 elif ! _claude_bin=$(resolve_tool claude); then
   report_unresolved "[4/8] Claude plugins" claude --skip-plugins
 elif [ "$LEDGER_OK" -ne 1 ]; then
-  # ponytail: with no ledger to tell a pre-existing
-  # plugin apart from himmel's own template plugins, this run keeps ALL of
-  # them rather than risk removing one the operator installed themselves.
   echo "  kept (no ledger): himmel's template plugins"
   ledger_owned_hand_command
   if [ "$DRY_RUN" -ne 1 ] && [ "$YES" -ne 1 ] && [ -t 0 ] && [ -t 1 ]; then
@@ -2666,9 +2624,6 @@ else
     fail_step "[4/8] Claude plugins: uninstall-plugins.sh reported failures"
     _plug_outcome="failed"; _plug_reason="step-failed"
   fi
-  # ponytail: the step's rc is the finest grain uninstall-plugins.sh reports —
-  # a partial failure (one plugin removed, another blocked) still marks every
-  # himmel-owned unit "failed" here rather than tracking per-plugin results.
   if [ -n "$_plug_ours_units" ]; then
     while IFS= read -r _u; do
       [ -z "$_u" ] && continue
@@ -2942,14 +2897,6 @@ EOF
     # LUNA_VAULT_PATH / hook removals the wet run still performs (caught by
     # U22: 6 rows expected, only the hooks line was printed).
   fi
-  # ponytail (S6, spec §4 six rows): a pre-existing statusLine or
-  # env.HANDOVER_DIR cannot be told from himmel's own without a ledger unit
-  # recording it — both are kept and reported with a hand command instead of
-  # letting today's unwire-*.sh helpers remove them blindly. R2-codex4: a
-  # LOADED ledger that stayed silent about one of these two rows (predates
-  # per-key recording) must be treated exactly the same way — "kept (no
-  # ledger)" would be misleading with a real ledger present, so that case
-  # reads "kept (not in ledger)" instead; the hand command is identical.
   if [ "$LEDGER_OK" -ne 1 ] || [ "$_seen_sl" -eq 0 ]; then
     _kept_as="no ledger"; [ "$LEDGER_OK" -eq 1 ] && _kept_as="not in ledger"
     if [ -n "$HIMMEL_SL_PAT" ] && jq -e --arg sl "$HIMMEL_SL_PAT" \
@@ -3028,10 +2975,6 @@ EOF
       unwire-luna-vault)   [ "$_mask_vault" -eq 1 ] && continue ;;
       unwire-handover-dir) [ "$_mask_hd" -eq 1 ]    && continue ;;
       unwire-pretooluse-hooks)
-        # ponytail: any PROTECTED hook chain at this path skips the WHOLE
-        # helper rather than surgically re-running it for only the
-        # ungoverned entries — an ungoverned himmel hook could survive
-        # alongside a kept/restored one at the same event.
         [ "$_mask_hooks" -eq 1 ] && continue ;;
     esac
     if ! rh_helper_ok "$helper" "$settings"; then
@@ -3326,9 +3269,6 @@ unwire_user_files() {
         fi
       fi
       if [ "$LEDGER_OK" -ne 1 ]; then
-        # ponytail (S6, spec §4 six rows): no ledger to tell a
-        # pre-existing claude-hud config from himmel's own — kept, with a
-        # hand command, instead of the unconditional strip below.
         echo "  kept (no ledger): $_p — remove by hand: bash $SCRIPT_DIR/lib/unwire-hud-config.sh $_p"
         continue
       fi
@@ -3548,12 +3488,6 @@ if [ "$HALTED" -eq 0 ] && [ "$LEDGER_OK" -eq 1 ]; then
 $_adopter_units
 EOF
 fi
-# ponytail (S6, spec §4 six rows): with no ledger, a replaced
-# adopter script cannot be told apart from the operator's own edit — nothing
-# under {PWD}/scripts is touched, and no candidate files can even be
-# enumerated without the ledger, so this prints no per-run line; the
-# manifest's own `adopter-scripts` row already states the policy in the
-# footprint printed before the run.
 echo ""
 
 # --- [7/8] remove marketplaces ----------------------------------------------
@@ -3568,9 +3502,6 @@ elif ! class_removes "$_ix_mkt"; then
 elif ! _claude_bin=$(resolve_tool claude); then
   report_unresolved "[7/8] Claude marketplaces" claude --skip-plugins
 elif [ "$LEDGER_OK" -ne 1 ]; then
-  # ponytail (S6, spec §4/§8 case 3): same no-ledger fallback as
-  # [4/8]; the hand command there removes marketplaces too, so it is only
-  # printed once, at step 4, rather than repeated here.
   echo "  kept (no ledger): himmel's template marketplaces"
   echo "    (remove by hand: see step 4's command above — it removes marketplaces too)"
   if [ "$DRY_RUN" -ne 1 ] && [ "$YES" -ne 1 ] && [ -t 0 ] && [ -t 1 ]; then
@@ -3602,9 +3533,6 @@ else
   # uninstall-plugins.sh does its own `command -v claude` and hard-exits when
   # it fails, so the resolved directory has to be on the CHILD's PATH — passing
   # the path alone would leave the child just as blind as this script was.
-  # ponytail: same coarse rc-based outcome as [4/8] — a marketplace kept
-  # installed by uninstall-plugins.sh's own remaining-plugin check still
-  # reads "removed" here rather than "kept" per-marketplace.
   if PATH="$(dirname "$_claude_bin"):$PATH" \
       bash "$REPO_ROOT/scripts/machine-setup/uninstall-plugins.sh" ${_plug_args[@]+"${_plug_args[@]}"}; then
     _mkt_outcome="removed"; _mkt_reason="ours"

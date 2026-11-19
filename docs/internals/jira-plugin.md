@@ -464,7 +464,7 @@ non-empty reason and a ledger that can take an append (`HANDOVER_DIR`, or
 before the ticket is filed. After
 the create it appends one JSON row `{ts, version, key, gate|kind, actor, reason}`
 (`kind: "override"`) to `$HANDOVER_DIR/admissions-ledger.jsonl`. The marker is
-spoofable by any same-uid caller (ponytail, upgrade path: the release manager's signed state). Code:
+spoofable by any same-uid caller (a known ceiling; the upgrade path is the release manager's signed state). Code:
 `scripts/jira/src/commands/admissions-ledger.ts` (`appendAdmission(row)`,
 `readAdmissions(version?)` and the preflight `assertAdmissionsWritable()`, the
 whole API).
@@ -480,7 +480,7 @@ appends the row `{ts, version, key, gate, actor}` to the admissions ledger.
 `--chief-override "<reason>"` (rules above) admits past the gate and writes its
 override row instead. A version without the `frozen:` line behaves as before and
 writes no row; `--backlog` files a Bug with no version, so it needs no gate. The
-gate reason is recorded, not verified (ponytail, upgrade path: the release manager's signed state).
+gate reason is recorded, not verified (a known ceiling; the upgrade path is the release manager's signed state).
 `edit --fix-version` and `edit --add-fix-version` run the same check with the same
 `--gate` and `--chief-override` flags: the refusal lands before the PUT, and the
 gate or override row is appended after the edit reads back.

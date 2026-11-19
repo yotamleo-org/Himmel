@@ -45,8 +45,6 @@ OPENROUTER_MODEL="${OPENROUTER_MODEL:-anthropic/claude-opus-5.5}"
 OPENROUTER_HAIKU="${OPENROUTER_HAIKU:-anthropic/claude-haiku-5.5}"
 OPENROUTER_SONNET="${OPENROUTER_SONNET:-anthropic/claude-sonnet-5.5}"
 OPENROUTER_OPUS="${OPENROUTER_OPUS:-anthropic/claude-opus-5.5}"
-# ponytail: offline synchronous Claude catalog snapshot (2026-10-02), refresh this allowlist
-# when adopting a newly listed OpenRouter Claude slug.
 validate_tier() { # $1 env name, $2 slug; exact membership rejects malformed input.
   case "$2" in
     anthropic/claude-sonnet-5.5|anthropic/claude-opus-5.5|\
@@ -445,9 +443,6 @@ export CLAUDE_CODE_AUTO_MODE_SERVER=0
 # ("Reasoning is mandatory") on mandatory-reasoning slugs, so every Bash call is
 # refused as "classifier unavailable". EXTRA_BODY merges this into
 # every request; the `thinking` shape works, `reasoning.effort` does not.
-# ponytail: the budget also applies to the main loop, so every turn pays up to
-# 2048 thinking tokens, revisit when the classifier side query can carry its own
-# reasoning setting.
 if [ -z "${CLAUDE_CODE_EXTRA_BODY:-}" ]; then
   export CLAUDE_CODE_EXTRA_BODY='{"thinking":{"type":"enabled","budget_tokens":2048}}'
 fi

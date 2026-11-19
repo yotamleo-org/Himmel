@@ -30,8 +30,6 @@ import { listRunManifests } from './run-manifest.mjs';
 export const RATES = {
   'claude-haiku-4-5': { inputPerM: 1.00, outputPerM: 5.00 },
   // List price for a prompt up to 100K; above 100K it is $0.50 / $2.50.
-  // ponytail: flat ≤100K rate, because costUsd prices a transcript's SUMMED usage and the
-  // per-request prompt size is not in it; revisit (per-message usage) when a bench run feeds >100K prompts.
   'claude-haiku-5-5': { inputPerM: 0.10, outputPerM: 0.50 },
   // gpt-5.6-luna: legacy pin, kept so a manifest recorded before the
   // repin (a9edf228) still resolves a real cost instead of null.

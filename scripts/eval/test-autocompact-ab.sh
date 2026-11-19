@@ -3,6 +3,7 @@
 # fixture workers (one 200k control with a compaction, one 400k arm with a
 # handoff and a second READY, one unwrapped worker). Linux-only like the console kit.
 set -u
+_TK='HIMMEL-'
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="$HERE/autocompact-ab.py"
 FX="$HERE/fixtures/autocompact-ab"
@@ -100,8 +101,8 @@ python3 -I "$SUT" --manifest "$tmp/m.json" --projects "$FX/projects" --all --jso
 check "--all includes the unwrapped worker" 3 "$(jq '.workers | length' "$tmp/a.json")"
 check "--all: an open worker is listed but not in the means" "1 0" "$(jq -r '.summary[] | select(.arm=="400k") | "\(.workers) \(.unmeasured)"' "$tmp/a.json")"
 python3 -I "$SUT" --manifest "$tmp/m.json" --projects "$FX/projects" --all > "$tmp/at.txt" 2>/dev/null
-check "--all text table marks the open worker" 1 "$(grep -c 'HIMMEL-9003.* open ' "$tmp/at.txt")"
-check "--all text table marks a wrapped worker" 1 "$(grep -c 'HIMMEL-9001.* wrapped ' "$tmp/at.txt")"
+check "--all text table marks the open worker" 1 "$(grep -c "${_TK}9003.* open " "$tmp/at.txt")"
+check "--all text table marks a wrapped worker" 1 "$(grep -c "${_TK}9001.* wrapped " "$tmp/at.txt")"
 
 # a chain doc nobody listed (found only by the RESUME glob) has no arm record: unproven
 printf '{"schema":1,"workers":[{"doc":"%s","arm":"400k"}]}\n' "$trt" > "$tmp/g.json"

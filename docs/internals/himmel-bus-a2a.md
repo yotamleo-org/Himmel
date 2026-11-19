@@ -48,7 +48,7 @@ and an A2A peer is, at best, an unauthenticated remote.
 | `f`, `r` (from, to) | `contextId` only | **gap**: a Message has no sender or recipient id. `contextId` is the sorted pair `a~b`, so both directions share one context |
 | `f` role | `Message.role = ROLE_AGENT` | every bus peer is an agent; `ROLE_USER` is unused |
 | `t`, `n`, `s` | not projected | no A2A field; `n` and `t` stay in the store |
-| thread | `contextId` | bus has no thread id (ponytail in `a2a.mjs`) |
+| thread | `contextId` | bus has no thread id (a known ceiling) |
 | delivery, ack | none | **gap**: A2A has no per-message receipt; Task states are not applicable |
 | `peers/<name>.json` | `AgentCard` | one card per bound peer; see below |
 | pid + start-time identity | `securitySchemes` | **conflict**: bus identity is local process proof, A2A schemes are credentials. The card declares none and exposes neither pid nor start time |

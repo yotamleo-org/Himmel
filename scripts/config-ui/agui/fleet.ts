@@ -21,9 +21,6 @@
 // the himmel-bus traffic comes from the one collector (busEvents, metadata only): Fleet.edges counts the messages
 // per from→to pair and a row's bus counts what is waiting on it (busOf). Read-only: no store is created.
 //
-// ponytail: each request re-folds every journal that grew since the last one (cached on the files' sizes), so a
-// fleet of very long journals costs a full read per poll (measured 2026-10-07 on 9 live sessions: 278 ms cold,
-// 202 ms warm); upgrade path: a per-file incremental fold (the SSE tail's offsets) once a fleet poll is slow.
 import { execFile, spawn } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -143,8 +140,6 @@ function tallyOf(lines: string[]): Tally | null {
 // Claude model's own window. --autocompact only moves where a session compacts, never its window (a plain launch
 // with --autocompact 200000 still reports 1M), so it is the ceiling only for a non-Claude model nobody declared a
 // window for; with none of these, or a fill past 100 % (the ceiling is wrong), the fill is not measured.
-// ponytail: the window comes from the model name (1M for [1m], Fable, the opus, sonnet and haiku aliases, any Claude 5 or later and a session with no --model, else 200k), upgrade path: read the HUD snapshot's context_window_size.
-// A session with no --model gets the station default's 1M: lane-calibration.md "What a plain launch reports" measured the window as 1M everywhere on this station.
 const num = (s: string | undefined) => (s && /^\d+$/.test(s) ? Number(s) : 0);
 const windowOf = (model: string) =>
   model === "" || /\[1m\]$/i.test(model) || /fable|^(?:opus|sonnet|haiku)$/i.test(model) || Number(/(?:opus|sonnet|haiku)-(\d+)/i.exec(model)?.[1]) >= 5 ? WINDOW_1M : WINDOW;
@@ -174,8 +169,6 @@ function runScript(script: string, env: Record<string, string | undefined>): Pro
 // the shell-tool wrappers tick reports as orphans, from the chief kit's own inventory (`--list`: one
 // `pid=<pid> owner=<session> age=<n>m` row each); read-only, and null when it failed rather than an empty list.
 // a wrapper owned by a live session is that session's own long-running call: a "wait", not an orphan.
-// ponytail: a wait is stuck only when a `until ! pgrep -f` / `while pgrep -f` pattern matches the wrapper's own
-// argv (the shape require-quiet-run.sh refuses, ERE read as a JS RegExp); other never-ending waits read as waits, upgrade path: add their shapes here.
 const SELF_PGREP = /(?:until\s+!\s+|while\s+)pgrep\s+((?:-\w+\s+)*?-\w*f\w*(?:\s+-\w+)*)\s+(?:(?:'\\''|'|\\?")([^'"]*)|(\S+))/g;
 async function selfMatches(pid: number, env: Record<string, string | undefined>): Promise<boolean> {
   try {
@@ -208,8 +201,6 @@ async function processOrphansOf(opts: { script: string; env: Record<string, stri
 }
 
 // the GitHub repo a PR number belongs to — CONFIG_UI_GITHUB_REPO (owner/name), else this checkout's
-// origin. ponytail: every worker's PR is linked into this checkout's repo; a worker working another repo's PR gets a wrong
-// link, upgrade path: resolve the repo per handover bucket from the registry once workers routinely ship elsewhere.
 const slugs = new Map<string, string | null>();
 async function repoSlugOf(checkout: string, env: Record<string, string | undefined>): Promise<string | null> {
   const SLUG = /^[\w.-]+\/[\w.-]+$/;
@@ -316,7 +307,6 @@ const NO_BUS: BusCounts = { unacked: 0, undelivered: 0, unbound: false };
 const BUS_KINDS = new Set(["ruling", "report", "proposal", "data"]);
 
 // The bus's edges and each session's counts, from busEvents' metadata; an unreadable or absent store is no traffic.
-// ponytail: a change replays the whole store again (the store has no per-log read), upgrade path: replay only the logs whose files changed.
 const BUS_WAIT_MS = 500;
 type BusRead = { edges: BusEdge[]; rows: Map<string, BusCounts>; until: number };
 const busCache = new Map<string, { sig: string; read: BusRead }>();
@@ -391,7 +381,6 @@ const roleOf = (name: string, doc: string): FleetRow["role"] =>
 // Scheduled sessions. The ids are scripts/himmelctl/lib/cadence-registry.json's, plus luna-fb (the luna capture loop); the
 // runner basenames in scripts/lib/cadence-format.sh (CADENCE_RUNNER_BASENAMES) start with one of them. A cadence run is
 // usually unnamed but carries its --settings cadence-settings.json fragment in its argv (pipeline-cadence.sh).
-// ponytail: a name pattern plus one argv fragment, a cadence launched another way shows as another session; the upgrade is a launch-env marker the runners set.
 export const CADENCE_IDS = ["pipeline", "qmd", "graphmap", "drift-fix", "upstream-watch", "security-audit", "doctor", "pull-cadence", "vault-stall", "rollup", "luna-fb"];
 const CADENCE_NAME = new RegExp("^(" + CADENCE_IDS.join("|") + ")(?:-cadence|-[a-z]+)?$");
 export function cadenceOf(name: string, argv: string[]): string | null {
@@ -416,8 +405,6 @@ function runtimeOf(start: unknown, fallback: number | undefined, doc: string, wr
   if (wrapped) {
     const time = [...doc.matchAll(/^- (\d\d):(\d\d) WRAPPED\b/gm)].at(-1);
     if (!time) return null; // Unknown end is not a running clock.
-    // ponytail: Results markers carry HH:MM only, so the doc's write-day supplies
-    // the date; upgrade to an explicit WRAPPED timestamp when the writer records one.
     const end = new Date(docAt);
     end.setHours(Number(time[1]), Number(time[2]), 0, 0);
     endedAt = end.getTime();

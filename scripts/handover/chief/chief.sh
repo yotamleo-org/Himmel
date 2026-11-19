@@ -79,7 +79,7 @@ if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .
 # headed-arm.sh scrubs these on the --arm path; the printed line
 # was missed, so an un-armed chief silently became a throwaway child session.
 # Keep this identical to headed-arm.sh's env prefix.
-CHIEF_LAUNCH_ENV="env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1"
+CHIEF_LAUNCH_ENV="env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR -u NO_COLOR CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1"
 # shellcheck source=../../lib/load-dotenv.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/load-dotenv.sh"
@@ -116,7 +116,7 @@ usage: chief.sh new  [--name <slug>] [--arm] [--dry-run] [--model <m>]
 
 wrap (the predecessor's last step, run from its own session) writes the
 WRAPPED bullet and releases the lock, and refuses (exit 4, nothing written)
-while this session has a live in-process subagent (HIMMEL-5071).
+while this session has a live in-process subagent.
 
 Supervisor sessions (consoles) default to 1m. --context overrides CHIEF_CONTEXT and the default;
 --context standard or CHIEF_CONTEXT=standard opts down to 200000.
@@ -141,7 +141,7 @@ rolled over since.
 himmel's own repo basename/JIRA_PROJECT_KEY. The console session itself
 always stays in this himmel checkout -- --project is recorded as data in
 the console doc, and a worker session for the project is dispatched into it explicitly
-with WORKER_SESSION_REPO=<path> (codex-4, pr-check round 2, HIMMEL-3623).
+with WORKER_SESSION_REPO=<path>.
 --bucket/--prefix still override it when given.
 USAGE
 }
@@ -484,10 +484,6 @@ do_arm() {
 # live-subagents.sh proves it has no in-process subagent still running (a judge
 # call whose verdict would otherwise die with the session); a live child, or no
 # way to tell, refuses with exit 4 and writes nothing.
-# ponytail: a chief can still hand-write WRAPPED with append-results.sh and
-# release by hand; close-wrapped-worker.sh's exit 7 is the backstop that refuses to
-# TERM it then, so the child is never killed. Gate append-results.sh itself if
-# that path is seen in use.
 #
 # Same for a non-harness process (a CI watcher, a suite run, a Monitor): the
 # session's own wrap-subtree-check.sh must find none, or wrap refuses with exit 5
@@ -657,9 +653,6 @@ EOF_META
 # The HANDOFF's "Wrapped with open PR" section: every fleet-manifest worker
 # whose last marker is WRAPPED and whose doc still names a PR that is open, so
 # the successor cannot drop it when the carry-forward is hand-written prose.
-# ponytail: the PR is read off the worker doc's own text (READY/PR/# followed by a number),
-# so a wrap that never names its PR is invisible here; the tick's unowned-prs= still
-# catches it. Open set = handoff-facts.sh prs, so it shares that field's seam and limit.
 wrapped_open_prs_section() { # <predecessor doc>
     local doc="$1" manifest="${1%.md}.fleet.json" facts="$HERE/../chief-kit/handoff-facts.sh"
     local open rows label ldoc n found=0 mtime lookup_failed=""
@@ -1368,7 +1361,7 @@ _console_ancestor_unsafe() {
 _console_workdir_abs="$(_arm_realpath "$workdir")"
 _console_workdir_parent="$(dirname "$_console_workdir_abs")"
 if _console_ancestor_unsafe "$_console_workdir_parent"; then
-    err "refusing to use work dir '$workdir' — its parent directory '$_console_workdir_parent' (or an ancestor of it) is group- or world-writable without adequate sticky-bit/ownership protection, so another local user could replace it out from under this process (HIMMEL-2881)"
+    err "refusing to use work dir '$workdir' — its parent directory '$_console_workdir_parent' (or an ancestor of it) is group- or world-writable without adequate sticky-bit/ownership protection, so another local user could replace it out from under this process"
     exit 3
 fi
 # Ancestor validation above runs
@@ -1384,7 +1377,7 @@ fi
 # would never see it once $workdir has already been replaced by its
 # resolved form (case 27's pre-created-symlink-as-workdir regression).
 if [ -L "$workdir" ]; then
-    err "refusing to use work dir '$workdir' — it is a SYMLINK, so this process does not control what it actually resolves to (HIMMEL-2881)"
+    err "refusing to use work dir '$workdir' — it is a SYMLINK, so this process does not control what it actually resolves to"
     exit 3
 fi
 workdir="$_console_workdir_abs"
@@ -1420,7 +1413,7 @@ _console_mkdir_chain_safe() {
     # checked at all. Re-running the same ancestor walk against it here --
     # right before it is trusted -- closes that window.
     if _console_ancestor_unsafe "$prefix"; then
-        err "refusing to use work dir '$target' — its ancestor '$prefix' (or one above it) is unsafe, and appeared after the initial check ran (HIMMEL-2881)"
+        err "refusing to use work dir '$target' — its ancestor '$prefix' (or one above it) is unsafe, and appeared after the initial check ran"
         exit 3
     fi
     # `${missing[@]+...}` -- `missing` is empty whenever the work
@@ -1430,7 +1423,7 @@ _console_mkdir_chain_safe() {
         # shellcheck disable=SC2174
         if ! mkdir -m 0700 "$p" 2>/dev/null; then
             if [ -L "$p" ] || [ ! -d "$p" ] || _console_dir_component_unsafe "$p"; then
-                err "refusing to use work dir '$target' — could not safely create ancestor '$p': it was raced into existence by something this process does not control (HIMMEL-2881)"
+                err "refusing to use work dir '$target' — could not safely create ancestor '$p': it was raced into existence by something this process does not control"
                 exit 3
             fi
         fi
@@ -1454,28 +1447,28 @@ console_workdir_ensure() {
         _console_mkdir_chain_safe "$d"
     fi
     if [ -L "$d" ]; then
-        err "refusing to use work dir '$d' — it is a SYMLINK, so this process does not control what it actually resolves to (HIMMEL-2881)"
+        err "refusing to use work dir '$d' — it is a SYMLINK, so this process does not control what it actually resolves to"
         exit 3
     fi
     if [ ! -d "$d" ]; then
-        err "refusing to use work dir '$d' — it is not a directory (HIMMEL-2881)"
+        err "refusing to use work dir '$d' — it is not a directory"
         exit 3
     fi
     if [ ! -O "$d" ]; then
-        err "refusing to use work dir '$d' — it is not owned by this user (HIMMEL-2881)"
+        err "refusing to use work dir '$d' — it is not owned by this user"
         exit 3
     fi
     local mode
     mode=$(stat -c %a "$d" 2>/dev/null || stat -f %Lp "$d" 2>/dev/null)  # gnu-ok: GNU stat -c is paired with the BSD stat -f fallback on this same line
     if [ -z "$mode" ]; then
-        err "refusing to use work dir '$d' — could not read its permission bits (HIMMEL-2881)"
+        err "refusing to use work dir '$d' — could not read its permission bits"
         exit 3
     fi
     local oth="${mode: -1}" grp="${mode%?}"
     grp="${grp: -1}"
     case "$oth$grp" in
         *2*|*3*|*6*|*7*)
-            err "refusing to use work dir '$d' — it is group- or world-writable (HIMMEL-2881)"
+            err "refusing to use work dir '$d' — it is group- or world-writable"
             exit 3
             ;;
     esac
@@ -1843,7 +1836,6 @@ check_direction_real() {
     return 1
 }
 
-# ponytail: a hand-written ruling shaped like an index line, with no pointer, is refused too, mark generated index lines so the check can tell them apart
 check_direction_companions() {
     local doc="$1" base body results pointer rel f bad="" listed="" found=0
     body="$(direction_block "$doc")"
@@ -1968,7 +1960,6 @@ owed_section() {
 # The verbatim quote of every `OPERATOR ... (verbatim): "<quote>"` (or '<quote>')
 # Results bullet of a doc, one per line. A quote ends at the first matching
 # quote mark not followed by a letter or digit, so an apostrophe inside is kept.
-# ponytail: a quote that spans bullets or holds a quote mark before a space is cut short, a structured ruling record would not.
 # Args: doc.
 verbatim_rulings() {
     awk '
@@ -2444,7 +2435,6 @@ $(judges_owed_now)" awk '{ print } !d && /^## ACTION ZERO/ { print ""; print ENV
 # The HANDOFF's "Start, plan and design in flight" section: one pointer line per
 # item, built from the listing alone, so no item is ever opened and the cost stays flat.
 # Nothing listed (or nothing readable) writes nothing, not even the heading.
-# ponytail: one source, recently changed *.md names directly in the specs/ design, plan and proposal directories; a chat-only grill, a subdirectory, an .html item or an item older than the window is invisible, and a finished item stays listed until it ages out. Upgrade path: a registry the Start and Plan steps write.
 inflight_rows() { # <directory holding specs/> <days>: mtime TAB path; always runs in a pipeline, so the cd stays local
     cd "$1/specs" 2>/dev/null || return 0  # swallow-ok: an unreadable source lists nothing
     # find exits 1 on an absent directory; whatever it did list still counts
@@ -2745,7 +2735,6 @@ cmd_next() {
         hf_legs="$(bash "$facts" workers "$predecessor_doc" --repo "$repo")"
         hf_prs="$(bash "$facts" prs "$predecessor_doc" --repo "$repo")"
         hf_summary="$(bash "$facts" summary "$predecessor_doc" --repo "$repo")"
-        # ponytail: the cap trims only the re-derivable fact sections; the rulings and the wrapped-PR list stay inline even over budget, an oversized wrapped-PR list needs its own pointer.
         local hf_pass=1 hf_wrapped hf_wrapped_bytes hf_inflight hf_inflight_bytes hf_owed hf_owed_bytes hf_chain hf_direction hf_lastgo
         hf_chain="$(chain_order_line "$predecessor_dir")"
         # The direction block is already carried into the successor doc; the HANDOFF points at it.

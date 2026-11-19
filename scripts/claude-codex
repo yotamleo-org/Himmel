@@ -524,7 +524,7 @@ seed_after_leaves() {
     stanza_model="$(codex_stanza_model)"
     cat >> "$CONFIG_DIR/CLAUDE.md" <<EOF || seed_fail "append the claudex model-identity stanza to CLAUDE.md"
 
-## Claudex lane model identity (HIMMEL-1927)
+## Claudex lane model identity
 
 Your backend model is $stanza_model (OpenAI, via the local CLIProxyAPI codex proxy). Claude Code does not recognize that slug, so it asserts 'You are powered by the model named Opus 4.8' in your system prompt — that is a slug-recognition artifact, not your identity. You are NOT an Anthropic model and NOT an orchestrator tier; do not reason about your own capabilities or delegation tier from that line.
 EOF

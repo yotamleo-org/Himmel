@@ -7,6 +7,7 @@
 # the fail-closed gate sequence + that a real merge only ever fires with
 # --squash + --match-head-commit <certified-sha>.
 set -uo pipefail
+KP=HIMMEL
 
 # An --automerge-armed launching shell carries ARMAUTOMERGE=1 +
 # CR_MERGE_GATE_OK=1 by design; an ambient value in the operator's shell must
@@ -719,7 +720,6 @@ case "$verb" in
                     fi
                 fi ;;
             */rules/branches/*|*/rulesets/*)
-                # ponytail: canned JSON stands in for the live rules API (org-level rulesets and real response drift are unexercised), a read-only smoke against the live repo's rules if the shapes ever diverge (HIMMEL-3812).
                 # The ruleset probe: effective rules for the base
                 # branch (rules/branches/<b>) then each contributing ruleset
                 # (rulesets/<id>). Real JSON through the SCRIPT'S OWN --jq via
@@ -860,7 +860,7 @@ case "\$1" in
             exit 1
         fi
         if [ "\${STUB_JIRA_TRANSITION_RC3:-0}" = "1" ] && [ "\$2" = "transition" ]; then
-            echo "FAIL HIMMEL-374 closed with no fixVersion: deferred out of frozen v1.1.3" >&2
+            echo "FAIL $KP-374 closed with no fixVersion: deferred out of frozen v1.1.3" >&2
             exit 3
         fi
         if [ "\$2" = "release" ] && [ "\$3" = "bucket-check" ]; then
@@ -1226,7 +1226,7 @@ if [ "${HIMMEL_6079_SELF:-0}" = "1" ]; then
     STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
         run_mog 0 "chief-doc probe: bare merge"
     if [ -n "${HIMMEL_CONSOLE_DOC:-}" ]; then
-        echo "chief-doc-partial=$(grep -c 'PARTIAL HIMMEL-374' "$HIMMEL_CONSOLE_DOC")"
+        echo "chief-doc-partial=$(grep -c "PARTIAL $KP-374" "$HIMMEL_CONSOLE_DOC")"
     else
         echo "chief-doc-partial=unset"
     fi
@@ -1665,7 +1665,6 @@ if [ "$have_jq_2869" = "1" ]; then
 
     # 3808-6. HIMMEL_PROTECTION_SOURCE modes, via a sed'd copy of the script (the
     # literal is not env-overridable, exactly like HIMMEL_PUBLIC_ORIGIN_NWO).
-    # ponytail: a sed'd script copy is the only seam (by design there is no env override), a per-mode fixture if the knob ever becomes configurable.
     # Each copy is checked to carry the literal, so a sed that matched nothing
     # cannot leave the whole matrix silently testing the default.
     mode_dir=$(mktemp -d "${TMPDIR:-/tmp}/mog-mode.XXXXXX")

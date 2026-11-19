@@ -39,24 +39,6 @@
 # tokenizer error, or any command-model failure on a pipe into a shell -> deny.
 # Any other non-0/2 exit is clamped to 2.
 #
-# ponytail: text-level literal-path fence, sandbox layer HIMMEL-5685 owns the rest — it cannot see Write-tool CONTENT
-# that is itself a script writing the lift, a script FILE that writes the lift
-# without being handed its path, or a bind mount. Those are bounded at RUNTIME:
-# usage-preflight honours only an owner- and mode-checked lift, read against a
-# cache stamped with the login's account and a future seven_day resets_at, and
-# fails closed on anything else. A forged window lift is account-bound and buys
-# at most the rest of one window; a forged standing lift ignores until and
-# follows the login (set_by is provenance, not a bound), so it spends to 100 %
-# on every account the station logs into, never extra_usage;
-# upgrade path is an operator-owned lift the gate verifies.
-# ponytail: a `cd`/`pushd`/`popd` word anywhere makes the cwd unknown, so a
-# relative word is judged by its name alone (a lift-named word denies, any
-# other relative word is allowed); upgrade path is a cd model, only if a
-# transcript shows a relative write that slipped through.
-# ponytail: macOS `readlink -m` is unavailable (HIMMEL-5352), so a dangling-symlink chain
-# resolves one readlink hop at a time; accepted ceiling.
-# ponytail: the PowerShell tool is not wired, Windows is parked (HIMMEL-4102);
-# wire it when Windows workers resume.
 #
 # Hook I/O: JSON on stdin; exit 0 = allow, exit 2 = block (stderr shown).
 # Platform guard: bash 3.2-safe (no mapfile, no associative arrays).
@@ -953,7 +935,7 @@ check_clause() {
 }
 
 # A directory-changing word makes the cwd unknown for the whole command, so a
-# relative word is judged by its name alone (see the ponytail in the header).
+# relative word is judged by its name alone.
 # Read from the raw text with no fork.
 if [[ "$CMD" =~ (^|[^A-Za-z0-9_.-])(cd|pushd|popd)([^A-Za-z0-9_.-]|$) ]]; then
     CWD_UNPROVEN=1

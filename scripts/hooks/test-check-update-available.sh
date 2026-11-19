@@ -61,6 +61,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
+export HIMMELCTL_CACHE_DIR="$TMP/no-profile"
+unset HIMMEL_UPDATE_CHANNEL
+
 pass=0
 fail=0
 
@@ -466,7 +469,7 @@ env PATH="$STUBBIN:$PATH" STUB_CURL_TAG=v99999999999999999999.0.0 bash "$LIBS_SR
 if [ ! -s "$SD/himmel-latest-release" ]; then assert_pass "an overflowing tag from the API is not cached as an answer"; else assert_fail "overflowing tag was cached: $(cat "$SD/himmel-latest-release")"; fi
 assert_eq_hook "…it is recorded as a bad response (a failed check)" "bad-response" "$(cat "$SD/himmel-latest-release.fail" 2>/dev/null || true)"
 
-echo "Test 23: the tag is the release's OWN top-level tag_name, not the first/last one that LOOKS like it (HIMMEL-3258)"
+echo "Test 23: the tag is the release's OWN top-level tag_name, not the first/last one that LOOKS like it"
 # refresh_case <curl-mode> [PATH] — one --refresh against a fresh state dir; sets
 # GOT (cached answer or "") and GOTFAIL (.fail reason or "").
 _t23=0
@@ -509,7 +512,7 @@ assert_eq_hook "no jq: a notes-quoted tag still does not replace the real one" "
 refresh_case notjson "$NOJQ"
 assert_eq_hook "no jq: a non-JSON reply is still bad-response" "bad-response" "$GOTFAIL"
 
-echo "Test 24: the state survives a reboot — it lives under the user's home, not /tmp (HIMMEL-3260)"
+echo "Test 24: the state survives a reboot — it lives under the user's home, not /tmp"
 # The "could not check" line measures from the FIRST attempt when no check ever
 # succeeded. That timestamp defaulted to /tmp/claude, which a reboot clears, so a
 # machine that reboots more often than the stale window and stays offline never
@@ -574,6 +577,187 @@ make_repo_behind 0
 H="$TMP/home24e"; mkdir -p "$H"
 env -u UPDATE_CHECK_STATE_DIR -u HIMMELCTL_CACHE_DIR HOME="$H" CLAUDE_PROJECT_DIR="$CHECKOUT_DIR" bash "$HOOK" >/dev/null 2>&1 || true
 if [ -f "$H/.claude/himmel/himmel-update-check-last" ]; then assert_pass "24e: git path: the throttle stamp is under \$HOME/.claude/himmel"; else assert_fail "24e: git path: no throttle stamp under \$HOME/.claude/himmel"; fi
+
+echo "Test 25: release channel"
+PRIV_FETCH='+refs/tags/v*:refs/himmel-update/tags/v*'
+chan_repo() {
+    make_repo_behind "$1"
+    BARE="$(dirname "$CHECKOUT_DIR")/upstream.git"
+    CLONE_REVS=$(git -C "$CHECKOUT_DIR" rev-list --reverse '@{u}')
+}
+rev_at() { printf '%s\n' "$CLONE_REVS" | sed -n "${1}p"; }
+tag_origin() {
+    if [ "${3:-}" = "annotated" ]; then
+        git -C "$BARE" -c user.name=T -c user.email=t@t.t tag -a "$1" -m "$1" "$(rev_at "$2")"
+    else
+        git -C "$BARE" tag "$1" "$(rev_at "$2")"
+    fi
+}
+sync_private() { git -C "$CHECKOUT_DIR" fetch --quiet origin "$PRIV_FETCH" 2>/dev/null || true; }
+profile() { mkdir -p "$1"; printf '%s\n' "$2" > "$1/install-profile.json"; }
+run_chan() {
+    local sd="$1" cd_="$2"; shift 2
+    mkdir -p "$sd"
+    env UPDATE_CHECK_STATE_DIR="$sd" HIMMELCTL_CACHE_DIR="$cd_" CLAUDE_PROJECT_DIR="$CHECKOUT_DIR" "$@" \
+        bash "$HOOK" 2>/dev/null || true
+}
+assert_not_contains() {
+    local desc="$1" pattern="$2" actual="$3"
+    if grepq "$actual" "$pattern"; then assert_fail "$desc — pattern '$pattern' present in: $actual"; else assert_pass "$desc"; fi
+}
+
+chan_repo 2
+tag_origin v0.1.0-pre.1 1
+git -C "$CHECKOUT_DIR" merge --quiet --ff-only "$(rev_at 2)"
+sync_private
+profile "$TMP/c25a" '{"channel":"pre"}'
+out=$(run_chan "$TMP/s25a" "$TMP/c25a")
+assert_empty "25a: pre channel, HEAD ahead of the newest tag and behind origin/main — silent" "$out"
+
+chan_repo 2
+tag_origin v0.1.0-pre.1 1
+tag_origin v0.2.0-pre.1 3 annotated
+git -C "$CHECKOUT_DIR" switch --quiet --detach "$(rev_at 1)"
+sync_private
+profile "$TMP/c25b" '{"channel":"pre"}'
+out=$(run_chan "$TMP/s25b" "$TMP/c25b")
+assert_contains "25b: detached behind the newest pre tag — nudge names the tag" "v0\.2\.0-pre\.1" "$out"
+assert_contains "25b: …names the channel" "pre release" "$out"
+assert_contains "25b: …points at /himmel-update" "/himmel-update" "$out"
+assert_not_contains "25b: …never the branch-count wording" "commit(s) behind" "$out"
+
+chan_repo 2
+tag_origin v0.2.0-pre.1 3
+git -C "$CHECKOUT_DIR" commit --quiet --allow-empty -m "local work"
+sync_private
+profile "$TMP/c25c" '{"channel":"pre"}'
+out=$(run_chan "$TMP/s25c" "$TMP/c25c")
+assert_empty "25c: diverged from the newest tag — silent" "$out"
+
+chan_repo 2
+tag_origin v0.2.0-pre.1 2
+git -C "$CHECKOUT_DIR" merge --quiet --ff-only "$(rev_at 2)"
+sync_private
+profile "$TMP/c25d" '{"channel":"pre"}'
+out=$(run_chan "$TMP/s25d" "$TMP/c25d")
+assert_empty "25d: HEAD at the newest tag — silent" "$out"
+
+chan_repo 2
+tag_origin v0.1.0 2
+tag_origin v0.2.0-pre.1 3
+sync_private
+profile "$TMP/c25e" '{"channel":"stable"}'
+out=$(run_chan "$TMP/s25e" "$TMP/c25e")
+assert_contains "25e: stable channel names the newest stable tag" "v0\.1\.0" "$out"
+assert_not_contains "25e: …and never a pre tag" "pre\.1" "$out"
+
+chan_repo 2
+tag_origin v0.3.0-pre.2 2
+tag_origin v0.3.0 3
+sync_private
+profile "$TMP/c25f" '{"channel":"pre"}'
+out=$(run_chan "$TMP/s25f" "$TMP/c25f")
+assert_contains "25f: a stable release outranks a pre of the same version" "v0\.3\.0[^-]" "$out"
+
+chan_repo 2
+tag_origin v0.2.0-pre.1 3
+sync_private
+out=$(run_chan "$TMP/s25g" "$TMP/no-profile" HIMMEL_UPDATE_CHANNEL=pre)
+assert_contains "25g: env channel: nudge names the tag" "v0\.2\.0-pre\.1" "$out"
+
+chan_repo 2
+tag_origin v0.2.0-pre.1 3
+sync_private
+out=$(run_chan "$TMP/s25h" "$TMP/no-profile")
+assert_contains "25h: no channel: today's branch-count nudge" "2 commit(s) behind" "$out"
+profile "$TMP/c25h" '{"other":"x"}'
+out=$(run_chan "$TMP/s25h2" "$TMP/c25h")
+assert_contains "25h: a profile without a channel key: today's branch-count nudge" "2 commit(s) behind" "$out"
+
+chan_repo 2
+tag_origin v0.2.0-pre.1 3
+sync_private
+profile "$TMP/c25i" '{ not json'
+out=$(run_chan "$TMP/s25i" "$TMP/c25i")
+assert_contains "25i: malformed profile: says the channel is unreadable" "update channel is unreadable" "$out"
+assert_contains "25i: …and that /himmel-update will refuse" "will refuse" "$out"
+assert_not_contains "25i: …never the pull nudge" "commit(s) behind" "$out"
+profile "$TMP/c25i2" '{"channel":"nightly"}'
+out=$(run_chan "$TMP/s25i2" "$TMP/c25i2")
+assert_contains "25i: an invalid channel value is unreadable too" "update channel is unreadable" "$out"
+out=$(run_chan "$TMP/s25i3" "$TMP/no-profile" 'HIMMEL_UPDATE_CHANNEL=<bogus>')
+assert_contains "25i: an invalid HIMMEL_UPDATE_CHANNEL is unreadable too" "update channel is unreadable" "$out"
+assert_not_contains "25i: …the reason does not smuggle markup into the context" "<bogus" "$out"
+
+NOJQ="$TMP/nojq-bin"; mkdir -p "$NOJQ"
+for t in bash git date stat touch mkdir cat tr sed grep head dirname basename rm cut sort env setsid uname readlink printf; do
+    src=$(command -v "$t" 2>/dev/null) || continue
+    ln -sf "$src" "$NOJQ/$t"
+done
+profile "$TMP/c25j" '{"channel":"pre"}'
+out=$(run_chan "$TMP/s25j" "$TMP/c25j" PATH="$NOJQ")
+assert_contains "25j: jq missing with a profile: unreadable warning" "update channel is unreadable" "$out"
+assert_contains "25j: …says why" "jq" "$out"
+assert_not_contains "25j: …never the pull nudge" "commit(s) behind" "$out"
+
+chan_repo 2
+git -C "$CHECKOUT_DIR" tag v9.9.9 "$(rev_at 3)"
+profile "$TMP/c25k" '{"channel":"pre"}'
+out=$(run_chan "$TMP/s25k" "$TMP/c25k")
+assert_empty "25k: a stray local tag with no private ref is not a release" "$out"
+
+chan_repo 2
+tag_origin v0.2.0-pre.1 3
+profile "$TMP/c25l" '{"channel":"pre"}'
+out=$(run_chan "$TMP/s25l" "$TMP/c25l")
+assert_empty "25l: cold private refs — silent this run" "$out"
+i=0
+while [ "$i" -lt 20 ]; do
+    [ -n "$(git -C "$CHECKOUT_DIR" for-each-ref refs/himmel-update/tags 2>/dev/null)" ] && break
+    sleep 1; i=$((i + 1))
+done
+assert_eq_hook "25l: the detached fetch filled the private namespace" "refs/himmel-update/tags/v0.2.0-pre.1" \
+    "$(git -C "$CHECKOUT_DIR" for-each-ref --format='%(refname)' refs/himmel-update/tags 2>/dev/null)"
+out=$(run_chan "$TMP/s25l" "$TMP/c25l" UPDATE_CHECK_INTERVAL=0)
+assert_contains "25l: the next check nudges off them" "v0\.2\.0-pre\.1" "$out"
+
+chan_repo 2
+tag_origin v0.2.0-pre.1 3
+out=$(run_chan "$TMP/s25m" "$TMP/no-profile")
+i=0
+while [ "$i" -lt 20 ]; do
+    [ "$(git -C "$CHECKOUT_DIR" rev-list --count 'HEAD..@{u}' 2>/dev/null || echo 0)" != "0" ] && break
+    sleep 1; i=$((i + 1))
+done
+sleep 1
+assert_empty "25m: no channel: the private namespace stays empty" "$(git -C "$CHECKOUT_DIR" for-each-ref refs/himmel-update/tags 2>/dev/null)"
+
+chan_repo 3
+tag_origin v0.1.0-pre.1 2
+tag_origin v0.2.0-pre.1 3
+sync_private
+assert_eq_hook "25o: setup: the private ref of the release about to be withdrawn resolves to origin's commit" \
+    "$(git -C "$BARE" rev-parse 'v0.2.0-pre.1^{commit}' 2>/dev/null || echo origin-tag-missing)" \
+    "$(git -C "$CHECKOUT_DIR" rev-parse 'refs/himmel-update/tags/v0.2.0-pre.1^{commit}' 2>/dev/null || echo private-ref-missing)"
+git -C "$BARE" tag -d v0.2.0-pre.1 >/dev/null
+profile "$TMP/c25o" '{"channel":"pre"}'
+out=$(run_chan "$TMP/s25o" "$TMP/c25o")
+i=0
+while [ "$i" -lt 20 ]; do
+    [ -z "$(git -C "$CHECKOUT_DIR" for-each-ref refs/himmel-update/tags/v0.2.0-pre.1 2>/dev/null)" ] && break
+    sleep 1; i=$((i + 1))
+done
+assert_eq_hook "25o: a release withdrawn at origin leaves the private namespace on the next refresh" "refs/himmel-update/tags/v0.1.0-pre.1" \
+    "$(git -C "$CHECKOUT_DIR" for-each-ref --format='%(refname)' refs/himmel-update/tags 2>/dev/null)"
+out=$(run_chan "$TMP/s25o" "$TMP/c25o" UPDATE_CHECK_INTERVAL=0)
+assert_not_contains "25o: the withdrawn release is no longer advertised" "v0\.2\.0-pre\.1" "$out"
+
+chan_repo 2
+LIBLESS="$TMP/libless"; mkdir -p "$LIBLESS/scripts/hooks" "$LIBLESS/scripts/lib" "$LIBLESS/.git"
+cp "$HOOK" "$LIBLESS/scripts/hooks/"; cp "$LIBS_SRC/detach.sh" "$LIBLESS/scripts/lib/"
+profile "$TMP/c25n" '{"channel":"pre"}'
+out=$(env UPDATE_CHECK_STATE_DIR="$TMP/s25n" HIMMELCTL_CACHE_DIR="$TMP/c25n" CLAUDE_PROJECT_DIR="$CHECKOUT_DIR" bash "$LIBLESS/scripts/hooks/check-update-available.sh" 2>/dev/null) || true
+assert_contains "25n: shared library missing: fails open to the branch nudge" "2 commit(s) behind" "$out"
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo

@@ -98,7 +98,6 @@ function portOpen(port) {
   });
 }
 
-// ponytail: liveness is a connect to the recorded port, so another process that took a dead UI's port would pass; upgrade path is a token-checked /api probe.
 async function adhocLink() {
   let s;
   try { s = JSON.parse(fs.readFileSync(adhocPath(), 'utf8')); } catch (_e) { return null; }

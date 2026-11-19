@@ -26,9 +26,6 @@
 #     on a non-comment line; `arming` needs a *-cadence.sh script that is, or names, this file;
 #   - `billed-exempt:` needs a reason;
 #   - `billed-daemon:` names a non-empty cap identifier the file uses on a non-comment line.
-# ponytail: the token check is "appears on a non-comment line", not "guards the first call";
-# the refusal rows below run each marked script without the opt-in and prove it, upgrade path
-# is a per-script row for every new guard.
 # shellcheck disable=SC1003,SC2016,SC2094  # fixture bodies are literal text; the list is only read
 set -uo pipefail
 

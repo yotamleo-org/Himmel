@@ -179,7 +179,7 @@ check "T1.14 wrapper: no pr-number exits 2" "$rc" "2"
 out_reset; seed_ledger_ok; row_scope delta "$SHA" "$OUT_BRANCH" "$BASE40" "" 2; row_impacted
 out="$(run_out)"; contains "T1.6 a delta-only head FAILs 16b naming its from" "$out" "only a delta round (from 2222222)"
 out_reset; seed_ledger_ok; row_scope delta "$SHA" "$OUT_BRANCH" "$BASE40" "" 4; row_impacted
-out="$(run_out)"; contains "T1.7 a post-cap delta row FAILs 16b naming the takeover" "$out" "hand it to a maintainer takeover (HIMMEL-9019)"
+out="$(run_out)"; contains "T1.7 a post-cap delta row FAILs 16b naming the takeover" "$out" "hand it to a maintainer takeover"
 out_reset; seed_ledger_ok; row_scope full "$H2"; row_impacted
 out="$(run_out)"; contains "T1.8 a full row at another (parent) head FAILs 16b" "$out" "[FAIL] 16b. no full review round"
 out_reset; seed_ledger_ok; row_scope full "$SHA" other/branch; row_impacted
@@ -273,7 +273,7 @@ check "T1.23 a hung check-ci is cut off within the bound" "$([ $((t1 - t0)) -lt 
 out_reset; row_impacted 1
 out="$(run_out)"
 contains "T1.24 an impacted row with rc 1 FAILs 16f" "$out" "[FAIL] 16f."
-contains "T1.24 the 16f line names the takeover" "$out" "the HIMMEL-9019 takeover"
+contains "T1.24 the 16f line names the takeover" "$out" "the maintainer takeover"
 out_reset; row_impacted 0 2
 out="$(run_out)"; contains "T1.24 an impacted row with skip_n 2 FAILs 16f" "$out" "(newest: 0 2)"
 out_reset; seed_ledger_ok; row_scope full; row_impacted 0 0 "$SHA" other/branch

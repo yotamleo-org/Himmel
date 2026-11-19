@@ -28,8 +28,6 @@ const DIGEST_SCHEMA = 3;
 const LANES = new Set(["native", "claudex", "openrouter", "cloud", "unknown"]);
 const laneEnv = process.env.WORKER_SESSION_LANE || "";
 const lane = LANES.has(laneEnv) ? laneEnv : "unknown";
-// Only lowercase MCP identifiers (a hyphen allowed), never result/argument text. ponytail: a capital still folds
-// to "mcp" because the canary fixture's mcp__CANARY… name must not reach the digest; admit capitals per server.
 const toolKey = (s: string) => TOOLS.has(s) ? s : /^mcp__[a-z0-9_-]{1,160}$/.test(s) ? s : s.startsWith("mcp__") ? "mcp" : "other";
 // Split keys: Skill:<plugin>:<skill> and Agent:<subagent_type>, each part through a bounded name check.
 const SPLIT_PART = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,80}$/;
@@ -37,8 +35,6 @@ const splitName = (v: unknown) => typeof v === "string" && /^[^:]+(:[^:]+)?$/.te
 // The first command word past a leading `cd X &&`, `bash -c '...'`, env assignments and an rtk wrapper, never more
 // of the command. A graphify, qmd or rtk call keeps its own name behind those leading shapes, and the wrapper scripts
 // worker-graph.sh, leg-graph.sh and qmd-bounded.sh read as graphify or qmd whatever their verb (the qmd row holds
-// query, status, update, get and the rest; graph-use-report.sh splits them); any other word is read as before. ponytail: only the leading cd/bash -c/env/rtk shapes peel, a tool after a pipe or a later
-// `;` still reads as the first word; upgrade = lastStages-style splitting if the report undershoots.
 const HEAD = /^[a-z][a-z0-9_.+-]{0,40}$/;
 const COUNTED = new Set(["graphify", "qmd", "rtk"]);
 const GRAPH_WRAPPER = /(?:^|\/)scripts\/graphify\/(?:leg|worker)-graph\.sh$/;
@@ -77,9 +73,7 @@ const commandHead = (cmd: string) => {
 const bashCause = (cls: string) => cls.startsWith("error/") || cls.startsWith("suite/") ? "command"
   : cls.startsWith("denied/classifier:") ? "classifier"
   : cls === "denied/other" || cls === "denied/permission-prompt" || !cls.startsWith("denied/") ? "other" : "guard";
-// ponytail: per-row cap on bash_calls keeps one runaway session bounded; raise it if a real session hits it.
 const MAX_BASH_CALLS = 5000;
-// ponytail: per-row cap on the kept call times, a row past it keeps its first MAX_TIMED and says capped; upgrade = a fixed histogram per row.
 const MAX_TIMED = 2000;
 const REPO = resolve(import.meta.dir, "../../..");
 const TRAJECTORY = join(REPO, "scripts/eval/lane-quality/trajectory.py");
@@ -104,7 +98,6 @@ const MODEL = /^(claude|gpt|gemini|glm|codex|o\d)[a-z0-9.\-[\]]{0,60}$/i;
 // The tool name between the colon and "hook error" can carry a hyphen (mcp__himmel-bus__read), which \w does not match.
 const HOOK_PREFIX = /^(?:PreToolUse|PermissionRequest):[\w.-]+ hook error: /;
 const HOOK_ANY = /^(?:PreToolUse|PermissionRequest):[\w.-]+ hook error/;
-// ponytail: a table of today's openings, upgrade path the chain-log member for every guard.
 const OPENINGS: [RegExp, string][] = [
   [/^You are a CHIEF session running a long chief-kit script/, "guard-chief-foreground"],
   [/^bus store-deny:/, "guard-bus-store"],
@@ -141,8 +134,6 @@ const PASS_THROUGH = /^\s*(?:(?:grep|egrep|fgrep|rg|ugrep|head|tail|sort|uniq|ca
 
 // The pipeline stages of the last command in `cmd`. Commands split on `;`, `&&`, `||` and newline,
 // stages on `|`, never inside single quotes, double quotes or after a backslash, so a grep pattern like 'a|b' stays
-// whole. ponytail: no `$(...)`, backticks or heredocs, a split inside one still reads as a stage boundary; revisit
-// if the board shows a misclassified row.
 const lastStages = (cmd: string): string[] => {
   let stages: string[] = [], last: string[] = [""], cur = "", quote = "", ws = true; // ws: the last char was unescaped whitespace or a boundary
   const endStage = () => { stages.push(cur); cur = ""; ws = true; };
@@ -195,8 +186,6 @@ function exitCodes(): Registry | null {
 }
 // "result" | "retry" when every registered script named in `cmd` that lists this rc agrees on one of those classes.
 // A compound command (; && || |, newline) must resolve in EVERY segment: the rc belongs to one of them and which is
-// unknowable from the journal, so an unresolved segment stays an error. ponytail: splits on separators even inside
-// quotes (an over-split only keeps a failure), upgrade path is a shell-aware tokenizer if by-design counts undershoot.
 const byDesign = (reg: Registry, cmd: string, text: string): { script: string; rc: string; cls: string } | null => {
   const rc = /^Exit code (\d+)\b/.exec(text)?.[1];
   if (!rc) return null;
@@ -303,7 +292,6 @@ const EDIT_TOOLS = new Set(["Edit", "Write", "NotebookEdit"]);
 const GIT_COMMIT = /(?:^|[;&|(\n])\s*(?:(?:if|then|do|else|elif|while|until|sudo|env|command)\s+(?:-\S+\s+)*|\w+=\S*\s+)*git\s+(?:-\S+\s+(?:\S+\s+)?)*commit(?![\w-])/;
 const isSearch = (n: string) => n === "Grep" || n === "Glob" || n === "WebSearch" || n === "WebFetch" || n.startsWith("mcp__qmd__");
 // A worker has no Grep/Glob tool and reads through Bash, so a Bash call whose first word is one of these counts too.
-// ponytail: first word only, `cd x && grep y` reads as neither; revisit if the baseline undershoots.
 const BASH_READ = /^(?:cat|head|tail|sed|less|bat)\b/;
 const BASH_SEARCH = /^(?:grep|egrep|rg|ugrep|find|ls|tree)\b|^git\s+(?:grep|ls-files)\b|^bash\s+scripts\/graphify\/(?:leg|worker)-graph\.sh\b/;
 function exploration(lines: string[]) {
@@ -374,7 +362,6 @@ async function main() {
   const lookupsFailed = [...(hookList ? [] : ["hooks"]), ...(names ? [] : ["tracked-tests"])];
   const hooks = hookList ?? new Set<string>();
   // The hook-chain log names each refused call by id: a call it shows a guard denying is a denial whatever its result text says.
-  // ponytail: an unreadable log leaves the text rule alone (no chain-named denials), upgrade path a lookups_failed entry.
   let chain: ReturnType<typeof readChainLogs> | null = null;
   const chainDeny = new Map<string, string>();
   try {
@@ -464,8 +451,6 @@ async function main() {
     const name = callName.get(id) ?? "";
     if (name === "Skill") { const s = splitName(argsOf(id).skill); return s ? `Skill:${s}` : "Skill"; }
     // A subagent_type is free text (the canary fixture puts one there), so only a known kind or a tracked
-    // .claude/agents name becomes a key. ponytail: plugin agents (codex:codex-rescue) read "Agent" until a
-    // plugin agent list is read here.
     if (name === "Agent" || name === "Task") {
       const s = splitName(argsOf(id).subagent_type ?? "general-purpose");
       return s && (KINDS.has(s) || agentNames.has(s)) ? `Agent:${s}` : "Agent";
@@ -496,8 +481,6 @@ async function main() {
   // null: not a failure (a grep that matched nothing). Else "" or ":<sub>", appended to error/Bash.
   const bashErrorSub = (cmd: string, text: string): string | null => {
     // Only the last stage of the last command can be the grep whose exit 1 this is: in `grep x f; false` or
-    // `grep x f | false` the failure is `false`'s. ponytail: `false && grep x f` still reads as a no-match (the
-    // grep never ran), a sequence cannot be told from `ls && grep x f` without running it; revisit if the board shows it.
     const stages = lastStages(cmd);
     if (NO_MATCH.test(text) && GREP_CMD.test(stages.join(" ")) && PASS_THROUGH.test(stages[stages.length - 1])) return null;
     for (const e of BASH_ERRORS) {
@@ -674,8 +657,6 @@ async function main() {
     r.identical_retry = ds.reduce((n, d) => n + d.identical, 0);
     r.recovered = ds.every((d) => d.recovered);
   }
-  // Every guard row carries the first line its refused calls have in the hook-chain log, else null. ponytail: the line is trusted
-  // as redacted and cut by the runner at write time (denyLine), upgrade path an exported denyLine re-run on read.
   let refusalOf: (id: string, member: string) => string | null = () => null;
   try { if (chain) refusalOf = denyLinesByCall(chain); } catch { /* an unreadable log leaves every line null */ }
   for (const r of rows.values()) {

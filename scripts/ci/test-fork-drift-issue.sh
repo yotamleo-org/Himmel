@@ -209,7 +209,7 @@ cat > "$two" <<'RPT'
   yotamleo-org/graphify@v8: BEHIND   (fork-behind upstream=Graphify-Labs/graphify@v8 behind=177 ahead=0 action=gh repo sync yotamleo-org/graphify --branch v8)
   yotamleo/current@main: CURRENT  (fork-behind upstream=owner/current@trunk behind=0 ahead=4)
   yotamleo/current@dev: BEHIND   (fork-behind upstream=owner/current@trunk behind=2 ahead=0 action=gh repo sync yotamleo/current --branch dev)
-  yotamleo-org/effective-html@himmel-main: HELD (env-literal-ok: fork identity registry; pinned by marketplace.json at e4b08eb as the carrier of upstream plannotator/effective-html#31 (next 16.4.1); re-pin to upstream once #31 merges (HIMMEL-7170))
+  yotamleo-org/effective-html@himmel-main: HELD (env-literal-ok: fork identity registry; pinned by marketplace.json at e4b08eb as the carrier of upstream plannotator/effective-html#31 (next 16.4.1); re-pin to upstream once #31 merges)
   yotamleo-org/effective-html@main: BEHIND   (fork-behind upstream=plannotator/effective-html@main behind=2 ahead=0 action=gh repo sync yotamleo-org/effective-html --branch main)
 RPT
 b="$(body_of "$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" bash "$SCRIPT" 2 "$two" 2>&1)")"

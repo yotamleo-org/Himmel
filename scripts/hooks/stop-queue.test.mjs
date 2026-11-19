@@ -1677,7 +1677,7 @@ test('a gate adopted in the age-check gap is not evicted on the previous ownerâ€
 test('a gate the enqueuing session did not set is not inherited from the worker', () => {
   const env = jobEnv({ CLAUDE_PROJECT_DIR: '/b', PATH: '/b/bin' }, {
     PATH: '/a/bin',
-    SYSTEMROOT: 'C:\\Windows',    // owned since HIMMEL-2030 r4 â€” see below
+    SYSTEMROOT: 'C:\\Windows',
     HIMMEL_JIRA_NUDGE: '1',       // the WORKER session's gate
     JIRA_PROJECT_KEY: 'OTHER',    // the WORKER session's config
     CLAUDE_PROJECT_DIR: '/a',

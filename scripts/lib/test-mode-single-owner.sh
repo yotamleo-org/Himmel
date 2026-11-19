@@ -80,7 +80,7 @@ for rel in $SURFACES; do
         *"
 $rel
 "*)
-            echo "  ALLOW $rel (owned by a later HIMMEL-4748 work package)"
+            echo "  ALLOW $rel (owned by a later work package)"
             continue
             ;;
     esac

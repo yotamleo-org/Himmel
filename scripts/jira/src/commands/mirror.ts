@@ -140,7 +140,6 @@ export function readCursor(root: string): Cursor | null {
   }
 }
 
-// ponytail: no run lock, so two overlapping syncs of one root both write correct bytes but race on deletes/cursor; the cadence is one cron job, add a lock if a second caller appears.
 function writeFileAtomic(path: string, content: string): void {
   const tmp = `${path}.${process.pid}.tmp`;
   writeFileSync(tmp, content);
@@ -251,7 +250,6 @@ export async function runMirror(opts: MirrorOptions, req: Req): Promise<MirrorRe
     res.deleteSkipped = `key listing returned ${live.size} of ${local.length} local files (< ${DELETE_SAFETY_RATIO * 100}%)`;
     live = null;
   }
-  // ponytail: Jira's count is approximate, so a listing within COUNT_TOLERANCE of it is trusted; tighten if the count proves exact.
   if (live && (res.jiraTotal === null || live.size < res.jiraTotal * COUNT_TOLERANCE)) {
     res.deleteSkipped = res.jiraTotal === null ? 'Jira count unavailable' : `key listing returned ${live.size} but Jira counts ${res.jiraTotal}`;
     live = null;

@@ -33,13 +33,6 @@
 # store or snapshot, no hasher, a snapshot copy that no longer matches its
 # manifest). File names are taken to be plain names (no tab or newline).
 #
-# ponytail: a file another writer adds between take and the checkpoint looks
-# like the pass's own addition (R3), so restore moves it to the .removed- dir
-# (never deletes it); a hash alone cannot tell the two apart.
-# ponytail: restore hashes a file and then copies or moves it with no lock in
-# between, so a writer landing inside that few-millisecond window is
-# overwritten (R2) or moved aside (R3, recoverable from the .removed- dir);
-# upgrade path: an flock around the whole restore once a writer holds one too.
 #
 # bash 3.2-safe.
 set -uo pipefail

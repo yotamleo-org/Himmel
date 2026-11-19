@@ -18,6 +18,7 @@
 # launches through konsole (Linux/KDE) or the konsole-macos.sh shim on
 # macOS (see chief.sh's own header) — same platform scope.
 set -uo pipefail
+KP=HIMMEL
 
 # `next` leaves the relay-on-live marker by default; unsetting the bus name keeps 6e the one bus-identity row
 unset HIMMEL_BUS_NAME
@@ -345,7 +346,7 @@ check "3884 non-chief ignores env and stays standard" "$resolved3884" "standard 
 # and cannot read its own context fill -- which is the handover trigger its
 # operating contract is built on. headed-arm.sh already does this for the worker
 # path; the printed line was missed.
-for v in CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_JOB_DIR; do
+for v in CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_JOB_DIR NO_COLOR; do
     check "5d launch line unsets $v" \
         "$(printf '%s\n' "$out5b" | grep -c -- "-u $v")" "1"
 done
@@ -1937,7 +1938,6 @@ HANDOVER_DIR="$root" bash "$QL" release "$root/tester/modeldefault/DEMO-nextleg-
 # `new`/`next` died at "missing[@]: unbound variable" on macOS. This host's
 # bash is newer and cannot show the abort, so the assertion is static: every
 # expansion of `missing` must use the `${arr[@]+"${arr[@]}"}` guard.
-# ponytail: static proof only -- the real bash 3.2 run is the macOS nightly.
 check "62 chief.sh expands the possibly-empty 'missing' array only via the [@]+ guard" \
     "$(grep -v '^[[:space:]]*#' "$C" | grep -cE '[^+]"\$\{missing\[@\]\}"')" "0"
 
@@ -3164,7 +3164,7 @@ check "86b the timestamped residual-must bullet reaches the successor as a bare 
 check "86b the bare residual-must line reaches the successor" \
     "$(grep -Fxc 'residual-must HIMMEL-303 (data loss)' "$doc86bB" 2>/dev/null)" "1"
 check "86b a prose mention of residual-must is not carried" \
-    "$(grep -c 'HIMMEL-304' "$doc86bB" 2>/dev/null)" "0"
+    "$(grep -c "$KP-304" "$doc86bB" 2>/dev/null)" "0"
 check "86b the successor lines are read by next-dispatchable's regex" \
     "$(grep -cE '^[[:space:]]*([-*][[:space:]]+)?([0-9]{1,2}:[0-9]{2}[[:space:]]+)?residual-must[[:space:]]+(HIMMEL-)?[0-9]{3,5}\b' "$doc86bB" 2>/dev/null)" "2"
 

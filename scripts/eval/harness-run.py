@@ -29,9 +29,6 @@ What this runner does:
 Only this runner's own descendants are ever signalled. Linux only (prctl,
 /proc). Wrap the WHOLE harness, not each hook call: a harness's per-call
 killpg still runs, and this is the backstop for when the harness dies.
-ponytail: a SIGKILL to the runner itself cannot be caught, so its descendants
-are then orphaned as before. Give the outer tool call a longer timeout than
---deadline + --kill-after; a cgroup scope is the upgrade if that still bites.
 """
 import ctypes
 import math

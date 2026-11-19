@@ -10,8 +10,6 @@
 # without any write to code, the default-branch checkout, serialised without
 # cancelling, and the script run with the run id.
 #
-# ponytail: line-oriented text checks, not a YAML parse, upgrade to a real parser
-# if the repo ever vendors one for workflows (as test-main-sweep-red-workflow.sh).
 #
 # Usage: bash scripts/ci/test-workflow-red-workflow.sh
 # Env:   WORKFLOW_RED_YML  workflow under test (default: the tracked file).

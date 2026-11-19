@@ -558,9 +558,6 @@ _graphify_mcp_holder_pats() {
 # Fails CLOSED: with no /proc (macOS) or an unreadable command line the
 # pid is still counted, as before. Only a pid that vanished since pgrep ran
 # (its entry gone while /proc itself is mounted) is dropped.
-# ponytail: hosts without /proc (and the ps fallback) keep the argv-mention
-# overcount, upgrade when a no-/proc host reports a false holder.
-# Test seam: GRAPHIFY_PROC_ROOT (default /proc).
 _graphify_mcp_real_holders() {
   local root="${GRAPHIFY_PROC_ROOT:-/proc}" pat_entry pat_dir re_dir
   local anc=" $$ ${PPID:-} " p pp pid exe a0 a1 a n hit
@@ -892,13 +889,6 @@ _graphify_pin_skip_track() {  # $1 = short reason (e.g. "N holders" / "unprobeab
   local marker n write_rc=0
   marker="$(_graphify_pin_skip_marker)"
   mkdir -p "$(dirname "$marker")" 2>/dev/null || true
-  # ponytail: unlocked read-modify-write, no lock file. himmel-update is a
-  # lean-invoke operator/scheduler tool, not a multi-writer daemon -- two
-  # concurrent invocations racing this exact line is rare, and the cost of
-  # losing a race is a slightly-off ADVISORY count (never a wrong SKIP/
-  # non-skip decision, which is decided elsewhere). Add a mkdir-based lock
-  # (same pattern as refresh-graph-map.sh's own locks) if this ever needs
-  # to be exact.
   n=$(cat "$marker" 2>/dev/null); case "$n" in ''|*[!0-9]*) n=0 ;; esac
   # 10# forces base 10 (CR follow-up, codex-2 @ paid panel): a digit-only
   # value like "08" passes the case-pattern validation above (all chars are
@@ -926,11 +916,6 @@ _graphify_pin_skip_track() {  # $1 = short reason (e.g. "N holders" / "unprobeab
     write_rc=1
     if [ -n "$marker_tmp" ]; then rm -f "$marker_tmp" 2>/dev/null || true; fi
   fi
-  # ponytail: a write failure (read-only/unavailable config dir) still
-  # reports the in-memory $n below rather than silently reporting "1" --
-  # the count is best-effort advisory, not a correctness signal, so a
-  # transient write failure degrading to "the number I would have written"
-  # is preferable to hiding the SKIP escalation entirely. Flag it once here.
   [ "$write_rc" -eq 0 ] || echo "  (note: could not persist the skip counter to $marker -- next run may not know this happened)" >&2
   {
     echo "  STANDING OPERATOR ACTION: graphify pin sync has SKIPPED $n consecutive himmel-update run(s) in a row ($1)."
@@ -1133,7 +1118,6 @@ _graphify_holder_gate() {
   if holders="$(_graphify_mcp_holders)"; then
     case "$holders" in ''|*[!0-9]*) holders=0 ;; esac
     if [ "$holders" -gt 0 ]; then
-      # ponytail: SKIP while graphify-mcp holders are live (codex-1: lazy imports mix versions on a live swap), versioned tool dirs + atomic bin swap -> HIMMEL-4532
       {
         echo "  SKIP: $holders graphify-mcp process(es) hold the uv tool dir — NOT attempting the reinstall."
         echo "        graphify stays at v${installed:-?} and KEEPS WORKING; the pin has NOT advanced to $pin."

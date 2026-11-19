@@ -24,10 +24,6 @@
 # The printed env masks the value of any name matching TOKEN|KEY|SECRET|PASS
 #   (case-insensitive) as ***; the child still receives the real value.
 #
-# ponytail: the PATH is fixed at the common Linux/macOS system dirs plus node's
-# directory, so any other tool installed elsewhere (Homebrew under /opt/homebrew,
-# nvm, ~/.local/bin) is NOT found in the sandbox; pass a full path to it, or --keep PATH is refused on
-# purpose (the point is not to inherit the operator's PATH).
 #
 # Platform guard (linux/macos-only): POSIX bash 3.2+ (no associative arrays, no
 # ${var,,}), like headed-arm-worker.sh.

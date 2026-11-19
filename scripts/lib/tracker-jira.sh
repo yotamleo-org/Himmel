@@ -42,7 +42,6 @@ _tracker_jira_id_new() {
 # _tracker_jira_get <id> — normalised JSON. rc 3 when the issue is absent, rc 1 when the CLI itself failed.
 _tracker_jira_get() {
     local raw err msg line
-    # ponytail: a signal mid-call leaks this temp file (a trap here would clobber the caller's INT/TERM traps), upgrade by saving and restoring the caller's traps when a consumer (WP3a/WP3b/WP9) installs its own around tracker calls
     err=$(mktemp "${TMPDIR:-/tmp}/tracker-jira-err.XXXXXX") || return 1
     if ! raw=$(_tracker_jira_run get "$1" --json 2>"$err"); then
         msg=$(cat "$err" 2>/dev/null); rm -f "$err"

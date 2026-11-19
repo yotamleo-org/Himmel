@@ -74,11 +74,11 @@ check_both "8 rm primary/scripts/x.sh" block \
 # must ALLOW — this is the exact catch-22 the hook's own deny text (line
 # 842/1054) recommends as the remedy, then refused (not yet present in
 # primary — .single-writer is only in the exclude file, not touched on disk).
-check_both "9 touch primary/.single-writer (creating the opt-out itself) allows (HIMMEL-2946)" allow \
+check_both "9 touch primary/.single-writer (creating the opt-out itself) allows" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"touch $FIX/primary/.single-writer\",\"cwd\":\"$FIX/primary\"}}"
 
 # 10: redirect onto the same exact name — same exemption.
-check_both "10 echo > primary/.single-writer (creating the opt-out itself) allows (HIMMEL-2946)" allow \
+check_both "10 echo > primary/.single-writer (creating the opt-out itself) allows" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo x > $FIX/primary/.single-writer\",\"cwd\":\"$FIX/primary\"}}"
 
 # 10b: the exemption is EXACT-BASENAME-AT-ROOT only — a
@@ -141,7 +141,7 @@ check_both "11 git commit cwd=primary (main) — both wirings agree" block \
 check_one "12a git commit cwd=featprimary (primary-feature) — direct-exec DENIES (new rule)" \
     "$DIRECT" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m wip\",\"cwd\":\"$FIX/featprimary\"}}"
-check_one "12b git commit cwd=featprimary (primary-feature) — sourced/codex ALLOWS (HIMMEL-745 unchanged, deliberate)" \
+check_one "12b git commit cwd=featprimary (primary-feature) — sourced/codex ALLOWS (unchanged, deliberate)" \
     "$FENCE" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m wip\",\"cwd\":\"$FIX/featprimary\"}}"
 
@@ -596,7 +596,7 @@ for _q in "single:echo '<<EOF'" "double:echo \"<<EOF\"" "comment:# <<EOF"; do
     _qname="${_q%%:*}"; _qline="${_q#*:}"
     _CMD=$(printf '%s\necho pwned > %s/q-%s.txt' "$_qline" "$FIX/primary" "$_qname")
     _JSON="{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":$(printf '%s' "$_CMD" | jq -Rs .),\"cwd\":\"$FIX/wt\"}}"
-    check_both_reason "41 $_qname-quoted <<EOF does not blank the following real write (HIMMEL-2591)" \
+    check_both_reason "41 $_qname-quoted <<EOF does not blank the following real write" \
         "$_JSON" "its repo is on main/master"
 done
 

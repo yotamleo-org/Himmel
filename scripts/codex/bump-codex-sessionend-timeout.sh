@@ -11,7 +11,6 @@
 # larger existing value is kept. Idempotent. Exits 1 (and does not print a final
 # OK) when any hooks.json was skipped (unparseable, temp-file or write failure).
 #
-# ponytail: re-applies only when run (himmel-update.sh after the marketplace re-sync, or by hand); Claude Code background plugin auto-update is not hooked, so a plugin auto-update can undo the bump until a follow-up makes it survive one.
 #
 #   bump-codex-sessionend-timeout.sh            # patch in place, report
 #   bump-codex-sessionend-timeout.sh --dry-run  # report what WOULD change

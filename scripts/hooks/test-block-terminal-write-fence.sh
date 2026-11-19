@@ -34,7 +34,7 @@ mkrepo "$T/mainrepo"  "main"
 mkrepo "$T/featrepo"  "feat/x"
 MAIN="$T/mainrepo"
 FEAT="$T/featrepo"
-SWR="$T/swrepo"; mkrepo "$SWR" "feat/x"; touch "$SWR/.single-writer"  # class (b) exempt, so class (a) rows are not masked (HIMMEL-844)
+SWR="$T/swrepo"; mkrepo "$SWR" "feat/x"; touch "$SWR/.single-writer"  # class (b) exempt, so class (a) rows are not masked
 # The `/tmp/` prefix is HARDCODED, not `${TMPDIR:-/tmp}` and not a bare
 # `mktemp -d`: this row asserts the `/tmp` root itself; on macOS both of
 # those resolve TMPDIR to `/var/folders/.../T/`, a different root that the

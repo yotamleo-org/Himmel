@@ -1,4 +1,4 @@
-// himmel delta (HIMMEL-4578): the HUD must keep writing the per-session context
+// himmel delta: the HUD must keep writing the per-session context
 // snapshot that scripts/context-fill.sh reads (upstream v0.10.0 dropped the writer).
 // End to end: run the built HUD on a fixture session, then ask context-fill.sh.
 import { test } from 'node:test';

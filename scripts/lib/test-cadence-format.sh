@@ -53,7 +53,7 @@ else
   fail=$((fail + 1)); echo "  FAIL: expected CADENCE_RUNNER_FORMAT_VERSION=26, got '$CADENCE_RUNNER_FORMAT_VERSION'"
 fi
 
-echo "[test-cadence-format] CADENCE_RUNNER_BASENAMES includes upstream-watch (HIMMEL-2367)"
+echo "[test-cadence-format] CADENCE_RUNNER_BASENAMES includes upstream-watch"
 case " $CADENCE_RUNNER_BASENAMES " in
   *" upstream-watch "*)
     pass=$((pass + 1)); echo "  ok: upstream-watch is a stamped runner basename" ;;
@@ -61,7 +61,7 @@ case " $CADENCE_RUNNER_BASENAMES " in
     fail=$((fail + 1)); echo "  FAIL: upstream-watch missing from CADENCE_RUNNER_BASENAMES: '$CADENCE_RUNNER_BASENAMES'" ;;
 esac
 
-echo "[test-cadence-format] cadence_runner_stamp sees armed graphmap AST/publish runners (HIMMEL-4285)"
+echo "[test-cadence-format] cadence_runner_stamp sees armed graphmap AST/publish runners"
 # The weekly semantic runners (graphmap-luna/-himmel) are NOT armed here: only
 # the three structural .sh runners exist, which is the live shape the probe
 # missed ("not armed — no runner files found" while they sat in the crontab).
@@ -98,12 +98,20 @@ else
 fi
 rm -rf "$_ast_tmp"
 
-echo "[test-cadence-format] CADENCE_RUNNER_BASENAMES includes doctor-cadence (HIMMEL-4285)"
+echo "[test-cadence-format] CADENCE_RUNNER_BASENAMES includes doctor-cadence"
 case " $CADENCE_RUNNER_BASENAMES " in
   *" doctor-cadence "*)
     pass=$((pass + 1)); echo "  ok: doctor-cadence is a probed runner basename" ;;
   *)
     fail=$((fail + 1)); echo "  FAIL: doctor-cadence missing from CADENCE_RUNNER_BASENAMES: '$CADENCE_RUNNER_BASENAMES'" ;;
+esac
+
+echo "[test-cadence-format] CADENCE_RUNNER_BASENAMES includes steering-cull-cadence"
+case " $CADENCE_RUNNER_BASENAMES " in
+  *" steering-cull-cadence "*)
+    pass=$((pass + 1)); echo "  ok: steering-cull-cadence is a probed runner basename" ;;
+  *)
+    fail=$((fail + 1)); echo "  FAIL: steering-cull-cadence missing from CADENCE_RUNNER_BASENAMES: '$CADENCE_RUNNER_BASENAMES'" ;;
 esac
 
 echo "[test-cadence-format] CADENCE_RUNNER_BASENAMES includes rollup-cadence"

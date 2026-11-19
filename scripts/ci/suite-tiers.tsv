@@ -8,7 +8,7 @@
 # an unknown tier, an unjustified pr reason, a trust-path suite that is local, an empty trust list.
 # A suite with no row is allowed and reads as tier pr; scripts/ci/ledger-drift.sh --no-row lists them.
 # This file is under scripts/ci/ (a trust path): every tier change needs a trust-reviewed GO.
-scripts/security/test-security-audit-cadence.sh	local	behaviour suite, new (HIMMEL-8281)
+scripts/security/test-security-audit-cadence.sh	local	behaviour suite, new
 marketplace/plugins/pstack/test-vendor.sh	pr	static-gate
 marketplace/plugins/handover/scripts/test-migrate-v1-to-v2.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/handover/scripts/test-skill-e2e.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -22,7 +22,7 @@ marketplace/plugins/himmel-ops/hooks/test-inject-minerva-critic.sh	local	behavio
 marketplace/plugins/himmel-ops/scripts/test-autonomy-mode.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/himmel-ops/scripts/test-chief-cmd-resolution.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/himmel-ops/scripts/test-docs-reviewer-fit.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-marketplace/plugins/himmel-ops/scripts/test-docs-remarks.sh	local	behaviour suite, new (HIMMEL-7657)
+marketplace/plugins/himmel-ops/scripts/test-docs-remarks.sh	local	behaviour suite, new
 marketplace/plugins/himmel-ops/scripts/test-effort-assess.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/himmel-ops/scripts/test-himmel-update-cmd-resolution.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/himmel-ops/scripts/test-workers.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -192,7 +192,7 @@ scripts/ci/test-vm-runner-probe-workflow.sh	pr	trust-path
 scripts/ci/test-workflow-red-issue.sh	pr	trust-path
 scripts/ci/test-workflow-red-workflow.sh	pr	trust-path
 scripts/claudex/test-probe-chunk.sh	local	new since the audit, behaviour suite
-scripts/cleanup/test-batch-runners.sh	local	behaviour suite, new HIMMEL-6865
+scripts/cleanup/test-batch-runners.sh	local	behaviour suite, new
 scripts/cleanup/test-reap-mcp-orphans.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cleanup/test-steering-cull-cadence.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cloud/test-check-env.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -217,7 +217,7 @@ scripts/copilot/test-dispatch-copilot.sh	local	behaviour suite, 0 catches in the
 scripts/cr/test-advisory-rows.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-anchor-handoff.sh	pr	trust-path
 scripts/cr/test-artifact-critic.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/cr/test-class-recurrence.sh	local	behaviour suite, backfilled HIMMEL-6716
+scripts/cr/test-class-recurrence.sh	local	behaviour suite, backfilled
 scripts/cr/test-claude-floor-review.sh	pr	trust-path
 scripts/cr/test-clear-cr-marker.sh	pr	trust-path
 scripts/cr/test-coderabbit-yaml-carveouts.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -253,7 +253,7 @@ scripts/cr/test-lane-classify.sh	pr	trust-path
 scripts/cr/test-ledger-amend-auth.sh	pr	trust-path
 scripts/cr/test-ledger-append.sh	pr	static-gate
 scripts/cr/test-live-gate-e2e.sh	pr	trust-path
-scripts/cr/test-mark-deferred-escape.sh	local	behaviour suite, backfilled HIMMEL-6716
+scripts/cr/test-mark-deferred-escape.sh	local	behaviour suite, backfilled
 scripts/cr/test-orphan-check.sh	pr	trust-path
 scripts/cr/test-panel-first-pass.sh	pr	trust-path
 scripts/cr/test-pr-check-context.sh	pr	trust-path
@@ -266,9 +266,9 @@ scripts/cr/test-pr-check-step0.sh	pr	trust-path
 scripts/cr/test-residue-scan.sh	pr	trust-path
 scripts/cr/test-review-round.sh	pr	trust-path
 scripts/cr/test-ship-tail-model-free.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/cr/test-standards-cadence.sh	local	behaviour suite, backfilled HIMMEL-6716
+scripts/cr/test-standards-cadence.sh	local	behaviour suite, backfilled
 scripts/cr/test-suite-fail-ledger.sh	local	report-only reader of the CI failure ledger
-scripts/cr/test-suite-file-selection.sh	local	independent resolver fixtures; full-property completion and nightly wiring deferred to HIMMEL-7096
+scripts/cr/test-suite-file-selection.sh	local	independent resolver fixtures; full-property completion and nightly wiring deferred
 scripts/cr/test-triviality-gate.sh	pr	trust-path
 scripts/cr/test-write-verdicts.sh	pr	trust-path
 scripts/docs-site/test-serve.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -290,14 +290,14 @@ scripts/docs/test-second-model-review-page.sh	pr	static-gate
 scripts/docs/test-site-guides.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/docs/test-team-page.sh	pr	static-gate
 scripts/docs/test-troubleshooting-page.sh	pr	static-gate
-scripts/eval/bug-origin/test-bug-origin-report.sh	local	behaviour suite, new HIMMEL-8519
+scripts/eval/bug-origin/test-bug-origin-report.sh	local	behaviour suite, new
 scripts/eval/cr-ledger/test-cr-ledger.sh	pr	static-gate
-scripts/eval/fold-vs-keep/test-fold-vs-keep.sh	local	behaviour suite, new HIMMEL-7330
+scripts/eval/fold-vs-keep/test-fold-vs-keep.sh	local	behaviour suite, new
 scripts/eval/friction/test-friction.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/graphify-ab/test-graphify-ab.sh	pr	guard
 scripts/eval/guard-corpus/test-guard-corpus.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/eval/judge-accuracy/test-judge-accuracy.sh	local	behaviour suite, new HIMMEL-6943
-scripts/eval/judge-accuracy/test-judge-accuracy-cadence.sh	local	behaviour suite, new HIMMEL-7385
+scripts/eval/judge-accuracy/test-judge-accuracy.sh	local	behaviour suite, new
+scripts/eval/judge-accuracy/test-judge-accuracy-cadence.sh	local	behaviour suite, new
 scripts/eval/lane-quality/pilot-4869/test-pilot.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/lane-quality/test-lane-quality.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/lane-quality/test-lane-quality-calibration.sh	local	behaviour suite, new, no audit-window history
@@ -307,10 +307,10 @@ scripts/eval/lib/test-wilson.sh	pr	static-gate
 scripts/eval/worker-digest/test-failure-review.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/worker-digest/test-failure-router.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/worker-digest/test-worker-digest.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/eval/worker-digest/test-graph-use-report.sh	local	behaviour suite, new HIMMEL-8707; the report it covers is on-demand
+scripts/eval/worker-digest/test-graph-use-report.sh	local	behaviour suite, new; the report it covers is on-demand
 scripts/eval/worker-digest/test-worker-ledger.sh	pr	static-gate
-scripts/eval/worker-digest/test-pdd-share.sh	local	behaviour suite, new HIMMEL-7128; the reader it covers is on-demand
-scripts/eval/mcp-tasks-probe/test-probe.sh	local	behaviour suite, new HIMMEL-7304; the probe it covers is on-demand and billed
+scripts/eval/worker-digest/test-pdd-share.sh	local	behaviour suite, new; the reader it covers is on-demand
+scripts/eval/mcp-tasks-probe/test-probe.sh	local	behaviour suite, new; the probe it covers is on-demand and billed
 scripts/eval/qmd-quality/test-qmd-burst-proof.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/qmd-quality/test-qmd-quality-cadence.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/qmd-quality/test-qmd-quality.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -327,23 +327,23 @@ scripts/eval/test-cache-probe.sh	local	behaviour suite, 0 catches in the 400-PR 
 scripts/eval/test-ci-metrics.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-chief-load-inventory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-context-replay.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/eval/test-deferred-outcome.sh	local	behaviour suite, new HIMMEL-7517
-scripts/eval/test-escapes.sh	local	behaviour suite, new HIMMEL-7517
-scripts/eval/test-eval-feedback.sh	local	behaviour suite, new HIMMEL-6942
+scripts/eval/test-deferred-outcome.sh	local	behaviour suite, new
+scripts/eval/test-escapes.sh	local	behaviour suite, new
+scripts/eval/test-eval-feedback.sh	local	behaviour suite, new
 scripts/eval/test-eval-runs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/eval/test-handover-cost.sh	local	behaviour suite, backfilled HIMMEL-6716
+scripts/eval/test-handover-cost.sh	local	behaviour suite, backfilled
 scripts/eval/test-harness-run.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-judge-cache-row.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/eval/test-lone-comm-count.sh	local	behaviour suite, new HIMMEL-8931
-scripts/eval/test-profile-openings.sh	local	behaviour suite, new HIMMEL-7132
+scripts/eval/test-lone-comm-count.sh	local	behaviour suite, new
+scripts/eval/test-profile-openings.sh	local	behaviour suite, new
 scripts/eval/test-readme-glossary.sh	pr	static-gate
-scripts/eval/test-review-page.sh	local	behaviour suite, new HIMMEL-6943
+scripts/eval/test-review-page.sh	local	behaviour suite, new
 scripts/eval/test-session-retro.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-stability-scorecard.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-weekly-rollup.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-worktree-latency-curve.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/git/test-classify-branches.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/git/test-delete-approved-branch.sh	local	new, behaviour suite for the approved remote-branch delete script, no gate role, HIMMEL-8452
+scripts/git/test-delete-approved-branch.sh	local	new, behaviour suite for the approved remote-branch delete script, no gate role
 scripts/git/test-restore-to-head.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/graphify/test-anchor-seeds.sh	pr	guard
 scripts/graphify/test-ast-update.sh	pr	guard
@@ -359,7 +359,7 @@ scripts/graphify/test-harden-graph.sh	pr	guard
 scripts/graphify/test-publish-graph-channel.sh	pr	guard
 scripts/graphify/test-worker-graph-rationale.sh	pr	guard
 scripts/graphify/test-worker-graph.sh	pr	guard
-scripts/graphify/test-quality-sample.sh	local	behaviour suite, backfilled HIMMEL-6716
+scripts/graphify/test-quality-sample.sh	local	behaviour suite, backfilled
 scripts/graphify/test-refresh-graph-map-backup-prune.sh	pr	guard
 scripts/graphify/test-refresh-graph-map-lock.sh	pr	guard
 scripts/graphify/test-refresh-graph-map-resume.sh	pr	guard
@@ -388,13 +388,13 @@ scripts/handover/chief-kit/test-ack-denial.sh	pr	trust-path
 scripts/handover/chief-kit/test-action-zero.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-append-results.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-auto-go.sh	pr	trust-path
-scripts/handover/chief-kit/test-board-section.sh	local	behaviour suite, new (HIMMEL-7819)
+scripts/handover/chief-kit/test-board-section.sh	local	behaviour suite, new
 scripts/handover/chief-kit/test-board.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-brief-lint.sh	pr	trust-path
 scripts/handover/chief-kit/test-chain-graph.sh	pr	trust-path
 scripts/handover/chief-kit/test-chain-plan.sh	pr	trust-path
 scripts/handover/chief-kit/test-chain-push-check.sh	local	behaviour suite, offline trial merges and advisory PR-open integration, no gate role
-scripts/handover/chief-kit/test-chain-state.sh	local	new, behaviour suite for chain-state.mjs (board v4 chains), no gate role, HIMMEL-6827
+scripts/handover/chief-kit/test-chain-state.sh	local	new, behaviour suite for chain-state.mjs (board v4 chains), no gate role
 scripts/handover/chief-kit/test-cancel-runs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-ci-guardrail.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-close-wrapped-worker.sh	pr	trust-path
@@ -402,13 +402,13 @@ scripts/handover/chief-kit/test-compacted-check.sh	pr	trust-path
 scripts/handover/chief-kit/test-chief-budget.sh	pr	static-gate
 scripts/handover/chief-kit/test-chief-kit-e2e.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-chief-wait-b.sh	local	behaviour suite, second half of test-chief-wait.sh; one attempt is 374-509 s on CI and one ran past the 600 s default cap, so its own cap row in run-shell-tests.sh is 1200 s (2x that overrun)
-scripts/handover/chief-kit/test-chief-wait-pool.sh	local	behaviour suite, the underfilled re-wake on a pool change in chief-wait.sh, HIMMEL-7386
-scripts/handover/chief-kit/test-chief-wait-r0.sh	local	behaviour suite, the script relay (R0) of chief-wait.sh, HIMMEL-6538; stays local (HIMMEL-8228): it runs 162 s of real-time waits, the same cost class as the other chief-wait suites, so it is not moved into the PR gate
+scripts/handover/chief-kit/test-chief-wait-pool.sh	local	behaviour suite, the underfilled re-wake on a pool change in chief-wait.sh
+scripts/handover/chief-kit/test-chief-wait-r0.sh	local	behaviour suite, the script relay (R0) of chief-wait.sh; stays local: it runs 162 s of real-time waits, the same cost class as the other chief-wait suites, so it is not moved into the PR gate
 scripts/handover/chief-kit/test-chief-wait.sh	local	behaviour suite, the chief waiter's wake rows; one attempt is 575-595 s on CI, under its own 1200 s cap row in run-shell-tests.sh
 scripts/handover/chief-kit/test-cr-disposition.sh	pr	trust-path
 scripts/handover/chief-kit/test-cut-tag.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-delta-class.sh	pr	trust-path
-scripts/handover/chief-kit/test-denied-launch-alert.sh	local	behaviour suite, backfilled HIMMEL-6716
+scripts/handover/chief-kit/test-denied-launch-alert.sh	local	behaviour suite, backfilled
 scripts/handover/chief-kit/test-doc-reader-agreement.sh	local	behaviour suite, new generator-driven reader agreement
 scripts/handover/chief-kit/test-fleet-manifest.sh	pr	static-gate
 scripts/handover/chief-kit/test-fleet.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -427,7 +427,7 @@ scripts/handover/chief-kit/test-ice-followups.sh	local	new since the audit, beha
 scripts/handover/chief-kit/test-inbox-audit.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-inbox-follow.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-inbox-send.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/handover/chief-kit/test-json-writers-final-newline.sh	local	behaviour suite, new for HIMMEL-6767
+scripts/handover/chief-kit/test-json-writers-final-newline.sh	local	behaviour suite, new
 scripts/handover/chief-kit/test-judge-ladder.sh	pr	trust-path
 scripts/handover/chief-kit/test-launch-cloud.sh	pr	trust-path
 scripts/handover/chief-kit/test-worker-budget.sh	pr	static-gate
@@ -443,7 +443,7 @@ scripts/handover/chief-kit/test-orphan-loops.sh	local	behaviour suite, 0 catches
 scripts/handover/chief-kit/test-orphan-pr-check.sh	local	behaviour suite for the open-PR gate; no audit window yet
 scripts/handover/chief-kit/test-parked-on-prompt.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-pr-stall.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/handover/chief-kit/test-priority-prune.sh	local	behaviour suite, new in HIMMEL-6602
+scripts/handover/chief-kit/test-priority-prune.sh	local	behaviour suite, new
 scripts/handover/chief-kit/test-ready-check-b.sh	pr	trust-path
 scripts/handover/chief-kit/test-ready-check-c.sh	pr	trust-path
 scripts/handover/chief-kit/test-ready-check-d.sh	pr	trust-path
@@ -453,36 +453,36 @@ scripts/handover/chief-kit/test-ready-check.sh	pr	trust-path
 scripts/handover/chief-kit/test-ready-go.sh	pr	trust-path
 scripts/handover/chief-kit/test-relay-batch.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-run-suite.sh	pr	trust-path
-scripts/handover/chief-kit/test-series-ledger.sh	local	behaviour suite, new for HIMMEL-8349 (series ledger L0)
+scripts/handover/chief-kit/test-series-ledger.sh	local	behaviour suite, new (series ledger L0)
 scripts/handover/chief-kit/test-silent-go-merge.sh	pr	trust-path
 scripts/handover/chief-kit/test-shepherd.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-station-sync.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-status-drift.sh	pr	trust-path
-scripts/handover/chief-kit/test-stuck-scan.sh	local	behaviour suite, backfilled HIMMEL-6716
-scripts/handover/chief-kit/test-model-check-report.sh	local	behaviour suite, new optional prerequisites (HIMMEL-8276)
+scripts/handover/chief-kit/test-stuck-scan.sh	local	behaviour suite, backfilled
+scripts/handover/chief-kit/test-model-check-report.sh	local	behaviour suite, new optional prerequisites
 scripts/handover/chief-kit/test-succession-tracker.sh	pr	trust-path
 scripts/handover/chief-kit/test-tick-b.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-tick-busedge.sh	local	new since the audit, behaviour suite
 scripts/handover/chief-kit/test-tick-deadwin.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/handover/chief-kit/test-tick-fields.sh	local	second half of test-tick.sh (HIMMEL-8813 split), same tier as the half it came from
-scripts/handover/chief-kit/test-tick-holds.sh	local	new, behaviour suite for tick.sh holds= (HIMMEL-4949)
+scripts/handover/chief-kit/test-tick-fields.sh	local	second half of test-tick.sh, same tier as the half it came from
+scripts/handover/chief-kit/test-tick-holds.sh	local	new, behaviour suite for tick.sh holds=
 scripts/handover/chief-kit/test-tick-nolive.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/handover/chief-kit/test-tick-pool-stale.sh	local	new, behaviour suite for tick.sh pool-stale= and residual-unversioned= (HIMMEL-6604)
-scripts/handover/chief-kit/test-tick-repair.sh	local	new, behaviour suite for tick.sh held=, unfiled=, repair=off: and the auto repair launch (HIMMEL-8823)
-scripts/handover/chief-kit/test-tick-rmqueue.sh	local	new, behaviour suite for tick.sh rm-queue= and the auto rm-run (HIMMEL-7641)
-scripts/handover/chief-kit/test-tick-vmspend.sh	local	new, behaviour suite for the tick vmspend= field (HIMMEL-8663)
+scripts/handover/chief-kit/test-tick-pool-stale.sh	local	new, behaviour suite for tick.sh pool-stale= and residual-unversioned=
+scripts/handover/chief-kit/test-tick-repair.sh	local	new, behaviour suite for tick.sh held=, unfiled=, repair=off: and the auto repair launch
+scripts/handover/chief-kit/test-tick-rmqueue.sh	local	new, behaviour suite for tick.sh rm-queue= and the auto rm-run
+scripts/handover/chief-kit/test-tick-vmspend.sh	local	new, behaviour suite for the tick vmspend= field
 scripts/handover/chief-kit/test-tick.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-tracker.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-vault-status.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-verdict-go.sh	pr	trust-path
-scripts/handover/chief-kit/test-verdict-retention.sh	local	behaviour suite, new in HIMMEL-6915
+scripts/handover/chief-kit/test-verdict-retention.sh	local	behaviour suite, new
 scripts/handover/chief-kit/test-version-approval-alert.sh	pr	trust-path
-scripts/handover/chief-kit/test-version-status-audit.sh	local	behaviour suite, backfilled HIMMEL-6716
+scripts/handover/chief-kit/test-version-status-audit.sh	local	behaviour suite, backfilled
 scripts/handover/chief-kit/test-versionless-done.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-vm-runner.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-wrap-merged.sh	pr	trust-path
 scripts/handover/chief-kit/test-write-verdict.sh	pr	trust-path
-scripts/handover/chief/test-chief-handoff-roundtrip.sh	local	behaviour suite, backfilled HIMMEL-6716
+scripts/handover/chief/test-chief-handoff-roundtrip.sh	local	behaviour suite, backfilled
 scripts/handover/chief/test-chief.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-append-cr-bugs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-append-cr-findings.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -512,8 +512,8 @@ scripts/handover/test-bugs-dashboard.sh	local	behaviour suite, 0 catches in the 
 scripts/handover/test-bus-idle-waker.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-cache-health-line.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-cap-reset-time.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/handover/test-compound-distill.sh	local	behaviour suite, new in HIMMEL-6915
-scripts/handover/test-compound-extract.sh	local	behaviour suite, new in HIMMEL-6915
+scripts/handover/test-compound-distill.sh	local	behaviour suite, new
+scripts/handover/test-compound-extract.sh	local	behaviour suite, new
 scripts/handover/test-flush.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-friction-gate-docs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-generate-morning-briefing.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -526,10 +526,10 @@ scripts/handover/test-konsole-macos.sh	local	behaviour suite, 0 catches in the 4
 scripts/handover/test-worker-handoff-threshold-docs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-worker-resume-brief.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-worker-timeline.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/handover/test-launch-record.sh	local	behaviour suite, new in HIMMEL-9163
+scripts/handover/test-launch-record.sh	local	behaviour suite, new
 scripts/handover/test-lessons-sweep.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/handover/test-librarian-cadence.sh	local	behaviour suite, new in HIMMEL-6915
-scripts/handover/test-librarian.sh	local	behaviour suite, new in HIMMEL-6915
+scripts/handover/test-librarian-cadence.sh	local	behaviour suite, new
+scripts/handover/test-librarian.sh	local	behaviour suite, new
 scripts/handover/test-merge-fork-pr.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-merge-forward-check.sh	pr	trust-path
 scripts/handover/test-merge-on-green-b.sh	pr	guard
@@ -805,7 +805,7 @@ scripts/hooks/test-template-version.sh	local	behaviour suite, 0 catches in the 4
 scripts/hooks/test-trigger-cr-on-pr-create.sh	pr	trust-path
 scripts/hooks/test-trigger-cr-on-push.sh	pr	trust-path
 scripts/hooks/test-wired-hooks-integrity-resolution.sh	pr	catch:2858
-scripts/insights/test-self-review.sh	local	behaviour suite, new HIMMEL-6865
+scripts/insights/test-self-review.sh	local	behaviour suite, new
 scripts/insights/test-session-analyzer.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/install/test-capture-operator-profile.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/install/test-himmel-ops-plugin-enablement.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -813,7 +813,7 @@ scripts/install/test-mcp-profile-providers.sh	local	behaviour suite, 0 catches i
 scripts/install/test-observability-grafana-manifest.sh	pr	static-gate
 scripts/install/test-observability-stack-manifest.sh	pr	static-gate
 scripts/install/test-operator-profile-staleness.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/install/test-scan-duplicates.sh	local	behaviour suite, new in HIMMEL-6972
+scripts/install/test-scan-duplicates.sh	local	behaviour suite, new
 scripts/lanes/bench/scorecard/fixtures/dead-parts/basic-repo/test-caller.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/bench/scorecard/test-agg-burn.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/bench/scorecard/test-dead-parts.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -835,7 +835,7 @@ scripts/lanes/test-worker-cost-report.sh	local	behaviour suite, 0 catches in the
 scripts/lanes/test-worker-pr-open.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/test-profile-settings.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/test-plugin-profiles-automode.sh	pr	guard
-scripts/lanes/tests/test-cache-read-weights.sh	local	behaviour suite, new (HIMMEL-7126)
+scripts/lanes/tests/test-cache-read-weights.sh	local	behaviour suite, new
 scripts/lanes/tests/test-worker-burn.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/tests/test-stop-worker.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lib/test-api-credit-state.sh	pr	trust-path
@@ -1023,7 +1023,7 @@ scripts/macos/test-macos-lane.sh	local	behaviour suite, 0 catches in the 400-PR 
 scripts/mcp/test-build-mcp-profiles.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/measurements/test-prose-audit.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/memory/test-audit-memory-capture.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/memory/test-memory-snapshot.sh	local	behaviour suite, new (HIMMEL-7379)
+scripts/memory/test-memory-snapshot.sh	local	behaviour suite, new
 scripts/observability/test-dashboard-lint.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/observability/test-exit-codes.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/observability/test-install-grafana.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -1040,7 +1040,7 @@ scripts/afk/test-morning-report.sh	local	behaviour suite, 0 catches in the 400-P
 scripts/afk/test-per-project.sh	local	behaviour suite, per-project afk-shift state
 scripts/afk/test-self-heal.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/afk/test-stop-marker.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/afk/test-suggest-allowlist.sh	local	behaviour suite, AFK ledger allowlist suggestions (HIMMEL-8067)
+scripts/afk/test-suggest-allowlist.sh	local	behaviour suite, AFK ledger allowlist suggestions
 scripts/parity/test-guard-conformance.sh	pr	static-gate
 scripts/parity/test-launcher-context-env-parity.sh	pr	static-gate
 scripts/parity/test-t12-no-bloat-lib.sh	pr	static-gate
@@ -1058,7 +1058,7 @@ scripts/release/test-check-version-tag.sh	local	behaviour suite, 0 catches in th
 scripts/release/test-followup-report.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/release/test-gen-release-notes.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/release/test-tarball-vs-clone.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/report/test-himmel-report.sh	local	behaviour suite, new HIMMEL-7131
+scripts/report/test-himmel-report.sh	local	behaviour suite, new
 scripts/roadmap/test-plan-graph.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/roadmap/test-plan-index.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/security/test-snyk-scan.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -1087,17 +1087,17 @@ scripts/telegram/test-dispatch-lane.sh	local	behaviour suite, 0 catches in the 4
 scripts/telegram/test-phi-egress-guard-parity.sh	pr	static-gate
 scripts/telegram/test-restart-bridge.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/trust/test-trust-status-no-exec.sh	pr	guard
-scripts/test-adopt-features.sh	local	behaviour suite, the second half of test-adopt.sh split for the per-suite time cap (HIMMEL-7300), then split again so no shard is bounded by it (HIMMEL-8548)
-scripts/test-adopt-hooks-chain.sh	local	behaviour suite, split from test-adopt-features.sh so no shard is bounded by one suite (HIMMEL-8548)
-scripts/test-adopt-hooks-gates.sh	local	behaviour suite, split from test-adopt-features.sh so no shard is bounded by one suite (HIMMEL-8548)
+scripts/test-adopt-features.sh	local	behaviour suite, the second half of test-adopt.sh split for the per-suite time cap, then split again so no shard is bounded by it
+scripts/test-adopt-hooks-chain.sh	local	behaviour suite, split from test-adopt-features.sh so no shard is bounded by one suite
+scripts/test-adopt-hooks-gates.sh	local	behaviour suite, split from test-adopt-features.sh so no shard is bounded by one suite
 scripts/test-adopt-merge-gate.sh	pr	guard
 scripts/test-adopt-only-hooks.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-adopt-portable-libs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/test-adopt-provenance.sh	local	behaviour suite, split from test-adopt-features.sh so no shard is bounded by one suite (HIMMEL-8548)
+scripts/test-adopt-provenance.sh	local	behaviour suite, split from test-adopt-features.sh so no shard is bounded by one suite
 scripts/test-adopt-sequences-b.sh	local	behaviour suite, seeded install and uninstall sequences, about 100 s
 scripts/test-adopt-sequences.sh	local	behaviour suite, seeded install and uninstall sequences, about 100 s
 scripts/test-adopt-user-claude-md.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/test-adopt-wizard.sh	local	behaviour suite, split from test-adopt-features.sh so no shard is bounded by one suite (HIMMEL-8548)
+scripts/test-adopt-wizard.sh	local	behaviour suite, split from test-adopt-features.sh so no shard is bounded by one suite
 scripts/test-adopt.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-check-ci-cache.sh	pr	trust-path
 scripts/test-check-ci-rest.sh	pr	trust-path
@@ -1196,13 +1196,13 @@ scripts/upstreams/test-apply-drift-bump.sh	pr	static-gate
 scripts/upstreams/test-apply-tool-upgrade.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/upstreams/test-ci-tool-pins.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/upstreams/test-drift-fix-cadence.sh	pr	static-gate
-scripts/upstreams/test-protect-forks.sh	local	behaviour suite, new in HIMMEL-9271 (stubbed gh, no live API)
+scripts/upstreams/test-protect-forks.sh	local	behaviour suite, new (stubbed gh, no live API)
 scripts/upstreams/test-resync-fork.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/upstreams/test-update-marketplaces.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/upstreams/test-upstream-watch-cadence.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/upstreams/test-upstream-watch.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/usage/test-usage.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/vm/test-adopted-features-stage.sh	local	behaviour suite, new (HIMMEL-6866)
+scripts/vm/test-adopted-features-stage.sh	local	behaviour suite, new
 scripts/vm/test-after-report.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-assert-provenance.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-ci-runner.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -1237,40 +1237,40 @@ scripts/himmelctl/test/test-install-ui-handoff.sh	pr	guard
 scripts/guardrails/test-settings-waiter-allow.sh	pr	guard
 scripts/ci/test-billed-optin.sh	pr	trust-path
 scripts/ci/test-ci-go-gate.sh	pr	trust-path
-scripts/lanes/bench/scorecard/test-review-rounds.sh	local	behaviour suite, new in HIMMEL-7636
+scripts/lanes/bench/scorecard/test-review-rounds.sh	local	behaviour suite, new
 marketplace/plugins/obsidian-triage/tests/test-transcribe-device.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/eval/steering-cull/test-steering-cull.sh	local	behaviour suite, new HIMMEL-7694
+scripts/eval/steering-cull/test-steering-cull.sh	local	behaviour suite, new
 scripts/handover/chief-kit/test-chain-render.sh	local	behaviour suite, hermetic renderer, no gate role
-scripts/test-new-worktree-no-atlassian.sh	local	behaviour suite, new HIMMEL-7851
-scripts/setup/test-dedupe-plugin-installs.sh	local	behaviour suite, new HIMMEL-7851
-scripts/himmelctl/test/test-wizard-qmd-himmel-collection.sh	local	behaviour suite, new HIMMEL-8013
-scripts/handover/chief-kit/test-drift-summary.sh	local	new, behaviour suite for drift-summary.mjs and known-bugs-sync.sh, no gate role, HIMMEL-6827
-scripts/test-doctor-status-drift.sh	local	new, behaviour suite for the doctor C80 status-drift check, no gate role, HIMMEL-6827
+scripts/test-new-worktree-no-atlassian.sh	local	behaviour suite, new
+scripts/setup/test-dedupe-plugin-installs.sh	local	behaviour suite, new
+scripts/himmelctl/test/test-wizard-qmd-himmel-collection.sh	local	behaviour suite, new
+scripts/handover/chief-kit/test-drift-summary.sh	local	new, behaviour suite for drift-summary.mjs and known-bugs-sync.sh, no gate role
+scripts/test-doctor-status-drift.sh	local	new, behaviour suite for the doctor C80 status-drift check, no gate role
 scripts/ci/test-macos-cadence-concurrency.sh	pr	trust-path
 scripts/ci/test-macos-cadence-matrix.sh	pr	trust-path
 scripts/lib/test-afk-sudo.sh	pr	trust-path
 scripts/lib/test-config-audit.sh	pr	trust-path
 scripts/telegram/test-config-restore.sh	pr	guard
-scripts/test-himmel-doctor-hook-layers.sh	local	new, behaviour suite for the doctor C81 hook-layer check, the installer user-scope wire and the himmel-guard command, no gate role, HIMMEL-8059
-scripts/eval/routing/test-score.sh	local	behaviour suite, new HIMMEL-8088
-scripts/test-himmel-doctor-mcp-sources.sh	local	new, behaviour suite for the doctor C82 MCP source listing, no gate role, HIMMEL-8061
-scripts/eval/compaction-handoff/test-compaction-ab.sh	local	behaviour suite, new HIMMEL-7667
+scripts/test-himmel-doctor-hook-layers.sh	local	new, behaviour suite for the doctor C81 hook-layer check, the installer user-scope wire and the himmel-guard command, no gate role
+scripts/eval/routing/test-score.sh	local	behaviour suite, new
+scripts/test-himmel-doctor-mcp-sources.sh	local	new, behaviour suite for the doctor C82 MCP source listing, no gate role
+scripts/eval/compaction-handoff/test-compaction-ab.sh	local	behaviour suite, new
 scripts/handover/test-windows-arms-dropped.sh	pr	static-gate
-scripts/luna/test-cadence-alert.sh	local	new, behaviour suite for the qmd rc-5 alert cause, no gate role, HIMMEL-7610
+scripts/luna/test-cadence-alert.sh	local	new, behaviour suite for the qmd rc-5 alert cause, no gate role
 scripts/handover/chief-kit/test-focus-refresh-chains.sh	local	behaviour suite, stubbed refresh stages, no gate role
-scripts/handover/chief-kit/test-intake-backfill.sh	local	new, behaviour suite for the dry-run intake backfill planner, no gate role, HIMMEL-8336
-scripts/vm/test-claudex-guest.sh	local	new, behaviour suite for the claudex VM guest provisioner (stubbed VBoxManage/vmsdk), no gate role, HIMMEL-8326
+scripts/handover/chief-kit/test-intake-backfill.sh	local	new, behaviour suite for the dry-run intake backfill planner, no gate role
+scripts/vm/test-claudex-guest.sh	local	new, behaviour suite for the claudex VM guest provisioner (stubbed VBoxManage/vmsdk), no gate role
 scripts/handover/chief-kit/test-enable-remote-control.sh	pr	guard
-scripts/eval/test-chief-wake-classes.sh	local	new, behaviour suite for the chief wake-class measurement script, no gate role, HIMMEL-6541
-marketplace/plugins/obsidian-triage/tests/test-validate-ai-first.sh	local	behaviour suite, new (HIMMEL-8416)
+scripts/eval/test-chief-wake-classes.sh	local	new, behaviour suite for the chief wake-class measurement script, no gate role
+marketplace/plugins/obsidian-triage/tests/test-validate-ai-first.sh	local	behaviour suite, new
 scripts/station-ops/test-station-ops.sh	pr	guard
-scripts/handover/chief-kit/test-series-next.sh	local	behaviour suite, new for HIMMEL-8349 (series-next.sh, slice S2b)
+scripts/handover/chief-kit/test-series-next.sh	local	behaviour suite, new (series-next.sh, slice S2b)
 scripts/handover/chief-kit/test-holds.sh	pr	trust-path
-scripts/handover/chief-kit/test-series-publish.sh	local	behaviour suite, new for HIMMEL-8603 (series-publish.sh, slice S2c)
-scripts/jira/test-empty-sector-check.sh	local	behaviour suite, new for HIMMEL-8659 (empty-sector-check.sh)
-scripts/eval/relay-cost/test-relay-cost.sh	local	behaviour suite, new for HIMMEL-6992 (relay-cost eval checker, pricing, runner)
-scripts/handover/test-morning-report-cadence.sh	local	behaviour suite, new for HIMMEL-7977 (morning-report-cadence.sh)
-scripts/test-himmel-doctor-morning-report.sh	local	behaviour suite, new for HIMMEL-7977 (doctor C86-morning-report)
+scripts/handover/chief-kit/test-series-publish.sh	local	behaviour suite, new (series-publish.sh, slice S2c)
+scripts/jira/test-empty-sector-check.sh	local	behaviour suite, new (empty-sector-check.sh)
+scripts/eval/relay-cost/test-relay-cost.sh	local	behaviour suite, new (relay-cost eval checker, pricing, runner)
+scripts/handover/test-morning-report-cadence.sh	local	behaviour suite, new (morning-report-cadence.sh)
+scripts/test-himmel-doctor-morning-report.sh	local	behaviour suite, new (doctor C86-morning-report)
 scripts/handover/chief-kit/test-size-override.sh	pr	trust-path
 scripts/handover/chief-kit/test-chief-doc-one-read.sh	local	behaviour suite, new
 scripts/measurements/test-gh-graphql-callers.sh	local	behaviour suite, new

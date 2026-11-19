@@ -282,7 +282,6 @@ export function togglePin(pins, name) {
 }
 // The pins live in the URL's query string (?pins=a,b, before the #/board hash, which hash navigation leaves alone): a reload or a bookmark keeps them,
 // and the page stores nothing in the browser and writes nothing to the server.
-// ponytail: per URL, not per account, upgrade path: a server-side per-user setting.
 export const pinsFromSearch = (search) => (new URLSearchParams(search || "").get("pins") || "").split(",").filter(Boolean);
 export function searchWithPins(search, pins) {
   const p = new URLSearchParams(search || "");
@@ -544,7 +543,6 @@ const whyLink = (ui, key, on) => { const id = `${key}.${on || ""}`;
   return `<a class="rm-whylink" data-why-open="${esc(id)}" aria-label="Why ${esc(key)} waits${on ? " on " + esc(on) : ""}" href="${boardHref({ tab: "chains", v: ui.v, why: id })}">Why</a>`; };
 const stamp = (ts) => String(ts || "").slice(0, 16).replace("T", " ");
 // With several Board projects a version is named "<name> (<PROJECT>)"; the chain read has the bare name.
-// ponytail: the first project with that name wins, upgrade path: the chain read names its project.
 const versionAt = (d, name) => (d.versions || []).findIndex((x) => x.n === name || x.n.startsWith(`${name} (`));
 const nTickets = (n) => `${n} ${n === 1 ? "ticket" : "tickets"}`;
 const shortKey = (k) => String(k).replace(/^[A-Za-z][A-Za-z0-9]*-/, "");

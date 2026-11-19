@@ -26,8 +26,6 @@
 #          [--since-days N]
 # Env seams: COMPOUND_CLAUDE (the claude binary), COMPOUND_PREFLIGHT_CMD (a command
 # printing the verdict last; default scripts/lib/usage-preflight.sh).
-# ponytail: the pre-run size is bytes/4, a ceiling-style estimate; the report line also
-# carries the real usage from the JSON envelope, upgrade path = a count_tokens call.
 # Exit: 0 ok or skipped, 1 claude failed or its output is invalid, 2 usage, 3 over budget.
 set -uo pipefail
 
@@ -260,7 +258,7 @@ for t in targets:
         die("%s resolves under specs/lessons, which only the operator or chief writes" % t)
 
 os.makedirs(os.path.join(dest, "themes"), exist_ok=True)
-lines = ["---", "type: compounded-week", "week: %s" % week, "source: compound-distill.sh (HIMMEL-6915)", "---", "",
+lines = ["---", "type: compounded-week", "week: %s" % week, "source: compound-distill.sh", "---", "",
          "# Compounded %s" % week, ""]
 for e in out["entries"]:
     r = by_key[e["key"]]

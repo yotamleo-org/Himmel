@@ -1,4 +1,4 @@
-"""Living roadmap tracker for HIMMEL-3882: one self-contained HTML page, re-run to refresh.
+"""Living roadmap tracker: one self-contained HTML page, re-run to refresh.
 
 Plan (static) comes from <plan-dir>/stage3/placement|versions|closures|unplaced + meta.json,
 the stage1 theme/impact columns and explain files (user impact), stage2 (readiness, effort range)
@@ -7,7 +7,7 @@ so progress moves as work lands. Related luna notes per placed ticket are cached
 luna-map file (qmd lexical search + a key grep of the handover tree); only keys missing or
 older than 7 days are re-queried, `--refresh-luna` forces all.
 
-The main view is version-first (HIMMEL-3990): which Jira version are we working on. A ticket's version is its earliest
+The main view is version-first: which Jira version are we working on. A ticket's version is its earliest
 unreleased v1.0.x fixVersion (else the newest released one); its column is its Jira status name. Release state comes from
 a `jira versions` snapshot (`name<TAB>released<TAB>releaseDate`, Jira release order); without it no version counts as
 released and the page says "release state unknown". The plan's own views sit folded below.
@@ -15,12 +15,12 @@ released and the page says "release state unknown". The plan's own views sit fol
 USAGE
     node scripts/jira/dist/index.js mirror
     node scripts/jira/dist/index.js versions > ~/.himmel/state/jira-mirror/<KEY>.versions.tsv
-    python3 tracker.py --plan-dir <HIMMEL-3882 plan dir> --out <tracker.html> --luna-map <luna-map.json>
+    python3 tracker.py --plan-dir <plan dir> --out <tracker.html> --luna-map <luna-map.json>
         [--mirror-dir DIR] [--versions-file FILE] [--luna-root DIR] [--handovers DIR] [--jira-base-url URL] [--refresh-luna]
     python3 tracker.py ... --emit-fp     print the freshness fingerprint and exit
     python3 tracker.py --version <v> --out <page.html> [--priority-file PLAN] [--chains-file FILE] [--prs-file FILE]
         [--mirror-dir DIR] [--jira-base-url URL] [--plan-dir DIR --luna-root DIR [--handovers DIR]]
-                                         the FOCUS page of one version (HIMMEL-6769): status columns, priority blocks,
+                                         the FOCUS page of one version: status columns, priority blocks,
                                          sectors, PR + CI, blockers, merge chains, per-column Jira parity on stdout
 
 --versions-file defaults to <mirror-dir>.versions.tsv; its bytes (or '-' when missing) are a fingerprint input, so a
@@ -75,7 +75,7 @@ def default_handovers(luna):
     slug = lib_call('load-dotenv.sh', 'load_dotenv USER_SLUG >/dev/null 2>&1; . "$1/user-slug.sh" && user_slug')
     return os.path.join(luna, 'handovers', slug, 'himmel')
 LAYERS = ['bugs', 'enhancements', 'features', 'misc', 'audit']
-VER_RE = re.compile(r'^v1\.0\.(\d+)([a-z]?)$')  # a trail '<version>a', 'b', ... takes its parent's overflow (HIMMEL-4026)
+VER_RE = re.compile(r'^v1\.0\.(\d+)([a-z]?)$')
 # the train is every v1.N.x: v1.0.x, the v1.1.x line (ex v1.0.2b..h) and the milestone minors v1.2.0+.
 TRAIN_RE = re.compile(r'^v1\.\d+\.\d+[a-z]?$')
 SKIP_RE = re.compile(r'HIMMEL-3882|/dashboard|/artifacts|backlog|\.bak|/graphify-out/')
@@ -229,9 +229,7 @@ def live_legs():
 TS_RE = re.compile(r'^- (\d{1,2}):(\d{2})\b')
 DATE_RE = re.compile(r'(\d{4})-(\d{2})-(\d{2})')
 IDLE_MIN = 180
-ACT_NEWEST = 0.0  # newest mtime among the wrapped-worker docs actuals() last read (HIMMEL-4930)
-# ponytail: no cost column (token spend per worker is not in the mirror or the worker doc); upgrade: mirror each PR's worker-burn
-# line and add cost beside wall and active.
+ACT_NEWEST = 0.0
 SOURCE = ('wall = first Results bullet to WRAPPED, dated from the worker doc\'s name (station clock, shown in UTC); '
           'active = the gaps between bullets of 3 h or less; dated = workers whose wall could be dated. '
           'cost: not measured (it needs the PR\'s worker-burn line in the mirror).')
@@ -242,12 +240,10 @@ def leg_docs():
 
 
 def leg_span(p, text):
-    """(wall min or None, active min, start epoch or None, end epoch or None) of one worker doc's Results bullets (HIMMEL-5453).
+    """(wall min or None, active min, start epoch or None, end epoch or None) of one worker doc's Results bullets.
 
     Bullets carry only the station's local HH:MM: the doc name's date dates the first one and each backwards step of the
-    clock is the next day. A doc name with no date gives no wall, only active minutes.
-    ponytail: a silent gap over 24 h between two bullets reads as under 24 h; upgrade: date each bullet from the luna
-    commit that first holds it."""
+    clock is the next day. A doc name with no date gives no wall, only active minutes."""
     ls = text.partition('\n## Results')[2].split('\n## ')[0].splitlines()
     w = [i for i, l in enumerate(ls) if (m := MARK_RE.match(l)) and m.group(1) == 'WRAPPED']
     ts = [int(x.group(1)) * 60 + int(x.group(2)) for x in (TS_RE.match(l) for l in ls[:w[-1] + 1 if w else None]) if x]
@@ -269,7 +265,7 @@ def leg_span(p, text):
 
 
 def actuals():
-    """{ticket number: [wrapped workers, wall min, active min, dated workers, first start epoch, last end epoch]} (HIMMEL-5453):
+    """{ticket number: [wrapped workers, wall min, active min, dated workers, first start epoch, last end epoch]}:
     what the done work actually took, to measure the estimates against. leg_span() says how each number is measured."""
     global ACT_NEWEST
     out = {}
@@ -353,7 +349,7 @@ def origin_ref(n, text):
 
 
 def bundles(mir, planned, op, leg_filed):
-    """{ticket number: anchor} for every unplanned ticket that reaches one (HIMMEL-5453): a planned ticket number, or 'op'.
+    """{ticket number: anchor} for every unplanned ticket that reaches one: a planned ticket number, or 'op'.
 
     A ticket's origin is, first hit wins: its mirror parent (never an Epic) or a relates link, a description or title
     reference, the worker doc that filed it. Origins are strictly older, so the walk up a chain always ends; it stops at
@@ -445,14 +441,14 @@ def intg(x):
 
 
 def ver_key(v):
-    """Plan order (HIMMEL-3990): v1.0.1 < v1.0.1b < v1.0.2 < v1.0.10; buckets such as v2/v3 follow the train."""
+    """Plan order: v1.0.1 < v1.0.1b < v1.0.2 < v1.0.10; buckets such as v2/v3 follow the train."""
     m = VER_RE.match(v)
     if m:
         return (0, int(m.group(1)), m.group(2))
     m = re.match(r'^v1\.1\.(\d+)$', v)
     if m:
         return (0, 2, chr(ord('b') + int(m.group(1))))
-    m = re.match(r'^v1\.([2-9]|\d{2,})\.(\d+)([a-z]?)$', v)  # HIMMEL-4873: the milestone minors follow, numerically
+    m = re.match(r'^v1\.([2-9]|\d{2,})\.(\d+)([a-z]?)$', v)
     return (0, 1000 + int(m.group(1)), '%012d%s' % (int(m.group(2)), m.group(3))) if m else (1, 0, '')
 
 
@@ -472,9 +468,9 @@ def vlabel(v):
 
 
 def version_caps(r, vers, released=()):
-    """Per-version caps (HIMMEL-3979): the plan default with its VERSION_CAP_OVERRIDES applied; None = deferred bucket.
+    """Per-version caps: the plan default with its VERSION_CAP_OVERRIDES applied; None = deferred bucket.
     A trail keeps its parent's caps, overrides included, unless the overrides name the trail itself.
-    A released version has none (HIMMEL-4930): its tickets already shipped, so a cap there is not a decision."""
+    A released version has none: its tickets already shipped, so a cap there is not a decision."""
     out = []
     for v in vers:
         if v in released or not TRAIN_RE.match(v):
@@ -550,7 +546,7 @@ def drift_log(path, drift, unplanned, unthemed):
 
 
 def ledger_lines(rows, vers, unthemed=0, released=()):
-    """Header ledger (HIMMEL-3957): the running version, the whole v1.0.x train, and drift/unplanned only when non-zero."""
+    """Header ledger: the running version, the whole v1.0.x train, and drift/unplanned only when non-zero."""
     train = [i for i, v in enumerate(vers) if TRAIN_RE.match(v)]
 
     def line(label, sel):
@@ -622,7 +618,7 @@ def earliest_unreleased(vers):
 
 
 def done_in_future(mir, vers, unknown):
-    """Done tickets carrying an unreleased version other than the current one (HIMMEL-5801); must be 0.
+    """Done tickets carrying an unreleased version other than the current one; must be 0.
 
     The current version is the earliest unreleased by release date, else the first unreleased listed. Release
     state unknown counts nothing."""
@@ -791,7 +787,7 @@ def dep_keys(m, rx=_DEP_RE):
 
 
 def blocker_list(mir, n):
-    """HIMMEL-6556: [(blocker number, open|done|wont|direction?)] for ticket n.
+    """[(blocker number, open|done|wont|direction?)] for ticket n.
 
     Blockers are the mirror's links.blocked_by plus the description's own dependency lines (_DEP_RE). A closed blocker
     reads done or wont by its bucket; a link blocker whose own text puts it after this ticket (its dependency line or an
@@ -846,7 +842,7 @@ def remaining_board(mir, version, groups):
 
 
 def first_sentence(s):
-    """HIMMEL-5381: the first sentence of a plain Impact block ('' for none), clipped for a card."""
+    """The first sentence of a plain Impact block ('' for none), clipped for a card."""
     m = re.match(r'(.+?[.!?])(?:\s|$)', s)
     return clip(m.group(1) if m else s, 160)
 
@@ -856,7 +852,7 @@ KCOL_OF = {'todo': 'todo', 'prog': 'prog', 'rev': 'rev', 'ci': 'ci', 'done': 'do
 
 
 def kanban(tk, vers, cur, base, wont=(), flight=()):
-    """HIMMEL-5381: one <details> per release with tickets, holding a 5-column board (To Do, In Progress, In Review, IN CI, Done).
+    """One <details> per release with tickets, holding a 5-column board (To Do, In Progress, In Review, IN CI, Done).
 
     A card links to <base>/browse/<key> (plain text when no base URL is configured) with the summary and the ticket's
     one-line user-facing description. closed-without-shipping tickets are not on the board (wont[i] is their count); a To Do ticket a live worker works reads
@@ -891,7 +887,7 @@ def kanban(tk, vers, cur, base, wont=(), flight=()):
             parts.append('</div>')
         parts.append('</div></details>')
         out.append(''.join(parts))
-    if flight:  # HIMMEL-5217: open work in progress or review that no version holds yet
+    if flight:
         cards = ''.join('<div class="kcard">%s<div class="ktl">%s</div><div class="kline">%s</div></div>'
                         % (('<a class="kkey" href="%s/browse/HIMMEL-%d">HIMMEL-%d</a>' % (esc(base, True), t['k'], t['k'])) if base
                            else '<span class="kkey">HIMMEL-%d</span>' % t['k'], esc(t['t']), esc(t['s'])) for t in flight)
@@ -909,7 +905,7 @@ _PLAIN_HEAD = re.compile(r'^\s{0,3}(?:#{1,6}\s+)?[*_`]*(impact|what|why|agent de
 
 
 def plain_impact(body):
-    """HIMMEL-5226: the ticket's plain `Impact` section (up to the next heading; fenced code never starts or ends it), or ''.
+    """The ticket's plain `Impact` section (up to the next heading; fenced code never starts or ends it), or ''.
     The mirror renders ADF headings as bare lines, a markdown body keeps its `##`; both are matched."""
     desc = body.split('\n## Comments', 1)[0]
     out, on, fence = [], False, ''
@@ -942,7 +938,7 @@ def plain_impact(body):
 
 def read_mirror():
     """{key: dict(st, sn, cat, fv, upd, title, type, impact, labels, parent, rel, otext)} from the mirror; sn is the Jira
-    status name, cat its category, res its resolution ('' when none); rel the relates-linked ticket numbers, otext the title and description (HIMMEL-5453)."""
+    status name, cat its category, res its resolution ('' when none); rel the relates-linked ticket numbers, otext the title and description."""
     out = {}
     for p in glob.glob(os.path.join(MIRROR, 'HIMMEL-*.md')):
         txt = open(p, encoding='utf-8', errors='replace').read()
@@ -1118,7 +1114,7 @@ BENCH_COLS = ('key', 'title', 'size', 'est_seq', 'own_legs', 'own_dated', 'own_w
 
 
 def bench(mir, rows, n_plan, act, seqm, erange):
-    """The benchmark (HIMMEL-5453): per planned item its estimate, its own actuals, its spawned bundle and the total, then
+    """The benchmark: per planned item its estimate, its own actuals, its spawned bundle and the total, then
     the operator-directed bundle and the unattributed unplanned train tickets. Each row is a list in BENCH_COLS order
     (members as ticket numbers); ratio = total wall minutes per S-equivalent over the median of the measured done items."""
     planned = {r[0] for r in rows[:n_plan]}
@@ -1221,7 +1217,7 @@ def reindex_notes(prows, notes, dirs):
 
 
 def split_pages(rows, notes, dirs, jt, jc, ja, jw, jf, unpl, vers, tname, paths, urls):
-    """HIMMEL-6514: the three pages of a split render, as dicts of per-page data (a page with no path is skipped).
+    """The three pages of a split render, as dicts of per-page data (a page with no path is skipped).
 
     focus  = open tickets of the target version (plus the open tickets of released versions, which the alerts name,
              and the in-flight ones no version holds); done = every Done ticket; future = every other open ticket
@@ -1418,7 +1414,6 @@ WAITING_CHAIN_RE = re.compile(r'waiting on you', re.I)
 
 STALE_WORKER = timedelta(days=1)
 STALE_SOURCE = timedelta(days=1)
-# ponytail: a record with no last_event_ts keeps its line (its age is unknown); upgrade: stamp the record at wrap in ticket-status.sh
 
 
 def live_worker_records(workers):
@@ -1701,7 +1696,7 @@ def read_stale(path):
 
 def version_page(mir, version, groups, prs, chains, base, repo, workers=None, chains_mtime=None, drain='', prio_mtime=None, bucket_dir=None, chief_doc=None,
                  stale=('unknown', frozenset())):
-    """(html, stdout parity line, focus fingerprint): the FOCUS page of one version (HIMMEL-6769).
+    """(html, stdout parity line, focus fingerprint): the FOCUS page of one version.
 
     Columns are the Jira status names of the version's open tickets, moved by an open PR's CI (`ci_column`) and each
     split into the plan's priority blocks; a card
@@ -2088,7 +2083,7 @@ def main():
     meta = json.load(open(os.path.join(S, 'meta.json'), encoding='utf-8'))
     mir = read_mirror()
     workers = live_legs()
-    for n in workers:  # HIMMEL-3990: a live worker puts its ticket in progress, whatever Jira says (Done stays done)
+    for n in workers:
         m = mir.get('HIMMEL-%d' % n)
         if m and m['st'] != 2:
             m['st'] = 1
@@ -2265,7 +2260,7 @@ TEMPLATE = r'''<title>Himmel Roadmap</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
 <style>
-/* HIMMEL-3990 design: "which version are we working on". The main view is one hero sentence (Jira's release state and
+/* Design: "which version are we working on". The main view is one hero sentence (Jira's release state and
    status names), the board of the version being worked on, and one table of every version; every number opens its
    tickets. The plan's own views sit folded below it. Palette, type and status dots follow the himmel Config page
    (scripts/config-ui/public/app.css): dark first, IBM Plex, a "● word" dot per status. The old names (--ink, --muted,
@@ -2419,7 +2414,7 @@ ol.ct li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;padd
 ol.ct li .t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 ol.ct li .v{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
 :focus-visible{outline:1px solid var(--accent);outline-offset:1px}
-/* the version-first view (HIMMEL-3990) */
+/* the version-first view */
 .hero{padding:28px 0 4px}
 .jk{color:var(--dim);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
 .hero h1{font:600 34px/1.15 var(--f-mono);margin:4px 0 10px;letter-spacing:-.01em}
@@ -2623,7 +2618,6 @@ function model(D){
  function parent(i){var m=/^(v1\.0\.\d+)[a-z]$/.exec(V[i]);return m?V.indexOf(m[1]):-1}
  function base(i){var m=0;inV(i).forEach(function(p){if(planned(p))m+=ld(p)});return m}
  // ratio(i): P90 per unit of mean in version i, so a what-if can move the P90 with the mean.
- // ponytail: the P90 after a move is scaled from the plan's own P90 by mean (≈), not re-simulated; re-run the placer to confirm.
  function ratio(i){var b=base(i),v=D.VP&&D.VP[i];return v!=null&&b>0?v/b:null}
  // stats(i, a, r): a ticket set's load in version i (i -1: a trail not yet made): planned count, mean, per kind, and P90 (≈).
  function stats(i,a,r){var k=[0,0,0,0,0],m=0,n=0;a.forEach(function(p){if(!planned(p))return;n++;m+=ld(p);k[p[4]]+=ld(p)});

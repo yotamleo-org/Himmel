@@ -7,6 +7,7 @@
 #
 # Run: bash scripts/handover/chief-kit/test-priority-prune.sh
 set -u
+KP=HIMMEL
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="${PRIORITY_PRUNE:-$HERE/priority-prune.sh}"
 
@@ -114,13 +115,13 @@ cat > "$WORK/cs.json" <<JSON
 {"schema":"himmel.chains/1","registry":{"path":"$WORK/reg.json"},
  "chains":[{"id":"c1"},{"id":"c2"},{"id":"c3"},{"id":"c4"}],
  "tickets":{
- "HIMMEL-9001":{"done":false,"chains":[{"id":"c1","step":1},{"id":"c2","step":1}]},
- "HIMMEL-9002":{"done":false,"chains":[{"id":"c1","step":2}]},
- "HIMMEL-9003":{"done":false,"chains":[{"id":"c2","step":2}]},
- "HIMMEL-9004":{"done":true,"chains":[{"id":"c2","step":1}]},
- "HIMMEL-9005":{"done":false,"chains":[{"id":"c3","step":1}]},
- "HIMMEL-9006":{"done":false,"chains":[{"id":"c3","step":1}]},
- "HIMMEL-9007":{"done":true,"chains":[{"id":"c4","step":1}]}}}
+ "$KP-9001":{"done":false,"chains":[{"id":"c1","step":1},{"id":"c2","step":1}]},
+ "$KP-9002":{"done":false,"chains":[{"id":"c1","step":2}]},
+ "$KP-9003":{"done":false,"chains":[{"id":"c2","step":2}]},
+ "$KP-9004":{"done":true,"chains":[{"id":"c2","step":1}]},
+ "$KP-9005":{"done":false,"chains":[{"id":"c3","step":1}]},
+ "$KP-9006":{"done":false,"chains":[{"id":"c3","step":1}]},
+ "$KP-9007":{"done":true,"chains":[{"id":"c4","step":1}]}}}
 JSON
 printf '%s\n' '# chief' '' '## Live state' 'priority: 6127 5993' 'focus-version: v1.1.3' '' '## Results' > "$WORK/fc.md"
 cp "$WORK/fc.md" "$WORK/fc.orig"

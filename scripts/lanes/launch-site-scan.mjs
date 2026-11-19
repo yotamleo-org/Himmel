@@ -48,7 +48,6 @@ if (GUARD) {
       const m = SITE.exec(l);
       if (!m) return;
       if (/`claude|claude --model (for|pin)|quota_gauge_row claude/.test(l)) return; // prose / usage text / gauge row, not a launch
-      // ponytail: the inventory is only as complete as the SITE regex (a launch spelled through an unusual variable or a non-scanned language is missed); upgrade path: a PATH shim that refuses an interactive claude launch whose cwd has not passed launch-guard-check.sh (follow-up h)
       const stmt = l.slice(m.index).split(/;|&&|\|\|?/)[0];
       if (PRINT_FLAG.test(stmt)) return;
       const win = lines.slice(Math.max(0, i - 12), i + 4).join("\n");

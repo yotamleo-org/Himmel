@@ -33,10 +33,6 @@
 # (default 0). The account's passwd home, which no HOME change reaches, is watched
 # around the runner on a GitHub-hosted runner (live_witness_account_begin / _end).
 #
-# ponytail: only $HOME and $USERPROFILE are redirected, so a suite that reads a
-# literal /home/<user>/.env bypasses the canary; check-host-file-read-sinks.sh
-# and the judge cover that route, upgrade path is an fanotify/strace watch on
-# the real home.
 #
 # Platform guard: POSIX bash 3.2+, GNU/BSD coreutils.
 set -uo pipefail

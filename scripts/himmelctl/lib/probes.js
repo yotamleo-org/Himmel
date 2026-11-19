@@ -435,9 +435,6 @@ function parseDotEnv(raw) {
 // tokenizer) keeps this simple and matches what actually gets written;
 // anything else can't be resolved with confidence, so it degrades rather
 // than reading a script it can't actually locate.
-// ponytail: never executes the command, only resolves the interpreter (on
-// PATH) and the script path (readable file), which is enough to catch a
-// missing/moved/unbuilt script without any side effect.
 const STATUSLINE_COMMAND_RE = /^(\S+)\s+"([^"]+)"$/;
 // the guarded form wire-statusline.sh writes now,
 // `[ -f "<js>" ] && exec <interpreter> "<js>" || true`, is reduced to the bare
@@ -758,29 +755,57 @@ function overlayHimmelConf(data, ctx) {
   }
 }
 
+// Claude Code applies local over project over user settings, so a project
+// scope probe of a .claude/settings.json key reads all three: an item wired
+// at user scope is not reported missing.
+function settingsLayerFiles(file, ctx) {
+  const scopeFile = resolveConfigFile(file, ctx);
+  if (file !== '.claude/settings.json' || ctx.scopeFileOnly) return { primary: scopeFile, files: [scopeFile] };
+  const env = ctx.env || {};
+  const userFile = path.join(env.CLAUDE_CONFIG_DIR || path.join(env.HOME || os.homedir(), '.claude'), 'settings.json');
+  if (ctx.scope === 'user') return { primary: userFile, files: [userFile] };
+  return { primary: scopeFile, files: [path.join(ctx.targetPath, '.claude', 'settings.local.json'), scopeFile, userFile] };
+}
+
 function probeSettingsKey(item, ctx) {
-  const filePath = resolveConfigFile(item.probe.file, ctx);
-  let raw;
-  try {
-    raw = fs.readFileSync(filePath, 'utf8');
-  } catch (e) {
-    // a missing.env is the ordinary "never configured" state for
-    // an optional integration (jira-env-keys on a starter install). Flag it
-    // so status-report can read it as opt-in rather than red. ENOENT ONLY: an
-    // .env that exists but cannot be read (EACCES, EISDIR) is a real fault.
-    const clean = item.probe.file === '.env' && e && e.code === 'ENOENT';
-    return clean
-      ? { actual: 'absent', detail: `cannot read ${filePath}`, cleanAbsence: true }
-      : { actual: 'absent', detail: `cannot read ${filePath}` };
+  const isEnv = item.probe.file === '.env';
+  const { primary: filePath, files } = settingsLayerFiles(item.probe.file, ctx);
+  const layers = [];
+  for (const file of files) {
+    const isPrimary = file === filePath;
+    let raw;
+    try {
+      raw = fs.readFileSync(file, 'utf8');
+    } catch (e) {
+      if (!isPrimary || (files.length > 1 && e && e.code === 'ENOENT')) continue;
+      // a missing.env is the ordinary "never configured" state for
+      // an optional integration (jira-env-keys on a starter install). Flag it
+      // so status-report can read it as opt-in rather than red. ENOENT ONLY: an
+      // .env that exists but cannot be read (EACCES, EISDIR) is a real fault.
+      const clean = isEnv && e && e.code === 'ENOENT';
+      return clean
+        ? { actual: 'absent', detail: `cannot read ${file}`, cleanAbsence: true }
+        : { actual: 'absent', detail: `cannot read ${file}` };
+    }
+    let parsed;
+    try {
+      parsed = isEnv ? parseDotEnv(raw) : JSON.parse(raw);
+    } catch (_e) {
+      if (isPrimary) return { actual: 'absent', detail: `cannot parse ${file}` };
+      continue;
+    }
+    if (isEnv) overlayHimmelConf(parsed, ctx);
+    layers.push({ path: file, data: parsed });
   }
-  let data;
-  try {
-    data = item.probe.file === '.env' ? parseDotEnv(raw) : JSON.parse(raw);
-  } catch (_e) {
-    return { actual: 'absent', detail: `cannot parse ${filePath}` };
-  }
-  if (item.probe.file === '.env') overlayHimmelConf(data, ctx);
-  const getVal = item.probe.file === '.env' ? (k) => data[k] : (k) => getDotPath(data, k);
+  if (layers.length === 0) return { actual: 'absent', detail: `cannot read ${filePath}` };
+  const valIn = (layer, k) => (isEnv ? layer.data[k] : getDotPath(layer.data, k));
+  const setsScalarOrFilled = (v) => v !== undefined && (v === null || typeof v !== 'object' || nonEmpty(v));
+  const layerFor = (k, defined) => layers.find((l) => (defined ? valIn(l, k) !== undefined : setsScalarOrFilled(valIn(l, k))));
+  const getVal = (k, defined) => {
+    const l = layerFor(k, defined);
+    return l ? valIn(l, k) : undefined;
+  };
+  const data = ((item.probe.key && layerFor(item.probe.key)) || layers[0]).data;
   // optional 'expect' asserts the SINGLE key's value equals it
   // exactly, not merely non-empty: existence != enablement. Without this, a
   // boolean-flag key (e.g. enabledPlugins["<spec>"]) set to `false` reads
@@ -790,31 +815,41 @@ function probeSettingsKey(item, ctx) {
   // 'expect' to pair with singular 'key' (not 'keys'). See its own comment
   // for why a multi-key expected-value map isn't supported.
   if (Object.prototype.hasOwnProperty.call(item.probe, 'expect')) {
-    const val = getVal(item.probe.key);
-    if (val === item.probe.expect) return { actual: 'present', detail: filePath };
-    return { actual: 'absent', detail: `${item.probe.key} in ${filePath} is ${JSON.stringify(val)}, expected ${JSON.stringify(item.probe.expect)}` };
+    const val = getVal(item.probe.key, true);
+    const at = (layerFor(item.probe.key, true) || { path: filePath }).path;
+    if (val === item.probe.expect) return { actual: 'present', detail: at };
+    return { actual: 'absent', detail: `${item.probe.key} in ${at} is ${JSON.stringify(val)}, expected ${JSON.stringify(item.probe.expect)}` };
   }
   const keys = item.probe.keys || [item.probe.key];
   const missing = keys.filter((k) => !nonEmpty(getVal(k)));
   if (missing.length === 0) {
+    const where = layerFor(keys[0]).path;
     // the key(s) being non-empty is not proof the thing they
     // point at actually works, same "extend, don't replace" pattern as
     // mcp-registered's bin/initMarker. Opt-in per item; any gap downgrades
     // to 'degraded', never silently 'present'.
     if (item.probe.verifyScript) {
       const problem = verifyStatusLineCommand(getVal(item.probe.key), ctx);
-      if (problem) return { actual: 'degraded', detail: `${filePath}: ${problem}` };
+      if (problem) return { actual: 'degraded', detail: `${where}: ${problem}` };
     }
     if (item.probe.verifyPluginSet) {
-      const result = verifyPluginSet(getVal(item.probe.key), ctx, data);
-      if (result.problem) return { actual: 'degraded', detail: `${filePath}: ${result.problem}` };
-      if (result.note) return { actual: 'present', detail: `${filePath} (${result.note})` };
+      const merged = {};
+      const mergedMarketplaces = {};
+      for (let i = layers.length - 1; i >= 0; i--) {
+        const v = valIn(layers[i], item.probe.key);
+        if (v && typeof v === 'object') Object.assign(merged, v);
+        const m = layers[i].data && layers[i].data.extraKnownMarketplaces;
+        if (m && typeof m === 'object') Object.assign(mergedMarketplaces, m);
+      }
+      const result = verifyPluginSet(merged, ctx, { extraKnownMarketplaces: mergedMarketplaces });
+      if (result.problem) return { actual: 'degraded', detail: `${where}: ${result.problem}` };
+      if (result.note) return { actual: 'present', detail: `${where} (${result.note})` };
     }
     if (item.probe.verifyHudConfig) {
       const problem = verifyHudConfig(getVal(item.probe.key), ctx);
-      if (problem) return { actual: 'degraded', detail: `${filePath}: ${problem}` };
+      if (problem) return { actual: 'degraded', detail: `${where}: ${problem}` };
     }
-    return { actual: 'present', detail: filePath };
+    return { actual: 'present', detail: where };
   }
   const detail = `missing/empty key(s) in ${filePath}: ${missing.join(', ')}`;
   // an.env that DEFINES none of the required keys (not even as
@@ -1485,9 +1520,6 @@ function probeHandoverDir(item, ctx) {
   // ordinary state, not a fault. Flag exactly that: no explicit HANDOVER_DIR
   // AND the resolver's "inline default '...' does not exist" refusal. A
   // HANDOVER_DIR that points nowhere, or a non-git cwd, never carries the flag.
-  // ponytail: keys on the resolver's stderr wording (handover-path.sh has no
-  // machine-readable code for this rc=2 case); the probe suite pins the
-  // message against the real resolver so a rewording fails loud, not quiet.
   const env = ctx.env || process.env;
   if (!env.HANDOVER_DIR && /inline default '.*' does not exist/.test(detail)) {
     return { actual: 'absent', detail, cleanAbsence: true };
@@ -3225,12 +3257,6 @@ function probeCadenceRuns(item, ctx) {
 // posture below. No fail tier by design (§3.5): pass when both markers
 // agree (present or absent together), warn on a mismatch.
 //
-// ponytail: the phi-roots comparison below is a SIMPLIFIED prefix match
-// (resolve + backslash-normalize + lowercase), not the fence's full
-// CRLF/whitespace-tolerant matcher, good enough for a coherence hint, not
-// a security boundary; upgrade to a shared matcher only if this probe's own
-// false mismatches become a real complaint (avoids a second, driftable copy
-// of security-relevant matching logic for a probe that enforces nothing).
 function walkForSalusMarker(startDir) {
   let dir = path.resolve(startDir);
   for (;;) {
@@ -4145,8 +4171,6 @@ const PROBES = {
 // file himmel's tracked .claude/settings.json can never carry
 // (enabledPlugins / statusLine), so they are read from user scope instead.
 // Set per-process by cmdStatus (read-only); status-report.js builds the ctx and
-// is not touched. ponytail: module flag, upgrade path is a ctx field set in
-// ctxForItem once that file is free of other open work.
 const LEGACY_USER_SETTINGS_IDS = new Set(['claude-plugins-pluginSet', 'himmel-ops-plugin', 'wiring-statusline']);
 let legacyUserSettings = false;
 function setLegacyUserSettings(on) { legacyUserSettings = Boolean(on); }

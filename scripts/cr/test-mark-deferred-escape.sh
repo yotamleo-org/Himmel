@@ -4,6 +4,7 @@
 # residual's class-<id> labels copied; no class label means a warning and none copied.
 # Hermetic: the jira CLI is a seam command that logs its argv; real Jira is never touched.
 set -u
+_TK='HIMMEL-'
 here="$(cd "$(dirname "$0")" && pwd)"
 tool="$here/mark-deferred-escape.sh"
 td="$(mktemp -d "${TMPDIR:-/tmp}/mark-deferred-escape.XXXXXX")" || { echo "FAIL - mktemp"; exit 1; }
@@ -22,14 +23,14 @@ printf '%s\n' '#!/usr/bin/env bash' 'echo "$*" >>"$MARK_FIX/calls"' \
   '"get HIMMEL-22") exit 1 ;; esac' >"$td/jira.sh"
 export MARK_FIX="$td" MARK_ESCAPE_JIRA_CMD="bash \"$td/jira.sh\""
 
-out="$(bash "$tool" HIMMEL-10 HIMMEL-20 2>&1)"; rc=$?
+out="$(bash "$tool" "${_TK}10" "${_TK}20" 2>&1)"; rc=$?
 check "classified residual exits 0" "$rc" 0
 grep -qx 'link HIMMEL-10 HIMMEL-20 --type Relates' "$td/calls" && ok "fix relates to the residual" || bad "fix relates to the residual"
 grep -qx 'edit HIMMEL-10 --add-labels deferred-escape,class-fail-open,class-quoting' "$td/calls" && ok "fix gets deferred-escape and both class labels" || bad "fix gets deferred-escape and both class labels: $(cat "$td/calls")"
 printf '%s' "$out" | grep -q 'class-fail-open,class-quoting' && ok "output names the copied classes" || bad "output names the copied classes: $out"
 
 : >"$td/calls"
-out="$(bash "$tool" HIMMEL-11 HIMMEL-21 2>&1)"; rc=$?
+out="$(bash "$tool" "${_TK}11" "${_TK}21" 2>&1)"; rc=$?
 check "unclassified residual exits 0" "$rc" 0
 grep -qx 'edit HIMMEL-11 --add-labels deferred-escape' "$td/calls" && ok "no class label is copied or invented" || bad "no class label is copied or invented: $(cat "$td/calls")"
 printf '%s' "$out" | grep -q 'WARN.*no class-' && ok "missing class warns" || bad "missing class warns: $out"

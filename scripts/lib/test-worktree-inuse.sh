@@ -292,7 +292,7 @@ case "$(uname -s)" in
         unset -f wait_cwd
         ;;
     *)
-        echo "  SKIP: T6-T10 — /proc-based live-holder detection is Linux-only (HIMMEL-2602)"
+        echo "  SKIP: T6-T10 — /proc-based live-holder detection is Linux-only"
         ;;
 esac
 
@@ -370,6 +370,7 @@ t5_dir="$TMPDIR_ROOT/t5-wt"
 mkdir -p "$t5_dir"
 touch "$t5_dir/.git"
 t5_mv_calls=0
+# shellcheck disable=SC2329  # called by the sourced worktree_in_use(), not by this file
 mv() {
     t5_mv_calls=$((t5_mv_calls + 1))
     if [ "$t5_mv_calls" -eq 2 ]; then
@@ -475,7 +476,7 @@ case "$(uname -s)" in
         fi
         ;;
     *)
-        echo "  SKIP: RC-1 — the /proc arm it reverts is Linux-only (HIMMEL-2602)"
+        echo "  SKIP: RC-1 — the /proc arm it reverts is Linux-only"
         ;;
 esac
 

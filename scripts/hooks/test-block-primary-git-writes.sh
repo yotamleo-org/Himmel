@@ -571,11 +571,7 @@ deny "branch -qu <upstream> main (u bundled with -q)" "$W" \
 deny "branch -vu <upstream> main (u bundled with -v)" "$W" \
     "git branch -vu origin/feat/x main"
 
-echo "== HIMMEL-3565 residual 4 (documented, not fixed): branch -D main is inert, not modelled =="
-# git itself refuses to delete the branch checked out in another worktree, so
-# this is inert in the exact scenario this arm defends. See the ponytail
-# comment beside the branch arm in block-write-into-main-checkout.sh. Pinned
-# here so a change to that invariant is caught rather than silently drifting.
+echo "== documented, not fixed: branch -D main is inert, not modelled =="
 allow "branch -D main, no -C (git itself refuses; not modelled)" "$W" "git branch -D main"
 
 echo "== HIMMEL-4365: work-tree / index rewrites aimed at the primary, every spelling of the target =="

@@ -204,7 +204,6 @@ fi
 # Every deferral carries a follow-up class so deferrals are
 # countable per version (docs/release/follow-up-triage.md). The argv `finding`
 # path and `amend` enforce it; a batch spec row (panel output) does not --
-# ponytail: batch rows are not deferrals a person classifies, add if one ever is.
 valid_fu_class() { case "$1" in escape|hardening|polish) return 0;; *) return 1;; esac; }
 # A hardening deferral names its reason code (plan 10.1), the same five as `jira create --fu-why`.
 valid_fu_why() { case "$1" in unseen-failure|no-check|vacuous-check|no-recovery|silent-rot) return 0;; *) return 1;; esac; }
@@ -264,10 +263,6 @@ fi
 # have caught it. Names match as WHOLE words (dashboard/hash/crash/flash are not
 # shells) and multi-word names are ONE name, longest first, so "busybox ash 1.36"
 # is a single versioned name. Prints the unversioned names and returns 1.
-# ponytail: a text heuristic. It proves a version was NAMED, not that the
-# measurement ran against it; bare `sh` and non-shell tools (git, grep) are out
-# of its reach. write-verdicts.sh VERDICT lines never reach the ledger (they are
-# scratch for orphan-check.sh), so the bar is enforced here, not there.
 #
 # The version check is per OCCURRENCE, not per name ("measured on
 # bash 5.3 locally; reproduced on bash remotely" names bash twice and only the
@@ -278,9 +273,6 @@ fi
 # amend claim check (a disproved amend whose FINDING names a shell/platform must
 # carry evidence naming each such shell with a version), so it lives in ONE
 # string handed to node as DISPROVAL_JS - the writer stays a single file.
-# ponytail: a bare name is refused even when it is not itself a measurement
-# ("the bash builtin `read`" beside "measured on bash 5.3"); the caller rewords
-# or versions it.
 #
 # The claim check also compares VERSIONS. When the finding text
 # names a version for a shell, the evidence covers it iff it names the same
@@ -290,10 +282,6 @@ fi
 # <reason>`. Every version a finding names must be covered. A finding naming no
 # version keeps the name-only rule. scan() reports each occurrence's version as
 # `vers`: [major, minor] for a major.minor, [major, null] for a major alone.
-# ponytail: a major-only version is read from "<shell> 3" / "<shell> v3" /
-# "<shell> version 3" only, so "bash 3 times" reads as bash 3 - the caller
-# rewords or waives with version-irrelevant. Non-shell tools (git, grep) are
-# still out of reach.
 # shellcheck disable=SC2016  # JS source, not shell expansions
 DISPROVAL_JS='
   const NAMES = ["busybox ash","busybox sh","git-bash","busybox","freebsd","openbsd","netbsd","macos","darwin","bsd","msys","mingw","wsl","alpine","zsh","ksh","mksh","yash","posh","dash","bash","ash"];
@@ -985,10 +973,6 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
       }
       // The same bar the single-row path applies in bash. A refused
       // row is skipped like any other refusal (exit 3, siblings still written).
-      // ponytail: only the measurement half of the bar runs here; the claim check
-      // on spec.text (amend, below) does not. Panel and harvest batch rows carry an
-      // empty verdict, so a disproved batch row is a hand-built spec that supplies
-      // its own reason - a batch row naming a shell with a generic reason passes.
       if(spec.verdict==="disproved"&&measured(String(spec.reason||""))){
         const unver=scan(String(spec.reason)).bare;
         if(unver.length){

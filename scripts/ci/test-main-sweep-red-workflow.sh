@@ -10,9 +10,6 @@
 # without any write to code, checks out the default branch (never the swept
 # sha), serialises without cancelling, and runs the script with the run id.
 #
-# ponytail: line-oriented text checks, not a YAML parse (a reformatted-but-equal
-# file would fail loudly rather than pass silently), upgrade to a real parser if
-# the repo ever vendors one for workflows.
 #
 # Usage: bash scripts/ci/test-main-sweep-red-workflow.sh
 # Env:   MAIN_SWEEP_RED_YML  workflow under test (default: the tracked file).

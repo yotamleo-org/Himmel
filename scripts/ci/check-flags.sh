@@ -15,9 +15,6 @@
 # Not a read: the readers (scripts/lib/flags.{sh,py,mjs}), the registry, this script, markdown,
 # and test files (test-*, *.test.*, fixtures/, tests/): a suite sets a flag to exercise both states.
 #
-# ponytail: a text match, not data flow: a flag name built at run time is not seen, and a
-# comment that names a flag counts as a read, a call split across lines is not seen, and `expires`
-# is checked as a date only (no birth column, so the 14-day cap is the author's); upgrade path is an AST rule in the swallowed-error lint family.
 #
 # A flag with 3 days or fewer left prints `WARN flag <name> expires <date> (in <n> days)` and does not fail.
 #
@@ -145,8 +142,6 @@ done < "$READS"
 # A settings.json permission row (`"Bash(bash scripts/x.sh:*)"`) names a script without running it, so it is no reach.
 # The path is read after `.`, source, bash, sh, exec or python3 (options skipped): a bare relative path
 # resolves against the gate's directory, `scripts/...` against the root, and `"$VAR/x"` against both.
-# ponytail: one level and literal paths only (a computed path or a helper's own helper is not followed);
-# upgrade path is a call graph in the same AST rule as the read scan.
 norm_path() {
   local IFS=/ p o=""
   for p in $1; do

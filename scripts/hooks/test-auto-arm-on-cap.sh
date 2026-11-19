@@ -521,7 +521,7 @@ else
     echo "  PASS  safety arm does not use --time smart"
     pass=$((pass+1))
 fi
-assert_grep "safety arm marks its child (HIMMEL-812 depth limit)" "--safety-child" "$ARM_LOG"
+assert_grep "safety arm marks its child (depth limit)" "--safety-child" "$ARM_LOG"
 assert_grep "WARN names the wedge" "STATUSLINE WEDGED" "$STDERR_LOG"
 assert_grep "WARN demands a handover" "ACTION REQUIRED" "$STDERR_LOG"
 assert_grep "past resets_at falls back to now+5h" "fallback" "$STDERR_LOG"
@@ -562,7 +562,7 @@ else
     pass=$((pass+1))
 fi
 
-echo "Test 17c: AUTO_ARM_SAFETY_CHILD=1 — the stale escalation warns ONCE and does NOT arm (HIMMEL-812)"
+echo "Test 17c: AUTO_ARM_SAFETY_CHILD=1 — the stale escalation warns ONCE and does NOT arm"
 # The depth limit. A session relaunched BY a stale safety arm carries the mark
 # in its env; when its own cache wedges the same way, escalating again is what
 # turned one wedge into a chain of self-arming +5h sessions. AUTO_ARM_STALE_MIN_CHECKS=1

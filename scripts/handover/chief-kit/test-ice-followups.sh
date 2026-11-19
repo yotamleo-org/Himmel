@@ -4,6 +4,7 @@
 #
 # PLATFORM GUARD: The chief kit is Linux-only.
 set -uo pipefail
+KP=HIMMEL LP=LUNA
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="$HERE/ice-followups.sh"
@@ -24,16 +25,16 @@ cmt() { printf '\n### Op — %s\n\n%s\n' "$1" "$2"; }
 
 issue HIMMEL-9001 "$(cmt 2026-10-10T01:00:00.000+0200 'Moved to ICE-336. Closing.')"
 issue HIMMEL-9002 "$(cmt 2026-10-10T01:00:00.000+0200 'Moved to the ICE project (Himmel icebox): parked work. It returns when a version pulls it.')"
-issue HIMMEL-9003 "$(cmt 2026-10-10T01:00:00.000+0200 'Moved to LUNA-12. Closing.')"
+issue HIMMEL-9003 "$(cmt 2026-10-10T01:00:00.000+0200 "Moved to $LP-12. Closing.")"
 issue HIMMEL-9004 ""
 issue HIMMEL-9005 "$(cmt 2026-09-01T01:00:00.000+0200 'Moved to ICE-400. Closing.')"
 issue HIMMEL-9006 "$(cmt 2026-10-10T01:00:00.000+0200 'Moved to ICE-401. Closing.')
-$(cmt 2026-10-12T01:00:00.000+0200 'Follow-up: HIMMEL-9006 is parked.')"
+$(cmt 2026-10-12T01:00:00.000+0200 "Follow-up: $KP-9006 is parked.")"
 issue HIMMEL-9010 "$(cmt 2026-10-12T01:00:00.000+0200 'Follow-up: HIMMEL-9001 deferred.
 Deferred: HIMMEL-9003 and HIMMEL-9004 stay open.
 HIMMEL-9002 is merely mentioned here.')
 $(cmt 2026-10-15T01:00:00.000+0200 'Residual HIMMEL-9002 filed; also follow-up HIMMEL-9001 again.')
-$(cmt 2026-09-01T01:00:00.000+0200 'Follow-up HIMMEL-9005 was cited long ago.')"
+$(cmt 2026-09-01T01:00:00.000+0200 "Follow-up $KP-9005 was cited long ago.")"
 
 export ICE_FOLLOWUPS_TODAY=2026-10-19
 out="$(bash "$SUT" "$M" 2>&1)"; rc=$?

@@ -5,6 +5,7 @@
 # fallback + discoverability warning). Uses --dry-run throughout so no
 # real scheduler jobs are created.
 set -uo pipefail
+KP=HIMMEL
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
@@ -2189,13 +2190,13 @@ _w9_ho() { # <file-name> <resume_cwd> [extra frontmatter line]
     printf '%s' "$f"
 }
 _w9_run() { PATH="$SCHED_STUB_T17:$PATH" ARM_ISOLATION_ROOT="$W9_ROOT" bash "$ARM" --time "$(future_time)" --handover "$1" --dry-run "${@:2}" 2>&1; echo "arm-rc=$?"; }
-out=$(_w9_run "$(_w9_ho HIMMEL-1332-w9.md "$W9_ROOT")")
+out=$(_w9_run "$(_w9_ho "$KP"-1332-w9.md "$W9_ROOT")")
 assert_contains "W9 himmel code arm defaults to a worktree" "would create worktree 'fix/himmel-1332-arm'" "$out"
-out=$(_w9_run "$(_w9_ho HIMMEL-1332-w10.md "$W9_ROOT" "resume_isolation: primary")")
+out=$(_w9_run "$(_w9_ho "$KP"-1332-w10.md "$W9_ROOT" "resume_isolation: primary")")
 assert_not_contains "W10 resume_isolation: primary opts out" "would create worktree" "$out"
 assert_contains "W10 exits 0" "arm-rc=0" "$out"
 assert_contains "W10 opt-out is logged loudly" "resume_isolation: primary honoured" "$out"
-out=$(_w9_run "$(_w9_ho HIMMEL-1332-w11.md "$TMP/w9-other")")
+out=$(_w9_run "$(_w9_ho "$KP"-1332-w11.md "$TMP/w9-other")")
 assert_not_contains "W11 a non-himmel resume_cwd (vault arm) is untouched" "would create worktree" "$out"
 assert_contains "W11 exits 0" "arm-rc=0" "$out"
 out=$(_w9_run "$(_w9_ho luna-note-w12.md "$W9_ROOT")")
@@ -2203,7 +2204,7 @@ assert_not_contains "W12 no HIMMEL ticket in the handover name is untouched" "wo
 assert_contains "W12 exits 0" "arm-rc=0" "$out"
 assert_contains "W12 the primary-without-isolation decline names its reason" "WARN arm-resume: himmel code arm resolves to the primary checkout WITHOUT worktree isolation: no HIMMEL ticket" "$out"
 # W13: --cwd resolving to the primary (the hop.sh path) isolates too.
-out=$(_w9_run "$(_w9_ho HIMMEL-1332-w13.md "$TMP/w9-other")" --cwd "$W9_ROOT")
+out=$(_w9_run "$(_w9_ho "$KP"-1332-w13.md "$TMP/w9-other")" --cwd "$W9_ROOT")
 assert_contains "W13 --cwd naming the primary checkout defaults to a worktree" "would create worktree 'fix/himmel-1332-arm'" "$out"
 assert_contains "W13 exits 0" "arm-rc=0" "$out"
 # W14: no resume_cwd: and no ticket in the file name, ticket: in the frontmatter.
@@ -2213,19 +2214,19 @@ out=$(_w9_run "$W14_HO")
 assert_contains "W14 missing resume_cwd plus a frontmatter ticket isolates" "would create worktree 'fix/himmel-1332-arm'" "$out"
 assert_contains "W14 exits 0" "arm-rc=0" "$out"
 # W15: a failed create under the default is a hard exit 4, not a silent primary arm.
-W15_HO="$(_w9_ho HIMMEL-9915-w15.md "$W9_ROOT")"
+W15_HO="$(_w9_ho "$KP"-9915-w15.md "$W9_ROOT")"
 out=$(PATH="$SCHED_STUB_T17:$PATH" ARM_ISOLATION_ROOT="$W9_ROOT" ARM_WORKTREE_CMD="bash $WT_FAIL_STUB" bash "$ARM" --time "$(future_time)" --handover "$W15_HO" 2>&1)
 rc=$?
 assert_rc "W15 failed default worktree create exits 4" 4 "$rc"
 assert_contains "W15 names the failed branch" "worktree create failed for branch 'fix/himmel-9915-arm'" "$out"
 # W16: a chief doc is excluded from the default.
-out=$(_w9_run "$(_w9_ho HIMMEL-1332-w16-chief.md "$W9_ROOT")")
+out=$(_w9_run "$(_w9_ho "$KP"-1332-w16-chief.md "$W9_ROOT")")
 assert_not_contains "W16 a chief doc is untouched" "would create worktree" "$out"
 assert_not_contains "W16 a chief doc prints no isolation WARN" "WITHOUT worktree isolation" "$out"
 # W17: no seam, the script may sit in a linked worktree; the primary comes from the git common dir.
 W17_PRIMARY=$(git -C "$(dirname "$ARM")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
 W17_PRIMARY="${W17_PRIMARY%/.git}"
-out=$(env -u ARM_ISOLATION_ROOT PATH="$SCHED_STUB_T17:$PATH" bash "$ARM" --time "$(future_time)" --handover "$(_w9_ho HIMMEL-1332-w17.md "$TMP/w9-other")" --cwd "$W17_PRIMARY" --dry-run 2>&1)
+out=$(env -u ARM_ISOLATION_ROOT PATH="$SCHED_STUB_T17:$PATH" bash "$ARM" --time "$(future_time)" --handover "$(_w9_ho "$KP"-1332-w17.md "$TMP/w9-other")" --cwd "$W17_PRIMARY" --dry-run 2>&1)
 assert_contains "W17 primary resolved via the git common dir isolates from a linked worktree" "would create worktree 'fix/himmel-1332-arm'" "$out"
 rm -rf "$W9_ROOT" "$TMP/w9-other" "$W14_HO"
 fi
@@ -2384,7 +2385,7 @@ assert_rc "N4 ticketless arm exits 0" 0 "$rc"
 assert_contains "N4 name keeps the HIMMEL-Resume- prefix" "HIMMEL-Resume-" "$out"
 assert_not_contains "N4 no ticket segment for a ticketless handover" "HIMMEL-Resume-HIMMEL-" "$out"
 
-# N5: body-mention-not-title — H1 has no key, a body line mentions LUNA-9. The
+# N5: body-mention-not-title — H1 has no key, a body line mentions one. The
 # H1-only scan must NOT pick up the body key (a stray reference can't be welded
 # into the scheduler name). Falls back to the path-only name.
 HO=$(make_handover_titled "No ticket title" "" "see LUNA-9 for context")
@@ -3074,7 +3075,7 @@ if (args[0] === 'get') {
 EOF
     # Chain file whose H1 is a worker header, NOT a ticket reference -- no
     # frontmatter ticket, generic (non-ticket-prefixed) epic dir so src-4
-    # cannot supply a key either. LUNA-64 here stands in for the incident's
+    # cannot supply a key either. The H1's key stands in for an
     # unrelated Done ticket that happens to share the worker number.
     mkdir -p "$R2113C/epic-notes"
     HO_2113C="$R2113C/epic-notes/next-session-64.md"
@@ -4974,7 +4975,7 @@ if _sec_selected "2545" "HIMMEL-2545"; then
 # not leave either backend's shared scheduler populated.
 : > "$TMP/sched-stub-t17.tasks"
 rm -f "$TMP/sched-stub-t17.atdir"/job-*
-_2545_UNSET='unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN'
+_2545_UNSET='unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN NO_COLOR'
 _2545_EXPORT='export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1'
 
 # (a) the default POSIX backend (`at` on Linux).
@@ -5228,7 +5229,7 @@ rm -f "$TMP/armed-stub.atdir"/job-*
 # The generated runner clears the opt-out and the WARN marker, so the resumed session never inherits them.
 out=$(UNGUARDED_LAUNCH_OK=1 GH_CMD=/nonexistent/gh TMPDIR="$TMP" PATH="$ARMED_STUB:$PATH" \
     bash "$ARM" --time "$(future_time)" --handover "$HO_9026" --cwd "$G9026/scratch" --dry-run 2>&1)
-assert_contains "guard_optout_not_in_runner runner unsets both names" "CLAUDE_CODE_MESSAGING_TOKEN UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED" "$out"
+assert_contains "guard_optout_not_in_runner runner unsets both names" "CLAUDE_CODE_MESSAGING_TOKEN NO_COLOR UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED" "$out"
 fi
 
 CRONTAB_SNAPSHOT_AFTER=$(PATH="$SCHED_REAL_PATH" crontab -l 2>/dev/null || true)

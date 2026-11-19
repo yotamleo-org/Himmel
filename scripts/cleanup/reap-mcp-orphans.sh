@@ -103,7 +103,6 @@ sig_match() {
 # a per-user systemd manager). Only a chain of signature matches ending at
 # pid 1 is an orphan. An unfinished walk (hop cap, or a parent missing from the
 # table) is "owned".
-# ponytail: orphans adopted by a subreaper (systemd --user) are never reaped, add a unit-ownership check to cover them.
 has_owner_ancestor() {
     local p=$1 hops=0
     while [ "$hops" -lt 64 ]; do
@@ -150,7 +149,6 @@ while IFS='|' read -r pid ppid cmd; do
     # The table is a snapshot: before signalling, the live process must still
     # have the same command line and the same start time as when it was
     # classified, so a recycled PID is never signalled.
-    # ponytail: the start time is read at classification, not at table capture, so a reuse inside that window passes; capture it with the table (pidfd) to close it.
     st0=$(start_of "$pid") || st0=""
     live=$(fold "$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)")
     st1=$(start_of "$pid") || st1=""

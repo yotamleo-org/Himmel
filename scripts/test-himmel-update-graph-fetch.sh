@@ -205,7 +205,7 @@ make_adopter() {
     git clone --quiet --no-local --single-branch --branch main "$b" "$d" || return 1
     mkdir -p "$d/scripts/guardrails" "$d/scripts/lib" "$d/scripts/graphify" "$d/scripts/himmelctl/lib"
     for f in himmel-update.sh guardrails/lib.sh lib/cadence-format.sh lib/resolve-hermes-py.sh lib/load-dotenv.sh \
-             lib/resolve-bun.sh lib/claude-version.sh graphify/check-graph-freshness.sh \
+             lib/resolve-bun.sh lib/claude-version.sh lib/update-channel.sh graphify/check-graph-freshness.sh \
              graphify/semantic-update.sh graphify/semantic-merge.py himmelctl/lib/graph-choices.js; do
         cp "$HERE/$f" "$d/scripts/$f" || return 1
     done

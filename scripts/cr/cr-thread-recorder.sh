@@ -36,9 +36,6 @@
 #      CR_RECORDER_SLEEP_CMD (test seam, default sleep).
 # Exit: 0 done, 1 usage, 2 cannot run, 3 stopped early (budget, or a PR unreadable).
 #
-# ponytail: fixed/disproved is read from commit dates, not from the reply text, and
-# a hand-written row is matched by head+file+line or title words, so an odd
-# duplicate can survive; upgrade path = a finding id the panel stamps on its rows.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/prim.sh

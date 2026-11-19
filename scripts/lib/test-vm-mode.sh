@@ -128,7 +128,7 @@ out="$(HOME="$T/sp home" bash "$LIB" route 2>&1)"; rc=$?
 if [ "$rc" = 2 ] && [ "$out" = "fix-config: vm.remote has an invalid ssh, port or identity -- fix ~/.himmel/config.json (docs/setup/vm-mode.md)" ]; then pass "remote default identity under a spaced HOME -> none"
 else fail "remote default identity under a spaced HOME: rc=$rc '$out'"; fi
 
-echo "== identity: only an absent or null key takes the default (HIMMEL-4601)"
+echo "== identity: only an absent or null key takes the default"
 bad_route="fix-config: vm.remote has an invalid ssh, port or identity -- fix ~/.himmel/config.json (docs/setup/vm-mode.md)"
 for ident in 'false' '0' '[]' '{}' '""' '"~/.ssh/k*"' '"/k?"' '"/keys/[ab]"'; do
     cfg "{\"vm\":{\"mode\":\"remote\",\"remote\":{\"ssh\":\"ops@h\",\"identity\":$ident}}}"

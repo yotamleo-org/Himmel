@@ -225,11 +225,7 @@ spec.loader.exec_module(guard)
 
 def regex_register_names(text):
     """Fallback for a file the AST cannot parse: the string-literal names in every
-    `register(...)` call, `name=` in any argument position or the first positional.
-    ponytail: the call's extent is found by counting parentheses, so a paren inside
-    a string literal can end it early or late; the result can over-collect (a
-    nested call's name=, cleared by classifying the string) or miss a name past
-    such a paren — which is why the file is also reported PARTIAL."""
+    `register(...)` call, `name=` in any argument position or the first positional."""
     names = set()
     for m in re.finditer(r"\bregister\s*\(", text):
         depth, end = 1, m.end()
@@ -252,9 +248,7 @@ def registry_names(src, unresolved=None, unparsed=None):
     literal cannot be read statically; `unresolved` (a list) collects those sites
     so the caller can say the scan is not exhaustive. A file that does not parse
     is read by regex_register_names instead and its path is appended to
-    `unparsed`, so the caller can say that file's coverage is PARTIAL.
-    ponytail: a computed name is REPORTED, not resolved — a tool registered that
-    way is invisible to this check, and the warning is the only trace of it."""
+    `unparsed`, so the caller can say that file's coverage is PARTIAL."""
     names = set()
     for path in glob.glob(os.path.join(src, "tools", "**", "*.py"), recursive=True):
         with open(path, encoding="utf-8", errors="replace") as f:
@@ -282,9 +276,6 @@ def registry_names(src, unresolved=None, unparsed=None):
             if unparsed is not None:
                 unparsed.append(os.path.relpath(path, src))
         # The schema `"name": ...` form the table-driven modules use.
-        # ponytail: this also collects a "name" key that is NOT a tool's name, so
-        # the check can only over-report (a false red names the string and is
-        # cleared by classifying it), never miss a registered tool.
         names.update(re.findall(
             r'["\']name["\']:\s*["\']([a-z][a-z0-9_]*)["\']', text))
     return names

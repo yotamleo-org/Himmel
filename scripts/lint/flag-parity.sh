@@ -24,7 +24,6 @@
 #
 # Baseline: rows of `doc<TAB>script<TAB>flag`. Only a row not in it fails, so the
 # gate lands green and refuses NEW drift. A stale row is harmless.
-# ponytail: a flag counts as present if its token appears anywhere in the script's source, so a flag only a comment mentions passes; upgrade to usage-block parsing if that hides drift.
 #
 # Exit: 0 = clean, 1 = drift, 2 = usage error.
 # bash 3.2-safe; cross-platform (Git Bash / macOS / Linux).

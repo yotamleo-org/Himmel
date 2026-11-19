@@ -12,6 +12,7 @@
 #
 # Run: bash scripts/handover/chief-kit/test-tick-pool-stale.sh
 set -u
+KP=HIMMEL
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="${SUT:-$HERE/tick.sh}"
 
@@ -68,6 +69,7 @@ case "$*" in
 esac
 EOF
 chmod +x "$WORK/gh"
+export JIRA_PROJECT_KEY=HIMMEL
 export PS_GH_LOG="$WORK/gh.log" PS_GH_FAIL="$WORK/gh.fail" PS_GH_REPO_NULL="$WORK/gh.reponull" NEXT_DISPATCH_MIRROR="$M" TICK_GH_CMD="$WORK/gh" HIMMEL_QUOTA_DIR="$WORK/quota"
 mkdir -p "$WORK/state" "$WORK/no-release-declared"
 export TICK_STATE_DIR="$WORK/state" HIMMEL_RELEASE_STATE_DIR="$WORK/no-release-declared" PS_REAL_SUT="$SUT"
@@ -92,13 +94,13 @@ field() { # <field> <doc>: the value of one --pool-stale output field
 }
 
 : > "$PS_GH_LOG"
-d="$(doc stalekey 'pool-disposition: HIMMEL-101 slice HIMMEL-901 then the rest')"
+d="$(doc stalekey "pool-disposition: $KP-101 slice $KP-901 then the rest")"
 check 'a target naming a Done ticket reports it stale' '1:HIMMEL-101' "$(field pool-stale "$d")"
 check 'a ticket-only target reads no PR (no gh call)' '0' "$(wc -l < "$PS_GH_LOG" | tr -d ' ')"
 
-d="$(doc stalepr 'pool-disposition: HIMMEL-102 close PR 5001 merged')"
+d="$(doc stalepr "pool-disposition: $KP-102 close PR 5001 merged")"
 check 'a target naming a merged PR reports it stale' '1:HIMMEL-102' "$(field pool-stale "$d")"
-d="$(doc stalepr2 'pool-disposition: HIMMEL-102 question waits on PR #5001 (HIMMEL-901)')"
+d="$(doc stalepr2 "pool-disposition: $KP-102 question waits on PR #5001 ($KP-901)")"
 check 'every named blocker Done or merged (PR # form and a key) reports stale' '1:HIMMEL-102' "$(field pool-stale "$d")"
 
 : > "$PS_GH_LOG"
@@ -112,21 +114,21 @@ check 'one batched gh read serves all PR targets' '1' "$(wc -l < "$PS_GH_LOG" | 
 l="$pd HIMMEL-108 question waits on PR 5004"; d="$(doc closedpr "$l")"
 check 'a target naming a closed-unmerged PR reports it stale: its cause is gone' '1:HIMMEL-108' "$(field pool-stale "$d")"
 
-d="$(doc prlist 'pool-disposition: HIMMEL-117 question waits on PR 5001 and 5002, HIMMEL-901')"
+d="$(doc prlist "pool-disposition: $KP-117 question waits on PR 5001 and 5002, $KP-901")"
 check 'every PR of a blocker list counts: a merged first PR and a still-open second stay quiet' '0' "$(field pool-stale "$d")"
 
-d="$(doc unreadkey 'pool-disposition: HIMMEL-105 question waits on HIMMEL-999')"
+d="$(doc unreadkey "pool-disposition: $KP-105 question waits on $KP-999")"
 check 'a key target missing from the mirror prints ?, never stale' '?' "$(field pool-stale "$d")"
-d="$(doc unreadpr 'pool-disposition: HIMMEL-109 question waits on PR 7777')"
+d="$(doc unreadpr "pool-disposition: $KP-109 question waits on PR 7777")"
 check 'a PR the batch read does not list prints ?' '?' "$(field pool-stale "$d")"
 : > "$PS_GH_FAIL"
-d="$(doc ghfail 'pool-disposition: HIMMEL-102 close PR 5001')"
+d="$(doc ghfail "pool-disposition: $KP-102 close PR 5001")"
 check 'a failed gh read prints ?, never stale' '?' "$(field pool-stale "$d")"
-d="$(doc ghfailkey 'pool-disposition: HIMMEL-101 slice HIMMEL-901')"
+d="$(doc ghfailkey "pool-disposition: $KP-101 slice $KP-901")"
 check 'a failed gh read does not touch a key-only stale target' '1:HIMMEL-101' "$(field pool-stale "$d")"
 rm -f "$PS_GH_FAIL"
 
-d="$(doc mixed 'pool-disposition: HIMMEL-101 slice HIMMEL-901' 'pool-disposition: HIMMEL-105 question waits on HIMMEL-999' 'pool-disposition: HIMMEL-102 close PR 5001')"
+d="$(doc mixed "pool-disposition: $KP-101 slice $KP-901" "pool-disposition: $KP-105 question waits on $KP-999" "pool-disposition: $KP-102 close PR 5001")"
 check 'stale keys are named and an unreadable target adds ?' '2:HIMMEL-101,HIMMEL-102,?' "$(field pool-stale "$d")"
 before="$(cat "$d")"
 field pool-stale "$d" > /dev/null
@@ -212,6 +214,13 @@ check 'no mirror reports residual-unversioned=skip' 'skip' "$(NEXT_DISPATCH_MIRR
 
 mk 115 "To Do" "To Do" '[]' '["other", "residual-depth-1"]' '["relates to HIMMEL-110"]'
 check 'a label list with spaces after the commas still counts the residual' '1:HIMMEL-115' "$(field residual-unversioned "$d")"
+for pk in APP APP2 ZZ_Q; do
+    sed "s/HIMMEL-/$pk-/g" "$M/HIMMEL-110.md" > "$M/$pk-110.md"; sed "s/HIMMEL-/$pk-/g" "$M/HIMMEL-115.md" > "$M/$pk-115.md"
+done
+sed "s/HIMMEL-110/HIMMEL-901/; s/HIMMEL-115/APP2-117/g" "$M/HIMMEL-115.md" > "$M/APP2-117.md"
+sed "s/HIMMEL-110/ZZ_Q-110/; s/HIMMEL-115/ZZ_Q-118/g; s/labels: .*/labels: []/" "$M/HIMMEL-115.md" > "$M/ZZ_Q-118.md"
+check 'residuals whose relates link names another project key (digits, underscore) are counted exactly; one with no qualifying relation or no label is not' '4:APP-115,APP2-115,HIMMEL-115,ZZ_Q-115' "$(field residual-unversioned "$d")"
+rm -f "$M"/APP-1*.md "$M"/APP2-1*.md "$M"/ZZ_Q-1*.md
 
 # a release-manager ruling that puts a versionless residual in the backlog (outcome BACKLOG, or a MOVE to
 # backlog) is a placement, not an unversioned ticket. The last [release-ruling ...] comment of the ticket
@@ -261,11 +270,11 @@ mk 130 "To Do" "To Do" '[]' '["residual","residual-depth-1"]' '["relates to HIMM
 check 'a last ruling that MOVEs the ticket into a version does not hide it' "11:${list7#7:},HIMMEL-127,HIMMEL-128,HIMMEL-129,HIMMEL-130" "$(field residual-unversioned "$d")"
 rm -f "$M"/HIMMEL-118.md "$M"/HIMMEL-119.md "$M"/HIMMEL-12[1-9].md "$M"/HIMMEL-130.md
 
-d="$(doc rerule 'pool-disposition: HIMMEL-101 slice HIMMEL-901' 'pool-disposition: HIMMEL-101 question waits on HIMMEL-902')"
+d="$(doc rerule "pool-disposition: $KP-101 slice $KP-901" "pool-disposition: $KP-101 question waits on $KP-902")"
 check 'a later disposition of the same key supersedes an older stale one' '0' "$(field pool-stale "$d")"
-d="$(doc rerule2 'pool-disposition: HIMMEL-101 question waits on HIMMEL-902' 'pool-disposition: HIMMEL-101 slice HIMMEL-901')"
+d="$(doc rerule2 "pool-disposition: $KP-101 question waits on $KP-902" "pool-disposition: $KP-101 slice $KP-901")"
 check 'the later of two dispositions decides: an older open one does not mask a stale one' '1:HIMMEL-101' "$(field pool-stale "$d")"
-d="$(doc rerule3 'pool-disposition: HIMMEL-101 slice HIMMEL-901' 'pool-disposition: HIMMEL-101 question operator decision 268')"
+d="$(doc rerule3 "pool-disposition: $KP-101 slice $KP-901" "pool-disposition: $KP-101 question operator decision 268")"
 check 'a later ref-less disposition of the same key supersedes an older stale one' '0' "$(field pool-stale "$d")"
 
 # a disposition carries the head sha it was ruled at (`@<sha>`); one more than TICK_POOL_MAX_MERGES
@@ -534,6 +543,46 @@ check 'the outside PR and the fired date flag stale through the producer' '2:HIM
 check 'the outside line names its cause' 1 "$(printf '%s\n' "$hpo" | grep -c "^STALE-DISPOSITION $hk-9190 line=[0-9a-f]* PR#5002=OPEN outside-PR=unwatched\$")"
 check 'the fired line names its wake' 1 "$(printf '%s\n' "$hpo" | grep -c "^STALE-DISPOSITION $hk-9191 line=[0-9a-f]* wake=date:[0-9-]*=fired\$")"
 check 'an open same-repo PR is not stale (I6)' '1:HIMMEL-9191' "$(hp_run false | sed -n 's/^pool-stale=//p')"
+
+rk="$WORK/rk"; mkdir -p "$rk/conf" "$rk/cache" "$rk/home/.himmel/state/jira-mirror/CONFKEY"
+printf 'JIRA_PROJECT_KEY=CONFKEY\n' > "$rk/conf/himmel.conf"
+: > "$rk/cache/.env"
+printf -- '---\nkey: "CONFKEY-901"\nstatus: "Done"\nstatusCategory: "Done"\n---\n\n# CONFKEY-901: t\n' > "$rk/home/.himmel/state/jira-mirror/CONFKEY/CONFKEY-901.md"
+printf '# chief\n\n## Live state\npool-disposition: CONFKEY-101 slice CONFKEY-901 then the rest\n\n## Results\n' > "$rk/chief.md"
+rk_field() {
+    env -u NEXT_DISPATCH_MIRROR HOME="$rk/home" JIRA_PROJECT_KEY= HIMMEL_JIRA_MIRROR= HIMMEL_CONFIG_DIR="$rk/conf" HIMMELCTL_CACHE_DIR="$rk/cache" "$@" \
+        TOKEN='' bash "$SUT" --pool-stale --doc "$rk/chief.md" 2>/dev/null | sed -n 's/^pool-stale=//p'
+}
+check 'a himmel.conf key and no override reads the mirror of that key' '1:CONFKEY-101' "$(rk_field)"
+check 'NEXT_DISPATCH_MIRROR still wins over the resolver: its mirror lacks CONFKEY-901, so the target is unreadable' '?' "$(rk_field NEXT_DISPATCH_MIRROR="$M")"
+
+T="$WORK/tickets"; mkdir -p "$T"; cp "$M"/HIMMEL-*.md "$T/"
+d="$(doc keybase "pool-disposition: $hk-101 slice $hk-901 then the rest")"
+check 'an override directory not named for the project still matches the project key' "1:$hk-101" \
+    "$(JIRA_PROJECT_KEY=HIMMEL NEXT_DISPATCH_MIRROR="$T" field pool-stale "$d")"
+
+pk_mirror() {
+    local p="$WORK/pk-$1"; mkdir -p "$p"
+    printf -- '---\nkey: "%s-110"\nstatus: "Done"\nstatusCategory: "Done"\n---\n\n# %s-110: t\n' "$1" "$1" > "$p/$1-110.md"
+    printf -- '---\nkey: "%s-111"\nstatus: "To Do"\nstatusCategory: "To Do"\n---\n\n# %s-111: t\n' "$1" "$1" > "$p/$1-111.md"
+    printf '%s' "$p"
+}
+for k in APP2 MY_APP; do
+    p="$(pk_mirror "$k")"
+    d="$(doc "key-$k" "pool-disposition: $k-101 slice $k-110")"
+    check "a $k disposition naming its Done ticket reports it stale" "1:$k-101" \
+        "$(JIRA_PROJECT_KEY=$k NEXT_DISPATCH_MIRROR="$p" field pool-stale "$d")"
+done
+p="$(pk_mirror APP2)"
+v='APP2-151 question after APP2-111 its first slice'
+d="$(doc key-carry "$pd $v")"
+printf '%s\n' "CHANGED-DISPOSITION APP2-151 line=$(hash12 "$v") APP2-111=open since APP2-111 abc1234 via APP2-111 abc1234 [APP2-111] first" > "$WORK/key-carry.prior"
+check 'a carried CHANGED-DISPOSITION record of an APP2 key is read back' '1:APP2-151,?' \
+    "$(JIRA_PROJECT_KEY=APP2 NEXT_DISPATCH_MIRROR="$p" ofield pool-changed "$(JIRA_PROJECT_KEY=APP2 NEXT_DISPATCH_MIRROR="$p" cout "$d" "$WORK/notarepo" "$WORK/key-carry.prior")")"
+d="$(doc key-carry2 "$pd APP2-152 slice APP2-999")"
+printf '%s\n' "STALE-DISPOSITION APP2-152 line=$(hash12 'APP2-152 slice APP2-999') APP2-999=? carried" > "$WORK/key-carry2.prior"
+check 'a carried STALE-DISPOSITION record of an APP2 key is read back' '1:APP2-152,?' \
+    "$(JIRA_PROJECT_KEY=APP2 NEXT_DISPATCH_MIRROR="$p" ofield pool-stale "$(JIRA_PROJECT_KEY=APP2 NEXT_DISPATCH_MIRROR="$p" cout "$d" "$WORK/notarepo" "$WORK/key-carry2.prior")")"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

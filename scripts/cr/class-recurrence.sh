@@ -27,11 +27,6 @@
 # Exit: 0 ok · 2 usage, no merged list or no project key · 3 a Jira write failed ·
 #       4 a Jira lookup failed (nothing is filed on an unreadable tracker).
 #
-# ponytail: a PR is a distinct ledger branch and the area is not on a residual, so
-# residuals match by class label only, upgrade path is a PR number on each ledger
-# row and an area label from the residual writer (`jira create --residual-of
-# <parent> --fu-class <c> --class <id>`), which also stamps the
-# `residual` and `class-<id>` labels read here.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

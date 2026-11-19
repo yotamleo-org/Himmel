@@ -21,8 +21,6 @@ question asked about. worker-graph.sh uses the two verbs below to fix that from 
       the caller prints the keyword answer alone.
 
 Fails open: an unreadable graph prints no seeds and says so on stderr.
-ponytail: names only, not meaning; a question with no file or identifier is seeded by
-semantic-seeds.py beside these anchors.
 """
 import importlib.util
 import json

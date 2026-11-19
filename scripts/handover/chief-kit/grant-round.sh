@@ -44,10 +44,6 @@
 # Refused from a chief worker (HIMMEL_CONSOLE_LEG) and a chief relay
 # (HIMMEL_CONSOLE_RELAY), as write-verdict.sh refuses them: a worker must not buy
 # its own review rounds. The chief is not a worker, so it runs this itself.
-# ponytail: same-uid ceiling - the record mac key is readable by the same uid
-# and the worker marker is an environment variable; the upgrade path
-# is a separate-uid verdict store. This does not cover a NO-GO on a
-# test- or comment-only descendant: that needs review-round.sh itself.
 #
 # Exit: 0 granted / 1 bad input / 3 worker or relay caller, or the verdict scope is
 # unresolved / 4 no qualifying signed record / 5 lock or state error / 12 not
@@ -246,7 +242,6 @@ case "$round" in ''|*[!0-9]*) fail 5 "invalid counter state in $round_f - refusi
 # (e) the round-past-3 policy: a recorded operator ruling (a record named `operator`),
 # or an automatic condition - a judge NO-GO, or a standing Critical/Important critic
 # finding on the previous reviewed head (.head). Never after a clean or suggestions-only head.
-# ponytail: any judge NO-GO buys a past-cap round; same-class refusal is HIMMEL-6344
 if [ "${record#*/}" != operator ] && [ "$rword" != NO-GO ]; then
     prev="$(cat "$head_f")"
     standing="$(LEDGER="$common/cr-critic-scores.jsonl" BRANCH="$branch" PREV="$prev" node -e '

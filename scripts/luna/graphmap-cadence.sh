@@ -299,8 +299,6 @@ AST_HIMMEL_TIME="00:15"
 # the same hour as the other himmel workers (readable in `status`) without
 # landing on either one's own minute.
 GRAPH_PUBLISH_TIME="00:35"
-# Luna semantic task: every 2h at :50 (publish is :35), capped per fire. ponytail: the cap and the 2.00 USD run
-# cap are the proposed defaults awaiting the operator's spend ruling; make them flags if the ruling differs.
 LUNA_SEMANTIC_MINUTE="50"
 LUNA_SEMANTIC_EVERY_HOURS=2
 LUNA_SEMANTIC_MAX_FILES=20

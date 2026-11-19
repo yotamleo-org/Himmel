@@ -398,9 +398,6 @@ deny() { # <reason>
 # open). Deny oversized input before any scan runs at all, rather than
 # tighten the scan's own per-span cost again - this is the fence's FIRST
 # check on CMD, ahead of every other predicate in this file.
-# ponytail: a legitimate graphify command over 32768 bytes false-denies here; upgrade path HIMMEL-3731
-# (incremental last-two-words tracking), which
-# would make the scan itself O(1) per span instead of bounding total input.
 _GF_MAX_CMD_BYTES=32768
 # `${#CMD}` is a CHARACTER count under the shell's locale, not a byte count -
 # in a multibyte (UTF-8) locale a command padded with multibyte characters
@@ -1098,10 +1095,6 @@ _ollama_provider() {
     model="${model#"${model%%[![:space:]]*}"}"
     model="${model%"${model##*[![:space:]]}"}"
     model="${model%:latest}"
-    # ponytail: a name heuristic - a local alias of a cloud model (`ollama cp
-    # gpt-oss:120b-cloud mine`) carries no -cloud/:cloud marker and classifies as
-    # local-ollama; the daemon's own model list is not consulted. Upgrade path:
-    # ask the local daemon (`ollama show`) for remote_host.
     case "$model" in
         *-cloud|*:cloud) echo ollama-cloud ;;
         *)               echo local-ollama ;;
@@ -1963,7 +1956,7 @@ classify_clause() {
                 return 0 ;;
             env)
                 i=$((i+1))                                 # env [-i|-|-u VAR|X=y]... CMD
-                _GF_CHDIR_APPLIED=0                        # HIMMEL-3641 J1290O F1: scope to THIS invocation
+                _GF_CHDIR_APPLIED=0
                 while [ "$i" -lt "$n" ]; do
                     gf_w="$(_strip_cmd "${toks[$i]}")"
                     # a quote, backtick, backslash or
@@ -2012,14 +2005,14 @@ classify_clause() {
                                 _gf_deny_if_graphify_follows $((i+1)) "$_GF_CHDIR_DENY_REASON"
                                 return 0
                             fi
-                            i=$((i+2)) ;;                                    # HIMMEL-3641: -C DIR
+                            i=$((i+2)) ;;
                         # pass the RAW token's suffix
                         # (${toks[$i]}), not $gf_w - $gf_w is already
                         # _strip_cmd'd, which deletes $/`/quotes/() before
                         # _gf_apply_chdir's own substitution check ever sees
                         # them, so env -C$X / env -C"$X" silently resolved
                         # instead of failing closed.
-                        -C?*) _gf_apply_chdir "${toks[$i]#-C}"; i=$((i+1)) ;;        # HIMMEL-3641: -CDIR attached
+                        -C?*) _gf_apply_chdir "${toks[$i]#-C}"; i=$((i+1)) ;;
                         --*)
                             # --u/--uns/... are unambiguous GNU
                             # abbreviations of env's only value-taking long
@@ -2186,7 +2179,7 @@ classify_clause() {
                 continue ;;
             sudo)
                 i=$((i+1))                                 # sudo [flags] CMD
-                _GF_CHDIR_APPLIED=0                        # HIMMEL-3641 J1290O F1: scope to THIS invocation
+                _GF_CHDIR_APPLIED=0
                 while [ "$i" -lt "$n" ]; do
                     gf_w="$(_strip_cmd "${toks[$i]}")"
                     # same raw-vs-stripped mismatch
@@ -2219,10 +2212,10 @@ classify_clause() {
                                 _gf_deny_if_graphify_follows $((i+1)) "$_GF_CHDIR_DENY_REASON"
                                 return 0
                             fi
-                            i=$((i+2)) ;;                                    # HIMMEL-3641: -D DIR
+                            i=$((i+2)) ;;
                         # raw suffix, not $gf_w - see
                         # the env -CDIR note above.
-                        -D?*) _gf_apply_chdir "${toks[$i]#-D}"; i=$((i+1)) ;;        # HIMMEL-3641: -DDIR attached
+                        -D?*) _gf_apply_chdir "${toks[$i]#-D}"; i=$((i+1)) ;;
                         --)                      i=$((i+1)); break ;;  # end of sudo options
                         --*)
                             # sudo had NO long-option handling

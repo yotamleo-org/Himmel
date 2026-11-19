@@ -3,6 +3,7 @@
 # layer map, the review evidence, the five report sections, the eval-runs row and the trace of a fix's
 # introducing commits. Fixtures only: no model, no network, never the live ledgers.
 set -u
+_TK='HIMMEL-'
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPORT="$HERE/bug-origin-report.py"
@@ -709,13 +710,13 @@ rc=0; out="$(sy "$TMP/led-fail" "$TMP/jira2.log")" || rc=$?
 eq "sync retry: exit 0" "$rc" "0"
 has "sync retry: the next run updates it" "$out" "jira sync: 9 updated"
 has "sync retry: the row is now synced" "$(cat "$TMP/led-fail/20.md")" "synced: true"
-eq "sync retry: HIMMEL-20 was tried twice, once failed and once sent" "$(grep -c '^comment HIMMEL-20' "$TMP/jira2.log")" "2"
+eq "sync retry: the ticket was tried twice, once failed and once sent" "$(grep -c "^comment ${_TK}20" "$TMP/jira2.log")" "2"
 # a row with no synced line is marked synced all the same, so it is commented once
 ing "$TMP/led-nosync" >/dev/null
 grep -v '^synced:' "$TMP/led-nosync/20.md" > "$TMP/led-nosync/20.md.new" && mv "$TMP/led-nosync/20.md.new" "$TMP/led-nosync/20.md"
 sy "$TMP/led-nosync" "$TMP/jira5.log" >/dev/null
 sy "$TMP/led-nosync" "$TMP/jira5.log" >/dev/null
-eq "sync: a row with no synced line is commented once" "$(grep -c '^comment HIMMEL-20' "$TMP/jira5.log")" "1"
+eq "sync: a row with no synced line is commented once" "$(grep -c "^comment ${_TK}20" "$TMP/jira5.log")" "1"
 # a sync that finds the ledger held by another sync comments nothing
 ing "$TMP/led-lock" >/dev/null
 out="$(python3 -I - "$REPORT" "$TMP/led-lock" "$FAKEJIRA" "$TMP/jira4.log" <<'PY'
@@ -821,7 +822,7 @@ has "filter test-gap: another class is excluded" "$out" "design-gap: 0"
 has "filter test-gap: review-miss is excluded" "$out" "review-miss: 0"
 out="$(rep --seed "$FIX/seed.jsonl" --class review-miss)"
 eq "filter family review-miss: rows" "$(line_of 'rows: ' "$out")" "rows: 4"
-out="$(rep3 --class residual:HIMMEL-8802)"
+out="$(rep3 --class "residual:${_TK}8802")"
 eq "filter exact payload class: rows" "$(line_of 'rows: ' "$out")" "rows: 1"
 out="$(rep3 --class residual:nope)"
 eq "negative control: a class with no rows returns none, not all" "$(line_of 'rows: ' "$out")" "rows: 0"

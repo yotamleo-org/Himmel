@@ -156,7 +156,6 @@ run list >/dev/null; same 'list of a real doc exits 0' "$?" 0
 node "$SUT" --doc "$W/no-such-doc.md" list >/dev/null 2>&1; same 'list of a mistyped --doc exits 2' "$?" 2
 
 # I9: no file under scripts/ or marketplace/ names a sections sidecar except board-section.mjs and its tests.
-# ponytail: a path built from parts passes this; upgrade path: after the state-database flip the record's I6 lint covers it.
 hits="$(cd "$REPO" && git grep -l -e 'sections\.json' -- scripts marketplace 2>/dev/null \
     | grep -v -e '^scripts/handover/chief-kit/board-section\.mjs$' -e '^scripts/handover/chief-kit/test-board-section\.sh$' -e '^scripts/handover/chief-kit/test-board\.sh$' || true)"
 same 'no file names a sections sidecar except board-section.mjs and its tests' "$hits" ''

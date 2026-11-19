@@ -11,6 +11,7 @@
 #
 # Platform guard: POSIX bash 3.2+.
 set -uo pipefail
+_TK='HIMMEL-'
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 AUTH="$HERE/ledger-amend-auth.js"
@@ -100,7 +101,7 @@ L7="$tmp/l7.jsonl"
 check "7a: a keyless writer's lowering amend lands with no mac" "$(grep '"kind":"amend"' "$L7" | grep '"finding_id":"cx-1"' | grep -vc amend_mac)" "1"
 check "7b: a keyed reader drops it" "$(kept "$L7")" "first:first"
 check "7c: a keyless reader honours it" "$(HOME="$SCRATCH_HOME" kept "$L7")" "first:first cx-1:claudex deferral"
-check "7d: the amend carries the verdict, ticket and class" "$(grep '"kind":"amend"' "$L7" | grep '"finding_id":"cx-1"' | grep '"verdict":"deferred"' | grep '"deferred_to":"HIMMEL-7"' | grep -c '"fu_class":"polish"')" "1"
+check "7d: the amend carries the verdict, ticket and class" "$(grep '"kind":"amend"' "$L7" | grep '"finding_id":"cx-1"' | grep '"verdict":"deferred"' | grep "\"deferred_to\":\"${_TK}7\"" | grep -c '"fu_class":"polish"')" "1"
 
 # --- 8. pre_existing=true lowers: `review-round.sh defer` defers an Important on it
 # With a GO key present, an unsigned amend setting the field is dropped like any

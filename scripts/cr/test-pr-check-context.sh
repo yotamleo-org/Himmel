@@ -438,12 +438,6 @@ check "$(grep -c "\"kind\":\"delegation\".*\"head\":\"$head13\"" "$ledger13" 2>/
 # trailing path segment survives byte-for-byte) -- a platform quirk, not a
 # defect in what pr-check-context.sh constructs. The basename is immune to
 # it and is sufficient to prove BOTH the anchor and the delegate are named.
-# ponytail: ledger-append.sh caps --detail at 200 chars, and two long tmp paths
-# (macOS /private/var/folders/...) overflow it, cutting the delegate's tail; the
-# delegate is then accepted when the detail is exactly at the cap AND still carries
-# the ` delegate=` field (the anchor is asserted by basename either way). The delegate
-# itself is pinned by himmel_dir + head above. Upgrade path: shorten the fixture
-# root or log the basenames first in the detail.
 check "$(L="$ledger13" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.kind==="delegation");console.log(String(o.detail.includes(process.argv[1])&&(o.detail.includes(process.argv[2])||(o.detail.length===200&&o.detail.includes(" delegate=")))))' "$(basename "$anchor13")" "$(basename "$wt13_toplevel")")" "true" "T13 delegation detail names both the anchor and the delegate (by basename, MSYS-mangling-proof)"
 
 # T14. himmel lane, diff does NOT touch scripts/cr/ -> the anchor's own path
@@ -2427,8 +2421,7 @@ check "$(fx_outcome "$out60")" "anchor" "T60 a symlinked scripts/lib is not read
 
 # --- T62: a branch that deletes its own hand-off guard still
 # cannot decide the lane. hand_off_to_anchor (top of this script) is
-# documented as defense in depth, not the trust root (see its own ponytail
-# comment): a branch that deletes it also deletes the guard. $anchor is read
+# documented as defense in depth, not the trust root: a branch that deletes it also deletes the guard. $anchor is read
 # from the TRUSTED HIMMEL_REPO env var, never from the branch's own bytes, so
 # gutting the guard cannot change who decides. T62a proves it through the
 # canonical anchored fence (fx_run always execs the ANCHOR's own copy first,

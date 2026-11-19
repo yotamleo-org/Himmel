@@ -359,7 +359,7 @@ LOG9B="$TMP/fires9b.jsonl"
 P9B=$(budget_payload "$TESTS_REPO" "scripts/hooks/impl.sh")
 run_hook_realstate "$P9B" "$LOG9B" >"$TMP/out9b" 2>"$TMP/err9b"; RC9B=$?
 assert_rc "edit after a test-file spend is DENIED" 2 "$RC9B"
-assert_contains "denied edit's message names the dispatching parent (HIMMEL-3136)" "$(cat "$TMP/err9b")" "dispatching parent"
+assert_contains "denied edit's message names the dispatching parent" "$(cat "$TMP/err9b")" "dispatching parent"
 
 # Case 10: INLINE_IMPL_OK=1 override — allowed, LOUD, logged, does not
 # overwrite the recorded spend.

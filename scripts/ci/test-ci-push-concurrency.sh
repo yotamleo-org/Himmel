@@ -63,7 +63,7 @@ fi
 # sweeps on every merge again -- the cost the push trigger removal avoids.
 push_trigger="$(awk '/^on:/ {f=1; next} f && /^[^ #]/ {f=0} f' "$CI_YML" | grep '^  push:')"
 if [ -n "$push_trigger" ]; then
-  bad "ci.yml has a push: trigger again (HIMMEL-5113 removed it; main runs on cron)"
+  bad "ci.yml has a push: trigger again (main runs on cron)"
 else
   ok "ci.yml has no push: trigger"
 fi

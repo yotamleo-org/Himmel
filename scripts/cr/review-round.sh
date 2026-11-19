@@ -187,13 +187,6 @@ version_bump_only() {
 # after such a commit, which never got its own panel round. Also the one
 # classifier chief-kit/write-verdict.sh --bind-reviewed asks, through the
 # `trivial-descendant` verb below, so the writer and the gate cannot disagree.
-# ponytail: the comment test is a line-prefix heuristic, not per-language: a
-# line is a comment when it starts with "# " / "##" / a bare "#" or with "//"
-# and carries no directive word, so "#[cfg(test)]", CSS "#id" and "#Requires"
-# are refused; but a "# " or "//" line inside a multiline string or heredoc,
-# or a "//" line in a language where it is not a comment, still passes. It
-# only moves which head a signed NO-GO binds to, the delta round still reviews
-# from..to; upgrade path is a per-language comment parser.
 trivial_descendant() {
     [ "$1" != "$2" ] || return 1
     git merge-base --is-ancestor "$1" "$2" 2>/dev/null || return 1
@@ -415,11 +408,6 @@ const fs = require("fs"), e = process.env;
 let lines = [];
 try { lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean); } catch (err) { process.exit(err.code === "ENOENT" ? 0 : 2); }
 const at = (h) => { h = String(h || "").toLowerCase(); return h.length >= 7 && e.FROM.startsWith(h); };
-// ponytail: "critic" is any model name outside that list, and critic finding rows
-// and their fixed amends are session-writable through ledger-append.sh, so a worker
-// can buy the post-cap round with a row under a non-excluded model
-// name (it buys a review round, never a merge); tie critic rows to a source the
-// worker cannot write.
 const critic = (m) => m !== "claude" && m !== "claude-floor" && m !== "codex-adv";
 let reviewed = false, rowed = false, seen = false;
 const verdicts = new Map(), settled = new Set();
@@ -661,8 +649,6 @@ try {
 # line 10 is `branch: <this branch>` also binds, but only while gh answers that
 # the branch has no open PR (pr_none=1); a failed lookup or an open PR refuses
 # it, so it never stands in for a PR-bound record.
-# ponytail: the binding is covered by the record mac (HIMMEL-4984), whose key
-# is same-uid readable.
 record_binds() {
     [ -z "$1" ] || return 1
     _rb_branch_form=0
@@ -726,9 +712,6 @@ _origin_nwo() {
 # in it parses, so a hand-written or edited file disqualifies its qid.
 # A consumed qid buys no other round. A qid
 # consumed on this branch still contributes current-head class vetoes.
-# ponytail: same-uid ceiling - the writer's stamp is a format check, not
-# authentication, and any same-uid process can write into verdicts/; the
-# upgrade path is a separate-uid verdict store.
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 judge_nogo_record() (
     want="$1"
@@ -905,9 +888,6 @@ clean_merge_forward() {
 # refused. A test-only record also needs every changed path to be a test path,
 # checked here and not taken from the record. A qid already consumed on any
 # branch is skipped, so one record buys one round.
-# ponytail: lint-only has no path rule (lint is not recognisable from a path),
-# so the judge's record alone admits it, same-uid ceiling as judge_nogo_record;
-# the upgrade path is a lint-config path allowlist plus a separate-uid verdict store.
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 judge_scope_record() (
     from="$1" want="$2"
@@ -1035,8 +1015,6 @@ EOF
 # is none, rc 8 when a NO-GO for the head or an unresolvable PR refuses it.
 # Unlike a scope record it carries no delta-from, is not consumed (it is bound
 # to one head) and buys no round: it stands in for the panel review.
-# ponytail: same-uid ceiling as judge_scope_record (the key is same-uid
-# readable); the upgrade path is a separate-uid verdict store.
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 judge_go_record() (
     want="$1"
@@ -1314,8 +1292,6 @@ EOF
     # The round count still grows by one per free round, so the free
     # admissions stop at free_round_cap; a merge past it needs the delta round
     # or a judge record.
-    # ponytail: the cap is one flat count of all rounds, not of free ones only,
-    # upgrade path is a separate free-round counter in the round state.
     if [ "$round" -ge "$free_round_cap" ]; then
         if merge_forward_shape "$delta_from" "$delta_to"; then
             echo "review-round: $branch is at round $round, the free merge-forward cap ($free_round_cap) - a clean or version-only merge no longer buys a free round" >&2
@@ -2602,9 +2578,6 @@ if [ "$auto_defer" -eq 1 ] && [ "$round" -lt 4 ]; then
                 ;;
         esac
     fi
-    # ponytail: a batch that already exists keeps the class it was filed with
-    # and only gains a comment. Upgrade: read that ticket's class and file a
-    # hardening finding on its own when the batch is polish.
     create_rc=0
     created="$(JIRA_PROJECT_KEY=${residual_parent%%-*} node "$primary_root/scripts/jira/dist/index.js" create \
         --type Task --title "Review follow-ups for $branch" --sector 'Ship loop' --labels standalone \

@@ -289,8 +289,8 @@ prov_record noop file "$w/h.txt" --field preexisted=true --scope user --class co
 prov_end ok
 prov_read_load
 u=$(u_for --path "$w/h.txt")
-check "HIMMEL-3363: still governed by the create" "$(field "$u" .governed)" "true"
-check "HIMMEL-3363: verdict is remove ours, not kept" "$(prov_read_verdict "$u")" "remove ours"
+check "still governed by the create" "$(field "$u" .governed)" "true"
+check "verdict is remove ours, not kept" "$(prov_read_verdict "$u")" "remove ours"
 prov_read_cleanup
 
 # ── re-adopt -- the second install's noop(preexisted=true) json-key

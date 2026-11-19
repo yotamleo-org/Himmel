@@ -209,8 +209,6 @@ fi
 # gh lists closed issues by CREATION order, not closure or marker order, so the
 # newest-created report is not necessarily the one holding the highest marker:
 # compare the most recent closed reports (bounded at 20) and take the maximum.
-# ponytail: a report created before the newest 20 that was reopened and closed
-# again is not seen, upgrade path: page closed reports if reports pile up past 20.
 if [ -z "$num" ] && [ -s "$TMP/failed" ]; then
   if ! cnums="$(gh issue list --label "$LABEL" --state closed --limit 20 \
       --json number --jq '.[].number' 2>/dev/null)"; then

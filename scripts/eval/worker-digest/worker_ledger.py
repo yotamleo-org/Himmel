@@ -767,9 +767,7 @@ def _roots(name):
 
 def salus_rooted(cwd, roots):
     """True when cwd has a .salus marker on any ancestor or lies under a listed PHI root,
-    or when there is no cwd to test (fail closed).
-    ponytail: a minimal re-implementation of graphify-fence.sh's salus test (a hook, not
-    sourceable), upgrade path: share one primitive when a second reader needs it."""
+    or when there is no cwd to test (fail closed)."""
     if not cwd:
         return True
     p = os.path.realpath(cwd)
@@ -902,8 +900,6 @@ def backfill(a):
         if done_ok and saved.get("lane") != "unknown" and not no_profile:
             done += 1
             continue
-        # ponytail: recency stands in for "still running" (a worker idle past the window
-        # still freezes), upgrade path: an end-of-session signal in the journal.
         if not done_ok and journal_last_ts(j) > live_cut:
             live += 1
             continue

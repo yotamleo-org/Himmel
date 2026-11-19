@@ -1308,7 +1308,7 @@ assert_rc "5484 ctl bash -o errexit s.sh"       0 "$(run_case "$(j_bash 'bash -o
 assert_rc "5484 bash +e -x s.sh"                2 "$(run_case "$(j_bash 'bash +e -x s.sh')")"
 assert_rc "5484 bash +o errexit -x s.sh"        2 "$(run_case "$(j_bash 'bash +o errexit -x s.sh')")"
 assert_rc "5484 zsh --xtrace s.sh"              2 "$(run_case "$(j_bash 'zsh --xtrace s.sh')")"
-assert_rc "5484 set +o xtrace (over-deny, HIMMEL-5609)" 2 "$(run_case "$(j_bash 'set +o xtrace')")"
+assert_rc "5484 set +o xtrace (over-deny)" 2 "$(run_case "$(j_bash 'set +o xtrace')")"
 assert_rc "5484 ctl bash +e s.sh -x"            0 "$(run_case "$(j_bash 'bash +e s.sh -x')")"
 assert_rc "5484 ctl bash s.sh arg -x"           0 "$(run_case "$(j_bash 'bash s.sh arg -x')")"
 assert_rc "5484 ctl bash s.sh +e -x"            0 "$(run_case "$(j_bash 'bash s.sh +e -x')")"

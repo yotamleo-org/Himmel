@@ -4,8 +4,6 @@
 # unset, the checks run over this repo and the suite's rows then inject one violation
 # per check into a temp copy, each of which must print a hit.
 #
-# ponytail: literal-shape grep over scripts/ and docs/, so a default built by indirection escapes it until its first call, and the launcher trusts a caller that declares graphify or a mapped kind; upgrade path: tie the kind to the calling script in the launcher, and section 6 must replace this test if the limit goes.
-# Platform guard: bash 3.2, git and awk on local files; Linux verified.
 # shellcheck disable=SC2016,SC2129
 set -uo pipefail
 

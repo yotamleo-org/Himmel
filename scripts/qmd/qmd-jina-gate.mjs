@@ -109,7 +109,6 @@ const forms = (p) => {
 };
 // A .salus marker anywhere BELOW a collection path makes the collection PHI too. Symlinks are not followed.
 const SKIP_DIRS = new Set([".git", "node_modules"]);
-// ponytail: the walk stops 6 levels down, so a vault deeper than that is not seen; raise the depth or index the vault as its own collection.
 function hasMarkerBelow(dir, depth = 6) {
   if (depth < 0) return false;
   let ents;

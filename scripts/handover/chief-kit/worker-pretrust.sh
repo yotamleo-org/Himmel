@@ -124,8 +124,6 @@ fi
 # directory whose mtime the holder refreshes every 5 s, stale after 10 s), so
 # pretrust and a live claude exclude each other. Nothing may live INSIDE that
 # dir (claude releases it with rmdir), so our owner pid is a sidecar file.
-# ponytail: pid reuse can keep a dead owner "alive", a pid on another host is
-# not checked; upgrade path is a host+start-time stamp in the sidecar.
 lock="$cfg.lock"
 owner="$cfg.worker-pretrust.owner"
 mtime_of() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }

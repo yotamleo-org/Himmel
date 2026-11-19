@@ -3,6 +3,7 @@
 # Bash 3.2 safe.
 # shellcheck disable=SC2015  # A && B || C intentional in the final assert
 set -uo pipefail
+_TK='HIMMEL-'
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 FC="$HERE/failure-classify.sh"
@@ -213,7 +214,7 @@ check "31: no signature anywhere -> empty" "$(fsl 'model prose with no failure t
 check "32: cfp's own Raw output: path line is never a signal (random mktemp suffix)" \
     "$(fsl 'critic-first-pass.sh: malformed output — fail-open. Raw output: /tmp/cfp-raw.a429bc')" ""
 check "33: a ticket ID is not a status-code signal" \
-    "$(fsl 'adapted to the model FAMILY (HIMMEL-473)')" ""
+    "$(fsl "adapted to the model FAMILY (${_TK}473)")" ""
 _fsl_long="$(fsl "HTTP 429 $(printf 'x%.0s' $(seq 1 400))")"
 check "34: signal line is bounded to 300 chars" "${#_fsl_long}" "300"
 _fsl_missing="$(

@@ -118,9 +118,6 @@ _flake_repo_id() {
       *)
         # a separate git dir: the main checkout is this top-level, but only when
         # <dir> is that checkout; a linked worktree of such a repo cannot name it
-        # ponytail: HIMMEL-5191 revisits if a fleet repo uses --separate-git-dir with
-        # linked worktrees; a relative origin resolves against the git dir there, not
-        # the main checkout.
         if [ "$(git -C "$1" rev-parse --path-format=absolute --git-dir 2>/dev/null)" = "$_common" ]; then
           _base=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)
         fi

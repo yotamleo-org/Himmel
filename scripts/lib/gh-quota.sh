@@ -52,7 +52,6 @@
 # report main's number under the read token's name. Never `gh api rate_limit`:
 # it reports the REST core bucket, not GraphQL.
 #
-# ponytail: two writers can race a refresh; the loser costs one extra probe and the mv keeps the file whole. Upgrade = a lock dir.
 
 _GHQ_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if ! declare -F ghb_read >/dev/null 2>&1; then

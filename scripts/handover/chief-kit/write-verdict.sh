@@ -111,9 +111,6 @@
 # head, the new ruling is written to <name>-<head>.md instead, so that veto
 # survives the PR returning to its head. A name over 150 bytes is
 # shortened with a hash suffix so no redirect target can exceed 255.
-# ponytail: same-uid ceiling - the symlink and conflict checks run before an
-# atomic rename, so a same-uid process racing the directory can still swap it
-# between check and rename; a separate-uid verdict store is the upgrade path
 #
 # a judge often rules on a head that follows the last reviewed one
 # by a test-only or comment-only commit. `--bind-reviewed <sha>` (NO-GO only)
@@ -323,9 +320,6 @@ fi
 # (GNU `-c %a`, else BSD `-f %Lp`), not `ls -ld`, whose macOS `@` suffix for
 # extended attributes refused every write. A `+` after the mode
 # in `ls -ld` (an ACL that may grant others access) is still refused.
-# ponytail: macOS ls prints `@` in place of `+` when a directory has both
-# xattrs and an ACL, so an ACL behind xattrs passes there; the upgrade path is
-# an `ls -lde` ACL read on BSD.
 #
 # an `ls -ld` that fails or prints nothing cannot show the root
 # free of an ACL, so it refuses like the stat branch does.

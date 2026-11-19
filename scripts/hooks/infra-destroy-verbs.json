@@ -1,6 +1,5 @@
 {
   "version": 1,
-  "jira": "HIMMEL-5282",
   "doc": "scripts/hooks/block-infra-destroy.sh",
   "semantics": {
     "evaluation": "any matching rule denies. A rule matches one shell segment when the segment's command word (after env/sudo/timeout wrappers, and after a package runner such as npx) has a basename in `bins` AND every `argv_all` pattern matches some later word AND, when set, some `argv_any` pattern matches a later word. Patterns are POSIX ERE, matched against one word at a time, case-sensitive.",

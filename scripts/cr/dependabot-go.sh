@@ -37,9 +37,6 @@
 # A PR already on auto-merge is left alone. Prints one line per PR, then
 # `dependabot-go sweep: merged=<n> skipped=<n>`; exit 2 only when the list is unreadable.
 #
-# ponytail: the row is unsigned like a judge-go row (the ledger is same-uid
-# writable, and the merge gate re-reads the PR author), upgrade: a go_msg_mac on
-# the row, as cr-disposition.sh signs its rows.
 #
 # Platform guard: POSIX bash 3.2+.
 set -u

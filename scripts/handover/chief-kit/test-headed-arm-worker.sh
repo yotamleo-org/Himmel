@@ -2121,9 +2121,6 @@ check "full launch --profile: seeded settings do NOT grant a root-wide handover 
 # additionalDirectories resolving a doc directory containing a space; the
 # .locks deny is built from HANDOVER_DIR directly, so it exercises the same
 # space handling on that side.
-# ponytail: HEADED_ARM_UNAME=Linux pins the plain-export branch because on a real
-# Darwin runner worker_propagate_env refuses a whitespace value (exit 12, covered
-# by the Darwin cases below); upgrade path: a Darwin-specific expectation here.
 d17s="$tmp/c17s"; mk_launch_stubs "$d17s" "PROJ-3333-space"; mkdir -p "$tmp/repo17s"
 space_root="$tmp/pinned handover root"
 space_doc_dir="$space_root/yotamleo/himmel"
@@ -3352,7 +3349,7 @@ d29="$tmp/c29"; mk_headless_stubs "$d29" "PROJ-3403-hl"; mkdir -p "$tmp/repo29"
 # CI anchor copy), and the shim still hands them to headed-arm.sh's headless launch.
 cat > "$d29/headed-arm-leak.sh" <<SHIM_EOF
 #!/usr/bin/env bash
-export CLAUDE_JOB_DIR=/leaked/job CLAUDE_CODE_MESSAGING_SOCKET=/leaked/sock CLAUDE_CODE_MESSAGING_TOKEN=leaked-token
+export CLAUDE_JOB_DIR=/leaked/job CLAUDE_CODE_MESSAGING_SOCKET=/leaked/sock CLAUDE_CODE_MESSAGING_TOKEN=leaked-token NO_COLOR=1
 exec "$HEADED_ARM" "\$@"
 SHIM_EOF
 chmod 755 "$d29/headed-arm-leak.sh"
@@ -3375,7 +3372,7 @@ check "29g --headless: konsole never called" "$([ -e "$d29/konsole-called" ] && 
 # env capture must exist before the negated grep means anything.
 child29="$(cat "$d29/child-env" 2>/dev/null || true)"
 contains "29g2 --headless: child env capture exists" "$child29" "FORCE_SESSION_PERSISTENCE=1"
-for v in CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN; do
+for v in CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN NO_COLOR; do
   not_contains "29g2 --headless: child env does not carry the launcher's $v" "$child29" "$v="
 done
 contains "29h launch log: headless=1" "$log29" "headless=1"
@@ -4707,8 +4704,8 @@ check "41k-4159 the scrubbed child env was captured (a kept variable survives)" 
   "$(printf '%s\n' "$scrub4159" | grep -c '^KEEP4159=kept$')" "1"
 check "41k-4159 consult_scrub_args drops LD_PRELOAD, LD_LIBRARY_PATH, LD_AUDIT and NODE_OPTIONS" \
   "$(printf '%s\n' "$scrub4159" | grep -cE '^(LD_PRELOAD|LD_LIBRARY_PATH|LD_AUDIT|NODE_OPTIONS)=')" "0"
-# (b) the ponytail text no longer claims one writable file.
-check "41i ponytail no longer says 'one writable file'" "$(grep -c 'one writable file' "$SCRIPT")" "0"
+# (b) the script text no longer claims one writable file.
+check "41i headed-arm-worker.sh no longer says 'one writable file'" "$(grep -c 'one writable file' "$SCRIPT")" "0"
 # (c) the consult launches with `--setting-sources ""`, so a user, project or
 # local scope that widens the sandbox is NOT loaded and no longer refuses the consult.
 # A MANAGED scope still loads (and outranks --settings), so it still refuses.

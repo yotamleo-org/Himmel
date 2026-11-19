@@ -328,8 +328,6 @@ out=$(GIT_CONFIG_GLOBAL="$g12" bash "$INSTALLER" --target "$d12/work" 2>&1); rc=
 # portably injectable (chmod on a directory is a no-op under MSYS, and the temp
 # name carries the INSTALLER's $$, so it cannot be pre-created from here). What
 # IS checkable is that the rewrite lands complete and leaves no staging residue.
-# ponytail: consequence-level check; a true mid-write interrupt needs a fault-
-# injection seam in the installer, which is not worth adding for this.
 echo "T22: a rewrite lands COMPLETE and leaves no staging residue (not failed-write coverage)"
 # The case must not set `core.gate-bump`, which does
 # NOT change the generated content — the installer short-circuits on
@@ -346,13 +344,6 @@ before11=$(cat "$hook11")
 # Prove the precondition: content now DIFFERS, so a re-install must write.
 out_dry=$(bash "$INSTALLER" --target "$d11/work" --status 2>&1)
 printf '%s' "$out_dry" | grep -Fq "stale" || fail "T22 precondition: edited hook should read 'stale', got: $out_dry"
-# ponytail: no portable way to interrupt a write mid-flight — chmod on a
-# directory is a no-op under MSYS, and the temp name carries the INSTALLER's
-# $$, not ours, so it cannot be pre-created from here. Assert the observable
-# consequences of staging instead: the rewrite lands COMPLETE (a truncated
-# hook fails `bash -n`) and leaves no temp residue behind. A direct truncating
-# write regresses both of those under failure, and the residue check fails
-# immediately if the rename is ever dropped.
 out=$(bash "$INSTALLER" --target "$d11/work" 2>&1); rc=$?
 residue=$(find "$d11/work/.git/hooks" -name '*.himmel-tmp.*' 2>/dev/null)
 [ "$rc" -eq 0 ] \

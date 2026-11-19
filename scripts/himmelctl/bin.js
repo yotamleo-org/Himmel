@@ -69,8 +69,6 @@ const RETIRED_CADENCE_IDS = ['codex-sweep', 'repo-sync'];
 // install provenance (lib/provenance.js; contract in
 // docs/internals/install-provenance.md). Recording is best-effort. A ledger
 // failure warns on stderr and never fails the install or the command.
-// ponytail: provStep names only the plan step in flight, so install-end's
-// failed_step is the step that RETURNED non-zero, not a finer-grained cause.
 const provLib = require('./lib/provenance.js');
 const behaviourConfigLib = require('./lib/behaviour-config.js');
 let provStep = '';
@@ -337,6 +335,10 @@ options:
                           no-network path (local file wiring); refuse, with a
                           reason, every item that could fetch, build, install
                           or reindex. Not valid with --prune
+  --write-tracked        ensure: allow writing a settings file that git tracks
+                          (without it ensure refuses, naming the items and the
+                          file, so a repo's committed settings are never
+                          changed unasked)
   --with-models          deps upgrade: pull qmd's embedding/rerank models
                           (~2.1 GB) non-interactively, without the prompt
   -h, --help             show this help`;
@@ -358,7 +360,7 @@ const ALLOWED_OPTIONS = {
   report: ['items', 'json', 'deep'],
   // the config UI server.
   ui: ['port', 'allowAgentSession', 'readOnly', 'agui', 'service', 'dryRun'],
-  ensure: ['items', 'profile', 'yes', 'dryRun', 'prune', 'noNetwork'],
+  ensure: ['items', 'profile', 'yes', 'dryRun', 'prune', 'noNetwork', 'writeTracked'],
   // `scope` takes its OWN positional verbs/targets (set|get|status, then
   // project|user for set), parsed in parseArgs's scope cases, not as --flags.
   // --yes/--dry-run apply to `scope set` (get/status are pure reads that
@@ -397,6 +399,7 @@ const OPTION_FLAGS = {
   lanes: '--lanes', withCodex: '--with-codex', withHermes: '--with-hermes',
   prune: '--prune',
   noNetwork: '--no-network',
+  writeTracked: '--write-tracked',
   preset: '--preset',
   purgeState: '--purge-state',
   port: '--port',
@@ -410,6 +413,7 @@ const OPTION_DEFAULTS = {
   withModels: false,
   lanes: null, withCodex: false, withHermes: false,
   prune: false,
+  writeTracked: false,
   preset: null,
   purgeState: false,
   port: null,
@@ -449,6 +453,7 @@ function parseArgs(argv) {
     withHermes: false, // install: --with-hermes (opt-in lane)
     prune: false,      // ensure: --prune (opt-in: disable/unwire candidates require this)
     noNetwork: false,  // ensure: --no-network (only manifest-declared local paths)
+    writeTracked: false,
     preset: null,      // gaps: --preset <name> (null = default 'operator' reference)
     purgeState: false, // uninstall: --purge-state (also remove operator state; default keeps it)
     port: null,        // ui: --port N (null = ephemeral)
@@ -774,6 +779,9 @@ function parseArgs(argv) {
         break;
       case '--no-network':
         args.noNetwork = true;
+        break;
+      case '--write-tracked':
+        args.writeTracked = true;
         break;
       case '--preset':
         args.preset = argv[++i];
@@ -2887,6 +2895,64 @@ function settingsPathForScope(scope) {
   return path.join(process.cwd(), '.claude', 'settings.json');
 }
 
+function insideGitWorkTree(dir) {
+  for (let d = dir; ; d = path.dirname(d)) {
+    if (fs.existsSync(path.join(d, '.git'))) return true;
+    if (path.dirname(d) === d) return false;
+  }
+}
+
+function settingsTrackedState(file) {
+  let dir = path.dirname(file);
+  while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir);
+  const r = spawnSync('git', ['-C', dir, 'ls-files', '--error-unmatch', '--', file], { encoding: 'utf8' });
+  if (r.error) return r.error.code === 'ENOENT' && !insideGitWorkTree(dir) ? 'untracked' : 'unknown';
+  if (r.status === 0) return 'tracked';
+  if (r.status === 1) return 'untracked';
+  return /not a git repository/i.test(r.stderr || '') ? 'untracked' : 'unknown';
+}
+
+function writesScopeSettings(item) {
+  const d = item.install || item.unwire;
+  if (!d) return false;
+  return d.type === 'adopt' || d.type === 'plugins' || d.type === 'wire';
+}
+
+// guardrail-block.mjs writes the operator's global settings file whatever the
+// scope, and takes CLAUDE_USER_SETTINGS over ~/.claude/settings.json.
+function settingsFileForWriter(scope, id) {
+  if (id === 'guardrail-block-global') {
+    return process.env.CLAUDE_USER_SETTINGS ? path.resolve(process.cwd(), process.env.CLAUDE_USER_SETTINGS) : settingsPathForScope('user');
+  }
+  return settingsPathForScope(scope);
+}
+
+function trackedSettingsRefusal(scope, writerIds, args) {
+  if (writerIds.length === 0 || args.writeTracked) return null;
+  for (const file of new Set(writerIds.map((id) => settingsFileForWriter(scope, id)))) {
+    const state = settingsTrackedState(file);
+    if (state === 'untracked') continue;
+    const why = state === 'tracked'
+      ? `refusing to modify the git-tracked settings file ${file}`
+      : `cannot tell whether ${file} is tracked by git (git ls-files failed), so refusing to modify it`;
+    const ids = writerIds.filter((id) => settingsFileForWriter(scope, id) === file);
+    return `himmelctl: ${why}\n  item(s) that would write it: ${ids.join(', ')}\n  re-run with --write-tracked to allow the change, then review it with git diff`;
+  }
+  return null;
+}
+
+function warnTrackedSettingsModified(scope, writerIds) {
+  for (const file of new Set(writerIds.map((id) => settingsFileForWriter(scope, id)))) {
+    if (settingsTrackedState(file) !== 'tracked') continue;
+    let dir = path.dirname(file);
+    while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir);
+    const r = spawnSync('git', ['-C', dir, 'status', '--porcelain', '--untracked-files=no', '--', file], { encoding: 'utf8' });
+    if (r.status === 0 && (r.stdout || '').trim() !== '') {
+      console.error(`himmelctl: WARNING: the tracked settings file ${file} is now modified in git — review it with git diff before committing`);
+    }
+  }
+}
+
 // Fail before the install/wire/plugin steps when their target settings file
 // cannot be written. Existing files are checked directly; for a not-yet-created
 // file, check the nearest existing parent that would need to create it.
@@ -3251,23 +3317,6 @@ function previewHandoverAndPlugins(answers) {
 // case) so `path.join(ctx.targetPath, file)` still reconstructs the exact
 // configured path, fixed ONCE here rather than at each of the two call
 // sites, since both derive from the same bare-basename mistake.
-// ponytail: the `./` prefix can collide back to a bare basename only if the
-// env file sits at a filesystem root (dirname(dir)===dir), not a real-world
-// bridge .env location; not defended against.
-// TELEGRAM_ENV is the SAME
-// process-env override poller.ts/session-status.ts already read
-// (`process.env.TELEGRAM_ENV ?? join(homedir(), ".claude/channels/telegram/
-// .env")`) and probes.js's own resolveBridgeEnvFilePath() (used by
-// cmd:telegram_getme/telegram-access/bridge-health) already honors it ahead
-// of bridge.envPath. distinct-tokens has no such awareness built into
-// probes.js. It just resolves whatever envFileA/envFileB strings it's
-// given, so the SAME three-tier precedence (process-env override >
-// configured value > hardcoded default) has to be applied on THIS side too,
-// here in the one shared helper, rather than invented a second way for one
-// call site. `runBridgeReadinessProbes`'s distinct-tokens call gets this via
-// this function; probeOneSecret's cmd:telegram_getme call gets it too (a
-// harmless no-op agreement. probes.js's own TELEGRAM_ENV check already
-// wins there regardless of what `file` says).
 //
 // `(bridge && bridge.envPath) || ''` skipped straight
 // to the EMPTY string when the profile legitimately omits the optional
@@ -3849,7 +3898,6 @@ function mergePhiRoot(root) {
   // last rename() still wins, so a root added by a concurrent process can
   // still be lost. That half is deliberately OUT of scope here, so do not
   // read this atomic write as closing it.
-  // ponytail: last rename wins under concurrent writers, upgrade path: take a lock around the phi-roots read-modify-write.
   //
   // create tmp owner-only (mode 0o600) from
   // the very first write, not via a chmod afterward. A default-mode create
@@ -4580,8 +4628,6 @@ function applyWorkspaceTrust() {
     const why = r.error ? r.error.message : (r.stderr || `exited rc=${r.status}`).trim();
     return { applied: false, dir: dir, reason: why };
   }
-  // ponytail: a key that pre-existed as `false` is recorded as absent (the
-  // helper flips it to true either way); only "already true" reads preexisted.
   if (preKnown) prov([preexisted ? 'noop' : 'create', 'json-key', trustCfg,
     '--unit', `/projects/${dir.replace(/~/g, '~0').replace(/\//g, '~1')}/hasTrustDialogAccepted`,
     ...(preexisted ? ['--pre-json', 'true'] : ['--pre-absent']), '--post-json', 'true',
@@ -5085,7 +5131,6 @@ function uiHandoffEnabled() {
   return Boolean(process.stdout.isTTY);
 }
 
-// ponytail: a browser counts as reachable unless this is an SSH session or a Linux box with no display, upgrade path is asking the operator.
 function browserReachable() {
   if (process.env.SSH_CONNECTION || process.env.SSH_TTY) return false;
   return process.platform !== 'linux' || Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
@@ -5549,7 +5594,7 @@ function checkUninstallCompleteness(unwireItems) {
       // reverse there (see the comment above), so probing it only ever
       // reads himmel's own tracked repo source. 'user' is never skipped.
       if (scope === 'project' && isHimmelOwnCheckout) continue;
-      const ctx = { repoRoot: root, targetPath: root, scope, env: process.env };
+      const ctx = { repoRoot: root, targetPath: root, scope, env: process.env, scopeFileOnly: true };
       try {
         const probe = probesLib.runProbe(item, ctx);
         if (probe.actual !== 'absent') residue.push(`${item.id} (${probe.actual}, ${scope})`);
@@ -6673,7 +6718,7 @@ async function cmdEnsure(args) {
     // reconcileTarget() apply for the toward-ENABLED side.
     if (!item.removable || !item.scopes.includes(scope) || desiredIds.has(item.id)) continue;
     if (args.items && args.items.indexOf(item.id) === -1) continue;
-    const ctx = { repoRoot: repoRoot(), targetPath: baseTargetPath, scope, env: process.env };
+    const ctx = { repoRoot: repoRoot(), targetPath: baseTargetPath, scope, env: process.env, scopeFileOnly: true };
     const probe = probesLib.runProbe(item, ctx);
     // a degraded (not just fully present) removable item is STILL
     // physically there and still needs converging toward disabled. Only a
@@ -6869,8 +6914,6 @@ async function cmdEnsure(args) {
   // recognizes (a recorded profile that simply doesn't declare items this
   // target visibly has running); see for one concrete way a
   // record goes stale (a non-hermetic test suite run overwriting real
-  // state). ponytail: a flat constant, not a percentage/config knob, raise
-  // it if it proves too eager in practice.
   //
   // this guard used to have NO escape
   // hatch. An operator doing a genuine, deliberate downgrade (`ensure
@@ -7128,6 +7171,18 @@ async function cmdEnsure(args) {
     }
   }
 
+  // Checked against the final pruneConfirmed: a declined disable pass writes nothing.
+  const trackedWriterIds = towardEnabled.filter(writesScopeSettings)
+    .concat(pruneConfirmed ? towardDisabled.filter((i) => i.removable === 'per-item' && i.unwire && writesScopeSettings({ unwire: i.unwire })) : [])
+    .map((i) => i.id);
+  if (!args.dryRun) {
+    const refusal = trackedSettingsRefusal(scope, trackedWriterIds, args);
+    if (refusal) {
+      console.error(refusal);
+      return 2;
+    }
+  }
+
   // Consent granted (--yes, an interactive confirm, or --dry-run, which
   // needs none). Persist the derive/reconcile bookkeeping NOW, not before.
   // An operator who declined above, or was refused above for lacking --yes
@@ -7210,7 +7265,7 @@ async function cmdEnsure(args) {
       // the unwire primitive exiting 0 doesn't itself prove the
       // resource is gone. Re-probe and treat ANY result other than
       // 'absent' (still 'present', or now merely 'degraded') as a failure.
-      const reprobeCtx = { repoRoot: repoRoot(), targetPath: baseTargetPath, scope, env: process.env };
+      const reprobeCtx = { repoRoot: repoRoot(), targetPath: baseTargetPath, scope, env: process.env, scopeFileOnly: true };
       const reprobe = probesLib.runProbe(item, reprobeCtx);
       if (reprobe.actual !== 'absent') {
         disableErrors.push(`${item.id}: unwire ran but the resource is still ${reprobe.actual} (expected absent)`);
@@ -7298,6 +7353,7 @@ async function cmdEnsure(args) {
       failed = result.failed;
     }
   }
+  if (!args.dryRun && trackedWriterIds.length > 0) warnTrackedSettingsModified(scope, trackedWriterIds);
 
   // a --dry-run full-offboard-only blocker (pushed into
   // disableErrors above regardless of --dry-run) must NOT be silently
@@ -7743,8 +7799,6 @@ async function cmdScopeSet(args) {
   // already deleted, which the CWD guard above then refuses to retry (stuck).
   // The hard invariant (no item wired in BOTH scopes) already holds here.
   // The wiring converged on disk above, before either write.
-  // ponytail: no journal/recovery marker, the two writes are not transactional, upgrade path: commit state and cache through one journal with a recovery marker.
-  // Gated behind !dryRun (dry-run returned above).
   writeCache(Object.assign({}, cachedAnswers, { scope: newScope }));
   delete state.targets[oldTargetKey];
   stateLib.save(state);

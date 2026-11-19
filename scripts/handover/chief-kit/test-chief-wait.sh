@@ -14,6 +14,7 @@
 #
 # Run: bash scripts/handover/chief-kit/test-chief-wait.sh
 set -u
+KP=HIMMEL
 HERE="$(cd "$(dirname "$0")" && pwd)"
 WAIT="${CHIEF_WAIT:-$HERE/chief-wait.sh}"
 
@@ -459,7 +460,7 @@ wait_hb "$I" || fail "(hask) no baseline heartbeat"
 n=0; while [ ! -s "$STUB/pages" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
 sleep 1
 check "(hask) one trust-path ask records exactly one page line" "1" "$(grep -c . "$STUB/pages" 2>/dev/null)"
-check "(hask) the line carries the full paste-ready grant command" "1" "$(grep -cF -- "python3 -I $HA_PRIMARY/scripts/handover/chief-kit/holds.py grant --key HIMMEL-9942 --repo $HA_PRIMARY scripts/check-ci.sh" "$STUB/pages")"
+check "(hask) the line carries the full paste-ready grant command" "1" "$(grep -cF -- "python3 -I $HA_PRIMARY/scripts/handover/chief-kit/holds.py grant --key $KP-9942 --repo $HA_PRIMARY scripts/check-ci.sh" "$STUB/pages")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 HOME="$HA_HOME" start "$I" "$WORK/hask2.out" --workers "N1.md"
 wait_hb "$I" || fail "(hask) no re-armed heartbeat"
@@ -804,7 +805,7 @@ start "$I" "$WORK/c4670.out" --workers "N1.md"
 wait_hb "$I" || fail "(c4670) no baseline heartbeat"
 tick_line "N1:FRESH" "ok" "1m" '#10' 'skip' '3/2@denied/guard-a*2!1'
 wait_exit "$WPID"
-check "(c4670) a fails= change does not wake (HIMMEL-4670)" "running" "$rc"
+check "(c4670) a fails= change does not wake" "running" "$rc"
 [ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
 
 # --- (d) a one-sample blip (a failed gh read) does not wake -----------------
@@ -1257,7 +1258,6 @@ check "(p6d) only one send is attempted inside the shared budget" "1" "$(wc -l <
 check "(p6d) and both workers still get a page record" "N1 N2" "$(for k in N1 N2; do [ -f "$HIMMEL_DENIAL_ACK_DIR/$k.page" ] && printf '%s ' "$k"; done | sed 's/ $//')"
 
 # An unwritable record dir never breaks the wake either.
-# ponytail: as root chmod does not bind, so this case only proves the wake there; run it as a normal user for the real control, no ticket (test-audit finding, root CI has no upgrade path worth a fixture).
 mkdir -p "$WORK/ro" && chmod 500 "$WORK/ro"
 HIMMEL_DENIAL_ACK_DIR="$WORK/ro/sub" denials_rise p6c none 'N1:1:SHIP-STEP'
 check "(p6) an unwritable record dir still wakes with rc 0" "0" "$rc"

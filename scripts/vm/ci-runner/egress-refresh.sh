@@ -14,10 +14,6 @@
 # Any failure, or an empty /meta, exits non-zero: the host loop then refuses to
 # serve a job. Nothing here widens the private-range rejects in nftables.conf.
 #
-# ponytail: the mirror hosts are resolved once per boot, so a CDN that rotates
-# its address mid-job can make a later fetch fail closed (the shard goes red,
-# nothing leaks), and DNS itself stays an open channel to the NAT resolver;
-# upgrade is an allow-listing HTTP(S) proxy on the host.
 set -euo pipefail
 
 BOOTSTRAP_HOST=api.github.com

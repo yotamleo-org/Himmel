@@ -16,12 +16,6 @@
 # Usage: bash scripts/install/scan-duplicates.sh [<project-dir>]   (default: $PWD)
 # Exit:  0 = scan ran (clean or duplicates found), 2 = could not scan (no jq).
 #
-# ponytail: a hook is identified by event + script basename, not file content,
-#   so two unrelated scripts sharing a basename across a settings file and a
-#   plugin read as a duplicate; plugin-vs-plugin is never compared for that
-#   reason. Upgrade path: compare the resolved script bytes.
-# ponytail: a plugin's hooks come from <installPath>/hooks/hooks.json only; a
-#   hooks path declared in plugin.json is not followed.
 set -u
 
 command -v jq >/dev/null 2>&1 || { echo "scan-duplicates: jq is required" >&2; exit 2; }

@@ -19,9 +19,6 @@
 # Open Source runs `snyk test --all-projects --json --severity-threshold=medium`
 # (Low is noise at this scale); the High/Critical gate is this script's own count.
 # A result that is not a project object (vulnerabilities array, no error key) exits 2.
-# ponytail: no --fail-fast, because snyk then aborts on any manifest without installed dependencies (the baseline on main trips on marketplace/plugins/luna-correlate) and every weekly run would go red; a manifest snyk skips is counted in the project total only, upgrade path: compare the project count with the manifest estimate.
-# Code runs `snyk code test --json` (SARIF; level error = High, warning = Medium).
-# An org without Snyk Code reports `SKIPPED not-enabled` and does not fail the run.
 #
 # Code triage: Snyk Code reads no .snyk ignore block, so a Code High
 # that has been looked at is recorded in scripts/security/snyk-code-triage.tsv, one row per
@@ -42,7 +39,6 @@
 # and refuses a run whose estimated tests would pass the cap. Caps default well
 # below the free limits: SNYK_SCAN_OS_CAP=200, SNYK_SCAN_CODE_CAP=50.
 #
-# ponytail: the Open Source estimate is the number of tracked manifest dirs, an upper bound on what snyk counts; the ledger records the real project count after the run, upgrade path: read the live usage from the Snyk API.
 #
 # Forks mode (--forks): shallow-fetches each fork at the ref himmel pins (qmd and graphify from
 # scripts/lib/*-bin.sh, claude-hud from scripts/upstreams.json, and
@@ -58,7 +54,6 @@
 # Snyk (1.1308.2) cannot read uv.lock ("Could not detect package manager"), and its pip scan needs
 # the packages installed; a uv.lock is exported with `uv export` and looked up on osv.dev instead.
 # The export leaves out dev groups (--no-dev), as snyk test does by default: build and test tooling is not scanned.
-# ponytail: osv.dev findings carry the advisory's own severity (GHSA database_specific, unrated = medium) and no reachability, upgrade path: osv-scanner or a Snyk uv.lock parser once released.
 #
 # Seams (tests): SNYK_BIN, SNYK_SCAN_STATE_DIR, SNYK_SCAN_OUT_DIR, SNYK_SCAN_OS_CAP, SNYK_SCAN_CODE_CAP,
 # SNYK_SCAN_FORKS (rows `name|repo-url|ref|up-or-dash` replacing the pin table), SNYK_SCAN_OSV_URL,

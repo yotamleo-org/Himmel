@@ -11,6 +11,7 @@
 # probe runs, the suite resolves the root and aborts unless it is the fixture.
 # shellcheck disable=SC2015
 set -uo pipefail
+KP=HIMMEL
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPTS="$(cd "$HERE/.." && pwd)"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/handover-root-dotenv.XXXXXX")" || exit 1; trap 'rm -rf "$tmp"' EXIT
@@ -77,19 +78,19 @@ has "ready-go-latency: got past root resolution" "$out" "no YYYY-MM-DD"
 out="$(probe bash "$SCRIPTS/handover/chief-kit/inbox-send.sh" --pending)"
 lacks "inbox-send: root resolved from .env" "$out" "cannot resolve handover root"
 
-out="$(probe bash "$SCRIPTS/telegram/auto-action.sh" arm-resume HIMMEL-1 12:00)"
+out="$(probe bash "$SCRIPTS/telegram/auto-action.sh" arm-resume "$KP"-1 12:00)"
 lacks "auto-action: root resolved from .env" "$out" "handover_root unresolved"
 has "auto-action: got past root resolution" "$out" "no resume handover"
 
 probe bash "$SCRIPTS/handover/breadcrumb.sh" write --ticket HIMMEL-1 >/dev/null
-check "breadcrumb: write lands under the .env root" "$([ -f "$HO/breadcrumbs/HIMMEL-1.json" ] && echo yes || echo no)" "yes"
+check "breadcrumb: write lands under the .env root" "$([ -f "$HO/breadcrumbs/$KP-1.json" ] && echo yes || echo no)" "yes"
 
 printf 'https://claude.ai/artifact/abc\n' > "$tmp/art.md"
 probe bash "$SCRIPTS/handover/artifact-sync.sh" record "https://claude.ai/artifact/abc" "$tmp/art.md" >/dev/null
 check "artifact-sync: registry under the .env root" "$([ -f "$HO/.artifacts/registry.jsonl" ] && echo yes || echo no)" "yes"
 
 : > "$tmp/review-rounds-empty.txt"
-out="$(printf 'HIMMEL-1\tfeat/x\t1\tdone\tok\n' | env -u HANDOVER_DIR HIMMEL_CONFIG_DIR="$tmp/conf" HIMMELCTL_CACHE_DIR="$tmp/cache" REVIEW_ROUNDS_TXT="$tmp/review-rounds-empty.txt" bash "$SCRIPTS/afk/morning-report.sh" --dry-run 2>&1)"
+out="$(printf '%s\tfeat/x\t1\tdone\tok\n' "$KP-1" | env -u HANDOVER_DIR HIMMEL_CONFIG_DIR="$tmp/conf" HIMMELCTL_CACHE_DIR="$tmp/cache" REVIEW_ROUNDS_TXT="$tmp/review-rounds-empty.txt" bash "$SCRIPTS/afk/morning-report.sh" --dry-run 2>&1)"
 has "morning-report: output path under the .env root" "$out" "$HO/overnight-report-"
 
 mkdir -p "$HO/breadcrumbs"; printf '{}\n' > "$HO/breadcrumbs/HIMMEL-1.json"

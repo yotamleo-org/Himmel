@@ -931,9 +931,9 @@ golden_small(){ for m in gpt-5.5 claude-opus-4-8 qwen/qwen3-coder-480b; do print
 golden_big(){ for m in gpt-5.5 claude-opus-4-8 qwen/qwen3-coder-480b; do printf '%s' "$BIG" | CRITIC_KNOWN_FINDINGS=0 CRITIC_FIRST_PASS_CAP_BYTES=200 bash "$CFP" --model "$m" --print-prompt; done | h256; }
 # I10: with no context file the prompt is byte-identical to the base prompt
 # (eb11eb50d), for a small diff and for an over-cap (truncated) diff.
-check "I10 golden: small-diff prompt is byte-identical to base" "$(golden_small)" "02676c1a147ade3457354588c56a57fc21b5cf19a404efb332ca7831d7b8139f"
-check "I10 golden: over-cap diff prompt is byte-identical to base" "$(golden_big)" "b437c2869aba993647ca3b9f3d461283a73741cf5987e0cfd4cf23cb2ab331ae"
-check "I10 golden: an empty --context-file is no context (small)" "$(golden_small --context-file '')" "02676c1a147ade3457354588c56a57fc21b5cf19a404efb332ca7831d7b8139f"
+check "I10 golden: small-diff prompt is byte-identical to base" "$(golden_small)" "65dde3a76ccd76435c04907749460e4d2d8089da107df4568e5e6b4e48d565dd"
+check "I10 golden: over-cap diff prompt is byte-identical to base" "$(golden_big)" "a51c64fa0f9b18219ade54b7cf2abd9e5603a7639f7577fa576cf03e5b8d3087"
+check "I10 golden: an empty --context-file is no context (small)" "$(golden_small --context-file '')" "65dde3a76ccd76435c04907749460e4d2d8089da107df4568e5e6b4e48d565dd"
 
 ctx="$tmp/ctx.txt"
 printf '%s\n' '{"range": ["lib/util.sh", 40, 50]}' '{"range": ["foo.sh", 1, 5]}' '' 'function helper() {' '  return 1' '}' > "$ctx"

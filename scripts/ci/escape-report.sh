@@ -21,11 +21,6 @@
 # line), 3 CI catches (a PR run failed and the next push to that branch changed the
 # cause), 4 CI cost (<= 60 CI runs), 5 one line of judgement.
 #
-# ponytail: "impacted" is read as the pull_request runs (PR shards run only the
-# impacted suites) and "full" as the schedule / dispatch / push runs, so no
-# per-suite split; upgrade path = count suites per shard from the job logs.
-# ponytail: the main-red root-cause split of spec section 1.1 is a manual
-# classification and is not reproduced; only the issue count is.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

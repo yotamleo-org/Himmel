@@ -108,7 +108,7 @@ New High/Critical rows, or promotions to those severities, notify through the
 existing cadence alert/keyring-backed sender; a failed send leaves the baseline
 unchanged for retry. Local state/report failures remain errors.
 
-ponytail: cross-source deduplication requires the same normalized file, line and
+Limit: cross-source deduplication requires the same normalized file, line and
 category (for example matching CWE or GHSA IDs); unrelated vendor taxonomies
 remain separate rather than guessing equivalence. Upgrade path: explicit
 reviewed identifier mappings. The highest observed severity and every reporting

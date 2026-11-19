@@ -22,7 +22,6 @@
 # its previous row alerts; a mode with no previous row is a baseline. A failed
 # eval or an empty scores.tsv alerts too.
 #
-# ponytail: compares each mode only with the previous run, so a slow drift under QMD_QUALITY_DRIFT_MRR per week never alerts, upgrade path: compare with the best of the last N runs once metrics.tsv shows such a drift (HIMMEL-4184 follow-up).
 #
 # OFF by default: only `arm` installs it; arming on a station is an operator
 # step after a VM proof. It is in no registry or wizard.
@@ -82,7 +81,6 @@ cmd_run() {
     out="$STATE_DIR/runs/$ts"
     mkdir -p "$out" || return 2
     # an interrupted run (cron kill, shutdown) must not strand the snapshot either.
-    # ponytail: a SIGKILL skips the trap, so the leak is bounded only by prune_runs; sweep stale snapshots under a run lock (HIMMEL-4500).
     SNAPSHOT="$out/index.sqlite"
     trap 'rm -f "$SNAPSHOT"' EXIT
     trap 'exit 130' INT

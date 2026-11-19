@@ -152,7 +152,7 @@ export function extraPart(f) {
 export function costPart(f) {
     const display = f.config?.display;
     const costUsd = display?.showCost === true ? sessionCostUsd(f) : null;
-    // himmel delta (HIMMEL-2900): under the claudex lane the cost slot says so instead of vanishing.
+    // himmel delta: under the claudex lane the cost slot says so instead of vanishing.
     const unmeasured = display?.showCost === true && isClaudexLane();
     const parts = [
         unmeasured ? `${t('label.cost')} ${t('status.unmeasured')}` : null,
@@ -199,7 +199,7 @@ export function sessionTokensSummary(f, prefix) {
     if (total === 0)
         return null;
     const parts = [`${t('format.in')}: ${formatTokens(tokens.inputTokens)}`, `${t('format.out')}: ${formatTokens(tokens.outputTokens)}`];
-    // himmel delta (HIMMEL-2161): cache write and read shown as separate figures.
+    // himmel delta: cache write and read shown as separate figures.
     if (tokens.cacheCreationTokens > 0)
         parts.push(`${t('format.cacheWrite')}: ${formatTokens(tokens.cacheCreationTokens)}`);
     if (tokens.cacheReadTokens > 0)

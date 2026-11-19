@@ -35,9 +35,6 @@ import { BASH_BIN } from "./run";
 // tell it from a terminal message. It carries no RETASK token: it is operator
 // -> chief, never chief -> worker (docs/internals/retask-channel.md).
 //
-// ponytail: explicit named/thread routes preserve armed-inbox delivery even
-// without a fresh heartbeat; use /chiefs before addressing an old identity,
-// or require liveness on named routes if silent old-inbox queues recur.
 
 export type ConsoleReplyFn = (chat_id: number, text: string, consoleName?: string, replyToMessageId?: number) => Promise<void>;
 export type ConsoleRouteGate = {
@@ -94,9 +91,6 @@ export async function armedConsoles(root: string, now = Date.now()): Promise<Arm
 // handover keeps PREFIX and name and advances date/letters, so those chiefs share
 // one lineage and the newest rank owns the operator's messages. A name outside the
 // convention is a lineage of one.
-// ponytail: lineage is read from the name, not chief.sh's recorded predecessor link;
-// a renamed chain splits into two lineages (the "more than one chief" refusal
-// returns for it). Record the link in <inbox>.meta.json if that recurs.
 export function chiefLineage(name: string): { prefix: string; key: string; rank: string } {
   const m = /^([A-Za-z0-9]+)-nextleg-(\d{4}-\d{2}-\d{2})([A-Z]{1,2})-(.+)$/.exec(name);
   if (!m) return { prefix: "", key: `singleton:${name}`, rank: "" };
@@ -234,10 +228,6 @@ export async function routeFleetCommand(
   await routeToConsole(root, msg, { kind: "console", name: target.name, text, thread: true }, (chat, ack, name) => reply(chat, name ? `queued ${text} → chief ${name}${ack.includes(BUSY_NOTE) ? ` — ${BUSY_NOTE}` : ""}` : ack, name));
 }
 
-// ponytail: no lock around the read-check-append in routeApprove, safe only because the poller dispatches one message at a time; upgrade path = an atomic append-if-absent helper.
-// ponytail: the reader checks neither `from` nor `chat`, and a same-uid process can append a row itself (the
-// tamper-evident approval store is a separate ticket); this verb does not make the reader check them, upgrade path = a MAC per row.
-// ponytail: `is_bot` means any bot, so the operator-chat requirement (a DM, where only this bridge's bot writes) is what makes "bot-authored" mean ours; upgrade path = compare the replied-to sender id with the bridge bot's id.
 export type ApproveRoute = Extract<import("./router").Route, { kind: "approve" }>;
 export type ApproveMsg = { from: number; chat_id: number; message_id?: number; reply_to_message_id?: number; reply_to_bot?: boolean; reply_to_text?: string; forwarded?: boolean; caption?: boolean };
 const APPROVE_REQUEST = /^outside-approve-request ([1-9][0-9]{0,5}) ([0-9a-f]{40})$/;
@@ -489,8 +479,6 @@ export async function announceConsole(inbox: string): Promise<void> {
   try { claim = await open(marker, "wx"); }
   catch (e: any) { if (e.code === "EEXIST") return; throw e; }
   await claim.close();
-  // ponytail: a kill between claim and enqueue can lose this one announcement;
-  // use transactional outbox dedupe if crash-loss is observed. Re-arms never spam.
   try {
     const { replyViaOutbox } = await import("./poller");
     await replyViaOutbox(root, chat, `Chief ${name} is live — just send /chief <text>`, name, undefined, CHIEF_KEYBOARD);
@@ -1775,7 +1763,6 @@ export async function checkSignaturePage(abs: string): Promise<{ verdicts: Verdi
   const page = await realpath(abs).catch(() => abs);
   const open = new Set(await refuseIfPlanCriticFailed(page));
   // A page that names its source (`<meta name="spec-source" content="<abs path of the .md>">`) is governed by that spec wherever the copy sits.
-  // ponytail: a hand-built page with no marker, outside the registered folders, reads as a report, upgrade path: one shared spec page generator writes the marker
   const source = await markedSource(page);
   let g = source ? { spec: source, role: "render" as Role } : await governingSpec(page);
   if (!g) {
@@ -1993,7 +1980,6 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
       const b = briefTextCounted(text, mirrorRoot(), row?.["ref-word"] ?? "PR");
       sent = b.text; keys = b.keys;
     }
-    // ponytail: a word match, upgrade path = run scripts/handover/chief-kit/salus_marked.py on every path the text names
     if (cls === "monitor" && /salus/i.test(sent)) cls = "escalate";
     if (cls === "escalate" && row && row.cap !== "none" && sent.length > table!.cap) capState = "over-cap-uncut";
     if (cls === "monitor") {

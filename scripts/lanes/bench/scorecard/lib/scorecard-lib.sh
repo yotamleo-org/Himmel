@@ -30,9 +30,6 @@
 # dirs, 21-29 % of ctx x calls measured on 2026-09-20). The glob is anchored on
 # `--claude-worktrees-`, so an unrelated `<primary>foo` sibling is not swept in.
 #
-# ponytail: the primary dir name is this machine's himmel checkout path
-# (`-home-overlord-Documents-github-himmel`), inherited from the original
-# scorecard scripts - a checkout elsewhere must set SCORECARD_PROJECTS_DIR.
 sc_transcript_roots() {
     if [ -n "${SCORECARD_PROJECTS_DIR:-}" ]; then
         printf '%s\n' "$SCORECARD_PROJECTS_DIR"
@@ -86,13 +83,6 @@ title_of() { grep -o '"customTitle":"[^"]*"' "$1" 2>/dev/null | tail -1 | sed 's
 # before is one no longer. A recognised worker keeps the relay precedence it always
 # had (a `...legN..-relay` title is a relay).
 #
-# ponytail: the older `worker<Letter><k>` titles (legG3, legS1 ...) still fall to
-# `other`; widening to them would move the 2026-09-05 control window's numbers.
-# ponytail: a worker-shaped title worker_identity does not recognise still races on the
-# substring arms, and `-relay` keeps its precedence over a recognised worker - so a
-# work worker whose slug says `relay` (<TICKET>-N82-relay-guard-verb-substring)
-# is still counted as a relay, the same defect class already removed for
-# `console`, left alone here because no relay has a canonical identity to derive.
 role_of() {
     [ -n "$1" ] || { echo unattributed; return 0; }
     if _sc_is_worker_title "$1"; then

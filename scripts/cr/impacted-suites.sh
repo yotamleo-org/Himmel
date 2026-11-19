@@ -133,15 +133,6 @@
 # (or searched) is an ERROR, never an empty list: an empty impacted set reads
 # as "nothing to run". --run otherwise exits with the suite's own exit code.
 #
-# ponytail: source edges and JS/Python imports are followed by basename.
-# A suite that reaches a changed file through an intermediate shell script
-# it EXECUTES (bash a.sh, no source line), or builds the path at runtime
-# ("$dir/uninstall-$kind.sh"), is still not found — the union under-
-# approximates there; the --selector-miss ledger is how such a gap surfaces, and
-# a suite names the basename it really drives on a `# selector: names` line. A
-# path-scanning suite is covered by content_rules, one row each.
-# A basename shared by many files (lib.sh) over-approximates on purpose; the
-# safe direction for a gate is a suite too many, never one too few.
 #
 # Platform guard: POSIX bash 3.2+ (no mapfile / associative arrays); git + grep.
 set -uo pipefail
@@ -221,20 +212,7 @@ runner_for() {
 # runner_for by hand; there is no way to derive one from the other without
 # reimplementing the YAML.
 #
-# ponytail: this scans `run:` LINES only — a JS/TS test invocation written
-# inside a `run: |` block scalar body (the command on a following indented
-# line, not the `run:` line itself) is invisible to it. No current ci.yml step
-# does this; widen the grep to a block-scalar-aware scan if one ever does.
 #
-# ponytail: the `npm test` marker (kind npm-test) matches by SUBSTRING only,
-# with no directory context — it is satisfied by `npm test` run from ANY
-# working directory, including a future one runner_for has no case for, and
-# it cannot detect drift within itself (unlike the single-line markers below,
-# nothing on the `run: npm test` line names which vitest directory it covers
-# or would show a swap to a different runner there). Narrowing it means
-# parsing ci.yml's `working-directory:` keys, which this grep-based check
-# deliberately does not do — a line-level scan fails closed instead (see
-# runner_check's ambiguous case) rather than guess at that attribution.
 runner_known_markers() {
     cat <<'EOF'
 lanes-node-suites|node-test|scripts/lanes/tests/**/*.test.mjs
@@ -577,10 +555,6 @@ fi
 # -z, because without it git C-quotes a name holding a double quote,
 # backslash or tab ("a\"b.sh"): no needle matched it and the run listed nothing
 # and exited 0. -z output is raw; tr turns it into the one-per-line lists the
-# loops below read. ponytail: a name holding a newline still splits in two (a
-# bogus path, never a missed one); upgrade path is NUL-reading loops if one ever appears.
-# --record certifies the whole PR at --head: the range must end at that head
-# and start from its merge-base with the remote default branch.
 if [ "$record" -eq 1 ]; then
     if [ "$head_sha" != "$rec_head" ]; then
         echo "impacted-suites.sh: --record --head ${rec_head} is not the range's head (${head_sha})" >&2; exit 2
@@ -660,8 +634,6 @@ add_needle() {
 # needle_ere's, so `test-<stem>` and `x-<stem>` are other words; the trailing one
 # also refuses `.`, so `<stem>.bak` and a longer `<stem>-extra` are not matched
 # (the basename needle already matches `<stem>.sh`).
-# ponytail: a sentence-final `<stem>.` is missed, and a stem shared by two
-# directories over-approximates; upgrade path is a --selector-miss row naming one.
 add_stem_needle() {
     local st="${1##*/}" esc
     case "$st" in *.sh) st="${st%.sh}" ;; *) return 0 ;; esac
@@ -708,9 +680,6 @@ src_lead='(^[[:space:]]*[({]?|^[[:space:]]*[^#[:space:]].*[[:space:];&|({])'
 # after a `cd` (`cd dir && source diff`) and `# shellcheck source=diff`. Only a
 # line that sources it counts, so a plain `diff a b` command stays unselected.
 # Prints nothing for any other file.
-# ponytail: `cd dir && bash diff` and "$dir/$f" with f=diff stay unfound (no
-# source keyword to anchor on); upgrade path is a lint on new suites if a
-# --selector-miss row ever names one.
 bare_source_ere() {
     local f="$1" name="${1##*/}"
     [ "${f#*/}" != "$f" ] || return 0
@@ -898,8 +867,6 @@ if [ "$cg_rc" -eq 0 ]; then
 fi
 
 # Imports are a reverse dependency index at this head, shared by batch queries.
-# ponytail: module basenames deliberately over-select same-named repo modules;
-# runtime-computed imports need a selector-miss row before adding a new parser.
 : > "$work/importers" || io_fail "creating the importer list"
 : > "$work/import-edges" || io_fail "creating the import index"
 # One git grep prints every import-shaped line of every importer ("<head>:<path>"
@@ -1007,9 +974,6 @@ done < "$work/changed"
 # anywhere plus any source line was tried and cascades to every suite (557 of
 # 557 on a 2-file diff), so (b) is deliberately the narrower idiom.
 # The visited set ($seen) makes a source cycle terminate; each round is a few greps.
-# ponytail: non-.sh sourcers, `exec` edges, a name built at run time
-# (`"$dir/$name"`) and a backslash-continued `source \` are not followed —
-# upgrade path is a real dataflow pass if a T6 selector-miss row shows one.
 
 comment_lexer() {
     cat <<'EOF'
@@ -1132,8 +1096,6 @@ read_comments_apart=0
 # Every pattern holds one literal of <litfile> as a required substring, so a file
 # or a line with none of them cannot match: one fixed-string pass keeps those
 # files, a second keeps those lines, and the unchanged ERE runs over what is left.
-# ponytail: a path holding a newline splits in two, as with the -z lists above;
-# upgrade path is NUL-reading consumers if one ever appears.
 grep_narrowed() {
     local pf="$1" lf="$2" out="$3" what="$4" p narrow="$work/narrow.d" src="$work/narrow.src" gflags
     shift 4
@@ -1165,10 +1127,6 @@ grep_narrowed() {
     # set once above), no candidate is unpacked: all take the
     # per-file path below, which reads the raw blob. A candidate the unpack lacks
     # (export-ignore), or holds as a symlink, takes that path too.
-    # ponytail: a pattern hit in a comment of .gitattributes also takes the slow path;
-    # an attribute set only in $GIT_DIR/info/attributes is the station's, not the PR's.
-    # Upgrade path: git cat-file --batch if the slow path ever matters.
-    # The candidate list is "<head>:<path>" NUL entries: strip the prefix first.
     tr '\0' '\n' < "$work/narrow.cand" | sed "s/^${head_sha}://" | tr '\n' '\0' > "$work/narrow.rel" || io_fail "reading the ${what} candidates"
     : > "$work/narrow.reg" || io_fail "creating the ${what} candidate list"
     : > "$work/narrow.irr" || io_fail "creating the ${what} candidate list"
@@ -1361,12 +1319,6 @@ done
 # The row splits on its first `|`, so an ERE never spells one: an alternation is
 # one row per branch (the two ledger rows, mirror the registry
 # lint's own ~/.himmel ledger pattern, .jsonl and .log).
-# ponytail: whole-file, not added-lines — any edit to a file that already spells
-# a ledger path runs the registry lint (0s); upgrade path: diff-hunk matching if
-# a --selector-miss or cost review shows the widening matters.
-# Rows match case-insensitively (the uninstall rule's suite reads
-# the name in any case); the ledger rows widen with it, which only over-selects
-# a 0 s suite.
 
 while IFS= read -r f; do
     [ -n "$f" ] || continue
@@ -1423,12 +1375,6 @@ done < "$work/changed"
 # content-only page edit selects them. docs/internals/ and docs/release/ get no
 # veto: dropped-terms reads each internals page a user page names, and a
 # release page can add such a name.
-# ponytail: whole-repo walkers are left out on purpose — scripts/test-adopt.sh
-# and scripts/himmelctl/test/test-versioned-layout.sh copy the whole tree (a
-# `*` row would run 554s+19s on every PR);
-# scripts/ci/test-run-shell-tests.sh 23c only reacts to a NEW top-level tree;
-# scripts/lib/test-vm-guest-excludes.sh only to a secret-named file. Upgrade
-# path: a row here once a --selector-miss ledger row names one of them.
 
 while IFS= read -r f; do
     [ -n "$f" ] || continue
@@ -1474,12 +1420,6 @@ done < "$work/tree-invariants"
 # cr_guarded (the file holding the edge), or a file a cr_guarded file names (the
 # newly reached target, e.g. #1851's worker-jira-status.sh). Select the suite for
 # both. The runbook twins are seeds, rows in scan_roots.
-# ponytail: the second arm matches by basename text in the guarded files, so a
-# basename shared with an unrelated file over-selects (the safe direction); a
-# target named only through an assembled path is the suite's own ponytail gap.
-# The extension is appended below, never written on an assignment line: the suite
-# reads a path stored in a variable as an edge, and an edge to itself would walk
-# its own file list into the closure.
 closure_suite=scripts/cr/test-cr-guarded-closure
 closure_suite="${closure_suite}.sh"
 if grep -Fxq -- "$closure_suite" "$suites"; then
@@ -1544,9 +1484,6 @@ fi
 # read at BOTH the merge-base and the head; a PR that removes a suite's marker
 # must also change that suite, which the changed-suite rule already selects, so
 # the merge-base read is a second guard, not the only one. A suite no longer in
-# the head tree is dropped. ponytail: a content-only edit to a scanned file does
-# not trigger it (the cost would be every PR), upgrade path is "always" if a
-# modify-only break is ever recorded.
 if [ -s "$2" ]; then
     for ts_rev in "$mb" "$head_sha"; do
         : > "$work/treescan.out" || io_fail "creating the tree-scan list"   # a failed open is rc 1 below

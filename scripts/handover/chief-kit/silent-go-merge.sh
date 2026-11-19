@@ -40,9 +40,6 @@
 # CHIEF_SILENT_GO_PS (prints `<pid> <args>` lines instead of ps).
 # CHIEF_SILENT_GO_TIMEOUT bounds the merge (seconds, default 900). On expiry the
 # merge is killed and reported as rc=124.
-# ponytail: the bound kills a merge-on-green.sh that hangs past it, and the kill can
-# land after the merge itself; the FAILED alert then sends a human to look.
-# Upgrade path: run the merge detached, and have the next sample read its audit row.
 #
 # PLATFORM GUARD: the chief kit is Linux-only. bash 3.2-safe.
 set -u

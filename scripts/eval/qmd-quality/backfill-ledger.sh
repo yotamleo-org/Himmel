@@ -31,5 +31,5 @@ trap 'rm -f "$FRESH"' EXIT
 bun "$HERE/score.ts" --golden "$GOLDEN" --runs "$DIR/runs.jsonl" --ci-out "$DIR/ci.json" --cases-out "$DIR/cases.json" >"$FRESH" || exit 2
 # The row's metrics come from scores.tsv and its CIs from the rescore: they must describe the same data.
 cmp -s "$FRESH" "$DIR/scores.tsv" || { echo "backfill-ledger: $DIR/scores.tsv does not match runs.jsonl scored against $GOLDEN; refusing a row of mixed data" >&2; exit 2; }
-META="$(python3 -c 'import json,sys; print(json.dumps({"backfill": "HIMMEL-4650", "stored_out": sys.argv[1]}))' "$DIR")" || exit 2
+META="$(python3 -c 'import json,sys; print(json.dumps({"backfill": True, "stored_out": sys.argv[1]}))' "$DIR")" || exit 2
 python3 "$HERE/ledger-row.py" "$DIR" --meta-json "$META" "${PASS_THROUGH[@]}"

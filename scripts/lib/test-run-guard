@@ -26,15 +26,6 @@
 # Seams only ever add what counts as real, so none of them can open the guard:
 # HIMMEL_REAL_STATE_EXTRA_ROOTS, HIMMEL_REAL_STATE_EXTRA_TOOL_DIRS (colon lists) and
 # HIMMEL_REAL_STATE_ASSUME_STATION=1 (skip the VM check).
-#
-# Accepted residuals, none closable from process facts (HIMMEL-8819): a plain shell redirect and a
-# direct call of a keyring tool never reach a door, so this guard is never asked; and a detached
-# orphan with no test file, marker or runner in its ancestry has no signal to read.
-# ponytail: a door guards only what calls it. Upgrade path: a mount namespace or a PATH wrapper that
-# puts the real home and keyring out of reach of a test on the station.
-#
-# ponytail: macOS has no station and no /proc, so the guard does not run there. Upgrade path: a
-# `ps -o ppid=,command=` walk if a Mac ever holds real state.
 set -uo pipefail
 set -f
 
@@ -114,9 +105,6 @@ any_real || exit 0
 
 is_test_name() { case "${1##*/}" in test-*|test_*|*.test.*|*.test|*_test.*) return 0 ;; esac; return 1; }
 is_runner_name() { case "${1##*/}" in vitest*|pytest*|py.test|jest*|bats|mocha*|playwright|playwright-test|ava|ctest|phpunit*|rspec*) return 0 ;; esac; return 1; }
-# ponytail: the runner names are a finite list, so an unlisted runner (a wrapper script, a make
-# target) is not seen unless a test file, HIMMEL_TEST_FIXTURE or NODE_ENV names it. Upgrade path: an
-# environment marker every himmel runner exports, if a runner outside this list ever writes real state.
 
 # argv_runs_test <argv...>: a test in script position, never a mention. An inline -c body, a later
 # argument and a session name all leave it unmatched. Sets suite when it knows the file.

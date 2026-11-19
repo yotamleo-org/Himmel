@@ -218,13 +218,13 @@ config loud and recoverable:
   bridge's process, never in a session: the guard refuses the restore, accept
   and enroll verbs from a Claude session.
 
-ponytail: the seed, backups and audit log are owned by the same uid as every
+Limit: the seed, backups and audit log are owned by the same uid as every
 session, so a session can read the seed or plant a backup. The TOTP defends
 against a forged or hijacked Telegram sender, not against a hostile same-uid
 session. Upgrade path: a root-owned store with the restore as an afk-sudo kind
 (after the afk-sudo root helper).
 
-ponytail: a planted newest backup becomes the watcher's "newest good backup"
+Limit: a planted newest backup becomes the watcher's "newest good backup"
 suggestion, and `list` names a changed key only as "values differ", so the
 operator cannot tell a planted value from a real one before restoring. Upgrade
 path: the same root-owned store, whose backups a session cannot write.
@@ -352,7 +352,7 @@ add a new one to `stationSecrets` first. Then:
 ## The .env split: what moves, what stays, and a mismatch
 
 Behaviour config (`himmel.conf`): `HANDOVER_DIR`, `USER_SLUG`,
-`LUNA_VAULT_PATH`, `HIMMEL_DOC_FRESHNESS`, `HIMMEL_INITIATIVE`,
+`LUNA_VAULT_PATH`, `LUNA_VAULT_AUTOCOMMIT`, `HIMMEL_DOC_FRESHNESS`, `HIMMEL_INITIATIVE`,
 `HIMMEL_AFK`, `HIMMEL_INITIATIVE_AFK`, `HIMMEL_WHERE_ARE_WE`,
 `HIMMEL_WHERE_ARE_WE_STALE_HOURS`, `HIMMEL_WORKTREE_NUDGE`,
 `HIMMEL_UPDATE_AUTOSTASH`, `CR_PROFILE`, `CR_CLAUDE_AGENTS`,

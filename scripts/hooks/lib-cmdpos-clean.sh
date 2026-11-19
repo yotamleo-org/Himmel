@@ -63,17 +63,6 @@ names_target() { # names_target <text> - mentions pr-check, a scripts/cr/
     pc=${pc//pr-check.md/}
     case "$pc" in *pr-check*) rc=0 ;; esac
     for t in $TARGETS; do
-        # ponytail: this is a PREFIX-stem match (cr/<stem>*), so a filename
-        # that merely STARTS WITH a guarded stem after "cr/" (e.g. a target
-        # named "foo.sh" also matches "cr/foo-other.sh") counts as a mention
-        # even though it names a different file.
-        # Over-matching here only makes `mentions` MORE
-        # likely to be 1, which routes the command into the slower,
-        # stricter classification path below rather than the early
-        # fast-exit - the safe direction (a false-deny residual, not a
-        # hole). The tokenizer only drops provably inert quoted
-        # words from $flat; it does not change this match. Upgrade path:
-        # match the tokenized path word exactly, if the residual recurs.
         case "$1" in *[cC][rR]/"${t%.sh}"*) rc=0 ;; esac
     done
     # same prefix-stem match, keyed on each HTARGET's own

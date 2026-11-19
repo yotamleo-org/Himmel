@@ -13,10 +13,6 @@
 # A `;` inside a quoted span is blanked before matching, so a loop head such
 # as `while [ "$x" != ";" ]` is still read as one head.
 #
-# ponytail: the match is textual over the whole command, so a heredoc body or
-# a quoted string that holds a whole busy loop is refused too, and a
-# backslash-escaped quote outside any quotes can shift the quoted spans; a
-# real shell tokenizer would tell data from code if that ever bites.
 #
 # Hook I/O: the tool-call JSON on stdin. Exit 0 allows; exit 2 denies, and
 # stderr is shown to Claude. Each deny appends one JSONL row (ts, session_id,

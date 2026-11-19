@@ -110,13 +110,6 @@
 # file or into the primary .claude/, python or node writing one, git checkout
 # or restore of one, and any write chained after a reader.
 #
-# ponytail: a variable-built path (`f="$HOME/.claude/settings.json"; cat
-# "$f"`), a glob (`cat .cla*/settings.json`), a symlink staged to alias the
-# file, or an absolute path into a SECOND clone of this repo elsewhere on
-# disk (not this session's own primary) get no special handling here — none
-# are text-matchable without a shell parser, and the Claude permission
-# matcher (`permissions.deny` patterns), not this hook, is the right layer
-# for that residual.
 #
 # Hook input arrives on stdin as JSON. Exit codes:
 #   0 — allow
@@ -137,7 +130,7 @@ if ! { [ -r "$SCRIPT_DIR/../lib/py-armor.sh" ] && . "$SCRIPT_DIR/../lib/py-armor
     exit 2
 fi
 
-# >>> BEGIN shell-tokenize (HIMMEL-3546; canonical: scripts/hooks/lib/shell-tokenize.sh) >>>
+# >>> BEGIN shell-tokenize (canonical: scripts/hooks/lib/shell-tokenize.sh) >>>
 # st_tokenize CMD — split CMD into words and segments the way bash reads it,
 # expanding nothing. Returns 0 (ST_OK=1) on success, 1 (ST_OK=0) on anything
 # it does not model — an unterminated quote, an unmatched `)`, `;;`, a
@@ -910,7 +903,7 @@ mentions_primary_or_home() {
     # (`${HOME:-/x}`, `${HOME%/}`) is $HOME too, and a `$(…)` or backtick
     # substitution right before `/.claude` can print $HOME (`$(printenv
     # HOME)/.claude`), so it fails closed; a plain `$X/` or
-    # `${X}/` stays a variable-built path (the header ponytail).
+    # `${X}/` stays a variable-built path.
     local out
     # shellcheck disable=SC2016 # literal unexpanded $home/${home} text, not expansion
     out=$(printf '%s' "$c_noquotes" | grep -E '(~[a-z0-9._-]*|\$home|\$\{home([^a-z0-9_}][^}]*)?\}|[)`])/\.claude([^a-z0-9_.-]|$)') || true
@@ -953,10 +946,6 @@ interp_write_api() {
 # corpus is full of those. The open-mode span crosses `;` (a `';'` string
 # literal must not end it), so it can over-deny a body that opens one file
 # and passes 'w' to another call; ri + rh bound that, fail-closed.
-# ponytail: a body the text does not hold (`base64 -d | python3`, `python3
-# x.py`, `-c "$(cat f)"`) is not seen, it names no API; a shell `$HOME` spliced
-# into the body is the variable-built path the header ponytail already names.
-# ponytail: upgrade path HIMMEL-4317.
 interp_home_write() {
     local LC_ALL=C
     # shellcheck disable=SC2016 # literal `$` text in the home-API pattern
@@ -1004,10 +993,6 @@ interp_dyn_api() {
 # neighbours are not plain expression punctuation (a string prefix like
 # `f'`, a quote inside a comment). A literal whose content is exactly `home`
 # (`os.environ['HOME']`) or holds `$`, `@` or `{` (interpolation) is kept.
-# ponytail: a body that writes a literal as code to a file and runs it in the
-# same command (`import x` of a just-written x.py) reads as data — the same
-# ceiling as `python3 x.py` (interp_home_write's ponytail).
-# ponytail: upgrade path HIMMEL-4317.
 interp_literal_blank() {
     local LC_ALL=C k=0 w b out=''
     local rint='^(python[0-9.]*|pypy[0-9.]*|node|nodejs|bun|deno|perl[0-9.]*|ruby[0-9.]*)$'
@@ -1077,11 +1062,6 @@ _ilb_body() {
 # mode and encoding). Such a heredoc that merely names a live settings file
 # reads it; the quoted delimiter keeps the shell from expanding
 # the body.
-# ponytail: the body may use only the identifiers of a short read-only list
-# (anything else, a comment, a backslash, an f-string or a triple quote denies),
-# so an alias or an indirection cannot reach a write API; a legitimate reader
-# that needs another name falls back to the deny. Upgrade path: read the body
-# with a real python parser.
 python_heredoc_readonly() {
     _py_heredoc_body "$1" && _py_body_readonly "$_PYH_BODY" 0
 }
@@ -1090,9 +1070,6 @@ python_heredoc_scratch_write() {
     _py_heredoc_body "$1" && _py_body_readonly "$_PYH_BODY" 1
 }
 
-# ponytail: a name with a space in it (a quoted space splits the word here)
-# is not a settings file name, and the escapes check is global so a split
-# word cannot hide one; upgrade path: judge the tokenizer's words.
 _ansi_words_inert() {
     local LC_ALL=C had_noglob=0 w lw rest ok=1 seen=0
     rest=${1//\\t/}
@@ -1203,19 +1180,6 @@ _py_body_readonly() {
 # first verb). A Bash command that tokenizes (TOK=1) is
 # judged per segment by _tok_readonly_ok instead; this text check now serves
 # PowerShell and a Bash command the tokenizer could not vouch for (TOK=0).
-# ponytail: a bare `;` vetoes the whole command unconditionally, even when
-# every `;`-separated segment is independently read-only (e.g.
-# `SP=/some/path; jq '...' "$SP/a.json"; jq '...' "$SP/b.json"` denies).
-# Panel rounds 2 and 3 both found a real bypass in a
-# narrower per-segment allowlist (a same-line assignment shortcut riding
-# past a later write on a newline-embedded segment; the same shortcut then
-# recurring for a different segment shape one round later) — rising-severity
-# findings concentrated in that one surface, so panel-first-pass.sh's own
-# HALT-and-simplify signal fired and the per-segment split was reverted back
-# to this blunt veto rather than patched a third time. A real fix needs
-# quote-aware tokenization of the whole command, not another metacharacter
-# scan. The Bash side does that (_tok_readonly_ok);
-# PowerShell would need its own tokenizer, if a false deny there recurs.
 is_readonly_allowlisted() {
     local c="$1" first second
     # shellcheck disable=SC2016 # literal metacharacter text, not expansion
@@ -1483,26 +1447,9 @@ _unjudged_cmd_word() {
 # (_uj_text_dests), or every word to the end when the word carries a `(`.
 # There a lone `-`, `--`, `*` or `+` (a markdown bullet in a heredoc body) is
 # not judged.
-# ponytail: a concrete path deeper under `.claude/` is not a destination (the
-# settings-name rule judges a settings leaf whatever the verb); upgrade path:
-# J1676 ruling — widen _uj_dir_itself only on a reported plant through one.
-# An exec wrapper (`env`, `sudo`, `xargs`, `nohup`, `timeout`, zsh's `noglob`
-# …) hands its operand on as the command, so after one the first word that
-# is not a flag, an assignment or a number is judged as the command word too;
-# after a `--` a flag-shaped word is the command (`env -- -ln …`).
-# A bare word right after a wrapper option that takes an argument
-# (_wrapper_opt_arg: `sudo -u root`) is that argument, not the command; a
-# word there that is itself unjudged is still judged, so the table can only
-# over-deny, never hide one.
-# ponytail: an argument-taking wrapper option missing from the table, and a
-# command a program runs from its arguments (`find -exec`, `sh -c '…'`), are
-# not judged; upgrade path: extend _wrapper_opt_arg when such a plant is seen.
 
 # _wrapper_opt_arg WRAPPER OPT_LC — 0 when the exec wrapper's option takes the
 # next word as its argument. OPT_LC is lowercased, so `-U`/`-u` share a row.
-# ponytail: lowercasing reads `sudo -Hu root` as `-h u`, so `root` is judged
-# as the command; the code judges both case readings (a case-exact table
-# alone turns `sudo -H root /opt/t/plant` from deny to allow).
 _wrapper_opt_arg() {
     local o=$2 i=1 ch
     # A short-option cluster (`sudo -iu root`): as getopt reads
@@ -1892,9 +1839,6 @@ EOF
 # _tok_sensitive_name NAME — an assignment that can change what a later
 # read-only command runs or reads: the loader, locale, pager, config-home and
 # shell-behaviour variables, and each allowlisted tool's own environment.
-# ponytail: a denylist — a variable a future allowlisted tool reads is not
-# here until someone adds it; the upgrade path is to allow only lowercase
-# names, which needs the chief repros (`SP=…`) to change first.
 _tok_sensitive_name() {
     case "$1" in
         PATH|IFS|HOME|SHELL|ENV|CDPATH|TMPDIR|TZ|LANG|LANGUAGE|POSIXLY_CORRECT) return 0 ;;
@@ -2294,9 +2238,6 @@ _tok_lit_name() {
 # string (and git grep without its pager option), gh only as `gh api|pr|issue|
 # run|release|search` (never `repo`, which forwards git flags), sed only with inert
 # scripts, sort without --compress-program, printf without -v or %n.
-# ponytail: an allowlist — a program not listed (awk, find, xargs, python,
-# bash, …) keeps the old any-`$'` reading, fail-closed; upgrade path: add a
-# program here with a RED row when the den-ls corpus shows it.
 _tok_no_shell_ok() {
     local k=0 s sg fk=-1 first='' sub='' w lw name pa=0 re='^[A-Za-z_][A-Za-z0-9_]*$'
     [ "$ST_SUBST" = 0 ] || return 1
@@ -2726,13 +2667,6 @@ _dc_split_words() {
 # backtick spans. A bare `*`/`?` run never matches a dot-name
 # unless the command can turn on dotglob/GLOB_DOTS (DC_DOTS), so
 # `cp src/* d/` is left alone.
-# ponytail: a name built only from a variable or substitution (`~/$X`,
-# `~/$(printf .claude)`) is not folded, it can name anything; a fold-time
-# reading would deny every `$(pwd)/x`.
-# ponytail: upgrade path HIMMEL-4220.
-# ponytail: DC_DOTS reads only the command text, so a dotglob/GLOB_DOTS left
-# on by the shell profile is unseen and `~/*/x` passes.
-# ponytail: upgrade path HIMMEL-4222.
 #
 # A long TEXT is folded in chunks cut at a space no component can cross: bash
 # copies the whole remaining text on every name, so one pass over 6000 `$"`
@@ -2861,7 +2795,7 @@ _dc_fold_one() {
         esac
         # a name led by a substitution folds when literal text follows the
         # span (`$(printf .cl)aude`); a bare span (`$(pwd)/x`,
-        # `${a:+$a,}$w`) is a variable-built path (the header ponytail)
+        # `${a:+$a,}$w`) is a variable-built path
         # shellcheck disable=SC1083,SC2016 # literal `$(`/`${`/`{` pattern bytes, not expansion
         case "$c" in
             '$('*|'${'*|'`'*)
@@ -3459,16 +3393,6 @@ has_brace_climb_word() {
     case "$w" in *.*) [[ "$w" =~ \{,|,\}|,, ]] && return 0 ;; esac
     return 1
 }
-# ponytail: matching against already quote-stripped text means a genuinely
-# quoted brace-containing filename (e.g. a file literally named `.{,.}`,
-# passed as `'.{,.}'`) is denied the same as a real unquoted, expandable
-# `{…,…}` — ST_Q[] only tracks "any byte of this word was quoted", and bash
-# still brace-expands an unquoted `{...}` segment even when another part of
-# the SAME word is quoted, so that per-word flag cannot safely exempt this
-# check. Accepted false-deny, same fail-closed direction as this file's other
-# documented residuals. Upgrade path: per-character quote
-# tracking in the tokenizer.
-# ponytail: upgrade path HIMMEL-3696.
 
 # changes_directory CMD_LC CMD_N — a cd/pushd/popd word anywhere in the
 # command, with the same complement-of-a-word-character boundary as the verb
@@ -3486,26 +3410,6 @@ has_brace_climb_word() {
 # worktree's own `tar -C .claude` — an accepted, documented false deny (test
 # 136) — but that is a side effect of the shared `-C` spelling, not something
 # this function needed to grow to close the residual.
-# ponytail: a relative `find … -exec` naming `.claude` as its target is still
-# not matched by either mechanism — the remaining documented residual.
-# (A settings-named GLOB leaf behind a cd/pushd is resolved against the cd
-# bases — _cd_bases; the symlink residual below is unchanged.)
-# ponytail: a cd/pushd/popd/-C matched here relocates the real target
-# directory, but neither _check_write_operand()'s `wabs` nor check_target()'s
-# own relative-join (both use the fixed PreToolUse $cwd) adjust for it — so
-# `cd sub && cp y link`, where `sub/link` is a pre-existing symlink into the
-# primary's live settings.json, resolves `link` against the wrong base and
-# silently evades items 1 and 3. Deferred
-# rather than blunt-denied: the write-verb operand scan already inspects
-# every word including the verb itself (round-2 codex-1's accepted ruling),
-# so a blind "deny any relative operand when this function matches" would
-# deny virtually any write-verb command containing a cd from a nested
-# worktree, unrelated to .claude — a materially bigger blast radius than
-# this function's existing role, where it only ever fires as an
-# additional forcing factor on a command ALREADY flagged by another signal.
-# ponytail: upgrade path HIMMEL-3694 (track the real post-cd cwd per command segment
-# via the tokenizer's own ST_S/ST_SEP arrays, falling back to deny only when
-# a cd target isn't a simple literal).
 changes_directory() {
     local out
     out=$(printf '%s' "$1" | grep -E '(^|[^a-z0-9_])(cd|pushd|popd)([^a-z0-9_]|$)') || true
@@ -3692,11 +3596,6 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # ~/.claude && eval '…'`): each body's run inherits CD_B and CD_UNK
     # (HIMMEL_LSB_CDB, newline-joined, and HIMMEL_LSB_CDUNK), so its own
     # relative leaves are judged under the same bases.
-    # ponytail: a `-C <dir>`/`--chdir` (git, make, env) does not move the
-    # shell's own redirect, so it is not a base; changes_directory still voids
-    # the worktree exemption for it. A CDPATH name spelled through an
-    # expansion (`declare CD${x}PATH=`) is not seen.
-    # ponytail: upgrade path HIMMEL-3694.
     CD_B=() CD_UNK=${HIMMEL_LSB_CDUNK:-0} CD_DONE=0
     if [ -n "${HIMMEL_LSB_CDB:-}" ]; then
         while IFS= read -r w; do
@@ -3789,9 +3688,6 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         # ends in one of those operators is such a group (with a space between
         # them, bash refuses it as a syntax error; a lone `!` is negation), so
         # the command goes to the fallback, which reads every word as a glob.
-        # ponytail: a zsh glob qualifier (`*(.)`) or `$((a*(b)))` takes the
-        # fallback too — stricter only where settings-named text is present;
-        # upgrade path: teach st_tokenize extglob words if one false-denies.
         if [ "$TOK" = 1 ]; then
             widx=0
             while [ "$widx" -lt "$ST_N" ]; do
@@ -3815,32 +3711,6 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         # command the tokenizer could not vouch for (TOK=0) needs none of
         # this: its fallback splits the quote-stripped text and treats every
         # word as a glob already.
-        # ponytail: only shells named here (any path, any wrapper before them)
-        # and `eval` have their body re-judged; `su -c`, `ssh host '…'`,
-        # `watch '…'` bodies stay one word, and an `eval` behind a construct
-        # the command-word walk below does not know (an unlisted wrapper) is
-        # not a body — a `case` arm's `;;` fails the tokenizer, so its body is
-        # judged by the TOK=0 split instead. Upgrade path: add
-        # the name when a bypass report names one.
-        # The scan stays linear (J1818a): `eval` is a body only as a segment's
-        # command word (after assignments, `if`/`then`/`do`/`!`/`{` and exec
-        # wrappers with their options), and its body's words are not scanned
-        # again here, so `echo eval eval …` is no body at all. A shell's body
-        # is one word, so it is matched anywhere (`find -exec sh -c`, `xargs
-        # bash -c`). Nesting is capped: a body found HIMMEL_LSB_DEPTH (the
-        # child count above this run) 3 levels down is refused fail-closed.
-        # The NUMBER of runs is capped too, across all levels:
-        # a command with hundreds of bodies spawned hundreds of runs that
-        # outlived the hook chain's timeout. The top-level run makes one
-        # tally file, every run below inherits it (HIMMEL_LSB_TALLY), and
-        # each spawn first appends one byte to it and is refused fail-closed
-        # once it holds more than 16. Bound: every run in the tree is
-        # preceded by exactly one append to that one file (a run below the
-        # top never makes its own: without a tally it refuses), so the whole
-        # tree is at most 16 runs. 16 is over five times the most runs any
-        # earlier row of the suite needs (3: the depth-cap eval chain).
-        # ponytail: a SIGKILLed top-level run leaves its tally file behind
-        # (a few bytes in TMPDIR); upgrade path: sweep lsb-tally.* if seen.
         if [ "$TOK" = 1 ]; then
             # J1909 B2: a body after a cd runs where the cd moved it
             case "$ST_LOWER" in *cd*|*pushd*|*popd*) _cd_bases ;; esac
@@ -3892,11 +3762,6 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
             # anything it does not fully model — an unknown escape, `\c`, a
             # `$` that is not `${NAME}`, a word-leading `#`, an unterminated
             # quote — so the caller stays fail-closed.
-            # ponytail: a text decoder cannot close the shell/option-parsing
-            # class (env option spellings, operands spliced after the text,
-            # separator-led words), each judge round finds another;
-            # ponytail: upgrade path HIMMEL-5233, then HIMMEL-5236 (deny live-settings writes
-            # by effect, path or inode, not by command text).
             # shellcheck disable=SC1003,SC2016 # literal \ $ and ' bytes
             _envs_decode() {
                 local LC_ALL=C t=$1 n k=0 c e st=u lit='' out='' w='' inw=0 name rest q="'"
@@ -4133,11 +3998,6 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # redirection metacharacter, so the read-only allowlist only gets
     # stricter. PowerShell's escape is the backtick, and there `\` is a path
     # separator: fold it to `/` to match the forward-slash roots (codex-3).
-    # ponytail: only the separator is folded — a POSIX-mount spelling
-    # (`/c/Users/...`) of a drive-letter root is still not matched.
-    # A line continuation (escape + newline) vanishes entirely, newline
-    # included, so it is removed as a pair first; a bare newline stays, since
-    # it separates commands.
     if [ "$tool_name" = "PowerShell" ]; then
         cmd_n=${cmd_n//$'`\r\n'/}
         cmd_n=${cmd_n//$'`\n'/}
@@ -4208,10 +4068,6 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # TOK=0 too, unless a heredoc or `$'…'` caused it: a command past the
     # tokenizer's size cap (8192 bytes) still gets the quote-aware reading,
     # so padding cannot skip it.
-    # ponytail: a heredoc body is read as code, and a `"…"` around a `$(…)`
-    # with its own quotes is mis-paired, so the heredoc case is left to the
-    # text layer as on main.
-    # ponytail: upgrade path HIMMEL-4229.
     if [ "$tool_name" = Bash ] && [ "$dc_zq" = 1 ] \
         && [ "$ST_HEREDOC" = 0 ] && [ "$ST_ANSIC" = 0 ]; then
         _dc_unquoted "$ST_LOWER"
@@ -4270,9 +4126,6 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # Judged on the raw text — the fold removed the quote —
     # with line continuations joined first, since bash joins `$\<NL>'` into
     # `$'` before it reads words.
-    # ponytail: a word whose `settings`/`claude` letters are themselves
-    # escaped (`$'\x73ettings.json'`) is not caught — same class as a path
-    # built by `$(printf …)`, `printf %b` or `${var@E}`.
     ansi_c=0
     cmd_j=${cmd//$'\\\r\n'/}
     cmd_j=${cmd_j//$'\\\n'/}
@@ -4408,14 +4261,6 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         case "$wleaf" in
             [sS][eE][tT][tT][iI][nN][gG][sS].[jJ][sS][oO][nN]) : ;;
             [sS][eE][tT][tT][iI][nN][gG][sS].[lL][oO][cC][aA][lL].[jJ][sS][oO][nN]) : ;;
-            # ponytail: a brand-new, non-settings-named leaf reached through a
-            # pre-existing symlinked PARENT that itself resolves into the
-            # primary's live .claude/ never reaches check_target() here (the
-            # leaf filter exists to keep the padded-command case cheap, per
-            # the comment above) — an arbitrary new file, just not
-            # settings.json, can still land in the live .claude/ this way.
-            # ponytail: upgrade path HIMMEL-3697 (a cheaper parent-existence check that
-            # does not require narrowing to a settings-only leaf name).
             *) return ;;
         esac
         wparent="${wabs%/*}"
@@ -4497,9 +4342,6 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     fi
     # A gh download or clone with no directory operand writes into the cwd, so
     # the cwd is judged as a destination.
-    # ponytail: judged even when an explicit scratch directory is named, so a
-    # shell sitting in the live .claude denies that download too; upgrade path:
-    # read the -D/-O operand and judge the cwd only without one.
     if [ "$GH_WRITE" = 1 ]; then _check_one_operand .; fi
     # An unjudged command word (`$L`, `-ln`, `/bin/l?`) that is not
     # a write verb by its text alone still has its destination operands
@@ -4533,11 +4375,6 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # allowlisted commands and `ls` are exempt below, as for a named settings.
     # A glob in the `.claude` component itself (`.cla*/settings.json`) is
     # folded to `.claude` before this runs (_dc_name_fold).
-    # ponytail: a glob in another DIRECTORY component, a source
-    # tree with the settings file deeper than `<src>/.claude/`, and a case-
-    # insensitive `DLINK/` spelling (needs a case-insensitive filesystem to
-    # model) are not judged.
-    # ponytail: upgrade path HIMMEL-3934, a path-expanding parse.
     variant_dest=0
     # _cv_op P — _check_one_operand P, and P with its `..` resolved
     # lexically too (J1909 B2): `~/.config/../.claude/sett*.json` names the

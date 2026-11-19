@@ -404,8 +404,6 @@ if [ -z "$existing_pr" ]; then
     number=${url##*/}
 else
     number="$existing_pr"
-    # ponytail: GitHub only — the forge seam has no PR-title read, so Bitbucket
-    # keeps the branch check alone; add a seam read when one is needed.
     if [ -n "$title_key" ] && [ "$(forge_detect)" = github ]; then
         pr_title=$("${GH_CMD:-gh}" pr view "$number" --json title --jq .title 2>/dev/null) || pr_title=""
         pr_key=""

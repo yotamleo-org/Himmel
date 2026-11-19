@@ -757,9 +757,6 @@ fi
 # checks). The default model stays with each lane's block below; deepseek takes
 # it from the launcher's own export. glm refuses until it has a launcher
 # contract. An unknown lane is a usage error, never a fallback to native.
-# ponytail: usage-preflight.sh has no deepseek row, so deepseek rides its
-# backend-gated "openrouter" gate (the launcher checks balance itself) and the
-# fleet census labels it native; upgrade path = a deepseek row there.
 lane_registry() {
     LANE_BIN_NAME=""; LANE_BIN_OVERRIDE=""; LANE_CHANNEL=sendmessage
     LANE_PREFACE=""; LANE_BANK_GATE="$1"; LANE_REFUSE=""
@@ -774,7 +771,7 @@ lane_registry() {
         deepseek)
             LANE_BIN_NAME=claude-deepseek; LANE_BIN_OVERRIDE="${HEADED_ARM_WORKER_DEEPSEEK_BIN:-}"
             LANE_CHANNEL="file"; LANE_PREFACE=claudex; LANE_BANK_GATE=openrouter ;;
-        glm) LANE_REFUSE="glm has no launcher contract yet (the GLM slice of HIMMEL-4084 has not landed)" ;;
+        glm) LANE_REFUSE="glm has no launcher contract yet" ;;
         *) return 1 ;;
     esac
 }
@@ -1286,9 +1283,6 @@ fi
 # worktree, a ~/.cache path and a doc with no resume_cwd are untouched, and no
 # resolvable root (nothing to guard) launches as before. Runs before --dry-run's
 # exit, like the denial gate above, so a dry-run predicts the refusal.
-# ponytail: a `..` inside the NOT-yet-existing tail is not collapsed, so such a
-# path is judged by its literal tail; it cannot be entered anyway (the launch
-# cd fails on a missing component), upgrade path: normalise the tail lexically.
 _worker_phys_path() { # <path> -> physical path on stdout; a missing tail is kept verbatim
     local p="$1" tail="" base
     case "$p" in /*) ;; *) p="$PWD/$p" ;; esac
@@ -1335,9 +1329,6 @@ fi
 # refuse, never create: the launcher stays read-only on the repo. Only that path
 # shape is checked, so a judge's scratch dir and a doc with no resume_cwd launch
 # unchanged. Runs before --dry-run's exit so a chief's dry-run sees it.
-# ponytail: the slug rule assumes the clean-garden `<type>+<slug>` basename, so a
-# differently named worktree dir gets a best-effort create command, upgrade path:
-# read the branch from `git worktree list` once a case needs it.
 # shellcheck source=../../lib/git-clean.sh
 . "$HERE/../../lib/git-clean.sh"
 case "$_worker_rcwd" in
@@ -1352,13 +1343,9 @@ case "$_worker_rcwd" in
     # With no repo override, use this repo's worktree or a registered adopter's
     # worktree as the session cwd, never the launcher's primary checkout.
     # An unregistered repo and --consult launch as before.
-    # ponytail: registered = the registry lists the worktree's primary checkout, upgrade
-    # path: read himmel-adopted.json once it carries local repo paths.
     if [ -z "${WORKER_SESSION_REPO:-}" ] && [ -z "${HEADED_ARM_REPO:-}" ] && [ "$CONSULT" -ne 1 ]; then
         _worker_rc_common="$(git_clean -C "$_worker_rcwd" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _worker_rc_common="" # swallow-ok: empty means no registry match, the launch keeps the harness cwd
         _worker_self_common="$(git_clean -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _worker_self_common="" # swallow-ok: empty leaves the harness cwd rule to the registry match alone
-        # ponytail: a repo with a separate git dir (git init --separate-git-dir) has no <checkout>/.git, so
-        # it is not matched and launches as before, upgrade path: match the registry paths by git common dir.
         if [ -n "$_worker_rc_common" ] && { [ "$_worker_rc_common" = "$_worker_self_common" ] \
             || bash "$HERE/../register-state.sh" --check --repo-path "${_worker_rc_common%/.git}" >/dev/null 2>&1; }; then
             HEADED_ARM_REPO="$_worker_wt_phys"
@@ -2127,8 +2114,6 @@ if [ "$LANE" = "native" ]; then
     # A settings env block that pins CLAUDE_CODE_EFFORT_LEVEL beats this launcher's env export and
     # `claude --effort` alike (claude 2.1.319), so the worker would run at the pin, not at
     # EFFORT_EFFECTIVE. Warn, never refuse: a refusal would stop every launch on a pinned station.
-    # ponytail: reads the user, project and project-local settings files only, upgrade by also reading the
-    # managed and --profile merged settings.
     # The files run lowest precedence first, so the last pin found is the one that takes effect.
     if [ -n "$EFFORT_EFFECTIVE" ] && command -v jq >/dev/null 2>&1; then
         _pin_win_f=""; _pin_win_v=""
@@ -2440,8 +2425,6 @@ if [ -n "$PROFILE" ]; then
     # so the consult loads none of the user/project/local scopes and the
     # managed ones that still load are refused when they widen it. A doc inside the repo is
     # always denied, so it is refused too.
-    # ponytail: Bash sandboxed to the doc file plus Claude Code's temp dirs, reads open (no denyRead) and the symlink check is launch-time, upgrade to denyRead once the smoke test proves plugin reads survive (HIMMEL-4066 follow-ups)
-    # ponytail: user/project/local scopes are not loaded, so only their hooks, deny/ask rules and env are carried (their allow rules, statusLine, plugin marketplaces and other keys are not), upgrade path a follow-up ticket when a consult needs another carried key
     if [ "$CONSULT" -eq 1 ]; then
         case "$_worker_doc_path/" in
             "$CONSULT_REPO_CANON"/*)
@@ -2669,8 +2652,7 @@ EOF_CS_FILES
     # gets it: claudex is out (its proxy endpoint makes it ineligible), as are a
     # judge, a relay, a release manager and a consult (read-only, confined roles) and
     # a headless --bg session. The global scrub above already dropped any ambient
-    # value. ponytail: reaches a profiled launch only (the shim is the only flag
-    # seam), --no-profile native keeps a plain claude.
+    # value.
     if [ "$LANE" = "native" ] && [ "$CONSULT" -eq 0 ] && [ "$HEADLESS" -eq 0 ] \
         && [ "$JUDGE" -eq 0 ] && [ "$RELAY" -eq 0 ] && [ "$RM" -eq 0 ] && [ "$READINESS" -eq 0 ]; then
         worker_propagate_env WORKER_SESSION_REMOTE_CONTROL "$NAME"
@@ -3161,17 +3143,6 @@ fi
 # fields below are the whole record; no env value and nothing from
 # ~/.claude.json is ever read into it. Best-effort: a record that cannot be
 # written is noted in $LOG and never stops the launch.
-# ponytail: this records the launch ATTEMPT that reached the exec below;
-# headed-arm.sh can still refuse it (duplicate session name, missing pin).
-# A refused launch of a NEW name has no transcript, so a reader joining on
-# the session name never counts it - but a refused DUPLICATE of a live
-# session's name does match that session's transcript, and its line (which
-# may carry a different profile) sits beside the original: the log is
-# append-only and carries no attempt id, so the reader must not assume one
-# line per session (it is not decided here; the reader's owner decides).
-# ponytail: with no HIMMELCTL_CACHE_DIR and no HOME nothing is written -
-# falling back to /tmp would leave a file uninstall cannot find (the
-# accepted HOME-unset divergence, not repeated here).
 _ll_cache="${HIMMELCTL_CACHE_DIR:-}"
 [ -z "$_ll_cache" ] && [ -n "${HOME:-}" ] && _ll_cache="$HOME/.claude/himmel"
 if [ -n "$_ll_cache" ]; then
