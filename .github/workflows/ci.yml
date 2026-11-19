@@ -1540,6 +1540,10 @@ jobs:
         run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/root-vitest-sandbox -- bash scripts/ci/test-root-vitest-sandbox.sh
         env:
           HIMMEL_REQUIRE_JIRA_VITEST: "1"
+      # test-proof-transition.py drives the built jira CLI (scripts/jira/dist, which the npm test
+      # step's pretest tsc leaves here) against loopback fixtures; the shell-unit shards lack that build.
+      - if: ${{ matrix.pkg == 'jira' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/proof-transition -- python3 scripts/handover/chief-kit/test-proof-transition.py
 
   # Nothing built or ran the jira dist CLI end to end; the unit suite
   # mocks `request`, so a broken tsc build or a dist that crashes at startup merged
