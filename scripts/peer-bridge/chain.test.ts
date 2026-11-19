@@ -95,7 +95,8 @@ test("a live pid whose start identity differs is a reused pid, so the lock is st
 test("the macOS identity is ps lstart under LC_ALL=C TZ=UTC, so the caller's TZ never changes it", async () => {
   const bin = tmp("peer-ps-");
   const stub = join(bin, "ps");
-  writeFileSync(stub, '#!/bin/sh\nTZ="$TZ" LC_ALL=C date -d @1700000000 "+%a %b %e %T %Y"\n');
+  // GNU date takes -d @N, BSD date takes -r N; both honour TZ.
+  writeFileSync(stub, '#!/bin/sh\nF="+%a %b %e %T %Y"\nTZ="$TZ" LC_ALL=C date -d @1700000000 "$F" 2>/dev/null || TZ="$TZ" LC_ALL=C date -r 1700000000 "$F"\n');
   chmodSync(stub, 0o755);
   const oldPath = process.env.PATH, oldTz = process.env.TZ;
   try {

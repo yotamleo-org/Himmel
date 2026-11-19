@@ -20,7 +20,9 @@ export function makeRedCopy(extra: string[] = []): string {
   return root;
 }
 
-// The test names a nested run reported as failed.
+// The test names a nested run reported as failed. Under GitHub Actions bun
+// prints each failure inline and again in its closing summary, so a name counts once.
 export function failedTests(output: string): string[] {
-  return output.split("\n").filter(l => l.startsWith("(fail) ")).map(l => l.slice(7).replace(/ \[[0-9.]+m?s\]$/, ""));
+  const names = output.split("\n").map(l => l.replace(/^\s+/, "")).filter(l => l.startsWith("(fail) ")).map(l => l.slice(7).replace(/ \[[0-9.]+m?s\]$/, ""));
+  return [...new Set(names)];
 }
