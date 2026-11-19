@@ -341,7 +341,7 @@
           <li class="step off"><span class="dot" aria-hidden="true">3</span><div><div><b>15 behind?</b> <span class="sub">else skip</span><span class="who">not running</span></div><p>Below 15 commits it records a skip and stops. The threshold is fixed in the script, not a setting.</p></div></li>
           <li class="step off"><span class="dot" aria-hidden="true">4</span><div><div><b>Publish PR</b> <span class="sub">chore branch</span><span class="who">not running</span></div><p>Opens or refreshes a pull request with the new graph. Never a direct push.</p></div></li>
           <li class="step off"><span class="dot" aria-hidden="true">5</span><div><div><b>Merge on green</b> <span class="sub">merge-on-green</span><span class="who">not running</span></div><p>merge-on-green refuses without ARMAUTOMERGE; the pull request waits for you.</p></div></li>
-          <li class="step off"><span class="dot" aria-hidden="true">6</span><div><div><b>Semantic pass</b> <span class="sub">daily 13:20</span><span class="who">not running</span></div><p>graphmap is offered only with a companion vault. With claude-cli (Sonnet): draws on your Claude subscription usage budget and skips itself when the budget is nearly spent. GRAPH_CADENCE_SEMANTIC_BACKEND applies when the refresh runs with its semantic step.</p></div></li>
+          <li class="step off"><span class="dot" aria-hidden="true">6</span><div><div><b>Semantic pass</b> <span class="sub">daily 13:20</span><span class="who">not running</span></div><p>graphmap is offered only with a companion vault. The scheduled pass for himmel’s code graph runs on the Claude API, billed to the station’s API key, only on a station opted in with graphify.semantic_api_ok; elsewhere each fire logs a skip. GRAPH_CADENCE_SEMANTIC_BACKEND applies when the refresh runs with its semantic step.</p></div></li>
           <li class="step off"><span class="dot" aria-hidden="true">7</span><div><div><b>Ledger</b> <span class="sub">one line per run</span><span class="who">not running</span></div><p>Every run appends what it did (skipped, refreshed, published, merged or failed); the doctor surfaces failures.</p></div></li>
         </ol>
       </details>
@@ -726,9 +726,7 @@
           { k: 'threshold', l: '15 behind?', sub: 'else skip', st: armed ? 'gated' : 'off', n: 'Below 15 commits it records a skip and stops. The threshold is fixed in the script, not a setting.' },
           { k: 'publish', l: 'Publish PR', sub: 'chore branch', st: a, n: 'Opens or refreshes a pull request with the new graph. Never a direct push.' },
           { k: 'merge', l: 'Merge on green', sub: 'merge-on-green', st: !armed ? 'off' : (s.automerge ? 'auto' : 'blocked'), n: s.automerge ? 'Merges once CI passes.' : 'merge-on-green refuses without ARMAUTOMERGE; the pull request waits for you.' },
-          { k: 'semantic', l: 'Semantic pass', sub: 'daily 13:20', st: a, n: why + (s.backend === 'ollama'
-            ? 'With the semantic step on a local GPU (ollama): no subscription usage budget check.'
-            : 'With claude-cli (Sonnet): draws on your Claude subscription usage budget and skips itself when the budget is nearly spent.') + ' GRAPH_CADENCE_SEMANTIC_BACKEND applies when the refresh runs with its semantic step.' },
+          { k: 'semantic', l: 'Semantic pass', sub: 'daily 13:20', st: a, n: why + 'The scheduled pass for himmel’s code graph runs on the Claude API, billed to the station’s API key, only on a station opted in with graphify.semantic_api_ok; elsewhere each fire logs a skip.' + ' GRAPH_CADENCE_SEMANTIC_BACKEND applies when the refresh runs with its semantic step.' },
           { k: 'ledger', l: 'Ledger', sub: 'one line per run', st: armed ? 'auto' : 'off', n: 'Every run appends what it did (skipped, refreshed, published, merged or failed); the doctor surfaces failures.' }
         ];
       } }
