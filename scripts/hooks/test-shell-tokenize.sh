@@ -145,6 +145,38 @@ for body in '\c\\n' '\c\\x3b' '\c\\073' '\c\\;'; do
 done
 st_expand text "cat \$'${bs}x41'"; check "st_expand still rewrites a plain dollar-quote word" "$?:$ST_EXP" "0:cat 'A'"
 _st_ansic_e '\\c\x41'; check "an escaped backslash before c is not the pair" "$?" "0"
+# Escapes that bash and zsh read differently: zsh's \C-x and \M-x, its \cx (a c, not
+# a control), its unknown escape (the backslash drops) and a \x \u \U with no hex
+# digit (a NUL). No decoding is safe for both shells, so each word is refused.
+# shellcheck disable=SC1003 # the bodies hold backslashes, not escaped quotes
+zsh_only=('\C-a' '\C-A' '\C-z' '\C-@' '\C-?' '\C- ' '\C-1' '\C-\\' '\C-\\\\' '\Ca' '\C-' '\C'
+    '\M-a' '\M-\C-a' '\M-\\' '\Ma' '\M-' '\M'
+    '\ca' '\cA' '\c@' '\c[' '\c?' '\cA\\' '\c'
+    '\q' '\z' '\-' '\ ' '\8' '\9' '\!' '\.' '\/' '\$' '\`' '\C-\x41' $'\\\n' $'\\\xc3\xa9'
+    '\x' '\xg' '\u' '\ug' '\U' '\Ug'
+    'a\qb' '\x41\q' '\\\q' '\101\z' 'ab\C-c')
+for body in "${zsh_only[@]}"; do
+    _st_ansic_e "$body"; check "a zsh-only escape in [$body] is refused" "$?" "1"
+    tok "cat \$'$body'"; check "a word holding the zsh-only [$body] fails the tokenizer" "$R" "1"
+    st_expand text "cat \$'$body'"; check "st_expand text refuses the zsh-only [$body], ST_EXP empty" "$?:${#ST_EXP}" "1:0"
+    st_expand empty "cat \$'$body'"; check "st_expand empty refuses the zsh-only [$body], ST_EXP empty" "$?:${#ST_EXP}" "1:0"
+done
+for body in '\C-a' '\q' '\M-a' '\ca' '\x'; do
+    st_expand text "echo \$(cat \$'$body')"; check "st_expand refuses the zsh-only [$body] inside a substitution" "$?:${#ST_EXP}" "1:0"
+    st_expand text "cat <<\$'$body'"; check "st_expand refuses the zsh-only [$body] as a heredoc delimiter" "$?:${#ST_EXP}" "1:0"
+    st_expand text "echo \${(pj:$body:)V}"; check "st_expand refuses the zsh-only [$body] in a zsh (pj::) argument" "$?:${#ST_EXP}" "1:0"
+    st_expand text "echo \${V:-x} \$'$body'"; check "st_expand refuses the zsh-only [$body] beside a parameter expansion" "$?:${#ST_EXP}" "1:0"
+done
+# Escapes both shells read alike keep their decoded word.
+# shellcheck disable=SC1003 # the bodies hold backslashes, not escaped quotes
+same_in_both=('\n' $'\n' '\x41' A '\x41\x42' AB '\x4g' $'\004g' '\101' A '\u0041' A '\U00000041' A
+    '\a\b\e\E\f\n\r\t\v' $'\a\b\e\E\f\n\r\t\v' '\\' '\' "\\'" "'" '\"' '"' '\?' '?' 'abc' abc 'a\\qb' 'a\qb' '\\C-a' '\C-a' '\\cA' '\cA')
+n=0
+while [ "$n" -lt "${#same_in_both[@]}" ]; do
+    body=${same_in_both[n]}; want=${same_in_both[n + 1]}; n=$((n + 2))
+    _st_ansic_e "$body"; check "an escape both shells read alike in [$body] is accepted" "$?" "0"
+    tok "echo \$'$body'"; check "a word holding [$body] tokenizes to the shared reading" "$R:${ST_W[1]}" "0:$want"
+done
 tok 'echo a # c; d'; check "a comment sets COMMENT and ends the command" "$R:$ST_COMMENT:$ST_NSEG:$ST_N" "0:1:1:2"
 tok $'cat <<EOF\nbody $(x)\nEOF\necho after'; check "an unquoted heredoc body with \$(…) sets SUBST" "$R:$ST_HEREDOC:$ST_SUBST" "0:1:1"
 tok $'cat <<\'EOF\'\nbody $(x)\nEOF'; check "a quoted heredoc body is inert" "$R:$ST_HEREDOC:$ST_SUBST" "0:1:0"
