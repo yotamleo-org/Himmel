@@ -32,7 +32,13 @@ export type ThreadRec = {
   autoAt?: number; autoTpl?: string;
   ts: number;
 };
-export type WakeEvent = { peer: string; root: number; label: string; replyBy?: number };
+// Every wake label is written here, in this file. No peer text can become one.
+export const WAKE_LABELS = [
+  "new question", "new status", "new info", "reminder", "answer", "closed by peer", "unreachable", "expired",
+  "closed", "declined", "peer message", "answer on a closed thread", "message on a closed thread", "cap hit",
+] as const;
+export type WakeLabel = (typeof WAKE_LABELS)[number];
+export type WakeEvent = { peer: string; root: number; label: WakeLabel; replyBy?: number };
 export type Action =
   | { send: { peer: string; tpl: Tpl; root: number; by?: Date } }
   | { resend: { peer: string; root: number } }
@@ -55,7 +61,7 @@ function eventOf(tag: string): Ev {
     default: return "other";
   }
 }
-const kindLabel = (tag: string) => `new ${tag.replace("ask:", "")}`;
+const kindLabel = (tag: string) => `new ${tag.replace("ask:", "")}` as WakeLabel;
 
 type Opts = { peers: Record<string, Pick<Peer, "opens" | "maxOpenThreads">>; clock: () => number };
 
@@ -119,7 +125,7 @@ export class Threads {
     this.logAuto(peer, now);
   }
 
-  private wake(actions: Action[], rec: ThreadRec, label: string, replyBy?: number) {
+  private wake(actions: Action[], rec: ThreadRec, label: WakeLabel, replyBy?: number) {
     actions.push({ wake: { peer: rec.peer, root: rec.root, label, ...(replyBy ? { replyBy } : {}) } });
   }
 
@@ -280,7 +286,7 @@ export class Threads {
   }
 
   // A deadline-driven end: the other side is told with the reserved `closing`.
-  private end(rec: ThreadRec, state: string, label: string, now: number, actions: Action[]) {
+  private end(rec: ThreadRec, state: string, label: WakeLabel, now: number, actions: Action[]) {
     const patch = this.template(actions, rec, "closing", now);
     this.commit(actions, rec, { ...patch, state, deadline: null, remindAt: null }, now);
     this.wake(actions, rec, label);
