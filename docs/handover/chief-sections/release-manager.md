@@ -23,12 +23,17 @@ release is declared (`jira release state <R>` prints a status other than
 - **A request for operator work carries the operator's words.** An INTAKE or
   REVERSION into a version, for an open ticket labelled `operator-directed` or of
   priority High or Highest, is refused before it is filed unless it names the
-  decision and the operator's exact words in it:
+  decision and the operator's exact words in it, or a record already on file covers
+  it (next paragraph):
   ```text
-  release request: <KEY> is operator-directed and High; a request that places it needs a record of the operator's words.
+  release request: <KEY> is operator-directed and High; a request that places it needs a record of the operator's words: cite one on file that already names <KEY> and exactly this placement (a words record newer than the key's last ruling is cited with no --decision), or record them.
     jira release request <R> --verb INTAKE --key <KEY> --from backlog --to <v> --why "<why>" --decision <n> --words "<the operator's exact words>"
     (<n>: specs/decisions/verbatim-decision-<n>-*.txt)
   ```
+  A gated request files without words only when one words-checked operator decision
+  already on record names that key and that exact placement, is the newest decision
+  for the key, and is newer than every ruling on it; otherwise the words are required
+  as before, and a work permission never counts.
   `--decision <n>` must match exactly one `verbatim-decision-<n>-*.txt` in the
   bucket's `specs/decisions`. `--words` must occur byte for byte in one paragraph
   of that file, never in a paragraph that opens with a gloss word (`Read`,
@@ -44,7 +49,7 @@ release is declared (`jira release state <R>` prints a status other than
   the new words, `jira release withdraw <R> --req <id> --reason "<why>"` it first,
   then run the request again. The
   gate reads the ticket from the mirror, else from one live read; a ticket neither
-  can read is refused with both fixes (`jira mirror`, or `--decision`). `jira
+  can read is refused, unless a record covers it as above, with both fixes (`jira mirror`, or `--decision`). `jira
   create`, `jira move` and the MCP `create` tool take the same `--decision` and
   `--words` and check them before anything is filed. A backlog target, a closed
   ticket, a request filed inside a worker you spawned, the close-time Done fold,
