@@ -58,7 +58,9 @@ if [ -z "$repo_root" ]; then
   repo_root="$(dirname "$gcd")"
 fi
 canon(){ printf '%s' "$1" | tr '\134' '/' | sed 's:/*$::' | tr '[:upper:]' '[:lower:]'; }
-rr_canon="$(canon "$repo_root")"
+# shellcheck source=/dev/null
+. "$SCRIPT_DIR/../lib/canon-path.sh" || { echo "resume.sh: cannot source canon-path.sh" >&2; exit 2; }
+rr_canon="$(canon "$(canon_path "$repo_root" || printf '%s' "$repo_root")")"
 
 reg="${HANDOVER_REGISTRY:-$HOME/.claude/handover/registry.json}"
 [ -f "$reg" ] || { echo "resume.sh: registry not found ($reg)" >&2; exit 3; }
@@ -70,7 +72,9 @@ meta="$(REG="$reg" RR="$rr_canon" node -e '
   let j; try{ j=JSON.parse(fs.readFileSync(e.REG,"utf8")); }catch(err){ console.error("resume.sh: registry parse error: "+err.message); process.exit(2); }
   const repos=(j&&j.repos)||{};
   for(const k of Object.keys(repos)){
-    const p=String(repos[k].path||"").replace(/\\/g,"/").replace(/\/+$/,"").toLowerCase();
+    let rp=String(repos[k].path||"");
+    try{ rp=fs.realpathSync(rp); }catch(err){ /* an unresolvable registry path is compared as written */ }
+    const p=rp.replace(/\\/g,"/").replace(/\/+$/,"").toLowerCase();
     if(p===e.RR){ process.stdout.write([repos[k].user||"",repos[k].bucket_name||k,repos[k].jira_project||""].join("\t")); process.exit(0); }
   }
   process.exit(1);

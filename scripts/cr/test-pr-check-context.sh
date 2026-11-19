@@ -14,7 +14,7 @@ export FORCE_COLOR=3
 fail=0
 check() { [ "$1" = "$2" ] || { echo "FAIL: $3 - got '$1' want '$2'"; fail=1; }; }
 
-tmp="$(mktemp -d -t pr-check-context.XXXXXX)"; trap 'rm -rf "$tmp"' EXIT
+tmp="$(mktemp -d -t pr-check-context.XXXXXX)" || exit 1; tmp="$(cd "$tmp" && pwd -P)" || exit 1; trap 'rm -rf "$tmp"' EXIT
 
 # Every mutation control in this file goes through the RED-control
 # contract helper rather than a hand-rolled inequality. The helper asserts the
