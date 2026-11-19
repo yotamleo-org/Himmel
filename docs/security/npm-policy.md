@@ -5,8 +5,9 @@ security-tooling epic (tracked in the operator's private handover repo).
 
 ## Lockfile policy
 
-Every `package.json` ships with a sibling `package-lock.json`, committed to
-git. No exceptions. A `package.json` without a committed lockfile means the
+Every `package.json` the lockfile gate covers ships with a sibling lockfile
+committed to git: `package-lock.json` for npm, or `bun.lock` for a Bun-managed
+package (e.g. `scripts/luna-vitals`). A `package.json` without a committed lockfile means the
 next install pulls a floating dep tree — the "lockless install" footgun.
 
 ## Install command
@@ -23,13 +24,15 @@ next install pulls a floating dep tree — the "lockless install" footgun.
 
 Pre-commit hook `lockfile-integrity` (registered in
 `.pre-commit-config.yaml`) runs `scripts/hooks/check-lockfile-integrity.sh`
-on every commit. For each `package.json` under `scripts/` it asserts:
+on every commit. For each `package.json` under `scripts/` and `site/` (up to
+three levels deep) it asserts:
 
 1. A sibling `package-lock.json` (npm) — or `bun.lock` (bun; e.g. `scripts/luna-vitals`, which takes precedence when both are present) — exists.
 2. The lockfile is tracked in git.
-3. `npm ci --dry-run --ignore-scripts` succeeds — this is the lock-drift
-   detector: `npm ci` refuses to run when the lockfile is out of sync with
-   `package.json`.
+3. `npm ci --dry-run --ignore-scripts` succeeds for an npm package, or
+   `bun install --frozen-lockfile --dry-run` for a Bun one — this is the
+   lock-drift detector: both refuse to run when the lockfile is out of sync
+   with `package.json`.
 
 A drifted lock fails the commit. Fix locally with `npm install` in the
 affected package and re-commit the updated lockfile.

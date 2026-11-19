@@ -134,34 +134,26 @@ reviewing — never a reactive `git commit --amend` after a push fails. In
 auto-mode the amend is flagged as gate-circumvention and **HARD-blocked
 (uncleable)**.
 
-**What to do if the branch is already pushed without the trailer:** recut it.
-The pre-push gate accepts a trailer in any commit of the range or the PR body,
-but the chief's `ready-check.sh` check 5 reads **only the PR's first
-commit** — a PR-body or later-commit trailer clears the push gate
-and still FAILS ready-check, so the PR can never be merged by a chief. A
-typical case: a docs-only first commit (which needs no trailer), then a later
-commit adds a non-docs path (which does).
+**The rule every gate reads.** The pre-push gates, CI commit-lint and the
+chief's `ready-check.sh` check 5 all read one helper,
+`scripts/lib/attest-trailers.sh`: a trailer counts in **any non-merge commit
+of the branch**, never in the PR body or a merge commit. A typical gap: a
+docs-only first commit (which needs no trailer), then a later commit adds a
+non-docs path (which does).
 
-1. Cut a fresh branch from `origin/main`.
-2. Make **ONE ordinary new commit** with the whole change, carrying the
-   `Platforms tested:` / `Security reviewed:` trailers, each on its own line.
-   Not `git commit --amend`, and not a `git commit-tree` rebuild of the old
-   first commit (both are classifier-vetoed).
-3. Push, open a new PR, and close the old one with a pointer to it.
-
-Proven in practice: #1650 was recut as #1654, which passed ready-check and
-merged. `test-ready-check.sh` § 5e pins check 5's first-commit-only rule, so
-this recovery and the gate agree.
+**What to do if the branch is already pushed without the trailer:** add
+**one more ordinary commit** on the branch that carries the missing
+`Platforms tested:` / `Security reviewed:` trailer, each on its own line,
+and push it. Never `git commit --amend`, and never a `git commit-tree`
+rebuild of an earlier commit (both are classifier-vetoed).
 
 **What to do if the FIRST commit carries a trailer whose token doesn't
-conform** — a genuine `Security reviewed:` line whose text doesn't start with
-`manual` / `claude-code-security-review` / `pr-review-toolkit` / `ad-hoc`
-(`scripts/hooks/check-security-reviewed.sh`'s `TOKEN_RE`): use the same recut
-as above. Cut a fresh branch from `origin/main`, make **ONE new commit** with
-conforming trailers, open a new PR, and close the old one with a pointer.
-Check 5 reads only the first commit, so a follow-up commit clears the push
-gate and still fails check 5. Use the recut — never `git commit --amend`, never a
-`git commit-tree` rebuild of the first commit; both are classifier-vetoed.
+conform** — a `Security reviewed:` line whose text doesn't start with `manual`
+/ `claude-code-security-review` / `pr-review-toolkit` / `ad-hoc`
+(`ATTEST_SEC_TOKEN_RE` in `scripts/lib/attest-trailers.sh`): a non-conforming
+line does not count, and no recut is needed. Add one more ordinary commit
+carrying a conforming trailer and push it; the push gate and check 5 both
+accept it. Never amend.
 
 ---
 

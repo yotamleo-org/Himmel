@@ -306,9 +306,9 @@ Granting it is an operator call. Defense in depth around it:
 - **Write guard (a soft block).** `scripts/hooks/block-himmel-config-writes.sh`
   denies tool-driven writes to that file (file tools, and Bash commands that
   name it other than plain reads). It is text matching, not a sandbox; its
-  header lists what it cannot see. **It is not wired yet** — wiring it into
-  `.claude/settings.json`, `.codex/hooks.json` and `wire-hook-bash.mjs` is
-  a planned follow-up, so until that lands the symlink refusal is the only live layer.
+  header lists what it cannot see. It is wired in the Bash and
+  Edit/Write chains of `.claude/settings.json` and `.codex/hooks.json`, so the
+  symlink refusal and this write guard are both live layers.
 - **`$HOME` is the trust root**, in hook mode and in `--eval` mode alike. The
   fence reads the caller's `$HOME` and does not pin the passwd-database home; a
   caller that controls its own `$HOME` controls the opt-in. That is by decision,

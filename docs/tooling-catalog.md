@@ -274,11 +274,12 @@ can also be passed to `--installed` for a hermetic observation.
 **Usage:** Searching local knowledge base, notes, docs.
 
 **CLI install (pinned):** the standalone `qmd` CLI
-installs from a **local clone of the carried fork `yotamleo/qmd`** until
+installs from a **local clone of the carried fork `yotamleo-org/qmd`** until
 tobi/qmd#1029 is fixed upstream (two commits on `tobi/qmd` main
 that make the launcher forward signals to bun, upstream PR tobi/qmd#1030;
-the install pins back to `tobi/qmd`, and `qmd_install` re-points an existing
-clone's origin in place), pinned to an
+`qmd_install` re-points an existing clone's origin in place, and the repo, ref
+and clone dir are overridable with `QMD_FORK_REPO` / `QMD_FORK_REF` /
+`QMD_FORK_DIR`), pinned to an
 immutable commit SHA (the literal lives in `_qmd_fork_ref`; read it there
 rather than copying it here) rather than a mutable branch, via `scripts/lib/qmd-bin.sh`'s `qmd_install` (clone → fetch/checkout
 the pinned SHA → `bun install && bun run build` → junction/symlink onto the
@@ -469,7 +470,7 @@ plugin, so a skill that a profile must enable moves into a plugin instead
 
 ### writing-for-agents (`.claude/skills/writing-for-agents/`)
 
-**What:** Vendored `mattpocock/skills` skill (MIT, pinned `49dd158d1076134a641b33efb035946536778336`) on cutting and tightening agent-facing docs. User-invoked (`disable-model-invocation`), 0 listing tokens. POC use: `/writing-for-agents find ways to cull my global steering files`, read-only, proposal only. Complements `claude-md-audit` (rubric check of a changed CLAUDE.md) and `prose-audit` (mechanical prose to script); neither culls sediment or no-ops across the steering set. Scheduling is not wired yet.
+**What:** Vendored `mattpocock/skills` skill (MIT, pinned `49dd158d1076134a641b33efb035946536778336`) on cutting and tightening agent-facing docs. User-invoked (`disable-model-invocation`), 0 listing tokens. POC use: `/writing-for-agents find ways to cull my global steering files`, read-only, proposal only. Complements `claude-md-audit` (rubric check of a changed CLAUDE.md) and `prose-audit` (mechanical prose to script); neither culls sediment or no-ops across the steering set. `scripts/cleanup/steering-cull-cadence.sh` runs it weekly, read-only, once armed ([cadences.md](cadences.md)).
 
 ---
 
@@ -492,7 +493,7 @@ through unrewritten because `rtk find` rejects them at runtime.
 ## himmel-doctor (`scripts/himmel-doctor.sh`)
 
 The `/himmel-doctor` diagnostic. Read-only except `--fix`. Checks (a subset —
-`scripts/himmel-doctor.sh` is the source of truth for the full C1–C28 set): C1-guardrail
+`scripts/himmel-doctor.sh` is the source of truth for the full check set): C1-guardrail
 user-level guardrail-hook node path (+ `--fix` re-bake; the old C1-node check was
 retired earlier and the ids were NOT renumbered), C2 shadowed claude-obsidian, C3 dirty
 single-writer luna vault, C4 Bitbucket-remote-where-`gh`-fails, C5 repo not in the
@@ -999,7 +1000,7 @@ through `scripts/lanes/claudex-session-root.mjs` and still look in the old
 `meta.json` records `lane: "codex"`.
 
 ```
-bun scripts/telegram/spawn-claudex.ts "<prompt>" [--cwd <dir>] [--name <slug>] [--branch <existing>] [--timeout-mins <n>] [--permission-mode <mode>] [--effort low|medium|high|xhigh] [--model gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna] [--force]
+bun scripts/telegram/spawn-claudex.ts "<prompt>" [--cwd <dir>] [--name <slug>] [--branch <existing>] [--timeout-mins <n>] [--permission-mode <mode>] [--effort low|medium|high|xhigh] [--model gpt-6.1-sol|gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna] [--force]
 ```
 
 **Codex weekly subscription usage budget preflight:** reads the LAST
@@ -1021,7 +1022,7 @@ pointing back at this section.
 tier for one dispatch by setting `CODEX_MODEL` in the worker's child env —
 exactly how `--effort` sets `CLAUDE_CODE_EFFORT_LEVEL`. Unset lets the
 launcher's own `${CODEX_MODEL:-gpt-6.1-sol}` default apply. Accepted values are
-`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`; anything else is a parse-time
+`gpt-6.1-sol`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`; anything else is a parse-time
 refusal (exit 2) pointing back at this section.
 
 The allowlist is deliberately scoped to **this flag**, not to the launcher.
@@ -1421,14 +1422,15 @@ view into the vault — the bridge between the derived graph and the KB.
   A SEPARATE OS-scheduler sibling of `pipeline-cadence.sh` (deliberately not a
   pipeline-cadence job — that runner's invariant is "every task = a claude
   session", and a graph refresh is a deterministic script, no claude).
-  `arm`/`status`/`disarm` register **five** tasks (a fifth, `HIMMEL-
-  GraphPublish-Himmel`, was added later — refresh+publish+auto-merge
-  himmel's OWN graphify graph on a cadence, every 6h; see
+  `arm`/`status`/`disarm` manage up to **six** tasks, the Luna ones opt-in
+  (`arm --luna-only`; `HIMMEL-GraphSemantic-Luna` only with
+  `--with-luna-semantic`). `HIMMEL-GraphPublish-Himmel` refreshes, publishes
+  and auto-merges himmel's OWN graphify graph every 6h; see
   [`docs/internals/graph-cadence.md`](internals/graph-cadence.md) for that
-  job's own arm/inspect/remove, ledger shape, and failure-surfacing detail —
-  this entry covers the original four). The semantic pair
-  (`HIMMEL-GraphMap-Luna` / `-Himmel`, default Sunday 13:00/13:20 local,
-  staggered): the himmel row runs on the **`claude-api`** backend with
+  job's own arm/inspect/remove, ledger shape, and failure-surfacing detail,
+  and for `HIMMEL-GraphSemantic-Luna`. The semantic pair
+  (`HIMMEL-GraphMap-Luna` weekly, default Sunday 13:00 local; `-Himmel`
+  daily, default 13:20 local): the himmel row runs on the **`claude-api`** backend with
   the API lane env (`HIMMEL_API_LANE=on`, the auto account walk) baked in, only on a station that opted in
   (`graphify.semantic_api_ok`; otherwise it logs a skip line); the opt-in Luna map row
   (`arm --luna-only`) stays on **`claude-cli`**, drawing the
@@ -1824,8 +1826,8 @@ Operator-invoked on demand via `/luna-upgrade-all` or directly.
 ## CI Workflow + Runner (`scripts/ci/`)
 
 GitHub Actions workflow (`.github/workflows/ci.yml`) and the
-helper scripts it calls. Triggered manually (`workflow_dispatch`-only); runs
-on a dedicated public fork using free public runners.
+helper scripts it calls. It runs on pull requests, on manual dispatch and on
+scheduled sweeps.
 
 - `scripts/ci/check-no-secrets.sh` — asserts no `${{ secrets.* }}` interpolation in `.github/workflows/`. Enforces the secret-free rail: all CI jobs run with zero credentials.
 - `scripts/ci/codeowner-review-gate.mjs` + `.github/workflows/codeowner-review-gate.yml` — the `codeowner-review-gate` status check: code-owner review is mandatory for OUTSIDE PRs only. PASS when the author has write/maintain/admin permission (bots never count), else every code owner `.github/CODEOWNERS` assigns to the changed paths must have a latest review that is APPROVED on the current head. The workflow (`pull_request` + `pull_request_review`, read-only token, no checkout, no third-party action) fetches the script and CODEOWNERS from the BASE commit, so a PR cannot rewrite its own gate or owners; a missing script fails closed on every base (no bootstrap exemption). Every unverifiable input FAILS (exit 1 policy, 2 error). Suite: `scripts/ci/test-codeowner-review-gate.sh` (offline fixtures, stub-`gh` live mode, static workflow assertions with negative controls).
@@ -1842,7 +1844,7 @@ on a dedicated public fork using free public runners.
 - `scripts/ci/orphan-census.sh` — **read-only** census of orphaned himmel suite/probe processes (dead parent + a command line naming a script inside *this* checkout + older than `--min-age`, default 10 min). The checkout anchor is the primary root, derived from the script's own location with any `.claude/worktrees/<name>` suffix stripped, so it covers the primary and every worktree. The script must be root-prefixed, or named relative to a `cd` into the root on the same line (`cd <root> && bash scripts/…`, the live shape), and in both cases actually run by an interpreter — an editor or scanner holding a suite file open is not a suite process; a same-layout foreign repo, a foreign absolute script that merely shares the line, and a bare relative invocation with the root nowhere on the line are all left unclassified. It reads processes via `ps`; `check-ci` / `merge-on-green` watchers are listed as `WATCHER` and never reaped. `--reap` exists but is **operator-run** — the destructive-command hook denies process termination from a Claude session. `--reap` re-reads each PID's creation time immediately before signalling and skips with a WARN if it changed, which narrows the PID-reuse window from minutes to the microseconds between that read and the signal — it does not close it (bash signals by PID, not by handle). `ORPHAN_CENSUS_INPUT=<file>` feeds the classifier a canned `pid|ppid|age|start|cmdline` table (test seam; refuses to combine with `--reap`). Suite: `scripts/ci/test-orphan-census.sh`.
 - `scripts/lib/proc-tree.sh` — terminates a background job **and its descendants** on POSIX: process-group TERM → grace → KILL, then verifies the group is actually empty. Callers must spawn under `set -m` so the job owns a process group. Used by the suite runner's per-suite cap; covered by `scripts/ci/test-suite-concurrency.sh`.
 
-**Five jobs:** `secret-scan` (check-no-secrets), `lint` (shellcheck --severity=warning over `scripts/**/*.sh`), `node-suites` (npm matrix: jira/bitbucket/himmel-run), `bun-suites` (luna-vitals bun test), `shell-unit` (run-shell-tests.sh).
+**Jobs** include `secret-scan` (check-no-secrets), `lint` (shellcheck --severity=warning over `scripts/**/*.sh`), `node-suites` (npm matrix: jira/bitbucket/himmel-run), `bun-suites` (luna-vitals bun test) and `shell-unit` (run-shell-tests.sh); `.github/workflows/ci.yml` is the full job inventory.
 
 Full reference: [`scripts/ci/README.md`](../scripts/ci/README.md).
 
@@ -1854,7 +1856,7 @@ Shell scripts that implement `/pr-check` sub-steps. Called by the `/pr-check` co
 
 - `scripts/cr/file-deferred-issues.sh` — reads `/pr-review-toolkit:review-pr` output, dedupes low-severity findings by content hash, and files them on the repo's tracker, tagged `cr-deferred`: one Jira ticket per run when Jira is configured, forge issues otherwise, nothing remote with no tracker (prints `tracker=jira|forge|none`). Called by `/pr-check` step 7. Idempotent; `--dry-run` mode for inspection.
 - `scripts/cr/critic-first-pass.sh` — generic model-parametrized automated reviewer (supersedes retired `gemini-first-pass.sh`): diff on stdin → findings with stable `[<slug>-N]` IDs; routes through `scripts/hermes/invoke.sh`; `--model`/`--slug` flags select the model. **Senior-reviewer routing:** the gpt/codex-family critic runs under the `himmel_agent` hermes profile (main-tier SOUL) instead of the user-default junior SOUL — the junior framing produced shallow/discarded codex output. Only the gpt family by default because `himmel_agent` is Codex-provider-bound (a non-OpenAI model like the free qwen3coder anchor 400s under it); open/claude critics stay on the hermes default profile and take their senior framing from the role-prompt. Override with `CR_CRITIC_PROFILE` (applies to every family when set; `none`/empty → hermes default). `invoke.sh --profile` is fail-open (missing profile warns + falls back). Tests: `scripts/cr/test-critic-first-pass.sh` (deterministic, PATH-stubbed fake hermes).
-- `scripts/cr/critic-panel.sh` + `scripts/cr/critics.json` — NIM critic panel (roster defined in `critics.json`). **`critics.json` currently holds ONE row — `codex`/`gpt-6.1-sol`, tier `paid` — and NO free critics.** The free lane was **removed deliberately** — it made more trouble than it was worth: gptoss + kimi dropped 2026-07-03 (their 12%/13% ledger agreed-rate was noise), and the surviving qwen3coder anchor kept erroring rc=1. Paid-by-default is the intended posture, not drift. So `/pr-check` **auto-runs the PAID codex anchor by default** (~2min, bounded by the 240 s per-member timeout): an unset `CR_PROFILE` **AND** unset `CRITIC_PANEL_TIERS` resolve to tier filter `free` (`CRITIC_PANEL_TIERS` is the low-level override, honored ONLY when `CR_PROFILE` is unset), which matches zero rows, so the panel falls back to the paid anchor — **spending the OpenAI subscription usage budget on any default run that actually runs the panel** — skipped, and therefore free, on an empty diff or `CR_PROFILE=none` (an accepted cost). Note this fallback also bypasses the triviality gate, which only fires when `paid` is already IN the tier filter. `CR_PROFILE=none` = instant claude-only (skip panel). `CR_PROFILE=thorough` = adds the `thorough` tier (currently EMPTY — kept for future heavier critics). `CR_PROFILE=paid` / `free,paid` = the paid codex critic. Any other value is the tier filter verbatim. **`CR_PROFILE` is authoritative:** `/pr-check` loads it from `.env` and the panel derives its tiers from it directly — it wins over the low-level `CRITIC_PANEL_TIERS` override (honored only when `CR_PROFILE` is unset). This closed a drift where a run hand-scoped the panel to free-only and silently dropped the paid critic. Retired the gemini-only CR lane. Per-member hang protection via `CRITIC_TIMEOUT_SECS` — default **240 s**, which is ALSO the fallback when the supplied value is non-numeric or ≤0 (the panel warns and uses 240 rather than failing). It was raised from 150 s after codex + qwen3coder were seen clipping at 150 s. It needs the `timeout` binary, but does not *require* it: when `timeout` is absent the panel prints "per-member hang protection disabled" and runs each member **unbounded**.
+- `scripts/cr/critic-panel.sh` + `scripts/cr/critics.json` — NIM critic panel (roster defined in `critics.json`). **`critics.json` holds three rows — `codex`/`gpt-6.1-sol` (tier `paid`, mode `hard`, required), `claude`/`claude-opus-5-5` (tier `paid`, mode `advisory`) and `coderabbit` (the GitHub app, `best-effort`, never dispatched by the panel) — and NO free critics.** The free lane was **removed deliberately** — it made more trouble than it was worth: gptoss + kimi dropped 2026-07-03 (their 12%/13% ledger agreed-rate was noise), and the surviving qwen3coder anchor kept erroring rc=1. Paid-by-default is the intended posture, not drift. So `/pr-check` **auto-runs the PAID codex anchor by default** (~2min, bounded by the 240 s per-member timeout): an unset `CR_PROFILE` **AND** unset `CRITIC_PANEL_TIERS` resolve to tier filter `free` (`CRITIC_PANEL_TIERS` is the low-level override, honored ONLY when `CR_PROFILE` is unset), which matches zero rows, so the panel falls back to the paid anchor — **spending the OpenAI subscription usage budget on any default run that actually runs the panel** — skipped, and therefore free, on an empty diff or `CR_PROFILE=none` (an accepted cost). Note this fallback also bypasses the triviality gate, which only fires when `paid` is already IN the tier filter. `CR_PROFILE=none` = instant claude-only (skip panel). `CR_PROFILE=thorough` = adds the `thorough` tier (currently EMPTY — kept for future heavier critics). `CR_PROFILE=paid` / `free,paid` = the paid codex critic. Any other value is the tier filter verbatim. **`CR_PROFILE` is authoritative:** `/pr-check` loads it from `.env` and the panel derives its tiers from it directly — it wins over the low-level `CRITIC_PANEL_TIERS` override (honored only when `CR_PROFILE` is unset). This closed a drift where a run hand-scoped the panel to free-only and silently dropped the paid critic. Retired the gemini-only CR lane. Per-member hang protection via `CRITIC_TIMEOUT_SECS` — default **240 s**, which is ALSO the fallback when the supplied value is non-numeric or ≤0 (the panel warns and uses 240 rather than failing). It was raised from 150 s after codex + qwen3coder were seen clipping at 150 s. It needs the `timeout` binary, but does not *require* it: when `timeout` is absent the panel prints "per-member hang protection disabled" and runs each member **unbounded**.
 - `scripts/cr/ledger-append.sh` — appends `finding` / `avail` / `usage` records to the CR ledger (`cr-critic-scores.jsonl`); called by `/pr-check` adjudication step. The `usage` kind records a chars/4 **estimated** token count for a critic (hermes does not expose real usage through the one-shot sanctioned script); written best-effort by `critic-first-pass.sh` when `CR_USAGE_LOG=1`. The `score` kind is one row per COMPLETED critic run (rc 0 or the all-dropped rc 4; a failed run writes none): `critical`/`important`/`suggestions` counts (+ `dropped`), `model`, `head`, and `raw_path` — so a clean 0/0/0 verdict is distinguishable from a non-run. `critic-first-pass.sh` writes it, and keeps the raw critic response at `raw_path` under `cr-panel-raw/` beside the ledger (`<head12>.<slug>.<diff|artifact>.<UTC ts>.<pid>.raw`, mode 0600); files older than `CR_RAW_RETAIN_DAYS` (default 30) are pruned on each write — no separate sweeper process. Fail-open: a raw/ledger write failure warns and never changes the critic's stdout or exit code. Every ledger reader filters on `kind`, so a `score` row changes no gate verdict.
 - `scripts/cr/cr-scores.sh` — generates a per-critic correctness scorecard from the ledger; surfaced via `/cr-scores`. Adds an estimated-token Usage section (per-model + cumulative) when the ledger holds `usage` records.
 

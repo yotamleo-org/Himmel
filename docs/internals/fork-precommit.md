@@ -1,6 +1,6 @@
 # Fork pre-commit core
 
-Every `yotamleo/*` fork is a himmel adapter. A commit to a fork
+Every `yotamleo-org/*` fork is a himmel adapter. A commit to a fork
 skips himmel's own gates, so a secret or an unticketed change can land on a
 fork the station then installs. This page defines the small **core** every fork
 gets, what stays himmel-only, and how a fork adopts it.
@@ -72,7 +72,6 @@ forks tracked as himmel adapters (standard: `docs/internals/fork-adapters.md`).
 | Fork | Default | Language | Own hooks | Own lint | CI |
 |---|---|---|---|---|---|
 | qmd | main | TypeScript | none | oxlint | yes |
-| obsidian-second-brain | main | Python | none | `pyproject.toml` | yes |
 | core (home-assistant) | dev | Python | `.pre-commit-config.yaml` | prettier | yes |
 | claude-hud | main | JavaScript | none | `.editorconfig` | yes |
 | graphify | v8 | Python | `.pre-commit-config.yaml` | `pyproject.toml` | yes |
