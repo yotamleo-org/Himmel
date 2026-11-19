@@ -354,9 +354,9 @@ docs/tooling-catalog.md	`claude-sonnet-5` when the proxy serves it (cli-proxy-ap
 docs/tooling-catalog.md	classifier and substitutes `claude-sonnet-5`). The main, Haiku, Opus and subagent
 docs/tooling-catalog.md	choice, not a hard ceiling — the real backend window for gpt-5.6-sol was
 docs/tooling-catalog.md	   attached returned `HTTP 400 unknown provider for model gpt-5.6-sol[1m]`
-docs/tooling-catalog.md	bun scripts/telegram/spawn-claudex.ts "<prompt>" [--cwd <dir>] [--name <slug>] [--branch <existing>] [--timeout-mins <n>] [--permission-mode <mode>] [--effort low|medium|high|xhigh] [--model gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna] [--force]
+docs/tooling-catalog.md	bun scripts/telegram/spawn-claudex.ts "<prompt>" [--cwd <dir>] [--name <slug>] [--branch <existing>] [--timeout-mins <n>] [--permission-mode <mode>] [--effort low|medium|high|xhigh] [--model gpt-6.1-sol|gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna] [--force]
 docs/tooling-catalog.md	**Model tier:** `--model` is optional and selects the GPT-5.6
-docs/tooling-catalog.md	`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`; anything else is a parse-time
+docs/tooling-catalog.md	`gpt-6.1-sol`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`; anything else is a parse-time
 docs/tooling-catalog.md	  `--backend kimi` (moonshot) is retired — there is no kimi backend — so it fails closed on luna corpora as an unclassified provider).
 docs/tooling-catalog.md	  subscription) — the original credential gate (kimi ->
 docs/tooling-catalog.md	  `MOONSHOT_API_KEY`) no longer applies now that kimi is retired, though the

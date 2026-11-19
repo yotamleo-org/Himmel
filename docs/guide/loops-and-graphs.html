@@ -355,11 +355,11 @@
           <dt class="mono">CR_REQUIRE_CROSS_MODEL</dt><dd>Gate policy. When on, the review-owed marker clears only after a critic from a different model family has passed the exact commit, so a Claude-only review is not enough.</dd>
           <dt class="mono">CR_FLOOR_FALLBACK</dt><dd>Gate policy. With the cross-model rule on, "claude-only" lets a fresh Claude review with no shared context stand in when every other critic is out of quota. It is never counted as cross-model.</dd>
           <dt class="mono">codex mode</dt><dd>The codex critic’s row in critics.json. As shipped it is hard and required: it must pass at the head, and absent on a machine it still counts, as unavailable, which holds the merge.</dd>
-          <dt class="mono">claude mode</dt><dd>The Claude API critic’s row. As shipped it is hard, but absent while the Claude API lane is off, so it leaves the set. Change any mode for one machine in critics.local.json.</dd>
+          <dt class="mono">claude mode</dt><dd>The Claude API critic’s row. As shipped it is advisory: its open findings are recorded and print a NOTE until its precision reaches the configured floor, then it gates as hard. It is absent while the Claude API lane is off, so it leaves the set. Change any mode for one machine in critics.local.json.</dd>
           <dt class="mono">coderabbit mode</dt><dd>The CodeRabbit app’s row. As shipped it is best-effort: an open thread holds the merge, but a missing or rate-limited review is relaxed to a NOTE. Absent means the app is not armed here.</dd>
           <dt class="mono">review</dt><dd>Set "review": "no_code_review" in critics.json to say on purpose that no reviewer gates this repo, so CI alone decides. Without it, a set with no hard reviewer left is a config error and the gate refuses.</dd>
           <dt class="mono">CodeRabbit right now</dt><dd>Not a setting: try what a rate limit does. A best-effort CodeRabbit is relaxed and the head moves on; a hard one holds the merge.</dd>
-          <dt class="mono">CI release</dt><dd>Planned, opt-in per repository. The heavy CI jobs wait for the ci:go label, which the station adds once the review gate passes at the head. Off, CI runs on every push. It never lets anything merge.</dd>
+          <dt class="mono">CI release</dt><dd>Opt-in per repository. The heavy CI jobs wait for the ci:go label, which the station adds once the review gate passes at the head. Off, CI runs on every push. It never lets anything merge.</dd>
           <dt class="mono">HIMMEL_AFK</dt><dd>Switches sessions to the afk initiative profile, read from HIMMEL_INITIATIVE_AFK instead of HIMMEL_INITIATIVE.</dd>
           <dt class="mono">HIMMEL_INITIATIVE_AFK</dt><dd>The afk step list. "all" adds implementing and merging to the daytime set. It has no effect unless HIMMEL_AFK is on.</dd>
           <dt class="mono">ARMAUTOMERGE</dt><dd>Gate policy. Arms merge-on-green, the one merge path that waits for green CI and confirmed branch protection. Off, merge-on-green refuses.</dd>
@@ -643,7 +643,7 @@
     if (limited && s.mRabbit === 'hard') {
       return { st: 'blocked', note: 'CodeRabbit is a hard reviewer and cannot review this head, so the merge holds until it does.' };
     }
-    return { st: 'gated', note: 'Waits until every hard reviewer (' + hard.join(', ') + ') passes at the head and no reviewer has an open finding.' + (limited ? ' A rate-limited best-effort CodeRabbit is relaxed: a NOTE, not a hold.' : '') };
+    return { st: 'gated', note: 'Waits until every hard reviewer (' + hard.join(', ') + ') passes at the head and every gating finding and review thread is resolved.' + (limited ? ' A rate-limited best-effort CodeRabbit is relaxed: a NOTE, not a hold.' : '') };
   }
 
   function rabbitNode() {

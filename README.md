@@ -281,7 +281,7 @@ measured.
   and a pre-commit gate now keeps `CLAUDE.md` under 6 KiB. The detail lives
   in pages a session opens only when it needs them.
 - **Workers start thin.** A worker starts from a thin
-  profile with only the plugins and the one search server it calls
+  profile with only the plugins and MCP servers its task calls
   ([session profiles](docs/internals/lane-calibration.md)).
   [lean-skills](marketplace/plugins/lean-skills/README.md) carries the 14
   skills himmel calls in place of 26 from two larger plugins. Those two and a
@@ -618,7 +618,7 @@ it. None of them is needed by the core harness.
   himmel) turns an Obsidian Web Clipper inbox into a knowledge base that keeps
   itself tidy: `/harvest-clips`, `/triage-clips`, `/synthesize-clips`,
   `/archive-clips`.
-- **qmd** reaches Claude as an MCP server (`qmd@qmd`). The standalone CLI
+- **qmd** reaches Claude as an MCP server through the `qmd@himmel` plugin. The standalone CLI
   installs from himmel's qmd fork with `bash scripts/lib/qmd-bin.sh install`,
   which setup runs for you.
 - **[claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian)**, pinned

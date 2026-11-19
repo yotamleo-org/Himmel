@@ -5,10 +5,10 @@ session** for one release, only to run STATUS, BURN-DOWN or READY. Requests
 are never ruled by a session: `jira release rm-run <R>` rules them in one
 batch (`chief-sections/release-manager.md`). The session does
 the verb it was armed for, reports, releases the lease and wraps; it never
-holds for a `REQ`. The `release-manager` launch profile is not shipped yet, so arm
-the RM with plain `headed-arm-worker.sh` from a shell that exports
-`HIMMEL_RELEASE_MANAGER=1`. The session inherits it, and `release lease
-acquire` refuses without it. File it in
+holds for a `REQ`. Arm the RM with
+`headed-arm-worker.sh --profile release-manager --rm-release <R>` (native lane
+only); the launcher exports `HIMMEL_RELEASE_MANAGER=1` into the session, and
+`release lease acquire` refuses without it. File it in
 the chief's bucket as `<PREFIX>-rm-<R>-<date>.md`, filled by hand from the
 block below. The RM is a worker kind: it holds the queue lock on this
 document **and** the release lease, rules placements with the

@@ -95,8 +95,10 @@ both pages say no tracker is configured rather than showing an empty board.
 Session switches and Your install answers are shown, never written:
 session switches are set when you start Claude.
 
-Every write is a `POST` behind the per-launch token or a login session, a same-origin check and a JSON-only body.
-This is the full set, each mapped to the code that handles it:
+Every write below is a `POST` behind the per-launch token or a login session, a same-origin check and a JSON-only body.
+The one exception is the Shift page's `GET /api/shift` poll, which records shift state and appends a closed shift to
+`shifts.jsonl` (`tickShifts` in `scripts/config-ui/shift.ts`; under `--read-only` it writes nothing).
+This is the full set of `POST` writes, each mapped to the code that handles it:
 
 | Action | Route | Handled in |
 |---|---|---|
