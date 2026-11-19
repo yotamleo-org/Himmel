@@ -64,6 +64,8 @@ _gu_render_word() {
     local w=${ST_W[$1]} re_plain='^[A-Za-z0-9_./:@%+,=~^-]+$'
     local re_glob='^[][A-Za-z0-9_./:@%+,=~^*?{}!-]+$' re_var='^[A-Za-z0-9_./:@%+,=~^${}-]+$'
     GU_BARE=1
+    # A word that starts with = stays quoted: bare, zsh would replace it by a command's path.
+    case $w in =*) GU_BARE=0; GU_RW="'${w//$_GU_SQ/$_GU_SQ$_GU_BS$_GU_SQ$_GU_SQ}'"; return 0 ;; esac
     if [[ $w =~ $re_plain ]]; then GU_RW=$w; return 0; fi
     if [ "${ST_G[$1]}" = 1 ] && [[ $w =~ $re_glob ]]; then GU_RW=$w; return 0; fi
     if [ "${ST_X[$1]}" = 1 ] && [[ $w =~ $re_var ]]; then GU_RW=$w; return 0; fi
@@ -312,11 +314,19 @@ _gu_ambig_text() {
     return 1
 }
 
+# _gu_equals_text CMD — 0 when CMD's text has a word that starts with an unquoted =, which zsh
+# replaces by the path of the command of that name. The tokenizer may have failed before it
+# reached that word, and ST_AMBIG then says nothing.
+_gu_equals_text() {
+    local re='(^|[[:space:];&|(`{<>])=[^=(~[:space:];&|<>)]'
+    [[ $1 =~ $re ]]
+}
+
 # _gu_deny_ambig — the denial for a command, or a nested body, that bash and zsh read differently.
 _gu_deny_ambig() {
-    echo "guard-unwrap: refusing a command that bash and zsh read differently (a \$'...' word with an escape they read two ways, or a backslash that ends the text), so the text the shell runs cannot be known." >&2
+    echo "guard-unwrap: refusing a command that bash and zsh read differently (a \$'...' word with an escape they read two ways, a backslash that ends the text, or a word that starts with an unquoted =, which zsh replaces by the path of the command of that name), so the text the shell runs cannot be known." >&2
     if [ "${GUARD_EXPANSION_DEPTH:-0}" = 0 ]; then
-        printf '%s\n' '    Retry: write the character itself, or use an escape both shells read alike (\n \t \xHH \NNN); do not end a command, an eval body or a shell -c body with a backslash; an unknown escape, \cX, \C-X, \M-X, a NUL escape and a \x \u \U with no hex digit are read two ways.' >&2
+        printf '%s\n' '    Retry: write the character itself, or use an escape both shells read alike (\n \t \xHH \NNN); do not end a command, an eval body or a shell -c body with a backslash; quote the = (\=name or '\''=name'\'') when the word is data, or write the command by its name; an unknown escape, \cX, \C-X, \M-X, a NUL escape and a \x \u \U with no hex digit are read two ways.' >&2
     fi
 }
 
@@ -348,7 +358,7 @@ guard_unwrap() {
         _gu_strip_heredocs "$GU_FLAT"
         if { [ "$GU_FLAT" = "$cmd" ] || ! st_tokenize "$GU_FLAT"; } \
             && { [ "$GU_NOHD" = "$GU_FLAT" ] || ! st_tokenize "$GU_NOHD"; }; then
-            if [ "${ST_AMBIG:-0}" = 1 ] || _gu_ambig_text "$GU_NOHD"; then
+            if [ "${ST_AMBIG:-0}" = 1 ] || _gu_ambig_text "$GU_NOHD" || _gu_equals_text "$GU_NOHD"; then
                 _gu_deny_ambig
                 return 2
             fi

@@ -160,8 +160,9 @@ fi
 #               any live $ in an unquoted heredoc body), a heredoc, a $'…'
 #               word, a comment.
 #   ST_AMBIG    1 when st_tokenize returned 1 because the text holds what bash
-#               and zsh read differently: a $'…' word with such an escape, or
-#               a backslash that ends the text.
+#               and zsh read differently: a $'…' word with such an escape, a
+#               backslash that ends the text, or a word that starts with an
+#               unquoted = (zsh replaces it by the path of that command).
 # shellcheck disable=SC1003,SC2016,SC2034 # literal \ ` $ bytes; ST_* are read by the caller
 st_tokenize() {
     local LC_ALL=C
@@ -342,6 +343,12 @@ st_tokenize() {
                 esac
                 ;;
             *)
+                if [ "$c" = '=' ] && [ "$win" = 0 ]; then
+                    case "${s:i+1:1}" in
+                        '' | ' ' | $'\t' | $'\n' | '=' | '(' | '~' | ';' | '&' | '|' | '<' | '>' | ')') ;;
+                        *) ST_AMBIG=1; return 1 ;;
+                    esac
+                fi
                 case "$c" in '*'|'?'|'['|'{') wg=1 ;; esac
                 win=1; w=$w$c; i=$((i + 1))
                 ;;
