@@ -551,6 +551,64 @@ check "(rp-workers) the hand run keeps the held worker's ticket out of the pool"
 check "(rp-workers) and lists the other pool head" "1" "$(printf '%s\n' "$hand" | grep -c "$KP-3	")"
 check "(rp-workers) the pool in the wake block equals that hand run" "$hand" "$(sed '1,2d;/^# version backlog/,$d;/^# rows left in /,$d;/^# disposition /d;/^# pool-unresolved /d;/^# dispatchable in /d' "$WORK/rplegs.out")"
 
+# --- 9335 WP1, WP2: the waiter's two passes while a sibling manifest cannot be read ---
+# The fleet is readable (the stub tick succeeds and reads capacity=UNDERFILLED), one sibling manifest is not; a logging wrapper shows which passes ran.
+TAB="$(printf '\t')"; WPD="$WORK/wp9335"; WPLOG="$WPD/dispatch.log"; mkdir -p "$WPD"; : > "$WPLOG"
+cat > "$WPD/dispatch-log.sh" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$WPLOG"
+exec bash "$HERE/next-dispatchable.sh" "\$@"
+EOF
+wp_rows() { printf '%s\n' "$1" | grep -cE "^(LOCAL|LOCAL\\?|CLOUD|DESIGN|SERIES|RESUME|NEXT-TIER|STACKABLE)${TAB}" || true; }  # rows of a kind that lists work
+WPOWN="$WPD/HIMMEL-nextleg-2026-11-18A-wp.fleet.json"
+WPSIB="$WPD/HIMMEL-nextleg-2026-11-17A-wp.fleet.json"
+printf '{"schema":1,"legs":[{"label":"held","doc":"%s"}]}\n' "$WORK/HIMMEL-1-held-worker.md" > "$WPOWN"
+printf 'not json\n' > "$WPSIB"
+WP_LINE="# owner unknown: the chief on HIMMEL-nextleg-2026-11-17A-wp (manifest HIMMEL-nextleg-2026-11-17A-wp.fleet.json unreadable)"
+: > "$WPLOG"
+hand="$(bash "$HERE/next-dispatchable.sh" --priority-pool-only --top 7 --doc "$WORK/chief.md" --workers-from "$WPOWN" </dev/null 2>/dev/null)"
+I="$(new_inbox wp1a)"
+CHIEF_WAIT_DISPATCH="$WPD/dispatch-log.sh" timeout 20 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WPOWN" > "$WPD/wp1a.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+: > "$WPD/wp1a.log"; cp "$WPLOG" "$WPD/wp1a.log"
+check "9335 WP1.a: the waiter exits 0 with a wake" "0" "$rc"
+check "9335 WP1.a: the first line is the pool-unresolved wake" "WAKE pool-unresolved" "$(sed -n 1p "$WPD/wp1a.out" | cut -c1-20)"
+check "9335 WP1.a: the wake block holds the owner-unknown line once" "1" "$(grep -cF -- "$WP_LINE" "$WPD/wp1a.out" || true)"
+check "9335 WP1.a: the wake block lists no ticket row" "0" "$(wp_rows "$(cat "$WPD/wp1a.out")")"
+check "9335 WP1.a: the dispatcher ran once" "1" "$(wc -l < "$WPD/wp1a.log" | tr -d ' ')"
+check "9335 WP1.a: and that call is the priority-pool pass" "1" "$(grep -c -- '--priority-pool-only' "$WPD/wp1a.log" || true)"
+check "9335 WP1.a: the pool in the wake block equals a hand run of pass 1's flags" "$hand" "$(sed '1,2d;/^# version backlog/,$d;/^# rows left in /,$d;/^# disposition /d;/^# pool-unresolved /d;/^# dispatchable in /d' "$WPD/wp1a.out")"
+# WP1.b, WP1.c: a named manifest that is missing or not JSON gives the same withheld lists in both passes (hand runs)
+for wp_kind in missing unreadable; do
+    if [ "$wp_kind" = missing ]; then wp_man="$WPD/no-such-wp.fleet.json"; else wp_man="$WPD/bad-wp.fleet.json"; printf 'not json\n' > "$wp_man"; fi
+    wp_id=WP1.b; [ "$wp_kind" = missing ] || wp_id=WP1.c
+    wp_p1="$(bash "$HERE/next-dispatchable.sh" --priority-pool-only --top 7 --doc "$WORK/chief.md" --workers-from "$wp_man" </dev/null 2>/dev/null)"
+    wp_p2="$(bash "$HERE/next-dispatchable.sh" --top 7 --doc "$WORK/chief.md" --workers-from "$wp_man" </dev/null 2>/dev/null)"
+    check "9335 $wp_id: pass 1 lists no ticket row for a $wp_kind manifest" "0" "$(wp_rows "$wp_p1")"
+    check "9335 $wp_id: pass 2 lists no ticket row for a $wp_kind manifest" "0" "$(wp_rows "$wp_p2")"
+    check "9335 $wp_id: pass 1 holds one owner-unknown line naming the manifest as $wp_kind" "1" "$(printf '%s\n' "$wp_p1" | grep -cF -- "# owner unknown: the fleet (manifest $(basename "$wp_man") $wp_kind)" || true)"
+    check "9335 $wp_id: pass 2 holds one owner-unknown line naming the manifest as $wp_kind" "1" "$(printf '%s\n' "$wp_p2" | grep -cF -- "# owner unknown: the fleet (manifest $(basename "$wp_man") $wp_kind)" || true)"
+done
+# WP2: pass 2 runs (a mirror whose version is released has no drop summary) and withholds the version backlog too
+mkdir -p "$WPD/mirror2" && cp -R "$M" "$WPD/mirror2/HIMMEL"
+printf 'v1.0.1\ttrue\t2026-01-01\n' > "$WPD/mirror2/HIMMEL.versions.tsv"
+: > "$WPLOG"
+I="$(new_inbox wp2)"
+NEXT_DISPATCH_MIRROR="$WPD/mirror2/HIMMEL" CHIEF_WAIT_DISPATCH="$WPD/dispatch-log.sh" timeout 20 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WPOWN" > "$WPD/wp2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+cp "$WPLOG" "$WPD/wp2.log"
+check "9335 WP2: the waiter exits 0 with a wake" "0" "$rc"
+check "9335 WP2: the wake block holds no drop summary, so pass 2 runs" "0" "$(grep -c '^# dropped from' "$WPD/wp2.out" || true)"
+check "9335 WP2: the dispatcher ran twice" "2" "$(wc -l < "$WPD/wp2.log" | tr -d ' ')"
+check "9335 WP2: exactly one of the two calls is the priority-pool pass" "1" "$(grep -c -- '--priority-pool-only' "$WPD/wp2.log" || true)"
+check "9335 WP2: both calls carry the fixture's manifest" "2" "$(grep -cF -- "--workers-from $WPOWN" "$WPD/wp2.log" || true)"
+check "9335 WP2: the version backlog holds the owner-unknown line" "1" "$(sed -n '/^# version backlog/,$p' "$WPD/wp2.out" | grep -cF -- "$WP_LINE" || true)"
+check "9335 WP2: the version backlog lists no ticket row" "0" "$(wp_rows "$(sed -n '/^# version backlog/,$p' "$WPD/wp2.out")")"
+printf '{"schema":1,"workers":[]}\n' > "$WPSIB"
+: > "$WPLOG"
+I="$(new_inbox wp2c)"
+NEXT_DISPATCH_MIRROR="$WPD/mirror2/HIMMEL" CHIEF_WAIT_DISPATCH="$WPD/dispatch-log.sh" timeout 20 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WPOWN" > "$WPD/wp2c.out" 2>/dev/null
+check "9335 WP2.ctl: with a valid sibling manifest the version backlog lists $KP-2" "1" "$(sed -n '/^# version backlog/,$p' "$WPD/wp2c.out" | grep -cF -- "LOCAL${TAB}${KP}-2" || true)"
+check "9335 WP2.ctl: with a valid sibling manifest there is no owner-unknown line" "0" "$(grep -c '^# owner unknown' "$WPD/wp2c.out" || true)"
+
 printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
 for t7b_line in '# quota-pause QUOTA-PAUSE github graphql token=main remaining=0 floor=500 reset=unknown caller=next-dispatchable nothing-was-judged' \
     '# gh-stall GH-STALL github read timed out after 400s token=main caller=next-dispatchable nothing-was-judged'; do
