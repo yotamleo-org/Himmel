@@ -1187,8 +1187,10 @@ class RetryPace(stream_tests.StreamFixture):
         self.fleet.write_text(json.dumps(dict(workers=[dict(label='N1', doc=str(self.page))])))
 
     def collect(self, **env):
-        return subprocess.run(['python3', '-I', str(HERE / 'pending-events.py'), str(self.fleet), str(self.inbox), ''],
-                              capture_output=True, text=True, env=dict(os.environ, **env)).stdout.splitlines()
+        done = subprocess.run(['python3', '-I', str(HERE / 'pending-events.py'), str(self.fleet), str(self.inbox), ''],
+                              capture_output=True, text=True, env=dict(os.environ, **env))
+        self.assertEqual(done.returncode, 0, done.stderr)  # a crashed collector must not read as "nothing offered"
+        return done.stdout.splitlines()
 
     def refused(self, age, text=REFUSED):
         out = self.path('le-N1')
@@ -1252,6 +1254,18 @@ class RetryPace(stream_tests.StreamFixture):
         self.assertEqual(self.collect(), [], 'still the top step, 300 s')
         self.refused(301)
         self.assertEqual(self.collect(), ['N1 MERGED 2'])
+
+    def test_the_oldest_of_several_pending_ready_bullets_is_paced_by_its_own_bullet(self):
+        old, new = f'- 10:00 READY #1 {"1" * 40}', f'- 10:01 READY #2 {"2" * 40}'
+        self.page.write_text(f'# N1\n{old}\n{new}\n')
+        self.path('ready').write_text('N1\t1\n')  # the cursor is above both: both are pending, the oldest is offered
+        text = 'ESCALATE series-find-failed rc=3 the ledger is locked\n'
+        self.tries(5, old)
+        self.refused(100, text)
+        self.assertEqual(self.collect(), [], 'its own count: the top step')
+        self.tries(5, new)  # the newest bullet's count is not the oldest's
+        self.refused(6, text)
+        self.assertEqual(self.collect(), ['N1 READY 2'])
 
     def test_a_refused_ready_is_paced_by_its_own_bullet(self):
         ready = f'- 10:00 READY #1 {"1" * 40}'

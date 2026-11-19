@@ -958,6 +958,15 @@ class StackedWorker(StreamFixture):
         self.stop(p)
         self.assertFalse(self.path('relaylog').exists())
 
+    def test_the_first_wake_block_of_a_fresh_inbox_holds_no_shell_error(self):
+        # the first worker-event call of an inbox runs before its relay log exists; probing the missing file must stay silent
+        p, out = self.refused_with('ESCALATE wrap-merged-failed rc=4 worker still alive')
+        self.until(lambda: 'cleanup-still-refused' in out.read_text(), seconds=15)
+        self.stop(p)
+        for name, text in (('the wake block', self.path('wake-1').read_text()), ('the stream output', out.read_text())):
+            self.assertNotIn('No such file', text, name)
+            self.assertNotIn('chief-wait.sh: line', text, name)
+
     def test_the_relay_log_is_bounded_by_size_with_one_rotated_copy(self):
         # the kit's other size-capped log (the classifier denial log) rotates to <log>.1 past 1 MiB
         import re
@@ -1045,7 +1054,7 @@ class IdlePoll(StreamFixture):
     def sleeps(self, after=0.0):
         path = self.root / 'sleeps'
         rows = [line.split() for line in path.read_text().splitlines()] if path.exists() else []
-        return [arg for ts, arg in rows if float(ts) > after and arg in ('0.05', '0.5', '0.01', '1')]
+        return [arg for ts, arg in rows if float(ts) > after and arg in ('0.05', '0.5', '0.01', '1', '1.2.3')]
 
     def slow(self, count):
         return lambda: self.sleeps().count('0.5') >= count
@@ -1091,6 +1100,54 @@ class IdlePoll(StreamFixture):
         self.until(lambda: len(self.sleeps()) >= 14)
         self.stop(p)
         self.assertEqual(set(self.sleeps()), {'0.05'})
+
+    def test_the_poll_backs_off_in_handover_mode_after_an_event(self):
+        # a handover marker appears right after a service pass that offered an event; that offer was work of that
+        # pass only, so the passes that follow (which skip the service) are empty and the poll must back off
+        marker = self.inbox.parent / (self.inbox.name + '.handover')
+        self.env['CHIEF_WAIT_WORKER_EVENT'] = self.script(
+            'event', f'echo "$(date +%s.%N)" >> "$TEST_ROOT/events"\ncat > /dev/null\ntouch "{marker}"\necho HANDLED auto-go\n')
+        p, _ = self.start()
+        self.until(self.slow(2))
+        self.post_ready()
+        self.until(lambda: (self.root / 'events').exists())
+        at = float((self.root / 'events').read_text().split()[0])
+        self.until(lambda: self.sleeps(at).count('0.5') >= 2, seconds=10)
+        self.stop(p)
+        after = self.sleeps(at)
+        self.assertEqual(after[:6], ['0.05'] * 6, after)
+        self.assertEqual(after[6], '0.5', after)
+
+    def test_a_malformed_idle_poll_falls_back_to_the_default_and_does_not_spin(self):
+        self.env['CHIEF_WAIT_IDLE_POLL_SEC'] = '1.2.3'
+        p, _ = self.start()
+        self.until(lambda: any(arg in ('1', '1.2.3') for arg in self.sleeps()), seconds=10)
+        time.sleep(1.2)
+        self.stop(p)
+        seen = self.sleeps()
+        self.assertNotIn('1.2.3', seen, 'a value sleep rejects was used')
+        self.assertIn('1', seen)
+        self.assertLess(len(seen), 40, 'a rejected sleep would spin the loop')
+
+    def test_a_due_tick_puts_the_poll_back(self):
+        self.env['CHIEF_WAIT_INTERVAL'] = '3'
+        p, _ = self.start()
+
+        def runs():
+            out = []
+            for arg in self.sleeps():
+                if out and out[-1][0] == arg:
+                    out[-1][1] += 1
+                else:
+                    out.append([arg, 1])
+            return out
+        self.until(lambda: len(runs()) >= 4, seconds=15)
+        self.stop(p)
+        seen = runs()
+        self.assertEqual(seen[0], ['0.05', 5])
+        self.assertEqual(seen[1][0], '0.5')
+        self.assertEqual(seen[2], ['0.05', 5], 'the tick that fell due: five passes at the poll again')
+        self.assertEqual(seen[3][0], '0.5')
 
     def test_unusable_settings_fall_back_to_the_defaults(self):
         self.env.update(CHIEF_WAIT_IDLE_POLL_SEC='soon', CHIEF_WAIT_IDLE_PASSES='many')
