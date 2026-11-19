@@ -689,7 +689,8 @@ class StackedWorker(StreamFixture):
         self.assertGreaterEqual(gaps[3], 1.0, gaps)
         self.assertGreaterEqual(gaps[4], 2.5, 'the top step holds')
 
-    def test_a_document_change_starts_the_ladder_over(self):
+    def test_a_changed_event_starts_the_ladder_over(self):
+        # The ladder is about one cleanup event: a newer cleanup bullet is another event, so the climb starts over.
         self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.2'
         (self.root / 'refuse-cleanup').touch()
         self.worker('N1', self.ready('N1', 1))
@@ -701,12 +702,39 @@ class StackedWorker(StreamFixture):
         fourth = self.seen('N1 MERGED #1')[3]
         tries = self.path('le-N1.tries')  # the change must follow the relay's record of the fourth refusal
         self.until(lambda: tries.exists() and tries.read_text().split()[0] == '4', seconds=5)
-        self.add('N1', '- 10:06 LIVE still working')  # the fifth gap would be 4.8 s on the ladder
-        self.until(lambda: len(self.seen('N1 MERGED #1')) >= 6, seconds=15)
-        stamps = self.seen('N1 MERGED #1')
+        self.add('N1', '- 10:06 WRAPPED all done')  # the fifth gap would be 4.8 s on the ladder
+        self.until(lambda: len(self.seen('N1 WRAPPED')) >= 2, seconds=15)
+        stamps = self.seen('N1 WRAPPED')
+        self.until(lambda: tries.read_text().split()[0] == '2', seconds=5)  # its own count: 1, then 2
         self.stop(p)
-        self.assertLess(stamps[4] - fourth, 2.0, 'a changed document is tried again at the first step')
-        self.assertLess(stamps[5] - stamps[4], 2.0, 'and the climb starts over')
+        self.assertLess(stamps[0] - fourth, 2.0, 'another event is tried again at the first step')
+        self.assertLess(stamps[1] - stamps[0], 2.0, 'and its own climb starts over')
+
+    def test_an_unrelated_document_change_does_not_start_the_ladder_over(self):
+        # A live worker keeps appending LIVE bullets while the same refusal persists: the ladder still reaches
+        # the top and wakes the chief, once.
+        self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.05'
+        (self.root / 'refuse-cleanup').touch()
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, out = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        end = time.monotonic() + 20
+        n = 0
+        while 'cleanup-still-refused' not in out.read_text() and time.monotonic() < end:
+            n += 1
+            self.add('N1', f'- 10:06 LIVE still working {n}')
+            time.sleep(.1)
+        self.assertIn('cleanup-still-refused', out.read_text(), f'{n} unrelated bullets, no wake')
+        for _ in range(8):
+            n += 1
+            self.add('N1', f'- 10:06 LIVE still working {n}')
+            time.sleep(.1)
+        self.stop(p)
+        text = out.read_text()
+        self.assertEqual(text.count('cleanup-still-refused'), 1, text)
+        self.assertGreaterEqual(len(self.seen('N1 MERGED #1')), 5)
 
     def test_the_top_step_wakes_the_chief_once_and_only_paces_after_it(self):
         self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.05'
@@ -730,7 +758,7 @@ class StackedWorker(StreamFixture):
         self.assertNotIn('N1 MERGED', self.path('r0').read_text() if self.path('r0').exists() else '')
         self.assertEqual({name: self.path(name).read_text() for name in state}, state)
 
-    def test_a_document_change_after_the_top_wake_does_not_wake_for_the_same_event_again(self):
+    def test_an_unrelated_change_after_the_top_wake_neither_restarts_the_ladder_nor_wakes_again(self):
         self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.05'
         (self.root / 'refuse-cleanup').touch()
         self.worker('N1', self.ready('N1', 1))
@@ -739,12 +767,31 @@ class StackedWorker(StreamFixture):
         self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
         self.add('N1', '- 10:05 MERGED #1')
         self.until(lambda: 'cleanup-still-refused' in out.read_text(), seconds=15)
-        before = len(self.seen('N1 MERGED #1'))
+        woke = len(self.seen('N1 MERGED #1'))
         self.add('N1', '- 10:06 LIVE still working')
-        self.until(lambda: len(self.seen('N1 MERGED #1')) >= before + 5, seconds=15)  # the climb ran again to the top
+        self.until(lambda: len(self.seen('N1 MERGED #1')) > woke, seconds=12)
+        stamps = self.seen('N1 MERGED #1')
         time.sleep(.6)
         self.stop(p)
+        self.assertGreaterEqual(stamps[woke] - stamps[woke - 1], 2.5, 'the top pace holds: the climb did not start over')
         self.assertEqual(out.read_text().count('cleanup-still-refused'), 1, out.read_text())
+
+    def test_a_new_event_after_the_top_wake_gets_a_wake_of_its_own(self):
+        self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.05'
+        (self.root / 'refuse-cleanup').touch()
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, out = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        self.until(lambda: 'cleanup-still-refused worker=N1 event=MERGED' in out.read_text(), seconds=15)
+        self.add('N1', '- 10:06 WRAPPED all done')
+        self.until(lambda: 'cleanup-still-refused worker=N1 event=WRAPPED' in out.read_text(), seconds=15)
+        time.sleep(.6)
+        self.stop(p)
+        text = out.read_text()
+        self.assertEqual(text.count('cleanup-still-refused worker=N1 event=MERGED'), 1, text)
+        self.assertEqual(text.count('cleanup-still-refused worker=N1 event=WRAPPED'), 1, text)
 
     def test_a_success_ends_the_ladder(self):
         self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.05'

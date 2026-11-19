@@ -1196,9 +1196,14 @@ class RetryPace(stream_tests.StreamFixture):
         stamp = time.time() - age
         os.utime(out, (stamp, stamp))
 
-    def tries(self, count):
-        st = self.page.stat()
-        self.path('le-N1.tries').write_text(f'{count} {st.st_mtime_ns // 10**9} {st.st_size} -\n')
+    BULLET = '- 10:00 MERGED #1 done'
+
+    def key(self, line):
+        # the relay's key for an event: the cksum of its bullet
+        return subprocess.run(['cksum'], input=line + '\n', capture_output=True, text=True, check=True).stdout.split()[0]
+
+    def tries(self, count, line=BULLET):
+        self.path('le-N1.tries').write_text(f'{count} {self.key(line)} -\n')
 
     def test_the_hold_grows_in_fixed_steps_and_stops_at_the_top(self):
         for count in range(1, 9):
@@ -1214,17 +1219,37 @@ class RetryPace(stream_tests.StreamFixture):
         self.refused(100_000)
         self.assertEqual(self.collect(), ['N1 MERGED 2'])
 
-    def test_a_changed_document_starts_the_ladder_over(self):
+    def test_a_changed_event_starts_the_ladder_over(self):
         self.tries(5)
         with self.page.open('a') as f:
-            f.write('- 10:01 LIVE still working\n')
+            f.write('- 10:01 WRAPPED all done\n')  # a newer cleanup bullet: another event
         self.refused(4)
         self.assertEqual(self.collect(), [], 'back at the first step, 5 s')
         self.refused(6)
+        self.assertEqual(self.collect(), ['N1 WRAPPED 3'])
+
+    def test_an_unrelated_document_change_keeps_the_step(self):
+        self.tries(5)
+        with self.page.open('a') as f:
+            f.write('- 10:01 LIVE still working\n- 10:02 FINDING a note\n')
+        self.refused(100)
+        self.assertEqual(self.collect(), [], 'still the top step, 300 s')
+        self.refused(301)
         self.assertEqual(self.collect(), ['N1 MERGED 2'])
 
+    def test_a_refused_ready_is_paced_by_its_own_bullet(self):
+        ready = f'- 10:00 READY #1 {"1" * 40}'
+        self.page.write_text(f'# N1\n{ready}\n')
+        text = 'ESCALATE series-find-failed rc=3 the ledger is locked\n'
+        self.tries(5, ready)
+        self.refused(100, text)
+        self.assertEqual(self.collect(), [], 'the top step, 300 s')
+        self.tries(5, '- 10:00 READY #1 ' + '2' * 40)  # the count belongs to another bullet
+        self.refused(6, text)
+        self.assertEqual(self.collect(), ['N1 READY 2'])
+
     def test_no_count_or_a_torn_one_means_the_first_step(self):
-        for text in (None, 'garbage', '3 17\n', '0 1 1 -\n', '-2 1 1 -\n'):
+        for text in (None, 'garbage', '3\n', '3 17 100 -\n', f'0 {self.key(self.BULLET)} -\n', f'-2 {self.key(self.BULLET)} -\n'):
             with self.subTest(text=text):
                 if text is not None:
                     self.path('le-N1.tries').write_text(text)
