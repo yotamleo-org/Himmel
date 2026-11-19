@@ -24,7 +24,7 @@ The reviewers `scripts/cr/critics.json` runs on every PR today. To change the se
 | Reviewer | What it must do | Precision (recorded dispositions) | Wilson range | Range by PR | Sample |
 |---|---|---|---|---|---|
 | `codex:gpt-6.1-sol` | required: must pass before every merge | **80.1%** | 79.2 to 81.1 | 78.7 to 81.5 | as of 2026-11-11, n = 6,968 ruled findings over 2,053 PRs |
-| `claude:claude-opus-5-5` | must pass where it runs; skipped on a machine without it | **59.9%** | 53.9 to 65.7 | 47.5 to 70.2 | as of 2026-11-11, n = 262 ruled findings over 40 PRs |
+| `claude:claude-opus-5-5` | advisory: its findings print a note and hold no merge until its precision reaches the floor in critics.json | **59.9%** | 53.9 to 65.7 | 47.5 to 70.2 | as of 2026-11-11, n = 262 ruled findings over 40 PRs |
 | `coderabbit` | best effort: holds a merge only on a posted finding | **87.7%** | 81.8 to 91.9 | 81.0 to 94.4 | as of 2026-11-11, n = 163 ruled findings over 77 PRs |
 | `coderabbit-outside` | part of `coderabbit`: findings on lines outside the diff | **63.3%** | 57.2 to 69.1 | 56.8 to 69.8 | as of 2026-11-11, n = 251 ruled findings over 153 PRs |
 

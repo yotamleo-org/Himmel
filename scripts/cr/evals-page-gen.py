@@ -336,6 +336,8 @@ def role(p):
     """What a panel reviewer must do before a merge, in plain words (docs/configuration.md, Reviewer modes)."""
     if p["mode"] == "best-effort":
         return "best effort: holds a merge only on a posted finding"
+    if p["mode"] == "advisory":
+        return "advisory: its findings print a note and hold no merge until its precision reaches the floor in critics.json"
     if p["required"]:
         return "required: must pass before every merge"
     return "must pass where it runs; skipped on a machine without it"

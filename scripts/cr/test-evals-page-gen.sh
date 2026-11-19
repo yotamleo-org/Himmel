@@ -115,10 +115,10 @@ CAL_B="[$(grader grader1 opus native anthropic),$(grader grader2 google/gemini-x
 } > "$E"
 
 # ── Fixture panel ───────────────────────────────────────────────────────────
-# beta is the required reviewer, delta:m9 runs where present but has no findings yet, coderabbit is best effort;
+# beta is the required reviewer, delta:m9 runs where present but has no findings yet, epsilon:m7 is advisory, coderabbit is best effort;
 # alpha is in the ledger but not the panel, so it is history.
 K="$TMP/critics.json"
-printf '{"panel":[{"slug":"beta","mode":"hard","required":true},{"slug":"delta","model":"m9","mode":"hard","required":false},{"slug":"coderabbit","provider":"github-app","mode":"best-effort"}]}\n' > "$K"
+printf '{"panel":[{"slug":"beta","mode":"hard","required":true},{"slug":"delta","model":"m9","mode":"hard","required":false},{"slug":"epsilon","model":"m7","mode":"advisory","required":false},{"slug":"coderabbit","provider":"github-app","mode":"best-effort"}]}\n' > "$K"
 
 OUT="$TMP/data.json"
 python3 -I "$GEN" data --ledger "$L" --eval-runs "$E" --critics "$K" --cache-probe "$C" --as-of 2026-10-25 --out "$OUT" > "$TMP/data.out" 2> "$TMP/data.err"; rc=$?
@@ -204,6 +204,7 @@ has "render: bottom line gives the required reviewer's precision" "$(cat "$R")" 
 has "render: bottom line says the pooled figure is not the headline" "$(cat "$R")" "not the all-reviewers pooled figure"
 has "render: current setup row with its role" "$(cat "$R")" "| \`beta\` | required: must pass before every merge | **90.0%** | 78.6 to 95.7 |"
 has "render: a panel reviewer with no findings yet" "$(cat "$R")" "| \`delta:m9\` | must pass where it runs; skipped on a machine without it | no ruled findings yet |"
+has "render: an advisory reviewer never reads as must pass" "$(cat "$R")" "| \`epsilon:m7\` | advisory: its findings print a note and hold no merge until its precision reaches the floor in critics.json | no ruled findings yet |"
 has "render: current setup links the options" "$(cat "$R")" "(../configuration.md#review-by-a-second-model)"
 has "render: pooled figure under history" "$(grep -F '| All reviewers pooled |' "$R")" "**88.3%**"
 has "render: a retired reviewer under the floor is counted out" "$(cat "$R")" "One reviewer with fewer than 30 ruled findings is left out"
