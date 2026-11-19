@@ -6,7 +6,7 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { releaseKeyPath, releaseRoot } from './paths.js';
 import { pinnedSha, pinnedRead, boundedDirectoryNames, selectDecisionNames, reviewedSpecHashes, returnSha,
-  canonicalDirectoryNames, returnDirectories, checkLatestReturns, declaredTickets, keyOf, memberLedgerState, parseManifest,
+  canonicalDirectoryNames, returnDirectories, checkLatestReturns, declaredTickets, keyOf, memberLedgerState, optionalReturnAgreement, parseManifest,
   validateCappedFoldProofShape, validateCappedProofShape, type AnyCappedProof, type CappedFoldProof, type CappedLedgerProof, type FilePin, type MemberAbsencePin } from './pinned.js';
 export { pinnedSha, type Pinned } from './pinned.js';
 import { journalPath, readVersionWrites, type Getter, type VersionWriteRow } from './version-writes.js';
@@ -658,6 +658,7 @@ function bindCappedLedgerProof(proof: CappedLedgerProof, input: CappedInputs): v
     const file = input.files.find(f => f.kind.toLowerCase() === r.kind);
     if (!file || file.path !== r.path || file.sha256 !== r.sha256 || file.residuals !== r.residuals
       || returnSha(file.text) !== r.return_sha) throw new Error(`capped proof ${r.kind} return binding disagrees`);
+    optionalReturnAgreement(file.text, { keys: proof.keys, specSha: input.spec.sha256 });
   }
   if (proof.carried.length !== input.residuals) throw new Error('capped proof input binding disagrees');
   const spec = pinnedRead(input.spec.path);
