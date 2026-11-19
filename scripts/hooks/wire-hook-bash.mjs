@@ -172,6 +172,7 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // PreToolUse `mcp__t3-code__unwatch_pull_request` — its own matcher: denies
   // the unwatch while the PR is OPEN; fails open when the PR cannot be read.
   'block-t3code-unwatch-open-pr.sh',
+  'guard-t3-thread-tools.sh',
   // PreToolUse, one entry each.
   'block-backend-tier.sh',
   'mcp-policy.sh',
