@@ -403,7 +403,9 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     cleanup event (another bullet checksum, for example a WRAPPED after a MERGED) starts the
     ladder over, while the lines a live worker keeps appending do not, so a refusal that persists
     reaches the top step however busy the document is. A restarted waiter reads the same file and
-    keeps its step. The refusal that reaches the top step wakes you once per bullet with
+    keeps its step. A file written by the earlier format (count, mtime, size, woke) reads as another
+    event, so after an upgrade an event already woken before it is woken once more, at its next
+    fifth refusal. The refusal that reaches the top step wakes you once per bullet with
     `WAKE worker-event ESCALATE cleanup-still-refused worker=<label> event=<marker> tries=<n>
     next-try-in=<s>s refusal=<its first line> out=<file>`, and the waiter goes on trying at the
     top pace until the cleanup succeeds or the event changes. A refusal record dated in the
@@ -445,7 +447,9 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     goes back to the poll at once; the backoff is in stream mode only and only paces the loop. What a real sample takes is the
     host's: a station's recorded per-tick log (62 ticks) shows a median of about 36 s of wall time
     and a maximum of 104 s. A tick starts every 180 s counted from the start of the previous one,
-    so a quiet loop answers within a poll and a busy one after the rest of the sample in progress.
+    so a busy loop answers within a poll, a loop that has been quiet for ten passes within one idle
+    interval plus the pass (and starts a tick that fell due within the same), and a loop inside a
+    sample after the rest of the sample in progress.
     The master plan's 30-second bar is the bar of the stubbed 50-event test, where the tick is
     instant; it is not a promise about a real wave. The waiter records the real numbers: every
     `worker-event` call appends one line to `<inbox>.wait.relaylog`
