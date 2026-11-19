@@ -1270,15 +1270,29 @@ export function requestWithWords(ctx: Ctx, row: Omit<RequestRow, 'req' | 'ts' | 
   return { operator, withdrawn, request: request(ctx, { ...row, why: `${row.why} (operator words: ${operator.id})`, evidence }) };
 }
 
+// A row after the verified prefix of the operator or rulings chain hides whatever it says (a newer reversal, a newer refusal),
+// so a record on such a chain is not cited: what is named here is the first row that stopped the chain.
+function chainFaultOf(l: Loaded): string | undefined {
+  const [which, why] = l.operator.bad.length ? ['operator', l.operator.bad[0]] : l.rulings.bad.length ? ['rulings', l.rulings.bad[0]] : [];
+  return which === undefined ? undefined : `the ${which} chain of ${l.decl.release} could not be verified to its end (${why})`;
+}
+
+export function chainFault(ctx: Ctx): string | undefined {
+  const l = load(ctx);
+  return 'unknown' in l ? undefined : chainFaultOf(l);
+}
+
 // The operator's words record that already places a gated ask, or undefined. It is the newest decision naming the key on the
-// versions the ask touches (rule()'s own selection; two at the newest instant are a tie and refuse), holds checked words
-// (words: 1, never a legacy row), covers exactly this placement under the reducer's scopeOk, and is newer than every ruling
-// on the key. Only the verified chain is read: a row that does not verify places nothing.
+// versions the ask touches, or on no version (a keep in backlog or a none retracts an older add; rule()'s own selection leaves
+// such a row out); two at the newest instant are a tie and refuse. It holds checked words (words: 1, never a legacy row),
+// covers exactly this placement under the reducer's scopeOk, and is newer than every ruling on the key. Only the verified
+// chain is read, and a chain with a row after its verified prefix is not read at all: a row that does not verify places nothing.
 function coveringDecision(l: Loaded, ask: Pick<RequestRow, 'verb' | 'key' | 'from_v' | 'to_v'>): OperatorRow | undefined {
   if ((ask.verb !== 'INTAKE' && ask.verb !== 'REVERSION') || ask.to_v === null) return undefined;
+  if (chainFaultOf(l) !== undefined) return undefined;
   const touched = [ask.from_v, ask.to_v].filter((v) => v !== null);
   const named = l.operator.verified.filter((x) => x.kind === 'decision' && (x.keys ?? []).includes(ask.key)
-    && [x.from_v, x.to_v].some((v) => v != null && touched.includes(v)));
+    && ([x.from_v, x.to_v].some((v) => v != null && touched.includes(v)) || (x.from_v == null && x.to_v == null)));
   const newest = Math.max(...named.map((x) => Date.parse(x.ts)));
   const top = named.filter((x) => Date.parse(x.ts) === newest);
   if (top.length !== 1 || top[0].words !== 1) return undefined;
@@ -1304,11 +1318,6 @@ export function requestOnRecord(ctx: Ctx, row: Omit<RequestRow, 'req' | 'ts' | '
   if (!operator) return undefined;
   const evidence = { ...((row.evidence ?? {}) as Record<string, unknown>), operator: operator.id };
   return { operator, request: request(ctx, { ...row, evidence }) };
-}
-
-// Inert until the product commit: no chain has a fault.
-export function chainFault(_ctx: Ctx): string | undefined {
-  return undefined;
 }
 
 // --- the blocker pull ------------------------------------------------------------
