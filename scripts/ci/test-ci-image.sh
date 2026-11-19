@@ -80,7 +80,7 @@ if [ -n "$pc_pin" ] && grep -qF -- '--require-hashes' <<< "$df_text" && grep -qF
   && grep -qF -- '--require-hashes --only-binary=:all: -r .github/ci-image/requirements-ci.txt' "$CI_YML"; then
   ok "Dockerfile and ci.yml install $pc_pin from the hashed requirements-ci.txt"
 else bad "Dockerfile and ci.yml do not both install the hashed requirements-ci.txt (${pc_pin:-no pre-commit pin in it})"; fi
-node_major="$(grep -oE "node-version: '[0-9]+" "$CI_YML" | head -n 1 | grep -oE '[0-9]+')"
+node_major="$(grep -oE "node-version: '[0-9]+" "$CI_YML" | grep -oE '[0-9]+' | sort -n | head -n 1)"
 node_ver="$(sed -n 's/^ARG NODE_VERSION=//p' <<< "$df_text")"
 if [ -n "$node_major" ] && [ "${node_ver%%.*}" = "$node_major" ] && grep -Eq '^ARG NODE_SHA256=[0-9a-f]{64}$' <<< "$df_text"; then
   ok "Dockerfile pins node $node_ver (major $node_major) with a sha256"
