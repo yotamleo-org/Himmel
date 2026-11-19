@@ -179,7 +179,7 @@ else
     elif [ -z "$diff_out" ]; then
         echo "docs-audit cross-model critic skipped: empty diff (marker will stay closed under CR_REQUIRE_CROSS_MODEL unless another non-Claude avail-ok row exists; ready-check item 4 fails this head on the same condition)" >&2
     else
-        panel_tmp=$(mktemp -t cr-docs-audit-panel-avail.XXXXXX) || no_panel_tmp
+        panel_tmp=$(mktemp "${TMPDIR:-/tmp}/cr-docs-audit-panel-avail.XXXXXX") || no_panel_tmp
         docs_audit_panel_findings=$(printf '%s' "$diff_out" | CR_USAGE_LOG=1 bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --head "$docs_audit_head" --branch "$branch" --base "$db" --base-sha "$db_sha" 2>"$panel_tmp")
         panel_rc=$?
         docs_audit_panel_avail_lines=$(cat "$panel_tmp"); rm -f "$panel_tmp"
@@ -195,7 +195,7 @@ PINABORT
         if [ "$panel_rc" -eq 1 ] && command -v rtk >/dev/null 2>&1; then
             retry_diff=$(rtk proxy git diff "$db_sha...$docs_audit_head" 2>/dev/null) || retry_diff="" # swallow-ok: an empty retry diff skips the retry
             if [ -n "$retry_diff" ]; then
-                retry_tmp=$(mktemp -t cr-docs-audit-panel-avail.XXXXXX) || no_panel_tmp
+                retry_tmp=$(mktemp "${TMPDIR:-/tmp}/cr-docs-audit-panel-avail.XXXXXX") || no_panel_tmp
                 docs_audit_panel_findings=$(printf '%s' "$retry_diff" | CR_USAGE_LOG=1 bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --head "$docs_audit_head" --branch "$branch" --base "$db" --base-sha "$db_sha" 2>"$retry_tmp")
                 panel_rc=$?
                 docs_audit_panel_avail_lines=$(cat "$retry_tmp"); rm -f "$retry_tmp"

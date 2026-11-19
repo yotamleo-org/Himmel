@@ -5,6 +5,7 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="$HERE/model-check-report.sh"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/model-check-report-test.XXXXXX")" || exit 1
+WORK="$(cd "$WORK" && pwd -P)" || exit 1
 trap 'rm -rf "$WORK"' EXIT
 fails=0
 check() {
