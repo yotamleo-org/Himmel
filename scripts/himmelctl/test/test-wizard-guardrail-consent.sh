@@ -63,7 +63,7 @@ echo "ok: case a — manifest and install engine no longer offer guardrail-block
 
 # ── case b: status reads a recorded retired item as absent ─
 out=$(run_ctl status --json) || fail "case b: status --json must exit 0 on a state naming the retired item: $out"
-if printf '%s' "$out" | grep -q 'guardrail-block-global'; then
+if grep -q 'guardrail-block-global' <<< "$out"; then
   fail "case b: status --json still reports guardrail-block-global: $out"
 fi
 echo "ok: case b — status --json exits 0 and reports no guardrail-block-global row"
