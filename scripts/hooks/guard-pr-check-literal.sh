@@ -370,8 +370,9 @@ flat=$REPLY
 #               live command/process substitution (including inside "…" and
 #               any live $ in an unquoted heredoc body), a heredoc, a $'…'
 #               word, a comment.
-#   ST_AMBIG    1 when st_tokenize returned 1 because a $'…' word held an
-#               escape that bash and zsh read differently.
+#   ST_AMBIG    1 when st_tokenize returned 1 because the text holds what bash
+#               and zsh read differently: a $'…' word with such an escape, or
+#               a backslash that ends the text.
 # shellcheck disable=SC1003,SC2016,SC2034 # literal \ ` $ bytes; ST_* are read by the caller
 st_tokenize() {
     local LC_ALL=C
@@ -381,7 +382,7 @@ st_tokenize() {
     ST_OK=0 ST_N=0 ST_NSEG=0 ST_SUBST=0 ST_HEREDOC=0 ST_ANSIC=0 ST_COMMENT=0 ST_AMBIG=0
     ST_W=() ST_Q=() ST_X=() ST_G=() ST_A=() ST_S=() ST_RO=() ST_SEP=()
     n=${#s}
-    [ "$n" -le 8192 ] || return 1
+    if [ "$n" -gt 8192 ]; then ! _st_endbs "$s" || ST_AMBIG=1; return 1; fi
     i=0
     while [ "$i" -lt "$n" ]; do
         c=${s:i:1}
@@ -430,7 +431,7 @@ st_tokenize() {
                 c2=${s:i+1:1}
                 case "$c2" in
                     $'\n') i=$((i + 2)) ;;
-                    '') _st_q; w=$w'\'; i=$((i + 1)) ;;
+                    '') ST_AMBIG=1; return 1 ;;
                     *) _st_q; w=$w$c2; i=$((i + 2)) ;;
                 esac
                 ;;
@@ -572,6 +573,17 @@ st_tokenize() {
 _st_q() { # the next byte appended to the word is quoted or escaped
     [ "$wqpos" -ge 0 ] || wqpos=${#w}
     wq=1; win=1
+}
+
+# _st_endbs TEXT — true when TEXT ends in an odd run of backslashes. zsh and bash 3.2 drop the
+# last one and bash 5 keeps it as part of the word, so the last word is read two ways. An even
+# run is an escaped backslash, and a backslash followed by a space or a newline is read alike.
+# st_tokenize refuses such a text itself when it reaches the lone backslash outside quotes, and
+# asks this for a text it does not read (over 8 KiB); a body that a nested eval or shell -c
+# runs is a text of its own, so guard-unwrap and st_expand ask it too.
+_st_endbs() {
+    local run=${1##*[!\\]}
+    [ $((${#run} % 2)) = 1 ]
 }
 
 # _st_ansic_e BODY — _ST_DEC is BODY decoded the way ${BODY@E} decodes it. False for a

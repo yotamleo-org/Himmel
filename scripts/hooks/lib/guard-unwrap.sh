@@ -71,9 +71,11 @@ _gu_render_word() {
     GU_RW="'${w//$_GU_SQ/$_GU_SQ$_GU_BS$_GU_SQ$_GU_SQ}'"
 }
 
-# _gu_add TEXT — queue one body (a string the shell runs as a command).
+# _gu_add TEXT — queue one body (a string the shell runs as a command). A body is
+# a command text of its own, so one that ends in a backslash is as unreadable as a command that does.
 _gu_add() {
     GU_V[${#GU_V[@]}]=$1
+    ! _st_endbs "$1" || GU_ENDBS=1
 }
 
 # _gu_value WRAP OPT VALUE — a wrapper option's value: a cwd change or an
@@ -310,6 +312,14 @@ _gu_ambig_text() {
     return 1
 }
 
+# _gu_deny_ambig — the denial for a command, or a nested body, that bash and zsh read differently.
+_gu_deny_ambig() {
+    echo "guard-unwrap: refusing a command that bash and zsh read differently (a \$'...' word with an escape they read two ways, or a backslash that ends the text), so the text the shell runs cannot be known." >&2
+    if [ "${GUARD_EXPANSION_DEPTH:-0}" = 0 ]; then
+        printf '%s\n' '    Retry: write the character itself, or use an escape both shells read alike (\n \t \xHH \NNN); do not end a command, an eval body or a shell -c body with a backslash; an unknown escape, \cX, \C-X, \M-X, a NUL escape and a \x \u \U with no hex digit are read two ways.' >&2
+    fi
+}
+
 # guard_unwrap HOOK CMD — 0 when no derived form of CMD is denied by HOOK;
 # 2 (the denial already on stderr) when one is, or when a cap is reached.
 guard_unwrap() {
@@ -317,7 +327,7 @@ guard_unwrap() {
     local trigger=0 nl=$'\n' err rc cwd_env xrender='' xseg vs='' xkept=${GUARD_UNWRAP_XKEPT:-0} ci=0 noskip
     local -a children=()
     GU_V=() GU_VS=() GU_SW=() GU_SR=() GU_CORE=() GU_LOOKUP=() GU_XA=()
-    GU_SHIFT=0 GU_STRIP=0 GU_TOKENIZED=0 GU_FLATTENED=0 GU_FUNC=0
+    GU_SHIFT=0 GU_STRIP=0 GU_TOKENIZED=0 GU_FLATTENED=0 GU_FUNC=0 GU_ENDBS=0
     GU_CWD_UNKNOWN=0
     [ "${GUARD_UNWRAP_CWD:-}" != unknown ] || GU_CWD_UNKNOWN=1
     case "$depth" in ''|*[!0-9]*) depth=$GU_MAX_DEPTH ;; esac
@@ -339,10 +349,7 @@ guard_unwrap() {
         if { [ "$GU_FLAT" = "$cmd" ] || ! st_tokenize "$GU_FLAT"; } \
             && { [ "$GU_NOHD" = "$GU_FLAT" ] || ! st_tokenize "$GU_NOHD"; }; then
             if [ "${ST_AMBIG:-0}" = 1 ] || _gu_ambig_text "$GU_NOHD"; then
-                echo "guard-unwrap: refusing a command with a \$'...' word that bash and zsh read differently, so the text the shell runs cannot be known." >&2
-                if [ "${GUARD_EXPANSION_DEPTH:-0}" = 0 ]; then
-                    printf '%s\n' '    Retry: write the character itself, or use an escape both shells read alike (\n \t \xHH \NNN); an unknown escape, \cX, \C-X, \M-X and a \x \u \U with no hex digit are read two ways.' >&2
-                fi
+                _gu_deny_ambig
                 return 2
             fi
             if _gu_fallback "$GU_NOHD"; then
@@ -463,6 +470,10 @@ guard_unwrap() {
         fi
         s=$((s + 1))
     done
+    if [ "$GU_ENDBS" = 1 ]; then
+        _gu_deny_ambig
+        return 2
+    fi
     [ "$GU_STRIP" = 0 ] || { trigger=1; noskip=1; }
     # shellcheck disable=SC1003 # a literal backslash before the newline
     case "$cmd" in *'\'$'\n'*) trigger=1 ;; esac
