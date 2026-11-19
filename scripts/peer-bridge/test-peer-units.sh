@@ -26,6 +26,10 @@ fi
 
 if command -v systemd-analyze >/dev/null 2>&1; then
     sed "s|@HIMMEL_ROOT@|$root|g" "$here/units/himmel-peer-bridge.service" > "$tmp/himmel-peer-bridge.service"
+    # systemd-analyze --user needs a user runtime dir; a CI runner has no login session, so lend it one
+    if [ -z "${XDG_RUNTIME_DIR:-}" ] || [ ! -d "$XDG_RUNTIME_DIR" ]; then
+        mkdir -m 700 "$tmp/run" && export XDG_RUNTIME_DIR="$tmp/run"
+    fi
     if out="$(systemd-analyze --user verify "$tmp/himmel-peer-bridge.service" 2>&1)"; then
         ok "systemd-analyze verify"
     else
