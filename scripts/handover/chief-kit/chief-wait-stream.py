@@ -1,4 +1,5 @@
 """Bounded Monitor transport for the one-shot waiter."""
+import contextlib
 import fcntl
 import hashlib
 import json
@@ -52,6 +53,14 @@ def identity(pid):
 
 def alive(pid, start, host=HOST, boot=BOOT):
     return host == HOST and boot == BOOT and bool(start) and identity(pid) == str(start)
+
+
+@contextlib.contextmanager
+def ownership(inbox):
+    """Held while the sidecar's owner is checked and signalled for, and while a supervisor publishes itself as owner."""
+    with open(inbox + '.wait.stream.own', 'a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
 
 
 def load(path):
@@ -150,21 +159,20 @@ def watchdog(inbox, sup, start):
         deadline = (float(handoff) + float(os.getenv('CHIEF_WAIT_STREAM_ADOPT_SEC', '300'))
                     if handoff != '-' else dead_since)
         if now >= deadline and not requested:
-            current = load(side)
-            if current.get('sup') != data.get('sup'):
-                continue
-            requested = f"pid={data['child']}"
-            atomic(reap, requested + '\n')
-            current = load(side)
-            if current.get('sup') != data.get('sup'):
-                release(reap, requested)
-                continue
+            # Re-read ownership and request the reap under the lock a new owner publishes under; a concurrent adoption wins.
+            with ownership(inbox):
+                current = load(side)
+                if current.get('sup') != data.get('sup'):
+                    continue
+                requested = f"pid={data['child']}"
+                atomic(reap, requested + '\n')
         if (age >= float(os.getenv('CHIEF_WAIT_STREAM_BUSY_MAX_SEC', '7200')) or
                 now - dead_since >= float(os.getenv('CHIEF_WAIT_STREAM_REAP_MAX_SEC', '1800'))):
-            current = load(side)
-            if current.get('sup') != data.get('sup'):
-                continue
-            terminate(data, inbox, hard=True)
+            with ownership(inbox):
+                current = load(side)
+                if current.get('sup') != data.get('sup'):
+                    continue
+                terminate(data, inbox, hard=True)
             release(reap, requested)
             atomic(inbox + '.wait.stream.hung',
                    f"pid={data['child']} age={int(age)} part={data['part']} epoch={int(now)}\n")
@@ -232,7 +240,8 @@ class Supervisor:
         self.data.update(sup=os.getpid(), sup_start=identity(os.getpid()), host=HOST, boot=BOOT,
                          dog=self.dog.pid if self.dog else 0, seq=self.seq, arm=self.arm, args=self.args_hash,
                          started=self.started)
-        atomic(self.side, ' '.join(f'{k}={v}' for k, v in self.data.items()) + '\n')
+        with ownership(self.inbox):
+            atomic(self.side, ' '.join(f'{k}={v}' for k, v in self.data.items()) + '\n')
 
     def emit(self, line):
         print(line, flush=True)

@@ -104,6 +104,59 @@ m.identity, m.atomic, m.Supervisor.publish = identity, atomic, publish
 sys.exit(sup.run())
 '''
 
+# A dead supervisor's watchdog reaches its adoption deadline while a waiter sleeps. A real supervisor object (the next owner)
+# publishes itself right after the watchdog's `when`-th read of the sidecar, and every signal records who the sidecar names.
+WATCHDOG_RACE = r'''
+import importlib.util, json, os, subprocess, sys, threading, time
+from pathlib import Path
+spec = importlib.util.spec_from_file_location('cws', sys.argv[1])
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+inbox, when = sys.argv[2], int(sys.argv[3])
+side = inbox + '.wait.stream'
+os.environ['CHIEF_WAIT_STREAM_ADOPT_SEC'] = '0'
+child = subprocess.Popen(['bash', '-c', 'sleep 300; :', 'chief-wait-x', inbox], start_new_session=True)
+start = m.identity(child.pid)
+Path(inbox + '.wait').write_text(f'hb={int(time.time())} pid={child.pid} key=- tick=ok state=waiting\n')
+dead = subprocess.Popen(['true'])
+dead.wait()
+part = inbox + '.wait.part-1-1'
+Path(side).write_text(f'sup={dead.pid} sup_start=1 host={m.HOST} boot={m.BOOT} child={child.pid} child_start={start} '
+                      f'part={part} safe={time.time() - 5} handoff={time.time() - 10} seq=0\n')
+end = time.monotonic() + 5
+while not m.safe_point(m.load(side), inbox) and time.monotonic() < end:
+    time.sleep(.05)
+adopter = m.Supervisor(inbox, ['--doc', 'x', '--workers-from', 'y'])
+adopter.data = dict(child=child.pid, child_start=start, part=part, safe=time.time(), handoff='-')
+real_load, real_kill = m.load, os.kill
+reads, publishers, kills = [], [], []
+
+
+def load(path):
+    out = real_load(path)
+    if path == side:
+        reads.append(1)
+        if len(reads) == when:
+            thread = threading.Thread(target=adopter.publish)
+            thread.start()
+            thread.join(.5)
+            publishers.append(thread)
+    return out
+
+
+def kill(pid, sig):
+    kills.append(dict(pid=pid, owner=real_load(side).get('sup')))
+    real_kill(pid, sig)
+
+
+m.load, os.kill = load, kill
+rc = m.watchdog(inbox, str(dead.pid), '1')
+for thread in publishers:
+    thread.join(10)
+print(json.dumps(dict(rc=rc, kills=kills, dead=dead.pid, me=os.getpid(), owner=real_load(side).get('sup'),
+                      child_running=child.poll() is None, publishers_done=not any(t.is_alive() for t in publishers))))
+os.killpg(child.pid, 9)
+'''
 
 class StreamFixture(unittest.TestCase):
     def setUp(self):
@@ -1066,6 +1119,31 @@ class RefusedArm(StreamFixture):
     @unittest.skipIf(os.geteuid() == 0, 'root reads a mode 000 file')
     def test_a_second_arm_is_refused_when_the_lock_file_is_unreadable(self):
         self.assertEqual(self.second_arm(self.path('stream.lock')), 'STREAM-REFUSED before-lock PermissionError\n')
+
+
+class WatchdogOwner(StreamFixture):
+    """The watchdog of a dead supervisor signals only while the sidecar still names the owner it checked."""
+
+    def race(self, when):
+        script = self.root / 'watchdog-race.py'
+        script.write_text(WATCHDOG_RACE)
+        done = subprocess.run([sys.executable, '-I', str(script), str(HERE / 'chief-wait-stream.py'), str(self.inbox), str(when)],
+                              env=self.env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return json.loads(done.stdout.splitlines()[-1])
+
+    def test_an_owner_that_publishes_before_the_final_check_is_never_signalled_for(self):
+        seen = self.race(1)
+        self.assertEqual(seen['kills'], [])
+        self.assertTrue(seen['child_running'])
+        self.assertEqual(seen['owner'], str(seen['me']))
+
+    def test_an_owner_that_publishes_right_after_the_final_check_does_not_get_its_child_signalled(self):
+        seen = self.race(2)
+        self.assertEqual([kill['owner'] for kill in seen['kills']], [str(seen['dead'])],
+                         'the watchdog signalled after the next owner had published itself')
+        self.assertTrue(seen['publishers_done'])
+        self.assertEqual(seen['owner'], str(seen['me']))
 
 
 # Worker-event stand-in that keeps auto-go's exact-head audit rule: the first READY of a
