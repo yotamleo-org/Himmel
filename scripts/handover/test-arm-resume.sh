@@ -5228,7 +5228,7 @@ rm -f "$TMP/armed-stub.atdir"/job-*
 # The generated runner clears the opt-out and the WARN marker, so the resumed session never inherits them.
 out=$(UNGUARDED_LAUNCH_OK=1 GH_CMD=/nonexistent/gh TMPDIR="$TMP" PATH="$ARMED_STUB:$PATH" \
     bash "$ARM" --time "$(future_time)" --handover "$HO_9026" --cwd "$G9026/scratch" --dry-run 2>&1)
-assert_contains "guard_optout_not_in_runner runner unsets both names" "CLAUDE_CODE_MESSAGING_TOKEN UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED" "$out"
+assert_contains "guard_optout_not_in_runner runner unsets both names" "CLAUDE_CODE_MESSAGING_TOKEN NO_COLOR UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED" "$out"
 fi
 
 CRONTAB_SNAPSHOT_AFTER=$(PATH="$SCHED_REAL_PATH" crontab -l 2>/dev/null || true)
