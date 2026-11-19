@@ -321,7 +321,7 @@ OpenAI account, under the same cap / reserve / settle ledger as the Anthropic la
 an OpenAI account and an Anthropic account never share a ledger. It is OFF unless the launching shell sets
 `HIMMEL_API_LANE=on`.
 
-```
+```text
 node scripts/api-lane/openai-api.mjs -p [prompt] --model M --max-budget-usd N [--output-format text|json] \
     [--effort none|low|medium|high|xhigh] [--append-system-prompt-file F]
 ```
