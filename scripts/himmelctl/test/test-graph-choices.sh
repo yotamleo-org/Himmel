@@ -12,6 +12,7 @@ fail() { echo "  FAIL: $1"; FAILS=$((FAILS + 1)); }
 [ -f "$GC" ] || { echo "FAIL: $GC not found"; exit 1; }
 
 WS="$(mktemp -d -t graph-choices-test.XXXXXX)" || exit 1; trap 'chmod -R u+rwx "$WS" 2>/dev/null; rm -rf "$WS"' EXIT
+WS="$(cd "$WS" && pwd -P)" || exit 1
 unset HIMMEL_LUNA_CONFIG_PATH XDG_DATA_HOME
 
 fresh_home() {

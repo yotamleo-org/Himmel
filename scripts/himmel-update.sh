@@ -1380,7 +1380,7 @@ run_cron_runner_migration() {
     while IFS=$'\t' read -r old new kind _; do
         [ "$kind" = directory ] || continue
         case "$baked" in *"/$old/"*) ;; *) continue ;; esac
-        moved="${baked/\/$old\//\/$new\/}"
+        moved="${baked%%"/$old/"*}/$new/${baked#*"/$old/"}"
         [ -f "$moved" ] && break
         moved=""
     done < <(grep -v '^#' "$aliases")

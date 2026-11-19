@@ -83,11 +83,17 @@ check "a unit separator in --chief exits 2" "$rc" "2"
 bash "$OWE" add --bucket "$B" --chief Z --kind ticket --text $'a\037b' >/dev/null 2>&1; rc=$?
 check "a unit separator in --text exits 2" "$rc" "2"
 
-NF="$WORK/noflock-bin"; mkdir -p "$NF"; ln -s "$(command -v jq)" "$NF/jq"; ln -s "$(command -v date)" "$NF/date"
+NF="$WORK/noflock-bin"; mkdir -p "$NF"
+for _t in jq date sh rm sleep mktemp dirname bash; do ln -s "$(command -v "$_t")" "$NF/$_t"; done
 NB="$WORK/noflock"; mkdir -p "$NB"
 PATH="$NF" "$(command -v bash)" "$OWE" add --bucket "$NB" --chief Z --kind ticket --text x >/dev/null 2>&1; rc=$?
-check "an add on a host with no flock exits 4" "$rc" "4"
-check "and writes no row" "$(wc -l < "$NB/owed.jsonl" | tr -d ' ')" "0"
+check "an add on a host with no flock locks through with_lock and exits 0" "$rc" "0"
+check "and writes one row" "$(wc -l < "$NB/owed.jsonl" | tr -d ' ')" "1"
+check "and removes its lock file" "$([ -e "$NB/owed.jsonl.lock" ] && echo present || echo absent)" "absent"
+NC="$WORK/noflock-concurrent"; mkdir -p "$NC"
+for _n in 1 2 3 4 5 6; do PATH="$NF" "$(command -v bash)" "$OWE" add --bucket "$NC" --chief Z --kind ticket --text "row $_n" >/dev/null 2>&1 & done
+wait
+check "six concurrent no-flock adds get six distinct ids" "$(jq -r .id "$NC/owed.jsonl" | sort -u | wc -l | tr -d ' ')" "6"
 
 C="$WORK/concurrent"; mkdir -p "$C"
 for _n in 1 2 3 4 5 6 7 8; do bash "$OWE" add --bucket "$C" --chief Z --kind ticket --text "row $_n" >/dev/null & done

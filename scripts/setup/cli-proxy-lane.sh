@@ -50,7 +50,7 @@ PORT=8317
 # operator-set value in config.yaml is never overwritten.
 RETRY_COUNT=3
 RETRY_INTERVAL=30
-VERSION="8.0.73"
+VERSION="8.0.75"
 # Station-target override: the VM upgrade stage rolls the proxy to a
 # target without editing this file. Default unchanged; a version never rides on the
 # pinned sha, so CLIPROXY_API_SHA256 is required alongside CLIPROXY_API_VERSION
@@ -74,7 +74,7 @@ fi
 RELEASE_BASE="https://github.com/router-for-me/CLIProxyAPI/releases/download/v${VERSION}"
 ASSET="CLIProxyAPI_${VERSION}_linux_amd64.tar.gz"
 RELEASE_URL="${RELEASE_BASE}/${ASSET}"
-ASSET_SHA256="4c81e8c33c93b153d8013e4f631fc6cdd27325f950acb65a90156a4543bd74af"
+ASSET_SHA256="a7bd6e595f5dd370cc91c17ed664980a8c647a2d07c1aa61ac74777c714df14f"
 [ -n "${CLIPROXY_API_SHA256-}" ] && ASSET_SHA256="$CLIPROXY_API_SHA256"
 
 UNIT_NAME="cli-proxy-api.service"
