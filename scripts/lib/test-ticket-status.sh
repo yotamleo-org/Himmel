@@ -95,8 +95,9 @@ check "9323 unreadable owner doc, the resume_brief says completes yes: D6 (contr
 rbrief no "$tmp/missing-brief.md"
 check "9323 unreadable owner doc, the resume_brief names an unreadable file: D6 (control)" "$TS_RULE/$TS_DERIVED" 'D6/To Do'
 
-# A sibling doc whose managed launch attempt is pending, committed or unknown keeps the ticket owned, so the wrapped
-# primary does not demote it. A sibling with no such attempt and a free lock leaves the primary's wrap as it is.
+# A sibling doc whose managed launch attempt is pending, committed, unknown or launched (the worker may not hold its
+# lock yet), or whose lock cannot be read, keeps the ticket owned, so the wrapped primary does not demote it. A sibling
+# with no attempt, one whose attempt ended, or one that wrapped itself, with a free lock, leaves the primary's wrap as it is.
 mkdir -p "$tmp/sdbin"
 cat > "$tmp/sdbin/python3" <<'EOF'
 #!/usr/bin/env bash
@@ -110,11 +111,13 @@ EOF
 chmod +x "$tmp/sdbin/python3"
 SD_REAL_PYTHON=$(command -v python3)
 export SD_REAL_PYTHON
-sib() { # <sibling disposition word, or empty for the real read> <a line for the sibling doc, or empty> - the wrapped primary, the sibling, a free lock; then the derive
+printf '#!/usr/bin/env bash\nexit 3\n' > "$tmp/lock-err.sh"
+chmod +x "$tmp/lock-err.sh"
+sib() { # <sibling disposition word, or empty for the real read> <a line for the sibling doc, or empty> [<queue lock, default a free one>] - the wrapped primary, the sibling; then the derive
     printf -- '- 10:00 WRAPPED — primary ended\n' > "$tmp/sa.md"
     printf -- '%s\n' "$2" > "$tmp/sb.md"
     jq -nc --arg a "$tmp/sa.md" --arg b "$tmp/sb.md" '{doc:$a,docs:[$a,$b],prs:{}}' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9001.json"
-    PATH="$tmp/sdbin:$PATH" SD_DOC="${1:+$tmp/sb.md}" SD_WORD="$1" TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" ts_derive HIMMEL-9001
+    PATH="$tmp/sdbin:$PATH" SD_DOC="${1:+$tmp/sb.md}" SD_WORD="$1" TICKET_STATUS_QUEUE_LOCK="${3:-$tmp/lock-free.sh}" ts_derive HIMMEL-9001
 }
 for word in pending committed unknown; do
     sib "\"$word\"" ''
@@ -126,27 +129,51 @@ check "X07-3 a sibling with a pending attempt after its own wrap is not provably
 sib '' ''
 check "X07-3 control: a sibling with no attempt, no marker and a free lock leaves the primary's wrap" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6/To Do'
 check "X07-3 control: and names no owner doc" "$TS_OWNER_DOC" ''
-for word in launched legacy refused complete; do
+for word in legacy refused complete; do
     sib "\"$word\"" ''
     check "X07-3 control: a sibling with a $word disposition, no marker and a free lock leaves the primary's wrap" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6/To Do'
 done
 sib '' '- 10:00 WRAPPED — sibling ended'
 check "X07-3 control: a sibling that wrapped itself leaves the primary's wrap" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6/To Do'
-rt_sib() { # the wrapped primary and a sibling with a real pending managed attempt (fleet-manifest.sh runtime begin); prints the derive
-    local a="$tmp/rtb/HIMMEL-9001-N1-a.md" b="$tmp/rtb/HIMMEL-9001-N2-b.md" m="$tmp/rtb/chief.fleet.json" fm="$HERE/../handover/chief-kit/fleet-manifest.sh"
-    mkdir -p "$tmp/rtb" "$tmp/rth"
+check "X07-3 control: a sibling that wrapped itself is no owner doc" "$TS_OWNER_DOC" ''
+sib '"launched"' ''
+check "X07-3 a sibling whose attempt is launched, with no marker and a free lock, keeps the ticket owned" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'unknown/D5/In Progress'
+check "X07-3 a sibling whose attempt is launched, with no marker and a free lock, is the owner doc" "$TS_OWNER_DOC" "$tmp/sb.md"
+sib '"launched"' '- 10:00 WRAPPED — sibling ended'
+check "X07-3 control: a sibling whose attempt is launched and that wrapped itself leaves the primary's wrap" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6/To Do'
+check "X07-3 control: a sibling whose attempt is launched and that wrapped itself is no owner doc" "$TS_OWNER_DOC" ''
+sib '' '' "$tmp/lock-err.sh"
+check "X07-3 a sibling whose lock read fails keeps the ticket owned" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'unknown/D5/In Progress'
+check "X07-3 a sibling whose lock read fails is the owner doc" "$TS_OWNER_DOC" "$tmp/sb.md"
+sib '' '- 10:00 WRAPPED — sibling ended' "$tmp/lock-err.sh"
+check "X07-3 control: a sibling that wrapped itself leaves the primary's wrap whatever its lock read says" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6/To Do'
+check "X07-3 control: a sibling that wrapped itself is no owner doc whatever its lock read says" "$TS_OWNER_DOC" ''
+rt_sib() { # <pending|launched> - the wrapped primary and a sibling with a real managed attempt in that phase (fleet-manifest.sh runtime begin, and for launched the preflight's reservation, commit and outcome); prints the derive
+    local a="$tmp/rtb-$1/HIMMEL-9001-N1-a.md" b="$tmp/rtb-$1/HIMMEL-9001-N2-b.md" m="$tmp/rtb-$1/chief.fleet.json" fm="$HERE/../handover/chief-kit/fleet-manifest.sh"
+    mkdir -p "$tmp/rtb-$1" "$tmp/rth-$1"
     printf -- '---\ndescription: a\n---\n> **Prior art:** none found (offline fixture)\n\n# a\n## Results\n- 10:00 WRAPPED — primary ended\n' > "$a"
     printf -- '---\ndescription: b\n---\n> **Prior art:** none found (offline fixture)\n\n# b\n## Results\n' > "$b"
-    export HOME="$tmp/rth" HIMMEL_FLEET_SLOTS="$tmp/rth/slots" HIMMEL_POLICY_FOLLOWS_HOME=1
+    export HOME="$tmp/rth-$1" HIMMEL_FLEET_SLOTS="$tmp/rth-$1/slots" HIMMEL_POLICY_FOLLOWS_HOME=1
     bash "$fm" control init "$m" --target 2 >/dev/null 2>&1 || { printf 'fixture failed: control init'; return 0; }
     bash "$fm" add "$m" "$b" --lane native --pending >/dev/null 2>&1 || { printf 'fixture failed: add'; return 0; }
     bash "$fm" control set "$m" --mode active --expect-gen 1 >/dev/null 2>&1 || { printf 'fixture failed: control set'; return 0; }
     bash "$fm" runtime begin --doc "$b" --manifest "$m" --name b --attempt-id one --pid $$ >/dev/null 2>&1 || { printf 'fixture failed: begin'; return 0; }
+    if [ "$1" = launched ]; then
+        printf '#!/bin/bash\nexit 0\n' > "$tmp/rth-$1/ps"
+        chmod +x "$tmp/rth-$1/ps"
+        FLEET_LAUNCH_DOC="$b" FLEET_LAUNCH_MANIFEST="$m" FLEET_LAUNCH_ATTEMPT=one CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=b \
+            CADENCE_USAGE_CALLER_PID=$$ CADENCE_USAGE_LANE=native CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_CACHE="$tmp/rth-$1/missing-cache" \
+            CADENCE_USAGE_LEDGER="$tmp/rth-$1/cadence.jsonl" FLEET_PS_CMD="$tmp/rth-$1/ps" FLEET_CAP_OK=1 HIMMEL_API_LANE=on \
+            bash "$HERE/usage-preflight.sh" >/dev/null 2>&1 || { printf 'fixture failed: preflight'; return 0; }
+        bash "$fm" runtime commit --doc "$b" --manifest "$m" --name b --attempt-id one --pid $$ >/dev/null 2>&1 || { printf 'fixture failed: commit'; return 0; }
+        bash "$fm" runtime outcome --doc "$b" --manifest "$m" --name b --attempt-id one --pid $$ --phase launched >/dev/null 2>&1 || { printf 'fixture failed: outcome'; return 0; }
+    fi
     jq -nc --arg a "$a" --arg b "$b" '{doc:$a,docs:[$a,$b],prs:{}}' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9001.json"
     TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" ts_derive HIMMEL-9001
     printf '%s/%s/%s' "$TS_WORKER_STATE" "$TS_RULE" "$TS_DERIVED"
 }
-check "X07-3 a sibling with a real pending managed attempt keeps the ticket owned" "$(rt_sib)" 'unknown/D5/In Progress'
+check "X07-3 a sibling with a real pending managed attempt keeps the ticket owned" "$(rt_sib pending)" 'unknown/D5/In Progress'
+check "X07-3 a sibling with a real launched managed attempt, a free lock and no marker keeps the ticket owned" "$(rt_sib launched)" 'unknown/D5/In Progress'
 
 tm() { printf -- '%s\n' "$@" > "$tmp/tm.md"; ts_marker_newest "$tmp/tm.md"; }
 check "9323 a clean WRAPPED line is WRAPPED (control)" "$(tm '- 10:00 LIVE — x' '- 10:10 WRAPPED')" WRAPPED
