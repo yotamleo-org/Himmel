@@ -1477,28 +1477,6 @@ jobs:
           if [ "$EVENT" = pull_request ]; then base="HEAD^1"; fi
           python3 marketplace/plugins/himmel-ops/skills/docs-reviewer/docs_remarks.py scope --base "$base" --head HEAD
 
-  node-22-floor:
-    needs: plan
-    if: ${{ !cancelled() && (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '22.22.0'
-          cache: 'npm'
-          cache-dependency-path: scripts/jira/package-lock.json
-      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
-        run: node --version
-      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
-        run: npm ci --ignore-scripts
-        working-directory: scripts/jira
-      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
-        run: npm test
-        working-directory: scripts/jira
-
   node-suites:
     needs: plan
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) }}
@@ -1518,6 +1496,9 @@ jobs:
           - pkg: himmel-bus
             dir: marketplace/plugins/himmel-bus
             node: '26.13.1'
+          - pkg: jira-node22-floor
+            dir: scripts/jira
+            node: '22.22.0'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
