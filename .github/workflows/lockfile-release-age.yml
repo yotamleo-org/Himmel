@@ -22,12 +22,16 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
+    inputs:
+      base:
+        description: 'Commit to compare lockfiles against (default: the merge-base with the default branch)'
+        required: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: lockfile-release-age-${{ github.event.pull_request.number }}
+  group: lockfile-release-age-${{ github.event.pull_request.number || github.ref }}
   # Never cancel a RUNNING check (a CANCELLED context on a required check).
   cancel-in-progress: false
 
@@ -38,11 +42,32 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # The merge commit and its first parent (the base tip).
-          fetch-depth: 2
+          # A pull_request run needs the merge commit and its first parent (the base tip);
+          # a dispatch run needs the history back to the merge-base with the default branch.
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 0 }}
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '26.13.1'
       - name: Refuse a lockfile entry younger than 3 days
-        run: node scripts/ci/check-lockfile-release-age.mjs --base HEAD^1
+        env:
+          EVENT: ${{ github.event_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          BASE_INPUT: ${{ inputs.base }}
+        run: |
+          # HEAD^1 is the base-branch tip only on a pull_request merge commit; on a dispatch it is
+          # the branch tip's parent, which would check one commit. A base that cannot be resolved
+          # fails the step: a skipped step reads as a pass.
+          if [ "$EVENT" = pull_request ]; then
+            base=HEAD^1
+          else
+            base="${BASE_INPUT:-$(git merge-base "origin/$DEFAULT_BRANCH" HEAD)}"
+          fi
+          if [ -z "$base" ] || ! git rev-parse --verify -q "$base^{commit}" > /dev/null; then
+            echo "::error title=lockfile-release-age::cannot resolve the comparison base '$base'"
+            exit 1
+          fi
+          echo "base: $(git rev-parse "$base") ($EVENT)"
+          echo "lockfiles changed since the base:"
+          git diff --name-only "$base" HEAD | grep -E 'lock(\.json|b)?$' || echo "  none"
+          node scripts/ci/check-lockfile-release-age.mjs --base "$base"
