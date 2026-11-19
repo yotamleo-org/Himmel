@@ -3323,7 +3323,7 @@ d29="$tmp/c29"; mk_headless_stubs "$d29" "PROJ-3403-hl"; mkdir -p "$tmp/repo29"
 # CI anchor copy), and the shim still hands them to headed-arm.sh's headless launch.
 cat > "$d29/headed-arm-leak.sh" <<SHIM_EOF
 #!/usr/bin/env bash
-export CLAUDE_JOB_DIR=/leaked/job CLAUDE_CODE_MESSAGING_SOCKET=/leaked/sock CLAUDE_CODE_MESSAGING_TOKEN=leaked-token
+export CLAUDE_JOB_DIR=/leaked/job CLAUDE_CODE_MESSAGING_SOCKET=/leaked/sock CLAUDE_CODE_MESSAGING_TOKEN=leaked-token NO_COLOR=1
 exec "$HEADED_ARM" "\$@"
 SHIM_EOF
 chmod 755 "$d29/headed-arm-leak.sh"
@@ -3346,7 +3346,7 @@ check "29g --headless: konsole never called" "$([ -e "$d29/konsole-called" ] && 
 # env capture must exist before the negated grep means anything.
 child29="$(cat "$d29/child-env" 2>/dev/null || true)"
 contains "29g2 --headless: child env capture exists" "$child29" "FORCE_SESSION_PERSISTENCE=1"
-for v in CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN; do
+for v in CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN NO_COLOR; do
   not_contains "29g2 --headless: child env does not carry the launcher's $v" "$child29" "$v="
 done
 contains "29h launch log: headless=1" "$log29" "headless=1"

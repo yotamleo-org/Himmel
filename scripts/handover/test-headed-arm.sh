@@ -303,6 +303,7 @@ contains "happy path: clears CLAUDE_CODE_SESSION_ID"    "$rec1" "-u CLAUDE_CODE_
 contains "happy path: clears CLAUDE_CODE_MESSAGING_SOCKET" "$rec1" "-u CLAUDE_CODE_MESSAGING_SOCKET"
 contains "happy path: clears CLAUDE_CODE_MESSAGING_TOKEN"  "$rec1" "-u CLAUDE_CODE_MESSAGING_TOKEN"
 contains "happy path: clears CLAUDE_JOB_DIR"               "$rec1" "-u CLAUDE_JOB_DIR"
+contains "happy path: clears an inherited NO_COLOR"        "$rec1" "-u NO_COLOR"
 contains "happy path: passes --separate (own process, not a hand-off)" "$rec1" "--separate"
 contains "happy path: forces session persistence"       "$rec1" "CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1"
 contains "happy path: carries the session name via -n"  "$rec1" "-n PROJ-9999-worker"
@@ -1732,6 +1733,7 @@ not_contains "resolved launcher: not force-wrapped in bash (execs via its own sh
 contains "resolved launcher: still carries --model gpt-6-astra, bare" "$rec36b" "--model gpt-6-astra --autocompact"
 contains "resolved launcher: still carries -n NAME" "$rec36b" "-n HIMMEL-launcher2"
 contains "resolved launcher (recorder branch): clears CLAUDE_JOB_DIR" "$rec36b" "-u CLAUDE_JOB_DIR"
+contains "resolved launcher (recorder branch): clears an inherited NO_COLOR" "$rec36b" "-u NO_COLOR"
 contains "resolved launcher (recorder branch): clears CLAUDE_CODE_MESSAGING_SOCKET" "$rec36b" "-u CLAUDE_CODE_MESSAGING_SOCKET"
 contains "resolved launcher (recorder branch): clears CLAUDE_CODE_MESSAGING_TOKEN" "$rec36b" "-u CLAUDE_CODE_MESSAGING_TOKEN"
 # `script -c` interprets $LAUNCH_CMD (bash %q
@@ -1757,7 +1759,6 @@ KONSOLE_EOF
 }
 LINE36='HIMMEL_HOLD_DOC=/x/a b/PROJ-1-N1-x.md'
 # 36f (I1): var unset and var '' give byte-identical terminal argv (no '' element).
-# N36F=31 is the element count captured on the unmodified script.
 d36f="$tmp/c36f"; mk_lines_stub "$d36f" "HIMMEL-lines36f"
 KONSOLE_CMD="$d36f/konsole" PGREP_CMD="$d36f/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36f/proc" HEADED_ARM_LOCK_DIR="$d36f/locks" \
   bash "$SCRIPT" "HIMMEL-lines36f" "doc36f.md" "$d36f/signal-never" "$PAST" "$d36f/log" >/dev/null 2>&1
@@ -1769,7 +1770,7 @@ wait_record "$d36f" || true
 if cmp -s "$d36f/record.unset" "$d36f/record" && [ -s "$d36f/record" ]; then echo "ok - 36f LINES unset vs '': terminal argv byte-identical"
 else echo "FAIL - 36f LINES unset vs '': terminal argv differs"; fails=$((fails+1)); fi
 not_contains "36f LINES '': no empty argv element" "$(grep -Fx "''" "$d36f/record" 2>/dev/null || true)" "''"
-check "36f LINES '': argv element count unchanged (N36F=31)" "$(wc -l < "$d36f/record" | tr -d ' ')" "31"
+check "36f LINES '': argv element count unchanged (N36F=33)" "$(wc -l < "$d36f/record" | tr -d ' ')" "33"
 
 # 36e: the spaced value reaches the terminal argv as ONE element.
 d36e="$tmp/c36e"; mk_lines_stub "$d36e" "HIMMEL-lines36e"
@@ -2471,6 +2472,7 @@ check "43 headless chief --dry-run: exit 0" "$rc43" "0"
 contains "43 headless console: argv is the background launch" "$out43" "--bg"
 contains "43 headless console: argv keeps the chief --settings" "$out43" "--settings"
 contains "43 dry-run launch line: clears CLAUDE_JOB_DIR" "$out43" "-u CLAUDE_JOB_DIR"
+contains "43 dry-run launch line: clears an inherited NO_COLOR" "$out43" "-u NO_COLOR"
 contains "43 dry-run launch line: clears CLAUDE_CODE_MESSAGING_SOCKET" "$out43" "-u CLAUDE_CODE_MESSAGING_SOCKET"
 contains "43 dry-run launch line: clears CLAUDE_CODE_MESSAGING_TOKEN" "$out43" "-u CLAUDE_CODE_MESSAGING_TOKEN"
 

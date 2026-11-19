@@ -232,6 +232,8 @@ CHECK_CRITIC_EVAL_PR=4690 gate "a bypass row for another head is ignored" 1 "no 
 with_bypass "$(brow 4690 "${H:0:7}" 592 'noise on an unexecuted path')"
 M="$(gitc commit-tree "$(gitc rev-parse "$H^{tree}")" -p "$BASE" -p "$H" -m merge-ref)"; gitc checkout -q "$M"
 GITHUB_REF=refs/pull/4690/merge gate "a bypass row naming the PR head is honoured on the merge ref" 0 "BYPASS honoured"
+gitc checkout -q "$H"; commit_edit scripts/cr/critic-panel.sh '# a critic change from the other parent' >/dev/null
+MX="$(gitc commit-tree "$(gitc rev-parse 'HEAD^{tree}')" -p "$BASE" -p "$H" -m merge-ref)"; gitc checkout -q "$MX"
 CHECK_CRITIC_EVAL_PR=4690 gate "a second parent counts only on CI's merge ref, not on any merge commit" 1 "no eval rows"
 # A PR cannot add its own bypass: the merge ref's tree carries a row for the PR head, the base does not.
 gitc checkout -q "$H"; brow 4690 "${H:0:7}" 592 'self-granted' > "$R/$BYP"; gitc add -A && gitc commit -q -m "own bypass"
@@ -341,6 +343,55 @@ ci trunk "a base branch that is not the default branch reads the bypass file at 
 # HEAD is detached on M, so writing refs/heads/main moves no checkout, whatever init.defaultBranch named.
 gitc update-ref -d refs/remotes/origin/main && gitc update-ref refs/heads/main "$TIP"
 ci main "an absent refs/remotes/origin/main falls back to the diff base, and names the ref" 1 "refs/remotes/origin/main is absent"
+
+fixture carry
+BASE0="$BASE"
+commit_edit scripts/cr/critic-first-pass.sh '# a critic change' >/dev/null
+H0="$(gitc rev-parse HEAD)"
+with_bypass "$(brow 4690 "$H0" 592 'noise on an unexecuted path')"
+carry_edit() { gitc checkout -q "$H0" && commit_edit "$1" "$2" >/dev/null; }
+test -s "$R/scripts/cr/known-findings.json" && pass "the fixture carries scripts/cr/known-findings.json" || fail "the fixture carries scripts/cr/known-findings.json"
+carry_edit scripts/cr/notes-not-a-critic.txt 'not a critic file'
+CHECK_CRITIC_EVAL_PR=4690 gate "a later head with no critic input changed since the row's head carries the bypass, loudly" 0 \
+    "carried to head $(gitc rev-parse HEAD)"
+CHECK_CRITIC_EVAL_PR=4690 gate "the carried bypass still names the row's head and decision" 0 "BYPASS honoured for PR 4690 at head $H0: decision 592"
+CHECK_CRITIC_EVAL_PR=4691 gate "a carried row is still for its own PR only" 1 "no eval rows"
+carry_edit scripts/cr/critic-panel.sh '# a later critic change'
+CHECK_CRITIC_EVAL_PR=4690 gate "no carry when a critic behaviour path changed after the row's head" 1 "no eval rows"
+carry_edit scripts/eval/review-panel/cbs.txt '# a later cbs.txt note'
+CHECK_CRITIC_EVAL_PR=4690 gate "no carry when cbs.txt changed after the row's head" 1 "no eval rows"
+carry_edit scripts/cr/known-findings.json ''
+CHECK_CRITIC_EVAL_PR=4690 gate "no carry when known-findings.json changed after the row's head" 1 "no eval rows"
+carry_edit scripts/cr/known-findings.sh '# a later renderer change'
+CHECK_CRITIC_EVAL_PR=4690 gate "no carry when known-findings.sh changed after the row's head" 1 "no eval rows"
+carry_edit 'scripts/cr/perspectives/review-é.md' '# a later perspective'
+CHECK_CRITIC_EVAL_PR=4690 gate "no carry when a later head adds a non-ASCII critic path" 1 "no eval rows"
+gitc checkout -q "$BASE0" && printf '%s\n' '# a critic change' >> "$R/scripts/cr/critic-first-pass.sh" && gitc add -A && gitc commit -q -m sibling && commit_edit scripts/cr/notes-not-a-critic.txt 'not a critic file' >/dev/null || fail "the sibling-head setup ran"
+CHECK_CRITIC_EVAL_PR=4690 gate "no carry when the row's head is not an ancestor of the head" 1 "no eval rows"
+with_bypass "$(brow 4690 "$(printf 'a%.0s' $(seq 40))" 592 'a head this repo does not hold')"
+carry_edit scripts/cr/notes-not-a-critic.txt 'not a critic file'
+CHECK_CRITIC_EVAL_PR=4690 gate "no carry when the row's head resolves to no commit" 1 "no eval rows"
+with_bypass "$(brow 4690 "$(printf 'a%.0s' $(seq 7))" 592 'a prefix this repo does not hold')"
+carry_edit scripts/cr/notes-not-a-critic.txt 'not a critic file'
+CHECK_CRITIC_EVAL_PR=4690 gate "no carry when a short row head resolves to no commit" 1 "no eval rows"
+
+fixture mr-carry
+BASE0="$BASE"
+commit_edit scripts/cr/critic-panel.sh '# a critic change on main' >/dev/null
+P1="$(gitc rev-parse HEAD)"
+gitc checkout -q "$BASE0"
+H0="$(commit_edit scripts/cr/critic-first-pass.sh '# a critic change')"
+PRH="$(commit_edit scripts/cr/notes-not-a-critic.txt 'a later non-critic change')"
+gitc checkout -q "$P1"; pr_critic; add_line scripts/cr/notes-not-a-critic.txt 'a later non-critic change'
+gitc add -A && gitc commit -q -m pr-on-main
+M="$(gitc commit-tree "$(gitc rev-parse 'HEAD^{tree}')" -p "$P1" -p "$PRH" -m merge-ref)"
+gitc checkout -q "$P1"; brow 4690 "$H0" 592 'recorded for the first PR head' >> "$R/$BYP"; gitc add -A && gitc commit -q -m "main records a bypass"
+gitc update-ref refs/remotes/origin/main "$(gitc rev-parse HEAD)"; gitc checkout -q "$M"
+ci main "on the merge ref a row for an earlier PR head carries to the PR head" 0 "carried to head $PRH"
+
+fixture quoted-path
+commit_edit 'scripts/cr/perspectives/review-é.md' '# a new perspective' >/dev/null
+gate "a diff adding only a non-ASCII critic path is gated" 1 "critic behaviour paths changed"
 
 # --- I3: every critic behaviour path and the eval itself are trust paths ------------------------
 fixture trust

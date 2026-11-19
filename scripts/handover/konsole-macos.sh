@@ -263,7 +263,7 @@ fi
 # Bash tool, every later tab would carry CLAUDE_CODE_CHILD_SESSION=1 and every
 # claude started there would save no transcript. The body never needed these.
 unset CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDECODE CLAUDE_CODE_SESSION_ID \
-    CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_JOB_DIR
+    CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_JOB_DIR NO_COLOR
 _launched=0
 if [ -n "${HEADED_ARM_TMUX_SESSION:-}" ]; then
     # `=` is tmux's exact session match (a bare name would prefix-match another
