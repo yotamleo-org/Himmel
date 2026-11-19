@@ -1730,6 +1730,16 @@ async function ownedRemoval(ctx: Ctx, r: RulingRow, cur: string[]): Promise<bool
   }
 }
 
+// The operator's latest placing decision on the key, when it is newer than the ruling and puts the key anywhere but this move's destination:
+// the destination add would write against it.
+function newerElsewhere(operator: OperatorRow[], r: RulingRow): OperatorRow | undefined {
+  const latest = keyNewestDecision(operator.filter((x) => placementOf(x) !== undefined), r.key);
+  return latest && Date.parse(latest.ts) > Date.parse(r.ts) && placementOf(latest) !== r.op.to_v ? latest : undefined;
+}
+
+const againstOf = (g: OperatorRow, r: RulingRow): string =>
+  `${g.id} (newer than ${r.id}) ${g.op} ${vName(g.from_v ?? null)}→${vName(g.to_v ?? null)} places ${r.key} outside ${vName(r.op.to_v)}`;
+
 const observedOf = (r: RulingRow, cur: string[], source: 'Jira' | 'mirror'): string =>
   `${r.key} is in ${cur.length ? cur.join(', ') : 'no version'} (${source}); the ${r.op.kind} wants ${vName(r.op.from_v)} -> ${vName(r.op.to_v)}`;
 
@@ -1781,6 +1791,11 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
         if (!(await ownedRemoval(ctx, last, cur))) {
           event('mismatch');
           throw new Error(`release apply: ${id} is partly applied in Jira and nothing proves the removal was this ruling's own, so nothing was written: ${observedOf(last, cur, 'Jira')}; ${repairOf(ctx.release, last, true, cur)}`);
+        }
+        const newer = newerElsewhere(l.operator.verified, last);
+        if (newer) {
+          event('mismatch');
+          throw new Error(`release apply: ${id} is partly applied in Jira and ${againstOf(newer, last)}, so nothing was written: ${observedOf(last, cur, 'Jira')}; ${repairOf(ctx.release, last, true, cur)}`);
         }
         assertAdmissionsWritable();
         await ctx.jira.setFixVersion(last.key, 'add', last.op.to_v as string);
@@ -1890,7 +1905,7 @@ export interface StateOut extends ReleaseState {
 
 export interface UnfinishedRuling {
   ruling: string; req: string; key: string; phase: 'intent' | 'applied'; op: string;
-  /** replay: a normal rm-run finishes it. blocked: a move the key's mirror shows in neither end state with no journalled proof it is this ruling's own; the chief repairs it by hand. */
+  /** replay: a normal rm-run finishes it. blocked: a move the key's mirror shows in neither end state with no journalled proof it is this ruling's own, or with an operator record newer than the ruling that puts the key elsewhere; the chief repairs it by hand. */
   status: 'replay' | 'blocked'; owner: 'release-manager' | 'chief'; next: string;
   /** What the mirror shows of a blocked move; null otherwise. */
   observed: string | null;
@@ -2032,7 +2047,7 @@ export function state(ctx: Ctx): StateOut {
     } else if (r.state.startsWith('claimed:')) claimed.push(r.req);
   }
   const { mac: _m, ...leaseOut } = lease ?? ({} as Lease);
-  const unfinished = unfinishedOf(l.rulings, l.events.verified, ctx, mirror.issues, lease);
+  const unfinished = unfinishedOf(l.rulings, l.events.verified, l.operator.verified, ctx, mirror.issues, lease);
   return {
     ...s,
     status: lease ? s.status : 'UNKNOWN',
@@ -2102,7 +2117,7 @@ function conflictRemedy(release: string, q: RequestRow, parent: string, asksOper
   return `new facts: ${base} --why "<what changed>" --evidence '{"<changed requirement>":"<value>"}'; or, if ${parent} can close without ${q.key}, file the ask again without --required-by`;
 }
 
-function unfinishedOf(rulings: Chain<RulingRow>, events: EventRow[], ctx: Ctx, issues: Map<string, IssueSnap> | null, lease: Lease | null): UnfinishedRuling[] {
+function unfinishedOf(rulings: Chain<RulingRow>, events: EventRow[], operator: OperatorRow[], ctx: Ctx, issues: Map<string, IssueSnap> | null, lease: Lease | null): UnfinishedRuling[] {
   const last = new Map<string, RulingRow>();
   for (const r of rulings.verified) last.set(r.id, r);
   return [...last.values()].filter((r) => r.phase === 'intent' || r.phase === 'applied').map((r) => {
@@ -2114,8 +2129,10 @@ function unfinishedOf(rulings: Chain<RulingRow>, events: EventRow[], ctx: Ctx, i
     if (landed(r.op, snap.fixVersions) || untouched(r.op, snap.fixVersions)) return replay;
     // A replay that already refused this ruling left a `ruled` mismatch event: the journal binding it has was checked live and failed.
     const refused = events.some((e) => e.kind === 'ruled' && e.ruling === r.id && e.readback === 'mismatch');
-    if (!refused && boundRemoval(ctx.env, r, snap.fixVersions)) return replay;
-    return { ...base, status: 'blocked', owner: 'chief', next: repairOf(ctx.release, r, false, snap.fixVersions), observed: observedOf(r, snap.fixVersions, 'mirror') };
+    const newer = newerElsewhere(operator, r);
+    if (!refused && !newer && boundRemoval(ctx.env, r, snap.fixVersions)) return replay;
+    const repair = repairOf(ctx.release, r, false, snap.fixVersions);
+    return { ...base, status: 'blocked', owner: 'chief', next: newer ? `${againstOf(newer, r)}, so the replay writes nothing; ${repair}` : repair, observed: observedOf(r, snap.fixVersions, 'mirror') };
   });
 }
 

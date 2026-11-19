@@ -394,16 +394,21 @@ describe('release engine', () => {
     const journal = (row: Record<string, unknown>) => writeFileSync(journalFile(), `${JSON.stringify(row)}\n`, { flag: 'a' });
     const rmWrite = (extra: Record<string, unknown> = {}) => ({ ts: '2026-10-21T10:00:01.000Z', key: 'K-2', from: ['v1'], to: [], mechanism: 'rm-apply', entry: '5001', ...extra });
 
-    async function interrupted(opts: { release?: boolean; required?: boolean } = {}) {
+    const decide = (at: string, keys: string[], op: string, from_v: string | null, to_v: string | null) =>
+      operatorDecision({ ...ctx(), now: () => new Date(at) }, { decision: '151', keys, op, from_v, to_v, verbatim: 'x' });
+
+    async function interrupted(opts: { release?: boolean; required?: boolean; operator?: boolean } = {}) {
       await setup();
       const source = opts.required ? 'v2' : 'v1';
       const destination = opts.required ? 'v1' : 'v2';
       mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: [source] }]);
       jira.fv.set('K-2', [source]);
+      const cited = opts.operator ? decide('2026-10-21T09:00:00.000Z', ['K-2'], 'move', source, destination) : undefined;
       const q = request(ctx(), { verb: opts.required ? 'INTAKE' : 'REVERSION', key: 'K-2', from_v: source, to_v: destination,
         why: 'w', evidence: opts.required ? { follow_up_of: 'K-1', remainder: true } : {}, from: 'console' });
       claim(ctx(rmEnv));
-      const r = admit(q.req, { outcome: opts.required ? 'ADMIT' : 'MOVE', op: { kind: 'move', from_v: source, to_v: destination } });
+      const r = admit(q.req, { outcome: opts.required ? 'ADMIT' : 'MOVE', op: { kind: 'move', from_v: source, to_v: destination },
+        ...(cited ? { authority: { kind: 'operator' as const, ref: cited.id } } : {}) });
       const write = jira.setFixVersion.bind(jira);
       jira.setFixVersion = async (k, op, v) => {
         if (op === 'add') throw new Error('crash before the destination add');
@@ -508,6 +513,98 @@ describe('release engine', () => {
       expect(await rmRun(withJournal(ctx()), noJudge)).toEqual(['RM-RUN R1: nothing pending']);
       expect(rows().filter((x) => x.key === 'K-2')).toHaveLength(2);
       expect(jira.posted).toBe(1);
+    });
+
+    // The replay's destination add is a write against the operator's latest placing record when that record is newer than the ruling and puts the key elsewhere.
+    const finishes = async (id: string) => {
+      expect(state(withJournal(ctx())).unfinished_rulings).toMatchObject([{ ruling: id, status: 'replay', owner: 'release-manager' }]);
+      expect((await rmRun(withJournal(ctx()), noJudge)).join('\n')).toContain(`RULING ${id}`);
+      expect(jira.fv.get('K-2')).toEqual(['v2']);
+      expect(rows().filter((x) => x.key === 'K-2').map((x) => [x.kind, x.version, x.ruling])).toEqual([['rm-admit', 'v2', id], ['rm-remove', 'v1', id]]);
+      expect(jira.posted).toBe(1);
+      expect(state(ctx()).unfinished_rulings).toEqual([]);
+    };
+
+    it('an operator record newer than the ruling that takes the key out of the destination stops the new-epoch replay: nothing is written and the record is named', async () => {
+      const { r } = await interrupted({ operator: true });
+      const newer = decide('2026-10-21T10:00:05.000Z', ['K-2'], 'remove', 'v2', null);
+      jira.entries.set('K-2', '5001');
+      journal(rmWrite());
+      const writes = jira.writes;
+      const lines = await rmRun(withJournal(ctx()), noJudge);
+      expect(jira.writes).toBe(writes);
+      expect(jira.fv.get('K-2')).toEqual([]);
+      expect(lines.join('\n')).toMatch(new RegExp(`PENDING ${r.id}: .*${newer.id}`));
+      expect(rows().filter((x) => x.key === 'K-2')).toEqual([]);
+      expect(jira.posted).toBe(0);
+      // The refusal is recorded as one mismatch event, and later refused runs append no second.
+      const mismatches = () => readChain<EventRow>(join(ctx().dir, 'events.jsonl'), loadKey(ctx().keyPath)).verified.filter((e) => e.kind === 'ruled' && e.ruling === r.id && e.readback === 'mismatch');
+      expect(mismatches()).toHaveLength(1);
+      for (let i = 0; i < 3; i += 1) expect(await rmRun(withJournal(ctx()), noJudge)).toEqual(expect.arrayContaining([expect.stringContaining(`PENDING ${r.id}`)]));
+      expect(mismatches()).toHaveLength(1);
+      expect(jira.writes).toBe(writes);
+      expect(jira.fv.get('K-2')).toEqual([]);
+    });
+
+    it('state reads that replay as blocked to the chief with the newer record named, before a run refuses it and after', async () => {
+      const { r } = await interrupted({ operator: true });
+      const newer = decide('2026-10-21T10:00:05.000Z', ['K-2'], 'remove', 'v2', null);
+      jira.entries.set('K-2', '5001');
+      journal(rmWrite());
+      const unfinished = () => state(withJournal(ctx())).unfinished_rulings;
+      expect(unfinished()).toMatchObject([{ ruling: r.id, key: 'K-2', phase: 'intent', status: 'blocked', owner: 'chief', observed: 'K-2 is in no version (mirror); the move wants v1 -> v2' }]);
+      expect(unfinished()[0].next).toContain(newer.id);
+      expect(unfinished()[0].next).toContain('jira fix-version K-2 --add v1');
+      expect(unfinished()[0].next).toContain('jira release rm-run R1');
+      await rmRun(withJournal(ctx()), noJudge);
+      expect(unfinished()).toMatchObject([{ ruling: r.id, status: 'blocked', owner: 'chief' }]);
+      expect(unfinished()[0].next).toContain(newer.id);
+    });
+
+    it.each([
+      ['puts it in a third version', 'add', null, 'v3'],
+      ['moves it out of the destination into a third version', 'move', 'v2', 'v3'],
+      ['keeps it in the source', 'keep', 'v1', 'v1'],
+      ['takes it out of the source', 'remove', 'v1', null],
+    ] as Array<[string, string, string | null, string | null]>)('an operator record newer than the ruling that %s also stops the replay and writes nothing', async (_name, op, from, to) => {
+      const { r } = await interrupted({ operator: true });
+      const newer = decide('2026-10-21T10:00:05.000Z', ['K-2'], op, from, to);
+      jira.entries.set('K-2', '5001');
+      journal(rmWrite());
+      const writes = jira.writes;
+      const lines = await rmRun(withJournal(ctx()), noJudge);
+      expect(jira.writes).toBe(writes);
+      expect(jira.fv.get('K-2')).toEqual([]);
+      expect(lines.join('\n')).toMatch(new RegExp(`PENDING ${r.id}: .*${newer.id}`));
+      expect(rows().filter((x) => x.key === 'K-2')).toEqual([]);
+      expect(jira.posted).toBe(0);
+      expect(state(withJournal(ctx())).unfinished_rulings[0]).toMatchObject({ ruling: r.id, status: 'blocked', owner: 'chief' });
+    });
+
+    it.each([
+      ['no operator record newer than the ruling', () => undefined],
+      ['a newer operator record about another key', () => decide('2026-10-21T10:00:05.000Z', ['K-1'], 'remove', 'v2', null)],
+      ['a newer operator record that puts the key in the destination', () => decide('2026-10-21T10:00:05.000Z', ['K-2'], 'add', null, 'v2')],
+      ['a newer operator record that places nothing', () => decide('2026-10-21T10:00:05.000Z', ['K-2'], 'none', null, null)],
+      ['an operator record at the ruling\'s own instant that takes the key out of the destination', () => decide('2026-10-21T10:00:00.000Z', ['K-2'], 'remove', 'v2', null)],
+      ['a last operator word that puts the key back in the destination after one that took it out', () => {
+        decide('2026-10-21T10:00:05.000Z', ['K-2'], 'remove', 'v2', null);
+        return decide('2026-10-21T10:00:06.000Z', ['K-2'], 'add', null, 'v2');
+      }],
+    ] as Array<[string, () => unknown]>)('an operator-decided move still finishes its add once with %s', async (_name, record) => {
+      const { r } = await interrupted({ operator: true });
+      record();
+      jira.entries.set('K-2', '5001');
+      journal(rmWrite());
+      await finishes(r.id);
+    });
+
+    it('an operator record older than the ruling that places the key elsewhere does not stop the replay', async () => {
+      const { r } = await interrupted();
+      decide('2026-10-21T09:00:00.000Z', ['K-2'], 'remove', 'v2', null);
+      jira.entries.set('K-2', '5001');
+      journal(rmWrite());
+      await finishes(r.id);
     });
 
     it.each([
