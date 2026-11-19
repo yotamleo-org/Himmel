@@ -3181,6 +3181,18 @@ name `scripts/lib/session-name.sh` trusts as a chief. Two rules, each a deny
   trimmed value ends in `-chief` or `-console` (any case) denies. A title inside
   a `delegatedFrom` object names the calling thread and is not judged.
 
+The two files these rules protect have their own fence in
+`block-edit-live-settings.sh` (same `EDIT_LIVE_SETTINGS_OK` bypass; reads stay
+allowed). T3's settings file, `${T3CODE_HOME:-$HOME/.t3}/userdata/settings.json`,
+holds the instances and their variables: a file-tool or Bash write to it is
+refused from any cwd, and so is a write verb whose destination is T3's home or
+`userdata` directory itself. Claude Code's session registry,
+`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions/`, holds the T3 thread title
+`session-name.sh` trusts as a chief name: a file-tool or Bash write into it, or
+onto the directory itself, is refused too. Only the registry under the Claude
+home counts; a repo's own `.claude/sessions` is not touched. T3 worktrees
+under `~/.t3/worktrees/` stay ordinary worktrees.
+
 A security fence: fails CLOSED on a missing `jq` or a payload that does not
 parse. Override: `T3_THREAD_TOOLS_OK=1` (launching shell, session-sticky, tier
 `floor`); the allow is printed to stderr. Wired in `EXPECTED_SCRIPT_ORDER`

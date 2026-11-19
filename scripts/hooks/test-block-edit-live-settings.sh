@@ -3968,6 +3968,89 @@ esac
 assert_rc "9929 a T3 worktree path whose tail carries a variable still counts as T3's directory" 2 \
     "$(bash_rc_of "$WT2" 'echo x > ~/.t3/worktrees/proj/$x/settings.json' HOME="$T3H")"
 
+# A write whose DESTINATION is T3's home or userdata directory itself can put a
+# settings.json there without naming one.
+PAY="$SANDBOX/t3payload"
+mkdir -p "$PAY/userdata"
+printf '{}\n' > "$PAY/userdata/settings.json"
+printf '{}\n' > "$PAY/reg.json"
+assert_rc "9930 cp -r <payload>/. ~/.t3/userdata/ denies" 2 \
+    "$(bash_rc_of "$WT2" "cp -r $PAY/. ~/.t3/userdata/" HOME="$T3H")"
+assert_rc "9931 cp -r <payload>/userdata ~/.t3/ denies" 2 \
+    "$(bash_rc_of "$WT2" "cp -r $PAY/userdata ~/.t3/" HOME="$T3H")"
+assert_rc "9932 rsync -a <payload>/ ~/.t3/userdata/ denies" 2 \
+    "$(bash_rc_of "$WT2" "rsync -a $PAY/ ~/.t3/userdata/" HOME="$T3H")"
+assert_rc "9933 mv <payload>/userdata ~/.t3/userdata denies" 2 \
+    "$(bash_rc_of "$WT2" "mv $PAY/userdata ~/.t3/userdata" HOME="$T3H")"
+assert_rc "9934 cp -r into T3's userdata directory by absolute path denies" 2 \
+    "$(bash_rc_of "$WT2" "cp -r $PAY/. $T3H/.t3/userdata/" HOME="$T3H")"
+assert_rc "9935 cp -r into T3CODE_HOME's userdata directory by absolute path denies" 2 \
+    "$(bash_rc_of "$WT2" "cp -r $PAY/. $T3ALT/userdata" HOME="$T3H" T3CODE_HOME="$T3ALT")"
+assert_rc "9936 cp -r into \$T3CODE_HOME/userdata/ denies" 2 \
+    "$(bash_rc_of "$WT2" 'cp -r '"$PAY"'/. "$T3CODE_HOME/userdata/"' HOME="$T3H" T3CODE_HOME="$T3ALT")"
+t3wt_msg=$(bash_msg_of "$WT2" "cp -r $PAY/. ~/.t3/userdata/" HOME="$T3H")
+case "$t3wt_msg" in
+    *"T3 Code's"*) echo "PASS 9937 a directory-destination write into T3's userdata names T3's settings file" ;;
+    *) echo "FAIL 9937 directory-destination refusal text: $t3wt_msg"; FAILED=$((FAILED + 1)) ;;
+esac
+assert_rc "9938 control: cp -r into a T3 worktree directory allows" 0 \
+    "$(bash_rc_of "$WT2" "cp -r $PAY/. ~/.t3/worktrees/proj/wt/" HOME="$T3H")"
+assert_rc "9939 control: cp -r into an unrelated directory allows" 0 \
+    "$(bash_rc_of "$WT2" "cp -r $PAY/. $WT2/data/" HOME="$T3H")"
+assert_rc "9940 control: listing T3's userdata directory allows" 0 \
+    "$(bash_rc_of "$WT2" 'ls ~/.t3/userdata/' HOME="$T3H")"
+
+# Claude Code's session registry: session-name.sh trusts the chief name in it.
+CFGD="$SANDBOX/claude-cfg"
+mkdir -p "$T3H/.claude/sessions" "$CFGD/sessions" "$WT2/.claude/sessions" "$WT2/data/sessions"
+printf '{"pid":1,"entrypoint":"t3-code","name":"x"}\n' > "$T3H/.claude/sessions/1.json"
+assert_rc "9941 Write on an existing registry file denies" 2 \
+    "$(rc_of "$T3H/.claude/sessions/1.json" Write file_path HOME="$T3H")"
+assert_rc "9942 Write of a new registry file denies" 2 \
+    "$(rc_of "$T3H/.claude/sessions/9.json" Write file_path HOME="$T3H")"
+assert_rc "9943 Edit of a registry file under CLAUDE_CONFIG_DIR denies" 2 \
+    "$(rc_of "$CFGD/sessions/9.json" Edit file_path HOME="$T3H" CLAUDE_CONFIG_DIR="$CFGD")"
+assert_rc "9944 NotebookEdit in the registry denies" 2 \
+    "$(rc_of "$T3H/.claude/sessions/9.json" NotebookEdit notebook_path HOME="$T3H")"
+assert_rc "9945 bash redirect to ~/.claude/sessions/<pid>.json denies" 2 \
+    "$(bash_rc_of "$WT2" 'echo x > ~/.claude/sessions/9.json' HOME="$T3H")"
+assert_rc "9946 bash cp into the registry directory by absolute path denies" 2 \
+    "$(bash_rc_of "$WT2" "cp $PAY/reg.json $T3H/.claude/sessions/" HOME="$T3H")"
+assert_rc "9947 bash cp -r <payload>/. ~/.claude/sessions (directory destination) denies" 2 \
+    "$(bash_rc_of "$WT2" "cp -r $PAY/. ~/.claude/sessions" HOME="$T3H")"
+assert_rc "9948 bash redirect into CLAUDE_CONFIG_DIR's registry by absolute path denies" 2 \
+    "$(bash_rc_of "$WT2" "echo x > $CFGD/sessions/9.json" HOME="$T3H" CLAUDE_CONFIG_DIR="$CFGD")"
+assert_rc "9949 bash cp into \$CLAUDE_CONFIG_DIR/sessions/ denies" 2 \
+    "$(bash_rc_of "$WT2" 'cp '"$PAY"'/reg.json "$CLAUDE_CONFIG_DIR/sessions/"' HOME="$T3H" CLAUDE_CONFIG_DIR="$CFGD")"
+reg_msg=$(jq -n --arg f "$T3H/.claude/sessions/9.json" '{tool_name: "Write", tool_input: {file_path: $f}}' \
+    | env HOME="$T3H" bash "$HOOK" 2>&1 >/dev/null)
+case "$reg_msg" in
+    *"session registry"*"chief guards trust"*"nothing but Claude Code writes it"*) echo "PASS 9950 the registry refusal names the registry, the chief guards and its only writer" ;;
+    *) echo "FAIL 9950 the registry refusal text: $reg_msg"; FAILED=$((FAILED + 1)) ;;
+esac
+assert_rc "9951 reading a registry file with cat allows" 0 \
+    "$(bash_rc_of "$WT2" 'cat ~/.claude/sessions/1.json' HOME="$T3H")"
+assert_rc "9952 reading a registry file with jq allows" 0 \
+    "$(bash_rc_of "$WT2" 'jq -r .name ~/.claude/sessions/1.json' HOME="$T3H")"
+assert_rc "9953 listing the registry allows" 0 \
+    "$(bash_rc_of "$WT2" 'ls ~/.claude/sessions/' HOME="$T3H")"
+assert_rc "9954 control: a worktree's own .claude/sessions by relative path allows" 0 \
+    "$(bash_rc_of "$WT2" 'echo x > .claude/sessions/a.json' HOME="$T3H")"
+assert_rc "9955 control: a worktree's own .claude/sessions by absolute path allows" 0 \
+    "$(bash_rc_of "$WT2" "echo x > $WT2/.claude/sessions/a.json" HOME="$T3H")"
+assert_rc "9956 control: Write in a worktree's own .claude/sessions allows" 0 \
+    "$(rc_of "$WT2/.claude/sessions/a.json" Write file_path HOME="$T3H")"
+assert_rc "9957 control: another path with a sessions directory allows" 0 \
+    "$(bash_rc_of "$WT2" "cp $PAY/reg.json $WT2/data/sessions/a.json" HOME="$T3H")"
+assert_rc "9958 EDIT_LIVE_SETTINGS_OK=1 bypass allows a registry Write" 0 \
+    "$(rc_of "$T3H/.claude/sessions/9.json" Write file_path HOME="$T3H" EDIT_LIVE_SETTINGS_OK=1)"
+lsb_msg=$(jq -n --arg f "$T3H/.claude/settings.json" '{tool_name: "Write", tool_input: {file_path: $f}}' \
+    | env HOME="$T3H" bash "$HOOK" 2>&1 >/dev/null)
+case "$lsb_msg" in
+    *"This is a LIVE settings file"*) echo "PASS 9959 existing: the user-scope settings.json beside the registry keeps its own refusal" ;;
+    *) echo "FAIL 9959 user-scope settings refusal text: $lsb_msg"; FAILED=$((FAILED + 1)) ;;
+esac
+
 # Clean up worktree registrations before removing the sandbox (avoids
 # dangling `git worktree` admin records under SANDBOX/primary).
 git -C "$SANDBOX/primary" worktree remove --force "$SANDBOX/primary/.claude/worktrees/feat+x" 2>/dev/null || true

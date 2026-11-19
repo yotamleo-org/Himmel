@@ -20,10 +20,12 @@
 #      when `.entrypoint` is `t3-code`, `.pid` is CLAUDE_PID, the name ends in
 #      `-chief` or `-console` (the shapes the chief hooks treat as a chief) and
 #      it passes the same validation as an argv name. guard-t3-thread-tools.sh
-#      refuses an agent's T3 tool call that would set a chief-shaped title, so
-#      such a title comes from the operator. When /proc/<pid>/stat is readable,
-#      its process start time must equal the registry's `.procStart`, so a file
-#      left behind for a reused pid is never read as the live session's.
+#      refuses an agent's T3 tool call that would set a chief-shaped title, and
+#      block-edit-live-settings.sh refuses an agent's write into the registry
+#      directory itself, so such a title comes from the operator. When
+#      /proc/<pid>/stat is readable, its process start time must equal the
+#      registry's `.procStart`, so a file left behind for a reused pid is never
+#      read as the live session's.
 #
 # Platforms without /proc (macOS) have no argv source and skip the start-time
 # comparison. Anything unresolvable prints nothing, never a wrong name —
