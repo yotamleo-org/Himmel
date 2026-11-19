@@ -115,12 +115,23 @@ tok 'ls ~/x'; check "a tilde is not a glob" "$R:${ST_G[1]}" "0:0"
 tok 'FOO=bar cmd'; check "NAME=value is assignment-shaped" "$R:${ST_A[0]}:${ST_A[1]}" "0:1:0"
 tok "'FOO=bar' cmd"; check "a quoted NAME=value is not" "$R:${ST_A[0]}" "0:0"
 tok "echo \$'a'"; check "\$'…' sets ANSIC" "$R:$ST_ANSIC" "0:1"
-# Decoding needs ${…@E} (bash 4.4+); an older bash keeps the raw body (J1946 B1).
-dec='-r'
-if [ "${BASH_VERSINFO[0]}" -lt 4 ] || { [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; then
-    dec='\x2dr'
+# Every bash decodes the body: ${…@E} on 4.4+, _st_ansic_walk before it.
+tok "rm \$'\\x2dr' d"; check "\$'…' is decoded the way bash runs it" "$R:${ST_W[1]}:${ST_Q[1]}" "0:-r:1"
+tok "cat \$'\\'' .e*"; check "\$'\\'' decodes to a quote" "$R:${ST_W[1]}" "0:'"
+# The by-hand decode gives what ${…@E} gives, on a bash that has both.
+# shellcheck disable=SC1003 # the bodies hold backslashes, not escaped quotes
+ansic_parity() { # the tokenizer decodes under the C locale
+    local LC_ALL=C body want bs='\'
+    for body in 'plain' '\a\b\e\E\f\n\r\t\v' '\\' "\\'" '\"' '\?' '\101' '\18' '\0101' '\777' '\x41' '\x4g' '\x' \
+        "${bs}u0041" "${bs}u007f" "${bs}u0000" '\U00000041' '\U0001F600' "${bs}u" '\cA' '\c?' '\c' '\q' 'a\x00b' 'a\' '\x2dr' '\056env'; do
+        _st_ansic_walk "$body"
+        eval 'want=${body@E}'
+        check "by-hand decode of [$body] equals \${…@E}" "$_ST_DEC" "$want"
+    done
+}
+if [ "${BASH_VERSINFO[0]}" -gt 4 ] || { [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]}" -ge 4 ]; }; then
+    ansic_parity
 fi
-tok "rm \$'\\x2dr' d"; check "\$'…' is decoded the way bash runs it" "$R:${ST_W[1]}:${ST_Q[1]}" "0:$dec:1"
 tok 'echo a # c; d'; check "a comment sets COMMENT and ends the command" "$R:$ST_COMMENT:$ST_NSEG:$ST_N" "0:1:1:2"
 tok $'cat <<EOF\nbody $(x)\nEOF\necho after'; check "an unquoted heredoc body with \$(…) sets SUBST" "$R:$ST_HEREDOC:$ST_SUBST" "0:1:1"
 tok $'cat <<\'EOF\'\nbody $(x)\nEOF'; check "a quoted heredoc body is inert" "$R:$ST_HEREDOC:$ST_SUBST" "0:1:0"

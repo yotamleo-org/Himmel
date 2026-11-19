@@ -288,7 +288,9 @@ mkdir -p "$SCR/hm/himmel/pkg" "$SCR/co3/himmel" "$SCR/dollar/\$x/himmel/pkg" \
     || { echo "FAIL: cannot build the NO-GO fixtures" >&2; exit 1; }
 ln -s "$SCR/nowhere-bus" "$SCR/co3/himmel/bus" || { echo "FAIL: cannot build the dangling bus link" >&2; exit 1; }
 deny  "8776 a .. after the glob climbs out of the checkout" "$(bash_json "ls $SCR/repos/himmel/pk?/../../../alt/hi?mel/bus/peers")"
-deny  "8776 a brace component can carry a slash or .." "$(bash_json "ls $SCR/repos/himmel/{pkg,x}/node_modules")"
+# bash 3.2 brace-expands inside a nested "$( "…" )", so the command is built first.
+brace_cmd="ls $SCR/repos/himmel/{pkg,x}/node_modules"
+deny  "8776 a brace component can carry a slash or .." "$(bash_json "$brace_cmd")"
 deny  "8776 a variable component can carry a slash or .." "$(bash_json "ls $SCR/repos/himmel/\$x/pkg")"
 deny  "8776 a variable after the glob can carry .." "$(bash_json "ls $SCR/repos/himmel/pk?/\$x")"
 deny  "8776 a dot-leading glob component can match .." "$(bash_json "ls $SCR/repos/himmel/.*/x")"
