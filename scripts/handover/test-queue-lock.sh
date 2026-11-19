@@ -3806,7 +3806,6 @@ else
     # read-sink-ok: these are this test's own scratch files under TMPDIR_ROOT
     fail "T8541r: returning caller handler (rc=$(cat "$H_RC_FILE_R" 2>/dev/null) out=$(cat "$H_OUT_R" 2>/dev/null) lock=$([ -d "$H_LK_R" ] && echo kept || echo gone) claim=$([ -d "$H_LK_R.claim" ] && echo leaked || echo gone)) tail: $(h_tail "$H_DOC_R")"
 fi
-# s, t: the signal is raised at the shell itself, so a caller with no INT trap dies by INT (rc 130) from its top level and from a subshell; a signal sent from a forked child is dropped while bash waits for that child to exit normally
 H_OUT_S="$TMPDIR_ROOT/t8541s-out"; rm -f "$H_OUT_S"
 set -m
 bash -c ". '$LIB'; _ql_force_on_signal INT; echo SURVIVED" >"$H_OUT_S" 2>&1 &
