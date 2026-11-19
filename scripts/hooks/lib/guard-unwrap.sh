@@ -324,6 +324,13 @@ guard_unwrap() {
         _gu_strip_heredocs "$GU_FLAT"
         if { [ "$GU_FLAT" = "$cmd" ] || ! st_tokenize "$GU_FLAT"; } \
             && { [ "$GU_NOHD" = "$GU_FLAT" ] || ! st_tokenize "$GU_NOHD"; }; then
+            if [ "${ST_AMBIG:-0}" = 1 ]; then
+                echo "guard-unwrap: refusing a command with a \$'...' word that bash and zsh read differently, so the text the shell runs cannot be known." >&2
+                if [ "${GUARD_EXPANSION_DEPTH:-0}" = 0 ]; then
+                    printf '%s\n' '    Retry: write the character itself, or use an escape both shells read alike (\n \t \xHH \NNN); an unknown escape, \cX, \C-X, \M-X and a \x \u \U with no hex digit are read two ways.' >&2
+                fi
+                return 2
+            fi
             if _gu_fallback "$GU_NOHD"; then
                 echo "guard-unwrap: refusing a command whose quoting this guard cannot read and that runs a nested shell, an eval or a quoted command word." >&2
                 if [ "${GUARD_EXPANSION_DEPTH:-0}" = 0 ]; then

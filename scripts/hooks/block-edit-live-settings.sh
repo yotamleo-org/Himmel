@@ -159,13 +159,15 @@ fi
 #               live command/process substitution (including inside "…" and
 #               any live $ in an unquoted heredoc body), a heredoc, a $'…'
 #               word, a comment.
+#   ST_AMBIG    1 when st_tokenize returned 1 because a $'…' word held an
+#               escape that bash and zsh read differently.
 # shellcheck disable=SC1003,SC2016,SC2034 # literal \ ` $ bytes; ST_* are read by the caller
 st_tokenize() {
     local LC_ALL=C
     local s="$1" n i c c2 c3 ctx='' top w='' win=0 wq=0 wx=0 wg=0 wqpos=-1
     local rop='' fd op rest body j bad=0 hd_n=0 hd_i=0
     local -a hd_d hd_q hd_t
-    ST_OK=0 ST_N=0 ST_NSEG=0 ST_SUBST=0 ST_HEREDOC=0 ST_ANSIC=0 ST_COMMENT=0
+    ST_OK=0 ST_N=0 ST_NSEG=0 ST_SUBST=0 ST_HEREDOC=0 ST_ANSIC=0 ST_COMMENT=0 ST_AMBIG=0
     ST_W=() ST_Q=() ST_X=() ST_G=() ST_A=() ST_S=() ST_RO=() ST_SEP=()
     n=${#s}
     [ "$n" -le 8192 ] || return 1
@@ -368,12 +370,12 @@ _st_q() { # the next byte appended to the word is quoted or escaped
 # as a c and an x, an unknown escape as the character without its backslash, and \x \u \U
 # with no hex digit as a NUL. Only the escapes all three read alike pass: \\ \' \" \? \a \b
 # \e \E \f \n \r \t \v, octal digits, and \x \u \U followed by a hex digit.
-# shellcheck disable=SC1003 # literal \ bytes, not escaped quotes
+# shellcheck disable=SC1003,SC2034 # literal \ bytes, not escaped quotes; ST_AMBIG is read by the caller
 _st_ansic_e() {
     local q="'" dq='"' r=${1//\\\\/}
     r=${r//\\[$q$dq?abefnrtvE01234567]/}
     r=${r//\\[xuU][0123456789abcdefABCDEF]/}
-    case "$r" in *'\'*) return 1 ;; esac
+    case "$r" in *'\'*) ST_AMBIG=1; return 1 ;; esac
     if [ "${BASH_VERSINFO[0]}" -gt 4 ] \
         || { [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]}" -ge 4 ]; }; then
         eval '_ST_DEC=${1@E}'
