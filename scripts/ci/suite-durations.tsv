@@ -1349,6 +1349,7 @@ scripts/handover/chief-kit/test-version-approval-alert.sh	0
 scripts/handover/test-one-rule-per-gate-docs.sh	1
 scripts/hooks/test-afk-denied-to-request.sh	1
 scripts/hooks/test-block-t3code-unwatch-open-pr.sh	1
+scripts/hooks/test-guard-t3-thread-tools.sh	1
 scripts/hooks/test-peer-taint.sh	7
 scripts/lanes/test-launch-site-guard.sh	1
 scripts/ledger/test-ceilings-ledger.sh	4
