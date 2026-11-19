@@ -608,7 +608,7 @@ function canonical(path: string): boolean {
 function memberAbsent(pin: MemberAbsencePin, manifest: Buffer | undefined): boolean {
   try {
     const parsed = manifest && parseManifest(manifest.toString('utf8'));
-    return !!parsed && canonical(pin.directory) && memberLedgerState(boundedDirectoryNames(pin.directory), Object.keys(parsed.keys), pin.keys).present.length === 0;
+    return !!parsed && canonical(pin.directory) && statSync(pin.directory).isDirectory() && memberLedgerState(boundedDirectoryNames(pin.directory), Object.keys(parsed.keys), pin.keys).present.length === 0;
   } catch { return false; }
 }
 
