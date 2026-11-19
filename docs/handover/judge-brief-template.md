@@ -132,7 +132,10 @@ gathering, per the rule below.>
 > handover root commonly lives inside an Obsidian vault, which indexes
 > every file regardless of `.gitignore` (843k scratch files
 > froze the vault). Not `/tmp` either — it can be tmpfs, so a full tree sits in RAM.
-> Only your verdict file belongs under `verdicts/<qid>/`.
+> The one exception is your evidence file: write it inside the
+> `/tmp/claude-<uid>/j<PR>` dir that `bash <primary checkout>/scripts/judge-dir.sh <PR>`
+> makes, because `write-verdict.sh` accepts only an evidence path under
+> `/tmp/claude-<uid>/`. Only your verdict file belongs under `verdicts/<qid>/`.
 
 > **A PR-keyed `/tmp` dir (`j<PR>`) is made by the helper, never by `mkdir`.** If you judge a PR and need a short-lived tree under
 > `/tmp/claude-<uid>/j<PR>`, create it with
@@ -400,9 +403,9 @@ gathering, per the rule below.>
 
 > **Lifecycle — the one rule.** Write your verdict file per
 > `docs/handover/verdict-template.md` — for a merge question, through
-> `bash <primary checkout>/scripts/handover/chief-kit/write-verdict.sh <qid> <GO|NO-GO> <head> --pr <the PR number> --evidence-file <scratch file> --judge <your session name> --model <your model id> --effort <your effort level>`
+> `bash <primary checkout>/scripts/handover/chief-kit/write-verdict.sh <qid> <GO|NO-GO> <head> --pr <the PR number> --evidence-file <your evidence file> --judge <your session name> --model <your model id> --effort <your effort level>`
 > (`--pr` is required), which emits the exact line `go.sh --trust-reviewed` parses
-> and refuses a path outside `verdicts/<qid>/` — release your own-doc lock, append a
+> and refuses an evidence file outside `/tmp/claude-<uid>/` — release your own-doc lock, append a
 > closing bullet to your own doc with
 > `bash <primary checkout>/scripts/handover/chief-kit/append-results.sh <your doc> "WRAPPED verdict written, lock released"`
 > (the chief's sweep closes only a window whose doc tail says `WRAPPED`), and **end

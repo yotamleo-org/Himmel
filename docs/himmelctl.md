@@ -28,7 +28,7 @@ the ones those pages only mention in passing.
 | `trust` | yes | Wire or unwire the trust shadow ledger's hook entries |
 | `approve` / `deny` | yes | Answer an AFK request from an SSH shell: `approve <id>`, `approve status <id>`, `deny <id>`. See [internals/afk-sudo.md](internals/afk-sudo.md#approving-over-ssh) |
 | `report` | no | Read-only JSON config feed that the config UI renders; secrets show presence, never values. See [ui.md](ui.md) |
-| `ui` | no | Read-only config UI on 127.0.0.1 (needs bun); the operator runs it from a terminal. See [ui.md](ui.md) |
+| `ui` | yes (unless `--read-only`) | Config UI on 127.0.0.1 (needs bun); the page can write your config by default, and `--read-only` refuses every non-GET/HEAD request. The operator runs it from a terminal. See [ui.md](ui.md) |
 | `--version [--all]` | no | Version, describe string, commit; `--all` adds per-component currency |
 
 Shared flags: `--dry-run` / `-n` prints the plan and changes nothing,
@@ -116,14 +116,22 @@ settings the UI shows are read and written with:
 
 ```bash
 himmelctl config get <path>
-himmelctl config set <path> on|off
+himmelctl config set <path> <value>
 ```
 
-| Path | Controls |
-|---|---|
-| `initiative.<step>` | Initiative auto-ship steps (`HIMMEL_INITIATIVE` steps) |
-| `lanes.<id>` | Delegation lanes |
-| `hooks.plugin.<name>` | Opt-in hook plugins; set-only, runs `claude plugin enable` or `disable` |
+The accepted value depends on the path:
+
+| Path | Value | Controls |
+|---|---|---|
+| `initiative.<step>` | `on` / `off` | Initiative auto-ship steps (`HIMMEL_INITIATIVE` steps) |
+| `lanes.<id>` | `on` / `off` | Delegation lanes |
+| `hooks.plugin.<name>` | `on` / `off` | Opt-in hook plugins; set-only, runs `claude plugin enable` or `disable` |
+| `commit.tracker` | `jira` / `local` / `none` | The commit rules' tracker; set-only, written to `~/.himmel/himmel.conf` |
+| `commit.ticketIdRequired` | `on` / `off` | Whether a commit needs a ticket reference; set-only, written to `~/.himmel/himmel.conf` |
+| `handover.root` | an absolute directory | `HANDOVER_DIR`, created if missing; set-only, written to `~/.himmel/himmel.conf` |
+| `luna.vaultPath` | an existing absolute directory | `LUNA_VAULT_PATH`; set-only, written to `~/.himmel/himmel.conf` |
+| `jira.testProject` | a Jira project key (`^[A-Z][A-Z0-9]+$`) the live-test verb accepts | `JIRA_TEST_PROJECT`, the project live tests and audits write to; set-only, written to `~/.himmel/himmel.conf` (or `himmel.conf.local` when that file already sets it) and read back to confirm |
+| `tracker.teamMode` | `on` / `off` | `HIMMEL_TRACKER_TEAM_MODE`, the board's team-mode switch; written to `~/.himmel/himmel.conf` (or `himmel.conf.local` when that file already sets it); `config get` prints `on` or `off` |
 
 `hooks.improveOnSubmit` is a launching-shell env var, not settable here, and
 `config get` does not report hook state (exit 2).

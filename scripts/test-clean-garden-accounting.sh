@@ -58,6 +58,10 @@ git -C "$REPO" config user.name t
 # its `gitdir` write. Under load the detached child lands inside that window
 # (F3/F4 "checkpoint missing", or a husk mid-build erased). No async pruner.
 git -C "$REPO" config maintenance.auto false
+HANDOVER_DIR="$TMP_ROOT/handover-root"
+HANDOVER_REGISTRY="$TMP_ROOT/handover-registry.json"
+mkdir -p "$HANDOVER_DIR"
+export HANDOVER_DIR HANDOVER_REGISTRY
 printf 'base\n' > "$REPO/README"
 git -C "$REPO" add README
 git -C "$REPO" commit -q -m "base"

@@ -1,6 +1,6 @@
 # Fork adapter standard
 
-Every `yotamleo/*` fork is a himmel adapter: it is listed in
+Every `yotamleo-org/*` fork is a himmel adapter: it is listed in
 `scripts/guardrails/himmel-adapters.json`, and a change to it follows the himmel
 flow (ticket ID on every commit and PR, judge, signed GO, chief merge). The
 registry is read from the default branch of the harness repo, so a worktree edit

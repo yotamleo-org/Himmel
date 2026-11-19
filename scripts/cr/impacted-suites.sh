@@ -187,6 +187,8 @@ runner_for() {
             printf 'cd scripts/luna-vitals && bun test %q\n' "$rel" ;;
         scripts/telegram/*.test.mjs|scripts/telegram/*.test.js|scripts/telegram/*.test.ts)
             printf 'bun test %q --dots\n' "$path" ;;
+        scripts/peer-bridge/*.test.ts)
+            printf 'bun test %q --dots\n' "$path" ;;
         scripts/vault/tests/*.test.mjs|scripts/vault/tests/*.test.js|scripts/vault/tests/*.test.ts)
             printf 'bun test %q --dots\n' "$path" ;;
         scripts/config-ui/tests/*.test.mjs|scripts/config-ui/tests/*.test.js|scripts/config-ui/tests/*.test.ts)
@@ -221,6 +223,7 @@ hook-lib-suites|hook-lib|check-hook-lib-suites.sh
 matrix-npm-test|npm-test|npm test
 luna-vitals|bun-test|scripts/luna-vitals && bun install
 telegram-suites|bun-test|scripts/telegram --dots
+peer-bridge-suites|bun-test|scripts/peer-bridge --dots
 vault-suites|bun-test|scripts/vault/tests --dots
 config-ui-suites|bun-test|scripts/config-ui --dots
 luna-correlate|bun-test|marketplace/plugins/luna-correlate && bun install

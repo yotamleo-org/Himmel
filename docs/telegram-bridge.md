@@ -125,11 +125,12 @@ These **slash forms only** carry the same authority as free `/chief` text:
 | `/push <worker>` | request a push through the chief's normal gates |
 | `/halt [<worker>]` | request a halt of that worker, or the batch |
 
+Fleet verbs accept any letter case; worker labels stay case-exact.
 Worker labels are 1–64 ASCII letters, digits, underscores, dots or hyphens; `..`,
 path separators and controls refuse the command shape. A reserved verb
 (`/go`, `/push`, `/halt`, `/fleet`, `/workers`) with any other shape (bad,
 oversized or traversal label, control characters, extra arguments, a missing
-label, wrong case) is a **terminal refusal** ("malformed fleet command —
+label) is a **terminal refusal** ("malformed fleet command —
 nothing was queued"), never agent chat; a nonoperator's malformed shape is
 dropped silently. Bare `fleet`, `workers`,
 `go`, `push` and `halt` (no slash) remain chat; existing `status` still reports bridge

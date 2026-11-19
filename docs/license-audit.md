@@ -1,8 +1,7 @@
 # License audit
 
 Durable record of the license decision and the housekeeping that
-implemented it. Visibility (private → public) is a separate, deferred
-step; see [Remaining deferred step](#remaining-deferred-step).
+implemented it. The repository is public.
 
 ## Chosen license: MIT
 
@@ -58,6 +57,10 @@ The vendored plugin retains its original `LICENSE` file and documents the
 upstream source + fork delta in its own `README.md`; the standalone prompt
 carries `scripts/cr/LICENSE-floor-reviewer` and `scripts/cr/NOTICE-floor-reviewer`.
 
+Vendored MIT plugins (`claude-hud`, `domain-modeling`, `humanizer`,
+`i-have-adhd`, `lean-skills`, `pstack`, `qmd`) keep their upstream `LICENSE`
+files; see [third-party-licenses.md](third-party-licenses.md).
+
 ## Housekeeping completed by this change
 
 - Added root [`/LICENSE`](../LICENSE) (MIT).
@@ -70,9 +73,3 @@ carries `scripts/cr/LICENSE-floor-reviewer` and `scripts/cr/NOTICE-floor-reviewe
   contradicted the chosen license).
 - Updated the README `## License` section: MIT for himmel, Apache-2.0
   note for the two vendored forks.
-
-## Remaining deferred step
-
-**GitHub visibility flip (private → public) is NOT done here.** It waits
-for the repository owner's explicit go-ahead and remains deferred. This change is license-metadata housekeeping only; choosing a
-license does not make the repository public.
