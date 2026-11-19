@@ -330,11 +330,16 @@ class ChiefDecision(unittest.TestCase):
         record = self.rows()[-1]
         self.assertEqual(record['owed_refs'], [proof])
         self.change_decision(identity=record['identity'])
-        for _ in range(2):  # a re-read of the same result cannot erase the code part or close twice
+        before = self.rows()
+        r = self.decide('--settle', action_id=record['id'])  # the open code part refuses the CLOSE: nothing is discharged or erased
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('open code/chief step ' + code, r.stderr)
+        self.assertEqual(self.rows(), before)
+        self.close_row(code)
+        for _ in range(2):  # the code part done, the CLOSE discharges only the proof step; a re-read cannot close twice
             r = self.decide('--settle', action_id=record['id'])
             self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertEqual(self.closed_refs(), {proof, record['id']})
-        self.assertNotIn(code, self.closed_refs())
+            self.assertEqual(self.closed_refs(), {code, proof, record['id']})
         self.assertEqual([row for row in self.rows() if row.get('id') == code][0]['actor'], 'worker')
         self.assertEqual(len([row for row in self.rows() if row['op'] == 'close' and row['ref'] == record['id']]), 1)
 
@@ -360,10 +365,11 @@ class ChiefDecision(unittest.TestCase):
     def test_close_after_cleanup_with_a_busy_chief_is_settled_once_by_a_successor_and_replays(self):
         code = self.step('Implement the missing accepted case', 'worker')
         # the busy chief reviewed once and never settled; the wrapped worker's brief is then cleaned up
+        self.close_row(code)  # the worker finished the code part meanwhile: an open one refuses the CLOSE
         self.assertEqual(self.decide('--check').returncode, 0)
         self.doc.unlink()
-        self.assertEqual(len(self.rows()), 2)
-        self.assertFalse(any(r['op'] == 'close' for r in self.rows()))
+        self.assertEqual(len(self.rows()), 3)
+        self.assertFalse(any(r['op'] == 'close' and r['ref'] == 'o1' for r in self.rows()))
         # the successor reads the surviving action from the ledger alone and settles it; the predecessor's replay is a re-read
         listed = json.loads(subprocess.check_output(['bash', str(HERE / 'owe.sh'), 'list', '--bucket', str(self.b), '--json'], text=True))
         self.assertIn('o1', [r['id'] for r in listed])
@@ -371,8 +377,8 @@ class ChiefDecision(unittest.TestCase):
             r = self.decide('--settle')
             self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(len([r for r in self.rows() if r['op'] == 'close' and r['ref'] == 'o1']), 1)
-        self.assertNotIn(code, self.closed_refs())
-        self.assertEqual(len(self.rows()), 3)
+        self.assertEqual(self.closed_refs(), {code, 'o1'})
+        self.assertEqual(len(self.rows()), 4)
 
     def add_row(self, text, kind='step', actor='worker', key='HIMMEL-9848', action='next-step'):
         metadata = {'actor': actor, **({'action': action} if kind == 'step' else {})}

@@ -26,7 +26,13 @@ KEY = r'[A-Z][A-Z0-9]+-\d+'
 # `ERRORS`, `FAIL`, `- NOT MET: ...`). Prose that merely mentions a word is not a row; whether the evidence covers every
 # obligation stays the chief's explicit judgement. A declared Expected column in a supported Markdown table is test input,
 # not an actual requirement status; other cells and unmet list items retain the same refusal rule.
-UNMET = r'(?:NOT\s+MET|OWED|SKIP\w*|ERRORS?|FAIL\w*)'
+# A result that is not yet due reads as unmet too (`PENDING`, `NOT YET DUE`, `WAITING`, `TBD`), but only as a status: written in
+# capitals like the other status words, or in any case when the word ends the cell or item or a qualifier follows it (a bracket,
+# dash, colon, comma, or `until`/`for`/`on`/`by`/`due`/`since`), so evidence that merely starts with it (`pending count was 0`)
+# stays a MET row.
+NOT_DUE = (r'(?:(?-i:PENDING|WAITING|TBD|NOT\s+YET\s+DUE)'
+           r'|(?:PENDING|WAITING|TBD|NOT\s+YET\s+DUE)(?=\s*(?:$|[|(\[:;,.*—–-]|(?:until|for|on|by|due|since)\b)))')
+UNMET = r'(?:NOT\s+MET|OWED|SKIP\w*|ERRORS?|FAIL\w*|' + NOT_DUE + ')'
 UNMET_CELL = re.compile(r'\|\s*' + UNMET + r'\b[^|]*\|', re.I)
 UNMET_ITEM = re.compile(r'^\s*(?:[-*+]|\d+[.)])\s+(?:\*\*)?' + UNMET + r'\b', re.I)
 SECTIONS = {'Impact', 'What', 'Why', 'Plan', 'DoD', 'Proof', 'Agent detail'}
@@ -222,6 +228,13 @@ def decision(opt):
             raise ValueError('truncated observations require reconciliation')
         if any(has_unmet_rows(text) for text in evidence):
             raise ValueError('unmet/skipped/error proof row')
+        # A CLOSE never settles over another open remainder: an open `step` row of this key that is neither this validation, a proof
+        # step (this handoff discharges those it bound; later ones are not its scope), nor a reconciliation the validation itself owns.
+        # It refuses (nothing discharged or erased); `--check` refuses the same way.
+        blocking = [r['id'] for r in rows if not r['closed'] and r.get('key') == row['key'] and r['id'] != row['id'] and r['kind'] == 'step'
+                    and r.get('actor') != 'proof' and r.get('action') not in ('requirements-reconciliation', 'version-reconciliation')]
+        if blocking:
+            raise ValueError('open code/chief step ' + ', '.join(blocking) + ' remains; KEEP required')
         current_requirements = ' '.join(requirement_body(current['mirror'] if 'mirror' in current else '## Description\n' + current['description']).lower().split())
         for field in ('coverage', 'controls'):
             citations = verdict.get(field)
