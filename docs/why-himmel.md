@@ -76,10 +76,11 @@ truth. Add a feature, forget the list, and the gate stops covering it while
 it stays green.
 
 **What himmel does:** where possible, gates derive their input from the thing
-they guard. The hook that blocks Jira MCP calls when a local CLI verb exists
-carries no list of verbs. It runs the CLI's own
-`--list-commands` and blocks exactly what the CLI implements. Adding a verb
-tightens the gate on its own; removing one loosens it. Same idea in the
+they guard. The hook that routes Atlassian MCP calls to the local CLI runs the
+CLI's own `--list-commands`: a Confluence MCP method is blocked only while the
+CLI still lists its verb, so removing a verb loosens the gate on its own, and a
+denied Jira MCP call (every Jira call is denied) names the CLI verb that
+replaces it. Same idea in the
 `commands-catalog-drift` gate (the catalog's Description column is regenerated
 from each command's own frontmatter and a divergent hand-edit is refused) and
 `guardrail-matrices` (the egress policy JSON is the only copy, and both its

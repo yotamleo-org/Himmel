@@ -53,7 +53,8 @@ around it, and you run scripts rather than slash commands.
 7. **Prune** with `bash scripts/clean.sh`, which removes worktrees whose PR merged.
 
 Slash commands in an adopted repo: `/cr-scores`, `/cr-tune`,
-`/cr-learnings-refresh` and `/handover-resume` (copied in by the install), and the commands of the
+`/cr-learnings-refresh`, `/morning-report`, `/afk-shift`, `/stop` and
+`/handover-resume` (copied in by the install), and the commands of the
 plugins in the `lean` plugin set (`/handover-setup`, `/chief`, `/himmel-doctor`
 and the rest of the `himmel-ops` plugin). `/worktree`, `/clean`, `/pr-check` and
 `/check-ci` are not among them; steps 1, 5 and 7 above are their scripts.
@@ -123,7 +124,7 @@ next step does exactly what the message says.
 /worktree docs/himmel-289-daily-loop
 ```
 
-`/worktree` is a thin alias for `/clean_garden --no-prune`. It creates
+`/worktree` runs `scripts/worktree.sh <branch>`, which only creates. It creates
 `.claude/worktrees/docs+himmel-289-daily-loop/` and checks out a new
 branch `docs/himmel-289-daily-loop`. Branch names must be `type/slug`
 (for example `feat/foo`, `docs/bar`).
@@ -388,7 +389,7 @@ an unavailable CodeRabbit never makes you wait.
 ### Reviewer modes
 
 Every reviewer, a row of `scripts/cr/critics.json`, has a **mode** in
-config, `hard` or `best-effort`, in any combination. The merge gate holds each
+config, `hard`, `best-effort` or `advisory`, in any combination. The merge gate holds each
 one to its mode at the PR's head. Full table: `docs/configuration.md`
 [Reviewer modes](configuration.md#reviewer-modes).
 
@@ -396,6 +397,7 @@ one to its mode at the PR's head. Full table: `docs/configuration.md`
 |---|---|---|
 | `hard` | each finding fixed or dispositioned, then it must pass | **hold**: the merge waits until it reviews, one `ALERT` per head |
 | `best-effort` | each finding fixed or explained, exactly as for hard | **relaxed**: a NOTE, and the head carries on |
+| `advisory` | open findings print a NOTE until the row's `precision` reaches `advisory_precision_floor`; from then on the row is held as hard | **relaxed**: a NOTE (held as hard once promoted) |
 
 - *Unavailable* means the lane is configured but could not review this head:
   it errored, ran out of credit, or is rate limited.
@@ -408,8 +410,9 @@ one to its mode at the PR's head. Full table: `docs/configuration.md`
   unless the config says `"review": "no_code_review"`, which makes CI alone
   decide.
 
-**As shipped:** `codex` hard and required, `claude` hard (absent while the
-claude API lane is off), `coderabbit` best-effort.
+**As shipped:** `codex` hard and required, `claude` advisory (precision 0.482,
+below the 0.60 floor; absent while the claude API lane is off), `coderabbit`
+best-effort.
 
 **Change a mode for one machine** in the overlay `scripts/cr/critics.local.json`
 (gitignored), one row per reviewer you change:
@@ -432,13 +435,14 @@ limited or out of credit holds the head; the levers are to restore the lane, or,
 if you choose, to set that reviewer to `best-effort` in the overlay for
 the duration.
 
-### CI release: heavy CI after review (planned)
+### CI release: heavy CI after review
 
-> Not live yet, and himmel-only: it needs a CI workflow that listens to the
-> `ci:go` label. A repo that does not opt in keeps running CI on every push.
+> Opt-in per repository (the `CI_GO_GATE` repository variable set to `on`),
+> and himmel-only: it needs a CI workflow that listens to the `ci:go` label. A
+> repo that does not opt in keeps running CI on every push.
 
-A push runs only the cheap checks (`plan`, `lint`, and the folded `ci-quick`
-job once it lands). The heavy jobs
+A push runs only the cheap checks (`plan`, `ci-quick`, `lint` and
+`plugin-version-bump`). The heavy jobs
 (the shell-unit shards and the bun, node and lanes-and-trust suites) start
 when the review gate passes at that head, so a head a reviewer is about to
 send back does not burn an hour of runners.
@@ -449,7 +453,7 @@ send back does not burn an hour of runners.
    thread is resolved), the station checks the review gate at that head.
    There is no timer: the check runs on those events only.
 3. When every hard reviewer passes and every best-effort reviewer passes or is
-   relaxed, and the cheap checks are green, the station adds the `ci:go`
+   relaxed, and no cheap check is red, the station adds the `ci:go`
    label. That label event starts the heavy jobs at that head.
 4. A new push starts over at step 1 and cancels the heavy run of the old
    head.
@@ -523,7 +527,7 @@ the `ticket` step in `HIMMEL_INITIATIVE` does it for you.
 /clean
 ```
 
-`/clean` is a thin alias for `/clean_garden --prune-only`. It identifies
+`/clean` runs `scripts/clean.sh`, the prune verb of `scripts/worktree.sh`. It identifies
 worktrees whose branch has a merged PR and removes them. The worktree at
 `.claude/worktrees/docs+himmel-289-daily-loop/` disappears.
 

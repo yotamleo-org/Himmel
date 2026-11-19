@@ -69,7 +69,7 @@ the plain name, and say the old name once, the first time, in brackets.
 | **off switch** | bypass flag | Never "bypass" alone: `bypassPermissions` is a different thing. |
 | **sanctioned script** | chokepoint | Docs only. |
 | **warn-only** | advisory | |
-| **worker system prompt** | preface | There are five prefaces (worker, worker claudex, worker openrouter, judge, consult). |
+| **worker system prompt** | preface | There are six prefaces (worker, worker claudex, worker openrouter, judge, consult, release manager). |
 | **usage-cap auto-relaunch** | watchdog | Only where the README, getting-started and why-himmel mean the auto-arm hooks. A wall-clock killer is a "run timeout". |
 | **AFK (unattended) mode** | overnight mode | `/overnight-shift` and `overnight-mode.md` were renamed by slice V3 to `/afk-shift` and `afk-mode.md`; the old ones are gone. |
 | **soft block (speed bump)** | speed bump | Stops only the accidental form. |
@@ -179,7 +179,6 @@ does not implement, push or merge.
 | judge **subagent** [judge call] | an in-process child (`.claude/agents/judge-ro.md`, or `judge.md`) for one question that fits in one dispatch | the dispatch prompt |
 
 The chief template (`chief-template.md`) records which shape asked each question as
-`grade: call|session`.
 `grade: call|session`.
 
 ## Session-name suffix contract
@@ -328,7 +327,7 @@ canonical term. Script names without a directory live in `scripts/hooks/`.
 
 | Term | Meaning | Avoid |
 |---|---|---|
-| **Hook** | A script an event runs. Six homes: a Claude Code hook (`.claude/settings.json`), a plugin hook (`marketplace/plugins/himmel-ops/hooks/hooks.json`), a Codex hook (`.codex/hooks.json`, through `.codex/run-hook.sh`), a git hook staged by `.pre-commit-config.yaml` (pre-commit, commit-msg, pre-push), the installed `reference-transaction` shim (`install-main-ref-transaction.sh`), and the installed single-writer `pre-push` shim (`install-single-writer-floor.sh`, which runs `check-single-writer-push-floor.sh`). The `i-have-adhd`, `lean-skills` and `qmd` plugins carry their own `marketplace/plugins/<name>/hooks/hooks.json` too. Two homes sit outside those files: the `rtk hook claude` PreToolUse rewriter that `rtk init -g` registers in the user's `~/.claude/settings.json`, and the Hermes `parity_guard.py` hook that `scripts/hermes/assets/wire_parity_guard.py` wires into a Hermes profile. `SessionEnd` and `Stop` are events inside the homes above, not homes of their own. | trigger |
+| **Hook** | A script an event runs. Six homes: a Claude Code hook (`.claude/settings.json`), a plugin hook (`marketplace/plugins/himmel-ops/hooks/hooks.json`), a Codex hook (`.codex/hooks.json`, through `.codex/run-hook.sh`), a git hook staged by `.pre-commit-config.yaml` (pre-commit, commit-msg, pre-push), the installed `reference-transaction` shim (`install-main-ref-transaction.sh`), and the installed single-writer `pre-push` shim (`install-single-writer-floor.sh`, which runs `check-single-writer-push-floor.sh`). The `himmel-guard`, `i-have-adhd`, `lean-skills`, `obsidian-triage` and `qmd` plugins carry their own `marketplace/plugins/<name>/hooks/hooks.json` too. Two homes sit outside those files: the `rtk hook claude` PreToolUse rewriter that `rtk init -g` registers in the user's `~/.claude/settings.json`, and the Hermes `parity_guard.py` hook that `scripts/hermes/assets/wire_parity_guard.py` wires into a Hermes profile. `SessionEnd` and `Stop` are events inside the homes above, not homes of their own. | trigger |
 | **Wirer / inventory** | The two scripts that write hook entries, each from its own hand-kept ordered list (the inventory): `wire-hook-bash.mjs` (`EXPECTED_SCRIPT_ORDER`, into `.claude/settings.json`) and `wire-plugin-hook-bash.mjs` (`EXPECTED_HOOKS`, into the himmel-ops `hooks.json`). A wirer run installs an inventory entry its target lacks. | hook list |
 | **Impostor** | A `scripts/hooks/*.sh` call under an event the wirer owns (`PreToolUse`, `PostToolUse`, `SessionStart`) that its inventory does not list; `wire-hook-bash.mjs` refuses it. | — |
 | **Hook runner** | `run-hook-with-bash.js`: runs one hook, or a `--chain` of them in one process, under the right bash on every platform. The Codex twin is `.codex/run-hook.sh`. | wrapper |
@@ -337,13 +336,13 @@ canonical term. Script names without a directory live in `scripts/hooks/`.
 | **Fence** | A guard that confines writes or egress to an allowed set and that the session cannot lift (the terminal write-fence, the egress fences, the judge write fence). It fails closed. | wall |
 | **Speed bump** | A guard documented as stopping only the accidental shape; a determined caller can route around it (`block-himmel-config-writes.sh`, `guard-bus-store.sh`). Its header says so. | fence |
 | **Floor** | The deterministic minimum that still holds when every other layer is absent: the destructive-command floor (`block-destructive-commands.sh`, shared by Claude and Codex) and the single-writer force-push floor (`check-single-writer-push-floor.sh`). | baseline |
-| **Gate integrity** | A gate's own collaborators are fixed paths, never environment seams, so a contaminated environment cannot forge the evidence it reads. `clear-cr-marker.sh` and `merge-on-green.sh` carry a `GATE INTEGRITY` note: the CR ledger path, `check-ci.sh` and `gh` are not overridable there. | — |
-| **Reviewer mode** | A reviewer's row in `scripts/cr/critics.json` says `hard` or `best-effort`. A hard reviewer that cannot review the head holds the merge; a best-effort one is relaxed (a NOTE) when it cannot review. A finding it did post must be resolved either way. Walkthrough: [daily-loop step 7a](daily-loop.md#7a-review-on-the-pull-request-coderabbit-and-the-review-gate). | soft gate |
+| **Gate integrity** | A gate's own collaborators are fixed paths, never environment seams, so a contaminated environment cannot forge the evidence it reads. `clear-review-marker.sh` and `merge-on-green.sh` carry a `GATE INTEGRITY` note: the CR ledger path, `check-ci.sh` and `gh` are not overridable there. | — |
+| **Reviewer mode** | A reviewer's row in `scripts/cr/critics.json` says `hard`, `best-effort` or `advisory`. A hard reviewer that cannot review the head holds the merge; a best-effort one is relaxed (a NOTE) when it cannot review. A finding a hard or best-effort reviewer did post must be resolved either way. An advisory row's open findings print a NOTE until its `precision` reaches `advisory_precision_floor`; then the row is hard. Walkthrough: [daily-loop step 7a](daily-loop.md#7a-review-on-the-pull-request-coderabbit-and-the-review-gate). | soft gate |
 | **CI release** | Opt-in per repo (the `CI_GO_GATE` repository variable set to `on`; off by default). The station adds the `ci:go` label once the review gate passes at a head, and that label event starts the heavy CI jobs. It never lets anything merge on its own. | CR-first trigger |
 | **Advisory** | A hook or check that prints and never blocks (exit 0): `scripts/cr/doc-freshness-advisory.sh`, `graphify-freshness-advisory.sh`, `jira-nudge-on-end.sh`, the `api` backend tier. | soft gate |
 | **Nudge** | A hook that steers a habit rather than protecting a secret or a checkout (`require-quiet-run.sh`, `guard-worker-wakeup.sh`, `jira-nudge-on-end`, `inject-worktree-nudge`). Advisory-only versus may-deny is a separate axis, so both kinds count: some only print, some deny. A denying nudge fails open on its own errors (missing `jq`, unparsed input). Its opposite is a security fence, which fails closed. | — |
 | **Watchdog** | A hook that watches a resource and acts on its own, deliberately fail-open: `auto-arm-on-cap.sh` and `auto-arm-on-subagent-cap.sh` arm a resume as a usage cap nears and block once to force a handover (off with `AUTO_ARM_DISABLE=1`). | monitor |
-| **Chokepoint** | The one sanctioned script for a privileged action, registered with its seam variables in `scripts/chokepoints.json` (`merge-on-green.sh`, `clear-cr-marker.sh`, the codex dispatchers). Agents run it by its literal path. | wrapper, helper |
+| **Chokepoint** | The one sanctioned script for a privileged action, registered with its seam variables in `scripts/chokepoints.json` (`merge-on-green.sh`, `clear-review-marker.sh`, the codex dispatchers). Agents run it by its literal path. | wrapper, helper |
 | **Seam variable** | An environment variable a chokepoint reads as a test seam or opt-in. Set only in the launching shell; a per-call `VAR=` prefix on a chokepoint is denied (`block-chokepoint-env-prefix.sh`). | override |
 | **Bypass flag** | An environment variable that switches one guard off for a whole session, set in the launching shell (`EDIT_ON_MAIN_OK=1 claude`); a per-call prefix never reaches a hook process. Registry: `scripts/himmelctl/lib/bypass-flags.json`. | escape hatch |
 | **Fail-open / fail-closed** | What a guard does when it cannot evaluate (missing `jq`, unparsable input): allow, or deny. Hygiene guards fail open, fences fail closed; `check-fail-open-lint.sh` lints the shape. | — |
@@ -369,10 +368,10 @@ canonical term. Script names without a directory live in `scripts/hooks/`.
 
 | Term | Meaning | Avoid |
 |---|---|---|
-| **CR marker** | The untracked file `.git/cr-pending/<branch>` that pre-push `check-cr-before-push.sh` writes. While it exists, `gh pr create` is denied (`check-cr-marker-on-pr-create.sh`); only `clear-cr-marker.sh` removes it. | review flag |
-| **CR ledger** | `<git-common-dir>/cr-critic-scores.jsonl`: one row per critic that responded at a head. `clear-cr-marker.sh` and ready-check item 4 read it. | review log |
-| **Verdict (CR)** | One disposition per review finding. `scripts/cr/write-verdicts.sh` writes `agreed`, `disproved`, `conflict` (evidence both agrees and disproves), `unaddressed` (no verdict reached; blocks) or `deferred -> <TICKET>` (a bare `deferred` is refused); it never writes `fixed`. `fixed` comes from `review-round.sh promote`, which amends an `agreed` row on a clean round (`clear-cr-marker.sh` gate 4c runs it), or from `ledger-append.sh --set verdict=fixed`. Terminal, per `promote`: `fixed`, `disproved`, `deferred`; `agreed` waits for promotion, and `conflict` and `unaddressed` are never promoted. | resolution |
-| **Variant sweep** [class sweep] | One `SWEEP` line per agreed or fixed finding on the branch, naming every site of the finding's class (the one exemption is a design-skill spec or plan finding at a non-commit head); `clear-cr-marker.sh` refuses without it (`missing-variant-sweep`; log readers accept the old `missing-class-sweep` too). | — |
+| **CR marker** | The untracked file `.git/cr-pending/<branch>` that pre-push `check-cr-before-push.sh` writes. While it exists, `gh pr create` is denied (`check-cr-marker-on-pr-create.sh`); only `clear-review-marker.sh` removes it. | review flag |
+| **CR ledger** | `<git-common-dir>/cr-critic-scores.jsonl`: one row per critic that responded at a head. `clear-review-marker.sh` and ready-check item 4 read it. | review log |
+| **Verdict (CR)** | One disposition per review finding. `scripts/cr/write-verdicts.sh` writes `agreed`, `disproved`, `conflict` (evidence both agrees and disproves), `unaddressed` (no verdict reached; blocks) or `deferred -> <TICKET>` (a bare `deferred` is refused); it never writes `fixed`. `fixed` comes from `review-round.sh promote`, which amends an `agreed` row on a clean round (`clear-review-marker.sh` gate 4c runs it), or from `ledger-append.sh --set verdict=fixed`. Terminal, per `promote`: `fixed`, `disproved`, `deferred`; `agreed` waits for promotion, and `conflict` and `unaddressed` are never promoted. | resolution |
+| **Variant sweep** [class sweep] | One `SWEEP` line per agreed or fixed finding on the branch, naming every site of the finding's class (the one exemption is a design-skill spec or plan finding at a non-commit head); `clear-review-marker.sh` refuses without it (`missing-variant-sweep`; log readers accept the old `missing-class-sweep` too). | — |
 | **Round** | One counted panel run on a branch, printed as `pr-check: round N of 3 on <branch>`. A CR round, a panel round and a pr-check round are the same counter. It advances once per panel run, not per critic or retry. | — |
 | **Delta round** | The one extra round allowed after round 3, printed as `pr-check: delta round 4 on <branch>`. It reviews only the diff since the last counted head, and only a Critical or escape-class finding blocks. A fourth full round or a second delta round exits 8; a signed judge GO at the exact head clears any later change instead. | 4th round |
 | **Ready-check** | `scripts/handover/chief-kit/ready-check.sh`: the numbered pre-GO checks on one PR head (head and merge state, check rollup, threads, CR ledger, trailers, ticket ids, coverage). `go.sh` runs it before it signs. | — |
@@ -386,9 +385,9 @@ canonical term. Script names without a directory live in `scripts/hooks/`.
 | Term | Meaning | Avoid |
 |---|---|---|
 | **Bank** [usage] | The subscription usage budget (5-hour and 7-day). `scripts/lib/usage-preflight.sh` prints one verdict token (`PROCEED`, …) and always exits 0. | quota |
-| **Bank lift** [weekly limit override] | `~/.himmel/state/bank-lift.json`, which relaxes the 7-day bank check. Setting it is operator-only; `block-bank-lift-writes.sh` denies every agent write. | — |
+| **Bank lift** [weekly limit override] | `~/.himmel/state/usage-lift.json`, which relaxes the 7-day bank check. Setting it is operator-only; `block-bank-lift-writes.sh` denies every agent write. | — |
 | **Plugin profile** | A plugin set a worker launches with (`headed-arm-worker.sh --profile <name>`, defined in `scripts/lanes/plugin-profiles.json`). | — |
-| **Preface** | [`handover/worker-preface.md`](handover/worker-preface.md): the rules appended to every worker's system prompt at launch. Five prefaces exist (worker, worker claudex, worker openrouter, judge, consult), so write "worker preface" or "judge preface", never a bare "preface". | system prompt |
+| **Preface** | [`handover/worker-preface.md`](handover/worker-preface.md): the rules appended to every worker's system prompt at launch. Six prefaces exist (worker, worker claudex, worker openrouter, judge, consult, release manager), so write "worker preface" or "judge preface", never a bare "preface". | system prompt |
 | **Brief** | In this glossary, the per-worker header of a handover document, not a task prompt (`brief.md` and `--brief-file` name whole task prompts). It holds: ticket, worktree, base sha, token, chief, contract. The brief wins over the preface where they disagree. | — |
 | **Nonce** [token] | The revision token minted per child; a revision must quote it ([`internals/retask-channel.md`](internals/retask-channel.md)). | password |
 | **Tick** | `scripts/handover/chief-kit/tick.sh`: one batched snapshot line of the fleet, read from each worker's newest status-marker bullet. | poll |
@@ -435,7 +434,7 @@ A cell names the script; `—` means the layer does not enforce it. Columns:
 | Secrets never read | `block-read-secrets` (Bash, PowerShell, Read, Grep) | — | `block-read-secrets` (Bash, Read, Grep) | — | — | — |
 | Secrets never committed | — | — | — | pc `gitleaks`, `leak-classes`, `git-env-scrub` | `secret-scan` (`check-no-secrets.sh`), `security-scan` (gitleaks), `leak-classes`, `git-env-scrub` | — |
 | Ticket ID on every commit and PR | — | — | — | cm `check-commit-msg` | `commit-lint` (`check-commit-range.sh`), `pr-title-lint` (`scripts/lib/check-pr-title.sh`) | ready-check item 6 |
-| CR before the PR opens | Pre `check-cr-marker-on-pr-create` | — | `check-cr-marker-on-pr-create` | pp `check-cr-before-push` (writes the marker) | — | `clear-cr-marker.sh`, ready-check item 4 |
+| CR before the PR opens | Pre `check-cr-marker-on-pr-create` | — | `check-cr-marker-on-pr-create` | pp `check-cr-before-push` (writes the marker) | — | `clear-review-marker.sh`, ready-check item 4 |
 | Review findings resolved before merge | Post `trigger-cr-on-pr-create`, `trigger-cr-on-push` (request CodeRabbit) | `block-unresolved-cr-merge` (gate 1) | — | pc `check-cr-best-effort` (a text lint: no tracked doc waits on CodeRabbit) | `codeowner-review-gate` (outside PRs only) | ready-check item 3, `merge-on-green.sh` (via `check-ci.sh`) |
 | Merge only on green CI and a GO | — | `block-unresolved-cr-merge` (gates 2–3) | `block-terminal-write-fence` (`gh pr merge` needs an opt-in) | pp `check-pr-mergeable` (conflicts only) | — | `go.sh`, `merge-on-green.sh` (exit 17 without the GO file) |
 | Trust-path PRs need a trust-reviewed GO | — | `block-unresolved-cr-merge` (gate 4, every session) | — | — | — | `go.sh --trust-reviewed`, `merge-on-green.sh` (both read `ci-trust-paths.txt`) |
@@ -471,7 +470,7 @@ Facts only; nothing here is a proposed change.
    `block-terminal-write-fence`,
    `check-worktree-isolation` and `check-main-ref-transaction`.
 2. **The CR gate** — the pre-push marker, the PR-create guard (Claude and
-   Codex), `clear-cr-marker.sh`, ready-check items 3–4, `block-unresolved-cr-merge`
+   Codex), `clear-review-marker.sh`, ready-check items 3–4, `block-unresolved-cr-merge`
    and `merge-on-green.sh` all decide some part of "reviewed before it lands".
 3. **Force push** — `block-destructive-commands` (Claude and Codex), the
    settings `permissions.deny` rules, `block-terminal-write-fence` (Codex),

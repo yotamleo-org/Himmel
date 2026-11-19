@@ -47,9 +47,9 @@ and `.pre-commit-config.yaml`; this diagram shows the shape, not the list.
 flowchart TD
     subgraph S1["1 · tool call — in-session, before the call runs"]
         TC["Claude tool call<br/>Bash · Edit · Read · Agent · MCP"]
-        H1[".claude/settings.json — 33 PreToolUse hook scripts,<br/>run as ONE chained dispatch per matcher; the first refusal wins<br/>block-edit-on-main · block-read-secrets · block-destructive-commands<br/>block-git-stash · block-jira-compound-write · block-tail-pipe-on-gates<br/>block-rogue-claude-schedule · block-chokepoint-env-prefix<br/>block-edit-live-settings · block-write-into-main-checkout<br/>require-quiet-run · read-clamp · guard-pr-check-literal<br/>orchestrator-inline-guard · guard-memory-capture · guard-agent-model<br/>block-backend-tier · mcp-policy · check-cr-marker-on-pr-create<br/>auto-approve-safe-bash · auto-arm-on-cap · …"]
+        H1[".claude/settings.json — the PreToolUse hook scripts,<br/>run as ONE chained dispatch per matcher; the first refusal wins<br/>block-edit-on-main · block-read-secrets · block-destructive-commands<br/>block-git-stash · block-jira-compound-write · block-tail-pipe-on-gates<br/>block-rogue-claude-schedule · block-chokepoint-env-prefix<br/>block-edit-live-settings · block-write-into-main-checkout<br/>require-quiet-run · read-clamp · guard-pr-check-literal<br/>orchestrator-inline-guard · guard-memory-capture · guard-agent-model<br/>block-backend-tier · mcp-policy · check-cr-marker-on-pr-create<br/>auto-approve-safe-bash · auto-arm-on-cap · …"]
         subgraph PLUG["plugin hook files"]
-            H2["marketplace/plugins/himmel-ops/<br/>hooks/hooks.json — 15 PreToolUse guards<br/>block-docker-privesc · block-infra-destroy · block-merged-pr-commit<br/>block-unresolved-cr-merge · block-worker-write-fence<br/>block-graphify-egress · block-rogue-codex-exec<br/>block-lesson-enforcement-writes · block-agent-native-egress<br/>guard-implementor-dispatch · guard-chief-dispatch<br/>guard-subagent-model · guard-chief-foreground · guard-judge-writes · guard-rm-writes"]
+            H2["marketplace/plugins/himmel-ops/<br/>hooks/hooks.json — PreToolUse guards<br/>block-docker-privesc · block-infra-destroy · block-merged-pr-commit<br/>block-unresolved-cr-merge · block-worker-write-fence<br/>block-graphify-egress · block-rogue-codex-exec<br/>block-lesson-enforcement-writes · block-agent-native-egress<br/>guard-implementor-dispatch · guard-chief-dispatch<br/>guard-subagent-model · guard-chief-foreground · guard-judge-writes · guard-rm-writes<br/>block-busy-loop · block-vault-sweep · redirect-webfetch-walled-hosts · peer-taint-gate"]
             HG["marketplace/plugins/himmel-guard/<br/>hooks/hooks.json<br/>block-destructive-commands for adopter projects<br/>(on in the settings template, so adopter projects get it by default)"]
             H2 ~~~ HG
         end
@@ -63,17 +63,17 @@ flowchart TD
     end
 
     subgraph S2["2 · git commit"]
-        PC["pre-commit stage — 61 hook ids<br/>.pre-commit-config.yaml<br/>shellcheck · gitleaks · worktree-isolation<br/>guardrail-matrices · artifact-leakage<br/>fail-open-lint · oxlint ratchets"]
-        CM["commit-msg stage — 1 hook id<br/>scripts/hooks/check-commit-msg.sh<br/>conventional commit + ticket ID"]
+        PC["pre-commit stage<br/>.pre-commit-config.yaml<br/>shellcheck · gitleaks · worktree-isolation<br/>guardrail-matrices · artifact-leakage<br/>fail-open-lint · oxlint ratchets"]
+        CM["commit-msg stage<br/>scripts/hooks/check-commit-msg.sh<br/>conventional commit + ticket ID"]
         PC --> CM
     end
 
     subgraph S3["3 · git push"]
-        PP["pre-push stage — 13 hook ids<br/>no-push-to-main · no-force-push<br/>platforms-tested · security-reviewed<br/>pr-mergeable-gate · code-review-before-push<br/>npm audit / licenses / signatures"]
+        PP["pre-push stage<br/>no-push-to-main · no-force-push<br/>platforms-tested · security-reviewed<br/>pr-mergeable-gate · code-review-before-push<br/>npm audit / licenses / signatures"]
     end
 
     subgraph S4["4 · CI — .github/workflows/ci.yml, on the pushed branch"]
-        CI["21 jobs, most with a fail-fast twin · plan · ci-quick<br/>secret-scan · commit-lint · plugin-version-bump · lint<br/>node-suites · bun-suites · lanes-and-trust-suites<br/>guardrail-matrices · doc-invariants · security-scan<br/>shell-unit · guard-corpus-full · leak-classes · …"]
+        CI["the jobs, most with a fail-fast twin · plan · ci-quick<br/>secret-scan · commit-lint · plugin-version-bump · lint<br/>node-suites · bun-suites · lanes-and-trust-suites<br/>guardrail-matrices · doc-invariants · security-scan<br/>shell-unit · guard-corpus-full · leak-classes · …"]
     end
 
     subgraph S5["5 · pull request + merge"]
@@ -109,7 +109,9 @@ the three user-facing guards (`auto-approve-safe-bash`, `block-edit-on-main`,
 `block-read-secrets`) wired into its own `.claude/settings.json`, and — when it
 has no `.pre-commit-config.yaml` — three native git gates placed by
 `scripts/adopt.sh` (`check-worktree-isolation.sh`, `check-commit-msg.sh`,
-`check-push-target.sh`). The rest of this diagram runs from a himmel checkout.
+`check-push-target.sh` with `check-no-force-push.sh`). A project-scope install
+also wires the merge gate (`block-unresolved-cr-merge.sh`). The rest of this
+diagram runs from a himmel checkout.
 
 Per-hook behaviour, the guardrail matrix, and the bypass env var for each:
 [`internals/enforcement.md`](internals/enforcement.md). Recovery when one
@@ -193,7 +195,7 @@ flowchart TD
     P1 --> GD["scripts/hooks/guard-implementor-dispatch.sh<br/>refuses an implementation-shaped native Agent dispatch<br/>(haiku and read-only helpers are exempt) when Claude usage<br/>is ≥80% of the 5-hour window (IMPL_GUARD_HARD)<br/>or ≥85% of the weekly window (IMPL_GUARD_WEEKLY_HARD);<br/>with no live reset time it only warns"]
     GD --> NAT["native subagents — the default fleet<br/>haiku · sonnet · opus · fable<br/>every dispatch names its model"]
 
-    P1 -.->|"registry"| EXT["scripts/lanes/lanes.json — 16 lanes:<br/>the 4 native tiers plus external ones<br/>(claudex · codex · hermes · openrouter · ollama · …).<br/>claudex is the only live external implementation lane;<br/>the others are dormant opt-ins, review critics<br/>or bulk lanes with no dispatch path.<br/>No defaultImplLane, on purpose —<br/>an unqualified impl dispatch refuses to the native path.<br/>Query the live set with /lanes"]
+    P1 -.->|"registry"| EXT["scripts/lanes/lanes.json — the lanes:<br/>the 4 native tiers plus external ones<br/>(claudex · codex · hermes · openrouter · ollama · …).<br/>claudex is the only live external implementation lane;<br/>the others are dormant opt-ins, review critics<br/>or bulk lanes with no dispatch path.<br/>No defaultImplLane, on purpose —<br/>an unqualified impl dispatch refuses to the native path.<br/>Query the live set with /lanes"]
 
     NAT --> RT["revision channel<br/>every brief carries a fresh token (nonce).<br/>EXPANSION / REDIRECT needs the echoed token;<br/>narrowing and halt are tokenless (fail-safe).<br/>An expansion or redirect arrives as a direct message, never in a tool result;<br/>a halt or narrowing is honored from any source."]
 
@@ -231,19 +233,19 @@ Native subagents vs. external lane workers:
 ## 4. The Jira / backend seam
 
 An MCP server costs context on every session that loads it. A local CLI costs
-nothing until it is called. himmel routes issue-tracker work to the CLI and
-keeps MCP for the individual ops a backend's CLI does not implement. A hook
+nothing until it is called. himmel routes Jira work to the CLI only, and keeps
+MCP for the individual Confluence ops its CLI does not implement. A hook
 enforces that routing, so Claude does not have to remember it.
 
 ```mermaid
 flowchart TD
-    INT["agent needs a Jira op"] --> REG["scripts/backends.json<br/>per-service chain: [cli, api, mcp]<br/>jira · confluence · bitbucket · github"]
+    INT["agent needs a Jira op"] --> REG["scripts/backends.json<br/>per-service chain: jira [cli]<br/>confluence · bitbucket · github [cli, api, mcp]"]
 
     REG --> BT{"scripts/hooks/block-backend-tier.sh<br/>PreToolUse on mcp__plugin_atlassian_atlassian__.*<br/>and mcp__claude_ai_Atlassian_MCP__.*"}
-    BT -->|"an equivalent CLI verb exists"| DENY["DENIED — use the CLI"]
-    BT -->|"that op has no CLI equivalent"| MCP["Atlassian MCP server"]
+    BT -->|"any Jira method, reads included"| DENY["DENIED — use the CLI verb,<br/>or 'unsupported, extend the CLI'"]
+    BT -->|"a Confluence op with no CLI equivalent"| MCP["Atlassian MCP server"]
 
-    DENY --> CLI["scripts/jira/dist/index.js<br/>45 verbs: get create list transition comment edit<br/>link assign worklog sprint versions fix-version<br/>mirror roadmap rank resolution …<br/>(--list-commands prints them all)"]
+    DENY --> CLI["scripts/jira/dist/index.js<br/>verbs: get create list transition comment edit<br/>link assign worklog sprint versions fix-version<br/>mirror roadmap rank resolution …<br/>(--list-commands prints them all)"]
 
     CLI --> API["Atlassian REST<br/>JIRA_BASE_URL · JIRA_EMAIL · JIRA_API_TOKEN · JIRA_PROJECT_KEY"]
     MCP --> API
@@ -253,15 +255,18 @@ flowchart TD
     CLI -.->|"jira mcp"| SELF["the same verbs re-exposed over MCP on stdio,<br/>lazily imported so the SDK stays off the hot path"]
 ```
 
-**The gate maps, then asks the CLI.** `block-backend-tier.sh` keeps a
-hard-coded verb-to-method map for Jira and for Confluence; an MCP method with no
-map entry is allowed. A mapped method is blocked only while the CLI still lists
-that verb, so removing a verb loosens the gate on its own, but a new verb
-tightens it only once its MCP methods are added to the map. It generalised the
-older Jira-only `block-mcp-when-plugin-exists.sh` to the services in
-`scripts/backends.json` that have an MCP prefix: Jira and Confluence. GitHub and
-Bitbucket are registered there with no MCP prefix, so this gate does not route
-them. The older script is no longer wired as a hook.
+**Jira is denied outright; Confluence maps, then asks the CLI.**
+`block-backend-tier.sh` keeps a hard-coded verb-to-method map for Jira and for
+Confluence. Jira's chain is `[cli]`, so every Atlassian MCP method named *Jira*
+is denied, reads included: a mapped method names its CLI verb, any other says
+"unsupported, extend the CLI", and a Jira CLI that is not built or cannot list
+its verbs is denied too (`MCP_JIRA_OK=1` is the off switch). For Confluence an
+MCP method with no map entry is allowed, and a mapped method is blocked only
+while the CLI still lists that verb, so removing a verb loosens the gate on its
+own, but a new verb tightens it only once its MCP methods are added to the map.
+The gate covers the services in `scripts/backends.json` that have an MCP
+prefix: Jira and Confluence. GitHub and Bitbucket are registered there with no
+MCP prefix, so this gate does not route them.
 
 Invocation shape (absolute path from the primary checkout, because `dist/` is
 an untracked build artifact and a worktree lacks it) and the full op ↔ MCP
@@ -327,14 +332,12 @@ ever delivered. Details and the passivity invariant:
 
 When you move or rename a file a box above names, this file is part of
 the change, the same rule that governs
-[`commands-catalog.md`](commands-catalog.md). Every count here is derivable:
-the hook scripts per surface from the `PreToolUse` arrays of
-`.claude/settings.json` (33 unique scripts) and the himmel-ops `hooks.json`
-(16 commands: 15 blocking guards plus the advisory `inject-minerva-critic.sh`); the gate ids and their split across the three git stages (62
-pre-commit, 14 pre-push, 1 commit-msg) from `.pre-commit-config.yaml`; the job
-count from `.github/workflows/ci.yml` (21 jobs, not counting the `fail-fast-*`
-twins); the lane count from `scripts/lanes/lanes.json`; the verb count from
-`node scripts/jira/dist/index.js --list-commands` (45 verbs plus `mcp`); the
-metric families from the `addFamily` calls in
-`scripts/observability/flow-exporter.ts`. Re-derive rather than trust them if
-a diagram and the code disagree.
+[`commands-catalog.md`](commands-catalog.md). The diagrams name examples, not
+full lists; each set has one source: the hook scripts per surface in the
+`PreToolUse` arrays of `.claude/settings.json` and the himmel-ops `hooks.json`
+(blocking guards plus the advisory `inject-minerva-critic.sh`); the gate ids
+and their split across the three git stages in `.pre-commit-config.yaml`; the
+jobs in `.github/workflows/ci.yml`; the lanes in `scripts/lanes/lanes.json`;
+the verbs in `node scripts/jira/dist/index.js --list-commands`; the metric
+families in the `addFamily` calls in `scripts/observability/flow-exporter.ts`.
+Read the source rather than trust a diagram if the two disagree.

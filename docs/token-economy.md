@@ -75,11 +75,11 @@ same one (then pick the stronger and disable the loser).
 
 ### Prompt-cache responder path (owner: operator)
 
-Once the cache-monitor follow-up establishes a himmel-measured baseline: investigate when
-read-ratio trends **materially below that baseline sustained over ≥3 days**
-(single-day dips after idle/fresh sessions are known false positives).
-Responder action = file a context-hygiene investigation ticket
-(context-bloat shaped). Until then this boundary is explicitly unmonitored.
+`scripts/eval/cache-health-cadence.sh` watches this boundary against its 7-day
+baseline. Investigate when read-ratio trends **materially below that baseline
+sustained over ≥3 days** (single-day dips after idle/fresh sessions are known
+false positives). Responder action = file a context-hygiene investigation ticket
+(context-bloat shaped).
 
 ### Downgrade-safety
 
@@ -162,7 +162,8 @@ After-figures are for a **canonical install** (a primary checkout, whose
 absolute runbook path is 74 B on the reference machine), computed as
 `fixed content + 74`, where *fixed content* is the emitted bytes minus the
 emitted path. That path is the only variable term. It is absolute because the
-hook is wired at user scope and reads the himmel clone's `.env`, so a session
+hook is wired at user scope and reads `~/.himmel/himmel.conf`, then the himmel
+clone's `.env`, so a session
 started in another repo can be initiative-active and a repo-relative path would
 not resolve there; a worktree under `.claude/worktrees/<branch-slug>/` then pays
 ~62 B more for byte-identical pointer content, which is a property of where the

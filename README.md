@@ -252,9 +252,9 @@ The test run shows a few of these. The rest arrive as you add them, and the
   is recorded in your clone: before the first one the gate lets the merge through
   with a note. himmel does not check a merge you run yourself with the GitHub CLI
   or on the web. Review is
-  not proof: the required reviewer caught 75% of planted bugs (likely range 46.8
-  to 91.1, from 9 of 12), and the PR's author ruled 79.5% of its 5,388 ruled
-  findings right
+  not proof: the review panel caught 38.3% of planted bugs (likely range 25.8
+  to 52.6, from 18 of 47), and the PR's author ruled 80.1% of the required
+  reviewer's 6,968 ruled findings right
   ([evals](docs/evals/README.md)).
 - **Rules that hold.** Hooks stop edits on `main` and reads of secret files, and
   in a himmel checkout opening a PR while a review is owed, at the moment Claude
@@ -288,11 +288,11 @@ measured.
   third always-on plugin carried about 2.2k tokens of skill listings into every
   session; the net saving has not been measured.
 - **The prompt cache.** Session openings stay stable, so the cache can reuse
-  them: 98.4% of input tokens were cache reads in the 425 sessions of this
+  them: 99.1% of input tokens were cache reads in the 176 sessions of this
   project that were measured ([evals](docs/evals/README.md)).
 - **Retrieval is measured next.** An eval prices how many tokens each way of
-  looking things up spends to reach a correct answer
-  ([answer-ab](scripts/eval/README.md#tokens-to-a-correct-answer-answer-ab)).
+  looking things up spends per correct file it names
+  ([answer-ab](scripts/eval/README.md#tokens-per-file-hit-answer-ab)).
   Its full run is still pending, so no saving is claimed here yet.
 - **Smaller tools, shorter output.** A local Jira CLI stands in for a Jira MCP
   (Model Context Protocol) server, and a command-line filter shortens noisy
@@ -495,7 +495,8 @@ vault, the Telegram bridge and Jira are optional; himmel runs without them.
 | `HANDOVER_DIR`       | recommended | Path to your handover folder outside the project (in your vault or a separate repo). Or, in a himmel checkout, leave it unset and run `/handover-setup` once. Until one of the two is done there is no handover root, and handover commands stop with a clear message instead of writing to the wrong place. |
 
 The Jira CLI needs only those four Jira variables, no cloud ID.
-`JIRA_CLOUD_ID` is only for the optional Atlassian MCP server. The full list
+`JIRA_CLOUD_ID` is only for the optional Atlassian MCP server, which himmel
+uses for Confluence; Jira runs on the CLI. The full list
 is in [`.env.example`](.env.example).
 
 Check the install. From your himmel clone:
@@ -601,8 +602,9 @@ Two search tools sit on top. Neither replaces a file:
 - **graphify** builds a knowledge graph of the code (which file and function
   relates to which) and of the vault's notes, and answers structure questions
   with `graphify query` and `graphify explain`. In a himmel checkout a scheduled
-  job rebuilds the graph from the source; scheduled jobs do not reach an adopted
-  project yet.
+  job rebuilds the graph from the source. On an adopter station with graphify
+  installed, `himmelctl install` asks which repos to graph and who pays, and can
+  arm a daily job (`HIMMEL-GraphChoices`) that rebuilds each chosen repo's graph.
   Building the graph can send code to an outside model; the
   [egress matrix](docs/internals/egress-matrix.md) lists which files may go to
   which provider.

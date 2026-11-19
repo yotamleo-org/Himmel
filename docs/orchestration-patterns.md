@@ -83,8 +83,7 @@ _Evidence:_ Cognition / walden_yan
 ## 5. Invariants (hold in every shape)
 
 - **A verifier lane in every shape**, the single highest-leverage role
-  (0xMorlex,
-  `Clippings/_evidence/telegram-tg-group_-1001234567890-1782407069-tweet-from-x-com-i-status-2070079645148451263.md`).
+  (0xMorlex, the luna `Clippings/_evidence/` clip of status 2070079645148451263).
 - **The orchestrator owns stop-conditions; workers never self-report done**
   (0xMorlex, same clip). himmel enforces this structurally: `/afk-shift`
   reads `scripts/afk/stop-marker.sh`, not a worker's claim of completion.
@@ -147,10 +146,10 @@ Each doctrine claim → its pointer → resolved (clip/path exists as of 2026-07
 | §3 | blast-radius slot classes | luna `Clippings/_evidence/@Av1dlive – 2026-06-17T235945+0200.md` | ✔ clip exists |
 | §3 | reviewer = different family; cost = iterations | luna `Clippings/_done/2026-05/How Boris Cherny Uses Claude Code.md` | ✔ clip exists |
 | §4 | share-among-co-builders / isolate-verifiers | luna `Clippings/_done/2026-05/@walden_yan – 2026-05-25T030401+0200.md` | ✔ clip exists |
-| §5 | verifier every lane; orchestrator owns stop; claim-and-record | luna `Clippings/_evidence/telegram-tg-group_-1001234567890-1782407069-tweet-from-x-com-i-status-2070079645148451263.md` (0xMorlex) | ✔ clip exists |
+| §5 | verifier every lane; orchestrator owns stop; claim-and-record | luna `Clippings/_evidence/`, the clip of status 2070079645148451263 (0xMorlex) | ✔ clip exists |
 | §5 | coordinator passes prior outputs | luna `Clippings/_done/2026-05/@eng_khairallah1 – 2026-05-25T023712+0200.md` | ✔ clip exists |
 | §5 | token-pause ~85%, kill-after-3, >1h judge | luna `Clippings/_evidence/@Av1dlive – 2026-06-17T235945+0200.md` | ✔ clip exists |
-| §5 | shipped verifier topology | `scripts/cr/critic-panel.sh`; `.claude/commands/pr-check.md` (4.6/4.7) | ✔ paths exist |
+| §5 | shipped verifier topology | `scripts/cr/critic-panel.sh`; `scripts/cr/pr-check-ref/45-step4.5-ledger.md` (4.6/4.7) | ✔ paths exist |
 | §6 | durability = checkpoint/resume | luna `Clippings/_evidence/telegram-1781861527-tweet-from-x-com-i-status-2067677007140278630.md` (Inngest) | ✔ clip exists |
 | §6 | shipped durability | `scripts/hooks/inject-where-are-we.sh`; `scripts/handover/arm-resume.sh`; `scripts/lib/scheduler-backend.sh` | ✔ paths exist |
 | §7 | machine-aware budget; Workflow caps = ceiling | machine-aware budget ADR (now in the state repo, not himmel `docs/`) | ✔ ticket record |
