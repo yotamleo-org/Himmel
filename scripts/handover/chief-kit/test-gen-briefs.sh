@@ -1027,10 +1027,10 @@ YC="$(ls "$WORK"/yb/*-N911-*.md 2>/dev/null)"; YU="$(ls "$WORK"/yb/*-N912-*.md 2
 [ "$(fm_desc "$YU")" = "caf$(printf '\303\251') $(printf '\360\237\232\200') ok" ] && pass "a non-ASCII desc parses back unchanged" || fail "utf desc parsed as: $(fm_desc "$YU")"
 lacks "and its raw description line holds no \\u escape" "$(grep '^description:' "$YU" 2>/dev/null)" '\u'
 [ "$(fm_desc "$(ls "$WORK"/yb/*-N914-*.md 2>/dev/null)")" = "fix the plain thing" ] && pass "a plain desc still parses to itself" || fail "plain desc parsed as: $(fm_desc "$(ls "$WORK"/yb/*-N914-*.md 2>/dev/null)")"
-[ "$(fm_desc "$RMD")" = 'Release manager for R1 (v1 + v2, current v1): rule every placement, report STATUS, BURN-DOWN and READY' ] && pass "the rm brief's description parses back to the template text" || fail "rm desc parsed as: $(fm_desc "$RMD")"
+[ "$(fm_desc "$RMD")" = 'Release manager for R1 (v1 + v2, current v1): run the armed verb, STATUS, BURN-DOWN or READY' ] && pass "the rm brief's description parses back to the template text" || fail "rm desc parsed as: $(fm_desc "$RMD")"
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["versions"]="v1 \"q\" \\ z"; l[0]["label"]="N913"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/rm.json" "$WORK/rm-q.json"
 python3 "$SUT" "$WORK/rm-q.json" --base 4ccb59d --chief BZ --bucket "$WORK/rmq" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >/dev/null 2>"$WORK/rm-q.err" || fail "the quoting rm generates (err: $(cat "$WORK/rm-q.err"))"
-[ "$(fm_desc "$(ls "$WORK"/rmq/*-N913-*.md 2>/dev/null)")" = 'Release manager for R1 (v1 "q" \ z): rule every placement, report STATUS, BURN-DOWN and READY' ] && pass "an rm versions string holding a quote and a backslash parses back unchanged" || fail "rm quoting desc parsed as: $(fm_desc "$(ls "$WORK"/rmq/*-N913-*.md 2>/dev/null)")"
+[ "$(fm_desc "$(ls "$WORK"/rmq/*-N913-*.md 2>/dev/null)")" = 'Release manager for R1 (v1 "q" \ z): run the armed verb, STATUS, BURN-DOWN or READY' ] && pass "an rm versions string holding a quote and a backslash parses back unchanged" || fail "rm quoting desc parsed as: $(fm_desc "$(ls "$WORK"/rmq/*-N913-*.md 2>/dev/null)")"
 
 # --- a brief naming VM work carries the guest-exec line; one that does not stays without it ---
 python3 -I -c "import json,sys; l=json.load(open(sys.argv[1])); l[0]['why']='the install must be proven on a test VM first'; json.dump(l,open(sys.argv[2],'w'))" "$WORK/workers.json" "$WORK/vmlegs.json"

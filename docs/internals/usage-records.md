@@ -38,8 +38,8 @@ outside the tree.
 - A chief spans many tickets, so its title does not name one. Chief
   sessions with no `KEY-n` prefix go to the pseudo-ticket `_chief` as a pool,
   **with no allocation to tickets** (an allocation rule would change every
-  ticket's record whenever the range changes). Sessions with no key and no
-  `console` go to `_unattributed`. A chief titled with a ticket key stays
+  ticket's record whenever the range changes). Sessions with no key whose title
+  holds neither `console` nor `chief` go to `_unattributed`. A chief titled with a ticket key stays
   under that ticket, in `totals.console`.
 
 ## Record (one JSON object per line, keys sorted)

@@ -31,7 +31,7 @@ specific to one RM session.
 ```markdown
 ---
 resume_cwd: <absolute $HOME>/.cache/himmel/rm/<R>/scratch
-description: Release manager for <R> (<versions>): rule every placement, report STATUS, BURN-DOWN and READY
+description: Release manager for <R> (<versions>): run the armed verb, STATUS, BURN-DOWN or READY
 template_version: 1
 ---
 

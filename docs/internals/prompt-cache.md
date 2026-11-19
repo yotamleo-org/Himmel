@@ -108,14 +108,17 @@ the context size when an idle gap `g` lands:
 
 - 1h premium = (2 − 1.25) × `W` = 0.75 `W`, paid on every write.
 - A gap `5 min < g < 60 min` on 5m re-writes `P` instead of reading it:
-  1.25 `P` − 0.1 `P` = 1.15 `P` lost; on 1h it costs nothing.
+  (1.25 − `r`) `P` lost, with `r` the model's read multiplier above (1.2 `P`
+  on Opus 5.5 and Sonnet 5.5, 1.225 `P` on Fable, 1.15 `P` on Haiku 5.5); on
+  1h it costs nothing.
 - A gap over 60 min expires both tiers: 1h only adds the premium.
-- Break-even: 1h wins once the 5m-expiring gaps sum to 1.15 Σ`P`ᵢ > 0.75 `W`.
+- Break-even: 1h wins once the 5m-expiring gaps sum to (1.25 − `r`) Σ`P`ᵢ > 0.75 `W`.
   Keep the two apart: `W` counts only the writes the run makes anyway (the
   1h premium applies to those); the expiry re-writes are the gap term on the
   left, they exist only on 5m and are not part of `W`. On the 1h tier they
-  become plain reads. One gap at ≥ 65 % of the run's final context pays for
-  the whole premium, two at ≥ 33 %, and a gap near the start of a run (small
+  become plain reads. One gap at ≥ 0.75 / (1.25 − `r`) of the run's final
+  context pays for the whole premium (62.5 % on Opus and Sonnet, 61 % on
+  Fable, 65 % on Haiku), two at about half that, and a gap near the start of a run (small
   `P`) does not. This is a prediction; no resumed judge has been measured yet.
 
 ### Predictions (written before the AFTER measurement)
@@ -125,7 +128,7 @@ the context size when an idle gap `g` lands:
 | short paper judge (under 5 min wall, reads files, no test run) | none over 300 s | **5m** | never breaks even; 1h costs +0.75 `W`, predicted +35 to 50 % of the judge's input-token-equivalent cost |
 | ~~judge that idles on a test run or CI wait over 5 min~~ | **retired 2026-10-11**: operator rule, judges never wait on CI or tests (the worker's scripts do) | 5m | pattern no longer exists; was predicted 1h at a single late gap ≥ 65 % of context |
 | long escape hunt (many files, long model turns) | gaps are model generation time, rarely over 300 s | **5m** unless a model turn plus its tool call exceeds 5 min | gap between message timestamps includes generation, so it is an upper bound on idle; unobserved over 300 s in the baseline (max 144 s) |
-| resumed judge (same agent messaged again after 5 to 60 min) | one gap of 300 s to 3600 s at full context | **1h** only if that gap lands at ≥ 65 % of final context | the one pattern that can still favour 1h; unobserved so far, so it stays a prediction |
+| resumed judge (same agent messaged again after 5 to 60 min) | one gap of 300 s to 3600 s at full context | **1h** only if that gap lands at or past the break-even share of final context (61 to 65 % by model) | the one pattern that can still favour 1h; unobserved so far, so it stays a prediction |
 
 ### Baseline (2026-10-10 shift, 8 Explore judge subagents, all on 5m)
 
@@ -176,7 +179,7 @@ bash scripts/eval/judge-cache-row.sh --header --ledger <ledger.tsv> \
 Drop `--header` after the first row. `agent` comes from the sibling
 `.meta.json`, so an Explore row and a `judge-ro` row land in one
 ledger. Re-decide the TTL from the ledger: score each row against the break-even
-above (1.15 Σ`P`ᵢ over its 5m-expiring gaps vs 0.75 `W` ). Limit: the row
+above ((1.25 − `r`) Σ`P`ᵢ over its 5m-expiring gaps vs 0.75 `W` ). Limit: the row
 holds the longest gap and the count over 300 s, not each gap's context size,
 so a late-vs-early gap is read from the transcript when a row is close;
 upgrade path: add a per-gap context column when a judge lands within 10 % of
