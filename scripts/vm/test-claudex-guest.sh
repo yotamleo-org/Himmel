@@ -23,7 +23,7 @@ check() { # label, then the condition as a command
     local label="$1"; shift
     if "$@"; then echo "PASS $label"; else echo "FAIL $label"; FAILED=$((FAILED + 1)); fi
 }
-mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1" 2>/dev/null; }  # gnu-ok: BSD fallback
+mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1" 2>/dev/null; }
 
 fx_fail() { echo "FAIL fixture setup failed (line ${BASH_LINENO[0]}): the suite stops here"; exit 1; }
 BIN="$WORK/bin"          # station-side stubs
