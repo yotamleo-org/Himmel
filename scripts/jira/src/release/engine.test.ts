@@ -2544,6 +2544,15 @@ describe('signed minerva specs', () => {
       });
       expect(sections[1], 'the two sections are byte-equal').toBe(sections[0]);
     });
+
+    it('capped carry v2 docs: each chief doc section opens with the imperative not-yet sentence, in its first paragraph (a driver-ruled row beyond the frozen matrix)', () => {
+      const notYet = '**Do not use this route for any real signing until the operator has approved live issuance (item 6); until then every command below is for fixtures only.**';
+      for (const rel of CHIEF_DOCS) {
+        const lines = (docSection(chiefDoc(rel)) as string).split('\n');
+        const first = lines.slice(2, lines.findIndex((l, i) => i > 2 && l === '')).join(' ');
+        expect(first.startsWith(notYet), `${rel}: the first paragraph of the section opens with the sentence`).toBe(true);
+      }
+    });
   });
 
   it('signs a bucket spec with invariants: the lint reads its paths from the checkout and its invariants from the plan', () => {
@@ -4431,6 +4440,64 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
       const path = editReturn(f, which, agreementLines('control', keys, sha(f.spec)), proof);
       const record = { ...row, release: 'R1', verdicts: row.verdicts!.map(v => v.path === path ? { path, sha256: sha(path) } : v), capped_carry: proof };
       expect(specCheck(specEnv(), keys, null, { records: [record] }).lines).toEqual(okLines(keys, f, row.id));
+    });
+
+    // ---- follow-ups of the 4b and 4c review: the member check must not depend on another check having run before it.
+    // The shapes of the pinned ledger folder: every pinned file is moved with the real folder, so the file pins read, and a member ledger sits in the moved copy; only the member check stands in the way.
+    it.each(['a plain file', 'a symlink to a file', 'a dangling symlink', 'a directory that cannot be listed'])('capped carry v2 the member check refuses a pinned ledger folder that is %s, although every pinned file lives elsewhere and reads (E17)', shape => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f); const dir = pinned.ledgerDirOf(f.specsRoot); const moved = join(dirname(f.specsRoot), 'moved-ledgers');
+      if (shape === 'a directory that cannot be listed' && process.getuid?.() === 0) return;
+      const proof = JSON.parse(JSON.stringify(row.capped_carry));
+      for (const pin of proof.pins) if (typeof pin.path === 'string' && pin.path.startsWith(`${dir}/`)) pin.path = join(moved, pin.path.slice(dir.length + 1));
+      renameSync(dir, moved);
+      writeFileSync(join(moved, `${f.members![0]}.jsonl`), '');
+      if (shape === 'a plain file') writeFileSync(dir, '');
+      if (shape === 'a symlink to a file') { const target = join(dirname(f.specsRoot), 'a-file'); writeFileSync(target, ''); symlinkSync(target, dir); }
+      if (shape === 'a dangling symlink') symlinkSync(join(dirname(f.specsRoot), 'nowhere'), dir);
+      if (shape === 'a directory that cannot be listed') { mkdirSync(dir); chmodSync(dir, 0o311); }
+      try {
+        const out = specCheck(specEnv(), keys, null, { records: [{ ...row, release: 'R1', capped_carry: proof }] });
+        expect(out.lines).toEqual(staleLines(keys, f, row.id));
+        expect(out.answer.get(keys[0])).toEqual({ missing: expect.stringContaining(`capped evidence selection changed: ${dir}`) });
+      } finally { if (shape === 'a directory that cannot be listed') chmodSync(dir, 0o755); }
+    });
+
+    it('capped carry v2 a doctored verifier answer whose pinned files moved with the ledger folder, now a plain file, is refused when the answer is checked, naming the folder (E17, the signing side)', () => {
+      const f = v2Build({ builder: 'group' }); const dir = pinned.ledgerDirOf(f.specsRoot); const moved = join(dirname(f.specsRoot), 'moved-ledgers');
+      armProof(p => {
+        cpSync(dir, moved, { recursive: true });
+        for (const pin of p.pins) if (typeof pin.path === 'string' && pin.path.startsWith(`${dir}/`)) pin.path = join(moved, pin.path.slice(dir.length + 1));
+        rmSync(dir, { recursive: true });
+        writeFileSync(dir, '');
+        writeFileSync(join(moved, `${f.members![0]}.jsonl`), '');
+      });
+      expect(() => v2Sign(f)).toThrow(new RegExp(`; v2: capped evidence selection changed: ${dir}$`));
+      expect(attemptFlags()).toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    // The last key of the group sorts last among the members: the engine must hand the predicate the whole pinned key list.
+    it('capped carry v2 a member ledger for the last key of the group makes the record stale and refuses at the signing recheck under the lock (E17, E25)', () => {
+      const lock = v2Build({ builder: 'group' }); const last = lock.members!.at(-1) as string; const dir = pinned.ledgerDirOf(lock.specsRoot);
+      expect(last, 'the last member sorts last').toBe([...lock.keys!].sort().at(-1));
+      signingLock.fn = () => writeFileSync(join(dir, `${last}.jsonl`), '');
+      try { expect(() => v2Sign(lock)).toThrow(new Error(`capped evidence selection changed: ${dir}`)); } finally { signingLock.fn = null; }
+      noCappedRows();
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f); const ledgers = pinned.ledgerDirOf(f.specsRoot);
+      writeFileSync(join(ledgers, `${last}.jsonl`), '');
+      expect(check(keys)).toEqual(staleLines(keys, f, row.id));
+      expect(specCheck(specEnv(), keys, null).answer.get(keys[0])).toEqual({ missing: expect.stringContaining(`capped evidence selection changed: ${ledgers}`) });
+    });
+
+    // The verifier answer is one of the places the plan names: a member that exists then is refused there, so the signing lock is never taken.
+    it('capped carry v2 a member that exists when the verifier answer is checked is refused there, before the signing lock is taken (E17)', () => {
+      const f = v2Build({ builder: 'group' }); const dir = pinned.ledgerDirOf(f.specsRoot); let locked = false;
+      armProof(() => { writeFileSync(join(dir, `${f.members![0]}.jsonl`), ''); });
+      signingLock.fn = () => { locked = true; };
+      try { expect(() => v2Sign(f)).toThrow(new RegExp(`; v2: capped evidence selection changed: ${dir}$`)); } finally { signingLock.fn = null; }
+      expect(locked, 'the signing lock was never taken').toBe(false);
+      expect(attemptFlags()).toEqual(['--keys']);
+      noCappedRows();
     });
   });
 });
