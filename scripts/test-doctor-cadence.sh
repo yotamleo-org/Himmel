@@ -693,6 +693,30 @@ PY
     else
         echo "SKIP the unsearchable-parent sweep (root searches any directory)"
     fi
+    # the pass is scheduled, so nothing in it frees ownership by age: a row whose only sign of death is an unwrapped RESUME doc past
+    # 24 hours stays, and the count of those rows reaches the run log and the status line for a chief to decide
+    printf '#!/usr/bin/env bash\necho "sweep: no held locks"\n' > "$W/ql-none"; chmod +x "$W/ql-none"
+    gc_reset; HAGE="$W/hr-aged"; HAGE2="$W/hr-aged2"; HAGEH="$W/hr-aged-h"
+    gc_reg "$HAGE" "$HAGE2"; git -C "$HAGE" init -q; git -C "$HAGE2" init -q
+    mkdir -p "$HAGEH/u/r"
+    printf '# resume\n- 10:00 PARKED-BANK stopped for takeover\n' > "$HAGEH/u/r/PROJ-9811-N1-RESUME.md"
+    printf '# resume\n- 10:00 WRAPPED — done\n' > "$HAGEH/u/r/PROJ-9812-N1-RESUME.md"
+    printf '# resume\n- 10:00 PARKED-BANK stopped for takeover\n' > "$HAGEH/u/r/PROJ-9813-N1-RESUME.md"
+    printf '# resume\n- 10:00 PARKED-BANK stopped for takeover\n' > "$HAGEH/u/r/PROJ-9814-N1-RESUME.md"
+    touch -d '30 hours ago' "$HAGEH/u/r/PROJ-9811-N1-RESUME.md" "$HAGEH/u/r/PROJ-9812-N1-RESUME.md" "$HAGEH/u/r/PROJ-9814-N1-RESUME.md"
+    for i in 1 2 3; do printf 'PROJ-981%s\tlab\t%s\tbrief\t\n' "$i" "$HAGEH/u/r/PROJ-981$i-N1-RESUME.md" > "$HREG/$(esc_w "$HAGE")/scripts%2Fag$i.sh"; done
+    printf 'PROJ-9814\tlab\t%s\tbrief\t\n' "$HAGEH/u/r/PROJ-9814-N1-RESUME.md" > "$HREG/$(esc_w "$HAGE2")/scripts%2Fag4.sh"
+    find "$HREG" -type f -exec touch -d '2 hours ago' {} +
+    agr() { [ -e "$HREG/$(esc_w "$1")/scripts%2F$2.sh" ] && echo row || echo none; }
+    HANDOVER_DIR="$HAGEH" HOLDS_QUEUE_LOCK="$W/ql-none" run_cad_ok "a run over registers with parked workers"
+    check "a scheduled pass keeps a row whose only sign of death is an unwrapped RESUME doc past 24 hours" row "$(agr "$HAGE" ag1)"
+    check "... and keeps the same kind of row in a second register" row "$(agr "$HAGE2" ag4)"
+    check "... and keeps a row whose unwrapped RESUME doc is fresh" row "$(agr "$HAGE" ag3)"
+    check "... and still removes a row whose RESUME doc is WRAPPED" none "$(agr "$HAGE" ag2)"
+    case "$(cat "$STATE/holds-gc.log")" in *"gc $HAGE: gc visited=3 removed=1 cut=0 rows=3 cycle=complete waiting=1"*) pass "the pass line counts the rows kept for a decision" ;; *) fail "the pass line counts the rows kept for a decision ($(cat "$STATE/holds-gc.log"))" ;; esac
+    case "$(tail -n 1 "$STATE/holds-gc.log")" in *"run registers=2 served=2 starved=0 partial=0 failed=0 passes=2 waiting=2") pass "the run summary adds the rows that wait, over every register" ;; *) fail "the run summary adds the rows that wait ($(tail -n 1 "$STATE/holds-gc.log"))" ;; esac
+    st="$(bash "$P/scripts/doctor-cadence.sh" status 2>&1)"
+    case "$st" in *"holds gc"*"passes=2 waiting=2"*) pass "status shows the count of rows that wait" ;; *) fail "status shows the count of rows that wait ($st)" ;; esac
 fi
 unset GC_STUB_LOG
 

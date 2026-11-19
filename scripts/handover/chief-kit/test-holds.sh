@@ -1646,6 +1646,56 @@ same "9885 gc: a 30-day-old row whose lock answer faults is unknown and survives
 for _ in 1 2 3; do HOLDS_GH="$GCSLOW" GC_GH_SLEEP=3 run gcbox 1.0 "$RU"; done
 same "9885 gc: ... and so does a row whose gh call outlasts the box" "$(gone_or_row "$(rowf scripts/u1.sh "$RU")")" row
 
+# the scheduled pass (gc --keep-aged-resume) keeps a row whose only sign of death is an unwrapped RESUME doc past 24 hours and counts it;
+# every other removal stands, and a hand-run gc, which is a person's decision, still releases such a row
+RAGE="$W/repo-gc-aged"; mkdir -p "$RAGE"; git -C "$RAGE" init -q -b main
+cat > "$W/bin/gh-gcaged" <<'STUB'
+#!/usr/bin/env bash
+case "$3" in 9871) echo MERGED ;; 9872) echo CLOSED ;; *) echo OPEN ;; esac
+STUB
+chmod +x "$W/bin/gh-gcaged"
+mkdir -p "$W/mirror-gcaged"
+printf -- '---\nkey: "PROJ-9867"\nstatus: "Done"\nstatusCategory: "Done"\n---\n' > "$W/mirror-gcaged/PROJ-9867.md"
+agedoc() { local f; f="$(mkdoc "$1" "$2")"; touch_ago "$3" "$f"; printf '%s' "$f"; }  # <name> <text> <age in seconds>
+PARKED=$'# resume doc\n- 10:00 PARKED-BANK stopped for takeover'
+WRAPPED=$'# resume doc\n- 09:00 WRAPPED — done'
+AG1="$(agedoc PROJ-9861-N1-RESUME.md "$PARKED" 108000)"
+put_row scripts/ag1.sh PROJ-9861 lab "$AG1" brief "" "$RAGE"
+put_row scripts/ag1b.sh PROJ-9861 lab "$AG1" brief "" "$RAGE"
+put_row scripts/ag2.sh PROJ-9862 lab "$(agedoc PROJ-9862-N1-RESUME.md "$WRAPPED" 3600)" brief "" "$RAGE"
+put_row scripts/ag2b.sh PROJ-9872 lab "$(agedoc PROJ-9872-N1-RESUME.md "$WRAPPED" 108000)" brief "" "$RAGE"
+agedoc PROJ-9863-N1b-RESUME.md '# resume doc' 108000 > /dev/null
+put_row scripts/ag3.sh PROJ-9863 lab "$(mkdoc PROJ-9863-N2-case.md $'> **Prior art:** PROJ-9863-N1b-RESUME.md\n- 10:00 WRAPPED — PR merged')" brief "" "$RAGE"
+put_row scripts/ag4.sh PROJ-9864 lab "$(agedoc PROJ-9864-N1-RESUME.md "$PARKED" 3600)" brief "" "$RAGE"
+put_row scripts/ag5.sh PROJ-9865 lab "$(agedoc PROJ-9865-N1-RESUME.md "$PARKED" 108000)" pr 9871 "$RAGE"
+put_row scripts/ag6.sh PROJ-9866 lab "$(agedoc PROJ-9866-N1-RESUME.md "$PARKED" 108000)" pr 9872 "$RAGE"
+put_row scripts/ag7.sh PROJ-9867 lab "$(agedoc PROJ-9867-N1-RESUME.md "$PARKED" 108000)" brief "" "$RAGE"
+put_row scripts/ag8.sh PROJ-9868 lab "$(mkdoc PROJ-9868-case.md)" brief "" "$RAGE"
+AG9="$(agedoc PROJ-9869-N1-RESUME.md "$PARKED" 108000)"; lock_hold "$AG9"
+put_row scripts/ag9.sh PROJ-9869 lab "$AG9" brief "" "$RAGE"
+put_row scripts/ag10.sh PROJ-9870 lab "$(agedoc PROJ-9870-N1-RESUME.md "$PARKED" 108000)" pr 9873 "$RAGE"
+: > "$(rowf scripts/ag4.sh "$RAGE").grant.PROJ-9861"
+: > "$(rowf scripts/ag4.sh "$RAGE").grant.PROJ-9862"
+agrow() { gone_or_row "$(rowf "scripts/$1.sh" "$RAGE")"; }
+run env HOLDS_GH="$W/bin/gh-gcaged" HOLDS_MIRROR="$W/mirror-gcaged" python3 -I "$SUT" gc --repo "$RAGE" --keep-aged-resume
+same "gc keep-aged: a scheduled pass exits 0" "$RC" 0
+same "gc keep-aged: ... and says how many rows it kept for a decision, and how many it removed" "$OUT" "gc visited=12 removed=7 cut=0 rows=12 cycle=complete waiting=2"
+same "gc keep-aged: a row whose unwrapped RESUME doc is past 24 hours, with no lock and no PR, stays (every row of the key)" "$(agrow ag1)/$(agrow ag1b)" row/row
+same "gc keep-aged: a fresh unwrapped RESUME doc keeps its row as before" "$(agrow ag4)" row
+same "gc keep-aged: a held lock keeps a row whose RESUME doc is past 24 hours, an open PR too" "$(agrow ag9)/$(agrow ag10)" row/row
+same "gc keep-aged: a WRAPPED RESUME doc, fresh or past 24 hours, still releases its row" "$(agrow ag2)/$(agrow ag2b)" none/none
+same "gc keep-aged: a RESUME doc a WRAPPED doc names is consumed, so its row is still removed" "$(agrow ag3)" none
+same "gc keep-aged: a merged or a closed PR still removes its row, whatever RESUME doc of the key is past 24 hours" "$(agrow ag5)/$(agrow ag6)" none/none
+same "gc keep-aged: a key the mirror reads Done still has its row removed" "$(agrow ag7)" none
+same "gc keep-aged: a row with no lock, no PR and no RESUME doc is still removed" "$(agrow ag8)" none
+same "gc keep-aged: the grant of a key whose rows wait stays, the grant of a removed key goes" "$(gone_or_row "$(rowf scripts/ag4.sh "$RAGE").grant.PROJ-9861")/$(gone_or_row "$(rowf scripts/ag4.sh "$RAGE").grant.PROJ-9862")" row/none
+run hp alive --repo "$RAGE" scripts/ag1.sh
+same "gc keep-aged: alive and read still call such a row dead (the barrier is unchanged)" "$OUT" dead
+run env HOLDS_GH="$W/bin/gh-gcaged" HOLDS_MIRROR="$W/mirror-gcaged" python3 -I "$SUT" gc --repo "$RAGE"
+same "gc keep-aged: a hand-run gc exits 0 and prints no count" "$RC/$OUT" "0/gc visited=5 removed=2 cut=0 rows=5 cycle=complete"
+same "gc keep-aged: ... it releases the rows that waited" "$(agrow ag1)/$(agrow ag1b)" none/none
+same "gc keep-aged: ... and leaves the rows that are alive" "$(agrow ag4)/$(agrow ag9)/$(agrow ag10)" row/row/row
+
 # the cursor and the lock sit in the holds root beside sync-denied, never among a register's rows: no verb sees them as a row
 GCNAMES="$(find "$REG" -maxdepth 1 -type f \( -name 'gc-cursor.*' -o -name 'gc-lock.*' \) -printf '%f\n' | sed 's/%2F.*//' | sort -u | tr '\n' ' ')"
 same "9885 gc: its state is two files per repo in the holds root, named like sync-denied" "$GCNAMES" "gc-cursor. gc-lock. "

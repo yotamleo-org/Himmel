@@ -127,13 +127,16 @@ $(grep -A1 -E "^WARN +$id:" "$log" | head -2)"
 # pass (30 s). Whether a repo is gone is holds.py's answer (repo-gone), the same one the doctor's C95 uses; only a
 # proven removal skips a register. The run lock held by cmd_run keeps two scheduled runs from overlapping; holds.py's
 # own per-repo lock covers a manual gc. The step is best-effort: holds-gc.log holds this run's pass lines and ends
-# with one summary line (or one skipped line), which `status` shows; a failure never fails the run.
+# with one summary line (or one skipped line), which `status` shows; a failure never fails the run. The passes run
+# gc --keep-aged-resume: a row whose only sign of death is an unwrapped RESUME doc past 24 hours is never pruned by the
+# schedule, because nothing frees ownership by age on its own. Each such row is counted: a pass line ends waiting=<n>, and
+# the summary line ends waiting=<total> when any waited; a chief or the operator releases them by running gc by hand.
 holds_gc_note() { printf '%s %s\n' "$(date +%FT%T)" "$*" >> "$STATE_DIR/holds-gc.log"; }
 
 holds_maintenance() { # <primary root>
     local root="$1" py="$1/scripts/handover/chief-kit/holds.py" holds="${HOME:-}/.himmel/state/holds"
     local nextf="$STATE_DIR/holds-gc.next" passes="${DOCTORCAD_HOLDS_GC_PASSES:-12}" budget="${DOCTORCAD_HOLDS_GC_BUDGET:-120}"
-    local reg repo i k n end out rc tmo want start=0 total=0 served=0 starved=0 partial=0 failed=0 progress stop_at=""
+    local reg repo i k n end out rc tmo want w waited="" start=0 total=0 served=0 starved=0 partial=0 failed=0 waiting=0 progress stop_at=""
     local -a repos=() count=() state=()
     [[ "$passes" =~ ^[0-9]+$ ]] || passes=12
     [[ "$budget" =~ ^[0-9]+$ ]] || budget=120
@@ -165,7 +168,7 @@ holds_maintenance() { # <primary root>
             case "${state[i]}" in open|partial) ;; *) continue ;; esac
             if [ "${count[i]}" -ge "$passes" ]; then state[i]=capped; continue; fi
             if [ "$total" -gt 0 ] && [ "$SECONDS" -ge "$end" ]; then stop_at="${repos[i]}"; break 2; fi
-            out="$(${tmo:+"$tmo" -k 2 30} python3 -I "$py" gc --repo "${repos[i]}" </dev/null 2>&1)"; rc=$?
+            out="$(${tmo:+"$tmo" -k 2 30} python3 -I "$py" gc --repo "${repos[i]}" --keep-aged-resume </dev/null 2>&1)"; rc=$?
             count[i]=$((count[i] + 1)); total=$((total + 1))
             if [ "$rc" -ne 0 ]; then
                 holds_gc_note "gc ${repos[i]}: failed (rc $rc): $out"
@@ -173,6 +176,7 @@ holds_maintenance() { # <primary root>
                 continue
             fi
             holds_gc_note "gc ${repos[i]}: $out"
+            case "$out" in *" waiting="[0-9]*) w="${out##* waiting=}"; waiting=$((waiting + 10#${w%%[!0-9]*})) ;; esac
             case "$out" in
                 *"gc busy"*) state[i]=busy ;;
                 *"cycle=partial"*) state[i]=partial; progress=1 ;;
@@ -196,7 +200,8 @@ holds_maintenance() { # <primary root>
         done
     fi
     if [ -n "$stop_at" ]; then printf '%s\n' "$stop_at" > "$nextf"; else rm -f "$nextf"; fi
-    holds_gc_note "run registers=$n served=$served starved=$starved partial=$partial failed=$failed passes=$total"
+    [ "$waiting" -eq 0 ] || waited=" waiting=$waiting"
+    holds_gc_note "run registers=$n served=$served starved=$starved partial=$partial failed=$failed passes=$total$waited"
     return 0
 }
 

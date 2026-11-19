@@ -381,11 +381,14 @@ def handover_root():
 
 class Judge:
     """Is a row's holder alive? By key: a doc of the key with a held lock, its PR open, the arm grace, or an
-    unwrapped RESUME doc under 24 hours. Answers are cached per run: one queue-lock call per doc, one gh call per PR."""
+    unwrapped RESUME doc under 24 hours. Answers are cached per run: one queue-lock call per doc, one gh call per PR.
+    With keep_aged, a row whose only sign of death is an unwrapped RESUME doc past 24 hours reads 'waiting', never 'dead'."""
 
-    def __init__(self, repo, deadline=None):
+    def __init__(self, repo, deadline=None, keep_aged=False):
         self.repo = repo
         self.deadline = deadline  # epoch seconds: past it no call is spawned (answer fault), and each call is bounded by what is left
+        self.keep_aged = keep_aged
+        self.waiting = 0  # rows gc read 'waiting' in this run
         self.ql_cache, self.pr_cache, self.scan_cache, self.resume_cache = {}, {}, {}, {}
         self.sweep_rows = None  # the one queue-lock status --sweep of this run: a list of (slug, status), or 'fault'
         self.scan_faulted = set()
@@ -513,8 +516,10 @@ class Judge:
         return self.scan_cache[ck]
 
     def resume_alive(self, docs):
-        """'alive' | 'none' | 'fault': an unwrapped RESUME doc of the key under 24 hours old."""
+        """'alive' | 'aged' | 'none' | 'fault': alive for an unwrapped RESUME doc of the key under 24 hours old; aged when the
+        only unwrapped RESUME docs of the key (none consumed by a WRAPPED doc) are older."""
         res = 'none'
+        aged = False
         info = []  # (doc, mtime, last mark, the line of that mark, the doc's other lines)
         for d in docs:
             try:
@@ -533,7 +538,7 @@ class Judge:
             rest = [l for l in lines if l != last[1]]
             info.append((d, mt, last[0], last[1], rest))
         for d, mt, mark, _line, _rest in info:
-            if 'RESUME' not in os.path.basename(d) or time.time() - mt >= RESUME_AGE or mark == 'WRAPPED':
+            if 'RESUME' not in os.path.basename(d) or mark == 'WRAPPED':
                 continue
             # a WRAPPED doc that names the RESUME doc outside its last bullet consumes it; a last bullet that names it hands
             # off to it. The file mtime, the leg number and the stem are no link: a RESUME doc made after its stem doc wrapped is live work.
@@ -541,11 +546,15 @@ class Judge:
             if any(m2 == 'WRAPPED' and b not in l2 and successor_of(b, r2)
                    for d2, _mt2, m2, l2, r2 in info if d2 != d):
                 continue
+            if time.time() - mt >= RESUME_AGE:
+                aged = True  # nobody wrapped or consumed it: only its age says the holder is gone
+                continue
             return 'alive'
-        return res
+        return 'aged' if aged and res == 'none' else res
 
     def row_state(self, fields, mtime):
-        """'alive' | 'dead' | 'unknown' for a parsed row: alive beats a fault, a fault beats dead."""
+        """'alive' | 'dead' | 'unknown' for a parsed row: alive beats a fault, a fault beats dead. A keep_aged Judge says 'waiting'
+        for a row it would call dead only because an unwrapped RESUME doc of the key is past 24 hours."""
         key, _label, doc, _source, pr = fields
         if mtime >= time.time() - GRACE:
             return 'alive'  # a future mtime counts as inside the grace
@@ -575,7 +584,9 @@ class Judge:
             if s == 'alive':
                 return 'alive'
             faulted = faulted or s == 'fault'
-        return 'unknown' if faulted else 'dead'
+        if faulted:
+            return 'unknown'
+        return 'waiting' if r == 'aged' and self.keep_aged else 'dead'
 
 
 def dir_lock(d):
@@ -1511,7 +1522,9 @@ def gc_judge_row(judge, key_state, d, n):
             return 1
         return 0
     state = judge.row_state(f, mt)
-    rank = {'alive': 0, 'unknown': 1, 'dead': 2}
+    if state == 'waiting':
+        judge.waiting += 1
+    rank = {'alive': 0, 'waiting': 1, 'unknown': 1, 'dead': 2}
     if f[0] not in key_state or rank[state] < rank[key_state[f[0]]]:
         key_state[f[0]] = state
     if state == 'dead' and remove_dead(d, n, f, mt):
@@ -1520,7 +1533,7 @@ def gc_judge_row(judge, key_state, d, n):
     return 0
 
 
-def gc_sweep(repo, deadline, listing):
+def gc_sweep(repo, deadline, listing, keep_aged=False):
     cursor_warning = False
 
     def persist_cursor(pos, origin):
@@ -1530,7 +1543,7 @@ def gc_sweep(repo, deadline, listing):
             sys.stderr.write('holds: cannot write the gc cursor: %s\n' % error)
             cursor_warning = True
 
-    judge = Judge(repo, deadline)
+    judge = Judge(repo, deadline, keep_aged)
     dirs = {di: d for di, d, _names in listing}
     items = [(di, n) for di, _d, names in listing for n in names if not n.startswith(TMP_PREFIX) and not GRANT_RE.search(n)]
     pos, origin = gc_cursor_read(repo)
@@ -1573,7 +1586,8 @@ def gc_sweep(repo, deadline, listing):
                     os.unlink(os.path.join(d, n))
                 except OSError:
                     pass  # swallow-ok: already removed
-    print('gc visited=%d removed=%d cut=%d rows=%d cycle=%s' % (visited, removed, cut, len(items), 'complete' if complete else 'partial'))
+    print('gc visited=%d removed=%d cut=%d rows=%d cycle=%s' % (visited, removed, cut, len(items), 'complete' if complete else 'partial')
+          + (' waiting=%d' % judge.waiting if keep_aged else ''))
     return 0
 
 
@@ -1587,6 +1601,10 @@ def op_gc(a):
     A row whose judgment the deadline cut short is retried first next pass, unless it was the first row of its pass (it cannot be judged in a
     whole box: it counts as cut, stays, and the cycle goes on). One pass runs per repo at a time: another says busy and judges nothing.
     The last line is `gc visited=<n> removed=<n> cut=<n> rows=<n> cycle=complete|partial`; only a partial cycle asks for another pass.
+    With --keep-aged-resume (what the scheduled maintenance passes) a row whose only sign of death is an unwrapped RESUME doc past 24 hours
+    stays, and the last line ends ` waiting=<n>`: the rows this pass kept for that reason, which wait for a chief or the operator, who
+    release them by running gc without the flag. Every other removal stands: a wrap, a Done key, a merged or closed PR, a row with no lock,
+    no open PR and no RESUME doc.
     Grants on surviving rows stay when their owner's state is unknown. If an owner's last row was removed by a partial pass,
     its grant on another row can remain indefinitely: no later scan can infer dead ownership from the absent row alone,
     since a grant can legitimately precede the owner's first row. This is retained state, not a promise of later automatic removal."""
@@ -1613,7 +1631,7 @@ def op_gc(a):
         print('gc busy: another pass holds this register')
         return 0
     try:
-        return gc_sweep(repo, deadline, listing)
+        return gc_sweep(repo, deadline, listing, a.keep_aged_resume)
     finally:
         os.close(lock)
 
@@ -2134,6 +2152,7 @@ def build_parser():
     sp.add_argument('--files-from', required=True, metavar='TSV')
     sp = add('gc', op_gc, help='remove dead rows and their grants')
     sp.add_argument('--repo', required=True)
+    sp.add_argument('--keep-aged-resume', action='store_true', help='keep and count a row whose only sign of death is an unwrapped RESUME doc past 24 hours (the scheduled pass)')
     sp = add('repo-gone', op_repo_gone, help='exit 0 when the repo path is gone (ENOENT), 1 when it exists or cannot be told')
     sp.add_argument('--repo', required=True)
     sp = add('summary', op_summary, help='live-workers-with-no-rows/stale-rows/pending-asks (the tick\'s hreg= field)')
