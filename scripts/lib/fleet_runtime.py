@@ -58,7 +58,7 @@ def lock(path):
     fd = os.open(str(path) + '.lock', os.O_CREAT | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
     try:
         until = time.monotonic() + 30
-        while True:
+        while True:  # t13b-ok: ends when the lock is taken, or raises Refused once the 30 s deadline has passed
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
@@ -216,7 +216,7 @@ def receipts(wanted, docs=()):
     found = {}
     deadline = time.monotonic() + 3
     with path.open() as stream:
-        while True:
+        while True:  # t13b-ok: ends at end of file, or raises Refused on the first line read after the 3 s deadline
             line = stream.readline(1048576)
             if not line:
                 break
@@ -240,7 +240,7 @@ def attempt_outcomes(attempt_ids):
         return found
     deadline = time.monotonic() + 3
     with path.open() as stream:
-        while True:
+        while True:  # t13b-ok: ends at end of file, or raises Refused on the first line read after the 3 s deadline
             line = stream.readline(1048576)
             if not line:
                 break
@@ -400,7 +400,7 @@ def latest_receipts():
     found, holders = {}, {}
     deadline = time.monotonic() + 3
     with path.open() as stream:
-        while True:
+        while True:  # t13b-ok: ends at end of file, or raises Refused on the first line read after the 3 s deadline
             line = stream.readline(1048576)
             if not line:
                 break

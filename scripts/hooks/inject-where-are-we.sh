@@ -177,7 +177,7 @@ if [ -f "$_wa_flag" ] && [ "$(cat "$_wa_flag" 2>/dev/null)" = 1 ]; then
         if [ -n "${HIMMEL_WHERE_ARE_WE_COLLECT_CMD:-}" ]; then
             ( nohup bash -c "$HIMMEL_WHERE_ARE_WE_COLLECT_CMD" >/dev/null 2>&1 & ) || true
         else
-            ( nohup "$_wa_node" "$_wa_root/scripts/where-are-we/collect.mjs" --ledger "$_wa_ledger" --marker "$_wa_marker" >/dev/null 2>&1 & ) || true
+            ( nohup "$_wa_node" "$_wa_root/scripts/where-are-we/collect.mjs" --ledger "$_wa_ledger" --marker "$_wa_marker" >/dev/null 2>&1 & ) || true  # t13b-ok: one-shot detached refresh of the where-are-we ledger at session start, not a loop, a timer or a service
         fi
     fi
 fi

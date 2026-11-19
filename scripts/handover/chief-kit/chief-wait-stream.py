@@ -120,7 +120,7 @@ def watchdog(inbox, sup, start):
     dead_since = None
     last_sleep = ''
     last_safe = None
-    while True:
+    while True:  # t13b-ok: waits while its own supervisor lives (that one ends by its own bounds); once it is gone this ends when a successor supervisor is alive, when its child is gone, when the child reaches a safe point (CHIEF_WAIT_STREAM_ADOPT_SEC, 300 s default, after a hand-off), or at CHIEF_WAIT_STREAM_BUSY_MAX_SEC (7200 s default) or CHIEF_WAIT_STREAM_REAP_MAX_SEC (1800 s default); each setting is read from the environment
         data = load(side)
         if alive(sup, start):
             time.sleep(.2)
@@ -406,7 +406,7 @@ class Supervisor:
             return result
         soft = float(os.getenv('CHIEF_WAIT_STREAM_SOFT_SEC', '1440'))
         hard = float(os.getenv('CHIEF_WAIT_STREAM_HARD_SEC', '1680'))
-        while True:
+        while True:  # t13b-ok: ends at CHIEF_WAIT_STREAM_HARD_SEC (1680 s default) at the latest, sooner when the waiter child has finished after CHIEF_WAIT_STREAM_SOFT_SEC (1440 s default), 60 s after a stop request, on a refusal or on an error; each setting is read from the environment
             self.acknowledge()
             now = time.time()
             self.lines = [t for t in self.lines if time.monotonic() - t < 60]
