@@ -2520,6 +2520,30 @@ describe('signed minerva specs', () => {
         expect(occurrences(text, 'per-family filter'), `${rel}: no other per-family filter`).toBe(1);
       }
     });
+
+    it('capped carry v2 docs: a changed spec-gate copy on the candidate stops the marked command as well (X1, the spec-gate copy)', () => {
+      const scripts = 'marketplace/plugins/himmel-ops/scripts'; const names = ['minerva-spec-gate.sh', 'minerva-trace-lint.sh'];
+      mkdirSync(join(linked, scripts), { recursive: true });
+      for (const name of names) copyFileSync(join(primary, scripts, name), join(linked, scripts, name));
+      CHIEF_DOCS.forEach((rel, i) => {
+        const block = markedBlock(chiefDoc(rel)) as string; const sentinel = join(root, `sentinel-spec-gate-${i}`);
+        writeFileSync(join(linked, scripts, names[0]), 'exit 99\n');
+        const stop = spawnSync('bash', ['-c', `${block}\n: > "$SENTINEL"`], { cwd: root, encoding: 'utf8', env: { PATH: process.env.PATH, HOME: process.env.HOME, CAND: linked, SENTINEL: sentinel } });
+        expect(stop.status, `${rel}: a changed spec-gate copy: non-zero exit`).not.toBe(0);
+        expect(stop.stderr, `${rel}: a changed spec-gate copy: STOP on stderr`).toContain('STOP');
+        expect(existsSync(sentinel), `${rel}: a changed spec-gate copy: no sentinel`).toBe(false);
+        copyFileSync(join(primary, scripts, names[0]), join(linked, scripts, names[0]));
+      });
+    });
+
+    it('capped carry v2 docs: the section of each chief doc exists once and the two sections are byte-equal (a driver-ruled row beyond the frozen matrix)', () => {
+      const sections = CHIEF_DOCS.map(rel => {
+        const text = chiefDoc(rel);
+        expect(text.split('\n').filter(l => l === SECTION_HEADING), `${rel}: one section heading`).toHaveLength(1);
+        return docSection(text) as string;
+      });
+      expect(sections[1], 'the two sections are byte-equal').toBe(sections[0]);
+    });
   });
 
   it('signs a bucket spec with invariants: the lint reads its paths from the checkout and its invariants from the plan', () => {
@@ -3814,6 +3838,14 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
     const open = marker < 0 ? -1 : lines.findIndex((l, i) => i > marker && l.startsWith('```'));
     const close = open < 0 ? -1 : lines.findIndex((l, i) => i > open && l.startsWith('```'));
     return close < 0 ? null : lines.slice(open + 1, close).join('\n');
+  }
+  // The section of a chief doc: its heading line up to the line before the next heading of the same level (or the end of the file), without trailing blank lines.
+  const SECTION_HEADING = '## Ledger-bound capped carry (proof v2)';
+  function docSection(text: string): string | null {
+    const lines = text.split('\n'); const start = lines.indexOf(SECTION_HEADING);
+    if (start < 0) return null;
+    const next = lines.findIndex((l, i) => i > start && /^## /.test(l));
+    return lines.slice(start, next < 0 ? lines.length : next).join('\n').trimEnd();
   }
 
   describe('capped carry v2 producer route', () => {
