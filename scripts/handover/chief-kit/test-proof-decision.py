@@ -1006,6 +1006,12 @@ class ChiefDecision(unittest.TestCase):
         self.assertIn('live pull-request remainder unreadable', r.stderr)
         self.assertIn('PR #77', r.stderr)
 
+    def test_the_callers_wait_covers_the_readers_whole_budget(self):
+        # else a slow read ends in the CLI's exec timeout (and, after the move, in a settle that never ran) instead of the unreadable refusal
+        caller = int(re.search(r'timeout: (\d[\d_]*)', (HERE.parents[1] / 'jira' / 'src' / 'commands' / 'transition.ts').read_text())[1].replace('_', ''))
+        reader = float(re.search(r"PROOF_REMAINDER_BUDGET_SECS'\) or '(\d+)'", (HERE / 'proof-validate.py').read_text())[1])
+        self.assertLess(reader * 1000 + 5000, caller)
+
     def test_a_proof_row_is_met_only_when_its_status_is_exactly_met(self):
         for status in ('MET (pending review)', 'MET, pending 24h', 'PASS (pending)', 'Awaiting 24h', 'NOT RUN', 'BLOCKED', 'MET (with a naming note)',
                        'CONTROL RAN', 'MET; run r informational', 'METx', 'MET.', '', 'PASS', 'DONE'):
