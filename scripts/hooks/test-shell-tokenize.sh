@@ -115,12 +115,10 @@ tok 'ls ~/x'; check "a tilde is not a glob" "$R:${ST_G[1]}" "0:0"
 tok 'FOO=bar cmd'; check "NAME=value is assignment-shaped" "$R:${ST_A[0]}:${ST_A[1]}" "0:1:0"
 tok "'FOO=bar' cmd"; check "a quoted NAME=value is not" "$R:${ST_A[0]}" "0:0"
 tok "echo \$'a'"; check "\$'…' sets ANSIC" "$R:$ST_ANSIC" "0:1"
-# Every bash decodes the body: ${…@E} on 4.4+, _st_ansic_walk before it.
 tok "rm \$'\\x2dr' d"; check "\$'…' is decoded the way bash runs it" "$R:${ST_W[1]}:${ST_Q[1]}" "0:-r:1"
 tok "cat \$'\\'' .e*"; check "\$'\\'' decodes to a quote" "$R:${ST_W[1]}" "0:'"
-# The by-hand decode gives what ${…@E} gives, on a bash that has both.
 # shellcheck disable=SC1003 # the bodies hold backslashes, not escaped quotes
-ansic_parity() { # the tokenizer decodes under the C locale
+ansic_parity() {
     local LC_ALL=C body want bs='\'
     for body in 'plain' '\a\b\e\E\f\n\r\t\v' '\\' "\\'" '\"' '\?' '\101' '\18' '\0101' '\777' '\x41' '\x4g' '\x' \
         "${bs}u0041" "${bs}u007f" "${bs}u0000" '\U00000041' '\U0001F600' "${bs}u" '\cA' '\c?' '\c' '\q' 'a\x00b' 'a\' '\x2dr' '\056env'; do

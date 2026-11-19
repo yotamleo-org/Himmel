@@ -41,7 +41,7 @@ want 2 "$rc" "rm -rf denied (rc 2)"
 rc=$(run '{"tool_name":"Bash","tool_input":{"command":"bash -c \"rm -rf /tmp/himmel-guard-fixture\""}}')
 want 2 "$rc" "wrapped rm -rf denied (unwrap lib loads)"
 # The same words on every bash: bash 3.2 has no ${…@E} and keeps the backslashes
-# of a replacement inside "…". The rows below fail under a 3.2 that reads the old libs.
+# of a replacement inside "…".
 q="'"
 # shellcheck disable=SC1003 # a lone backslash, not an escaped quote
 bs='\'

@@ -361,11 +361,7 @@ _st_q() { # the next byte appended to the word is quoted or escaped
     wq=1; win=1
 }
 
-# _st_ansic_e BODY — _ST_DEC is BODY decoded as bash decodes the text between
-# $'…', which is what ${BODY@E} gives. bash 4.4+ is asked directly. An older
-# bash (the 3.2 macOS ships) has no @E, so _st_ansic_walk decodes by hand: a
-# guard must read the bytes the shell runs, never the raw escapes.
-# shellcheck disable=SC2034 # _ST_DEC is read by the caller
+# _st_ansic_e BODY — _ST_DEC is BODY decoded the way ${BODY@E} decodes it.
 _st_ansic_e() {
     if [ "${BASH_VERSINFO[0]}" -gt 4 ] \
         || { [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]}" -ge 4 ]; }; then
@@ -375,26 +371,22 @@ _st_ansic_e() {
     fi
 }
 
-# _st_emit N — append byte N (1-255) to _ST_DEC; false for NUL, where the shell
-# ends the word. Runs in _st_ansic_walk's scope.
+# _st_emit N — append byte N to _ST_DEC; false for NUL, which ends the word.
 _st_emit() {
+    local ch
     [ "$1" -gt 0 ] || return 1
     printf -v ch '\\0%03o' "$1"
     printf -v ch '%b' "$ch"
     _ST_DEC=$_ST_DEC$ch
 }
 
-# _st_ansic_walk BODY — the escapes of $'…' decoded without ${…@E}: a, b, e, E,
-# f, n, r, t, v, backslash, quotes, ?, 1-3 octal digits, x and 1-2 hex digits,
-# u and U with 1-4 or 1-8 hex digits, c and a control letter. Any other
-# backslash pair, an x, u or U with no digit, and a u or U above ASCII stay as
-# written: the shell's own result there depends on the locale, and no byte of
-# it is ASCII. NUL ends the word. u and U decode on every bash although 3.2
-# itself keeps them as written: zsh and bash 4.2+ decode them, so the guard
-# reads the stricter word.
-# shellcheck disable=SC1003,SC2034 # literal \ bytes; _ST_DEC is read by the caller
+# _st_ansic_walk BODY — _st_ansic_e for a bash without @E. A u or U escape
+# decodes to ASCII although bash 3.2 keeps it as written: zsh and bash 4.2+
+# decode it, so the guard reads the stricter word. Above ASCII it stays as
+# written, because the shell's own result there depends on the locale.
+# shellcheck disable=SC1003 # literal \ bytes
 _st_ansic_walk() {
-    local b=$1 n=${#1} i=0 c k v d ch max
+    local b=$1 n=${#1} i=0 c k v d max
     _ST_DEC=''
     while [ "$i" -lt "$n" ]; do
         c=${b:i:1}

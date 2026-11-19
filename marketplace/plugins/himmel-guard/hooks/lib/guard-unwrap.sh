@@ -44,8 +44,7 @@ _gu_dir=${BASH_SOURCE[0]%/*}
 declare -F st_tokenize >/dev/null || return 1
 
 # The bracket ranges below ([A-Za-z0-9._/~+-]) must mean ASCII bytes: bash 3.2
-# under a UTF-8 locale lets non-ASCII through them. This plugin's hook runs
-# without a launcher, so the collation is pinned here.
+# under a UTF-8 locale lets non-ASCII through them.
 export LC_COLLATE=C
 [ -z "${LC_ALL+x}" ] || export LC_ALL=C
 # A single quote and a backslash held in variables: inside "…" a ${w//\'/…}

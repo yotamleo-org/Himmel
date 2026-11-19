@@ -88,8 +88,7 @@
 set -uo pipefail
 
 # Bracket ranges below ([A-Za-z0-9._/~+-]) must mean ASCII bytes: bash 3.2
-# under a UTF-8 locale lets non-ASCII through them. Pinned here because tests
-# and callers run this file directly, not through run-hook-with-bash.js.
+# under a UTF-8 locale lets non-ASCII through them.
 export LC_COLLATE=C
 [ -z "${LC_ALL+x}" ] || export LC_ALL=C
 
