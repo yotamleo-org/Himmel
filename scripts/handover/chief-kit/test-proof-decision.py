@@ -469,6 +469,283 @@ class ChiefDecision(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(json.loads(r.stdout)['semantic_coverage'], 'chief-owned')
 
+    # The live pull-request remainder at CLOSE: the dispatcher's own sources, stubbed through the dispatcher's own seams
+    # (TICKET_STATUS_STATE_DIR for the status log, NEXT_DISPATCH_GH_CMD for `gh pr view`, MERGE_ROWS_GH for the merged-on-GitHub check).
+    CODE = 'Remaining: implement X (scripts/x.sh)'
+    NO_CODE = 'Remaining: S7 (chief-run, no code)'
+    OWED_PROOF = '## Ticket coverage\n- run the live proof: owed -> proof by 2026-11-30\n'
+    OWED_OPERATOR = '## Ticket coverage\n- rotate the token: owed -> operator by 2026-11-30\n'
+    OWED_CHIEF = '## Ticket coverage\n- sign the release: owed -> chief by 2026-11-30\n'
+    HANDED_OFF = '## Ticket coverage\n- the rest: deferred -> OTHER-1\n'
+    NO_REMAINDER = '## Ticket coverage\n- the whole ask: done\n'
+
+    def world(self):
+        root = self.b / 'live'
+        (root / 'state').mkdir(parents=True, exist_ok=True)
+        (root / 'bodies').mkdir(exist_ok=True)
+        (root / 'gh.log').write_text('')
+        gh = root / 'gh'
+        gh.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$GH_LOG"\ncase "$1 $2" in\n'
+                      '  "pr view") [ "$4" = --repo ] && [ "$6" = --json ] && [ "$7" = body ] || exit 64; cat "$PR_BODY_DIR/$3" 2>/dev/null || exit 1; exit 0 ;;\n'
+                      '  "pr list") exit 0 ;;\nesac\nexit 64\n')
+        merged = root / 'merged-on-github'
+        merged.write_text('#!/bin/sh\nprintf "merged-on-github %s\\n" "$*" >> "$GH_LOG"\nexit 1\n')
+        for stub in (gh, merged):
+            stub.chmod(0o755)
+        self.live = root
+        return {'TICKET_STATUS_STATE_DIR': str(root / 'state'), 'NEXT_DISPATCH_GH_CMD': str(gh), 'MERGE_ROWS_GH': str(merged),
+                'GH_LOG': str(root / 'gh.log'), 'PR_BODY_DIR': str(root / 'bodies'), 'HOME': str(root / 'home')}
+
+    def merge(self, pr, contract='no', key='HIMMEL-9848', **extra):
+        with open(self.live / 'state' / 'status-events.jsonl', 'a') as log:
+            log.write(json.dumps({'ts': 't', 'event': 'merge', 'key': key, 'pr': str(pr), 'contract': contract, 'result': 'noop', **extra}) + '\n')
+
+    def body(self, pr, text):
+        (self.live / 'bodies' / str(pr)).write_text(text)
+
+    def gh_calls(self):
+        return (self.live / 'gh.log').read_text().splitlines()
+
+    def partial(self, pr, text):
+        self.merge(pr)
+        self.body(pr, text)
+
+    def test_a_live_code_remainder_refuses_the_close_and_writes_nothing(self):
+        env = self.world()
+        self.partial(77, self.CODE)
+        before = (self.b / 'owed.jsonl').read_bytes()
+        for mode in ('--check', '--settle'):
+            r = self.decide(mode, env=env)
+            self.assertNotEqual(r.returncode, 0, r.stdout)
+            self.assertIn('PR #77', r.stderr)
+            self.assertIn('implement X', r.stderr)
+            self.assertEqual((self.b / 'owed.jsonl').read_bytes(), before)
+        self.assertTrue(any(c.startswith('pr view 77 ') for c in self.gh_calls()))
+        self.assertEqual(len(self.rows()), 1)
+
+    def test_a_body_that_now_owes_only_proof_settles_once(self):
+        env = self.world()
+        self.partial(77, self.CODE)
+        self.assertNotEqual(self.decide('--settle', env=env).returncode, 0)
+        self.body(77, self.OWED_PROOF)
+        for _ in range(2):
+            r = self.decide('--settle', env=env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len([row for row in self.rows() if row['op'] == 'close' and row['ref'] == 'o1']), 1)
+
+    def test_a_remainder_that_writes_no_code_does_not_block_but_a_mixed_one_does(self):
+        env = self.world()
+        self.partial(77, self.NO_CODE)
+        r = self.decide('--check', env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.body(77, 'Remaining: S1 (edit scripts/x.sh); S2 (chief-run, no code)')
+        r = self.decide('--check', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('PR #77', r.stderr)
+
+    def test_an_owed_chief_or_operator_line_blocks_without_any_ledger_row_and_proof_or_handoff_does_not(self):
+        env = self.world()
+        self.merge(77)
+        for name, text, blocks in (('operator', self.OWED_OPERATOR, True), ('chief', self.OWED_CHIEF, True),
+                                   ('proof', self.OWED_PROOF, False), ('handed off', self.HANDED_OFF, False),
+                                   ('proof first, operator later', '## Ticket coverage\n- a: owed -> proof by 2026-11-29\n- b: owed -> operator by 2026-11-30\n', True)):
+            with self.subTest(owed=name):
+                self.body(77, text)
+                r = self.decide('--check', env=env)
+                self.assertEqual(r.returncode != 0, blocks, r.stdout + r.stderr)
+                if blocks:
+                    self.assertIn('PR #77', r.stderr)
+                    self.assertIn('owed', r.stderr)
+        self.assertEqual(len(self.rows()), 1)  # none of them was ever a ledger row
+
+    def test_the_newest_partial_pull_request_decides(self):
+        env = self.world()
+        self.partial(77, self.CODE)
+        self.partial(78, self.OWED_PROOF)
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+        (self.live / 'state' / 'status-events.jsonl').unlink()
+        self.partial(77, self.OWED_PROOF)
+        self.partial(78, self.CODE)
+        r = self.decide('--check', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('PR #78', r.stderr)
+
+    def test_a_body_that_records_no_remainder_blocks_like_the_dispatcher_note(self):
+        env = self.world()
+        self.partial(77, self.NO_REMAINDER)
+        r = self.decide('--check', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('PR #77', r.stderr)
+        self.assertIn('no remainder', r.stderr)
+
+    def test_an_unreadable_body_or_log_refuses_naming_what_could_not_be_read_and_an_absent_log_is_no_partials(self):
+        env = self.world()
+        self.merge(77)  # no body file: the stub gh exits 1
+        r = self.decide('--check', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('unreadable', r.stderr)
+        self.assertIn('PR #77', r.stderr)
+        self.assertEqual(len(self.rows()), 1)
+        self.body(77, self.NO_CODE)
+        self.assertEqual(self.decide('--settle', env=env).returncode, 0)
+        self.assertEqual(len([row for row in self.rows() if row['op'] == 'close']), 1)
+
+    def test_an_unreadable_status_log_refuses_and_a_missing_one_means_no_partials(self):
+        env = self.world()
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)  # no log at all
+        (self.live / 'state' / 'status-events.jsonl').mkdir()  # a directory: unreadable
+        r = self.decide('--check', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('status-events.jsonl', r.stderr)
+        self.assertIn('unreadable', r.stderr)
+
+    def test_a_completing_merge_clears_the_partials_and_an_unmerged_pre_merge_row_is_ignored(self):
+        env = self.world()
+        self.partial(77, self.CODE)
+        self.merge(80, contract='yes')
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+        (self.live / 'state' / 'status-events.jsonl').unlink()
+        self.body(79, self.CODE)
+        self.merge(79, stage='pre-merge', result='pending', head='abc')
+        self.merge(79, result='not-merged', head='abc')
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+        self.assertFalse(any(c.startswith('pr view 79 ') for c in self.gh_calls()))
+
+    def test_a_ticket_with_no_partial_pull_request_or_only_another_tickets_closes_as_before(self):
+        env = self.world()
+        r = self.decide('--check', env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.body(90, self.CODE)
+        (self.live / 'state' / 'status-events.jsonl').write_text(
+            '{"event":"merge","key":"OTHER-1","pr":"90","contract":"no","result":"noop"}\nnot json\n')
+        self.assertEqual(self.decide('--settle', env=env).returncode, 0)
+        self.assertEqual(self.gh_calls(), [])
+
+    def test_a_keep_is_not_subject_to_the_remainder_reader(self):
+        env = self.world()
+        self.partial(77, self.CODE)
+        self.change_decision(verdict='KEEP', next={'actor': 'worker', 'capability': 'code worker', 'text': 'Implement X',
+                                                   'due': '2026-11-20', 'wake': 'worker available'})
+        r = self.decide('--settle', status='To Do', env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.gh_calls(), [])
+        self.assertIn('o1', self.closed_refs())
+
+    def test_a_remainder_that_appears_between_check_and_settle_writes_one_reconciliation_and_discharges_nothing(self):
+        env = self.world()
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+        self.partial(77, self.CODE)  # a partial merge lands after the check
+        # a ticket that is not actually Done is a plain refusal: nothing moved, nothing to reconcile
+        self.assertNotEqual(self.decide('--settle', status='To Do', env=env).returncode, 0)
+        self.assertEqual(len(self.rows()), 1)
+        for _ in range(3):  # the settle and its replays: ONE owned step, the validation stays pending
+            r = self.decide('--settle', env=env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            body = json.loads(r.stdout)
+            self.assertFalse(body['closed'])
+        steps = [row for row in self.rows() if row.get('capability') == 'remainder reconciliation']
+        self.assertEqual(len(steps), 1)
+        step = steps[0]
+        self.assertEqual((step['kind'], step['actor'], step['key'], step['source_id'], step['actual_status']), ('step', 'chief', 'HIMMEL-9848', 'o1', 'Done'))
+        self.assertEqual(body['reconciliation'], step['id'])
+        self.assertIn('PR #77', step['text'])
+        self.assertIn('implement X', step['text'])
+        self.assertEqual(self.closed_refs(), set())
+        self.assertEqual(len(self.rows()), 2)
+        # the remainder done (a completing merge), the step still owns the decision until it is closed
+        self.merge(80, contract='yes')
+        r = self.decide('--settle', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('open code/chief step ' + step['id'], r.stderr)
+        self.close_row(step['id'])
+        r = self.decide('--settle', env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.closed_refs(), {step['id'], 'o1'})
+
+    DISPATCH_CASES = (
+        ('older code, newer owed proof', ((77, CODE), (78, OWED_PROOF))),
+        ('older owed proof, newer code', ((77, OWED_PROOF), (78, CODE))),
+        ('a code remainder', ((77, CODE),)),
+        ('a remainder that writes no code', ((77, NO_CODE),)),
+        ('code and no code in one line', ((77, 'Remaining: S1 (edit scripts/x.sh); S2 (chief-run, no code)'),)),
+        ('owed operator', ((77, OWED_OPERATOR),)),
+        ('owed chief', ((77, OWED_CHIEF),)),
+        ('owed proof only', ((77, OWED_PROOF),)),
+        ('handed off', ((77, HANDED_OFF),)),
+        ('older owed chief, newer handed off', ((77, OWED_CHIEF), (78, HANDED_OFF))),
+        ('older code, newer handed off', ((77, CODE), (78, HANDED_OFF))),
+        ('records no remainder', ((77, NO_REMAINDER),)),
+    )
+
+    def dispatcher_says_work_remains(self, env, prs):
+        """The real next-dispatchable.sh over the SAME status log and gh stub: True when it lists the ticket as work to do or to ask."""
+        nd = self.b / 'nd'
+        mirror = nd / 'jira-mirror' / 'HIMMEL'
+        mirror.mkdir(parents=True, exist_ok=True)
+        (nd / 'jira-mirror' / 'HIMMEL.versions.tsv').write_text('v1.0.1\tfalse\t\n')
+        (mirror / 'HIMMEL-9848.md').write_text(
+            '---\nkey: "HIMMEL-9848"\ntype: "Task"\nstatus: "In Progress"\nstatusCategory: "x"\npriority: "Medium"\nlabels: []\nfixVersions: []\n'
+            'parent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-9848: parity fixture\n\n## Description\n\n'
+            'Edit scripts/lib/o1.sh.\n\nDoD\n- the row is green\n\nProof\n- a RED row that fails before the change\n')
+        # git-env-ok: the fixture repository's git calls run with every GIT_* name dropped
+        (nd / 'git').mkdir(exist_ok=True)
+        for cmd in (['init', '-q', '-b', 'main'], ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false',
+                                                   '-c', 'core.hooksPath=/dev/null', 'commit', '-q', '--allow-empty', '-m', 'init']):
+            subprocess.run(['git', '-C', str(nd / 'git'), *cmd], check=True, capture_output=True,
+                           env={k: v for k, v in os.environ.items() if not k.startswith('GIT_')})
+        (nd / 'stub.js').write_text("const a = process.argv.slice(2);\nif (a[0] === 'release' && a[1] === 'core-check') "
+                                    "for (const k of a.slice(a.indexOf('--key') + 1)) console.log('NOT-CORE ' + k);\nelse process.exit(2);\n")
+        classify = nd / 'classify'
+        classify.write_text('#!/usr/bin/env bash\nfor k in "$@"; do printf \'%s\\tLOCAL-NATIVE\\tstub\\n\' "$k"; done\n')
+        classify.chmod(0o755)
+        leg = nd / 'HIMMEL-399-N1-live.md'
+        leg.write_text('> **Writes:** none named\n# live\n')
+        (nd / 'fleet.json').write_text(json.dumps({'schema': 1, 'legs': [{'doc': str(leg), 'label': 'N1'}]}))
+        (Path(env['TICKET_STATUS_STATE_DIR']) / 'workers').mkdir(exist_ok=True)
+        run_env = {**os.environ, **env, 'HANDOVER_DIR': str(nd / 'h'), 'HIMMEL_ADMISSIONS_LEDGER': str(nd / 'ledger.jsonl'),
+                   'NEXT_DISPATCH_GIT_DIR': str(nd / 'git'), 'NEXT_DISPATCH_MAIN_REF': 'main', 'NEXT_DISPATCH_MIRROR': str(mirror),
+                   'NEXT_DISPATCH_JIRA_CLI': str(nd / 'stub.js'), 'NEXT_DISPATCH_CLASSIFY_CMD': str(classify), 'NEXT_DISPATCH_BODY_CACHE': 'off'}
+        (nd / 'h').mkdir(exist_ok=True)
+        r = subprocess.run(['bash', str(HERE / 'next-dispatchable.sh'), '--workers-dir', str(Path(env['TICKET_STATUS_STATE_DIR']) / 'workers'),
+                            '--workers-from', str(nd / 'fleet.json')], capture_output=True, text=True, env=run_env, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        rows = [line for line in r.stdout.splitlines() if 'HIMMEL-9848' in line and not line.startswith('#')]
+        return rows, r.stdout
+
+    def test_the_close_decision_and_the_dispatcher_agree_on_the_same_pull_requests(self):
+        for name, prs in self.DISPATCH_CASES:
+            with self.subTest(case=name):
+                env = self.world()
+                (self.live / 'state' / 'status-events.jsonl').write_text('')
+                for pr, text in prs:
+                    self.partial(pr, text)
+                close = self.decide('--check', env=env)
+                rows, out = self.dispatcher_says_work_remains(env, prs)
+                # the dispatcher keeps the ticket as work or a question (a RESUME row that is not routed to proof, an OWED or
+                # NEEDS-CHIEF-NOTE row) unless it routes the remainder to proof (a RESUME row ending in `proof`) or hands it off
+                dispatcher_blocks = any(row.startswith(('OWED ', 'NEEDS-CHIEF-NOTE ')) for row in rows) or \
+                    any(row.startswith('RESUME') and not row.endswith('\tproof') for row in rows)
+                self.assertEqual(close.returncode != 0, dispatcher_blocks, close.stderr + '\n' + out)
+
+
+def setUpModule():
+    # The decision reads the status log and GitHub: never the station's real ones, in any test of this file.
+    global _saved_env, _fixture_home
+    import tempfile
+    _fixture_home = tempfile.mkdtemp(prefix='proof-decision-')
+    stub = Path(_fixture_home) / 'refuse'
+    stub.write_text('#!/bin/sh\nexit 1\n')
+    stub.chmod(0o755)
+    _saved_env = {name: os.environ.get(name) for name in ('HOME', 'TICKET_STATUS_STATE_DIR', 'NEXT_DISPATCH_GH_CMD', 'ND_GH_READ', 'MERGE_ROWS_GH')}
+    os.environ.update(HOME=_fixture_home, TICKET_STATUS_STATE_DIR=_fixture_home, NEXT_DISPATCH_GH_CMD=str(stub), MERGE_ROWS_GH=str(stub))
+    os.environ.pop('ND_GH_READ', None)
+
+
+def tearDownModule():
+    for name, value in _saved_env.items():
+        os.environ.pop(name, None) if value is None else os.environ.__setitem__(name, value)
+    shutil.rmtree(_fixture_home, ignore_errors=True)
+
 
 if __name__ == '__main__':
     unittest.main()
