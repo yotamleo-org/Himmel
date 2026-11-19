@@ -404,6 +404,33 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     digest starts over. The relay takes no lock and sends nothing to a worker;
     the chief keeps every authority write (GO, judge, dispatch, Jira).
 
+    **How long an event waits, and where to read it.** The waiter is one foreground loop. While a
+    sample runs (`tick.sh`, then the usage read, each under `CHIEF_WAIT_TICK_TIMEOUT`, 120 s plus a 5 s
+    kill grace) nothing reads the inbox or the worker documents, so an event that lands mid-sample is
+    relayed only after the sample ends, plus one poll (0.2 s in stream mode). The code allows up to about
+    250 s of that wait (two bounded reads), plus up to 245 s for each event queued ahead of it (one
+    handler call per pass), plus, with the `auto_go` flag off, a READY's own checks (165 + 30 + 90 s and a
+    5 s grace each). What a real sample takes is the host's: a station's recorded per-tick log (62 ticks) shows
+    a median of about 36 s of wall time and a maximum of 104 s. A tick starts every 180 s counted from the
+    start of the previous one, so a quiet loop answers within a poll and a busy one within the rest of the
+    sample in progress. The master plan's 30-second bar is the bar of the stubbed 50-event test, where
+    the tick is instant; it is not a promise about a real wave. The waiter records the real numbers:
+    every `worker-event` call appends one line to `<inbox>.wait.relaylog`
+    (`start=<epoch> label=<l> marker=<m> pending=<s> handler=<s> rc=<rc>`), also for a refused attempt
+    that will be retried; an idle pass writes nothing. `pending=` counts from the moment this waiter
+    process first saw the event, so it does not include the time the event sat unseen while a sample held
+    the loop (a waiter restart starts it again); read that part from the sample's `wall=` in
+    `<inbox>.wait.ticklog`.
+
+    **A successor replays the newest READY per worker.** The cursors, the handled set and the snapshots
+    are per inbox, so a chief that takes over on a new inbox meets every worker as new and relays that
+    worker's newest READY once more. That is a repeated message and one more `AUTO-GO` bullet, never a
+    second GO: `auto-go.sh` takes `.auto-go-<pr>.<head>.lock`, and when `.locks/go/<pr>.<head>` exists it
+    returns the recorded `GO-SENT` without writing or sending anything, or fails closed (`fail 9`, an
+    ESCALATE) when no audit row matches. With `auto_go` off, `<inbox>.wait.readywoke` is per inbox as
+    well, so the successor is woken once more for a READY its predecessor already woke for; a GO still
+    happens only by the chief's hand.
+
     **A READY wakes you once, already checked**. Armed with
     `--workers-from` and the `auto_go` flag off, a worker whose newest marker bullet
     is `READY <pr> <head40> GREEN` wakes you with one line:

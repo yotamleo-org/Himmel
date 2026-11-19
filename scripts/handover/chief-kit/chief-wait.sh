@@ -264,8 +264,9 @@
 #                               the re-arm stays quiet until a sample succeeds. Look-only
 #                               (8934): queued in the digest, a wake only with
 #                               HOUSEKEEPING_DIGEST_SECS=0. The usual step is
-#                               tick-timeout:120s under host load (tick.sh costs about 62 s
-#                               of CPU), not a broken monitor.
+#                               tick-timeout:120s under host load (the recorded ticks took up to 104 s
+#                               of wall time and about 17 CPU-s at the median; 62 CPU-s was
+#                               the figure before the refreshes were detached), not a broken monitor.
 #   WAKE worker-silent <worker> signal=<capped-waker|succession-partial> [silent=<n>m]
 #                               a worker went silent. capped-waker: with --workers-from, the
 #                               tick lists wakerstate=<worker>:capped (its bus mail went unread) and the
@@ -372,6 +373,11 @@
 #   <inbox>.wait.r0      the bullets the relay already handled or woke for
 #                        (`<label> <marker> <cksum>`); <inbox>.wait.le-<label> holds
 #                        worker-event's last output for that worker, tokens scrubbed.
+#   <inbox>.wait.relaylog  one line per worker-event call, whether it handled, refused or woke:
+#                        `start=<epoch> label=<l> marker=<m> pending=<s> handler=<s> rc=<rc>`. pending= is how
+#                        long this waiter process had known the event when the call began (a waiter restart
+#                        starts it again; time spent unseen while a sample held the loop is not in it), handler=
+#                        how long worker-event ran. An idle pass writes nothing. Never trimmed.
 #   <inbox>.wait.ready   `<label><TAB><line>`, the last READY bullet handed on to worker-event.
 #   <inbox>.wait.readywoke  with auto_go off: `<pr> <head40>`, each READY already woken for;
 #                        <inbox>.wait.ready-<pr> holds that wake's checks, tokens scrubbed.
@@ -1952,8 +1958,29 @@ ready_advance() { # <label> <line>: the cursor moves once the bullet was handed 
     { awk -F'\t' -v l="$1" '$1 != l' "$ready_file" 2>/dev/null; printf '%s\t%s\n' "$1" "$2"; } | atomic_write "$ready_file"
 }
 
+r0_seen=""
+r0_stamp_seen() { # <candidate lines>: when this process first saw each offered event
+    local l m n now
+    [ -n "$1" ] || return 0
+    now="$(date +%s%N)"  # gnu-ok: Linux-only kit (%N)
+    while read -r l m n; do
+        [ -n "$l" ] && [ "$l" != WARN ] || continue
+        case $'\n'"$r0_seen" in *$'\n'"$l $m $n "*) ;; *) r0_seen="${r0_seen:+$r0_seen$'\n'}$l $m $n $now" ;; esac
+    done <<EOF
+$1
+EOF
+}
+r0_log_attempt() { # <label> <marker> <event line> <call start ns> <call end ns> <rc>: one relaylog line per worker-event call
+    local first pend wall
+    first="$(printf '%s' "$r0_seen" | awk -v k="$1 $2 $3 " 'index($0, k) == 1 { print $NF; exit }')"
+    pend=$(( ($4 - ${first:-$4}) / 1000000 )); wall=$(( ($5 - $4) / 10000000 ))
+    printf 'start=%s label=%s marker=%s pending=%d.%02d handler=%d.%02d rc=%s\n' "$(( $4 / 1000000000 ))" "$1" "$2" \
+        "$(( pend / 1000 ))" "$(( pend % 1000 / 10 ))" "$(( wall / 100 ))" "$(( wall % 100 ))" "$6" >> "$inbox.wait.relaylog" 2>/dev/null || true  # swallow-ok: a log that cannot be written loses its line, never the relay
+    [ "$6" -ne 0 ] || r0_seen="$(printf '%s' "$r0_seen" | awk -v k="$1 $2 $3 " 'index($0, k) != 1')"
+}
+
 r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
-    local cands label marker ldoc bullet sum line stem out rc outf what pr wake_line pending_slow pending_to pending_rc
+    local cands label marker ldoc bullet sum line stem out rc outf what pr wake_line pending_slow pending_to pending_rc h0 h1
     r0_handled=""
     [ -n "$console_doc" ] && [ -n "$legs_from" ] || return 1
     # Prefer WRAPPED once per label, then start after the last retryable worker.
@@ -2007,6 +2034,7 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
         # a READY past its cursor comes after any WRAPPED or MERGED worker
         if ready_pick; then cands="${cands:+$cands$'\n'}$ready_label READY"; fi
     fi
+    r0_stamp_seen "$cands"
     local r0_warned="" r0_warning_lines=""
     r0_attempted=""
     while read -r label marker event_line; do
@@ -2048,7 +2076,10 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
         heartbeat sampling
         # Allow a slow close and refresh, but stay below heartbeat consumers' 300s
         # floor. Capture the rc: an empty result alone does not prove a timeout.
+        h0="$(date +%s%N)"  # gnu-ok: Linux-only kit (%N)
         out="$(printf '%s\n' "$line" | timeout -k 5 240 bash "$leg_event_cmd" --doc "$console_doc" --fleet "$legs_from" - 2>&1 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
+        h1="$(date +%s%N)"  # gnu-ok: Linux-only kit (%N)
+        r0_log_attempt "$label" "$marker" "$event_line" "$h0" "$h1" "$rc"
         out="$(printf '%s\n' "$out" | r0_scrub)"
         if [ "$rc" -ne 0 ] && ! [[ $out =~ [^[:space:]] ]]; then
             case "$rc" in
