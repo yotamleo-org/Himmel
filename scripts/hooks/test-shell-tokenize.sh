@@ -141,6 +141,7 @@ for body in '\c\\n' '\c\\x3b' '\c\\073' '\c\\;'; do
     st_expand empty "cat \$'$body'"; check "st_expand empty refuses [$body], ST_EXP empty" "$?:${#ST_EXP}" "1:0"
     st_expand text "echo \$(cat \$'$body')"; check "st_expand refuses [$body] inside a substitution" "$?:${#ST_EXP}" "1:0"
     st_expand text "cat <<\$'$body'"; check "st_expand refuses [$body] as a heredoc delimiter" "$?:${#ST_EXP}" "1:0"
+    st_expand text "echo \${(pj:$body:)V}"; check "st_expand refuses [$body] in a zsh (pj::) argument" "$?:${#ST_EXP}" "1:0"
     st_expand text "echo \${V:-x} \$'$body'"; check "st_expand refuses [$body] beside a parameter expansion" "$?:${#ST_EXP}" "1:0"
 done
 st_expand text "cat \$'${bs}x41'"; check "st_expand still rewrites a plain dollar-quote word" "$?:$ST_EXP" "0:cat 'A'"
