@@ -270,7 +270,9 @@ _st_emit() {
 # u and U with 1-4 or 1-8 hex digits, c and a control letter. Any other
 # backslash pair, an x, u or U with no digit, and a u or U above ASCII stay as
 # written: the shell's own result there depends on the locale, and no byte of
-# it is ASCII. NUL ends the word.
+# it is ASCII. NUL ends the word. u and U decode on every bash although 3.2
+# itself keeps them as written: zsh and bash 4.2+ decode them, so the guard
+# reads the stricter word.
 # shellcheck disable=SC1003,SC2034 # literal \ bytes; _ST_DEC is read by the caller
 _st_ansic_walk() {
     local b=$1 n=${#1} i=0 c k v d ch max

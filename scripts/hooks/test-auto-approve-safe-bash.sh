@@ -1897,16 +1897,19 @@ assert "cd src CR && du -sh never ALLOW"           PASS  "$(decide "$(j_bash "cd
 assert "cd src TAB && grep -r never ALLOW"         PASS  "$(decide "$(j_bash "cd src$(printf '\t') && grep -r x .")")"
 assert "cd non-ASCII && grep -r never ALLOW"       PASS  "$(decide "$(j_bash "cd sr$(printf '\303\251') && grep -r x .")")"
 # The same non-ASCII row under a UTF-8 user locale, the one bash 3.2 (macOS) widens a bracket range under.
+# A hook that did not run reads RC<n>, never PASS, and the ASCII control rows show the hook decides here.
 decide_utf8() {
-    local out
-    out=$(printf '%s' "$1" | LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 bash "$HOOK" 2>/dev/null)
-    if grepq "$out" '"permissionDecision":"allow"'; then echo "ALLOW"; else echo "PASS"; fi
+    local out rc
+    out=$(printf '%s' "$1" | LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 bash "$HOOK" 2>/dev/null); rc=$?
+    if [ "$rc" != 0 ]; then echo "RC$rc"; elif grepq "$out" '"permissionDecision":"allow"'; then echo "ALLOW"; else echo "PASS"; fi
 }
 decide_utf8_lang_only() {
-    local out
-    out=$(printf '%s' "$1" | env -u LC_ALL LANG=en_US.UTF-8 bash "$HOOK" 2>/dev/null)
-    if grepq "$out" '"permissionDecision":"allow"'; then echo "ALLOW"; else echo "PASS"; fi
+    local out rc
+    out=$(printf '%s' "$1" | env -u LC_ALL LANG=en_US.UTF-8 bash "$HOOK" 2>/dev/null); rc=$?
+    if [ "$rc" != 0 ]; then echo "RC$rc"; elif grepq "$out" '"permissionDecision":"allow"'; then echo "ALLOW"; else echo "PASS"; fi
 }
+assert "ctl: cd src && grep -r x . ALLOW (LC_ALL=en_US.UTF-8)" ALLOW "$(decide_utf8 "$(j_bash "cd src && grep -r x .")")"
+assert "ctl: cd src && grep -r x . ALLOW (LANG=en_US.UTF-8 only)" ALLOW "$(decide_utf8_lang_only "$(j_bash "cd src && grep -r x .")")"
 assert "cd non-ASCII && grep -r never ALLOW (LC_ALL=en_US.UTF-8)" PASS "$(decide_utf8 "$(j_bash "cd sr$(printf '\303\251') && grep -r x .")")"
 assert "cd non-ASCII && grep -r never ALLOW (LANG=en_US.UTF-8 only)" PASS "$(decide_utf8_lang_only "$(j_bash "cd sr$(printf '\303\251') && grep -r x .")")"
 assert "cd 'src' quoted && grep -r never ALLOW"    PASS  "$(decide "$(j_bash "cd 'src' && grep -r x .")")"
