@@ -379,8 +379,8 @@ export async function main(): Promise<void> {
   });
   await poller.recover();
   const guard = (fn: () => Promise<void>) => () => fn().catch(e => { console.error(`peer-bridge: ${(e as Error).message}`); process.exit(1); });
-  setInterval(guard(() => poller.tick()), 30_000);
-  setInterval(guard(() => poller.drainSpool()), 1_000);
+  setInterval(guard(() => poller.tick()), 30_000); // t13b-ok: the poller's own deadline tick
+  setInterval(guard(() => poller.drainSpool()), 1_000); // t13b-ok: the poller's own spool drain
 
   while (!stop) {
     try {

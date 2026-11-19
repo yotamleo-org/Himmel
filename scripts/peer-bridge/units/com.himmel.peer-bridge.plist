@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- launchd agent for the peer bridge poller. Install: replace @HIMMEL_ROOT@ and
      @HOME@ with absolute paths, write the result to ~/Library/LaunchAgents/, then
-     launchctl bootstrap gui/$(id -u) <that file>. -->
+     load it as docs/internals/peer-bridge.md describes. -->
 <plist version="1.0">
 <dict>
     <key>Label</key>
