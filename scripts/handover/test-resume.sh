@@ -163,7 +163,6 @@ printf 'HANDOVER_DIR=%s\n' "$root" > "$cache/.env"
 err="$(run_env 2>&1 >/dev/null)"
 hasnt "env matches: no warning" "$err" "exported HANDOVER_DIR"
 
-# A registry path reached through a symlink matches the repo root spelled physically.
 mkdir -p "$tmp/real-repo"; ln -s "$tmp/real-repo" "$tmp/link-repo"
 reg_ln="$tmp/registry-symlink.json"
 printf '{ "repos": { "himmel": { "path": "%s", "user": "yotamleo", "jira_project": "HIMMEL" } } }\n' "$tmp/link-repo" > "$reg_ln"

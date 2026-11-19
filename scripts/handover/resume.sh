@@ -73,7 +73,7 @@ meta="$(REG="$reg" RR="$rr_canon" node -e '
   const repos=(j&&j.repos)||{};
   for(const k of Object.keys(repos)){
     let rp=String(repos[k].path||"");
-    try{ rp=fs.realpathSync(rp); }catch(err){ /* an unresolvable registry path is compared as written */ }
+    try{ rp=fs.realpathSync(rp); }catch(err){}
     const p=rp.replace(/\\/g,"/").replace(/\/+$/,"").toLowerCase();
     if(p===e.RR){ process.stdout.write([repos[k].user||"",repos[k].bucket_name||k,repos[k].jira_project||""].join("\t")); process.exit(0); }
   }
