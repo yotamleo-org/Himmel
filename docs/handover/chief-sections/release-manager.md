@@ -23,12 +23,19 @@ release is declared (`jira release state <R>` prints a status other than
 - **A request for operator work carries the operator's words.** An INTAKE or
   REVERSION into a version, for an open ticket labelled `operator-directed` or of
   priority High or Highest, is refused before it is filed unless it names the
-  decision and the operator's exact words in it:
+  decision and the operator's exact words in it, or a record already on file covers
+  it (next paragraph):
   ```text
-  release request: <KEY> is operator-directed and High; a request that places it needs a record of the operator's words.
+  release request: <KEY> is operator-directed and High; a request that places it needs a record of the operator's words: cite one on file that already names <KEY> and exactly this placement (a words record newer than the key's last ruling is cited with no --decision), or record them.
     jira release request <R> --verb INTAKE --key <KEY> --from backlog --to <v> --why "<why>" --decision <n> --words "<the operator's exact words>"
     (<n>: specs/decisions/verbatim-decision-<n>-*.txt)
   ```
+  A gated request files without words only when one words-checked operator decision
+  already on record names that key and that exact placement; it must be the newest
+  decision on the key among those for the request's versions, for no version, or
+  keeping the key in the backlog (two at the same instant refuse), newer than every
+  ruling on the key, and the operator and rulings chains must verify to their end.
+  Otherwise the words are required as before, and a work permission never counts.
   `--decision <n>` must match exactly one `verbatim-decision-<n>-*.txt` in the
   bucket's `specs/decisions`. `--words` must occur byte for byte in one paragraph
   of that file, never in a paragraph that opens with a gloss word (`Read`,
@@ -44,7 +51,7 @@ release is declared (`jira release state <R>` prints a status other than
   the new words, `jira release withdraw <R> --req <id> --reason "<why>"` it first,
   then run the request again. The
   gate reads the ticket from the mirror, else from one live read; a ticket neither
-  can read is refused with both fixes (`jira mirror`, or `--decision`). `jira
+  can read is refused, unless a record covers it as above, with both fixes (`jira mirror`, or `--decision`). `jira
   create`, `jira move` and the MCP `create` tool take the same `--decision` and
   `--words` and check them before anything is filed. A backlog target, a closed
   ticket, a request filed inside a worker you spawned, the close-time Done fold,
@@ -78,7 +85,8 @@ release is declared (`jira release state <R>` prints a status other than
   `--required-by <new-parent>`. These append the changed evidence through the
   normal request writer; they do not admit the child or close the parent.
 
-  An unfinished move marked `blocked` belongs to the chief. Read its observed
+  An unfinished move marked `blocked` belongs to the chief (the tick and the waiter
+  tell you: see "A blocked ruling wakes you" below). Read its observed
   membership and actual finish/restore remedy before running another batch;
   `rm-run` alone cannot resolve conflicting membership. A read-only release
   directory or unavailable repair-state lock is an explicit read/attempt failure,
@@ -173,11 +181,34 @@ release is declared (`jira release state <R>` prints a status other than
   reused pid keeps the lease held. A replay `rm-run` cannot finish is retried at most
   once per that interval, never on every tick, and `replay=<n>` stays on the line until
   `jira release state <R> --json` lists no `unfinished_rulings` for it; nothing
-  wakes the chief for it today, so read that list when the field lingers. The tick
-  never launches for a `status: blocked` move (not counted: the chief repairs it, see
-  `observed` and `next`), for claimed-only work, behind a held lease whose owner is not
+  wakes the chief for a replay that never finishes, so read that list when
+  `replay=<n>` lingers on the line. The tick never launches for a `status: blocked`
+  move (not counted in `replay=<n>`: it wakes the chief instead, see the next
+  bullet), for claimed-only work, behind a held lease whose owner is not
   proven gone, or on a state that is not OK, and it writes no release state (the
   `rm-run` it starts does).
+- **A blocked ruling wakes you.** An unfinished move with `status: blocked` is
+  yours: `rm-run` never repairs one and the replay launch above never counts it. From
+  the same state read as `rm-queue=`, the tick prints `rm-blocked=<n>:<KEY>@<ruling>,...`
+  after `rm-refused=`: n counts the blocked rulings, the pairs are sorted, and the
+  field is absent when none is blocked or the chief doc declares no release. It reads
+  `?` when the tick cannot tell: the state read failed or is not OK, the state's
+  mirror input is `UNKNOWN` (the engine then lists every unfinished ruling as
+  `replay`, a blocked one too), or `unfinished_rulings` is not a list of rows that
+  each carry a key and a ruling id. The field is in the waiter's key, so it wakes you
+  once for a set (a `WAKE tick` naming `rm-blocked` in `changed=`, the tick line
+  follows) and again only when the set changes: a ruling joins, leaves or is swapped
+  for another. A `?` keeps the last known set and wakes nobody, so the same set coming
+  back after one wakes nobody and a different set wakes once; a set that empties
+  wakes nobody. Nothing reminds you while a set stands, and nothing stores it: the
+  tick derives it from the state on every tick. A set already on the tick line when a
+  waiter has no saved key, or a saved key taken under different tick args or manifest
+  worker set, is that waiter's silent baseline, so a chief that starts or takes over
+  reads `rm-blocked=` on the tick line. To act, read `jira release state <R> --json`,
+  find each listed ruling under `unfinished_rulings`, and follow its `observed` and
+  `next` (finish or restore the move with `jira fix-version`); then
+  `jira release rm-run <R>` writes the row and receipt once. A ruling stuck in
+  `replay` still wakes nobody.
 - **Version drift is repaired by the tick, not alerted.** Three fields follow
   `rm-queue=`, each elided when empty, none in the wake key, none a message.
   `held=<n>:<sig8>` is the count of keys the repair cannot place on its own and

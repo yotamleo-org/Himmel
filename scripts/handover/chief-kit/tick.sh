@@ -195,6 +195,13 @@ mirror does not hold) and release-state-<doc stem>.json ({ts, status, words_reco
 $TICK_STATE_DIR; any other read deletes both. An OK read whose mirror input is UNKNOWN prints no field, keeps the
 tsv and deletes the json. Not in chief-wait's action key: chief-wait reads the tsv (WAKE rm-refused, rm-refused-digest).
 
+rm-blocked=<n>:<KEY>@<ruling>,... follows rm-refused= and is ABSENT unless the same OK state read lists unfinished_rulings
+with status blocked (a move no rm-run repairs; each row's observed and next say what to do: `jira release state <R> --json`).
+Sorted, so an unchanged set prints the same text on every tick; rm-blocked=? whenever the tick cannot tell (unknown, never an
+empty set): the state read is not OK, the state's mirror input is UNKNOWN (the engine then lists every ruling as replay), or
+unfinished_rulings is not a list of rows that each carry a key and a ruling id. It is in chief-wait's action key (wake-rules.tsv):
+one wake for a set, another only when the set changes, and a ? keeps the last known set.
+
 held=<n>:<sig8> unfiled=<n> repair=off:<why> follow rm-queue= and are ABSENT unless set: held= is
 the version repair's held key count and the first 8 hex of its held signature, unfiled= the signed records no
 request carries yet, each elided at zero, all read from release/<R>/repair-state.json, the one record the jira CLI
@@ -3396,6 +3403,29 @@ print(n, age, lease, d.get("status") or "UNKNOWN", len(r.get("claimed", [])), re
     esac
 fi
 
+# rm-blocked=<n>:<KEY>@<ruling>,...: the unfinished rulings with status blocked, a move only a person repairs (no rm-run does). Sorted, so an
+# unchanged set prints the same text on every tick; absent when none; ? when the tick cannot tell: the state read is not OK, the mirror input is
+# UNKNOWN (the engine then lists every ruling as replay) or unfinished_rulings is not a list of rows with a key and a ruling id. A key row of wake-rules.tsv.
+rm_blocked=""
+if [ -n "$rm_rel" ]; then
+    rm_blocked='?'
+    if [ "${rm_status:-}" = OK ]; then
+        # shellcheck disable=SC2016  # the python program is single-quoted on purpose
+        rm_blocked="$(printf '%s' "$rm_json" | python3 -I -c '
+import json, re, sys
+d = json.load(sys.stdin)
+u = d.get("unfinished_rulings", [])
+if (d.get("inputs") or {}).get("mirror") == "UNKNOWN" or not isinstance(u, list) or not all(isinstance(r, dict) and isinstance(r.get("key"), str) and r["key"] and isinstance(r.get("ruling"), str) and r["ruling"] for r in u):
+    print("?")
+    sys.exit(0)
+clean = lambda s: re.sub(r"[^A-Za-z0-9._@-]", "_", s)
+rows = sorted({"%s@%s" % (clean(r["key"]), clean(r["ruling"])) for r in u if r.get("status") == "blocked"})
+if rows:
+    print("%d:%s" % (len(rows), ",".join(rows)))
+' 2>/dev/null)" || rm_blocked='?'  # swallow-ok: an unparseable state is unknown, never an empty set
+    fi
+fi
+
 rm_refused=""
 rf_stem="${console_doc##*/}"
 rf_stem="${rf_stem%.md}"
@@ -4956,6 +4986,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'version leaks: %s\n' "$leaks_summary"
     printf 'rm-queue: %s\n' "$rm_queue"
     [ -z "$rm_refused" ] || printf 'rm-refused: %s\n' "$rm_refused"
+    [ -z "$rm_blocked" ] || printf 'rm-blocked: %s\n' "$rm_blocked"
     [ -z "$held_summary" ] || printf 'repair held: %s\n' "$held_summary"
     [ -z "$unfiled_summary" ] || printf 'repair unfiled: %s\n' "$unfiled_summary"
     [ -z "$repair_summary" ] || printf 'repair: %s\n' "$repair_summary"
@@ -5084,6 +5115,7 @@ else
     compact_field leaks "$leaks_summary"
     compact_field rm-queue "$rm_queue"
     compact_field rm-refused "$rm_refused"
+    compact_field rm-blocked "$rm_blocked"
     compact_field held "$held_summary"
     compact_field unfiled "$unfiled_summary"
     compact_field repair "$repair_summary"

@@ -90,6 +90,13 @@ Per-field policy is `chief-wait.sh --rules` (`wake-rules.tsv`): station BEHIND
 entry and 60-minute reminders, CLI repair-off states with the persisted remedy,
 RM queue older than twice its launch gap, and `mon-down` once per down streak.
 Open-count/residual-cap and persistent underfill retain their existing semantics.
+`rm-blocked=` is a plain key field: one wake per distinct set of blocked unfinished
+rulings, `?` keeps the last known set, and the wake is the shared `WAKE tick` line
+naming it in `changed=` with the tick line after it. Like every key field it is
+silent on a waiter's baseline: with no saved key, or a saved key taken under different
+tick args or manifest worker set, the first sample only records what is on the line,
+so a chief that starts or takes over reads the tick line for `rm-blocked=` (the
+release-manager section, "A blocked ruling wakes you").
 The detailed one-shot behavior below remains the default without `--stream`.
 In one-shot mode a printed `WAKE owed-actions` also leaves its notification
 open: after receipt the chief acknowledges with `owe.sh close --bucket <bucket>
@@ -393,7 +400,29 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     subtree alive) stays retryable. The next sample starts after that worker,
     using an atomically saved label in `<inbox>.wait.r0-next` even after a
     waiter re-arm; a missing or stale label leaves plain candidate order.
-    A standing refusal cannot starve later workers. Anything else wakes you once per
+    A standing refusal cannot starve later workers. In stream mode it is also paced, so a
+    stacked series waiting on a live worker does not read GitHub every few seconds: each refusal
+    in a row of the same cleanup event holds that event back longer, the retry window
+    (`CHIEF_WAIT_SERVICE_RETRY_SEC`, 5 s) times 1, 2, 6, 24 and 60, that is 5, 10, 30, 120, then
+    300 s. The relay owns the count, in `<inbox>.wait.le-<label>.tries` (`<refusals in a row>
+    <checksum of the bullet being retried> <checksum of the bullet already woken for>`); the
+    collector only reads it. The count belongs to the event, not to the document: a new or changed
+    cleanup event (another bullet checksum, for example a WRAPPED after a MERGED) starts the
+    ladder over, while the lines a live worker keeps appending do not, so a refusal that persists
+    reaches the top step however busy the document is. A restarted waiter reads the same file and
+    keeps its step. A file written by the earlier format (count, mtime, size, woke) reads as another
+    event, so after an upgrade an event already woken before it is woken once more, at its next
+    fifth refusal. The refusal that reaches the top step wakes you once per bullet with
+    `WAKE worker-event ESCALATE cleanup-still-refused worker=<label> event=<marker> tries=<n>
+    next-try-in=<s>s refusal=<its first line> out=<file>`, and the waiter goes on trying at the
+    top pace until the cleanup succeeds or the event changes. A refusal record dated in the
+    future (a clock stepped back) is offered, not held. The ladder only spaces the attempts: it
+    never closes, wraps, reaps or frees anything and never records the bullet as
+    handled. `wrap-merged.sh` also exits 6 or 7 when its own log or board step fails; those run
+    after the window is closed and the worker retired, so asking again would find nothing and
+    the failure would be lost. They wake at once instead, with `wrap-merged: step log failed` or
+    `step board failed` in the line: finish by hand (`wrapping.md`). A refused close inside the
+    wrap (`step close-wrapped-worker failed`) stays retryable. Anything else wakes you once per
     bullet with `WAKE worker-event <its first non-blank line> rc=<n> out=<file>` plus the
     tick line. A silent timeout writes `ESCALATE relay-timeout <label> rc=<n>
     limit=240s` to both the wake and the out file; another silent failure names
@@ -403,6 +432,49 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     when the relay absorbed anything (labels and PR numbers only), and the
     digest starts over. The relay takes no lock and sends nothing to a worker;
     the chief keeps every authority write (GO, judge, dispatch, Jira).
+
+    **How long an event waits, and where to read it.** The waiter is one foreground loop. While a
+    sample runs nothing reads the inbox or the worker documents, so an event that lands mid-sample
+    is relayed only when the loop is back at its service pass. **The bound stated here covers the
+    sample alone**: its two bounded reads (`tick.sh`, then the usage read, each under
+    `CHIEF_WAIT_TICK_TIMEOUT`, 120 s plus a 5 s kill grace) allow about 250 s. It leaves out three
+    things that add to a wait. First, what the loop does after a sample before it serves events
+    again: the focus rebuild after every sample (a status read bounded at 60 s plus a 2 s grace),
+    the status sweep when it is due (every 15 minutes by default, 60 s plus a grace, and a second
+    focus read), and the chain of wake checks that follows, each under its own bound if it has one
+    and several of them reading GitHub or Jira; with the `auto_go` flag off that includes a READY's
+    own checks (165 + 30 + 90 s and a 5 s grace each). Second, the events queued ahead: one handler
+    call per pass, each up to 245 s. Third, the ticks that interleave between queued events: a due
+    tick takes the next turn after a handler call, so a queue can meet a full sample after each
+    handler. None of these is added up here, so 250 s is the sample's share of a wait, not the
+    whole path. Once the loop is back at its service pass an event waits one poll: 0.2 s while the
+    loop is busy, and up to one idle interval (`CHIEF_WAIT_IDLE_POLL_SEC`, 1 s, never below the
+    poll) after `CHIEF_WAIT_IDLE_PASSES` (10) passes in a row that offered nothing, attempted
+    nothing and ran no tick. The first pass that offers an event, attempts a relay or runs a tick
+    goes back to the poll at once; the backoff is in stream mode only and only paces the loop. What a real sample takes is the
+    host's: a station's recorded per-tick log (62 ticks) shows a median of about 36 s of wall time
+    and a maximum of 104 s. A tick starts every 180 s counted from the start of the previous one,
+    so a busy loop answers within a poll, a loop that has been quiet for ten passes within one idle
+    interval plus the pass (and starts a tick that fell due within the same), and a loop inside a
+    sample after the rest of the sample in progress.
+    The master plan's 30-second bar is the bar of the stubbed 50-event test, where the tick is
+    instant; it is not a promise about a real wave. The waiter records the real numbers: every
+    `worker-event` call appends one line to `<inbox>.wait.relaylog`
+    (`start=<epoch> label=<l> marker=<m> pending=<s> handler=<s> rc=<rc>`), also for a refused
+    attempt that will be retried; an idle pass writes nothing, and past 1 MiB the file is renamed
+    to `<inbox>.wait.relaylog.1`, replacing the older copy. `pending=` counts from the moment
+    this waiter process first saw the event, so it does not include the time the event sat unseen
+    while a sample held the loop (a waiter restart starts it again); read that part from the
+    sample's `wall=` in `<inbox>.wait.ticklog`.
+
+    **A successor replays the newest READY per worker.** The cursors, the handled set and the snapshots
+    are per inbox, so a chief that takes over on a new inbox meets every worker as new and relays that
+    worker's newest READY once more. That is a repeated message and one more `AUTO-GO` bullet, never a
+    second GO: `auto-go.sh` takes `.auto-go-<pr>.<head>.lock`, and when `.locks/go/<pr>.<head>` exists it
+    returns the recorded `GO-SENT` without writing or sending anything, or fails closed (`fail 9`, an
+    ESCALATE) when no audit row matches. With `auto_go` off, `<inbox>.wait.readywoke` is per inbox as
+    well, so the successor is woken once more for a READY its predecessor already woke for; a GO still
+    happens only by the chief's hand.
 
     **A READY wakes you once, already checked**. Armed with
     `--workers-from` and the `auto_go` flag off, a worker whose newest marker bullet

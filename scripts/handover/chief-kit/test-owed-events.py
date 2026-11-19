@@ -66,6 +66,83 @@ class DueEvents(unittest.TestCase):
         self.assertEqual(len(result['reminders']), 1)
         self.assertEqual(result['operator_digest'], [])
 
+    def owed_step(self, text, actor, due='2026-11-16'):
+        return self.owe('add', '--chief', 'old-chief', '--kind', 'step', '--key', 'HIMMEL-10210', '--text', text,
+                        '--metadata', json.dumps({'actor': actor, 'action': 'next-step', 'due': due,
+                                                  'capability': actor + ' capability', 'wake': 'when due'}))
+
+    def step_due(self):
+        return [r for r in self.rows() if r.get('event') == 'step-due']
+
+    def settle_notification(self, step, expect_pending):
+        """Evaluate three times with nothing changed: no new notification row, and the unacknowledged one stays pending."""
+        before = len(self.rows())
+        for _ in range(3):
+            result = self.run_events()
+            self.assertEqual(result['pending'], expect_pending, 'evaluation with step ' + step + ' unchanged')
+            self.assertEqual(len(self.rows()), before, 'no new row for step ' + step)
+        return before
+
+    def test_an_overdue_step_notifies_once_and_acknowledgement_silences_it(self):
+        step = self.owed_step('run the accepted action', 'worker')
+        first = self.run_events()
+        notes = self.step_due()
+        self.assertEqual(len(notes), 1, 'an overdue step notifies once')
+        self.assertEqual((notes[0]['source_id'], first['pending'], first['stale_ids']), (step, [notes[0]['id']], [step]))
+        # NOT acknowledged: no second notification row, but the one notification stays pending on every evaluation (the consumer's
+        # re-wake interval, not this projection, decides how often it is delivered again)
+        self.settle_notification(step, [notes[0]['id']])
+        self.assertEqual(len(self.step_due()), 1)
+        # acknowledged: the same unchanged step is silent on every later evaluation
+        self.owe('close', '--id', notes[0]['id'], '--key', 'delivered')
+        for _ in range(3):
+            result = self.run_events()
+            self.assertEqual((result['pending'], result['stale_ids']), ([], []))
+        self.assertEqual(len(self.step_due()), 1)
+        self.assertEqual(len(self.rows()), 2)
+
+    def test_a_changed_owner_or_action_notifies_exactly_once_each(self):
+        step = self.owed_step('run the accepted action', 'worker')
+        self.run_events()
+        first = self.step_due()[0]
+        self.owe('close', '--id', first['id'], '--key', 'delivered')
+        self.settle_notification(step, [])
+        # the owed ledger cannot edit a row: a changed owner is a new row that replaces the old one
+        self.owe('close', '--id', step, '--key', 'HIMMEL-10210')
+        owner = self.owed_step('run the accepted action', 'proof')
+        result = self.run_events()
+        notes = self.step_due()
+        self.assertEqual(len(notes), 2, 'a changed owner produces exactly one new notification')
+        self.assertEqual((notes[1]['source_id'], result['pending']), (owner, [notes[1]['id']]))
+        self.settle_notification(owner, [notes[1]['id']])  # repeated evaluations in between add none
+        self.assertEqual(len(self.step_due()), 2)
+        self.owe('close', '--id', notes[1]['id'], '--key', 'delivered')
+        self.settle_notification(owner, [])
+        # a changed action is a new row too
+        self.owe('close', '--id', owner, '--key', 'HIMMEL-10210')
+        action = self.owed_step('run the replacement action', 'proof')
+        result = self.run_events()
+        notes = self.step_due()
+        self.assertEqual(len(notes), 3, 'a changed action produces exactly one new notification')
+        self.assertEqual((notes[2]['source_id'], result['pending']), (action, [notes[2]['id']]))
+        self.settle_notification(action, [notes[2]['id']])
+        self.assertEqual(len(self.step_due()), 3)
+        self.owe('close', '--id', notes[2]['id'], '--key', 'delivered')
+        self.settle_notification(action, [])
+        self.assertEqual(len(self.step_due()), 3)
+
+    def test_a_replacement_beside_an_acknowledged_old_row_notifies_only_the_new_row(self):
+        old = self.owed_step('run the accepted action', 'worker')
+        self.run_events()
+        self.owe('close', '--id', self.step_due()[0]['id'], '--key', 'delivered')
+        new = self.owed_step('run the accepted action', 'chief')  # the old row is left open and overdue
+        result = self.run_events()
+        notes = self.step_due()
+        self.assertEqual([n['source_id'] for n in notes], [old, new])
+        self.assertEqual(result['pending'], [notes[1]['id']])
+        self.assertEqual(result['stale_ids'], [new])  # the acknowledged old row is silent, though it stays open and overdue
+        self.settle_notification(new, [notes[1]['id']])
+
 
 if __name__ == '__main__':
     unittest.main()

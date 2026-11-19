@@ -534,6 +534,15 @@ case "$line" in
 esac
 '''
 
+# A worker-event stand-in whose cleanup answers with the text in TEST_ROOT/refusal and rc 10.
+REFUSAL_EVENT = r'''line=$(cat)
+echo "$(date +%s.%N) $line" >> "$TEST_ROOT/events"
+case "$line" in
+*\ READY\ *) echo 'HANDLED auto-go'; exit 0;;
+*) cat "$TEST_ROOT/refusal"; exit 10;;
+esac
+'''
+
 
 class StackedWorker(StreamFixture):
     """Stacked-series and returning-worker service rows, with auto_go ON (the production setting of the relay)."""
@@ -660,19 +669,169 @@ class StackedWorker(StreamFixture):
         self.assertEqual(self.audit(), [f'GO-SENT 1 {self.H[1]}', f'GO-SENT 2 {self.H[2]}'])
         self.assertTrue(torn.exists())
 
-    def test_a_refused_cleanup_keeps_its_flat_retry_pace_until_a_newer_ready(self):
-        # Pins the pace as it is, not as it should be: one attempt per retry window, no growth, no cap.
+    def test_a_refused_cleanup_is_retried_on_a_growing_ladder_and_holds_at_the_top(self):
+        # Replaces the row that pinned the flat pace. Steps are the retry window times 1, 2, 6, 24, 60.
+        self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.05'
         (self.root / 'refuse-cleanup').touch()
         self.worker('N1', self.ready('N1', 1))
         self.fleet_of('N1')
         p, _ = self.start()
         self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
         self.add('N1', '- 10:05 MERGED #1')
-        self.until(lambda: len(self.seen('N1 MERGED #1')) >= 5, seconds=14)
-        stamps = self.seen('N1 MERGED #1')[:5]
+        self.until(lambda: len(self.seen('N1 MERGED #1')) >= 6, seconds=25)
+        stamps = self.seen('N1 MERGED #1')[:6]
         gaps = [b - a for a, b in zip(stamps, stamps[1:])]
         self.stop(p)
-        self.assertTrue(all(.8 <= gap <= 2.0 for gap in gaps), gaps)
+        steps = [.05, .1, .3, 1.2, 3.0]
+        for gap, step in zip(gaps, steps):
+            self.assertGreaterEqual(gap, step * .85, gaps)
+            self.assertLess(gap, step + 3.0, gaps)
+        self.assertGreaterEqual(gaps[3], 1.0, gaps)
+        self.assertGreaterEqual(gaps[4], 2.5, 'the top step holds')
+
+    def test_a_changed_event_starts_the_ladder_over(self):
+        # The ladder is about one cleanup event: a newer cleanup bullet is another event, so the climb starts over.
+        self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.2'
+        (self.root / 'refuse-cleanup').touch()
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, _ = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        self.until(lambda: len(self.seen('N1 MERGED #1')) >= 4, seconds=15)
+        fourth = self.seen('N1 MERGED #1')[3]
+        tries = self.path('le-N1.tries')  # the change must follow the relay's record of the fourth refusal
+        self.until(lambda: tries.exists() and tries.read_text().split()[0] == '4', seconds=5)
+        self.add('N1', '- 10:06 WRAPPED all done')  # the fifth gap would be 4.8 s on the ladder
+        self.until(lambda: len(self.seen('N1 WRAPPED')) >= 2, seconds=15)
+        stamps = self.seen('N1 WRAPPED')
+        self.until(lambda: tries.read_text().split()[0] == '2', seconds=5)  # its own count: 1, then 2
+        self.stop(p)
+        self.assertLess(stamps[0] - fourth, 2.0, 'another event is tried again at the first step')
+        self.assertLess(stamps[1] - stamps[0], 2.0, 'and its own climb starts over')
+
+    def test_an_unrelated_document_change_does_not_start_the_ladder_over(self):
+        # A live worker keeps appending LIVE bullets while the same refusal persists: the ladder still reaches
+        # the top and wakes the chief, once.
+        self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.05'
+        (self.root / 'refuse-cleanup').touch()
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, out = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        end = time.monotonic() + 20
+        n = 0
+        while 'cleanup-still-refused' not in out.read_text() and time.monotonic() < end:
+            n += 1
+            self.add('N1', f'- 10:06 LIVE still working {n}')
+            time.sleep(.1)
+        self.assertIn('cleanup-still-refused', out.read_text(), f'{n} unrelated bullets, no wake')
+        for _ in range(8):
+            n += 1
+            self.add('N1', f'- 10:06 LIVE still working {n}')
+            time.sleep(.1)
+        self.stop(p)
+        text = out.read_text()
+        self.assertEqual(text.count('cleanup-still-refused'), 1, text)
+        self.assertGreaterEqual(len(self.seen('N1 MERGED #1')), 5)
+
+    def test_the_top_step_wakes_the_chief_once_and_only_paces_after_it(self):
+        self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.05'
+        (self.root / 'refuse-cleanup').touch()
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, out = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        self.until(lambda: 'cleanup-still-refused' in out.read_text(), seconds=15)
+        state = {name: self.path(name).read_text() for name in ('ready', 'ready-docs')}
+        woke = len(self.seen('N1 MERGED #1'))
+        self.until(lambda: len(self.seen('N1 MERGED #1')) > woke, seconds=12)  # the next try, at the top pace
+        time.sleep(.6)
+        self.stop(p)
+        text = out.read_text()
+        self.assertEqual(text.count('cleanup-still-refused'), 1, text)  # the wake itself, whatever its count: a repeat reads tries=6
+        self.assertIn('cleanup-still-refused worker=N1 event=MERGED tries=5', text)
+        self.assertIn('wrap-merged-failed rc=4', text)
+        # nothing but pacing: the same bullet is offered again, and nothing is recorded as handled or moved
+        self.assertEqual(set(row for _, row in self.events() if 'MERGED' in row), {'N1 MERGED #1'})
+        self.assertNotIn('N1 MERGED', self.path('r0').read_text() if self.path('r0').exists() else '')
+        self.assertEqual({name: self.path(name).read_text() for name in state}, state)
+
+    def test_an_unrelated_change_after_the_top_wake_neither_restarts_the_ladder_nor_wakes_again(self):
+        self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.05'
+        (self.root / 'refuse-cleanup').touch()
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, out = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        self.until(lambda: 'cleanup-still-refused' in out.read_text(), seconds=15)
+        woke = len(self.seen('N1 MERGED #1'))
+        self.add('N1', '- 10:06 LIVE still working')
+        self.until(lambda: len(self.seen('N1 MERGED #1')) > woke, seconds=12)
+        stamps = self.seen('N1 MERGED #1')
+        time.sleep(.6)
+        self.stop(p)
+        self.assertGreaterEqual(stamps[woke] - stamps[woke - 1], 2.5, 'the top pace holds: the climb did not start over')
+        self.assertEqual(out.read_text().count('cleanup-still-refused'), 1, out.read_text())
+
+    def test_a_new_event_after_the_top_wake_gets_a_wake_of_its_own(self):
+        self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.05'
+        (self.root / 'refuse-cleanup').touch()
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, out = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        self.until(lambda: 'cleanup-still-refused worker=N1 event=MERGED' in out.read_text(), seconds=15)
+        self.add('N1', '- 10:06 WRAPPED all done')
+        self.until(lambda: 'cleanup-still-refused worker=N1 event=WRAPPED' in out.read_text(), seconds=15)
+        time.sleep(.6)
+        self.stop(p)
+        text = out.read_text()
+        self.assertEqual(text.count('cleanup-still-refused worker=N1 event=MERGED'), 1, text)
+        self.assertEqual(text.count('cleanup-still-refused worker=N1 event=WRAPPED'), 1, text)
+
+    def test_a_success_ends_the_ladder(self):
+        self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.05'
+        (self.root / 'refuse-cleanup').touch()
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, _ = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        tries = self.path('le-N1.tries')
+        self.until(lambda: tries.exists() and int(tries.read_text().split()[0]) >= 3, seconds=10)
+        (self.root / 'refuse-cleanup').unlink()
+        self.until(lambda: 'N1 MERGED' in (self.path('r0').read_text() if self.path('r0').exists() else ''), seconds=15)
+        self.assertFalse(tries.exists())
+        attempts = len(self.seen('N1 MERGED #1'))
+        time.sleep(.8)
+        self.assertEqual(len(self.seen('N1 MERGED #1')), attempts, 'a handled bullet is not offered again')
+        (self.root / 'refuse-cleanup').touch()  # a later refusal starts at the first step
+        self.add('N1', '- 10:07 MERGED #2')
+        self.until(lambda: tries.exists(), seconds=10)
+        self.assertEqual(tries.read_text().split()[0], '1')
+        self.stop(p)
+
+    def test_a_waiter_restart_keeps_the_step(self):
+        self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.2'
+        (self.root / 'refuse-cleanup').touch()
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, _ = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        self.until(lambda: len(self.seen('N1 MERGED #1')) >= 4, seconds=15)
+        fourth = self.seen('N1 MERGED #1')[3]  # the next gap is 4.8 s
+        self.stop(p)
+        again, _ = self.start()
+        self.until(lambda: len(self.seen('N1 MERGED #1')) >= 5, seconds=15)
+        fifth = self.seen('N1 MERGED #1')[4]
+        self.stop(again)
+        self.assertGreaterEqual(fifth - fourth, 4.2, 'a restart does not climb down to the first step')
 
     def test_slow_cleanup_delays_only_itself_and_the_inbox_and_ready_follow_at_once(self):
         self.worker('N1', '- 10:00 WRAPPED no PR')
@@ -748,6 +907,256 @@ class StackedWorker(StreamFixture):
         self.assertEqual(self.audit(), [f'GO-SENT 1 {self.H[1]}', f'GO-SENT 2 {self.H[2]}',
                                         f'GO-SENT 3 {self.H[3]}'])
         self.assertEqual(output.read_text().count('succession complete'), 1)
+
+    def relay_rows(self):
+        path = self.path('relaylog')
+        lines = path.read_text().splitlines() if path.exists() else []
+        return [dict(part.split('=', 1) for part in line.split()) for line in lines]
+
+    def test_a_relayed_event_logs_how_long_it_was_pending_and_how_long_its_handler_took(self):
+        self.worker('N1', self.ready('N1', 1))
+        self.worker('N2', self.ready('N2', 2))
+        self.fleet_of('N1', 'N2')
+        (self.root / 'slow-N1').write_text('1.0')
+        p, _ = self.start()
+        self.until(lambda: len(self.relay_rows()) >= 2, seconds=10)
+        time.sleep(.6)
+        self.stop(p)
+        rows = self.relay_rows()
+        # once per relayed event, and the idle passes before and after wrote nothing
+        self.assertEqual(sorted(r['label'] for r in rows), ['N1', 'N2'])
+        n1, n2 = {r['label']: r for r in rows}['N1'], {r['label']: r for r in rows}['N2']
+        self.assertEqual((n1['marker'], n1['rc'], n2['marker'], n2['rc']), ('READY', '0', 'READY', '0'))
+        self.assertTrue(.9 <= float(n1['handler']) < 3.0, n1)
+        self.assertLess(float(n2['handler']), .8)
+        self.assertLess(float(n1['pending']), .8)
+        self.assertGreaterEqual(float(n2['pending']), .9, 'N2 waited behind the slow handler of N1')
+
+    def test_every_refused_attempt_is_logged_with_its_own_pending_age(self):
+        (self.root / 'refuse-cleanup').touch()
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, _ = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        self.until(lambda: len([r for r in self.relay_rows() if r['marker'] == 'MERGED']) >= 3, seconds=10)
+        self.stop(p)
+        merged = [r for r in self.relay_rows() if r['marker'] == 'MERGED']
+        self.assertTrue(all(r['rc'] == '10' for r in merged), merged)
+        ages = [float(r['pending']) for r in merged]
+        self.assertEqual(ages, sorted(ages))
+        self.assertLess(ages[0], .5)
+        self.assertGreater(ages[2] - ages[0], 1.5, 'each attempt carries the age of the event it retried')
+        self.assertIn(len(merged), (len(self.seen('N1 MERGED #1')), len(self.seen('N1 MERGED #1')) - 1))
+
+    def test_an_idle_pass_logs_nothing(self):
+        self.worker('N1', '- 10:00 LIVE working')
+        self.fleet_of('N1')
+        p, _ = self.start()
+        self.armed()
+        time.sleep(1.5)
+        self.stop(p)
+        self.assertFalse(self.path('relaylog').exists())
+
+    def test_the_first_wake_block_of_a_fresh_inbox_holds_no_shell_error(self):
+        # the first worker-event call of an inbox runs before its relay log exists; probing the missing file must stay silent
+        p, out = self.refused_with('ESCALATE wrap-merged-failed rc=4 worker still alive')
+        self.until(lambda: 'cleanup-still-refused' in out.read_text(), seconds=15)
+        self.stop(p)
+        for name, text in (('the wake block', self.path('wake-1').read_text()), ('the stream output', out.read_text())):
+            self.assertNotIn('No such file', text, name)
+            self.assertNotIn('chief-wait.sh: line', text, name)
+
+    def test_the_relay_log_is_bounded_by_size_with_one_rotated_copy(self):
+        # the kit's other size-capped log (the classifier denial log) rotates to <log>.1 past 1 MiB
+        import re
+        row = re.compile(r'^start=\d+ label=\S+ marker=\S+ pending=\d+\.\d\d handler=\d+\.\d\d rc=\d+$')
+        seed = lambda label: f'start=1 label={label} marker=READY pending=0.00 handler=0.00 rc=0\n' * 18000
+        log, rotated = self.path('relaylog'), self.path('relaylog.1')
+        first = seed('N8')
+        self.assertGreater(len(first), 1048576)
+        log.write_text(first)
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, _ = self.start()
+        self.until(lambda: rotated.exists() and log.exists(), seconds=10)
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.assertEqual(rotated.read_text(), first, 'the old generation is kept whole')
+        live = log.read_text().splitlines()
+        self.assertEqual(len(live), 1)
+        self.assertEqual(live[0].split()[1:3], ['label=N1', 'marker=READY'])
+        second = seed('N9')  # the next rotation replaces the copy: at most two files ever exist
+        log.write_text(second)
+        self.add('N1', '- 10:05 MERGED #1')
+        self.until(lambda: rotated.read_text() == second and any(' marker=MERGED ' in r for r in log.read_text().splitlines()), seconds=10)
+        self.stop(p)
+        for path in (log, rotated):
+            self.assertTrue(all(row.match(r) for r in path.read_text().splitlines()), f'a torn line in {path.name}')
+        # only the log was trimmed: what the waiter decides from is as the two relays left it
+        self.assertEqual(self.path('ready').read_text(), 'N1\t3\n')
+        self.assertEqual(sorted(path.name for path in self.root.glob('consoles/*relaylog*')),
+                         ['chief.md.wait.relaylog', 'chief.md.wait.relaylog.1'])
+
+
+    def refused_with(self, text):
+        (self.root / 'refusal').write_text(text + '\n')
+        self.env['CHIEF_WAIT_WORKER_EVENT'] = self.script('event', REFUSAL_EVENT)
+        self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.05'
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, out = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        return p, out
+
+    def check_a_failure_after_the_close_is_reported(self, rc, step):
+        line = f'ESCALATE wrap-merged-failed rc={rc} wrap-merged: step {step}'
+        p, out = self.refused_with(line)
+        self.until(lambda: line in out.read_text(), seconds=10)
+        time.sleep(1.0)
+        self.stop(p)
+        self.assertEqual(out.read_text().count(line), 1, out.read_text())
+        self.assertEqual(len(self.seen('N1 MERGED #1')), 1, 'the window is already closed: nothing to retry')
+        self.assertIn('N1 MERGED', self.path('r0').read_text(), 'reported once, then recorded')
+
+    def test_a_log_failure_after_the_close_wakes_the_chief_and_is_not_retried(self):
+        self.check_a_failure_after_the_close_is_reported(6, 'log failed: append-results.sh')
+
+    def test_a_board_failure_after_the_close_wakes_the_chief_and_is_not_retried(self):
+        self.check_a_failure_after_the_close_is_reported(7, 'board failed: board.mjs --doc chief.md --changed')
+
+    def test_a_refused_close_inside_the_wrap_is_still_retried_quietly(self):
+        p, out = self.refused_with('ESCALATE wrap-merged-failed rc=6 wrap-merged: step close-wrapped-worker failed: '
+                                   'close-wrapped-worker.sh exited 6')
+        self.until(lambda: len(self.seen('N1 MERGED #1')) >= 3, seconds=10)
+        self.stop(p)
+        self.assertNotIn('wrap-merged-failed', out.read_text())
+
+
+class IdlePoll(StreamFixture):
+    """The service loop's idle backoff: after a run of empty passes it sleeps longer, and only that."""
+
+    def setUp(self):
+        super().setUp()
+        import shutil
+        shim = self.root / 'shim'
+        shim.mkdir()
+        (shim / 'sleep').write_text(f'#!/bin/sh\necho "$(date +%s.%N) $1" >> "$TEST_ROOT/sleeps"\nexec {shutil.which("sleep")} "$@"\n')
+        (shim / 'sleep').chmod(0o755)
+        self.env['PATH'] = f'{shim}:{self.env["PATH"]}'
+        self.env.update(HIMMEL_FLAG_AUTO_GO='1', CHIEF_WAIT_POLL_SEC='0.05', CHIEF_WAIT_IDLE_POLL_SEC='0.5',
+                        CHIEF_WAIT_IDLE_PASSES='5')
+        self.env['CHIEF_WAIT_WORKER_EVENT'] = self.script('event', 'echo "$(date +%s.%N)" >> "$TEST_ROOT/events"\ncat > /dev/null\necho HANDLED auto-go\n')
+        self.doc1 = self.root / 'N1.md'
+        self.doc1.write_text('# N1\n## Results\n- 09:00 LIVE start\n')
+        self.fleet.write_text(json.dumps(dict(workers=[dict(label='N1', doc=str(self.doc1))])))
+
+    def sleeps(self, after=0.0):
+        path = self.root / 'sleeps'
+        rows = [line.split() for line in path.read_text().splitlines()] if path.exists() else []
+        return [arg for ts, arg in rows if float(ts) > after and arg in ('0.05', '0.5', '0.01', '1', '1.2.3')]
+
+    def slow(self, count):
+        return lambda: self.sleeps().count('0.5') >= count
+
+    def post_ready(self):
+        with self.doc1.open('a') as f:
+            f.write('- 10:00 READY #1 ' + '1' * 40 + '\n')
+
+    def test_the_poll_grows_only_after_a_run_of_empty_passes(self):
+        p, _ = self.start()
+        self.until(self.slow(3))
+        self.stop(p)
+        seen = self.sleeps()
+        self.assertEqual(seen[:5], ['0.05'] * 5, 'five passes at the poll, the first of them the tick')
+        self.assertTrue(all(arg == '0.5' for arg in seen[5:]), seen)
+
+    def test_the_poll_returns_on_the_first_event(self):
+        p, _ = self.start()
+        self.until(self.slow(2))
+        self.post_ready()
+        self.until(lambda: (self.root / 'events').exists())
+        at = float((self.root / 'events').read_text().split()[0])
+        self.until(lambda: len(self.sleeps(at)) >= 8, seconds=10)
+        self.stop(p)
+        after = self.sleeps(at)
+        # the pass that served the event, then the run of empty passes at the poll, then the idle poll again
+        self.assertEqual(after[:6], ['0.05'] * 6, after)
+        self.assertEqual(after[6], '0.5', after)
+
+    def test_an_event_during_a_slow_interval_is_served_on_the_next_pass(self):
+        p, _ = self.start()
+        self.until(self.slow(2))
+        wrote = time.time()
+        self.post_ready()
+        self.until(lambda: (self.root / 'events').exists())
+        self.stop(p)
+        served = float((self.root / 'events').read_text().split()[0]) - wrote
+        self.assertLess(served, 0.5 + 0.7, 'one idle interval at most, plus the pass')
+
+    def test_the_idle_poll_is_never_shorter_than_the_poll(self):
+        self.env['CHIEF_WAIT_IDLE_POLL_SEC'] = '0.01'
+        p, _ = self.start()
+        self.until(lambda: len(self.sleeps()) >= 14)
+        self.stop(p)
+        self.assertEqual(set(self.sleeps()), {'0.05'})
+
+    def test_the_poll_backs_off_in_handover_mode_after_an_event(self):
+        # a handover marker appears right after a service pass that offered an event; that offer was work of that
+        # pass only, so the passes that follow (which skip the service) are empty and the poll must back off
+        marker = self.inbox.parent / (self.inbox.name + '.handover')
+        self.env['CHIEF_WAIT_WORKER_EVENT'] = self.script(
+            'event', f'echo "$(date +%s.%N)" >> "$TEST_ROOT/events"\ncat > /dev/null\ntouch "{marker}"\necho HANDLED auto-go\n')
+        p, _ = self.start()
+        self.until(self.slow(2))
+        self.post_ready()
+        self.until(lambda: (self.root / 'events').exists())
+        at = float((self.root / 'events').read_text().split()[0])
+        self.until(lambda: self.sleeps(at).count('0.5') >= 2, seconds=10)
+        self.stop(p)
+        after = self.sleeps(at)
+        self.assertEqual(after[:6], ['0.05'] * 6, after)
+        self.assertEqual(after[6], '0.5', after)
+
+    def test_a_malformed_idle_poll_falls_back_to_the_default_and_does_not_spin(self):
+        self.env['CHIEF_WAIT_IDLE_POLL_SEC'] = '1.2.3'
+        p, _ = self.start()
+        self.until(lambda: any(arg in ('1', '1.2.3') for arg in self.sleeps()), seconds=10)
+        time.sleep(1.2)
+        self.stop(p)
+        seen = self.sleeps()
+        self.assertNotIn('1.2.3', seen, 'a value sleep rejects was used')
+        self.assertIn('1', seen)
+        self.assertLess(len(seen), 40, 'a rejected sleep would spin the loop')
+
+    def test_a_due_tick_puts_the_poll_back(self):
+        self.env['CHIEF_WAIT_INTERVAL'] = '3'
+        p, _ = self.start()
+
+        def runs():
+            out = []
+            for arg in self.sleeps():
+                if out and out[-1][0] == arg:
+                    out[-1][1] += 1
+                else:
+                    out.append([arg, 1])
+            return out
+        self.until(lambda: len(runs()) >= 4, seconds=15)
+        self.stop(p)
+        seen = runs()
+        self.assertEqual(seen[0], ['0.05', 5])
+        self.assertEqual(seen[1][0], '0.5')
+        self.assertEqual(seen[2], ['0.05', 5], 'the tick that fell due: five passes at the poll again')
+        self.assertEqual(seen[3][0], '0.5')
+
+    def test_unusable_settings_fall_back_to_the_defaults(self):
+        self.env.update(CHIEF_WAIT_IDLE_POLL_SEC='soon', CHIEF_WAIT_IDLE_PASSES='many')
+        p, _ = self.start()
+        self.until(lambda: '1' in self.sleeps(), seconds=10)
+        self.stop(p)
+        seen = self.sleeps()
+        self.assertEqual(seen[:10], ['0.05'] * 10, 'ten empty passes by default')
+        self.assertEqual(seen[10], '1')
 
 
 if __name__ == '__main__':

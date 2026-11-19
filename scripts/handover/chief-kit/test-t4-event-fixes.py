@@ -988,5 +988,323 @@ echo 'ESCALATE auto-go 3 not-ready'; exit 10
         self.assertNotIn('WAKE', out.read_text())
 
 
+def load_collector():
+    spec = importlib.util.spec_from_file_location('pending_events', HERE / 'pending-events.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class IdleCost(stream_tests.StreamFixture):
+    """The collector's idle pass: its checksum, the unchanged-document skip and the state it writes."""
+    LINES = [b'- 10:00 READY #12 ' + b'a' * 40 + b' GREEN', b'', b'x' * 200000, b'- READY \xff\xfe not utf-8',
+             b'- LIVE \xe2\x80', b'- LIVE progress 10%\r100%', b'- LIVE ends with a CR\r', b'- LIVE trailing   ',
+             b'- LIVE tab\t', b'   ', b'\r', '- MERGED #7 → abcdef01 (ticket)'.encode(), b'-n',
+             b'-e \\n \\x41 %s %d', b'- READY nul\x00inside', b'\x00', b'\xff' * 5000,
+             b'- WRAPPED \'quoted\' "double" $HOME `tick`', b'a\x80b\xc3(c']
+
+    def setUp(self):
+        super().setUp()
+        self.module = load_collector()
+        self.reads = []
+        real = self.module.read_lines
+
+        def counting(doc, bound):
+            self.reads.append(Path(doc).name)
+            return real(doc, bound)
+        self.module.read_lines = counting
+
+    def aged(self):
+        # a document counts as old enough after 50 ms here, not after the real margin
+        self.module.RACY_NS = 50_000_000
+
+    def worker_doc(self, text):
+        path = self.root / 'N1.md'
+        path.write_bytes(text)
+        self.fleet.write_text(json.dumps(dict(workers=[dict(label='N1', doc=str(path))])))
+        return path
+
+    def collect(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            self.module.candidates(str(self.fleet), str(self.inbox), '')
+        return out.getvalue().splitlines()
+
+    def shell_sums(self, lines):
+        """What r0_relay records for line n: `sed -n Np` held in a variable, printed with printf, through cksum."""
+        doc = self.root / 'parity.txt'
+        doc.write_bytes(b''.join(line + b'\n' for line in lines))
+        script = ('for n in $(seq 1 %d); do bullet="$(sed -n "${n}p" "$1")"; '
+                  'printf "%%s\\n" "$bullet" | cksum | cut -d" " -f1; done' % len(lines))
+        return subprocess.run(['bash', '-c', script, 'parity', str(doc)], capture_output=True, text=True,
+                              check=True).stdout.split()
+
+    def test_the_checksum_equals_the_shell_cksum_of_the_line_the_relay_holds(self):
+        import random
+        rng = random.Random(1234)
+        lines = list(self.LINES) + [bytes(rng.choice([c for c in range(256) if c != 10])
+                                          for _ in range(rng.randint(0, 300))) for _ in range(150)]
+        self.assertEqual([self.module.checksum(line) for line in lines], self.shell_sums(lines))
+
+    def test_a_handled_cleanup_bullet_with_non_utf8_bytes_is_not_offered_again(self):
+        line = b'- 11:00 MERGED #7 \xff\xfe done'
+        self.worker_doc(b'# N1\n' + line + b'\n')
+        self.path('r0').write_text(f'N1 MERGED {self.shell_sums([line])[0]}\n')
+        self.assertEqual(self.collect(), [])
+
+    def test_the_collector_spawns_no_cksum(self):
+        import shutil
+        line ='- 11:00 MERGED #7 → abcdef01 (N1, ticket)'
+        self.worker_doc(f'# N1\n{line}\n'.encode())
+        digest = subprocess.run(['cksum'], input=line + '\n', capture_output=True, text=True, check=True).stdout.split()[0]
+        self.path('r0').write_text(f'N1 MERGED {digest}\n')
+        real = shutil.which('cksum')
+        shim = self.root / 'shim'
+        shim.mkdir()
+        (shim / 'cksum').write_text(f'#!/bin/sh\necho spawned >> "$TEST_ROOT/cksum-calls"\nexec {real} "$@"\n')
+        (shim / 'cksum').chmod(0o755)
+        env = dict(os.environ, PATH=f'{shim}:{os.environ["PATH"]}', TEST_ROOT=str(self.root))
+        result = subprocess.run(['python3', '-I', str(HERE / 'pending-events.py'), str(self.fleet), str(self.inbox), ''],
+                                env=env, capture_output=True, text=True)
+        self.assertEqual((result.returncode, result.stdout), (0, ''), result.stderr)
+        self.assertFalse((self.root / 'cksum-calls').exists(), 'the collector computes the sum itself')
+
+    def test_an_unchanged_document_is_not_read_again(self):
+        self.aged()
+        self.worker_doc(b'# N1\n- 10:00 LIVE a\n')
+        time.sleep(.1)
+        self.collect()
+        first = len(self.reads)
+        for _ in range(3):
+            self.assertEqual(self.collect(), [])
+        self.assertEqual(len(self.reads), first, 'a document whose stamp did not move is not read again')
+
+    def test_a_skipped_document_still_offers_its_pending_event_until_it_is_handled(self):
+        self.aged()
+        self.worker_doc(f'# N1\n- 10:00 LIVE a\n- 10:01 READY #1 {"1" * 40}\n- 10:02 MERGED #1 done\n'
+                 f'- 10:03 READY #2 {"2" * 40}\n'.encode())
+        time.sleep(.1)
+        self.assertEqual(self.collect(), ['N1 READY 5'])
+        reads = len(self.reads)
+        self.assertEqual(self.collect(), ['N1 READY 5'])
+        self.path('ready').write_text('N1\t5\n')
+        self.assertEqual(self.collect(), [])
+        self.assertEqual(len(self.reads), reads, 'the cached summary answers; the file is not read')
+
+    def test_an_appended_bullet_is_seen_on_the_next_pass(self):
+        self.aged()
+        path = self.worker_doc(b'# N1\n- 10:00 LIVE a\n')
+        time.sleep(.1)
+        self.collect()
+        self.collect()
+        with path.open('a') as f:
+            f.write('- 10:01 MERGED #1 done\n')
+        self.assertEqual(self.collect(), ['N1 MERGED 3'])
+
+    def test_a_rewrite_of_the_same_size_with_the_same_modification_time_is_seen(self):
+        self.aged()
+        path = self.worker_doc(b'- 10:00 LIVE start\n- 10:01 LIVE aaaaa\n')
+        time.sleep(.1)
+        self.collect()
+        self.collect()
+        before = path.stat()
+        path.write_bytes(b'- 10:00 LIVE start\n- 10:01 MERGED #12\n')
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        after = path.stat()
+        self.assertEqual((after.st_size, after.st_mtime_ns), (before.st_size, before.st_mtime_ns))
+        self.assertEqual(self.collect(), ['N1 MERGED 2'])
+
+    def test_a_file_replaced_by_another_with_an_older_or_the_same_stamp_is_seen(self):
+        self.aged()
+        path = self.worker_doc(b'- 10:00 LIVE start\n- 10:01 LIVE aaaaa\n')
+        time.sleep(.1)
+        self.collect()
+        self.collect()
+        old = path.stat()
+        other = self.root / 'other.md'
+        other.write_bytes(b'- 10:00 LIVE start\n- 10:01 MERGED #12\n')
+        os.utime(other, ns=(old.st_atime_ns, old.st_mtime_ns - 5_000_000_000))
+        os.replace(other, path)
+        self.assertEqual(self.collect(), ['N1 MERGED 2'])
+        self.collect()
+        cached = path.stat()
+        other.write_bytes(b'- 10:00 LIVE start\n- 10:01 WRAPPED #1\n')
+        os.utime(other, ns=(cached.st_atime_ns, cached.st_mtime_ns))
+        os.replace(other, path)
+        replaced = path.stat()
+        self.assertEqual((replaced.st_size, replaced.st_mtime_ns), (cached.st_size, cached.st_mtime_ns))
+        self.assertEqual(self.collect(), ['N1 WRAPPED 2'])
+
+    def test_a_document_written_just_now_is_read_again_until_it_is_older_than_the_margin(self):
+        self.worker_doc(b'# N1\n- 10:00 LIVE a\n')
+        self.collect()
+        reads = len(self.reads)
+        self.collect()
+        self.assertEqual(len(self.reads), reads + 1, 'a stamp inside the timestamp resolution is not trusted')
+
+    def test_the_skip_trusts_a_stamp_only_when_every_part_matches_and_it_is_old_enough(self):
+        unchanged, margin = self.module.unchanged, self.module.RACY_NS
+        stamp = [1, 2, 100, 5_000_000_000, 6_000_000_000]
+        record = dict(stamp=stamp, at=6_000_000_000 + margin)
+        self.assertTrue(unchanged(record, stamp))
+        self.assertFalse(unchanged(dict(record, at=record['at'] - 1), stamp), 'changed within the margin of the read')
+        for part in range(5):
+            other = list(stamp)
+            other[part] += 1
+            self.assertFalse(unchanged(record, other), f'stamp part {part}')
+        for bad in (None, {}, dict(stamp=stamp), dict(at=record['at']), dict(stamp='x', at=1), dict(stamp=stamp, at='x')):
+            self.assertFalse(unchanged(bad, stamp), repr(bad))
+
+    def test_state_files_are_written_only_when_their_content_changes(self):
+        self.aged()
+        path = self.worker_doc(f'# N1\n- 10:00 LIVE a\n- 10:01 READY #1 {"1" * 40}\n'.encode())
+        time.sleep(.1)
+        self.collect()
+
+        def marks():
+            return [(s.st_ino, s.st_mtime_ns, s.st_ctime_ns) for s in
+                    (self.path('ready').stat(), self.path('ready-docs').stat())]
+        settled = marks()
+        for _ in range(3):
+            time.sleep(.02)
+            self.collect()
+            self.assertEqual(marks(), settled, 'an idle pass rewrites nothing')
+        with path.open('a') as f:
+            f.write('- 10:02 READY #2 ' + '2' * 40 + '\n')
+        self.collect()
+        self.assertNotEqual(marks(), settled, 'a change is still written')
+
+
+class RetryPace(stream_tests.StreamFixture):
+    """How long the collector holds a refused cleanup back: the ladder's steps and what starts it over."""
+    STEPS = (5, 10, 30, 120, 300)  # the retry window (5 s) times 1, 2, 6, 24 and 60
+    REFUSED = 'ESCALATE wrap-merged-failed rc=4 close-wrapped-worker: refusing - not WRAPPED\n'
+
+    def setUp(self):
+        super().setUp()
+        self.page = self.root / 'N1.md'
+        self.page.write_text('# N1\n- 10:00 MERGED #1 done\n')
+        self.fleet.write_text(json.dumps(dict(workers=[dict(label='N1', doc=str(self.page))])))
+
+    def collect(self, **env):
+        done = subprocess.run(['python3', '-I', str(HERE / 'pending-events.py'), str(self.fleet), str(self.inbox), ''],
+                              capture_output=True, text=True, env=dict(os.environ, **env))
+        self.assertEqual(done.returncode, 0, done.stderr)  # a crashed collector must not read as "nothing offered"
+        return done.stdout.splitlines()
+
+    def refused(self, age, text=REFUSED):
+        out = self.path('le-N1')
+        out.write_text(text)
+        stamp = time.time() - age
+        os.utime(out, (stamp, stamp))
+
+    BULLET = '- 10:00 MERGED #1 done'
+
+    def key(self, line):
+        # the relay's key for an event: the cksum of its bullet
+        return subprocess.run(['cksum'], input=line + '\n', capture_output=True, text=True, check=True).stdout.split()[0]
+
+    def tries(self, count, line=BULLET):
+        self.path('le-N1.tries').write_text(f'{count} {self.key(line)} -\n')
+
+    def test_the_hold_grows_in_fixed_steps_and_stops_at_the_top(self):
+        for count in range(1, 9):
+            step = self.STEPS[min(count, len(self.STEPS)) - 1]
+            self.tries(count)
+            self.refused(step - 1)
+            self.assertEqual(self.collect(), [], f'refusal {count}: held for {step} s')
+            self.refused(step + 1)
+            self.assertEqual(self.collect(), ['N1 MERGED 2'], f'refusal {count}: offered again after {step} s')
+
+    def test_it_only_paces_the_event_is_always_offered_again(self):
+        self.tries(5)
+        self.refused(100_000)
+        self.assertEqual(self.collect(), ['N1 MERGED 2'])
+
+    def test_a_refusal_dated_in_the_future_is_offered_not_held(self):
+        # a clock stepped back leaves the refusal record ahead of now: that proves nothing about how recent it is
+        for ahead in (3600, 86400):
+            with self.subTest(ahead=ahead):
+                self.path('le-N1.tries').unlink(missing_ok=True)
+                self.refused(-ahead)
+                self.assertEqual(self.collect(), ['N1 MERGED 2'])
+                self.tries(5)
+                self.refused(-ahead)
+                self.assertEqual(self.collect(), ['N1 MERGED 2'], 'even at the top step')
+        self.path('le-N1.tries').unlink(missing_ok=True)
+        self.refused(1)
+        self.assertEqual(self.collect(), [], 'a young refusal is still held')
+        self.refused(100)
+        self.assertEqual(self.collect(), ['N1 MERGED 2'], 'an old one is still offered')
+
+    def test_a_changed_event_starts_the_ladder_over(self):
+        self.tries(5)
+        with self.page.open('a') as f:
+            f.write('- 10:01 WRAPPED all done\n')  # a newer cleanup bullet: another event
+        self.refused(4)
+        self.assertEqual(self.collect(), [], 'back at the first step, 5 s')
+        self.refused(6)
+        self.assertEqual(self.collect(), ['N1 WRAPPED 3'])
+
+    def test_an_unrelated_document_change_keeps_the_step(self):
+        self.tries(5)
+        with self.page.open('a') as f:
+            f.write('- 10:01 LIVE still working\n- 10:02 FINDING a note\n')
+        self.refused(100)
+        self.assertEqual(self.collect(), [], 'still the top step, 300 s')
+        self.refused(301)
+        self.assertEqual(self.collect(), ['N1 MERGED 2'])
+
+    def test_the_oldest_of_several_pending_ready_bullets_is_paced_by_its_own_bullet(self):
+        old, new = f'- 10:00 READY #1 {"1" * 40}', f'- 10:01 READY #2 {"2" * 40}'
+        self.page.write_text(f'# N1\n{old}\n{new}\n')
+        self.path('ready').write_text('N1\t1\n')  # the cursor is above both: both are pending, the oldest is offered
+        text = 'ESCALATE series-find-failed rc=3 the ledger is locked\n'
+        self.tries(5, old)
+        self.refused(100, text)
+        self.assertEqual(self.collect(), [], 'its own count: the top step')
+        self.tries(5, new)  # the newest bullet's count is not the oldest's
+        self.refused(6, text)
+        self.assertEqual(self.collect(), ['N1 READY 2'])
+
+    def test_a_refused_ready_is_paced_by_its_own_bullet(self):
+        ready = f'- 10:00 READY #1 {"1" * 40}'
+        self.page.write_text(f'# N1\n{ready}\n')
+        text = 'ESCALATE series-find-failed rc=3 the ledger is locked\n'
+        self.tries(5, ready)
+        self.refused(100, text)
+        self.assertEqual(self.collect(), [], 'the top step, 300 s')
+        self.tries(5, '- 10:00 READY #1 ' + '2' * 40)  # the count belongs to another bullet
+        self.refused(6, text)
+        self.assertEqual(self.collect(), ['N1 READY 2'])
+
+    def test_no_count_or_a_torn_one_means_the_first_step(self):
+        for text in (None, 'garbage', '3\n', '3 17 100 -\n', f'0 {self.key(self.BULLET)} -\n', f'-2 {self.key(self.BULLET)} -\n'):
+            with self.subTest(text=text):
+                if text is not None:
+                    self.path('le-N1.tries').write_text(text)
+                self.refused(4)
+                self.assertEqual(self.collect(), [])
+                self.refused(6)
+                self.assertEqual(self.collect(), ['N1 MERGED 2'])
+
+    def test_the_steps_follow_the_retry_window_setting(self):
+        self.tries(3)  # 6 times the window
+        self.refused(5)
+        self.assertEqual(self.collect(CHIEF_WAIT_SERVICE_RETRY_SEC='1'), [])
+        self.refused(7)
+        self.assertEqual(self.collect(CHIEF_WAIT_SERVICE_RETRY_SEC='1'), ['N1 MERGED 2'])
+
+    def test_a_log_or_board_failure_after_the_close_is_not_held_back_but_a_refused_close_is(self):
+        for text, held in (('ESCALATE wrap-merged-failed rc=6 wrap-merged: step log failed: append-results.sh\n', False),
+                           ('ESCALATE wrap-merged-failed rc=7 wrap-merged: step board failed: board.mjs --doc x --changed\n', False),
+                           ('ESCALATE wrap-merged-failed rc=6 wrap-merged: step close-wrapped-worker failed: '
+                            'close-wrapped-worker.sh exited 6\n', True),
+                           ('ESCALATE close-wrapped-failed rc=7 close-wrapped-worker: refusing - subagent alive\n', True)):
+            with self.subTest(text=text):
+                self.refused(0, text)
+                self.assertEqual(self.collect(), [] if held else ['N1 MERGED 2'])
+
+
 if __name__ == '__main__':
     unittest.main()

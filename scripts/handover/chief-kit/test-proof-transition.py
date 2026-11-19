@@ -240,5 +240,82 @@ class OrdinaryCallers(LoopbackFlow):
         self.assertEqual((self.status, self.posts), ('Done', 1))
 
 
+class RemainderPath(LoopbackFlow):
+    """The live remainder through the real CLI: the race path, a settle that fails after the move, and a slow read."""
+
+    world = decisions.ChiefDecision.world
+    merge = decisions.ChiefDecision.merge
+    body = decisions.ChiefDecision.body
+    partial = decisions.ChiefDecision.partial
+    CODE = decisions.ChiefDecision.CODE
+
+    def cli_with(self, env_extra, status='Done'):
+        env = {**os.environ, 'HOME': str(self.b), 'HIMMEL_CONFIG_DIR': str(self.b),
+               'JIRA_BASE_URL': 'http://127.0.0.1:' + str(self.server.server_port), 'JIRA_EMAIL': 'fixture@example.invalid',
+               'JIRA_API_TOKEN': 'fixture-only', 'JIRA_PROJECT_KEY': 'HIMMEL', 'HIMMEL_ADMISSIONS_LEDGER': str(self.b / 'admissions.jsonl'),
+               **{k: v for k, v in env_extra.items() if k != 'HOME'}}
+        self.command = ['node', str(HERE.parents[1] / 'jira/dist/index.js'), 'transition', 'HIMMEL-9848', status, '--no-version',
+                        '--proof', 'o1', '--proof-bucket', str(self.b), '--proof-decision', str(self.decision)]
+        return subprocess.run(self.command, env=env, text=True, capture_output=True, timeout=30)
+
+    def test_a_remainder_that_appears_after_the_check_names_the_remainder_and_its_step_not_dod_proof(self):
+        env = self.world()
+        self.after_post = lambda: self.partial(77, self.CODE)
+        result = self.cli_with(env)
+        self.assertEqual(result.returncode, 3, result.stderr)
+        self.assertEqual(self.status, 'Done')
+        steps = [r for r in self.rows() if r.get('capability') == 'remainder reconciliation']
+        self.assertEqual(len(steps), 1)
+        self.assertIn('PR #77', result.stderr)
+        self.assertIn('implement X', result.stderr)
+        self.assertIn('remainder reconciliation ' + steps[0]['id'], result.stderr)
+        self.assertNotIn('DoD/Proof', result.stderr)
+        self.assertFalse(any(r['op'] == 'close' for r in self.rows()))
+
+    def test_a_settle_that_fails_after_the_move_says_done_not_settled_and_the_command_and_nothing_moves_back(self):
+        env = self.world()
+        writer = self.b / 'refuse-add.sh'
+        writer.write_text('#!/bin/bash\n[ "$1" != add ] || { echo "disk full" >&2; exit 4; }\nexec bash ' + str(HERE / 'owe.sh') + ' "$@"\n')
+        self.after_post = lambda: self.partial(77, self.CODE)
+        result = self.cli_with({**env, 'PROOF_OWE_BIN': str(writer)})
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual((self.status, self.posts), ('Done', 1))
+        self.assertIn('is now Done', result.stderr)
+        self.assertIn('validation o1 is NOT settled', result.stderr)
+        self.assertIn('disk full', result.stderr)
+        self.assertIn('Run it again: node ' + ' '.join(self.command[1:]), result.stderr)
+        self.assertFalse(any(r['op'] == 'close' for r in self.rows()))
+        # clear the remainder and run the printed command again: the ticket is read as Done, no second POST, the validation settles once
+        self.after_post = None
+        self.merge(80, contract='yes')
+        again = self.cli_with(env)
+        self.assertEqual(again.returncode, 0, again.stderr)
+        self.assertEqual(self.posts, 1)
+        self.assertEqual(len([r for r in self.rows() if r['op'] == 'close' and r['ref'] == 'o1']), 1)
+
+    def test_the_run_it_again_line_asks_for_a_tool_timeout_that_outlasts_a_read_in_each_leg(self):
+        env = self.world()
+        writer = self.b / 'refuse-add.sh'
+        writer.write_text('#!/bin/bash\n[ "$1" != add ] || { echo "disk full" >&2; exit 4; }\nexec bash ' + str(HERE / 'owe.sh') + ' "$@"\n')
+        self.after_post = lambda: self.partial(77, self.CODE)
+        result = self.cli_with({**env, 'PROOF_OWE_BIN': str(writer)})
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn('Run it again: node ' + ' '.join(self.command[1:]), result.stderr)
+        self.assertIn('300000 ms', result.stderr)
+
+    def test_a_slow_pull_request_read_refuses_at_the_check_with_the_unreadable_message_before_any_move(self):
+        env = self.world()
+        self.partial(77, self.CODE)
+        slow = self.live / 'slow-gh'
+        slow.write_text('#!/bin/sh\nsleep 25\n')
+        slow.chmod(0o755)
+        result = self.cli_with({**env, 'NEXT_DISPATCH_GH_CMD': str(slow), 'PROOF_REMAINDER_BUDGET_SECS': '2'})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual((self.posts, self.status), (0, 'To Do'))
+        self.assertIn('live pull-request remainder unreadable', result.stderr)
+        self.assertIn('PR #77', result.stderr)
+        self.assertEqual([r for r in self.rows() if r['op'] == 'close'], [])
+
+
 if __name__ == '__main__':
     unittest.main()

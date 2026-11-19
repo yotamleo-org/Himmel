@@ -236,8 +236,8 @@ export function registerTransition(program: Command): void {
         const mirror = renderIssue(issue, []);
         const output = execFileSync('python3', [fileURLToPath(new URL('../../../handover/chief-kit/proof-validate.py', import.meta.url)),
           '--bucket', options.proofBucket!, mode, options.proof!, '--decision', options.proofDecision!, '--current-stdin'],
-          { input: JSON.stringify({ key, mirror, status: issue.fields.status?.name, category: issue.fields.status?.statusCategory?.key, unstamped }), encoding: 'utf8', timeout: 20_000 });
-        return JSON.parse(output) as { closed?: boolean; verdict?: string; reconciliation?: string | null };
+          { input: JSON.stringify({ key, mirror, status: issue.fields.status?.name, category: issue.fields.status?.statusCategory?.key, unstamped }), encoding: 'utf8', timeout: 100_000 }); // the validator's remainder read has one 90 s budget (PROOF_REMAINDER_BUDGET_SECS); it refuses inside it, so the wait must outlast it
+        return JSON.parse(output) as { closed?: boolean; verdict?: string; reconciliation?: string | null; remainder?: string[] };
       };
       if (options.proof) {
         const checked = await proof('--check');
@@ -255,9 +255,23 @@ export function registerTransition(program: Command): void {
       }
       console.log(`${key} → ${result.name}`);
       if (options.proof) {
-        const settled = await proof('--settle', result.unstamped);
+        let settled: Awaited<ReturnType<typeof proof>>;
+        try {
+          settled = await proof('--settle', result.unstamped);
+        } catch (e) {
+          // The move already happened and nothing moves back: say where the ticket stands, why the validation did not settle, and the command that finishes it.
+          const why = String((e as { stderr?: unknown }).stderr || (e as Error).message).trim();
+          const quote = (arg: string) => (/^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`);
+          const again = ['node', process.argv[1] ?? 'jira', 'transition', key, status, ...(options.version ? [] : ['--no-version']),
+            '--proof', options.proof!, '--proof-bucket', options.proofBucket!, '--proof-decision', options.proofDecision!].map(quote).join(' ');
+          console.error(`FAIL ${key} is now ${result.name} in Jira but validation ${options.proof} is NOT settled: ${why}\nNothing was moved back. Run it again: ${again}\nIf a tool with its own time limit runs it, give it 300000 ms or more: a slow read can take its whole budget in the check and again in the settle.`);
+          process.exitCode = 1;
+          return;
+        }
         if (settled.reconciliation !== undefined) {
-          console.error(`FAIL ${key} is Done but its DoD/Proof changed after the evidence was bound; validation ${options.proof} stays pending and requirements-reconciliation ${settled.reconciliation} is the chief's owned next action`);
+          console.error(settled.remainder
+            ? `FAIL ${key} is Done but ${settled.remainder.join('; ')} still blocks the CLOSE; validation ${options.proof} stays pending and remainder reconciliation ${settled.reconciliation} is the chief's owned next action: clear it, close that step, then record the decision again`
+            : `FAIL ${key} is Done but its DoD/Proof changed after the evidence was bound; validation ${options.proof} stays pending and requirements-reconciliation ${settled.reconciliation} is the chief's owned next action`);
           process.exitCode = 3;
         }
       }
