@@ -12,7 +12,6 @@ usage() {
 error() { printf 'model-check-report: %s\n' "$*" >&2; exit 2; }
 # Bind both gh lookups and the git source read to this checkout, not caller scratch.
 cd "$REPO" || error 'cannot enter repository'
-# existing_file <path>: the physical path of an existing file; leaf symlinks are followed, a missing path fails.
 existing_file() {
     local p="$1" t d
     [ -e "$p" ] || return 1

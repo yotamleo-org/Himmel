@@ -17,7 +17,7 @@
 # one. OWE_NOW_EPOCH replaces the clock (tests).
 #
 # Exit codes: 0 done, 1 close of an unknown or already closed id, 2 usage or a refused value,
-# 3 the bucket directory is absent, 4 the ledger is unreadable or cannot be opened for append.
+# 3 the bucket directory is absent, 4 the ledger is unreadable, cannot be opened for append or cannot be flocked.
 # Without flock (macOS) the ledger is locked by with_lock (scripts/lib/prim.sh) on <bucket>/owed.jsonl.lock,
 # removed on release; a lock left by a killed run makes owe.sh exit 1 with a with_lock message until removed.
 #

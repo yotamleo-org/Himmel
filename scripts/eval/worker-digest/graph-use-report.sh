@@ -95,7 +95,6 @@ JQ='
 TAB="$(printf '\t')"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/graph-use-report.XXXXXX")" || { echo "graph-use-report: mktemp failed" >&2; exit 2; } # prim-ok: a standalone read-only report, one scratch directory, no sourced lib
 trap 'rm -rf "$WORK"' EXIT
-# The window: the last DAYS days by mtime, or with --until-epoch the DAYS days that end at that instant, to re-run a past window.
 # Each bound is a reference file stamped with its epoch (GNU date -d @N, else BSD date -r N), so find needs only -newer.
 if [ -n "$UNTIL" ]; then
   for _b in lo hi; do
