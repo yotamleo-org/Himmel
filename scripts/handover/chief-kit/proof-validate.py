@@ -26,32 +26,36 @@ KEY = r'[A-Z][A-Z0-9]+-\d+'
 # `ERRORS`, `FAIL`, `- NOT MET: ...`). Prose that merely mentions a word is not a row; whether the evidence covers every
 # obligation stays the chief's explicit judgement. A declared Expected column in a supported Markdown table is test input,
 # not an actual requirement status; other cells and unmet list items retain the same refusal rule.
-# A result that is not yet due reads as unmet too (`PENDING`, `NOT YET DUE`, `WAITING`, `TBD`), but only as a status: written in
-# capitals like the other status words, or in any case when the word ends the cell or item or a qualifier follows it (a bracket,
-# dash, colon, comma, or `until`/`for`/`on`/`by`/`due`/`since`), so evidence that merely starts with it (`pending count was 0`)
-# stays a MET row.
-NOT_DUE = (r'(?:(?-i:PENDING|WAITING|TBD|NOT\s+YET\s+DUE)'
-           r'|(?:PENDING|WAITING|TBD|NOT\s+YET\s+DUE)(?=\s*(?:$|[|(\[:;,.*—–-]|(?:until|for|on|by|due|since)\b)))')
-UNMET = r'(?:NOT\s+MET|OWED|SKIP\w*|ERRORS?|FAIL\w*|' + NOT_DUE + ')'
+# A result that is not yet due (`PENDING`, `NOT YET DUE`, `WAITING`, `TBD`, in any case, through markdown emphasis, however it goes on)
+# is unmet too, but only in the STATUS position, never in the evidence text of a row: a list item starts with its status, a table
+# row has it in the column its header calls Result, Status, Verdict, Outcome or State (an `Expected` column is test input). A row
+# with no such column to read (a header without one, no header, a ragged row) has no status position distinct from its evidence
+# text, so every cell of it is read: an unsure row is unmet, and `pending count was 0` there reads as not yet due.
+UNMET = r'(?:NOT\s+MET|OWED|SKIP\w*|ERRORS?|FAIL\w*)'
+NOT_DUE = r'(?:PENDING|WAITING|TBD|NOT[\s-]+YET[\s-]+DUE)(?![A-Za-z0-9])'
 UNMET_CELL = re.compile(r'\|\s*' + UNMET + r'\b[^|]*\|', re.I)
 UNMET_ITEM = re.compile(r'^\s*(?:[-*+]|\d+[.)])\s+(?:\*\*)?' + UNMET + r'\b', re.I)
+NOT_DUE_CELL = re.compile(r'^[\s*_`]*' + NOT_DUE, re.I)
+NOT_DUE_ITEM = re.compile(r'^\s*(?:[-*+]|\d+[.)])\s+[*_`]*' + NOT_DUE, re.I)
+STATUS_HEADER = re.compile(r'\b(?:result|status|verdict|outcome|state)\b', re.I)
 SECTIONS = {'Impact', 'What', 'Why', 'Plan', 'DoD', 'Proof', 'Agent detail'}
 MAX_FILE_BYTES = 8 * 1024 * 1024
 
 
 def has_unmet_rows(text):
     lines = text.splitlines()
-    expected, width = set(), 0
+    expected, status, width = set(), set(), 0
     separator = r'\s*\|(?:\s*:?-{3,}:?\s*\|)+\s*'
     for index, line in enumerate(lines):
-        if UNMET_ITEM.search(line):
+        if UNMET_ITEM.search(line) or NOT_DUE_ITEM.search(line):
             return True
         if not line.strip().startswith('|'):
-            expected, width = set(), 0
+            expected, status, width = set(), set(), 0
             continue
         cells = re.split(r'(?<!\\)\|', line.strip())[1:-1]
         if index + 1 < len(lines) and re.fullmatch(separator, lines[index + 1]):
             expected = {i for i, cell in enumerate(cells) if cell.strip().lower() == 'expected'}
+            status = {i for i, cell in enumerate(cells) if i not in expected and STATUS_HEADER.search(cell)}
             width = len(cells)
             continue
         if re.fullmatch(separator, line):
@@ -61,6 +65,9 @@ def has_unmet_rows(text):
                    for i, cell in enumerate(cells) if i not in expected):
                 return True
         elif UNMET_CELL.search(line):
+            return True
+        watched = [cells[i] for i in status] if status and len(cells) == width else [cell for i, cell in enumerate(cells) if i not in expected]
+        if any(NOT_DUE_CELL.match(cell) for cell in watched):
             return True
     return False
 
@@ -286,32 +293,43 @@ def decision(opt):
             raise ValueError('truncated observations require reconciliation')
         if any(has_unmet_rows(text) for text in evidence):
             raise ValueError('unmet/skipped/error proof row')
-        # A CLOSE never settles over what the ticket's merged partial pull requests still leave: open code work, an owed chief or
-        # operator line, a body that records no remainder, or a list that cannot be read (it fails closed). A KEEP is never asked.
-        blocking, unreadable = live_remainder(row['key'])
+        # A CLOSE never settles over what is still open for the ticket, and it names it. Two guards, one outcome: the ticket's merged partial
+        # pull requests (open code work, an owed chief or operator line, a body that records no remainder; a list that cannot be read fails
+        # closed) and the owed ledger (an open `step` row of this key, in any case, that is not a proof step (this handoff discharges the
+        # ones it bound; later ones are not its scope) or a requirements or version reconciliation). The step this validation's own
+        # reconciliation wrote is `mine`: it blocks the CLOSE until the chief closes it, but never counts as new news for the next one.
+        # `--check` and a settle on a ticket that is not Done refuse and write nothing; a settle on a ticket that is already Done leaves the
+        # chief ONE owned, idempotent step that names it and discharges nothing. A KEEP is never asked.
+        remainder, unreadable = live_remainder(row['key'])
         if unreadable:
             raise ValueError('live pull-request remainder unreadable: ' + '; '.join(unreadable) + '; the CLOSE is refused until it can be read')
-        if blocking:
+        open_steps = [r for r in rows if not r['closed'] and str(r.get('key', '')).upper() == row['key'].upper() and r['id'] != row['id'] and r['kind'] == 'step'
+                      and r.get('actor') != 'proof' and r.get('action') not in ('requirements-reconciliation', 'version-reconciliation')]
+        mine = [r for r in open_steps if r.get('capability') == 'remainder reconciliation' and r.get('source_id') == row['id']]
+        foreign = [r for r in open_steps if r not in mine]
+
+        def steps_message(steps):
+            return ('open code/chief step ' + '; '.join('%s (%s: %s)' % (r['id'], r.get('actor') or 'no actor', r['text'][:160]) for r in steps) +
+                    ' remains open; if it is finished, close it with `' + '` or `'.join('bash %s close --bucket %s --id %s --key %s' % (HERE / 'owe.sh', opt.bucket, r['id'], row['key']) for r in steps) +
+                    '`; if work really remains, record a KEEP decision instead')
+
+        if remainder or foreign:
+            names = remainder + ['open step %s (%s: %s)' % (r['id'], r.get('actor') or 'no actor', r['text'][:160]) for r in foreign]
             if opt.settle and not opt.dry_run and current.get('status') == 'Done' and current.get('category') == 'done':
-                # The ticket really is Done but a remainder appeared after the check. Keep the validation pending and leave the chief
-                # one owned, idempotent step that names it; discharge nothing.
-                names = '; '.join(blocking)
+                # The ticket really is Done but something opened after the check. Keep the validation pending and leave the chief one
+                # owned, idempotent step that names it; discharge nothing.
                 metadata = dict(actor='chief', capability='remainder reconciliation', action='next-step', source_id=row['id'], wake='remainder reconciled',
                                 due=datetime.datetime.now(datetime.timezone.utc).date().isoformat(), actual_status=current.get('status', ''))
-                text = re.sub(r'[\x00-\x1f]+', ' ', 'Reconcile remainder: %s is Done but a merged pull request still leaves %s; validation %s stays pending; decide whether to reopen, '
-                              'build it or file a follow-up, close this step, then record the decision again' % (row['key'], names, row['id']))
+                text = re.sub(r'[\x00-\x1f]+', ' ', 'Reconcile close: %s is Done but %s still blocks the CLOSE; validation %s stays pending; decide whether to reopen, '
+                              'build it, close what is finished or file a follow-up, close this step, then record the decision again' % (row['key'], '; '.join(names), row['id']))
                 made = owe(['add', '--bucket', opt.bucket, '--chief', row['chief'], '--kind', 'step', '--key', row['key'], '--text', text,
-                            '--identity', digest([row['identity'], blocking, 'remainder-reconciliation']), '--metadata-stdin'], json.dumps(metadata))
-                print(json.dumps({'id': row['id'], 'closed': False, 'reconciliation': made, 'status': current.get('status'), 'remainder': blocking}))
+                            '--identity', digest([row['identity'], names, 'close-reconciliation']), '--metadata-stdin'], json.dumps(metadata))
+                print(json.dumps({'id': row['id'], 'closed': False, 'reconciliation': made, 'status': current.get('status'), 'remainder': names}))
                 return
-            raise ValueError('live pull-request remainder blocks the CLOSE: ' + '; '.join(blocking) + '; KEEP required')
-        # A CLOSE never settles over another open remainder: an open `step` row of this key that is neither this validation, a proof
-        # step (this handoff discharges those it bound; later ones are not its scope), nor a reconciliation the validation itself owns.
-        # It refuses (nothing discharged or erased); `--check` refuses the same way.
-        blocking = [r['id'] for r in rows if not r['closed'] and r.get('key') == row['key'] and r['id'] != row['id'] and r['kind'] == 'step'
-                    and r.get('actor') != 'proof' and r.get('action') not in ('requirements-reconciliation', 'version-reconciliation')]
-        if blocking:
-            raise ValueError('open code/chief step ' + ', '.join(blocking) + ' remains; KEEP required')
+            raise ValueError('; '.join(([('live pull-request remainder blocks the CLOSE: ' + '; '.join(remainder) + '; KEEP required')] if remainder else []) +
+                                       ([steps_message(foreign)] if foreign else [])))
+        if mine:
+            raise ValueError(steps_message(mine))
         current_requirements = ' '.join(requirement_body(current['mirror'] if 'mirror' in current else '## Description\n' + current['description']).lower().split())
         for field in ('coverage', 'controls'):
             citations = verdict.get(field)

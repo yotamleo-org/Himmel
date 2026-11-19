@@ -331,7 +331,7 @@ class ChiefDecision(unittest.TestCase):
         self.assertEqual(record['owed_refs'], [proof])
         self.change_decision(identity=record['identity'])
         before = self.rows()
-        r = self.decide('--settle', action_id=record['id'])  # the open code part refuses the CLOSE: nothing is discharged or erased
+        r = self.decide('--settle', status='To Do', action_id=record['id'])  # the open code part refuses the CLOSE: nothing is discharged or erased
         self.assertNotEqual(r.returncode, 0, r.stdout)
         self.assertIn('open code/chief step ' + code, r.stderr)
         self.assertEqual(self.rows(), before)
@@ -397,8 +397,8 @@ class ChiefDecision(unittest.TestCase):
             with self.subTest(actor=actor):
                 step = self.add_row('Finish the remaining ' + actor + ' slice', actor=actor)
                 before = self.rows()
-                for mode in ('--check', '--settle'):  # the check is as read-only as the settle that refuses
-                    r = self.decide(mode)
+                for mode, status in (('--check', 'Done'), ('--settle', 'To Do')):  # a settle on a Done ticket reconciles instead (below)
+                    r = self.decide(mode, status=status)
                     self.assertNotEqual(r.returncode, 0, r.stdout)
                     self.assertIn('open code/chief step ' + step, r.stderr)
                     self.assertEqual(self.rows(), before)
@@ -463,8 +463,8 @@ class ChiefDecision(unittest.TestCase):
         met = ('| control two | MET | main=' + 'a'*40 + ' | pending count was 0, PASS yes |\n'
                '| control three | MET | main=' + 'a'*40 + ' | waiting list is empty; tbd none; PASS yes |\n'
                '| control four | MET | main=' + 'a'*40 + ' | PASS: nothing pending, none waiting, not yet due items: none |\n'
-               '- pending count was 0 and waiting list is empty\n- tbd items: none\n')
-        row = self.pending_with(good + met)
+               'The run reported nothing pending and no one waiting.\n')  # the rows sit in the result table; a list item starts with its status
+        row = self.pending_with(good.replace('VERDICT CLOSE\n', met + 'VERDICT CLOSE\n'))
         r = self.check(row)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(json.loads(r.stdout)['semantic_coverage'], 'chief-owned')
@@ -794,6 +794,7 @@ class ChiefDecision(unittest.TestCase):
                 self.assertFalse(self.unmet(self.result_table(evidence=evidence)))
         self.assertFalse(self.unmet(self.result_table(status='Pendingly done')))  # a word of its own, not the status word
         self.assertFalse(self.unmet('| row | Expected | Result |\n|---|---|---|\n| obs | PENDING | MET |\n'))  # an Expected column is test input
+        self.assertFalse(self.unmet('| row | Expected | Sha | Evidence |\n|---|---|---|---|\n| obs | PENDING | main=aaa | ok |\n'))  # also with no status column
         self.assertFalse(self.unmet('The run reported nothing pending, no one waiting and no tbd.\n- the run reported nothing pending\n'))
 
     def test_a_row_with_no_status_column_to_read_fails_closed_for_the_not_yet_due_words(self):
