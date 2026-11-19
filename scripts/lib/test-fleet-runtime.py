@@ -1667,6 +1667,19 @@ exit 1''')
         self.settle(reason='[ops] the launcher is gone and nothing started')  # a real reason that only begins with a bracket
         self.assertEqual(self.anchor_attempts(), {})
 
+    def test_a_scan_that_did_not_finish_is_not_proof_and_the_receipt_records_that_no_process_carried_the_id(self):
+        runtime = self.runtime_module()
+        self.active()
+        self.stuck()
+        self.forge(start='0')
+        record = self.anchor_attempts()['one']
+        with self.batch_env():
+            self.assertEqual(runtime.settle_blockers(record, set(), time.monotonic() + 30), [])
+            blockers = runtime.settle_blockers(record, set(), time.monotonic() - 1)  # the deadline has passed: nothing was read
+            self.assertIn('the process scan did not finish', blockers)
+        self.settle()
+        self.assertEqual(self.history_rows('one')[-1]['evidence']['carriers'], 'none')
+
 
 if __name__ == '__main__':
     unittest.main()
