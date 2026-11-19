@@ -2228,6 +2228,16 @@ check "P3: merged stdout keeps pr-check bullet contract" "$(grepq "$out_p1" -E '
 printf '%s' "$DIFF" | CRITICS_JSON="$PLAIN_JSON" CRITIC_FIRST_PASS="$CAPTURE_STUB" bash "$PANEL" >/dev/null 2>&1
 check "P2: row without perspective omits flag" "$(grep -c -- '--perspective-file' "$CAPTURE_FILE")" "0"
 
+# P5/P6/P7: the REAL registry gives the opt-in claude row the floor-reviewer
+# perspective and leaves the codex row bare. P7 builds the prompt (no model
+# call) with that file and checks the floor-reviewer text is in it.
+: > "$CAPTURE_FILE"
+printf '%s' "$DIFF" | CR_PROFILE=free,paid CRITICS_JSON="$HERE/critics.json" CRITIC_FIRST_PASS="$CAPTURE_STUB" bash "$PANEL" >/dev/null 2>&1
+check "P5: real registry claude row threads the floor-reviewer perspective" "$(grep -- '--slug claude' "$CAPTURE_FILE" | grep -c 'perspectives/floor-reviewer.md')" "1"
+check "P6: real registry codex row gets no perspective" "$(grep -- '--slug codex' "$CAPTURE_FILE" | grep -c -- '--perspective-file')" "0"
+pp_floor="$(printf '%s' "$DIFF" | bash "$HERE/critic-first-pass.sh" --model claude-opus-5-5 --slug claude --provider claude-api --perspective-file "$HERE/perspectives/floor-reviewer.md" --print-prompt 2>/dev/null)"
+check "P7: claude --print-prompt carries the floor-reviewer perspective" "$(grepq "$pp_floor" -F 'Verify-before-critical' && echo yes || echo no)" "yes"
+
 # Test PV: OPT-IN route_provider threaded to first-pass as --provider
 # so model ids newer than hermes' catalog can't fall to its
 # default provider. The descriptive "provider" metadata key alone must NOT
