@@ -25,6 +25,8 @@ export function statusMarkerIsParked(word) {
 }
 
 const RESULTS = /^## Results(?:[ \t]|$)/;
+const RULINGS = /^## (?:Chief|Console) Rulings(?:[ \t]|$)/; // old-term-ok
+const ACTIONABLE = /^- (?:[0-9]{1,2}:[0-9]{2}[ \t\n\v\f\r]+)?(?:\*\*)?(READY|BLOCKED|FINDING|MERGED)(?:[^A-Za-z0-9_][\s\S]*)?$/;
 
 function scopeLines(path) {
   if (!statSync(path).isFile()) {
@@ -32,10 +34,13 @@ function scopeLines(path) {
   }
   const out = [];
   let scope = false;
+  let seen = false;
   for (const raw of readFileSync(path, 'latin1').split('\n')) {
     const head = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
     if (head.startsWith('## ')) {
-      scope = RESULTS.test(head);
+      const isResults = RESULTS.test(head);
+      scope = isResults || (seen && RULINGS.test(head));
+      seen = seen || isResults;
       continue;
     }
     if (scope) out.push(raw);
@@ -54,8 +59,16 @@ export function statusMarkerNewest(path) {
 }
 
 export function statusMarkerActionable(path) {
-  scopeLines(path);
-  return null;
+  let word = null;
+  let count = 0;
+  for (const line of scopeLines(path)) {
+    const m = ACTIONABLE.exec(line);
+    if (m) {
+      word = m[1];
+      count += 1;
+    }
+  }
+  return word === null ? null : `${word}#${count}`;
 }
 
 function main(argv) {

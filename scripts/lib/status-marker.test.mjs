@@ -150,3 +150,25 @@ test('row E4: a file the user cannot read is unreadable (readable to root)', (t)
     else assert.throws(() => fn(p), { code: 'EACCES' }, name);
   }
 });
+
+const TEN = /WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED/; // old-term-ok
+const P = join(T, 'p');
+mkdirSync(P);
+const putDoc = (line) => {
+  const p = join(P, 'p.md');
+  writeFileSync(p, `## Results\n${line}\n`);
+  return p;
+};
+for (const [line] of ROWS) {
+  const pm = statusMarkerParse(line);
+  test(`row P1: ${line}`, () => {
+    const p = putDoc(line);
+    assert.equal(statusMarkerNewest(p), pm);
+    assert.equal(statusMarkerActionable(p), ['READY', 'BLOCKED', 'FINDING'].includes(pm) ? `${pm}#1` : null);
+  });
+  for (const x of ['READY', 'BLOCKED', 'FINDING', 'MERGED']) {
+    test(`row P2 (${x}): ${line}`, () => {
+      assert.equal(statusMarkerActionable(putDoc(line.replace(TEN, x))), pm === null ? null : `${x}#1`);
+    });
+  }
+}
