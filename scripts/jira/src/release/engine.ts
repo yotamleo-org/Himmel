@@ -6,8 +6,8 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { releaseKeyPath, releaseRoot } from './paths.js';
 import { pinnedSha, pinnedRead, boundedDirectoryNames, selectDecisionNames, reviewedSpecHashes, returnSha,
-  canonicalDirectoryNames, returnDirectories, checkLatestReturns, declaredTickets, keyOf,
-  validateCappedFoldProofShape, validateCappedProofShape, type AnyCappedProof, type CappedFoldProof, type CappedLedgerProof, type FilePin } from './pinned.js';
+  canonicalDirectoryNames, returnDirectories, checkLatestReturns, declaredTickets, keyOf, memberLedgerState, optionalReturnAgreement, parseManifest,
+  validateCappedFoldProofShape, validateCappedProofShape, type AnyCappedProof, type CappedFoldProof, type CappedLedgerProof, type FilePin, type MemberAbsencePin } from './pinned.js';
 export { pinnedSha, type Pinned } from './pinned.js';
 import { journalPath, readVersionWrites, type Getter, type VersionWriteRow } from './version-writes.js';
 import {
@@ -603,23 +603,38 @@ function canonical(path: string): boolean {
   try { return realpathSync(path) === path; } catch { return false; }
 }
 
+// The one predicate over a fresh listing of the pinned ledger folder and the manifest bytes the record pins: a listing that cannot be read, a folder that is not
+// canonical, a manifest that does not parse and any member with a ledger file, a snapshot folder or a manifest entry all mean the absence no longer holds.
+function memberAbsent(pin: MemberAbsencePin, manifest: Buffer | undefined): boolean {
+  try {
+    const parsed = manifest && parseManifest(manifest.toString('utf8'));
+    return !!parsed && canonical(pin.directory) && statSync(pin.directory).isDirectory() && memberLedgerState(boundedDirectoryNames(pin.directory), Object.keys(parsed.keys), pin.keys).present.length === 0;
+  } catch { return false; }
+}
+
 function checkCappedPins(proof: AnyCappedProof): void {
   const key = proof.schema === 2 ? proof.anchor : proof.key;
   const history = proof.schema === 2 ? new Set(proof.pins.flatMap(pin => pin.role === 'history' ? [pin.path] : [])) : undefined;
   for (const directory of returnDirectories(key, proof.spec.path, proof.plan.path, proof.returns)) {
     checkLatestReturns(directory, canonicalDirectoryNames(directory).names, key, proof.returns, history);
   }
+  let members: MemberAbsencePin | undefined;
+  let manifest: Buffer | undefined;
   for (const pin of proof.pins) {
     if (pin.role === 'decision-selection') {
       if (!canonical(pin.directory) || JSON.stringify(selectDecisionNames(boundedDirectoryNames(pin.directory), pin.decision)) !== JSON.stringify(pin.names)) {
         throw new Error(`capped evidence selection changed: ${pin.directory}`);
       }
-    } else if (pin.role !== 'member-absence') {
+    } else if (pin.role === 'member-absence') {
+      members = pin;
+    } else {
       const got = pinnedRead(pin.path);
       if (!canonical(pin.path) || !('bytes' in got) || got.sha256 !== pin.sha256
         || (pin.role === 'decision' && got.mtime_ms !== pin.mtime_ms)) throw new Error(`capped evidence changed or unreadable: ${pin.path}`);
+      if (pin.role === 'manifest') manifest = got.bytes;
     }
   }
+  if (members && !memberAbsent(members, manifest)) throw new Error(`capped evidence selection changed: ${members.directory}`);
 }
 
 function bindCappedProof(proof: CappedFoldProof, input: CappedInputs): void {
@@ -643,6 +658,7 @@ function bindCappedLedgerProof(proof: CappedLedgerProof, input: CappedInputs): v
     const file = input.files.find(f => f.kind.toLowerCase() === r.kind);
     if (!file || file.path !== r.path || file.sha256 !== r.sha256 || file.residuals !== r.residuals
       || returnSha(file.text) !== r.return_sha) throw new Error(`capped proof ${r.kind} return binding disagrees`);
+    optionalReturnAgreement(file.text, { keys: proof.keys, specSha: input.spec.sha256 });
   }
   if (proof.carried.length !== input.residuals) throw new Error('capped proof input binding disagrees');
   const spec = pinnedRead(input.spec.path);

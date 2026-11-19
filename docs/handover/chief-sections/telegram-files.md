@@ -90,6 +90,8 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   retain that checkout while signatures depend on it. File, ledger, manifest,
   decision-mtime or decision filename selection drift can stale them. Build briefs
   retain full provenance and require separate coverage for `spec:F1` and `plan:F1`.
+  A signature of two or more keys, or of a one-key spec the shipped verifier refuses, is the separate v2 route: see
+  "Ledger-bound capped carry (proof v2)" below, and do not use it for a real signing yet.
 - **The operator asked to see a page that has not passed: the by-request form.** Run
   `bun scripts/telegram/chief-route.ts send-file --by-request "<the operator's request, in words>" <chat_id> <path> ["<caption>"]`.
   It skips the critic check and sends the `.md` or `.html` page marked **NOT PASSED. Not for signature.** at the top of the page,
@@ -119,3 +121,103 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
 - A queued line that carries both `text` and `document_path` sends the text, then the file.
 - The bridge never receives your path on its own: you run `send-file`; the operator's receipt
   is the proof (quote it in the ticket).
+
+## Ledger-bound capped carry (proof v2)
+
+**Do not use this route for any real signing until the operator has approved live issuance (item 6); until then every
+command below is for fixtures only.** It is a way to sign a frozen spec of one or more keys that stopped at its review cap
+with only minor or medium findings. It is built and tested only in hermetic fixture roots, and a signature is not Done.
+
+**1. The verifier flags and the signing root.** `bun scripts/telegram/chief-route.ts capped-fold` takes exactly one of
+`--key <K>` (the shipped one-key verifier: its arguments, output, exit codes and refusal order are unchanged) or
+`--keys <K1,K2,...>` (proof v2, one or more keys), each with `--spec`, `--plan`, `--spec-return` and `--plan-return`,
+each flag once. Both together, an empty, repeated or trailing-comma key, or a missing flag exits 1 with a
+`capped-fold:` message. It is read-only, prints one JSON line and grants no authority. A signing is
+`jira release operator spec <release> --keys <K,...> --spec <file> --plan <file> --verdict <file> --verdict <file>
+--decision <n> --verbatim-file <f>`, and `--source-root <path>` names where the spec's citations are read: the primary
+or a registered live linked worktree of this repository (default: the primary).
+
+**2. The producer route and its order.** Only `jira release operator spec` takes it, and only after the normal
+residual-disposition check has refused. One key runs the shipped `--key` verifier first; only when that verifier exits
+non-zero does the engine try `--keys <K>` (v2). Two or more keys go to v2 only. A timeout, a spawn error (no `bun`, output
+over the bound), a child killed by a signal, output that is not JSON, and a proof that fails validation, the binding to
+the signing inputs or the pin check are final and never retried on v2. When v2 was tried, a refusal reads
+`...; capped verifier unavailable/refused: <first reason>; v2: <v2 reason>`, and for a group the first reason is the shipped
+one-key guard text labelled `v1 route:`. A guard that refuses before any spawn (no `--plan`, or the spec given as the
+plan) refuses once with the shipped words `capped carry requires one key, an explicit distinct plan and paired SPEC/PLAN
+returns`, and a final failure of the shipped one-key verifier ends at `capped verifier unavailable/refused: <reason>`, with
+no `v2:` part. A one-key signature that the shipped verifier accepts is still stored as a schema-1 record; the v2 route
+stores schema 2 (`mode: capped-carry-ledger`).
+
+**3. The keys are the spec's own `tickets:` line.** `--keys` must equal, as a set, the keys on the one `tickets:` line
+of the spec's front matter (a flow list or a comma list; each item a key with at most one trailing parenthetical
+note of 200 characters or fewer): no missing, extra or repeated key. The anchor is the key in the spec's file name (or its `specs/<KEY>/` folder); it must be
+one of the keys, and the spec, the plan and every return carry it in their file names. The anchor owns the ledger and no
+flag chooses it. A spec head or plan header that states keys must state exactly these keys. The engine checks the
+declaration against the signed spec bytes at signing and on every read.
+
+**4. The two accepted quote shapes.** A critic return's `READ` quote is read in exactly one of two shapes: `READ` or
+`READ-SHA256`, a 64-hex sha, one or two spaces, then the path; or (the legacy order) `READ` or `READ-SHA256`, an absolute
+path, a space, then the sha. Any other `READ` line refuses (`capped-fold: malformed seal or READ quote`), and the quotes
+must equal the ledger's seals. A return's `Keys?:` line and its `Reviewed: spec <sha>` line are each optional on their own:
+a `Keys?:` line, when present, must be the only such line and name exactly the declared keys; a `Reviewed: spec <sha>`
+line, when present, must be the only such line and carry the current spec hash; a return with either, both or neither is
+accepted when each line it has agrees. The verifier checks this, and the engine checks it again at signing and on every read.
+
+**5. What does not change.** Members must hold no ledger state (item 8). The cap rule is unchanged: only a kind that
+stopped at its refused review cap carries, only its latest minor or medium findings carry and at least one must; a major,
+a reserved tag, a closure major, an open historical operator-critical finding without the operator's ruling, or a kind
+whose next round is admitted (a live override included) refuses. Carried findings are stored as `open-carried` entries and
+nothing in code closes one: a signature is not Done. `spec-review` is unchanged: it never takes the v2 route, stays a
+review record and not a signature, and still needs its `Key:` lines and the spec header. A direct `--key`
+verification, every stored schema-1 record and the normal signing path behave as before.
+
+**6. The live issuance gate.** No live schema-2 record is written, and no frozen family is signed through v2, until the
+operator decides one of two gates. Gate (A) is normal adoption of this change on the primary (merge and station update),
+which removes the pre-capped readers. Gate (B) needs both a separately reviewed exact changed-candidate build with its own
+explicit adoption approval and an actual bounded ceilings entry (`scripts/ledger/ceiling-add.sh`) naming the
+pre-capped-reader exposure and the containment; neither decision exists today. Relying on gate (B) is a full pause of normal
+automatic fleet dispatch and of new normal headed launches that reach the primary `brief-lint.sh`; it is
+not a per-family filter, and no code selects the family keys. Eight consumers must be stopped against v2 state while the
+primary is pre-capped, and none is accepted as display-only and none is claimed to check a proof. No consumer is stopped by
+this plan and no acceptance exists: nothing in code stops any of the eight, and none is stopped today. The eight are
+`next-dispatchable.sh`, `gen-briefs.py`, `brief-lint.sh` and `roadmap.ts`, all through the primary dist's `release spec-check`; `tracker.py`
+(`operator_owed`) and `board.ts` (`specItems`), which read `release/<version>/operator.jsonl` directly and treat any
+`kind: spec` row as signed without checking `capped_carry`; and the manual primary `jira release spec-check` and
+`jira roadmap get` of the operator and the chief. Gate (B) cannot open until each one's quiescence or safe routing is
+shown in a reviewable operational plan, with the explicit future operator approval and the ceilings entry; no wrapper,
+environment bypass or extra source path is added. Before any consumer resumes, gate (A) must hold and every
+candidate-issued record must read `SPEC ok` under the merged engine or be normally superseded. No gate may be inferred from
+the existing exact-candidate exception (04bc and its 988 words), from the placement of decision 988 or from the single
+aggregate PR, and normal dispatch resumed earlier voids the containment.
+
+**7. The signing rules.** `lintSpec` and both minerva scripts load from the primary checkout, found through the git
+common directory, even when the engine runs from a candidate worktree: only the citation root is selectable. A gate-(B)
+signing therefore (1) passes `--source-root <the exact reviewed candidate worktree>`, which binds that root's identity
+and HEAD; (2) before signing, records both primary-loaded lint-script hashes and compares them with the candidate's
+copies, and any difference is a STOP, by the command below; after signing, the readback is the record's `source_root`
+and `source_head` equal to the candidate's and `jira release spec-check` by the candidate build's own path; (3) takes the
+member-absence listing fresh at that signing (the verifier and the engine re-run the one predicate), so no earlier absence
+note is an input and none grants authority. The same rule applies to the CORE signature of 10278 itself while its
+citations are branch-only. Real issuance is the chief's or the root's.
+
+**How to run the command below (checked on scratch directories).** Run it through bash and never paste it into your own
+shell: `CAND=<the candidate worktree's absolute path> bash -c '<the block below, between the single quotes>'`. It is bash
+syntax: it is not valid as typed in fish, and its `exit 1` would end your own shell. With `CAND` a non-empty absolute path
+that is not the primary, it prints nothing and exits 0 only when both lint scripts exist on both sides and are byte-equal.
+Any output at all, or a non-zero exit, is a STOP: a changed copy prints `STOP` and exits 1; a script missing on one side
+prints a `sha256sum` error and `STOP` and exits 1; a script missing on both sides exits 0 but prints `sha256sum` errors.
+What it does not detect: `CAND` empty, unset or equal to the primary (the primary is then compared with itself, and an
+empty `CAND` passes silently in zsh), so check by hand that `CAND` is the candidate before you run it.
+
+<!-- signing-hash-check -->
+```bash
+h() { (cd "$1" && sha256sum marketplace/plugins/himmel-ops/scripts/minerva-spec-gate.sh marketplace/plugins/himmel-ops/scripts/minerva-trace-lint.sh); }; PRIMARY=$(dirname "$(git -C "$CAND" rev-parse --path-format=absolute --git-common-dir)"); [ "$(h "$PRIMARY")" = "$(h "$CAND")" ] || { echo STOP >&2; exit 1; }
+```
+
+**8. The member-key operating rule.** No member key opens its own spec round while the group record is live; an
+independent design for a member uses a new follow-up ticket key. Any member ledger file, snapshot folder or manifest entry
+under the anchor's specs root makes every key of the record read `SPEC-STALE`, the anchor included, and the same group
+cannot be re-signed while it exists: a supersession is itself a fresh group signing, so it must keep every key of the old
+record and releases no member. The check covers only the anchor's specs root; a member ledger under another specs root
+is not seen. No ledger is deleted to recover signability, and no automatic recovery is described or built.
