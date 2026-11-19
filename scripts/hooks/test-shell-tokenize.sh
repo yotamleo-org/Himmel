@@ -209,7 +209,7 @@ done
 # and a line continuation inside quotes read alike in all three.
 # shellcheck disable=SC1003 # the texts hold backslashes, not escaped quotes
 trail_bs=('terraform destroy\' 'echo x | terraform destroy\' 'echo x; terraform destroy\' 'echo x && terraform destroy\'
-    $'echo x\nterraform destroy\' 'terraform destroy\\\' 'terraform destroy\\\\\' '\' 'terraform plan\')
+    "echo x"$'\n'"terraform destroy$bs" 'terraform destroy\\\' 'terraform destroy\\\\\' '\' 'terraform plan\')
 for t in "${trail_bs[@]}"; do
     _st_endbs "$t"; check "[$t] ends in an odd run of backslashes" "$?" "0"
     tok "$t"; check "the text [$t] ends in a backslash and fails the tokenizer" "$R:${ST_AMBIG-}" "1:1"
