@@ -3857,6 +3857,117 @@ n=' /etc/hostname'; uniq -c$n @P@/.claude/settings.json
 uniq -- -c @P@/.claude/settings.json
 ROWS
 
+# T3 Code's settings file (provider instances and their environment) is live
+# from every cwd, worktree included, for every tool shape.
+T3H="$SANDBOX/t3home-fake"
+T3ALT="$SANDBOX/t3alt"
+mkdir -p "$T3H/.t3/userdata/attachments" "$T3ALT/userdata" "$WT2/data"
+printf '{}\n' > "$T3H/.t3/userdata/settings.json"
+printf '{}\n' > "$T3ALT/userdata/settings.json"
+printf 'png\n' > "$T3H/.t3/userdata/attachments/a.png"
+ln -s "$T3H/.t3/userdata" "$SANDBOX/t3link"
+T3S="$T3H/.t3/userdata/settings.json"
+for t3tool in Edit Write MultiEdit; do
+    assert_rc "9900 $t3tool on T3's default settings file denies" 2 \
+        "$(rc_of "$T3S" "$t3tool" file_path HOME="$T3H")"
+    assert_rc "9901 $t3tool on T3's settings file under T3CODE_HOME denies" 2 \
+        "$(rc_of "$T3ALT/userdata/settings.json" "$t3tool" file_path HOME="$T3H" T3CODE_HOME="$T3ALT")"
+done
+assert_rc "9902 NotebookEdit on T3's settings file denies" 2 \
+    "$(rc_of "$T3S" NotebookEdit notebook_path HOME="$T3H")"
+assert_rc "9903 Write through a symlinked T3 userdata dir denies" 2 \
+    "$(rc_of "$SANDBOX/t3link/settings.json" Write file_path HOME="$T3H")"
+t3_msg=$(jq -n --arg f "$T3S" '{tool_name: "Write", tool_input: {file_path: $f}}' \
+    | env HOME="$T3H" bash "$HOOK" 2>&1 >/dev/null)
+case "$t3_msg" in
+    *"provider instances"*"T3's settings UI"*) echo "PASS 9904 the T3 refusal names provider instances and T3's settings UI" ;;
+    *) echo "FAIL 9904 the T3 refusal text: $t3_msg"; FAILED=$((FAILED + 1)) ;;
+esac
+assert_rc "9905 EDIT_LIVE_SETTINGS_OK=1 bypass allows a T3 settings Write" 0 \
+    "$(rc_of "$T3S" Write file_path HOME="$T3H" EDIT_LIVE_SETTINGS_OK=1)"
+assert_rc "9906 bash redirect to ~/.t3/userdata/settings.json from a worktree denies" 2 \
+    "$(bash_rc_of "$WT2" 'echo x > ~/.t3/userdata/settings.json' HOME="$T3H")"
+assert_rc "9907 bash redirect to the absolute T3 settings path from a worktree denies" 2 \
+    "$(bash_rc_of "$WT2" "echo x > $T3S" HOME="$T3H")"
+assert_rc "9908 bash write under a resolved T3CODE_HOME from a worktree denies" 2 \
+    "$(bash_rc_of "$WT2" "cp /etc/hostname $T3ALT/userdata/settings.json" HOME="$T3H" T3CODE_HOME="$T3ALT")"
+printf '{}\n' > "$WT2/data/settings.json"
+assert_rc "9920 bash cp of a settings.json into T3CODE_HOME's userdata dir from a worktree denies" 2 \
+    "$(bash_rc_of "$WT2" "cp $WT2/data/settings.json $T3ALT/userdata/" HOME="$T3H" T3CODE_HOME="$T3ALT")"
+assert_rc "9909 bash write via \$T3CODE_HOME from a worktree denies" 2 \
+    "$(bash_rc_of "$WT2" 'echo x > "$T3CODE_HOME/userdata/settings.json"' HOME="$T3H" T3CODE_HOME="$T3ALT")"
+assert_rc "9910 bash write to a glob leaf under ~/.t3/userdata from a worktree denies" 2 \
+    "$(bash_rc_of "$WT2" 'echo x > ~/.t3/userdata/sett*.json' HOME="$T3H")"
+assert_rc "9911 bash write through a symlink to T3's userdata from a worktree denies" 2 \
+    "$(bash_rc_of "$WT2" "echo x > $SANDBOX/t3link/settings.json" HOME="$T3H")"
+assert_rc "9912 bash jq rewrite of T3's settings from a worktree denies" 2 \
+    "$(bash_rc_of "$WT2" "jq '.a=1' $T3S > /tmp/t3x && mv /tmp/t3x $T3S" HOME="$T3H")"
+assert_rc "9913 control: reading T3's settings from a worktree allows" 0 \
+    "$(bash_rc_of "$WT2" 'cat ~/.t3/userdata/settings.json' HOME="$T3H")"
+assert_rc "9914 control: copying a T3 attachment out allows" 0 \
+    "$(bash_rc_of "$WT2" "cp $T3H/.t3/userdata/attachments/a.png $WT2/data/a.png" HOME="$T3H")"
+assert_rc "9915 control: Write on an unrelated JSON file in the worktree allows" 0 \
+    "$(rc_of "$WT2/data/userdata.json" Write file_path HOME="$T3H")"
+assert_rc "9916 control: bash write to an unrelated JSON file in the worktree allows" 0 \
+    "$(bash_rc_of "$WT2" 'echo {} > data/other.json' HOME="$T3H")"
+assert_rc "9917 existing: the primary settings.json still denies with T3 paths known" 2 \
+    "$(rc_of "$PRIMARY/.claude/settings.json" Edit file_path HOME="$T3H" T3CODE_HOME="$T3ALT")"
+assert_rc "9918 existing: a worktree's own settings.json redirect still allows" 0 \
+    "$(bash_rc_of "$WT2" 'echo x > .claude/settings.json' HOME="$T3H" T3CODE_HOME="$T3ALT")"
+lsb_msg=$(jq -n --arg f "$PRIMARY/.claude/settings.json" '{tool_name: "Edit", tool_input: {file_path: $f}}' \
+    | env HOME="$T3H" bash "$HOOK" 2>&1 >/dev/null)
+case "$lsb_msg" in
+    *"This is a LIVE settings file"*) echo "PASS 9919 the primary settings refusal keeps its own text" ;;
+    *) echo "FAIL 9919 the primary settings refusal text: $lsb_msg"; FAILED=$((FAILED + 1)) ;;
+esac
+
+# A T3 worktree ($HOME/.t3/worktrees/<project>/<name>) is an ordinary linked
+# worktree: its own settings.json is judged exactly as any worktree's is.
+mkdir -p "$T3H/.t3/worktrees/proj"
+T3WT="$T3H/.t3/worktrees/proj/wt"
+git -C "$SANDBOX/primary" worktree add -q "$T3WT" -b feat/t3wt >/dev/null 2>&1 || {
+    echo "FATAL: could not create the T3 worktree fixture" >&2
+    exit 1
+}
+mkdir -p "$T3WT/.claude"
+printf '{}\n' > "$T3WT/.claude/settings.json"
+# bash_msg_of CWD COMMAND [EXTRA_ENV...] — the hook's stderr for a Bash payload.
+bash_msg_of() {
+    local cwd="$1" cmd="$2"
+    shift 2
+    jq -n --arg cmd "$cmd" --arg cwd "$cwd" \
+        '{tool_name: "Bash", tool_input: {command: $cmd, cwd: $cwd}}' \
+        | { env "$@" bash "$HOOK" >/dev/null; } 2>&1
+}
+assert_rc "9921 a T3 worktree writing its own settings.json by absolute path allows" 0 \
+    "$(bash_rc_of "$T3WT" "echo x > $T3WT/.claude/settings.json" HOME="$T3H")"
+assert_rc "9922 a T3 worktree writing its own settings.json via ~/.t3/worktrees allows" 0 \
+    "$(bash_rc_of "$T3WT" 'echo x > ~/.t3/worktrees/proj/wt/.claude/settings.json' HOME="$T3H")"
+assert_rc "9923 a T3 worktree writing its own settings.json by relative path allows" 0 \
+    "$(bash_rc_of "$T3WT" 'echo x > .claude/settings.json' HOME="$T3H")"
+assert_rc "9924 git -C <T3 worktree> add .claude/settings.json from another worktree denies (-C moves the cwd)" 2 \
+    "$(bash_rc_of "$WT2" "git -C $T3WT add .claude/settings.json" HOME="$T3H")"
+t3wt_msg=$(bash_msg_of "$WT2" "git -C $T3WT add .claude/settings.json" HOME="$T3H")
+case "$t3wt_msg" in
+    *"T3 Code's"*) echo "FAIL 9925 git -C <T3 worktree> refusal names T3's settings file: $t3wt_msg"; FAILED=$((FAILED + 1)) ;;
+    *"names a live settings.json"*) echo "PASS 9925 git -C <T3 worktree> keeps the live-settings refusal, not the T3 one" ;;
+    *) echo "FAIL 9925 git -C <T3 worktree> refusal text: $t3wt_msg"; FAILED=$((FAILED + 1)) ;;
+esac
+assert_rc "9926 a write to ~/.t3/worktrees/../userdata/settings.json denies" 2 \
+    "$(bash_rc_of "$T3WT" "echo x > $T3H/.t3/worktrees/../userdata/settings.json" HOME="$T3H")"
+t3wt_msg=$(bash_msg_of "$T3WT" "echo x > $T3H/.t3/worktrees/../userdata/settings.json" HOME="$T3H")
+case "$t3wt_msg" in
+    *"T3 Code's"*) echo "PASS 9927 the worktrees/.. climb is refused with the T3 message" ;;
+    *) echo "FAIL 9927 the worktrees/.. climb refusal text: $t3wt_msg"; FAILED=$((FAILED + 1)) ;;
+esac
+t3wt_msg=$(bash_msg_of "$WT2" "cd $T3H/.t3/userdata && echo x > settings.json" HOME="$T3H")
+case "$t3wt_msg" in
+    *"T3 Code's"*) echo "PASS 9928 cd ~/.t3/userdata then a settings.json write is refused with the T3 message" ;;
+    *) echo "FAIL 9928 cd into T3 userdata refusal text: $t3wt_msg"; FAILED=$((FAILED + 1)) ;;
+esac
+assert_rc "9929 a T3 worktree path whose tail carries a variable still counts as T3's directory" 2 \
+    "$(bash_rc_of "$WT2" 'echo x > ~/.t3/worktrees/proj/$x/settings.json' HOME="$T3H")"
+
 # Clean up worktree registrations before removing the sandbox (avoids
 # dangling `git worktree` admin records under SANDBOX/primary).
 git -C "$SANDBOX/primary" worktree remove --force "$SANDBOX/primary/.claude/worktrees/feat+x" 2>/dev/null || true
@@ -3864,6 +3975,7 @@ git -C "$SANDBOX/primary" worktree remove --force "$WT2" 2>/dev/null || true
 git -C "$SANDBOX/primary" worktree remove --force "$SANDBOX/prim" 2>/dev/null || true
 git -C "$SANDBOX/primary" worktree remove --force "$HOMEWT" 2>/dev/null || true
 git -C "$SANDBOX/primary" worktree remove --force "$WTDIRECT" 2>/dev/null || true
+git -C "$SANDBOX/primary" worktree remove --force "$T3WT" 2>/dev/null || true
 rm -rf "$SANDBOX" 2>/dev/null || true
 
 if [ "$FAILED" -gt 0 ]; then

@@ -110,6 +110,15 @@
 # file or into the primary .claude/, python or node writing one, git checkout
 # or restore of one, and any write chained after a reader.
 #
+# T3 Code's settings file, ${T3CODE_HOME:-$HOME/.t3}/userdata/settings.json
+# ($HOME/.t3 is always covered, and T3CODE_HOME too when set), is live from
+# every cwd, worktree or not: it holds T3's provider instances and the
+# environment variables each one starts its agent with, so a write there can
+# create an instance that carries a himmel bypass flag. check_target denies a
+# file-tool or operand path that resolves to it (`deny t3 …`), and the Bash and
+# PowerShell arm also treats a text that can name it (mentions_t3_settings) as
+# live; the read-only allowlist still applies. The refusal points at T3's
+# settings UI (t3_deny_message).
 #
 # Hook input arrives on stdin as JSON. Exit codes:
 #   0 — allow
@@ -617,6 +626,23 @@ canon() {
     esac
 }
 
+# t3_settings_lc — sets T3_SETTINGS_LC to T3 Code's settings file, canon()ed
+# and lowercased, one per line: $HOME/.t3/userdata/settings.json and, when
+# T3CODE_HOME is set, $T3CODE_HOME/userdata/settings.json. That file holds T3's
+# provider instances and the environment each one starts its agent with.
+T3_SETTINGS_LC="" T3_SETTINGS_DONE=0
+t3_settings_lc() {
+    [ "$T3_SETTINGS_DONE" = 1 ] && return 0
+    T3_SETTINGS_DONE=1
+    local d r
+    for d in "${HOME:+$HOME/.t3}" "${T3CODE_HOME:-}"; do
+        [ -n "$d" ] || continue
+        r=$(canon "$d/userdata/settings.json") || r=""
+        [ -n "$r" ] || continue
+        T3_SETTINGS_LC="$T3_SETTINGS_LC$(printf '%s' "$r" | tr '[:upper:]' '[:lower:]')"$'\n'
+    done
+}
+
 # check_target RAW_TARGET — resolve RAW_TARGET (joined onto $cwd if relative)
 # and test it against the deny predicate. Prints exactly one of:
 #   "deny <reason>: <canonicalised path>"
@@ -651,6 +677,16 @@ check_target() {
     case "$base_lc" in
         settings.json|settings.local.json) : ;;
         *) echo "allow"; return ;;
+    esac
+
+    t3_settings_lc
+    local real_lc
+    real_lc=$(printf '%s' "$real" | tr '[:upper:]' '[:lower:]')
+    case $'\n'"$T3_SETTINGS_LC" in
+        *$'\n'"$real_lc"$'\n'*)
+            echo "deny t3 T3 Code settings file: $real"
+            return
+            ;;
     esac
 
     parent=$(dirname "$real")
@@ -725,6 +761,68 @@ check_target() {
     fi
 
     echo "allow"
+}
+
+# mentions_t3_settings CMD_LC — true when the lowercased command text can name
+# T3 Code's settings file wherever the command runs: a settings.json leaf
+# (mentions_settings), or a glob, brace or variable leaf right under a
+# userdata/ directory, together with T3's data directory in any spelling (`.t3`
+# as a path component, `t3code_home`, the resolved T3CODE_HOME, or a
+# `userdata/settings` path). A path under `.t3/worktrees/<name>/` is a T3
+# worktree, an ordinary checkout, so its `.t3` does not count when the rest of
+# that word is a plain literal (no `$`, backtick, glob or brace) and the text
+# has no `..` climb anywhere. Fork-free unless T3CODE_HOME has to be resolved.
+mentions_t3_settings() {
+    local c="$1" t3home="" rest m tail out=""
+    local leaf_re='userdata/[^/[:space:];&|<>()]*[*?[{$]'
+    local dir_re='(^|[^a-z0-9_.-])\.t3([^a-z0-9_.-]|$)'
+    local wt_re='\.t3/worktrees/([^[:space:];&|<>()]*)'
+    c=${c//\\//}
+    c=${c//[\"\']/}
+    if [ "$mentions_settings" != 1 ] && ! [[ $c =~ $leaf_re ]]; then
+        return 1
+    fi
+    if ! has_traversal_dots "$c"; then
+        rest=$c
+        while [[ $rest =~ $wt_re ]]; do
+            m=${BASH_REMATCH[0]} tail=${BASH_REMATCH[1]}
+            out=$out${rest%%"$m"*}
+            rest=${rest#*"$m"}
+            case "$tail" in
+                ''|[!a-z0-9_]*|*[\$\`*?[\{]*) out=$out$m ;;
+                *) out=${out}t3-worktree/$tail ;;
+            esac
+        done
+        c=$out$rest
+    fi
+    [[ $c =~ $dir_re ]] && return 0
+    case "$c" in *t3code_home*|*userdata/settings*) return 0 ;; esac
+    if [ -n "${T3CODE_HOME:-}" ]; then
+        t3home=$(canon "$T3CODE_HOME" | tr '[:upper:]' '[:lower:]') || t3home=""
+        t3home=${t3home%/}
+        if [ -n "$t3home" ]; then
+            case "$c" in *"$t3home/userdata"*) return 0 ;; esac
+        fi
+    fi
+    return 1
+}
+
+t3_deny_message() { # t3_deny_message TOOL_LABEL ORIGINAL_TARGET
+    cat >&2 <<EOF
+⛔ block-edit-live-settings: refusing $1 on \`$2\` — it can write T3 Code's
+settings file, \${T3CODE_HOME:-\$HOME/.t3}/userdata/settings.json.
+
+That file holds T3's provider instances and the environment variables each
+instance starts its agent with, so a write there can create an instance that
+carries a himmel bypass flag. The operator changes it in T3's settings UI.
+
+Reading it with cat, jq, grep and the other read-only commands stays allowed.
+
+Bypass (single-run, set in the LAUNCHING shell — a per-call prefix cannot
+reach the hook process):
+
+    EDIT_LIVE_SETTINGS_OK=1 claude
+EOF
 }
 
 # check_claude_dir_target RAW_OPERAND — the Bash arm's operand check
@@ -2060,6 +2158,8 @@ _tok_cp_end() {
     rl=$(printf '%s' "${r%/}" | tr '[:upper:]' '[:lower:]')
     case "$rl" in *.claude*) return 1 ;; esac
     [ "$rl" != "$primary_root_lc" ] && [ "$rl" != "$own_root_lc" ] && [ "$rl" != "$home_root_lc" ] || return 1
+    t3_settings_lc
+    case $'\n'"$T3_SETTINGS_LC" in *$'\n'"$rl"$'\n'*) return 1 ;; esac
     if [ -d "$r" ]; then
         local i=0 s f
         while [ "$i" -lt $((_CPN - 1)) ]; do
@@ -2069,6 +2169,7 @@ _tok_cp_end() {
             f=$(canon "$r/$s" | tr '[:upper:]' '[:lower:]') || return 1
             case "$f" in /tmp/* | /var/tmp/* | /private/tmp/* | /private/var/tmp/*) ;; *) return 1 ;; esac
             case "$f" in *.claude*) return 1 ;; esac
+            case $'\n'"$T3_SETTINGS_LC" in *$'\n'"$f"$'\n'*) return 1 ;; esac
             i=$((i + 1))
         done
     fi
@@ -4214,7 +4315,10 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
                 ;;
         esac
         result=$(check_claude_dir_target "$w")
-        case "$result" in deny\ *) symlink_dest=1 ;; esac
+        case "$result" in
+            deny\ t3\ *) symlink_dest=1 t3_dest=1 ;;
+            deny\ *) symlink_dest=1 ;;
+        esac
     }
     _check_one_operand() {
         local w="$1" resolved wabs wparent wleaf
@@ -4293,6 +4397,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     }
     dirdest_climb=0
     symlink_dest=0
+    t3_dest=0
     # The operand scan runs for a write verb (every word) and,
     # for any other writer's redirect target: `echo x > s`
     # writes through a symlink `s` exactly as `cp y s` does. A command the
@@ -4618,8 +4723,15 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         exit 2
     fi
 
+    # T3 Code's settings file is live wherever the command runs: the
+    # worktree-relative exemption below never covers it.
+    if [ "$t3_dest" = 0 ] && mentions_t3_settings "$cmd_lc"; then
+        t3_dest=1
+    fi
+
     if [ "$mentions_settings" = "0" ] && [ "$dir_dest" = "0" ] && [ "$dirdest_climb" = "0" ] \
-        && [ "$symlink_dest" = "0" ] && [ "$brace_dir_dest" = "0" ] && [ "$variant_dest" = "0" ]; then
+        && [ "$symlink_dest" = "0" ] && [ "$brace_dir_dest" = "0" ] && [ "$variant_dest" = "0" ] \
+        && [ "$t3_dest" = "0" ]; then
         exit 0
     fi
 
@@ -4627,7 +4739,8 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
 
     live=0
     if [ "$is_primary_cwd" = "1" ] || [ "$ansi_c" = "1" ] || [ "$dirdest_climb" = "1" ] \
-        || [ "$symlink_dest" = "1" ] || [ "$brace_dir_dest" = "1" ] || [ "$variant_dest" = "1" ]; then
+        || [ "$symlink_dest" = "1" ] || [ "$brace_dir_dest" = "1" ] || [ "$variant_dest" = "1" ] \
+        || [ "$t3_dest" = "1" ]; then
         live=1
     elif changes_directory "$cmd_lc" "$cmd_n"; then
         # The worktree-relative exemption is judged against the PreToolUse
@@ -4664,7 +4777,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # A command that only reached here through a glob/alias/tree-copy leaf
     # (variant_dest) may also be a plain `ls`, which names no file's content.
     [ "$mentions_settings" = "1" ] || _RO_LS=1
-    if [ "$mentions_settings" = "1" ] || [ "$variant_dest" = "1" ]; then
+    if [ "$mentions_settings" = "1" ] || [ "$variant_dest" = "1" ] || [ "$t3_dest" = "1" ]; then
         if [ "$TOK" = 1 ]; then
             _tok_readonly_ok && exit 0
         elif is_readonly_allowlisted "$cmd_lc"; then
@@ -4678,7 +4791,9 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         exit 0
     fi
 
-    if [ "$mentions_settings" = "0" ] && [ "$variant_dest" = "1" ]; then
+    if [ "$t3_dest" = "1" ]; then
+        t3_deny_message "a $tool_name command" "$cmd"
+    elif [ "$mentions_settings" = "0" ] && [ "$variant_dest" = "1" ]; then
         deny_message "a $tool_name command" "$cmd" "a word can spell a live settings.json/settings.local.json (a glob, brace or bracket leaf, a Windows alias such as a trailing dot, ::\$DATA or an 8.3 name, or a recursive cp/rsync of a tree carrying .claude/settings*.json into the directory above a live .claude)"
     elif [ "$mentions_settings" = "1" ]; then
         deny_message "a $tool_name command" "$cmd" "the command text names a live settings.json/settings.local.json (worktree-relative spellings of the worktree's OWN copy are exempt; this one resolves to the primary checkout or \$HOME)"
@@ -4699,6 +4814,13 @@ target=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.note
 
 result=$(check_target "$target")
 case "$result" in
+    deny\ t3\ *)
+        if [ "${EDIT_LIVE_SETTINGS_OK:-0}" = "1" ]; then
+            exit 0
+        fi
+        t3_deny_message "$tool_name" "$target"
+        exit 2
+        ;;
     deny\ *)
         if [ "${EDIT_LIVE_SETTINGS_OK:-0}" = "1" ]; then
             exit 0

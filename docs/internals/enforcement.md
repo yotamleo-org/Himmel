@@ -3160,6 +3160,33 @@ stderr only (no file ledger). Wired in
 `EXPECTED_SCRIPT_ORDER` (`wire-hook-bash.mjs`) and the `.claude/settings.json`
 PreToolUse stanza for matcher `mcp__t3-code__unwatch_pull_request`. Spec: `scripts/hooks/test-block-t3code-unwatch-open-pr.sh`.
 
+### `guard-t3-thread-tools.sh` — T3 instances and chief titles stay operator choices
+
+Fires on every T3 Code MCP tool (matcher `mcp__t3-code__.*`); any other tool
+exits at once. Each T3 provider instance carries its own environment variables,
+so the operator can make an instance that carries a himmel bypass flag and pick
+it in the T3 UI. The T3 tools also let an agent pick the instance of a new or
+existing thread, and a T3 thread title ending in `-chief` or `-console` is the
+name `scripts/lib/session-name.sh` trusts as a chief. Two rules, each a deny
+(exit 2):
+
+- **Instances.** Every value under a key named `instanceId` or
+  `providerInstanceId` (case and `_` ignored) anywhere in `tool_input` must be on
+  the allowlist: `.t3.instance_allowlist` in `~/.himmel/config.json`, an array of
+  strings that replaces the default `["claudeAgent", "codex"]` (T3's two default
+  instances). An absent, unreadable, malformed or symlinked file or key means the
+  default. A null value counts as absent; any other non-string value denies.
+  `block-himmel-config-writes.sh` refuses agent writes to that file.
+- **Titles.** A string under a key named `title` anywhere in `tool_input` whose
+  trimmed value ends in `-chief` or `-console` (any case) denies. A title inside
+  a `delegatedFrom` object names the calling thread and is not judged.
+
+A security fence: fails CLOSED on a missing `jq` or a payload that does not
+parse. Override: `T3_THREAD_TOOLS_OK=1` (launching shell, session-sticky, tier
+`floor`); the allow is printed to stderr. Wired in `EXPECTED_SCRIPT_ORDER`
+(`wire-hook-bash.mjs`) and the `.claude/settings.json` PreToolUse stanza for
+matcher `mcp__t3-code__.*`. Spec: `scripts/hooks/test-guard-t3-thread-tools.sh`.
+
 ### `require-quiet-run.sh` — bare test-suite bounce
 
 Fires on Bash. Denies a bare `bash`/`sh`/direct invocation of a repo shell
