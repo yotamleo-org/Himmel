@@ -593,8 +593,6 @@ assert_rc "4367-2 control: escaped quote inside double quotes keeps the glob" 2 
     "$(run_in_globdir 'grep "a\" b" .e*')"
 assert_rc "4367-2 control: ANSI-C quoting stops tracking, glob still denies" 2 \
     "$(run_in_globdir "cat \$'\\'' .e*")"
-# A -c body holding a control-backslash pair is read three ways (bash 3.2, bash 5, zsh): the guard refuses it
-# even when the secret read after the pair is spelled with a hex escape (seed: the `cat .env` row above).
 # shellcheck disable=SC1003 # a lone backslash
 cb_bs='\'
 assert_rc "a -c body with a control-backslash pair hides a secret read -> refused" 2 \

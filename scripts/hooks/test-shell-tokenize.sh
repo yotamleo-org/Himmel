@@ -130,7 +130,6 @@ ansic_parity() {
 if [ "${BASH_VERSINFO[0]}" -gt 4 ] || { [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]}" -ge 4 ]; }; then
     ansic_parity
 fi
-# A control letter followed by a backslash is read three ways (bash 3.2, bash 5, zsh): refused.
 # shellcheck disable=SC1003 # a lone backslash
 bs='\'
 # shellcheck disable=SC1003 # the bodies hold backslashes, not escaped quotes

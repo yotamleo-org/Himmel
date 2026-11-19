@@ -596,7 +596,6 @@ _st_ansic_e() {
     fi
 }
 
-# _st_emit N — append byte N to _ST_DEC; false for NUL, which ends the word.
 _st_emit() {
     local ch
     [ "$1" -gt 0 ] || return 1
@@ -846,8 +845,6 @@ _st_sed_script() { # one sed script at word $1 with text $2, in st_sed_args's sc
 # simple command still is not, and a redirect is re-emitted with its target.
 PR_TOKENIZED=0
 st_tokenize "$cmd" && PR_TOKENIZED=1
-# Before bash 4.4 the tokenizer decodes ANSI-C words by hand, not with the
-# shell's own ${…@E}, so every such word is refused here.
 if [ "$ST_ANSIC" = 1 ] && { [ "${BASH_VERSINFO[0]}" -lt 4 ] \
     || { [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; }; then
     shown="$cmd"

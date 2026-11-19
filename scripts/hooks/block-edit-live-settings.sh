@@ -385,7 +385,6 @@ _st_ansic_e() {
     fi
 }
 
-# _st_emit N — append byte N to _ST_DEC; false for NUL, which ends the word.
 _st_emit() {
     local ch
     [ "$1" -gt 0 ] || return 1
