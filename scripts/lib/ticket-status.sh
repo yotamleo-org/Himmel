@@ -320,11 +320,12 @@ ts_record_write() {
     printf '%s\n' "$2" | atomic_write "$p" 2>/dev/null
 }
 
-# ts_marker_newest <doc> — the newest Results marker in a worker doc.
+# ts_marker_newest <doc> — the newest Results marker in a worker doc (an empty line for a doc with none, rc 0);
+# rc 1 and nothing printed when the doc cannot be read, which is not the same as having no marker.
 ts_marker_newest() {
     local line newest=""
     local succession_re='^- [0-9]{1,2}:[0-9]{2} SUCCESSION([^A-Za-z0-9-]|$)'
-    [ -r "$1" ] || return 0
+    [ -r "$1" ] || return 1
     while IFS= read -r line || [ -n "$line" ]; do
         if status_marker_parse "$line" >/dev/null; then
             newest=${BASH_REMATCH[3]}
@@ -425,7 +426,7 @@ _ts_worker_state() {
     local marker out rc hb hb_epoch age=0 warn
     TS_LOCK_HELD="" TS_LOCK_DEAD="" TS_ATTEMPT_PROTECTED=""
     [ -n "$1" ] || { TS_WORKER_STATE=unknown; return 0; }
-    local attempt_protected terminal=""
+    local attempt_protected terminal="" marker_unread=""
     case "${2-}" in
         '"pending"'|'"committed"'|'"unknown"'|'"launched"'|'"refused"'|'"complete"'|'"legacy"') attempt_protected=$2 ;;
         *) attempt_protected=$(python3 -I "$_TS_LIB_DIR/fleet_runtime.py" disposition --doc="$1") || attempt_protected='"unknown"' ;;
@@ -434,7 +435,7 @@ _ts_worker_state() {
         '"pending"'|'"committed"'|'"unknown"') TS_WORKER_STATE=unknown; TS_ATTEMPT_PROTECTED=yes; return 0 ;;
         '"refused"'|'"complete"') terminal=yes ;; # an ended attempt's receipt: it ends ownership only when the lock and the markers agree
     esac
-    marker=$(ts_marker_newest "$1")
+    marker=$(ts_marker_newest "$1") || marker_unread=yes
     case "$marker" in WRAPPED|HALTED) TS_WORKER_STATE=wrapped; return 0 ;; esac
     if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then
         out=$("$TICKET_STATUS_QUEUE_LOCK" status "$1" 2>/dev/null); rc=$?
@@ -451,7 +452,8 @@ _ts_worker_state() {
     fi
     # A terminal receipt with a free lock and no marker at all is the failed or finished launch with nothing after it.
     # A held lock, or any marker that is not an end marker (it is later than the receipt or was never wrapped), decides below.
-    if [ -n "$terminal" ] && [ "$TS_LOCK_HELD" = no ] && [ -z "$marker" ]; then TS_WORKER_STATE=wrapped; return 0; fi
+    # A doc that could not be read has no marker to be absent: it is unknown, never the finished launch.
+    if [ -n "$terminal" ] && [ "$TS_LOCK_HELD" = no ] && [ -z "$marker" ] && [ -z "$marker_unread" ]; then TS_WORKER_STATE=wrapped; return 0; fi
     if status_marker_is_parked "$marker"; then TS_WORKER_STATE=parked; return 0; fi
     if [ "$TS_LOCK_HELD" = no ]; then TS_WORKER_STATE=unknown; return 0; fi
     hb=$(printf '%s\n' "$out" | sed -n 's/.*"heartbeat"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)

@@ -759,6 +759,27 @@ for junk in '"bogus"' 'legacy' '' '"legacy" '; do
     check "U8: a second argument that is not a recognised word ($junk) is not used" "$(ucall "$tmp/u8-wrapped.md" "$junk")" unknown
 done
 
+# A doc that cannot be read is not a doc with no marker: a terminal receipt, a free lock and no marker end ownership
+# only for a doc that was read.
+printf -- '- 10:00 LIVE — working\n' > "$tmp/u8-unread.md"
+for word in refused complete; do
+    check "X07-6 control: a readable doc with a LIVE marker, a $word receipt and a free lock reads unknown" "$(ucall "$tmp/u8-unread.md" "\"$word\"")" unknown
+done
+chmod 000 "$tmp/u8-unread.md"
+if [ -r "$tmp/u8-unread.md" ]; then
+    echo "ok - X07-6 an unreadable doc with a refused receipt and a free lock reads unknown, not wrapped (UNAVAILABLE here: this user reads a mode 000 file)"
+else
+    for word in refused complete; do
+        check "X07-6 an unreadable doc with a $word receipt and a free lock reads unknown, not wrapped" "$(ucall "$tmp/u8-unread.md" "\"$word\"")" unknown
+    done
+fi
+chmod 644 "$tmp/u8-unread.md"
+for word in refused complete; do
+    check "X07-6 a missing doc with a $word receipt and a free lock reads unknown, not wrapped" "$(ucall "$tmp/u8-missing.md" "\"$word\"")" unknown
+done
+ts_marker_newest "$tmp/u8-missing.md" >/dev/null; check "X07-6 ts_marker_newest: a doc it cannot read is rc 1" "$?" 1
+ts_marker_newest "$tmp/u8-empty.md" >/dev/null; check "X07-6 ts_marker_newest control: a readable doc with no marker is rc 0" "$?" 0
+
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-ticket-status.sh"
 else
