@@ -938,7 +938,7 @@ chmod +x "$bin2/ps"
 cat > "$bin2/qmd" <<'EOF'
 #!/usr/bin/env bash
 echo "$*" >> "$QMD_MOCK_STATE/qmd-argv.log"
-sd() { if command -v setsid >/dev/null 2>&1; then setsid "$@"; else python3 -c 'import os,sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])' "$@"; fi; }
+sd() { if command -v setsid >/dev/null 2>&1; then exec setsid "$@"; else exec python3 -c 'import os,sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])' "$@"; fi; }
 [ "${QMD_MOCK_STEAL_LOCK:-0}" != 1 ] || echo 999999 > "$XDG_CACHE_HOME/qmd/recycle.lock/owner"
 if [ "$*" = "mcp --http --daemon" ] && [ "${QMD_MOCK_NOSTART:-0}" != 1 ]; then
   if [ "${QMD_MOCK_NOANSWER:-0}" = 1 ]; then
