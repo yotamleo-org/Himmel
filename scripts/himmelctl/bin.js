@@ -2920,25 +2920,36 @@ function writesScopeSettings(item) {
   return d.type === 'adopt' || d.type === 'plugins' || d.type === 'wire';
 }
 
-function trackedSettingsRefusal(scope, writerIds, args) {
-  if (writerIds.length === 0 || args.writeTracked) return null;
-  const file = settingsPathForScope(scope);
-  const state = settingsTrackedState(file);
-  if (state === 'untracked') return null;
-  const why = state === 'tracked'
-    ? `refusing to modify the git-tracked settings file ${file}`
-    : `cannot tell whether ${file} is tracked by git (git ls-files failed), so refusing to modify it`;
-  return `himmelctl: ${why}\n  item(s) that would write it: ${writerIds.join(', ')}\n  re-run with --write-tracked to allow the change, then review it with git diff`;
+// guardrail-block.mjs writes the operator's global settings file whatever the
+// scope, and takes CLAUDE_USER_SETTINGS over ~/.claude/settings.json.
+function settingsFileForWriter(scope, id) {
+  if (id === 'guardrail-block-global') return process.env.CLAUDE_USER_SETTINGS || settingsPathForScope('user');
+  return settingsPathForScope(scope);
 }
 
-function warnTrackedSettingsModified(scope) {
-  const file = settingsPathForScope(scope);
-  if (settingsTrackedState(file) !== 'tracked') return;
-  let dir = path.dirname(file);
-  while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir);
-  const r = spawnSync('git', ['-C', dir, 'status', '--porcelain', '--untracked-files=no', '--', file], { encoding: 'utf8' });
-  if (r.status === 0 && (r.stdout || '').trim() !== '') {
-    console.error(`himmelctl: WARNING: the tracked settings file ${file} is now modified in git — review it with git diff before committing`);
+function trackedSettingsRefusal(scope, writerIds, args) {
+  if (writerIds.length === 0 || args.writeTracked) return null;
+  for (const file of new Set(writerIds.map((id) => settingsFileForWriter(scope, id)))) {
+    const state = settingsTrackedState(file);
+    if (state === 'untracked') continue;
+    const why = state === 'tracked'
+      ? `refusing to modify the git-tracked settings file ${file}`
+      : `cannot tell whether ${file} is tracked by git (git ls-files failed), so refusing to modify it`;
+    const ids = writerIds.filter((id) => settingsFileForWriter(scope, id) === file);
+    return `himmelctl: ${why}\n  item(s) that would write it: ${ids.join(', ')}\n  re-run with --write-tracked to allow the change, then review it with git diff`;
+  }
+  return null;
+}
+
+function warnTrackedSettingsModified(scope, writerIds) {
+  for (const file of new Set(writerIds.map((id) => settingsFileForWriter(scope, id)))) {
+    if (settingsTrackedState(file) !== 'tracked') continue;
+    let dir = path.dirname(file);
+    while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir);
+    const r = spawnSync('git', ['-C', dir, 'status', '--porcelain', '--untracked-files=no', '--', file], { encoding: 'utf8' });
+    if (r.status === 0 && (r.stdout || '').trim() !== '') {
+      console.error(`himmelctl: WARNING: the tracked settings file ${file} is now modified in git — review it with git diff before committing`);
+    }
   }
 }
 
@@ -7364,7 +7375,7 @@ async function cmdEnsure(args) {
       failed = result.failed;
     }
   }
-  if (!args.dryRun && trackedWriterIds.length > 0) warnTrackedSettingsModified(scope);
+  if (!args.dryRun && trackedWriterIds.length > 0) warnTrackedSettingsModified(scope, trackedWriterIds);
 
   // a --dry-run full-offboard-only blocker (pushed into
   // disableErrors above regardless of --dry-run) must NOT be silently
