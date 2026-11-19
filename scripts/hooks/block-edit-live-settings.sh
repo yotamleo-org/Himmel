@@ -2333,6 +2333,7 @@ _tok_cp_end() {
     [ "$rl" != "$primary_root_lc" ] && [ "$rl" != "$own_root_lc" ] && [ "$rl" != "$home_root_lc" ] || return 1
     fence_paths
     _fence_match "$T3_FILES" "$r" && return 1
+    _fence_match "$T3_DIRS" "$r" && return 1
     _fence_match "$REG_DIRS" "$r" under && return 1
     if [ -d "$r" ]; then
         local i=0 s f
@@ -2344,6 +2345,7 @@ _tok_cp_end() {
             case "$f" in /tmp/* | /var/tmp/* | /private/tmp/* | /private/var/tmp/*) ;; *) return 1 ;; esac
             case "$f" in *.claude*) return 1 ;; esac
             _fence_match "$T3_FILES" "$f" && return 1
+            _fence_match "$T3_DIRS" "$f" && return 1
             _fence_match "$REG_DIRS" "$f" under && return 1
             i=$((i + 1))
         done

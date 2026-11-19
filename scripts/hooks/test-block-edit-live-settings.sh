@@ -4051,6 +4051,27 @@ case "$lsb_msg" in
     *) echo "FAIL 9959 user-scope settings refusal text: $lsb_msg"; FAILED=$((FAILED + 1)) ;;
 esac
 
+# The copy-to-scratch read exception never lands a tree on a T3CODE_HOME that
+# itself sits under the scratch area.
+T3TMP="$SANDBOX/t3tmphome"
+mkdir -p "$T3TMP/userdata" "$SANDBOX/ctla" "$SANDBOX/ctlb"
+printf '{}\n' > "$T3TMP/userdata/settings.json"
+printf 'x\n' > "$SANDBOX/ctla/f"
+t3wt_msg=$(bash_msg_of "$WT2" "cp -r $PAY/. $T3TMP/userdata/" HOME="$T3H" T3CODE_HOME="$T3TMP")
+case "$t3wt_msg" in
+    *"T3 Code's"*) echo "PASS 9960 cp -r <payload>/. into a scratch T3CODE_HOME's userdata is refused with the T3 message" ;;
+    *) echo "FAIL 9960 cp -r into a scratch T3CODE_HOME's userdata: $t3wt_msg"; FAILED=$((FAILED + 1)) ;;
+esac
+t3wt_msg=$(bash_msg_of "$WT2" "cp -r $PAY/userdata $T3TMP/" HOME="$T3H" T3CODE_HOME="$T3TMP")
+case "$t3wt_msg" in
+    *"T3 Code's"*) echo "PASS 9961 cp -r <payload>/userdata into a scratch T3CODE_HOME is refused with the T3 message" ;;
+    *) echo "FAIL 9961 cp -r a userdata tree into a scratch T3CODE_HOME: $t3wt_msg"; FAILED=$((FAILED + 1)) ;;
+esac
+assert_rc "9962 control: cp -r between two unrelated scratch directories with T3CODE_HOME set allows" 0 \
+    "$(bash_rc_of "$WT2" "cp -r $SANDBOX/ctla/. $SANDBOX/ctlb/" HOME="$T3H" T3CODE_HOME="$T3TMP")"
+assert_rc "9963 control: the scratch-copy exception still lets a settings.json reach an unrelated scratch dir" 0 \
+    "$(bash_rc_of "$WT2" "cp $PAY/userdata/settings.json $SANDBOX/ctlb/" HOME="$T3H" T3CODE_HOME="$T3TMP")"
+
 # Clean up worktree registrations before removing the sandbox (avoids
 # dangling `git worktree` admin records under SANDBOX/primary).
 git -C "$SANDBOX/primary" worktree remove --force "$SANDBOX/primary/.claude/worktrees/feat+x" 2>/dev/null || true
