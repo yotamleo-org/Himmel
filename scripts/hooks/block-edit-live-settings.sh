@@ -110,27 +110,6 @@
 # file or into the primary .claude/, python or node writing one, git checkout
 # or restore of one, and any write chained after a reader.
 #
-# T3 Code's settings file, ${T3CODE_HOME:-$HOME/.t3}/userdata/settings.json
-# ($HOME/.t3 is always covered, and T3CODE_HOME too when set), is live from
-# every cwd, worktree or not: it holds T3's provider instances and the
-# environment variables each one starts its agent with, so a write there can
-# create an instance that carries a himmel bypass flag. check_target denies a
-# file-tool or operand path that resolves to it (`deny t3 …`), and
-# check_claude_dir_target an operand that resolves to T3's home or userdata
-# directory itself. The Bash and PowerShell arm also treats a text that can
-# name the file (mentions_t3_settings), or a write verb with a text that names
-# either directory itself (mentions_t3_dir_dest, the twin of dir_dest), as
-# live; the read-only allowlist still applies. The refusal points at T3's
-# settings UI (t3_deny_message).
-#
-# Claude Code's session registry, ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions/
-# ($HOME/.claude is always covered, and CLAUDE_CONFIG_DIR too when set), is
-# live the same way: session-name.sh trusts the chief name in it, and nothing
-# but Claude Code writes it. check_target denies a path in it or the directory
-# itself (`deny registry …`), the operand scan judges a `sessions/` word whose
-# parent exists, and mentions_claude_registry catches a home or
-# CLAUDE_CONFIG_DIR spelling of it; reads stay allowed (registry_deny_message).
-# fence_paths resolves all of these paths once per run.
 #
 # Hook input arrives on stdin as JSON. Exit codes:
 #   0 — allow
@@ -638,18 +617,6 @@ canon() {
     esac
 }
 
-# fence_paths — sets, once, the canon()ed paths outside any repo that this
-# hook also fences, one per line:
-#   T3_FILES  T3 Code's settings file, <t3 home>/userdata/settings.json: it
-#             holds T3's provider instances and the environment each one
-#             starts its agent with
-#   T3_DIRS   <t3 home> and <t3 home>/userdata, which a directory-destination
-#             write can fill with a settings.json
-#   REG_DIRS  Claude Code's session registry, <claude home>/sessions: the chief
-#             guards trust the session name in it (scripts/lib/session-name.sh)
-# The T3 homes are $HOME/.t3 and, when set, T3CODE_HOME; the Claude homes are
-# $HOME/.claude and, when set, CLAUDE_CONFIG_DIR. Called in the main shell
-# before any check, so the `$(check_target …)` subshells inherit the result.
 FENCE_DONE=0 T3_FILES="" T3_DIRS="" REG_DIRS=""
 fence_paths() {
     [ "$FENCE_DONE" = 1 ] && return 0
@@ -668,8 +635,6 @@ fence_paths() {
     done
     n=${#fp_want[@]}
     [ "$n" -gt 0 ] || return 0
-    # One fork for the whole set when realpath -m is the canonicaliser; any
-    # path holding a newline, or a short answer, falls back to canon() per path.
     if [ "$CANON_MODE" = realpath-m ]; then
         # prim-ok: the probed realpath -m arm of this guard's own canon(), batched
         out=$(realpath -m -- "${fp_want[@]}" 2>/dev/null) || out=""  # swallow-ok: a short or empty answer falls back to canon() per path below
@@ -683,9 +648,6 @@ fence_paths() {
         done
         i=0
     fi
-    # A resolved path keeps its last component unless that component is itself
-    # a symlink; an answer that does not is no canonical form of this path and
-    # is dropped rather than compared against every operand.
     local g w ok nc
     while [ "$i" -lt "$n" ]; do
         g=${fp_got[i]%/} w=${fp_want[i]%/} ok=0
@@ -712,8 +674,6 @@ fence_paths() {
     return 0
 }
 
-# _fence_match LIST PATH [under] — 0 when PATH equals a line of LIST, or with
-# `under` lies below one; case-insensitive like the rest of this hook. No fork.
 _fence_match() {
     local line nc=0 hit=1
     shopt -q nocasematch && nc=1
@@ -850,51 +810,49 @@ check_target() {
     echo "allow"
 }
 
-# mentions_t3_settings CMD_LC — true when the lowercased command text can name
-# T3 Code's settings file wherever the command runs: a settings.json leaf
-# (mentions_settings), or a glob, brace or variable leaf right under a
-# userdata/ directory, together with T3's data directory in any spelling (`.t3`
-# as a path component, `t3code_home`, the resolved T3CODE_HOME, or a
-# `userdata/settings` path). A path under `.t3/worktrees/<name>/` is a T3
-# worktree, an ordinary checkout, so its `.t3` does not count when the rest of
-# that word is a plain literal (no `$`, backtick, glob or brace) and the text
-# has no `..` climb anywhere. Fork-free unless T3CODE_HOME has to be resolved.
-mentions_t3_settings() {
-    local c="$1" t3home="" rest m tail out=""
-    local leaf_re='userdata/[^/[:space:];&|<>()]*[*?[{$]'
-    local dir_re='(^|[^a-z0-9_.-])\.t3([^a-z0-9_.-]|$)'
+_drop_plain_t3_worktree_paths() {
+    local rest=$1 m tail out=""
     local wt_re='\.t3/worktrees/([^[:space:];&|<>()]*)'
-    c=${c//\\//}
-    c=${c//[\"\']/}
-    if [ "$mentions_settings" != 1 ] && ! [[ $c =~ $leaf_re ]]; then
-        return 1
-    fi
-    if ! has_traversal_dots "$c"; then
-        rest=$c
-        while [[ $rest =~ $wt_re ]]; do
-            m=${BASH_REMATCH[0]} tail=${BASH_REMATCH[1]}
-            out=$out${rest%%"$m"*}
-            rest=${rest#*"$m"}
-            case "$tail" in
-                ''|[!a-z0-9_]*|*[\$\`*?[\{]*) out=$out$m ;;
-                *) out=${out}t3-worktree/$tail ;;
-            esac
-        done
-        c=$out$rest
-    fi
-    [[ $c =~ $dir_re ]] && return 0
-    case "$c" in *t3code_home*|*userdata/settings*) return 0 ;; esac
-    if [ -n "${T3CODE_HOME:-}" ]; then
-        t3home=$(canon "$T3CODE_HOME" | tr '[:upper:]' '[:lower:]') || t3home=""
-        t3home=${t3home%/}
-        if [ -n "$t3home" ]; then
-            case "$c" in *"$t3home/userdata"*) return 0 ;; esac
-        fi
-    fi
+    _T3WT_TEXT=$1
+    has_traversal_dots "$1" && return 0
+    while [[ $rest =~ $wt_re ]]; do
+        m=${BASH_REMATCH[0]} tail=${BASH_REMATCH[1]}
+        out=$out${rest%%"$m"*}
+        rest=${rest#*"$m"}
+        case "$tail" in
+            ''|[!a-z0-9_]*|*[\$\`*?[\{]*) out=$out$m ;;
+            *) out=${out}t3-worktree/$tail ;;
+        esac
+    done
+    _T3WT_TEXT=$out$rest
+}
+
+_text_names_t3_data_dir() {
+    local t3home=""
+    local dir_re='(^|[^a-z0-9_.-])\.t3([^a-z0-9_.-]|$)'
+    [[ $1 =~ $dir_re ]] && return 0
+    case "$1" in *t3code_home*|*userdata/settings*) return 0 ;; esac
+    [ -n "${T3CODE_HOME:-}" ] || return 1
+    t3home=$(canon "$T3CODE_HOME" | tr '[:upper:]' '[:lower:]') || t3home=""
+    t3home=${t3home%/}
+    [ -n "$t3home" ] || return 1
+    case "$1" in *"$t3home/userdata"*) return 0 ;; esac
     return 1
 }
 
-t3_deny_message() { # t3_deny_message TOOL_LABEL ORIGINAL_TARGET
+mentions_t3_settings() {
+    local c="$1"
+    local settings_leaf_glob_re='userdata/[^/[:space:];&|<>()]*[*?[{$]'
+    c=${c//\\//}
+    c=${c//[\"\']/}
+    if [ "$mentions_settings" != 1 ] && ! [[ $c =~ $settings_leaf_glob_re ]]; then
+        return 1
+    fi
+    _drop_plain_t3_worktree_paths "$c"
+    _text_names_t3_data_dir "$_T3WT_TEXT"
+}
+
+t3_deny_message() {
     cat >&2 <<EOF
 ⛔ block-edit-live-settings: refusing $1 on \`$2\` — it can write T3 Code's
 settings file, \${T3CODE_HOME:-\$HOME/.t3}/userdata/settings.json.
@@ -912,9 +870,6 @@ reach the hook process):
 EOF
 }
 
-# _text_names LIST TEXT INSIDE — 0 when TEXT holds a line of LIST as a whole
-# path: followed by nothing, a word end, `/` or `/.` then a word end, or, with
-# INSIDE=1, any path below it. Case-insensitive. No fork.
 _text_names() {
     local line s nc=0 hit=1
     shopt -q nocasematch && nc=1
@@ -934,12 +889,6 @@ _text_names() {
     return "$hit"
 }
 
-# mentions_t3_dir_dest CMD_LC — the text names T3's home or userdata directory
-# itself as a whole word (`~/.t3/`, `$HOME/.t3/userdata`, `$T3CODE_HOME/userdata/.`,
-# or either resolved path), the way mentions_dot_claude_dir_dest names a
-# `.claude` directory: with a write verb, a directory-destination copy or move
-# there can put a settings.json in place. A path deeper under it (a T3
-# worktree, an attachment) is not the directory itself.
 mentions_t3_dir_dest() {
     local c="$1"
     # shellcheck disable=SC2016 # literal $home / ${home} text, not expansion
@@ -955,11 +904,6 @@ mentions_t3_dir_dest() {
     _text_names "$T3_DIRS" "$c" 0
 }
 
-# mentions_claude_registry CMD_LC — the text names Claude Code's session
-# registry directory, or a path in it, under the Claude home only: a home
-# spelling (`~`, `$HOME`, `${HOME}`, a substitution) right before
-# `/.claude/sessions`, `$CLAUDE_CONFIG_DIR/sessions`, or a resolved registry
-# path. A repo's own `.claude/sessions` and any other `sessions` do not count.
 mentions_claude_registry() {
     local c="$1"
     # shellcheck disable=SC2016 # literal $home, ${home} and backtick text, not expansion
@@ -975,7 +919,7 @@ mentions_claude_registry() {
     _text_names "$REG_DIRS" "$c" 1
 }
 
-registry_deny_message() { # registry_deny_message TOOL_LABEL ORIGINAL_TARGET
+registry_deny_message() {
     cat >&2 <<EOF
 ⛔ block-edit-live-settings: refusing $1 on \`$2\` — it can write Claude Code's
 session registry, \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/sessions/.
@@ -4539,9 +4483,6 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         # (almost always true — the parent is often just the cwd) blew the
         # 5s timing budget. The leaf match uses a bash case pattern, not
         # `tr`, so this pre-filter itself never forks.
-        # A new file in Claude Code's session registry has no settings leaf;
-        # a word with a `sessions/` component and an existing parent is judged
-        # by check_target's registry compare.
         case "$wabs" in
             *[sS][eE][sS][sS][iI][oO][nN][sS]/*)
                 wparent="${wabs%/*}"
@@ -4915,17 +4856,12 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         exit 2
     fi
 
-    # T3 Code's settings file is live wherever the command runs: the
-    # worktree-relative exemption below never covers it.
     if [ "$t3_dest" = 0 ] && mentions_t3_settings "$cmd_lc"; then
         t3_dest=1
     fi
-    # A write verb whose destination can be T3's home or userdata directory
-    # itself (the T3 twin of dir_dest).
     if [ "$t3_dest" = 0 ] && [ "$write_verb" = 1 ] && mentions_t3_dir_dest "$cmd_lc"; then
         t3_dest=1
     fi
-    # Claude Code's session registry is live from every cwd too.
     if [ "$registry_dest" = 0 ] && mentions_claude_registry "$cmd_lc"; then
         registry_dest=1
     fi

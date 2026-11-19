@@ -17,7 +17,6 @@ fail() { printf 'FAIL: %s\n' "$1"; fails=$((fails + 1)); }
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/session-name-test.XXXXXX")" || { echo "mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$WORK"' EXIT
-# The argv cases never read the operator's real session registry or /proc stat.
 export SESSION_NAME_REGISTRY_FILE="$WORK/no-such-registry.json"
 export SESSION_NAME_PROC_STAT_FILE="$WORK/no-such-stat"
 
@@ -122,10 +121,6 @@ else
     fail "missing cmdline file: unresolvable (rc=$rc out='$out')"
 fi
 
-# --- Registry source (T3 Code) ---------------------------------------------
-# fake_registry <json> [stat-start|-] — argv without -n, a registry fixture
-# and a /proc/<pid>/stat fixture whose start time is <stat-start> ("-" = no
-# readable stat file, the macOS shape).
 fake_registry() {
     fake_cmdline claude --session-id e2fa1afe --output-format stream-json
     printf '%s' "$1" > "$WORK/registry.json"
@@ -137,17 +132,16 @@ fake_registry() {
         export SESSION_NAME_PROC_STAT_FILE="$WORK/stat"
     fi
 }
-# reg <name-json> [entrypoint] [pid] — one registry line in the observed shape.
 reg() {
     printf '{"pid":%s,"sessionId":"e2fa1afe","cwd":"/w","procStart":"25111526","kind":"interactive","entrypoint":"%s","name":%s,"nameSource":"user","status":"busy"}' \
         "${3:-12345}" "${2:-t3-code}" "$1"
 }
-expect_name() { # expect_name <label> <want>
+expect_name() {
     local out rc
     out="$(current_session_name)"; rc=$?
     if [ "$rc" -eq 0 ] && [ "$out" = "$2" ]; then pass "$1"; else fail "$1 (rc=$rc out='$out')"; fi
 }
-expect_none() { # expect_none <label>
+expect_none() {
     local out rc
     out="$(current_session_name)"; rc=$?
     if [ "$rc" -ne 0 ] && [ -z "$out" ]; then pass "$1"; else fail "$1 (rc=$rc out='$out')"; fi

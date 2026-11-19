@@ -3857,8 +3857,6 @@ n=' /etc/hostname'; uniq -c$n @P@/.claude/settings.json
 uniq -- -c @P@/.claude/settings.json
 ROWS
 
-# T3 Code's settings file (provider instances and their environment) is live
-# from every cwd, worktree included, for every tool shape.
 T3H="$SANDBOX/t3home-fake"
 T3ALT="$SANDBOX/t3alt"
 mkdir -p "$T3H/.t3/userdata/attachments" "$T3ALT/userdata" "$WT2/data"
@@ -3921,8 +3919,6 @@ case "$lsb_msg" in
     *) echo "FAIL 9919 the primary settings refusal text: $lsb_msg"; FAILED=$((FAILED + 1)) ;;
 esac
 
-# A T3 worktree ($HOME/.t3/worktrees/<project>/<name>) is an ordinary linked
-# worktree: its own settings.json is judged exactly as any worktree's is.
 mkdir -p "$T3H/.t3/worktrees/proj"
 T3WT="$T3H/.t3/worktrees/proj/wt"
 git -C "$SANDBOX/primary" worktree add -q "$T3WT" -b feat/t3wt >/dev/null 2>&1 || {
@@ -3931,7 +3927,6 @@ git -C "$SANDBOX/primary" worktree add -q "$T3WT" -b feat/t3wt >/dev/null 2>&1 |
 }
 mkdir -p "$T3WT/.claude"
 printf '{}\n' > "$T3WT/.claude/settings.json"
-# bash_msg_of CWD COMMAND [EXTRA_ENV...] — the hook's stderr for a Bash payload.
 bash_msg_of() {
     local cwd="$1" cmd="$2"
     shift 2
@@ -3968,8 +3963,6 @@ esac
 assert_rc "9929 a T3 worktree path whose tail carries a variable still counts as T3's directory" 2 \
     "$(bash_rc_of "$WT2" 'echo x > ~/.t3/worktrees/proj/$x/settings.json' HOME="$T3H")"
 
-# A write whose DESTINATION is T3's home or userdata directory itself can put a
-# settings.json there without naming one.
 PAY="$SANDBOX/t3payload"
 mkdir -p "$PAY/userdata"
 printf '{}\n' > "$PAY/userdata/settings.json"
@@ -4000,7 +3993,6 @@ assert_rc "9939 control: cp -r into an unrelated directory allows" 0 \
 assert_rc "9940 control: listing T3's userdata directory allows" 0 \
     "$(bash_rc_of "$WT2" 'ls ~/.t3/userdata/' HOME="$T3H")"
 
-# Claude Code's session registry: session-name.sh trusts the chief name in it.
 CFGD="$SANDBOX/claude-cfg"
 mkdir -p "$T3H/.claude/sessions" "$CFGD/sessions" "$WT2/.claude/sessions" "$WT2/data/sessions"
 printf '{"pid":1,"entrypoint":"t3-code","name":"x"}\n' > "$T3H/.claude/sessions/1.json"
@@ -4051,8 +4043,6 @@ case "$lsb_msg" in
     *) echo "FAIL 9959 user-scope settings refusal text: $lsb_msg"; FAILED=$((FAILED + 1)) ;;
 esac
 
-# The copy-to-scratch read exception never lands a tree on a T3CODE_HOME that
-# itself sits under the scratch area.
 T3TMP="$SANDBOX/t3tmphome"
 mkdir -p "$T3TMP/userdata" "$SANDBOX/ctla" "$SANDBOX/ctlb"
 printf '{}\n' > "$T3TMP/userdata/settings.json"

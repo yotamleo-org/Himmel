@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-# Suite for scripts/hooks/guard-t3-thread-tools.sh: a T3 tool call that names a
-# provider instance off the allowlist, or sets a -chief/-console thread title,
-# is refused; everything else passes. Each rule has a refused row and a
-# negative control. HOME is a suite-owned directory, so the operator's real
-# ~/.himmel/config.json is never read.
-#
-# bash 3.2-safe.
 set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"
@@ -27,7 +20,6 @@ export HOME="$TMP/home"
 mkdir -p "$HOME/.himmel"
 
 FAIL=0; N=0
-# run <name> <want-rc> <stderr-grep|-> <payload> [ENV=val ...]
 run() {
     local name="$1" want="$2" grep_for="$3" payload="$4" rc out
     shift 4

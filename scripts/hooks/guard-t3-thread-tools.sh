@@ -1,43 +1,25 @@
 #!/usr/bin/env bash
-# guard-t3-thread-tools.sh — PreToolUse hook (matcher mcp__t3-code__.*). A
-# SECURITY FENCE over the T3 Code MCP tools.
+# guard-t3-thread-tools.sh — PreToolUse hook (matcher mcp__t3-code__.*): refuses
+# a T3 Code tool call that names a provider instance off the allowlist or sets
+# a -chief or -console thread title.
 #
-# WHY: each T3 provider instance carries its own environment variables, and
-# himmel's hook bypasses are environment variables, so an instance can carry a
-# bypass flag. The operator picks such an instance in the T3 UI. T3's MCP tools
-# also let an agent pick the instance of a new or existing thread, which would
-# let the agent move itself onto that instance. And a T3 thread title is the
-# session name session-name.sh trusts for a chief (a `-chief` or `-console`
-# suffix), so an agent must not set one either.
+# Allowlist: .t3.instance_allowlist in $HOME/.himmel/config.json, an array of
+# strings. Default ["claudeAgent", "codex"] when the file or key is absent,
+# unreadable, malformed or a symlink.
 #
-# RULE 1, instances: every value stored under a key named instanceId or
-# providerInstanceId (case and `_` ignored) anywhere in .tool_input must be on
-# the instance allowlist. A null value counts as absent; any other non-string
-# value is refused.
-#   Allowlist: .t3.instance_allowlist in $HOME/.himmel/config.json, an array of
-#   strings that replaces the default. Default ["claudeAgent", "codex"] (T3's
-#   two default instances) when the file or key is absent, unreadable,
-#   malformed or a symlink. block-himmel-config-writes.sh refuses agent writes
-#   to that file.
-# RULE 2, titles: a string under a key named title anywhere in .tool_input
-# whose trimmed value ends in -chief or -console (any case) is refused. A title
-# inside a delegatedFrom object names the calling thread, not the new one, and
-# is not judged.
+# Security fence, fail-closed: missing jq or a payload that does not parse is
+# refused.
 #
-# FAIL MODE: closed. Missing jq or a payload that does not parse is refused
-# (only T3 tools are routed here). Any other tool name exits 0 at once.
-#
-# Bypass: T3_THREAD_TOOLS_OK=1 in the LAUNCHING shell (a per-call prefix does
-# not reach the hook); the allow is printed to stderr.
+# Bypass: T3_THREAD_TOOLS_OK=1 in the launching shell; the allow is printed to
+# stderr.
 #
 # Hook I/O: JSON on stdin; exit 0 allow, exit 2 refuse (stderr shown).
-# bash 3.2-compatible.
 set -uo pipefail
 
 DEFAULT_ALLOW='["claudeAgent","codex"]'
 CONFIG="${HOME:-/nonexistent}/.himmel/config.json"
 
-refuse() { # refuse <what was refused> <message body>
+refuse() {
     if [ "${T3_THREAD_TOOLS_OK:-0}" = "1" ]; then
         echo "guard-t3-thread-tools: override: allowed $1 (T3_THREAD_TOOLS_OK=1)" >&2
         exit 0
