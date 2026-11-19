@@ -87,6 +87,12 @@
 # bash 3.2-compatible (no mapfile / associative arrays).
 set -uo pipefail
 
+# Bracket ranges below ([A-Za-z0-9._/~+-]) must mean ASCII bytes: bash 3.2
+# under a UTF-8 locale lets non-ASCII through them. Pinned here because tests
+# and callers run this file directly, not through run-hook-with-bash.js.
+export LC_COLLATE=C
+[ -z "${LC_ALL+x}" ] || export LC_ALL=C
+
 # Pure read-only / inspection binaries. Write-capable tools (rm mv cp mkdir
 # chmod tee), command runners (xargs command env sudo nohup time exec), and
 # programmable / general-purpose interpreters (sed awk gawk node npm npx bash
