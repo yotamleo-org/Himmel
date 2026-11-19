@@ -1717,6 +1717,28 @@ check "36d LAUNCHER_ENV: exit 0" "$rc36d" "0"
 contains "36d LAUNCHER_ENV: the tokens still reach the konsole argv" "$(cat "$d36d/record" 2>/dev/null || true)" "WORKER_SESSION_PROFILE_SETTINGS=/parent/settings.json"
 check "36d LAUNCHER_ENV: konsole (and so the worker) does not inherit HEADED_ARM_LAUNCHER_ENV" "$(cat "$d36d/launcher-env" 2>/dev/null || echo MISSING)" "UNSET"
 
+# 36d3 (control, passes before and after the chief-arm HEADED_ARM_REPO strip):
+# the headless, launch-record and waker flags are read once and cleared, so the
+# session the launcher starts sees none of them. A chief arm that inherited a
+# worker's flags therefore cannot act as a worker through them.
+d36d3="$tmp/c36d3"; mk_stub "$d36d3" 1 alive "HIMMEL-flags36d3"
+cat > "$d36d3/konsole" <<'KONSOLE_EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$(dirname "$0")/record"
+printf '%s|%s|%s' "${HEADED_ARM_HEADLESS-UNSET}" "${HEADED_ARM_LAUNCH_RECORD-UNSET}" "${HEADED_ARM_WAKER-UNSET}" > "$(dirname "$0")/flags-env"
+: > "$(dirname "$0")/confirmable"
+sleep 5
+KONSOLE_EOF
+chmod 755 "$d36d3/konsole"
+rc36d3=0
+HEADED_ARM_HEADLESS=0 HEADED_ARM_LAUNCH_RECORD="$d36d3/launch-record" HEADED_ARM_WAKER="$d36d3/no-such-waker.sh" \
+  KONSOLE_CMD="$d36d3/konsole" PGREP_CMD="$d36d3/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36d3/proc" \
+  HEADED_ARM_LOCK_DIR="$d36d3/locks" \
+  bash "$SCRIPT" "HIMMEL-flags36d3" "doc36d3.md" "$d36d3/signal-never" "$PAST" "$d36d3/log" >/dev/null 2>&1 || rc36d3=$?
+wait_record "$d36d3" || true
+check "36d3 flags: exit 0" "$rc36d3" "0"
+check "36d3 flags: the session sees none of HEADED_ARM_HEADLESS, _LAUNCH_RECORD, _WAKER" "$(cat "$d36d3/flags-env" 2>/dev/null || echo MISSING)" "UNSET|UNSET|UNSET"
+
 d36b="$tmp/c36b"; mk_stub "$d36b" 1 alive "HIMMEL-launcher2"
 rc36b=0
 KONSOLE_CMD="$d36b/konsole" PGREP_CMD="$d36b/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36b/proc" \
