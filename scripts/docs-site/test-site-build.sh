@@ -336,7 +336,7 @@ import fs from 'node:fs';
 const html = fs.readFileSync(process.argv[1], 'utf8');
 let depth = 0;
 const out = [];
-for (const m of html.slice(html.indexOf('<ul class=\"top-level')).matchAll(/<(\/?)ul\b|<span class=\"large[^\"]*\">([^<]*)</g)) {
+for (const m of html.slice(html.indexOf('<ul class=\"top-level')).matchAll(/<(\/?)ul\b|<span class=\"large[^\"]*\"[^>]*>([^<]*)</g)) {
   if (m[2] !== undefined) { if (depth === 1) out.push(m[2]); continue; }
   depth += m[1] ? -1 : 1;
   if (depth === 0) break;
@@ -352,7 +352,7 @@ const want = process.argv[2];
 const text = (s) => s.replace(/&amp;/g, '&').replace(/&#39;/g, \"'\").replace(/&quot;/g, '\"');
 let depth = 0, group = '', inside = 0;
 const out = [];
-for (const m of html.slice(html.indexOf('<ul class=\"top-level')).matchAll(/<(\/?)ul\b|<span class=\"large[^\"]*\">([^<]*)<|<a href[^>]*><span[^>]*>([^<]*)</g)) {
+for (const m of html.slice(html.indexOf('<ul class=\"top-level')).matchAll(/<(\/?)ul\b|<span class=\"large[^\"]*\"[^>]*>([^<]*)<|<a href[^>]*><span[^>]*>([^<]*)</g)) {
   const label = m[2] ?? m[3];
   if (label === undefined) {
     depth += m[1] ? -1 : 1;
@@ -377,8 +377,8 @@ fi
 check "control: sidebar_of read a sidebar" test "$(printf '%s\n' "$got_nav" | wc -l)" -gt 20
 check "control: the frame 1 fixture differs from a sidebar with one entry moved" fails is "$frame1" "$(printf '%s\n' "$frame1" | sed '2{h;d};3G')"
 check "IA v5: Plugins lists himmel-guard and handover only" is "$(sidebar_of "$(route_of getting-started.md)" Plugins | paste -sd'|')" "himmel-guard|handover"
-check "IA v5: Internals… is collapsed on a page outside it" grep -qE '<details class="[^"]*"><summary class="[^"]*"><span class="group-label[^"]*"><span class="large[^"]*">Internals…<' "$(route_of getting-started.md)"
-check "control: an open group does not match the collapsed pattern" fails grep -qE '<details class="[^"]*"><summary class="[^"]*"><span class="group-label[^"]*"><span class="large[^"]*">Get started<' "$(route_of getting-started.md)"
+check "IA v5: Internals… is collapsed on a page outside it" grep -qE '<details( data-[a-z0-9-]+(="[^"]*")?)*><summary[^>]*><span class="group-label[^"]*"[^>]*><span class="large[^"]*"[^>]*>Internals…<' "$(route_of getting-started.md)"
+check "control: an open group does not match the collapsed pattern" fails grep -qE '<details( data-[a-z0-9-]+(="[^"]*")?)*><summary[^>]*><span class="group-label[^"]*"[^>]*><span class="large[^"]*"[^>]*>Get started<' "$(route_of getting-started.md)"
 for r in setup/new-machine launchers setup/codex setup/cli-proxy-lane hermes-runbook setup/cloud-environment jarvis-subsystems himmel-bus orchestration-patterns security/npm-policy security/python-policy tool-adoption/rubric tool-adoption/registry tool-adoption/telemetry tool-adoption/lane-adoption-playbook; do
   check "IA v5: /$r/, moved under Internals…, still resolves at its old URL" test -f "$dist/$r/index.html"
 done
@@ -409,8 +409,8 @@ check "control: review_proof_clean fails a review proof that claims in your proj
 check "control: review_proof_clean fails a page with no review proof" fails review_proof_clean "$ctl/page"
 check "IA: the review proof never claims it runs in your project" review_proof_clean "$home"
 check "IA: Home leaves out the measured line" absent '2,000 pull requests' "$home"
-check "IA: Home primary CTA is Quickstart" grep -qE 'sl-link-button[^>]* primary [^>]*href="getting-started/">Quickstart' "$home"
-check "IA: Home secondary CTA is How a change ships" grep -qE 'sl-link-button[^>]* minimal [^>]*href="adoption-trail\.html">How a change ships' "$home"
+check "IA: Home primary CTA is Quickstart" grep -qE 'class="sl-link-button[^"]* primary" href="getting-started/"[^>]*>Quickstart' "$home"
+check "IA: Home secondary CTA is How a change ships" grep -qE 'class="sl-link-button[^"]* minimal" href="adoption-trail\.html"[^>]*>How a change ships' "$home"
 check "IA: Home has exactly one h1" is "$(grep -o '<h1' "$home" | wc -l | tr -d ' ')" 1
 check "IA: the docs map is still built" test -f "$dist/docs-map/index.html"
 
