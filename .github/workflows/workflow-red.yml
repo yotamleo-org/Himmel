@@ -11,8 +11,6 @@ name: Workflow Red
 # branch's copy of this file and the checkout below is the default branch, not
 # the triggering sha -- no branch code runs with issues: write. The script reads
 # only the run's own API record, never the triggering commit's files.
-# workflow_dispatch exists so a change to this file can be proven runnable: it
-# runs only dispatch-check, which holds contents: read and no issues: write.
 on:
   workflow_run:
     # Lockstep with scripts/ci/workflow-red-list.txt (test-workflow-red-workflow.sh).
