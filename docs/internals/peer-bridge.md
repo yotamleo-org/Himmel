@@ -37,7 +37,7 @@ supergroup with a new chat id, and `confirm` refuses the old id.
    the other bot's root in the live test.
 3. **Add the peer.** From a terminal of your own, not from a Claude session:
 
-   ```
+   ```bash
    bun scripts/peer-bridge/setup.ts add goomal --peer-bot-id <peer bot id> --peer-username <peer bot username>
    ```
 
@@ -48,7 +48,7 @@ supergroup with a new chat id, and `confirm` refuses the old id.
    peer starts with `chatId: null` and `allowFrom` holding the peer bot's id.
 4. **Put the token in place.** The file must be mode 0600 and hold one line:
 
-   ```
+   ```bash
    umask 077
    read -rs -p 'peer bridge bot token: ' t; printf 'PEER_BOT_TOKEN=%s\n' "$t" > ~/.config/himmel/peer-bridge/env; unset t
    ```
@@ -60,7 +60,7 @@ supergroup with a new chat id, and `confirm` refuses the old id.
    start.
 6. **Confirm the chat.** Use the supergroup's id:
 
-   ```
+   ```bash
    bun scripts/peer-bridge/setup.ts confirm goomal <chatId>
    ```
 
@@ -104,7 +104,7 @@ when a peer name does not match `^[a-z0-9][a-z0-9-]{0,31}$`.
 Every message we send starts with one control line, a kind line or a template
 line, each carrying a message id minted by the sender:
 
-```
+```text
 #(ask:question|status|info|answer) id=<8 hex>
 #tpl:(receipt|nudge|deferred|closing|declined-kind|busy) #<root> id=<8 hex>[ by=<UTC stamp>]
 ```
@@ -141,7 +141,7 @@ sends it with no model run.
 
 Start the desk from a terminal:
 
-```
+```bash
 bash scripts/peer-bridge/desk.sh goomal
 ```
 
@@ -177,7 +177,7 @@ A session is tainted when `read.ts` prints to it, when a verified fence marker
 shows up in any tool output, or when a resumed session's transcript holds one.
 Only a human at a terminal clears it:
 
-```
+```bash
 bash scripts/peer-bridge/untaint.sh <session_id>
 ```
 

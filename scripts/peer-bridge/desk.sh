@@ -2,7 +2,8 @@
 # desk.sh <peer> - start the peer desk: a fresh interactive claude session in an
 # empty directory, with PEER_DESK set. Its only tools are the two command shapes
 # the taint gate allows (read.ts, send.ts); every other tool is denied.
-# Exit 2 usage, 3 refused (not set up, or the desk dir carries project config).
+# Exit 2 usage, 3 refused (not set up, peers.json names no himmelRoot, the desk
+# dir cannot be made 0700, or the desk dir carries project config).
 set -uo pipefail
 
 peer="${1:-}"
