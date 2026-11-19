@@ -29,8 +29,9 @@ KEY = r'[A-Z][A-Z0-9]+-\d+'
 # (through the same marks, in any letter case) is read by that word alone, whatever its detail says (`- MET main=aaaa: failures 0`). Any other item is also
 # unmet when an unmet word is the first thing after any of its colons, past spaces and emphasis or inline-code marks (`- control two: NOT MET`,
 # `- **Result:** NOT MET`, `- Result: *FAIL*`, `- Result: NOT MET: no RED`), and after a colon the word is read whole: `FAIL`, `FAILS`, `FAILED`, `FAILURE`,
-# `FAILING`, `SKIP`, `SKIPS`, `SKIPPED`, `ERROR`, `ERRORS`, `OWED` and `NOT MET` are unmet, while `failures`, `skipping`, a word continued by a letter, a digit or an
-# underscore (`SKIP_CR`) and a FAIL joined to a continuation by a hyphen (`failed-over`) are other words. At the start of an item and in a table cell the word
+# `FAILING`, `SKIP`, `SKIPS`, `SKIPPED`, `ERROR`, `ERRORS`, `OWED` and `NOT MET` are unmet, while `failures`, `skipping`, a word continued by a letter or a digit,
+# or by one underscore and then a letter or a digit (`SKIP_CR`; an underscore that ends the word is a closing emphasis mark, so `FAIL_ x` and
+# `SKIP__CR` still count), and a FAIL joined to a continuation by a hyphen (`failed-over`) are other words. At the start of an item and in a table cell the word
 # is read by its beginning (`FAIL...`, `SKIP...`). Prose that merely mentions a word is not a row; whether the evidence covers every
 # obligation stays the chief's explicit judgement. A declared Expected column in a supported Markdown table is test input,
 # not an actual requirement status; other cells and unmet list items retain the same refusal rule.
