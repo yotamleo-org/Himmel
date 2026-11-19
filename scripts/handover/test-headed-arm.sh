@@ -1761,7 +1761,6 @@ KONSOLE_EOF
 }
 LINE36='HIMMEL_HOLD_DOC=/x/a b/PROJ-1-N1-x.md'
 # 36f (I1): var unset and var '' give byte-identical terminal argv (no '' element).
-# N36F=33 is the element count captured on the unmodified script (31, plus the two of -u NO_COLOR).
 d36f="$tmp/c36f"; mk_lines_stub "$d36f" "HIMMEL-lines36f"
 KONSOLE_CMD="$d36f/konsole" PGREP_CMD="$d36f/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36f/proc" HEADED_ARM_LOCK_DIR="$d36f/locks" \
   bash "$SCRIPT" "HIMMEL-lines36f" "doc36f.md" "$d36f/signal-never" "$PAST" "$d36f/log" >/dev/null 2>&1
