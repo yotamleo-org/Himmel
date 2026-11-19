@@ -489,11 +489,15 @@ check 'fence variables skip the launch (negative control: unset, it launches)' 1
 
 reset; sleep 60 &
 holder=$!
-REC_IDENT="$(ident_of "$holder")" rec running - 1 - "$(( $(date +%s) - 1200 ))" 0 "$holder"
+holder_ident="$(ident_of "$holder")"
+# the live owner's record carries the current time as its launch: a launch older than the boot is never live (row 8), and a CI machine can have booted less than 20 minutes ago
+REC_IDENT="$holder_ident" rec running - 1 - "$(date +%s)" 0 "$holder"
 tick >/dev/null
 check 'second chief does not start a second run' 0 "$(none_launched)"
 check 'second chief does not start a second run (the tick left the record as it was)' 'running' "$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["state"])' "$RDIR/repair-state.json")"
 kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+# the owner is gone and its launch is older than the first lost backoff (600 s), so the relaunch is due
+REC_IDENT="$holder_ident" rec running - 1 - "$(( $(date +%s) - 1200 ))" 0 "$holder"
 tick >/dev/null
 check 'a record whose owner is gone does not block the launch' 1 "$(launched 1)"
 
