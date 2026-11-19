@@ -147,6 +147,45 @@ echo "row E4 branch: $e4 (the other branch is not exercised by this run)"
 check "row E4 ($e4) newest" "$en" "$(answer status_marker_newest "$T/m000.md")"
 check "row E4 ($e4) actionable" "$ea" "$(answer status_marker_actionable "$T/m000.md")"
 
+# rows P1 and P2: newest and actionable agree with parse over the 25 line rows
+# first_word_swap LINE WORD: LINE with its leftmost ten-word marker word replaced by WORD
+first_word_swap() {
+  local l="$1" x="$2" w pre bw="" best=-1
+  for w in WRAPPED READY RESOLVED BLOCKED HALTED FINDING LIVE PARKED-BANK PARKED-USAGE RESUMED; do  # old-term-ok
+    case "$l" in
+      *"$w"*) pre="${l%%"$w"*}"; if [ "$best" -lt 0 ] || [ "${#pre}" -lt "$best" ]; then best=${#pre}; bw="$w"; fi ;;
+    esac
+  done
+  if [ -z "$bw" ]; then printf '%s' "$l"; else pre="${l%%"$bw"*}"; printf '%s' "${pre}${x}${l#*"$bw"}"; fi
+}
+while IFS=$'\t' read -r line want || [ -n "$line" ]; do
+  case "$line" in ''|'#'*) continue ;; esac
+  pm=$(bash -c 'set -euo pipefail; . "$1"; if out=$(status_marker_parse "$2"); then printf "%s" "$out"; else printf "%s" "-"; fi' _ "$SCRIPT" "$line" 2>&1)
+  case "$pm" in READY|BLOCKED|FINDING) pa="$pm#1" ;; *) pa="-" ;; esac
+  printf '## Results\n%s\n' "$line" > "$T/d/p1.md"
+  check "row P1 newest: $line" "$pm" "$(answer status_marker_newest "$T/d/p1.md")"
+  check "row P1 actionable: $line" "$pa" "$(answer status_marker_actionable "$T/d/p1.md")"
+  for x in READY BLOCKED FINDING MERGED; do
+    printf '## Results\n%s\n' "$(first_word_swap "$line" "$x")" > "$T/d/p2.md"
+    if [ "$pm" = "-" ]; then w2="-"; else w2="$x#1"; fi
+    check "row P2 ($x): $line" "$w2" "$(answer status_marker_actionable "$T/d/p2.md")"
+  done
+done < "$ROWS"
+
+# plan row L1 (not a spec id): the guard `local LC_ALL=C` of status_marker_actionable under a UTF-8 locale (N7)
+for loc in C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8; do
+  [ "$(LC_ALL=$loc locale charmap 2>/dev/null)" = UTF-8 ] && { utf8=$loc; break; }
+done
+if [ -z "${utf8-}" ]; then
+  echo "plan row L1: UNAVAILABLE, no UTF-8 locale installed"
+else
+  for l in 'a:- 10:00 READY \0377' 'b:- 10:00 READY\0205- 10:05 BLOCKED'; do
+    printf '## Results\n%b\n' "${l#*:}" > "$T/d/l1${l%%:*}.md"
+    check "plan row L1 newest ($utf8, ${l%%:*})" "READY" "$(LC_ALL=$utf8 answer status_marker_newest "$T/d/l1${l%%:*}.md")"
+    check "plan row L1 actionable ($utf8, ${l%%:*})" "READY#1" "$(LC_ALL=$utf8 answer status_marker_actionable "$T/d/l1${l%%:*}.md")"
+  done
+fi
+
 if command -v node >/dev/null 2>&1; then
   out=$(node --test "$HERE/status-marker.test.mjs" 2>&1) || { echo "FAIL: status-marker.test.mjs" >&2; printf '%s\n' "$out" | tail -40 >&2; FAIL=$((FAIL + 1)); }
 else

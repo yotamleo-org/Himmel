@@ -1,7 +1,7 @@
 # Whole-doc rows read by the shell, JS and Python tests. TAB-separated: doc, newest, actionable; `-` is none.
 # The doc column encodes LF as \n, CR as \r, TAB as \t, form feed as \f, a backslash as \\; any other
 # backslash sequence is a test failure. A line `# D01` names the row below it.
-# rows: 19
+# rows: 29
 # D01
 ## Results\n- 10:00 LIVE\n- 10:15 Released lock, appended the WRAPPED bullet, ending turn\n	LIVE	-
 # D02
@@ -40,3 +40,23 @@
 ## Results\f\n- 10:00 LIVE\n	-	-
 # D37
 ## Results\n- 10:00 LIVE\f- 10:05 WRAPPED\n	LIVE	-
+# D04
+## Results\n- 10:00 READY\n- 10:30 MERGED PR 123\n	READY	MERGED#2
+# D07
+## Results\n- 10:00 READY\n## Notes\n- 11:00 WRAPPED\n	READY	READY#1
+# D09
+## Results\n- 10:00 LIVE\n## Chief Rulings\n- 12:00 BLOCKED\n	BLOCKED	BLOCKED#1
+# D10
+## Results\n- 10:00 LIVE\n## Console Rulings\n- 12:00 FINDING old-term-ok\n	FINDING	FINDING#1
+# D14
+## Results\n- 10:00 READY\n## Notes\n- x\n## Results\n- 10:10 BLOCKED\n	BLOCKED	BLOCKED#2
+# D16
+## Results\n- 10:00 READY\n- 10:01 LIVE\n- 10:02 READY\n- 10:03 FINDING\n- 10:04 RESOLVED\n	RESOLVED	FINDING#3
+# D21
+## Results\n- 10:00 READY\n## Notes\n- 11:00 BLOCKED\n	READY	READY#1
+# D22
+## Results\n- 10:00 MERGED PR 9\n	-	MERGED#1
+# D25
+## Results\n- 10:00 READY	READY	READY#1
+# D26
+## Results\n- 10:00 LIVE\n## Notes\n- x\n## Console Rulings\n- 12:00 READY old-term-ok\n	READY	READY#1
