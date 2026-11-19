@@ -267,7 +267,7 @@ case $cmd in
         _tp_prev=$cmd
         for _tp_mode in text empty; do
             if ! st_expand "$_tp_mode" "$cmd"; then
-                echo "block-tail-pipe-on-gates: cannot model this command's expansions (nested too deep) - failing closed" >&2
+                echo "block-tail-pipe-on-gates: cannot model this command's expansions (nested too deep, or a dollar-quote word read three ways) - failing closed" >&2
                 exit 2
             fi
             _tp_v=$ST_EXP

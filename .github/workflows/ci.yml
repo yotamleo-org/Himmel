@@ -583,7 +583,7 @@ jobs:
     # --init: an init as PID 1 reaps orphaned descendants, as on the host.
     # --privileged: bwrap and unshare need user namespaces inside the container.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:cd18edbb843f11f3070ce7e36c80cffdba5e143d6997cdef7ee226394e7b205b') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:6cc3208133324d4622b018dc6c5484685e527fb80379c53c5000a8e04ecd3984') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -624,7 +624,7 @@ jobs:
         id: setup-node
         if: ${{ !job.container.id }}
         with:
-          node-version: '22.23.4'
+          node-version: '26.13.1'
       - id: secret-scan
         if: ${{ !cancelled() }}
         timeout-minutes: 10
@@ -1178,7 +1178,7 @@ jobs:
     # container) and the setup steps gated on !job.container.id install the
     # same tools on the host.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:cd18edbb843f11f3070ce7e36c80cffdba5e143d6997cdef7ee226394e7b205b') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:6cc3208133324d4622b018dc6c5484685e527fb80379c53c5000a8e04ecd3984') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -1203,7 +1203,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: ${{ !job.container.id }}
         with:
-          node-version: '22.23.4'
+          node-version: '26.13.1'
       # Run the SAME pre-commit shellcheck hook the local gate runs
       # (pinned shellcheck-py version, default severity, .shellcheckrc, and the
       # hook's own vendored/fixture excludes), so nothing the hook refuses can
@@ -1495,13 +1495,16 @@ jobs:
             dir: plugins/himmel-jira
           - pkg: himmel-bus
             dir: marketplace/plugins/himmel-bus
-            node: '26.13.0'
+            node: '26.13.1'
+          - pkg: jira-node22-floor
+            dir: scripts/jira
+            node: '22.22.0'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: ${{ matrix.node || '22.23.4' }}
+          node-version: ${{ matrix.node || '26.13.1' }}
           cache: 'npm'
           cache-dependency-path: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}/package-lock.json
       - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
@@ -1628,7 +1631,7 @@ jobs:
     # container) and the setup steps gated on !job.container.id install the
     # same tools on the host.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:cd18edbb843f11f3070ce7e36c80cffdba5e143d6997cdef7ee226394e7b205b') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:6cc3208133324d4622b018dc6c5484685e527fb80379c53c5000a8e04ecd3984') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -1661,7 +1664,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: ${{ !job.container.id }}
         with:
-          node-version: '22.23.4'
+          node-version: '26.13.1'
       # The bench-run-batch dispatch-luna tests shell out to
       # scripts/lanes/bench/bank-snapshot.sh, which runs bun. Without bun the
       # snapshot answers UNKNOWN for both banks and run-batch.sh correctly
@@ -1754,7 +1757,7 @@ jobs:
     # container) and the setup steps gated on !job.container.id install the
     # same tools on the host.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:cd18edbb843f11f3070ce7e36c80cffdba5e143d6997cdef7ee226394e7b205b') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:6cc3208133324d4622b018dc6c5484685e527fb80379c53c5000a8e04ecd3984') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -1793,6 +1796,9 @@ jobs:
       # It runs on every matrix entry because three of its cases are
       # platform-sensitive by construction.
       - run: bash scripts/ci/run-bun-tests.sh scripts/telegram scripts/telegram --dots --reporter=junit --reporter-outfile="$RUNNER_TEMP/js-suite-report/bun-telegram.xml"
+      # The peer-bridge channel suites. Repo-root cwd like the telegram suite
+      # above: the suites import ../telegram and the root bunfig preloads.
+      - run: bash scripts/ci/run-bun-tests.sh scripts/peer-bridge scripts/peer-bridge --dots --reporter=junit --reporter-outfile="$RUNNER_TEMP/js-suite-report/bun-peer-bridge.xml"
       # The luna source-identity suites (source-identity + backfill) gate
       # scripts/vault/**. Runs from the repo root like the
       # telegram suite (fixtures are repo-relative). Hermetic: a stub `gh` and a
@@ -1825,7 +1831,7 @@ jobs:
         run: ls scripts/observability/*.test.ts && bash scripts/ci/run-bun-tests.sh scripts/observability scripts/observability --path-ignore-patterns='scripts/observability/*.test.mjs' --dots --reporter=junit --reporter-outfile="$RUNNER_TEMP/js-suite-report/bun-observability.xml"
       - name: JS suite manifest
         if: ${{ !cancelled() }}
-        run: bun scripts/ci/js-suite-manifest.mjs --out js-suite-manifest/manifest-js-bun-suites.txt --report bun "$RUNNER_TEMP/js-suite-report/bun-luna-vitals.xml" scripts/luna-vitals --report bun "$RUNNER_TEMP/js-suite-report/bun-telegram.xml" . --report bun "$RUNNER_TEMP/js-suite-report/bun-vault.xml" . --report bun "$RUNNER_TEMP/js-suite-report/bun-config-ui.xml" . --report bun "$RUNNER_TEMP/js-suite-report/bun-luna-correlate.xml" marketplace/plugins/luna-correlate --report bun "$RUNNER_TEMP/js-suite-report/bun-telegram-himmel.xml" marketplace/plugins/telegram-himmel --report bun "$RUNNER_TEMP/js-suite-report/bun-observability.xml" . || echo "::warning title=js-suite-manifest::the writer failed, so these suites go local"
+        run: bun scripts/ci/js-suite-manifest.mjs --out js-suite-manifest/manifest-js-bun-suites.txt --report bun "$RUNNER_TEMP/js-suite-report/bun-luna-vitals.xml" scripts/luna-vitals --report bun "$RUNNER_TEMP/js-suite-report/bun-telegram.xml" . --report bun "$RUNNER_TEMP/js-suite-report/bun-peer-bridge.xml" . --report bun "$RUNNER_TEMP/js-suite-report/bun-vault.xml" . --report bun "$RUNNER_TEMP/js-suite-report/bun-config-ui.xml" . --report bun "$RUNNER_TEMP/js-suite-report/bun-luna-correlate.xml" marketplace/plugins/luna-correlate --report bun "$RUNNER_TEMP/js-suite-report/bun-telegram-himmel.xml" marketplace/plugins/telegram-himmel --report bun "$RUNNER_TEMP/js-suite-report/bun-observability.xml" . || echo "::warning title=js-suite-manifest::the writer failed, so these suites go local"
       - name: Upload JS suite manifest
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -1899,7 +1905,7 @@ jobs:
     # container) and the setup steps gated on !job.container.id install the
     # same tools on the host.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:cd18edbb843f11f3070ce7e36c80cffdba5e143d6997cdef7ee226394e7b205b') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:6cc3208133324d4622b018dc6c5484685e527fb80379c53c5000a8e04ecd3984') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -1924,7 +1930,7 @@ jobs:
       - if: ${{ !job.container.id && !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '22.23.4'
+          node-version: '26.13.1'
           cache: 'npm'
           cache-dependency-path: '**/package-lock.json'
       - if: ${{ !job.container.id && !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
@@ -1982,24 +1988,9 @@ jobs:
         if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         run: bash scripts/hooks/check-npm-licenses.sh
 
-      # This gate has a hard floor (npm >= 11) that the pinned
-      # node-version above does not meet — node 22 bundles npm 10.9.8. That
-      # floor and this job's runtime can drift apart silently: the only
-      # symptom was an error that read like a package problem, and it went
-      # unnoticed because it passes on every developer machine (newer npm
-      # installed locally) and this repo never ran the workflow before
-      # (Actions is off on the private repo by design). Upgrade npm here
-      # rather than bumping node-version — node 22 is the tested runtime for
-      # the whole workflow and a signature gate shouldn't quietly change that.
-      # Print the version so the next time this floor and this runtime drift
-      # apart, it's one glance at the log instead of an investigation.
-      - name: upgrade npm to meet the audit-signatures floor (>= 11)
+      - name: print the npm version
         if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
-        env:
-          IN_IMAGE: ${{ job.container.id }}
-        run: |
-          ${IN_IMAGE:+sudo} npm i -g npm@^11
-          npm --version
+        run: npm --version
 
       # npm audit signatures (production) — pre-push `npm-audit-signatures`. This
       # gate does NOT self-install; it relies on the node_modules the npm-audit
@@ -2071,7 +2062,7 @@ jobs:
     # --init: an init as PID 1 reaps orphaned descendants, as on the host.
     # --privileged: bwrap and unshare need user namespaces inside the container.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]' || vars.HIMMEL_VM_RUNNER == 'on' || vars.CI_GCP == 'on') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:cd18edbb843f11f3070ce7e36c80cffdba5e143d6997cdef7ee226394e7b205b') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]' || vars.HIMMEL_VM_RUNNER == 'on' || vars.CI_GCP == 'on') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:6cc3208133324d4622b018dc6c5484685e527fb80379c53c5000a8e04ecd3984') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -2179,7 +2170,7 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: ${{ !job.container.id }}
         with:
-          node-version: '22.23.4'
+          node-version: '26.13.1'
       - name: Require bun for the bun-backed suites
         run: echo "HIMMEL_REQUIRE_BUN_TEST=1" >> "$GITHUB_ENV"
       # The run step below covers marketplace/ (root `.`), where
@@ -2572,7 +2563,7 @@ jobs:
     # --init: an init as PID 1 reaps orphaned descendants, as on the host.
     # --privileged: bwrap and unshare need user namespaces inside the container.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:cd18edbb843f11f3070ce7e36c80cffdba5e143d6997cdef7ee226394e7b205b') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:6cc3208133324d4622b018dc6c5484685e527fb80379c53c5000a8e04ecd3984') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}

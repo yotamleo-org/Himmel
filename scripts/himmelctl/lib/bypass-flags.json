@@ -529,6 +529,14 @@
       "remedy": "T3CODE_UNWATCH_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
+      "name": "T3_THREAD_TOOLS_OK",
+      "hooks": [
+        "scripts/hooks/guard-t3-thread-tools.sh"
+      ],
+      "bypasses": "Lets a T3 Code MCP tool call name a provider instance off .t3.instance_allowlist, or set a -chief/-console thread title (scripts/hooks/guard-t3-thread-tools.sh; the allow is printed to stderr).",
+      "remedy": "T3_THREAD_TOOLS_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+    },
+    {
       "name": "TEMPLATE_VERSION_OK",
       "hooks": [
         "scripts/hooks/check-template-version.sh"

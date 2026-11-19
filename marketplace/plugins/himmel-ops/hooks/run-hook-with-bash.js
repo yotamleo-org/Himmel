@@ -704,12 +704,22 @@ function chainRefusal(members) {
   return null;
 }
 
+// A bracket range such as [A-Za-z0-9] in a guard is judged by the locale's
+// collation: bash 3.2 under a UTF-8 locale lets non-ASCII bytes through it.
+// Every hook child collates by bytes; LC_ALL, which overrides LC_COLLATE, is
+// replaced only when the caller set it.
+function hookChildEnv() {
+  const env = { ...process.env, LC_COLLATE: 'C' };
+  if (Object.prototype.hasOwnProperty.call(env, 'LC_ALL')) env.LC_ALL = 'C';
+  return env;
+}
+
 // On POSIX each member leads its own process group, so a member killed for
 // its bound takes its children (a jq it waits on) with it.
 function spawnMember(bash, member, input, bound) {
   const result = spawnSync(bash, [member], {
     input,
-    env: process.env,
+    env: hookChildEnv(),
     encoding: 'utf8',
     timeout: bound,
     killSignal: 'SIGKILL',
@@ -1540,7 +1550,7 @@ function main() {
   const result = spawnSync(bash, hookArgs, {
     input,
     stdio: ['pipe', capture ? 'pipe' : 'inherit', 'inherit'],
-    env: process.env,
+    env: hookChildEnv(),
     ...(capture ? { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 } : {}),
   });
   if (result.error && !isRecoverableEpipe(result)) {

@@ -35,7 +35,7 @@ conventions below keep that working at any team size.
 
    `scripts/hooks/check-commit-msg.sh` validates the format on `commit-msg`;
    CI rechecks every PR commit. A ticket reference is required by default: set
-   `JIRA_PROJECT_KEY` in `.env` for `PROJECT-123`, or `TICKET_ID_PATTERN` for
+   `JIRA_PROJECT_KEY` in `~/.himmel/himmel.conf` for `PROJECT-123`, or `TICKET_ID_PATTERN` for
    another tracker; with neither, the gate accepts himmel's own `#N`
    enumeration (`#123`). `TICKET_ID_REQUIRED=0` opts out.
 
@@ -63,11 +63,11 @@ conventions below keep that working at any team size.
 5. **Open the PR**: `gh pr create --body-file <file>` (writing the body to
    a file avoids heredoc / shell-substitution surprises).
 
-6. **Merge mode is squash + admin + delete-branch.** Repo settings forbid
-   merge-commits.
+6. **Merges are squash-only**, after CI is green and review threads are
+   resolved. Repo settings forbid merge-commits.
 
    ```bash
-   gh pr merge <N> --squash --admin --delete-branch
+   gh pr merge <N> --squash --delete-branch
    ```
 
 ## Pre-commit / pre-push gates
@@ -83,7 +83,8 @@ of truth. Highlights:
 - **CR-before-push:** the multi-agent review-owed marker described above
   (`check-cr-before-push.sh`).
 - **Platforms-tested:** shell / script changes must include a
-  `Platforms tested: <platforms>` line in the commit body or PR description.
+  `Platforms tested: <platforms>` line in the body of a non-merge commit on
+  the branch (a PR-description line counts at no gate).
 - **PR mergeable + no force-push:** pre-push refuses pushes when the PR is
   CONFLICTING or when a force-push targets `main`.
 
@@ -135,17 +136,22 @@ After editing any file a team card reads (the role definitions and shared source
 ## Filing tickets
 
 Use the local Jira CLI rather than the Atlassian MCP plugin (see CLAUDE.md
-`## Jira tooling — prefer plugin over MCP` for the rationale and command
-mapping).
+[`### Jira — prefer plugin over MCP`](../CLAUDE.md#jira--prefer-plugin-over-mcp)
+for the rationale).
 
 ```bash
+node scripts/jira/dist/index.js create --type Task --skeleton   # prints the seven headings
 node scripts/jira/dist/index.js create --project HIMMEL --type Task \
-  --title "Short subject" --desc "Spec body with acceptance criteria" \
-  --sector "Ship loop" --parent HIMMEL-NNN
+  --title "Short subject" --desc-file body.md \
+  --parent HIMMEL-NNN --proposed-version <v>
 ```
 
-A Task, Story or Bug needs `--sector` and either `--parent <epic>` or
-`--labels standalone`; `create` refuses it otherwise.
+A Task, Story or Bug needs a body with the seven sections (Impact, What, Why,
+Plan, DoD, Proof, Agent detail), either `--parent <epic>` or
+`--labels standalone`, and a placement (`--proposed-version <v>`,
+`--fix-version`, or `--backlog --proposed-version backlog --why <line>`);
+`create` refuses it otherwise. `--sector` is required only where the project
+uses sectors (`jira.sectorField` in `~/.himmel/config.json`).
 
 ## Guard changes: one structural round
 

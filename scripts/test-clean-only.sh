@@ -68,6 +68,10 @@ git init -q --initial-branch=main "$REPO" 2>/dev/null || {
 git -C "$REPO" config user.email t@test.com
 git -C "$REPO" config user.name t
 git -C "$REPO" config maintenance.auto false
+HANDOVER_DIR="$TMP_ROOT/handover-root"
+HANDOVER_REGISTRY="$TMP_ROOT/handover-registry.json"
+mkdir -p "$HANDOVER_DIR"
+export HANDOVER_DIR HANDOVER_REGISTRY
 printf 'base\n' > "$REPO/README"
 git -C "$REPO" add README
 git -C "$REPO" commit -q -m "base"

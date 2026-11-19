@@ -103,7 +103,7 @@
 #                  not-armed / resolver-missing / spawn-error / unexpected-rc,
 #                  the round-6 discipline applied from the start) plus
 #                  graphmap-cadence envVar-wiring sanity.
-#   cmd:guardrail_block_status guardrail-block-global
+#   cmd:guardrail_block_status (a fixture item; no manifest item carries it)
 #                  project-mode (absent) / rotted node path, unparseable
 #                  output, nonzero exit (all degraded); plus
 #                  codex-adv-1) a 1-of-3-hooks partial install (mode=global,
@@ -3473,7 +3473,7 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 echo "$outGCp" | jq -e '.actual == "present"' >/dev/null || fail "cmd:cadence_armed (graphmap-cadence) present via GRAPHMAP_BAT_DIR: (got: $outGCp)"
 echo "ok: cmd:cadence_armed envVar wiring — graphmap-cadence routes to its OWN dir"
 
-# ── cmd:guardrail_block_status (guardrail-block-global) ──
+# ── cmd:guardrail_block_status (fixture item) ──
 # guardrail-block.mjs grew a `status --json` verb enumerating
 # all 3 expected GUARDRAILS hooks with per-hook presence + node/wrapper/
 # script resolution, and the probe now consumes it instead of the plain
@@ -3522,7 +3522,7 @@ fs.writeFileSync('$(winpath "$gb_settings_present")/settings.json', JSON.stringi
 outGBp=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
   env: Object.assign({}, process.env, { CLAUDE_USER_SETTINGS: '$(winpath "$gb_settings_present")/settings.json' }) };
 console.log(JSON.stringify(runProbe(item, ctx)));
@@ -3568,7 +3568,7 @@ fs.writeFileSync('$(winpath "$gb_settings_full")/settings.json', JSON.stringify(
 outGBf=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
   env: Object.assign({}, process.env, { CLAUDE_USER_SETTINGS: '$(winpath "$gb_settings_full")/settings.json', HIMMEL_REPO: '$repo_root_w' }) };
 console.log(JSON.stringify(runProbe(item, ctx)));
@@ -3606,7 +3606,7 @@ fs.writeFileSync('$(winpath "$gb_settings_wrong_checkout")/settings.json', JSON.
 outGBwc=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
   env: Object.assign({}, process.env, { CLAUDE_USER_SETTINGS: '$(winpath "$gb_settings_wrong_checkout")/settings.json', HIMMEL_REPO: '$repo_root_w' }) };
 console.log(JSON.stringify(runProbe(item, ctx)));
@@ -3643,7 +3643,7 @@ fs.writeFileSync('$(winpath "$gb_settings_empty_script")/settings.json', JSON.st
 outGBes=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
   env: Object.assign({}, process.env, { CLAUDE_USER_SETTINGS: '$(winpath "$gb_settings_empty_script")/settings.json', HIMMEL_REPO: '$(winpath "$gb_truncated_anchor")' }) };
 console.log(JSON.stringify(runProbe(item, ctx)));
@@ -3675,7 +3675,7 @@ fs.writeFileSync('$(winpath "$gb_settings_bad_matcher")/settings.json', JSON.str
 outGBm=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
   env: Object.assign({}, process.env, { CLAUDE_USER_SETTINGS: '$(winpath "$gb_settings_bad_matcher")/settings.json' }) };
 console.log(JSON.stringify(runProbe(item, ctx)));
@@ -3711,7 +3711,7 @@ fs.writeFileSync('$(winpath "$gb_settings_dead_bash")/settings.json', JSON.strin
 outGBb=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
   env: Object.assign({}, process.env, { CLAUDE_USER_SETTINGS: '$(winpath "$gb_settings_dead_bash")/settings.json' }) };
 console.log(JSON.stringify(runProbe(item, ctx)));
@@ -3747,7 +3747,7 @@ fs.writeFileSync('$(winpath "$gb_settings_node_dir")/settings.json', JSON.string
 outGBnd=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
   env: Object.assign({}, process.env, { CLAUDE_USER_SETTINGS: '$(winpath "$gb_settings_node_dir")/settings.json' }) };
 console.log(JSON.stringify(runProbe(item, ctx)));
@@ -3785,7 +3785,7 @@ fs.writeFileSync('$(winpath "$gb_settings_dup")/settings.json', JSON.stringify({
 outGBdup=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
   env: Object.assign({}, process.env, { CLAUDE_USER_SETTINGS: '$(winpath "$gb_settings_dup")/settings.json' }) };
 console.log(JSON.stringify(runProbe(item, ctx)));
@@ -3827,7 +3827,7 @@ fs.writeFileSync('$(winpath "$gb_settings_decoy")/settings.json', JSON.stringify
 outGBdecoy=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
   env: Object.assign({}, process.env, { CLAUDE_USER_SETTINGS: '$(winpath "$gb_settings_decoy")/settings.json' }) };
 console.log(JSON.stringify(runProbe(item, ctx)));
@@ -3873,7 +3873,7 @@ fs.writeFileSync('$(winpath "$gb_settings_noncanon")/settings.json', JSON.string
 outGBnc=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
   env: Object.assign({}, process.env, { CLAUDE_USER_SETTINGS: '$(winpath "$gb_settings_noncanon")/settings.json' }) };
 console.log(JSON.stringify(runProbe(item, ctx)));
@@ -3909,7 +3909,7 @@ fs.writeFileSync('$(winpath "$gb_settings_dead_wrapper")/settings.json', JSON.st
 outGBw=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
   env: Object.assign({}, process.env, { CLAUDE_USER_SETTINGS: '$(winpath "$gb_settings_dead_wrapper")/settings.json' }) };
 console.log(JSON.stringify(runProbe(item, ctx)));
@@ -3926,7 +3926,7 @@ gb_settings_absent="$work/gb-settings-absent"; mkdir -p "$gb_settings_absent"
 outGBa=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
   env: Object.assign({}, process.env, { CLAUDE_USER_SETTINGS: '$(winpath "$gb_settings_absent")/settings.json' }) };
 console.log(JSON.stringify(runProbe(item, ctx)));
@@ -3944,7 +3944,7 @@ fs.writeFileSync('$(winpath "$gb_settings_degraded")/settings.json', JSON.string
 outGBd=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
   env: Object.assign({}, process.env, { CLAUDE_USER_SETTINGS: '$(winpath "$gb_settings_degraded")/settings.json' }) };
 console.log(JSON.stringify(runProbe(item, ctx)));
@@ -3959,7 +3959,7 @@ JS
 outGBu=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$(winpath "$gb_bad_script_dir")', targetPath: '$repo_root_w', scope: 'user', env: process.env };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
@@ -3978,7 +3978,7 @@ JS
 outGBmf=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$(winpath "$gb_missing_field_dir")', targetPath: '$repo_root_w', scope: 'user', env: process.env };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
@@ -4002,7 +4002,7 @@ JS
 outGBeh=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$(winpath "$gb_empty_hooks_dir")', targetPath: '$repo_root_w', scope: 'user', env: process.env };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
@@ -4064,7 +4064,7 @@ JS
 outGBtr=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$(winpath "$gb_truncated_dir")', targetPath: '$repo_root_w', scope: 'user', env: process.env };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
@@ -4096,7 +4096,7 @@ JS
 outGBcon=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$(winpath "$gb_contradiction_dir")', targetPath: '$repo_root_w', scope: 'user', env: process.env };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
@@ -4160,7 +4160,7 @@ JS
 outGBv2h=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$(winpath "$gb_v2_healthy_dir")', targetPath: '$repo_root_w', scope: 'user', env: process.env };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
@@ -4207,7 +4207,7 @@ JS
 outGBv2c=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$(winpath "$gb_v2_content_dir")', targetPath: '$repo_root_w', scope: 'user', env: process.env };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
@@ -4254,7 +4254,7 @@ JS
 outGBv2a=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$(winpath "$gb_v2_anchor_dir")', targetPath: '$repo_root_w', scope: 'user', env: process.env };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
@@ -4295,7 +4295,7 @@ JS
 outGBv1=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$(winpath "$gb_v1_no_v2_dir")', targetPath: '$repo_root_w', scope: 'user', env: process.env };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
@@ -4338,7 +4338,7 @@ JS
 outGBv2p=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$(winpath "$gb_v2_partial_dir")', targetPath: '$repo_root_w', scope: 'user', env: process.env };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
@@ -4356,13 +4356,13 @@ JS
 outGBe=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'guardrail-block-global');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
 const ctx = { repoRoot: '$(winpath "$gb_bad_exit_dir")', targetPath: '$repo_root_w', scope: 'user', env: process.env };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outGBe" | jq -e '.actual == "degraded"' >/dev/null || fail "cmd:guardrail_block_status degraded (script exits nonzero): (got: $outGBe)"
 echo "$outGBe" | jq -e '.detail | contains("rc=2")' >/dev/null || fail "cmd:guardrail_block_status nonzero-exit detail should name the rc (got: $outGBe)"
-echo "ok: cmd:guardrail_block_status (guardrail-block-global) absent/degraded (rotted node path / unparseable output / missing hooks field / nonzero exit) — 'present' is reserved for the genuine full-install case proven above"
+echo "ok: cmd:guardrail_block_status (fixture item) absent/degraded (rotted node path / unparseable output / missing hooks field / nonzero exit) — 'present' is reserved for the genuine full-install case proven above"
 # SKIP NOTE: a spawn-error path (process.execPath itself unresolvable) is not
 # exercised: this probe spawns by ABSOLUTE execPath, never a bash/PATH
 # lookup for node, so the r.error branch has no realistic trigger here (unlike

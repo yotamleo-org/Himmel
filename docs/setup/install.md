@@ -259,9 +259,9 @@ deal, and every guard has an off switch (see
 |---|---|---|---|---|
 | **Scope** | `project` | The harness is wired in **this repo's** `.claude/settings.json` | Nothing extra | Everyone who clones the repo inherits it — commit the file deliberately |
 | | `user` | The harness is wired in **`~/.claude/settings.json`** | Nothing extra | Applies to *every* project you open on this machine, including ones you did not mean to gate |
-| **Install profile** | `starter` → `core` | 45 items: hooks, git gates, worktree commands, statusline (claude-hud, cache-expiry line on; legacy bash bar stays opt-in/rollback — [tooling-catalog.md](../tooling-catalog.md#claude-statusline-vendored)), marketplace plugins, the Jira CLI build, and, when qmd is already on the machine, the himmel search collection (no qmd shows a hint, not an error) | `git`, `bash`, `node`, `jq`, `python3` | When your project has no `.pre-commit-config.yaml`, the plain git hooks the installer places refuse a commit on `main` or `master` and a commit message with no ticket reference, so commits move to a branch — that is the point, and it is the thing to try on one repo first |
+| **Install profile** | `starter` → `core` | 44 items: hooks, git gates, worktree commands, statusline (claude-hud, cache-expiry line on; legacy bash bar stays opt-in/rollback — [tooling-catalog.md](../tooling-catalog.md#claude-statusline-vendored)), marketplace plugins, the Jira CLI build, and, when qmd is already on the machine, the himmel search collection (no qmd shows a hint, not an error) | `git`, `bash`, `node`, `jq`, `python3` | When your project has no `.pre-commit-config.yaml`, the plain git hooks the installer places refuse a commit on `main` or `master` and a commit message with no ticket reference, so commits move to a branch — that is the point, and it is the thing to try on one repo first |
 | | `luna` | `core` plus the second-brain surface: vault scaffold, qmd index, graphify MCP, the clip cadences | `bun`, plus disk for the qmd index | A vault you now have to maintain; the cadences run on a schedule |
-| | `operator` / `custom` | `all` (59 items) / whatever you answer | Everything above | The maintainer's full machine — not an adopter starting point |
+| | `operator` / `custom` | `all` (58 items) / whatever you answer | Everything above | The maintainer's full machine — not an adopter starting point |
 | **Release channel** | unset (no recorded channel) | `git pull --ff-only` on your branch | Nothing | You track the tip, including work in progress — this is the *fallback*, not what a fresh install records |
 | | `stable` | The highest `vX.Y.Z` tag | Nothing | You update only when a release is cut |
 | | `pre` | The highest tag including `-pre.N` | Nothing | Prereleases, so earlier fixes and earlier breakage |
@@ -387,10 +387,10 @@ A guard hook wired from two settings layers (user settings, project settings, an
 
 | Where the session runs | Owner | How the other layer stays quiet |
 |---|---|---|
-| Inside a himmel checkout | The project layer (`.claude/settings.json`) | The user layer carries `guardrail-block-global`, the form that goes quiet where a project layer covers the script. `himmelctl install` reads that form as the trio being present and wires nothing more at the user level. The `himmel-guard` plugin command exits 0 when the project settings name `block-destructive-commands.sh`. |
-| An adopted repo with no project entry | The user layer | The install wires the hooks there, and `guardrail-block-global` runs them in every repo. |
+| Inside a himmel checkout | The project layer (`.claude/settings.json`) | A user layer wired through `scripts/setup-hooks.sh --guardrail-mode global` carries the wrapped form, which goes quiet where a project layer covers the script. `himmelctl install` reads that form as the trio being present and wires nothing more at the user level. The `himmel-guard` plugin command exits 0 when the project settings name `block-destructive-commands.sh`. |
+| An adopted repo with no project entry | The user layer | The install wires the hooks there, and they run in every repo. |
 
-A station that has not accepted `guardrail-block-global` keeps the raw user-level wire, so the trio still guards every repo, and inside a himmel checkout each trio hook runs twice per call. The doctor reports that as a WARN: run `himmelctl ensure` interactively once and answer yes to `guardrail-block-global` (it waits for your consent), then drop the raw user entry with `scripts/lib/unwire-pretooluse-hooks.sh`.
+A station with the raw user-level wire, not the wrapped form, still guards every repo, and inside a himmel checkout each trio hook runs twice per call. The doctor reports that as a WARN: drop the raw user entry with `scripts/lib/unwire-pretooluse-hooks.sh`. himmel no longer offers a machine-wide guardrail install of its own, so `himmelctl ensure` never asks about one.
 
 `inject-initiative` (SessionStart) is wired by `scripts/setup.sh` and `adopt --scope user`, not by `himmelctl install`, so it is not skipped for you: on a station that wired it at the user layer, remove that entry with `scripts/lib/unwire-pretooluse-hooks.sh`.
 

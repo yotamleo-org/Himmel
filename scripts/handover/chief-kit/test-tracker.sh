@@ -23,6 +23,7 @@ printf '#!/bin/sh\nexit 1\n' > "$W/nojira"
 chmod +x "$W/nojira"
 export TRACKER_JIRA="$W/nojira"
 
+touch_ago() { local s="$1"; shift; touch "$@" && python3 -c 'import os,sys,time; t=time.time()-int(sys.argv[1]); [os.utime(f,(t,t)) for f in sys.argv[2:]]' "$s" "$@"; }
 pass() { printf 'ok - %s\n' "$1"; }
 fail() { printf 'FAIL - %s\n' "$1"; fails=$((fails + 1)); }
 contains() {
@@ -1155,7 +1156,7 @@ equals 'S8b the gh child runs with GH_READ_QUIET=1' "$(cat "$W/s8quiet" 2>/dev/n
 : > "$S8LOG"
 s8render "$W/s8-c.html" TRACKER_GH="$W/vpnogh" >/dev/null
 contains 'S8b control: TRACKER_GH set still wins over the helper' "$(cat "$W/s8-c.html" 2>/dev/null)" 'PR state unavailable'
-equals 'S8b control: TRACKER_GH set leaves the two-token stub uncalled' "$(wc -l < "$S8LOG")" 0
+equals 'S8b control: TRACKER_GH set leaves the two-token stub uncalled' "$(wc -l < "$S8LOG" | tr -d ' ')" 0
 rm -f "$W/s8quiet"
 s8render "$W/s8-q.html" TRACKER_GH="$W/s8bin/gh-prs" >/dev/null
 equals 'S8b control: TRACKER_GH set runs its gh child with GH_READ_QUIET=1' "$(cat "$W/s8quiet" 2>/dev/null)" 1
@@ -1519,7 +1520,7 @@ gd_doc 'question one more round authority=O-v1.1.3-0001'
 v9611render --owed-dir "$bk" --chief-doc "$bk/$gd_stem.md"
 contains 'a holds file with no rows list is named as unread' "$(grep -F 'data-section="waiting"' "$v9611out")" "pool holds unread: pool-holds-$gd_stem.json"
 cp "$HERE/fixtures/pool-holds-golden.json" "$TICK_STATE_DIR/pool-holds-$gd_stem.json"
-touch -d '31 minutes ago' "$TICK_STATE_DIR/pool-holds-$gd_stem.json"  # gnu-ok: chief kit is Linux-only
+touch_ago 1860 "$TICK_STATE_DIR/pool-holds-$gd_stem.json"
 v9611render --owed-dir "$bk" --chief-doc "$bk/$gd_stem.md"
 contains 'a holds file over 30 minutes old is named as unread' "$(grep -F 'data-section="waiting"' "$v9611out")" "pool holds unread: pool-holds-$gd_stem.json"
 ln -s "$bk" "$W/bk9611-link"
@@ -1731,9 +1732,9 @@ hb="$cod/hbucket"
 mkdir -p "$hb/specs/decisions"
 hbfx() {
     printf '%s\n' '# handoff' '## Open operator items' '' "$1" '## Wrapped' 'none' > "$hb/HIMMEL-x-chief-HANDOFF.md"
-    touch -d '2026-11-15 10:00:00' "$hb/HIMMEL-x-chief-HANDOFF.md"
+    touch -t 202611151000.00 "$hb/HIMMEL-x-chief-HANDOFF.md"
     rm -f "$hb"/specs/decisions/verbatim-decision-*.txt
-    [ -z "$2" ] || { printf '%s\n' "$2" > "$hb/specs/decisions/verbatim-decision-951-operator-11-15-AE.txt"; touch -d "$3" "$hb/specs/decisions/verbatim-decision-951-operator-11-15-AE.txt"; }
+    [ -z "$2" ] || { printf '%s\n' "$2" > "$hb/specs/decisions/verbatim-decision-951-operator-11-15-AE.txt"; local d="${3//[-: ]/}"; touch -t "${d:0:12}.${d:12:2}" "$hb/specs/decisions/verbatim-decision-951-operator-11-15-AE.txt"; }
     codrender --owed-dir "$hb" >/dev/null || fail '10189 the HANDOFF render exited non-zero'
     hbw="$(grep -F 'data-section="waiting"' "$codout" 2>/dev/null)"
     hbc="$(grep -F 'data-section="chief-owes"' "$codout" 2>/dev/null)"

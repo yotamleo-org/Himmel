@@ -294,6 +294,12 @@ deny "plain gate | tail (control)" 'bash scripts/ci/run-shell-tests.sh | tail -5
 # shellcheck disable=SC2016  # payload is literal command text
 deny "empty expansion glued to the command word" \
      '${V:-}bash scripts/ci/run-shell-tests.sh | tail -5'
+# shellcheck disable=SC2016,SC1003  # payload is literal command text
+deny "a gate held in an expansion beside a control-backslash pair" \
+     '${V:-}bash scripts/ci/run-shell-tests.sh | tail -5 $'"'"'\c\\n'"'"
+# shellcheck disable=SC2016  # payload is literal command text
+deny "a control-backslash pair in a zsh (pj::) separator naming the gate" \
+     'bash ${(pj:./scripts/check-ci.sh\c\\n:)V} | tail -5'
 # shellcheck disable=SC2016  # payload is literal command text
 deny "bare \$V before the command word" '$V bash scripts/ci/run-shell-tests.sh | tail -5'
 # shellcheck disable=SC2016  # payload is literal command text

@@ -536,9 +536,9 @@ Rules, enforced by `scripts/ci/check-flags.sh` on every CI event:
 - **Registered and read.** A flag the code reads must be in the registry, and a
   registered flag must have a reader.
 
-The registry is empty today: the four `chain_*` flags came out when the push trial-merge landed,
-and soft edges, the chain render, the merge plan and the push check run
-always. `check-flags.sh` passes on an empty registry (`OK (0 flag(s) registered)`).
+The registry holds `stacked_series`, `auto_go` and `pr_size_gate`; each row's `expires`
+date applies. Soft edges, the chain render, the merge plan and the push check carry no flag
+and run always.
 
 ## Why this route
 

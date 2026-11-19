@@ -1,0 +1,20 @@
+# systemd user unit for the peer bridge poller. Install:
+#   sed "s|@HIMMEL_ROOT@|<primary checkout>|g" units/himmel-peer-bridge.service > ~/.config/systemd/user/himmel-peer-bridge.service
+#   systemctl --user daemon-reload && systemctl --user enable --now himmel-peer-bridge.service
+[Unit]
+Description=himmel peer bridge poller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=PATH=%h/.bun/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=%h/.config/himmel/peer-bridge/env
+ExecStart=/usr/bin/env bun @HIMMEL_ROOT@/scripts/peer-bridge/poller.ts
+Restart=on-failure
+RestartSec=10
+RestartPreventExitStatus=78
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

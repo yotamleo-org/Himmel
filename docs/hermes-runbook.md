@@ -488,10 +488,10 @@ one-shot auto-detect on `-m` re-overrides a profile's provider.
 
 ### Consumers
 
-The automated review panel's free critic is anchored via this lane to the model in
-the registry's anchor row. The shipped
-`scripts/cr/critics.json` carries UNIVERSAL defaults; when YOUR account's
-free quotas exhaust, record the swap in the gitignored
+The shipped automated review panel has no free critic row; its required
+cross-model anchor is the paid `codex` row. The shipped
+`scripts/cr/critics.json` carries UNIVERSAL defaults; when a free critic you add
+runs out of YOUR account's free quota, record the swap in the gitignored
 `scripts/cr/critics.local.json` overlay (auto-picked-up);
 do not edit the shipped registry for account state (an earlier change did, and was reverted).
 Free-quota exhaustion is why a quota guard is tracked

@@ -25,7 +25,8 @@ worktree (`dist/` is an untracked build artifact; a worktree lacks it →
 MODULE_NOT_FOUND and SILENT create failures), never the global `jira` shim.
 `JIRA_PROJECT_KEY` is required. CLI-over-MCP routing is enforced by
 `block-backend-tier.sh` (registry `scripts/backends.json`); ops + op↔MCP
-mapping: [`docs/internals/jira-plugin.md`](jira-plugin.md).
+mapping: [`docs/internals/jira-plugin.md`](jira-plugin.md). Ticket bodies carry
+the seven sections of that doc's "Ticket shape".
 
 ### Claude invocation billing
 Subscription-authenticated `claude -p`/`--print`/`--bg` draws the SAME 5-hour /
@@ -88,15 +89,7 @@ justify lifting it) is a row in the private ceilings ledger, written with
 `scripts/ledger/ceiling-lookup.sh`; it is never a code comment. The
 history-comment gate refuses a new ponytail marker →
 [`docs/internals/code-comments.md`](code-comments.md).
-Code comments: keep list only, never ticket/review history. No added line of any tracked text file carries a ticket key unless a row of `scripts/lint/ticket-ref-allow.tsv` covers it (gate: `check-history-comments`, same doc).
-
-### Renaming a name
-A rename lands as one finished change: alias row first, one shared reader, writers
-and docs and tests in the same PR, stored records migrated or read-aliased, the
-removal ticket filed in the alias PR. CI refuses a retired name on added lines
-(`check-rename-diff.sh`) and a doc flag the CLI does not accept
-(`check-doc-literals.sh`) →
-[`docs/internals/rename-procedure.md`](rename-procedure.md). [prose]
+Code comments: keep list only, never ticket/review history. No added line of any tracked text file carries a ticket key unless a row of `scripts/lint/ticket-ref-allow.tsv` covers it (gate: `check-history-comments`, same doc). [enforced: no-history-comments]
 
 ### Where artifacts land
 - **Reference docs operators consume** → the owning repo's `docs/` (plugin specs
@@ -111,10 +104,13 @@ removal ticket filed in the alias PR. CI refuses a retired name on added lines
 Three organs, in order. **`MEMORY.md` routes, it does not store** — on a
 surprising harness or tool symptom, read the theme topic file its keyword names
 before improvising; that read is the primary path. **qmd finds content** —
-second hop (cross-repo, historic), scoped via `-c <name>` (`--collections` is
-NOT a qmd flag — silently ignored, searching everything while looking scoped);
-a qmd miss is NOT evidence a fact is absent. **graphify explains structure** (`graphify query` /
-`graphify explain` / `graphify path`) — only code files, `name()` symbols, glossary terms and `/command`/plugin/skill/hook names
+second hop (cross-repo, historic), via
+`bash scripts/lib/qmd-bounded.sh query -c <name> "<question>"` (a bare qmd call is
+refused; `--collections` is NOT a qmd flag — silently ignored, searching
+everything while looking scoped); a qmd miss is NOT evidence a fact is absent.
+**graphify explains structure**
+(`bash scripts/graphify/worker-graph.sh query|explain|path "<x>"`; the bare
+`graphify` form fails in a worktree) — only code files, `name()` symbols, glossary terms and `/command`/plugin/skill/hook names
 merge across files; other same-name concepts, and code symbols defined in 2+ files, stay separate (pick one with `path::symbol`).
 An hourly or incremental refresh can leave a merge stale, so confirm a `graphify path` miss with grep.
 Luna's hot cache

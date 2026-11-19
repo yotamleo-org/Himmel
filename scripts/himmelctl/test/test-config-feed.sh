@@ -198,7 +198,8 @@ classifyJ() { "$node_bin" -e 'const f=require(process.argv[1]);const r=f.classif
 [ "$(classifyJ '{"source":"doctor","id":"doctor:C12-gh-auth","scope":"shared","fix":{"remedy":"gh auth login"}}')" = "shared operator -" ] || fail "a4 gh auth"
 [ "$(classifyJ '{"source":"doctor","id":"doctor:C12-gh-auth","scope":"shared","fix":{"remedy":""}}')" = "shared chief -" ] || fail "a4 an operator row with no command falls to the chief"
 for c in C38-uv C44-skill-index C45-qmd-daemon C52-graphify-ollama C83-qmd-embed-backlog C22-chain-skips C80-status-drift C86-morning-report C40-qmd-vec; do
-  [ "$(classifyJ "{\"source\":\"doctor\",\"id\":\"doctor:$c\",\"scope\":\"shared\",\"fix\":{\"remedy\":\"\"}}")" = "shared chief -" ] || fail "a4 $c declared shared reads $(classifyJ "{\"source\":\"doctor\",\"id\":\"doctor:$c\",\"scope\":\"shared\",\"fix\":{\"remedy\":\"\"}}")"
+  row=$(printf '{"source":"doctor","id":"doctor:%s","scope":"shared","fix":{"remedy":""}}' "$c")
+  [ "$(classifyJ "$row")" = "shared chief -" ] || fail "a4 $c declared shared reads $(classifyJ "$row")"
 done
 [ "$(classifyJ '{"source":"doctor","id":"doctor:C33-graph-stale","scope":"project","repo":"himmel","fix":{"remedy":""}}')" = "project chief -" ] || fail "a4 C33 declared project"
 [ "$(classifyJ '{"source":"doctor","id":"doctor:C77-undeclared","fix":{"remedy":""}}')" = "project chief -" ] || fail "a4 an undeclared doctor row defaults to the project"
@@ -470,7 +471,6 @@ printf '%s\n' '{"sev":"OK","id":"C1-guardrail","msg":"guardrail ok","remedy":""}
 printf '%s\n' '{"sev":"WARN","id":"C3-luna","msg":"luna dirty","remedy":"commit it"}'
 printf '%s\n' '{"sev":"WARN","id":"C16-status","msg":"2 himmelctl install/wiring finding(s)","remedy":"node scripts/himmelctl/bin.js status"}'
 printf '%s\n' '{"sev":"INFO","id":"C19-observability","msg":"observability not desired","remedy":""}'
-printf '%s\n' '{"sev":"OK","id":"C28-guardrail-consent","msg":"guardrail-block-global is wired","remedy":""}'
 printf '%s\n' '{"sev":"FAIL","id":"C9-scheduler","msg":"no scheduler backend","remedy":"install cron"}'
 printf '%s\n' '{"sev":"FAIL","id":"C30-bridge-liveness","msg":"bridge down","remedy":"restart the bridge"}'
 printf '%s\n' '{"sev":"WARN","id":"C20-node","msg":"node mismatch","remedy":"nvm use"}'
@@ -481,7 +481,7 @@ DOCTOR_STUB="$foldDoctor" run_report > "$foldOut" 2>/dev/null || fail "i1 report
 rank() { case "$1" in fail) echo 2 ;; warn) echo 1 ;; *) echo 0 ;; esac; }
 srank() { case "$1" in FAIL) echo 2 ;; WARN) echo 1 ;; *) echo 0 ;; esac; }
 disagree=0
-for pair in C19-observability:INFO:observability-stack C28-guardrail-consent:OK:guardrail-block-global \
+for pair in C19-observability:INFO:observability-stack \
             C9-scheduler:FAIL:scheduler-backend C30-bridge-liveness:FAIL:bridge-health C20-node:WARN:node; do
   did=${pair%%:*}; rest=${pair#*:}; dsev=${rest%%:*}; owner=${rest#*:}
   [ "$(jq "[.rows[]|select(.id==\"doctor:$did\")]|length" "$foldOut")" -eq 0 ] || fail "i1 doctor:$did still a row (owner $owner)"

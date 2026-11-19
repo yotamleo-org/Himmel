@@ -786,6 +786,21 @@ describe('release engine', () => {
       expect(jira.fv.get('K-2')).toEqual(['v1']);
     });
 
+    it('a move the operator governs admits without the RM naming supersedes, and the ruling records it', async () => {
+      const { prior, req } = await placedInV2();
+      const o = decide('2026-10-21T11:00:00.000Z', 'move', 'v2', 'v1');
+      const r = admit(req, pull);
+      expect(r.supersedes).toEqual([prior]);
+      expect(r.authority).toEqual({ kind: 'operator', ref: o.id });
+      await apply(ctx(rmEnv), r.id);
+      expect(jira.fv.get('K-2')).toEqual(['v1']);
+    });
+
+    it('with no operator record a move that omits supersedes still refuses', async () => {
+      const { prior, req } = await placedInV2();
+      expect(() => admit(req, pull)).toThrow(new RegExp(`supersedes must name ${prior}`));
+    });
+
     it('with no newer operator record the RM ruling is still refused', async () => {
       const { prior, req } = await placedInV2();
       expect(() => admit(req, { ...pull, supersedes: [prior] })).toThrow(/carries operator authority; only an operator record supersedes it/);

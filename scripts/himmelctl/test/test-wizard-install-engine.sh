@@ -683,7 +683,7 @@ echo "ok: case t — POSIX (simulated) timeout-cleanup: process.kill(-pid,'SIGKI
 # usable bash resolves, instead of spawning the bare name. buildEntry() emits
 # the literal cmd:'bash' for every shell primitive; spawning that bare name
 # resolves through PATH, which can pick up the wrong binary. The refusal mirrors buildEntry()'s own
-# `unrunnable` refusal for the guardrail-block-global target.
+# `unrunnable` refusal.
 #
 # Un-resolving bash PORTABLY is the whole difficulty: neither an empty PATH
 # nor a scrubbed env does it: resolveBash() probes hardcoded

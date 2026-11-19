@@ -11,13 +11,15 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/outside-audit-test.XXXXXX") || exit 1
+tmp=$(cd "$tmp" && pwd -P) || exit 1
 trap 'rm -rf "$tmp"' EXIT
 fails=0
 pass() { printf 'ok - %s\n' "$1"; }
 fail() { printf 'FAIL - %s\n' "$1"; fails=$((fails + 1)); }
 eq() { if [ "$1" = "$2" ]; then pass "$3"; else fail "$3 (got '$1', want '$2')"; fi; }
 has() { case "$1" in *"$2"*) pass "$3" ;; *) fail "$3 (missing '$2'; got: $1)" ;; esac; }
-sha() { sha256sum < "$1" | cut -d' ' -f1; } # read-sink-ok: hashes the suite's own fixture files
+. "$HERE/../lib/sha256-bin.sh" || exit 1
+sha() { sha256_hex "$1"; } # read-sink-ok: hashes the suite's own fixture files
 
 A="$tmp/anchor"; LOG="$tmp/log"
 mkdir -p "$A/scripts/cr/perspectives" "$A/scripts/lib" "$A/scripts/ci" "$A/scripts/handover/chief-kit" "$LOG" "$tmp/bin"

@@ -393,7 +393,7 @@ pinrun() {
   HOME="$PIN/home" HIMMEL_EVAL_RUNS_LEDGER="$TMP/rl/eval.jsonl" HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$c/th-fail.jsonl" TH_PATH="$TH" bun -e 'const { readToolHealth } = await import(process.env.TH_PATH); console.log(JSON.stringify(readToolHealth(process.env, new URLSearchParams("days=30"), Date.parse("2026-11-03T00:00:00Z"))))' >"$c/tool-health.json" 2>"$c/tool-health.err"
 }
 # pinleaks <case> <canary>: every artifact a sender or reader wrote, searched for the canary (case-insensitive).
-pinleaks() { grep -ril -e "$2" "$PIN/stub" "$PIN/$1" 2>/dev/null | grep -v "/ledger.jsonl$\|/th-fail.jsonl$"; }
+pinleaks() { grep -ril -e "$2" "$PIN/stub" "$PIN/$1" 2>/dev/null | grep -Ev '/(ledger|th-fail)\.jsonl$'; }
 mkdir -p "$PIN/green" "$PIN/red"
 pinrows "$PIN/green/ledger.jsonl" denied/guard-pr-check-literal '"CANARY8575fw"'
 jq -c 'select(.failure == "denied") | .refusal_line = "CANARY8575fw"' "$RF" >"$PIN/green/th-fail.jsonl"

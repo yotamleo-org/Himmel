@@ -483,12 +483,13 @@ is_pattern_arg_cmd() {
 # An assignment keeps its name outside the quotes, so `A='x y' cat f` still starts
 # with an assignment.
 rs_clause_word() {
-    local w=${ST_W[$1]} pre=''
+    # shellcheck disable=SC1003 # a lone backslash, not an escaped quote
+    local w=${ST_W[$1]} pre='' sq="'" bs='\'
     RS_CW=$w
     if [ "${ST_Q[$1]}" != 1 ]; then return 0; fi
     if [ "${ST_A[$1]:-0}" = 1 ]; then pre=${w%%=*}=; w=${w#*=}; fi
     w=${w//$'\n'/ }
-    RS_CW=$pre"'${w//\'/\'\\\'\'}'"
+    RS_CW=$pre"'${w//$sq/$sq$bs$sq$sq}'"
 }
 
 # rs_segment_clauses: RS_SEG_CLAUSES is the clause list, one clause per segment of

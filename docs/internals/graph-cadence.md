@@ -272,7 +272,7 @@ aliases, resolved by `scripts/lib/llm-backend.sh`. Any other value refuses (rc 1
 | 1, 2, other | usage/IO, fence deny, batch submit failure, graphify or merge failure | alerts (`semantic-update-rc-<n>`), `action=failed`, rc 3 |
 
 On `claude-api`, `semantic-update.sh` passes graphify `--token-budget` derived from `GRAPHIFY_API_CALL_BUDGET_USD`
-(120000 tokens per USD, capped at graphify's 60000), so a chunk fits one lane call; the default 0.25 USD gives
+(30000 tokens per USD, capped at graphify's 60000), so a chunk fits one lane call; the default 1.00 USD gives
 30000. The estimate line prints the cap, the chunk size and the expected per-chunk cost.
 
 In batch mode the run cap (`--max-run-usd`, default 15.00, or `GRAPHIFY_API_RUN_BUDGET_USD`) is a hard ceiling, not a
@@ -290,7 +290,7 @@ synchronous path). A first pass records the chunk prompts and submits one batch;
 untouched and `graphify-out/semantic-batch/batch.json` holds the batch id. Each later fire polls that batch instead
 of resubmitting; once it has ended, the answers are replayed through graphify and merged like a synchronous run.
 When `HIMMEL_API_ACCOUNT=auto`, a credit-exhausted submit moves on to the next account of the pick list, each account
-at most once per pass, and only a credit-exhausted answer moves on; `A`, `B` or `C` pins one (no budget gate). `GRAPHIFY_API_BATCH=0` refuses (rc 2) while a batch is pending, so a synchronous merge cannot be
+at most once per pass, and only a credit-exhausted or rejected-key answer moves on; `A`, `B`, `C` or `D` pins one (no budget gate). `GRAPHIFY_API_BATCH=0` refuses (rc 2) while a batch is pending, so a synchronous merge cannot be
 overwritten by an older batch later.
 The ledger row carries `batch_id`, `batch_state` (`submitted`, `pending`, `merged`), `batch_requests` and
 `batch_cost_usd`; cost is null until the batch is merged.
@@ -582,7 +582,7 @@ subscription fallback uses the same shape.
 The luna vault graph is rebuilt AST-only nightly (`HIMMEL-GraphMapAst-Luna`), so
 its markdown only gets LLM extraction from a separate job:
 `bash scripts/luna/graphmap-cadence.sh arm --luna-only --ast-only --with-luna-semantic --api-account A`
-(account B or C also works; the flag is required and `auto` is refused) adds `HIMMEL-GraphSemantic-Luna` (cron, `50 */2`), which runs `semantic-update.sh
+(account B, C or D also works; the flag is required and `auto` is refused) adds `HIMMEL-GraphSemantic-Luna` (cron, `50 */2`), which runs `semantic-update.sh
 --name luna --corpus-class luna-personal --backend claude-api` against the same
 external out dir the AST job writes (an absolute `GRAPHIFY_OUT`), capped at 20
 changed files and 2 USD per fire. It arms PAUSED (`semantic-luna.paused` beside

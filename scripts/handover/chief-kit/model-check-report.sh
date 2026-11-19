@@ -12,11 +12,22 @@ usage() {
 error() { printf 'model-check-report: %s\n' "$*" >&2; exit 2; }
 # Bind both gh lookups and the git source read to this checkout, not caller scratch.
 cd "$REPO" || error 'cannot enter repository'
-# prim-ok: canon_path handles directories, not existing file leaves or Java symlinks.
-existing_file() { realpath -e "$1"; }
+existing_file() {
+    local p="$1" t d
+    [ -e "$p" ] || return 1
+    while [ -L "$p" ]; do
+        t="$(readlink "$p")" || return 1
+        case "$t" in /*) p="$t" ;; *) case "$p" in */*) p="${p%/*}/$t" ;; *) p="$t" ;; esac ;; esac
+    done
+    case "$p" in */*) d="${p%/*}"; [ -n "$d" ] || d=/ ;; *) d=. ;; esac
+    d="$(canon_path "$d")" || return 1
+    printf '%s/%s\n' "${d%/}" "${p##*/}"
+}
 # shellcheck source=../../lib/prim.sh
 [ -r "$HERE/../../lib/prim.sh" ] || error 'missing primitives'
 . "$HERE/../../lib/prim.sh" || error 'cannot load primitives'
+# shellcheck source=../../lib/sha256-bin.sh
+. "$HERE/../../lib/sha256-bin.sh" || error 'cannot load sha256-bin'
 # shellcheck source=../../lib/git-clean.sh
 [ -r "$HERE/../../lib/git-clean.sh" ] || error 'missing git environment scrubber'
 . "$HERE/../../lib/git-clean.sh" || error 'cannot load git environment scrubber'
@@ -41,7 +52,7 @@ work="$(tmpdir)" || error 'cannot create private tool directory'
 trap 'rm -rf "$work"' EXIT
 cp "$jar" "$work/tla2tools.jar" || error 'cannot snapshot TLC jar'
 sha=936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
-actual="$(sha256sum "$work/tla2tools.jar")" || error 'cannot hash TLC jar'
+actual="$(sha256_hex "$work/tla2tools.jar")" || error 'cannot hash TLC jar'
 [ "${actual%% *}" = "$sha" ] || error 'tla2tools.jar sha256 mismatch; expected v1.7.4, nothing executed'
 runner="$(existing_file "${STATECHART:-}")" || error 'set STATECHART to the pinned statechart executable (cursor/plugins bf0c7cd8)'
 [ -x "$runner" ] || error 'STATECHART is not executable'

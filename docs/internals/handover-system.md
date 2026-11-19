@@ -123,7 +123,9 @@ an operator can open the PR manually later. `HANDOVER_PR_AUTO=0`
 skips the PR layer entirely (no-op exit 0).
 
 `scripts/handover/pr-merge.sh` fires the merge:
-`gh pr merge <N> --squash --admin --delete-branch`. Squash is the
+`gh pr merge <N> --squash --delete-branch`. It retries with `--admin` only
+when the plain merge fails for a non-cosmetic reason and `GH_ADMIN_MERGE_OK=1`
+is set; otherwise it exits 4. Squash is the
 only allowed mode — repo settings forbid merge-commits (operator
 confirmed 2026-05-25). The script suppresses the cosmetic
 `failed to run git: fatal: 'main' is already used by worktree` error
@@ -155,12 +157,12 @@ Slash command: `/handover-flush` (+ `--dry-run`, `--cleanup`,
 `bash scripts/handover/test-flush.sh` (14/14 pass).
 
 **Pre-push automated review runs on `handover/*` branches:**
-The `code-review-before-push` pre-commit hook
-(`.pre-commit-config.yaml` lines 154–161) has no `handover/*` exclusion
+The `code-review-before-push` pre-push hook id in
+`.pre-commit-config.yaml` has no `handover/*` exclusion
 — intentional. Operator decision: automated review runs as a sanity audit to catch
 accidental code edits sneaking into handover branches. The
 docs-only-skip already wired into
-`scripts/hooks/check-cr-before-push.sh` (line 115 filters out `.md`
+`scripts/hooks/check-cr-before-push.sh` (it filters out `.md`
 / `.txt` / `docs/` / `handovers/` paths) gives the right behavior:
 
 - Pure handover state diff (only `.md` / `handovers/*` files) →
@@ -190,8 +192,7 @@ ticket-prefix rule still resolves here
 (`marketplace/plugins/handover/skills/handover/references/resolution.md`),
 it just has nothing to route. Do not read the bucket as evidence of a
 live repo. (Distinct from upstream OSS **`luna-brain`**, the publish
-target the template ships to — see
-`public-propagation.md`.)
+target the template ships to.)
 
 ## Single-root resolver (still wired for scripts)
 
@@ -367,8 +368,9 @@ Handover bucket paths (`<state-root>/<USER_SLUG>/...`), registry.json
 Resolved by `scripts/lib/user-slug.sh`:
 
 1. `$USER_SLUG` env var (preferred — explicit operator intent).
-2. GitHub username via `gh api user -q .login`, slugified (the
-   slug is the GitHub user id; one network call, gated behind `$USER_SLUG`).
+2. The forge username (GitHub login or Bitbucket nickname, via the forge
+   seam), slugified (the slug is the forge user id; one network call, gated
+   behind `$USER_SLUG`).
 3. `git config user.name` slugified (kebab-case, lowercase, non-alnum
    → dash, ≤30 chars) — offline fallback when gh is absent/unauthenticated.
 4. Fail with a hint pointing at `.env.example` + `gh auth` / `git config` setup.

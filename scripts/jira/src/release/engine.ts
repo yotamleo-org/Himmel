@@ -1588,6 +1588,11 @@ function restoreAsAdd(verb: Verb, op: Op, governing: OperatorRow | undefined, ne
   return same ? { kind: 'add', from_v: null, to_v: op.to_v } : op;
 }
 
+function replacedByGoverning(prior: RulingRow | undefined, governing: OperatorRow | undefined, rulings: RulingRow[]): boolean {
+  if (prior?.authority.kind !== 'operator' || !governing) return false;
+  return Date.parse(governing.ts) > Date.parse(rulings.find((r) => r.id === prior.id)?.ts ?? prior.ts);
+}
+
 export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
   return locked(ctx, (l) => {
     const lease = rmFence(ctx, l);
@@ -1621,6 +1626,7 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
       .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts)).pop();
     let authority = o.authority;
     let op = o.op;
+    let supersedes = o.supersedes;
     const restored = restoreAsAdd(req.verb, o.op, governing, keyNewestDecision(l.operator.verified, req.key));
     const checked = { decl: l.decl, ops, governing, key: req.key, op: o.op, authority, req };
     const pulling = checkBlockerPull(ctx, checked) || checkDelivered(ctx, checked);
@@ -1630,8 +1636,11 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
       if (rec?.placement === 'unknown') throw new Error(`release rule: ${req.key}@${v} is UNKNOWN`);
       if (rec?.placement === 'pending') throw new Error(`release rule: ${req.key}@${v} has a pending intent; apply or void it first`);
       if (o.op.kind === 'none') continue;
-      if (rec?.ruling && !o.supersedes.includes(rec.ruling)) throw new Error(`release rule: supersedes must name ${rec.ruling} (in effect for ${req.key}@${v})`);
       const prior = rec?.ruling ? applied.get(rec.ruling) : undefined;
+      if (rec?.ruling && !supersedes.includes(rec.ruling)) {
+        if (!replacedByGoverning(prior, governing, rulings)) throw new Error(`release rule: supersedes must name ${rec.ruling} (in effect for ${req.key}@${v})`);
+        supersedes = [...supersedes, rec.ruling];
+      }
       if (prior?.authority.kind !== 'operator') continue;
       // The pull passed the newer-record check above, so it supersedes the operator ruling it finds.
       if (pulling) continue;
@@ -1661,7 +1670,7 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
     const id = seq(`R-${ctx.release}`, l.rulings.rows.map((r) => r.id));
     const row = appendChain<RulingRow>(f(ctx, 'rulings.jsonl'), l.k, {
       id, epoch: lease.epoch, req: req.req, ts: ts(ctx), verb: req.verb, key: req.key, op, outcome: o.outcome,
-      class: classOf(l.decl, op), sector, ground: o.ground, reason: o.reason, supersedes: o.supersedes,
+      class: classOf(l.decl, op), sector, ground: o.ground, reason: o.reason, supersedes,
       authority, phase: 'intent',
     });
     const { prev: _p, mac: _m, ...rest } = req;

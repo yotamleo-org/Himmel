@@ -40,6 +40,24 @@ rc=$(run '{"tool_name":"Bash","tool_input":{"command":"rm -rf /tmp/himmel-guard-
 want 2 "$rc" "rm -rf denied (rc 2)"
 rc=$(run '{"tool_name":"Bash","tool_input":{"command":"bash -c \"rm -rf /tmp/himmel-guard-fixture\""}}')
 want 2 "$rc" "wrapped rm -rf denied (unwrap lib loads)"
+# The same words on every bash: bash 3.2 has no ${…@E} and keeps the backslashes
+# of a replacement inside "…".
+q="'"
+# shellcheck disable=SC1003 # a lone backslash, not an escaped quote
+bs='\'
+ansic_word=$(
+    . "$root/hooks/lib/shell-tokenize.sh" || exit 1
+    st_tokenize "cat \$${q}${bs}${q}${q} x" || exit 1
+    printf '%s' "${ST_W[1]}"
+)
+if [ "$ansic_word" = "$q" ]; then ok "an ANSI-C quoted quote decodes to a quote"; else bad "an ANSI-C quoted quote decodes to a quote (got [$ansic_word])"; fi
+rendered=$(
+    . "$root/hooks/lib/guard-unwrap.sh" || exit 1
+    st_tokenize "echo \"it${q}s\"" || exit 1
+    _gu_render_word 1
+    printf '%s' "$GU_RW"
+)
+if [ "$rendered" = "${q}it${q}${bs}${q}${q}s${q}" ]; then ok "a quoted word with a quote renders as one single-quoted word"; else bad "a quoted word with a quote renders as one single-quoted word (got [$rendered])"; fi
 rc=$(run '{"tool_name":"Bash","tool_input":{"command":"ls /tmp"}}')
 want 0 "$rc" "benign command allowed"
 rc=$(run '{"tool_name":"Bash"')

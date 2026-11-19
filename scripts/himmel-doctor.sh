@@ -1894,78 +1894,6 @@ check_c27() {
     emit OK C27-guard-signals "phi-roots/egress-denylist under ${dirs[*]} (where present) are readable regular files"
 }
 
-# --- C28: guardrail-block-global armed-but-inert ------------------
-# guardrail-block-global (this operator's GLOBAL guardrail
-# hooks, distinct from a per-project guardrail-scope item) has a REAL install
-# path — `himmelctl ensure` can now wire it, via install-engine.js's
-# 'guardrail-block-global' wire target — but its ruling forbids ever
-# doing so without an explicit, RECORDED consent (himmelctl's own state.json
-# target.items['guardrail-block-global'].overrides.consent). C1-guardrail
-# above already covers "wired and healthy" (OK) vs "wired but degraded"
-# (FAIL, a baked node path that rotted) and deliberately reads mode=project
-# as OK (never-wired is a legitimate, longstanding choice — see its own
-# header). This check adds the THIRD distinction C1-guardrail does not make:
-# among the never-wired case, "declined on purpose" (consent recorded 'no' —
-# still OK, the operator already decided) is not the same as "never even
-# asked" (no recorded consent at all) — the latter IS the honest gap this
-# ticket exists to close, and stays silent nowhere else in this script.
-# Read-only; no --fix (the whole point of the ask-first gate is that this
-# is never auto-wired without the operator's own explicit answer).
-#
-# this used to also early-return OK when
-# $SETTINGS itself was absent. That conflated "nothing to check" ($gb
-# absent — this checkout has no guardrail-block.mjs, genuinely nothing to
-# probe) with "guardrails available but never wired at all" (no user-level
-# settings.json), which is exactly the never-asked gap this check exists
-# to report — a fresh machine with $gb present and no settings.json has
-# never recorded consent either way. Only $gb absence short-circuits now;
-# a missing $SETTINGS falls through into guardrail-block.mjs status --json,
-# which reads a missing settings path as `{}` (readSettings) and reports
-# mode=project cleanly (verified empirically — no throw, rc=0) — so the
-# existing mode/consent logic below already does the right thing without
-# any special-casing here.
-check_c28_guardrail_consent() {
-    local gb="$REPO_ROOT/scripts/hooks/guardrail-block.mjs"
-    if [ ! -f "$gb" ]; then
-        emit OK C28-guardrail-consent "no guardrail-block.mjs in this checkout — nothing to check"
-        return
-    fi
-    local node_bin
-    node_bin="$(resolve_node 2>/dev/null)" || { emit OK C28-guardrail-consent "no node resolvable — C1-guardrail already reports this"; return; }
-    local js
-    js="$(CLAUDE_USER_SETTINGS="$SETTINGS" "$node_bin" "$gb" status --json 2>/dev/null)" || {
-        emit OK C28-guardrail-consent "guardrail-block status --json failed — C1-guardrail already reports this"
-        return
-    }
-    local mode
-    mode="$(printf '%s' "$js" | jq -r '.mode')"
-    if [ "$mode" = global ]; then
-        emit OK C28-guardrail-consent "guardrail-block-global is wired (C1-guardrail covers its health)"
-        return
-    fi
-    # mode=project (never wired). Consult himmelctl's OWN recorded consent —
-    # the exact same override status-report.js's n/a-unless-'yes' logic reads
-    # — to tell "declined on purpose" apart from "never even asked".
-    local state_file="${HIMMELCTL_CACHE_DIR:-${HOME:-}/.claude/himmel}/state.json"
-    local consent=""
-    [ -f "$state_file" ] && consent="$(jq -r '.targets.user.items["guardrail-block-global"].overrides.consent // empty' "$state_file" 2>/dev/null)"
-    case "$consent" in
-        no)
-            emit OK C28-guardrail-consent "guardrail-block-global not wired — recorded decline (run 'himmelctl ensure' interactively to reconsider)"
-            ;;
-        yes)
-            emit WARN C28-guardrail-consent \
-                "guardrail-block-global consent is recorded 'yes' but it is still NOT wired — a prior 'himmelctl ensure' may have failed partway" \
-                "run: himmelctl ensure --items guardrail-block-global"
-            ;;
-        *)
-            emit WARN C28-guardrail-consent \
-                "guardrail-block-global is available in this checkout but never wired into your global settings, and never asked about — nothing enforces it" \
-                "run: himmelctl ensure  (or directly: node scripts/hooks/guardrail-block.mjs install --node <ABS_NODE> --bash <ABS_BASH>)"
-            ;;
-    esac
-}
-
 # --- C29: claude child-session launchers running without persistence (advisory) ---
 # claude exports CLAUDE_CODE_CHILD_SESSION=1 and CLAUDE_PID into every process
 # it spawns. A claude session launched from inside another claude session's
@@ -5734,8 +5662,8 @@ $(_c81_rows "plugin:$name" "$f" | _c81_drop_quiet "${f%/hooks.json}")"
         emit OK C81-hook-layers "no hook script is wired from more than one layer (user settings, project settings, enabled plugins)"
         return 0
     fi
-    emit WARN C81-hook-layers "hook script(s) wired from more than one layer, so they run twice per matching call: $dups -- accept guardrail-block-global (it goes quiet inside a himmel checkout)" \
-        "keep one owner per hook (docs/setup/install.md#hook-owner): accept guardrail-block-global with 'himmelctl ensure' (answer yes), then drop the raw user entry with bash \"$REPO_ROOT/scripts/lib/unwire-pretooluse-hooks.sh\" \"$SETTINGS\"; for a plugin entry, disable the plugin"
+    emit WARN C81-hook-layers "hook script(s) wired from more than one layer, so they run twice per matching call: $dups" \
+        "keep one owner per hook (docs/setup/install.md#hook-owner): drop the raw user entry with bash \"$REPO_ROOT/scripts/lib/unwire-pretooluse-hooks.sh\" \"$SETTINGS\"; for a plugin entry, disable the plugin"
 }
 
 # --- C85-self-heartbeat: the queue lock's PostToolUse self-heartbeat hook is wired ---
@@ -6077,7 +6005,6 @@ run_check C24 check_c24
 run_check C25 check_c25
 run_check C26 check_c26
 run_check C27 check_c27
-run_check C28 check_c28_guardrail_consent
 run_check C29 check_c29
 run_check C30 check_c30
 run_check C31 check_c31

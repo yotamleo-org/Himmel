@@ -13,6 +13,7 @@ FOCUS="$HERE/focus-refresh.sh"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/focus-refresh-chains-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
 fails=0
+touch_ago() { local s="$1"; shift; touch "$@" && python3 -c 'import os,sys,time; t=time.time()-int(sys.argv[1]); [os.utime(f,(t,t)) for f in sys.argv[2:]]' "$s" "$@"; }
 check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails + 1)); }; }
 contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: [$2] lacks [$3]"; fails=$((fails + 1)) ;; esac; }
 lacks()    { case "$2" in *"$3"*) echo "FAIL - $1: [$2] has [$3]"; fails=$((fails + 1)) ;; *) echo "ok - $1" ;; esac; }
@@ -295,7 +296,7 @@ check "and no stage folder is left (SIGTERM runs the EXIT trap)" "$(stages_left)
 # a run killed outright (SIGKILL, OOM, a closed session) cannot run its trap: the next run sweeps what it left
 reset
 mkdir -p "$tmp/doc/.focus-stage.dead" "$tmp/doc/.focus-stage.live"
-touch -d '2 hours ago' "$tmp/doc/.focus-stage.dead"
+touch_ago 7200 "$tmp/doc/.focus-stage.dead"
 refresh
 check "a refresh sweeps a stage folder left by a killed run" "$([ -e "$tmp/doc/.focus-stage.dead" ] && echo left || echo gone)" gone
 check "and leaves a recent stage folder alone (it may belong to a live run)" "$([ -e "$tmp/doc/.focus-stage.live" ] && echo kept || echo gone)" kept

@@ -19,7 +19,7 @@ and BASELINE (the 7 days before it), cut by turn timestamp.
 | `session-low:<session id>` | session over 1M recent tokens with hit under 90 % | expires silently when it leaves the window |
 | `compactions:worker` | workers average more than 4 compactions in the recent window | below the limit (one recovery message) |
 
-`role-drop` and `session-low` apply to `--alert-roles` (default `chief,worker`);
+`role-drop` and `session-low` apply to `--alert-roles` (default `console,worker`);
 subagent, bridge and other hit rates swing with cold starts, so they are metrics
 only (a real dry run on 2026-10-14 showed subagents 4.2 pts under baseline with
 nothing wrong).
@@ -50,7 +50,7 @@ chief's bridge inbox; either channel counts as delivered.
   "overall": {"tokens": 0, "hit_pct": 97.8, "baseline_hit_pct": 97.9,
               "write_share_pct": 29.0, "w1h_pct": 99.0},
   "roles": {
-    "<chief|worker|subagent|bridge|other>": {
+    "<console|worker|subagent|bridge|other>": {
       "sessions": 0, "tokens": 0, "hit_pct": 0.0, "baseline_hit_pct": 0.0,
       "baseline_tokens": 0, "delta_pts": 0.0, "write_share_pct": 0.0,
       "w1h_pct": 0.0, "compactions": 0, "compactions_per_session": 0.0

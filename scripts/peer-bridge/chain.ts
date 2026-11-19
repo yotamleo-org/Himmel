@@ -1,0 +1,197 @@
+import fs from "node:fs";
+import { constants } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { join } from "node:path";
+import { chainHash, openChainFile, type ChainRecord } from "../telegram/bus";
+import { SESSION_ID_RE } from "./ids";
+import { procHooks } from "./proc";
+
+type Handle = Awaited<ReturnType<typeof openChainFile>>;
+type Opener = (file: string, flags: number) => Promise<Handle> | Handle;
+
+export class Chain {
+  private tails = new Map<string, { n: number; h: string }>();
+  private queue: Promise<unknown> = Promise.resolve();
+  private open: Opener;
+  constructor(opts: { open?: Opener } = {}) { this.open = opts.open ?? openChainFile; }
+
+  append(file: string, rec: Record<string, any>): Promise<ChainRecord> {
+    const run = this.queue.then(() => this.appendNow(file, rec));
+    this.queue = run.catch(() => {});
+    return run;
+  }
+
+  // Appends in order, then commits. A failed append throws before the commit
+  // runs, so a caller's offset never moves past a record that was not written.
+  async appendThenCommit(items: { file: string; rec: Record<string, any> }[], commit: () => Promise<void>): Promise<void> {
+    for (const it of items) await this.append(it.file, it.rec);
+    await commit();
+  }
+
+  private async appendNow(file: string, rec: Record<string, any>): Promise<ChainRecord> {
+    const handle = await this.open(file, constants.O_RDWR | constants.O_CREAT | constants.O_APPEND);
+    try {
+      let tail = this.tails.get(file);
+      if (!tail) tail = await this.readTail(handle);
+      const plain = { ...rec, n: tail.n + 1 };
+      const stamped = { ...plain, h: chainHash(tail.h, plain) };
+      const line = Buffer.from(JSON.stringify(stamped) + "\n");
+      const { bytesWritten } = await handle.write(line);
+      if (bytesWritten !== line.length) throw new Error("short chained append");
+      this.tails.set(file, { n: stamped.n, h: stamped.h });
+      return stamped;
+    } catch (e) {
+      this.tails.delete(file);
+      throw e;
+    } finally { await handle.close(); }
+  }
+
+  // A trailing line with no newline is a write the crash cut short. Nothing
+  // downstream saw it (offsets and intents commit only after an append), so it
+  // is cut off rather than left to wedge every later append.
+  private async readTail(handle: Handle): Promise<{ n: number; h: string }> {
+    const buf = await handle.readFile();
+    if (buf.length === 0) return { n: 0, h: "" };
+    let end = buf.length;
+    if (buf[end - 1] !== 10) {
+      end = buf.lastIndexOf(10) + 1;
+      await handle.truncate(end);
+      if (end === 0) return { n: 0, h: "" };
+    }
+    const last = JSON.parse(buf.subarray(buf.lastIndexOf(10, end - 2) + 1, end - 1).toString("utf8"));
+    return { n: last.n, h: last.h };
+  }
+}
+
+export function readChain(file: string): ChainRecord[] {
+  let text: string;
+  try { text = fs.readFileSync(file, "utf8"); } catch (e: any) { if (e.code === "ENOENT") return []; throw e; }
+  const complete = text.slice(0, text.lastIndexOf("\n") + 1);
+  return complete.split("\n").filter(Boolean).map(l => JSON.parse(l));
+}
+
+export function verifyChain(file: string): { ok: boolean; n: number } {
+  let prev = "", n = 0;
+  for (const rec of readChain(file)) {
+    if (rec.n !== n + 1 || rec.h !== chainHash(prev, rec)) return { ok: false, n };
+    prev = rec.h; n = rec.n;
+  }
+  return { ok: true, n };
+}
+
+export type SpoolRec =
+  | { type: "send"; kind: "question" | "status" | "info" | "answer"; replyTo?: number; text: string; allowShape?: string }
+  | { type: "ack"; sid: string; token: string }
+  | { type: "confirm"; chatId: number };
+export type SendResult = { ok: true; message_id?: number } | { ok: false; rule: string; shape?: string };
+export type Drained = { name: string; rec: SpoolRec } | { name: string; malformed: true };
+
+const SEND_KINDS = ["question", "status", "info", "answer"];
+function validSpool(r: any): r is SpoolRec {
+  if (!r || typeof r !== "object") return false;
+  if (r.type === "send") return SEND_KINDS.includes(r.kind) && typeof r.text === "string" && (r.replyTo === undefined || (Number.isSafeInteger(r.replyTo) && r.replyTo > 0)) && (r.allowShape === undefined || /^[a-z_]{1,20}$/.test(r.allowShape));
+  if (r.type === "ack") return typeof r.sid === "string" && SESSION_ID_RE.test(r.sid) && typeof r.token === "string" && /^[A-Za-z0-9]+$/.test(r.token);
+  if (r.type === "confirm") return Number.isSafeInteger(r.chatId);
+  return false;
+}
+
+let spoolSeq = 0;
+const defaultSpoolName = () => `${Date.now()}-${String(spoolSeq++ % 1e6).padStart(6, "0")}-${randomBytes(4).toString("hex")}.json`;
+
+// The file appears under its final name only once complete, and an existing
+// name is refused (link fails with EEXIST), so the poller never reads a half
+// record and a submission never overwrites another.
+export function submitSpool(peerDir: string, rec: SpoolRec, nameFn: () => string = defaultSpoolName): string {
+  const name = nameFn();
+  const dir = join(peerDir, "spool");
+  const tmp = join(dir, `.${name}.${randomBytes(4).toString("hex")}.tmp`);
+  const fd = fs.openSync(tmp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+  try {
+    try { fs.writeFileSync(fd, JSON.stringify(rec)); } finally { fs.closeSync(fd); }
+    fs.linkSync(tmp, join(dir, name));
+  } finally { fs.rmSync(tmp, { force: true }); }
+  return name;
+}
+
+export function drainSpool(peerDir: string): Drained[] {
+  const dir = join(peerDir, "spool");
+  const out: Drained[] = [];
+  for (const name of fs.readdirSync(dir).filter(n => n.endsWith(".json") && !n.startsWith(".")).sort()) {
+    try {
+      const fd = fs.openSync(join(dir, name), constants.O_RDONLY | constants.O_NOFOLLOW);
+      let rec: unknown;
+      try {
+        if (!fs.fstatSync(fd).isFile()) throw new Error("not a file");
+        rec = JSON.parse(fs.readFileSync(fd, "utf8"));
+      } finally { fs.closeSync(fd); }
+      out.push(validSpool(rec) ? { name, rec } : { name, malformed: true });
+    } catch { out.push({ name, malformed: true }); }
+  }
+  return out;
+}
+
+export function writeResult(peerDir: string, name: string, res: SendResult): void {
+  const dir = join(peerDir, "spool", "results");
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const tmp = join(dir, `.${name}.${randomBytes(4).toString("hex")}.tmp`);
+  const fd = fs.openSync(tmp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+  try {
+    try { fs.writeFileSync(fd, JSON.stringify(res)); } finally { fs.closeSync(fd); }
+    fs.renameSync(tmp, join(dir, name));
+  } finally { fs.rmSync(tmp, { force: true }); }
+  fs.rmSync(join(peerDir, "spool", name), { force: true });
+}
+
+export function sweepResults(peerDir: string, maxAgeMs: number, now = Date.now()): void {
+  const dir = join(peerDir, "spool", "results");
+  let names: string[];
+  try { names = fs.readdirSync(dir); } catch { return; }
+  for (const n of names) {
+    try { if (now - fs.statSync(join(dir, n)).mtimeMs > maxAgeMs) fs.rmSync(join(dir, n), { force: true }); } catch {}
+  }
+}
+
+export type IntentRec = { kind: "intent"; peer: string; chat: number; id: string; root: number | null; msgKind: string; text: string; isRoot: boolean; tpl?: boolean; resend?: boolean; spool?: string };
+export type SentRec = { kind: "sent"; id: string; intent: number; message_id: number; ts: number };
+
+export class PidLockError extends Error {
+  constructor(public pid: number) { super(`another peer-bridge poller is running (pid ${pid})`); this.name = "PidLockError"; }
+}
+
+// A process's start identity: with the pid it tells a live holder from a reused
+// pid. Linux: /proc/<pid>/stat field 22. macOS: ps lstart, pinned to the C
+// locale and UTC so the caller's TZ never changes the string.
+export function startIdentity(pid: number, platform: string = process.platform): string | null {
+  if (platform === "linux") {
+    try {
+      const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+      return stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19] ?? null;
+    } catch { return null; }
+  }
+  const r = procHooks.spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], { env: { ...process.env, LC_ALL: "C", TZ: "UTC" }, encoding: "utf8" });
+  const out = (r.stdout ?? "").trim();
+  return r.status === 0 && out ? out : null;
+}
+
+function alive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; } catch (e: any) { return e.code === "EPERM"; }
+}
+
+export function acquirePidLock(path: string): () => void {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const fd = fs.openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+      try { fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, start: startIdentity(process.pid) })); } finally { fs.closeSync(fd); }
+      return () => {
+        try { if (JSON.parse(fs.readFileSync(path, "utf8")).pid === process.pid) fs.rmSync(path, { force: true }); } catch {}
+      };
+    } catch (e: any) {
+      if (e.code !== "EEXIST") throw e;
+    }
+    let holder: { pid?: number; start?: string | null } = {};
+    try { holder = JSON.parse(fs.readFileSync(path, "utf8")); } catch {}
+    if (Number.isSafeInteger(holder.pid) && alive(holder.pid!) && startIdentity(holder.pid!) === holder.start) throw new PidLockError(holder.pid!);
+    fs.rmSync(path, { force: true });
+  }
+  throw new Error("could not take the poller pid lock");
+}
