@@ -4,8 +4,8 @@
 #
 # A pass the chief starts with the Bash tool's run_in_background is a child of
 # the chief's Claude process and dies when the chief's window closes. This
-# wrapper launches it in its own session (setsid nohup; systemd-run --user only
-# when setsid is absent), records the pid and log path in a state file, and
+# wrapper launches it in its own session (setsid nohup; python3 os.setsid when
+# setsid is absent, as on macOS; systemd-run --user when python3 is absent too), records the pid and log path in a state file, and
 # refuses a second start while one runs, so the next chief reads the state
 # instead of re-running the pass.
 #
@@ -110,6 +110,11 @@ cmd_start() {
         launcher=setsid
         echo "[graph-pass-detached launcher=setsid $(date '+%Y-%m-%d %H:%M:%S')]" > "$log"
         setsid nohup "$PASS" >> "$log" 2>&1 < /dev/null &  # t13b-ok: one bounded graph pass started on request, not a service; it exits when the pass ends
+        pid=$!
+    elif command -v python3 >/dev/null 2>&1; then
+        launcher=python-setsid
+        echo "[graph-pass-detached launcher=python-setsid $(date '+%Y-%m-%d %H:%M:%S')]" > "$log"
+        python3 -c 'import os,sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])' nohup "$PASS" >> "$log" 2>&1 < /dev/null &  # t13b-ok: one bounded graph pass started on request, not a service; it exits when the pass ends
         pid=$!
     elif command -v systemd-run >/dev/null 2>&1; then
         launcher=systemd-run

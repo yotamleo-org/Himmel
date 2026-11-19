@@ -66,7 +66,8 @@ log1="$(state_val "$STATE" log)"
 [ -n "$log1" ] && [ -f "$log1" ] && echo "ok - 1: state log path exists" || { echo "FAIL - 1: state log [$log1] missing"; fails=$((fails+1)); }
 contains "1: start output names the pid" "$out1" "$pid1"
 contains "1: start output names the pass's own log" "$out1" "pass_log=$GRAPH_PASS_LOG"
-sid1="$(ps -o sid= -p "${pid1:-0}" 2>/dev/null | tr -d ' ')"
+sid_of() { python3 -c 'import os,sys; print(os.getsid(int(sys.argv[1])))' "$1" 2>/dev/null; }  # swallow-ok: a gone pid reads empty and fails the row
+sid1="$(sid_of "${pid1:-0}")"
 check "1: the pass leads its own session" "$sid1" "$pid1"
 n=0; while [ ! -s "$tmp/starts" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n+1)); done
 check "1: the stub ran once" "$(wc -l < "$tmp/starts" | tr -d ' ')" 1
@@ -74,7 +75,11 @@ contains "1: the log records the launcher choice" "$(cat "${log1:-/dev/null}" 2>
 
 if [ -n "$pid1" ]; then kill "$pid1" 2>/dev/null; wait_dead "$pid1"; fi
 rm -f "$STATE" "$tmp/starts"
-setsid bash -c 'bash "$1" start; sleep 300' _ "$SCRIPT" > "$tmp/launch.out" 2>&1 < /dev/null &
+if command -v setsid >/dev/null 2>&1; then
+    setsid bash -c 'bash "$1" start; sleep 300' _ "$SCRIPT" > "$tmp/launch.out" 2>&1 < /dev/null &
+else
+    python3 -c 'import os,sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])' bash -c 'bash "$1" start; sleep 300' _ "$SCRIPT" > "$tmp/launch.out" 2>&1 < /dev/null &
+fi
 lp=$!
 n=0; while [ ! -s "$STATE" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n+1)); done
 pid2="$(state_val "$STATE" pid)"
@@ -162,6 +167,18 @@ check "9: one start succeeded and the others were refused with rc 3" "$(printf '
 [ ! -e "$CLAIM" ] && [ ! -e "$CLAIM.takeover" ] && echo "ok - 9: the claim and the takeover lock are released once the start is over" || { echo "FAIL - 9: a claim file or takeover lock is left behind"; fails=$((fails+1)); }
 pid9="$(state_val "$STATE" pid)"
 [ -n "$pid9" ] && { kill "$pid9" 2>/dev/null; wait_dead "$pid9"; }
+
+rm -f "$STATE" "$tmp/starts"
+pbin="$tmp/pybin"; mkdir "$pbin"
+for t in bash sh mkdir date sed head ps sleep ln rm cat mv nohup python3; do
+    p="$(command -v "$t")" && ln -s "$p" "$pbin/$t"
+done
+PATH="$pbin" bash "$SCRIPT" start >/dev/null 2>&1; rc=$?
+check "16: start with no setsid and no systemd-run rc 0" "$rc" 0
+pid16="$(state_val "$STATE" pid)"
+check "16: the state records the python-setsid launcher" "$(state_val "$STATE" launcher)" "python-setsid"
+check "16: the pass leads its own session without setsid" "$(sid_of "${pid16:-0}")" "$pid16"
+[ -n "$pid16" ] && { kill "$pid16" 2>/dev/null; wait_dead "$pid16"; }
 
 bin="$tmp/bin"; mkdir "$bin"
 for t in bash sh mkdir date sed head ps sleep ln rm cat mv; do
