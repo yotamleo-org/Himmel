@@ -33,14 +33,31 @@ status_marker_is_parked() {
 }
 
 _status_marker_scope() {
-  local LC_ALL=C
-  [ -f "${1-}" ] && [ -r "${1-}" ] || return 3
+  local LC_ALL=C doc="${1-}" line head scope=0
+  local hre=$'^## Results([ \t]|$)'
+  [ -f "$doc" ] && [ -r "$doc" ] || return 3
+  while IFS= read -r line || [ -n "$line" ]; do
+    head="${line%$'\r'}"
+    case "$head" in
+      '## '*)
+        if [[ $head =~ $hre ]]; then scope=1; else scope=0; fi ;;
+      *)
+        if [ "$scope" = 1 ]; then printf '%s\n' "$line"; fi ;;
+    esac
+  done < "$doc"
   return 0
 }
 
 status_marker_newest() {
-  _status_marker_scope "${1-}" >/dev/null || return $?
-  return 1
+  local LC_ALL=C scope line marker last=""
+  scope=$(_status_marker_scope "${1-}") || return $?
+  while IFS= read -r line; do
+    case "$line" in
+      '- '*) marker=$(status_marker_parse "$line") && last="$marker" ;;
+    esac
+  done <<< "$scope"
+  [ -n "$last" ] || return 1
+  printf '%s\n' "$last"
 }
 
 status_marker_actionable() {

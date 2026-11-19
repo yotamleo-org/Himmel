@@ -24,20 +24,37 @@ export function statusMarkerIsParked(word) {
   return word === 'PARKED-BANK' || word === 'PARKED-USAGE';
 }
 
-function readDoc(path) {
+const RESULTS = /^## Results(?:[ \t]|$)/;
+
+function scopeLines(path) {
   if (!statSync(path).isFile()) {
     throw Object.assign(new Error(`not a regular file: ${path}`), { code: 'ENOTREG' });
   }
-  return readFileSync(path, 'latin1');
+  const out = [];
+  let scope = false;
+  for (const raw of readFileSync(path, 'latin1').split('\n')) {
+    const head = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+    if (head.startsWith('## ')) {
+      scope = RESULTS.test(head);
+      continue;
+    }
+    if (scope) out.push(raw);
+  }
+  return out;
 }
 
 export function statusMarkerNewest(path) {
-  readDoc(path);
-  return null;
+  let last = null;
+  for (const line of scopeLines(path)) {
+    if (!line.startsWith('- ')) continue;
+    const marker = statusMarkerParse(line);
+    if (marker !== null) last = marker;
+  }
+  return last;
 }
 
 export function statusMarkerActionable(path) {
-  readDoc(path);
+  scopeLines(path);
   return null;
 }
 

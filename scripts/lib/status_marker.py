@@ -35,20 +35,37 @@ def is_parked(word):
     return word in ("PARKED-BANK", "PARKED-USAGE")
 
 
-def _read(path):
+_RESULTS = re.compile(r"## Results(?:[ \t]|\Z)")
+
+
+def _scope_lines(path):
     if not os.path.isfile(path):
         raise OSError(errno.EINVAL, "not a regular file", path)
     with open(path, "rb") as f:
-        return f.read().decode("latin-1")
+        text = f.read().decode("latin-1")
+    out, scope = [], False
+    for raw in text.split("\n"):
+        head = raw[:-1] if raw.endswith("\r") else raw
+        if head.startswith("## "):
+            scope = _RESULTS.match(head) is not None
+            continue
+        if scope:
+            out.append(raw)
+    return out
 
 
 def newest(path):
-    _read(path)
-    return None
+    last = None
+    for line in _scope_lines(path):
+        if line.startswith("- "):
+            marker = parse(line)
+            if marker is not None:
+                last = marker
+    return last
 
 
 def actionable(path):
-    _read(path)
+    _scope_lines(path)
     return None
 
 
