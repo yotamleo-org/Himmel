@@ -111,5 +111,86 @@ class Typed(unittest.TestCase):
                 self.assertEqual(r.stdout.strip(), "OSError", r.stderr)
 
 
+ESC = {"n": "\n", "r": "\r", "t": "\t", "f": "\f", "\\": "\\"}
+
+
+def decode_doc(s):
+    def one(m):
+        if m.group(1) not in ESC:
+            raise ValueError(f"unknown escape \\{m.group(1)}")
+        return ESC[m.group(1)]
+
+    return re.sub(r"\\(.?)", one, s, flags=re.S)
+
+
+def read_docs():
+    with open(os.path.join(HERE, "fixtures", "status-marker-docs.tsv"), encoding="utf8") as f:
+        text = f.read()
+    rows, rid = [], ""
+    for l in text.split("\n"):
+        m = re.fullmatch(r"# ([A-Z][0-9]{2})", l)
+        if m:
+            rid = m.group(1)
+        elif l and not re.match(r"#( |$)", l):
+            doc, nw, ac = l.split("\t")
+            rows.append((rid, doc, None if nw == "-" else nw, None if ac == "-" else ac))
+    return rows, int(re.search(r"^# rows: (\d+)$", text, re.M).group(1))
+
+
+class Docs(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.t = tmp.name
+
+    def put(self, name, data):
+        p = os.path.join(self.t, name)
+        with open(p, "wb") as f:
+            f.write(data)
+        return p
+
+    def test_every_declared_doc_row_was_read(self):
+        rows, declared = read_docs()
+        self.assertGreater(len(rows), 0)
+        self.assertEqual(len(rows), declared)
+
+    def test_doc_rows(self):
+        for rid, doc, nw, ac in read_docs()[0]:
+            with self.subTest(f"row {rid}"):
+                data = decode_doc(doc).encode("latin-1")
+                p = self.put("doc.md", data)
+                self.assertEqual(status_marker.newest(p), nw)
+                self.assertEqual(status_marker.actionable(p), ac)
+                self.assertEqual(status_marker.newest(p), nw, "a second call answers the same")
+                with open(p, "rb") as f:
+                    self.assertEqual(f.read(), data, "the doc bytes are unchanged")
+                self.assertEqual(os.listdir(self.t), ["doc.md"], "nothing else is written")
+
+    def test_non_ascii_bytes(self):
+        for rid, data, nw in (
+            ("B1", b"## Results\n- 10:00 LIVE \xff\n", "LIVE"),
+            ("B2", b"## Results\n- 10:00 \xffLIVE\n", None),
+            ("B3", b"## Results\n- 10:00 LIVE\x85- 10:05 WRAPPED\n", "LIVE"),
+        ):
+            with self.subTest(f"row {rid}"):
+                p = self.put(f"{rid}.md", data)
+                self.assertEqual(status_marker.newest(p), nw)
+                self.assertIsNone(status_marker.actionable(p))
+
+    def test_permission_refusal(self):
+        p = self.put("m000.md", b"## Results\n- 10:00 LIVE\n")
+        os.chmod(p, 0)
+        root = os.geteuid() == 0
+        print("row E4 branch:", "root" if root else "non-root", "(the other branch is not exercised by this run)", file=sys.stderr)
+        for name in ("newest", "actionable"):
+            with self.subTest("row E4", fn=name):
+                fn = getattr(status_marker, name)
+                if root:
+                    self.assertEqual(fn(p), "LIVE" if name == "newest" else None)
+                else:
+                    with self.assertRaises(PermissionError):
+                        fn(p)
+
+
 if __name__ == "__main__":
     unittest.main()

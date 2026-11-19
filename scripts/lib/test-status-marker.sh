@@ -96,6 +96,57 @@ done
 check "row E2 a none doc under strict mode takes the else branch" "else:1" \
   "$(bash -c 'set -euo pipefail; . "$1"; if out=$(status_marker_newest "$2"); then echo "then:$out"; else echo "else:$?"; fi' _ "$SCRIPT" "$T/none.md" 2>&1)"  # read-sink-ok: sources the script under test ($SCRIPT), not a host file
 
+# whole-doc rows (fixtures/status-marker-docs.tsv), rows B1 to B3 and E4
+# answer FN FILE: the answer, "-" for none, "rc=<n>" for anything else
+answer() {
+  bash -c 'set -euo pipefail; . "$1"; rc=0; out=$("$2" "$3") || rc=$?; case "$rc" in 0) printf "%s" "$out" ;; 1) printf "%s" "-" ;; *) printf "rc=%s" "$rc" ;; esac' _ "$SCRIPT" "$1" "$2" 2>&1
+}
+# decode_doc ESCAPED FILE: write the doc's bytes; status 1 on an unknown escape
+decode_doc() {
+  local s="$1" out="" c
+  while [ -n "$s" ]; do
+    c="${s:0:1}"; s="${s:1}"
+    if [ "$c" = "\\" ]; then
+      c="${s:0:1}"; s="${s:1}"
+      case "$c" in
+        n) out="$out"$'\n' ;; r) out="$out"$'\r' ;; t) out="$out"$'\t' ;; f) out="$out"$'\f' ;;
+        "\\") out="$out\\" ;; *) return 1 ;;
+      esac
+    else
+      out="$out$c"
+    fi
+  done
+  printf '%s' "$out" > "$2"
+}
+DOCS="$HERE/fixtures/status-marker-docs.tsv"
+docs_want=$(sed -n 's/^# rows: \([0-9][0-9]*\)$/\1/p' "$DOCS")
+mkdir "$T/d"; id=""; docs_n=0
+while IFS=$'\t' read -r doc nw ac || [ -n "$doc" ]; do
+  case "$doc" in '# '[A-Z][0-9][0-9]) id="${doc#\# }"; continue ;; ''|'#'|'# '*) continue ;; esac
+  docs_n=$((docs_n + 1))
+  if ! decode_doc "$doc" "$T/d/doc.md"; then check "row $id doc decodes" "yes" "no"; continue; fi
+  sum=$(cksum < "$T/d/doc.md")
+  check "row $id newest" "$nw" "$(answer status_marker_newest "$T/d/doc.md")"
+  check "row $id actionable" "$ac" "$(answer status_marker_actionable "$T/d/doc.md")"
+  check "row $id repeat call, bytes and directory unchanged" "$nw|$sum|doc.md" \
+    "$(answer status_marker_newest "$T/d/doc.md")|$(cksum < "$T/d/doc.md")|$(ls -A "$T/d")"
+done < "$DOCS"
+check "docs fixture has at least one row" "yes" "$([ "$docs_n" -gt 0 ] && echo yes || echo no)"
+check "every declared doc row was read" "$docs_want" "$docs_n"
+
+for b in 'B1:LIVE:- 10:00 LIVE \0377' 'B2:-:- 10:00 \0377LIVE' 'B3:LIVE:- 10:00 LIVE\0205- 10:05 WRAPPED'; do
+  IFS=: read -r bid bw bline <<< "$b"
+  printf '## Results\n%b\n' "$bline" > "$T/d/$bid.md"
+  check "row $bid newest" "$bw" "$(answer status_marker_newest "$T/d/$bid.md")"
+  check "row $bid actionable" "-" "$(answer status_marker_actionable "$T/d/$bid.md")"
+done
+
+printf '## Results\n- 10:00 LIVE\n' > "$T/m000.md"; chmod 000 "$T/m000.md"
+if [ "$(id -u)" = 0 ]; then e4=root; en=LIVE; ea=-; else e4=non-root; en="rc=3"; ea="rc=3"; fi
+echo "row E4 branch: $e4 (the other branch is not exercised by this run)"
+check "row E4 ($e4) newest" "$en" "$(answer status_marker_newest "$T/m000.md")"
+check "row E4 ($e4) actionable" "$ea" "$(answer status_marker_actionable "$T/m000.md")"
+
 if command -v node >/dev/null 2>&1; then
   out=$(node --test "$HERE/status-marker.test.mjs" 2>&1) || { echo "FAIL: status-marker.test.mjs" >&2; printf '%s\n' "$out" | tail -40 >&2; FAIL=$((FAIL + 1)); }
 else
