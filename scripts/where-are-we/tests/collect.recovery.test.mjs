@@ -244,3 +244,122 @@ test('partial GraphQL check pages preserve unknown prior obligation rather than 
   const query = requests[1].find((a) => a.startsWith('query='));
   assert.match(query, /pullRequest\(number:4\)/);
 });
+import { appendRecords } from '../lib/append.mjs';
+
+// Repeated and interrupted refreshes converge: the folded live set (active keys and
+// PRs, with each live item's fields) is compared exactly, not just its size.
+const EARLIER = '2026-11-16T10:00:00.000Z';
+const LATER = '2026-11-16T13:00:00.000Z';
+const issue = (key, [name, category]) => ({ key, fields: { status: { name, statusCategory: { key: category } } } });
+const world = () => ({
+  jira: Object.fromEntries([
+    ['HIMMEL-1', ['In Progress', 'indeterminate']],
+    ['HIMMEL-2', ['Closed', 'done']],
+    ['HIMMEL-3', ['In Public', 'done']],
+    ['HIMMEL-6', ['Closed', 'done']],
+    ['HIMMEL-9', ['In Progress', 'indeterminate']],
+  ]),
+  discoverable: [
+    { number: 4, state: 'OPEN', headRefName: 'feat/x', title: 'old PR', mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', statusCheckRollup: [{ status: 'COMPLETED', conclusion: 'SUCCESS' }] },
+    { number: 7, state: 'OPEN', headRefName: 'feat/y' },
+  ],
+  older: [{ number: 5, state: 'MERGED', headRefName: 'feat/z' }],
+});
+// The real collector readers over a stub of the remote APIs; PR #5 is older than the discovery page.
+const liveReaders = (w, { jira = true, pr = true } = {}) => ({
+  ...quietReaders,
+  readJira: (active) => collector.readJira(active, { readPage: (request) => {
+    if (!jira) throw new Error('jira unavailable');
+    const keys = request.jql ? request.jql.match(/[A-Z][A-Z0-9]+-\d+/g) : Object.keys(w.jira).filter((k) => w.jira[k][0] === 'In Progress');
+    return { issues: keys.filter((k) => w.jira[k]).map((k) => issue(k, w.jira[k])), isLast: true };
+  } }),
+  readPRs: (active) => collector.readPRs(active, {
+    discover: () => { if (!pr) throw new Error('discovery unavailable'); return w.discoverable; },
+    readBatch: (numbers) => numbers.map((n) => w.older.find((p) => p.number === n)).filter(Boolean),
+  }),
+});
+const byKey = (a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+const liveSet = (ledger) => {
+  const state = fold(readRecords(ledger));
+  return {
+    live: inFlight(state).sort(byKey),
+    awaiting_operator: [...state.awaiting_operator].sort(byKey),
+    locks: [...state.locks].sort(byKey),
+    items: Object.fromEntries(Object.entries(state.items).sort(([a], [b]) => (a < b ? -1 : 1))),
+    sources: state.sources,
+  };
+};
+const refresh = (ledger, now, readers) => collector.main(['--ledger', ledger, '--now', now], { readers });
+const EXPECTED_LIVE = ['#4', '#7', 'HIMMEL-1', 'HIMMEL-9'];
+const liveKeys = (set) => set.live.map((it) => it.key);
+// Only the still-open green PR owes the operator anything; the merged one's stale 'merge' is cleared.
+const EXPECTED_AWAITING = [{ key: '#4', items: ['green + mergeable: old PR'] }];
+
+const collection = (source) => ({ ts: OLD, source, kind: 'collection', key: `@collect:${source}`, errors: [], error_count: 0, observed_at: OLD });
+const ledgers = {
+  'current-format ledger': () => [
+    ...['jira', 'pr', 'git'].map(collection),
+    ...['HIMMEL-1', 'HIMMEL-2', 'HIMMEL-3'].map((key) => ({ ...ticket(key), status_category: 'in-progress' })),
+    ...[4, 5].map((n) => ({ ts: OLD, source: 'pr', kind: 'pr', key: `#${n}`, status: 'open', branch: 'feat/x', awaiting_operator: ['merge'] })),
+  ],
+  // Written before status categories and collection evidence existed: bare status strings,
+  // a legacy 'closed' ticket that is not terminal until Jira says so, and a handover note.
+  'old-format ledger': () => [
+    ticket('HIMMEL-1'), ticket('HIMMEL-2'), ticket('HIMMEL-3'),
+    { ts: OLD, source: 'jira', kind: 'ticket', key: 'HIMMEL-6', status: 'closed' },
+    { ts: OLD, source: 'jira', kind: 'ticket', key: 'HIMMEL-8', status: 'done' },
+    { ts: OLD, source: 'handover', kind: 'ticket', key: 'HIMMEL-1', next_action: 'investigate', blockers: ['waiting'] },
+    ...[4, 5].map((n) => ({ ts: OLD, source: 'pr', kind: 'pr', key: `#${n}`, status: 'open' })),
+  ],
+};
+
+const interruptions = {
+  'a process killed right after the refresh-started marker': (ledger, ts) => appendRecords(ledger, ['jira', 'pr', 'git'].map((source) => ({
+    ts, source, kind: 'collection', key: `@collect:${source}`, errors: ['refresh started; result pending or interrupted'], error_count: 1,
+  }))),
+  'every reader failing': (ledger, ts) => refresh(ledger, ts, { readJira: () => { throw new Error('jira unavailable'); }, readPRs: () => { throw new Error('gh unavailable'); }, readWorktrees: () => { throw new Error('git unavailable'); } }),
+  'a partial pass with one Jira page and a failed PR discovery': (ledger, ts) => refresh(ledger, ts, {
+    ...liveReaders(world(), { pr: false }),
+    readJira: () => ({ rows: [{ key: 'HIMMEL-2', status: 'Closed', statusCategory: 'done' }], errors: ['page failed: unavailable'] }),
+  }),
+};
+
+for (const [format, build] of Object.entries(ledgers)) {
+  test(`${format}: a repeated refresh over unchanged sources keeps the same live set`, () => {
+    const { ledger } = fixture(build());
+    refresh(ledger, NOW, liveReaders(world()));
+    const first = liveSet(ledger);
+    assert.deepEqual(liveKeys(first), EXPECTED_LIVE);
+    assert.deepEqual(first.awaiting_operator, EXPECTED_AWAITING);
+    const lines = readFileSync(ledger, 'utf8').split('\n').length;
+    refresh(ledger, LATER, liveReaders(world()));
+    refresh(ledger, '2026-11-16T14:00:00.000Z', liveReaders(world()));
+    assert.ok(readFileSync(ledger, 'utf8').split('\n').length > lines, 'the repeats did append');
+    const { sources: firstSources, ...firstFold } = first;
+    const { sources: repeatedSources, ...repeatedFold } = liveSet(ledger);
+    assert.deepEqual(repeatedFold, firstFold);
+    assert.deepEqual(repeatedSources.jira.errors, []);
+    assert.equal(repeatedSources.jira.observed_at, '2026-11-16T14:00:00.000Z');
+  });
+
+  for (const [name, interrupt] of Object.entries(interruptions)) {
+    test(`${format}: ${name}, then a complete refresh, converges to one complete refresh`, () => {
+      const alone = fixture(build()).ledger;
+      refresh(alone, NOW, liveReaders(world()));
+      const expected = liveSet(alone);
+      assert.deepEqual(liveKeys(expected), EXPECTED_LIVE);
+      assert.deepEqual(expected.awaiting_operator, EXPECTED_AWAITING);
+      // The retry may land before or at the same instant as the interrupted attempt's records.
+      for (const ts of [EARLIER, NOW]) {
+        const { ledger } = fixture(build());
+        interrupt(ledger, ts);
+        refresh(ledger, NOW, liveReaders(world()));
+        assert.deepEqual(liveSet(ledger), expected, `interrupted at ${ts}`);
+        refresh(ledger, LATER, liveReaders(world()));
+        const { sources: _s, ...settled } = liveSet(ledger);
+        const { sources: _e, ...settledExpected } = expected;
+        assert.deepEqual(settled, settledExpected, `repeat after interruption at ${ts}`);
+      }
+    });
+  }
+}
