@@ -305,6 +305,7 @@ contains "happy path: clears CLAUDE_CODE_SESSION_ID"    "$rec1" "-u CLAUDE_CODE_
 contains "happy path: clears CLAUDE_CODE_MESSAGING_SOCKET" "$rec1" "-u CLAUDE_CODE_MESSAGING_SOCKET"
 contains "happy path: clears CLAUDE_CODE_MESSAGING_TOKEN"  "$rec1" "-u CLAUDE_CODE_MESSAGING_TOKEN"
 contains "happy path: clears CLAUDE_JOB_DIR"               "$rec1" "-u CLAUDE_JOB_DIR"
+contains "happy path: clears an inherited NO_COLOR"        "$rec1" "-u NO_COLOR"
 contains "happy path: passes --separate (own process, not a hand-off)" "$rec1" "--separate"
 contains "happy path: forces session persistence"       "$rec1" "CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1"
 contains "happy path: carries the session name via -n"  "$rec1" "-n PROJ-9999-worker"
@@ -1734,6 +1735,7 @@ not_contains "resolved launcher: not force-wrapped in bash (execs via its own sh
 contains "resolved launcher: still carries --model gpt-6-astra, bare" "$rec36b" "--model gpt-6-astra --autocompact"
 contains "resolved launcher: still carries -n NAME" "$rec36b" "-n HIMMEL-launcher2"
 contains "resolved launcher (recorder branch): clears CLAUDE_JOB_DIR" "$rec36b" "-u CLAUDE_JOB_DIR"
+contains "resolved launcher (recorder branch): clears an inherited NO_COLOR" "$rec36b" "-u NO_COLOR"
 contains "resolved launcher (recorder branch): clears CLAUDE_CODE_MESSAGING_SOCKET" "$rec36b" "-u CLAUDE_CODE_MESSAGING_SOCKET"
 contains "resolved launcher (recorder branch): clears CLAUDE_CODE_MESSAGING_TOKEN" "$rec36b" "-u CLAUDE_CODE_MESSAGING_TOKEN"
 # `script -c` interprets $LAUNCH_CMD (bash %q
@@ -2473,6 +2475,7 @@ check "43 headless chief --dry-run: exit 0" "$rc43" "0"
 contains "43 headless console: argv is the background launch" "$out43" "--bg"
 contains "43 headless console: argv keeps the chief --settings" "$out43" "--settings"
 contains "43 dry-run launch line: clears CLAUDE_JOB_DIR" "$out43" "-u CLAUDE_JOB_DIR"
+contains "43 dry-run launch line: clears an inherited NO_COLOR" "$out43" "-u NO_COLOR"
 contains "43 dry-run launch line: clears CLAUDE_CODE_MESSAGING_SOCKET" "$out43" "-u CLAUDE_CODE_MESSAGING_SOCKET"
 contains "43 dry-run launch line: clears CLAUDE_CODE_MESSAGING_TOKEN" "$out43" "-u CLAUDE_CODE_MESSAGING_TOKEN"
 
