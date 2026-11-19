@@ -32,6 +32,10 @@
 #                   an enclosing one moved the cwd, so a glob in it does not
 #                   expand against the hook's cwd
 #   GU_TOKENIZED       1 when the tokenizer read the command (ST_* hold it)
+#   GU_FLATTENED    1 when the tokenizer read a rewrite of the command, not the
+#                   command: every `${…}` replaced by `${GU}`, or heredoc bodies
+#                   dropped. ST_* then hold the rewrite's words, which leave out
+#                   what those expansions held
 #   GU_SW[s]        the non-redirect word indices of segment s, space-joined
 #   GU_CORE[s]      the position in GU_SW[s] of segment s's command word,
 #                   after wrappers, assignments and keywords
@@ -203,7 +207,7 @@ _gu_shell_bodies() {
     read -r -a idx <<<"${GU_SW[s]}"
     n=${#idx[@]}
     # A segment whose command word is a builtin that never executes its
-    # arguments (`echo bash -c 'git stash'`) holds shell words as data.
+    # arguments (`echo bash -c 'git stash'`) holds shell words as data
     # Skipped only when GU_FUNC=0: a top-level call whose whole
     # text is one plain segment (see guard_unwrap), with a literal allowlisted
     # command word at position 0. Past a wrapper, a value the option tables
@@ -272,7 +276,7 @@ _gu_flatten_params() {
 # _gu_strip_heredocs CMD — GU_NOHD is CMD with every heredoc body line
 # dropped (opener and terminator lines kept).
 _gu_strip_heredocs() {
-    local line out='' rest d t re='(^|[^<])<<(-?)[[:space:]]*(["'"'"']?)([A-Za-z_][A-Za-z0-9_]*)\3'
+    local line out='' rest d t re='(^|[^<])<<(-?)[[:space:]]*("[A-Za-z_][A-Za-z0-9_]*"|'"'"'[A-Za-z_][A-Za-z0-9_]*'"'"'|[A-Za-z_][A-Za-z0-9_]*)'
     local -a pend=()
     while IFS= read -r line || [ -n "$line" ]; do
         if [ "${#pend[@]}" -gt 0 ]; then
@@ -287,7 +291,7 @@ _gu_strip_heredocs() {
         out=$out$line$'\n'
         rest=$line
         while [[ $rest =~ $re ]]; do
-            d=${BASH_REMATCH[4]}
+            d=${BASH_REMATCH[3]//[\"\']/}
             [ -z "${BASH_REMATCH[2]}" ] || d=-$d
             pend[${#pend[@]}]=$d
             rest=${rest#*"${BASH_REMATCH[0]}"}
@@ -303,7 +307,7 @@ guard_unwrap() {
     local trigger=0 nl=$'\n' err rc cwd_env xrender='' xseg vs='' xkept=${GUARD_UNWRAP_XKEPT:-0} ci=0 noskip
     local -a children=()
     GU_V=() GU_VS=() GU_SW=() GU_SR=() GU_CORE=() GU_LOOKUP=() GU_XA=()
-    GU_SHIFT=0 GU_STRIP=0 GU_TOKENIZED=0 GU_FUNC=0
+    GU_SHIFT=0 GU_STRIP=0 GU_TOKENIZED=0 GU_FLATTENED=0 GU_FUNC=0
     GU_CWD_UNKNOWN=0
     [ "${GUARD_UNWRAP_CWD:-}" != unknown ] || GU_CWD_UNKNOWN=1
     case "$depth" in ''|*[!0-9]*) depth=$GU_MAX_DEPTH ;; esac
@@ -326,6 +330,11 @@ guard_unwrap() {
             && { [ "$GU_NOHD" = "$GU_FLAT" ] || ! st_tokenize "$GU_NOHD"; }; then
             if _gu_fallback "$GU_NOHD"; then
                 echo "guard-unwrap: refusing a command whose quoting this guard cannot read and that runs a nested shell, an eval or a quoted command word." >&2
+                if [ "${GUARD_EXPANSION_DEPTH:-0}" = 0 ]; then
+                    printf '%s\n' '    Cause: this guard'\''s tokenizer could not read the command as written: a backtick inside double quotes (it opens a command substitution; a Markdown fence such as ```bash in a "…" grep pattern is the usual case), an unterminated quote or heredoc (bash -n fails), a case arm ending in ;;, or more than 8 KiB.' >&2
+                    printf '%s\n' '    Retry: put a pattern that holds a backtick or a quote in single quotes, or write it to a file with the Write tool and pass the file (grep -f <file>); split a case statement or a long command into separate calls; edit a file with the Edit tool.' >&2
+                    printf '%s\n' '    Single-run bypass: the operator runs the command once in their own terminal, where no hook runs; no launch switch skips this check in every hook that runs it.' >&2
+                fi
                 return 2
             fi
             if [[ $GU_NOHD =~ (^|[^A-Za-z0-9_-])(cd|pushd|popd)[[:space:]]|(^|[^A-Za-z0-9_-])env[[:space:]].*(-C|--chdir) ]]; then
@@ -333,6 +342,8 @@ guard_unwrap() {
             fi
             return 0
         fi
+        # shellcheck disable=SC2034 # read by the sourcing hook
+        GU_FLATTENED=1
     fi
     # shellcheck disable=SC2034 # read by the sourcing hook
     GU_TOKENIZED=1

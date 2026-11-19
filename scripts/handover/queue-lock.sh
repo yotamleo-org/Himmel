@@ -1668,13 +1668,15 @@ _ql_force_trap_reset() {
 
 # _ql_force_on_signal <SIG> -- free the claim, give the caller its traps back, then raise the signal again so the caller's own handling (or the default) applies.
 _ql_force_on_signal() {
-    local sig="$1" code=0
+    local sig="$1" code=0 self
     case "$sig" in INT) code=130 ;; TERM) code=143 ;; HUP) code=129 ;; esac
     _ql_force_claim_cleanup
     _ql_force_trap_reset "${_QL_FORCE_PREV:-}"
     # the claim is gone, so if the caller's own handler returns instead of exiting the release must stop at its next checkpoint, not carry on unguarded
     _QL_FORCE_ABORT="$code"
-    kill -s "$sig" "${BASHPID:-$$}"
+    # BASHPID does not exist on bash 3.2 and $$ is the outer shell inside a subshell; the exec'd child's parent is this shell. The signal itself comes from the builtin kill: bash drops an INT sent from a child it is waiting on.
+    self=$(exec sh -c 'echo "$PPID"')
+    kill -s "$sig" "$self"
 }
 
 # _ql_force_on_exit -- free the claim, then run the EXIT action the caller had before the forced release replaced it, with the exit status it would have seen.
