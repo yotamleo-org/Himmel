@@ -112,7 +112,8 @@ go_check() {
     grep -q "^HEADS $pr=$head " <<< "$out" \
       || refuse "chain-push-check.sh --pr $pr --peer $m printed no 'HEADS $pr=$head' line: no per-peer report, unknown."
   done
-  hash="$(sha256_hex "$graph")"
+  hash="$(sha256_hex "$graph" 2>/dev/null)" || hash=""  # swallow-ok: a failed hasher leaves hash empty, which REFUSEs on the next line
+  [[ "$hash" =~ ^[0-9a-f]{64}$ ]] || refuse "cannot hash the graph (no sha256sum or shasum, or the hasher failed): its identity is unknown."
   echo "GO-CHECK OK $pr head=$head graph=sha256:$hash at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   exit 0
 }
