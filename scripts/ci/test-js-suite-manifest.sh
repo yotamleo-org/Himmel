@@ -239,9 +239,9 @@ if grep -qF 'echo "HIMMEL_REQUIRE_BUN_TEST=1" >> "$GITHUB_ENV"' <<< "$shard"; th
 else bad "W1 shell-unit-shard: does not export HIMMEL_REQUIRE_BUN_TEST=1 through GITHUB_ENV"; fi
 nstep=$(step_of shell-unit-shard 'actions/setup-node@')
 ncond=$(sed -n 's/^[[:space:]]*if:[[:space:]]*//p' <<< "$nstep")
-if grep -qE "node-version: '22\.23\.4'" <<< "$nstep" && [ "$ncond" = '${{ !job.container.id }}' ]; then
-  ok "W1 shell-unit-shard: setup-node 22.23.4 whose only condition is !job.container.id"
-else bad "W1 shell-unit-shard: no setup-node 22.23.4 step gated only on !job.container.id (if: '$ncond')"; fi
+if grep -qE "node-version: '26\.13\.1'" <<< "$nstep" && [ "$ncond" = '${{ !job.container.id }}' ]; then
+  ok "W1 shell-unit-shard: setup-node 26.13.1 whose only condition is !job.container.id"
+else bad "W1 shell-unit-shard: no setup-node 26.13.1 step gated only on !job.container.id (if: '$ncond')"; fi
 
 w2_glob() {
   grep -oE "'$2[^']*'" "$1" | tr -d "'" | LC_ALL=C sort -u

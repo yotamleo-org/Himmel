@@ -36,7 +36,7 @@ The call watchdog (`HIMMEL_API_CALL_TIMEOUT_S`) signals only the call, so a call
 it stops is a failed call and takes the path below.
 
 A policy refusal is the one refusal that takes no part of it: a call asking for account
-`auto` under a kind the limit does not allow (see [Account C and auto routing](#account-c-and-auto-routing))
+`auto` under a kind the limit does not allow (see [Accounts C and D, and auto routing](#accounts-c-and-d-and-auto-routing))
 prints `claude-api: policy refusal: …` and exits 2, with no alert, no alert stamp and no
 fallback, whatever `HIMMEL_API_FALLBACK` says. It means a caller regressed, so it leaves
 one line in `policy-refusals.jsonl` in the alert directory (`HIMMEL_API_ALERT_DIR`, by

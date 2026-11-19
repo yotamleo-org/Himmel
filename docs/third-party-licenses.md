@@ -2,7 +2,7 @@
 
 Pre-tag blocker for `v1.0.0-pre` (himmel targets MIT).
 Covers every tracked `package.json` in the repo (`git ls-files "*package.json"
-| grep -v node_modules`, `node_modules` excluded): 16 manifests, 20 unique
+| grep -v node_modules`, `node_modules` excluded): 22 manifests, 30 unique
 npm deps including devDependencies. **Scope: direct dependencies only**
 (the ticket's own measured surface). The transitive tree (e.g. everything
 `@modelcontextprotocol/server` or `playwright` pulls in) was NOT walked or
@@ -17,7 +17,7 @@ WTFPL, is called out explicitly below rather than silently folded in).
 
 ## Verdict
 
-**All 20 npm deps are MIT-compatible. Zero FLAGs.** One informational note
+**All 30 npm deps are MIT-compatible. Zero FLAGs.** One informational note
 (left-pad/WTFPL, test-fixture-only, never installed or shipped; see below).
 
 ## SBOM
@@ -26,39 +26,49 @@ WTFPL, is called out explicitly below rather than silently folded in).
 |---|---|---|---|---|---|
 | `@modelcontextprotocol/server` | `2.4.0` (exact) → **2.4.0** | Apache-2.0 | marketplace/plugins/luna-correlate, marketplace/plugins/telegram-himmel, marketplace/plugins/himmel-bus, scripts/jira | runtime | COMPATIBLE |
 | `@modelcontextprotocol/client` | `2.4.0` (exact) → **2.4.0** | Apache-2.0 | marketplace/plugins/himmel-bus | dev | COMPATIBLE |
-| `commander` | `^15.0.0` → **15.0.0**; `9.4.1` (T6 fixture, exact, no lockfile) | MIT | scripts/bitbucket, scripts/himmel-run, scripts/jira, scripts/lanes/bench/fixtures/T6/.../tools/codegen/scripts | runtime | COMPATIBLE |
+| `zod` | `^4.6.7` → **4.6.7** | MIT | marketplace/plugins/himmel-bus | runtime | COMPATIBLE |
+| `commander` | `^15.1.0` → **15.1.0**; `9.4.1` (T6 fixture, exact, no lockfile) | MIT | scripts/bitbucket, scripts/himmel-run, scripts/jira, scripts/lanes/bench/fixtures/T6/.../tools/codegen/scripts | runtime | COMPATIBLE |
 | `@coderabbitai/bitbucket` | `^1.1.4` → **1.1.4** | Apache-2.0 | scripts/bitbucket | runtime | COMPATIBLE |
 | `env-paths` | `^4.0.0` → **4.0.0** | MIT | scripts/himmel-run | runtime | COMPATIBLE |
 | `proper-lockfile` | `^4.1.2` → **4.1.2** | MIT | scripts/himmel-run | runtime | COMPATIBLE |
-| `grammy` | `^1.21.0` → **1.44.0** | MIT | marketplace/plugins/telegram-himmel | runtime | COMPATIBLE |
-| `js-yaml` | `5.3.0` → **5.3.0** | MIT | marketplace/plugins/obsidian-triage/tools | runtime | COMPATIBLE |
-| `playwright` | `1.62.1` → **1.62.1** | Apache-2.0 | marketplace/plugins/obsidian-triage/tools | runtime | COMPATIBLE |
+| `grammy` | `^1.46.0` → **1.46.0** | MIT | marketplace/plugins/telegram-himmel | runtime | COMPATIBLE |
+| `js-yaml` | `5.5.0` → **5.5.0** | MIT | marketplace/plugins/obsidian-triage/tools | runtime | COMPATIBLE |
+| `playwright` | `1.65.1` → **1.65.1** | Apache-2.0 | marketplace/plugins/obsidian-triage/tools | runtime | COMPATIBLE |
+| `@ag-ui/client` | `1.0.4` → **1.0.4** | MIT | scripts/config-ui/agui-web | runtime | COMPATIBLE |
+| `react` / `react-dom` | `19.3.1` → **19.3.1** | MIT | scripts/config-ui/agui-web | runtime | COMPATIBLE |
+| `@playwright/test` | `1.65.1` → **1.65.1** | Apache-2.0 | scripts/config-ui/tests/e2e | dev | COMPATIBLE |
+| `fast-check` | `4.5.3` → **4.5.3** | MIT | marketplace/plugins/pstack/skills/statechart/scripts | dev | COMPATIBLE |
+| `license-checker` | `25.0.1` → **25.0.1** | BSD-3-Clause | scripts/hooks/license-scanner | dev | COMPATIBLE |
+| `astro` | `7.4.12` → **7.4.12** | MIT | site | dev | COMPATIBLE |
+| `@astrojs/starlight` | `0.43.1` → **0.43.1** | MIT | site | dev | COMPATIBLE |
+| `@astrojs/markdown-remark` | `7.3.9` → **7.3.9** | MIT | site | dev | COMPATIBLE |
+| `pele` | `1.13.0` → **1.13.0** | MIT | site | dev | COMPATIBLE |
 | `left-pad` | `1.1.0` (exact, T6 fixture only, no lockfile) | WTFPL | scripts/lanes/bench/fixtures/T6/input (+3 workspace packages) | runtime (fixture) | COMPATIBLE — see note |
 | `chalk` | `4.1.2` (exact, T6 fixture only, no lockfile) | MIT | scripts/lanes/bench/fixtures/T6/input | runtime (fixture) | COMPATIBLE |
 | `react` | `18.2.0` (exact, T6 fixture only, no lockfile) | MIT | scripts/lanes/bench/fixtures/T6/.../examples/demo-app | runtime (fixture) | COMPATIBLE |
 | `lodash` | `4.18.1` (exact, T6 fixture only, no lockfile) | MIT | scripts/lanes/bench/fixtures/T6/.../packages/core | runtime (fixture) | COMPATIBLE |
-| `@types/node` | `^26.2.0` → **26.2.0**; `^26.1.0` → **26.1.0** | MIT | scripts/bitbucket, scripts/ci-orchestrator, scripts/himmel-run, scripts/jira | dev | COMPATIBLE |
-| `typescript` | `^7.0.2` → **7.0.2**; `^6.0.3` → **6.0.3** | Apache-2.0 | marketplace/plugins/claude-hud, marketplace/plugins/luna-correlate, scripts/bitbucket, scripts/ci-orchestrator, scripts/himmel-run, scripts/jira | dev | COMPATIBLE |
-| `vitest` | `^4.1.11` → **4.1.11**; `^4.1.9` → **4.1.9** | MIT | plugins/himmel-gh, plugins/himmel-jira, scripts/bitbucket, scripts/ci-orchestrator, scripts/himmel-run, scripts/jira | dev | COMPATIBLE |
+| `@types/node` | `^26.6.4` → **26.6.6**; `^26.6.5` → **26.6.5** (claude-hud) | MIT | marketplace/plugins/claude-hud, scripts/bitbucket, scripts/ci-orchestrator, scripts/himmel-run, scripts/jira | dev | COMPATIBLE |
+| `typescript` | `^7.0.2` → **7.0.2** | Apache-2.0 | marketplace/plugins/claude-hud, marketplace/plugins/luna-correlate, scripts/bitbucket, scripts/ci-orchestrator, scripts/himmel-run, scripts/jira | dev | COMPATIBLE |
+| `vitest` | `^5.1.0` → **5.1.0** | MIT | plugins/himmel-gh, plugins/himmel-jira, scripts/bitbucket, scripts/ci-orchestrator, scripts/himmel-run, scripts/jira | dev | COMPATIBLE |
 | `c8` | `^11.0.0` → **11.0.0** | ISC | marketplace/plugins/claude-hud | dev | COMPATIBLE |
 | `bun-types` | `^1.4.4` → **1.4.4** | MIT | marketplace/plugins/luna-correlate | dev | COMPATIBLE |
 | `@types/bun` | `latest` → **1.4.4** | MIT | scripts/luna-vitals | dev | COMPATIBLE |
 | `@types/proper-lockfile` | `^4.1.4` → **4.1.4** | MIT | scripts/himmel-run | dev | COMPATIBLE |
 
-**Methodology:** every manifest here has a committed lockfile
+**Methodology:** every non-fixture manifest here has a committed lockfile
 (`package-lock.json` or `bun.lock`). The **locked** column is the exact
 version pinned in that manifest's own lockfile (read directly from it, e.g.
 `.packages['node_modules/<dep>'].version` in `package-lock.json`), which is
 what a clean `npm ci` / `bun install` actually installs: the deterministic,
 release-accurate answer, not a registry snapshot or local `node_modules`
 state (both of which were independently found stale or drifted from the
-lockfile in several spots during this audit, e.g. `js-yaml`'s locally
-installed `5.0.0` vs. the lockfile's `5.3.0`). The four T6 benchmark-fixture
-packages have no lockfile (they are synthetic prompt data, never installed;
-see the fixture note below) and keep their exact declared pin. Every locked
-version's license was independently confirmed via `npm view
-<dep>@<locked-version> license` and matches what's shown; no dependency's
-license differs across the version deltas observed in this audit.
+lockfile in several spots during this audit). The T6 benchmark-fixture
+packages are synthetic prompt data, never installed (see the fixture note
+below), and keep their exact declared pin; only the fixture root carries a
+`package-lock.json`, which records no licence. A licence comes from the
+lockfile's `license` field where `package-lock.json` records one, else from
+the installed package's own `package.json` (a `bun.lock` records none). The
+fixture rows' licences come from an `npm view <dep>@<version> license` check.
 
 ### Note on `left-pad` / WTFPL
 
@@ -375,11 +385,14 @@ SOFTWARE.
 
 - Every `marketplace/plugins/*` plugin with a `LICENSE` file declares MIT
   (`claude-hud`: fork, upstream copyright by Jarrod Watts, preserved per
-  convention; `handover`, `himmel-ops`, `obsidian-triage`, `qmd`: MIT) or
-  Apache-2.0 (`telegram-himmel`, which also carries
-  a `NOTICE` file). All compatible with an MIT-top-level project.
+  convention; `domain-modeling`, `humanizer`, `i-have-adhd`, `pstack`, `qmd`
+  and `lean-skills` (two files, `LICENSE.mattpocock-skills` and
+  `LICENSE.superpowers`): upstream MIT; `handover`, `himmel-ops`,
+  `obsidian-triage`: himmel's own MIT) or Apache-2.0 (`telegram-himmel`, which
+  also carries a `NOTICE` file). All compatible with an MIT-top-level project.
   `luna-correlate` has no separate `LICENSE` (first-party, no fork lineage;
-  inherits the repo root license).
+  inherits the repo root license), and neither do `graphify`, `himmel-bus`,
+  `himmel-guard` and `shadcn-mcp`.
 - `rg`-style sweep for `copyright` / `SPDX-License` headers and
   vendored/copied-snippet markers across `marketplace/plugins/` and
   `scripts/` (excluding `node_modules`, `dist/`) found no third-party

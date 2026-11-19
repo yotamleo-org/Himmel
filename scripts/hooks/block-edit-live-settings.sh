@@ -238,14 +238,7 @@ st_tokenize() {
                         done
                         [ "$j" -lt "$n" ] || return 1
                         # The shell runs the decoded word (`$'\x2dr'` is -r).
-                        # ${…@E} is bash 4.4+; an older bash
-                        # keeps the raw body, as before (declining here would
-                        # switch guard_unwrap off for the whole command, J1946
-                        # B1). The eval'd text is constant, never input.
-                        if [ "${BASH_VERSINFO[0]}" -gt 4 ] \
-                            || { [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]}" -ge 4 ]; }; then
-                            eval 'body=${body@E}'
-                        fi
+                        _st_ansic_e "$body" || return 1; body=$_ST_DEC
                         _st_q; w=$w$body; i=$((j + 1))
                         ;;
                     '"') _st_q; ctx=${ctx}D; i=$((i + 2)) ;;
@@ -366,6 +359,105 @@ st_tokenize() {
 _st_q() { # the next byte appended to the word is quoted or escaped
     [ "$wqpos" -ge 0 ] || wqpos=${#w}
     wq=1; win=1
+}
+
+# _st_ansic_e BODY — _ST_DEC is BODY decoded the way ${BODY@E} decodes it. False for a
+# control-letter escape followed by a backslash: bash 3.2, bash 5 and zsh read the pair
+# three ways, so no decoding of it is safe and the caller refuses the word.
+# shellcheck disable=SC1003 # literal \ bytes, not escaped quotes
+_st_ansic_e() {
+    local r=$1
+    case "$r" in
+        *'\c\'*)
+            while [ -n "$r" ]; do
+                case "$r" in
+                    '\c\'*) return 1 ;;
+                    '\'?*) r=${r:2} ;;
+                    *) r=${r:1} ;;
+                esac
+            done ;;
+    esac
+    if [ "${BASH_VERSINFO[0]}" -gt 4 ] \
+        || { [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]}" -ge 4 ]; }; then
+        eval '_ST_DEC=${1@E}'
+    else
+        _st_ansic_walk "$1"
+    fi
+}
+
+_st_emit() {
+    local ch
+    [ "$1" -gt 0 ] || return 1
+    printf -v ch '\\0%03o' "$1"
+    printf -v ch '%b' "$ch"
+    _ST_DEC=$_ST_DEC$ch
+}
+
+# _st_ansic_walk BODY — _st_ansic_e for a bash without @E. A u or U escape
+# decodes to ASCII although bash 3.2 keeps it as written: zsh and bash 4.2+
+# decode it, so the guard reads the stricter word. Above ASCII it stays as
+# written, because the shell's own result there depends on the locale.
+# shellcheck disable=SC1003 # literal \ bytes
+_st_ansic_walk() {
+    local b=$1 n=${#1} i=0 c k v d max
+    _ST_DEC=''
+    while [ "$i" -lt "$n" ]; do
+        c=${b:i:1}
+        if [ "$c" != '\' ]; then _ST_DEC=$_ST_DEC$c; i=$((i + 1)); continue; fi
+        c=${b:i+1:1}
+        k=$((i + 2)); v=''
+        case "$c" in
+            a) _ST_DEC=$_ST_DEC$'\007' ;;
+            b) _ST_DEC=$_ST_DEC$'\010' ;;
+            e | E) _ST_DEC=$_ST_DEC$'\033' ;;
+            f) _ST_DEC=$_ST_DEC$'\014' ;;
+            n) _ST_DEC=$_ST_DEC$'\n' ;;
+            r) _ST_DEC=$_ST_DEC$'\r' ;;
+            t) _ST_DEC=$_ST_DEC$'\t' ;;
+            v) _ST_DEC=$_ST_DEC$'\013' ;;
+            '\') _ST_DEC=$_ST_DEC'\' ;;
+            "'") _ST_DEC=$_ST_DEC"'" ;;
+            '"') _ST_DEC=$_ST_DEC'"' ;;
+            '?') _ST_DEC=$_ST_DEC'?' ;;
+            [0-7])
+                k=$((i + 1))
+                while [ "${#v}" -lt 3 ]; do
+                    d=${b:k:1}
+                    case "$d" in [0-7]) v=$v$d; k=$((k + 1)) ;; *) break ;; esac
+                done
+                _st_emit $((8#$v & 255)) || return 0
+                ;;
+            x | u | U)
+                case "$c" in x) max=2 ;; u) max=4 ;; *) max=8 ;; esac
+                while [ "${#v}" -lt "$max" ]; do
+                    d=${b:k:1}
+                    case "$d" in [0-9A-Fa-f]) v=$v$d; k=$((k + 1)) ;; *) break ;; esac
+                done
+                if [ -z "$v" ]; then
+                    _ST_DEC=$_ST_DEC'\'$c
+                elif [ "$c" = x ]; then
+                    _st_emit $((16#$v)) || return 0
+                elif [ $((16#$v)) -ge 128 ]; then
+                    _ST_DEC=$_ST_DEC'\'$c$v
+                else
+                    _st_emit $((16#$v)) || return 0
+                fi
+                ;;
+            c)
+                d=${b:k:1}
+                if [ -z "$d" ]; then
+                    _ST_DEC=$_ST_DEC'\c'
+                else
+                    k=$((k + 1))
+                    if [ "$d" = '?' ]; then v=127; else printf -v v %d "'$d"; v=$((v & 31)); fi
+                    _st_emit "$v" || return 0
+                fi
+                ;;
+            '') _ST_DEC=$_ST_DEC'\'; k=$((i + 1)) ;;
+            *) _ST_DEC=$_ST_DEC'\'$c ;;
+        esac
+        i=$k
+    done
 }
 
 # shellcheck disable=SC1003,SC2016,SC2034 # literal \ ` $ bytes; ST_* are read by the caller
@@ -617,6 +709,78 @@ canon() {
     esac
 }
 
+FENCE_DONE=0 T3_FILES="" T3_DIRS="" REG_DIRS=""
+fence_paths() {
+    [ "$FENCE_DONE" = 1 ] && return 0
+    FENCE_DONE=1
+    local h i=0 n out line
+    local -a fp_want=() fp_kind=() fp_got=()
+    for h in "${HOME:+$HOME/.t3}" "${T3CODE_HOME:-}"; do
+        [ -n "$h" ] || continue
+        fp_want[${#fp_want[@]}]="$h/userdata/settings.json" fp_kind[${#fp_kind[@]}]=f
+        fp_want[${#fp_want[@]}]="$h/userdata" fp_kind[${#fp_kind[@]}]=d
+        fp_want[${#fp_want[@]}]="$h" fp_kind[${#fp_kind[@]}]=d
+    done
+    for h in "${HOME:+$HOME/.claude}" "${CLAUDE_CONFIG_DIR:-}"; do
+        [ -n "$h" ] || continue
+        fp_want[${#fp_want[@]}]="$h/sessions" fp_kind[${#fp_kind[@]}]=r
+    done
+    n=${#fp_want[@]}
+    [ "$n" -gt 0 ] || return 0
+    if [ "$CANON_MODE" = realpath-m ]; then
+        # prim-ok: the probed realpath -m arm of this guard's own canon(), batched
+        out=$(realpath -m -- "${fp_want[@]}" 2>/dev/null) || out=""  # swallow-ok: a short or empty answer falls back to canon() per path below
+        while IFS= read -r line; do fp_got[${#fp_got[@]}]=$line; done <<<"$out"
+    fi
+    if [ "${#fp_got[@]}" != "$n" ]; then
+        fp_got=()
+        while [ "$i" -lt "$n" ]; do
+            fp_got[i]=$(canon "${fp_want[i]}") || fp_got[i]=""
+            i=$((i + 1))
+        done
+        i=0
+    fi
+    local g w ok nc
+    while [ "$i" -lt "$n" ]; do
+        g=${fp_got[i]%/} w=${fp_want[i]%/} ok=0
+        if [ -n "$g" ]; then
+            if [ -L "$w" ]; then
+                ok=1
+            else
+                nc=0
+                shopt -q nocasematch && nc=1
+                shopt -s nocasematch
+                [[ ${g##*/} == "${w##*/}" ]] && ok=1
+                [ "$nc" = 1 ] || shopt -u nocasematch
+            fi
+        fi
+        if [ "$ok" = 1 ]; then
+            case "${fp_kind[i]}" in
+                f) T3_FILES="$T3_FILES$g"$'\n' ;;
+                d) T3_DIRS="$T3_DIRS$g"$'\n' ;;
+                r) REG_DIRS="$REG_DIRS$g"$'\n' ;;
+            esac
+        fi
+        i=$((i + 1))
+    done
+    return 0
+}
+
+_fence_match() {
+    local line nc=0 hit=1
+    shopt -q nocasematch && nc=1
+    shopt -s nocasematch
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        if [[ $2 == "$line" ]] || { [ "${3:-}" = under ] && [[ $2 == "$line"/* ]]; }; then
+            hit=0
+            break
+        fi
+    done <<<"$1"
+    [ "$nc" = 1 ] || shopt -u nocasematch
+    return "$hit"
+}
+
 # check_target RAW_TARGET — resolve RAW_TARGET (joined onto $cwd if relative)
 # and test it against the deny predicate. Prints exactly one of:
 #   "deny <reason>: <canonicalised path>"
@@ -637,6 +801,12 @@ check_target() {
         return
     fi
 
+    fence_paths
+    if _fence_match "$REG_DIRS" "$real" under; then
+        echo "deny registry Claude Code session registry: $real"
+        return
+    fi
+
     # Case-FOLDED basename/parent match: NTFS and
     # APFS/HFS+ are case-insensitive by default, so `.CLAUDE/SETTINGS.JSON`
     # and `.claude/settings.json` name the SAME live file there — a
@@ -652,6 +822,11 @@ check_target() {
         settings.json|settings.local.json) : ;;
         *) echo "allow"; return ;;
     esac
+
+    if _fence_match "$T3_FILES" "$real"; then
+        echo "deny t3 T3 Code settings file: $real"
+        return
+    fi
 
     parent=$(dirname "$real")
     parent_base=$(basename "$parent")
@@ -727,6 +902,133 @@ check_target() {
     echo "allow"
 }
 
+_drop_plain_t3_worktree_paths() {
+    local rest=$1 m tail out=""
+    local wt_re='\.t3/worktrees/([^[:space:];&|<>()]*)'
+    _T3WT_TEXT=$1
+    has_traversal_dots "$1" && return 0
+    while [[ $rest =~ $wt_re ]]; do
+        m=${BASH_REMATCH[0]} tail=${BASH_REMATCH[1]}
+        out=$out${rest%%"$m"*}
+        rest=${rest#*"$m"}
+        case "$tail" in
+            ''|[!a-z0-9_]*|*[\$\`*?[\{]*) out=$out$m ;;
+            *) out=${out}t3-worktree/$tail ;;
+        esac
+    done
+    _T3WT_TEXT=$out$rest
+}
+
+_text_names_t3_data_dir() {
+    local t3home=""
+    local dir_re='(^|[^a-z0-9_.-])\.t3([^a-z0-9_.-]|$)'
+    [[ $1 =~ $dir_re ]] && return 0
+    case "$1" in *t3code_home*|*userdata/settings*) return 0 ;; esac
+    [ -n "${T3CODE_HOME:-}" ] || return 1
+    t3home=$(canon "$T3CODE_HOME" | tr '[:upper:]' '[:lower:]') || t3home=""
+    t3home=${t3home%/}
+    [ -n "$t3home" ] || return 1
+    case "$1" in *"$t3home/userdata"*) return 0 ;; esac
+    return 1
+}
+
+mentions_t3_settings() {
+    local c="$1"
+    local settings_leaf_glob_re='userdata/[^/[:space:];&|<>()]*[*?[{$]'
+    c=${c//\\//}
+    c=${c//[\"\']/}
+    if [ "$mentions_settings" != 1 ] && ! [[ $c =~ $settings_leaf_glob_re ]]; then
+        return 1
+    fi
+    _drop_plain_t3_worktree_paths "$c"
+    _text_names_t3_data_dir "$_T3WT_TEXT"
+}
+
+t3_deny_message() {
+    cat >&2 <<EOF
+⛔ block-edit-live-settings: refusing $1 on \`$2\` — it can write T3 Code's
+settings file, \${T3CODE_HOME:-\$HOME/.t3}/userdata/settings.json.
+
+That file holds T3's provider instances and the environment variables each
+instance starts its agent with, so a write there can create an instance that
+carries a himmel bypass flag. The operator changes it in T3's settings UI.
+
+Reading it with cat, jq, grep and the other read-only commands stays allowed.
+
+Bypass (single-run, set in the LAUNCHING shell — a per-call prefix cannot
+reach the hook process):
+
+    EDIT_LIVE_SETTINGS_OK=1 claude
+EOF
+}
+
+_text_names() {
+    local line s nc=0 hit=1
+    shopt -q nocasematch && nc=1
+    shopt -s nocasematch
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        for s in '' / /.; do
+            case "$2" in
+                *"$line$s" | *"$line$s"[[:space:]\;\&\|\)\<\>]*) hit=0; break 2 ;;
+            esac
+        done
+        if [ "$3" = 1 ]; then
+            case "$2" in *"$line"/*) hit=0; break ;; esac
+        fi
+    done <<<"$1"
+    [ "$nc" = 1 ] || shopt -u nocasematch
+    return "$hit"
+}
+
+mentions_t3_dir_dest() {
+    local c="$1"
+    # shellcheck disable=SC2016 # literal $home / ${home} text, not expansion
+    local home_re='(~|\$home|\$\{home\})/\.t3(/userdata)?(/\.?)?([[:space:];&|)<>]|$)'
+    # shellcheck disable=SC2016 # literal $t3code_home text, not expansion
+    local var_re='\$\{?t3code_home\}?(/userdata)?(/\.?)?([[:space:];&|)<>]|$)'
+    c=${c//\\//}
+    c=${c//[\"\']/}
+    case "$c" in *t3*) ;; *) return 1 ;; esac
+    [[ $c =~ $home_re ]] && return 0
+    [[ $c =~ $var_re ]] && return 0
+    fence_paths
+    _text_names "$T3_DIRS" "$c" 0
+}
+
+mentions_claude_registry() {
+    local c="$1"
+    # shellcheck disable=SC2016 # literal $home, ${home} and backtick text, not expansion
+    local home_re='(~[a-z0-9._-]*|\$home|\$\{home\}|[)`])/\.claude/sessions([^a-z0-9_.-]|$)'
+    # shellcheck disable=SC2016 # literal $claude_config_dir text, not expansion
+    local var_re='\$\{?claude_config_dir\}?/sessions([^a-z0-9_.-]|$)'
+    c=${c//\\//}
+    c=${c//[\"\']/}
+    case "$c" in *sessions*) ;; *) return 1 ;; esac
+    [[ $c =~ $home_re ]] && return 0
+    [[ $c =~ $var_re ]] && return 0
+    fence_paths
+    _text_names "$REG_DIRS" "$c" 1
+}
+
+registry_deny_message() {
+    cat >&2 <<EOF
+⛔ block-edit-live-settings: refusing $1 on \`$2\` — it can write Claude Code's
+session registry, \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/sessions/.
+
+That directory is Claude Code's own session registry, one file per running
+claude process. The chief guards trust the session name written there
+(scripts/lib/session-name.sh), and nothing but Claude Code writes it.
+
+Reading it with cat, jq, ls, grep or the Read tool stays allowed.
+
+Bypass (single-run, set in the LAUNCHING shell — a per-call prefix cannot
+reach the hook process):
+
+    EDIT_LIVE_SETTINGS_OK=1 claude
+EOF
+}
+
 # check_claude_dir_target RAW_OPERAND — the Bash arm's operand check
 # like check_target, but an operand that resolves to
 # a `.claude` DIRECTORY ITSELF (a symlinked dir used as a dir-destination) is
@@ -745,6 +1047,11 @@ check_claude_dir_target() {
     real=""; real=$(canon "$t") || real=""
     if [ -z "$real" ]; then
         echo "unknown"
+        return
+    fi
+    fence_paths
+    if _fence_match "$T3_DIRS" "$real"; then
+        echo "deny t3 T3 Code data directory: $real"
         return
     fi
     case "${real##*/}" in
@@ -2060,6 +2367,10 @@ _tok_cp_end() {
     rl=$(printf '%s' "${r%/}" | tr '[:upper:]' '[:lower:]')
     case "$rl" in *.claude*) return 1 ;; esac
     [ "$rl" != "$primary_root_lc" ] && [ "$rl" != "$own_root_lc" ] && [ "$rl" != "$home_root_lc" ] || return 1
+    fence_paths
+    _fence_match "$T3_FILES" "$r" && return 1
+    _fence_match "$T3_DIRS" "$r" && return 1
+    _fence_match "$REG_DIRS" "$r" under && return 1
     if [ -d "$r" ]; then
         local i=0 s f
         while [ "$i" -lt $((_CPN - 1)) ]; do
@@ -2069,6 +2380,9 @@ _tok_cp_end() {
             f=$(canon "$r/$s" | tr '[:upper:]' '[:lower:]') || return 1
             case "$f" in /tmp/* | /var/tmp/* | /private/tmp/* | /private/var/tmp/*) ;; *) return 1 ;; esac
             case "$f" in *.claude*) return 1 ;; esac
+            _fence_match "$T3_FILES" "$f" && return 1
+            _fence_match "$T3_DIRS" "$f" && return 1
+            _fence_match "$REG_DIRS" "$f" under && return 1
             i=$((i + 1))
         done
     fi
@@ -4214,7 +4528,11 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
                 ;;
         esac
         result=$(check_claude_dir_target "$w")
-        case "$result" in deny\ *) symlink_dest=1 ;; esac
+        case "$result" in
+            deny\ registry\ *) symlink_dest=1 registry_dest=1 ;;
+            deny\ t3\ *) symlink_dest=1 t3_dest=1 ;;
+            deny\ *) symlink_dest=1 ;;
+        esac
     }
     _check_one_operand() {
         local w="$1" resolved wabs wparent wleaf
@@ -4257,6 +4575,15 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         # (almost always true — the parent is often just the cwd) blew the
         # 5s timing budget. The leaf match uses a bash case pattern, not
         # `tr`, so this pre-filter itself never forks.
+        case "$wabs" in
+            *[sS][eE][sS][sS][iI][oO][nN][sS]/*)
+                wparent="${wabs%/*}"
+                if [ -e "$wparent" ]; then
+                    _coo_fork_check "$w"
+                fi
+                return
+                ;;
+        esac
         wleaf="${wabs##*/}"
         case "$wleaf" in
             [sS][eE][tT][tT][iI][nN][gG][sS].[jJ][sS][oO][nN]) : ;;
@@ -4293,6 +4620,9 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     }
     dirdest_climb=0
     symlink_dest=0
+    t3_dest=0
+    registry_dest=0
+    fence_paths
     # The operand scan runs for a write verb (every word) and,
     # for any other writer's redirect target: `echo x > s`
     # writes through a symlink `s` exactly as `cp y s` does. A command the
@@ -4618,8 +4948,19 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         exit 2
     fi
 
+    if [ "$t3_dest" = 0 ] && mentions_t3_settings "$cmd_lc"; then
+        t3_dest=1
+    fi
+    if [ "$t3_dest" = 0 ] && [ "$write_verb" = 1 ] && mentions_t3_dir_dest "$cmd_lc"; then
+        t3_dest=1
+    fi
+    if [ "$registry_dest" = 0 ] && mentions_claude_registry "$cmd_lc"; then
+        registry_dest=1
+    fi
+
     if [ "$mentions_settings" = "0" ] && [ "$dir_dest" = "0" ] && [ "$dirdest_climb" = "0" ] \
-        && [ "$symlink_dest" = "0" ] && [ "$brace_dir_dest" = "0" ] && [ "$variant_dest" = "0" ]; then
+        && [ "$symlink_dest" = "0" ] && [ "$brace_dir_dest" = "0" ] && [ "$variant_dest" = "0" ] \
+        && [ "$t3_dest" = "0" ] && [ "$registry_dest" = "0" ]; then
         exit 0
     fi
 
@@ -4627,7 +4968,8 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
 
     live=0
     if [ "$is_primary_cwd" = "1" ] || [ "$ansi_c" = "1" ] || [ "$dirdest_climb" = "1" ] \
-        || [ "$symlink_dest" = "1" ] || [ "$brace_dir_dest" = "1" ] || [ "$variant_dest" = "1" ]; then
+        || [ "$symlink_dest" = "1" ] || [ "$brace_dir_dest" = "1" ] || [ "$variant_dest" = "1" ] \
+        || [ "$t3_dest" = "1" ] || [ "$registry_dest" = "1" ]; then
         live=1
     elif changes_directory "$cmd_lc" "$cmd_n"; then
         # The worktree-relative exemption is judged against the PreToolUse
@@ -4664,7 +5006,8 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # A command that only reached here through a glob/alias/tree-copy leaf
     # (variant_dest) may also be a plain `ls`, which names no file's content.
     [ "$mentions_settings" = "1" ] || _RO_LS=1
-    if [ "$mentions_settings" = "1" ] || [ "$variant_dest" = "1" ]; then
+    if [ "$mentions_settings" = "1" ] || [ "$variant_dest" = "1" ] || [ "$t3_dest" = "1" ] \
+        || [ "$registry_dest" = "1" ]; then
         if [ "$TOK" = 1 ]; then
             _tok_readonly_ok && exit 0
         elif is_readonly_allowlisted "$cmd_lc"; then
@@ -4678,7 +5021,11 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         exit 0
     fi
 
-    if [ "$mentions_settings" = "0" ] && [ "$variant_dest" = "1" ]; then
+    if [ "$registry_dest" = "1" ]; then
+        registry_deny_message "a $tool_name command" "$cmd"
+    elif [ "$t3_dest" = "1" ]; then
+        t3_deny_message "a $tool_name command" "$cmd"
+    elif [ "$mentions_settings" = "0" ] && [ "$variant_dest" = "1" ]; then
         deny_message "a $tool_name command" "$cmd" "a word can spell a live settings.json/settings.local.json (a glob, brace or bracket leaf, a Windows alias such as a trailing dot, ::\$DATA or an 8.3 name, or a recursive cp/rsync of a tree carrying .claude/settings*.json into the directory above a live .claude)"
     elif [ "$mentions_settings" = "1" ]; then
         deny_message "a $tool_name command" "$cmd" "the command text names a live settings.json/settings.local.json (worktree-relative spellings of the worktree's OWN copy are exempt; this one resolves to the primary checkout or \$HOME)"
@@ -4697,8 +5044,23 @@ fi
 target=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // empty' 2>/dev/null || true)
 [ -n "$target" ] || exit 0
 
+fence_paths
 result=$(check_target "$target")
 case "$result" in
+    deny\ registry\ *)
+        if [ "${EDIT_LIVE_SETTINGS_OK:-0}" = "1" ]; then
+            exit 0
+        fi
+        registry_deny_message "$tool_name" "$target"
+        exit 2
+        ;;
+    deny\ t3\ *)
+        if [ "${EDIT_LIVE_SETTINGS_OK:-0}" = "1" ]; then
+            exit 0
+        fi
+        t3_deny_message "$tool_name" "$target"
+        exit 2
+        ;;
     deny\ *)
         if [ "${EDIT_LIVE_SETTINGS_OK:-0}" = "1" ]; then
             exit 0

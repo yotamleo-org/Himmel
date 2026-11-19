@@ -2,7 +2,7 @@
 
 A spike. Settles how the bus envelope projects onto the A2A
 (Agent2Agent) v1.0.0 data model and where the authority boundary sits, before
-any server exists. Normative source: `spec/a2a.proto` in
+any network listener exists (the bus has a stdio MCP server only). Normative source: `spec/a2a.proto` in
 `github.com/a2aproject/A2A` (package `lf.a2a.v1`); the JSON below uses its
 proto3 JSON names.
 

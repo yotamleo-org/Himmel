@@ -100,7 +100,7 @@ got="$(read_marker "$T/plain.html")"
 has "the reader resolves the marker to the md" "has no spec critic file ($T/plain.md.critic-spec-r<n>.md)" "$got"
 
 echo "== escaping =="
-awk -v d="$DSECT" 'BEGIN{print "# Odd name"; printf "%s", d}' > "$T/a\"b&c'd<e>f.md"
+DSECT="$DSECT" awk 'BEGIN{print "# Odd name"; printf "%s", ENVIRON["DSECT"]}' > "$T/a\"b&c'd<e>f.md"
 gen "$T/a\"b&c'd<e>f.md" "$T/odd.html" >/dev/null
 page="$(cat "$T/odd.html" 2>/dev/null)"
 has "quote, ampersand, apostrophe and angle brackets are escaped in the marker" "content=\"$T/a&quot;b&amp;c&#39;d&lt;e&gt;f.md\"" "$page"

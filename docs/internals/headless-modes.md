@@ -25,28 +25,28 @@ and are not restated here.
 through `scripts/lib/claude-headless.sh` ("the P1 chokepoint wrapper for
 `claude -p` dispatch") rather than shelling out to `claude -p`
 directly — one invocation site to audit instead of many
-(`scripts/lib/claude-headless.sh:1-20`).
+(`scripts/lib/claude-headless.sh`).
 
 - **Env inheritance:** runs as a normal child process of the calling shell —
   it inherits that shell's environment the ordinary way. No daemon, no
   per-session settings-file merge.
 - **Permission mode:** `--permission-mode` is a required flag on the wrapper
-  (`claude-headless.sh:100`) and `bypassPermissions` is refused outright
-  (`claude-headless.sh:100`, `die "--permission-mode bypassPermissions is
+  (`claude-headless.sh`) and `bypassPermissions` is refused outright
+  (`claude-headless.sh`, `die "--permission-mode bypassPermissions is
   refused"`); a direct (non-wrapper) `-p` call site declares it explicitly
   the same way, per the CLAUDE.md "Claude invocation billing" rule.
 - **Billing:** same 5-hour/weekly subscription usage budget as interactive use — see
   [enforcement.md](enforcement.md#claude-invocation-billing).
   `claude-headless.sh` calls `scripts/lib/usage-preflight.sh` before
   dispatching and refuses on a non-`PROCEED` verdict
-  (`claude-headless.sh:299-300`).
+  (`claude-headless.sh`).
 - **Confirm / dedup:** the wrapper never trusts `rc` — a denied tool call can
-  still exit 0 (`claude-headless.sh:11-13`), so the verdict comes from the
+  still exit 0 (`claude-headless.sh`), so the verdict comes from the
   caller-declared `--artifact` path checked for a *fresh* mtime after exit
-  (`claude-headless.sh:311-340`, the `artifact_mtime` staleness comparison).
+  (`claude-headless.sh`, the `artifact_mtime` staleness comparison).
   Concurrency is capped by `HIMMEL_DISPATCH_MAX_CONCURRENT` (default 3) and
   every dispatch is recorded as a row in a file-per-session registry at
-  `$HOME/.himmel/registry/live/<id>.json` (`claude-headless.sh:346-364`,
+  `$HOME/.himmel/registry/live/<id>.json` (`claude-headless.sh`,
   header comment "Registry:" at line ~19).
 - **Fleet UI:** `fleet.mjs` models one row per *worker* — a handover doc, a
   queue lock, a session name (`chief-kit/fleet.mjs:1-5, 427-444`). A `-p`
@@ -62,18 +62,18 @@ in the launching shell; the flag wins) — same profile injection, model and
 `--autocompact` pin (200000, or the profile's 850000 for a native Sonnet 5.5
 `worker-impl`/`worker-eval` launch or a native Opus 5.5 `worker-*`
 launch) as a headed worker, but no konsole
-(`headed-arm-worker.sh:40-45` docstring).
+(`headed-arm-worker.sh` docstring).
 
 - **Env inheritance:** the background session runs under the `claude`
   daemon and inherits *the daemon's* environment, not the launching shell's
-  (`headed-arm-worker.sh:388-390`). `headed-arm.sh`'s `headless_launch` compensates
+  (`headed-arm-worker.sh`). `headed-arm.sh`'s `headless_launch` compensates
   by writing every worker env var into the per-worker `settings.json`
-  `.env` block before launch (`headed-arm.sh:1008-1062`), forcing
-  `CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1` (`headed-arm.sh:1017`), and
+  `.env` block before launch (`headed-arm.sh`), forcing
+  `CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1` (`headed-arm.sh`), and
   refusing to launch blind if it can't read the daemon's own `/proc/<pid>/environ`
-  (`headed-arm.sh:1037-1049`). `--headless` therefore requires a profile —
-  `--no-profile` is refused (`headed-arm-worker.sh:396`) — and is native-lane
-  only (`headed-arm-worker.sh:401`).
+  (`headed-arm.sh`). `--headless` therefore requires a profile —
+  `--no-profile` is refused (`headed-arm-worker.sh`) — and is native-lane
+  only (`headed-arm-worker.sh`).
 - **Sanctioned scripts refuse seams:** the seam guard
   (`scripts/lib/chokepoint-seam-guard.sh`) takes its baseline from the
   outermost claude ancestor, which for a `--bg` session is the
@@ -84,8 +84,8 @@ launch) as a headed worker, but no konsole
   `merge-on-green.sh`. Ship from a headed worker. The design for a headless
   equivalent is a planned follow-up.
 - **Permission mode:** declared explicitly as `--permission-mode auto`
-  (`headed-arm.sh:574`), matching what a headed worker runs under by default
-  (comment at `headed-arm.sh:570-573`), never `bypassPermissions`.
+  (`headed-arm.sh`), matching what a headed worker runs under by default
+  (comment at `headed-arm.sh`), never `bypassPermissions`.
 - **Billing:** same subscription usage budget as `-p` and headed —
   [enforcement.md](enforcement.md#claude-invocation-billing)
   agrees there is no separate bucket. `headed-arm-worker.sh` runs the subscription usage budget/fleet
@@ -93,13 +93,13 @@ launch) as a headed worker, but no konsole
 - **Confirm / dedup:** after launch, `headed-arm.sh` polls
   `$CLAUDE_CLI agents --json` for up to 20s (100 × 0.2s) waiting for the new
   session name to appear, and fails closed with `UNCONFIRMED` (exit 7) if it
-  never does (`headed-arm.sh:1071-1079`) — exit 0 from the launch call alone
+  never does (`headed-arm.sh`) — exit 0 from the launch call alone
   is not treated as proof the session exists. On success it writes a launch
   log line `headless=1 pid=... session-id=... short-id=... settings=... argv=...`
-  (`headed-arm.sh:1084-1091`) that both the chief and the fleet UI read.
+  (`headed-arm.sh`) that both the chief and the fleet UI read.
   Ending one: `kill <pid>` (the `pid=` in that log line, or from
   `claude agents --json`), then `claude rm <short-id>`
-  (`headed-arm-worker.sh:44-45`).
+  (`headed-arm-worker.sh`).
 - **Fleet UI:** `fleet.mjs` derives `mode = 'headless'` from any of: the
   agents census showing the session running, the launch log's `headless=1`,
   or the process argv containing `--bg`/`--background`
@@ -157,16 +157,16 @@ misfits are flagged only.
 
 | Site | Mode | Job shape | Fit |
 |---|---|---|---|
-| `scripts/lib/claude-headless.sh:372` (the chokepoint's own `CMD=(... -p ...)`) | `-p` | The one shared dispatch primitive every other `-p` call site below routes through | Fits |
-| `scripts/cr/claude-floor-review.sh:189` (via `claude-headless.sh`) | `-p`, `--permission-mode acceptEdits` | Automated review floor reviewer — one scoped worker call, opt-in fallback when every non-Claude critic is exhausted | Fits |
-| `scripts/cr/hermes-critic.sh:333` | `-p`, `--permission-mode plan --max-turns 1` | Automated review critic pass — one scoped review call | Fits |
+| `scripts/lib/claude-headless.sh` (the chokepoint's own `CMD=(... -p ...)`) | `-p` | The one shared dispatch primitive every other `-p` call site below routes through | Fits |
+| `scripts/cr/claude-floor-review.sh` (via `claude-headless.sh`) | `-p`, `--permission-mode acceptEdits` | Automated review floor reviewer — one scoped worker call, opt-in fallback when every non-Claude critic is exhausted | Fits |
+| `scripts/cr/hermes-critic.sh` | `-p`, `--permission-mode plan --max-turns 1` | Automated review critic pass — one scoped review call | Fits |
 | `.claude/commands/plugin-eval.md:63` | `-p` | On-demand `claude plugin eval` run, preflighted against the subscription usage budget | Fits |
-| `scripts/codex/hook-smoke-demo.sh:428` | `-p` | Hook-chain smoke demo, gated on the subscription usage budget, one read-only turn | Fits |
+| `scripts/codex/hook-smoke-demo.sh` | `-p` | Hook-chain smoke demo, gated on the subscription usage budget, one read-only turn | Fits |
 | `scripts/lanes/profile-context-probe.mjs:292` | `-p --max-turns 1 --permission-mode dontAsk` | One-shot profile measurement probe, plus a `/context` call per profile for the post-cap skill listing | Fits |
 | `scripts/probes/claude-p/*.sh` (~20 sites) | `-p` | Probes exercising specific `-p` behaviors, named for the mode they test | Fits (probes for `-p` are `-p` calls by construction) |
 | `docs/internals/token-economy-bench.md:94` | `-p` (bench recipe) | Operator-run bench recipe in a quiet window | Fits |
-| `scripts/graphify/refresh-graph-map.sh:63,393,2106` | Not controlled by these scripts — they configure graphify's `claude-cli` backend, which is graphify's own upstream dispatch code, not a `claude -p`/`--bg` flag visible in this repo | Graphify's intentional CLI dispatch (documented, not this repo's call site) | Out of scope — external tool |
-| `scripts/handover/headed-arm.sh:573` | `--bg --permission-mode auto` | Chief-armed worker | Fits |
+| `scripts/graphify/refresh-graph-map.sh` | Not controlled by these scripts — they configure graphify's `claude-cli` backend, which is graphify's own upstream dispatch code, not a `claude -p`/`--bg` flag visible in this repo | Graphify's intentional CLI dispatch (documented, not this repo's call site) | Out of scope — external tool |
+| `scripts/handover/headed-arm.sh` | `--bg --permission-mode auto` | Chief-armed worker | Fits |
 
 No misfits found: every direct `-p` site in this repo is a one-shot,
 preflighted against the subscription usage budget, artifact-checked scripted/CI-shaped call, and the one

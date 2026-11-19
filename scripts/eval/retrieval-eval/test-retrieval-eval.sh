@@ -872,7 +872,7 @@ G2="$W/xrepo"; mkdir -p "$G2"; git -C "$G2" init -q -b main
 NOW="$(date +%s)"
 gc() {
     printf '%s\n' "$2" >> "$G2/$1"; git -C "$G2" add -A
-    local t; t="$(date -u -d "@$((NOW - $2))" +%Y-%m-%dT%H:%M:%S)"
+    local t; t="$(date -u -d "@$((NOW - $2))" +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -u -r "$((NOW - $2))" +%Y-%m-%dT%H:%M:%S)"
     GIT_AUTHOR_DATE="$t +0000" GIT_COMMITTER_DATE="$t +0000" git -C "$G2" -c user.email=t@t -c user.name=t commit -q -m "$1"
 }
 gc c.sh 259200; gc b.sh 18000; gc a.sh 1800
@@ -927,8 +927,8 @@ sess(proj + "/p2/s3.jsonl", [
     ("Read", {"file_path": vault + "/notes/missing.md"}, "")])
 PY
 py "$EV" mine-luna --repo "$R" --projects "$W/mproj" --vault "$V" --days 30 --out "$W/state/cand.jsonl" > "$W/mine.txt" 2>&1
-eq "mine_reports_three_sources: exit 0 and a count per source, qmd 3 (a Bash and an MCP query, a failed and a non-luna one dropped), direct 2 (a note a qmd call reached first is not direct), written 0" "0 qmd: 3 direct: 2 written: 0" "$? $(sed -n 's/^\(qmd\|direct\): \([0-9]*\)$/\1: \2/p; s/^\(written: [0-9]*\) .*/\1/p' "$W/mine.txt" | paste -sd' ' -)"
-eq "mine_reports_three_sources: the candidate file holds one row per path and source, and the stdout names a hash, never a path" "5 $(cut -c1-16 < <(sha256sum "$W/state/cand.jsonl" | cut -d' ' -f1)) 0" "$(wc -l < "$W/state/cand.jsonl") $(sed -n 's/^sha256: //p' "$W/mine.txt") $(grep -c -E 'alpha|beta|gamma|delta|epsilon' "$W/mine.txt")"
+eq "mine_reports_three_sources: exit 0 and a count per source, qmd 3 (a Bash and an MCP query, a failed and a non-luna one dropped), direct 2 (a note a qmd call reached first is not direct), written 0" "0 qmd: 3 direct: 2 written: 0" "$? $(sed -n -E 's/^(qmd|direct): ([0-9]*)$/\1: \2/p; s/^(written: [0-9]*) .*/\1/p' "$W/mine.txt" | paste -sd' ' -)"
+eq "mine_reports_three_sources: the candidate file holds one row per path and source, and the stdout names a hash, never a path" "5 $(cut -c1-16 < <(sha256sum "$W/state/cand.jsonl" | cut -d' ' -f1)) 0" "$(wc -l < "$W/state/cand.jsonl" | tr -d ' ') $(sed -n 's/^sha256: //p' "$W/mine.txt") $(grep -c -E 'alpha|beta|gamma|delta|epsilon' "$W/mine.txt")"
 git -C "$R" worktree add -q "$W/wt" -b wtb
 ln -s "$R" "$W/link-to-repo"
 for o in "$R/cand.jsonl" "$W/link-to-repo/cand2.jsonl"; do
@@ -1022,7 +1022,7 @@ mkdir -p "$R/vrep"; cp "$W/out-good/results.jsonl" "$R/vrep/results.jsonl"
 ln -sfn "$R/vrep" "$W/vrep-link"
 for d in "$R/vrep" "$W/vrep-link"; do
     py "$EV" vault-report "$d" --repo "$R" > "$W/vr-ref.txt" 2>&1; rc=$?
-    eq "vault_report_refuses_repo_out: ${d#"$W"/} is refused with exit 2 and prints no table" "2 0" "$rc $(grep -c -P '^\w+\t' "$W/vr-ref.txt")"
+    eq "vault_report_refuses_repo_out: ${d#"$W"/} is refused with exit 2 and prints no table" "2 0" "$rc $(grep -cE "^[A-Za-z0-9_]+$(printf '\t')" "$W/vr-ref.txt")"
 done
 
 cat > "$W/lplant.py" <<'PY'

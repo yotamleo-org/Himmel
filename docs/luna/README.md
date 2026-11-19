@@ -15,9 +15,11 @@ Obsidian. Claude writes notes into it and searches it.
 
 luna runs one loop: capture, ingest, link, recall.
 
-1. **Capture.** Every Claude Code session ends by writing a session
+1. **Capture.** Once the [end-session hook](end-session-wiki.md) is
+   wired and enabled, each Claude Code session ends by writing a session
    note: what it did, what it decided, what comes next. You do
-   nothing; the [end-session hook](end-session-wiki.md) writes it. To
+   nothing; a session shorter than the configured minimum
+   (`min_duration_seconds`, default 60) is skipped. To
    add the sessions you ran before luna, run `/luna-backfill --dry-run`
    to see how many there are, then `/luna-backfill`. A backfill can
    cost many tokens, so run a large one in batches.
