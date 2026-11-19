@@ -3,10 +3,13 @@
 import importlib.util
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 import subprocess
+import time
 import unittest
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('records', HERE / 'test-proof-validate.py')
@@ -312,6 +315,899 @@ class ChiefDecision(unittest.TestCase):
         self.assertEqual(self.rows()[1]['actor'], 'chief')
         self.assertEqual(self.rows()[2]['outcome']['status'], 'Done')
         self.assertTrue(self.rows()[2]['outcome']['version_pending'])
+
+    def step(self, text, actor):
+        return subprocess.check_output(['bash', str(HERE / 'owe.sh'), 'add', '--bucket', str(self.b),
+            '--chief', 'chief', '--kind', 'step', '--key', 'HIMMEL-9848', '--text', text,
+            '--metadata', json.dumps({'actor': actor, 'action': 'next-step'})], text=True,
+            env={**os.environ, 'OWE_NOW_EPOCH': '1794860000'}).strip()
+
+    def closed_refs(self):
+        return {row['ref'] for row in self.rows() if row['op'] == 'close'}
+
+    def test_close_with_a_mixed_code_and_proof_remainder_discharges_only_the_proof_part(self):
+        (self.b / 'owed.jsonl').unlink()
+        code = self.step('Implement the missing accepted case', 'worker')
+        proof = self.step('Run the live proof', 'proof')
+        self.run_record(env={'OWE_NOW_EPOCH': '1794860000'})
+        record = self.rows()[-1]
+        self.assertEqual(record['owed_refs'], [proof])
+        self.change_decision(identity=record['identity'])
+        before = self.rows()
+        r = self.decide('--settle', status='To Do', action_id=record['id'])  # the open code part refuses the CLOSE: nothing is discharged or erased
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('open code/chief step ' + code, r.stderr)
+        self.assertEqual(self.rows(), before)
+        self.close_row(code)
+        for _ in range(2):  # the code part done, the CLOSE discharges only the proof step; a re-read cannot close twice
+            r = self.decide('--settle', action_id=record['id'])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(self.closed_refs(), {code, proof, record['id']})
+        self.assertEqual([row for row in self.rows() if row.get('id') == code][0]['actor'], 'worker')
+        self.assertEqual(len([row for row in self.rows() if row['op'] == 'close' and row['ref'] == record['id']]), 1)
+
+    def test_an_observation_not_yet_due_cannot_close_and_keeps_its_wake(self):
+        good = self.evidence.read_text()
+        row = self.pending_with(good + '| 24-hour observation | OWED (due 2026-11-25) | window still open | PASS yes |\n')
+        for mode in ('--check', '--settle'):
+            r = self.decide(mode, action_id=row['id'])
+            self.assertNotEqual(r.returncode, 0, r.stdout)
+            self.assertIn('unmet/skipped/error proof row', r.stderr)
+        self.assertEqual(len(self.rows()), 2)
+        self.assertFalse(any(r['op'] == 'close' for r in self.rows()))
+        # the only way forward is a KEEP that names the due wake; it discharges the validation exactly once
+        self.change_decision(verdict='KEEP', next={'actor': 'proof', 'capability': 'read-only proof worker',
+            'text': 'Read the 24-hour observation once its window closes', 'due': '2026-11-25', 'wake': 'observation window closed'})
+        for _ in range(2):
+            r = self.decide('--settle', status='To Do', action_id=row['id'])
+            self.assertEqual(r.returncode, 0, r.stderr)
+        nxt = [r for r in self.rows() if r.get('source_id') == row['id']]
+        self.assertEqual([(r['actor'], r['due'], r['wake']) for r in nxt], [('proof', '2026-11-25', 'observation window closed')])
+        self.assertEqual(len([r for r in self.rows() if r['op'] == 'close' and r['ref'] == row['id']]), 1)
+
+    def test_close_after_cleanup_with_a_busy_chief_is_settled_once_by_a_successor_and_replays(self):
+        code = self.step('Implement the missing accepted case', 'worker')
+        # the busy chief reviewed once and never settled; the wrapped worker's brief is then cleaned up
+        self.close_row(code)  # the worker finished the code part meanwhile: an open one refuses the CLOSE
+        self.assertEqual(self.decide('--check').returncode, 0)
+        self.doc.unlink()
+        self.assertEqual(len(self.rows()), 3)
+        self.assertFalse(any(r['op'] == 'close' and r['ref'] == 'o1' for r in self.rows()))
+        # the successor reads the surviving action from the ledger alone and settles it; the predecessor's replay is a re-read
+        listed = json.loads(subprocess.check_output(['bash', str(HERE / 'owe.sh'), 'list', '--bucket', str(self.b), '--json'], text=True))
+        self.assertIn('o1', [r['id'] for r in listed])
+        for _ in range(3):
+            r = self.decide('--settle')
+            self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len([r for r in self.rows() if r['op'] == 'close' and r['ref'] == 'o1']), 1)
+        self.assertEqual(self.closed_refs(), {code, 'o1'})
+        self.assertEqual(len(self.rows()), 4)
+
+    def add_row(self, text, kind='step', actor='worker', key='HIMMEL-9848', action='next-step'):
+        metadata = {'actor': actor, **({'action': action} if kind == 'step' else {})}
+        return subprocess.check_output(['bash', str(HERE / 'owe.sh'), 'add', '--bucket', str(self.b),
+            '--chief', 'chief', '--kind', kind, '--key', key, '--text', text, '--metadata', json.dumps(metadata)], text=True,
+            env={**os.environ, 'OWE_NOW_EPOCH': '1794860000'}).strip()
+
+    def close_row(self, row_id, key='HIMMEL-9848'):
+        subprocess.check_call(['bash', str(HERE / 'owe.sh'), 'close', '--bucket', str(self.b), '--id', row_id, '--key', key])
+
+    def open_ids(self):
+        return {row['id'] for row in self.rows() if 'id' in row} - self.closed_refs()
+
+    def test_a_close_is_refused_while_another_actor_owes_an_open_step_and_erases_nothing(self):
+        for actor in ('worker', 'chief', 'operator'):
+            with self.subTest(actor=actor):
+                step = self.add_row('Finish the remaining ' + actor + ' slice', actor=actor)
+                before = self.rows()
+                for mode, status in (('--check', 'Done'), ('--settle', 'To Do')):  # a settle on a Done ticket reconciles instead (below)
+                    r = self.decide(mode, status=status)
+                    self.assertNotEqual(r.returncode, 0, r.stdout)
+                    self.assertIn('open code/chief step ' + step, r.stderr)
+                    self.assertEqual(self.rows(), before)
+                self.assertLessEqual({'o1', step}, self.open_ids())
+                self.close_row(step)
+        # the remainder done, the same decision now settles, once
+        r = self.decide('--settle')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len([row for row in self.rows() if row['op'] == 'close' and row['ref'] == 'o1']), 1)
+
+    def test_a_keep_is_not_blocked_by_an_open_code_step(self):
+        step = self.add_row('Implement the missing accepted case')
+        self.change_decision(verdict='KEEP', next={'actor': 'proof', 'capability': 'read-only proof worker',
+            'text': 'Run the missing positive control', 'due': '2026-11-20', 'wake': 'after station update'})
+        r = self.decide('--settle', status='To Do')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('o1', self.closed_refs())
+        self.assertIn(step, self.open_ids())
+
+    def test_rows_that_are_not_an_open_remainder_of_this_ticket_do_not_block_a_close(self):
+        other_key = self.add_row('Implement an unrelated ticket', key='HIMMEL-10220')
+        done = self.add_row('Implement the finished slice')
+        self.close_row(done)
+        proof_step = self.add_row('Run the live proof', actor='proof')
+        ticket_row = self.add_row('File the follow-up ticket', kind='ticket', actor='operator')
+        reconcile = self.add_row('Reconcile the changed requirements', actor='chief', action='requirements-reconciliation')
+        version = self.add_row('Reconcile version placement', actor='chief', action='version-reconciliation')
+        r = self.decide('--settle')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len([row for row in self.rows() if row['op'] == 'close' and row['ref'] == 'o1']), 1)
+        # nothing else was discharged or erased: the other rows are exactly as open as they were
+        self.assertEqual(self.open_ids(), {other_key, proof_step, ticket_row, reconcile, version})
+
+    PENDING_CELLS = ['PENDING', 'PENDING (due 2026-11-25)', 'not yet due', 'NOT YET DUE — window open', 'WAITING until 2026-11-25',
+                     'Waiting for the 24h window', 'TBD', 'pending: window open']
+    PENDING_ITEMS = ['- PENDING: the 24h observation', '* Waiting for the observation window', '1. TBD control two', '- **PENDING** control two',
+                     '+ NOT YET DUE control two']
+
+    def test_an_observation_not_yet_due_blocks_the_close_whatever_word_the_worker_used(self):
+        good = self.evidence.read_text()
+        for cell in self.PENDING_CELLS:
+            with self.subTest(cell=cell):
+                row = self.pending_with(good + '| 24-hour observation | ' + cell + ' | window open | PASS yes |\n')
+                r = self.check(row)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn('unmet/skipped/error proof row', r.stderr)
+        for item in self.PENDING_ITEMS:
+            with self.subTest(item=item):
+                row = self.pending_with(good + item + '\n')
+                r = self.check(row)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn('unmet/skipped/error proof row', r.stderr)
+        # a labeled Expected column is test input, but an actual status of PENDING is not
+        header = '\n| Observation | Expected | Observed | Requirement status |\n|---|---|---|---|\n'
+        for actual, allowed in (('PENDING', False), ('MET', True)):
+            with self.subTest(actual=actual):
+                row = self.pending_with(good + header + '| 24h | PENDING | window open | ' + actual + ' |\n')
+                self.assertEqual(self.check(row).returncode == 0, allowed)
+
+    def test_a_met_row_that_only_mentions_those_words_stays_closable(self):
+        good = self.evidence.read_text()
+        met = ('| control two | MET | main=' + 'a'*40 + ' | pending count was 0, PASS yes |\n'
+               '| control three | MET | main=' + 'a'*40 + ' | waiting list is empty; tbd none; PASS yes |\n'
+               '| control four | MET | main=' + 'a'*40 + ' | PASS: nothing pending, none waiting, not yet due items: none |\n'
+               'The run reported nothing pending and no one waiting.\n')  # the rows sit in the result table; a list item starts with its status
+        row = self.pending_with(good.replace('VERDICT CLOSE\n', met + 'VERDICT CLOSE\n'))
+        r = self.check(row)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(r.stdout)['semantic_coverage'], 'chief-owned')
+
+    # The live pull-request remainder at CLOSE: the dispatcher's own sources, stubbed through the dispatcher's own seams
+    # (TICKET_STATUS_STATE_DIR for the status log, NEXT_DISPATCH_GH_CMD for `gh pr view`, MERGE_ROWS_GH for the merged-on-GitHub check).
+    CODE = 'Remaining: implement X (scripts/x.sh)'
+    NO_CODE = 'Remaining: S7 (chief-run, no code)'
+    OWED_PROOF = '## Ticket coverage\n- run the live proof: owed -> proof by 2026-11-30\n'
+    OWED_OPERATOR = '## Ticket coverage\n- rotate the token: owed -> operator by 2026-11-30\n'
+    OWED_CHIEF = '## Ticket coverage\n- sign the release: owed -> chief by 2026-11-30\n'
+    HANDED_OFF = '## Ticket coverage\n- the rest: deferred -> OTHER-1\n'
+    NO_REMAINDER = '## Ticket coverage\n- the whole ask: done\n'
+
+    def world(self):
+        root = self.b / 'live'
+        (root / 'state').mkdir(parents=True, exist_ok=True)
+        (root / 'bodies').mkdir(exist_ok=True)
+        (root / 'gh.log').write_text('')
+        gh = root / 'gh'
+        gh.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$GH_LOG"\ncase "$1 $2" in\n'
+                      '  "pr view") [ "$4" = --repo ] && [ "$6" = --json ] && [ "$7" = body ] || exit 64; cat "$PR_BODY_DIR/$3" 2>/dev/null || exit 1; exit 0 ;;\n'
+                      '  "pr list") exit 0 ;;\nesac\nexit 64\n')
+        merged = root / 'merged-on-github'
+        merged.write_text('#!/bin/sh\nprintf "merged-on-github %s\\n" "$*" >> "$GH_LOG"\nexit 1\n')
+        for stub in (gh, merged):
+            stub.chmod(0o755)
+        self.live = root
+        return {'TICKET_STATUS_STATE_DIR': str(root / 'state'), 'NEXT_DISPATCH_GH_CMD': str(gh), 'MERGE_ROWS_GH': str(merged),
+                'GH_LOG': str(root / 'gh.log'), 'PR_BODY_DIR': str(root / 'bodies'), 'HOME': str(root / 'home')}
+
+    def merge(self, pr, contract='no', key='HIMMEL-9848', **extra):
+        row = {'ts': 't', 'event': 'merge', 'key': key, 'pr': str(pr), 'result': 'noop', **({'contract': contract} if contract else {}), **extra}
+        with open(self.live / 'state' / 'status-events.jsonl', 'a') as log:
+            log.write(json.dumps(row) + '\n')
+
+    def body(self, pr, text):
+        (self.live / 'bodies' / str(pr)).write_text(text)
+
+    def gh_calls(self):
+        return (self.live / 'gh.log').read_text().splitlines()
+
+    def partial(self, pr, text):
+        self.merge(pr)
+        self.body(pr, text)
+
+    def test_a_live_code_remainder_refuses_the_close_and_writes_nothing(self):
+        env = self.world()
+        self.partial(77, self.CODE)
+        before = (self.b / 'owed.jsonl').read_bytes()
+        for mode, status in (('--check', 'Done'), ('--settle', 'To Do')):  # a settle on a Done ticket reconciles instead (below)
+            r = self.decide(mode, status=status, env=env)
+            self.assertNotEqual(r.returncode, 0, r.stdout)
+            self.assertIn('PR #77', r.stderr)
+            self.assertIn('implement X', r.stderr)
+            self.assertEqual((self.b / 'owed.jsonl').read_bytes(), before)
+        self.assertTrue(any(c.startswith('pr view 77 ') for c in self.gh_calls()))
+        self.assertEqual(len(self.rows()), 1)
+
+    def test_a_body_that_now_owes_only_proof_settles_once(self):
+        env = self.world()
+        self.partial(77, self.CODE)
+        self.assertNotEqual(self.decide('--check', env=env).returncode, 0)
+        self.body(77, self.OWED_PROOF)
+        for _ in range(2):
+            r = self.decide('--settle', env=env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len([row for row in self.rows() if row['op'] == 'close' and row['ref'] == 'o1']), 1)
+
+    def test_a_remainder_that_writes_no_code_does_not_block_but_a_mixed_one_does(self):
+        env = self.world()
+        self.partial(77, self.NO_CODE)
+        r = self.decide('--check', env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.body(77, 'Remaining: S1 (edit scripts/x.sh); S2 (chief-run, no code)')
+        r = self.decide('--check', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('PR #77', r.stderr)
+
+    def test_an_owed_chief_or_operator_line_blocks_without_any_ledger_row_and_proof_or_handoff_does_not(self):
+        env = self.world()
+        self.merge(77)
+        for name, text, blocks in (('operator', self.OWED_OPERATOR, True), ('chief', self.OWED_CHIEF, True),
+                                   ('proof', self.OWED_PROOF, False), ('handed off', self.HANDED_OFF, False),
+                                   ('proof first, operator later', '## Ticket coverage\n- a: owed -> proof by 2026-11-29\n- b: owed -> operator by 2026-11-30\n', True)):
+            with self.subTest(owed=name):
+                self.body(77, text)
+                r = self.decide('--check', env=env)
+                self.assertEqual(r.returncode != 0, blocks, r.stdout + r.stderr)
+                if blocks:
+                    self.assertIn('PR #77', r.stderr)
+                    self.assertIn('owed', r.stderr)
+        self.assertEqual(len(self.rows()), 1)  # none of them was ever a ledger row
+
+    def test_the_newest_partial_pull_request_decides(self):
+        env = self.world()
+        self.partial(77, self.CODE)
+        self.partial(78, self.OWED_PROOF)
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+        (self.live / 'state' / 'status-events.jsonl').unlink()
+        self.partial(77, self.OWED_PROOF)
+        self.partial(78, self.CODE)
+        r = self.decide('--check', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('PR #78', r.stderr)
+
+    def test_a_body_that_records_no_remainder_blocks_like_the_dispatcher_note(self):
+        env = self.world()
+        self.partial(77, self.NO_REMAINDER)
+        r = self.decide('--check', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('PR #77', r.stderr)
+        self.assertIn('no remainder', r.stderr)
+
+    def test_an_unreadable_body_or_log_refuses_naming_what_could_not_be_read_and_an_absent_log_is_no_partials(self):
+        env = self.world()
+        self.merge(77)  # no body file: the stub gh exits 1
+        r = self.decide('--check', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('unreadable', r.stderr)
+        self.assertIn('PR #77', r.stderr)
+        self.assertEqual(len(self.rows()), 1)
+        self.body(77, self.NO_CODE)
+        self.assertEqual(self.decide('--settle', env=env).returncode, 0)
+        self.assertEqual(len([row for row in self.rows() if row['op'] == 'close']), 1)
+
+    def test_an_unreadable_status_log_refuses_and_a_missing_one_means_no_partials(self):
+        env = self.world()
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)  # no log at all
+        (self.live / 'state' / 'status-events.jsonl').mkdir()  # a directory: unreadable
+        r = self.decide('--check', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('status-events.jsonl', r.stderr)
+        self.assertIn('unreadable', r.stderr)
+
+    def test_a_completing_merge_clears_the_partials_and_an_unmerged_pre_merge_row_is_ignored(self):
+        env = self.world()
+        self.partial(77, self.CODE)
+        self.merge(80, contract='yes')
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+        (self.live / 'state' / 'status-events.jsonl').unlink()
+        self.body(79, self.CODE)
+        self.merge(79, stage='pre-merge', result='pending', head='abc')
+        self.merge(79, contract=None, result='not-merged', head='abc')  # merge-on-green writes this row with no contract
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+        self.assertFalse(any(c.startswith('pr view 79 ') for c in self.gh_calls()))
+
+    def test_a_ticket_with_no_partial_pull_request_or_only_another_tickets_closes_as_before(self):
+        env = self.world()
+        r = self.decide('--check', env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.body(90, self.CODE)
+        (self.live / 'state' / 'status-events.jsonl').write_text(
+            '{"event":"merge","key":"OTHER-1","pr":"90","contract":"no","result":"noop"}\nnot json\n')
+        self.assertEqual(self.decide('--settle', env=env).returncode, 0)
+        self.assertEqual(self.gh_calls(), [])
+
+    def test_a_keep_is_not_subject_to_the_remainder_reader(self):
+        env = self.world()
+        self.partial(77, self.CODE)
+        self.change_decision(verdict='KEEP', next={'actor': 'worker', 'capability': 'code worker', 'text': 'Implement X',
+                                                   'due': '2026-11-20', 'wake': 'worker available'})
+        r = self.decide('--settle', status='To Do', env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.gh_calls(), [])
+        self.assertIn('o1', self.closed_refs())
+
+    def test_a_remainder_that_appears_between_check_and_settle_writes_one_reconciliation_and_discharges_nothing(self):
+        env = self.world()
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+        self.partial(77, self.CODE)  # a partial merge lands after the check
+        # a ticket that is not actually Done is a plain refusal: nothing moved, nothing to reconcile
+        self.assertNotEqual(self.decide('--settle', status='To Do', env=env).returncode, 0)
+        self.assertEqual(len(self.rows()), 1)
+        for _ in range(3):  # the settle and its replays: ONE owned step, the validation stays pending
+            r = self.decide('--settle', env=env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            body = json.loads(r.stdout)
+            self.assertFalse(body['closed'])
+        steps = [row for row in self.rows() if row.get('capability') == 'remainder reconciliation']
+        self.assertEqual(len(steps), 1)
+        step = steps[0]
+        self.assertEqual((step['kind'], step['actor'], step['key'], step['source_id'], step['actual_status']), ('step', 'chief', 'HIMMEL-9848', 'o1', 'Done'))
+        self.assertEqual(body['reconciliation'], step['id'])
+        self.assertIn('PR #77', step['text'])
+        self.assertIn('implement X', step['text'])
+        self.assertEqual(self.closed_refs(), set())
+        self.assertEqual(len(self.rows()), 2)
+        # the remainder done (a completing merge), the step still owns the decision until it is closed
+        self.merge(80, contract='yes')
+        r = self.decide('--settle', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('open code/chief step ' + step['id'], r.stderr)
+        self.close_row(step['id'])
+        r = self.decide('--settle', env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.closed_refs(), {step['id'], 'o1'})
+
+    DISPATCH_CASES = (
+        ('older code, newer owed proof', ((77, CODE), (78, OWED_PROOF))),
+        ('older owed proof, newer code', ((77, OWED_PROOF), (78, CODE))),
+        ('a code remainder', ((77, CODE),)),
+        ('a remainder that writes no code', ((77, NO_CODE),)),
+        ('code and no code in one line', ((77, 'Remaining: S1 (edit scripts/x.sh); S2 (chief-run, no code)'),)),
+        ('owed operator', ((77, OWED_OPERATOR),)),
+        ('owed chief', ((77, OWED_CHIEF),)),
+        ('owed proof only', ((77, OWED_PROOF),)),
+        ('handed off', ((77, HANDED_OFF),)),
+        ('older owed chief, newer handed off', ((77, OWED_CHIEF), (78, HANDED_OFF))),
+        ('older code, newer handed off', ((77, CODE), (78, HANDED_OFF))),
+        ('records no remainder', ((77, NO_REMAINDER),)),
+        ('a file named beside a no-code phrase', ((77, 'Remaining: implement the retry loop in scripts/x.sh (there is no code owner yet)'),)),
+        ('the same unit with no file named', ((77, 'Remaining: implement the retry loop (there is no code owner yet)'),)),
+        ('a file named beside chief-run', ((77, 'Remaining: update scripts/x.sh (chief-run)'),)),
+        ('chief-run with no file named', ((77, 'Remaining: update the notes (chief-run)'),)),
+        ('a file named beside the state repo', ((77, 'Remaining: edit docs/x.md (state repo)'),)),
+        ('the state repo with no file named', ((77, 'Remaining: edit the notes in the state repo'),)),
+    )
+
+    def dispatcher_says_work_remains(self, env, prs):
+        """The real next-dispatchable.sh over the SAME status log and gh stub: True when it lists the ticket as work to do or to ask."""
+        nd = self.b / 'nd'
+        mirror = nd / 'jira-mirror' / 'HIMMEL'
+        mirror.mkdir(parents=True, exist_ok=True)
+        (nd / 'jira-mirror' / 'HIMMEL.versions.tsv').write_text('v1.0.1\tfalse\t\n')
+        (mirror / 'HIMMEL-9848.md').write_text(
+            '---\nkey: "HIMMEL-9848"\ntype: "Task"\nstatus: "In Progress"\nstatusCategory: "x"\npriority: "Medium"\nlabels: []\nfixVersions: []\n'
+            'parent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-9848: parity fixture\n\n## Description\n\n'
+            'Edit scripts/lib/o1.sh.\n\nDoD\n- the row is green\n\nProof\n- a RED row that fails before the change\n')
+        # git-env-ok: the fixture repository's git calls run with every GIT_* name dropped
+        (nd / 'git').mkdir(exist_ok=True)
+        for cmd in (['init', '-q', '-b', 'main'], ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false',
+                                                   '-c', 'core.hooksPath=/dev/null', 'commit', '-q', '--allow-empty', '-m', 'init']):
+            subprocess.run(['git', '-C', str(nd / 'git'), *cmd], check=True, capture_output=True,
+                           env={k: v for k, v in os.environ.items() if not k.startswith('GIT_')})
+        (nd / 'stub.js').write_text("const a = process.argv.slice(2);\nif (a[0] === 'release' && a[1] === 'core-check') "
+                                    "for (const k of a.slice(a.indexOf('--key') + 1)) console.log('NOT-CORE ' + k);\nelse process.exit(2);\n")
+        classify = nd / 'classify'
+        classify.write_text('#!/usr/bin/env bash\nfor k in "$@"; do printf \'%s\\tLOCAL-NATIVE\\tstub\\n\' "$k"; done\n')
+        classify.chmod(0o755)
+        leg = nd / 'HIMMEL-399-N1-live.md'
+        leg.write_text('> **Writes:** none named\n# live\n')
+        (nd / 'fleet.json').write_text(json.dumps({'schema': 1, 'legs': [{'doc': str(leg), 'label': 'N1'}]}))
+        (Path(env['TICKET_STATUS_STATE_DIR']) / 'workers').mkdir(exist_ok=True)
+        run_env = {**os.environ, **env, 'HANDOVER_DIR': str(nd / 'h'), 'HIMMEL_ADMISSIONS_LEDGER': str(nd / 'ledger.jsonl'),
+                   'NEXT_DISPATCH_GIT_DIR': str(nd / 'git'), 'NEXT_DISPATCH_MAIN_REF': 'main', 'NEXT_DISPATCH_MIRROR': str(mirror),
+                   'NEXT_DISPATCH_JIRA_CLI': str(nd / 'stub.js'), 'NEXT_DISPATCH_CLASSIFY_CMD': str(classify), 'NEXT_DISPATCH_BODY_CACHE': 'off'}
+        (nd / 'h').mkdir(exist_ok=True)
+        r = subprocess.run(['bash', str(HERE / 'next-dispatchable.sh'), '--workers-dir', str(Path(env['TICKET_STATUS_STATE_DIR']) / 'workers'),
+                            '--workers-from', str(nd / 'fleet.json')], capture_output=True, text=True, env=run_env, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        rows = [line for line in r.stdout.splitlines() if 'HIMMEL-9848' in line and not line.startswith('#')]
+        return rows, r.stdout
+
+    def test_the_close_decision_and_the_dispatcher_agree_on_the_same_pull_requests(self):
+        for name, prs in self.DISPATCH_CASES:
+            with self.subTest(case=name):
+                env = self.world()
+                (self.live / 'state' / 'status-events.jsonl').write_text('')
+                for pr, text in prs:
+                    self.partial(pr, text)
+                close = self.decide('--check', env=env)
+                rows, out = self.dispatcher_says_work_remains(env, prs)
+                # the dispatcher keeps the ticket as work or a question (a RESUME row that is not routed to proof, an OWED or
+                # NEEDS-CHIEF-NOTE row) unless it routes the remainder to proof (a RESUME row ending in `proof`) or hands it off
+                dispatcher_blocks = any(row.startswith(('OWED ', 'NEEDS-CHIEF-NOTE ')) for row in rows) or \
+                    any(row.startswith('RESUME') and not row.endswith('\tproof') for row in rows)
+                self.assertEqual(close.returncode != 0, dispatcher_blocks, close.stderr + '\n' + out)
+
+    # Review follow-ups to the close guard.
+    def close_command(self, step_id, key='HIMMEL-9848'):
+        return 'bash ' + str(HERE / 'owe.sh') + ' close --bucket ' + str(self.b) + ' --id ' + step_id + ' --key ' + key
+
+    def test_the_refusal_names_each_open_step_with_its_actor_and_text_and_both_remedies(self):
+        first = self.add_row('Finish the first slice', actor='worker')
+        second = self.add_row('Sign the release', actor='chief')
+        for mode, status in (('--check', 'Done'), ('--settle', 'To Do')):
+            r = self.decide(mode, status=status)
+            self.assertNotEqual(r.returncode, 0, r.stdout)
+            self.assertIn(first + ' (worker: Finish the first slice)', r.stderr)
+            self.assertIn(second + ' (chief: Sign the release)', r.stderr)
+            self.assertIn(self.close_command(first), r.stderr)
+            self.assertIn(self.close_command(second), r.stderr)
+            self.assertIn('KEEP', r.stderr)
+
+    def test_a_keep_then_a_new_proof_then_a_close_needs_the_finished_step_closed_first(self):
+        self.change_decision(verdict='KEEP', next={'actor': 'worker', 'capability': 'code worker',
+            'text': 'Implement the missing accepted case', 'due': '2026-11-20', 'wake': 'worker available'})
+        self.assertEqual(self.decide('--settle', status='To Do').returncode, 0)
+        step = next(r['id'] for r in self.rows() if r.get('source_id') == 'o1')
+        # the worker finished; a second proof run is recorded and the chief decides to close
+        row = self.pending_with(self.evidence.read_text() + '| second pass | MET | main=' + 'a'*40 + ' | PASS yes |\n')
+        self.change_decision(verdict='CLOSE')
+        before = self.rows()
+        r = self.decide('--check', action_id=row['id'])
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn(step + ' (worker: Implement the missing accepted case)', r.stderr)
+        self.assertIn(self.close_command(step), r.stderr)
+        self.assertIn('KEEP', r.stderr)
+        self.assertEqual(self.rows(), before)
+        self.close_row(step)  # nothing closes it for the chief
+        r = self.decide('--settle', action_id=row['id'])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len([x for x in self.rows() if x['op'] == 'close' and x['ref'] == row['id']]), 1)
+
+    def result_table(self, status='MET', evidence='PASS yes', header='| row | Result | Sha | Evidence |'):
+        return header + '\n|---|---|---|---|\n| obs | ' + status + ' | main=' + 'a'*40 + ' | ' + evidence + ' |\n'
+
+    def unmet(self, text):
+        return self.module().has_unmet_rows(text)
+
+    def test_a_not_yet_due_word_in_the_status_position_is_unmet_in_any_case_and_through_emphasis(self):
+        for status in ('PENDING', 'Pending 24h', 'Pending review', 'Pending 2026-11-25', 'pending the 24h window', 'Waiting 24h', 'WAITING until 2026-11-25',
+                       'tbd after window', 'TBD', 'Not yet due 2026-11-25', 'not-yet-due', 'NOT-YET-DUE', 'NOT  YET DUE', '**PENDING**', '*pending*',
+                       '`PENDING`', '__Waiting__ for CI'):
+            with self.subTest(status=status):
+                self.assertTrue(self.unmet(self.result_table(status=status)))
+        for name in ('Result', 'Status', 'Verdict', 'Outcome', 'Requirement status', 'Overall result'):
+            with self.subTest(status_column=name):
+                header = '| row | ' + name + ' | Sha | Evidence |'
+                self.assertTrue(self.unmet(self.result_table(status='Pending 24h', header=header)))
+                self.assertFalse(self.unmet(self.result_table(evidence='pending: none', header=header)))
+        for item in ('- Pending review', '- Not yet due control two', '1. tbd control two', '* **WAITING** for the window', '- not-yet-due control two'):
+            with self.subTest(item=item):
+                self.assertTrue(self.unmet(item + '\n'))
+
+    def test_the_evidence_of_a_met_row_never_reads_as_not_yet_due(self):
+        for evidence in ('TBD field removed', 'WAITING room test passed', 'PENDING count was 0', 'PENDING rows: none', 'pending: none', 'pending (0)',
+                         'pending.', 'pending, none', 'pending-count 0', 'waiting-list empty', 'waiting for 0 items', 'waiting on nobody',
+                         'pending by design', 'tbd.', 'TBD-free', 'not yet due: none', 'no pending rows', 'waiting list is empty', 'tbd items: none',
+                         'Pending count was 0', 'not-yet-due items: none'):
+            with self.subTest(evidence=evidence):
+                self.assertFalse(self.unmet(self.result_table(evidence=evidence)))
+        self.assertTrue(self.unmet(self.status_table('MET', 'Pendingly done')))  # not MET in a proof column, so unmet (a status is exactly MET)
+        self.assertFalse(self.unmet('- Pendingly done\n- Waitingroom closed\n'))  # a word of its own, not the status word
+        self.assertFalse(self.unmet('| row | Expected | Result |\n|---|---|---|\n| obs | PENDING | MET |\n'))  # an Expected column is test input
+        self.assertFalse(self.unmet('| row | Expected | Sha | Evidence |\n|---|---|---|---|\n| obs | PENDING | main=aaa | ok |\n'))  # also with no status column
+        self.assertFalse(self.unmet('The run reported nothing pending, no one waiting and no tbd.\n- the run reported nothing pending\n'))
+
+    def test_a_row_with_no_status_column_to_read_fails_closed_for_the_not_yet_due_words(self):
+        # the row forms with no status position distinct from the evidence text: an unsure row is unmet
+        for name, text in (('a header with no status column', '| row | Sha | Evidence |\n|---|---|---|\n| obs | main=aaa | pending count was 0 |\n'),
+                           ('a row with no header', '| obs | MET | main=aaa | pending count was 0 |\n'),
+                           ('a ragged row under a header', '| row | Result | Sha | Evidence |\n|---|---|---|---|\n| obs | MET | pending: none |\n')):
+            with self.subTest(form=name):
+                self.assertTrue(self.unmet(text))
+
+    def test_the_not_yet_due_status_word_closes_nothing_through_the_real_check(self):
+        sha = 'main=' + 'a'*40
+        good = '| row | Result | Sha | Evidence |\n|---|---|---|---|\n| control | MET | ' + sha + ' | PASS yes |\n'
+        row = self.pending_with(good + '| obs | Pending 24h | ' + sha + ' | window open |\nVERDICT CLOSE\n')
+        r = self.check(row)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('unmet/skipped/error proof row', r.stderr)
+        row = self.pending_with(good + '| obs | MET | ' + sha + ' | TBD field removed; pending: none |\nVERDICT CLOSE\n')
+        r = self.check(row)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_a_step_of_another_key_never_blocks_whatever_its_relation_to_this_one(self):
+        steps = [self.add_row('Implement an unrelated ticket', key=other) for other in ('HIMMEL-98', 'HIMMEL-98480', 'HIMMEL-9848X', 'HIMMEL-984', 'XHIMMEL-9848')]
+        r = self.decide('--settle')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.open_ids(), set(steps))
+
+    def test_a_step_of_the_same_ticket_under_a_lower_case_key_blocks(self):
+        step = self.add_row('Implement the missing accepted case', key='himmel-9848')
+        r = self.decide('--check')
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn(step + ' (worker: Implement the missing accepted case)', r.stderr)
+
+    def test_a_step_that_appears_between_check_and_settle_writes_one_reconciliation_like_a_remainder(self):
+        self.assertEqual(self.decide('--check').returncode, 0)
+        step = self.add_row('Implement the missing accepted case')
+        self.assertNotEqual(self.decide('--settle', status='To Do').returncode, 0)  # not Done: nothing moved, a plain refusal
+        self.assertEqual(len(self.rows()), 2)
+        for _ in range(3):  # the settle and its replays: ONE owned step, the validation stays pending
+            r = self.decide('--settle')
+            self.assertEqual(r.returncode, 0, r.stderr)
+            body = json.loads(r.stdout)
+            self.assertFalse(body['closed'])
+        steps = [row for row in self.rows() if row.get('capability') == 'remainder reconciliation']
+        self.assertEqual(len(steps), 1)
+        self.assertEqual((steps[0]['kind'], steps[0]['actor'], steps[0]['key'], steps[0]['source_id']), ('step', 'chief', 'HIMMEL-9848', 'o1'))
+        self.assertEqual(body['reconciliation'], steps[0]['id'])
+        self.assertIn(step, steps[0]['text'])
+        self.assertIn('Implement the missing accepted case', steps[0]['text'])
+        self.assertEqual((self.closed_refs(), len(self.rows())), (set(), 3))
+        # the finished step closed, the reconciliation still owns the decision until it is closed
+        self.close_row(step)
+        r = self.decide('--settle')
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('open code/chief step ' + steps[0]['id'], r.stderr)
+        self.close_row(steps[0]['id'])
+        self.assertEqual(self.decide('--settle').returncode, 0)
+        self.assertEqual(self.closed_refs(), {step, steps[0]['id'], 'o1'})
+
+    def test_a_step_and_a_remainder_together_write_one_reconciliation_that_names_both(self):
+        env = self.world()
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+        step = self.add_row('Implement the missing accepted case')
+        self.partial(77, self.CODE)
+        for _ in range(2):
+            r = self.decide('--settle', env=env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+        steps = [row for row in self.rows() if row.get('capability') == 'remainder reconciliation']
+        self.assertEqual(len(steps), 1)
+        for name in (step, 'Implement the missing accepted case', 'PR #77', 'implement X'):
+            self.assertIn(name, steps[0]['text'])
+
+    # Review follow-ups 2.
+    def test_the_path_rule_is_the_dispatchers_own_pattern(self):
+        holds = importlib.util.spec_from_file_location('holds', HERE / 'holds.py')
+        module = importlib.util.module_from_spec(holds)
+        holds.loader.exec_module(module)
+        dispatcher = (HERE / 'next-dispatchable.sh').read_text()
+        self.assertIn('FILE_RE = re.compile(r"' + module.FILE_RE.pattern + '")', dispatcher)
+        env = self.world()
+        self.partial(77, 'Remaining: implement the retry loop in scripts/x.sh (there is no code owner yet)')
+        r = self.decide('--check', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('PR #77', r.stderr)
+        self.assertIn('scripts/x.sh', r.stderr)
+
+    def test_a_pre_merge_only_row_is_seen_when_github_confirms_it_and_the_close_agrees_with_the_dispatcher(self):
+        for name, body, blocks in (('code', self.CODE, True), ('no code', self.NO_CODE, False)):
+            with self.subTest(case=name):
+                env = self.world()
+                (self.live / 'merged-on-github').write_text('#!/bin/sh\nprintf "MERGED abc\\n"\n')
+                (self.live / 'state' / 'status-events.jsonl').write_text('')
+                self.merge(77, stage='pre-merge', result='pending', head='abc')
+                self.body(77, body)
+                close = self.decide('--check', env=env)
+                rows, out = self.dispatcher_says_work_remains(env, ())
+                dispatcher_blocks = any(row.startswith(('OWED ', 'NEEDS-CHIEF-NOTE ')) for row in rows) or \
+                    any(row.startswith('RESUME') and not row.endswith('\tproof') for row in rows)
+                self.assertEqual((close.returncode != 0, dispatcher_blocks), (blocks, blocks), close.stderr + '\n' + out)
+
+    def test_a_warning_from_the_status_log_helper_is_could_not_read_not_no_partial_merge(self):
+        env = self.world()  # the stubbed GitHub read fails, so the pre-merge-only row cannot be confirmed
+        self.merge(77, stage='pre-merge', result='pending', head='abc')
+        self.body(77, self.CODE)
+        before = (self.b / 'owed.jsonl').read_bytes()
+        for mode in ('--check', '--settle'):
+            r = self.decide(mode, status='To Do', env=env)
+            self.assertNotEqual(r.returncode, 0, r.stdout)
+            self.assertIn('unreadable', r.stderr)
+            self.assertIn('PR 77', r.stderr)
+            self.assertEqual((self.b / 'owed.jsonl').read_bytes(), before)
+        # a spent GitHub budget is the same: the helper says it did not count the PR
+        (self.live / 'merged-on-github').write_text('#!/bin/sh\nprintf "MERGED abc\\n"\n')
+        r = self.decide('--check', env={**env, 'MERGE_ROWS_BUDGET_SECS': '0'})
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('unreadable', r.stderr)
+        self.assertIn('budget', r.stderr)
+        # confirmed merged, the same row is a partial PR and its remainder blocks as any other
+        r = self.decide('--check', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('PR #77 Remaining', r.stderr)
+
+    def test_a_merge_row_with_no_usable_pull_request_number_is_could_not_read(self):
+        env = self.world()
+        for number in ('', 'abc', None):
+            with self.subTest(pr=number):
+                (self.live / 'state' / 'status-events.jsonl').write_text(
+                    json.dumps({'event': 'merge', 'key': 'HIMMEL-9848', 'contract': 'no', 'result': 'noop', **({} if number is None else {'pr': number})}) + '\n')
+                r = self.decide('--check', env=env)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn('unreadable', r.stderr)
+                self.assertIn('no PR number', r.stderr)
+        # another ticket's malformed row and a completing merge's missing number are not this ticket's partial merge
+        (self.live / 'state' / 'status-events.jsonl').write_text(
+            '{"event":"merge","key":"OTHER-1","contract":"no","result":"noop"}\n{"event":"merge","key":"HIMMEL-9848","contract":"yes","result":"noop"}\n')
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+
+    def test_a_reconciliation_step_closed_with_the_remainder_open_is_replaced_by_a_new_open_one(self):
+        env = self.world()
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+        self.partial(77, self.CODE)
+        first = json.loads(self.decide('--settle', env=env).stdout)['reconciliation']
+        for _ in range(2):  # while a step is open, a settle writes nothing new
+            self.assertEqual(json.loads(self.decide('--settle', env=env).stdout)['reconciliation'], first)
+        self.close_row(first)  # the chief closes it without clearing the remainder
+        r = self.decide('--settle', env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        second = json.loads(r.stdout)['reconciliation']
+        self.assertNotEqual(second, first)
+        self.assertIn(second, self.open_ids())
+        steps = [row for row in self.rows() if row.get('capability') == 'remainder reconciliation' and row['id'] in self.open_ids()]
+        self.assertEqual([row['id'] for row in steps], [second])
+        text = steps[0]['text']
+        self.assertIn(first + ' was closed with the blockers still open', text)
+        self.assertLess(text.index('Clear'), text.index('close this step'))
+        self.assertLess(text.index('close this step'), text.index('record the decision again'))
+        self.assertEqual(self.closed_refs(), {first})
+        self.assertEqual(json.loads(self.decide('--settle', env=env).stdout)['reconciliation'], second)
+
+    def test_a_failed_reconciliation_write_is_an_error_that_names_the_blockers(self):
+        env = self.world()
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+        self.partial(77, self.CODE)
+        writer = self.b / 'refuse-add.sh'
+        writer.write_text('#!/bin/bash\n[ "$1" != add ] || { echo "disk full" >&2; exit 4; }\nexec bash ' + str(HERE / 'owe.sh') + ' "$@"\n')
+        r = self.decide('--settle', env={**env, 'PROOF_OWE_BIN': str(writer)})
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('could not write the reconciliation step', r.stderr)
+        self.assertIn('disk full', r.stderr)
+        self.assertIn('PR #77', r.stderr)
+        self.assertIn('implement X', r.stderr)
+        self.assertEqual(len(self.rows()), 1)
+
+    def test_the_status_log_row_key_is_compared_in_any_case_and_a_slow_helper_is_could_not_read(self):
+        env = self.world()
+        self.merge(77, key='himmel-9848')
+        self.body(77, self.CODE)
+        r = self.decide('--check', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('PR #77', r.stderr)
+        module = self.module()
+        os.environ['TICKET_STATUS_STATE_DIR'] = env['TICKET_STATUS_STATE_DIR']
+        with mock.patch.object(module.subprocess, 'run', side_effect=subprocess.TimeoutExpired('merge-rows-effective', 1)):
+            blocking, unreadable = module.live_remainder('HIMMEL-9848')
+        self.assertEqual(blocking, [])
+        self.assertIn('status log', unreadable[0])
+        self.assertIn('unreadable', unreadable[0])
+
+    def test_a_slow_pull_request_read_ends_in_the_unreadable_refusal_inside_the_callers_wait(self):
+        env = self.world()
+        self.partial(77, self.CODE)
+        slow = self.live / 'slow-gh'
+        slow.write_text('#!/bin/sh\nsleep 20\n')
+        slow.chmod(0o755)
+        started = time.monotonic()
+        r = self.decide('--check', env={**env, 'NEXT_DISPATCH_GH_CMD': str(slow), 'PROOF_REMAINDER_BUDGET_SECS': '2'})
+        self.assertLess(time.monotonic() - started, 10)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('live pull-request remainder unreadable', r.stderr)
+        self.assertIn('PR #77', r.stderr)
+
+    def test_the_callers_wait_covers_the_readers_whole_budget(self):
+        # else a slow read ends in the CLI's exec timeout (and, after the move, in a settle that never ran) instead of the unreadable refusal
+        caller = int(re.search(r'timeout: (\d[\d_]*)', (HERE.parents[1] / 'jira' / 'src' / 'commands' / 'transition.ts').read_text())[1].replace('_', ''))
+        reader = float(re.search(r"PROOF_REMAINDER_BUDGET_SECS'\) or '(\d+)'", (HERE / 'proof-validate.py').read_text())[1])
+        self.assertLess(reader * 1000 + 5000, caller)
+
+    def test_a_proof_row_is_met_only_when_its_status_is_exactly_met(self):
+        for status in ('MET (pending review)', 'MET, pending 24h', 'PASS (pending)', 'Awaiting 24h', 'NOT RUN', 'BLOCKED', 'MET (with a naming note)',
+                       'MET; run r informational', 'MET.', 'PASS'):
+            with self.subTest(status=status):
+                self.assertTrue(self.unmet(self.result_table(status=status)))
+        for status in ('CONTROL RAN', 'METx', '', 'DONE'):  # no proof word of their own: unmet beside a MET (a proof column), not a proof column alone
+            with self.subTest(status=status):
+                self.assertTrue(self.unmet(self.status_table('MET', status)))
+                self.assertFalse(self.unmet(self.status_table(status)))
+        for status in ('MET', 'met', 'Met', ' MET ', '**MET**', '*met*', '`MET`', '__MET__'):
+            with self.subTest(status=status):
+                self.assertFalse(self.unmet(self.result_table(status=status)))
+        # the rule is for the status column; the evidence column, an Expected column and the prose around the table are not read for it
+        self.assertFalse(self.unmet(self.result_table(evidence='MET (pending review)')))
+        self.assertFalse(self.unmet('| row | Expected | Result |\n|---|---|---|\n| obs | CONTROL RAN | MET |\n'))
+        for item in ('- Awaiting 24h', '- NOT RUN control two', '1. BLOCKED control two'):
+            with self.subTest(item=item):
+                self.assertTrue(self.unmet(item + '\n'))
+        self.assertFalse(self.unmet('- the run was not blocked by anything\n- no one is awaiting\n'))
+
+    def status_table(self, *statuses, header='| item | Status | Note |'):
+        return header + '\n|---|---|---|\n' + ''.join('| row %d | %s | note |\n' % (n, status) for n, status in enumerate(statuses))
+
+    def test_a_status_column_is_read_strictly_only_when_it_uses_the_proof_vocabulary(self):
+        # no cell starts with a proof word: a ticket-status column, not a proof-row column, and nothing in it refuses
+        self.assertFalse(self.unmet(self.status_table('To Do', 'In Progress', 'Done', 'context', '')))
+        # one proof word and the column is a proof column: every cell must be exactly MET, so a ticket status among them refuses
+        self.assertTrue(self.unmet(self.status_table('To Do', 'MET', 'In Progress')))
+        for column in (('PASS', 'PASS'), ('MET', 'MET (cited)'), ('met', 'Met', 'MET.'), ('MET', 'CONTROL RAN'), ('MET', ''), ('MET', 'Done')):
+            with self.subTest(column=column):
+                self.assertTrue(self.unmet(self.status_table(*column)))
+        self.assertFalse(self.unmet(self.status_table('MET', 'met', '**MET**', ' MET ')))
+        # each word of the one trigger list makes a column strict (a ticket status beside it refuses)
+        for word in ('MET', 'NOT MET', 'OWED', 'PASS', 'FAIL', 'SKIPPED', 'ERROR', 'PENDING', 'WAITING', 'TBD', 'NOT YET DUE', 'AWAITING', 'NOT RUN', 'BLOCKED', '**pass**'):
+            with self.subTest(trigger=word):
+                self.assertTrue(self.unmet(self.status_table('In Progress', word)))
+
+    def test_a_document_with_a_proof_table_and_a_ticket_status_table_is_read_table_by_table(self):
+        sha = 'main=' + 'a'*40
+        proof = '| row | Result | Sha | Evidence |\n|---|---|---|---|\n| one | MET | ' + sha + ' | PASS yes |\n| two | MET | ' + sha + ' | ok |\n'
+        tickets = '| ticket | Status |\n|---|---|\n| HIMMEL-1 | To Do |\n| HIMMEL-2 | In Progress |\n| HIMMEL-3 | Done |\n'
+        self.assertFalse(self.unmet(proof + '\nThe tickets named above:\n\n' + tickets + 'VERDICT CLOSE\n'))
+        self.assertTrue(self.unmet(proof.replace('| two | MET |', '| two | MET (cited) |') + '\n' + tickets))
+        self.assertTrue(self.unmet(proof + '\n' + tickets.replace('| HIMMEL-2 | In Progress |', '| HIMMEL-2 | MET |')))
+
+    def test_a_table_written_without_leading_pipes_is_read_as_a_table(self):
+        sha = 'main=' + 'a'*40
+        for status in ('MET (pending review)', 'Pending 24h', 'NOT RUN'):
+            with self.subTest(status=status):
+                self.assertTrue(self.unmet('row | Result | Sha | Evidence\n--- | --- | --- | ---\nobs | ' + status + ' | ' + sha + ' | ok\n'))
+        self.assertFalse(self.unmet('row | Result | Sha | Evidence\n--- | --- | --- | ---\nobs | MET | ' + sha + ' | pending: none\n'))
+        self.assertFalse(self.unmet('a horizontal rule follows\n\n---\n\nand then text with a pipe | in it\n'))
+
+    # Re-check follow-ups.
+    def reconciliation_steps(self):
+        return [row for row in self.rows() if row.get('capability') == 'remainder reconciliation']
+
+    def test_a_settle_that_cannot_read_the_remainder_after_the_move_writes_the_one_owned_step(self):
+        env = self.world()
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+        self.merge(77)  # a partial merge landed after the check; its body cannot be read (the stub gh exits 1)
+        for _ in range(2):  # the settle and a re-run with the read still failing: the same one step
+            r = self.decide('--settle', env=env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            body = json.loads(r.stdout)
+            self.assertFalse(body['closed'])
+        steps = self.reconciliation_steps()
+        self.assertEqual(len(steps), 1)
+        self.assertEqual(body['reconciliation'], steps[0]['id'])
+        self.assertIn('could not read', steps[0]['text'])
+        self.assertIn('PR #77', steps[0]['text'])
+        self.assertEqual((self.closed_refs(), len(self.rows())), (set(), 2))
+        self.assertNotEqual(self.decide('--settle', status='To Do', env=env).returncode, 0)  # not Done: a plain refusal, nothing moved
+        # the read works again and nothing is open: the open step still owns the decision until the chief closes it
+        self.body(77, self.NO_CODE)
+        r = self.decide('--settle', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('open code/chief step ' + steps[0]['id'], r.stderr)
+        self.close_row(steps[0]['id'])
+        self.assertEqual(self.decide('--settle', env=env).returncode, 0)
+        self.assertEqual(self.closed_refs(), {steps[0]['id'], 'o1'})
+
+    def test_blockers_that_change_between_settles_leave_exactly_one_open_step(self):
+        env = self.world()
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+        self.partial(77, self.CODE)
+        ids = [json.loads(self.decide('--settle', env=env).stdout)['reconciliation']]
+        self.body(77, 'Remaining: implement Y instead (scripts/y.sh)')  # the text changes
+        ids.append(json.loads(self.decide('--settle', env=env).stdout)['reconciliation'])
+        self.partial(78, self.OWED_OPERATOR)  # a second blocker
+        ids.append(json.loads(self.decide('--settle', env=env).stdout)['reconciliation'])
+        self.assertEqual(len(set(ids)), 1)
+        steps = self.reconciliation_steps()
+        self.assertEqual([row['id'] for row in steps], ids[:1])
+        self.assertIn('implement X', steps[0]['text'])  # the blockers as they were when it was written
+        self.assertIn('is the authority', steps[0]['text'])
+        self.assertEqual(self.open_ids(), {'o1', ids[0]})
+        # a step closed while a blocker is open is still followed by a new one
+        self.close_row(ids[0])
+        again = json.loads(self.decide('--settle', env=env).stdout)['reconciliation']
+        self.assertNotEqual(again, ids[0])
+        self.assertEqual(len([row for row in self.reconciliation_steps() if row['id'] in self.open_ids()]), 1)
+
+    def test_a_status_log_line_that_names_the_key_and_is_not_json_is_could_not_read(self):
+        env = self.world()
+        log = self.live / 'state' / 'status-events.jsonl'
+        log.write_text('{"event":"merge","key":"HIMMEL-9848","pr":"77","contract":"no","res')  # torn by a killed writer
+        self.body(77, self.CODE)
+        r = self.decide('--check', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('status-events.jsonl', r.stderr)
+        self.assertIn('not JSON', r.stderr)
+        log.write_text('garbage that names no ticket\n')  # a line that does not name this ticket is nobody's partial merge
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+
+    def test_a_pull_request_left_unread_because_the_budget_is_spent_is_named_and_refused(self):
+        env = self.world()
+        self.partial(77, self.CODE)
+        self.partial(78, self.OWED_PROOF)  # the newest says proof only: a silent skip of 77 or 78 would pass
+        slow = self.live / 'slow-gh'
+        slow.write_text('#!/bin/sh\nsleep 3\n')
+        slow.chmod(0o755)
+        r = self.decide('--check', env={**env, 'NEXT_DISPATCH_GH_CMD': str(slow), 'PROOF_REMAINDER_BUDGET_SECS': '2'})
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('PR #77 body unreadable', r.stderr)
+        self.assertIn('PR #78 body unreadable (the 2 s read budget is spent)', r.stderr)
+
+    def test_a_helper_that_fails_and_a_helper_that_runs_past_the_budget_are_could_not_read(self):
+        env = self.world()
+        self.partial(77, self.NO_CODE)
+        r = self.decide('--check', env={**env, 'MERGE_ROWS_BUDGET_SECS': 'abc'})  # the helper dies at import: a traceback and exit 1
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('status log', r.stderr)
+        self.assertIn('unreadable', r.stderr)
+        # a real slow helper (a pre-merge row it must confirm through a slow GitHub read) is killed at the reader's budget, not at 120 s
+        (self.live / 'state' / 'status-events.jsonl').write_text('')
+        self.merge(79, stage='pre-merge', result='pending', head='abc')
+        slow = self.live / 'merged-on-github'
+        slow.write_text('#!/bin/sh\nsleep 30\n')
+        started = time.monotonic()
+        r = self.decide('--check', env={**env, 'PROOF_REMAINDER_BUDGET_SECS': '3'})
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('the log helper ran past the read budget', r.stderr)
+
+    def test_a_reconciliation_step_closed_by_the_race_is_refused_and_another_validations_steps_are_not_earlier_ones(self):
+        env = self.world()
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+        # another validation's closed step of the same ticket is not an earlier step of this one
+        other = self.owe_add_step('Reconcile close: an old close', source_id='o99')
+        self.close_row(other)
+        self.partial(77, self.CODE)
+        first = json.loads(self.decide('--settle', env=env).stdout)['reconciliation']
+        self.assertNotIn('Earlier reconciliation step', [row for row in self.rows() if row.get('id') == first][0]['text'])
+        # the chief closes the step between the validator's read and its add: the closed id is never returned as the owner
+        flag = self.b / 'armed'
+        writer = self.b / 'close-on-add.sh'
+        writer.write_text('#!/bin/bash\nif [ "$1" = add ] && [ -e ' + str(flag) + ' ] && [ ! -e ' + str(flag) + '.done ]; then : > ' + str(flag) + '.done\n'
+                          '  bash ' + str(HERE / 'owe.sh') + ' close --bucket ' + str(self.b) + ' --id ' + first + ' --key HIMMEL-9848 >/dev/null\nfi\n'
+                          'exec bash ' + str(HERE / 'owe.sh') + ' "$@"\n')
+        flag.write_text('')
+        r = self.decide('--settle', env={**env, 'PROOF_OWE_BIN': str(writer)})
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('is already closed', r.stderr)
+        self.assertIn('PR #77', r.stderr)
+
+    def owe_add_step(self, text, source_id):
+        return subprocess.check_output(['bash', str(HERE / 'owe.sh'), 'add', '--bucket', str(self.b), '--chief', 'chief', '--kind', 'step', '--key', 'HIMMEL-9848',
+            '--text', text, '--metadata', json.dumps({'actor': 'chief', 'action': 'next-step', 'capability': 'remainder reconciliation', 'source_id': source_id})],
+            text=True, env={**os.environ, 'OWE_NOW_EPOCH': '1794860000'}).strip()
+
+    def test_a_path_that_appears_late_in_a_long_remainder_still_makes_it_code(self):
+        env = self.world()
+        self.partial(77, 'Remaining: ' + 'chief-run notes about the station ' * 14 + 'and edit scripts/x.sh (chief-run)')
+        r = self.decide('--check', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('PR #77', r.stderr)
+
+
+def setUpModule():
+    # The decision reads the status log and GitHub: never the station's real ones, in any test of this file.
+    global _saved_env, _fixture_home
+    import tempfile
+    _fixture_home = tempfile.mkdtemp(prefix='proof-decision-')
+    stub = Path(_fixture_home) / 'refuse'
+    stub.write_text('#!/bin/sh\nexit 1\n')
+    stub.chmod(0o755)
+    _saved_env = {name: os.environ.get(name) for name in ('HOME', 'TICKET_STATUS_STATE_DIR', 'NEXT_DISPATCH_GH_CMD', 'ND_GH_READ', 'MERGE_ROWS_GH')}
+    os.environ.update(HOME=_fixture_home, TICKET_STATUS_STATE_DIR=_fixture_home, NEXT_DISPATCH_GH_CMD=str(stub), MERGE_ROWS_GH=str(stub))
+    os.environ.pop('ND_GH_READ', None)
+
+
+def tearDownModule():
+    for name, value in _saved_env.items():
+        os.environ.pop(name, None) if value is None else os.environ.__setitem__(name, value)
+    shutil.rmtree(_fixture_home, ignore_errors=True)
 
 
 if __name__ == '__main__':

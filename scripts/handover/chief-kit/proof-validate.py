@@ -8,6 +8,7 @@ inferred from MET counts. The existing Jira CLI supplies explicit chief outcomes
 import argparse
 import datetime
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -15,8 +16,9 @@ import re
 import stat
 import subprocess
 import sys
+import time
 
-HERE = Path(__file__).resolve().parent
+HERE =Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent.parent / 'lib'))
 from status_marker import parse as status_marker_parse
 
@@ -26,37 +28,163 @@ KEY = r'[A-Z][A-Z0-9]+-\d+'
 # `ERRORS`, `FAIL`, `- NOT MET: ...`). Prose that merely mentions a word is not a row; whether the evidence covers every
 # obligation stays the chief's explicit judgement. A declared Expected column in a supported Markdown table is test input,
 # not an actual requirement status; other cells and unmet list items retain the same refusal rule.
+# A row is MET only when its status is exactly the producer's word for it (`MET`, in any letter case, through emphasis and
+# whitespace): in a table the status is the column its header calls Result, Status, Verdict, Outcome or State (an `Expected` column is
+# test input), and when that column uses the proof vocabulary (PROOF_WORD) anything else in it is unmet, `MET (pending review)`,
+# `PASS (pending)`, `Awaiting 24h`, `NOT RUN`, `BLOCKED`, a ticket status and an empty cell included. A list item starts with its status: a result that is not yet met or due (`PENDING`, `NOT YET DUE`, `WAITING`,
+# `TBD`, `AWAITING`, `NOT RUN`, `BLOCKED`, in any case, through emphasis, however it goes on) is unmet there. A row with no status
+# column to read (a header without one, no header, a ragged row) has no status position distinct from its evidence text, so every
+# cell of it is read for those words: an unsure row is unmet, and `pending count was 0` there reads as not yet due. A table written
+# without leading pipes is a table when a separator row follows its header.
 UNMET = r'(?:NOT\s+MET|OWED|SKIP\w*|ERRORS?|FAIL\w*)'
+NOT_DUE = r'(?:PENDING|WAITING|TBD|AWAITING|BLOCKED|NOT[\s-]+YET[\s-]+DUE|NOT[\s-]+RUN)(?![A-Za-z0-9])'
 UNMET_CELL = re.compile(r'\|\s*' + UNMET + r'\b[^|]*\|', re.I)
 UNMET_ITEM = re.compile(r'^\s*(?:[-*+]|\d+[.)])\s+(?:\*\*)?' + UNMET + r'\b', re.I)
+NOT_DUE_CELL = re.compile(r'^[\s*_`]*' + NOT_DUE, re.I)
+NOT_DUE_ITEM = re.compile(r'^\s*(?:[-*+]|\d+[.)])\s+[*_`]*' + NOT_DUE, re.I)
+MET_STATUS = re.compile(r'[\s*_`]*MET[\s*_`]*', re.I)
+# The proof vocabulary, ONE list built from the words above plus the producer's own (`MET`, `PASS`): a status column that has at least one
+# cell starting with one of them is a proof-row column and is read strictly; a column with none (a ticket-status column: To Do, In Progress,
+# Done, context) is not a proof-row column and nothing in it refuses. One MET among ticket statuses makes the column strict.
+PROOF_WORD = re.compile(r'^[\s*_`]*(?:MET|PASS(?:ED)?|' + UNMET + r'|' + NOT_DUE + r')(?![A-Za-z0-9])', re.I)
+STATUS_HEADER = re.compile(r'\b(?:result|status|verdict|outcome|state)\b', re.I)
 SECTIONS = {'Impact', 'What', 'Why', 'Plan', 'DoD', 'Proof', 'Agent detail'}
 MAX_FILE_BYTES = 8 * 1024 * 1024
 
 
+def is_separator(line):
+    stripped = line.strip()
+    return '|' in stripped and re.fullmatch(r'\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)*\|?', stripped) is not None
+
+
+def row_cells(line):
+    stripped = line.strip()
+    if stripped.startswith('|'):
+        stripped = stripped[1:]
+    if stripped.endswith('|') and not stripped.endswith('\\|'):
+        stripped = stripped[:-1]
+    return re.split(r'(?<!\\)\|', stripped)
+
+
 def has_unmet_rows(text):
     lines = text.splitlines()
-    expected, width = set(), 0
-    separator = r'\s*\|(?:\s*:?-{3,}:?\s*\|)+\s*'
+    expected, status, proof, width = set(), set(), set(), 0
     for index, line in enumerate(lines):
-        if UNMET_ITEM.search(line):
+        if UNMET_ITEM.search(line) or NOT_DUE_ITEM.search(line):
             return True
-        if not line.strip().startswith('|'):
-            expected, width = set(), 0
+        header = index + 1 < len(lines) and re.search(r'(?<!\\)\|', line) and is_separator(lines[index + 1]) and not is_separator(line)
+        if not (line.strip().startswith('|') or header or (width and re.search(r'(?<!\\)\|', line))):
+            expected, status, proof, width = set(), set(), set(), 0
             continue
-        cells = re.split(r'(?<!\\)\|', line.strip())[1:-1]
-        if index + 1 < len(lines) and re.fullmatch(separator, lines[index + 1]):
+        cells = row_cells(line)
+        if header:
             expected = {i for i, cell in enumerate(cells) if cell.strip().lower() == 'expected'}
+            status = {i for i, cell in enumerate(cells) if i not in expected and STATUS_HEADER.search(cell)}
             width = len(cells)
+            body = []
+            for later in lines[index + 2:]:
+                if not re.search(r'(?<!\\)\|', later):
+                    break
+                if len(row_cells(later)) == width and not is_separator(later):
+                    body.append(row_cells(later))
+            proof = {i for i in status if any(PROOF_WORD.match(cells_of[i]) for cells_of in body)}
             continue
-        if re.fullmatch(separator, line):
+        if is_separator(line):
             continue
         if expected and len(cells) == width:
             if any(re.match(r'\s*' + UNMET + r'\b', cell, re.I)
                    for i, cell in enumerate(cells) if i not in expected):
                 return True
-        elif UNMET_CELL.search(line):
+        elif UNMET_CELL.search('|' + '|'.join(cells) + '|'):
+            return True
+        if status and len(cells) == width:
+            if any(not MET_STATUS.fullmatch(cells[i]) for i in proof):
+                return True
+        elif any(NOT_DUE_CELL.match(cell) for i, cell in enumerate(cells) if i not in expected):
             return True
     return False
+
+
+PR_REPO = 'yotamleo-org/Himmel'  # env-literal-ok: the canonical slug, read the way next-dispatchable.sh reads it
+
+
+def live_remainder(key):
+    """What the ticket's merged partial pull requests still leave undone, read the way next-dispatchable.sh reads it.
+
+    The partial PRs come from the status log (TICKET_STATUS_STATE_DIR, else ~/.himmel/state) through merge-rows-effective.py, a
+    completing merge row clearing the earlier ones; each body is read with `gh pr view` (NEXT_DISPATCH_GH_CMD, else ND_GH_READ,
+    else gh); the grammar and the newest-PR-wins rule are pr_remainder.py's own, and so is the path pattern a unit naming a file
+    is code by (holds.py's FILE_RE, the copy of the dispatcher's own). The whole read has one budget (PROOF_REMAINDER_BUDGET_SECS,
+    default 90 s), under the 100 s the Jira CLI waits for the validator; what it cannot finish is unreadable, never nothing.
+    Returns (blocking, unreadable): what stops a CLOSE (open code work, an owed chief or operator line, a body that records no
+    remainder) and what could not be read."""
+    state = os.environ.get('TICKET_STATUS_STATE_DIR') or os.path.join(os.environ.get('HOME') or '/tmp', '.himmel', 'state')
+    log = os.path.join(state, 'status-events.jsonl')
+    budget = float(os.environ.get('PROOF_REMAINDER_BUDGET_SECS') or '90')
+    deadline = time.monotonic() + budget
+    try:
+        from pr_remainder import live_answers, pr_remainder_units
+        spec = importlib.util.spec_from_file_location('holds', HERE / 'holds.py')
+        holds = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(holds)
+    except Exception as exc:  # a reader that does not load is a remainder that cannot be read
+        return [], ['pr_remainder.py or holds.py (%s)' % exc]
+    prs = []
+    try:
+        open(log).close()
+        eff = subprocess.run([sys.executable, '-I', str(HERE.parent.parent / 'lib' / 'merge-rows-effective.py'), log], capture_output=True, text=True,
+                             timeout=max(1, min(120, deadline - time.monotonic())))
+        if eff.returncode:
+            raise OSError(eff.stderr.strip() or 'merge-rows-effective failed')
+        warned = [line.strip() for line in eff.stderr.splitlines() if 'warn:' in line]
+        if warned:  # a pre-merge row the helper could not confirm is dropped with a warning: a partial merge it could not establish
+            raise OSError('the log helper warned: ' + '; '.join(warned))
+        for line in eff.stdout.splitlines():
+            try:
+                r = json.loads(line)
+            except ValueError:
+                if line.strip() and key.upper() in line.upper():  # a torn or corrupt line that names the ticket may be its partial merge
+                    raise OSError('a line that names %s is not JSON' % key)
+                continue
+            if not isinstance(r, dict) or r.get('event') != 'merge' or r.get('contract') not in ('yes', 'no') or str(r.get('key', '')).upper() != key.upper():
+                continue
+            if r['contract'] == 'yes':
+                prs = []
+            elif not str(r.get('pr', '')).isdigit():
+                raise OSError('merge row for %s has no PR number' % key)
+            elif str(r['pr']) not in prs:
+                prs.append(str(r['pr']))
+    except FileNotFoundError:
+        return [], []  # no log is no partial merge, as for the dispatcher
+    except subprocess.TimeoutExpired:
+        return [], ['status log %s unreadable (the log helper ran past the read budget)' % log]
+    except (OSError, subprocess.SubprocessError) as exc:
+        return [], ['status log %s unreadable (%s)' % (log, getattr(exc, 'strerror', None) or exc)]
+    gh = os.environ.get('NEXT_DISPATCH_GH_CMD') or os.environ.get('ND_GH_READ') or 'gh'
+    answers, unreadable = [], []
+    for pr in prs:
+        left = deadline - time.monotonic()
+        if left < 1:
+            unreadable.append('PR #%s body unreadable (the %g s read budget is spent)' % (pr, budget))
+            continue
+        try:
+            body = subprocess.run([gh, 'pr', 'view', pr, '--repo', PR_REPO, '--json', 'body', '--jq', '.body'],
+                                  capture_output=True, timeout=min(60, left), check=True).stdout.decode('utf-8', 'replace')
+            answers.append(dict(pr_remainder_units(body, [key]), pr=pr))
+        except subprocess.TimeoutExpired:
+            unreadable.append('PR #%s body unreadable (gh ran past the read budget)' % pr)
+        except (OSError, subprocess.SubprocessError, ValueError, TypeError) as exc:
+            unreadable.append('PR #%s body unreadable (%s)' % (pr, 'gh exit %s' % exc.returncode if isinstance(exc, subprocess.CalledProcessError) else exc))
+    if unreadable:
+        return [], unreadable
+    blocking = []
+    for answer in live_answers(answers):
+        if answer['kind'] == 'none':
+            blocking.append('PR #%s records no remainder' % answer['pr'])
+        elif answer['kind'] == 'remaining' and (not answer['nowrite'] or holds.FILE_RE.search(answer['text'])):
+            blocking.append('PR #%s Remaining: %s' % (answer['pr'], answer['text'][:300]))
+        blocking.extend('PR #%s %s' % (answer['pr'], line['text'][:300]) for line in answer['owed_lines'] if line['who'] in ('chief', 'operator'))
+    return blocking, []
 
 
 def regular_bytes(path):
@@ -222,6 +350,57 @@ def decision(opt):
             raise ValueError('truncated observations require reconciliation')
         if any(has_unmet_rows(text) for text in evidence):
             raise ValueError('unmet/skipped/error proof row')
+        # A CLOSE never settles over what is still open for the ticket, and it names it. Two guards, one outcome: the ticket's merged partial
+        # pull requests (open code work, an owed chief or operator line, a body that records no remainder; a list that cannot be read fails
+        # closed) and the owed ledger (an open `step` row of this key, in any case, that is not a proof step (this handoff discharges the
+        # ones it bound; later ones are not its scope) or a requirements or version reconciliation). The step this validation's own
+        # reconciliation wrote is `mine`: it blocks the CLOSE until the chief closes it, but never counts as new news for the next one.
+        # `--check` and a settle on a ticket that is not Done refuse and write nothing; a settle on a ticket that is already Done leaves the
+        # chief ONE owned, idempotent step that names it and discharges nothing. A KEEP is never asked.
+        remainder, unreadable = live_remainder(row['key'])
+        done_settle = opt.settle and not opt.dry_run and current.get('status') == 'Done' and current.get('category') == 'done'
+        if unreadable and not done_settle:
+            raise ValueError('live pull-request remainder unreadable: ' + '; '.join(unreadable) + '; the CLOSE is refused until it can be read')
+        open_steps = [r for r in rows if not r['closed'] and str(r.get('key', '')).upper() == row['key'].upper() and r['id'] != row['id'] and r['kind'] == 'step'
+                      and r.get('actor') != 'proof' and r.get('action') not in ('requirements-reconciliation', 'version-reconciliation')]
+        mine = [r for r in open_steps if r.get('capability') == 'remainder reconciliation' and r.get('source_id') == row['id']]
+        foreign = [r for r in open_steps if r not in mine]
+
+        def steps_message(steps):
+            return ('open code/chief step ' + '; '.join('%s (%s: %s)' % (r['id'], r.get('actor') or 'no actor', r['text'][:160]) for r in steps) +
+                    ' remains open; if it is finished, close it with `' + '` or `'.join('bash %s close --bucket %s --id %s --key %s' % (HERE / 'owe.sh', opt.bucket, r['id'], row['key']) for r in steps) +
+                    '`; if work really remains, record a KEEP decision instead')
+
+        if remainder or foreign or unreadable:
+            names = ['could not read: ' + u for u in unreadable] + remainder + ['open step %s (%s: %s)' % (r['id'], r.get('actor') or 'no actor', r['text'][:160]) for r in foreign]
+            if done_settle:
+                # The ticket really is Done but something opened, or could not be read, after the check. Keep the validation pending and leave
+                # the chief ONE owned step per validation (its identity is the validation and the closed steps before it, not the blockers,
+                # which change; the live remainder is the authority); discharge nothing.
+                metadata = dict(actor='chief', capability='remainder reconciliation', action='next-step', source_id=row['id'], wake='remainder reconciled',
+                                due=datetime.datetime.now(datetime.timezone.utc).date().isoformat(), actual_status=current.get('status', ''))
+                # A step the chief closed while this still blocks is not an owner: the next settle writes a new open one that says so, so
+                # there is always exactly one open owner and never a success that returns a closed step's id.
+                earlier = [r['id'] for r in rows if r['closed'] and r.get('capability') == 'remainder reconciliation' and r.get('source_id') == row['id']]
+                text = re.sub(r'[\x00-\x1f]+', ' ', ('Earlier reconciliation step %s %s closed with the blockers still open. ' % (', '.join(earlier), 'was' if len(earlier) == 1 else 'were') if earlier else '') +
+                              'Reconcile close: %s is Done but %s still blocks the CLOSE; validation %s stays pending. The live pull-request remainder is the authority: what is named '
+                              'here is as it stood when this step was written. Clear it first (build or finish it, close what is finished, '
+                              'or edit the pull request to the truth), then close this step, then record the decision again; if it will not be cleared, reopen the ticket '
+                              'or record a KEEP' % (row['key'], '; '.join(names), row['id']))
+                try:
+                    made = owe(['add', '--bucket', opt.bucket, '--chief', row['chief'], '--kind', 'step', '--key', row['key'], '--text', text,
+                                '--identity', digest([row['identity'], 'close-reconciliation', earlier]), '--metadata-stdin'], json.dumps(metadata))
+                    owned = made in {r['id'] for r in json.loads(owe(['list', '--bucket', opt.bucket, '--json']))}
+                except RuntimeError as exc:
+                    raise ValueError('could not write the reconciliation step (%s): %s' % (exc, '; '.join(names)))
+                if not owned:
+                    raise ValueError('the reconciliation step %s is already closed and the CLOSE is still blocked by: %s' % (made, '; '.join(names)))
+                print(json.dumps({'id': row['id'], 'closed': False, 'reconciliation': made, 'status': current.get('status'), 'remainder': names}))
+                return
+            raise ValueError('; '.join(([('live pull-request remainder blocks the CLOSE: ' + '; '.join(remainder) + '; KEEP required')] if remainder else []) +
+                                       ([steps_message(foreign)] if foreign else [])))
+        if mine:
+            raise ValueError(steps_message(mine))
         current_requirements = ' '.join(requirement_body(current['mirror'] if 'mirror' in current else '## Description\n' + current['description']).lower().split())
         for field in ('coverage', 'controls'):
             citations = verdict.get(field)
