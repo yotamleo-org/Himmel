@@ -938,12 +938,13 @@ chmod +x "$bin2/ps"
 cat > "$bin2/qmd" <<'EOF'
 #!/usr/bin/env bash
 echo "$*" >> "$QMD_MOCK_STATE/qmd-argv.log"
+sd() { if command -v setsid >/dev/null 2>&1; then setsid "$@"; else python3 -c 'import os,sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])' "$@"; fi; }
 [ "${QMD_MOCK_STEAL_LOCK:-0}" != 1 ] || echo 999999 > "$XDG_CACHE_HOME/qmd/recycle.lock/owner"
 if [ "$*" = "mcp --http --daemon" ] && [ "${QMD_MOCK_NOSTART:-0}" != 1 ]; then
   if [ "${QMD_MOCK_NOANSWER:-0}" = 1 ]; then
-    setsid sleep 300 </dev/null >/dev/null 2>&1 &
+    sd sleep 300 </dev/null >/dev/null 2>&1 &
   else
-    UNWIND=0 QMD_MOCK_STATE="$QMD_MOCK_STATE" setsid bash "$QMD_MOCK_FAKE" </dev/null >/dev/null 2>&1 &
+    UNWIND=0 QMD_MOCK_STATE="$QMD_MOCK_STATE" sd bash "$QMD_MOCK_FAKE" </dev/null >/dev/null 2>&1 &
   fi
   echo $! > "$XDG_CACHE_HOME/qmd/mcp.pid"
   disown
