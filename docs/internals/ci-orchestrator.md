@@ -86,7 +86,7 @@ act-matrix × github-up) → lane | defer`. Never a "skip" — only route or def
 - `tick` / `daemon` — require the production lane + git-discovery wiring
   (assembled from `HIMMEL_CI_*` + registered adapters); until wired they report
   the boundary rather than firing fake work.
-- `measure` — exits 2: the P0 baseline shell harness is not built.
+- `measure` — exits 2: the shell harness that measures today's CI baseline (the measurement phase, P0 above) is not built.
 
 ## Reading the queue
 

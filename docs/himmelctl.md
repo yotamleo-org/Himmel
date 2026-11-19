@@ -130,6 +130,8 @@ The accepted value depends on the path:
 | `commit.ticketIdRequired` | `on` / `off` | Whether a commit needs a ticket reference; set-only, written to `~/.himmel/himmel.conf` |
 | `handover.root` | an absolute directory | `HANDOVER_DIR`, created if missing; set-only, written to `~/.himmel/himmel.conf` |
 | `luna.vaultPath` | an existing absolute directory | `LUNA_VAULT_PATH`; set-only, written to `~/.himmel/himmel.conf` |
+| `jira.testProject` | a Jira project key (`^[A-Z][A-Z0-9]+$`) the live-test verb accepts | `JIRA_TEST_PROJECT`, the project live tests and audits write to; set-only, written to `~/.himmel/himmel.conf` (or `himmel.conf.local` when that file already sets it) and read back to confirm |
+| `tracker.teamMode` | `on` / `off` | `HIMMEL_TRACKER_TEAM_MODE`, the board's team-mode switch; written to `~/.himmel/himmel.conf` (or `himmel.conf.local` when that file already sets it); `config get` prints `on` or `off` |
 
 `hooks.improveOnSubmit` is a launching-shell env var, not settable here, and
 `config get` does not report hook state (exit 2).

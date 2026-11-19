@@ -124,8 +124,8 @@ next step does exactly what the message says.
 /worktree docs/himmel-289-daily-loop
 ```
 
-`/worktree` runs `scripts/worktree.sh <branch>`, which only creates. It creates
-`.claude/worktrees/docs+himmel-289-daily-loop/` and checks out a new
+`/worktree` runs `scripts/worktree.sh <branch>`, which creates
+`.claude/worktrees/docs+himmel-289-daily-loop/` without pruning and checks out a new
 branch `docs/himmel-289-daily-loop`. Branch names must be `type/slug`
 (for example `feat/foo`, `docs/bar`).
 

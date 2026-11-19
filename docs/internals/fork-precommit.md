@@ -72,7 +72,6 @@ forks tracked as himmel adapters (standard: `docs/internals/fork-adapters.md`).
 | Fork | Default | Language | Own hooks | Own lint | CI |
 |---|---|---|---|---|---|
 | qmd | main | TypeScript | none | oxlint | yes |
-| himmel-voice (no upstream) | main | Python | `.pre-commit-config.yaml` | `ruff.toml` | yes |
 | core (home-assistant) | dev | Python | `.pre-commit-config.yaml` | prettier | yes |
 | claude-hud | main | JavaScript | none | `.editorconfig` | yes |
 | graphify | v8 | Python | `.pre-commit-config.yaml` | `pyproject.toml` | yes |
@@ -83,8 +82,8 @@ forks tracked as himmel adapters (standard: `docs/internals/fork-adapters.md`).
 | codex | main | Rust | none | prettier | yes |
 | effective-html, obsidian-skills | main | HTML / none | none | none | none |
 
-Archived forks (`claude-statusline`, `claude-squad`, `twitter-cli`) and the
-de-forked `claude-obsidian` need no hooks.
+Archived forks (`claude-statusline`, `claude-squad`) and the de-forked
+`claude-obsidian` need no hooks.
 
 ## Adopting a fork
 

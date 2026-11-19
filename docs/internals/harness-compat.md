@@ -35,20 +35,20 @@ to **other coding harnesses** — Codex first — so an operator can decide what
 
 ## Frame matrix
 
-| Surface | Claude Code | Codex | Cursor | Copilot CLI | Gemini CLI |
-|---|---|---|---|---|---|
-| **PreToolUse guardrail hooks** | native | ✅ Claude-compatible engine (`ClaudeHooksEngine`); same stdin schema, but blocks via JSON `permissionDecision:"deny"` **not exit 2** — himmel bridges via `.codex/run-hook.sh`→`codex-hook-adapter.sh` | ✅ `.cursor/hooks.json`; events **camelCase** (`preToolUse`, `beforeShellExecution`); **fails OPEN** unless `failClosed:true` | ✅ `.github/hooks/*.json`; camel/Pascal; **fails CLOSED**; ⚠️ headless `-p` disables repo hooks unless `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=true` | ✅ `.gemini/settings.json` `hooks`; events **PascalCase** (`BeforeTool`); stdin JSON |
-| **pre-commit / pre-push git gates** | ✅ | ✅ harness-independent (git runs them) | ✅ | ✅ | ✅ |
-| **Plugins / marketplace** | native | ✅ marketplaces + `@himmel` plugins load (`config.toml`) | ✅ marketplace exists (`.cursor-plugin/plugin.json`) — *corrects "no marketplace"* | ✅ `marketplace.json` registries (`copilot plugin marketplace add`) | ✅ "extensions" gallery (`gemini-extension.json`) |
-| **Skills** | native | ✅ native skill loading | ✅ `SKILL.md`; reads `.cursor/skills` **+ `.claude/skills` + `.codex/skills`** | ✅ `SKILL.md`; reads `.github/skills` **+ `.claude/skills`** | ✅ `SKILL.md` (gemini-native); `.gemini/skills/` |
-| **Slash commands** | `.claude/commands/` | ⚠️ own slash surface; `.claude/commands/` don't auto-load | ✅ `.cursor/commands/*.md` | ⚠️ via plugins/skills/agents (`/name`); dedicated file unverified | ✅ **TOML** `.gemini/commands/` (`:` namespacing) |
-| **Instruction file** | `CLAUDE.md` (always loaded) | ⚠️ **`AGENTS.md` only** | `.cursor/rules/*.mdc` + **`AGENTS.md`** | **`AGENTS.md`** (also reads `CLAUDE.md`/`GEMINI.md`) | **`GEMINI.md`** |
-| **Subagents** | `.claude/agents/*.md` | ⚠️ `.codex/agents/*.toml` | ✅ `.cursor/agents/*.md` (reads **`.claude/agents`**) | ✅ `*.agent.md` (`.github/agents/`) | ✅ `.gemini/agents/*.md` |
-| **Interactive questions (`AskUserQuestion`)** | native tool | ❌ no equivalent question-tool → **degrades to a conversational prose question** | ❌ same | ❌ same | ❌ same |
+| Surface | Claude Code | Codex | Cursor | Copilot CLI |
+|---|---|---|---|---|
+| **PreToolUse guardrail hooks** | native | ✅ Claude-compatible engine (`ClaudeHooksEngine`); same stdin schema, but blocks via JSON `permissionDecision:"deny"` **not exit 2** — himmel bridges via `.codex/run-hook.sh`→`codex-hook-adapter.sh` | ✅ `.cursor/hooks.json`; events **camelCase** (`preToolUse`, `beforeShellExecution`); **fails OPEN** unless `failClosed:true` | ✅ `.github/hooks/*.json`; camel/Pascal; **fails CLOSED**; ⚠️ headless `-p` disables repo hooks unless `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=true` |
+| **pre-commit / pre-push git gates** | ✅ | ✅ harness-independent (git runs them) | ✅ | ✅ |
+| **Plugins / marketplace** | native | ✅ marketplaces + `@himmel` plugins load (`config.toml`) | ✅ marketplace exists (`.cursor-plugin/plugin.json`) — *corrects "no marketplace"* | ✅ `marketplace.json` registries (`copilot plugin marketplace add`) |
+| **Skills** | native | ✅ native skill loading | ✅ `SKILL.md`; reads `.cursor/skills` **+ `.claude/skills` + `.codex/skills`** | ✅ `SKILL.md`; reads `.github/skills` **+ `.claude/skills`** |
+| **Slash commands** | `.claude/commands/` | ⚠️ own slash surface; `.claude/commands/` don't auto-load | ✅ `.cursor/commands/*.md` | ⚠️ via plugins/skills/agents (`/name`); dedicated file unverified |
+| **Instruction file** | `CLAUDE.md` (always loaded) | ⚠️ **`AGENTS.md` only** | `.cursor/rules/*.mdc` + **`AGENTS.md`** | **`AGENTS.md`** (also reads `CLAUDE.md`) |
+| **Subagents** | `.claude/agents/*.md` | ⚠️ `.codex/agents/*.toml` | ✅ `.cursor/agents/*.md` (reads **`.claude/agents`**) | ✅ `*.agent.md` (`.github/agents/`) |
+| **Interactive questions (`AskUserQuestion`)** | native tool | ❌ no equivalent question-tool → **degrades to a conversational prose question** | ❌ same | ❌ same |
 
-> **Status (2026-06-21):** Cursor / Copilot / Gemini columns are now
+> **Status (2026-06-21):** Cursor / Copilot columns are now
 > audited (web + official docs). Several earlier hints were **stale** and are
-> corrected above: Cursor **does** have a marketplace; all three have blocking
+> corrected above: Cursor **does** have a marketplace; both have blocking
 > hooks, `SKILL.md` skills, subagents, and custom commands; `CURSOR_PLUGIN_ROOT`
 > and `COPILOT_CLI` env vars are **unverified / non-existent** in current docs.
 
@@ -56,21 +56,20 @@ to **other coding harnesses** — Codex first — so an operator can decide what
 1. **The rule file is nearly free.** **Codex, Copilot CLI, and Cursor read
    `AGENTS.md`** — so the generated repo `AGENTS.md` now carries
    himmel's rules for those harnesses, with freshness enforced by the
-   `agents-md-fresh` gate. Only **Gemini** needs a distinct `GEMINI.md` (same
-   content, different filename — a one-line generator target).
+   `agents-md-fresh` gate.
 2. **Skills + subagents are near drop-in; hooks are not.** Cursor and Copilot
    read `.claude/skills` and `.claude/agents` directly, so himmel's skills +
    subagents largely carry. But each harness's **hook schema differs** —
    event-name casing (camel vs Pascal), fail posture (Cursor fails OPEN, Copilot
    fails CLOSED), and payload transport (Cursor env vars incl. a `CLAUDE_PROJECT_DIR`
-   alias; Copilot + Gemini stdin JSON). himmel's guardrail *scripts* are reusable
+   alias; Copilot stdin JSON). himmel's guardrail *scripts* are reusable
    but the *wiring* is per-harness. As under Codex, the **git gates survive on
    every harness** — the safety net.
 
 **Prioritization (operator, 2026-06-21).** **Codex is primary** (operator has
 Codex-primary users; free OAuth usage via hermes). **Cursor** is a reasonable
 second (rule file already covered by AGENTS.md; skills/agents near drop-in).
-**Gemini + Copilot are soft-deferred** — no free usage tier, so the cost of
+**Copilot is soft-deferred** — no free usage tier, so the cost of
 porting + running guardrails there is not yet justified; file the subtasks but
 leave them low-priority until there's demand.
 

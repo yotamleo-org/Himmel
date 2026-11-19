@@ -96,8 +96,8 @@ a profile by skill set would either resolve to `bare` and
 lose the floor's guards and skills or duplicate `worker-impl` exactly. `worker-eval`
 shares `worker-impl`'s plugin selection and exists to carry a different context setting;
 `worker-docs` carries one too, and also keeps `lean-skills` on every lane, where
-`worker-impl` drops it on the native lane (see **Per-profile ceilings** below). What
-distinguishes it is the configured `contextBudget: 55000` target, **not a
+`worker-impl` drops it on the native lane (see **Per-profile ceilings** below). All
+three carry the configured `contextBudget: 55000` target, **not a
 measured attainable floor**. The context-budget audit below retains it for lack of
 three attributable workers; measure a real worker with `scripts/lanes/worker-burn.sh`.
 
@@ -386,7 +386,8 @@ promoting Haiku past the rows above.
 
 ## Non-Claude lane calibration
 
-Every lane `scripts/lanes/lanes.json` registers gets a row here. The columns
+Every active lane `scripts/lanes/lanes.json` registers beyond the native tiers
+(their table is above) gets a row here. The columns
 are the **invariant** calibration facts (class, effort convention, context
 ceiling, cost/quota posture, calibration status) — not the full description,
 sanctioned-script invocation, or roster detail, which stay in `lanes.json` (data) and
@@ -437,7 +438,6 @@ rows below use. `claudex` is the exception: a live implementation lane with no
 | `antigravity-cli` — Antigravity CLI (Google AI Plus) | bulk | simple tasks; `--output-format` drift seen on Windows builds | unverified/varies | none (dashboard-omitted); free AI-Plus quota | **not calibrated yet** — roster + quota shape TO VERIFY at eval; parity/guards UNVERIFIED (permission flags only, no hook surface); egress-DENIED for vault corpora, himmel-code only; route only for free-bank chores / second opinions |
 | `ollama-local` — ollama (local models) | bulk | slow, small tasks | unverified/varies | none (dashboard-omitted); free, local wall-clock | calibrated — zero-egress guarantee is structural; the only salus-eligible backend |
 | `openrouter-free` — OpenRouter free models | bulk | simple tasks only; rate-limited | unverified/varies | none (dashboard-omitted) | **not calibrated yet** — parity/guards UNVERIFIED pending eval; probe live availability before routing, route only for simple free-tier chores |
-| `openrouter-claude` — OpenRouter metered Claude 1M (`scripts/claude-openrouter`) | impl | parent-tier — metered credit, spend deliberately | 1000000 (hard limit) | none (dashboard-omitted); metered OpenRouter API credit | **dormant**: implementation routes to native Claude subagents; opt in per dispatch with `OPENROUTER_CLAUDE_LANE_OK`; fail-closed until an `openrouter` egress cell is declared (vault corpora stay DENY) |
 | `ollama-cloud` — Ollama Cloud (free tier) | bulk | simple tasks; free-tier usage caps | unverified/varies | none (dashboard-omitted) | **not calibrated yet** — parity/guards UNVERIFIED pending eval; egresses to ollama.com, an undeclared egress-matrix provider — vault corpora default-DENY (himmel-code only) until the operator declares a cell; route only for free-bank chores on non-vault corpora |
 
 **`claudex` chief reachability:** a claudex worker has no
