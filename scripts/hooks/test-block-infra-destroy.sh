@@ -84,6 +84,29 @@ assert_rc "a zsh-only escape behind a case arm denies" 2 "$(run_hook "case x in 
 assert_rc "a zsh-only escape behind a failed expansion denies" 2 "$(run_hook "echo \${x:-\"}\"}; terraform \$${q}\\d${q}estroy")"
 assert_rc "an escape both shells read alike behind a case arm allows" 0 "$(run_hook "case x in a) echo;; esac; terraform \$${q}\\x70${q}lan")"
 
+# A command text that ends in a backslash: zsh and bash 3.2 drop the last one and bash 5 keeps it, so
+# the guard cannot know the last word. The same for the body of an eval or a shell -c, which is a
+# command text of its own.
+# shellcheck disable=SC1003 # a lone backslash
+bs='\'
+assert_rc "a command ending in a backslash denies" 2 "$(run_hook "terraform ${v1}${v2}${bs}")"
+assert_rc "a command ending in a backslash after a space denies" 2 "$(run_hook "terraform ${v1}${v2} ${bs}")"
+assert_rc "a command ending in three backslashes denies" 2 "$(run_hook "terraform ${v1}${v2}${bs}${bs}${bs}")"
+assert_rc "a backslash ending the last pipeline segment denies" 2 "$(run_hook "echo x | terraform ${v1}${v2}${bs}")"
+assert_rc "a backslash ending the last segment after a semicolon denies" 2 "$(run_hook "echo x; terraform ${v1}${v2}${bs}")"
+assert_rc "a backslash ending the last segment after && denies" 2 "$(run_hook "echo x && terraform ${v1}${v2}${bs}")"
+assert_rc "an eval body ending in a backslash denies" 2 "$(run_hook "eval 'terraform ${v1}${v2}${bs}'")"
+assert_rc "a bash -c body ending in a backslash denies" 2 "$(run_hook "bash -c 'terraform ${v1}${v2}${bs}'")"
+assert_rc "a sh -c body in double quotes ending in a backslash denies" 2 "$(run_hook "sh -c \"terraform ${v1}${v2}${bs}${bs}\"")"
+assert_rc "an eval body ending in a backslash beside another eval denies" 2 "$(run_hook "eval 'terraform ${v1}${v2}${bs}'; eval 'echo x'")"
+assert_rc "a plain command allows" 0 "$(run_hook "terraform plan")"
+assert_rc "an even run of backslashes is read alike and allows" 0 "$(run_hook "terraform plan${bs}${bs}")"
+assert_rc "an even run on the destroy word is another word and allows" 0 "$(run_hook "terraform ${v1}${v2}${bs}${bs}")"
+assert_rc "a backslash before a trailing newline allows" 0 "$(run_hook "terraform plan${bs}"$'\n')"
+assert_rc "a line continuation between words allows" 0 "$(run_hook "terraform plan ${bs}"$'\n'"  -out=x")"
+assert_rc "a line continuation inside double quotes allows" 0 "$(run_hook "terraform plan \"a${bs}"$'\n'"b\"")"
+assert_rc "an eval body ending in an even run allows" 0 "$(run_hook "eval 'terraform plan${bs}${bs}'")"
+
 # Bypass: INFRADESTROYOK=1 in the launching shell lets a deny row through.
 first_deny=$(head -n1 "$FIX/deny.tsv" | cut -f2)
 assert_rc "bypass INFRADESTROYOK=1" 0 "$(run_hook "$first_deny" INFRADESTROYOK=1)"

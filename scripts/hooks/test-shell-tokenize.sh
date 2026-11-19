@@ -204,6 +204,28 @@ while [ "$n" -lt "${#non_nul[@]}" ]; do
     _st_ansic_e "$body"; check "an escape that is not a NUL in [$body] is accepted" "$?" "0"
     tok "echo x\$'$body'y"; check "a word holding [$body] keeps its reading" "$R:${ST_AMBIG-}:${ST_W[1]}" "0:0:x${want}y"
 done
+# A text that ends in an odd run of backslashes: zsh and bash 3.2 drop the last one and bash 5 keeps
+# it, so the guard cannot know the last word. An even run, a backslash before a space or a newline,
+# and a line continuation inside quotes read alike in all three.
+# shellcheck disable=SC1003 # the texts hold backslashes, not escaped quotes
+trail_bs=('terraform destroy\' 'echo x | terraform destroy\' 'echo x; terraform destroy\' 'echo x && terraform destroy\'
+    $'echo x\nterraform destroy\' 'terraform destroy\\\' 'terraform destroy\\\\\' '\' 'terraform plan\')
+for t in "${trail_bs[@]}"; do
+    _st_endbs "$t"; check "[$t] ends in an odd run of backslashes" "$?" "0"
+    tok "$t"; check "the text [$t] ends in a backslash and fails the tokenizer" "$R:${ST_AMBIG-}" "1:1"
+    st_expand text "$t"; check "st_expand text refuses the text [$t], ST_EXP empty" "$?:${#ST_EXP}" "1:0"
+    st_expand empty "$t"; check "st_expand empty refuses the text [$t], ST_EXP empty" "$?:${#ST_EXP}" "1:0"
+done
+# shellcheck disable=SC1003 # the texts hold backslashes, not escaped quotes
+trail_ok=('terraform destroy\\' 'destroy\' 'terraform destroy\\\\' 'destroy\\' 'terraform destroy\ ' 'destroy ' 'terraform destroy\  ' 'destroy '
+    $'terraform destroy\\\n' destroy $'terraform destroy\\\n\n' destroy 'echo "a\
+b"' ab "echo 'a\\'" 'a\' $'echo a \\\n  b' b 'echo a\\\\ b' 'b')
+n=0
+while [ "$n" -lt "${#trail_ok[@]}" ]; do
+    t=${trail_ok[n]}; want=${trail_ok[n + 1]}; n=$((n + 2))
+    _st_endbs "$t"; check "[$t] does not end in an odd run of backslashes" "$?" "1"
+    tok "$t"; check "the text [$t] is still read, last word [$want]" "$R:${ST_AMBIG-}:${ST_W[ST_N-1]}" "0:0:$want"
+done
 tok 'echo a # c; d'; check "a comment sets COMMENT and ends the command" "$R:$ST_COMMENT:$ST_NSEG:$ST_N" "0:1:1:2"
 tok $'cat <<EOF\nbody $(x)\nEOF\necho after'; check "an unquoted heredoc body with \$(…) sets SUBST" "$R:$ST_HEREDOC:$ST_SUBST" "0:1:1"
 tok $'cat <<\'EOF\'\nbody $(x)\nEOF'; check "a quoted heredoc body is inert" "$R:$ST_HEREDOC:$ST_SUBST" "0:1:0"

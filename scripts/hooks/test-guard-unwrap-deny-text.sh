@@ -145,5 +145,31 @@ run "$BRS" "$R1" READ_SECRETS_OK=1
 want_rc "N5 READ_SECRETS_OK" 2
 first_is "N5 READ_SECRETS_OK" "$L1"
 
+# A command text, or the body of an eval or a shell -c, that ends in a backslash: zsh and bash 3.2
+# drop the last backslash and bash 5 keeps it, so the guard cannot know the last word and denies.
+FIVE="block-read-secrets.sh block-destructive-commands.sh block-tail-pipe-on-gates.sh require-quiet-run.sh block-infra-destroy.sh"
+# shellcheck disable=SC1003 # a lone backslash
+BSL='\'
+for h in $FIVE; do
+  run "$h" "echo hi$BSL"
+  want_rc "E1 $h text ending in a backslash" 2
+  has_line "E1 $h" 'guard-unwrap: refusing a command that' 'backslash that ends the text'
+  has_line "E1 $h" '    Retry: ' 'end a command' 'backslash'
+  run "$h" "echo x | echo hi$BSL"
+  want_rc "E2 $h last pipeline segment ending in a backslash" 2
+  run "$h" "eval 'echo hi$BSL'"
+  want_rc "E3 $h eval body ending in a backslash" 2
+  has_line "E3 $h" 'guard-unwrap: refusing a command that' 'backslash that ends the text'
+  run "$h" "bash -c 'echo hi$BSL'"
+  want_rc "E4 $h shell -c body ending in a backslash" 2
+  run "$h" "eval 'echo hi$BSL'; eval 'echo x'"
+  want_rc "E5 $h eval body ending in a backslash beside another eval" 2
+done
+allowed_by_six E6 "echo hi$BSL$BSL"
+allowed_by_six E7 "echo hi$BSL "
+allowed_by_six E8 "eval 'echo hi$BSL$BSL'"
+allowed_by_six E9 "echo \"a$BSL"$'\n'"b\""
+allowed_by_six E10 "echo hi$BSL"$'\n'
+
 echo "guard-unwrap-deny-text: $pass passed, $fail failed"
 [ "$fail" = 0 ]
