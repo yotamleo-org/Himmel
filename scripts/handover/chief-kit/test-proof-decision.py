@@ -1028,6 +1028,31 @@ class ChiefDecision(unittest.TestCase):
                 self.assertTrue(self.unmet(item + '\n'))
         self.assertFalse(self.unmet('- the run was not blocked by anything\n- no one is awaiting\n'))
 
+    def status_table(self, *statuses, header='| item | Status | Note |'):
+        return header + '\n|---|---|---|\n' + ''.join('| row %d | %s | note |\n' % (n, status) for n, status in enumerate(statuses))
+
+    def test_a_status_column_is_read_strictly_only_when_it_uses_the_proof_vocabulary(self):
+        # no cell starts with a proof word: a ticket-status column, not a proof-row column, and nothing in it refuses
+        self.assertFalse(self.unmet(self.status_table('To Do', 'In Progress', 'Done', 'context', '')))
+        # one proof word and the column is a proof column: every cell must be exactly MET, so a ticket status among them refuses
+        self.assertTrue(self.unmet(self.status_table('To Do', 'MET', 'In Progress')))
+        for column in (('PASS', 'PASS'), ('MET', 'MET (cited)'), ('met', 'Met', 'MET.'), ('MET', 'CONTROL RAN'), ('MET', ''), ('MET', 'Done')):
+            with self.subTest(column=column):
+                self.assertTrue(self.unmet(self.status_table(*column)))
+        self.assertFalse(self.unmet(self.status_table('MET', 'met', '**MET**', ' MET ')))
+        # each word of the one trigger list makes a column strict (a ticket status beside it refuses)
+        for word in ('MET', 'NOT MET', 'OWED', 'PASS', 'FAIL', 'SKIPPED', 'ERROR', 'PENDING', 'WAITING', 'TBD', 'NOT YET DUE', 'AWAITING', 'NOT RUN', 'BLOCKED', '**pass**'):
+            with self.subTest(trigger=word):
+                self.assertTrue(self.unmet(self.status_table('In Progress', word)))
+
+    def test_a_document_with_a_proof_table_and_a_ticket_status_table_is_read_table_by_table(self):
+        sha = 'main=' + 'a'*40
+        proof = '| row | Result | Sha | Evidence |\n|---|---|---|---|\n| one | MET | ' + sha + ' | PASS yes |\n| two | MET | ' + sha + ' | ok |\n'
+        tickets = '| ticket | Status |\n|---|---|\n| HIMMEL-1 | To Do |\n| HIMMEL-2 | In Progress |\n| HIMMEL-3 | Done |\n'
+        self.assertFalse(self.unmet(proof + '\nThe tickets named above:\n\n' + tickets + 'VERDICT CLOSE\n'))
+        self.assertTrue(self.unmet(proof.replace('| two | MET |', '| two | MET (cited) |') + '\n' + tickets))
+        self.assertTrue(self.unmet(proof + '\n' + tickets.replace('| HIMMEL-2 | In Progress |', '| HIMMEL-2 | MET |')))
+
     def test_a_table_written_without_leading_pipes_is_read_as_a_table(self):
         sha = 'main=' + 'a'*40
         for status in ('MET (pending review)', 'Pending 24h', 'NOT RUN'):
