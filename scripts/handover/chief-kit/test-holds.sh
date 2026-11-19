@@ -1294,7 +1294,7 @@ GCQ=(python3 -I "$SUT" git-check)
 # a shell write (sed -i) then a commit by key B on a file key A holds: git's own list, no shell text involved
 GW="$(gcwt sed)"
 put_row a1.txt $K1 alpha "$gcdoc_a" brief "" "$GC"
-( cd "$GW" && sed -i 's/^/x/' a1.txt && git add a1.txt )  # gnu-ok: this suite is Linux-only (header)
+( cd "$GW" && sed -i.bak 's/^/x/' a1.txt && rm -f a1.txt.bak && git add a1.txt )
 run asw "$GW" $K2 "$gcdoc_b" beta git commit -q -m sed-change
 same "T5 an in-place shell rewrite then a commit by B on a file A holds is refused" "$((RC != 0))" 1
 contains "T5 the refusal names the holder" "$ERR" "$K1"
