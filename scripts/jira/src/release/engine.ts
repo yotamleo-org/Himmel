@@ -6,8 +6,8 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { releaseKeyPath, releaseRoot } from './paths.js';
 import { pinnedSha, pinnedRead, boundedDirectoryNames, selectDecisionNames, reviewedSpecHashes, returnSha,
-  canonicalDirectoryNames, returnDirectories, checkLatestReturns,
-  validateCappedFoldProofShape, type CappedFoldProof, type FilePin } from './pinned.js';
+  canonicalDirectoryNames, returnDirectories, checkLatestReturns, declaredTickets, keyOf,
+  validateCappedFoldProofShape, validateCappedProofShape, type AnyCappedProof, type CappedFoldProof, type CappedLedgerProof, type FilePin } from './pinned.js';
 export { pinnedSha, type Pinned } from './pinned.js';
 import { journalPath, readVersionWrites, type Getter, type VersionWriteRow } from './version-writes.js';
 import {
@@ -603,16 +603,18 @@ function canonical(path: string): boolean {
   try { return realpathSync(path) === path; } catch { return false; }
 }
 
-function checkCappedPins(proof: CappedFoldProof): void {
-  for (const directory of returnDirectories(proof.key, proof.spec.path, proof.plan.path, proof.returns)) {
-    checkLatestReturns(directory, canonicalDirectoryNames(directory).names, proof.key, proof.returns);
+function checkCappedPins(proof: AnyCappedProof): void {
+  const key = proof.schema === 2 ? proof.anchor : proof.key;
+  const history = proof.schema === 2 ? new Set(proof.pins.flatMap(pin => pin.role === 'history' ? [pin.path] : [])) : undefined;
+  for (const directory of returnDirectories(key, proof.spec.path, proof.plan.path, proof.returns)) {
+    checkLatestReturns(directory, canonicalDirectoryNames(directory).names, key, proof.returns, history);
   }
   for (const pin of proof.pins) {
     if (pin.role === 'decision-selection') {
       if (!canonical(pin.directory) || JSON.stringify(selectDecisionNames(boundedDirectoryNames(pin.directory), pin.decision)) !== JSON.stringify(pin.names)) {
         throw new Error(`capped evidence selection changed: ${pin.directory}`);
       }
-    } else {
+    } else if (pin.role !== 'member-absence') {
       const got = pinnedRead(pin.path);
       if (!canonical(pin.path) || !('bytes' in got) || got.sha256 !== pin.sha256
         || (pin.role === 'decision' && got.mtime_ms !== pin.mtime_ms)) throw new Error(`capped evidence changed or unreadable: ${pin.path}`);
@@ -633,24 +635,70 @@ function bindCappedProof(proof: CappedFoldProof, input: CappedInputs): void {
   }
 }
 
-function cappedFallback(check: () => void, input: CappedInputs): CappedFoldProof | undefined {
+function bindCappedLedgerProof(proof: CappedLedgerProof, input: CappedInputs): void {
+  const keys = [...input.keys].sort();
+  if (keys.length !== proof.keys.length || keys.some((k, i) => k !== proof.keys[i]) || proof.spec.path !== input.spec.path || proof.spec.sha256 !== input.spec.sha256
+    || proof.plan.path !== input.plan?.path || proof.plan.sha256 !== input.plan.sha256) throw new Error('capped proof input binding disagrees');
+  for (const r of proof.returns) {
+    const file = input.files.find(f => f.kind.toLowerCase() === r.kind);
+    if (!file || file.path !== r.path || file.sha256 !== r.sha256 || file.residuals !== r.residuals
+      || returnSha(file.text) !== r.return_sha) throw new Error(`capped proof ${r.kind} return binding disagrees`);
+  }
+  if (proof.carried.length !== input.residuals) throw new Error('capped proof input binding disagrees');
+  const spec = pinnedRead(input.spec.path);
+  if (!('bytes' in spec) || spec.sha256 !== input.spec.sha256) throw new Error('capped proof input binding disagrees');
+  const declared = declaredTickets(spec.bytes.toString('utf8'));
+  if (!declared || JSON.stringify([...declared].sort()) !== JSON.stringify(proof.keys)) throw new Error('capped proof declared tickets disagree');
+  if (proof.anchor !== keyOf(proof.spec.path)) throw new Error('capped proof anchor disagrees');
+}
+
+const CAPPED_GUARD = 'capped carry requires one key, an explicit distinct plan and paired SPEC/PLAN returns';
+
+function cappedReason(e: unknown): string {
+  const detail = e as { stderr?: string | Buffer; message?: string };
+  return String(detail.stderr || detail.message || e).trim().slice(0, 500);
+}
+
+// One verifier spawn: the proof it printed, or the failure with its reason; `refused` is a non-zero exit of a verifier that ran.
+function spawnCappedFold(input: CappedInputs, flag: '--key' | '--keys', value: string): { output: string } | { reason: string; refused: boolean } {
+  const args = [cappedVerifier(), 'capped-fold', flag, value, '--spec', input.spec.path, '--plan', input.plan!.path,
+    '--spec-return', input.files.find(f => f.kind === 'SPEC')!.path, '--plan-return', input.files.find(f => f.kind === 'PLAN')!.path];
+  try {
+    return { output: execFileSync('bun', args, { encoding: 'utf8', timeout: 30000, maxBuffer: 4 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }) };
+  } catch (e) {
+    const detail = e as { status?: number | null; code?: string };
+    return { reason: cappedReason(e), refused: typeof detail.status === 'number' && detail.status !== 0 && detail.code === undefined };
+  }
+}
+
+function cappedFallback(check: () => void, input: CappedInputs, ledgerBound = false): AnyCappedProof | undefined {
   let refusal: unknown;
   try { check(); return undefined; } catch (e) { refusal = e; }
+  const refuse = (reason: string) => new Error(`${refusal instanceof Error ? refusal.message : refusal}; capped verifier unavailable/refused: ${reason}`);
+  if ((input.keys.length !== 1 && !ledgerBound) || !input.plan || input.plan.path === input.spec.path || input.files.length !== 2) throw refuse(CAPPED_GUARD);
+  let first: string;
+  if (input.keys.length === 1) {
+    const ran = spawnCappedFold(input, '--key', input.keys[0]);
+    if ('output' in ran) {
+      try {
+        const proof = validateCappedFoldProofShape(JSON.parse(ran.output));
+        bindCappedProof(proof, input);
+        checkCappedPins(proof);
+        return proof;
+      } catch (e) { throw refuse(cappedReason(e)); }
+    }
+    if (!ledgerBound || !ran.refused) throw refuse(ran.reason);
+    first = ran.reason;
+  } else first = `v1 route: ${CAPPED_GUARD}`;
+  const ran = spawnCappedFold(input, '--keys', [...input.keys].sort().join(','));
+  if (!('output' in ran)) throw refuse(`${first}; v2: ${ran.reason}`);
   try {
-    if (input.keys.length !== 1 || !input.plan || input.plan.path === input.spec.path
-      || input.files.length !== 2) throw new Error('capped carry requires one key, an explicit distinct plan and paired SPEC/PLAN returns');
-    const args = [cappedVerifier(), 'capped-fold', '--key', input.keys[0], '--spec', input.spec.path, '--plan', input.plan.path,
-      '--spec-return', input.files.find(f => f.kind === 'SPEC')!.path, '--plan-return', input.files.find(f => f.kind === 'PLAN')!.path];
-    const output = execFileSync('bun', args, { encoding: 'utf8', timeout: 30000, maxBuffer: 4 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
-    const proof = validateCappedFoldProofShape(JSON.parse(output));
-    bindCappedProof(proof, input);
+    const proof = validateCappedProofShape(JSON.parse(ran.output));
+    if (proof.schema !== 2) throw new Error(`capped proof schema disagrees: a --keys call was answered with schema ${proof.schema}`);
+    bindCappedLedgerProof(proof, input);
     checkCappedPins(proof);
     return proof;
-  } catch (e) {
-    const detail = e as { stderr?: string | Buffer; message?: string };
-    const reason = String(detail.stderr || detail.message || e).trim().slice(0, 500);
-    throw new Error(`${refusal instanceof Error ? refusal.message : refusal}; capped verifier unavailable/refused: ${reason}`);
-  }
+  } catch (e) { throw refuse(`${first}; v2: ${cappedReason(e)}`); }
 }
 
 function appendSpec(ctx: Ctx, k: Buffer, row: Omit<OperatorRow, 'id' | 'ts'>): OperatorRow {
@@ -685,7 +733,7 @@ export function signSpec(ctx: Ctx, o: {
   const planSha = o.plan ? fileSha(plan) : null;
   const capped = cappedFallback(() => checkResiduals(bytes.toString('utf8'), residuals), {
     keys: [...new Set(o.keys)], spec: { path: spec, sha256: specSha }, plan: o.plan ? { path: plan, sha256: planSha! } : undefined, files, residuals,
-  });
+  }, true);
   const source = o.sourceRoot === undefined ? undefined : sourceIdentity(o.sourceRoot);
   const checkSource = () => {
     if (!source) return;
@@ -815,11 +863,13 @@ function staleReason(r: ReleaseRecord): string | null {
   }
   if (Object.hasOwn(r, 'capped_carry')) {
     try {
-      const proof = validateCappedFoldProofShape(r.capped_carry);
-      if (r.keys?.length !== 1 || !r.plan_path || r.plan_path === r.spec_path) throw new Error('capped proof record binding disagrees');
+      const proof = validateCappedProofShape(r.capped_carry);
+      if ((proof.schema === 1 && r.keys?.length !== 1) || !r.keys?.length || !r.plan_path || r.plan_path === r.spec_path) throw new Error('capped proof record binding disagrees');
       const { files } = readVerdicts((r.verdicts ?? []).map(v => v.path), 'capped proof', { required: ['SPEC', 'PLAN'], allowed: [] }, 'capped proof needs paired returns');
-      bindCappedProof(proof, { keys: r.keys, spec: { path: r.spec_path ?? '', sha256: r.spec_sha256 ?? '' },
-        plan: { path: r.plan_path, sha256: r.plan_sha256 ?? '' }, files, residuals: r.residuals ?? -1 });
+      const input = { keys: r.keys, spec: { path: r.spec_path ?? '', sha256: r.spec_sha256 ?? '' },
+        plan: { path: r.plan_path, sha256: r.plan_sha256 ?? '' }, files, residuals: r.residuals ?? -1 };
+      if (proof.schema === 1) bindCappedProof(proof, input);
+      else bindCappedLedgerProof(proof, input);
       checkCappedPins(proof);
     } catch (e) {
       return `capped proof stale since ${r.id}: ${e instanceof Error ? e.message : e}`;

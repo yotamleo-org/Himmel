@@ -33,6 +33,8 @@ vi.mock('node:fs', async (orig) => {
   }) as typeof m.openSync };
 });
 const cappedCalls = vi.hoisted(() => [] as string[][]);
+// The capped carry v2 hook: every capped-fold spawn attempt is recorded before the real call; armed, a `--keys` spawn is answered by `fn` instead of a child.
+const cappedSpawn = vi.hoisted(() => ({ fn: null as null | ((args: string[], options: unknown) => string), options: [] as unknown[], attempts: [] as string[][] }));
 vi.mock('node:child_process', async (orig) => {
   const m = await orig<typeof import('node:child_process')>();
   const execFileSync = ((...a: Parameters<typeof m.execFileSync>) => {
@@ -41,6 +43,8 @@ vi.mock('node:child_process', async (orig) => {
       && args[1] === dirname(fileURLToPath(import.meta.url)) && args.at(-1) === '--git-common-dir') {
       return m.execFileSync('git', ['-C', sourceFixture.primary, ...args.slice(2)], a[2]);
     }
+    if (args?.[1] === 'capped-fold') cappedSpawn.attempts.push([...args]);
+    if (cappedSpawn.fn && args?.[1] === 'capped-fold' && args.includes('--keys')) { cappedSpawn.options.push(a[2]); cappedCalls.push([...args]); return cappedSpawn.fn([...args], a[2]) as never; }
     const r = m.execFileSync(...a);
     if ((a[1] as string[] | undefined)?.[1] === 'capped-fold') cappedCalls.push([...(a[1] as string[])]);
     if (String((a[1] as string[] | undefined)?.[0] ?? '').endsWith('minerva-trace-lint.sh')) afterMinerva.fn?.();
@@ -2436,6 +2440,45 @@ describe('signed minerva specs', () => {
       await expect(normalSign(linked)).rejects.toThrow(/chief-spawned worker/);
       expect(readOperatorRecords('spec', specEnv())).toEqual([]);
     });
+
+    async function normalGroupSign(f: V2Fixture, sourceRoot?: string) {
+      await cli('operator', 'spec', 'R1', '--keys', f.keys!.join(','), '--spec', f.spec, '--plan', f.plan,
+        '--verdict', f.verdicts[0], '--verdict', f.verdicts[1], '--decision', '387', '--verbatim-file', join(root, 'verbatim.txt'),
+        ...(sourceRoot === undefined ? [] : ['--source-root', sourceRoot]));
+      return readOperatorRecords('spec', specEnv())[0];
+    }
+
+    it('capped carry v2 group signing takes a citation only from the root it names: a candidate-only citation signs with --source-root and not by default, and the candidate scripts never run (E23)', async () => {
+      spawnReset();
+      const scripts = join(linked, 'marketplace/plugins/himmel-ops/scripts');
+      mkdirSync(scripts, { recursive: true });
+      writeFileSync(join(scripts, 'minerva-spec-gate.sh'), 'exit 99\n');
+      writeFileSync(join(scripts, 'minerva-trace-lint.sh'), 'exit 99\n');
+      const f = v2Build({ builder: 'group', citation: 'branch-only/source.ts' });
+      const before = fixtureHashes(f.specsRoot);
+      await expect(normalGroupSign(f)).rejects.toThrow(/cites branch-only\/source.ts, which does not exist/);
+      expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+      const row = await normalGroupSign(f, linked);
+      expect(row).toMatchObject({ source_root: realpathSync(linked), source_head: git(linked, 'rev-parse', 'HEAD'), capped_carry: { schema: 2, mode: 'capped-carry-ledger' } });
+      expect(check(f.keys!)).toEqual(f.keys!.map(k => `SPEC ok ${k} ${f.spec} ${row.id}`));
+      expect(fixtureHashes(f.specsRoot)).toEqual(before);
+      expect(cappedSpawn.attempts.map(a => a[2])).toEqual(['--keys', '--keys']);
+      spawnReset();
+    });
+
+    it('capped carry v2 group signing: a primary-only citation signs by default and is refused through --source-root (E23)', async () => {
+      spawnReset();
+      mkdirSync(join(primary, 'primary-only'));
+      writeFileSync(join(primary, 'primary-only', 'source.ts'), 'export const only = true;\n');
+      const f = v2Build({ builder: 'group', citation: 'primary-only/source.ts' });
+      await expect(normalGroupSign(f, linked)).rejects.toThrow(/cites primary-only\/source.ts, which does not exist/);
+      expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+      const row = await normalGroupSign(f);
+      expect(row).not.toHaveProperty('source_root');
+      expect(row.capped_carry).toMatchObject({ schema: 2, mode: 'capped-carry-ledger' });
+      expect(check(f.keys!)).toEqual(f.keys!.map(k => `SPEC ok ${k} ${f.spec} ${row.id}`));
+      spawnReset();
+    });
   });
 
   it('signs a bucket spec with invariants: the lint reads its paths from the checkout and its invariants from the plan', () => {
@@ -3657,6 +3700,513 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
     expect(r.spec_sha256).toBe(sha(f.spec));
     expect(r.spec_sha256).not.toBe(reviewedSha);
     expect(r.residuals).toBe(3);
+  });
+
+  // ---- capped carry v2: the producer route and the readback by schema (step 4a). Every signing below is in the temporary release root with the synthetic key and a scratch HOME;
+  // each fixture is built by the real builders in its own scratch root inside it, and the artifact tree is never the release root.
+  type V2Fixture = CappedFixture & { keys?: string[]; anchor?: string; members?: string[]; earlier?: string[]; decision?: string | null; all: string[] };
+  const v2Build = (request: Record<string, unknown>): V2Fixture => {
+    if (!realBun) throw new Error('capped fixture requires Bun on PATH; install the pinned .bun-version');
+    const f = JSON.parse(execFileSync(realBun, [join(candidateRoot, 'scripts/telegram/testlib-capped-fold.ts')], {
+      input: JSON.stringify({ scratchRoot: mkdtempSync(join(root, 'v2-')), ...request }), encoding: 'utf8', timeout: 15000,
+    })) as V2Fixture;
+    f.all = f.verdicts;
+    f.verdicts = (['spec', 'plan'] as const).map(kind => f.all.filter(p => p.includes(`.critic-${kind}-r`)).at(-1) as string);
+    return f;
+  };
+  const v2Keys = (f: V2Fixture) => f.keys ?? [/(HIMMEL-\d+)/.exec(basename(f.spec))![1]];
+  const v2Sign = (f: V2Fixture, extra: Record<string, unknown> = {}, c: Ctx = sctx()) => signSpec(c, {
+    keys: v2Keys(f), spec: f.spec, plan: f.plan, verdicts: f.verdicts, decision: '387', verbatim: 'approve', ...extra,
+  });
+  const spawnReset = () => { cappedSpawn.fn = null; cappedSpawn.options.length = 0; cappedSpawn.attempts.length = 0; };
+  const attemptFlags = () => cappedSpawn.attempts.map(a => a[2]);
+  const releaseRows = () => existsSync(join(sctx().dir, 'operator.jsonl')) ? readFileSync(join(sctx().dir, 'operator.jsonl'), 'utf8').trim().split('\n').filter(Boolean).length : 0;
+  // R1 and R2: every file under the fixture's specs root by sha256, every decision file's mtime, and the anchor ledger's row kinds.
+  const v2Tree = (f: V2Fixture) => {
+    const decisions: Record<string, number> = {};
+    const dir = join(f.specsRoot, 'decisions');
+    if (existsSync(dir)) for (const name of readdirSync(dir)) decisions[name] = statSync(join(dir, name)).mtimeMs;
+    return { files: fixtureHashes(f.specsRoot), decisions, rows: readFileSync(f.ledgerPath, 'utf8').trim().split('\n').map(l => (JSON.parse(l) as { row: string }).row) };
+  };
+  const within = (path: string, dir: string) => path === dir || path.startsWith(`${dir}/`);
+  // E19: the release root, the key and HOME are inside temporary roots, the release root and the artifact tree share no path, and nothing under HOME changed.
+  function v2Hermetic(f: V2Fixture): () => void {
+    const home = process.env.HOME as string;
+    const before = readdirSync(home, { recursive: true }).sort();
+    return () => {
+      const env = specEnv();
+      expect(within(env.HIMMEL_RELEASE_STATE_DIR, root) && within(env.HIMMEL_RELEASE_KEY_DIR, root), 'the release root and the key are inside the temporary root').toBe(true);
+      expect(within(home, root) && within(f.specsRoot, root), 'HOME and the fixture are scratch directories inside the temporary root').toBe(true);
+      expect(within(f.specsRoot, env.HIMMEL_RELEASE_STATE_DIR) || within(env.HIMMEL_RELEASE_STATE_DIR, f.specsRoot), 'the release root and the artifact tree share no path').toBe(false);
+      expect(readdirSync(home, { recursive: true }).sort(), 'nothing under HOME changed').toEqual(before);
+    };
+  }
+  // The same fixture the v1 route refuses and the v2 route accepts, with every declaration spec-review reads: a finding heading with a context tag after its severity.
+  function v2OnlyFixture(): V2Fixture {
+    return v2Build({ key: 'HIMMEL-10205',
+      specText: '---\ntickets: HIMMEL-10205\n---\n# HIMMEL-10205 fixture\n\nKey: HIMMEL-10205\n\nEstimate record: estimate.json\n\n## Alternatives considered\n\n- None better.\n\n## Definition of done\n\n- Fixture verifies.\n\n## Invariants\n\nnone\n',
+      planText: '---\ntickets: HIMMEL-10205\n---\n# HIMMEL-10205 plan\n\n- Ticket: HIMMEL-10205\n\n- Task 1: build the fixture.\n',
+      returns: [1, 2, 3].flatMap(round => (['spec', 'plan'] as const).map(kind => ({ kind, round,
+        text: `- **F1** (${kind === 'spec' ? 'medium; Fact overlap' : 'minor'}) residual\n${kind.toUpperCase()} FINDINGS 1\n`,
+        reads: ['spec', 'plan', { path: 'specs/designs/estimate.json', text: '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n' }, { path: 'specs/designs/page.html', text: '<p>fixture</p>\n' }] }))) });
+  }
+  // The armed `--keys` spawn answers with the real verifier's proof, rewritten by `mutate` (the verifier is never edited); a refusal of the real verifier is thrown as the child would.
+  const armProof = (mutate: (proof: any, args: string[]) => void, argv: (args: string[]) => string[] = args => args) => {
+    cappedSpawn.fn = args => {
+      const run = spawnSync(realBun, argv(args), { encoding: 'utf8', timeout: 15000 });
+      if (run.status !== 0) throw Object.assign(new Error(run.stderr), { status: run.status, stderr: run.stderr });
+      const proof = JSON.parse(run.stdout);
+      mutate(proof, args);
+      return JSON.stringify(proof);
+    };
+  };
+  const OTHER = 'f'.repeat(64);
+
+  describe('capped carry v2 producer route', () => {
+    beforeEach(() => {
+      spawnReset();
+      for (const [k, v] of Object.entries(specEnv())) vi.stubEnv(k, v);
+      vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+      vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
+      vi.stubEnv('HOME', mkdtempSync(join(root, 'home-')));
+      declared();
+    });
+    afterEach(() => spawnReset());
+
+    async function cliSign(f: V2Fixture, keys = v2Keys(f)) {
+      writeFileSync(join(root, 'verbatim.txt'), 'approve 1-5\n');
+      const out: string[] = [];
+      const log = vi.spyOn(console, 'log').mockImplementation((s: string) => { out.push(s); });
+      try {
+        await cli('operator', 'spec', 'R1', '--keys', keys.join(','), '--spec', f.spec, '--plan', f.plan, '--verdict', f.verdicts[0], '--verdict', f.verdicts[1],
+          '--decision', '387', '--verbatim-file', join(root, 'verbatim.txt'));
+      } finally { log.mockRestore(); }
+      return out;
+    }
+    const okLines = (keys: string[], f: V2Fixture, id: string) => keys.map(k => `SPEC ok ${k} ${f.spec} ${id}`);
+    const staleLines = (keys: string[], f: V2Fixture, id: string) => keys.map(k => `SPEC-STALE ${k} ${f.spec} ${id}`);
+    const GROUP_REFUSAL = /residual findings.*capped verifier unavailable\/refused: v1 route: capped carry requires one key, an explicit distinct plan and paired SPEC\/PLAN returns; v2: /;
+
+    it('capped carry v2 signs a seven-key group through the real release operator spec: one schema-2 record, seven SPEC ok, the artifact tree unchanged (E1, R1, R2, E19)', async () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!;
+      const done = v2Hermetic(f); const before = v2Tree(f); const rowsBefore = releaseRows();
+      await cliSign(f);
+      const rows = readOperatorRecords('spec', specEnv());
+      expect(rows).toHaveLength(1);
+      const row = rows[0];
+      expect(row.capped_carry).toMatchObject({ schema: 2, reader_version: 2, mode: 'capped-carry-ledger', anchor: f.anchor, keys: [...keys].sort(), epoch: 1 });
+      expect([...(row.keys ?? [])].sort()).toEqual([...keys].sort());
+      expect(row.residuals).toBe(2);
+      expect(row.capped_carry!.carried.map(c => [c.kind, c.finding_id, c.status]), 'R2: every carried entry is open-carried').toEqual([['spec', 'F1', 'open-carried'], ['plan', 'P1', 'open-carried']]);
+      expect(pinned.validateCappedProofShape(row.capped_carry)).toEqual(row.capped_carry);
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+      expect(v2Tree(f), 'R1: the artifact tree, every decision mtime and the ledger rows are unchanged').toEqual(before);
+      expect(releaseRows(), 'the release root gains exactly one signed row').toBe(rowsBefore + 1);
+      expect(cappedSpawn.attempts).toEqual([[expectedVerifier, 'capped-fold', '--keys', [...keys].sort().join(','), '--spec', f.spec, '--plan', f.plan, '--spec-return', f.verdicts[0], '--plan-return', f.verdicts[1]]]);
+      done();
+    }, 60000);
+
+    it('capped carry v2 refuses six of the seven keys and eight keys: no record (E2)', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const done = v2Hermetic(f);
+      expect(() => v2Sign(f, { keys: keys.slice(0, 6) })).toThrow(new RegExp(`${GROUP_REFUSAL.source}capped-fold: capped-fold: tickets must declare only ${keys.slice(0, 6).join(', ')}`));
+      expect(() => v2Sign(f, { keys: [...keys, 'HIMMEL-9808'] })).toThrow(new RegExp(`${GROUP_REFUSAL.source}capped-fold: capped-fold: tickets must declare only ${[...keys, 'HIMMEL-9808'].join(', ')}`));
+      noCappedRows();
+      expect(attemptFlags(), 'a group goes to the v2 route only').toEqual(['--keys', '--keys']);
+      done();
+    });
+
+    it('capped carry v2 group record is stale after each pinned file edit, a ledger append, a history file edited or removed and an unsealed or foreign file (E3)', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f);
+      const ok = okLines(keys, f, row.id); const stale = staleLines(keys, f, row.id);
+      expect(check(keys)).toEqual(ok);
+      const files = row.capped_carry!.pins.filter((p): p is pinned.EvidenceFilePin | pinned.HistoryPin => 'path' in p);
+      expect(new Set(files.map(p => p.role))).toEqual(new Set(['ledger', 'manifest', 'return', 'artifact', 'snapshot', 'decision', 'history']));
+      expect(files.filter(p => p.role === 'history').map(p => p.path).sort()).toEqual([...f.earlier!].sort());
+      for (const pin of files.filter(p => p.role !== 'decision')) {
+        const kept = readFileSync(pin.path);
+        writeFileSync(pin.path, `${kept.toString()}\n`);
+        expect(check(keys), `${pin.role} ${pin.path} edited`).toEqual(stale);
+        writeFileSync(pin.path, kept);
+        expect(check(keys), `${pin.role} ${pin.path} restored`).toEqual(ok);
+      }
+      const ledger = readFileSync(f.ledgerPath, 'utf8');
+      writeFileSync(f.ledgerPath, `${ledger}${ledger.trim().split('\n').at(-1)}\n`);
+      expect(check(keys), 'a ledger row appended').toEqual(stale);
+      writeFileSync(f.ledgerPath, ledger);
+      const history = f.earlier![0]; const kept = readFileSync(history);
+      unlinkSync(history);
+      expect(check(keys), 'a history file removed').toEqual(stale);
+      writeFileSync(history, kept);
+      expect(check(keys)).toEqual(ok);
+      const unsealed = f.verdicts[0].replace('r3.md', 'r4.md');
+      cpSync(f.verdicts[0], unsealed);
+      expect(check(keys), 'a new unsealed return').toEqual(stale);
+      unlinkSync(unsealed);
+      const foreign = join(dirname(f.spec), 'HIMMEL-9801-foreign.md.critic-spec-r3.md');
+      writeFileSync(foreign, 'a foreign return of the same key');
+      expect(check(keys), 'a foreign file of the key at the signed round').toEqual(stale);
+      unlinkSync(foreign);
+      expect(check(keys)).toEqual(ok);
+    }, 60000);
+
+    it.each(['bytes', 'selection', 'mtime', 'file-alias', 'directory-alias'])('capped carry v2 group decision selection, mtime and alias fault is the only cause of the stale read: %s (E3)', fault => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f);
+      const proof = row.capped_carry!; const mtime = statSync(f.decision!).mtimeMs;
+      expect(proof.pins.find(p => p.role === 'decision')).toMatchObject({ path: f.decision, mtime_ms: mtime });
+      expect(proof.pins.some(p => p.role === 'decision-selection')).toBe(true);
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+      const ledger = readFileSync(f.ledgerPath, 'utf8'); const bytes = readFileSync(f.decision!);
+      if (fault === 'bytes') writeFileSync(f.decision!, `${bytes.toString()}changed\n`);
+      if (fault === 'selection') writeFileSync(join(dirname(f.decision!), 'verbatim-decision-990-second.txt'), bytes);
+      if (fault === 'mtime') { utimesSync(f.decision!, mtime / 1000 + 10, mtime / 1000 + 10); expect(readFileSync(f.decision!)).toEqual(bytes); }
+      if (fault === 'file-alias') { const moved = join(dirname(f.specsRoot), 'same-decision'); renameSync(f.decision!, moved); symlinkSync(moved, f.decision!); }
+      if (fault === 'directory-alias') { const moved = join(dirname(f.specsRoot), 'same-decisions'); renameSync(dirname(f.decision!), moved); symlinkSync(moved, dirname(f.decision!)); }
+      for (const pin of proof.pins) if ('path' in pin && pin.role !== 'decision') expect(sha(pin.path), `${pin.role} unchanged`).toBe(pin.sha256);
+      expect(readFileSync(f.ledgerPath, 'utf8')).toBe(ledger);
+      expect(check(keys)).toEqual(staleLines(keys, f, row.id));
+    });
+
+    it('capped carry v2 re-signs a schema-2 group record only by superseding it and keeping every key (E4)', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const first = v2Sign(f);
+      expect(() => v2Sign(f)).toThrow(new RegExp(`${keys[0]} is already signed in ${first.id}; re-sign with --supersedes ${first.id}`));
+      expect(() => v2Sign(f, { keys: keys.slice(0, 6), supersedes: first.id }), 'the verifier refuses six of the seven before the engine reaches its own check').toThrow(GROUP_REFUSAL);
+      expect(() => sign(sctx(), keys.slice(0, 6), spec('HIMMEL-9801-clean.md'), { supersedes: first.id }), 'an ordinary signing that drops a key').toThrow(new RegExp(`--keys must keep every key of ${first.id}; missing ${keys[6]}`));
+      expect(check(keys)).toEqual(okLines(keys, f, first.id));
+      const later = v2Sign(f, { supersedes: first.id }, { ...sctx(), now: () => new Date('2026-10-22T10:00:00.000Z') });
+      expect(later.capped_carry).toMatchObject({ schema: 2 });
+      expect(check(keys)).toEqual(okLines(keys, f, later.id));
+    });
+
+    it('capped carry v2 refuses a group-shaped spec without its Estimate record line through the real release operator spec: no record (E5)', async () => {
+      const keys = ['HIMMEL-9801', 'HIMMEL-9802'];
+      const f = v2Build({ key: keys[0], declarations: false,
+        specText: `---\ntickets: [${keys.join(', ')}]\n---\n# HIMMEL-9801 group\n\nThe contract names every member.\n\n## Alternatives considered\n\n- None better.\n\n## Definition of done\n\n- Fixture verifies.\n\n## Invariants\n\nnone\n`,
+        planText: '# HIMMEL-9801 plan\n\n- Task 1: build the fixture.\n',
+        returns: [1, 2, 3].flatMap(round => (['spec', 'plan'] as const).map(kind => ({ kind, round,
+          text: `- **F1** (${kind === 'spec' ? 'medium; Fact overlap' : 'minor'}) residual\n${kind.toUpperCase()} FINDINGS 1\n`, reads: ['spec', 'plan'] }))) });
+      await expect(cliSign(f, keys)).rejects.toThrow(/release operator spec: minerva-spec-gate.sh refused the spec:/);
+      expect(attemptFlags(), 'the artifact reached the verifier and the lint refused after it').toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    it('capped carry v2 proof is invalid for the unchanged v1 validator, so a v1-aware reader reads it stale (E8)', () => {
+      const f = v2Build({ builder: 'group' }); const row = v2Sign(f);
+      expect(() => pinned.validateCappedFoldProofShape(row.capped_carry)).toThrow('invalid capped-fold proof');
+      expect(pinned.validateCappedProofShape(row.capped_carry)).toEqual(row.capped_carry);
+      expect(pinned.PINNED_READ_VERSION).toBe(1);
+    });
+
+    it('capped carry v2 group refusal names the v1 route before the v2 reason: the verifier refuses a member that holds a ledger, and a spawn times out (E9)', () => {
+      const f = v2Build({ builder: 'group', reset: 'none' }); const keys = f.keys!;
+      writeFileSync(join(pinned.ledgerDirOf(f.specsRoot), `${f.members![0]}.jsonl`), '');
+      expect(() => v2Sign(f)).toThrow(new RegExp(`${GROUP_REFUSAL.source}capped-fold: capped-fold: group member holds ledger state: ${f.members![0]}`));
+      expect(() => v2Sign(f)).toThrow(/residual findings.*one key/);
+      noCappedRows();
+      expect(attemptFlags()).toEqual(['--keys', '--keys']);
+      spawnReset();
+      cappedSpawn.fn = () => { throw Object.assign(new Error('spawnSync bun ETIMEDOUT'), { code: 'ETIMEDOUT' }); };
+      expect(() => v2Sign(f)).toThrow(new RegExp(`${GROUP_REFUSAL.source}spawnSync bun ETIMEDOUT$`));
+      expect(cappedSpawn.options).toEqual([expect.objectContaining({ timeout: 30000, maxBuffer: 4194304 })]);
+      expect(cappedSpawn.attempts).toEqual([[expectedVerifier, 'capped-fold', '--keys', [...keys].sort().join(','), '--spec', f.spec, '--plan', f.plan, '--spec-return', f.verdicts[0], '--plan-return', f.verdicts[1]]]);
+      noCappedRows();
+    });
+
+    it('capped carry v2 one key a v1 verifier accepts is stored as schema 1, byte for byte what the verifier printed, with one --key attempt and no --keys (E11, E15)', () => {
+      const f = cappedFixture(); const done = v2Hermetic(f as V2Fixture);
+      const row = cappedSign('spec', f);
+      expect(row.capped_carry).toMatchObject({ schema: 1, mode: 'capped-carry', key: 'HIMMEL-10205' });
+      const printed = execFileSync(realBun, [expectedVerifier, 'capped-fold', '--key', 'HIMMEL-10205', '--spec', f.spec, '--plan', f.plan, '--spec-return', f.verdicts[0], '--plan-return', f.verdicts[1]], { encoding: 'utf8', timeout: 15000 });
+      expect(JSON.stringify(row.capped_carry)).toBe(printed.trim());
+      expect(cappedSpawn.attempts.slice(0, 1)).toEqual([[expectedVerifier, 'capped-fold', '--key', 'HIMMEL-10205', '--spec', f.spec, '--plan', f.plan, '--spec-return', f.verdicts[0], '--plan-return', f.verdicts[1]]]);
+      expect(attemptFlags().slice(0, 1)).toEqual(['--key']);
+      expect(attemptFlags().includes('--keys')).toBe(false);
+      expect(check(['HIMMEL-10205'])).toEqual([`SPEC ok HIMMEL-10205 ${f.spec} ${row.id}`]);
+      done();
+    });
+
+    it('capped carry v2 known-single refusedCap: v1 refuses, v2 accepts, one schema-2 record, SPEC ok, the artifact tree unchanged (E12, R1, R2)', () => {
+      const f = v2Build({ builder: 'known-single', variant: 'refusedCap' }); const key = v2Keys(f)[0];
+      const done = v2Hermetic(f); const before = v2Tree(f); const rowsBefore = releaseRows();
+      const row = v2Sign(f);
+      expect(row.capped_carry).toMatchObject({ schema: 2, mode: 'capped-carry-ledger', anchor: key, keys: [key], epoch: 0 });
+      expect(attemptFlags(), 'the shipped route first, then v2 with the one key').toEqual(['--key', '--keys']);
+      expect(cappedSpawn.attempts[1].slice(2, 4)).toEqual(['--keys', key]);
+      expect(row.capped_carry!.carried.map(c => [c.kind, c.finding_id, c.status]), 'R2').toEqual([['plan', 'P4', 'open-carried'], ['plan', 'P5', 'open-carried']]);
+      expect(readOperatorRecords('spec', specEnv()).find(r => r.id === row.id)?.capped_carry).toEqual(row.capped_carry);
+      expect(check([key])).toEqual([`SPEC ok ${key} ${f.spec} ${row.id}`]);
+      expect(v2Tree(f), 'R1').toEqual(before);
+      expect(releaseRows()).toBe(rowsBefore + 1);
+      done();
+    });
+
+    it('capped carry v2 admittedNextRound: both routes refuse and the message holds the first route reason, then the v2 reason (E13)', () => {
+      const f = v2Build({ builder: 'known-single', variant: 'admittedNextRound' }); const key = v2Keys(f)[0];
+      expect(() => v2Sign(f)).toThrow(new RegExp(`residual findings.*capped verifier unavailable/refused: capped-fold: capped-fold: header must declare only ${key}; v2: capped-fold: capped-fold: findings have not reached the refused round cap$`));
+      expect(attemptFlags()).toEqual(['--key', '--keys']);
+      noCappedRows();
+    });
+
+    it('capped carry v2 never runs for spec-review: a v2-only artifact is refused by the v1 route alone and signs through release operator spec (E14)', () => {
+      const f = v2OnlyFixture();
+      let refusal = '';
+      try { cappedSign('spec-review', f); } catch (e) { refusal = (e as Error).message; }
+      expect(refusal).toMatch(/residual findings.*capped verifier unavailable\/refused: capped-fold: capped-fold: ineligible finding heading/);
+      expect(refusal, 'the shipped refusal alone, no v2 reason').not.toContain('; v2:');
+      expect(attemptFlags(), 'no --keys spawn from spec-review').toEqual(['--key']);
+      noCappedRows();
+      spawnReset();
+      const row = cappedSign('spec', f);
+      expect(row.capped_carry).toMatchObject({ schema: 2, anchor: 'HIMMEL-10205' });
+      expect(attemptFlags()).toEqual(['--key', '--keys']);
+    });
+
+    it.each(['malformed', 'output', 'reader-version', 'schema', 'key', 'returned-drift', 'latest-return-3'])('capped carry v2 never retries a final failure of the v1 route on v2: %s (P3-2)', mode => {
+      const f = cappedFixture();
+      rejectingBun(mode, () => {
+        expect(() => cappedSign('spec', f)).toThrow(/residual findings.*capped verifier unavailable\/refused:/);
+        expect(attemptFlags(), 'exactly one --key attempt and no --keys').toEqual(['--key']);
+        noCappedRows();
+      });
+    }, 60000);
+
+    it('capped carry v2 never retries after an absent Bun, and goes to v2 only after a non-zero exit of the v1 verifier (P3-2)', () => {
+      const f = cappedFixture();
+      const old = process.env.PATH;
+      process.env.PATH = join(root, 'absent-bun');
+      try { expect(() => cappedSign('spec', f)).toThrow(/residual findings.*capped verifier unavailable\/refused:.*ENOENT/); } finally { process.env.PATH = old; }
+      expect(attemptFlags()).toEqual(['--key']);
+      spawnReset();
+      rejectingBun('nonzero', () => {
+        expect(() => cappedSign('spec', f)).toThrow(/residual findings.*capped verifier unavailable\/refused: rejecting verifier exit; v2: rejecting verifier exit$/);
+        expect(attemptFlags()).toEqual(['--key', '--keys']);
+        spawnReset();
+        expect(() => cappedSign('spec-review', f)).toThrow(/capped verifier unavailable\/refused: rejecting verifier exit$/);
+        expect(attemptFlags(), 'spec-review stops after the one --key attempt').toEqual(['--key']);
+      });
+      noCappedRows();
+    });
+
+    // A forged answer to the v2 spawn is the engine's to refuse, and a refusal on the v2 leg is final: the spawn is made once.
+    const FORGED = ['anchor', 'keys', 'spec-hash', 'plan-hash', 'return-full', 'return-normalized', 'residuals', 'declared-tickets'] as const;
+    it.each(FORGED)('capped carry v2 binds the proof to the signing input: %s', fault => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!;
+      const message = {
+        anchor: /capped proof anchor disagrees$/, keys: /capped proof input binding disagrees$/, 'spec-hash': /capped proof input binding disagrees$/, 'plan-hash': /capped proof input binding disagrees$/,
+        'return-full': /capped proof plan return binding disagrees$/, 'return-normalized': /capped proof plan return binding disagrees$/, residuals: /capped proof plan return binding disagrees$/,
+        'declared-tickets': /capped proof declared tickets disagree$/,
+      }[fault];
+      const requested = fault === 'declared-tickets' ? keys.slice(0, 6) : keys;
+      armProof(p => {
+        const absence = (members: string[]) => { for (const pin of p.pins) if (pin.role === 'member-absence') pin.keys = members; };
+        const rehash = (artifact: { path: string; sha256: string }) => { artifact.sha256 = OTHER; for (const pin of p.pins) if (pin.path === artifact.path) pin.sha256 = OTHER; };
+        if (fault === 'anchor') { p.anchor = p.keys[1]; for (const c of p.carried) c.key = p.keys[1]; absence(p.keys.filter((k: string) => k !== p.keys[1])); }
+        if (fault === 'keys') { p.keys = p.keys.slice(0, 6); absence(p.keys.slice(1)); }
+        if (fault === 'declared-tickets') { p.keys = p.keys.slice(0, 6); absence(p.keys.slice(1)); }
+        if (fault === 'spec-hash') rehash(p.spec);
+        if (fault === 'plan-hash') rehash(p.plan);
+        if (fault === 'return-full') rehash(p.returns[1]);
+        if (fault === 'return-normalized') { p.returns[1].return_sha = OTHER; for (const c of p.carried) if (c.kind === 'plan') c.return_sha = OTHER; }
+        if (fault === 'residuals') { p.returns[1].residuals++; p.carried.push({ ...p.carried.find((c: any) => c.kind === 'plan'), finding_id: 'P2' }); }
+      }, args => args.map((a, i) => i === 3 ? keys.join(',') : a));
+      expect(() => v2Sign(f, { keys: requested })).toThrow(message);
+      expect(attemptFlags(), 'the v2 spawn is made once').toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    it('capped carry v2 refuses an answer that is not a schema-2 proof, and never asks again: schema 1, unparseable, an invalid shape (P3-2)', () => {
+      const f = v2Build({ builder: 'known-single', variant: 'refusedCap' }); const other = cappedFixture();
+      const v1 = execFileSync(realBun, [expectedVerifier, 'capped-fold', '--key', 'HIMMEL-10205', '--spec', other.spec, '--plan', other.plan, '--spec-return', other.verdicts[0], '--plan-return', other.verdicts[1]], { encoding: 'utf8', timeout: 15000 });
+      spawnReset();
+      cappedSpawn.fn = () => v1;
+      expect(() => v2Sign(f)).toThrow(/; v2: capped proof schema disagrees: a --keys call was answered with schema 1$/);
+      expect(attemptFlags()).toEqual(['--key', '--keys']);
+      spawnReset();
+      cappedSpawn.fn = () => 'not JSON';
+      expect(() => v2Sign(f)).toThrow(/; v2: Unexpected token/);
+      expect(attemptFlags()).toEqual(['--key', '--keys']);
+      spawnReset();
+      armProof(p => { p.reader_version = 1; });
+      expect(() => v2Sign(f)).toThrow(/; v2: invalid capped-fold proof$/);
+      expect(attemptFlags()).toEqual(['--key', '--keys']);
+      noCappedRows();
+    });
+
+    it.each(['history-edit', 'history-removed', 'return-edit', 'unaccounted-return'])('capped carry v2 checks every pin of the proof before it is stored: %s', fault => {
+      const f = v2Build({ builder: 'group' });
+      armProof(p => {
+        const history = p.pins.find((pin: any) => pin.role === 'history').path;
+        if (fault === 'history-edit') writeFileSync(history, `${readFileSync(history, 'utf8')}\n`);
+        if (fault === 'history-removed') unlinkSync(history);
+        if (fault === 'return-edit') writeFileSync(p.returns[0].path, `${readFileSync(p.returns[0].path, 'utf8')}\n`);
+        if (fault === 'unaccounted-return') cpSync(p.returns[0].path, p.returns[0].path.replace('r3.md', 'r4.md'));
+      });
+      const expected = fault === 'unaccounted-return' ? /; v2: capped-fold: ambiguous or unaccounted latest return: .*r4\.md$/ : /; v2: capped evidence changed or unreadable: /;
+      expect(() => v2Sign(f)).toThrow(expected);
+      expect(attemptFlags()).toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    it('capped carry v2 reads schema-1 and schema-2 records by their own code, and an unknown schema reads stale (E16)', () => {
+      const single = cappedFixture(); const v1Row = cappedSign('spec', single);
+      const g = v2Build({ builder: 'group' }); const keys = g.keys!; const v2Row = v2Sign(g);
+      expect([v1Row.capped_carry!.schema, v2Row.capped_carry!.schema]).toEqual([1, 2]);
+      const lines = () => check(['HIMMEL-10205', ...keys]);
+      expect(lines()).toEqual([`SPEC ok HIMMEL-10205 ${single.spec} ${v1Row.id}`, ...okLines(keys, g, v2Row.id)]);
+      const copy = (row: typeof v2Row, id: string, schema: number) => ({ ...row, id, supersedes: row.id, capped_carry: { ...JSON.parse(JSON.stringify(row.capped_carry)), schema } });
+      appendChain(join(sctx().dir, 'operator.jsonl'), loadKey(sctx().keyPath), copy(v2Row, 'O-R1-9001', 3));
+      expect(lines()).toEqual([`SPEC ok HIMMEL-10205 ${single.spec} ${v1Row.id}`, ...staleLines(keys, g, 'O-R1-9001')]);
+      appendChain(join(sctx().dir, 'operator.jsonl'), loadKey(sctx().keyPath), copy(v1Row, 'O-R1-9002', 3));
+      expect(lines()).toEqual([`SPEC-STALE HIMMEL-10205 ${single.spec} O-R1-9002`, ...staleLines(keys, g, 'O-R1-9001')]);
+    });
+
+    it('capped carry v2 CLEAN spec and CLEAN plan sign ordinarily: no verifier is spawned and no capped proof is stored (E18)', () => {
+      const p = spec();
+      const row = sign(sctx(), ['K-1'], p);
+      expect(row).not.toHaveProperty('capped_carry');
+      expect(cappedSpawn.attempts).toEqual([]);
+      expect(check(['K-1'])).toEqual([`SPEC ok K-1 ${p} ${row.id}`]);
+    });
+
+    it.each(['null', 'unknown-field', 'schema-1', 'reader-version', 'missing-pin', 'keys', 'anchor', 'spec', 'plan', 'returns', 'count', 'declared-tickets'])('capped carry v2 persisted malformed or unbound proof stale: %s', fault => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f);
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+      const proof = JSON.parse(JSON.stringify(row.capped_carry));
+      const copy: any = { ...row, id: 'O-R1-9000', supersedes: row.id, capped_carry: proof };
+      if (fault === 'null') copy.capped_carry = null;
+      if (fault === 'unknown-field') proof.unknown = true;
+      if (fault === 'schema-1') proof.schema = 1;
+      if (fault === 'reader-version') proof.reader_version = 1;
+      if (fault === 'missing-pin') proof.pins = proof.pins.filter((p: { role: string }) => p.role !== 'ledger');
+      if (fault === 'keys') copy.keys = [...keys, 'HIMMEL-8888'];
+      if (fault === 'anchor') { proof.anchor = keys[1]; for (const c of proof.carried) c.key = keys[1]; for (const pin of proof.pins) if (pin.role === 'member-absence') pin.keys = keys.filter(k => k !== keys[1]); }
+      if (fault === 'spec') { copy.spec_path = join(root, 'same-spec.md'); cpSync(f.spec, copy.spec_path); }
+      if (fault === 'plan') { copy.plan_path = join(root, 'same-plan.md'); cpSync(f.plan, copy.plan_path); }
+      if (fault === 'returns') { const path = join(root, 'same-return.md'); cpSync(f.verdicts[0], path); copy.verdicts = [{ path, sha256: sha(path) }, row.verdicts![1]]; }
+      if (fault === 'count') copy.residuals = 0;
+      if (fault === 'declared-tickets') { copy.keys = keys.slice(0, 6); proof.keys = keys.slice(0, 6); for (const pin of proof.pins) if (pin.role === 'member-absence') pin.keys = keys.slice(1, 6); }
+      appendChain(join(sctx().dir, 'operator.jsonl'), loadKey(sctx().keyPath), copy);
+      expect(readOperatorRecords('spec', specEnv()).at(-1)?.id).toBe(copy.id);
+      expect(check([keys[0]])).toEqual([`SPEC-STALE ${keys[0]} ${copy.spec_path} ${copy.id}`]);
+    });
+
+    it('capped carry v2 stored member-absence pin on another folder reads stale: a scratch folder, another specs root, other keys (E26)', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f);
+      const withAbsence = (id: string, supersedes: string, change: (pin: any) => void) => {
+        const proof = JSON.parse(JSON.stringify(row.capped_carry));
+        for (const pin of proof.pins) if (pin.role === 'member-absence') change(pin);
+        appendChain(join(sctx().dir, 'operator.jsonl'), loadKey(sctx().keyPath), { ...row, id, supersedes, capped_carry: proof });
+      };
+      withAbsence('O-R1-9001', row.id, () => {});
+      expect(check(keys), 'control: an unchanged copy reads fresh').toEqual(okLines(keys, f, 'O-R1-9001'));
+      withAbsence('O-R1-9002', 'O-R1-9001', pin => { pin.directory = join(root, 'scratch-ledgers'); });
+      expect(check(keys)).toEqual(staleLines(keys, f, 'O-R1-9002'));
+      withAbsence('O-R1-9003', 'O-R1-9002', pin => { pin.directory = join(mkdtempSync(join(root, 'other-specs-')), 'specs', 'ledgers', 'spec-rounds'); });
+      expect(check(keys)).toEqual(staleLines(keys, f, 'O-R1-9003'));
+      withAbsence('O-R1-9004', 'O-R1-9003', pin => { pin.keys = pin.keys.slice(1); });
+      expect(check(keys)).toEqual(staleLines(keys, f, 'O-R1-9004'));
+    });
+
+    it('capped carry v2 a guard that refuses before any spawn refuses once with its shipped words, for a group too (P3-2)', () => {
+      const f = v2Build({ builder: 'group' });
+      const guard = /residual findings.*capped verifier unavailable\/refused: capped carry requires one key, an explicit distinct plan and paired SPEC\/PLAN returns$/;
+      expect(() => v2Sign(f, { plan: undefined })).toThrow(guard);
+      expect(() => v2Sign(f, { plan: f.spec })).toThrow(guard);
+      expect(cappedSpawn.attempts, 'no spawn and no v2 reason').toEqual([]);
+      noCappedRows();
+    });
+
+    it('capped carry v2 refuses a spec edited after the verifier answered, at the bind, before any pin is read', () => {
+      const f = v2Build({ builder: 'group' });
+      armProof(() => { writeFileSync(f.spec, `${readFileSync(f.spec, 'utf8')}\n`); });
+      expect(() => v2Sign(f)).toThrow(/; v2: capped proof input binding disagrees$/);
+      expect(attemptFlags()).toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    it('capped carry v2 spawns with the keys sorted whatever order they were requested in, and keeps the requested order on the record (E1)', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const reversed = [...keys].reverse();
+      const row = v2Sign(f, { keys: reversed });
+      expect(cappedSpawn.attempts[0].slice(2, 4)).toEqual(['--keys', [...keys].sort().join(',')]);
+      expect(row.keys).toEqual(reversed);
+      expect(row.capped_carry).toMatchObject({ keys: [...keys].sort() });
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+    });
+
+    // A group whose anchor does not sort first, the shape of the real family (its anchor sorts last). The group builder fixes its anchor as the first key,
+    // so the fixture is built by the real round builder with the group's declarations, as the verifier's own anchor-last row is.
+    const ANCHORS = [['last', 'HIMMEL-9899', ['HIMMEL-9801', 'HIMMEL-9802', 'HIMMEL-9803', 'HIMMEL-9899']], ['in the middle', 'HIMMEL-9830', ['HIMMEL-9801', 'HIMMEL-9830', 'HIMMEL-9899']]] as const;
+    function v2AnchorFixture(anchor: string, keys: readonly string[]): V2Fixture {
+      const estimate = { path: 'specs/designs/estimate.json', text: '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n' };
+      const f = v2Build({ key: anchor, declarations: false,
+        specText: `---\ntickets: [${keys.join(', ')}]\n---\n# ${anchor} group\n\nEstimate record: estimate.json\n\nThe contract names every member.\n\n## Alternatives considered\n\n- None better.\n\n## Definition of done\n\n- Fixture verifies.\n\n## Invariants\n\nnone\n`,
+        planText: `# ${anchor} plan\n\n- Task 1: build the fixture.\n`,
+        returns: [1, 2, 3].flatMap(round => (['spec', 'plan'] as const).map(kind => ({ kind, round,
+          text: `- **${kind === 'spec' ? 'F1' : 'P1'}** (${kind === 'spec' ? 'medium; Fact overlap' : 'minor'}) residual\n${kind.toUpperCase()} FINDINGS 1\n`,
+          reads: kind === 'spec' ? ['spec', estimate] : ['spec', 'plan', estimate] }))) });
+      f.keys = [...keys];
+      f.anchor = anchor;
+      return f;
+    }
+
+    it.each(ANCHORS)('capped carry v2 uses the anchor and not the first key in a group whose anchor sorts %s: signing, the stored record and the readback', (_where, anchor, keys) => {
+      const f = v2AnchorFixture(anchor, keys); const sorted = [...keys].sort(); const done = v2Hermetic(f);
+      expect(sorted[0], 'the anchor is not the first key').not.toBe(anchor);
+      const unsealed = f.verdicts[0].replace('r3.md', 'r4.md');
+      armProof(p => { cpSync(p.returns[0].path, unsealed); });
+      expect(() => v2Sign(f, { keys }), 'signing: an unaccounted return of the anchor that appears after the verifier answered').toThrow(/; v2: capped-fold: ambiguous or unaccounted latest return: .*r4\.md$/);
+      noCappedRows();
+      unlinkSync(unsealed);
+      spawnReset();
+      const row = v2Sign(f, { keys });
+      expect(row.capped_carry).toMatchObject({ schema: 2, anchor, keys: sorted });
+      expect(row.capped_carry!.carried.every(c => c.key === anchor), 'every carried finding belongs to the anchor').toBe(true);
+      expect(readOperatorRecords('spec', specEnv()).find(r => r.id === row.id)?.capped_carry, 'the stored record').toEqual(row.capped_carry);
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+      cpSync(f.verdicts[0], unsealed);
+      expect(check(keys), 'the readback: a return of the anchor above the signed round copied in later').toEqual(staleLines(keys, f, row.id));
+      unlinkSync(unsealed);
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+      done();
+    });
+
+    // The key-set check of the bind has two halves; the verifier is always asked for the real keys and the signing input differs from them.
+    const realKeys = (keys: string[]) => (args: string[]) => args.map((a, i) => i === 3 ? keys.join(',') : a);
+    it('capped carry v2 refuses a proof whose keys are a strict superset of the signing input, the input being a prefix of them', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!;
+      armProof(() => {}, realKeys(keys));
+      expect(() => v2Sign(f, { keys: keys.slice(0, 6) })).toThrow(/; v2: capped proof input binding disagrees$/);
+      expect(attemptFlags()).toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    it('capped carry v2 refuses a proof whose keys have the signing input\'s count and one different key', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!;
+      armProof(() => {}, realKeys(keys));
+      expect(() => v2Sign(f, { keys: [...keys.slice(0, 6), 'HIMMEL-9808'] })).toThrow(/; v2: capped proof input binding disagrees$/);
+      expect(attemptFlags()).toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    // A bun that kills itself with a signal: its parent sees no exit status and no error code, the case that is final and never retried on v2.
+    function signalBun(signal: string, run: () => void): void {
+      const bin = mkdtempSync(join(root, 'bun-bin-'));
+      writeFileSync(join(bin, 'bun'), `#!${process.execPath}\nprocess.kill(process.pid, ${JSON.stringify(signal)});\nsetTimeout(() => {}, 5000);\n`);
+      chmodSync(join(bin, 'bun'), 0o755);
+      const old = process.env.PATH;
+      process.env.PATH = `${bin}:${old}`;
+      try { run(); } finally { process.env.PATH = old; rmSync(bin, { recursive: true, force: true }); }
+    }
+    it.each(['SIGKILL', 'SIGTERM'])('capped carry v2 a v1 child killed by %s is final: one --key attempt, no --keys, the shipped refusal words', signal => {
+      const f = cappedFixture();
+      signalBun(signal, () => {
+        let refusal = '';
+        try { cappedSign('spec', f); } catch (e) { refusal = (e as Error).message; }
+        expect(refusal).toMatch(/residual findings.*capped verifier unavailable\/refused: Command failed: bun /);
+        expect(refusal, 'no v2 reason').not.toContain('; v2:');
+      });
+      expect(attemptFlags()).toEqual(['--key']);
+      noCappedRows();
+    });
   });
 });
 
