@@ -2479,6 +2479,80 @@ describe('signed minerva specs', () => {
       expect(check(f.keys!)).toEqual(f.keys!.map(k => `SPEC ok ${k} ${f.spec} ${row.id}`));
       spawnReset();
     });
+
+    it('capped carry v2 docs: each chief doc holds exactly one signing-hash-check marker and the same fenced command after it; the command is silent on equal lint scripts and stops on a changed candidate copy (X1)', () => {
+      const blocks = CHIEF_DOCS.map(rel => {
+        const text = chiefDoc(rel);
+        expect(occurrences(text, SIGNING_MARKER), `${rel}: exactly one marker`).toBe(1);
+        const block = markedBlock(text);
+        expect(block, `${rel}: a fenced block follows the marker`).not.toBeNull();
+        return block as string;
+      });
+      expect(blocks[1], 'the two blocks are byte-equal').toBe(blocks[0]);
+      const scripts = 'marketplace/plugins/himmel-ops/scripts'; const names = ['minerva-spec-gate.sh', 'minerva-trace-lint.sh'];
+      mkdirSync(join(linked, scripts), { recursive: true });
+      for (const name of names) copyFileSync(join(primary, scripts, name), join(linked, scripts, name));
+      const run = (block: string, sentinel: string) => spawnSync('bash', ['-c', `${block}\n: > "$SENTINEL"`], {
+        cwd: root, encoding: 'utf8', env: { PATH: process.env.PATH, HOME: process.env.HOME, CAND: linked, SENTINEL: sentinel } });
+      blocks.forEach((block, i) => {
+        const equal = join(root, `sentinel-equal-${i}`); const changed = join(root, `sentinel-changed-${i}`);
+        const ok = run(block, equal);
+        expect([ok.status, ok.stdout, ok.stderr], 'equal copies: silent, exit 0').toEqual([0, '', '']);
+        expect(existsSync(equal), 'equal copies: the sentinel step ran').toBe(true);
+        writeFileSync(join(linked, scripts, names[1]), 'exit 99\n');
+        const stop = run(block, changed);
+        expect(stop.status, 'a changed candidate copy: non-zero exit').not.toBe(0);
+        expect(stop.stderr, 'a changed candidate copy: STOP on stderr').toContain('STOP');
+        expect(existsSync(changed), 'a changed candidate copy: the abort is proved, no sentinel').toBe(false);
+        copyFileSync(join(primary, scripts, names[1]), join(linked, scripts, names[1]));
+      });
+    });
+
+    it('capped carry v2 docs: both chief docs hold every finite token, each marker or sentence exactly once, and no other display-only or per-family filter text (X2)', () => {
+      const tokens = ['--keys', '--source-root', 'tickets:', 'spec-review', 'jira release spec-check', 'jira roadmap get', 'next-dispatchable.sh', 'gen-briefs.py', 'brief-lint.sh',
+        'roadmap.ts', 'tracker.py', 'board.ts', 'full pause', 'snapshot folder', 'manifest entry'];
+      for (const rel of CHIEF_DOCS) {
+        const text = chiefDoc(rel);
+        for (const token of tokens) expect(occurrences(text, token), `${rel}: ${token}`).toBeGreaterThanOrEqual(1);
+        expect(/--key\b/.test(text), `${rel}: the flag --key by itself`).toBe(true);
+        for (const once of [SIGNING_MARKER, 'none is accepted as display-only', 'not a per-family filter']) expect(occurrences(text, once), `${rel}: ${once}`).toBe(1);
+        expect(occurrences(text, 'display-only'), `${rel}: no other display-only`).toBe(1);
+        expect(occurrences(text, 'per-family filter'), `${rel}: no other per-family filter`).toBe(1);
+      }
+    });
+
+    it('capped carry v2 docs: a changed spec-gate copy on the candidate stops the marked command as well (X1, the spec-gate copy)', () => {
+      const scripts = 'marketplace/plugins/himmel-ops/scripts'; const names = ['minerva-spec-gate.sh', 'minerva-trace-lint.sh'];
+      mkdirSync(join(linked, scripts), { recursive: true });
+      for (const name of names) copyFileSync(join(primary, scripts, name), join(linked, scripts, name));
+      CHIEF_DOCS.forEach((rel, i) => {
+        const block = markedBlock(chiefDoc(rel)) as string; const sentinel = join(root, `sentinel-spec-gate-${i}`);
+        writeFileSync(join(linked, scripts, names[0]), 'exit 99\n');
+        const stop = spawnSync('bash', ['-c', `${block}\n: > "$SENTINEL"`], { cwd: root, encoding: 'utf8', env: { PATH: process.env.PATH, HOME: process.env.HOME, CAND: linked, SENTINEL: sentinel } });
+        expect(stop.status, `${rel}: a changed spec-gate copy: non-zero exit`).not.toBe(0);
+        expect(stop.stderr, `${rel}: a changed spec-gate copy: STOP on stderr`).toContain('STOP');
+        expect(existsSync(sentinel), `${rel}: a changed spec-gate copy: no sentinel`).toBe(false);
+        copyFileSync(join(primary, scripts, names[0]), join(linked, scripts, names[0]));
+      });
+    });
+
+    it('capped carry v2 docs: the section of each chief doc exists once and the two sections are byte-equal (a driver-ruled row beyond the frozen matrix)', () => {
+      const sections = CHIEF_DOCS.map(rel => {
+        const text = chiefDoc(rel);
+        expect(text.split('\n').filter(l => l === SECTION_HEADING), `${rel}: one section heading`).toHaveLength(1);
+        return docSection(text) as string;
+      });
+      expect(sections[1], 'the two sections are byte-equal').toBe(sections[0]);
+    });
+
+    it('capped carry v2 docs: each chief doc section opens with the imperative not-yet sentence, in its first paragraph (a driver-ruled row beyond the frozen matrix)', () => {
+      const notYet = '**Do not use this route for any real signing until the operator has approved live issuance (item 6); until then every command below is for fixtures only.**';
+      for (const rel of CHIEF_DOCS) {
+        const lines = (docSection(chiefDoc(rel)) as string).split('\n');
+        const first = lines.slice(2, lines.findIndex((l, i) => i > 2 && l === '')).join(' ');
+        expect(first.startsWith(notYet), `${rel}: the first paragraph of the section opens with the sentence`).toBe(true);
+      }
+    });
   });
 
   it('signs a bucket spec with invariants: the lint reads its paths from the checkout and its invariants from the plan', () => {
@@ -3762,6 +3836,27 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
   };
   const OTHER = 'f'.repeat(64);
 
+  // ---- the two chief docs of the v2 route, read in the finite format the plan defines (a marker line, the next fenced block, the lines between); no shell is parsed.
+  const CHIEF_DOCS = ['docs/handover/chief-sections/telegram-files.md', 'docs/handover/running-a-chief.md'] as const;
+  const SIGNING_MARKER = '<!-- signing-hash-check -->';
+  const chiefDoc = (rel: string) => readFileSync(join(candidateRoot, rel), 'utf8');
+  const occurrences = (text: string, needle: string) => text.split(needle).length - 1;
+  // The lines between the fence that follows the marker line and the next fence, verbatim; null when no marker line is followed by a closed fence.
+  function markedBlock(text: string): string | null {
+    const lines = text.split('\n'); const marker = lines.indexOf(SIGNING_MARKER);
+    const open = marker < 0 ? -1 : lines.findIndex((l, i) => i > marker && l.startsWith('```'));
+    const close = open < 0 ? -1 : lines.findIndex((l, i) => i > open && l.startsWith('```'));
+    return close < 0 ? null : lines.slice(open + 1, close).join('\n');
+  }
+  // The section of a chief doc: its heading line up to the line before the next heading of the same level (or the end of the file), without trailing blank lines.
+  const SECTION_HEADING = '## Ledger-bound capped carry (proof v2)';
+  function docSection(text: string): string | null {
+    const lines = text.split('\n'); const start = lines.indexOf(SECTION_HEADING);
+    if (start < 0) return null;
+    const next = lines.findIndex((l, i) => i > start && /^## /.test(l));
+    return lines.slice(start, next < 0 ? lines.length : next).join('\n').trimEnd();
+  }
+
   describe('capped carry v2 producer route', () => {
     beforeEach(() => {
       spawnReset();
@@ -4205,6 +4300,203 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
         expect(refusal, 'no v2 reason').not.toContain('; v2:');
       });
       expect(attemptFlags()).toEqual(['--key']);
+      noCappedRows();
+    });
+
+    // ---- step 4b: member state at signing and on every read. One predicate over a fresh listing of the pinned ledger folder and the manifest bytes the record pins.
+    const signedOnly = (row: { id: string }) => expect(readOperatorRecords('spec', specEnv()).map(r => r.id)).toEqual([row.id]);
+
+    it.each(['ledger-file', 'snapshot-folder', 'manifest-entry'])('capped carry v2 group record is stale for every key once a member gains a %s after signing, and a fresh signing of the same group then refuses (E17)', kind => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const member = f.members![1]; const row = v2Sign(f);
+      const dir = pinned.ledgerDirOf(f.specsRoot); const manifest = join(dir, 'manifest.json'); const kept = readFileSync(manifest);
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+      if (kind === 'ledger-file') writeFileSync(join(dir, `${member}.jsonl`), '');
+      if (kind === 'snapshot-folder') mkdirSync(join(dir, member));
+      if (kind === 'manifest-entry') { const m = JSON.parse(kept.toString()); m.keys[member] = { spec: 1, plan: 1 }; writeFileSync(manifest, JSON.stringify(m)); }
+      expect(check(keys), 'every key, the anchor included').toEqual(staleLines(keys, f, row.id));
+      expect(specCheck(specEnv(), keys, null).answer.get(f.anchor!), 'the reason').toEqual({ missing: expect.stringContaining(kind === 'manifest-entry'
+        ? 'capped evidence changed or unreadable' : `capped evidence selection changed: ${dir}`) });
+      spawnReset();
+      expect(() => v2Sign(f, { supersedes: row.id })).toThrow(new RegExp(`${GROUP_REFUSAL.source}capped-fold: capped-fold: group member holds ledger state: ${member}`));
+      expect(attemptFlags()).toEqual(['--keys']);
+      signedOnly(row);
+      if (kind === 'ledger-file') unlinkSync(join(dir, `${member}.jsonl`));
+      if (kind === 'snapshot-folder') rmSync(join(dir, member), { recursive: true });
+      if (kind === 'manifest-entry') writeFileSync(manifest, kept);
+      expect(check(keys), 'the fault was the only cause').toEqual(okLines(keys, f, row.id));
+    });
+
+    it.each(['ledger-file', 'snapshot-folder'])('capped carry v2 a member %s created after the verifier answered and before the append refuses at the signing recheck under the lock, naming the shared ledger folder, and writes no record (E25)', kind => {
+      const f = v2Build({ builder: 'group' }); const dir = pinned.ledgerDirOf(f.specsRoot);
+      const made = join(dir, kind === 'ledger-file' ? `${f.members![0]}.jsonl` : f.members![0]);
+      signingLock.fn = () => { if (kind === 'ledger-file') writeFileSync(made, ''); else mkdirSync(made); };
+      try { expect(() => v2Sign(f)).toThrow(new Error(`capped evidence selection changed: ${dir}`)); } finally { signingLock.fn = null; }
+      expect(existsSync(made), 'the lock seam ran').toBe(true);
+      expect(attemptFlags(), 'the verifier answered once, before the member existed').toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    it('capped carry v2 a listing over the bound is stale for the group and is never read as absence (E17)', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f); const dir = pinned.ledgerDirOf(f.specsRoot);
+      for (let i = 0; i < 4097; i++) writeFileSync(join(dir, `junk-${i}`), '');
+      expect(check(keys)).toEqual(staleLines(keys, f, row.id));
+      expect(specCheck(specEnv(), keys, null).answer.get(keys[0])).toEqual({ missing: expect.stringContaining(`capped evidence selection changed: ${dir}`) });
+      for (let i = 0; i < 4097; i++) unlinkSync(join(dir, `junk-${i}`));
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+    }, 60000);
+
+    it('capped carry v2 a member lock file and an unrelated name are no ledger state, a dangling link under a member name is (E17)', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const member = f.members![0]; const row = v2Sign(f); const dir = pinned.ledgerDirOf(f.specsRoot);
+      writeFileSync(join(dir, `${member}.jsonl.lock`), '');
+      writeFileSync(join(dir, 'notes.txt'), '');
+      expect(check(keys), 'a lock file and an unrelated name').toEqual(okLines(keys, f, row.id));
+      symlinkSync(join(dir, 'gone'), join(dir, `${member}.jsonl`));
+      expect(check(keys), 'a dangling link is present, never absent').toEqual(staleLines(keys, f, row.id));
+    });
+
+    it.each(['names-a-member', 'is-malformed'])('capped carry v2 the member check reads the manifest bytes the record pins: a manifest that %s is stale by the member words, not by a hash (E17)', fault => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f); const dir = pinned.ledgerDirOf(f.specsRoot); const manifest = join(dir, 'manifest.json');
+      const original = JSON.parse(readFileSync(manifest, 'utf8'));
+      const record = (bytes: string | null) => {
+        const proof = JSON.parse(JSON.stringify(row.capped_carry));
+        if (bytes !== null) { writeFileSync(manifest, bytes); for (const pin of proof.pins) if (pin.role === 'manifest') pin.sha256 = sha(manifest); }
+        return { ...row, release: 'R1', capped_carry: proof };
+      };
+      expect(specCheck(specEnv(), keys, null, { records: [record(null)] }).lines, 'control: the record as signed').toEqual(okLines(keys, f, row.id));
+      const out = specCheck(specEnv(), keys, null, { records: [record(fault === 'is-malformed' ? '{ not json' : JSON.stringify({ ...original, keys: { ...original.keys, [f.members![2]]: { spec: 1, plan: 1 } } }))] });
+      expect(out.lines).toEqual(staleLines(keys, f, row.id));
+      expect(out.answer.get(keys[0])).toEqual({ missing: expect.stringContaining(`capped evidence selection changed: ${dir}`) });
+    });
+
+    it('capped carry v2 the member check needs the pinned ledger folder itself: an alias of it is stale although every pinned file still reads (E17)', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f); const dir = pinned.ledgerDirOf(f.specsRoot); const moved = join(dirname(f.specsRoot), 'moved-ledgers');
+      const proof = JSON.parse(JSON.stringify(row.capped_carry));
+      for (const pin of proof.pins) if (typeof pin.path === 'string' && pin.path.startsWith(`${dir}/`)) pin.path = join(moved, pin.path.slice(dir.length + 1));
+      renameSync(dir, moved);
+      symlinkSync(moved, dir);
+      const out = specCheck(specEnv(), keys, null, { records: [{ ...row, release: 'R1', capped_carry: proof }] });
+      expect(out.lines).toEqual(staleLines(keys, f, row.id));
+      expect(out.answer.get(keys[0])).toEqual({ missing: expect.stringContaining(`capped evidence selection changed: ${dir}`) });
+    });
+
+    // ---- step 4c: the `Keys?:` and `Reviewed:` agreement of a return is one call, shared by the signing bind and the readback.
+    const REVIEWED_WORDS = 'capped return Reviewed declaration disagrees with the current spec';
+    const KEYS_WORDS = 'capped return Keys? declaration disagrees with the declared keys';
+    const AGREEMENT = [['reviewed-wrong', REVIEWED_WORDS], ['keys-other', KEYS_WORDS], ['reviewed-doubled', REVIEWED_WORDS], ['keys-doubled', KEYS_WORDS]] as const;
+    const AGREEMENT_CASES = (['spec', 'plan'] as const).flatMap(which => AGREEMENT.map(([fault, words]) => [which, fault, words] as const));
+    const agreementLines = (fault: string, keys: string[], specSha: string): string[] => {
+      const list = [...keys].sort().join(', ');
+      return ({ 'reviewed-wrong': [`Reviewed: spec ${'e'.repeat(64)}`], 'keys-other': [`Keys: ${keys[0]}, HIMMEL-9999`], 'reviewed-doubled': [`Reviewed: spec ${specSha}`, `Reviewed: spec ${specSha}`],
+        'keys-doubled': [`Keys: ${list}`, `Keys: ${list}`], control: [`Keys: ${list}`, `Reviewed: spec ${specSha}`] } as Record<string, string[]>)[fault];
+    };
+    const realProof = (f: V2Fixture) => JSON.parse(spawnSync(realBun, [expectedVerifier, 'capped-fold', '--keys', [...f.keys!].sort().join(','), '--spec', f.spec, '--plan', f.plan,
+      '--spec-return', f.verdicts[0], '--plan-return', f.verdicts[1]], { encoding: 'utf8', timeout: 15000 }).stdout);
+    // The return file gains the lines, and the proof is rewritten consistently to the edited bytes (the return hash, its normalized hash, its pin and its carried entries),
+    // so that every provenance check other than the agreement passes.
+    function editReturn(f: V2Fixture, which: 'spec' | 'plan', lines: string[], proof: any): string {
+      const i = which === 'spec' ? 0 : 1; const path = f.verdicts[i];
+      writeFileSync(path, `${lines.join('\n')}\n${readFileSync(path, 'utf8')}`);
+      proof.returns[i].sha256 = sha(path);
+      proof.returns[i].return_sha = pinned.returnSha(readFileSync(path, 'utf8'));
+      for (const pin of proof.pins) if (pin.path === path) pin.sha256 = sha(path);
+      for (const c of proof.carried) if (c.kind === which) c.return_sha = proof.returns[i].return_sha;
+      return path;
+    }
+    const refusalMessage = (run: () => unknown) => { try { run(); } catch (e) { return (e as Error).message; } return ''; };
+
+    it.each(AGREEMENT_CASES)('capped carry v2 the bind refuses a %s return that disagrees with the declared keys or the spec at signing, with the agreement reason: %s (E10)', (which, fault, words) => {
+      const f = v2Build({ builder: 'group' }); const proof = realProof(f);
+      editReturn(f, which, agreementLines(fault, f.keys!, sha(f.spec)), proof);
+      cappedSpawn.fn = () => JSON.stringify(proof);
+      const message = refusalMessage(() => v2Sign(f));
+      expect(message.endsWith(`; v2: ${words}`), message).toBe(true);
+      expect(message, 'not a hash reason').not.toMatch(/binding disagrees|changed or unreadable/);
+      expect(attemptFlags()).toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    it.each(['spec', 'plan'] as const)('capped carry v2 the bind signs a %s return whose Keys? and Reviewed lines agree, the control of E10', which => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const proof = realProof(f);
+      editReturn(f, which, agreementLines('control', keys, sha(f.spec)), proof);
+      cappedSpawn.fn = () => JSON.stringify(proof);
+      const row = v2Sign(f);
+      expect(row.capped_carry).toMatchObject({ schema: 2, anchor: f.anchor });
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+    });
+
+    it.each(AGREEMENT_CASES)('capped carry v2 the readback reads a %s return that disagrees with the declared keys or the spec stale, with the agreement reason: %s (E22)', (which, fault, words) => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f); const proof = JSON.parse(JSON.stringify(row.capped_carry));
+      const path = editReturn(f, which, agreementLines(fault, keys, sha(f.spec)), proof);
+      const record = { ...row, release: 'R1', verdicts: row.verdicts!.map(v => v.path === path ? { path, sha256: sha(path) } : v), capped_carry: proof };
+      const out = specCheck(specEnv(), keys, null, { records: [record] });
+      expect(out.lines).toEqual(staleLines(keys, f, row.id));
+      const why = (out.answer.get(keys[0]) as { missing: string }).missing;
+      expect(why.endsWith(words), why).toBe(true);
+      expect(why, 'not a hash reason').not.toMatch(/binding disagrees|changed or unreadable/);
+    });
+
+    it.each(['spec', 'plan'] as const)('capped carry v2 the readback reads a %s return whose Keys? and Reviewed lines agree as fresh, the control of E22', which => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f); const proof = JSON.parse(JSON.stringify(row.capped_carry));
+      const path = editReturn(f, which, agreementLines('control', keys, sha(f.spec)), proof);
+      const record = { ...row, release: 'R1', verdicts: row.verdicts!.map(v => v.path === path ? { path, sha256: sha(path) } : v), capped_carry: proof };
+      expect(specCheck(specEnv(), keys, null, { records: [record] }).lines).toEqual(okLines(keys, f, row.id));
+    });
+
+    // ---- follow-ups of the 4b and 4c review: the member check must not depend on another check having run before it.
+    // The shapes of the pinned ledger folder: every pinned file is moved with the real folder, so the file pins read, and a member ledger sits in the moved copy; only the member check stands in the way.
+    it.each(['a plain file', 'a symlink to a file', 'a dangling symlink', 'a directory that cannot be listed'])('capped carry v2 the member check refuses a pinned ledger folder that is %s, although every pinned file lives elsewhere and reads (E17)', shape => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f); const dir = pinned.ledgerDirOf(f.specsRoot); const moved = join(dirname(f.specsRoot), 'moved-ledgers');
+      if (shape === 'a directory that cannot be listed' && process.getuid?.() === 0) return;
+      const proof = JSON.parse(JSON.stringify(row.capped_carry));
+      for (const pin of proof.pins) if (typeof pin.path === 'string' && pin.path.startsWith(`${dir}/`)) pin.path = join(moved, pin.path.slice(dir.length + 1));
+      renameSync(dir, moved);
+      writeFileSync(join(moved, `${f.members![0]}.jsonl`), '');
+      if (shape === 'a plain file') writeFileSync(dir, '');
+      if (shape === 'a symlink to a file') { const target = join(dirname(f.specsRoot), 'a-file'); writeFileSync(target, ''); symlinkSync(target, dir); }
+      if (shape === 'a dangling symlink') symlinkSync(join(dirname(f.specsRoot), 'nowhere'), dir);
+      if (shape === 'a directory that cannot be listed') { mkdirSync(dir); chmodSync(dir, 0o311); }
+      try {
+        const out = specCheck(specEnv(), keys, null, { records: [{ ...row, release: 'R1', capped_carry: proof }] });
+        expect(out.lines).toEqual(staleLines(keys, f, row.id));
+        expect(out.answer.get(keys[0])).toEqual({ missing: expect.stringContaining(`capped evidence selection changed: ${dir}`) });
+      } finally { if (shape === 'a directory that cannot be listed') chmodSync(dir, 0o755); }
+    });
+
+    it('capped carry v2 a doctored verifier answer whose pinned files moved with the ledger folder, now a plain file, is refused when the answer is checked, naming the folder (E17, the signing side)', () => {
+      const f = v2Build({ builder: 'group' }); const dir = pinned.ledgerDirOf(f.specsRoot); const moved = join(dirname(f.specsRoot), 'moved-ledgers');
+      armProof(p => {
+        cpSync(dir, moved, { recursive: true });
+        for (const pin of p.pins) if (typeof pin.path === 'string' && pin.path.startsWith(`${dir}/`)) pin.path = join(moved, pin.path.slice(dir.length + 1));
+        rmSync(dir, { recursive: true });
+        writeFileSync(dir, '');
+        writeFileSync(join(moved, `${f.members![0]}.jsonl`), '');
+      });
+      expect(() => v2Sign(f)).toThrow(new RegExp(`; v2: capped evidence selection changed: ${dir}$`));
+      expect(attemptFlags()).toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    // The last key of the group sorts last among the members: the engine must hand the predicate the whole pinned key list.
+    it('capped carry v2 a member ledger for the last key of the group makes the record stale and refuses at the signing recheck under the lock (E17, E25)', () => {
+      const lock = v2Build({ builder: 'group' }); const last = lock.members!.at(-1) as string; const dir = pinned.ledgerDirOf(lock.specsRoot);
+      expect(last, 'the last member sorts last').toBe([...lock.keys!].sort().at(-1));
+      signingLock.fn = () => writeFileSync(join(dir, `${last}.jsonl`), '');
+      try { expect(() => v2Sign(lock)).toThrow(new Error(`capped evidence selection changed: ${dir}`)); } finally { signingLock.fn = null; }
+      noCappedRows();
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f); const ledgers = pinned.ledgerDirOf(f.specsRoot);
+      writeFileSync(join(ledgers, `${last}.jsonl`), '');
+      expect(check(keys)).toEqual(staleLines(keys, f, row.id));
+      expect(specCheck(specEnv(), keys, null).answer.get(keys[0])).toEqual({ missing: expect.stringContaining(`capped evidence selection changed: ${ledgers}`) });
+    });
+
+    // The verifier answer is one of the places the plan names: a member that exists then is refused there, so the signing lock is never taken.
+    it('capped carry v2 a member that exists when the verifier answer is checked is refused there, before the signing lock is taken (E17)', () => {
+      const f = v2Build({ builder: 'group' }); const dir = pinned.ledgerDirOf(f.specsRoot); let locked = false;
+      armProof(() => { writeFileSync(join(dir, `${f.members![0]}.jsonl`), ''); });
+      signingLock.fn = () => { locked = true; };
+      try { expect(() => v2Sign(f)).toThrow(new RegExp(`; v2: capped evidence selection changed: ${dir}$`)); } finally { signingLock.fn = null; }
+      expect(locked, 'the signing lock was never taken').toBe(false);
+      expect(attemptFlags()).toEqual(['--keys']);
       noCappedRows();
     });
   });

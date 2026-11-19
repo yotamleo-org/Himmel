@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import socket
 import subprocess
@@ -231,14 +232,37 @@ def receipts(wanted, docs=()):
     return found
 
 
-def receipt(record, outcome):
+def attempt_outcomes(attempt_ids):
+    """{attempt_id: every outcome the history holds for it}, from one bounded read; the merged row receipts() builds keeps only the last."""
+    found = {aid: set() for aid in attempt_ids}
+    path = Path.home() / '.himmel/launch-refusals.jsonl'
+    if not path.exists():
+        return found
+    deadline = time.monotonic() + 3
+    with path.open() as stream:
+        while True:
+            line = stream.readline(1048576)
+            if not line:
+                break
+            if time.monotonic() > deadline or (len(line) == 1048576 and not line.endswith('\n')):
+                raise Refused('receipt history exceeds bounded read')
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if row.get('v') == 2 and row.get('kind') == 'launch-attempt' and row.get('attempt_id') in found:
+                found[row['attempt_id']].add(row.get('outcome'))
+    return found
+
+
+def receipt(record, outcome, **extra):
     path = Path.home() / '.himmel/launch-refusals.jsonl'
     path.parent.mkdir(parents=True, exist_ok=True)
     row = dict(v=2, kind='launch-attempt', source='fleet-runtime', ts=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
                attempt_id=record['attempt_id'], name=record['name'], doc=record['doc'],
                family=record['family'], owner=record['owner'], session=record.get('session'), outcome=outcome,
                cause=record.get('cause', 'runtime'), phase='runtime',
-               committer=record.get('committer'), reservation=record.get('reservation'), manifest=record.get('manifest'))
+               committer=record.get('committer'), reservation=record.get('reservation'), manifest=record.get('manifest'), **extra)
     with path.open('a') as stream:
         stream.write(json.dumps(row) + '\n')
         stream.flush()
@@ -269,10 +293,44 @@ def owned_rows(manifest):
         terminal_docs = {}
         for row in history.values():
             if row.get('doc'):
-                terminal_docs[row['doc']] = row.get('outcome')
+                terminal_docs[row['doc']] = row
         rows = [row for row in rows if row['doc'] in current or row.get('registration') != 'pending'
-                or terminal_docs.get(row['doc']) not in ('refused', 'complete')]
+                or not settles(terminal_docs.get(row['doc'], {}), row)]
     return rows
+
+
+def settles(receipt, row):
+    """A terminal receipt ends the pending registration it settled, never one added after it.
+
+    Receipts and registrations are stamped to the second; a tie reads as settled,
+    which is the copied-before-begin manifest whose refusal landed the same second."""
+    return receipt.get('outcome') in ('refused', 'complete') and not row.get('added', '') > receipt.get('ts', '')
+
+
+def named_session_alive(name, doc, deadline):
+    """True unless a full readable /proc pass finds no live `claude -n <name>` working on this doc."""
+    if not name:
+        return False
+    for path in Path('/proc').iterdir():
+        if time.monotonic() >= deadline:
+            return True
+        if not path.name.isdigit():
+            continue
+        try:
+            if (path / 'comm').read_text().strip() != 'claude':
+                continue
+            args = (path / 'cmdline').read_bytes().split(b'\0')
+            if not any(a == b'-n' and i + 1 < len(args) and args[i + 1].decode() == name for i, a in enumerate(args)):
+                continue
+            if path.joinpath('stat').read_text().rsplit(')', 1)[1].split()[0] in ('Z', 'X'):
+                continue
+            env = dict(pair.split(b'=', 1) for pair in (path / 'environ').read_bytes().split(b'\0') if b'=' in pair)
+            if env.get(b'WORKER_SESSION_DOC') == doc.encode():
+                return True
+        except (OSError, ValueError, UnicodeError):
+            if path.exists():
+                return True  # an unreadable candidate cannot prove absence
+    return False
 
 
 def protected(doc):
@@ -285,29 +343,138 @@ def protected(doc):
 
 
 def disposition(doc):
+    """The doc's current managed attempt phase, else its latest terminal receipt, else legacy.
+
+    A terminal receipt is only the ended attempt's own word: it stands for neither a
+    registration added after it nor a doc a live named session is working on. The
+    caller still reads the queue lock and the newest marker before it ends ownership."""
     doc = str(Path(doc).resolve())
     anchor = Path(doc).parent / 'fleet-control.json'
     if anchor.exists():
         for record in read(anchor).get('attempts', {}).values():
             if record.get('doc') == doc:
                 return record.get('phase', 'unknown')
-        legacy = [row for path in anchor.parent.glob('*.fleet.json') for row in read(path).get('workers', [])
-                  if row.get('doc') == doc and row.get('registration') != 'pending']
-        if not legacy:
+        rows = [row for path in anchor.parent.glob('*.fleet.json') for row in read(path).get('workers', [])
+                if row.get('doc') == doc]
+        if all(row.get('registration') == 'pending' for row in rows):
             history = receipts(set(), {doc})
             matching = [row for row in history.values() if row.get('doc') == doc]
-            if matching and matching[-1].get('outcome') in ('refused', 'complete'):
+            if matching and matching[-1].get('outcome') in ('refused', 'complete') and all(settles(matching[-1], row) for row in rows):
+                if named_session_alive(matching[-1].get('name'), doc, time.monotonic() + 2):
+                    return 'unknown'
                 return matching[-1]['outcome']
     return 'unknown' if protected(doc) else 'legacy'
 
 
-def worker_state(doc, timeout=10):
+def worker_state(doc, timeout=10, disposition=None):
+    """The one ownership reading of a doc (ticket-status.sh ts_worker_state). A caller that already holds the doc's
+    disposition, as WorkerStates does, passes it so the shell does not read every manifest again for it."""
+    script, argv = '. "$1/ticket-status.sh"; ts_worker_state "$2"', ['fleet-runtime', str(LIB), doc]
+    if disposition is not None:
+        script, argv = script + ' "$3"', argv + [json.dumps(disposition)]
     try:
-        result = subprocess.run(['bash', '-c', '. "$1/ticket-status.sh"; ts_worker_state "$2"',
-                                 'fleet-runtime', str(LIB), doc], capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(['bash', '-c', script, *argv], capture_output=True, text=True, timeout=timeout)
         return result.stdout.strip() if result.returncode == 0 else 'unknown'
     except (OSError, subprocess.SubprocessError):
         return 'unknown'
+
+
+def read_directory(directory):
+    """Everything disposition reads in one directory, each file once: the anchor's attempts and every manifest's rows by doc."""
+    anchor = directory / 'fleet-control.json'
+    anchored = anchor.exists()
+    attempts = list(read(anchor).get('attempts', {}).values()) if anchored else []
+    rows = {}
+    for path in directory.glob('*.fleet.json'):
+        for row in read(path).get('workers', []):
+            rows.setdefault(row.get('doc'), []).append(row)
+    return anchored, attempts, rows
+
+
+def latest_receipts():
+    """For every doc, the row receipts(set(), {doc}) ends with for it, from one read of the history: one found-map per doc,
+    each attempt admitted for a doc by a row naming that doc or by an earlier row of an attempt already admitted for it."""
+    path = Path.home() / '.himmel/launch-refusals.jsonl'
+    if not path.exists():
+        return {}
+    found, holders = {}, {}
+    deadline = time.monotonic() + 3
+    with path.open() as stream:
+        while True:
+            line = stream.readline(1048576)
+            if not line:
+                break
+            if time.monotonic() > deadline or (len(line) == 1048576 and not line.endswith('\n')):
+                raise Refused('receipt history exceeds bounded read')
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if row.get('v') == 2 and row.get('kind') == 'launch-attempt':
+                doc, attempt = row.get('doc'), row.get('attempt_id')
+                if any(value is not None and not isinstance(value, str) for value in (doc, attempt)):
+                    raise Refused('receipt row cannot be placed')
+                docs = set(holders.get(attempt, ())) | ({doc} if doc is not None else set())
+                if docs and 'attempt_id' not in row:
+                    raise Refused('receipt row has no attempt id')
+                for name in docs:
+                    found.setdefault(name, {})
+                    found[name][attempt] = dict(found[name].pop(attempt, {}), **row)
+                    holders.setdefault(attempt, set()).add(name)
+    return {name: next((row for row in reversed(list(rows.values())) if row.get('doc') == name), None) for name, rows in found.items()}
+
+
+class WorkerStates:
+    """One run's worker states: worker_state(doc) at most once per doc, and every directory's manifests, anchor and the
+    receipt history read once. The answer is still worker_state's own; this only hands it the disposition it would
+    otherwise read doc by doc (batched). A directory or history that cannot be read gets None for every doc that needs it:
+    worker_state then reads that doc the one-doc way and reports what that read reports. A doc a successfully read
+    directory does not name is answered as the one-doc read answers it (legacy: no row, no attempt, no receipt)."""
+
+    def __init__(self):
+        self.states, self.directories, self.history = {}, {}, None
+
+    def __call__(self, doc, timeout=10):
+        if doc not in self.states:
+            self.states[doc] = worker_state(doc, timeout, self.batched(doc))
+        return self.states[doc]
+
+    def batched(self, doc):
+        try:
+            return self._answer(str(Path(doc).resolve()))
+        except Exception:  # noqa: BLE001 - whatever cannot be read or placed here is left to the one-doc read
+            return None
+
+    def _answer(self, doc):
+        directory = Path(doc).parent
+        if directory not in self.directories:
+            try:
+                self.directories[directory] = read_directory(directory)
+            except Exception:  # noqa: BLE001 - the whole directory is left to the one-doc read
+                self.directories[directory] = None
+        if self.directories[directory] is None:
+            return None
+        anchored, attempts, rows = self.directories[directory]
+        rows = rows.get(doc, [])
+        if not anchored:
+            return 'unknown' if any(row.get('attempt', {}).get('phase') in ('pending', 'committed', 'unknown') for row in rows) else 'legacy'
+        for record in attempts:
+            if record.get('doc') == doc:
+                return record.get('phase', 'unknown')
+        if all(row.get('registration') == 'pending' for row in rows):
+            if self.history is None:
+                try:
+                    self.history = latest_receipts()
+                except Exception:  # noqa: BLE001 - the history is left to the one-doc read
+                    self.history = False
+            if self.history is False:
+                return None
+            last = self.history.get(doc)
+            if last and last.get('outcome') in ('refused', 'complete') and all(settles(last, row) for row in rows):
+                if named_session_alive(last.get('name'), doc, time.monotonic() + 2):
+                    return 'unknown'
+                return last['outcome']
+        return 'unknown' if any(r.get('doc') == doc and r.get('phase') in ('pending', 'committed', 'unknown') for r in attempts) else 'legacy'
 
 
 def marker(doc):
@@ -374,6 +541,113 @@ def session_ended(record, deadline):
 
 def same_receipt(record, row):
     return bool(record.get('attempt_id')) and all(row.get(key) == record.get(key) for key in ('attempt_id', 'name', 'doc', 'family', 'owner'))
+
+
+def launch_candidates(record, deadline):
+    """Processes that could still be this attempt's launch, whatever their name. (carrying, unreadable, complete):
+    those whose environment or arguments carry its id (WORKER_SESSION_ATTEMPT_ID or FLEET_LAUNCH_ATTEMPT), and those of
+    this user whose command line names the attempt or its doc but whose environment cannot be read. An unreadable candidate
+    is not proof of absence: the rule session_scan applies to a named candidate it cannot read, refuse. A process of
+    another user, or one that names neither the attempt nor its doc, is not a candidate."""
+    wanted = {('%s=%s' % (key, record['attempt_id'])).encode() for key in ('WORKER_SESSION_ATTEMPT_ID', 'FLEET_LAUNCH_ATTEMPT')}
+    mentions = (record['name'].encode(), record['doc'].encode())
+    me, uid = os.getpid(), os.getuid()
+    carrying, unreadable = [], []
+    for path in Path('/proc').iterdir():
+        if time.monotonic() >= deadline:
+            return carrying, unreadable, False
+        if not path.name.isdigit() or int(path.name) == me:
+            continue
+        try:
+            if path.joinpath('stat').read_text().rsplit(')', 1)[1].split()[0] in ('Z', 'X'):
+                continue
+            who = (path.name, path.joinpath('comm').read_text().strip())
+            args = path.joinpath('cmdline').read_bytes().split(b'\0')
+            if wanted & set(args):
+                carrying.append(who)
+                continue
+            try:
+                environment = set(path.joinpath('environ').read_bytes().split(b'\0'))
+            except OSError:
+                real = int(next(line for line in path.joinpath('status').read_text().splitlines() if line.startswith('Uid:')).split()[1])
+                if path.exists() and real == uid and any(m in a for m in mentions for a in args):
+                    unreadable.append(who)
+                continue
+            if wanted & environment:
+                carrying.append(who)
+        except (OSError, ValueError, UnicodeError, StopIteration):
+            if path.exists():
+                unreadable.append((path.name, '?'))  # an existing process the scan cannot read at all cannot be ruled out
+    return carrying, unreadable, True
+
+
+def settle_blockers(record, outcomes, deadline):
+    """Why a stuck attempt cannot be settled as refused with no session now; empty when every precondition holds.
+    Evidence only: the committed or unknown phase, the process identity of the owner and the committer, one full readable
+    session scan, and the attempt's history. It reads no age and no elapsed time; the deadline only bounds the scan."""
+    blockers = []
+    if record['phase'] not in ('committed', 'unknown'):
+        blockers.append('phase is %s (settle takes a committed or unknown attempt)' % record['phase'])
+    for who in ('owner', 'committer'):
+        state = process_state(record[who]) if record.get(who) else 'dead'
+        if state != 'dead':
+            blockers.append('%s is not proven dead (%s)' % (who, state))
+    seen = sorted(outcomes & {'launched', 'refused', 'complete'})
+    if seen:
+        blockers.append('a %s receipt exists (reconcile settles it)' % '/'.join(seen))
+    if not session_ended(record, deadline):
+        blockers.append('a session may exist (the scan did not prove absence)')
+    carrying, unreadable, complete = launch_candidates(record, deadline)
+    for pid, comm in carrying[:3]:
+        blockers.append('a launch may still be starting: process %s (%s) carries the attempt id' % (pid, comm))
+    for pid, comm in unreadable[:3]:
+        blockers.append('a process of this user that could be the launch cannot be read: %s (%s)' % (pid, comm))
+    if not complete:
+        blockers.append('the process scan did not finish')
+    return blockers
+
+
+def settle_hint(record, outcomes, deadline):
+    """Text for the chief that reads ack. Nothing runs it."""
+    blockers = settle_blockers(record, outcomes, deadline)
+    if blockers:
+        return {'settleable': False, 'text': 'not settleable now: ' + '; '.join(blockers)}
+    command = 'fleet-manifest.sh runtime settle --manifest %s --doc %s --name %s --attempt-id %s --reason %s --confirm-no-session' % (
+        shlex.quote(record['manifest']), shlex.quote(record['doc']), shlex.quote(record['name']), shlex.quote(record['attempt_id']), shlex.quote('<why>'))
+    return {'settleable': True, 'text': 'settleable now. Only after you have checked that no launch of this worker is still starting, and with <why> replaced by the reason in your own words, type: ' + command}
+
+
+def settle_attempt(args, attempts, rows, doc, history):
+    """The one explicit exit for a committed or unknown attempt whose launcher died with no session ever seen: refused,
+    its reservation and family target slot released, its history kept. It runs only when the chief or the operator types
+    it (nothing calls it, ack and reconcile only print the hint) and it needs every precondition of settle_blockers."""
+    if not args.confirm_no_session:
+        raise Refused('settle refused: --confirm-no-session is required')
+    reason = (args.reason or '').strip()
+    if not reason:
+        raise Refused('settle refused: a non-empty --reason is required')
+    if re.fullmatch(r'<[^<>]*>|\[[^\[\]]*\]|\{[^{}]*\}', reason):
+        raise Refused('settle refused: --reason must give the reason in your own words, not a bracketed placeholder')
+    record = attempts.get(args.attempt_id)
+    if not record:
+        row = history.get(args.attempt_id, {})
+        if row.get('outcome') == 'refused' and row.get('cause') == 'settled-no-session' and row.get('doc') == doc:
+            return {'replayed': True, 'phase': 'refused', 'cause': 'settled-no-session'}
+        raise Refused('settle refused: unknown attempt')
+    if record['doc'] != doc or record['name'] != args.name:
+        raise Refused('settle refused: attempt locator conflict')
+    blockers = settle_blockers(record, attempt_outcomes({args.attempt_id})[args.attempt_id], time.monotonic() + 5)
+    if blockers:
+        raise Refused('settle refused: ' + '; '.join(blockers))
+    evidence = dict(phase=record['phase'], owner='dead', committer='dead' if record.get('committer') else None, scan='absent',
+                    carriers='none', session=bool(record.get('session')))
+    record['cause'] = 'settled-no-session'
+    receipt(record, 'refused', reason=reason[:1000], evidence=evidence,
+            settled_by=dict(host=socket.gethostname(), pid=os.getpid(), uid=os.getuid()))
+    release_reservation(record)
+    del attempts[args.attempt_id]
+    rows[:] = [w for w in rows if not (w.get('doc') == doc and w.get('attempt', {}).get('attempt_id') == args.attempt_id)]
+    return {'phase': 'refused', 'cause': 'settled-no-session'}
 
 
 def reconcile(attempts, rows, history, deadline):
@@ -454,6 +728,8 @@ def run(args):
             raise Refused('only the real resource preflight stamps admission')
     manifest = Path(args.manifest).absolute() if args.op in ('ack', 'reconcile') and args.manifest else resolve(args.doc, args.manifest)
     if manifest is None:
+        if args.op == 'settle':
+            raise Refused('settle refused: the doc is not a managed worker')
         return {'managed': False, 'administrative': bool(args.doc and (Path(args.doc).resolve().parent / 'fleet-control.json').exists())}
     anchor = manifest.parent / 'fleet-control.json'
     if args.op == 'resolve':
@@ -495,11 +771,19 @@ def run(args):
                 if time.monotonic() >= deadline or worker_state(row['doc'], max(.01, deadline - time.monotonic())) != 'wrapped':
                     legacy[row['doc']] = dict(doc=row['doc'], label=row.get('label'),
                                               attempt_id=row.get('attempt', {}).get('attempt_id'), phase='legacy-unknown')
-            return dict(value, in_flight=inflight, unknown=unknown,
+            hint_deadline, outcomes = time.monotonic() + 3, attempt_outcomes({r['attempt_id'] for r in unknown})
+            return dict(value, in_flight=inflight,
+                        unknown=[dict(r, settle_hint=settle_hint(r, outcomes[r['attempt_id']], hint_deadline)) for r in unknown],
                         legacy_unknown=list(legacy.values()), quiescent=value['mode'] != 'active' and not attempts and not legacy,
                         launched=[r for r in attempts.values() if r['phase'] == 'launched'])
         if not re.fullmatch(r'[A-Za-z0-9-]{1,80}', args.attempt_id):
             raise Refused('invalid attempt id')
+        if args.op == 'settle':
+            result = settle_attempt(args, attempts, rows, doc, history)
+            if not result.get('replayed'):
+                publish(anchor, control)
+                publish(manifest, data)
+            return result
         record = attempts.get(args.attempt_id)
         if args.op == 'begin':
             if record:
@@ -614,7 +898,7 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('op', choices=['resolve', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'disposition', 'owners', 'reservation'])
+    parser.add_argument('op', choices=['resolve', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'disposition', 'owners', 'reservation', 'settle'])
     parser.add_argument('--doc', default='')
     parser.add_argument('--manifest', default='')
     parser.add_argument('--name', default='')
@@ -623,6 +907,8 @@ def main():
     parser.add_argument('--phase', choices=['refused', 'unknown', 'launched', 'complete'])
     parser.add_argument('--slot', default='')
     parser.add_argument('--lane', choices=['native', 'claudex', 'openrouter', 'deepseek', 'api'], default='native')
+    parser.add_argument('--reason', default='')
+    parser.add_argument('--confirm-no-session', action='store_true')
     argv = sys.argv[1:]
     command = argv[argv.index('--') + 1:] if '--' in argv else []
     args = parser.parse_args(argv[:argv.index('--')] if '--' in argv else argv)

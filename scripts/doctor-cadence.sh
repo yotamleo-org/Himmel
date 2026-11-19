@@ -123,7 +123,8 @@ $(grep -A1 -E "^WARN +$id:" "$log" | head -2)"
 # resumes where it left off, so a register bigger than one box is swept over several passes. Passes go round the
 # registers whose repo still exists (one each before any gets a second), so no register waits behind another. A
 # register the budget stopped at is written to holds-gc.next and goes first on the next run, so the extra passes
-# rotate as well as the first ones. Passes per
+# rotate as well as the first ones. A busy answer judged nothing: that register is counted as starved, not served, and
+# the first one to answer busy goes first on the next run, so the pass is retried and never read as progress. Passes per
 # register stop at a complete cycle (or a busy answer, or a failure) and are capped; the whole step has one time
 # budget (DOCTORCAD_HOLDS_GC_BUDGET) that never stops the first pass of a run, so it ends within the budget plus one
 # pass (30 s). Whether a repo is gone is holds.py's answer (repo-gone), the same one the doctor's C95 uses; only a
@@ -175,18 +176,28 @@ holds_maintenance() { # <primary root>
                 continue
             fi
             holds_gc_note "gc ${repos[i]}: $out"
-            case "$out" in *"cycle=partial"*) state[i]=partial; progress=1 ;; *) state[i]=finished ;; esac
+            case "$out" in
+                *"gc busy"*) state[i]=busy ;;
+                *"cycle=partial"*) state[i]=partial; progress=1 ;;
+                *) state[i]=finished ;;
+            esac
         done
     done
     for ((k = 0; k < n; k++)); do
         i=$(((start + k) % n))
         case "${state[i]}" in
-            open) starved=$((starved + 1)) ;;
+            open|busy) starved=$((starved + 1)) ;;
             partial|capped) served=$((served + 1)); partial=$((partial + 1)) ;;
             failed) served=$((served + 1)); failed=$((failed + 1)) ;;
             *) served=$((served + 1)) ;;
         esac
     done
+    if [ -z "$stop_at" ]; then
+        for ((k = 0; k < n; k++)); do
+            i=$(((start + k) % n))
+            if [ "${state[i]}" = busy ]; then stop_at="${repos[i]}"; break; fi
+        done
+    fi
     if [ -n "$stop_at" ]; then printf '%s\n' "$stop_at" > "$nextf"; else rm -f "$nextf"; fi
     holds_gc_note "run registers=$n served=$served starved=$starved partial=$partial failed=$failed passes=$total"
     return 0

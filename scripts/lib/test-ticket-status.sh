@@ -680,6 +680,29 @@ check "9479 T11: ticket-status's merge-rows read, rate-limited on the read token
         bash "$tmp/mrts.sh" "$tmp/mr12.jsonl" 2>/dev/null | grep -c '"pr":"12"')" 0
 check "9479 T11: and is not retried on main" "$(grep -c '^main ' "$tmp/mrtok.log")" 0
 
+# A caller that already holds the disposition (the dispatcher's one batch read) passes it as the second argument and the
+# one-doc python read is skipped; only a recognised word is taken, and the one-argument call is what it always was.
+u8lib="$tmp/u8lib"; mkdir -p "$u8lib"
+printf 'import sys\nsys.exit(1)\n' > "$u8lib/fleet_runtime.py"  # a disposition read that always faults: the one-argument call reads unknown from it
+printf -- '- 10:00 WRAPPED — ended\n' > "$tmp/u8-wrapped.md"
+printf -- '- 10:00 LIVE — working\n' > "$tmp/u8-working.md"
+: > "$tmp/u8-empty.md"
+ucall() { _TS_LIB_DIR="$u8lib" TICKET_STATUS_QUEUE_LOCK="${U8_LOCK:-$tmp/lock-free.sh}" ts_worker_state "$@"; }
+check "U8: with no second argument the disposition is read the one-doc way (here a fault, so unknown)" "$(ucall "$tmp/u8-wrapped.md")" unknown
+check "U8: a supplied legacy disposition replaces that read, and the newest marker decides" "$(ucall "$tmp/u8-wrapped.md" '"legacy"')" wrapped
+check "U8: a supplied legacy disposition, no marker and a free lock is unknown, not free" "$(ucall "$tmp/u8-empty.md" '"legacy"')" unknown
+for word in pending committed unknown; do
+    check "U8: a supplied $word disposition reads unknown over an end marker" "$(ucall "$tmp/u8-wrapped.md" "\"$word\"")" unknown
+done
+check "U8: a supplied launched disposition leaves the markers and the lock to decide" "$(ucall "$tmp/u8-wrapped.md" '"launched"')" wrapped
+check "U8: a supplied refused disposition, no marker and a free lock reads wrapped" "$(ucall "$tmp/u8-empty.md" '"refused"')" wrapped
+check "U8: a supplied complete disposition, no marker and a free lock reads wrapped" "$(ucall "$tmp/u8-empty.md" '"complete"')" wrapped
+check "U8: a supplied refused disposition does not hide a held lock" "$(U8_LOCK="$tmp/lock.sh" ucall "$tmp/u8-working.md" '"refused"')" live
+check "U8: a supplied refused disposition does not hide a live-class marker over a free lock" "$(ucall "$tmp/u8-working.md" '"refused"')" unknown
+for junk in '"bogus"' 'legacy' '' '"legacy" '; do
+    check "U8: a second argument that is not a recognised word ($junk) is not used" "$(ucall "$tmp/u8-wrapped.md" "$junk")" unknown
+done
+
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-ticket-status.sh"
 else
