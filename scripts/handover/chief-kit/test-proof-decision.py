@@ -374,6 +374,95 @@ class ChiefDecision(unittest.TestCase):
         self.assertNotIn(code, self.closed_refs())
         self.assertEqual(len(self.rows()), 3)
 
+    def add_row(self, text, kind='step', actor='worker', key='HIMMEL-9848', action='next-step'):
+        metadata = {'actor': actor, **({'action': action} if kind == 'step' else {})}
+        return subprocess.check_output(['bash', str(HERE / 'owe.sh'), 'add', '--bucket', str(self.b),
+            '--chief', 'chief', '--kind', kind, '--key', key, '--text', text, '--metadata', json.dumps(metadata)], text=True,
+            env={**os.environ, 'OWE_NOW_EPOCH': '1794860000'}).strip()
+
+    def close_row(self, row_id, key='HIMMEL-9848'):
+        subprocess.check_call(['bash', str(HERE / 'owe.sh'), 'close', '--bucket', str(self.b), '--id', row_id, '--key', key])
+
+    def open_ids(self):
+        return {row['id'] for row in self.rows() if 'id' in row} - self.closed_refs()
+
+    def test_a_close_is_refused_while_another_actor_owes_an_open_step_and_erases_nothing(self):
+        for actor in ('worker', 'chief', 'operator'):
+            with self.subTest(actor=actor):
+                step = self.add_row('Finish the remaining ' + actor + ' slice', actor=actor)
+                before = self.rows()
+                for mode in ('--check', '--settle'):  # the check is as read-only as the settle that refuses
+                    r = self.decide(mode)
+                    self.assertNotEqual(r.returncode, 0, r.stdout)
+                    self.assertIn('open code/chief step ' + step, r.stderr)
+                    self.assertEqual(self.rows(), before)
+                self.assertLessEqual({'o1', step}, self.open_ids())
+                self.close_row(step)
+        # the remainder done, the same decision now settles, once
+        r = self.decide('--settle')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len([row for row in self.rows() if row['op'] == 'close' and row['ref'] == 'o1']), 1)
+
+    def test_a_keep_is_not_blocked_by_an_open_code_step(self):
+        step = self.add_row('Implement the missing accepted case')
+        self.change_decision(verdict='KEEP', next={'actor': 'proof', 'capability': 'read-only proof worker',
+            'text': 'Run the missing positive control', 'due': '2026-11-20', 'wake': 'after station update'})
+        r = self.decide('--settle', status='To Do')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('o1', self.closed_refs())
+        self.assertIn(step, self.open_ids())
+
+    def test_rows_that_are_not_an_open_remainder_of_this_ticket_do_not_block_a_close(self):
+        other_key = self.add_row('Implement an unrelated ticket', key='HIMMEL-10220')
+        done = self.add_row('Implement the finished slice')
+        self.close_row(done)
+        proof_step = self.add_row('Run the live proof', actor='proof')
+        ticket_row = self.add_row('File the follow-up ticket', kind='ticket', actor='operator')
+        reconcile = self.add_row('Reconcile the changed requirements', actor='chief', action='requirements-reconciliation')
+        version = self.add_row('Reconcile version placement', actor='chief', action='version-reconciliation')
+        r = self.decide('--settle')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len([row for row in self.rows() if row['op'] == 'close' and row['ref'] == 'o1']), 1)
+        # nothing else was discharged or erased: the other rows are exactly as open as they were
+        self.assertEqual(self.open_ids(), {other_key, proof_step, ticket_row, reconcile, version})
+
+    PENDING_CELLS = ['PENDING', 'PENDING (due 2026-11-25)', 'not yet due', 'NOT YET DUE — window open', 'WAITING until 2026-11-25',
+                     'Waiting for the 24h window', 'TBD', 'pending: window open']
+    PENDING_ITEMS = ['- PENDING: the 24h observation', '* Waiting for the observation window', '1. TBD control two', '- **PENDING** control two',
+                     '+ NOT YET DUE control two']
+
+    def test_an_observation_not_yet_due_blocks_the_close_whatever_word_the_worker_used(self):
+        good = self.evidence.read_text()
+        for cell in self.PENDING_CELLS:
+            with self.subTest(cell=cell):
+                row = self.pending_with(good + '| 24-hour observation | ' + cell + ' | window open | PASS yes |\n')
+                r = self.check(row)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn('unmet/skipped/error proof row', r.stderr)
+        for item in self.PENDING_ITEMS:
+            with self.subTest(item=item):
+                row = self.pending_with(good + item + '\n')
+                r = self.check(row)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn('unmet/skipped/error proof row', r.stderr)
+        # a labeled Expected column is test input, but an actual status of PENDING is not
+        header = '\n| Observation | Expected | Observed | Requirement status |\n|---|---|---|---|\n'
+        for actual, allowed in (('PENDING', False), ('MET', True)):
+            with self.subTest(actual=actual):
+                row = self.pending_with(good + header + '| 24h | PENDING | window open | ' + actual + ' |\n')
+                self.assertEqual(self.check(row).returncode == 0, allowed)
+
+    def test_a_met_row_that_only_mentions_those_words_stays_closable(self):
+        good = self.evidence.read_text()
+        met = ('| control two | MET | main=' + 'a'*40 + ' | pending count was 0, PASS yes |\n'
+               '| control three | MET | main=' + 'a'*40 + ' | waiting list is empty; tbd none; PASS yes |\n'
+               '| control four | MET | main=' + 'a'*40 + ' | PASS: nothing pending, none waiting, not yet due items: none |\n'
+               '- pending count was 0 and waiting list is empty\n- tbd items: none\n')
+        row = self.pending_with(good + met)
+        r = self.check(row)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(r.stdout)['semantic_coverage'], 'chief-owned')
+
 
 if __name__ == '__main__':
     unittest.main()
