@@ -1224,21 +1224,24 @@ export function reopen(ctx: Ctx, o: { key: string; from: string }): EventRow {
 
 export function request(ctx: Ctx, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): RequestRow {
   if (ctx.env.HIMMEL_RELEASE_MANAGER === '1') throw new Error('release request: the chief writes requests; the RM claims them');
-  return locked(ctx, (l) => {
-    const latest = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k));
-    // A blocker pull is asked for once, in any state, so two racing pull runs cannot file it twice.
-    const pullAgain = (r: RequestRow) => isPullRequest(r) && isPullRequest(o as RequestRow);
-    const dup = [...latest.values()].find((r) => (pending(r) || pullAgain(r)) && r.key === o.key && r.verb === o.verb
-      && r.from_v === o.from_v && r.to_v === o.to_v);
-    // A pending ask that lacks the required-parent relation this ask carries takes it by a signed row of the same request
-    // (same state, so a claim and its epoch stand): returning the older request would drop the relation the chief just stated.
-    if (dup) return pending(dup) ? withRelation(ctx, l.k, dup, o) : dup;
-    // An ask the RM already refused, repeated word for word with nothing new, files nothing: the refusal and its remedy stand.
-    const same = unchangedRefusal(l, o);
-    if (same) return same;
-    const req = seq(`Q-${ctx.release}`, latest.keys());
-    return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...o, req, ts: ts(ctx), state: 'open' });
-  });
+  return locked(ctx, (l) => fileRequest(ctx, l, o));
+}
+
+// The filing, on state a caller loaded under the release lock and still holds: it takes no lock, because the lock is not re-entrant.
+function fileRequest(ctx: Ctx, l: Loaded, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): RequestRow {
+  const latest = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k));
+  // A blocker pull is asked for once, in any state, so two racing pull runs cannot file it twice.
+  const pullAgain = (r: RequestRow) => isPullRequest(r) && isPullRequest(o as RequestRow);
+  const dup = [...latest.values()].find((r) => (pending(r) || pullAgain(r)) && r.key === o.key && r.verb === o.verb
+    && r.from_v === o.from_v && r.to_v === o.to_v);
+  // A pending ask that lacks the required-parent relation this ask carries takes it by a signed row of the same request
+  // (same state, so a claim and its epoch stand): returning the older request would drop the relation the chief just stated.
+  if (dup) return pending(dup) ? withRelation(ctx, l.k, dup, o) : dup;
+  // An ask the RM already refused, repeated word for word with nothing new, files nothing: the refusal and its remedy stand.
+  const same = unchangedRefusal(l, o);
+  if (same) return same;
+  const req = seq(`Q-${ctx.release}`, latest.keys());
+  return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...o, req, ts: ts(ctx), state: 'open' });
 }
 
 const RELATION = ['follow_up_of', 'remainder'] as const;
@@ -1257,10 +1260,13 @@ function withRelation(ctx: Ctx, k: Buffer, dup: RequestRow, o: Omit<RequestRow, 
   return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), k, { ...rest, evidence });
 }
 
+// The op a request into a version asks for, as a record of the operator's words names it: an INTAKE from backlog adds, anything else moves.
+const askOp = (verb: Verb, from_v: string | null): 'add' | 'move' => (verb === 'INTAKE' && from_v === null ? 'add' : 'move');
+
 export function recordRequestDecision(ctx: Ctx, o: { decision: string; words: string; key: string; verb: Verb; from_v: string | null; to_v: string | null }): OperatorRow {
   operatorFence(ctx);
   if (o.to_v === null) throw new Error('release request: --decision records the operator\'s words for a request into a version');
-  const op = o.verb === 'INTAKE' && o.from_v === null ? 'add' : 'move';
+  const op = askOp(o.verb, o.from_v);
   return operatorDecision(ctx, {
     decision: o.decision, keys: [o.key], op, from_v: o.from_v, to_v: o.to_v, verbatim: o.words, ...decisionWords(ctx, o.decision, o.words),
   });
@@ -1281,6 +1287,61 @@ export function requestWithWords(ctx: Ctx, row: Omit<RequestRow, 'req' | 'ts' | 
   const carried = withdrawn && dup && relationOf(row) === '{}' ? JSON.parse(relationOf(dup)) as Record<string, unknown> : {};
   const evidence = { ...carried, ...((row.evidence ?? {}) as Record<string, unknown>), operator: operator.id };
   return { operator, withdrawn, request: request(ctx, { ...row, why: `${row.why} (operator words: ${operator.id})`, evidence }) };
+}
+
+// A row after the verified prefix of the operator or rulings chain hides whatever it says (a newer reversal, a newer refusal),
+// so a record on such a chain is not cited: what is named here is the first row that stopped the chain.
+function chainFaultOf(l: Loaded): string | undefined {
+  const [which, why] = l.operator.bad.length ? ['operator', l.operator.bad[0]] : l.rulings.bad.length ? ['rulings', l.rulings.bad[0]] : [];
+  return which === undefined ? undefined : `the ${which} chain of ${l.decl.release} could not be verified to its end (${why})`;
+}
+
+export function chainFault(ctx: Ctx): string | undefined {
+  const l = load(ctx);
+  return 'unknown' in l ? undefined : chainFaultOf(l);
+}
+
+// The operator's words record that already places a gated ask, or undefined. It is the newest decision naming the key on the
+// versions the ask touches, on no version, or a keep in the backlog whatever --to it names (each retracts an older add;
+// rule()'s own selection leaves such rows out, so this reading is stricter); two at the newest instant are a tie and refuse. It holds checked words (words: 1, never a legacy row),
+// covers exactly this placement under the reducer's scopeOk, and is newer than every ruling on the key. Only the verified
+// chain is read, and a chain with a row after its verified prefix is not read at all: a row that does not verify places nothing.
+function coveringDecision(l: Loaded, ask: Pick<RequestRow, 'verb' | 'key' | 'from_v' | 'to_v'>): OperatorRow | undefined {
+  if ((ask.verb !== 'INTAKE' && ask.verb !== 'REVERSION') || ask.to_v === null) return undefined;
+  if (chainFaultOf(l) !== undefined) return undefined;
+  const touched = [ask.from_v, ask.to_v].filter((v) => v !== null);
+  const named = l.operator.verified.filter((x) => x.kind === 'decision' && (x.keys ?? []).includes(ask.key)
+    && ([x.from_v, x.to_v].some((v) => v != null && touched.includes(v)) || (x.from_v == null && x.to_v == null) || (x.op === 'keep' && x.from_v == null)));
+  const newest = Math.max(...named.map((x) => Date.parse(x.ts)));
+  const top = named.filter((x) => Date.parse(x.ts) === newest);
+  if (top.length !== 1 || top[0].words !== 1) return undefined;
+  const [rec] = top;
+  const op: Op = { kind: askOp(ask.verb, ask.from_v), from_v: ask.from_v, to_v: ask.to_v };
+  if (!scopeOk({ authority: { kind: 'operator', ref: rec.id }, key: ask.key, op }, new Map([[rec.id, rec]]), l.decl.current)) return undefined;
+  const ruled = Math.max(-Infinity, ...l.rulings.verified.filter((r) => r.key === ask.key).map((r) => Date.parse(r.ts)));
+  return newest > ruled ? rec : undefined;
+}
+
+// Read-only: the record requestOnRecord would cite. A release that is not declared, or does not verify, has none.
+export function coveringRecord(ctx: Ctx, ask: Pick<RequestRow, 'verb' | 'key' | 'from_v' | 'to_v'>): OperatorRow | undefined {
+  if ('unknown' in load(ctx)) return undefined;
+  return locked(ctx, (l) => coveringDecision(l, ask));
+}
+
+// A gated ask that a record already places is filed citing that record: no operator row and no words. The fence is the
+// words path's own, so the release manager, a bridge session and a worker still cannot file it. The match and the filing run
+// under ONE hold of the release lock, so the record cited is the one that governs when the request is written: a decision, a
+// ruling or a row that does not verify cannot land between them. Citing writes no row, so unlike a new record it withdraws no
+// pending request for another placement.
+export function requestOnRecord(ctx: Ctx, row: Omit<RequestRow, 'req' | 'ts' | 'state'>): { operator: OperatorRow; request: RequestRow } | undefined {
+  operatorFence(ctx);
+  if ('unknown' in load(ctx)) return undefined;
+  return locked(ctx, (l) => {
+    const operator = coveringDecision(l, row);
+    if (!operator) return undefined;
+    const evidence = { ...((row.evidence ?? {}) as Record<string, unknown>), operator: operator.id };
+    return { operator, request: fileRequest(ctx, l, { ...row, evidence }) };
+  });
 }
 
 // --- the blocker pull ------------------------------------------------------------

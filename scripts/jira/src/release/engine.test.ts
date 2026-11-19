@@ -5127,6 +5127,779 @@ describe('a request names the operator\'s words', () => {
   });
 });
 
+import { requestOnRecord, coveringRecord } from './engine.js';
+import { chainFault } from './engine.js';
+import { withLock } from './ledger.js';
+
+// Decision 2026-11-19, item 8: a gated ask is filed citing an operator record that already names the key and the exact
+// placement, with no words typed again and no new operator row. Each way the analysis says it could go wrong has its own rows.
+describe('a gated ask cites the operator record that already covers it', () => {
+  const FILE = 'Operator, verbatim:\n\n"Approved one more round of the spike"\n\nAnswering the ask on K-5: stop and park.\n';
+  const WORDS = 'Approved one more round';
+  const OTHER_WORDS = 'Approved one more round of the spike';
+  let clock = 0;
+  // Each write lands a minute after the last, so "newer" is a real order.
+  const at = (env: Record<string, string> = consoleEnv): Ctx => {
+    clock += 60_000;
+    const d = new Date(Date.parse('2026-10-21T10:00:00.000Z') + clock);
+    return { ...ctx(env), now: () => d };
+  };
+  const atTs = (t: number): Ctx => ({ ...ctx(), now: () => new Date(t) });
+  beforeEach(() => { clock = 0; });
+  type Placement = [op: string, from_v: string | null, to_v: string | null];
+  type Ask = Omit<RequestRow, 'req' | 'ts' | 'state'>;
+  const ADD_V1: Placement = ['add', null, 'v1'];
+  const decisionFile = () => {
+    const dir = join(root, 'specs', 'decisions');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'verbatim-decision-9-op.txt'), FILE);
+  };
+  const words = (c: Ctx, keys: string[], [op, from_v, to_v]: Placement, text = WORDS) =>
+    operatorDecision(c, { decision: '9', keys, op, from_v, to_v, verbatim: text, ...decisionWords(c, '9', text) });
+  const legacy = (c: Ctx, keys: string[], [op, from_v, to_v]: Placement) =>
+    operatorDecision(c, { decision: '120', keys, op, from_v, to_v, verbatim: 'legacy, no words' });
+  const ask = (o?: Partial<Ask>): Ask => ({ verb: 'INTAKE', key: 'K-5', from_v: null, to_v: 'v1', why: 'the operator asked for one more round', evidence: {}, from: 'console', ...o });
+  const lines = (file: string) => (existsSync(file) ? readFileSync(file, 'utf8').trim().split('\n') : []);
+  const operatorFile = () => join(root, 'release', 'R1', 'operator.jsonl');
+  const queue = () => lines(join(root, 'release', 'R1', 'requests.jsonl')).map((l) => JSON.parse(l) as RequestRow);
+  const forge = (fields: Record<string, unknown>, c: Ctx) =>
+    appendChain<OperatorRow>(operatorFile(), loadKey(join(root, 'keys', 'R1.key')), { ts: c.now().toISOString(), ...fields });
+  const tamper = (nth: number, edit: (row: Record<string, unknown>) => void) => {
+    const rows = lines(operatorFile());
+    const row = JSON.parse(rows[nth < 0 ? rows.length + nth : nth]) as Record<string, unknown>;
+    edit(row);
+    rows[nth < 0 ? rows.length + nth : nth] = JSON.stringify(row);
+    writeFileSync(operatorFile(), `${rows.join('\n')}\n`);
+  };
+  const flip = (hex: unknown) => `${String(hex).startsWith('0') ? '1' : '0'}${String(hex).slice(1)}`;
+  const mirrorOf = (...keys: Array<{ key: string; labels?: string[] }>) => mirror([{ key: 'K-1', fixVersions: ['v1'] }, ...keys.map((k) => ({ fixVersions: [] as string[], ...k }))]);
+  // The RM refuses the ask (BACKLOG, nothing placed): the key's standing refusal.
+  const refuse = async (key: string) => {
+    const q = request(at(), ask({ key }));
+    claim(at(rmEnv));
+    const r = rule(at(rmEnv), {
+      req: q.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'no operator words',
+      reason: `name the operator's words for ${key}`, supersedes: [], authority: { kind: 'rm', ref: null },
+    });
+    await apply(at(rmEnv), r.id);
+    return r;
+  };
+
+  it('files a gated ask with a covering words record and no --decision, cites that record, and writes no operator row', async () => {
+    await setup();
+    decisionFile();
+    const rec = words(at(), ['K-5'], ADD_V1);
+    const before = lines(operatorFile());
+    const got = requestOnRecord(at(), ask());
+    expect(got?.operator.id).toBe(rec.id);
+    expect(got?.request).toMatchObject({ key: 'K-5', verb: 'INTAKE', from_v: null, to_v: 'v1', state: 'open', why: 'the operator asked for one more round', evidence: { operator: rec.id } });
+    expect(lines(operatorFile())).toEqual(before);
+    expect(queue()).toHaveLength(1);
+  });
+
+  it.each([
+    ['an INTAKE from backlog (an add)', ['add', null, 'v1'], {}],
+    ['a REVERSION from backlog (a move)', ['move', null, 'v1'], { verb: 'REVERSION' }],
+    ['a REVERSION out of v2 (a move)', ['move', 'v2', 'v1'], { verb: 'REVERSION', from_v: 'v2' }],
+    ['an INTAKE from v2 (a move)', ['move', 'v2', 'v1'], { from_v: 'v2' }],
+  ] as Array<[string, Placement, Partial<Ask>]>)('%s is placed by exactly its own record', async (_name, placement, change) => {
+    await setup();
+    decisionFile();
+    const rec = words(at(), ['K-5'], placement);
+    expect(requestOnRecord(at(), ask(change))?.request.evidence).toEqual({ operator: rec.id });
+  });
+
+  it('keeps the chief\'s other evidence, and the record it cites always overrides an operator claim in the evidence', async () => {
+    await setup();
+    decisionFile();
+    const rec = words(at(), ['K-5'], ADD_V1);
+    expect(requestOnRecord(at(), ask({ evidence: { pr: 7, operator: 'O-R1-9999' } }))?.request.evidence).toEqual({ pr: 7, operator: rec.id });
+  });
+
+  it('a repeat of the ask returns the same open request, still citing the record, and files and records nothing more', async () => {
+    await setup();
+    decisionFile();
+    const rec = words(at(), ['K-5'], ADD_V1);
+    const first = requestOnRecord(at(), ask());
+    const again = requestOnRecord(at(), ask());
+    expect(again?.request.req).toBe(first?.request.req);
+    expect(again?.request.evidence).toEqual({ operator: rec.id });
+    expect(queue()).toHaveLength(1);
+    expect(lines(operatorFile()).filter((l) => (JSON.parse(l) as OperatorRow).kind === 'decision')).toHaveLength(1);
+  });
+
+  it('with two words records for the same placement it cites the newer, the one the RM reads as governing', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    const newer = words(at(), ['K-5'], ADD_V1, OTHER_WORDS);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(newer.id);
+  });
+
+  it('a newer record for another version, and an older legacy row, do not hide the record that governs this one', async () => {
+    await setup();
+    decisionFile();
+    legacy(at(), ['K-5'], ['keep', 'v1', 'v1']);
+    const rec = words(at(), ['K-5'], ADD_V1);
+    words(at(), ['K-5'], ['add', null, 'v2'], OTHER_WORDS);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(rec.id);
+  });
+
+  it('a release with no record of the key, the standing declare records only, files nothing and answers no record', async () => {
+    await setup();
+    expect(coveringRecord(at(), ask())).toBeUndefined();
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  it('a release that is not declared answers no record and creates no state', () => {
+    const c9: Ctx = { ...ctx(), release: 'R9', dir: join(root, 'release', 'R9'), keyPath: join(root, 'keys', 'R9.key') };
+    expect(requestOnRecord(c9, ask())).toBeUndefined();
+    expect(existsSync(c9.dir)).toBe(false);
+  });
+
+  it('only INTAKE and REVERSION into a version are placed by a record: a DISCHARGE, or a move to backlog, never', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ['discharge', 'v1', null]);
+    words(at(), ['K-5'], ['move', 'v1', null], OTHER_WORDS);
+    expect(requestOnRecord(at(), ask({ verb: 'DISCHARGE', from_v: 'v1', to_v: null }))).toBeUndefined();
+    expect(requestOnRecord(at(), ask({ verb: 'REVERSION', from_v: 'v1', to_v: null }))).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  // way 1: a work permission (and every other non-decision kind) becomes a placement
+  const KINDS = ['declare', 'takeover', 'emergency', 'blocker-pull', 'delivered-follows-merge', 'spec', 'spec-review', 'core-bypass', 'core-snapshot', 'out-of-version'];
+  it.each(KINDS)('way 1: a signed %s row that names the key and the placement never places it', async (kind) => {
+    await setup();
+    decisionFile();
+    forge({ id: `O-R1-forged-${kind}`, kind, decision: '9', keys: ['K-5'], op: 'add', from_v: null, to_v: 'v1', verbatim: WORDS, words: 1, version: 'v1', reason: 'forged' }, at());
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  it('way 1: a live 14-day out-of-version approval alone never places the key, and does not hide a decision newer than it', async () => {
+    await setup();
+    decisionFile();
+    forge({ id: 'O-R1-ov-K-5', kind: 'out-of-version', decision: '518', keys: ['K-5'], version: 'v1', reason: 'work permission' }, at());
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    const rec = words(at(), ['K-5'], ADD_V1);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(rec.id);
+  });
+
+  // way 2: the record does not name the key
+  it.each([
+    ['another key', ['K-6']],
+    ['a longer key that starts with it', ['K-50']],
+    ['a multi-key row without it', ['K-6', 'K-7']],
+  ])('way 2: a words record naming %s does not place the key', async (_name, keys) => {
+    await setup();
+    decisionFile();
+    words(at(), keys, ADD_V1);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  // way 3: right key, wrong placement
+  it.each([
+    ['a move from backlog does not place an INTAKE (an add)', ['move', null, 'v1'], {}],
+    ['an add from backlog does not place a REVERSION from backlog (a move)', ['add', null, 'v1'], { verb: 'REVERSION' }],
+    ['a move from v2 does not place an INTAKE from backlog (a version versus backlog)', ['move', 'v2', 'v1'], {}],
+    ['an add from backlog does not place a move out of v2 (backlog versus a version)', ['add', null, 'v1'], { verb: 'REVERSION', from_v: 'v2' }],
+    ['a move from v3 does not place a move from v2 (the wrong from)', ['move', 'v3', 'v1'], { verb: 'REVERSION', from_v: 'v2' }],
+    ['a move to v3 does not place a move to v1 (the wrong to)', ['move', 'v2', 'v3'], { verb: 'REVERSION', from_v: 'v2' }],
+    ['an add to v2 does not place an INTAKE into v1', ['add', null, 'v2'], {}],
+    ['a keep in v1 places nothing', ['keep', 'v1', 'v1'], {}],
+    ['a remove from v1 places nothing', ['remove', 'v1', null], {}],
+    ['a discharge in v1 places nothing', ['discharge', 'v1', null], {}],
+  ] as Array<[string, Placement, Partial<Ask>]>)('way 3: %s', async (_name, placement, change) => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], placement);
+    expect(requestOnRecord(at(), ask(change))).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  // way 4: legacy rows
+  it('way 4: a legacy decision row (no words:1) for exactly this placement never places the key', async () => {
+    await setup();
+    legacy(at(), ['K-5'], ADD_V1);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  it('way 4: a legacy row newer than the words record governs the key and refuses; an older one does not', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    legacy(at(), ['K-5'], ADD_V1);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+  });
+
+  // way 5: "newer" is fixed, to the millisecond
+  it('way 5: a record older than the key\'s standing refusal is not cited, and the refused ask stays listed with its remedy', async () => {
+    await setup();
+    decisionFile();
+    mirrorOf({ key: 'K-5', labels: ['operator-directed'] });
+    words(at(), ['K-5'], ADD_V1);
+    const r = await refuse('K-5');
+    const before = queue().length;
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toHaveLength(before);
+    expect(state(ctx()).refused_asks).toMatchObject([{ key: 'K-5', ruling: r.id, remedy: expect.stringContaining('--decision <n> --words') }]);
+  });
+
+  it('way 5: a record newer than the standing refusal is cited, and the refusal leaves refused_asks', async () => {
+    await setup();
+    decisionFile();
+    mirrorOf({ key: 'K-5', labels: ['operator-directed'] });
+    await refuse('K-5');
+    const rec = words(at(), ['K-5'], ADD_V1);
+    expect(state(ctx()).refused_asks).toEqual([]);
+    const got = requestOnRecord(at(), ask());
+    expect(got?.operator.id).toBe(rec.id);
+    expect(got?.request.state).toBe('open');
+  });
+
+  it('way 5: a record in the same millisecond as the key\'s last ruling row is a tie and is not cited; one millisecond later it is', async () => {
+    await setup();
+    decisionFile();
+    mirrorOf({ key: 'K-5', labels: ['operator-directed'] });
+    await refuse('K-5');
+    const last = Math.max(...lines(join(root, 'release', 'R1', 'rulings.jsonl')).map((l) => Date.parse((JSON.parse(l) as RulingRow).ts)));
+    words(atTs(last), ['K-5'], ADD_V1);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    const later = words(atTs(last + 1), ['K-5'], ADD_V1, OTHER_WORDS);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(later.id);
+  });
+
+  it('way 5: two records for the same placement in the same millisecond are a tie and neither is cited', async () => {
+    await setup();
+    decisionFile();
+    const t = Date.parse('2026-10-21T12:00:00.000Z');
+    words(atTs(t), ['K-5'], ADD_V1);
+    words(atTs(t), ['K-5'], ADD_V1, OTHER_WORDS);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  it('way 5: of two records at one instant that disagree, none is cited', async () => {
+    await setup();
+    decisionFile();
+    const t = Date.parse('2026-10-21T12:00:00.000Z');
+    words(atTs(t), ['K-5'], ADD_V1);
+    words(atTs(t), ['K-5'], ['remove', 'v1', null], OTHER_WORDS);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+  });
+
+  // way 6: superseded or contradicted by a newer decision
+  it('way 6: an add followed by a later remove: only the governing remove counts, so the add is not cited', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    words(at(), ['K-5'], ['remove', 'v1', null], OTHER_WORDS);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  it('way 6: an add followed by a later legacy keep: the governing legacy row refuses the add', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    legacy(at(), ['K-5'], ['keep', 'v1', 'v1']);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+  });
+
+  it('way 6: a later words record that places it again governs again, and is the one cited', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    words(at(), ['K-5'], ['remove', 'v1', null], OTHER_WORDS);
+    const again = words(at(), ['K-5'], ADD_V1, 'Approved one more round of');
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(again.id);
+  });
+
+  // way 6, review F1: a newer decision that names no version still retracts an older placement
+  const NO_VERSION = [
+    ['legacy keep in backlog', 'legacy', ['keep', null, null]],
+    ['words keep in backlog', 'words', ['keep', null, null]],
+    ['legacy none', 'legacy', ['none', null, null]],
+  ] as Array<[string, 'legacy' | 'words', Placement]>;
+  const recordOf = (kind: 'legacy' | 'words', placement: Placement) => (kind === 'legacy' ? legacy(at(), ['K-5'], placement) : words(at(), ['K-5'], placement, OTHER_WORDS));
+  it.each(NO_VERSION)('way 6: a newer %s, naming no version, supersedes the older add: the add is not cited', async (_name, kind, placement) => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    recordOf(kind, placement);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  it.each(NO_VERSION)('way 6: an OLDER %s, naming no version, does not hide the add that follows it', async (_name, kind, placement) => {
+    await setup();
+    decisionFile();
+    recordOf(kind, placement);
+    const add = words(at(), ['K-5'], ADD_V1);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(add.id);
+  });
+
+  // way 6, review F2: the source side of a move governs too
+  const SOURCE_SIDE = [
+    ['legacy keep of the source', 'legacy', ['keep', 'v2', 'v2']],
+    ['words keep of the source', 'words', ['keep', 'v2', 'v2']],
+    ['legacy remove from the source', 'legacy', ['remove', 'v2', null]],
+    ['words remove from the source', 'words', ['remove', 'v2', null]],
+  ] as Array<[string, 'legacy' | 'words', Placement]>;
+  it.each(SOURCE_SIDE)('way 6: a newer %s supersedes the older move v2 to v1: the move is not cited', async (_name, kind, placement) => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ['move', 'v2', 'v1']);
+    recordOf(kind, placement);
+    expect(requestOnRecord(at(), ask({ verb: 'REVERSION', from_v: 'v2' }))).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  it('way 6: an older keep of the source does not hide the newer move that follows it', async () => {
+    await setup();
+    decisionFile();
+    legacy(at(), ['K-5'], ['keep', 'v2', 'v2']);
+    const move = words(at(), ['K-5'], ['move', 'v2', 'v1']);
+    expect(requestOnRecord(at(), ask({ verb: 'REVERSION', from_v: 'v2' }))?.operator.id).toBe(move.id);
+  });
+
+  // way 6, review 2 F3: a newer keep that names no source version retracts the older add whatever its --to says
+  const KEEP_ELSEWHERE = [
+    ['legacy keep in backlog naming v2', 'legacy', ['keep', null, 'v2']],
+    ['words keep in backlog naming v2', 'words', ['keep', null, 'v2']],
+  ] as Array<[string, 'legacy' | 'words', Placement]>;
+  it.each(KEEP_ELSEWHERE)('way 6: a newer %s supersedes the older add: the add is not cited', async (_name, kind, placement) => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    recordOf(kind, placement);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  it.each(KEEP_ELSEWHERE)('way 6: an OLDER %s does not hide the add that follows it', async (_name, kind, placement) => {
+    await setup();
+    decisionFile();
+    recordOf(kind, placement);
+    const add = words(at(), ['K-5'], ADD_V1);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(add.id);
+  });
+
+  it('way 6: a newer keep naming v2 for ANOTHER key never governs this key', async () => {
+    await setup();
+    decisionFile();
+    const add = words(at(), ['K-5'], ADD_V1);
+    legacy(at(), ['K-6'], ['keep', null, 'v2']);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(add.id);
+  });
+
+  it.each(['out-of-version', 'core-bypass', 'emergency'])('way 6: a newer signed %s row naming the key and a keep in backlog is no decision and never governs', async (kind) => {
+    await setup();
+    decisionFile();
+    const add = words(at(), ['K-5'], ADD_V1);
+    forge({ id: `O-R1-forged-keep-${kind}`, kind, decision: '9', keys: ['K-5'], op: 'keep', from_v: null, to_v: 'v2', verbatim: WORDS, words: 1, version: 'v2', reason: 'forged' }, at());
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(add.id);
+  });
+
+  it.each([
+    ['keep in v2', ['keep', 'v2', 'v2']],
+    ['remove from v2', ['remove', 'v2', null]],
+  ] as Array<[string, Placement]>)('way 6: a newer %s, a version the ask does not touch, does not retract the add: a key may hold two versions', async (_name, placement) => {
+    await setup();
+    decisionFile();
+    const add = words(at(), ['K-5'], ADD_V1);
+    legacy(at(), ['K-5'], placement);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(add.id);
+  });
+
+  it('the ordinary case: one covering add and nothing newer is cited', async () => {
+    await setup();
+    decisionFile();
+    const add = words(at(), ['K-5'], ADD_V1);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(add.id);
+  });
+
+  // way 10, one lock section: the match and the filing are one hold of the release lock, so whatever lands as the filing takes
+  // its lock is seen by the match. The rows land a row through the signing-lock hook, which runs as a lock is taken.
+  const opensOf = <T>(call: () => T, landOn?: number, land?: () => void): { got: T; opens: number; landed: boolean } => {
+    let opens = 0;
+    let landed = false;
+    const hook = () => {
+      opens += 1;
+      signingLock.fn = hook;
+      if (opens === landOn) {
+        landed = true;
+        land?.();
+      }
+    };
+    signingLock.fn = hook;
+    try {
+      return { got: call(), opens, landed };
+    } finally {
+      signingLock.fn = null;
+    }
+  };
+  // K-5 and K-7 each hold a covering record; K-7 is asked first, only to learn how many holds one covered ask takes, so a row lands
+  // as the LAST of them takes the lock (the filing's) whatever that number is.
+  const twoCovered = async () => {
+    await setup();
+    decisionFile();
+    const rec = words(at(), ['K-5'], ADD_V1);
+    words(at(), ['K-7'], ADD_V1);
+    return rec;
+  };
+  const filingOpen = () => opensOf(() => requestOnRecord(at(), ask({ key: 'K-7' }))).opens;
+  const SHA9 = () => createHash('sha256').update(FILE).digest('hex');
+  const REVERSAL = { id: 'O-R1-landed', kind: 'decision', decision: '120', keys: ['K-5'], op: 'remove', from_v: 'v1', to_v: null, verbatim: 'legacy, no words' };
+  const landed = (fields: Record<string, unknown>) => () => { forge(fields, at()); };
+  const k5 = () => queue().filter((q) => q.key === 'K-5');
+
+  it('way 10 (one lock section): a decision that reverses the covering record lands as the filing takes its lock: nothing is filed on the reversed record', async () => {
+    await twoCovered();
+    const { got, landed: fired } = opensOf(() => requestOnRecord(at(), ask()), filingOpen(), landed(REVERSAL));
+    expect(fired).toBe(true);
+    expect(lines(operatorFile()).map((l) => (JSON.parse(l) as OperatorRow).id)).toContain('O-R1-landed');
+    expect(got).toBeUndefined();
+    expect(k5()).toEqual([]);
+  });
+
+  it('way 10 (one lock section): with no decision in between, the request is filed citing the record, as before', async () => {
+    const rec = await twoCovered();
+    const { got } = opensOf(() => requestOnRecord(at(), ask()));
+    expect(got?.operator.id).toBe(rec.id);
+    expect(got?.request.evidence).toEqual({ operator: rec.id });
+    expect(k5()).toHaveLength(1);
+  });
+
+  it('way 10 (one lock section): a covered ask takes the release lock once, and so does an ask no record covers', async () => {
+    await twoCovered();
+    expect(opensOf(() => requestOnRecord(at(), ask())).opens).toBe(1);
+    expect(opensOf(() => requestOnRecord(at(), ask({ key: 'K-9' }))).opens).toBe(1);
+  });
+
+  // review 2 F2: request() files under the lock, pinned by what a second writer's row does as the lock is taken
+  it('way 10 (one lock section): request() files under the release lock: an identical ask a second writer lands as the lock is taken is returned, not duplicated', async () => {
+    await setup();
+    const rival = { req: 'Q-R1-9001', from: 'console', verb: 'INTAKE', key: 'K-5', from_v: null, to_v: 'v1', why: 'the same ask, filed by a second writer', evidence: {}, state: 'open' };
+    const land = () => { appendChain(join(root, 'release', 'R1', 'requests.jsonl'), loadKey(join(root, 'keys', 'R1.key')), { ts: at().now().toISOString(), ...rival }); };
+    const { got, landed: fired } = opensOf(() => request(at(), ask()), 1, land);
+    expect(fired).toBe(true);
+    expect(got.req).toBe('Q-R1-9001');
+    expect(queue().filter((q) => q.key === 'K-5')).toHaveLength(1);
+  });
+
+  // review 2 F2: the filing's own unchanged-refusal check reads the state under the lock. The refused ask below carries the evidence the
+  // new request will carry (operator: the id of the record that lands), so a stale reading would hand back the refused request.
+  it('way 10 (one lock section): a record that lands as the lock is taken ends the standing refusal for the filing too: a new request is filed, not the refused one returned', async () => {
+    await setup();
+    decisionFile();
+    mirrorOf({ key: 'K-5', labels: ['operator-directed'] });
+    const refusedAsk = request(at(), ask({ evidence: { operator: 'O-R1-landed' } }));
+    claim(at(rmEnv));
+    const r = rule(at(rmEnv), {
+      req: refusedAsk.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'no operator words',
+      reason: 'name the words', supersedes: [], authority: { kind: 'rm', ref: null },
+    });
+    await apply(at(rmEnv), r.id);
+    expect(state(ctx()).refused_asks.map((a) => a.key)).toEqual(['K-5']);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    const record = { id: 'O-R1-landed', kind: 'decision', decision: '9', keys: ['K-5'], op: 'add', from_v: null, to_v: 'v1', verbatim: OTHER_WORDS, decision_file: 'specs/decisions/verbatim-decision-9-op.txt', decision_sha256: SHA9(), words: 1 };
+    const { got, landed: fired } = opensOf(() => requestOnRecord(at(), ask()), 1, landed(record));
+    expect(fired).toBe(true);
+    expect(got?.operator.id).toBe('O-R1-landed');
+    expect(got?.request.req).not.toBe(refusedAsk.req);
+    expect(got?.request.state).toBe('open');
+  });
+
+  it('way 10 (one lock section): the release lock is not re-entrant, so the filing must run under the hold the match has', async () => {
+    await setup();
+    expect(() => withLock(ctx().dir, () => withLock(ctx().dir, () => 1, 100, 60_000), 100, 60_000)).toThrow(/is held; retry/);
+  });
+
+  it('way 5 (one lock section): a ruling on the key that lands as the filing takes its lock floors the record: nothing is filed', async () => {
+    await twoCovered();
+    const ruling = {
+      id: 'R-R1-landed', epoch: 1, req: 'Q-R1-landed', verb: 'INTAKE', key: 'K-5', op: { kind: 'none', from_v: null, to_v: null }, outcome: 'BACKLOG',
+      class: 'none', sector: 'Planning & tracking', ground: 'no operator words', reason: 'landed', supersedes: [], authority: { kind: 'rm', ref: null }, phase: 'intent',
+    };
+    const land = () => { appendChain(join(root, 'release', 'R1', 'rulings.jsonl'), loadKey(join(root, 'keys', 'R1.key')), { ts: at().now().toISOString(), ...ruling }); };
+    const { got, landed: fired } = opensOf(() => requestOnRecord(at(), ask()), filingOpen(), land);
+    expect(fired).toBe(true);
+    expect(lines(join(root, 'release', 'R1', 'rulings.jsonl')).map((l) => (JSON.parse(l) as RulingRow).id)).toContain('R-R1-landed');
+    expect(got).toBeUndefined();
+    expect(k5()).toEqual([]);
+  });
+
+  it('way 6 (one lock section): a newer covering decision that lands as the filing takes its lock is the record cited, not the older one', async () => {
+    const older = await twoCovered();
+    const newer = {
+      id: 'O-R1-landed2', kind: 'decision', decision: '9', keys: ['K-5'], op: 'add', from_v: null, to_v: 'v1', verbatim: OTHER_WORDS,
+      decision_file: 'specs/decisions/verbatim-decision-9-op.txt', decision_sha256: SHA9(), words: 1,
+    };
+    const { got, landed: fired } = opensOf(() => requestOnRecord(at(), ask()), filingOpen(), landed(newer));
+    expect(fired).toBe(true);
+    expect(got?.operator.id).toBe('O-R1-landed2');
+    expect(got?.operator.id).not.toBe(older.id);
+    expect(got?.request.evidence).toEqual({ operator: 'O-R1-landed2' });
+  });
+
+  it('way 7 (one lock section): a row that does not verify landing as the filing takes its lock makes the chain unreadable: nothing is filed', async () => {
+    await twoCovered();
+    const land = () => {
+      forge(REVERSAL, at());
+      tamper(-1, (row) => { row.mac = flip(row.mac); });
+    };
+    const { got, landed: fired } = opensOf(() => requestOnRecord(at(), ask()), filingOpen(), land);
+    expect(fired).toBe(true);
+    expect(got).toBeUndefined();
+    expect(k5()).toEqual([]);
+    expect(chainFault(ctx())).toMatch(/^the operator chain of R1 could not be verified to its end/);
+  });
+
+  // way 7: unverified or forged rows
+  it('way 7: a words row whose signature does not verify is never cited', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    tamper(-1, (row) => { row.mac = flip(row.mac); });
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  it('way 7: a row edited after signing to name the key is never cited', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-6'], ADD_V1);
+    tamper(-1, (row) => { row.keys = ['K-5']; });
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+  });
+
+  it('way 7: a valid record that follows a row that does not verify is unverified with it', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-6'], ADD_V1);
+    words(at(), ['K-5'], ADD_V1, OTHER_WORDS);
+    tamper(-2, (row) => { row.mac = flip(row.mac); });
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+  });
+
+  // way 7, review F4: a row after the verified prefix is invisible, so the new path fails closed and names the fault
+  it('way 7: a newer remove whose signature does not verify hides itself, so the older add is not cited and the chain fault is named', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    words(at(), ['K-5'], ['remove', 'v1', null], OTHER_WORDS);
+    tamper(-1, (row) => { row.mac = flip(row.mac); });
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+    expect(chainFault(ctx())).toMatch(/^the operator chain of R1 could not be verified to its end \(line \d+ \(O-R1-\d{4}\): bad signature\)$/);
+  });
+
+  it('way 7: a ruling row that does not verify hides a newer refusal, so the older record is not cited and the fault names the rulings chain', async () => {
+    await setup();
+    decisionFile();
+    mirrorOf({ key: 'K-5', labels: ['operator-directed'] });
+    await refuse('K-5');
+    words(at(), ['K-5'], ADD_V1);
+    const again = request(at(), ask({ why: 'asked again after the operator\'s words' }));
+    claim(at(rmEnv));
+    rule(at(rmEnv), {
+      req: again.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'no operator words',
+      reason: 'refused again', supersedes: [], authority: { kind: 'rm', ref: null },
+    });
+    const rulings = join(root, 'release', 'R1', 'rulings.jsonl');
+    const rows = lines(rulings);
+    const last = JSON.parse(rows.at(-1) as string) as Record<string, unknown>;
+    last.mac = flip(last.mac);
+    rows[rows.length - 1] = JSON.stringify(last);
+    writeFileSync(rulings, `${rows.join('\n')}\n`);
+    const before = queue().length;
+    expect(requestOnRecord(at(), ask({ why: 'a third ask' }))).toBeUndefined();
+    expect(queue()).toHaveLength(before);
+    expect(chainFault(ctx())).toMatch(/^the rulings chain of R1 could not be verified to its end \(line \d+/);
+  });
+
+  it('way 7: a chain that verifies to its end, and a release that is not declared, have no fault', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    expect(chainFault(ctx())).toBeUndefined();
+    expect(chainFault({ ...ctx(), release: 'R9', dir: join(root, 'release', 'R9'), keyPath: join(root, 'keys', 'R9.key') })).toBeUndefined();
+  });
+
+  // way 8: multi-key rows
+  it('way 8: a row that covers several keys is cited for each of them and for no other', async () => {
+    await setup();
+    decisionFile();
+    const rec = words(at(), ['K-5', 'K-6', 'K-7'], ADD_V1);
+    expect(requestOnRecord(at(), ask({ key: 'K-5' }))?.request.evidence).toEqual({ operator: rec.id });
+    expect(requestOnRecord(at(), ask({ key: 'K-7' }))?.request.evidence).toEqual({ operator: rec.id });
+    expect(requestOnRecord(at(), ask({ key: 'K-8' }))).toBeUndefined();
+    expect(queue().map((q) => q.key)).toEqual(['K-5', 'K-7']);
+  });
+
+  // review F3: behaviours the first rows left unpinned
+  it('way 2: a newer words record of ANOTHER key on the same version does not hide this key\'s record', async () => {
+    await setup();
+    decisionFile();
+    const mine = words(at(), ['K-5'], ADD_V1);
+    words(at(), ['K-6'], ADD_V1, OTHER_WORDS);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(mine.id);
+  });
+
+  it('way 5: a refusal ruled but not yet applied (intent only) floors the older record', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    const q = request(at(), ask({ to_v: 'v2', why: 'an earlier ask of the same key' }));
+    claim(at(rmEnv));
+    rule(at(rmEnv), {
+      req: q.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'no operator words',
+      reason: 'name the words', supersedes: [], authority: { kind: 'rm', ref: null },
+    });
+    expect(lines(join(root, 'release', 'R1', 'rulings.jsonl')).map((l) => (JSON.parse(l) as RulingRow).phase)).toEqual(['intent']);
+    const before = queue().length;
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toHaveLength(before);
+  });
+
+  it('way 5: a refusal applied but not yet receipted floors the older record', async () => {
+    await setup();
+    decisionFile();
+    mirrorOf({ key: 'K-5', labels: ['operator-directed'] });
+    words(at(), ['K-5'], ADD_V1);
+    const q = request(at(), ask({ to_v: 'v2', why: 'an earlier ask of the same key' }));
+    claim(at(rmEnv));
+    const r = rule(at(rmEnv), {
+      req: q.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'no operator words',
+      reason: 'name the words', supersedes: [], authority: { kind: 'rm', ref: null },
+    });
+    const post = jira.addComment.bind(jira);
+    jira.addComment = async () => { throw new Error('jira down before the receipt'); };
+    await expect(apply(at(rmEnv), r.id)).rejects.toThrow('jira down');
+    jira.addComment = post;
+    expect(lines(join(root, 'release', 'R1', 'rulings.jsonl')).map((l) => (JSON.parse(l) as RulingRow).phase).at(-1)).toBe('applied');
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+  });
+
+  it('only INTAKE and REVERSION are placed by a record: a DISCHARGE that carries a target version and a move record is not', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ['move', 'v2', 'v1']);
+    expect(coveringRecord(at(), ask({ verb: 'DISCHARGE', from_v: 'v2', to_v: 'v1' }))).toBeUndefined();
+    expect(requestOnRecord(at(), ask({ verb: 'DISCHARGE', from_v: 'v2', to_v: 'v1' }))).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  // way 9: the fence and the origin rules are not widened
+  it.each([
+    ['the release manager', { HIMMEL_RELEASE_MANAGER: '1' }, /chief-spawned worker/],
+    ['a console leg or worker', { HIMMEL_CONSOLE_LEG: '1' }, /chief-spawned worker/],
+    ['a bridge session', { HIMMEL_BRIDGE_SESSION: '1' }, /Telegram bridge session/],
+  ])('way 9: %s cannot file a request on a record', async (_name, env, message) => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    expect(() => requestOnRecord(at(env), ask())).toThrow(message);
+    expect(queue()).toEqual([]);
+  });
+
+  it('way 9: a process with a bridge session in its ancestry cannot file a request on a record', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    expect(() => requestOnRecord({ ...ctx(), ...fakeProc({ HIMMEL_BRIDGE_SESSION: '1' }) }, ask())).toThrow(/Telegram bridge session.*ancestor 200/);
+    expect(queue()).toEqual([]);
+    expect(requestOnRecord({ ...ctx(), ...fakeProc() }, ask())).toBeDefined();
+  });
+
+  it('way 9: the release manager still cannot file even a plain request', async () => {
+    await setup();
+    expect(() => request(ctx(rmEnv), ask())).toThrow(/the chief writes requests/);
+  });
+
+  // way 10: citing an existing row is not recording a new one
+  it('way 10: citing an existing record does not run the withdrawal a NEW record runs: a pending ask for another placement stays open', async () => {
+    await setup();
+    decisionFile();
+    const rec = words(at(), ['K-5'], ADD_V1);
+    const other = request(at(), ask({ verb: 'REVERSION', from_v: 'v1', to_v: 'v2', why: 'the chief moved it by mistake' }));
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(rec.id);
+    expect(queue().filter((q) => q.req === other.req).map((q) => q.state)).toEqual(['open']);
+    words(at(), ['K-5'], ADD_V1, OTHER_WORDS);
+    expect(queue().filter((q) => q.req === other.req).map((q) => q.state)).toEqual(['open', expect.stringMatching(/^withdrawn:/)]);
+  });
+
+  it('way 10: a pending ask that cites nothing is returned as it stands by the plain dedupe: no second request, no citation added', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    const plain = request(at(), ask());
+    const got = requestOnRecord(at(), ask());
+    expect(got?.request.req).toBe(plain.req);
+    expect(got?.request.evidence).toEqual({});
+    expect(queue()).toHaveLength(1);
+  });
+
+  // way 11: the printed remedy and the accepted path agree
+  it('way 11: a refused ask the state lists is never covered by a record, so its remedy (record the words) is the only accepted path', async () => {
+    await setup();
+    decisionFile();
+    mirrorOf({ key: 'K-5', labels: ['operator-directed'] }, { key: 'K-6', labels: ['operator-directed'] });
+    words(at(), ['K-5'], ADD_V1);
+    await refuse('K-5');
+    await refuse('K-6');
+    words(at(), ['K-6'], ['add', null, 'v2'], OTHER_WORDS);
+    const listed = state(ctx()).refused_asks;
+    expect(listed.map((a) => a.key)).toEqual(['K-5']);
+    for (const a of listed) {
+      expect(a.remedy).toContain('--decision <n> --words');
+      expect(coveringRecord(at(), ask({ key: a.key }))).toBeUndefined();
+    }
+  });
+
+  it('way 11: a key leaves refused_asks only when a record names it, and the record it needs is the one this path cites', async () => {
+    await setup();
+    decisionFile();
+    mirrorOf({ key: 'K-5', labels: ['operator-directed'] });
+    await refuse('K-5');
+    expect(state(ctx()).refused_asks.map((a) => a.key)).toEqual(['K-5']);
+    expect(coveringRecord(at(), ask())).toBeUndefined();
+    const rec = words(at(), ['K-5'], ADD_V1);
+    expect(state(ctx()).refused_asks).toEqual([]);
+    expect(coveringRecord(at(), ask())?.id).toBe(rec.id);
+  });
+
+  // way 12: another release, a closed epoch
+  it('way 12: a record of another release is never cited', async () => {
+    await setup();
+    decisionFile();
+    const c2: Ctx = { ...ctx(), release: 'R2', dir: join(root, 'release', 'R2'), keyPath: join(root, 'keys', 'R2.key') };
+    declare(c2, { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
+    const rec = words({ ...c2, now: () => new Date('2026-10-21T10:30:00.000Z') }, ['K-5'], ADD_V1);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+    expect(coveringRecord(c2, ask())?.id).toBe(rec.id);
+  });
+
+  it('way 12: a record from before a ruling of a closed lease epoch is not cited in the next epoch either', async () => {
+    await setup();
+    decisionFile();
+    mirrorOf({ key: 'K-5', labels: ['operator-directed'] });
+    words(at(), ['K-5'], ADD_V1);
+    await refuse('K-5');
+    leaseRelease(at(rmEnv));
+    leaseAcquire(at(rmEnv), { expectEpoch: 1, doc: DOC, session: 'rm-2' });
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    const fresh = words(at(), ['K-5'], ADD_V1, OTHER_WORDS);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(fresh.id);
+  });
+});
+
 describe('a ruled-away operator ask wakes the chief', () => {
   const GOLDEN = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'handover', 'chief-kit', 'fixtures', 'state-golden.json');
   const WORDS = 'Approved one more round';
