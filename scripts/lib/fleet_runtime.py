@@ -543,6 +543,44 @@ def same_receipt(record, row):
     return bool(record.get('attempt_id')) and all(row.get(key) == record.get(key) for key in ('attempt_id', 'name', 'doc', 'family', 'owner'))
 
 
+def launch_candidates(record, deadline):
+    """Processes that could still be this attempt's launch, whatever their name. (carrying, unreadable, complete):
+    those whose environment or arguments carry its id (WORKER_SESSION_ATTEMPT_ID or FLEET_LAUNCH_ATTEMPT), and those of
+    this user whose command line names the attempt or its doc but whose environment cannot be read. An unreadable candidate
+    is not proof of absence: the rule session_scan applies to a named candidate it cannot read, refuse. A process of
+    another user, or one that names neither the attempt nor its doc, is not a candidate."""
+    wanted = {('%s=%s' % (key, record['attempt_id'])).encode() for key in ('WORKER_SESSION_ATTEMPT_ID', 'FLEET_LAUNCH_ATTEMPT')}
+    mentions = (record['name'].encode(), record['doc'].encode())
+    me, uid = os.getpid(), os.getuid()
+    carrying, unreadable = [], []
+    for path in Path('/proc').iterdir():
+        if time.monotonic() >= deadline:
+            return carrying, unreadable, False
+        if not path.name.isdigit() or int(path.name) == me:
+            continue
+        try:
+            if path.joinpath('stat').read_text().rsplit(')', 1)[1].split()[0] in ('Z', 'X'):
+                continue
+            who = (path.name, path.joinpath('comm').read_text().strip())
+            args = path.joinpath('cmdline').read_bytes().split(b'\0')
+            if wanted & set(args):
+                carrying.append(who)
+                continue
+            try:
+                environment = set(path.joinpath('environ').read_bytes().split(b'\0'))
+            except OSError:
+                real = int(next(line for line in path.joinpath('status').read_text().splitlines() if line.startswith('Uid:')).split()[1])
+                if path.exists() and real == uid and any(m in a for m in mentions for a in args):
+                    unreadable.append(who)
+                continue
+            if wanted & environment:
+                carrying.append(who)
+        except (OSError, ValueError, UnicodeError, StopIteration):
+            if path.exists():
+                unreadable.append((path.name, '?'))  # an existing process the scan cannot read at all cannot be ruled out
+    return carrying, unreadable, True
+
+
 def settle_blockers(record, outcomes, deadline):
     """Why a stuck attempt cannot be settled as refused with no session now; empty when every precondition holds.
     Evidence only: the committed or unknown phase, the process identity of the owner and the committer, one full readable
@@ -559,6 +597,13 @@ def settle_blockers(record, outcomes, deadline):
         blockers.append('a %s receipt exists (reconcile settles it)' % '/'.join(seen))
     if not session_ended(record, deadline):
         blockers.append('a session may exist (the scan did not prove absence)')
+    carrying, unreadable, complete = launch_candidates(record, deadline)
+    for pid, comm in carrying[:3]:
+        blockers.append('a launch may still be starting: process %s (%s) carries the attempt id' % (pid, comm))
+    for pid, comm in unreadable[:3]:
+        blockers.append('a process of this user that could be the launch cannot be read: %s (%s)' % (pid, comm))
+    if not complete:
+        blockers.append('the process scan did not finish')
     return blockers
 
 
@@ -569,7 +614,7 @@ def settle_hint(record, outcomes, deadline):
         return {'settleable': False, 'text': 'not settleable now: ' + '; '.join(blockers)}
     command = 'fleet-manifest.sh runtime settle --manifest %s --doc %s --name %s --attempt-id %s --reason %s --confirm-no-session' % (
         shlex.quote(record['manifest']), shlex.quote(record['doc']), shlex.quote(record['name']), shlex.quote(record['attempt_id']), shlex.quote('<why>'))
-    return {'settleable': True, 'text': 'settleable now. Only after you have checked that no launch of this worker is still starting, type: ' + command}
+    return {'settleable': True, 'text': 'settleable now. Only after you have checked that no launch of this worker is still starting, and with <why> replaced by the reason in your own words, type: ' + command}
 
 
 def settle_attempt(args, attempts, rows, doc, history):
@@ -581,6 +626,8 @@ def settle_attempt(args, attempts, rows, doc, history):
     reason = (args.reason or '').strip()
     if not reason:
         raise Refused('settle refused: a non-empty --reason is required')
+    if re.fullmatch(r'<[^<>]*>|\[[^\[\]]*\]|\{[^{}]*\}', reason):
+        raise Refused('settle refused: --reason must give the reason in your own words, not a bracketed placeholder')
     record = attempts.get(args.attempt_id)
     if not record:
         row = history.get(args.attempt_id, {})
@@ -593,7 +640,7 @@ def settle_attempt(args, attempts, rows, doc, history):
     if blockers:
         raise Refused('settle refused: ' + '; '.join(blockers))
     evidence = dict(phase=record['phase'], owner='dead', committer='dead' if record.get('committer') else None, scan='absent',
-                    session=bool(record.get('session')))
+                    carriers='none', session=bool(record.get('session')))
     record['cause'] = 'settled-no-session'
     receipt(record, 'refused', reason=reason[:1000], evidence=evidence,
             settled_by=dict(host=socket.gethostname(), pid=os.getpid(), uid=os.getuid()))
