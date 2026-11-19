@@ -1894,10 +1894,6 @@ check_c27() {
     emit OK C27-guard-signals "phi-roots/egress-denylist under ${dirs[*]} (where present) are readable regular files"
 }
 
-# --- C28: RETIRED ------------------------------------------------
-# himmel no longer offers a machine-wide guardrail install, so there is no
-# consent to check. Check ids are NOT renumbered: C29 and up keep their ids.
-
 # --- C29: claude child-session launchers running without persistence (advisory) ---
 # claude exports CLAUDE_CODE_CHILD_SESSION=1 and CLAUDE_PID into every process
 # it spawns. A claude session launched from inside another claude session's

@@ -380,12 +380,6 @@ function additiveReconcile(target, manifest, cachedAnswers) {
   return { changed, added };
 }
 
-// Item ids himmel no longer offers. A station's recorded state.json may still
-// carry them (guardrail-block-global's `overrides.consent`); the status and
-// reconcile paths iterate the manifest, so a stale key is already read as
-// absent, and this drops it from the record so it stops being persisted.
-// Mutates `state` in place; returns the ids it dropped (a second call returns
-// []), so a caller can say so once and persist.
 const RETIRED_ITEM_IDS = ['guardrail-block-global'];
 
 function dropRetiredItems(state) {
