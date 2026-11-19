@@ -794,7 +794,7 @@ for word in refused complete; do
 done
 chmod 000 "$tmp/u8-unread.md"
 if [ -r "$tmp/u8-unread.md" ]; then
-    echo "ok - X07-6 an unreadable doc with a refused receipt and a free lock reads unknown, not wrapped (UNAVAILABLE here: this user reads a mode 000 file)"
+    echo "SKIP - X07-6 an unreadable doc with a refused receipt and a free lock reads unknown, not wrapped: this user reads a mode 000 file"
 else
     for word in refused complete; do
         check "X07-6 an unreadable doc with a $word receipt and a free lock reads unknown, not wrapped" "$(ucall "$tmp/u8-unread.md" "\"$word\"")" unknown
@@ -806,6 +806,19 @@ for word in refused complete; do
 done
 ts_marker_newest "$tmp/u8-missing.md" >/dev/null; check "X07-6 ts_marker_newest: a doc it cannot read is rc 1" "$?" 1
 ts_marker_newest "$tmp/u8-empty.md" >/dev/null; check "X07-6 ts_marker_newest control: a readable doc with no marker is rc 0" "$?" 0
+# A doc path that is a directory, and a doc that opens but fails when read, are unknown too. The grep stand-in reads nothing
+# and exits GREP_STANDIN_RC: 1 is "no line matched", 2 is "the read failed".
+mkdir -p "$tmp/gbin" "$tmp/u8-dir.md"
+cat > "$tmp/gbin/grep" <<'EOF'
+#!/bin/sh
+[ "${GREP_STANDIN_RC:-1}" -ne 2 ] || echo "grep: (standard input): Input/output error" >&2
+exit "${GREP_STANDIN_RC:-1}"
+EOF
+chmod +x "$tmp/gbin/grep"
+check "X07-6 a doc that is a directory, with a refused receipt and a free lock, reads unknown, not wrapped" "$(ucall "$tmp/u8-dir.md" '"refused"')" unknown
+check "X07-6 a directory that grep reads as empty, with a refused receipt and a free lock, reads unknown, not wrapped" "$(PATH="$tmp/gbin:$PATH" GREP_STANDIN_RC=1 ucall "$tmp/u8-dir.md" '"refused"')" unknown
+check "X07-6 a doc that opens but fails when read, with a refused receipt and a free lock, reads unknown, not wrapped" "$(PATH="$tmp/gbin:$PATH" GREP_STANDIN_RC=2 ucall "$tmp/u8-empty.md" '"refused"')" unknown
+check "X07-6 control: a readable doc that grep finds no marker in (exit 1), with a refused receipt and a free lock, reads wrapped" "$(PATH="$tmp/gbin:$PATH" GREP_STANDIN_RC=1 ucall "$tmp/u8-empty.md" '"refused"')" wrapped
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-ticket-status.sh"
