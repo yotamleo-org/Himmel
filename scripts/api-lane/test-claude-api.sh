@@ -8,4 +8,4 @@ if [ "$(uname -s)" = Darwin ]; then
   echo "SKIP - macOS lacks flock and /proc, which bulk-call.sh needs; tracked by HIMMEL-7252 (the shift-spend readers need neither and still run)"
   exec node --test "$REPO/scripts/api-lane/shift-spend.test.mjs"
 fi
-exec node --test "$REPO/scripts/api-lane/claude-api.test.mjs" "$REPO/scripts/api-lane/judge-call.test.mjs" "$REPO/scripts/api-lane/bulk-call.test.mjs" "$REPO/scripts/api-lane/shift-spend.test.mjs"
+exec node --test "$REPO/scripts/api-lane/claude-api.test.mjs" "$REPO/scripts/api-lane/judge-call.test.mjs" "$REPO/scripts/api-lane/bulk-call.test.mjs" "$REPO/scripts/api-lane/shift-spend.test.mjs" "$REPO/scripts/api-lane/openai-api.test.mjs"
