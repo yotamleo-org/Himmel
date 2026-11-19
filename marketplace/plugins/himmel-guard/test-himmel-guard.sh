@@ -58,6 +58,19 @@ rendered=$(
     printf '%s' "$GU_RW"
 )
 if [ "$rendered" = "${q}it${q}${bs}${q}${q}s${q}" ]; then ok "a quoted word with a quote renders as one single-quoted word"; else bad "a quoted word with a quote renders as one single-quoted word (got [$rendered])"; fi
+hd_subst() {
+    (
+        . "$root/hooks/lib/shell-tokenize.sh" || exit 1
+        st_tokenize "$1" || exit 1
+        printf '%s' "$ST_SUBST"
+    )
+}
+# shellcheck disable=SC2016 # the dollar is literal heredoc text
+live=$(hd_subst "cat <<EOF"$'\n''${x@P}'$'\nEOF')
+if [ "$live" = 1 ]; then ok "a live dollar in an unquoted heredoc body marks the command as substituting"; else bad "a live dollar in an unquoted heredoc body marks the command as substituting (got [$live])"; fi
+# shellcheck disable=SC2016 # the dollar is literal heredoc text
+lit=$(hd_subst "cat <<EOF"$'\n''\${x}'$'\nEOF')
+if [ "$lit" = 0 ]; then ok "an escaped dollar in an unquoted heredoc body does not"; else bad "an escaped dollar in an unquoted heredoc body does not (got [$lit])"; fi
 rc=$(run '{"tool_name":"Bash","tool_input":{"command":"ls /tmp"}}')
 want 0 "$rc" "benign command allowed"
 rc=$(run '{"tool_name":"Bash"')

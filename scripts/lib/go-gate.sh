@@ -377,7 +377,7 @@ go_noop_chain() {
     while :; do
         f="$1/$2/delta-noop-$h.md"
         [ -e "$f" ] || break
-        if ! n=$(sed -nE "s/^delta-judged: ([0-9a-f]{40})${cr}?\$/\\1/p" "$f" 2>/dev/null); then
+        if [ ! -f "$f" ] || [ ! -r "$f" ] || ! n=$(sed -nE "s/^delta-judged: ([0-9a-f]{40})${cr}?\$/\\1/p" "$f" 2>/dev/null); then
             printf 'cannot read the delta no-op record %s, so the judged head it rests on is unknown\n' "$f"
             return 2
         fi
