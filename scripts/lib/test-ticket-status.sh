@@ -294,12 +294,13 @@ orec() {
         '{doc: $d, docs: $dl, prs: {}, last_event_ts: $t} + $x' > "$TICKET_STATUS_STATE_DIR/workers/$OK.json"
 }
 olock() { case "$(basename "$1")" in p.md) export LK_P="$2 $3" ;; a.md) export LK_A="$2 $3" ;; b.md) export LK_B="$2 $3" ;; esac; }
+empty='{}'
 orow() {
-    jq -nc --arg ts "$(iso_at "$1")" --arg e "$2" --arg k "$OK" --arg r "$3" --arg rule "$4" --argjson x "${5:-{\}}" \
+    jq -nc --arg ts "$(iso_at "$1")" --arg e "$2" --arg k "$OK" --arg r "$3" --arg rule "$4" --argjson x "${5:-$empty}" \
         '{ts: $ts, event: $e, key: $k, result: $r} + (if $rule == "-" then {} else {rule: $rule} end) + $x' >> "$olog"
 }
 omerge() {
-    orow "$1" merge moved - "$(jq -nc --argjson x "${3:-{\}}" --arg c "$2" '{pr: "41", head: "h41", contract: $c, stage: "x"} + $x')"
+    orow "$1" merge moved - "$(jq -nc --argjson x "${3:-$empty}" --arg c "$2" '{pr: "41", head: "h41", contract: $c, stage: "x"} + $x')"
 }
 olive() { odoc "$OD/p.md" - '- 10:00 LIVE — x'; orec '{"lock_seen":true}' "$OD/p.md"; }
 oparked() { odoc "$OD/p.md" - '- 10:00 LIVE — x' '- 10:20 PARKED-USAGE — limit'; orec '{"lock_seen":true}' "$OD/p.md"; }
@@ -451,7 +452,7 @@ check "ts_owner resume: since is the first D5c row, due 6 h later, already past"
 plog="$tmp/park.jsonl"
 : > "$plog"
 pk() {
-    jq -nc --arg ts "$(iso_at "$2")" --arg k "$1" --arg e "$3" --arg r "$4" --arg rule "$5" --argjson x "${6:-{\}}" \
+    jq -nc --arg ts "$(iso_at "$2")" --arg k "$1" --arg e "$3" --arg r "$4" --arg rule "$5" --argjson x "${6:-$empty}" \
         '{ts: $ts, event: $e, key: $k, result: $r} + (if $rule == "-" then {} else {rule: $rule} end) + $x' >> "$plog"
 }
 pk HIMMEL-9401 90000 wrapped noop D6n; pk HIMMEL-9401 7200 live skip RM; pk HIMMEL-9401 7200 live disabled -; pk HIMMEL-9401 7200 sweep deferred - '{"stage":"lock"}'; pk HIMMEL-9401 7200 sweep noop D5; pk HIMMEL-9401 60 sweep noop D6n
