@@ -253,7 +253,8 @@ def candidates(fleet, inbox, last):
     pivot = next((i + 1 for i, event in enumerate(events) if event[0] == last), 0)
     for label, marker, n in events[pivot:] + events[:pivot]:
         output = Path(inbox + '.wait.le-' + label)
-        if output.exists() and time.time() - output.stat().st_mtime < retry_after(inbox, label, keys[label]):
+        # held only while the refusal is younger than the hold: a record dated in the future (a clock stepped back) is no proof of that
+        if output.exists() and 0 <= time.time() - output.stat().st_mtime < retry_after(inbox, label, keys[label]):
             if refused(output.read_text()):
                 continue
         print(label, marker, n)
