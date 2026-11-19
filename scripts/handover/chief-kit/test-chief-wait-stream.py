@@ -749,6 +749,56 @@ class StackedWorker(StreamFixture):
                                         f'GO-SENT 3 {self.H[3]}'])
         self.assertEqual(output.read_text().count('succession complete'), 1)
 
+    def relay_rows(self):
+        path = self.path('relaylog')
+        lines = path.read_text().splitlines() if path.exists() else []
+        return [dict(part.split('=', 1) for part in line.split()) for line in lines]
+
+    def test_a_relayed_event_logs_how_long_it_was_pending_and_how_long_its_handler_took(self):
+        self.worker('N1', self.ready('N1', 1))
+        self.worker('N2', self.ready('N2', 2))
+        self.fleet_of('N1', 'N2')
+        (self.root / 'slow-N1').write_text('1.0')
+        p, _ = self.start()
+        self.until(lambda: len(self.relay_rows()) >= 2, seconds=10)
+        time.sleep(.6)
+        self.stop(p)
+        rows = self.relay_rows()
+        # once per relayed event, and the idle passes before and after wrote nothing
+        self.assertEqual(sorted(r['label'] for r in rows), ['N1', 'N2'])
+        n1, n2 = {r['label']: r for r in rows}['N1'], {r['label']: r for r in rows}['N2']
+        self.assertEqual((n1['marker'], n1['rc'], n2['marker'], n2['rc']), ('READY', '0', 'READY', '0'))
+        self.assertTrue(.9 <= float(n1['handler']) < 3.0, n1)
+        self.assertLess(float(n2['handler']), .8)
+        self.assertLess(float(n1['pending']), .8)
+        self.assertGreaterEqual(float(n2['pending']), .9, 'N2 waited behind the slow handler of N1')
+
+    def test_every_refused_attempt_is_logged_with_its_own_pending_age(self):
+        (self.root / 'refuse-cleanup').touch()
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, _ = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        self.until(lambda: len([r for r in self.relay_rows() if r['marker'] == 'MERGED']) >= 3, seconds=10)
+        self.stop(p)
+        merged = [r for r in self.relay_rows() if r['marker'] == 'MERGED']
+        self.assertTrue(all(r['rc'] == '10' for r in merged), merged)
+        ages = [float(r['pending']) for r in merged]
+        self.assertEqual(ages, sorted(ages))
+        self.assertLess(ages[0], .5)
+        self.assertGreater(ages[2] - ages[0], 1.5, 'each attempt carries the age of the event it retried')
+        self.assertIn(len(merged), (len(self.seen('N1 MERGED #1')), len(self.seen('N1 MERGED #1')) - 1))
+
+    def test_an_idle_pass_logs_nothing(self):
+        self.worker('N1', '- 10:00 LIVE working')
+        self.fleet_of('N1')
+        p, _ = self.start()
+        self.armed()
+        time.sleep(1.5)
+        self.stop(p)
+        self.assertFalse(self.path('relaylog').exists())
+
 
 if __name__ == '__main__':
     unittest.main()
