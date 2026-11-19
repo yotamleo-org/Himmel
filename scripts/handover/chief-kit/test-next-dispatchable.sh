@@ -2830,7 +2830,7 @@ has "S1: an unreadable worker doc prints overlap unknown for that worker" "$sf2"
 sf3="$(runs "$SM" 1 --workers-from "$WORK/fleet-s11.json" --why)"
 has "S1: control: an unreadable worker doc still owns the key in its name" "$sf3" "# drop HIMMEL-851 owned by live worker N11"
 sf4="$(runs "$S1FAM" 1 --workers-from "$WORK/no-such-fleet.json" --why)"
-lacks "S1: control: a missing manifest (owners unknown) still withholds SERIES FAMILY" "$sf4" "SERIES FAMILY"
+lacks "S1: control: a missing manifest (owners unknown) still withholds SERIES FAMILY" "$sf4" "SERIES FAMILY docs/handover"
 S1Q="$WORK/s1q"; mkdir -p "$S1Q"
 S1NOW=1794000000
 q8_at() { python3 -I -c 'import datetime, sys

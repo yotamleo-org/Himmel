@@ -528,6 +528,7 @@ exit 1''')
         for number in range(101, 106):
             self.assertNotIn('CASE-' + str(number), p.stdout)
             self.assertIn('CASE-' + str(number + 100), p.stdout)
+            self.assertIn('\tCASE-' + str(number + 100) + '\t', p.stdout)
         self.assertNotIn('CASE-206', p.stdout)
         main = self.bucket / 'HIMMEL-nextleg-2026-11-16A-chief.fleet.json'
         data = json.loads(self.m.read_text())
@@ -548,7 +549,7 @@ exit 1''')
                            ('--no-classify', '--top', '20', '--workers-from', main), env)
             self.assertEqual(p.returncode, 0, p.stderr)
             self.assertNotIn('CASE-100', p.stdout)
-            self.assertNotIn('CASE-201', p.stdout)
+            self.assertNotIn('\tCASE-201\t', p.stdout)
             self.assertIn('unverified', p.stderr)
 
     def real_census_env(self):
