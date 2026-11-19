@@ -52,8 +52,8 @@ const RUNNABLE_INSTALL_TYPES = ['adopt', 'setup', 'wire', 'plugins', 'qmd', 'dep
 // on, the SINGLE source of truth buildEntry()'s switch (and unwireCommand()'s
 // 'wire' branch) actually branch on, exported so manifest-lint.mjs can reject
 // a typo (e.g. "statuslien") that would otherwise lint clean and silently
-// dispatch the WRONG primitive: 'statusline' and 'guardrail-block-global' are
-// each their OWN explicit branch below; every other wire target (today, only
+// dispatch the WRONG primitive: 'statusline' is its OWN explicit branch below;
+// every other wire target (today, only
 // 'pretooluse-hooks') falls through to the pretooluse-hooks primitive, and
 // every non-'jira-cli' build target to bitbucket. Keep in lockstep with those
 // branches. A value authored here without a matching dispatch site (or vice
@@ -62,7 +62,7 @@ const RUNNABLE_INSTALL_TYPES = ['adopt', 'setup', 'wire', 'plugins', 'qmd', 'dep
 // 'observability' case (below) is its ONLY dispatch site; 'wire'/'build'
 // above are untouched.
 const INSTALL_TARGETS = {
-  wire: ['statusline', 'pretooluse-hooks', 'guardrail-block-global'],
+  wire: ['statusline', 'pretooluse-hooks'],
   build: ['jira-cli', 'bitbucket-cli'],
   observability: ['stack', 'grafana'],
 };
@@ -129,36 +129,6 @@ function buildEntry(item, ctx, diagnosticState) {
       const settings = settingsPath(ctx.scope, ctx.targetPath, ctx.env);
       if (install.target === 'statusline') {
         return { cmd: 'bash', args: [path.join(scriptsDir, 'lib', 'wire-statusline.sh'), settings, ctx.repoRoot] };
-      }
-      if (install.target === 'guardrail-block-global') {
-        // guardrail-block.mjs is ITSELF the primitive here: a
-        // Node CLI with its own `install --node <ABS> --bash <ABS>` verb
-        // (see its own run()/installData()) that writes the OPERATOR'S
-        // GLOBAL ~/.claude/settings.json directly (settingsPath() there,
-        // overridable only via CLAUDE_USER_SETTINGS, a TEST seam, not
-        // something this engine sets). Spawned by ARGV, not `bash -c`. No
-        // shell-string quoting surface exists at all here, mirroring
-        // probes.js's own cmd:guardrail_block_status probe, which spawns
-        // this exact script the exact same way (process.execPath +
-        // absolute script path, no shell). `--node` is THIS engine's own
-        // running node (process.execPath is always absolute), the same
-        // node the resulting hook should run under later; `--bash` is
-        // resolved via resolveHookBash(), the SAME resolver
-        // scripts/hooks/run-hook-with-bash.js's own launcher uses to pick a
-        // genuinely usable Git Bash on Windows (never bare 'bash', which can
-        // silently resolve to the WSL launcher or a 0-byte WindowsApps
-        // alias there). guardrail-block.mjs's own requireAbsolute('bash', …)
-        // makes an unresolvable bash a HARD requirement, not optional. When
-        // resolveHookBash() finds nothing usable it returns null; surfaced
-        // here as `unrunnable` (per the brief: never hand it a relative or
-        // empty path, which it would reject anyway) rather than a doomed
-        // spawn.
-        const bashPath = resolveHookBash({ env: ctx.env || process.env, platform });
-        if (!bashPath) {
-          return { unrunnable: 'no usable bash found (Git Bash on Windows, or bash on PATH elsewhere) — guardrail-block.mjs install requires one; install it, then re-run' };
-        }
-        const scriptPath = path.join(scriptsDir, 'hooks', 'guardrail-block.mjs');
-        return { cmd: process.execPath, args: [scriptPath, 'install', '--node', process.execPath, '--bash', bashPath] };
       }
       // 'pretooluse-hooks' (the other authored wire target). prefix mirrors
       // adopt.sh's own convention: $CLAUDE_PROJECT_DIR for project scope, the
@@ -578,11 +548,9 @@ function runHardenedSpawn(entry) {
   }
   // buildEntry emits the literal `cmd: 'bash'`
   // for every shell primitive (adopt/setup/wire/plugins/qmd/dep).
-  // Only the guardrail-block-global wire target had the rule (it needed an
-  // ABSOLUTE --bash to hand onward); resolving here covers every other
-  // primitive at the single spawn seam, and leaves PLAN output ('bash')
-  // untouched. Unresolvable => refuse rather than run the WSL stub, matching
-  // buildEntry()'s own `unrunnable` refusal for that target.
+  // Resolving here covers every primitive at the single spawn seam, and
+  // leaves PLAN output ('bash') untouched. Unresolvable => refuse rather
+  // than run the WSL stub.
   if (entry.cmd === 'bash') {
     const bashPath = process.env.HIMMELCTL_BASH || resolveHookBash({ env: process.env });
     if (!bashPath) {

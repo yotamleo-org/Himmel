@@ -565,7 +565,6 @@ function buildFeed(args) {
 const DOCTOR_OWNER = {
   'C16-status': null,
   'C19-observability': 'observability-stack',
-  'C28-guardrail-consent': 'guardrail-block-global',
   'C9-scheduler': 'scheduler-backend',
   'C30-bridge-liveness': 'bridge-health',
   'C20-node': 'node',

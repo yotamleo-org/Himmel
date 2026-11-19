@@ -184,7 +184,7 @@ JSON
 # before this operator's vault existed) with EVERY item enabled:false.
 # luna-override carries a deliberate recorded per-item override
 # (overrides.consent, the ONE populated `overrides` shape this codebase
-# has today, guardrail-block-global's ask-first gate; a non-empty
+# has had, once guardrail-block-global's ask-first gate; a non-empty
 # `overrides` bag is what state.js's own hasDeliberateOverride() treats as
 # "a deliberate choice was recorded, never second-guess it").
 claudeHimmelDir="$homeDir/.claude/himmel"; mkdir -p "$claudeHimmelDir"

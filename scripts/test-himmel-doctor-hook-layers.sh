@@ -18,6 +18,7 @@ fails=0
 pass() { printf 'PASS: %s\n' "$1"; }
 fail() { printf 'FAIL: %s\n' "$1"; fails=$((fails + 1)); }
 has() { case "$2" in *"$3"*) pass "$1" ;; *) fail "$1 (missing '$3' in: $2)" ;; esac; }
+has_not() { case "$2" in *"$3"*) fail "$1 (unexpected '$3' in: $2)" ;; *) pass "$1" ;; esac; }
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/doctor-hook-layers-test.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
@@ -94,10 +95,11 @@ out="$(doctor)"
 has "C81 walled-host hook without the marker -> WARN" "$out" "WARN C81-hook-layers"
 has "C81 names redirect-webfetch-walled-hosts.sh" "$out" "redirect-webfetch-walled-hosts.sh"
 user_settings '{}'
-echo "== C81: the WARN prints the guardrail-block-global remedy =="
+echo "== C81: the WARN prints the unwire remedy =="
 user_settings "$(jq -cn --arg c "$(raw_cmd block-edit-on-main.sh)" '{PreToolUse:[{matcher:"Edit",hooks:[{type:"command",command:$c}]}]}')"
 out="$(doctor)"
-has "C81 WARN names guardrail-block-global" "$out" "accept guardrail-block-global"
+has "C81 WARN names the unwire script" "$out" "unwire-pretooluse-hooks.sh"
+has_not "C81 WARN no longer offers guardrail-block-global" "$out" "guardrail-block-global"
 
 # --- doctor C85: the queue lock's self-heartbeat hook must be wired ---------------------------
 hb_doctor() { HOME="$WORK/home" CLAUDE_DIR="$WORK/claude" bash "$DOC" --root "$1" --only C85 --no-color 2>&1; }
@@ -167,7 +169,7 @@ const plan = planInstall(items, ctx);
 console.log(JSON.stringify({ result: runInstall(plan, { dryRun: false }), plan: plan.map((p) => (p.args || []).join(' ')) }));
 " 2>&1
 }
-echo "== install: user layer has no trio and no guardrail-block-global, project layer wires the trio -> the wire still runs =="
+echo "== install: user layer has no trio, project layer wires the trio -> the wire still runs =="
 out="$(install_run "$WORK/repo-owned")"
 [ -f "$WORK/marker-repo-owned" ] && pass "owned: wire-pretooluse-hooks.sh ran (no unguarded repo)" || fail "owned: the user-level wire was skipped ($out)"
 echo "== install: no project entry -> user-scope wire runs =="
@@ -195,7 +197,7 @@ wrapped="$(jq -cn '{hooks:{PreToolUse:[
   {matcher:"Read",hooks:[{type:"command",command:"node \"/x/scripts/hooks/guardrail-skip-in-himmel.js\" \"/x/scripts/hooks/block-read-secrets.sh\""}]}]}}')"
 printf '%s\n' "$wrapped" > "$WORK/uhome/.claude/settings.json"
 out="$(probe_run "$WORK/repo-owned")"
-has "probe guardrail-block-global wrapper -> present" "$out" "present"
+has "probe wrapped user-level trio -> present" "$out" "present"
 
 # --- himmel-guard plugin command ------------------------------------------------------------
 echo "== himmel-guard: command skips when the project layer wires block-destructive-commands =="

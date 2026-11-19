@@ -1,59 +1,31 @@
 #!/usr/bin/env bash
-# test-wizard-guardrail-consent.sh: hermetic tests for the
-# ask-first gate: `himmelctl ensure` can now actually WIRE
-# guardrail-block-global (install-engine.js's 'guardrail-block-global' wire
-# target, dispatching to guardrail-block.mjs's own `install` verb), but the
-# round-3 ruling forbids ever doing so without an explicit, RECORDED
-# consent. That item writes the OPERATOR'S GLOBAL ~/.claude/settings.json,
-# outside the blast radius of the ordinary per-run --yes consent.
+# test-wizard-guardrail-consent.sh: himmel no longer offers a machine-wide
+# guardrail install. The `guardrail-block-global` manifest item,
+# its wire target and its ask-first consent gate are gone; a station whose
+# recorded state.json still names that item (it carries overrides.consent)
+# must keep working: status and ensure read it as absent, and one migration
+# note says the record was dropped.
 #
-# Unlike sibling test-wizard-ensure*.sh suites, this one drives bin.js
-# against the REAL scripts/install/manifest.json and the REAL
-# scripts/hooks/guardrail-block.mjs (not a synthetic fixture). The
-# ask-first gate IS the behavior under test, and guardrail-block.mjs's own
-# install/status contract is exactly what it gates, so faking either would
-# test the fake, not the gate. Every case still stays fully hermetic:
-# CLAUDE_USER_SETTINGS points every guardrail-block.mjs invocation (probe
-# AND install) at a THROWAWAY settings.json (the operator's real
-# ~/.claude/settings.json is NEVER read or written by this suite) and
-# HIMMELCTL_CACHE_DIR points install-profile.json/state.json at a throwaway
-# dir. `--items guardrail-block-global` scopes every ensure run to just this
-# one manifest item, so no other real machine state (qmd, hermes, plugins,
-# ...) is ever probed.
+# Hermetic: HIMMELCTL_CACHE_DIR points install-profile.json/state.json at a
+# throwaway dir; CLAUDE_USER_SETTINGS points at a throwaway settings file the
+# suite asserts is never created. No guardrail-block.mjs verb is run.
 #
 # Covers:
-#   a. no recorded consent + non-interactive (even WITH --yes) -> the item
-#      is NEVER installed (settings.json stays absent), ensure still exits
-#      0 (nothing else to converge), and the output says so honestly
-#      ("no recorded consent yet ... staying manual") with the direct-fix
-#      command named. THE anti-silent-force-install case.
-#   b. recorded consent 'yes' (pre-seeded state.json) + non-interactive +
-#      --yes -> installs for real: guardrail-block.mjs actually runs,
-#      settings.json ends up wired (verified via guardrail-block.mjs status
-#      --json reading mode=global), exit 0.
-#   c. recorded consent 'no' (pre-seeded) + non-interactive + --yes ->
-#      stays unconverged, settings.json stays absent/unwired, exit 0 (no
-#      nag: the operator already decided).
-#   d. interactive, no recorded consent, answer 'y' (blank accepts the
-#      recommended default) -> prompts ONCE for this item specifically,
-#      records consent=yes in state.json, and (fed `--yes` to skip the
-#      separate general consolidated offer) installs for real.
-#   e. interactive, no recorded consent, answer 'n' -> records consent=no,
-#      does NOT install, settings.json stays absent.
-#   f. --dry-run + no recorded consent -> never prompts (dry-run must not
-#      block on stdin), prints the honest "staying manual" advisory (not
-#      the DRY: plan line, nothing was consented to), zero mutation of
-#      BOTH settings.json and state.json.
-#   g. --dry-run + recorded consent 'yes' (pre-seeded) -> the plan SURFACES
-#      the step (a `DRY: <node> .../guardrail-block.mjs install ...` line),
-#      zero mutation.
+#   a. the manifest carries no guardrail-block-global item and the install
+#      engine's closed wire-target list does not name it.
+#   b. status --json on a recorded state naming the retired item exits 0 and
+#      reports no such row.
+#   c. ensure --dry-run on that state exits 0, prints the migration note
+#      exactly once, never writes the settings file, and leaves state.json
+#      byte-identical.
+#   d. state.dropRetiredItems() removes the retired item from every target,
+#      keeps every other item and its overrides, reports what it dropped, and
+#      is a no-op the second time.
 
 set -euo pipefail
 
-grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
-
 repo_root=$(git rev-parse --show-toplevel)
-. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
+. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"
 wizard="$repo_root/scripts/himmelctl/bin.js"
 [ -f "$wizard" ] || { echo "FAIL: $wizard not found" >&2; exit 1; }
 command -v node >/dev/null 2>&1 || { echo "FAIL: node required" >&2; exit 1; }
@@ -62,197 +34,60 @@ command -v jq >/dev/null 2>&1 || { echo "FAIL: jq required" >&2; exit 1; }
 fail() { echo "FAIL: $1" >&2; exit 1; }
 node_bin=$(command -v node)
 
-# Hermeticity: guardrail-block.mjs's trust anchor defaults to HIMMEL_REPO
-# when set (see its own resolveAnchor()). An inherited HIMMEL_REPO from the
-# LAUNCHING shell (e.g. an operator's dev environment pointing it at a
-# primary checkout while this suite runs from a worktree) would bake a
-# WRONG anchor path into every hook this suite installs, permanently
-# mismatching the worktree's own self-checkout anchor and forcing every
-# post-install probe to 'degraded' regardless of anything this gate does
-# right. Force self-checkout (empty is falsy in guardrail-block.mjs's own
-# `if (envRepo)` check) so every case in this file resolves its anchor from
-# wherever THIS checkout's guardrail-block.mjs actually lives.
-export HIMMEL_REPO=""
-
-work=$(mktemp -d "${TMPDIR:-/tmp}/wizard-guardrail-consent.XXXXXX") || fail "mktemp -d failed"
+work=$(mktemp -d "${TMPDIR:-/tmp}/wizard-guardrail-retired.XXXXXX") || fail "mktemp -d failed"
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
-# write_cache <cache_dir>: a minimal valid Draft-A install-profile.json,
-# scope:"user" (guardrail-block-global's ONLY scope: see manifest.json).
-write_cache() {
-  mkdir -p "$1"
-  cat > "$1/install-profile.json" <<'JSON'
+cache="$work/cache"; mkdir -p "$cache"
+cat > "$cache/install-profile.json" <<'JSON'
 {"role":"adopter","tier":"standard","scope":"user","vault":{"mode":"none","path":""},"handover":{"mode":"inline","path":""},"pluginSet":"lean","lanes":[],"lanesMeaningful":true,"alwaysOn":false}
 JSON
+jq -n '{schemaVersion:1,harness:"claude",targets:{user:{profile:"core",scope:"user",items:{"guardrail-block-global":{enabled:true,overrides:{consent:"yes"}},"wiring-statusline":{enabled:true,overrides:{keep:"me"}}},lastEnsured:null}}}' > "$cache/state.json"
+settings="$work/settings.json"
+before=$(cat "$cache/state.json")
+
+run_ctl() {
+  CLAUDE_USER_SETTINGS="$(winpath "$settings")" HIMMELCTL_CACHE_DIR="$(winpath "$cache")" \
+    HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cache")-luna-config.json" HIMMELCTL_INTERACTIVE=0 \
+    "$node_bin" "$wizard" "$@" </dev/null 2>&1
 }
 
-# write_state <cache_dir> <consent|"">: a state.json carrying ONLY the
-# guardrail-block-global override this gate reads/writes. Empty consent ->
-# overrides:{} (never asked), used to prove the gate DERIVES a fresh entry
-# just as well as reading a pre-existing one.
-write_state() {
-  local dir="$1" consent="$2"
-  mkdir -p "$dir"
-  if [ -n "$consent" ]; then
-    jq -n --arg c "$consent" '{schemaVersion:1,harness:"claude",targets:{user:{profile:"core",scope:"user",items:{"guardrail-block-global":{enabled:true,overrides:{consent:$c}}},lastEnsured:null}}}' > "$dir/state.json"
-  else
-    jq -n '{schemaVersion:1,harness:"claude",targets:{user:{profile:"core",scope:"user",items:{"guardrail-block-global":{enabled:true,overrides:{}}},lastEnsured:null}}}' > "$dir/state.json"
-  fi
-}
-
-# guardrail_mode <settings_json_path>: 'global'/'project'/'absent' (no file)
-# via the REAL guardrail-block.mjs `status --json`.
-guardrail_mode() {
-  local settings="$1"
-  [ -f "$settings" ] || { echo absent; return; }
-  CLAUDE_USER_SETTINGS="$(winpath "$settings")" "$node_bin" "$repo_root/scripts/hooks/guardrail-block.mjs" status --json 2>/dev/null | jq -r '.mode // "unknown"'
-}
-
-# ── case a: no recorded consent + non-interactive (even with --yes) -> NEVER installs ─
-casea_dir="$work/case-a"; write_cache "$casea_dir/cache"
-settingsA="$casea_dir/settings.json"
-out=$(CLAUDE_USER_SETTINGS="$(winpath "$settingsA")" HIMMELCTL_CACHE_DIR="$(winpath "$casea_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$casea_dir/cache")-luna-config.json" \
-      HIMMELCTL_INTERACTIVE=0 \
-      "$node_bin" "$wizard" ensure --items guardrail-block-global --yes </dev/null 2>&1); rc=$?
-[ "$rc" -eq 0 ] || fail "case a: non-interactive no-consent run should still exit 0 (nothing else to converge) (got rc=$rc): $out"
-[ ! -f "$settingsA" ] || fail "case a: settings.json must NOT have been written (anti-silent-force-install) — $(cat "$settingsA" 2>/dev/null)"
-grepq "$out" 'no recorded consent yet' || fail "case a: output should say no recorded consent yet (got: $out)"
-grepq "$out" 'staying manual' || fail "case a: output should say it is staying manual (got: $out)"
-grepq "$out" -F 'guardrail-block.mjs install --node' || fail "case a: output should name the direct-fix command (got: $out)"
-echo "ok: case a — no recorded consent + non-interactive (even with --yes) never installs; surfaced honestly"
-
-# ── case b: recorded consent 'yes' + non-interactive + --yes -> installs for real ─
-caseb_dir="$work/case-b"; write_cache "$caseb_dir/cache"; write_state "$caseb_dir/cache" yes
-settingsB="$caseb_dir/settings.json"
-out=$(CLAUDE_USER_SETTINGS="$(winpath "$settingsB")" HIMMELCTL_CACHE_DIR="$(winpath "$caseb_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$caseb_dir/cache")-luna-config.json" \
-      HIMMELCTL_INTERACTIVE=0 \
-      "$node_bin" "$wizard" ensure --items guardrail-block-global --yes </dev/null 2>&1); rc=$?
-[ "$rc" -eq 0 ] || fail "case b: recorded-yes run should converge and exit 0 (got rc=$rc): $out"
-[ "$(guardrail_mode "$settingsB")" = global ] || fail "case b: settings.json should now read mode=global (got: $(cat "$settingsB" 2>/dev/null))"
-echo "ok: case b — recorded consent 'yes' converges for real (settings.json wired)"
-
-# ── case c: recorded consent 'no' + non-interactive + --yes -> stays unconverged, no nag ─
-casec_dir="$work/case-c"; write_cache "$casec_dir/cache"; write_state "$casec_dir/cache" no
-settingsC="$casec_dir/settings.json"
-out=$(CLAUDE_USER_SETTINGS="$(winpath "$settingsC")" HIMMELCTL_CACHE_DIR="$(winpath "$casec_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$casec_dir/cache")-luna-config.json" \
-      HIMMELCTL_INTERACTIVE=0 \
-      "$node_bin" "$wizard" ensure --items guardrail-block-global --yes </dev/null 2>&1); rc=$?
-[ "$rc" -eq 0 ] || fail "case c: recorded-no run should exit 0 (nothing to converge) (got rc=$rc): $out"
-[ ! -f "$settingsC" ] || fail "case c: settings.json must stay absent after a recorded decline — $(cat "$settingsC" 2>/dev/null)"
-grepq "$out" 'no recorded consent yet' && fail "case c: a recorded decline must NOT re-surface the no-recorded-consent advisory (got: $out)"
-echo "ok: case c — recorded consent 'no' stays unconverged, no repeated nagging"
-
-# ── case d: interactive, no recorded consent, answer 'y' -> records + installs ─
-cased_dir="$work/case-d"; write_cache "$cased_dir/cache"
-settingsD="$cased_dir/settings.json"
-out=$(CLAUDE_USER_SETTINGS="$(winpath "$settingsD")" HIMMELCTL_CACHE_DIR="$(winpath "$cased_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cased_dir/cache")-luna-config.json" \
-      HIMMELCTL_INTERACTIVE=1 \
-      "$node_bin" "$wizard" ensure --items guardrail-block-global --yes <<<"y" 2>&1); rc=$?
-[ "$rc" -eq 0 ] || fail "case d: interactive accept should converge and exit 0 (got rc=$rc): $out"
-grepq "$out" 'Recommended: yes' || fail "case d: should print the recommended-default prompt (got: $out)"
-grepq "$out" 'recorded guardrail-block-global consent = yes' || fail "case d: should confirm what was recorded (got: $out)"
-[ "$(guardrail_mode "$settingsD")" = global ] || fail "case d: settings.json should now read mode=global (got: $(cat "$settingsD" 2>/dev/null))"
-consentD=$(jq -r '.targets.user.items["guardrail-block-global"].overrides.consent' "$cased_dir/cache/state.json")
-[ "$consentD" = yes ] || fail "case d: state.json should persist consent=yes (got: $consentD)"
-echo "ok: case d — interactive accept (recommended default) records consent + installs"
-
-# ── case e: interactive, no recorded consent, answer 'n' -> records decline, no install ─
-casee_dir="$work/case-e"; write_cache "$casee_dir/cache"
-settingsE="$casee_dir/settings.json"
-out=$(CLAUDE_USER_SETTINGS="$(winpath "$settingsE")" HIMMELCTL_CACHE_DIR="$(winpath "$casee_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$casee_dir/cache")-luna-config.json" \
-      HIMMELCTL_INTERACTIVE=1 \
-      "$node_bin" "$wizard" ensure --items guardrail-block-global <<<"n" 2>&1); rc=$?
-[ "$rc" -eq 0 ] || fail "case e: interactive decline should still exit 0 (nothing to converge) (got rc=$rc): $out"
-[ ! -f "$settingsE" ] || fail "case e: settings.json must NOT be written after an interactive decline — $(cat "$settingsE" 2>/dev/null)"
-consentE=$(jq -r '.targets.user.items["guardrail-block-global"].overrides.consent' "$casee_dir/cache/state.json")
-[ "$consentE" = no ] || fail "case e: state.json should persist consent=no (got: $consentE)"
-echo "ok: case e — interactive decline records consent=no, never installs"
-
-# ── case f: --dry-run + no recorded consent -> never asks, honest advisory, zero mutation ─
-casef_dir="$work/case-f"; write_cache "$casef_dir/cache"
-settingsF="$casef_dir/settings.json"
-out=$(CLAUDE_USER_SETTINGS="$(winpath "$settingsF")" HIMMELCTL_CACHE_DIR="$(winpath "$casef_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$casef_dir/cache")-luna-config.json" \
-      HIMMELCTL_INTERACTIVE=1 \
-      "$node_bin" "$wizard" ensure --items guardrail-block-global --dry-run </dev/null 2>&1); rc=$?
-[ "$rc" -eq 0 ] || fail "case f: dry-run with no consent should exit 0 (got rc=$rc): $out"
-[ ! -f "$settingsF" ] || fail "case f: dry-run must never write settings.json"
-[ ! -f "$casef_dir/cache/state.json" ] || fail "case f: dry-run must never write state.json either (zero mutation)"
-grepq "$out" 'no recorded consent yet' || fail "case f: dry-run should still surface the gap honestly (got: $out)"
-if grepq "$out" -F 'DRY:' && grepq "$out" -F 'guardrail-block.mjs install'; then
-  fail "case f: dry-run must NOT fabricate an install step for an unconsented item (got: $out)"
+# ── case a: the item and its wire target are gone ─
+if jq -e '.items[] | select(.id == "guardrail-block-global")' "$repo_root/scripts/install/manifest.json" >/dev/null; then
+  fail "case a: manifest.json still carries the guardrail-block-global item"
 fi
-echo "ok: case f — dry-run with no recorded consent never asks, never mutates, surfaces the gap"
+if grep -q 'guardrail-block-global' "$repo_root/scripts/himmelctl/lib/install-engine.js"; then
+  fail "case a: install-engine.js still names guardrail-block-global"
+fi
+echo "ok: case a — manifest and install engine no longer offer guardrail-block-global"
 
-# ── case g: --dry-run + recorded consent 'yes' -> the plan SURFACES the step ─
-caseg_dir="$work/case-g"; write_cache "$caseg_dir/cache"; write_state "$caseg_dir/cache" yes
-settingsG="$caseg_dir/settings.json"
-out=$(CLAUDE_USER_SETTINGS="$(winpath "$settingsG")" HIMMELCTL_CACHE_DIR="$(winpath "$caseg_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$caseg_dir/cache")-luna-config.json" \
-      HIMMELCTL_INTERACTIVE=1 \
-      "$node_bin" "$wizard" ensure --items guardrail-block-global --dry-run </dev/null 2>&1); rc=$?
-[ "$rc" -eq 0 ] || fail "case g: dry-run with recorded consent should exit 0 (got rc=$rc): $out"
-[ ! -f "$settingsG" ] || fail "case g: dry-run must never write settings.json even when consented"
-grepq "$out" -F 'DRY:' || fail "case g: dry-run plan should print a DRY: line (got: $out)"
-grepq "$out" -F 'guardrail-block.mjs' || fail "case g: dry-run plan should name guardrail-block.mjs (got: $out)"
-grepq "$out" -F 'install' || fail "case g: dry-run plan should show the install verb (got: $out)"
-echo "ok: case g — dry-run with recorded consent surfaces the actual plan step"
+# ── case b: status reads a recorded retired item as absent ─
+out=$(run_ctl status --json) || fail "case b: status --json must exit 0 on a state naming the retired item: $out"
+if printf '%s' "$out" | grep -q 'guardrail-block-global'; then
+  fail "case b: status --json still reports guardrail-block-global: $out"
+fi
+echo "ok: case b — status --json exits 0 and reports no guardrail-block-global row"
 
+# ── case c: ensure --dry-run migrates quietly, once, with no writes ─
+out=$(run_ctl ensure --items wiring-statusline --dry-run) || fail "case c: ensure --dry-run must exit 0: $out"
+notes=$(printf '%s\n' "$out" | grep -c 'retired item guardrail-block-global' || true)
+[ "$notes" -eq 1 ] || fail "case c: expected exactly one migration note, got $notes: $out"
+[ ! -e "$settings" ] || fail "case c: ensure --dry-run must never write the settings file"
+[ "$(cat "$cache/state.json")" = "$before" ] || fail "case c: ensure --dry-run must leave state.json byte-identical"
+echo "ok: case c — ensure --dry-run prints one migration note, writes nothing"
 
-caseh_dir="$work/case-h"; write_cache "$caseh_dir/cache"; write_state "$caseh_dir/cache" yes
-homeH="$caseh_dir/home"; mkdir -p "$homeH/.claude"
-settingsH="$homeH/.claude/settings.json"
-printf '{}\n' > "$homeH/.claude/settings.json"
-git init -q "$homeH"
-git -C "$homeH" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@example.invalid add .claude/settings.json
-git -C "$homeH" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@example.invalid commit -q -m seed
-if out=$(HOME="$homeH" USERPROFILE="$(winpath "$homeH")" CLAUDE_USER_SETTINGS="$(winpath "$settingsH")" HIMMELCTL_CACHE_DIR="$(winpath "$caseh_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$caseh_dir/cache")-luna-config.json" \
-      HIMMELCTL_INTERACTIVE=0 \
-      "$node_bin" "$wizard" ensure --items guardrail-block-global --yes </dev/null 2>&1); then rc=0; else rc=$?; fi
-[ "$rc" -eq 2 ] || fail "case h: a consented guardrail wire into a git-tracked user settings file must refuse, exit 2 (got rc=$rc): $out"
-grepq "$out" -F -- '--write-tracked' || fail "case h: the refusal should name --write-tracked (got: $out)"
-[ "$(cat "$settingsH")" = '{}' ] || fail "case h: the tracked settings file must keep its bytes after the refusal (got: $(cat "$settingsH"))"
-[ -z "$(git -C "$homeH" status --porcelain --untracked-files=no)" ] || fail "case h: the refusal must leave the tracked repo clean (got: $(git -C "$homeH" status --porcelain --untracked-files=no))"
-git -C "$homeH" diff --quiet || fail "case h: the refusal must leave no git diff in the tracked repo"
-echo "ok: case h — the consented guardrail wire is refused while the user settings file is git-tracked"
+# ── case d: dropRetiredItems prunes only the retired id, idempotently ─
+res=$(HIMMELCTL_CACHE_DIR="$(winpath "$cache")" "$node_bin" -e '
+const s = require(process.argv[1]);
+const st = s.load();
+const first = s.dropRetiredItems(st);
+const second = s.dropRetiredItems(st);
+process.stdout.write(JSON.stringify({ first, second, items: st.targets.user.items }));
+' "$repo_root/scripts/himmelctl/lib/state.js") || fail "case d: dropRetiredItems threw: $res"
+[ "$(printf '%s' "$res" | jq -c '.first')" = '["guardrail-block-global"]' ] || fail "case d: first call should report the dropped id: $res"
+[ "$(printf '%s' "$res" | jq -c '.second')" = '[]' ] || fail "case d: second call must be a no-op: $res"
+[ "$(printf '%s' "$res" | jq -c '.items | keys')" = '["wiring-statusline"]' ] || fail "case d: only the retired item may be dropped: $res"
+[ "$(printf '%s' "$res" | jq -r '.items["wiring-statusline"].overrides.keep')" = me ] || fail "case d: other items' overrides must survive: $res"
+echo "ok: case d — dropRetiredItems prunes only the retired id, idempotently"
 
-if out=$(HOME="$homeH" USERPROFILE="$(winpath "$homeH")" CLAUDE_USER_SETTINGS="$(winpath "$settingsH")" HIMMELCTL_CACHE_DIR="$(winpath "$caseh_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$caseh_dir/cache")-luna-config.json" \
-      HIMMELCTL_INTERACTIVE=0 \
-      "$node_bin" "$wizard" ensure --items guardrail-block-global --yes --write-tracked </dev/null 2>&1); then rc=0; else rc=$?; fi
-[ "$rc" -eq 0 ] || fail "case h: --write-tracked should let the consented guardrail wire proceed (got rc=$rc): $out"
-[ "$(guardrail_mode "$settingsH")" = global ] || fail "case h: --write-tracked should wire the guardrail (got: $(cat "$settingsH" 2>/dev/null))"
-echo "ok: case h2 — --write-tracked lets the consented guardrail wire proceed"
-
-unset CLAUDE_CONFIG_DIR
-casei_dir="$work/case-i"; write_cache "$casei_dir/cache"; write_state "$casei_dir/cache" yes
-homeI="$casei_dir/home"; mkdir -p "$homeI/.claude"
-printf '{}\n' > "$homeI/.claude/settings.json"
-settingsI="$casei_dir/repo/settings.json"; mkdir -p "$casei_dir/repo"
-printf '{}\n' > "$settingsI"
-git init -q "$casei_dir/repo"
-git -C "$casei_dir/repo" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@example.invalid add settings.json
-git -C "$casei_dir/repo" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@example.invalid commit -q -m seed
-if out=$(HOME="$homeI" USERPROFILE="$(winpath "$homeI")" CLAUDE_USER_SETTINGS="$(winpath "$settingsI")" HIMMELCTL_CACHE_DIR="$(winpath "$casei_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$casei_dir/cache")-luna-config.json" \
-      HIMMELCTL_INTERACTIVE=0 \
-      "$node_bin" "$wizard" ensure --items guardrail-block-global --yes </dev/null 2>&1); then rc=0; else rc=$?; fi
-[ "$rc" -eq 2 ] || fail "case i: a guardrail wire into a git-tracked CLAUDE_USER_SETTINGS file must refuse, exit 2 (got rc=$rc): $out"
-grepq "$out" -F -- '--write-tracked' || fail "case i: the refusal should name --write-tracked (got: $out)"
-[ "$(cat "$settingsI")" = '{}' ] || fail "case i: the tracked settings file must keep its bytes after the refusal (got: $(cat "$settingsI"))"
-[ "$(cat "$homeI/.claude/settings.json")" = '{}' ] || fail "case i: the untracked home settings file must stay untouched"
-echo "ok: case i — the guardrail refusal checks CLAUDE_USER_SETTINGS, the file its writer modifies"
-
-if out=$(cd "$casei_dir" && HOME="$homeI" USERPROFILE="$(winpath "$homeI")" CLAUDE_USER_SETTINGS=repo/settings.json HIMMELCTL_CACHE_DIR="$(winpath "$casei_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$casei_dir/cache")-luna-config.json" \
-      HIMMELCTL_INTERACTIVE=0 \
-      "$node_bin" "$wizard" ensure --items guardrail-block-global --yes </dev/null 2>&1); then rc=0; else rc=$?; fi
-[ "$rc" -eq 2 ] || fail "case j: a relative CLAUDE_USER_SETTINGS naming a git-tracked file must refuse, exit 2 (got rc=$rc): $out"
-[ "$(cat "$settingsI")" = '{}' ] || fail "case j: the tracked settings file must keep its bytes after the refusal (got: $(cat "$settingsI"))"
-echo "ok: case j — a relative CLAUDE_USER_SETTINGS is checked as the absolute file its writer modifies"
-
-if out=$(HOME="$homeI" USERPROFILE="$(winpath "$homeI")" CLAUDE_USER_SETTINGS="$(winpath "$settingsI")" HIMMELCTL_CACHE_DIR="$(winpath "$casei_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$casei_dir/cache")-luna-config.json" \
-      HIMMELCTL_INTERACTIVE=0 \
-      "$node_bin" "$wizard" ensure --items guardrail-block-global --yes --write-tracked </dev/null 2>&1); then rc=0; else rc=$?; fi
-[ "$rc" -eq 0 ] || fail "case i: --write-tracked should let the wire proceed (got rc=$rc): $out"
-grepq "$out" -F "WARNING: the tracked settings file" || fail "case i: the post-run warning should name the modified tracked file (got: $out)"
-grepq "$out" -F "$(winpath "$settingsI")" || fail "case i: the warning should name CLAUDE_USER_SETTINGS' file (got: $out)"
-echo "ok: case i2 — the post-run warning inspects the file the writer modified"
-
-echo "PASS"
+echo "PASS: test-wizard-guardrail-consent.sh"
