@@ -20,8 +20,10 @@ The reviewers are the rows of `scripts/cr/critics.json`. As shipped:
 - **codex**: an OpenAI GPT model through the Codex CLI (the row's `model`
   field pins which one). Mode `hard`, `required`. This is the second model
   family and, as shipped, the only one.
-- **claude**: a Claude model through the Claude API lane. Mode `hard`, but
-  absent while that lane is off, so it leaves the set. It is the same model
+- **claude**: a Claude model through the Claude API lane. Mode `advisory`:
+  its open findings are recorded and print a NOTE until its precision reaches
+  the configured floor, and then it gates as `hard`. It is absent while that
+  lane is off, so it leaves the set. It is the same model
   family as the author, so it never counts as cross-model evidence.
 - **coderabbit**: the CodeRabbit GitHub app on your repo. It reviews the pull
   request once it opens and posts threads and a commit status. Mode
@@ -50,13 +52,14 @@ blocks or is a note depending on its mode.
 - The marker clears only when a critic actually responded at the branch tip; zero responders is a missing review, not a clean one. <!-- source: scripts/cr/clear-review-marker.sh -->
 - A Critical or Important finding blocks the clear until it is ruled `disproved`, or `deferred` with a ticket key and a reason. <!-- source: scripts/cr/clear-review-marker.sh -->
 - Every finding, a Suggestion too, needs a ruling before the marker clears. <!-- source: scripts/cr/clear-review-marker.sh -->
-- With `CR_REQUIRE_CROSS_MODEL=1`, at least one responder must be a non-Claude critic. <!-- source: scripts/cr/clear-review-marker.sh -->
-- A branch gets three full review rounds, then one delta round over only what changed since the last review. A fourth full round is refused. <!-- source: scripts/cr/review-round.sh -->
+- With `CR_REQUIRE_CROSS_MODEL=1`, at least one responder must be a non-Claude critic, unless `CR_FLOOR_FALLBACK=claude-only` is set, every non-Claude lane that ran at the head is verified exhausted, and the Claude floor review has valid provenance. <!-- source: scripts/cr/clear-review-marker.sh -->
+- A branch gets three full review rounds, then one delta round over only what changed since the last review. A fourth full round is refused; a few further bounded delta rounds are admitted only for the cases the round gate names (a judge NO-GO, findings all fixed at the delta head, a CI-red reviewed head, a clean merge of the base). <!-- source: scripts/cr/review-round.sh -->
 
 **At the merge** (in your project and in a himmel checkout):
 
 - A `hard` reviewer must pass at the pull request's head. Anything else (in progress, not yet run, rate limited, unavailable, an open finding) holds the merge. <!-- source: scripts/lib/review-merge-gate.sh -->
 - A `best-effort` reviewer holds only on an open finding. Otherwise it prints a NOTE and the merge goes on. <!-- source: scripts/lib/review-merge-gate.sh -->
+- An `advisory` reviewer's open findings print a NOTE and do not hold the merge, until its precision reaches the floor; then it is held as `hard`. <!-- source: scripts/lib/review-merge-gate.sh -->
 - A reviewer set with no `hard` reviewer left is a config error and blocks, unless the repo says `"review": "no_code_review"`; then CI alone decides. <!-- source: scripts/lib/review-merge-gate.sh -->
 - Every review thread on the pull request, CodeRabbit's included, must be resolved: `check-ci.sh` does not pass while one is open. <!-- source: scripts/check-ci.sh -->
 
@@ -70,7 +73,8 @@ Each finding gets one of three answers:
    finding is wrong.
 3. **Defer it.** Rule it `deferred` with a ticket key and a reason, when it is
    real but belongs in a follow-up. A `deferred` ruling with no ticket key
-   still blocks.
+   still blocks, except a polish Suggestion, which is recorded as a polish
+   note (on the PR's ticket, or in the PR body) instead of a ticket.
 
 `/pr-check` records each ruling in the review ledger for you. A CodeRabbit
 thread is answered on the pull request: fix it, or reply with why, then resolve

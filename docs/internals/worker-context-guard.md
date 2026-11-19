@@ -47,13 +47,11 @@ bash scripts/handover/chief-kit/headed-arm-worker.sh --context-guard handoff …
   lane on an Opus 5.5 model, together with that profile's 850000 ceiling; every `worker-*`
   profile compacts. `WORKER_SESSION_CONTEXT=1m`
   drops both, so launch Opus workers without it. A requested A/B arm skips them too.
-- If no flag is given, a `HIMMEL_WORKER_SESSION_CONTEXT_MODE` (old name
-  `HIMMEL_WORKER_SESSION_CONTEXT_MODE`, still read; a set new name wins unless it is
-  `none`) in the launching shell is used. When both are present, the flag wins.
+- If no flag is given, a `HIMMEL_WORKER_SESSION_CONTEXT_MODE` in the launching shell
+  is used. When both are present, the flag wins.
 - The launcher refuses any other value with exit 2.
-- The launcher exports the mode only when one is set, under both names. The
-  `--dry-run` report prints `HIMMEL_WORKER_SESSION_CONTEXT_MODE=<unset>` and
-  `HIMMEL_WORKER_SESSION_CONTEXT_MODE=<unset>` when the guard is off.
+- The launcher exports `HIMMEL_WORKER_SESSION_CONTEXT_MODE` only when a mode is set. The
+  `--dry-run` report prints `HIMMEL_WORKER_SESSION_CONTEXT_MODE=<unset>` when the guard is off.
 
 The hook reads the mode only from its own process env, which is fixed at launch.
 A worker cannot turn the guard on, off or across modes mid-session: an `export` or
@@ -290,6 +288,5 @@ VM worker is a planned follow-up.
 - **Codex.** Codex wires the hook for PreToolUse only. Codex has no PreCompact
   event, and its transcripts carry no claude-hud snapshot, so the hook fails
   open there.
-- **Bypass.** Set `WORKER_SESSION_CONTEXT_HANDOFF_OK=1` (old name
-  `WORKER_SESSION_CONTEXT_HANDOFF_OK=1`, still read) in the launching shell. A per-call
+- **Bypass.** Set `WORKER_SESSION_CONTEXT_HANDOFF_OK=1` in the launching shell. A per-call
   prefix does not reach the hook.

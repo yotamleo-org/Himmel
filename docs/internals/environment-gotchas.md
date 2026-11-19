@@ -80,7 +80,6 @@ From the repo root the same suite runs normally.
 Why it costs time rather than just failing: the errors name the *source* file the
 wiring points at, not the cwd, so it reads as a broken import or a missing build
 artifact. The instinct is to go looking for a wiring bug that does not exist.
-CLAUDE.md's Tests section carries the one-line rule; this is the reproduction.
 
 Found by the wave-1 orchestration-MVP session, which recorded it as
 a trap after the generalisation bit it.

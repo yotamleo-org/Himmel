@@ -1,18 +1,18 @@
 # Security-review playbook
 
-The `security-reviewed` pre-push hook (`scripts/hooks/check-security-reviewed.sh`) gates pushes on a `Security reviewed: <token>` attestation in a commit body or PR description whenever the diff vs `origin/main` touches non-docs code. The hook does NOT run the review itself, because that would introduce a new headless-Claude call against the same subscription usage budget the [Claude invocation billing rule](../CLAUDE.md#claude-invocation-billing) governs. The operator runs the review on demand using whichever mechanism fits the change, then attests the result.
+The `security-reviewed` pre-push hook (`scripts/hooks/check-security-reviewed.sh`) gates pushes on a `Security reviewed: <token>` attestation in the body of a non-merge commit of the branch whenever the diff vs `origin/main` touches non-docs code. The hook does NOT run the review itself, because that would introduce a new headless-Claude call against the same subscription usage budget the [Claude invocation billing rule](../CLAUDE.md#claude-invocation-billing) governs. The operator runs the review on demand using whichever mechanism fits the change, then attests the result.
 
 This file is the recommended playbook for picking a review method and writing the attestation line. For *after* something sensitive has already been committed/pushed (token, bot username, chat/user id, PII), see the leak-scrub runbook.
 
 ## When does the gate fire?
 
-Pre-push, during the pre-push stage of `.pre-commit-config.yaml` (currently registered immediately after `platforms-tested`; the gates are independent, so their order in the pre-push stage is not load-bearing). It triggers when the diff vs `origin/main` contains any non-docs file (everything outside `*.md`, `*.txt`, `docs/`, `handovers/`).
+Pre-push, during the pre-push stage of `.pre-commit-config.yaml` (the gates are independent, so their order in the pre-push stage is not load-bearing). It triggers when the diff vs `origin/main` contains any non-docs file (everything outside `*.md`, `*.txt`, `docs/`, `handovers/`).
 
 Docs-only diffs are skipped, the same shape used by `check-cr-before-push.sh`.
 
 ## Attestation tokens
 
-Pick one. Add to a commit body in the push range OR to the PR description.
+Pick one. Add it to the body of a non-merge commit on the branch; a line in the PR description or only on a merge commit counts at no gate.
 
 | Token | Use when |
 |---|---|
@@ -41,19 +41,7 @@ Refs: HIMMEL-N
 
 `Security reviewed:` is case-insensitive. Whitespace before the token is allowed.
 
-## Example PR-body attestation
-
-If the commit messages don't carry the line, the hook falls back to `gh pr view --json body` and matches there. That satisfies the pre-push gate only: a chief's `ready-check.sh` check 5 reads the PR's **first commit** alone, so for a PR merged by the chief the trailer belongs there (recovery: [stuck-playbook](internals/stuck-playbook.md)). Add a section to the PR description:
-
-```
-## Security review
-
-Security reviewed: claude-code-security-review
-
-Ran `anthropics/claude-code-security-review` against the diff
-(commit `<sha>`). 0 Critical, 1 Minor (out-of-scope log-format
-suggestion, filed as HIMMEL-N). Re-ran after the Minor; clean.
-```
+The pre-push gate, CI commit-lint and a chief's `ready-check.sh` item 5 all read the trailer through `scripts/lib/attest-trailers.sh`: any non-merge commit of the branch counts (recovery when it is missing: [stuck-playbook](internals/stuck-playbook.md)).
 
 ## Bypass
 

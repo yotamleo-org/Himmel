@@ -117,7 +117,7 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     carrying an operator label (`operator-decision`, `operator`, `operator-present`,
     `operator-gated`), plus the operator-owed records (`--owed-dir <handover bucket>`, `--chief-doc <chief doc>`; `focus-refresh.sh` passes
     both): a spec of an open ticket whose latest critic verdict is `SPEC CLEAN` or past the third round with no `spec` row in
-    `release/<version>/operator.jsonl`; a `queue:` segment or `pool-disposition:` line of the chief doc's `## Live state` that names the
+    `release/<version>/operator.jsonl`, when that spec is operator-critical (any other such unsigned spec is chief-owed); a `queue:` segment or `pool-disposition:` line of the chief doc's `## Live state` that names the
     operator; and the lines of the newest `*HANDOFF.md`'s `## Open operator items`. With no readable record the header says
     `no operator-owed source read` beside the count. A hand dependency chain named `Waiting on you` is not printed. The header names
     the age of `focus-chains.json`, of the chain registry its rows came from and of the priority line when each is older than the newest
@@ -146,10 +146,12 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     `wrap-merged.sh` runs `bash "<kit>/focus-refresh.sh" --doc <chief doc>` after
     every merge (it also reads `focus-plan:` and `<doc dir>/focus-chains.json`).
     It stages the mirror, versions, status sweep, open PRs, the page and
-    `status-drift.sh` output. Only on full success does it publish `focus-drift.txt` and
-    replace `roadmap-tracker.html` (and only when the page fingerprint moved); `focus-state`
-    records every run, `FAILED:<stage>` included. The wrap prints
-    `focus=ok|busy|FAILED:<stage>|skip` and never fails on it. `focus-refresh.sh --doc <doc> --status` prints the same state
+    `status-drift.sh` output. A good run publishes `focus-drift.txt` and replaces
+    `roadmap-tracker.html` (only when the page fingerprint moved). A failed chains or drift
+    stage is a warning, not a failure: the page is still published and the run ends
+    `focus=WARN:chains <why>` or `focus=WARN:drift <why>`; a drift pass that printed no report
+    keeps the last `focus-drift.txt`. `focus-state` records every run, `FAILED:<stage>` included.
+    The wrap prints `focus=ok|busy|WARN:<warn>|FAILED:<stage>|skip` and never fails on it. `focus-refresh.sh --doc <doc> --status` prints the same state
     (`chief-wait.sh` wakes on `FAILED` or `DIRTY` for 10 min or more). The page stays
     local, as above. Each card also shows its worker (owner, PR, state).
     `status-drift.sh` is the report-only drift check (last line `sdrift=<n>:<sig8>`); its
