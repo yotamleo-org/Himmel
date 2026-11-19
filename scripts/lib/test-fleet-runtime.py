@@ -1975,6 +1975,38 @@ exit 1''')
                                ('refused', []), ('refused', ['- 12:00 WRAPPED - done'])):
             self.assertEqual(self.sibling_owners(outcome, *lines), [], outcome + ' ' + str(lines))
 
+    # An outcome removes the row of its own attempt only; reconcile drops a stale copied row and keeps the live replacement and its reservation.
+    def test_a_stale_copied_row_goes_while_the_live_replacement_and_its_reservation_stay(self):
+        self.active()
+        self.rt('begin')
+        stale = json.loads(self.m.read_text())['workers'][0]
+        self.assertEqual(stale['attempt']['attempt_id'], 'one')
+        self.rt('outcome', extra=('--phase', 'refused'))
+        self.call('add', self.m, self.doc, '--lane', 'native', '--pending')
+        self.rt('begin', aid='two')
+        self.entry('scripts/lib/usage-preflight.sh', env=dict(self.launch_env(), FLEET_LAUNCH_ATTEMPT='two'))  # stamps the replacement's reservation
+        slot = self.bucket / 'slots' / self.doc.stem
+
+        def copy_stale_row():
+            data = json.loads(self.m.read_text())
+            data['workers'].insert(0, stale)
+            self.m.write_text(json.dumps(data))
+
+        def row_attempts():
+            return [row.get('attempt', {}).get('attempt_id') for row in json.loads(self.m.read_text())['workers']]
+        copy_stale_row()
+        self.assertEqual(row_attempts(), ['one', 'two'])
+        self.rt('ack', aid='two')
+        self.assertEqual(row_attempts(), ['two'])
+        self.assertEqual(list(self.anchor_attempts()), ['two'])
+        self.assertEqual(json.loads((slot / 'managed.json').read_text())['attempt_id'], 'two')
+        copy_stale_row()
+        self.rt('outcome', aid='two', extra=('--phase', 'refused'))
+        self.assertEqual(row_attempts(), ['one'])  # the replacement's own row is gone and the other attempt's row is not touched
+        self.assertFalse(slot.exists())
+        self.rt('ack', aid='two')
+        self.assertEqual(row_attempts(), [])
+
 
 if __name__ == '__main__':
     unittest.main()
