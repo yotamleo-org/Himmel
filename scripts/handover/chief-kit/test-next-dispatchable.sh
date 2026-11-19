@@ -4293,6 +4293,100 @@ for ow_x4_arr in "0 0" "1 0" "0 1" "1 1"; do
     check "9335 X4.once: arrangement $ow_x4_i prints no owner-unknown line twice" "0" "$(printf '%s\n' "$ow_x4_out" | grep '^# owner unknown:' | LC_ALL=C sort | uniq -d | grep -c . || true)"
 done
 
+
+# --- 9335 the To Do, DESIGN, SERIES and NEXT-TIER withhold: nothing a named unknown may own is listed ---
+ow_kindrows() { printf '%s\n' "$1" | grep -cE "^$2${TAB}.*${KP}-(90|91)([^0-9]|\$)" || true; }  # <text> <row kind regex>: rows of that kind naming the free To Do ticket or the core ticket
+ow_u3() { CG="$OW/u3cg" NEXT_DISPATCH_JIRA_CLI="$WORK/cg-stub/index.js" ow_run "$@"; }  # ND with the core stand-in: the core ticket has no signed spec
+
+# U3: while the fleet is unknown no To Do or DESIGN row lists; the dispositions say why
+ow_mirror u3
+ow_mk HIMMEL-91 "To Do" High '["core"]' '["v1.0.1"]' '[]' "core ticket without a signed spec" "Edit scripts/lib/c91.sh only."
+mkdir -p "$OW/u3cg/core" "$OW/u3cg/spec"
+printf 'CORE HIMMEL-91 label core\n' > "$OW/u3cg/core/HIMMEL-91"
+printf 'NO-SPEC HIMMEL-91\n' > "$OW/u3cg/spec/HIMMEL-91"
+ow_u3m="$OW_M"
+ow_u3out="$(ow_u3 --top 20 --dispositions --workers-from "$OW/fleet-u1.json")"
+for ow_kind in 'LOCAL' 'LOCAL\?' 'CLOUD' 'DESIGN' 'SERIES'; do
+    check "9335 U3: no $ow_kind row names HIMMEL-90 or HIMMEL-91 while the fleet is unknown" "0" "$(ow_kindrows "$ow_u3out" "$ow_kind")"
+done
+has "9335 U3: the header counts 0 collision-free" "$ow_u3out" "0 collision-free"
+has "9335 U3: the dropped line counts the owner group" "$ow_u3out" "owner 2"
+has "9335 U3: the disposition of HIMMEL-90 says owner unknown" "$ow_u3out" "# disposition HIMMEL-90 owner unknown"
+ow_u3c="$(ow_u3 --top 20 --dispositions --workers-from "$OW/fleet-u4c.json")"
+has "9335 U3.ctl: a clean fleet lists HIMMEL-90" "$ow_u3c" "LOCAL${TAB}HIMMEL-90${TAB}"
+has "9335 U3.ctl: a clean fleet lists HIMMEL-91 as a DESIGN row" "$ow_u3c" "DESIGN${TAB}HIMMEL-91${TAB}NO-SPEC"
+
+# U1.d, U13.d, SB2.d: the default listing withholds the To Do row for each N1 case
+OW_M="$ow_u1m"
+ow_u1d="$(ow_run --why --workers-from "$OW/fleet-u1.json")"
+lacks "9335 U1.d: an unreadable own doc withholds the To Do row HIMMEL-90" "$ow_u1d" "HIMMEL-90${TAB}"
+has "9335 U1.d: the drop reason is owner unknown" "$ow_u1d" "# drop HIMMEL-90 owner unknown"
+ow_u13d="$(ow_run --why --workers-from "$OW/u13/fleet.json")"
+lacks "9335 U13.d: an own row with no doc withholds the To Do row HIMMEL-90" "$ow_u13d" "HIMMEL-90${TAB}"
+has "9335 U13.d: the drop reason is owner unknown" "$ow_u13d" "# drop HIMMEL-90 owner unknown"
+ow_mirror sb2d
+d="$OW/sb2d"; mkdir -p "$d"
+ow_doc "$d/HIMMEL-71-N14-own.md" "- 10:00 LIVE - started"
+mkfleet "$d/HIMMEL-nextleg-2026-11-18B-ow.fleet.json" "N14:$d/HIMMEL-71-N14-own.md"
+mkfleet "$d/HIMMEL-nextleg-2026-11-18A-ow.fleet.json" "N15:$d/HIMMEL-72-N15-gone.md"
+mkfleet "$d/HIMMEL-nextleg-2026-10-10A-ow.fleet.json" "N16:$d/HIMMEL-73-N16-gone.md"
+ow_sb2d="$(ow_run --why --workers-from "$d/HIMMEL-nextleg-2026-11-18B-ow.fleet.json")"
+lacks "9335 SB2.d: unreadable sibling docs withhold the To Do row HIMMEL-90" "$ow_sb2d" "HIMMEL-90${TAB}"
+has "9335 SB2.d: the drop reason is owner unknown" "$ow_sb2d" "# drop HIMMEL-90 owner unknown"
+
+# U3.h3a to U3.h3d: an existing reason still wins over owner unknown
+OW_M="$ow_u1m"
+ow_mk HIMMEL-92 "To Do" High '[]' '["v1.0.1"]' '[]' "To Do whose body names no file" "Nothing in this body names a file."
+ow_h3a="$(ow_run --why --workers-from "$OW/fleet-u1.json")"
+has "9335 U3.h3a: a ticket with no scope keeps the no-scope reason" "$ow_h3a" "# drop HIMMEL-92 no-scope"
+lacks "9335 U3.h3a: a ticket with no scope is not dropped as owner unknown" "$ow_h3a" "# drop HIMMEL-92 owner unknown"
+ow_mk HIMMEL-62 "To Do" High '[]' '["v1.0.1"]' '[]' "To Do whose key an absent doc holds" "Edit scripts/lib/s62.sh only."
+ow_h3b="$(ow_run --why --workers-from "$OW/fleet-u1.json")"
+has "9335 U3.h3b: a key held by the doc's file name keeps its owned reason" "$ow_h3b" "# drop HIMMEL-62 owned by live worker N11"
+OW_M="$ow_u3m"
+: > "$GH_FAIL"
+ow_h3c="$(ow_u3 --why --workers-from "$OW/fleet-u1.json")"
+rm -f "$GH_FAIL"
+OW_M="$ow_u1m"
+has "9335 U3.h3c: with gh failing HIMMEL-90 keeps the open-PRs-unknown reason" "$ow_h3c" "# drop HIMMEL-90 open PRs unknown"
+lacks "9335 U3.h3c: with gh failing HIMMEL-90 is not dropped as owner unknown" "$ow_h3c" "# drop HIMMEL-90 owner unknown"
+has "9335 U3.h3c2: with gh failing the DESIGN ticket HIMMEL-91 keeps the open-PRs-unknown reason" "$ow_h3c" "# drop HIMMEL-91 open PRs unknown"
+lacks "9335 U3.h3c2: with gh failing the DESIGN ticket HIMMEL-91 is not dropped as owner unknown" "$ow_h3c" "# drop HIMMEL-91 owner unknown"
+mkdir -p "$OW/h3d/bucket"; printf '# chief\n\n## Live state\n\n- priority: \n' > "$OW/h3d/bucket/chief.md"
+ow_mk HIMMEL-93 "To Do" High '[]' '["v1.0.1"]' '[]' "To Do with an owed next step" "Edit scripts/lib/s93.sh only."
+ow_h3d_pv="$(bash "$HERE/owe.sh" add --chief fixture --kind proof --key "$KP-93" --text validate --metadata '{"actor":"chief","action":"validate-proof"}' --bucket "$OW/h3d/bucket")"
+bash "$HERE/owe.sh" add --chief fixture --kind step --key "$KP-93" --text "Fix scripts/lib/next.sh" --bucket "$OW/h3d/bucket" \
+    --metadata "{\"actor\":\"chief\",\"action\":\"next-step\",\"source_id\":\"$ow_h3d_pv\",\"due\":\"2026-11-30\",\"wake\":\"fixture\",\"capability\":\"fixture\"}" > /dev/null
+bash "$HERE/owe.sh" close --id "$ow_h3d_pv" --key KEEP --bucket "$OW/h3d/bucket" > /dev/null
+ow_h3d="$(ow_run --why --doc "$OW/h3d/bucket/chief.md" --workers-from "$OW/fleet-u1.json")"
+has "9335 U3.h3d: a ticket with an owed next step keeps the owed reason" "$ow_h3d" "# drop HIMMEL-93 owned next step:"
+lacks "9335 U3.h3d: a ticket with an owed next step is not dropped as owner unknown" "$ow_h3d" "# drop HIMMEL-93 owner unknown"
+
+# U5: no STACKABLE row, no SERIES FAMILY row and no plain row for a candidate a live series worker could hold, while another worker's doc is unreadable
+ow_m_save="$M"
+newmir ows
+APP='Edit scripts/config-ui/app.js please.'
+mk HIMMEL-851 "To Do" High '[]' '["v1.0.1"]' '[]' "wants app.js" "$APP"
+mk HIMMEL-853 "To Do" High '[]' '["v1.0.1"]' '[]' "free ticket" "Edit scripts/lib/free-s.sh."
+ow_ows="$M"; M="$ow_m_save"
+mkdoc "$OW/HIMMEL-790-N5-series.md" 2 ""
+mkfleet "$OW/fleet-u5.json" "N5:$OW/HIMMEL-790-N5-series.md" "N11:$OW/HIMMEL-62-N11-gone.md"
+mkfleet "$OW/fleet-u5c.json" "N5:$OW/HIMMEL-790-N5-series.md"
+ow_u5="$(runs "$ow_ows" 1 --workers-from "$OW/fleet-u5.json" --why)"
+lacks "9335 U5: no STACKABLE row while a worker doc is unreadable" "$ow_u5" "STACKABLE"
+lacks "9335 U5: no SERIES FAMILY row while a worker doc is unreadable" "$ow_u5" "SERIES FAMILY"
+lacks "9335 U5: the candidate is not listed plain either" "$ow_u5" "LOCAL${TAB}HIMMEL-851${TAB}"
+ow_u5c="$(runs "$ow_ows" 1 --workers-from "$OW/fleet-u5c.json" --why)"
+has "9335 U5.ctl: with the series worker alone the candidate is STACKABLE" "$ow_u5c" "STACKABLE HIMMEL-851"
+
+# U6: the next-tier rows are withheld with the pool, POOL-EMPTY still prints
+OW_M="$OW/x6b/HIMMEL"
+ow_u6="$(ow_run --priority-pool-only --workers-from "$OW/fleet-u1.json")"
+has "9335 U6: an unknown fleet still prints POOL-EMPTY" "$ow_u6" "POOL-EMPTY"
+lacks "9335 U6: an unknown fleet prints no NEXT-TIER row" "$ow_u6" "NEXT-TIER"
+ow_u6c="$(ow_run --priority-pool-only --workers-from "$OW/u10/fleet-w.json")"
+has "9335 U6.ctl: a fleet whose doc ends WRAPPED prints the NEXT-TIER row" "$ow_u6c" "NEXT-TIER${TAB}HIMMEL-160"
+
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
 real_hits="$(grep -rlF "$WORK" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"
