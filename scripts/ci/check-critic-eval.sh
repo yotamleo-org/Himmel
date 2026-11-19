@@ -47,7 +47,7 @@ BYPASS_REL=scripts/eval/review-panel/gate-bypass.tsv
 unexec="$(git -C "$repo" cat-file blob "$diff_base:$CBS_REL" 2>/dev/null | sed -n 's/^#[[:space:]]*unexecuted:[[:space:]]*//p' | sed 's/[[:space:]]*$//')" # swallow-ok: a base without cbs.txt has no tags, so every changed path stays gated
 rest="$(printf '%s\n' "$hit" | grep -vxFf <(printf '%s\n' "$unexec"))"
 if [ -z "$rest" ]; then
-    echo "check-critic-eval: only paths the sweep never executes changed: $(printf '%s\n' "$hit" | paste -sd' '); a judge GO covers them"
+    echo "check-critic-eval: only paths the sweep never executes changed: $(printf '%s\n' "$hit" | paste -sd' ' -); a judge GO covers them"
     exit 0
 fi
 

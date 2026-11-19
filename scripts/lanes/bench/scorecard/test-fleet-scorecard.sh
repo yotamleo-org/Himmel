@@ -139,7 +139,7 @@ check "(b) an unreadable Jira mirror still exits 0" "$RC" "0"
 check "(b) an unreadable Jira mirror is n/a with its reason" \
     "$(printf '%s\n' "$BADMIRROR" | grep '^- Jira mirror:')" "- Jira mirror: n/a (unreadable: $TMP/mirror)"
 # shellcheck disable=SC2016
-printf '%s\n' '[ "$0" = judge_accuracy ] && exit 3' > "$TMP/exit3-for-judge-accuracy-resolver.sh" || exit 1
+printf '%s\n' 'case "$-" in *c*) exit 3 ;; esac' > "$TMP/exit3-for-judge-accuracy-resolver.sh" || exit 1
 RESOLVER_FAILS="$TMP/exit3-for-judge-accuracy-resolver.sh"
 NOKEY=$(BASH_ENV="$RESOLVER_FAILS" "$FLEET" --manifest "$FX/FT-roadmap-chief.fleet.json" --prs "$FX/prs.json" \
     --cr-ledger "$FX/cr-ledger.jsonl" --verdicts "$FX/verdicts" --denials "$FX/denials.jsonl" --tz UTC 2>/dev/null); RC=$?

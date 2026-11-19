@@ -74,7 +74,7 @@ cadence() {
         VMCAD_STATE_DIR="$WORK/state" VMCAD_CRONTAB="$WORK/bin/crontab" VMCAD_RUNNER_DIR="$WORK/runner" \
         CADENCE_ALERT_FILE="$WORK/alerts/log" CADENCE_ALERT_DEDUPE_DIR="$WORK/alerts/sent" \
         CADENCE_ALERT_SEND_CMD="$WORK/bin/sender" CADENCE_ALERT_SEND_FAILED_MARK="$WORK/alerts/mark" \
-        "${envs[@]}" bash "$SCRIPT" "$@"
+        ${envs[@]+"${envs[@]}"} bash "$SCRIPT" "$@"
 }
 
 line_of() { grep -n -m1 -F -e "$1" "$LOG" | cut -d: -f1; }
