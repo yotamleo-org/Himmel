@@ -593,6 +593,10 @@ assert_rc "4367-2 control: escaped quote inside double quotes keeps the glob" 2 
     "$(run_in_globdir 'grep "a\" b" .e*')"
 assert_rc "4367-2 control: ANSI-C quoting stops tracking, glob still denies" 2 \
     "$(run_in_globdir "cat \$'\\'' .e*")"
+# shellcheck disable=SC1003 # a lone backslash
+cb_bs='\'
+assert_rc "a -c body with a control-backslash pair hides a secret read -> refused" 2 \
+    "$(run_case "$(j_bash "bash -c \$'${cb_bs}c${cb_bs}${cb_bs}n${cb_bs}x63at ${cb_bs}x2eenv'")")"
 assert_rc "4367-2 control: a literal .env inside a quoted span still denies" 2 \
     "$(run_in_globdir "grep -v 'x .env y' rows.tsv")"
 rm -rf "$GLOBDIR"

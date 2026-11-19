@@ -1896,6 +1896,20 @@ assert "cd src CR && grep -r never ALLOW"          PASS  "$(decide "$(j_bash "cd
 assert "cd src CR && du -sh never ALLOW"           PASS  "$(decide "$(j_bash "cd src${CR} && du -sh")")"
 assert "cd src TAB && grep -r never ALLOW"         PASS  "$(decide "$(j_bash "cd src$(printf '\t') && grep -r x .")")"
 assert "cd non-ASCII && grep -r never ALLOW"       PASS  "$(decide "$(j_bash "cd sr$(printf '\303\251') && grep -r x .")")"
+decide_utf8() {
+    local out rc
+    out=$(printf '%s' "$1" | LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 bash "$HOOK" 2>/dev/null); rc=$?
+    if [ "$rc" != 0 ]; then echo "RC$rc"; elif grepq "$out" '"permissionDecision":"allow"'; then echo "ALLOW"; else echo "PASS"; fi
+}
+decide_utf8_lang_only() {
+    local out rc
+    out=$(printf '%s' "$1" | env -u LC_ALL -u LC_COLLATE LANG=en_US.UTF-8 bash "$HOOK" 2>/dev/null); rc=$?
+    if [ "$rc" != 0 ]; then echo "RC$rc"; elif grepq "$out" '"permissionDecision":"allow"'; then echo "ALLOW"; else echo "PASS"; fi
+}
+assert "ctl: cd src && grep -r x . ALLOW (LC_ALL=en_US.UTF-8)" ALLOW "$(decide_utf8 "$(j_bash "cd src && grep -r x .")")"
+assert "ctl: cd src && grep -r x . ALLOW (LANG=en_US.UTF-8 only)" ALLOW "$(decide_utf8_lang_only "$(j_bash "cd src && grep -r x .")")"
+assert "cd non-ASCII && grep -r never ALLOW (LC_ALL=en_US.UTF-8)" PASS "$(decide_utf8 "$(j_bash "cd sr$(printf '\303\251') && grep -r x .")")"
+assert "cd non-ASCII && grep -r never ALLOW (LANG=en_US.UTF-8 only)" PASS "$(decide_utf8_lang_only "$(j_bash "cd sr$(printf '\303\251') && grep -r x .")")"
 assert "cd 'src' quoted && grep -r never ALLOW"    PASS  "$(decide "$(j_bash "cd 'src' && grep -r x .")")"
 assert "cd src && grep -r x . ALLOW"               ALLOW "$(decide "$(j_bash "cd src && grep -r x .")")"
 assert "cd /home/u/repo && du -sh ALLOW"           ALLOW "$(decide "$(j_bash "cd /home/u/repo && du -sh")")"
