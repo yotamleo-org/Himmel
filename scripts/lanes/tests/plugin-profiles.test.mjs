@@ -814,7 +814,8 @@ test('higgsfield-skills@himmel vendors the Higgsfield skills, in the imagegen ad
   assert.equal(entry.source.url, 'https://github.com/higgsfield-ai/skills.git');
   assert.match(entry.source.sha, /^[0-9a-f]{40}$/, 'pinned to a full sha');
   assert.equal(entry.strict, true, 'upstream ships a plugin.json with no components, and its own marketplace entry is strict');
-  assert.equal(entry.skills.length, 7, 'upstream keeps its skills at the repo root, so they are listed; the website deployer is left out');
+  assert.equal(entry.skills.length, 8, 'upstream keeps its skills at the repo root, so they are listed; the website deployer is left out');
+  assert.ok(entry.skills.includes('./higgsfield-faceless-video'), 'the faceless-video skill upstream ships is listed');
   assert.ok(!entry.skills.includes('./higgsfield-websites'), 'no skill that deploys a public site');
   assert.match(entry.description, /never be run/, 'the description forbids the skills\' own curl-pipe-sh bootstrap');
   assert.ok(entry.skills.every((s) => /^\.\/higgsfield-[a-z-]+$/.test(s)), 'skill dirs');
