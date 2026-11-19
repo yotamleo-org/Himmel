@@ -1485,6 +1485,188 @@ exit 1''')
         self.assertIn('attempt settle', text)
         self.assertRegex(text, r'manifest row only')
 
+    # Review follow-ups. A launch that has not become the named session yet, the reason gate, and rows for the mutants the review kept alive.
+    def carrier(self, variable='WORKER_SESSION_ATTEMPT_ID', value='one', argument=None):
+        """A real child process of another name that carries the attempt id in its environment, or as an argument."""
+        env = dict(self.env)
+        if variable:
+            env[variable] = value
+        p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'] + ([argument] if argument else []), env=env)
+        self.addCleanup(lambda: (p.terminate(), p.wait(timeout=5)) if p.poll() is None else None)
+        time.sleep(.2)
+        return p
+
+    def opaque(self, name):
+        """A process of this user whose environment cannot be read (not dumpable) and whose argument names `name`."""
+        code = 'import ctypes,time; ctypes.CDLL(None).prctl(4,0,0,0,0); time.sleep(30)'
+        p = subprocess.Popen([sys.executable, '-c', code, '-n', name], env=dict(self.env, WORKER_SESSION_ATTEMPT_ID='one'))
+        self.addCleanup(lambda: (p.terminate(), p.wait(timeout=5)) if p.poll() is None else None)
+        time.sleep(.2)
+        return p
+
+    def settle_hint_of(self, aid='one'):
+        return next(r for r in json.loads(self.rt('ack').stdout)['unknown'] if r['attempt_id'] == aid)['settle_hint']
+
+    def test_a_process_of_any_name_carrying_the_attempt_id_blocks_settle_and_the_hint(self):
+        for variable, argument in (('WORKER_SESSION_ATTEMPT_ID', None), ('FLEET_LAUNCH_ATTEMPT', None), (None, 'WORKER_SESSION_ATTEMPT_ID=one')):
+            self.setUp()
+            self.active()
+            self.stuck()
+            self.forge(start='0')
+            self.assertTrue(self.settle_hint_of()['settleable'])  # nothing carries it yet
+            carrier = self.carrier(variable, argument=argument)
+            self.refused_settle('carries the attempt id')
+            self.assertIn('one', self.anchor_attempts())
+            hint = self.settle_hint_of()
+            self.assertFalse(hint['settleable'])
+            self.assertIn('carries the attempt id', hint['text'])
+            self.assertNotIn('fleet-manifest.sh runtime settle', hint['text'])
+            self.stop(carrier)
+            self.assertTrue(self.settle_hint_of()['settleable'])
+            self.settle()  # the process is gone: nothing carries the id, so the existing proof stands
+            self.assertEqual(self.anchor_attempts(), {})
+
+    def test_a_late_process_after_a_dead_launcher_leaves_the_attempt_and_no_second_begin(self):
+        self.active()
+        self.stuck()
+        self.forge(start='0')
+        late = self.carrier()
+        self.refused_settle('carries the attempt id')
+        p = self.rt('begin', aid='two', ok=False)
+        self.assertIn('family already owns', p.stderr)
+        self.assertEqual(list(self.anchor_attempts()), ['one'])
+        self.stop(late)
+        self.settle()
+        self.call('add', self.m, self.doc, '--lane', 'native', '--pending')
+        self.rt('begin', aid='two')
+        self.assertEqual(list(self.anchor_attempts()), ['two'])
+
+    def test_a_process_of_this_user_that_could_be_the_launch_and_cannot_be_read_blocks_settle(self):
+        self.active()
+        self.stuck()
+        self.forge(start='0')
+        opaque = self.opaque(self.doc.stem)
+        self.refused_settle('cannot be read')
+        self.assertFalse(self.settle_hint_of()['settleable'])
+        self.stop(opaque)
+        self.settle()
+
+    def test_an_unreadable_process_that_names_neither_the_attempt_nor_its_doc_is_not_a_candidate(self):
+        self.active()
+        self.stuck()
+        self.forge(start='0')
+        self.opaque('an-unrelated-process')
+        self.settle()  # the rule: same user and the name or the doc in the command line; anything else cannot be told from the rest of the desktop
+
+    def test_a_live_matching_session_blocks_settle_and_the_hint_whatever_its_start_time(self):
+        for began in (0, 10 ** 13):
+            self.setUp()
+            self.active()
+            self.stuck()
+            self.forge(start='0')
+            anchor = self.bucket / 'fleet-control.json'
+            data = json.loads(anchor.read_text())
+            data['attempts']['one']['began_ticks'] = began
+            anchor.write_text(json.dumps(data))
+            session = self.named_session(attempt_id='one')
+            self.refused_settle('a session may exist')  # the session blocker itself, not only the new one for a process carrying the id
+            self.refused_settle('a session may exist', aid='one')
+            phase = self.anchor_attempts()['one']['phase']
+            self.assertEqual(phase, 'committed')
+            if began:
+                hint = self.settle_hint_of()
+                self.assertFalse(hint['settleable'])
+                self.assertIn('a session may exist', hint['text'])
+            else:
+                ack = json.loads(self.rt('ack').stdout)
+                self.assertEqual([r['attempt_id'] for r in ack['launched']], ['one'])
+            self.stop(session)
+
+    def test_an_earlier_launched_refused_or_complete_receipt_blocks_settle_though_the_last_row_is_indeterminate(self):
+        for outcome in ('launched', 'refused', 'complete'):
+            self.setUp()
+            history = self.bucket / '.himmel/launch-refusals.jsonl'
+            self.active()
+            self.stuck()
+            self.forge(start='0')
+            base = self.history_rows('one')[0]
+            with history.open('a') as stream:
+                stream.write(json.dumps(dict(base, outcome=outcome)) + '\n')
+                stream.write(json.dumps(dict(base, outcome='indeterminate', source='headed-arm-worker')) + '\n')
+            self.refused_settle('receipt')
+            self.assertIn('one', self.anchor_attempts(), outcome)
+
+    def test_settle_releases_only_its_own_reservation_not_every_reservation_of_the_doc_name(self):
+        self.active()
+        self.stuck()
+        self.forge(start='0')
+        other = self.bucket / 'slots' / 'a-reservation-of-another-attempt'
+        other.mkdir()
+        (other / 'name').write_text(self.doc.stem + '\n')
+        (other / 'managed.json').write_text(json.dumps({'attempt_id': 'another-attempt', 'owner': {'pid': 1}}))
+        self.settle()
+        self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
+        self.assertEqual(sorted(p.name for p in other.iterdir()), ['managed.json', 'name'])
+
+    def test_a_worker_state_helper_that_fails_reads_unknown_never_wrapped(self):
+        runtime = self.runtime_module()
+        broken = self.bucket / 'broken-lib'
+        broken.mkdir()
+        doc = self.plain_doc('TEST-20-N1-wrapped.md', '- 10:00 WRAPPED - done')  # reads wrapped whenever the helper works
+        with self.batch_env():
+            self.assertEqual(runtime.worker_state(str(doc)), 'wrapped')
+            (broken / 'ticket-status.sh').write_text('exit 1\n')
+            with mock.patch.object(runtime, 'LIB', broken):
+                self.assertEqual(runtime.worker_state(str(doc)), 'unknown')
+                self.assertEqual(runtime.WorkerStates()(str(doc)), 'unknown')
+            (broken / 'ticket-status.sh').write_text('sleep 5\n')
+            with mock.patch.object(runtime, 'LIB', broken):
+                self.assertEqual(runtime.worker_state(str(doc), 0.2), 'unknown')  # a timeout
+            with mock.patch.dict(os.environ, {'PATH': '/nonexistent'}):
+                self.assertEqual(runtime.worker_state(str(doc)), 'unknown')  # no shell to run it at all
+
+    def test_the_memo_keeps_two_docs_with_one_basename_apart(self):
+        runtime = self.runtime_module()
+        first, second = self.bucket / 'dir-one', self.bucket / 'dir-two'
+        first.mkdir()
+        second.mkdir()
+        (first / 'TEST-30-N1-same.md').write_text('# w\n- 10:00 WRAPPED - done\n')
+        (second / 'TEST-30-N1-same.md').write_text('# w\n')
+        with self.batch_env():
+            states = runtime.WorkerStates()
+            one, two = str(first / 'TEST-30-N1-same.md'), str(second / 'TEST-30-N1-same.md')
+            self.assertEqual((states(one), states(two)), ('wrapped', 'unknown'))
+            self.assertEqual((states(two), states(one)), ('unknown', 'wrapped'))
+            self.assertEqual(runtime.WorkerStates()(two), 'unknown')
+
+    def test_a_registration_stamped_the_same_second_as_its_receipt_is_settled_by_it(self):
+        runtime = self.runtime_module()
+        receipt = {'outcome': 'refused', 'ts': '2026-11-18T10:00:00Z'}
+        self.assertTrue(runtime.settles(receipt, {'registration': 'pending', 'added': '2026-11-18T10:00:00Z'}))  # the tie
+        self.assertTrue(runtime.settles(receipt, {'registration': 'pending', 'added': '2026-11-18T09:59:59Z'}))
+        self.assertFalse(runtime.settles(receipt, {'registration': 'pending', 'added': '2026-11-18T10:00:01Z'}))
+        self.assertTrue(runtime.settles(receipt, {'registration': 'pending'}))
+        self.assertFalse(runtime.settles(dict(receipt, outcome='launched'), {'registration': 'pending', 'added': '2026-11-18T09:00:00Z'}))
+
+    def test_the_reason_gate_refuses_a_bracketed_placeholder_and_the_printed_hint_is_not_a_ready_command(self):
+        import shlex
+        self.active()
+        self.stuck()
+        self.forge(start='0')
+        for placeholder in ('<why>', '<type why>', '[why]', '{why}', ' <why> '):
+            self.refused_settle('--reason', reason=placeholder)
+        self.assertIn('one', self.anchor_attempts())
+        text = self.settle_hint_of()['text']
+        self.assertIn('replace', text)
+        argv = shlex.split(text.split('type: ', 1)[1])
+        argv[0] = str(WRITER)
+        p = subprocess.run(['bash', *argv], env=self.env, capture_output=True, text=True)
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn('settle refused', p.stderr)
+        self.assertIn('one', self.anchor_attempts())
+        self.settle(reason='[ops] the launcher is gone and nothing started')  # a real reason that only begins with a bracket
+        self.assertEqual(self.anchor_attempts(), {})
+
 
 if __name__ == '__main__':
     unittest.main()

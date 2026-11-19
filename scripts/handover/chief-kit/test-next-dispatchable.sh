@@ -3855,6 +3855,30 @@ u8_eq "(U8) no anchor, count: no disposition subprocess started" "$(awk -F'\t' '
 u8_eq "(U8) no anchor, count: each manifest was read once by the batch" "$(awk -F'\t' '$1 == "open" && $3 ~ /read_directory/ { c[$2]++ } END { m = 0; for (p in c) if (c[p] > m) m = c[p]; print m + 0 }' "$cl")" 1
 U8B="$U8B_SAVE"; U8OWN="$U8OWN_SAVE"; U8H="$U8H_SAVE"
 
+# Follow-ups on the same tree. A worker_state helper that fails reads unknown through the batch path (never wrapped, so no
+# ticket of a doc whose state cannot be read is offered), and two docs with one basename in two directories keep their own states.
+cp "$U8T/scripts/lib/ticket-status.sh" "$U8/ticket-status.good"
+printf 'exit 1\n' > "$U8T/scripts/lib/ticket-status.sh"
+u8_nd failing "" --top 40
+cp "$U8/ticket-status.good" "$U8T/scripts/lib/ticket-status.sh"
+u8_failing="$(cat "$U8/out.failing")"
+[ "$(cat "$U8/rc.failing")" = 0 ] && pass "(U8) a helper that fails: the dispatcher still exits 0" || fail "(U8) a helper that fails: rc $(cat "$U8/rc.failing")"
+for key in 101 102 114; do lacks "(U8) a helper that fails reads unknown, so a ticket whose doc is not proven wrapped is withheld: HIMMEL-$key" "$u8_failing" "${TAB}HIMMEL-$key${TAB}"; done
+for key in 110 120; do has "(U8) a helper that fails does not hide a ticket no worker row names: HIMMEL-$key" "$u8_failing" "${TAB}HIMMEL-$key${TAB}"; done
+U8B3="$U8/bucket3"; mkdir -p "$U8B3/sub1" "$U8B3/sub2"
+printf '# worker\n- 10:00 WRAPPED - done\n' > "$U8B3/sub1/HIMMEL-115-N1-live.md"
+printf '# worker\n- 10:00 LIVE - working\n' > "$U8B3/sub2/HIMMEL-115-N1-live.md"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"}]}\n' "$U8B3/sub1/HIMMEL-115-N1-live.md" > "$U8B3/HIMMEL-nextleg-2026-11-18A-roadmap-chief.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N2"}]}\n' "$U8B3/sub2/HIMMEL-115-N1-live.md" > "$U8B3/HIMMEL-nextleg-2026-11-17A-roadmap-chief.fleet.json"
+M_SAVE="$M"; M="$U8M"; mk HIMMEL-115 "To Do" Medium '[]' '["v1.0.1"]' '[]' "u8 one basename in two directories" "Edit scripts/lib/u8-115.sh only."; M="$M_SAVE"
+U8OWN_SAVE="$U8OWN"; U8OWN="$U8B3/HIMMEL-nextleg-2026-11-18A-roadmap-chief.fleet.json"
+u8_nd samebase "" --top 40
+U8OWN="$U8OWN_SAVE"
+u8_same="$(cat "$U8/out.samebase")"
+lacks "(U8) two docs with one basename keep their own states: the live one holds its ticket although the wrapped one was asked first" "$u8_same" "${TAB}HIMMEL-115${TAB}"
+has "(U8) two docs with one basename: a ticket no worker holds is still offered" "$u8_same" "${TAB}HIMMEL-120${TAB}"
+u8_eq "(U8) two docs with one basename are each evaluated once" "$(awk -F'\t' '$1 == "worker_state" { c[$2]++ } END { n = 0; for (d in c) n++; print n }' "$U8/count.samebase")" 2
+
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
 real_hits="$(grep -rlF "$WORK" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"
