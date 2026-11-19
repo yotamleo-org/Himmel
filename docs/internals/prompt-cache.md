@@ -94,7 +94,7 @@ key is documented here so a future ledger result can turn it on for one agent
 in one line.
 Multipliers (API pricing page, <https://platform.claude.com/docs/en/build-with-claude/prompt-caching#pricing>):
 5-minute write 1.25×, 1-hour write 2×; the read price depends on the model:
-0.05× of base input on Opus 5.5 and Sonnet 5.5, 0.025× on Fable 5.1, 0.1× on
+0.05× of base input on Opus 5.5 and Sonnet 5.5, 0.025× on Fable 5.2 and Fable 5.1, 0.1× on
 Haiku 5.5. Within included plan usage, a Claude subscription gives the main
 session an hour and most helpers five minutes (some server-controlled helper
 requests also get an hour); once usage credits begin, the main session drops to

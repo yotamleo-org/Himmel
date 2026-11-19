@@ -139,8 +139,8 @@ only 3 and 4 reach Claude-only; 1 and 2 BILL:
    `registry <path> missing/invalid/empty — anchor-only (codex)`.
 2. **Registry present and valid, but no row matches the tier filter** (exit 8)
    ⇒ **paid** codex anchor-only, via the same fallback. This is the shipped
-   default today: `critics.json` holds exactly one row (`codex`/`gpt-6.1-sol`, tier
-   `paid`) and no free anchor, so an unset `CR_PROFILE` (tier filter `free`)
+   default: `critics.json` holds no free-tier row (its rows are `codex` and
+   `claude`, both tier `paid`, plus the `coderabbit` App), so an unset `CR_PROFILE` (tier filter `free`)
    matches nothing and lands here.
    The free lane was REMOVED DELIBERATELY (operator decision): the free
    critics made more trouble than they were worth — gptoss+kimi were
@@ -192,7 +192,7 @@ joins any panel until the operator enables per-token billing.
 
 ## 4. Human checkpoints (first-class, bounded)
 
-- **Merge is operator-only.** The lane-gate verdict feeds it, never replaces it.
+- **Merge needs the chief's GO on the operator's authority** (§1). The lane-gate verdict feeds it, never replaces it.
   `--admin`/gate-bypass remain HARD-vetoed.
 - **`/code-review ultra`** stays the operator-triggered top escalation, recorded
   as a one-action operator step.
@@ -233,16 +233,11 @@ yet: this page places only the emission points, and the lessons loop
 No new storage system (YAGNI) — session
 dirs + issues are the corpus v1, with the one added write above.
 
-## 7. CI promotion path
+## 7. Shell-unit CI
 
-Shell-unit CI (`workflow_dispatch`-only) is advisory evidence a
-validating session MAY cite, never a PASS substitute, until promoted.
-
-**Default (unmeasured constants — ratify or retune before promotion):**
-20 consecutive manual runs green on main AND per-run wall time < 10 min AND zero
-flaky-test quarantines open. The promotion decision itself is an adoption-gate
-call. (Public-repo CI is already per-push; this rule governs the private repo's
-workflow.)
+Shell-unit CI runs on every pull request and is a required check;
+`ready-check.sh` item 19 reads its shard manifests as suite proof (see
+item 19 below).
 
 ## 8. Data-egress-safe gate lane
 
@@ -408,8 +403,6 @@ Each default above is one knob; changing it touches only the named sentence.
 - **Panel-outage posture (§3):** fail-open to Claude-only adjudication; the
   alternative is a hard block.
 - **Tier-1 threshold (§5):** N=10 gated merges (Tier 1 is not executable yet).
-- **CI-promotion constants (§7):** 20 green / under 10 min / 0 open flaky
-  quarantines.
 
 ## Not built yet
 

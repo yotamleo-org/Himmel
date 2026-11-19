@@ -440,19 +440,12 @@ Edit both together.
   makes the window closable." The chief cannot kill a worker's orphaned
   background shell; tick's `orphans=` field shows one that a
   worker left behind.
-- (f) **Usage-scarcity routing.** While the Claude weekly usage is
-  the scarce bucket, an Opus worker (or chief) that fans implementation chunks
-  out sends them to **codex-exec first** (`scripts/codex/dispatch-codex-exec.sh`,
-  Astra at `--reasoning-effort medium`, `low` for a mechanical chunk) and to a
-  **Sonnet child only where codex-exec cannot act**. Today that means a chunk
-  that must **push, open a PR or hit the network** (the codex hook fence,
-  `block-terminal-write-fence.sh`, denies those without
-  `CODEX_EXTERNAL_WRITES_OK=1`). A worktree **commit** is not on that list:
-  codex-exec edits the worktree and the parent performs only the commit step
-  (the sandbox is pinned `workspace-write` with `--add-dir`/`-C` refused, and a
-  worktree's `.git` is a pointer file outside it), so a chunk that merely ends
-  in a commit still goes to codex-exec. Put the routing in the brief's Contract so the
-  worker does not have to infer it; the full rule and its evidence live in
+- (f) **Implementation routing.** An Opus worker (or chief) that fans
+  implementation chunks out sends them to native Claude subagents (a Sonnet
+  child, effort raised before tier): `codex-exec` is dormant in
+  `scripts/lanes/lanes.json` and runs only on a dispatch that opts in with
+  `CODEX_EXEC_LANE_OK`. Put the routing in the brief's Contract so the worker
+  does not have to infer it; the limits of an opted-in codex-exec dispatch live in
   [`../internals/lane-calibration.md`](../internals/lane-calibration.md#bank-scarcity-routing-rule).
 - (g) **Surface tickets route through minerva.** Before briefing a
   worker on a ticket that adds or aggregates a status, report, doctor, health,
