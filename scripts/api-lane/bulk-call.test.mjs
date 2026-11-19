@@ -299,13 +299,10 @@ test('--cancel keeps the settle alive when the call already ended and the TERM l
   const f = fixture();
   const post = join(f.dir, 'post-bin');
   const mark = join(f.dir, 'post-call');
-  const bpid = join(f.dir, 'sentinel-b.pid');
+  const groupPidFile = join(f.dir, 'group-sentinel.pid');
   mkdirSync(post);
-  // the call has finished and claude-api.sh is reading its result (outcome.mjs): the read is held until the cancel's
-  // TERMs have landed, so they reach claude-api.sh only after the call ended, in the stretch where its trap was reset.
-  // node resets an inherited ignore, so a node sentinel dies on TERM: A is in the bridge's pid tree (the tree TERM),
-  // B is reparented out of it but stays in the process group (the bounded wrapper's group TERM).
-  writeFileSync(join(post, 'node'), `#!/bin/bash\nif [[ " $* " == *outcome.mjs* ]]; then\n  hold='setTimeout(() => {}, 60000)'\n  "${process.execPath}" -e "$hold" >/dev/null 2>&1 &\n  a=$!\n  ( "${process.execPath}" -e "$hold" >/dev/null 2>&1 & echo $! > "${bpid}" )\n  b=$(cat "${bpid}")\n  : > "${mark}"\n  wait $a\n  for _ in $(seq 1200); do\n    st=$(cut -d' ' -f3 /proc/$b/stat 2>/dev/null) || break\n    [ -n "$st" ] && [ "$st" != Z ] || break\n    sleep 0.05\n  done\nfi\nexec "${process.execPath}" "$@"\n`, { mode: 0o700 });
+  // node resets an inherited signal ignore, so a node sentinel dies on TERM
+  writeFileSync(join(post, 'node'), `#!/bin/bash\nif [[ " $* " == *outcome.mjs* ]]; then\n  hold='setTimeout(() => {}, 60000)'\n  "${process.execPath}" -e "$hold" >/dev/null 2>&1 &\n  tree_sentinel=$!\n  ( "${process.execPath}" -e "$hold" >/dev/null 2>&1 & echo $! > "${groupPidFile}" )\n  group_sentinel=$(cat "${groupPidFile}")\n  : > "${mark}"\n  wait $tree_sentinel\n  for _ in $(seq 1200); do\n    st=$(cut -d' ' -f3 /proc/$group_sentinel/stat 2>/dev/null) || break\n    [ -n "$st" ] && [ "$st" != Z ] || break\n    sleep 0.05\n  done\nfi\nexec "${process.execPath}" "$@"\n`, { mode: 0o700 });
   const env = { ...f.env, PATH: `${post}:${f.env.PATH}` };
   const child = spawn('bash', [BRIDGE, ...f.args, '--timeout', '60'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
   let out = '';
