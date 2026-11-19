@@ -180,8 +180,7 @@ re-run, no `WRAPPED`.
 is on** (off by default; on in Sonnet 5.5 worker-impl/eval, Opus 5.5 worker-*;
 reference `docs/internals/worker-context-guard.md`): **`compact`:** commit,
 push, then append `LIVE — CHECKPOINT <full sha of HEAD> pushed` with
-`append-results.sh`. **`handoff`:** write your successor brief under your own
-doc's name with your label bumped one letter (`<TICKET>-N<k>b-<slug>-<date>-RESUME.md`; keep
+`append-results.sh`. **`handoff`:** write `<your doc name, N<k> as N<k>b>` (keep
 `description:` double-quoted, on one line), message the chief, stop. Unlock: `worker-sections/context-guard.md`. Probe context fill after
 **every** step.
 

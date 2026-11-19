@@ -10,7 +10,9 @@ holds for a `REQ`. Arm the RM with
 only); the launcher exports `HIMMEL_RELEASE_MANAGER=1` into the session, and
 `release lease acquire` refuses without it. File it in
 the chief's bucket as `<PREFIX>-rm-<R>-<date>.md`, filled by hand from the
-block below. The RM is a worker kind: it holds the queue lock on this
+block below. `gen-briefs.py` double-quotes the `description:` value for you;
+filled by hand, wrap it in double quotes yourself, since its `): ` is not
+valid YAML unquoted and `brief-lint.sh` refuses the brief (exit 3). The RM is a worker kind: it holds the queue lock on this
 document **and** the release lease, rules placements with the
 `himmel-ops:release-manager` skill, and never writes code. The procedures, the
 grounds and the verbs live in the skill; this brief carries only what is
@@ -29,7 +31,7 @@ specific to one RM session.
 ```markdown
 ---
 resume_cwd: <absolute $HOME>/.cache/himmel/rm/<R>/scratch
-description: "Release manager for <R> (<versions>): run the armed STATUS, BURN-DOWN or READY verb, report, release the lease and wrap"
+description: Release manager for <R> (<versions>): rule every placement, report STATUS, BURN-DOWN and READY
 template_version: 1
 ---
 

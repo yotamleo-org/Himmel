@@ -147,12 +147,13 @@ non-docs path (which does).
 and push it. Never `git commit --amend`, and never a `git commit-tree`
 rebuild of an earlier commit (both are classifier-vetoed).
 
-**What to do if the trailer's token doesn't conform** — a `Security reviewed:`
-line whose text doesn't start with `manual` / `claude-code-security-review` /
-`pr-review-toolkit` / `ad-hoc` (`ATTEST_SEC_TOKEN_RE` in
-`scripts/lib/attest-trailers.sh`): a non-conforming line does not count, so
-the same recovery applies. Add one more ordinary commit carrying a conforming
-trailer and push it; never amend.
+**What to do if the FIRST commit carries a trailer whose token doesn't
+conform** — a `Security reviewed:` line whose text doesn't start with `manual`
+/ `claude-code-security-review` / `pr-review-toolkit` / `ad-hoc`
+(`ATTEST_SEC_TOKEN_RE` in `scripts/lib/attest-trailers.sh`): a non-conforming
+line does not count, and no recut is needed. Add one more ordinary commit
+carrying a conforming trailer and push it; the push gate and check 5 both
+accept it. Never amend.
 
 ---
 
