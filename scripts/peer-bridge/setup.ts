@@ -31,7 +31,6 @@ export type Deps = {
   tty: boolean;
   ask: (question: string) => Promise<string>;
   out: (line: string) => void;
-  // Where `git rev-parse` runs to find the primary checkout; the tree holding this file by default.
   gitCwd?: string;
   access?: Access;
   loadToken?: () => string;
@@ -46,7 +45,6 @@ const PLIST_NAME = "com.himmel.peer-bridge.plist";
 
 function refuse(message: string): never { throw new SetupError(message); }
 
-// A Claude session or a script without a terminal cannot run any subcommand.
 function guard(deps: Deps): void {
   if (deps.env.CLAUDECODE || deps.env.CLAUDE_CODE_SESSION_ID) refuse("run this yourself in a terminal, not from a Claude session");
   if (!deps.tty) refuse("needs a human at a terminal");
@@ -79,7 +77,6 @@ function replaceJson(path: string, value: unknown): void {
   try { fs.renameSync(tmp, path); } catch (e) { fs.rmSync(tmp, { force: true }); throw e; }
 }
 
-// peers.json as written, after the same validation every tool applies.
 function loadRaw(): any {
   try { readPeersFile(peersFile()); } catch (e) {
     if (e instanceof ConfigError) refuse(`peers.json: ${e.message}`);
@@ -92,8 +89,6 @@ function hasJq(env: NodeJS.ProcessEnv): boolean {
   return spawnSync("jq", ["--version"], { env, stdio: "ignore" }).status === 0;
 }
 
-// The primary checkout: the parent of the common git dir, so a worktree that is
-// removed later never leaves the desk pointing at nothing.
 export function primaryCheckout(cwd: string): string {
   const r = spawnSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd, encoding: "utf8" });
   const common = (r.stdout ?? "").trim();
@@ -243,7 +238,6 @@ export async function uninstall(deps: Deps): Promise<void> {
   for (const u of units) fs.rmSync(u, { force: true });
   fs.rmSync(stateDir(), { recursive: true, force: true });
   fs.rmSync(configDir(), { recursive: true, force: true });
-  // Parents this tool created go with it, but only when empty.
   for (const d of [join(h, ".himmel"), join(h, ".config", "himmel")]) { try { fs.rmdirSync(d); } catch {} }
   deps.out("uninstalled the peer bridge");
 }

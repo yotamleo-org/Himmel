@@ -17,7 +17,6 @@ const POLL_MARGIN_MS = 10_000;
 export class PeerTelegram {
   constructor(private token: string, private f: F = fetch) {}
 
-  // Strips the token, and its secret half, from any text that may be thrown.
   private scrub(text: string): string {
     const secret = this.token.split(":")[1] ?? this.token;
     return text.split(this.token).join("<token>").split(secret).join("<token>");

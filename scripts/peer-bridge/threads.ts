@@ -32,7 +32,6 @@ export type ThreadRec = {
   autoAt?: number; autoTpl?: string;
   ts: number;
 };
-// Every wake label is written here, in this file. No peer text can become one.
 export const WAKE_LABELS = [
   "new question", "new status", "new info", "reminder", "answer", "closed by peer", "unreachable", "expired",
   "closed", "declined", "peer message", "answer on a closed thread", "message on a closed thread", "cap hit",
@@ -84,7 +83,6 @@ export class Threads {
   private now = () => this.opts.clock();
   get(peer: string, root: number): ThreadRec | undefined { return this.threads.get(this.key(peer, root)); }
   all(): ThreadRec[] { return [...this.threads.values()]; }
-  // `${chat}:${root}` of every thread, for the gate's rule 6.
   roots(): string[] { return this.all().map(t => `${t.chat}:${t.root}`); }
   openOutbound(peer: string): number { return this.all().filter(t => t.peer === peer && t.dir === "out" && t.deadline !== null).length; }
   private openInbound(peer: string): number { return this.all().filter(t => t.peer === peer && t.dir === "in" && t.deadline !== null).length; }
@@ -99,8 +97,6 @@ export class Threads {
     return next;
   }
 
-  // A thread-bound template. `closing` spends its reserved slot; the rest spend the
-  // per-thread and per-hour budgets, and an overflow becomes a wake instead.
   private template(actions: Action[], rec: ThreadRec, tpl: Tpl, now: number, by?: Date): Partial<ThreadRec> {
     if (tpl === "closing") {
       if (rec.closingSent) return {};
@@ -116,9 +112,6 @@ export class Threads {
     return { auto: rec.auto + 1, autoAt: now, autoTpl: tpl };
   }
 
-  // A reply to a root that never became a thread: it spends only the hourly
-  // budget, and an overflow is dropped rather than woken (a spammer must not
-  // be able to ring the operator).
   private declineRoot(actions: Action[], peer: string, root: number, tpl: "declined-kind" | "busy", now: number) {
     if (this.hourly(peer, now) >= MAX_AUTO_PER_HOUR) return;
     actions.push({ send: { peer, tpl, root } });
@@ -135,7 +128,6 @@ export class Threads {
     return Math.min(wanted, rec.alloc + CLAMP_FROM_ALLOC);
   }
 
-  // Our own root went out and Telegram gave it a message id.
   onOutbound(send: { peer: string; chat: number; root: number; kind: string; isRoot: boolean }): Action[] {
     const now = this.now(), actions: Action[] = [];
     if (send.isRoot) {
@@ -150,7 +142,6 @@ export class Threads {
     return actions;
   }
 
-  // The operator declines an inbound thread: the peer is told, once.
   decline(peer: string, root: number): Action[] {
     const now = this.now(), actions: Action[] = [];
     const rec = this.get(peer, root);
@@ -233,8 +224,6 @@ export class Threads {
     return actions;
   }
 
-  // Fires every overdue timer once, oldest first. Each fired timer sets its
-  // successor from `now`, so a long suspend never cascades.
   tick(now: number = this.now()): Action[] {
     const due: { at: number; rec: ThreadRec; type: "remind" | "deadline" }[] = [];
     for (const rec of this.threads.values()) {
@@ -285,7 +274,6 @@ export class Threads {
     } else if (rec.state === "DEFERRED") this.end(rec, "EXPIRED", "expired", now, actions);
   }
 
-  // A deadline-driven end: the other side is told with the reserved `closing`.
   private end(rec: ThreadRec, state: string, label: WakeLabel, now: number, actions: Action[]) {
     const patch = this.template(actions, rec, "closing", now);
     this.commit(actions, rec, { ...patch, state, deadline: null, remindAt: null }, now);

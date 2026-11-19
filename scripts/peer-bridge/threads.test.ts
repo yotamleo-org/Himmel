@@ -3,8 +3,6 @@ import type { PeerMsgRec } from "./gate";
 import { ACK_BY, ANSWER_BY, CLOSE_BY, Threads, templateLine, type Action, type ThreadRec } from "./threads";
 import { CHAT, H, MIN, T0, clock, inbound, mkThread, rootMsg, sig, states, threadsOf } from "./testlib-threads";
 
-// ---- every cell of both §7 tables, generated from a table literal ----
-
 type DL = "same" | "null" | number; // an absolute offset from `now` in ms, null, or unchanged
 type Cell = { name: string; rec: Partial<ThreadRec> & { state: string }; dir: "out" | "in"; ev: string; by?: number; sig: string[]; state?: string; deadline?: DL };
 
@@ -89,8 +87,6 @@ test("table: the 12 h reminder wakes an OPEN inbound thread once", () => {
   expect(sig(t.tick(T0 + 12 * H))).toEqual(["state:OPEN", "wake:reminder"]);
   expect(t.tick(T0 + 12 * H)).toEqual([]);
 });
-
-// ---- allocation, templates, caps ----
 
 test("a new inbound root allocates OPEN with a 24 h reply_by, a receipt and a wake", () => {
   const clk = clock(T0);
@@ -177,7 +173,6 @@ test("hourly cap: 20 automatic messages per peer per hour, then wakes; closing i
   const a = sig(t.tick(NOW));
   expect(a.filter(s => s === "send:nudge")).toHaveLength(20);
   expect(a.filter(s => s === "wake:cap hit")).toHaveLength(2);
-  // Every nudged thread is overdue again a day later; each ends with its reserved closing at the cap.
   const later = NOW + 25 * H;
   const closings = sig(t.tick(later)).filter(s => s === "send:closing");
   expect(closings).toHaveLength(22);
@@ -189,8 +184,6 @@ test("the hourly window survives a restart (autoAt is chained)", () => {
   const t = threadsOf([...recs, fresh], clock(NOW));
   expect(sig(t.tick(NOW))).toEqual(["wake:cap hit", "state:NUDGED"]);
 });
-
-// ---- the clock ----
 
 test("a 48 h jump fires each overdue timer once, oldest first, and never again", () => {
   const recs = [
@@ -232,8 +225,6 @@ test("templateLine renders the wire grammar", () => {
   expect(templateLine("deferred", 12, "deadbeef", new Date(Date.UTC(2026, 10, 11, 9, 30)))).toBe("#tpl:deferred #12 id=deadbeef by=20261111T093000Z");
 });
 
-// ---- two bridges back to back on a fake clock ----
-
 type Side = { name: string; peer: string; t: Threads; skew: number; online: boolean; queue: PeerMsgRec[] };
 let nextMid = 90_000;
 function twoBridges(opts: { skewB?: number; offline?: [number, number]; hours?: number; answerAtB?: number } = {}) {
@@ -253,7 +244,6 @@ function twoBridges(opts: { skewB?: number; offline?: [number, number]; hours?: 
       else if ("send" in x) deliver(other, inbound(`tpl:${x.send.tpl}`, x.send.root, { peer: other.peer, message_id: ++nextMid, id: (nextMid).toString(16).padStart(8, "0"), ...(x.send.by ? { by: Math.floor(x.send.by.getTime() / 1000) } : {}) }));
     }
   };
-  // A opens the thread; B sees the root.
   apply(A, A.t.onOutbound({ peer: "b", chat: CHAT, root: ROOT, kind: "question", isRoot: true }));
   deliver(B, rootMsg("ask:question", ROOT, { peer: "a" }));
   const step = 30_000, end = T0 + (opts.hours ?? 120) * H;

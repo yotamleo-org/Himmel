@@ -172,7 +172,6 @@ test("an un-acked batch is served again; --ack writes one spool file and leaves 
   expect(JSON.parse(readFileSync(join(h.peerDir, "spool", spool[0]), "utf8"))).toEqual({ type: "ack", sid: SID, token });
   expect(readCursor(h.peerDir, SID)).toBe(0);
   expect(existsSync(join(h.peerDir, "cursors"))).toBe(false);
-  // The poller applies the ack; after that the batch is gone.
   const n = parseAck(KEY, SID, "goomal", token);
   expect(n).toBe(2);
   await writeCursor(h.peerDir, SID, n!);
@@ -215,8 +214,6 @@ test("a forged stamp from a non-desk session still taints the session that reads
   expect(hook.status).toBe(0);
   expect(existsSync(join(h.S, "taint", "real-sid"))).toBe(true);
 });
-
-// ---- send.ts ----
 
 const send = (h: Home, args: string[], env: Record<string, string> = {}) =>
   spawnSync("bun", [SEND, ...args], { encoding: "utf8", cwd: tmpdir(), env: { PATH: process.env.PATH!, HOME: h.home, PEER_DESK: "goomal", CLAUDECODE: "1", CLAUDE_CODE_SESSION_ID: SID, PEER_SEND_WAIT_MS: "400", ...env } });

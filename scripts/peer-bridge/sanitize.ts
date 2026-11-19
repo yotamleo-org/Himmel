@@ -1,6 +1,3 @@
-// Every peer-derived field is passed through here before it is printed or shown.
-// Order matters: controls and invisible characters go first so a later rule never
-// sees a disguised sequence, and the length cap comes last on the final text.
 const C0_C1 = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/g;
 // Bidi controls and zero-width characters.
 const INVISIBLE = /[؜᠎​-‏‪-‮⁠-⁤⁦-⁩﻿]/g;

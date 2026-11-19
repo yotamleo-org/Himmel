@@ -1,6 +1,3 @@
-// Admission: the one predicate that decides whether an inbound Telegram update
-// is queued. Rules apply in order; a dropped message is never queued and yields
-// one log line that carries ids and a reason, never message text.
 import fs from "node:fs";
 import { constants } from "node:fs";
 import { GROUP_ANONYMOUS_BOT_ID } from "../telegram/gate";
@@ -43,7 +40,6 @@ export type Admit =
   | { ok: true; peer: string; rec: PeerMsgRec; truncated: boolean }
   | { ok: false; rule: 1 | 2 | 3 | 4 | 5 | 6 | 7; reason: string; log: string; peer?: string; unknownChat?: UnknownChat };
 
-// Called after a record is chained: the dedup window and the rate window see it.
 export function noteAdmitted(state: GateState, rec: Pick<PeerMsgRec, "peer" | "chat_id" | "from_id" | "id" | "ts">): void {
   if (rec.id) state.recent.add(`${rec.chat_id}:${rec.from_id}:${rec.id}`);
   const list = state.rate.get(rec.peer) ?? [];
@@ -51,7 +47,6 @@ export function noteAdmitted(state: GateState, rec: Pick<PeerMsgRec, "peer" | "c
   state.rate.set(rec.peer, list);
 }
 
-// Rebuilds both windows from the chained inbox records, oldest first.
 export function rebuildFromInbox(state: GateState, records: Pick<PeerMsgRec, "peer" | "chat_id" | "from_id" | "id" | "ts">[]): void {
   for (const rec of records) noteAdmitted(state, rec);
   for (const [peer, list] of state.rate) state.rate.set(peer, list.filter(t => state.now - t < 60_000));
@@ -132,7 +127,6 @@ export function admit(update: any, cfg: Pick<Config, "peers" | "maxTextChars">, 
   if (inWindow.length >= peer.maxPerMinute) return drop(7, "rate", { peer: peerName });
 
   // 8. Length: cut, never drop.
-  // A template line counts only from the peer bot; from a human it is plain text.
   const tagged = !control.untagged && (control.tpl === undefined || String(fromId) === peer.peerBotId);
   const afterAddress = text.split("\n").slice(control.addr ? 1 : 0).join("\n");
   const { text: body, truncated } = cap(tagged ? control.body : afterAddress, cfg.maxTextChars);

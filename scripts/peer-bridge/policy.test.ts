@@ -43,7 +43,6 @@ test("the 6th root gets busy, and an answer at capacity is still admitted", () =
   const sixth = t.onInbound(rootMsg("ask:question", 710));
   expect(sig(sixth)).toEqual(["send:busy"]);
   expect(t.get("goomal", 710)).toBeUndefined();
-  // an answer on one of our own threads at capacity attaches regardless of the cap
   const mine = threadsOf([...Array.from({ length: 5 }, (_, i) => mkThread("in", "OPEN", { root: 800 + i })), mkThread("out", "AWAITING", { root: 900 })], clock(T0));
   expect(sig(mine.onInbound(inbound("answer", 900)))).toEqual(["state:ANSWERED", "wake:answer"]);
 });

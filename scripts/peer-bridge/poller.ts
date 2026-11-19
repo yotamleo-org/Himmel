@@ -84,7 +84,6 @@ export class Poller {
     return { peers: this.cfg.peers, clock: this.now };
   }
 
-  // Rebuilds every in-memory view from the chain files.
   private load() {
     const threadRecs: ThreadRec[] = [], inbox: PeerMsgRec[] = [];
     for (const peer of Object.keys(this.cfg.peers)) {
@@ -121,7 +120,6 @@ export class Poller {
     return run;
   }
 
-  // Our own username is how an incoming root is recognised as addressed to us.
   private async ensureUsername() {
     if (this.gate.ourUsername) return;
     const peer = Object.values(this.cfg.peers).find(p => p.chatId !== null);
@@ -132,8 +130,6 @@ export class Poller {
     } catch (e) { this.log(`username lookup failed: ${(e as Error).message}`); }
   }
 
-  // Startup: an intent with no `sent` is resent with its original id, but only if
-  // it still passes the egress gate.
   async recover(): Promise<void> {
     await this.serial(async () => {
       await this.ensureUsername();
@@ -185,7 +181,6 @@ export class Poller {
     for (const rec of jobs) await this.readAndDigest(rec);
   }
 
-  // The reader never blocks the sends, and a failed run still leaves a null digest.
   private async readAndDigest(rec: PeerMsgRec): Promise<void> {
     const peer = this.cfg.peers[rec.peer];
     if (!peer) return;
@@ -286,12 +281,10 @@ export class Poller {
     };
   }
 
-  // Every outbound message, from any path, is checked here.
   private egress(text: string, ctx: OutCtx): Promise<Outcome> {
     return checkOutbound(text, ctx);
   }
 
-  // Egress, then the intent record. A refusal chains only its fingerprint.
   private async enqueue(item: Item): Promise<{ ok: true } | Refusal> {
     const res = await this.egress(item.text, this.ctxFor(item));
     if (!res.ok) {
@@ -317,9 +310,6 @@ export class Poller {
     await this.serial(() => this.flush());
   }
 
-  // Sends pending intents in order. A 429 waits out retry_after and keeps the
-  // intent; a retryable failure keeps it and backs off; a permanent refusal by
-  // Telegram ends it.
   private async flush(): Promise<void> {
     if (this.now() < this.retryAt) return;
     for (const i of [...this.pending.values()].sort((a, b) => a.n - b.n || (a.peer < b.peer ? -1 : 1))) {

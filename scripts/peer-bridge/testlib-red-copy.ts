@@ -1,6 +1,3 @@
-// Test helper for the mutation controls: copies the repo layout a peer-bridge
-// suite needs into a temp dir so a test can break one guard in the copy and
-// expect its own row to turn red. Production code carries no flag for this.
 import { cpSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";

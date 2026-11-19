@@ -3,7 +3,6 @@ import { constants } from "node:fs";
 import { isAbsolute } from "node:path";
 import { BOT_ID_RE, KINDS, PEER_NAME_RE, TOKEN_RE, botIdFromToken, type OpenKind } from "./ids";
 
-// Exit code for a refusal a restart cannot fix.
 export const EXIT_CONFIG = 78;
 
 export class ConfigError extends Error {
@@ -75,9 +74,6 @@ function parsePeer(name: string, raw: any): Peer {
   };
 }
 
-// Reads and validates peers.json. The tools that never hold the bot token (read,
-// send, setup) use this; the poller uses loadConfig, which adds the token checks.
-// It opens no file but peers.json.
 export function readPeersFile(path: string): Config {
   let text: string;
   try {
@@ -115,8 +111,6 @@ export function readPeersFile(path: string): Config {
   return { operatorBotId, operatorChatId: raw.operatorChatId, bridgeRoot, himmelRoot, peers, maxTextChars, addressing: "command" };
 }
 
-// The poller's startup refusals: the file checks, then the token. The token is not
-// part of the config; it arrives in the environment (run.sh sources the peer env file).
 export function loadConfig(path: string, env: NodeJS.ProcessEnv = process.env): Config {
   const cfg = readPeersFile(path);
   const token = env.PEER_BOT_TOKEN;

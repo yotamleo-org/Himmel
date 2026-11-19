@@ -74,7 +74,6 @@ const listing = (root: string): string[] => {
 };
 const addGoomal = (over: Over = {}) => { const m = mk(over); return add("goomal", { peerBotId: PEER_ID, peerUsername: "goomal_bot" }, m.deps).then(() => m); };
 
-// ---- the Bot API stub
 const member = (id: string, over: Record<string, unknown> = {}) => ({
   status: "administrator", is_anonymous: false, user: { id: Number(id), is_bot: true, username: `bot${id}` },
   can_be_edited: false, can_manage_chat: true, can_delete_messages: false, can_restrict_members: false, can_promote_members: false,
@@ -96,7 +95,6 @@ function stub(o: { chat?: unknown; chatErr?: Error; members?: Record<string, unk
 const peersBytes = () => fs.readFileSync(peersFile());
 const spoolFiles = () => fs.readdirSync(join(peerDir("goomal"), "spool")).filter(n => n.endsWith(".json"));
 
-// ---- refusals common to every subcommand
 const CLI: [string, string[]][] = [
   ["add", ["goomal", "--peer-bot-id", PEER_ID]], ["confirm", ["goomal", String(CHAT)]], ["remove", ["goomal"]], ["uninstall", []],
 ];
@@ -131,7 +129,6 @@ t("the functions refuse a Claude env and a missing TTY", async () => {
   expect(listing(home)).toEqual([]);
 });
 
-// ---- add
 t("add refuses without jq and writes nothing", async () => {
   const empty = fs.mkdtempSync(join(aux, "nopath-"));
   const msg = await refused(add("goomal", { peerBotId: PEER_ID, peerUsername: "goomal_bot" }, mk({ env: { HOME: home, PATH: empty } }).deps));
@@ -185,7 +182,6 @@ t("add refuses a peer that exists, and a second peer keeps the key and the opera
   expect(Object.keys(readPeersFile(peersFile()).peers).sort()).toEqual(["goomal", "other"]);
 });
 
-// ---- confirm
 t("confirm accepts two admins with only can_manage_chat, writes the chat id and queues a confirm", async () => {
   await addGoomal();
   const { deps, lines } = mk(stub({ chat: { id: CHAT, type: "supergroup", title: "Team‮<<<x\u0007 room" } }));
@@ -262,7 +258,6 @@ t("confirm refuses an unknown peer and a token equal to the operator's", async (
   expect(await refused(confirm("goomal", String(CHAT), mk({ ...stub(), loadToken: () => "9876543210:" + "B".repeat(35) }).deps))).toContain("operator bot's token");
 });
 
-// ---- remove, uninstall, footprint
 t("add, remove and uninstall leave only the declared paths, then nothing", async () => {
   const unitDir = join(home, ".config", "systemd", "user");
   fs.mkdirSync(unitDir, { recursive: true });
@@ -296,7 +291,6 @@ t("remove and uninstall need a typed yes", async () => {
   expect(fs.existsSync(stateDir())).toBe(true);
 });
 
-// ---- source greps, units, run.sh
 const sources = () => fs.readdirSync(DIR).filter(n => /\.(ts|sh)$/.test(n) && n !== "setup.test.ts");
 t("no sudo under scripts/peer-bridge", () => {
   const files = [...sources(), ...fs.readdirSync(join(DIR, "units")).map(n => join("units", n))];

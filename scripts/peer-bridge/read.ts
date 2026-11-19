@@ -75,7 +75,6 @@ function main(): void {
   try { key = fs.readFileSync(join(configDir(), "hmac.key")); } catch { refuse(); }
   if (key.length === 0) refuse();
 
-  // The session is tainted before anything is printed.
   fs.mkdirSync(join(S, "taint"), { recursive: true, mode: 0o700 });
   fs.closeSync(fs.openSync(join(S, "taint", sid), "a", 0o600));
 

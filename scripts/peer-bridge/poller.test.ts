@@ -170,7 +170,6 @@ test("two peers' pending intents with the same chain number are both sent", asyn
   expect(readChain(join(e.stateDir, "other", "outbox.jsonl")).map(r => r.kind)).toEqual(["intent", "sent"]);
 });
 
-// A receiver bridge in miniature: the real gate and thread state of the other side.
 function receiver() {
   const state = createGateState({ ourBotId: PEER_ID, ourUsername: "goomal_bot", committed: 0, now: T0 });
   const cfg = { maxTextChars: 4000, peers: { ours: { peerBotId: OUR_ID, chatId: CHAT, allowFrom: [OUR_ID], maxPerMinute: 100 } as any } };
@@ -196,13 +195,11 @@ function receiver() {
 test("a crash between the Telegram call and the sent record leaves one thread at the receiver: root and reply", async () => {
   const rx = receiver();
   const e = await setup();
-  // A root, delivered, then the response is lost.
   submitSpool(e.peerDir, { type: "send", kind: "info", text: "fyi: the build is green" });
   e.script.push(() => { throw new TelegramError("connection reset", 0); });
   await e.poller.drainSpool();
   for (const s of e.sent) rx.deliver(s.text, s.replyTo);
   expect(outbox(e).map(r => r.kind)).toEqual(["intent"]);
-  // A restart recovers the intent and resends the same id.
   const again = await Poller.create(e.deps);
   const before = e.sent.length;
   await again.recover();
@@ -268,8 +265,6 @@ test("an answer to an unknown thread is refused, and a cursor only moves forward
   expect(readResult(e, lo)).toEqual({ ok: true });
   expect(JSON.parse(readFileSync(join(e.peerDir, "cursors", "s1"), "utf8"))).toEqual({ n: 9 });
 });
-
-// ---- I4: every send path runs the real egress gate ----
 
 const DENY = { default: "deny", rules: [{ corpus: "peer-desk", provider: "peer-telegram", purpose: "peer-message", verdict: "deny", why: "test" }] };
 const names = {
@@ -381,8 +376,6 @@ test.skipIf(!!process.env.PEER_RED_COPY)("I4 mutation: with the egress call remo
   expect(failedTests(mutated.stdout + mutated.stderr).sort()).toEqual(Object.values(names).sort());
 }, 120_000);
 
-// ---- I2: the closed spawn list ----
-
 function fakeClaude(): string {
   const bin = tmp("peer-poller-bin-");
   const file = join(bin, "claude");
@@ -432,8 +425,6 @@ test("a bun build of the poller reaches no dispatch-lane, spawn-claudex or lib/c
   expect(inputs.some(i => i.includes("scripts/peer-bridge/poller.ts"))).toBe(true);
   expect(inputs.filter(i => /dispatch-lane|spawn-claudex|scripts\/lib\/claude-/.test(i))).toEqual([]);
 });
-
-// ---- startup refusals, as a process ----
 
 const TOKEN = "1234567890:" + "A".repeat(35);
 function processEnv(over: { mode?: number; operatorBotId?: string; peerName?: string; lockHeld?: boolean } = {}) {

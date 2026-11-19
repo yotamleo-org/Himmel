@@ -8,7 +8,6 @@ const tmp = (p: string) => mkdtempSync(join(tmpdir(), p));
 const CAPS = { maxReaderRunsPerDay: 50, maxReaderRunsPerKindPerDay: { question: 30, status: 10, info: 10 } as Record<string, number> };
 const DAY = Date.UTC(2026, 10, 9, 12);
 
-// A fake himmel checkout whose preflight prints a fixed token.
 function fakeRoot(token: string) {
   const root = tmp("peer-reader-root-");
   mkdirSync(join(root, "scripts/lib"), { recursive: true });

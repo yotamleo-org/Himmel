@@ -1,7 +1,5 @@
 import { randomBytes } from "node:crypto";
 
-// The only two regexes that ever read peer text. Both are anchored over finite
-// enums: no open-text parsing, nothing that maps to an action.
 export const KIND_LINE_RE = /^#(ask:question|status|info|answer) id=([0-9a-f]{8})$/;
 export const TPL_LINE_RE = /^#tpl:(receipt|nudge|deferred|closing|declined-kind|busy) #([0-9]+) id=([0-9a-f]{8})(?: by=([0-9]{8}T[0-9]{6}Z))?$/;
 

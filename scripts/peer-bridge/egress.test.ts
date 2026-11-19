@@ -8,7 +8,6 @@ import type { Peer } from "./config";
 import { Chain, readChain } from "./chain";
 import { checkOutbound, refusalRecord, type OutCtx } from "./egress";
 
-// Addresses are built, not written, so the leak-class gate sees no literal LAN address.
 const ip = (...o: number[]) => o.join(".");
 const HIMMEL_ROOT = join(import.meta.dir, "..", "..");
 

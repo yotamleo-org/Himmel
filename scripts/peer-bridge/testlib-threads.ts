@@ -1,4 +1,3 @@
-// Builders shared by the threads and policy suites.
 import type { PeerMsgRec } from "./gate";
 import type { Action, Dir, ThreadRec } from "./threads";
 import { Threads } from "./threads";

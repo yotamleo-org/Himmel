@@ -1,5 +1,3 @@
-// Every process the bridge starts goes through these two seams, so a test can
-// record each argv and prove the spawn list is closed.
 import * as cp from "node:child_process";
 
 export const procHooks = {

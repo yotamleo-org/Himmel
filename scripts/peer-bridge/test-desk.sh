@@ -58,7 +58,6 @@ run_desk() { # run_desk <peer> -> sets REC and rc
     rc=$?
 }
 
-# --- the desk starts an empty, private session with PEER_DESK set ---
 new_home
 run_desk goomal
 if [ "$rc" = 0 ] && [ "$(cat "$REC/peer_desk")" = goomal ] && [ "$(cat "$REC/cwd")" = "$(cd "$S/desk/goomal" && pwd -P)" ]; then pass "desk.sh starts claude in the desk dir with PEER_DESK set"; else fail "desk.sh starts claude in the desk dir with PEER_DESK set" "rc=$rc $(cat "$REC/err")"; fi
@@ -67,7 +66,6 @@ if [ "$rc" = 0 ] && [ "$(cat "$REC/peer_desk")" = goomal ] && [ "$(cat "$REC/cwd
 if grep -q -F -- "bun $REPO_ROOT/scripts/peer-bridge/read.ts goomal" "$REC/args" && grep -q -F -- "bun $REPO_ROOT/scripts/peer-bridge/send.ts goomal --kind" "$REC/args"; then pass "the system prompt names both command shapes under himmelRoot"; else fail "the system prompt names both command shapes under himmelRoot" "$(cat "$REC/args")"; fi
 grep -q -- "--append-system-prompt" "$REC/args" && pass "the prompt is appended, not replaced" || fail "the prompt is appended, not replaced"
 
-# --- the gate's JSON drives read.ts, then send.ts ---
 SID="desk-sid-1"
 hook_json() { jq -n --arg sid "$SID" --arg cmd "$1" '{session_id:$sid, tool_name:"Bash", tool_input:{command:$cmd}}'; }
 READ_CMD="bun $REPO_ROOT/scripts/peer-bridge/read.ts goomal"
@@ -97,7 +95,6 @@ fi
 out="$(hook_json 'ls /' | HOME="$H" PEER_DESK=goomal bash "$GATE" 2>/dev/null)"; grc=$?
 [ "$grc" = 2 ] && pass "any other command is denied in the desk" || fail "any other command is denied in the desk" "rc=$grc"
 
-# --- refusals ---
 new_home
 mkdir -p "$S/desk/goomal/.claude"
 printf '%s' '{"permissions":{"allow":["Bash(bun *send.ts*)"]}}' > "$S/desk/goomal/.claude/settings.local.json"

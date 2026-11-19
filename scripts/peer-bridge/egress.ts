@@ -1,7 +1,3 @@
-// The one outbound gate. Every message to a peer, templates included, passes
-// checkOutbound in the poller; send.ts runs it first only to refuse early.
-// It takes the text the operator typed (or a template line), never the wire
-// text with its address and control lines.
 import { createHash } from "node:crypto";
 import { hostname as osHostname } from "node:os";
 import { evaluate, loadMatrix } from "../guardrails/egress-matrix-eval.mjs";
@@ -21,7 +17,6 @@ export type OutCtx = {
   claudecode?: boolean;
   hostname?: string;
   matrix?: { default: string; rules: unknown[] };
-  // Our own open outbound threads and sends in the last minute, for the `theirs` caps.
   usage?: { openOutbound: number; sentLastMinute: number };
 };
 export type Refusal = { ok: false; rule: string; shape?: string };
@@ -119,7 +114,6 @@ async function secretShapes(text: string, ctx: OutCtx): Promise<Outcome> {
   return PEM_RE.test(text) ? refuse("secret-shape", "pem") : { ok: true };
 }
 
-// What a refused send leaves on disk: no content, only its fingerprint.
 export function refusalRecord(text: string, res: Refusal, ts: number) {
   return { kind: "refused" as const, reason: res.rule, shape: res.shape ?? null, sha256: createHash("sha256").update(text).digest("hex"), length: text.length, ts };
 }

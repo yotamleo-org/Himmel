@@ -1,6 +1,3 @@
-// What the poller leaves for the desk: one chained digest record per reader run,
-// and one read cursor per desk session. read.ts reads both and submits acks;
-// only the poller writes a cursor.
 import { createHmac, timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
 import { join } from "node:path";
@@ -34,7 +31,6 @@ export function readCursor(peerDir: string, sid: string): number {
   try { const n = Number(JSON.parse(fs.readFileSync(cursorFile(peerDir, sid), "utf8")).n); return Number.isSafeInteger(n) && n > 0 ? n : 0; } catch { return 0; }
 }
 
-// A cursor only moves forward.
 export async function writeCursor(peerDir: string, sid: string, n: number): Promise<void> {
   if (!SESSION_ID_RE.test(sid)) throw new Error("bad session id");
   fs.mkdirSync(join(peerDir, "cursors"), { recursive: true, mode: 0o700 });

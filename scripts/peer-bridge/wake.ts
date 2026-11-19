@@ -1,6 +1,3 @@
-// The wake: one metadata-only line in the operator chat's outbox. The operator
-// bridge sends it with no model run. The line carries the peer name, the thread
-// number, a label this code wrote and a deadline, never peer or digest text.
 import { appendOutboxLine } from "../telegram/bus";
 import type { Config } from "./config";
 import { PEER_NAME_RE } from "./ids";

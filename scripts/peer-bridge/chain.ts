@@ -1,5 +1,3 @@
-// The poller is the only writer of the chain files. Other tools hand it work
-// through the spool: each submission is one O_EXCL file the poller drains.
 import fs from "node:fs";
 import { constants } from "node:fs";
 import { randomBytes } from "node:crypto";
@@ -11,8 +9,6 @@ import { procHooks } from "./proc";
 type Handle = Awaited<ReturnType<typeof openChainFile>>;
 type Opener = (file: string, flags: number) => Promise<Handle> | Handle;
 
-// One chain append at a time inside this process; the pid lock keeps a second
-// process out. The tail (n, h) of each file is cached after the first read.
 export class Chain {
   private tails = new Map<string, { n: number; h: string }>();
   private queue: Promise<unknown> = Promise.resolve();
@@ -70,7 +66,6 @@ export class Chain {
 export function readChain(file: string): ChainRecord[] {
   let text: string;
   try { text = fs.readFileSync(file, "utf8"); } catch (e: any) { if (e.code === "ENOENT") return []; throw e; }
-  // A last segment with no newline is a write a crash cut short; Chain.readTail cuts it off on the next append.
   const complete = text.slice(0, text.lastIndexOf("\n") + 1);
   return complete.split("\n").filter(Boolean).map(l => JSON.parse(l));
 }
@@ -118,8 +113,6 @@ export function submitSpool(peerDir: string, rec: SpoolRec, nameFn: () => string
   return name;
 }
 
-// For the poller only. The file stays until writeResult removes it, so a crash
-// between the work and the result replays the record.
 export function drainSpool(peerDir: string): Drained[] {
   const dir = join(peerDir, "spool");
   const out: Drained[] = [];
@@ -137,8 +130,6 @@ export function drainSpool(peerDir: string): Drained[] {
   return out;
 }
 
-// The result holds no message text (a refusal names its rule and shape only),
-// so once the spool file is removed nothing under the state dir carries the text.
 export function writeResult(peerDir: string, name: string, res: SendResult): void {
   const dir = join(peerDir, "spool", "results");
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -151,7 +142,6 @@ export function writeResult(peerDir: string, name: string, res: SendResult): voi
   fs.rmSync(join(peerDir, "spool", name), { force: true });
 }
 
-// A sender that gave up (exit 4) never collects its result; the poller sweeps.
 export function sweepResults(peerDir: string, maxAgeMs: number, now = Date.now()): void {
   const dir = join(peerDir, "spool", "results");
   let names: string[];
@@ -161,8 +151,6 @@ export function sweepResults(peerDir: string, maxAgeMs: number, now = Date.now()
   }
 }
 
-// An intent holds what to send, so a crash between the Telegram call and the
-// `sent` record resends the same id. `text` is the body, or the whole line for a template.
 export type IntentRec = { kind: "intent"; peer: string; chat: number; id: string; root: number | null; msgKind: string; text: string; isRoot: boolean; tpl?: boolean; resend?: boolean; spool?: string };
 export type SentRec = { kind: "sent"; id: string; intent: number; message_id: number; ts: number };
 

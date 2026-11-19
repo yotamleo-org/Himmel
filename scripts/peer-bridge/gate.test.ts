@@ -256,7 +256,6 @@ test("every drop is one log line with no message text", () => {
   if (!r.ok) { expect(r.log.includes("\n")).toBe(false); expect(r.log).not.toContain("SECRET-CANARY"); }
 });
 
-// The mutation control lives in a temp copy of the layout, so production code carries no flag.
 test.skipIf(!!process.env.PEER_RED_COPY)("RED control: removing the empty-allowFrom check fails the empty allowFrom row and no other", () => {
   const root = makeRedCopy(["scripts/telegram/bus.ts", "scripts/telegram/gate.ts"]);
   const run = () => spawnSync("bun", ["test", "./scripts/peer-bridge/gate.test.ts"], { cwd: root, encoding: "utf8", env: { ...process.env, PEER_RED_COPY: "1" } });
