@@ -71,6 +71,31 @@ done
 check "is_parked with no argument is false and survives set -u" "no" \
   "$(child 'if status_marker_is_parked; then echo yes; else echo no; fi')"
 
+# typed outcomes (rows E1 to E3): unreadable is its own outcome, never none
+rcof() { bash -c 'set -euo pipefail; . "$1"; rc=0; out=$("$2" "$3") || rc=$?; printf "rc=%s out=[%s]" "$rc" "$out"' _ "$SCRIPT" "$1" "$2" 2>&1; }  # read-sink-ok: sources the script under test ($SCRIPT), not a host file
+# fifo_rc FN: call FN on the FIFO $T/fifo in a child that is killed after 5 seconds
+fifo_rc() {
+  local out="$T/fifo.out" pid wd st
+  : > "$out"
+  bash -c 'set -euo pipefail; . "$1"; rc=0; "$2" "$3" >/dev/null || rc=$?; echo "rc=$rc"' _ "$SCRIPT" "$1" "$T/fifo" > "$out" 2>&1 &  # read-sink-ok: sources the script under test ($SCRIPT), not a host file
+  pid=$!
+  ( sleep 5; kill "$pid" 2>/dev/null ) > /dev/null 2>&1 < /dev/null &
+  wd=$!
+  wait "$pid" 2>/dev/null; st=$?
+  kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null
+  if [ "$st" -gt 128 ]; then echo KILLED; else cat "$out"; fi
+}
+: > "$T/zero.md"; mkdir "$T/adir"; mkfifo "$T/fifo"; printf '## Results\n' > "$T/none.md"
+for fn in status_marker_newest status_marker_actionable; do
+  for p in "$T/absent" "$T/adir" /dev/null; do
+    check "row E1 $fn unreadable: $p" "rc=3 out=[]" "$(rcof "$fn" "$p")"
+  done
+  check "row E1 $fn zero-byte file is none" "rc=1 out=[]" "$(rcof "$fn" "$T/zero.md")"
+  check "row E3 $fn FIFO is unreadable and never blocks" "rc=3" "$(fifo_rc "$fn")"
+done
+check "row E2 a none doc under strict mode takes the else branch" "else:1" \
+  "$(bash -c 'set -euo pipefail; . "$1"; if out=$(status_marker_newest "$2"); then echo "then:$out"; else echo "else:$?"; fi' _ "$SCRIPT" "$T/none.md" 2>&1)"  # read-sink-ok: sources the script under test ($SCRIPT), not a host file
+
 if command -v node >/dev/null 2>&1; then
   out=$(node --test "$HERE/status-marker.test.mjs" 2>&1) || { echo "FAIL: status-marker.test.mjs" >&2; printf '%s\n' "$out" | tail -40 >&2; FAIL=$((FAIL + 1)); }
 else

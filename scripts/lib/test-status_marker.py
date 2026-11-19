@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -75,6 +76,39 @@ class Rows(unittest.TestCase):
         self.assertEqual(run("is-parked", "LIVE").returncode, 1)
         self.assertEqual(run("bogus", "x").returncode, 2)
         self.assertEqual(run("parse").returncode, 2)
+
+
+class Typed(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.t = tmp.name
+
+    def test_unreadable_is_its_own_outcome(self):
+        os.mkdir(os.path.join(self.t, "adir"))
+        zero = os.path.join(self.t, "zero.md")
+        open(zero, "w").close()
+        for name in ("newest", "actionable"):
+            for p in (os.path.join(self.t, "absent"), os.path.join(self.t, "adir"), "/dev/null"):
+                with self.subTest("row E1", fn=name, path=p):
+                    with self.assertRaises(OSError):
+                        getattr(status_marker, name)(p)
+            with self.subTest("row E1 zero-byte", fn=name):
+                self.assertIsNone(getattr(status_marker, name)(zero))
+
+    def test_fifo_is_unreadable_and_never_blocks(self):
+        fifo = os.path.join(self.t, "fifo")
+        os.mkfifo(fifo)
+        code = (
+            "import sys; sys.path.insert(0, sys.argv[1]); import status_marker as m\n"
+            "try:\n    getattr(m, sys.argv[3])(sys.argv[2]); print('NONE')\n"
+            "except OSError as e:\n    print(type(e).__name__)\n"
+        )
+        for name in ("newest", "actionable"):
+            with self.subTest("row E3", fn=name):
+                r = subprocess.run([sys.executable, "-I", "-c", code, HERE, fifo, name],
+                                   capture_output=True, text=True, timeout=5)
+                self.assertEqual(r.stdout.strip(), "OSError", r.stderr)
 
 
 if __name__ == "__main__":
