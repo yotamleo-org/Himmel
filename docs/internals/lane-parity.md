@@ -6,7 +6,7 @@ extends [`harness-compat.md`](harness-compat.md) lane by lane. The guard set
 comes from the hooks listed in [`enforcement.md`](enforcement.md). Two suites
 read this page: `scripts/parity/test-guard-conformance.sh` parses the
 deny-guard x lane table, and `scripts/parity/test-ws5-invariants.sh` checks
-that the gemini / copilot / cursor rows stay `deferred`.
+that the copilot / cursor rows stay `deferred`.
 
 > **Note:** this index records compatibility/parity, not current routing —
 > dormancy status for impl lanes (claudex is live; hermes-oneshot and codex-exec are dormant; the GLM lane was removed) lives in `scripts/lanes/lanes.json` /
@@ -85,7 +85,7 @@ dimension row so every write-fence cell sits in a real row (no home-less cell).
 | main-claude | auto-mode classifier |
 | codex-direct | `tested:scripts/hooks/test-block-terminal-write-fence.sh` -- the terminal write/push/network fence (codex-lane classifier substitute), e2e-proved through the adapter (`scripts/hooks/test-codex-adapter-e2e.sh`). The Edit/Write patch path is fenced by `block-edit-on-main.sh` via the adapter. |
 | hermes-main (DEFAULT; engine gpt-6.1-sol; GLM removed) | `parity_guard` push/PR fence -- `tested:scripts/hermes/test-parity-guard.sh` (write-fence; the CC hook does NOT fire under hermes, parity_guard is the sole fence). The other deny-guards are enforced by parity_guard too (all `present`). |
-| gemini / copilot / cursor | `deferred` |
+| copilot / cursor | `deferred` |
 
 ## Token vocabulary (machine-readable; defined once)
 
@@ -121,7 +121,7 @@ sub-table below is `tested:<path>` -- no `GAP`, no `pending:`.
 | main-claude | `native` (CLAUDE.md) | `native` (hooks + classifier) | `native` | `native` | `native` (baseline) |
 | codex-direct | `tested:scripts/agents-md/generate.mjs` (AGENTS.md gen + gated) | `tested:scripts/hooks/test-codex-run-hook.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
 | hermes-main (DEFAULT; engine gpt-6.1-sol; GLM removed) | `AGENTS.md (loaded)` (`tested:scripts/hermes/test-agents-reach.sh`) | `tested:scripts/hermes/test-parity-guard.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
-| gemini / copilot / cursor | `deferred` | `deferred` | `deferred` | `deferred` | `deferred` |
+| copilot / cursor | `deferred` | `deferred` | `deferred` | `deferred` | `deferred` |
 
 Notes on the guardrail-firing cells. codex-direct reaches the native block-* hooks THROUGH the
 `.codex/hooks.json` adapter (the exit-2 to deny translation proved by

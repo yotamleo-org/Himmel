@@ -21,15 +21,15 @@ to **other coding harnesses** — Codex first — so an operator can decide what
 
 > **Status:** the **Codex** column is triple-validated (openai/codex source +
 > context7 `/openai/codex` v0.75.0 + official docs, 2026-06-21). The
-> **Cursor / Copilot / Gemini** columns were audited 2026-06-21
+> **Cursor / Copilot** columns were audited 2026-06-21
 > (official docs + superpowers' shipped cross-harness manifests); a few cells with
 > no authoritative source are marked *unverified* inline.
 >
 > This doc is the deliverable of the multi-harness support effort. The ports it
 > recommends are the guardrail hook port, AGENTS.md generation, the
-> Cursor / Copilot / Gemini audit and per-critic prompt adaptation. The audit
+> Cursor / Copilot audit and per-critic prompt adaptation. The audit
 > spawned follow-ups: Cursor hooks, a rejected Hermes CR-skill integration,
-> soft-deferred Gemini/Copilot ports, and Codex where-are-we/status context.
+> soft-deferred Copilot ports, and Codex where-are-we/status context.
 > Selective Codex command/skill ports, including `pr-check`, are now their own
 > track.
 
@@ -957,7 +957,7 @@ question it answers and the no-token preconditions that must pass first.
 `AskUserQuestion` is a **Claude-Code-only interactive multiple-choice tool**, not
 a lifecycle hook event — so unlike the SessionStart/Stop ports (596/599) there is
 **nothing to wire** in `.codex/hooks.json`; Codex's 10-event set (and
-Cursor/Copilot/Gemini) has no question-tool equivalent. When a skill that says
+Cursor/Copilot) has no question-tool equivalent. When a skill that says
 "ask via `AskUserQuestion`" runs under Codex, the tool is simply absent and the
 model **degrades to asking the same question as plain conversational prose**. What
 is lost is the structured-choice UI, **not** the question/answer exchange — no
@@ -1003,10 +1003,10 @@ branch is indistinguishable from ordinary Claude work, so structural
 cheap-lane enforcement for Codex waits on a future hermes task→branch provenance
 record; until it ships, `codex/*` PRs rely on behavioral verdict discipline.
 
-## Cursor / Copilot / Gemini deep-dive
+## Cursor / Copilot deep-dive
 
 Audited 2026-06-21 (official docs + superpowers' shipped `hooks-cursor.json`,
-`.cursor-plugin/`, `.codex-plugin/`, `gemini-extension.json`). Per-harness
+`.cursor-plugin/`, `.codex-plugin/`). Per-harness
 port/guard/accept:
 
 ### Cursor (priority: second after Codex)
@@ -1024,20 +1024,12 @@ port/guard/accept:
 
 ### Copilot CLI (SOFT-DEFER — no free usage)
 - **Rule file — ACCEPT.** Reads `AGENTS.md` (the generated file covers it);
-  also reads `CLAUDE.md`/`GEMINI.md`.
+  also reads `CLAUDE.md`.
 - **Skills — ACCEPT** (reads `.claude/skills`). **Subagents** `*.agent.md` — port selectively.
 - **Hooks — PORT, with a gotcha.** `.github/hooks/*.json`, fails CLOSED, BUT
   **headless `-p` disables repo hooks** unless `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=true`
   — himmel's auto-mode guardrails would silently not fire. Note `COPILOT_CLI` env
   var (superpowers reference) does **not** exist in current docs.
-
-### Gemini CLI (SOFT-DEFER — no free usage)
-- **Rule file — PORT (small).** Needs `GEMINI.md` (distinct filename); same body
-  as AGENTS.md → a one-line extra target on the AGENTS.md generator. Soft-deferred.
-- **Skills / subagents** — gemini-native `SKILL.md` (`.gemini/skills/`) +
-  `.gemini/agents/*.md` — port selectively.
-- **Hooks — PORT.** `.gemini/settings.json` `hooks`, **PascalCase** events
-  (`BeforeTool`), stdin-JSON payload (no env vars). New wiring.
 
 ### CR reviewer under non-Claude harnesses (answers "pr-review-toolkit for codex?")
 The **cross-model critic panel** (`scripts/cr/critic-panel.sh` + hermes) is pure
@@ -1069,9 +1061,8 @@ gate fails closed with a message naming the remedy (re-run the installer);
 | Git gates (pre-commit/push) | **Accept** — fire on every harness |
 | PreToolUse guardrails (Codex) | **Ported** — tracked `.codex/hooks.json` through `run-hook.sh` + adapter |
 | Rule file (CLAUDE.md → AGENTS.md) | **Port** — covers Codex **+ Copilot + Cursor** |
-| Rule file → `GEMINI.md` | **Port (small), SOFT-DEFER** — extra generator target |
 | Hooks → Cursor (`.cursor/hooks.json`, fail-open) | **Port** (priority 2) |
-| Hooks → Copilot / Gemini | **Port, SOFT-DEFER** (no free usage) |
+| Hooks → Copilot | **Port, SOFT-DEFER** (no free usage) |
 | Skills / subagents (Cursor, Copilot) | **Accept** — read `.claude/*` directly |
 | Driver commands → Codex skills | **Ported (delivered)** — thin tracked `.agents/skills/` wrappers (worktree, clean, pr-check, the handover commands and more) shelling existing `scripts/`; live-verified under codex-cli 0.142.0 |
 | Automated review skill for Codex | **Ported (panel-only)** — Codex `pr-check` skill runs the shell panel + clears the review-owed marker on clean; native `/review` participation deferred until the shared context assembler lands |
@@ -1113,12 +1104,11 @@ usage without coupling the prompt contract to one harness.
 - [Codex AGENTS.md discovery](https://developers.openai.com/codex/guides/agents-md)
 - [GPT-5 prompting guide](https://developers.openai.com/cookbook/examples/gpt-5/gpt-5_prompting_guide)
 - context7 `/luohaothu/everything-codex` (everything-claude-code → Codex migration).
-- **Cursor/Copilot/Gemini audit (2026-06-21):** cursor.com/docs (hooks,
+- **Cursor/Copilot audit (2026-06-21):** cursor.com/docs (hooks,
   rules, plugins, skills, subagents, slash-commands) · docs.github.com/copilot
   (hooks-configuration/reference, custom-instructions, CLI plugins + marketplace,
-  skills, custom agents) · geminicli.com/docs (hooks, GEMINI.md, extensions,
-  skills, subagents, custom-commands) · superpowers v6.0.3 shipped
-  `hooks-cursor.json` / `hooks-codex.json` / `.cursor-plugin` / `gemini-extension.json`.
+  skills, custom agents) · superpowers v6.0.3 shipped
+  `hooks-cursor.json` / `hooks-codex.json` / `.cursor-plugin`.
 - **CR-under-Codex:** `ComposioHQ/awesome-codex-skills` (~14k★ live 2026-06-21) +
   `hyhmrright/brooks-lint` (921★, MIT) — vault clip
   `luna/30-Resources/Tech/composiohq-awesome-codex-skills.md`.
