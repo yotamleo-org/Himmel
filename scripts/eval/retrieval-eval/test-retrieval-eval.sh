@@ -927,8 +927,8 @@ sess(proj + "/p2/s3.jsonl", [
     ("Read", {"file_path": vault + "/notes/missing.md"}, "")])
 PY
 py "$EV" mine-luna --repo "$R" --projects "$W/mproj" --vault "$V" --days 30 --out "$W/state/cand.jsonl" > "$W/mine.txt" 2>&1
-eq "mine_reports_three_sources: exit 0 and a count per source, qmd 3 (a Bash and an MCP query, a failed and a non-luna one dropped), direct 2 (a note a qmd call reached first is not direct), written 0" "0 qmd: 3 direct: 2 written: 0" "$? $(sed -n 's/^\(qmd\|direct\): \([0-9]*\)$/\1: \2/p; s/^\(written: [0-9]*\) .*/\1/p' "$W/mine.txt" | paste -sd' ' -)"
-eq "mine_reports_three_sources: the candidate file holds one row per path and source, and the stdout names a hash, never a path" "5 $(cut -c1-16 < <(sha256sum "$W/state/cand.jsonl" | cut -d' ' -f1)) 0" "$(wc -l < "$W/state/cand.jsonl") $(sed -n 's/^sha256: //p' "$W/mine.txt") $(grep -c -E 'alpha|beta|gamma|delta|epsilon' "$W/mine.txt")"
+eq "mine_reports_three_sources: exit 0 and a count per source, qmd 3 (a Bash and an MCP query, a failed and a non-luna one dropped), direct 2 (a note a qmd call reached first is not direct), written 0" "0 qmd: 3 direct: 2 written: 0" "$? $(sed -n -E 's/^(qmd|direct): ([0-9]*)$/\1: \2/p; s/^(written: [0-9]*) .*/\1/p' "$W/mine.txt" | paste -sd' ' -)"
+eq "mine_reports_three_sources: the candidate file holds one row per path and source, and the stdout names a hash, never a path" "5 $(cut -c1-16 < <(sha256sum "$W/state/cand.jsonl" | cut -d' ' -f1)) 0" "$(wc -l < "$W/state/cand.jsonl" | tr -d ' ') $(sed -n 's/^sha256: //p' "$W/mine.txt") $(grep -c -E 'alpha|beta|gamma|delta|epsilon' "$W/mine.txt")"
 git -C "$R" worktree add -q "$W/wt" -b wtb
 ln -s "$R" "$W/link-to-repo"
 for o in "$R/cand.jsonl" "$W/link-to-repo/cand2.jsonl"; do
