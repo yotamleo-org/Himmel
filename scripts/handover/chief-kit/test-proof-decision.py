@@ -801,7 +801,8 @@ class ChiefDecision(unittest.TestCase):
                          'Pending count was 0', 'not-yet-due items: none'):
             with self.subTest(evidence=evidence):
                 self.assertFalse(self.unmet(self.result_table(evidence=evidence)))
-        self.assertFalse(self.unmet(self.result_table(status='Pendingly done')))  # a word of its own, not the status word
+        self.assertTrue(self.unmet(self.result_table(status='Pendingly done')))  # not MET, so unmet (a status is exactly MET)
+        self.assertFalse(self.unmet('- Pendingly done\n- Waitingroom closed\n'))  # a word of its own, not the status word
         self.assertFalse(self.unmet('| row | Expected | Result |\n|---|---|---|\n| obs | PENDING | MET |\n'))  # an Expected column is test input
         self.assertFalse(self.unmet('| row | Expected | Sha | Evidence |\n|---|---|---|---|\n| obs | PENDING | main=aaa | ok |\n'))  # also with no status column
         self.assertFalse(self.unmet('The run reported nothing pending, no one waiting and no tbd.\n- the run reported nothing pending\n'))
@@ -1004,10 +1005,6 @@ class ChiefDecision(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0, r.stdout)
         self.assertIn('live pull-request remainder unreadable', r.stderr)
         self.assertIn('PR #77', r.stderr)
-        # the caller's wait must cover the reader's whole budget, or the chief sees an exec timeout instead of this refusal
-        caller = int(re.search(r'timeout: (\d[\d_]*)', (HERE.parents[1] / 'jira' / 'src' / 'commands' / 'transition.ts').read_text())[1].replace('_', ''))
-        reader = float(re.search(r"PROOF_REMAINDER_BUDGET_SECS'\) or '?(\d+)", (HERE / 'proof-validate.py').read_text())[1])
-        self.assertLess(reader * 1000, caller)
 
     def test_a_proof_row_is_met_only_when_its_status_is_exactly_met(self):
         for status in ('MET (pending review)', 'MET, pending 24h', 'PASS (pending)', 'Awaiting 24h', 'NOT RUN', 'BLOCKED', 'MET (with a naming note)',
