@@ -1312,7 +1312,8 @@ if [ "$DRY_RUN" -eq 0 ]; then
         # was never created is a safe no-op, so track it unconditionally
         # rather than trying to distinguish the two from the token alone.
         _ARM_FLEET_SLOTS="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}"
-        _arm_fleet_scope=$(FLEET_LAUNCH_ATTEMPT='' FLEET_LAUNCH_MANIFEST='' python3 -I "$SCRIPT_DIR/../lib/fleet_runtime.py" resolve --doc "$HANDOVER_PATH") || exit 22
+        FLEET_LAUNCH_ATTEMPT='' FLEET_LAUNCH_MANIFEST='' py_armor_capture -I "$SCRIPT_DIR/../lib/fleet_runtime.py" resolve --doc "$HANDOVER_PATH" || exit 22
+        _arm_fleet_scope="$PY_ARMOR_OUT"
         if [ "$(printf '%s\n' "$_arm_fleet_scope" | jq -r .managed)" = true ]; then
             _ARM_FLEET_SLOTS=$(printf '%s\n' "$_arm_fleet_scope" | jq -er .slots) || exit 22
         fi
@@ -4463,16 +4464,17 @@ fi
 # top-level armed session can self-exit with SIGTERM once its successor is
 # armed (documented in afk-mode.md).
 _arm_runtime_body() {
-    local scope q_runtime q_runtime_doc q_runtime_name q_runtime_manifest
-    scope=$(python3 -I "$SCRIPT_DIR/../lib/fleet_runtime.py" resolve --doc "$HANDOVER_PATH") || scope='{"managed":true}'
+    local scope
+    if py_armor_capture -I "$SCRIPT_DIR/../lib/fleet_runtime.py" resolve --doc "$HANDOVER_PATH"; then scope=$PY_ARMOR_OUT; else scope='{"managed":true}'; fi
     if [ "$(printf '%s\n' "$scope" | jq -r .managed)" != true ]; then printf '%s' "$1"; return 0; fi
-    q_runtime=$(printf '%q' "$SCRIPT_DIR/../lib/fleet_runtime.py")
-    q_runtime_doc=$(printf '%q' "$HANDOVER_PATH")
-    q_runtime_name=$(printf '%q' "${SESSION_NAME:-$TASK_NAME}")
-    q_runtime_manifest=$(printf '%q' "$(printf '%s\n' "$scope" | jq -r '.manifest // ""')")
+    # shellcheck source=../lib/fleet-launch.sh
+    . "$SCRIPT_DIR/../lib/fleet-launch.sh" || {
+        echo "ERR arm-resume: cannot source $SCRIPT_DIR/../lib/fleet-launch.sh -- refusing to arm a managed launch without its runtime line." >&2
+        exit 22
+    }
     # $2, when given, is shell text that runs first inside the bash -c: a function
     # defined in the shell that runs this line is not visible in that new bash.
-    printf 'python3 -I %s run --doc %s --name %s --manifest %s -- bash -c %s' "$q_runtime" "$q_runtime_doc" "$q_runtime_name" "$q_runtime_manifest" "$(printf '%q' "${2-}$1")"
+    fleet_launch_runtime_line "$SCRIPT_DIR/../lib/fleet_runtime.py" "$HANDOVER_PATH" "${SESSION_NAME:-$TASK_NAME}" "$(printf '%s\n' "$scope" | jq -r '.manifest // ""')" "${2-}$1"
 }
 
 _crontab_schedule() {

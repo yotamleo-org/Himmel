@@ -48,3 +48,13 @@ fleet_launch_release() {
     [ "${FLEET_LAUNCH_MANAGED:-false}" = true ] || return 0
     python3 -I "$_FLEET_LAUNCH_LIB/fleet_runtime.py" release --attempt-id "$FLEET_LAUNCH_ATTEMPT" --pid "$$" >/dev/null
 }
+
+# fleet_launch_runtime_line <runtime path> <doc> <name> <manifest> <launch text>
+# prints the shell text a scheduled body runs to hand <launch text> to the fleet
+# runtime. The runtime supervises the launch from its commit to its terminal
+# outcome, so it runs as long as the session does: the line carries no time bound
+# (the python armor's bound would end every managed session).
+fleet_launch_runtime_line() {
+    printf 'python3 -I %s run --doc %s --name %s --manifest %s -- bash -c %s' \
+        "$(printf '%q' "$1")" "$(printf '%q' "$2")" "$(printf '%q' "$3")" "$(printf '%q' "$4")" "$(printf '%q' "$5")"
+}

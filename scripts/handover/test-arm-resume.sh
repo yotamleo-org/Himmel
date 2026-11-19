@@ -2071,6 +2071,135 @@ fi
 fi
 
 # ---------------------------------------------------------------------------
+# T32 (runtime): a managed launch's runtime line comes from
+#      fleet_launch_runtime_line (scripts/lib/fleet-launch.sh) and is the same
+#      text in the at body and in the crontab runner; the two short
+#      `fleet_runtime.py resolve` calls run under the python armor. A python3 stub
+#      answers `resolve` with a managed scope, hangs (T20's wedged shape) or
+#      records its launch variables, and runs the real python3 for every other
+#      call. A resolve that hangs past the armor's bound refuses the arm (the
+#      fleet preflight) or reads as managed (the body builder), so an arm never
+#      goes on as unmanaged because its resolve hung. The scheduler stubs record
+#      any `at` call.
+# ---------------------------------------------------------------------------
+if _sec_selected "T32"; then
+T32R_PY="$TMP/t32r-py"
+T32R_BIN="$TMP/t32r-bin"
+T32R_AT_LOG="$TMP/t32r-at.log"
+T32R_AT_DIR="$TMP/t32r-at.dir"
+T32R_ENV_LOG="$TMP/t32r-env.log"
+T32R_REAL_PY=$(command -v python3)
+T32R_MANIFEST="$TMP/t32r-bucket/x.fleet.json"
+mkdir -p "$T32R_PY" "$T32R_BIN"
+cat > "$T32R_PY/python3" <<'EOF'
+#!/usr/bin/env bash
+case " $* " in
+    *fleet_runtime.py*" resolve "*)
+        case "${T32R_MODE:-}" in
+            managed) printf '{"managed":true,"manifest":"%s"}\n' "$T32R_MANIFEST"; exit 0 ;;
+            hang) trap '' TERM; sleep 30; exit 0 ;;
+            record) printf 'attempt=[%s] manifest=[%s]\n' "${FLEET_LAUNCH_ATTEMPT-unset}" "${FLEET_LAUNCH_MANIFEST-unset}" >> "$T32R_ENV_LOG" ;;
+        esac ;;
+esac
+exec "$T32R_REAL_PY" "$@"
+EOF
+printf '#!/bin/sh\nexit 1\n' > "$T32R_BIN/crontab"
+# The at stub logs each call and keeps the jobs it was given, in its own directory, so an arm
+# through it leaves nothing in the scheduler stub the later sections count.
+cat > "$T32R_BIN/at" <<'EOF'
+#!/bin/sh
+echo "at $*" >> "$T32R_AT_LOG"
+d="$T32R_AT_DIR"; mkdir -p "$d"
+case "${1:-}" in
+    -c) cat "$d/job-${2:-}" 2>/dev/null; exit 0 ;;
+    -t) n=$(cat "$d/.counter" 2>/dev/null || echo 0); n=$((n + 1)); printf '%s' "$n" > "$d/.counter"; cat > "$d/job-$n"; exit 0 ;;
+    *) cat > /dev/null 2>&1 || true; exit 0 ;;
+esac
+EOF
+cat > "$T32R_BIN/atq" <<'EOF'
+#!/bin/sh
+d="$T32R_AT_DIR"; [ -d "$d" ] || exit 0
+for f in "$d"/job-*; do
+    [ -f "$f" ] || continue
+    printf '%s\tThu Jun 11 09:00:00 2026 a user\n' "${f##*/job-}"
+done
+exit 0
+EOF
+chmod +x "$T32R_PY/python3" "$T32R_BIN/atq" "$T32R_BIN/crontab" "$T32R_BIN/at"
+# t32r_arm <VAR=value ...> <command>: runs the command with the stubs first on PATH.
+t32r_arm() {
+    env PATH="$T32R_PY:$T32R_BIN:$PATH" T32R_REAL_PY="$T32R_REAL_PY" T32R_AT_LOG="$T32R_AT_LOG" T32R_AT_DIR="$T32R_AT_DIR" T32R_ENV_LOG="$T32R_ENV_LOG" T32R_MANIFEST="$T32R_MANIFEST" "$@"
+}
+# t32r_body: the at job body a --dry-run arm prints.
+t32r_body() {
+    awk '/^DRY arm-resume: would at -t/ { on = 1; next } /^    CMD$/ { on = 0 } on { sub(/^    /, ""); print }'
+}
+
+T32R_DOC=$(make_handover "$WORK_REPO")
+T32R_RTQ=$(printf '%q' "$(dirname "$ARM")/../lib/fleet_runtime.py")
+T32R_DOCQ=$(printf '%q' "$T32R_DOC")
+T32R_MFQ=$(printf '%q' "$T32R_MANIFEST")
+out=$(t32r_arm T32R_MODE=managed bash "$ARM" --time "$(future_time)" --handover "$T32R_DOC" --dry-run 2>&1)
+T32R_BODY=$(printf '%s\n' "$out" | t32r_body)
+assert_contains "T32 managed at body: the runtime line starts python3 -I <runtime> run --doc <doc> --name" "python3 -I $T32R_RTQ run --doc $T32R_DOCQ --name " "$T32R_BODY"
+assert_contains "T32 managed at body: the runtime line goes on --manifest <manifest> -- bash -c" " --manifest $T32R_MFQ -- bash -c " "$T32R_BODY"
+out=$(t32r_arm T32R_MODE=managed OSTYPE=darwin23 ARM_TERMINAL_APP=none bash "$ARM" --time "$(future_time)" --handover "$T32R_DOC" --dry-run 2>&1)
+assert_contains "T32 managed crontab runner: the same runtime line start" "python3 -I $T32R_RTQ run --doc $T32R_DOCQ --name " "$out"
+assert_contains "T32 managed crontab runner: the same runtime line end" " --manifest $T32R_MFQ -- bash -c " "$out"
+
+# The fleet preflight clears the two launch variables for its own resolve call: an arm made with them set
+# still hands the runtime empty ones (the first resolve call of a real arm is the preflight's).
+: > "$T32R_ENV_LOG"
+T32R_HO_ENV=$(make_handover "$WORK_REPO")
+out=$(t32r_arm T32R_MODE=record FLEET_LAUNCH_ATTEMPT=ambient-attempt FLEET_LAUNCH_MANIFEST=ambient-manifest \
+    bash "$ARM" --time "$(future_time)" --handover "$T32R_HO_ENV" 2>&1)
+rc=$?
+assert_rc "T32 fleet preflight: an arm made with FLEET_LAUNCH_ATTEMPT and FLEET_LAUNCH_MANIFEST set still arms" 0 "$rc"
+assert_contains "T32 fleet preflight: the runtime's resolve sees both variables empty" "attempt=[] manifest=[]" "$(head -n 1 "$T32R_ENV_LOG")"
+
+if timeout --version 2>/dev/null | grep -qi coreutils; then
+    # The stub sleeps 30 s, so a call that is not bounded by the armor takes that long.
+    T32R_HO_HANG=$(make_handover "$WORK_REPO")
+    start=$(date +%s)
+    out=$(t32r_arm T32R_MODE=hang PY_ARMOR_TIMEOUT=3 PY_ARMOR_KILL_AFTER=1 bash "$ARM" --time "$(future_time)" --handover "$T32R_HO_HANG" --dry-run 2>&1)
+    rc=$?
+    elapsed=$(( $(date +%s) - start ))
+    T32R_BODY=$(printf '%s\n' "$out" | t32r_body)
+    assert_rc "T32 body builder: a resolve that hangs past the bound still ends the dry-run arm (rc 0)" 0 "$rc"
+    assert_contains "T32 body builder: a resolve that hangs reads as managed (the body carries the runtime line)" "fleet_runtime.py run" "$T32R_BODY"
+    assert_contains "T32 body builder: the managed default carries no manifest" " --manifest '' -- bash -c " "$T32R_BODY"
+    if [ "$elapsed" -lt 20 ]; then
+        echo "PASS T32 body builder: the hanging resolve is bounded (${elapsed}s)"
+    else
+        echo "FAIL T32 body builder: the hanging resolve took ${elapsed}s"
+        FAILED=$((FAILED + 1))
+    fi
+
+    T32R_HO_REAL=$(make_handover "$WORK_REPO")
+    : > "$T32R_AT_LOG"
+    start=$(date +%s)
+    out=$(t32r_arm T32R_MODE=hang PY_ARMOR_TIMEOUT=3 PY_ARMOR_KILL_AFTER=1 bash "$ARM" --time "$(future_time)" --handover "$T32R_HO_REAL" 2>&1)
+    rc=$?
+    elapsed=$(( $(date +%s) - start ))
+    assert_rc "T32 fleet preflight: a resolve that hangs past the bound refuses the arm (rc 22)" 22 "$rc"
+    if [ ! -s "$T32R_AT_LOG" ]; then
+        echo "PASS T32 fleet preflight: the refused arm scheduled nothing"
+    else
+        echo "FAIL T32 fleet preflight: the refused arm called at: $(cat "$T32R_AT_LOG")"
+        FAILED=$((FAILED + 1))
+    fi
+    if [ "$elapsed" -lt 20 ]; then
+        echo "PASS T32 fleet preflight: the hanging resolve is bounded (${elapsed}s)"
+    else
+        echo "FAIL T32 fleet preflight: the hanging resolve took ${elapsed}s"
+        FAILED=$((FAILED + 1))
+    fi
+else
+    echo "SKIP T32 resolve-hang rows (no GNU coreutils timeout on this runner)"
+fi
+fi
+
+# ---------------------------------------------------------------------------
 # T33: --automerge wires ARMAUTOMERGE=1 + CR_MERGE_GATE_OK=1 into
 #      the relaunched session's environment BEFORE invoking claude — opt-in
 #      only. Fix round: every generated launch body ALWAYS clears both vars
