@@ -1207,6 +1207,90 @@ bash scripts/handover/chief-kit/vm-runner.sh status
 - A classifier denial of one of these commands means the allow rule is missing
   or mismatched; see the stuck playbook, never reshape the command.
 
+## Ledger-bound capped carry (proof v2)
+
+A way to sign a frozen spec of one or more keys that stopped at its review cap with only nonblocking findings. It is
+built and tested only in hermetic fixture roots. **It is not used for a real signing before live issuance is approved
+by the operator** (item 6), and a signature is not Done.
+
+**1. The verifier flags and the signing root.** `bun scripts/telegram/chief-route.ts capped-fold` takes exactly one of
+`--key <K>` (the shipped one-key verifier: its arguments, output, exit codes and refusal order are unchanged) or
+`--keys <K1,K2,...>` (proof v2, one or more keys), each with `--spec`, `--plan`, `--spec-return` and `--plan-return`,
+each flag once. Both together, an empty, repeated or trailing-comma key, or a missing flag exits 1 with a plain
+`capped-fold:` message. It is read-only, prints one JSON line and grants no authority. A signing is
+`jira release operator spec <release> --keys <K,...> --spec <file> --plan <file> --verdict <file> --verdict <file>
+--decision <n> --verbatim-file <f>`, and `--source-root <path>` names where the spec's citations are read: the primary
+or a registered live linked worktree of this repository (default: the primary).
+
+**2. The producer route and its order.** Only `jira release operator spec` takes it, and only after the normal
+residual-disposition check has refused. One key runs the shipped `--key` verifier first; only when that verifier exits
+non-zero does the engine try `--keys <K>` (v2). Two or more keys go to v2 only. A timeout, a spawn error (no `bun`, output
+over the bound), a child killed by a signal, output that is not JSON, and a proof that fails validation, the binding to
+the signing inputs or the pin check are final and never retried on v2. A refusal reads
+`...; capped verifier unavailable/refused: <first reason>; v2: <v2 reason>`; for a group the first reason is the shipped
+one-key guard text labelled `v1 route:`. A one-key signature that the shipped verifier accepts is still stored as a
+schema-1 record; the v2 route stores schema 2 (`mode: capped-carry-ledger`).
+
+**3. The keys are the spec's own `tickets:` line.** `--keys` must equal, as a set, the keys on the one `tickets:` line
+of the spec's front matter (a flow list or a comma list; each item a key with at most one trailing parenthetical
+note of 200 characters or fewer): no missing, extra or repeated key. The anchor is the key in the spec's file name; it must be
+one of the keys, and the spec, the plan and every return carry it in their file names. The anchor owns the ledger and no
+flag chooses it. A spec head or plan header that states keys must state exactly these keys. The engine checks the
+declaration against the signed spec bytes at signing and on every read.
+
+**4. The two accepted quote shapes.** A critic return's `READ` quote is read in exactly one of two shapes: `READ` or
+`READ-SHA256`, a 64-hex sha, one or two spaces, then the path; or (the legacy order) `READ` or `READ-SHA256`, an absolute
+path, a space, then the sha. Any other `READ` line refuses (`capped-fold: malformed seal or READ quote`), and the quotes
+must equal the ledger's seals. A return's `Keys?:` line and its `Reviewed: spec <sha>` line are optional; when present
+there must be exactly one of each, naming exactly the declared keys and the current spec. The verifier checks this, and
+the engine checks it again at signing and on every read.
+
+**5. What does not change.** Members must hold no ledger state (item 8). The cap rule is unchanged: only a kind that
+stopped at its refused review cap carries, only its latest minor or medium findings carry and at least one must; a major,
+a reserved tag, a closure major, an open historical operator-critical finding without the operator's ruling, or a kind
+whose next round is admitted (a live override included) refuses. Carried findings are stored as `open-carried` entries and
+nothing in code closes one: a signature is not Done. `spec-review` is unchanged: it never takes the v2 route, stays a
+review record and not a signature, and still needs its `Key:` lines and the spec header. A direct `--key`
+verification, every stored schema-1 record and the normal signing path behave as before.
+
+**6. The live issuance gate.** No live schema-2 record is written, and no frozen family is signed through v2, until the
+operator decides one of two gates. Gate (A) is normal adoption of this change on the primary (merge and station update),
+which removes the pre-capped readers. Gate (B) needs both a separately reviewed exact changed-candidate build with its own
+explicit adoption approval and an actual bounded ceilings entry (`scripts/ledger/ceiling-add.sh`) naming the
+pre-capped-reader exposure and the containment; neither decision exists today. Relying on gate (B) is a full pause of normal
+automatic fleet dispatch and of new normal headed launches that reach the primary `brief-lint.sh`; it is
+not a per-family filter, and no code selects the family keys. Eight consumers are stopped against v2 state while the primary is
+pre-capped, and none is accepted as display-only and none is claimed to check a proof: `next-dispatchable.sh`,
+`gen-briefs.py`, `brief-lint.sh` and `roadmap.ts`, all through the primary dist's `release spec-check`; `tracker.py`
+(`operator_owed`) and `board.ts` (`specItems`), which read `release/<version>/operator.jsonl` directly and treat any
+`kind: spec` row as signed without checking `capped_carry`; and the manual primary `jira release spec-check` and
+`jira roadmap get` of the operator and the chief. Gate (B) cannot open until each one's quiescence or safe routing is
+shown in a reviewable operational plan, with the explicit future operator approval and the ceilings entry; no wrapper,
+environment bypass or extra source path is added. Before any consumer resumes, gate (A) must hold and every
+candidate-issued record must read `SPEC ok` under the merged engine or be normally superseded.
+
+**7. The signing rules.** `lintSpec` and both minerva scripts load from the primary checkout, found through the git
+common directory, even when the engine runs from a candidate worktree: only the citation root is selectable. A signing
+therefore (1) passes `--source-root <the exact reviewed candidate worktree>`, which binds that root's identity and HEAD;
+(2) before signing, compares the two primary-loaded lint-script hashes with the candidate's copies, and any difference is a
+STOP, by the command below, run with `CAND` set to the candidate worktree's absolute path (it prints nothing and exits 0
+when the scripts are byte-equal, and prints `STOP` on stderr and exits 1 otherwise); after signing, the readback is the
+record's `source_root` and `source_head` equal to the candidate's and `jira release spec-check` by the candidate build's
+own path; (3) takes the member-absence listing fresh at that signing (the verifier and the engine re-run the one
+predicate), so no earlier absence note is an input and none grants authority. Real issuance is the chief's or the root's.
+
+<!-- signing-hash-check -->
+```
+h() { (cd "$1" && sha256sum marketplace/plugins/himmel-ops/scripts/minerva-spec-gate.sh marketplace/plugins/himmel-ops/scripts/minerva-trace-lint.sh); }; PRIMARY=$(dirname "$(git -C "$CAND" rev-parse --path-format=absolute --git-common-dir)"); [ "$(h "$PRIMARY")" = "$(h "$CAND")" ] || { echo STOP >&2; exit 1; }
+```
+
+**8. The member-key operating rule.** No member key opens its own spec round while the group record is live; an
+independent design for a member uses a new follow-up ticket key. Any member ledger file, `snapshot folder` or `manifest entry`
+under the anchor's specs root makes every key of the record read `SPEC-STALE`, the anchor included, and the same group
+cannot be re-signed while it exists: a supersession is itself a fresh group signing, so it must keep every key of the old
+record and releases no member. The check covers only the anchor's specs root; a member ledger under another specs root
+is not seen. No ledger is deleted to recover signability, and no automatic recovery is described or built.
+
 ## See also
 
 - [`chief-template.md`](chief-template.md): the chief's operating contract
