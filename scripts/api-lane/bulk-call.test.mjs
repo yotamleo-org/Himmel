@@ -299,16 +299,19 @@ test('--cancel keeps the settle alive when the call already ended and the TERM l
   const f = fixture();
   const post = join(f.dir, 'post-bin');
   const mark = join(f.dir, 'post-call');
+  const bpid = join(f.dir, 'sentinel-b.pid');
   mkdirSync(post);
-  // the call has finished and claude-api.sh is reading its result (outcome.mjs): cancel's deepest-first TERM can
-  // reach claude-api.sh only after the call ended, in the stretch where its signal trap has been reset
-  writeFileSync(join(post, 'node'), `#!/bin/bash\nif [[ " $* " == *outcome.mjs* ]]; then\n  : > "${mark}"\n  sleep 2\nfi\nexec "${process.execPath}" "$@"\n`, { mode: 0o700 });
+  // the call has finished and claude-api.sh is reading its result (outcome.mjs): the read is held until the cancel's
+  // TERMs have landed, so they reach claude-api.sh only after the call ended, in the stretch where its trap was reset.
+  // node resets an inherited ignore, so a node sentinel dies on TERM: A is in the bridge's pid tree (the tree TERM),
+  // B is reparented out of it but stays in the process group (the bounded wrapper's group TERM).
+  writeFileSync(join(post, 'node'), `#!/bin/bash\nif [[ " $* " == *outcome.mjs* ]]; then\n  hold='setTimeout(() => {}, 60000)'\n  "${process.execPath}" -e "$hold" >/dev/null 2>&1 &\n  a=$!\n  ( "${process.execPath}" -e "$hold" >/dev/null 2>&1 & echo $! > "${bpid}" )\n  b=$(cat "${bpid}")\n  : > "${mark}"\n  wait $a\n  for _ in $(seq 1200); do\n    st=$(cut -d' ' -f3 /proc/$b/stat 2>/dev/null) || break\n    [ -n "$st" ] && [ "$st" != Z ] || break\n    sleep 0.05\n  done\nfi\nexec "${process.execPath}" "$@"\n`, { mode: 0o700 });
   const env = { ...f.env, PATH: `${post}:${f.env.PATH}` };
   const child = spawn('bash', [BRIDGE, ...f.args, '--timeout', '60'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
   let out = '';
   child.stdout.on('data', (d) => { out += d; });
   const closed = new Promise((res) => child.on('close', (code) => res(code)));
-  for (let i = 0; i < 100 && !existsSync(mark); i++) await new Promise((r) => setTimeout(r, 100));
+  for (let i = 0; i < 600 && !existsSync(mark); i++) await new Promise((r) => setTimeout(r, 100));
   assert.ok(existsSync(mark), 'the call never reached its result read');
   assert.equal(spawnSync('bash', [BRIDGE, '--cancel', f.id], { env, encoding: 'utf8' }).status, 0);
   assert.equal(await closed, 3);

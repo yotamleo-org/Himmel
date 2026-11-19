@@ -135,7 +135,8 @@ test('a reply with no verdict first line is MISSING; so is a verdict with no evi
     `\n**GO** for head \`${HEAD}\`.\nevidence`]) {
     const r = f.run(f.args, { STUB_OUT: result(text) });
     assert.equal(r.status, 3, text);
-    assert.equal(r.art.status, 'MISSING', text);
+    const err = join(dirname(r.artPath), `work-q${f.pr}`, 'err.txt');
+    assert.equal(r.art.status, 'MISSING', `${JSON.stringify(text)}: ${r.art.reason}\n${existsSync(err) ? readFileSync(err, 'utf8') : 'no err.txt'}`);
     assert.equal(r.art.verdict_path, null);
   }
 });
