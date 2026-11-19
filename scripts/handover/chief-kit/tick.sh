@@ -94,6 +94,7 @@ if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .
 # shellcheck source=../../lib/jira-project.sh
 . "$HERE/../../lib/jira-project.sh"
 tick_mirror_default="$(jira_mirror_dir)"
+tick_project_key="$(jira_project_key)"
 
 usage() {
     cat <<'USAGE'
@@ -1314,7 +1315,7 @@ def front(key):
         return None
 def listed(head, field, key):
     m = re.search(r"^\s+%s:\s*(.*)$" % field, head, re.M)
-    return bool(m) and key in re.findall(r"[A-Z][A-Z0-9]*-\d+", m[1])
+    return bool(m) and key in re.findall(r"[A-Z][A-Z0-9_]*-\d+", m[1])
 try:
     final = set(open(record).read().splitlines())
 except OSError:
@@ -1323,7 +1324,7 @@ pairs, live = set(), False
 for line in open(doc).read().splitlines():
     if line.startswith("## "):
         live = line == "## Live state"
-    m = live and re.match(r"pool-disposition:\s+([A-Z][A-Z0-9]*-\d+)\s+(?:question|slice)\s+after\s+([A-Z][A-Z0-9]*-\d+)(?![A-Za-z0-9-])", line)
+    m = live and re.match(r"pool-disposition:\s+([A-Z][A-Z0-9_]*-\d+)\s+(?:question|slice)\s+after\s+([A-Z][A-Z0-9_]*-\d+)(?![A-Za-z0-9-])", line)
     if m and m[1] != m[2] and "%s blocks %s" % (m[2], m[1]) not in final:
         pairs.add((m[2], m[1]))
 n = 0
@@ -3243,7 +3244,7 @@ if [ -n "$leaks_version" ]; then
         lk_out="$(timeout -k 2 "$(tick_bound "${TICK_LEAKS_TIMEOUT:-30}")" bash "$TICK_LEAKS_PROBE" "$leaks_version" "$nd_mirror" 2>&1)" || lk_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in lk_rc and read below
     else
         if [ -n "$lk_anchor" ] && [ -f "$lk_cli" ]; then
-            lk_out="$(JIRA_PROJECT_KEY="${nd_mirror##*/}" timeout -k 2 "$(tick_bound "${TICK_LEAKS_TIMEOUT:-30}")" node "$lk_cli" release leaks "$leaks_version" --mirror-root "$nd_mirror" 2>&1)" || lk_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in lk_rc and read below
+            lk_out="$(JIRA_PROJECT_KEY="$tick_project_key" timeout -k 2 "$(tick_bound "${TICK_LEAKS_TIMEOUT:-30}")" node "$lk_cli" release leaks "$leaks_version" --mirror-root "$nd_mirror" 2>&1)" || lk_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in lk_rc and read below
         else
             lk_rc=-1
         fi
@@ -3347,7 +3348,7 @@ if [ -n "$console_doc" ] && [ -r "$console_doc" ] && [ -f "$console_doc" ]; then
 fi
 if [[ "$rm_rel" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
     rm_cli="${rm_anchor%/.git}/scripts/jira/dist/index.js"
-    rm_pk="${nd_mirror##*/}"
+    rm_pk="$tick_project_key"
     rm_rc=0 rm_json=""
     if [ -n "${TICK_RMQ_PROBE:-}" ]; then
         rm_json="$(timeout -k 2 "$(tick_bound "${TICK_RMQ_TIMEOUT:-30}")" bash "$TICK_RMQ_PROBE" "$rm_rel" --json 2>/dev/null)" || rm_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in rm_rc and read below
@@ -5069,7 +5070,7 @@ else
     esac
     case "$leaks_summary" in
         ''|0|skip|'?') ;;
-        *) printf 'ACTION leaks=%s: JIRA_PROJECT_KEY=%q node %q release leaks %q --mirror-root %q --comment  # posts one comment per leak (idempotent; without --comment it only lists them), the chief admits or removes each\n' "$leaks_summary" "${nd_mirror##*/}" "$lk_cli" "$leaks_version" "$nd_mirror" ;;
+        *) printf 'ACTION leaks=%s: JIRA_PROJECT_KEY=%q node %q release leaks %q --mirror-root %q --comment  # posts one comment per leak (idempotent; without --comment it only lists them), the chief admits or removes each\n' "$leaks_summary" "$tick_project_key" "$lk_cli" "$leaks_version" "$nd_mirror" ;;
     esac
     if [ "$wto_summary" != "0" ] || [ -n "$wtc_summary" ]; then
         printf 'ACTION wt-orphans=%s%s: bash %q prune --orphans lists them; bash %q prune reclaims the merged and detached ones, the rest need a wrap or a salvage\n' \
