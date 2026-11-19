@@ -205,11 +205,9 @@ printf '{}\n' > "$homeH/.claude/settings.json"
 git init -q "$homeH"
 git -C "$homeH" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@example.invalid add .claude/settings.json
 git -C "$homeH" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@example.invalid commit -q -m seed
-set +e
-out=$(HOME="$homeH" USERPROFILE="$(winpath "$homeH")" CLAUDE_USER_SETTINGS="$(winpath "$settingsH")" HIMMELCTL_CACHE_DIR="$(winpath "$caseh_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$caseh_dir/cache")-luna-config.json" \
+if out=$(HOME="$homeH" USERPROFILE="$(winpath "$homeH")" CLAUDE_USER_SETTINGS="$(winpath "$settingsH")" HIMMELCTL_CACHE_DIR="$(winpath "$caseh_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$caseh_dir/cache")-luna-config.json" \
       HIMMELCTL_INTERACTIVE=0 \
-      "$node_bin" "$wizard" ensure --items guardrail-block-global --yes </dev/null 2>&1); rc=$?
-set -e
+      "$node_bin" "$wizard" ensure --items guardrail-block-global --yes </dev/null 2>&1); then rc=0; else rc=$?; fi
 [ "$rc" -eq 2 ] || fail "case h: a consented guardrail wire into a git-tracked user settings file must refuse, exit 2 (got rc=$rc): $out"
 grepq "$out" -F -- '--write-tracked' || fail "case h: the refusal should name --write-tracked (got: $out)"
 [ "$(cat "$settingsH")" = '{}' ] || fail "case h: the tracked settings file must keep its bytes after the refusal (got: $(cat "$settingsH"))"
@@ -217,11 +215,9 @@ grepq "$out" -F -- '--write-tracked' || fail "case h: the refusal should name --
 git -C "$homeH" diff --quiet || fail "case h: the refusal must leave no git diff in the tracked repo"
 echo "ok: case h — the consented guardrail wire is refused while the user settings file is git-tracked"
 
-set +e
-out=$(HOME="$homeH" USERPROFILE="$(winpath "$homeH")" CLAUDE_USER_SETTINGS="$(winpath "$settingsH")" HIMMELCTL_CACHE_DIR="$(winpath "$caseh_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$caseh_dir/cache")-luna-config.json" \
+if out=$(HOME="$homeH" USERPROFILE="$(winpath "$homeH")" CLAUDE_USER_SETTINGS="$(winpath "$settingsH")" HIMMELCTL_CACHE_DIR="$(winpath "$caseh_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$caseh_dir/cache")-luna-config.json" \
       HIMMELCTL_INTERACTIVE=0 \
-      "$node_bin" "$wizard" ensure --items guardrail-block-global --yes --write-tracked </dev/null 2>&1); rc=$?
-set -e
+      "$node_bin" "$wizard" ensure --items guardrail-block-global --yes --write-tracked </dev/null 2>&1); then rc=0; else rc=$?; fi
 [ "$rc" -eq 0 ] || fail "case h: --write-tracked should let the consented guardrail wire proceed (got rc=$rc): $out"
 [ "$(guardrail_mode "$settingsH")" = global ] || fail "case h: --write-tracked should wire the guardrail (got: $(cat "$settingsH" 2>/dev/null))"
 echo "ok: case h2 — --write-tracked lets the consented guardrail wire proceed"
@@ -236,22 +232,26 @@ printf '{}\n' > "$settingsI"
 git init -q "$casei_dir/repo"
 git -C "$casei_dir/repo" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@example.invalid add settings.json
 git -C "$casei_dir/repo" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@example.invalid commit -q -m seed
-set +e
-out=$(HOME="$homeI" USERPROFILE="$(winpath "$homeI")" CLAUDE_USER_SETTINGS="$(winpath "$settingsI")" HIMMELCTL_CACHE_DIR="$(winpath "$casei_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$casei_dir/cache")-luna-config.json" \
+if out=$(HOME="$homeI" USERPROFILE="$(winpath "$homeI")" CLAUDE_USER_SETTINGS="$(winpath "$settingsI")" HIMMELCTL_CACHE_DIR="$(winpath "$casei_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$casei_dir/cache")-luna-config.json" \
       HIMMELCTL_INTERACTIVE=0 \
-      "$node_bin" "$wizard" ensure --items guardrail-block-global --yes </dev/null 2>&1); rc=$?
-set -e
+      "$node_bin" "$wizard" ensure --items guardrail-block-global --yes </dev/null 2>&1); then rc=0; else rc=$?; fi
 [ "$rc" -eq 2 ] || fail "case i: a guardrail wire into a git-tracked CLAUDE_USER_SETTINGS file must refuse, exit 2 (got rc=$rc): $out"
 grepq "$out" -F -- '--write-tracked' || fail "case i: the refusal should name --write-tracked (got: $out)"
 [ "$(cat "$settingsI")" = '{}' ] || fail "case i: the tracked settings file must keep its bytes after the refusal (got: $(cat "$settingsI"))"
 [ "$(cat "$homeI/.claude/settings.json")" = '{}' ] || fail "case i: the untracked home settings file must stay untouched"
 echo "ok: case i — the guardrail refusal checks CLAUDE_USER_SETTINGS, the file its writer modifies"
 
-set +e
-out=$(HOME="$homeI" USERPROFILE="$(winpath "$homeI")" CLAUDE_USER_SETTINGS="$(winpath "$settingsI")" HIMMELCTL_CACHE_DIR="$(winpath "$casei_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$casei_dir/cache")-luna-config.json" \
+# ── case j: a RELATIVE CLAUDE_USER_SETTINGS naming a tracked file resolves against the cwd ─
+if out=$(cd "$casei_dir" && HOME="$homeI" USERPROFILE="$(winpath "$homeI")" CLAUDE_USER_SETTINGS=repo/settings.json HIMMELCTL_CACHE_DIR="$(winpath "$casei_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$casei_dir/cache")-luna-config.json" \
       HIMMELCTL_INTERACTIVE=0 \
-      "$node_bin" "$wizard" ensure --items guardrail-block-global --yes --write-tracked </dev/null 2>&1); rc=$?
-set -e
+      "$node_bin" "$wizard" ensure --items guardrail-block-global --yes </dev/null 2>&1); then rc=0; else rc=$?; fi
+[ "$rc" -eq 2 ] || fail "case j: a relative CLAUDE_USER_SETTINGS naming a git-tracked file must refuse, exit 2 (got rc=$rc): $out"
+[ "$(cat "$settingsI")" = '{}' ] || fail "case j: the tracked settings file must keep its bytes after the refusal (got: $(cat "$settingsI"))"
+echo "ok: case j — a relative CLAUDE_USER_SETTINGS is checked as the absolute file its writer modifies"
+
+if out=$(HOME="$homeI" USERPROFILE="$(winpath "$homeI")" CLAUDE_USER_SETTINGS="$(winpath "$settingsI")" HIMMELCTL_CACHE_DIR="$(winpath "$casei_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$casei_dir/cache")-luna-config.json" \
+      HIMMELCTL_INTERACTIVE=0 \
+      "$node_bin" "$wizard" ensure --items guardrail-block-global --yes --write-tracked </dev/null 2>&1); then rc=0; else rc=$?; fi
 [ "$rc" -eq 0 ] || fail "case i: --write-tracked should let the wire proceed (got rc=$rc): $out"
 grepq "$out" -F "WARNING: the tracked settings file" || fail "case i: the post-run warning should name the modified tracked file (got: $out)"
 grepq "$out" -F "$(winpath "$settingsI")" || fail "case i: the warning should name CLAUDE_USER_SETTINGS' file (got: $out)"

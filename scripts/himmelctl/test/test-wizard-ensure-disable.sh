@@ -1942,4 +1942,27 @@ set -e
 grepq "$(cat "$homeU/.claude/settings.json")" -F 'user-level' || fail "case u: the user-level file must be left alone"
 echo "ok: case u — a project-scope prune checks and reprobes only the project settings file"
 
+# ── case v: --prune whose only tracked target is a pending disable, declined at the disable
+# confirm: nothing is written, so the tracked-settings refusal must not fire. ─────────────────
+targetV="$work/target-v"; mkdir -p "$targetV/.claude"
+printf '{"statusLine":{"command":"project-wired"}}\n' > "$targetV/.claude/settings.json"
+git init -q "$targetV"
+git -C "$targetV" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@example.invalid add .claude/settings.json
+git -C "$targetV" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@example.invalid commit -q -m seed
+cacheV="$work/cache-v"; mkdir -p "$cacheV"
+homeV="$work/home-v"; mkdir -p "$homeV/.claude"
+write_cache "$cacheV/install-profile.json" adopter project none "" inline "" lean
+runEnsureV() {
+  ( cd "$targetV" && HIMMELCTL_REPO_ROOT="$(winpath "$repoU")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheV")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheV")-luna-config.json" HOME="$homeV" USERPROFILE="$(winpath "$homeV")" \
+      "$node_bin" "$wizard" ensure "$@" )
+}
+if outV1=$(runEnsureV --profile luna --yes </dev/null 2>&1); then rcV1=0; else rcV1=$?; fi
+[ "$rcV1" -eq 0 ] || fail "case v setup: the converge under profile luna should exit 0 (got rc=$rcV1): $outV1"
+if outV2=$(HIMMELCTL_INTERACTIVE=1 runEnsureV --profile core --prune --items wiring-statusline <<<"n" 2>&1); then rcV2=0; else rcV2=$?; fi
+[ "$rcV2" -eq 0 ] || fail "case v: a declined prune whose only tracked target is the pending disable must not be refused (got rc=$rcV2): $outV2"
+if grepq "$outV2" -F -- '--write-tracked'; then fail "case v: a declined disable pass writes nothing, so no refusal should name --write-tracked (got: $outV2)"; fi
+grepq "$outV2" -F 'declined disabling' || fail "case v: expected the disable decline message (got: $outV2)"
+[ "$(cat "$targetV/.claude/settings.json")" = '{"statusLine":{"command":"project-wired"}}' ] || fail "case v: the tracked settings file must keep its bytes (got: $(cat "$targetV/.claude/settings.json"))"
+echo "ok: case v — declining the prune confirm drops its writers from the tracked-settings check"
+
 echo "PASS"

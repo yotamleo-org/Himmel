@@ -2923,7 +2923,9 @@ function writesScopeSettings(item) {
 // guardrail-block.mjs writes the operator's global settings file whatever the
 // scope, and takes CLAUDE_USER_SETTINGS over ~/.claude/settings.json.
 function settingsFileForWriter(scope, id) {
-  if (id === 'guardrail-block-global') return process.env.CLAUDE_USER_SETTINGS || settingsPathForScope('user');
+  if (id === 'guardrail-block-global') {
+    return process.env.CLAUDE_USER_SETTINGS ? path.resolve(process.cwd(), process.env.CLAUDE_USER_SETTINGS) : settingsPathForScope('user');
+  }
   return settingsPathForScope(scope);
 }
 
@@ -7159,17 +7161,6 @@ async function cmdEnsure(args) {
     return 2;
   }
 
-  const trackedWriterIds = towardEnabled.filter(writesScopeSettings)
-    .concat(pruneConfirmed ? towardDisabled.filter((i) => i.removable === 'per-item' && i.unwire && writesScopeSettings({ unwire: i.unwire })) : [])
-    .map((i) => i.id);
-  if (!args.dryRun) {
-    const refusal = trackedSettingsRefusal(scope, trackedWriterIds, args);
-    if (refusal) {
-      console.error(refusal);
-      return 2;
-    }
-  }
-
   // Step 3: SPLIT consent (Fix B1). Converge and disable are
   // different risk classes (converge only ever ADDS wiring; disable REMOVES
   // it), so disables NEVER ride the converge Y/n: they require their own
@@ -7202,6 +7193,18 @@ async function cmdEnsure(args) {
         console.log('himmelctl: declined disabling; converge (if any) still proceeds.');
         pruneConfirmed = false;
       }
+    }
+  }
+
+  // Checked against the final pruneConfirmed: a declined disable pass writes nothing.
+  const trackedWriterIds = towardEnabled.filter(writesScopeSettings)
+    .concat(pruneConfirmed ? towardDisabled.filter((i) => i.removable === 'per-item' && i.unwire && writesScopeSettings({ unwire: i.unwire })) : [])
+    .map((i) => i.id);
+  if (!args.dryRun) {
+    const refusal = trackedSettingsRefusal(scope, trackedWriterIds, args);
+    if (refusal) {
+      console.error(refusal);
+      return 2;
     }
   }
 
