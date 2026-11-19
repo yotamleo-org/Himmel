@@ -1299,8 +1299,13 @@ if workers_from and os.path.isfile(workers_from):
         owner_unknown('the fleet', 'manifest %s unreadable' % os.path.basename(workers_from), REMEDY_FLEET)
 # `chief.sh next` copies the manifest once, so a worker the other chief of this chain arms later is
 # in no manifest but its own. Read the chain's other manifests (same bucket, same prefix and chief name, any
-# letter) for ownership of a ticket only: shared terminal evidence releases it, and
-# an unreadable sibling never marks the fleet unknown (it is not this chief's fleet).
+# letter) for ownership of a ticket only: shared terminal evidence releases it, and a sibling manifest that
+# cannot be read, is refused by its shape or holds a doc that cannot be opened is an owner unknown.
+def sibling_shape_refused(parsed):
+    if not isinstance(parsed, dict):
+        return True
+    return any(k in parsed and not isinstance(parsed[k], list) for k in ('workers', 'legs'))
+
 chain_m = re.match(r'^(.+)-nextleg-\d{4}-\d{2}-\d{2}[A-Z]+-(.+)\.fleet\.json$', os.path.basename(workers_from)) if workers_from else None
 if chain_m:
     sib_dir = os.path.dirname(os.path.abspath(workers_from))
@@ -1312,34 +1317,44 @@ if chain_m:
         sm = re.match(r'^(.+)-nextleg-\d{4}-\d{2}-\d{2}[A-Z]+-(.+)\.fleet\.json$', sib)
         if not sm or sm.groups() != chain_m.groups() or os.path.join(sib_dir, sib) == os.path.abspath(workers_from):
             continue
+        spath = os.path.join(sib_dir, sib)
+        sib_chief = 'the chief on %s' % sib[:-len('.fleet.json')]
         try:
-            sib_manifest = json.load(open(os.path.join(sib_dir, sib)))
-            sib_workers = owned_rows(os.path.join(sib_dir, sib)) if isinstance(sib_manifest, dict) else []
-            for worker in sib_workers if isinstance(sib_workers, list) else []:
-                sdoc = worker.get('doc') if isinstance(worker, dict) else None
-                if not isinstance(sdoc, str) or not sdoc:
-                    continue  # an entry that names no doc owns nothing
-                sfiles = re.findall(r'[A-Z]+-\d+', os.path.basename(sdoc))
-                sdoc_unreadable = False
-                try:
-                    slines = open(sdoc, encoding='utf-8', errors='replace').read().splitlines()
-                except Exception:  # swallow-ok: an unreadable sibling doc is reported as an owner unknown below, never skipped
-                    slines = []
-                    sdoc_unreadable = True
-                smarks = [m.group(1) for m in (MARKER_RE.match(l) for l in slines) if m]
-                try:
-                    sstate = worker_state(sdoc)
-                except Exception:  # swallow-ok: a state that cannot be asked is unknown, which still owns the doc's keys
-                    sstate = 'unknown'
-                if sstate == 'wrapped':
-                    continue
-                swho = 'live worker %s of the chief on %s' % (printable('%s' % worker.get('label', '?')), printable(sib[:-len('.fleet.json')]))
-                for k in sfiles + owned_keys(sdoc, slines):
-                    worker_keys.add(k); owner.setdefault(k, swho)
-                if sdoc_unreadable:
-                    owner_unknown(swho, 'doc %s unreadable' % os.path.basename(sdoc), REMEDY_DOC, keys=sfiles)
-        except (OSError, ValueError, TypeError, AttributeError):
-            continue  # swallow-ok: a sibling chief's unreadable or malformed manifest names no worker; this chief's own fleet is still known
+            sib_manifest = json.load(open(spath))
+        except Exception:
+            owner_unknown(sib_chief, 'manifest %s unreadable' % sib, REMEDY_MANIFEST)
+            continue
+        if sibling_shape_refused(sib_manifest):
+            owner_unknown(sib_chief, 'manifest %s malformed' % sib, REMEDY_MANIFEST)
+            continue
+        try:
+            sib_workers = owned_rows(spath)
+        except Exception:
+            owner_unknown(sib_chief, 'manifest %s malformed' % sib, REMEDY_MANIFEST)
+            continue
+        for worker in sib_workers if isinstance(sib_workers, list) else []:
+            sdoc = worker.get('doc') if isinstance(worker, dict) else None
+            if not isinstance(sdoc, str) or not sdoc:
+                continue  # an entry that names no doc owns nothing
+            sfiles = re.findall(r'[A-Z]+-\d+', os.path.basename(sdoc))
+            sdoc_unreadable = False
+            try:
+                slines = open(sdoc, encoding='utf-8', errors='replace').read().splitlines()
+            except Exception:  # swallow-ok: an unreadable sibling doc is reported as an owner unknown below, never skipped
+                slines = []
+                sdoc_unreadable = True
+            smarks = [m.group(1) for m in (MARKER_RE.match(l) for l in slines) if m]
+            try:
+                sstate = worker_state(sdoc)
+            except Exception:  # swallow-ok: a state that cannot be asked is unknown, which still owns the doc's keys
+                sstate = 'unknown'
+            if sstate == 'wrapped':
+                continue
+            swho = 'live worker %s of the chief on %s' % (printable('%s' % worker.get('label', '?')), printable(sib[:-len('.fleet.json')]))
+            for k in sfiles + owned_keys(sdoc, slines):
+                worker_keys.add(k); owner.setdefault(k, swho)
+            if sdoc_unreadable:
+                owner_unknown(swho, 'doc %s unreadable' % os.path.basename(sdoc), REMEDY_DOC, keys=sfiles)
 if pool_only and not workers_from and not worker_keys:
     workers_unknown = owners_unknown = True
     print('next-dispatchable: no RESUME rows: --priority-pool-only has no worker source (--owners or --workers-from)', file=sys.stderr)
