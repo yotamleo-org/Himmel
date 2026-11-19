@@ -2005,6 +2005,72 @@ esac
 fi
 
 # ---------------------------------------------------------------------------
+# T32 (pty): atd runs a job with stdin=/dev/null and no tty, and a claude
+#      launched that way exits at the first idle cross-session message, so the
+#      at body runs claude under a pty (scripts/lib/pty-run.sh). A managed doc's
+#      body hands the launch to `fleet_runtime.py run ... -- bash -c`, a new
+#      shell that inherits no shell function, so the pty has to be set up
+#      inside that bash -c, where claude is called. Each body comes from a
+#      --dry-run arm and runs through sh with stdin=/dev/null, as atd runs it;
+#      a stub claude records whether its stdin is a tty.
+# ---------------------------------------------------------------------------
+if _sec_selected "T32"; then
+T32_PTY_LIB="$(dirname "$ARM")/../lib/pty-run.sh"
+T32_FM="$(dirname "$ARM")/chief-kit/fleet-manifest.sh"
+T32_REC="$TMP/t32-rec"
+T32_BIN="$TMP/t32-bin"
+mkdir -p "$T32_BIN"
+cat > "$T32_BIN/claude" <<'EOF'
+#!/bin/sh
+if [ -t 0 ]; then echo stdin=tty; else echo stdin=notty; fi > "$T32_REC"
+exit 0
+EOF
+chmod +x "$T32_BIN/claude"
+# A host that cannot hand a command a pty (BSD script(1) wants a real tty on its
+# stdin) cannot tell tty from no tty, so the rows below need the stub to see one here.
+rm -f "$T32_REC"
+# shellcheck source=../lib/pty-run.sh
+( . "$T32_PTY_LIB" && PATH="$T32_BIN:$PATH" T32_REC="$T32_REC" _himmel_pty_run claude ) </dev/null >/dev/null 2>&1
+if grep -q 'stdin=tty' "$T32_REC" 2>/dev/null; then
+    # t32_body <handover doc>: the at job body a dry-run arm of the doc prints.
+    t32_body() {
+        PATH="$SCHED_STUB_T17:$PATH" bash "$ARM" --time "$(future_time)" --handover "$1" --dry-run 2>&1 \
+            | awk '/^DRY arm-resume: would at -t/ { on = 1; next } /^    CMD$/ { on = 0 } on { sub(/^    /, ""); print }'
+    }
+    # t32_expect_tty <row title> <body>: runs the body through sh, stdin=/dev/null.
+    t32_expect_tty() {
+        local rec
+        rm -f "$T32_REC"
+        env PATH="$T32_BIN:$PATH" T32_REC="$T32_REC" HOME="$POLICY_EMPTY_HOME" CADENCE_USAGE_LEDGER="$TMP/t32-cadence.jsonl" \
+            sh -c "$2" </dev/null >"$TMP/t32-run.out" 2>&1
+        rec=$(cat "$T32_REC" 2>/dev/null)
+        assert_contains "$1" "stdin=tty" "$rec"
+        case "$rec" in
+            *stdin=tty*) ;;
+            *) echo "     claude recorded: ${rec:-nothing}"; head -n 8 "$TMP/t32-run.out" | sed 's/^/     run output: /' ;;
+        esac
+    }
+
+    T32_BUCKET="$TMP/t32-fleet"
+    mkdir -p "$T32_BUCKET"
+    T32_DOC="$T32_BUCKET/TEST-1-N1-worker.md"
+    printf -- '---\nsession_kind: test\nresume_cwd: %s\n---\n> **Prior art:** none found (offline fixture)\n\n# worker\n' "$WORK_REPO" > "$T32_DOC"
+    HOME="$POLICY_EMPTY_HOME" bash "$T32_FM" control init "$T32_BUCKET/x.fleet.json" --target 1 >/dev/null 2>&1
+    HOME="$POLICY_EMPTY_HOME" bash "$T32_FM" add "$T32_BUCKET/x.fleet.json" "$T32_DOC" --lane native --pending >/dev/null 2>&1
+    HOME="$POLICY_EMPTY_HOME" bash "$T32_FM" control set "$T32_BUCKET/x.fleet.json" --mode active --expect-gen 1 >/dev/null 2>&1
+
+    T32_MANAGED=$(t32_body "$T32_DOC")
+    T32_PLAIN=$(t32_body "$(make_handover "$WORK_REPO")")
+    assert_contains "T32 managed fixture: the body hands the launch to the fleet runtime" "fleet_runtime.py run" "$T32_MANAGED"
+    assert_not_contains "T32 unmanaged control: the body carries no fleet runtime" "fleet_runtime.py run" "$T32_PLAIN"
+    t32_expect_tty "T32 unmanaged at body: claude's stdin is a tty" "$T32_PLAIN"
+    t32_expect_tty "T32 managed at body: claude's stdin is a tty (the pty is set up inside the runtime's bash -c)" "$T32_MANAGED"
+else
+    echo "SKIP T32 pty rows: this host cannot hand a command a pty"
+fi
+fi
+
+# ---------------------------------------------------------------------------
 # T33: --automerge wires ARMAUTOMERGE=1 + CR_MERGE_GATE_OK=1 into
 #      the relaunched session's environment BEFORE invoking claude — opt-in
 #      only. Fix round: every generated launch body ALWAYS clears both vars

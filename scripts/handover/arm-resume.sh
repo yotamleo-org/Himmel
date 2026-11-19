@@ -4470,7 +4470,9 @@ _arm_runtime_body() {
     q_runtime_doc=$(printf '%q' "$HANDOVER_PATH")
     q_runtime_name=$(printf '%q' "${SESSION_NAME:-$TASK_NAME}")
     q_runtime_manifest=$(printf '%q' "$(printf '%s\n' "$scope" | jq -r '.manifest // ""')")
-    printf 'python3 -I %s run --doc %s --name %s --manifest %s -- bash -c %s' "$q_runtime" "$q_runtime_doc" "$q_runtime_name" "$q_runtime_manifest" "$(printf '%q' "$1")"
+    # $2, when given, is shell text that runs first inside the bash -c: a function
+    # defined in the shell that runs this line is not visible in that new bash.
+    printf 'python3 -I %s run --doc %s --name %s --manifest %s -- bash -c %s' "$q_runtime" "$q_runtime_doc" "$q_runtime_name" "$q_runtime_manifest" "$(printf '%q' "${2-}$1")"
 }
 
 _crontab_schedule() {
@@ -5073,7 +5075,6 @@ else
 fi"
                 fi
                 _arm_require_worker_autocompact_argv "$launch_lines"
-                launch_lines=$(_arm_runtime_body "$launch_lines")
                 local q_flow_lib q_task q_note
                 q_flow_lib=$(printf '%q' "$SCRIPT_DIR/../lib/flow-run-ledger.sh")
                 q_task=$(printf '%q' "$TASK_NAME")
@@ -5124,6 +5125,9 @@ else
     echo \"WARN arm-resume: $q_pty_lib missing -- claude launches WITHOUT a pty\" >&2
 fi
 "
+                # A managed launch calls claude inside the runtime's own bash -c, which
+                # does not inherit the function above, so the prelude goes first inside it.
+                launch_lines=$(_arm_runtime_body "$launch_lines" "$at_pty_prelude")
                 # bus rebind of the resumed pid (opt-in, own line).
                 local at_bus_line
                 at_bus_line=$(_bus_rebind_line "${ARM_RESUME_LOG_DIR:-$HOME/.himmel/arm-resume}/$TASK_NAME.log")
