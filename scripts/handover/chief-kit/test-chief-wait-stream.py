@@ -1,4 +1,5 @@
 """Exercise the real supervisor/child/control routes using offline dependencies."""
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -1022,6 +1023,49 @@ class AckRows(StreamFixture):
         self.assertNotIn(['W', '1'], kept)
         self.assertNotIn(['K', '1'], kept)
         self.assertFalse(self.path('wake-1').exists())
+
+
+class RefusedArm(StreamFixture):
+    """A second arm that cannot take the lock refuses and leaves the live supervisor's files as they are."""
+
+    def setUp(self):
+        super().setUp()
+        self.lock = open(str(self.path('stream.lock')), 'a')
+        self.addCleanup(self.lock.close)
+        fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)  # this process is the live supervisor
+        self.path('wake-1').write_text('WAKE telegram ORIGINAL-WAKE-1\n')
+        now = int(time.time())
+        self.path('wakes').write_text(f'W\t1\t{now}\t77\ttelegram\t{self.path("wake-1")}\nP\t1\t{now}\t77\n')
+        self.path('stream').write_text(f'sup={os.getpid()} sup_start=1 host=h boot=b seq=1\n')
+
+    def snapshot(self):
+        return {p.name: (p.read_bytes(), p.stat().st_mode) for p in sorted((self.root / 'consoles').iterdir()) if p.is_file()}
+
+    def second_arm(self, hidden=None):
+        before = self.snapshot()
+        mode = hidden.stat().st_mode if hidden else None
+        if hidden:
+            hidden.chmod(0)
+        try:
+            done = subprocess.run([sys.executable, '-I', str(HERE / 'chief-wait-stream.py'), str(self.inbox), '--doc', str(self.doc),
+                                   '--workers-from', str(self.fleet)], env=self.env, capture_output=True, text=True, timeout=30)
+        finally:
+            if hidden:
+                hidden.chmod(mode)
+        self.assertEqual(self.snapshot(), before, 'the refused arm changed the live supervisor files')
+        self.assertEqual(done.returncode, 3, done.stdout + done.stderr)
+        return done.stdout
+
+    def test_a_second_arm_is_refused_and_writes_nothing(self):
+        self.assertEqual(self.second_arm(), f'STREAM-REFUSED live-supervisor pid={os.getpid()}\n')
+
+    @unittest.skipIf(os.geteuid() == 0, 'root reads a mode 000 file')
+    def test_a_second_arm_is_refused_when_the_sidecar_is_unreadable(self):
+        self.assertEqual(self.second_arm(self.path('stream')), 'STREAM-REFUSED live-supervisor pid=?\n')
+
+    @unittest.skipIf(os.geteuid() == 0, 'root reads a mode 000 file')
+    def test_a_second_arm_is_refused_when_the_lock_file_is_unreadable(self):
+        self.assertEqual(self.second_arm(self.path('stream.lock')), 'STREAM-REFUSED before-lock PermissionError\n')
 
 
 # Worker-event stand-in that keeps auto-go's exact-head audit rule: the first READY of a

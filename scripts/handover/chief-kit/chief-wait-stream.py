@@ -314,7 +314,11 @@ class Supervisor:
         try:
             fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            return self.refuse('live-supervisor pid=' + load(self.side).get('sup', '?'), 3)
+            try:
+                owner = load(self.side).get('sup', '?')
+            except OSError:
+                owner = '?'
+            return self.refuse('live-supervisor pid=' + owner, 3)
         self.owned = True
         stderr = open(self.base + 'stream.log', 'a')
         os.dup2(stderr.fileno(), 2)
@@ -631,8 +635,11 @@ def main():
     try:
         return supervisor.run()
     except Exception as exc:
-        if not supervisor.owned and isinstance(exc, ValueError):
-            return Supervisor.refuse(str(exc), 2)
+        if not supervisor.owned:
+            # Before the lock is held nothing may be written, not even a fault report.
+            if isinstance(exc, ValueError):
+                return Supervisor.refuse(str(exc), 2)
+            return Supervisor.refuse('before-lock ' + type(exc).__name__, 3)
         supervisor.reason = 'supervisor'
         try:
             fault_path = supervisor.path('supervisor-fault')
