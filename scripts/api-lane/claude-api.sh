@@ -542,10 +542,11 @@ descendants() {
 }
 # The call and its subprocesses get TERM first; any that ignore it are KILLed after five seconds
 # (the credit-state sweep holds the reservation for that grace), so none outlives its stop.
+# It returns 0 only when it saw every pid it stopped leave the process table; no call started, or a pid that stays, returns 1.
 # shellcheck disable=SC2329 # invoked from the signal trap and the watchdog below
 stop_call() {
   local i=0 all p
-  [ -n "$CALL_PID" ] || return 0
+  [ -n "$CALL_PID" ] || return 1
   all="$(descendants "$CALL_PID") $CALL_PID"
   # shellcheck disable=SC2086 # a list of pids
   kill -TERM $all 2>/dev/null
@@ -557,13 +558,23 @@ stop_call() {
   # shellcheck disable=SC2086
   kill -KILL $all 2>/dev/null
   wait "$CALL_PID" 2>/dev/null
+  # a pid that still answers after the KILL (a dead child its parent has not reaped, a process stuck in the kernel) is a tree not seen to end
+  i=0
+  while [ "$i" -lt 20 ]; do
+    for p in $all; do kill -0 "$p" 2>/dev/null && break; p=""; done
+    [ -n "$p" ] || return 0
+    sleep 0.1; i=$((i + 1))
+  done
+  return 1
 }
 # shellcheck disable=SC2329 # invoked from the signal trap below
 on_signal() {
   # a second TERM (the bounded wrapper's group kill) must not cut the settle short; the ignore is inherited by it
   trap '' TERM INT HUP
   [ -z "$WATCHDOG_PID" ] || kill "$WATCHDOG_PID" 2>/dev/null
-  stop_call; settle_dead; exit 143
+  # a managed attempt is reported ended only for a call this shell started and stop_call saw gone; any other stop leaves it unknown
+  if stop_call; then _API_CALL_REAPED=1; fi
+  settle_dead; exit 143
 }
 trap on_signal TERM INT HUP
 

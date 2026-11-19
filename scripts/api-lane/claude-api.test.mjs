@@ -225,6 +225,101 @@ test('managed API commitment is visible to pause until its terminal call is reap
   }
 });
 
+// A managed call held open by the stub, then a TERM to its launcher. The hold file stays: only the launcher can end the call.
+// Resolves once the launcher is gone, with its exit code and the pids of the stub and (STUB_CHILD) its subprocess.
+async function termMidCall(f, managed, extra = {}) {
+  const hold = join(f.dir, 'call-hold');
+  writeFileSync(hold, '');
+  const child = spawn('bash', [LAUNCH, ...f.good], { env: { ...f.env, ...managed, ...extra, STUB_HOLD: hold }, stdio: 'ignore' });
+  const done = new Promise(r => child.on('close', r));
+  try {
+    const up = extra.STUB_CHILD ? /^child_pid=\d+$/m : /^args=/m;
+    const ready = () => existsSync(f.paths.env) && up.test(readFileSync(f.paths.env, 'utf8'));
+    const until = Date.now() + 15000;
+    while (!ready() && Date.now() < until) await new Promise(r => setTimeout(r, 20));
+    assert.ok(ready(), 'the call started after commitment');
+    assert.deepEqual(Object.values(controlOf(f).attempts).map(a => a.phase), ['committed'], 'the attempt is committed while the call runs');
+    const seen = readFileSync(f.paths.env, 'utf8');
+    child.kill('SIGTERM');
+    const code = await Promise.race([done, new Promise(r => setTimeout(() => r('hung'), 20000))]);
+    return { code, stub: Number(/^stub_pid=(\d+)$/m.exec(seen)[1]), sub: Number(/^child_pid=(\d+)$/m.exec(seen)?.[1] ?? 0) };
+  } finally {
+    rmSync(hold, { force: true });
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+  }
+}
+const controlOf = (f) => JSON.parse(readFileSync(join(f.dir, 'fleet-control.json')));
+const slotsOf = (f) => readdirSync(f.env.HIMMEL_FLEET_SLOTS).filter(n => !n.startsWith('.'));
+const receiptsOf = (f) => readFileSync(join(f.dir, '.himmel/launch-refusals.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+function pausedAck(f, managed) {
+  const writer = join(HIMMEL_REPO, 'scripts/handover/chief-kit/fleet-manifest.sh');
+  const pause = spawnSync('bash', [writer, 'control', 'set', managed.FLEET_LAUNCH_MANIFEST, '--mode', 'paused', '--expect-gen', '2'], { env: f.env, encoding: 'utf8' });
+  assert.equal(pause.status, 0, pause.stderr);
+  const ack = spawnSync('bash', [writer, 'control', 'ack', managed.FLEET_LAUNCH_MANIFEST], { env: f.env, encoding: 'utf8' });
+  assert.equal(ack.status, 0, ack.stderr);
+  return JSON.parse(ack.stdout);
+}
+
+test('a managed API call stopped by TERM mid-call leaves no attempt, no slot and a quiescent pause', async () => {
+  const f = fixture();
+  const managed = managedFixture(f, true);
+  const { code, stub } = await termMidCall(f, managed);
+  try {
+    assert.equal(code, 143);
+    assert.equal(alive(stub), false, 'the call outlived its terminated launcher');
+    assert.deepEqual(controlOf(f).attempts, {});
+    assert.deepEqual(slotsOf(f), []);
+    assert.equal(receiptsOf(f).at(-1).outcome, 'complete');
+    const ack = pausedAck(f, managed);
+    assert.equal(ack.quiescent, true);
+    assert.deepEqual([ack.in_flight, ack.unknown], [[], []]);
+  } finally { if (alive(stub)) process.kill(stub, 'SIGKILL'); }
+});
+
+test('a managed API call that ignores TERM and has a subprocess is ended by the KILL and leaves nothing behind', async () => {
+  const f = fixture();
+  const managed = managedFixture(f, true);
+  const { code, stub, sub } = await termMidCall(f, managed, { STUB_IGNORE_TERM: '1', STUB_CHILD: '1' });
+  try {
+    assert.equal(code, 143);
+    assert.equal(alive(stub), false, 'the call outlived its terminated launcher');
+    assert.equal(alive(sub), false, 'a subprocess of the call outlived its terminated launcher');
+    assert.deepEqual(controlOf(f).attempts, {});
+    assert.deepEqual(slotsOf(f), []);
+    assert.equal(pausedAck(f, managed).quiescent, true);
+  } finally { for (const p of [stub, sub]) if (p && alive(p)) process.kill(p, 'SIGKILL'); }
+});
+
+test('a managed API call stopped by TERM with a process of its tree that stays in the table leaves the attempt unknown', async () => {
+  const f = fixture();
+  const managed = managedFixture(f, true);
+  // The stop KILLs what TERM leaves, so no live process outlasts it. A dead child whose parent never reaps it stays in the
+  // process table; a pgrep ahead of the real one lists that pid as a child of the call, so the stop cannot see its tree end.
+  const holder = spawn('python3', ['-c', 'import os, time\npid = os.fork()\nif pid == 0:\n    os._exit(0)\nprint(pid, flush=True)\ntime.sleep(600)'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  let stub = 0;
+  try {
+    const zombie = await new Promise((resolve, reject) => { holder.once('error', reject); holder.stdout.once('data', d => resolve(Number(String(d).trim()))); });
+    const bin = join(f.dir, 'bin');
+    mkdirSync(bin);
+    const real = spawnSync('bash', ['-c', 'command -v pgrep'], { env: f.env, encoding: 'utf8' }).stdout.trim();
+    assert.ok(real, 'pgrep is on the PATH');
+    writeFileSync(join(bin, 'pgrep'), '#!/bin/bash\n[ "$1" = -P ] && [ "$2" != "$ZOMBIE_PID" ] && { echo "$ZOMBIE_PID"; exit 0; }\nexec "$REAL_PGREP" "$@"\n', { mode: 0o700 });
+    const run = await termMidCall(f, managed, { PATH: `${bin}:${f.env.PATH}`, ZOMBIE_PID: String(zombie), REAL_PGREP: real });
+    stub = run.stub;
+    assert.equal(run.code, 143);
+    assert.equal(alive(stub), false, 'the call outlived its terminated launcher');
+    assert.deepEqual(Object.values(controlOf(f).attempts).map(a => a.phase), ['unknown']);
+    assert.equal(slotsOf(f).length, 1);
+    assert.equal(receiptsOf(f).at(-1).outcome, 'indeterminate');
+    const ack = pausedAck(f, managed);
+    assert.equal(ack.quiescent, false);
+    assert.equal(ack.unknown.length, 1);
+  } finally {
+    holder.kill('SIGKILL');
+    if (stub && alive(stub)) process.kill(stub, 'SIGKILL');
+  }
+});
+
 test('funded API account proceeds while the native bank is exhausted; child sees an isolated env', () => {
   const f = fixture();
   const r = f.run(f.good, { CLAUDE_CODE_OAUTH_TOKEN: 'oauth-dummy', ANTHROPIC_BASE_URL: 'https://evil.example' });
