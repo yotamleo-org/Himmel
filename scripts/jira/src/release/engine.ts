@@ -1267,6 +1267,15 @@ export function requestWithWords(ctx: Ctx, row: Omit<RequestRow, 'req' | 'ts' | 
   return { operator, withdrawn, request: request(ctx, { ...row, why: `${row.why} (operator words: ${operator.id})`, evidence }) };
 }
 
+// Inert until the product commit: no record covers any ask.
+export function coveringRecord(_ctx: Ctx, _ask: Pick<RequestRow, 'verb' | 'key' | 'from_v' | 'to_v'>): OperatorRow | undefined {
+  return undefined;
+}
+
+export function requestOnRecord(_ctx: Ctx, _row: Omit<RequestRow, 'req' | 'ts' | 'state'>): { operator: OperatorRow; request: RequestRow } | undefined {
+  return undefined;
+}
+
 // --- the blocker pull ------------------------------------------------------------
 
 // Each pull files at most this many requests, so one deep tree cannot flood the RM queue.

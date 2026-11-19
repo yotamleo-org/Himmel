@@ -1515,6 +1515,180 @@ describe('a request for operator work carries the operator\'s words', () => {
     });
   });
 
+  // Decision 2026-11-19, item 8: a words record already on file that names the key and the exact placement is cited; the chief does not type the words again.
+  describe('an existing words record places a gated ask without the words again', () => {
+    const record = (key: string, kind: string, from: string, to: string, words = WORDS) =>
+      run('operator', 'decision', 'v1.1.3', '--decision', '9', '--keys', key, '--op', kind, '--from', from, '--to', to, '--words', words);
+    const legacyRecord = (key: string, kind: string, from: string, to: string) =>
+      run('operator', 'decision', 'v1.1.3', '--decision', '120', '--keys', key, '--op', kind, '--from', from, '--to', to, '--verbatim-file', join(root, 'verbatim.txt'));
+    const later = () => new Promise((r) => setTimeout(r, 5));
+    const queued = () => (existsSync(requestsFile()) ? readFileSync(requestsFile(), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>) : []);
+    const lastId = () => String(operatorRows().at(-1)?.id);
+    const operatorFile = () => join(root, 'state', 'v1.1.3', 'operator.jsonl');
+    const forgeApproval = (key: string) => appendChain(operatorFile(), loadKey(join(root, 'keys', 'v1.1.3.key')), {
+      id: `O-v1.1.3-ov-${key}`, kind: 'out-of-version', decision: '518', keys: [key], ts: new Date(Date.now() - 86_400_000).toISOString(),
+    });
+    const tamper = (edit: (row: Record<string, unknown>) => void) => {
+      const rows = readFileSync(operatorFile(), 'utf8').trim().split('\n');
+      const row = JSON.parse(rows.at(-1) ?? '{}') as Record<string, unknown>;
+      edit(row);
+      rows[rows.length - 1] = JSON.stringify(row);
+      writeFileSync(operatorFile(), `${rows.join('\n')}\n`);
+    };
+    const quietJira = () => {
+      vi.mocked(request).mockReset();
+      vi.mocked(request).mockImplementation((async () => ({ fields: { labels: [] } })) as never);
+    };
+
+    it('files with no --decision, cites the record, and records no operator row', async () => {
+      await declared();
+      decisionFile();
+      await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
+      const id = lastId();
+      const rows = operatorRows().length;
+      await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'));
+      expect(out.at(-2)).toContain(`OPERATOR ${id} `);
+      expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
+      expect(queued()).toMatchObject([{ key: 'HIMMEL-1', verb: 'INTAKE', from_v: null, to_v: 'v1.1.3', state: 'open', evidence: { operator: id } }]);
+      expect(operatorRows()).toHaveLength(rows);
+    });
+
+    it('a REVERSION into the next version is placed by its own move record', async () => {
+      await declared();
+      decisionFile();
+      await record('HIMMEL-1', 'move', 'backlog', 'v1.1.4');
+      const id = lastId();
+      await ask(gateMirror(operatorDirected), '--verb', 'REVERSION', '--key', 'HIMMEL-1', '--from', 'backlog', '--to', 'v1.1.4', '--why', 'moves into the next version');
+      expect(queued()).toMatchObject([{ key: 'HIMMEL-1', verb: 'REVERSION', to_v: 'v1.1.4', evidence: { operator: id } }]);
+    });
+
+    it('a repeat of the ask returns the same open request and queues nothing more', async () => {
+      await declared();
+      decisionFile();
+      await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
+      await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'));
+      await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'));
+      expect(out.slice(-1)).toEqual(['REQ Q-v1.1.3-0001']);
+      expect(queued()).toHaveLength(1);
+    });
+
+    it('a ticket that cannot be read is placed too, by a record that names its key', async () => {
+      await declared();
+      decisionFile();
+      await record('HIMMEL-6', 'add', 'backlog', 'v1.1.3');
+      const id = lastId();
+      vi.mocked(request).mockReset();
+      vi.mocked(request).mockImplementation((async () => { throw new Error('HTTP 503'); }) as never);
+      await ask(gateMirror(), ...intake('HIMMEL-6'));
+      expect(queued()).toMatchObject([{ key: 'HIMMEL-6', evidence: { operator: id } }]);
+    });
+
+    // Each non-match keeps today's refusal, writes no request and no operator row.
+    const noMatch: Array<[string, () => Promise<unknown>]> = [
+      ['a live out-of-version approval (work permission) is no placement', async () => { forgeApproval('HIMMEL-1'); }],
+      ['a record that names another key', () => record('HIMMEL-2', 'add', 'backlog', 'v1.1.3')],
+      ['a record for another version', () => record('HIMMEL-1', 'add', 'backlog', 'v1.1.4')],
+      ['a record with the wrong op (a move from backlog)', () => record('HIMMEL-1', 'move', 'backlog', 'v1.1.3')],
+      ['a record with the wrong from (a move from v1.1.4)', () => record('HIMMEL-1', 'move', 'v1.1.4', 'v1.1.3')],
+      ['a keep record', () => record('HIMMEL-1', 'keep', 'v1.1.3', 'v1.1.3')],
+      ['a legacy record, which holds no checked words', () => legacyRecord('HIMMEL-1', 'add', 'backlog', 'v1.1.3')],
+      ['a record superseded by a later remove', async () => {
+        await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
+        await later();
+        await record('HIMMEL-1', 'remove', 'v1.1.3', 'backlog');
+      }],
+      ['a record whose signature does not verify', async () => {
+        await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
+        tamper((row) => { row.mac = `${String(row.mac).startsWith('0') ? '1' : '0'}${String(row.mac).slice(1)}`; });
+      }],
+    ];
+    it.each(noMatch)('still refuses: %s', async (_name, setup) => {
+      await declared();
+      decisionFile();
+      await setup();
+      const rows = operatorRows().length;
+      const msg = await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1')));
+      expect(msg).toContain('HIMMEL-1 is operator-directed; a request that places it needs a record of the operator\'s words');
+      expect(msg).toContain('--decision <n> --words "<the operator\'s exact words>"');
+      expect(queued()).toEqual([]);
+      expect(operatorRows()).toHaveLength(rows);
+    });
+
+    it('an operator claim in --evidence is not a citation: a gated ask naming another record in its evidence is still refused', async () => {
+      await declared();
+      decisionFile();
+      await record('HIMMEL-2', 'add', 'backlog', 'v1.1.3');
+      const msg = await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'), '--evidence', JSON.stringify({ operator: lastId() })));
+      expect(msg).toContain('needs a record of the operator\'s words');
+      expect(queued()).toEqual([]);
+    });
+
+    it('the refusal names both ways: cite a record already on file, or record the words', async () => {
+      await declared();
+      const msg = await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1')));
+      expect(msg).toContain('cite one on file that already names HIMMEL-1 and exactly this placement');
+      expect(msg).toContain('cited with no --decision');
+      expect(msg).toContain('jira release request v1.1.3 --verb INTAKE --key HIMMEL-1 --from backlog --to v1.1.3 --why "<why>" --decision <n> --words');
+    });
+
+    it('the unreadable-ticket refusal names both ways too', async () => {
+      await declared();
+      vi.mocked(request).mockReset();
+      vi.mocked(request).mockImplementation((async () => { throw new Error('HTTP 503'); }) as never);
+      const msg = await refusal(ask(gateMirror(), ...intake('HIMMEL-6')));
+      expect(msg).toMatch(/HIMMEL-6 could not be read/);
+      expect(msg).toContain('jira mirror');
+      expect(msg).toContain('already names HIMMEL-6 and exactly this placement');
+      expect(msg).toContain('--decision <n> --words');
+    });
+
+    it('a release that is not declared keeps the gate refusal and creates no state', async () => {
+      const msg = await refusal(run('request', 'v9.9.9', '--mirror-root', gateMirror(operatorDirected), ...intake('HIMMEL-1')));
+      expect(msg).toContain('needs a record of the operator\'s words');
+      expect(existsSync(join(root, 'state', 'v9.9.9'))).toBe(false);
+    });
+
+    it('a console leg is exempt as before: it files plain and cites nothing, even when a record covers the ask', async () => {
+      await declared();
+      decisionFile();
+      await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
+      vi.stubEnv('HIMMEL_CONSOLE_LEG', '1');
+      await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'));
+      expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
+      expect(queued()).toMatchObject([{ key: 'HIMMEL-1', evidence: {} }]);
+      expect(out.some((l) => l.startsWith('OPERATOR '))).toBe(false);
+    });
+
+    it('a bridge session cannot file on a record: refused by the fence, nothing queued', async () => {
+      await declared();
+      decisionFile();
+      await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
+      vi.stubEnv('HIMMEL_BRIDGE_SESSION', '1');
+      await expect(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'))).rejects.toThrow(/Telegram bridge session/);
+      expect(queued()).toEqual([]);
+    });
+
+    it('the release manager still cannot file a request, with or without a record', async () => {
+      await declared();
+      decisionFile();
+      await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
+      vi.stubEnv('HIMMEL_RELEASE_MANAGER', '1');
+      await expect(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'))).rejects.toThrow(/the chief writes requests/);
+      expect(queued()).toEqual([]);
+    });
+
+    it('--decision with --words still records the words and files as before, whatever else is on file', async () => {
+      await declared();
+      decisionFile();
+      await record('HIMMEL-2', 'add', 'backlog', 'v1.1.3');
+      quietJira();
+      await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'), '--decision', '9', '--words', WORDS);
+      const id = /^OPERATOR (O-v1\.1\.3-\d{4}) /.exec(out.at(-2) ?? '')?.[1];
+      expect(id).toBeDefined();
+      expect(queued()).toMatchObject([{ key: 'HIMMEL-1', evidence: { operator: id } }]);
+    });
+  });
+
   describe('required parent remainder at intake', () => {
     const queuedRows = () => readFileSync(requestsFile(), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as { evidence: Record<string, unknown>; state: string });
 
