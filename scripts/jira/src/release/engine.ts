@@ -1306,6 +1306,11 @@ export function requestOnRecord(ctx: Ctx, row: Omit<RequestRow, 'req' | 'ts' | '
   return { operator, request: request(ctx, { ...row, evidence }) };
 }
 
+// Inert until the product commit: no chain has a fault.
+export function chainFault(_ctx: Ctx): string | undefined {
+  return undefined;
+}
+
 // --- the blocker pull ------------------------------------------------------------
 
 // Each pull files at most this many requests, so one deep tree cannot flood the RM queue.

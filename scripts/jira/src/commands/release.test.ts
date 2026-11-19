@@ -1679,6 +1679,50 @@ describe('a request for operator work carries the operator\'s words', () => {
       expect(msg).not.toContain('cite one on file');
     });
 
+    // review F3: a covering record on file never excuses wrong words on the words path
+    it('--decision with WRONG words is refused as before even when a covering record is on file for the same key', async () => {
+      await declared();
+      decisionFile();
+      await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
+      const rows = operatorRows().length;
+      expect(await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'), '--decision', '9', '--words', 'stop and park'))).toMatch(/not the operator's/);
+      expect(queued()).toEqual([]);
+      expect(operatorRows()).toHaveLength(rows);
+    });
+
+    it('--decision with the right words and a covering record on file runs the words path: the same record is cited, no second row', async () => {
+      await declared();
+      decisionFile();
+      await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
+      const id = lastId();
+      const rows = operatorRows().length;
+      await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'), '--decision', '9', '--words', WORDS);
+      expect(out.at(-2)).toContain(`OPERATOR ${id} (decision 9, the operator's words)`);
+      expect(queued()).toMatchObject([{ key: 'HIMMEL-1', evidence: { operator: id } }]);
+      expect(operatorRows()).toHaveLength(rows);
+    });
+
+    // review F4: a row after the verified prefix is invisible, so the no-words path refuses and says why
+    it('an operator chain that does not verify to its end refuses the ask and says so, though an older record covers it', async () => {
+      await declared();
+      decisionFile();
+      await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
+      await later();
+      await record('HIMMEL-1', 'remove', 'v1.1.3', 'backlog');
+      tamper((row) => { row.mac = `${String(row.mac).startsWith('0') ? '1' : '0'}${String(row.mac).slice(1)}`; });
+      const msg = await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1')));
+      expect(msg).toContain('the operator chain of v1.1.3 could not be verified to its end');
+      expect(msg).toContain('bad signature');
+      expect(msg).toContain('needs a record of the operator\'s words');
+      expect(queued()).toEqual([]);
+    });
+
+    it('a refusal on a chain that verifies does not blame the chain', async () => {
+      await declared();
+      const msg = await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1')));
+      expect(msg).not.toContain('could not be verified');
+    });
+
     it('a release that is not declared keeps the gate refusal and creates no state', async () => {
       const msg = await refusal(run('request', 'v9.9.9', '--mirror-root', gateMirror(operatorDirected), ...intake('HIMMEL-1')));
       expect(msg).toContain('needs a record of the operator\'s words');

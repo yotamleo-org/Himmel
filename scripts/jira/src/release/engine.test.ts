@@ -4836,6 +4836,7 @@ describe('a request names the operator\'s words', () => {
 });
 
 import { requestOnRecord, coveringRecord } from './engine.js';
+import { chainFault } from './engine.js';
 
 // Decision 2026-11-19, item 8: a gated ask is filed citing an operator record that already names the key and the exact
 // placement, with no words typed again and no new operator row. Each way the analysis says it could go wrong has its own rows.
@@ -5125,6 +5126,54 @@ describe('a gated ask cites the operator record that already covers it', () => {
     expect(requestOnRecord(at(), ask())?.operator.id).toBe(again.id);
   });
 
+  // way 6, review F1: a newer decision that names no version still retracts an older placement
+  const NO_VERSION = [
+    ['legacy keep in backlog', 'legacy', ['keep', null, null]],
+    ['words keep in backlog', 'words', ['keep', null, null]],
+    ['legacy none', 'legacy', ['none', null, null]],
+  ] as Array<[string, 'legacy' | 'words', Placement]>;
+  const recordOf = (kind: 'legacy' | 'words', placement: Placement) => (kind === 'legacy' ? legacy(at(), ['K-5'], placement) : words(at(), ['K-5'], placement, OTHER_WORDS));
+  it.each(NO_VERSION)('way 6: a newer %s, naming no version, supersedes the older add: the add is not cited', async (_name, kind, placement) => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    recordOf(kind, placement);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  it.each(NO_VERSION)('way 6: an OLDER %s, naming no version, does not hide the add that follows it', async (_name, kind, placement) => {
+    await setup();
+    decisionFile();
+    recordOf(kind, placement);
+    const add = words(at(), ['K-5'], ADD_V1);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(add.id);
+  });
+
+  // way 6, review F2: the source side of a move governs too
+  const SOURCE_SIDE = [
+    ['legacy keep of the source', 'legacy', ['keep', 'v2', 'v2']],
+    ['words keep of the source', 'words', ['keep', 'v2', 'v2']],
+    ['legacy remove from the source', 'legacy', ['remove', 'v2', null]],
+    ['words remove from the source', 'words', ['remove', 'v2', null]],
+  ] as Array<[string, 'legacy' | 'words', Placement]>;
+  it.each(SOURCE_SIDE)('way 6: a newer %s supersedes the older move v2 to v1: the move is not cited', async (_name, kind, placement) => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ['move', 'v2', 'v1']);
+    recordOf(kind, placement);
+    expect(requestOnRecord(at(), ask({ verb: 'REVERSION', from_v: 'v2' }))).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  it('way 6: an older keep of the source does not hide the newer move that follows it', async () => {
+    await setup();
+    decisionFile();
+    legacy(at(), ['K-5'], ['keep', 'v2', 'v2']);
+    const move = words(at(), ['K-5'], ['move', 'v2', 'v1']);
+    expect(requestOnRecord(at(), ask({ verb: 'REVERSION', from_v: 'v2' }))?.operator.id).toBe(move.id);
+  });
+
   // way 7: unverified or forged rows
   it('way 7: a words row whose signature does not verify is never cited', async () => {
     await setup();
@@ -5152,6 +5201,50 @@ describe('a gated ask cites the operator record that already covers it', () => {
     expect(requestOnRecord(at(), ask())).toBeUndefined();
   });
 
+  // way 7, review F4: a row after the verified prefix is invisible, so the new path fails closed and names the fault
+  it('way 7: a newer remove whose signature does not verify hides itself, so the older add is not cited and the chain fault is named', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    words(at(), ['K-5'], ['remove', 'v1', null], OTHER_WORDS);
+    tamper(-1, (row) => { row.mac = flip(row.mac); });
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+    expect(chainFault(ctx())).toMatch(/^the operator chain of R1 could not be verified to its end \(line \d+ \(O-R1-\d{4}\): bad signature\)$/);
+  });
+
+  it('way 7: a ruling row that does not verify hides a newer refusal, so the older record is not cited and the fault names the rulings chain', async () => {
+    await setup();
+    decisionFile();
+    mirrorOf({ key: 'K-5', labels: ['operator-directed'] });
+    await refuse('K-5');
+    words(at(), ['K-5'], ADD_V1);
+    const again = request(at(), ask({ why: 'asked again after the operator\'s words' }));
+    claim(at(rmEnv));
+    rule(at(rmEnv), {
+      req: again.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'no operator words',
+      reason: 'refused again', supersedes: [], authority: { kind: 'rm', ref: null },
+    });
+    const rulings = join(root, 'release', 'R1', 'rulings.jsonl');
+    const rows = lines(rulings);
+    const last = JSON.parse(rows.at(-1) as string) as Record<string, unknown>;
+    last.mac = flip(last.mac);
+    rows[rows.length - 1] = JSON.stringify(last);
+    writeFileSync(rulings, `${rows.join('\n')}\n`);
+    const before = queue().length;
+    expect(requestOnRecord(at(), ask({ why: 'a third ask' }))).toBeUndefined();
+    expect(queue()).toHaveLength(before);
+    expect(chainFault(ctx())).toMatch(/^the rulings chain of R1 could not be verified to its end \(line \d+/);
+  });
+
+  it('way 7: a chain that verifies to its end, and a release that is not declared, have no fault', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    expect(chainFault(ctx())).toBeUndefined();
+    expect(chainFault({ ...ctx(), release: 'R9', dir: join(root, 'release', 'R9'), keyPath: join(root, 'keys', 'R9.key') })).toBeUndefined();
+  });
+
   // way 8: multi-key rows
   it('way 8: a row that covers several keys is cited for each of them and for no other', async () => {
     await setup();
@@ -5161,6 +5254,59 @@ describe('a gated ask cites the operator record that already covers it', () => {
     expect(requestOnRecord(at(), ask({ key: 'K-7' }))?.request.evidence).toEqual({ operator: rec.id });
     expect(requestOnRecord(at(), ask({ key: 'K-8' }))).toBeUndefined();
     expect(queue().map((q) => q.key)).toEqual(['K-5', 'K-7']);
+  });
+
+  // review F3: behaviours the first rows left unpinned
+  it('way 2: a newer words record of ANOTHER key on the same version does not hide this key\'s record', async () => {
+    await setup();
+    decisionFile();
+    const mine = words(at(), ['K-5'], ADD_V1);
+    words(at(), ['K-6'], ADD_V1, OTHER_WORDS);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(mine.id);
+  });
+
+  it('way 5: a refusal ruled but not yet applied (intent only) floors the older record', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    const q = request(at(), ask({ to_v: 'v2', why: 'an earlier ask of the same key' }));
+    claim(at(rmEnv));
+    rule(at(rmEnv), {
+      req: q.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'no operator words',
+      reason: 'name the words', supersedes: [], authority: { kind: 'rm', ref: null },
+    });
+    expect(lines(join(root, 'release', 'R1', 'rulings.jsonl')).map((l) => (JSON.parse(l) as RulingRow).phase)).toEqual(['intent']);
+    const before = queue().length;
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toHaveLength(before);
+  });
+
+  it('way 5: a refusal applied but not yet receipted floors the older record', async () => {
+    await setup();
+    decisionFile();
+    mirrorOf({ key: 'K-5', labels: ['operator-directed'] });
+    words(at(), ['K-5'], ADD_V1);
+    const q = request(at(), ask({ to_v: 'v2', why: 'an earlier ask of the same key' }));
+    claim(at(rmEnv));
+    const r = rule(at(rmEnv), {
+      req: q.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'no operator words',
+      reason: 'name the words', supersedes: [], authority: { kind: 'rm', ref: null },
+    });
+    const post = jira.addComment.bind(jira);
+    jira.addComment = async () => { throw new Error('jira down before the receipt'); };
+    await expect(apply(at(rmEnv), r.id)).rejects.toThrow('jira down');
+    jira.addComment = post;
+    expect(lines(join(root, 'release', 'R1', 'rulings.jsonl')).map((l) => (JSON.parse(l) as RulingRow).phase).at(-1)).toBe('applied');
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+  });
+
+  it('only INTAKE and REVERSION are placed by a record: a DISCHARGE that carries a target version and a move record is not', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ['move', 'v2', 'v1']);
+    expect(coveringRecord(at(), ask({ verb: 'DISCHARGE', from_v: 'v2', to_v: 'v1' }))).toBeUndefined();
+    expect(requestOnRecord(at(), ask({ verb: 'DISCHARGE', from_v: 'v2', to_v: 'v1' }))).toBeUndefined();
+    expect(queue()).toEqual([]);
   });
 
   // way 9: the fence and the origin rules are not widened
