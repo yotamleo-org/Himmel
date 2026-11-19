@@ -202,6 +202,75 @@ out="$(tick)"
 sleep 1
 check '8731 U2: control: an empty unfinished list and an empty queue still launch nothing' '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
 
+# 8731 U3: a blocked unfinished ruling needs a person, so the tick prints rm-blocked=<n>:<KEY>@<ruling>,... (sorted, one pair per ruling),
+# absent when none, ? while the state read is not OK. It never launches an rm-run and never enters rm-queue.
+u_row2() { # <ruling> <key> <status> <owner>
+    printf '{"ruling":"%s","req":"Q-%s","key":"%s","phase":"applied","op":"add backlog→v1.1.3","status":"%s","owner":"%s","next":"x","observed":null}' "$1" "$1" "$2" "$3" "$4"
+}
+reset; stateu '[]' null null "$U_BLOCKED"
+out="$(tick)"
+sleep 1
+check '8731 U3: a blocked ruling prints rm-blocked with its key and ruling' '1:K-1@R-R1-0007' "$(field rm-blocked "$out")"
+check '8731 U3: and still launches no rm-run' '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
+check '8731 U3: and the rm-queue field stays elided' '' "$(field rm-queue "$out")"
+reset; stateu '[]' null null "[$(u_row2 R-R1-0008 K-2 blocked chief),$(u_row2 R-R1-0007 K-1 blocked chief)]"
+out="$(tick)"
+check '8731 U3: two blocked rulings print as one sorted set, whatever order the state lists them in' '2:K-1@R-R1-0007,K-2@R-R1-0008' "$(field rm-blocked "$out")"
+printed=''
+for n in 1 2 3 4; do
+    printed="$printed $(field rm-blocked "$(tick)")"
+done
+check '8731 U3: the same set prints the same text on every tick' ' 2:K-1@R-R1-0007,K-2@R-R1-0008 2:K-1@R-R1-0007,K-2@R-R1-0008 2:K-1@R-R1-0007,K-2@R-R1-0008 2:K-1@R-R1-0007,K-2@R-R1-0008' "$printed"
+reset; stateu '[]' null null "[$(u_row2 'R-R1-0009 x|y=z' 'K 3' blocked chief)]"
+out="$(tick)"
+check '8731 U3: a space, pipe or equals sign in an id is flattened so the field stays one token' '1:K_3@R-R1-0009_x_y_z' "$(field rm-blocked "$out")"
+reset; stateu '[]' null null "[$(u_row2 R-R1-0007 K-1 replay release-manager),$(u_row2 R-R1-0008 K-2 blocked chief)]"
+out="$(tick)"
+check '8731 U3: a replay and a blocked ruling together: the replay launches and is counted' '0,0m,replay=1,run' "$(field rm-queue "$out")"
+check '8731 U3: and the blocked one is named beside it' '1:K-2@R-R1-0008' "$(field rm-blocked "$out")"
+check '8731 U3: and one rm-run, not two' '1' "$(ran)"
+reset; stateu '[]' null null "$U_REPLAY"
+out="$(tick)"
+check '8731 U3: a replay alone prints no rm-blocked' '' "$(field rm-blocked "$out")"
+reset; stateu '[]' null null '[]'
+out="$(tick)"
+check '8731 U3: control: no unfinished ruling prints no rm-blocked' '' "$(field rm-blocked "$out")"
+reset; state '["Q-1"]' "\"$(ago 10)\"" null
+out="$(tick)"
+check '8731 U3: control: a state with no unfinished_rulings key prints no rm-blocked' '' "$(field rm-blocked "$out")"
+mkdoc none
+reset; stateu '[]' null null "$U_BLOCKED"
+out="$(tick)"
+check '8731 U3: no declared release prints no rm-blocked' '' "$(field rm-blocked "$out")"
+mkdoc R1
+
+# 8731 U3: a state read that fails is unknown, never an empty set and never a launch, whatever the body lists
+UNF="[$(u_row2 R-R1-0007 K-1 replay release-manager),$(u_row2 R-R1-0008 K-2 blocked chief)]"
+for variant in '3:UNKNOWN:off' '124:OK:?' '137:OK:?' '1:OK:off'; do
+    rc="${variant%%:*}"; rest="${variant#*:}"; body="${rest%%:*}"; want="${rest#*:}"
+    reset; printf '{"status":"%s","requests":{"open":[],"claimed":[]},"unfinished_rulings":%s}\n' "$body" "$UNF" > "$W/state.json"
+    out="$(TICK_RMQ_EXIT=$rc tick)"
+    sleep 1
+    check "8731 U3: a state read that exits $rc ($body body) prints rm-queue=$want" "$want" "$(field rm-queue "$out")"
+    check "8731 U3: and rm-blocked=? (unknown, not an empty set) (exit $rc)" '?' "$(field rm-blocked "$out")"
+    check "8731 U3: and launches no rm-run (exit $rc)" '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
+done
+reset; printf 'broken\n' > "$W/state.json"
+out="$(tick)"
+check '8731 U3: an unparseable state prints rm-queue=off and rm-blocked=?' 'off ?' "$(field rm-queue "$out") $(field rm-blocked "$out")"
+
+# 8731 U3: the run in flight holds the lease: the next tick launches nothing even once the interval has passed
+reset; stateu '[]' null null "$U_REPLAY"
+tick > /dev/null
+check '8731 U3: an interrupted ruling with an empty queue launches its one rm-run' '1' "$(ran)"
+rm -f "$W/rmrun-ran"
+touch -d '11 minutes ago' "$W"/state/tick-rm-run-*
+stateu '[]' null '{"holder":"rm-run-1","epoch":4,"released":false,"owner_pid":4243,"owner_host":"h","owner_gone":false}' "$U_REPLAY"
+out="$(tick)"
+sleep 1
+check '8731 U3: the same tick, interval passed, lease held by the run in flight: no second rm-run' '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
+check '8731 U3: and the ruling still shows' '0,0m,replay=1' "$(field rm-queue "$out")"
+
 reset; state '[]' null null
 out="$(tick)"
 sleep 1
@@ -368,6 +437,29 @@ out="$(tick)"
 check 'an unknown mirror shows no rm-refused field' '' "$(field rm-refused "$out")"
 check 'and leaves the tsv as the last known read' "$rf_before" "$(cat "$W/state/rm-refused-chief.tsv" 2>/dev/null)"
 check 'and deletes release-state-<stem>.json rather than claim no operator keys' 'gone' "$([ -e "$W/state/release-state-chief.json" ] || echo gone)"
+
+# 8731 U3: the waiter wakes for a blocked ruling through the table row: once for a set, again only when the set changes.
+# Every sample runs the real tick and carries its rm-blocked= token onto a fixed line, so a value that moved on every tick would wake every run.
+printf '%s' 'TICK 03:00 hb=1m workers=N1:FRESH livestate=ok procs=2 models=x ceiling=ok atq=0 suites=0alive/0dead prs=#10 bank=5h8/wk15/codex=? fill=40 tails=N1:LIVE inbox=none tick=UNKNOWN fleet=3/15 capacity=ok gql=4000/04:00 orphans=none nonces=ok legset=ok board=ok denials=none or=skip fails=none' > "$W/cw-base.line"
+cat > "$W/cw-tick.sh" <<'STUB'
+#!/usr/bin/env bash
+b="$(bash "$SUT" --doc "$W/handover/chief.md" 2>/dev/null | tr ' ' '\n' | sed -n 's/^rm-blocked=//p' | head -n 1)"
+printf '%s%s\n' "$(cat "$W/cw-base.line")" "${b:+ rm-blocked=$b}"
+STUB
+export W SUT
+mkdoc R1
+reset; stateu '[]' null null '[]'
+cw_wait 6 > /dev/null
+stateu '[]' null null "[$(u_row2 R-R1-0007 K-1 blocked chief)]"
+check '8731 U3: a blocked ruling wakes the waiter, naming the field' 'WAKE tick changed=rm-blocked usage=PROCEED' "$(cw_wait 25 | grep '^WAKE ' || true)"
+check '8731 U3: the same set on the next ticks wakes nothing' '' "$(cw_wait 8 | grep '^WAKE ' || true)"
+stateu '[]' null null "[$(u_row2 R-R1-0007 K-1 blocked chief),$(u_row2 R-R1-0008 K-2 blocked chief)]"
+check '8731 U3: a changed set wakes again' 'WAKE tick changed=rm-blocked usage=PROCEED' "$(cw_wait 25 | grep '^WAKE ' || true)"
+check '8731 U3: a state read that fails is unknown: the set is kept, nothing wakes' '' "$(TICK_RMQ_EXIT=124 cw_wait 8 | grep '^WAKE ' || true)"
+stateu '[]' null null '[]'
+check '8731 U3: a set that empties wakes nothing' '' "$(cw_wait 8 | grep '^WAKE ' || true)"
+stateu '[]' null null "[$(u_row2 R-R1-0007 K-1 blocked chief)]"
+check '8731 U3: a ruling that blocks again after the set emptied wakes again' 'WAKE tick changed=rm-blocked usage=PROCEED' "$(cw_wait 25 | grep '^WAKE ' || true)"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
