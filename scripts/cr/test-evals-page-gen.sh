@@ -115,7 +115,6 @@ CAL_B="[$(grader grader1 opus native anthropic),$(grader grader2 google/gemini-x
 } > "$E"
 
 # ── Fixture panel ───────────────────────────────────────────────────────────
-# beta is the required reviewer, delta:m9 runs where present but has no findings yet, epsilon:m7 is advisory, coderabbit is best effort;
 # alpha is in the ledger but not the panel, so it is history.
 K="$TMP/critics.json"
 printf '{"panel":[{"slug":"beta","mode":"hard","required":true},{"slug":"delta","model":"m9","mode":"hard","required":false},{"slug":"epsilon","model":"m7","mode":"advisory","required":false},{"slug":"coderabbit","provider":"github-app","mode":"best-effort"}]}\n' > "$K"
