@@ -169,6 +169,9 @@ assert_rc "verb past the span window denies (flat scan)" 2 "$(HOOK_TOOL=PowerShe
 edge=$(awk 'BEGIN { for (i = 0; i < 254; i++) printf "x%d ", i; printf "x254" }')
 assert_rc "exactly 256 words after a command word allowed (flat scan)" 0 "$(HOOK_TOOL=PowerShell run_hook "kubectl get $edge")"
 elapsed=$((SECONDS - t0))
+# A text over 8 KiB is not tokenized, and a backslash that ends it is read two ways all the same.
+assert_rc "a text over 8 KiB that ends in a backslash denies" 2 "$(run_hook "echo ${long}${bs}")"
+assert_rc "a text over 8 KiB that ends in an even run of backslashes allows" 0 "$(run_hook "echo ${long}${bs}${bs}")"
 # macOS (bash 3.2) took 336s here against the 12s budget: a likely super-linear scan, far past
 # runner slowness. The rc asserts above still run; only the time assertion is skipped there.
 if [ "$(uname -s)" = Darwin ]; then # prim-ok: time assertion skipped on Darwin, see the note above

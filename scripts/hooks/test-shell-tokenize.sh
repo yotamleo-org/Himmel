@@ -226,6 +226,11 @@ while [ "$n" -lt "${#trail_ok[@]}" ]; do
     _st_endbs "$t"; check "[$t] does not end in an odd run of backslashes" "$?" "1"
     tok "$t"; check "the text [$t] is still read, last word [$want]" "$R:${ST_AMBIG-}:${ST_W[ST_N-1]}" "0:0:$want"
 done
+# A text over 8 KiB is not read at all; one that ends in an odd run of backslashes says why.
+long_text=$(printf 'echo %9000s' '' | tr ' ' x)
+tok "$long_text"; check "a text over 8 KiB is refused, not as ambiguous" "$R:${ST_AMBIG-}" "1:0"
+tok "$long_text$bs"; check "a text over 8 KiB ending in a backslash is refused as ambiguous" "$R:${ST_AMBIG-}" "1:1"
+tok "$long_text$bs$bs"; check "a text over 8 KiB ending in an even run is refused, not as ambiguous" "$R:${ST_AMBIG-}" "1:0"
 tok 'echo a # c; d'; check "a comment sets COMMENT and ends the command" "$R:$ST_COMMENT:$ST_NSEG:$ST_N" "0:1:1:2"
 tok $'cat <<EOF\nbody $(x)\nEOF\necho after'; check "an unquoted heredoc body with \$(…) sets SUBST" "$R:$ST_HEREDOC:$ST_SUBST" "0:1:1"
 tok $'cat <<\'EOF\'\nbody $(x)\nEOF'; check "a quoted heredoc body is inert" "$R:$ST_HEREDOC:$ST_SUBST" "0:1:0"
