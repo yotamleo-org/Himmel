@@ -164,7 +164,7 @@ PATH="$tmp/sysd-bin:$PATH"
 # The Darwin rows pin HEADED_ARM_UNAME=Darwin inline.
 export HEADED_ARM_UNAME=Linux
 export UNGUARDED_LAUNCH_OK=1  # scratch fixtures are not a guarded folder
-# A dry-run row that passes a Claude Code marker (CLAUDE_CODE_*) drops the opt-out above and runs in this guarded folder, so the seam guard has nothing to deny.
+# A dry-run row that passes a Claude Code marker (CLAUDE_CODE_*) drops the opt-out above and the policy-home seam exported below, and runs in this guarded folder, so the seam guard has nothing to deny.
 guarded_repo="$(cd "$HERE/../../.." && pwd -P)"
 # pin every root this suite could resolve to its own temp dir, at
 # SUITE level. A chief-spawned worker exports the LIVE HANDOVER_DIR into this
@@ -341,6 +341,32 @@ printf '%s\n' '#!/usr/bin/env bash' \
   'echo SKIPPED-BANK' > "$SKIPPED_BANK_PREFLIGHT"
 chmod 755 "$SKIPPED_BANK_PREFLIGHT"
 
+# mk_launcher_tree <dir> - a copy of the repo's scripts tree in which ONLY
+# headed-arm-worker.sh is a real file (the caller mutates it); everything else is
+# a symlink, so the launcher's HERE-relative lookups still resolve.
+mk_launcher_tree() {
+  local dst="$1" root e b
+  root="$(cd "$HERE/../../.." && pwd)"
+  mkdir -p "$dst/scripts/handover/chief-kit"
+  for e in "$root"/*; do b="$(basename "$e")"; [ "$b" = scripts ] || ln -s "$e" "$dst/$b"; done
+  for e in "$root"/scripts/*; do b="$(basename "$e")"; [ "$b" = handover ] || ln -s "$e" "$dst/scripts/$b"; done
+  for e in "$root"/scripts/handover/*; do b="$(basename "$e")"; [ "$b" = chief-kit ] || ln -s "$e" "$dst/scripts/handover/$b"; done
+  for e in "$root"/scripts/handover/chief-kit/*; do b="$(basename "$e")"; [ "$b" = headed-arm-worker.sh ] || ln -s "$e" "$dst/scripts/handover/chief-kit/$b"; done
+  cp "$HERE/headed-arm-worker.sh" "$dst/scripts/handover/chief-kit/headed-arm-worker.sh"
+}
+# mk_anchorless_tree <dir> - mk_launcher_tree with a real scripts/lib directory (a symlink per library file and a COPY of the seam
+# guard). The guard resolves its root from its own lib directory, so the launcher and every chokepoint it starts from this tree
+# run in a tree that is not a primary checkout. A launch that passes a Claude Code marker beside a seam uses it: the guard
+# refuses that on a primary checkout with no claude ancestor, which is what a CI checkout is.
+mk_anchorless_tree() {
+  local dst="$1" e
+  mk_launcher_tree "$dst"
+  rm "$dst/scripts/lib"; mkdir "$dst/scripts/lib"
+  for e in "$HERE"/../../lib/*; do ln -s "$(cd "$(dirname "$e")" && pwd)/$(basename "$e")" "$dst/scripts/lib/$(basename "$e")"; done
+  rm "$dst/scripts/lib/chokepoint-seam-guard.sh"; cp "$HERE/../../lib/chokepoint-seam-guard.sh" "$dst/scripts/lib/chokepoint-seam-guard.sh"
+}
+LAUNCH_TREE="$tmp/launch-tree"; mk_anchorless_tree "$LAUNCH_TREE"
+
 # deleting the post-handoff add must fail these manifest assertions.
 # The target is a fixture: never launch a real worker or edit a live manifest.
 mkdir -p "$tmp/fleet-fixture"
@@ -360,8 +386,10 @@ fi
 exit "${FLEET_TEST_EXIT:-${FLEET_TEST_RC:-0}}"
 FLEET_TARGET
 chmod +x "$fleet_target"
+# FLEET_TEST_LIB names the tree's lib: the stub target runs the real usage-preflight.sh, a chokepoint, with the markers this
+# launcher exports and this suite's seams, which the guard refuses on a primary checkout.
 fleet_launch() {
-  FLEET_TEST_MANIFEST="$fleet_manifest" FLEET_TEST_LIB="$HERE/../../lib" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_CACHE="$tmp/no-native-cache" HEADED_ARM_WORKER_TARGET="$fleet_target" \
+  FLEET_TEST_MANIFEST="$fleet_manifest" FLEET_TEST_LIB="$LAUNCH_TREE/scripts/lib" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_CACHE="$tmp/no-native-cache" HEADED_ARM_WORKER_TARGET="$fleet_target" \
     HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" bash "$SCRIPT" \
     --no-profile --fleet "$fleet_manifest" "$@" \
     PROJ-3748-N7-fleet "$fleet_doc" "$tmp/fleet-signal" "$PAST" "$tmp/fleet-log" claude-sonnet-5-5
@@ -1043,8 +1071,9 @@ if command -v flock >/dev/null 2>&1; then
   bash "$HERE/fleet-manifest.sh" control init "$profile_manifest" --target 4 >/dev/null || exit 1
   bash "$HERE/fleet-manifest.sh" control set "$profile_manifest" --mode active --expect-gen 1 >/dev/null || exit 1
 fi
+# the managed launch runs the real usage-preflight.sh through headed-arm.sh, so the target is the tree's headed-arm.sh
 out8profile="$(PLUGIN_PROFILES_REGISTRY="$ceiling_reg" WORKER_SESSION_CONTEXT='' RUN_WORKER_ARGS='--profile design' \
-  some_doc="$profile_doc" FLEET_PS_CMD="$tmp/profile-fleet/ps" CADENCE_USAGE_SKIP_REFRESH=1 \
+  some_doc="$profile_doc" FLEET_PS_CMD="$tmp/profile-fleet/ps" CADENCE_USAGE_SKIP_REFRESH=1 HEADED_ARM="$LAUNCH_TREE/scripts/handover/headed-arm.sh" \
   run_worker "$d8profile" "$tmp/repo8profile" "PROJ-4021-ceiling" "claude-sonnet-4-6" \
   "$PROCEED_PREFLIGHT" "$profile_manifest" 2>&1)" || rc=$?
 [ "$rc" -eq 0 ] || printf 'profile launch diagnostic: %s\n' "$out8profile"
@@ -1453,11 +1482,11 @@ not_contains "claudex: the stale usage lane token is dropped" "$out" "CADENCE_US
 rc=0; out="$(WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex PROJ-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 contains "dry-run --lane claudex: WORKER_SESSION_EFFORT overrides the xhigh default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=high"
 
-rc=0; out="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$guarded_repo" CLAUDE_CODE_EFFORT_LEVEL=medium bash "$SCRIPT" --dry-run --no-profile --lane claudex PROJ-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(env -u UNGUARDED_LAUNCH_OK -u HIMMEL_POLICY_FOLLOWS_HOME WORKER_SESSION_REPO="$guarded_repo" CLAUDE_CODE_EFFORT_LEVEL=medium bash "$SCRIPT" --dry-run --no-profile --lane claudex PROJ-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL exits 0" "$rc" "0"
 contains "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL overrides the xhigh default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 not_contains "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL is not replaced by xhigh" "$out" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
-rc=0; out="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$guarded_repo" CLAUDE_CODE_EFFORT_LEVEL=medium WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex PROJ-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(env -u UNGUARDED_LAUNCH_OK -u HIMMEL_POLICY_FOLLOWS_HOME WORKER_SESSION_REPO="$guarded_repo" CLAUDE_CODE_EFFORT_LEVEL=medium WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex PROJ-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL with WORKER_SESSION_EFFORT exits 0" "$rc" "0"
 contains "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL wins over WORKER_SESSION_EFFORT" "$out" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 
@@ -3799,7 +3828,7 @@ not_contains "34b a model with no tier row leaves CLAUDE_CODE_EFFORT_LEVEL unset
 
 # 34c. An explicit CLAUDE_CODE_EFFORT_LEVEL already set in the launching
 # shell wins over the registry lookup - never silently overwritten.
-out34c="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$guarded_repo" HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture" CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile PROJ-9999-worker-34c some/doc.md /tmp/nosig 99999999999 "$tmp/leg34c.log" claude-sonnet-5 2>&1)"
+out34c="$(env -u UNGUARDED_LAUNCH_OK -u HIMMEL_POLICY_FOLLOWS_HOME WORKER_SESSION_REPO="$guarded_repo" HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture" CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile PROJ-9999-worker-34c some/doc.md /tmp/nosig 99999999999 "$tmp/leg34c.log" claude-sonnet-5 2>&1)"
 lenv34c="$(printf '%s\n' "$out34c" | grep '^headed-arm-worker: lane=')"
 contains "34c an ambient CLAUDE_CODE_EFFORT_LEVEL=xhigh survives the registry lookup" "$lenv34c" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
 not_contains "34c the registry's medium never overwrites the ambient value" "$lenv34c" "CLAUDE_CODE_EFFORT_LEVEL=medium"
@@ -3826,7 +3855,7 @@ contains "34e native WORKER_SESSION_EFFORT=high beats the registry's medium" "$l
 not_contains "34e the registry's medium is not what propagates" "$lenv34e" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 
 rc34f=0
-out34f="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$guarded_repo" HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" WORKER_SESSION_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile PROJ-9999-worker-34f "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34f.log" claude-opus-5-5 2>&1)" || rc34f=$?
+out34f="$(env -u UNGUARDED_LAUNCH_OK -u HIMMEL_POLICY_FOLLOWS_HOME WORKER_SESSION_REPO="$guarded_repo" HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" WORKER_SESSION_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile PROJ-9999-worker-34f "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34f.log" claude-opus-5-5 2>&1)" || rc34f=$?
 lenv34f="$(printf '%s\n' "$out34f" | grep '^headed-arm-worker: lane=')"
 check "34f dry run exits 0" "$rc34f" "0"
 contains "34f an explicit CLAUDE_CODE_EFFORT_LEVEL=xhigh beats WORKER_SESSION_EFFORT=high" "$lenv34f" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
@@ -3886,19 +3915,6 @@ check "34j dry run exits 0" "$rc34j" "0"
 contains "34j an empty launcher token is reported with its own empty value and source" "$out34j" "headed-arm-worker: effort= source=HEADED_ARM_LAUNCHER_ENV"
 not_contains "34j the effort line does not claim effort=high" "$out34j" "effort=high"
 
-# mk_launcher_tree <dir> - a copy of the repo's scripts tree in which ONLY
-# headed-arm-worker.sh is a real file (the caller mutates it); everything else is
-# a symlink, so the launcher's HERE-relative lookups still resolve.
-mk_launcher_tree() {
-  local dst="$1" root e b
-  root="$(cd "$HERE/../../.." && pwd)"
-  mkdir -p "$dst/scripts/handover/chief-kit"
-  for e in "$root"/*; do b="$(basename "$e")"; [ "$b" = scripts ] || ln -s "$e" "$dst/$b"; done
-  for e in "$root"/scripts/*; do b="$(basename "$e")"; [ "$b" = handover ] || ln -s "$e" "$dst/scripts/$b"; done
-  for e in "$root"/scripts/handover/*; do b="$(basename "$e")"; [ "$b" = chief-kit ] || ln -s "$e" "$dst/scripts/handover/$b"; done
-  for e in "$root"/scripts/handover/chief-kit/*; do b="$(basename "$e")"; [ "$b" = headed-arm-worker.sh ] || ln -s "$e" "$dst/scripts/handover/chief-kit/$b"; done
-  cp "$HERE/headed-arm-worker.sh" "$dst/scripts/handover/chief-kit/headed-arm-worker.sh"
-}
 # mutate_launcher <tree> <sed args...> - rewrite the tree's launcher in place.
 mutate_launcher() {
   local f="$1/scripts/handover/chief-kit/headed-arm-worker.sh"; shift
@@ -6321,6 +6337,10 @@ check "readiness exec with a PATH claude: the same array reaches the binary" "$(
 # nothing for the launcher's own session) and hands the token over through a separate private transport file.
 # Every case runs the REAL wrapper, headed-arm.sh, profile resolver, launcher shim and queue-lock.sh against a fake
 # HOME, fake queue root, fake runtime dir and a stub konsole: no native claude, provider, VM, real config or secret.
+# Every launch passes a Claude Code marker beside seams, which the seam guard refuses on a primary checkout with no claude
+# ancestor, so the launcher runs from LAUNCH_TREE (the same bytes, in a tree that is not one): from here HERE names that tree's
+# chief-kit directory, and what the rows expect beside the launcher (the adapter, the queue library) follows it.
+HERE="$LAUNCH_TREE/scripts/handover/chief-kit"; SCRIPT="$HERE/headed-arm-worker.sh"; HEADED_ARM="$HERE/../headed-arm.sh"
 RS="$tmp/rs"; mkdir -p "$RS/hdir/u/r" "$RS/home/.claude" "$RS/repo" "$RS/bin" "$RS/primary/scripts/jira/dist" "$RS/primary-broken/scripts/jira/dist"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$RS/bin/claude"; chmod 755 "$RS/bin/claude"
 # an outside-the-root canary: a `claude` and a `curl` that log every call. They sit on PATH AFTER the fixture's own claude stub (so

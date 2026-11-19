@@ -965,7 +965,31 @@ describe('C0s2 adopted ownership', () => {
 // real SessionStart hook adopts it. Every protocol row then spawns the adapter with exactly the command and argv that the
 // GENERATED strict MCP config names. Nothing here hand-assembles that config. A setup failure throws SETUP-UNAVAILABLE and
 // is never a causal RED: only a server that does not answer is.
-const LAUNCHER = join(HERE, 'headed-arm-worker.sh');
+// Every launch passes a Claude Code marker beside seams, which the seam guard refuses on a primary checkout with no claude ancestor
+// (a CI checkout is one). The launcher runs from TREE, a copy of the scripts tree that is not one: its launcher, adapter and seam
+// guard are COPIES of the real files (the same bytes), every other entry is a symlink, and scripts/lib is a real directory of
+// symlinks, because the guard resolves its root from its own lib directory. The adapter derives the project root its session hook
+// binds the queue library to from where it lives, and the launcher writes its own queue-lock path into the startup config, so both
+// are the tree's: TREE is the project root the adoption rows give the hook.
+const TREE = realpathSync(mkdtempSync(join(tmpdir(), 'c0env-tree-')));
+roots.push(TREE);
+{
+  const kit = join(TREE, 'scripts', 'handover', 'chief-kit');
+  const real = (...p) => join(PROJECT_ROOT, ...p);
+  const entries = (dir) => readdirSync(real(...dir)).filter((name) => !name.startsWith('.'));
+  mkdirSync(kit, { recursive: true });
+  mkdirSync(join(TREE, 'scripts', 'lib'));
+  const link = (dir, skip = []) => { for (const name of entries(dir).filter((n) => !skip.includes(n))) symlinkSync(real(...dir, name), join(TREE, ...dir, name)); };
+  link([], ['scripts']);
+  link(['scripts'], ['handover', 'lib']);
+  link(['scripts', 'handover'], ['chief-kit']);
+  link(['scripts', 'handover', 'chief-kit'], ['headed-arm-worker.sh', 'readiness-tools.mjs']);
+  link(['scripts', 'lib'], ['chokepoint-seam-guard.sh']);
+  for (const file of ['scripts/handover/chief-kit/headed-arm-worker.sh', 'scripts/handover/chief-kit/readiness-tools.mjs', 'scripts/lib/chokepoint-seam-guard.sh']) copyFileSync(real(file), join(TREE, file));
+}
+const LAUNCHER = join(TREE, 'scripts', 'handover', 'chief-kit', 'headed-arm-worker.sh');
+// the adapter copy beside that launcher, for the rows that run an adoption check in this process
+const loadLaunched = () => import(pathToFileURL(join(TREE, 'scripts', 'handover', 'chief-kit', 'readiness-tools.mjs')).href);
 const SESSION_HOOK = join(HERE, '..', '..', 'hooks', 'readiness-session.sh');
 const QL_SH = join(HERE, '..', 'queue-lock.sh');
 const PROFILES_MJS = join(HERE, '..', '..', 'lanes', 'plugin-profiles.mjs');
@@ -1076,7 +1100,7 @@ function generatedWorld({ catalog = true, port = 'copy', extraEnv = {}, allowRef
       writeFileSync(transcript, '');
       return spawnSync('bash', [SESSION_HOOK, 'startup'], {
         input: JSON.stringify({ session_id: sid, hook_event_name: 'SessionStart', source: 'startup', transcript_path: transcript }),
-        env: { ...qenv, CLAUDE_CODE_SESSION_ID: sid, CLAUDE_PROJECT_DIR: PROJECT_ROOT }, encoding: 'utf8',
+        env: { ...qenv, CLAUDE_CODE_SESSION_ID: sid, CLAUDE_PROJECT_DIR: TREE }, encoding: 'utf8',
       });
     },
     // the server exactly as the GENERATED strict MCP config starts it
@@ -1206,7 +1230,7 @@ describe('C0 envelope', () => {
 
       test('it generated a strict config that starts exactly the adapter on the private startup file, with the lease held on behalf', () => {
         assert.equal(hw.run.status, 0);
-        assert.deepEqual(hw.generated(), { command: 'node', args: [join(realpathSync(HERE), 'readiness-tools.mjs'), '--startup-config', hw.startupPath] });
+        assert.deepEqual(hw.generated(), { command: 'node', args: [join(TREE, 'scripts', 'handover', 'chief-kit', 'readiness-tools.mjs'), '--startup-config', hw.startupPath] });
         assert.equal(statSync(hw.startupPath).mode & 0o777, 0o600);
         assert.equal(hw.status(), 'status: FRESH');
         assert.equal(hw.owner(), hw.token);
@@ -1452,7 +1476,7 @@ describe('C0 envelope', () => {
   // same oracle does see a real change.
   describe('R2-6: the refused act leaves the in-memory copy as it was (oracle independent of the adoption gate)', () => {
     const setup = async () => {
-      const mod = await load();
+      const mod = await loadLaunched();
       const w = generatedWorld();
       assert.equal(w.adopt().status, 0);
       const startup = mod.loadStartup(w.startupPath);
