@@ -575,7 +575,7 @@
         "url": "https://github.com/higgsfield-ai/skills.git",
         "sha": "27000402070db19d958789d05b3b52b6f4718d7c"
       },
-      "description": "[higgsfield-ai/skills, MIT, vendor + attribution only, no carried delta] Higgsfield image and video generation skills; they drive the `higgsfield` CLI through Bash (the operator installs the CLI and signs in: `npm i -g @higgsfield/cli`, `higgsfield auth login`); the skills' own `curl | sh` CLI bootstrap is unpinned and must never be run, install only by npm. No MCP. higgsfield-websites (public site deploy) is deliberately not listed. Every prompt and uploaded file goes to Higgsfield; block-agent-native-egress.sh denies a higgsfield Bash call for salus. strict:true with its seven skill dirs listed, exactly as upstream's own marketplace entry does: upstream keeps them at the repo root (no skills/ dir) and its plugin.json declares no components, so the list is the only thing that loads them. The install shape is unproven here until the operator station check. Explicit HTTPS git url, pinned to a full sha 27000402070d per himmel supply-chain policy. Design kit, design-imagegen add-on.",
+      "description": "[higgsfield-ai/skills, MIT, vendor + attribution only, no carried delta] Higgsfield image and video generation skills; they drive the `higgsfield` CLI through Bash (the operator installs the CLI and signs in: `npm i -g @higgsfield/cli@1.2.2`, `higgsfield auth login`); the skills' own `curl | sh` CLI bootstrap is unpinned and must never be run, install only by npm. No MCP. Upstream ships nine skills at the pinned sha; eight are listed, and higgsfield-websites (public site deploy) is deliberately not listed. Every prompt and uploaded file goes to Higgsfield; block-agent-native-egress.sh denies a higgsfield Bash call for salus. strict:true with its eight skill dirs listed, exactly as upstream's own marketplace entry does: upstream keeps them at the repo root (no skills/ dir) and its plugin.json declares no components, so the list is the only thing that loads them. The install shape is unproven here until the operator station check. Explicit HTTPS git url, pinned to a full sha 27000402070d per himmel supply-chain policy. Design kit, design-imagegen add-on.",
       "strict": true,
       "skills": [
         "./higgsfield-generate",
@@ -583,6 +583,7 @@
         "./higgsfield-product-photoshoot",
         "./higgsfield-brandkit",
         "./higgsfield-marketplace-cards",
+        "./higgsfield-faceless-video",
         "./higgsfield-video-explainer",
         "./higgsfield-youtube-thumbnail"
       ],
