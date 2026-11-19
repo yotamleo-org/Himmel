@@ -526,7 +526,7 @@ time.sleep(float(os.environ.get('GC_STUB_SLEEP', '0')))
 mode = os.environ.get('GC_STUB_MODE', 'complete')
 if mode == 'fail':
     sys.exit(1)
-if mode == 'busy':
+if mode == 'busy' or repo == os.environ.get('GC_STUB_BUSY_REPO'):
     print('gc busy: another pass holds this register')
 elif mode == 'partial' or (mode == 'partial2' and n < 3):
     print('gc visited=1 removed=0 rows=9 cycle=partial')
@@ -559,6 +559,21 @@ case "$(tail -n 1 "$STATE/holds-gc.log")" in *"run registers=1 served=1 starved=
 gc_reset; gc_reg "$P"
 GC_STUB_MODE=busy run_cad_ok "a run whose register is busy"
 check "a busy answer ends the register's passes at once" 1 "$(gc_calls)"
+# a busy answer judged nothing: it is not served and not progress, and the register is retried first by the next run
+case "$(tail -n 1 "$STATE/holds-gc.log")" in *"run registers=1 served=0 starved=1 partial=0 failed=0 passes=1") pass "a busy register is starved in the run summary, not served" ;; *) fail "a busy register is starved in the run summary, not served ($(tail -n 1 "$STATE/holds-gc.log"))" ;; esac
+check "a register that answered busy is named for the next run" "$P" "$(cat "$STATE/holds-gc.next" 2>/dev/null)"
+gc_reset; gc_reg "$W/hr-live" "$W/hr-live2" "$P"
+GC_STUB_BUSY_REPO="$W/hr-live" run_cad_ok "a run where one of three registers is busy"
+check "the busy register does not stop the others: each still gets its pass" "gc $P
+gc $W/hr-live
+gc $W/hr-live2
+doctor" "$(cat "$GC_LOG")"
+case "$(tail -n 1 "$STATE/holds-gc.log")" in *"run registers=3 served=2 starved=1 partial=0 failed=0 passes=3") pass "two served and one starved when one register is busy" ;; *) fail "two served and one starved when one register is busy ($(tail -n 1 "$STATE/holds-gc.log"))" ;; esac
+: > "$GC_LOG"
+run_cad_ok "the next run after a busy register"
+check "the register that answered busy is retried first by the next run" "gc $W/hr-live" "$(grep '^gc ' "$GC_LOG" | head -n 1)"
+case "$(tail -n 1 "$STATE/holds-gc.log")" in *"run registers=3 served=3 starved=0 partial=0 failed=0 passes=3") pass "the retried register is served once it answers" ;; *) fail "the retried register is served once it answers ($(tail -n 1 "$STATE/holds-gc.log"))" ;; esac
+check "a clean run leaves no retry mark" "no" "$([ -e "$STATE/holds-gc.next" ] && echo yes || echo no)"
 # fairness: every register gets one pass before any gets a second; a register the budget starved is served first on the next run
 gc_reset; gc_reg "$W/hr-live" "$W/hr-live2" "$P"
 GC_STUB_MODE=partial DOCTORCAD_HOLDS_GC_PASSES=2 run_cad_ok "a run with three endless registers"

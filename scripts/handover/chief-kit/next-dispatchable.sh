@@ -326,7 +326,8 @@ top = int(os.environ['ND_TOP']); mirror = os.environ['ND_MIRROR']
 repo = os.environ['ND_REPO']
 sys.path.insert(0, os.path.join(repo, 'scripts', 'lib'))
 from env_alias import legacy_names_on
-from fleet_runtime import owned_rows, worker_state
+from fleet_runtime import owned_rows, WorkerStates
+worker_state = WorkerStates()  # one run: each doc's worker state is asked once, and each directory's manifests are read once for all of them
 
 RATE_LIMIT_RE = re.compile(r'rate limit|RATE_LIMIT|abuse detection|secondary rate', re.I)
 rate_limited = []

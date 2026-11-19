@@ -98,6 +98,7 @@ d="$(dirname "$0")"
 printf '%s\n' "$*" >> "$d/qdbus-record"
 [ -e "$d/qdbus-fail" ] && { echo "Error: org.freedesktop.DBus.Error.ServiceUnknown" ; exit 2; }
 svc="$1"; obj="$2"; method="$3"; shift 3
+[ -e "$d/runcommand-fail" ] && [ "$method" = runCommand ] && { echo "Error: org.freedesktop.DBus.Error.NoReply"; exit 2; }
 kpid="${svc#org.kde.konsole-}"
 kill -0 "$kpid" 2>/dev/null || { echo "Error: org.freedesktop.DBus.Error.ServiceUnknown"; exit 2; }
 case "$obj $method" in
@@ -251,6 +252,16 @@ arm "$d7" PROJ-7-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A; 
 check "7a qdbus fails: launch exit 0" "$rc7" 0
 check "7b qdbus fails: falls back to a new window" "$(konsole_count "$d7")" 2
 contains "7c qdbus fails: the fallback is logged" "$(cat "$d7/log")" "WARN: tab launch for PROJ-7-N2-b failed"
+
+# --- 7b. newSession succeeds, runCommand fails: the tab exists, so the launch must not open a second window.
+d7b="$tmp/c7b"; mk_env "$d7b"
+arm "$d7b" PROJ-7B-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A
+: > "$d7b/runcommand-fail"
+arm "$d7b" PROJ-7B-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A; rc7b=$?
+check "7b-1 runCommand fails: no second window is opened" "$(konsole_count "$d7b")" 1
+check "7b-2 runCommand fails: the launch is unconfirmed (exit 7), never retried" "$rc7b" 7
+contains "7b-3 runCommand fails: the ambiguity is logged" "$(cat "$d7b/log")" "ambiguous"
+check "7b-4 runCommand fails: no worker started under the name" "$([ -e "$d7b/pid.PROJ-7B-N2-b" ] && echo started || echo none)" none
 
 # --- 8. a chief arm and a launch with no chief name never tab.
 d8="$tmp/c8"; mk_env "$d8"
