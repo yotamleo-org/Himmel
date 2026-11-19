@@ -546,11 +546,6 @@ function runHardenedSpawn(entry) {
     const password = resolveSudoPassword(entry.repoRoot);
     entry = Object.assign({}, entry, { input: `${password}\n` });
   }
-  // buildEntry emits the literal `cmd: 'bash'`
-  // for every shell primitive (adopt/setup/wire/plugins/qmd/dep).
-  // Resolving here covers every primitive at the single spawn seam, and
-  // leaves PLAN output ('bash') untouched. Unresolvable => refuse rather
-  // than run the WSL stub.
   if (entry.cmd === 'bash') {
     const bashPath = process.env.HIMMELCTL_BASH || resolveHookBash({ env: process.env });
     if (!bashPath) {
