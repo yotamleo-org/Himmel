@@ -11,6 +11,7 @@ if ! { [ -r "$HERE/tick-test-fixture.sh" ] && . "$HERE/tick-test-fixture.sh"; } 
 fi
 trap 'kill $(jobs -p) 2>/dev/null; rm -rf "$W"' EXIT
 WAIT="$HERE/chief-wait.sh"
+touch_ago() { local s="$1"; shift; touch "$@" && python3 -c 'import os,sys,time; t=time.time()-int(sys.argv[1]); [os.utime(f,(t,t)) for f in sys.argv[2:]]' "$s" "$@"; }
 check() {
     if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$2' got '$3')"; fi
 }
@@ -111,7 +112,7 @@ gone "$w2" > /dev/null; gone "$w2" > /dev/null
 check 'a WRAPPED worker with no window and no session is never unclosed' '' "$(field unclosed "$(gone "$w2")")"
 
 w3="$(mkworker 03 nolive)"
-touch -d '60 minutes ago' "$w3"
+touch_ago 3600 "$w3"
 { konsole 5704 "HIMMEL-9703-N9703-nolive"; child 5705 5704 "HIMMEL-9703-N9703-nolive"; } > "$W/ps-win3.txt"
 reset
 export PS_FIXTURE="$W/ps-win3.txt"
@@ -167,7 +168,7 @@ pair > /dev/null; pair > /dev/null
 printf '%s\n' '- 12:51 DISPOSITION N9707b closed' >> "$chief"
 check '(c) a disposition for N9707b leaves N9707 unclosed' 'N9707' "$(field unclosed "$(pair)")"
 
-touch -d '20 minutes ago' "$w1"
+touch_ago 1200 "$w1"
 reset
 check 'closable=<n> still counts an aged CLOSABLE worker' '1' "$(field closable "$(alive "$w1")")"
 
@@ -193,9 +194,9 @@ tick_line ' unclosed=N2315'
 if run_waiter "$W/w1.out" 80; then pass 'the waiter wakes on a new unclosed worker'; else fail 'the waiter did not wake on unclosed=N2315'; fi
 case "$(cat "$W/w1.out")" in *'WAKE unclosed N2315'*) pass 'the wake names the worker: WAKE unclosed N2315' ;; *) fail "waiter out: $(cat "$W/w1.out")" ;; esac
 if run_waiter "$W/w2.out" 40; then fail "the waiter woke again for the same unclosed worker: $(cat "$W/w2.out")"; else pass 'the same unclosed worker does not wake the waiter again'; fi
-touch -d '30 minutes ago' "$inbox.wait.unclosed"
+touch_ago 1800 "$inbox.wait.unclosed"
 if run_waiter "$W/w2b.out" 40; then fail "(d) a 30-minute-old marker woke inside the 60-minute window: $(cat "$W/w2b.out")"; else pass '(d) the same unclosed worker stays quiet inside the re-wake window'; fi
-touch -d '61 minutes ago' "$inbox.wait.unclosed"
+touch_ago 3660 "$inbox.wait.unclosed"
 if run_waiter "$W/w2c.out" 80; then pass '(d) the same unclosed worker wakes again after 60 minutes'; else fail '(d) the waiter did not re-wake after the 60-minute window'; fi
 case "$(cat "$W/w2c.out")" in *'WAKE unclosed N2315'*) pass '(d) the re-wake names the worker: WAKE unclosed N2315' ;; *) fail "(d) waiter out: $(cat "$W/w2c.out")" ;; esac
 if run_waiter "$W/w2d.out" 40; then fail "(d) the re-wake repeated at once: $(cat "$W/w2d.out")"; else pass '(d) the re-wake restarts the clock'; fi

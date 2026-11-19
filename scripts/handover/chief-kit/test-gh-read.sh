@@ -331,7 +331,11 @@ run_default() { : > "$GHLOG"; ( unset GH_READ_ENV_ROOT; bash "$W/tree/scripts/li
 run_default pr view 12
 check "N1 no fixture root: the default root's .env serves the token" "$DOTTOK" "$(last_tok)"; seen
 ( stub_keyring "$W/k2"; run_default pr view 12 )
-check "N2 no fixture root: the keyring still beats .env" "$KEYTOK" "$(last_tok)"; seen
+if [ "$(uname -s)" = Darwin ]; then
+    check "N2 no fixture root: the keyring is unsupported on Darwin, so .env serves the token" "$DOTTOK" "$(last_tok)"; seen
+else
+    check "N2 no fixture root: the keyring still beats .env" "$KEYTOK" "$(last_tok)"; seen
+fi
 # shellcheck disable=SC2031  # a second row-local export, not the F1 one
 ( stub_keyring "$W/k3"; export himmel_github_token_vm2="$AMBTOK"; run_default pr view 12 )
 check "N3 no fixture root: the environment still beats the keyring" "$AMBTOK" "$(last_tok)"; seen
