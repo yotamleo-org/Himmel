@@ -2026,6 +2026,18 @@ assert_text "9709 ctl Read .env has no Jira pointer" 0 'jira config' "$jt"
 jt=$(run_text "$(j_bash 'cat ~/.ssh/id_rsa JIRA_BASE_URL')")
 assert_text "9709 ctl a non-.env secret (id_rsa) gets no Jira pointer" 0 'jira config' "$jt"
 
+# A word that starts with an unquoted =: zsh replaces it by the path of the command of that name (in any
+# word position), bash leaves it. The guard cannot know which command runs, so it denies the word.
+assert_rc "=cmd =cat .env refuses"                  2 "$(run_case "$(j_bash '=cat .env')")"
+assert_rc "=cmd after sudo refuses"                 2 "$(run_case "$(j_bash 'sudo =cat .env')")"
+assert_rc "=cmd in an eval body refuses"            2 "$(run_case "$(j_bash "eval '=cat .env'")")"
+assert_rc "=cmd after a pipe refuses"               2 "$(run_case "$(j_bash 'echo x | =cat .env')")"
+assert_rc "=cmd behind a case arm refuses"          2 "$(run_case "$(j_bash 'case x in a) echo;; esac; =cat .env')")"
+assert_rc "=cmd as an argument refuses"             2 "$(run_case "$(j_bash 'echo =cat')")"
+assert_rc "ctl a quoted =cmd is a command not found" 0 "$(run_case "$(j_bash "'=cat' notes.txt")")"
+assert_rc "ctl NAME=value arguments allow"          0 "$(run_case "$(j_bash 'env FOO=bar echo hi')")"
+assert_rc "ctl a lone = allows"                     0 "$(run_case "$(j_bash 'echo a = b')")"
+
 echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "All cases passed."

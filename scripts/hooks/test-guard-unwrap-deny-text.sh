@@ -170,5 +170,38 @@ allowed_by_six E7 "echo hi$BSL "
 allowed_by_six E8 "eval 'echo hi$BSL$BSL'"
 allowed_by_six E9 "echo \"a$BSL"$'\n'"b\""
 
+# A word that starts with an unquoted =: zsh replaces it by the path of the command of that name, in
+# every word position, and bash leaves it. The guard cannot know which command it names, so it denies,
+# in a command, in a nested eval or shell -c body, and when the tokenizer failed earlier in the text.
+for h in $FIVE; do
+  for c in '=terraform destroy' '=git reset --hard' '=cat .env' 'echo x | =cat' 'sudo =echo hi' 'echo =ls'; do
+    run "$h" "$c"
+    want_rc "Q1 $h [$c]" 2
+  done
+  run "$h" '=echo hi'
+  has_line "Q2 $h" 'guard-unwrap: refusing a command that' 'starts with an unquoted ='
+  has_line "Q2 $h" '    Retry: ' 'quote the ='
+  run "$h" "eval '=echo hi'"
+  want_rc "Q3 $h eval body" 2
+  run "$h" "bash -c '=echo hi'"
+  want_rc "Q4 $h shell -c body" 2
+  run "$h" "zsh -c '=echo hi'"
+  want_rc "Q5 $h zsh -c body" 2
+  run "$h" 'case x in a) echo;; esac; =echo hi'
+  want_rc "Q6 $h behind a case arm" 2
+  run "$h" 'echo ${x:-"}"}; =echo hi'
+  want_rc "Q7 $h behind a failed expansion" 2
+done
+allowed_by_six Q8 "'=echo' hi"
+allowed_by_six Q9 '"=echo" hi'
+allowed_by_six Q10 'echo =~ =='
+allowed_by_six Q11 'env FOO=bar echo hi'
+allowed_by_six Q12 'git config a=b'
+allowed_by_six Q13 'FOO=bar echo hi'
+allowed_by_six Q14 'echo a=b'
+allowed_by_six Q15 'test a = b'
+allowed_by_six Q16 'case x in a) echo;; esac; echo a=b'
+allowed_by_six Q17 'echo "x =y"'
+
 echo "guard-unwrap-deny-text: $pass passed, $fail failed"
 [ "$fail" = 0 ]

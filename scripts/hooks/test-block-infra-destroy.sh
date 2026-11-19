@@ -106,6 +106,31 @@ assert_rc "a line continuation between words allows" 0 "$(run_hook "terraform pl
 assert_rc "a line continuation inside double quotes allows" 0 "$(run_hook "terraform plan \"a${bs}"$'\n'"b\"")"
 assert_rc "an eval body ending in an even run allows" 0 "$(run_hook "eval 'terraform plan${bs}${bs}'")"
 
+# zsh replaces a word that starts with an unquoted = by the path of the command of that name, in every
+# word position; bash leaves it, so the guard cannot know which command runs and denies the word.
+eq='='
+assert_rc "an =cmd command word denies" 2 "$(run_hook "${eq}terraform ${v1}${v2}")"
+assert_rc "an =cmd command word denies even for a harmless argument (it cannot be read)" 2 "$(run_hook "${eq}terraform plan")"
+assert_rc "an =cmd after a semicolon denies" 2 "$(run_hook "echo x; ${eq}terraform ${v1}${v2}")"
+assert_rc "an =cmd after a pipe denies" 2 "$(run_hook "echo x | ${eq}terraform ${v1}${v2}")"
+assert_rc "an =cmd after sudo denies" 2 "$(run_hook "sudo ${eq}terraform ${v1}${v2}")"
+assert_rc "an =cmd after env denies" 2 "$(run_hook "env ${eq}terraform ${v1}${v2}")"
+assert_rc "an =cmd after command denies" 2 "$(run_hook "command ${eq}terraform ${v1}${v2}")"
+assert_rc "an =cmd after nohup denies" 2 "$(run_hook "nohup ${eq}terraform ${v1}${v2}")"
+assert_rc "an =cmd after an assignment prefix denies" 2 "$(run_hook "FOO=bar ${eq}terraform ${v1}${v2}")"
+assert_rc "an =cmd after time denies" 2 "$(run_hook "time ${eq}terraform ${v1}${v2}")"
+assert_rc "an =cmd in an eval body denies" 2 "$(run_hook "eval '${eq}terraform ${v1}${v2}'")"
+assert_rc "an =cmd in a bash -c body denies" 2 "$(run_hook "bash -c '${eq}terraform ${v1}${v2}'")"
+assert_rc "an =cmd in a zsh -c body denies" 2 "$(run_hook "zsh -c '${eq}terraform ${v1}${v2}'")"
+assert_rc "an =cmd in a command substitution denies" 2 "$(run_hook "echo \$(${eq}terraform ${v1}${v2})")"
+assert_rc "an =cmd behind a case arm denies" 2 "$(run_hook "case x in a) echo;; esac; ${eq}terraform ${v1}${v2}")"
+assert_rc "an =cmd argument denies" 2 "$(run_hook "echo ${eq}ls")"
+assert_rc "an ordinary env assignment allows" 0 "$(run_hook "env FOO=bar terraform plan")"
+assert_rc "an ordinary NAME=value argument allows" 0 "$(run_hook "terraform plan -var a=b")"
+assert_rc "a quoted =cmd is a command that is not found, and allows" 0 "$(run_hook "'${eq}terraform' plan")"
+assert_rc "an =word inside double quotes allows" 0 "$(run_hook "terraform plan \"${eq}x\"")"
+assert_rc "a lone = argument allows" 0 "$(run_hook "terraform plan ${eq}")"
+
 # Bypass: INFRADESTROYOK=1 in the launching shell lets a deny row through.
 first_deny=$(head -n1 "$FIX/deny.tsv" | cut -f2)
 assert_rc "bypass INFRADESTROYOK=1" 0 "$(run_hook "$first_deny" INFRADESTROYOK=1)"

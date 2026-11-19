@@ -231,6 +231,24 @@ long_text=$(printf 'echo %9000s' '' | tr ' ' x)
 tok "$long_text"; check "a text over 8 KiB is refused, not as ambiguous" "$R:${ST_AMBIG-}" "1:0"
 tok "$long_text$bs"; check "a text over 8 KiB ending in a backslash is refused as ambiguous" "$R:${ST_AMBIG-}" "1:1"
 tok "$long_text$bs$bs"; check "a text over 8 KiB ending in an even run is refused, not as ambiguous" "$R:${ST_AMBIG-}" "1:0"
+# zsh replaces a word that starts with an unquoted = by the path of the command of that name (the
+# EQUALS option, on by default), in every word position: a command word, the operand of a wrapper, an
+# argument, a redirect target. bash leaves the word as it is. The guard cannot know which command the
+# word names, so it refuses the word. A quoted = does not expand, and a lone =, ==, =~ and =( are no name.
+eq_refused=('=terraform destroy' 'echo x; =terraform destroy' 'echo x | =cat' 'true && =terraform destroy' 'sudo =terraform destroy'
+    'env =terraform destroy' 'command =terraform destroy' 'echo a | xargs =rm' 'nohup =git reset --hard' 'FOO=bar =terraform destroy'
+    'time =terraform destroy' 'echo =ls' 'cat =terraform' 'echo a =terraform b' 'true < =terraform' 'echo $(=terraform destroy)'
+    'echo `=cat x`' 'x=a; =$x destroy' "='terraform' destroy" '=terra\form destroy' '=/usr/bin/true' '=./terraform destroy'
+    '=[ a = a ]' 'f() { =cat; }' 'echo =1' 'grep -e =foo file')
+for t in "${eq_refused[@]}"; do
+    tok "$t"; check "a word starting with = in [$t] fails the tokenizer as ambiguous" "$R:${ST_AMBIG-}" "1:1"
+done
+eq_ok=('"=terraform" destroy' "'=terraform' destroy" '\=terraform destroy' "'='terraform destroy" 'echo =' 'echo ==' 'echo =~'
+    '[[ abc =~ b ]]' '[ a = a ]' 'test a = b' 'env FOO=bar cmd' 'git config a=b' 'FOO=bar cmd' 'echo a=b' 'dd if=/dev/zero of=x'
+    'make VAR=1' 'echo =(echo hi)' 'echo x=y =' 'echo "a =b"' "echo 'a =b'" 'echo a:=ls' 'echo a==ls' 'cut -d= -f2 file')
+for t in "${eq_ok[@]}"; do
+    tok "$t"; check "[$t] has no word that starts with an unquoted = and is still read" "$R:${ST_AMBIG-}" "0:0"
+done
 tok 'echo a # c; d'; check "a comment sets COMMENT and ends the command" "$R:$ST_COMMENT:$ST_NSEG:$ST_N" "0:1:1:2"
 tok $'cat <<EOF\nbody $(x)\nEOF\necho after'; check "an unquoted heredoc body with \$(…) sets SUBST" "$R:$ST_HEREDOC:$ST_SUBST" "0:1:1"
 tok $'cat <<\'EOF\'\nbody $(x)\nEOF'; check "a quoted heredoc body is inert" "$R:$ST_HEREDOC:$ST_SUBST" "0:1:0"
