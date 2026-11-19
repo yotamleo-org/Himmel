@@ -416,7 +416,8 @@
 #
 # Env: CHIEF_WAIT_INTERVAL tick interval in seconds (default 180);
 # CHIEF_WAIT_POLL_SEC inbox poll (default 1); CHIEF_WAIT_IDLE_PASSES (default 10) and
-# CHIEF_WAIT_IDLE_POLL_SEC (default 1, never below the poll): in stream mode the loop sleeps the idle poll
+# CHIEF_WAIT_IDLE_POLL_SEC (default 1, never below the poll; a value that is not a plain decimal number is the
+# default): in stream mode the loop sleeps the idle poll
 # instead of the poll after that many passes in a row that offered nothing, attempted nothing and ran no tick,
 # and the first pass with an event or work puts the poll back; CHIEF_WAIT_TICK_TIMEOUT
 # seconds a tick may run before it counts as failed (default 120), so a hung
@@ -552,7 +553,8 @@ poll="${CHIEF_WAIT_POLL_SEC:-1}"
 # the loop sleeps CHIEF_WAIT_IDLE_POLL_SEC (never less than the poll) instead of the poll, and the first pass with an
 # event or work puts the poll back. It only paces: nothing is decided, dropped or marked by it.
 idle_poll="${CHIEF_WAIT_IDLE_POLL_SEC:-1}"
-case "$idle_poll" in ''|*[!0-9.]*) idle_poll=1 ;; esac
+idle_poll_re='^([0-9]+\.?[0-9]*|\.[0-9]+)$'  # a plain non-negative decimal number; anything else (1.2.3, text) is the default
+[[ $idle_poll =~ $idle_poll_re ]] || idle_poll=1
 idle_runs="${CHIEF_WAIT_IDLE_PASSES:-10}"
 case "$idle_runs" in ''|0|*[!0-9]*) idle_runs=10 ;; esac
 awk -v a="$idle_poll" -v b="$poll" 'BEGIN { exit !(a + 0 > b + 0) }' || idle_poll="$poll"
@@ -2011,7 +2013,7 @@ r0_ladder() { # <label> <event cksum> <marker> <out>: space a refused cleanup's 
 r0_log_attempt() { # <label> <marker> <event line> <call start ns> <call end ns> <rc>: one relaylog line per worker-event call
     local first pend wall size
     # past 1 MiB (the cap of the kit's denial log) the log is renamed to <log>.1, replacing the older copy; one line is one append
-    size="$(wc -c < "$inbox.wait.relaylog" 2>/dev/null | tr -d '[:space:]')"  # swallow-ok: a missing log reads size 0 and only skips the rotation
+    size="$(wc -c 2>/dev/null < "$inbox.wait.relaylog" | tr -d '[:space:]')"  # swallow-ok: a missing log reads size 0 and only skips the rotation
     case "$size" in ''|*[!0-9]*) size=0 ;; esac
     [ "$size" -le 1048576 ] || mv -f "$inbox.wait.relaylog" "$inbox.wait.relaylog.1" 2>/dev/null || true  # swallow-ok: a failed rename keeps appending to the old log
     first="$(printf '%s' "$r0_seen" | awk -v k="$1 $2 $3 " 'index($0, k) == 1 { print $NF; exit }')"
@@ -3054,7 +3056,10 @@ while :; do
         exit_reason='wake-housekeeping'; exit 0
     fi
     heartbeat waiting
+    # an offer is work of the pass that saw it only: read and cleared here, so a pass that skips the service block
+    # (handover mode) never counts an earlier pass's offer as its own
     [ -z "${r0_offered:-}" ] || idle_passes=0
+    r0_offered=""
     idle_passes=$(( idle_passes + 1 ))
     if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ] && [ "$idle_passes" -gt "$idle_runs" ]; then
         sleep "$idle_poll" 9>&-
