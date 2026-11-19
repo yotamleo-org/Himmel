@@ -10,7 +10,7 @@ they almost always mean the first one.
 
 | Surface | What it is | Start it | Needs |
 |---|---|---|---|
-| Config UI | One local web app: Shift, Morning report, Configure, Health, Tool health, Fleet, Board pages and the AG-UI run view | `node scripts/himmelctl/bin.js ui` | `bun`, a terminal outside Claude |
+| Config UI | One local web app: Shift, Morning report, Fleet, Health, Tool health, Configure, Board, Workflow and Cost pages and the AG-UI run view | `node scripts/himmelctl/bin.js ui` | `bun`, a terminal outside Claude |
 | Chief's board | One generated HTML page: the fleet, each worker's phase, what needs the chief | `node scripts/handover/chief-kit/board.mjs --doc <chief doc> --changed` | a running himmel chief |
 | Roadmap tracker | One generated HTML page: release panels and a kanban by version | `python3 scripts/handover/chief-kit/tracker.py --plan-dir <dir> --out <file>` | `python3`, the Jira mirror |
 
@@ -27,7 +27,7 @@ dry-run first, then, once confirmed, runs the `himmelctl` command printed under 
 |---|---|---|
 | Plugin set, a plugin | the plugin's enabled state at user scope, through `himmelctl profile`, which runs `claude plugin enable` or `disable` | next Claude launch |
 | Review by a second model | the local lane overlay `lanes.local.json`, through `himmelctl config set lanes.<id>` | next time work is handed to a lane |
-| Auto-ship steps | `HIMMEL_INITIATIVE` in the `.env` of the himmel download, through `himmelctl config set initiative.<step>` | next Claude launch |
+| Auto-ship steps | `HIMMEL_INITIATIVE` in `~/.himmel/himmel.conf` (or `himmel.conf.local` when that file sets the key), through `himmelctl config set initiative.<step>` | next Claude launch |
 | Scheduled jobs | the job's crontab entry, through its `*-cadence.sh arm` or `disarm` | at the next scheduled run |
 | Commit rules (Configure, Tracker tile) | `TRACKER` and `TICKET_ID_REQUIRED` in `~/.himmel/himmel.conf`, through `himmelctl config set commit.<key>` | your next commit |
 | Setup choices (Configure, Project scope tile) | `HANDOVER_DIR` and `LUNA_VAULT_PATH` in `~/.himmel/himmel.conf`, through `himmelctl config set handover.root` or `luna.vaultPath`; an absolute path with no `.` or `..` part, quote, `#`, `$`, backslash or control character | next Claude launch |
@@ -36,7 +36,7 @@ dry-run first, then, once confirmed, runs the `himmelctl` command printed under 
 | Code graph (Configure, Project scope tile) | `graphify.choices` in `~/.himmel/config.json`, through `POST /api/graph-choices`: the repos to graph, who pays first (`none`, `subscription` or a configured API account), the fallbacks in order and the most USD per pass. The save runs the shape, repo and API roster checks and writes nothing when one refuses; a save that drops an account from the route clears that account's `graph-key-<L>` alert. Read-only, with the reason, on a station that publishes the himmel graph or whose config cannot be read | the next daily graph pass |
 | Review gate (Configure, Review tile) | the per-machine overlay `critics.local.json` only, through `POST /api/review-gate`: each reviewer's `mode`, `required` and on/off (`drop`). The shared `scripts/cr/critics.json` is never written | the next review round |
 
-The Review gate card lists the reviewers in the order they run, says in plain words what `hard` and `best-effort`
+The Review gate card lists the reviewers in the order they run, says in plain words what `hard`, `best-effort` and `advisory`
 mean, marks the recommended value, and states the ruled rate-limit behaviour: with CodeRabbit on best-effort (the default), rate limited or absent is a
 note and the gate continues, it never waits; a reviewer set to `hard` holds the merge when it is rate limited or unavailable. The timeout, parallelism, tier and profile settings
 (`CRITIC_TIMEOUT_SECS`, `CRITIC_PARALLEL`, `CRITIC_PANEL_TIERS`, `CR_PROFILE`, `CR_REQUIRE_CROSS_MODEL`,
@@ -98,17 +98,18 @@ session switches are set when you start Claude.
 Every write below is a `POST` behind the per-launch token or a login session, a same-origin check and a JSON-only body.
 The one exception is the Shift page's `GET /api/shift` poll, which records shift state and appends a closed shift to
 `shifts.jsonl` (`tickShifts` in `scripts/config-ui/shift.ts`; under `--read-only` it writes nothing).
-This is the full set of `POST` writes, each mapped to the code that handles it:
+This is the full set of `POST` routes, each mapped to the code that handles it:
 
 | Action | Route | Handled in |
 |---|---|---|
+| Log in / log out (always-on service) | `/api/login`, `/api/logout` | `loginRoute` in `scripts/config-ui/server.ts` |
 | Dry-run a switch, then run it after confirm | `/api/preview`, `/api/run` | `previewRoute` and `runRoute` in `scripts/config-ui/server.ts` |
 | Save or remove a file-stored secret | `/api/setup/secret` | `secretWrite` in `scripts/config-ui/setup.ts` |
 | Create the UI login once (Account step) | `/api/setup/account` | `accountCreate` in `scripts/config-ui/setup.ts` |
 | Run the doctor's read-only checks (Verify step) | `/api/setup/verify` | `verifyDoctor` in `scripts/config-ui/setup.ts` |
 | Re-run the status drift check (Board, Tidy up) | `/api/board/drift-refresh` | `refreshDrift` in `scripts/config-ui/board.ts` |
 | Review gate reviewers | `/api/review-gate` | `scripts/config-ui/review-gate.ts` |
-| Fleet cap | `/api/fleet-cap` | `scripts/config-ui/fleet-cap.ts` |
+| Fleet cap (refused: answers 405, the cap is edited by hand) | `/api/fleet-cap` | `writeCap` in `scripts/config-ui/fleet-cap.ts` |
 | VM mode | `/api/vm` | `scripts/config-ui/vm-config.ts` |
 | Reports and shifts settings (Configure) | `/api/report-settings` | `writeReports` in `scripts/config-ui/report-settings.ts` |
 | Graph choices (Configure, Project scope, Code graph) | `/api/graph-choices` | `writeGraph` in `scripts/config-ui/graph-config.ts` |
@@ -146,7 +147,7 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   `uninstall` do what they say (uninstall also deletes the token file). It needs
   `HANDOVER_DIR` in the shell that runs `install`. The board on the Fleet page is read from
   `<chief doc>.board.json`, which every `board.mjs` render rewrites beside the doc, and
-  reaches the page within about 5 s; with no such file the server builds it as before.
+  reaches the page within about 5 s; with no such file the route answers HTTP 503 (no board file for this console).
 - **Pages** (the left rail): `#/shift` (the Shift page, first in the rail, with a badge counting
   the rows that wait on you: a shift is the whole fleet between cuts, never one chief's run. It
   shows the chiefs with their span and PR credit, Waiting on you (links out; nothing here acts),
@@ -202,7 +203,7 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
 - **The chief's board on the Fleet page.** Start `himmelctl ui` with `HANDOVER_DIR` set and open
   `/agui/#t=<token>&console=<chief doc name>`. The page then shows the
   chief's board (the `board.mjs --json` output, served read-only and redacted at the
-  token-gated `GET /api/agui/board?console=<name>`; built from the board JSON file when present, else cached 30 s). **Fleet** tab: verb-led
+  token-gated `GET /api/agui/board?console=<name>`, read from the board JSON file beside the doc). **Fleet** tab: verb-led
   rows for what needs you, and on each running row its goal, six stage dots (dispatch,
   live, PR, ready, go, merged) and a state chip. **Trends** tab (`&tab=trends`): four cards
   (Fleet velocity, Fleet health, Tool health, Roadmap reality), each with a recommendation
@@ -211,7 +212,7 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   the side drawer. Clicking a stage dot opens that worker's drill-in in the drawer (run header,
   stage strip, transcript, the needs-you finding with its exact `go.sh` command). Keys: left
   and right move between stages, up and down between workers, Backspace goes back, Esc closes.
-  Deep link: `&k=s.<worker>.<stage>`. `GET /api/agui/brief?leg=<doc name>` returns that
+  Deep link: `&k=s.<worker>.<stage>`. `GET /api/agui/brief?worker=<doc name>` returns that
   worker's handover doc as redacted text. Both routes look a doc up by name under
   `HANDOVER_DIR`, never by a path from the request.
 - **Weekly roll-up trends.** The Health page's Trends section and the top of the Fleet page's
