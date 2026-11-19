@@ -3929,6 +3929,148 @@ lacks "(U8) two docs with one basename keep their own states: the live one holds
 has "(U8) two docs with one basename: a ticket no worker holds is still offered" "$u8_same" "${TAB}HIMMEL-120${TAB}"
 u8_eq "(U8) two docs with one basename are each evaluated once" "$(awk -F'\t' '$1 == "worker_state" { c[$2]++ } END { n = 0; for (d in c) n++; print n }' "$U8/count.samebase")" 2
 
+# --- 9335: a named worker source that cannot be fully read withholds what it may own ---
+# Fixture M (ow_mirror): an In Progress orphan with one scope file, an In Progress bundle sibling with no PR, an IN CI ticket with no merged PR
+# and a To Do ticket with one scope file, all in version v1.0.1. The controls below hold whatever the dispatcher does about an unknown owner.
+OW="$WORK/ow9335"; mkdir -p "$OW"
+ow_mirror() { # <name>: fixture M under $OW/<name>/HIMMEL, sets OW_M
+    OW_M="$OW/$1/HIMMEL"; mkdir -p "$OW_M"
+    local M="$OW_M"
+    mk HIMMEL-60 "In Progress" High '[]' '["v1.0.1"]' '[]' "orphan with a scope" "Edit scripts/lib/s1.sh only."
+    mk HIMMEL-63 "In Progress" High '[]' '["v1.0.1"]' '[]' "bundle sibling with no PR" "Edit scripts/lib/s3.sh only."
+    mk HIMMEL-65 "IN CI" High '[]' '["v1.0.1"]' '[]' "in CI with no merged PR" "Edit scripts/lib/s5.sh only."
+    mk HIMMEL-90 "To Do" High '[]' '["v1.0.1"]' '[]' "free to do" "Edit scripts/lib/x.sh only."
+    printf 'v1.0.1\tfalse\t\n' > "$OW/$1/HIMMEL.versions.tsv"
+}
+ow_mk() { local M="$OW_M"; mk "$@"; }  # add one ticket to the mirror OW_M points at
+ow_run() { NEXT_DISPATCH_MIRROR="$OW_M" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" 2>/dev/null; }
+ow_run2() { NEXT_DISPATCH_MIRROR="$OW_M" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" 2>&1; }
+ow_err() { { NEXT_DISPATCH_MIRROR="$OW_M" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" > /dev/null; } 2>&1; }  # stderr only
+ow_oracle() { # <doc> [home]: the answer fleet_runtime.worker_state asks of ticket-status.sh, with HOME set to <home> (default: the fixture HOME)
+    HOME="${2:-$HOME}" bash -c '. "$1/ticket-status.sh"; ts_worker_state "$2"' fleet-runtime "$HERE/../../lib" "$1" 2>/dev/null
+}
+ow_n() { printf '%s\n' "$1" | grep -c -E "$2" || true; }  # <text> <regex>: the count of matching lines
+ow_tree_sum() { find "$OW" "$HOME" "$HANDOVER_DIR" "$TICKET_STATUS_STATE_DIR" -type f -exec cksum {} + 2>/dev/null | LC_ALL=C sort | cksum; }
+ow_doc() { printf '# worker\n\n## Results\n%s\n' "$2" > "$1"; }  # <path> <one results line>
+ow_lockstub() { # <path> <status line or empty> <rc>: a queue-lock stand-in that logs every call to $OW/qlock.log
+    { printf '#!/usr/bin/env bash\n'; printf 'printf "%%s\\n" "$*" >> "%s/qlock.log"\n' "$OW"; [ -z "$2" ] || printf 'echo "%s"\n' "$2"; printf 'exit %s\n' "$3"; } > "$1"
+    chmod +x "$1"
+}
+
+# X6: a caller naming no worker source (E3) keeps the base's output: no line, no withhold of the pool
+mkdir -p "$OW/x6a/HIMMEL" "$OW/x6b/HIMMEL"
+OW_M="$OW/x6a/HIMMEL"; ow_mk HIMMEL-420 "In Progress" Low '["must-v1.0.1"]' '[]' '[]' "only a worker-less pool ticket" "Edit scripts/lib/t1.sh only."
+printf 'v1.0.1\tfalse\t\n' > "$OW/x6a/HIMMEL.versions.tsv"
+OW_M="$OW/x6b/HIMMEL"; ow_mk HIMMEL-160 "To Do" Highest '[]' '["v1.0.1"]' '[]' "only tier5" "Edit scripts/lib/w1.sh only."
+OW_M="$OW/x6a/HIMMEL"
+ow_x6n_out="$(ow_run --priority-pool-only)"; ow_x6n_err="$(ow_err --priority-pool-only)"
+has "9335 X6: the n12 shape says on stderr that it has no worker source" "$ow_x6n_err" "no worker source"
+lacks "9335 X6: the n12 shape offers no RESUME row" "$ow_x6n_out" "RESUME"
+lacks "9335 X6: the n12 shape prints no owner-unknown line" "$ow_x6n_out$ow_x6n_err" "# owner unknown"
+has "9335 X6: the n12 shape prints POOL-EMPTY" "$ow_x6n_out" "POOL-EMPTY"
+OW_M="$OW/x6b/HIMMEL"
+ow_x6e_out="$(ow_run --priority-pool-only)"; ow_x6e_err="$(ow_err --priority-pool-only)"
+has "9335 X6: the e8 shape says on stderr that it has no worker source" "$ow_x6e_err" "no worker source"
+lacks "9335 X6: the e8 shape prints no owner-unknown line" "$ow_x6e_out$ow_x6e_err" "# owner unknown"
+has "9335 X6: the e8 shape prints POOL-EMPTY" "$ow_x6e_out" "POOL-EMPTY"
+has "9335 X6: the e8 shape lists the next-tier candidate" "$ow_x6e_out" "NEXT-TIER${TAB}HIMMEL-160"
+ow_x6t_out="$(ow_run --priority-pool-only --top 8)"; ow_x6t_err="$(ow_err --priority-pool-only --top 8)"
+has "9335 X6: the e10 shape says on stderr that it has no worker source" "$ow_x6t_err" "no worker source"
+lacks "9335 X6: the e10 shape prints no owner-unknown line" "$ow_x6t_out$ow_x6t_err" "# owner unknown"
+has "9335 X6: the e10 shape prints pool=0/8,LOW" "$ow_x6t_out" "pool=0/8,LOW"
+has "9335 X6: the e10 shape lists the next-tier candidate" "$ow_x6t_out" "NEXT-TIER${TAB}HIMMEL-160"
+OW_M="$OW/x6a/HIMMEL"
+has "9335 X6.ctl: with an --owners key the same pool lists the worker-less ticket" "$(ow_run --priority-pool-only --owners "$KP-999")" "RESUME${TAB}HIMMEL-420"
+
+# X2: the WORKERS_FROM environment source is not read by --why-ticket, and --why-ticket refuses --workers-from
+ow_mirror x2
+mkfleet "$OW/fleet-x2.json" "N1:$WORKER"
+ow_x2_set="$( export WORKERS_FROM="$OW/fleet-x2.json"; ow_run --why-ticket "$KP-90" )"
+ow_x2_unset="$( unset WORKERS_FROM; ow_run --why-ticket "$KP-90" )"
+check "9335 X2: --why-ticket answers the same with and without WORKERS_FROM in the environment" "$ow_x2_unset" "$ow_x2_set"
+has "9335 X2.ans: the --why-ticket answer is a verdict for the ticket" "$ow_x2_unset" "HIMMEL-90"
+ow_run --why-ticket "$KP-90" --workers-from "$OW/fleet-x2.json" > /dev/null; ow_x2_rc=$?
+check "9335 X2.rc: --why-ticket with --workers-from exits 2" "2" "$ow_x2_rc"
+
+# U10: a worker doc that ends WRAPPED frees its ticket and prints no unknown line (over-withholding control)
+ow_mirror u10
+mkdir -p "$OW/u10"
+ow_doc "$OW/u10/HIMMEL-63-N10-done.md" "- 10:30 WRAPPED - done"
+mkfleet "$OW/u10/fleet-w.json" "N10:$OW/u10/HIMMEL-63-N10-done.md"
+ow_u10w="$(ow_run --resume-only --workers-from "$OW/u10/fleet-w.json")"
+has "9335 U10: a WRAPPED own doc frees its ticket: RESUME HIMMEL-63 lists" "$ow_u10w" "RESUME${TAB}HIMMEL-63"
+lacks "9335 U10: a WRAPPED own doc prints no owner-unknown line" "$ow_u10w" "# owner unknown"
+ow_doc "$OW/u10/HIMMEL-63-N10-live.md" "- 10:00 LIVE - started"
+mkfleet "$OW/u10/fleet-l.json" "N10:$OW/u10/HIMMEL-63-N10-live.md"
+ow_u10l="$(ow_run --resume-only --workers-from "$OW/u10/fleet-l.json")"
+lacks "9335 U10.ctl: the same doc ending LIVE holds the ticket" "$ow_u10l" "RESUME${TAB}HIMMEL-63"
+
+# SB3: a sibling manifest whose readable doc ends WRAPPED frees its ticket and prints no unknown line
+ow_mirror sb3
+mkdir -p "$OW/sb3"
+ow_doc "$OW/sb3/HIMMEL-71-N14-own.md" "- 10:00 LIVE - started"
+mkfleet "$OW/sb3/HIMMEL-nextleg-2026-11-18B-ow.fleet.json" "N14:$OW/sb3/HIMMEL-71-N14-own.md"
+ow_doc "$OW/sb3/HIMMEL-63-N15-sib.md" "- 10:30 WRAPPED - done"
+mkfleet "$OW/sb3/HIMMEL-nextleg-2026-11-17A-ow.fleet.json" "N15:$OW/sb3/HIMMEL-63-N15-sib.md"
+ow_sb3="$(ow_run --resume-only --workers-from "$OW/sb3/HIMMEL-nextleg-2026-11-18B-ow.fleet.json")"
+has "9335 SB3: a sibling doc that ends WRAPPED frees its ticket: RESUME HIMMEL-63 lists" "$ow_sb3" "RESUME${TAB}HIMMEL-63"
+lacks "9335 SB3: a sibling doc that ends WRAPPED prints no owner-unknown line" "$ow_sb3" "# owner unknown"
+ow_doc "$OW/sb3/HIMMEL-63-N15-sib.md" "- 10:00 LIVE - started"
+ow_sb3l="$(ow_run --resume-only --workers-from "$OW/sb3/HIMMEL-nextleg-2026-11-18B-ow.fleet.json")"
+lacks "9335 SB3.ctl: the same sibling doc ending LIVE holds the ticket" "$ow_sb3l" "RESUME${TAB}HIMMEL-63"
+
+# P1: only an end marker frees a doc; the oracle (ts_worker_state, as fleet_runtime.worker_state asks it) is asserted first
+ow_mirror p1
+mkdir -p "$OW/p1"
+for ow_pm in READY:71 LIVE:72 WRAPPED:73 HALTED:74 PARKED-USAGE:75; do
+    ow_mark="${ow_pm%%:*}"; ow_key="${ow_pm##*:}"
+    ow_ok="$(printf '%s' "$ow_mark" | tr '[:upper:]' '[:lower:]')"
+    ow_mk "HIMMEL-$ow_key" "In Progress" High '[]' '["v1.0.1"]' '[]' "marker $ow_mark" "Edit scripts/lib/p$ow_key.sh only."
+    ow_pdoc="$OW/p1/HIMMEL-$ow_key-N$ow_key-$ow_ok.md"
+    ow_doc "$ow_pdoc" "- 10:00 $ow_mark - marker under test"
+    mkfleet "$OW/p1/fleet-$ow_key.json" "N$ow_key:$ow_pdoc"
+    ow_orc="$(ow_oracle "$ow_pdoc")"
+    case "$ow_mark" in WRAPPED|HALTED) ow_want=wrapped ;; *) ow_want=held ;; esac
+    [ "$ow_orc" = wrapped ] || ow_orc=held
+    check "9335 P1: the oracle answers $ow_want for a doc whose newest marker is $ow_mark" "$ow_want" "$ow_orc"
+    ow_pl="$(ow_run --resume-only --workers-from "$OW/p1/fleet-$ow_key.json")"
+    if [ "$ow_want" = wrapped ]; then
+        has "9335 P1: a doc ending $ow_mark frees its ticket" "$ow_pl" "RESUME${TAB}HIMMEL-$ow_key"
+    else
+        lacks "9335 P1: a doc ending $ow_mark holds its ticket" "$ow_pl" "RESUME${TAB}HIMMEL-$ow_key"
+    fi
+done
+
+# P2: a dead, a stale and a free lock over a LIVE doc never free it; the lock stage is reached (the stub logs its call)
+ow_mirror p2
+mkdir -p "$OW/p2"
+ow_mk HIMMEL-76 "In Progress" High '[]' '["v1.0.1"]' '[]' "live doc under a lock stub" "Edit scripts/lib/p76.sh only."
+ow_doc "$OW/p2/HIMMEL-76-N76-live.md" "- 10:00 LIVE - started"
+mkfleet "$OW/p2/fleet.json" "N76:$OW/p2/HIMMEL-76-N76-live.md"
+for ow_ls in "dead:status: STALE-DEAD:12" "stale:status: STALE (age 9999s >= ttl 1800s):12" "free::0"; do
+    ow_lname="${ow_ls%%:*}"; ow_rest="${ow_ls#*:}"; ow_lline="${ow_rest%:*}"; ow_lrc="${ow_rest##*:}"
+    ow_lockstub "$OW/p2/lock-$ow_lname.sh" "$ow_lline" "$ow_lrc"
+    : > "$OW/qlock.log"
+    ow_p2="$(TICKET_STATUS_QUEUE_LOCK="$OW/p2/lock-$ow_lname.sh" ow_run --resume-only --workers-from "$OW/p2/fleet.json")"
+    lacks "9335 P2: a $ow_lname lock over a LIVE doc leaves the ticket owned" "$ow_p2" "RESUME${TAB}HIMMEL-76"
+    [ -s "$OW/qlock.log" ] && pass "9335 P2: the $ow_lname lock stub was asked (the lock stage was reached)" || fail "9335 P2: the $ow_lname lock stub was never asked"
+done
+
+# P3: a doc untouched for 48 hours is owned like a fresh one: age is a label only
+ow_mirror p3
+mkdir -p "$OW/p3"
+ow_mk HIMMEL-77 "In Progress" High '[]' '["v1.0.1"]' '[]' "old live doc under a held lock" "Edit scripts/lib/p77.sh only."
+ow_lockstub "$OW/p3/lock-held.sh" "status: FRESH" 11
+mkfleet "$OW/p3/fleet.json" "N77:$OW/p3/HIMMEL-77-N77-live.md"
+for ow_age in old fresh; do
+    ow_doc "$OW/p3/HIMMEL-77-N77-live.md" "- 08:00 LIVE - started"
+    [ "$ow_age" = old ] && ago "$OW/p3/HIMMEL-77-N77-live.md" 48
+    : > "$OW/qlock.log"
+    ow_p3="$(TICKET_STATUS_QUEUE_LOCK="$OW/p3/lock-held.sh" ow_run --resume-only --workers-from "$OW/p3/fleet.json")"
+    lacks "9335 P3: the $ow_age LIVE doc under a held lock leaves the ticket owned" "$ow_p3" "RESUME${TAB}HIMMEL-77"
+    [ -s "$OW/qlock.log" ] && pass "9335 P3: the $ow_age run asked the lock stub" || fail "9335 P3: the $ow_age run never asked the lock stub"
+done
+
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
 real_hits="$(grep -rlF "$WORK" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"
