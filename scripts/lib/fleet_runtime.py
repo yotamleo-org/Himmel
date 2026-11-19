@@ -238,7 +238,8 @@ def receipts(wanted, docs=()):
 
 
 def attempt_outcomes(attempt_ids):
-    """{attempt_id: every outcome the history holds for it}, from one bounded read; the merged row receipts() builds keeps only the last."""
+    """{attempt_id: every outcome the history holds for it}, from one bounded read; the merged row receipts() builds keeps only the last.
+    A non-blank line that cannot be parsed could be any attempt's receipt, so it adds 'unknown-history' to every attempt."""
     found = {aid: set() for aid in attempt_ids}
     path = Path.home() / '.himmel/launch-refusals.jsonl'
     if not path.exists():
@@ -254,6 +255,9 @@ def attempt_outcomes(attempt_ids):
             try:
                 row = json.loads(line)
             except ValueError:
+                if line.strip():
+                    for outcomes in found.values():
+                        outcomes.add('unknown-history')
                 continue
             if row.get('v') == 2 and row.get('kind') == 'launch-attempt' and row.get('attempt_id') in found:
                 found[row['attempt_id']].add(row.get('outcome'))
@@ -268,8 +272,13 @@ def receipt(record, outcome, **extra):
                family=record['family'], owner=record['owner'], session=record.get('session'), outcome=outcome,
                cause=record.get('cause', 'runtime'), phase='runtime',
                committer=record.get('committer'), reservation=record.get('reservation'), manifest=record.get('manifest'), **extra)
-    with path.open('a') as stream:
-        stream.write(json.dumps(row) + '\n')
+    line = (json.dumps(row) + '\n').encode()
+    with path.open('ab+') as stream:
+        if stream.seek(0, os.SEEK_END):
+            stream.seek(-1, os.SEEK_END)
+            if stream.read(1) != b'\n':
+                line = b'\n' + line  # an unterminated tail is a torn line: the receipt starts its own
+        stream.write(line)
         stream.flush()
         os.fsync(stream.fileno())
 
@@ -611,6 +620,8 @@ def settle_blockers(record, outcomes, deadline):
     seen = sorted(outcomes & {'launched', 'refused', 'complete'})
     if seen:
         blockers.append('a %s receipt exists (reconcile settles it)' % '/'.join(seen))
+    if 'unknown-history' in outcomes:
+        blockers.append('the receipt history has a line that cannot be read, so a launched receipt cannot be ruled out')
     if not session_ended(record, deadline):
         blockers.append('a session may exist (the scan did not prove absence)')
     carrying, unreadable, complete = launch_candidates(record, deadline)

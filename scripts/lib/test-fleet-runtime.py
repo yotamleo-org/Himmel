@@ -1854,6 +1854,64 @@ exit 1''')
         self.assertEqual(self.anchor_attempts()['one']['phase'], 'pending')
         self.assertTrue((slot / 'managed.json').is_file())
 
+    # A history line that cannot be read could be the attempt's own launched receipt; a receipt never joins a torn line.
+    def launched_line(self):
+        return json.dumps(dict(v=2, kind='launch-attempt', attempt_id='one', name=self.doc.stem, doc=str(self.doc), outcome='launched'))
+
+    def settle_after_history_tail(self, tail):
+        self.active()
+        self.stuck()
+        self.forge(start='0')  # owner and committer proven dead
+        history = self.bucket / '.himmel/launch-refusals.jsonl'
+        intact = history.read_text()
+        history.write_text(intact + tail)
+        return history, intact
+
+    def test_settle_refuses_while_the_launched_receipt_line_is_torn(self):
+        for tail in (self.launched_line()[:60], self.launched_line()[:60] + '\n'):
+            self.setUp()
+            history, intact = self.settle_after_history_tail(tail)
+            self.refused_settle('history has a line that cannot be read')
+            self.assertEqual(history.read_text(), intact + tail)
+            self.assertEqual(list(self.anchor_attempts()), ['one'])
+            self.assertTrue((self.bucket / 'slots' / self.doc.stem).is_dir())
+            hint = self.settle_hint_of()
+            self.assertFalse(hint['settleable'])
+            self.assertIn('history has a line that cannot be read', hint['text'])
+            history.write_text(intact)  # the line is repaired by hand: the existing proof stands
+            self.settle()
+            self.assertEqual(self.anchor_attempts(), {})
+
+    def test_an_intact_launched_line_refuses_settle_as_a_launched_receipt(self):
+        self.settle_after_history_tail(self.launched_line() + '\n')
+        self.refused_settle('a launched receipt exists')
+
+    def test_a_blank_history_line_is_not_a_torn_receipt(self):
+        self.settle_after_history_tail('\n')
+        self.settle()
+        self.assertEqual(self.anchor_attempts(), {})
+
+    def test_a_receipt_after_a_torn_tail_starts_its_own_line(self):
+        self.active()
+        self.stuck()
+        history = self.bucket / '.himmel/launch-refusals.jsonl'
+        torn = self.launched_line()[:60]
+        with history.open('a') as stream:
+            stream.write(torn)
+        self.rt('outcome', extra=('--phase', 'unknown'))
+        lines = history.read_text().splitlines()
+        self.assertEqual(json.loads(lines[0])['outcome'], 'attempt-started')
+        self.assertEqual(lines[-2], torn)
+        self.assertEqual(json.loads(lines[-1])['outcome'], 'indeterminate')
+
+    def test_a_receipt_after_a_complete_tail_adds_no_blank_line(self):
+        self.active()
+        self.stuck()
+        self.rt('outcome', extra=('--phase', 'unknown'))
+        lines = (self.bucket / '.himmel/launch-refusals.jsonl').read_text().split('\n')
+        self.assertEqual([json.loads(line)['outcome'] for line in lines[:-1]], ['attempt-started', 'indeterminate'])
+        self.assertEqual(lines[-1], '')
+
 
 if __name__ == '__main__':
     unittest.main()
