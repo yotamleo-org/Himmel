@@ -77,8 +77,8 @@ def summarize(lines, raws):
 
 
 def sums_needed(marks, ready):
-    # the newest READY (a replacement is judged by it) and the newest cleanup bullet
-    return ([ready[-1][0]] if ready else []) + [n for n, marker in marks if marker != 'READY'][-1:]
+    # every READY (a replacement is judged by the newest, a refused one is paced by its own bullet) and the newest cleanup bullet
+    return [n for n, _ in ready] + [n for n, marker in marks if marker != 'READY'][-1:]
 
 
 def usable(record):
@@ -111,17 +111,18 @@ def unchanged(record, stamp):
         return False
 
 
-def retry_after(inbox, label, doc):
-    """Seconds a refused cleanup is held back: the retry window, times the ladder's step for the count of
-    refusals the relay recorded for this worker document as it is now. No count, a torn one, or a worker
-    document that changed since it was recorded means the first step. This only spaces attempts."""
+def retry_after(inbox, label, key):
+    """Seconds a refused event is held back: the retry window, times the ladder's step for the count of
+    refusals in a row the relay recorded for this event, whose key is its bullet's checksum. The relay owns the
+    count; this only reads it. No count, a torn one, or a count kept for another event means the first step:
+    a new or changed event starts the ladder over, lines appended to the document do not. This only spaces attempts."""
     base = float(os.getenv('CHIEF_WAIT_SERVICE_RETRY_SEC', '5'))
     try:
-        count, mtime, size = (int(v) for v in Path(f'{inbox}.wait.le-{label}.tries').read_text().split()[:3])
-        st = os.stat(doc)
-    except (OSError, ValueError):
+        fields = Path(f'{inbox}.wait.le-{label}.tries').read_text().split()
+        count = int(fields[0])
+    except (OSError, ValueError, IndexError):
         return base
-    if count < 1 or (mtime, size) != (st.st_mtime_ns // 10**9, st.st_size):
+    if count < 1 or len(fields) < 2 or fields[1] != key:
         return base
     return base * STEPS[min(count, len(STEPS)) - 1]
 
@@ -160,10 +161,9 @@ def candidates(fleet, inbox, last):
     events = []
     bound = doc_bound()
     summaries = {}
-    docs = {}
+    keys = {}
     for worker in data.get('workers', data.get('legs', [])):
         label, doc = worker['label'], Path(worker['doc'])
-        docs[label] = doc
         at = time.time_ns()
         stamp = stamp_of(doc)
         cached = observed.get(label, {}).get('read')
@@ -220,6 +220,7 @@ def candidates(fleet, inbox, last):
             digest = summary['sums'][str(n)]
             if f'{label} {marker} {digest}' not in handled:
                 events.append((label, marker, n))
+                keys[label] = digest
             continue
         if replaced:
             # A truncate/write sample is only a proposal. Keep the last
@@ -242,6 +243,7 @@ def candidates(fleet, inbox, last):
         if pending:
             n, marker = pending[-1] if first else pending[0]
             events.append((label, marker, n))
+            keys[label] = summary['sums'][str(n)]
     for label, summary in summaries.items():
         current[label]['read'] = summary
     write_if_changed(observed_path, json.dumps(current))
@@ -251,7 +253,7 @@ def candidates(fleet, inbox, last):
     pivot = next((i + 1 for i, event in enumerate(events) if event[0] == last), 0)
     for label, marker, n in events[pivot:] + events[:pivot]:
         output = Path(inbox + '.wait.le-' + label)
-        if output.exists() and time.time() - output.stat().st_mtime < retry_after(inbox, label, docs[label]):
+        if output.exists() and time.time() - output.stat().st_mtime < retry_after(inbox, label, keys[label]):
             if refused(output.read_text()):
                 continue
         print(label, marker, n)

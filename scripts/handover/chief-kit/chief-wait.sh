@@ -378,11 +378,12 @@
 #                        long this waiter process had known the event when the call began (a waiter restart
 #                        starts it again; time spent unseen while a sample held the loop is not in it), handler=
 #                        how long worker-event ran. An idle pass writes nothing. Never trimmed.
-#   <inbox>.wait.le-<label>.tries  stream mode: a refused cleanup's retry ladder, `<refusals in a row> <doc mtime>
-#                        <doc size> <cksum of the bullet already woken for or ->`. The collector holds the
-#                        event back for the retry window times 1, 2, 6, 24, 60 by that count; a changed worker
-#                        document starts the count over; the refusal that reaches the top step wakes once per
-#                        bullet. It only paces: nothing is closed, wrapped, reaped or recorded as handled.
+#   <inbox>.wait.le-<label>.tries  stream mode: a refused cleanup's retry ladder, `<refusals in a row> <cksum of the
+#                        bullet being retried> <cksum of the bullet already woken for or ->`. The relay owns the
+#                        count; the collector reads it and holds the event back for the retry window times 1, 2,
+#                        6, 24, 60 by it. A new or changed event (another bullet checksum) starts the count over;
+#                        lines appended to the worker document do not. The refusal that reaches the top step wakes
+#                        once per bullet. It only paces: nothing is closed, wrapped, reaped or recorded as handled.
 #                        Removed when the cleanup succeeds or answers anything but a retryable refusal.
 #   <inbox>.wait.ready   `<label><TAB><line>`, the last READY bullet handed on to worker-event.
 #   <inbox>.wait.readywoke  with auto_go off: `<pr> <head40>`, each READY already woken for;
@@ -1978,20 +1979,19 @@ r0_stamp_seen() { # <candidate lines>: when this process first saw each offered 
 $1
 EOF
 }
-r0_ladder() { # <label> <worker doc> <event cksum> <marker> <out>: space a refused cleanup's retries; returns 0 after printing the top-step wake
-    local f="$inbox.wait.le-$1.tries" count="" m="" s="" w="" stamp top=""
-    stamp="$(stat -c '%Y %s' "$2" 2>/dev/null)" || return 1  # gnu-ok: Linux-only kit; swallow-ok: an unreadable document keeps the first step and no top-step wake, the retry itself still runs
-    IFS=' ' read -r count m s w 2>/dev/null < "$f" || true  # swallow-ok: no file or a torn one starts the count again
+r0_ladder() { # <label> <event cksum> <marker> <out>: space a refused cleanup's retries; returns 0 after printing the top-step wake
+    local f="$inbox.wait.le-$1.tries" count="" k="" w="" top=""
+    IFS=' ' read -r count k w 2>/dev/null < "$f" || true  # swallow-ok: no file or a torn one starts the count again
     case "$count" in ''|*[!0-9]*) count=0 ;; esac
-    [ "$m $s" = "$stamp" ] || count=0  # a changed worker document is new information
+    [ "$k" = "$2" ] || count=0  # another event, or one that changed, starts over; lines appended to the document do not
     count=$(( 10#$count + 1 )); [ "$count" -le 999 ] || count=999
-    if [ "$count" -ge 5 ] && [ "${w:--}" != "$3" ]; then
+    if [ "$count" -ge 5 ] && [ "${w:--}" != "$2" ]; then
         printf 'WAKE worker-event ESCALATE cleanup-still-refused worker=%s event=%s tries=%s next-try-in=%ss refusal=%s out=%s\n' \
-            "$1" "$4" "$count" "$(awk -v b="${CHIEF_WAIT_SERVICE_RETRY_SEC:-5}" 'BEGIN { printf "%g", b * 60 }')" \
-            "$(printf '%s\n' "$5" | grep -m 1 '[^[:space:]]')" "$inbox.wait.le-$1"
-        w="$3"; top=1
+            "$1" "$3" "$count" "$(awk -v b="${CHIEF_WAIT_SERVICE_RETRY_SEC:-5}" 'BEGIN { printf "%g", b * 60 }')" \
+            "$(printf '%s\n' "$4" | grep -m 1 '[^[:space:]]')" "$inbox.wait.le-$1"
+        w="$2"; top=1
     fi
-    printf '%s %s %s\n' "$count" "$stamp" "${w:--}" | atomic_write "$f"
+    printf '%s %s %s\n' "$count" "$2" "${w:--}" | atomic_write "$f"
     [ -n "$top" ]
 }
 r0_log_attempt() { # <label> <marker> <event line> <call start ns> <call end ns> <rc>: one relaylog line per worker-event call
@@ -2141,7 +2141,7 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
             10:*-failed\ rc=[3467]\ *)
                 r0_retry="$label"
                 printf '%s\n' "$label" | atomic_write "$inbox.wait.r0-next"
-                if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ] && r0_ladder "$label" "$ldoc" "${sum##* }" "$marker" "$out"; then
+                if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ] && r0_ladder "$label" "${sum##* }" "$marker" "$out"; then
                     printf '%s' "$r0_warning_lines"
                     return 0
                 fi
