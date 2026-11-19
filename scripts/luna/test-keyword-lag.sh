@@ -134,7 +134,7 @@ lag_report() {
 LEDGER_NAME="keyword-lag.jsonl"
 nrows() { local n; n=$(grep -c '"merge"' "$C/state/$LEDGER_NAME" 2>/dev/null) || n=0; echo "${n:-0}"; }
 has_row() { local n; n=$(grep -c "\"merge\":\"$1\"" "$C/state/$LEDGER_NAME" 2>/dev/null) || n=0; echo "${n:-0}"; }
-first_in() { sed -n "s/.*\"merge\":\"$1\".*\"first_in_at\":\(null\|\"[^\"]*\"\).*/\1/p" "$C/state/$LEDGER_NAME" 2>/dev/null; }
+first_in() { sed -n -E "s/.*\"merge\":\"$1\".*\"first_in_at\":(null|\"[^\"]*\").*/\1/p" "$C/state/$LEDGER_NAME" 2>/dev/null; }
 head_sha() { git -C "$C/primary" rev-parse refs/heads/main; }
 
 plant_row() {

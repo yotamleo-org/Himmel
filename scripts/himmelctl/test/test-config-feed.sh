@@ -198,7 +198,8 @@ classifyJ() { "$node_bin" -e 'const f=require(process.argv[1]);const r=f.classif
 [ "$(classifyJ '{"source":"doctor","id":"doctor:C12-gh-auth","scope":"shared","fix":{"remedy":"gh auth login"}}')" = "shared operator -" ] || fail "a4 gh auth"
 [ "$(classifyJ '{"source":"doctor","id":"doctor:C12-gh-auth","scope":"shared","fix":{"remedy":""}}')" = "shared chief -" ] || fail "a4 an operator row with no command falls to the chief"
 for c in C38-uv C44-skill-index C45-qmd-daemon C52-graphify-ollama C83-qmd-embed-backlog C22-chain-skips C80-status-drift C86-morning-report C40-qmd-vec; do
-  [ "$(classifyJ "{\"source\":\"doctor\",\"id\":\"doctor:$c\",\"scope\":\"shared\",\"fix\":{\"remedy\":\"\"}}")" = "shared chief -" ] || fail "a4 $c declared shared reads $(classifyJ "{\"source\":\"doctor\",\"id\":\"doctor:$c\",\"scope\":\"shared\",\"fix\":{\"remedy\":\"\"}}")"
+  row=$(printf '{"source":"doctor","id":"doctor:%s","scope":"shared","fix":{"remedy":""}}' "$c")
+  [ "$(classifyJ "$row")" = "shared chief -" ] || fail "a4 $c declared shared reads $(classifyJ "$row")"
 done
 [ "$(classifyJ '{"source":"doctor","id":"doctor:C33-graph-stale","scope":"project","repo":"himmel","fix":{"remedy":""}}')" = "project chief -" ] || fail "a4 C33 declared project"
 [ "$(classifyJ '{"source":"doctor","id":"doctor:C77-undeclared","fix":{"remedy":""}}')" = "project chief -" ] || fail "a4 an undeclared doctor row defaults to the project"
