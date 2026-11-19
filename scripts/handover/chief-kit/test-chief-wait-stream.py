@@ -3,6 +3,7 @@ import fcntl
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import socket
@@ -543,7 +544,8 @@ echo 'HANDLED close-wrapped'
         self.stop(again)
 
     def test_pid_reuse_is_never_adopted_or_signalled(self):
-        unrelated = subprocess.Popen(['sleep', '30'])
+        # The reused pid passes the argv test (it names the inbox and a chief-wait script); only its start time differs.
+        unrelated = subprocess.Popen(['bash', '-c', 'sleep 30; :', 'chief-wait-reused', str(self.inbox)], start_new_session=True)
         try:
             self.path('stream').write_text(f'child={unrelated.pid} child_start=wrong host={socket.gethostname()} boot={Path("/proc/sys/kernel/random/boot_id").read_text().strip()} seq=0\n')
             p, _ = self.start()
@@ -551,7 +553,7 @@ echo 'HANDLED close-wrapped'
             self.stop(p)
             self.assertIsNone(unrelated.poll())
         finally:
-            unrelated.terminate()
+            os.killpg(unrelated.pid, signal.SIGKILL)
             unrelated.wait()
 
     def waiters(self):
@@ -696,18 +698,21 @@ echo 'HANDLED close-wrapped'
                    kind='ruling', text='operator action overdue', actor='operator', action='notify', event='operator-digest')
         ledger = self.root / 'owed.jsonl'
         ledger.write_text(json.dumps(row) + '\n')
-        self.env['CHIEF_WAIT_OWED_SEND'] = self.script('send', 'echo queued\n')
-        self.env['CHIEF_WAIT_OPERATOR_RETRY_SEC'] = '1'
+        self.env['CHIEF_WAIT_OWED_SEND'] = self.script('send', 'echo "$*" >> "$TEST_ROOT/sends"\necho queued\n')
+        self.env['CHIEF_WAIT_OPERATOR_RETRY_SEC'] = '600'  # no retry inside the test: its one send is the first attempt
         p, out = self.start()
         self.until(lambda: 'owed-actions' in out.read_text())
         self.assertIn('operator-delivery-pending', self.path('wake-1').read_text())
         self.assertEqual(len(ledger.read_text().splitlines()), 1)
+        sends = self.root / 'sends'
+        self.assertEqual(len(sends.read_text().splitlines()), 1, 'the first attempt is one send')
         # Simulate the existing sender's real receipt arriving after its caller
         # lost the response; the service must reconcile rather than resend.
         with self.doc.open('a') as f:
             f.write('- DELIVERED t2-o1 msg=42 chat=123\n')
         self.until(lambda: '"op":"close"' in ledger.read_text())
         self.assertIn('telegram-msg-42', ledger.read_text())
+        self.assertEqual(len(sends.read_text().splitlines()), 1, 'the receipt was answered with another send')
         self.stop(p)
 
     def test_busy_consumer_fifteen_simulated_minutes_without_ack(self):
@@ -763,6 +768,28 @@ echo 'HANDLED close-wrapped'
             f.write('after reset\n')
         self.until(lambda: 'WAKE#4 telegram' in reset_out.read_text())
         self.stop(reset)
+
+    def test_the_current_and_the_previous_replay_index_survive_with_their_blocks(self):
+        p, out = self.start()
+        self.armed()
+        self.inbox.write_text('one\n')
+        self.until(lambda: 'WAKE#1 telegram' in out.read_text())
+        self.stop(p)
+        advertised = []
+        for _ in range(3):
+            again, replay = self.start(('--since', '0'))
+            self.until(lambda: 'REPLAY seqs=1-1' in replay.read_text())
+            advertised.append(re.search(r'index=(\S+)', replay.read_text())[1])
+            self.stop(again)
+        # three arms each advertised an index; the current arm and its predecessor keep theirs, older ones go
+        self.assertEqual([Path(index).exists() for index in advertised], [False, True, True])
+        wakes = [line.split('\t') for line in self.path('wakes').read_text().splitlines() if line.startswith('W\t')]
+        for index in advertised[1:]:
+            rows = [line.split('\t') for line in Path(index).read_text().splitlines()]
+            self.assertTrue(rows, index)
+            for row in rows:
+                self.assertIn(row, wakes)
+                self.assertTrue(Path(row[5]).exists(), row)
 
     def test_child_error_ends_arm_without_relaunch(self):
         stub = self.script('chief-wait-error', "echo call >> \"$TEST_ROOT/calls\"\necho 'WAKE fixture before-error'\nexit 1\n")
@@ -1157,9 +1184,9 @@ class WatchdogOwner(StreamFixture):
         self.assertEqual(seen['owner'], str(seen['me']))
 
 
-# Worker-event stand-in that keeps auto-go's exact-head audit rule: the first READY of a
-# (pr, head) records one GO-SENT row, a replay of the same pair records none, and a
-# cleanup event never records a GO. TEST_ROOT/refuse-cleanup makes cleanup refuse with the
+# Worker-event stand-in that models auto-go's exact-head audit rule (the real rule is pinned in
+# test-auto-go.sh): the first READY of a (pr, head) records one GO-SENT row, a replay of the same
+# pair records none, and a cleanup event never records a GO. TEST_ROOT/refuse-cleanup makes cleanup refuse with the
 # retryable `-failed rc=4`; TEST_ROOT/slow-N<k> makes that worker's event slow.
 GO_AUDIT_EVENT = r'''line=$(cat)
 echo "$(date +%s.%N) $line" >> "$TEST_ROOT/events"
@@ -1523,7 +1550,7 @@ class StackedWorker(StreamFixture):
         self.assertEqual(len(self.seen('N1 WRAPPED')), 1, 'a bounded-out cleanup is reported, not rerun')
         self.assertEqual(self.audit(), [f'GO-SENT 2 {self.H[2]}'])
 
-    def test_successor_chief_replays_each_worker_once_and_never_sends_a_second_go(self):
+    def test_successor_chief_replays_each_worker_once_through_the_relay(self):
         self.worker('N1', self.ready('N1', 1))
         self.worker('N2', self.ready('N2', 2))
         self.fleet_of('N1', 'N2')
@@ -1547,8 +1574,9 @@ class StackedWorker(StreamFixture):
         time.sleep(1.0)
         q.terminate()
         q.wait(timeout=6)
-        # the successor starts every worker over: one replay of the newest READY, nothing older,
-        # nothing twice, and the exact-head audit still shows one GO per head.
+        # The successor starts every worker over: the relay offers the newest READY of each once, nothing older, nothing twice.
+        # The audit below is the stand-in's own list (it dedupes by itself), so it shows the heads the relay offered and
+        # cannot show a second send by the real auto-go; test-auto-go.sh pins that rule.
         self.assertEqual(len(self.seen(f'N1 READY #1 {self.H[1]}')), 2)
         self.assertEqual(len(self.seen(f'N2 READY #2 {self.H[2]}')), 1)
         self.assertEqual(len(self.seen(f'N2 READY #3 {self.H[3]}')), 1)
@@ -1702,14 +1730,14 @@ class IdlePoll(StreamFixture):
     def sleeps(self, after=0.0):
         path = self.root / 'sleeps'
         rows = [line.split() for line in path.read_text().splitlines()] if path.exists() else []
-        return [arg for ts, arg in rows if float(ts) > after and arg in ('0.05', '0.5', '0.01', '1', '1.2.3')]
+        return [arg for ts, arg in rows if float(ts) > after]
 
     def slow(self, count):
         return lambda: self.sleeps().count('0.5') >= count
 
-    def post_ready(self):
+    def post_ready(self, pr=1):
         with self.doc1.open('a') as f:
-            f.write('- 10:00 READY #1 ' + '1' * 40 + '\n')
+            f.write(f'- 10:00 READY #{pr} ' + str(pr) * 40 + '\n')
 
     def test_the_poll_grows_only_after_a_run_of_empty_passes(self):
         p, _ = self.start()
@@ -1735,12 +1763,19 @@ class IdlePoll(StreamFixture):
     def test_an_event_during_a_slow_interval_is_served_on_the_next_pass(self):
         p, _ = self.start()
         self.until(self.slow(2))
-        wrote = time.time()
-        self.post_ready()
+        self.post_ready(1)
         self.until(lambda: (self.root / 'events').exists())
+        at = float((self.root / 'events').read_text().split()[0])
+        # The first idle sleep after that event's run of empty passes starts a fresh idle stretch: a second event posted
+        # while it runs is served when it ends, one idle interval after it began, plus the pass.
+        self.until(lambda: self.sleeps(at).count('0.5') >= 1, seconds=10)
+        began = float(next(line.split()[0] for line in (self.root / 'sleeps').read_text().splitlines()
+                           if float(line.split()[0]) > at and line.split()[1] == '0.5'))
+        self.post_ready(2)
+        self.until(lambda: len((self.root / 'events').read_text().splitlines()) >= 2)
         self.stop(p)
-        served = float((self.root / 'events').read_text().split()[0]) - wrote
-        self.assertLess(served, 0.5 + 0.7, 'one idle interval at most, plus the pass')
+        served = float((self.root / 'events').read_text().splitlines()[1].split()[0]) - began
+        self.assertLess(served, 0.5 + 0.4, 'one idle interval, plus the pass')
 
     def test_the_idle_poll_is_never_shorter_than_the_poll(self):
         self.env['CHIEF_WAIT_IDLE_POLL_SEC'] = '0.01'
