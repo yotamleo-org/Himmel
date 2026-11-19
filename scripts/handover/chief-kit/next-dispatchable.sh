@@ -1223,6 +1223,7 @@ WITHHELD = 'RESUME, IN CI, STACKABLE, SERIES FAMILY, To Do, DESIGN, NEXT-TIER'
 REMEDY_DOC = "restore the doc, record the worker's end, or fleet-manifest.sh remove <manifest> <label>"
 REMEDY_MANIFEST = 'repair or delete the manifest file (fleet-manifest.sh refuses an invalid one)'
 REMEDY_FLEET = 'restore or pass a readable --workers-from manifest'
+OWNER_UNKNOWN_DROP = 'owner unknown: a named worker source could not be fully read (see the # owner unknown line)'
 owner_unknown_lines = set()
 
 def printable(text):
@@ -1933,12 +1934,17 @@ for i in cands:
     if i['key'] in design:  # a design leg writes only its spec in the state repo: it holds no files against the rest of the list
         if pr_unknown:  # an unread PR list could hide an open PR that owns the ticket
             drop(i, 'open PRs unknown (gh failed): ownership cannot be checked')
+        elif named_unknown:
+            drop(i, OWNER_UNKNOWN_DROP)
         else:
             free.append(i)
         continue
     if i['no_scope']:
         scope_questions.append(i['key'])
         drop(i, 'no-scope (nothing says what it writes: a chief question)')
+        continue
+    if named_unknown and not pr_unknown:
+        drop(i, OWNER_UNKNOWN_DROP)
         continue
     if stacked and held_hits(i):
         stack = stackable_on(i)
@@ -2319,7 +2325,7 @@ if pool_only:
     if n == 0 and not resume_only:  # nothing in the pool, or every pool ticket was classified BLOCKED or collided
         print('POOL-EMPTY')
         # the next tier, in rank order and unclassified: for the chief to read, never to dispatch
-        for i in [i for i in next_tier if i['key'] not in worker_keys and i['key'] not in pr_keys][:top]:
+        for i in [i for i in next_tier if i['key'] not in worker_keys and i['key'] not in pr_keys and not named_unknown][:top]:
             print('\t'.join(['NEXT-TIER', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')]))
     warn_missing()
     if not resume_only:
