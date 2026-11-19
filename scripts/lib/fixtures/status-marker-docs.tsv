@@ -1,7 +1,7 @@
 # Whole-doc rows read by the shell, JS and Python tests. TAB-separated: doc, newest, actionable; `-` is none.
 # The doc column encodes LF as \n, CR as \r, TAB as \t, form feed as \f, a backslash as \\; any other
 # backslash sequence is a test failure. A line `# D01` names the row below it.
-# rows: 29
+# rows: 37
 # D01
 ## Results\n- 10:00 LIVE\n- 10:15 Released lock, appended the WRAPPED bullet, ending turn\n	LIVE	-
 # D02
@@ -60,3 +60,19 @@
 ## Results\n- 10:00 READY	READY	READY#1
 # D26
 ## Results\n- 10:00 LIVE\n## Notes\n- x\n## Console Rulings\n- 12:00 READY old-term-ok\n	READY	READY#1
+# D27
+## Results\n- 10:00 LIVE\n```\n- 10:05 WRAPPED\n```\n	LIVE	-
+# D28
+## Results\n```\n- 10:00 LIVE\n```\n- 10:05 READY\n	READY	READY#1
+# D29
+## Results\n- 10:00 LIVE\n```\n- 10:05 WRAPPED\n	LIVE	-
+# D30
+## Results\n- 10:00 LIVE\n```\n~~~\n- 10:05 WRAPPED\n```\n- 10:10 READY\n	READY	READY#1
+# D31
+## Results\n- 10:00 LIVE\n    ```\n- 10:05 WRAPPED\n	WRAPPED	-
+# D32
+## Results\n- 10:00 LIVE\n   ```\n- 10:05 WRAPPED\n   ```\n	LIVE	-
+# D33
+- 10:00 READY\n```\n## Results\n- 10:05 LIVE\n```\n	-	-
+# D34
+## Results\n- 10:00 LIVE\n```\n## Notes\n```\n- 10:05 READY\n	READY	READY#1
