@@ -6,7 +6,6 @@
 # (named by its temp path) is in the real register. Locks are real queue-lock.sh locks under the temp handover root. gh and a
 # counting/failing queue-lock are stubs. Races use 2 real processes.
 #
-# PLATFORM GUARD: the chief kit is Linux-only; rows are aged with touch_ago (python3 os.utime).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

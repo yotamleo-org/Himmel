@@ -1518,7 +1518,7 @@ gd_doc 'question one more round authority=O-v1.1.3-0001'
 v9611render --owed-dir "$bk" --chief-doc "$bk/$gd_stem.md"
 contains 'a holds file with no rows list is named as unread' "$(grep -F 'data-section="waiting"' "$v9611out")" "pool holds unread: pool-holds-$gd_stem.json"
 cp "$HERE/fixtures/pool-holds-golden.json" "$TICK_STATE_DIR/pool-holds-$gd_stem.json"
-touch_ago 1860 "$TICK_STATE_DIR/pool-holds-$gd_stem.json"  # gnu-ok: chief kit is Linux-only
+touch_ago 1860 "$TICK_STATE_DIR/pool-holds-$gd_stem.json"
 v9611render --owed-dir "$bk" --chief-doc "$bk/$gd_stem.md"
 contains 'a holds file over 30 minutes old is named as unread' "$(grep -F 'data-section="waiting"' "$v9611out")" "pool holds unread: pool-holds-$gd_stem.json"
 ln -s "$bk" "$W/bk9611-link"
