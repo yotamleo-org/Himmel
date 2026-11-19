@@ -783,7 +783,7 @@ export function registerRelease(program: Command): void {
     .option('--to <version>', 'Target version, or backlog', 'backlog')
     .requiredOption('--why <text>', 'One line: why the request exists')
     .option('--evidence <json>', 'Evidence object as JSON', '{}')
-    .option('--decision <n>', 'The operator decision whose words place an operator-directed or High ticket (its specs/decisions verbatim file)')
+    .option('--decision <n>', 'The operator decision whose words place an operator-directed or High ticket (its specs/decisions verbatim file); omit it when a words record already on file names the key and exactly this placement, which is then cited')
     .option('--words <text>', 'The operator\'s exact words in that file; with --decision, recorded as an O- record the request cites')
     .option('--required-by <key>', 'The open current-version ticket that cannot close without this one: records the remainder in the evidence (follow_up_of, remainder)')
     .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
