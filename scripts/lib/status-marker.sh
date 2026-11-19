@@ -31,3 +31,19 @@ status_marker_is_parked() {
   esac
   return 1
 }
+
+_status_marker_scope() {
+  local LC_ALL=C
+  [ -f "${1-}" ] && [ -r "${1-}" ] || return 3
+  return 0
+}
+
+status_marker_newest() {
+  _status_marker_scope "${1-}" >/dev/null || return $?
+  return 1
+}
+
+status_marker_actionable() {
+  _status_marker_scope "${1-}" >/dev/null || return $?
+  return 1
+}

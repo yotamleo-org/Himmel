@@ -10,6 +10,7 @@
 // CLI: node status-marker.mjs parse LINE -> marker on stdout, exit 0, or exit 1
 // when there is none; is-parked WORD -> exit 0 or 1; bad usage exits 2.
 import { isMain } from './is-main.mjs';
+import { readFileSync, statSync } from 'node:fs';
 
 const MARKER = /^- (?:[0-9]{1,2}:[0-9]{2}[ \t\n\v\f\r]+)?(?:\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)(?:[^A-Za-z0-9_][\s\S]*)?$/;
 
@@ -21,6 +22,23 @@ export function statusMarkerParse(line) {
 
 export function statusMarkerIsParked(word) {
   return word === 'PARKED-BANK' || word === 'PARKED-USAGE';
+}
+
+function readDoc(path) {
+  if (!statSync(path).isFile()) {
+    throw Object.assign(new Error(`not a regular file: ${path}`), { code: 'ENOTREG' });
+  }
+  return readFileSync(path, 'latin1');
+}
+
+export function statusMarkerNewest(path) {
+  readDoc(path);
+  return null;
+}
+
+export function statusMarkerActionable(path) {
+  readDoc(path);
+  return null;
 }
 
 function main(argv) {

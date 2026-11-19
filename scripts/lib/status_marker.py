@@ -11,6 +11,8 @@ test-status_marker.py and test-status-marker.sh.
 CLI: python3 status_marker.py parse LINE -> marker on stdout, exit 0, or exit 1
 when there is none; is-parked WORD -> exit 0 or 1; bad usage exits 2.
 """
+import errno
+import os
 import re
 import sys
 
@@ -31,6 +33,23 @@ def parse(line):
 
 def is_parked(word):
     return word in ("PARKED-BANK", "PARKED-USAGE")
+
+
+def _read(path):
+    if not os.path.isfile(path):
+        raise OSError(errno.EINVAL, "not a regular file", path)
+    with open(path, "rb") as f:
+        return f.read().decode("latin-1")
+
+
+def newest(path):
+    _read(path)
+    return None
+
+
+def actionable(path):
+    _read(path)
+    return None
 
 
 def main(argv):

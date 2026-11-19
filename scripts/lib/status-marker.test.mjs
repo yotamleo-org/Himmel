@@ -2,15 +2,20 @@
 // test-status-marker.sh (fixtures/status-marker-rows.tsv), so the shell, JS and
 // Python parses cannot drift.
 // Run: node --test scripts/lib/status-marker.test.mjs
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { statusMarkerParse, statusMarkerIsParked } from './status-marker.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { statusMarkerParse, statusMarkerIsParked, statusMarkerNewest, statusMarkerActionable } from './status-marker.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+const T = mkdtempSync(join(tmpdir(), 'himmel-status-marker-'));
+after(() => rmSync(T, { recursive: true, force: true }));
+const FNS = { statusMarkerNewest, statusMarkerActionable };
+const MODULE = pathToFileURL(join(HERE, 'status-marker.mjs')).href;
 const FIXTURE = readFileSync(join(HERE, 'fixtures', 'status-marker-rows.tsv'), 'utf8');
 const WANT_ROWS = Number(/^# rows: (\d+)$/m.exec(FIXTURE)?.[1]);
 const ROWS = FIXTURE
@@ -57,4 +62,27 @@ test('cli: is-parked exit codes and bad usage', () => {
   assert.equal(run('is-parked', 'LIVE'), 1);
   assert.equal(run('bogus', 'x'), 2);
   assert.equal(run('parse'), 2);
+});
+
+test('row E1: an absent path, a directory and /dev/null are unreadable; a zero-byte file is none', () => {
+  mkdirSync(join(T, 'adir'));
+  writeFileSync(join(T, 'zero.md'), '');
+  for (const [name, fn] of Object.entries(FNS)) {
+    assert.throws(() => fn(join(T, 'absent')), { code: 'ENOENT' }, name);
+    assert.throws(() => fn(join(T, 'adir')), { code: 'ENOTREG' }, name);
+    assert.throws(() => fn('/dev/null'), { code: 'ENOTREG' }, name);
+    assert.equal(fn(join(T, 'zero.md')), null, name);
+  }
+});
+
+test('row E3: a FIFO is unreadable and never blocks', () => {
+  const fifo = join(T, 'fifo');
+  execFileSync('mkfifo', [fifo]);
+  for (const name of Object.keys(FNS)) {
+    const r = spawnSync(process.execPath, ['--input-type=module', '-e',
+      `import * as m from ${JSON.stringify(MODULE)}; try { m.${name}(${JSON.stringify(fifo)}); console.log('NONE'); } catch (e) { console.log(e.code ?? e.name); }`],
+    { encoding: 'utf8', timeout: 5000 });
+    assert.equal(r.error, undefined, `${name} was killed after 5 s`);
+    assert.equal(r.stdout.trim(), 'ENOTREG', name);
+  }
 });
