@@ -217,8 +217,28 @@ class Runtime(unittest.TestCase):
                     CADENCE_USAGE_LEDGER=str(self.bucket / 'cadence.jsonl'), FLEET_PS_CMD=ps,
                     FLEET_CAP_OK='1', HIMMEL_API_LANE='on')
 
-    def entry(self, path, args=(), env=None):
-        command = ['bash', str(ENTRYPOINTS / path), *map(str, args)]
+    def anchorless_tree(self):
+        """Symlinks to every entry of ENTRYPOINTS, except that scripts/, scripts/handover/, scripts/handover/chief-kit/ and scripts/lib/ are real
+        directories and the seam guard is a copy. The guard resolves its root from its own directory, so a launch run from this tree is not on a
+        primary checkout, which is what a CI checkout is: there it refuses a Claude Code marker beside a seam, and the worker exports a marker."""
+        tree = self.bucket / 'tree'
+        tree.mkdir()
+        real = {Path('scripts'), Path('scripts/handover'), Path('scripts/handover/chief-kit'), Path('scripts/lib')}
+        for entry in ENTRYPOINTS.glob('*'):
+            if entry.name != 'scripts':
+                (tree / entry.name).symlink_to(entry)
+        for directory in sorted(real):
+            (tree / directory).mkdir(parents=True, exist_ok=True)
+            for entry in (ENTRYPOINTS / directory).iterdir():
+                if directory / entry.name not in real:
+                    (tree / directory / entry.name).symlink_to(entry)
+        guard = tree / 'scripts/lib/chokepoint-seam-guard.sh'
+        guard.unlink()
+        shutil.copy2(ENTRYPOINTS / 'scripts/lib/chokepoint-seam-guard.sh', guard)
+        return tree
+
+    def entry(self, path, args=(), env=None, root=ENTRYPOINTS):
+        command = ['bash', str(root / path), *map(str, args)]
         result = subprocess.run(command, env=env or self.launch_env(), capture_output=True, text=True, timeout=20)
         self.record(command, result)
         return result
@@ -330,7 +350,7 @@ class Runtime(unittest.TestCase):
                    HEADED_ARM_WORKER_PREFLIGHT=self.stub('preflight', 'echo PROCEED'))
         p = self.entry('scripts/handover/chief-kit/headed-arm-worker.sh',
                        ('--fleet', self.m, '--no-profile', self.doc.stem, self.doc,
-                        self.bucket / 'sig', '1', self.bucket / 'log', 'claude-sonnet-5-5'), env)
+                        self.bucket / 'sig', '1', self.bucket / 'log', 'claude-sonnet-5-5'), env, root=self.anchorless_tree())
         log = self.bucket / 'log'
         self.assertEqual(p.returncode, 0, p.stderr + p.stdout + (log.read_text() if log.exists() else ''))
         self.assertTrue((self.bucket / 'spawned').exists())
