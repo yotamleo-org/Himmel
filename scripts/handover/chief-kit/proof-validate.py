@@ -25,9 +25,13 @@ from status_marker import parse as status_marker_parse
 KEY = r'[A-Z][A-Z0-9]+-\d+'
 # The tokens an artifact uses for a proof row that did not pass. The recorder lists any line carrying one; CLOSE additionally
 # refuses a table cell or a list item that STARTS with one (qualified forms included: `NOT MET — no RED`, `SKIPPED (no vm)`,
-# `ERRORS`, `FAIL`, `- NOT MET: ...`). A list item's word may sit in emphasis or inline code (`- *NOT MET*`, `- _OWED_`), and a word that is the
-# first thing after the item's last colon, past closing emphasis marks and spaces, counts too (`- control two: NOT MET`, `- **Result:** NOT MET`,
-# `- Result: *FAIL*`). Prose that merely mentions a word is not a row; whether the evidence covers every
+# `ERRORS`, `FAIL`, `- NOT MET: ...`). A list item's word may sit in emphasis or inline code (`- *NOT MET*`, `- _OWED_`). An item that starts with `MET`
+# (through the same marks, in any letter case) is read by that word alone, whatever its detail says (`- MET main=aaaa: failures 0`). Any other item is also
+# unmet when an unmet word is the first thing after any of its colons, past spaces and emphasis or inline-code marks (`- control two: NOT MET`,
+# `- **Result:** NOT MET`, `- Result: *FAIL*`, `- Result: NOT MET: no RED`), and after a colon the word is read whole: `FAIL`, `FAILS`, `FAILED`, `FAILURE`,
+# `FAILING`, `SKIP`, `SKIPS`, `SKIPPED`, `ERROR`, `ERRORS`, `OWED` and `NOT MET` are unmet, while `failures`, `skipping`, a word continued by a letter, a digit or an
+# underscore (`SKIP_CR`) and a FAIL joined to a continuation by a hyphen (`failed-over`) are other words. At the start of an item and in a table cell the word
+# is read by its beginning (`FAIL...`, `SKIP...`). Prose that merely mentions a word is not a row; whether the evidence covers every
 # obligation stays the chief's explicit judgement. A declared Expected column in a supported Markdown table is test input,
 # not an actual requirement status; other cells and unmet list items retain the same refusal rule.
 # A row is MET only when its status is exactly the producer's word for it (`MET`, in any letter case, through emphasis and
@@ -46,7 +50,12 @@ UNMET_CELL = re.compile(r'\|\s*' + UNMET + r'\b[^|]*\|', re.I)
 UNMET_MARKED_CELL = re.compile(r'\s*[*_`]+' + UNMET + r'(?:\b|_+(?![A-Za-z0-9]))', re.I)
 UNMET_ITEM = re.compile(r'^\s*(?:[-*+]|\d+[.)])\s+[*_`]*' + UNMET + r'(?:\b|_+(?![A-Za-z0-9]))', re.I)
 ITEM_TEXT = re.compile(r'^\s*(?:[-*+]|\d+[.)])\s+(.*)$')
-UNMET_STATUS = re.compile(r'[\s*_`]*' + UNMET + r'(?:\b|_+(?![A-Za-z0-9]))', re.I)
+# A word read whole ends where the text does not continue it with a letter, a digit or an underscore (an emphasis mark that closes the word is not one);
+# JOINED is the end of a word that a hyphen does not join to a continuation (`failed-over`).
+WHOLE = r'(?:\b|_+(?![A-Za-z0-9]))'
+JOINED = r'(?!-[A-Za-z0-9])'
+MET_ITEM = re.compile(r'^\s*(?:[-*+]|\d+[.)])\s+[*_`]*MET' + WHOLE + JOINED, re.I)
+UNMET_STATUS = re.compile(r':[\s*_`]*(?:NOT\s+MET|OWED|SKIP(?:PED|S)?|ERRORS?|FAIL(?:ED|S|URE|ING)?' + JOINED + r')' + WHOLE, re.I)
 NOT_DUE_CELL = re.compile(r'^[\s*_`]*' + NOT_DUE, re.I)
 NOT_DUE_ITEM = re.compile(r'^\s*(?:[-*+]|\d+[.)])\s+[*_`]*' + NOT_DUE, re.I)
 MET_STATUS = re.compile(r'[\s*_`]*MET[\s*_`]*', re.I)
@@ -78,7 +87,7 @@ def has_unmet_rows(text):
     expected, status, proof, width = set(), set(), set(), 0
     for index, line in enumerate(lines):
         item = ITEM_TEXT.match(line)
-        if UNMET_ITEM.search(line) or NOT_DUE_ITEM.search(line) or (item and ':' in item[1] and UNMET_STATUS.match(item[1].rsplit(':', 1)[1])):
+        if UNMET_ITEM.search(line) or NOT_DUE_ITEM.search(line) or (item and not MET_ITEM.match(line) and UNMET_STATUS.search(item[1])):
             return True
         header = index + 1 < len(lines) and re.search(r'(?<!\\)\|', line) and is_separator(lines[index + 1]) and not is_separator(line)
         if not (line.strip().startswith('|') or header or (width and re.search(r'(?<!\\)\|', line))):

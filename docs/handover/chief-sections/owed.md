@@ -62,9 +62,11 @@ A covered ticket reads every declared artifact whose file name contains its key 
 every one whose name contains none of the declared keys (with one declared ticket,
 every declared path); an artifact named only for another declared ticket is read by
 that ticket. `artifact-attribution-unvalidated` is set when a covered key has neither
-a named nor an unnamed artifact (all declared paths are then retained for it), and
-when several tickets are declared and a ticket reads an unnamed artifact beside one
-named for it. It refuses a CLOSE; chief attribution remains pending.
+a named nor an unnamed artifact among the declared paths (all of them are then
+retained for it; with no path at all, none declared and none named in the worker
+document, the flag is not set and `evidence-unreadable` is recorded), and when several
+tickets are declared and a ticket reads an unnamed artifact beside one named for it.
+It refuses a CLOSE; chief attribution remains pending.
 
 Proof inputs are opened nonblocking and without following a final symlink. The
 descriptor must be a regular file no larger than 8 MiB; bounded reads and matching

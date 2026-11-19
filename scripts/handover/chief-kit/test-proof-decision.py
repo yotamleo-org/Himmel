@@ -320,6 +320,95 @@ class ChiefDecision(unittest.TestCase):
                 self.assertEqual(r.returncode, 0, r.stderr)
                 self.assertEqual(json.loads(r.stdout)['semantic_coverage'], 'chief-owned')
 
+    # A list item that starts with MET is read by that word alone: the words of its detail after a colon are not read.
+    MET_ITEMS_WITH_DETAIL = ['- MET main=aaaa: failures 0', '- MET: skipped 0 tests', '- **MET**: errors.md attached', '- MET control two: errors none', '- MET evidence: ERRORS=0',
+                             '- MET evidence=/tmp/x: errors.md', '- MET evidence: skip_validation honoured', '- MET main=aaaa: FAIL-CLOSED verified', '- MET (see log: errors) ok',
+                             '- *MET*: FAILED 0', '- `MET` main=aaaa: owed none', '1. _MET_: skipped 0', '* __MET__ control two: errors none']
+
+    def test_a_list_item_that_starts_with_met_is_read_by_that_word_alone_through_the_real_check(self):
+        good = self.evidence.read_text()
+        self.write(stamp=self.module().requirements(self.mirror / 'HIMMEL-9848.md'))
+        for item in self.MET_ITEMS_WITH_DETAIL:
+            with self.subTest(met=item):
+                row = self.pending_with(good + item + '\n')
+                self.assertEqual(row['binding'], 'matched')
+                r = self.check(row)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(json.loads(r.stdout)['semantic_coverage'], 'chief-owned')
+        # an item that starts with an unmet word is unmet whatever follows it; a word that only begins with MET, or a PASS, does not decide the item
+        for item in ('- NOT MET: x', '- **NOT MET**: failures 0', '- Metrics: FAILED 2', '- METHOD: FAIL x', '- MET-based check: NOT MET', '- MET_RUN: NOT MET', '- PASS: FAILED 1'):
+            with self.subTest(unmet=item):
+                row = self.pending_with(good + item + '\n')
+                r = self.check(row)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn('unmet/skipped/error proof row', r.stderr)
+
+    # An unmet word that is the first thing after any colon of an item that does not start with MET counts: the label colon need not be the last one.
+    FURTHER_COLON_UNMET_ITEMS = ['- Result: NOT MET: no RED', '- **Result:** NOT MET (x): y', '- Result: *NOT MET*: no RED', '- **Result:** `OWED`: needs the operator',
+                                 '- a: b: Result: FAILED: exit 26', '1. Result: SKIPPED: no vm', '* Result: ERROR: boom: more', '- ran at 12:30: NOT MET: no RED',
+                                 '- see http://x/y: FAIL: exit 26']
+
+    def test_an_unmet_word_first_after_any_colon_of_a_list_item_blocks_the_close(self):
+        good = self.evidence.read_text()
+        self.write(stamp=self.module().requirements(self.mirror / 'HIMMEL-9848.md'))
+        # the labelled task item and the labelled struck-through item are read as the item's own text, so they are unmet too
+        for item in self.FURTHER_COLON_UNMET_ITEMS + ['- [ ] Result: NOT MET', '- ~~Result: NOT MET~~']:
+            with self.subTest(item=item):
+                row = self.pending_with(good + item + '\n')
+                self.assertEqual(row['binding'], 'matched')
+                r = self.check(row)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn('unmet/skipped/error proof row', r.stderr)
+
+    def test_a_status_that_is_not_the_first_thing_after_a_colon_stays_closable_through_the_real_check(self):
+        good = self.evidence.read_text()
+        self.write(stamp=self.module().requirements(self.mirror / 'HIMMEL-9848.md'))
+        for item in ('- Result: ok: then NOT MET later', '- Result: ok, then NOT MET: no RED', '- ran at 12:30 FAIL', '- 12:30 FAIL', '- time: 12:30 FAIL', '- see http://x/y NOT MET',
+                     '- ran at 12:30: MET', '- see http://x/y: ok', '- path C:\\dir OWED', '- Result: MET (pending review)', '- Result: ERROR_CODE: documented'):
+            with self.subTest(item=item):
+                row = self.pending_with(good + item + '\n')
+                self.assertEqual(row['binding'], 'matched')
+                r = self.check(row)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(json.loads(r.stdout)['semantic_coverage'], 'chief-owned')
+
+    def test_an_unmet_word_after_a_colon_is_read_whole_through_the_real_check(self):
+        good = self.evidence.read_text()
+        self.write(stamp=self.module().requirements(self.mirror / 'HIMMEL-9848.md'))
+        for item in ('- Result: failures 0', '- Note: failed-over to the standby', '- Result: skipping nothing', '- Result: FAILURES 0', '- Result: Failures: none',
+                     '- Note: FAIL-CLOSED behaviour verified', '- Note: SKIP_CR is unset', '- Note: failover was tested'):
+            with self.subTest(other_word=item):
+                row = self.pending_with(good + item + '\n')
+                self.assertEqual(row['binding'], 'matched')
+                r = self.check(row)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(json.loads(r.stdout)['semantic_coverage'], 'chief-owned')
+        for item in ('- Result: FAIL', '- Result: FAILED', '- Result: SKIPPED (no vm)', '- Result: failed', '- Result: Skipped', '- Result: SKIP', '- Result: FAILS', '- Result: FAILURE',
+                     '- Result: FAILING', '- Result: SKIPS', '- Result: ERROR', '- Result: ERRORS', '- Result: OWED', '- Result: NOT MET'):
+            with self.subTest(unmet_word=item):
+                row = self.pending_with(good + item + '\n')
+                r = self.check(row)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn('unmet/skipped/error proof row', r.stderr)
+
+    def test_a_word_at_the_start_of_an_item_or_in_a_table_cell_is_still_read_by_its_beginning_through_the_real_check(self):
+        sha = 'main=' + 'a'*40
+        good = self.evidence.read_text()
+        self.write(stamp=self.module().requirements(self.mirror / 'HIMMEL-9848.md'))
+        for item in ('- failures 3', '- skipping 2', '- FAILURES: 3', '- FAILURE x', '- failed-over to the standby'):
+            with self.subTest(item=item):
+                row = self.pending_with(good + item + '\n')
+                r = self.check(row)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn('unmet/skipped/error proof row', r.stderr)
+        for shape, header in self.NO_STATUS_TABLES:
+            for cell in ('FAILURE', 'FAILURES', 'SKIPPING', 'failed-over', 'FAIL-CLOSED'):
+                with self.subTest(shape=shape, cell=cell):
+                    row = self.pending_with(good + '\n' + header + '| station check | ' + cell + ' | ' + sha + ' | ok |\n')
+                    r = self.check(row)
+                    self.assertNotEqual(r.returncode, 0, r.stdout)
+                    self.assertIn('unmet/skipped/error proof row', r.stderr)
+
     def test_a_second_declared_artifact_is_judged_beside_the_ticket_named_one(self):
         good = self.evidence.read_text()
         table = '| row | Result | Sha | Evidence |\n|---|---|---|---|\n| station check | %s | main=' + 'a'*40 + ' | timed out |\n'
@@ -989,13 +1078,14 @@ class ChiefDecision(unittest.TestCase):
             with self.subTest(bullet=bullet):
                 self.assertTrue(unmet(bullet + ' control two: NOT MET\n'))
                 self.assertTrue(unmet('  ' + bullet + ' **Result:** OWED\n'))
-        # a time or a URL in the item: the status counts when it is the first thing after the item's last colon
-        for item in ('- ran at 12:30: NOT MET', '- see http://x/y: NOT MET', '- see http://x/y: *FAIL*', '- C:\\dir: OWED', '- control two: `FAIL` is expected', '- Note: FAIL fast is used'):
+        # a time or a URL in the item: the status counts when it is the first thing after one of the item's colons
+        for item in ('- ran at 12:30: NOT MET', '- see http://x/y: NOT MET', '- see http://x/y: *FAIL*', '- C:\\dir: OWED', '- control two: `FAIL` is expected', '- Note: FAIL fast is used',
+                     '- Result: NOT MET: no RED'):
             with self.subTest(item=item):
                 self.assertTrue(unmet(item + '\n'))
-        # unchanged: the met word, a colon with no unmet word first after it, a word's own underscore, a status that is not first after the last colon
+        # unchanged: the met word, a colon with no unmet word first after it, a word's own underscore, a status that is not first after a colon
         for item in ('- control two: MET', '- **Result:** *MET*', '- Notes: all controls ran', '- ran at 12:30: MET', '- see http://x/y: ok', '- path C:\\dir is fine',
-                     '- ERROR_CODE: documented', '- Result: ERROR_CODE documented', '- Result: OWED_ITEMS none', '- Result: NOT MET: no RED', '- ran at 12:30 FAIL',
+                     '- ERROR_CODE: documented', '- Result: ERROR_CODE documented', '- Result: OWED_ITEMS none', '- ran at 12:30 FAIL',
                      '- see http://x/y NOT MET', '- Result: ok, then NOT MET', '- Result: MET (pending review)'):
             with self.subTest(item=item):
                 self.assertFalse(unmet(item + '\n'))
@@ -1003,6 +1093,48 @@ class ChiefDecision(unittest.TestCase):
         for text in ('Result: NOT MET\n', '**Result:** NOT MET\n', '| Result: NOT MET | x |\n', '# Result: FAIL\n'):
             with self.subTest(text=text):
                 self.assertFalse(unmet(text))
+
+    def test_a_list_item_is_read_by_its_met_start_then_by_any_colon_with_the_unmet_word_read_whole(self):
+        unmet = self.module().has_unmet_rows
+        marks = ('%s', '**%s**', '*%s*', '_%s_', '`%s`', '__%s__')
+        # an item that starts with MET, in any case and through any mark or bullet, is read by that word alone
+        for bullet in ('-', '*', '+', '1.', '12)'):
+            for mark in marks:
+                for met in ('MET', 'Met', 'met'):
+                    with self.subTest(bullet=bullet, mark=mark, met=met):
+                        self.assertFalse(unmet(bullet + ' ' + mark % met + ' main=aaaa: failures 0\n'))
+                        self.assertFalse(unmet(bullet + ' ' + mark % met + ': skipped 0 tests\n'))
+                        self.assertFalse(unmet(bullet + ' ' + mark % met + ' evidence: FAILED 0, NOT MET 0\n'))
+        # a word that only begins with MET or joins a continuation, a PASS, a task item and a struck-through, bracketed or quoted MET do not decide the item
+        for item in ('- Metrics: FAILED 2', '- METHOD: FAIL x', '- MET-based: FAIL x', '- MET_RUN: NOT MET', '- PASS: FAIL fast is used', '- PASSED: NOT MET', '- [x] MET: FAILED',
+                     '- ~~MET~~: FAILED', '- (MET): FAILED'):
+            with self.subTest(item=item):
+                self.assertTrue(unmet(item + '\n'))
+        # an item that starts with an unmet or a not yet due word is unmet whatever follows it
+        for item in ('- NOT MET: failures 0', '- **FAIL**: failures 0', '- PENDING: failures 0', '- Pending review: skipping 2'):
+            with self.subTest(item=item):
+                self.assertTrue(unmet(item + '\n'))
+        # after a colon an unmet word is the whole word, in any case and through emphasis and inline code, whichever colon of the item it follows
+        for word in ('NOT MET', 'not met', 'OWED', 'owed', 'FAIL', 'Failed', 'FAILS', 'FAILURE', 'FAILING', 'SKIP', 'skip', 'SKIPS', 'SKIPPED', 'ERROR', 'Errors'):
+            for mark in marks:
+                with self.subTest(word=word, mark=mark):
+                    self.assertTrue(unmet('- Result: ' + mark % word + ': no RED\n'))
+                    self.assertTrue(unmet('- **Result:** ' + mark % word + ' (x): y: z\n'))
+                    self.assertTrue(unmet('- a: b: ' + mark % word + ' x: y\n'))
+        for word in ('failures', 'Failures', 'FAILURES', 'skipping', 'SKIPPING', 'failed-over', 'FAILED-OVER', 'FAIL-CLOSED', 'failure-rate', 'fail_fast', 'SKIP_CR', 'failover', 'FAILSAFE',
+                     'skipper', 'ERRORED', 'ERROR_CODE', 'OWED_ITEMS'):
+            for mark in ('%s', '*%s*', '`%s`'):
+                with self.subTest(other_word=word, mark=mark):
+                    self.assertFalse(unmet('- Result: ' + mark % word + ' x\n'))
+                    self.assertFalse(unmet('- Result: ' + mark % word + ': ok\n'))
+        # only a FAIL joined by a hyphen is another word: the other unmet words stay unmet before a hyphen and its continuation
+        for word in ('OWED-operator', 'SKIPPED-no-vm', 'NOT MET-x', 'ERROR-CODE', 'SKIP-CI'):
+            with self.subTest(hyphen_joined=word):
+                self.assertTrue(unmet('- Result: ' + word + ' x\n'))
+        # a word at the start of an item or of a table cell is still read by its beginning
+        for text in ('- failures 3\n', '- skipping 2\n', '- failed-over x\n', '| station check | FAILURE | main=aaaa | ok |\n', '| station check | failures 0 | main=aaaa | ok |\n'):
+            with self.subTest(text=text):
+                self.assertTrue(unmet(text))
 
     def test_the_evidence_of_a_met_row_never_reads_as_not_yet_due(self):
         for evidence in ('TBD field removed', 'WAITING room test passed', 'PENDING count was 0', 'PENDING rows: none', 'pending: none', 'pending (0)',
