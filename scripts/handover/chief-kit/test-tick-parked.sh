@@ -148,7 +148,7 @@ pd() {
     local docarg=()
     [ -z "$2" ] || docarg=(--doc "$2")
     NEXT_DISPATCH_MIRROR="$RM" TICK_STATE_DIR="$RS" HIMMEL_RELEASE_STATE_DIR="$1" READINESS_NOW_EPOCH=$RDN DOC='' \
-        bash "$SUT" --pool-dispositions "${docarg[@]}" < "$3" 2> /dev/null  # read-sink-ok: a snapshot fixture this suite wrote under its own temp root
+        bash "$SUT" --pool-dispositions ${docarg[@]+"${docarg[@]}"} < "$3" 2> /dev/null  # read-sink-ok: a snapshot fixture this suite wrote under its own temp root
 }
 rtick() {
     cp "$3" "$RS/tick-pool-$(printf '%s\n%s' "$(realpath -m "$2")" "$RM" | cksum | cut -d' ' -f1).rows"

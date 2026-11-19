@@ -1050,7 +1050,7 @@ html="$(
 )"
 fline="$(printf '%s\n' "$html" | grep 'data-bank-lift=')"
 contains 'bank lift: a followed standing lift reads VALID until' "$fline" 'VALID until'
-same 'bank lift: a followed standing lift ends · standing' "$(case "$fline" in *' · standing</p>') echo yes ;; *) echo no ;; esac)" yes
+same 'bank lift: a followed standing lift ends · standing' "$(case "$fline" in (*' · standing</p>') echo yes ;; (*) echo no ;; esac)" yes
 lacks 'bank lift: the origin account prefix never reaches the board' "$html" "${FHA:0:4}"
 lacks 'bank lift: the current account prefix never reaches the board' "$html" "${FHB:0:4}"
 

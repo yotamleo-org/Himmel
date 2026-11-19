@@ -15,6 +15,7 @@ BANK_SHA256="41a69b7fea3edf5b44a441119ee2f36bd77eb124d6a9fe7afc074c322053678d"
 GBANK_SHA256="99def8acd8dda6f40716a23eeb9c92790af02bd141227fdb9d31fdbd157e0fb9"
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/staleness-fixture-test.XXXXXX")" || exit 1
+W="$(cd "$W" && pwd -P)" || exit 1
 trap 'for p in "$W"/*/serve.pid; do [ -f "$p" ] && kill "$(cat "$p")" 2>/dev/null; done; rm -rf "$W"' EXIT
 fails=0
 pass() { printf 'ok - %s\n' "$1"; }
@@ -606,7 +607,7 @@ for st in s l; do
     fx serve --index "$(pj "$W/pair-$st" index)" > /dev/null 2>&1
 done
 eq "::stale_pair_red_vs_control (each build's pair.json names its state and the pair, and the served URL)" "s l|$C1 $C2|1" \
-    "$(pj "$W/pair-s" state) $(pj "$W/pair-l" state)|$(pj "$W/pair-s" first) $(pj "$W/pair-s" second)|$(case "$(pj "$W/pair-s" served_url)$(pj "$W/pair-l" served_url)" in http://localhost:*/mcp*http://localhost:*/mcp) echo 1 ;; esac)"
+    "$(pj "$W/pair-s" state) $(pj "$W/pair-l" state)|$(pj "$W/pair-s" first) $(pj "$W/pair-s" second)|$(case "$(pj "$W/pair-s" served_url)$(pj "$W/pair-l" served_url)" in (http://localhost:*/mcp*http://localhost:*/mcp) echo 1 ;; esac)"
 eq "::stale_pair_red_vs_control (the gold document's evidence is new at the second commit: absent at the first, present at the second)" "0|1" \
     "$(git -C "$R" show "$(pj "$W/pair-s" first):$PGOLD" | grep -c -F "$PEVID")|$(git -C "$R" show "$(pj "$W/pair-s" second):$PGOLD" | grep -c -F "$PEVID")"
 eq "::stale_pair_red_vs_control (not vacuous: text both commits hold is found through both served indexes)" "$PGOLD|$PGOLD" \

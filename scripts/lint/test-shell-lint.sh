@@ -467,6 +467,24 @@ EOF
 OUT13="$(bash "$LINT" "$B32" 2>&1)"
 if grepq "$OUT13" -F '[bash32]'; then pass "bash32 flags declare -A"; else fail "bash32 should flag declare -A" "$OUT13"; fi
 
+printf '\nCase 13b: bash32 flags a case arm in a command substitution without its leading paren\n'
+B32C="$TMP_ROOT/b32c.sh"
+{
+    printf '%s\n' '#!/usr/bin/env bash' 'set -uo pipefail' 'v=a'
+    printf 'x="\044(case "\044v" in *a*) echo y ;; esac)"\n'
+} > "$B32C"
+OUT13B="$(bash "$LINT" "$B32C" 2>&1)"
+if grepq "$OUT13B" -F '[bash32]'; then pass "bash32 flags an unparenthesised case arm in command substitution"; else fail "bash32 should flag an unparenthesised case arm in command substitution" "$OUT13B"; fi
+B32P="$TMP_ROOT/b32p.sh"
+cat > "$B32P" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+v=a
+x="$(case "$v" in (*a*) echo y ;; (*) echo n ;; esac)"
+EOF
+OUT13C="$(bash "$LINT" "$B32P" 2>&1)"
+if grepq "$OUT13C" -F '[bash32]'; then fail "bash32 should not flag the leading-paren case form" "$OUT13C"; else pass "bash32 leaves the leading-paren case form alone"; fi
+
 # Case 14: [echo-e] — echo -e is flagged.
 printf '\nCase 14: echo-e detection\n'
 EFLAG="$TMP_ROOT/eflag.sh"
