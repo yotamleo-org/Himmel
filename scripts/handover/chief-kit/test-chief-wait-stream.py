@@ -64,6 +64,45 @@ else:
 sys.exit(mod.main())
 '''
 
+# Runs the supervisor and ends it the way SIGKILL does (no cleanup) at one point of its launch window, between starting the
+# waiter child and publishing the child's pid. `stall` only pauses there, as a slow but live supervisor does.
+LAUNCH_WINDOW = r'''
+import importlib.util, os, sys, time
+spec = importlib.util.spec_from_file_location('cws', sys.argv[1])
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+point = sys.argv[2]
+sup = m.Supervisor(sys.argv[3], sys.argv[4:])
+real_identity, real_atomic, real_publish = m.identity, m.atomic, m.Supervisor.publish
+stalled = []
+
+
+def identity(pid):
+    if sup.proc is not None and pid == sup.proc.pid:
+        if point == 'identity':
+            os._exit(137)
+        if point == 'stall' and not stalled:
+            stalled.append(1)
+            time.sleep(2.5)
+    return real_identity(pid)
+
+
+def atomic(path, data):
+    if point == 'publish' and str(path).endswith('.wait.stream') and sup.proc is not None and f'child={sup.proc.pid} ' in data:
+        os._exit(137)
+    return real_atomic(path, data)
+
+
+def publish(self):
+    real_publish(self)
+    if point == 'after-publish' and self.proc is not None and self.data.get('child') == self.proc.pid:
+        os._exit(137)
+
+
+m.identity, m.atomic, m.Supervisor.publish = identity, atomic, publish
+sys.exit(sup.run())
+'''
+
 
 class StreamFixture(unittest.TestCase):
     def setUp(self):
@@ -460,6 +499,73 @@ echo 'HANDLED close-wrapped'
         finally:
             unrelated.terminate()
             unrelated.wait()
+
+    def waiters(self):
+        """Pids of the waiter script run for this inbox, however far its start has come."""
+        found = []
+        for entry in Path('/proc').iterdir():
+            if entry.name.isdigit():
+                try:
+                    argv = (entry / 'cmdline').read_bytes().split(b'\0')
+                except OSError:
+                    continue
+                if os.fsencode(str(self.inbox)) in argv and any(b'chief-wait.sh' in a for a in argv):
+                    found.append(int(entry.name))
+        return found
+
+    def kill_waiters(self):
+        for pid in self.waiters():
+            try:
+                os.killpg(pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+
+    def launch_window(self, point):
+        wrapper = self.root / 'launch-window.py'
+        wrapper.write_text(LAUNCH_WINDOW)
+        output = self.root / ('launch-' + point)
+        with output.open('w') as out:
+            p = subprocess.Popen([sys.executable, '-I', str(wrapper), str(HERE / 'chief-wait-stream.py'), point, str(self.inbox),
+                                  '--doc', str(self.doc), '--workers-from', str(self.fleet)],
+                                 env=self.env, stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
+        self.procs.append((p, output))
+        self.addCleanup(self.kill_waiters)
+        return p, output
+
+    def check_a_supervisor_killed_in_the_launch_window_leaves_no_orphan_waiter(self, point):
+        p, _ = self.launch_window(point)
+        self.assertEqual(p.wait(timeout=10), 137)
+        end = time.monotonic() + 5
+        while self.waiters() and time.monotonic() < end:
+            time.sleep(.05)
+        self.assertEqual(self.waiters(), [], 'a waiter outlived the supervisor that was killed while launching it')
+        again, out = self.start()
+        self.until(lambda: self.state().get('sup') == str(again.pid))
+        self.inbox.write_text('after the killed launch\n')
+        self.until(lambda: 'WAKE#1 telegram' in out.read_text())
+        self.assertNotIn('STREAM-REFUSED', out.read_text())
+        self.assertIn('W\t1\t', self.path('wakes').read_text())
+        self.stop(again)
+
+    def test_killed_before_the_child_pid_is_known_leaves_no_orphan_waiter(self):
+        self.check_a_supervisor_killed_in_the_launch_window_leaves_no_orphan_waiter('identity')
+
+    def test_killed_while_publishing_the_child_pid_leaves_no_orphan_waiter(self):
+        self.check_a_supervisor_killed_in_the_launch_window_leaves_no_orphan_waiter('publish')
+
+    def test_killed_right_after_publishing_the_child_pid_leaves_no_orphan_waiter(self):
+        self.check_a_supervisor_killed_in_the_launch_window_leaves_no_orphan_waiter('after-publish')
+
+    def test_a_slow_live_supervisor_keeps_its_waiter_waiting_for_the_publish(self):
+        # The launch handshake has no clock: a supervisor that is alive but slow to publish still gets its waiter.
+        p, out = self.launch_window('stall')
+        self.armed()
+        self.until(lambda: self.state().get('child', '0') != '0', seconds=10)
+        child = self.state()['child']
+        self.assertTrue(Path(f'/proc/{child}').exists(), 'the waiter gave up before its pid was published')
+        self.inbox.write_text('after the slow publish\n')
+        self.until(lambda: 'WAKE#1 telegram' in out.read_text())
+        self.stop(p)
 
     def test_busy_bound_kills_owned_child_and_reports_hang(self):
         self.script('tick', 'sleep 3\n')

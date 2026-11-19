@@ -406,14 +406,23 @@ class Supervisor:
         part = str(self.path(f'part-{self.arm}-{self.launches}'))
         env = dict(os.environ, CHIEF_WAIT_STREAM_SERVICE='1')
         env.setdefault('CHIEF_WAIT_POLL_SEC', '0.2')
+        # The child blocks on its stdin until its pid is published and then becomes the waiter; if this process dies
+        # first the pipe closes and the child exits before it holds anything.
+        gate = 'read -r _ || exit 1; exec bash "$@" </dev/null'
         with open(part, 'a') as out:
-            self.proc = subprocess.Popen(['bash', os.getenv('CHIEF_WAIT_STREAM_CHILD', str(HERE / 'chief-wait.sh')),
-                                          self.inbox, *self.args], stdin=subprocess.DEVNULL,
+            self.proc = subprocess.Popen(['bash', '-c', gate, 'chief-wait-gate',
+                                          os.getenv('CHIEF_WAIT_STREAM_CHILD', str(HERE / 'chief-wait.sh')),
+                                          self.inbox, *self.args], stdin=subprocess.PIPE,
                                          stdout=out, stderr=out, env=env, start_new_session=True, close_fds=True)
         self.adopted = False
         self.data.update(child=self.proc.pid, child_start=identity(self.proc.pid), part=part,
                          safe=time.time(), handoff='-')
         self.publish()
+        try:
+            self.proc.stdin.write(b'go\n')
+            self.proc.stdin.close()
+        except BrokenPipeError:
+            pass  # the child already exited; the run loop reads its status
 
     def run(self):
         result = self.prepare()
