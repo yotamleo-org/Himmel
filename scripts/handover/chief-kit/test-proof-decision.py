@@ -313,6 +313,67 @@ class ChiefDecision(unittest.TestCase):
         self.assertEqual(self.rows()[2]['outcome']['status'], 'Done')
         self.assertTrue(self.rows()[2]['outcome']['version_pending'])
 
+    def step(self, text, actor):
+        return subprocess.check_output(['bash', str(HERE / 'owe.sh'), 'add', '--bucket', str(self.b),
+            '--chief', 'chief', '--kind', 'step', '--key', 'HIMMEL-9848', '--text', text,
+            '--metadata', json.dumps({'actor': actor, 'action': 'next-step'})], text=True,
+            env={**os.environ, 'OWE_NOW_EPOCH': '1794860000'}).strip()
+
+    def closed_refs(self):
+        return {row['ref'] for row in self.rows() if row['op'] == 'close'}
+
+    def test_close_with_a_mixed_code_and_proof_remainder_discharges_only_the_proof_part(self):
+        (self.b / 'owed.jsonl').unlink()
+        code = self.step('Implement the missing accepted case', 'worker')
+        proof = self.step('Run the live proof', 'proof')
+        self.run_record(env={'OWE_NOW_EPOCH': '1794860000'})
+        record = self.rows()[-1]
+        self.assertEqual(record['owed_refs'], [proof])
+        self.change_decision(identity=record['identity'])
+        for _ in range(2):  # a re-read of the same result cannot erase the code part or close twice
+            r = self.decide('--settle', action_id=record['id'])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(self.closed_refs(), {proof, record['id']})
+        self.assertNotIn(code, self.closed_refs())
+        self.assertEqual([row for row in self.rows() if row.get('id') == code][0]['actor'], 'worker')
+        self.assertEqual(len([row for row in self.rows() if row['op'] == 'close' and row['ref'] == record['id']]), 1)
+
+    def test_an_observation_not_yet_due_cannot_close_and_keeps_its_wake(self):
+        good = self.evidence.read_text()
+        row = self.pending_with(good + '| 24-hour observation | OWED (due 2026-11-25) | window still open | PASS yes |\n')
+        for mode in ('--check', '--settle'):
+            r = self.decide(mode, action_id=row['id'])
+            self.assertNotEqual(r.returncode, 0, r.stdout)
+            self.assertIn('unmet/skipped/error proof row', r.stderr)
+        self.assertEqual(len(self.rows()), 2)
+        self.assertFalse(any(r['op'] == 'close' for r in self.rows()))
+        # the only way forward is a KEEP that names the due wake; it discharges the validation exactly once
+        self.change_decision(verdict='KEEP', next={'actor': 'proof', 'capability': 'read-only proof worker',
+            'text': 'Read the 24-hour observation once its window closes', 'due': '2026-11-25', 'wake': 'observation window closed'})
+        for _ in range(2):
+            r = self.decide('--settle', status='To Do', action_id=row['id'])
+            self.assertEqual(r.returncode, 0, r.stderr)
+        nxt = [r for r in self.rows() if r.get('source_id') == row['id']]
+        self.assertEqual([(r['actor'], r['due'], r['wake']) for r in nxt], [('proof', '2026-11-25', 'observation window closed')])
+        self.assertEqual(len([r for r in self.rows() if r['op'] == 'close' and r['ref'] == row['id']]), 1)
+
+    def test_close_after_cleanup_with_a_busy_chief_is_settled_once_by_a_successor_and_replays(self):
+        code = self.step('Implement the missing accepted case', 'worker')
+        # the busy chief reviewed once and never settled; the wrapped worker's brief is then cleaned up
+        self.assertEqual(self.decide('--check').returncode, 0)
+        self.doc.unlink()
+        self.assertEqual(len(self.rows()), 2)
+        self.assertFalse(any(r['op'] == 'close' for r in self.rows()))
+        # the successor reads the surviving action from the ledger alone and settles it; the predecessor's replay is a re-read
+        listed = json.loads(subprocess.check_output(['bash', str(HERE / 'owe.sh'), 'list', '--bucket', str(self.b), '--json'], text=True))
+        self.assertIn('o1', [r['id'] for r in listed])
+        for _ in range(3):
+            r = self.decide('--settle')
+            self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len([r for r in self.rows() if r['op'] == 'close' and r['ref'] == 'o1']), 1)
+        self.assertNotIn(code, self.closed_refs())
+        self.assertEqual(len(self.rows()), 3)
+
 
 if __name__ == '__main__':
     unittest.main()
