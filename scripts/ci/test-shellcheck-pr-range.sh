@@ -464,6 +464,18 @@ grep -q 'parallel full sweep over [2-9]' "$T/sweep.out" && ok "closure_edge: the
 grep 'scripts/zzr/a\.sh' "$T/stub.log" | grep -q 'scripts/zzr/lib/b\.sh' \
   && ok "closure_edge: a.sh is linted with the lib it sources through \$ROOT/" || bad "closure_edge: a.sh and b.sh split across bins: $(tr '\n' '|' < "$T/stub.log" | cut -c1-300)"
 
+# sweep_cap: a host with many CPUs still sweeps over two bins, because four bins peak past a hosted runner's memory
+mkdir -p "$T/n8"
+printf '#!/bin/sh\necho 8\n' > "$T/n8/nproc"; chmod +x "$T/n8/nproc"
+reset; w .shellcheckrc 'external-sources=true
+# touched
+'; for k in a b c d; do w "scripts/zzcap/$k.sh" '#!/usr/bin/env bash
+echo ok
+'; done; commit_case sweep_cap; : > "$T/stub.log"
+STUB_LOG="$T/stub.log" PATH="$T/n8:$T/bin:$PATH" bash "$SPR" "$BASE" >"$T/sweep.out" 2>&1; rc=$?
+[ "$rc" -eq 0 ] && ok "sweep_cap: rc 0" || bad "sweep_cap: want rc 0, got $rc"
+grep -q 'parallel full sweep over 2 bins' "$T/sweep.out" && ok "sweep_cap: eight CPUs still sweep over two bins" || bad "sweep_cap: not two bins: $(grep 'full sweep' "$T/sweep.out" | head -2 | tr '\n' '|')"
+
 # closure_shebang_ext: an executable file with an extension the hook's file typing does not know is typed by its shebang, so it keeps its source edges.
 reset; w .shellcheckrc 'external-sources=true
 # touched
