@@ -321,13 +321,15 @@
         <p class="blurb">Each job is a crontab entry or scheduled task that you arm on purpose. Nothing arms itself, and the installer only offers the jobs whose requirement holds. <span class="loop-meta">source: cadence-registry.json</span></p>
         <ol class="steps">
           <li class="step manual"><span class="dot" aria-hidden="true">1</span><div><div><b>doctor</b> <span class="sub">daily</span><span class="who">you</span></div><p>Daily health check. Reports only, fixes nothing. Always offered.</p></div></li>
-          <li class="step manual"><span class="dot" aria-hidden="true">2</span><div><div><b>upstream-watch</b> <span class="sub">daily</span><span class="who">you</span></div><p>Scans himmel’s open upstream pull requests and issues; notifies only on a change. Always offered.</p></div></li>
-          <li class="step manual"><span class="dot" aria-hidden="true">3</span><div><div><b>drift-fix</b> <span class="sub">nightly</span><span class="who">you</span></div><p>Bumps pinned dependencies and opens an ordinary pull request. Never merges. Always offered.</p></div></li>
-          <li class="step off"><span class="dot" aria-hidden="true">4</span><div><div><b>pipeline</b> <span class="sub">daily + weekly</span><span class="who">not running</span></div><p>Offered only when you run a companion vault.</p></div></li>
-          <li class="step off"><span class="dot" aria-hidden="true">5</span><div><div><b>qmd</b> <span class="sub">daily</span><span class="who">not running</span></div><p>Offered only when you run a companion vault.</p></div></li>
-          <li class="step off"><span class="dot" aria-hidden="true">6</span><div><div><b>graphmap</b> <span class="sub">hourly</span><span class="who">not running</span></div><p>Offered only when you run a companion vault.</p></div></li>
-          <li class="step off"><span class="dot" aria-hidden="true">7</span><div><div><b>vault-stall</b> <span class="sub">every 15 min</span><span class="who">not running</span></div><p>Offered only when you run a companion vault.</p></div></li>
-          <li class="step off"><span class="dot" aria-hidden="true">8</span><div><div><b>pull-cadence</b> <span class="sub">daily</span><span class="who">not running</span></div><p>Offered only once GOOGLE_HEALTH_REFRESH_TOKEN is set.</p></div></li>
+          <li class="step manual"><span class="dot" aria-hidden="true">2</span><div><div><b>upstream-watch</b> <span class="sub">daily</span><span class="who">you</span></div><p>Scans himmel’s open upstream pull requests and issues; notifies only on a change. Offered on every install profile except starter.</p></div></li>
+          <li class="step manual"><span class="dot" aria-hidden="true">3</span><div><div><b>drift-fix</b> <span class="sub">nightly</span><span class="who">you</span></div><p>Bumps pinned dependencies and opens an ordinary pull request. Never merges. Offered on every install profile except starter.</p></div></li>
+          <li class="step manual"><span class="dot" aria-hidden="true">4</span><div><div><b>security-audit</b> <span class="sub">weekly</span><span class="who">you</span></div><p>A read-only diff of the existing GitHub, Snyk, Arnica and CodeRabbit findings; a source you do not use is skipped. Offered on every install profile except starter.</p></div></li>
+          <li class="step manual"><span class="dot" aria-hidden="true">5</span><div><div><b>rollup</b> <span class="sub">weekly</span><span class="who">you</span></div><p>The velocity, cost and health roll-up that the Fleet Trends tab and the Health page read. No Claude session. Offered on every install profile except starter.</p></div></li>
+          <li class="step off"><span class="dot" aria-hidden="true">6</span><div><div><b>pipeline</b> <span class="sub">daily + weekly</span><span class="who">not running</span></div><p>Offered only when you run a companion vault.</p></div></li>
+          <li class="step off"><span class="dot" aria-hidden="true">7</span><div><div><b>qmd</b> <span class="sub">daily</span><span class="who">not running</span></div><p>Offered only when you run a companion vault.</p></div></li>
+          <li class="step off"><span class="dot" aria-hidden="true">8</span><div><div><b>graphmap</b> <span class="sub">hourly</span><span class="who">not running</span></div><p>Offered only when you run a companion vault.</p></div></li>
+          <li class="step off"><span class="dot" aria-hidden="true">9</span><div><div><b>vault-stall</b> <span class="sub">every 15 min</span><span class="who">not running</span></div><p>Offered only when you run a companion vault.</p></div></li>
+          <li class="step off"><span class="dot" aria-hidden="true">10</span><div><div><b>pull-cadence</b> <span class="sub">daily</span><span class="who">not running</span></div><p>Offered only once GOOGLE_HEALTH_REFRESH_TOKEN is set.</p></div></li>
         </ol>
       </details>
       <details class="sloop">
@@ -339,7 +341,7 @@
           <li class="step off"><span class="dot" aria-hidden="true">3</span><div><div><b>15 behind?</b> <span class="sub">else skip</span><span class="who">not running</span></div><p>Below 15 commits it records a skip and stops. The threshold is fixed in the script, not a setting.</p></div></li>
           <li class="step off"><span class="dot" aria-hidden="true">4</span><div><div><b>Publish PR</b> <span class="sub">chore branch</span><span class="who">not running</span></div><p>Opens or refreshes a pull request with the new graph. Never a direct push.</p></div></li>
           <li class="step off"><span class="dot" aria-hidden="true">5</span><div><div><b>Merge on green</b> <span class="sub">merge-on-green</span><span class="who">not running</span></div><p>merge-on-green refuses without ARMAUTOMERGE; the pull request waits for you.</p></div></li>
-          <li class="step off"><span class="dot" aria-hidden="true">6</span><div><div><b>Semantic pass</b> <span class="sub">weekly</span><span class="who">not running</span></div><p>graphmap is offered only with a companion vault. With claude-cli (Sonnet): draws on your Claude subscription usage budget and skips itself when the budget is nearly spent. GRAPH_CADENCE_SEMANTIC_BACKEND applies when the refresh runs with its semantic step.</p></div></li>
+          <li class="step off"><span class="dot" aria-hidden="true">6</span><div><div><b>Semantic pass</b> <span class="sub">daily 13:20</span><span class="who">not running</span></div><p>graphmap is offered only with a companion vault. With claude-cli (Sonnet): draws on your Claude subscription usage budget and skips itself when the budget is nearly spent. GRAPH_CADENCE_SEMANTIC_BACKEND applies when the refresh runs with its semantic step.</p></div></li>
           <li class="step off"><span class="dot" aria-hidden="true">7</span><div><div><b>Ledger</b> <span class="sub">one line per run</span><span class="who">not running</span></div><p>Every run appends what it did (skipped, refreshed, published, merged or failed); the doctor surfaces failures.</p></div></li>
         </ol>
       </details>
@@ -365,8 +367,8 @@
           <dt class="mono">ARMAUTOMERGE</dt><dd>Gate policy. Arms merge-on-green, the one merge path that waits for green CI and confirmed branch protection. Off, merge-on-green refuses.</dd>
           <dt class="mono">companion vault</dt><dd>Your installer answer about a second-brain vault. The vault jobs (pipeline, qmd, graphmap, vault-stall) are offered only with one.</dd>
           <dt class="mono">vm.mode</dt><dd>Where steps that need proof on a test VM run: the local VM, a remote one over ssh, or none. With none, arming a VM-gated job needs your explicit pick as an acknowledgement.</dd>
-          <dt class="mono">graphmap</dt><dd>Arming this job runs the hourly structural refresh, the weekly semantic refresh and the 6-hourly publish of himmel’s own graph.</dd>
-          <dt class="mono">GRAPH_CADENCE_SEMANTIC_BACKEND</dt><dd>Which model does the graph refresh’s semantic step: claude-cli (default, uses your subscription usage budget) or ollama (local GPU). Any other value is refused before work starts.</dd>
+          <dt class="mono">graphmap</dt><dd>Arming this job runs the hourly structural refresh, the daily semantic refresh and the 6-hourly publish of himmel’s own graph; the vault graph is opt-in.</dd>
+          <dt class="mono">GRAPH_CADENCE_SEMANTIC_BACKEND</dt><dd>Which model does the graph refresh’s semantic step: claude-cli (default, uses your subscription usage budget), claude-api (opt-in: needs the API lane on and an API account) or ollama (local GPU); cli and api are aliases. Any other value is refused before work starts.</dd>
         </dl>
       </details>
     </div>
@@ -538,7 +540,7 @@
         <p>himmel's own map, stored in <code>graphify-out/graph.json</code>. It groups the code into communities and marks its hub nodes, the files many others depend on.</p>
         <ul>
           <li>Ask it: <code>graphify query "…"</code> or <code>graphify explain "…"</code>.</li>
-          <li>A free structural pass reads the code itself. A weekly semantic pass has a model add meaning.</li>
+          <li>A free structural pass reads the code itself. A daily semantic pass has a model add meaning.</li>
           <li>A refreshed graph reaches <code>main</code> only through a pull request that merges on green.</li>
         </ul>
       </div>
@@ -550,7 +552,7 @@
         <h3>The vault graph</h3>
         <p>The same tool run over your companion vault, if you keep one: notes, clips and daily entries linked by topic. This graph stays on your machine and is not committed.</p>
         <ul>
-          <li>Structural pass daily at 00:05; semantic pass weekly, Sunday 13:00.</li>
+          <li>Off by default. Armed with <code>graphmap-cadence.sh arm --luna-only</code>: structural pass daily at 00:05, semantic pass weekly, Sunday 13:00.</li>
           <li>Search finds content; the graph explains how it hangs together.</li>
         </ul>
       </div>
@@ -571,12 +573,12 @@
       </div>
     </div>
 
-    <!-- source: docs/internals/graph-cadence.md (schedule, threshold 15); docs/tooling-catalog.md (AST :15 hourly, semantic Sunday 13:00/13:20) -->
+    <!-- source: docs/internals/graph-cadence.md (schedule, threshold 15); scripts/luna/graphmap-cadence.sh (AST :15 hourly, himmel semantic daily 13:20) -->
     <div class="card timeline" aria-labelledby="tl-h">
       <h3 id="tl-h">One day of graph refresh, once <span class="mono">graphmap</span> is armed</h3>
       <div class="tl-row"><b>Structural pass</b><div><div class="tl-bar" id="tl-ast" aria-label="24 hourly runs"></div><div class="tl-note">Every hour at :15. Free: no model, no subscription usage budget.</div></div></div>
       <div class="tl-row"><b>Refresh and publish</b><div><div class="tl-bar" id="tl-pub" aria-label="4 runs a day"></div><div class="tl-note">Every 6 hours at :35. Publishes only when the graph is 15 or more commits behind <code>main</code>; otherwise it records a skip.</div></div></div>
-      <div class="tl-row"><b>Semantic pass</b><div><div class="tl-bar" id="tl-sem" aria-label="weekly"></div><div class="tl-note">Weekly, Sunday 13:20 for himmel. Uses your Claude subscription usage budget and skips itself when the budget is nearly spent.</div></div></div>
+      <div class="tl-row"><b>Semantic pass</b><div><div class="tl-bar" id="tl-sem" aria-label="daily"></div><div class="tl-note">Daily, 13:20 for himmel. Uses your Claude subscription usage budget and skips itself when the budget is nearly spent.</div></div></div>
     </div>
   </section>
 
@@ -700,8 +702,10 @@
         var stall = !v ? 'off' : (s.vm === 'none' ? 'gated' : 'manual');
         return [
           { k: 'doctor', c: 'doctor', l: 'doctor', sub: 'daily', st: 'manual', n: 'Daily health check. Reports only, fixes nothing. Always offered.' },
-          { k: 'upstream-watch', c: 'upstream-watch', l: 'upstream-watch', sub: 'daily', st: 'manual', n: 'Scans himmel’s open upstream pull requests and issues; notifies only on a change. Always offered.' },
-          { k: 'drift-fix', c: 'drift-fix', l: 'drift-fix', sub: 'nightly', st: 'manual', n: 'Bumps pinned dependencies and opens an ordinary pull request. Never merges. Always offered.' },
+          { k: 'upstream-watch', c: 'upstream-watch', l: 'upstream-watch', sub: 'daily', st: 'manual', n: 'Scans himmel’s open upstream pull requests and issues; notifies only on a change. Offered on every install profile except starter.' },
+          { k: 'drift-fix', c: 'drift-fix', l: 'drift-fix', sub: 'nightly', st: 'manual', n: 'Bumps pinned dependencies and opens an ordinary pull request. Never merges. Offered on every install profile except starter.' },
+          { k: 'security-audit', c: 'security-audit', l: 'security-audit', sub: 'weekly', st: 'manual', n: 'A read-only diff of the existing GitHub, Snyk, Arnica and CodeRabbit findings; a source you do not use is skipped. Offered on every install profile except starter.' },
+          { k: 'rollup', c: 'rollup', l: 'rollup', sub: 'weekly', st: 'manual', n: 'The velocity, cost and health roll-up that the Fleet Trends tab and the Health page read. No Claude session. Offered on every install profile except starter.' },
           vaultJob('pipeline', 'pipeline', 'daily + weekly', 'Daily fetch, harvest and synthesis over the vault; the one job the installer recommends.', false),
           vaultJob('qmd', 'qmd', 'daily', 'Re-indexes your notes for search so the index never goes stale.', false),
           vaultJob('graphmap', 'graphmap', 'hourly', s.graphmap ? 'Armed: the graph refresh runs on its own (see the Graph refresh loop).' : 'Not armed: the graphs refresh only when you run /graph-refresh.', s.graphmap),
@@ -722,7 +726,7 @@
           { k: 'threshold', l: '15 behind?', sub: 'else skip', st: armed ? 'gated' : 'off', n: 'Below 15 commits it records a skip and stops. The threshold is fixed in the script, not a setting.' },
           { k: 'publish', l: 'Publish PR', sub: 'chore branch', st: a, n: 'Opens or refreshes a pull request with the new graph. Never a direct push.' },
           { k: 'merge', l: 'Merge on green', sub: 'merge-on-green', st: !armed ? 'off' : (s.automerge ? 'auto' : 'blocked'), n: s.automerge ? 'Merges once CI passes.' : 'merge-on-green refuses without ARMAUTOMERGE; the pull request waits for you.' },
-          { k: 'semantic', l: 'Semantic pass', sub: 'weekly', st: a, n: why + (s.backend === 'ollama'
+          { k: 'semantic', l: 'Semantic pass', sub: 'daily 13:20', st: a, n: why + (s.backend === 'ollama'
             ? 'With the semantic step on a local GPU (ollama): no subscription usage budget check.'
             : 'With claude-cli (Sonnet): draws on your Claude subscription usage budget and skips itself when the budget is nearly spent.') + ' GRAPH_CADENCE_SEMANTIC_BACKEND applies when the refresh runs with its semantic step.' },
           { k: 'ledger', l: 'Ledger', sub: 'one line per run', st: armed ? 'auto' : 'off', n: 'Every run appends what it did (skipped, refreshed, published, merged or failed); the doctor surfaces failures.' }
@@ -744,14 +748,14 @@
     automerge: { t: 'ARMAUTOMERGE', d: 'Gate policy. Arms merge-on-green, the one merge path that waits for green CI and confirmed branch protection. Off, merge-on-green refuses.' },
     vault: { t: 'companion vault', d: 'Your installer answer about a second-brain vault. The vault jobs (pipeline, qmd, graphmap, vault-stall) are offered only with one.' },
     vm: { t: 'vm.mode', d: 'Where steps that need proof on a test VM run: the local VM, a remote one over ssh, or none. With none, arming a VM-gated job needs your explicit pick as an acknowledgement.' },
-    graphmap: { t: 'graphmap', d: 'Arming this job runs the hourly structural refresh, the weekly semantic refresh and the 6-hourly publish of himmel’s own graph.' },
+    graphmap: { t: 'graphmap', d: 'Arming this job runs the hourly structural refresh, the daily semantic refresh and the 6-hourly publish of himmel’s own graph; the vault graph is opt-in.' },
     mCodex: { t: 'codex mode', d: 'The codex critic’s row in critics.json. As shipped it is hard and required: it must pass at the head, and absent on a machine it still counts, as unavailable, which holds the merge.' },
     mClaude: { t: 'claude mode', d: 'The Claude API critic’s row. As shipped it is advisory: its open findings are recorded and print a NOTE until its precision reaches the configured floor, then it gates as hard. It is absent while the Claude API lane is off, so it leaves the set. Change any mode for one machine in critics.local.json.' },
     mRabbit: { t: 'coderabbit mode', d: 'The CodeRabbit app’s row. As shipped it is best-effort: an open thread holds the merge, but a missing or rate-limited review is relaxed to a NOTE. Absent means the app is not armed here.' },
     review: { t: 'review', d: 'Set "review": "no_code_review" in critics.json to say on purpose that no reviewer gates this repo, so CI alone decides. Without it, a set with no hard reviewer left is a config error and the gate refuses.' },
     rabbit: { t: 'CodeRabbit right now', d: 'Not a setting: try what a rate limit does. A best-effort CodeRabbit is relaxed and the head moves on; a hard one holds the merge.' },
     ciRelease: { t: 'CI release', d: 'Opt-in per repository. The heavy CI jobs wait for the ci:go label, which the station adds once the review gate passes at the head. Off, CI runs on every push. It never lets anything merge.' },
-    backend: { t: 'GRAPH_CADENCE_SEMANTIC_BACKEND', d: 'Which model does the graph refresh’s semantic step: claude-cli (default, uses your subscription usage budget) or ollama (local GPU). Any other value is refused before work starts.' }
+    backend: { t: 'GRAPH_CADENCE_SEMANTIC_BACKEND', d: 'Which model does the graph refresh’s semantic step: claude-cli (default, uses your subscription usage budget), claude-api (opt-in: needs the API lane on and an API account) or ollama (local GPU); cli and api are aliases. Any other value is refused before work starts.' }
   };
 
   var current = 'overnight';

@@ -87,7 +87,7 @@
         { "name": "Vault search (qmd)", "status": "shipped", "plugin": "qmd@himmel", "detail": "<p>Local search over your vault. Re-indexing is its own job: arm only the pipeline and your search goes stale.</p>" },
         { "name": "Clip triage (obsidian-triage)", "status": "shipped", "plugin": "obsidian-triage@himmel", "detail": "<p><code>/triage-clips</code> summarizes and tags Web Clipper output in <code>Clippings/</code> and moves action items to today's daily note. <code>/synthesize-clips</code> finds patterns across clips.</p>" },
         { "name": "Obsidian skills (claude-obsidian)", "status": "shipped", "plugin": "claude-obsidian@himmel", "detail": "<p>Comes from upstream, pinned to a release tag; not a himmel fork.</p>" },
-        { "name": "Note graph (graphify)", "status": "shipped", "plugin": "graphify@himmel", "detail": "<p>A map of how your notes link to each other, kept current by the graphmap job.</p>" },
+        { "name": "Note graph (graphify)", "status": "shipped", "plugin": "graphify@himmel", "detail": "<p>A map of how your notes link to each other, kept current once you arm the vault graph with <code>graphmap-cadence.sh arm --luna-only</code>.</p>" },
         { "name": "Memory compounding: <code>/memory-compound</code>", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Claude Code keeps a memory index for each project and loads it into every session, within a fixed budget. When the index nears that budget, run <code>/memory-compound</code> in a session of its own. It moves the lasting lessons into vault notes, checks that qmd search finds them, and only then trims the index. The vault notes land on a branch for you to review and merge. It runs when you ask; there is no schedule.</p>" }
       ],
       "example": {
@@ -99,7 +99,7 @@
       },
       "prereqs": ["Levels 0 and 1.", "A vault made from <code>templates/luna-second-brain/</code>.", "bun, for qmd search (about 2.1 GB of models).", "cron on Linux or macOS."],
       "setup_time": null,
-      "cost": ["Disk: about 2.1 GB for search models.", "Search re-indexing and the hourly graph refresh: no model usage.", "The pipeline's summaries and the weekly graph pass: your Claude usage, per run."],
+      "cost": ["Disk: about 2.1 GB for search models.", "Search re-indexing and the graph's structural refresh: no model usage.", "The pipeline's summaries and the graph's semantic pass: your Claude usage, per run."],
       "turn_off": "One command per job; every job script takes <code>arm</code>, <code>status</code> and <code>disarm</code>, for example <code>bash ~/himmel/scripts/luna/pipeline-cadence.sh disarm</code>.",
       "docs": [
         { "label": "Second brain (luna)", "href": "luna/" },
@@ -151,7 +151,6 @@
         { "name": "<code>/cr-scores</code> critic scorecard", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Every <code>/pr-check</code> round records its findings and verdicts in a review ledger on your machine. <code>/cr-scores</code> shows, for each critic, how many of its findings held up and how often it was available, and says when a critic is worth dropping.</p>" },
         { "name": "<code>/cr-tune</code> tuning proposals", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Drafts tuning proposals from the findings that were disproved, each citing its ledger rows, and never applies them itself.</p>" },
         { "name": "<code>/cr-learnings-refresh</code> known findings", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Updates the list of known findings from the ledger, and from a CodeRabbit learnings export if you use CodeRabbit.</p>" },
-        { "name": "Free hermes critics", "status": "beta", "detail": "<p>Critics on free model tiers, called the same way. Early: works, still changing.</p>" },
         { "name": "Multi-model front end", "status": "roadmap", "detail": "<p>One place to drive Claude and the other model families side by side. Not built yet.</p>" }
       ],
       "example": {
@@ -214,9 +213,9 @@
       "components": [
         { "name": "Session handover", "status": "shipped", "plugin": "handover@himmel", "detail": "<p><code>/handover</code> at the end of a session saves what you did and where you left off; a fresh session resumes from it.</p>" },
         { "name": "Shifts while you are away: <code>/afk-shift</code>", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Starts a shift that keeps working through the queue you leave it, within the usage the preflight allows, and stops when the queue is empty or the usage runs low.</p>" },
-        { "name": "Morning report", "status": "shipped", "detail": "<p><code>/morning-report</code> sums up what merged, what failed and what waits on you since you left.</p>" },
+        { "name": "Morning report", "status": "shipped", "detail": "<p><code>/morning-report</code> sums up what merged, what failed and what waits on you since you left. A template (<code>MORNING_REPORT_TEMPLATE</code>, or <code>morning-report.tmpl</code> in your handover root) picks its sections and their order.</p>" },
         { "name": "Monitoring set up for you", "status": "roadmap", "detail": "<p>Dashboards for the fleet's health, installed and wired by the installer. Not built yet.</p>" },
-        { "name": "A morning report you can shape", "status": "roadmap", "detail": "<p>Choose what the report covers and where it goes. Not built yet.</p>" }
+        { "name": "A morning report sent where you choose", "status": "roadmap", "detail": "<p>Choose where the report goes. Not built yet.</p>" }
       ],
       "example": {
         "title": "End a session so the next one can pick up",
@@ -252,7 +251,7 @@
         { "name": "Session run view", "status": "shipped", "detail": "<p><code>himmelctl ui</code> serves a local page on <code>127.0.0.1</code> behind a per-launch key. Its Fleet page lists every live Claude session; click one to follow it as it runs.</p>" },
         { "name": "Fleet board", "status": "beta", "detail": "<p>With a chief running, the same page groups the workers under it and shows each one's stage and whether it waits on you. Works, still changing.</p>" },
         { "name": "Release manager", "status": "beta", "detail": "<p>A session that rules which tickets go into each version and reports the burn-down. Works, still changing.</p>" },
-        { "name": "Trends over days and weeks", "status": "roadmap", "detail": "<p>Throughput and cost per merged change, over time, from real runs. Not built yet.</p>" },
+        { "name": "Trends over days and weeks", "status": "shipped", "detail": "<p>The Trends tab on the Fleet page shows fleet velocity, fleet health, tool health and roadmap reality over time, fed by the weekly roll-up job.</p>" },
         { "name": "Installable chief module", "status": "roadmap", "detail": "<p>The chief and its scripts as one installable part for your own project. Not built yet.</p>" }
       ],
       "example": {
@@ -279,7 +278,7 @@
     "shown": [
       { "id": "pipeline", "what": "Daily: pulls in what you clipped and writes summaries into the vault. Uses your Claude usage.", "offered_when": "a vault exists" },
       { "id": "qmd", "what": "Daily: re-indexes the vault for search. No model usage.", "offered_when": "a vault exists" },
-      { "id": "graphmap", "what": "Hourly: refreshes the map of links between notes, no model usage; a weekly deeper pass uses Claude.", "offered_when": "a vault exists" },
+      { "id": "graphmap", "what": "Hourly: refreshes himmel's code graph, no model usage; a daily deeper pass uses Claude. The vault-note graph is opt-in.", "offered_when": "a vault exists" },
       { "id": "vault-stall", "what": "Every 15 minutes: notices when the vault stops saving itself to git, clears a few known harmless causes, and alerts you.", "offered_when": "a vault exists" },
       { "id": "doctor", "what": "Daily health check of your install; reports, fixes nothing.", "offered_when": "always" }
     ],

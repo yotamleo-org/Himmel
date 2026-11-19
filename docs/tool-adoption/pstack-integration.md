@@ -11,7 +11,7 @@ measured POC. Verdicts live in [`registry.md`](registry.md) once the POC has run
 
 | Skill | Target flow | Value hypothesis | Overlap | POC? |
 |---|---|---|---|---|
-| `blast-radius` | `/pr-check` step 3.5 (reviewer stage), opt-in | Surfaces breakage outside the diff by running real code; the CR panel reads the diff, so cross-file breakage is its blind spot | CR panel and `pr-review-toolkit` `code-reviewer` (diff-scoped); `impacted-suites.sh` finds suites by text reference, not by behaviour | **Yes** |
+| `blast-radius` | `/pr-check` step 3.5 (reviewer stage); default for guard and gate diffs, opt-in elsewhere | Surfaces breakage outside the diff by running real code; the CR panel reads the diff, so cross-file breakage is its blind spot | CR panel and `pr-review-toolkit` `code-reviewer` (diff-scoped); `impacted-suites.sh` finds suites by text reference, not by behaviour | **Yes** |
 | `correct` | Review-fix round; repeated-mistake classes become gates | Turns a class of repeated review findings into a lint or test instead of prose | CR learnings refresh (`cr-learnings-refresh`), the "second drift escalates to a hook" rule in `CLAUDE.md` | No: process skill, no single flow to wire |
 | `create-verification-skill` | RED-first worker contract; `docs/internals/testing.md` | A project-local skill that drives the harness like a user gives workers a scripted way to prove behaviour | `scripts/ci/run-shell-tests.sh`, `quiet-run` | No: needs a target app; himmel has no single target app |
 | `maintain-verification-skill` | Periodic upkeep of the above | Keeps the feature map honest | Only meaningful once `create-verification-skill` has a target | No: depends on the row above |
@@ -31,8 +31,10 @@ never install `michael-denyer/pstack-claude`.
 
 Statechart's runtime, references, tests and fixtures are included in full;
 [`VENDORED.md`](../../marketplace/plugins/pstack/VENDORED.md) records adaptations.
-Java and tla2tools are optional prerequisites for statechart, provisioned only
-on a VM. Missing prerequisites stop the check, not the rest of the plugin.
+Java and tla2tools are optional prerequisites for statechart;
+`scripts/machine-setup/setup-statechart.sh --install` provisions them. Use a VM
+for an unvalidated runtime or destructive replay. Missing prerequisites stop
+the check, not the rest of the plugin.
 Use absolute `JAVA` and `TLA2TOOLS` paths and verify the jar hash in the plugin
 README. The entry point is
 `marketplace/plugins/pstack/skills/statechart/scripts/statechart`.
@@ -73,8 +75,9 @@ not exist yet.
 (the one variable the existing resolver and allow rule already cover) the
 orchestrating session applies the `blast-radius` procedure to the diff after
 adjudicating the panel, and records any proven breakage as a normal `[claude-N]`
-finding. That value runs no agent matrix. Default off: the unset path is
-unchanged. Follow-up on the default: a panel comparison. Nothing
+finding. That value runs no agent matrix. Guard and gate diffs get the pass by
+default, and gate 4f of `clear-review-marker.sh` requires its ledger row;
+`CR_CLAUDE_AGENTS=blast-radius-off` records a skip instead. Nothing
 in `scripts/lanes/plugin-profiles.json` changes; the procedure is read from the
 vendored skill file, so it works in a worker that has pstack disabled.
 

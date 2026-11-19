@@ -71,9 +71,7 @@ date: 2026-05-18T14:32:00Z
 type: session
 repo: himmel
 branch: feat/end-session-wiki-schema
-worktree: C:\Users\<user>\Documents\github\himmel\.claude\worktrees\agent-af47e58229f29c811
-epic: "#7"
-task: "#25"
+worktree: /home/<user>/Documents/github/himmel/.claude/worktrees/agent-af47e58229f29c811
 duration_minutes: 47
 files_touched: 2
 tags:
@@ -96,11 +94,11 @@ crystallized_at:
 | `repo` | string | yes | `git remote get-url origin` basename, fallback `path.basename(cwd)` | n/a (the fallback ensures a value) |
 | `branch` | string | yes | `git -C $cwd branch --show-current`, fallback `"detached"` | n/a (the fallback ensures a value) |
 | `worktree` | string (absolute path) | yes | `cwd` from `SessionEnd` payload | n/a (always present in the payload) |
-| `epic` | string (`"#N"` form, quoted to dodge YAML comment rules) | optional | parsed from branch name `(feat\|fix\|chore)(-epic)?-N` OR from the handover repo's `<USER_SLUG>/<repo>/epics/<KEY-or-#N>-*` active marker | **OMIT FIELD** entirely when not derivable |
-| `task` | string (`"#N"` form) | optional | parsed from branch / commit-msg trailer / latest `next-session-*.md` | **OMIT FIELD** entirely when not derivable |
+| `epic` | string (`"#N"` form, quoted to dodge YAML comment rules) | optional | reserved: the hook does not write it | absent |
+| `task` | string (`"#N"` form) | optional | reserved: the hook does not write it | absent |
 | `duration_minutes` | integer | yes | `(SessionEnd time) - (first transcript event time)`, rounded to nearest minute | If transcript unreadable: write `0` (sentinel) |
-| `files_touched` | integer | yes | `git -C $cwd diff --name-only HEAD@{session-start}..HEAD \| wc -l`, count only | If git unreadable: write `0` |
-| `tags` | list of strings | yes | always includes `session` and `autocapture`; may append `epic-N`, `task-N` when those are known | n/a (the defaults guarantee a non-empty list) |
+| `files_touched` | integer | yes | `git -C $cwd diff --name-only HEAD`, counted: the uncommitted and staged changes at session end (committed work counts 0) | If git unreadable: write `0` |
+| `tags` | list of strings | yes | `session` and `autocapture` | n/a (the defaults guarantee a non-empty list) |
 | `ai-first` | boolean | yes | constant `true` (Luna vault AI-First Vault Rule §0) | n/a |
 | `session_id` | string | yes | `session_id` from `SessionEnd` payload | Write empty string `""` if absent in payload |
 | `source` | string | yes | `"live"` for hook captures; `"claude-backfill"` for backfill tool writes | n/a (always set by the writer) |
