@@ -291,6 +291,10 @@ work=$(mktemp -d)
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
+export HOME="$work/home" USERPROFILE="$work/home"
+mkdir -p "$HOME"
+unset CLAUDE_CONFIG_DIR
+
 # build_path <stub_dir> <present_tools...> -- <absent_tools...> (copied from
 # the sibling suites: link the named present tools off the CURRENT PATH into
 # <stub_dir>, then echo a PATH with the stub prepended and the named absent
@@ -609,6 +613,80 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 done
 echo "ok: settings-key dot-path + verifyScript (wiring-statusline) — present/absent, missing script degrades"
 
+sl_root="$work/sl"; mkdir -p "$sl_root"
+sl_fixture() {
+  local d="$sl_root/$1"
+  mkdir -p "$d/target/.claude" "$d/home/.claude" "$d/cfg"
+  [ "$2" = "-" ] || printf '%s' "$2" > "$d/target/.claude/settings.json"
+  [ "$3" = "-" ] || printf '%s' "$3" > "$d/target/.claude/settings.local.json"
+  [ "$4" = "-" ] || printf '%s' "$4" > "$d/home/.claude/settings.json"
+  [ "$5" = "-" ] || printf '%s' "$5" > "$d/cfg/settings.json"
+}
+sl_probe() {
+  local d="$sl_root/$1" cfg=""
+  [ "$3" = "1" ] && cfg="$(winpath "$d/cfg")"
+  "$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
+const item = process.argv[1] ? { id: 'synthetic', probe: JSON.parse(process.argv[1]) } : manifest.items.find((i) => i.id === 'himmel-ops-plugin');
+const env = { HOME: '$(winpath "$d/home")', PATH: process.env.PATH };
+if ('$cfg') env.CLAUDE_CONFIG_DIR = '$cfg';
+const ctx = { repoRoot: '$repo_root_w', targetPath: '$(winpath "$d/target")', scope: '$2', env };
+if ('${4:-0}' === '1') ctx.scopeFileOnly = true;
+console.log(JSON.stringify(runProbe(item, ctx)));
+" "${5:-}"
+}
+sl_on='{"enabledPlugins":{"himmel-ops@himmel":true}}'
+sl_off='{"enabledPlugins":{"himmel-ops@himmel":false}}'
+sl_expect() {
+  echo "$2" | jq -e --arg a "$3" '.actual == $a' >/dev/null || fail "settings-key layering: $1: want $3 (got: $2)"
+  if [ -n "${4:-}" ]; then
+    echo "$2" | jq -e --arg s "$4" '.detail | contains($s)' >/dev/null || fail "settings-key layering: $1: detail should name $4 (got: $2)"
+  fi
+}
+
+sl_fixture cfg-user - - "$sl_off" "$sl_on"
+sl_expect "user scope, CLAUDE_CONFIG_DIR set" "$(sl_probe cfg-user user 1)" present "/cfg/settings.json"
+sl_expect "user scope, CLAUDE_CONFIG_DIR unset (control)" "$(sl_probe cfg-user user 0)" absent "/home/.claude/settings.json"
+sl_fixture home-user - - "$sl_on" -
+sl_expect "user scope, HOME/.claude (control)" "$(sl_probe home-user user 0)" present "/home/.claude/settings.json"
+
+sl_fixture proj-user-only - - "$sl_on" -
+sl_expect "project scope, key only in HOME/.claude" "$(sl_probe proj-user-only project 0)" present "/home/.claude/settings.json"
+sl_fixture proj-cfg-only - - "$sl_off" "$sl_on"
+sl_expect "project scope, key only in CLAUDE_CONFIG_DIR" "$(sl_probe proj-cfg-only project 1)" present "/cfg/settings.json"
+sl_expect "project scope, CLAUDE_CONFIG_DIR unset ignores cfg dir" "$(sl_probe proj-cfg-only project 0)" absent
+sl_fixture proj-none - - - -
+sl_expect "project scope, key nowhere" "$(sl_probe proj-none project 0)" absent
+
+sl_fixture prec-local-off - "$sl_off" "$sl_on" -
+sl_expect "local false beats user true" "$(sl_probe prec-local-off project 0)" absent "settings.local.json"
+sl_fixture prec-project-off "$sl_off" - "$sl_on" -
+sl_expect "project false beats user true" "$(sl_probe prec-project-off project 0)" absent
+sl_fixture prec-local-on "$sl_off" "$sl_on" - -
+sl_expect "local true beats project false" "$(sl_probe prec-local-on project 0)" present "settings.local.json"
+sl_fixture prec-project-on "$sl_on" - "$sl_off" -
+sl_expect "project true beats user false" "$(sl_probe prec-project-on project 0)" present
+
+sl_two='{"type":"settings-key","file":".claude/settings.json","keys":["alpha","beta"]}'
+sl_fixture perkey '{"alpha":1}' - '{"beta":2}' -
+sl_expect "two keys, each in a different file" "$(sl_probe perkey project 0 0 "$sl_two")" present
+sl_fixture perkey-miss '{"alpha":1}' - - -
+sl_expect "two keys, one nowhere" "$(sl_probe perkey-miss project 0 0 "$sl_two")" absent "beta"
+
+sl_one='{"type":"settings-key","file":".claude/settings.json","key":"alpha"}'
+sl_fixture empty-local - '{"alpha":""}' '{"alpha":"x"}' -
+sl_expect "local empty string beats the user value" "$(sl_probe empty-local project 0 0 "$sl_one")" absent
+sl_fixture empty-obj '{"alpha":{}}' - '{"alpha":{"a":1}}' -
+sl_expect "project empty object falls through to the user value" "$(sl_probe empty-obj project 0 0 "$sl_one")" present "/home/.claude/settings.json"
+
+sl_fixture malformed '{not json' - "$sl_on" -
+sl_expect "malformed project file" "$(sl_probe malformed project 0)" absent "cannot parse"
+
+sl_expect "scopeFileOnly project ignores the user file" "$(sl_probe proj-user-only project 0 1)" absent
+sl_expect "scopeFileOnly user keeps HOME/.claude, not CLAUDE_CONFIG_DIR" "$(sl_probe cfg-user user 1 1)" absent "/home/.claude/settings.json"
+echo "ok: settings-key effective settings — CLAUDE_CONFIG_DIR user probe, local>project>user per key, scopeFileOnly"
+
 # ── settings-key: verifyHudConfig (wiring-statusline) ──
 # statusLine.command wired to the hud renderer used to read
 # green (via verifyScript alone) even when the hud's OWN config (the
@@ -833,6 +911,31 @@ const ctx = { repoRoot: '$(winpath "$sk2_repo")', targetPath: '$(winpath "$sk2_a
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outSK2a" | jq -e '.actual == "absent"' >/dev/null || fail "settings-key simple key absent (empty object): (got: $outSK2a)"
+sk2_home_layer="$work/sk2-home-layer"; mkdir -p "$sk2_home_layer/.claude/plugins"
+printf '{"version":2,"plugins":{"foo@bar":[{"scope":"user","installPath":"%s"}],"other@x":[{"scope":"user","installPath":"%s"}]}}' "$sk2_foo_installpath_w" "$sk2_foo_installpath_w" > "$sk2_home_layer/.claude/plugins/installed_plugins.json"
+printf '{"enabledPlugins":{"foo@bar":true}}' > "$sk2_home_layer/.claude/settings.json"
+sk2_home_layer_w="$(winpath "$sk2_home_layer")"
+sk2_other="$work/sk2-other"; mkdir -p "$sk2_other/.claude"
+printf '{"enabledPlugins":{"other@x":true}}' > "$sk2_other/.claude/settings.json"
+sk2_off="$work/sk2-off"; mkdir -p "$sk2_off/.claude"
+printf '{"enabledPlugins":{"foo@bar":false}}' > "$sk2_off/.claude/settings.json"
+sk2_layer_probe() {
+  "$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
+const item = manifest.items.find((i) => i.id === 'claude-plugins-pluginSet');
+const env = Object.assign({}, process.env, { HOME: '$sk2_home_layer_w' });
+const ctx = { repoRoot: '$(winpath "$sk2_repo")', targetPath: '$(winpath "$1")', scope: 'project', env };
+console.log(JSON.stringify(runProbe(item, ctx)));
+"
+}
+outSK2layer=$(sk2_layer_probe "$sk2_other")
+echo "$outSK2layer" | jq -e '.actual == "present"' >/dev/null \
+  || fail "settings-key verifyPluginSet: a project map naming one unrelated plugin must inherit the user layer's plugins (got: $outSK2layer)"
+outSK2layeroff=$(sk2_layer_probe "$sk2_off")
+echo "$outSK2layeroff" | jq -e '.actual == "degraded"' >/dev/null \
+  || fail "settings-key verifyPluginSet: a project false must beat the user layer's true (got: $outSK2layeroff)"
+echo "ok: settings-key verifyPluginSet — enabledPlugins merge per plugin id across layers; a higher false wins"
 # RED: enabledPlugins that does not match the recorded pluginSet must not read green.
 outSK2mismatch=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
@@ -925,6 +1028,31 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outSK2dn" | jq -e '.actual == "degraded" and (.detail | contains("not installed") and contains("source drift") and contains("claude plugin marketplace remove obsidian-skills"))' >/dev/null \
   || fail "settings-key verifyPluginSet: a not-installed plugin plus a marketplace drift must report both (got: $outSK2dn)"
+sk2_home_layers="$work/sk2-home-layers"; mkdir -p "$sk2_home_layers/.claude/plugins"
+printf '{"version":2,"plugins":{"foo@bar":[{"scope":"user","installPath":"%s"}],"other@x":[{"scope":"user","installPath":"%s"}]}}' "$sk2_foo_installpath_w" "$sk2_foo_installpath_w" > "$sk2_home_layers/.claude/plugins/installed_plugins.json"
+printf '{"enabledPlugins":{"foo@bar":true},"extraKnownMarketplaces":{"obsidian-skills":{"source":{"source":"github","repo":"someone-else/obsidian-skills"}}}}' > "$sk2_home_layers/.claude/settings.json"
+sk2_home_layers_w="$(winpath "$sk2_home_layers")"
+sk2_layer_proj="$work/sk2-layer-proj"; mkdir -p "$sk2_layer_proj/.claude"
+printf '{"enabledPlugins":{"other@x":true}}' > "$sk2_layer_proj/.claude/settings.json"
+sk2_layer_projfix="$work/sk2-layer-projfix"; mkdir -p "$sk2_layer_projfix/.claude"
+printf '{"enabledPlugins":{"other@x":true},"extraKnownMarketplaces":{"obsidian-skills":{"source":{"source":"url","url":"https://github.com/kepano/obsidian-skills.git"}}}}' > "$sk2_layer_projfix/.claude/settings.json"
+for sk2_lcase in proj projfix; do
+  outSK2l=$("$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
+const item = manifest.items.find((i) => i.id === 'claude-plugins-pluginSet');
+const env = Object.assign({}, process.env, { HOME: '$sk2_home_layers_w' });
+const ctx = { repoRoot: '$(winpath "$sk2_drift_repo")', targetPath: '$(winpath "$work/sk2-layer-$sk2_lcase")', scope: 'project', env };
+console.log(JSON.stringify(runProbe(item, ctx)));
+")
+  if [ "$sk2_lcase" = proj ]; then
+    echo "$outSK2l" | jq -e '.actual == "degraded" and (.detail | contains("obsidian-skills") and contains("source drift"))' >/dev/null \
+      || fail "settings-key verifyPluginSet: a wrong marketplace source in the user settings must read degraded when the project settings enable another plugin (got: $outSK2l)"
+  else
+    echo "$outSK2l" | jq -e '.actual == "present"' >/dev/null \
+      || fail "settings-key verifyPluginSet: a project marketplace entry with the right source must win over the user's wrong one (got: $outSK2l)"
+  fi
+done
 echo "ok: settings-key simple non-dotted key + verifyPluginSet (claude-plugins-pluginSet) — present/absent, mismatch + not-installed degrade, stale installPath + wrong-project scope degrade"
 
 # ── settings-key: verifyPluginSet path normalization, directory-only

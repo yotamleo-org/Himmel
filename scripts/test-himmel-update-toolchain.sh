@@ -41,6 +41,7 @@ if ! { cp "$SCRIPT" "$CLONE/scripts/himmel-update.sh" \
     && cp "$src_scripts/lib/load-dotenv.sh"       "$CLONE/scripts/lib/load-dotenv.sh" \
     && cp "$src_scripts/lib/resolve-bun.sh"        "$CLONE/scripts/lib/resolve-bun.sh" \
     && cp "$src_scripts/lib/claude-version.sh"        "$CLONE/scripts/lib/claude-version.sh" \
+    && cp "$src_scripts/lib/update-channel.sh"        "$CLONE/scripts/lib/update-channel.sh" \
     && git init --quiet "$CLONE"; }; then
     echo "FAIL: mock clone setup" >&2
     exit 1

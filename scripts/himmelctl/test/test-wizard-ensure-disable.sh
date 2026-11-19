@@ -1894,4 +1894,73 @@ for id in override-a override-b override-c; do
 done
 echo "ok: case t (negative control) — the identical fixture WITHOUT overrides still trips the under-recorded guard and --prune is held back, proving the primary case discriminates"
 
+
+repoU="$work/repoU"; mkdir -p "$repoU/scripts/install" "$repoU/scripts/lib"
+cat > "$repoU/scripts/install/manifest.json" <<'JSON'
+{
+  "schemaVersion": 2,
+  "harness": "claude",
+  "items": [
+    {
+      "id": "wiring-statusline", "kind": "wiring", "scopes": ["project", "user"], "profiles": ["luna", "all"], "deps": [],
+      "probe": { "type": "settings-key", "file": ".claude/settings.json", "key": "statusLine.command" },
+      "install": { "type": "wire", "target": "statusline" },
+      "unwire": { "type": "wire", "target": "statusline" },
+      "removable": "per-item"
+    }
+  ]
+}
+JSON
+cat > "$repoU/scripts/lib/wire-statusline.sh" <<'SH'
+#!/usr/bin/env bash
+mkdir -p "$(dirname "$1")"
+printf '{"statusLine":{"command":"project-wired"}}\n' > "$1"
+exit 0
+SH
+cat > "$repoU/scripts/lib/unwire-statusline.sh" <<'SH'
+#!/usr/bin/env bash
+printf '{}\n' > "$1"
+exit 0
+SH
+targetU="$work/target-u"; mkdir -p "$targetU/.claude"
+printf '{"statusLine":{"command":"project-wired"}}\n' > "$targetU/.claude/settings.json"
+cacheU="$work/cache-u"; mkdir -p "$cacheU"
+homeU="$work/home-u"; mkdir -p "$homeU/.claude"
+printf '{"statusLine":{"command":"user-level"}}\n' > "$homeU/.claude/settings.json"
+write_cache "$cacheU/install-profile.json" adopter project none "" inline "" lean
+runEnsureU() {
+  ( cd "$targetU" && HIMMELCTL_REPO_ROOT="$(winpath "$repoU")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheU")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheU")-luna-config.json" HOME="$homeU" USERPROFILE="$(winpath "$homeU")" \
+      "$node_bin" "$wizard" ensure "$@" </dev/null )
+}
+set +e
+outU1=$(runEnsureU --profile luna --yes 2>&1); rcU1=$?
+outU2=$(runEnsureU --profile core --yes --prune --items wiring-statusline 2>&1); rcU2=$?
+set -e
+[ "$rcU1" -eq 0 ] || fail "case u: the setup converge should exit 0 (got rc=$rcU1): $outU1"
+[ "$rcU2" -eq 0 ] || fail "case u: pruning a project-scope item whose key a user-level file also sets should exit 0 (got rc=$rcU2): $outU2"
+[ "$(cat "$targetU/.claude/settings.json")" = '{}' ] || fail "case u: the project file should be unwired (got: $(cat "$targetU/.claude/settings.json"))"
+grepq "$(cat "$homeU/.claude/settings.json")" -F 'user-level' || fail "case u: the user-level file must be left alone"
+echo "ok: case u — a project-scope prune checks and reprobes only the project settings file"
+
+targetV="$work/target-v"; mkdir -p "$targetV/.claude"
+printf '{"statusLine":{"command":"project-wired"}}\n' > "$targetV/.claude/settings.json"
+git init -q "$targetV"
+git -C "$targetV" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@example.invalid add .claude/settings.json
+git -C "$targetV" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@example.invalid commit -q -m seed
+cacheV="$work/cache-v"; mkdir -p "$cacheV"
+homeV="$work/home-v"; mkdir -p "$homeV/.claude"
+write_cache "$cacheV/install-profile.json" adopter project none "" inline "" lean
+runEnsureV() {
+  ( cd "$targetV" && HIMMELCTL_REPO_ROOT="$(winpath "$repoU")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheV")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheV")-luna-config.json" HOME="$homeV" USERPROFILE="$(winpath "$homeV")" \
+      "$node_bin" "$wizard" ensure "$@" )
+}
+if outV1=$(runEnsureV --profile luna --yes </dev/null 2>&1); then rcV1=0; else rcV1=$?; fi
+[ "$rcV1" -eq 0 ] || fail "case v setup: the converge under profile luna should exit 0 (got rc=$rcV1): $outV1"
+if outV2=$(HIMMELCTL_INTERACTIVE=1 runEnsureV --profile core --prune --items wiring-statusline <<<"n" 2>&1); then rcV2=0; else rcV2=$?; fi
+[ "$rcV2" -eq 0 ] || fail "case v: a declined prune whose only tracked target is the pending disable must not be refused (got rc=$rcV2): $outV2"
+if grepq "$outV2" -F -- '--write-tracked'; then fail "case v: a declined disable pass writes nothing, so no refusal should name --write-tracked (got: $outV2)"; fi
+grepq "$outV2" -F 'declined disabling' || fail "case v: expected the disable decline message (got: $outV2)"
+[ "$(cat "$targetV/.claude/settings.json")" = '{"statusLine":{"command":"project-wired"}}' ] || fail "case v: the tracked settings file must keep its bytes (got: $(cat "$targetV/.claude/settings.json"))"
+echo "ok: case v — declining the prune confirm drops its writers from the tracked-settings check"
+
 echo "PASS"

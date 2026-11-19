@@ -892,6 +892,13 @@ const redMainSection = (() => {
 const CR_SOFT_CAP = 15;
 const CR_CADENCE_STALE_DAYS = 8;
 const CR_BEFORE = { window: '2026-10-04..2026-10-18', rounds_mean: 2.71, rounds_p50: 2, rounds_p90: 5, residuals_per_merged_pr: 0.41, residual_inflow_per_week: 200 };
+const boardMirrorDir = () => {
+    if (process.env.BOARD_MIRROR) return process.env.BOARD_MIRROR;
+    const out = execFileSync('bash', ['-c', '. "$1/jira-project.sh" && jira_mirror_dir', 'board', join(HERE, '../../lib')],
+        { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    if (!out) throw new Error('jira_mirror_dir resolved nothing');
+    return out;
+};
 const crLoopSection = (() => {
     const out = { window_days: 7, soft_cap: CR_SOFT_CAP, rounds: { prs: 0, mean: null, p90: null }, preflight: { hits: null, per_pr: null, prs: null, merged: null },
         residual: { inflow: null, outflow: null, net: null, per_merged_pr: null, labelled_share: null, outflow_note: 'outflow needs a resolved date in the mirror' },
@@ -950,10 +957,10 @@ const crLoopSection = (() => {
         if (pre.size) { const hits = [...pre.values()].reduce((s, n) => s + n, 0); out.preflight.hits = hits; out.preflight.per_pr = round2(hits / pre.size); }
     } catch { /* no readable ledger: rounds and preflight stay n/a */ }
     try {
-        const dir = process.env.BOARD_MIRROR || join(process.env.HOME || '', '.himmel', 'state', 'jira-mirror', 'HIMMEL');
+        const dir = boardMirrorDir();
         const released = new Set();
         try {
-            for (const l of readFileSync(join(dirname(dir), 'HIMMEL.versions.tsv'), 'utf8').split('\n')) {
+            for (const l of readFileSync(join(dirname(dir), `${basename(dir)}.versions.tsv`), 'utf8').split('\n')) {
                 const f = l.split('\t');
                 if (f[1] === 'true') released.add(f[0]);
             }
@@ -1020,7 +1027,7 @@ const iceFollowupsSection = (() => {
     const na = '';
     trend.ice_followups = { count: null, keys: [] };
     try {
-        const dir = process.env.BOARD_MIRROR || join(process.env.HOME || '', '.himmel', 'state', 'jira-mirror', 'HIMMEL');
+        const dir = boardMirrorDir();
         const lines = execFileSync('bash', [join(HERE, 'ice-followups.sh'), dir],
             { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(Boolean);
         const m = /^ice-followups=(\d+)$/.exec(lines[0] || '');

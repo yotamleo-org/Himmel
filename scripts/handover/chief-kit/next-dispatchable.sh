@@ -177,7 +177,9 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 
-top=8; top_set=0; mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
+# shellcheck source=../../lib/jira-project.sh
+. "$REPO/scripts/lib/jira-project.sh"
+top=8; top_set=0; mirror="${NEXT_DISPATCH_MIRROR:-$(jira_mirror_dir)}"
 workers_from="${WORKERS_FROM:-}"; held=""; classify=1; resume_only=0; owners=""; doc=""; pool_only=0; why=0; dispo=0
 workers="${TICKET_STATUS_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/workers"
 while [ "$#" -gt 0 ]; do

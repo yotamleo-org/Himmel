@@ -89,6 +89,10 @@ if . "$HERE/../../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR
 # shellcheck source=../../lib/legacy-names.sh
 . "$HERE/../../lib/legacy-names.sh"
 if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
+# shellcheck source=../../lib/jira-project.sh
+. "$HERE/../../lib/jira-project.sh"
+tick_mirror_default="$(jira_mirror_dir)"
+tick_project_key="$(jira_project_key)"
 
 usage() {
     cat <<'USAGE'
@@ -706,7 +710,7 @@ pool_stale_serialized() {
 pool_dispositions() {
     local psf="" psm="" ledger="" holds=""
     if [ -n "$1" ]; then
-        psm="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
+        psm="${NEXT_DISPATCH_MIRROR:-$tick_mirror_default}"
         psf="$(pool_stale_file "$1" "$psm")"
         psm="$(realpath -m "$psm")"  # prim-ok: the mirror need not exist, which canon_path refuses; gnu-ok: chief kit is Linux-only
         ledger="$(holds_ledger "$1")"
@@ -1307,7 +1311,7 @@ def front(key):
         return None
 def listed(head, field, key):
     m = re.search(r"^\s+%s:\s*(.*)$" % field, head, re.M)
-    return bool(m) and key in re.findall(r"[A-Z][A-Z0-9]*-\d+", m[1])
+    return bool(m) and key in re.findall(r"[A-Z][A-Z0-9_]*-\d+", m[1])
 try:
     final = set(open(record).read().splitlines())
 except OSError:
@@ -1316,7 +1320,7 @@ pairs, live = set(), False
 for line in open(doc).read().splitlines():
     if line.startswith("## "):
         live = line == "## Live state"
-    m = live and re.match(r"pool-disposition:\s+([A-Z][A-Z0-9]*-\d+)\s+(?:question|slice)\s+after\s+([A-Z][A-Z0-9]*-\d+)(?![A-Za-z0-9-])", line)
+    m = live and re.match(r"pool-disposition:\s+([A-Z][A-Z0-9_]*-\d+)\s+(?:question|slice)\s+after\s+([A-Z][A-Z0-9_]*-\d+)(?![A-Za-z0-9-])", line)
     if m and m[1] != m[2] and "%s blocks %s" % (m[2], m[1]) not in final:
         pairs.add((m[2], m[1]))
 n = 0
@@ -1340,7 +1344,7 @@ PY
 pool_stale() {
     python3 -I - "$@" <<'PY'
 import datetime, glob, hashlib, json, os, re, subprocess, sys, time
-doc, mirror, repo, prior, stale_file, mirror_real, holds = sys.argv[1:8]
+doc, mirror, repo, prior, stale_file, mirror_real, holds, project = sys.argv[1:9]
 if stale_file:
     print("# mirror=" + mirror_real)
     print("# stale-file=" + stale_file)
@@ -1364,7 +1368,8 @@ if not (doc and os.path.isfile(doc) and os.path.isdir(mirror)):
     print("residual-unversioned=skip")
     sys.exit(0)
 
-key_re = re.compile(r"\b%s-\d+\b" % re.escape(os.path.basename(mirror.rstrip("/"))))
+KEY = r"[A-Z][A-Z0-9_]*-\d+"
+key_re = re.compile(r"\b%s-\d+\b" % re.escape(project))
 latest = {}
 live = False
 for line in open(doc).read().splitlines():
@@ -1372,7 +1377,7 @@ for line in open(doc).read().splitlines():
         live = line == "## Live state"
     if live and line.startswith("pool-disposition:"):
         value = line.split(":", 1)[1].strip()
-        m = re.fullmatch(r"([A-Z]+-\d+) (?:slice|close|question|hold|park) (\S.*)", value)
+        m = re.fullmatch(r"(%s) (?:slice|close|question|hold|park) (\S.*)" % KEY, value)
         if m:
             refs = {k for k in key_re.findall(m[2]) if k != m[1]}
             prs = {n for g in re.findall(r"\bPRs?\s*#?(\d+(?:\s*(?:,|and|&)\s*#?\d+)*)", m[2]) for n in re.findall(r"\d+", g)}
@@ -1404,10 +1409,10 @@ if prior_lines is None and stale_file:
             break
 carry, ccarry = {}, {}
 for line in prior_lines or []:
-    m = re.fullmatch(r"(STALE-DISPOSITION ([A-Z]+-\d+) line=([0-9a-f]{12}) .*?)(?: carried)?", line)
+    m = re.fullmatch(r"(STALE-DISPOSITION (%s) line=([0-9a-f]{12}) .*?)(?: carried)?" % KEY, line)
     if m:
         carry[m[2]] = (m[3], m[1])
-    m = re.fullmatch(r"(CHANGED-DISPOSITION ([A-Z]+-\d+) line=([0-9a-f]{12}) .*? via ([A-Z]+-\d+) .*?)(?: carried)?", line)
+    m = re.fullmatch(r"(CHANGED-DISPOSITION (%s) line=([0-9a-f]{12}) .*? via (%s) .*?)(?: carried)?" % (KEY, KEY), line)
     if m:
         ccarry[m[2]] = (m[3], m[4], m[1])
 
@@ -1584,6 +1589,7 @@ if not re.match(r"v\d", focus):
                 break
     except OSError:
         pass
+KEY_RE = r"(?<![A-Za-z0-9_])[A-Za-z][A-Za-z0-9_]*-\d+"
 found = []
 if focus:
     for name in sorted(os.listdir(mirror)):
@@ -1603,7 +1609,7 @@ if focus:
         if rm and rm[1] == name[:-3] and (rm[3] == "BACKLOG" or (rm[3] == "MOVE" and rm[2] == "backlog")) \
                 and f.get("statusCategory", "").strip('"') == "To Do" and f.get("priority", "").strip('"') not in ("High", "Highest"):
             continue
-        for target in re.findall(r"HIMMEL-\d+", f.get("relates", "")) + re.findall(r"[A-Z]+-\d+", f.get("parent", "")):
+        for target in re.findall(KEY_RE, f.get("relates", "")) + re.findall(KEY_RE, f.get("parent", "")):
             p = front(target)
             if p and p.get("statusCategory", "").strip('"') != "Done" and ('"%s"' % focus) in p.get("fixVersions", ""):
                 found.append(name[:-3])
@@ -1705,13 +1711,13 @@ fi
 
 if [ "$stale_mode" -eq 1 ]; then
     [ -z "$DOC" ] || DOC="$(resolve_doc "$DOC")"
-    ps_mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
+    ps_mirror="${NEXT_DISPATCH_MIRROR:-$tick_mirror_default}"
     ps_self=""; ps_mirror_real=""
     if [ -n "$DOC" ]; then
         ps_self="$(pool_stale_file "$DOC" "$ps_mirror")"
         ps_mirror_real="$(realpath -m "$ps_mirror")"  # prim-ok: the mirror need not exist, which canon_path refuses; gnu-ok: chief kit is Linux-only
     fi
-    pool_stale "$DOC" "$ps_mirror" "$REPO" "$ps_prior" "$ps_self" "$ps_mirror_real" "${DOC:+$(pool_holds_file "$DOC")}"
+    pool_stale "$DOC" "$ps_mirror" "$REPO" "$ps_prior" "$ps_self" "$ps_mirror_real" "${DOC:+$(pool_holds_file "$DOC")}" "$(jira_project_key)"
     exit $?
 fi
 
@@ -3106,7 +3112,7 @@ fi
 # since the scan is dropped at read time, so a fresh dispatch never reads as an orphan.
 orphans_wip=skip
 orphans_wip_age=""
-nd_mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
+nd_mirror="${NEXT_DISPATCH_MIRROR:-$tick_mirror_default}"
 if [ -d "$nd_mirror" ] && command -v python3 >/dev/null 2>&1; then
     orphans_wip='?'
     ow_base="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/tick-resume-$(printf '%s\n%s' "$console_doc" "$nd_mirror" | cksum | cut -d' ' -f1)"
@@ -3140,7 +3146,7 @@ fi
 # machine, so no Jira is called; unknown = the read failed. Not in chief-wait's wake key.
 vdone_summary=skip
 vdone_probe="${TICK_VERSIONLESS_DONE_PROBE:-$HERE/versionless-done.sh}"
-if [ -f "$vdone_probe" ] && [ -d "${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}" ]; then
+if [ -f "$vdone_probe" ] && [ -d "${NEXT_DISPATCH_MIRROR:-$tick_mirror_default}" ]; then
     vdone_out="$(timeout -k 2 "$(tick_bound 30)" bash "$vdone_probe" 2>/dev/null)" || vdone_out=""  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read falls through to versionless-done=unknown
     case "${vdone_out%+}" in
         ''|*[!0-9]*) vdone_summary=unknown ;;
@@ -3188,7 +3194,7 @@ if [ -n "$leaks_version" ]; then
         lk_out="$(timeout -k 2 "$(tick_bound "${TICK_LEAKS_TIMEOUT:-30}")" bash "$TICK_LEAKS_PROBE" "$leaks_version" "$nd_mirror" 2>&1)" || lk_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in lk_rc and read below
     else
         if [ -n "$lk_anchor" ] && [ -f "$lk_cli" ]; then
-            lk_out="$(JIRA_PROJECT_KEY="${nd_mirror##*/}" timeout -k 2 "$(tick_bound "${TICK_LEAKS_TIMEOUT:-30}")" node "$lk_cli" release leaks "$leaks_version" --mirror-root "$nd_mirror" 2>&1)" || lk_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in lk_rc and read below
+            lk_out="$(JIRA_PROJECT_KEY="$tick_project_key" timeout -k 2 "$(tick_bound "${TICK_LEAKS_TIMEOUT:-30}")" node "$lk_cli" release leaks "$leaks_version" --mirror-root "$nd_mirror" 2>&1)" || lk_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in lk_rc and read below
         else
             lk_rc=-1
         fi
@@ -3292,7 +3298,7 @@ if [ -n "$console_doc" ] && [ -r "$console_doc" ] && [ -f "$console_doc" ]; then
 fi
 if [[ "$rm_rel" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
     rm_cli="${rm_anchor%/.git}/scripts/jira/dist/index.js"
-    rm_pk="${nd_mirror##*/}"
+    rm_pk="$tick_project_key"
     rm_rc=0 rm_json=""
     if [ -n "${TICK_RMQ_PROBE:-}" ]; then
         rm_json="$(timeout -k 2 "$(tick_bound "${TICK_RMQ_TIMEOUT:-30}")" bash "$TICK_RMQ_PROBE" "$rm_rel" --json 2>/dev/null)" || rm_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in rm_rc and read below
@@ -3865,7 +3871,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
         pi_out="${TICK_PLAN_INDEX_OUT:-${HOME:-/tmp}/.himmel/state/roadmap-plan}"
         pi_min="${TICK_PLAN_INDEX_MIN_SECS:-900}"
         case "$pi_min" in ''|*[!0-9]*) pi_min=900 ;; esac
-        pi_args=(--plan-dir "$pi_plan" --out "$pi_out" --watch "${TICK_TRACKER_MIRROR_DIR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}")
+        pi_args=(--plan-dir "$pi_plan" --out "$pi_out" --watch "${TICK_TRACKER_MIRROR_DIR:-$tick_mirror_default}")
         [ -z "$WORKERS_FROM" ] || pi_args+=(--watch "$WORKERS_FROM")
         pi_age() { local m; m="$(stat -c %Y "$1" 2>/dev/null)" || m=""; case "$m" in ''|*[!0-9]*) echo 999999999 ;; *) echo $(( $(date +%s) - m )) ;; esac; }  # gnu-ok: console kit is Linux-only
         if bash "$HERE/../../roadmap/plan-index.sh" --check "${pi_args[@]}" >/dev/null 2>&1; then
@@ -4998,7 +5004,7 @@ else
     esac
     case "$leaks_summary" in
         ''|0|skip|'?') ;;
-        *) printf 'ACTION leaks=%s: JIRA_PROJECT_KEY=%q node %q release leaks %q --mirror-root %q --comment  # posts one comment per leak (idempotent; without --comment it only lists them), the chief admits or removes each\n' "$leaks_summary" "${nd_mirror##*/}" "$lk_cli" "$leaks_version" "$nd_mirror" ;;
+        *) printf 'ACTION leaks=%s: JIRA_PROJECT_KEY=%q node %q release leaks %q --mirror-root %q --comment  # posts one comment per leak (idempotent; without --comment it only lists them), the chief admits or removes each\n' "$leaks_summary" "$tick_project_key" "$lk_cli" "$leaks_version" "$nd_mirror" ;;
     esac
     if [ "$wto_summary" != "0" ] || [ -n "$wtc_summary" ]; then
         printf 'ACTION wt-orphans=%s%s: bash %q prune --orphans lists them; bash %q prune reclaims the merged and detached ones, the rest need a wrap or a salvage\n' \

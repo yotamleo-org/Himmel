@@ -528,6 +528,8 @@ gate_nwo() {
 . "$REPO/scripts/lib/legacy-names.sh" || exit 2
 # shellcheck source=../../lib/gh-quota.sh
 . "$REPO/scripts/lib/gh-quota.sh" || exit 2
+# shellcheck source=../../lib/jira-project.sh
+. "$REPO/scripts/lib/jira-project.sh" || exit 2
 if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 
 tick_count_mode=0
@@ -1480,7 +1482,7 @@ rmlease_wake() {
     [ "$rel" != none ] || return 1
     if [ -e "$rmlease_at_file" ] && [ -n "$(find "$rmlease_at_file" -mmin "-${CHIEF_WAIT_RMLEASE_SAMPLE_MIN:-5}" 2>/dev/null)" ]; then return 1; fi  # swallow-ok: an unreadable marker reads as stale, so the read runs
     : > "$rmlease_at_file" 2>/dev/null
-    pk="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"; pk="${pk##*/}"
+    pk="$(jira_project_key)"
     anchor="$(cd "$REPO" && . "$REPO/scripts/lib/git-clean.sh" && git_env_scrub && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || anchor=""  # swallow-ok: no anchor leaves the CLI unavailable, which reads as an unreadable state
     cli="${anchor%/.git}/scripts/jira/dist/index.js"
     if [ -n "${CHIEF_WAIT_RMLEASE:-}" ]; then
@@ -1545,7 +1547,7 @@ intake_wake() {
     [ "$rel" != none ] || return 1
     if [ -e "$intake_at_file" ] && [ -n "$(find "$intake_at_file" -mmin "-${CHIEF_WAIT_INTAKE_SAMPLE_MIN:-5}" 2>/dev/null)" ]; then return 1; fi  # swallow-ok: an unreadable marker reads as stale, so the read runs
     : > "$intake_at_file" 2>/dev/null
-    pk="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"; pk="${pk##*/}"
+    pk="$(jira_project_key)"
     anchor="$(cd "$REPO" && . "$REPO/scripts/lib/git-clean.sh" && git_env_scrub && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || anchor=""  # swallow-ok: no anchor leaves the CLI unavailable, which reads as an unreadable lease
     cli="${anchor%/.git}/scripts/jira/dist/index.js"
     if [ -n "${CHIEF_WAIT_RMLEASE:-}" ]; then

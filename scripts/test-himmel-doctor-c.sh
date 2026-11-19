@@ -1626,6 +1626,17 @@ c74_reset
 printf 'JIRA_EMAIL=planted-dummy-value-74\nOPERATOR_SCRATCH_NOTE=planted-note-74\n' > "$c74_t/env"
 out="$(c74_run)"
 if grepq "$out" -F 'WARN C74-env-keys' && grepq "$out" -F 'JIRA_EMAIL' && grepq "$out" -F 'migrate-env-config.sh' && ! grepq "$out" -F 'OPERATOR_SCRATCH_NOTE' && ! grepq "$out" -F 'planted-'; then pass "C74 config key in .env -> WARN naming JIRA_EMAIL only, no values"; else fail "C74 env key -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C74-config-split: the env-keys remedy names the update's migration with the real .env and no hand edit =="
+if grepq "$out" -F "scripts/setup/migrate-env.sh --env $c74_t/env" && grepq "$out" -F 'ENV_MIGRATION_CONSENT' && ! grepq "$out" -F 'by hand'; then pass "C74 env-keys remedy -> migrate-env.sh --env <real .env>, consent key named, no hand delete"; else fail "C74 env-keys remedy -> $(printf '%s' "$out" | head -6)"; fi
+echo "== C74-config-split: the policy remedies name the same migration with the real .env =="
+c74_reset
+printf 'ARMAUTOMERGE=1\n' > "$c74_t/env"
+out="$(c74_run)"
+if grepq "$out" -F "scripts/setup/migrate-env.sh --env $c74_t/env"; then pass "C74 policy remedy (no config.json) -> migrate-env.sh --env <real .env>"; else fail "C74 policy remedy -> $(printf '%s' "$out" | head -6)"; fi
+printf '{"policy":{"CR_FLOOR_FALLBACK":"claude-only"}}' > "$c74_pol"
+printf 'ARMAUTOMERGE=1\nCR_FLOOR_FALLBACK=claude-only\n' > "$c74_t/env"
+out="$(c74_run)"
+if grepq "$out" -F "scripts/setup/migrate-env.sh --env $c74_t/env"; then pass "C74 policy remedy (key missing from .policy) -> migrate-env.sh --env <real .env>"; else fail "C74 policy remedy 2 -> $(printf '%s' "$out" | head -6)"; fi
 echo "== C74-config-split: migrated (secrets-only .env, himmel.conf, policy file) -> OK =="
 c74_reset
 printf 'OPERATOR_SCRATCH_NOTE=planted-note-74\n' > "$c74_t/env"

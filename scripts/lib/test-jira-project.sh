@@ -93,6 +93,23 @@ check "himmel.conf key names the mirror dir" "$home/.himmel/state/jira-mirror/CO
 check "HIMMEL_JIRA_MIRROR wins" "$tmp/elsewhere" "$(run jira_mirror_dir HIMMEL_JIRA_MIRROR="$tmp/elsewhere" JIRA_PROJECT_KEY=ENVKEY)"
 check "an empty HIMMEL_JIRA_MIRROR falls through" "$home/.himmel/state/jira-mirror/CONFKEY" "$(run jira_mirror_dir HIMMEL_JIRA_MIRROR=)"
 
+echo "== configured =="
+configured() {
+    # shellcheck disable=SC2016  # the child shell expands $1, not this one
+    (cd "$work" && env -i HOME="$home" PATH="$PATH" HIMMEL_CONFIG_DIR="$conf" HIMMELCTL_CACHE_DIR="$cache" "$@" \
+        bash -c 'set -u; . "$1"; if jira_project_configured; then echo yes; else echo no; fi' _ "$LIB" 2>/dev/null) # read-sink-ok: LIB is this suite's sibling resolver, derived from $0, never caller input
+}
+fixture '' ''
+check "nothing set is not configured" no "$(configured)"
+check "an empty env key is not configured" no "$(configured JIRA_PROJECT_KEY=)"
+check "an env key is configured" yes "$(configured JIRA_PROJECT_KEY=ENVKEY)"
+fixture 'JIRA_PROJECT_KEY=CONFKEY
+' ''
+check "a himmel.conf-only key is configured" yes "$(configured)"
+fixture '' 'JIRA_PROJECT_KEY=DOTKEY
+'
+check "a .env-only key is configured" yes "$(configured)"
+
 if [ "$failures" -ne 0 ]; then
     printf '\n%d case(s) failed\n' "$failures" >&2
     exit 1

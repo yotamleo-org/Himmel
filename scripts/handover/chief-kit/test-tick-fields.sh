@@ -267,6 +267,9 @@ lk_three="$(lk_tick "$W/lk-probe-3.sh")"
 contains 'leaked tickets of the frozen version read leaks=<n>' "$lk_three" ' leaks=3'
 case "$(cat "$W/lk-asked" 2>/dev/null)" in "v1.0.2 $lk_m") pass 'the probe is asked for the earliest unreleased, unarchived, non-zz version of the tick mirror' ;; *) fail "the probe was asked '$(cat "$W/lk-asked" 2>/dev/null)', want 'v1.0.2 $lk_m'" ;; esac
 contains 'a non-zero leak count prints an ACTION line naming the comment run' "$lk_three" 'ACTION leaks=3: JIRA_PROJECT_KEY=HIMMEL node '
+mkdir -p "$lk_dir/tickets"; cp "$lk_dir/HIMMEL.versions.tsv" "$lk_dir/tickets.versions.tsv"
+lk_over="$(JIRA_PROJECT_KEY=CONFKEY NEXT_DISPATCH_MIRROR="$lk_dir/tickets" TICK_LEAKS_PROBE="$W/lk-probe-3.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+contains 'the leaks ACTION line takes the project key from the resolver, not the mirror directory name' "$lk_over" 'ACTION leaks=3: JIRA_PROJECT_KEY=CONFKEY node '
 contains 'the leaks ACTION line never names the global jira shim' "$lk_three" '/scripts/jira/dist/index.js release leaks '
 printf 'v1.0.2 beta\ttrue\t\tfalse\nv1.0.3 rc\tfalse\t\tfalse\n' > "$lk_dir/HIMMEL.versions.tsv"
 lk_space="$(lk_tick "$W/lk-probe-3.sh")"

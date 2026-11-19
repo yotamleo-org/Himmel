@@ -106,6 +106,14 @@ case " $CADENCE_RUNNER_BASENAMES " in
     fail=$((fail + 1)); echo "  FAIL: doctor-cadence missing from CADENCE_RUNNER_BASENAMES: '$CADENCE_RUNNER_BASENAMES'" ;;
 esac
 
+echo "[test-cadence-format] CADENCE_RUNNER_BASENAMES includes steering-cull-cadence"
+case " $CADENCE_RUNNER_BASENAMES " in
+  *" steering-cull-cadence "*)
+    pass=$((pass + 1)); echo "  ok: steering-cull-cadence is a probed runner basename" ;;
+  *)
+    fail=$((fail + 1)); echo "  FAIL: steering-cull-cadence missing from CADENCE_RUNNER_BASENAMES: '$CADENCE_RUNNER_BASENAMES'" ;;
+esac
+
 echo "[test-cadence-format] CADENCE_RUNNER_BASENAMES includes rollup-cadence"
 case " $CADENCE_RUNNER_BASENAMES " in
   *" rollup-cadence "*)

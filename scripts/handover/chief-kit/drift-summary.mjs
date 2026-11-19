@@ -28,6 +28,7 @@
 // complete it is.
 //
 // Platform guard: Node only (shell-only harness).
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -53,10 +54,15 @@ for (let i = 0; i < argv.length; i += 1) {
 }
 if (!opt.json) usage();
 
-const project = process.env.JIRA_PROJECT_KEY || 'HIMMEL';
 const driftFile = opt.drift || process.env.HIMMEL_FOCUS_DRIFT || '';
 const knownFile = opt.known || process.env.DRIFT_SUMMARY_KNOWN || path.join(HERE, 'known-checker-bugs.tsv');
-const mirrorDir = opt['mirror-dir'] || path.join(os.homedir(), '.himmel', 'state', 'jira-mirror', project);
+const projectMirrorDir = () => {
+  try {
+    return execFileSync('bash', ['-c', '. "$1/jira-project.sh" && jira_mirror_dir', 'drift-summary', path.join(HERE, '../../lib')],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch { return ''; }
+};
+const mirrorDir = opt['mirror-dir'] || projectMirrorDir();
 const now = /^\d+$/.test(opt.now || '') ? Number(opt.now) : Math.floor(Date.now() / 1000);
 const staleAfter = /^\d+$/.test(opt['stale-after'] || '') ? Number(opt['stale-after']) : 10800;
 

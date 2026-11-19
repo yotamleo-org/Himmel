@@ -724,7 +724,7 @@ for k in HIMMEL_REPO CLAUDE_HUD_ALLOW_EXTRA_CMD HIMMEL_WHERE_ARE_WE_ROLLUP_TTL \
     HIMMEL_WHERE_ARE_WE_SEG_TIMEOUT HIMMEL_JIRA_NUDGE CR_APP CR_PUBLIC_REPO \
     CLAUDE_END_SESSION_WIKI SKILL_INDEX_DIR ALIBABA_ANTHROPIC_BASE_URL \
     ALIBABA_CODING_PLAN_BASE_URL ALIBABA_DASHSCOPE_BASE_URL ALIBABA_OPENAI_BASE_URL \
-    JIRA_PROJECTS JIRA_TEST_PROJECT; do
+    JIRA_PROJECTS JIRA_TEST_PROJECT LUNA_VAULT_AUTOCOMMIT; do
     printf '%s=k-from-conf\n' "$k" >"$TMP/k-config/himmel.conf"
     got=$( cd "$REPO" && unset "$k" && HIMMEL_CONFIG_DIR="$TMP/k-config" load_dotenv "$k" 2>/dev/null; printf '%s' "${!k:-<unset>}" )
     assert_eq "K $k resolves from himmel.conf" "k-from-conf" "$got"
