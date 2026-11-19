@@ -1642,6 +1642,43 @@ describe('a request for operator work carries the operator\'s words', () => {
       expect(msg).toContain('--decision <n> --words');
     });
 
+    it('a ticket that is not gated files plain and cites nothing, even when a record on file names its key', async () => {
+      await declared();
+      decisionFile();
+      await record('HIMMEL-4', 'add', 'backlog', 'v1.1.3');
+      await ask(gateMirror({ key: 'HIMMEL-4' }), ...intake('HIMMEL-4'));
+      expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
+      expect(out.some((l) => l.startsWith('OPERATOR '))).toBe(false);
+      expect(queued()).toMatchObject([{ key: 'HIMMEL-4', evidence: {} }]);
+    });
+
+    it('a pending ask that cites nothing is returned as it stands, and no operator record is claimed for it', async () => {
+      await declared();
+      decisionFile();
+      await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
+      vi.stubEnv('HIMMEL_CONSOLE_LEG', '1');
+      await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'));
+      vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+      out = [];
+      await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'));
+      expect(out).toEqual(['REQ Q-v1.1.3-0001']);
+      expect(queued()).toMatchObject([{ key: 'HIMMEL-1', evidence: {} }]);
+    });
+
+    it('the create path offers no citation it does not make: its refusal still says to add --decision and --words to the command', () => {
+      const ctx = ctxFor('v1.1.3', gateMirror(operatorDirected));
+      const row = { verb: 'INTAKE' as const, key: 'HIMMEL-1', from_v: null, to_v: 'v1.1.3', why: 'closed into frozen v1.1.3 with no version of its own' };
+      let msg = '';
+      try {
+        refuseRequest(ctx, { ...row, origin: 'create', ticket: { labels: ['operator-directed'], priority: 'Medium', open: true } });
+      } catch (e) {
+        msg = (e as Error).message;
+      }
+      expect(msg).toContain('needs a record of the operator\'s words');
+      expect(msg).toContain('add --decision <n> --words');
+      expect(msg).not.toContain('cite one on file');
+    });
+
     it('a release that is not declared keeps the gate refusal and creates no state', async () => {
       const msg = await refusal(run('request', 'v9.9.9', '--mirror-root', gateMirror(operatorDirected), ...intake('HIMMEL-1')));
       expect(msg).toContain('needs a record of the operator\'s words');
