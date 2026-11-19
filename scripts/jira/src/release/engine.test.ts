@@ -4131,6 +4131,82 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
       expect(row.capped_carry).toMatchObject({ keys: [...keys].sort() });
       expect(check(keys)).toEqual(okLines(keys, f, row.id));
     });
+
+    // A group whose anchor does not sort first, the shape of the real family (its anchor sorts last). The group builder fixes its anchor as the first key,
+    // so the fixture is built by the real round builder with the group's declarations, as the verifier's own anchor-last row is.
+    const ANCHORS = [['last', 'HIMMEL-9899', ['HIMMEL-9801', 'HIMMEL-9802', 'HIMMEL-9803', 'HIMMEL-9899']], ['in the middle', 'HIMMEL-9830', ['HIMMEL-9801', 'HIMMEL-9830', 'HIMMEL-9899']]] as const;
+    function v2AnchorFixture(anchor: string, keys: readonly string[]): V2Fixture {
+      const estimate = { path: 'specs/designs/estimate.json', text: '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n' };
+      const f = v2Build({ key: anchor, declarations: false,
+        specText: `---\ntickets: [${keys.join(', ')}]\n---\n# ${anchor} group\n\nEstimate record: estimate.json\n\nThe contract names every member.\n\n## Alternatives considered\n\n- None better.\n\n## Definition of done\n\n- Fixture verifies.\n\n## Invariants\n\nnone\n`,
+        planText: `# ${anchor} plan\n\n- Task 1: build the fixture.\n`,
+        returns: [1, 2, 3].flatMap(round => (['spec', 'plan'] as const).map(kind => ({ kind, round,
+          text: `- **${kind === 'spec' ? 'F1' : 'P1'}** (${kind === 'spec' ? 'medium; Fact overlap' : 'minor'}) residual\n${kind.toUpperCase()} FINDINGS 1\n`,
+          reads: kind === 'spec' ? ['spec', estimate] : ['spec', 'plan', estimate] }))) });
+      f.keys = [...keys];
+      f.anchor = anchor;
+      return f;
+    }
+
+    it.each(ANCHORS)('capped carry v2 uses the anchor and not the first key in a group whose anchor sorts %s: signing, the stored record and the readback', (_where, anchor, keys) => {
+      const f = v2AnchorFixture(anchor, keys); const sorted = [...keys].sort(); const done = v2Hermetic(f);
+      expect(sorted[0], 'the anchor is not the first key').not.toBe(anchor);
+      const unsealed = f.verdicts[0].replace('r3.md', 'r4.md');
+      armProof(p => { cpSync(p.returns[0].path, unsealed); });
+      expect(() => v2Sign(f, { keys }), 'signing: an unaccounted return of the anchor that appears after the verifier answered').toThrow(/; v2: capped-fold: ambiguous or unaccounted latest return: .*r4\.md$/);
+      noCappedRows();
+      unlinkSync(unsealed);
+      spawnReset();
+      const row = v2Sign(f, { keys });
+      expect(row.capped_carry).toMatchObject({ schema: 2, anchor, keys: sorted });
+      expect(row.capped_carry!.carried.every(c => c.key === anchor), 'every carried finding belongs to the anchor').toBe(true);
+      expect(readOperatorRecords('spec', specEnv()).find(r => r.id === row.id)?.capped_carry, 'the stored record').toEqual(row.capped_carry);
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+      cpSync(f.verdicts[0], unsealed);
+      expect(check(keys), 'the readback: a return of the anchor above the signed round copied in later').toEqual(staleLines(keys, f, row.id));
+      unlinkSync(unsealed);
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+      done();
+    });
+
+    // The key-set check of the bind has two halves; the verifier is always asked for the real keys and the signing input differs from them.
+    const realKeys = (keys: string[]) => (args: string[]) => args.map((a, i) => i === 3 ? keys.join(',') : a);
+    it('capped carry v2 refuses a proof whose keys are a strict superset of the signing input, the input being a prefix of them', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!;
+      armProof(() => {}, realKeys(keys));
+      expect(() => v2Sign(f, { keys: keys.slice(0, 6) })).toThrow(/; v2: capped proof input binding disagrees$/);
+      expect(attemptFlags()).toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    it('capped carry v2 refuses a proof whose keys have the signing input\'s count and one different key', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!;
+      armProof(() => {}, realKeys(keys));
+      expect(() => v2Sign(f, { keys: [...keys.slice(0, 6), 'HIMMEL-9808'] })).toThrow(/; v2: capped proof input binding disagrees$/);
+      expect(attemptFlags()).toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    // A bun that kills itself with a signal: its parent sees no exit status and no error code, the case that is final and never retried on v2.
+    function signalBun(signal: string, run: () => void): void {
+      const bin = mkdtempSync(join(root, 'bun-bin-'));
+      writeFileSync(join(bin, 'bun'), `#!${process.execPath}\nprocess.kill(process.pid, ${JSON.stringify(signal)});\nsetTimeout(() => {}, 5000);\n`);
+      chmodSync(join(bin, 'bun'), 0o755);
+      const old = process.env.PATH;
+      process.env.PATH = `${bin}:${old}`;
+      try { run(); } finally { process.env.PATH = old; rmSync(bin, { recursive: true, force: true }); }
+    }
+    it.each(['SIGKILL', 'SIGTERM'])('capped carry v2 a v1 child killed by %s is final: one --key attempt, no --keys, the shipped refusal words', signal => {
+      const f = cappedFixture();
+      signalBun(signal, () => {
+        let refusal = '';
+        try { cappedSign('spec', f); } catch (e) { refusal = (e as Error).message; }
+        expect(refusal).toMatch(/residual findings.*capped verifier unavailable\/refused: Command failed: bun /);
+        expect(refusal, 'no v2 reason').not.toContain('; v2:');
+      });
+      expect(attemptFlags()).toEqual(['--key']);
+      noCappedRows();
+    });
   });
 });
 
