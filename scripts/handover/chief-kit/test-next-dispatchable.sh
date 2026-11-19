@@ -3702,6 +3702,8 @@ case "$2" in
 esac
 EOF
 chmod +x "$U8/lock.sh"
+# The first fixture, whose tickets are asserted as offered: every doc a row names exists and opens, the own manifest and every sibling read
+# as JSON of the shape the dispatcher accepts. A doc nobody can open is a case of its own, below.
 U8B="$U8/bucket"; U8H="$U8/home"; mkdir -p "$U8B" "$U8H/.himmel"
 python3 -I - "$U8B" "$U8H" <<'PYEOF'
 import json, os, sys
@@ -3722,7 +3724,6 @@ D = dict(
     live=doc('HIMMEL-103-N1-live.md', '- 10:00 LIVE - working'),
     stale=doc('HIMMEL-104-N1-stale.md', '- 10:00 LIVE - working'),
     unknown=doc('HIMMEL-105-N1-unknown.md'),
-    missing=os.path.join(bucket, 'HIMMEL-106-N1-missing.md'),
     pending=doc('HIMMEL-107-N1-pending.md'),
     committed=doc('HIMMEL-108-N1-committed.md'),
     attempt_unknown=doc('HIMMEL-109-N1-attempt-unknown.md'),
@@ -3747,12 +3748,12 @@ def manifest(name, workers):
 
 
 chain = 'HIMMEL-nextleg-2026-11-%s-roadmap-chief.fleet.json'
-manifest(chain % '18A', rows('wrapped', 'live', 'unknown', 'missing'))
+manifest(chain % '18A', rows('wrapped', 'live', 'unknown'))
 manifest(chain % '17B', rows('wrapped', 'halted', 'stale', 'live', pending=('pending', 'committed', 'attempt_unknown', 'refused', 'resumed')))
-manifest(chain % '17A', rows('wrapped', 'halted', 'stale', 'unknown', 'live', 'missing'))
-manifest(chain % '16C', rows('wrapped', 'halted', 'live', 'stale', 'unknown', 'missing'))
-manifest(chain % '16A', rows('wrapped', 'halted', 'live', 'stale', 'unknown', 'missing', pending=('pending',)))
-manifest(chain % '15A', rows('wrapped', 'halted', 'live', 'stale', 'unknown', 'missing', pending=('rereg', 'refused')))
+manifest(chain % '17A', rows('wrapped', 'halted', 'stale', 'unknown', 'live'))
+manifest(chain % '16C', rows('wrapped', 'halted', 'live', 'stale', 'unknown'))
+manifest(chain % '16A', rows('wrapped', 'halted', 'live', 'stale', 'unknown', pending=('pending',)))
+manifest(chain % '15A', rows('wrapped', 'halted', 'live', 'stale', 'unknown', pending=('rereg', 'refused')))
 manifest('HIMMEL-nextleg-2026-11-17A-other-chief.fleet.json', rows('wrapped', 'live'))
 # a manifest still written with the pre-rename array: the docs only it names are answered the same way
 with open(os.path.join(bucket, chain % '15B'), 'w') as stream:
@@ -3775,7 +3776,7 @@ with open(os.path.join(home, '.himmel', 'launch-refusals.jsonl'), 'w') as stream
 PYEOF
 U8M="$U8/mirror/HIMMEL"; mkdir -p "$U8M"
 M_SAVE="$M"; M="$U8M"
-for n in 101 102 103 104 105 106 107 108 109 110 111 112 113 114 120; do
+for n in 101 102 103 104 105 107 108 109 110 111 112 113 114 120; do
     mk "HIMMEL-$n" "To Do" Medium '[]' '["v1.0.1"]' '[]' "u8 fixture $n" "Edit scripts/lib/u8-$n.sh only."
 done
 M="$M_SAVE"
@@ -3804,7 +3805,7 @@ for mode in "${u8_modes[@]}"; do
 done
 u8_list="$(cat "$U8/out.list")"
 for key in 101 102 110 114 120; do has "(U8) a ticket no live worker holds is offered: HIMMEL-$key" "$u8_list" "${TAB}HIMMEL-$key${TAB}"; done
-for key in 103 104 105 106 107 108 109 112 113; do lacks "(U8) a ticket a worker in doubt or alive holds is withheld: HIMMEL-$key" "$u8_list" "${TAB}HIMMEL-$key${TAB}"; done
+for key in 103 104 105 107 108 109 112 113; do lacks "(U8) a ticket a worker in doubt or alive holds is withheld: HIMMEL-$key" "$u8_list" "${TAB}HIMMEL-$key${TAB}"; done
 # the counts: the first mode's log is one run
 cl="$U8/count.list"
 u8_max_per_doc="$(awk -F'\t' '$1 == "worker_state" { c[$2]++ } END { m = 0; for (d in c) if (c[d] > m) m = c[d]; print m + 0 }' "$cl")"
@@ -3854,6 +3855,36 @@ u8_eq "(U8) no anchor, count: every evaluation took its disposition from the one
 u8_eq "(U8) no anchor, count: no disposition subprocess started" "$(awk -F'\t' '$1 == "main" { n++ } END { print n + 0 }' "$cl")" 0
 u8_eq "(U8) no anchor, count: each manifest was read once by the batch" "$(awk -F'\t' '$1 == "open" && $3 ~ /read_directory/ { c[$2]++ } END { m = 0; for (p in c) if (c[p] > m) m = c[p]; print m + 0 }' "$cl")" 1
 U8B="$U8B_SAVE"; U8OWN="$U8OWN_SAVE"; U8H="$U8H_SAVE"
+
+# A doc that the worker rows name and nobody can open, on a fixture of its own: its own bucket, its own chain and a one-ticket mirror, so
+# it shares nothing with the fixtures above, whose docs all exist and whose manifests all read. What is asserted here holds whether or not
+# the dispatcher lists other tickets beside an unreadable doc: it exits 0, the doc's own key is not offered, the batched read prints the
+# same bytes as one read per doc, and the doc gets one worker-state answer however many rows name it.
+U8B4="$U8/bucket4"; mkdir -p "$U8B4"
+U8MISS="$U8B4/HIMMEL-106-N1-missing.md"  # never created
+for stamp in 18A 17A 16C 16A 15A; do
+    printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"}]}\n' "$U8MISS" > "$U8B4/HIMMEL-nextleg-2026-11-$stamp-recovery-chief.fleet.json"
+done
+U8M4="$U8/mirror4/HIMMEL"; mkdir -p "$U8M4"
+M_SAVE="$M"; M="$U8M4"; mk HIMMEL-106 "To Do" Medium '[]' '["v1.0.1"]' '[]' "u8 a doc nobody can open" "Edit scripts/lib/u8-106.sh only."; M="$M_SAVE"
+printf 'v1.0.1\tfalse\t\n' > "$U8/mirror4/HIMMEL.versions.tsv"
+U8M_SAVE="$U8M"; U8OWN_SAVE="$U8OWN"
+U8M="$U8M4"; U8OWN="$U8B4/HIMMEL-nextleg-2026-11-18A-recovery-chief.fleet.json"
+for mode in "${u8_modes[@]}"; do
+    name="${mode%%|*}"; args="${mode#*|}"
+    # shellcheck disable=SC2086
+    u8_nd "missing-$name" "" $args
+    # shellcheck disable=SC2086
+    u8_nd "missing-$name.single" 1 $args
+    [ "$(cat "$U8/rc.missing-$name")" = 0 ] && pass "(U8) a doc nobody can open, $name: the dispatcher exits 0" || fail "(U8) a doc nobody can open, $name: rc $(cat "$U8/rc.missing-$name"): $(head -c 300 "$U8/err.missing-$name")"
+    cmp -s "$U8/out.missing-$name" "$U8/out.missing-$name.single" && pass "(U8) a doc nobody can open, $name: the batched read prints the same bytes as one read per doc" \
+        || fail "(U8) a doc nobody can open, $name: the batched read differs from one read per doc: $(diff "$U8/out.missing-$name" "$U8/out.missing-$name.single" | head -5)"
+    [ -z "${ND_U8_EVIDENCE:-}" ] || cp "$U8/out.missing-$name" "$ND_U8_EVIDENCE/out.missing-$name"
+done
+lacks "(U8) a doc nobody can open: its own ticket is not offered" "$(cat "$U8/out.missing-list")" "${TAB}HIMMEL-106${TAB}"
+u8_eq "(U8) a doc nobody can open: it gets one worker-state answer though five manifests name it" "$(awk -F'\t' '$1 == "worker_state" { c[$2]++ } END { m = 0; for (d in c) if (c[d] > m) m = c[d]; print m + 0 }' "$U8/count.missing-list")" 1
+u8_eq "(U8) a doc nobody can open: it is the one doc asked about" "$(awk -F'\t' '$1 == "worker_state" { c[$2]++ } END { n = 0; for (d in c) n++; print n }' "$U8/count.missing-list")" 1
+U8M="$U8M_SAVE"; U8OWN="$U8OWN_SAVE"
 
 # Follow-ups on the same tree. A worker_state helper that fails reads unknown through the batch path (never wrapped, so no
 # ticket of a doc whose state cannot be read is offered), and two docs with one basename in two directories keep their own states.
