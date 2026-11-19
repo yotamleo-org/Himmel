@@ -13,7 +13,7 @@ the chief's bucket as `<PREFIX>-rm-<R>-<date>.md`, filled by hand from the
 block below. `gen-briefs.py` double-quotes the `description:` value for you;
 filled by hand, wrap it in double quotes yourself, since its `): ` is not
 valid YAML unquoted and `brief-lint.sh` refuses the brief (exit 3). The RM is a worker kind: it holds the queue lock on this
-document **and** the release lease, rules placements with the
+document **and** the release lease, runs its verb with the
 `himmel-ops:release-manager` skill, and never writes code. The procedures, the
 grounds and the verbs live in the skill; this brief carries only what is
 specific to one RM session.

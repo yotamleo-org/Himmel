@@ -169,4 +169,4 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 
 A `pool-disposition:` row tagged `proof` goes to a `kind: proof` worker: `chief-sections/proof-rows.md`.
 
-A per-version ruling outlives its chief in the readiness record. Write it with `scripts/handover/chief-kit/readiness.sh append <version> <KEY> a|b|c|d --evidence <text> [--blocker <KEY or decision>]` and read it with `readiness.sh read <version>`; rows land in `release/<version>/readiness.jsonl`. The tick does not read the record yet.
+A per-version ruling outlives its chief in the readiness record. Write it with `scripts/handover/chief-kit/readiness.sh append <version> <KEY> a|b|c|d --evidence <text> [--blocker <KEY or decision>]` and read it with `readiness.sh read <version>`; rows land in `release/<version>/readiness.jsonl`. `tick.sh --pool-dispositions --doc` reads the record: the tick carries `blocked=<n> chief-sign=<n>[:<age>] rows-stale=<n>` after `chief-owed=`, and a live c or d row counts its key as disposed.

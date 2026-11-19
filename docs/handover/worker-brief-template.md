@@ -10,7 +10,7 @@ name `<TICKET>-N<k>-<slug>` — the doc name minus `-<date>-RESUME.md`. The work
 worker line (its field name: [`chief-sections/live-state.md`](chief-sections/live-state.md))
 and what `tick.sh` prints. One derivation owns the mapping between
 the three, [`scripts/lib/worker-identity.sh`](../../scripts/lib/worker-identity.sh);
-it also accepts the legacy `<TICKET>-<slug>-worker[N]<k>-<date>-RESUME.md` spelling
+it also accepts the legacy `<TICKET>[-<slug>]-leg[N]<k>-<date>-RESUME.md` spelling
 older buckets carry. Never rename a live doc to conform — a worker
 holds its queue lock on that exact path.
 
