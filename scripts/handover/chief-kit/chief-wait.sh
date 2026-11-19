@@ -415,7 +415,10 @@
 # 2 = usage or an inbox outside the */consoles/<name>.md layout; 3 = another waiter is already live on this inbox (its pid is named).
 #
 # Env: CHIEF_WAIT_INTERVAL tick interval in seconds (default 180);
-# CHIEF_WAIT_POLL_SEC inbox poll (default 1); CHIEF_WAIT_TICK_TIMEOUT
+# CHIEF_WAIT_POLL_SEC inbox poll (default 1); CHIEF_WAIT_IDLE_PASSES (default 10) and
+# CHIEF_WAIT_IDLE_POLL_SEC (default 1, never below the poll): in stream mode the loop sleeps the idle poll
+# instead of the poll after that many passes in a row that offered nothing, attempted nothing and ran no tick,
+# and the first pass with an event or work puts the poll back; CHIEF_WAIT_TICK_TIMEOUT
 # seconds a tick may run before it counts as failed (default 120), so a hung
 # tick cannot freeze the Telegram path; CHIEF_WAIT_FAIL_WAKE consecutive
 # failed samples before a tick-fail wake (default 3); CHIEF_WAIT_TICK / CHIEF_WAIT_USAGE
@@ -545,6 +548,15 @@ hb_file="$inbox.wait"
 key_file="$inbox.wait.state"
 interval="${CHIEF_WAIT_INTERVAL:-180}"
 poll="${CHIEF_WAIT_POLL_SEC:-1}"
+# Stream service only: after CHIEF_WAIT_IDLE_PASSES passes in a row with nothing offered, nothing attempted and no tick
+# the loop sleeps CHIEF_WAIT_IDLE_POLL_SEC (never less than the poll) instead of the poll, and the first pass with an
+# event or work puts the poll back. It only paces: nothing is decided, dropped or marked by it.
+idle_poll="${CHIEF_WAIT_IDLE_POLL_SEC:-1}"
+case "$idle_poll" in ''|*[!0-9.]*) idle_poll=1 ;; esac
+idle_runs="${CHIEF_WAIT_IDLE_PASSES:-10}"
+case "$idle_runs" in ''|0|*[!0-9]*) idle_runs=10 ;; esac
+awk -v a="$idle_poll" -v b="$poll" 'BEGIN { exit !(a + 0 > b + 0) }' || idle_poll="$poll"
+idle_passes=0
 tick_timeout="${CHIEF_WAIT_TICK_TIMEOUT:-120}"
 tick_cmd="${CHIEF_WAIT_TICK:-$HERE/tick.sh}"
 
@@ -2065,6 +2077,7 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
         if ready_pick; then cands="${cands:+$cands$'\n'}$ready_label READY"; fi
     fi
     r0_stamp_seen "$cands"
+    [ -z "$cands" ] || r0_offered=1
     local r0_warned="" r0_warning_lines=""
     r0_attempted=""
     while read -r label marker event_line; do
@@ -2759,12 +2772,13 @@ while :; do
                 exit_reason='wake-owed-actions'; exit 0
             fi
         fi
-        r0_attempted=""
+        r0_attempted=""; r0_offered=""
         if [ -z "$stream_tick_turn" ] && r0_relay; then exit_reason='wake-worker-event'; exit 0; fi
         # A completed or retryable action yields through inbox/control before
         # the next local event; it does not incur the full tick interval.
         if [ -n "${r0_attempted:-}" ]; then
             [ "$(date +%s)" -lt "$next_tick" ] || stream_tick_turn=1
+            idle_passes=0
             heartbeat waiting
             sleep "$poll" 9>&-
             continue
@@ -2772,6 +2786,7 @@ while :; do
     fi
     if [ -z "$handover_live" ] && [ "$(date +%s)" -ge "$next_tick" ]; then
         stream_tick_turn=""
+        idle_passes=0
         next_tick=$(( $(date +%s) + interval ))
         if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ]; then
             printf '%s\n' "$next_tick" | atomic_write "$inbox.wait.next-tick"
@@ -3039,5 +3054,11 @@ while :; do
         exit_reason='wake-housekeeping'; exit 0
     fi
     heartbeat waiting
-    sleep "$poll" 9>&-
+    [ -z "${r0_offered:-}" ] || idle_passes=0
+    idle_passes=$(( idle_passes + 1 ))
+    if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ] && [ "$idle_passes" -gt "$idle_runs" ]; then
+        sleep "$idle_poll" 9>&-
+    else
+        sleep "$poll" 9>&-
+    fi
 done
