@@ -70,7 +70,8 @@
 # rc 2, before any lock or write) and stores it, and with --lockless stores `lockless: true`
 # (an eval/pilot row that holds no queue lock: tick reports NOLOCK and judges it by
 # tail marker only). A manifest written before this carries neither key and reads
-# as lane `unknown`, not lockless. A doc already listed is left alone, flags and all.
+# as lane `unknown`, not lockless. A doc already listed is left alone, flags and all,
+# except for an arm it lacks (below).
 # add also stores an optional `arm` (200k|400k, the autocompact A/B
 # arm the worker launched on); a worker added with no --arm carries no `arm` key.
 # A listed row with no arm takes the arm of a later add (the chief or the launch
@@ -81,7 +82,7 @@
 # carried through every rewrite untouched, so a wider worker manifest
 # (chains, lanes, write-sets) can grow in the same object.
 #
-# add is idempotent (a doc already listed is left alone); removing a worker that is
+# add is idempotent (a doc already listed is left alone, an arm it lacks aside); removing a worker that is
 # not listed is not an error. A doc must be absolute: tick resolves a relative
 # one against the handover root, the writer's cwd would be a different one. It
 # must also carry no whitespace or glob character, which tick's word-split worker

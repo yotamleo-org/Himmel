@@ -357,7 +357,7 @@ if [ "${FLEET_TEST_RC:-0}" = 0 ] && [ -n "${FLEET_LAUNCH_MANIFEST:-}" ]; then
   [ "${FLEET_TEST_RECORD:-0}" != 1 ] || fleet_launch_outcome launched || exit 10
   printf 'launched\n' > "$HEADED_ARM_OUTCOME_FILE"
 fi
-exit "${FLEET_TEST_RC:-0}"
+exit "${FLEET_TEST_EXIT:-${FLEET_TEST_RC:-0}}"
 FLEET_TARGET
 chmod +x "$fleet_target"
 fleet_launch() {
@@ -428,6 +428,22 @@ if command -v flock >/dev/null 2>&1; then
   check 'fleet: a manifest update refused after the launch leaves the anchor record launched' launched "$(jq -r '[.attempts[].phase] | join(" ")' "$tmp/fleet-fixture/fleet-control.json" 2>/dev/null)"
   check 'fleet: a manifest update refused after the launch is recorded as a post-launch error' postlaunch-error "$(jq -rs '[.[] | select(.source == "headed-arm-worker" and .name == "PROJ-3748-N7-fleet")] | last | .outcome' "$HOME/.himmel/launch-refusals.jsonl" 2>/dev/null)"
   check 'fleet: a different lane on a registered row is still refused, the row keeps its lane' claudex "$(jq -r '.workers[0].lane' "$fleet_manifest" 2>/dev/null)"
+  rc=0; HIMMEL_FLEET_SLOTS="$fleet_ab_slots" bash "$HERE/fleet-manifest.sh" runtime reconcile --manifest "$fleet_manifest" >/dev/null 2>&1 || rc=$?
+  check 'fleet: a manifest update refused after the launch: a later reconcile leaves the attempt launched and its reservation' "0 launched 1" "$rc $(jq -r '[.attempts[].phase] | join(" ")' "$tmp/fleet-fixture/fleet-control.json" 2>/dev/null) $(find "$fleet_ab_slots" -name managed.json 2>/dev/null | grep -c .)"
+  # a child that records the launch and then ends with a non-zero status (FLEET_TEST_EXIT: killed, out of memory): the wrapper
+  # returns that status, the attempt stays launched, its own record is not a refusal, nothing is released, and a later reconcile frees nothing.
+  fleet_ab_fresh native
+  rc=0; out="$(FLEET_TEST_EXIT=137 fleet_ab_launch 2>&1)" || rc=$?
+  check 'fleet: a launched child that exits non-zero: the wrapper returns that status' 137 "$rc"
+  check 'fleet: a launched child that exits non-zero: the row attempt stays launched' launched "$(jq -r '.workers[0].attempt.phase' "$fleet_manifest" 2>/dev/null)"
+  check 'fleet: a launched child that exits non-zero: the anchor record stays launched' launched "$(jq -r '[.attempts[].phase] | join(" ")' "$tmp/fleet-fixture/fleet-control.json" 2>/dev/null)"
+  check 'fleet: a launched child that exits non-zero: the wrapper records indeterminate, not a refusal' indeterminate "$(jq -rs '[.[] | select(.source == "headed-arm-worker" and .name == "PROJ-3748-N7-fleet")] | last | .outcome' "$HOME/.himmel/launch-refusals.jsonl" 2>/dev/null)"
+  check 'fleet: a launched child that exits non-zero: its reservation is not released' 1 "$(find "$fleet_ab_slots" -name managed.json 2>/dev/null | grep -c .)"
+  rc=0; HIMMEL_FLEET_SLOTS="$fleet_ab_slots" bash "$HERE/fleet-manifest.sh" runtime reconcile --manifest "$fleet_manifest" >/dev/null 2>&1 || rc=$?
+  check 'fleet: a launched child that exits non-zero: a later reconcile exits zero' 0 "$rc"
+  check 'fleet: a launched child that exits non-zero: a later reconcile leaves the attempt launched' launched "$(jq -r '[.attempts[].phase] | join(" ")' "$tmp/fleet-fixture/fleet-control.json" 2>/dev/null)"
+  check 'fleet: a launched child that exits non-zero: a later reconcile leaves the row and its attempt' launched "$(jq -r '.workers[0].attempt.phase' "$fleet_manifest" 2>/dev/null)"
+  check 'fleet: a launched child that exits non-zero: a later reconcile leaves the reservation' 1 "$(find "$fleet_ab_slots" -name managed.json 2>/dev/null | grep -c .)"
   rm -rf "$fleet_manifest" "$tmp/fleet-fixture/fleet-control.json" "$fleet_ab_slots"
   fx_brief '# fleet fixture' > "$fleet_doc"
 else
