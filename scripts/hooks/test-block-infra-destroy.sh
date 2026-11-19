@@ -74,6 +74,16 @@ q="'"
 assert_rc "a zsh-only escape inside the verb denies" 2 "$(run_hook "terraform \$${q}\\d${q}estroy")"
 assert_rc "an escape both shells read alike in a harmless verb allows" 0 "$(run_hook "terraform \$${q}\\x70${q}lan")"
 
+# An escape that builds a NUL: zsh cuts the whole word there, bash keeps the text after it.
+v1=destr v2=oy
+assert_rc "a NUL escape after the verb denies" 2 "$(run_hook "terraform ${v1}${v2}\$${q}\\0${q}x")"
+assert_rc "a NUL escape ahead of the verb denies" 2 "$(run_hook "terraform\$${q}\\0${q}x ${v1}${v2}")"
+# The tokenizer failed earlier in the command, so its refusal of the word is never reached;
+# guard_unwrap still reads the dollar-quote word.
+assert_rc "a zsh-only escape behind a case arm denies" 2 "$(run_hook "case x in a) echo;; esac; terraform \$${q}\\d${q}estroy")"
+assert_rc "a zsh-only escape behind a failed expansion denies" 2 "$(run_hook "echo \${x:-\"}\"}; terraform \$${q}\\d${q}estroy")"
+assert_rc "an escape both shells read alike behind a case arm allows" 0 "$(run_hook "case x in a) echo;; esac; terraform \$${q}\\x70${q}lan")"
+
 # Bypass: INFRADESTROYOK=1 in the launching shell lets a deny row through.
 first_deny=$(head -n1 "$FIX/deny.tsv" | cut -f2)
 assert_rc "bypass INFRADESTROYOK=1" 0 "$(run_hook "$first_deny" INFRADESTROYOK=1)"

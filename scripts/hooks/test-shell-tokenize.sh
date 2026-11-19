@@ -181,6 +181,29 @@ done
 tok "cat \$'${bs}q'"; check "a refused zsh-only escape sets ST_AMBIG" "$R:${ST_AMBIG-}" "1:1"
 tok "cat \$'${bs}x41'"; check "an escape both shells read alike leaves ST_AMBIG clear" "$R:${ST_AMBIG-}" "0:0"
 tok "echo 'a"; check "a refusal for another reason leaves ST_AMBIG clear" "$R:${ST_AMBIG-}" "1:0"
+# An escape that builds a NUL: zsh cuts the whole word at it, so text after the escape is lost to
+# the command; bash drops the NUL and keeps that text. Each spelling is refused, alone, inside a
+# longer word and between words.
+# shellcheck disable=SC1003 # the bodies hold backslashes, not escaped quotes
+nul_esc=('\0' '\00' '\000' '\0000' '\0001' '\400' '\08' '\0a' '\0g' '\x0' '\x00' '\x000' '\x0g' '\u0' '\u00' '\u000' '\u0000' '\u00000'
+    '\U0' '\U0000000' '\U00000000' '\U000000000' 'a\0b' 'a\x00b' 'a\u0000b' '\\\0' 'ab\400cd')
+for body in "${nul_esc[@]}"; do
+    _st_ansic_e "$body"; check "a NUL escape in [$body] is refused" "$?:${ST_AMBIG-}" "1:1"
+    tok "cat \$'$body'"; check "a word holding the NUL escape [$body] fails the tokenizer" "$R:${ST_AMBIG-}" "1:1"
+    tok "cat x\$'$body'y z"; check "the NUL escape [$body] inside a longer word fails the tokenizer" "$R:${ST_AMBIG-}" "1:1"
+    st_expand text "cat x\$'$body'y"; check "st_expand text refuses the NUL escape [$body], ST_EXP empty" "$?:${#ST_EXP}" "1:0"
+    st_expand empty "cat \$'$body'"; check "st_expand empty refuses the NUL escape [$body], ST_EXP empty" "$?:${#ST_EXP}" "1:0"
+done
+# Escapes next to them that build a byte, and the text of an escaped backslash, keep their reading.
+# shellcheck disable=SC1003 # the bodies hold backslashes, not escaped quotes
+non_nul=('\x02' $'\002' '\002' $'\002' '\u0002' $'\002' '\x0a' $'\n' '\u000a' $'\n' '\377' $'\377' '\2' $'\002' '\10' $'\010' '\x10' $'\020'
+    '\u0010' $'\020' '\0020' $'\0020' '\\0' '\0' '\\x00' '\x00' 'a\\0b' 'a\0b')
+n=0
+while [ "$n" -lt "${#non_nul[@]}" ]; do
+    body=${non_nul[n]}; want=${non_nul[n + 1]}; n=$((n + 2))
+    _st_ansic_e "$body"; check "an escape that is not a NUL in [$body] is accepted" "$?" "0"
+    tok "echo x\$'$body'y"; check "a word holding [$body] keeps its reading" "$R:${ST_AMBIG-}:${ST_W[1]}" "0:0:x${want}y"
+done
 tok 'echo a # c; d'; check "a comment sets COMMENT and ends the command" "$R:$ST_COMMENT:$ST_NSEG:$ST_N" "0:1:1:2"
 tok $'cat <<EOF\nbody $(x)\nEOF\necho after'; check "an unquoted heredoc body with \$(…) sets SUBST" "$R:$ST_HEREDOC:$ST_SUBST" "0:1:1"
 tok $'cat <<\'EOF\'\nbody $(x)\nEOF'; check "a quoted heredoc body is inert" "$R:$ST_HEREDOC:$ST_SUBST" "0:1:0"
