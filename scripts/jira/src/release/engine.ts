@@ -1302,8 +1302,8 @@ export function chainFault(ctx: Ctx): string | undefined {
 }
 
 // The operator's words record that already places a gated ask, or undefined. It is the newest decision naming the key on the
-// versions the ask touches, or on no version (a keep in backlog or a none retracts an older add; rule()'s own selection leaves
-// such a row out); two at the newest instant are a tie and refuse. It holds checked words (words: 1, never a legacy row),
+// versions the ask touches, on no version, or a keep in the backlog whatever --to it names (each retracts an older add;
+// rule()'s own selection leaves such rows out, so this reading is stricter); two at the newest instant are a tie and refuse. It holds checked words (words: 1, never a legacy row),
 // covers exactly this placement under the reducer's scopeOk, and is newer than every ruling on the key. Only the verified
 // chain is read, and a chain with a row after its verified prefix is not read at all: a row that does not verify places nothing.
 function coveringDecision(l: Loaded, ask: Pick<RequestRow, 'verb' | 'key' | 'from_v' | 'to_v'>): OperatorRow | undefined {
@@ -1311,7 +1311,7 @@ function coveringDecision(l: Loaded, ask: Pick<RequestRow, 'verb' | 'key' | 'fro
   if (chainFaultOf(l) !== undefined) return undefined;
   const touched = [ask.from_v, ask.to_v].filter((v) => v !== null);
   const named = l.operator.verified.filter((x) => x.kind === 'decision' && (x.keys ?? []).includes(ask.key)
-    && ([x.from_v, x.to_v].some((v) => v != null && touched.includes(v)) || (x.from_v == null && x.to_v == null)));
+    && ([x.from_v, x.to_v].some((v) => v != null && touched.includes(v)) || (x.from_v == null && x.to_v == null) || (x.op === 'keep' && x.from_v == null)));
   const newest = Math.max(...named.map((x) => Date.parse(x.ts)));
   const top = named.filter((x) => Date.parse(x.ts) === newest);
   if (top.length !== 1 || top[0].words !== 1) return undefined;
