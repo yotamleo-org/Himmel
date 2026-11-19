@@ -699,6 +699,8 @@ class StackedWorker(StreamFixture):
         self.add('N1', '- 10:05 MERGED #1')
         self.until(lambda: len(self.seen('N1 MERGED #1')) >= 4, seconds=15)
         fourth = self.seen('N1 MERGED #1')[3]
+        tries = self.path('le-N1.tries')  # the change must follow the relay's record of the fourth refusal
+        self.until(lambda: tries.exists() and tries.read_text().split()[0] == '4', seconds=5)
         self.add('N1', '- 10:06 LIVE still working')  # the fifth gap would be 4.8 s on the ladder
         self.until(lambda: len(self.seen('N1 MERGED #1')) >= 6, seconds=15)
         stamps = self.seen('N1 MERGED #1')
