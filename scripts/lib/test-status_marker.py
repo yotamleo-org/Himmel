@@ -192,5 +192,29 @@ class Docs(unittest.TestCase):
                         fn(p)
 
 
+class Pins(unittest.TestCase):
+    TEN = re.compile(r"WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED")  # old-term-ok
+
+    def test_newest_and_actionable_agree_with_parse(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = os.path.join(t, "p.md")
+
+            def put(line):
+                with open(p, "w", encoding="utf8") as f:
+                    f.write(f"## Results\n{line}\n")
+
+            for line, _want in read_rows():
+                pm = status_marker.parse(line)
+                with self.subTest("row P1", line=line):
+                    put(line)
+                    self.assertEqual(status_marker.newest(p), pm)
+                    self.assertEqual(status_marker.actionable(p),
+                                     f"{pm}#1" if pm in ("READY", "BLOCKED", "FINDING") else None)
+                for x in ("READY", "BLOCKED", "FINDING", "MERGED"):
+                    with self.subTest("row P2", word=x, line=line):
+                        put(self.TEN.sub(x, line, count=1))
+                        self.assertEqual(status_marker.actionable(p), None if pm is None else f"{x}#1")
+
+
 if __name__ == "__main__":
     unittest.main()
