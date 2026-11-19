@@ -75,10 +75,10 @@ function parsePeer(name: string, raw: any): Peer {
   };
 }
 
-// Reads peers.json and applies the startup refusals. The token is not part of
-// the config: it comes from the process env (run.sh sources the peer env file),
-// so this function opens no file but peers.json.
-export function loadConfig(path: string, env: NodeJS.ProcessEnv = process.env): Config {
+// Reads and validates peers.json. The tools that never hold the bot token (read,
+// send, setup) use this; the poller uses loadConfig, which adds the token checks.
+// It opens no file but peers.json.
+export function readPeersFile(path: string): Config {
   let text: string;
   try {
     const fd = fs.openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -97,12 +97,8 @@ export function loadConfig(path: string, env: NodeJS.ProcessEnv = process.env): 
   try { raw = JSON.parse(text); } catch { return bad("peers.json is not valid JSON"); }
   if (!raw || typeof raw !== "object") bad("peers.json must be an object");
 
-  const token = env.PEER_BOT_TOKEN;
-  if (!token) bad("PEER_BOT_TOKEN is not set");
-  if (!TOKEN_RE.test(token!)) bad("PEER_BOT_TOKEN is not a bot token");
   const operatorBotId = str(raw.operatorBotId, "operatorBotId");
   if (!BOT_ID_RE.test(operatorBotId)) bad("operatorBotId must be digits");
-  if (botIdFromToken(token!) === operatorBotId) bad("the peer bot token is the operator bot's token");
   if (typeof raw.operatorChatId !== "number" || !Number.isSafeInteger(raw.operatorChatId)) bad("operatorChatId must be a number");
   const bridgeRoot = str(raw.bridgeRoot, "bridgeRoot");
   const himmelRoot = str(raw.himmelRoot, "himmelRoot");
@@ -117,4 +113,15 @@ export function loadConfig(path: string, env: NodeJS.ProcessEnv = process.env): 
     peers[name] = parsePeer(name, p);
   }
   return { operatorBotId, operatorChatId: raw.operatorChatId, bridgeRoot, himmelRoot, peers, maxTextChars, addressing: "command" };
+}
+
+// The poller's startup refusals: the file checks, then the token. The token is not
+// part of the config; it arrives in the environment (run.sh sources the peer env file).
+export function loadConfig(path: string, env: NodeJS.ProcessEnv = process.env): Config {
+  const cfg = readPeersFile(path);
+  const token = env.PEER_BOT_TOKEN;
+  if (!token) bad("PEER_BOT_TOKEN is not set");
+  if (!TOKEN_RE.test(token!)) bad("PEER_BOT_TOKEN is not a bot token");
+  if (botIdFromToken(token!) === cfg.operatorBotId) bad("the peer bot token is the operator bot's token");
+  return cfg;
 }

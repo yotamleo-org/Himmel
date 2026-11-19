@@ -1,0 +1,18 @@
+// Every peer-derived field is passed through here before it is printed or shown.
+// Order matters: controls and invisible characters go first so a later rule never
+// sees a disguised sequence, and the length cap comes last on the final text.
+const C0_C1 = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/g;
+// Bidi controls and zero-width characters.
+const INVISIBLE = /[؜᠎​-‏‪-‮⁠-⁤⁦-⁩﻿]/g;
+
+export function sanitize(text: string, max: number): string {
+  let s = text.replace(C0_C1, "").replace(INVISIBLE, "");
+  s = s.replace(/<{3,}|>{3,}/g, m => m.split("").join(" "));
+  s = s.replace(/<([/!?A-Za-z][^<>\n]*)>/g, "‹$1›").replace(/<\//g, "‹/");
+  if (s.length > max) {
+    s = s.slice(0, max);
+    const last = s.charCodeAt(s.length - 1);
+    if (last >= 0xd800 && last <= 0xdbff) s = s.slice(0, -1);
+  }
+  return s;
+}
