@@ -143,6 +143,8 @@ def live_remainder(key):
             try:
                 r = json.loads(line)
             except ValueError:
+                if line.strip() and key.upper() in line.upper():  # a torn or corrupt line that names the ticket may be its partial merge
+                    raise OSError('a line that names %s is not JSON' % key)
                 continue
             if not isinstance(r, dict) or r.get('event') != 'merge' or r.get('contract') not in ('yes', 'no') or str(r.get('key', '')).upper() != key.upper():
                 continue
@@ -356,7 +358,8 @@ def decision(opt):
         # `--check` and a settle on a ticket that is not Done refuse and write nothing; a settle on a ticket that is already Done leaves the
         # chief ONE owned, idempotent step that names it and discharges nothing. A KEEP is never asked.
         remainder, unreadable = live_remainder(row['key'])
-        if unreadable:
+        done_settle = opt.settle and not opt.dry_run and current.get('status') == 'Done' and current.get('category') == 'done'
+        if unreadable and not done_settle:
             raise ValueError('live pull-request remainder unreadable: ' + '; '.join(unreadable) + '; the CLOSE is refused until it can be read')
         open_steps = [r for r in rows if not r['closed'] and str(r.get('key', '')).upper() == row['key'].upper() and r['id'] != row['id'] and r['kind'] == 'step'
                       and r.get('actor') != 'proof' and r.get('action') not in ('requirements-reconciliation', 'version-reconciliation')]
@@ -368,23 +371,25 @@ def decision(opt):
                     ' remains open; if it is finished, close it with `' + '` or `'.join('bash %s close --bucket %s --id %s --key %s' % (HERE / 'owe.sh', opt.bucket, r['id'], row['key']) for r in steps) +
                     '`; if work really remains, record a KEEP decision instead')
 
-        if remainder or foreign:
-            names = remainder + ['open step %s (%s: %s)' % (r['id'], r.get('actor') or 'no actor', r['text'][:160]) for r in foreign]
-            if opt.settle and not opt.dry_run and current.get('status') == 'Done' and current.get('category') == 'done':
-                # The ticket really is Done but something opened after the check. Keep the validation pending and leave the chief one
-                # owned, idempotent step that names it; discharge nothing.
+        if remainder or foreign or unreadable:
+            names = ['could not read: ' + u for u in unreadable] + remainder + ['open step %s (%s: %s)' % (r['id'], r.get('actor') or 'no actor', r['text'][:160]) for r in foreign]
+            if done_settle:
+                # The ticket really is Done but something opened, or could not be read, after the check. Keep the validation pending and leave
+                # the chief ONE owned step per validation (its identity is the validation and the closed steps before it, not the blockers,
+                # which change; the live remainder is the authority); discharge nothing.
                 metadata = dict(actor='chief', capability='remainder reconciliation', action='next-step', source_id=row['id'], wake='remainder reconciled',
                                 due=datetime.datetime.now(datetime.timezone.utc).date().isoformat(), actual_status=current.get('status', ''))
                 # A step the chief closed while this still blocks is not an owner: the next settle writes a new open one that says so, so
                 # there is always exactly one open owner and never a success that returns a closed step's id.
                 earlier = [r['id'] for r in rows if r['closed'] and r.get('capability') == 'remainder reconciliation' and r.get('source_id') == row['id']]
                 text = re.sub(r'[\x00-\x1f]+', ' ', ('Earlier reconciliation step %s %s closed with the blockers still open. ' % (', '.join(earlier), 'was' if len(earlier) == 1 else 'were') if earlier else '') +
-                              'Reconcile close: %s is Done but %s still blocks the CLOSE; validation %s stays pending. Clear it first (build or finish it, close what is finished, '
+                              'Reconcile close: %s is Done but %s still blocks the CLOSE; validation %s stays pending. The live pull-request remainder is the authority: what is named '
+                              'here is as it stood when this step was written. Clear it first (build or finish it, close what is finished, '
                               'or edit the pull request to the truth), then close this step, then record the decision again; if it will not be cleared, reopen the ticket '
                               'or record a KEEP' % (row['key'], '; '.join(names), row['id']))
                 try:
                     made = owe(['add', '--bucket', opt.bucket, '--chief', row['chief'], '--kind', 'step', '--key', row['key'], '--text', text,
-                                '--identity', digest([row['identity'], names, 'close-reconciliation', earlier]), '--metadata-stdin'], json.dumps(metadata))
+                                '--identity', digest([row['identity'], 'close-reconciliation', earlier]), '--metadata-stdin'], json.dumps(metadata))
                     owned = made in {r['id'] for r in json.loads(owe(['list', '--bucket', opt.bucket, '--json']))}
                 except RuntimeError as exc:
                     raise ValueError('could not write the reconciliation step (%s): %s' % (exc, '; '.join(names)))
