@@ -1625,9 +1625,7 @@ b8s="$(run8 "$C8/HIMMEL-nextleg-2026-10-31MB-roadmap-chief.fleet.json" --top 20 
 lacks "(8436) inactivity alone cannot clear unknown sibling ownership" "$b8s" "RESUME${TAB}HIMMEL-53${TAB}"
 # malformed sibling manifests never break the read: a list, entries that are not objects, a null or numeric doc, a doc-less entry
 touch "$W53"
-printf '[]\n' > "$C8/HIMMEL-nextleg-2026-10-31MC-roadmap-chief.fleet.json"
 printf '{"schema":1,"workers":["N1",{"doc":null,"label":"N2"},{"doc":5,"label":"N3"},{"label":"N4"}]}\n' > "$C8/HIMMEL-nextleg-2026-10-31MD-roadmap-chief.fleet.json"
-printf '{"schema":1,"workers":{"doc":"x"}}\n' > "$C8/HIMMEL-nextleg-2026-10-31ME-roadmap-chief.fleet.json"
 b8m="$(run8 "$C8/HIMMEL-nextleg-2026-10-31MB-roadmap-chief.fleet.json" --top 20)"
 has "(8436) malformed sibling manifests do not stop the list" "$b8m" "${TAB}HIMMEL-57${TAB}"
 lacks "(8436) a good sibling still holds its ticket beside malformed ones" "$b8m" "RESUME${TAB}HIMMEL-53${TAB}"
@@ -4438,6 +4436,96 @@ ow_go2 --why --workers-from "$OW_X1H9"
 check "9335 X1.h9c: exactly one owner-unknown line prints" "1" "$(ow_n "$OW_OUT" '^# owner unknown:')"
 has "9335 X1.h9c: the manifest name is escaped in the line" "$OW_OUT" "(manifest no-such\\nLOCAL\\t${KP}-9\\nx.json missing)"
 check "9335 X1.h9c: no output line is the forged row for the key HIMMEL-9" "0" "$(ow_forged "$OW_OUT")"
+
+
+# --- 9335 N2: a sibling manifest that cannot be read, or whose shape the guard refuses, is an owner unknown ---
+ow_sbdir() { # <name>: a directory with a readable own manifest (18B) and the sibling path (17A) unset: sets OW_SD, OW_OWN, OW_SIB
+    OW_SD="$OW/$1"; mkdir -p "$OW_SD"
+    ow_doc "$OW_SD/HIMMEL-71-N14-own.md" "- 10:00 LIVE - started"
+    mkfleet "$OW_SD/HIMMEL-nextleg-2026-11-18B-ow.fleet.json" "N14:$OW_SD/HIMMEL-71-N14-own.md"
+    OW_OWN="$OW_SD/HIMMEL-nextleg-2026-11-18B-ow.fleet.json"
+    OW_SIB="$OW_SD/HIMMEL-nextleg-2026-11-17A-ow.fleet.json"
+}
+ow_anchor() { printf '{"family":"F9335","attempts":{}}\n' > "$OW_SD/fleet-control.json"; }  # a valid hand-written anchor beside the manifests
+ow_sbn2() { # <id> <unreadable|malformed>: one N2 line for the sibling and both lists withheld
+    ow_go2 --why --workers-from "$OW_OWN"
+    check "9335 $1: ND exits 0" "0" "$OW_RC"
+    check "9335 $1: one owner-unknown line names the sibling manifest as $2" "1" "$(ow_n "$OW_OUT" "^# owner unknown: the chief on HIMMEL-nextleg-2026-11-17A-ow \(manifest HIMMEL-nextleg-2026-11-17A-ow\.fleet\.json $2\); withheld: ")"
+    lacks "9335 $1: the orphan HIMMEL-60 is withheld" "$OW_OUT" "RESUME${TAB}HIMMEL-60"
+    lacks "9335 $1: the To Do row HIMMEL-90 is withheld" "$OW_OUT" "HIMMEL-90${TAB}"
+}
+ow_sbnone() { # <id>: no line for the sibling and the orphan and the To Do row list
+    ow_go2 --why --workers-from "$OW_OWN"
+    lacks "9335 $1: no owner-unknown line" "$OW_OUT" "# owner unknown"
+    has "9335 $1: the orphan HIMMEL-60 lists" "$OW_OUT" "RESUME${TAB}HIMMEL-60"
+    has "9335 $1: the To Do row HIMMEL-90 lists" "$OW_OUT" "LOCAL${TAB}HIMMEL-90${TAB}"
+}
+ow_mirror sb5
+
+# SB1: a sibling that cannot be read as JSON
+ow_sbdir sb1a; printf 'not json\n' > "$OW_SIB"; ow_sbn2 SB1.a unreadable
+ow_sbdir sb1b; mkdir "$OW_SIB"; ow_sbn2 SB1.b unreadable
+ow_sbdir sb1c; printf '{"schema":1,"workers":[]}\n' > "$OW_SD/real-sibling.json"; ln -s "$OW_SD/real-sibling.json" "$OW_SIB"; ow_sbn2 SB1.c malformed
+ow_sbdir sb1d; printf '%100000s' '' | tr ' ' '[' > "$OW_SIB"; ow_sbn2 SB1.d unreadable
+ow_sbdir sb1x; printf 'not json\n' > "$OW_SD/HIMMEL-nextleg-2026-11-17A-other.fleet.json"; ow_sbnone SB1.ctl
+
+# SB4: the top level or the workers value is not what a manifest holds; each with the anchor absent and present
+for ow_anc in absent present; do
+    ow_sbdir "sb4a-$ow_anc"; [ "$ow_anc" = absent ] || ow_anchor; printf '[]\n' > "$OW_SIB"; ow_sbn2 SB4.a malformed
+    ow_sbdir "sb4b-$ow_anc"; [ "$ow_anc" = absent ] || ow_anchor
+    for ow_top in '"a string"' '7' 'null'; do
+        printf '%s\n' "$ow_top" > "$OW_SIB"; ow_sbn2 SB4.b malformed
+    done
+    ow_sbdir "sb4c-$ow_anc"; [ "$ow_anc" = absent ] || ow_anchor; printf '{"schema":1,"workers":{"doc":"x"}}\n' > "$OW_SIB"; ow_sbn2 SB4.c malformed
+done
+ow_sbdir sb4x; printf '%s\n' '{"schema":1,"workers":[1,"x",null,{"doc":null},{"doc":7},{"label":"z"}]}' > "$OW_SIB"; ow_sbnone SB4.ctl
+
+# SB5: the runtime's reader raises on the sibling. (a) and (b) run with the anchor beside the manifests; only (a) needs the own manifest missing
+ow_sbdir sb5a; printf '{"attempts":{}}\n' > "$OW_SD/fleet-control.json"
+mkfleet "$OW_SIB" "N15:$OW_SD/HIMMEL-72-N15-sib.md"; rm -f "$OW_OWN"
+ow_go2 --why --workers-from "$OW_OWN"
+check "9335 SB5.a: an anchor with no family, own manifest missing: ND exits 0" "0" "$OW_RC"
+check "9335 SB5.a: one owner-unknown line names the sibling manifest as malformed" "1" "$(ow_n "$OW_OUT" "^# owner unknown: the chief on HIMMEL-nextleg-2026-11-17A-ow \(manifest HIMMEL-nextleg-2026-11-17A-ow\.fleet\.json malformed\); withheld: ")"
+check "9335 SB5.a: the missing own manifest prints its own line beside it" "1" "$(ow_n "$OW_OUT" '^# owner unknown: the fleet \(manifest HIMMEL-nextleg-2026-11-18B-ow\.fleet\.json missing\)')"
+ow_sbdir sb5b
+printf '{"family":"F9335","attempts":{"a1":{"attempt_id":"a1","doc":"%s/HIMMEL-72-N15-sib.md","name":"N15","phase":"launched"}}}\n' "$OW_SD" > "$OW_SD/fleet-control.json"
+printf '{"schema":1,"workers":[{"label":"nodoc"}],"control":{"family":"F9335","anchor":"%s/fleet-control.json"}}\n' "$OW_SD" > "$OW_SIB"
+ow_sbn2 SB5.b malformed
+ow_sbdir sb5c1
+printf '{"family":"F9335","attempts":{"a1":{"attempt_id":"a1","doc":"%s/HIMMEL-72-N15-sib.md","name":"N15","phase":"launched"}}}\n' "$OW_SD" > "$OW_SD/fleet-control.json"
+printf '{"schema":1,"workers":[1],"control":{"family":"F9335","anchor":"%s/fleet-control.json"}}\n' "$OW_SD" > "$OW_SIB"
+ow_sbn2 SB5.c1 malformed
+ow_sbdir sb5c2
+printf '{"family":"F9335","attempts":{}}\n' > "$OW_SD/fleet-control.json"
+printf '{"schema":1,"workers":[1],"control":{"family":"F9335","anchor":"%s/fleet-control.json"}}\n' "$OW_SD" > "$OW_SIB"
+ow_sbn2 SB5.c2 malformed
+ow_sbdir sb5d
+printf '{"family":"F9335","attempts":{}}\n' > "$OW_SD/fleet-control.json"
+printf '{"schema":1,"workers":[{"label":"nodoc"}],"control":{"family":"OTHER","anchor":"%s/fleet-control.json"}}\n' "$OW_SD" > "$OW_SIB"
+ow_sbnone SB5.d
+ow_sbdir sb5dd; printf '{"attempts":{}}\n' > "$OW_SD/fleet-control.json"
+ow_go2 --workers-from "$OW_OWN"
+check "9335 SB5.d: an anchor with no family and a readable own manifest exits 1, as at the base" "1" "$OW_RC"
+
+# SB6, SB7: workers is null
+for ow_anc in absent present; do
+    ow_sbdir "sb6-$ow_anc"; [ "$ow_anc" = absent ] || ow_anchor; printf '{"schema":1,"workers":null}\n' > "$OW_SIB"; ow_sbn2 SB6 malformed
+    ow_sbdir "sb7-$ow_anc"; [ "$ow_anc" = absent ] || ow_anchor
+    printf '{"schema":1,"workers":null,"legs":[{"doc":"%s/HIMMEL-63-N17-legs.md","label":"N17"}]}\n' "$OW_SD" > "$OW_SIB"; ow_sbn2 SB7 malformed
+done
+ow_sbdir sb6x; printf '{"schema":1,"workers":[]}\n' > "$OW_SIB"; ow_sbnone SB6.ctl
+ow_sbdir sb7x; ow_doc "$OW_SD/HIMMEL-63-N17-legs.md" "- 10:00 LIVE - started"
+printf '{"schema":1,"legs":[{"doc":"%s/HIMMEL-63-N17-legs.md","label":"N17"}]}\n' "$OW_SD" > "$OW_SIB"
+ow_go2 --why --workers-from "$OW_OWN"
+lacks "9335 SB7.ctl: a legs-only sibling passes the guard" "$OW_OUT" "malformed"
+lacks "9335 SB7.ctl: the reader read the legs row, so its ticket is held" "$OW_OUT" "RESUME${TAB}HIMMEL-63"
+
+# SB8: workers or legs present and not a list
+ow_sbdir sb8
+for ow_body in '"workers":[],"legs":"x"' '"workers":[],"legs":{}' '"workers":[],"legs":null' '"workers":"x"' '"workers":7'; do
+    printf '{"schema":1,%s}\n' "$ow_body" > "$OW_SIB"; ow_sbn2 SB8 malformed
+done
+ow_sbdir sb8x; printf '{"schema":1,"workers":[],"legs":[]}\n' > "$OW_SIB"; ow_sbnone SB8.ctl
 
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
