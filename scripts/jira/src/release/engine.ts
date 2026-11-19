@@ -1241,10 +1241,13 @@ function withRelation(ctx: Ctx, k: Buffer, dup: RequestRow, o: Omit<RequestRow, 
   return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), k, { ...rest, evidence });
 }
 
+// The op a request into a version asks for, as a record of the operator's words names it: an INTAKE from backlog adds, anything else moves.
+const askOp = (verb: Verb, from_v: string | null): 'add' | 'move' => (verb === 'INTAKE' && from_v === null ? 'add' : 'move');
+
 export function recordRequestDecision(ctx: Ctx, o: { decision: string; words: string; key: string; verb: Verb; from_v: string | null; to_v: string | null }): OperatorRow {
   operatorFence(ctx);
   if (o.to_v === null) throw new Error('release request: --decision records the operator\'s words for a request into a version');
-  const op = o.verb === 'INTAKE' && o.from_v === null ? 'add' : 'move';
+  const op = askOp(o.verb, o.from_v);
   return operatorDecision(ctx, {
     decision: o.decision, keys: [o.key], op, from_v: o.from_v, to_v: o.to_v, verbatim: o.words, ...decisionWords(ctx, o.decision, o.words),
   });
@@ -1267,13 +1270,40 @@ export function requestWithWords(ctx: Ctx, row: Omit<RequestRow, 'req' | 'ts' | 
   return { operator, withdrawn, request: request(ctx, { ...row, why: `${row.why} (operator words: ${operator.id})`, evidence }) };
 }
 
-// Inert until the product commit: no record covers any ask.
-export function coveringRecord(_ctx: Ctx, _ask: Pick<RequestRow, 'verb' | 'key' | 'from_v' | 'to_v'>): OperatorRow | undefined {
-  return undefined;
+// The operator's words record that already places a gated ask, or undefined. It is the newest decision naming the key on the
+// versions the ask touches (rule()'s own selection; two at the newest instant are a tie and refuse), holds checked words
+// (words: 1, never a legacy row), covers exactly this placement under the reducer's scopeOk, and is newer than every ruling
+// on the key. Only the verified chain is read: a row that does not verify places nothing.
+function coveringDecision(l: Loaded, ask: Pick<RequestRow, 'verb' | 'key' | 'from_v' | 'to_v'>): OperatorRow | undefined {
+  if ((ask.verb !== 'INTAKE' && ask.verb !== 'REVERSION') || ask.to_v === null) return undefined;
+  const touched = [ask.from_v, ask.to_v].filter((v) => v !== null);
+  const named = l.operator.verified.filter((x) => x.kind === 'decision' && (x.keys ?? []).includes(ask.key)
+    && [x.from_v, x.to_v].some((v) => v != null && touched.includes(v)));
+  const newest = Math.max(...named.map((x) => Date.parse(x.ts)));
+  const top = named.filter((x) => Date.parse(x.ts) === newest);
+  if (top.length !== 1 || top[0].words !== 1) return undefined;
+  const [rec] = top;
+  const op: Op = { kind: askOp(ask.verb, ask.from_v), from_v: ask.from_v, to_v: ask.to_v };
+  if (!scopeOk({ authority: { kind: 'operator', ref: rec.id }, key: ask.key, op }, new Map([[rec.id, rec]]), l.decl.current)) return undefined;
+  const ruled = Math.max(-Infinity, ...l.rulings.verified.filter((r) => r.key === ask.key).map((r) => Date.parse(r.ts)));
+  return newest > ruled ? rec : undefined;
 }
 
-export function requestOnRecord(_ctx: Ctx, _row: Omit<RequestRow, 'req' | 'ts' | 'state'>): { operator: OperatorRow; request: RequestRow } | undefined {
-  return undefined;
+// Read-only: the record requestOnRecord would cite. A release that is not declared, or does not verify, has none.
+export function coveringRecord(ctx: Ctx, ask: Pick<RequestRow, 'verb' | 'key' | 'from_v' | 'to_v'>): OperatorRow | undefined {
+  if ('unknown' in load(ctx)) return undefined;
+  return locked(ctx, (l) => coveringDecision(l, ask));
+}
+
+// A gated ask that a record already places is filed citing that record: no operator row and no words. The fence is the
+// words path's own, so the release manager, a bridge session and a worker still cannot file it. Citing writes no row, so unlike
+// a new record it withdraws no pending request for another placement.
+export function requestOnRecord(ctx: Ctx, row: Omit<RequestRow, 'req' | 'ts' | 'state'>): { operator: OperatorRow; request: RequestRow } | undefined {
+  operatorFence(ctx);
+  const operator = coveringRecord(ctx, row);
+  if (!operator) return undefined;
+  const evidence = { ...((row.evidence ?? {}) as Record<string, unknown>), operator: operator.id };
+  return { operator, request: request(ctx, { ...row, evidence }) };
 }
 
 // --- the blocker pull ------------------------------------------------------------

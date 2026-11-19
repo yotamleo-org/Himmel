@@ -5202,6 +5202,17 @@ describe('a gated ask cites the operator record that already covers it', () => {
     expect(queue().filter((q) => q.req === other.req).map((q) => q.state)).toEqual(['open', expect.stringMatching(/^withdrawn:/)]);
   });
 
+  it('way 10: a pending ask that cites nothing is returned as it stands by the plain dedupe: no second request, no citation added', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    const plain = request(at(), ask());
+    const got = requestOnRecord(at(), ask());
+    expect(got?.request.req).toBe(plain.req);
+    expect(got?.request.evidence).toEqual({});
+    expect(queue()).toHaveLength(1);
+  });
+
   // way 11: the printed remedy and the accepted path agree
   it('way 11: a refused ask the state lists is never covered by a record, so its remedy (record the words) is the only accepted path', async () => {
     await setup();

@@ -21,7 +21,7 @@ import { attemptLaunch, repairStateOf } from '../release/repair-state.js';
 import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
-  ack, apply, bucketCheck, claim, clearProposedLabels, coreBypass, coreSnapshot, declare, decisionWords, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, readMirrorFilesUnverified, readOperatorRecords, reopen, request as releaseRequest, requestWithWords, rmRun, rmRunSummary, rule, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
+  ack, apply, bucketCheck, claim, clearProposedLabels, coreBypass, coreSnapshot, coveringRecord, declare, decisionWords, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, readMirrorFilesUnverified, readOperatorRecords, reopen, request as releaseRequest, requestOnRecord, requestWithWords, rmRun, rmRunSummary, rule, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
   type ApprovalAlert, type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type RunRecord, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
@@ -119,10 +119,14 @@ function gateRefusal(ctx: Ctx, o: { verb: Verb; key: string; from_v: string | nu
     ? `  add ${words} to this command`
     : `  jira release request ${ctx.release} --verb ${o.verb} --key ${o.key} --from ${o.from_v ?? 'backlog'} --to ${o.to_v} --why "<why>" ${words}`;
   const where = '  (<n>: specs/decisions/verbatim-decision-<n>-*.txt)';
+  // The CLI request cites a words record already on file; the create path does not, so only the request names that way.
+  const cite = o.origin === 'cli'
+    ? `cite one on file that already names ${o.key} and exactly this placement (a words record newer than the key's last ruling is cited with no --decision), or record them`
+    : null;
   if (o.ticket === null) {
-    return `release request: ${o.key} could not be read (not in the mirror, and the live read failed), so it may be operator work; run \`jira mirror\` and ask again, or name the operator's words:\n${fix}\n${where}`;
+    return `release request: ${o.key} could not be read (not in the mirror, and the live read failed), so it may be operator work; run \`jira mirror\` and ask again, or name the operator's words${cite === null ? '' : `: ${cite}`}:\n${fix}\n${where}`;
   }
-  return `release request: ${o.key} is ${operatorWorkOf(o.ticket)}; a request that places it needs a record of the operator's words.\n${fix}\n${where}`;
+  return `release request: ${o.key} is ${operatorWorkOf(o.ticket)}; a request that places it needs a record of the operator's words${cite === null ? '' : `: ${cite}`}.\n${fix}\n${where}`;
 }
 
 export async function ticketFacts(ctx: Ctx, key: string): Promise<TicketFacts | null> {
@@ -801,7 +805,18 @@ export function registerRelease(program: Command): void {
       const row = { verb: o.verb as Verb, key: o.key, from_v: ver(o.from), to_v: ver(o.to), why: o.why };
       const scoped = isGated({ ...row, origin: 'cli', ticket: null, env: ctx.env });
       const ticket = scoped && o.decision === undefined ? await ticketFacts(ctx, o.key) : null;
-      refuseRequest(ctx, { ...row, evidence: evidence as Record<string, unknown>, origin: 'cli', ticket, decision: o.decision });
+      // A gated ask with no --decision is placed by a words record already on file that names this key and exactly this placement.
+      const cited = scoped && o.decision === undefined && isGated({ ...row, origin: 'cli', ticket, env: ctx.env }) ? coveringRecord(ctx, row) : undefined;
+      refuseRequest(ctx, { ...row, evidence: evidence as Record<string, unknown>, origin: 'cli', ticket, decision: o.decision ?? cited?.decision ?? undefined });
+      if (cited) {
+        const got = requestOnRecord(ctx, { ...row, evidence: evidence as Record<string, unknown>, from: 'console' });
+        if (!got) throw new RequestRefused(`release request: ${cited.id} no longer covers ${o.key}; ask again`);
+        if ((got.request.evidence as { operator?: unknown } | null)?.operator === got.operator.id) {
+          console.log(`OPERATOR ${got.operator.id} (decision ${got.operator.decision}, the operator's words already on file; no new record)`);
+        }
+        console.log(`REQ ${got.request.req}`);
+        return;
+      }
       if (o.decision !== undefined && o.words !== undefined) {
         const got = requestWithWords(ctx, { ...row, evidence: evidence as Record<string, unknown>, from: 'console' }, { decision: o.decision, words: o.words });
         console.log(`OPERATOR ${got.operator.id} (decision ${o.decision}, the operator's words)`);
