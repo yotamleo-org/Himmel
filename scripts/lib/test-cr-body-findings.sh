@@ -292,7 +292,7 @@ sed 's/alt="Nitpick"/alt="Potential issue"/' "$NIT_FOLLOWUP" > "$TMP/fu-nitpick-
 mk_json_from_file "$RESP_DIR/fu-nitpick-other-badge.json" "$UID_OK" "$HEAD" "$TMP/fu-nitpick-other-badge.txt"
 mk_json_from_file "$RESP_DIR/fu-nitpick-other-badge-prior.json" "$UID_OK" "oldsha1" "$TMP/fu-nitpick-other-badge.txt"
 # One Outside-diff finding (the 4269 body) plus the 4291 Nitpick finding in one Follow-up section.
-sed -n '/^<details>$/,/^<\/blockquote><\/details>$/{p;/^<\/blockquote><\/details>$/q}' "$NIT_FOLLOWUP" > "$TMP/fu-nit-block.txt"
+awk '/^<details>$/{f=1} f{print} f&&/^<\/blockquote><\/details>$/{exit}' "$NIT_FOLLOWUP" > "$TMP/fu-nit-block.txt"
 sed '/^## Follow-up Comments[ ]*$/r '"$TMP/fu-nit-block.txt" "$OD_FOLLOWUP" > "$TMP/fu-mixed.txt"
 mk_json_from_file "$RESP_DIR/fu-mixed.json" "$UID_OK" "$HEAD" "$TMP/fu-mixed.txt"
 mk_json_from_file "$RESP_DIR/fu-mixed-prior.json" "$UID_OK" "oldsha1" "$TMP/fu-mixed.txt"
@@ -300,7 +300,7 @@ mk_json_from_file "$RESP_DIR/fu-mixed-prior.json" "$UID_OK" "oldsha1" "$TMP/fu-m
 # Follow-up section that holds a Nitpick. CodeRabbit's one-marker-per-finding
 # count (cr-comment:v1:) is the shape-independent census.
 NB="$TMP/fu-nit-block.txt"
-sed -n '/^<details>$/,/^<\/blockquote><\/details>$/{p;/^<\/blockquote><\/details>$/q}' "$OD_FOLLOWUP" > "$TMP/fu-od-block.txt"
+awk '/^<details>$/{f=1} f{print} f&&/^<\/blockquote><\/details>$/{exit}' "$OD_FOLLOWUP" > "$TMP/fu-od-block.txt"
 OB="$TMP/fu-od-block.txt"
 # mk_fu_pair <name> <body-file>: head and prior-head payloads of one body
 mk_fu_pair() {
