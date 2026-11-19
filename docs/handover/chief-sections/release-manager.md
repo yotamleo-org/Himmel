@@ -85,7 +85,8 @@ release is declared (`jira release state <R>` prints a status other than
   `--required-by <new-parent>`. These append the changed evidence through the
   normal request writer; they do not admit the child or close the parent.
 
-  An unfinished move marked `blocked` belongs to the chief. Read its observed
+  An unfinished move marked `blocked` belongs to the chief (the tick and the waiter
+  tell you: see "A blocked ruling wakes you" below). Read its observed
   membership and actual finish/restore remedy before running another batch;
   `rm-run` alone cannot resolve conflicting membership. A read-only release
   directory or unavailable repair-state lock is an explicit read/attempt failure,
@@ -180,11 +181,34 @@ release is declared (`jira release state <R>` prints a status other than
   reused pid keeps the lease held. A replay `rm-run` cannot finish is retried at most
   once per that interval, never on every tick, and `replay=<n>` stays on the line until
   `jira release state <R> --json` lists no `unfinished_rulings` for it; nothing
-  wakes the chief for it today, so read that list when the field lingers. The tick
-  never launches for a `status: blocked` move (not counted: the chief repairs it, see
-  `observed` and `next`), for claimed-only work, behind a held lease whose owner is not
+  wakes the chief for a replay that never finishes, so read that list when
+  `replay=<n>` lingers on the line. The tick never launches for a `status: blocked`
+  move (not counted in `replay=<n>`: it wakes the chief instead, see the next
+  bullet), for claimed-only work, behind a held lease whose owner is not
   proven gone, or on a state that is not OK, and it writes no release state (the
   `rm-run` it starts does).
+- **A blocked ruling wakes you.** An unfinished move with `status: blocked` is
+  yours: `rm-run` never repairs one and the replay launch above never counts it. From
+  the same state read as `rm-queue=`, the tick prints `rm-blocked=<n>:<KEY>@<ruling>,...`
+  after `rm-refused=`: n counts the blocked rulings, the pairs are sorted, and the
+  field is absent when none is blocked or the chief doc declares no release. It reads
+  `?` when the tick cannot tell: the state read failed or is not OK, the state's
+  mirror input is `UNKNOWN` (the engine then lists every unfinished ruling as
+  `replay`, a blocked one too), or `unfinished_rulings` is not a list of rows that
+  each carry a key and a ruling id. The field is in the waiter's key, so it wakes you
+  once for a set (a `WAKE tick` naming `rm-blocked` in `changed=`, the tick line
+  follows) and again only when the set changes: a ruling joins, leaves or is swapped
+  for another. A `?` keeps the last known set and wakes nobody, so the same set coming
+  back after one wakes nobody and a different set wakes once; a set that empties
+  wakes nobody. Nothing reminds you while a set stands, and nothing stores it: the
+  tick derives it from the state on every tick. A set already on the tick line when a
+  waiter has no saved key, or a saved key taken under different tick args or manifest
+  worker set, is that waiter's silent baseline, so a chief that starts or takes over
+  reads `rm-blocked=` on the tick line. To act, read `jira release state <R> --json`,
+  find each listed ruling under `unfinished_rulings`, and follow its `observed` and
+  `next` (finish or restore the move with `jira fix-version`); then
+  `jira release rm-run <R>` writes the row and receipt once. A ruling stuck in
+  `replay` still wakes nobody.
 - **Version drift is repaired by the tick, not alerted.** Three fields follow
   `rm-queue=`, each elided when empty, none in the wake key, none a message.
   `held=<n>:<sig8>` is the count of keys the repair cannot place on its own and
