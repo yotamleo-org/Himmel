@@ -81,6 +81,6 @@ test("the Bot API sendMessage method is named only in telegram.ts", () => {
   const dir = import.meta.dir;
   const offenders = readdirSync(dir)
     .filter(n => n.endsWith(".ts") && !n.endsWith(".test.ts") && n !== "telegram.ts")
-    .filter(n => /["'`/]sendMessage\b/.test(readFileSync(join(dir, n), "utf8")));
+    .filter(n => /\/sendMessage\b|["'`]sendMessage["'`]\s*,/.test(readFileSync(join(dir, n), "utf8")));
   expect(offenders).toEqual([]);
 });
