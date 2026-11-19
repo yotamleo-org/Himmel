@@ -17,7 +17,7 @@ How used: installed from the pin, or vendored in-tree where the pin links a vend
 
 | Name | Source | Author | Licence | Pin / tracking |
 |---|---|---|---|---|
-| ai-image-prompts | https://github.com/youmind-openlab/ai-image-prompts-skill | youmind-openlab | MIT | fa3d7e5f1db2b8fb0cff709d741437bbba1ab579 |
+| ai-image-prompts | https://github.com/youmind-openlab/ai-image-prompts-skill | youmind-openlab | MIT | 3991a8b47d5addb97ee83ed424b52eb30eade9fa |
 | animejs-skills | https://github.com/BowTiedSwan/animejs-skills | BowTiedSwan | Unknown (not declared upstream) | cf2bed8d6654a6cfd02d3ff11b74ff3a7a7631e2 |
 | anthropic-design-skills | https://github.com/anthropics/skills | anthropics | Mixed: Apache-2.0 design skills; source-available docx/pdf/pptx/xlsx (per-skill LICENSE.txt) | 1780c5e5a552fd4d1c9d6a7b0cab26b0c2bef064 |
 | anydesign | https://github.com/uxKero/anydesign | uxKero | MIT | v0.6.0 |
