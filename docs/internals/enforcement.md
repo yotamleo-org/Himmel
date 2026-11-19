@@ -6114,7 +6114,8 @@ in. The limit refuses that account for the critic, bulk calls and an unmapped ju
 (see `docs/internals/api-lane.md`), so the switch does not bill a critic: a critic
 refused this way is a policy refusal, which the critic reports as
 `claude critic BROKE` (exit 1), never a clean skip, and a chief should not
-export the switch as a standing default. The switch does not bypass spend
+export the switch as a standing default. Whether a worker can name its own API
+account is settled by a later change. The switch does not bypass spend
 control: `claude-api.sh` still applies the API credit guard
 (`~/.himmel/state/api-credit`) and account routing per call, and
 `usage-preflight.sh` still gates the launch itself.
