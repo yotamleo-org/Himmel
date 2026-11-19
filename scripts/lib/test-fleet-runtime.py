@@ -1680,6 +1680,19 @@ exit 1''')
         self.settle()
         self.assertEqual(self.history_rows('one')[-1]['evidence']['carriers'], 'none')
 
+    def test_an_unreadable_process_is_a_candidate_only_when_it_is_this_users(self):
+        runtime = self.runtime_module()
+        self.active()
+        self.stuck()
+        self.forge(start='0')
+        record = self.anchor_attempts()['one']
+        opaque = self.opaque(self.doc.stem)
+        carrying, unreadable, complete = runtime.launch_candidates(record, time.monotonic() + 30)
+        self.assertEqual([pid for pid, _ in unreadable], [str(opaque.pid)])
+        with mock.patch.object(runtime.os, 'getuid', return_value=os.getuid() + 1):  # as if the unreadable process belonged to someone else
+            self.assertEqual(runtime.launch_candidates(record, time.monotonic() + 30)[1], [])
+        self.stop(opaque)
+
 
 if __name__ == '__main__':
     unittest.main()
