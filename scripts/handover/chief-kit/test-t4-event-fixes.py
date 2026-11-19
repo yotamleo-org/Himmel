@@ -1219,6 +1219,22 @@ class RetryPace(stream_tests.StreamFixture):
         self.refused(100_000)
         self.assertEqual(self.collect(), ['N1 MERGED 2'])
 
+    def test_a_refusal_dated_in_the_future_is_offered_not_held(self):
+        # a clock stepped back leaves the refusal record ahead of now: that proves nothing about how recent it is
+        for ahead in (3600, 86400):
+            with self.subTest(ahead=ahead):
+                self.path('le-N1.tries').unlink(missing_ok=True)
+                self.refused(-ahead)
+                self.assertEqual(self.collect(), ['N1 MERGED 2'])
+                self.tries(5)
+                self.refused(-ahead)
+                self.assertEqual(self.collect(), ['N1 MERGED 2'], 'even at the top step')
+        self.path('le-N1.tries').unlink(missing_ok=True)
+        self.refused(1)
+        self.assertEqual(self.collect(), [], 'a young refusal is still held')
+        self.refused(100)
+        self.assertEqual(self.collect(), ['N1 MERGED 2'], 'an old one is still offered')
+
     def test_a_changed_event_starts_the_ladder_over(self):
         self.tries(5)
         with self.page.open('a') as f:
