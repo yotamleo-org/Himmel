@@ -58,8 +58,6 @@ rendered=$(
     printf '%s' "$GU_RW"
 )
 if [ "$rendered" = "${q}it${q}${bs}${q}${q}s${q}" ]; then ok "a quoted word with a quote renders as one single-quoted word"; else bad "a quoted word with a quote renders as one single-quoted word (got [$rendered])"; fi
-# An unquoted heredoc body expands any live $ (${x@P}, an array subscript), not only $( and a backtick;
-# an escaped dollar stays literal.
 hd_subst() {
     (
         . "$root/hooks/lib/shell-tokenize.sh" || exit 1
