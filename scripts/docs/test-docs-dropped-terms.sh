@@ -196,7 +196,6 @@ docs/internals/enforcement.md	   and the GLM-lane shape matchers (round 5).
 docs/internals/harness-compat.md	> **Platform tier:** Windows is dropped and its PowerShell twins are
 docs/internals/harness-compat.md	> target bash (still bash 3.2-safe, for macOS). Windows
 docs/internals/harness-compat.md	| `codex-replay` | **unavailable**: it needs the hook-replay probe, which was Windows-only and is removed with Windows. It was the positive control that every project hook **executes** (separating "clean" from "never fired") |
-docs/internals/harness-compat.md	`codex-exec` exits 2 where `pwsh` or `jq` is missing (it is skipped), 1 otherwise.
 docs/internals/harness-compat.md	stubbed `claude`/`codex`/`pwsh` — it never spends a token.
 docs/internals/harness-compat.md	- **execution:** Codex source falls back to `cmd.exe /C` (Windows) / `$SHELL -lc`
 docs/internals/harness-compat.md	  (Unix) when no shell is configured, but **live on Windows (0.149.0, 2026-08-21)
