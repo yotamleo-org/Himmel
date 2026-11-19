@@ -278,6 +278,35 @@ class ChiefDecision(unittest.TestCase):
                 self.assertNotEqual(r.returncode, 0, r.stdout)
                 self.assertIn('unmet/skipped/error proof row', r.stderr)
 
+    # The three spellings of a status that stands after a label and a colon, for each unmet word.
+    LABELLED_UNMET_ITEMS = [spelling % word for word in ('NOT MET', 'OWED', 'FAIL', 'SKIPPED', 'ERROR')
+                            for spelling in ('- control two: %s', '- **Result:** %s', '- Result: *%s*')]
+    LABELLED_UNMET_ITEMS += ['1. control two: OWED (needs the operator)', '* Result: `SKIPPED` - no vm', '+ **Result**: _ERRORS_ timed out', '- __Result:__ **NOT MET** - no RED',
+                             '- a: b: Result: FAILED (exit 26)', '- Result:NOT MET']
+
+    def test_an_unmet_word_first_after_the_last_colon_of_a_list_item_blocks_the_close(self):
+        good = self.evidence.read_text()
+        self.write(stamp=self.module().requirements(self.mirror / 'HIMMEL-9848.md'))
+        for item in self.LABELLED_UNMET_ITEMS:
+            with self.subTest(item=item):
+                row = self.pending_with(good + item + '\n')
+                self.assertEqual(row['binding'], 'matched')
+                r = self.check(row)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn('unmet/skipped/error proof row', r.stderr)
+
+    def test_a_met_word_or_a_colon_with_no_status_after_it_in_a_list_item_stays_closable(self):
+        good = self.evidence.read_text()
+        self.write(stamp=self.module().requirements(self.mirror / 'HIMMEL-9848.md'))
+        for item in ('- control two: MET', '- control two: *MET*', '- **Result:** MET', '- Result: `MET` (cited)', '1. Result: _MET_', '- Notes: all controls ran and none was skipped',
+                     '- ran at 12:30: MET', '- see http://x/y: ok', '- path C:\\dir is fine', '- ERROR_CODE: documented', '- Result: ERROR_CODE documented', '- Result: OWED_ITEMS none'):
+            with self.subTest(item=item):
+                row = self.pending_with(good + item + '\n')
+                self.assertEqual(row['binding'], 'matched')
+                r = self.check(row)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(json.loads(r.stdout)['semantic_coverage'], 'chief-owned')
+
     def test_a_met_list_item_or_prose_beside_those_words_stays_closable_through_any_emphasis_or_code(self):
         good = self.evidence.read_text()
         self.write(stamp=self.module().requirements(self.mirror / 'HIMMEL-9848.md'))
@@ -328,6 +357,53 @@ class ChiefDecision(unittest.TestCase):
         self.assertNotIn('artifact-attribution-unvalidated', row['issues'])
         r = self.check(row)
         self.assertEqual(r.returncode, 0, r.stderr)
+
+    # The first cell is the control: the bare word is refused in any table; each marked spelling must be refused as it is.
+    MARKED_UNMET_CELLS = ['NOT MET', '**NOT MET**', '*NOT MET*', '_NOT MET_', '`NOT MET`', '__NOT MET__', '**FAIL**', '*FAILED*', '*OWED*', '`OWED`', '_SKIPPED_',
+                          '**SKIPPED**', '`ERROR`', '_ERRORS_']
+
+    def test_an_unmet_word_in_emphasis_or_inline_code_blocks_the_close_in_a_table_with_no_status_column(self):
+        sha = 'main=' + 'a'*40
+        good = self.evidence.read_text()
+        self.write(stamp=self.module().requirements(self.mirror / 'HIMMEL-9848.md'))
+        for shape, header in self.NO_STATUS_TABLES:
+            for cell in self.MARKED_UNMET_CELLS:
+                with self.subTest(shape=shape, cell=cell):
+                    row = self.pending_with(good + '\n' + header + '| station check | ' + cell + ' | ' + sha + ' | timed out |\n')
+                    self.assertEqual(row['binding'], 'matched')
+                    r = self.check(row)
+                    self.assertNotEqual(r.returncode, 0, r.stdout)
+                    self.assertIn('unmet/skipped/error proof row', r.stderr)
+
+    def test_a_met_word_or_a_words_own_underscore_in_a_table_with_no_status_column_stays_closable_through_the_real_check(self):
+        sha = 'main=' + 'a'*40
+        good = self.evidence.read_text()
+        self.write(stamp=self.module().requirements(self.mirror / 'HIMMEL-9848.md'))
+        for shape, header in self.NO_STATUS_TABLES:
+            for cell in ('MET', '**MET**', '*MET*', '_MET_', '`MET`', '__MET__', 'ERROR_CODE', '_ERROR_CODE_', '`ERROR_CODE`', 'OWED_ITEMS'):
+                with self.subTest(shape=shape, cell=cell):
+                    row = self.pending_with(good + '\n' + header + '| control two | ' + cell + ' | ' + sha + ' | PASS yes |\n')
+                    self.assertEqual(row['binding'], 'matched')
+                    r = self.check(row)
+                    self.assertEqual(r.returncode, 0, r.stderr)
+                    self.assertEqual(json.loads(r.stdout)['semantic_coverage'], 'chief-owned')
+
+    def test_a_table_with_a_status_column_is_judged_by_its_status_column_through_the_real_check(self):
+        sha = 'main=' + 'a'*40
+        good = self.evidence.read_text()
+        self.write(stamp=self.module().requirements(self.mirror / 'HIMMEL-9848.md'))
+        for name, cell_status, cell_evidence, allowed in (('an emphasised unmet word in the status cell', '**NOT MET**', 'timed out', False),
+                                                          ('a bare unmet word in the status cell', 'NOT MET', 'timed out', False),
+                                                          ('an emphasised word in the evidence cell of a met row', 'MET', '**NOT MET** in the evidence text', True)):
+            with self.subTest(name):
+                row = self.pending_with(good.replace('VERDICT CLOSE\n', '| control two | ' + cell_status + ' | ' + sha + ' | ' + cell_evidence + ' |\nVERDICT CLOSE\n'))
+                self.assertEqual(row['binding'], 'matched')
+                r = self.check(row)
+                if allowed:
+                    self.assertEqual(r.returncode, 0, r.stderr)
+                else:
+                    self.assertNotEqual(r.returncode, 0, r.stdout)
+                    self.assertIn('unmet/skipped/error proof row', r.stderr)
 
     def test_prose_that_mentions_a_word_is_not_an_unmet_row_and_unknown_coverage_stays_with_the_chief(self):
         good = self.evidence.read_text()
@@ -892,10 +968,41 @@ class ChiefDecision(unittest.TestCase):
                     self.assertTrue(self.unmet(bullet + ' ' + mark % 'NOT MET' + ': no RED\n'))
                     self.assertTrue(self.unmet('  ' + bullet + ' ' + mark % 'NOT MET' + '\n'))
         # the met word, a failure word that does not start the item and a failure word with an underscore of its own are not unmet rows
-        for item in ('- *MET* control two', '- _MET_ control two', '- `MET` control two', '- the run was *not* skipped; nothing _failed_', '- control two: `FAIL` is expected',
+        for item in ('- *MET* control two', '- _MET_ control two', '- `MET` control two', '- the run was *not* skipped; nothing _failed_', '- control two ran and `FAIL` is expected',
                      '- ERROR_CODE is documented', '- OWED_ITEMS: none', '- _ERROR_CODE_ is documented'):
             with self.subTest(item=item):
                 self.assertFalse(self.unmet(item + '\n'))
+
+    def test_an_unmet_word_first_after_the_last_colon_of_a_list_item_is_unmet_through_emphasis_and_inline_code(self):
+        unmet = self.module().has_unmet_rows
+        for word in ('NOT MET', 'not met', 'OWED', 'owed', 'FAIL', 'Failed', 'SKIPPED', 'skip', 'ERROR', 'Errors'):
+            for mark in ('%s', '**%s**', '*%s*', '_%s_', '`%s`', '__%s__', '***%s***'):
+                with self.subTest(word=word, mark=mark):
+                    self.assertTrue(unmet('- control two: ' + mark % word + '\n'))
+                    self.assertTrue(unmet('- **Result:** ' + mark % word + ' (timed out)\n'))
+                    self.assertTrue(unmet('- Result: ' + mark % word + ' - no RED\n'))
+        for label in ('**Result:**', '*Result:*', '__Result:__', '`Result:`', '**Result**:', 'Result :', 'control two:', 'a: b: c:', '[Result]:', 'Result (main=aaaa):'):
+            with self.subTest(label=label):
+                self.assertTrue(unmet('- ' + label + ' NOT MET\n'))
+                self.assertTrue(unmet('- ' + label + '*FAIL*\n'))
+        for bullet in ('-', '*', '+', '1.', '12)'):
+            with self.subTest(bullet=bullet):
+                self.assertTrue(unmet(bullet + ' control two: NOT MET\n'))
+                self.assertTrue(unmet('  ' + bullet + ' **Result:** OWED\n'))
+        # a time or a URL in the item: the status counts when it is the first thing after the item's last colon
+        for item in ('- ran at 12:30: NOT MET', '- see http://x/y: NOT MET', '- see http://x/y: *FAIL*', '- C:\\dir: OWED', '- control two: `FAIL` is expected', '- Note: FAIL fast is used'):
+            with self.subTest(item=item):
+                self.assertTrue(unmet(item + '\n'))
+        # unchanged: the met word, a colon with no unmet word first after it, a word's own underscore, a status that is not first after the last colon
+        for item in ('- control two: MET', '- **Result:** *MET*', '- Notes: all controls ran', '- ran at 12:30: MET', '- see http://x/y: ok', '- path C:\\dir is fine',
+                     '- ERROR_CODE: documented', '- Result: ERROR_CODE documented', '- Result: OWED_ITEMS none', '- Result: NOT MET: no RED', '- ran at 12:30 FAIL',
+                     '- see http://x/y NOT MET', '- Result: ok, then NOT MET', '- Result: MET (pending review)'):
+            with self.subTest(item=item):
+                self.assertFalse(unmet(item + '\n'))
+        # a colon in a paragraph, a table row or a heading is not a list item
+        for text in ('Result: NOT MET\n', '**Result:** NOT MET\n', '| Result: NOT MET | x |\n', '# Result: FAIL\n'):
+            with self.subTest(text=text):
+                self.assertFalse(unmet(text))
 
     def test_the_evidence_of_a_met_row_never_reads_as_not_yet_due(self):
         for evidence in ('TBD field removed', 'WAITING room test passed', 'PENDING count was 0', 'PENDING rows: none', 'pending: none', 'pending (0)',
@@ -917,6 +1024,47 @@ class ChiefDecision(unittest.TestCase):
                            ('a ragged row under a header', '| row | Result | Sha | Evidence |\n|---|---|---|---|\n| obs | MET | pending: none |\n')):
             with self.subTest(form=name):
                 self.assertTrue(self.unmet(text))
+
+    NO_STATUS_TABLES = (('a headerless table', ''), ('a header with no status column', '| check | Observed | Sha | Note |\n|---|---|---|---|\n'))
+
+    def test_an_unmet_word_in_emphasis_or_inline_code_is_unmet_in_a_table_with_no_status_column(self):
+        sha = 'main=' + 'a'*40
+        unmet = self.module().has_unmet_rows
+        for shape, header in self.NO_STATUS_TABLES:
+            for word in ('NOT MET', 'not met', 'Not  Met', 'OWED', 'owed', 'FAIL', 'Failed', 'SKIPPED', 'skip', 'ERROR', 'Errors'):
+                for mark in ('%s', '**%s**', '*%s*', '_%s_', '`%s`', '__%s__', '***%s***', '_**%s**_', '*`%s`*'):
+                    with self.subTest(shape=shape, word=word, mark=mark):
+                        self.assertTrue(unmet(header + '| station check | ' + mark % word + ' | ' + sha + ' | ok |\n'))
+            for mark in ('**%s**', '*%s*', '_%s_', '`%s`'):  # in the first and in the last cell of the row
+                with self.subTest(shape=shape, mark=mark, position='first'):
+                    self.assertTrue(unmet(header + '| ' + mark % 'NOT MET' + ' | ' + sha + ' | ok | ok |\n'))
+                with self.subTest(shape=shape, mark=mark, position='last'):
+                    self.assertTrue(unmet(header + '| station check | ' + sha + ' | ok | ' + mark % 'OWED' + ' |\n'))
+
+    def test_what_is_not_an_unmet_word_in_a_cell_stays_closable_in_a_table_with_no_status_column(self):
+        sha = 'main=' + 'a'*40
+        unmet = self.module().has_unmet_rows
+        for shape, header in self.NO_STATUS_TABLES:
+            for mark in ('%s', '**%s**', '*%s*', '_%s_', '`%s`', '__%s__'):
+                with self.subTest(shape=shape, met=mark):
+                    self.assertFalse(unmet(header + '| control two | ' + mark % 'MET' + ' | ' + sha + ' | PASS yes |\n'))
+            # a word's own underscore is not emphasis
+            for cell in ('ERROR_CODE', '_ERROR_CODE_', '`ERROR_CODE`', 'OWED_ITEMS', '*OWED_ITEMS*'):
+                with self.subTest(shape=shape, cell=cell):
+                    self.assertFalse(unmet(header + '| control two | ' + cell + ' | ' + sha + ' | documented |\n'))
+        # an Expected column is test input, with or without emphasis, and so is the prose around a table
+        for mark in ('%s', '**%s**', '*%s*', '`%s`'):
+            with self.subTest(expected=mark):
+                self.assertFalse(unmet('| row | Expected | Observed | Note |\n|---|---|---|---|\n| obs | ' + mark % 'FAIL' + ' | refused | ok |\n'))
+        self.assertFalse(unmet('a pipe | in prose, then **NOT MET** and `FAIL` in the text\n'))
+
+    def test_a_table_with_a_status_column_is_read_by_its_status_column(self):
+        # the status cell decides: anything but exactly MET is unmet; the other cells of the row are not read for emphasised words
+        self.assertTrue(self.unmet(self.result_table(status='**NOT MET**')))
+        self.assertTrue(self.unmet(self.result_table(status='`FAIL`')))
+        self.assertFalse(self.unmet(self.result_table(evidence='**NOT MET** in the evidence text')))
+        self.assertFalse(self.unmet(self.result_table(evidence='_OWED_ in the evidence text')))
+        self.assertTrue(self.unmet(self.result_table(evidence='NOT MET in the evidence text')))  # a bare word that starts a cell is unmet in any table
 
     def test_the_not_yet_due_status_word_closes_nothing_through_the_real_check(self):
         sha = 'main=' + 'a'*40

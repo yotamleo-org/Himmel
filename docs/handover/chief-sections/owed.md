@@ -52,9 +52,19 @@ Unknown fields or invalid types refuse. None of these fields grants authority.
 
 The recorder recognizes the explicit `> **Proof leg:**` header or an actual
 WRAPPED proof-key tail, including the event's optional worker/ticket prefix.
-Ordinary prose mentioning a proof leg does not create debt. If a covered key has
-neither an attributed nor an unbound artifact candidate, all declared paths are
-retained with `artifact-attribution-unvalidated`; chief attribution remains pending.
+Ordinary prose mentioning a proof leg does not create debt. The artifacts are the
+`evidence=<path>` values of that tail or message, which name them exactly; with none
+declared, every `specs/audits/....md` path the worker document names is read as evidence
+by the rule below, so a file that is not the ticket's is judged as its evidence and a
+missing or unreadable one refuses the CLOSE.
+
+A covered ticket reads every declared artifact whose file name contains its key and
+every one whose name contains none of the declared keys (with one declared ticket,
+every declared path); an artifact named only for another declared ticket is read by
+that ticket. `artifact-attribution-unvalidated` is set when a covered key has neither
+a named nor an unnamed artifact (all declared paths are then retained for it), and
+when several tickets are declared and a ticket reads an unnamed artifact beside one
+named for it. It refuses a CLOSE; chief attribution remains pending.
 
 Proof inputs are opened nonblocking and without following a final symlink. The
 descriptor must be a regular file no larger than 8 MiB; bounded reads and matching
