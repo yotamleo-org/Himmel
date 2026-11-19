@@ -35,6 +35,7 @@ def is_parked(word):
     return word in ("PARKED-BANK", "PARKED-USAGE")
 
 
+_FENCE = re.compile(r" {0,3}(```|~~~)")
 _RESULTS = re.compile(r"## Results(?:[ \t]|\Z)")
 _RULINGS = re.compile(r"## (?:Chief|Console) Rulings(?:[ \t]|\Z)")  # old-term-ok
 _ACTIONABLE = re.compile(
@@ -50,8 +51,17 @@ def _scope_lines(path):
         raise OSError(errno.EINVAL, "not a regular file", path)
     with open(path, "rb") as f:
         text = f.read().decode("latin-1")
-    out, scope, seen = [], False, False
+    out, scope, seen, fence = [], False, False, ""
     for raw in text.split("\n"):
+        m = _FENCE.match(raw)
+        if m:
+            if not fence:
+                fence = m.group(1)
+            elif fence == m.group(1):
+                fence = ""
+            continue
+        if fence:
+            continue
         head = raw[:-1] if raw.endswith("\r") else raw
         if head.startswith("## "):
             is_results = _RESULTS.match(head) is not None
