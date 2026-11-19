@@ -1024,5 +1024,83 @@ class StackedWorker(StreamFixture):
         self.assertNotIn('wrap-merged-failed', out.read_text())
 
 
+class IdlePoll(StreamFixture):
+    """The service loop's idle backoff: after a run of empty passes it sleeps longer, and only that."""
+
+    def setUp(self):
+        super().setUp()
+        import shutil
+        shim = self.root / 'shim'
+        shim.mkdir()
+        (shim / 'sleep').write_text(f'#!/bin/sh\necho "$(date +%s.%N) $1" >> "$TEST_ROOT/sleeps"\nexec {shutil.which("sleep")} "$@"\n')
+        (shim / 'sleep').chmod(0o755)
+        self.env['PATH'] = f'{shim}:{self.env["PATH"]}'
+        self.env.update(HIMMEL_FLAG_AUTO_GO='1', CHIEF_WAIT_POLL_SEC='0.05', CHIEF_WAIT_IDLE_POLL_SEC='0.5',
+                        CHIEF_WAIT_IDLE_PASSES='5')
+        self.env['CHIEF_WAIT_WORKER_EVENT'] = self.script('event', 'echo "$(date +%s.%N)" >> "$TEST_ROOT/events"\ncat > /dev/null\necho HANDLED auto-go\n')
+        self.doc1 = self.root / 'N1.md'
+        self.doc1.write_text('# N1\n## Results\n- 09:00 LIVE start\n')
+        self.fleet.write_text(json.dumps(dict(workers=[dict(label='N1', doc=str(self.doc1))])))
+
+    def sleeps(self, after=0.0):
+        path = self.root / 'sleeps'
+        rows = [line.split() for line in path.read_text().splitlines()] if path.exists() else []
+        return [arg for ts, arg in rows if float(ts) > after and arg in ('0.05', '0.5', '0.01', '1')]
+
+    def slow(self, count):
+        return lambda: self.sleeps().count('0.5') >= count
+
+    def post_ready(self):
+        with self.doc1.open('a') as f:
+            f.write('- 10:00 READY #1 ' + '1' * 40 + '\n')
+
+    def test_the_poll_grows_only_after_a_run_of_empty_passes(self):
+        p, _ = self.start()
+        self.until(self.slow(3))
+        self.stop(p)
+        seen = self.sleeps()
+        self.assertEqual(seen[:5], ['0.05'] * 5, 'five passes at the poll, the first of them the tick')
+        self.assertTrue(all(arg == '0.5' for arg in seen[5:]), seen)
+
+    def test_the_poll_returns_on_the_first_event(self):
+        p, _ = self.start()
+        self.until(self.slow(2))
+        self.post_ready()
+        self.until(lambda: (self.root / 'events').exists())
+        at = float((self.root / 'events').read_text().split()[0])
+        self.until(lambda: len(self.sleeps(at)) >= 8, seconds=10)
+        self.stop(p)
+        after = self.sleeps(at)
+        # the pass that served the event, then the run of empty passes at the poll, then the idle poll again
+        self.assertEqual(after[:6], ['0.05'] * 6, after)
+        self.assertEqual(after[6], '0.5', after)
+
+    def test_an_event_during_a_slow_interval_is_served_on_the_next_pass(self):
+        p, _ = self.start()
+        self.until(self.slow(2))
+        wrote = time.time()
+        self.post_ready()
+        self.until(lambda: (self.root / 'events').exists())
+        self.stop(p)
+        served = float((self.root / 'events').read_text().split()[0]) - wrote
+        self.assertLess(served, 0.5 + 0.7, 'one idle interval at most, plus the pass')
+
+    def test_the_idle_poll_is_never_shorter_than_the_poll(self):
+        self.env['CHIEF_WAIT_IDLE_POLL_SEC'] = '0.01'
+        p, _ = self.start()
+        self.until(lambda: len(self.sleeps()) >= 14)
+        self.stop(p)
+        self.assertEqual(set(self.sleeps()), {'0.05'})
+
+    def test_unusable_settings_fall_back_to_the_defaults(self):
+        self.env.update(CHIEF_WAIT_IDLE_POLL_SEC='soon', CHIEF_WAIT_IDLE_PASSES='many')
+        p, _ = self.start()
+        self.until(lambda: '1' in self.sleeps(), seconds=10)
+        self.stop(p)
+        seen = self.sleeps()
+        self.assertEqual(seen[:10], ['0.05'] * 10, 'ten empty passes by default')
+        self.assertEqual(seen[10], '1')
+
+
 if __name__ == '__main__':
     unittest.main()
