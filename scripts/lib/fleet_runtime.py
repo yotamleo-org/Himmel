@@ -309,8 +309,14 @@ def owned_rows(manifest):
             if row.get('doc'):
                 terminal_docs[row['doc']] = row
         rows = [row for row in rows if row['doc'] in current or row.get('registration') != 'pending'
-                or not settles(terminal_docs.get(row['doc'], {}), row)]
+                or not settles(terminal_docs.get(row['doc'], {}), row) or not reads_ended(row['doc'])]
     return rows
+
+
+def reads_ended(doc):
+    """True when the doc's newest marker is absent or an end marker, the only doc a terminal receipt releases."""
+    newest = marker(doc)
+    return not newest or re.match(r'- \d{1,2}:\d{2} (?:WRAPPED|HALTED)\b', newest) is not None
 
 
 def settles(receipt, row):

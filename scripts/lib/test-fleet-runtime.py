@@ -1942,6 +1942,39 @@ exit 1''')
         self.assertEqual(self.anchor_attempts(), {})
         self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
 
+    # A terminal receipt releases a pending row only when the doc's newest marker is absent or an end marker.
+    def sibling_owners(self, outcome, *lines, pending=True):
+        doc = self.bucket / 'HIMMEL-111-N1-resumed.md'
+        doc.write_text('# worker\n' + ''.join(line + '\n' for line in lines))
+        row = dict(doc=str(doc), label='P1', added='2026-11-18T08:00:00Z', lane='native')
+        if pending:
+            row['registration'] = 'pending'
+        sibling = self.bucket / 'sibling.fleet.json'
+        data = json.loads(self.m.read_text())
+        data['workers'] = [row]
+        sibling.write_text(json.dumps(data))
+        if outcome:
+            history = self.bucket / '.himmel/launch-refusals.jsonl'
+            history.parent.mkdir(exist_ok=True)
+            history.write_text(json.dumps(dict(v=2, kind='launch-attempt', ts='2026-11-18T09:00:00Z', attempt_id='r2', name=doc.stem,
+                                               doc=str(doc), family=data['control']['family'], outcome=outcome)) + '\n')
+        return [Path(owner['doc']).name for owner in json.loads(self.call('runtime', 'owners', '--manifest', sibling).stdout)]
+
+    def test_a_complete_receipt_does_not_hide_a_pending_row_whose_doc_was_resumed(self):
+        self.assertEqual(self.sibling_owners('complete', '- 10:00 WRAPPED - done', '- 12:30 RESUMED - by hand'), ['HIMMEL-111-N1-resumed.md'])
+
+    def test_a_row_that_is_not_pending_stays_owned_when_its_doc_was_resumed(self):
+        self.assertEqual(self.sibling_owners('', '- 10:00 WRAPPED - done', '- 12:30 RESUMED - by hand', pending=False), ['HIMMEL-111-N1-resumed.md'])
+
+    def test_a_terminal_receipt_does_not_hide_a_pending_row_whose_newest_marker_is_not_an_end_marker(self):
+        for outcome, lines in (('refused', ['- 11:00 LIVE - worker started']), ('complete', ['- 10:00 WRAPPED - done', '- 11:30 PARKED-USAGE - usage limit'])):
+            self.assertEqual(self.sibling_owners(outcome, *lines), ['HIMMEL-111-N1-resumed.md'], outcome + ' ' + lines[-1])
+
+    def test_a_terminal_receipt_releases_a_pending_row_whose_newest_marker_is_absent_or_an_end_marker(self):
+        for outcome, lines in (('complete', ['- 10:00 LIVE - working', '- 12:00 WRAPPED - done']), ('complete', ['- 10:00 HALTED - stopped']),
+                               ('refused', []), ('refused', ['- 12:00 WRAPPED - done'])):
+            self.assertEqual(self.sibling_owners(outcome, *lines), [], outcome + ' ' + str(lines))
+
 
 if __name__ == '__main__':
     unittest.main()
