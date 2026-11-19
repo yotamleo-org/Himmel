@@ -4373,19 +4373,22 @@ mkdoc "$OW/HIMMEL-790-N5-series.md" 2 ""
 mkfleet "$OW/fleet-u5.json" "N5:$OW/HIMMEL-790-N5-series.md" "N11:$OW/HIMMEL-62-N11-gone.md"
 mkfleet "$OW/fleet-u5c.json" "N5:$OW/HIMMEL-790-N5-series.md"
 ow_u5="$(runs "$ow_ows" 1 --workers-from "$OW/fleet-u5.json" --why)"
-lacks "9335 U5: no STACKABLE row while a worker doc is unreadable" "$ow_u5" "STACKABLE"
-lacks "9335 U5: no SERIES FAMILY row while a worker doc is unreadable" "$ow_u5" "SERIES FAMILY"
+check "9335 U5: no STACKABLE row while a worker doc is unreadable" "0" "$(ow_n "$ow_u5" '^STACKABLE ')"
+check "9335 U5: no SERIES FAMILY row while a worker doc is unreadable" "0" "$(ow_n "$ow_u5" '^SERIES FAMILY ')"
 lacks "9335 U5: the candidate is not listed plain either" "$ow_u5" "LOCAL${TAB}HIMMEL-851${TAB}"
 ow_u5c="$(runs "$ow_ows" 1 --workers-from "$OW/fleet-u5c.json" --why)"
 has "9335 U5.ctl: with the series worker alone the candidate is STACKABLE" "$ow_u5c" "STACKABLE HIMMEL-851"
+[ "$(ow_n "$ow_u5c" '^STACKABLE ')" -ge 1 ] && pass "9335 U5.ctl: the STACKABLE row form is a line that starts with STACKABLE" || fail "9335 U5.ctl: no line starts with STACKABLE in the control run"
+[ "$(ow_n "$sf1" '^SERIES FAMILY ')" -ge 1 ] && pass "9335 U5.ctl: the SERIES FAMILY row form is a line that starts with SERIES FAMILY" || fail "9335 U5.ctl: no line starts with SERIES FAMILY in the family run"
 
 # U6: the next-tier rows are withheld with the pool, POOL-EMPTY still prints
 OW_M="$OW/x6b/HIMMEL"
 ow_u6="$(ow_run --priority-pool-only --workers-from "$OW/fleet-u1.json")"
 has "9335 U6: an unknown fleet still prints POOL-EMPTY" "$ow_u6" "POOL-EMPTY"
-lacks "9335 U6: an unknown fleet prints no NEXT-TIER row" "$ow_u6" "NEXT-TIER"
+check "9335 U6: an unknown fleet prints no NEXT-TIER row" "0" "$(ow_n "$ow_u6" "^NEXT-TIER${TAB}")"
 ow_u6c="$(ow_run --priority-pool-only --workers-from "$OW/u10/fleet-w.json")"
 has "9335 U6.ctl: a fleet whose doc ends WRAPPED prints the NEXT-TIER row" "$ow_u6c" "NEXT-TIER${TAB}HIMMEL-160"
+[ "$(ow_n "$ow_u6c" "^NEXT-TIER${TAB}")" -ge 1 ] && pass "9335 U6.ctl: the NEXT-TIER row form is a line that starts with NEXT-TIER and a tab" || fail "9335 U6.ctl: no line starts with NEXT-TIER and a tab in the control run"
 
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
