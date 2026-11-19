@@ -1746,7 +1746,7 @@ same "9885 progress: a pass killed mid-sweep leaves a cursor" "$([ -s "$(GCCUR "
 KN="$(gccur "$RK")"; KN="${KN#scripts%2Fk}"; KN="${KN%.sh}"
 : > "$GCLOG"
 HOLDS_GH="$GCKEYED" GC_GH_LOG="$GCLOG" run gcbox 30 "$RK"
-same "9885 progress: the next pass starts behind the killed pass's place" "$(head -n 1 "$GCLOG")" "$((7100 + KN + 1))"
+same "9885 progress: the next pass starts behind the killed pass's place" "$(head -n 1 "$GCLOG")" "$((7100 + KN + 1))"  # read-sink-ok: GCLOG is this suite's own stub log under its scratch dir
 
 # a row the deadline cut is not called judged: it is retried first next pass, unless it was already the first of a pass
 RF="$W/repo-cut"; mkdir -p "$RF"; git -C "$RF" init -q -b main

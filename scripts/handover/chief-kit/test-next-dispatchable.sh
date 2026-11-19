@@ -3212,7 +3212,7 @@ EOF
 chmod +x "$P/slow-jira"; export P_JIRA_LOG="$P/jira.log"; : > "$P_JIRA_LOG"
 P_JIRA="$P/slow-jira"; P_LIMIT=3; P_LIVE=1
 p_run --why-ticket HIMMEL-11001; p_unknown 'P8(a) deadline'
-has 'P8(a) reached real blocker stub' "$(cat "$P_JIRA_LOG")" 'get HIMMEL-11002'
+has 'P8(a) reached real blocker stub' "$(cat "$P_JIRA_LOG")" 'get HIMMEL-11002'  # read-sink-ok: P_JIRA_LOG is this suite's own stub log under its scratch dir
 has 'P8(a) deadline reason' "$P_OUT" 'timed out after 3s'
 for flag in top why dispositions priority-pool-only resume-only owners workers-from held; do
     p_reset; p_mk HIMMEL-11001
@@ -3334,7 +3334,7 @@ for variant in done-pending parked-title parked-label platform cloud residual; d
         done-pending) printf '{"event":"merge","result":"moved","key":"HIMMEL-11001","pr":"7001","contract":"yes"}\n' > "$P/state/status-events.jsonl"; want='drop: done-pending' ;;
         parked-title) mk HIMMEL-11001 'To Do' Medium '[]' '[]' '[]' 'parked: later' 'Writes: scripts/lib/alpha.sh'; want='held-label: title parked:' ;;
         parked-label) mk HIMMEL-11001 'In Progress' Medium '["parked-later"]' '[]' '[]' fixture 'Writes: scripts/lib/alpha.sh'; want='held-label: labels parked-later' ;;
-        platform) mk HIMMEL-11001 'To Do' Medium '[]' '[]' '[]' 'fix the wsl path' 'Writes: scripts/lib/alpha.sh'; want='drop: platform (windows/wsl title)' ;;
+        platform) mk HIMMEL-11001 'To Do' Medium '[]' '[]' '[]' 'fix the wsl path' 'Writes: scripts/lib/alpha.sh'; want='drop: platform (dropped-platform title)' ;;
         cloud) printf '# chief\n\n## Live state\npriority: HIMMEL-11001(CLOUD)\n' > "$P/bucket/cloud.md"; want='drop: cloud-only on the priority line' ;;
         residual) mk HIMMEL-11001 'To Do' Medium '["residual-depth-2"]' '[]' '[]' fixture 'Writes: scripts/lib/alpha.sh'; want='drop: residual-depth 2' ;;
     esac
@@ -3573,7 +3573,7 @@ p_run --why-ticket HIMMEL-11001 --body-file "$P/front-matter-draft"; p_verdict '
 p_reset; p_mk HIMMEL-11001
 cat > "$P/python-bin/python3" <<'EOF'
 #!/usr/bin/env bash
-if [ "$*" = '-I -' ]; then cat >/dev/null; cat "$P_STUB_OUTPUT"; exit "$P_STUB_RC"; fi
+if [ "$*" = '-I -' ]; then cat >/dev/null; cat "$P_STUB_OUTPUT"; exit "$P_STUB_RC"; fi  # read-sink-ok: the stub replays the output file this suite wrote under its scratch dir
 exec "$P_REAL_PY" "$@"
 EOF
 chmod +x "$P/python-bin/python3"; export P_STUB_OUTPUT="$P/stub-output"
@@ -3610,7 +3610,7 @@ case "$*" in
     *next-dispatch-flags*) [ "$P_TMP_PHASE" != flags ] || exit 1 ;;
 esac
 if [ "$1" = -d ]; then
-    read -r n < "$P_TMP_COUNT"
+    read -r n < "$P_TMP_COUNT"  # read-sink-ok: the stub's own counter file, created by this suite under its scratch dir
     n=$((n + 1)); printf '%s\n' "$n" > "$P_TMP_COUNT"
     [ "$P_TMP_PHASE" != quota ] || exit 1
     if [ "$P_TMP_PHASE" = predicate ] && [ "$n" -ge 2 ]; then exit 1; fi

@@ -1063,7 +1063,7 @@ def refusals(i, role, first=False):
                 hit('cloud', 'cloud-only on the priority line')
                 if first: return out
             if platform_dropped(i):
-                hit('platform', 'platform (windows/wsl title)')
+                hit('platform', 'platform (dropped-platform title)')
                 if first: return out
             if residual_out(i):
                 hit('residual', 'residual-depth %d (no residual-must line, no admissions-ledger row)' % residual_depth(i))
@@ -1078,7 +1078,7 @@ def refusals(i, role, first=False):
         hit('label', 'label ' + (','.join(sorted(i['labels'] & excl)) or 'parked: title'))
         if first: return out
     if platform_dropped(i):
-        hit('platform', 'platform (windows/wsl title)')
+        hit('platform', 'platform (dropped-platform title)')
         if first: return out
     open_b = [(b, blocker_state(b)) for b in i['blocked_by'] if blocker_state(b)]
     if open_b:

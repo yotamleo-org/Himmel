@@ -405,7 +405,7 @@ for n in $(seq 1 56); do
         2[6-8]) reason='residual-depth 1' ;;
         29|30) reason='blocker HIMMEL-999 (In Progress, live)' ;;
         31|32) reason='label operator-decision' ;;
-        33) reason='platform (windows/wsl title)' ;;
+        33) reason='platform (dropped-platform title)' ;;
         34) reason='type Epic' ;;
         5[3-6]) reason='in-flight owned by worker N99' ;;
         *) reason='listed LOCAL' ;;

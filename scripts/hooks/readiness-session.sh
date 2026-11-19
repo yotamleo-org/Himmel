@@ -184,7 +184,7 @@ _rs_remove_attempt() {
 _rs_transport_token() {
     local f="$1/lease-token" tok
     _rs_private_file "$f" || return 1
-    tok="$(head -c 256 "$f")" || return 1
+    tok="$(head -c 256 "$f")" || return 1  # read-sink-ok: the lease-token file in this session's own attempt directory, which _rs_load validated; the line above admits only a regular, non-symlink, own-uid, mode-600, single-link file
     tok="${tok%%$'\n'*}"
     [[ "$tok" =~ $TOKEN_RE ]] || return 1
     printf '%s' "$tok"

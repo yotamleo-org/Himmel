@@ -68,7 +68,7 @@ NAME_INSPECT=mcp__readiness__inspect NAME_ACT=mcp__readiness__act
 nm() { "$JQ_ABS" -nc --arg t "$2" '{tool_name:$t,tool_input:{}}' >"$PL/$1"; }   # nm <id> <tool_name string>
 raw() { printf '%s' "$2" >"$PL/$1"; }                                           # raw <id> <exact text>
 bytes() { printf '%b' "$2" >"$PL/$1"; }                                         # bytes <id> <printf %b escapes>
-pad() { head -c "$1" /dev/zero | tr '\0' a; }                                   # pad <n> -> n ASCII bytes
+pad() { head -c "$1" /dev/zero | tr '\0' a; }                                   # pad <n> -> n ASCII bytes # read-sink-ok: reads /dev/zero, $1 is a byte count
 # an envelope of exactly <total> bytes whose tool_name is <name>, padded inside tool_input
 sized() {
     local id="$1" name="$2" total="$3" pre post n
