@@ -728,6 +728,144 @@ class ChiefDecision(unittest.TestCase):
                     any(row.startswith('RESUME') and not row.endswith('\tproof') for row in rows)
                 self.assertEqual(close.returncode != 0, dispatcher_blocks, close.stderr + '\n' + out)
 
+    # Review follow-ups to the close guard.
+    def close_command(self, step_id, key='HIMMEL-9848'):
+        return 'bash ' + str(HERE / 'owe.sh') + ' close --bucket ' + str(self.b) + ' --id ' + step_id + ' --key ' + key
+
+    def test_the_refusal_names_each_open_step_with_its_actor_and_text_and_both_remedies(self):
+        first = self.add_row('Finish the first slice', actor='worker')
+        second = self.add_row('Sign the release', actor='chief')
+        for mode, status in (('--check', 'Done'), ('--settle', 'To Do')):
+            r = self.decide(mode, status=status)
+            self.assertNotEqual(r.returncode, 0, r.stdout)
+            self.assertIn(first + ' (worker: Finish the first slice)', r.stderr)
+            self.assertIn(second + ' (chief: Sign the release)', r.stderr)
+            self.assertIn(self.close_command(first), r.stderr)
+            self.assertIn(self.close_command(second), r.stderr)
+            self.assertIn('KEEP', r.stderr)
+
+    def test_a_keep_then_a_new_proof_then_a_close_needs_the_finished_step_closed_first(self):
+        self.change_decision(verdict='KEEP', next={'actor': 'worker', 'capability': 'code worker',
+            'text': 'Implement the missing accepted case', 'due': '2026-11-20', 'wake': 'worker available'})
+        self.assertEqual(self.decide('--settle', status='To Do').returncode, 0)
+        step = next(r['id'] for r in self.rows() if r.get('source_id') == 'o1')
+        # the worker finished; a second proof run is recorded and the chief decides to close
+        row = self.pending_with(self.evidence.read_text() + '| second pass | MET | main=' + 'a'*40 + ' | PASS yes |\n')
+        self.change_decision(verdict='CLOSE')
+        before = self.rows()
+        r = self.decide('--check', action_id=row['id'])
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn(step + ' (worker: Implement the missing accepted case)', r.stderr)
+        self.assertIn(self.close_command(step), r.stderr)
+        self.assertIn('KEEP', r.stderr)
+        self.assertEqual(self.rows(), before)
+        self.close_row(step)  # nothing closes it for the chief
+        r = self.decide('--settle', action_id=row['id'])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len([x for x in self.rows() if x['op'] == 'close' and x['ref'] == row['id']]), 1)
+
+    def result_table(self, status='MET', evidence='PASS yes', header='| row | Result | Sha | Evidence |'):
+        return header + '\n|---|---|---|---|\n| obs | ' + status + ' | main=' + 'a'*40 + ' | ' + evidence + ' |\n'
+
+    def unmet(self, text):
+        return self.module().has_unmet_rows(text)
+
+    def test_a_not_yet_due_word_in_the_status_position_is_unmet_in_any_case_and_through_emphasis(self):
+        for status in ('PENDING', 'Pending 24h', 'Pending review', 'Pending 2026-11-25', 'pending the 24h window', 'Waiting 24h', 'WAITING until 2026-11-25',
+                       'tbd after window', 'TBD', 'Not yet due 2026-11-25', 'not-yet-due', 'NOT-YET-DUE', 'NOT  YET DUE', '**PENDING**', '*pending*',
+                       '`PENDING`', '__Waiting__ for CI'):
+            with self.subTest(status=status):
+                self.assertTrue(self.unmet(self.result_table(status=status)))
+        for name in ('Result', 'Status', 'Verdict', 'Outcome', 'Requirement status', 'Overall result'):
+            with self.subTest(status_column=name):
+                header = '| row | ' + name + ' | Sha | Evidence |'
+                self.assertTrue(self.unmet(self.result_table(status='Pending 24h', header=header)))
+                self.assertFalse(self.unmet(self.result_table(evidence='pending: none', header=header)))
+        for item in ('- Pending review', '- Not yet due control two', '1. tbd control two', '* **WAITING** for the window', '- not-yet-due control two'):
+            with self.subTest(item=item):
+                self.assertTrue(self.unmet(item + '\n'))
+
+    def test_the_evidence_of_a_met_row_never_reads_as_not_yet_due(self):
+        for evidence in ('TBD field removed', 'WAITING room test passed', 'PENDING count was 0', 'PENDING rows: none', 'pending: none', 'pending (0)',
+                         'pending.', 'pending, none', 'pending-count 0', 'waiting-list empty', 'waiting for 0 items', 'waiting on nobody',
+                         'pending by design', 'tbd.', 'TBD-free', 'not yet due: none', 'no pending rows', 'waiting list is empty', 'tbd items: none',
+                         'Pending count was 0', 'not-yet-due items: none'):
+            with self.subTest(evidence=evidence):
+                self.assertFalse(self.unmet(self.result_table(evidence=evidence)))
+        self.assertFalse(self.unmet(self.result_table(status='Pendingly done')))  # a word of its own, not the status word
+        self.assertFalse(self.unmet('| row | Expected | Result |\n|---|---|---|\n| obs | PENDING | MET |\n'))  # an Expected column is test input
+        self.assertFalse(self.unmet('The run reported nothing pending, no one waiting and no tbd.\n- the run reported nothing pending\n'))
+
+    def test_a_row_with_no_status_column_to_read_fails_closed_for_the_not_yet_due_words(self):
+        # the row forms with no status position distinct from the evidence text: an unsure row is unmet
+        for name, text in (('a header with no status column', '| row | Sha | Evidence |\n|---|---|---|\n| obs | main=aaa | pending count was 0 |\n'),
+                           ('a row with no header', '| obs | MET | main=aaa | pending count was 0 |\n'),
+                           ('a ragged row under a header', '| row | Result | Sha | Evidence |\n|---|---|---|---|\n| obs | MET | pending: none |\n')):
+            with self.subTest(form=name):
+                self.assertTrue(self.unmet(text))
+
+    def test_the_not_yet_due_status_word_closes_nothing_through_the_real_check(self):
+        sha = 'main=' + 'a'*40
+        good = '| row | Result | Sha | Evidence |\n|---|---|---|---|\n| control | MET | ' + sha + ' | PASS yes |\n'
+        row = self.pending_with(good + '| obs | Pending 24h | ' + sha + ' | window open |\nVERDICT CLOSE\n')
+        r = self.check(row)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('unmet/skipped/error proof row', r.stderr)
+        row = self.pending_with(good + '| obs | MET | ' + sha + ' | TBD field removed; pending: none |\nVERDICT CLOSE\n')
+        r = self.check(row)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_a_step_of_another_key_never_blocks_whatever_its_relation_to_this_one(self):
+        steps = [self.add_row('Implement an unrelated ticket', key=other) for other in ('HIMMEL-98', 'HIMMEL-98480', 'HIMMEL-9848X', 'HIMMEL-984', 'XHIMMEL-9848')]
+        r = self.decide('--settle')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.open_ids(), set(steps))
+
+    def test_a_step_of_the_same_ticket_under_a_lower_case_key_blocks(self):
+        step = self.add_row('Implement the missing accepted case', key='himmel-9848')
+        r = self.decide('--check')
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn(step + ' (worker: Implement the missing accepted case)', r.stderr)
+
+    def test_a_step_that_appears_between_check_and_settle_writes_one_reconciliation_like_a_remainder(self):
+        self.assertEqual(self.decide('--check').returncode, 0)
+        step = self.add_row('Implement the missing accepted case')
+        self.assertNotEqual(self.decide('--settle', status='To Do').returncode, 0)  # not Done: nothing moved, a plain refusal
+        self.assertEqual(len(self.rows()), 2)
+        for _ in range(3):  # the settle and its replays: ONE owned step, the validation stays pending
+            r = self.decide('--settle')
+            self.assertEqual(r.returncode, 0, r.stderr)
+            body = json.loads(r.stdout)
+            self.assertFalse(body['closed'])
+        steps = [row for row in self.rows() if row.get('capability') == 'remainder reconciliation']
+        self.assertEqual(len(steps), 1)
+        self.assertEqual((steps[0]['kind'], steps[0]['actor'], steps[0]['key'], steps[0]['source_id']), ('step', 'chief', 'HIMMEL-9848', 'o1'))
+        self.assertEqual(body['reconciliation'], steps[0]['id'])
+        self.assertIn(step, steps[0]['text'])
+        self.assertIn('Implement the missing accepted case', steps[0]['text'])
+        self.assertEqual((self.closed_refs(), len(self.rows())), (set(), 3))
+        # the finished step closed, the reconciliation still owns the decision until it is closed
+        self.close_row(step)
+        r = self.decide('--settle')
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('open code/chief step ' + steps[0]['id'], r.stderr)
+        self.close_row(steps[0]['id'])
+        self.assertEqual(self.decide('--settle').returncode, 0)
+        self.assertEqual(self.closed_refs(), {step, steps[0]['id'], 'o1'})
+
+    def test_a_step_and_a_remainder_together_write_one_reconciliation_that_names_both(self):
+        env = self.world()
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+        step = self.add_row('Implement the missing accepted case')
+        self.partial(77, self.CODE)
+        for _ in range(2):
+            r = self.decide('--settle', env=env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+        steps = [row for row in self.rows() if row.get('capability') == 'remainder reconciliation']
+        self.assertEqual(len(steps), 1)
+        for name in (step, 'Implement the missing accepted case', 'PR #77', 'implement X'):
+            self.assertIn(name, steps[0]['text'])
+
 
 def setUpModule():
     # The decision reads the status log and GitHub: never the station's real ones, in any test of this file.
