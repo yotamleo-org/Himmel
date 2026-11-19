@@ -4523,7 +4523,8 @@ esac
 _bwimc_one_cd_word() {
     local LC_ALL=C t="$1" n=0 re='(^|[^A-Za-z0-9_])(cd|pushd|popd|chdir)([^A-Za-z0-9_]|$)'
     _bwimc_exotic_byte "$t" && return 1
-    t="${t//[\'\"\\\{\},\[\]]/}"
+    # One substitution per character: a bracket class is quadratic in the text length on bash 3.2.
+    t="${t//\'/}"; t="${t//\"/}"; t="${t//\\/}"; t="${t//\{/}"; t="${t//\}/}"; t="${t//,/}"; t="${t//\[/}"; t="${t//\]/}"
     while [[ $t =~ $re ]]; do
         n=$((n+1)); [ "$n" = 1 ] || return 1
         t="${t#*"${BASH_REMATCH[0]}"}"

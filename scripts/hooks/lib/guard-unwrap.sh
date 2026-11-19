@@ -47,6 +47,11 @@ _gu_dir=${BASH_SOURCE[0]%/*}
 { [ -r "$_gu_dir/shell-tokenize.sh" ] && . "$_gu_dir/shell-tokenize.sh"; } 2>/dev/null || return 1
 declare -F st_tokenize >/dev/null || return 1
 
+# A single quote and a backslash held in variables: inside "…" a ${w//\'/…}
+# replacement keeps its backslashes on bash 3.2 and loses them on bash 5.
+_GU_SQ="'"
+# shellcheck disable=SC1003 # a lone backslash, not an escaped quote
+_GU_BS='\'
 GU_MAX_DEPTH=8
 GU_MAX_VARIANTS=32
 GU_SHELLS=' bash sh zsh dash ksh mksh ash yash posh '
@@ -63,7 +68,7 @@ _gu_render_word() {
     if [ "${ST_G[$1]}" = 1 ] && [[ $w =~ $re_glob ]]; then GU_RW=$w; return 0; fi
     if [ "${ST_X[$1]}" = 1 ] && [[ $w =~ $re_var ]]; then GU_RW=$w; return 0; fi
     GU_BARE=0
-    GU_RW="'${w//\'/\'\\\'\'}'"
+    GU_RW="'${w//$_GU_SQ/$_GU_SQ$_GU_BS$_GU_SQ$_GU_SQ}'"
 }
 
 # _gu_add TEXT — queue one body (a string the shell runs as a command).
@@ -394,7 +399,7 @@ guard_unwrap() {
                 if [ "${GU_QUOTE_ARGS:-0}" = 1 ] && [ "$k" != "$first" ] && [ "${ST_Q[idx[k]]}" = 1 ]; then
                     # A quoted argument stays one quoted word: the hook
                     # tells a quoted pattern from a path by its quotes.
-                    GU_RW="'${w//\'/\'\\\'\'}'"
+                    GU_RW="'${w//$_GU_SQ/$_GU_SQ$_GU_BS$_GU_SQ$_GU_SQ}'"
                     if [ "${ST_X[idx[k]]}" = 0 ] && [[ $cmd != *"$GU_RW"* ]] \
                         && [[ $cmd != *"\"$w\""* ]]; then
                         trigger=1

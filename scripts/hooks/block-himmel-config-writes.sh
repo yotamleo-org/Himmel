@@ -339,7 +339,7 @@ while [[ "$lcv" =~ \\(x[0-9a-fA-F]{1,2}|u[0-9a-fA-F]{1,4}|U[0-9a-fA-F]{1,8}|[0-7
     _e="${BASH_REMATCH[1]}"
     { case "$_e" in [xuU]*) _ch=$(printf %b "\\$_e") ;; *) _ch=$(printf %b "\\0${_e}") ;; esac; } 2>/dev/null
     _n=${#lcv}
-    lcv="${lcv/"\\$_e"/"$_ch"}"
+    lcv=${lcv/"\\$_e"/"$_ch"}
     [ "${#lcv}" -lt "$_n" ] || deny "the command carries an escape (\\$_e) the guard cannot decode"
 done
 lcv=$(printf '%s' "$lcv" | tr -d "\"'\\\\" | tr '[:upper:]' '[:lower:]')
