@@ -570,10 +570,10 @@ if [ "$record" -eq 1 ]; then
         echo "impacted-suites.sh: --record needs a range from the merge-base of the remote default branch and ${head_sha}" >&2; exit 2
     fi
 fi
-if ! changed=$(git diff -z --name-only --no-renames "$mb" "$head_sha" | tr '\0' '\n'); then
+if ! changed=$(git diff -z --name-only --no-renames "$mb" "$head_sha" | LC_ALL=C tr '\0' '\n'); then
     echo "impacted-suites.sh: git diff ${mb}..${head_sha} failed" >&2; exit 2
 fi
-if ! tree=$(git ls-tree -r -z --name-only "$head_sha" | tr '\0' '\n'); then
+if ! tree=$(git ls-tree -r -z --name-only "$head_sha" | LC_ALL=C tr '\0' '\n'); then
     echo "impacted-suites.sh: git ls-tree ${head_sha} failed" >&2; exit 2
 fi
 
@@ -709,7 +709,7 @@ if [ "$grep_rc" -gt 1 ]; then
     echo "impacted-suites: git grep failed (rc=$grep_rc) listing variable-sourcing files — cannot tell which suites are impacted" >&2
     exit 2
 fi
-tr '\0' '\n' < "$work/varsrc.raw" | sed "s/^${head_sha}://" > "$varsrc" || io_fail "listing variable-sourcing files"
+LC_ALL=C tr '\0' '\n' < "$work/varsrc.raw" | sed "s/^${head_sha}://" > "$varsrc" || io_fail "listing variable-sourcing files"
 
 content_rules() {
     cat <<'EOF'
@@ -883,7 +883,7 @@ grep_rc=0
 git -c grep.lineNumber=false -c grep.column=false -c color.grep=false grep -z -a -E '(^|[^A-Za-z0-9_])(import|from|require)([^A-Za-z0-9_]|$)' "$head_sha" -- \
     ':(glob)**/*.js' ':(glob)**/*.mjs' ':(glob)**/*.cjs' ':(glob)**/*.ts' ':(glob)**/*.py' > "$work/importers" || grep_rc=$?
 [ "$grep_rc" -le 1 ] || io_fail "listing importers"
-tr '\0' '\001' < "$work/importers" > "$work/import.lines" || io_fail "reading the importer lines"
+LC_ALL=C tr '\0' '\001' < "$work/importers" > "$work/import.lines" || io_fail "reading the importer lines"
 awk -v pre="${head_sha}:" '
     function emit(module, n, parts) {
         n = split(module, parts, "/")
@@ -928,7 +928,7 @@ git grep -q -a -E 'working-tree-encoding|export-subst|filter=|crlf|(^|[[:space:]
 [ "$grep_rc" -le 1 ] || io_fail "reading the attribute files"
 [ "$grep_rc" -ne 0 ] || attr_slow=1
 git ls-tree -r -z "$head_sha" > "$work/tree.modes" || io_fail "listing the tree modes"
-tr '\0' '\n' < "$work/tree.modes" | awk -F '\t' '{ n = split($2, p, "/") } p[n] == ".gitattributes" && $1 !~ /^100/' > "$work/attr.nonreg" || io_fail "finding the non-regular attribute files"
+LC_ALL=C tr '\0' '\n' < "$work/tree.modes" | awk -F '\t' '{ n = split($2, p, "/") } p[n] == ".gitattributes" && $1 !~ /^100/' > "$work/attr.nonreg" || io_fail "finding the non-regular attribute files"
 [ ! -s "$work/attr.nonreg" ] || attr_slow=1
 
 select_changed() {
@@ -1130,7 +1130,7 @@ grep_narrowed() {
     # set once above), no candidate is unpacked: all take the
     # per-file path below, which reads the raw blob. A candidate the unpack lacks
     # (export-ignore), or holds as a symlink, takes that path too.
-    tr '\0' '\n' < "$work/narrow.cand" | sed "s/^${head_sha}://" | tr '\n' '\0' > "$work/narrow.rel" || io_fail "reading the ${what} candidates"
+    LC_ALL=C tr '\0' '\n' < "$work/narrow.cand" | sed "s/^${head_sha}://" | LC_ALL=C tr '\n' '\0' > "$work/narrow.rel" || io_fail "reading the ${what} candidates"
     : > "$work/narrow.reg" || io_fail "creating the ${what} candidate list"
     : > "$work/narrow.irr" || io_fail "creating the ${what} candidate list"
     rm -rf "$src"
@@ -1173,7 +1173,7 @@ grep_narrowed() {
     fi
     # The NUL after the path becomes \001 (a byte awk can hold). LC_ALL=C: byte-exact
     # index/substr on a line that is not valid UTF-8.
-    tr '\0' '\001' < "$work/narrow.lines" > "$work/narrow.tagged" || io_fail "reading the ${what} candidates"
+    LC_ALL=C tr '\0' '\001' < "$work/narrow.lines" > "$work/narrow.tagged" || io_fail "reading the ${what} candidates"
     if [ "$read_comments_apart" -eq 1 ]; then
         while IFS= read -r -d '' p; do
             git show "${head_sha}:${p}" > "$work/narrow.blob" || io_fail "reading ${p} at ${head_sha} for ${what}"
@@ -1225,7 +1225,7 @@ narrow_write() {
             if (sub(/[^\/]*$/, "", path) && path != "" && !(path in seen)) { seen[path] = 1; print ENVIRON["NARROW_DIR"] "/" path }
         }
     ' "$tagged" > "$work/narrow.dirs.txt" || io_fail "listing the ${what} scratch directories"
-    tr '\n' '\0' < "$work/narrow.dirs.txt" > "$work/narrow.dirs" || io_fail "converting the ${what} scratch directory list"
+    LC_ALL=C tr '\n' '\0' < "$work/narrow.dirs.txt" > "$work/narrow.dirs" || io_fail "converting the ${what} scratch directory list"
     if [ -s "$work/narrow.dirs" ]; then
         xargs -0 mkdir -p < "$work/narrow.dirs" || io_fail "creating the ${what} scratch tree"
     fi
@@ -1253,7 +1253,7 @@ narrow_ere() {
         echo "impacted-suites: grep failed (rc=$grep_rc) ${what} — cannot tell which suites are impacted" >&2
         exit 2
     fi
-    tr '\0' '\n' < "$work/narrow.hits" | sed 's|^\./||' > "$out" || io_fail "reading ${what}"
+    LC_ALL=C tr '\0' '\n' < "$work/narrow.hits" | sed 's|^\./||' > "$out" || io_fail "reading ${what}"
 }
 # closure_grep <patfile> <outfile> <what> — the .sh files at head matching any pattern.
 closure_grep() {
@@ -1497,7 +1497,7 @@ if [ -s "$2" ]; then
             echo "impacted-suites: git grep failed (rc=$ts_rc) — cannot tell which tree-scan suites exist" >&2
             exit 2
         fi
-        tr '\0' '\n' < "$work/treescan.out" | sed "s/^${ts_rev}://" > "$work/treescan.paths" || io_fail "reading the tree-scan list"
+        LC_ALL=C tr '\0' '\n' < "$work/treescan.out" | sed "s/^${ts_rev}://" > "$work/treescan.paths" || io_fail "reading the tree-scan list"
         while IFS= read -r ts; do
             [ -n "$ts" ] || continue
             if grep -Fxq -- "$ts" "$work/tree"; then printf '%s\n' "$ts" >> "$found" || io_fail "recording a tree-scan suite"; fi
@@ -1550,7 +1550,7 @@ if [ -n "$paths_file" ]; then
     exit 0
 fi
 
-if ! tree_shape=$(git diff -z --diff-filter=ADT --name-only --no-renames "$mb" "$head_sha" | tr '\0' '\n'); then
+if ! tree_shape=$(git diff -z --diff-filter=ADT --name-only --no-renames "$mb" "$head_sha" | LC_ALL=C tr '\0' '\n'); then
     echo "impacted-suites.sh: git diff ${mb}..${head_sha} failed" >&2; exit 2
 fi
 printf '%s' "$tree_shape" > "$work/diff.shape" || io_fail "writing the tree-shape list"
