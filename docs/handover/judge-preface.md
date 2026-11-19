@@ -121,6 +121,6 @@ banner is the output of `bash scripts/handover/wrap-subtree-check.sh`: paste
 its `CLOSABLE:` line. `WITHHELD:` lists the pids still alive — TaskStop them
 and re-run; never type the banner by hand.
 
-**Context ≥ 60 %:** write `…judgeN<n>b-…-RESUME.md`, message the chief, stop.
+**Context ≥ 60 %:** write your successor brief under your own doc's name with `b` appended to the qid, message the chief, stop.
 Run the context-fill probe after **every** completed step, not only when you
 notice growth — that is what catches the ≥60 % threshold in time.

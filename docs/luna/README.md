@@ -30,9 +30,10 @@ luna runs one loop: capture, ingest, link, recall.
    the inbox, and the [clip pipeline](compounding.md) files them as
    notes too.
 3. **Link.** Each night a job reads the new notes and proposes links
-   between notes that belong together. Each day graphify redraws the
-   map of those links, at no model cost; once a week it also reads
-   the notes for meaning.
+   between notes that belong together. Once you arm the vault graph
+   (`bash scripts/luna/graphmap-cadence.sh arm --luna-only`), graphify redraws the map of
+   those links daily, at no model cost, and once a week also reads the
+   notes for meaning.
 4. **Recall.** qmd searches the vault by words and by meaning, and
    re-indexes it every day. Claude calls it as a tool, and graphify
    follows the links from what qmd finds to the notes next to it.
@@ -83,8 +84,8 @@ bringing them to your project is planned.
 
 Reference docs for himmel features that touch the Luna Obsidian vault.
 
-Per the luna-area docs convention locked 2026-05-25 (see the
-`CLAUDE.md` "Luna-area docs convention" section): operator-facing
+Per the docs-placement rule in `CLAUDE.md` (operator reference docs go
+in the owning repo's `docs/`; vault content stays in luna): operator-facing
 reference docs (guides, runbooks, architecture) for luna-touching
 features in this repo live here. Personal-state work artifacts
 (handovers, decision logs, journal entries) live in `<state-repo>`.
@@ -105,7 +106,7 @@ this page against its skill's frontmatter and `qmd --help`.
 - [`compounding.md`](compounding.md): how auto-memory + the clipper
   pipeline compound into vault substrate (the capture map).
 - [`pr-lane-guard.md`](pr-lane-guard.md): the luna PR-lane isolation
-  guard and its `.single-writer` opt-out.
+  guard and its `SKIP=pr-lane-isolation` bypass.
 
 ### Where things go
 
@@ -114,6 +115,6 @@ this page against its skill's frontmatter and `qmd --help`.
 | Luna-touching reference docs for himmel | `himmel/docs/luna/` (here) |
 | Luna repo's own reference docs | `luna/docs/` |
 | Vault-template reference docs (OSS-bootstrap-ready) | `himmel/templates/luna-second-brain/docs/` |
-| Plugin specs | `plugins/<plugin>/README.md` |
+| Plugin specs | `marketplace/plugins/<plugin>/README.md` |
 | Handovers / work logs / decision journals | `<state-repo>/handovers/<USER_SLUG>/<repo-bucket>/` |
 | Luna vault content (clips, human notes) | luna vault itself (unchanged) |

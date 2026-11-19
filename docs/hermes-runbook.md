@@ -471,7 +471,6 @@ Add one alias per tier you want reachable. Claude-tier parity map:
 | sonnet | `qwen-plus` |
 | opus | `qwen3-max` / `qwen3.7-max` |
 | thinking / fable | `qwq-plus` / `qwen3-235b-a22b-thinking` |
-| CR critic | anchor row in `scripts/cr/critics.json` (per-account quota state, e.g. exhausted models swapped out, lives in the gitignored `scripts/cr/critics.local.json` overlay) |
 
 ### Validate THROUGH hermes
 

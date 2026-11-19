@@ -120,10 +120,13 @@ row wins. "Next" means the earliest unreleased version after the current one.
 - A frozen version admits only through row c, so the frozen set stays fixed.
 - The release manager can override any placement later with a REVERSION. The
   verb's class is a default, not a gate.
-- **Pending change.** Until R1' (HIMMEL-6919) merges, the verb throws on a frozen
-  current version instead of placing by rows d and e. Over the follow-up budget,
-  R6' (HIMMEL-6924) makes a version's lowest-ranked To Do follow-up step down to
-  make room for a higher-ranked newcomer; see the glossary's Cap gate entry.
+- Placement never throws on a frozen version: a frozen or missing next sends the
+  follow-up to the backlog. Over the follow-up budget (15 open follow-ups per
+  version, or the version description's `residual-budget:<n>` line), a newcomer
+  that outranks the version's lowest-ranked To Do follow-up takes its slot and
+  that follow-up steps down, unless that follow-up is admitted or ruled, or the
+  rulings cannot be read; otherwise the newcomer steps down, labelled
+  `residual-displaced`. See the glossary's Cap gate entry.
 
 ## What the verb files
 
@@ -206,8 +209,7 @@ moved to Jira on a Jira repo.
 
 The verb stamps `fu-<class>` on every follow-up. For hardening it also stamps
 `fu-why-<code>`. `--fu-class hardening` without `--fu-why <code>` is a usage
-error, exactly like a missing `--fu-class`; it is not a placement refusal. This
-lands with R1' (HIMMEL-6919).
+error, exactly like a missing `--fu-class`; it is not a placement refusal.
 
 ## The class is required on a deferral
 
@@ -223,9 +225,9 @@ catalog, and when no class claims the finding the amend is refused until it
 carries `--set class=<id>` or `--set class=new:<slug>`. A fixed amend stays
 auto-only (`unattributed` when nothing claims it).
 
-`review-round.sh defer` (the three-round cap path) records `polish`: it only
-defers Suggestions, and with no `--defer-to` it files no ticket for them (see "What the
-verb files"). Deferring an Important always needs an explicit class.
+`review-round.sh defer` (the three-round cap path) notes polish and unclassed
+Suggestions with no ticket when no `--defer-to` is given (see "What the verb
+files"); other classes follow "A Suggestion keeps its class" above. Deferring an Important always needs an explicit class.
 Panel batch rows (`--batch-file`) are not enforced; they are not deferrals a
 person classifies. The same class goes on the follow-up ticket as its label
 (`fu-escape`, `fu-hardening` or `fu-polish`), and in the summary when filing.

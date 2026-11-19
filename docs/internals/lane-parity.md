@@ -64,7 +64,8 @@ git-hook gates):
   `check-security-reviewed`, `doc-guard`, `gitleaks`, and the rest of the
   `.pre-commit-config.yaml` gate set.
 
-**Non-deny hooks -- NOT mapped per-lane** (3 PreToolUse + 1 PostToolUse):
+**Non-deny hooks -- NOT mapped per-lane.** The four below are the ones most
+often mistaken for deny-guards:
 
 - `auto-approve-safe-bash` -- an auto-APPROVER (a fail-open permission helper),
   not a deny-guard.

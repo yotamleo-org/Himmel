@@ -44,7 +44,7 @@ placeholders**: every field is a concrete, runnable value (`profile:
 "inline"`, no `bridge` section) and pass both schema validation and `install
 --dry-run` on a bare checkout, first try. They're what `himmelctl install
 --scope project|user` loads under the hood (`docs/setup/new-machine.md` §
-"himmelctl install"):
+"4. himmel Repo"):
 
 ```bash
 node scripts/himmelctl/bin.js install --from-profile docs/setup/profiles/adopter-project.install-profile.json

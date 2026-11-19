@@ -1,6 +1,6 @@
 # End-Session Wiki Hook — User Guide
 
-Auto-captures every Claude Code session as a structured note in the Luna Obsidian vault. Built by epic #7 (tasks #24-#27). For the on-disk note shape, see [`end-session-wiki-schema.md`](./end-session-wiki-schema.md).
+Once the hook is wired and enabled, captures each eligible Claude Code session (at least `min_duration_seconds` long, default 60, and not an empty husk; a transcript with no timestamp skips the duration check) as a structured note in the Luna Obsidian vault. For the on-disk note shape, see [`end-session-wiki-schema.md`](./end-session-wiki-schema.md).
 
 ## Quickstart — multi-vault in 30 seconds
 

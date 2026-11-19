@@ -74,7 +74,7 @@ cadence:
 |-----------|--------|---------|
 | Daily (02:00) | Harvest + Triage | `/harvest-clips` → `/triage-clips` |
 | Daily (03:00) | Synthesize + Archive | `/synthesize-clips` → `/archive-clips` |
-| Weekly (Sun 04:00) | Vault health | `/obsidian-health` |
+| Weekly (Sun 04:00) | Vault lint | `obsidian-triage:vault-lint` |
 
 Each job launches with an explicit cheap `--model` pin
 (harvest/synth = `claude-sonnet-5-5`, health = `haiku`) so the cadence
@@ -171,7 +171,7 @@ quietly compounds and one with silent gaps.
 | Tier | What it captures | Entry point |
 |------|------------------|-------------|
 | **Automatic** | Session **summary** (decisions/commands/follow-ups) on graceful `SessionEnd`, enabled by default | `end-session-wiki` hook, no action required |
-| **Semi-automatic** (scheduled) | Inbox clips → triaged + synthesized notes; periodic vault health | `/pipeline-cadence arm` schedules `/harvest-clips`→`/triage-clips` (daily), `/synthesize-clips`→`/archive-clips` (daily), `vault-lint` (obsidian-triage:vault-lint, daily) — each job pinned to a cheap `--model`. Generic `/schedule` + `/loop` drive any recurring pass. |
+| **Semi-automatic** (scheduled) | Inbox clips → triaged + synthesized notes; periodic vault health | `/pipeline-cadence arm` schedules `/harvest-clips`→`/triage-clips` (daily), `/synthesize-clips`→`/archive-clips` (daily), `vault-lint` (obsidian-triage:vault-lint, weekly on Sunday by default; `--health-day daily` runs it nightly) — each job pinned to a cheap `--model`. Generic `/schedule` + `/loop` drive any recurring pass. |
 | **Manual** (you invoke it) | The mid-session findings/sources the automatic path misses | see list below |
 
 **Manual capture — what you must invoke explicitly:**
