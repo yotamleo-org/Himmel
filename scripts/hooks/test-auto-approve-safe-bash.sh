@@ -1903,7 +1903,7 @@ decide_utf8() {
 }
 decide_utf8_lang_only() {
     local out rc
-    out=$(printf '%s' "$1" | env -u LC_ALL LANG=en_US.UTF-8 bash "$HOOK" 2>/dev/null); rc=$?
+    out=$(printf '%s' "$1" | env -u LC_ALL -u LC_COLLATE LANG=en_US.UTF-8 bash "$HOOK" 2>/dev/null); rc=$?
     if [ "$rc" != 0 ]; then echo "RC$rc"; elif grepq "$out" '"permissionDecision":"allow"'; then echo "ALLOW"; else echo "PASS"; fi
 }
 assert "ctl: cd src && grep -r x . ALLOW (LC_ALL=en_US.UTF-8)" ALLOW "$(decide_utf8 "$(j_bash "cd src && grep -r x .")")"
