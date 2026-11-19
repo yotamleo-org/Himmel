@@ -460,7 +460,7 @@ scripts/hooks/test-block-tail-pipe-on-gates.sh	mktemp	1
 scripts/hooks/test-block-unresolved-cr-merge.sh	kill-after	1
 scripts/hooks/test-block-unresolved-cr-merge.sh	mktemp	1
 scripts/hooks/test-block-write-into-main-checkout-forms.sh	gnu-flag	16
-scripts/hooks/test-block-write-into-main-checkout-heredoc.sh	bash32	1
+scripts/hooks/test-block-write-into-main-checkout-heredoc.sh	bash32	1	line 218 is an escaped \$(case ...) string the suite feeds its guard as test data, not a substitution the shell runs
 scripts/hooks/test-block-write-into-main-checkout-heredoc.sh	gnu-flag	5
 scripts/hooks/test-block-write-into-main-checkout-heredoc.sh	mktemp	1
 scripts/hooks/test-block-write-into-main-checkout-matrix1.sh	gnu-flag	2
