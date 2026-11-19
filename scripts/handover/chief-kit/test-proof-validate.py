@@ -231,6 +231,59 @@ class ProofRecord(unittest.TestCase):
         self.run_record()
         self.assertEqual(len(self.rows()), 1)
 
+    def test_every_declared_artifact_of_a_single_ticket_is_kept_whatever_its_name(self):
+        named, other = self.b / 'HIMMEL-9848-proof.md', self.b / 'station-control.md'
+        other.write_text('| row | Result | Sha | Evidence |\n|---|---|---|---|\n| station check | NOT MET | main=' + 'a'*40 + ' | timed out |\nVERDICT KEEP\n')
+        self.evidence = named
+        for order in ('named first', 'named last'):
+            with self.subTest(order=order):
+                (self.b / 'owed.jsonl').unlink(missing_ok=True)
+                self.write(tail=' evidence=' + str(other))
+                if order == 'named last':
+                    self.doc.write_text(self.doc.read_text().replace('evidence=' + str(named) + ' evidence=' + str(other), 'evidence=' + str(other) + ' evidence=' + str(named)))
+                self.run_record()
+                self.assertEqual(len(self.rows()), 1)
+                row = self.rows()[0]
+                self.assertEqual(sorted(r['path'] for r in row.get('evidence_records', [])), sorted([str(named), str(other)]))
+                self.assertEqual(row['recommendation'], 'unknown')
+                self.assertIn('recommendation-conflict', row['issues'])
+                self.assertTrue(any(str(other) in s and 'NOT MET' in s for s in row['proof_rows']))
+                self.assertTrue(any(str(named) in s and 'PASS yes' in s for s in row['proof_rows']))
+                # the declaration of one ticket is the attribution of every artifact it names
+                self.assertNotIn('artifact-attribution-unvalidated', row['issues'])
+
+    def test_every_audit_path_a_single_ticket_brief_writes_is_kept_whatever_its_name(self):
+        audits = self.b / 'specs' / 'audits'
+        audits.mkdir(parents=True)
+        named, other = audits / 'HIMMEL-9848-proof.md', audits / 'station-control.md'
+        named.write_text(self.evidence.read_text())
+        other.write_text('| row | Result | Sha | Evidence |\n|---|---|---|---|\n| station check | NOT MET | main=' + 'a'*40 + ' | timed out |\nVERDICT KEEP\n')
+        self.doc.write_text('# proof\n> **Proof leg:** HIMMEL-9848\n> **Writes:** `' + str(named) + '`, `' + str(other) + '`\n## Results\n- 10:00 WRAPPED done\n')
+        self.run_record()
+        row = self.rows()[0]
+        self.assertEqual(sorted(r['path'] for r in row.get('evidence_records', [])), sorted([str(named), str(other)]))
+        self.assertEqual(row['recommendation'], 'unknown')
+
+    def test_an_unnamed_artifact_beside_a_ticket_named_one_is_an_issue_when_several_tickets_are_declared(self):
+        named, other = self.b / 'HIMMEL-9848-proof.md', self.b / 'summary.md'
+        named.write_text(self.evidence.read_text())
+        other.write_text(self.evidence.read_text())
+        self.evidence = named
+        self.write(keys='HIMMEL-9848 HIMMEL-10220', tail=' evidence=' + str(other))
+        self.run_record()
+        row = next(r for r in self.rows() if r['key'] == 'HIMMEL-9848')
+        self.assertEqual(sorted(r['path'] for r in row.get('evidence_records', [])), sorted([str(named), str(other)]))
+        self.assertIn('artifact-attribution-unvalidated', row['issues'])
+        # a ticket-named artifact of each ticket needs no such attribution
+        (self.b / 'owed.jsonl').unlink()
+        second = self.b / 'HIMMEL-10220-proof.md'
+        second.write_text(self.evidence.read_text())
+        self.write(keys='HIMMEL-9848 HIMMEL-10220', tail=' evidence=' + str(second))
+        self.run_record()
+        for row in self.rows():
+            self.assertNotIn('artifact-attribution-unvalidated', row['issues'])
+            self.assertNotIn('evidence_records', row)
+
     def test_sha_bases_and_explicit_binding(self):
         self.run_record()
         digest = self.rows()[0]['requirements_digest']

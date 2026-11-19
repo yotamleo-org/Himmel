@@ -219,6 +219,22 @@ class ChiefDecision(unittest.TestCase):
         self.change_decision(identity=new['identity'])
         return new
 
+    def pending_artifacts(self, artifacts, keys='HIMMEL-9848'):
+        """Record one proof leg that declares every artifact ({file name: text}, in order; None declares a file that does not exist) and return the new HIMMEL-9848 row."""
+        paths = [self.b / name for name in artifacts]
+        for path, text in zip(paths, artifacts.values()):
+            if text is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_text(text)
+        self.evidence = paths[0]
+        self.write(evidence=next(iter(artifacts.values())), keys=keys, tail=''.join(' evidence=' + str(path) for path in paths[1:]),
+                   stamp=self.module().requirements(self.mirror / 'HIMMEL-9848.md'))
+        self.run_record()
+        new = [r for r in self.rows() if r['op'] == 'add' and r.get('key') == 'HIMMEL-9848'][-1]
+        self.change_decision(identity=new['identity'])
+        return new
+
     def check(self, row):
         data = {'key': 'HIMMEL-9848', 'description': self.requirements + '\n', 'status': 'Done', 'category': 'done'}
         return subprocess.run(['python3', str(HERE / 'proof-validate.py'), '--bucket', str(self.b), '--check', row['id'],
@@ -274,6 +290,44 @@ class ChiefDecision(unittest.TestCase):
                 r = self.check(row)
                 self.assertEqual(r.returncode, 0, r.stderr)
                 self.assertEqual(json.loads(r.stdout)['semantic_coverage'], 'chief-owned')
+
+    def test_a_second_declared_artifact_is_judged_beside_the_ticket_named_one(self):
+        good = self.evidence.read_text()
+        table = '| row | Result | Sha | Evidence |\n|---|---|---|---|\n| station check | %s | main=' + 'a'*40 + ' | timed out |\n'
+        for name, other, refusal in (('a failed row and a KEEP verdict', table % 'NOT MET' + 'VERDICT KEEP\n', 'unbound/unresolved proof'),
+                                     ('a failed row under a CLOSE verdict', table % 'NOT MET' + 'VERDICT CLOSE\n', 'unmet/skipped/error proof row'),
+                                     ('a failed list item under a CLOSE verdict', good + '- **OWED** station check: needs the operator\n', 'unmet/skipped/error proof row'),
+                                     ('an artifact that does not exist', None, 'No such file or directory')):
+            with self.subTest(name):
+                row = self.pending_artifacts({'HIMMEL-9848-proof.md': good, 'station-control.md': other})
+                self.assertEqual(row['binding'], 'matched')
+                r = self.check(row)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn(refusal, r.stderr)
+                self.assertEqual(len(row.get('evidence_records', [])), 2)
+
+    def test_a_second_declared_artifact_that_passes_leaves_the_close_to_the_chief(self):
+        good = self.evidence.read_text()
+        row = self.pending_artifacts({'HIMMEL-9848-proof.md': good, 'station-control.md': good.replace('| control |', '| station check |').replace('PASS yes', 'PASS station')})
+        self.assertEqual(row['binding'], 'matched')
+        self.assertNotIn('artifact-attribution-unvalidated', row['issues'])
+        r = self.check(row)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_an_artifact_that_names_no_ticket_is_an_issue_that_refuses_when_several_tickets_are_declared(self):
+        good = self.evidence.read_text()
+        tickets = 'HIMMEL-9848 HIMMEL-10220'
+        row = self.pending_artifacts({'HIMMEL-9848-proof.md': good, 'summary.md': good.replace('| control |', '| summary |')}, keys=tickets)
+        self.assertEqual(row['binding'], 'matched')
+        r = self.check(row)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('unbound/unresolved proof', r.stderr)
+        self.assertIn('artifact-attribution-unvalidated', row['issues'])
+        # an artifact named after each ticket needs no attribution
+        row = self.pending_artifacts({'HIMMEL-9848-proof.md': good.replace('| control |', '| named control |'), 'HIMMEL-10220-proof.md': good}, keys=tickets)
+        self.assertNotIn('artifact-attribution-unvalidated', row['issues'])
+        r = self.check(row)
+        self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_prose_that_mentions_a_word_is_not_an_unmet_row_and_unknown_coverage_stays_with_the_chief(self):
         good = self.evidence.read_text()

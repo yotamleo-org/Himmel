@@ -540,11 +540,14 @@ def record(opt):
     for key in keys:
         unbound = [p for p in paths if not any(k in Path(p).name for k in keys)]
         attributed = [p for p in paths if key in Path(p).name]
-        candidates = attributed or unbound or paths or ['']
+        # No declared artifact is dropped: a ticket reads the artifacts that name it and those that name no ticket. A single ticket's
+        # declaration attributes the unnamed ones; beside a named artifact with several tickets declared nothing does, which is an issue.
+        candidates = attributed + unbound or paths or ['']
+        unvalidated = (bool(paths) and not attributed and not unbound) or (len(keys) > 1 and bool(attributed) and bool(unbound))
         observations = []
         for path in candidates:
             issues = ['positive-controls-unvalidated', 'candidate-ancestry-unvalidated', 'coverage-unvalidated']
-            if paths and not attributed and not unbound:
+            if unvalidated:
                 issues.append('artifact-attribution-unvalidated')
             meta = {'actor': 'chief', 'action': 'validate-proof', 'validation': 'pending',
                     'source_doc': str(Path(doc).resolve()) if doc else '', 'source_label': origin,
