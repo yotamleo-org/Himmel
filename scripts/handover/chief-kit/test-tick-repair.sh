@@ -456,7 +456,6 @@ check 'the doc names the lost reason' 1 "$doc_lost"
 doc_rule=0; case "$doc_flat" in *'or when the last launch left no end record'*) doc_rule=1 ;; esac
 check 'the doc states the retry in the launch rule' 1 "$doc_rule"
 
-# --- the project key: state, rm-run and repair take it from the resolver, never from the mirror directory name
 kf="$W/kfix"; mkdir -p "$kf/scripts/handover/chief-kit" "$kf/scripts/lanes" "$kf/scripts/jira/dist" "$W/kmirror/tickets"
 env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git init -q "$kf"
 cp "$SUT" "$kf/scripts/handover/chief-kit/tick.sh"
@@ -466,7 +465,7 @@ cp -R "$HERE/../../lanes/lib" "$kf/scripts/lanes/lib"
 printf '#!/bin/sh\necho "$* key=$JIRA_PROJECT_KEY" >> "%s/node-ran"\ncase "$*" in *"release state"*) cat "%s/state.json" ;; esac\n' "$W" "$W" > "$W/bin/node"
 chmod +x "$W/bin/node"
 ktick() { env -u TICK_RMQ_PROBE -u TICK_RMRUN_PROBE -u TICK_REPAIR_PROBE JIRA_PROJECT_KEY=CONFKEY NEXT_DISPATCH_MIRROR="$W/kmirror/tickets" bash "$kf/scripts/handover/chief-kit/tick.sh" --doc "$W/handover/chief.md" 2>/dev/null; }
-nodekey() { # <verb>: wait up to 5 s for the node stub to log the verb, then print the key it saw
+nodekey() {
     local i=0
     while ! grep -q "release $1 " "$W/node-ran" 2>/dev/null && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
     sed -n "s/^.*release $1 .* key=\([^ ]*\)\$/\1/p" "$W/node-ran" 2>/dev/null | head -n 1

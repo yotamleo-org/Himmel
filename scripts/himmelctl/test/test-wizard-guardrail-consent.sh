@@ -222,7 +222,6 @@ if out=$(HOME="$homeH" USERPROFILE="$(winpath "$homeH")" CLAUDE_USER_SETTINGS="$
 [ "$(guardrail_mode "$settingsH")" = global ] || fail "case h: --write-tracked should wire the guardrail (got: $(cat "$settingsH" 2>/dev/null))"
 echo "ok: case h2 — --write-tracked lets the consented guardrail wire proceed"
 
-# ── case i: CLAUDE_USER_SETTINGS names a tracked file, ~/.claude/settings.json is untracked ─
 unset CLAUDE_CONFIG_DIR
 casei_dir="$work/case-i"; write_cache "$casei_dir/cache"; write_state "$casei_dir/cache" yes
 homeI="$casei_dir/home"; mkdir -p "$homeI/.claude"
@@ -241,7 +240,6 @@ grepq "$out" -F -- '--write-tracked' || fail "case i: the refusal should name --
 [ "$(cat "$homeI/.claude/settings.json")" = '{}' ] || fail "case i: the untracked home settings file must stay untouched"
 echo "ok: case i — the guardrail refusal checks CLAUDE_USER_SETTINGS, the file its writer modifies"
 
-# ── case j: a RELATIVE CLAUDE_USER_SETTINGS naming a tracked file resolves against the cwd ─
 if out=$(cd "$casei_dir" && HOME="$homeI" USERPROFILE="$(winpath "$homeI")" CLAUDE_USER_SETTINGS=repo/settings.json HIMMELCTL_CACHE_DIR="$(winpath "$casei_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$casei_dir/cache")-luna-config.json" \
       HIMMELCTL_INTERACTIVE=0 \
       "$node_bin" "$wizard" ensure --items guardrail-block-global --yes </dev/null 2>&1); then rc=0; else rc=$?; fi

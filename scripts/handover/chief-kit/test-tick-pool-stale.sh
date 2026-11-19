@@ -560,7 +560,7 @@ d="$(doc keybase "pool-disposition: $hk-101 slice $hk-901 then the rest")"
 check 'an override directory not named for the project still matches the project key' "1:$hk-101" \
     "$(JIRA_PROJECT_KEY=HIMMEL NEXT_DISPATCH_MIRROR="$T" field pool-stale "$d")"
 
-pk_mirror() { # <project key>: a mirror dir under an unrelated name, APP-110 Done and APP-111 open
+pk_mirror() {
     local p="$WORK/pk-$1"; mkdir -p "$p"
     printf -- '---\nkey: "%s-110"\nstatus: "Done"\nstatusCategory: "Done"\n---\n\n# %s-110: t\n' "$1" "$1" > "$p/$1-110.md"
     printf -- '---\nkey: "%s-111"\nstatus: "To Do"\nstatusCategory: "To Do"\n---\n\n# %s-111: t\n' "$1" "$1" > "$p/$1-111.md"

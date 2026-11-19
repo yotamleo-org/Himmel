@@ -1942,8 +1942,6 @@ set -e
 grepq "$(cat "$homeU/.claude/settings.json")" -F 'user-level' || fail "case u: the user-level file must be left alone"
 echo "ok: case u — a project-scope prune checks and reprobes only the project settings file"
 
-# ── case v: --prune whose only tracked target is a pending disable, declined at the disable
-# confirm: nothing is written, so the tracked-settings refusal must not fire. ─────────────────
 targetV="$work/target-v"; mkdir -p "$targetV/.claude"
 printf '{"statusLine":{"command":"project-wired"}}\n' > "$targetV/.claude/settings.json"
 git init -q "$targetV"
