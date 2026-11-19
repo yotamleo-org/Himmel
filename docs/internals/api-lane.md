@@ -314,6 +314,83 @@ Recommended, cheapest first:
 
 The measured per-run cost and cache read/write split for C is posted on the account C ticket after the one bounded run.
 
+## The OpenAI lane
+
+`scripts/api-lane/openai-api.mjs` sends one tool-free prompt to the OpenAI Responses API, billed to a named
+OpenAI account, under the same cap / reserve / settle ledger as the Anthropic lane. It keeps its own roster, so
+an OpenAI account and an Anthropic account never share a ledger. It is OFF unless the launching shell sets
+`HIMMEL_API_LANE=on`.
+
+```
+node scripts/api-lane/openai-api.mjs -p [prompt] --model M --max-budget-usd N [--output-format text|json] \
+    [--effort none|low|medium|high|xhigh] [--append-system-prompt-file F]
+```
+
+With no prompt after `-p` the prompt is read from stdin (a terminal and a prompt over 8 MiB are refused). The
+system-prompt file is sent as `instructions`. Any other flag is refused.
+
+| Env | Meaning |
+|---|---|
+| `HIMMEL_API_LANE=on` | required |
+| `HIMMEL_OPENAI_ACCOUNT=A\|B\|C\|D` | the account to bill; `auto` is refused |
+| `HIMMEL_OPENAI_CREDIT_CONFIG` | the roster, default `~/.himmel/state/api-credit-openai/config.json` |
+| `HIMMEL_OPENAI_BASE_URL` | test seam, default `https://api.openai.com/v1` |
+| `HIMMEL_API_CALL_TIMEOUT_S` | the call is aborted at this age, default 3600 |
+
+### Setup
+
+The roster has the same shape as the Anthropic one; `cap_usd` is the credit left for the month:
+
+```json
+{
+  "version": 1,
+  "ledger_path": "/home/<you>/.himmel/state/api-credit-openai/ledger.json",
+  "accounts": { "A": { "organization_id": "org-openai-a", "cycle_id": "2026-11", "cap_usd": "25.000000" } }
+}
+```
+
+The key lives beside the ledger, in `key-<letter>.env` (`key-A.env` for account A): one line,
+`OPENAI_API_KEY=<key>`, a regular file, mode 600, owned by the user running the launcher. The operator writes
+it, and the launcher refuses any other shape. `OPENAI_API_KEY` in the environment is never used, and the key is
+never printed, logged or put on a command line; a provider error line is redacted before it is shown.
+
+This lane has no credit snapshot, so the ledger and `cap_usd` decide: a budget above the cap minus what is
+settled and reserved is refused. When the monthly credit resets, put the new credit in `cap_usd`, give the
+account a new `cycle_id` and a new `ledger_path` in the same directory (for example `ledger-2026-12.json`, so the
+key file is still found). The ledger refuses a roster whose cycle differs from the one it recorded, so the old
+cycle's spend is never hidden by an edit.
+
+### Spend bound
+
+A call cannot cost more than `--max-budget-usd`. The launcher takes an upper bound of the input (the UTF-8
+bytes of the instructions and the prompt, plus 256), prices it at the model's input rate, and sets
+`max_output_tokens` to what the rest of the budget buys at the output rate, at most 128000. Fewer than 16
+tokens refuses with `budget too small`. The whole budget is reserved before the request, and the call is
+settled afterwards at the priced usage (cached input at the cached rate, reasoning tokens counted as output).
+Costs are whole micro-dollars, rounded up.
+
+### Prices
+
+`scripts/api-lane/openai-prices.json` holds the standard-tier rates in USD per 1M tokens (`input`,
+`cached_input`, `output`) per model, with the date and the source page. A model that is not in the table is
+refused. To add or change a model, edit that file from the pricing page and update `as_of`; a rate may have at
+most three decimal places.
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | the response completed |
+| 1 | an HTTP error, a network error, or an incomplete response (an incomplete one is still settled and its text printed) |
+| 2 | a refusal before any request (the line starts `openai-api: refused:`) |
+| 6 | HTTP 401 or `invalid_api_key` (the account is marked key-rejected), or 429 `insufficient_quota` (marked exhausted) |
+| 124 | the call timed out; its cost is unknown and the reservation is marked unknown |
+
+### Not in this lane yet
+
+There is no `auto` account routing, no role map, no subscription fallback, no Telegram alert and no launch
+record row. A caller names one account, and a failure shows only as the exit code and the stderr line.
+
 ## Test seams
 
 - `HIMMEL_API_ALERT_CMD=<path>` replaces the Telegram sender. Every test that
