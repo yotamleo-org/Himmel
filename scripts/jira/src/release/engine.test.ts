@@ -5129,6 +5129,7 @@ describe('a request names the operator\'s words', () => {
 
 import { requestOnRecord, coveringRecord } from './engine.js';
 import { chainFault } from './engine.js';
+import { withLock } from './ledger.js';
 
 // Decision 2026-11-19, item 8: a gated ask is filed citing an operator record that already names the key and the exact
 // placement, with no words typed again and no new operator row. Each way the analysis says it could go wrong has its own rows.
@@ -5464,6 +5465,109 @@ describe('a gated ask cites the operator record that already covers it', () => {
     legacy(at(), ['K-5'], ['keep', 'v2', 'v2']);
     const move = words(at(), ['K-5'], ['move', 'v2', 'v1']);
     expect(requestOnRecord(at(), ask({ verb: 'REVERSION', from_v: 'v2' }))?.operator.id).toBe(move.id);
+  });
+
+  // way 10, one lock section: the match and the filing are one hold of the release lock, so whatever lands as the filing takes
+  // its lock is seen by the match. The rows land a row through the signing-lock hook, which runs as a lock is taken.
+  const opensOf = <T>(call: () => T, landOn?: number, land?: () => void): { got: T; opens: number; landed: boolean } => {
+    let opens = 0;
+    let landed = false;
+    const hook = () => {
+      opens += 1;
+      signingLock.fn = hook;
+      if (opens === landOn) {
+        landed = true;
+        land?.();
+      }
+    };
+    signingLock.fn = hook;
+    try {
+      return { got: call(), opens, landed };
+    } finally {
+      signingLock.fn = null;
+    }
+  };
+  // K-5 and K-7 each hold a covering record; K-7 is asked first, only to learn how many holds one covered ask takes, so a row lands
+  // as the LAST of them takes the lock (the filing's) whatever that number is.
+  const twoCovered = async () => {
+    await setup();
+    decisionFile();
+    const rec = words(at(), ['K-5'], ADD_V1);
+    words(at(), ['K-7'], ADD_V1);
+    return rec;
+  };
+  const filingOpen = () => opensOf(() => requestOnRecord(at(), ask({ key: 'K-7' }))).opens;
+  const SHA9 = () => createHash('sha256').update(FILE).digest('hex');
+  const REVERSAL = { id: 'O-R1-landed', kind: 'decision', decision: '120', keys: ['K-5'], op: 'remove', from_v: 'v1', to_v: null, verbatim: 'legacy, no words' };
+  const landed = (fields: Record<string, unknown>) => () => { forge(fields, at()); };
+  const k5 = () => queue().filter((q) => q.key === 'K-5');
+
+  it('way 10 (one lock section): a decision that reverses the covering record lands as the filing takes its lock: nothing is filed on the reversed record', async () => {
+    await twoCovered();
+    const { got, landed: fired } = opensOf(() => requestOnRecord(at(), ask()), filingOpen(), landed(REVERSAL));
+    expect(fired).toBe(true);
+    expect(lines(operatorFile()).map((l) => (JSON.parse(l) as OperatorRow).id)).toContain('O-R1-landed');
+    expect(got).toBeUndefined();
+    expect(k5()).toEqual([]);
+  });
+
+  it('way 10 (one lock section): with no decision in between, the request is filed citing the record, as before', async () => {
+    const rec = await twoCovered();
+    const { got } = opensOf(() => requestOnRecord(at(), ask()));
+    expect(got?.operator.id).toBe(rec.id);
+    expect(got?.request.evidence).toEqual({ operator: rec.id });
+    expect(k5()).toHaveLength(1);
+  });
+
+  it('way 10 (one lock section): a covered ask takes the release lock once, and so does an ask no record covers', async () => {
+    await twoCovered();
+    expect(opensOf(() => requestOnRecord(at(), ask())).opens).toBe(1);
+    expect(opensOf(() => requestOnRecord(at(), ask({ key: 'K-9' }))).opens).toBe(1);
+  });
+
+  it('way 10 (one lock section): the release lock is not re-entrant, so the filing must run under the hold the match has', async () => {
+    await setup();
+    expect(() => withLock(ctx().dir, () => withLock(ctx().dir, () => 1, 100, 60_000), 100, 60_000)).toThrow(/is held; retry/);
+  });
+
+  it('way 5 (one lock section): a ruling on the key that lands as the filing takes its lock floors the record: nothing is filed', async () => {
+    await twoCovered();
+    const ruling = {
+      id: 'R-R1-landed', epoch: 1, req: 'Q-R1-landed', verb: 'INTAKE', key: 'K-5', op: { kind: 'none', from_v: null, to_v: null }, outcome: 'BACKLOG',
+      class: 'none', sector: 'Planning & tracking', ground: 'no operator words', reason: 'landed', supersedes: [], authority: { kind: 'rm', ref: null }, phase: 'intent',
+    };
+    const land = () => { appendChain(join(root, 'release', 'R1', 'rulings.jsonl'), loadKey(join(root, 'keys', 'R1.key')), { ts: at().now().toISOString(), ...ruling }); };
+    const { got, landed: fired } = opensOf(() => requestOnRecord(at(), ask()), filingOpen(), land);
+    expect(fired).toBe(true);
+    expect(lines(join(root, 'release', 'R1', 'rulings.jsonl')).map((l) => (JSON.parse(l) as RulingRow).id)).toContain('R-R1-landed');
+    expect(got).toBeUndefined();
+    expect(k5()).toEqual([]);
+  });
+
+  it('way 6 (one lock section): a newer covering decision that lands as the filing takes its lock is the record cited, not the older one', async () => {
+    const older = await twoCovered();
+    const newer = {
+      id: 'O-R1-landed2', kind: 'decision', decision: '9', keys: ['K-5'], op: 'add', from_v: null, to_v: 'v1', verbatim: OTHER_WORDS,
+      decision_file: 'specs/decisions/verbatim-decision-9-op.txt', decision_sha256: SHA9(), words: 1,
+    };
+    const { got, landed: fired } = opensOf(() => requestOnRecord(at(), ask()), filingOpen(), landed(newer));
+    expect(fired).toBe(true);
+    expect(got?.operator.id).toBe('O-R1-landed2');
+    expect(got?.operator.id).not.toBe(older.id);
+    expect(got?.request.evidence).toEqual({ operator: 'O-R1-landed2' });
+  });
+
+  it('way 7 (one lock section): a row that does not verify landing as the filing takes its lock makes the chain unreadable: nothing is filed', async () => {
+    await twoCovered();
+    const land = () => {
+      forge(REVERSAL, at());
+      tamper(-1, (row) => { row.mac = flip(row.mac); });
+    };
+    const { got, landed: fired } = opensOf(() => requestOnRecord(at(), ask()), filingOpen(), land);
+    expect(fired).toBe(true);
+    expect(got).toBeUndefined();
+    expect(k5()).toEqual([]);
+    expect(chainFault(ctx())).toMatch(/^the operator chain of R1 could not be verified to its end/);
   });
 
   // way 7: unverified or forged rows
