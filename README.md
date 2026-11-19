@@ -252,10 +252,13 @@ The test run shows a few of these. The rest arrive as you add them, and the
   is recorded in your clone: before the first one the gate lets the merge through
   with a note. himmel does not check a merge you run yourself with the GitHub CLI
   or on the web. Review is
-  not proof: the review panel caught 38.3% of planted bugs (likely range 25.8
-  to 52.6, from 18 of 47), and the PR's author ruled 80.1% of the required
-  reviewer's 6,968 ruled findings right
-  ([evals](docs/evals/README.md)).
+  not proof: on a strict key-match proxy over 47 planted defects (as of
+  2026-11-04; most are real review escapes, bugs earlier reviews already
+  missed, so the set is hard by design), the `codex` and `claude` critics,
+  with CodeRabbit not in that eval, matched 38.3% (95% range 25.8 to 52.6),
+  and an approved fresh sweep will replace that number
+  ([evals](docs/evals/README.md)). Separately, the PR's author ruled 80.1% of
+  the required reviewer's 6,968 ruled findings right.
 - **Rules that hold.** Hooks stop edits on `main` and reads of secret files, and
   in a himmel checkout opening a PR while a review is owed, at the moment Claude
   tries the tool call, so a rule holds even after it falls out of the context

@@ -149,9 +149,6 @@ with separate filesystem/process/session artifacts and separate guard wiring.
 - Codex direct guard proofs: `lane-parity.md` records the codex-direct terminal
   write/push/network fence as tested and e2e-proved through the adapter
   (`scripts/hooks/test-codex-adapter-e2e.sh`); the parity index records its scope.
-- `UNVERIFIED` - Codex worker per-dispatch model: the inspected supervision files
-  do not document model selection. Proof wanted from the actual codex dispatch
-  command/config used by the fleet.
 - `UNVERIFIED` - Codex worktree isolation: the inspected files document branch
   provenance and supervision, not the dispatcher that creates or assigns Codex
   worktrees. Proof wanted from the fleet dispatcher or dynamic lane registry.
