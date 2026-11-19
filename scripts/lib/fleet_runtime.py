@@ -96,8 +96,13 @@ def live(owner):
     return process_state(owner) == 'live'
 
 
+OWNER_FIELDS = {'host': str, 'boot': str, 'pid': int, 'start': str}
+
+
 def process_state(owner):
-    """Absence is proof only for an exact local host/boot/start identity."""
+    """Absence is proof only for an exact local host/boot/start identity; an owner that is not exactly those fields is unknown."""
+    if not isinstance(owner, dict) or set(owner) != set(OWNER_FIELDS) or any(type(owner[key]) is not kind for key, kind in OWNER_FIELDS.items()):
+        return 'unknown'
     try:
         local = identity(os.getpid())
         if any(owner[key] != local[key] for key in ('host', 'boot')):

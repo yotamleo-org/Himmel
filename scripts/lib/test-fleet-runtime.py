@@ -1807,6 +1807,53 @@ exit 1''')
     def test_begin_is_refused_beside_a_live_row_a_legs_sibling_holds(self):
         self.begin_beside_old_sibling('legs')
 
+    # An owner identity that is not exactly the four recorded fields is unknown, never dead.
+    def test_a_damaged_owner_reads_unknown_and_only_an_exact_identity_reads_dead(self):
+        runtime = self.runtime_module()
+        owner = runtime.identity(os.getpid())
+        self.assertEqual(runtime.process_state(owner), 'live')
+        self.assertEqual(runtime.process_state(dict(owner, start='0')), 'dead')  # the exact fields of another process: proof of absence
+        damaged = {'no start': {k: v for k, v in owner.items() if k != 'start'},
+                   'no pid': {k: v for k, v in owner.items() if k != 'pid'},
+                   'an extra field': dict(owner, extra='x'),
+                   'a pid that is a string': dict(owner, pid=str(owner['pid'])),
+                   'a pid that is a bool': dict(owner, pid=True),
+                   'a start that is a number': dict(owner, start=int(owner['start'])),
+                   'not a mapping': None}
+        for name, value in damaged.items():
+            self.assertEqual(runtime.process_state(value), 'unknown', name)
+
+    def pending_attempt_with_a_reservation(self):
+        self.active()
+        self.rt('begin')
+        env = dict(self.launch_env(), FLEET_LAUNCH_ATTEMPT='one')
+        self.entry('scripts/lib/usage-preflight.sh', env=env)  # stamps the reservation; the attempt stays pending
+        slot = self.bucket / 'slots' / self.doc.stem
+        self.assertTrue((slot / 'managed.json').is_file())
+        return slot
+
+    def test_a_pending_attempt_whose_owner_lost_a_field_is_neither_refused_nor_released(self):
+        slot = self.pending_attempt_with_a_reservation()
+        anchor = self.bucket / 'fleet-control.json'
+        data = json.loads(anchor.read_text())
+        data['attempts']['one']['owner'].pop('start')
+        anchor.write_text(json.dumps(data))
+        ack = json.loads(self.rt('ack').stdout)
+        self.assertEqual([r['attempt_id'] for r in ack['unknown']], ['one'])
+        self.assertFalse(ack['quiescent'])
+        self.assertEqual(list(self.anchor_attempts()), ['one'])
+        self.assertTrue((slot / 'managed.json').is_file())
+        self.assertEqual([row['outcome'] for row in self.history_rows('one')], ['attempt-started'])
+        self.rt('begin', aid='second', ok=False)
+
+    def test_a_pending_attempt_whose_launcher_lives_stays_pending(self):
+        slot = self.pending_attempt_with_a_reservation()
+        ack = json.loads(self.rt('ack').stdout)
+        self.assertEqual([r['attempt_id'] for r in ack['in_flight']], ['one'])
+        self.assertEqual(ack['unknown'], [])
+        self.assertEqual(self.anchor_attempts()['one']['phase'], 'pending')
+        self.assertTrue((slot / 'managed.json').is_file())
+
 
 if __name__ == '__main__':
     unittest.main()
