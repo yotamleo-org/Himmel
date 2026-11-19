@@ -1224,21 +1224,24 @@ export function reopen(ctx: Ctx, o: { key: string; from: string }): EventRow {
 
 export function request(ctx: Ctx, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): RequestRow {
   if (ctx.env.HIMMEL_RELEASE_MANAGER === '1') throw new Error('release request: the chief writes requests; the RM claims them');
-  return locked(ctx, (l) => {
-    const latest = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k));
-    // A blocker pull is asked for once, in any state, so two racing pull runs cannot file it twice.
-    const pullAgain = (r: RequestRow) => isPullRequest(r) && isPullRequest(o as RequestRow);
-    const dup = [...latest.values()].find((r) => (pending(r) || pullAgain(r)) && r.key === o.key && r.verb === o.verb
-      && r.from_v === o.from_v && r.to_v === o.to_v);
-    // A pending ask that lacks the required-parent relation this ask carries takes it by a signed row of the same request
-    // (same state, so a claim and its epoch stand): returning the older request would drop the relation the chief just stated.
-    if (dup) return pending(dup) ? withRelation(ctx, l.k, dup, o) : dup;
-    // An ask the RM already refused, repeated word for word with nothing new, files nothing: the refusal and its remedy stand.
-    const same = unchangedRefusal(l, o);
-    if (same) return same;
-    const req = seq(`Q-${ctx.release}`, latest.keys());
-    return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...o, req, ts: ts(ctx), state: 'open' });
-  });
+  return locked(ctx, (l) => fileRequest(ctx, l, o));
+}
+
+// The filing, on state a caller loaded under the release lock and still holds: it takes no lock, because the lock is not re-entrant.
+function fileRequest(ctx: Ctx, l: Loaded, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): RequestRow {
+  const latest = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k));
+  // A blocker pull is asked for once, in any state, so two racing pull runs cannot file it twice.
+  const pullAgain = (r: RequestRow) => isPullRequest(r) && isPullRequest(o as RequestRow);
+  const dup = [...latest.values()].find((r) => (pending(r) || pullAgain(r)) && r.key === o.key && r.verb === o.verb
+    && r.from_v === o.from_v && r.to_v === o.to_v);
+  // A pending ask that lacks the required-parent relation this ask carries takes it by a signed row of the same request
+  // (same state, so a claim and its epoch stand): returning the older request would drop the relation the chief just stated.
+  if (dup) return pending(dup) ? withRelation(ctx, l.k, dup, o) : dup;
+  // An ask the RM already refused, repeated word for word with nothing new, files nothing: the refusal and its remedy stand.
+  const same = unchangedRefusal(l, o);
+  if (same) return same;
+  const req = seq(`Q-${ctx.release}`, latest.keys());
+  return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...o, req, ts: ts(ctx), state: 'open' });
 }
 
 const RELATION = ['follow_up_of', 'remainder'] as const;
@@ -1326,14 +1329,19 @@ export function coveringRecord(ctx: Ctx, ask: Pick<RequestRow, 'verb' | 'key' | 
 }
 
 // A gated ask that a record already places is filed citing that record: no operator row and no words. The fence is the
-// words path's own, so the release manager, a bridge session and a worker still cannot file it. Citing writes no row, so unlike
-// a new record it withdraws no pending request for another placement.
+// words path's own, so the release manager, a bridge session and a worker still cannot file it. The match and the filing run
+// under ONE hold of the release lock, so the record cited is the one that governs when the request is written: a decision, a
+// ruling or a row that does not verify cannot land between them. Citing writes no row, so unlike a new record it withdraws no
+// pending request for another placement.
 export function requestOnRecord(ctx: Ctx, row: Omit<RequestRow, 'req' | 'ts' | 'state'>): { operator: OperatorRow; request: RequestRow } | undefined {
   operatorFence(ctx);
-  const operator = coveringRecord(ctx, row);
-  if (!operator) return undefined;
-  const evidence = { ...((row.evidence ?? {}) as Record<string, unknown>), operator: operator.id };
-  return { operator, request: request(ctx, { ...row, evidence }) };
+  if ('unknown' in load(ctx)) return undefined;
+  return locked(ctx, (l) => {
+    const operator = coveringDecision(l, row);
+    if (!operator) return undefined;
+    const evidence = { ...((row.evidence ?? {}) as Record<string, unknown>), operator: operator.id };
+    return { operator, request: fileRequest(ctx, l, { ...row, evidence }) };
+  });
 }
 
 // --- the blocker pull ------------------------------------------------------------
