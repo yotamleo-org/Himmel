@@ -56,6 +56,7 @@ import { projectKey, request } from '../client.js';
 import { admissionBudget } from '../release/leaks.js';
 import { ctxFor, JUDGE_API_PASS_ENV, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePrompt, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge } from './release.js';
 import type { Judge, JudgeInput } from '../release/engine.js';
+import * as engineMod from '../release/engine.js';
 import { defaultRoot } from './mirror.js';
 import { appendChain, loadKey, readChain } from '../release/ledger.js';
 import type { OperatorRow } from '../release/types.js';
@@ -1677,6 +1678,31 @@ describe('a request for operator work carries the operator\'s words', () => {
       expect(msg).toContain('needs a record of the operator\'s words');
       expect(msg).toContain('add --decision <n> --words');
       expect(msg).not.toContain('cite one on file');
+    });
+
+    // review 2 F1: the seam between the command's own match (coveringRecord) and the engine's match-and-filing (requestOnRecord)
+    it('a record reversed after the command\'s match and before the filing: nothing is filed and the chief is told to ask again', async () => {
+      await declared();
+      decisionFile();
+      await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
+      const id = lastId();
+      const real = engineMod.coveringRecord;
+      const spy = vi.spyOn(engineMod, 'coveringRecord').mockImplementation((c, k) => {
+        const found = real(c, k);
+        appendChain(operatorFile(), loadKey(join(root, 'keys', 'v1.1.3.key')), {
+          id: 'O-v1.1.3-landed', kind: 'decision', decision: '120', keys: ['HIMMEL-1'], op: 'remove', from_v: 'v1.1.3', to_v: null,
+          verbatim: 'legacy, no words', ts: new Date(Date.now() + 60_000).toISOString(),
+        });
+        return found;
+      });
+      try {
+        const msg = await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1')));
+        expect(msg).toContain(`${id} no longer covers HIMMEL-1; ask again`);
+        expect(queued()).toEqual([]);
+        expect(spy).toHaveBeenCalledTimes(1);
+      } finally {
+        spy.mockRestore();
+      }
     });
 
     // review F3: a covering record on file never excuses wrong words on the words path

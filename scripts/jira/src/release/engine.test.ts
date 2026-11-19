@@ -5467,6 +5467,62 @@ describe('a gated ask cites the operator record that already covers it', () => {
     expect(requestOnRecord(at(), ask({ verb: 'REVERSION', from_v: 'v2' }))?.operator.id).toBe(move.id);
   });
 
+  // way 6, review 2 F3: a newer keep that names no source version retracts the older add whatever its --to says
+  const KEEP_ELSEWHERE = [
+    ['legacy keep in backlog naming v2', 'legacy', ['keep', null, 'v2']],
+    ['words keep in backlog naming v2', 'words', ['keep', null, 'v2']],
+  ] as Array<[string, 'legacy' | 'words', Placement]>;
+  it.each(KEEP_ELSEWHERE)('way 6: a newer %s supersedes the older add: the add is not cited', async (_name, kind, placement) => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    recordOf(kind, placement);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  it.each(KEEP_ELSEWHERE)('way 6: an OLDER %s does not hide the add that follows it', async (_name, kind, placement) => {
+    await setup();
+    decisionFile();
+    recordOf(kind, placement);
+    const add = words(at(), ['K-5'], ADD_V1);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(add.id);
+  });
+
+  it('way 6: a newer keep naming v2 for ANOTHER key never governs this key', async () => {
+    await setup();
+    decisionFile();
+    const add = words(at(), ['K-5'], ADD_V1);
+    legacy(at(), ['K-6'], ['keep', null, 'v2']);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(add.id);
+  });
+
+  it.each(['out-of-version', 'core-bypass', 'emergency'])('way 6: a newer signed %s row naming the key and a keep in backlog is no decision and never governs', async (kind) => {
+    await setup();
+    decisionFile();
+    const add = words(at(), ['K-5'], ADD_V1);
+    forge({ id: `O-R1-forged-keep-${kind}`, kind, decision: '9', keys: ['K-5'], op: 'keep', from_v: null, to_v: 'v2', verbatim: WORDS, words: 1, version: 'v2', reason: 'forged' }, at());
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(add.id);
+  });
+
+  it.each([
+    ['keep in v2', ['keep', 'v2', 'v2']],
+    ['remove from v2', ['remove', 'v2', null]],
+  ] as Array<[string, Placement]>)('way 6: a newer %s, a version the ask does not touch, does not retract the add: a key may hold two versions', async (_name, placement) => {
+    await setup();
+    decisionFile();
+    const add = words(at(), ['K-5'], ADD_V1);
+    legacy(at(), ['K-5'], placement);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(add.id);
+  });
+
+  it('the ordinary case: one covering add and nothing newer is cited', async () => {
+    await setup();
+    decisionFile();
+    const add = words(at(), ['K-5'], ADD_V1);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(add.id);
+  });
+
   // way 10, one lock section: the match and the filing are one hold of the release lock, so whatever lands as the filing takes
   // its lock is seen by the match. The rows land a row through the signing-lock hook, which runs as a lock is taken.
   const opensOf = <T>(call: () => T, landOn?: number, land?: () => void): { got: T; opens: number; landed: boolean } => {
@@ -5523,6 +5579,40 @@ describe('a gated ask cites the operator record that already covers it', () => {
     await twoCovered();
     expect(opensOf(() => requestOnRecord(at(), ask())).opens).toBe(1);
     expect(opensOf(() => requestOnRecord(at(), ask({ key: 'K-9' }))).opens).toBe(1);
+  });
+
+  // review 2 F2: request() files under the lock, pinned by what a second writer's row does as the lock is taken
+  it('way 10 (one lock section): request() files under the release lock: an identical ask a second writer lands as the lock is taken is returned, not duplicated', async () => {
+    await setup();
+    const rival = { req: 'Q-R1-9001', from: 'console', verb: 'INTAKE', key: 'K-5', from_v: null, to_v: 'v1', why: 'the same ask, filed by a second writer', evidence: {}, state: 'open' };
+    const land = () => { appendChain(join(root, 'release', 'R1', 'requests.jsonl'), loadKey(join(root, 'keys', 'R1.key')), { ts: at().now().toISOString(), ...rival }); };
+    const { got, landed: fired } = opensOf(() => request(at(), ask()), 1, land);
+    expect(fired).toBe(true);
+    expect(got.req).toBe('Q-R1-9001');
+    expect(queue().filter((q) => q.key === 'K-5')).toHaveLength(1);
+  });
+
+  // review 2 F2: the filing's own unchanged-refusal check reads the state under the lock. The refused ask below carries the evidence the
+  // new request will carry (operator: the id of the record that lands), so a stale reading would hand back the refused request.
+  it('way 10 (one lock section): a record that lands as the lock is taken ends the standing refusal for the filing too: a new request is filed, not the refused one returned', async () => {
+    await setup();
+    decisionFile();
+    mirrorOf({ key: 'K-5', labels: ['operator-directed'] });
+    const refusedAsk = request(at(), ask({ evidence: { operator: 'O-R1-landed' } }));
+    claim(at(rmEnv));
+    const r = rule(at(rmEnv), {
+      req: refusedAsk.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'no operator words',
+      reason: 'name the words', supersedes: [], authority: { kind: 'rm', ref: null },
+    });
+    await apply(at(rmEnv), r.id);
+    expect(state(ctx()).refused_asks.map((a) => a.key)).toEqual(['K-5']);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    const record = { id: 'O-R1-landed', kind: 'decision', decision: '9', keys: ['K-5'], op: 'add', from_v: null, to_v: 'v1', verbatim: OTHER_WORDS, decision_file: 'specs/decisions/verbatim-decision-9-op.txt', decision_sha256: SHA9(), words: 1 };
+    const { got, landed: fired } = opensOf(() => requestOnRecord(at(), ask()), 1, landed(record));
+    expect(fired).toBe(true);
+    expect(got?.operator.id).toBe('O-R1-landed');
+    expect(got?.request.req).not.toBe(refusedAsk.req);
+    expect(got?.request.state).toBe('open');
   });
 
   it('way 10 (one lock section): the release lock is not re-entrant, so the filing must run under the hold the match has', async () => {
