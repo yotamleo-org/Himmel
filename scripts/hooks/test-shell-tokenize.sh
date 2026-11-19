@@ -177,6 +177,10 @@ while [ "$n" -lt "${#same_in_both[@]}" ]; do
     _st_ansic_e "$body"; check "an escape both shells read alike in [$body] is accepted" "$?" "0"
     tok "echo \$'$body'"; check "a word holding [$body] tokenizes to the shared reading" "$R:${ST_W[1]}" "0:$want"
 done
+# ST_AMBIG tells a caller that the refusal came from such a word, not from another construct.
+tok "cat \$'${bs}q'"; check "a refused zsh-only escape sets ST_AMBIG" "$R:${ST_AMBIG-}" "1:1"
+tok "cat \$'${bs}x41'"; check "an escape both shells read alike leaves ST_AMBIG clear" "$R:${ST_AMBIG-}" "0:0"
+tok "echo 'a"; check "a refusal for another reason leaves ST_AMBIG clear" "$R:${ST_AMBIG-}" "1:0"
 tok 'echo a # c; d'; check "a comment sets COMMENT and ends the command" "$R:$ST_COMMENT:$ST_NSEG:$ST_N" "0:1:1:2"
 tok $'cat <<EOF\nbody $(x)\nEOF\necho after'; check "an unquoted heredoc body with \$(…) sets SUBST" "$R:$ST_HEREDOC:$ST_SUBST" "0:1:1"
 tok $'cat <<\'EOF\'\nbody $(x)\nEOF'; check "a quoted heredoc body is inert" "$R:$ST_HEREDOC:$ST_SUBST" "0:1:0"

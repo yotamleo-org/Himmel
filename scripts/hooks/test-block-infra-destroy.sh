@@ -67,6 +67,13 @@ run_fixture "$FIX/allow.tsv" 0
 # still denies (accepted over-deny). These rows pin it.
 HOOK_TOOL=PowerShell run_fixture "$FIX/deny-powershell.tsv" 2
 
+# zsh reads the dollar-quote word as the verb and bash as a backslash and the verb, so the
+# guard cannot know which text runs and denies. The verb is built from parts here, as the
+# fixtures keep payloads out of this file. A word both shells read alike still resolves.
+q="'"
+assert_rc "a zsh-only escape inside the verb denies" 2 "$(run_hook "terraform \$${q}\\d${q}estroy")"
+assert_rc "an escape both shells read alike in a harmless verb allows" 0 "$(run_hook "terraform \$${q}\\x70${q}lan")"
+
 # Bypass: INFRADESTROYOK=1 in the launching shell lets a deny row through.
 first_deny=$(head -n1 "$FIX/deny.tsv" | cut -f2)
 assert_rc "bypass INFRADESTROYOK=1" 0 "$(run_hook "$first_deny" INFRADESTROYOK=1)"

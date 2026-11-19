@@ -171,6 +171,14 @@ assert_contains "nested suite path replacement" \
 run_case "$(j_bash './scripts/test-check-ci.sh')"
 assert_rc "direct ./ exec" 2 "$RC"
 
+# 8b. A dollar-quote word that zsh reads as part of the suite name and bash does not: the
+# guard cannot know which path runs, so it denies. A word both shells read alike is allowed.
+q="'"
+run_case "$(j_bash "bash scripts/hooks/test-\$${q}\\s${q}hell-tokenize.sh")"
+assert_rc "a zsh-only escape inside a suite path" 2 "$RC"
+run_case "$(j_bash "echo \$${q}\\x41${q}")"
+assert_rc "an escape both shells read alike" 0 "$RC"
+
 # 9. quiet-run.sh merely MENTIONED (not invoked) alongside a bare suite run
 # -> still denied. This is the bypass shape: a substring
 # check on "quiet-run.sh" anywhere in the command let this through as an
