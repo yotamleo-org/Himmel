@@ -1912,6 +1912,36 @@ exit 1''')
         self.assertEqual([json.loads(line)['outcome'] for line in lines[:-1]], ['attempt-started', 'indeterminate'])
         self.assertEqual(lines[-1], '')
 
+    # A supervised program that cannot be spawned never started: its attempt is refused and released, not left unknown.
+    def run_supervised(self, *command):
+        argv = ['python3', '-I', str(ROOT / 'scripts/lib/fleet_runtime.py'), 'run', '--doc', str(self.doc), '--manifest', str(self.m),
+                '--name', self.doc.stem, '--', *command]
+        return subprocess.run(argv, env=self.launch_env(), capture_output=True, text=True, timeout=60)
+
+    def history_all(self):
+        return [json.loads(line) for line in (self.bucket / '.himmel/launch-refusals.jsonl').read_text().splitlines()]
+
+    def test_a_program_that_cannot_be_spawned_is_refused_and_released(self):
+        self.active()
+        p = self.run_supervised(str(self.bucket / 'no-such-program'))
+        self.assertEqual(p.returncode, 10, p.stderr)
+        self.assertEqual(self.anchor_attempts(), {})
+        self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
+        rows = self.history_all()
+        self.assertEqual([row['outcome'] for row in rows], ['attempt-started', 'refused'])
+        self.assertEqual(rows[-1]['cause'], 'spawn-failed')
+        self.assertEqual(json.loads(self.m.read_text())['workers'], [])
+        self.call('add', self.m, self.doc, '--lane', 'native', '--pending')
+        self.assertEqual(self.run_supervised('/bin/true').returncode, 0)  # the family is not stranded
+
+    def test_a_program_that_starts_and_fails_is_complete_never_refused(self):
+        self.active()
+        p = self.run_supervised('bash', '-c', 'exit 3')
+        self.assertEqual(p.returncode, 3, p.stderr)
+        self.assertEqual([row['outcome'] for row in self.history_all()], ['attempt-started', 'complete'])
+        self.assertEqual(self.anchor_attempts(), {})
+        self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
+
 
 if __name__ == '__main__':
     unittest.main()

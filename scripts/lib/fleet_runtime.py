@@ -901,10 +901,10 @@ def run(args):
                 raise Refused('complete outcome still has possible session')
             if args.phase == 'launched' and record['phase'] == 'pending':
                 raise Refused('launched receipt has no spawn commitment')
-            if args.phase == 'refused' and record['phase'] != 'pending':
+            if args.phase == 'refused' and record['phase'] != 'pending' and not args.spawn_failed:
                 raise Refused('committed attempt needs affirmative terminal evidence')
             if args.phase == 'refused':
-                record['cause'] = 'fleet-paused' if value['mode'] != 'active' or value['generation'] != record['control_generation'] else 'prelaunch-refused'
+                record['cause'] = 'spawn-failed' if args.spawn_failed else 'fleet-paused' if value['mode'] != 'active' or value['generation'] != record['control_generation'] else 'prelaunch-refused'
             outcome = {'unknown': 'indeterminate', 'launched': 'launched', 'refused': 'refused', 'complete': 'complete'}[args.phase]
             receipt(record, outcome)
             if args.phase in ('refused', 'complete'):
@@ -939,6 +939,7 @@ def main():
     parser.add_argument('--lane', choices=['native', 'claudex', 'openrouter', 'deepseek', 'api'], default='native')
     parser.add_argument('--reason', default='')
     parser.add_argument('--confirm-no-session', action='store_true')
+    parser.set_defaults(spawn_failed=False)  # set only by the supervisor in run, never by an option
     argv = sys.argv[1:]
     command = argv[argv.index('--') + 1:] if '--' in argv else []
     args = parser.parse_args(argv[:argv.index('--')] if '--' in argv else argv)
@@ -975,7 +976,15 @@ def main():
                 raise
             child_env = {key: value for key, value in os.environ.items() if not key.startswith('FLEET_LAUNCH_')}
             child_env.update(WORKER_SESSION_DOC=args.doc, WORKER_SESSION_ATTEMPT_ID=args.attempt_id)
-            proc = subprocess.Popen(command, env=child_env)
+            try:
+                proc = subprocess.Popen(command, env=child_env)
+            except OSError:
+                # the program was never exec'd: the committed attempt provably did not launch
+                args.op, args.phase, args.spawn_failed = 'outcome', 'refused', True
+                run(args)
+                args.op = 'release'
+                run(args)
+                raise
             rc = proc.wait()
             args.op, args.phase = 'outcome', 'complete'
             run(args)
