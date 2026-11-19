@@ -377,7 +377,9 @@
 #                        `start=<epoch> label=<l> marker=<m> pending=<s> handler=<s> rc=<rc>`. pending= is how
 #                        long this waiter process had known the event when the call began (a waiter restart
 #                        starts it again; time spent unseen while a sample held the loop is not in it), handler=
-#                        how long worker-event ran. An idle pass writes nothing. Never trimmed.
+#                        how long worker-event ran. An idle pass writes nothing. Past 1 MiB (the cap of the
+#                        classifier denial log) it is renamed to <inbox>.wait.relaylog.1, replacing the older
+#                        copy, so at most two files exist; nothing the waiter decides from is in it.
 #   <inbox>.wait.le-<label>.tries  stream mode: a refused cleanup's retry ladder, `<refusals in a row> <cksum of the
 #                        bullet being retried> <cksum of the bullet already woken for or ->`. The relay owns the
 #                        count; the collector reads it and holds the event back for the retry window times 1, 2,
@@ -1995,7 +1997,11 @@ r0_ladder() { # <label> <event cksum> <marker> <out>: space a refused cleanup's 
     [ -n "$top" ]
 }
 r0_log_attempt() { # <label> <marker> <event line> <call start ns> <call end ns> <rc>: one relaylog line per worker-event call
-    local first pend wall
+    local first pend wall size
+    # past 1 MiB (the cap of the kit's denial log) the log is renamed to <log>.1, replacing the older copy; one line is one append
+    size="$(wc -c < "$inbox.wait.relaylog" 2>/dev/null | tr -d '[:space:]')"  # swallow-ok: a missing log reads size 0 and only skips the rotation
+    case "$size" in ''|*[!0-9]*) size=0 ;; esac
+    [ "$size" -le 1048576 ] || mv -f "$inbox.wait.relaylog" "$inbox.wait.relaylog.1" 2>/dev/null || true  # swallow-ok: a failed rename keeps appending to the old log
     first="$(printf '%s' "$r0_seen" | awk -v k="$1 $2 $3 " 'index($0, k) == 1 { print $NF; exit }')"
     pend=$(( ($4 - ${first:-$4}) / 1000000 )); wall=$(( ($5 - $4) / 10000000 ))
     printf 'start=%s label=%s marker=%s pending=%d.%02d handler=%d.%02d rc=%s\n' "$(( $4 / 1000000000 ))" "$1" "$2" \
