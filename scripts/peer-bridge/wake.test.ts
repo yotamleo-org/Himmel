@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { flushOutboxes } from "../telegram/poller";
 import { Waker } from "./wake";
-import { T0, clock, rootMsg, threadsOf } from "./threads-fixtures";
+import { T0, clock, rootMsg, threadsOf } from "./testlib-threads";
 
 const OP_CHAT = 4242;
 function setup(maxWakesPerDay = 30) {

@@ -4,7 +4,7 @@ import type { Peer } from "./config";
 import { checkOutbound } from "./egress";
 import { admit, createGateState } from "./gate";
 import { Threads } from "./threads";
-import { T0, CHAT, clock, inbound, mkThread, rootMsg, sig, threadsOf } from "./threads-fixtures";
+import { T0, CHAT, clock, inbound, mkThread, rootMsg, sig, threadsOf } from "./testlib-threads";
 
 const HIMMEL_ROOT = join(import.meta.dir, "..", "..");
 

@@ -11,7 +11,7 @@ import { procHooks } from "./proc";
 import { Poller, type PollerDeps, type TgLike } from "./poller";
 import { RetryAfter, TelegramError } from "./telegram";
 import { Threads } from "./threads";
-import { failedTests, makeRedCopy } from "./red-copy";
+import { failedTests, makeRedCopy } from "./testlib-red-copy";
 
 const REPO = join(import.meta.dir, "..", "..");
 const OUR_ID = "111000111", OUR_NAME = "ours_bot", PEER_ID = "555000111";

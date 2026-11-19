@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "./config";
 import { admit, appendUnknownChat, createGateState, noteAdmitted, rebuildFromInbox, type GateState } from "./gate";
-import { failedTests, makeRedCopy } from "./red-copy";
+import { failedTests, makeRedCopy } from "./testlib-red-copy";
 
 const OUR_ID = "111000111", OUR_NAME = "ours_bot", PEER_ID = "555000111", HUMAN = "42";
 const CHAT = -1001234567890;

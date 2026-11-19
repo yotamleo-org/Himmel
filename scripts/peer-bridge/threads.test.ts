@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { PeerMsgRec } from "./gate";
 import { ACK_BY, ANSWER_BY, CLOSE_BY, Threads, templateLine, type Action, type ThreadRec } from "./threads";
-import { CHAT, H, MIN, T0, clock, inbound, mkThread, rootMsg, sig, states, threadsOf } from "./threads-fixtures";
+import { CHAT, H, MIN, T0, clock, inbound, mkThread, rootMsg, sig, states, threadsOf } from "./testlib-threads";
 
 // ---- every cell of both §7 tables, generated from a table literal ----
 
