@@ -1257,7 +1257,7 @@ worker_keys = set(os.environ.get('ND_OWNERS', '').split())
 owner = {k: 'the --owners list' for k in worker_keys}
 resume_only = os.environ.get('ND_RESUME_ONLY') == '1'
 if workers_from and not os.path.isfile(workers_from):
-    workers_unknown = owners_unknown = True
+    owner_unknown('the fleet', 'manifest %s missing' % os.path.basename(workers_from), REMEDY_FLEET)
 if workers_from and os.path.isfile(workers_from):
     try:
         manifest_workers(json.load(open(workers_from)))  # validate legacy-array policy before shared ownership
@@ -1296,7 +1296,7 @@ if workers_from and os.path.isfile(workers_from):
                 series_workers[worker.get('label', '?')] = {'doc': doc, 'sid': sid_m.group(1) if sid_m else None,
                                                             'ledger': os.path.realpath(sid_m.group(2)) if sid_m else None, 'count': len(items) or None}
     except (OSError, ValueError):
-        workers_unknown = owners_unknown = True
+        owner_unknown('the fleet', 'manifest %s unreadable' % os.path.basename(workers_from), REMEDY_FLEET)
 # `chief.sh next` copies the manifest once, so a worker the other chief of this chain arms later is
 # in no manifest but its own. Read the chain's other manifests (same bucket, same prefix and chief name, any
 # letter) for ownership of a ticket only: shared terminal evidence releases it, and
