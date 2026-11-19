@@ -1175,5 +1175,81 @@ class IdleCost(stream_tests.StreamFixture):
         self.assertNotEqual(marks(), settled, 'a change is still written')
 
 
+class RetryPace(stream_tests.StreamFixture):
+    """How long the collector holds a refused cleanup back: the ladder's steps and what starts it over."""
+    STEPS = (5, 10, 30, 120, 300)  # the retry window (5 s) times 1, 2, 6, 24 and 60
+    REFUSED = 'ESCALATE wrap-merged-failed rc=4 close-wrapped-worker: refusing - not WRAPPED\n'
+
+    def setUp(self):
+        super().setUp()
+        self.page = self.root / 'N1.md'
+        self.page.write_text('# N1\n- 10:00 MERGED #1 done\n')
+        self.fleet.write_text(json.dumps(dict(workers=[dict(label='N1', doc=str(self.page))])))
+
+    def collect(self, **env):
+        return subprocess.run(['python3', '-I', str(HERE / 'pending-events.py'), str(self.fleet), str(self.inbox), ''],
+                              capture_output=True, text=True, env=dict(os.environ, **env)).stdout.splitlines()
+
+    def refused(self, age, text=REFUSED):
+        out = self.path('le-N1')
+        out.write_text(text)
+        stamp = time.time() - age
+        os.utime(out, (stamp, stamp))
+
+    def tries(self, count):
+        st = self.page.stat()
+        self.path('le-N1.tries').write_text(f'{count} {st.st_mtime_ns // 10**9} {st.st_size} -\n')
+
+    def test_the_hold_grows_in_fixed_steps_and_stops_at_the_top(self):
+        for count in range(1, 9):
+            step = self.STEPS[min(count, len(self.STEPS)) - 1]
+            self.tries(count)
+            self.refused(step - 1)
+            self.assertEqual(self.collect(), [], f'refusal {count}: held for {step} s')
+            self.refused(step + 1)
+            self.assertEqual(self.collect(), ['N1 MERGED 2'], f'refusal {count}: offered again after {step} s')
+
+    def test_it_only_paces_the_event_is_always_offered_again(self):
+        self.tries(5)
+        self.refused(100_000)
+        self.assertEqual(self.collect(), ['N1 MERGED 2'])
+
+    def test_a_changed_document_starts_the_ladder_over(self):
+        self.tries(5)
+        with self.page.open('a') as f:
+            f.write('- 10:01 LIVE still working\n')
+        self.refused(4)
+        self.assertEqual(self.collect(), [], 'back at the first step, 5 s')
+        self.refused(6)
+        self.assertEqual(self.collect(), ['N1 MERGED 2'])
+
+    def test_no_count_or_a_torn_one_means_the_first_step(self):
+        for text in (None, 'garbage', '3 17\n', '0 1 1 -\n', '-2 1 1 -\n'):
+            with self.subTest(text=text):
+                if text is not None:
+                    self.path('le-N1.tries').write_text(text)
+                self.refused(4)
+                self.assertEqual(self.collect(), [])
+                self.refused(6)
+                self.assertEqual(self.collect(), ['N1 MERGED 2'])
+
+    def test_the_steps_follow_the_retry_window_setting(self):
+        self.tries(3)  # 6 times the window
+        self.refused(5)
+        self.assertEqual(self.collect(CHIEF_WAIT_SERVICE_RETRY_SEC='1'), [])
+        self.refused(7)
+        self.assertEqual(self.collect(CHIEF_WAIT_SERVICE_RETRY_SEC='1'), ['N1 MERGED 2'])
+
+    def test_a_log_or_board_failure_after_the_close_is_not_held_back_but_a_refused_close_is(self):
+        for text, held in (('ESCALATE wrap-merged-failed rc=6 wrap-merged: step log failed: append-results.sh\n', False),
+                           ('ESCALATE wrap-merged-failed rc=7 wrap-merged: step board failed: board.mjs --doc x --changed\n', False),
+                           ('ESCALATE wrap-merged-failed rc=6 wrap-merged: step close-wrapped-worker failed: '
+                            'close-wrapped-worker.sh exited 6\n', True),
+                           ('ESCALATE close-wrapped-failed rc=7 close-wrapped-worker: refusing - subagent alive\n', True)):
+            with self.subTest(text=text):
+                self.refused(0, text)
+                self.assertEqual(self.collect(), [] if held else ['N1 MERGED 2'])
+
+
 if __name__ == '__main__':
     unittest.main()

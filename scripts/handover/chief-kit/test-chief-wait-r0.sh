@@ -561,6 +561,22 @@ wait_exit "$WPID"
 check "(r0h) rc 124 is a worker-event wake, not a retry" "WAKE worker-event ESCALATE wrap-merged-failed rc=3 close-wrapped-worker: refusing - queue lock held rc=124 out=$I.wait.le-N1" "$(head -n 1 "$WORK/r0h.out")"
 stop_waiter
 
+# --- (r0w) a log or board failure after the close is reported, never retried --
+# wrap-merged.sh exits 6 or 7 for them too, but only after the worker's entry was retired: the
+# waiter would ask again for a worker the manifest no longer lists, and the failure would be lost.
+for r0w in "6:log failed: append-results.sh" "7:board failed: board.mjs --doc x --changed"; do
+    reset_stub
+    fleet "r0w${r0w%%:*}"
+    printf 'ESCALATE wrap-merged-failed rc=%s wrap-merged: step %s\n' "${r0w%%:*}" "${r0w#*:}" > "$STUB/le.out"; echo 10 > "$STUB/le.rc"
+    start "$I" "$WORK/r0w.out" --doc "$D" --workers-from "$M"
+    wait_hb "$I" || fail "(r0w) no baseline heartbeat"
+    printf -- '- 11:00 MERGED #2566 → abcdef01 done\n' >> "$L"
+    tick_line "N1:LIVE" "N1:MERGED#2566"
+    wait_exit "$WPID"
+    check "(r0w) rc ${r0w%%:*} step ${r0w#*:} wakes at once" "WAKE worker-event ESCALATE wrap-merged-failed rc=${r0w%%:*} wrap-merged: step ${r0w#*:} rc=10 out=$I.wait.le-N1" "$(head -n 1 "$WORK/r0w.out")"
+    stop_waiter
+done
+
 # --- (r0d) no RETASK token reaches worker-event, the wake or the out file -------
 reset_stub
 fleet r0d

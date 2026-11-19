@@ -534,6 +534,15 @@ case "$line" in
 esac
 '''
 
+# A worker-event stand-in whose cleanup answers with the text in TEST_ROOT/refusal and rc 10.
+REFUSAL_EVENT = r'''line=$(cat)
+echo "$(date +%s.%N) $line" >> "$TEST_ROOT/events"
+case "$line" in
+*\ READY\ *) echo 'HANDLED auto-go'; exit 0;;
+*) cat "$TEST_ROOT/refusal"; exit 10;;
+esac
+'''
+
 
 class StackedWorker(StreamFixture):
     """Stacked-series and returning-worker service rows, with auto_go ON (the production setting of the relay)."""
@@ -660,19 +669,119 @@ class StackedWorker(StreamFixture):
         self.assertEqual(self.audit(), [f'GO-SENT 1 {self.H[1]}', f'GO-SENT 2 {self.H[2]}'])
         self.assertTrue(torn.exists())
 
-    def test_a_refused_cleanup_keeps_its_flat_retry_pace_until_a_newer_ready(self):
-        # Pins the pace as it is, not as it should be: one attempt per retry window, no growth, no cap.
+    def test_a_refused_cleanup_is_retried_on_a_growing_ladder_and_holds_at_the_top(self):
+        # Replaces the row that pinned the flat pace. Steps are the retry window times 1, 2, 6, 24, 60.
+        self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.05'
         (self.root / 'refuse-cleanup').touch()
         self.worker('N1', self.ready('N1', 1))
         self.fleet_of('N1')
         p, _ = self.start()
         self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
         self.add('N1', '- 10:05 MERGED #1')
-        self.until(lambda: len(self.seen('N1 MERGED #1')) >= 5, seconds=14)
-        stamps = self.seen('N1 MERGED #1')[:5]
+        self.until(lambda: len(self.seen('N1 MERGED #1')) >= 6, seconds=25)
+        stamps = self.seen('N1 MERGED #1')[:6]
         gaps = [b - a for a, b in zip(stamps, stamps[1:])]
         self.stop(p)
-        self.assertTrue(all(.8 <= gap <= 2.0 for gap in gaps), gaps)
+        steps = [.05, .1, .3, 1.2, 3.0]
+        for gap, step in zip(gaps, steps):
+            self.assertGreaterEqual(gap, step * .85, gaps)
+            self.assertLess(gap, step + 3.0, gaps)
+        self.assertGreaterEqual(gaps[3], 1.0, gaps)
+        self.assertGreaterEqual(gaps[4], 2.5, 'the top step holds')
+
+    def test_a_document_change_starts_the_ladder_over(self):
+        self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.2'
+        (self.root / 'refuse-cleanup').touch()
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, _ = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        self.until(lambda: len(self.seen('N1 MERGED #1')) >= 4, seconds=15)
+        fourth = self.seen('N1 MERGED #1')[3]
+        self.add('N1', '- 10:06 LIVE still working')  # the fifth gap would be 4.8 s on the ladder
+        self.until(lambda: len(self.seen('N1 MERGED #1')) >= 6, seconds=15)
+        stamps = self.seen('N1 MERGED #1')
+        self.stop(p)
+        self.assertLess(stamps[4] - fourth, 2.0, 'a changed document is tried again at the first step')
+        self.assertLess(stamps[5] - stamps[4], 2.0, 'and the climb starts over')
+
+    def test_the_top_step_wakes_the_chief_once_and_only_paces_after_it(self):
+        self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.05'
+        (self.root / 'refuse-cleanup').touch()
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, out = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        self.until(lambda: 'cleanup-still-refused' in out.read_text(), seconds=15)
+        state = {name: self.path(name).read_text() for name in ('ready', 'ready-docs')}
+        woke = len(self.seen('N1 MERGED #1'))
+        self.until(lambda: len(self.seen('N1 MERGED #1')) > woke, seconds=12)  # the next try, at the top pace
+        time.sleep(.6)
+        self.stop(p)
+        text = out.read_text()
+        self.assertEqual(text.count('cleanup-still-refused worker=N1 event=MERGED tries=5'), 1, text)
+        self.assertIn('wrap-merged-failed rc=4', text)
+        # nothing but pacing: the same bullet is offered again, and nothing is recorded as handled or moved
+        self.assertEqual(set(row for _, row in self.events() if 'MERGED' in row), {'N1 MERGED #1'})
+        self.assertNotIn('N1 MERGED', self.path('r0').read_text() if self.path('r0').exists() else '')
+        self.assertEqual({name: self.path(name).read_text() for name in state}, state)
+
+    def test_a_document_change_after_the_top_wake_does_not_wake_for_the_same_event_again(self):
+        self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.05'
+        (self.root / 'refuse-cleanup').touch()
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, out = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        self.until(lambda: 'cleanup-still-refused' in out.read_text(), seconds=15)
+        before = len(self.seen('N1 MERGED #1'))
+        self.add('N1', '- 10:06 LIVE still working')
+        self.until(lambda: len(self.seen('N1 MERGED #1')) >= before + 5, seconds=15)  # the climb ran again to the top
+        time.sleep(.6)
+        self.stop(p)
+        self.assertEqual(out.read_text().count('cleanup-still-refused'), 1, out.read_text())
+
+    def test_a_success_ends_the_ladder(self):
+        self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.05'
+        (self.root / 'refuse-cleanup').touch()
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, _ = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        tries = self.path('le-N1.tries')
+        self.until(lambda: tries.exists() and int(tries.read_text().split()[0]) >= 3, seconds=10)
+        (self.root / 'refuse-cleanup').unlink()
+        self.until(lambda: 'N1 MERGED' in (self.path('r0').read_text() if self.path('r0').exists() else ''), seconds=15)
+        self.assertFalse(tries.exists())
+        attempts = len(self.seen('N1 MERGED #1'))
+        time.sleep(.8)
+        self.assertEqual(len(self.seen('N1 MERGED #1')), attempts, 'a handled bullet is not offered again')
+        (self.root / 'refuse-cleanup').touch()  # a later refusal starts at the first step
+        self.add('N1', '- 10:07 MERGED #2')
+        self.until(lambda: tries.exists(), seconds=10)
+        self.assertEqual(tries.read_text().split()[0], '1')
+        self.stop(p)
+
+    def test_a_waiter_restart_keeps_the_step(self):
+        self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.2'
+        (self.root / 'refuse-cleanup').touch()
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, _ = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        self.until(lambda: len(self.seen('N1 MERGED #1')) >= 4, seconds=15)
+        fourth = self.seen('N1 MERGED #1')[3]  # the next gap is 4.8 s
+        self.stop(p)
+        again, _ = self.start()
+        self.until(lambda: len(self.seen('N1 MERGED #1')) >= 5, seconds=15)
+        fifth = self.seen('N1 MERGED #1')[4]
+        self.stop(again)
+        self.assertGreaterEqual(fifth - fourth, 4.2, 'a restart does not climb down to the first step')
 
     def test_slow_cleanup_delays_only_itself_and_the_inbox_and_ready_follow_at_once(self):
         self.worker('N1', '- 10:00 WRAPPED no PR')
@@ -798,6 +907,41 @@ class StackedWorker(StreamFixture):
         time.sleep(1.5)
         self.stop(p)
         self.assertFalse(self.path('relaylog').exists())
+
+
+    def refused_with(self, text):
+        (self.root / 'refusal').write_text(text + '\n')
+        self.env['CHIEF_WAIT_WORKER_EVENT'] = self.script('event', REFUSAL_EVENT)
+        self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.05'
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, out = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        return p, out
+
+    def check_a_failure_after_the_close_is_reported(self, rc, step):
+        line = f'ESCALATE wrap-merged-failed rc={rc} wrap-merged: step {step}'
+        p, out = self.refused_with(line)
+        self.until(lambda: line in out.read_text(), seconds=10)
+        time.sleep(1.0)
+        self.stop(p)
+        self.assertEqual(out.read_text().count(line), 1, out.read_text())
+        self.assertEqual(len(self.seen('N1 MERGED #1')), 1, 'the window is already closed: nothing to retry')
+        self.assertIn('N1 MERGED', self.path('r0').read_text(), 'reported once, then recorded')
+
+    def test_a_log_failure_after_the_close_wakes_the_chief_and_is_not_retried(self):
+        self.check_a_failure_after_the_close_is_reported(6, 'log failed: append-results.sh')
+
+    def test_a_board_failure_after_the_close_wakes_the_chief_and_is_not_retried(self):
+        self.check_a_failure_after_the_close_is_reported(7, 'board failed: board.mjs --doc chief.md --changed')
+
+    def test_a_refused_close_inside_the_wrap_is_still_retried_quietly(self):
+        p, out = self.refused_with('ESCALATE wrap-merged-failed rc=6 wrap-merged: step close-wrapped-worker failed: '
+                                   'close-wrapped-worker.sh exited 6')
+        self.until(lambda: len(self.seen('N1 MERGED #1')) >= 3, seconds=10)
+        self.stop(p)
+        self.assertNotIn('wrap-merged-failed', out.read_text())
 
 
 if __name__ == '__main__':
