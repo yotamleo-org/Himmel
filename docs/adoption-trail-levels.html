@@ -546,7 +546,7 @@ Open a PR from a worktree branch instead.</code></pre></div>
 <tbody>
 <tr><td><code>pipeline</code></td><td>Daily: pulls in what you clipped and writes summaries into the vault. Uses your Claude usage.</td><td>a vault exists</td></tr>
 <tr><td><code>qmd</code></td><td>Daily: re-indexes the vault for search. No model usage.</td><td>a vault exists</td></tr>
-<tr><td><code>graphmap</code></td><td>Hourly: refreshes himmel's code graph, no model usage; a daily deeper pass uses Claude. The vault-note graph is opt-in.</td><td>a vault exists</td></tr>
+<tr><td><code>graphmap</code></td><td>Hourly: refreshes himmel's code graph, no model usage; a daily deeper pass runs on the Claude API, billed to the station's API key, only where the station opted in (elsewhere it logs a skip). The vault-note graph is opt-in.</td><td>a vault exists</td></tr>
 <tr><td><code>vault-stall</code></td><td>Every 15 minutes: notices when the vault stops saving itself to git, clears a few known harmless causes, and alerts you.</td><td>a vault exists</td></tr>
 <tr><td><code>doctor</code></td><td>Daily health check of your install; reports, fixes nothing.</td><td>always</td></tr>
 </tbody>

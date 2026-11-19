@@ -250,7 +250,7 @@ Notes on each unlock:
   `LIVE — CHECKPOINT <full sha of HEAD> pushed` (or `… clean` when there is
   nothing to push). Then carry on. The session compacts at its ceiling. After
   the compaction, re-read the worker system prompt and the handover doc.
-- **`handoff`.** Write your successor brief under your own doc's name with your label bumped one letter (`<TICKET>-N<k>b-<slug>-<date>-RESUME.md`), message the chief, and stop. A
+- **`handoff`.** Write your successor brief under your own doc's name with your label bumped one letter (`N<k>` becomes `N<k>b`, `N<k>b` becomes `N<k>c`: `<TICKET>-<next label>-<slug>-<date>-RESUME.md`), message the chief, and stop. A
   successor resumes from that doc.
 
 ## PreCompact

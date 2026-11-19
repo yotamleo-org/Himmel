@@ -124,7 +124,8 @@ row wins. "Next" means the earliest unreleased version after the current one.
   follow-up to the backlog. Over the follow-up budget (15 open follow-ups per
   version, or the version description's `residual-budget:<n>` line), a newcomer
   that outranks the version's lowest-ranked To Do follow-up takes its slot and
-  that follow-up steps down; otherwise the newcomer steps down, labelled
+  that follow-up steps down, unless that follow-up is admitted or ruled, or the
+  rulings cannot be read; otherwise the newcomer steps down, labelled
   `residual-displaced`. See the glossary's Cap gate entry.
 
 ## What the verb files

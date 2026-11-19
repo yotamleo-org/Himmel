@@ -31,7 +31,7 @@ luna runs one loop: capture, ingest, link, recall.
    notes too.
 3. **Link.** Each night a job reads the new notes and proposes links
    between notes that belong together. Once you arm the vault graph
-   (`graphmap-cadence.sh arm --luna-only`), graphify redraws the map of
+   (`bash scripts/luna/graphmap-cadence.sh arm --luna-only`), graphify redraws the map of
    those links daily, at no model cost, and once a week also reads the
    notes for meaning.
 4. **Recall.** qmd searches the vault by words and by meaning, and

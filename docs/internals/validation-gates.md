@@ -235,7 +235,7 @@ dirs + issues are the corpus v1, with the one added write above.
 
 ## 7. Shell-unit CI
 
-Shell-unit CI runs on every pull request and is a required check;
+Shell-unit CI runs on every pull request and is a required check (with `CI_GO_GATE=on` it waits for the `ci:go` label event, so its proof exists only after that event);
 `ready-check.sh` item 19 reads its shard manifests as suite proof (see
 item 19 below).
 

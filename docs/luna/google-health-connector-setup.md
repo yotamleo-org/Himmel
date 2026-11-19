@@ -124,6 +124,9 @@ wrapper exits with code **75** and prints a re-consent reminder on stderr:
 
 To refresh: re-run Steps 2–4 above. The `auth-exchange` command stores the new token
 the same way: the keyring when it is unlocked, else the `GOOGLE_HEALTH_REFRESH_TOKEN` line in `.env`.
+If the keyring is unlocked but refuses the write, the token goes to `.env` and the command
+exits with an error: an older keyring token still outranks `.env`, so store the new one with
+`himmel-secrets put --stdin GOOGLE_HEALTH_REFRESH_TOKEN`.
 
 Going **Production** (verified app) removes the expiry but requires a CASA Tier 2 security
 assessment for restricted scopes, which is out of scope for alpha personal use.
@@ -176,7 +179,11 @@ thin wrapper that:
 - Does **not** call `write`; that remains a manual step.
 
 The same script is its own scheduler controller (one daily crontab entry, no Claude
-session):
+session). A scheduled pull reads the keyring only when it is unlocked at fire time; with the
+token in a locked keyring and not in `.env`, the pull fails with `missing required env vars:
+GOOGLE_HEALTH_REFRESH_TOKEN`. `arm` and `disarm` manage only the line marked
+`# HIMMEL-LunaVitalsPull`: if you added a `pull-cadence.sh` line by hand earlier, remove it
+(`crontab -e`) before you run `arm`.
 
 ```sh
 bash scripts/luna-vitals/connectors/pull-cadence.sh arm [--time HH:MM]   # default 06:30 local

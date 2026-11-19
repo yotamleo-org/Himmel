@@ -367,7 +367,7 @@
           <dt class="mono">ARMAUTOMERGE</dt><dd>Gate policy. Arms merge-on-green, the one merge path that waits for green CI and confirmed branch protection. Off, merge-on-green refuses.</dd>
           <dt class="mono">companion vault</dt><dd>Your installer answer about a second-brain vault. The vault jobs (pipeline, qmd, graphmap, vault-stall) are offered only with one.</dd>
           <dt class="mono">vm.mode</dt><dd>Where steps that need proof on a test VM run: the local VM, a remote one over ssh, or none. With none, arming a VM-gated job needs your explicit pick as an acknowledgement.</dd>
-          <dt class="mono">graphmap</dt><dd>Arming this job runs the hourly structural refresh, the daily semantic refresh and the 6-hourly publish of himmel’s own graph; the vault graph is opt-in.</dd>
+          <dt class="mono">graphmap</dt><dd>Arming this job runs the hourly structural refresh and the daily semantic refresh of himmel’s own graph (on the Claude API, only on a station opted in with graphify.semantic_api_ok; elsewhere it logs a skip). The 6-hourly publish is added only by arm --with-publish; the vault graph is opt-in.</dd>
           <dt class="mono">GRAPH_CADENCE_SEMANTIC_BACKEND</dt><dd>Which model does the graph refresh’s semantic step: claude-cli (default, uses your subscription usage budget), claude-api (opt-in: needs the API lane on and an API account) or ollama (local GPU); cli and api are aliases. Any other value is refused before work starts.</dd>
         </dl>
       </details>
@@ -577,8 +577,8 @@
     <div class="card timeline" aria-labelledby="tl-h">
       <h3 id="tl-h">One day of graph refresh, once <span class="mono">graphmap</span> is armed</h3>
       <div class="tl-row"><b>Structural pass</b><div><div class="tl-bar" id="tl-ast" aria-label="24 hourly runs"></div><div class="tl-note">Every hour at :15. Free: no model, no subscription usage budget.</div></div></div>
-      <div class="tl-row"><b>Refresh and publish</b><div><div class="tl-bar" id="tl-pub" aria-label="4 runs a day"></div><div class="tl-note">Every 6 hours at :35. Publishes only when the graph is 15 or more commits behind <code>main</code>; otherwise it records a skip.</div></div></div>
-      <div class="tl-row"><b>Semantic pass</b><div><div class="tl-bar" id="tl-sem" aria-label="daily"></div><div class="tl-note">Daily, 13:20 for himmel. Uses your Claude subscription usage budget and skips itself when the budget is nearly spent.</div></div></div>
+      <div class="tl-row"><b>Refresh and publish</b><div><div class="tl-bar" id="tl-pub" aria-label="4 runs a day"></div><div class="tl-note">Every 6 hours at :35, only when armed with --with-publish. Publishes only when the graph is 15 or more commits behind <code>main</code>; otherwise it records a skip.</div></div></div>
+      <div class="tl-row"><b>Semantic pass</b><div><div class="tl-bar" id="tl-sem" aria-label="daily"></div><div class="tl-note">Daily, 13:20 for himmel. Runs on the Claude API, billed to the station's API key, only on a station opted in with graphify.semantic_api_ok; elsewhere each fire logs a skip.</div></div></div>
     </div>
   </section>
 
@@ -748,7 +748,7 @@
     automerge: { t: 'ARMAUTOMERGE', d: 'Gate policy. Arms merge-on-green, the one merge path that waits for green CI and confirmed branch protection. Off, merge-on-green refuses.' },
     vault: { t: 'companion vault', d: 'Your installer answer about a second-brain vault. The vault jobs (pipeline, qmd, graphmap, vault-stall) are offered only with one.' },
     vm: { t: 'vm.mode', d: 'Where steps that need proof on a test VM run: the local VM, a remote one over ssh, or none. With none, arming a VM-gated job needs your explicit pick as an acknowledgement.' },
-    graphmap: { t: 'graphmap', d: 'Arming this job runs the hourly structural refresh, the daily semantic refresh and the 6-hourly publish of himmel’s own graph; the vault graph is opt-in.' },
+    graphmap: { t: 'graphmap', d: 'Arming this job runs the hourly structural refresh and the daily semantic refresh of himmel’s own graph (on the Claude API, only on a station opted in with graphify.semantic_api_ok; elsewhere it logs a skip). The 6-hourly publish is added only by arm --with-publish; the vault graph is opt-in.' },
     mCodex: { t: 'codex mode', d: 'The codex critic’s row in critics.json. As shipped it is hard and required: it must pass at the head, and absent on a machine it still counts, as unavailable, which holds the merge.' },
     mClaude: { t: 'claude mode', d: 'The Claude API critic’s row. As shipped it is advisory: its open findings are recorded and print a NOTE until its precision reaches the configured floor, then it gates as hard. It is absent while the Claude API lane is off, so it leaves the set. Change any mode for one machine in critics.local.json.' },
     mRabbit: { t: 'coderabbit mode', d: 'The CodeRabbit app’s row. As shipped it is best-effort: an open thread holds the merge, but a missing or rate-limited review is relaxed to a NOTE. Absent means the app is not armed here.' },

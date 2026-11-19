@@ -278,7 +278,7 @@
     "shown": [
       { "id": "pipeline", "what": "Daily: pulls in what you clipped and writes summaries into the vault. Uses your Claude usage.", "offered_when": "a vault exists" },
       { "id": "qmd", "what": "Daily: re-indexes the vault for search. No model usage.", "offered_when": "a vault exists" },
-      { "id": "graphmap", "what": "Hourly: refreshes himmel's code graph, no model usage; a daily deeper pass uses Claude. The vault-note graph is opt-in.", "offered_when": "a vault exists" },
+      { "id": "graphmap", "what": "Hourly: refreshes himmel's code graph, no model usage; a daily deeper pass runs on the Claude API, billed to the station's API key, only where the station opted in (elsewhere it logs a skip). The vault-note graph is opt-in.", "offered_when": "a vault exists" },
       { "id": "vault-stall", "what": "Every 15 minutes: notices when the vault stops saving itself to git, clears a few known harmless causes, and alerts you.", "offered_when": "a vault exists" },
       { "id": "doctor", "what": "Daily health check of your install; reports, fixes nothing.", "offered_when": "always" }
     ],

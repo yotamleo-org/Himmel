@@ -97,7 +97,7 @@ crystallized_at:
 | `epic` | string (`"#N"` form, quoted to dodge YAML comment rules) | optional | reserved: the hook does not write it | absent |
 | `task` | string (`"#N"` form) | optional | reserved: the hook does not write it | absent |
 | `duration_minutes` | integer | yes | `(SessionEnd time) - (first transcript event time)`, rounded to nearest minute | If transcript unreadable: write `0` (sentinel) |
-| `files_touched` | integer | yes | `git -C $cwd diff --name-only HEAD`, counted: the uncommitted and staged changes at session end (committed work counts 0) | If git unreadable: write `0` |
+| `files_touched` | integer | yes | `git -C $cwd diff --name-only HEAD`, counted: the tracked paths whose state at session end differs from `HEAD` (committed work and untracked files count 0) | If git unreadable: write `0` |
 | `tags` | list of strings | yes | `session` and `autocapture` | n/a (the defaults guarantee a non-empty list) |
 | `ai-first` | boolean | yes | constant `true` (Luna vault AI-First Vault Rule §0) | n/a |
 | `session_id` | string | yes | `session_id` from `SessionEnd` payload | Write empty string `""` if absent in payload |

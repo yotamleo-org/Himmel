@@ -610,7 +610,7 @@ scripts that fire BEFORE Claude executes tool calls. Among them:
 `orchestrator-inline-guard.sh`, `block-backend-tier.sh`, `mcp-policy.sh`, and
 `auto-arm-on-cap.sh`. Most BLOCK risky operations;
 `auto-approve-safe-bash` GRANTS permission for safe ones so they don't
-hang; `auto-arm-on-cap` is a fail-open watchdog that decides nothing;
+hang; `auto-arm-on-cap` is a fail-open watchdog that blocks one tool call (exit 2) when usage crosses its threshold;
 `mcp-policy` only tracks MCP calls and always allows — see
 [MCP policy tracking](#mcp-policy-tracking).
 Further guards, the PreToolUse entries of the himmel-ops plugin's
