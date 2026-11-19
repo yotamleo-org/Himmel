@@ -157,7 +157,7 @@ census() {
                 case "$st" in ("Z "*) continue ;; esac
                 o="$(owner "$p")"   # an unknown owner counts as same-uid: unknown is never safe
                 [ -n "$o" ] || [ -d "$p" ] || continue   # exited between the checks: not unknown, just gone
-                case "$o" in (''|*[!0-9]*) o="$me" ;; esac   # non-numeric (a stat -f fallback's fs report) is unknown too
+                case "$o" in (''|*[!0-9]*) o="$me" ;; esac   # non-numeric (the fs report of a stat -f fallback) is unknown too
                 if [ "$o" != "$me" ]; then echo '@@unread other'
                 elif detached "${p##*/}"; then echo '@@unread detached'
                 else echo '@@unread same'; fi
