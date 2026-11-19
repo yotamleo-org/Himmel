@@ -36,6 +36,13 @@ def is_parked(word):
 
 
 _RESULTS = re.compile(r"## Results(?:[ \t]|\Z)")
+_RULINGS = re.compile(r"## (?:Chief|Console) Rulings(?:[ \t]|\Z)")  # old-term-ok
+_ACTIONABLE = re.compile(
+    r"- (?:[0-9]{1,2}:[0-9]{2}[ \t\n\v\f\r]+)?(?:\*\*)?"
+    r"(READY|BLOCKED|FINDING|MERGED)"
+    r"(?:[^A-Za-z0-9_].*)?",
+    re.DOTALL,
+)
 
 
 def _scope_lines(path):
@@ -43,11 +50,13 @@ def _scope_lines(path):
         raise OSError(errno.EINVAL, "not a regular file", path)
     with open(path, "rb") as f:
         text = f.read().decode("latin-1")
-    out, scope = [], False
+    out, scope, seen = [], False, False
     for raw in text.split("\n"):
         head = raw[:-1] if raw.endswith("\r") else raw
         if head.startswith("## "):
-            scope = _RESULTS.match(head) is not None
+            is_results = _RESULTS.match(head) is not None
+            scope = is_results or (seen and _RULINGS.match(head) is not None)
+            seen = seen or is_results
             continue
         if scope:
             out.append(raw)
@@ -65,8 +74,12 @@ def newest(path):
 
 
 def actionable(path):
-    _scope_lines(path)
-    return None
+    word, count = None, 0
+    for line in _scope_lines(path):
+        m = _ACTIONABLE.fullmatch(line)
+        if m:
+            word, count = m.group(1), count + 1
+    return None if word is None else f"{word}#{count}"
 
 
 def main(argv):
