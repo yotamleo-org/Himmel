@@ -801,7 +801,7 @@ class ChiefDecision(unittest.TestCase):
                          'Pending count was 0', 'not-yet-due items: none'):
             with self.subTest(evidence=evidence):
                 self.assertFalse(self.unmet(self.result_table(evidence=evidence)))
-        self.assertTrue(self.unmet(self.result_table(status='Pendingly done')))  # not MET, so unmet (a status is exactly MET)
+        self.assertTrue(self.unmet(self.status_table('MET', 'Pendingly done')))  # not MET in a proof column, so unmet (a status is exactly MET)
         self.assertFalse(self.unmet('- Pendingly done\n- Waitingroom closed\n'))  # a word of its own, not the status word
         self.assertFalse(self.unmet('| row | Expected | Result |\n|---|---|---|\n| obs | PENDING | MET |\n'))  # an Expected column is test input
         self.assertFalse(self.unmet('| row | Expected | Sha | Evidence |\n|---|---|---|---|\n| obs | PENDING | main=aaa | ok |\n'))  # also with no status column
@@ -1014,9 +1014,13 @@ class ChiefDecision(unittest.TestCase):
 
     def test_a_proof_row_is_met_only_when_its_status_is_exactly_met(self):
         for status in ('MET (pending review)', 'MET, pending 24h', 'PASS (pending)', 'Awaiting 24h', 'NOT RUN', 'BLOCKED', 'MET (with a naming note)',
-                       'CONTROL RAN', 'MET; run r informational', 'METx', 'MET.', '', 'PASS', 'DONE'):
+                       'MET; run r informational', 'MET.', 'PASS'):
             with self.subTest(status=status):
                 self.assertTrue(self.unmet(self.result_table(status=status)))
+        for status in ('CONTROL RAN', 'METx', '', 'DONE'):  # no proof word of their own: unmet beside a MET (a proof column), not a proof column alone
+            with self.subTest(status=status):
+                self.assertTrue(self.unmet(self.status_table('MET', status)))
+                self.assertFalse(self.unmet(self.status_table(status)))
         for status in ('MET', 'met', 'Met', ' MET ', '**MET**', '*met*', '`MET`', '__MET__'):
             with self.subTest(status=status):
                 self.assertFalse(self.unmet(self.result_table(status=status)))

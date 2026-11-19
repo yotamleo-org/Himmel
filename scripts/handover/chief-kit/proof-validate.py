@@ -30,8 +30,8 @@ KEY = r'[A-Z][A-Z0-9]+-\d+'
 # not an actual requirement status; other cells and unmet list items retain the same refusal rule.
 # A row is MET only when its status is exactly the producer's word for it (`MET`, in any letter case, through emphasis and
 # whitespace): in a table the status is the column its header calls Result, Status, Verdict, Outcome or State (an `Expected` column is
-# test input), and anything else there is unmet, `MET (pending review)`, `PASS (pending)`, `Awaiting 24h`, `NOT RUN`, `BLOCKED` and
-# an empty cell included. A list item starts with its status: a result that is not yet met or due (`PENDING`, `NOT YET DUE`, `WAITING`,
+# test input), and when that column uses the proof vocabulary (PROOF_WORD) anything else in it is unmet, `MET (pending review)`,
+# `PASS (pending)`, `Awaiting 24h`, `NOT RUN`, `BLOCKED`, a ticket status and an empty cell included. A list item starts with its status: a result that is not yet met or due (`PENDING`, `NOT YET DUE`, `WAITING`,
 # `TBD`, `AWAITING`, `NOT RUN`, `BLOCKED`, in any case, through emphasis, however it goes on) is unmet there. A row with no status
 # column to read (a header without one, no header, a ragged row) has no status position distinct from its evidence text, so every
 # cell of it is read for those words: an unsure row is unmet, and `pending count was 0` there reads as not yet due. A table written
@@ -43,6 +43,10 @@ UNMET_ITEM = re.compile(r'^\s*(?:[-*+]|\d+[.)])\s+(?:\*\*)?' + UNMET + r'\b', re
 NOT_DUE_CELL = re.compile(r'^[\s*_`]*' + NOT_DUE, re.I)
 NOT_DUE_ITEM = re.compile(r'^\s*(?:[-*+]|\d+[.)])\s+[*_`]*' + NOT_DUE, re.I)
 MET_STATUS = re.compile(r'[\s*_`]*MET[\s*_`]*', re.I)
+# The proof vocabulary, ONE list built from the words above plus the producer's own (`MET`, `PASS`): a status column that has at least one
+# cell starting with one of them is a proof-row column and is read strictly; a column with none (a ticket-status column: To Do, In Progress,
+# Done, context) is not a proof-row column and nothing in it refuses. One MET among ticket statuses makes the column strict.
+PROOF_WORD = re.compile(r'^[\s*_`]*(?:MET|PASS(?:ED)?|' + UNMET + r'|' + NOT_DUE + r')(?![A-Za-z0-9])', re.I)
 STATUS_HEADER = re.compile(r'\b(?:result|status|verdict|outcome|state)\b', re.I)
 SECTIONS = {'Impact', 'What', 'Why', 'Plan', 'DoD', 'Proof', 'Agent detail'}
 MAX_FILE_BYTES = 8 * 1024 * 1024
@@ -64,19 +68,26 @@ def row_cells(line):
 
 def has_unmet_rows(text):
     lines = text.splitlines()
-    expected, status, width = set(), set(), 0
+    expected, status, proof, width = set(), set(), set(), 0
     for index, line in enumerate(lines):
         if UNMET_ITEM.search(line) or NOT_DUE_ITEM.search(line):
             return True
         header = index + 1 < len(lines) and re.search(r'(?<!\\)\|', line) and is_separator(lines[index + 1]) and not is_separator(line)
         if not (line.strip().startswith('|') or header or (width and re.search(r'(?<!\\)\|', line))):
-            expected, status, width = set(), set(), 0
+            expected, status, proof, width = set(), set(), set(), 0
             continue
         cells = row_cells(line)
         if header:
             expected = {i for i, cell in enumerate(cells) if cell.strip().lower() == 'expected'}
             status = {i for i, cell in enumerate(cells) if i not in expected and STATUS_HEADER.search(cell)}
             width = len(cells)
+            body = []
+            for later in lines[index + 2:]:
+                if not re.search(r'(?<!\\)\|', later):
+                    break
+                if len(row_cells(later)) == width and not is_separator(later):
+                    body.append(row_cells(later))
+            proof = {i for i in status if any(PROOF_WORD.match(cells_of[i]) for cells_of in body)}
             continue
         if is_separator(line):
             continue
@@ -87,7 +98,7 @@ def has_unmet_rows(text):
         elif UNMET_CELL.search('|' + '|'.join(cells) + '|'):
             return True
         if status and len(cells) == width:
-            if any(not MET_STATUS.fullmatch(cells[i]) for i in status):
+            if any(not MET_STATUS.fullmatch(cells[i]) for i in proof):
                 return True
         elif any(NOT_DUE_CELL.match(cell) for i, cell in enumerate(cells) if i not in expected):
             return True
