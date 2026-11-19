@@ -94,8 +94,6 @@ make_src() {
     printf 'x\n' > "$d/cache/entry.json"
 }
 
-# A clean-scan gitleaks for the fixture publishes where the runner has none (the
-# publisher refuses rc 4 without one); the scan rows below still use the real binary.
 GL_STUB="$TMP/gitleaks-clean"
 printf '%s\n' '#!/bin/sh' 'exit 0' > "$GL_STUB"; chmod +x "$GL_STUB"
 run_publish() {  # <src> [extra env assignments via env]
