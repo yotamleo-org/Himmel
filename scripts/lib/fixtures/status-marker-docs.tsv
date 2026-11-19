@@ -1,0 +1,42 @@
+# Whole-doc rows read by the shell, JS and Python tests. TAB-separated: doc, newest, actionable; `-` is none.
+# The doc column encodes LF as \n, CR as \r, TAB as \t, form feed as \f, a backslash as \\; any other
+# backslash sequence is a test failure. A line `# D01` names the row below it.
+# rows: 19
+# D01
+## Results\n- 10:00 LIVE\n- 10:15 Released lock, appended the WRAPPED bullet, ending turn\n	LIVE	-
+# D02
+## Results\n- 10:00 PARKED-BANK old-term-ok\n	PARKED-USAGE	-
+# D03
+## Results\n- 10:00 LIVE\n- 10:05 SUCCESSION\n	LIVE	-
+# D05
+- 09:00 READY\n## Results\n- notes only\n	-	-
+# D06
+## Results\n- 10:00 LIVE\n## Notes\n- 11:00 mentions WRAPPED\n	LIVE	-
+# D08
+- 10:00 LIVE\n- 10:05 READY\n	-	-
+# D11
+## Results (newest at the bottom)\n- 10:00 WRAPPED\n	WRAPPED	-
+# D12
+## Results-old\n- 10:00 WRAPPED\n	-	-
+# D13
+## Results\r\n- 10:00 LIVE\r\n	LIVE	-
+# D15
+## Results\n- Sent READY to the chief\n- 10:00 LIVE -- was BLOCKED, then WRAPPED nothing\n	LIVE	-
+# D17
+## Results\n  - 10:05 BLOCKED\nREADY\n- 10:00 LIVE\n	LIVE	-
+# D18
+## Results\n	-	-
+# D19
+## Results\n- **WRAPPED** done\n	WRAPPED	-
+# D20
+## Chief Rulings\n- 12:00 BLOCKED\n## Results\n- 10:00 LIVE\n	LIVE	-
+# D23
+## Results\n- 10:00 MERGEDX\n- 10:01 READYS\n	-	-
+# D24
+## Results\n### Detail\n- 10:00 LIVE\n	LIVE	-
+# D35
+## Results\tx\n- 10:00 LIVE\n	LIVE	-
+# D36
+## Results\f\n- 10:00 LIVE\n	-	-
+# D37
+## Results\n- 10:00 LIVE\f- 10:05 WRAPPED\n	LIVE	-
