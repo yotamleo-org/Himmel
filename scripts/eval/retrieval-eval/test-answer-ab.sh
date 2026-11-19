@@ -363,7 +363,7 @@ chmod +x "$W/qmdbig"
 rm -f "$W/route.log"
 RETRIEVAL_EVAL_QMD_CMD="$W/qmdbig" python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-trim" --arms bm25-rerank,fused-cached --model claude-sonnet-5-5 --pool 1 --n 1 --no-ledger > "$W/trim.txt" 2>&1
 eq "a trimmed-route run completes" "0" "$?"
-eq "no excerpt runs past 400 characters" "0" "$(grep -cE 'Z{401}' "$W/route.log")"
+eq "no excerpt runs past 400 characters" "0" "$(grep -cE 'Z{200}Z{200}Z' "$W/route.log")"
 files_listed="$(grep -c '^- ' "$W/route.log")"
 if [ "$files_listed" -gt 0 ] && [ "$files_listed" -le 10 ]; then pass "each route call lists at most 5 files ($files_listed over two calls)"; else fail "each route call lists at most 5 files ($files_listed over two calls)"; fi
 eq "each route call is a few KB at most, not the raw dumps" "yes" "$(python3 -I -c 'import sys; print("yes" if all(len(b) < 3500 for b in open(sys.argv[1]).read().split("=====\n")) else "no")' "$W/route.log")"
