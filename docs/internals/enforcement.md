@@ -16,7 +16,7 @@ Source of truth: `.pre-commit-config.yaml`. Smoke tests for each Claude
 hook live alongside it as `scripts/hooks/test-<hook>.sh` — run after
 any hook edit before pushing.
 
-Stages currently wired:
+Stages wired (a selection; `.pre-commit-config.yaml` holds the full set):
 
 - **Format/lint (pre-commit):** trailing-whitespace, end-of-file-fixer,
   check-yaml, check-json, shellcheck.
@@ -598,32 +598,33 @@ leading slash).
 
 ## Claude PreToolUse Hooks
 
-**16 distinct guardrail scripts** are wired across the PreToolUse matchers in
-`.claude/settings.json` (counted once each, regardless of how many `--chain`
-matchers a shared guardrail appears under) and fire BEFORE Claude executes
-tool calls: `auto-approve-safe-bash.sh`, `check-cr-marker-on-pr-create.sh`,
+The PreToolUse matchers of `.claude/settings.json` (the inventory; a shared
+guardrail appears under several `--chain` matchers) wire the guardrail
+scripts that fire BEFORE Claude executes tool calls. Among them:
+`auto-approve-safe-bash.sh`, `check-cr-marker-on-pr-create.sh`,
 `block-jira-compound-write.sh`, `block-tail-pipe-on-gates.sh`,
 `block-read-secrets.sh`, `block-destructive-commands.sh`,
 `block-git-stash.sh`, `block-rogue-claude-schedule.sh`,
 `block-chokepoint-env-prefix.sh`, `require-quiet-run.sh`,
 `block-edit-on-main.sh`, `guard-memory-capture.sh`,
 `orchestrator-inline-guard.sh`, `block-backend-tier.sh`, `mcp-policy.sh`, and
-`auto-arm-on-cap.sh`. Thirteen BLOCK risky operations; one
-(`auto-approve-safe-bash`) GRANTS permission for safe ones so they don't
-hang; one (`auto-arm-on-cap`) is a fail-open watchdog that decides nothing;
-one (`mcp-policy`) only tracks MCP calls and always allows — see
+`auto-arm-on-cap.sh`. Most BLOCK risky operations;
+`auto-approve-safe-bash` GRANTS permission for safe ones so they don't
+hang; `auto-arm-on-cap` is a fail-open watchdog that decides nothing;
+`mcp-policy` only tracks MCP calls and always allows — see
 [MCP policy tracking](#mcp-policy-tracking).
-Nine FURTHER guards — `block-docker-privesc.sh`,
+Further guards, the PreToolUse entries of the himmel-ops plugin's
+`hooks.json` (its inventory), among them `block-docker-privesc.sh`,
 `block-merged-pr-commit.sh`, `block-unresolved-cr-merge.sh`,
 `block-rogue-codex-exec.sh`, `guard-implementor-dispatch.sh`,
 `guard-chief-dispatch.sh`,
 `block-worker-write-fence.sh`,
 `block-graphify-egress.sh`, and
-`block-lesson-enforcement-writes.sh` — are shipped
+`block-lesson-enforcement-writes.sh`, are shipped
 via the **himmel-ops plugin `hooks.json`** rather than `.claude/settings.json`
 (so they can be agent-installed without a settings self-mod veto — same
 delivery path as `inject-minerva-critic.sh`, the plugin's Skill-matcher
-critic INJECTOR rather than a guard, see its own section below); all nine
+critic INJECTOR rather than a guard, see its own section below); they
 are live only after `/himmel-update` (marketplace re-sync) + a fresh session.
 `block-docker-privesc.sh` and `block-merged-pr-commit.sh` fail CLOSED
 (security boundaries); `block-rogue-codex-exec.sh` (raw `codex exec` outside
@@ -4734,8 +4735,8 @@ Spec: `scripts/hooks/test-auto-arm-on-cap.sh` (paired smoke suite).
 
 ### `inject-minerva-critic.sh` — plugin PreToolUse(Skill) critic injector
 
-The one PreToolUse hook NOT wired in `.claude/settings.json` (so it is not
-counted in the "nine guards" above): it ships in the **himmel-ops plugin**
+A plugin-delivered PreToolUse injector, not a guard: like the plugin's other
+hooks it is not in `.claude/settings.json`; it ships in the **himmel-ops plugin**
 (`marketplace/plugins/himmel-ops/hooks/hooks.json`, `matcher: "Skill"`), so any
 himmel-ops install gets it — himmel sessions and external installs alike — with
 no repo wiring.
@@ -4775,9 +4776,8 @@ as "could not check for updates" once no check has succeeded for
 throttle stamps, the first-attempt stamp and the release cache in the himmelctl
 cache dir (`$HIMMELCTL_CACHE_DIR`, default `~/.claude/himmel`; `--purge-state`
 removes it) rather than `/tmp`, so a machine that reboots inside the stale window
-still reaches it. A third
-SessionStart hook, `inject-where-are-we.sh` (plugin-delivered via
-the himmel-ops `hooks.json`), injects the relevant slice of the where-are-we
+still reaches it. Among the SessionStart hooks the himmel-ops plugin's
+`hooks.json` adds, `inject-where-are-we.sh` injects the relevant slice of the where-are-we
 ledger; opt-in behind `HIMMEL_WHERE_ARE_WE`, fail-open and warn-only.
 
 ### `qmd-staleness-notice.sh` — qmd index trust advisory
@@ -5271,7 +5271,8 @@ shipped bullet carries neither; and nothing writes `last-tick.txt` yet, so the
 ## Claude SessionEnd Hooks
 
 Wired in the `SessionEnd` array of the himmel-ops plugin `hooks.json`
-(exec-if-exists); fire once when a session ends. Stdout lands in the session
+(exec-if-exists), beside the `.claude/settings.json` SessionEnd taps
+`stop-queue.mjs` and `session-run-hook.ts`; fire once when a session ends. Stdout lands in the session
 transcript (not operator-visible live). Coexist with any user-level SessionEnd
 hook (e.g. `end-session-wiki`); Claude Code runs all registered SessionEnd
 hooks. Alongside `refresh-where-are-we-on-end.sh`:
@@ -5326,11 +5327,15 @@ Paired hermetic suite: `scripts/hooks/test-jira-nudge-on-end.sh`.
 
 ## Claude PostToolUse Hooks
 
-**Five distinct hooks across three matchers** wired in `.claude/settings.json`
-fire AFTER a tool call completes: `auto-arm-on-subagent-cap.sh` and
-`session-run-hook.ts` (matcher `Agent`), `trigger-cr-on-pr-create.sh` and
-`trigger-cr-on-push.sh` (matcher `Bash`), and `shadow-ledger.mjs` (matcher
-`Bash|Edit|Write|MultiEdit|NotebookEdit`). `session-run-hook.ts` and
+The PostToolUse array of `.claude/settings.json` (the inventory) wires the
+hooks that fire AFTER a tool call completes, among them
+`auto-arm-on-subagent-cap.sh` and `session-run-hook.ts` (matcher `Agent`),
+`trigger-cr-on-pr-create.sh`, `trigger-cr-on-push.sh`,
+`detect-dirty-primary.sh` and `memory-bash-line-check.sh` (matcher `Bash`),
+`shadow-ledger.mjs` and `check-hook-file-parse.sh` (matcher
+`Bash|Edit|Write|MultiEdit|NotebookEdit`), `record-read-clamp.sh` (matcher
+`Read`), `detect-token-in-output.sh`, `claudex-inbox-hook.sh` and
+`bus-deliver-hook.sh` (matcher `*`), and `queue-lock.sh self-heartbeat` (no matcher). `session-run-hook.ts` and
 `shadow-ledger.mjs` are the passive observability taps described below, not
 enforcement hooks.
 
@@ -6096,20 +6101,20 @@ to the SDK or the raw Messages API is needed. Measured 2026-10-13 (account B, Ha
 Billing promotional credit went from $199.91 to $199.90, so the spend landed
 on the credit.
 
-**Worker API-lane switch:** `scripts/api-lane/claude-api.sh` refuses
-rc 5 unless `HIMMEL_API_LANE=on` is in the caller's environment, and a per-call
-env prefix is refused by the guards, so workers never reached it and the PR critic
-(`critic-first-pass.sh`) was skipped. `headed-arm-worker.sh` now reads an opt-in seam
-from the LAUNCHING shell: `WORKER_SESSION_API_LANE=on` puts `HIMMEL_API_LANE=on` and
+**Worker API-lane switch:** `scripts/api-lane/claude-api.sh` refuses with
+exit 2 (`claude-api: refused: api lane is OFF`) unless `HIMMEL_API_LANE=on` is
+in the caller's environment, and a per-call env prefix is refused by the guards,
+so a worker reaches the lane only through one opt-in seam that
+`headed-arm-worker.sh` reads from the LAUNCHING shell: `WORKER_SESSION_API_LANE=on` puts `HIMMEL_API_LANE=on` and
 `HIMMEL_API_ACCOUNT` set to the account `auto` into the worker's environment
 (`--dry-run` prints both). Default OFF: unset or any other value launches a worker
 with neither. The wrapper strips an ambient `HIMMEL_API_LANE`/`HIMMEL_API_ACCOUNT`
 (both are in `chief_context_worker_env_unset_names`), so the seam is the only way
 in. The limit refuses that account for the critic, bulk calls and an unmapped judge
 (see `docs/internals/api-lane.md`), so the switch does not bill a critic: a critic
-refused this way is a policy refusal, which the critic reports as skipped today, and
-a chief should not export the switch as a standing default. Whether a worker can name
-its own API account is settled by a later change. The switch does not bypass spend
+refused this way is a policy refusal, which the critic reports as
+`claude critic BROKE` (exit 1), never a clean skip, and a chief should not
+export the switch as a standing default. The switch does not bypass spend
 control: `claude-api.sh` still applies the API credit guard
 (`~/.himmel/state/api-credit`) and account routing per call, and
 `usage-preflight.sh` still gates the launch itself.
