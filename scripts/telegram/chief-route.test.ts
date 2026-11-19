@@ -4529,7 +4529,7 @@ const b1Lint = (f: { spec: string; plan: string; specsRoot: string }) => {
   expect(Bun.spawnSync(["git", "init", "-q", scratch]).exitCode).toBe(0);
   const env = { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: home, NODE_ENV: "test", LANG: "C.UTF-8" };
   const run = (script: string, ...args: string[]) => {
-    const p = Bun.spawnSync(["bash", join(B1_MINERVA, script), ...args], { cwd: script === "minerva-spec-gate.sh" ? dirname(f.spec) : scratch, env, stdout: "pipe", stderr: "pipe" });
+    const p = Bun.spawnSync([BASH_BIN, join(B1_MINERVA, script), ...args], { cwd: script === "minerva-spec-gate.sh" ? dirname(f.spec) : scratch, env, stdout: "pipe", stderr: "pipe" });
     return { code: p.exitCode, out: p.stdout.toString() + p.stderr.toString() };
   };
   return { gate: run("minerva-spec-gate.sh", f.spec), trace: run("minerva-trace-lint.sh", f.spec, f.plan, scratch) };

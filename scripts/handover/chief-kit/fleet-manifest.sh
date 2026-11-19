@@ -16,6 +16,21 @@
 #   fleet-manifest.sh control set <manifest> --mode paused|shadow|active [--target N] --expect-gen G
 #   fleet-manifest.sh attempt bind <manifest> <doc> --attempt-id A
 #   fleet-manifest.sh attempt settle <manifest> <doc> --attempt-id A --phase launched|refused|unknown
+#   fleet-manifest.sh runtime settle --manifest M --doc D --name N --attempt-id A --reason "<text>" --confirm-no-session
+#
+# `attempt settle` settles the manifest row only: it sets the row's .attempt phase and, for refused, removes the row and keeps
+# .last_refused_attempt. It does NOT touch the control anchor's attempt record, the family target slot, the reservation
+# directory or the launch-refusals.jsonl history, so `attempt settle --phase refused` on a committed or unknown attempt
+# exits 0 while the attempt still holds its slot and reservation and `control ack` still lists it as unknown.
+# `runtime settle` (fleet_runtime.py, reached through the `runtime` pass-through below) is the one explicit exit for
+# that state, an attempt whose launcher died after commit with no session ever seen. Only the chief or the operator types
+# it; nothing calls it (tick, the cadence, the doctor, ack and reconcile do not) and `control ack` only prints a
+# hint text for each unknown attempt. It needs: the attempt committed or unknown with the exact attempt id, doc and name; its owner and
+# committer proven dead by the existing process-identity check (another host, boot or an unreadable identity refuses);
+# a full readable scan for a session finding none; no launched or terminal receipt in the history; --confirm-no-session
+# and a non-empty --reason. It then writes one typed `refused` receipt (cause settled-no-session, the reason, the
+# evidence, who settled), releases the attempt's own reservation, frees its target slot and removes its manifest row;
+# every earlier history row stays. It reads no age, timestamp or elapsed time.
 #
 # Control init creates one paused generation-1 anchor in the manifest's physical
 # bucket and stores only .control={family,anchor}. A copied successor reference
