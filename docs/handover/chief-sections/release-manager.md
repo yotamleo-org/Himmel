@@ -31,9 +31,11 @@ release is declared (`jira release state <R>` prints a status other than
     (<n>: specs/decisions/verbatim-decision-<n>-*.txt)
   ```
   A gated request files without words only when one words-checked operator decision
-  already on record names that key and that exact placement, is the newest decision
-  for the key, and is newer than every ruling on it; otherwise the words are required
-  as before, and a work permission never counts.
+  already on record names that key and that exact placement; it must be the newest
+  decision on the key among those for the request's versions, for no version, or
+  keeping the key in the backlog (two at the same instant refuse), newer than every
+  ruling on the key, and the operator and rulings chains must verify to their end.
+  Otherwise the words are required as before, and a work permission never counts.
   `--decision <n>` must match exactly one `verbatim-decision-<n>-*.txt` in the
   bucket's `specs/decisions`. `--words` must occur byte for byte in one paragraph
   of that file, never in a paragraph that opens with a gloss word (`Read`,

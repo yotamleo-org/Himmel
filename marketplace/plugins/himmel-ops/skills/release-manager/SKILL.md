@@ -94,7 +94,7 @@ ruling is written and the request stays claimed for the next batch.
 
 Verify the outcome, not the printed line. An out-of-version approval is a 14-day work permission only: it files no
 placement and answers for none, so `request` queues, or refuses, an INTAKE with or without it (`REQ Q-…` is the queued
-placement; an ordinary key needs no words). A gated request files without words only when one words-checked operator decision already on record names that key and that exact placement, is the newest decision for the key, and is newer than every ruling on it; otherwise the words are required as before, and a work permission never counts. A ruling is finished when
+placement; an ordinary key needs no words). A gated request files without words only when one words-checked operator decision already on record names that key and that exact placement; it must be the newest decision on the key among those for the request's versions, for no version, or keeping the key in the backlog (two at the same instant refuse), newer than every ruling on the key, and the operator and rulings chains must verify to their end. Otherwise the words are required as before, and a work permission never counts. A ruling is finished when
 `state --json` lists it under no `unfinished_rulings` (intent or applied means the Jira write, the admissions row or the
 receipt is still owed). `status: replay` means `rm-run` finishes it; `status: blocked` is a cross-version move the mirror
 shows in neither version with no journalled proof the removal was this ruling's own write: `rm-run` writes no Jira change,
