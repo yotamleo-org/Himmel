@@ -4283,6 +4283,69 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
       expect(out.lines).toEqual(staleLines(keys, f, row.id));
       expect(out.answer.get(keys[0])).toEqual({ missing: expect.stringContaining(`capped evidence selection changed: ${dir}`) });
     });
+
+    // ---- step 4c: the `Keys?:` and `Reviewed:` agreement of a return is one call, shared by the signing bind and the readback.
+    const REVIEWED_WORDS = 'capped return Reviewed declaration disagrees with the current spec';
+    const KEYS_WORDS = 'capped return Keys? declaration disagrees with the declared keys';
+    const AGREEMENT = [['reviewed-wrong', REVIEWED_WORDS], ['keys-other', KEYS_WORDS], ['reviewed-doubled', REVIEWED_WORDS], ['keys-doubled', KEYS_WORDS]] as const;
+    const AGREEMENT_CASES = (['spec', 'plan'] as const).flatMap(which => AGREEMENT.map(([fault, words]) => [which, fault, words] as const));
+    const agreementLines = (fault: string, keys: string[], specSha: string): string[] => {
+      const list = [...keys].sort().join(', ');
+      return ({ 'reviewed-wrong': [`Reviewed: spec ${'e'.repeat(64)}`], 'keys-other': [`Keys: ${keys[0]}, HIMMEL-9999`], 'reviewed-doubled': [`Reviewed: spec ${specSha}`, `Reviewed: spec ${specSha}`],
+        'keys-doubled': [`Keys: ${list}`, `Keys: ${list}`], control: [`Keys: ${list}`, `Reviewed: spec ${specSha}`] } as Record<string, string[]>)[fault];
+    };
+    const realProof = (f: V2Fixture) => JSON.parse(spawnSync(realBun, [expectedVerifier, 'capped-fold', '--keys', [...f.keys!].sort().join(','), '--spec', f.spec, '--plan', f.plan,
+      '--spec-return', f.verdicts[0], '--plan-return', f.verdicts[1]], { encoding: 'utf8', timeout: 15000 }).stdout);
+    // The return file gains the lines, and the proof is rewritten consistently to the edited bytes (the return hash, its normalized hash, its pin and its carried entries),
+    // so that every provenance check other than the agreement passes.
+    function editReturn(f: V2Fixture, which: 'spec' | 'plan', lines: string[], proof: any): string {
+      const i = which === 'spec' ? 0 : 1; const path = f.verdicts[i];
+      writeFileSync(path, `${lines.join('\n')}\n${readFileSync(path, 'utf8')}`);
+      proof.returns[i].sha256 = sha(path);
+      proof.returns[i].return_sha = pinned.returnSha(readFileSync(path, 'utf8'));
+      for (const pin of proof.pins) if (pin.path === path) pin.sha256 = sha(path);
+      for (const c of proof.carried) if (c.kind === which) c.return_sha = proof.returns[i].return_sha;
+      return path;
+    }
+    const refusalMessage = (run: () => unknown) => { try { run(); } catch (e) { return (e as Error).message; } return ''; };
+
+    it.each(AGREEMENT_CASES)('capped carry v2 the bind refuses a %s return that disagrees with the declared keys or the spec at signing, with the agreement reason: %s (E10)', (which, fault, words) => {
+      const f = v2Build({ builder: 'group' }); const proof = realProof(f);
+      editReturn(f, which, agreementLines(fault, f.keys!, sha(f.spec)), proof);
+      cappedSpawn.fn = () => JSON.stringify(proof);
+      const message = refusalMessage(() => v2Sign(f));
+      expect(message.endsWith(`; v2: ${words}`), message).toBe(true);
+      expect(message, 'not a hash reason').not.toMatch(/binding disagrees|changed or unreadable/);
+      expect(attemptFlags()).toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    it.each(['spec', 'plan'] as const)('capped carry v2 the bind signs a %s return whose Keys? and Reviewed lines agree, the control of E10', which => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const proof = realProof(f);
+      editReturn(f, which, agreementLines('control', keys, sha(f.spec)), proof);
+      cappedSpawn.fn = () => JSON.stringify(proof);
+      const row = v2Sign(f);
+      expect(row.capped_carry).toMatchObject({ schema: 2, anchor: f.anchor });
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+    });
+
+    it.each(AGREEMENT_CASES)('capped carry v2 the readback reads a %s return that disagrees with the declared keys or the spec stale, with the agreement reason: %s (E22)', (which, fault, words) => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f); const proof = JSON.parse(JSON.stringify(row.capped_carry));
+      const path = editReturn(f, which, agreementLines(fault, keys, sha(f.spec)), proof);
+      const record = { ...row, release: 'R1', verdicts: row.verdicts!.map(v => v.path === path ? { path, sha256: sha(path) } : v), capped_carry: proof };
+      const out = specCheck(specEnv(), keys, null, { records: [record] });
+      expect(out.lines).toEqual(staleLines(keys, f, row.id));
+      const why = (out.answer.get(keys[0]) as { missing: string }).missing;
+      expect(why.endsWith(words), why).toBe(true);
+      expect(why, 'not a hash reason').not.toMatch(/binding disagrees|changed or unreadable/);
+    });
+
+    it.each(['spec', 'plan'] as const)('capped carry v2 the readback reads a %s return whose Keys? and Reviewed lines agree as fresh, the control of E22', which => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f); const proof = JSON.parse(JSON.stringify(row.capped_carry));
+      const path = editReturn(f, which, agreementLines('control', keys, sha(f.spec)), proof);
+      const record = { ...row, release: 'R1', verdicts: row.verdicts!.map(v => v.path === path ? { path, sha256: sha(path) } : v), capped_carry: proof };
+      expect(specCheck(specEnv(), keys, null, { records: [record] }).lines).toEqual(okLines(keys, f, row.id));
+    });
   });
 });
 
