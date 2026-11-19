@@ -1065,6 +1065,131 @@ class ChiefDecision(unittest.TestCase):
         self.assertFalse(self.unmet('row | Result | Sha | Evidence\n--- | --- | --- | ---\nobs | MET | ' + sha + ' | pending: none\n'))
         self.assertFalse(self.unmet('a horizontal rule follows\n\n---\n\nand then text with a pipe | in it\n'))
 
+    # Re-check follow-ups.
+    def reconciliation_steps(self):
+        return [row for row in self.rows() if row.get('capability') == 'remainder reconciliation']
+
+    def test_a_settle_that_cannot_read_the_remainder_after_the_move_writes_the_one_owned_step(self):
+        env = self.world()
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+        self.merge(77)  # a partial merge landed after the check; its body cannot be read (the stub gh exits 1)
+        for _ in range(2):  # the settle and a re-run with the read still failing: the same one step
+            r = self.decide('--settle', env=env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            body = json.loads(r.stdout)
+            self.assertFalse(body['closed'])
+        steps = self.reconciliation_steps()
+        self.assertEqual(len(steps), 1)
+        self.assertEqual(body['reconciliation'], steps[0]['id'])
+        self.assertIn('could not read', steps[0]['text'])
+        self.assertIn('PR #77', steps[0]['text'])
+        self.assertEqual((self.closed_refs(), len(self.rows())), (set(), 2))
+        self.assertNotEqual(self.decide('--settle', status='To Do', env=env).returncode, 0)  # not Done: a plain refusal, nothing moved
+        # the read works again and nothing is open: the open step still owns the decision until the chief closes it
+        self.body(77, self.NO_CODE)
+        r = self.decide('--settle', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('open code/chief step ' + steps[0]['id'], r.stderr)
+        self.close_row(steps[0]['id'])
+        self.assertEqual(self.decide('--settle', env=env).returncode, 0)
+        self.assertEqual(self.closed_refs(), {steps[0]['id'], 'o1'})
+
+    def test_blockers_that_change_between_settles_leave_exactly_one_open_step(self):
+        env = self.world()
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+        self.partial(77, self.CODE)
+        ids = [json.loads(self.decide('--settle', env=env).stdout)['reconciliation']]
+        self.body(77, 'Remaining: implement Y instead (scripts/y.sh)')  # the text changes
+        ids.append(json.loads(self.decide('--settle', env=env).stdout)['reconciliation'])
+        self.partial(78, self.OWED_OPERATOR)  # a second blocker
+        ids.append(json.loads(self.decide('--settle', env=env).stdout)['reconciliation'])
+        self.assertEqual(len(set(ids)), 1)
+        steps = self.reconciliation_steps()
+        self.assertEqual([row['id'] for row in steps], ids[:1])
+        self.assertIn('implement X', steps[0]['text'])  # the blockers as they were when it was written
+        self.assertIn('is the authority', steps[0]['text'])
+        self.assertEqual(self.open_ids(), {'o1', ids[0]})
+        # a step closed while a blocker is open is still followed by a new one
+        self.close_row(ids[0])
+        again = json.loads(self.decide('--settle', env=env).stdout)['reconciliation']
+        self.assertNotEqual(again, ids[0])
+        self.assertEqual(len([row for row in self.reconciliation_steps() if row['id'] in self.open_ids()]), 1)
+
+    def test_a_status_log_line_that_names_the_key_and_is_not_json_is_could_not_read(self):
+        env = self.world()
+        log = self.live / 'state' / 'status-events.jsonl'
+        log.write_text('{"event":"merge","key":"HIMMEL-9848","pr":"77","contract":"no","res')  # torn by a killed writer
+        self.body(77, self.CODE)
+        r = self.decide('--check', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('status-events.jsonl', r.stderr)
+        self.assertIn('not JSON', r.stderr)
+        log.write_text('garbage that names no ticket\n')  # a line that does not name this ticket is nobody's partial merge
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+
+    def test_a_pull_request_left_unread_because_the_budget_is_spent_is_named_and_refused(self):
+        env = self.world()
+        self.partial(77, self.CODE)
+        self.partial(78, self.OWED_PROOF)  # the newest says proof only: a silent skip of 77 or 78 would pass
+        slow = self.live / 'slow-gh'
+        slow.write_text('#!/bin/sh\nsleep 3\n')
+        slow.chmod(0o755)
+        r = self.decide('--check', env={**env, 'NEXT_DISPATCH_GH_CMD': str(slow), 'PROOF_REMAINDER_BUDGET_SECS': '2'})
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('PR #77 body unreadable', r.stderr)
+        self.assertIn('PR #78 body unreadable (the 2 s read budget is spent)', r.stderr)
+
+    def test_a_helper_that_fails_and_a_helper_that_runs_past_the_budget_are_could_not_read(self):
+        env = self.world()
+        self.partial(77, self.NO_CODE)
+        r = self.decide('--check', env={**env, 'MERGE_ROWS_BUDGET_SECS': 'abc'})  # the helper dies at import: a traceback and exit 1
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('status log', r.stderr)
+        self.assertIn('unreadable', r.stderr)
+        # a real slow helper (a pre-merge row it must confirm through a slow GitHub read) is killed at the reader's budget, not at 120 s
+        (self.live / 'state' / 'status-events.jsonl').write_text('')
+        self.merge(79, stage='pre-merge', result='pending', head='abc')
+        slow = self.live / 'merged-on-github'
+        slow.write_text('#!/bin/sh\nsleep 30\n')
+        started = time.monotonic()
+        r = self.decide('--check', env={**env, 'PROOF_REMAINDER_BUDGET_SECS': '3'})
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('the log helper ran past the read budget', r.stderr)
+
+    def test_a_reconciliation_step_closed_by_the_race_is_refused_and_another_validations_steps_are_not_earlier_ones(self):
+        env = self.world()
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+        # another validation's closed step of the same ticket is not an earlier step of this one
+        other = self.owe_add_step('Reconcile close: an old close', source_id='o99')
+        self.close_row(other)
+        self.partial(77, self.CODE)
+        first = json.loads(self.decide('--settle', env=env).stdout)['reconciliation']
+        self.assertNotIn('Earlier reconciliation step', [row for row in self.rows() if row.get('id') == first][0]['text'])
+        # the chief closes the step between the validator's read and its add: the closed id is never returned as the owner
+        flag = self.b / 'armed'
+        writer = self.b / 'close-on-add.sh'
+        writer.write_text('#!/bin/bash\nif [ "$1" = add ] && [ -e ' + str(flag) + ' ] && [ ! -e ' + str(flag) + '.done ]; then : > ' + str(flag) + '.done\n'
+                          '  bash ' + str(HERE / 'owe.sh') + ' close --bucket ' + str(self.b) + ' --id ' + first + ' --key HIMMEL-9848 >/dev/null\nfi\n'
+                          'exec bash ' + str(HERE / 'owe.sh') + ' "$@"\n')
+        flag.write_text('')
+        r = self.decide('--settle', env={**env, 'PROOF_OWE_BIN': str(writer)})
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('is already closed', r.stderr)
+        self.assertIn('PR #77', r.stderr)
+
+    def owe_add_step(self, text, source_id):
+        return subprocess.check_output(['bash', str(HERE / 'owe.sh'), 'add', '--bucket', str(self.b), '--chief', 'chief', '--kind', 'step', '--key', 'HIMMEL-9848',
+            '--text', text, '--metadata', json.dumps({'actor': 'chief', 'action': 'next-step', 'capability': 'remainder reconciliation', 'source_id': source_id})],
+            text=True, env={**os.environ, 'OWE_NOW_EPOCH': '1794860000'}).strip()
+
+    def test_a_path_that_appears_late_in_a_long_remainder_still_makes_it_code(self):
+        env = self.world()
+        self.partial(77, 'Remaining: ' + 'chief-run notes about the station ' * 14 + 'and edit scripts/x.sh (chief-run)')
+        r = self.decide('--check', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('PR #77', r.stderr)
+
 
 def setUpModule():
     # The decision reads the status log and GitHub: never the station's real ones, in any test of this file.

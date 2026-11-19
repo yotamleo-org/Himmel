@@ -293,6 +293,16 @@ class RemainderPath(LoopbackFlow):
         self.assertEqual(self.posts, 1)
         self.assertEqual(len([r for r in self.rows() if r['op'] == 'close' and r['ref'] == 'o1']), 1)
 
+    def test_the_run_it_again_line_asks_for_a_tool_timeout_that_outlasts_a_read_in_each_leg(self):
+        env = self.world()
+        writer = self.b / 'refuse-add.sh'
+        writer.write_text('#!/bin/bash\n[ "$1" != add ] || { echo "disk full" >&2; exit 4; }\nexec bash ' + str(HERE / 'owe.sh') + ' "$@"\n')
+        self.after_post = lambda: self.partial(77, self.CODE)
+        result = self.cli_with({**env, 'PROOF_OWE_BIN': str(writer)})
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn('Run it again: node ' + ' '.join(self.command[1:]), result.stderr)
+        self.assertIn('300000 ms', result.stderr)
+
     def test_a_slow_pull_request_read_refuses_at_the_check_with_the_unreadable_message_before_any_move(self):
         env = self.world()
         self.partial(77, self.CODE)
