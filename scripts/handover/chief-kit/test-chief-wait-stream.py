@@ -711,24 +711,35 @@ echo 'HANDLED close-wrapped'
         self.stop(p)
 
     def test_busy_consumer_fifteen_simulated_minutes_without_ack(self):
-        # Advance the child's wall clock while the consumer remains busy and
-        # sends no receipt/ack. This does not simulate native Monitor delivery.
+        # Advance the wall clock of both the child (its `date`) and the supervisor (its test clock) while the consumer
+        # remains busy and sends no receipt/ack. This does not simulate native Monitor delivery.
         clock = self.root / 'clock'
         clock.write_text('1794800000')
+
+        def set_clock(epoch):
+            tmp = self.root / 'clock.tmp'
+            tmp.write_text(str(epoch))
+            os.replace(tmp, clock)
         bindir = self.root / 'bin'
         bindir.mkdir()
         self.script('date', 'if [ "${1:-}" = +%s ]; then cat "$TEST_ROOT/clock"; else /bin/date "$@"; fi\n')
         (bindir / 'date').symlink_to(self.root / 'date')
-        self.env.update(PATH=str(bindir) + ':' + self.env['PATH'], CHIEF_WAIT_STREAM_MAX_PER_MIN='100')
+        self.env.update(PATH=str(bindir) + ':' + self.env['PATH'], CHIEF_WAIT_STREAM_MAX_PER_MIN='100',
+                        CHIEF_WAIT_STREAM_TEST_CLOCK=str(clock), CHIEF_WAIT_STREAM_SOFT_SEC='1440',
+                        CHIEF_WAIT_STREAM_HARD_SEC='1680')
         p, out = self.start()
         self.armed()
         for minute in range(15):
-            clock.write_text(str(1794800000 + minute * 60))
+            set_clock(1794800000 + minute * 60)
             with self.inbox.open('a') as f:
                 f.write(f'busy consumer event {minute}\n')
             self.until(lambda: f'WAKE#{minute + 1} telegram' in out.read_text())
             self.assertIsNone(p.poll())
-        self.stop(p)
+        # the supervisor's own soft bound runs on its simulated clock: it ends the arm only once that clock passes it
+        self.assertNotIn('REARM', out.read_text())
+        set_clock(1794800000 + 1440 + 60)
+        self.until(lambda: 'REARM' in out.read_text())
+        p.wait(timeout=6)
         self.assertNotIn('K\t', self.path('wakes').read_text())
 
     def test_rotation_gap_reset_and_monotonic_sequence(self):

@@ -55,6 +55,12 @@ def alive(pid, start, host=HOST, boot=BOOT):
     return host == HOST and boot == BOOT and bool(start) and identity(pid) == str(start)
 
 
+def clock(real=time.time):
+    """The supervisor's own clock; a test points CHIEF_WAIT_STREAM_TEST_CLOCK at a file holding the time to simulate."""
+    path = os.getenv('CHIEF_WAIT_STREAM_TEST_CLOCK')
+    return float(Path(path).read_text()) if path else real()
+
+
 @contextlib.contextmanager
 def ownership(inbox):
     """Held while the sidecar's owner is checked and signalled for, and while a supervisor publishes itself as owner."""
@@ -220,7 +226,7 @@ class Supervisor:
         self.stop_started = None
         self.reason = ''
         self.last_sleep = ''
-        self.started = time.time()
+        self.started = clock()
         self.arm = time.time_ns()
         self.owned = False
         self.dog = None
@@ -245,7 +251,7 @@ class Supervisor:
 
     def emit(self, line):
         print(line, flush=True)
-        self.lines.append(time.monotonic())
+        self.lines.append(clock(time.monotonic))
 
     def record(self, part, adopted=False, emit=True):
         text = read(part)
@@ -275,7 +281,7 @@ class Supervisor:
             self.printed = self.seq
             body = text.split('absorbed since last wake:')[0].split('look-only since last wake:')[0]
             sig = hashlib.sha256(body.encode()).hexdigest()
-            now = time.monotonic()
+            now = clock(time.monotonic)
             repeat_sec = float(os.getenv('CHIEF_WAIT_STREAM_REPEAT_SEC', '60'))
             if repeat_sec > 0 and sig == self.last_sig and now - self.last_wake < repeat_sec:
                 self.reason = 'repeat'
@@ -436,7 +442,7 @@ class Supervisor:
                                          stdout=out, stderr=out, env=env, start_new_session=True, close_fds=True)
         self.adopted = False
         self.data.update(child=self.proc.pid, child_start=identity(self.proc.pid), part=part,
-                         safe=time.time(), handoff='-')
+                         safe=clock(), handoff='-')
         self.publish()
         try:
             self.proc.stdin.write(b'go\n')
@@ -452,8 +458,8 @@ class Supervisor:
         hard = float(os.getenv('CHIEF_WAIT_STREAM_HARD_SEC', '1680'))
         while True:  # t13b-ok: ends at the first pass after CHIEF_WAIT_STREAM_HARD_SEC (1680 s default, wall clock) while the waiter child lives, 60 s after a stop request while it lives, once the child is gone and CHIEF_WAIT_STREAM_SOFT_SEC (1440 s default) has passed or a stop request or a recorded reason (repeat, rate limit) is set, or on a refusal or an error (a child busy past CHIEF_WAIT_STREAM_BUSY_MAX_SEC, 7200 s default, is an error); not bounded for nan, inf or huge settings, for SOFT at or above HARD with a child that dies at once, or while CHIEF_WAIT_STREAM_PAUSE_LOG=1 (a test pause hook) is set; the settings are read from the environment with no clamp
             self.acknowledge()
-            now = time.time()
-            self.lines = [t for t in self.lines if time.monotonic() - t < 60]
+            now = clock()
+            self.lines = [t for t in self.lines if clock(time.monotonic) - t < 60]
             if len(self.lines) >= int(os.getenv('CHIEF_WAIT_STREAM_MAX_PER_MIN', '6')):
                 self.reason = self.reason or 'rate'
             if self.path('stop').exists():
