@@ -587,4 +587,102 @@ else
   fail "P18: mktemp failed"
 fi
 
+echo "== P19: run-alone suites run first in a bin-packed shard and the shard's suite set is unchanged =="
+if sb=$(mk_sandbox); then
+  for _n in a b d f; do mk_suite "$sb" "test-$_n.sh" 3; done
+  mk_suite "$sb" test-c-alone.sh 1
+  mk_suite "$sb" test-e-alone.sh 1
+  mk_suite "$sb" test-g-alone.sh 1
+  : > "$sb/dur.tsv"
+  for _r in a:90 c-alone:80 b:70 e-alone:60 d:50 g-alone:40 f:30; do printf '%s/scripts/test-%s.sh\t%s\n' "$sb" "${_r%%:*}" "${_r##*:}" >> "$sb/dur.tsv"; done
+  printf '*/scripts/test-c-alone.sh  fixture\n*/scripts/test-e-alone.sh  fixture\n*/scripts/test-g-alone.sh  fixture\n' > "$sb/deny.txt"
+  started_in_order() { cut -d' ' -f1 "$1/peak.log"; }
+  for _shard in 1 2; do
+    : > "$sb/peak.log"
+    env -u SUITE_TIER_MODE SUITE_JOBS=1 SUITE_PARALLEL_DENY="$sb/deny.txt" SUITE_DURATIONS="$sb/dur.tsv" bash "$RUNNER" --shard "$_shard/2" "$sb/scripts" > /dev/null 2>&1
+    serial_set=$(started_in_order "$sb" | sort | paste -sd' ' -)
+    : > "$sb/peak.log"
+    out=$(env -u SUITE_TIER_MODE SUITE_JOBS=3 SUITE_PARALLEL_DENY="$sb/deny.txt" SUITE_DURATIONS="$sb/dur.tsv" bash "$RUNNER" --shard "$_shard/2" "$sb/scripts" 2>&1); rc=$?
+    par_set=$(started_in_order "$sb" | sort | paste -sd' ' -)
+    order=$(started_in_order "$sb" | paste -sd' ' -)
+    last_alone=$(started_in_order "$sb" | awk '/-alone\.sh$/ { i = NR } END { print i + 0 }')
+    first_par=$(started_in_order "$sb" | awk '!/-alone\.sh$/ { print NR; exit }')
+    n_alone=$(started_in_order "$sb" | awk '/-alone\.sh$/ { n++ } END { print n + 0 }')
+    if [ "$rc" -eq 0 ] && [ -n "$serial_set" ] && [ "$serial_set" = "$par_set" ] \
+       && [ "$last_alone" -lt "${first_par:-0}" ]; then
+      pass "P19: shard $_shard/2 ran the same suites as a serial run ($par_set), run-alone ones first ($order)"
+    else
+      fail "P19: shard $_shard/2 rc=$rc serial=[$serial_set] parallel=[$par_set] order=[$order]; out: $out"
+    fi
+    if [ "$n_alone" -ge 1 ] && [ "$first_par" != "" ]; then
+      pass "P19: shard $_shard/2 holds run-alone and parallel suites, so its order check is not vacuous"
+    else
+      fail "P19: shard $_shard/2 needs both kinds of suite for the order check; order=[$order]"
+    fi
+  done
+  rm -rf "$sb"
+else
+  fail "P19: mktemp failed"
+fi
+
+echo "== P20: a bin-packed shard starts each group longest-first by the duration ledger =="
+if sb=$(mk_sandbox); then
+  for _n in a b d f h j k l; do mk_suite "$sb" "test-$_n.sh" 3; done
+  for _n in c e g i; do mk_suite "$sb" "test-$_n-alone.sh" 1; done
+  : > "$sb/dur.tsv"
+  for _r in k:110 l:105 f:95 g-alone:85 j:80 i-alone:75 c-alone:65 h:60 e-alone:50 a:40 d:35 b:15; do printf '%s/scripts/test-%s.sh\t%s\n' "$sb" "${_r%%:*}" "${_r##*:}" >> "$sb/dur.tsv"; done
+  printf '*/scripts/test-*-alone.sh  fixture\n' > "$sb/deny.txt"
+  started_in_order() { cut -d' ' -f1 "$1/peak.log"; }
+  ledger_order=$(awk -F'\t' '{ n = $1; sub(/.*\//, "", n); print n, $2 }' "$sb/dur.tsv" | sort -k2,2nr -k1,1 | cut -d' ' -f1)
+  for _shard in 1 2; do
+    : > "$sb/peak.log"
+    env -u SUITE_TIER_MODE SUITE_JOBS=1 SUITE_PARALLEL_DENY="$sb/deny.txt" SUITE_DURATIONS="$sb/dur.tsv" bash "$RUNNER" --shard "$_shard/2" "$sb/scripts" > /dev/null 2>&1
+    serial_set=$(started_in_order "$sb" | sort | paste -sd' ' -)
+    : > "$sb/peak.log"
+    out=$(env -u SUITE_TIER_MODE SUITE_JOBS=3 SUITE_PARALLEL_DENY="$sb/deny.txt" SUITE_DURATIONS="$sb/dur.tsv" bash "$RUNNER" --shard "$_shard/2" "$sb/scripts" 2>&1); rc=$?
+    par_set=$(started_in_order "$sb" | sort | paste -sd' ' -)
+    want_alone="" want_par="" n_alone=0 n_par=0
+    for _n in $ledger_order; do
+      case " $par_set " in *" $_n "*) ;; *) continue ;; esac
+      case "$_n" in
+        *-alone.sh) want_alone="$want_alone $_n"; n_alone=$((n_alone + 1)) ;;
+        *)          want_par="$want_par $_n"; n_par=$((n_par + 1)) ;;
+      esac
+    done
+    want_alone=$(printf '%s' "$want_alone" | xargs)
+    want_par=$(printf '%s' "$want_par" | xargs)
+    order=$(started_in_order "$sb" | paste -sd' ' -)
+    got_alone=$(printf '%s\n' "$order" | tr ' ' '\n' | grep -e '-alone\.sh$' | paste -sd' ' - || true)
+    got_par=$(printf '%s\n' "$order" | tr ' ' '\n' | grep -v -e '-alone\.sh$' | paste -sd' ' - || true)
+    alone_first=1 seen_par=0
+    for _n in $order; do
+      case "$_n" in *-alone.sh) [ "$seen_par" -eq 0 ] || alone_first=0 ;; *) seen_par=1 ;; esac
+    done
+    within_bound() {
+      local _pos="$1" _i=0 _n _x _p
+      for _n in $want_par; do
+        _p=0
+        for _x in $_pos; do [ "$_x" = "$_n" ] && break; _p=$((_p + 1)); done
+        [ "$_p" -lt $((_i + 3)) ] || return 1
+        _i=$((_i + 1))
+      done
+    }
+    if [ "$rc" -eq 0 ] && [ -n "$serial_set" ] && [ "$serial_set" = "$par_set" ] && [ "$alone_first" -eq 1 ] \
+       && [ "$got_alone" = "$want_alone" ] && within_bound "$got_par"; then
+      pass "P20: shard $_shard/2 ran the same suites as a serial run, run-alone first in ledger order, parallel suites within the longest-first bound ($order)"
+    else
+      fail "P20: shard $_shard/2 rc=$rc serial=[$serial_set] parallel=[$par_set] order=[$order] want_alone=[$want_alone] want_par=[$want_par]; out: $out"
+    fi
+    path_par=$(printf '%s\n' "$par_set" | tr ' ' '\n' | grep -v -e '-alone\.sh$' | paste -sd' ' -)
+    if [ "$n_alone" -ge 2 ] && [ "$n_par" -ge 4 ] && ! within_bound "$path_par"; then
+      pass "P20: shard $_shard/2 holds $n_alone run-alone and $n_par parallel suites whose path order breaks the longest-first bound"
+    else
+      fail "P20: shard $_shard/2 needs two run-alone and four parallel suites whose path order breaks the bound; want_par=[$want_par] path=[$path_par]"
+    fi
+  done
+  rm -rf "$sb"
+else
+  fail "P20: mktemp failed"
+fi
+
 rst_tally

@@ -54,6 +54,7 @@ trap 'rm -rf "$SB" "$SUITE_LOCK_SANDBOX"' EXIT
 mkdir -p "$SB/scripts/ci" "$SB/scripts/lib" "$SB/scripts/cr" \
          "$SB/scripts/machine-setup" "$SB/tests" "$SB/docs"
 cp "$RUNNER" "$SB/scripts/ci/run-shell-tests.sh"
+cp "$SRC_ROOT/scripts/ci/parallel-deny.txt" "$SB/scripts/ci/parallel-deny.txt" || exit 1
 # Every chokepoint fails closed without its seam-guard lib.
 cp "$SRC_ROOT/scripts/lib/chokepoint-seam-guard.sh" "$SB/scripts/lib/chokepoint-seam-guard.sh"
 cp "$IS_SRC" "$SB/scripts/cr/impacted-suites.sh"

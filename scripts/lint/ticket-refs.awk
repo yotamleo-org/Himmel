@@ -9,8 +9,9 @@
 # exempt        input is one path per line; prints those under a whole-file row
 #               (scripts/one-shot/no-markers.sh and harvest-ceilings.py verify).
 # allow         scripts/lint/ticket-ref-allow.tsv: kind, path-regex, line-regex, reason.
-#               The `key` row owns the ticket-key pattern; every other row exempts the
-#               lines it matches. Nothing in this file names a project key.
+#               The `key` row owns the ticket-key pattern and the `test` row the test-file
+#               path pattern (check-added-unwired.sh reads it too); every other row
+#               exempts the lines it matches. Nothing in this file names a project key.
 # binlist       paths (one per line) whose index blob is binary; their lines are skipped.
 #
 # Exit: 0 clean, 1 findings (diff, tree), 2 cannot evaluate (rule list unreadable).
@@ -42,7 +43,7 @@ function is_js(p) {
     return p ~ /\.(js|mjs|cjs|ts|tsx|mts|cts)$/
 }
 function is_test(p) {
-    return p ~ /(^|\/)(tests?|__tests__)\// || p ~ /(^|\/)test[-_][^\/]*$/ || p ~ /\.(test|spec)\.[^\/]*$/
+    return p ~ testre
 }
 
 # a row without a line regex exempts its whole file from every refusal
@@ -184,12 +185,18 @@ BEGIN {
             if (keyre != "") fatal("the rule list has more than one key row")
             keyre = f[3]; continue
         }
+        if (f[1] == "test") {
+            if (ntest++) fatal("the rule list has more than one test row")
+            if (f[2] == "") fatal("the rule list's test row has an empty path pattern")
+            testre = f[2]; continue
+        }
         if (f[1] !~ /^K[1-7]$/ || f[2] == "") fatal("malformed rule row: " line)
         nrow++; rp[nrow] = f[2]; rl[nrow] = f[3]
     }
     if (rc < 0) fatal("cannot read the rule list " allow)
     close(allow)
     if (keyre == "") fatal("the rule list has no key row")
+    if (testre == "") fatal("the rule list has no test row")
     if (binlist != "") {
         while ((getline bp < binlist) > 0) bin[bp] = 1
         close(binlist)

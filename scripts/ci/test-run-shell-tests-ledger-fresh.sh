@@ -26,11 +26,10 @@ run_lines() { grep -F '[RUN ] ' <<< "$1" | sed 's/^\[RUN \] //'; }
 # fixture below is copied from the real CI logs of green main run 41928036090
 # (head 11b19d623ec945b58496257457804e390f5cecaa, the first full run after the
 # run-shell-tests and uninstall-provenance split, shell-unit-shard 1..8): every suite
-# that ran >= 10s, with its measured seconds.
+# that ran >= 10s, with its measured seconds, except test-chief-wait-b.sh: its 392s
+# is its passing attempt in run 44304233310 (its CI attempts run 374-430s).
 # The sandbox holds a stub for each, the runner packs them with the
 # committed ledger, and the measured seconds of each shard are summed.
-# The slowest shard cannot beat the heaviest single suite, so the bound is that
-# floor plus 5%.
 echo "== Case 22-fresh (HIMMEL-4075): the committed ledger balances measured shard time =="
 sb22w=$(mktemp -d "${TMPDIR:-/tmp}/rst-case22w.XXXXXX") || { fail "22w: mktemp failed"; sb22w=""; }
 if [ -n "$sb22w" ]; then
@@ -99,7 +98,7 @@ scripts/eval/mcp-tasks-probe/test-probe.sh	10
 scripts/eval/qmd-quality/test-qmd-burst-proof.sh	10
 scripts/eval/relay-cost/test-relay-cost.sh	18
 scripts/eval/retrieval-eval/test-retrieval-eval.sh	12
-scripts/eval/review-panel/test-review-panel.sh	1295
+scripts/eval/review-panel/test-review-panel.sh	377
 scripts/eval/routing/test-score.sh	24
 scripts/eval/steering-cull/test-steering-cull.sh	16
 scripts/eval/test-eval-runs.sh	12
@@ -118,7 +117,7 @@ scripts/handover/chief-kit/test-auto-go.sh	219
 scripts/handover/chief-kit/test-board.sh	90
 scripts/handover/chief-kit/test-brief-lint.sh	52
 scripts/handover/chief-kit/test-chief-kit-e2e.sh	45
-scripts/handover/chief-kit/test-chief-wait-b.sh	533
+scripts/handover/chief-kit/test-chief-wait-b.sh	392
 scripts/handover/chief-kit/test-chief-wait-pool.sh	168
 scripts/handover/chief-kit/test-chief-wait-r0.sh	201
 scripts/handover/chief-kit/test-chief-wait.sh	353
@@ -149,7 +148,7 @@ scripts/handover/chief-kit/test-tick-fields.sh	289
 scripts/handover/chief-kit/test-tick-nolive.sh	17
 scripts/handover/chief-kit/test-tick-repair.sh	89
 scripts/handover/chief-kit/test-tick-rmqueue.sh	25
-scripts/handover/chief-kit/test-tick.sh	264
+scripts/handover/chief-kit/test-tick.sh	229
 scripts/handover/chief-kit/test-tracker.sh	18
 scripts/handover/chief-kit/test-worker-doc-lock.sh	13
 scripts/handover/chief-kit/test-worker-event.sh	10
@@ -177,7 +176,7 @@ scripts/handover/test-merge-fork-pr.sh	15
 scripts/handover/test-merge-forward-check.sh	12
 scripts/handover/test-merge-on-green-jira-end-state.sh	14
 scripts/handover/test-merge-on-green-static-recheck.sh	31
-scripts/handover/test-merge-on-green.sh	254
+scripts/handover/test-merge-on-green.sh	210
 scripts/handover/test-pr-merge.sh	20
 scripts/handover/test-queue-lock.sh	120
 scripts/handover/test-register-state.sh	11
@@ -300,7 +299,7 @@ scripts/test-adopt-hooks-chain.sh	520
 scripts/test-adopt-hooks-gates.sh	92
 scripts/test-adopt-merge-gate.sh	110
 scripts/test-adopt-provenance.sh	195
-scripts/test-adopt-sequences.sh	580
+scripts/test-adopt-sequences.sh	245
 scripts/test-adopt-wizard.sh	311
 scripts/test-check-ci-cache.sh	24
 scripts/test-check-ci-run.sh	22
@@ -313,7 +312,7 @@ scripts/test-doctor-cadence.sh	13
 scripts/test-e2e-provenance-settings.sh	14
 scripts/test-e2e-symmetry-isolation.sh	17
 scripts/test-e2e-symmetry.sh	10
-scripts/test-himmel-doctor.sh	766
+scripts/test-himmel-doctor.sh	289
 scripts/test-himmel-update-axis-b.sh	14
 scripts/test-himmel-update-check.sh	19
 scripts/test-himmel-update-clis.sh	10
@@ -336,7 +335,7 @@ scripts/test-uninstall-real-home-runtime.sh	199
 scripts/test-uninstall-routines.sh	107
 scripts/test-uninstall-standalone.sh	248
 scripts/test-uninstall-ux.sh	113
-scripts/test-uninstall.sh	567
+scripts/test-uninstall.sh	272
 scripts/test-worktree-orphans.sh	24
 scripts/test-worktree-verbs.sh	17
 scripts/testing/test-documented-commands.sh	115
@@ -380,6 +379,7 @@ nonlinux22w=$(awk '/^SKIP_LIST_NON_LINUX="$/{f=1; next} f && /^"$/{exit} f && /^
 # required tool the host lacks: on a real macOS runner flock is absent, so
 # test-worker-doc-lock.sh is a capability [SKIP] there (run 41010394001) and is
 # expected unplaced, which no Linux host would otherwise show.
+deny22w=$(awk '!/^[[:space:]]*(#|$)/ { print $1 }' "$RST_FIXTURE_DIR/parallel-deny.txt")
 for os22w in "" Darwin Darwin+notool Linux+notool; do
 # Both +notool passes inject a tool a Linux host has but a macOS host lacks. On a
 # real macOS runner flock is already absent, so its real and Darwin passes show
@@ -404,8 +404,12 @@ for _i in 1 2 3 4 5 6 7 8; do
   while IFS= read -r _p; do
     [ -n "$_p" ] || continue
     _s=$(awk -F'\t' -v k="${_p#"$sb22w"/stubs/}" '$1 == k { print $2 + 0; exit }' "$fix22w")
-    _t=$(( _t + ${_s:-0} ))
     [ -n "$_s" ] && n22w=$((n22w + 1))
+    while IFS= read -r _g; do
+      # shellcheck disable=SC2254  # the list entries are patterns
+      case "/${_p#"$sb22w"/stubs/}" in $_g) _s=$(( ${_s:-0} * 4 )); break ;; esac
+    done <<< "$deny22w"
+    _t=$(( _t + ${_s:-0} ))
     [ "${_s:-0}" -gt "$max22w" ] && max22w=${_s:-0}
   done <<< "$(run_lines "$_out")"
   tot22w=$((tot22w + _t))

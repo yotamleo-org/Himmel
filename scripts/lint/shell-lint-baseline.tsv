@@ -755,7 +755,7 @@ scripts/test-cr-marker-sweep.sh	mktemp	1
 scripts/test-doctor-cadence.sh	mktemp	1
 scripts/test-e2e-symmetry.sh	mktemp	1
 scripts/test-handover-link.sh	mktemp	1
-scripts/test-himmel-doctor.sh	mktemp	82
+scripts/test-himmel-doctor.sh	mktemp	77
 scripts/test-himmel-update-axis-b.sh	mktemp	1
 scripts/test-himmel-update-chain.sh	errexit	1
 scripts/test-himmel-update-chain.sh	mktemp	1

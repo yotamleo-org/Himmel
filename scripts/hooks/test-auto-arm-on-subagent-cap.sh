@@ -448,35 +448,37 @@ fi
 rm -f "$ARM_LOG"
 
 echo "Test 23: Mode A snapshot resolves via hook_dir git root, not session cwd"
-# Create a fake worktree-like git repo with a handovers/ dir as the session cwd.
-# HANDOVER_DIR pinned EMPTY (Mode A): the suite may run on a Mode B machine whose
-# launching shell exports the real HANDOVER_DIR. handover_root would then — by
-# design — redirect the snapshot to the external state repo, which both
-# invalidates this Mode A premise and drops a test snapshot into the real
-# handover root. Empty is treated as unset by handover_root, pinning Mode A.
+# The hook runs from a throwaway repo that holds its own copy of the hook, the
+# libs it sources and a handovers/ dir, so the snapshot never reaches the real
+# checkout. HANDOVER_DIR is pinned EMPTY (Mode A) and the config and cache dirs
+# the hook's .env loader reads are pinned empty too: an empty HANDOVER_DIR counts
+# as unset, so the loader would otherwise fill it from the caller's himmel.conf
+# and redirect the snapshot to that handover root.
 # The hook must use handover_root from hook_dir's git root, not the session
-# cwd. The real repo containing the hook (scripts/hooks/) has a handovers/ dir
-# (present in this checkout); the fake cwd repo must NOT attract the snapshot.
+# cwd; the fake cwd repo has its own handovers/ and must NOT attract the snapshot.
 S="$TMP/s23"; mkdir -p "$S"
+HOOK_REPO="$TMP/hook-repo"
+mkdir -p "$HOOK_REPO/scripts/hooks" "$HOOK_REPO/scripts/lib" "$HOOK_REPO/handovers" "$TMP/conf23" "$TMP/cache23"
+git init -q "$HOOK_REPO" 2>/dev/null || true
+cp "$HOOK" "$HOOK_REPO/scripts/hooks/"
+for lib in prim.sh canon-path.sh py-armor.sh load-dotenv.sh handover-path.sh; do
+    cp "$(dirname "$HOOK")/../lib/$lib" "$HOOK_REPO/scripts/lib/"
+done
 FAKE_REPO="$TMP/fake-git-repo"; mkdir -p "$FAKE_REPO"
 git init -q "$FAKE_REPO" 2>/dev/null || true
 mkdir -p "$FAKE_REPO/handovers"
 rm -f "$ARM_LOG"
-# hook_dir is the scripts/hooks dir in the real worktree checkout (where $HOOK lives).
-# That real checkout's git root has a handovers/ dir; the hook should write there.
-REAL_HOOK_GIT_ROOT="$(git -C "$(dirname "$HOOK")" rev-parse --show-toplevel 2>/dev/null || echo "")"
-REAL_HANDOVERS="$REAL_HOOK_GIT_ROOT/handovers"
 (
     cd "$FAKE_REPO" || exit 1
     printf '%s\n' "$(cap_payload 'sid-023')" | \
         AUTO_ARM_STATE_DIR="$S" \
         AUTO_ARM_BIN="$ARM_STUB" ARM_LOG_PATH="$ARM_LOG" \
         HANDOVER_DIR="" \
+        HIMMEL_CONFIG_DIR="$TMP/conf23" HIMMELCTL_CACHE_DIR="$TMP/cache23" \
         CLAUDE_PROJECT_DIR="" \
-        bash "$HOOK" >/dev/null 2>"$STDERR_LOG"
+        bash "$HOOK_REPO/scripts/hooks/auto-arm-on-subagent-cap.sh" >/dev/null 2>"$STDERR_LOG"
 )
-# rc may be 2 (armed) or 0/1 if handovers dir was unresolvable; we only assert
-# snapshot NOT in fake-repo/handovers (the cwd-leak direction).
+assert_rc "hook-repo run exits 2 (arm fires)" 2 $?
 fake_snap_count=$(count_glob "$FAKE_REPO/handovers" 'auto-arm-status-sub-*.md')
 if [ "$fake_snap_count" = "0" ]; then
     echo "  PASS  no snapshot leaked into fake cwd repo handovers (Mode A cwd-fix)"
@@ -485,18 +487,13 @@ else
     echo "  FAIL  snapshot leaked into fake cwd repo handovers — cwd bug still active (got $fake_snap_count)"
     fail=$((fail+1))
 fi
-# If real handovers/ exists, also verify it landed there.
-if [ -n "$REAL_HANDOVERS" ] && [ -d "$REAL_HANDOVERS" ]; then
-    real_snap_count=$(count_glob "$REAL_HANDOVERS" 'auto-arm-status-sub-sid-023*.md')
-    if [ "$real_snap_count" = "1" ]; then
-        echo "  PASS  snapshot landed in real hook repo handovers (Mode A path correct)"
-        pass=$((pass+1))
-    else
-        echo "  FAIL  snapshot not found in real hook repo handovers (got $real_snap_count in $REAL_HANDOVERS)"
-        fail=$((fail+1))
-    fi
-    # Cleanup the snapshot we just wrote into the actual repo handovers dir
-    rm -f "$REAL_HANDOVERS"/auto-arm-status-sub-sid-023*.md 2>/dev/null || true
+hook_snap_count=$(count_glob "$HOOK_REPO/handovers" 'auto-arm-status-sub-sid-023*.md')
+if [ "$hook_snap_count" = "1" ]; then
+    echo "  PASS  snapshot landed in the hook repo handovers (Mode A path correct)"
+    pass=$((pass+1))
+else
+    echo "  FAIL  snapshot not found in the hook repo handovers (got $hook_snap_count in $HOOK_REPO/handovers)"
+    fail=$((fail+1))
 fi
 rm -f "$ARM_LOG"
 

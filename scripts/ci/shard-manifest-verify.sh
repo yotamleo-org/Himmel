@@ -172,6 +172,7 @@ acct=$( { grep '^suite ' "$selection" | sed 's/^suite /sel /'
           printf '%s\n' "$disc_lines"
           [ -z "$quar_lines" ] || printf '%s\n' "$quar_lines"
           printf '%s' "$bodies"; } | awk -v mode="$mode" -v tier="${SUITE_TIER_MODE:-}" '
+  function unselected_quarantine_skipped(p) { return mode == "impacted" && tier == "pr" && (p in quar) && !(p in sel) && (p in skipped) }
   $1 == "sel"   { sel[$2] = 1; order[++nsel] = $2; next }
   $1 == "ptier" { ptier[$2] = 1; next }
   $1 == "treadable" { treadable = 1; next }
@@ -195,7 +196,7 @@ acct=$( { grep '^suite ' "$selection" | sed 's/^suite /sel /'
     }
     if (mode != "impacted" || tier == "pr") {
       for (i = 1; i <= ndisc; i++)
-        if (!(dorder[i] in runs)) printf "FAIL: %s never ran on any shard, though discovery lists it to run here\n", dorder[i]
+        if (!(dorder[i] in runs) && !unselected_quarantine_skipped(dorder[i])) printf "FAIL: %s never ran on any shard, though discovery lists it to run here\n", dorder[i]
     }
     if (mode == "impacted") for (i = 1; i <= nsel; i++) {
       p = order[i]

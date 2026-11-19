@@ -65,6 +65,11 @@ scripts/lib/test-worktree-inuse.sh
 scripts/handover/chief-kit/test-chief-kit-e2e.sh
 scripts/handover/chief-kit/test-cut-tag.sh
 scripts/handover/chief-kit/test-go.sh
+scripts/handover/chief-kit/test-ready-check-b.sh
+scripts/handover/chief-kit/test-ready-check-c.sh
+scripts/handover/chief-kit/test-ready-check-d.sh
+scripts/handover/chief-kit/test-ready-check-e.sh
+scripts/handover/chief-kit/test-ready-check-f.sh
 scripts/handover/chief-kit/test-ready-check.sh
 scripts/handover/chief-kit/test-shepherd.sh
 scripts/handover/test-arm-resume-1879.sh
@@ -73,6 +78,7 @@ scripts/handover/test-arm-resume-wrapper-coverage.sh
 scripts/handover/test-handover-root-dotenv.sh
 scripts/handover/test-worker-handoff-threshold-docs.sh
 scripts/handover/test-merge-forward-check.sh
+scripts/handover/test-merge-on-green-b.sh
 scripts/handover/test-merge-on-green.sh
 scripts/handover/test-pr-merge.sh
 scripts/handover/test-suite-coverage.sh
@@ -156,6 +162,7 @@ scripts/test-e2e-symmetry.sh
 scripts/test-himmel-update-chain.sh
 scripts/test-himmel-update-check.sh
 scripts/test-merge-public-on-green.sh
+scripts/test-uninstall-b.sh
 scripts/test-uninstall.sh
 scripts/test-uninstall-ux.sh
 scripts/test-vm-e2e-mode-guard.sh

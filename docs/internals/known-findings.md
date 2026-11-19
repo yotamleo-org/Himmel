@@ -18,7 +18,7 @@ three places it feeds. The JSON is the source of truth; this page is the map.
 | `globs` | which changed files the class applies to |
 | `match` | optional: case-insensitive JS regex over the ledger finding text; with `globs` it decides which ledger findings the ladder attributes to the class (no `match` = skipped by the ladder proposals) |
 | `platform` | optional: `"windows"` = never proposed for promotion |
-| `detector` | deterministic matcher for `--diff` (added-line ERE, twin-missing, no-test-change, removed-flag-in-docs, md-fence-no-lang, hook-header-no-fail-direction, hook-no-bypass); `null` = prompt-only class |
+| `detector` | deterministic matcher for `--diff` (added-line ERE, twin-missing, no-test-change, removed-flag-in-docs, md-fence-no-lang, hook-header-no-fail-direction, hook-no-bypass, base-history-gate = the history-comment gate with the base ref's gate and allow list, as CI runs it); `null` = prompt-only class |
 | `canonical` | the fix, or the rebuttal to paste, in one paragraph |
 | `coverage` | what already enforces it structurally (shell-lint rule, `.coderabbit.yaml` instruction, hook) and the gap, with ticket ids |
 | `prompt` | `true` = rendered into every diff-mode critic prompt as "already adjudicated" |
@@ -158,6 +158,7 @@ It is lean-invoke, not a hook, and changes nothing but that file. Tests:
 | `non-hermetic-test-env-leak` | checklist | prompt | ledger | — | a test reads an env var, HOME or live host state its setup never sets |
 | `vendored-file-local-edit` | fix | prompt | cr-app-comments | — | a vendored upstream file edited in place instead of through the upstream-fix-and-revendor process |
 | `docs-component-local-carveout` | rebuttal | prompt | cr-app-comments | — | component-local operational docs flagged for not living under docs/luna/ |
+| `base-history-gate-miss` | fix | advisory | ci-failure | base-history-gate | ticket key on a path the BASE branch's allow list does not cover (CI lint red after a green local run) |
 
 The table omits `sh-ps1-twin-drift` (a twin-file checklist whose title names a dropped platform, so the dropped-terms docs test rejects the row); `--list` prints it.
 

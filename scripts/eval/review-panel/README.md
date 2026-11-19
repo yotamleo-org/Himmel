@@ -18,7 +18,7 @@ not measured here.
 | `key/seeds.json` | the answer key: per case its twin `pair`, `kind` (seeded / clean), `split` (open / sealed) and `defects` (`id`, `class`, `file`, new-file `line`), plus a `canary` string |
 | `score.py` | `lint` (fixture/key integrity + leak lint) and `score` (matcher, metrics, eval-runs row) |
 | `run.sh` | one sweep: lint, panel per fixture, score, one ledger row |
-| `test-review-panel.sh` | the suite: canned critic outputs and a stub panel, no model call |
+| `test-review-panel.sh`, `test-review-panel-b.sh`, `test_review_panel_lib.sh` | the suite in two parts and their shared setup: canned critic outputs and a stub panel, no model call |
 | `cbs.txt`, `results.jsonl` | the critic behaviour set and the sweep rows the merge gate reads |
 | `harvest.py` | candidate review escapes from merged-PR history |
 
@@ -460,8 +460,9 @@ failure line says so.
    the fields and metrics it claims and printed `scorer identity unverified`; a
    value a scoring repair moved still differs. A row naming a scorer must name
    the running one.
-3. CI runs `scripts/ci/check-critic-eval.sh <base> HEAD` (the ci-quick
-   secret-scan step). HEAD is the PR's merge ref, so the gate's diff base is
+3. CI runs `scripts/ci/check-critic-eval.sh <base> HEAD` as the standalone
+   `critic-eval` job, which has no fail-fast twin, so a red gate never cancels
+   the run's other jobs. HEAD is the PR's merge ref, so the gate's diff base is
    `HEAD^1`, the main that ref was built on, not the event's `<base>`, which
    stays at the main the PR opened on; elsewhere the diff base is `<base>`.
    With no CBS path changed it passes; otherwise it runs
@@ -557,9 +558,15 @@ trust-reviewed GO (this directory is a trust path).
    number (`CHECK_CRITIC_EVAL_PR`, else the `refs/pull/<n>/merge` of
    `GITHUB_REF`) at its head (the head given; on CI's `refs/pull/<n>/merge`
    also the merge ref's second parent, which is the PR head), and prints a `BYPASS honoured` line with the decision and reason. A row
-   for another PR or another head does nothing. A malformed row (wrong column
+   for another PR, or for another head it does not carry to (below), does nothing. A malformed row (wrong column
    count, a non-numeric PR, a prefix under 7 hex digits, an empty decision or
    reason) fails the gate closed. A row lands by a chief-ruled change of its own.
+   A row also carries to a later head of the same PR: the row's head resolves
+   to a commit in the checkout, is an ancestor of the head, and no CBS path
+   (expanded at both ends), `cbs.txt`, `scripts/cr/known-findings.json` or
+   `scripts/cr/known-findings.sh` differs between the two. The gate then prints
+   a second `BYPASS carried to head` line. A head that does not resolve, is not
+   an ancestor, or changed any of those files falls through to the eval check.
 
 The hashes are of the merge ref: a later critic change on main changes the head
 `cbs_hash`, and also the base rows' `cbs_hash`, which is the diff base's

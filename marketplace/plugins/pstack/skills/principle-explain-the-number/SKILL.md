@@ -4,7 +4,7 @@ description: "Apply before you measure, and before you trust, report, or act on 
 disable-model-invocation: true
 ---
 
-<!-- Vendored from cursor/plugins pstack/skills/principle-explain-the-number/SKILL.md at 4dd1d05818d19792e7cd6e818f1667f95f7e1dbe (MIT, (c) 2026 Lauren Tan; ../../LICENSE). HIMMEL-5803. Deviations: the link to `principle-prove-it-works` (not shipped here) is plain text. -->
+<!-- Vendored from cursor/plugins pstack/skills/principle-explain-the-number/SKILL.md at bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7 (MIT, (c) 2026 Lauren Tan; ../../LICENSE). HIMMEL-5803. Deviations: the link to `principle-prove-it-works` (not shipped here) is plain text. -->
 
 # Explain the Number
 

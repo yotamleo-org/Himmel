@@ -11,6 +11,7 @@
 #   4. git shas and sha256 digests (base/head shas, GO mac= lines)
 #   5. RED rows: AWS key, GitHub PAT, generic api key, grammar-prefixed secrets
 #   6. one grammar: the toml rule, vault-stall CLOSED_SHAPES and the doc agree
+#   7. quoted test-fixture text (fixture stems, small counters) scans clean
 # Needs gitleaks; CI shards put the pinned binary on PATH. Run:
 #   bash scripts/handover/chief-kit/test-handover-token-grammar.sh
 set -u
@@ -141,6 +142,27 @@ upper_hex="3F9A7C2E5B8D1046AE""93C7F25D80B1E64A9C37D2"
 caught "upper-case 40-char token" "secret = $upper_hex"
 caught "secret in the label slot" "token=S-$gen-abcd"
 caught "short secret in the label slot" "token=Z-$short-1a2b3c4d"
+caught "secret after a fixture segment" "key = \"wq-fixture-$gen\""
+lowsec="q7xk2mz9""wp4t"
+caught "lowercase secret after a fixture segment" "secret = \"fixture-$lowsec\""
+caught "split secret after a fixture segment" "secret = \"fixture-a8k2m9x7q3wz-p4n7r2v8t5yb-k3j9w2q7z1xm\""
+# 41 body characters, so the rule's match takes in the trailing =0.
+duffel="duffel_""live_zx8ql2vn7pr4ty6wk9mb3""cf5hj1sd0gqab3de5fg7"
+caught "provider token shaped as a counter" "$duffel=0"
+caught "high-entropy counter value" "secret_count=$gen"
+
+# --- 7. quoted test-fixture text -----------------------------------------------
+# Lines copied from the 2026-11-18 luna stall, assembled at run time so the
+# repo's own gitleaks scan of this file sees no finding.
+counter="launch_""markers=0"
+stem="-fix""ture-epoch1"
+printf '%s\n' "Prose said \"keys scrubbed, \`$counter\`\" in a session note." \
+    "reset, the stem \`<key>$stem\` and epoch-1 spec" > "$WORK/fixture.md"
+grep -qF -- "$counter" "$WORK/fixture.md" && grep -qF -- "<key>$stem" "$WORK/fixture.md" \
+    || fail "section 7 fixture file was not written with both lines"
+scan "$WORK/fixture.md"; rc=$?
+[ "$rc" -eq 0 ] && pass "quoted test-fixture text scans clean" || fail "quoted test-fixture text: gitleaks rc=$rc, expected 0"
+
 n=0
 for t in "S-N2802-7023775e$gen" "ab-$gen-pid1" "$aws" "$pat" "S-$gen-abcd" "Z-$short-1a2b3c4d" "S-N2802_${gen}-abcd"; do
     n=$((n + 1))

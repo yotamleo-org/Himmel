@@ -382,11 +382,15 @@ _suite_timeout_for() {
       # 40441105007; PR 4021 job 121981449917). 1500s is that x2.5 (the
       # loaded-budget rule); its five siblings keep the default.
       printf '1500' ;;
-    scripts/handover/chief-kit/test-ready-check.sh|*/scripts/handover/chief-kit/test-ready-check.sh)
+    scripts/handover/chief-kit/test-ready-check.sh|scripts/handover/chief-kit/test-ready-check-[b-f].sh|*/scripts/handover/chief-kit/test-ready-check.sh|*/scripts/handover/chief-kit/test-ready-check-[b-f].sh)
       # ~200 runs of ready-check.sh, each now also reading the merge's gates 4 and 4b (item 18): 802s alone on an
       # idle box, 1206s killed at the 600s default under CI load (PR 4733, 1.63x). 2700s is the loaded figure
       # (802 x 1.63 = 1307) x2 (the loaded-budget rule).
       printf '2700' ;;
+    scripts/handover/chief-kit/test-chief-wait.sh|*/scripts/handover/chief-kit/test-chief-wait.sh)
+      printf '1200' ;;
+    scripts/handover/chief-kit/test-chief-wait-b.sh|*/scripts/handover/chief-kit/test-chief-wait-b.sh)
+      printf '1200' ;;
     scripts/eval/review-panel/test-review-panel.sh|*/scripts/eval/review-panel/test-review-panel.sh)
       # 60 real case repos: 291s local, killed at 2 x 600s on Linux CI (PR 4477
       # shard 12). 1800s is above 6x local (the loaded-budget rule).
@@ -419,7 +423,7 @@ _suite_timeout_for() {
       # covers the worst observed loaded run (1992s, Task 0 under harness
       # load) with headroom.
       printf '2350' ;;
-    scripts/test-uninstall.sh|*/scripts/test-uninstall.sh)
+    scripts/test-uninstall.sh|scripts/test-uninstall-b.sh|*/scripts/test-uninstall.sh|*/scripts/test-uninstall-b.sh)
       # Os-verify run 36628311643 (macOS): every assertion passed
       # but the runner's watchdog killed it at 604s against the 600s default
       # (CAP EXCEEDED); it takes ~211s on Linux. 1200s is ~2x the macOS figure;
@@ -431,7 +435,7 @@ _suite_timeout_for() {
       # Linux. Same 1200s as test-uninstall.sh; SUITE_RUN_BUDGET stays the
       # runaway backstop.
       printf '1200' ;;
-    scripts/test-himmel-doctor.sh|*/scripts/test-himmel-doctor.sh)
+    scripts/test-himmel-doctor.sh|scripts/test-himmel-doctor-[bc].sh|*/scripts/test-himmel-doctor.sh|*/scripts/test-himmel-doctor-[bc].sh)
       # PR 4300 shard 3: every assertion passing, killed at 603s against
       # the 600s default (CAP EXCEEDED); 508s on the ledger. 603s is a
       # truncation floor, so 1200s is that x2 (the loaded-budget rule);
@@ -866,6 +870,7 @@ scripts/handover/chief-kit/test-chief-wait-b.sh  # skipped off-Linux only — se
 scripts/handover/chief-kit/test-board.sh           # skipped off-Linux only — same chief-kit Linux-only-by-design PLATFORM GUARD as test-chief-wait.sh above (board.mjs:21: \"tick.sh reads pgrep, atq and the konsole launch logs\"); same reason as the other off-Linux skips in this list
 scripts/handover/chief-kit/test-tick.sh            # skipped off-Linux only — same chief-kit Linux-only-by-design PLATFORM GUARD as test-chief-wait.sh above (tick.sh:12-14: \"pgrep, atq, /tmp suite locks, and claudex/konsole\"); same reason as the other off-Linux skips in this list
 scripts/handover/chief-kit/test-tick-fields.sh     # skipped off-Linux only — second half of test-tick.sh above (split at the fails= section so neither half nears the 600 s cap), same chief-kit Linux-only-by-design PLATFORM GUARD and the same tick.sh; both halves source tick-test-fixture.sh, a helper that is not a suite; same reason as the other off-Linux skips in this list
+scripts/handover/chief-kit/test-tick-b.sh          # skipped off-Linux only — second part of test-tick.sh above (the rows from the lock queue-lock section on), same chief-kit Linux-only-by-design PLATFORM GUARD and the same tick.sh; it sources tick-test-fixture.sh like the other parts; same reason as the other off-Linux skips in this list
 scripts/handover/chief-kit/test-chief-wait-r0.sh  # skipped off-Linux only — its own header (test-chief-wait-r0.sh:25) says \"Linux-only: chief-wait.sh\"; the kit PLATFORM GUARD is chief-wait.sh:208; same reason as the other off-Linux skips in this list
 scripts/handover/chief-kit/test-denied-launch-alert.sh  # skipped off-Linux only — GNU \`date -u -d\` (test-denied-launch-alert.sh:38) and \`stat -c\` (:87) are both marked \`gnu-ok: Linux-only kit\`; kit PLATFORM GUARD chief-wait.sh:208; same reason as the other off-Linux skips in this list
 scripts/handover/chief-kit/test-vault-status.sh    # skipped off-Linux only — its own header (test-vault-status.sh:6) is \`PLATFORM GUARD: the chief kit is Linux-only\` and it drives GNU \`touch -d '50 minutes ago'\` / \`date -d\` (:43-105); same reason as the other off-Linux skips in this list
@@ -939,9 +944,9 @@ case "$SUITE_TIER_MODE" in
 esac
 # SUITE_TIER_MODE=pr reads scripts/ci/suite-tiers.tsv (path<TAB>tier<TAB>reason)
 # instead of the table above: a suite runs when it is impacted, when its tier is
-# pr, flow or quarantine, or when it has no row; a local suite runs only when
-# impacted. A quarantine suite that fails is reported and never fails the run,
-# in every mode (the other modes read only its quarantine rows).
+# pr or flow, or when it has no row; a local suite runs only when impacted. A
+# quarantine suite that fails is reported and never fails the run, in every
+# mode (the other modes read only its quarantine rows).
 # SUITE_TIERS_TSV overrides the path, the seam tier-replay.sh drives.
 tiers_local_nl=""
 tiers_quarantine_nl=""
@@ -3670,6 +3675,15 @@ _suite_no_retry() {
   [ -n "$_hdr" ]
 }
 
+_suite_quarantined() {
+  case "$tiers_quarantine_nl" in
+    *"
+${1#"$tier_repo_root"/}
+"*) return 0 ;;
+  esac
+  return 1
+}
+
 # _flake_json_str — one stdin line as the inside of a JSON string.
 _flake_json_str() {
   tr '\n\t' '  ' | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g'
@@ -3943,6 +3957,16 @@ ${_key#"$tier_repo_root"/}
           ;;
       esac
     fi
+    if [ "$impacted_active" -eq 1 ] && [ "$_not_impacted" -eq 1 ]; then
+      case "$tiers_quarantine_nl" in
+        *"
+${_key#"$tier_repo_root"/}
+"*)
+          _filter_reason="tier: quarantine (SUITE_TIER_MODE=pr skips a quarantine suite the impacted selection does not reach)"
+          return 0
+          ;;
+      esac
+    fi
   elif tier_lookup "$_key" "$_relpath"; then
     if [ "$SUITE_TIER_MODE" = "fast" ]; then
       _filter_reason="tier: extended (SUITE_TIER_MODE=fast) — ${_tier_reason}"
@@ -4020,6 +4044,27 @@ ${_key#"$tier_repo_root"/}
 # harvests out of a job log — so the spelling written and the spelling matched
 # cannot drift apart. $SUITE_DURATIONS overrides the committed ledger path.
 # --------------------------------------------------------------------------
+parallel_deny_file="${SUITE_PARALLEL_DENY:-$REPO_ROOT/scripts/ci/parallel-deny.txt}"
+parallel_deny=""
+_parallel_deny_load() {
+  local _pd_glob _pd_reason
+  [ -r "$parallel_deny_file" ] || return 1
+  parallel_deny=""
+  while read -r _pd_glob _pd_reason || [ -n "$_pd_glob" ]; do
+    case "$_pd_glob" in ''|'#'*) continue ;; esac
+    parallel_deny="${parallel_deny}${_pd_glob}
+"
+  done < "$parallel_deny_file"
+}
+_suite_parallel_denied() {
+  local _p
+  while IFS= read -r _p; do
+    [ -n "$_p" ] || continue
+    # shellcheck disable=SC2254  # the list entries are patterns
+    case "/$1" in $_p) return 0 ;; esac
+  done <<< "$parallel_deny"
+  return 1
+}
 shard_assignment=""   # newline-delimited suite paths belonging to THIS shard
 shard_binpack=0       # 1 = bin-pack in force; 0 = the round-robin fallback
 _shard_nl=$'\n'
@@ -4048,6 +4093,11 @@ if [ "$shard_total" -gt 0 ]; then
     # only, which is what makes it the trustworthy side of check 2.
     _shard_eligible=""
     _shard_eligible_n=0
+    _shard_alone=""
+    if ! _parallel_deny_load; then
+      echo "ERROR: --shard: the parallel deny-list $parallel_deny_file is unreadable — refusing to report green. Weighting run-alone suites on some shards and not others would put two partitions in force." >&2
+      exit 1
+    fi
     while IFS= read -r _shard_suite <&4; do
       [ -n "$_shard_suite" ] || continue
       _shard_rel="${_shard_suite#"${scan}"/}"
@@ -4055,9 +4105,14 @@ if [ "$shard_total" -gt 0 ]; then
         continue
       fi
       _shard_eligible="${_shard_eligible}${_shard_suite}${_shard_nl}"
+      if _suite_parallel_denied "${scan_resolved}/${_shard_rel}"; then
+        _shard_alone="${_shard_alone}${_shard_suite}${_shard_nl}"
+      fi
       _shard_eligible_n=$((_shard_eligible_n + 1))
     done 4< "$suites_file"
 
+    # A constant, not the local CPU count: every shard must compute one partition.
+    _shard_lanes=4
     # Join -> sort -> pack, one pipeline, no rc checks. The median an absent
     # suite is given is computed INSIDE the join rather than by a probe of its
     # own: a probe that died on one runner would hand that runner a different
@@ -4077,7 +4132,8 @@ if [ "$shard_total" -gt 0 ]; then
       _shard_ledger_final_nl=0
     fi
     _shard_bytes_file=$(mktemp "${TMPDIR:-/tmp}/rst-shard-bytes.XXXXXX")
-    _shard_plan=$(_SHARD_ELIGIBLE="$_shard_eligible" _SHARD_LEDGER="$_shard_ledger" \
+    _shard_durations_file=$(mktemp "${TMPDIR:-/tmp}/rst-shard-durations.XXXXXX") || { echo "ERROR: --shard: cannot create the duration scratch file — refusing to report green." >&2; exit 1; }
+    _shard_plan=$(_SHARD_ELIGIBLE="$_shard_eligible" _SHARD_ALONE="$_shard_alone" _SHARD_LANES="$_shard_lanes" _SHARD_LEDGER="$_shard_ledger" \
       _SHARD_BYTES_FILE="$_shard_bytes_file" _SHARD_FINAL_NL="$_shard_ledger_final_nl" \
       LC_ALL=C awk '
           # LC_ALL=C: a UTF-8 locale makes length() count CHARACTERS, so a
@@ -4107,11 +4163,14 @@ if [ "$shard_total" -gt 0 ]; then
               printf "run-shell-tests.sh: --shard: duration ledger %s parsed 0 rows — partition degenerates to round-robin; refresh scripts/ci/suite-durations.tsv\n", \
                 ENVIRON["_SHARD_LEDGER"] > "/dev/stderr"
             }
+            na = split(ENVIRON["_SHARD_ALONE"], alone_rows, "\n")
+            for (i = 1; i <= na; i++) if (alone_rows[i] != "") alone[alone_rows[i]] = 1
             n = split(ENVIRON["_SHARD_ELIGIBLE"], rows, "\n")
             for (i = 1; i <= n; i++) {
               if (rows[i] == "") continue
               d = (rows[i] in dur) ? dur[rows[i]] : med
               if (d < 1) d = 1
+              if (rows[i] in alone) d *= ENVIRON["_SHARD_LANES"]
               printf "%012d\t%s\n", d, rows[i]
             }
             # Bytes actually READ, independent of whether every row parsed — a
@@ -4125,6 +4184,7 @@ if [ "$shard_total" -gt 0 ]; then
             close(ENVIRON["_SHARD_BYTES_FILE"])
           }
         ' "$_shard_ledger" \
+      | tee "$_shard_durations_file" \
       | LC_ALL=C sort -t "$_shard_tab" -k1,1r -k2,2 \
       | awk -F'\t' -v n="$shard_total" '
           BEGIN { for (i = 0; i < n; i++) load[i] = 0 }
@@ -4235,7 +4295,7 @@ fi
 # suite.
 live_root=""
 # Globs matched against "/<suite path>"; SUITE_LIVE_HARD replaces the list.
-live_hard="${SUITE_LIVE_HARD-*/scripts/handover/test-arm-resume.sh */scripts/handover/test-arm-resume-cron.sh */scripts/handover/test-merge-on-green.sh */scripts/ci/test-run-shell-tests*.sh}"
+live_hard="${SUITE_LIVE_HARD-*/scripts/handover/test-arm-resume.sh */scripts/handover/test-arm-resume-cron.sh */scripts/handover/test-merge-on-green.sh */scripts/handover/test-merge-on-green-b.sh */scripts/ci/test-run-shell-tests*.sh}"
 _live_is_hard() {
   local _p _pats
   [ -n "$live_hard" ] || return 1
@@ -4414,32 +4474,37 @@ elif [ "${GITHUB_ACTIONS:-}" = true ] && [ "${HIMMEL_TEST_FIXTURE:-}" != 1 ] && 
 else
   suite_jobs=1
 fi
-# Suites that must run alone (fixed ports, shared global state): one glob per
-# line, matched against "/<resolved suite path>" (suite_key), then a reason. Unreadable list in a
-# parallel run: fall back to serial rather than guess which suites are safe.
-parallel_deny_file="${SUITE_PARALLEL_DENY:-$REPO_ROOT/scripts/ci/parallel-deny.txt}"
-parallel_deny=""
 if [ "$suite_jobs" -gt 1 ] && [ "$list_only" -eq 0 ]; then
-  if [ -r "$parallel_deny_file" ]; then
-    while read -r _pd_glob _pd_reason || [ -n "$_pd_glob" ]; do
-      case "$_pd_glob" in ''|'#'*) continue ;; esac
-      parallel_deny="${parallel_deny}${_pd_glob}
-"
-    done < "$parallel_deny_file"
-  else
+  if ! _parallel_deny_load; then
     printf 'WARN: parallel deny-list %s is unreadable — running suites one at a time\n' "$parallel_deny_file" >&2
     suite_jobs=1
   fi
 fi
-_suite_parallel_denied() {
-  local _p
-  while IFS= read -r _p; do
-    [ -n "$_p" ] || continue
-    # shellcheck disable=SC2254  # the list entries are patterns
-    case "/$1" in $_p) return 0 ;; esac
-  done <<< "$parallel_deny"
-  return 1
+_suites_longest_first() {
+  [ -n "$1" ] || return 0
+  local _sorted
+  _sorted=$(printf '%s' "$1" \
+    | LC_ALL=C awk -F'\t' 'FILENAME == ARGV[1] { d[$2] = $1; next }
+        { printf "%s\t%s\n", ($0 in d) ? d[$0] : "000000000000", $0 }' "$_shard_durations_file" - \
+    | LC_ALL=C sort -t "$_shard_tab" -k1,1r -k2,2 \
+    | cut -f2-) && [ -n "$_sorted" ] && printf '%s\n' "$_sorted" || printf '%s' "$1"
 }
+_suites_run_alone_first() {
+  local _s _alone="" _rest=""
+  while IFS= read -r _s; do
+    [ -n "$_s" ] || continue
+    if _suite_parallel_denied "${scan_resolved}/${_s#"${scan}"/}"; then
+      _alone+="$_s"$'\n'
+    else
+      _rest+="$_s"$'\n'
+    fi
+  done < "$suites_file"
+  { _suites_longest_first "$_alone"; _suites_longest_first "$_rest"; } > "$suites_file"
+}
+if [ "$suite_jobs" -gt 1 ] && [ "$list_only" -eq 0 ] && [ "$shard_total" -gt 0 ] && [ "$shard_binpack" -eq 1 ]; then
+  _suites_run_alone_first
+fi
+rm -f "${_shard_durations_file:-}"
 # Lane 0 reuses live_root; every other lane gets its own sentinel root.
 lane_root=() lane_pid=() lane_out=()
 live_lane_roots=""
@@ -4630,6 +4695,14 @@ WITNESSMSGS
 
   # A cap overrun is retried too: on a loaded runner it is as likely slowness as
   # a defect, and one rerun in the same job costs less than a red main.
+  if [ "$rc" -ne 0 ] && [ "$live_fail" -eq 0 ] && [ "$_attempt" -eq 1 ] && _suite_quarantined "$suite_key"; then
+    if [ "$capped" -eq 1 ]; then
+      printf '[NO-RETRY] %s is tier quarantine and exceeded its %ss cap; a rerun cannot change the run'\''s result\n' "$suite" "$suite_timeout"
+    else
+      printf '[NO-RETRY] %s is tier quarantine and failed (rc=%s); a rerun cannot change the run'\''s result\n' "$suite" "$rc"
+    fi
+    break
+  fi
   if [ "$rc" -ne 0 ] && [ "$live_fail" -eq 0 ] && [ "$_attempt" -eq 1 ] && ! _suite_no_retry "$suite"; then
     if [ "$capped" -eq 1 ] && [ $(( SECONDS - run_start + suite_timeout )) -ge "$retry_budget" ]; then
       printf '[NO-RETRY] %s exceeded its %ss cap; a rerun cannot finish inside the run'\''s %ss budget (%ss left)\n' \
@@ -4677,12 +4750,8 @@ _suite_account() {
   manifest_add "ran $rc ${mf_rel:-}"
   suite_ledger_append "${suite_key#"$tier_repo_root"/}" "$rc" "$dur"
   _quar=0
-  if [ "$rc" -ne 0 ]; then
-    case "$tiers_quarantine_nl" in
-      *"
-${suite_key#"$tier_repo_root"/}
-"*) _quar=1 ;;
-    esac
+  if [ "$rc" -ne 0 ] && _suite_quarantined "$suite_key"; then
+    _quar=1
   fi
 
   if [ "$_quar" -eq 1 ]; then

@@ -1,7 +1,7 @@
 # pstack@himmel
 
 Ten opt-in skills vendored from [`cursor/plugins`](https://github.com/cursor/plugins)
-`pstack/` at `4dd1d05818d19792e7cd6e818f1667f95f7e1dbe` (0.15.36, MIT,
+`pstack/` at `bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7` (0.15.42, MIT,
 (c) 2026 Lauren Tan). Inventory and deviations: [`VENDORED.md`](VENDORED.md).
 The formal skills are vendored after a VM pilot found `/statechart` catches a
 planted lock bug at about the cost of our hand-written state search.

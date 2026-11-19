@@ -575,5 +575,21 @@ if [ "$RC" -eq 0 ] && [ "$OUT" = "$(printf 'scripts/fixtures/a.sh\nCHANGELOG.md\
     pass "exempt mode prints the paths under a whole-file row"
 else fail "exempt mode -> rc=$RC: $OUT"; fi
 
+echo "== 43. the test row: one test-path definition, shared with check-added-unwired.sh =="
+expect_allow "testlib- helper data" scripts/x/testlib-foo.sh "+mk ${H}-1"
+expect_allow "a *-cases/ fixture's data" scripts/guardrails/x-cases/a.sh "+mk ${H}-1"
+expect_block "a whole-line comment in a testlib- helper" scripts/x/testlib-foo.sh "+# ${H}-1 why"
+expect_block "a non-test helper's key" scripts/x/foo-lib.sh "+mk ${H}-1"
+mkdiff docs/x.md "+see ${H}-1"
+awk -F'\t' '$1 != "test"' "$LIST" > "$MR/scripts/lint/ticket-ref-allow.tsv" || fail "no test row: fixture setup failed"
+OUT="$(bash "$MRG" --diff "$T/d.diff" 2>&1)"; RC=$?
+if [ "$RC" -eq 2 ] && has "no test row"; then pass "a list without the test row exits 2"; else fail "no test row -> rc=$RC: $OUT"; fi
+{ cat "$LIST" && printf 'test\tdocs/\t\tsecond test row\n'; } > "$MR/scripts/lint/ticket-ref-allow.tsv" || fail "second test row: fixture setup failed"
+OUT="$(bash "$MRG" --diff "$T/d.diff" 2>&1)"; RC=$?
+if [ "$RC" -eq 2 ] && has "more than one test row"; then pass "a second test row exits 2"; else fail "second test row -> rc=$RC: $OUT"; fi
+{ printf 'test\t\t\tempty test row\n' && cat "$LIST"; } > "$MR/scripts/lint/ticket-ref-allow.tsv" || fail "empty test row: fixture setup failed"
+OUT="$(bash "$MRG" --diff "$T/d.diff" 2>&1)"; RC=$?
+if [ "$RC" -eq 2 ] && has "empty path pattern"; then pass "an empty test row before a valid one exits 2"; else fail "empty test row -> rc=$RC: $OUT"; fi
+
 echo "== $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]

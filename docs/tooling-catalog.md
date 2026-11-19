@@ -67,8 +67,8 @@ truth for presence; named profiles can still opt in. Full detail:
 | `plannotator-effective-html` | HTML design/UI artifact kit (design-artifact, html, html-diagram/-plan/-prototype/-wireframe) | ON-DEMAND — `design` profile only: measured 1 invocation in 1628 transcripts against ~630 tok/session cost, so it opts in per-dispatch instead of riding the ALWAYS tier |
 | `frontend-design` | Anthropic's frontend-design skill (official marketplace, local-path entry) | ON-DEMAND — `design` profile only; already cached; activation remains per profile |
 | `ui-ux-pro-max` | UI/UX design intelligence (7 skills), himmel entry pinned to upstream tag `v2.15.0` over HTTPS (replaces the old `ui-ux-pro-max@ui-ux-pro-max-skill` install; the operator script removes it) | ON-DEMAND, `design` core; catalog id `ui-ux-pro-max@himmel` |
-| `impeccable` | Design fluency skill (23 commands, 4 agents), himmel marketplace entry pinned to upstream tag `skill-v4.8.2` over HTTPS as a `git-subdir` source on `plugin/` (same pattern as the earlier plugin entries; a `url`+`path` source caches the whole repo and loses the agents/hooks) | ON-DEMAND — `design` profile only; replaces the user-scope `~/.claude/skills/impeccable` copy |
-| `find-docs` | `/find-docs`: current library, framework and API documentation lookup through the Context7 CLI (MIT, upstash/context7 `skills/find-docs`). himmel marketplace git-subdir entry pinned to upstream commit `681554c5d3a688c67879d02d4f01d79ffd15df13` over HTTPS (replaces the user-scope `~/.claude/skills/find-docs` copy, which ignored `enabledPlugins` and loaded in every session). Install: `claude plugin install find-docs@himmel` | ON-DEMAND — `user` profile (plus the operator profile); off in every other profile; catalog id `find-docs@himmel` |
+| `impeccable` | Design fluency skill (23 commands, 4 agents), himmel marketplace entry pinned to upstream tag `skill-v4.9.1` over HTTPS as a `git-subdir` source on `plugin/` (same pattern as the earlier plugin entries; a `url`+`path` source caches the whole repo and loses the agents/hooks) | ON-DEMAND — `design` profile only; replaces the user-scope `~/.claude/skills/impeccable` copy |
+| `find-docs` | `/find-docs`: current library, framework and API documentation lookup through the Context7 CLI (MIT, upstash/context7 `skills/find-docs`). himmel marketplace git-subdir entry pinned to upstream commit `4087030ad2dc16578130e2dab1e48ba735f8ea38` over HTTPS (replaces the user-scope `~/.claude/skills/find-docs` copy, which ignored `enabledPlugins` and loaded in every session). Install: `claude plugin install find-docs@himmel` | ON-DEMAND — `user` profile (plus the operator profile); off in every other profile; catalog id `find-docs@himmel` |
 | `emilkowalski-skills` | Emil Kowalski's design-engineering/animation skills: all 15 upstream skills load, including animation-performance (a marketplace `skills` list never restricts anything, so animate-expo, mobile-native and write-swift cannot be excluded without a fork). MIT, sha-pinned, `strict:false`, no skills list | ON-DEMAND, `design-motion` profile; catalog id `@himmel` |
 | `taste-skill-core` | Leonxlnx/taste-skill, all 13 upstream skills in ONE plugin (sha-pinned, `strict:true`; the former imagegen and styles split never restricted anything) | ON-DEMAND, `design` core |
 | `shadcn-mcp` | himmel wrapper plugin for the shadcn/ui registry MCP (`npx shadcn@4.21.0 mcp`, no API key; upstream ships no plugin) | ON-DEMAND, `design` core |
@@ -124,8 +124,8 @@ drift report; no marketplace install source or live setting is changed.
 | Plugin ID | Availability / default | Candidate profile | Refreshed target pin |
 |-----------|------------------------|-------------------|----------------------|
 | `superpowers@claude-plugins-official` | Available, off by default | `workflow-full` — upstream workflow kit, alternative to lean-skills | `obra/superpowers` `v7.0.2` (`22f0b463e7a5e579904dd6211a520321035526f7`) |
-| `mattpocock-skills@claude-plugins-official` | Available, off by default | `typescript-coach` — TypeScript/workflow coaching | `mattpocock/skills` HEAD `4ae2317ddb22b046e26455e4f9c9b3aaaf62212d` |
-| `coderabbit@claude-plugins-official` | Available, off by default | `review-coderabbit` — optional keyed review skills; credential decision remains open | `coderabbitai/skills` HEAD `ff41f14e326816d60672b89297697a1b8dabb2f8` |
+| `mattpocock-skills@claude-plugins-official` | Available, off by default | `typescript-coach` — TypeScript/workflow coaching | `mattpocock/skills` HEAD `5863806dd4e15c63174bee4e7515a4256792ecfa` |
+| `coderabbit@claude-plugins-official` | Available, off by default | `review-coderabbit` — optional keyed review skills; credential decision remains open | `coderabbitai/skills` HEAD `45bd1ae2c471cd861b8b6903f7dcab7c57aa0e59` |
 
 `scroll-world@scroll-world` also remains installed and off by default.
 
@@ -523,7 +523,7 @@ floor on the platform that actually runs the cadence.
 Prints a severity-grouped report (FAIL/WARN/INFO); `--file-issue
 [--repo owner/name]` files ONE deduped consolidated public GitHub issue (resolves
 the repo from `--repo` → `$HIMMEL_DOCTOR_ISSUE_REPO` → github origin). Exit 1 on any
-FAIL. Tests: `scripts/test-himmel-doctor.sh`, `scripts/lib/test-{resolve,run}-node.sh`.
+FAIL. Tests: `scripts/test-himmel-doctor{,-b,-c}.sh` (three parts sharing `scripts/tests/testlib-himmel-doctor.sh`), `scripts/lib/test-{resolve,run}-node.sh`.
 
 ---
 

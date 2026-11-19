@@ -1342,6 +1342,38 @@
         "learnings_uses": 0,
         "learnings_rows": 0
       }
+    },
+    {
+      "id": "base-history-gate-miss",
+      "kind": "fix",
+      "rung": "advisory",
+      "title": "ticket key on a path the BASE branch's allow list does not cover (CI lint red after a green local run)",
+      "source": "ci-failure",
+      "globs": [
+        "**"
+      ],
+      "detector": {
+        "type": "base-history-gate"
+      },
+      "learning_match": "ticket-ref-allow|history-comment gate",
+      "match": "ticket-ref-allow|history-comment gate|ticket id",
+      "canonical": "CI judges the history-comment gate with the base branch's gate, classifier and ticket-ref-allow.tsv, so a row added on the branch does not help the branch's own CI run, and the pre-commit and pre-push hooks that read the branch's own list pass. Keep the key off the line or on a path the base list already covers; only when a program reads the key, land the one-row allow-list change on the base branch first. Run `bash <himmel_dir>/scripts/cr/base-history-gate.sh` to see the same verdict before the first push.",
+      "coverage": "Detector: base-history-gate (base-history-gate.sh, the base copies of check-history-comments.sh, ticket-refs.awk and ticket-ref-allow.tsv over the branch range). Advisory in /pr-check step 2.8; CI's history-comment gate (PR range) is the blocking gate.",
+      "prompt": false,
+      "evidence": {
+        "ledger": {
+          "findings": 0,
+          "agreed": 0,
+          "disproved": 0,
+          "deferred": 0,
+          "other": 0,
+          "unadjudicated": 0,
+          "models": {},
+          "disproved_pct": null
+        },
+        "learnings_uses": 0,
+        "learnings_rows": 0
+      }
     }
   ],
   "learnings_export": {

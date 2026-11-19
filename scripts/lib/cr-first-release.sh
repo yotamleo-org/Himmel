@@ -10,7 +10,7 @@
 #   cr_first_release <pr> <head> [<owner/name>]
 #     Quiet (no output, rc 0): switch off or unset, fork PR, PR closed or head
 #       moved, head already released (a `ci:go` labeled event at or after the
-#       head commit, or a heavy job that actually ran at the head).
+#       head commit, or a heavy job of a pull_request run that actually ran at the head).
 #     CR-FIRST HOLD <reason> <age>        rc 1  (one line per reason)
 #     CR-FIRST HOLD degraded (<why>)      rc 3  (a read failed; never releases)
 #     CR-FIRST RELEASE <reason>           rc 0  (label removed then added; the remove
@@ -247,7 +247,7 @@ cr_first_switch_on() {
 cr_first_release() {
     local pr="${1:-}" head="${2:-}" repo="${3:-}" sw pull pinfo pstate psha pfork commit cdate cepoch age
     local checks_raw checks events cheap cstate csettled out grc holds="" line mapped state_line n_hold=0
-    local only_cr=0 slug reason
+    local only_cr=0 slug reason heavy_suites runs_raw runs_rc
     case "$pr" in ''|*[!0-9]*) echo "CR-FIRST ERROR usage: cr_first_release <pr> <head> [<owner/name>]"; return 2 ;; esac
     [ -n "$head" ] || { echo "CR-FIRST ERROR usage: cr_first_release <pr> <head> [<owner/name>]"; return 2; }
     command -v jq >/dev/null 2>&1 || return 0
@@ -278,12 +278,23 @@ cr_first_release() {
         || { echo "CR-FIRST HOLD degraded (cannot read check-runs at $head) $age"; return 3; }
     checks=$(printf '%s' "$checks_raw" | jq -s 'if all(.[]; type == "object") then {check_runs: [.[] | .check_runs[]?]} else error("bad") end' 2>/dev/null) \
         || { echo "CR-FIRST HOLD degraded (cannot parse check-runs at $head) $age"; return 3; }
-    # A heavy job that really ran at this head is a release already (a pull_request
-    # run before ci:go gating, or a hand label picked up by CI).
-    if printf '%s' "$checks" | jq -e --arg re "${CR_FIRST_HEAVY_RE:-^(bun-suites|node-suites|shell-unit-shard|shell-unit|lanes-and-trust-suites)}" \
+    heavy_suites=$(printf '%s' "$checks" | jq -c --arg re "${CR_FIRST_HEAVY_RE:-^(bun-suites|node-suites|shell-unit-shard|shell-unit|lanes-and-trust-suites)}" \
         '[.check_runs[] | select(.name | test($re))
-          | select(.status == "in_progress" or (.status == "completed" and (.conclusion // "") != "skipped"))] | length > 0' >/dev/null 2>&1; then
-        return 0
+          | select(.status == "in_progress" or (.status == "completed" and (.conclusion // "") != "skipped"))
+          | .check_suite.id // empty] | unique' 2>/dev/null) || heavy_suites="[]"
+    if [ "$heavy_suites" != "[]" ]; then
+        runs_raw=$(gh api --paginate "repos/$repo/actions/runs?head_sha=$head&event=pull_request&per_page=100" </dev/null 2>/dev/null) \
+            || { echo "CR-FIRST HOLD degraded (cannot read workflow runs at $head) $age"; return 3; }
+        runs_rc=0
+        printf '%s' "$runs_raw" | jq -se --argjson ids "$heavy_suites" \
+            'if length > 0 and all(.[]; type == "object" and (.workflow_runs | type == "array")) then . else error("bad") end
+             | [.[] | .workflow_runs[] | select(.event == "pull_request") | .check_suite_id] as $pr
+             | any($ids[]; . as $i | $pr | index($i) != null)' >/dev/null 2>&1 || runs_rc=$?
+        case "$runs_rc" in
+            0) return 0 ;;
+            1) ;;
+            *) echo "CR-FIRST HOLD degraded (cannot parse workflow runs at $head) $age"; return 3 ;;
+        esac
     fi
     # A `ci:go` event only belongs to this head if it is newer than the head's own
     # first check: the committer date alone misses an old commit pushed after a release.

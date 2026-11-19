@@ -62,8 +62,7 @@
 set -euo pipefail
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
-# pipeline (mirrors test-graphmap-cadence.sh / test-himmel-doctor.sh's own
-# helper of the same name). printf/echo-into-`grep -q` is a trap under this
+# pipeline. printf/echo-into-`grep -q` is a trap under this
 # file's `set -o pipefail`: grep -q exits the instant it matches, the
 # producer then takes SIGPIPE writing the remainder, and pipefail reports
 # the PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
@@ -1067,9 +1066,7 @@ chmod 000 "$WT4k/locked-untracked-dir"
 # unreadable to US right now. That covers root, Git Bash, an exotic
 # filesystem, and anything else we have not thought of, without enumerating
 # them -- and it cannot drift out of step with the mechanism the way an
-# `id -u` / $OSTYPE check would. Same shape as the C33 unreadable-ledger case
-# in scripts/test-himmel-doctor.sh, which probes with `tail` for the same
-# reason.
+# `id -u` / $OSTYPE check would.
 if ls "$WT4k/locked-untracked-dir" >/dev/null 2>&1; then
     echo "  SKIP: clean -fdx failure case — chmod 000 does not deny this user/filesystem, so the fixture cannot be built"
     chmod 755 "$WT4k/locked-untracked-dir" 2>/dev/null || true

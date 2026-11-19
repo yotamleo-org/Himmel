@@ -316,6 +316,7 @@ scripts/eval/qmd-quality/test-qmd-quality-cadence.sh	local	behaviour suite, 0 ca
 scripts/eval/qmd-quality/test-qmd-quality.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/retrieval-eval/test-answer-ab.sh	local	behaviour suite, new eval with no catches yet
 scripts/eval/retrieval-eval/test-retrieval-eval.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/eval/review-panel/test-review-panel-b.sh	pr	trust-path
 scripts/eval/review-panel/test-review-panel.sh	pr	trust-path
 scripts/eval/sandbox-poc/test-probe.sh	pr	guard
 scripts/eval/scrape-bench/test-scrape-bench.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -400,10 +401,10 @@ scripts/handover/chief-kit/test-close-wrapped-worker.sh	pr	trust-path
 scripts/handover/chief-kit/test-compacted-check.sh	pr	trust-path
 scripts/handover/chief-kit/test-chief-budget.sh	pr	static-gate
 scripts/handover/chief-kit/test-chief-kit-e2e.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/handover/chief-kit/test-chief-wait-b.sh	quarantine	cap-exceeded flakes; second half of test-chief-wait.sh; its 4 stale u4959 rows are fixed but it leaves quarantine only after one measured passing CI attempt and a cap row sized at 2x or more (509 s is one attempt against the default 600 s cap)
+scripts/handover/chief-kit/test-chief-wait-b.sh	local	behaviour suite, second half of test-chief-wait.sh; one attempt is 374-509 s on CI and one ran past the 600 s default cap, so its own cap row in run-shell-tests.sh is 1200 s (2x that overrun)
 scripts/handover/chief-kit/test-chief-wait-pool.sh	local	behaviour suite, the underfilled re-wake on a pool change in chief-wait.sh, HIMMEL-7386
 scripts/handover/chief-kit/test-chief-wait-r0.sh	local	behaviour suite, the script relay (R0) of chief-wait.sh, HIMMEL-6538; stays local (HIMMEL-8228): it runs 162 s of real-time waits, the same cost class as the other chief-wait suites, so it is not moved into the PR gate
-scripts/handover/chief-kit/test-chief-wait.sh	quarantine	cap-exceeded flakes, HIMMEL-6547
+scripts/handover/chief-kit/test-chief-wait.sh	local	behaviour suite, the chief waiter's wake rows; one attempt is 575-595 s on CI, under its own 1200 s cap row in run-shell-tests.sh
 scripts/handover/chief-kit/test-cr-disposition.sh	pr	trust-path
 scripts/handover/chief-kit/test-cut-tag.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-delta-class.sh	pr	trust-path
@@ -443,6 +444,11 @@ scripts/handover/chief-kit/test-orphan-pr-check.sh	local	behaviour suite for the
 scripts/handover/chief-kit/test-parked-on-prompt.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-pr-stall.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-priority-prune.sh	local	behaviour suite, new in HIMMEL-6602
+scripts/handover/chief-kit/test-ready-check-b.sh	pr	trust-path
+scripts/handover/chief-kit/test-ready-check-c.sh	pr	trust-path
+scripts/handover/chief-kit/test-ready-check-d.sh	pr	trust-path
+scripts/handover/chief-kit/test-ready-check-e.sh	pr	trust-path
+scripts/handover/chief-kit/test-ready-check-f.sh	pr	trust-path
 scripts/handover/chief-kit/test-ready-check.sh	pr	trust-path
 scripts/handover/chief-kit/test-ready-go.sh	pr	trust-path
 scripts/handover/chief-kit/test-relay-batch.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -455,6 +461,7 @@ scripts/handover/chief-kit/test-status-drift.sh	pr	trust-path
 scripts/handover/chief-kit/test-stuck-scan.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/handover/chief-kit/test-model-check-report.sh	local	behaviour suite, new optional prerequisites (HIMMEL-8276)
 scripts/handover/chief-kit/test-succession-tracker.sh	pr	trust-path
+scripts/handover/chief-kit/test-tick-b.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-tick-busedge.sh	local	new since the audit, behaviour suite
 scripts/handover/chief-kit/test-tick-deadwin.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-tick-fields.sh	local	second half of test-tick.sh (HIMMEL-8813 split), same tier as the half it came from
@@ -525,6 +532,7 @@ scripts/handover/test-librarian-cadence.sh	local	behaviour suite, new in HIMMEL-
 scripts/handover/test-librarian.sh	local	behaviour suite, new in HIMMEL-6915
 scripts/handover/test-merge-fork-pr.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-merge-forward-check.sh	pr	trust-path
+scripts/handover/test-merge-on-green-b.sh	pr	guard
 scripts/handover/test-merge-on-green-jira-end-state.sh	pr	guard
 scripts/handover/test-merge-on-green-static-recheck.sh	pr	guard
 scripts/handover/test-merge-on-green.sh	pr	guard
@@ -1086,6 +1094,7 @@ scripts/test-adopt-merge-gate.sh	pr	guard
 scripts/test-adopt-only-hooks.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-adopt-portable-libs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-adopt-provenance.sh	local	behaviour suite, split from test-adopt-features.sh so no shard is bounded by one suite (HIMMEL-8548)
+scripts/test-adopt-sequences-b.sh	local	behaviour suite, seeded install and uninstall sequences, about 100 s
 scripts/test-adopt-sequences.sh	local	behaviour suite, seeded install and uninstall sequences, about 100 s
 scripts/test-adopt-user-claude-md.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-adopt-wizard.sh	local	behaviour suite, split from test-adopt-features.sh so no shard is bounded by one suite (HIMMEL-8548)
@@ -1114,6 +1123,8 @@ scripts/test-e2e-provenance-settings.sh	local	behaviour suite, 0 catches in the 
 scripts/test-e2e-symmetry-isolation.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-e2e-symmetry.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-handover-link.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-himmel-doctor-b.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-himmel-doctor-c.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-himmel-doctor.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-himmel-update-axis-b.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-himmel-update-chain.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -1151,6 +1162,7 @@ scripts/test-template-graphify-ignore.sh	pr	guard
 scripts/test-template-nostash-hooks.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-template-verdicts-shellcheck-exclude.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-tmp-reap.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-uninstall-b.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-uninstall-guard.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-uninstall-home-guard.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-uninstall-plugins.sh	local	behaviour suite, 0 catches in the 400-PR audit window
