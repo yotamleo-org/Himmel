@@ -65,6 +65,64 @@ def has_unmet_rows(text):
     return False
 
 
+PR_REPO = 'yotamleo-org/Himmel'  # env-literal-ok: the canonical slug, read the way next-dispatchable.sh reads it
+
+
+def live_remainder(key):
+    """What the ticket's merged partial pull requests still leave undone, read the way next-dispatchable.sh reads it.
+
+    The partial PRs come from the status log (TICKET_STATUS_STATE_DIR, else ~/.himmel/state) through merge-rows-effective.py, a
+    completing merge row clearing the earlier ones; each body is read with `gh pr view` (NEXT_DISPATCH_GH_CMD, else ND_GH_READ,
+    else gh); the grammar and the newest-PR-wins rule are pr_remainder.py's own. Returns (blocking, unreadable): what stops a
+    CLOSE (open code work, an owed chief or operator line, a body that records no remainder) and what could not be read."""
+    state = os.environ.get('TICKET_STATUS_STATE_DIR') or os.path.join(os.environ.get('HOME') or '/tmp', '.himmel', 'state')
+    log = os.path.join(state, 'status-events.jsonl')
+    try:
+        from pr_remainder import live_answers, pr_remainder_units
+    except Exception as exc:  # a reader that does not load is a remainder that cannot be read
+        return [], ['pr_remainder.py (%s)' % exc]
+    prs = []
+    try:
+        open(log).close()
+        eff = subprocess.run([sys.executable, '-I', str(HERE.parent.parent / 'lib' / 'merge-rows-effective.py'), log], capture_output=True, text=True, timeout=120)
+        if eff.returncode:
+            raise OSError(eff.stderr.strip() or 'merge-rows-effective failed')
+        for line in eff.stdout.splitlines():
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(r, dict) or r.get('event') != 'merge' or r.get('contract') not in ('yes', 'no') or str(r.get('key', '')).upper() != key.upper():
+                continue
+            if r['contract'] == 'yes':
+                prs = []
+            elif str(r.get('pr', '')).isdigit() and str(r['pr']) not in prs:
+                prs.append(str(r['pr']))
+    except FileNotFoundError:
+        return [], []  # no log is no partial merge, as for the dispatcher
+    except (OSError, subprocess.SubprocessError) as exc:
+        return [], ['status log %s unreadable (%s)' % (log, getattr(exc, 'strerror', None) or exc)]
+    gh = os.environ.get('NEXT_DISPATCH_GH_CMD') or os.environ.get('ND_GH_READ') or 'gh'
+    answers, unreadable = [], []
+    for pr in prs:
+        try:
+            body = subprocess.run([gh, 'pr', 'view', pr, '--repo', PR_REPO, '--json', 'body', '--jq', '.body'],
+                                  capture_output=True, timeout=60, check=True).stdout.decode('utf-8', 'replace')
+            answers.append(dict(pr_remainder_units(body, [key]), pr=pr))
+        except (OSError, subprocess.SubprocessError, ValueError, TypeError) as exc:
+            unreadable.append('PR #%s body unreadable (%s)' % (pr, 'gh exit %s' % exc.returncode if isinstance(exc, subprocess.CalledProcessError) else exc))
+    if unreadable:
+        return [], unreadable
+    blocking = []
+    for answer in live_answers(answers):
+        if answer['kind'] == 'none':
+            blocking.append('PR #%s records no remainder' % answer['pr'])
+        elif answer['kind'] == 'remaining' and not answer['nowrite']:
+            blocking.append('PR #%s Remaining: %s' % (answer['pr'], answer['text'][:300]))
+        blocking.extend('PR #%s %s' % (answer['pr'], line['text'][:300]) for line in answer['owed_lines'] if line['who'] in ('chief', 'operator'))
+    return blocking, []
+
+
 def regular_bytes(path):
     fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC)
     try:
@@ -228,6 +286,25 @@ def decision(opt):
             raise ValueError('truncated observations require reconciliation')
         if any(has_unmet_rows(text) for text in evidence):
             raise ValueError('unmet/skipped/error proof row')
+        # A CLOSE never settles over what the ticket's merged partial pull requests still leave: open code work, an owed chief or
+        # operator line, a body that records no remainder, or a list that cannot be read (it fails closed). A KEEP is never asked.
+        blocking, unreadable = live_remainder(row['key'])
+        if unreadable:
+            raise ValueError('live pull-request remainder unreadable: ' + '; '.join(unreadable) + '; the CLOSE is refused until it can be read')
+        if blocking:
+            if opt.settle and not opt.dry_run and current.get('status') == 'Done' and current.get('category') == 'done':
+                # The ticket really is Done but a remainder appeared after the check. Keep the validation pending and leave the chief
+                # one owned, idempotent step that names it; discharge nothing.
+                names = '; '.join(blocking)
+                metadata = dict(actor='chief', capability='remainder reconciliation', action='next-step', source_id=row['id'], wake='remainder reconciled',
+                                due=datetime.datetime.now(datetime.timezone.utc).date().isoformat(), actual_status=current.get('status', ''))
+                text = re.sub(r'[\x00-\x1f]+', ' ', 'Reconcile remainder: %s is Done but a merged pull request still leaves %s; validation %s stays pending; decide whether to reopen, '
+                              'build it or file a follow-up, close this step, then record the decision again' % (row['key'], names, row['id']))
+                made = owe(['add', '--bucket', opt.bucket, '--chief', row['chief'], '--kind', 'step', '--key', row['key'], '--text', text,
+                            '--identity', digest([row['identity'], blocking, 'remainder-reconciliation']), '--metadata-stdin'], json.dumps(metadata))
+                print(json.dumps({'id': row['id'], 'closed': False, 'reconciliation': made, 'status': current.get('status'), 'remainder': blocking}))
+                return
+            raise ValueError('live pull-request remainder blocks the CLOSE: ' + '; '.join(blocking) + '; KEEP required')
         # A CLOSE never settles over another open remainder: an open `step` row of this key that is neither this validation, a proof
         # step (this handoff discharges those it bound; later ones are not its scope), nor a reconciliation the validation itself owns.
         # It refuses (nothing discharged or erased); `--check` refuses the same way.

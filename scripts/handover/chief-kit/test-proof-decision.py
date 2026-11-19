@@ -497,8 +497,9 @@ class ChiefDecision(unittest.TestCase):
                 'GH_LOG': str(root / 'gh.log'), 'PR_BODY_DIR': str(root / 'bodies'), 'HOME': str(root / 'home')}
 
     def merge(self, pr, contract='no', key='HIMMEL-9848', **extra):
+        row = {'ts': 't', 'event': 'merge', 'key': key, 'pr': str(pr), 'result': 'noop', **({'contract': contract} if contract else {}), **extra}
         with open(self.live / 'state' / 'status-events.jsonl', 'a') as log:
-            log.write(json.dumps({'ts': 't', 'event': 'merge', 'key': key, 'pr': str(pr), 'contract': contract, 'result': 'noop', **extra}) + '\n')
+            log.write(json.dumps(row) + '\n')
 
     def body(self, pr, text):
         (self.live / 'bodies' / str(pr)).write_text(text)
@@ -514,8 +515,8 @@ class ChiefDecision(unittest.TestCase):
         env = self.world()
         self.partial(77, self.CODE)
         before = (self.b / 'owed.jsonl').read_bytes()
-        for mode in ('--check', '--settle'):
-            r = self.decide(mode, env=env)
+        for mode, status in (('--check', 'Done'), ('--settle', 'To Do')):  # a settle on a Done ticket reconciles instead (below)
+            r = self.decide(mode, status=status, env=env)
             self.assertNotEqual(r.returncode, 0, r.stdout)
             self.assertIn('PR #77', r.stderr)
             self.assertIn('implement X', r.stderr)
@@ -526,7 +527,7 @@ class ChiefDecision(unittest.TestCase):
     def test_a_body_that_now_owes_only_proof_settles_once(self):
         env = self.world()
         self.partial(77, self.CODE)
-        self.assertNotEqual(self.decide('--settle', env=env).returncode, 0)
+        self.assertNotEqual(self.decide('--check', env=env).returncode, 0)
         self.body(77, self.OWED_PROOF)
         for _ in range(2):
             r = self.decide('--settle', env=env)
@@ -607,7 +608,7 @@ class ChiefDecision(unittest.TestCase):
         (self.live / 'state' / 'status-events.jsonl').unlink()
         self.body(79, self.CODE)
         self.merge(79, stage='pre-merge', result='pending', head='abc')
-        self.merge(79, result='not-merged', head='abc')
+        self.merge(79, contract=None, result='not-merged', head='abc')  # merge-on-green writes this row with no contract
         self.assertEqual(self.decide('--check', env=env).returncode, 0)
         self.assertFalse(any(c.startswith('pr view 79 ') for c in self.gh_calls()))
 
