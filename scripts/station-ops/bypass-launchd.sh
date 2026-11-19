@@ -13,6 +13,8 @@
 #   flags=<comma list, at most 5, each in the flag registry>   (optional; default HIMMEL_HOOK_INTEGRITY_BYPASS_OK)
 #   effort=<low|medium|high|xhigh>                 (optional)
 #   decision=<operator decision number>            (required when a flag is decision tier, HIMMEL_BILLED_OK included)
+#   api_account=<A|B|C|D|auto>                     (optional, absent by default; launches with WORKER_SESSION_API_LANE=on and
+#                                                   WORKER_SESSION_API_ACCOUNT=<name>, named in the ask and the GRANT log line)
 # Which flag a go code may grant: the registry scripts/himmelctl/lib/bypass-flags.json is the list of hook flags and
 # scripts/station-ops/bypass-flag-tiers.tsv gives each a tier: grant, decision (needs decision=), floor (never granted;
 # launch it from your own shell) or none (not a switch). Both are read once at start from HEAD of this checkout with the
@@ -94,12 +96,14 @@ while :; do
         [ -e "$req" ] || continue
         brief=$(field brief "$req"); model=$(field model "$req"); chief=$(field chief "$req")
         flags=$(field flags "$req"); effort=$(field effort "$req"); decision=$(field decision "$req")
+        api_account=$(field api_account "$req")
         [ -n "$flags" ] || flags=HIMMEL_HOOK_INTEGRITY_BYPASS_OK
         base=$(basename "$brief" .md)
         if ! [[ "$brief" == "$BUCKET/$base.md" && ! -L "$brief" && -f "$brief" ]] ||
            ! [[ "$base" =~ ^[A-Z][A-Z0-9]+-[0-9]+-N[0-9]+[a-z]?-[A-Za-z0-9.-]+$ ]] ||
            ! [[ "$model" =~ ^claude-(opus|sonnet|haiku)-5-5$ ]] || ! [[ "$chief" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{2,119}$ ]] ||
-           ! [[ -z "$effort" || "$effort" =~ ^(low|medium|high|xhigh)$ ]]; then
+           ! [[ -z "$effort" || "$effort" =~ ^(low|medium|high|xhigh)$ ]] ||
+           ! [[ -z "$api_account" || "$api_account" =~ ^(A|B|C|D|auto)$ ]]; then
             refuse "$req" malformed; continue
         fi
         envs=(); bad=""; grant_text=""; paid=""; others=""; undecided=""
@@ -134,6 +138,8 @@ while :; do
             [ -z "$others" ] || billed+=" OPERATOR DECISION $decision."
         fi
         [ -n "$effort" ] && envs+=("WORKER_SESSION_EFFORT=$effort")
+        # api_account turns the launcher's API-lane seam on for that named account (billed API credit, not a hook flag).
+        [ -n "$api_account" ] && { envs+=("WORKER_SESSION_API_LANE=on" "WORKER_SESSION_API_ACCOUNT=$api_account"); billed+=" API LANE ON, account $api_account."; }
         code=$(LC_ALL=C tr -dc 'A-Z2-9' </dev/urandom | head -c 6)
         off=$(stat -c %s "$INBOUND" 2>/dev/null || echo 0) # gnu-ok: Linux-only (setsid, /run/user, the Telegram bridge)
         desc=$(sed -n 's/^description: *//p' "$brief" | head -n 1)

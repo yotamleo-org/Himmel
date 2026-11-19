@@ -23,7 +23,7 @@ export UNGUARDED_LAUNCH_OK=1
 unset HIMMEL_CONSOLE_DOC CADENCE_USAGE_LANE WORKER_SESSION_LANE WORKER_SESSION_CONTEXT WORKER_SESSION_REPO WORKER_SESSION_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_LAUNCHER_ENV_LINES \
     HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_WORKER_SESSION WORKER_SESSION_CLAUDE_BIN WORKER_SESSION_PROFILE \
     WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG WORKER_SESSION_PROFILE_NO_SETTING_SOURCES WORKER_SESSION_ID \
-    WORKER_SESSION_HEADLESS WORKER_SESSION_API_LANE HIMMEL_API_LANE HIMMEL_API_ACCOUNT CR_TRIGGER_SUPPRESS HIMMEL_CONSOLE_NAME \
+    WORKER_SESSION_HEADLESS WORKER_SESSION_API_LANE WORKER_SESSION_API_ACCOUNT HIMMEL_API_LANE HIMMEL_API_ACCOUNT CR_TRIGGER_SUPPRESS HIMMEL_CONSOLE_NAME \
     CLAUDE_CODE_EFFORT_LEVEL HIMMEL_WORKER_SESSION_CONTEXT_MODE HIMMEL_WORKER_SESSION_AUTOCOMPACT HIMMEL_WORKER \
     WORKER_SESSION_CONTEXT WORKER_SESSION_PROFILE WORKER_SESSION_HEADLESS WORKER_SESSION_API_LANE \
     WORKER_SESSION_LANE WORKER_SESSION_EFFORT HIMMEL_WORKER_SESSION_CONTEXT_MODE HIMMEL_WORKER_SESSION_AUTOCOMPACT \
@@ -285,6 +285,20 @@ check "W13 --headless with the Live test jira line refuses (exit 2)" "$rc" "2"
 contains "W13 the --headless refusal names the Live test line" "$out" "Live test"
 rc=0; out="$(bash "$SCRIPT" --dry-run --headless --profile worker-impl "$LT_NAME" "$T/lt-none-doc.md" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
 check "W13 control: --headless with the Live test none line launches (exit 0)" "$rc" "0"
+
+# --- W14. WORKER_SESSION_API_ACCOUNT names the account the API-lane seam carries; default stays auto.
+rc=0; out="$(WORKER_SESSION_API_LANE=on WORKER_SESSION_API_ACCOUNT=A dry)" || rc=$?
+check "W14 seam + account A: exit 0" "$rc" "0"
+contains "W14 seam + account A reports lane on, account A" "$out" "HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A"
+out="$(WORKER_SESSION_API_LANE=on dry)"
+contains "W14 seam alone still reports account auto" "$out" "HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto"
+out="$(WORKER_SESSION_API_ACCOUNT=A dry)"
+contains "W14 an account without the seam leaves both unset" "$out" "HIMMEL_API_LANE=<unset> HIMMEL_API_ACCOUNT=<unset>"
+rc=0; out="$(WORKER_SESSION_API_LANE=on WORKER_SESSION_API_ACCOUNT='A;x' dry)" || rc=$?
+check "W14 a malformed account refuses the launch (exit 2)" "$rc" "2"
+contains "W14 the refusal names the account variable" "$out" "WORKER_SESSION_API_ACCOUNT"
+rc=0; out="$(WORKER_SESSION_API_LANE=on WORKER_SESSION_API_ACCOUNT=E dry)" || rc=$?
+check "W14 an account outside A-D and auto refuses (exit 2)" "$rc" "2"
 
 echo "---"
 if [ "$FAILED" -gt 0 ]; then echo "FAILED: $FAILED case(s)"; exit 1; fi

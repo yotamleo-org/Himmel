@@ -166,8 +166,9 @@ MANIFEST = "run-manifest.json"
 RECORDED_OVERRIDES = ("CRITIC_TIMEOUT_SECS", "CRITIC_PANEL_TOTAL_TIMEOUT_SECS", "CRITIC_KILL_GRACE_SECS",
                       "CRITIC_PARALLEL", "CRITIC_FIRST_PASS_CAP_BYTES")
 MANIFEST_CASE = re.compile(r"^(case|real|delta)-[A-Za-z0-9._-]+$")  # a case id is a file stem inside the outputs dir
-UNRECORDABLE_SETTING = re.compile(r"^(CRITIC_[A-Z0-9_]+|CR_TRIVIALITY_[A-Z0-9_]+|HIMMEL_API_LANE"
+UNRECORDABLE_SETTING = re.compile(r"^(CRITIC_[A-Z0-9_]+|CR_TRIVIALITY_[A-Z0-9_]+"
                                   r"|HIMMEL_CRITIC_[A-Z0-9_]+)$")
+API_ACCOUNT_NAME = re.compile(r"^(A|B|C|D|auto)$")  # an account is a name, never a key: anything else is not recorded
 RUN_SH_OWNED = ("CRITIC_PANEL_TIERS", "CR_TRIVIALITY_OVERRIDE", "CRITIC_FIRST_PASS", "CRITIC_INVOKE")
 ANOMALY = re.compile(r"unbound variable|command not found|Traceback \(most recent call last\)|syntax error")
 
@@ -939,7 +940,10 @@ def execution_manifest(outputs, repo, fixtures, key, roster, protocol):
             "effective_roster": sorted(c["slug"] for c in critics) or None, "critics": critics,
             "protocol": dict(protocol, context_mode="delta" if delta else "none", known_findings="0",
                              triviality="full", runner_sha256=_sha(runner) if runner is not None else None,
-                             overrides={k: os.environ[k] for k in RECORDED_OVERRIDES if k in os.environ}),
+                             overrides={k: os.environ[k] for k in RECORDED_OVERRIDES if k in os.environ},
+                             api_lane="on" if os.environ.get("HIMMEL_API_LANE") == "on" else None,
+                             api_account=(os.environ.get("HIMMEL_API_ACCOUNT")
+                                          if API_ACCOUNT_NAME.match(os.environ.get("HIMMEL_API_ACCOUNT", "")) else None)),
             "inputs": inputs, "cases": {}, "provenance": {
                 "status": "recorded", "evidence": ["score.py stamp"],
                 "unknown": [] if rows else ["effective_roster"]}}

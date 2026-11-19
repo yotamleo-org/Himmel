@@ -28,7 +28,7 @@ printf '%s\n' "$1" >> "$BYPASSD_TEST_DIR/sent"
 STUB
 cat > "$tmp/launcher" <<'STUB'
 #!/usr/bin/env bash
-env | grep -E '^([A-Za-z0-9_]*_OK|WORKER_SESSION_EFFORT|SKIP_FORCE_PUSH_GATE|IMPL_GUARD_DISABLE|SECURITY_REVIEW_NO_FETCH)=' | sort > "$BYPASSD_TEST_DIR/launch.env"
+env | grep -E '^([A-Za-z0-9_]*_OK|WORKER_SESSION_EFFORT|WORKER_SESSION_API_LANE|WORKER_SESSION_API_ACCOUNT|SKIP_FORCE_PUSH_GATE|IMPL_GUARD_DISABLE|SECURITY_REVIEW_NO_FETCH)=' | sort > "$BYPASSD_TEST_DIR/launch.env"
 printf '%s\n' "$@" > "$BYPASSD_TEST_DIR/launch.args"
 exit "${BYPASSD_TEST_RC:-0}"
 STUB
@@ -119,6 +119,36 @@ assert_eq "the launcher runs with exactly the granted flag and effort" \
     "HIMMEL_BILLED_OK=1"$'\n'"WORKER_SESSION_EFFORT=high" "$(cat "$D/launch.env" 2>/dev/null)"
 assert_contains "the request records the grant: go code and decision" "go=$CODE" "$(cat "$Q/r.req.done" 2>/dev/null)"
 assert_contains "the launcher gets the brief and model" "claude-sonnet-5-5" "$(cat "$D/launch.args" 2>/dev/null)"
+stop
+
+echo "== api_account= carries a named API account into the launch =="
+setup api-account
+start
+CODE=$(ask_code r api_account=A)
+assert_contains "the ask names the API lane and the account" "API LANE ON, account A" "$(cat "$D/sent" 2>/dev/null)"
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_eq "api_account=A launches with the lane seam on and account A" \
+    "WORKER_SESSION_API_ACCOUNT=A"$'\n'"WORKER_SESSION_API_LANE=on" "$(cat "$D/launch.env" 2>/dev/null)"
+assert_contains "the GRANT log line names the seam and the account" "WORKER_SESSION_API_LANE=on WORKER_SESSION_API_ACCOUNT=A" "$(cat "$Q/daemon.log")"
+stop
+
+echo "== no api_account= leaves the API lane seam out =="
+setup api-account-absent
+start
+CODE=$(ask_code r flags=HIMMEL_HOOK_INTEGRITY_BYPASS_OK)
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_absent "without the field the launch carries no API lane seam" "WORKER_SESSION_API" "$(cat "$D/launch.env" 2>/dev/null)"
+stop
+
+echo "== a malformed api_account= is refused =="
+setup api-account-bad
+start
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief 'api_account=not-a-name' > "$Q/r.req"
+wait_for "$Q/daemon.log" "REFUSED malformed $Q/r.req"
+assert_contains "a non-name api_account is refused as malformed" "REFUSED malformed" "$(cat "$Q/daemon.log" 2>/dev/null)"
+assert_absent "and launches nothing" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
 stop
 
 echo "== a request with no go code launches nothing =="
