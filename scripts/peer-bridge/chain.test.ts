@@ -46,6 +46,18 @@ test("a torn trailing line from a crash is cut off, not fatal", async () => {
   expect(verifyChain(file)).toEqual({ ok: true, n: 2 });
 });
 
+test("readChain ignores a torn trailing line and a later append still verifies", async () => {
+  const file = join(tmp(), "outbox.jsonl");
+  await new Chain().append(file, { a: 1 });
+  writeFileSync(file, readFileSync(file, "utf8") + '{"half":', { mode: 0o600 });
+  expect(readChain(file)).toHaveLength(1);
+  await new Chain().append(file, { a: 2 });
+  expect(readChain(file)).toHaveLength(2);
+  expect(verifyChain(file)).toEqual({ ok: true, n: 2 });
+  writeFileSync(file, '{"bad":\n' + readFileSync(file, "utf8"));
+  expect(() => readChain(file)).toThrow();
+});
+
 test("an append failure leaves the offset uncommitted and the chain intact", async () => {
   const file = join(tmp(), "inbox.jsonl");
   let calls = 0;

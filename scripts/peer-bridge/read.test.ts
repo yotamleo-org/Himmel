@@ -201,6 +201,8 @@ test("--thread serves only that thread", async () => {
   const r = read(h, ["goomal", "--thread", "201"]);
   expect(r.stdout.match(/<<<PEER-UNTRUSTED/g)).toHaveLength(1);
   expect(r.stdout).toContain("T201");
+  expect(r.stdout).not.toMatch(/next:|--ack/);
+  expect(read(h, ["goomal"]).stdout).toMatch(/next: .* --ack /);
 });
 
 test("a forged stamp from a non-desk session still taints the session that reads the output", async () => {

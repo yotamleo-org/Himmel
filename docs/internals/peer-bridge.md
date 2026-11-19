@@ -153,7 +153,8 @@ In the desk the taint gate allows only two Bash command shapes, each a single
 line with no control byte:
 
 - `bun <himmel root>/scripts/peer-bridge/read.ts <peer> [--thread N] [--ack TOKEN]`
-  prints reader digests, each inside an HMAC-signed fence;
+  prints reader digests, each inside an HMAC-signed fence (`--thread` is a
+  read-only view with no ack line; only an unfiltered read advances the cursor);
 - `bun <himmel root>/scripts/peer-bridge/send.ts <peer> --kind status|info --text '...'`
   or `--kind answer --reply-to N --text '...'` replies.
 

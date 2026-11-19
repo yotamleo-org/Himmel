@@ -48,7 +48,7 @@ export class Poller {
   private cfg: Config;
   private chain = new Chain();
   private waker: Waker;
-  private pending = new Map<number, Pending>();
+  private pending = new Map<string, Pending>();
   private rootIntents = new Map<string, Pending>();
   private spoolDone = new Map<string, number>();
   private sentTimes = new Map<string, number[]>();
@@ -112,7 +112,7 @@ export class Poller {
         const l = this.sentTimes.get(peer) ?? []; l.push(r.ts * 1000); this.sentTimes.set(peer, l);
       } else if ((r.kind === "failed" || r.kind === "refused") && typeof r.intent === "number") intents.delete(r.intent);
     }
-    for (const [n, i] of intents) this.pending.set(n, i);
+    for (const [n, i] of intents) this.pending.set(`${peer}:${n}`, i);
   }
 
   private serial<T>(fn: () => Promise<T>): Promise<T> {
@@ -141,7 +141,7 @@ export class Poller {
         const res = await this.egress(i.text, this.ctxFor({ peer: i.peer, msgKind: i.msgKind, isRoot: i.isRoot, isTemplate: !!i.tpl, replyTo: i.root, text: i.text, checkUsage: false }));
         if (res.ok) continue;
         await this.chain.append(this.file(i.peer, "outbox.jsonl"), { ...refusalRecord(i.text, res, this.ts()), intent: i.n });
-        this.pending.delete(i.n);
+        this.pending.delete(`${i.peer}:${i.n}`);
         if (i.spool) writeResult(this.dir(i.peer), i.spool, { ok: false, rule: res.rule, ...(res.shape ? { shape: res.shape } : {}) });
       }
       await this.flush();
@@ -275,12 +275,14 @@ export class Poller {
   }
 
   private ctxFor(item: Item): OutCtx {
-    const sent = (this.sentTimes.get(item.peer) ?? []).filter(t => this.now() - t < 60_000).length;
+    const queued = [...this.pending.values()].filter(i => i.peer === item.peer);
+    const sent = (this.sentTimes.get(item.peer) ?? []).filter(t => this.now() - t < 60_000).length + queued.length;
+    const open = this.threads.openOutbound(item.peer) + queued.filter(i => i.isRoot && !i.resend && !i.tpl).length;
     return {
       peer: this.cfg.peers[item.peer], kind: item.msgKind, isRoot: item.isRoot, isTemplate: item.isTemplate,
       tainted: !item.allowShape, tty: Boolean(item.allowShape), claudecode: false, allowShape: item.allowShape,
       himmelRoot: this.cfg.himmelRoot, maxTextChars: this.cfg.maxTextChars, matrix: this.deps.matrix, hostname: this.deps.hostname,
-      usage: item.checkUsage ? { openOutbound: this.threads.openOutbound(item.peer), sentLastMinute: sent } : undefined,
+      usage: item.checkUsage ? { openOutbound: open, sentLastMinute: sent } : undefined,
     };
   }
 
@@ -301,7 +303,7 @@ export class Poller {
       kind: "intent", peer: item.peer, chat: peer.chatId, id: item.id ?? mintId(), root: item.replyTo, msgKind: item.msgKind, text: item.text,
       isRoot: item.isRoot, ...(item.isTemplate ? { tpl: true } : {}), ...(item.resend ? { resend: true } : {}), ...(item.spool ? { spool: item.spool } : {}),
     });
-    this.pending.set(rec.n, rec as unknown as Pending);
+    this.pending.set(`${item.peer}:${rec.n}`, rec as unknown as Pending);
     return { ok: true };
   }
 
@@ -320,7 +322,7 @@ export class Poller {
   // Telegram ends it.
   private async flush(): Promise<void> {
     if (this.now() < this.retryAt) return;
-    for (const i of [...this.pending.values()].sort((a, b) => a.n - b.n)) {
+    for (const i of [...this.pending.values()].sort((a, b) => a.n - b.n || (a.peer < b.peer ? -1 : 1))) {
       const peer = this.cfg.peers[i.peer];
       if (!peer || peer.chatId === null) continue;
       let messageId: number;
@@ -330,7 +332,7 @@ export class Poller {
         if (e instanceof RetryAfter) { this.retryAt = this.now() + e.seconds * 1000; return; }
         if (e instanceof TelegramError && PERMANENT.includes(e.code)) {
           await this.chain.append(this.file(i.peer, "outbox.jsonl"), { kind: "failed", intent: i.n, id: i.id, code: e.code, ts: this.ts() });
-          this.pending.delete(i.n);
+          this.pending.delete(`${i.peer}:${i.n}`);
           if (i.spool) writeResult(this.dir(i.peer), i.spool, { ok: false, rule: `telegram-${e.code}` });
           continue;
         }
@@ -341,7 +343,7 @@ export class Poller {
       }
       this.failures = 0;
       await this.chain.append(this.file(i.peer, "outbox.jsonl"), { kind: "sent", id: i.id, intent: i.n, message_id: messageId, ts: this.ts() });
-      this.pending.delete(i.n);
+      this.pending.delete(`${i.peer}:${i.n}`);
       const times = this.sentTimes.get(i.peer) ?? []; times.push(this.now()); this.sentTimes.set(i.peer, times);
       if (i.isRoot && !i.resend && !i.tpl) this.rootIntents.set(`${i.peer}:${messageId}`, i);
       if (i.spool) { this.spoolDone.set(`${i.peer}/${i.spool}`, messageId); writeResult(this.dir(i.peer), i.spool, { ok: true, message_id: messageId }); }

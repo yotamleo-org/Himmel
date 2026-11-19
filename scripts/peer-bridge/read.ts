@@ -92,6 +92,8 @@ function main(): void {
   if (batch.length === 0) { process.stdout.write(`no new digests for ${peer}\n`); return; }
   const body = batch.map(r => renderRecord(key, r)).join("\n");
   const last = batch[batch.length - 1].n!;
+  // A thread view skips other threads' digests, so an ack from it would mark those read.
+  if (thread !== undefined) { process.stdout.write(`${body}\n`); return; }
   const next = `next: bun ${cfg.himmelRoot}/scripts/peer-bridge/read.ts ${peer} --ack ${ackToken(key, sid, peer, last)}`;
   process.stdout.write(`${body}\n${next}\n`);
 }

@@ -70,7 +70,9 @@ export class Chain {
 export function readChain(file: string): ChainRecord[] {
   let text: string;
   try { text = fs.readFileSync(file, "utf8"); } catch (e: any) { if (e.code === "ENOENT") return []; throw e; }
-  return text.split("\n").filter(Boolean).map(l => JSON.parse(l));
+  // A last segment with no newline is a write a crash cut short; Chain.readTail cuts it off on the next append.
+  const complete = text.slice(0, text.lastIndexOf("\n") + 1);
+  return complete.split("\n").filter(Boolean).map(l => JSON.parse(l));
 }
 
 export function verifyChain(file: string): { ok: boolean; n: number } {

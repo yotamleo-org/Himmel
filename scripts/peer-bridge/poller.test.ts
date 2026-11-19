@@ -156,6 +156,20 @@ test("a 5xx keeps the intent and backs off; a permanent 400 ends it", async () =
   expect(outbox(f).map(r => r.kind)).toEqual(["intent", "failed"]);
 });
 
+test("two peers' pending intents with the same chain number are both sent", async () => {
+  const e = await setup();
+  const other = { ...e.cfg.peers.goomal, peerBotId: "555000222", chatId: CHAT - 1, theirs: { ...e.cfg.peers.goomal.theirs, username: "other_bot" } };
+  e.cfg.peers.other = other;
+  mkdirSync(join(e.stateDir, "other", "spool"), { recursive: true, mode: 0o700 });
+  for (const peer of ["goomal", "other"]) {
+    await new Chain().append(join(e.stateDir, peer, "outbox.jsonl"), { kind: "intent", peer, chat: e.cfg.peers[peer].chatId, id: `${peer === "goomal" ? "aaaa" : "bbbb"}0001`, root: null, msgKind: "info", text: `fyi from ${peer}`, isRoot: true });
+  }
+  const p = await Poller.create(e.deps);
+  await p.recover();
+  expect(e.sent.map(s => [s.chat, s.text.split("\n")[2]]).sort()).toEqual([[CHAT - 1, "fyi from other"], [CHAT, "fyi from goomal"]].sort());
+  expect(readChain(join(e.stateDir, "other", "outbox.jsonl")).map(r => r.kind)).toEqual(["intent", "sent"]);
+});
+
 // A receiver bridge in miniature: the real gate and thread state of the other side.
 function receiver() {
   const state = createGateState({ ourBotId: PEER_ID, ourUsername: "goomal_bot", committed: 0, now: T0 });
@@ -264,7 +278,25 @@ const names = {
   recover: "I4: at startup an unsent intent that now fails egress is not resent and chains a refusal",
   grep: "I4: after the drain of a refused spool file no file under the state dir holds its text",
   resend: "I4: a root resend under a matrix that denies peer-desk is not sent",
+  openCap: "I4: spool sends past the peer's open-thread cap are refused before any of them is flushed",
+  rateCap: "I4: spool sends past the peer's per-minute cap are refused before any of them is flushed",
 };
+
+test(names.openCap, async () => {
+  const e = await setup({ peerOver: { theirs: { username: "goomal_bot", opens: ["question", "status", "info"], maxOpenThreads: 2, maxPerMinute: 10, copiedAt: "2026-11-07" } } });
+  const files = [1, 2, 3, 4].map(i => submitSpool(e.peerDir, { type: "send", kind: "info", text: `fyi ${i}` }));
+  await e.poller.drainSpool();
+  expect(e.sent).toHaveLength(2);
+  expect(files.slice(2).map(n => readResult(e, n))).toEqual([{ ok: false, rule: "their-open-threads" }, { ok: false, rule: "their-open-threads" }]);
+});
+
+test(names.rateCap, async () => {
+  const e = await setup({ peerOver: { theirs: { username: "goomal_bot", opens: ["question", "status", "info"], maxOpenThreads: 9, maxPerMinute: 2, copiedAt: "2026-11-07" } } });
+  const files = [1, 2, 3, 4].map(i => submitSpool(e.peerDir, { type: "send", kind: "info", text: `fyi ${i}` }));
+  await e.poller.drainSpool();
+  expect(e.sent).toHaveLength(2);
+  expect(files.slice(2).map(n => readResult(e, n))).toEqual([{ ok: false, rule: "their-rate" }, { ok: false, rule: "their-rate" }]);
+});
 
 test(names.spool, async () => {
   const e = await setup();
