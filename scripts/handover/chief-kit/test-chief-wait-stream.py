@@ -958,6 +958,36 @@ class StackedWorker(StreamFixture):
         self.stop(p)
         self.assertFalse(self.path('relaylog').exists())
 
+    def test_the_relay_log_is_bounded_by_size_with_one_rotated_copy(self):
+        # the kit's other size-capped log (the classifier denial log) rotates to <log>.1 past 1 MiB
+        import re
+        row = re.compile(r'^start=\d+ label=\S+ marker=\S+ pending=\d+\.\d\d handler=\d+\.\d\d rc=\d+$')
+        seed = lambda label: f'start=1 label={label} marker=READY pending=0.00 handler=0.00 rc=0\n' * 18000
+        log, rotated = self.path('relaylog'), self.path('relaylog.1')
+        first = seed('N8')
+        self.assertGreater(len(first), 1048576)
+        log.write_text(first)
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, _ = self.start()
+        self.until(lambda: rotated.exists() and log.exists(), seconds=10)
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.assertEqual(rotated.read_text(), first, 'the old generation is kept whole')
+        live = log.read_text().splitlines()
+        self.assertEqual(len(live), 1)
+        self.assertEqual(live[0].split()[1:3], ['label=N1', 'marker=READY'])
+        second = seed('N9')  # the next rotation replaces the copy: at most two files ever exist
+        log.write_text(second)
+        self.add('N1', '- 10:05 MERGED #1')
+        self.until(lambda: rotated.read_text() == second and any(' marker=MERGED ' in r for r in log.read_text().splitlines()), seconds=10)
+        self.stop(p)
+        for path in (log, rotated):
+            self.assertTrue(all(row.match(r) for r in path.read_text().splitlines()), f'a torn line in {path.name}')
+        # only the log was trimmed: what the waiter decides from is as the two relays left it
+        self.assertEqual(self.path('ready').read_text(), 'N1\t3\n')
+        self.assertEqual(sorted(path.name for path in self.root.glob('consoles/*relaylog*')),
+                         ['chief.md.wait.relaylog', 'chief.md.wait.relaylog.1'])
+
 
     def refused_with(self, text):
         (self.root / 'refusal').write_text(text + '\n')
