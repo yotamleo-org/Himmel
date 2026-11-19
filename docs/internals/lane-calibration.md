@@ -93,10 +93,11 @@ is `lane-impl` minus `i-have-adhd` (the operator reads chief windows, not worker
 audit, 33650 to 31219 first-turn tokens — because the measured worker floor is schema-shaped, not roster-shaped (~40k of a
 74.3k first-turn floor is tool and MCP schemas, ~9k the base system prompt), so
 a profile by skill set would either resolve to `bare` and
-lose the floor's guards and skills or duplicate `worker-impl` exactly. `worker-eval` and
-`worker-docs` exist to carry a different context setting, not a different roster (see
-**Per-profile ceilings** below). What
-distinguishes it is the legacy `contextBudget: 35000` target, **not a
+lose the floor's guards and skills or duplicate `worker-impl` exactly. `worker-eval`
+shares `worker-impl`'s plugin selection and exists to carry a different context setting;
+`worker-docs` carries one too, and also keeps `lean-skills` on every lane, where
+`worker-impl` drops it on the native lane (see **Per-profile ceilings** below). All
+three carry the configured `contextBudget: 55000` target, **not a
 measured attainable floor**. The context-budget audit below retains it for lack of
 three attributable workers; measure a real worker with `scripts/lanes/worker-burn.sh`.
 
@@ -125,7 +126,7 @@ and of a tail glob is unproven until the chief's first native
 through `--lane claudex --profile worker-impl`; operator-managed
 user-scope rules remain preserved by `sanitize_settings`.
 
-`worker-impl`'s `mcpServers: ["qmd"]` layers `--mcp-config` +
+`worker-impl`'s `mcpServers: ["qmd", "himmel-bus"]` layers `--mcp-config` +
 `--strict-mcp-config` onto the same profile, stripping USER-level MCP servers
 (`graphify`, `obsidian-vault`, `context7`) a worker never calls. `qmd` is kept
 (not `[]`) because `--strict-mcp-config` drops *any* server absent from the
@@ -145,8 +146,8 @@ resolves for every cold `claude` spawn dispatched from a Telegram message,
 via `resolveProfileSettings` (the same seam `spawn-claudex.ts` already uses)
 plus a poller-local `--mcp-config`/`--strict-mcp-config` helper built from
 `mcpServersForProfile`/`collectMcpServerDefs`. Its plugin set is
-`lane-content` minus `claude-obsidian` (floor + `obsidian-triage`) and its `mcpServers: ["qmd"]` matches `worker-impl`'s
-allowlist. Measured (`profile-context-probe.mjs`): `telegram` = 32541
+`lane-content` minus `claude-obsidian` (floor + `obsidian-triage`) and its `mcpServers: ["qmd"]` is `worker-impl`'s
+allowlist without `himmel-bus`. Measured (`profile-context-probe.mjs`): `telegram` = 32541
 first-turn tokens against `contextBudget: 45000`, below the unleaned
 `bare` baseline of 33493 — so unlike `worker-impl`'s token-reduction win, this
 profile's value is deny-by-default correctness (no ambient full `~/.claude`
@@ -385,7 +386,8 @@ promoting Haiku past the rows above.
 
 ## Non-Claude lane calibration
 
-Every lane `scripts/lanes/lanes.json` registers gets a row here. The columns
+Every active lane `scripts/lanes/lanes.json` registers beyond the native tiers
+(their table is above) gets a row here. The columns
 are the **invariant** calibration facts (class, effort convention, context
 ceiling, cost/quota posture, calibration status) — not the full description,
 sanctioned-script invocation, or roster detail, which stay in `lanes.json` (data) and

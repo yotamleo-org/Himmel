@@ -222,7 +222,8 @@ repo that is not himmel. Already have himmel wired some older way? See
 ## Minimal config
 
 **`USER_SLUG`** is your kebab-case handle (e.g. `jane-doe`). Skip it and himmel
-derives one from your `git config user.name`. That is the whole required
+derives one from your forge login (GitHub or Bitbucket), or else your
+`git config user.name`. That is the whole required
 configuration; luna, Telegram, [hermes](hermes-runbook.md) and Jira are all
 opt-in. The details, including the companion vault, are in
 [setup/install.md](setup/install.md#minimal-config).
@@ -256,9 +257,10 @@ git add -A && git commit -m "feat: my change #2" && git push -u origin feat/my-t
                              # conventional-commit gate fires at commit (the #2 is the ticket
                              #   reference it wants, see step 8); the pre-push
                              #   gates run and record that a review is owed
-/pr-check                    # multi-agent review; clears the merge gate when clean
+/himmel-ops:pr-check         # multi-agent review of the branch against origin/<base>
 #   gh pr create / gh pr merge --squash
-/clean                       # prune merged-PR worktrees
+bash scripts/clean.sh        # prune merged-PR worktrees
+                             #   (`/pr-check` and `/clean` are the himmel-checkout spellings)
 /handover                    # on an item you already track, shown running in a himmel checkout:
                              #   save notes on what you did + where you left off, so the next
                              #   session (or a teammate) resumes with full context; see below
@@ -280,13 +282,13 @@ git add -A && git commit -m "feat: my change #2" && git push -u origin feat/my-t
 > folder.
 
 **How to tell it's working:** if you try to edit a file on `main` you'll get a
-`block-edit-on-main` message pointing you back into a worktree (`/clean_garden`
-or `/worktree`). That message means the guardrail works; it is not an error.
+`block-edit-on-main` message pointing you back into a worktree
+(`bash scripts/worktree.sh feat/<scope>`). That message means the guardrail works; it is not an error.
 (If you also installed the optional pre-commit gates,
 `pre-commit run --all-files` should pass too.)
 
-**You're done when:** `/pr-check` reports clean, the PR merges, and `/clean`
-removes the worktree. To verify, run
+**You're done when:** `/himmel-ops:pr-check` reports clean, the PR merges, and
+`bash scripts/clean.sh` removes the worktree. To verify, run
 `cd ~/try-himmel && git checkout main && git pull && git log --oneline -3` and
 look for your change on `main`. (Run it from the project folder: `main` is
 checked out there, so `git checkout main` fails inside a linked worktree.)

@@ -350,36 +350,47 @@ tries to close.
 | `leak-classes` gate (home-path, mac, private-lan-ip, hostname, telegram token — `scripts/guardrails/leak-classes.sh`) | pre-commit (also runs in CI) | HARD | fix the finding; inline `# leak-allow: <class> <reason>` on the same line, or a path prefix in `.leak-classes-ignore` |
 | `git-env-scrub` gate — trust-path (`scripts/handover`, `scripts/lanes`, `scripts/hooks`, `scripts/cr`, `scripts/lib/go-gate.sh`) git calls must scrub `GIT_DIR`/`GIT_WORK_TREE`/`GIT_COMMON_DIR`/`GIT_INDEX_FILE` (`scripts/guardrails/check-git-env-scrub.sh`; the helpers scrub git's full `git rev-parse --local-env-vars` list, and the full scan fails on a stale baseline entry) | pre-commit (also runs in CI) | HARD, ratcheted (`scripts/guardrails/git-env-baseline.txt` grandfathers pre-existing hits) | scrub via `scripts/lib/git-clean.sh` / `scripts/lanes/git-clean.mjs`; exempt with a standalone own-line `# git-env-ok: <reason>` comment (shell, file-level) or an inline `// git-env-ok: <reason>` (JS, per-call) |
 | `shellcheck` | pre-commit | HARD | fix the script |
-| `worktree-isolation`, `merged-branch-check`, `hookspath-misconfig`, `lockfile-integrity`, `artifact-leakage`, `uv-lock-integrity`, `pip-hashes`, `mcp-plugin-refs` | pre-commit | HARD | fix the finding (`--no-verify` only) |
-| drift guards (`doc-guard`, `agents-md-fresh`, `lanes-inventory-guard`, `hud-drift`, `telegram-fork-drift`, `template-himmel-plugins`) | pre-commit (most carry no `stages:` pin, so today they fire at every installed stage, push included) | HARD | fix the finding |
+| `worktree-isolation`, `merged-branch-check`, `lockfile-integrity`, `artifact-leakage`, `uv-lock-integrity`, `pip-hashes`, `mcp-plugin-refs` | pre-commit | HARD | fix the finding (`--no-verify` only) |
+| `hookspath-misconfig` — a `core.hooksPath` that would silently skip the hooks | pre-commit | HARD | fix the setting; `HOOKSPATH_OK=1` (`scripts/hooks/check-hookspath.sh`) |
+| drift guards (`doc-guard`, `agents-md-fresh`, `lanes-inventory-guard`, `hud-drift`, `telegram-fork-drift`, `template-himmel-plugins`) | pre-commit (all but `hud-drift` carry no `stages:` pin, so they fire at every installed stage; `doc-guard-push` runs `doc-guard` at pre-push) | HARD | fix the finding, or for that command `DOC_GUARD_OK=1` / `AGENTS_MD_OK=1` / `LANES_GUARD_OK=1` / `HUD_DRIFT_OK=1` |
+| `template-version` / `template-version-push` — a change to a template-owned file under `templates/luna-second-brain/` must bump the template's `metadata.version` | pre-commit / pre-push | HARD | bump the version; `TEMPLATE_VERSION_OK=1` |
+| `write-hold-commit` / `write-hold-push` — the single-writer barrier: a staged or branch-added file another live worker or open PR holds | pre-commit / pre-push | HARD | wait for the holder's release; `WRITE_HOLD_OK=1`, or the file `~/.himmel/state/holds/OFF` |
+| `no-new-hardcoded-env-values-staged` / `no-new-hardcoded-env-values` | pre-commit / pre-push | HARD | read the value from config (`scripts/lib/env-value.sh`); a same-line `env-literal-ok: <reason>` marker |
+| `graph-artifact-branch` — a change to the tracked graph outside a `chore/graph-publish-*` branch | pre-commit | HARD | ship it through `/graph-publish`; `GRAPH_COMMIT_OK=1` |
+| `doctor-check-ids` (a colliding `himmel-doctor` check id), `unchecked-mktemp` (an added `mktemp` capture with no guard) | pre-commit | HARD | fix the finding; `DOCTOR_CHECK_IDS_OK=1` / `UNCHECKED_MKTEMP_OK=1` (`unchecked-mktemp` also takes a `mktemp-unchecked-ok:` marker) |
+| `no-new-swallowed-errors`, `vacuous-path-assert`, `cr-best-effort` | every installed stage (no `stages:` pin) | HARD | fix the finding, or the same-line marker `# swallow-ok: <reason>` (or on the comment line above) / `# vacuous-path-ok: <reason>` / `cr-best-effort-ok: <why>` |
+| lint and drift checks with no bypass: the standard `trailing-whitespace`, `end-of-file-fixer`, `check-yaml`, `check-json`, `check-shebang-scripts-are-executable`; `flag-registry-lint`, `bundle-registry-lint`, `marketplace-source-hermetic`, `plugin-manifest-version`, `plugin-version-bump-required`, `docs-decision-records`, `debrand-coverage`, `claude-md-budget`, `no-mcp-sdk-v1`, `no-history-comments`, `no-removal-ratchet-in-ci` (no `stages:` pin); `guardrail-matrices`, `fail-open-lint`, `hook-lib-node-suites`, `profile-manifest-diff`, `trust-node-suites`, `settings-portability`, `gh-json-fields`, `required-check-no-cancel`, `skill-description-cap`, `skill-lint`, `shell-lint`, `flag-parity`, `command-positional-args`, `oxlint-complexity-ratchet`, `oxlint-hardening-zero-violations`, `commands-catalog-drift`, `secrets-doc-drift` (pre-commit) | as listed | HARD | fix the finding (`--no-verify` only); `no-history-comments` reads its allow rows from `scripts/lint/ticket-ref-allow.tsv`, `shell-lint` and `flag-parity` grandfather their baseline files |
+| `added-unwired-check` — a file the branch adds (hook, script, skill or suite) that nothing reaches | pre-push | HARD | wire it, or list a hook on `scripts/testing/unwired-hooks-allowlist.txt` |
 | `no-headless-gemini` (billing rule) | pre-commit | HARD | `# headless-gemini-ok: <reason>` marker on/above the line; docs paths exempt (`scripts/hooks/check-no-headless-gemini.sh`) |
 | `conventional-commit-msg` — conventional shape + ticket traceability (ON by default; pattern = `TICKET_ID_PATTERN`, else `JIRA_PROJECT_KEY-N`, else `#N`) | commit-msg | HARD | fix the message; `TICKET_ID_REQUIRED=0` opts out of the ticket half; merge/revert and `TICKET_ID_EXEMPT_AUTHORS` exempt (fixup/squash skip shape only) |
 | `no-push-to-main` | pre-push | HARD | none — work through a PR |
 | `npm-audit` / `npm-licenses` / `npm-audit-signatures` | pre-push | HARD | fix the dependency |
 | `no-force-push` | pre-push | HARD for `main`; warn-only elsewhere | `SKIP_FORCE_PUSH_GATE=1` silences the non-main warning only |
 | `code-review-before-push` — writes the review-owed marker | pre-push | auth-gated | run `/pr-check` to clean (clears it); `SKIP_CR=1 git push` (per-command) skips writing |
-| `platforms-tested` attestation (`Platforms tested: <os>` on shell/script diffs) | pre-push | auth-gated | the trailer in any commit of the push range or the PR body; `[skip platforms-check]`; `PLATFORMS_TESTED_OK=1` (`scripts/hooks/check-platforms-tested.sh`) |
+| `platforms-tested` attestation (`Platforms tested: <os>` on shell/script diffs) | pre-push | auth-gated | the trailer in any non-merge commit of the branch (a PR-body line counts at no gate); `[skip platforms-check]` or `PLATFORMS_TESTED_OK=1` clear the push only (`scripts/hooks/check-platforms-tested.sh`) |
 | `security-reviewed` attestation (`Security reviewed: <token>` on non-docs diffs) | pre-push | auth-gated | same shapes: trailer / `[skip security-review]` / `SKIP_SECURITY_REVIEW=1`; docs-only diffs exempt |
 | `pr-mergeable-gate` | pre-push | HARD for a locally-proven merge conflict; warn-only otherwise | refuses only a locally-proven merge conflict; `SKIP_PR_MERGEABLE=1` |
 
 > Note on "first commit": CLAUDE.md's convention says attestation trailers
-> belong in the FIRST commit after genuinely testing/reviewing. The hooks
-> themselves scan the **entire push range** for the trailer — the
-> first-commit rule is discipline (attest when you actually did the work),
+> belong in the FIRST commit after genuinely testing/reviewing. The gates
+> (`scripts/lib/attest-trailers.sh`) accept the trailer in **any non-merge
+> commit of the branch**; a merge-commit or PR-body trailer counts nowhere.
+> The first-commit rule is discipline (attest when you actually did the work),
 > not positional enforcement.
 
 ### 3.2 Session gates (Claude Code hooks)
 
-Wired in three places: the repo's `.claude/settings.json` (project scope),
+Wired in four places: the repo's `.claude/settings.json` (project scope),
 `~/.claude/settings.json` (user scope — see
-[§4.2](#42-claude-code-settings--hooks)), and the himmel-ops plugin's
-`marketplace/plugins/himmel-ops/hooks/hooks.json` (`block-docker-privesc`,
-`block-merged-pr-commit`, `block-unresolved-cr-merge`, `block-graphify-egress`,
-`block-rogue-codex-exec`, `guard-implementor-dispatch`,
-`guard-chief-dispatch`
-— these seven exist only
-where that plugin is installed). All scripts under `scripts/hooks/`. Full
-per-hook behavior: [internals/enforcement.md](internals/enforcement.md).
+[§4.2](#42-claude-code-settings--hooks)), the himmel-ops plugin's
+`marketplace/plugins/himmel-ops/hooks/hooks.json`, and `.codex/hooks.json` for
+the codex lane. The rows marked *(plugin)* below exist only where the himmel-ops
+plugin is installed. Scripts live under `scripts/hooks/`, or under
+`marketplace/plugins/himmel-ops/hooks/` for the plugin's own copies
+(`block-busy-loop`, `block-vault-sweep`, `peer-taint-gate`,
+`redirect-webfetch-walled-hosts`, `inject-minerva-critic`, `guard-judge-writes`,
+`guard-rm-writes`, `block-agent-native-egress`). Full per-hook behavior:
+[internals/enforcement.md](internals/enforcement.md).
 
 | Hook | Fires on | Class | Bypass (launching shell) |
 |---|---|---|---|
@@ -387,23 +398,62 @@ per-hook behavior: [internals/enforcement.md](internals/enforcement.md).
 | `block-read-secrets` | Read/Grep/Bash touching `.env`, keys, credentials | auth-gated | `READ_SECRETS_OK=1` |
 | `block-destructive-commands` | recursive `rm`, `kill -9`, forced git rewrites, `curl\|sh`, … | auth-gated | `DESTRUCTIVE_OK=1` |
 | `block-rogue-claude-schedule` | one command that both registers a scheduler job and launches `claude` | auth-gated | `ROGUE_SCHEDULE_OK=1`; or use the sanctioned `arm-resume.sh` / `pipeline-cadence.sh` |
-| `block-rogue-codex-exec` | raw native `codex exec` outside the sanctioned dispatch script (no preflight, no pins, no registry, no watchdog) | auth-gated | `CODEX_EXEC_RAW_OK=1` |
-| `block-backend-tier` | an MCP (Model Context Protocol plugin-server) call for a service whose CLI ranks higher and has the verb (registry `scripts/backends.json`) | auth-gated | `MCP_ALL_OK=1` or `MCP_<SERVICE>_OK=1` |
+| `block-rogue-codex-exec` *(plugin)* | raw native `codex exec` outside the sanctioned dispatch script (no preflight, no pins, no registry, no watchdog) | auth-gated | `CODEX_EXEC_RAW_OK=1` |
+| `block-backend-tier` | an MCP (Model Context Protocol plugin-server) call for a service whose CLI ranks higher and has the verb (registry `scripts/backends.json`); every Jira MCP call, since Jira is CLI-only | auth-gated | `MCP_ALL_OK=1` or `MCP_<SERVICE>_OK=1` |
 | `block-jira-compound-write` | a Jira CLI write wrapped in `$(…)`/heredoc/chain | auth-gated (blocks the compound shape, prescribes the one literal retry) | `JIRA_COMPOUND_WRITE_OK=1` |
-| `block-tail-pipe-on-gates` | a pipeline whose FIRST stage invokes an exit-code-critical gate (`check-ci.sh`, `clear-review-marker.sh`, `run-shell-tests.sh`, `merge-on-green.sh`, `pr-merge.sh`, `scripts/*/test-*.sh`) and whose LAST stage is `tail`/`head` — `$?` would be tail's, not the gate's | warn-only (fail-open on anything it cannot parse) | a same-line `# tail-pipe-ok: <reason>` marker — deliberately NOT an env var, since a per-call prefix never reaches a hook |
+| `block-tail-pipe-on-gates` | a pipeline in which any stage before the last invokes an exit-code-critical gate (`check-ci.sh`, `clear-review-marker.sh`, `run-shell-tests.sh`, `merge-on-green.sh`, `pr-merge.sh`, `scripts/*/test-*.sh`) and whose LAST stage is `tail`/`head` — `$?` would be tail's, not the gate's; also a gate followed by a later segment that does not surface its status | auth-gated (denies, exit 2) | a same-line `# tail-pipe-ok: <reason>` marker — deliberately NOT an env var, since a per-call prefix never reaches a hook |
 | `guard-memory-capture` | writes to the auto-memory store breaking its form rules | auth-gated | `MEMORY_CAPTURE_OK=1`; `MEMORY_TOPIC_MODE` (default `deny`) picks the topic-cap outcome, `warn` = an advisory instead of the deny |
-| `block-docker-privesc` | privileged/secret-mounting docker runs | auth-gated | `DOCKER_PRIVESC_OK=1` |
-| `block-merged-pr-commit` | `git commit` onto a branch whose PR already merged | auth-gated (hygiene) | `MERGED_PR_COMMIT_OK=1` |
+| `block-docker-privesc` *(plugin)* | privileged/secret-mounting docker runs | auth-gated | `DOCKER_PRIVESC_OK=1` |
+| `block-merged-pr-commit` *(plugin)* | `git commit` onto a branch whose PR already merged | auth-gated (hygiene) | `MERGED_PR_COMMIT_OK=1` |
 | `check-cr-marker-on-pr-create` | `gh pr create` while a review-owed marker exists | auth-gated | clean `/pr-check` (clears the marker) |
-| `block-unresolved-cr-merge` | `gh pr merge` — two sub-gates: the reviewer set (each `critics.json` row by its mode, see [Reviewer modes](#reviewer-modes)), and CI not green | auth-gated | `CR_MERGE_GATE_OK=1` / `CI_MERGE_GATE_OK=1` (independent); `"review": "no_code_review"` (or `CR_PROFILE=none`) skips the reviewer sub-gate with a NOTE |
-| `guard-implementor-dispatch` | expensive implementor-shaped `Agent` dispatches while the 5h Claude subscription usage budget is hot | auth-gated cost guard (fail-open; blocks only at ≥80% of the usage budget + provably live window, warns at ≥65%) | `IMPL_GUARD_DISABLE=1` / `IMPL_GUARD_OK=1` |
-| `guard-chief-dispatch` | a chief dispatching ship-flow-shaped `Agent` work (≥2 of worktree/pr-open/cr-gate marker families) as an in-process subagent | workflow fence (fail-open; chief-shaped AND ≥2-family match required) | `CHIEF_DISPATCH_DISABLE=1` / `CHIEF_DISPATCH_OK=1` (old names `CONSOLE_*` still read) |
-| `block-graphify-egress` + `scripts/guardrails/graphify-fence.sh` | any `graphify` run — corpus × provider egress policy | HARD (fail-closed EXIT trap) | none for hard-deny cells; narrow per-cell opt-ins only (`GRAPHIFY_SALUS_LOCAL_OK`) |
-| `block-agent-native-egress` (plugin-shipped) | an `mcp__*agent-native*` call (hosted Builder.io MCP) from a salus session, or with a payload naming salus or a PHI root | HARD (fail-closed) | none (salus × builder-io is a hard matrix cell) |
+| `block-unresolved-cr-merge` *(plugin)* | `gh pr merge` — two sub-gates: the reviewer set (each `critics.json` row by its mode, see [Reviewer modes](#reviewer-modes)), and CI not green | auth-gated | `CR_MERGE_GATE_OK=1` / `CI_MERGE_GATE_OK=1` (independent); `"review": "no_code_review"` (or `CR_PROFILE=none`) skips the reviewer sub-gate with a NOTE |
+| `guard-implementor-dispatch` *(plugin)* | expensive implementor-shaped `Agent` dispatches while the Claude subscription usage budget is hot | auth-gated cost guard (fail-open; blocks only at ≥80% of the 5-hour window or ≥85% of the weekly window with a provably live window, warns at ≥65% / ≥70%) | `IMPL_GUARD_DISABLE=1` / `IMPL_GUARD_OK=1` |
+| `guard-chief-dispatch` *(plugin)* | a chief dispatching ship-flow-shaped `Agent` work (≥2 of worktree/pr-open/cr-gate marker families) as an in-process subagent | workflow fence (fail-open; chief-shaped AND ≥2-family match required) | `CHIEF_DISPATCH_DISABLE=1` / `CHIEF_DISPATCH_OK=1` (old names `CONSOLE_*` still read) |
+| `block-graphify-egress` *(plugin)* + `scripts/guardrails/graphify-fence.sh` | any `graphify` run — corpus × provider egress policy | HARD (fail-closed EXIT trap) | none for hard-deny cells; narrow per-cell opt-ins only (`GRAPHIFY_SALUS_LOCAL_OK`) |
+| `block-agent-native-egress` *(plugin)* | an `mcp__*agent-native*` call (hosted Builder.io MCP) from a salus session, or with a payload naming salus or a PHI root | HARD (fail-closed) | none (salus × builder-io is a hard matrix cell) |
 | `auto-arm-on-cap` / `auto-arm-on-subagent-cap` | usage cap approaching / subagent hit a cap | watchdog (fail-open; blocks once to force a handover, after arming a resume) | `AUTO_ARM_DISABLE=1` (+ `AUTO_ARM_SUBAGENT_DISABLE=1`) |
 | `auto-approve-safe-bash` | safe read-only Bash shapes | not a veto — only ever emits *allow* | comment out its stanza to disable |
 | `check-update-available` | SessionStart (throttled; a plain `git fetch` of your himmel clone's own remote (on a release-channel station, a second one for its release tags) — nothing else is contacted, no data sent — run DETACHED, so session start never waits on it) | warn-only | `UPDATE_CHECK_DISABLE=1` |
 | `inject-initiative` | SessionStart | warn-only (opt-in; injects the drive-to-ship directive) | unset `HIMMEL_INITIATIVE` (default OFF) |
+| `block-git-stash` | `git stash` and its mutating verbs (`push`, `save`, `pop`, `drop`, `clear`, `branch`, `store`); every worktree shares one `refs/stash` | auth-gated | `GIT_STASH_OK=1` |
+| `block-bare-qmd-query` | a bare `qmd query`/`search`/`vsearch`, not run through `scripts/lib/qmd-bounded.sh` | auth-gated | `QMD_UNBOUNDED_OK=1` |
+| `block-chokepoint-env-prefix` | an env-prefixed call that sets a registered chokepoint's seam variable (`scripts/chokepoints.json`) | auth-gated | `ENV_PREFIX_GUARD_OK=1` |
+| `require-quiet-run` | a bare run of `scripts/**/test-*.sh` or `scripts/ci/run-shell-tests.sh`; the deny prints the `scripts/quiet-run.sh` form | auth-gated (fail-open on its own errors) | `QUIET_RUN_BYPASS=1` |
+| `block-edit-live-settings` | a write to a live `settings.json` / `settings.local.json` (user scope, or the primary checkout's `.claude/`); the same edit in a linked worktree passes | auth-gated | `EDIT_LIVE_SETTINGS_OK=1` |
+| `block-write-into-main-checkout` | a Bash-mediated write (redirect, `tee`, `sed -i`, `cp`/`mv`/`rm`/`touch`, `git commit`, …) whose target lands in a repo on `main` or in the primary checkout | auth-gated | `EDIT_ON_MAIN_OK=1`; per-repo: a gitignored `.single-writer` file at the repo root |
+| `block-fork-sync-pr` | a `gh pr create` that syncs a registered fork with its upstream | auth-gated (fail-open on its own errors) | `FORK_SYNC_PR_OK=1` |
+| `read-clamp` | in a chief-spawned worker (`HIMMEL_CONSOLE_LEG=1`): a whole-file read over `HIMMEL_READ_CLAMP_LINES` lines, or a repeat of an identical Read of an unchanged file | auth-gated (fail-open) | `HIMMEL_READ_CLAMP_OK=1` |
+| `guard-bus-store` | a Bash or file write into the himmel-bus store | auth-gated | `BUS_STORE_GUARD_OK=1` |
+| `block-subagent-release-operator` | a subagent Bash command that names both `release` and `operator` | auth-gated (fail-closed) | `SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE=1` |
+| `guard-judge-write-scope` | a `judge-ro` subagent call other than one Write of its evidence file | auth-gated (fail-closed) | `JUDGE_WRITE_SCOPE_OK=1` |
+| `check-write-hold` | an Edit/Write onto a file another live worker or open PR holds (the single-writer barrier) | auth-gated (fail-open on its own errors) | `WRITE_HOLD_OK=1` |
+| `orchestrator-inline-guard` | a top-tier parent (Fable/Opus) editing an implementation file directly past the per-PR budget | auth-gated | `INLINE_IMPL_OK=1` (audited override) / `ORCH_GUARD_DISABLE=1` (kill switch) |
+| `guard-worker-context-handoff` (also PreCompact) | a chief-spawned worker launched with the guard on, past its context threshold: every non-hand-off call and its auto-compaction | auth-gated (off by default) | `WORKER_SESSION_CONTEXT_HANDOFF_OK=1` |
+| `block-subagent-park` | a subagent backgrounding a Bash call or calling Monitor | auth-gated | `SUBAGENT_PARK_GUARD_DISABLE=1` |
+| `block-t3code-unwatch-open-pr` | `mcp__t3-code__unwatch_pull_request` while the PR is open | auth-gated (fail-open) | `T3CODE_UNWATCH_OK=1` |
+| `redirect-webfetch-walled-hosts` (project and *(plugin)*) | a WebFetch of a login-walled host (`x.com`, `instagram.com`, …); the deny names the fetch route | auth-gated | `HIMMEL_WEBFETCH_WALLED_OK=1` |
+| `block-worker-askuserquestion` / `guard-worker-wakeup` | AskUserQuestion / ScheduleWakeup in a chief-spawned worker (`HIMMEL_CONSOLE_LEG=1`) | auth-gated | unset `HIMMEL_CONSOLE_LEG` in the launching shell |
+| `guard-agent-model` | an `Agent` dispatch with a blocked model (Fable), or a judge dispatch that overrides its frontmatter model | auth-gated | an `ESCALATION: <reason>` line in the dispatch prompt |
+| `guard-identical-denied-retry` | a third byte-identical Bash command after two refusals of it in the session | workflow guard (fail-open) | none: change the command (`himmel-ops:stuck-playbook`) |
+| `guard-merge-compound` | `merge-on-green.sh` run in any shape but one bare command | workflow guard (fail-open) | none: run the bare line it prints |
+| `guard-pr-check-literal` | a command that names a gate-allowed `scripts/cr` or `scripts/handover` writer and could change what it runs (a write redirect, here-string, `tee`, a shadowed reader) | HARD | none: run the script as its own literal command |
+| `block-bank-lift-writes` | an agent write to `~/.himmel/state/usage-lift.json` | HARD | none: the operator's own command |
+| `block-himmel-config-writes` | an agent write to `~/.himmel/config.json` (it holds the graphify salus egress opt-in) | HARD (a speed bump, not a fence) | none |
+| `guard-relay-writes` | a relay worker (`HIMMEL_CONSOLE_RELAY=1`) writing chief state | HARD (fail-closed) | none |
+| `mcp-policy` | every `mcp__*` call, classified against `scripts/guardrails/mcp-policy.json` and audited | warn-only as shipped (`observe` mode); a server set to `enforce` denies | the registry's `mode` |
+| `allow-thread-resolve`, `approval-grant-check` | the audited review-thread resolve call; a call the operator granted over Telegram | not a veto — only ever emits *allow* | — |
+| `stop-chief-idle-guard` | Stop: a chief session ending its turn while it still holds its queue lock (once per turn) | workflow guard (fail-open) | release the lock (wrap) or `/chief next` |
+| `block-infra-destroy` *(plugin)* | one-step data destruction: `terraform`/`tofu`/`pulumi destroy`, `kubectl delete`, `helm uninstall`, cloud delete/terminate, SQL `DROP`/`TRUNCATE`/`DELETE FROM`, docker prune, … | auth-gated (fail-closed) | `INFRADESTROYOK=1` |
+| `block-worker-write-fence` *(plugin)* | a dispatched worker (`HIMMEL_WORKER=1`) naming the hook-integrity pin directory, or repointing `origin/<default branch>` | auth-gated | `HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1` |
+| `block-lesson-enforcement-writes` *(plugin)* | in a lesson-loop worker (`HIMMEL_LESSON_LOOP=1`), a write to an enforcement path | HARD | none |
+| `guard-subagent-model` *(plugin)* | an `Agent` dispatch with no `model` | auth-gated | `SUBAGENT_MODEL_OK=1` |
+| `guard-chief-foreground` *(plugin)* | a chief running a long chief-kit script in the foreground | auth-gated | `CHIEF_FG_OK=1` |
+| `guard-judge-writes` *(plugin)* | a judge session (`HIMMEL_CONSOLE_JUDGE=1`) making an outward or mutating call | HARD | none: launch without `--judge` |
+| `guard-rm-writes` *(plugin)* | a raw write to a release state directory's authority files or to `~/.config/himmel/release/` | HARD | none: the Jira CLI's `release` op is the writer |
+| `block-busy-loop` *(plugin)* | a sleepless `while`/`until … do :; done` loop | auth-gated | `BUSY_LOOP_BYPASS=1` |
+| `block-vault-sweep` *(plugin)* | opt-in (`HIMMEL_VAULT_SWEEP_DENY=1`): the first hand sweep of the notes in a session | auth-gated | `HIMMEL_VAULT_SWEEP_BYPASS=1` |
+| `peer-taint-gate` *(plugin)* | a session that read peer text or runs as a peer desk: every call but the two peer-bridge shapes; any session: a call naming the bridge state or key dir | HARD | none |
+| `inject-minerva-critic` *(plugin)* | a brainstorming, writing-plans or grilling Skill call made without `/minerva` | warn-only (injects context) | `MINERVA_HOOK_DISABLE=1` |
 
 ### 3.3 Merge & publish gates
 
@@ -412,7 +462,7 @@ per-hook behavior: [internals/enforcement.md](internals/enforcement.md).
 | Session merge gate (`block-unresolved-cr-merge`) | auth-gated | CI green + zero unresolved review threads on the head SHA (`scripts/hooks/block-unresolved-cr-merge.sh`). Branch protection is also active on `main`: 10 required status checks (strict — branch must be up to date), `enforce_admins`, no force-push, no deletion, and — via the separate `protect-main` ruleset rather than classic branch protection — squash-only merges, 1 approving review, and code-owner review required. So this hook is one gate among several, not the whole gate. As a session hook it gates merges issued *inside a Claude session*; an operator merging from a bare terminal or the GitHub UI is outside its reach — by design, since the operator is the authority it protects. It also fails **open** on degraded evaluation (missing `jq`, unparseable hook input) — a guardrail layered on top of forge-side branch protection, not a replacement for it |
 | Armed auto-merge (`scripts/handover/merge-on-green.sh`) | auth-gated, opt-in | `ARMAUTOMERGE` truthy **and** all of: same repo, PR base == default branch, `check-ci.sh` exit 0, audit log writable, merge pinned to the certified head SHA (`--match-head-commit`), MERGED state confirmed by polling — **and** a repo test satisfied either way: the repo is verified PRIVATE, **or** it is the ONE configured public origin (`HIMMEL_PUBLIC_ORIGIN_NWO`, a fixed literal in the script) and a live read shows branch protection on the base branch with BOTH `enforce_admins` enabled and a non-empty required-status-checks list — or, per `HIMMEL_PROTECTION_SOURCE` (also a fixed literal in the script: `classic`, `ruleset`, `either` default, `both`), an active ruleset with required checks and NO bypass actor. Any other public repo, and a protection read that is missing, empty or unreadable, refuse (exit 12). Base, privacy **and** protection are each re-verified fresh immediately pre-merge, never reused from the first pass. `merge-on-green.sh` exits 18 (GitHub-blocked) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is the policy refusal: the chief-GO gate, or a solo-mode refusal when `himmel.mergeMode` is set); if no automation identity can satisfy the required review, the merge is a human admin action; on this repo the operator relaxed `protect-main` on 2026-09-09 |
 | Public merge (`scripts/merge-public-on-green.sh`, via Telegram `/mergepub`) | HARD human-authorization | operator-typed, non-forwarded `/mergepub <pr> <sha12>`; SHA must prefix-match the live head at read *and* fresh pre-merge re-verify; `check-ci.sh` exit 0 is the only pass; the script refuses outright if `CLAUDECODE` is set (i.e. if any agent tries to run it) |
-| `check-ci.sh` (the watcher those gates call) | mechanism, not a veto | exit 0 = green + threads resolved + no changes-requested; 1 = red; 2 = cannot evaluate; 64 = usage error, no gate ran; 3 = unresolved threads / changes requested; 5 = a required check (rulesets ∪ classic protection) never reported within `--grace`, or the required set is unreadable — fail-fast with one operator DM, never waited on; 4 = no longer emitted (the stale-CodeRabbit-anchor exit, retired: CodeRabbit is best effort and its absence prints a NOTE, never a failure) |
+| `check-ci.sh` (the watcher those gates call) | mechanism, not a veto | exit 0 = green + threads resolved + no changes-requested; 1 = red; 2 = cannot evaluate; 64 = usage error, no gate ran; 3 = unresolved threads / changes requested, or an outside-diff CodeRabbit body finding with no disposition at the head; 5 = a required check (rulesets ∪ classic protection) never reported within `--grace`, or the required set is unreadable — fail-fast with one operator DM, never waited on; 6 = every gate above passed but GitHub's own `mergeStateStatus` refuses the merge (`BLOCKED`, `BEHIND`, `DIRTY` or `DRAFT`); 7 = only under `CHECK_CI_DISTINCT_DEADLINE=1`, checks still pending at the `--max-wait` deadline (otherwise exit 2); 4 = not emitted (CodeRabbit is best effort and its absence prints a NOTE, never a failure) |
 
 **`check-ci.sh` API cost.** Many workers waiting on CI drain one shared
 GitHub quota (5,000/h REST core, 5,000/h GraphQL — `gh pr checks` is GraphQL), so
@@ -717,6 +767,8 @@ check) holds each one to it at the PR's head:
 |---|---|---|---|
 | `mode` | `hard` | every row except a `github-app` one | must **pass** at the head: anything else (in progress, not yet run, rate limited, unavailable, an open finding) holds the merge, and an unavailable hard reviewer raises one `ALERT` per head |
 | `mode` | `best-effort` | a `provider: "github-app"` row (CodeRabbit) | holds only on a posted, open finding (an unresolved review thread, an undisposed outside-diff body finding, a critic's open crit/imp finding); any other state prints a NOTE and is `relaxed` |
+| `mode` | `advisory` | — | a critic row's open findings print a NOTE (kept in the CR ledger) and any other non-pass state is `relaxed`, until the row's `precision` reaches the top-level `advisory_precision_floor` (shipped `0.60`); from then on the resolver treats the row as `hard` |
+| `precision` | a number | unset | an advisory row's measured precision, compared with `advisory_precision_floor` |
 | `required` | `true` / `false` | `false` | `true` keeps the row in the set even when it is **absent** on this machine (it is then `unavailable`, which holds a hard row) |
 | `review` (top level) | `"no_code_review"` | unset | no reviewer gates this repo: the gate prints a NOTE and CI alone decides. `CR_PROFILE=none` means the same |
 
@@ -728,7 +780,7 @@ excluded for this PR). Absent and not-selected rows leave the effective set.
 A set with **no hard reviewer left is a config error**, unless the config says
 `"review": "no_code_review"`: the gate refuses with
 `cr-reviewer-gate: config error: <file>: <why>`, as it does for a critics file
-that does not parse or a `mode` other than the two above. A config error always
+that does not parse or a `mode` other than the three above. A config error always
 blocks; a failed read (the critic ledger, a GitHub query) is *degraded*: the
 merge gate fails open on it with a note, the release check never does. The one
 exception is a clone armed for CodeRabbit: there an unreadable critic ledger
@@ -742,10 +794,10 @@ is a config error.
 `scripts/cr/critic-panel.sh --check` prints every row with its mode, required
 flag and state, and the effective set.
 
-As shipped: codex `hard`, `required: true`; claude `hard` (absent while the API
-lane is off); CodeRabbit `best-effort`. The overlay changes any of it per
-machine, field by field. This `critics.local.json` makes CodeRabbit a hard
-reviewer and claude advisory only:
+As shipped: codex `hard`, `required: true`; claude `advisory`, `precision: 0.482`
+(absent while the API lane is off); CodeRabbit `best-effort`. The overlay
+changes any of it per machine, field by field. This `critics.local.json` makes
+CodeRabbit a hard reviewer and claude best-effort:
 
 ```json
 { "panel": [
@@ -878,7 +930,7 @@ written only into `.env` is not read (`load-dotenv.sh` bridges neither).
 | `HIMMEL_IMPL_LANE` | registry/overlay `defaultImplLane` | env | preferred implementation lane for `scripts/telegram/dispatch-lane.sh`; an explicit `--lane` still wins, and an unavailable selection is refused rather than substituted |
 | `CLAUDE_LANE_AUTO_RESEED` | ON | shell | `0` stops the lane config dirs (`~/.claude-codex`, `~/.claude-openrouter`, `~/.claude-deepseek`) auto-reseeding from `~/.claude` |
 | `CLAUDEX_USAGE_WARN_PCT` / `CLAUDEX_USAGE_REFUSE_PCT` / `CLAUDEX_USAGE_OK` | 80 / 90 / unset | env | claudex codex weekly usage budget preflight thresholds/override; the refuse point is shared with `bank-status`'s codex verdict (`LANE_FUNDED_MAX_PCT` wins; every other usage source keeps 99) |
-| `IMPL_GUARD_HARD` / `IMPL_GUARD_WARN` / `IMPL_GUARD_CACHE_*` | 80 / 65 / … | env | implementor-dispatch cost-guard thresholds |
+| `IMPL_GUARD_HARD` / `IMPL_GUARD_WARN` / `IMPL_GUARD_WEEKLY_HARD` / `IMPL_GUARD_WEEKLY_WARN` / `IMPL_GUARD_CACHE_*` | 80 / 65 / 85 / 70 / … | env | implementor-dispatch cost-guard thresholds (5-hour and weekly windows) |
 | `HIMMEL_QUOTA_GAUGE_LEDGER` | `~/.himmel/quota-gauge.jsonl` | env | cross-lane quota observation ledger path |
 | `CODEX_EXTERNAL_WRITES_OK` | unset | shell | bypass the codex-lane external-write fence (`scripts/hooks/block-terminal-write-fence.sh`) |
 
@@ -953,15 +1005,17 @@ Two scopes, deliberately split (`docs/setup/new-machine.md`):
   the non-hook user config: statusline, `env` block, `enabledPlugins`, and
   marketplaces.
 - **Project scope** (the repo's `.claude/settings.json`, checked in): the
-  himmel-dev guardrail stack — 11 PreToolUse matcher groups, 3 PostToolUse,
-  3 SessionStart, plus `Stop`, `SessionEnd` and the permission/notification
-  taps — and the permission allow/deny lists. Most groups run a single
+  himmel-dev guardrail stack — `PreToolUse`, `PostToolUse`,
+  `PostToolUseFailure`, `PreCompact`, `SessionStart`, `Stop` and `SessionEnd`
+  hooks plus the permission/notification taps — and the permission allow/deny
+  lists. Most groups run a single
   *chained* dispatch that executes several scripts in order, so the group
   count is well below the guardrail count; the file is the inventory. `inject-initiative` is intentionally wired at **both**
   scopes; a session-id dedup absorbs the double fire.
 
 The permission model in the project file: a literal-command **allow** list
-(git/gh/rtk/npm/node, the POSIX toolchain, `bash scripts/*`, the Jira CLI,
+(git/gh/rtk/npm/node, the POSIX toolchain, literal per-script
+`bash scripts/<name>.sh` rules, the Jira CLI,
 `Edit(.claude/worktrees/**)`), and a **deny** backstop
 (force-push variants, `git reset --hard`, recursive deletes, Edit on
 `.env*`/`.git/**` even inside worktrees). Denies always win.

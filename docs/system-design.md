@@ -76,7 +76,7 @@ last three are machinery that every one of them works inside.
 | **Handover system** | Plain-markdown state per worker, a queue lock, and scheduled relaunch so a stopped session resumes. | It is not a memory store that is queried instead of the source. |
 | **Backends** | A local Jira CLI preferred over an always-loaded MCP server; lanes for delegated work; an optional Telegram bridge. | They do not change who may write or merge. |
 
-Two further terms matter for fan-out. A **batch** is a set of workers dispatched
+Two further terms matter for fan-out. A **parallel wave** is a set of workers dispatched
 together, which is the unit that collision checks, the single-writer rule and the
 fleet cap apply to. A **dependency chain** is an ordered sequence of workers that belong
 together. **Arming** is launching a session on a schedule or a signal so that a
@@ -173,7 +173,7 @@ widens the permissions a session was launched with.
 **Single writer, enforced.** Many sessions may read; one writes. A worker holds a
 queue lock on its own handover document, the lock is a directory created
 atomically and released only with the token printed when it was taken, and the
-chief collision-checks the files of every queued worker before a batch launches.
+chief collision-checks the files of every queued worker before a parallel wave launches.
 Two workers editing one file is the conflict a merge queue cannot untangle.
 
 **The merge is a sanctioned script.** Merging goes through one script that
@@ -209,10 +209,10 @@ off-switches are in [`configuration.md`](configuration.md).
 | Decision | Why | What it costs |
 |---|---|---|
 | **Structural over instructional.** The first drift of a prose rule is a signal; on the second, it becomes a hook, gate or classifier, never stronger prose. | Prose in a context window decays with compaction and is silent when it fails. A refusal is observable. | Gates fire on you too. Some will stop a change you believe is fine. The recovery path is documented, but you meet the friction every day. |
-| **Derive a gate's input from the thing it guards.** The hook that blocks Jira MCP calls asks the CLI which verbs it has instead of keeping a list. | A hand-kept list is a second copy of the truth and stops protecting without anyone noticing. | Gates depend on the guarded tool exposing a way to be asked. Where that is missing, a list is kept and the drift risk remains. |
+| **Derive a gate's input from the thing it guards.** The hook that routes Atlassian MCP calls asks the CLI which verbs it has before it blocks a mapped method. | A hand-kept list is a second copy of the truth and stops protecting without anyone noticing. | Gates depend on the guarded tool exposing a way to be asked. Where that is missing, a list is kept and the drift risk remains. |
 | **Handover is plain markdown, one file per worker.** State and orders never split across two documents. | A resuming session cannot read half the picture, and a human can read, correct and diff the memory. | Writing state takes discipline. A worker that records nothing leaves nothing to resume from. |
 | **A lock, not a convention, for one writer per queue.** The lock is a directory with a release token. | Prose coordination between two armed sessions failed in practice: duplicate dispatch and duplicate shipping. | A stale lock needs a deliberate release, and a session that dies holding one has to be recognised as dead. |
-| **A local CLI before an MCP server.** MCP is used only for operations the CLI does not implement, and routing is enforced. | An MCP server costs context in every session that loads it; a CLI costs nothing until called. | The CLI is a build artifact and must be invoked by absolute path from the primary checkout; a worktree does not have it. |
+| **A local CLI before an MCP server.** Jira runs on the CLI only; MCP is kept for Confluence ops its CLI lacks, and the routing is enforced. | An MCP server costs context in every session that loads it; a CLI costs nothing until called. | The CLI is a build artifact and must be invoked by absolute path from the primary checkout; a worktree does not have it. |
 | **Separate roles: chief, worker, judge.** The session that approves is not the session that writes. | A reviewer that shares the author's context shares the author's blind spots. | More sessions, more coordination and more cost for the same diff. It earns this on changes that touch trust, and is overkill on others. |
 | **Fail-safe revision.** A narrowing or halt needs no token; an expansion needs one. | Hostile text can only make a worker do less, never more. | A legitimate narrowing can be accepted from the wrong place; the cost is wasted work, not a breach. |
 | **Always-on context stays small.** Cross-cutting frame-shaping rules live in the root instruction file; domain-local rules live in subtree files; the rest loads on demand. | Every token in the always-loaded surface is paid in every session and every subagent. | Knowledge has to be found by retrieval or by following a pointer, and the pointer layer has to be curated. |

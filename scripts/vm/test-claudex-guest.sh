@@ -23,6 +23,7 @@ check() { # label, then the condition as a command
     local label="$1"; shift
     if "$@"; then echo "PASS $label"; else echo "FAIL $label"; FAILED=$((FAILED + 1)); fi
 }
+mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1" 2>/dev/null; }
 
 fx_fail() { echo "FAIL fixture setup failed (line ${BASH_LINENO[0]}): the suite stops here"; exit 1; }
 BIN="$WORK/bin"          # station-side stubs
@@ -240,7 +241,7 @@ check "a second create exits 0 and clones nothing" test "$rc" -eq 0 -a "$(grep -
 new_world
 run_cg provision himmel-claudex; prc1=$rc; pout1=$out
 check "provision exits 0 (out: ${pout1:0:200})" test "$prc1" -eq 0
-check "R3 cliproxy.key exists with mode 600" test "$(stat -c %a "$GH/.config/himmel/cliproxy.key" 2>/dev/null)" = 600 # gnu-ok: linux-only suite (see platform guard)
+check "R3 cliproxy.key exists with mode 600" test "$(mode "$GH/.config/himmel/cliproxy.key")" = 600
 check "R3 no .env anywhere in the guest HOME" test -z "$(find "$GH" \( -name .env -o -name '.env.*' \) ! -name .env.example)"
 check "provision installs claude 2.1.314 once" test "$(guest_log_count 'claude install 2.1.314')" = 1
 check "provision writes {} settings" test "$(cat "$GH/.claude/settings.json" 2>/dev/null)" = '{}'
@@ -342,8 +343,8 @@ for stale in "" "abc"; do
     { mkdir -p "$GH/.config/himmel" && printf '%s' "$stale" > "$GH/.config/himmel/cliproxy.key" && chmod 644 "$GH/.config/himmel/cliproxy.key"; } || fx_fail
     run_cg provision himmel-claudex
     check "R8 a ${#stale}-byte key file: provision exits 0" rc_is 0
-    check "R8 a ${#stale}-byte key file is regenerated to 64 bytes" test "$(wc -c < "$GH/.config/himmel/cliproxy.key")" = 64
-    check "R8 a ${#stale}-byte key file ends at mode 600" test "$(stat -c %a "$GH/.config/himmel/cliproxy.key")" = 600 # gnu-ok: linux-only suite
+    check "R8 a ${#stale}-byte key file is regenerated to 64 bytes" test "$(wc -c < "$GH/.config/himmel/cliproxy.key")" -eq 64
+    check "R8 a ${#stale}-byte key file ends at mode 600" test "$(mode "$GH/.config/himmel/cliproxy.key")" = 600
     check "R8 a ${#stale}-byte key file leaves no temp file" test ! -e "$GH/.config/himmel/cliproxy.key.tmp"
 done
 
@@ -354,7 +355,7 @@ run_cg provision himmel-claudex
 check "R8b a 64-byte non-hex key: provision exits 0" rc_is 0
 check "R8b a 64-byte non-hex key is replaced by 64 hex characters" \
     grep -Eqx '[0-9a-f]{64}' "$GH/.config/himmel/cliproxy.key"
-check "R8b the replaced key is at mode 600" test "$(stat -c %a "$GH/.config/himmel/cliproxy.key")" = 600 # gnu-ok: linux-only suite
+check "R8b the replaced key is at mode 600" test "$(mode "$GH/.config/himmel/cliproxy.key")" = 600
 
 # --- R8c: a valid kept key is left as is and ends at mode 600 ---
 new_world
@@ -362,7 +363,7 @@ new_world
 run_cg provision himmel-claudex
 check "R8c a valid kept key: provision exits 0" rc_is 0
 check "R8c a valid kept key keeps its bytes" test "$(cat "$GH/.config/himmel/cliproxy.key")" = "$(printf '%064d' 0 | tr 0 a)"
-check "R8c a valid kept key ends at mode 600" test "$(stat -c %a "$GH/.config/himmel/cliproxy.key")" = 600 # gnu-ok: linux-only suite
+check "R8c a valid kept key ends at mode 600" test "$(mode "$GH/.config/himmel/cliproxy.key")" = 600
 
 # --- R8d: a symlink at the key path is refused before any chmod or cat reaches its target ---
 new_world
@@ -371,7 +372,7 @@ ln -s "$GH/target.key" "$GH/.config/himmel/cliproxy.key" || fx_fail
 run_cg provision himmel-claudex
 check "R8d a symlinked key path fails provision" rc_nonzero
 check "R8d the refusal names the symlink" out_has "symlink"
-check "R8d the link target keeps mode 644 (no chmod followed the link)" test "$(stat -c %a "$GH/target.key")" = 644 # gnu-ok: linux-only suite
+check "R8d the link target keeps mode 644 (no chmod followed the link)" test "$(mode "$GH/target.key")" = 644
 check "R8d the link is still a link and its target is untouched" \
     test -L "$GH/.config/himmel/cliproxy.key" -a "$(cat "$GH/target.key")" = "$(printf '%064d' 0 | tr 0 b)"
 new_world

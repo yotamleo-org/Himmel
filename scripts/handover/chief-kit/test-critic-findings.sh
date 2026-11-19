@@ -430,7 +430,7 @@ t_index_symlink_or_escape_refused() {
 t_intake_exit_json() {
   newroot ex; mkret spec 1 1; norm spec 1
   okrun "normalize success exits 0 with JSON"; check "normalize prints the INDEX" test "$OUT" = "$(cat "$(idx spec 1)")"
-  check "one JSON document on one line" test "$(printf '%s\n' "$OUT" | wc -l)" = 1
+  check "one JSON document on one line" test "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" = 1
   local p; p="$(privdir ex)/PREVIOUS.json"; prev "$p" "$(vpath spec 1)"
   bund "$p" "$R/ex.bundle.json"; okrun "bundle exits 0"; check "bundle prints the BUNDLE" test "$OUT" = "$(cat "$R/ex.bundle.json")"
   valid "$p" "$R/ex.bundle.json"; okrun "validate-bundle exits 0"; check "validate-bundle prints the BUNDLE" test "$OUT" = "$(cat "$R/ex.bundle.json")"

@@ -94,9 +94,13 @@ make_src() {
     printf 'x\n' > "$d/cache/entry.json"
 }
 
+GL_STUB="$TMP/gitleaks-clean"
+printf '%s\n' '#!/bin/sh' 'exit 0' > "$GL_STUB"; chmod +x "$GL_STUB"
 run_publish() {  # <src> [extra env assignments via env]
     PUB_RC=0
-    PUB_OUT="$(bash "$PUBLISH" --src "$1" --repo "$PUB" --remote "$BARE" 2>&1)" || PUB_RC=$?
+    local gl=gitleaks
+    command -v gitleaks >/dev/null 2>&1 || gl="$GL_STUB"
+    PUB_OUT="$(GRAPH_CHANNEL_GITLEAKS="$gl" bash "$PUBLISH" --src "$1" --repo "$PUB" --remote "$BARE" 2>&1)" || PUB_RC=$?
 }
 branch_tip() { git -C "$BARE" rev-parse --verify --quiet refs/heads/graph-data 2>/dev/null || echo none; }
 

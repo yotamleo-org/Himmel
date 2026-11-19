@@ -263,7 +263,7 @@ livez() {
 }
 if [ "$(id -u)" != 0 ]; then
     fresh; livej >/dev/null
-    touch -d '2026-10-20 00:00' "$W/state/tick-ciguard-runs.json" && chmod 444 "$W/state/tick-ciguard-jobs.json" || fail 'the cache fault injection could not be set up'
+    touch -t 202610200000 "$W/state/tick-ciguard-runs.json" && chmod 444 "$W/state/tick-ciguard-jobs.json" || fail 'the cache fault injection could not be set up'
     out="$(livez)"
     contains 'a refetch with 0 jobs reads ok' "$out" 'ciguard=ok'
     out="$(livez)"

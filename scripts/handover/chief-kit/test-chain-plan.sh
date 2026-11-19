@@ -264,6 +264,15 @@ gcreset; : > "$W/gc/push-out"
 out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
 same "--go-check a push check that exits 0 with no HEADS line: REFUSE" "$rc:${out%% *}" '1:REFUSE'
 gcreset
+NH="$W/nohash"; mkdir -p "$NH"
+for _t in jq date awk grep sed env bash dirname basename cat tr mktemp sh head cut sort rm git; do
+    _p="$(command -v "$_t")" && ln -s "$_p" "$NH/$_t"
+done
+out="$(PATH="$NH:$W/bin" GC_FIX="$W/gc" CHAIN_PLAN_JIRA_CMD="$W/bin/jira" CHAIN_PLAN_PUSH_CHECK="$W/bin/push" "$(command -v bash)" "$SUT" --go-check 11 --graph "$W/gc/graph.json" 2>&1)"; rc=$?
+same "--go-check with no sha256sum or shasum on PATH: exit 1" "$rc" 1
+has "--go-check with no sha256sum or shasum on PATH: REFUSE names the hash" "$out" 'REFUSE cannot hash the graph'
+lacks "--go-check with no sha256sum or shasum on PATH: no GO-CHECK OK" "$out" 'GO-CHECK OK'
+gcreset
 out="$(gc 99 --graph "$W/gc/graph.json")"; rc=$?
 same "--go-check a PR the graph does not list: REFUSE" "$rc:${out%% *}" '1:REFUSE'
 out="$(gc 11)"; rc=$?

@@ -659,5 +659,5 @@ Non-obvious gotchas that surfaced during the proof-of-concept run; carry forward
 - Task: runner + plugin
 - PR: #97 (squash `8c482b5`), merged 2026-05-23
 - 36 commits on feat branch, 113 tests at merge, 2 review rounds, ~30 distinct Critical/Important fixes
-- HIMTEST Jira project created mid-flow as a **permanent** sandbox; do not delete it; `scripts/himmel-run/tests/integration.test.ts` hard-codes `--project HIMTEST` and asserts issue keys match `/^HIMTEST-\d+$/`
+- HIMTEST Jira project created mid-flow as a **permanent** sandbox; do not delete it
 - Followups were filed as separate tickets

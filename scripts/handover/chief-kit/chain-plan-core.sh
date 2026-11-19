@@ -29,7 +29,7 @@
 # checkout>/scripts/jira/dist/index.js), CHAIN_PLAN_PUSH_CHECK (default chain-push-check.sh beside this file).
 #
 # Exit: 0 plan, evidence or GO-CHECK OK  1 cycle among the hard edges, or REFUSE  2 usage or unreadable graph
-# Platform guard: bash, jq, awk; --go-check also gh, git, GNU date and sha256sum (the kit is Linux-only).
+# Platform guard: bash, jq, awk; --go-check also gh, git, date and sha256sum or shasum.
 set -uo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 GH_READ_BIN="$SCRIPT_DIR/../../lib/gh-read.sh"
@@ -37,6 +37,13 @@ GH_READ_BIN="$SCRIPT_DIR/../../lib/gh-read.sh"
 # shellcheck source=../../lib/git-clean.sh
 . "$SCRIPT_DIR/../../lib/git-clean.sh" || exit 2
 git_env_scrub
+# shellcheck source=../../lib/sha256-bin.sh
+. "$SCRIPT_DIR/../../lib/sha256-bin.sh" || exit 2
+
+# iso_epoch <ISO-Z>: epoch seconds via GNU date, else BSD date -j.
+iso_epoch() {
+  date -u -d "$1" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s 2>/dev/null
+}
 
 usage() {
   echo "usage: chain-plan.sh [--evidence] --graph <chain-graph.py --json file> [--ready <pr>,<pr>...]" >&2
@@ -68,7 +75,7 @@ go_check() {
     || refuse "the graph's nodes or edges are malformed (an edge without a known kind, from and to): it could hide an S1 peer. Rebuild it."
   gen="$(jq -r '.generated_at // ""' "$graph")"
   now="$(date -u +%s)"
-  if [ -z "$gen" ] || ! age="$(date -u -d "$gen" +%s 2>/dev/null)"; then  # swallow-ok: an unparsable date REFUSEs
+  if [ -z "$gen" ] || ! age="$(iso_epoch "$gen")"; then  # swallow-ok: an unparsable date REFUSEs
     refuse "the graph carries no readable generated_at: its age is unknown. Rebuild it with chain-graph.py --json."
   fi
   age=$((now - age))
@@ -105,7 +112,8 @@ go_check() {
     grep -q "^HEADS $pr=$head " <<< "$out" \
       || refuse "chain-push-check.sh --pr $pr --peer $m printed no 'HEADS $pr=$head' line: no per-peer report, unknown."
   done
-  hash="$(sha256sum "$graph" | cut -d' ' -f1)"
+  hash="$(sha256_hex "$graph" 2>/dev/null)" || hash=""  # swallow-ok: a failed hasher leaves hash empty, which REFUSEs on the next line
+  [[ "$hash" =~ ^[0-9a-f]{64}$ ]] || refuse "cannot hash the graph (no sha256sum or shasum, or the hasher failed): its identity is unknown."
   echo "GO-CHECK OK $pr head=$head graph=sha256:$hash at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   exit 0
 }

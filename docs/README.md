@@ -12,6 +12,15 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [daily-loop.md](daily-loop.md) — one full loop (worktree → PR → merge → clean → handover), with every hook and gate explained where it fires.
 - [configuration.md](configuration.md) — the canonical configuration + control-surface reference: the chains (mermaid), every gate classified HARD / auth-gated / warn-only, every knob by surface, and the off-switches. Pairs with [.env.example](../.env.example), the per-key flag map.
 - [ui.md](ui.md) — the UI surfaces: the `himmelctl ui` config UI, the chief's board, and the roadmap tracker; what each is, how to start it, where it opens.
+- [evals/README.md](evals/README.md) — what the review panel catches, how often it is right, and what caching saves (generated); with [evals/review-panel.md](evals/review-panel.md), [evals/prompt-cache.md](evals/prompt-cache.md) and [evals/user-reports.md](evals/user-reports.md).
+
+## Guides
+
+- [guide/how-a-change-ships.html](guide/how-a-change-ships.html) — how a change moves from plan to merge, and the checks at each step.
+- [guide/dev-graph.html](guide/dev-graph.html) — the development graph: chief, workers, judges, gates and the decisions between them.
+- [guide/installer-journey.html](guide/installer-journey.html) — every installer question, what you see, and what each answer changes.
+- [guide/loops-and-graphs.html](guide/loops-and-graphs.html) — how himmel's loops run, what its graphs show, and what each setting changes.
+- [guide/second-model-review.md](guide/second-model-review.md) — what reviews a change, what a finding can stop, and how to answer one.
 
 ## Setup
 
@@ -22,13 +31,19 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [setup/global-claude-md.md](setup/global-claude-md.md) — Claude Code global config (`~/.claude/`).
 - [setup/vms.md](setup/vms.md) — VM-based dev machines for cross-platform testing.
 - [setup/rtk-md.md](setup/rtk-md.md) — the rtk token-cost proxy.
+- [setup/profiles/README.md](setup/profiles/README.md) — the install profiles and the shipped `*.install-profile.json` files.
+- [setup/footprint.md](setup/footprint.md) — every file, hook and setting a starter install writes, and what `uninstall` does with it.
+- [setup/vm-mode.md](setup/vm-mode.md) — `vm.mode`: how "VM proof first" is satisfied.
+- [setup/cloud-environment.md](setup/cloud-environment.md) — from nothing to a working `claude --cloud` session.
+- [setup/operator-profile-tbd-delta.md](setup/operator-profile-tbd-delta.md) — what the operator's reference machine runs beyond a fresh install.
+- [setup/user-scope-claude-md-template.md](setup/user-scope-claude-md-template.md) — the working-principles block `adopt.sh` appends to `~/.claude/CLAUDE.md`.
 
 ## Daily use & reference
 
 - [glossary.md](glossary.md) — the one definition site for the handover vocabulary: chief, judge, relay, worker, dependency chain, parallel wave, arming, manual override.
 - [commands-catalog.md](commands-catalog.md) — every project-local slash command.
 - [tooling-catalog.md](tooling-catalog.md) — every tool, script, and plugin in active use.
-- [himmelctl.md](himmelctl.md) — every `himmelctl` verb (status, ensure, update, scope, profile, config, deps, gaps, trust, `--version --all`) with its exit codes.
+- [himmelctl.md](himmelctl.md) — every `himmelctl` verb (install, status, ensure, update, uninstall, scope, profile, config, deps, gaps, trust, approve/deny, report, ui, `--version --all`) with its exit codes.
 - [troubleshooting.md](troubleshooting.md) — each message a starter install can show, why it appears, and the fix.
 - [cadences.md](cadences.md) — every recurring job you can arm: what it does, when the wizard offers it, how to arm, status and disarm it.
 - [launchers.md](launchers.md) — the `claude-codex`, `claude-openrouter` and `claude-deepseek` launchers, their gates and exit codes.
@@ -52,12 +67,16 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [internals/environment-gotchas.md](internals/environment-gotchas.md) — git-worktree / scheduler / Bash-tool / content-filter environment traps.
 - [internals/egress-matrix.md](internals/egress-matrix.md) — the data-egress policy (owned corpus × provider × purpose) enforced by `scripts/guardrails/egress-matrix.json`.
 - [internals/lesson-audit.md](internals/lesson-audit.md) · [internals/lesson-provenance.md](internals/lesson-provenance.md) — the self-evolving lessons-loop precision gate + provenance schema.
+- [internals/claude-md-detail.md](internals/claude-md-detail.md) — the full wording of every rule root `CLAUDE.md` carries condensed.
+- [internals/code-comments.md](internals/code-comments.md) — code comments and accepted ceilings.
+- [internals/lane-calibration.md](internals/lane-calibration.md) — lane tiers, effort and cost.
+- [internals/retask-channel.md](internals/retask-channel.md) — the RETASK channel: authenticated re-tasking of live subagents.
 
 ## Orchestration & lanes
 
 - [orchestration-patterns.md](orchestration-patterns.md) — coordination doctrine for fan-outs, verify loops, and overnight shifts.
 - [internals/ci-orchestrator.md](internals/ci-orchestrator.md) — the queue/scheduling layer over himmel's scarce CI compute.
-- [internals/ci-image.md](internals/ci-image.md) — the prebuilt GHCR CI tooling image: contents, build, what ci.yml would change.
+- [internals/ci-image.md](internals/ci-image.md) — the prebuilt GHCR CI tooling image: contents, build, how ci.yml uses it.
 - [internals/ci-merge-flow.md](internals/ci-merge-flow.md) — the CI and merge flow: no update-branch, a red main, quarantine, when a branch merges main in.
 - [internals/lane-parity.md](internals/lane-parity.md) — the living compatibility index across delegation lanes.
 - [internals/validation-gates.md](internals/validation-gates.md) — placement doctrine for validation/quality gates across workflows.
@@ -82,6 +101,11 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [tool-adoption/rubric.md](tool-adoption/rubric.md) — the decision method every community-tool eval runs through.
 - [tool-adoption/registry.md](tool-adoption/registry.md) — every evaluated tool, recorded.
 - [tool-adoption/telemetry.md](tool-adoption/telemetry.md) — adoption-outcome telemetry for the registry.
+- [tool-adoption/lane-adoption-playbook.md](tool-adoption/lane-adoption-playbook.md) — how a model lane is adopted (the rubric's sibling for lanes).
+- [tool-adoption/per-profile-tool-evals.md](tool-adoption/per-profile-tool-evals.md) — reading tool usage per launch profile.
+- [tool-adoption/humanizer.md](tool-adoption/humanizer.md) · [tool-adoption/pstack-integration.md](tool-adoption/pstack-integration.md) · [tool-adoption/pstack-principles-digest.md](tool-adoption/pstack-principles-digest.md) — single-tool evals and integration maps.
+- [release/versioning-scheme.md](release/versioning-scheme.md) · [release/changelog-shape.md](release/changelog-shape.md) · [release/follow-up-triage.md](release/follow-up-triage.md) · [release/version-review.md](release/version-review.md) — how versions are named, noted, triaged and reviewed; per-release notes are `release/v<X.Y.Z>-notes.md`.
+- [migration/renamed-identifiers.md](migration/renamed-identifiers.md) — old and new names from the identifier rename, while the old names remain in use.
 - [license-audit.md](license-audit.md) — the license audit.
 - [third-party-licenses.md](third-party-licenses.md) — the third-party license audit of direct npm dependencies.
 - [credits.md](credits.md) — sources, authors, licences and pins for shipped plugins, skill families and registered forks.

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- launchd agent for the peer bridge poller. Install: replace @HIMMEL_ROOT@ and
+     @HOME@ with absolute paths, write the result to ~/Library/LaunchAgents/, then
+     load it as docs/internals/peer-bridge.md describes. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.himmel.peer-bridge</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>@HIMMEL_ROOT@/scripts/peer-bridge/run.sh</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <key>StandardErrorPath</key>
+    <string>@HOME@/.himmel/peer-bridge/poller.log</string>
+</dict>
+</plist>

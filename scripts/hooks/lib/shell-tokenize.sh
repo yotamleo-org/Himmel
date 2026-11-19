@@ -119,14 +119,7 @@ st_tokenize() {
                         done
                         [ "$j" -lt "$n" ] || return 1
                         # The shell runs the decoded word (`$'\x2dr'` is -r).
-                        # ${…@E} is bash 4.4+; an older bash
-                        # keeps the raw body, as before (declining here would
-                        # switch guard_unwrap off for the whole command, J1946
-                        # B1). The eval'd text is constant, never input.
-                        if [ "${BASH_VERSINFO[0]}" -gt 4 ] \
-                            || { [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]}" -ge 4 ]; }; then
-                            eval 'body=${body@E}'
-                        fi
+                        _st_ansic_e "$body" || return 1; body=$_ST_DEC
                         _st_q; w=$w$body; i=$((j + 1))
                         ;;
                     '"') _st_q; ctx=${ctx}D; i=$((i + 2)) ;;
@@ -247,6 +240,105 @@ st_tokenize() {
 _st_q() { # the next byte appended to the word is quoted or escaped
     [ "$wqpos" -ge 0 ] || wqpos=${#w}
     wq=1; win=1
+}
+
+# _st_ansic_e BODY — _ST_DEC is BODY decoded the way ${BODY@E} decodes it. False for a
+# control-letter escape followed by a backslash: bash 3.2, bash 5 and zsh read the pair
+# three ways, so no decoding of it is safe and the caller refuses the word.
+# shellcheck disable=SC1003 # literal \ bytes, not escaped quotes
+_st_ansic_e() {
+    local r=$1
+    case "$r" in
+        *'\c\'*)
+            while [ -n "$r" ]; do
+                case "$r" in
+                    '\c\'*) return 1 ;;
+                    '\'?*) r=${r:2} ;;
+                    *) r=${r:1} ;;
+                esac
+            done ;;
+    esac
+    if [ "${BASH_VERSINFO[0]}" -gt 4 ] \
+        || { [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]}" -ge 4 ]; }; then
+        eval '_ST_DEC=${1@E}'
+    else
+        _st_ansic_walk "$1"
+    fi
+}
+
+_st_emit() {
+    local ch
+    [ "$1" -gt 0 ] || return 1
+    printf -v ch '\\0%03o' "$1"
+    printf -v ch '%b' "$ch"
+    _ST_DEC=$_ST_DEC$ch
+}
+
+# _st_ansic_walk BODY — _st_ansic_e for a bash without @E. A u or U escape
+# decodes to ASCII although bash 3.2 keeps it as written: zsh and bash 4.2+
+# decode it, so the guard reads the stricter word. Above ASCII it stays as
+# written, because the shell's own result there depends on the locale.
+# shellcheck disable=SC1003 # literal \ bytes
+_st_ansic_walk() {
+    local b=$1 n=${#1} i=0 c k v d max
+    _ST_DEC=''
+    while [ "$i" -lt "$n" ]; do
+        c=${b:i:1}
+        if [ "$c" != '\' ]; then _ST_DEC=$_ST_DEC$c; i=$((i + 1)); continue; fi
+        c=${b:i+1:1}
+        k=$((i + 2)); v=''
+        case "$c" in
+            a) _ST_DEC=$_ST_DEC$'\007' ;;
+            b) _ST_DEC=$_ST_DEC$'\010' ;;
+            e | E) _ST_DEC=$_ST_DEC$'\033' ;;
+            f) _ST_DEC=$_ST_DEC$'\014' ;;
+            n) _ST_DEC=$_ST_DEC$'\n' ;;
+            r) _ST_DEC=$_ST_DEC$'\r' ;;
+            t) _ST_DEC=$_ST_DEC$'\t' ;;
+            v) _ST_DEC=$_ST_DEC$'\013' ;;
+            '\') _ST_DEC=$_ST_DEC'\' ;;
+            "'") _ST_DEC=$_ST_DEC"'" ;;
+            '"') _ST_DEC=$_ST_DEC'"' ;;
+            '?') _ST_DEC=$_ST_DEC'?' ;;
+            [0-7])
+                k=$((i + 1))
+                while [ "${#v}" -lt 3 ]; do
+                    d=${b:k:1}
+                    case "$d" in [0-7]) v=$v$d; k=$((k + 1)) ;; *) break ;; esac
+                done
+                _st_emit $((8#$v & 255)) || return 0
+                ;;
+            x | u | U)
+                case "$c" in x) max=2 ;; u) max=4 ;; *) max=8 ;; esac
+                while [ "${#v}" -lt "$max" ]; do
+                    d=${b:k:1}
+                    case "$d" in [0-9A-Fa-f]) v=$v$d; k=$((k + 1)) ;; *) break ;; esac
+                done
+                if [ -z "$v" ]; then
+                    _ST_DEC=$_ST_DEC'\'$c
+                elif [ "$c" = x ]; then
+                    _st_emit $((16#$v)) || return 0
+                elif [ $((16#$v)) -ge 128 ]; then
+                    _ST_DEC=$_ST_DEC'\'$c$v
+                else
+                    _st_emit $((16#$v)) || return 0
+                fi
+                ;;
+            c)
+                d=${b:k:1}
+                if [ -z "$d" ]; then
+                    _ST_DEC=$_ST_DEC'\c'
+                else
+                    k=$((k + 1))
+                    if [ "$d" = '?' ]; then v=127; else printf -v v %d "'$d"; v=$((v & 31)); fi
+                    _st_emit "$v" || return 0
+                fi
+                ;;
+            '') _ST_DEC=$_ST_DEC'\'; k=$((i + 1)) ;;
+            *) _ST_DEC=$_ST_DEC'\'$c ;;
+        esac
+        i=$k
+    done
 }
 
 # shellcheck disable=SC1003,SC2016,SC2034 # literal \ ` $ bytes; ST_* are read by the caller
@@ -487,7 +579,7 @@ _stx_walk() {
                         i=$e; continue ;;
                     "'")
                         if [ "$dq" = 0 ]; then
-                            _stx_ansi "$s" $((i + 2))
+                            _stx_ansi "$s" $((i + 2)) || { _SX=$s; _SX_DQ=$dq; return; }
                             b=$_SX_W
                             b=${b//$sq/$sq\\$sq$sq}; o=$o$sq$b$sq; i=$_SX_E; continue
                         fi ;;
@@ -663,7 +755,7 @@ _stx_end() {
                                 i=$((i + 2)); continue ;;
                             "'")
                                 if [ "$t" != E ]; then
-                                    _stx_ansi "$s" $((i + 2)); i=$_SX_E; continue
+                                    _stx_ansi "$s" $((i + 2)) || return 1; i=$_SX_E; continue
                                 fi ;;
                         esac ;;
                     '(') case $t in P | p) st=${st}p ;; esac ;;
@@ -687,8 +779,8 @@ _stx_end() {
     return 1
 }
 
-# _stx_ansi TEXT START — the `$'...'` body starting at START: _SX_W decoded
-# (bash >= 4.4; older keeps it raw, as st_tokenize does), _SX_E past its `'`.
+# _stx_ansi TEXT START — the `$'...'` body starting at START: _SX_W decoded,
+# _SX_E past its `'`.
 # shellcheck disable=SC2317,SC2329
 _stx_ansi() {
     local s=$1 j=$2 n=${#1} c body=''
@@ -702,12 +794,9 @@ _stx_ansi() {
             body=$body$c; j=$((j + 1))
         fi
     done
-    if [ "${BASH_VERSINFO[0]}" -gt 4 ] \
-        || { [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]}" -ge 4 ]; }; then
-        eval 'body=${body@E}'
-    fi
-    _SX_W=$body
     _SX_E=$((j + 1))
+    _st_ansic_e "$body" || { _SX_OVER=1; _SX_W=''; return 1; }
+    _SX_W=$_ST_DEC
 }
 
 # _stx_hdword TEXT START — the heredoc delimiter word at START after quote
@@ -737,7 +826,7 @@ _stx_hdword() {
                 done ;;
             '$')
                 case ${s:j+1:1} in
-                    "'") _stx_ansi "$s" $((j + 2)); w=$w$_SX_W; q=1; j=$_SX_E ;;
+                    "'") _stx_ansi "$s" $((j + 2)) || { _SX_W=''; _SX_Q=1; return 1; }; w=$w$_SX_W; q=1; j=$_SX_E ;;
                     '"') j=$((j + 1)) ;;
                     *) w=$w'$'; j=$((j + 1)) ;;
                 esac ;;
@@ -778,10 +867,7 @@ _stx_param() {
                         r=${r:1}; t=${r%%"$cl"*}
                         [ "$t" != "$r" ] || return 1
                         r=${r:${#t}+1}
-                        if [ "$pe" = 1 ] && { [ "${BASH_VERSINFO[0]}" -gt 4 ] \
-                            || { [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]}" -ge 4 ]; }; }; then
-                            eval 't=${t@E}'
-                        fi
+                        if [ "$pe" = 1 ]; then _st_ansic_e "$t" || { _SX_OVER=1; return 1; }; t=$_ST_DEC; fi
                         case $f in
                             l | r) [ "$a" = 0 ] || { tp[np]=$t; np=$((np + 1)); } ;;
                             j | s) tp[np]=$t; np=$((np + 1)) ;;

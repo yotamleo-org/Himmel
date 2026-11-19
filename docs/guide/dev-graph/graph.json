@@ -823,7 +823,7 @@
       "lane": "gates",
       "phase": "review",
       "label": "Round cap",
-      "summary": "After round 3 only one delta round is left, blocking on Critical or escape-class only. A 4th full round exits 8.",
+      "summary": "After round 3 one delta round is left, blocking on Critical or escape-class only; review-round.sh admits a few further bounded delta rounds for named cases (a judge NO-GO, findings all recorded fixed, a CI-red reviewed head, a clean merge of the base). A 4th full round exits 8.",
       "sources": [
         {
           "file": "scripts/cr/review-round.sh",

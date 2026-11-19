@@ -43,6 +43,7 @@ ALERT_SENT="$WS/alert-sent.log"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$1" >> "%s"\n' "$ALERT_SENT" > "$WS/alert-send"; chmod +x "$WS/alert-send"
 export CADENCE_ALERT_SEND_CMD="$WS/alert-send" CADENCE_ALERT_FILE="$WS/cadence-alerts.log" \
   CADENCE_ALERT_DEDUPE_DIR="$WS/alert-dedupe" CADENCE_ALERT_SEND_FAILED_MARK="$WS/alert-send-failed"
+touch_ago() { local s="$1"; shift; touch "$@" && python3 -c 'import os,sys,time; t=time.time()-int(sys.argv[1]); [os.utime(f,(t,t)) for f in sys.argv[2:]]' "$s" "$@"; }
 alert_reset() { rm -rf "$CADENCE_ALERT_DEDUPE_DIR" "$CADENCE_ALERT_FILE" "$ALERT_SENT"; }
 alert_lines() { if [ -f "$CADENCE_ALERT_FILE" ]; then grep -c 'graph-subscription-' "$CADENCE_ALERT_FILE"; else echo 0; fi; }
 alert_sends() { if [ -f "$ALERT_SENT" ]; then grep -c 'graph-subscription-' "$ALERT_SENT"; else echo 0; fi; }
@@ -4723,7 +4724,7 @@ RCORPUS="$WS/recentvault"; RMAPS="$RCORPUS/60-Maps"; RSP="$WS/recent-scratch"
 recent_corpus() {  # $1 = recently changed notes (space-separated); backlog a b c is 30 days old
   rm -rf "$RCORPUS" "$RSP"; mkdir -p "$RCORPUS/notes" "$RMAPS" "$RSP"; rm -f "$STUB_CALLS" "$STUB_PASSES"
   local n
-  for n in a b c; do printf '# %s\nbacklog\n' "$n" > "$RCORPUS/notes/$n.md"; touch -d '30 days ago' "$RCORPUS/notes/$n.md"; done
+  for n in a b c; do printf '# %s\nbacklog\n' "$n" > "$RCORPUS/notes/$n.md"; touch_ago 2592000 "$RCORPUS/notes/$n.md"; done
   for n in $1; do printf '# %s\nchanged\n' "$n" > "$RCORPUS/notes/$n.md"; done
 }
 recent_run() {  # $1 = chunk cap

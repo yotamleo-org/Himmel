@@ -16,8 +16,9 @@ today, so a job starts from a ready environment that only changes when we change
   names until that PR merges, so a rebuild never changes CI by itself.
 - **Drift check:** `scripts/ci/test-ci-image.sh` reads the apt packages, ffmpeg, bun,
   pre-commit, node, gitleaks and shellcheck-py pins live from `ci.yml`, `.bun-version`,
-  `.pre-commit-config.yaml` and `gcp-runner-startup.sh` and fails when the Dockerfile
-  lacks one.
+  `.pre-commit-config.yaml`, the hashed `requirements-ci.txt` (the pre-commit pin; it also
+  checks that `ci.yml` and the Dockerfile both install that file with `--require-hashes`)
+  and `gcp-runner-startup.sh`, and fails when the Dockerfile lacks one.
 - **Who can publish:** the job runs only for `refs/heads/main` of `yotamleo-org/Himmel`, so a
   dispatch from another branch builds nothing. That `if:` is the only branch gate: GHCR
   access is granted per repository, so any workflow run of this repo whose `GITHUB_TOKEN`
@@ -47,9 +48,10 @@ sha256), pre-commit 4.7.0, shellcheck-py 0.11.0.1 first on PATH. A `runner` user
 - **Node:** an exact `NODE_VERSION` with its `NODE_SHA256` in the Dockerfile, so a
   tampered or re-rolled nodejs.org tarball fails the build; the drift check holds the
   major to `ci.yml`'s. Bumped by hand with the hash from the release's `SHASUMS256.txt`.
-- **pip:** exact top-level pins, no `--require-hashes`: hashing needs pre-commit's whole
-  transitive closure pinned, which nothing here bumps. Upgrade path: a hashed
-  `requirements.txt` beside the Dockerfile.
+- **pip:** pre-commit's whole closure and the shellcheck rev are pinned with hashes
+  (`requirements-ci.txt`, `requirements-shellcheck.txt`, from
+  `uv pip compile --generate-hashes`) and installed with `--require-hashes
+  --only-binary=:all:`, so a republished or tampered release fails the build.
 
 ## How ci.yml uses it
 
@@ -103,9 +105,8 @@ that the image replaces: at/atd 4-15 s, ffmpeg 6-11 s, pre-commit 3-4 s, setup-b
 apt cache restore 3 s each: about 20-35 s of setup per shard, 8 shards. `lint` spends 5 s
 on pre-commit; `claude-startup` 5 s on bubblewrap/socat.
 
-Not measured: the container side. The station has no docker daemon and the workflow cannot
-run before it is on main, so no image pull time exists yet. A multi-hundred-MB pull on a
-hosted runner is likely the same order as the 20-35 s it replaces, so on hosted runners the
-gain is immunity to apt-mirror outages, not speed; the speed gain is on the
-GCP VMs. The first `ci-image.yml` run after merge gives the build time; compare a trial
-`container:` job's "Initialize containers" step against the figures above before switching.
+Not measured: the container side. The station has no docker daemon, so no image pull time
+is recorded here. A multi-hundred-MB pull on a hosted runner is likely the same order as the
+20-35 s it replaces, so on hosted runners the gain is immunity to apt-mirror outages, not
+speed; the speed gain is on the GCP VMs. A containerized job's "Initialize containers" step
+gives the pull time to compare against the figures above.

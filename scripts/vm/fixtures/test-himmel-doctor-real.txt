@@ -35,7 +35,6 @@ OK   C24-cadence-registry: all 9 expected cadence task(s) present on the live sc
 OK   C25-orphans: no orphaned Claude-scratchpad watcher processes
 OK   C26-salus-marker: salus vault (/home/user/Documents/salus) carries both .salus-profile and .salus — PHI guards are armed
 OK   C27-guard-signals: no /home/user/.config/claude-glm (no phi-roots/egress-denylist declared here — skipped)
-OK   C28-guardrail-consent: guardrail-block-global is wired (C1-guardrail covers its health)
 OK   C29-child-session: no claude child-session launchers missing persistence
 OK   C30-bridge-liveness: telegram-bridge.service is running (pid 1520990, 0 restart(s) so far)
 OK   C31-tokensave-dropped: codex config at /home/user/.codex/config.toml does not wire tokensave — nothing to remove

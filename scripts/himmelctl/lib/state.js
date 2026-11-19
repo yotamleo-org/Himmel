@@ -142,13 +142,10 @@ function deriveTarget(manifest, cachedAnswers) {
 }
 
 // Does `entry` carry a deliberate, recorded per-item decision? `overrides` is
-// a bag of item-specific consent/decision flags (today the ONLY populated
-// one is guardrail-block-global's `overrides.consent`, see cmdEnsure's
-// ask-first gate in bin.js), established from that ONE concrete usage: a
-// non-empty overrides object means an operator's explicit choice was
-// recorded for this item, and nothing automatic (additive re-derivation
-// included) may silently second-guess it. An empty/absent overrides object
-// carries no such choice.
+// a bag of item-specific consent/decision flags: a non-empty overrides
+// object means an operator's explicit choice was recorded for this item, and
+// nothing automatic (additive re-derivation included) may silently
+// second-guess it. An empty/absent overrides object carries no such choice.
 function hasDeliberateOverride(entry) {
   return Boolean(entry && entry.overrides && typeof entry.overrides === 'object'
     && !Array.isArray(entry.overrides) && Object.keys(entry.overrides).length > 0);
@@ -383,7 +380,23 @@ function additiveReconcile(target, manifest, cachedAnswers) {
   return { changed, added };
 }
 
+const RETIRED_ITEM_IDS = ['guardrail-block-global'];
+
+function dropRetiredItems(state) {
+  const dropped = [];
+  for (const target of Object.values((state && state.targets) || {})) {
+    if (!target || !target.items || typeof target.items !== 'object') continue;
+    for (const id of RETIRED_ITEM_IDS) {
+      if (Object.prototype.hasOwnProperty.call(target.items, id)) {
+        delete target.items[id];
+        if (!dropped.includes(id)) dropped.push(id);
+      }
+    }
+  }
+  return dropped;
+}
+
 module.exports = {
   load, save, deriveTarget, ensureTarget, reconcileTarget, migrateTargetItems,
-  itemMembership, hasDeliberateOverride, recordedDesired, additiveReconcile,
+  itemMembership, hasDeliberateOverride, recordedDesired, additiveReconcile, dropRetiredItems,
 };

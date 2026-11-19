@@ -99,8 +99,9 @@ Quarantine is how a test-only red stops blocking the fleet without hiding.
   red. Quarantine a shard-run `scripts/testing/` suite with a `quarantine` row below, never
   on `SKIP_LIST`.
 - **Tier quarantine.** A `quarantine` row in `scripts/ci/suite-tiers.tsv` keeps the suite
-  running and reports a failure as `[QUARANTINE]` without failing the run, in every tier
-  mode: a PR, a schedule and a dispatch run alike. The shard-manifest
+  running and reports a failure as `[QUARANTINE]`, never retried, without failing the run,
+  in every tier mode; a PR with an impacted selection skips a quarantine suite the
+  selection does not reach (`[SKIP] … tier: quarantine`). The shard-manifest
   verifier records its `ran rc!=0` line as a NOTE, never as passed coverage.
 - **A ticket is required.** A quarantine entry's trailing comment carries the ticket ID
   and the reason. A quarantine without a ticket is a silent skip, which is not allowed.

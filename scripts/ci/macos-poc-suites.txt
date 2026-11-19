@@ -166,3 +166,8 @@ scripts/test-uninstall-b.sh
 scripts/test-uninstall.sh
 scripts/test-uninstall-ux.sh
 scripts/test-vm-e2e-mode-guard.sh
+
+# --- peer bridge (scripts/peer-bridge)
+# The chain, gate and threads suites, and the unit lint, under bash 3.2 and BSD userland.
+scripts/peer-bridge/test-peer-bridge-macos.sh
+scripts/peer-bridge/test-peer-units.sh

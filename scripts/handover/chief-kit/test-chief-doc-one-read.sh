@@ -26,7 +26,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_REAL="$(cd "$HERE/../../.." && pwd)"
 BOUND_BYTES=48000
 
-tmp="$(mktemp -d "${TMPDIR:-/tmp}/chief-one-read.XXXXXX")" || { echo "test-chief-doc-one-read: mktemp -d failed" >&2; exit 1; }
+tmp="$(mktemp -d /tmp/chief-one-read.XXXXXX)" || { echo "test-chief-doc-one-read: mktemp -d failed" >&2; exit 1; }
 tmp="$(cd "$tmp" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
 

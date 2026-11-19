@@ -80,7 +80,12 @@ done
 if [ -z "$missing" ]; then pass "the report lists every .env key"; else fail "the report misses:$missing"; fi
 has "a behaviour key goes to himmel.conf" "  HANDOVER_DIR  config  → ~/.himmel/himmel.conf" "$out"
 has "a policy key goes to config.json" "  CR_REQUIRE_CROSS_MODEL  config (policy)  → ~/.himmel/config.json .policy" "$out"
-has "a secret goes to the keyring" "  JIRA_API_TOKEN  secret  → keyring" "$out"
+if [ "$(uname -s)" = Darwin ]; then
+    has "a secret stays in .env: the keyring is unsupported on Darwin" "  JIRA_API_TOKEN  secret  stays (no keyring; read by " "$out"
+    has "the report warns the keyring is unsupported" "migrate-env: WARN no keyring backend (keyring: unsupported)" "$out"
+else
+    has "a secret goes to the keyring" "  JIRA_API_TOKEN  secret  → keyring" "$out"
+fi
 has "a key that is not himmel's stays" "  NOT_READ_BY_HIMMEL_ZZQ  unrelated  stays (not himmel's, left in place)" "$out"
 has "the dry run names the backup it will take" "backup: the apply first copies .env (mode 600) to $HOME/.himmel/env-backups/env." "$out"
 no_canary "the dry run prints no value" "$out"

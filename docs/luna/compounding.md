@@ -27,9 +27,10 @@ Capture → Triage → Synthesize → (Backfill for history)
 
 ### Stage 1 — Capture (automatic)
 
-Every Claude Code session ends by writing a structured note into the vault
-(`sessions/YYYY/MM/`). The `end-session-wiki` hook runs on every
-`SessionEnd` event; no action required. Notes contain:
+Once the `end-session-wiki` hook is wired and enabled, each Claude Code
+session ends by writing a structured note into the vault
+(`sessions/YYYY/MM/`). The hook runs on every `SessionEnd` event and skips a
+session shorter than `min_duration_seconds` (default 60); no action required. Notes contain:
 
 - Frontmatter: repo, branch, timestamp, `duration_minutes`, `files_touched`
 - Summary, Decisions, Commands, Follow-ups extracted from the transcript
