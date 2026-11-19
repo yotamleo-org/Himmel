@@ -1789,6 +1789,24 @@ exit 1''')
             self.assertEqual(runtime.worker_keys(doc), expected, title)
         self.assertEqual(runtime.TITLE_KEY_RE.pattern, dispatcher['TITLE_KEY_RE'].pattern)
 
+    # A legacy sibling that lists its rows under `legs` holds them as one that lists them under `workers` does.
+    def begin_beside_old_sibling(self, key):
+        self.active()
+        old, new = self.bucket / 'HIMMEL-101-N1-old.md', self.bucket / 'HIMMEL-101-N2-new.md'
+        old.write_text('# HIMMEL-101 old worker\n- 09:00 LIVE\n')
+        new.write_text('# HIMMEL-101 new worker\n')
+        (self.bucket / 'old.fleet.json').write_text(json.dumps({'schema': 1, key: [dict(doc=str(old), label='N1', added='2026-11-01T00:00:00Z', lane='native')]}))
+        self.call('add', self.m, new, '--lane', 'native', '--pending')
+        p = self.rt('begin', aid='n1', doc=new, ok=False)
+        self.assertIn('unknown legacy family ownership', p.stderr)
+        self.assertEqual(self.anchor_attempts(), {})
+
+    def test_begin_is_refused_beside_a_live_row_a_workers_sibling_holds(self):
+        self.begin_beside_old_sibling('workers')
+
+    def test_begin_is_refused_beside_a_live_row_a_legs_sibling_holds(self):
+        self.begin_beside_old_sibling('legs')
+
 
 if __name__ == '__main__':
     unittest.main()
