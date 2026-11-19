@@ -129,7 +129,7 @@ assert_contains "the ask names the API lane and the account" "API LANE ON, accou
 reply "$OPERATOR" "$OPERATOR" "go $CODE"
 wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
 assert_eq "api_account=A launches with the lane seam on and account A" \
-    "WORKER_SESSION_API_ACCOUNT=A"$'\n'"WORKER_SESSION_API_LANE=on" "$(cat "$D/launch.env" 2>/dev/null)"
+    "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1"$'\n'"WORKER_SESSION_API_ACCOUNT=A"$'\n'"WORKER_SESSION_API_LANE=on" "$(cat "$D/launch.env" 2>/dev/null)"
 assert_contains "the GRANT log line names the seam and the account" "WORKER_SESSION_API_LANE=on WORKER_SESSION_API_ACCOUNT=A" "$(cat "$Q/daemon.log")"
 stop
 
