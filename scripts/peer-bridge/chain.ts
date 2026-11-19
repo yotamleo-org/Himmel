@@ -3,10 +3,10 @@
 import fs from "node:fs";
 import { constants } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { chainHash, openChainFile, type ChainRecord } from "../telegram/bus";
 import { SESSION_ID_RE } from "./ids";
+import { procHooks } from "./proc";
 
 type Handle = Awaited<ReturnType<typeof openChainFile>>;
 type Opener = (file: string, flags: number) => Promise<Handle> | Handle;
@@ -176,7 +176,7 @@ export function startIdentity(pid: number, platform: string = process.platform):
       return stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19] ?? null;
     } catch { return null; }
   }
-  const r = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], { env: { ...process.env, LC_ALL: "C", TZ: "UTC" }, encoding: "utf8" });
+  const r = procHooks.spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], { env: { ...process.env, LC_ALL: "C", TZ: "UTC" }, encoding: "utf8" });
   const out = (r.stdout ?? "").trim();
   return r.status === 0 && out ? out : null;
 }
