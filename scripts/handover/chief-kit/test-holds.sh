@@ -6,7 +6,6 @@
 # (named by its temp path) is in the real register. Locks are real queue-lock.sh locks under the temp handover root. gh and a
 # counting/failing queue-lock are stubs. Races use 2 real processes.
 #
-# PLATFORM GUARD: the chief kit is Linux-only; GNU touch -d is used to age rows.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -65,6 +64,7 @@ EVENTS="$REG/events.log"
 esc() { local s="${1//%/%25}"; printf '%s' "${s//\//%2F}"; }
 slugdir() { printf '%s/%s' "$REG" "$(esc "${1:-$R}")"; }
 rowf() { printf '%s/%s' "$(slugdir "${2:-$R}")" "$(esc "$1")"; }
+touch_ago() { local s="$1"; shift; touch "$@" && python3 -c 'import os,sys,time; t=time.time()-int(sys.argv[1]); [os.utime(f,(t,t)) for f in sys.argv[2:]]' "$s" "$@"; }
 ev_count() { if [ -f "$EVENTS" ]; then wc -l < "$EVENTS" | tr -d ' '; else echo 0; fi; }
 # put_row <path> <key> <label> <doc> [source] [pr] [repo]: a row written by hand, aged past the grace
 put_row() {
@@ -72,7 +72,7 @@ put_row() {
     f="$(rowf "$1" "${7:-}")"
     mkdir -p "$(dirname "$f")"
     printf '%s\t%s\t%s\t%s\t%s\n' "$2" "$3" "$4" "${5:-brief}" "${6:-}" > "$f"
-    touch -d '2 hours ago' "$f"
+    touch_ago 7200 "$f"
 }
 mkdoc() { local f="$HANDOVER_DIR/u/r/$1"; mkdir -p "$(dirname "$f")"; printf '%s\n' "${2:-# doc}" > "$f"; printf '%s' "$f"; }
 lock_hold() { bash "$QL" acquire "$1" "${2:-sess-$(basename "$1")}" > /dev/null 2>&1; }
@@ -136,7 +136,7 @@ run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c02.sh
 same "I4 a row inside the arm grace is alive (lock free)" "$RC" 1
 
 put_row scripts/c03.sh PROJ-9113 alpha "$(mkdoc PROJ-9113-case.md)"
-touch -d '1 hour' "$(rowf scripts/c03.sh)"
+touch_ago -3600 "$(rowf scripts/c03.sh)"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c03.sh
 same "I4 a future mtime counts as inside the grace" "$RC" 1
 
@@ -168,61 +168,61 @@ same "I3 a wrapped worker with an unwrapped RESUME doc under 24 h keeps its rows
 # a shared leg number or a shared stem: a stale hold costs a 24 h wait, a wrong release a double launch.
 # The old real shape (the worker wrapped its own doc, same leg, no mention) used to release the rows; it now holds.
 D11R="$(mkdoc PROJ-9420-N1b-RESUME.md '# resume doc')"
-touch -d '1 hour ago' "$D11R"
+touch_ago 3600 "$D11R"
 D11="$(mkdoc PROJ-9420-N1-case.md '- 10:00 WRAPPED — PR merged')"
 put_row scripts/c11.sh PROJ-9420 alpha "$D11"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c11.sh
 same "I3 a RESUME doc with no marks and a newer same-leg WRAPPED doc with no link to it holds (changed: a leg number is no link)" "$RC" 1
 D12R="$(mkdoc PROJ-9421-N1b-RESUME.md '# resume doc')"
-touch -d '1 hour ago' "$D12R"
+touch_ago 3600 "$D12R"
 D12="$(mkdoc PROJ-9421-N1-case.md '- 10:00 WRAPPED — resume doc PROJ-9421-N1b-RESUME.md')"
 put_row scripts/c12.sh PROJ-9421 alpha "$D12"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c12.sh
 same "I3 ... unless that WRAPPED bullet hands off to the RESUME doc (the successor lives)" "$RC" 1
 # a newer WRAPPED doc proves nothing about a RESUME doc it has no link to (the 24 h residual the chief accepted)
 D13R="$(mkdoc PROJ-9422-N1b-RESUME.md '# resume doc')"
-touch -d '1 hour ago' "$D13R"
+touch_ago 3600 "$D13R"
 D13="$(mkdoc PROJ-9422-N2-case.md '- 10:00 WRAPPED — PR merged')"
 put_row scripts/c13.sh PROJ-9422 alpha "$D13"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c13.sh
 same "I3 a different-leg newer WRAPPED doc with no mention of the RESUME doc holds (unchanged result, now because no link exists, not because of the leg)" "$RC" 1
 D14R="$(mkdoc PROJ-9423-N1b-RESUME.md '# resume doc')"
-touch -d '1 hour ago' "$D14R"
+touch_ago 3600 "$D14R"
 D14="$(mkdoc PROJ-9423-N2-case.md $'> **Prior art:** PROJ-9423-N1b-RESUME.md\n- 10:00 WRAPPED — PR merged')"
 put_row scripts/c14.sh PROJ-9423 alpha "$D14"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c14.sh
 same "I3 a different-leg WRAPPED doc naming the RESUME doc outside its last WRAPPED bullet consumes it" "$RC" 0
 D15R="$(mkdoc PROJ-9424-case-RESUME.md '# resume doc')"
-touch -d '1 hour ago' "$D15R"
+touch_ago 3600 "$D15R"
 D15="$(mkdoc PROJ-9424-case.md '- 10:00 WRAPPED — PR merged')"
 put_row scripts/c15.sh PROJ-9424 alpha "$D15"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c15.sh
 same "I3 a WRAPPED doc named as the RESUME doc minus -RESUME, with no mention of it, holds (changed: a shared stem is no link)" "$RC" 1
 # a RESUME doc made AFTER its stem doc wrapped is new live work: the stem doc's WRAPPED bullet cannot have released it
 D18="$(mkdoc PROJ-9427-case.md '- 10:00 WRAPPED — PR merged')"
-touch -d '3 hours ago' "$D18"
+touch_ago 10800 "$D18"
 mkdoc PROJ-9427-case-RESUME.md '# resume doc, made after the stem doc wrapped' > /dev/null
 put_row scripts/c18.sh PROJ-9427 alpha "$D18"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c18.sh
 same "I3 a RESUME doc created after its stem doc wrapped, the last WRAPPED bullet not naming it, holds" "$RC" 1
 D16R="$(mkdoc PROJ-9425-N7f-RESUME.md '# resume doc')"
-touch -d '1 hour ago' "$D16R"
+touch_ago 3600 "$D16R"
 D16="$(mkdoc PROJ-9425-N7c-case.md $'- 09:00 LIVE — PROJ-9425-N7f-RESUME.md\n- 10:00 WRAPPED — handed to PROJ-9425-N7f-RESUME.md')"
 put_row scripts/c16.sh PROJ-9425 alpha "$D16"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c16.sh
 same "I3 a same-leg WRAPPED doc whose last bullet names the RESUME doc still holds, a mention elsewhere too" "$RC" 1
 # touching an old WRAPPED doc of the leg (a later edit bumps its mtime past the RESUME doc) must not release a live RESUME's rows
 D17R="$(mkdoc PROJ-9426-N3b-RESUME.md '# resume doc')"
-touch -d '1 hour ago' "$D17R"
+touch_ago 3600 "$D17R"
 D17="$(mkdoc PROJ-9426-N3-case.md '- 10:00 WRAPPED — PR merged')"
-touch -d '3 hours ago' "$D17"
+touch_ago 10800 "$D17"
 touch "$D17"
 put_row scripts/c17.sh PROJ-9426 alpha "$D17"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c17.sh
 same "I3 touching an old WRAPPED doc of the leg no longer releases a live RESUME doc's rows" "$RC" 1
 
 mkdoc PROJ-9118-N1-RESUME.md '# resume doc' > /dev/null
-touch -d '25 hours ago' "$HANDOVER_DIR/u/r/PROJ-9118-N1-RESUME.md"
+touch_ago 90000 "$HANDOVER_DIR/u/r/PROJ-9118-N1-RESUME.md"
 put_row scripts/c08.sh PROJ-9118 alpha "$(mkdoc PROJ-9118-case.md)"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c08.sh
 same "I3 a RESUME doc over 24 h no longer holds the rows (taken over)" "$RC" 0
@@ -326,7 +326,7 @@ fault_case() {  # fault_case <name> <path> <env-prefix...> ; the row at <path> m
 }
 put_row scripts/f2.sh PROJ-9150 alpha "$(mkdoc PROJ-9150-case.md)"
 printf 'not a row\n' > "$(rowf scripts/f2.sh)"
-touch -d '2 hours ago' "$(rowf scripts/f2.sh)"
+touch_ago 7200 "$(rowf scripts/f2.sh)"
 fault_case "a corrupt row" scripts/f2.sh X=1
 same "I5 the corrupt row is left in place" "$(cat "$(rowf scripts/f2.sh)")" "not a row"
 put_row scripts/f3.sh PROJ-9151 alpha "$(mkdoc PROJ-9151-case.md)"
@@ -672,7 +672,7 @@ same "F7 read --keys over readable rows exits 0" "$RC" 0
 printf 'not a row\n' > "$(rowf scripts/z2.sh "$R4")"
 printf 'PROJ-9331\tlab\t%s\tbogus-source\t\n' "$DB" > "$(rowf scripts/z3.sh "$R4")"
 printf 'PROJ-9332\tlab\t\377\tbrief\t\n' > "$(rowf scripts/z5.sh "$R4")"
-touch -d '2 hours ago' "$(rowf scripts/z2.sh "$R4")" "$(rowf scripts/z3.sh "$R4")" "$(rowf scripts/z5.sh "$R4")"
+touch_ago 7200 "$(rowf scripts/z2.sh "$R4")" "$(rowf scripts/z3.sh "$R4")" "$(rowf scripts/z5.sh "$R4")"
 run hp read --repo "$R4" --keys
 same "F7 read --keys with unreadable rows still exits 0 (one junk row must not fault the whole read)" "$RC" 0
 contains "F7 ... names the rows on stderr" "$ERR" scripts/z2.sh
@@ -705,7 +705,7 @@ git -C "$R5" init -q -b main || exit 1
 mkdir -p "$(slugdir "$R5")"
 printf 'PROJ-9351\tlab\t%s\tbrief\t\n' "$(mkdoc PROJ-9351-case.md)" > "$(rowf scripts/a1.sh "$R5")"
 printf 'PROJ-9351\tlab\t%s\tbogus-source\t\n' "$DB" > "$(rowf scripts/b1.sh "$R5")"
-touch -d '2 hours ago' "$(rowf scripts/a1.sh "$R5")" "$(rowf scripts/b1.sh "$R5")"
+touch_ago 7200 "$(rowf scripts/a1.sh "$R5")" "$(rowf scripts/b1.sh "$R5")"
 run hp read --repo "$R5" --keys
 same "F7b read --keys: a dead row then a junk row of the same key reads that key unknown, never dead" "$(printf '%s\n' "$OUT" | grep '^PROJ-9351')" "$(printf 'PROJ-9351\tunknown\t2')"
 
@@ -718,7 +718,7 @@ same "T2 seed: a claim fault exits 3" "$RC" 3
 same "T2 seed: the rows made before and after the fault are kept" "$(cut -f1 "$(rowf scripts/t2ok.sh)")" PROJ-9401
 
 DT2P="$(mkdoc PROJ-9402-N1-case.md '> **Writes:** scripts/t2fb.sh')"
-touch -d '1 hour ago' "$DT2P"
+touch_ago 3600 "$DT2P"
 DT2="$(mkdoc PROJ-9402-N1b-case-RESUME.md '# resume doc, no Writes line')"
 run hp seed --key PROJ-9402 --label N1b --doc "$DT2" --repo "$R"
 same "T2 seed: a doc with no Writes line falls back to the newest doc of the key that has one (exit 0)" "$RC" 0
@@ -729,7 +729,7 @@ same "T2 seed: no Writes anywhere exits 0" "$RC" 0
 same "T2 seed: ... and makes no row" "$(grep -rlF "$DT3" "$(slugdir)" 2>/dev/null | wc -l | tr -d ' ')" 0
 # the fallback is for a RESUME doc only; a plain brief with no Writes line seeds nothing of its predecessor's
 DT4P="$(mkdoc PROJ-9406-N1-case.md '> **Writes:** scripts/t2fb2.sh')"
-touch -d '1 hour ago' "$DT4P"
+touch_ago 3600 "$DT4P"
 DT4="$(mkdoc PROJ-9406-N2-case.md '# plain brief, no Writes line')"
 run hp seed --key PROJ-9406 --label N2 --doc "$DT4" --repo "$R"
 same "T2 seed: a non-RESUME doc with no Writes line does not inherit the predecessor's files: exit 0, no row" "$RC|$([ -e "$(rowf scripts/t2fb2.sh)" ] && echo row || echo none)" "0|none"
@@ -789,9 +789,9 @@ same "T2 seed: ... the row made before the deadline is kept" "$(cut -f1 "$(rowf 
 
 # a holder with 10 docs and a hung lock script: the deadline is a ceiling for the whole row, not 15 s a doc
 for i in 1 2 3 4 5 6 7 8 9 10; do mkdoc "PROJ-9430-N$i-case.md" '# doc' > /dev/null; done
-touch -d '2 hours ago' "$HANDOVER_DIR"/u/r/PROJ-9430-N*-case.md
+touch_ago 7200 "$HANDOVER_DIR"/u/r/PROJ-9430-N*-case.md
 put_row scripts/t2ten.sh PROJ-9430 ten "$HANDOVER_DIR/u/r/PROJ-9430-N1-case.md"
-touch -d '2 hours ago' "$(rowf scripts/t2ten.sh)"
+touch_ago 7200 "$(rowf scripts/t2ten.sh)"
 : > "$W/ql-hang-calls"
 DT10="$(mkdoc PROJ-9431-case.md '> **Writes:** scripts/t2ten.sh')"
 t0="$(date +%s)"
@@ -844,7 +844,7 @@ contains "T2 backfill: the overlap is named" "$OUT" "N3 overlap"
 same "T2 backfill: a non-WRAPPED worker gets its row with its label" "$(cut -f1,2 "$(rowf scripts/t2ba.sh)" | tr '\t' ' ')" "PROJ-9410 N1"
 same "T2 backfill: a WRAPPED worker gets none" "$([ -e "$(rowf scripts/t2bb.sh)" ] && echo row || echo none)" none
 lock_hold "$BA"
-touch -d '2 hours ago' "$(rowf scripts/t2ba.sh)"
+touch_ago 7200 "$(rowf scripts/t2ba.sh)"
 run hp alive --repo "$R" scripts/t2ba.sh
 same "T2 backfill: a row past the grace with the worker's lock held reads alive" "$OUT" alive
 
@@ -1293,7 +1293,7 @@ GCQ=(python3 -I "$SUT" git-check)
 # a shell write (sed -i) then a commit by key B on a file key A holds: git's own list, no shell text involved
 GW="$(gcwt sed)"
 put_row a1.txt $K1 alpha "$gcdoc_a" brief "" "$GC"
-( cd "$GW" && sed -i 's/^/x/' a1.txt && git add a1.txt )  # gnu-ok: this suite is Linux-only (header)
+( cd "$GW" && sed -i.bak 's/^/x/' a1.txt && rm -f a1.txt.bak && git add a1.txt )
 run asw "$GW" $K2 "$gcdoc_b" beta git commit -q -m sed-change
 same "T5 an in-place shell rewrite then a commit by B on a file A holds is refused" "$((RC != 0))" 1
 contains "T5 the refusal names the holder" "$ERR" "$K1"
@@ -1308,7 +1308,7 @@ same "T5 an unheld commit passes" "$RC" 0
 same "T5 the commit claims a row with doc and label" "$(cut -f1-4 "$(rowf c1.txt "$GC")" 2>/dev/null | tr '\t' ' ')" "$K2 beta $gcdoc_b claim"
 
 # I12: that row aged past the grace, the holder's real lock held: a rival's commit is refused
-touch -d '2 hours ago' "$(rowf c1.txt "$GC")"
+touch_ago 7200 "$(rowf c1.txt "$GC")"
 GW="$(gcwt rival)"
 ( cd "$GW" && echo r >> c1.txt && git add c1.txt )
 run asw "$GW" $K1 "$gcdoc_a" alpha git commit -q -m rival
@@ -1377,7 +1377,7 @@ put_row q1.txt $K1 branch:feat/other "" pr 55 "$GC"; touch "$(rowf q1.txt "$GC")
 run asw "$GW" $K2 "$gcdoc_b" beta env HOLDS_GH="$W/bin/gh-base" "${GCQ[@]}" --push
 same "T5 a push over a file a fresh pr row holds is refused" "$RC" 1
 contains "T5 the push refusal names the holder" "$ERR" "$K1"
-touch -d '31 minutes ago' "$(rowf q1.txt "$GC")"
+touch_ago 1860 "$(rowf q1.txt "$GC")"
 run asw "$GW" $K2 "$gcdoc_b" beta env HOLDS_GH="$W/bin/gh-base" "${GCQ[@]}" --push
 same "T5 a pr row over 30 minutes old passes" "$RC" 0
 put_row q1.txt $K1 branch:feat/prrow "" pr 55 "$GC"; touch "$(rowf q1.txt "$GC")"

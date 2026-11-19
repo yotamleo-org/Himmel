@@ -212,7 +212,7 @@ D="$(ms a6d)"; i=0; while [ "$i" -lt 200 ]; do printf 'line %s\n' "$i"; i=$((i+1
 st "$D" --structure; assert_rc "A6 200 lines pass" 0 "$ST_RC"
 
 # A7: length counts characters: 200 em dashes (over 200 bytes) pass, 201 are flagged.
-em=""; i=0; while [ "$i" -lt 198 ]; do em="$em—"; i=$((i+1)); done
+em=""; i=0; while [ "$i" -lt 198 ]; do em="${em}—"; i=$((i+1)); done
 D="$(ms a7a)"; printf -- '- %s\n' "$em" > "$D/MEMORY.md"
 st "$D" --structure; assert_rc "A7 200-char em-dash line passes" 0 "$ST_RC"
 D="$(ms a7b)"; printf -- '- %s—\n' "$em" > "$D/MEMORY.md"
