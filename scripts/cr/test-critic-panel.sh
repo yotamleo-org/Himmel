@@ -2234,6 +2234,7 @@ check "P2: row without perspective omits flag" "$(grep -c -- '--perspective-file
 : > "$CAPTURE_FILE"
 printf '%s' "$DIFF" | CR_PROFILE=free,paid CRITICS_JSON="$HERE/critics.json" CRITIC_FIRST_PASS="$CAPTURE_STUB" bash "$PANEL" >/dev/null 2>&1
 check "P5: real registry claude row threads the floor-reviewer perspective" "$(grep -- '--slug claude' "$CAPTURE_FILE" | grep -c 'perspectives/floor-reviewer.md')" "1"
+check "P6: real registry codex row was invoked once" "$(grep -c -- '--slug codex' "$CAPTURE_FILE")" "1"
 check "P6: real registry codex row gets no perspective" "$(grep -- '--slug codex' "$CAPTURE_FILE" | grep -c -- '--perspective-file')" "0"
 pp_floor="$(printf '%s' "$DIFF" | bash "$HERE/critic-first-pass.sh" --model claude-opus-5-5 --slug claude --provider claude-api --perspective-file "$HERE/perspectives/floor-reviewer.md" --print-prompt 2>/dev/null)"
 check "P7: claude --print-prompt carries the floor-reviewer perspective" "$(grepq "$pp_floor" -F 'Verify-before-critical' && echo yes || echo no)" "yes"
