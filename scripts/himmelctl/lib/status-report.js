@@ -394,27 +394,6 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (bash scripts/eval/rollup-cadence.sh arm)`;
       }
-      // the user-scope guardrail block is armed via an explicit
-      // `setup-hooks.sh --guardrail-mode global` opt-in, never the default
-      // (project mode). 'degraded' (armed but the baked node path rotted:
-      // exactly what report_guardrail_block's own drift check exists to
-      // catch) is a DIFFERENT probe.actual and never reaches here.
-      // this item carries a REAL install descriptor
-      // (install-engine.js's 'guardrail-block-global' wire target), but it
-      // still writes the OPERATOR'S GLOBAL ~/.claude/settings.json. The
-      // round-3 ruling forbids ever letting that happen on the strength of
-      // the manifest membership alone. The ONLY thing that lifts this n/a
-      // downgrade is an explicit, RECORDED consent. cmdEnsure's ask-first
-      // gate (bin.js) is the ONE place that ever writes
-      // entry.overrides.consent = 'yes', and it does so ONLY after a real
-      // prompt (or an already-recorded 'yes' from a prior run), never as a
-      // side effect of a bare --yes or a non-interactive run. No recorded
-      // answer, or an explicit decline ('no'), keeps this item exactly as
-      // opt-in/invisible-to-ensure as it was before this ticket.
-      if (item.id === 'guardrail-block-global' && (!entry.overrides || entry.overrides.consent !== 'yes')) {
-        severity = 'n/a';
-        detail = `${probe.detail} — opt-in (bash scripts/setup-hooks.sh --guardrail-mode global --yes, or run 'himmelctl ensure' interactively to consent + auto-wire)`;
-      }
       // three items a clean STARTER install left red although
       // nothing was wrong. Each is downgraded ONLY on a probe-flagged clean
       // absence (or, for bitbucket-cli-build, a plain absence: its probe is a

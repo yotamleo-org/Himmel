@@ -493,7 +493,7 @@ through unrewritten because `rtk find` rejects them at runtime.
 ## himmel-doctor (`scripts/himmel-doctor.sh`)
 
 The `/himmel-doctor` diagnostic. Read-only except `--fix`. Checks (a subset —
-`scripts/himmel-doctor.sh` is the source of truth for the full check set): C1-guardrail
+`scripts/himmel-doctor.sh` is the source of truth for the full check set, where C28 is retired and ids are not renumbered): C1-guardrail
 user-level guardrail-hook node path (+ `--fix` re-bake; the old C1-node check was
 retired earlier and the ids were NOT renumbered), C2 shadowed claude-obsidian, C3 dirty
 single-writer luna vault, C4 Bitbucket-remote-where-`gh`-fails, C5 repo not in the
@@ -501,16 +501,6 @@ handover registry, C6 PATH-fragile bare-interpreter MCP servers (uvx/bun — sam
 GUI-launch failure class as the node hook), C7 lingering merged-PR worktrees, C8
 stale pipeline-cadence runners, C9 auto-arm scheduler backend (reads
 `scripts/lib/scheduler-backend.sh`; never sudos),
-C28 guardrail-block-global armed-but-inert consent gap (read-only,
-never auto-wires; C1-guardrail already covers wired-and-healthy vs
-wired-but-degraded, so this adds the third distinction among the never-wired
-case: consent recorded 'no' is a legitimate decline (OK), consent 'yes' but
-still unwired means a prior `himmelctl ensure` likely failed partway (WARN),
-and no recorded consent at all is the never-asked gap this check exists to
-report (WARN) — read from himmelctl's own `state.json`, never from a guess;
-an early revision short-circuited OK whenever the user-level settings file was
-merely absent, conflating "nothing to check" with "never asked" — the shipped
-check no longer does).
 
 **Cadence runner format twins are platform-specific:**
 `cadence_runner_stamp` (`scripts/lib/cadence-format.sh`, shared by C8 above and

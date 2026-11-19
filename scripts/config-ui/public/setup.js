@@ -208,7 +208,6 @@ export const SETUP_CHECKS = [
   { id: "C16", reason: "himmelctl status finds no install or wiring problem." },
   { id: "C17", reason: "Every enabled skill has the API key it declares, and no ready toolkit is marked disabled in a doc." },
   { id: "C20", reason: "The running Node major matches the one .nvmrc pins; the hooks, the Jira tool and the test suites run on it." },
-  { id: "C28", reason: "The guardrail hook is wired into your global settings, or you declined it on record; otherwise nothing enforces it." },
   { id: "C32", reason: "The hook that refuses a commit or push straight to main is installed, executable and has its target script." },
   { id: "C39", reason: "On macOS a working timeout or gtimeout is on PATH; graph refresh runs unbounded without it." },
   { id: "C43", reason: "The user settings carry no bare rtk hook, which bypasses the rtk hook guard." },
