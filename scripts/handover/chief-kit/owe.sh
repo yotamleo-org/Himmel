@@ -17,10 +17,11 @@
 # one. OWE_NOW_EPOCH replaces the clock (tests).
 #
 # Exit codes: 0 done, 1 close of an unknown or already closed id, 2 usage or a refused value,
-# 3 the bucket directory is absent, 4 the ledger is unreadable, cannot be opened for append or
-# cannot be locked (no flock on the host).
+# 3 the bucket directory is absent, 4 the ledger is unreadable or cannot be opened for append.
+# Without flock (macOS) the ledger is locked by with_lock (scripts/lib/prim.sh) on <bucket>/owed.jsonl.lock,
+# removed on release; a lock left by a killed run makes owe.sh exit 1 with a with_lock message until removed.
 #
-# Platform guard: bash, jq and flock; the chief kit is Linux-only.
+# Platform guard: bash and jq; flock when present.
 set -u
 
 usage() {
@@ -31,6 +32,7 @@ usage() {
 }
 
 [ "$#" -ge 1 ] || usage
+OWE_ARGV=("$@")
 CMD="$1"; shift
 BUCKET=""; CHIEF=""; KIND=""; TEXT=""; KEY=""; ID=""; ALL=0; HAVE_TEXT=0; HAVE_KEY=0
 while [ "$#" -gt 0 ]; do
@@ -49,13 +51,21 @@ done
 [ -n "$BUCKET" ] || usage
 [ -d "$BUCKET" ] || { echo "owe: bucket directory '$BUCKET' does not exist" >&2; exit 3; }
 F="$BUCKET/owed.jsonl"
+# shellcheck source=../../lib/prim.sh
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/../../lib/prim.sh" || { echo "owe: cannot load primitives" >&2; exit 4; }
 
 NOW="${OWE_NOW_EPOCH:-}"
 case "$NOW" in ''|*[!0-9]*) NOW="$(date +%s)" ;; esac
 
 lock_ledger() {
-    exec 9>>"$F" || exit 4
-    flock 9 || exit 4  # prim-ok: the chief kit is Linux-only, and with_lock would leave a lock file in the state bucket
+    if command -v flock >/dev/null 2>&1; then
+        exec 9>>"$F" || exit 4
+        flock 9 || exit 4  # prim-ok: flock on the ledger itself leaves no lock file in the state bucket; with_lock below is the fallback
+        return 0
+    fi
+    [ -z "${OWE_LEDGER_LOCKED:-}" ] || return 0
+    OWE_LEDGER_LOCKED=1 with_lock "$F.lock" bash "$0" "${OWE_ARGV[@]}"
+    exit "$?"
 }
 
 ledger_ok() { [ ! -s "$F" ] || jq -e -s 'all(.[]; type == "object" and (.op == "add" or .op == "close"))' "$F" >/dev/null 2>&1; }

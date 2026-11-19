@@ -41,8 +41,6 @@ if [ -n "$HDIR" ] && [ ! -d "$HDIR" ]; then
   HDIR=""
 fi
 command -v jq >/dev/null || { echo "graph-use-report: jq is required" >&2; exit 2; }
-# The window: the last DAYS days by mtime, or with --until-epoch (GNU find) the DAYS days that end at that instant, to re-run a past window.
-if [ -n "$UNTIL" ]; then WIN=(-newermt "@$((10#$UNTIL - 10#$DAYS * 86400))" ! -newermt "@$((10#$UNTIL))"); else WIN=(-mtime "-$((10#$DAYS))"); fi
 
 # One row per journal: tools search query explain path mcp bare bare_fail wrapper wrapper_fail wrapper_miss. A bad journal LINE is
 # skipped by fromjson?; a journal jq cannot read at all fails the program and is counted by the caller.
@@ -97,6 +95,20 @@ JQ='
 TAB="$(printf '\t')"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/graph-use-report.XXXXXX")" || { echo "graph-use-report: mktemp failed" >&2; exit 2; } # prim-ok: a standalone read-only report, one scratch directory, no sourced lib
 trap 'rm -rf "$WORK"' EXIT
+# The window: the last DAYS days by mtime, or with --until-epoch the DAYS days that end at that instant, to re-run a past window.
+# Each bound is a reference file stamped with its epoch (GNU date -d @N, else BSD date -r N), so find needs only -newer.
+if [ -n "$UNTIL" ]; then
+  for _b in lo hi; do
+    if [ "$_b" = lo ]; then _e=$((10#$UNTIL - 10#$DAYS * 86400)); else _e=$((10#$UNTIL)); fi
+    _stamp="$(date -u -d "@$_e" +%Y%m%d%H%M.%S 2>/dev/null || date -u -r "$_e" +%Y%m%d%H%M.%S 2>/dev/null)" || _stamp="" # swallow-ok: an unformattable epoch is reported on the next line
+    if [ -z "$_stamp" ] || ! : > "$WORK/ref-$_b" || ! TZ=UTC touch -t "$_stamp" "$WORK/ref-$_b"; then
+      echo "graph-use-report: cannot stamp the window bound for epoch $_e" >&2; exit 2
+    fi
+  done
+  WIN=(-newer "$WORK/ref-lo" ! -newer "$WORK/ref-hi")
+else
+  WIN=(-mtime "-$((10#$DAYS))")
+fi
 rows=""; njournals=0; unread=0; unwalked=0
 for root in "${ROOTS[@]}"; do
   root="${root%/}"

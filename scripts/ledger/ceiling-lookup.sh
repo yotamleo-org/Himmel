@@ -77,8 +77,8 @@ ledger_resolve "$REPO" || say "not read ($LEDGER_WHY)"
 [ -f "$LEDGER_PATH" ] && [ -r "$LEDGER_PATH" ] || say "not read (ledger unreadable: $LEDGER_PATH)"
 cur=$(ledger_current "$LEDGER_PATH") || say "not read (${cur:-malformed ledger})"
 
-rows=$(printf '%s\n' "$cur" | awk -F '\t' -v all="$ALL" -v touched="$TOUCHED" '
-    BEGIN { n = split(touched, t, "\n"); for (i = 1; i <= n; i++) if (t[i] != "") want[t[i]] = 1 }
+rows=$(printf '%s\n' "$cur" | TOUCHED="$TOUCHED" awk -F '\t' -v all="$ALL" '
+    BEGIN { n = split(ENVIRON["TOUCHED"], t, "\n"); for (i = 1; i <= n; i++) if (t[i] != "") want[t[i]] = 1 }
     $7 == "open" && (all == 1 || ($2 in want)) { print }
 ' | LC_ALL=C sort -t "$(printf '\t')" -k2,2 -s)
 nrows=0
