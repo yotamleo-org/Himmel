@@ -1218,6 +1218,39 @@ manifest_docs = set()  # the resolved path of every worker doc the manifest list
 workers_from = os.environ.get('ND_WORKERS_FROM', '')
 workers_unknown = False
 owners_unknown = False  # only a fleet whose OWNERS are unreadable hides the orphans; a worker whose FILES are unknown still owns the key in its doc name
+named_unknown = False  # a named worker source could not be fully read: nothing it may own is listed
+WITHHELD = 'RESUME, IN CI, STACKABLE, SERIES FAMILY, To Do, DESIGN, NEXT-TIER'
+REMEDY_DOC = "restore the doc, record the worker's end, or fleet-manifest.sh remove <manifest> <label>"
+REMEDY_MANIFEST = 'repair or delete the manifest file (fleet-manifest.sh refuses an invalid one)'
+REMEDY_FLEET = 'restore or pass a readable --workers-from manifest'
+owner_unknown_lines = set()
+
+def printable(text):
+    if text.isascii() and text.isprintable():
+        return text
+    enc = sys.stdout.encoding or 'utf-8'
+    shown = []
+    for ch in text:
+        o = ord(ch)
+        if o < 32 or 127 <= o < 160 or o in (0x2028, 0x2029) or 0xD800 <= o <= 0xDFFF:
+            shown.append(ch.encode('unicode_escape').decode('ascii'))
+            continue
+        try:
+            ch.encode(enc)
+            shown.append(ch)
+        except UnicodeEncodeError:
+            shown.append(ch.encode('unicode_escape').decode('ascii'))
+    return ''.join(shown)
+
+def owner_unknown(owner, why, remedy, keys=()):
+    global named_unknown, owners_unknown, workers_unknown
+    named_unknown = owners_unknown = workers_unknown = True
+    held = ','.join(sorted({printable(k) for k in keys}))
+    tail = '; keys held: %s' % held if held else ''
+    line = '# owner unknown: %s (%s%s); withheld: %s; reconcile: %s' % (printable(owner), printable(why), tail, WITHHELD, remedy)
+    if line not in owner_unknown_lines:
+        owner_unknown_lines.add(line)
+        unknown_notes.append(line)
 live_workers = []
 worker_keys = set(os.environ.get('ND_OWNERS', '').split())
 owner = {k: 'the --owners list' for k in worker_keys}
@@ -1234,10 +1267,12 @@ if workers_from and os.path.isfile(workers_from):
             try:
                 lines = open(doc, encoding='utf-8', errors='replace').read().splitlines()
             except OSError:
-                for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)):
-                    worker_keys.add(k); owner.setdefault(k, 'live worker %s' % worker.get('label', '?'))
-                workers_unknown = True
-                note_unknown('live worker %s' % worker.get('label', '?'))
+                who = 'live worker %s' % printable('%s' % worker.get('label', '?'))
+                dkeys = re.findall(r'[A-Z]+-\d+', os.path.basename(doc))
+                for k in dkeys:
+                    worker_keys.add(k); owner.setdefault(k, who)
+                note_unknown(who)
+                owner_unknown(who, 'doc %s unreadable' % (os.path.basename(doc) or '(none)'), REMEDY_DOC, keys=dkeys)
                 continue
             marks = [m.group(1) for m in (MARKER_RE.match(l) for l in lines) if m]
             state = worker_state(doc)
@@ -1283,16 +1318,25 @@ if chain_m:
                 sdoc = worker.get('doc') if isinstance(worker, dict) else None
                 if not isinstance(sdoc, str) or not sdoc:
                     continue  # an entry that names no doc owns nothing
+                sfiles = re.findall(r'[A-Z]+-\d+', os.path.basename(sdoc))
+                sdoc_unreadable = False
                 try:
                     slines = open(sdoc, encoding='utf-8', errors='replace').read().splitlines()
-                except OSError:
+                except Exception:  # swallow-ok: an unreadable sibling doc is reported as an owner unknown below, never skipped
                     slines = []
+                    sdoc_unreadable = True
                 smarks = [m.group(1) for m in (MARKER_RE.match(l) for l in slines) if m]
-                if worker_state(sdoc) == 'wrapped':
+                try:
+                    sstate = worker_state(sdoc)
+                except Exception:  # swallow-ok: a state that cannot be asked is unknown, which still owns the doc's keys
+                    sstate = 'unknown'
+                if sstate == 'wrapped':
                     continue
-                skeys = re.findall(r'[A-Z]+-\d+', os.path.basename(sdoc)) + owned_keys(sdoc, slines)
-                for k in skeys:
-                    worker_keys.add(k); owner.setdefault(k, 'live worker %s of the chief on %s' % (worker.get('label', '?'), sib[:-len('.fleet.json')]))
+                swho = 'live worker %s of the chief on %s' % (printable('%s' % worker.get('label', '?')), printable(sib[:-len('.fleet.json')]))
+                for k in sfiles + owned_keys(sdoc, slines):
+                    worker_keys.add(k); owner.setdefault(k, swho)
+                if sdoc_unreadable:
+                    owner_unknown(swho, 'doc %s unreadable' % os.path.basename(sdoc), REMEDY_DOC, keys=sfiles)
         except (OSError, ValueError, TypeError, AttributeError):
             continue  # swallow-ok: a sibling chief's unreadable or malformed manifest names no worker; this chief's own fleet is still known
 if pool_only and not workers_from and not worker_keys:
