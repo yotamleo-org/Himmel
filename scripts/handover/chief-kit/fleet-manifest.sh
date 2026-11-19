@@ -73,6 +73,9 @@
 # as lane `unknown`, not lockless. A doc already listed is left alone, flags and all.
 # add also stores an optional `arm` (200k|400k, the autocompact A/B
 # arm the worker launched on); a worker added with no --arm carries no `arm` key.
+# A listed row with no arm takes the arm of a later add (the chief or the launch
+# runtime registers the row before the launcher knows its arm); a different arm
+# than the stored one is refused.
 # Only `workers[].doc` drives tick; label (worker-identity.sh's N<k>) is what remove
 # matches and what a human reads. Any other key, top-level or per worker, is
 # carried through every rewrite untouched, so a wider worker manifest
@@ -429,15 +432,16 @@ for arg in "$@"; do
     elif [ "$verb" = add ]; then
         label="$(worker_label "$arg")"
         # Re-adding a listed doc never rewrites its row: flags that would change the
-        # stored lane or lockless are refused, not silently ignored.
+        # stored lane, lockless or arm are refused, not silently ignored. The one write
+        # is an arm onto a row that has none (the row exists before the launcher knows its arm).
         conflict="$(printf '%s\n' "$cur" | jq -r --arg wk "$wk" --arg d "$arg" --arg ln "$lane" --argjson lg "$lane_given" --argjson ll "$lockless" --arg ar "$arm" \
-            '[.[$wk][] | select(.doc == $d) | select(($lg and ((.lane // "unknown") != $ln)) or ($ll and (.lockless != true)) or ($ar != "" and ((.arm // "") != $ar)))] | length')" || exit 1
+            '[.[$wk][] | select(.doc == $d) | select(($lg and ((.lane // "unknown") != $ln)) or ($ll and (.lockless != true)) or ($ar != "" and (.arm // "") != "" and .arm != $ar))] | length')" || exit 1
         if [ "$conflict" -gt 0 ]; then
             echo "fleet-manifest: $arg is already listed with a different lane/lockless/arm; remove it first, then add it again: $arg" >&2
             exit 1
         fi
         cur="$(printf '%s\n' "$cur" | jq --arg wk "$wk" --arg d "$arg" --arg l "$label" --arg t "$now" --arg ln "$lane" --argjson ll "$lockless" --arg ar "$arm" --argjson pending "$pending" \
-            'if any(.[$wk][]; .doc == $d) then . else .[$wk] += [{doc: $d, label: $l, added: $t, lane: $ln} + (if $ll then {lockless: true} else {} end) + (if $ar != "" then {arm: $ar} else {} end) + (if $pending then {registration:"pending"} else {} end)] end')" || exit 1
+            'if any(.[$wk][]; .doc == $d) then .[$wk] |= map(if .doc == $d and $ar != "" and (.arm // "") == "" then . + {arm: $ar} else . end) else .[$wk] += [{doc: $d, label: $l, added: $t, lane: $ln} + (if $ll then {lockless: true} else {} end) + (if $ar != "" then {arm: $ar} else {} end) + (if $pending then {registration:"pending"} else {} end)] end')" || exit 1
     else
         cur="$(printf '%s\n' "$cur" | jq --arg wk "$wk" --arg a "$arg" \
             '.[$wk] |= map(select(.doc != $a and .label != $a))')" || exit 1

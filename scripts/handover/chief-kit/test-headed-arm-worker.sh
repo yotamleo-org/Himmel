@@ -354,6 +354,7 @@ if [ "${FLEET_TEST_RC:-0}" = 0 ] && [ -n "${FLEET_LAUNCH_MANIFEST:-}" ]; then
   . "$FLEET_TEST_LIB/fleet-launch.sh" || exit 10
   fleet_launch_prepare "$2" "$1" "$FLEET_LAUNCH_MANIFEST" "$FLEET_LAUNCH_ATTEMPT" || exit 10
   fleet_launch_commit || exit 10
+  [ "${FLEET_TEST_RECORD:-0}" != 1 ] || fleet_launch_outcome launched || exit 10
   printf 'launched\n' > "$HEADED_ARM_OUTCOME_FILE"
 fi
 exit "${FLEET_TEST_RC:-0}"
@@ -389,6 +390,49 @@ rm -f "$fleet_manifest" "$tmp/fleet-fixture/fleet-control.json"
 rc=0; out="$(fleet_launch --dry-run 2>&1)" || rc=$?
 check 'fleet: dry run succeeds without adding' 0 "$rc"
 check 'fleet: dry run leaves manifest absent' no "$([ -e "$fleet_manifest" ] && echo yes || echo no)"
+
+# A managed launch with the autocompact A/B variable set records the arm on the worker's row, whether the chief or the runtime
+# registered the row, and stays launched; a manifest update refused after the launch exits 1 and leaves the attempt launched.
+# FLEET_TEST_RECORD=1 makes the target record the launch in the family anchor as headed-arm.sh does, so the wrapper's own
+# update runs on an attempt that is already launched.
+fleet_ab_slots="$tmp/fleet-ab-slots"
+fleet_ab_fresh() {  # <lane of the row the chief registers, or none> [brief line...]
+  local lane="$1"; shift
+  rm -rf "$fleet_manifest" "$tmp/fleet-fixture/fleet-control.json" "$fleet_ab_slots"
+  fx_brief '# fleet fixture' "$@" > "$fleet_doc"
+  bash "$HERE/fleet-manifest.sh" control init "$fleet_manifest" --target 4 >/dev/null || exit 1
+  bash "$HERE/fleet-manifest.sh" control set "$fleet_manifest" --mode active --expect-gen 1 >/dev/null || exit 1
+  [ "$lane" = none ] || bash "$HERE/fleet-manifest.sh" add "$fleet_manifest" "$fleet_doc" --lane "$lane" --pending >/dev/null || exit 1
+}
+fleet_ab_launch() { HIMMEL_FLEET_SLOTS="$fleet_ab_slots" FLEET_TEST_RECORD=1 fleet_launch; }
+if command -v flock >/dev/null 2>&1; then
+  fleet_ab_fresh native
+  rc=0; out="$(WORKER_SESSION_AUTOCOMPACT_AB=200000 fleet_ab_launch 2>&1)" || rc=$?
+  check 'fleet A/B 200k: a launch on a row the chief registered returns zero' 0 "$rc"
+  check 'fleet A/B 200k: the attempt stays launched' launched "$(jq -r '.workers[0].attempt.phase' "$fleet_manifest" 2>/dev/null)"
+  check 'fleet A/B 200k: the row records the arm' 200k "$(jq -r '.workers[0].arm' "$fleet_manifest" 2>/dev/null)"
+  fleet_ab_fresh none '> **Context:** ab-400k — operator-ruling: fixture'
+  rc=0; out="$(WORKER_SESSION_AUTOCOMPACT_AB=400000 fleet_ab_launch 2>&1)" || rc=$?
+  check 'fleet A/B 400k: a launch on a row the runtime registered returns zero' 0 "$rc"
+  check 'fleet A/B 400k: the attempt stays launched' launched "$(jq -r '.workers[0].attempt.phase' "$fleet_manifest" 2>/dev/null)"
+  check 'fleet A/B 400k: the row records the arm' 400k "$(jq -r '.workers[0].arm' "$fleet_manifest" 2>/dev/null)"
+  fleet_ab_fresh native
+  rc=0; out="$(fleet_ab_launch 2>&1)" || rc=$?
+  check 'fleet: a launch with no A/B variable returns zero' 0 "$rc"
+  check 'fleet: a launch with no A/B variable records no arm' false "$(jq '.workers[0] | has("arm")' "$fleet_manifest" 2>/dev/null)"
+  fleet_ab_fresh claudex
+  rc=0; out="$(fleet_ab_launch 2>&1)" || rc=$?
+  check 'fleet: a manifest update refused after the launch exits one' 1 "$rc"
+  contains 'fleet: a manifest update refused after the launch says so' "$out" 'launch handed off but fleet manifest update failed'
+  check 'fleet: a manifest update refused after the launch leaves the row attempt launched' launched "$(jq -r '.workers[0].attempt.phase' "$fleet_manifest" 2>/dev/null)"
+  check 'fleet: a manifest update refused after the launch leaves the anchor record launched' launched "$(jq -r '[.attempts[].phase] | join(" ")' "$tmp/fleet-fixture/fleet-control.json" 2>/dev/null)"
+  check 'fleet: a manifest update refused after the launch is recorded as a post-launch error' postlaunch-error "$(jq -rs '[.[] | select(.source == "headed-arm-worker" and .name == "PROJ-3748-N7-fleet")] | last | .outcome' "$HOME/.himmel/launch-refusals.jsonl" 2>/dev/null)"
+  check 'fleet: a different lane on a registered row is still refused, the row keeps its lane' claudex "$(jq -r '.workers[0].lane' "$fleet_manifest" 2>/dev/null)"
+  rm -rf "$fleet_manifest" "$tmp/fleet-fixture/fleet-control.json" "$fleet_ab_slots"
+  fx_brief '# fleet fixture' > "$fleet_doc"
+else
+  echo "SKIP - fleet: A/B arm rows (fleet-manifest.sh needs util-linux flock, absent here)"
+fi
 
 # The launch preflight reads CADENCE_USAGE_* first, so an inherited new-name
 # lane or worker must not beat the values this launch passes it.

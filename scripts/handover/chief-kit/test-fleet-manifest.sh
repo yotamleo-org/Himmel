@@ -242,6 +242,27 @@ check '7e. the refused re-add leaves the arm alone' 400k "$(jq -r '.workers[0].a
 bash "$SCRIPT" add "$m9" --lane native --arm 400k "$l1" >/dev/null 2>&1; rc=$?
 check '7e. re-adding with the same arm stays a no-op (rc 0)' 0 "$rc"
 
+# a listed row with no arm takes the arm the launcher reports; a different lane, lockless or arm is still refused and writes nothing.
+m7f="$tmp/m7f.json"
+bash "$SCRIPT" add "$m7f" --lane native --pending "$l1" >/dev/null 2>&1
+bash "$SCRIPT" add "$m7f" --lane native --arm 200k "$l1" >/dev/null 2>&1; rc=$?
+check '7f. --arm on a listed row with no arm is accepted (rc 0)' 0 "$rc"
+check '7f. the arm is stored on that row' 200k "$(jq -r '.workers[0].arm' "$m7f")"
+check '7f. the row keeps its lane, label and pending registration, and stays one row' "native N70 pending 1" "$(jq -r '"\(.workers[0].lane) \(.workers[0].label) \(.workers[0].registration) \(.workers | length)"' "$m7f")"
+bash "$SCRIPT" add "$m7f" --lane native --arm 400k "$l1" >/dev/null 2>&1; rc=$?
+check '7f. a different arm on that row is then refused (rc 1)' 1 "$rc"
+check '7f. the refused re-add leaves the stored arm alone' 200k "$(jq -r '.workers[0].arm' "$m7f")"
+m7g="$tmp/m7g.json"
+bash "$SCRIPT" add "$m7g" --lane native "$l1" >/dev/null 2>&1
+bash "$SCRIPT" add "$m7g" --lane claudex --arm 200k "$l1" >/dev/null 2>&1; rc=$?
+check '7f. a different lane with an arm on a row with no arm is refused (rc 1)' 1 "$rc"
+check '7f. the refused re-add stores no arm' false "$(jq '.workers[0] | has("arm")' "$m7g")"
+bash "$SCRIPT" add "$m7g" --lane native --lockless --arm 200k "$l1" >/dev/null 2>&1; rc=$?
+check '7f. --lockless with an arm on a locked row with no arm is refused (rc 1)' 1 "$rc"
+check '7f. that refused re-add stores no arm either' false "$(jq '.workers[0] | has("arm")' "$m7g")"
+bash "$SCRIPT" add "$m7g" --lane native "$l1" >/dev/null 2>&1; rc=$?
+check '7f. a re-add with no --arm leaves a row with no arm alone (rc 0)' "0 false" "$rc $(jq '.workers[0] | has("arm")' "$m7g")"
+
 m10="$tmp/m10.json"
 h1=1111111111111111111111111111111111111111
 h2=2222222222222222222222222222222222222222

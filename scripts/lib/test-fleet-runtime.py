@@ -336,6 +336,29 @@ class Runtime(unittest.TestCase):
         self.assertTrue((self.bucket / 'spawned').exists())
         self.assertEqual(json.loads(self.m.read_text())['workers'][0]['attempt']['phase'], 'launched')
 
+    def test_finish_leaves_a_launched_attempt_launched_and_frees_nothing(self):
+        self.active()
+        self.rt('begin')
+        self.rt('commit')
+        self.rt('outcome', extra=('--phase', 'launched'))
+        anchor = self.bucket / 'fleet-control.json'
+        history = self.bucket / '.himmel/launch-refusals.jsonl'
+        before = (json.loads(anchor.read_text()), json.loads(self.m.read_text()), history.read_text())
+        self.assertEqual(json.loads(self.rt('finish').stdout)['phase'], 'launched')
+        self.assertEqual((json.loads(anchor.read_text()), json.loads(self.m.read_text()), history.read_text()), before)
+        self.assertEqual([a['phase'] for a in json.loads(anchor.read_text())['attempts'].values()], ['launched'])
+        self.assertEqual(len(list((self.bucket / 'slots').glob('*/managed.json'))), 1)
+
+    def test_finish_makes_a_committed_attempt_unknown_and_keeps_its_slot(self):
+        self.active()
+        self.rt('begin')
+        self.rt('commit')
+        self.assertEqual(json.loads(self.rt('finish').stdout)['phase'], 'unknown')
+        anchor = json.loads((self.bucket / 'fleet-control.json').read_text())
+        self.assertEqual([a['phase'] for a in anchor['attempts'].values()], ['unknown'])
+        self.assertEqual(json.loads(self.m.read_text())['workers'][0]['attempt']['phase'], 'unknown')
+        self.assertEqual(len(list((self.bucket / 'slots').glob('*/managed.json'))), 1)
+
     def test_launcher_death_is_unknown_even_with_reused_pid(self):
         self.active()
         self.rt('begin')

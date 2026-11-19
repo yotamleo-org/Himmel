@@ -864,6 +864,8 @@ def run(args):
             publish(anchor, control)
             return record
         if args.op == 'finish':
+            if record['phase'] == 'launched':  # launched is terminal: finish never moves it back to unknown
+                return {'phase': 'launched', 'cause': record.get('cause')}
             args.op = 'outcome'
             args.phase = 'refused' if record['phase'] == 'pending' and not record.get('handoff_started') else 'unknown'
         if args.op == 'outcome':

@@ -310,6 +310,7 @@ _launch_refusal_exit() {
                         refused)
                             outcome=refused
                             if [ "$(printf '%s\n' "$settled" | jq -r .cause)" = fleet-paused ]; then _launch_refusal_note fleet-paused; fi ;;
+                        launched) ;;  # the anchor already holds the launch: the launcher's own outcome stands
                         *) outcome=indeterminate ;;
                     esac
                 else outcome=indeterminate
