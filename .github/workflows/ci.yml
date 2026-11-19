@@ -1785,6 +1785,9 @@ jobs:
       # It runs on every matrix entry because three of its cases are
       # platform-sensitive by construction.
       - run: bash scripts/ci/run-bun-tests.sh scripts/telegram scripts/telegram --dots --reporter=junit --reporter-outfile="$RUNNER_TEMP/js-suite-report/bun-telegram.xml"
+      # The peer-bridge channel suites. Repo-root cwd like the telegram suite
+      # above: the suites import ../telegram and the root bunfig preloads.
+      - run: bash scripts/ci/run-bun-tests.sh scripts/peer-bridge scripts/peer-bridge --dots --reporter=junit --reporter-outfile="$RUNNER_TEMP/js-suite-report/bun-peer-bridge.xml"
       # The luna source-identity suites (source-identity + backfill) gate
       # scripts/vault/**. Runs from the repo root like the
       # telegram suite (fixtures are repo-relative). Hermetic: a stub `gh` and a
@@ -1817,7 +1820,7 @@ jobs:
         run: ls scripts/observability/*.test.ts && bash scripts/ci/run-bun-tests.sh scripts/observability scripts/observability --path-ignore-patterns='scripts/observability/*.test.mjs' --dots --reporter=junit --reporter-outfile="$RUNNER_TEMP/js-suite-report/bun-observability.xml"
       - name: JS suite manifest
         if: ${{ !cancelled() }}
-        run: bun scripts/ci/js-suite-manifest.mjs --out js-suite-manifest/manifest-js-bun-suites.txt --report bun "$RUNNER_TEMP/js-suite-report/bun-luna-vitals.xml" scripts/luna-vitals --report bun "$RUNNER_TEMP/js-suite-report/bun-telegram.xml" . --report bun "$RUNNER_TEMP/js-suite-report/bun-vault.xml" . --report bun "$RUNNER_TEMP/js-suite-report/bun-config-ui.xml" . --report bun "$RUNNER_TEMP/js-suite-report/bun-luna-correlate.xml" marketplace/plugins/luna-correlate --report bun "$RUNNER_TEMP/js-suite-report/bun-telegram-himmel.xml" marketplace/plugins/telegram-himmel --report bun "$RUNNER_TEMP/js-suite-report/bun-observability.xml" . || echo "::warning title=js-suite-manifest::the writer failed, so these suites go local"
+        run: bun scripts/ci/js-suite-manifest.mjs --out js-suite-manifest/manifest-js-bun-suites.txt --report bun "$RUNNER_TEMP/js-suite-report/bun-luna-vitals.xml" scripts/luna-vitals --report bun "$RUNNER_TEMP/js-suite-report/bun-telegram.xml" . --report bun "$RUNNER_TEMP/js-suite-report/bun-peer-bridge.xml" . --report bun "$RUNNER_TEMP/js-suite-report/bun-vault.xml" . --report bun "$RUNNER_TEMP/js-suite-report/bun-config-ui.xml" . --report bun "$RUNNER_TEMP/js-suite-report/bun-luna-correlate.xml" marketplace/plugins/luna-correlate --report bun "$RUNNER_TEMP/js-suite-report/bun-telegram-himmel.xml" marketplace/plugins/telegram-himmel --report bun "$RUNNER_TEMP/js-suite-report/bun-observability.xml" . || echo "::warning title=js-suite-manifest::the writer failed, so these suites go local"
       - name: Upload JS suite manifest
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
