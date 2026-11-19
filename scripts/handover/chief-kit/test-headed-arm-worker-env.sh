@@ -286,7 +286,6 @@ contains "W13 the --headless refusal names the Live test line" "$out" "Live test
 rc=0; out="$(bash "$SCRIPT" --dry-run --headless --profile worker-impl "$LT_NAME" "$T/lt-none-doc.md" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
 check "W13 control: --headless with the Live test none line launches (exit 0)" "$rc" "0"
 
-# --- W14. WORKER_SESSION_API_ACCOUNT names the account the API-lane seam carries; default stays auto.
 rc=0; out="$(WORKER_SESSION_API_LANE=on WORKER_SESSION_API_ACCOUNT=A dry)" || rc=$?
 check "W14 seam + account A: exit 0" "$rc" "0"
 contains "W14 seam + account A reports lane on, account A" "$out" "HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A"

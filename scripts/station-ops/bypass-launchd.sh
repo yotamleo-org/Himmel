@@ -138,7 +138,6 @@ while :; do
             [ -z "$others" ] || billed+=" OPERATOR DECISION $decision."
         fi
         [ -n "$effort" ] && envs+=("WORKER_SESSION_EFFORT=$effort")
-        # api_account turns the launcher's API-lane seam on for that named account (billed API credit, not a hook flag).
         [ -n "$api_account" ] && { envs+=("WORKER_SESSION_API_LANE=on" "WORKER_SESSION_API_ACCOUNT=$api_account"); billed+=" API LANE ON, account $api_account."; }
         code=$(LC_ALL=C tr -dc 'A-Z2-9' </dev/urandom | head -c 6)
         off=$(stat -c %s "$INBOUND" 2>/dev/null || echo 0) # gnu-ok: Linux-only (setsid, /run/user, the Telegram bridge)

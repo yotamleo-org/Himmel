@@ -1165,6 +1165,10 @@ out=$(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=not-an-account-name mstamp); rc=$?
 eq "lane_recorded: a non-name account is never written to the manifest" \
   "$(grep -c 'not-an-account-name' "$MS/run-manifest.json")" "0"
 rm -f "$MS/run-manifest.json"
+out=$(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=$'A\n' mstamp); rc=$?
+eq "lane_recorded: an account with a trailing newline is not recorded" \
+  "$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["protocol"].get("api_account"))' "$MS/run-manifest.json" 2>&1)" "None"
+rm -f "$MS/run-manifest.json"
 out=$(CRITIC_PARALLEL=2 CRITIC_TIMEOUT_SECS=60 mstamp); rc=$?
 eq "unrecordable_setting: the recorded overrides are accepted" "$rc" "0"
 out=$(mstamp --model "  "); rc=$?

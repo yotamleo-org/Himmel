@@ -1663,7 +1663,6 @@ fi
 # the credit guard and per-call routing stay in claude-api.sh. Default OFF:
 # unset or any other value changes nothing.
 if [ "${WORKER_SESSION_API_LANE:-}" = "on" ]; then
-    # WORKER_SESSION_API_ACCOUNT=<A|B|C|D|auto> names the account; unset means auto, never a pinned default.
     case "${WORKER_SESSION_API_ACCOUNT:-auto}" in
         A|B|C|D|auto) ;;
         *)
