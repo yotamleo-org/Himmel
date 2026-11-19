@@ -80,7 +80,8 @@ Run these, in order, and write the result as the first bullet under
     `timeout_ms: 1800000`:
     `bash scripts/handover/chief-kit/chief-wait.sh "{{INBOX}}" --stream --since prev-arm --doc "<this file>" --token <your token> --workers-from "{{FLEET_MANIFEST}}" [--succession {{SESSION_NAME}}]`
     `WAKE#<seq>` names the saved block in `out=`; service continues while you
-    handle it. Re-arm only on `REARM`, `STOPPED`, refusal or `waiter-error`,
+    handle it. A WAKE may add an `absorbed since last wake:` wraps/merges line.
+    Re-arm only on `REARM`, `STOPPED`, refusal or `waiter-error`,
     using your last seen seq (or `prev-arm` when unsure). Dispatch/wrap reload
     the manifest without re-arm. Until stream activation is accepted, retain
     the one-shot Bash arm (`run_in_background: true`, `timeout: 7200000`)
