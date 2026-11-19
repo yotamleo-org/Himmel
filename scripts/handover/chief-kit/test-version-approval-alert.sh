@@ -43,7 +43,7 @@ check "(a) the line names the key" "yes" "$(has "$KEY" "$text")"
 check "(a) the line names the version" "yes" "$(has 'in v1.1.4' "$text")"
 check "(a) the line names the decision" "yes" "$(has 'decision 699' "$text")"
 check "(a) the line names the open count" "yes" "$(has '3 approvals open' "$text")"
-check "(a) the line leads with the words" "yes" "$(case "$text" in '"9001 signed"'*) echo yes ;; *) echo no ;; esac)"
+check "(a) the line leads with the words" "yes" "$(case "$text" in ('"9001 signed"'*) echo yes ;; (*) echo no ;; esac)"
 
 TELEGRAM_ACCESS_PATH="$WORK/no-chat.json" alert "$WORK/words.txt"; rc=$?
 check "(b) no chat id exits 1" "1" "$rc"

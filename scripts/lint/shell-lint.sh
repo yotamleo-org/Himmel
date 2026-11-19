@@ -37,7 +37,8 @@
 #                 POSIX ERE has no such classes (they match a literal letter).
 #   [mktemp]      `mktemp` / `mktemp -d` with no template arg (BSD/macOS needs one).
 #   [bash32]      bash 4+ constructs (declare -A, mapfile/readarray, ${var,,}/
-#                 ${var^^}, |&, &>>) — not 3.2-safe, the macOS default.
+#                 ${var^^}, |&, &>>; a $(case ... in arm) without its leading
+#                 paren) — not 3.2-safe, the macOS default.
 #   [gnu-flag]    GNU-only flags (sed -i no-suffix, date -d, readlink -f, grep -P,
 #                 stat -c) without a same-line BSD fallback; exempt via
 #                 `# gnu-ok: <reason>`.
@@ -276,7 +277,7 @@ MKTEMP_NOARG='(^|[^[:alnum:]_-])mktemp([[:space:]]+-[A-Za-z]+)*[[:space:]]*($|\)
 # bash 4+ constructs. |& and &>> are matched only in operator position
 # (whitespace-bounded) so the same tokens inside a regex char-class or quoted
 # string ([;|&()], "&>>") are not false positives.
-BASH32='(^|[^[:alnum:]_])(declare[[:space:]]+-[A-Za-z]*A[A-Za-z]*|mapfile|readarray)([^[:alnum:]_]|$)|\$\{[A-Za-z_][A-Za-z0-9_]*,,|\$\{[A-Za-z_][A-Za-z0-9_]*\^\^|[[:space:]]\|&[[:space:]]|[[:space:]]&>>'
+BASH32='(^|[^[:alnum:]_])(declare[[:space:]]+-[A-Za-z]*A[A-Za-z]*|mapfile|readarray)([^[:alnum:]_]|$)|\$\{[A-Za-z_][A-Za-z0-9_]*,,|\$\{[A-Za-z_][A-Za-z0-9_]*\^\^|[[:space:]]\|&[[:space:]]|[[:space:]]&>>|\$\(case[[:space:]].*[[:space:]]in[[:space:]]+[^[:space:](]'
 
 # GNU-only flags. Portable code pairs them with a BSD alt on the same line
 # (stat -f for stat -c, date -[vrj] for date -d); check 5 excludes those, then
@@ -546,7 +547,7 @@ EOF
     # [bash32] — bash 4+ constructs; macOS ships bash 3.2.
     _b32="$(_grep_hits "$f" "$BASH32")"
     _report_hits bash32 "$_b32" \
-        "bash 4+ construct, not 3.2-safe (macOS default) — see repo house style"
+        "not bash 3.2-safe (macOS default): bash 4+ construct, or a case arm in a command substitution without its leading ( — see repo house style"
 
     # [echo-e] — echo -e/-n behaviour varies by shell/build; printf is portable.
     _echo="$(_grep_hits "$f" "$ECHO_FLAG")"

@@ -440,7 +440,7 @@ jg --open-threads-ok 'bad "quote"'
 assert_eq "$rc" "2" "9712 an override reason that cannot sit in a ledger row is refused"
 STUB_THREADS="$(th_page "$th_resolved")"; export STUB_THREADS
 jg
-assert_eq "$rc:$(case "$out" in *"0 of 3"*) echo round ;; esac)" "1:round" "control: every thread resolved, judge-go reaches the round check"
+assert_eq "$rc:$(case "$out" in (*"0 of 3"*) echo round ;; esac)" "1:round" "control: every thread resolved, judge-go reaches the round check"
 STUB_PRS='[]' STUB_THREADS="$(th_page "$th_open")" jg
 assert_eq "$rc" "1" "control: a branch with no open PR has no thread to read"
 STUB_THREADS_FAIL=1 jg

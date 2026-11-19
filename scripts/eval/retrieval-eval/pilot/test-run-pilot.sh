@@ -205,7 +205,7 @@ if ! command -v bwrap >/dev/null 2>&1 || ! bwrap --ro-bind / / true 2>/dev/null;
 else
   for a in V S Q; do
     extra=(); [ "$a" = S ] && extra=("${ret[@]}" --key "$W/key"); [ "$a" = Q ] && extra=("${ret[@]}" --models "$W/models")
-    sb --arm "$a" --home "$W/home-$a" "${base[@]}" "${extra[@]}" -- /opt/claude/claude "$W/private/tasks.jsonl" "$W/station/cred" > "$W/ns-$a.json" 2>"$W/ns-$a.err"
+    sb --arm "$a" --home "$W/home-$a" "${base[@]}" ${extra[@]+"${extra[@]}"} -- /opt/claude/claude "$W/private/tasks.jsonl" "$W/station/cred" > "$W/ns-$a.json" 2>"$W/ns-$a.err"
   done
   for a in V S Q; do [ -s "$W/ns-$a.json" ] || sed "s/^/ns-$a.err: /" "$W/ns-$a.err"; done
   NV=$(cat "$W/ns-V.json"); NS=$(cat "$W/ns-S.json"); NQ=$(cat "$W/ns-Q.json")
@@ -335,7 +335,7 @@ smut "a stance naming decision 1946" "4: the stance" 'r["stance"]["decision"] = 
 smut "a token in the kind field" "S: unknown kind [redacted] for answer" 'r["credentials"]["answer"]["kind"] = "sk-ant-oat01-" + "Zq9" * 20'
 smut "a token as a channel name" "S: unknown channel [redacted]" 'r["credentials"]["sk-or-v1-" + "Zq9" * 20] = {}'
 python3 -I -c 'import json,sys; r=json.load(open(sys.argv[1])); r["credentials"]["answer"]["kind"]="sk-ant-oat01-"+"Zq9"*20; r["r4"]["channels"]["bash_env"]="sk-or-v1-"+"Zq9"*20; json.dump(r, open(sys.argv[2],"w"))' "$W/g0/shared.json" "$W/g0/tok.json"
-eq "G0 r20: no diagnostic repeats a token-shaped record value" no "$(case "$(sg0 "$W/g0/tok.json")" in *Zq9Zq9*) echo yes ;; *) echo no ;; esac)"
+eq "G0 r20: no diagnostic repeats a token-shaped record value" no "$(case "$(sg0 "$W/g0/tok.json")" in (*Zq9Zq9*) echo yes ;; (*) echo no ;; esac)"
 smut "a missing rotation procedure" "6: the rotation procedure for search is missing or its hash changed" 'del r["rotation"]["search"]'
 smut "a changed rotation procedure" "6: the rotation procedure for answer is missing or its hash changed" 'r["rotation"]["answer"]["sha256"] = "0" * 64'
 smut "an unknown channel result" "5: channel native_proc has no definite result" 'r["r4"]["channels"]["native_proc"]["Glob"] = "unknown"'
@@ -356,7 +356,7 @@ chmod 600 "$D/qmd-key.env"
 dsk() { python3 -I "$HERE/run-pilot.py" derive-s-key --source "$1" --out "$2" 2>&1; }
 out=$(dsk "$D/qmd-key.env" "$D/out/s-key"); rc=$?
 eq "derive-s-key: the qmd key-file line format yields exactly the first key line's value in a 0600 file" "0 fixture-or-key-123 600" "$rc $(cat "$D/out/s-key" 2>/dev/null) $(python3 -I -c 'import os,sys; print("%o" % (os.stat(sys.argv[1]).st_mode & 0o777))' "$D/out/s-key" 2>/dev/null)"
-eq "derive-s-key: the value is never printed" no "$(case "$out" in *fixture-or-key*) echo yes ;; *) echo no ;; esac)"
+eq "derive-s-key: the value is never printed" no "$(case "$out" in (*fixture-or-key*) echo yes ;; (*) echo no ;; esac)"
 printf 'models:\n  embed: openai:x\nbase_url: https://openrouter.ai/api/v1\n' > "$D/index.yml"
 PARITY=$(bash -c '. "$1"; QMD_DAEMON_ENV_FILE="$2" qmd_daemon_key_load "$3" && printf %s "$QMD_OPENAI_API_KEY"' _ "$HERE/../../../lib/qmd-daemon-env.sh" "$D/qmd-key.env" "$D/index.yml")  # t13b-ok: sources the qmd key loader to read a fixture file, starts nothing
 eq "derive-s-key: parity with the qmd key loader on the same file" "$PARITY" "$(cat "$D/out/s-key" 2>/dev/null)"
