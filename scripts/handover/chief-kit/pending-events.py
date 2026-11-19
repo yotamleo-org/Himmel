@@ -12,6 +12,8 @@ import time
 # A file's stamp is only trusted once the file was this much older than the moment it was read: a rewrite
 # that keeps the stamp can only happen inside the timestamp's resolution (a second on the coarsest disks).
 RACY_NS = 2_000_000_000
+# A refused cleanup is offered again after the retry window times the step for its count of refusals in a row.
+STEPS = (1, 2, 6, 24, 60)
 MARK = re.compile(r'^- (?:\d{1,2}:\d{2} )?(?:\*\*)?(READY|WRAPPED|MERGED)(?:[^A-Za-z]|$)')
 _CRC = []
 
@@ -109,6 +111,28 @@ def unchanged(record, stamp):
         return False
 
 
+def retry_after(inbox, label, doc):
+    """Seconds a refused cleanup is held back: the retry window, times the ladder's step for the count of
+    refusals the relay recorded for this worker document as it is now. No count, a torn one, or a worker
+    document that changed since it was recorded means the first step. This only spaces attempts."""
+    base = float(os.getenv('CHIEF_WAIT_SERVICE_RETRY_SEC', '5'))
+    try:
+        count, mtime, size = (int(v) for v in Path(f'{inbox}.wait.le-{label}.tries').read_text().split()[:3])
+        st = os.stat(doc)
+    except (OSError, ValueError):
+        return base
+    if count < 1 or (mtime, size) != (st.st_mtime_ns // 10**9, st.st_size):
+        return base
+    return base * STEPS[min(count, len(STEPS)) - 1]
+
+
+def refused(text):
+    """A refusal that only means "not yet": lock held, tail not WRAPPED, subtree or subagent alive. Not a
+    pr-state refusal, and not the wrap's own log or board step, which run after the window is closed."""
+    return (re.search(r'^ESCALATE .*?-failed rc=[3467] ', text) is not None and 'step pr-state' not in text
+            and 'wrap-merged: step log failed' not in text and 'wrap-merged: step board failed' not in text)
+
+
 def write_if_changed(path, text):
     try:
         if path.read_text() == text:
@@ -136,8 +160,10 @@ def candidates(fleet, inbox, last):
     events = []
     bound = doc_bound()
     summaries = {}
+    docs = {}
     for worker in data.get('workers', data.get('legs', [])):
         label, doc = worker['label'], Path(worker['doc'])
+        docs[label] = doc
         at = time.time_ns()
         stamp = stamp_of(doc)
         cached = observed.get(label, {}).get('read')
@@ -225,9 +251,8 @@ def candidates(fleet, inbox, last):
     pivot = next((i + 1 for i, event in enumerate(events) if event[0] == last), 0)
     for label, marker, n in events[pivot:] + events[:pivot]:
         output = Path(inbox + '.wait.le-' + label)
-        if output.exists() and time.time() - output.stat().st_mtime < float(os.getenv('CHIEF_WAIT_SERVICE_RETRY_SEC', '5')):
-            text = output.read_text()
-            if re.search(r'^ESCALATE .*?-failed rc=[3467] ', text) and 'step pr-state' not in text:
+        if output.exists() and time.time() - output.stat().st_mtime < retry_after(inbox, label, docs[label]):
+            if refused(output.read_text()):
                 continue
         print(label, marker, n)
 

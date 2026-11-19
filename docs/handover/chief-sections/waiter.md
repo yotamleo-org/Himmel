@@ -393,7 +393,22 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     subtree alive) stays retryable. The next sample starts after that worker,
     using an atomically saved label in `<inbox>.wait.r0-next` even after a
     waiter re-arm; a missing or stale label leaves plain candidate order.
-    A standing refusal cannot starve later workers. Anything else wakes you once per
+    A standing refusal cannot starve later workers. In stream mode it is also paced, so a
+    stacked series waiting on a live worker does not read GitHub every few seconds: each refusal
+    in a row holds that event back longer, the retry window (`CHIEF_WAIT_SERVICE_RETRY_SEC`, 5 s)
+    times 1, 2, 6, 24 and 60, that is 5, 10, 30, 120, then 300 s. The count sits in
+    `<inbox>.wait.le-<label>.tries` with the worker document's mtime and size, so a restarted
+    waiter keeps its step, and a changed worker document (a new bullet is new information)
+    starts the ladder over. The refusal that reaches the top step wakes you once per bullet with
+    `WAKE worker-event ESCALATE cleanup-still-refused worker=<label> event=<marker> tries=<n>
+    next-try-in=<s>s refusal=<its first line> out=<file>`, and the waiter goes on trying at the
+    top pace until the document changes or the cleanup succeeds. The ladder only spaces the
+    attempts: it never closes, wraps, reaps or frees anything and never records the bullet as
+    handled. `wrap-merged.sh` also exits 6 or 7 when its own log or board step fails; those run
+    after the window is closed and the worker retired, so asking again would find nothing and
+    the failure would be lost. They wake at once instead, with `wrap-merged: step log failed` or
+    `step board failed` in the line: finish by hand (`wrapping.md`). A refused close inside the
+    wrap (`step close-wrapped-worker failed`) stays retryable. Anything else wakes you once per
     bullet with `WAKE worker-event <its first non-blank line> rc=<n> out=<file>` plus the
     tick line. A silent timeout writes `ESCALATE relay-timeout <label> rc=<n>
     limit=240s` to both the wake and the out file; another silent failure names
