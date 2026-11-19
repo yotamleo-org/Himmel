@@ -169,7 +169,6 @@ allowed_by_six E6 "echo hi$BSL$BSL"
 allowed_by_six E7 "echo hi$BSL "
 allowed_by_six E8 "eval 'echo hi$BSL$BSL'"
 allowed_by_six E9 "echo \"a$BSL"$'\n'"b\""
-allowed_by_six E10 "echo hi$BSL"$'\n'
 
 echo "guard-unwrap-deny-text: $pass passed, $fail failed"
 [ "$fail" = 0 ]

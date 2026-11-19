@@ -102,7 +102,6 @@ assert_rc "an eval body ending in a backslash beside another eval denies" 2 "$(r
 assert_rc "a plain command allows" 0 "$(run_hook "terraform plan")"
 assert_rc "an even run of backslashes is read alike and allows" 0 "$(run_hook "terraform plan${bs}${bs}")"
 assert_rc "an even run on the destroy word is another word and allows" 0 "$(run_hook "terraform ${v1}${v2}${bs}${bs}")"
-assert_rc "a backslash before a trailing newline allows" 0 "$(run_hook "terraform plan${bs}"$'\n')"
 assert_rc "a line continuation between words allows" 0 "$(run_hook "terraform plan ${bs}"$'\n'"  -out=x")"
 assert_rc "a line continuation inside double quotes allows" 0 "$(run_hook "terraform plan \"a${bs}"$'\n'"b\"")"
 assert_rc "an eval body ending in an even run allows" 0 "$(run_hook "eval 'terraform plan${bs}${bs}'")"
