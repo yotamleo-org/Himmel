@@ -83,7 +83,7 @@ export function verifyChain(file: string): { ok: boolean; n: number } {
 }
 
 export type SpoolRec =
-  | { type: "send"; kind: "question" | "status" | "info" | "answer"; replyTo?: number; text: string }
+  | { type: "send"; kind: "question" | "status" | "info" | "answer"; replyTo?: number; text: string; allowShape?: string }
   | { type: "ack"; sid: string; token: string }
   | { type: "confirm"; chatId: number };
 export type SendResult = { ok: true; message_id?: number } | { ok: false; rule: string; shape?: string };
@@ -92,7 +92,7 @@ export type Drained = { name: string; rec: SpoolRec } | { name: string; malforme
 const SEND_KINDS = ["question", "status", "info", "answer"];
 function validSpool(r: any): r is SpoolRec {
   if (!r || typeof r !== "object") return false;
-  if (r.type === "send") return SEND_KINDS.includes(r.kind) && typeof r.text === "string" && (r.replyTo === undefined || (Number.isSafeInteger(r.replyTo) && r.replyTo > 0));
+  if (r.type === "send") return SEND_KINDS.includes(r.kind) && typeof r.text === "string" && (r.replyTo === undefined || (Number.isSafeInteger(r.replyTo) && r.replyTo > 0)) && (r.allowShape === undefined || /^[a-z_]{1,20}$/.test(r.allowShape));
   if (r.type === "ack") return typeof r.sid === "string" && SESSION_ID_RE.test(r.sid) && typeof r.token === "string" && /^[A-Za-z0-9]+$/.test(r.token);
   if (r.type === "confirm") return Number.isSafeInteger(r.chatId);
   return false;
@@ -159,8 +159,10 @@ export function sweepResults(peerDir: string, maxAgeMs: number, now = Date.now()
   }
 }
 
-export type IntentRec = { kind: "intent"; id: string; root: number | null; msgKind: string; text: string; spool?: string };
-export type SentRec = { kind: "sent"; id: string; message_id: number };
+// An intent holds what to send, so a crash between the Telegram call and the
+// `sent` record resends the same id. `text` is the body, or the whole line for a template.
+export type IntentRec = { kind: "intent"; peer: string; chat: number; id: string; root: number | null; msgKind: string; text: string; isRoot: boolean; tpl?: boolean; resend?: boolean; spool?: string };
+export type SentRec = { kind: "sent"; id: string; intent: number; message_id: number; ts: number };
 
 export class PidLockError extends Error {
   constructor(public pid: number) { super(`another peer-bridge poller is running (pid ${pid})`); this.name = "PidLockError"; }
