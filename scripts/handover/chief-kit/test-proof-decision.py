@@ -3,10 +3,13 @@
 import importlib.util
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 import subprocess
+import time
 import unittest
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('records', HERE / 'test-proof-validate.py')
@@ -676,6 +679,12 @@ class ChiefDecision(unittest.TestCase):
         ('older owed chief, newer handed off', ((77, OWED_CHIEF), (78, HANDED_OFF))),
         ('older code, newer handed off', ((77, CODE), (78, HANDED_OFF))),
         ('records no remainder', ((77, NO_REMAINDER),)),
+        ('a file named beside a no-code phrase', ((77, 'Remaining: implement the retry loop in scripts/x.sh (there is no code owner yet)'),)),
+        ('the same unit with no file named', ((77, 'Remaining: implement the retry loop (there is no code owner yet)'),)),
+        ('a file named beside chief-run', ((77, 'Remaining: update scripts/x.sh (chief-run)'),)),
+        ('chief-run with no file named', ((77, 'Remaining: update the notes (chief-run)'),)),
+        ('a file named beside the state repo', ((77, 'Remaining: edit docs/x.md (state repo)'),)),
+        ('the state repo with no file named', ((77, 'Remaining: edit the notes in the state repo'),)),
     )
 
     def dispatcher_says_work_remains(self, env, prs):
@@ -866,6 +875,163 @@ class ChiefDecision(unittest.TestCase):
         self.assertEqual(len(steps), 1)
         for name in (step, 'Implement the missing accepted case', 'PR #77', 'implement X'):
             self.assertIn(name, steps[0]['text'])
+
+    # Review follow-ups 2.
+    def test_the_path_rule_is_the_dispatchers_own_pattern(self):
+        holds = importlib.util.spec_from_file_location('holds', HERE / 'holds.py')
+        module = importlib.util.module_from_spec(holds)
+        holds.loader.exec_module(module)
+        dispatcher = (HERE / 'next-dispatchable.sh').read_text()
+        self.assertIn('FILE_RE = re.compile(r"' + module.FILE_RE.pattern + '")', dispatcher)
+        env = self.world()
+        self.partial(77, 'Remaining: implement the retry loop in scripts/x.sh (there is no code owner yet)')
+        r = self.decide('--check', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('PR #77', r.stderr)
+        self.assertIn('scripts/x.sh', r.stderr)
+
+    def test_a_pre_merge_only_row_is_seen_when_github_confirms_it_and_the_close_agrees_with_the_dispatcher(self):
+        for name, body, blocks in (('code', self.CODE, True), ('no code', self.NO_CODE, False)):
+            with self.subTest(case=name):
+                env = self.world()
+                (self.live / 'merged-on-github').write_text('#!/bin/sh\nprintf "MERGED abc\\n"\n')
+                (self.live / 'state' / 'status-events.jsonl').write_text('')
+                self.merge(77, stage='pre-merge', result='pending', head='abc')
+                self.body(77, body)
+                close = self.decide('--check', env=env)
+                rows, out = self.dispatcher_says_work_remains(env, ())
+                dispatcher_blocks = any(row.startswith(('OWED ', 'NEEDS-CHIEF-NOTE ')) for row in rows) or \
+                    any(row.startswith('RESUME') and not row.endswith('\tproof') for row in rows)
+                self.assertEqual((close.returncode != 0, dispatcher_blocks), (blocks, blocks), close.stderr + '\n' + out)
+
+    def test_a_warning_from_the_status_log_helper_is_could_not_read_not_no_partial_merge(self):
+        env = self.world()  # the stubbed GitHub read fails, so the pre-merge-only row cannot be confirmed
+        self.merge(77, stage='pre-merge', result='pending', head='abc')
+        self.body(77, self.CODE)
+        before = (self.b / 'owed.jsonl').read_bytes()
+        for mode in ('--check', '--settle'):
+            r = self.decide(mode, status='To Do', env=env)
+            self.assertNotEqual(r.returncode, 0, r.stdout)
+            self.assertIn('unreadable', r.stderr)
+            self.assertIn('PR 77', r.stderr)
+            self.assertEqual((self.b / 'owed.jsonl').read_bytes(), before)
+        # a spent GitHub budget is the same: the helper says it did not count the PR
+        (self.live / 'merged-on-github').write_text('#!/bin/sh\nprintf "MERGED abc\\n"\n')
+        r = self.decide('--check', env={**env, 'MERGE_ROWS_BUDGET_SECS': '0'})
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('unreadable', r.stderr)
+        self.assertIn('budget', r.stderr)
+        # confirmed merged, the same row is a partial PR and its remainder blocks as any other
+        r = self.decide('--check', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('PR #77 Remaining', r.stderr)
+
+    def test_a_merge_row_with_no_usable_pull_request_number_is_could_not_read(self):
+        env = self.world()
+        for number in ('', 'abc', None):
+            with self.subTest(pr=number):
+                (self.live / 'state' / 'status-events.jsonl').write_text(
+                    json.dumps({'event': 'merge', 'key': 'HIMMEL-9848', 'contract': 'no', 'result': 'noop', **({} if number is None else {'pr': number})}) + '\n')
+                r = self.decide('--check', env=env)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn('unreadable', r.stderr)
+                self.assertIn('no PR number', r.stderr)
+        # another ticket's malformed row and a completing merge's missing number are not this ticket's partial merge
+        (self.live / 'state' / 'status-events.jsonl').write_text(
+            '{"event":"merge","key":"OTHER-1","contract":"no","result":"noop"}\n{"event":"merge","key":"HIMMEL-9848","contract":"yes","result":"noop"}\n')
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+
+    def test_a_reconciliation_step_closed_with_the_remainder_open_is_replaced_by_a_new_open_one(self):
+        env = self.world()
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+        self.partial(77, self.CODE)
+        first = json.loads(self.decide('--settle', env=env).stdout)['reconciliation']
+        for _ in range(2):  # while a step is open, a settle writes nothing new
+            self.assertEqual(json.loads(self.decide('--settle', env=env).stdout)['reconciliation'], first)
+        self.close_row(first)  # the chief closes it without clearing the remainder
+        r = self.decide('--settle', env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        second = json.loads(r.stdout)['reconciliation']
+        self.assertNotEqual(second, first)
+        self.assertIn(second, self.open_ids())
+        steps = [row for row in self.rows() if row.get('capability') == 'remainder reconciliation' and row['id'] in self.open_ids()]
+        self.assertEqual([row['id'] for row in steps], [second])
+        text = steps[0]['text']
+        self.assertIn(first + ' was closed with the blockers still open', text)
+        self.assertLess(text.index('Clear'), text.index('close this step'))
+        self.assertLess(text.index('close this step'), text.index('record the decision again'))
+        self.assertEqual(self.closed_refs(), {first})
+        self.assertEqual(json.loads(self.decide('--settle', env=env).stdout)['reconciliation'], second)
+
+    def test_a_failed_reconciliation_write_is_an_error_that_names_the_blockers(self):
+        env = self.world()
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+        self.partial(77, self.CODE)
+        writer = self.b / 'refuse-add.sh'
+        writer.write_text('#!/bin/bash\n[ "$1" != add ] || { echo "disk full" >&2; exit 4; }\nexec bash ' + str(HERE / 'owe.sh') + ' "$@"\n')
+        r = self.decide('--settle', env={**env, 'PROOF_OWE_BIN': str(writer)})
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('could not write the reconciliation step', r.stderr)
+        self.assertIn('disk full', r.stderr)
+        self.assertIn('PR #77', r.stderr)
+        self.assertIn('implement X', r.stderr)
+        self.assertEqual(len(self.rows()), 1)
+
+    def test_the_status_log_row_key_is_compared_in_any_case_and_a_slow_helper_is_could_not_read(self):
+        env = self.world()
+        self.merge(77, key='himmel-9848')
+        self.body(77, self.CODE)
+        r = self.decide('--check', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('PR #77', r.stderr)
+        module = self.module()
+        os.environ['TICKET_STATUS_STATE_DIR'] = env['TICKET_STATUS_STATE_DIR']
+        with mock.patch.object(module.subprocess, 'run', side_effect=subprocess.TimeoutExpired('merge-rows-effective', 1)):
+            blocking, unreadable = module.live_remainder('HIMMEL-9848')
+        self.assertEqual(blocking, [])
+        self.assertIn('status log', unreadable[0])
+        self.assertIn('unreadable', unreadable[0])
+
+    def test_a_slow_pull_request_read_ends_in_the_unreadable_refusal_inside_the_callers_wait(self):
+        env = self.world()
+        self.partial(77, self.CODE)
+        slow = self.live / 'slow-gh'
+        slow.write_text('#!/bin/sh\nsleep 20\n')
+        slow.chmod(0o755)
+        started = time.monotonic()
+        r = self.decide('--check', env={**env, 'NEXT_DISPATCH_GH_CMD': str(slow), 'PROOF_REMAINDER_BUDGET_SECS': '2'})
+        self.assertLess(time.monotonic() - started, 10)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('live pull-request remainder unreadable', r.stderr)
+        self.assertIn('PR #77', r.stderr)
+        # the caller's wait must cover the reader's whole budget, or the chief sees an exec timeout instead of this refusal
+        caller = int(re.search(r'timeout: (\d[\d_]*)', (HERE.parents[1] / 'jira' / 'src' / 'commands' / 'transition.ts').read_text())[1].replace('_', ''))
+        reader = float(re.search(r"PROOF_REMAINDER_BUDGET_SECS'\) or '?(\d+)", (HERE / 'proof-validate.py').read_text())[1])
+        self.assertLess(reader * 1000, caller)
+
+    def test_a_proof_row_is_met_only_when_its_status_is_exactly_met(self):
+        for status in ('MET (pending review)', 'MET, pending 24h', 'PASS (pending)', 'Awaiting 24h', 'NOT RUN', 'BLOCKED', 'MET (with a naming note)',
+                       'CONTROL RAN', 'MET; run r informational', 'METx', 'MET.', '', 'PASS', 'DONE'):
+            with self.subTest(status=status):
+                self.assertTrue(self.unmet(self.result_table(status=status)))
+        for status in ('MET', 'met', 'Met', ' MET ', '**MET**', '*met*', '`MET`', '__MET__'):
+            with self.subTest(status=status):
+                self.assertFalse(self.unmet(self.result_table(status=status)))
+        # the rule is for the status column; the evidence column, an Expected column and the prose around the table are not read for it
+        self.assertFalse(self.unmet(self.result_table(evidence='MET (pending review)')))
+        self.assertFalse(self.unmet('| row | Expected | Result |\n|---|---|---|\n| obs | CONTROL RAN | MET |\n'))
+        for item in ('- Awaiting 24h', '- NOT RUN control two', '1. BLOCKED control two'):
+            with self.subTest(item=item):
+                self.assertTrue(self.unmet(item + '\n'))
+        self.assertFalse(self.unmet('- the run was not blocked by anything\n- no one is awaiting\n'))
+
+    def test_a_table_written_without_leading_pipes_is_read_as_a_table(self):
+        sha = 'main=' + 'a'*40
+        for status in ('MET (pending review)', 'Pending 24h', 'NOT RUN'):
+            with self.subTest(status=status):
+                self.assertTrue(self.unmet('row | Result | Sha | Evidence\n--- | --- | --- | ---\nobs | ' + status + ' | ' + sha + ' | ok\n'))
+        self.assertFalse(self.unmet('row | Result | Sha | Evidence\n--- | --- | --- | ---\nobs | MET | ' + sha + ' | pending: none\n'))
+        self.assertFalse(self.unmet('a horizontal rule follows\n\n---\n\nand then text with a pipe | in it\n'))
 
 
 def setUpModule():
