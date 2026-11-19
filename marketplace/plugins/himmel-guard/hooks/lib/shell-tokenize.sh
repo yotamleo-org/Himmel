@@ -575,7 +575,7 @@ _stx_walk() {
                         i=$e; continue ;;
                     "'")
                         if [ "$dq" = 0 ]; then
-                            _stx_ansi "$s" $((i + 2)) || return 1
+                            _stx_ansi "$s" $((i + 2)) || { _SX=$s; _SX_DQ=$dq; return; }
                             b=$_SX_W
                             b=${b//$sq/$sq\\$sq$sq}; o=$o$sq$b$sq; i=$_SX_E; continue
                         fi ;;
@@ -790,9 +790,9 @@ _stx_ansi() {
             body=$body$c; j=$((j + 1))
         fi
     done
-    _st_ansic_e "$body" || return 1
-    _SX_W=$_ST_DEC
     _SX_E=$((j + 1))
+    _st_ansic_e "$body" || { _SX_OVER=1; _SX_W=''; return 1; }
+    _SX_W=$_ST_DEC
 }
 
 # _stx_hdword TEXT START — the heredoc delimiter word at START after quote
@@ -822,7 +822,7 @@ _stx_hdword() {
                 done ;;
             '$')
                 case ${s:j+1:1} in
-                    "'") _stx_ansi "$s" $((j + 2)) || return 1; w=$w$_SX_W; q=1; j=$_SX_E ;;
+                    "'") _stx_ansi "$s" $((j + 2)) || { _SX_W=''; _SX_Q=1; return 1; }; w=$w$_SX_W; q=1; j=$_SX_E ;;
                     '"') j=$((j + 1)) ;;
                     *) w=$w'$'; j=$((j + 1)) ;;
                 esac ;;
@@ -863,7 +863,7 @@ _stx_param() {
                         r=${r:1}; t=${r%%"$cl"*}
                         [ "$t" != "$r" ] || return 1
                         r=${r:${#t}+1}
-                        if [ "$pe" = 1 ]; then _st_ansic_e "$t" || return 1; t=$_ST_DEC; fi
+                        if [ "$pe" = 1 ]; then _st_ansic_e "$t" || { _SX_OVER=1; return 1; }; t=$_ST_DEC; fi
                         case $f in
                             l | r) [ "$a" = 0 ] || { tp[np]=$t; np=$((np + 1)); } ;;
                             j | s) tp[np]=$t; np=$((np + 1)) ;;

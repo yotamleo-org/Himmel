@@ -131,11 +131,19 @@ if [ "${BASH_VERSINFO[0]}" -gt 4 ] || { [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BA
     ansic_parity
 fi
 # A control letter followed by a backslash is read three ways (bash 3.2, bash 5, zsh): refused.
+# shellcheck disable=SC1003 # a lone backslash
+bs='\'
 # shellcheck disable=SC1003 # the bodies hold backslashes, not escaped quotes
 for body in '\c\\n' '\c\\x3b' '\c\\073' '\c\\;'; do
     _st_ansic_e "$body"; check "a control-backslash pair in [$body] is refused" "$?" "1"
     tok "cat \$'$body'"; check "a word holding [$body] fails the tokenizer" "$R" "1"
+    st_expand text "cat \$'$body'"; check "st_expand text refuses [$body], ST_EXP empty" "$?:${#ST_EXP}" "1:0"
+    st_expand empty "cat \$'$body'"; check "st_expand empty refuses [$body], ST_EXP empty" "$?:${#ST_EXP}" "1:0"
+    st_expand text "echo \$(cat \$'$body')"; check "st_expand refuses [$body] inside a substitution" "$?:${#ST_EXP}" "1:0"
+    st_expand text "cat <<\$'$body'"; check "st_expand refuses [$body] as a heredoc delimiter" "$?:${#ST_EXP}" "1:0"
+    st_expand text "echo \${V:-x} \$'$body'"; check "st_expand refuses [$body] beside a parameter expansion" "$?:${#ST_EXP}" "1:0"
 done
+st_expand text "cat \$'${bs}x41'"; check "st_expand still rewrites a plain dollar-quote word" "$?:$ST_EXP" "0:cat 'A'"
 _st_ansic_e '\\c\x41'; check "an escaped backslash before c is not the pair" "$?" "0"
 tok 'echo a # c; d'; check "a comment sets COMMENT and ends the command" "$R:$ST_COMMENT:$ST_NSEG:$ST_N" "0:1:1:2"
 tok $'cat <<EOF\nbody $(x)\nEOF\necho after'; check "an unquoted heredoc body with \$(…) sets SUBST" "$R:$ST_HEREDOC:$ST_SUBST" "0:1:1"
