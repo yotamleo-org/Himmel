@@ -2479,6 +2479,47 @@ describe('signed minerva specs', () => {
       expect(check(f.keys!)).toEqual(f.keys!.map(k => `SPEC ok ${k} ${f.spec} ${row.id}`));
       spawnReset();
     });
+
+    it('capped carry v2 docs: each chief doc holds exactly one signing-hash-check marker and the same fenced command after it; the command is silent on equal lint scripts and stops on a changed candidate copy (X1)', () => {
+      const blocks = CHIEF_DOCS.map(rel => {
+        const text = chiefDoc(rel);
+        expect(occurrences(text, SIGNING_MARKER), `${rel}: exactly one marker`).toBe(1);
+        const block = markedBlock(text);
+        expect(block, `${rel}: a fenced block follows the marker`).not.toBeNull();
+        return block as string;
+      });
+      expect(blocks[1], 'the two blocks are byte-equal').toBe(blocks[0]);
+      const scripts = 'marketplace/plugins/himmel-ops/scripts'; const names = ['minerva-spec-gate.sh', 'minerva-trace-lint.sh'];
+      mkdirSync(join(linked, scripts), { recursive: true });
+      for (const name of names) copyFileSync(join(primary, scripts, name), join(linked, scripts, name));
+      const run = (block: string, sentinel: string) => spawnSync('bash', ['-c', `${block}\n: > "$SENTINEL"`], {
+        cwd: root, encoding: 'utf8', env: { PATH: process.env.PATH, HOME: process.env.HOME, CAND: linked, SENTINEL: sentinel } });
+      blocks.forEach((block, i) => {
+        const equal = join(root, `sentinel-equal-${i}`); const changed = join(root, `sentinel-changed-${i}`);
+        const ok = run(block, equal);
+        expect([ok.status, ok.stdout, ok.stderr], 'equal copies: silent, exit 0').toEqual([0, '', '']);
+        expect(existsSync(equal), 'equal copies: the sentinel step ran').toBe(true);
+        writeFileSync(join(linked, scripts, names[1]), 'exit 99\n');
+        const stop = run(block, changed);
+        expect(stop.status, 'a changed candidate copy: non-zero exit').not.toBe(0);
+        expect(stop.stderr, 'a changed candidate copy: STOP on stderr').toContain('STOP');
+        expect(existsSync(changed), 'a changed candidate copy: the abort is proved, no sentinel').toBe(false);
+        copyFileSync(join(primary, scripts, names[1]), join(linked, scripts, names[1]));
+      });
+    });
+
+    it('capped carry v2 docs: both chief docs hold every finite token, each marker or sentence exactly once, and no other display-only or per-family filter text (X2)', () => {
+      const tokens = ['--keys', '--source-root', 'tickets:', 'spec-review', 'jira release spec-check', 'jira roadmap get', 'next-dispatchable.sh', 'gen-briefs.py', 'brief-lint.sh',
+        'roadmap.ts', 'tracker.py', 'board.ts', 'full pause', 'snapshot folder', 'manifest entry'];
+      for (const rel of CHIEF_DOCS) {
+        const text = chiefDoc(rel);
+        for (const token of tokens) expect(occurrences(text, token), `${rel}: ${token}`).toBeGreaterThanOrEqual(1);
+        expect(/--key\b/.test(text), `${rel}: the flag --key by itself`).toBe(true);
+        for (const once of [SIGNING_MARKER, 'none is accepted as display-only', 'not a per-family filter']) expect(occurrences(text, once), `${rel}: ${once}`).toBe(1);
+        expect(occurrences(text, 'display-only'), `${rel}: no other display-only`).toBe(1);
+        expect(occurrences(text, 'per-family filter'), `${rel}: no other per-family filter`).toBe(1);
+      }
+    });
   });
 
   it('signs a bucket spec with invariants: the lint reads its paths from the checkout and its invariants from the plan', () => {
@@ -3761,6 +3802,19 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
     };
   };
   const OTHER = 'f'.repeat(64);
+
+  // ---- the two chief docs of the v2 route, read in the finite format the plan defines (a marker line, the next fenced block, the lines between); no shell is parsed.
+  const CHIEF_DOCS = ['docs/handover/chief-sections/telegram-files.md', 'docs/handover/running-a-chief.md'] as const;
+  const SIGNING_MARKER = '<!-- signing-hash-check -->';
+  const chiefDoc = (rel: string) => readFileSync(join(candidateRoot, rel), 'utf8');
+  const occurrences = (text: string, needle: string) => text.split(needle).length - 1;
+  // The lines between the fence that follows the marker line and the next fence, verbatim; null when no marker line is followed by a closed fence.
+  function markedBlock(text: string): string | null {
+    const lines = text.split('\n'); const marker = lines.indexOf(SIGNING_MARKER);
+    const open = marker < 0 ? -1 : lines.findIndex((l, i) => i > marker && l.startsWith('```'));
+    const close = open < 0 ? -1 : lines.findIndex((l, i) => i > open && l.startsWith('```'));
+    return close < 0 ? null : lines.slice(open + 1, close).join('\n');
+  }
 
   describe('capped carry v2 producer route', () => {
     beforeEach(() => {
