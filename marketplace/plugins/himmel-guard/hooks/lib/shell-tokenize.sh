@@ -316,6 +316,7 @@ _st_ansic_walk() {
                     _ST_DEC=$_ST_DEC'\c'
                 else
                     k=$((k + 1))
+                    if [ "$d" = '\' ] && [ "${b:k:1}" = '\' ]; then k=$((k + 1)); fi
                     if [ "$d" = '?' ]; then v=127; else printf -v v %d "'$d"; v=$((v & 31)); fi
                     _st_emit "$v" || return 0
                 fi

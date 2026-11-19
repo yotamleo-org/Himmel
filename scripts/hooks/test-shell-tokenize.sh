@@ -121,7 +121,7 @@ tok "cat \$'\\'' .e*"; check "\$'\\'' decodes to a quote" "$R:${ST_W[1]}" "0:'"
 ansic_parity() {
     local LC_ALL=C body want bs='\'
     for body in 'plain' '\a\b\e\E\f\n\r\t\v' '\\' "\\'" '\"' '\?' '\101' '\18' '\0101' '\777' '\x41' '\x4g' '\x' \
-        "${bs}u0041" "${bs}u007f" "${bs}u0000" '\U00000041' '\U0001F600' "${bs}u" '\cA' '\c?' '\c' '\q' 'a\x00b' 'a\' '\x2dr' '\056env'; do
+        "${bs}u0041" "${bs}u007f" "${bs}u0000" '\U00000041' '\U0001F600' "${bs}u" '\cA' '\c?' '\c' '\c\x' '\q' 'a\x00b' 'a\' '\x2dr' '\056env'; do
         _st_ansic_walk "$body"
         eval 'want=${body@E}'
         check "by-hand decode of [$body] equals \${…@E}" "$_ST_DEC" "$want"
@@ -130,6 +130,11 @@ ansic_parity() {
 if [ "${BASH_VERSINFO[0]}" -gt 4 ] || { [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]}" -ge 4 ]; }; then
     ansic_parity
 fi
+# bash 5 reads a control-backslash pair as one escape, so the semicolon after it stays live;
+# ${…@E} and bash 3.2 keep the second backslash and escape it.
+# shellcheck disable=SC1003 # the bodies hold backslashes, not escaped quotes
+_st_ansic_walk '\c\\'; check "a control-backslash pair takes both backslashes" "$_ST_DEC" $'\034'
+_st_ansic_walk '\c\\;x'; check "the semicolon after a control-backslash pair stays live" "$_ST_DEC" $'\034;x'
 tok 'echo a # c; d'; check "a comment sets COMMENT and ends the command" "$R:$ST_COMMENT:$ST_NSEG:$ST_N" "0:1:1:2"
 tok $'cat <<EOF\nbody $(x)\nEOF\necho after'; check "an unquoted heredoc body with \$(…) sets SUBST" "$R:$ST_HEREDOC:$ST_SUBST" "0:1:1"
 tok $'cat <<\'EOF\'\nbody $(x)\nEOF'; check "a quoted heredoc body is inert" "$R:$ST_HEREDOC:$ST_SUBST" "0:1:0"
