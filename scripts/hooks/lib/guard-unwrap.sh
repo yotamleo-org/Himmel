@@ -296,6 +296,20 @@ _gu_strip_heredocs() {
     GU_NOHD=${out%$'\n'}
 }
 
+# _gu_ambig_text CMD — 0 when a $'...' word in CMD's text holds an escape _st_ansic_e refuses.
+# The tokenizer may have failed before it reached that word, and ST_AMBIG then says nothing.
+_gu_ambig_text() {
+    local LC_ALL=C s=$1 sq="\$'" re="^(([^'\\\\]|\\\\.)*)" body
+    while [[ $s == *"$sq"* ]]; do
+        s=${s#*"$sq"}
+        [[ $s =~ $re ]] || return 1
+        body=${BASH_REMATCH[1]}
+        _st_ansic_e "$body" || return 0
+        s=${s:${#body}}
+    done
+    return 1
+}
+
 # guard_unwrap HOOK CMD — 0 when no derived form of CMD is denied by HOOK;
 # 2 (the denial already on stderr) when one is, or when a cap is reached.
 guard_unwrap() {
@@ -324,7 +338,7 @@ guard_unwrap() {
         _gu_strip_heredocs "$GU_FLAT"
         if { [ "$GU_FLAT" = "$cmd" ] || ! st_tokenize "$GU_FLAT"; } \
             && { [ "$GU_NOHD" = "$GU_FLAT" ] || ! st_tokenize "$GU_NOHD"; }; then
-            if [ "${ST_AMBIG:-0}" = 1 ]; then
+            if [ "${ST_AMBIG:-0}" = 1 ] || _gu_ambig_text "$GU_NOHD"; then
                 echo "guard-unwrap: refusing a command with a \$'...' word that bash and zsh read differently, so the text the shell runs cannot be known." >&2
                 if [ "${GUARD_EXPANSION_DEPTH:-0}" = 0 ]; then
                     printf '%s\n' '    Retry: write the character itself, or use an escape both shells read alike (\n \t \xHH \NNN); an unknown escape, \cX, \C-X, \M-X and a \x \u \U with no hex digit are read two ways.' >&2

@@ -368,11 +368,16 @@ _st_q() { # the next byte appended to the word is quoted or escaped
 # caller refuses the word: bash 3.2, bash 5 and zsh read a control letter followed by a
 # backslash three ways, and zsh alone reads \C-x and \M-x as a control and a meta byte, \cx
 # as a c and an x, an unknown escape as the character without its backslash, and \x \u \U
-# with no hex digit as a NUL. Only the escapes all three read alike pass: \\ \' \" \? \a \b
-# \e \E \f \n \r \t \v, octal digits, and \x \u \U followed by a hex digit.
+# with no hex digit as a NUL. An escape that builds a NUL is refused too: zsh ends the word
+# there, so the text after it is lost to the command, and bash keeps that text. Only the
+# escapes all three read alike pass: \\ \' \" \? \a \b \e \E \f \n \r \t \v, octal digits,
+# and \x \u \U followed by a hex digit, none of them a NUL.
 # shellcheck disable=SC1003,SC2034 # literal \ bytes, not escaped quotes; ST_AMBIG is read by the caller
 _st_ansic_e() {
-    local q="'" dq='"' r=${1//\\\\/}
+    local q="'" dq='"' r=${1//\\\\/} nul
+    local oct='[^01234567]' hex='[^0123456789abcdefABCDEF]'
+    nul='\\(0('$oct'|$)|00('$oct'|$)|000|400|x0('$hex'|$)|x00|u0{1,3}('$hex'|$)|u0000|U0{1,7}('$hex'|$)|U00000000)'
+    if [[ $r =~ $nul ]]; then ST_AMBIG=1; return 1; fi
     r=${r//\\[$q$dq?abefnrtvE01234567]/}
     r=${r//\\[xuU][0123456789abcdefABCDEF]/}
     case "$r" in *'\'*) ST_AMBIG=1; return 1 ;; esac
