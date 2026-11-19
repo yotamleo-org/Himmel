@@ -546,7 +546,6 @@ if [ -n "$waiting_dir" ] && [ -d "$waiting_dir" ]; then
             BLOCKED|FINDING)  q_count=$((q_count+1));  if [ -z "$q_oldest" ] || [[ "$_hhmm" < "$q_oldest" ]]; then q_oldest="$_hhmm"; fi ;;
         esac
     done < <(find "$waiting_dir" -maxdepth 4 -type f -name '*.md' ! -name 'morning-report-*' -mtime -3 2>/dev/null | while IFS= read -r _doc; do # gnu-ok: BSD find has -maxdepth and -mtime
-        # The bullet carries a time of day only; the last-modified day of the doc dates it (the newest bullet is the last write).
         # swallow-ok: a doc whose mtime cannot be read is skipped, so workers_ok stays 0 unless another doc reads
         _epoch=$(stat -c %Y "$_doc" 2>/dev/null || stat -f %m "$_doc" 2>/dev/null) || continue # gnu-ok: BSD stat -f is the fallback
         # swallow-ok: a doc whose day cannot be formed is skipped, as above
