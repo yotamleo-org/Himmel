@@ -33,13 +33,13 @@ outside the tree.
 
 - **Ticket** is the key. A session joins by its custom title starting `KEY-n`;
   an automated review ledger row joins by the `KEY-n` inside its branch name.
-- A session whose title contains `console` is kind `console`; `judge` is kind
+- A session whose title contains `console` or `chief` is kind `console`; `judge` is kind
   `judge`; everything else is `leg`.
 - A chief spans many tickets, so its title does not name one. Chief
   sessions with no `KEY-n` prefix go to the pseudo-ticket `_chief` as a pool,
   **with no allocation to tickets** (an allocation rule would change every
-  ticket's record whenever the range changes). Sessions with no key and no
-  `console` go to `_unattributed`. A chief titled with a ticket key stays
+  ticket's record whenever the range changes). Sessions with no key whose title
+  holds neither `console` nor `chief` go to `_unattributed`. A chief titled with a ticket key stays
   under that ticket, in `totals.console`.
 
 ## Record (one JSON object per line, keys sorted)
@@ -48,7 +48,7 @@ outside the tree.
 |---|---|
 | `schema` | `1` |
 | `ticket` | `KEY-n`, `_chief` or `_unattributed` |
-| `workers[]` | per session: `name`, `kind`, `turns`, `input`, `cache_read`, `cache_create`, `output`, `sub_*` (same five for its subagents) |
+| `legs[]` | per session: `name`, `kind`, `turns`, `input`, `cache_read`, `cache_create`, `output`, `sub_*` (same five for its subagents) |
 | `totals.leg`, `totals.console`, `totals.judge` | the same ten counters summed per kind, as separate fields |
 | `cr` | `rounds` (distinct reviewed heads), `findings` (count by final verdict after amends; `open` when none), `est_tokens` (the ledger's estimated critic tokens) |
 | `digest` | sha256 of the record without this field |
@@ -358,7 +358,7 @@ budget much above that delays the Cost page while a build runs.
 that transcript is refused, and every later run stops at that window until the file is
 readable again. Table parsing assumes session
 titles contain no ` | `. Sessions are keyed by title, so distinct sessions
-sharing a title merge into one `workers[]` entry. Judge subagents are counted as
+sharing a title merge into one `legs[]` entry. Judge subagents are counted as
 `judge`-titled sessions only. An explicit `--projects` or `--ledger` that is
 missing or unreadable exits non-zero before anything is written; the default
 projects dir and default ledger may be absent (a note on stderr, treated as

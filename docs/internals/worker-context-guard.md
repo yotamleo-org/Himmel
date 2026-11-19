@@ -187,6 +187,8 @@ are allowed:
 
 - A Write, Edit or MultiEdit of a `*-RESUME.md`.
 - `SendMessage`, `ListAgents`, `ToolSearch` and `TaskStop`.
+- The four mail reads: `mcp__himmel-bus__read` (and its plugin-prefixed form),
+  `ReadNotifications` and `FetchInboxMessage`.
 - A bare `bash …/append-results.sh`, `queue-lock.sh release`,
   `wrap-subtree-check.sh` or `context-fill.sh`.
 - A bare `git [-C <dir>] add|commit|push|status|rev-parse`.
@@ -248,7 +250,7 @@ Notes on each unlock:
   `LIVE — CHECKPOINT <full sha of HEAD> pushed` (or `… clean` when there is
   nothing to push). Then carry on. The session compacts at its ceiling. After
   the compaction, re-read the worker system prompt and the handover doc.
-- **`handoff`.** Write `…legN<n>b-…-RESUME.md`, message the chief, and stop. A
+- **`handoff`.** Write your successor brief under your own doc's name with your label bumped one letter (`N<k>` becomes `N<k>b`, `N<k>b` becomes `N<k>c`: `<TICKET>-<next label>-<slug>-<date>-RESUME.md`), message the chief, and stop. A
   successor resumes from that doc.
 
 ## PreCompact

@@ -25,7 +25,7 @@ but the hand-off ones; its deny names your mode and exactly what unlocks it.
   backstop, not lost work — when it fires, re-read the worker preface and your handover
   doc (309 of 349 compacted workers still wrapped).
 - **`handoff`:** write your successor brief under your own doc's name with
-  your label bumped one letter (`<TICKET>-N<k>b-<slug>-<date>-RESUME.md`; keep
+  your label bumped one letter (`N<k>` becomes `N<k>b`, `N<k>b` becomes `N<k>c`: `<TICKET>-<next label>-<slug>-<date>-RESUME.md`; keep
   `description:` double-quoted, on one line), message the chief, stop. The
   hook unlocks once that RESUME doc exists.
 

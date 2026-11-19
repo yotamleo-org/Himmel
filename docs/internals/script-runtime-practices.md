@@ -27,7 +27,7 @@ flat — it rises under contention. Measured on the PreToolUse Bash hook chain:
 - One external grandchild (grep/jq/git spawned from a bash script): **~34 ms
   idle, ~106 ms at 16-way load** — the marginal cost roughly **triples** under
   contention. The spawn path saturates around **2.4–3 chains/s**.
-- The 10-member PreToolUse Bash chain runs on **every** Bash tool call, so a
+- The PreToolUse Bash chain (25 members in `.claude/settings.json`) runs on **every** Bash tool call, so a
   hot-path spawn multiplies by call volume, not by how often you personally
   notice it.
 
@@ -83,7 +83,7 @@ pattern:
 ### Beyond the hook chain
 
 - **`py_armor_capture` costs 7 spawns per call** — mktemp ×2 + interpreter +
-  cat ×2 (stderr replay + stdout capture) + rm ×2 (`scripts/lib/py-armor.sh:101-135`).
+  cat ×2 (stderr replay + stdout capture) + rm ×2 (`py_armor_capture()` in `scripts/lib/py-armor.sh`).
   This is the dominant shape: 10 of arm-resume's 11 py-armor call sites use it.
   The plain `py_armor` path (minority, 1 site) is a single interpreter spawn.
   Batch capture calls or replace the trivial ones — this is arm-resume's

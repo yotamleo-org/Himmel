@@ -20,7 +20,7 @@ main at `92ee89588` (2026-09-26): zero matches.
 
 ## Scope: hermes-critic.sh is excluded, not missed
 
-`scripts/cr/hermes-critic.sh:343` calls `claude -p --output-format json
+`run_claude_review()` in `scripts/cr/hermes-critic.sh` calls `claude -p --output-format json
 --permission-mode plan ...`. This is the nearest headless call to the ship
 tail, but it IS the automated review itself — the step where a model judges the
 diff. "Model-free" describes the mechanical tail that acts on a review's

@@ -159,9 +159,9 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     the current one, with the INTAKE request that folds it in (the wrap prints it as `drift:`);
     `ticket-hold.sh <KEY> --reason <r> --owner <o>` (or `--release`) sets and clears the `held` label.
 
-    The bucket `render-focus.py` and the split focus, Done and future pages
-    (`--out-done`, `--out-future`, `tracker-done:`, `tracker-future:`) are retired;
-    drop those URLs from `## Live state` at the next handover.
+    The chief workflow publishes no split focus, Done or future pages (`tracker.py`
+    still accepts `--out-done` and `--out-future`); drop any `tracker-done:` or
+    `tracker-future:` URL from `## Live state` at the next handover.
 
 - **Version-status audit:** `bash scripts/handover/chief-kit/version-status-audit.sh --workers-from <fleet manifest>`
   lists started tickets outside the active version, open tickets in a released

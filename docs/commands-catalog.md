@@ -12,7 +12,7 @@ with the `lean` plugin set, see [setup/install.md](setup/install.md)).
 |---|---|---|
 | Start a branch in its own worktree | `/worktree` | Checkout. Adopted repo: `bash scripts/worktree.sh new <branch>` |
 | Remove worktrees whose PR merged | `/clean` | Checkout. Adopted repo: `bash scripts/clean.sh` |
-| Review a branch before opening its PR | `/pr-check` | Checkout only |
+| Review a branch before opening its PR | `/pr-check` | Checkout. Adopted repo: the `himmel-ops:pr-check` skill |
 | Wait for CI and review threads on a PR | `/check-ci` | Checkout. Adopted repo: `bash scripts/check-ci.sh <pr>` |
 | See how each reviewer is scoring, and tune them | `/cr-scores`, `/cr-tune`, `/cr-learnings-refresh` | Adopted repo (copied in by the install) and checkout |
 | Say where cross-session notes live | `/handover-setup` | Plugin `handover`, in the `lean` set |
@@ -24,7 +24,7 @@ with the `lean` plugin set, see [setup/install.md](setup/install.md)).
 | Update himmel and its vault | `/himmel-update`, `/himmel-update-all` | Plugin `himmel-ops`, in the `lean` set |
 | Turn an idea into a reviewed spec and plan | `/minerva` | Plugin `himmel-ops`, in the `lean` set |
 | Hand N work items to the right model lane | `/fanout`, `/cloud-route` | Plugin `himmel-ops`, in the `lean` set |
-| Run unattended multi-ticket shifts | `/afk-shift` | Checkout only |
+| Run unattended multi-ticket shifts | `/afk-shift` | Checkout, and an adopted repo (copied in by the install) |
 | Work with the luna vault and its clip pipeline | `/luna-*`, `/harvest-clips` and the other clip stages | Checkout only; the clip stages come from the `obsidian-triage` plugin, which is not in the base plugin set |
 
 ## Which commands reach an adopted repo
@@ -33,7 +33,8 @@ An adopted repo gets three kinds of command, and everything else in this
 catalog needs a checkout.
 
 1. **Copied in by the install:** `/cr-scores`, `/cr-tune`,
-   `/cr-learnings-refresh` and `/handover-resume` (the `.claude/commands/` files listed in
+   `/cr-learnings-refresh`, `/handover-resume`, `/morning-report`, `/afk-shift`
+   and `/stop` (the `.claude/commands/` files listed in
    `PORTABLE_FILES` in [`scripts/adopt.sh`](../scripts/adopt.sh)).
 2. **Scripts with no slash command:** `scripts/worktree.sh`,
    `scripts/clean.sh` and `scripts/check-ci.sh` come with the install, but
@@ -43,7 +44,7 @@ catalog needs a checkout.
    `qmd`, `lean-skills`, per `scripts/lanes/plugin-profiles.json`)
    carry their own commands. `/handover-setup` comes from `handover`;
    `/chief`, `/cloud-route`, `/fanout`,
-   `/himmel-doctor`, `/himmel-update`, `/himmel-update-all`,
+   `/himmel-doctor`, `/himmel-report`, `/himmel-update`, `/himmel-update-all`,
    `/memory-compound` and `/minerva` come from `himmel-ops`. Some of them act
    on the himmel download rather than on your project: `/himmel-update`
    updates that download.
@@ -135,7 +136,7 @@ and their rows are paraphrased one-liners rather than verbatim frontmatter
 | Command | Description | Notes |
 |---|---|---|
 | /pr-check | Local code review of a himmel branch (not CI). | Run the multi-agent CR review on the current branch and clear the pre-push marker on clean output. Its fenced awk/shell use `$(N)`/`${N}`, never a bare `$<digit>` — the Skill tool substitutes `$1`/`$2`/…/`$ARGUMENTS` throughout a command's whole body, args or not, and clobbers a bare positional/field ref; `command-positional-args` (pre-commit + CI) refuses a regression. |
-| /check-ci | Watch PR CI until mergeable, or a workflow run. | Token-free PR merge-gate watcher — one process loops inside gh pr checks --watch --fail-fast, then verifies zero unresolved review threads and no changes-requested review, and returns a single exit code (0=green+resolved, 1=red, 2=cannot evaluate/no PR, 3=unresolved threads or changes requested, 5=a required check never reported or the required set is unreadable, 64=usage error — no gate ran), so merge-on-green costs ~zero tokens. |
+| /check-ci | Watch PR CI until mergeable, or a workflow run. | Token-free PR merge-gate watcher — one process loops inside gh pr checks --watch --fail-fast, then verifies zero unresolved review threads and no changes-requested review, and returns a single exit code (0=green+resolved, 1=red, 2=cannot evaluate/no PR, 3=unresolved threads or changes requested, 5=a required check never reported or the required set is unreadable, 6=GitHub's merge state refuses (BLOCKED, BEHIND, DIRTY or DRAFT), 7=checks still pending at the deadline (only with `CHECK_CI_DISTINCT_DEADLINE=1`), 64=usage error — no gate ran), so merge-on-green costs ~zero tokens. |
 | /cr-scores | Per-critic CR scorecard. |  |
 | /cr-tune | Draft CR critic tuning proposals. | Mine the CR ledger for disproved classes per critic and draft citation-backed tuning proposals (.coderabbit.yaml / critics.json) — proposals only, never auto-applied |
 | /cr-learnings-refresh | Refresh CR findings from CodeRabbit learnings. |  |
@@ -229,6 +230,12 @@ slash alias exists).
 | vm (himmel-ops) | Lean-invoke VM lifecycle + e2e runbook — front door to the central VM-control SDK (`scripts/lib/vmsdk.py`); covers up/down/snapshot/restore/baseline/clone/provision/e2e verbs, the engine pass + skill pass probes, and the `sync_repo`/`install_plugin`/`drive_claude` SDK primitives. |
 | /memory-compound (himmel-ops) | Lean-invoke: losslessly compound the per-project auto-memory (`MEMORY.md` index + topic files) into qmd-searchable luna `30-Resources/Tech/` (or himmel `docs/internals/`) reference notes — read-many → write-once → qmd gate → slim index → delete sources. Run when `MEMORY.md` nears its load budget (first 200 lines or 25 KB, whichever comes first). Slash alias + dispatchable skill. |
 | test-audit (repo skill) | Authoring gate plus audit for low-value or coupled tests; invoke when writing, changing, reviewing or sweeping tests. Source: `.claude/skills/test-audit/SKILL.md`. |
+| /unslop (repo skill) | Cut AI tells from any writing. Typed by the operator (`disable-model-invocation: true`). Source: `.claude/skills/unslop/SKILL.md`. |
+| /no-comments (repo skill) | Run the `comment-sicko` agent and fix its findings. Typed by the operator. Source: `.claude/skills/no-comments/SKILL.md`. |
+| /technical-writing (repo skill) | The docs, PR and commit writing standard. Typed by the operator. Source: `.claude/skills/technical-writing/SKILL.md`. |
+| /writing-for-agents (repo skill) | Write or tighten CLAUDE.md, memory and skills. Typed by the operator. Source: `.claude/skills/writing-for-agents/SKILL.md`. |
+| qmd (qmd) | Search indexed local Markdown notes and documentation with QMD. Model-invoked; the `qmd` plugin is in the base set. |
+| domain-modeling (domain-modeling) | Sharpen the project domain model when the discussion is about codebase terminology or edits `docs/glossary.md`. Model-invoked; enabled in the `design` profile. |
 | effort-assess (himmel-ops) | PILOT. Reference-class estimate for one ticket (median, sigma, mean, P80, P30..P70 band, alternatives) that refuses an estimate failing the DoD checklist, plus a version mode (Fenton-Wilkinson P80/P90 with a seeded Monte Carlo cross-check). All numbers in `effort-model.json`. |
 | release-manager (himmel-ops) | For the release-manager session only. Rules every placement request into a release (INTAKE, REVERSION, DISCHARGE) through `jira release`, and writes STATUS, BURN-DOWN and READY reports. No count gates. |
 | pr-check (himmel-ops) | Runs himmel's CR review on the current branch from an adopted repo's session, where the project command `/pr-check` is not loaded. Reads the runbook through `HIMMEL_REPO`; with no CR marker on the adopter lane it reviews against `origin/<base>`, and on the default branch step 0 still refuses. |

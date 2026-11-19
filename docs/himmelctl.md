@@ -32,9 +32,9 @@ the ones those pages only mention in passing.
 | `--version [--all]` | no | Version, describe string, commit; `--all` adds per-component currency |
 
 Shared flags: `--dry-run` / `-n` prints the plan and changes nothing,
-`--json` gives machine-readable output on `status`, `deps status` and `gaps`,
-`--yes` skips the confirmation on `ensure`, `deps ensure`, `deps upgrade` and
-`scope set`, and `--items <a,b>` scopes `status` / `ensure` to the listed item
+`--json` gives machine-readable output on `status`, `report` (which requires
+it), `deps status` and `gaps`, `--yes` skips the confirmation on `ensure`,
+`deps ensure`, `deps upgrade`, `scope set` and `uninstall`, and `--items <a,b>` scopes `status` / `ensure` to the listed item
 ids. `-h` / `--help` prints the usage text.
 
 ## `status`
@@ -230,4 +230,7 @@ node/npm/bun) with installed against available. It is read-only.
 | `--no-network` | `ensure` | Run only items whose manifest entry declares a no-network path (local file wiring); refuse the rest |
 | `--write-tracked` | `ensure` | Allow writing a settings file that git tracks; without it `ensure` refuses before any item runs, naming the items and the file |
 | `--allow-agent-session` | `ui` | Override the refusal to start the config UI inside a Claude session |
+| `--port N` | `ui` | Serve on that port (0-65535) |
+| `--agui [<session-id>\|latest]` | `ui` | Print the AG-UI run page URL for that session (`latest`: the newest transcript); with no id, the fleet page |
+| `--service install\|uninstall\|status\|url` | `ui` | Run the UI as an always-on systemd user unit (`himmel-ui.service`) on a fixed port with a stable token; `url` prints the bookmarkable URL |
 | `--deep` | `report` | Add the wiring rows to the config feed |

@@ -71,7 +71,7 @@ Env knobs: `SKILL_TELEMETRY_DISABLE=1` (kill switch, launching shell),
 
 | Skill | Events | Signal |
 |-------|--------|--------|
-| `handover-arm-resume` (`scripts/handover/arm-resume.sh`) | `armed`, `dedup-block` | re-launches armed; dedup friction |
+| `handover-arm-resume` (`scripts/handover/arm-resume.sh`) | `armed`, `dedup-block`, `fired-block`, `split-worker-block`, `restart-cap`, `unregistered-arm` | re-launches armed; dedup, already-fired, split-worker and restart-cap refusals; an arm whose handover root did not resolve |
 
 ## Analysis (later, out of the hot path)
 

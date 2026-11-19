@@ -45,10 +45,10 @@ not yet-landed evidence.
 under a representative task — not a number carried over from another lane.
 
 **Tailor:** `CRITIC_TIMEOUT_SECS` in `scripts/cr/critic-panel.sh` (default
-`240`, set at line ~214: `CRITIC_TIMEOUT_SECS="${CRITIC_TIMEOUT_SECS:-240}"`)
+`240`: `CRITIC_TIMEOUT_SECS="${CRITIC_TIMEOUT_SECS:-240}"`)
 is the per-critic-member wall-clock timeout applied to every model in the CR
 panel, regardless of which backend answers. It also supports a **per-row
-override** (`_resolve_member_timeout`, line ~316) — use that to give one lane
+override** (`_resolve_member_timeout()`) — use that to give one lane
 its own number instead of bumping the shared default for everyone.
 
 **GLM evidence:** `glm-5.2[1m]` measured **~205s / 23KB** response on a real
@@ -77,14 +77,15 @@ observation, not as something you can `grep` and confirm today.
 operating window — these are not the same number. `scripts/lanes/lanes.json`'s
 `$context-note` states the distinction explicitly: `context.windowTokens` is "the
 lane's cost-optimal default operating window... don't route work that won't
-fit" — codex lanes default to 272k even though the real backend window is
-~372k, because 272k is the 2x-pricing cliff, not a hard ceiling.
+fit" — the four codex-family lanes declare 900000 by operator ruling, while the
+claudex launcher's `CODEX_CONTEXT_WINDOW` default stays 272000 (the 2x-pricing
+cliff), below the ~372k backend window measured on that path.
 
 **Tailor:** two separate config points, not one — there's no automatic
 projection from one to the other:
 - `lanes.json`'s per-lane `context.windowTokens` field (`claudex`:
   900000 — operator ruling, 2026-08-17, launcher default
-  unchanged — see the registry, `haiku`: 200000) feeds the lane **resolver**
+  unchanged — see the registry, `haiku`: 1000000) feeds the lane **resolver**
   (`scripts/lanes/resolve.mjs`), which uses it for the `/lanes` `[ctx: N]`
   **display annotation only** — no dispatch guard reads it; the dispatch-side
   window preflight is configured separately (`spawn-claudex.ts` hardcodes its
@@ -125,7 +126,7 @@ it is not a drop-in fit for a new frontier lane:
   Its opening line hardcodes the provider: *"running as the **main tier** on
   Codex (GPT-5.5)"* — and the installer's own profile description literally
   reads *"himmel's main-tier orchestrator (Codex/GPT-5.5)"*
-  (`install-himmel-profile.sh` line 97). This SOUL is **Codex-provider-bound**
+  (the `--description` of `install-himmel-profile.sh`). This SOUL is **Codex-provider-bound**
   by construction, not generic.
 
 **GLM evidence:** a frontier lane dispatched under `himmel-agent.SOUL.md`
@@ -151,7 +152,7 @@ persona-correctness work; they are not the same change.
 **Profile:** which scaffolding family the new lane's model name resolves to.
 
 **Tailor:** `family_for_model()` in `scripts/cr/critic-first-pass.sh`
-(lines 88–101) — a `case` statement mapping a lowercased model-name substring
+— a `case` statement mapping a lowercased model-name substring
 to `gpt | open | claude`, each with different prompt scaffolding (GPT/codex:
 explicit non-contradiction + spec tags; open: rigid format-obedience because
 open models "drift from the contract and over-report"; Claude: XML +
@@ -247,8 +248,7 @@ no override, structurally** — this doesn't change per lane.
 
 **Action:** before a new lane touches any vault or handover corpus, check
 whether its provider is already declared. An **undeclared provider is
-default-DENY** (`"default": "deny"`, `scripts/guardrails/egress-matrix.json`
-line 176) — add its provider row and the specific per-corpus rules it needs.
+default-DENY** (`"default": "deny"` in `scripts/guardrails/egress-matrix.json`) — add its provider row and the specific per-corpus rules it needs.
 A **declared** provider is different: reusing it is not free, since the
 matrix has no lane axis and every existing rule for that provider now also
 covers the new lane — review those rows for fit rather than assuming they
