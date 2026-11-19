@@ -417,12 +417,13 @@ ts_worker_state() {
 
 # _ts_worker_state <doc> [<disposition>] — ts_worker_state without the subshell: sets
 # TS_WORKER_STATE and TS_LOCK_HELD (yes | no | "" when the lock was not read) and TS_LOCK_DEAD
-# (yes: the lock answered rc 12 with status STALE-DEAD; no: rc 12 with any other status; "" otherwise).
+# (yes: the lock answered rc 12 with status STALE-DEAD; no: rc 12 with any other status; "" otherwise) and
+# TS_ATTEMPT_PROTECTED (yes: the managed attempt is pending, committed or unknown, so the doc is owned whatever its lock says).
 # A caller that has already read the doc's disposition (fleet_runtime.py WorkerStates, one read for a whole run)
 # passes it as the JSON word `disposition` prints; only such a word is taken, anything else is read here.
 _ts_worker_state() {
     local marker out rc hb hb_epoch age=0 warn
-    TS_LOCK_HELD="" TS_LOCK_DEAD=""
+    TS_LOCK_HELD="" TS_LOCK_DEAD="" TS_ATTEMPT_PROTECTED=""
     [ -n "$1" ] || { TS_WORKER_STATE=unknown; return 0; }
     local attempt_protected terminal=""
     case "${2-}" in
@@ -430,7 +431,7 @@ _ts_worker_state() {
         *) attempt_protected=$(python3 -I "$_TS_LIB_DIR/fleet_runtime.py" disposition --doc="$1") || attempt_protected='"unknown"' ;;
     esac
     case "$attempt_protected" in
-        '"pending"'|'"committed"'|'"unknown"') TS_WORKER_STATE=unknown; return 0 ;;
+        '"pending"'|'"committed"'|'"unknown"') TS_WORKER_STATE=unknown; TS_ATTEMPT_PROTECTED=yes; return 0 ;;
         '"refused"'|'"complete"') terminal=yes ;; # an ended attempt's receipt: it ends ownership only when the lock and the markers agree
     esac
     marker=$(ts_marker_newest "$1")
@@ -814,13 +815,14 @@ ts_derive() {
             [ "$TS_GONE" -lt 2 ] || TS_WORKER_STATE=wrapped
         fi
     fi
-    # A second worker on the key that still holds its lock keeps the ticket owned, so
-    # one worker's wrap never demotes a ticket another worker is working.
+    # A second worker on the key that still holds its lock, or whose managed attempt is pending, committed or
+    # unknown, keeps the ticket owned, so one worker's wrap never demotes a ticket another worker is working.
     if [ "$TS_WORKER_STATE" = wrapped ]; then
         while IFS= read -r other; do
             [ -n "$other" ] && [ "$other" != "$doc" ] || continue
             _ts_worker_state "$other"
-            [ "$TS_LOCK_HELD" != yes ] || { owner=$TS_WORKER_STATE; TS_OWNER_DOC=$other; break; }
+            [ "$TS_LOCK_HELD" = yes ] || [ "$TS_ATTEMPT_PROTECTED" = yes ] || continue
+            owner=$TS_WORKER_STATE; TS_OWNER_DOC=$other; break
         done <<<"$(jq -r '(.docs // [])[]' <<<"$TS_REC")"
         TS_WORKER_STATE=${owner:-wrapped}
     fi
