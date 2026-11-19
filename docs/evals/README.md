@@ -6,7 +6,7 @@
 
 | Question | Answer | Likely range | Sample |
 |---|---|---|---|
-| Does the review panel catch bugs? | **38.3%**: `claude`, `codex` caught 18 of 47 planted bugs | 25.8 to 52.6 | as of 2026-11-04, n = 47 planted bugs in 94 test changes |
+| Does the review panel catch bugs? | **38.3%**: `claude`, `codex` matched 18 of 47 planted defects on a strict key-match proxy, CodeRabbit is not in this eval; most are real review escapes, bugs earlier reviews already missed, so the set is hard by design, and an approved fresh sweep will replace this figure | 95% range 25.8 to 52.6 | as of 2026-11-04, n = 47 planted bugs in 94 test changes |
 | When the required reviewer flags something, is it right? | **80.1%** of `codex:gpt-6.1-sol` findings ruled right (recorded dispositions) | Wilson 79.2 to 81.1; by PR 78.7 to 81.5 | as of 2026-11-11, n = 6,968 ruled findings over 2,053 PRs |
 | Is work proven before it is built? | **10.8%** of merged PRs were proof-first (self-reported) | 6.4 to 17.7 | as of 2026-10-24, n = 120 merged PRs |
 | How far can the lane-quality judge be trusted? (arms `claude-haiku-5-5`, `claude-sonnet-5-5`) | **kappa 0.35**: graders agreed on 11 of 17 runs, model-graded (no human label) by OpenAI and Google, tie-breaker DeepSeek sided with grader 1 in 1 and grader 2 in 5 of 6 disagreements; the stored judge flipped its verdict on 2 of 17 runs judged twice | no interval | as of 2026-10-27, n = 17 runs |

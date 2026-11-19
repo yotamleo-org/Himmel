@@ -192,7 +192,12 @@ eq "render: exit 0" "$rc" "0"
 lacks "render: no draft marker" "$(head -5 "$R")" "draft:"
 eq "render: bottom line first, then the current setup, then history" \
   "$(grep -E '^## ' "$R" | head -4 | tr '\n' '|')" "## Bottom line|## Current setup|## History and what we learned|## Proof-first share and test-first adherence|"
-has "render: bottom line gives the planted-bug catch" "$(cat "$R")" "**75.0%**: \`beta\` caught 9 of 12 planted bugs"
+PROW=$(grep -F '| Does the review panel catch bugs? |' "$R")
+has "render: bottom line gives the planted-bug catch as a key-match proxy" "$PROW" "**75.0%**: \`beta\` matched 9 of 12 planted defects on a strict key-match proxy"
+has "render: the planted-bug row says CodeRabbit is not in the eval" "$PROW" "CodeRabbit is not in this eval"
+has "render: the planted-bug row says the set is hard by design" "$PROW" "most are real review escapes, bugs earlier reviews already missed, so the set is hard by design"
+has "render: the planted-bug row says a fresh sweep replaces the figure" "$PROW" "an approved fresh sweep will replace this figure"
+has "render: the planted-bug range is a 95% range" "$PROW" "| 95% range "
 has "render: planted-bug sample" "$(cat "$R")" "as of 2026-10-24, n = 12 planted bugs in 24 test changes"
 has "render: the planted-bug row says the set holds real escapes" "$(grep -F '| **Planted-bug catch** |' "$R")" "The set also holds real review escapes, each with a clean twin."
 has "render: bottom line gives the required reviewer's precision" "$(cat "$R")" "| **90.0%** of \`beta\` findings ruled right (recorded dispositions) |"
