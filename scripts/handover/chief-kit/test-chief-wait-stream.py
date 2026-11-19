@@ -751,7 +751,8 @@ class StackedWorker(StreamFixture):
         time.sleep(.6)
         self.stop(p)
         text = out.read_text()
-        self.assertEqual(text.count('cleanup-still-refused worker=N1 event=MERGED tries=5'), 1, text)
+        self.assertEqual(text.count('cleanup-still-refused'), 1, text)  # the wake itself, whatever its count: a repeat reads tries=6
+        self.assertIn('cleanup-still-refused worker=N1 event=MERGED tries=5', text)
         self.assertIn('wrap-merged-failed rc=4', text)
         # nothing but pacing: the same bullet is offered again, and nothing is recorded as handled or moved
         self.assertEqual(set(row for _, row in self.events() if 'MERGED' in row), {'N1 MERGED #1'})
