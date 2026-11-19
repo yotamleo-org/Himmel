@@ -135,7 +135,7 @@ vm_maintain() {
         VM_MAINTAIN_NOW="20261107-1432" HIMMEL_VM_LOCK_DIR="$WORK/lock" \
         CADENCE_ALERT_FILE="$WORK/alerts/log" CADENCE_ALERT_DEDUPE_DIR="$WORK/alerts/sent" \
         CADENCE_ALERT_SEND_CMD="$WORK/bin/sender" CADENCE_ALERT_SEND_FAILED_MARK="$WORK/alerts/mark" \
-        "$@" bash "$SCRIPT" "${ARGS[@]}"
+        "$@" bash "$SCRIPT" ${ARGS[@]+"${ARGS[@]}"}
 }
 SNAPS="$WORK/snaps"
 ARGS=()

@@ -173,7 +173,7 @@ while IFS=$'\t' read -r cid half req ctx; do
     prompt="Context: ${ctx:-(none)}"$'\n\n'"Request: $req"
     # routing case, bank-preflighted per case, explicit permission mode, budget-capped
     # launch-profile-ok: the eval measures the bare listing text, so the child gets no profile and no tools
-    (cd "$scratch/cwd" && timeout "$tmo" "$CLAUDE_BIN" -p "$prompt" --model "$model" "${effort_args[@]}" \
+    (cd "$scratch/cwd" && timeout "$tmo" "$CLAUDE_BIN" -p "$prompt" --model "$model" ${effort_args[@]+"${effort_args[@]}"} \
         --system-prompt "$sys_prompt" --tools "" --setting-sources project --strict-mcp-config \
         --disable-slash-commands --permission-mode dontAsk --no-session-persistence \
         --output-format json --max-budget-usd "$max_usd") </dev/null >"$out/$cid.tmp" 2>"$out/$cid.stderr"
