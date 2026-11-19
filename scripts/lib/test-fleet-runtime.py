@@ -1737,6 +1737,58 @@ exit 1''')
             self.assertEqual(runtime.launch_candidates(record, time.monotonic() + 30)[1], [])
         self.stop(opaque)
 
+    # A bundle worker owns every ticket its H1 names, shorthand included, as the dispatcher reads it.
+    def bundle_docs(self, title):
+        first, second = self.bucket / 'HIMMEL-101-N1-worker.md', self.bucket / 'HIMMEL-102-N2-worker.md'
+        first.write_text(title + '\n')
+        second.write_text('# HIMMEL-102 worker\n')
+        for doc in (first, second):
+            self.call('add', self.m, doc, '--lane', 'native', '--pending')
+        return first, second
+
+    def test_a_second_doc_for_a_ticket_a_bundle_h1_names_by_shorthand_is_refused(self):
+        self.active()
+        first, second = self.bundle_docs('# HIMMEL-101 / 102 — bundle')
+        self.assertEqual(json.loads(self.rt('begin', aid='first', doc=first).stdout)['keys'], ['HIMMEL-101', 'HIMMEL-102'])
+        p = self.rt('begin', aid='second', doc=second, ok=False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.assertEqual(list(self.anchor_attempts()), ['first'])
+
+    def test_a_second_doc_for_a_ticket_a_bundle_h1_writes_out_in_full_is_refused(self):
+        self.active()
+        first, second = self.bundle_docs('# HIMMEL-101 / HIMMEL-102 — bundle')
+        self.rt('begin', aid='first', doc=first)
+        p = self.rt('begin', aid='second', doc=second, ok=False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.assertEqual(list(self.anchor_attempts()), ['first'])
+
+    def dispatcher_title_expression(self):
+        """The dispatcher's own TITLE_KEY_RE and title_keys, executed from its source text."""
+        import re
+        lines = (ENTRYPOINTS / 'scripts/handover/chief-kit/next-dispatchable.sh').read_text().splitlines()
+        start = next(number for number, line in enumerate(lines) if line.startswith('TITLE_KEY_RE = re.compile('))
+        block = [lines[start]]
+        for line in lines[start + 1:]:
+            if line and not line[0].isspace() and not line.startswith('def title_keys('):
+                break
+            block.append(line)
+        namespace = {'re': re}
+        exec('\n'.join(block), namespace)
+        return namespace
+
+    def test_the_runtime_reads_a_doc_title_as_the_dispatcher_does(self):
+        dispatcher = self.dispatcher_title_expression()
+        runtime = self.runtime_module()
+        titles = ['HIMMEL-101 / 102 — bundle', 'HIMMEL-101 + 102', 'HIMMEL-101 (+102, +103)', 'HIMMEL-101, 102 & 103',
+                  'HIMMEL-101 / HIMMEL-102', 'HIMMEL-101 — worker', 'HIMMEL-101 worker 7', 'worker 7 — HIMMEL-101 / 2']
+        self.assertIn('HIMMEL-103', dispatcher['title_keys'](['# ' + titles[2]]))  # the fixtures reach the shorthand branch
+        for number, title in enumerate(titles):
+            doc = self.bucket / ('HIMMEL-900-N%d-parity.md' % number)
+            doc.write_text('# ' + title + '\n')
+            expected = sorted({'HIMMEL-900', *dispatcher['title_keys'](['# ' + title])})
+            self.assertEqual(runtime.worker_keys(doc), expected, title)
+        self.assertEqual(runtime.TITLE_KEY_RE.pattern, dispatcher['TITLE_KEY_RE'].pattern)
+
 
 if __name__ == '__main__':
     unittest.main()

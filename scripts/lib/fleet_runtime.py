@@ -485,13 +485,24 @@ def marker(doc):
         return ''
 
 
+# A copy of next-dispatchable.sh TITLE_KEY_RE and title_keys; test-fleet-runtime.py pins the two equal.
+TITLE_KEY_RE = re.compile(r'([A-Z]+)-(\d+)((?:\s*\(?\s*(?:[/+,&]\s*)+\(?\s*\d+\b)*)')  # KEY-1 / 2, KEY-1 + 2, KEY-1 (+2, +3)
+
+
+def title_keys(line):
+    return [('%s-%s' % (p, n)) for p, n, _ in TITLE_KEY_RE.findall(line)] + \
+           [('%s-%s' % (p, x)) for p, _, rest in TITLE_KEY_RE.findall(line) for x in re.findall(r'\d+', rest)]
+
+
 def worker_keys(doc):
     keys = re.findall(r'[A-Z]+-[0-9]+', Path(doc).name)
     try:
         for line in Path(doc).read_text().splitlines():
             if line.startswith('## Results'):
                 break
-            if line.startswith('# ') or re.match(r'^> \*\*(?:Ticket|Owns)(?: tickets)?:\*\*', line):
+            if line.startswith('# '):
+                keys.extend(title_keys(line))
+            elif re.match(r'^> \*\*(?:Ticket|Owns)(?: tickets)?:\*\*', line):
                 keys.extend(re.findall(r'[A-Z]+-[0-9]+', line))
     except OSError:
         pass  # missing remote docs retain the keys in their registered names
