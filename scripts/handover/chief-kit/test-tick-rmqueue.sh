@@ -271,6 +271,66 @@ sleep 1
 check '8731 U3: the same tick, interval passed, lease held by the run in flight: no second rm-run' '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
 check '8731 U3: and the ruling still shows' '0,0m,replay=1' "$(field rm-queue "$out")"
 
+# 8731 U4: rm-blocked prints ? when the state cannot be read as a set of blocked rulings: the mirror input is UNKNOWN (the engine then lists every
+# ruling as replay while the status stays OK) or unfinished_rulings has no readable shape. A readable state prints its set.
+stateum() { # <mirror input> <unfinished_rulings JSON>
+    printf '{"status":"OK","versions":["v1.1.3","v1.1.4"],"inputs":{"mirror":"%s"},"lease":null,"requests":{"open":[],"claimed":[],"oldest_open":null},"unfinished_rulings":%s}\n' "$1" "$2" > "$W/state.json"
+}
+reset; stateum UNKNOWN "$U_REPLAY"
+out="$(tick)"
+sleep 1
+check '8731 U4: an UNKNOWN mirror input prints rm-blocked=? (every ruling reads as replay then)' '?' "$(field rm-blocked "$out")"
+reset; stateum UNKNOWN "$U_BLOCKED"
+out="$(tick)"
+check '8731 U4: and prints ? whatever the state lists as blocked' '?' "$(field rm-blocked "$out")"
+reset; stateum UNKNOWN '[]'
+out="$(tick)"
+check '8731 U4: and prints ? with nothing listed: unknown is not none' '?' "$(field rm-blocked "$out")"
+for mirror in FRESH STALE; do
+    reset; stateum "$mirror" "$U_BLOCKED"
+    out="$(tick)"
+    check "8731 U4: control: a $mirror mirror input prints the set" '1:K-1@R-R1-0007' "$(field rm-blocked "$out")"
+done
+reset; stateum FRESH '[]'
+out="$(tick)"
+check '8731 U4: control: a FRESH mirror input with nothing blocked prints no rm-blocked' '' "$(field rm-blocked "$out")"
+
+# 8731 U4: an unfinished_rulings that is not a list of rows with a key and a ruling id prints ?, never a partial set, an empty field or None@None
+while IFS='|' read -r -u 3 shape body; do
+    reset; stateu '[]' null null "$body"
+    out="$(tick)"
+    check "8731 U4: unfinished_rulings as $shape prints rm-blocked=?" '?' "$(field rm-blocked "$out")"
+done 3<<'SHAPES'
+a string|"blocked"
+an object|{"ruling":"R-R1-0007","key":"K-1","status":"blocked"}
+null|null
+a list of non-objects|["x",1]
+a row with a null key and ruling|[{"ruling":null,"key":null,"status":"blocked"}]
+a row without a ruling id|[{"key":"K-1","status":"blocked"}]
+a row without a key|[{"ruling":"R-R1-0007","status":"blocked"}]
+a row with an empty key|[{"ruling":"R-R1-0007","key":"","status":"blocked"}]
+a good blocked row beside a broken one|[{"ruling":"R-R1-0007","key":"K-1","status":"blocked"},{"status":"blocked"}]
+SHAPES
+
+# 8731 U4: the set prints in sorted order whichever way the state lists it, and beside an open request
+ids_json() { # <numbers in the order to list>
+    local n out=''
+    for n in "$@"; do out="$out${out:+,}$(u_row2 "R-R1-000$n" "K-$n" blocked chief)"; done
+    printf '[%s]' "$out"
+}
+WANT5='5:K-1@R-R1-0001,K-2@R-R1-0002,K-3@R-R1-0003,K-4@R-R1-0004,K-5@R-R1-0005'
+reset; stateu '[]' null null "$(ids_json 1 2 3 4 5)"
+check '8731 U4: five blocked rulings listed in ascending order print sorted' "$WANT5" "$(field rm-blocked "$(tick)")"
+reset; stateu '[]' null null "$(ids_json 5 4 3 2 1)"
+check '8731 U4: the same five listed in descending order print the same text' "$WANT5" "$(field rm-blocked "$(tick)")"
+reset; stateu '[]' null null "$(ids_json 3 1 5 2 4)"
+check '8731 U4: and listed in a mixed order' "$WANT5" "$(field rm-blocked "$(tick)")"
+reset; stateu '["Q-1"]' "\"$(ago 10)\"" null "$U_BLOCKED"
+out="$(tick)"
+sleep 1
+check '8731 U4: an open request and a blocked ruling together print both fields' '1,10m 1:K-1@R-R1-0007' "$(field rm-queue "$out") $(field rm-blocked "$out")"
+check '8731 U4: and a young request still launches no rm-run' '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
+
 reset; state '[]' null null
 out="$(tick)"
 sleep 1
@@ -460,6 +520,22 @@ stateu '[]' null null '[]'
 check '8731 U3: a set that empties wakes nothing' '' "$(cw_wait 8 | grep '^WAKE ' || true)"
 stateu '[]' null null "[$(u_row2 R-R1-0007 K-1 blocked chief)]"
 check '8731 U3: a ruling that blocks again after the set emptied wakes again' 'WAKE tick changed=rm-blocked usage=PROCEED' "$(cw_wait 25 | grep '^WAKE ' || true)"
+
+# 8731 U4: a member swapped at the same count is a changed set; an unknown mirror input keeps the last known set, so the same set returning wakes
+# nobody and a different set after it wakes once. The saved set going in is the one the previous row woke for.
+stateu '[]' null null "[$(u_row2 R-R1-0008 K-2 blocked chief)]"
+check '8731 U4: a member swapped at the same count (K-1 for K-2) wakes' 'WAKE tick changed=rm-blocked usage=PROCEED' "$(cw_wait 25 | grep '^WAKE ' || true)"
+stateum UNKNOWN "[$(u_row2 R-R1-0008 K-2 replay release-manager)]"
+check '8731 U4: an UNKNOWN mirror input (the engine lists the ruling as replay) wakes nobody' '' "$(cw_wait 8 | grep '^WAKE ' || true)"
+stateu '[]' null null "[$(u_row2 R-R1-0008 K-2 blocked chief)]"
+check '8731 U4: the same set returning after the unknown wakes nobody' '' "$(cw_wait 8 | grep '^WAKE ' || true)"
+stateum UNKNOWN "[$(u_row2 R-R1-0008 K-2 replay release-manager)]"
+cw_wait 8 > /dev/null
+stateu '[]' null null "[$(u_row2 R-R1-0007 K-1 blocked chief)]"
+check '8731 U4: a different set after an unknown wakes once' 'WAKE tick changed=rm-blocked usage=PROCEED' "$(cw_wait 25 | grep '^WAKE ' || true)"
+check '8731 U4: and that set is then the baseline: no second wake' '' "$(cw_wait 8 | grep '^WAKE ' || true)"
+rm -f "$W/cw/consoles/c.md.wait.state"
+check '8731 U4: a set already present when the waiter has no saved key is its baseline: wakes nobody' '' "$(cw_wait 8 | grep '^WAKE ' || true)"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
