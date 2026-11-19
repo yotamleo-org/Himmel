@@ -15,6 +15,12 @@
 #
 # The vault defaults to $LUNA_VAULT_PATH, else ~/Documents/luna.
 #
+# AUTO-COMMIT (opt-in, off by default): with LUNA_VAULT_AUTOCOMMIT=1 in himmel.conf
+# and nothing staged, a vault that has no git remote and no sync plugin gets its
+# notes untouched for VAULT_STALL_MIN minutes committed locally, so a single-writer
+# vault with nothing else to commit it stops showing as dirty (doctor C3). Never
+# pushes; the vault's hooks run.
+#
 # DETECT: staged paths exist AND the newest commit is older than
 # VAULT_STALL_MIN minutes (default 25, two missed syncs). The refusal is
 # reproduced by running the vault's own pre-commit hook, fixers included, in a
@@ -73,6 +79,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/../lib/observability-registry.sh"
 # shellcheck source=../lib/prim.sh
 . "$SCRIPT_DIR/../lib/prim.sh" || exit 2
+# shellcheck source=../lib/vault-sync.sh
+. "$SCRIPT_DIR/../lib/vault-sync.sh"
+# shellcheck source=../lib/load-dotenv.sh
+. "$SCRIPT_DIR/../lib/load-dotenv.sh"
 STATE_DIR="${VAULT_STALL_STATE_DIR:-${HOME:-}/.himmel/state/vault-stall}"
 CRONTAB_BIN="${VAULT_STALL_CRONTAB:-crontab}"
 RUNNER_DIR="${VAULT_STALL_RUNNER_DIR:-${HOME:-}/.claude/vault-stall-cadence}"
@@ -426,6 +436,107 @@ run_phases() {
     done
 }
 
+LUNA_AUTOCOMMIT_ENV="${LUNA_VAULT_AUTOCOMMIT:-}"
+autocommit_key_on() {
+    local v="$LUNA_AUTOCOMMIT_ENV"
+    [ -n "$v" ] || v="$(unset LUNA_VAULT_AUTOCOMMIT; load_dotenv LUNA_VAULT_AUTOCOMMIT >/dev/null 2>&1; printf '%s' "${LUNA_VAULT_AUTOCOMMIT:-}")"
+    [ "$v" = 1 ]
+}
+autocommit_gates_open() { autocommit_key_on && ! vault_has_sync "$1"; }
+file_mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
+
+foreign_staged() {
+    local vault="$1" our_paths_file="$2" unstaged_paths_file="$3" s p ours
+    while IFS= read -r -d '' s; do
+        ours=0
+        while IFS= read -r -d '' p; do [ "$p" != "$s" ] || { ours=1; break; }; done <"$our_paths_file"
+        [ "$ours" = 0 ] || while IFS= read -r -d '' p; do [ "$p" != "$s" ] || { ours=0; break; }; done <"$unstaged_paths_file"
+        [ "$ours" = 1 ] || return 0
+    done < <(git -C "$vault" diff --cached --no-renames --name-only -z)
+    return 1
+}
+commit_or_index_empty() {
+    git -C "$1" commit -q -m "chore(vault): auto-commit quiet notes (local only, never pushed)" >/dev/null 2>&1 \
+        || git -C "$1" diff --cached --quiet
+}
+
+# One record per vault (STATE_DIR is shared by every --vault): the vault's real
+# path, then the staged entries (mode, old and new blob id, path) a hook refused.
+owned_file() {
+    printf '%s/autocommit-owned.%s' "$STATE_DIR" "$(printf '%s' "$1" | cksum | cut -d' ' -f1)"
+}
+staged_entries() {
+    printf '%s\n' "$1"
+    git -C "$1" diff --cached --raw --no-abbrev --no-renames -z | tr '\0' '\n' | paste -d' ' - - | LC_ALL=C sort
+}
+
+retry_refused_commit() {
+    local vault="$1" gitdir="$2" owned
+    owned="$(owned_file "$vault")"
+    [ -s "$owned" ] || return 0
+    [ "$(head -n1 "$owned")" = "$vault" ] || return 0
+    [ ! -e "$gitdir/index.lock" ] || return 0
+    if ! autocommit_gates_open "$vault" || [ "$(staged_entries "$vault")" != "$(cat "$owned")" ]; then
+        rm -f "$owned"; return 0
+    fi
+    if commit_or_index_empty "$vault"; then
+        rm -f "$owned"
+        echo "vault-stall: auto-committed the notes a refused attempt left staged (local, not pushed)"
+    fi
+}
+
+autocommit_vault() {
+    local vault="$1" gitdir="$2" dry="$3" thr="$4" now="$5" last="$6"
+    local paths mtimes p m n=0 changed
+    paths="$(mktemp "${TMPDIR:-/tmp}/vault-ac.XXXXXX")" || return 0
+    mtimes="$paths.m"; changed="$paths.c"
+    : >"$mtimes"; : >"$changed"
+    while IFS= read -r -d '' p; do
+        case "$p" in handovers/*) continue ;; esac
+        [[ "$p" =~ $FOCUS_STAGE_RE ]] && continue
+        if [ -e "$vault/$p" ] || [ -L "$vault/$p" ]; then
+            m="$(file_mtime "$vault/$p")"
+            case "$m" in '' | *[!0-9]*) continue ;; esac
+            [ $((now - m)) -ge $((thr * 60)) ] || continue
+        else
+            [ $((now - last)) -ge $((thr * 60)) ] || continue
+            m=0
+        fi
+        printf '%s\0' "$p" >>"$paths"; printf '%s\n' "$m" >>"$mtimes"
+        n=$((n + 1))
+    done < <(git -C "$vault" ls-files -m -o --exclude-standard -z)
+    if [ "$n" -eq 0 ]; then rm -f "$paths" "$mtimes" "$changed"; return 0; fi
+    if [ "$dry" -eq 1 ]; then echo "vault-stall: would auto-commit $n note(s)"; rm -f "$paths" "$mtimes" "$changed"; return 0; fi
+    if git --literal-pathspecs -C "$vault" add --pathspec-from-file="$paths" --pathspec-file-nul >/dev/null 2>&1; then
+        exec 3<"$mtimes"
+        while IFS= read -r -d '' p; do
+            IFS= read -r m <&3
+            [ "$m" = 0 ] || [ "$(file_mtime "$vault/$p")" = "$m" ] || printf '%s\0' "$p" >>"$changed"
+        done <"$paths"
+        exec 3<&-
+        [ ! -s "$changed" ] || git --literal-pathspecs -C "$vault" reset -q --pathspec-from-file="$changed" --pathspec-file-nul >/dev/null 2>&1
+    fi
+    if [ ! -e "$gitdir/index.lock" ] && autocommit_gates_open "$vault"; then
+        if ! git -C "$vault" diff --cached --quiet; then
+            if foreign_staged "$vault" "$paths" "$changed"; then
+                git --literal-pathspecs -C "$vault" reset -q --pathspec-from-file="$paths" --pathspec-file-nul >/dev/null 2>&1
+                echo "vault-stall: another writer is staging in this vault; auto-commit skipped"
+            elif commit_or_index_empty "$vault"; then
+                rm -f "$(owned_file "$vault")"
+                echo "vault-stall: auto-committed the quiet notes (local, not pushed)"
+                autocommit_gates_open "$vault" \
+                    || alert "vault auto-commit landed after a remote, sync plugin or opt-out appeared (hook-window race)" 0
+            else
+                foreign_staged "$vault" "$paths" "$changed" || staged_entries "$vault" >"$(owned_file "$vault")"
+                echo "vault-stall: auto-commit refused by the vault's hooks; the stall handling below takes over"
+            fi
+        fi
+    else
+        git --literal-pathspecs -C "$vault" reset -q --pathspec-from-file="$paths" --pathspec-file-nul >/dev/null 2>&1
+    fi
+    rm -f "$paths" "$mtimes" "$changed"
+}
+
 cmd_run() {
     local vault dry=0 gitdir staged last now age thr out hook_rc v c
     vault="$(default_vault)"
@@ -457,6 +568,18 @@ cmd_run() {
     last="$(git -C "$vault" log -1 --format=%ct 2>/dev/null)"; last="${last:-0}"
     now="$(date +%s)"; age=$(((now - last) / 60))
     thr="${VAULT_STALL_MIN:-25}"; case "$thr" in '' | *[!0-9]*) thr=25 ;; esac
+    if [ "$dry" -eq 0 ]; then
+        retry_refused_commit "$vault" "$gitdir"
+        staged="$(git -C "$vault" diff --cached --name-only | wc -l | tr -d ' ')"
+        last="$(git -C "$vault" log -1 --format=%ct 2>/dev/null)"; last="${last:-0}"
+        age=$(((now - last) / 60))
+    fi
+    if [ "$staged" -eq 0 ] && autocommit_gates_open "$vault"; then
+        autocommit_vault "$vault" "$gitdir" "$dry" "$((10#$thr))" "$now" "$last"
+        staged="$(git -C "$vault" diff --cached --name-only | wc -l | tr -d ' ')"
+        last="$(git -C "$vault" log -1 --format=%ct 2>/dev/null)"; last="${last:-0}"
+        age=$(((now - last) / 60))
+    fi
     if [ "$staged" -eq 0 ] || [ "$age" -lt "$((10#$thr))" ]; then
         echo "vault-stall: ok ($staged staged, newest commit ${age}m old)"
         [ "$dry" -eq 1 ] || bash "$ALERT" clear "$WORKER"

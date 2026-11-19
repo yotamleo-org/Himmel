@@ -271,13 +271,12 @@ check_c3() {
     if [ -n "$stale" ]; then
         # Only a vault with a remote or a sync plugin has something that commits
         # for it; a local-only vault never auto-commits, so the fix is to commit.
-        local has_sync=0 d
-        [ -n "$(git -C "$v" remote 2>/dev/null)" ] && has_sync=1
-        for d in "$v"/.obsidian/plugins/*sync*; do [ -d "$d" ] && has_sync=1; done
-        if [ "$has_sync" = 1 ]; then
+        # shellcheck source=scripts/lib/vault-sync.sh
+        . "$SELF_DIR/lib/vault-sync.sh"
+        if vault_has_sync "$v"; then
             emit WARN C3-luna "luna vault ($v) has non-handover change(s) dirty over ${dirty_min} min: $stale — the vault's sync plugin owns its commits, so a stall here means the sync is stuck" "check the vault sync (github-sync / scripts/luna/vault-stall-cadence.sh status); do not hand-commit"
         else
-            emit WARN C3-luna "luna vault ($v) has non-handover change(s) dirty over ${dirty_min} min: $stale — the vault has no git remote and no sync plugin, so nothing commits it" "commit it (git add -A && git commit in the vault), or add a remote / sync plugin"
+            emit WARN C3-luna "luna vault ($v) has non-handover change(s) dirty over ${dirty_min} min: $stale — the vault has no git remote and no sync plugin, so nothing commits it" "commit it (git add -A && git commit in the vault), or let the stall cadence commit it: set LUNA_VAULT_AUTOCOMMIT=1 in ~/.himmel/himmel.conf, then arm it with bash $(printf %q "$REPO_ROOT/scripts/luna/vault-stall-cadence.sh") arm --vault $(printf %q "$v") (or add a remote / sync plugin)"
         fi
     elif [ "$fresh" = 1 ]; then
         emit OK C3-luna "luna vault has only fresh (under ${dirty_min} min) non-handover changes — sync tick pending"
@@ -510,6 +509,7 @@ graphmap-cadence|${GRAPHMAP_BAT_DIR:-$uh/.claude/graphmap-cadence}|bash scripts/
 qmd-cadence|${QMD_CADENCE_BAT_DIR:-$uh/.claude/qmd-cadence}|bash scripts/luna/qmd-cadence.sh arm --force
 upstream-watch-cadence|${UPSTREAMWATCH_BAT_DIR:-$uh/.claude/upstream-watch-cadence}|bash scripts/upstreams/upstream-watch-cadence.sh arm --force
 graph-choices-cadence|${GRAPH_CHOICES_BAT_DIR:-$uh/.claude/graph-choices-cadence}|bash scripts/graphify/graph-choices-cadence.sh arm --force
+steering-cull-cadence|${STEERING_CULL_RUNNER_DIR:-$uh/.claude/steering-cull-cadence}|bash scripts/cleanup/steering-cull-cadence.sh arm --force --proposal-dir <dir>
 EOF
     if [ "$saw_any" -eq 0 ]; then
         emit OK C8-cadence "no armed cadence runners (skipped)"
@@ -3366,7 +3366,7 @@ check_c40_qmd_vec() {
     if [ -f "$qd_pidfile" ] && [ -f "$qd_stamp" ] && [ "$qd_pidfile" -ot "$qd_stamp" ] \
         && [ -n "$qd_pid" ] && kill -0 "$qd_pid" 2>/dev/null; then
         emit WARN C40-qmd-vec "the qmd daemon on $url is older than the installed qmd build (it started before $qd_stamp was written) -- it serves the old code from memory, so its vector-index status cannot be trusted" \
-            "restart it: ps -axww -o pid=,command= | grep '[q]md.*mcp.*--http' (look), then pkill -f 'qmd.*mcp.*--http', then bash marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh"  # t13b-ok: doctor remedy text naming the existing script, starts nothing
+            "restart it onto the new build: bash marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh --recycle-if-stale $qd_stamp (stops only the process the pid file names, and only if that process is the HTTP server that wrote it; /himmel-update runs the same command)"  # t13b-ok: doctor remedy text naming the existing script, starts nothing
         return
     fi
     instr="$(printf '%s' "$init_json" | jq -r '.result.instructions // ""' 2>/dev/null)"
@@ -3752,16 +3752,18 @@ _doctor_env_file() {
 # value is ever printed. Seam: HIMMEL_DOCTOR_ENV_FILE (the .env to list).
 check_c74_config_split() {
     local dir conf pol envfile bad names key held miss="" cfg="" present="" envbad=""
-    local migrate="bash $REPO_ROOT/scripts/setup/migrate-env-config.sh"
+    local conf_move_cmd="bash $REPO_ROOT/scripts/setup/migrate-env-config.sh"
+    local env_move_cmd
     dir="$(_himmel_config_dir)"; conf="$dir/himmel.conf"; pol="$dir/config.json"
     envfile="${HIMMEL_DOCTOR_ENV_FILE:-$(_doctor_env_file)}"
+    env_move_cmd="bash $REPO_ROOT/scripts/setup/migrate-env.sh --env $envfile"
 
     if [ -L "$conf" ] && [ ! -e "$conf" ]; then
         emit WARN C74-himmel-conf "$conf is a link to a file that does not exist" \
-            "restore the vault checkout it points at, or remove the link and re-run: $migrate --dry-run"
+            "restore the vault checkout it points at, or remove the link and re-run: $conf_move_cmd --dry-run"
     elif [ ! -e "$conf" ]; then
         emit INFO C74-himmel-conf "no $conf (this install has not migrated its behaviour keys out of .env)" \
-            "optional: $migrate --dry-run, then without --dry-run (docs/internals/config-layers.md)"
+            "optional: $conf_move_cmd --dry-run, then without --dry-run (docs/internals/config-layers.md)"
     elif [ ! -f "$conf" ] || [ ! -r "$conf" ]; then
         emit WARN C74-himmel-conf "$conf is not a readable file" "fix its permissions, or replace it with a KEY=value file"
     else
@@ -3795,7 +3797,7 @@ check_c74_config_split() {
         done
         if [ -n "$cfg" ]; then
             emit WARN C74-env-keys ".env still holds behaviour keys that moved to himmel.conf: $cfg (they still work, with a DEPRECATED notice)" \
-                "run $migrate --dry-run, then without --dry-run; delete the moved lines from .env by hand"
+                "run $env_move_cmd (it prints the plan and the apply command; unattended, the operator sets ENV_MIGRATION_CONSENT=\"1\" under .policy in ~/.himmel/config.json)"
         else
             emit OK C74-env-keys ".env holds no behaviour keys"
         fi
@@ -3819,7 +3821,7 @@ check_c74_config_split() {
                 "fix the .env permissions, then re-run the doctor"
         elif [ -n "$present" ]; then
             emit WARN C74-policy "$pol is missing but .env still carries gate keys: ${present# } (gates read them with a DEPRECATED notice)" \
-                "the operator moves them at their own prompt: $migrate --dry-run prints the command"
+                "the operator moves them at their own prompt: $env_move_cmd -y"
         else
             emit INFO C74-policy "no $pol; every gate uses its safe default" \
                 "only needed once the operator sets a gate key (docs/internals/config-layers.md)"
@@ -3837,7 +3839,7 @@ $key="*) ;; *) miss="$miss $key" ;; esac
         done
         if [ -n "$miss" ]; then
             emit WARN C74-policy "$pol does not hold gate keys that .env still carries: ${miss# }" \
-                "the operator adds them under .policy at their own prompt: $migrate --dry-run prints the command"
+                "the operator moves them at their own prompt: $env_move_cmd -y"
         elif [ -n "$envbad" ]; then
             emit INFO C74-policy "$pol is parseable; .env is unreadable so its gate keys were not compared" \
                 "fix the .env permissions, then re-run the doctor"

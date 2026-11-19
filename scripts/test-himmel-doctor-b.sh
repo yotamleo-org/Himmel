@@ -2321,8 +2321,8 @@ touch -t 202610180405 "$c40_t/home/.himmel/qmd-fork/.himmel-build-ok"
 if ! c40_precond novec; then fail "C40 stale daemon: precondition — stub did not answer init"
 else
     out="$(XDG_CACHE_HOME="$c40_t/home/.cache" QMD_FORK_DIR="$c40_t/home/.himmel/qmd-fork" c40_run novec)"
-    if grepq "$out" 'WARN C40-qmd-vec.*older than the installed qmd build' && grepq "$out" -F "ps -axww -o pid=,command= | grep '[q]md.*mcp.*--http'" && ! grepq "$out" -F 'pgrep -af' && grepq "$out" -F "pkill -f 'qmd.*mcp.*--http'" && ! grepq "$out" -F 'no vector index'; then
-        pass "C40 daemon older than the build -> WARN stale daemon with the restart commands (look step prints command lines)"
+    if grepq "$out" 'WARN C40-qmd-vec.*older than the installed qmd build' && grepq "$out" -F "ensure-qmd-daemon.sh --recycle-if-stale $c40_t/home/.himmel/qmd-fork/.himmel-build-ok" && ! grepq "$out" -F 'pkill' && ! grepq "$out" -F 'pgrep -af' && ! grepq "$out" -F 'no vector index'; then
+        pass "C40 daemon older than the build -> WARN stale daemon naming the one-command recycle with the build stamp, no process-list kill"
     else
         fail "C40 daemon older than the build -> $(printf '%s' "$out" | grep -A1 C40)"
     fi

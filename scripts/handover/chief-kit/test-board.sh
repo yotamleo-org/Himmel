@@ -1709,6 +1709,32 @@ same 'S8a control: the board'"'"'s PR child has GH_READ_QUIET=1 and no no-fallba
 same 'S8a control: the cloud child has GH_READ_QUIET=1 and GH_READ_NO_MAIN_FALLBACK=1' "$(sort -u "$CENVLOG")" '1|1'
 rm -f "$M/cloud-sessions.tsv"
 
+RK="$W/rk"
+mkdir -p "$RK/conf" "$RK/cache" "$RK/home/.himmel/state/jira-mirror/CONFKEY"
+printf 'JIRA_PROJECT_KEY=CONFKEY\n' > "$RK/conf/himmel.conf"
+: > "$RK/cache/.env"
+printf 'v9.9.9\ttrue\t2026-01-01\n' > "$RK/home/.himmel/state/jira-mirror/CONFKEY.versions.tsv"
+{
+    printf -- '---\nkey: "CONFKEY-1"\ntype: "Task"\nstatus: "To Do"\nstatusCategory: "To Do"\nlabels: ["residual"]\nfixVersions: ["v9.9.9"]\n'
+    printf 'created: "%s"\nupdated: "%s"\nresolution: null\n---\n\n# CONFKEY-1: t\n' "$(ago 1)" "$(ago 0)"
+} > "$RK/home/.himmel/state/jira-mirror/CONFKEY/CONFKEY-1.md"
+rkrun() {
+    env -u BOARD_MIRROR HOME="$RK/home" JIRA_PROJECT_KEY= HIMMEL_JIRA_MIRROR= HIMMEL_CONFIG_DIR="$RK/conf" HIMMELCTL_CACHE_DIR="$RK/cache" "$@" \
+        PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv.log" \
+        BOARD_SESSIONS="$W/bin/sessions-empty.sh" CR_LEDGER="$CL/ledger.jsonl" \
+        GH_OPEN="$W/open.json" GH_MERGED="$CL/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+        node "$SUT" --doc "$CL/chief-c.md" --repo "$W/repo" --out "$RK/board.html" --json "$RK/board.json" 2>"$W/stderr.log"
+}
+rkrun >/dev/null; rc=$?
+jtxt="$(cat "$RK/board.json" 2>/dev/null)"
+contains 'project mirror: rc 0' "rc=$rc" 'rc=0'
+jcheck 'project mirror: a himmel.conf key and no BOARD_MIRROR reads jira-mirror/<that key>' 'M.trends.cr_loop.residual.inflow === 1'
+jcheck 'project mirror: a version released in <KEY>.versions.tsv is left out of the slots' 'M.trends.cr_loop.versions.length === 0'
+jcheck 'project mirror: the ICE follow-up read uses the same mirror' 'M.trends.ice_followups.count === 0'
+rkrun BOARD_MIRROR="$CL/mirror/HIMMEL" >/dev/null
+jtxt="$(cat "$RK/board.json" 2>/dev/null)"
+jcheck 'project mirror: BOARD_MIRROR still wins over the resolver' 'M.trends.cr_loop.residual.inflow !== 1'
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-board.sh'
     exit 0

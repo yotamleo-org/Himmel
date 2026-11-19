@@ -113,7 +113,9 @@ mock_curl="$bin/curl"
 cat > "$mock_curl" <<'EOF'
 #!/usr/bin/env bash
 qmd_reply='{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"qmd","version":"2.5.2"},"instructions":"QMD is your local search engine."}}'
-case "${QMD_MOCK_CURL_MODE:-dead}" in
+mode="${QMD_MOCK_CURL_MODE:-dead}"
+[ "$mode" = sentinel ] && [ "${QMD_MOCK_SENTINEL_AUTH:-0}" = 1 ] && [ -f "$QMD_MOCK_STATE/alive" ] && mode=auth401
+case "$mode" in
   alive)   printf '%s' "$qmd_reply"; exit 0 ;;
   foreign) printf '%s' '{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"other-server"}}}'; exit 0 ;;
   sneaky)  printf '%s' '{"jsonrpc":"2.0","id":1,"result":{"capabilities":{"tools":[{"name":"qmd"}]},"serverInfo":{"name":"other-server","version":"1.0"}}}'; exit 0 ;;
@@ -920,5 +922,257 @@ rm -f "$state/alive"
 QMD_MOCK_HEALTH_BODY='OK' run_ensure auth401 "$bin:$safe"
 [ "$rc" -ne 0 ] || fail "(y3) auth401+foreign health: expected nonzero rc"
 echo "ok (y3): MCP route 401 with a non-qmd /health body -> not reported alive"
+
+fake_daemon="$work/fake-daemon.sh"
+bin2="$work/bin2"
+mkdir -p "$bin2"
+cp "$bin/timeout" "$bin2/timeout" 2>/dev/null || true
+cat > "$bin2/ps" <<'EOF'
+#!/usr/bin/env bash
+pid="${!#}"
+kill -0 "$pid" 2>/dev/null || exit 1
+args="${QMD_MOCK_PS_ARGS:-bun /x/dist/cli/qmd.js mcp --http --port 8181}"
+[ "$(cat "$QMD_MOCK_STATE/ps-flip" 2>/dev/null)" != "$pid" ] || args="vim notes.txt"
+printf ' %s %s\n' "${QMD_MOCK_PS_ETIME:-10:00:00}" "$args"
+EOF
+chmod +x "$bin2/ps"
+cat > "$bin2/qmd" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >> "$QMD_MOCK_STATE/qmd-argv.log"
+[ "${QMD_MOCK_STEAL_LOCK:-0}" != 1 ] || echo 999999 > "$XDG_CACHE_HOME/qmd/recycle.lock/owner"
+if [ "$*" = "mcp --http --daemon" ] && [ "${QMD_MOCK_NOSTART:-0}" != 1 ]; then
+  if [ "${QMD_MOCK_NOANSWER:-0}" = 1 ]; then
+    setsid sleep 300 </dev/null >/dev/null 2>&1 &
+  else
+    UNWIND=0 QMD_MOCK_STATE="$QMD_MOCK_STATE" setsid bash "$QMD_MOCK_FAKE" </dev/null >/dev/null 2>&1 &
+  fi
+  echo $! > "$XDG_CACHE_HOME/qmd/mcp.pid"
+  disown
+  i=0
+  while [ ! -f "$QMD_MOCK_STATE/alive" ] && [ "$i" -lt 50 ]; do i=$((i + 1)); sleep 0.1; done
+fi
+exit 0
+EOF
+chmod +x "$bin2/qmd"
+
+epoch_fmt() { date -d "@$1" +%Y%m%d%H%M.%S 2>/dev/null || date -r "$1" +%Y%m%d%H%M.%S; }
+touch_ago() { touch -t "$(epoch_fmt $(( $(date +%s) - $2 )))" "$1"; }
+stale_stamp="$work/build-stamp"
+stale_pf="$xdg/qmd/mcp.pid"
+
+stale_case() {
+  rm -f "$state/alive" "$state/qmd-argv.log" "$state/ps-flip" "$xdg/qmd/recycle.stamp" "$xdg/qmd/recycle.log"
+  rm -rf "$xdg/qmd/recycle.lock"
+  start_fake_daemon "$1"
+  old_pid="$fake_pid"
+  : > "$stale_stamp"
+  touch_ago "$stale_pf" 18000
+  touch_ago "$stale_stamp" 3600
+}
+run_stale() {
+  set +e
+  out="$(env QMD_CURL="$mock_curl" QMD_MOCK_CURL_MODE=sentinel QMD_MOCK_STATE="$state" \
+    QMD_MOCK_FAKE="$fake_daemon" QMD_PS="$bin2/ps" XDG_CACHE_HOME="$xdg" \
+    QMD_MCP_URL="$test_url" HOME="$home" PATH="$bin2:$safe" "$@" \
+    bash "$script" --recycle-if-stale "$stale_stamp" 2>&1)"
+  rc=$?
+  set -e
+}
+reap_new() {
+  local p
+  p="$(cat "$stale_pf" 2>/dev/null)" || p=
+  case "$p" in ''|*[!0-9]*) ;; *) STUB_PIDS+=("$p"); kill "$p" 2>/dev/null || true ;; esac
+  kill -KILL "$old_pid" 2>/dev/null || true
+  wait "$old_pid" 2>/dev/null || true
+  return 0
+}
+
+stale_case 0
+run_stale
+[ "$rc" -eq 0 ] || fail "(z1) stale: expected rc 0, got $rc ($out)"
+kill -0 "$old_pid" 2>/dev/null && fail "(z1) stale: the old server is still alive"
+grep -qx 'mcp --http --daemon' "$state/qmd-argv.log" || fail "(z1) stale: no restart ($(cat "$state/qmd-argv.log" 2>/dev/null))"
+[ "$stale_pf" -nt "$stale_stamp" ] || fail "(z1) stale: the new pidfile is not newer than the stamp"
+[ "$(cat "$stale_pf")" != "$old_pid" ] || fail "(z1) stale: the pidfile still names the old pid"
+[ ! -d "$xdg/qmd/recycle.lock" ] || fail "(z1) stale: the recycle lock was left behind"
+reap_new
+echo "ok (z1): a server older than the build is recycled in the foreground; the new pidfile is newer"
+
+stale_case 0
+touch_ago "$stale_pf" 60
+run_stale
+[ "$rc" -eq 0 ] || fail "(z2) fresh: expected rc 0, got $rc ($out)"
+kill -0 "$old_pid" 2>/dev/null || fail "(z2) fresh: a current server was stopped"
+[ ! -f "$state/qmd-argv.log" ] || fail "(z2) fresh: qmd was invoked"
+reap_new
+stale_case 0
+touch_ago "$stale_pf" 60
+run_stale QMD_MOCK_PS_ARGS="vim notes.txt"
+[ "$rc" -ne 0 ] || fail "(z2) fresh pidfile, foreign pid: expected a non-zero rc, got 0 ($out)"
+kill -0 "$old_pid" 2>/dev/null || fail "(z2) fresh pidfile, foreign pid: a process was stopped"
+reap_new
+echo "ok (z2): a server newer than the build is left alone; a fresh pidfile naming another program is 'cannot verify'"
+
+stale_case 0
+run_stale QMD_MOCK_PS_ARGS="bun /x/dist/cli/qmd.js mcp"
+[ "$rc" -ne 0 ] || fail "(z3) stdio argv: expected a non-zero rc, got 0 ($out)"
+kill -0 "$old_pid" 2>/dev/null || fail "(z3) stdio argv: a per-session stdio server was stopped"
+reap_new
+stale_case 0
+run_stale QMD_MOCK_PS_ARGS="vim notes.txt"
+[ "$rc" -ne 0 ] || fail "(z3) foreign argv: expected a non-zero rc, got 0 ($out)"
+kill -0 "$old_pid" 2>/dev/null || fail "(z3) foreign argv: a foreign program was stopped"
+reap_new
+echo "ok (z3): a stdio-shaped or foreign pid is never signalled, and the rc is non-zero"
+
+stale_case 0
+run_stale QMD_MOCK_PS_ETIME="00:05"
+[ "$rc" -ne 0 ] || fail "(z4) reused pid: expected a non-zero rc, got 0 ($out)"
+kill -0 "$old_pid" 2>/dev/null || fail "(z4) reused pid: a process younger than the pidfile was stopped"
+reap_new
+echo "ok (z4): a pid reused after the pidfile was written is never signalled"
+
+stale_case 0
+rm -f "$stale_pf"
+run_stale
+[ "$rc" -ne 0 ] || fail "(z5) no pidfile: expected a non-zero rc, got 0 ($out)"
+kill -0 "$old_pid" 2>/dev/null || fail "(z5) no pidfile: a process was stopped without a pidfile"
+[ ! -f "$state/qmd-argv.log" ] || fail "(z5) no pidfile: qmd was invoked"
+echo "banana" > "$stale_pf"; touch_ago "$stale_pf" 18000
+run_stale
+[ "$rc" -ne 0 ] || fail "(z5) garbage pidfile: expected a non-zero rc, got 0 ($out)"
+kill -0 "$old_pid" 2>/dev/null || fail "(z5) garbage pidfile: a process was stopped"
+rm -f "$stale_pf"; reap_new
+echo "ok (z5): a missing or garbage pidfile is 'cannot verify': non-zero, nothing signalled, no process-list scan"
+
+stale_case 0
+mkdir "$xdg/qmd/recycle.lock"
+date +%s > "$xdg/qmd/recycle.lock/at"
+run_stale QMD_STALE_LOCK_WAIT=2
+[ "$rc" -ne 0 ] || fail "(z6) lock held: expected a non-zero rc, got 0 ($out)"
+kill -0 "$old_pid" 2>/dev/null || fail "(z6) lock held: the server was stopped under another recycler"
+[ -d "$xdg/qmd/recycle.lock" ] || fail "(z6) lock held: another recycler's lock was removed"
+rm -rf "$xdg/qmd/recycle.lock"; reap_new
+echo "ok (z6): a lock held by a live recycler -> no action within the bound, non-zero"
+
+stale_case 0
+mkdir "$xdg/qmd/recycle.lock"
+echo $(( $(date +%s) - 300 )) > "$xdg/qmd/recycle.lock/at"
+run_stale QMD_STALE_LOCK_WAIT=5
+[ "$rc" -ne 0 ] || fail "(z7) stale lock: expected a non-zero rc, got 0 ($out)"
+kill -0 "$old_pid" 2>/dev/null || fail "(z7) stale lock: the server was stopped after clearing a stale lock"
+[ ! -d "$xdg/qmd/recycle.lock" ] || fail "(z7) stale lock: left behind"
+[ ! -f "$state/qmd-argv.log" ] || fail "(z7) stale lock: qmd was invoked"
+case "$out" in *"cleared a stale recycle lock"*) ;; *) fail "(z7) stale lock: no cleared-lock message ($out)" ;; esac
+reap_new
+echo "ok (z7): a stale recycle lock is cleared and the run stops non-zero without signalling"
+
+stale_case 0
+run_stale QMD_MOCK_STEAL_LOCK=1
+[ -d "$xdg/qmd/recycle.lock" ] || fail "(z7b) foreign owner: our trap removed a lock another pid owns ($out)"
+[ "$(cat "$xdg/qmd/recycle.lock/owner" 2>/dev/null)" = 999999 ] || fail "(z7b) foreign owner: the owner file changed"
+rm -rf "$xdg/qmd/recycle.lock"; reap_new
+echo "ok (z7b): the exit trap removes the lock only while it still names our pid"
+
+stale_case 0
+date +%s > "$xdg/qmd/recycle.stamp"
+run_stale
+[ "$rc" -eq 0 ] || fail "(z8) cooldown active: expected rc 0, got $rc ($out)"
+kill -0 "$old_pid" 2>/dev/null && fail "(z8) cooldown active: the stale server was not recycled"
+reap_new
+echo "ok (z8): a fresh RSS-recycle stamp does not block a staleness recycle"
+
+stale_case 0
+run_stale QMD_MOCK_NOSTART=1
+[ "$rc" -ne 0 ] || fail "(z9) failed restart: expected a non-zero rc, got 0 ($out)"
+[ ! -d "$xdg/qmd/recycle.lock" ] || fail "(z9) failed restart: the lock was left behind"
+reap_new
+echo "ok (z9): a restart that brings nothing up exits non-zero and frees the lock"
+
+stale_case 0
+run_stale QMD_MOCK_NOANSWER=1
+[ "$rc" -ne 0 ] || fail "(z9b) live but silent replacement: expected a non-zero rc, got 0 ($out)"
+case "$out" in *"no qmd server newer than"*) ;; *) fail "(z9b) live but silent replacement: no not-serving message ($out)" ;; esac
+[ ! -d "$xdg/qmd/recycle.lock" ] || fail "(z9b) live but silent replacement: the lock was left behind"
+reap_new
+echo "ok (z9b): a replacement that is alive with a fresh pidfile but answers no MCP initialize is not reported as serving"
+
+stale_case 0
+rm -f "$state/alive"
+touch_ago "$stale_pf" 60
+run_stale
+[ "$rc" -ne 0 ] || fail "(z9c) fresh pidfile, silent server: expected a non-zero rc, got 0 ($out)"
+case "$out" in *"answers no MCP initialize"*) ;; *) fail "(z9c) fresh pidfile, silent server: no silent-server reason ($out)" ;; esac
+kill -0 "$old_pid" 2>/dev/null || fail "(z9c) fresh pidfile, silent server: a process was stopped"
+reap_new
+echo "ok (z9c): a fresh pidfile naming a live but silent server is not reported as serving"
+
+stale_case 0
+touch_ago "$stale_pf" 60
+run_stale QMD_MOCK_SENTINEL_AUTH=1
+[ "$rc" -ne 0 ] || fail "(z9d) fresh pidfile, 401 server: expected a non-zero rc, got 0 ($out)"
+case "$out" in *"rejected the MCP token"*) ;; *) fail "(z9d) fresh pidfile, 401 server: no rejected-token reason ($out)" ;; esac
+reap_new
+echo "ok (z9d): a fresh pidfile whose server answers 401 is not reported as serving"
+
+stale_case 0
+run_stale QMD_MOCK_SENTINEL_AUTH=1
+[ "$rc" -ne 0 ] || fail "(z9e) replacement answers 401: expected a non-zero rc, got 0 ($out)"
+case "$out" in *"rejected the MCP token"*) ;; *) fail "(z9e) replacement answers 401: no rejected-token reason ($out)" ;; esac
+[ ! -d "$xdg/qmd/recycle.lock" ] || fail "(z9e) replacement answers 401: the lock was left behind"
+reap_new
+echo "ok (z9e): a replacement that answers 401 is not reported as serving the new build"
+
+stale_case 0
+run_stale
+[ "$rc" -eq 0 ] || fail "(z9f) replacement answers 200: expected rc 0, got $rc ($out)"
+case "$out" in *"rejected the MCP token"*|*"answers no MCP initialize"*) fail "(z9f) replacement answers 200: a failure reason was printed ($out)" ;; esac
+reap_new
+echo "ok (z9f): a replacement that accepts the MCP initialize is reported as serving"
+
+stale_case 0
+cat > "$work/stubborn.sh" <<'EOF'
+#!/usr/bin/env bash
+trap '[ ! -e "$QMD_MOCK_STATE/term-seen" ] || exit 0; touch "$QMD_MOCK_STATE/term-seen"; rm -f "$QMD_MOCK_STATE/alive"' TERM
+touch "$QMD_MOCK_STATE/alive"
+while :; do sleep 1; done
+EOF
+kill "$old_pid" 2>/dev/null || true; wait "$old_pid" 2>/dev/null || true
+rm -f "$state/term-seen" "$state/alive"
+QMD_MOCK_STATE="$state" bash "$work/stubborn.sh" &
+old_pid=$!
+STUB_PIDS+=("$old_pid")
+echo "$old_pid" > "$stale_pf"; touch_ago "$stale_pf" 18000
+i=0; while [ ! -f "$state/alive" ] && [ "$i" -lt 50 ]; do i=$((i + 1)); sleep 0.1; done
+run_stale QMD_STALE_TERM_WAIT=2
+[ "$rc" -eq 0 ] || fail "(z10) stubborn: expected rc 0, got $rc ($out)"
+[ -f "$state/term-seen" ] || fail "(z10) stubborn: SIGTERM was never sent first"
+kill -0 "$old_pid" 2>/dev/null && fail "(z10) stubborn: a server that ignores SIGTERM survived"
+reap_new
+rm -f "$state/term-seen" "$state/alive" "$state/ps-flip" "$state/qmd-argv.log"
+cat > "$work/handoff.sh" <<'EOF'
+#!/usr/bin/env bash
+trap '[ ! -e "$QMD_MOCK_STATE/ps-flip" ] || exit 0; echo $$ > "$QMD_MOCK_STATE/ps-flip"; rm -f "$QMD_MOCK_STATE/alive"' TERM
+touch "$QMD_MOCK_STATE/alive"
+while :; do sleep 1; done
+EOF
+QMD_MOCK_STATE="$state" bash "$work/handoff.sh" &
+old_pid=$!
+STUB_PIDS+=("$old_pid")
+echo "$old_pid" > "$stale_pf"; touch_ago "$stale_pf" 18000
+i=0; while [ ! -f "$state/alive" ] && [ "$i" -lt 50 ]; do i=$((i + 1)); sleep 0.1; done
+run_stale QMD_STALE_TERM_WAIT=2
+kill -0 "$old_pid" 2>/dev/null || fail "(z10) handed-off pid: SIGKILL went to a pid that no longer passes the identity check"
+[ "$rc" -eq 0 ] || fail "(z10) handed-off pid: expected the restart to succeed, got rc $rc ($out)"
+[ "$(cat "$stale_pf")" != "$old_pid" ] || fail "(z10) handed-off pid: the pidfile still names the old pid"
+reap_new
+echo "ok (z10): SIGTERM first, SIGKILL only while the pid still passes the identity check"
+
+stale_case 0
+run_stale QMD_DAEMON_DISABLED=1
+[ "$rc" -eq 10 ] || fail "(z11) opted out: expected rc 10, got $rc ($out)"
+kill -0 "$old_pid" 2>/dev/null || fail "(z11) opted out: the server was signalled"
+reap_new
+echo "ok (z11): an opted-out --recycle-if-stale exits 10 and recycles nothing"
 
 echo "PASS: all ensure-qmd-daemon cases"

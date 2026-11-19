@@ -114,6 +114,7 @@ make_repo_behind() {
     cp "$src_scripts/lib/load-dotenv.sh"       "$clone/scripts/lib/load-dotenv.sh"
     cp "$src_scripts/lib/resolve-bun.sh"        "$clone/scripts/lib/resolve-bun.sh"
     cp "$src_scripts/lib/claude-version.sh"        "$clone/scripts/lib/claude-version.sh"
+    cp "$src_scripts/lib/update-channel.sh"        "$clone/scripts/lib/update-channel.sh"
     CHECKOUT_DIR="$clone"
 }
 # --selftest-hermetic builds one behind=2 mock clone and replays --check on
@@ -1212,6 +1213,100 @@ assert_eq "config_ui dies at second 2: rc 1" "1" "$cui_rc"
 assert_contains "config_ui dies at second 2: row says it did not stay up" "did not stay up" "$cui_out"
 assert_eq "config_ui dies at second 2: keeps the retry marker" "yes" "$([ -f "$HOME/.himmel/state/config-ui-rebuild-pending" ] && echo yes || echo no)"
 rm -f "$HOME/.himmel/state/config-ui-rebuild-pending"
+
+echo "Test 32: report_qmd_daemon_restart recycles a stale qmd server and prints the manual block only on failure"
+make_repo_channel
+QSTUB="$CHECKOUT_DIR/marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh"
+QARGS="$TMP/qmd-ensure-args"
+mkdir -p "$(dirname "$QSTUB")"
+stub_ensure() {
+    rm -f "$QARGS"
+    printf '#!/usr/bin/env bash\necho "$*" > "%s"\nexit %s\n' "$QARGS" "$1" > "$QSTUB"
+}
+stub_ensure 0
+# shellcheck disable=SC2016  # the snippet expands inside run_channel_lib
+out=$(run_channel_lib 'QMD_DAEMON_RESTART_PENDING=1; QMD_FORK_BUILD_STAMP=/fork/.himmel-build-ok; report_qmd_daemon_restart; echo "PENDING_AFTER=$QMD_DAEMON_RESTART_PENDING"' 2>&1)
+assert_eq "32a: the repo ensure script gets --recycle-if-stale and the build stamp" "--recycle-if-stale /fork/.himmel-build-ok" "$(cat "$QARGS" 2>/dev/null)"
+assert_contains "32a: a successful recycle clears the pending flag in the same shell" "PENDING_AFTER=0" "$out"
+assert_contains "32a: success: says the qmd server was restarted" "restarted" "$out"
+case "$out" in *"restart REQUIRED"*|*pkill*) assert_fail "32a: success must not print the manual block, got: $out" ;; *) assert_pass "26a: success prints no manual block" ;; esac
+
+stub_ensure 1
+# shellcheck disable=SC2016  # the snippet expands inside run_channel_lib
+out=$(run_channel_lib 'QMD_DAEMON_RESTART_PENDING=1; QMD_FORK_BUILD_STAMP=/fork/.himmel-build-ok; report_qmd_daemon_restart; echo "PENDING_AFTER=$QMD_DAEMON_RESTART_PENDING"' 2>&1)
+assert_contains "32b: a failed recycle keeps the pending flag" "PENDING_AFTER=1" "$out"
+assert_contains "32b: a failed recycle prints the manual block" "qmd daemon restart REQUIRED" "$out"
+assert_contains "32b: …with the scoped stop command" "pkill -f 'qmd.*mcp.*--http'" "$out"
+
+stub_ensure 10
+# shellcheck disable=SC2016  # the snippet expands inside run_channel_lib
+out=$(run_channel_lib 'QMD_DAEMON_RESTART_PENDING=1; QMD_FORK_BUILD_STAMP=/fork/.himmel-build-ok; report_qmd_daemon_restart; echo "PENDING_AFTER=$QMD_DAEMON_RESTART_PENDING"' 2>&1)
+assert_contains "32e: an opted-out qmd keeps the pending flag" "PENDING_AFTER=1" "$out"
+assert_contains "32e: an opted-out qmd says the restart was skipped" "skipped" "$out"
+case "$out" in *"new build is serving"*|*"restart REQUIRED"*) assert_fail "32e: opt-out must not claim success or print the manual block, got: $out" ;; *) assert_pass "32e: opt-out prints no success line and no manual block" ;; esac
+
+stub_ensure 0
+out=$(run_channel_lib 'unset QMD_DAEMON_RESTART_PENDING; report_qmd_daemon_restart' 2>&1)
+assert_empty_out() { if [ -z "$2" ]; then assert_pass "$1"; else assert_fail "$1 — got: $2"; fi; }
+assert_empty_out "32c: nothing pending: silent" "$out"
+if [ ! -f "$QARGS" ]; then assert_pass "32c: nothing pending: the ensure script is not run"; else assert_fail "32c: the ensure script ran with nothing pending"; fi
+
+rm -f "$QSTUB"
+out=$(run_channel_lib 'QMD_DAEMON_RESTART_PENDING=1; QMD_FORK_BUILD_STAMP=/fork/.himmel-build-ok; report_qmd_daemon_restart' 2>&1)
+assert_contains "32d: the repo ensure script missing: manual block" "qmd daemon restart REQUIRED" "$out"
+
+echo "Test 33: qmd_daemon_serving recognises a token-protected qmd server and keeps no-listener distinct"
+make_repo_channel
+QDIR="$CHECKOUT_DIR/marketplace/plugins/qmd/scripts"
+mkdir -p "$QDIR"
+cp "$(dirname "$SCRIPT")/../marketplace/plugins/qmd/scripts/qmd-auth-headers.sh" "$QDIR/qmd-auth-headers.sh"
+QBIN="$TMP/qmd-curl-bin"
+mkdir -p "$QBIN"
+cat > "$QBIN/curl" <<'EOF2'
+#!/usr/bin/env bash
+[ "${QSTUB_DEAD:-0}" != 1 ] || exit 7
+want_code=0; last=""
+for a in "$@"; do [ "$a" = "-w" ] && want_code=1; last="$a"; done
+cfg=""
+case "$*" in *"-K -"*) cfg="$(cat)" ;; esac
+case "$last" in */health) ;; *) [ -z "${QSTUB_CFGLOG:-}" ] || printf '%s' "$cfg" > "$QSTUB_CFGLOG"; [ -z "${QSTUB_ARGVLOG:-}" ] || printf '%s\n' "$*" > "$QSTUB_ARGVLOG" ;; esac
+case "$last" in
+  */health)
+    if [ -n "${QSTUB_HEALTH:-}" ]; then printf '%s' "$QSTUB_HEALTH"; else printf '%s' '{"status":"ok","uptime":3}'; fi
+    exit 0 ;;
+esac
+case "$cfg" in *"Bearer good-token"*) printf '%s' '{"result":{"serverInfo":{"name":"qmd"}}}'; exit 0 ;; esac
+[ "$want_code" -eq 0 ] || printf 401
+exit 0
+EOF2
+chmod +x "$QBIN/curl"
+printf 'good-token\n' > "$TMP/qmd-token-good"; chmod 600 "$TMP/qmd-token-good"
+printf 'old-token\n' > "$TMP/qmd-token-old"; chmod 600 "$TMP/qmd-token-old"
+qserving() {
+    run_channel_lib "PATH=\"$QBIN:\$PATH\"; $1 qmd_daemon_serving && echo yes || echo no" 2>/dev/null
+}
+assert_eq "33a: a server that wants the bearer token and gets the right one counts as serving" "yes" "$(qserving "export QMD_HTTP_AUTH_FILE=$TMP/qmd-token-good;")"
+assert_eq "33b: a stale token (401 plus qmd's own /health) still counts as serving" "yes" "$(qserving "export QMD_HTTP_AUTH_FILE=$TMP/qmd-token-old;")"
+assert_eq "33c: no token file at all (401 plus qmd's own /health) still counts as serving" "yes" "$(qserving "export QMD_HTTP_AUTH_FILE=$TMP/qmd-token-none;")"
+assert_eq "33d: nothing listening is not serving" "no" "$(qserving "export QSTUB_DEAD=1 QMD_HTTP_AUTH_FILE=$TMP/qmd-token-good;")"
+assert_eq "33e: a 401 whose /health is not qmd's is not serving" "no" "$(qserving "export QSTUB_HEALTH=OK QMD_HTTP_AUTH_FILE=$TMP/qmd-token-old;")"
+rm -f "$TMP/qmd-cfglog"
+qserving "export QSTUB_CFGLOG=$TMP/qmd-cfglog QMD_MCP_URL=http://qmd.example.invalid:8181/mcp QMD_HTTP_AUTH_FILE=$TMP/qmd-token-good;" >/dev/null
+if [ -f "$TMP/qmd-cfglog" ] && ! grep -q 'Bearer' "$TMP/qmd-cfglog"; then
+    assert_pass "33f: a non-loopback QMD_MCP_URL gets no Authorization header"
+else
+    assert_fail "33f: a non-loopback QMD_MCP_URL gets no Authorization header (cfg log: $(cat "$TMP/qmd-cfglog" 2>/dev/null || echo missing))"
+fi
+rm -f "$TMP/qmd-cfglog"
+qserving "export QSTUB_CFGLOG=$TMP/qmd-cfglog QMD_MCP_URL=http://127.0.0.1:8181/mcp QMD_HTTP_AUTH_FILE=$TMP/qmd-token-good;" >/dev/null
+if grep -q 'Bearer good-token' "$TMP/qmd-cfglog" 2>/dev/null; then
+    assert_pass "33g: control: a loopback QMD_MCP_URL gets the Authorization header"
+else
+    assert_fail "33g: control: a loopback QMD_MCP_URL gets the Authorization header"
+fi
+rm -f "$TMP/qmd-argvlog"
+qserving "export QSTUB_ARGVLOG=$TMP/qmd-argvlog QMD_MCP_URL=http://127.0.0.1:8181/mcp QMD_HTTP_AUTH_FILE=$TMP/qmd-token-good;" >/dev/null
+assert_contains "33h: the token-bearing probe never goes through a proxy" "noproxy [*] -K" "$(cat "$TMP/qmd-argvlog" 2>/dev/null)"
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo

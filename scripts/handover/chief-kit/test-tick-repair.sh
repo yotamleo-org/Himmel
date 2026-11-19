@@ -68,7 +68,7 @@ export TICK_LAUNCH_DIR="$W/chief-work" TICK_PROJECTS_DIR="$W/projects"
 export TOKEN=t WORKERS=''
 export HIMMEL_RELEASE_STATE_DIR="$W/releases" USER_SLUG=tester
 export HIMMEL_VERSION_WRITES="$W/journal.jsonl"
-export NEXT_DISPATCH_MIRROR="$W/mirror/TESTKEY"
+export NEXT_DISPATCH_MIRROR="$W/mirror/TESTKEY" JIRA_PROJECT_KEY=TESTKEY
 RDIR="$W/releases/R1"
 mkdir -p "$RDIR"
 
@@ -455,6 +455,29 @@ doc_lost=0; case "$doc_flat" in *'`lost` (a launched run'*) doc_lost=1 ;; esac
 check 'the doc names the lost reason' 1 "$doc_lost"
 doc_rule=0; case "$doc_flat" in *'or when the last launch left no end record'*) doc_rule=1 ;; esac
 check 'the doc states the retry in the launch rule' 1 "$doc_rule"
+
+kf="$W/kfix"; mkdir -p "$kf/scripts/handover/chief-kit" "$kf/scripts/lanes" "$kf/scripts/jira/dist" "$W/kmirror/tickets"
+env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git init -q "$kf"
+cp "$SUT" "$kf/scripts/handover/chief-kit/tick.sh"
+cp -R "$HERE/../../lib" "$kf/scripts/lib"
+cp -R "$HERE/../../lanes/lib" "$kf/scripts/lanes/lib"
+: > "$kf/scripts/jira/dist/index.js"
+printf '#!/bin/sh\necho "$* key=$JIRA_PROJECT_KEY" >> "%s/node-ran"\ncase "$*" in *"release state"*) cat "%s/state.json" ;; esac\n' "$W" "$W" > "$W/bin/node"
+chmod +x "$W/bin/node"
+ktick() { env -u TICK_RMQ_PROBE -u TICK_RMRUN_PROBE -u TICK_REPAIR_PROBE JIRA_PROJECT_KEY=CONFKEY NEXT_DISPATCH_MIRROR="$W/kmirror/tickets" bash "$kf/scripts/handover/chief-kit/tick.sh" --doc "$W/handover/chief.md" 2>/dev/null; }
+nodekey() {
+    local i=0
+    while ! grep -q "release $1 " "$W/node-ran" 2>/dev/null && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+    sed -n "s/^.*release $1 .* key=\([^ ]*\)\$/\1/p" "$W/node-ran" 2>/dev/null | head -n 1
+}
+reset; reviewed; rm -f "$W/node-ran"
+ktick >/dev/null
+check 'an overridden mirror directory does not name the key of the state read' 'CONFKEY' "$(nodekey state)"
+check 'an overridden mirror directory does not name the key of the repair launch' 'CONFKEY' "$(nodekey repair)"
+reset; rm -f "$W/node-ran"
+printf '{"status":"OK","versions":["v1.1.3"],"lease":null,"requests":{"open":["Q-1"],"claimed":[],"oldest_open":"%s"}}\n' "$(/bin/date -u -d '45 minutes ago' +%Y-%m-%dT%H:%M:%SZ)" > "$W/state.json"
+ktick >/dev/null
+check 'an overridden mirror directory does not name the key of the rm-run launch' 'CONFKEY' "$(nodekey rm-run)"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

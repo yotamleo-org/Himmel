@@ -4,6 +4,7 @@
     { "name": "HANDOVER_DIR", "class": "config", "explanation": "Directory holding task handover state.", "effect": "Handover commands use this existing directory instead of repo-local handovers/." },
     { "name": "USER_SLUG", "class": "config", "explanation": "Your stable operator identifier.", "effect": "Names handover buckets and scratch directories." },
     { "name": "LUNA_VAULT_PATH", "class": "config", "explanation": "Absolute path of your luna vault.", "effect": "Vault tools use this directory when no explicit vault is supplied." },
+    { "name": "LUNA_VAULT_AUTOCOMMIT", "class": "config", "explanation": "Local-only luna vault auto-commit switch (1 = on).", "effect": "When 1 and the vault has no git remote and no sync plugin, the vault-stall cadence commits quiet notes locally (hooks run, never pushed); leave unset to keep it off." },
     { "name": "HIMMEL_DOC_FRESHNESS", "class": "config", "explanation": "Documentation freshness check switch.", "effect": "Controls whether documentation drift reminders run." },
     { "name": "HIMMEL_INITIATIVE", "class": "config", "explanation": "Comma-separated workflow steps to perform proactively.", "effect": "Enables named initiative steps, without bypassing their safety gates." },
     { "name": "HIMMEL_INITIATIVE_AFK", "class": "config", "explanation": "Initiative mode for unattended sessions.", "effect": "Selects proactive work while the operator is away." },

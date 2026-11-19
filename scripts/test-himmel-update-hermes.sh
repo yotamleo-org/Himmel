@@ -750,6 +750,13 @@ out=$(PIPELINE_BAT_DIR="$tmp/cad-current" \
   GRAPHMAP_BAT_DIR="$tmp/graphmap-empty" QMD_CADENCE_BAT_DIR="$tmp/qmd-empty" report_cadence_stale 2>&1)
 if [ -z "$out" ]; then echo "ok: current cadence → silent"; else echo "FAIL: current cadence wrongly nudged"; printf '%s\n' "$out"; fail=1; fi
 
+mkdir -p "$tmp/cad-steering-stale"
+printf '#!/usr/bin/env bash\necho old\n' > "$tmp/cad-steering-stale/steering-cull-cadence.sh"
+out=$(PIPELINE_BAT_DIR="$tmp/cad-empty" STEERING_CULL_RUNNER_DIR="$tmp/cad-steering-stale" \
+  GRAPHMAP_BAT_DIR="$tmp/graphmap-empty" QMD_CADENCE_BAT_DIR="$tmp/qmd-empty" report_cadence_stale 2>&1)
+check "stale steering-cull cadence nudged (message)" "steering-cull-cadence runners are STALE" "$out"
+check "stale steering-cull cadence nudged (rearm hint)" "bash scripts/cleanup/steering-cull-cadence.sh arm --force --proposal-dir" "$out"
+
 # Case 11: malformed marker (present but no version number) → safe fallback to
 # version 0 → treated as stale (nudge), never a crash under set -e.
 mkdir -p "$tmp/cad-malformed"

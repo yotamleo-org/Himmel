@@ -35,6 +35,7 @@
 
 # Updates
 # HIMMEL_UPDATE_AUTOSTASH=1
+# LUNA_VAULT_AUTOCOMMIT=1
 
 # Non-secret Jira and service identifiers (tokens stay in .env)
 # JIRA_EMAIL=dummy@example.invalid
