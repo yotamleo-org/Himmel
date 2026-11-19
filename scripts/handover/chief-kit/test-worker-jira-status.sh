@@ -883,7 +883,7 @@ edits()  { grep -c '^edit ' "$STUB_LOG" || true; }
 lastedit() { grep '^edit ' "$STUB_LOG" | tail -n 1; }
 prows()  { [ -e "$LOG" ] && { jq -c 'select(.event == "phase-label")' "$LOG" | grep -c . || true; } || echo 0; }
 plast()  { jq -r 'select(.event == "phase-label") | [.result, (.from // "-"), (.to // "-"), (.cause // "-"), (.stage // "-")] | join("|")' "$LOG" | tail -n 1; }
-nlog()   { [ -e "$LOG" ] && wc -l < "$LOG" || echo 0; }
+nlog()   { [ -e "$LOG" ] && wc -l < "$LOG" | tr -d ' ' || echo 0; }
 seq_of() { jq -r '[.event + ":" + .result + (if .stage then ":" + .stage else "" end)] | .[]' "$LOG" | paste -sd, -; }
 brief_live() {
     reset "${3:-In Progress}"; owned; mkbrief "$DOC" "$2" LIVE; labels "$1"

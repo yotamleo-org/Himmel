@@ -21,7 +21,7 @@ TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-graph-lag-report.XXXXXX")" || exit 2
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
 T0=1793491200   # 2026-11-01T00:00:00Z
-iso() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ; }
+iso() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }
 
 plant_repo() {
     local dir="$1" n="$2" i t

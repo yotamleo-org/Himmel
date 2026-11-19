@@ -114,6 +114,28 @@ test('launcher executes a hook through the resolved Bash and forwards extra args
   }
 });
 
+test('the hook child collates by bytes: LC_COLLATE=C, and LC_ALL replaced only when set', () => {
+  const dir = makeTmpDir('hook-bash-collation-');
+  const hook = join(dir, 'hook.sh');
+  try {
+    writeFileSync(hook, '#!/usr/bin/env bash\ncat >/dev/null\nprintf \'COLLATE=%s ALL=%s\\n\' "${LC_COLLATE-unset}" "${LC_ALL-unset}" >&2\n');
+    chmodSync(hook, 0o755);
+    const run = (args, extraEnv, unsetAll) => {
+      const env = { ...process.env, ...extraEnv };
+      if (unsetAll) delete env.LC_ALL;
+      return spawnSync(process.execPath, [LAUNCHER, ...args], { encoding: 'utf8', input: '{}', env });
+    };
+    const withAll = run([hook], { LC_ALL: 'en_US.UTF-8', LC_COLLATE: 'en_US.UTF-8' }, false);
+    assert.match(withAll.stderr, /COLLATE=C ALL=C\n/);
+    const withoutAll = run([hook], { LC_COLLATE: 'en_US.UTF-8' }, true);
+    assert.match(withoutAll.stderr, /COLLATE=C ALL=unset\n/);
+    const chained = run(['--chain', hook], { LC_ALL: 'en_US.UTF-8' }, false);
+    assert.match(chained.stderr, /COLLATE=C ALL=C\n/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('--optional exits zero before Bash resolution when the hook is absent', () => {
   const missing = join(tmpdir(), 'missing-optional-hook.sh');
   const result = spawnSync(process.execPath, [LAUNCHER, '--optional', missing], {

@@ -115,12 +115,36 @@ tok 'ls ~/x'; check "a tilde is not a glob" "$R:${ST_G[1]}" "0:0"
 tok 'FOO=bar cmd'; check "NAME=value is assignment-shaped" "$R:${ST_A[0]}:${ST_A[1]}" "0:1:0"
 tok "'FOO=bar' cmd"; check "a quoted NAME=value is not" "$R:${ST_A[0]}" "0:0"
 tok "echo \$'a'"; check "\$'…' sets ANSIC" "$R:$ST_ANSIC" "0:1"
-# Decoding needs ${…@E} (bash 4.4+); an older bash keeps the raw body (J1946 B1).
-dec='-r'
-if [ "${BASH_VERSINFO[0]}" -lt 4 ] || { [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; then
-    dec='\x2dr'
+tok "rm \$'\\x2dr' d"; check "\$'…' is decoded the way bash runs it" "$R:${ST_W[1]}:${ST_Q[1]}" "0:-r:1"
+tok "cat \$'\\'' .e*"; check "\$'\\'' decodes to a quote" "$R:${ST_W[1]}" "0:'"
+# shellcheck disable=SC1003 # the bodies hold backslashes, not escaped quotes
+ansic_parity() {
+    local LC_ALL=C body want bs='\'
+    for body in 'plain' '\a\b\e\E\f\n\r\t\v' '\\' "\\'" '\"' '\?' '\101' '\18' '\0101' '\777' '\x41' '\x4g' '\x' \
+        "${bs}u0041" "${bs}u007f" "${bs}u0000" '\U00000041' '\U0001F600' "${bs}u" '\cA' '\c?' '\c' '\c\x' '\q' 'a\x00b' 'a\' '\x2dr' '\056env'; do
+        _st_ansic_walk "$body"
+        eval 'want=${body@E}'
+        check "by-hand decode of [$body] equals \${…@E}" "$_ST_DEC" "$want"
+    done
+}
+if [ "${BASH_VERSINFO[0]}" -gt 4 ] || { [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]}" -ge 4 ]; }; then
+    ansic_parity
 fi
-tok "rm \$'\\x2dr' d"; check "\$'…' is decoded the way bash runs it" "$R:${ST_W[1]}:${ST_Q[1]}" "0:$dec:1"
+# shellcheck disable=SC1003 # a lone backslash
+bs='\'
+# shellcheck disable=SC1003 # the bodies hold backslashes, not escaped quotes
+for body in '\c\\n' '\c\\x3b' '\c\\073' '\c\\;'; do
+    _st_ansic_e "$body"; check "a control-backslash pair in [$body] is refused" "$?" "1"
+    tok "cat \$'$body'"; check "a word holding [$body] fails the tokenizer" "$R" "1"
+    st_expand text "cat \$'$body'"; check "st_expand text refuses [$body], ST_EXP empty" "$?:${#ST_EXP}" "1:0"
+    st_expand empty "cat \$'$body'"; check "st_expand empty refuses [$body], ST_EXP empty" "$?:${#ST_EXP}" "1:0"
+    st_expand text "echo \$(cat \$'$body')"; check "st_expand refuses [$body] inside a substitution" "$?:${#ST_EXP}" "1:0"
+    st_expand text "cat <<\$'$body'"; check "st_expand refuses [$body] as a heredoc delimiter" "$?:${#ST_EXP}" "1:0"
+    st_expand text "echo \${(pj:$body:)V}"; check "st_expand refuses [$body] in a zsh (pj::) argument" "$?:${#ST_EXP}" "1:0"
+    st_expand text "echo \${V:-x} \$'$body'"; check "st_expand refuses [$body] beside a parameter expansion" "$?:${#ST_EXP}" "1:0"
+done
+st_expand text "cat \$'${bs}x41'"; check "st_expand still rewrites a plain dollar-quote word" "$?:$ST_EXP" "0:cat 'A'"
+_st_ansic_e '\\c\x41'; check "an escaped backslash before c is not the pair" "$?" "0"
 tok 'echo a # c; d'; check "a comment sets COMMENT and ends the command" "$R:$ST_COMMENT:$ST_NSEG:$ST_N" "0:1:1:2"
 tok $'cat <<EOF\nbody $(x)\nEOF\necho after'; check "an unquoted heredoc body with \$(…) sets SUBST" "$R:$ST_HEREDOC:$ST_SUBST" "0:1:1"
 tok $'cat <<\'EOF\'\nbody $(x)\nEOF'; check "a quoted heredoc body is inert" "$R:$ST_HEREDOC:$ST_SUBST" "0:1:0"
