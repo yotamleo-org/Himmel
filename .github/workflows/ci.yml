@@ -1477,8 +1477,6 @@ jobs:
           if [ "$EVENT" = pull_request ]; then base="HEAD^1"; fi
           python3 marketplace/plugins/himmel-ops/skills/docs-reviewer/docs_remarks.py scope --base "$base" --head HEAD
 
-  # The published engines floor is node >=22.22.0 while every other job runs the station's
-  # Node 26; this one job runs the fastest real suite on the floor itself.
   node-22-floor:
     needs: plan
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) }}
