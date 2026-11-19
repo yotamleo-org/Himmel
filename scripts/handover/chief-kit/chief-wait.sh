@@ -1489,7 +1489,7 @@ rmlease_wake() {
     [ "$rel" != none ] || return 1
     if [ -e "$rmlease_at_file" ] && [ -n "$(find "$rmlease_at_file" -mmin "-${CHIEF_WAIT_RMLEASE_SAMPLE_MIN:-5}" 2>/dev/null)" ]; then return 1; fi  # swallow-ok: an unreadable marker reads as stale, so the read runs
     : > "$rmlease_at_file" 2>/dev/null
-    pk="${NEXT_DISPATCH_MIRROR:+${NEXT_DISPATCH_MIRROR##*/}}"; [ -n "$pk" ] || pk="$(jira_project_key)"
+    pk="$(jira_project_key)"
     anchor="$(cd "$REPO" && . "$REPO/scripts/lib/git-clean.sh" && git_env_scrub && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || anchor=""  # swallow-ok: no anchor leaves the CLI unavailable, which reads as an unreadable state
     cli="${anchor%/.git}/scripts/jira/dist/index.js"
     if [ -n "${CHIEF_WAIT_RMLEASE:-}" ]; then
@@ -1554,7 +1554,7 @@ intake_wake() {
     [ "$rel" != none ] || return 1
     if [ -e "$intake_at_file" ] && [ -n "$(find "$intake_at_file" -mmin "-${CHIEF_WAIT_INTAKE_SAMPLE_MIN:-5}" 2>/dev/null)" ]; then return 1; fi  # swallow-ok: an unreadable marker reads as stale, so the read runs
     : > "$intake_at_file" 2>/dev/null
-    pk="${NEXT_DISPATCH_MIRROR:+${NEXT_DISPATCH_MIRROR##*/}}"; [ -n "$pk" ] || pk="$(jira_project_key)"
+    pk="$(jira_project_key)"
     anchor="$(cd "$REPO" && . "$REPO/scripts/lib/git-clean.sh" && git_env_scrub && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || anchor=""  # swallow-ok: no anchor leaves the CLI unavailable, which reads as an unreadable lease
     cli="${anchor%/.git}/scripts/jira/dist/index.js"
     if [ -n "${CHIEF_WAIT_RMLEASE:-}" ]; then

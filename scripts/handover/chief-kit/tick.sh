@@ -1347,7 +1347,7 @@ PY
 pool_stale() {
     python3 -I - "$@" <<'PY'
 import datetime, glob, hashlib, json, os, re, subprocess, sys, time
-doc, mirror, repo, prior, stale_file, mirror_real, holds = sys.argv[1:8]
+doc, mirror, repo, prior, stale_file, mirror_real, holds, project = sys.argv[1:9]
 if stale_file:
     print("# mirror=" + mirror_real)
     print("# stale-file=" + stale_file)
@@ -1371,7 +1371,8 @@ if not (doc and os.path.isfile(doc) and os.path.isdir(mirror)):
     print("residual-unversioned=skip")
     sys.exit(0)
 
-key_re = re.compile(r"\b%s-\d+\b" % re.escape(os.path.basename(mirror.rstrip("/"))))
+KEY = r"[A-Z][A-Z0-9_]*-\d+"
+key_re = re.compile(r"\b%s-\d+\b" % re.escape(project))
 latest = {}
 live = False
 for line in open(doc).read().splitlines():
@@ -1379,7 +1380,7 @@ for line in open(doc).read().splitlines():
         live = line == "## Live state"
     if live and line.startswith("pool-disposition:"):
         value = line.split(":", 1)[1].strip()
-        m = re.fullmatch(r"([A-Z]+-\d+) (?:slice|close|question|hold|park) (\S.*)", value)
+        m = re.fullmatch(r"(%s) (?:slice|close|question|hold|park) (\S.*)" % KEY, value)
         if m:
             refs = {k for k in key_re.findall(m[2]) if k != m[1]}
             prs = {n for g in re.findall(r"\bPRs?\s*#?(\d+(?:\s*(?:,|and|&)\s*#?\d+)*)", m[2]) for n in re.findall(r"\d+", g)}
@@ -1411,10 +1412,10 @@ if prior_lines is None and stale_file:
             break
 carry, ccarry = {}, {}
 for line in prior_lines or []:
-    m = re.fullmatch(r"(STALE-DISPOSITION ([A-Z]+-\d+) line=([0-9a-f]{12}) .*?)(?: carried)?", line)
+    m = re.fullmatch(r"(STALE-DISPOSITION (%s) line=([0-9a-f]{12}) .*?)(?: carried)?" % KEY, line)
     if m:
         carry[m[2]] = (m[3], m[1])
-    m = re.fullmatch(r"(CHANGED-DISPOSITION ([A-Z]+-\d+) line=([0-9a-f]{12}) .*? via ([A-Z]+-\d+) .*?)(?: carried)?", line)
+    m = re.fullmatch(r"(CHANGED-DISPOSITION (%s) line=([0-9a-f]{12}) .*? via (%s) .*?)(?: carried)?" % (KEY, KEY), line)
     if m:
         ccarry[m[2]] = (m[3], m[4], m[1])
 
@@ -1719,7 +1720,7 @@ if [ "$stale_mode" -eq 1 ]; then
         ps_self="$(pool_stale_file "$DOC" "$ps_mirror")"
         ps_mirror_real="$(realpath -m "$ps_mirror")"  # prim-ok: the mirror need not exist, which canon_path refuses; gnu-ok: chief kit is Linux-only
     fi
-    pool_stale "$DOC" "$ps_mirror" "$REPO" "$ps_prior" "$ps_self" "$ps_mirror_real" "${DOC:+$(pool_holds_file "$DOC")}"
+    pool_stale "$DOC" "$ps_mirror" "$REPO" "$ps_prior" "$ps_self" "$ps_mirror_real" "${DOC:+$(pool_holds_file "$DOC")}" "$(jira_project_key)"
     exit $?
 fi
 

@@ -68,6 +68,7 @@ case "$*" in
 esac
 EOF
 chmod +x "$WORK/gh"
+export JIRA_PROJECT_KEY=HIMMEL
 export PS_GH_LOG="$WORK/gh.log" PS_GH_FAIL="$WORK/gh.fail" PS_GH_REPO_NULL="$WORK/gh.reponull" NEXT_DISPATCH_MIRROR="$M" TICK_GH_CMD="$WORK/gh" HIMMEL_QUOTA_DIR="$WORK/quota"
 mkdir -p "$WORK/state" "$WORK/no-release-declared"
 export TICK_STATE_DIR="$WORK/state" HIMMEL_RELEASE_STATE_DIR="$WORK/no-release-declared" PS_REAL_SUT="$SUT"
@@ -552,7 +553,35 @@ rk_field() {
         TOKEN='' bash "$SUT" --pool-stale --doc "$rk/chief.md" 2>/dev/null | sed -n 's/^pool-stale=//p'
 }
 check 'a himmel.conf key and no override reads the mirror of that key' '1:CONFKEY-101' "$(rk_field)"
-check 'NEXT_DISPATCH_MIRROR still wins over the resolver' '0' "$(rk_field NEXT_DISPATCH_MIRROR="$M")"
+check 'NEXT_DISPATCH_MIRROR still wins over the resolver: its mirror lacks CONFKEY-901, so the target is unreadable' '?' "$(rk_field NEXT_DISPATCH_MIRROR="$M")"
+
+T="$WORK/tickets"; mkdir -p "$T"; cp "$M"/HIMMEL-*.md "$T/"
+d="$(doc keybase "pool-disposition: $hk-101 slice $hk-901 then the rest")"
+check 'an override directory not named for the project still matches the project key' "1:$hk-101" \
+    "$(JIRA_PROJECT_KEY=HIMMEL NEXT_DISPATCH_MIRROR="$T" field pool-stale "$d")"
+
+pk_mirror() { # <project key>: a mirror dir under an unrelated name, APP-110 Done and APP-111 open
+    local p="$WORK/pk-$1"; mkdir -p "$p"
+    printf -- '---\nkey: "%s-110"\nstatus: "Done"\nstatusCategory: "Done"\n---\n\n# %s-110: t\n' "$1" "$1" > "$p/$1-110.md"
+    printf -- '---\nkey: "%s-111"\nstatus: "To Do"\nstatusCategory: "To Do"\n---\n\n# %s-111: t\n' "$1" "$1" > "$p/$1-111.md"
+    printf '%s' "$p"
+}
+for k in APP2 MY_APP; do
+    p="$(pk_mirror "$k")"
+    d="$(doc "key-$k" "pool-disposition: $k-101 slice $k-110")"
+    check "a $k disposition naming its Done ticket reports it stale" "1:$k-101" \
+        "$(JIRA_PROJECT_KEY=$k NEXT_DISPATCH_MIRROR="$p" field pool-stale "$d")"
+done
+p="$(pk_mirror APP2)"
+v='APP2-151 question after APP2-111 its first slice'
+d="$(doc key-carry "$pd $v")"
+printf '%s\n' "CHANGED-DISPOSITION APP2-151 line=$(hash12 "$v") APP2-111=open since APP2-111 abc1234 via APP2-111 abc1234 [APP2-111] first" > "$WORK/key-carry.prior"
+check 'a carried CHANGED-DISPOSITION record of an APP2 key is read back' '1:APP2-151,?' \
+    "$(JIRA_PROJECT_KEY=APP2 NEXT_DISPATCH_MIRROR="$p" ofield pool-changed "$(JIRA_PROJECT_KEY=APP2 NEXT_DISPATCH_MIRROR="$p" cout "$d" "$WORK/notarepo" "$WORK/key-carry.prior")")"
+d="$(doc key-carry2 "$pd APP2-152 slice APP2-999")"
+printf '%s\n' "STALE-DISPOSITION APP2-152 line=$(hash12 'APP2-152 slice APP2-999') APP2-999=? carried" > "$WORK/key-carry2.prior"
+check 'a carried STALE-DISPOSITION record of an APP2 key is read back' '1:APP2-152,?' \
+    "$(JIRA_PROJECT_KEY=APP2 NEXT_DISPATCH_MIRROR="$p" ofield pool-stale "$(JIRA_PROJECT_KEY=APP2 NEXT_DISPATCH_MIRROR="$p" cout "$d" "$WORK/notarepo" "$WORK/key-carry2.prior")")"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

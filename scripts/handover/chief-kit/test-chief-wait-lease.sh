@@ -123,7 +123,7 @@ contains 'a himmel.conf key and no mirror override names the takeover project' "
 reset
 state_json 422 false "$rmdoc" 600
 NEXT_DISPATCH_MIRROR="$WORK/mirrors/OVRKEY" JIRA_PROJECT_KEY='' HIMMEL_JIRA_MIRROR='' HIMMEL_CONFIG_DIR="$WORK/rk-conf" HIMMELCTL_CACHE_DIR="$WORK/rk-cache" run_waiter "$WORK/l13.out" 60
-contains 'NEXT_DISPATCH_MIRROR still names the takeover project over himmel.conf' "$(sed -n 2p "$WORK/l13.out")" 'takeover: JIRA_PROJECT_KEY=OVRKEY node'
+contains 'a NEXT_DISPATCH_MIRROR directory name never names the takeover project' "$(sed -n 2p "$WORK/l13.out")" 'takeover: JIRA_PROJECT_KEY=CONFKEY node'
 
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 exit 1
