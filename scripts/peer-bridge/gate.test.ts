@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readChain } from "./chain";
 import type { Config } from "./config";
 import { admit, appendUnknownChat, createGateState, noteAdmitted, rebuildFromInbox, type GateState } from "./gate";
 import { failedTests, makeRedCopy } from "./testlib-red-copy";
@@ -112,6 +113,18 @@ test("appendUnknownChat writes one 0600 line per chat id", () => {
   const lines = readFileSync(file, "utf8").trim().split("\n").map(l => JSON.parse(l));
   expect(lines.map(l => l.chat_id)).toEqual([-1005, -1006]);
   expect(statSync(file).mode & 0o777).toBe(0o600);
+});
+
+test("appendUnknownChat survives a torn trailing row and still dedups", () => {
+  const file = join(mkdtempSync(join(tmpdir(), "peer-unknown-")), "unknown-chats.jsonl");
+  writeFileSync(file, JSON.stringify({ chat_id: -1005, type: "supergroup", title: "a", ts: 1 }) + "\n" + '{"chat_id":');
+  expect(() => appendUnknownChat(file, { chat_id: -1006, type: "supergroup", title: "b" })).not.toThrow();
+  expect(() => appendUnknownChat(file, { chat_id: -1005, type: "supergroup", title: "a" })).not.toThrow();
+  expect(() => appendUnknownChat(file, { chat_id: -1007, type: "supergroup", title: "c" })).not.toThrow();
+  const text = readFileSync(file, "utf8");
+  expect(text.endsWith("\n")).toBe(true);
+  expect(text.trimEnd().split("\n").map(l => JSON.parse(l).chat_id)).toEqual([-1005, -1006, -1007]);
+  expect(readChain(file).length).toBe(3);
 });
 
 test("rule 4: a sender not in allowFrom is dropped", () => {

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { constants } from "node:fs";
 import { GROUP_ANONYMOUS_BOT_ID } from "../telegram/gate";
+import { readChain } from "./chain";
 import type { Config } from "./config";
 import { parseControl, type Control } from "./grammar";
 
@@ -149,10 +150,11 @@ export function admit(update: any, cfg: Pick<Config, "peers" | "maxTextChars">, 
 
 // One row per unknown chat id, 0600, so `setup.ts confirm` can offer it.
 export function appendUnknownChat(file: string, row: UnknownChat): void {
-  try {
-    const seen = fs.readFileSync(file, "utf8").split("\n").filter(Boolean).map(l => JSON.parse(l).chat_id);
-    if (seen.includes(row.chat_id)) return;
-  } catch (e: any) { if (e.code !== "ENOENT") throw e; }
+  if (readChain(file).some(r => (r as any).chat_id === row.chat_id)) return;
   const fd = fs.openSync(file, constants.O_WRONLY | constants.O_CREAT | constants.O_APPEND | constants.O_NOFOLLOW, 0o600);
-  try { fs.writeFileSync(fd, JSON.stringify({ ...row, ts: Math.floor(Date.now() / 1000) }) + "\n"); } finally { fs.closeSync(fd); }
+  try {
+    const buf = fs.readFileSync(file);
+    if (buf.length > 0 && buf[buf.length - 1] !== 10) fs.ftruncateSync(fd, buf.lastIndexOf(10) + 1);
+    fs.writeFileSync(fd, JSON.stringify({ ...row, ts: Math.floor(Date.now() / 1000) }) + "\n");
+  } finally { fs.closeSync(fd); }
 }
