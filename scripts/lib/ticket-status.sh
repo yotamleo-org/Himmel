@@ -427,7 +427,7 @@ _ts_worker_state() {
     local attempt_protected terminal=""
     case "${2-}" in
         '"pending"'|'"committed"'|'"unknown"'|'"launched"'|'"refused"'|'"complete"'|'"legacy"') attempt_protected=$2 ;;
-        *) attempt_protected=$(python3 -I "$_TS_LIB_DIR/fleet_runtime.py" disposition --doc "$1") || attempt_protected='"unknown"' ;;
+        *) attempt_protected=$(python3 -I "$_TS_LIB_DIR/fleet_runtime.py" disposition --doc="$1") || attempt_protected='"unknown"' ;;
     esac
     case "$attempt_protected" in
         '"pending"'|'"committed"'|'"unknown"') TS_WORKER_STATE=unknown; return 0 ;;
