@@ -25,7 +25,7 @@ from status_marker import parse as status_marker_parse
 KEY = r'[A-Z][A-Z0-9]+-\d+'
 # The tokens an artifact uses for a proof row that did not pass. The recorder lists any line carrying one; CLOSE additionally
 # refuses a table cell or a list item that STARTS with one (qualified forms included: `NOT MET — no RED`, `SKIPPED (no vm)`,
-# `ERRORS`, `FAIL`, `- NOT MET: ...`). Prose that merely mentions a word is not a row; whether the evidence covers every
+# `ERRORS`, `FAIL`, `- NOT MET: ...`). A list item's word may sit in emphasis or inline code (`- *NOT MET*`, `- _OWED_`). Prose that merely mentions a word is not a row; whether the evidence covers every
 # obligation stays the chief's explicit judgement. A declared Expected column in a supported Markdown table is test input,
 # not an actual requirement status; other cells and unmet list items retain the same refusal rule.
 # A row is MET only when its status is exactly the producer's word for it (`MET`, in any letter case, through emphasis and
@@ -39,7 +39,7 @@ KEY = r'[A-Z][A-Z0-9]+-\d+'
 UNMET = r'(?:NOT\s+MET|OWED|SKIP\w*|ERRORS?|FAIL\w*)'
 NOT_DUE = r'(?:PENDING|WAITING|TBD|AWAITING|BLOCKED|NOT[\s-]+YET[\s-]+DUE|NOT[\s-]+RUN)(?![A-Za-z0-9])'
 UNMET_CELL = re.compile(r'\|\s*' + UNMET + r'\b[^|]*\|', re.I)
-UNMET_ITEM = re.compile(r'^\s*(?:[-*+]|\d+[.)])\s+(?:\*\*)?' + UNMET + r'\b', re.I)
+UNMET_ITEM = re.compile(r'^\s*(?:[-*+]|\d+[.)])\s+[*_`]*' + UNMET + r'(?:\b|_+(?![A-Za-z0-9]))', re.I)
 NOT_DUE_CELL = re.compile(r'^[\s*_`]*' + NOT_DUE, re.I)
 NOT_DUE_ITEM = re.compile(r'^\s*(?:[-*+]|\d+[.)])\s+[*_`]*' + NOT_DUE, re.I)
 MET_STATUS = re.compile(r'[\s*_`]*MET[\s*_`]*', re.I)

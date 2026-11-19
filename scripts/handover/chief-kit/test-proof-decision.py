@@ -242,6 +242,39 @@ class ChiefDecision(unittest.TestCase):
                 self.assertNotEqual(r.returncode, 0, r.stdout)
                 self.assertIn('unmet/skipped/error proof row', r.stderr)
 
+    # A failed list item is unmet whatever marks its status word: the first item, with double asterisks, is the control the others agree with.
+    EMPHASISED_FAILED_ITEMS = ['- **NOT MET** control two',
+                               '- *NOT MET* station check timed out', '- _NOT MET_ station check timed out', '- `NOT MET` station check timed out',
+                               '- __NOT MET__ control two', '- ***NOT MET*** control two', '* *NOT MET* control two',
+                               '- *FAIL* control two', '- _FAIL_ control two', '- `FAILED` control two',
+                               '- *OWED* control two: needs the operator', '1. `OWED` control two: needs the operator', '- _OWED_ control two',
+                               '- *SKIPPED* control two (no vm)', '1. *SKIPPED* control two', '+ `SKIPPED` control two',
+                               '- *ERROR* control two timed out', '- _ERRORS_ control two', '- `ERROR` control two']
+
+    def test_a_failed_list_item_blocks_the_close_whatever_emphasis_or_code_marks_its_status_word(self):
+        good = self.evidence.read_text()
+        self.write(stamp=self.module().requirements(self.mirror / 'HIMMEL-9848.md'))
+        for item in self.EMPHASISED_FAILED_ITEMS:
+            with self.subTest(item=item):
+                row = self.pending_with(good + item + '\n')
+                self.assertEqual(row['binding'], 'matched')
+                r = self.check(row)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn('unmet/skipped/error proof row', r.stderr)
+
+    def test_a_met_list_item_or_prose_beside_those_words_stays_closable_through_any_emphasis_or_code(self):
+        good = self.evidence.read_text()
+        self.write(stamp=self.module().requirements(self.mirror / 'HIMMEL-9848.md'))
+        for item in ('- MET control two', '- *MET* control two', '- _MET_ control two', '- `MET` control two', '- **MET** control two', '- __MET__ control two',
+                     '1. `MET` control two', '- control two ran; *nothing* was skipped, no `errors`, nothing _failed_ and nothing OWED',
+                     '- ERROR_CODE is documented', '- OWED_ITEMS: none'):
+            with self.subTest(item=item):
+                row = self.pending_with(good + item + '\n')
+                self.assertEqual(row['binding'], 'matched')
+                r = self.check(row)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(json.loads(r.stdout)['semantic_coverage'], 'chief-owned')
+
     def test_prose_that_mentions_a_word_is_not_an_unmet_row_and_unknown_coverage_stays_with_the_chief(self):
         good = self.evidence.read_text()
         row = self.pending_with(good + 'The run reported no errors, skipped nothing and nothing failed; every control is OWED nothing.\n| control two | MET | main=' + 'a'*40 + ' | PASS yes |\n')
@@ -793,6 +826,22 @@ class ChiefDecision(unittest.TestCase):
         for item in ('- Pending review', '- Not yet due control two', '1. tbd control two', '* **WAITING** for the window', '- not-yet-due control two'):
             with self.subTest(item=item):
                 self.assertTrue(self.unmet(item + '\n'))
+
+    def test_a_failed_list_item_is_unmet_in_any_case_and_through_emphasis_and_inline_code(self):
+        for word in ('NOT MET', 'not met', 'Not  Met', 'OWED', 'owed', 'FAIL', 'Failed', 'SKIPPED', 'skip', 'ERROR', 'Errors'):
+            for mark in ('%s', '**%s**', '*%s*', '_%s_', '`%s`', '__%s__', '***%s***', '_**%s**_', '*`%s`*'):
+                with self.subTest(word=word, mark=mark):
+                    self.assertTrue(self.unmet('- ' + mark % word + ' control two\n'))
+        for bullet in ('-', '*', '+', '1.', '12)'):
+            for mark in ('*%s*', '_%s_', '`%s`'):
+                with self.subTest(bullet=bullet, mark=mark):
+                    self.assertTrue(self.unmet(bullet + ' ' + mark % 'NOT MET' + ': no RED\n'))
+                    self.assertTrue(self.unmet('  ' + bullet + ' ' + mark % 'NOT MET' + '\n'))
+        # the met word, a failure word that does not start the item and a failure word with an underscore of its own are not unmet rows
+        for item in ('- *MET* control two', '- _MET_ control two', '- `MET` control two', '- the run was *not* skipped; nothing _failed_', '- control two: `FAIL` is expected',
+                     '- ERROR_CODE is documented', '- OWED_ITEMS: none', '- _ERROR_CODE_ is documented'):
+            with self.subTest(item=item):
+                self.assertFalse(self.unmet(item + '\n'))
 
     def test_the_evidence_of_a_met_row_never_reads_as_not_yet_due(self):
         for evidence in ('TBD field removed', 'WAITING room test passed', 'PENDING count was 0', 'PENDING rows: none', 'pending: none', 'pending (0)',
