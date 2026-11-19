@@ -77,9 +77,9 @@ eq "summary: S and Q results stay attached to their arm (a column swap swaps the
 eq "summary: a missing Q arm refuses (no smaller family)" '"refused"' "$(f "$ST" no_q)"
 eq "summary: scores that are not exactly the common cohort refuse" '"refused"' "$(f "$ST" mismatched)"
 eq "power: the n40 bounds reproduce the design table" "[0.4, 0.9] [10.7, 17.2] [26.8, 36.4] [46.5, 56.7] [64.8, 74.1] [32.7, 44.0]" \
-  "$(for i in 0 1 2 3 4 5; do f "$ST" "power.$i.n40"; done | paste -sd' ')"
+  "$(for i in 0 1 2 3 4 5; do f "$ST" "power.$i.n40"; done | paste -sd' ' -)"
 eq "power: the n36 bounds reproduce the design table" "[0.3, 0.8] [8.4, 14.3] [22.1, 31.5] [40.1, 50.6] [58.2, 67.9] [28.8, 38.8]" \
-  "$(for i in 0 1 2 3 4 5; do f "$ST" "power.$i.n36"; done | paste -sd' ')"
+  "$(for i in 0 1 2 3 4 5; do f "$ST" "power.$i.n36"; done | paste -sd' ' -)"
 
 R=$(d3 full); eq "D3: all fifteen candidates judged in five complete rounds, never replayed" '15 5 {"Q": 5, "S": 5, "V": 5} true' "$(f "$R" calls) $(f "$R" rounds) $(f "$R" applied) $(f "$R" distinct)"
 R=$(d3 quota-expire-after-7)
