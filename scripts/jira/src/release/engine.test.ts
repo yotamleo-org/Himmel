@@ -4272,6 +4272,17 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
       expect(out.lines).toEqual(staleLines(keys, f, row.id));
       expect(out.answer.get(keys[0])).toEqual({ missing: expect.stringContaining(`capped evidence selection changed: ${dir}`) });
     });
+
+    it('capped carry v2 the member check needs the pinned ledger folder itself: an alias of it is stale although every pinned file still reads (E17)', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f); const dir = pinned.ledgerDirOf(f.specsRoot); const moved = join(dirname(f.specsRoot), 'moved-ledgers');
+      const proof = JSON.parse(JSON.stringify(row.capped_carry));
+      for (const pin of proof.pins) if (typeof pin.path === 'string' && pin.path.startsWith(`${dir}/`)) pin.path = join(moved, pin.path.slice(dir.length + 1));
+      renameSync(dir, moved);
+      symlinkSync(moved, dir);
+      const out = specCheck(specEnv(), keys, null, { records: [{ ...row, release: 'R1', capped_carry: proof }] });
+      expect(out.lines).toEqual(staleLines(keys, f, row.id));
+      expect(out.answer.get(keys[0])).toEqual({ missing: expect.stringContaining(`capped evidence selection changed: ${dir}`) });
+    });
   });
 });
 
