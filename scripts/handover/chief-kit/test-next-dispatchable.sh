@@ -4390,6 +4390,55 @@ ow_u6c="$(ow_run --priority-pool-only --workers-from "$OW/u10/fleet-w.json")"
 has "9335 U6.ctl: a fleet whose doc ends WRAPPED prints the NEXT-TIER row" "$ow_u6c" "NEXT-TIER${TAB}HIMMEL-160"
 [ "$(ow_n "$ow_u6c" "^NEXT-TIER${TAB}")" -ge 1 ] && pass "9335 U6.ctl: the NEXT-TIER row form is a line that starts with NEXT-TIER and a tab" || fail "9335 U6.ctl: no line starts with NEXT-TIER and a tab in the control run"
 
+
+# --- 9335 E1 and E2: a named worker manifest that is missing or cannot be read is an owner unknown ---
+OW_FLEET_TAIL="withheld: RESUME, IN CI, STACKABLE, SERIES FAMILY, To Do, DESIGN, NEXT-TIER; reconcile: restore or pass a readable --workers-from manifest"
+
+# X1: a missing --workers-from manifest withholds the whole listing and says so
+ow_mirror x1
+ow_x1="$(ow_run --why --workers-from "$OW/no-such-fleet.json")"
+has "9335 X1: the line names the missing manifest, the withheld lists and the remedy" "$ow_x1" "# owner unknown: the fleet (manifest no-such-fleet.json missing); $OW_FLEET_TAIL"
+lacks "9335 X1: a missing manifest withholds the To Do row HIMMEL-90" "$ow_x1" "HIMMEL-90${TAB}"
+has "9335 X1: the drop reason is owner unknown" "$ow_x1" "# drop HIMMEL-90 owner unknown"
+ow_x1c="$(ow_run --why --workers-from "$OW/fleet-u4c.json")"
+has "9335 X1.ctl: with the manifest present HIMMEL-90 lists" "$ow_x1c" "LOCAL${TAB}HIMMEL-90${TAB}"
+
+# X5.i, X5.ii: an own manifest that cannot be read, or whose anchor the runtime refuses, is the same unknown
+mkdir -p "$OW/x5i" "$OW/x5ii"
+printf 'not json\n' > "$OW/x5i/fleet.json"
+ow_x5i="$(ow_run --why --workers-from "$OW/x5i/fleet.json")"
+has "9335 X5.i: a manifest that is not JSON prints the unreadable line" "$ow_x5i" "# owner unknown: the fleet (manifest fleet.json unreadable); $OW_FLEET_TAIL"
+lacks "9335 X5.i: a manifest that is not JSON withholds the To Do row HIMMEL-90" "$ow_x5i" "HIMMEL-90${TAB}"
+ow_doc "$OW/x5ii/HIMMEL-71-N14-own.md" "- 10:00 LIVE - started"
+mkfleet "$OW/x5ii/fleet.json" "N14:$OW/x5ii/HIMMEL-71-N14-own.md"
+printf '{"family":"F9335","attempts":{}}\n' > "$OW/x5ii/real-control.json"
+ln -s "$OW/x5ii/real-control.json" "$OW/x5ii/fleet-control.json"
+ow_x5ii="$(ow_run --why --workers-from "$OW/x5ii/fleet.json")"
+has "9335 X5.ii: an anchor that is a symlink prints the unreadable line" "$ow_x5ii" "# owner unknown: the fleet (manifest fleet.json unreadable); $OW_FLEET_TAIL"
+lacks "9335 X5.ii: an anchor that is a symlink withholds the To Do row HIMMEL-90" "$ow_x5ii" "HIMMEL-90${TAB}"
+mkdir -p "$OW/x5c"
+ow_doc "$OW/x5c/HIMMEL-71-N14-own.md" "- 10:00 LIVE - started"
+mkfleet "$OW/x5c/fleet.json" "N14:$OW/x5c/HIMMEL-71-N14-own.md"
+ow_x5c="$(ow_run --why --workers-from "$OW/x5c/fleet.json")"
+has "9335 X5.ctl: a readable manifest lists HIMMEL-90" "$ow_x5c" "LOCAL${TAB}HIMMEL-90${TAB}"
+lacks "9335 X5.ctl: a readable manifest prints no owner-unknown line" "$ow_x5c" "# owner unknown"
+
+# X5.h9: an own row whose doc path holds a NUL is E2 (the manifest's read raises ValueError), never a traceback
+mkdir -p "$OW/x5h9"
+printf '%s\n' '{"schema":1,"workers":[{"doc":"/x/HIMMEL-62-N9-\u0000.md","label":"N9"}]}' > "$OW/x5h9/fleet.json"
+ow_go2 --why --workers-from "$OW/x5h9/fleet.json"
+check "9335 X5.h9: a NUL in an own doc path: ND exits 0" "0" "$OW_RC"
+lacks "9335 X5.h9: a NUL in an own doc path: no traceback" "$OW_OUT" "Traceback"
+has "9335 X5.h9: a NUL in an own doc path prints the unreadable line for the manifest" "$OW_OUT" "# owner unknown: the fleet (manifest fleet.json unreadable); withheld:"
+lacks "9335 X5.h9: a NUL in an own doc path withholds the To Do row HIMMEL-90" "$OW_OUT" "HIMMEL-90${TAB}"
+
+# X1.h9c: a missing manifest whose name holds a line break and a row look-alike cannot forge a row
+OW_X1H9="$OW/no-such"$'\n'"LOCAL${TAB}HIMMEL-9"$'\n'"x.json"
+ow_go2 --why --workers-from "$OW_X1H9"
+check "9335 X1.h9c: exactly one owner-unknown line prints" "1" "$(ow_n "$OW_OUT" '^# owner unknown:')"
+has "9335 X1.h9c: the manifest name is escaped in the line" "$OW_OUT" "(manifest no-such\\nLOCAL\\t${KP}-9\\nx.json missing)"
+check "9335 X1.h9c: no output line is the forged row for the key HIMMEL-9" "0" "$(ow_forged "$OW_OUT")"
+
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
 real_hits="$(grep -rlF "$WORK" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"
