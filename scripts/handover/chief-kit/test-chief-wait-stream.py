@@ -941,6 +941,89 @@ echo 'HANDLED close-wrapped'
         self.assertEqual(len(self.wake_rows()), 1)
 
 
+class AckRows(StreamFixture):
+    """Acknowledgements against wake blocks that are damaged or that a rotation reaches, through a real arm."""
+
+    def wake(self, seq, kind, text=None):
+        if text is not None:
+            self.path(f'wake-{seq}').write_text(text)
+        return f'W\t{seq}\t{int(time.time())}\t77\t{kind}\t{self.path(f"wake-{seq}")}'
+
+    def log(self, *rows):
+        self.path('wakes').write_text(''.join(row + '\n' for row in rows))
+
+    def rows(self):
+        return [line.split('\t') for line in self.path('wakes').read_text().splitlines()]
+
+    def ack(self, seq, receipt='rcpt-1'):
+        done = subprocess.run([sys.executable, '-I', str(HERE / 'chief-wait-stream.py'), '--ack', str(self.inbox),
+                               '--ack', str(seq), '--receipt', receipt], capture_output=True, text=True, env=self.env)
+        self.assertEqual(done.returncode, 0, done.stderr)
+
+    def served(self, out):
+        """Waits until the arm has either recorded the acknowledgement of wake 1 or held it."""
+        self.until(lambda: 'kind=ack-stuck' in out.read_text() or ['K', '1'] in [row[:2] for row in self.rows()])
+
+    def check_the_ack_is_held(self, *rows):
+        self.log(*rows)
+        self.ack(1)
+        p, out = self.start()
+        self.served(out)
+        self.stop(p)
+        self.assertEqual([row[:2] for row in self.rows() if row[0] == 'K'], [], 'acknowledged with no readable block')
+        self.assertIn('kind=ack-stuck', out.read_text())
+        self.assertTrue(self.path('ack-1.json').exists(), 'the request is kept for the retry')
+
+    def test_an_ack_for_a_missing_owed_block_is_held(self):
+        self.check_the_ack_is_held(self.wake(1, 'owed-actions'))
+
+    def test_an_ack_for_an_owed_block_cut_before_its_bucket_is_held(self):
+        self.check_the_ack_is_held(self.wake(1, 'owed-actions', 'WAKE owed-actions chief-notify=a1,a2\n'))
+
+    def test_an_ack_for_a_block_of_another_kind_is_held(self):
+        self.check_the_ack_is_held(self.wake(1, 'owed-actions', 'WAKE telegram a message\n'))
+
+    def test_an_ack_for_a_missing_message_block_is_held(self):
+        self.check_the_ack_is_held(self.wake(1, 'telegram'))
+
+    def test_a_damaged_owed_list_is_held_for_retry(self):
+        self.check_the_ack_is_held(self.wake(1, 'owed-actions', 'WAKE owed-actions chief-notify=a1\nowed-bucket=/nonexistent-bucket\n'))
+        self.assertIn('owed list failed', self.path('ack-1.json.error').read_text())
+
+    def test_an_ack_for_a_readable_block_of_its_kind_is_recorded(self):
+        self.log(self.wake(1, 'telegram', 'WAKE telegram a message\n'))
+        self.ack(1)
+        p, out = self.start()
+        self.served(out)
+        self.stop(p)
+        self.assertEqual([row[:2] for row in self.rows() if row[0] == 'K'], [['K', '1']])
+        self.assertNotIn('ack-stuck', out.read_text())
+        self.assertFalse(self.path('ack-1.json').exists())
+
+    def test_rotation_keeps_what_a_pending_ack_needs(self):
+        self.env['CHIEF_WAIT_STREAM_KEEP'] = '2'
+        now = int(time.time())
+        self.log(*[self.wake(n, 'telegram', f'WAKE telegram message {n}\n') for n in (1, 2, 3)],
+                 f'D\t2\t{now}\trcpt-2', f'K\t2\t{now}\trcpt-2')
+        self.ack(1)
+        p, out = self.start(('--since', '0'))
+        self.served(out)
+        self.stop(p)
+        kept = [row[:2] for row in self.rows()]
+        self.assertNotIn('ack-stuck', out.read_text())
+        self.assertIn(['K', '1'], kept, 'the accepted ack names a wake the rotation dropped')
+        self.assertIn(['D', '2'], kept, 'a retained wake lost its delivery row')
+        self.assertIn(['K', '2'], kept, 'a retained wake lost its acknowledgement row')
+        # with the ack done nothing pins the wake: the next arm rotates it out with its rows
+        again, _ = self.start(('--since', '0'))
+        self.until(lambda: sum(row[0] == 'A' for row in self.rows()) >= 2)
+        self.stop(again)
+        kept = [row[:2] for row in self.rows()]
+        self.assertNotIn(['W', '1'], kept)
+        self.assertNotIn(['K', '1'], kept)
+        self.assertFalse(self.path('wake-1').exists())
+
+
 # Worker-event stand-in that keeps auto-go's exact-head audit rule: the first READY of a
 # (pr, head) records one GO-SENT row, a replay of the same pair records none, and a
 # cleanup event never records a GO. TEST_ROOT/refuse-cleanup makes cleanup refuse with the

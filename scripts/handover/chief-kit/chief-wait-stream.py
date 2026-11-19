@@ -360,12 +360,19 @@ class Supervisor:
         keep = max(1, int(os.getenv('CHIEF_WAIT_STREAM_KEEP', '200')))
         retained = wakes[-keep:]
         if len(wakes) > keep:
+            # A wake a pending ack request names is kept with the retained ones, and so are the D/K rows of kept wakes.
+            asked = {p.name[len(Path(self.base).name + 'ack-'):-len('.json')]
+                     for p in self.path('stream').parent.glob(Path(self.base).name + 'ack-*.json')}
+            kept = [r for r in wakes[:-keep] if r[1] in asked] + retained
+            seqs = {r[1] for r in kept}
             arms = {r[3] for r in retained}
             newest = next((r[1] for r in reversed(rows) if r[0] == 'A'), '')
-            rows = [r for r in rows if (r in retained or r[0] == 'A' and (r[1] in arms or r[1] == newest))]
+            rows = [r for r in rows if (r in kept or r[0] in ('D', 'K') and r[1] in seqs or
+                                        r[0] == 'A' and (r[1] in arms or r[1] == newest))]
             atomic(self.log, ''.join('\t'.join(r) + '\n' for r in rows))
-            for r in wakes[:-keep]:
-                Path(r[5]).unlink(missing_ok=True)
+            for r in wakes:
+                if r not in kept:
+                    Path(r[5]).unlink(missing_ok=True)
         oldest = int(retained[0][1]) if retained else 0
         if oldest and since < oldest - 1:
             self.emit(f'GAP since={since} oldest={oldest}')
@@ -487,6 +494,7 @@ class Supervisor:
     def acknowledge(self):
         rows = wake_rows(self.log)
         wakes = {r[1]: r[5] for r in rows if r[0] == 'W'}
+        kinds = {r[1]: r[4] for r in rows if r[0] == 'W'}
         delivered = {r[1] for r in rows if r[0] == 'D'}
         known = {r[1] for r in rows if r[0] == 'K'}
         for request in sorted(self.path('stream').parent.glob(Path(self.base).name + 'ack-*.json')):
@@ -522,9 +530,13 @@ class Supervisor:
                     self.append('D', seq, int(time.time()), receipt_id)
                     delivered.add(seq)
                 text = read(wakes[seq])
+                if not re.search(r'^WAKE ' + re.escape(kinds[seq]) + r'(?: |$)', text, re.M):
+                    raise ValueError('wake block missing or not of its kind; reconcile owed ledger')
                 ids = re.search(r'^WAKE owed-actions chief-notify=([^\n]+)', text, re.M)
                 bucket = re.search(r'^owed-bucket=(.+)$', text, re.M)
-                if ids and bucket:
+                if kinds[seq] == 'owed-actions':
+                    if not (ids and bucket):
+                        raise ValueError('owed wake block cut before its notify list or bucket; reconcile owed ledger')
                     result = subprocess.run(['bash', str(HERE / 'owe.sh'), 'list', '--all', '--json',
                                              '--bucket', bucket[1]], capture_output=True, text=True, timeout=10)
                     if result.returncode:
