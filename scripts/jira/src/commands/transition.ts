@@ -266,7 +266,7 @@ export function registerTransition(program: Command): void {
           const quote = (arg: string) => (/^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`);
           const again = ['node', process.argv[1] ?? 'jira', 'transition', key, status, ...(options.version ? [] : ['--no-version']),
             '--proof', options.proof!, '--proof-bucket', options.proofBucket!, '--proof-decision', options.proofDecision!].map(quote).join(' ');
-          console.error(`FAIL ${key} is now ${result.name} in Jira but validation ${options.proof} is NOT settled: ${why}\nNothing was moved back. Run it again: ${again}`);
+          console.error(`FAIL ${key} is now ${result.name} in Jira but validation ${options.proof} is NOT settled: ${why}\nNothing was moved back. Run it again: ${again}\nIf a tool with its own time limit runs it, give it 300000 ms or more: a slow read can take its whole budget in the check and again in the settle.`);
           process.exitCode = 1;
           return;
         }
