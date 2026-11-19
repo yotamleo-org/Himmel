@@ -1312,8 +1312,6 @@ function restoreAsAdd(verb: Verb, op: Op, governing: OperatorRow | undefined, ne
   return same ? { kind: 'add', from_v: null, to_v: op.to_v } : op;
 }
 
-// An operator ruling the governing operator decision postdates is the one that decision replaces, so the RM
-// need not name it. The checks after it still refuse when that decision does not cover the move.
 function replacedByGoverning(prior: RulingRow | undefined, governing: OperatorRow | undefined, rulings: RulingRow[]): boolean {
   if (prior?.authority.kind !== 'operator' || !governing) return false;
   return Date.parse(governing.ts) > Date.parse(rulings.find((r) => r.id === prior.id)?.ts ?? prior.ts);
