@@ -1674,7 +1674,7 @@ _ql_force_on_signal() {
     _ql_force_trap_reset "${_QL_FORCE_PREV:-}"
     # the claim is gone, so if the caller's own handler returns instead of exiting the release must stop at its next checkpoint, not carry on unguarded
     _QL_FORCE_ABORT="$code"
-    kill -s "$sig" "${BASHPID:-$$}"
+    sh -c 'kill -s "$1" "$PPID"' _ "$sig"
 }
 
 # _ql_force_on_exit -- free the claim, then run the EXIT action the caller had before the forced release replaced it, with the exit status it would have seen.
