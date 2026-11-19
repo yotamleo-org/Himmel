@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 
 const SUT = join(dirname(fileURLToPath(import.meta.url)), 'openai-api.mjs');
 const KEY = 'sk-test-dummy-00000000000000000000';
-const MODEL = 'gpt-5-mini'; // 0.25 / 0.025 / 2 USD per 1M tokens
+const MODEL = 'gpt-5-mini';
 const T = mkdtempSync(join(tmpdir(), 'openai-api-'));
 process.on('exit', () => rmSync(T, { recursive: true, force: true }));
 
@@ -65,8 +65,9 @@ function completed(text = 'hello from the stub', usage) {
       output_tokens_details: { reasoning_tokens: 120 } },
   };
 }
-// 800 uncached * 0.25 + 200 cached * 0.025 + 500 out * 2 = 200 + 5 + 1000 = 1205 micro-dollars
-const COST = '0.001205';
+const PRICES = JSON.parse(readFileSync(join(dirname(SUT), 'openai-prices.json'), 'utf8')).models[MODEL];
+const NANO = { input: PRICES.input * 1000, cached: PRICES.cached_input * 1000, output: PRICES.output * 1000 };
+const COST = `0.${String(Math.ceil((800 * NANO.input + 200 * NANO.cached + 500 * NANO.output) / 1000)).padStart(6, '0')}`;
 
 const args = (extra = []) => ['-p', 'say hello', '--model', MODEL, '--max-budget-usd', '0.01', ...extra];
 
@@ -153,8 +154,8 @@ test('success prints the text, bounds the request and settles the exact cost', (
   assert.equal(q.body.input, 'say hello');
   assert.deepEqual(q.body.reasoning, { effort: 'low' });
   assert.equal('instructions' in q.body, false);
-  // budget 0.01 = 10,000,000 nano-dollars; input bound (9 + 256 bytes) costs 265 * 250; the rest buys output at 2000 each
-  assert.equal(q.body.max_output_tokens, Math.floor((10000000 - 265 * 250) / 2000));
+  const budgetNano = 0.01 * 1e9, inputBound = Buffer.byteLength('say hello') + 256;
+  assert.equal(q.body.max_output_tokens, Math.floor((budgetNano - inputBound * NANO.input) / NANO.output));
   const job = onlyJob(f.readLedger());
   assert.equal(job.status, 'settled');
   assert.equal(job.actual_usd, COST);

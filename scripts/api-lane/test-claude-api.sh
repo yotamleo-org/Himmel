@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # API launcher fixtures, dummy secrets and a stub claude only. Also runs the
-# shift-spend readers (shift-spend.test.mjs): vendor-doc response fixtures, no live call; and the OpenAI launcher (openai-api.test.mjs), a local stub server only.
+# shift-spend readers (shift-spend.test.mjs): vendor-doc response fixtures, no live call.
 # Platform guard: bash + node on local files; Linux verified.
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"

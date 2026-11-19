@@ -99,8 +99,7 @@ function readKey(dir, letter) {
   return m[1];
 }
 
-// USD per 1M tokens -> nano-dollars per token (price * 1000), an exact integer for every table entry.
-function nano(price) {
+function usdPerMillionToNanoPerToken(price) {
   const n = Math.round(price * 1000);
   if (!Number.isFinite(price) || price < 0 || Math.abs(n - price * 1000) > 1e-6) refuse('price table entry is malformed');
   return BigInt(n);
@@ -110,7 +109,7 @@ function priceOf(model) {
   try { table = JSON.parse(readFileSync(join(HERE, 'openai-prices.json'), 'utf8')); } catch { refuse('price table is unreadable'); }
   if (!table?.models || !Object.hasOwn(table.models, model)) refuse(`no price for model ${model}`);
   const p = table.models[model];
-  return { input: nano(p.input), cached: nano(p.cached_input), output: nano(p.output) };
+  return { input: usdPerMillionToNanoPerToken(p.input), cached: usdPerMillionToNanoPerToken(p.cached_input), output: usdPerMillionToNanoPerToken(p.output) };
 }
 
 const microText = (m) => `${m / 1000000n}.${String(m % 1000000n).padStart(6, '0')}`;
@@ -198,7 +197,7 @@ async function main() {
   } finally { clearTimeout(timer); }
 
   let data = null;
-  try { data = JSON.parse(text); } catch { /* not JSON */ }
+  try { data = JSON.parse(text); } catch { data = null; }
 
   if (status < 200 || status >= 300) {
     const code = data?.error?.code;
