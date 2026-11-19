@@ -1485,22 +1485,22 @@ exit 1''')
         pattern = re.compile(r'''(?:\bruntime|fleet_runtime\.py)["']?\s+["']?settle\b''')
         allowed = {ENTRYPOINTS / 'scripts/lib/fleet_runtime.py', ENTRYPOINTS / 'scripts/lib/test-fleet-runtime.py'}
         callers, hints = [], []
-        for top in ('scripts', 'marketplace', 'plugins'):
-            for base, dirs, files in os.walk(ENTRYPOINTS / top):
-                dirs[:] = [d for d in dirs if d not in ('node_modules', '.git', 'dist')]
-                for name in files:
-                    path = Path(base) / name
-                    if path in allowed or path.is_symlink() or path.stat().st_size > 4_000_000:
-                        continue
-                    try:
-                        text = path.read_text(errors='ignore')
-                    except OSError:
-                        continue
-                    if 'settle_hint' in text:
-                        hints.append(str(path))
-                    for number, line in enumerate(text.splitlines(), 1):
-                        if pattern.search(line) and not (path.name == 'fleet-manifest.sh' and line.lstrip().startswith('#')):
-                            callers.append('%s:%d' % (path, number))
+        # Sources only: the files git lists (tracked, or untracked and not ignored). A compiled or cached file that a run writes into the tree is ignored, so it is never read.
+        listed = subprocess.run(['git', '-C', str(ENTRYPOINTS), 'ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', 'scripts', 'marketplace', 'plugins'],
+                                capture_output=True, check=True).stdout.decode().split('\0')
+        for rel in filter(None, listed):
+            path = ENTRYPOINTS / rel
+            if path in allowed or {'node_modules', '.git', 'dist'} & set(Path(rel).parts) or path.is_symlink() or not path.is_file() or path.stat().st_size > 4_000_000:
+                continue
+            try:
+                text = path.read_text(errors='ignore')
+            except OSError:
+                continue
+            if 'settle_hint' in text:
+                hints.append(str(path))
+            for number, line in enumerate(text.splitlines(), 1):
+                if pattern.search(line) and not (path.name == 'fleet-manifest.sh' and line.lstrip().startswith('#')):
+                    callers.append('%s:%d' % (path, number))
         self.assertEqual(callers, [], 'nothing calls the settle verb: it is typed by the chief or the operator')
         self.assertEqual(hints, [], 'the hint is text for the chief: no code reads it')
         header = (ENTRYPOINTS / 'scripts/handover/chief-kit/fleet-manifest.sh').read_text().split('\n', 120)[:120]
