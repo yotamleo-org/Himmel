@@ -244,6 +244,13 @@ commands:
                           line. "It is wired" is a different claim from "it is
                           recording", and both are different from "the rate can
                           be trusted"
+  bridge enable [--dry-run]
+                          turn the Telegram bridge on without the install wizard:
+                          sets bridge.enabled in ~/.himmel/config.json (written
+                          only when it is not already true) and installs
+                          persistence (a systemd user unit + linger on Linux, a
+                          LaunchAgent on macOS). Prints one JSON line
+                          {ok, actions, detail}; exit 0 when ok
   deps status             read-only version/presence check of the declared
                           toolchain (scripts/install/deps.json)
   deps ensure             install MISSING declared toolchain deps via their
@@ -367,6 +374,7 @@ const ALLOWED_OPTIONS = {
   // ignore them); the option-validation pass keys on the subcommand only, so
   // both are admitted here and cmdScope ignores them on the read verbs.
   scope: ['yes', 'dryRun'],
+  bridge: ['dryRun'],
   // gaps owns its OWN grammar (from-profile
   // reused generically, --preset new, --json reused generically). A fresh
   // subcommand, never a `status` mode (see the function's own header
@@ -443,6 +451,7 @@ function parseArgs(argv) {
     yes: false,        // ensure/scope/deps ensure/deps upgrade: --yes
     scopeVerb: null,   // scope: 'set' | 'get' | 'status' (null = none given)
     trustVerb: null,   // trust: 'on' | 'off' | 'status' (null = none given)
+    bridgeVerb: null,  // bridge: 'enable' (null = none given)
     targetScope: null, // scope set: 'project' | 'user' (null = none given)
     depsVerb: null,    // deps: status|ensure|upgrade (consumed positionally, see the 'deps' case)
     afkVerb: null,     // approve/deny: approve|deny|status (consumed positionally, see the 'approve' case)
@@ -570,6 +579,26 @@ function parseArgs(argv) {
       // not ship.
       case 'trust':
         if (!setSubcommand('trust')) return args;
+        break;
+      // `bridge enable` turns the Telegram bridge on without the install wizard.
+      case 'bridge':
+        if (!setSubcommand('bridge')) return args;
+        break;
+      case 'enable':
+        // ONLY meaningful under `bridge`; anywhere else it is the unknown-argument error.
+        if (args.subcommand !== 'bridge') {
+          console.error(`himmelctl: unknown argument: ${a}`);
+          console.error("Run 'himmelctl --help' for usage.");
+          process.exitCode = 2;
+          return args;
+        }
+        if (args.bridgeVerb !== null) {
+          console.error("himmelctl: bridge takes exactly one verb (enable)");
+          console.error("Run 'himmelctl --help' for usage.");
+          process.exitCode = 2;
+          return args;
+        }
+        args.bridgeVerb = 'enable';
         break;
       case 'on':
       case 'off':
@@ -3944,7 +3973,11 @@ function currentOsUser() {
 // implied. Any other platform: never claim success, report still-manual
 // instead.
 function attemptBridgePersistence({ dryRun }) {
-  if (process.platform === 'linux') {
+  const platform = bridgePlatform();
+  if (platform === 'darwin') {
+    return bridgePersistenceLib.installLaunchAgent({ repoRoot: repoRoot(), dryRun: dryRun });
+  }
+  if (platform === 'linux') {
     const unit = bridgePersistenceLib.installSystemdUnit({ repoRoot: repoRoot(), dryRun: dryRun });
     if (!unit.ok) return unit;
     const user = currentOsUser();
@@ -3968,7 +4001,55 @@ function attemptBridgePersistence({ dryRun }) {
       detail: `unit installed and RUNNING (${unit.detail}); linger NOT enabled — ${linger.detail}. The bridge will stop at the next logout. Remediation: loginctl enable-linger ${user || '<user>'}`,
     };
   }
-  return { ok: false, actions: [], detail: `bridge persistence has no installer for platform '${process.platform}' — install/enable it manually (see docs/setup)` };
+  return { ok: false, actions: [], detail: `bridge persistence has no installer for platform '${platform}' — install/enable it manually (see docs/setup)` };
+}
+
+// The platform bridge persistence installs for. HIMMELCTL_PLATFORM overrides it so a hermetic test
+// can drive the macOS half on Linux (same seam class as HIMMELCTL_SYSTEMD_USER_UNIT_DIR).
+function bridgePlatform() {
+  return process.env.HIMMELCTL_PLATFORM || process.platform;
+}
+
+// `himmelctl bridge enable [--dry-run]`: turn the bridge on without the install wizard. It does what the
+// wizard's apply does for a bridge that is wanted: bridge.enabled=true in ~/.himmel/config.json (written
+// only when it is not already true, so a second run changes nothing), then the same
+// attemptBridgePersistence (systemd unit + linger on Linux, a LaunchAgent on macOS). Prints one JSON line,
+// {ok, actions, detail}; exit 0 when ok.
+function bridgeEnable({ dryRun }) {
+  let cfg;
+  try {
+    cfg = lunaConfigLib.inspect();
+  } catch (e) {
+    return { ok: false, actions: [], detail: `cannot read ~/.himmel/config.json: ${e && e.message ? e.message : e}` };
+  }
+  const actions = [];
+  if (!cfg.doc.bridge.enabled) {
+    actions.push('write bridge.enabled=true to ~/.himmel/config.json');
+    if (!dryRun) {
+      cfg.doc.bridge.enabled = true;
+      try {
+        lunaConfigLib.save(cfg.doc);
+      } catch (e) {
+        // a config the document could not record must not get machine state behind it
+        return { ok: false, actions: [], detail: `could not save ~/.himmel/config.json (${e && e.message ? e.message : e}); persistence was NOT installed` };
+      }
+    }
+  }
+  let persistence;
+  try {
+    persistence = attemptBridgePersistence({ dryRun: dryRun });
+  } catch (e) {
+    persistence = { ok: false, actions: [], detail: `bridge persistence attempt threw: ${e && e.message ? e.message : e}` };
+  }
+  const result = { ok: persistence.ok, actions: actions.concat(persistence.actions || []), detail: persistence.detail };
+  if (persistence.partial) result.partial = true;
+  return result;
+}
+
+function cmdBridge(args) {
+  const result = bridgeEnable({ dryRun: args.dryRun });
+  console.log(JSON.stringify(result));
+  return result.ok ? 0 : 1;
 }
 
 // universal now (the old role==='adopter' gate died with role
@@ -8819,6 +8900,14 @@ async function main() {
   }
   if (args.subcommand === 'trust') {
     return await cmdTrust(args);
+  }
+  if (args.subcommand === 'bridge') {
+    if (args.bridgeVerb !== 'enable') {
+      console.error("himmelctl: 'bridge' requires a verb: enable");
+      console.error("Run 'himmelctl --help' for usage.");
+      return 2;
+    }
+    return await provSession(() => cmdBridge(args));
   }
   if (args.subcommand === 'deps') {
     return await cmdDeps(args);

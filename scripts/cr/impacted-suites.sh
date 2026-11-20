@@ -160,7 +160,7 @@ usage() {
 runner_for() {
     local path="$1" rel
     case "$path" in
-        scripts/hooks/*.test.mjs|scripts/lib/*.test.mjs|scripts/lanes/tests/*.test.mjs|scripts/trust/tests/*.test.mjs|scripts/where-are-we/tests/*.test.mjs|scripts/lessons/tests/*.test.mjs|scripts/op-env-parity.test.mjs|scripts/observability/*.test.mjs)
+        scripts/hooks/*.test.mjs|scripts/lib/*.test.mjs|scripts/lanes/tests/*.test.mjs|scripts/trust/tests/*.test.mjs|scripts/where-are-we/tests/*.test.mjs|scripts/lessons/tests/*.test.mjs|scripts/op-env-parity.test.mjs|scripts/observability/*.test.mjs|scripts/himmelctl/test/*.test.js)
             printf 'node --test %q\n' "$path" ;;
         scripts/observability/*.test.ts)
             printf 'bun test %q --dots\n' "$path" ;;
@@ -231,6 +231,7 @@ telegram-himmel|bun-test|marketplace/plugins/telegram-himmel && bun install
 where-are-we|node-test|scripts/where-are-we/tests/*.test.mjs
 lessons|node-test|scripts/lessons/tests/*.test.mjs
 op-env-observability-mjs|node-test|"scripts/observability/*.test.mjs"
+himmelctl|node-test|scripts/himmelctl/test/*.test.js
 observability|bun-test|scripts/observability --path-ignore-patterns=
 EOF
 }

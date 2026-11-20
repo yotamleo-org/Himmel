@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Test shim for id: answers 0 for `id -u` when $RST/id_root exists, otherwise the real id.
+if [ -n "${RST:-}" ] && [ -f "$RST/id_root" ] && [ "${1:-}" = "-u" ]; then
+    echo 0
+    exit 0
+fi
+exec /usr/bin/id "$@"

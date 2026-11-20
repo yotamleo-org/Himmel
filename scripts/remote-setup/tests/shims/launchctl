@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Test shim for launchctl. A loaded job is $RST/units/<label>.loaded; calls go to $RST/units.log.
+RST=${RST:?RST must point at the test dir}
+printf 'launchctl %s\n' "$*" >> "$RST/units.log"
+mkdir -p "$RST/units"
+verb=${1:-}
+case "$verb" in
+    print)
+        label=${2##*/}
+        [ -f "$RST/units/$label.loaded" ] && exit 0
+        exit 113
+        ;;
+    bootout)
+        label=${2##*/}
+        rm -f "$RST/units/$label.loaded"
+        exit 0
+        ;;
+    bootstrap)
+        plist=${3:-}
+        label=$(basename "$plist" .plist)
+        [ -f "$RST/units/$label.startfail" ] && exit 5
+        : > "$RST/units/$label.loaded"
+        exit 0
+        ;;
+    *)
+        exit 0
+        ;;
+esac

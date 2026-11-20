@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- launchd agent for the Telegram bun bridge: macOS persistence, the counterpart of
+     scripts/telegram/systemd/telegram-bridge.service. Installed to
+     ~/Library/LaunchAgents/com.himmel.telegram-bridge.plist by scripts/himmelctl/lib/bridge-persistence.js
+     (installLaunchAgent), which replaces @HIMMEL_REPO@ and @HOME@ with absolute paths. Do not edit an
+     installed copy by hand; re-run `himmelctl bridge enable` instead.
+     restart-bridge.sh run takes the launcher lock, sweeps stale processes of this instance, then execs the
+     supervisor in the foreground, so launchd tracks the supervisor itself. KeepAlive restarts it after a
+     failed exit, at most once per ThrottleInterval. Unlike the systemd unit there is no start-limit burst
+     here, so a bridge that keeps failing (bad token) keeps retrying every 10 seconds until it is booted out. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.himmel.telegram-bridge</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>@HIMMEL_REPO@/scripts/telegram/restart-bridge.sh</string>
+        <string>run</string>
+        <string>--repo</string>
+        <string>@HIMMEL_REPO@</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>@HIMMEL_REPO@/scripts/telegram</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>@HOME@/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HIMMEL_REPO</key>
+        <string>@HIMMEL_REPO@</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <key>StandardOutPath</key>
+    <string>@HOME@/Library/Logs/himmel-telegram-bridge.log</string>
+    <key>StandardErrorPath</key>
+    <string>@HOME@/Library/Logs/himmel-telegram-bridge.log</string>
+</dict>
+</plist>

@@ -1781,6 +1781,8 @@ Configure in Claude Code settings (`~/.claude/settings.json`):
 
 > **Skip** if you don't use the Telegram bridge for sending messages to Claude. This is operator-specific infrastructure; it is not required for any core himmel workflow.
 
+> **Shorter path:** [remote-setup.md](remote-setup.md#part-1) sets up the token, the pairing and the bridge with one helper command and no ids to type. The manual steps below still work.
+
 `scripts/setup.sh` step `[7/8]` runs
 `scripts/setup/onboard-telegram.sh`: **scaffold-only**, also safe to
 run standalone. It:
