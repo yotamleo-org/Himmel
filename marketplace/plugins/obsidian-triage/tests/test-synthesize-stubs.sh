@@ -652,6 +652,33 @@ mkdir "$tmp15/probe"
 carried15="$(NODE_OPTIONS="--title=carried-setting" run_hiding "gone.md" -e 'const fs=require("fs"),p=require("path"),d=process.argv[1]; fs.writeFileSync(p.join(d,"gone.md"),"x"); fs.writeFileSync(p.join(d,"kept.md"),"x"); process.stdout.write(process.title+" "+fs.readdirSync(d).sort().join(","))' "$tmp15/probe" 2>&1 | tail -n 1)"
 assert "a setting passed in survives and the preload still hides the file" "carried-setting kept.md" "$carried15"
 
+echo "Test group 16: an option that takes a value, given none or followed by another option, is refused and writes nothing"
+tmp16="$(mktemp -d -t synth16.XXXXXX)" || exit 1
+trap 'rm -rf "$tmp" "$tmp4" "$tmp5" "$tmp5b" "$tmp6" "$tmp6b" "$tmp7" "$tmp8" "$tmp9" "$tmp10" "$tmp11" "$tmp12" "$tmp13" "$tmp14" "$tmp15" "$tmp16"' EXIT
+V16="$tmp16/vault"
+EV16="$V16/Clippings/_evidence"
+mkdir -p "$EV16" "$V16/30-Resources/Concepts" "$tmp16/cwd"
+mkclip5 "$EV16" arg-1.md "Arg One" "https://arg-one.com/x" "arg-topic"
+mkclip5 "$EV16" arg-2.md "Arg Two" "https://arg-two.org/x" "arg-topic"
+cp -a "$V16" "$tmp16/control"
+whole_hash16() { ( cd "$1" && find . | LC_ALL=C sort; find . -type f -exec cksum {} + | LC_ALL=C sort ) | cksum; }
+refused16() {
+  local label="$1" rc hv hc
+  shift
+  hv="$(whole_hash16 "$V16")"; hc="$(whole_hash16 "$tmp16/cwd")"
+  ( cd "$tmp16/cwd" && node "$TOOL" "$V16" "$@" >"$tmp16/out" 2>"$tmp16/err" ); rc=$?
+  assert "$label: exit 1, a usage line, the vault and the working directory untouched" "1 1 same same" \
+    "$rc $(grep -c 'usage: synthesize-stubs.mjs' "$tmp16/err") $([ "$hv" = "$(whole_hash16 "$V16")" ] && echo same || echo changed) $([ "$hc" = "$(whole_hash16 "$tmp16/cwd")" ] && echo same || echo changed)"
+}
+refused16 "--ledger with no value" --apply --ledger
+refused16 "--ledger followed by another option" --ledger --apply
+refused16 "--revert with no value" --revert
+refused16 "--revert followed by another option" --revert --dry-run
+refused16 "--ledger given an empty value" --apply --ledger ""
+assert "control: a value given for each option is still taken (apply with --ledger)" "yes" "$(node "$TOOL" "$tmp16/control" --apply --ledger "$tmp16/own.jsonl" >/dev/null 2>&1; [ -f "$tmp16/own.jsonl" ] && [ -f "$tmp16/control/30-Resources/Concepts/Arg Topic.md" ] && echo yes || echo no)"
+node "$TOOL" "$tmp16/control" --revert "$tmp16/own.jsonl" >/dev/null 2>&1
+assert "control: and --revert <ledger> still undoes it" "no" "$([ -e "$tmp16/control/30-Resources/Concepts/Arg Topic.md" ] && echo yes || echo no)"
+
 # ── summary ──────────────────────────────────────────────────────────────────
 echo ""
 echo "test-synthesize-stubs: $pass passed, $fail failed"

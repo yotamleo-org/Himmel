@@ -43,6 +43,17 @@ const err = (s) => process.stderr.write(s + "\n");
 function die(code, msg) { err(`${SELF}: ${msg}`); process.exit(code); }
 
 // ── args ─────────────────────────────────────────────────────────────────────
+const USAGE = "usage: synthesize-stubs.mjs <vault> [--dry-run|--apply|--revert <ledger>]";
+
+function valueOf(argv, i, flag) {
+  const v = argv[i + 1];
+  if (v === undefined || v === "" || v.startsWith("--")) {
+    err(`${SELF}: ${flag} needs a value`);
+    die(1, USAGE);
+  }
+  return v;
+}
+
 function parseArgs(argv) {
   const a = { mode: "dry-run", vault: null, ledger: null, revertPath: null, telegramDigest: true, limit: 0 };
   const rest = [];
@@ -50,8 +61,8 @@ function parseArgs(argv) {
     const t = argv[i];
     if (t === "--dry-run") a.mode = "dry-run";
     else if (t === "--apply") a.mode = "apply";
-    else if (t === "--revert") { a.mode = "revert"; a.revertPath = argv[++i]; }
-    else if (t === "--ledger") a.ledger = argv[++i];
+    else if (t === "--revert") { a.mode = "revert"; a.revertPath = valueOf(argv, i, t); i++; }
+    else if (t === "--ledger") { a.ledger = valueOf(argv, i, t); i++; }
     else if (t === "--no-telegram-digest") a.telegramDigest = false;
     else if (t === "--limit") {
       const v = argv[++i];
@@ -532,7 +543,7 @@ function runRevert(vault, revertPath) {
 
 // ── main ─────────────────────────────────────────────────────────────────────
 const a = parseArgs(process.argv.slice(2));
-if (!a.vault && a.mode !== "revert") die(2, "usage: synthesize-stubs.mjs <vault> [--dry-run|--apply|--revert <ledger>]");
+if (!a.vault && a.mode !== "revert") die(2, USAGE);
 if (a.mode === "revert") {
   if (!a.vault) die(2, "revert needs <vault> and --revert <ledger>");
   runRevert(a.vault, a.revertPath);

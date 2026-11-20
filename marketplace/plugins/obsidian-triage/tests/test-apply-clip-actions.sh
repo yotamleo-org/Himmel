@@ -443,6 +443,26 @@ node "$APPLY" --vault "$A" --date "$D" --revert "$tmp/none.jsonl" >/dev/null 2>&
 printf '{"action":"fold","map":"../escape.md","map_sha256_before":"a","map_sha256":"b","at":0,"appended":"x"}\n' > "$tmp/evil.jsonl"
 node "$APPLY" --vault "$A" --revert "$tmp/evil.jsonl" >/dev/null 2>&1; assert "a ledger path escaping the vault is refused (exit 3)" "3" "$?"
 
+echo "Test group 7b: an option that takes a value, given none or followed by another option, is refused and writes nothing"
+V7="$tmp/args-vault"; cp -R "$P" "$V7"
+mkdir -p "$tmp/args-cwd"
+whole_hash() { ( cd "$1" && find . | LC_ALL=C sort; find . -type f -exec cksum {} + | LC_ALL=C sort ) | cksum; }
+refused_untouched() {
+    local label="$1" rc hv hc
+    shift
+    hv="$(whole_hash "$V7")"; hc="$(whole_hash "$tmp/args-cwd")"
+    ( cd "$tmp/args-cwd" && node "$APPLY" --vault "$V7" "$@" >"$tmp/args.out" 2>"$tmp/args.err" ); rc=$?
+    assert "$label: exit 1, a usage line, the vault and the working directory untouched" "1 1 same same" \
+        "$rc $(grep -c 'usage: apply-clip-actions.mjs' "$tmp/args.err") $([ "$hv" = "$(whole_hash "$V7")" ] && echo same || echo changed) $([ "$hc" = "$(whole_hash "$tmp/args-cwd")" ] && echo same || echo changed)"
+}
+refused_untouched "--date with no value" --apply --date
+refused_untouched "--date followed by another option" --date --apply
+refused_untouched "--ledger with no value" --apply --ledger
+refused_untouched "--ledger followed by another option" --ledger --apply
+refused_untouched "--revert with no value" --revert
+refused_untouched "--revert followed by another option" --revert --apply
+refused_untouched "--date given an empty value" --apply --date ""
+
 echo
 echo "apply-clip-actions: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
