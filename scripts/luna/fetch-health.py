@@ -451,6 +451,71 @@ def probe_jina_reader(env: dict[str, str], http: Callable[..., HttpResult]) -> P
     return classify_http(result, auth_required=False, valid_body=valid)
 
 
+# Hosts the harvest's article fetch leaves to their own enrichers (X, Instagram,
+# github, YouTube): a partial clip from one of them is not a stuck article.
+ARTICLE_FETCH_SKIP_HOSTS = {
+    "x.com", "twitter.com", "mobile.twitter.com", "instagram.com", "github.com",
+    "youtube.com", "m.youtube.com", "youtu.be",
+}
+ARTICLE_RETRY_MAX_AGE_DAYS = 2
+
+
+def _clip_frontmatter(path: Path) -> dict[str, str]:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return {}
+    end = text.find("\n---", 4) if text.startswith("---\n") else -1
+    if end < 0:
+        return {}
+    fm = {}
+    for line in text[4:end].splitlines():
+        m = re.match(r"^([A-Za-z0-9_]+):\s*(.*)$", line)
+        if m:
+            fm[m.group(1)] = m.group(2).strip().strip('"')
+    return fm
+
+
+def probe_harvest_article_fetch(env: dict[str, str], today: datetime | None = None) -> ProbeResult:
+    """The routes can all be healthy while the harvest never calls them: this
+    fails when a thin article clip sits partial and nothing has tried it for
+    more than ARTICLE_RETRY_MAX_AGE_DAYS days. A clip the harvest filled, one it
+    gave up on (needs-attention) and a vault with no Clippings/ do not count."""
+    vault = Path((env.get("OBSIDIAN_VAULT_PATH") or "").strip() or resolve_home(env) / "Documents" / "luna")
+    clippings = vault / "Clippings"
+    if not clippings.is_dir():
+        return ProbeResult("ok", "no Clippings folder; nothing to check")
+    day = (today or utc_now()).date()
+    stuck: list[tuple[str, str]] = []
+    waiting = 0
+    for path in sorted(clippings.rglob("*.md")):
+        if any(part in ("_done", "_synthesis", "_rejected", "_media") for part in path.parts):
+            continue
+        fm = _clip_frontmatter(path)
+        if fm.get("harvest_status") != "partial" or fm.get("harvest_flag") != "thin-body":
+            continue
+        if fm.get("harvest_needs_attention") == "true":
+            continue
+        host = (urllib.parse.urlparse(fm.get("source", "")).hostname or "").lower().removeprefix("www.")
+        if not host or host in ARTICLE_FETCH_SKIP_HOSTS or host.endswith(".instagram.com"):
+            continue
+        waiting += 1
+        try:
+            last = datetime.strptime(fm["harvest_defer_last"], "%Y-%m-%d").date()
+        except (KeyError, ValueError):
+            last = None
+        if last is None or (day - last).days > ARTICLE_RETRY_MAX_AGE_DAYS:
+            stuck.append((last.isoformat() if last else "", path.name))  # "" sorts first: never tried
+    if stuck:
+        oldest = min(stuck)
+        return ProbeResult(
+            "transport-fail",
+            f"{len(stuck)} thin article clip(s) partial and not tried for over {ARTICLE_RETRY_MAX_AGE_DAYS} days "
+            f"(oldest: {oldest[1]}, last tried {oldest[0] or 'never'}); the harvest is not fetching them",
+        )
+    return ProbeResult("ok", f"{waiting} thin article clip(s) partial, all tried within {ARTICLE_RETRY_MAX_AGE_DAYS} days")
+
+
 SCRAPLING_TIMEOUT_SECONDS = 120  # the helper's 60 s page load plus browser start-up
 IG_SCRAPLING_HELPER = Path("marketplace/plugins/obsidian-triage/tools/ig-scrapling-media.py")
 
@@ -698,6 +763,7 @@ def build_probe_registry(
         "bitbucket": lambda: probe_bitbucket(effective, http),
         "firecrawl": lambda: probe_firecrawl(effective, http),
         "jina-reader": lambda: probe_jina_reader(effective, http),
+        "harvest-article-fetch": lambda: probe_harvest_article_fetch(effective),
     }
     for source in IG_PROBE_SOURCES:
         registry[source] = (lambda s, p: lambda: guarded_instagram_probe(s, effective, p))(source, registry[source])

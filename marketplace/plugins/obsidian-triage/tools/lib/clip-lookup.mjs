@@ -116,6 +116,21 @@ const PLACEHOLDER_LINE = (l) => {
 // article/research content sections (tweet delegates to isThinTweetBody)
 const ARTICLE_SECTIONS = ["## Highlights", "## Summary", "## Key Points", "## Core Argument", "## Key Evidence"];
 
+// The summary triage writes when it had no page text carries this marker
+// (triage-clips.md; usually first, sometimes after a short lead-in); the section
+// describes the URL and is never captured source text.
+const URL_ONLY_MARKER = "Inferred from the source URL only";
+
+/** True when the `## Summary` heading at lines[at] has the marker anywhere in its section. */
+function isUrlOnlySummary(lines, at) {
+  if (lines[at].trim() !== "## Summary") return false;
+  for (let j = at + 1; j < lines.length; j++) {
+    if (/^#{1,6}\s/.test(lines[j].trim())) break;
+    if (lines[j].includes(URL_ONLY_MARKER)) return true;
+  }
+  return false;
+}
+
 export function isThinClipBody(body, type, source) {
   if (!body) return true;
   // Source-host override (host beats type) — spec §7. A legacy
@@ -132,6 +147,7 @@ export function isThinClipBody(body, type, source) {
   const lines = main.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     if (ARTICLE_SECTIONS.includes(lines[i].trim())) {
+      if (isUrlOnlySummary(lines, i)) continue;         // triage's guess from the URL, not source text
       for (let j = i + 1; j < lines.length; j++) {
         if (/^#{1,6}\s/.test(lines[j].trim())) break;   // next heading
         if (!PLACEHOLDER_LINE(lines[j])) return false;  // real content found

@@ -375,8 +375,9 @@ the vault **first** — the harvest/clipper pipeline has usually already capture
 the full clip body — instead of live-fetching. The priority order:
 
 1. **Vault clip, enriched** → read it; stop, no network.
-2. **Vault clip, thin** (skeleton/placeholder body) → enrich it (fxtwitter for X;
-   firecrawl for articles when enabled+gated), then read.
+2. **Vault clip, thin** (skeleton/placeholder body, or only a summary triage wrote
+   from the URL) → enrich it (fxtwitter for X; the free fetch rungs for articles,
+   plus firecrawl when enabled+gated), then read.
 3. **No clip** → live fetch as a last resort: `fxtwitter-enrich.mjs`
    (api.fxtwitter.com) for X, WebFetch for articles, `luna-ingest` for repos.
 4. **Never Grok.** `/x-read`'s x.ai path is dead (no credits) and is never called.
@@ -387,8 +388,9 @@ enriched)?"* — a filesystem-only canonical-URL/status-id match plus a per-type
 `isThinClipBody` thinness predicate. `telegram-clip.mjs` (`alreadyFiledByUrl`)
 and `dedup-sweep.mjs` (`indexVault`) derive their URL key from it, and
 `harvest-clips` shells out to `is-thin-cli.mjs` so a thin article clip on a
-default machine is marked `harvest_status: partial` + `harvest_flag: thin-body`
-rather than `ok` with an empty body. No vault / no clip degrades silently to
+default machine is fetched through the free rungs, and one the fetch could not
+fill is marked `harvest_status: partial` + `harvest_flag: thin-body` and retried
+on the next runs (also from `_evidence/`), never `ok` with an empty body. No vault / no clip degrades silently to
 live fetch (adopter-safe).
 
 **YouTube.** A YouTube URL, or any "watch / summarize this video" ask, goes to `/watch-youtube <url> [--visual]` (`tools/yt-watch.py`): Scrapling metadata + yt-dlp transcript from `yt-scrapling-meta.py`, plus with `--visual` a ≤720p yt-dlp download and ffmpeg scene frames (`-fps_mode vfr`; ffmpeg 9 rejects `-vsync`). No cookie and no Gemini/Grok/XAI key: Claude reads the transcript and frames itself. Do not use the vault plugin's `/youtube` for this (its upstream `-vsync` fix is still pending).

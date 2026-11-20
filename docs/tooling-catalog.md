@@ -1340,14 +1340,17 @@ on demand; nothing here runs automatically.
   (`GRAPHIFY_LEDGER`); `deepseek`/`codex` use OpenAI chat/completions, `claude` uses the Anthropic Messages API. DeepSeek off-peak advisory. `--dry-run` first.
 - `scripts/luna/fetch-health.py` — Daily no-LLM health probes for luna
   clip-source fetch integrations. The registry (`build_probe_registry`) carries
-  **ten** source ids, several per platform, none cookie-backed: `reddit`
+  **eleven** source ids, several per platform, none cookie-backed: `reddit`
   (plain `.json` GET), `x-fxtwitter`, `x-scrapling`, `instagram-embed`,
   `instagram-scrapling` (the Scrapling path, run with the scrapling venv),
   `youtube-scrapling` (metadata via Scrapling and the transcript via yt-dlp
   subtitles),
   `github`, `bitbucket`, `firecrawl` (probes the free
   `/v2/team/credit-usage`, spends no credit, and ledgers credits 0 to
-  `firecrawl-ledger.jsonl`), `jina-reader` (keyless). The full run (armed by `pipeline-cadence.sh`'s
+  `firecrawl-ledger.jsonl`), `jina-reader` (keyless), and
+  `harvest-article-fetch` (not a route: it reads the vault and fails when a thin
+  article clip has sat `partial` and untried for over two days, i.e. the routes
+  are healthy but the harvest is not calling them). The full run (armed by `pipeline-cadence.sh`'s
   fetch-health job) probes every source, writes `~/.himmel/fetch-health.json`
   (`last_success_timestamp` preserved per source across runs), and exits 0 iff
   every source is `ok`. `--probe <source>` (Task 2) runs exactly
