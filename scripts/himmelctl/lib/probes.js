@@ -3971,10 +3971,10 @@ function probeBridgeHealth(item, ctx) {
 // generic "unit missing"). A user unit without linger only runs while the
 // operator is logged in, the exact failure spec A12/V5 calls out.
 //
-// macOS/other: launchd support is explicitly Stage 2 (A12). This does NOT
-// build a process/service-inspection library for it; it reads a LOUD
-// degraded naming the limitation (never a silent pass), the
-// same platform posture bridge-health's own poller-count
+// macOS: persistence = the LaunchAgent plist installed AND loaded into the
+// user's gui domain (launchctl print), the counterpart of the Linux unit.
+// Any other platform reads a LOUD degraded naming the limitation (never a
+// silent pass), the same platform posture bridge-health's own poller-count
 // check already established.
 // the SPAWN side of the same
 // ctx.env class scopeConfigPathToCtx already fixed for the config-path read,
@@ -4104,9 +4104,35 @@ function probeBridgePersistence(item, ctx) {
     };
   }
 
+  if (platform === 'darwin') {
+    // The LaunchAgent bridge-persistence.js installs: the plist must be there AND launchd must have
+    // the job loaded (`launchctl print gui/<uid>/<label>`), or the bridge does not come back after a reboot.
+    const agent = scopeEnvToCtx(ctx, () => bridgePersistence.launchAgentInstalled());
+    const label = bridgePersistence.LAUNCHD_LABEL;
+    if (!agent.fileExists) {
+      return {
+        actual: 'degraded',
+        detail: `LaunchAgent '${label}' is not installed at ${agent.plistPath} (bridge.enabled=true) — the bridge will not survive a reboot/logout without it (fix: himmelctl bridge enable)`,
+      };
+    }
+    if (agent.loaded === null) {
+      return {
+        actual: 'degraded',
+        detail: `LaunchAgent '${label}' is installed at ${agent.plistPath}, but whether launchd has it loaded could not be determined (launchctl is unavailable) (bridge.enabled=true) — verify manually: launchctl print gui/$(id -u)/${label}`,
+      };
+    }
+    if (agent.loaded === false) {
+      return {
+        actual: 'degraded',
+        detail: `LaunchAgent '${label}' is installed at ${agent.plistPath} but not loaded (bridge.enabled=true) — launchd will not run the bridge (fix: himmelctl bridge enable)`,
+      };
+    }
+    return { actual: 'present', detail: `LaunchAgent '${label}' installed at ${agent.plistPath} and loaded` };
+  }
+
   return {
     actual: 'degraded',
-    detail: `bridge-persistence check not implemented on '${platform}' — launchd/macOS persistence is Stage 2 (A12); persistence is UNVERIFIED here, not assumed healthy (bridge.enabled=true)`,
+    detail: `bridge-persistence check not implemented on '${platform}' — persistence is UNVERIFIED here, not assumed healthy (bridge.enabled=true)`,
   };
 }
 

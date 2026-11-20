@@ -396,12 +396,114 @@ function systemdUnitInstalled() {
   return { fileExists, enabled, unitPath: UNIT_PATH };
 }
 
+// ── macOS: a LaunchAgent ──────────────────────────────────────────────────
+//
+// The counterpart of the systemd unit above, for macOS. The plist template carries @HIMMEL_REPO@ and
+// @HOME@; the agent lives in ~/Library/LaunchAgents and is loaded into the user's gui domain with
+// `launchctl bootstrap` (RunAtLoad starts it, KeepAlive restarts it after a failed exit). Same
+// contract as the Linux half: {ok, actions, detail}, never a throw on an EXPECTED failure.
+// The agents dir is resolved at call time (HIMMELCTL_LAUNCH_AGENTS_DIR overrides it, the test
+// seam), so a hermetic test can point it at a temp dir.
+
+const LAUNCHD_LABEL = 'com.himmel.telegram-bridge';
+const LAUNCHD_TEMPLATE_PATH = path.join(__dirname, '..', '..', 'telegram', 'launchd', `${LAUNCHD_LABEL}.plist`);
+
+function launchAgentsDir() {
+  return process.env.HIMMELCTL_LAUNCH_AGENTS_DIR || path.join(os.homedir(), 'Library', 'LaunchAgents');
+}
+function launchAgentPath() { return path.join(launchAgentsDir(), `${LAUNCHD_LABEL}.plist`); }
+function haveLaunchctl() { return Boolean(which('launchctl')); }
+function launchDomain() { return `gui/${process.getuid ? process.getuid() : 0}`; }
+
+// A path may hold & < > "; each would break the plist XML. (A newline is refused by the caller.)
+function xmlEscape(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// launchAgentLoaded(): true when `launchctl print gui/<uid>/<label>` finds the job, false when it
+// does not, null when launchctl cannot be asked.
+function launchAgentLoaded() {
+  if (!haveLaunchctl()) return null;
+  const r = spawnSync('launchctl', ['print', `${launchDomain()}/${LAUNCHD_LABEL}`], { encoding: 'utf8' });
+  if (r.error) return null;
+  return r.status === 0;
+}
+
+// launchAgentInstalled(): read-only. fileExists is the plist; loaded is true/false/null as above.
+function launchAgentInstalled() {
+  return { fileExists: fs.existsSync(launchAgentPath()), loaded: launchAgentLoaded(), plistPath: launchAgentPath() };
+}
+
+function installLaunchAgent({ repoRoot, dryRun } = {}) {
+  if (!repoRoot) return { ok: false, actions: [], detail: 'installLaunchAgent: repoRoot is required' };
+  if (hasUnitFileNewline(repoRoot)) {
+    return {
+      ok: false,
+      actions: [],
+      detail: `installLaunchAgent: repoRoot contains a CR or LF character — refusing to render it into ${LAUNCHD_LABEL}.plist: ${JSON.stringify(repoRoot)}`,
+    };
+  }
+  let template;
+  try {
+    template = fs.readFileSync(LAUNCHD_TEMPLATE_PATH, 'utf8');
+  } catch (e) {
+    return { ok: false, actions: [], detail: `template not found at ${LAUNCHD_TEMPLATE_PATH}: ${e.message}` };
+  }
+  const plistPath = launchAgentPath();
+  const domain = launchDomain();
+  const rendered = template.split('@HIMMEL_REPO@').join(xmlEscape(repoRoot)).split('@HOME@').join(xmlEscape(os.homedir()));
+  const actions = [`write ${plistPath}`, `launchctl bootstrap ${domain} ${plistPath}`];
+  if (dryRun) {
+    return { ok: true, actions, detail: `dry-run: would install ${LAUNCHD_LABEL}.plist at ${plistPath} with @HIMMEL_REPO@ -> ${repoRoot}` };
+  }
+  if (!haveLaunchctl()) {
+    return { ok: false, actions: [], detail: `'launchctl' not found on PATH — not a macOS host; ${LAUNCHD_LABEL} was NOT installed` };
+  }
+
+  let existing = null;
+  try { existing = fs.readFileSync(plistPath, 'utf8'); } catch (_e) { existing = null; }
+  const unchanged = existing === rendered;
+  if (!unchanged) {
+    try {
+      fs.mkdirSync(path.dirname(plistPath), { recursive: true });
+      const tmp = `${plistPath}.tmp-${process.pid}`;
+      fs.writeFileSync(tmp, rendered, 'utf8');
+      fs.renameSync(tmp, plistPath);
+    } catch (e) {
+      return { ok: false, actions: [], detail: `failed to write ${plistPath}: ${e.message}` };
+    }
+  }
+
+  const loaded = launchAgentLoaded();
+  if (unchanged && loaded === true) {
+    return { ok: true, actions: [], detail: `${LAUNCHD_LABEL} already installed at ${plistPath} and loaded` };
+  }
+  // A changed plist behind a loaded job: boot the old one out so the new bytes are what runs.
+  if (loaded === true) {
+    const out = spawnSync('launchctl', ['bootout', `${domain}/${LAUNCHD_LABEL}`], { encoding: 'utf8' });
+    if (out.status !== 0) {
+      return partialFail([`write ${plistPath}`], `plist IS written at ${plistPath}, but launchctl bootout of the running ${LAUNCHD_LABEL} failed (rc=${out.status}): ${(out.stderr || '').trim()} — the old job is still loaded. Remediation: launchctl bootout ${domain}/${LAUNCHD_LABEL}, then re-run.`);
+    }
+  }
+  const boot = spawnSync('launchctl', ['bootstrap', domain, plistPath], { encoding: 'utf8' });
+  if (boot.status !== 0) {
+    return partialFail(
+      [`write ${plistPath}`],
+      `plist IS written at ${plistPath}, but launchctl bootstrap ${domain} failed (rc=${boot.status}): ${(boot.stderr || '').trim()} — the bridge is NOT loaded. Remediation: fix the error and re-run, or: launchctl bootstrap ${domain} ${plistPath}`,
+    );
+  }
+  return { ok: true, actions, detail: `${LAUNCHD_LABEL} installed at ${plistPath}, loaded and started (RunAtLoad)` };
+}
+
 module.exports = {
   SYSTEMD_UNIT_NAME,
   SYSTEMD_USER_UNIT_DIR,
+  LAUNCHD_LABEL,
   installSystemdUnit,
   uninstallSystemdUnit,
   enableLinger,
   lingerEnabled,
   systemdUnitInstalled,
+  installLaunchAgent,
+  launchAgentInstalled,
 };
