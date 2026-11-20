@@ -1,9 +1,14 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { constants } from "node:fs";
 import { GROUP_ANONYMOUS_BOT_ID } from "../telegram/gate";
 import { readChain } from "./chain";
-import type { Config } from "./config";
-import { parseControl, type Control } from "./grammar";
+import { DEFAULT_BUDGETS, type Config } from "./config";
+import { ALLOWANCE_S, IAT_FUTURE_SKEW_S, MAX_LINE_BYTES, parseEnvelopeLine, type Envelope, type Refused } from "./envelope";
+import { ENV_LINE_RE, SIG_LINE_RE, parseControl, type Control } from "./grammar";
+import { queueDepth, remaining } from "./jobstate";
+import type { JobRecord } from "./resolve";
+import { liveKeys, verify } from "./sign";
 
 export class DedupWindow {
   private keys = new Set<string>();
@@ -17,18 +22,29 @@ export class DedupWindow {
   }
 }
 
+export class EnvelopeWindow {
+  private exp = new Map<string, number>();
+  private key = (chat: number | string, from: number | string, id: string) => `${chat}:${from}:${id}`;
+  has(chat: number | string, from: number | string, id: string): boolean { return this.exp.has(this.key(chat, from, id)); }
+  add(chat: number | string, from: number | string, id: string, exp: number): void { this.exp.set(this.key(chat, from, id), exp); }
+  prune(nowS: number): void { for (const [k, e] of this.exp) if (e <= nowS) this.exp.delete(k); }
+  get size(): number { return this.exp.size; }
+}
+
 export type GateState = {
   ourBotId: string;
   ourUsername: string;
   committed: number;            // highest update_id already processed
   recent: DedupWindow;          // `${chat}:${from}:${id}` of the last 1000 admitted records
+  envIds: EnvelopeWindow;
+  killed: Set<string>;
   roots: Set<string>;           // `${chat}:${message_id}` of every thread root, ours or theirs
   rate: Map<string, number[]>;  // peer -> ms timestamps of admitted messages
   now: number;                  // ms; the caller sets it before each batch
 };
 
 export function createGateState(init: { ourBotId: string; ourUsername: string; committed: number; now: number }): GateState {
-  return { ...init, recent: new DedupWindow(1000), roots: new Set(), rate: new Map() };
+  return { ...init, recent: new DedupWindow(1000), envIds: new EnvelopeWindow(), killed: new Set(), roots: new Set(), rate: new Map() };
 }
 
 export type PeerMsgRec = {
@@ -41,11 +57,15 @@ export type Admit =
   | { ok: true; peer: string; rec: PeerMsgRec; truncated: boolean }
   | { ok: false; rule: 1 | 2 | 3 | 4 | 5 | 6 | 7; reason: string; log: string; peer?: string; unknownChat?: UnknownChat };
 
+export function noteRate(state: GateState, peer: string, ts: number): void {
+  const list = state.rate.get(peer) ?? [];
+  list.push(ts * 1000);
+  state.rate.set(peer, list);
+}
+
 export function noteAdmitted(state: GateState, rec: Pick<PeerMsgRec, "peer" | "chat_id" | "from_id" | "id" | "ts">): void {
   if (rec.id) state.recent.add(`${rec.chat_id}:${rec.from_id}:${rec.id}`);
-  const list = state.rate.get(rec.peer) ?? [];
-  list.push(rec.ts * 1000);
-  state.rate.set(rec.peer, list);
+  noteRate(state, rec.peer, rec.ts);
 }
 
 export function rebuildFromInbox(state: GateState, records: Pick<PeerMsgRec, "peer" | "chat_id" | "from_id" | "id" | "ts">[]): void {
@@ -80,6 +100,8 @@ export function admit(update: any, cfg: Pick<Config, "peers" | "maxTextChars">, 
   const control: Control | undefined = text === undefined ? undefined : parseControl(text, state.ourUsername);
   const controlId = control && !control.untagged ? control.id : undefined;
   if (controlId && state.recent.has(`${chatId}:${fromId}:${controlId}`)) return drop(1, "duplicate message id");
+  const envId = text === undefined ? undefined : ENV_LINE_RE.exec(text.split("\n")[1] ?? "")?.[2];
+  if (envId && state.envIds.has(chatId, fromId, envId)) return drop(1, "duplicate envelope id");
 
   // 2. Supergroup only.
   const configured = Object.entries(cfg.peers).find(([, p]) => p.chatId === chatId);
@@ -146,6 +168,82 @@ export function admit(update: any, cfg: Pick<Config, "peers" | "maxTextChars">, 
     }
   }
   return { ok: true, peer: peerName, rec, truncated };
+}
+
+
+export type PeerEnvRec = { kind: "peer-env"; untrusted: true; peer: string; from_id: string; chat_id: number; message_id: number; ts: number; id: string; text: string };
+export type MatchFn = (env: Envelope, peer: string, cfg: Pick<Config, "peers" | "self">, nowS: number) => { ok: true } | { ok: false; step: 8 | 9; reason: string; refused?: Refused };
+export type EnvAdmit =
+  | { ok: true; peer: string; env: Envelope; rec: PeerEnvRec }
+  | { ok: false; step: number; reason: string; log: string; peer?: string; env?: Envelope; rec?: PeerEnvRec; refused?: Refused; unknownChat?: UnknownChat };
+
+export type MatchView = { jobs: () => JobRecord[]; asks: () => Map<string, boolean> };
+export function matchEnvelope(view: MatchView): MatchFn {
+  return (env, peer, cfg, nowS) => {
+    const p = cfg.peers[peer];
+    const mine = view.jobs().filter(j => j.peer === peer);
+    switch (env.kind) {
+      case "req": {
+        if (!(p.serves ?? []).includes(env.op)) return { ok: false, step: 8, reason: "op is not served", refused: "not-served" };
+        const budgets = p.budgets ?? DEFAULT_BUDGETS;
+        const left = remaining(mine, budgets, nowS);
+        if (left.jobs < 1 || left.vmMinutes * 60 < ALLOWANCE_S || queueDepth(mine) >= budgets.queueMax) return { ok: false, step: 9, reason: "over budget", refused: "budget" };
+        return { ok: true };
+      }
+      case "cancel":
+        return mine.some(j => j.dir === "in" && j.peer_job === env.job) ? { ok: true } : { ok: false, step: 8, reason: "cancel for a job the peer did not send" };
+      case "res":
+        return mine.some(j => j.dir === "out" && j.wire_job === env.job) ? { ok: true } : { ok: false, step: 8, reason: "res for a job we did not send" };
+      case "capacity":
+        return view.asks().get(`${peer}:${env.re}`) === false ? { ok: true } : { ok: false, step: 8, reason: "capacity for an ask we did not send, or one already answered" };
+      default:
+        return { ok: true };
+    }
+  };
+}
+
+export function looksLikeEnvelope(update: any): boolean {
+  const text = update?.message?.text;
+  return typeof text === "string" && (text.split("\n")[1] ?? "").startsWith("#env:");
+}
+
+export function admitEnvelope(update: any, cfg: Pick<Config, "peers" | "maxTextChars" | "self">, state: GateState, match?: MatchFn): EnvAdmit {
+  const a = admit(update, cfg, state);
+  if (!a.ok) return { ok: false, step: 1, reason: `rule ${a.rule}: ${a.reason}`, log: a.log, peer: a.peer, unknownChat: a.unknownChat };
+  const m = update.message;
+  const text: string = m.text;
+  const peerName = a.peer;
+  const peer = cfg.peers[peerName];
+  const nowS = Math.floor(state.now / 1000);
+  const lines = text.split("\n");
+  const id = ENV_LINE_RE.exec(lines[1] ?? "")?.[2];
+  const sha = createHash("sha256").update(text).digest("hex");
+  const redacted = (step: number, reason: string) => `env-drop step=${step} peer=${peerName} msg=${id ?? "-"} sha256=${sha}${step >= 8 ? ` ${reason}` : ""}`;
+  const fail = (step: number, reason: string, extra: { env?: Envelope; rec?: PeerEnvRec } = {}): EnvAdmit => ({ ok: false, step, reason, log: redacted(step, reason), peer: peerName, ...extra });
+
+  if (lines.length !== 4 || lines[0] !== `/peer@${state.ourUsername}` || !id) return fail(2, "grammar");
+  const [, line2, line3, line4] = lines;
+  if (!/^[\x20-\x7e]+$/.test(line3) || Buffer.byteLength(line3, "utf8") > MAX_LINE_BYTES || !SIG_LINE_RE.test(line4)) return fail(3, "line shape");
+  if (state.killed.has(peerName)) return fail(4, "peer killed");
+  const k = ENV_LINE_RE.exec(line2)![1];
+  const key = liveKeys(peer.theirs.keys ?? [], nowS).find(x => x.id === k);
+  if (!key) return fail(4, "no trusted key with that id");
+  if (!verify(line2, line3, line4.slice(4), key.pub)) return fail(5, "bad signature");
+  const parsed = parseEnvelopeLine(line3);
+  if (!parsed.ok) return fail(6, parsed.reason);
+  const env = parsed.env;
+  if (env.msg !== id) return fail(7, "msg is not the line-2 id");
+  if (peer.theirs.stationName === undefined || env.from !== peer.theirs.stationName) return fail(7, "from is not the trusted station name");
+  if (cfg.self?.stationName === undefined || env.to !== cfg.self.stationName) return fail(7, "to is not our station name");
+  if (peer.chatId === null || env.chat !== String(peer.chatId)) return fail(7, "chat is not the configured chat");
+  if (env.iat > nowS + IAT_FUTURE_SKEW_S) return fail(7, "iat is in our future");
+  if (env.exp <= nowS) return fail(7, "expired");
+  state.envIds.add(m.chat.id, m.from.id, id, env.exp);
+  const rec: PeerEnvRec = { kind: "peer-env", untrusted: true, peer: peerName, from_id: String(m.from.id), chat_id: m.chat.id, message_id: m.message_id, ts: nowS, id, text };
+
+  const r = match?.(env, peerName, cfg, nowS);
+  if (r && !r.ok) return { ...fail(r.step, r.reason, { env, rec }), refused: r.refused };
+  return { ok: true, peer: peerName, env, rec };
 }
 
 // One row per unknown chat id, 0600, so `setup.ts confirm` can offer it.

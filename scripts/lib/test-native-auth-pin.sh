@@ -416,7 +416,7 @@ EOF
     "$(printf 'u-test' | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-16)" "$(date +%s)" >"$d/native-cache.json"
   printf '#!/bin/bash\nexit 0\n' >"$d/ps"; chmod +x "$d/ps"
   printf '#!/bin/bash\nexit 0\n' >"$d/alert"; chmod +x "$d/alert"
-  local -a e=(PATH="$PATH" HOME="$d" TMPDIR="$d" HIMMEL_API_LANE= HIMMEL_API_ACCOUNT=A HIMMEL_API_FALLBACK=on
+  local -a e=(PATH="$PATH" HOME="$d" TMPDIR="$d" HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=not-an-account HIMMEL_API_FALLBACK=on
     HIMMEL_API_CLAUDE_BIN="$d/claude-stub" HIMMEL_API_JOB_ID=job-1 SC_LOG="$d/calls.log"
     HIMMEL_API_ALERT_CMD="$d/alert" HIMMEL_API_ALERT_DIR="$d/alerts" CADENCE_USAGE_LEDGER="$d/bank-ledger"
     CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_CACHE="$d/native-cache.json" HIMMEL_FLEET_CAP=4
