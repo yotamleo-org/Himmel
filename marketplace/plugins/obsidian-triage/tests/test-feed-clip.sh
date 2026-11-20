@@ -52,7 +52,9 @@ out=""; rc=0
 run_tool() { out="$(node "$SCRIPT" "$@" 2>&1)"; rc=$?; }
 
 newvault() { local v="$tmpdir/$1"; mkdir -p "$v/.obsidian" "$v/Clippings"; echo "$v"; }
-nclips() { find "$1/Clippings" -maxdepth 1 -name 'feed-*.md' | wc -l | tr -d ' '; }
+# pick <vault> <glob>: the top-level Clippings/ files matching a glob, one per line.
+pick() { local f; for f in "$1"/Clippings/$2; do [ -e "$f" ] && echo "$f"; done; }
+nclips() { pick "$1" 'feed-*.md' | wc -l | tr -d ' '; }
 nlines() { if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; else echo 0; fi; }
 has() { if grep -q -- "$1" <<<"$2"; then echo ok; else echo no; fi; }
 hasline() { if grep -qxF -- "$1" <<<"$2"; then echo ok; else echo no; fi; }
@@ -110,7 +112,7 @@ assert "second run left the seen file alone" 4 "$(nlines "$V/.feed-clip-seen.jso
 
 # -- Test 4: clip shape ------------------------------------------------------
 echo "Test 4: a feed clip has the shape of a Telegram clip"
-rel="$(find "$V/Clippings" -maxdepth 1 -name 'feed-*v1-2-0.md')"
+rel="$(pick "$V" 'feed-*v1-2-0.md')"
 assert "release clip exists" 1 "$(printf '%s\n' "$rel" | grep -c .)"
 base="$(basename "$rel")"
 if [[ "$base" =~ ^feed-[0-9a-f]{10}-[a-z0-9-]+\.md$ ]]; then s=ok; else s="$base"; fi
@@ -124,7 +126,7 @@ assert "source line is the entry link" ok "$(hasline 'source: https://github.com
 assert "Source section" ok "$(hasline '[https://github.com/example-org/example-repo/releases/tag/v1.2.0](https://github.com/example-org/example-repo/releases/tag/v1.2.0)' "$(cat "$rel")")"
 if grep -qE '^(harvested_at|processed|telegram_[a-z_]*):' "$rel"; then s=present; else s=absent; fi
 assert "no harvested_at / processed / telegram_* key" absent "$s"
-blog="$(find "$V/Clippings" -maxdepth 1 -name 'feed-*scaling-queues-at-example.md')"
+blog="$(pick "$V" 'feed-*scaling-queues-at-example.md')"
 assert "non-github link is type article" ok "$(hasline 'type: article' "$(cat "$blog")")"
 
 # key set + order identical to a Telegram-built clip, telegram_* aside
@@ -156,10 +158,14 @@ console.log(bad === 0 && n === 4 ? 'valid' : 'BAD ' + bad + '/' + n);
 ") >"$tmpdir/_yaml" 2>&1
 assert "every written clip is valid YAML (4 clips)" valid "$(cat "$tmpdir/_yaml")"
 
-# the harvest scan (harvest-clips.md, "Scan for unharvested clips") lists them all
-# shellcheck disable=SC2016
-unharv="$(find "$V/Clippings" -maxdepth 2 -type f -name '*.md' -not -path '*/_synthesis/*' -not -path '*/_done/*' -not -name '_deferred.md' -not -path '*/_evidence/*' -print0 \
-  | xargs -0 -I {} sh -c 'grep -qE "^harvested_at:[[:space:]]*\S" "${1}" || echo "${1}"' _ {} | wc -l | tr -d ' ')"
+# the harvest scan (harvest-clips.md, "Scan for unharvested clips"): .md files at
+# depth 1-2 minus _synthesis/, _done/, _evidence/, _deferred.md, without harvested_at
+unharv=0
+for f in "$V"/Clippings/*.md "$V"/Clippings/*/*.md; do
+  [ -f "$f" ] || continue
+  case "$f" in */_synthesis/*|*/_done/*|*/_evidence/*|*/_deferred.md) continue ;; esac
+  grep -qE '^harvested_at:[[:space:]]*[^[:space:]]' "$f" || unharv=$((unharv+1))
+done
 assert "the harvest scan lists all 4 clips as unharvested" 4 "$unharv"
 
 # -- Test 5: titles + body ---------------------------------------------------
@@ -171,7 +177,7 @@ assert "release body: entity decoded once" ok "$(has 'Fixed a crash & a hang' "$
 if grep -q '<' "$rel"; then s=markup; else s=clean; fi
 assert "release body has no markup" clean "$s"
 assert "quoted/angle title survives in YAML" ok "$(hasline 'title: "RssBlog: Scaling \"queues\" at <Example>"' "$(cat "$blog")")"
-second="$(find "$V/Clippings" -maxdepth 1 -name 'feed-*second-post*.md')"
+second="$(pick "$V" 'feed-*second-post*.md')"
 assert "content:encoded wins over description" ok "$(has 'Second paragraph with a link\.' "$(cat "$second")")"
 if grep -q 'short teaser' "$second"; then s=teaser; else s=full; fi
 assert "description dropped when content:encoded is present" full "$s"
