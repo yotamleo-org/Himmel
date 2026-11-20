@@ -1,16 +1,5 @@
 #!/usr/bin/env bash
 # selector: tree-scan
-# scripts/luna/test-clip-relevance-collect.sh - hermetic suite for the weekly clip-relevance collector.
-# Synthetic vault, digests and ledger in a scratch dir; never the live vault, ~/.himmel or .git. No model call.
-#  1. the window: the clips triaged in the last 7 days print, older ones and ones with no triaged_at do not;
-#  2. a body is cut at 1,100 characters; a clip with no fetched text is flagged thin;
-#  3. the same inputs print the same bytes twice;
-#  4. a clip in the seen-ledger is omitted, `mark` appends to it once and a marked candidate is listed;
-#  5. the failure digests and the review-critic ledger are summed, never printed raw;
-#  6. clip text is data: a line that looks like a section header is quoted;
-#  7. a missing digest dir or ledger reads "none", a missing vault is an error.
-#
-# check() evals its condition, so the single quotes are deliberate.
 # shellcheck disable=SC2016,SC2034
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -30,7 +19,6 @@ FR="$TMP/failure-review"; mkdir -p "$FR"
 LEDGER="$TMP/cr-critic-scores.jsonl"
 SEEN="$TMP/state/seen.tsv"
 TODAY=2026-11-20
-# The ledger path is an environment value, never a flag: the weekly run allows the script with any arguments.
 export CLIP_RELEVANCE_SEEN="$SEEN"
 
 clip() {

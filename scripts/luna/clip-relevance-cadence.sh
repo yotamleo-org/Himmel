@@ -2,13 +2,6 @@
 # billed-opt-in: arming
 # clip-relevance-cadence.sh - the weekly clip-relevance pass on a schedule.
 #
-# WHY: the operator forwards links into the luna vault so himmel can learn from them, but only the loudest
-# clips become himmel tickets, and only by hand. Once a week this runs one agent over the week's evidence
-# clips and himmel's own failure and review records (clip-relevance-collect.py, no model), following
-# .claude/commands/clip-relevance-weekly.md. It PROPOSES at most five himmel changes in one note in the state
-# repo and one short Telegram message. It files no ticket and edits no himmel file: the allowlist below
-# reads Jira with list and get only, searches with the Grep tool, and lets Write touch the note folder only.
-#
 #   clip-relevance-cadence.sh arm [--day 0-6] [--time HH:MM] [--note-dir DIR] [--force] [--dry-run]
 #   clip-relevance-cadence.sh status
 #   clip-relevance-cadence.sh disarm [--dry-run]
@@ -20,11 +13,6 @@
 # SAME subscription budget as interactive use (docs/internals/enforcement.md#claude-invocation-billing), so the
 # generated runner asks scripts/lib/usage-preflight.sh first and runs only on PROCEED, pins the model, declares
 # --permission-mode dontAsk (never bypassPermissions) and parses --output-format json. Weekly cost: about $2 to $4.
-#
-# `finish` is the only place a message leaves: the model writes the note, this lints it (at most five
-# candidates, each marked new / already-done / already-tracked and carrying its search, plus a Telegram
-# block), sends the block through scripts/luna/vault-stall-alert.sh as kind cadence:clip-relevance, and raises
-# the shared cadence-alert.sh on a failed model run, an invalid note or an undelivered message.
 #
 # `arm` and `disarm` touch only the one exact tagged, uncommented crontab row. Exit codes of arm: 0 ok, 1 or 2
 # usage or environment, 3 already armed (no --force), 4 crontab read or write, or runner write, failed, 5 more
@@ -209,7 +197,6 @@ cmd_arm() {
     done
     [[ "$day" =~ ^[0-6]$ ]] || { echo "ERR clip-relevance-cadence: --day must be 0-6, got: $day" >&2; return 1; }
     [[ "$time" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || { echo "ERR clip-relevance-cadence: --time must be HH:MM, got: $time" >&2; return 1; }
-    # The run searches Jira and cron has no project key, so the runner carries the arming shell's.
     [[ "${JIRA_PROJECT_KEY:-}" =~ ^[A-Z][A-Z0-9]+$ ]] || { echo "ERR clip-relevance-cadence: arm needs JIRA_PROJECT_KEY set to a project key (got: ${JIRA_PROJECT_KEY:-<unset>})" >&2; return 2; }
     [ -n "$ndir" ] || ndir="$(note_dir)" || { echo "ERR clip-relevance-cadence: cannot resolve the state repo note folder; pass --note-dir" >&2; return 2; }
     case "$ndir" in /*) ;; *) echo "ERR clip-relevance-cadence: --note-dir must be an absolute path, got: $ndir" >&2; return 1 ;; esac

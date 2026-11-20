@@ -1,17 +1,5 @@
 #!/usr/bin/env bash
 # selector: tree-scan
-# scripts/luna/test-clip-relevance-cadence.sh - hermetic suite for the weekly clip-relevance cadence.
-# Stub crontab, stub claude, stub preflight, stub Telegram sender, scratch runner and note dirs; never the real
-# crontab, ~/.himmel, a vault, a Jira call or a model call.
-#  1. arm: dry-run writes nothing, a key is required, one tagged weekly row, a second arm refuses, --force
-#     replaces only the exact row, status and disarm read and remove it;
-#  2. the generated runner holds the usage check, the pinned model, an explicit permission mode that is not
-#     bypass, JSON output, and a tool allowlist with no way to file or edit a ticket;
-#  3. firing the runner: SKIPPED-BANK skips, PROCEED runs claude with those flags and sends the note's message;
-#  4. a failed claude, an invalid note and a failed send each raise the shared alert and send no proposals;
-#  5. check: at most five candidates, each marked and carrying its search, plus a Telegram block.
-#
-# check() evals its condition, so the single quotes are deliberate.
 # shellcheck disable=SC2016,SC2034
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
