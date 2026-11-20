@@ -179,7 +179,7 @@ const BLOCKED = {
   private: [["10.0.0.0", 8, "ipv4"], ["172.16.0.0", 12, "ipv4"], ["192.168.0.0", 16, "ipv4"], ["100.64.0.0", 10, "ipv4"], ["fc00::", 7, "ipv6"]], // leak-allow: private-lan-ip the table names the private ranges the address check refuses
   "link-local": [["169.254.0.0", 16, "ipv4"], ["fe80::", 10, "ipv6"]],
   unspecified: [["0.0.0.0", 8, "ipv4"], ["::", 128, "ipv6"]],
-  reserved: [["192.0.0.0", 24, "ipv4"], ["224.0.0.0", 3, "ipv4"], ["ff00::", 8, "ipv6"], ["64:ff9b::", 96, "ipv6"], ["2002::", 16, "ipv6"], ["::", 96, "ipv6"]],
+  reserved: [["192.0.0.0", 24, "ipv4"], ["198.18.0.0", 15, "ipv4"], ["fec0::", 10, "ipv6"], ["224.0.0.0", 3, "ipv4"], ["ff00::", 8, "ipv6"], ["64:ff9b::", 96, "ipv6"], ["2002::", 16, "ipv6"], ["::", 96, "ipv6"]],
 };
 const BLOCK_LISTS = Object.entries(BLOCKED).map(([why, nets]) => {
   const list = new BlockList();

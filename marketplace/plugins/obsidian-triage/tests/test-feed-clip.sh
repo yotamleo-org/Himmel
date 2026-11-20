@@ -478,6 +478,8 @@ addr_row unique-local-v6 "http://[fd00::1]/feed" private
 addr_row private-10 "http://10.0.0.5/feed" private # leak-allow: private-lan-ip test fixture asserting the RFC1918 deny rule
 addr_row private-192 "http://192.168.1.10/feed" private # leak-allow: private-lan-ip test fixture asserting the RFC1918 deny rule
 addr_row mapped-private "http://[::ffff:10.0.0.5]/feed" private # leak-allow: private-lan-ip test fixture asserting the RFC1918 deny rule
+addr_row benchmarking-v4 "http://198.18.0.1/feed" reserved
+addr_row site-local-v6 "http://[fec0::1]/feed" reserved
 addr_row name-resolving-to-loopback "http://localhost:$PORT/ok" "resolves to .*loopback"
 addr_row redirect-to-link-local "http://127.0.0.1:$PORT/redir-meta" link-local run_tool
 addr_row redirect-to-private "http://127.0.0.1:$PORT/redir-private" private run_tool
