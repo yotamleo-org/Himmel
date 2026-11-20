@@ -24,7 +24,8 @@ gate below and never skip a step.
 
 A stub fires for a topical tag **T** only when ALL hold:
 1. >=2 evidence clips carry **T** (structural tags like `concepts`/`tools`/
-   `article` are excluded from being a concept key — see `STRUCTURAL_TAGS`).
+   `article` are excluded from being a concept key, in their singular and plural
+   form — see `STRUCTURAL_TAGS`).
 2. **After canonical-URL dedup** of the contributors (one article clipped twice
    collapses to a single contributor — reuses the dedup sweep's `canonicalize()`), the
    distinct-contributor count is still >=2.
@@ -50,7 +51,9 @@ Before creating a stub the engine scans existing subjects in
 name** (case/punctuation-insensitive, `-MOC` suffix stripped — so the tag
 `context-windows` matches a `Context-Windows-MOC`) **or** a declared `aliases:`
 entry (so a `self-hosted` group densifies an existing `Local First` page that
-lists `self-hosted` as an alias). The singular/plural fold applies here too: a
+lists `self-hosted` as an alias), or by the **exact file name** (so a page whose
+name has no Latin letter or digit, such as `Агенты.md`, is densified and not
+refused). The singular/plural fold applies here too: a
 `workflow` group densifies an existing `Workflows` page. On a match it **densifies** — appends the
 fresh contributors to the subject's `## Evidence` section and stamps them —
 and creates **0** new pages. Matching is BOUNDED (exact normalised equality +
@@ -66,8 +69,15 @@ another non-regular file is refused before a write, and a regular file the index
 did not list is refused by the exclusive create itself. The engine prints
 `⊘ <path> — refused: an existing symbolic link sits there, nothing written`,
 stamps none of its clips, writes no ledger entry, and counts it on the summary
-as `N refused (path taken)`. The subject index lists regular files only, so a
-link is never matched for a densify either.
+as `N refused (path taken)`. The dry run prints the same refusal, in the same
+order and with the same counts, instead of `would create`. The subject index
+lists regular files only, so a link is never matched for a densify either.
+
+A subject name is written into each stamped clip's header as the double-quoted
+`promoted_to:` value with `"` and `\` escaped, so a tag holding a quote leaves
+the header parseable. `Clippings/_deferred.md` is written only when it is a
+plain file: a link, a directory or a special file there is refused with the same
+line, once per run, in the dry run, the apply and the revert alike.
 
 ### Resolve vault path
 

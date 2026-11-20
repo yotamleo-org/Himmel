@@ -18,6 +18,9 @@ set -u -o pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TOOL="$PLUGIN_DIR/tools/synthesize-stubs.mjs"
+HIDE_SHIM="$PLUGIN_DIR/tests/fixtures/hide-from-listing.mjs"
+# run_hiding "<names>" <node args>: the tool runs with those file names missing from every directory listing.
+run_hiding() { local names="$1"; shift; HIDE_FROM_LISTING="$names" NODE_OPTIONS="--import $HIDE_SHIM" node "$@"; }
 
 pass=0
 fail=0
@@ -414,32 +417,175 @@ mk8() {
 mk8 slash "ai/agents"
 mk8 root "../../outside"
 mk8 up "../sibling"
-mk8 cyrillic "агенты"
+mk8 hidden "hidden-topic"
 mk8 folder "folder-topic"
 mk8 pipe "pipe-topic"
 mk8 clean "clean-topic"
-printf 'the operator wrote this page by hand\n' > "$C8/Агенты.md"
-cp "$C8/Агенты.md" "$tmp8/hand.copy"
+printf 'the operator wrote this page by hand\n' > "$C8/Hidden Topic.md"
+cp "$C8/Hidden Topic.md" "$tmp8/hand.copy"
 mkdir "$C8/Folder Topic.md"
 mkfifo "$C8/Pipe Topic.md"
-out8="$(node "$TOOL" "$tmp8" --apply 2>&1)"; printf '%s
+out8="$(run_hiding "Hidden Topic.md" "$TOOL" "$tmp8" --apply 2>&1)"; printf '%s
 ' "$out8"
 assert "a tag holding a slash creates no nested page" "no" "$([ -e "$C8/Ai" ] && echo yes || echo no)"
 assert "a tag holding .. writes nothing above Concepts" "no" "$([ -e "$tmp8/outside.md" ] || [ -e "$tmp8/30-Resources/sibling.md" ] && echo yes || echo no)"
 assert "each of the three is skipped with its reason" "3" "$(grep -c "skipped (subject name holds '/' or '..')" <<<"$out8")"
-assert "a regular file the index never lists is byte for byte unchanged" "same" "$(cmp -s "$tmp8/hand.copy" "$C8/Агенты.md" && echo same || echo changed)"
+assert "a regular file the index never lists is byte for byte unchanged" "same" "$(cmp -s "$tmp8/hand.copy" "$C8/Hidden Topic.md" && echo same || echo changed)"
 assert "and it is refused with its reason" "1" "$(grep -c 'refused: a file already sits there' <<<"$out8")"
 assert "a directory at a page path is refused as a directory" "1" "$(grep -c 'refused: an existing directory sits there' <<<"$out8")"
 assert "a special file at a page path is refused as one" "1" "$(grep -c 'refused: an existing special file sits there' <<<"$out8")"
 assert "the summary counts the skips and the refusals" "synthesize-stubs.mjs: 1 created, 0 densified, 3 skipped, 3 refused (path taken)" "$(tail -n 1 <<<"$out8")"
-assert "no clip of a skipped or refused subject is stamped" "0" "$(grep -lF 'promoted_to:' "$EV8"/slash-*.md "$EV8"/root-*.md "$EV8"/up-*.md "$EV8"/cyrillic-*.md "$EV8"/folder-*.md "$EV8"/pipe-*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert "no clip of a skipped or refused subject is stamped" "0" "$(grep -lF 'promoted_to:' "$EV8"/slash-*.md "$EV8"/root-*.md "$EV8"/up-*.md "$EV8"/hidden-*.md "$EV8"/folder-*.md "$EV8"/pipe-*.md 2>/dev/null | wc -l | tr -d ' ')"
 assert "the one clean subject is still created" "yes" "$([ -f "$C8/Clean Topic.md" ] && echo yes || echo no)"
 mkdir -p "$C8/Ai"
 printf 'the operator rewrote this page by hand\n' > "$C8/Ai/agents.md"
 cp "$C8/Ai/agents.md" "$tmp8/edit.copy"
-node "$TOOL" "$tmp8" --apply >/dev/null 2>&1
+run_hiding "Hidden Topic.md" "$TOOL" "$tmp8" --apply >/dev/null 2>&1
 assert "a hand edit under a slash tag survives the next night" "same" "$(cmp -s "$tmp8/edit.copy" "$C8/Ai/agents.md" && echo same || echo changed)"
-assert "and the hand-written file is still unchanged" "same" "$(cmp -s "$tmp8/hand.copy" "$C8/Агенты.md" && echo same || echo changed)"
+assert "and the hand-written file is still unchanged" "same" "$(cmp -s "$tmp8/hand.copy" "$C8/Hidden Topic.md" && echo same || echo changed)"
+
+echo "Test group 9: a subject name with a quote is escaped in the clip header"
+tmp9="$(mktemp -d -t synth9.XXXXXX)" || exit 1
+trap 'rm -rf "$tmp" "$tmp4" "$tmp5" "$tmp5b" "$tmp6" "$tmp6b" "$tmp7" "$tmp8" "$tmp9"' EXIT
+EV9="$tmp9/Clippings/_evidence"
+C9="$tmp9/30-Resources/Concepts"
+mkdir -p "$EV9" "$C9"
+printf -- '---\ntype: concept\ntags:\n  - concept\n---\n# Fizz "buzz"\n\n## Evidence\n\n- (hand-written)\n' > "$C9/Fizz \"buzz\".md"
+mkclip5 "$EV9" q-1.md "Quill One" "https://q-one.com/x" 'say-"hi"-topic'
+mkclip5 "$EV9" q-2.md "Quill Two" "https://q-two.org/x" 'say-"hi"-topic'
+mkclip5 "$EV9" f-1.md "Fizz One" "https://f-one.com/x" 'fizz-"buzz"'
+mkclip5 "$EV9" f-2.md "Fizz Two" "https://f-two.org/x" 'fizz-"buzz"'
+mkclip5 "$EV9" b-1.md "Back One" "https://b-one.com/x" 'back\slash'
+mkclip5 "$EV9" b-2.md "Back Two" "https://b-two.org/x" 'back\slash'
+LEDGER9="$tmp9/.synthesize-stubs.ledger.jsonl"
+out9="$(node "$TOOL" "$tmp9" --apply 2>&1)"; printf '%s
+' "$out9"
+# The promoted_to value is a YAML double-quoted scalar; with only \" and \\ escapes it is also a JSON string.
+promoted_of() {
+  node -e 'const l=require("fs").readFileSync(process.argv[1],"utf8").split("\n").find((x)=>x.startsWith("promoted_to: ")); process.stdout.write(l ? JSON.parse(l.slice(13)) : "no promoted_to line")' "$1" 2>&1 | tail -n 1
+}
+assert "a created page with a quote in its name parses back from the clip header" '[[30-Resources/Concepts/Say "hi" Topic]]' "$(promoted_of "$EV9/q-1.md")"
+assert "and so does the second clip" '[[30-Resources/Concepts/Say "hi" Topic]]' "$(promoted_of "$EV9/q-2.md")"
+assert "a densified page with a quote in its name parses back from the clip header" '[[30-Resources/Concepts/Fizz "buzz"]]' "$(promoted_of "$EV9/f-1.md")"
+assert "a backslash in a name parses back too" '[[30-Resources/Concepts/Back\slash]]' "$(promoted_of "$EV9/b-1.md")"
+if python3 -I -c 'import yaml' 2>/dev/null; then
+  yaml_of() { python3 -I -c 'import sys, yaml; print(yaml.safe_load(open(sys.argv[1], encoding="utf-8").read().split("---")[1])["promoted_to"])' "$1" 2>&1 | tail -n 1; }
+  assert "a YAML parser reads the created page's name from the header" '[[30-Resources/Concepts/Say "hi" Topic]]' "$(yaml_of "$EV9/q-1.md")"
+  assert "a YAML parser reads the densified page's name from the header" '[[30-Resources/Concepts/Fizz "buzz"]]' "$(yaml_of "$EV9/f-1.md")"
+fi
+node "$TOOL" "$tmp9" --revert "$LEDGER9" >/dev/null 2>&1
+assert "revert clears the stamp of a quoted name" "0" "$(grep -lF 'promoted_to:' "$EV9"/*.md | wc -l | tr -d ' ')"
+
+echo "Test group 10: a page with a non-Latin name is extended, not refused"
+tmp10="$(mktemp -d -t synth10.XXXXXX)" || exit 1
+trap 'rm -rf "$tmp" "$tmp4" "$tmp5" "$tmp5b" "$tmp6" "$tmp6b" "$tmp7" "$tmp8" "$tmp9" "$tmp10"' EXIT
+EV10="$tmp10/Clippings/_evidence"
+C10="$tmp10/30-Resources/Concepts"
+mkdir -p "$EV10" "$C10"
+printf -- '---\ntype: concept\ntags:\n  - concept\n---\n# Агенты\n\n## Evidence\n\n- (hand-written)\n' > "$C10/Агенты.md"
+cp "$C10/Агенты.md" "$tmp10/hand.copy"
+mkclip5 "$EV10" cy-1.md "Cy One" "https://cy-one.com/x" "агенты"
+mkclip5 "$EV10" cy-2.md "Cy Two" "https://cy-two.org/x" "агенты"
+LEDGER10="$tmp10/.synthesize-stubs.ledger.jsonl"
+out10="$(node "$TOOL" "$tmp10" --apply 2>&1)"; printf '%s
+' "$out10"
+assert "the non-Latin page receives both clips" "2" "$(grep -c '^- \[\[Clippings/_evidence/cy-' "$C10/Агенты.md" 2>/dev/null || echo 0)"
+assert "the run prints no refusal" "0" "$(grep -c 'refused' <<<"$out10")"
+assert "the summary counts one densify" "synthesize-stubs.mjs: 0 created, 1 densified, 0 skipped" "$(tail -n 1 <<<"$out10")"
+assert "no second page appears" "1" "$(find "$C10" -type f -name '*.md' | wc -l | tr -d ' ')"
+assert "both clips are stamped" "2" "$(grep -lF 'promoted_to:' "$EV10"/cy-*.md | wc -l | tr -d ' ')"
+out10b="$(node "$TOOL" "$tmp10" --apply 2>&1)"
+assert "the next night changes nothing" "synthesize-stubs.mjs: 0 created, 0 densified, 0 skipped, 1 unchanged" "$(tail -n 1 <<<"$out10b")"
+node "$TOOL" "$tmp10" --revert "$LEDGER10" >/dev/null 2>&1
+assert "revert restores the page byte for byte" "same" "$(cmp -s "$tmp10/hand.copy" "$C10/Агенты.md" && echo same || echo changed)"
+
+echo "Test group 11: the dry run reports what the real run does"
+tmp11="$(mktemp -d -t synth11.XXXXXX)" || exit 1
+trap 'rm -rf "$tmp" "$tmp4" "$tmp5" "$tmp5b" "$tmp6" "$tmp6b" "$tmp7" "$tmp8" "$tmp9" "$tmp10" "$tmp11"' EXIT
+V11="$tmp11/dry"
+EV11="$V11/Clippings/_evidence"
+C11="$V11/30-Resources/Concepts"
+mkdir -p "$EV11" "$C11"
+for t in aa-phantom clean-a clean-b zz-phantom; do
+  mkclip5 "$EV11" "$t-1.md" "$t One" "https://$t-one.com/x" "$t"
+  mkclip5 "$EV11" "$t-2.md" "$t Two" "https://$t-two.org/x" "$t"
+done
+printf 'the operator wrote this page by hand\n' > "$C11/Aa Phantom.md"
+printf 'the operator wrote this page by hand\n' > "$C11/Zz Phantom.md"
+for v in real limit limitreal; do cp -a "$V11" "$tmp11/$v"; done
+as_real() { sed -e 's/would-create/created/' -e 's/would-densify/densified/'; }
+HIDDEN11="Aa Phantom.md|Zz Phantom.md"
+dry11="$(run_hiding "$HIDDEN11" "$TOOL" "$V11" --dry-run 2>&1)"; printf '%s
+' "$dry11"
+real11="$(run_hiding "$HIDDEN11" "$TOOL" "$tmp11/real" --apply 2>&1)"
+assert "a dry run announces no page for a name the real run refuses" "0" "$(grep -c 'would create.*Phantom' <<<"$dry11")"
+assert "it prints the refusal for each" "2" "$(grep -c 'refused: a file already sits there' <<<"$dry11")"
+assert "its refusals are the real run's" "$(grep '^⊘' <<<"$real11")" "$(grep '^⊘' <<<"$dry11")"
+assert "its counts are the real run's" "$(tail -n 1 <<<"$real11")" "$(tail -n 1 <<<"$dry11" | as_real)"
+assert "and the counts are two created, two refused" "synthesize-stubs.mjs: 2 created, 0 densified, 0 skipped, 2 refused (path taken)" "$(tail -n 1 <<<"$dry11" | as_real)"
+assert "the dry run wrote nothing" "2" "$(find "$C11" -type f | wc -l | tr -d ' ')"
+dryl="$(run_hiding "$HIDDEN11" "$TOOL" "$tmp11/limit" --dry-run --limit 1 2>&1)"
+reall="$(run_hiding "$HIDDEN11" "$TOOL" "$tmp11/limitreal" --apply --limit 1 2>&1)"
+assert "under --limit the dry run counts what the real run counts" "$(tail -n 1 <<<"$reall")" "$(tail -n 1 <<<"$dryl" | as_real)"
+assert "a refused name takes no slot and the one after the limit is pending" "synthesize-stubs.mjs: 1 created, 0 densified, 0 skipped, 1 refused (path taken), 2 pending (limit 1)" "$(tail -n 1 <<<"$dryl" | as_real)"
+
+echo "Test group 12: the deferred-clips file is refused when it is not a plain file"
+tmp12="$(mktemp -d -t synth12.XXXXXX)" || exit 1
+trap 'rm -rf "$tmp" "$tmp4" "$tmp5" "$tmp5b" "$tmp6" "$tmp6b" "$tmp7" "$tmp8" "$tmp9" "$tmp10" "$tmp11" "$tmp12"' EXIT
+L12="$tmp12/link"
+P12="$tmp12/plain"
+EV12="$L12/Clippings/_evidence"
+mkdir -p "$EV12" "$L12/30-Resources/Tech" "$tmp12/outside"
+mkclip5 "$EV12" kit-1.md "Kit One" "https://github.com/acme/agent-kit" "agent-kit"
+mkclip5 "$EV12" kit-2.md "Kit Two" "https://github.com/zeta/orchestrator" "agent-kit"
+printf '# Deferred\n\n- [ ] acme/agent-kit tail-skipped by the cap\n- [ ] zeta/orchestrator tail-skipped by the cap\n- [ ] other/unrelated tail-skipped by the cap\n' > "$tmp12/outside/deferred.md"
+cp "$tmp12/outside/deferred.md" "$tmp12/deferred.copy"
+cp -a "$L12" "$P12"
+cp "$tmp12/deferred.copy" "$P12/Clippings/_deferred.md"
+ln -s "$tmp12/outside/deferred.md" "$L12/Clippings/_deferred.md"
+DEF_REFUSAL="⊘ Clippings/_deferred.md — refused: an existing symbolic link sits there, nothing written"
+dry12="$(node "$TOOL" "$L12" --dry-run 2>&1)"
+assert "a dry run reports the refusal" "1" "$(grep -cF "$DEF_REFUSAL" <<<"$dry12")"
+out12="$(node "$TOOL" "$L12" --apply 2>&1)"; printf '%s
+' "$out12"
+assert "the target of a linked deferred file is byte for byte unchanged" "same" "$(cmp -s "$tmp12/deferred.copy" "$tmp12/outside/deferred.md" && echo same || echo changed)"
+assert "the link is still a link" "yes" "$([ -L "$L12/Clippings/_deferred.md" ] && echo yes || echo no)"
+assert "the real run reports the refusal once" "1" "$(grep -cF "$DEF_REFUSAL" <<<"$out12")"
+assert "the Tech page is still created" "yes" "$([ -f "$L12/30-Resources/Tech/Agent Kit.md" ] && echo yes || echo no)"
+outp12="$(node "$TOOL" "$P12" --apply 2>&1)"
+assert "control: a plain deferred file has both rows claimed" "2" "$(grep -c '^- \[x\] ' "$P12/Clippings/_deferred.md")"
+assert "control: and prints no refusal" "0" "$(grep -c 'refused' <<<"$outp12")"
+cp "$P12/Clippings/_deferred.md" "$tmp12/outside/claimed.md"
+cp "$tmp12/outside/claimed.md" "$tmp12/claimed.copy"
+rm "$P12/Clippings/_deferred.md"
+ln -s "$tmp12/outside/claimed.md" "$P12/Clippings/_deferred.md"
+rev12="$(node "$TOOL" "$P12" --revert "$P12/.synthesize-stubs.ledger.jsonl" 2>&1)"; printf '%s
+' "$rev12"
+assert "a revert never writes through a linked deferred file" "same" "$(cmp -s "$tmp12/claimed.copy" "$tmp12/outside/claimed.md" && echo same || echo changed)"
+assert "and reports the refusal" "1" "$(grep -cF "$DEF_REFUSAL" <<<"$rev12")"
+
+echo "Test group 13: a housekeeping word is ignored in its plural form too"
+tmp13="$(mktemp -d -t synth13.XXXXXX)" || exit 1
+trap 'rm -rf "$tmp" "$tmp4" "$tmp5" "$tmp5b" "$tmp6" "$tmp6b" "$tmp7" "$tmp8" "$tmp9" "$tmp10" "$tmp11" "$tmp12" "$tmp13"' EXIT
+EV13="$tmp13/Clippings/_evidence"
+C13="$tmp13/30-Resources/Concepts"
+mkdir -p "$EV13" "$C13"
+for t in articles plugins clips libraries inboxes ideas repos syntheses theories gardening; do
+  mkclip5 "$EV13" "$t-1.md" "$t One" "https://$t-one.com/x" "$t"
+  mkclip5 "$EV13" "$t-2.md" "$t Two" "https://$t-two.org/x" "$t"
+done
+out13="$(node "$TOOL" "$tmp13" --apply 2>&1)"; printf '%s
+' "$out13"
+assert "two clips tagged with a housekeeping plural make no page, a real topic still does" "Gardening.md" "$(pages_like "$C13" '')"
+assert "only the real topic's clips are stamped" "2" "$(grep -lF 'promoted_to:' "$EV13"/*.md | wc -l | tr -d ' ')"
+leaks13="$(node --input-type=module -e '
+const { STRUCTURAL_TAGS, topicalTags } = await import("file://" + process.argv[1]);
+const plural = (w) => /[^aeiou]y$/.test(w) ? w.slice(0, -1) + "ies" : /(x|z|ch|sh|ss)$/.test(w) ? w + "es" : /sis$/.test(w) ? w.slice(0, -2) + "es" : w + "s";
+const forms = (w) => /s$/.test(w) && !/sis$/.test(w) ? [w] : [w, plural(w)];
+const leaks = [...STRUCTURAL_TAGS].flatMap(forms).filter((t) => topicalTags([t]).length);
+process.stdout.write(leaks.join(" "));
+' "$PLUGIN_DIR/tools/lib/stub-synthesis.mjs" 2>&1)"
+assert "every housekeeping word is ignored in both forms" "" "$leaks13"
 
 # ── summary ──────────────────────────────────────────────────────────────────
 echo ""

@@ -12,7 +12,8 @@
 
 // Structural / pipeline tags that are NOT concepts — grouping on these would
 // stub junk like "Concepts" or "Article". (Superset of the evidence-kind tag
-// vocabulary plus clipper/vault housekeeping tags.)
+// vocabulary plus clipper/vault housekeeping tags.) A tag is compared through
+// tagKey, so each word is ignored in its singular and its plural form.
 export const STRUCTURAL_TAGS = new Set([
   "tool", "tools", "cli", "library", "framework", "sdk", "plugin", "repo",
   "concept", "concepts", "mental-model", "idea", "theory",
@@ -29,7 +30,7 @@ export function topicalTags(tags) {
   const out = [];
   for (const raw of tags || []) {
     const t = String(raw).trim().toLowerCase();
-    if (!t || STRUCTURAL_TAGS.has(t) || seen.has(t)) continue;
+    if (!t || STRUCTURAL_KEYS.has(tagKey(t)) || seen.has(t)) continue;
     seen.add(t);
     out.push(t);
   }
@@ -62,6 +63,7 @@ const WORDS_KEPT_AS_THEY_ARE = new Set([
 const SINGULAR_OF_KEPT_PLURAL = new Map([
   ["lenses", "lens"], ["biases", "bias"], ["canvases", "canvas"], ["atlases", "atlas"],
   ["statuses", "status"], ["buses", "bus"], ["analyses", "analysis"],
+  ["syntheses", "synthesis"],
 ]);
 
 function groupingStem(w) {
@@ -78,6 +80,8 @@ export function tagKey(tag) {
   const m = /^(.*[^a-z0-9])?([a-z0-9]+)$/.exec(String(tag).toLowerCase());
   return m ? (m[1] || "") + groupingStem(m[2]) : String(tag).toLowerCase();
 }
+
+const STRUCTURAL_KEYS = new Set([...STRUCTURAL_TAGS].map(tagKey));
 
 export function subjectKey(name) {
   return normalizeName(tagKey(String(name).trim()));
