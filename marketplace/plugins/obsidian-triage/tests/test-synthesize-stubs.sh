@@ -19,7 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TOOL="$PLUGIN_DIR/tools/synthesize-stubs.mjs"
 HIDE_SHIM="$PLUGIN_DIR/tests/fixtures/hide-from-listing.mjs"
-run_hiding() { local names="$1"; shift; HIDE_FROM_LISTING="$names" NODE_OPTIONS="--import $HIDE_SHIM" node "$@"; }
+run_hiding() { local names="$1"; shift; HIDE_FROM_LISTING="$names" NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--import $HIDE_SHIM" node "$@"; }
 
 pass=0
 fail=0
@@ -562,6 +562,7 @@ rev12="$(node "$TOOL" "$P12" --revert "$P12/.synthesize-stubs.ledger.jsonl" 2>&1
 ' "$rev12"
 assert "a revert never writes through a linked deferred file" "same" "$(cmp -s "$tmp12/claimed.copy" "$tmp12/outside/claimed.md" && echo same || echo changed)"
 assert "and reports the refusal" "1" "$(grep -cF "$DEF_REFUSAL" <<<"$rev12")"
+assert "the summary counts it apart from the diverged pages" "synthesize-stubs.mjs: 1 reverted, 0 refused (diverged), 0 already-gone, 2 refused (not a plain file)" "$(tail -n 1 <<<"$rev12")"
 
 echo "Test group 13: a housekeeping word is ignored in its plural form too"
 tmp13="$(mktemp -d -t synth13.XXXXXX)" || exit 1
@@ -622,6 +623,34 @@ assert "the archived clip is byte for byte unchanged (no promoted_to stamp)" "sa
 assert "the summary counts one created and nothing densified" "synthesize-stubs.mjs: 1 created, 0 densified, 0 skipped" "$(tail -n 1 <<<"$out14")"
 node "$TOOL" "$tmp14" --revert "$LEDGER14" >/dev/null 2>&1
 assert "revert removes the one page made" "0" "$(find "$C14" -type f -name '*.md' | grep -vc 'Held Topic')"
+
+echo "Test group 15: a clip file name with a quote or a backslash cannot break a new page"
+tmp15="$(mktemp -d -t synth15.XXXXXX)" || exit 1
+trap 'rm -rf "$tmp" "$tmp4" "$tmp5" "$tmp5b" "$tmp6" "$tmp6b" "$tmp7" "$tmp8" "$tmp9" "$tmp10" "$tmp11" "$tmp12" "$tmp13" "$tmp14" "$tmp15"' EXIT
+EV15="$tmp15/Clippings/_evidence"
+C15="$tmp15/30-Resources/Concepts"
+mkdir -p "$EV15" "$C15"
+mkclip5 "$EV15" 'a"q\b-1.md' "Name One" "https://name-one.com/x" "odd-file-name"
+mkclip5 "$EV15" 'b-2.md' "Name Two" "https://name-two.org/x" "odd-file-name"
+LEDGER15="$tmp15/.synthesize-stubs.ledger.jsonl"
+out15="$(node "$TOOL" "$tmp15" --apply 2>&1)"; printf '%s
+' "$out15"
+derived_of() {
+  node -e 'const l=require("fs").readFileSync(process.argv[1],"utf8").split("\n").find((x)=>x.startsWith("derived_from: ")); process.stdout.write(l ? JSON.parse(l.slice(14)) : "no derived_from line")' "$1" 2>&1 | tail -n 1
+}
+assert "the page is created" "yes" "$([ -f "$C15/Odd File Name.md" ] && echo yes || echo no)"
+assert "derived_from parses back to the clip's name" '[[Clippings/_evidence/a"q\b-1]]' "$(derived_of "$C15/Odd File Name.md")"
+if python3 -I -c 'import yaml' 2>/dev/null; then
+  assert "a YAML parser reads the clip's name from derived_from" '[[Clippings/_evidence/a"q\b-1]]' "$(python3 -I -c 'import sys, yaml; print(yaml.safe_load(open(sys.argv[1], encoding="utf-8").read().split("---")[1])["derived_from"])' "$C15/Odd File Name.md" 2>&1 | tail -n 1)"
+fi
+assert "both clips are stamped" "2" "$(grep -lF 'promoted_to:' "$EV15"/*.md | wc -l | tr -d ' ')"
+node "$TOOL" "$tmp15" --revert "$LEDGER15" >/dev/null 2>&1
+assert "revert removes the page and clears both stamps" "0 0" "$(find "$C15" -type f | wc -l | tr -d ' ') $(grep -lF 'promoted_to:' "$EV15"/*.md | wc -l | tr -d ' ')"
+
+echo "Test group 15b: the hiding helper adds to NODE_OPTIONS and does not replace it"
+mkdir "$tmp15/probe"
+carried15="$(NODE_OPTIONS="--title=carried-setting" run_hiding "gone.md" -e 'const fs=require("fs"),p=require("path"),d=process.argv[1]; fs.writeFileSync(p.join(d,"gone.md"),"x"); fs.writeFileSync(p.join(d,"kept.md"),"x"); process.stdout.write(process.title+" "+fs.readdirSync(d).sort().join(","))' "$tmp15/probe" 2>&1 | tail -n 1)"
+assert "a setting passed in survives and the preload still hides the file" "carried-setting kept.md" "$carried15"
 
 # ── summary ──────────────────────────────────────────────────────────────────
 echo ""

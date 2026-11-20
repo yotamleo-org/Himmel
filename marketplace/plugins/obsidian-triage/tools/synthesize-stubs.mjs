@@ -162,7 +162,7 @@ function renderStub(subjectName, target, contributors) {
     "tags:",
     tagLine,
     "ai-first: true",
-    `derived_from: "[[Clippings/${firstId}]]"`,
+    `derived_from: ${yamlDouble(`[[Clippings/${firstId}]]`)}`,
     "generated_by: /synthesize-stubs",
     "promoted_from_evidence: true",
     ...(isTech ? ["deepen_pending: true"] : []),
@@ -480,7 +480,7 @@ function runRevert(vault, revertPath) {
     try { return JSON.parse(l); } catch (e) { die(1, `corrupt ledger line: ${e.message}`); }
   }).filter((e) => e.action === "stub-create" || e.action === "densify" || e.action === "deferred-claim");
 
-  let reverted = 0, refused = 0, gone = 0;
+  let reverted = 0, refused = 0, gone = 0, notPlain = 0;
   for (let i = entries.length - 1; i >= 0; i--) {
     const e = entries[i];
 
@@ -490,7 +490,7 @@ function runRevert(vault, revertPath) {
     if (e.action === "deferred-claim") {
       const fAbs = path.join(vault, e.file.split("/").join(path.sep));
       const problem = nonPlainFileLine(e.file, fAbs);
-      if (problem) { noteOnce(problem); refused++; continue; }
+      if (problem) { noteOnce(problem); notPlain++; continue; }
       if (!fs.existsSync(fAbs)) { gone++; continue; }
       const fc = fs.readFileSync(fAbs, "utf8");
       if (!fc.includes(e.newLine)) {
@@ -527,7 +527,7 @@ function runRevert(vault, revertPath) {
     }
     reverted++;
   }
-  out(`${SELF}: ${reverted} reverted, ${refused} refused (diverged), ${gone} already-gone`);
+  out(`${SELF}: ${reverted} reverted, ${refused} refused (diverged), ${gone} already-gone${notPlain ? `, ${notPlain} refused (not a plain file)` : ""}`);
 }
 
 // ── main ─────────────────────────────────────────────────────────────────────
