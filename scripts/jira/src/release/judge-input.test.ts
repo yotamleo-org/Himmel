@@ -11,8 +11,7 @@ const row = (n: number, o: Partial<OperatorRow> = {}): OperatorRow => ({
   id: `O-${R}-${String(n).padStart(4, '0')}`, kind: 'spec', decision: String(1000 + n), keys: [`OTHER-${n}`],
   verbatim: 'x', ts: new Date(Date.UTC(2026, 10, 1, 0, 0, n)).toISOString(), prev: 'p', mac: 'm', ...o,
 } as OperatorRow);
-// One wide row of a kind that is never recent, naming a ticket nobody asks about: it lifts the ledger over the floor.
-const pad = row(9000, { keys: ['PAD-1'], verbatim: 'x'.repeat(160_000) });
+const pad =row(9000, { keys: ['PAD-1'], verbatim: 'x'.repeat(160_000) });
 const ask = (key: string, o: Partial<RequestRow> = {}): RequestRow => ({ req: `Q-${R}-${key}`, verb: 'INTAKE', key, from_v: null, to_v: 'v1', why: '', evidence: null, ...o } as RequestRow);
 const ruling = (n: number, key: string, reason: string): RulingRow => ({ id: `R-${R}-${n}`, key, phase: 'receipted', reason, ground: '', ts: new Date(Date.UTC(2026, 10, 2, 0, 0, n)).toISOString() } as RulingRow);
 const ids = (rows: OperatorRow[]) => rows.map((r) => r.id);
