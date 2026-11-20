@@ -254,6 +254,32 @@ echo 'HANDLED close-wrapped'
         self.assertEqual(child.returncode, 143, out.read_text())
         self.assertIn('state=exited exit=stream-stop', Path(str(self.inbox) + '.wait').read_text())
 
+    def test_foreground_waiter_ignores_a_stale_stop_request(self):
+        self.path('stop').touch()
+        env = dict(self.env)
+        env.pop('CHIEF_WAIT_STREAM_SERVICE', None)
+        out = self.root / 'foreground-out'
+        heartbeat = Path(str(self.inbox) + '.wait')
+
+        def beat():
+            try:
+                return heartbeat.read_text()
+            except OSError:
+                return ''
+        with out.open('w') as f:
+            p = subprocess.Popen(['bash', str(HERE / 'chief-wait.sh'), str(self.inbox), '--doc', str(self.doc),
+                                  '--workers-from', str(self.fleet)], env=env, stdin=subprocess.DEVNULL,
+                                 stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
+        self.procs.append((p, out))
+        self.until(lambda: 'state=waiting' in beat() or p.poll() is not None)
+        time.sleep(1)
+        self.assertIsNone(p.poll(), out.read_text())
+        self.assertNotIn('exit=stream-stop', beat())
+        p.terminate()
+        p.wait(timeout=6)
+        self.assertIn('state=exited exit=signal-TERM', beat())
+        self.assertNotIn('stream-stop', beat())
+
     def test_adopted_child_stopped_by_request_is_not_a_waiter_error(self):
         entered, gate, expired = self.root / 'tick-entered', self.root / 'tick-gate', self.root / 'tick-expired'
         self.script('tick', f'touch "{entered}"\nn=0\nwhile [ ! -e "{gate}" ]; do\n'
