@@ -76,5 +76,7 @@ fi
 echo "  bridge bring-up (run yourself once token + pairing are in place):"
 echo "    (cd scripts/telegram && bun supervisor.ts)"
 echo "    reboot persistence (optional logon task): scripts/telegram/README.md"
+echo "  or set up the token, pairing and the bridge with one command (run it in your own Terminal):"
+echo "    bash scripts/remote-setup/remote-setup.sh bot"
 
 exit 0

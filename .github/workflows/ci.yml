@@ -1686,6 +1686,9 @@ jobs:
       # A glob, not a file list, so a NEW observability .test.mjs
       # runs without a ci.yml edit; `ls` fails on an unexpanded pattern.
       - run: ls scripts/op-env-parity.test.mjs scripts/observability/*.test.mjs && bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/observability -- node --test --test-reporter=./scripts/ci/node-suite-reporter.mjs --test-reporter-destination="$RUNNER_TEMP/js-suite-report/node-observability.jsonl" --test-reporter=spec --test-reporter-destination=stdout scripts/op-env-parity.test.mjs "scripts/observability/*.test.mjs"
+      # The himmelctl node:test suites (bot-role disjointness, the macOS bridge LaunchAgent). A glob so a
+      # NEW one runs without a ci.yml edit; `ls` fails on an unexpanded pattern.
+      - run: ls scripts/himmelctl/test/*.test.js && bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/himmelctl -- node --test --test-reporter=./scripts/ci/node-suite-reporter.mjs --test-reporter-destination="$RUNNER_TEMP/js-suite-report/node-himmelctl.jsonl" --test-reporter=spec --test-reporter-destination=stdout "scripts/himmelctl/test/*.test.js"
       # The scripts/hooks + scripts/lib node:test suites (the security gates'
       # own suites). Pre-commit runs them as the fast local gate; this is the
       # authoritative check a bypassed or skipped local hook cannot dodge.
@@ -2140,6 +2143,19 @@ jobs:
         run: |
           sudo atd
           pgrep -x atd > /dev/null || { echo "::error::atd is not running in the CI image; the arm-resume scheduler backend would fail later with an unrelated symptom" >&2; exit 1; }
+      # The remote-setup guide lint (scripts/remote-setup/test-remote-setup-guide.sh) checks every
+      # command on docs/setup/remote-setup.md in bash, zsh and fish, and under CI=true it FAILS when zsh
+      # or fish is missing, so it can never pass by checking nothing. The CI image bakes zsh, not fish yet;
+      # a fork or dependabot run has neither. Install what is missing on a hosted runner (the container
+      # has passwordless sudo, like the atd step above). The himmel-vm and gcp guests bake both.
+      - name: Install zsh and fish (remote-setup guide lint)
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
+        timeout-minutes: 13
+        run: |
+          if command -v zsh > /dev/null && command -v fish > /dev/null; then exit 0; fi
+          sudo rm -f /etc/apt/sources.list.d/google-chrome* /etc/apt/sources.list.d/microsoft-* /etc/apt/sources.list.d/azure-cli*
+          bash .github/scripts/apt-install.sh zsh fish
+          command -v zsh > /dev/null && command -v fish > /dev/null
       # ubuntu-24.04 refuses unprivileged user namespaces by default
       # (AppArmor), so bwrap fails with `RTM_NEWADDR: Operation not permitted` and
       # the sandboxed suites fail or hit their caps. Same step as claude-startup.
