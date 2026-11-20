@@ -23,6 +23,13 @@
  * Usage:
  *   node feed-clip.mjs [--vault <path>] [--feeds <file>] [--cap <n>] [--dry-run]
  *
+ * Every http(s) hop, redirects included, must reach a public address: a host that is,
+ * or resolves to, a loopback, private, link-local, unspecified or reserved address
+ * fails that feed with a `refused:` reason and the run goes on. A name is resolved
+ * once per hop and the socket connects to the address that was checked. Tests only:
+ * `--unsafe-allow-host <host:port>` (repeatable) skips the check for that exact
+ * host and port; neither the feed list nor the environment can set it.
+ *
  * Env: FEED_CLIP_TODAY (YYYY-MM-DD), FEED_CLIP_TIMEOUT_MS (default 20000),
  *   FEED_CLIP_MAX_BYTES (default 8 MiB per feed).
  *
@@ -37,6 +44,10 @@ import { resolve, join } from "node:path";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import dns from "node:dns";
+import http from "node:http";
+import https from "node:https";
+import { BlockList, isIP } from "node:net";
 import { classifyMessage, slugify } from "./lib/telegram-clip.mjs";
 
 const TODAY = process.env.FEED_CLIP_TODAY || new Date().toISOString().slice(0, 10);
@@ -73,6 +84,7 @@ function parseArgs(argv) {
       case "--dry-run": a.dryRun = true; break;
       case "--vault": a.vault = value(); break;
       case "--feeds": a.feeds = value(); break;
+      case "--unsafe-allow-host": (a.allowHosts ??= new Set()).add(value().toLowerCase()); break;
       case "--cap": {
         const n = Number(value());
         if (!Number.isInteger(n) || n < 1) die(1, `--cap must be a whole number of at least 1.\n${USAGE}`);
@@ -151,15 +163,61 @@ const isWalled = (hostname) => {
 async function readCapped(res) {
   const chunks = [];
   let n = 0;
-  for await (const c of res.body) {
+  for await (const c of res) {
     n += c.length;
-    if (n > MAX_BYTES) throw new Error(`feed larger than ${MAX_BYTES} bytes`);
+    if (n > MAX_BYTES) {
+      res.destroy();
+      throw new Error(`feed larger than ${MAX_BYTES} bytes`);
+    }
     chunks.push(c);
   }
   return Buffer.concat(chunks).toString("utf8");
 }
 
-async function fetchFeed(url) {
+const BLOCKED = {
+  loopback: [["127.0.0.0", 8, "ipv4"], ["::1", 128, "ipv6"]],
+  private: [["10.0.0.0", 8, "ipv4"], ["172.16.0.0", 12, "ipv4"], ["192.168.0.0", 16, "ipv4"], ["100.64.0.0", 10, "ipv4"], ["fc00::", 7, "ipv6"]], // leak-allow: private-lan-ip the table names the private ranges the address check refuses
+  "link-local": [["169.254.0.0", 16, "ipv4"], ["fe80::", 10, "ipv6"]],
+  unspecified: [["0.0.0.0", 8, "ipv4"], ["::", 128, "ipv6"]],
+  reserved: [["192.0.0.0", 24, "ipv4"], ["224.0.0.0", 3, "ipv4"], ["ff00::", 8, "ipv6"], ["64:ff9b::", 96, "ipv6"], ["2002::", 16, "ipv6"], ["::", 96, "ipv6"]],
+};
+const BLOCK_LISTS = Object.entries(BLOCKED).map(([why, nets]) => {
+  const list = new BlockList();
+  for (const [net, bits, family] of nets) list.addSubnet(net, bits, family);
+  return [why, list];
+});
+
+function blockedReason(address) {
+  const bare = address.split("%")[0];
+  const family = isIP(bare) === 6 ? "ipv6" : "ipv4";
+  const hit = BLOCK_LISTS.find(([, list]) => list.check(bare, family));
+  return hit ? hit[0] : null;
+}
+
+function checkedLookup(host, options, cb) {
+  dns.lookup(host, { ...options, all: true }, (err, addrs) => {
+    if (err) return cb(err);
+    const bad = addrs.map((a) => [a.address, blockedReason(a.address)]).find(([, why]) => why);
+    if (bad) return cb(new Error(`refused: ${host} resolves to a ${bad[1]} address (${bad[0]})`));
+    return options.all ? cb(null, addrs) : cb(null, addrs[0].address, addrs[0].family);
+  });
+}
+
+function requestOnce(u, checked) {
+  const signal = AbortSignal.timeout(TIMEOUT_MS);
+  const res = new Promise((resolve, reject) => {
+    const req = (u.protocol === "https:" ? https : http).request(u, {
+      headers: { Accept: "application/atom+xml, application/rss+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5", "User-Agent": "feed-clip/1.0" },
+      signal,
+      lookup: checked ? checkedLookup : undefined,
+    }, resolve);
+    req.on("error", reject);
+    req.end();
+  });
+  return { res, signal };
+}
+
+async function fetchFeed(url, allowHosts) {
   if (url.toLowerCase().startsWith("file://")) {
     const path = fileURLToPath(url);
     if (statSync(path).size > MAX_BYTES) throw new Error(`feed larger than ${MAX_BYTES} bytes`);
@@ -169,22 +227,27 @@ async function fetchFeed(url) {
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error(`unsupported scheme ${u.protocol}`);
     if (isWalled(u.hostname)) throw new Error(`walled host ${u.hostname} (fetch it with scripts/web/fetch-url.sh)`);
-    const res = await fetch(u, {
-      redirect: "manual",
-      headers: { Accept: "application/atom+xml, application/rss+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5", "User-Agent": "feed-clip/1.0" },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    const loc = res.headers.get("location");
-    if (res.status >= 300 && res.status < 400 && loc) {
-      await res.body?.cancel();
-      u = new URL(loc, u);
-      continue;
+    const checked = !allowHosts?.has(`${u.hostname}:${u.port || (u.protocol === "https:" ? "443" : "80")}`);
+    const literal = u.hostname.replace(/^\[|\]$/g, "");
+    const why = checked && isIP(literal) ? blockedReason(literal) : null;
+    if (why) throw new Error(`refused: ${u.hostname} is a ${why} address`);
+    const { res: pending, signal } = requestOnce(u, checked);
+    try {
+      const res = await pending;
+      const loc = res.headers.location;
+      if (res.statusCode >= 300 && res.statusCode < 400 && loc) {
+        res.destroy();
+        u = new URL(loc, u);
+        continue;
+      }
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        res.destroy();
+        throw new Error(`HTTP ${res.statusCode}`);
+      }
+      return await readCapped(res);
+    } catch (e) {
+      throw signal.aborted ? Object.assign(new Error("timed out"), { name: "TimeoutError" }) : e;
     }
-    if (!res.ok) {
-      await res.body?.cancel();
-      throw new Error(`HTTP ${res.status}`);
-    }
-    return await readCapped(res);
   }
   throw new Error("too many redirects");
 }
@@ -393,7 +456,7 @@ async function main() {
     let label = feed.label || feed.url;
     let parsed;
     try {
-      parsed = parseFeed(await fetchFeed(feed.url), feed.url);
+      parsed = parseFeed(await fetchFeed(feed.url, args.allowHosts), feed.url);
     } catch (e) {
       failed++;
       process.stdout.write(`✗ feed-clip: ${label} — failed: ${describeError(e)}\n`);

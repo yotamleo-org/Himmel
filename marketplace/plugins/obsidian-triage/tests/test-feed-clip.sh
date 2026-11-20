@@ -28,12 +28,15 @@ assert() {
 export FEED_CLIP_TODAY=2026-11-20
 
 out=""; rc=0
-run_tool() { out="$(node "$SCRIPT" "$@" 2>&1)"; rc=$?; }
+fixture_host() { if [ -n "${PORT:-}" ]; then printf '%s\n%s\n' --unsafe-allow-host "127.0.0.1:$PORT"; fi; }
+run_tool() { local extra=(); while IFS= read -r l; do extra+=("$l"); done < <(fixture_host); out="$(node "$SCRIPT" "$@" ${extra[@]+"${extra[@]}"} 2>&1)"; rc=$?; }
+run_strict() { out="$(node "$SCRIPT" "$@" 2>&1)"; rc=$?; }
 
 run_bounded() {
-    local secs="$1" pid dog
+    local secs="$1" pid dog extra=()
     shift
-    node "$SCRIPT" "$@" >"$tmpdir/_bounded.out" 2>&1 &
+    while IFS= read -r l; do extra+=("$l"); done < <(fixture_host)
+    node "$SCRIPT" "$@" ${extra[@]+"${extra[@]}"} >"$tmpdir/_bounded.out" 2>&1 &
     pid=$!
     ( sleep "$secs"; kill "$pid" ) >/dev/null 2>&1 &
     dog=$!
@@ -71,6 +74,7 @@ const ok = readFileSync(process.argv[2]);
 const blog = readFileSync(process.argv[3]);
 const big = "<?xml version='1.0'?><rss version='2.0'><channel>" + "<!-- pad -->".repeat(2000) + "</channel></rss>";
 const closed = new Set();
+let hits = 0;
 const atom = (title) => `<?xml version='1.0'?><feed xmlns='http://www.w3.org/2005/Atom'><title>t</title><entry><id>${title}</id><link href='https://example.com/${title}'/><title>${title}</title><content>body</content></entry></feed>`;
 const afterClose = (key, r) => {
   const t0 = Date.now();
@@ -92,6 +96,11 @@ const s = http.createServer((q, r) => {
   else if (q.url === "/after-err") afterClose("err", r);
   else if (q.url === "/redir-open") { r.on("close", () => closed.add("redir")); r.writeHead(302, { location: "/after-redir" }); r.write("partial"); }
   else if (q.url === "/after-redir") afterClose("redir", r);
+  else if (q.url === "/redir-meta") { r.writeHead(302, { location: "http://169.254.169.254/latest/meta-data/" }); r.end(); }
+  else if (q.url === "/redir-private") { r.writeHead(302, { location: "http://10.0.0.5/feed.xml" }); r.end(); } // leak-allow: private-lan-ip test fixture asserting the RFC1918 deny rule
+  else if (q.url === "/redir-name") { r.writeHead(302, { location: `http://localhost:${q.socket.localPort}/ok` }); r.end(); }
+  else if (q.url === "/rebind-hit") { hits++; r.writeHead(200, { "content-type": "application/atom+xml" }); r.end(atom("rebound")); }
+  else if (q.url === "/count") { r.writeHead(200); r.end(String(hits)); }
   else if (q.url === "/html") { r.writeHead(200, { "content-type": "text/html" }); r.end("<html><body>not a feed</body></html>"); }
   else if (q.url === "/big") { r.writeHead(200); r.end(big); }
   else { r.writeHead(404); r.end(); }
@@ -446,6 +455,75 @@ V="$(newvault printable)"
 node "$tmpdir/printable.mjs" "$SCRIPT" "$V" "$tmpdir/printable-feed.xml" "$SCRIPT_DIR/fixtures/printable-text-cases.json" >"$tmpdir/_printable" 2>&1; prc=$?
 if [ "$prc" -eq 0 ]; then s=ok; else s="$(cat "$tmpdir/_printable")"; fi
 assert "printable-text: every shared case agrees with the feed tool" ok "$s"
+
+echo "Test 14: every hop's address is checked: no loopback, private, link-local or unspecified host"
+addr_row() {
+    local slug="$1" url="$2" why="$3" runner="${4:-run_strict}"
+    V="$(newvault "addr-$slug")"
+    printf '%s Target\nfile://%s AfterRefusal\n' "$url" "$FIX/atom-releases.xml" > "$V/.feed-clip-feeds"
+    FEED_CLIP_TIMEOUT_MS=1500 "$runner" --vault "$V" --dry-run
+    assert "$slug: refused with a named reason ($why)" ok "$(has "^✗ feed-clip: Target — failed: refused: .*$why" "$out")"
+    assert "$slug: the run continues with the next feed" ok "$(has 'would clip: AfterRefusal: ' "$out")"
+    assert "$slug: the run exits 0" 0 "$rc"
+}
+addr_row loopback-literal "http://127.0.0.1:$PORT/ok" loopback
+addr_row loopback-decimal "http://2130706433:$PORT/ok" loopback
+addr_row loopback-short "http://127.1:$PORT/ok" loopback
+addr_row loopback-v6 "http://[::1]:$PORT/ok" loopback
+addr_row mapped-loopback "http://[::ffff:127.0.0.1]:$PORT/ok" loopback
+addr_row unspecified "http://0.0.0.0:$PORT/ok" unspecified
+addr_row link-local-metadata "http://169.254.169.254/latest/meta-data/" link-local
+addr_row link-local-v6 "http://[fe80::1]/feed" link-local
+addr_row unique-local-v6 "http://[fd00::1]/feed" private
+addr_row private-10 "http://10.0.0.5/feed" private # leak-allow: private-lan-ip test fixture asserting the RFC1918 deny rule
+addr_row private-192 "http://192.168.1.10/feed" private # leak-allow: private-lan-ip test fixture asserting the RFC1918 deny rule
+addr_row mapped-private "http://[::ffff:10.0.0.5]/feed" private # leak-allow: private-lan-ip test fixture asserting the RFC1918 deny rule
+addr_row name-resolving-to-loopback "http://localhost:$PORT/ok" "resolves to .*loopback"
+addr_row redirect-to-link-local "http://127.0.0.1:$PORT/redir-meta" link-local run_tool
+addr_row redirect-to-private "http://127.0.0.1:$PORT/redir-private" private run_tool
+addr_row redirect-to-a-name-resolving-to-loopback "http://127.0.0.1:$PORT/redir-name" "resolves to .*loopback" run_tool
+
+V="$(newvault addr-control)"
+printf 'http://127.0.0.1:%s/ok Control\n' "$PORT" > "$V/.feed-clip-feeds"
+run_tool --vault "$V" --dry-run
+assert "control: a fixture host named with the test option is still fetched" ok "$(has 'would clip: Control: ' "$out")"
+node "$SCRIPT" --vault "$V" --unsafe-allow-host >/dev/null 2>&1; assert "the test option with no value exits 1" 1 "$?"
+
+V="$(newvault addr-optin)"
+printf 'http://127.0.0.1:%s/ok --unsafe-allow-host 127.0.0.1:%s\n' "$PORT" "$PORT" > "$V/.feed-clip-feeds"
+run_strict --vault "$V" --dry-run
+assert "the option written in a feed line does nothing: the host is refused" ok "$(has 'failed: refused: .*loopback' "$out")"
+V="$(newvault addr-env)"
+printf 'http://127.0.0.1:%s/ok EnvTry\n' "$PORT" > "$V/.feed-clip-feeds"
+out="$(FEED_CLIP_ALLOW_PRIVATE=1 FEED_CLIP_UNSAFE_ALLOW_HOST="127.0.0.1:$PORT" UNSAFE_ALLOW_HOST="127.0.0.1:$PORT" node "$SCRIPT" --vault "$V" --dry-run 2>&1)"
+assert "no environment variable lifts the check: the host is refused" ok "$(has 'failed: refused: .*loopback' "$out")"
+
+CADENCE="$SCRIPT_DIR/../../../../scripts/luna/pipeline-cadence.sh"
+ARM="$tmpdir/arm"
+mkdir -p "$ARM/bin" "$ARM/bat" "$ARM/vault/.obsidian" "$ARM/home"
+cat > "$ARM/crontab" <<'EOF'
+#!/bin/sh
+case "${1:-}" in
+  -l) echo "no crontab for fakeuser" >&2; exit 1 ;;
+  -) cat >/dev/null ;;
+esac
+EOF
+printf '#!/bin/sh\nexit 0\n' > "$ARM/bin/claude"
+chmod +x "$ARM/crontab" "$ARM/bin/claude"
+env OSTYPE=linux-gnu HOME="$ARM/home" PIPELINE_CRONTAB="$ARM/crontab" PIPELINE_BAT_DIR="$ARM/bat" PATH="$ARM/bin:$PATH" bash "$CADENCE" arm --force --vault "$ARM/vault" >"$ARM/arm.out" 2>&1
+runner="$(cat "$ARM/bat/pipeline-harvest.sh" 2>/dev/null)"
+assert "nightly runner: arming generated a harvest runner that runs the feed tool" ok "$(has 'nightly-feeds .*feed-clip\.mjs --vault .* --cap 2' "$runner")"
+assert "nightly runner: its generated command line carries no test option" 0 "$(printf '%s\n' "$runner" | grep -c 'unsafe-allow')"
+assert "nightly runner: the generator never writes the option" 0 "$(grep -c 'unsafe-allow' "$CADENCE")"
+
+V="$(newvault rebind)"
+printf 'http://rebind.test:%s/rebind-hit Rebind\n' "$PORT" > "$V/.feed-clip-feeds"
+: > "$tmpdir/rebind.log"
+out="$(REBIND_LOG="$tmpdir/rebind.log" FEED_CLIP_TIMEOUT_MS=500 node --import "$SCRIPT_DIR/fixtures/dns-rebind.mjs" "$SCRIPT" --vault "$V" --dry-run 2>&1)"; rc=$?
+rebind_hits="$(node -e 'fetch("http://127.0.0.1:"+process.argv[1]+"/count").then((r) => r.text()).then(console.log)' "$PORT")"
+assert "rebinding: a name that answers loopback on its second lookup is never connected to" 0 "$rebind_hits"
+assert "rebinding: the name is resolved once for the hop" 1 "$(wc -l < "$tmpdir/rebind.log" | tr -d ' ')"
+assert "rebinding: the feed fails and the run exits 0" ok "$([ "$rc" -eq 0 ] && has '^✗ feed-clip: Rebind' "$out" || echo no)"
 
 echo "Test 13: the README names the nightly harvest runner as what schedules the tool"
 readme="$SCRIPT_DIR/../README.md"
