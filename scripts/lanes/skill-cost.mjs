@@ -346,7 +346,7 @@ function localExceptions(root) {
   return [...text.matchAll(/^local=(\S+)/gm)].map((m) => resolve(join(root, m[1])));
 }
 
-function vendoredRoot(filePath, repoRoot = resolve(process.cwd())) {
+export function vendoredRoot(filePath, repoRoot = resolve(process.cwd())) {
   const file = resolve(filePath);
   let dir = dirname(file);
   for (;;) {
