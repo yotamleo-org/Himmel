@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Test shim for bun. An onboard.ts call is recorded to $RST/onboard.calls and units.log and
+# answered from $RST/onboard.out (rc from $RST/onboard.rc). With $RST/onboard.hang it prints
+# the nonce line, signals its parent with SIGINT (a Ctrl-C), then waits to be killed.
+# Anything else runs the real bun ($RST_REAL_BUN).
+RST=${RST:?RST must point at the test dir}
+case "$*" in
+    *onboard.ts*)
+        printf 'bun %s\n' "$*" >> "$RST/onboard.calls"
+        printf 'onboard %s\n' "$*" >> "$RST/units.log"
+        if [ -f "$RST/onboard.hang" ]; then
+            [ -f "$RST/onboard.out" ] && head -n 1 "$RST/onboard.out"
+            kill -INT "$PPID"
+            /bin/sleep 30
+            exit 1
+        fi
+        [ -f "$RST/onboard.out" ] && cat "$RST/onboard.out"
+        rc=0
+        [ -f "$RST/onboard.rc" ] && rc=$(cat "$RST/onboard.rc")
+        exit "$rc"
+        ;;
+    *)
+        exec "${RST_REAL_BUN:?}" "$@"
+        ;;
+esac
