@@ -55,6 +55,9 @@ mkdir "$T/msgdir"
 expect_rc "msg-file that is a directory exits 2" 2 bash "$SEND" id-a "$T/msgdir"
 expect_eq "directory msg-file sends nothing" "$(cat "$T/log")" ""
 
+printf '[{"threadId":"x","title":5}]' > "$T/badtitle.json"
+expect_rc "title match that jq cannot read exits 1" 1 env STUB_LIST="$T/badtitle.json" bash "$SEND" wanted "$T/msg"
+
 printf 'from stdin\n' | bash "$SEND" id-a - >"$T/out" 2>&1; rc=$?
 expect_eq "stdin dash exits 0" "$rc" 0
 expect_eq "stdin body forwarded" "$(cat "$T/stdin")" "from stdin"

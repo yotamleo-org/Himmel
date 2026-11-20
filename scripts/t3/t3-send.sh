@@ -33,12 +33,12 @@ if [ "$MSG" = "-" ]; then cat > "$TMP/msg" || die 2 "cannot read the message"; e
     || { cat "$TMP/err" >&2; die 1 "thread list failed"; }
 jq -e 'type == "array"' "$TMP/list" >/dev/null 2>&1 || die 1 "thread list did not print a JSON array"
 
-ID="$(jq -r --arg k "$KEY" '[.[] | select(.threadId == $k)] | first | .threadId // empty' "$TMP/list")"
+ID="$(jq -r --arg k "$KEY" '[.[] | select(.threadId == $k)] | first | .threadId // empty' "$TMP/list")" || die 1 "could not read the thread list"
 if [ -n "$ID" ]; then
-    TITLE="$(jq -r --arg k "$ID" '[.[] | select(.threadId == $k)] | first | .title // ""' "$TMP/list")"
+    TITLE="$(jq -r --arg k "$ID" '[.[] | select(.threadId == $k)] | first | .title // ""' "$TMP/list")" || die 1 "could not read the thread list"
 else
     jq -r --arg k "$KEY" '.[] | select((.title // "") | gsub("^\\s+|\\s+$"; "") == $k)
-        | [.threadId, .status, .title] | @tsv' "$TMP/list" > "$TMP/matches"
+        | [.threadId, .status, .title] | @tsv' "$TMP/list" > "$TMP/matches" || die 1 "could not read the thread list"
     N="$(grep -c . "$TMP/matches")"
     [ "$N" -gt 0 ] || die 4 "no thread titled '$KEY'"
     if [ "$N" -gt 1 ]; then
