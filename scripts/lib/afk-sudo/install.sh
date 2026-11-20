@@ -33,7 +33,7 @@ CONFIG=/etc/himmel/afk-sudo.json
 SEED=/etc/himmel/afk-sudo/totp.seed
 LEDGER=/var/log/himmel/afk-sudo.jsonl
 NOTICE_ENV=/etc/himmel/afk-sudo/notice-bot.env
-ROOT_GROUP=root
+PYTHON=python3
 
 # --- hints for the operator's next step ---
 # Bash builtins plus uname only, so a test can source this file under a stubbed
@@ -53,6 +53,9 @@ os_family() {
         *) echo unknown ;;
     esac
 }
+# gid 0's group is named root on Linux and wheel on macOS.
+root_group() { if [ "$(os_family)" = mac ]; then echo wheel; else echo root; fi; }
+ROOT_GROUP=$(root_group)
 pkg_hint() {
     case "$(os_family)" in
         arch) echo "sudo pacman -S $*" ;;
@@ -81,11 +84,11 @@ enable_cmd() {
 install_config() {
     local src=$1 cfg=$2 added
     if [ ! -e "$cfg" ] && [ ! -L "$cfg" ]; then
-        install -o root -g root -m 0644 "$src/afk-sudo.json.template" "$cfg" || return 1
+        install -o root -g "$ROOT_GROUP" -m 0644 "$src/afk-sudo.json.template" "$cfg" || return 1
         return 0
     fi
     # shellcheck disable=SC2016 # python source, not shell
-    added=$(python3 -I -c '
+    added=$("$PYTHON" -I -c '
 import json, os, stat, sys, tempfile
 tpl_path, cfg_path = sys.argv[1:3]
 # The owner the helper requires is root; a test seam names another uid, honoured only when this is not root.
@@ -165,6 +168,58 @@ notice_env_steps() {
     echo "  2. Open the new bot's chat and send it /start, so it may message you."
     echo "  3. $(enable_cmd "$NOTICE_ENV") and put the token after TELEGRAM_BOT_TOKEN= on its last line."
 }
+path_trusted() {
+    local uid=$1 anchor=$2 p=$3 n=0 t d own mode
+    while [ -L "$p" ]; do
+        n=$((n + 1)); [ "$n" -le 20 ] || return 1
+        t=$(readlink "$p") || return 1
+        case $t in /*) p=$t ;; *) p=$(dirname "$p")/$t ;; esac
+    done
+    [ -f "$p" ] || return 1
+    d=$(cd -P "$(dirname "$p")" 2>/dev/null && pwd -P) || return 1
+    t=$d/$(basename "$p")
+    while :; do
+        own=$(stat -c %u "$t" 2>/dev/null || stat -f %u "$t" 2>/dev/null) || return 1 # gnu-ok: stat -f is the BSD form on the same line
+        mode=$(stat -c %a "$t" 2>/dev/null || stat -f %Lp "$t" 2>/dev/null) || return 1 # gnu-ok: stat -f is the BSD form on the same line
+        { [ "$own" = "$uid" ] && [ $((8#$mode & 8#022)) -eq 0 ]; } || return 1
+        if [ "$t" = "$anchor" ] || [ "$t" = / ]; then echo "$d/$(basename "$p")"; return 0; fi
+        t=$(dirname "$t")
+    done
+}
+pick_python() {
+    local uid=$1 anchor=$2 c r
+    shift 2
+    for c in "$@"; do
+        r=$(path_trusted "$uid" "$anchor" "$c") || continue
+        if "$r" -I -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then echo "$r"; return 0; fi
+    done
+    return 1
+}
+install_helper() {
+    local src=$1 dst=$2 py=${3:-} t rc
+    if [ -z "$py" ]; then install -o root -g "$ROOT_GROUP" -m 0755 "$src" "$dst"; return; fi
+    case $py in /*) ;; *) return 1 ;; esac
+    case $py in *[!A-Za-z0-9._/+-]*) return 1 ;; esac
+    t=$(mktemp "${TMPDIR:-/tmp}/afk-helper.XXXXXX") || return 1
+    sed "1s|^#!.*|#!$py -I|" "$src" > "$t" && install -o root -g "$ROOT_GROUP" -m 0755 "$t" "$dst"
+    rc=$?
+    rm -f "$t"
+    return $rc
+}
+# create_ledger <path>: an empty root-owned 0644 file. BSD install refuses /dev/null as a source.
+create_ledger() {
+    local e rc
+    e=$(mktemp "${TMPDIR:-/tmp}/afk-ledger.XXXXXX") || return 1
+    install -o root -g "$ROOT_GROUP" -m 0644 "$e" "$1"
+    rc=$?
+    rm -f "$e"
+    return $rc
+}
+# sudoers_includes_dropin [file]: true when sudoers has an active #includedir (or @includedir) line for the
+# drop-in directory; macOS spells it /private/etc/sudoers.d. A "# includedir" with a space is a comment.
+sudoers_includes_dropin() {
+    grep -Eq '^[#@]includedir[[:space:]]+(/private)?/etc/sudoers\.d[[:space:]]*$' "${1:-/etc/sudoers}" 2>/dev/null
+}
 qr_hint() {
     if ! command -v qrencode >/dev/null 2>&1; then echo "No QR code (qrencode is missing); to get one next time: $(pkg_hint qrencode)"; fi
 }
@@ -206,25 +261,34 @@ esac
 id -u "$user" >/dev/null 2>&1 || { echo "install.sh: no such user: $user" >&2; exit 2; }
 case "$user" in *[!A-Za-z0-9._-]*) echo "install.sh: unexpected characters in user name" >&2; exit 2 ;; esac
 
-install -d -o root -g root -m 0755 "$LIBEXEC" /etc/himmel /var/log/himmel /var/lib/himmel || die "cannot create the directories"
-install -d -o root -g root -m 0700 /etc/himmel/afk-sudo /var/lib/himmel/afk-sudo || die "cannot create the private directories"
+# macOS preflight, before anything is written: a python3 to name in the helper's shebang (sudo's PATH has no
+# Homebrew, and /usr/bin/python3 is the Xcode shim; a Homebrew python is operator-writable, so it is refused), and a sudoers file that reads the drop-in directory.
+HELPER_PY=""
+if [ "$(os_family)" = mac ]; then
+    HELPER_PY=$(pick_python 0 / /usr/bin/python3 /opt/homebrew/bin/python3 /usr/local/bin/python3) || die "no Python 3.9 or newer whose whole path is root-owned and not group- or world-writable (root would run an interpreter the operator can replace); run xcode-select --install for /usr/bin/python3, or install a root-owned python, and run again"
+    PYTHON=$HELPER_PY
+    sudoers_includes_dropin /etc/sudoers || die "/etc/sudoers has no #includedir line for /private/etc/sudoers.d, so the rule would never apply; add that line with sudo visudo and run again"
+fi
+
+install -d -o root -g "$ROOT_GROUP" -m 0755 "$LIBEXEC" /etc/himmel /var/log/himmel /var/lib/himmel || die "cannot create the directories"
+install -d -o root -g "$ROOT_GROUP" -m 0700 /etc/himmel/afk-sudo /var/lib/himmel/afk-sudo || die "cannot create the private directories"
 # The grant kind's hash-only markers: readable by the PreToolUse check, written by root alone.
-install -d -o root -g root -m 0755 /var/lib/himmel/afk-grants || die "cannot create the grant marker directory"
-install -o root -g root -m 0644 "$src/approval_broker.py" "$LIBEXEC/approval_broker.py" || die "cannot install approval_broker.py"
-install -o root -g root -m 0644 "$src/never_remote.py" "$LIBEXEC/never_remote.py" || die "cannot install never_remote.py"
-install -o root -g root -m 0755 "$src/afk_sudo.py" "$LIBEXEC/afk-sudo" || die "cannot install the helper"
+install -d -o root -g "$ROOT_GROUP" -m 0755 /var/lib/himmel/afk-grants || die "cannot create the grant marker directory"
+install -o root -g "$ROOT_GROUP" -m 0644 "$src/approval_broker.py" "$LIBEXEC/approval_broker.py" || die "cannot install approval_broker.py"
+install -o root -g "$ROOT_GROUP" -m 0644 "$src/never_remote.py" "$LIBEXEC/never_remote.py" || die "cannot install never_remote.py"
+install_helper "$src/afk_sudo.py" "$LIBEXEC/afk-sudo" "$HELPER_PY" || die "cannot install the helper"
 # The station ops: root-owned copies of scripts/station-ops/<op>.sh + <op>.json and a manifest of their
 # version and sha256. The helper runs only an installed copy that still hashes to the manifest, never the repo file.
 opsrc=$(cd "$src/../../station-ops" 2>/dev/null && pwd) || die "cannot find scripts/station-ops"
 rm -rf "$LIBEXEC/ops" || die "cannot clear $LIBEXEC/ops"
-install -d -o root -g root -m 0755 "$LIBEXEC/ops" || die "cannot create $LIBEXEC/ops"
+install -d -o root -g "$ROOT_GROUP" -m 0755 "$LIBEXEC/ops" || die "cannot create $LIBEXEC/ops"
 for f in "$opsrc"/*.json; do
     op=$(basename "$f" .json)
-    install -o root -g root -m 0644 "$f" "$LIBEXEC/ops/$op.json" || die "cannot install $op.json"
-    install -o root -g root -m 0755 "$opsrc/$op.sh" "$LIBEXEC/ops/$op.sh" || die "cannot install $op.sh"
+    install -o root -g "$ROOT_GROUP" -m 0644 "$f" "$LIBEXEC/ops/$op.json" || die "cannot install $op.json"
+    install -o root -g "$ROOT_GROUP" -m 0755 "$opsrc/$op.sh" "$LIBEXEC/ops/$op.sh" || die "cannot install $op.sh"
 done
-python3 -I "$opsrc/build-manifest.py" "$LIBEXEC/ops" >/dev/null || die "cannot write the ops manifest"
-[ -e "$LEDGER" ] || install -o root -g root -m 0644 /dev/null "$LEDGER" || die "cannot create the ledger"
+"$PYTHON" -I "$opsrc/build-manifest.py" "$LIBEXEC/ops" >/dev/null || die "cannot write the ops manifest"
+[ -e "$LEDGER" ] || create_ledger "$LEDGER" || die "cannot create the ledger"
 
 tmp=$(mktemp "${TMPDIR:-/tmp}/afk-sudo.XXXXXX") || die "mktemp failed"
 trap 'rm -f "$tmp"' EXIT
@@ -232,8 +296,8 @@ trap 'rm -f "$tmp"' EXIT
 install_config "$src" "$CONFIG" || die "cannot install the config"
 
 if [ ! -e "$SEED" ]; then
-    (umask 077; python3 -I -c 'import base64, secrets; print(base64.b32encode(secrets.token_bytes(20)).decode())' > "$SEED.new") || die "cannot generate the seed"
-    { chown root:root "$SEED.new" && chmod 0600 "$SEED.new" && mv "$SEED.new" "$SEED"; } || die "cannot install the seed"
+    (umask 077; "$PYTHON" -I -c 'import base64, secrets; print(base64.b32encode(secrets.token_bytes(20)).decode())' > "$SEED.new") || die "cannot generate the seed"
+    { chown "root:$ROOT_GROUP" "$SEED.new" && chmod 0600 "$SEED.new" && mv "$SEED.new" "$SEED"; } || die "cannot install the seed"
     uri="otpauth://totp/himmel-afk-sudo:$(hostname)?secret=$(cat "$SEED")&issuer=himmel"
     echo "Add this to your authenticator app now; it is not shown again:"
     echo "$uri"
@@ -244,5 +308,5 @@ install_notice_env "$src" "$NOTICE_ENV" || die "cannot create $NOTICE_ENV"
 
 printf '%s ALL=(root) NOPASSWD: %s\n' "$user" "$LIBEXEC/afk-sudo" > "$tmp" || die "cannot write the sudoers rule"
 visudo -cf "$tmp" >/dev/null || die "visudo rejected the sudoers rule"
-install -o root -g root -m 0440 "$tmp" "$SUDOERS" || die "cannot install the sudoers rule"
+install -o root -g "$ROOT_GROUP" -m 0440 "$tmp" "$SUDOERS" || die "cannot install the sudoers rule"
 echo "installed for $user; still disabled. Enable: $(enable_cmd) (enabled, operator_id, classes)"
