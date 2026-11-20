@@ -112,9 +112,21 @@ function plan(vault, a, date) {
   };
 }
 
+function replaceFile(abs, content) {
+  const tmp = path.join(path.dirname(abs), `.${path.basename(abs)}.apply-clip-actions.tmp`);
+  try {
+    fs.writeFileSync(tmp, content);
+    fs.chmodSync(tmp, fs.statSync(abs).mode & 0o7777);
+    fs.renameSync(tmp, abs);
+  } catch (e) {
+    fs.rmSync(tmp, { force: true });
+    throw e;
+  }
+}
+
 function recordThenWrite(p, ledgerPath) {
   fs.appendFileSync(ledgerPath, JSON.stringify({ ts: new Date().toISOString(), ...p.entry }) + "\n");
-  for (const e of p.edits) fs.writeFileSync(e.abs, e.next);
+  for (const e of p.edits) replaceFile(e.abs, e.next);
 }
 
 function runApply(vault, date, limit, ledgerPath, dryRun) {
@@ -187,7 +199,7 @@ function runRevert(vault, revertPath) {
     if (restored === null || sha256(restored) !== shaBefore) {
       return refuse(rel, `diverged since ${what} (cannot restore the recorded bytes)`);
     }
-    fs.writeFileSync(abs, restored);
+    replaceFile(abs, restored);
     out(`↩ ${rel} — ${what} reverted`);
     reverted++;
   };

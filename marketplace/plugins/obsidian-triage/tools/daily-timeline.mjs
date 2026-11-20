@@ -92,7 +92,7 @@ function buildReport(vault, date, content, eol) {
   const sources = sourcesByDate.get(date);
   const today = parseItems(sectionLines(content, REPORT_HEADING));
   // Only today's own suggestions; a resolved carried line stays under Carried over.
-  const kept = today.filter((it) => it.since === date && isResolved(it.mark));
+  const kept = today.filter((it) => it.since === date && isResolved(it.mark) && !applied.has(it.id));
   const actions = suggestActions(sources, mocs, { date, seen, kept });
   const marks = new Map(today.map((it) => [it.id, it.mark]));
   return { section: renderReportSection({ date, sources, actions, carried, marks }, eol), sources, actions, carried };

@@ -168,7 +168,7 @@ export function foldContent(content, clips) {
   if (!fresh.length) return null;
   const eol = content.includes("\r\n") ? "\r\n" : "\n";
   const bullets = fresh.map((c) => `- ${wikilink(c.link, c.title)}`).join(eol);
-  const head = /^## Evidence[ \t]*\r?$/m.exec(content);
+  const head = /^## Evidence[ \t]*(?=\r?$)/m.exec(content);
   if (!head) {
     const appended = `${content.endsWith("\n") ? "" : eol}${eol}## Evidence${eol}${eol}${bullets}${eol}`;
     return { next: content + appended, at: content.length, appended, fresh };

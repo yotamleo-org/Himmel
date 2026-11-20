@@ -350,6 +350,10 @@ node tools/apply-clip-actions.mjs --vault <v> --revert <vault>/.apply-clip-actio
   actions the vault no longer reproduces (`unmatched`), and already applied.
 - **Bounded:** at most `--limit` actions per run (default 5), because Obsidian
   hangs on bulk file churn. A dry run honours the same limit.
+- **Atomic page writes:** apply and revert each write the whole page to a hidden
+  temp file beside it, copy the page's permissions, then rename it over the page,
+  so a write that fails part-way (a full disk) leaves the page as it was and the
+  temp file removed.
 - **Ledger and revert:** one line per applied action in
   `<vault>/.apply-clip-actions.ledger.jsonl` (`--ledger` overrides), carrying the
   page hashes before and after. `--revert` undoes newest-first and **refuses** any

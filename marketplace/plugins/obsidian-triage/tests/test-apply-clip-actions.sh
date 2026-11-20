@@ -319,6 +319,48 @@ assert "a restore that does not hash to the recorded bytes exits 3" "3" "$rc"
 assert "a restore that does not hash to the recorded bytes is refused" "1" "$(printf '%s\n' "$out" | grep -c 'cannot restore the recorded bytes')"
 assert "that refusal leaves the vault untouched" "$kh" "$(tree_hash "$K")"
 
+echo "Test group 6f: a write that fails part-way leaves the page intact; permissions survive a replace"
+Y="$tmp/Y"; mkdir -p "$Y/Clippings/_evidence" "$Y/60-Maps" "$Y/50-Journal/Daily"
+{
+    printf -- '---\ntype: moc\ntitle: "Pad MOC"\ntags:\n  - pad\n  - moc\n---\n\n## Evidence\n\n- [[Clippings/_evidence/seed]]\n\n'
+    head -c 3000 /dev/zero | tr '\0' 'x'
+    printf '\n'
+} > "$Y/60-Maps/Pad-MOC.md"
+P_SAVED="$P"; P="$Y"; mkclip pad-1 "$D" pad; P="$P_SAVED"
+node "$TIMELINE" --vault "$Y" --date "$D" >/dev/null 2>&1
+chmod 640 "$Y/60-Maps/Pad-MOC.md"
+cp -R "$Y" "$tmp/Y2"
+cp "$Y/60-Maps/Pad-MOC.md" "$tmp/pad-before.md"
+( ulimit -f 2; node "$APPLY" --vault "$Y" --date "$D" --apply >/dev/null 2>&1 ); rc=$?
+assert "a write that fails part-way fails the run" "1" "$rc"
+assert "the page is left exactly as it was" "" "$(cmp "$tmp/pad-before.md" "$Y/60-Maps/Pad-MOC.md" 2>&1)"
+assert "no temporary file is left behind" "0" "$(find "$Y/60-Maps" -name '*tmp*' | wc -l | tr -d ' ')"
+node "$APPLY" --vault "$tmp/Y2" --date "$D" --apply >/dev/null 2>&1
+assert "the same fold applies when the write succeeds" "1" "$(grep -c 'pad-1' "$tmp/Y2/60-Maps/Pad-MOC.md")"
+assert "a replaced page keeps its permissions" "640" "$(node -e 'process.stdout.write((require("fs").statSync(process.argv[1]).mode & 0o777).toString(8))' "$tmp/Y2/60-Maps/Pad-MOC.md")"
+node "$APPLY" --vault "$tmp/Y2" --date "$D" --revert "$tmp/Y2/$LEDGER_NAME" >/dev/null 2>&1
+assert "a reverted page keeps its permissions" "640" "$(node -e 'process.stdout.write((require("fs").statSync(process.argv[1]).mode & 0o777).toString(8))' "$tmp/Y2/60-Maps/Pad-MOC.md")"
+assert "a reverted page is back to its bytes" "" "$(cmp "$tmp/pad-before.md" "$tmp/Y2/60-Maps/Pad-MOC.md" 2>&1)"
+
+echo "Test group 6g: a ticked action that is then applied is no longer listed"
+T2="$tmp/T2"; cp -R "$P" "$T2"
+NOTE2="$T2/50-Journal/Daily/$D.md"
+node "$APPLY" --vault "$T2" --date "$D" --apply --limit 50 >/dev/null 2>&1
+id5="$(grep -F 'Archive [[Clippings/_evidence/arch-5|' "$NOTE2" | grep -o 'act:[0-9a-f]*')"
+sed -e 's/^- \[ \] \(Archive \[\[Clippings\/_evidence\/arch-5|\)/- [x] \1/' \
+    -e 's/^- \[ \] \(File a ticket in himmel for \[\[Clippings\/_evidence\/tick-1|\)/- [x] \1/' "$NOTE2" > "$tmp/note-ticked.md" && mv "$tmp/note-ticked.md" "$NOTE2"
+assert "fixture: the applied action is ticked after the apply" "1" "$(grep -c '^- \[x\] Archive \[\[Clippings/_evidence/arch-5|' "$NOTE2")"
+node "$TIMELINE" --vault "$T2" --date "$D" >/dev/null 2>&1
+assert "the action was applied" "1" "$(grep -c '^archived: true$' "$T2/Clippings/_evidence/arch-5.md")"
+assert "the ticked, applied action is no longer listed" "0" "$(grep -c "$id5" "$NOTE2")"
+assert "a ticked action that is not applied stays listed" "1" "$(grep -c '^- \[x\] File a ticket' "$NOTE2")"
+
+echo "Test group 6h: an empty Evidence section in a CRLF map keeps its line endings"
+LIB="$PLUGIN_DIR/tools/lib/clip-actions.mjs" node --input-type=module -e \
+    'const { foldContent } = await import(process.env.LIB); process.stdout.write(foldContent("## Evidence\r\n\r\n## Notes\r\n", [{ link: "x", title: "X" }]).next)' > "$tmp/crlf.out" 2>&1
+printf '## Evidence\r\n\r\n- [[x|X]]\r\n\r\n## Notes\r\n' > "$tmp/crlf.want"
+assert "the bullet lands in the empty CRLF section with no split line ending" "" "$(cmp "$tmp/crlf.want" "$tmp/crlf.out" 2>&1)"
+
 echo "Test group 7: arguments"
 node "$APPLY" --vault "$A" --date "$D" --limit 0 >/dev/null 2>&1; assert "--limit 0 is refused" "1" "$?"
 node "$APPLY" --vault "$A" --date "$D" --limit abc >/dev/null 2>&1; assert "--limit abc is refused" "1" "$?"
