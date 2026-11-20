@@ -4466,10 +4466,25 @@ fi
 # The crontab and `at` bodies both export HIMMEL_ARMED_RELAUNCH=1 so a
 # top-level armed session can self-exit with SIGTERM once its successor is
 # armed (documented in afk-mode.md).
+# The body text for the scheduled launch $1, for both the at job and the crontab runner.
+# A doc in no fleet family at arm time can join one before the job fires, so its body asks
+# fleet_runtime.py resolve again when it runs: it launches only while the answer is "not
+# managed", and exits 24 with a message when the doc is managed or the answer cannot be read.
 _arm_runtime_body() {
-    local scope
+    local scope q_runtime q_doc
     if py_armor_capture -I "$SCRIPT_DIR/../lib/fleet_runtime.py" resolve --doc "$HANDOVER_PATH"; then scope=$PY_ARMOR_OUT; else scope='{"managed":true}'; fi
-    if [ "$(printf '%s\n' "$scope" | jq -r .managed)" != true ]; then printf '%s' "$1"; return 0; fi
+    if [ "$(printf '%s\n' "$scope" | jq -r .managed)" != true ]; then
+        q_runtime=$(printf '%q' "$SCRIPT_DIR/../lib/fleet_runtime.py")
+        q_doc=$(printf '%q' "$HANDOVER_PATH")
+        printf '%s\n' \
+            "if _arm_fire_scope=\$(python3 -I $q_runtime resolve --doc $q_doc) && printf '%s\\n' \"\$_arm_fire_scope\" | jq -e '.managed == false' >/dev/null 2>&1; then" \
+            "$1" \
+            "else" \
+            "echo 'ERR arm-resume: this launch was armed while its doc was in no fleet family, and the doc is now managed or its fleet registration cannot be read; the pause and admission rules of the family apply, so nothing was started. Re-arm it through the managed path.' >&2" \
+            "(exit 24)" \
+            "fi"
+        return 0
+    fi
     # shellcheck source=../lib/fleet-launch.sh
     . "$SCRIPT_DIR/../lib/fleet-launch.sh" || {
         echo "ERR arm-resume: cannot source $SCRIPT_DIR/../lib/fleet-launch.sh -- refusing to arm a managed launch without its runtime line." >&2
