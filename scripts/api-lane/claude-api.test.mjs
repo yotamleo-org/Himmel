@@ -1572,6 +1572,22 @@ test('judge mapped to B picks B; with the map removed the same call is refused-p
   assert.equal(g.called(), false);
 });
 
+test('critic mapped to B picks B; with the map removed the same call is refused-policy', () => {
+  const f = fixture();
+  putRoles(f, { critic: ['B'] });
+  const ok = autoKind(f, 'critic');
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.equal(usedKey(f), 'BBBB');
+  assert.equal(JSON.parse(f.record().trim()).account, 'B');
+  assert.deepEqual(policyLines(f), []);
+  const g = fixture();
+  const refused = autoKind(g, 'critic');
+  assert.equal(refused.status, 2, refused.stderr);
+  assert.match(refused.stderr, /policy refusal: this call was not sent, and no alert or fallback follows\. Name an account \(A, B, C or D\) instead of auto/);
+  assert.equal(policyLines(g).length, 1);
+  assert.equal(g.called(), false);
+});
+
 test('a role mapped to B whose fresh reading has no room is refused, and A is never used', () => {
   const f = fixture();
   putRoles(f, { judge: ['B'] });
