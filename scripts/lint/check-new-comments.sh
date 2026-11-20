@@ -95,6 +95,7 @@ esac
 git -c core.quotePath=false diff "$@" --name-status --find-renames --diff-filter=ACMRT > "$W/status" || die "git diff failed"
 git -c core.quotePath=false diff "$@" -U0 --text --no-color --no-ext-diff --find-renames --diff-filter=ACMRT > "$W/diff" || die "git diff failed"
 
+if grep -q "$(printf '\t')\"" "$W/status"; then die "git quotes a changed path (a double quote, backslash or control character in its name)"; fi
 awk -F'\t' '{ print $NF }' "$W/status" > "$W/touched"
 cp "$W/touched" "$W/indiff" || die "cp failed"
 recount=0
@@ -118,6 +119,7 @@ while IFS= read -r p; do
     if ! git cat-file -e "$tipspec$p" 2>/dev/null; then printf '%s\t0\n' "$p" >> "$W/counts"; continue; fi
     git show "$tipspec$p" > "$W/blob" || die "cannot read $p at the tip"
     n="$(LC_ALL=C awk -f "$classifier" -v mode=count -v path="$p" "$W/blob")" || die "the classifier failed on $p"
+    case "$n" in ''|*[!0-9]*) die "the classifier printed no count for $p" ;; esac
     printf '%s\t%s\n' "$p" "$n" >> "$W/counts"
 done < "$W/paths"
 
@@ -136,6 +138,7 @@ LC_ALL=C awk -F'\t' -v has_base="$has_base" '
 
 : > "$W/findings"
 while IFS="$(printf '\t')" read -r kind p n lim; do
+    if [ "$kind" = "A" ] && ! grep -qxF "$p" "$W/indiff"; then continue; fi
     was="$(awk -F'\t' -v p="$p" '$1 == p { print $2; exit }' "$W/renames")"
     m=0
     if git cat-file -e "$base:${was:-$p}" 2>/dev/null; then

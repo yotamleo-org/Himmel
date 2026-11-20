@@ -285,6 +285,22 @@ stale 'src/a.sh	1
 printf 'src/a.sh\t3\n' > "$R/$BL"; stage
 if [ "$RC" -eq 1 ] && has "$BL: src/a.sh raised to 3, the base allows 2"; then pass "a stale row may not rise past the base file's count"; else fail "row past the base count -> rc=$RC: $OUT"; fi
 
+echo "== 17. one classifier per file, quoted paths, a silent classifier =="
+mkrepo
+base="$(git -C "$R" rev-parse HEAD)"
+mkdir -p "$T/basegate"
+cp "$R/scripts/lint/"* "$T/basegate/"
+printf 'END { print 1 }\n' > "$R/scripts/lint/comment-count.awk"
+printf 'src/a.sh\t1\n' > "$R/$BL"
+git -C "$R" commit -q -am "the classifier counts fewer lines"
+OUT="$(cd "$R" && bash "$T/basegate/check-new-comments.sh" --range "$base" 2>&1)"; RC=$?
+want "a classifier that counts fewer, with the row lowered on an untouched file" 0
+mkrepo
+printf 'echo q\n%s body note\necho r\n' "$HASH" > "$R/src/q\"x.sh"; stage; want "a comment in a file whose path git quotes is not waved through" 2
+mkrepo
+printf 'END { }\n' > "$R/scripts/lint/comment-count.awk"
+echo 'echo more' >> "$R/src/a.sh"; stage; want "a classifier that prints no count" 2
+
 echo
-echo "test-check-new-comments: $PASS passed, $FAIL failed"
+echo "test-check-new-comments:$PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
