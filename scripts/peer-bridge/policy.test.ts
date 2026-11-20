@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Peer } from "./config";
 import { checkOutbound } from "./egress";
@@ -184,6 +186,64 @@ test("no envelope changes a config field, the allowlist or the kill file", async
   w.inject("alpha", "req", { job: "c".repeat(16), op: "run-suite", sha: SHA, suites: ["scripts/not-allowed.sh"] });
   await w.step("bravo");
   expect(snapshot()).toEqual(before);
+});
+
+// ---- no LLM on the typed path, and the poller's spawn list (I2, I20) ----
+
+// The modules `bun build` pulls in for an entry point, relative to the repo root.
+function graphOf(entry: string): string[] {
+  const dir = fs.mkdtempSync(join(tmpdir(), "peer-meta-"));
+  try {
+    const r = spawnSync("bun", ["build", entry, "--target=bun", `--metafile=${join(dir, "meta.json")}`, `--outfile=${join(dir, "out.js")}`], { cwd: HIMMEL_ROOT, encoding: "utf8" });
+    expect([entry, r.status]).toEqual([entry, 0]);
+    return Object.keys(JSON.parse(fs.readFileSync(join(dir, "meta.json"), "utf8")).inputs).sort();
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+const read = (f: string) => fs.readFileSync(join(HIMMEL_ROOT, f), "utf8");
+const CLAUDE_CALL = /["'`]claude["'`]|\bclaude\s+(-p|--)/;
+// Every place a module starts a process: the verb and its first argument.
+const SPAWN_CALL = /(?<![.\w])(?:procHooks\.)?(spawnSync|spawn|execFileSync|execFile|execSync|runProc)\(\s*(\[?\s*"[^"]+"|[A-Za-z_.0-9]+)/g;
+const spawnSites = (files: string[]): string[] => files.flatMap(f => [...read(f).matchAll(SPAWN_CALL)].map(m => `${f}: ${m[1]}(${m[2]}`));
+
+test("envelope.ts reaches only itself, the grammar and the ids: no process, no claude", () => {
+  const g = graphOf("scripts/peer-bridge/envelope.ts");
+  expect(g).toEqual(["scripts/peer-bridge/envelope.ts", "scripts/peer-bridge/grammar.ts", "scripts/peer-bridge/ids.ts"]);
+  for (const f of g) { expect([f, CLAUDE_CALL.test(read(f))]).toEqual([f, false]); expect(spawnSites([f])).toEqual([]); }
+});
+
+test("the poller reaches the one claude call it always had, in the text reader, and nothing the typed path added", () => {
+  const g = graphOf("scripts/peer-bridge/poller.ts");
+  expect(g).toContain("scripts/peer-bridge/gate.ts");
+  expect(g).toContain("scripts/peer-bridge/jobstate.ts");
+  expect(g).toContain("scripts/peer-bridge/resolve.ts");
+  expect(g.filter(f => CLAUDE_CALL.test(read(f)))).toEqual(["scripts/peer-bridge/reader.ts"]);
+  // The typed path's own modules hold no claude call at all.
+  for (const f of ["envelope", "sign", "resolve", "jobstate", "spool-events", "jobs"]) expect([f, CLAUDE_CALL.test(read(`scripts/peer-bridge/${f}.ts`))]).toEqual([f, false]);
+});
+
+test("the poller's spawn list is slice A's: ps, redact_check, the usage preflight, the reader and flock", () => {
+  const sites = spawnSites(graphOf("scripts/peer-bridge/poller.ts"));
+  expect(sites).toEqual([
+    'scripts/peer-bridge/chain.ts: spawnSync("ps"',
+    'scripts/peer-bridge/egress.ts: runProc(["bash"',
+    "scripts/peer-bridge/proc.ts: runProc(argv",
+    "scripts/peer-bridge/proc.ts: spawn(argv",
+    'scripts/peer-bridge/reader.ts: runProc(["bash"',
+    'scripts/peer-bridge/reader.ts: spawn("claude"',
+    'scripts/telegram/bus.ts: spawn("flock"',
+  ]);
+  // git runs in jobs.ts and, in the next change, runner.ts: never in the poller's graph.
+  expect(sites.filter(s => /git/.test(s))).toEqual([]);
+});
+
+test("git runs only in jobs.ts on the typed path, with the two verbs it was given", () => {
+  const typed = fs.readdirSync(join(HIMMEL_ROOT, "scripts/peer-bridge")).filter(n => /\.ts$/.test(n) && !/\.test\.ts$|^testlib-/.test(n));
+  const withGit = typed.filter(n => /["'`]git["'`]/.test(read(`scripts/peer-bridge/${n}`)));
+  // setup.ts asks git where the primary checkout is, at a terminal, and is imported by nothing inbound.
+  expect(withGit.sort()).toEqual(["jobs.ts", "setup.ts"]);
+  const jobs = read("scripts/peer-bridge/jobs.ts");
+  expect(jobs.match(/await git\(deps,[^)]*\)/g)).toEqual(['await git(deps, "branch", "-r", "--contains", sha)', 'await git(deps, "cat-file", "-e", `${sha}:${s}`)']);
+  expect(jobs.match(/runProc\(/g)).toHaveLength(1);
 });
 
 test("an envelope can only narrow: serves, approve, budgets and the allowlist have no inbound writer", () => {

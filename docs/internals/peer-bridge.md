@@ -3,7 +3,8 @@
 The peer bridge lets our Telegram bot and another station's bot exchange
 questions, status, info and answers in one supergroup that neither side trusts.
 Deadlines run on both sides. Peer text is read only in a tainted peer desk, and
-every outbound message passes one egress gate.
+every outbound message passes one egress gate. A second, typed path carries signed
+envelopes that no model reads (see "The typed path").
 
 It is user-level: no `sudo`, no system change. It writes two state dirs, one user
 unit, and one metadata-only line per wake into the operator bot's outbox.
@@ -132,6 +133,206 @@ Caps: 3 automatic messages per thread plus one reserved `closing`, 20 automatic
 messages per peer per hour, `maxOpenThreads` 5 counted on allocation only,
 `maxPerMinute` 10.
 
+## The typed path (slice B1)
+
+Beside the text channel there is a second, separate path for work that needs no
+free text: our chief asks the peer's station to run shell suites and reads the
+result. The two paths never mix. A message whose second line starts `#env:` goes
+to the typed path and never to the reader or the desk; a text message never goes
+to the resolver. Nothing a peer wrote reaches a chief's output on either side, so
+a chief may read this path, unlike the desk's digests.
+
+| | Text path | Typed path |
+|---|---|---|
+| Carries | questions, status, info, answers | signed envelopes: `req`, `res`, `capacity-ask`, `capacity`, `cancel`, `halt` |
+| Reaches | reader, digest, tainted desk, operator | verifier, resolver, `jobs.jsonl`, `jobs.ts`, any chief |
+| Parser | two control-line regexes | a third control-line regex, then an Ed25519 check, then a closed schema |
+| LLM | the tool-less reader | none, on either side |
+
+This path is inert while `serves` is empty, which is the default and what our own
+station keeps. Until the runner ships (the next change), a station that serves
+takes a request and resolves it but starts nothing: a job still unresolved after
+10 minutes is refused `no-vm`.
+
+### Names, keys and trust (at a terminal)
+
+`setup.ts` subcommands, each behind the same local-only guard as the rest (no
+Claude session, a TTY):
+
+| Command | Does |
+|---|---|
+| `station-name <name>` | sets our `self.stationName` (what `from` carries). A name `egress.ts` `badHost` would refuse (the host's name or first label, `localhost`, a `.local` name) is refused, because egress would refuse every envelope that holds it |
+| `keygen` | creates `C/station.ed25519` (PKCS8, 0600, `O_CREAT\|O_EXCL`) and prints the public key (base64), its key id (8 hex of `sha256(pub)`) and its fingerprint (20 hex in groups of four) |
+| `trust <peer> <station-name> <pubkey>` | prints the key's fingerprint and asks you to **type** the one the peer's operator gave you out of band. It writes `theirs.stationName` and adds the key to `theirs.keys` (at most two) only on a match. The public key may travel over the group; the fingerprint must not |
+| `keygen --rotate`, `--activate` | `--rotate` makes a next key and prints it while we keep signing with the current one; the peer runs `trust` with it; `--activate` switches and deletes the old key file |
+| `untrust <peer> [--key <id>]` | removes one trusted key, or all. A key also ages out 30 days after its successor was added |
+| `allow-suite <peer> <alias> <path>`, `deny-suite <peer> <alias>` | the only writers of `C/<peer>.suites` (0600): the suites this station will run for that peer, by the alias you type |
+| `kill <peer>`, `unkill <peer>` | the only writers of `C/<peer>.killed` |
+
+### The envelope
+
+A typed message is exactly four lines:
+
+```text
+/peer@<their bot username>
+#env:v1 k=<8 hex key id> id=<8 hex>
+<canonical JSON, one line, printable ASCII, at most 3000 bytes>
+sig=<86 base64url characters>
+```
+
+The signature is Ed25519 over `"himmel-peer-env-v1\n" + line 2 + "\n" + line 3`, the
+exact bytes, so the domain tag and line 2 are bound. Line 3 must equal its own
+canonical re-encode (schema order, integers only, no whitespace), which refuses a
+duplicate key, a key out of order, `1.0`, an exponent and any whitespace. Common
+fields, in order: `v`, `msg` (equals line 2's `id`), `from`, `to` (station names),
+`chat` (a string), `iat`, `exp`, `kind`. `exp` is `iat + 86400` for every kind. The
+body is closed per kind; `envelope.ts` owns the schema, the suite-path regex
+`^scripts/[a-z0-9_/.-]{1,120}\.sh$` and the two time constants `TIMEOUT_S_MAX`
+(10200 s) and `ALLOWANCE_S` (1200 s).
+
+| Kind | Direction | Body |
+|---|---|---|
+| `req` | requester to server | `job` (16 hex, the requester's), `op` (`run-suite`), `sha` (40 hex), `suites` (1 to 10 paths) |
+| `res` | server to requester | `job`, `state` (`accepted`, `refused`, `running`, `done`, `cancelled`, `expired`); `refused` names `not-served`, `unknown-sha`, `too-old`, `not-allowed`, `budget` or `no-vm`; `running` carries `timeout_s`; `done` carries one outcome per suite (`pass`, `fail`, `error`), `minutes`, `image` (64 hex) and the log's `sha256` and `bytes` |
+| `capacity-ask` | either way | empty |
+| `capacity` | reply | `re`, `state` (`idle`, `busy`, `not-served`, `no-vm`), `queue`, `jobs_left`, `vm_minutes_left` |
+| `cancel` | requester to server | `job` |
+| `halt` | either way | empty: stop every job I sent you |
+
+### Admission, in order
+
+One predicate, one test row per step. A refusal at steps 2 to 7 drops the message
+and logs the step, the `msg` id and a sha256, never the text.
+
+1. The text path's rules 1 to 8, and rule 1 also checks a separate envelope id
+   window keyed on `(chat, sender, id)`. The window keeps each id until its
+   verified `exp`, has no count eviction, and is persisted to
+   `S/<peer>/envelope-ids.jsonl`, so a flood of text cannot flush it.
+2. Four lines, the first our address line, line 2 matching `#env:v1`.
+3. Line 3 printable ASCII and at most 3000 bytes; line 4 the signature shape.
+4. The peer is not killed, and has a live key whose id is `k`. A killed peer is
+   dropped here, silently.
+5. The Ed25519 signature verifies, before any parse. A failure feeds the tripwire.
+6. `JSON.parse`, the canonical re-encode, then the closed schema.
+7. Binding: `msg`, `from`, `to`, `chat`, `iat` (not more than 10 minutes in our
+   future) and `exp` (still ahead). Only now is the id inserted in the window.
+8. Matching: a `req` needs an op in `serves`; a `cancel` a job that peer sent us; a
+   `res` a job we sent it; a `capacity` an ask we sent it and nobody has answered.
+   `halt` and `capacity-ask` always pass.
+9. Budgets, for a `req` only.
+
+A `req` refused at step 8 or 9 is answered with a signed `res refused`
+(`not-served` or `budget`). An unmatched `res`, `capacity` or `cancel` is dropped
+and logged, never answered. Answers to a peer's asks go at most once per `msg` and
+under the text path's 20-per-hour automatic cap. Nothing here starts a process or
+a model.
+
+### Serving, approval and budgets
+
+The receiver decides, from its own `peers.json` and `C/<peer>.suites`; a git pull
+or a peer message changes neither.
+
+- `serves` is a subset of `["run-suite"]`, default none. `approve["run-suite"]` is
+  `tty` (default) or `auto`. `cancel`, `halt` and `capacity-ask` are always
+  handled, because they only narrow or report.
+- `budgets`: `jobsPerDay` 1 to 1000, `vmMinutesPerDay` 1 to 10000, `queueMax` 1 to
+  3, `maxJobMinutes` 30 up to `TIMEOUT_S_MAX/60 - ALLOWANCE_S/60` (150). Reported
+  values are clamped to the wire's ranges before they are encoded.
+- The server resolves every requester value against its own state. A suite must
+  equal a path in the allowlist and is stored by the alias its operator typed; the
+  SHA is the requester's string until the runner resolves it in its own clone of
+  `origin`.
+- **Backstop.** At `vm-start` the poller writes `min(maxJobMinutes, VM minutes
+  left today)` into the RUNNING record, and the runner reads it there. A backstop
+  under `ALLOWANCE_S` refuses the job `budget`. The requester is told
+  `timeout_s = backstop + ALLOWANCE_S` once, in `res running`.
+- VM minutes are charged from RUNNING entry to the terminal timestamp. `jobsPerDay`
+  counts every job that reached RESOLVED.
+- **Tripwire.** Three bad signatures from one peer in an hour send one wake line
+  naming the peer and the count. It is an alert, never a kill, so a key rotation
+  or a junk sender cannot cut the link.
+- **Kill switch.** While `C/<peer>.killed` exists the peer is dropped at step 4 and
+  answered nothing, its live jobs are cancelled with nothing sent, and nothing it
+  asked for starts. The peer sees silence and its own deadlines end its jobs.
+
+### Job states and deadlines
+
+`jobstate.ts` owns both tables. The server (`in`) walks RECEIVED, RESOLVED,
+APPROVED, RUNNING and ends DONE, CANCELLED, EXPIRED or REFUSED. The requester
+(`out`) walks SENT, ACCEPTED, RUNNING and ends DONE, REFUSED, EXPIRED, CANCELLED
+or LOST. Every non-terminal state sets an absolute deadline and every cell not
+named in the tables is logged and ignored.
+
+| Side | State | Deadline |
+|---|---|---|
+| server | RECEIVED | +10 minutes, then REFUSED `no-vm` (the runner is down) |
+| server | RESOLVED, APPROVED | the `req`'s `exp`, then EXPIRED |
+| server | RUNNING | start + backstop + `ALLOWANCE_S`, then DONE with every unfinished suite `error` |
+| requester | SENT, ACCEPTED | `req.exp + TIMEOUT_S_MAX + 2 h`, then LOST (SENT also sends one `cancel`) |
+| requester | RUNNING | running-at + `timeout_s` + 2 h, then LOST |
+
+The latest a server job can end is `req.exp + TIMEOUT_S_MAX`, so every requester
+deadline falls after the matching server deadline, even when `res running` is
+lost. A late `res` on a finished job is recorded as `late` and never reopens it.
+On start the poller drains the Telegram backlog and applies every admitted
+envelope before its first deadline tick, so a `res` waiting there is not beaten by
+an overdue SENT deadline. The poller's 30 s tick then fires each overdue deadline
+once, oldest first.
+
+### What a chief sees
+
+`jobs.ts` is the CLI, and it prints only values this station produced or looked up
+by a key it issued itself (`resolve.ts`, the only formatter):
+
+| Peer field | Shown as |
+|---|---|
+| `job` | our job number `J<n>` |
+| `state`, `refused`, each outcome | our enum constant |
+| result position | our own recorded suite path (the server's alias on the other side); a count that is not ours makes the result `malformed` |
+| `minutes` | rounded up to a multiple of 5 |
+| `jobs_left`, `vm_minutes_left`, `queue` | `capacity: ok`, `low` or `none`; the queue as `free` or `full` |
+| `image` | `pinned` if equal to `theirs.imageDigest`, else `unpinned` |
+| the log's hash and size | `log: kept on peer` |
+| `re`, `iat`, `exp`, `msg`, `from`, `to`, `chat`, `timeout_s` | not shown |
+
+Other peer values are stored in `peer_*` fields of `jobs.jsonl`, which the
+formatter never reads. A peer value is never shown, never selects which of our
+texts is shown, and what it can still influence (an enum choice, a bucketed number,
+the leading hex of a SHA) is a few bytes per job, a recorded ceiling. A signature
+proves origin, not truth, so a peer's result is an attested claim: it is never a CI
+check, a status, a merge input or a Jira transition, and no merge, check or Jira
+script imports `scripts/peer-bridge/` (`routes.test.ts` pins it).
+
+Commands (exit 0 ok, 2 refused with the rule, 3 `approve` without a TTY, 4 queued
+but unconfirmed, do not resend): `jobs.ts request <peer> run-suite --sha <40 hex>
+--suite <path>...`, `capacity <peer>`, `cancel J<n>`, `halt <peer>`, `list [--peer
+P]`, `show J<n>`, `approve J<n>`. `request` first checks, on our own checkout, that
+the SHA is on one of our `origin/*` branches (`git branch -r --contains`) and each
+suite exists at it (`git cat-file -e`); these are the only two processes the
+typed path starts. It also refuses on a fresh `capacity` that says `not-served` or
+no budget. `approve` is the server's gate: at a terminal, outside a Claude session,
+it shows the resolved job and waits for a typed `yes`.
+
+### Outbound
+
+Every envelope is built by our code from resolved values, signed by the poller
+with `C/station.ed25519`, and passed through `checkEnvelopeOutbound`: line 1 and 2
+by their own anchored shapes against our config, line 3 re-validated with the
+receiver's schema and bound to our station name, the peer's and the chat, the
+content rules of the text path on line 3 alone, and line 4 accepted only by
+verifying as our signature over lines 2 and 3 (a line that merely looks like a
+signature is refused, since a bot token's secret part fits that shape). The matrix
+row is `peer-jobs` to `peer-telegram` for `peer-message`. No thread or `opens`
+check runs: an envelope opens no text thread.
+
+### Routes
+
+The peer-origin data on a station are the raw envelopes in `inbox.jsonl`, the
+`peer_*` fields in `jobs.jsonl` and, on a serving station, job logs. All sit under
+the path-denied `S/` and none is printed; peer files are outside every indexed
+root. A log never leaves the serving station: only its size and sha256 cross, and
+neither is shown. The tainted desk is still the only path for peer free text.
+
 ## The peer desk
 
 Peer text is never shown to a normal session. A **wake** tells you something
@@ -213,10 +414,13 @@ claim.
   a second poller out.
 - **Admission.** One predicate decides what is queued (see above). A message that
   fails it leaves one redacted log line and nothing else.
-- **A closed spawn list.** Peer bytes are parsed only by the two control-line
-  regexes and never reach a shell argv. The poller starts only the reader, the
-  `redact_check` shell function, `usage-preflight.sh` and, on macOS, `ps`. The
-  reader's environment holds no `PEER_BOT_TOKEN` and no `TELEGRAM_*`.
+- **A closed spawn list.** Peer bytes are parsed only by the three control-line
+  regexes and never reach a shell argv; an envelope's JSON line is parsed only after
+  its signature verifies, only in `envelope.ts`. The poller starts only the reader,
+  the `redact_check` shell function, `usage-preflight.sh` and, on macOS, `ps`
+  (`policy.test.ts` pins the list over the poller's module graph). On the typed path
+  only `jobs.ts` runs `git`, two fixed verbs on our own checkout. The reader's
+  environment holds no `PEER_BOT_TOKEN` and no `TELEGRAM_*`.
 - **One egress gate.** Every outbound message, from `send.ts`, a template or a
   resend, passes the same checks in the poller: a secret-shape scan through
   `redact_check`, the egress matrix for the `peer-message` purpose, the length
@@ -292,6 +496,16 @@ These are known and accepted for this slice.
   through the mark hook. `read.ts` still taints before it prints.
 - **Peer content can mislead the operator.** A digest is bounded and fenced, but
   it is text from an outsider. The operator reads it as untrusted.
+- **The station key is readable by the same OS user as the bot token.** A full
+  station compromise yields both, and `block-read-secrets` is an accidental-leak
+  floor, not a sandbox. A separate user for the bridge is the fix.
+- **A TTY gate stops accidents, not a determined session.** A session that clears
+  `CLAUDECODE` and `CLAUDE_CODE_SESSION_ID` and allocates a pty can pass the guard
+  on `setup.ts` and `jobs.ts approve`, so a station's own chief could approve its
+  own job. A separate user closes it.
+- **A few bytes per job still cross the typed path.** A peer chooses among three
+  outcomes for each of up to ten suites, one minutes bucket and the leading hex of
+  a SHA. A chief treats them as data; the ceilings ledger records it.
 
 ## Audit trail
 
@@ -305,6 +519,8 @@ sequence number and a hash over the previous record, and `verifyChain` in
 | `outbox.jsonl` | intents, `sent` records, refusals (fingerprint only), failures, `confirmed` |
 | `threads.jsonl` | every thread state change with its absolute deadline |
 | `digests.jsonl` | one record per reader run |
+| `envelope-ids.jsonl` | the id and `exp` of each admitted envelope; the replay window reloads from it |
+| `jobs.jsonl` | the typed path's jobs (one snapshot per state change), capacity asks and answers; `peer_*` fields are never printed |
 
 Beside them: `S/unknown-chats.jsonl` lists supergroups our bot was added to that
 are not configured, `S/taint/cleared.log` lists each `untaint.sh` run, and each
@@ -320,15 +536,24 @@ bot's own outbox.
   `PEER_BRIDGE_VM_TEST=1`; elsewhere it prints a SKIP line.
 - `bash scripts/peer-bridge/test-peer-units.sh` lints both unit files
   (`systemd-analyze verify` on Linux, `plutil -lint` on macOS).
-- `bash scripts/peer-bridge/test-peer-bridge-macos.sh` runs the chain, gate and
-  threads suites on a macOS host. The macOS bed is `os-verify.yml` over
-  `scripts/ci/macos-poc-suites.txt`, never a station.
+- `bash scripts/peer-bridge/test-peer-bridge-macos.sh` runs the chain, gate,
+  threads, envelope, signing, resolver and job-state suites on a macOS host. The
+  macOS bed is `os-verify.yml` over `scripts/ci/macos-poc-suites.txt`, never a
+  station.
+- The typed path's suites: `envelope.test.ts` (schema, canonical form, admission
+  steps 1 to 9), `sign.test.ts`, `resolve.test.ts` (canary rows on both sides, with
+  RED controls that copy a field verbatim), `jobstate.test.ts` (every cell, the
+  deadline-order property), `jobs.test.ts` (real temporary repos),
+  `bridge-roundtrip.test.ts` (two bridges on a fake Telegram), `tripwire.test.ts`,
+  `routes.test.ts` and the typed rows of `policy.test.ts`.
 - `bash scripts/hooks/test-peer-taint.sh` covers the taint hooks.
 
 ## Slices
 
-This is slice A: one pair of bots, questions, status, info and answers.
-Slice B carries assignments, documents, bug intake and delivery of work.
-Slice C adds a Mac VM backend. The hardening slice runs the bridge as its own
+Slice A is one pair of bots, questions, status, info and answers. Slice B1 adds the
+typed path above: signed envelopes that let a chief ask a peer station to run suites
+and read the outcome. Its runner (the VM verbs and the in-guest contract) is the
+next change. Slice B2, a separate ticket, carries documents, bug intake and delivery
+of work, where peer-authored text does cross. Slice C adds a Mac VM backend. The hardening slice runs the bridge as its own
 sandboxed user, which is the upgrade path for the same-user and setup-refusal
 residuals above.
