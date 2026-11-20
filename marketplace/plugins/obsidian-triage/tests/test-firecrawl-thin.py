@@ -631,6 +631,9 @@ NOTICES = (
     ("a bot-check page with several lines",
      "Checking your browser before accessing the site.\n\nThis process is automatic. Your browser will redirect to your requested content shortly.\n\nPlease allow up to five seconds.",
      "bot-check or error notice"),
+    ("a bot-check page whose phrase wraps a line",
+     "Checking your\nbrowser before accessing the site. This process is automatic. Your browser will redirect to your requested content shortly. Please allow up to five seconds.",
+     "bot-check or error notice"),
     ("a 404 page", "# 404 Not Found\n\nThe page you were looking for could not be found. Try the search box or go back to the home page of the site.", "bot-check or error notice"),
     ("a three-word text", "# Release\n\nBug fixes.", "too few words"),
 )
@@ -684,6 +687,54 @@ code, out = run_main(v)
 old = v / "Clippings" / "old.md"
 check("retry that meets the bot check again: still partial, body untouched, one more deferral",
       fm_value(old, "harvest_status") == "partial" and fm_value(old, "harvest_defer_count") == "1" and old.read_text(encoding="utf-8").split("\n---\n", 1)[1] == before.split("\n---\n", 1)[1])
+
+MULTILINE_NOTICE = "\n".join([
+    "Checking your browser before accessing the site.", "This process is automatic.", "Your browser will redirect shortly.",
+    "Please allow up to five seconds.", "Ray ID: 7a1b2c3d4e5f", "Performance and security by the site operator.",
+    "Privacy", "Terms", "Contact", "Status", "Help"])
+ML_URL = "https://example.com/docs/ml"
+check("fixture: the multi-line notice is junk yet its clip is not thin",
+      mod.unusable_fetch_reason(MULTILINE_NOTICE) is not None and mod.is_thin_body(fetched_clip(ML_URL, "jina", MULTILINE_NOTICE).split("\n---\n", 1)[1]) is False)
+
+log = []
+install_backends(log)
+v = vault_of(inbox=[("ml.md", fetched_clip(ML_URL, "jina", MULTILINE_NOTICE))])
+code, out = run_main(v)
+ml = v / "Clippings" / "ml.md"
+ml_text = ml.read_text(encoding="utf-8")
+check("a junk clip whose multi-line notice is not thin is fetched again", log == [("jina", ML_URL)])
+check("it ends ok from the fetch: the notice is replaced, one section, the backend still named",
+      fm_value(ml, "harvest_status") == "ok" and fm_value(ml, "harvest_skill") == "jina"
+      and "Checking your browser" not in ml_text and ml_text.count("## Harvested content") == 1 and "Paragraph 3 of the fetched page" in ml_text)
+
+log = []
+install_backends(log)
+v = vault_of(inbox=[("ml.md", fetched_clip(ML_URL, "jina", MULTILINE_NOTICE))])
+code, out = run_main(v, env={"HARVEST_SCRAPE_DENY": "all"})
+ml = v / "Clippings" / "ml.md"
+check("with the fetch off, a junk clip is a deferred partial, never re-stamped ok by the clip-body path",
+      fm_value(ml, "harvest_status") == "partial" and fm_value(ml, "harvest_skill") == "jina" and fm_value(ml, "harvest_defer_count") == "1" and log == [])
+code, out = run_main(v, env={"HARVEST_SCRAPE_DENY": "all"})
+check("and it stays visible to the next run and to the re-flag", "Checking your browser" in ml.read_text(encoding="utf-8") and mod.junk_fetch_section({"harvest_skill": fm_value(ml, "harvest_skill"), "harvest_status": fm_value(ml, "harvest_status")}, ml.read_text(encoding="utf-8").split("\n---\n", 1)[1]) is not None)
+
+log = []
+install_backends(log, jina_md=MULTILINE_NOTICE)
+v = vault_of(inbox=[("ml.md", fetched_clip(ML_URL, "jina", MULTILINE_NOTICE))])
+code, out = run_main(v)
+ml = v / "Clippings" / "ml.md"
+check("a refetch that meets the notice again leaves a deferred partial with the notice kept",
+      fm_value(ml, "harvest_status") == "partial" and fm_value(ml, "harvest_defer_count") == "1" and "Checking your browser" in ml.read_text(encoding="utf-8"))
+
+log = []
+install_backends(log, jina_exc=RuntimeError("jina: 503"))
+seeded = fetched_clip(ML_URL, "jina", MULTILINE_NOTICE).replace("harvest_status: ok\n", "harvest_status: partial\nharvest_defer_count: 4\nharvest_defer_last: 2026-11-08\n")
+v = vault_of(inbox=[("ml.md", seeded)])
+code, out = run_main(v)
+ml = v / "Clippings" / "ml.md"
+check("the retry is bounded: the fifth deferral marks the junk clip needs-attention", fm_value(ml, "harvest_defer_count") == "5" and fm_value(ml, "harvest_needs_attention") == "true")
+log.clear()
+code, out = run_main(v)
+check("a needs-attention junk clip is no longer fetched or rewritten", log == [] and fm_value(ml, "harvest_status") == "partial")
 
 
 def reflag_vault(n_junk, extra=()):

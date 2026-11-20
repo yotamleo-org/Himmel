@@ -345,7 +345,7 @@ BOT_CHECK_MAX_WORDS = 80
 
 def unusable_fetch_reason(text: str) -> str | None:
     words = sum(1 for _ in itertools.islice(re.finditer(r"\w+", text), BOT_CHECK_MAX_WORDS + 1))
-    if words <= BOT_CHECK_MAX_WORDS and _BOT_CHECK_RE.search(text):
+    if words <= BOT_CHECK_MAX_WORDS and _BOT_CHECK_RE.search(re.sub(r"\s+", " ", text)):
         return "fetched text is a bot-check or error notice"
     if words < FETCH_MIN_WORDS:
         return f"fetched text has too few words ({words})"
@@ -1807,7 +1807,7 @@ def process_clip(path: Path, dry_run: bool, chain=None, url_rules=None, park=Non
             return ("~", f"partial (thin-body): clipper captured only a skeleton{gap_suffix}{ig_suffix}{note}{defer_suffix(n)}{flag_suffix}", injection_hits)
         return ("x", f"failed (G-3): thin-body frontmatter mark altered body; reverted{flag_suffix}", injection_hits)
 
-    if chain is not None and firecrawl_eligible(canonical) and is_thin_body(body):
+    if chain is not None and firecrawl_eligible(canonical) and (junk or is_thin_body(body)):
         denied = url_gate(canonical, url_rules)
         if denied:
             return flagged_early("o", f"skipped (sensitivity): {denied}{_stamp_refused(path, text, fm_raw, body, canonical, dry_run)}")
@@ -1906,7 +1906,7 @@ def process_clip(path: Path, dry_run: bool, chain=None, url_rules=None, park=Non
             reason = f"transcript unavailable ({out.get('transcript_error') or 'transcript_empty'})"
         yt_miss = f"; youtube-scrapling: {reason}"
 
-    if is_thin_clip(canonical, body):
+    if junk or is_thin_clip(canonical, body):
         return thin_partial(yt_miss)
 
     # clip-body path
