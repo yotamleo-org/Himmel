@@ -1153,8 +1153,31 @@ mstamp() { python3 "$GSCORE" stamp "$MS" --repo "$RR" --fixtures "$RR/scripts/ev
   --key "$RR/scripts/eval/review-panel/key/seeds.json" --critics codex "$@" 2>&1; }
 out=$(CRITIC_SECRET_KNOB=1 mstamp); rc=$?
 eq "unrecordable_setting: a CRITIC_* knob the manifest cannot record refuses the stamp" "$rc" "2"; has "unrecordable_setting: and is named" "$out" "CRITIC_SECRET_KNOB"
-out=$(HIMMEL_API_LANE=x mstamp); rc=$?
-eq "unrecordable_setting: HIMMEL_API_LANE refuses the stamp" "$rc" "2"
+out=$(HIMMEL_CRITIC_X=1 mstamp); rc=$?
+eq "unrecordable_setting: a HIMMEL_CRITIC_* knob still refuses the stamp (control)" "$rc" "2"
+rm -f "$MS/run-manifest.json"
+out=$(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A mstamp); rc=$?
+eq "lane_recorded: a stamp with the API lane switched on is accepted" "$rc" "0"
+eq "lane_recorded: the manifest records the lane and the account" \
+  "$(python3 -I -c 'import json,sys; p=json.load(open(sys.argv[1]))["protocol"]; print(p.get("api_lane"), p.get("api_account"))' "$MS/run-manifest.json" 2>&1)" "on A"
+rm -f "$MS/run-manifest.json"
+out=$(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=not-an-account-name mstamp); rc=$?
+eq "lane_recorded: a non-name account still stamps (exit 0)" "$rc" "0"
+eq "lane_recorded: a non-name account is never written to the manifest" \
+  "$(grep -c 'not-an-account-name' "$MS/run-manifest.json")" "0"
+rm -f "$MS/run-manifest.json"
+for knob in CR_CLAUDE_CRITIC_EFFORT CR_CLAUDE_CRITIC_MAX_USD CFP_CLAUDE_API_LAUNCHER HIMMEL_API_CALL_TIMEOUT_S \
+    HIMMEL_API_FALLBACK HIMMEL_API_KEY_ID HIMMEL_API_CACHE_TTL HIMMEL_API_CLAUDE_BIN; do
+  out=$(env "HIMMEL_API_LANE=on" "$knob=low" python3 "$GSCORE" stamp "$MS" --repo "$RR" --fixtures "$RR/scripts/eval/review-panel/fixtures" \
+    --key "$RR/scripts/eval/review-panel/key/seeds.json" --critics codex 2>&1); rc=$?
+  eq "lane_recorded: the claude-api setting $knob refuses the stamp" "$rc" "2"; has "lane_recorded: $knob is named" "$out" "$knob"
+  rm -f "$MS/run-manifest.json"
+done
+out=$(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=$'A\n' mstamp); rc=$?
+eq "lane_recorded: a trailing-newline account still stamps (exit 0)" "$rc" "0"
+eq "lane_recorded: an account with a trailing newline is not recorded" \
+  "$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["protocol"].get("api_account"))' "$MS/run-manifest.json" 2>&1)" "None"
+rm -f "$MS/run-manifest.json"
 out=$(CRITIC_PARALLEL=2 CRITIC_TIMEOUT_SECS=60 mstamp); rc=$?
 eq "unrecordable_setting: the recorded overrides are accepted" "$rc" "0"
 out=$(mstamp --model "  "); rc=$?
