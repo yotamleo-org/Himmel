@@ -10,6 +10,8 @@
 //   setup.ts keygen [--rotate | --activate]
 //   setup.ts trust <peer> <station-name> <pubkey-b64>
 //   setup.ts untrust <peer> [--key <id>]
+//   setup.ts allow-suite <peer> <alias> <path> | deny-suite <peer> <alias>
+//   setup.ts kill <peer> | unkill <peer>
 //
 // Exit: 0 done, 2 usage, 3 refused (nothing written).
 import { randomBytes } from "node:crypto";
@@ -21,9 +23,9 @@ import { createInterface } from "node:readline";
 import { defaultRoot } from "../telegram/bus";
 import { loadAccess, operatorChatId, type Access } from "../telegram/gate";
 import { submitSpool } from "./chain";
-import { readPeersFile, ConfigError } from "./config";
+import { ALIAS_RE, ConfigError, loadAllowlist, readPeersFile, type AllowEntry } from "./config";
 import { badHost } from "./egress";
-import { STATION_NAME_RE } from "./envelope";
+import { STATION_NAME_RE, SUITE_PATH_RE } from "./envelope";
 import { BOT_ID_RE, PEER_NAME_RE, TOKEN_RE, botIdFromToken, configDir, peerDir, peersFile, stateDir } from "./ids";
 import { sanitize } from "./sanitize";
 import { fingerprint, keyId, keygen, keygenActivate, keygenRotate, type KeyInfo } from "./sign";
@@ -229,6 +231,8 @@ export async function remove(peer: string, deps: Deps): Promise<void> {
   replaceJson(peersFile(), raw);
   fs.rmSync(peerDir(peer), { recursive: true, force: true });
   fs.rmSync(join(stateDir(), "desk", peer), { recursive: true, force: true });
+  fs.rmSync(suitesFile(peer), { force: true });
+  fs.rmSync(killedFile(peer), { force: true });
   deps.out(`removed ${peer}; restart the poller to drop it`);
 }
 
@@ -307,6 +311,74 @@ export async function untrust(peer: string, key: string | undefined, deps: Deps)
   deps.out(`${peer} now has ${p.theirs.keys.length} trusted key(s)`);
 }
 
+function replaceText(path: string, text: string): void {
+  const tmp = `${path}.${randomBytes(4).toString("hex")}.tmp`;
+  writeNew(tmp, text, 0o600);
+  try { fs.renameSync(tmp, path); } catch (e) { fs.rmSync(tmp, { force: true }); throw e; }
+}
+
+function knownPeer(peer: string): void {
+  if (!PEER_NAME_RE.test(peer)) refuse("peer name must match ^[a-z0-9][a-z0-9-]{0,31}$");
+  if (!loadRaw().peers[peer]) refuse(`unknown peer ${peer}`);
+}
+
+const suitesFile = (peer: string) => join(configDir(), `${peer}.suites`);
+const killedFile = (peer: string) => join(configDir(), `${peer}.killed`);
+
+function currentAllowlist(peer: string): AllowEntry[] {
+  try { return loadAllowlist(peer); } catch (e) {
+    if (e instanceof ConfigError) refuse(e.message);
+    throw e;
+  }
+}
+const writeAllowlist = (peer: string, entries: AllowEntry[]) => replaceText(suitesFile(peer), entries.map(e => `${e.alias} ${e.path}\n`).join(""));
+
+// The server's suite allowlist (C/<peer>.suites). Only these two commands write it,
+// at a terminal, so a git pull or a peer message can never widen it.
+export async function allowSuite(peer: string, alias: string, path: string, deps: Deps): Promise<void> {
+  guard(deps);
+  knownPeer(peer);
+  if (!ALIAS_RE.test(alias)) refuse("the alias must match ^[a-z0-9-]{1,32}$");
+  if (!SUITE_PATH_RE.test(path) || path.includes("..")) refuse("the suite path must match ^scripts/[a-z0-9_/.-]{1,120}\\.sh$ and hold no ..");
+  const entries = currentAllowlist(peer);
+  if (entries.some(e => e.alias === alias)) refuse(`the alias ${alias} is already in use`);
+  if (entries.some(e => e.path === path)) refuse(`${path} is already allowed`);
+  mkdir0700(configDir());
+  writeAllowlist(peer, [...entries, { alias, path }]);
+  deps.out(`${peer} may now be asked to run ${path} as ${alias}`);
+}
+
+export async function denySuite(peer: string, alias: string, deps: Deps): Promise<void> {
+  guard(deps);
+  knownPeer(peer);
+  if (!ALIAS_RE.test(alias)) refuse("the alias must match ^[a-z0-9-]{1,32}$");
+  const entries = currentAllowlist(peer);
+  if (!entries.some(e => e.alias === alias)) refuse(`${peer} has no allowed suite ${alias}`);
+  writeAllowlist(peer, entries.filter(e => e.alias !== alias));
+  deps.out(`${alias} is no longer allowed for ${peer}`);
+}
+
+// The kill switch is a file: while C/<peer>.killed exists the poller drops every
+// envelope from the peer unanswered and the runner cancels its running job.
+export async function kill(peer: string, deps: Deps): Promise<void> {
+  guard(deps);
+  knownPeer(peer);
+  mkdir0700(configDir());
+  try { writeNew(killedFile(peer), "", 0o600); } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "EEXIST") refuse(`${peer} is already killed`);
+    throw e;
+  }
+  deps.out(`${peer} is killed: its envelopes are dropped and its running job is cancelled`);
+}
+
+export async function unkill(peer: string, deps: Deps): Promise<void> {
+  guard(deps);
+  knownPeer(peer);
+  if (!fs.existsSync(killedFile(peer))) refuse(`${peer} is not killed`);
+  fs.rmSync(killedFile(peer), { force: true });
+  deps.out(`${peer} may send again`);
+}
+
 function stopUnitDefault(): void {
   if (process.platform === "linux") spawnSync("systemctl", ["--user", "disable", "--now", UNIT_NAME], { stdio: "ignore", timeout: 15_000 });
   else if (process.platform === "darwin") spawnSync("launchctl", ["bootout", `gui/${process.getuid!()}`, join(homeDir(), "Library", "LaunchAgents", PLIST_NAME)], { stdio: "ignore", timeout: 15_000 });
@@ -351,7 +423,11 @@ async function main(): Promise<void> {
     else if (cmd === "trust" && args.length === 3) await trust(args[0], args[1], args[2], deps);
     else if (cmd === "untrust" && args.length === 1) await untrust(args[0], undefined, deps);
     else if (cmd === "untrust" && args.length === 3 && args[1] === "--key") await untrust(args[0], args[2], deps);
-    else { console.error("usage: setup.ts add <peer> --peer-bot-id N [--peer-username U] | confirm <peer> <chatId> | remove <peer> | uninstall | station-name <name> | keygen [--rotate|--activate] | trust <peer> <station-name> <pubkey-b64> | untrust <peer> [--key <id>]"); process.exit(2); }
+    else if (cmd === "allow-suite" && args.length === 3) await allowSuite(args[0], args[1], args[2], deps);
+    else if (cmd === "deny-suite" && args.length === 2) await denySuite(args[0], args[1], deps);
+    else if (cmd === "kill" && args.length === 1) await kill(args[0], deps);
+    else if (cmd === "unkill" && args.length === 1) await unkill(args[0], deps);
+    else { console.error("usage: setup.ts add <peer> --peer-bot-id N [--peer-username U] | confirm <peer> <chatId> | remove <peer> | uninstall | station-name <name> | keygen [--rotate|--activate] | trust <peer> <station-name> <pubkey-b64> | untrust <peer> [--key <id>] | allow-suite <peer> <alias> <path> | deny-suite <peer> <alias> | kill <peer> | unkill <peer>"); process.exit(2); }
   } catch (e) {
     if (e instanceof SetupError) { console.error(`setup: ${e.message}`); process.exit(3); }
     throw e;

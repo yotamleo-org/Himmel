@@ -10,6 +10,25 @@ const stamp = (ms: number) => { const d = new Date(ms); return `${pad(d.getMonth
 
 type WakeCfg = Pick<Config, "bridgeRoot" | "operatorChatId" | "himmelRoot"> & { peers: Record<string, { maxWakesPerDay: number }> };
 
+// Counts bad signatures per peer. It alerts, never kills: a key rotation in progress or a
+// junk sender must not be able to cut the link. `note` is true for the failure that
+// reaches `max` inside the window, and not again for a peer until the window has passed.
+export class Tripwire {
+  private fails = new Map<string, number[]>();
+  private alerted = new Map<string, number>();
+  constructor(private max = 3, private windowMs = 3_600_000) {}
+  note(peer: string, nowMs: number): boolean {
+    const list = (this.fails.get(peer) ?? []).filter(t => nowMs - t < this.windowMs);
+    list.push(nowMs);
+    this.fails.set(peer, list);
+    if (list.length < this.max) return false;
+    const last = this.alerted.get(peer);
+    if (last !== undefined && nowMs - last < this.windowMs) return false;
+    this.alerted.set(peer, nowMs);
+    return true;
+  }
+}
+
 export class Waker {
   private lastByThread = new Map<string, number>();
   private perDay = new Map<string, { day: string; sent: number; warned: boolean }>();
@@ -38,6 +57,24 @@ export class Waker {
     this.lastByThread.set(key, now);
     const by = ev.replyBy ? ` · reply by ${stamp(ev.replyBy)}` : "";
     await this.write(`peer ${ev.peer} · T${ev.root} · ${ev.label}${by} · open the desk: bash ${this.cfg.himmelRoot}/scripts/peer-bridge/desk.sh ${ev.peer}`);
+  }
+
+  // The tripwire's line (§8): a peer name and a count of ours, never a byte of what arrived.
+  // It counts against the same daily wake budget as every other wake.
+  async alert(peer: string, count: number): Promise<void> {
+    if (!PEER_NAME_RE.test(peer) || !Number.isSafeInteger(count) || count < 1) throw new Error("alert: bad peer or count");
+    const now = this.clock();
+    const cap = this.cfg.peers[peer]?.maxWakesPerDay ?? 0;
+    let budget = this.perDay.get(peer);
+    if (!budget || budget.day !== day(now)) { budget = { day: day(now), sent: 0, warned: false }; this.perDay.set(peer, budget); }
+    if (budget.sent >= cap) {
+      if (budget.warned) return;
+      budget.warned = true;
+      await this.write(`peer ${peer} · wake budget reached (${cap} today) · later wakes stay silent until tomorrow`);
+      return;
+    }
+    budget.sent += 1;
+    await this.write(`peer ${peer}: ${count} bad signatures in 1 h`);
   }
 
   private write(text: string): Promise<void> {

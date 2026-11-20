@@ -3,10 +3,14 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ALLOWANCE_S, SUITE_PATH_RE, TIMEOUT_S_MAX, buildEnvelope, encodeCanonical, parseEnvelopeLine, type Envelope, type Kind } from "./envelope";
-import { DedupWindow, admit, admitEnvelope, createGateState, looksLikeEnvelope, noteAdmitted, type MatchFn } from "./gate";
+import { DedupWindow, admit, admitEnvelope, createGateState, looksLikeEnvelope, matchEnvelope, noteAdmitted, type MatchFn } from "./gate";
+import type { JobRecord } from "./resolve";
 import { sign } from "./sign";
 import * as T from "./testlib-envelope";
+import { inJob, outJob } from "./testlib-jobs";
 import { failedTests, makeRedCopy } from "./testlib-red-copy";
+
+const WIRE16 = "0123456789abcdef";
 
 const NOW = 1_731_000_000;
 const CTX = { from: "yotam", to: "goomal", chat: -1001234567890, now: NOW };
@@ -467,6 +471,62 @@ test("steps 8 and 9 come from the caller's match, after step 7, and the id is al
   // A failure before step 7 never calls match.
   expect(stepOf(admitEnvelope(T.envUpdate(good(), peerSt, { kid: "00000000" }), w.cfg, w.state, match))).toBe(4);
   expect(calls.length).toBe(2);
+});
+
+// ---- steps 8 and 9: matching and budgets ----
+
+const SERVING = { serves: ["run-suite"], budgets: { jobsPerDay: 3, vmMinutesPerDay: 120, queueMax: 2, maxJobMinutes: 60 } };
+function matched(kind: Kind, body: Record<string, unknown>, jobs: JobRecord[] = [], asks: [string, boolean][] = [], peerOver: Record<string, unknown> = SERVING) {
+  const w = world({ peerOver });
+  const match = matchEnvelope({ jobs: () => jobs, asks: () => new Map(asks) });
+  const r = admitEnvelope(T.envUpdate(good(kind, body), peerSt), w.cfg, w.state, match);
+  return r;
+}
+const inJobs = (n: number, over: Partial<JobRecord> = {}): JobRecord[] => Array.from({ length: n }, (_, i) => inJob({ jobNo: 10 + i, peer: "goomal", state: "RESOLVED", resolved_at: T.NOW_S - 60, ...over }));
+const stepRefusal = (r: ReturnType<typeof admitEnvelope>) => (r.ok ? null : { step: r.step, refused: (r as any).refused });
+
+test("step 8: a req for an op we do not serve is refused, and the refusal says not-served", () => {
+  expect(stepRefusal(matched("req", T.REQ_BODY, [], [], { serves: [] }))).toEqual({ step: 8, refused: "not-served" });
+  expect(matched("req", T.REQ_BODY).ok).toBe(true);
+});
+
+test("step 8: a cancel needs a job the peer sent us, a res a job we sent it, a capacity an ask we sent and nobody has answered", () => {
+  expect(stepRefusal(matched("cancel", { job: WIRE16 }))).toEqual({ step: 8, refused: undefined });
+  expect(matched("cancel", { job: WIRE16 }, [inJob({ peer_job: WIRE16 })]).ok).toBe(true);
+  expect(stepRefusal(matched("cancel", { job: WIRE16 }, [inJob({ peer: "someone-else", peer_job: WIRE16 })]))?.step).toBe(8);
+  expect(stepRefusal(matched("cancel", { job: WIRE16 }, [outJob({ wire_job: WIRE16 })]))?.step).toBe(8);   // our own job is not one the peer sent
+
+  expect(stepRefusal(matched("res", { job: WIRE16, state: "accepted" }))?.step).toBe(8);
+  expect(matched("res", { job: WIRE16, state: "accepted" }, [outJob({ wire_job: WIRE16 })]).ok).toBe(true);
+  expect(stepRefusal(matched("res", { job: WIRE16, state: "accepted" }, [inJob({ peer_job: WIRE16 })]))?.step).toBe(8);
+
+  const cap = { re: "89abcdef", state: "idle", queue: 0, jobs_left: 3, vm_minutes_left: 60 };
+  expect(stepRefusal(matched("capacity", cap))?.step).toBe(8);
+  expect(stepRefusal(matched("capacity", cap, [], [["goomal:89abcdef", true]]))?.step).toBe(8);
+  expect(matched("capacity", cap, [], [["goomal:89abcdef", false]]).ok).toBe(true);
+});
+
+test("halt and capacity-ask always pass, even for a station that serves nothing", () => {
+  expect(matched("halt", {}, [], [], { serves: [] }).ok).toBe(true);
+  expect(matched("capacity-ask", {}, [], [], { serves: [] }).ok).toBe(true);
+});
+
+test("step 9: a req over any budget is refused with budget", () => {
+  expect(matched("req", T.REQ_BODY, inJobs(2, { state: "DONE", by: null })).ok).toBe(true);                    // 2 of 3 jobs today
+  expect(stepRefusal(matched("req", T.REQ_BODY, inJobs(3, { state: "DONE", by: null })))).toEqual({ step: 9, refused: "budget" });
+  expect(stepRefusal(matched("req", T.REQ_BODY, inJobs(2, { state: "RESOLVED" })))).toEqual({ step: 9, refused: "budget" });   // queueMax 2
+  const used = inJobs(1, { state: "DONE", by: null, running_at: T.NOW_S - 7000, ended_at: T.NOW_S - 100, resolved_at: T.NOW_S - 7000 });
+  expect(stepRefusal(matched("req", T.REQ_BODY, used))).toEqual({ step: 9, refused: "budget" });               // 117 of 120 minutes used: under the allowance
+  expect(matched("req", T.REQ_BODY, inJobs(1, { state: "DONE", by: null, running_at: T.NOW_S - 1800, ended_at: T.NOW_S - 100, resolved_at: T.NOW_S - 1800 })).ok).toBe(true);
+});
+
+test("a refusal at step 8 or 9 keeps the envelope and its raw record for the caller, and the id is spent", () => {
+  const w = world({ peerOver: { serves: [] } });
+  const match = matchEnvelope({ jobs: () => [], asks: () => new Map() });
+  const r = admitEnvelope(T.envUpdate(good(), peerSt), w.cfg, w.state, match);
+  expect(r.ok).toBe(false);
+  if (!r.ok) { expect(r.env?.kind).toBe("req"); expect(r.rec?.kind).toBe("peer-env"); }
+  expect(w.state.envIds.size).toBe(1);
 });
 
 test("a refusal at steps 2-7 logs the step, the msg id and a sha256, never the text", () => {

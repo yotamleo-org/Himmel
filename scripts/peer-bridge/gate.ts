@@ -3,9 +3,11 @@ import fs from "node:fs";
 import { constants } from "node:fs";
 import { GROUP_ANONYMOUS_BOT_ID } from "../telegram/gate";
 import { readChain } from "./chain";
-import type { Config } from "./config";
-import { IAT_FUTURE_SKEW_S, MAX_LINE_BYTES, parseEnvelopeLine, type Envelope } from "./envelope";
+import { DEFAULT_BUDGETS, type Config } from "./config";
+import { ALLOWANCE_S, IAT_FUTURE_SKEW_S, MAX_LINE_BYTES, parseEnvelopeLine, type Envelope, type Refused } from "./envelope";
 import { ENV_LINE_RE, SIG_LINE_RE, parseControl, type Control } from "./grammar";
+import { queueDepth, remaining } from "./jobstate";
+import type { JobRecord } from "./resolve";
 import { liveKeys, verify } from "./sign";
 
 export class DedupWindow {
@@ -179,10 +181,39 @@ export function admit(update: any, cfg: Pick<Config, "peers" | "maxTextChars">, 
 // The raw message of an admitted envelope, stored in inbox.jsonl under its own
 // kind, which the desk's reader (kind "peer-msg") never lists.
 export type PeerEnvRec = { kind: "peer-env"; untrusted: true; peer: string; from_id: string; chat_id: number; message_id: number; ts: number; id: string; text: string };
-export type MatchFn = (env: Envelope, peer: string, cfg: Pick<Config, "peers" | "self">, nowS: number) => { ok: true } | { ok: false; step: 8 | 9; reason: string };
+export type MatchFn = (env: Envelope, peer: string, cfg: Pick<Config, "peers" | "self">, nowS: number) => { ok: true } | { ok: false; step: 8 | 9; reason: string; refused?: Refused };
 export type EnvAdmit =
   | { ok: true; peer: string; env: Envelope; rec: PeerEnvRec }
-  | { ok: false; step: number; reason: string; log: string; peer?: string; env?: Envelope; rec?: PeerEnvRec; unknownChat?: UnknownChat };
+  | { ok: false; step: number; reason: string; log: string; peer?: string; env?: Envelope; rec?: PeerEnvRec; refused?: Refused; unknownChat?: UnknownChat };
+
+// Steps 8 and 9 over the poller's own records: what each envelope must match before
+// it may act. A req needs a served op and budget; a cancel, a res or a capacity needs
+// the job or ask it answers. A halt narrows only, and a capacity-ask only reports, so
+// both always pass. Only a req refusal is ever answered (with `refused`).
+export type MatchView = { jobs: () => JobRecord[]; asks: () => Map<string, boolean> };
+export function matchEnvelope(view: MatchView): MatchFn {
+  return (env, peer, cfg, nowS) => {
+    const p = cfg.peers[peer];
+    const mine = view.jobs().filter(j => j.peer === peer);
+    switch (env.kind) {
+      case "req": {
+        if (!(p.serves ?? []).includes(env.op)) return { ok: false, step: 8, reason: "op is not served", refused: "not-served" };
+        const budgets = p.budgets ?? DEFAULT_BUDGETS;
+        const left = remaining(mine, budgets, nowS);
+        if (left.jobs < 1 || left.vmMinutes * 60 < ALLOWANCE_S || queueDepth(mine) >= budgets.queueMax) return { ok: false, step: 9, reason: "over budget", refused: "budget" };
+        return { ok: true };
+      }
+      case "cancel":
+        return mine.some(j => j.dir === "in" && j.peer_job === env.job) ? { ok: true } : { ok: false, step: 8, reason: "cancel for a job the peer did not send" };
+      case "res":
+        return mine.some(j => j.dir === "out" && j.wire_job === env.job) ? { ok: true } : { ok: false, step: 8, reason: "res for a job we did not send" };
+      case "capacity":
+        return view.asks().get(`${peer}:${env.re}`) === false ? { ok: true } : { ok: false, step: 8, reason: "capacity for an ask we did not send, or one already answered" };
+      default:
+        return { ok: true };
+    }
+  };
+}
 
 // Routing is on line 2: a message whose second line starts `#env:` is an envelope
 // attempt and never reaches the text path, whether or not it is well formed.
@@ -205,8 +236,10 @@ export function admitEnvelope(update: any, cfg: Pick<Config, "peers" | "maxTextC
   const lines = text.split("\n");
   const id = ENV_LINE_RE.exec(lines[1] ?? "")?.[2];
   const sha = createHash("sha256").update(text).digest("hex");
-  const redacted = (step: number) => `env-drop step=${step} peer=${peerName} msg=${id ?? "-"} sha256=${sha}`;
-  const fail = (step: number, reason: string, extra: { env?: Envelope; rec?: PeerEnvRec } = {}): EnvAdmit => ({ ok: false, step, reason, log: redacted(step), peer: peerName, ...extra });
+  // Steps 2-7 log the step, the msg and a hash of the text, nothing else. Steps 8 and 9 follow a verified
+  // envelope and a reason of our own wording, so the reason is added.
+  const redacted = (step: number, reason: string) => `env-drop step=${step} peer=${peerName} msg=${id ?? "-"} sha256=${sha}${step >= 8 ? ` ${reason}` : ""}`;
+  const fail = (step: number, reason: string, extra: { env?: Envelope; rec?: PeerEnvRec } = {}): EnvAdmit => ({ ok: false, step, reason, log: redacted(step, reason), peer: peerName, ...extra });
 
   // 2. Exactly four lines, addressed to us, line 2 the envelope line.
   if (lines.length !== 4 || lines[0] !== `/peer@${state.ourUsername}` || !id) return fail(2, "grammar");
@@ -236,7 +269,7 @@ export function admitEnvelope(update: any, cfg: Pick<Config, "peers" | "maxTextC
 
   // 8-9. Matching and budgets, owned by the caller.
   const r = match?.(env, peerName, cfg, nowS);
-  if (r && !r.ok) return fail(r.step, r.reason, { env, rec });
+  if (r && !r.ok) return { ...fail(r.step, r.reason, { env, rec }), refused: r.refused };
   return { ok: true, peer: peerName, env, rec };
 }
 

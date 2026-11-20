@@ -24,7 +24,7 @@ const BUDGET_BOUNDS: Record<keyof Budgets, [number, number]> = {
   jobsPerDay: [1, 1000], vmMinutesPerDay: [1, 10000], queueMax: [1, 3], maxJobMinutes: [30, MAX_JOB_MINUTES_MAX],
 };
 export const DEFAULT_BUDGETS: Budgets = { jobsPerDay: 10, vmMinutesPerDay: 120, queueMax: 3, maxJobMinutes: 130 };
-const ALIAS_RE = /^[a-z0-9-]{1,32}$/;
+export const ALIAS_RE = /^[a-z0-9-]{1,32}$/;
 
 export type Theirs = { username: string; opens: OpenKind[]; maxOpenThreads: number; maxPerMinute: number; copiedAt: string; stationName?: string; keys: TheirKey[]; imageDigest?: string };
 export type Peer = {

@@ -1,13 +1,14 @@
 // Two in-process bridges on a fake Telegram, for the typed path's round trips.
 // "alpha" is the requester, "bravo" the server; each lists the other as its one peer.
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readChain } from "./chain";
 import type { AllowEntry, Config } from "./config";
 import { checkEnvelopeOutbound } from "./egress";
+import { buildEnvelope, encodeCanonical, type Kind } from "./envelope";
 import { Poller, type TgLike } from "./poller";
-import { keygen, type KeyInfo } from "./sign";
+import { STATION_KEY, keygen, sign, type KeyInfo } from "./sign";
 
 export const CHAT = -1001234567890;
 export const T0_MS = Date.UTC(2026, 10, 20, 12);
@@ -33,7 +34,11 @@ export type Bridge = {
   chain(file: string): any[];
 };
 
-export type World = { alpha: Bridge; bravo: Bridge; clock: { t: number; now: () => number }; wire: { from: Side; text: string }[]; step(side: Side): Promise<void> };
+export type World = {
+  alpha: Bridge; bravo: Bridge; clock: { t: number; now: () => number }; wire: { from: Side; text: string }[];
+  step(side: Side): Promise<void>;
+  inject(from: Side, kind: Kind, body: Record<string, unknown>, opts?: { tamper?: boolean; text?: string }): string;
+};
 
 export type WorldOpts = { serves?: boolean; allow?: AllowEntry[]; approve?: "tty" | "auto"; budgets?: Record<string, number>; bravoPeer?: Record<string, unknown> };
 
@@ -100,8 +105,23 @@ export async function makeWorld(opts: WorldOpts = {}): Promise<World> {
       },
     };
   }
+  // A signed message `from` a bridge that the bridge itself never sent: it goes straight
+  // to the other side's Telegram inbox. `tamper` flips one byte of line 3 after signing.
+  const inject = (from: Side, kind: Kind, body: Record<string, unknown>, opts: { tamper?: boolean; text?: string } = {}): string => {
+    const sender = bridges[from], to = sender.other;
+    let text = opts.text;
+    if (text === undefined) {
+      const env = buildEnvelope(kind, body, { from, to, chat: CHAT, now: Math.floor(clock.t / 1000) });
+      const line2 = `#env:v1 k=${sender.key.id} id=${env.msg}`, line3 = encodeCanonical(env);
+      const sig = sign(line2, line3, join(sender.configDir, STATION_KEY));
+      const sent = opts.tamper ? line3.slice(0, 20) + (line3[20] === "a" ? "b" : "a") + line3.slice(21) : line3;
+      text = [`/peer@${BOT_USER[to]}`, line2, sent, `sig=${sig}`].join("\n");
+    }
+    bridges[to].inbox.push({ update_id: ++updateId, message: { message_id: ++messageId, from: { id: Number(BOT_ID[from]), is_bot: true, username: BOT_USER[from] }, chat: { id: CHAT, type: "supergroup" }, date: clock.t / 1000, text } });
+    return text;
+  };
   return {
-    alpha: bridges.alpha, bravo: bridges.bravo, clock, wire,
+    alpha: bridges.alpha, bravo: bridges.bravo, clock, wire, inject,
     // One pass for a bridge: take what Telegram holds for it, then drain its spool.
     async step(side: Side) {
       const b = bridges[side];
@@ -109,4 +129,9 @@ export async function makeWorld(opts: WorldOpts = {}): Promise<World> {
       await b.poller.drainSpool();
     },
   };
+}
+
+// The wake lines written to a bridge's operator chat, oldest first.
+export function wakeLines(b: Bridge): string[] {
+  try { return readFileSync(join(b.cfg.bridgeRoot, "sessions", "__chat__", "outbox.jsonl"), "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l).text as string); } catch { return []; }
 }

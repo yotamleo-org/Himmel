@@ -8,9 +8,9 @@ import fs from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { drainSpool } from "./chain";
-import { readPeersFile } from "./config";
+import { loadAllowlist, readPeersFile } from "./config";
 import { configDir, peerDir, peersFile, stateDir } from "./ids";
-import { SetupError, add, confirm, keygenCmd, remove, stationName, trust, uninstall, untrust, type Deps } from "./setup";
+import { SetupError, add, allowSuite, confirm, denySuite, keygenCmd, kill, remove, stationName, trust, unkill, uninstall, untrust, type Deps } from "./setup";
 import { NEXT_KEY, STATION_KEY, currentSigningKey, fingerprint, keyId, publicKeyOf } from "./sign";
 import { TelegramError } from "./telegram";
 
@@ -101,6 +101,7 @@ const CLI: [string, string[]][] = [
   ["add", ["goomal", "--peer-bot-id", PEER_ID]], ["confirm", ["goomal", String(CHAT)]], ["remove", ["goomal"]], ["uninstall", []],
   ["station-name", ["yotam"]], ["keygen", []], ["keygen", ["--rotate"]], ["keygen", ["--activate"]],
   ["trust", ["goomal", "goomal", PUB_X]], ["untrust", ["goomal"]], ["untrust", ["goomal", "--key", "0123abcd"]],
+  ["allow-suite", ["goomal", "ledger", "scripts/ci/test-suite-ledger.sh"]], ["deny-suite", ["goomal", "ledger"]], ["kill", ["goomal"]], ["unkill", ["goomal"]],
 ];
 for (const [cmd, args] of CLI) {
   t(`${cmd} ${args.filter(a => a.startsWith("--")).join(" ")}: a set CLAUDE_CODE_SESSION_ID refuses and writes nothing`, () => {
@@ -362,8 +363,62 @@ t("the new functions refuse a Claude env and a missing TTY", async () => {
     await refused(stationName("yotam", deps));
     await refused(trust("goomal", "goomal", PUB_X, deps));
     await refused(untrust("goomal", undefined, deps));
+    await refused(allowSuite("goomal", "ledger", "scripts/ci/test-suite-ledger.sh", deps));
+    await refused(denySuite("goomal", "ledger", deps));
+    await refused(kill("goomal", deps));
+    await refused(unkill("goomal", deps));
   }
   expect(listing(home)).toEqual([]);
+});
+
+const SUITES = () => join(configDir(), "goomal.suites");
+const KILLED = () => join(configDir(), "goomal.killed");
+
+t("allow-suite writes a 0600 allowlist the runner side can read, deny-suite takes an entry out", async () => {
+  await addGoomal();
+  await allowSuite("goomal", "ledger", "scripts/ci/test-suite-ledger.sh", mk().deps);
+  await allowSuite("goomal", "peer-taint", "scripts/hooks/test-peer-taint.sh", mk().deps);
+  expect(fs.statSync(SUITES()).mode & 0o777).toBe(0o600);
+  expect(fs.readFileSync(SUITES(), "utf8")).toBe("ledger scripts/ci/test-suite-ledger.sh\npeer-taint scripts/hooks/test-peer-taint.sh\n");
+  expect(loadAllowlist("goomal")).toEqual([{ alias: "ledger", path: "scripts/ci/test-suite-ledger.sh" }, { alias: "peer-taint", path: "scripts/hooks/test-peer-taint.sh" }]);
+  await denySuite("goomal", "ledger", mk().deps);
+  expect(loadAllowlist("goomal")).toEqual([{ alias: "peer-taint", path: "scripts/hooks/test-peer-taint.sh" }]);
+  expect(await refused(denySuite("goomal", "ledger", mk().deps))).toContain("no allowed suite");
+});
+
+t("allow-suite refuses a malformed alias or path, a duplicate and an unknown peer, and writes nothing", async () => {
+  await addGoomal();
+  for (const [alias, path, want] of [
+    ["Bad", "scripts/x.sh", "alias"], ["", "scripts/x.sh", "alias"], ["a".repeat(33), "scripts/x.sh", "alias"],
+    ["ok", "scripts/../x.sh", "suite path"], ["ok", "/etc/passwd", "suite path"], ["ok", "scripts/X.sh", "suite path"], ["ok", "scripts/x.py", "suite path"],
+  ] as const) expect(await refused(allowSuite("goomal", alias, path, mk().deps))).toContain(want);
+  expect(fs.existsSync(SUITES())).toBe(false);
+  await allowSuite("goomal", "ok", "scripts/x.sh", mk().deps);
+  const before = fs.readFileSync(SUITES());
+  expect(await refused(allowSuite("goomal", "ok", "scripts/y.sh", mk().deps))).toContain("already in use");
+  expect(await refused(allowSuite("goomal", "other", "scripts/x.sh", mk().deps))).toContain("already allowed");
+  expect(await refused(allowSuite("nobody", "ok", "scripts/x.sh", mk().deps))).toContain("unknown peer");
+  expect(fs.readFileSync(SUITES()).equals(before)).toBe(true);
+});
+
+t("kill writes the kill file, unkill removes it, and each refuses when there is nothing to do", async () => {
+  await addGoomal();
+  expect(await refused(unkill("goomal", mk().deps))).toContain("not killed");
+  await kill("goomal", mk().deps);
+  expect(fs.statSync(KILLED()).mode & 0o777).toBe(0o600);
+  expect(await refused(kill("goomal", mk().deps))).toContain("already killed");
+  expect(await refused(kill("nobody", mk().deps))).toContain("unknown peer");
+  await unkill("goomal", mk().deps);
+  expect(fs.existsSync(KILLED())).toBe(false);
+});
+
+t("remove takes the peer's allowlist and kill file with it", async () => {
+  await addGoomal();
+  await allowSuite("goomal", "ok", "scripts/x.sh", mk().deps);
+  await kill("goomal", mk().deps);
+  await remove("goomal", mk({ answers: ["yes"] }).deps);
+  expect(fs.existsSync(SUITES())).toBe(false);
+  expect(fs.existsSync(KILLED())).toBe(false);
 });
 
 t("add, remove and uninstall leave only the declared paths, then nothing", async () => {
