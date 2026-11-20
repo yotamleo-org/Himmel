@@ -182,8 +182,8 @@ path_trusted() {
     d=$(cd -P "$(dirname "$p")" 2>/dev/null && pwd -P) || return 1
     t=$d/$(basename "$p")
     while :; do
-        own=$(stat -c %u "$t" 2>/dev/null || stat -f %u "$t" 2>/dev/null) || return 1
-        mode=$(stat -c %a "$t" 2>/dev/null || stat -f %Lp "$t" 2>/dev/null) || return 1
+        own=$(stat -c %u "$t" 2>/dev/null || stat -f %u "$t" 2>/dev/null) || return 1 # gnu-ok: stat -f is the BSD form on the same line
+        mode=$(stat -c %a "$t" 2>/dev/null || stat -f %Lp "$t" 2>/dev/null) || return 1 # gnu-ok: stat -f is the BSD form on the same line
         { [ "$own" = "$uid" ] && [ $((8#$mode & 8#022)) -eq 0 ]; } || return 1
         if [ "$t" = "$anchor" ] || [ "$t" = / ]; then return 0; fi
         t=$(dirname "$t")
