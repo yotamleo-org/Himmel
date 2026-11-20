@@ -85,19 +85,26 @@ function absOf(vault, rel) {
   return abs.startsWith(root + path.sep) ? abs : null;
 }
 
-function kindOfNonRegularFile(abs) {
-  let st;
-  try { st = fs.lstatSync(abs); } catch (e) { if (e.code === "ENOENT") return null; throw e; }
-  if (st.isFile()) return null;
-  if (st.isSymbolicLink()) return "symbolic link";
-  return st.isDirectory() ? "directory" : "special file";
+function lstatOf(abs) {
+  try { return { st: fs.lstatSync(abs) }; } catch (e) {
+    if (e.code === "ENOENT") return { st: null };
+    return { why: `the page cannot be inspected (${e.code}), nothing written` };
+  }
+}
+
+function blockerOf(abs) {
+  const { st, why } = lstatOf(abs);
+  if (why) return why;
+  if (!st || st.isFile()) return null;
+  const kind = st.isSymbolicLink() ? "symbolic link" : st.isDirectory() ? "directory" : "special file";
+  return `an existing ${kind} sits there, nothing written`;
 }
 
 const tmpNameOf = (abs) => path.join(path.dirname(abs), `.${sha256(path.basename(abs)).slice(0, 16)}.apply-clip-actions.tmp`);
 
 function refusalFor(abs) {
-  const kind = kindOfNonRegularFile(abs);
-  if (kind) return `an existing ${kind} sits there, nothing written`;
+  const blocked = blockerOf(abs);
+  if (blocked) return blocked;
   const tmp = tmpNameOf(abs);
   if (fs.lstatSync(tmp, { throwIfNoEntry: false })) {
     return `an existing file sits at the temporary name ${path.basename(tmp)}, nothing written`;
@@ -151,8 +158,8 @@ function plan(vault, a, date) {
 }
 
 function replaceFile(abs, content) {
-  const kind = kindOfNonRegularFile(abs);
-  if (kind) throw refusal(`an existing ${kind} sits there, nothing written`);
+  const blocked = blockerOf(abs);
+  if (blocked) throw refusal(blocked);
   const tmp = tmpNameOf(abs);
   let made = false;
   try {
@@ -234,12 +241,16 @@ function runRevert(vault, revertPath) {
   for (let i = entries.length - 1; i >= 0; i--) {
     const e = entries[i];
     for (const rel of e.action === "fold" ? [e.map] : e.files.map((f) => f.rel)) {
-      if (absOf(vault, rel)) continue;
+      const abs = absOf(vault, rel);
+      const why = abs ? lstatOf(abs).why : "the path leaves the vault, nothing written";
+      if (!why) continue;
       refused++;
-      outside.set(rel, (outside.get(rel) ?? 0) + 1);
+      const seen = outside.get(rel) ?? { why, n: 0 };
+      seen.n++;
+      outside.set(rel, seen);
     }
   }
-  for (const [rel, n] of outside) out(`⊘ ${rel} — refused: the path leaves the vault, nothing written${n > 1 ? ` (${n} ledger lines)` : ""}`);
+  for (const [rel, { why, n }] of outside) out(`⊘ ${rel} — refused: ${why}${n > 1 ? ` (${n} ledger lines)` : ""}`);
   const preApplyHashes = new Map();
   const notePreApply = (rel, i, h) => {
     if (!preApplyHashes.has(rel)) preApplyHashes.set(rel, []);
@@ -259,8 +270,8 @@ function runRevert(vault, revertPath) {
   const revertPage = (rel, i, shaBefore, shaAfter, restore, what) => {
     if (outside.has(rel)) return;
     const abs = absOf(vault, rel);
-    const kind = kindOfNonRegularFile(abs);
-    if (kind) return refuse(rel, `refused: an existing ${kind} sits there, nothing written`, "");
+    const blocked = blockerOf(abs);
+    if (blocked) return refuse(rel, `refused: ${blocked}`, "");
     if (!fs.existsSync(abs)) { gone++; return; }
     if (refusedPages.has(rel)) return refuse(rel, `diverged: a newer apply on this page was refused`);
     const cur = fs.readFileSync(abs, "utf8");
