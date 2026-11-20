@@ -3,7 +3,7 @@
 #
 # The SUT runs from a FIXTURE checkout (copies of lib.sh and remote-setup.sh, a stub
 # himmelctl, the real himmelctl lib dir by symlink), with a fixture HOME and PATH shims for
-# curl, systemctl, launchctl, sudo, sleep, uname, id and bun (scripts/remote-setup/testlib/).
+# curl, systemctl, launchctl, sudo, sleep, uname, id and bun (scripts/remote-setup/tests/).
 # Nothing here touches the network, the real HOME, a real unit or a real token: tokens are
 # random canaries. The seam is this harness, never a flag in the SUT.
 #
@@ -56,7 +56,7 @@ new_case() {
     CASE_FAILS=0
     T=$WORK/$1
     mkdir -p "$T/home" "$T/tmp" "$T/bin" "$T/tg" "$T/units" "$T/root"
-    cp "$HERE"/testlib/shims/* "$T/bin/"
+    cp "$HERE"/tests/shims/* "$T/bin/"
     ROOT=$T/root
     HOME_FIX=$T/home
     mk_root
@@ -67,13 +67,13 @@ new_case() {
 }
 
 mk_root() {
-    mkdir -p "$ROOT/scripts/remote-setup/testlib" "$ROOT/scripts/himmelctl" "$ROOT/scripts/telegram"
+    mkdir -p "$ROOT/scripts/remote-setup/tests" "$ROOT/scripts/himmelctl" "$ROOT/scripts/telegram"
     cp "$HERE/lib.sh" "$HERE/remote-setup.sh" "$ROOT/scripts/remote-setup/"
-    cp "$HERE/testlib/drive.sh" "$ROOT/scripts/remote-setup/testlib/"
-    cp "$HERE/testlib/himmelctl-stub.js" "$ROOT/scripts/himmelctl/bin.js"
+    cp "$HERE/tests/drive.sh" "$ROOT/scripts/remote-setup/tests/"
+    cp "$HERE/tests/himmelctl-stub.js" "$ROOT/scripts/himmelctl/bin.js"
     if [ -d "$REPO/scripts/himmelctl/lib" ]; then ln -s "$REPO/scripts/himmelctl/lib" "$ROOT/scripts/himmelctl/lib"; fi
     printf '// stub: the bun shim answers for onboard.ts\n' > "$ROOT/scripts/telegram/onboard.ts"
-    cp "$HERE/testlib/restart-bridge-stub.sh" "$ROOT/scripts/telegram/restart-bridge.sh"
+    cp "$HERE/tests/restart-bridge-stub.sh" "$ROOT/scripts/telegram/restart-bridge.sh"
 }
 
 # A canary token: <id>:<35 url-safe chars>. Never a real credential.
@@ -196,7 +196,7 @@ run_sut() {
 }
 
 run_drive() { # run_drive [run_sut options] <stdin-file> <lib function> [args]
-    RUN_SCRIPT=testlib/drive.sh
+    RUN_SCRIPT=tests/drive.sh
     RUN_ENV="RS_LIB=$ROOT/scripts/remote-setup/lib.sh"
     run_sut "$@"
     RUN_SCRIPT=remote-setup.sh
@@ -332,7 +332,7 @@ case_curl_argv_is_exact() {
     tok=$(mk_token 5000000002)
     run_drive --no-tty "$T/in" rs_getme
     : # run again with the token so a call really happens
-    RUN_SCRIPT=testlib/drive.sh
+    RUN_SCRIPT=tests/drive.sh
     RUN_ENV="RS_LIB=$ROOT/scripts/remote-setup/lib.sh DRIVE_TOKEN=$tok"
     run_sut --no-tty "$T/in" rs_getme
     RUN_SCRIPT=remote-setup.sh
@@ -350,7 +350,7 @@ case_getme_401_gives_revoked_fix() {
     printf '{"ok":false,"error_code":401,"description":"Unauthorized"}' > "$T/tg/getMe.json"
     local tok
     tok=$(mk_token 5000000003)
-    RUN_SCRIPT=testlib/drive.sh
+    RUN_SCRIPT=tests/drive.sh
     RUN_ENV="RS_LIB=$ROOT/scripts/remote-setup/lib.sh DRIVE_TOKEN=$tok"
     run_sut --no-tty "$T/in" rs_getme
     RUN_SCRIPT=remote-setup.sh
@@ -367,7 +367,7 @@ case_tg_429_waits_retry_after_once() {
     tok=$(mk_token 5000000004)
     printf '{"ok":false,"error_code":429,"description":"Too Many Requests","parameters":{"retry_after":3}}' > "$T/tg/getMe.1.json"
     printf '{"ok":true,"result":{"id":5000000004,"username":"waited_bot"}}' > "$T/tg/getMe.2.json"
-    RUN_SCRIPT=testlib/drive.sh
+    RUN_SCRIPT=tests/drive.sh
     RUN_ENV="RS_LIB=$ROOT/scripts/remote-setup/lib.sh DRIVE_TOKEN=$tok"
     run_sut --no-tty "$T/in" rs_getme
     check "a 429 then an ok answer succeeds" eq "$RC" 0
