@@ -1035,6 +1035,21 @@ check_contains "24f: lane off: the absent row leaves the count" "$(cat "$tmp/out
 floor_run f2 CRITICS_BASE_JSON="$JSON_FLOOR" CRITICS_LOCAL_JSON="$tmp/local-api24.json" CX_MODE=ok HIMMEL_API_LANE=on
 check "24f: lane on (control): the claude-api row is launched" "$(grep -c '^claude provider=claude-api$' "$tmp/cap24f2")" "1"
 
+# 24g an overlay claude_floor of null turns the floor off: codex exhausted, no Claude critic, no alert
+printf '%s\n' '{"claude_floor":null}' > "$tmp/local-floor-off24.json"
+floor_run g CRITICS_BASE_JSON="$JSON_FLOOR" CRITICS_LOCAL_JSON="$tmp/local-floor-off24.json" CX_MODE=exhaust
+check "24g: overlay floor null: no Claude critic" "$(grep -c '^claude ' "$tmp/cap24g")" "0"
+check "24g: overlay floor null: no alert" "$(n_lines "$tmp/alerts24g")" "0"
+# 24h a drop:true row for slug claude (the station's overlay) removes a panel row, never the floor
+printf '%s\n' '{"panel":[{"slug":"claude","drop":true}]}' > "$tmp/local-drop24.json"
+floor_run h CRITICS_BASE_JSON="$JSON_FLOOR" CRITICS_LOCAL_JSON="$tmp/local-drop24.json" CX_MODE=exhaust
+check "24h: a claude drop row: the floor still runs when codex ran out" "$(grep -c '^claude provider=claude-subscription$' "$tmp/cap24h")" "1"
+check "24h: a claude drop row: one alert" "$(n_lines "$tmp/alerts24h")" "1"
+# 24i an overlay floor replaces the base floor
+printf '%s\n' '{"claude_floor":{"slug":"claude","model":"claude-opus-5-5","provider":"claude-api","when":"codex-exhausted"}}' > "$tmp/local-floor-api24.json"
+floor_run i CRITICS_BASE_JSON="$JSON_FLOOR" CRITICS_LOCAL_JSON="$tmp/local-floor-api24.json" CX_MODE=exhaust
+check "24i: an overlay floor replaces the base floor's provider" "$(grep -c '^claude provider=claude-api$' "$tmp/cap24i")" "1"
+
 if [ "$fails" -eq 0 ]; then
     if [ "$_skips" -gt 0 ]; then
         echo "ALL PASS ($_skips skipped)"

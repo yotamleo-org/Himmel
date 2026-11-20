@@ -42,9 +42,11 @@ You can design your own panel in `critics.local.json`, for example with a full
 Claude setup. A row that re-adds `claude` with provider `claude-subscription`
 or `claude-api` runs as a panel member, as you configured it, with no per-run
 alert, and the floor stays off. A `claude-api` row is left out while the API
-lane is off. A `"drop": true` row removes a slug. `/pr-check`, a hand-run
+lane is off. A `"drop": true` row removes a panel row. `/pr-check`, a hand-run
 `critic-first-pass.sh` and the review-panel eval all read the same merged
-registry, so a drop reaches every one of them.
+registry, so a dropped row runs in none of them. The floor is not a row, so a
+drop does not touch it: a top-level `"claude_floor"` in `critics.local.json`
+replaces it, and `"claude_floor": null` turns it off.
 <!-- source: scripts/cr/critic-panel.sh, scripts/cr/critic-first-pass.sh, scripts/lib/critics-config.sh -->
 
 A critic never falls back to your subscription silently. If a Claude API

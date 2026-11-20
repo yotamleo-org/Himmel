@@ -2190,10 +2190,21 @@ fi
 # rate limit is not exhaustion), and sends one loud alert to Telegram and the
 # chief every time. It never runs when the merged registry already has a claude
 # row, even one absent this run (an adopter's overlay row is their own design). The merged registry keeps no
-# top-level field, so the floor is read from CRITICS_JSON or the base file.
-_floor="$(FLOOR_SRC="${CRITICS_JSON:-$_REG_BASE}" REG="$REG" node -e '
+# top-level field, so the floor is read from CRITICS_JSON or the base file; a
+# top-level claude_floor in the critics.local.json overlay replaces it, and null
+# turns it off. A drop:true row for slug claude removes a panel row, never the floor.
+_floor_local=""
+if [ -z "${CRITICS_JSON:-}" ] && command -v _ccfg_local_path >/dev/null 2>&1; then
+    _floor_local="$(_ccfg_local_path "$SCRIPT_DIR" 2>/dev/null)" || _floor_local=""  # swallow-ok: no overlay path leaves the base floor
+    [ -f "$_floor_local" ] || _floor_local=""
+fi
+_floor="$(FLOOR_SRC="${CRITICS_JSON:-$_REG_BASE}" FLOOR_LOCAL="$_floor_local" REG="$REG" node -e '
   const fs = require("fs");
-  try { const f = JSON.parse(fs.readFileSync(process.env.FLOOR_SRC, "utf8")).claude_floor;
+  try { let f = JSON.parse(fs.readFileSync(process.env.FLOOR_SRC, "utf8")).claude_floor;
+    if (process.env.FLOOR_LOCAL) {
+      const l = JSON.parse(fs.readFileSync(process.env.FLOOR_LOCAL, "utf8"));
+      if (l && Object.prototype.hasOwnProperty.call(l, "claude_floor")) f = l.claude_floor;
+    }
     if (!f || typeof f !== "object" || f.when !== "codex-exhausted" || !f.model || !f.provider) process.exit(0);
     const slug = f.slug || "claude";
     const p = JSON.parse(fs.readFileSync(process.env.REG, "utf8")).panel || [];

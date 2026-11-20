@@ -187,12 +187,16 @@ known_block=""
 # node (not jq): node is a hard himmel dependency where jq is not.
 if [ -z "$provider" ] && command -v node >/dev/null 2>&1; then
     _cfp_reg="$( . "$SCRIPT_DIR/../lib/critics-config.sh" 2>/dev/null && critics_config_resolve "$SCRIPT_DIR" 2>/dev/null )" || _cfp_reg=""  # swallow-ok: falls back to the base file below
+    _cfp_base_only=0
     if [ -z "$_cfp_reg" ]; then
         # read-sink-ok: CRITICS_BASE_JSON is the test seam for the base registry; only a row's slug and provider are read from it
         _cfp_reg="$(cat "${CRITICS_BASE_JSON:-$SCRIPT_DIR/critics.json}" 2>/dev/null || true)"  # swallow-ok: an unreadable registry leaves the provider unset
+        _cfp_base_only=1
     fi
     if [ -n "$_cfp_reg" ]; then
-        _cfp_row="$(printf '%s' "$_cfp_reg" | WSLUG="${slug:-}" WMODEL="$model" node -e '
+        # On the base-only fallback the overlay was not read, so a Claude row there
+        # may be one the overlay drops: it is never a routing target (fail closed).
+        _cfp_row="$(printf '%s' "$_cfp_reg" | WSLUG="${slug:-}" WMODEL="$model" BASE_ONLY="$_cfp_base_only" node -e '
           let panel = [];
           try { panel = JSON.parse(require("fs").readFileSync(0, "utf8")).panel || []; }
           catch (e) { panel = []; }
@@ -201,6 +205,7 @@ if [ -z "$provider" ] && command -v node >/dev/null 2>&1; then
           // matches otherwise. A row marked drop:true is a removal directive in
           // the overlay format, never a routing target.
           const row = panel.find(r => r && typeof r === "object" && !r.drop
+              && !(process.env.BASE_ONLY === "1" && String(r.provider || "").startsWith("claude"))
               && (process.env.WSLUG ? eq(r.slug, process.env.WSLUG) : eq(r.model, process.env.WMODEL)));
           if (row && row.provider) process.stdout.write((row.slug || "") + "\t" + row.provider);
         ' 2>/dev/null || true)"
@@ -617,9 +622,18 @@ _cfp_claude_effort() {
           try { const r = (JSON.parse(require("fs").readFileSync(0, "utf8")).panel || []).find(x => x && x.slug === "claude" && !x.drop);
             if (r && r.effort) process.stdout.write(String(r.effort)); } catch (e) {}' 2>/dev/null || true)"  # swallow-ok: unreadable row falls to the medium default
         if [ -z "$_cce_e" ]; then
-            # no claude panel row: the base registry's claude_floor effort (the merged output keeps no top-level field)
-            _cce_e="$(FLOOR_SRC="${CRITICS_BASE_JSON:-$SCRIPT_DIR/critics.json}" node -e '
-              try { const f = JSON.parse(require("fs").readFileSync(process.env.FLOOR_SRC, "utf8")).claude_floor;
+            # no claude panel row: the claude_floor effort, the overlay's floor over the
+            # base's (the merged output keeps no top-level field)
+            _cce_local=""
+            [ -n "${CRITICS_JSON:-}" ] || _cce_local="$( . "$SCRIPT_DIR/../lib/critics-config.sh" 2>/dev/null && _ccfg_local_path "$SCRIPT_DIR" 2>/dev/null )" || _cce_local=""  # swallow-ok: no overlay path leaves the base floor
+            [ -f "$_cce_local" ] || _cce_local=""
+            _cce_e="$(FLOOR_SRC="${CRITICS_BASE_JSON:-$SCRIPT_DIR/critics.json}" FLOOR_LOCAL="$_cce_local" node -e '
+              const fs = require("fs");
+              try { let f = JSON.parse(fs.readFileSync(process.env.FLOOR_SRC, "utf8")).claude_floor;
+                if (process.env.FLOOR_LOCAL) {
+                  const l = JSON.parse(fs.readFileSync(process.env.FLOOR_LOCAL, "utf8"));
+                  if (l && Object.prototype.hasOwnProperty.call(l, "claude_floor")) f = l.claude_floor;
+                }
                 if (f && f.effort) process.stdout.write(String(f.effort)); } catch (e) {}' 2>/dev/null || true)"  # swallow-ok: an unreadable floor falls to the medium default
         fi
     fi
