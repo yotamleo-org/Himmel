@@ -88,7 +88,7 @@ function scanEvidence(vault) {
     const { lines, bounds } = parse(content);
     if (!bounds) continue;
     const close = bounds.close;
-    if (fmScalar(lines, close, "archived") === "true") continue; // archived by the daily note: feeds no page
+    if (fmScalar(lines, close, "archived") === "true") continue;
     const rel = `Clippings/_evidence/${ent.name}`;
     const author = fmScalar(lines, close, "author") || (fmList(lines, close, "authors")[0] || "");
     const rawUrl = fmScalar(lines, close, "harvest_url_canonical") || fmScalar(lines, close, "source");
@@ -113,12 +113,10 @@ function scanEvidence(vault) {
 // (case/punct-insensitive, `-MOC` suffix stripped) OR a declared `aliases:`
 // entry. Bounded — exact normalised equality + operator aliases, never an
 // open-ended similarity guess. A match means DENSIFY; no match means CREATE.
-// A name with no Latin letter or digit has an empty normalised key, so every page
-// is also indexed by its exact file name.
 function buildSubjectIndex(vault) {
   const folders = ["30-Resources/Concepts", "30-Resources/Tech", "60-Maps"];
   const byKey = new Map(); // normalised key -> { path }
-  const byName = new Map(); // exact file name without .md -> { path }
+  const byExactFileName = new Map();
   for (const folder of folders) {
     const dir = path.join(vault, folder);
     if (!fs.existsSync(dir)) continue;
@@ -128,7 +126,7 @@ function buildSubjectIndex(vault) {
       let base = ent.name.replace(/\.md$/, "");
       // 60-Maps MOC pages: drop the -MOC suffix so "Context-Windows-MOC" -> "Context Windows".
       if (folder === "60-Maps") base = base.replace(/-?MOC$/i, "");
-      if (!byName.has(base)) byName.set(base, { path: rel });
+      if (!byExactFileName.has(base)) byExactFileName.set(base, { path: rel });
       const keys = new Set([subjectKey(base)]);
       const content = fs.readFileSync(path.join(dir, ent.name), "utf8");
       const { lines, bounds } = parse(content);
@@ -140,12 +138,12 @@ function buildSubjectIndex(vault) {
       }
     }
   }
-  return { byKey, byName };
+  return { byKey, byExactFileName };
 }
 
 function fuzzyMatcher(vault) {
-  const { byKey, byName } = buildSubjectIndex(vault);
-  return (subjectName /*, target */) => byKey.get(subjectKey(subjectName)) || byName.get(subjectName) || null;
+  const { byKey, byExactFileName } = buildSubjectIndex(vault);
+  return (subjectName /*, target */) => byKey.get(subjectKey(subjectName)) || byExactFileName.get(subjectName) || null;
 }
 
 // ── stub page rendering ──────────────────────────────────────────────────────
@@ -235,7 +233,6 @@ function kindOfNonRegularFile(abs) {
   return st.isDirectory() ? "directory" : "special file";
 }
 
-// The refusal line for a path the tool writes to that holds anything but a plain file.
 function nonPlainFileLine(rel, abs) {
   const blocker = kindOfNonRegularFile(abs);
   return blocker ? `⊘ ${rel} — refused: an existing ${blocker} sits there, nothing written` : null;
@@ -245,7 +242,6 @@ const fileInTheWayLine = (rel) => `⊘ ${rel} — refused: a file already sits t
 
 const DEFERRED_REL = "Clippings/_deferred.md";
 
-// One refusal of a path is printed once per run, however many pages meet it.
 const noted = new Set();
 function noteOnce(line) {
   if (noted.has(line)) return;
@@ -253,7 +249,6 @@ function noteOnce(line) {
   out(line);
 }
 
-// A double-quoted YAML scalar: backslash and double quote escaped, so the header still parses.
 function yamlDouble(value) {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }

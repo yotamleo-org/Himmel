@@ -12,8 +12,7 @@
 
 // Structural / pipeline tags that are NOT concepts — grouping on these would
 // stub junk like "Concepts" or "Article". (Superset of the evidence-kind tag
-// vocabulary plus clipper/vault housekeeping tags.) A tag is compared through
-// tagKey, so each word is ignored in its singular and its plural form.
+// vocabulary plus clipper/vault housekeeping tags.)
 export const STRUCTURAL_TAGS = new Set([
   "tool", "tools", "cli", "library", "framework", "sdk", "plugin", "repo",
   "concept", "concepts", "mental-model", "idea", "theory",

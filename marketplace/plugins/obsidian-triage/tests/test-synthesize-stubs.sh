@@ -19,7 +19,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TOOL="$PLUGIN_DIR/tools/synthesize-stubs.mjs"
 HIDE_SHIM="$PLUGIN_DIR/tests/fixtures/hide-from-listing.mjs"
-# run_hiding "<names>" <node args>: the tool runs with those file names missing from every directory listing.
 run_hiding() { local names="$1"; shift; HIDE_FROM_LISTING="$names" NODE_OPTIONS="--import $HIDE_SHIM" node "$@"; }
 
 pass=0
@@ -593,7 +592,7 @@ trap 'rm -rf "$tmp" "$tmp4" "$tmp5" "$tmp5b" "$tmp6" "$tmp6b" "$tmp7" "$tmp8" "$
 EV14="$tmp14/Clippings/_evidence"
 C14="$tmp14/30-Resources/Concepts"
 mkdir -p "$EV14" "$C14"
-mkclip14() { # $1 = file, $2 = tag, $3 = the archived line ("" for a live clip); the author and URL follow the file name
+mkclip14() {
   local f="$1" tag="$2" arch="$3" name="${1%.md}"
   { printf -- '---\ntype: article\nsource: "https://%s.example.com/x"\nauthor: %s Author\nprocessed: true\nevidence_kind:\n  - concepts\ntags:\n  - %s\n' "$name" "$name" "$tag"
     [ -z "$arch" ] || printf '%s\narchived_at: 2026-11-20\n' "$arch"
