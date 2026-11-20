@@ -807,28 +807,13 @@ sync_agent_clis() {
     return "$rc"
 }
 
-# ─── stale cadence runner re-arm ─────────────────────
-# Cadence runners (.bat/.sh) are GENERATED at arm time and NOT regenerated on a
-# code pull — so a `git pull` that changes the runner format leaves an
-# already-armed cadence firing the OLD format until its arm command runs again.
-# `apply` re-arms each ALREADY-ARMED stale cadence with its own arm command (one line each);
-# `check` (and a cadence whose arm input cannot be read) only prints the nudge.
-# Advisory; never fails the update. A runner dir with no runner files is not armed and is
-# never touched. The graphmap arm is `--rewrite-armed`, which rewrites only runner files that
-# already exist and registers nothing, so an update can never re-arm a Luna graph task the
-# operator left off (test-graphmap-cadence.sh C17 holds that); only `arm --luna-only` arms Luna.
-# *_BAT_DIR env seams mirror each emitter's runner home; defaults resolve via
-# cadence_user_home (emitter parity). HIMMEL_REARM_ROOT redirects the arm scripts (test seam).
 
-# _steering_cull_rearm_args <runner-dir>: one arm arg per line that reproduces the armed
-# steering-cull runner (proposal dir, chief, backend, api account) and its crontab day/time;
-# rc 1 when any of it is unreadable.
 _steering_cull_rearm_args() {
     local runner="$1/steering-cull-cadence.sh" line pdir="" chief="" backend="" acct="" ent day time m h
     [ -f "$runner" ] || return 1
     line=$(grep -F -- ' run --repo ' "$runner" | tail -1) || return 1
     [ -n "$line" ] || return 1
-    line="${line#* run }"; line="${line%% >> *}"   # the generator printf %q's every arg; drop the log redirect
+    line="${line#* run }"; line="${line%% >> *}"
     eval "set -- $line" 2>/dev/null || return 1
     while [ $# -gt 0 ]; do
         case "$1" in
