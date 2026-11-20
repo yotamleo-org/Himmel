@@ -348,6 +348,37 @@ step is reported and never fails the run; a step whose tool is not installed
 reports `skipped: tool not installed`. The two writers hold the vault's git index
 lock while they write, and both are undone with `--revert <their ledger>`.
 
+### Clip funnel (outcomes, read-only)
+
+`tools/clip-funnel.mjs --vault <v> [--as-of YYYY-MM-DD] [--days N]` prints one
+JSON document answering "is the pipeline doing its job": of the clips taken in,
+how many a synthesis page cites, how many subject pages were created or
+extended, how many daily actions are open and applied, how many clips wait on
+media. The morning report (`scripts/handover/generate-morning-briefing.sh`)
+renders it as its `Clip funnel` block. It writes nothing to the vault, reads
+each file once and prints the same bytes on two runs.
+
+- **intake:** the flat `Clippings/_evidence/` pool (a subfolder is not evidence).
+- **cited:** a clip is cited when a page in `Clippings/_synthesis/` links it by
+  name; the folder in the link and a `.md` suffix do not matter, so a link to
+  the clip's old `_done/` folder still counts. Accepted proposals under
+  `_synthesis/_done/` are not scanned.
+- **subjects:** `.synthesize-stubs.ledger.jsonl`, `stub-create` rows = created,
+  `densify` rows = extended, counted per distinct page.
+- **actions:** open = the `## Daily report` items in `50-Journal/Daily/` that
+  no report ticked or dismissed and the apply ledger has not applied; applied =
+  the distinct ids with a `fold` or `archive` row in
+  `.apply-clip-actions.ledger.jsonl`. An absent ledger is zero applied. A row
+  stays after `apply-clip-actions.mjs --revert`, and a crash can leave a row for
+  an edit that never landed, so either still reads as applied.
+- **media:** clips with `ig_media_pending: true` or `x_media_pending: true` in
+  `Clippings/` (the inbox) or `_evidence/`.
+
+Each stage reports `moved_in_window` (events dated inside the window, default
+the 7 days ending on `--as-of`) and `last` (its newest event). `stalled` names
+the stages with no movement in the window: `intake`, `cited` and `subjects`
+always, `actions` only while some are open, `media` only while some clips wait.
+
 ### Applying the daily actions: `tools/apply-clip-actions.mjs`
 
 The two mechanical kinds of suggested action apply themselves; nobody has to
@@ -424,37 +455,6 @@ node tools/apply-clip-actions.mjs --vault <v> --revert <vault>/.apply-clip-actio
 The ledger and the lock are vault state like `.synthesize-stubs.ledger.jsonl`; add
 `.apply-clip-actions.*` to the vault's `.gitignore` if the vault is a git repo. Nothing schedules this tool yet;
 the nightly wiring is separate. Pure Node, no install: `tests/test-apply-clip-actions.sh`.
-
-### Clip funnel (outcomes, read-only)
-
-`tools/clip-funnel.mjs --vault <v> [--as-of YYYY-MM-DD] [--days N]` prints one
-JSON document answering "is the pipeline doing its job": of the clips taken in,
-how many a synthesis page cites, how many subject pages were created or
-extended, how many daily actions are open and applied, how many clips wait on
-media. The morning report (`scripts/handover/generate-morning-briefing.sh`)
-renders it as its `Clip funnel` block. It writes nothing to the vault, reads
-each file once and prints the same bytes on two runs.
-
-- **intake:** the flat `Clippings/_evidence/` pool (a subfolder is not evidence).
-- **cited:** a clip is cited when a page in `Clippings/_synthesis/` links it by
-  name; the folder in the link and a `.md` suffix do not matter, so a link to
-  the clip's old `_done/` folder still counts. Accepted proposals under
-  `_synthesis/_done/` are not scanned.
-- **subjects:** `.synthesize-stubs.ledger.jsonl`, `stub-create` rows = created,
-  `densify` rows = extended, counted per distinct page.
-- **actions:** open = the `## Daily report` items in `50-Journal/Daily/` that
-  no report ticked or dismissed and the apply ledger has not applied; applied =
-  the distinct ids with a `fold` or `archive` row in
-  `.apply-clip-actions.ledger.jsonl`. An absent ledger is zero applied. A row
-  stays after `apply-clip-actions.mjs --revert`, so a reverted action still
-  reads as applied.
-- **media:** clips with `ig_media_pending: true` or `x_media_pending: true` in
-  `Clippings/` (the inbox) or `_evidence/`.
-
-Each stage reports `moved_in_window` (events dated inside the window, default
-the 7 days ending on `--as-of`) and `last` (its newest event). `stalled` names
-the stages with no movement in the window: `intake`, `cited` and `subjects`
-always, `actions` only while some are open, `media` only while some clips wait.
 
 ## Why a plugin
 
