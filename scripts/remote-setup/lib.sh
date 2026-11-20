@@ -64,7 +64,7 @@ rs_done() {
     msg=$(rs_clean "$1")
     rs_cleanup_children
     if ! rs_unit_restore; then
-        rs_fix "$RS_RESTORE_FAILED did not start again: run systemctl --user start telegram-bridge.service, or launchctl bootstrap it, then check the bridge"
+        rs_fix "$RS_RESTORE_FAILED did not start again: run systemctl --user start telegram-bridge.service, or launchctl bootstrap it, then check the bridge" # t13b-ok: remediation message text only, starts nothing
     fi
     RS_FINISHED=1
     if [ "$RS_JSON_MODE" = 1 ]; then printf 'DONE: %s\n' "$msg" >&2; else printf 'DONE: %s\n' "$msg"; fi
@@ -321,7 +321,7 @@ rs_unit_restore() {
         what=${rec#*|}
         case "$kind" in
             L) systemctl --user start "$what" >/dev/null 2>&1 || RS_RESTORE_FAILED="${RS_RESTORE_FAILED:+$RS_RESTORE_FAILED, }$what" ;;
-            M) launchctl bootstrap "gui/$uid" "$HOME/Library/LaunchAgents/$what.plist" >/dev/null 2>&1 || RS_RESTORE_FAILED="${RS_RESTORE_FAILED:+$RS_RESTORE_FAILED, }$what" ;;
+            M) launchctl bootstrap "gui/$uid" "$HOME/Library/LaunchAgents/$what.plist" >/dev/null 2>&1 || RS_RESTORE_FAILED="${RS_RESTORE_FAILED:+$RS_RESTORE_FAILED, }$what" ;; # t13b-ok: puts back the bridge LaunchAgent this run stopped, installs nothing new
             R) bash "$what" start >/dev/null 2>&1 || RS_RESTORE_FAILED="${RS_RESTORE_FAILED:+$RS_RESTORE_FAILED, }the bridge" ;;
         esac
     done <<EOF
@@ -343,7 +343,7 @@ $RS_UNITS_STOPPED
 EOF
     RS_UNITS_STOPPED=$kept
     if [ "$(uname)" = Darwin ]; then
-        launchctl bootstrap "gui/$uid" "$HOME/Library/LaunchAgents/$label.plist" >/dev/null 2>&1
+        launchctl bootstrap "gui/$uid" "$HOME/Library/LaunchAgents/$label.plist" >/dev/null 2>&1 # t13b-ok: starts the bridge LaunchAgent the operator already installed, installs nothing new
     else
         systemctl --user start "$unit" >/dev/null 2>&1
     fi

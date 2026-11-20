@@ -166,7 +166,7 @@ run_sut() {
         pbase=$T/pbin
     fi
     local envs
-    envs=(env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID "HOME=$HOME_FIX" "PATH=$T/bin:$pbase" "RST=$T" "RST_REAL_BUN=$REAL_BUN" "TMPDIR=$T/tmp dir" TERM=dumb)
+    envs=(env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID -u TELEGRAM_ENV "HOME=$HOME_FIX" "PATH=$T/bin:$pbase" "RST=$T" "RST_REAL_BUN=$REAL_BUN" "TMPDIR=$T/tmp dir" TERM=dumb)
     local i
     for i in $inj $RUN_ENV; do envs[${#envs[@]}]=$i; done
     # the SUT runs under the same bash as this suite, so a 3.2 run of the suite is a 3.2 run of the SUT
@@ -747,6 +747,20 @@ case_bot_enter_reuses_a_quoted_stored_token() {
     check "the quotes did not reach Telegram" file_has "$T/curl.stdin" "/bot$tok/getMe"
 }
 
+case_harness_ignores_a_telegram_env_from_the_launching_shell() {
+    local tok decoy
+    tok=$(mk_token 111)
+    decoy=$T/decoy.env
+    : > "$decoy"
+    export TELEGRAM_ENV=$decoy
+    set_onboard 777
+    feed "$tok"
+    run_sut "$T/in" bot
+    unset TELEGRAM_ENV
+    check "the canary went to the fixture store" file_has "$(STORE_FILE)" "$tok"
+    check "and nothing reached the file the launching shell named" test ! -s "$decoy"
+}
+
 case_bot_run1_prints_paste_line_and_exits_3() {
     local tok
     tok=$(mk_token 111)
@@ -1057,7 +1071,8 @@ bot_red_bridge_id_as_main_refuses bot_relay_id_as_main_refuses bot_notice_id_as_
 bot_different_id_without_replace_refuses bot_same_bot_new_token_is_stored bot_same_token_skips_store
 bot_post_write_check_that_cannot_run_is_a_fix bot_post_write_distinct_tokens_failure_restores_previous
 bot_post_write_restore_failure_is_not_reported_as_restored
-bot_enter_reuses_a_quoted_stored_token bot_run1_prints_paste_line_and_exits_3
+bot_enter_reuses_a_quoted_stored_token harness_ignores_a_telegram_env_from_the_launching_shell
+bot_run1_prints_paste_line_and_exits_3
 bot_run2_after_paste_reaches_done bot_existing_access_json_other_id_fixes_unchanged
 bot_existing_access_json_bad_shape_fixes_before_the_prompt bot_rerun_without_token_never_pairs
 bot_canary_token_absent_everywhere bot_done_rerun_changes_no_config_artifact bot_inputs_are_only_the_g2_set
