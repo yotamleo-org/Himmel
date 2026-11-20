@@ -358,7 +358,7 @@ const sessionCommand = (verb) => `${WIRED_PREFIX}--optional --fail-closed-when "
 
 test('the readiness session script is registered once per verb: startup at SessionStart, cleanup at SessionEnd, each project-delivered with its fixed argument, last in its event', () => {
   const doc = JSON.parse(readFileSync(PLUGIN_HOOKS, 'utf8'));
-  for (const [event, verb, timeout] of [['SessionStart', 'startup', 15], ['SessionEnd', 'cleanup', 10]]) {
+  for (const [event, verb, timeout] of [['SessionStart', 'startup', 15], ['SessionEnd', 'cleanup', 3]]) {
     const entries = groupsWith(event, SESSION);
     assert.equal(entries.length, 1, `${event} registers the session script once`);
     assert.equal(entries[0].hooks.length, 1);

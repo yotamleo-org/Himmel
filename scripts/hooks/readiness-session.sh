@@ -23,7 +23,12 @@
 #   finish <attempt-dir> verify, then release exactly the token this session adopted (a successor's lock refuses it),
 #                        then remove the attempt directory (the credential file included). Exit 0 only if released.
 #   cleanup              SessionEnd hook (hook JSON on stdin). Releases this session's own lease (the adopted token,
-#                        or the still-unadopted transport token) and removes its attempt directory; silent, exit 0.
+#                        or the still-unadopted transport token) and removes its attempt directory; silent, exit 0. The host
+#                        gives a SessionEnd hook a short shared budget and cancels what has not returned, so the verb returns
+#                        at once and a detached copy of itself does the release (see the cleanup block below). A cleanup that
+#                        is cut off, fails or is refused leaves the lease held and the attempt directory in place; the
+#                        directory then carries a one-line cleanup-failed file, and `queue-lock.sh status --sweep` (the
+#                        chief's LOCKS check) lists the lease.
 #
 # No token or credential is ever printed, logged or placed in an argument list of this script; queue-lock.sh is
 # SOURCED (not run), so the token only moves between shell variables and its own private files. Its own output is
@@ -42,6 +47,11 @@ umask 077
 RS_WHY="" RS_HOOK_SID="" RS_HOOK_TR=""
 RS_SCOPE="" RS_DOC="" RS_VERSION="" RS_ATTEMPT_ID="" RS_QL="" RS_XDG="" RS_HDIR=""
 RS_QL_LIB="${CLAUDE_PROJECT_DIR:-}/scripts/handover/queue-lock.sh"
+RS_DETACH_LIB="${CLAUDE_PROJECT_DIR:-}/scripts/lib/detach.sh"
+RS_TIMEOUT_LIB="${CLAUDE_PROJECT_DIR:-}/scripts/lib/timeout-bin.sh"
+# the one-shot bound of the detached cleanup, in seconds: a release takes a fraction of a second and the longest wait inside the
+# queue library is its own 15 s bound on the close-evidence call, so 30 s stops only a cleanup that is wedged
+RS_CLEANUP_BOUND_SECS=30
 UUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 TOKEN_RE='^[A-Za-z0-9._-]+$'
 
@@ -271,10 +281,87 @@ cmd_cleanup() {
     exit 0
 }
 
+# --- cleanup as the SessionEnd hook: it returns at once and a detached, bounded copy of cmd_cleanup does the release ---------
+# The host gives a SessionEnd hook one short budget (a plugin cannot raise it) and cancels what has not returned; a cancel
+# before the release finishes leaves the lease held and the attempt directory behind. Three forms of the verb, one body:
+#   cleanup                          the hook: reads the payload, starts the next form in a new session (lib/detach.sh, as the
+#                                    other SessionEnd hooks do) and exits 0 at once. A session with no attempt directory
+#                                    starts nothing.
+#   cleanup __himmel_detached <sid>  the detached copy: runs the next form under a one-shot timeout (lib/timeout-bin.sh) of
+#                                    RS_CLEANUP_BOUND_SECS. When the attempt directory is still there afterwards (the cleanup
+#                                    was cut off, failed or was refused) it writes one line, cleanup-failed, into it.
+#   cleanup __himmel_bounded <sid>   the unchanged cmd_cleanup, fed a payload that names the session.
+# A project root that is not the checkout the launcher bound runs cmd_cleanup in place, which refuses (fail closed): the two
+# libraries are sourced only from the bound root. Nothing here frees a lease by age or runs more than once.
+_rs_cleanup_inplace() { # <session id>
+    cmd_cleanup <<< "{\"session_id\":\"$1\"}"
+}
+# the project root is the checkout the launcher bound: the startup config's queue_lock names this root's library
+_rs_project_bound() { # <attempt-dir>
+    RS_QL="$(jq -r '.queue_lock // empty' "$1/startup.json" 2>/dev/null)"  # swallow-ok: an unreadable field reads empty, which is not bound
+    _rs_ql_bound
+}
+_rs_cleanup_bound() {
+    local v="${READINESS_SESSION_CLEANUP_BOUND_SECS:-}"
+    case "$v" in ''|*[!0-9]*|?????*) v="$RS_CLEANUP_BOUND_SECS" ;; esac
+    { [ "$((10#$v))" -ge 1 ] && [ "$((10#$v))" -le 120 ]; } || v="$RS_CLEANUP_BOUND_SECS"
+    printf '%s' "$((10#$v))"
+}
+_rs_cleanup_start() {
+    local sid dir
+    _rs_hook_read || exit 0
+    sid="$RS_HOOK_SID"
+    [[ "$sid" =~ $UUID_RE ]] || exit 0
+    dir="$(_rs_root)/$sid"
+    [ -e "$dir" ] || exit 0
+    if _rs_project_bound "$dir" && [ -r "$RS_DETACH_LIB" ]; then
+        # shellcheck source=/dev/null
+        . "$RS_DETACH_LIB" >/dev/null 2>&1 || _rs_cleanup_inplace "$sid"
+        detach_run bash "${BASH_SOURCE[0]}" cleanup __himmel_detached "$sid"
+        exit 0
+    fi
+    _rs_cleanup_inplace "$sid"
+}
+_rs_cleanup_supervise() { # <session id>
+    local sid="${1:-}" dir bound err="" rc=0 why
+    [[ "$sid" =~ $UUID_RE ]] || exit 0
+    dir="$(_rs_root)/$sid"
+    [ -e "$dir" ] || exit 0
+    bound="$(_rs_cleanup_bound)"
+    _TIMEOUT_BIN=""
+    if _rs_project_bound "$dir" && [ -r "$RS_TIMEOUT_LIB" ]; then
+        # shellcheck source=/dev/null
+        . "$RS_TIMEOUT_LIB" >/dev/null 2>&1 || _TIMEOUT_BIN=""
+    fi
+    err="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 "$bound"} bash "${BASH_SOURCE[0]}" cleanup __himmel_bounded "$sid" 2>&1 >/dev/null)" || rc=$?
+    if { [ "$rc" -ne 0 ] || [ -n "$err" ]; } && [ -f "$dir/startup.json" ] && _rs_private_dir "$dir"; then
+        case "$rc" in
+            124|137) why="did not finish within ${bound}s and was stopped" ;;
+            0) why="refused: $(printf '%s' "$err" | tr '\n' ' ' | head -c 200)" ;;
+            *) why="exited $rc: $(printf '%s' "$err" | tr '\n' ' ' | head -c 200)" ;;
+        esac
+        printf '%s cleanup %s; the lease and this directory remain (queue-lock.sh status --sweep)\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$why" > "$dir/cleanup-failed" 2>/dev/null  # swallow-ok: the marker is a courtesy; the lease and the directory themselves are the record
+    fi
+    exit 0
+}
+_rs_cleanup_worker() { # <session id>
+    local sid="${1:-}"
+    [[ "$sid" =~ $UUID_RE ]] || exit 0
+    # test seam: seconds to wait before the release, so a row can see the hook return while the lease is still held
+    case "${READINESS_SESSION_TEST_DELAY:-}" in ''|*[!0-9]*) ;; *) sleep "$READINESS_SESSION_TEST_DELAY" ;; esac
+    _rs_cleanup_inplace "$sid"
+}
+# each of the three ends the process
+cmd_cleanup_hook() {
+    if [ "${1:-}" = "__himmel_bounded" ]; then _rs_cleanup_worker "${2:-}"; fi
+    if [ "${1:-}" != "__himmel_detached" ]; then _rs_cleanup_start; fi
+    _rs_cleanup_supervise "${2:-}"
+}
+
 case "${1:-}" in
     startup) shift; cmd_startup "$@" ;;
     verify) shift; cmd_verify "$@" ;;
     finish) shift; cmd_finish "$@" ;;
-    cleanup) shift; cmd_cleanup "$@" ;;
+    cleanup) shift; cmd_cleanup_hook "$@" ;;
     *) echo "usage: readiness-session.sh startup|cleanup (hook JSON on stdin) | verify|finish <attempt-dir>" >&2; exit 2 ;;
 esac

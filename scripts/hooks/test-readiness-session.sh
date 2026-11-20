@@ -24,6 +24,9 @@
 #      equality, and the registered hook commands adopt and release through the real recorder and runner.
 #   h. the library is spelled from CLAUDE_PROJECT_DIR: the project layout and the plugin copy's own layout adopt, verify,
 #      finish and clean up; a missing, empty, relative, decoy or library-less project root refuses and nothing is sourced.
+#   i. cleanup is a SessionEnd hook: it returns inside the 3 s budget its plugin entry declares while the lease is still held, a
+#      detached copy releases it shortly after (rows wait for that with a bounded poll), a cleanup stopped by its bound leaves
+#      the lease, the attempt directory and one cleanup-failed line for a chief, and under Codex the entry touches nothing.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd -P)"
@@ -60,6 +63,17 @@ penv() {
 henv() { penv PATH="$PATH" HOME="$FAKEHOME" XDG_RUNTIME_DIR="$XDG" HANDOVER_DIR="$HD" "$@"; }
 ql_status() { qenv bash "$QL" status "$1" 2>/dev/null | tail -n 1; }
 ql_owner() { jq -r .session "$(find "$HD/.locks/queue" -maxdepth 1 -name "*$(basename "$1" .md | tr -c 'A-Za-z0-9_\n-' '-')*.lock" | head -n 1)/owner.json" 2>/dev/null; }
+# The cleanup verb returns at once and a detached copy does the release, so a row waits for the effect it asserts with a bounded
+# poll (every 0.1 s, never a fixed sleep); CLEAN_WAIT is the upper bound for the success and the failure case alike.
+CLEAN_WAIT=20
+poll() { # <seconds> <command...>: succeeds as soon as the command does, fails when the time is up
+  local max=$(($1 * 10)) i=0; shift
+  while ! "$@"; do i=$((i + 1)); [ "$i" -lt "$max" ] || return 1; sleep 0.1; done
+}
+# shellcheck disable=SC2329  # both are run through poll
+path_gone() { [ ! -e "$1" ]; }
+# shellcheck disable=SC2329
+path_there() { [ -e "$1" ]; }
 
 n=0
 # mk_attempt: a launcher-shaped attempt (what headed-arm-worker.sh leaves) -> A_DOC A_SID A_DIR A_TOK
@@ -241,14 +255,15 @@ check "d. ... and the attempt directory is kept (nothing was released)" "$([ -e 
 mk_attempt; adapter finish "$A_DIR"
 check "d. finish before adoption refuses and leaves the lease and transport" "$H_RC:$(ql_owner "$A_DOC"):$([ -e "$A_DIR/lease-token" ] && echo kept)" "1:$A_TOK:kept"
 # cleanup (SessionEnd): adopted
-good_attempt; hook cleanup "$A_SID"
+good_attempt; hook cleanup "$A_SID"; poll "$CLEAN_WAIT" path_gone "$A_DIR"
 check "d. cleanup of an adopted session releases its lease and removes its directory" "$H_RC:$H_OUT:$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "0::free:gone"
 # cleanup: unadopted (the session ended before it adopted): the transport token releases it
-mk_attempt; hook cleanup "$A_SID"
+mk_attempt; hook cleanup "$A_SID"; poll "$CLEAN_WAIT" path_gone "$A_DIR"
 check "d. cleanup of an unadopted session releases the transported token and removes the directory" "$H_RC:$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "0:free:gone"
 # cleanup never releases a successor
-mk_attempt; qenv bash "$QL" release "$A_DOC" "$A_TOK" >/dev/null 2>&1; qenv bash "$QL" acquire "$A_DOC" succ-token-d2 >/dev/null 2>&1; hook cleanup "$A_SID"
+mk_attempt; qenv bash "$QL" release "$A_DOC" "$A_TOK" >/dev/null 2>&1; qenv bash "$QL" acquire "$A_DOC" succ-token-d2 >/dev/null 2>&1; hook cleanup "$A_SID"; poll "$CLEAN_WAIT" path_there "$A_DIR/cleanup-failed"
 check "d. cleanup never releases a successor's lock" "$H_RC:$(ql_owner "$A_DOC")" "0:succ-token-d2"
+check "d. ... the refused cleanup leaves the attempt directory and one line saying why" "$([ -e "$A_DIR" ] && echo present || echo gone):$(wc -l < "$A_DIR/cleanup-failed" 2>/dev/null | tr -d ' '):$(grep -c 'refused: readiness-session: release refused' "$A_DIR/cleanup-failed" 2>/dev/null)" "present:1:1"
 hook cleanup "$(uuid)"; check "d. cleanup of a session with no attempt directory is a silent no-op" "$H_RC:$H_OUT:$H_ERR" "0::"
 hook bogus "$(uuid)"; check "d. an unknown verb is a usage error" "$H_RC" "2"
 
@@ -328,7 +343,9 @@ CLO="$(closure_of "$REPO_ROOT" scripts/hooks/readiness-session.sh)"
 check "g. the session script's whole sourced closure resolves statically (no source statement the integrity walk cannot turn into a file)" "$(printf '%s' "$CLO" | jq -c '.unresolved' 2>/dev/null || echo "$CLO")" "[]"
 check "g. the one handover library it sources is the real queue-lock.sh" "$(printf '%s' "$CLO" | jq -c '[.files[] | select(startswith("scripts/handover/"))]' 2>/dev/null || echo "$CLO")" '["scripts/handover/queue-lock.sh"]'
 # the control: the old dynamic spelling is exactly what the walk refuses, so the two rows above discriminate
-mkdir -p "$tmp/wroot/scripts/hooks"
+mkdir -p "$tmp/wroot/scripts/hooks" "$tmp/wroot/scripts/lib"
+# the two libraries the cleanup verb sources resolve in this root, so only the queue library statements are in question
+cp -p "$REPO_ROOT/scripts/lib/detach.sh" "$REPO_ROOT/scripts/lib/timeout-bin.sh" "$tmp/wroot/scripts/lib/"
 # shellcheck disable=SC2016  # the sed program is literal text: the variable names are the file's own spelling
 sed 's/\. "\$RS_QL_LIB"/. "$RS_QL"/' "$HOOK" > "$tmp/wroot/scripts/hooks/readiness-session.sh"
 check "g. control: sourcing the startup-bound variable instead is unresolved in all three statements" "$(closure_of "$tmp/wroot" scripts/hooks/readiness-session.sh | jq -c '.unresolved | length' 2>/dev/null || echo broken)" "3"
@@ -337,7 +354,7 @@ PCLO="$(closure_of "$REPO_ROOT" marketplace/plugins/himmel-ops/scripts/readiness
 check "g. the plugin copy's whole sourced closure resolves statically too, to the same one handover library" "$(printf '%s' "$PCLO" | jq -c '[.unresolved, [.files[] | select(startswith("scripts/handover/"))]]' 2>/dev/null || echo "$PCLO")" '[[],["scripts/handover/queue-lock.sh"]]'
 # the control: a prefix the walk does not model (any variable other than the project root) leaves the library unresolved
 # shellcheck disable=SC2016  # the sed program is literal text: the variable names are the file's own spelling
-sed 's#\${CLAUDE_PROJECT_DIR:-}/scripts#${RS_PROJECT_ROOT:-}/scripts#' "$HOOK" > "$tmp/wroot/scripts/hooks/readiness-session.sh"
+sed 's#^RS_QL_LIB="\${CLAUDE_PROJECT_DIR:-}/scripts#RS_QL_LIB="${RS_PROJECT_ROOT:-}/scripts#' "$HOOK" > "$tmp/wroot/scripts/hooks/readiness-session.sh"
 check "g. control: a library prefix that is not the project root is unresolved in all three statements" "$(closure_of "$tmp/wroot" scripts/hooks/readiness-session.sh | jq -c '.unresolved | length' 2>/dev/null || echo broken)" "3"
 
 # a startup queue_lock that is not the sourced library never runs: the equality check refuses it before any source
@@ -393,7 +410,7 @@ if g_project; then
   no_leak "g. the registered startup command"
   HOOK_REAL="$HOOK"; HOOK="$GP/scripts/hooks/readiness-session.sh"; PROJ_ENV="$GP" adapter verify "$A_DIR"; HOOK="$HOOK_REAL"
   check "g. ... and the adapter's verify (from the same project) succeeds" "$H_RC:$H_OUT:$H_ERR" "0::"
-  g_run "$END_CMD" "$A_SID" SessionEnd
+  g_run "$END_CMD" "$A_SID" SessionEnd; poll "$CLEAN_WAIT" path_gone "$A_DIR"
   check "g. the registered cleanup command releases the adopted lease and removes the attempt through the real runner" "$H_RC:$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "0:free:gone"
   # a generic session (no attempt directory): both registered commands are silent no-ops with no queue or runtime effect
   before_tree="$(find "$XDG" "$HD" 2>/dev/null | sort | md5sum)"; generic="$(uuid)"
@@ -443,9 +460,9 @@ for tool_label in project plugin; do
   check "h. $tool_label layout: verify (run with the checkout's project root) succeeds" "$H_RC:$H_OUT:$H_ERR" "0::"
   with_hook "$tool" adapter finish "$A_DIR"
   check "h. $tool_label layout: finish releases exactly the adopted lease and removes the attempt" "$H_RC:$H_OUT:$H_ERR:$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "0:::free:gone"
-  mk_attempt; with_hook "$tool" hook startup "$A_SID"; with_hook "$tool" hook cleanup "$A_SID"
+  mk_attempt; with_hook "$tool" hook startup "$A_SID"; with_hook "$tool" hook cleanup "$A_SID"; poll "$CLEAN_WAIT" path_gone "$A_DIR"
   check "h. $tool_label layout: cleanup of an adopted session releases its lease and removes its directory" "$H_RC:$H_OUT:$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "0::free:gone"
-  mk_attempt; with_hook "$tool" hook cleanup "$A_SID"
+  mk_attempt; with_hook "$tool" hook cleanup "$A_SID"; poll "$CLEAN_WAIT" path_gone "$A_DIR"
   check "h. $tool_label layout: cleanup of an unadopted session releases the transported token and removes the directory" "$H_RC:$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "0:free:gone"
   # a project root that is a symlink to the same checkout names the same physical directory: it adopts
   mk_attempt; PROJ_ENV="$tmp/projlink" with_hook "$tool" hook startup "$A_SID"
@@ -476,6 +493,32 @@ for tool_label in project plugin; do
     with_hook "$tool" adapter finish "$A_DIR"
   done
 done
+
+# --- i. cleanup is a SessionEnd hook: it returns inside the declared budget, a detached copy releases afterwards under a bound,
+#        and a cleanup that is stopped leaves the lease and the attempt directory where a chief can see them
+DECLARED="$(jq -r '[.hooks.SessionEnd[].hooks[] | select(.command | endswith(" cleanup")) | .timeout] | .[0]' "$HOOKS_JSON")"
+check "i. the registered cleanup declares the 3 s budget of the other SessionEnd hooks" "$DECLARED" "3"
+good_attempt
+i_t0="$(date +%s)"; hook cleanup "$A_SID" READINESS_SESSION_TEST_DELAY=5; i_t1="$(date +%s)"
+check "i. cleanup returns inside the declared budget while its release still waits: exit 0, silent" "$H_RC:$H_OUT:$H_ERR:$([ $((i_t1 - i_t0)) -lt "$DECLARED" ] && echo inside || echo over)" "0:::inside"
+check "i. ... the lease is still held and the attempt directory still there when it returns" "$(ql_owner "$A_DOC"):$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "$A_TOK:status: FRESH:present"
+poll "$CLEAN_WAIT" path_gone "$A_DIR"
+check "i. ... and the detached copy releases the lease shortly after and removes the directory" "$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "free:gone"
+# a cleanup that its bound stops: the lease stays held, the directory stays, one line says why, and the chief's sweep lists the lease
+good_attempt; hook cleanup "$A_SID" READINESS_SESSION_TEST_DELAY=60 READINESS_SESSION_CLEANUP_BOUND_SECS=1; poll "$CLEAN_WAIT" path_there "$A_DIR/cleanup-failed"
+check "i. a cleanup stopped by its bound leaves the lease held, the confirmation in place and one line saying so" "$(ql_owner "$A_DOC"):$(ql_status "$A_DOC"):$([ -e "$A_DIR/confirmation.json" ] && echo kept || echo lost):$(wc -l < "$A_DIR/cleanup-failed" 2>/dev/null | tr -d ' '):$(grep -c 'did not finish within 1s and was stopped' "$A_DIR/cleanup-failed" 2>/dev/null)" "$A_TOK:status: FRESH:kept:1:1"
+check "i. ... and queue-lock.sh status --sweep (the chief's LOCKS check) lists that lease" "$(qenv bash "$QL" status --sweep "$HD" 2>/dev/null | grep -cF -- "session=$A_TOK ")" "1"
+qenv bash "$QL" release "$A_DOC" "$A_TOK" >/dev/null 2>&1
+# Codex: a plugin hook has CLAUDE_PLUGIN_ROOT and no CLAUDE_PROJECT_DIR, so the registered entry exits without touching the script
+good_attempt
+cx_payload="$(jq -cn --arg sid "$A_SID" '{session_id:$sid,hook_event_name:"SessionEnd",reason:"other"}')"
+cx_t0="$(date +%s)"
+env -i PATH="$PATH" HOME="$FAKEHOME" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" XDG_RUNTIME_DIR="$XDG" HANDOVER_DIR="$HD" sh -c "$END_CMD" <<< "$cx_payload" > "$tmp/out" 2> "$tmp/err"; cx_rc=$?
+cx_t1="$(date +%s)"
+check "i. Codex (no CLAUDE_PROJECT_DIR): the registered cleanup exits 0, silent, inside the budget" "$cx_rc:$(cat "$tmp/out"):$(cat "$tmp/err"):$([ $((cx_t1 - cx_t0)) -lt "$DECLARED" ] && echo inside || echo over)" "0:::inside"
+check "i. ... and it released nothing: the lease and the directory are still there after a bounded wait for any release" "$(poll 2 path_gone "$A_DIR" && echo released || echo untouched):$(ql_owner "$A_DOC")" "untouched:$A_TOK"
+hook cleanup "$A_SID"; poll "$CLEAN_WAIT" path_gone "$A_DIR"
+check "i. ... control: the same attempt is released once the project root is present" "$(ql_status "$A_DOC")" "free"
 
 # --- e. the plugin copy
 check "e. the himmel-ops plugin copy is byte-identical" "$(cmp -s "$HOOK" "$PLUGIN_COPY" && echo same || echo differs)" "same"

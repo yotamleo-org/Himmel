@@ -300,7 +300,7 @@
           {
             "type": "command",
             "command": "command -p sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook-with-bash.js\" --optional --fail-closed-when \"HIMMEL_READINESS=1\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/readiness-session.sh\" cleanup",
-            "timeout": 10
+            "timeout": 3
           }
         ]
       }

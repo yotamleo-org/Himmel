@@ -198,6 +198,8 @@ check "a failed hand-off: the wrapper returns its status, the lease is free and 
 # --- 7. the launcher never refuses a session that did not start: the unadopted lease is released by the SessionEnd cleanup
 launch 4
 printf '{"session_id":"%s","hook_event_name":"SessionEnd"}' "$SID" | CLAUDE_PROJECT_DIR="$PROJ" bash "$HOOK" cleanup > "$tmp/hook.out" 2> "$tmp/hook.err"
+# the verb returns at once and a detached copy releases: wait for the removal with a bounded poll (20 s), never a fixed sleep
+w=0; while [ -e "$A" ] && [ "$w" -lt 200 ]; do sleep 0.1; w=$((w + 1)); done
 check "cleanup of a session that never adopted releases the transported token and removes the attempt" \
     "$(lock_status "$DOC"):$([ -e "$A" ] && echo present || echo gone)" "free:gone"
 
