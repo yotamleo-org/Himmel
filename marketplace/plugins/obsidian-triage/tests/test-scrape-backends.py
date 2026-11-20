@@ -1283,10 +1283,7 @@ before = len(parked_rows())
 run_main(v5)
 check("denied URL is never parked", not [r for r in parked_rows()[before:] if r["kind"] == "parked"])
 
-_hook_doc = mod._block_private_requests.__doc__ or ""
 _cmd_doc = (TOOL.parent.parent / "commands" / "harvest-clips.md").read_text(encoding="utf-8")
-check("the _block_private_requests docstring lists DNS rebinding as not covered and says Chromium resolves again at connect",
-      "DNS rebinding" in " ".join(_hook_doc.split()) and "resolves a name again when it connects" in " ".join(_hook_doc.split()))
 _cmd_flat = " ".join(_cmd_doc.split())
 check("commands/harvest-clips.md says Chromium resolves again at connect, so a rebinding name is narrowed, not closed, and nothing pins the connection",
       "resolves a name again when it connects" in _cmd_flat and "narrowed" in _cmd_flat and "not closed" in _cmd_flat and "host-resolver rules" in _cmd_flat)

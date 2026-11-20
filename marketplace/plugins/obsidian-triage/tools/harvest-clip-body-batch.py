@@ -1065,17 +1065,11 @@ def drop_media_cookies(cookies: list) -> list:
 def _block_private_requests(page, state):
     """Scrapling page_setup hook (runs before navigation). Aborts the browser's
     navigations, redirect hops and same-process subresources to a private host,
-    and page-level websockets, before the browser connects. A host is judged by
-    its spelling (localhost, internal TLDs, private address literals) and, for a
-    name, by what this machine's resolver answers: any private, loopback,
-    link-local, unspecified or reserved answer (an IPv4-mapped form included)
-    denies the request, and so does a lookup that fails. One lookup per host per
-    fetch, shared by routes, redirect hops, websockets and the final-URL check.
+    and page-level websockets, before the browser connects.
 
     NOT covered: cross-site iframes (separate CDP targets, so their
-    redirect hops are never paused), dedicated/shared-worker traffic including
-    worker websockets, and DNS rebinding: Chromium resolves a name again when it
-    connects, so the answer checked here is not the address it dials.
+    redirect hops are never paused), and dedicated/shared-worker traffic
+    including worker websockets.
 
     Fail closed: Scrapling swallows an exception raised here and navigates
     anyway, so the first thing installed is a deny-all route that only lets

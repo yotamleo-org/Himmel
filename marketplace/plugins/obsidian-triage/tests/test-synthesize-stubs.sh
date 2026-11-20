@@ -459,7 +459,6 @@ mkclip5 "$EV9" b-2.md "Back Two" "https://b-two.org/x" 'back\slash'
 LEDGER9="$tmp9/.synthesize-stubs.ledger.jsonl"
 out9="$(node "$TOOL" "$tmp9" --apply 2>&1)"; printf '%s
 ' "$out9"
-# The promoted_to value is a YAML double-quoted scalar; with only \" and \\ escapes it is also a JSON string.
 promoted_of() {
   node -e 'const l=require("fs").readFileSync(process.argv[1],"utf8").split("\n").find((x)=>x.startsWith("promoted_to: ")); process.stdout.write(l ? JSON.parse(l.slice(13)) : "no promoted_to line")' "$1" 2>&1 | tail -n 1
 }
