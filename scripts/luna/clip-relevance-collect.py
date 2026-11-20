@@ -14,8 +14,7 @@ The same inputs print the same bytes. Clip text is untrusted data: every body li
 "| ", so nothing in a clip can pass for a section header or an instruction. Writes nothing.
 
 mark appends ids to the seen-ledger (kind, id, date; tab separated), once each. The ledger is
-$CLIP_RELEVANCE_SEEN, else ~/.himmel/state/clip-relevance/seen.tsv: deliberately not a flag, because
-the weekly run allows this script with any arguments and a flag would hand it an arbitrary append path.
+$CLIP_RELEVANCE_SEEN, else ~/.himmel/state/clip-relevance/seen.tsv.
 Exit: 0 ok, 2 usage or no evidence folder.
 """
 import argparse
@@ -62,7 +61,6 @@ def seen_path():
 
 
 def read_seen(path):
-    """Rows of the seen-ledger in file order: [(kind, id)]."""
     rows = []
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
@@ -76,7 +74,6 @@ def read_seen(path):
 
 
 def split_clip(text):
-    """(front matter dict of the top-level scalar keys, body) of one clip."""
     meta = {}
     if not text.startswith("---\n"):
         return meta, text

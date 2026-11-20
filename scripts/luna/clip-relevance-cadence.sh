@@ -9,11 +9,6 @@
 #   clip-relevance-cadence.sh check <note>       lint a note; print the Telegram message it would send
 #   clip-relevance-cadence.sh finish <claude-rc> <claude-json>      (the runner calls it after the model)
 #
-# OFF by default: only `arm` installs it, an operator step after a VM proof. Unattended `claude -p` draws the
-# SAME subscription budget as interactive use (docs/internals/enforcement.md#claude-invocation-billing), so the
-# generated runner asks scripts/lib/usage-preflight.sh first and runs only on PROCEED, pins the model, declares
-# --permission-mode dontAsk (never bypassPermissions) and parses --output-format json. Weekly cost: about $2 to $4.
-#
 # `arm` and `disarm` touch only the one exact tagged, uncommented crontab row. Exit codes of arm: 0 ok, 1 or 2
 # usage or environment, 3 already armed (no --force), 4 crontab read or write, or runner write, failed, 5 more
 # than one live tagged row (crontab untouched), 77 test-run guard refusal. disarm: 0 ok or nothing armed, 4 crontab
@@ -150,7 +145,7 @@ cron_without_entry() { printf '%s\n' "$CRON_TAB" | { grep -vE "$(cron_row_re)" |
 
 sq() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
 
-write_runner() { # <file> <root> <bash> <claude> <preflight> <note-dir>
+write_runner() {
     local file="$1" root="$2" bash_bin="$3" claude="$4" pf="$5" ndir="$6" tool
     # Repo search is the Grep tool: `git grep -O<cmd>` runs a command, and a prefix rule cannot exclude a flag.
     local tools=("Read" "Grep" "Write(/$ndir/**)"
