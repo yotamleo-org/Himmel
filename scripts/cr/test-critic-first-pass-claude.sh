@@ -67,7 +67,12 @@ printf '%s\n' "$@" > "$REC/argv"
 pwd > "$REC/cwd"
 cat > "$REC/stdin"
 printf '%s\n' "HIMMEL_API_TOOLS_SET=${HIMMEL_API_TOOLS+yes}" "HIMMEL_API_TOOLS=${HIMMEL_API_TOOLS:-}" "HIMMEL_API_KIND=${HIMMEL_API_KIND:-}" \
-    "HIMMEL_API_BRANCH=${HIMMEL_API_BRANCH:-}" "HIMMEL_API_HEAD=${HIMMEL_API_HEAD:-}" "HIMMEL_API_PR=${HIMMEL_API_PR:-}" > "$REC/env"
+    "HIMMEL_API_BRANCH=${HIMMEL_API_BRANCH:-}" "HIMMEL_API_HEAD=${HIMMEL_API_HEAD:-}" "HIMMEL_API_PR=${HIMMEL_API_PR:-}" \
+    "HIMMEL_API_FALLBACK=${HIMMEL_API_FALLBACK:-}" > "$REC/env"
+if [ -n "${FAKE_SUBFALLBACK:-}" ]; then
+    echo "claude-api: fallback: running on the subscription (preflight PROCEED)" >&2
+    cat "$ENVELOPE"; exit 0
+fi
 if [ -n "${FAKE_REFUSE:-}" ]; then echo "claude-api: refused: $FAKE_REFUSE" >&2; exit "${FAKE_REFUSE_RC:-2}"; fi
 if [ -n "${FAKE_POLICY:-}" ]; then
     echo "claude-api: refused: $FAKE_POLICY" >&2
@@ -80,6 +85,21 @@ cat "$ENVELOPE"
 EOF
 chmod +x "$LAUNCH"
 export ENVELOPE="$W/envelope.json" HIMMEL_CLAUDE_BIN="$FAKE" CFP_CLAUDE_API_LAUNCHER="$LAUNCH"
+# the API lane is on for every row unless a row turns it off; the loud critic alert is recorded, never sent
+ALERTS="$W/critic-alerts.log"
+cat > "$W/alert-rec.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s|%s\n' "$TG_NOTIFICATION_TYPE" "$TG_MESSAGE" >> "$ALERTS"
+EOF
+chmod +x "$W/alert-rec.sh"
+export HIMMEL_API_LANE=on CR_CRITIC_ALERT_CMD="$W/alert-rec.sh" ALERTS
+# the chief's bridge inbox the alert also writes one line to
+export BRIDGE_ROOT="$W/bridge" HIMMEL_CONSOLE_NAME=test-chief
+CHIEF_INBOX="$BRIDGE_ROOT/consoles/test-chief.md"
+mkdir -p "$BRIDGE_ROOT/consoles"
+alerts() { if [ -f "$ALERTS" ]; then grep -c . "$ALERTS"; else echo 0; fi; }
+reset_alerts() { rm -f "$ALERTS"; : > "$CHIEF_INBOX"; }
+chief_lines() { grep -c 'CRITIC-ALERT' "$CHIEF_INBOX" 2>/dev/null || true; }
 
 fresh_rec() { REC="$W/rec.$1"; rm -rf "$REC"; mkdir -p "$REC"; export REC; }
 run_cfp() { # run_cfp <provider> [extra args]; stdout -> $W/out, stderr -> $W/err
@@ -390,6 +410,51 @@ unset CFP_RUN
 hasnt "12e api route: no tool name in the recorded argv" "Read|Glob|Grep|Edit|Write|Bash|WebFetch|WebSearch" "$W/rec.12a/argv"
 hasnt "12e subscription route: no tool name in the recorded argv" "Read|Glob|Grep|Edit|Write|Bash|WebFetch|WebSearch" "$W/rec.12b/argv"
 ok "12e NOT-VERIFIED: the claude binary's own refusal of a tool call under --tools empty (a recorder sees what is offered, not what the binary does)"
+
+# --- 13. decision 1084: a critic never reaches the subscription ---------------
+# 13a the API lane off: the Claude critic is absent, the launcher never runs, no alert (off by design)
+fresh_rec 13a; rm -f "$ALERTS"; unset FAKE_REFUSE FAKE_FAIL
+RC=0; printf '%s\n' "$DIFF" | env -u HIMMEL_API_LANE bash "$CFP" --model claude-opus-5-5 --slug claude --provider claude-api >"$W/out" 2>"$W/err" || RC=$?
+check "13a lane off: the claude-api critic exits 5 (absent)" 5 "$RC"
+check "13a lane off: the launcher is never called" no "$([ -e "$REC/argv" ] && echo yes || echo no)"
+has "13a lane off: stderr says the lane is OFF" "api lane is OFF" "$W/err"
+check "13a lane off: no alert (the lane is off by design)" 0 "$(alerts)"
+# 13b positive control: the lane on runs the stubbed API path, with the subscription fallback switched off
+fresh_rec 13b; rm -f "$ALERTS"
+run_cfp claude-api
+check "13b lane on: the stubbed API path runs and reviews" 0 "$RC"
+has "13b lane on: the critic turns the launcher's subscription fallback off" "HIMMEL_API_FALLBACK=off" "$REC/env"
+check "13b lane on: no alert" 0 "$(alerts)"
+# 13c a launcher that ran on the subscription anyway: the review is refused, one loud alert
+fresh_rec 13c; reset_alerts; export FAKE_SUBFALLBACK=1
+run_cfp claude-api
+unset FAKE_SUBFALLBACK
+check "13c a subscription fallback is broke: exits 1" 1 "$RC"
+has "13c stderr names BROKE" "claude critic BROKE" "$W/err"
+check "13c the subscription review is not used" "" "$(cat "$W/out")"
+check "13c exactly one loud Telegram alert" 1 "$(alerts)"
+has "13c the alert says the subscription was used" "subscription" "$ALERTS"
+check "13c exactly one line to the chief's inbox" 1 "$(chief_lines)"
+# 13d the real launcher refusing (no key): no subscription call at all
+fresh_rec 13d; reset_alerts; mkdir -p "$W/alerts.13d"
+printf '%s\n' '#!/usr/bin/env bash' "echo called >> \"$REC/sub-claude\"" 'exit 0' > "$W/sub-claude.sh"; chmod +x "$W/sub-claude.sh"
+printf '%s\n' '#!/usr/bin/env bash' "echo sent >> \"$REC/api-alert\"" > "$W/api-alert.sh"; chmod +x "$W/api-alert.sh"
+bank 10
+RC=0; printf '%s\n' "$DIFF" | env -u ANTHROPIC_API_KEY CFP_CLAUDE_API_LAUNCHER="$REPO/scripts/api-lane/claude-api.sh" \
+    HIMMEL_API_ACCOUNT=A HIMMEL_API_CLAUDE_BIN="$W/sub-claude.sh" HIMMEL_API_ALERT_CMD="$W/api-alert.sh" HIMMEL_API_ALERT_DIR="$W/alerts.13d" \
+    bash "$CFP" --model claude-opus-5-5 --slug claude --provider claude-api >"$W/out" 2>"$W/err" || RC=$?
+check "13d the real launcher's refusal makes no subscription claude call" no "$([ -e "$REC/sub-claude" ] && echo yes || echo no)"
+hasnt "13d the launcher did not run on the subscription" "fallback: running on the subscription" "$W/err"
+check "13d the critic prints no review" "" "$(cat "$W/out")"
+# 13e a caller or overlay that names the subscription explicitly runs as configured, with no per-call alert
+for sp in claude-subscription subscription; do
+    fresh_rec "13e-$sp"; reset_alerts; bank 10
+    run_cfp "$sp"
+    check "13e provider $sp named explicitly: reviews" 0 "$RC"
+    check "13e provider $sp named explicitly: claude runs" yes "$([ -e "$REC/argv" ] && echo yes || echo no)"
+    check "13e provider $sp named explicitly: no alert" 0 "$(alerts)"
+done
+check "13e an explicit subscription run wrote nothing to the chief's inbox" 0 "$(chief_lines)"
 
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" -eq 0 ]

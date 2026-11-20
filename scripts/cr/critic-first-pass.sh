@@ -17,11 +17,17 @@
 #      treats 4 as responded and raises its citation guard; guard-less
 #      callers treat it like 1 (not clean, proceed claude-only)
 #   5  SKIPPED: the Claude critic (provider claude-api / claude-subscription)
-#      had no key, a closed API lane, exhausted credit or a bank that is not
-#      PROCEED. A clean no-op, no stdout, no score row; never a review verdict
+#      had no key, a closed API lane (HIMMEL_API_LANE not on: the launcher is
+#      never called), exhausted credit or a bank that is not PROCEED. A clean
+#      no-op, no stdout, no score row; never a review verdict
 #
 # Claude critic: effort = CR_CLAUDE_CRITIC_EFFORT, else the claude row's effort,
 # else medium; CR_CLAUDE_CRITIC_MAX_USD caps one API review (default 1.00).
+# A claude-api critic never falls back to the subscription silently (decision
+# 1084): the launcher runs with HIMMEL_API_FALLBACK=off, and a launcher that
+# ran on the subscription anyway is BROKE, its review dropped, with one loud
+# alert (critic-alert.sh). Provider claude-subscription runs only when a caller
+# or an overlay row names it.
 #
 # Env: CRITIC_FIRST_PASS_CAP_BYTES — diff byte cap (default 204800).
 # Bash 3.2 safe.
@@ -279,7 +285,7 @@ fi
 # New-file hunk ranges "file start end" per line — used by the citation guard
 # and computed on the (possibly truncated) diff.
 # shellcheck disable=SC2317,SC2329  # cleanup is invoked indirectly via trap (SC2329 = false-positive for trap-invoked functions)
-cleanup() { rm -f "${ranges_file:-}" "${headings_file:-}" "${newside_file:-}" "${ctx_ranges_file:-}" "${ctx_snap:-}" "${pf:-}"; }
+cleanup() { rm -f "${ranges_file:-}" "${headings_file:-}" "${newside_file:-}" "${ctx_ranges_file:-}" "${ctx_snap:-}" "${pf:-}" ${pf:+"$pf.sub-used"}; }
 trap cleanup EXIT
 ranges_file="$(mktemp -t cfp-ranges.XXXXXX)" || { echo "critic-first-pass.sh: mktemp failed — fail-open, proceed claude-only" >&2; exit 1; }
 headings_file="$(mktemp -t cfp-headings.XXXXXX)" || { echo "critic-first-pass.sh: mktemp failed — fail-open, proceed claude-only" >&2; exit 1; }
@@ -610,6 +616,10 @@ _cfp_claude_unwrap() {
 }
 
 _cfp_claude_invoke() {
+    if [ "$provider" = claude-api ] && [ "${HIMMEL_API_LANE:-}" != on ]; then
+        echo "critic-first-pass.sh: claude critic SKIPPED (api lane is OFF (set HIMMEL_API_LANE=on)) — clean no-op" >&2
+        return 5
+    fi
     _cc_effort="$(_cfp_claude_effort)"
     _cc_dir="$(tmpdir)" || { echo "critic-first-pass.sh: mktemp failed" >&2; return 1; }
     _cc_out=""
@@ -624,12 +634,22 @@ _cfp_claude_invoke() {
             _cc_err="$_cc_dir/stderr"
             _cc_branch="$(git branch --show-current 2>/dev/null || true)"  # swallow-ok: an empty branch is recorded as empty
             _cc_head="$(git rev-parse HEAD 2>/dev/null || true)"  # swallow-ok: an empty head is recorded as empty
-            _cc_out="$(cd "$_cc_dir" && HIMMEL_API_KIND=critic HIMMEL_API_JOB_ID="cr-claude-critic-$$" \
+            _cc_out="$(cd "$_cc_dir" && HIMMEL_API_FALLBACK=off HIMMEL_API_KIND=critic HIMMEL_API_JOB_ID="cr-claude-critic-$$" \
                 HIMMEL_API_BRANCH="${CR_TARGET_BRANCH:-$_cc_branch}" HIMMEL_API_HEAD="${CR_TARGET_HEAD:-$_cc_head}" HIMMEL_API_PR="${CR_TARGET_PR:-}" \
                 HIMMEL_API_TOOLS='' \
                 bash "${CFP_CLAUDE_API_LAUNCHER:-$SCRIPT_DIR/../api-lane/claude-api.sh}" \
                 -p --model "$model" --permission-mode dontAsk --max-budget-usd "$_cc_budget" \
                 --output-format json --effort "$_cc_effort" < "$_cc_pf" 2>"$_cc_err")" || _cc_rc=$?
+            if grep -q '^claude-api: fallback: running on the subscription' "$_cc_err" 2>/dev/null; then
+                cat "$_cc_err" >&2
+                rm -rf "$_cc_dir"
+                # shellcheck source=scripts/cr/critic-alert.sh
+                . "$SCRIPT_DIR/critic-alert.sh"
+                critic_loud_alert subscription-used "the claude-api launcher ran critic ${slug:-?} ($model) on the Claude subscription despite HIMMEL_API_FALLBACK=off, head ${CR_TARGET_HEAD:-$_cc_head}${CR_TARGET_PR:+, PR #$CR_TARGET_PR}; its review is dropped."
+                echo "critic-first-pass.sh: claude critic BROKE (the launcher ran on the subscription) — not a clean no-op" >&2
+                : > "$pf.sub-used"
+                return 1
+            fi
             # only the launcher's own exit 2 is a refusal; the same line behind any other rc is a failure
             if [ "$_cc_rc" -eq 2 ] && grep -q '^claude-api: refused:' "$_cc_err" 2>/dev/null; then
                 _cc_why="$(grep -m1 '^claude-api: refused:' "$_cc_err" | sed 's/^claude-api: refused: //')"
@@ -821,6 +841,8 @@ while [ "$_attempt" -lt 3 ]; do
     rc=$?
     # a skip is a decision, not a failure: no retry, no raw log, no score row
     [ "$rc" -eq 5 ] && exit 5
+    # a run that reached the subscription is never retried: a retry would spend it again
+    [ -e "$pf.sub-used" ] && exit 1
     _trimmed="$(printf '%s' "$raw" | tr -d '[:space:]')"
     if [ "$rc" -eq 0 ] && [ -n "$_trimmed" ]; then
         break
