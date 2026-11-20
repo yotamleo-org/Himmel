@@ -471,7 +471,6 @@ printf '%s\n' '{"sev":"OK","id":"C1-guardrail","msg":"guardrail ok","remedy":""}
 printf '%s\n' '{"sev":"WARN","id":"C3-luna","msg":"luna dirty","remedy":"commit it"}'
 printf '%s\n' '{"sev":"WARN","id":"C16-status","msg":"2 himmelctl install/wiring finding(s)","remedy":"node scripts/himmelctl/bin.js status"}'
 printf '%s\n' '{"sev":"INFO","id":"C19-observability","msg":"observability not desired","remedy":""}'
-printf '%s\n' '{"sev":"OK","id":"C28-guardrail-consent","msg":"guardrail-block-global is wired","remedy":""}'
 printf '%s\n' '{"sev":"FAIL","id":"C9-scheduler","msg":"no scheduler backend","remedy":"install cron"}'
 printf '%s\n' '{"sev":"FAIL","id":"C30-bridge-liveness","msg":"bridge down","remedy":"restart the bridge"}'
 printf '%s\n' '{"sev":"WARN","id":"C20-node","msg":"node mismatch","remedy":"nvm use"}'
@@ -482,7 +481,7 @@ DOCTOR_STUB="$foldDoctor" run_report > "$foldOut" 2>/dev/null || fail "i1 report
 rank() { case "$1" in fail) echo 2 ;; warn) echo 1 ;; *) echo 0 ;; esac; }
 srank() { case "$1" in FAIL) echo 2 ;; WARN) echo 1 ;; *) echo 0 ;; esac; }
 disagree=0
-for pair in C19-observability:INFO:observability-stack C28-guardrail-consent:OK:guardrail-block-global \
+for pair in C19-observability:INFO:observability-stack \
             C9-scheduler:FAIL:scheduler-backend C30-bridge-liveness:FAIL:bridge-health C20-node:WARN:node; do
   did=${pair%%:*}; rest=${pair#*:}; dsev=${rest%%:*}; owner=${rest#*:}
   [ "$(jq "[.rows[]|select(.id==\"doctor:$did\")]|length" "$foldOut")" -eq 0 ] || fail "i1 doctor:$did still a row (owner $owner)"

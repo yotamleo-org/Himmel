@@ -68,7 +68,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | `frontend-design` | Anthropic's frontend-design skill (official marketplace, local-path entry) | ON-DEMAND — `design` profile only; already cached; activation remains per profile |
 | `ui-ux-pro-max` | UI/UX design intelligence (7 skills), himmel entry pinned to upstream tag `v2.15.0` over HTTPS (replaces the old `ui-ux-pro-max@ui-ux-pro-max-skill` install; the operator script removes it) | ON-DEMAND, `design` core; catalog id `ui-ux-pro-max@himmel` |
 | `impeccable` | Design fluency skill (23 commands, 4 agents), himmel marketplace entry pinned to upstream tag `skill-v4.9.1` over HTTPS as a `git-subdir` source on `plugin/` (same pattern as the earlier plugin entries; a `url`+`path` source caches the whole repo and loses the agents/hooks) | ON-DEMAND — `design` profile only; replaces the user-scope `~/.claude/skills/impeccable` copy |
-| `find-docs` | `/find-docs`: current library, framework and API documentation lookup through the Context7 CLI (MIT, upstash/context7 `skills/find-docs`). himmel marketplace git-subdir entry pinned to upstream commit `4087030ad2dc16578130e2dab1e48ba735f8ea38` over HTTPS (replaces the user-scope `~/.claude/skills/find-docs` copy, which ignored `enabledPlugins` and loaded in every session). Install: `claude plugin install find-docs@himmel` | ON-DEMAND — `user` profile (plus the operator profile); off in every other profile; catalog id `find-docs@himmel` |
+| `find-docs` | `/find-docs`: current library, framework and API documentation lookup through the Context7 CLI (MIT, upstash/context7 `skills/find-docs`). himmel marketplace git-subdir entry pinned to upstream commit `27ef14ca41a57563891135cad663732d43203a8b` over HTTPS (replaces the user-scope `~/.claude/skills/find-docs` copy, which ignored `enabledPlugins` and loaded in every session). Install: `claude plugin install find-docs@himmel` | ON-DEMAND — `user` profile (plus the operator profile); off in every other profile; catalog id `find-docs@himmel` |
 | `emilkowalski-skills` | Emil Kowalski's design-engineering/animation skills: all 15 upstream skills load, including animation-performance (a marketplace `skills` list never restricts anything, so animate-expo, mobile-native and write-swift cannot be excluded without a fork). MIT, sha-pinned, `strict:false`, no skills list | ON-DEMAND, `design-motion` profile; catalog id `@himmel` |
 | `taste-skill-core` | Leonxlnx/taste-skill, all 13 upstream skills in ONE plugin (sha-pinned, `strict:true`; the former imagegen and styles split never restricted anything) | ON-DEMAND, `design` core |
 | `shadcn-mcp` | himmel wrapper plugin for the shadcn/ui registry MCP (`npx shadcn@4.21.0 mcp`, no API key; upstream ships no plugin) | ON-DEMAND, `design` core |
@@ -78,7 +78,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | `motion-lexicon` | Motion vocabulary skill, tag `v6.0.0` | ON-DEMAND, `design-motion` profile; catalog id `@himmel` |
 | `threejs-skills` | Three.js skills (10 skills, sha-pinned) | ON-DEMAND, `design-3d` profile; catalog id `@himmel` |
 | `ai-image-prompts` | AI image prompt library (root-skill repo, UNPROVEN shape, add-on only) | ON-DEMAND, `design-imagegen` profile; catalog id `@himmel` |
-| `higgsfield-skills` | Higgsfield image and video skills (higgsfield-ai/skills, MIT, 8 root-dir skills listed, `strict:true` as upstream's own entry, sha-pinned); they run the `higgsfield` CLI through Bash, no MCP | ON-DEMAND, `design-imagegen` profile; egress to Higgsfield (prompts and uploaded files), a `higgsfield` Bash call is denied in salus by `block-agent-native-egress.sh`. Operator, once per machine: `npm i -g @higgsfield/cli`, then `higgsfield auth login` (browser); catalog id `@himmel` |
+| `higgsfield-skills` | Higgsfield image and video skills (higgsfield-ai/skills, MIT, 8 root-dir skills listed (upstream ships 9; the website deployer is withheld), `strict:true` as upstream's own entry, sha-pinned); they run the `higgsfield` CLI through Bash, no MCP | ON-DEMAND, `design-imagegen` profile; egress to Higgsfield (prompts and uploaded files), a `higgsfield` Bash call is denied in salus by `block-agent-native-egress.sh`. Operator, once per machine: `npm i -g @higgsfield/cli@1.2.2`, then `higgsfield auth login` (browser); catalog id `@himmel` |
 | `platform-design-skills` | Platform design guidelines: all 8 upstream platforms load, no skills list (sha-pinned) | ON-DEMAND, `design-a11y` profile; catalog id `@himmel` |
 | `diagram-design` | Diagram design skills (manifest-bearing upstream, sha-pinned) | ON-DEMAND, `design-diagram` profile; catalog id `@himmel` |
 | `builder-visual` | Builder.io skills: all upstream skills load, incl. visual-plan and visual-recap; `strict:true` (upstream plugin.json) (sha-pinned) | ON-DEMAND, `design` core + `design-diagram` profile; its `.mcp.json` registers the hosted OAuth MCP `agent-native-dispatch` (`https://dispatch.agent-native.com/mcp`, egress to Builder.io, one-time operator login); catalog id `@himmel` |
@@ -493,7 +493,7 @@ through unrewritten because `rtk find` rejects them at runtime.
 ## himmel-doctor (`scripts/himmel-doctor.sh`)
 
 The `/himmel-doctor` diagnostic. Read-only except `--fix`. Checks (a subset —
-`scripts/himmel-doctor.sh` is the source of truth for the full check set): C1-guardrail
+`scripts/himmel-doctor.sh` is the source of truth for the full check set, where C28 is retired and ids are not renumbered): C1-guardrail
 user-level guardrail-hook node path (+ `--fix` re-bake; the old C1-node check was
 retired earlier and the ids were NOT renumbered), C2 shadowed claude-obsidian, C3 dirty
 single-writer luna vault, C4 Bitbucket-remote-where-`gh`-fails, C5 repo not in the
@@ -501,16 +501,6 @@ handover registry, C6 PATH-fragile bare-interpreter MCP servers (uvx/bun — sam
 GUI-launch failure class as the node hook), C7 lingering merged-PR worktrees, C8
 stale pipeline-cadence runners, C9 auto-arm scheduler backend (reads
 `scripts/lib/scheduler-backend.sh`; never sudos),
-C28 guardrail-block-global armed-but-inert consent gap (read-only,
-never auto-wires; C1-guardrail already covers wired-and-healthy vs
-wired-but-degraded, so this adds the third distinction among the never-wired
-case: consent recorded 'no' is a legitimate decline (OK), consent 'yes' but
-still unwired means a prior `himmelctl ensure` likely failed partway (WARN),
-and no recorded consent at all is the never-asked gap this check exists to
-report (WARN) — read from himmelctl's own `state.json`, never from a guess;
-an early revision short-circuited OK whenever the user-level settings file was
-merely absent, conflating "nothing to check" with "never asked" — the shipped
-check no longer does).
 
 **Cadence runner format twins are platform-specific:**
 `cadence_runner_stamp` (`scripts/lib/cadence-format.sh`, shared by C8 above and

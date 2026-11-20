@@ -160,8 +160,6 @@ It is lean-invoke, not a hook, and changes nothing but that file. Tests:
 | `docs-component-local-carveout` | rebuttal | prompt | cr-app-comments | — | component-local operational docs flagged for not living under docs/luna/ |
 | `base-history-gate-miss` | fix | advisory | ci-failure | base-history-gate | ticket key on a path the BASE branch's allow list does not cover (CI lint red after a green local run) |
 
-The table omits `sh-ps1-twin-drift` (a twin-file checklist whose title names a dropped platform, so the dropped-terms docs test rejects the row); `--list` prints it.
-
 ## What the 2026-08-23 measurement said (why these classes)
 
 - CodeRabbit learnings export, 182 rows / 4,722 uses (up from 143 / 3,163 on

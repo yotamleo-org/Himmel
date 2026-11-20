@@ -2918,31 +2918,26 @@ function writesScopeSettings(item) {
   return d.type === 'adopt' || d.type === 'plugins' || d.type === 'wire';
 }
 
-// guardrail-block.mjs writes the operator's global settings file whatever the
-// scope, and takes CLAUDE_USER_SETTINGS over ~/.claude/settings.json.
-function settingsFileForWriter(scope, id) {
-  if (id === 'guardrail-block-global') {
-    return process.env.CLAUDE_USER_SETTINGS ? path.resolve(process.cwd(), process.env.CLAUDE_USER_SETTINGS) : settingsPathForScope('user');
-  }
+function settingsFileForWriter(scope) {
   return settingsPathForScope(scope);
 }
 
 function trackedSettingsRefusal(scope, writerIds, args) {
   if (writerIds.length === 0 || args.writeTracked) return null;
-  for (const file of new Set(writerIds.map((id) => settingsFileForWriter(scope, id)))) {
+  for (const file of new Set(writerIds.map((id) => settingsFileForWriter(scope)))) {
     const state = settingsTrackedState(file);
     if (state === 'untracked') continue;
     const why = state === 'tracked'
       ? `refusing to modify the git-tracked settings file ${file}`
       : `cannot tell whether ${file} is tracked by git (git ls-files failed), so refusing to modify it`;
-    const ids = writerIds.filter((id) => settingsFileForWriter(scope, id) === file);
+    const ids = writerIds.filter((id) => settingsFileForWriter(scope) === file);
     return `himmelctl: ${why}\n  item(s) that would write it: ${ids.join(', ')}\n  re-run with --write-tracked to allow the change, then review it with git diff`;
   }
   return null;
 }
 
 function warnTrackedSettingsModified(scope, writerIds) {
-  for (const file of new Set(writerIds.map((id) => settingsFileForWriter(scope, id)))) {
+  for (const file of new Set(writerIds.map((id) => settingsFileForWriter(scope)))) {
     if (settingsTrackedState(file) !== 'tracked') continue;
     let dir = path.dirname(file);
     while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir);
@@ -6479,6 +6474,10 @@ async function cmdEnsure(args) {
   // there (no install/unwire is about to run), so persisting the derived/
   // reconciled bookkeeping immediately is correct and intentionally kept.
   const state = stateLib.load();
+  const retiredDropped = stateLib.dropRetiredItems(state);
+  for (const id of retiredDropped) {
+    console.log(`himmelctl: retired item ${id} dropped from the recorded state (himmel no longer offers a machine-wide guardrail install; a user-level guardrail block already wired stays as it is)`);
+  }
   const existedBefore = Boolean(state.targets[targetKey]);
   const itemCountBefore = existedBefore ? Object.keys(state.targets[targetKey].items).length : 0;
   let target = stateLib.ensureTarget(state, manifest, cachedAnswers);
@@ -6486,7 +6485,7 @@ async function cmdEnsure(args) {
   // manifest items it was missing), count that as a state change too, same
   // as a brand-new derive, so the migrated items get persisted rather than
   // silently staying in-memory-only for this one run.
-  let stateChanged = !existedBefore || Object.keys(target.items).length !== itemCountBefore;
+  let stateChanged = !existedBefore || retiredDropped.length > 0 || Object.keys(target.items).length !== itemCountBefore;
 
   // root-cause fix: the recorded install-profile (cachedAnswers)
   // is loaded above for every `ensure` run, but until now nothing ever fed
@@ -6568,68 +6567,6 @@ async function cmdEnsure(args) {
   if (args.profile) {
     target = stateLib.reconcileTarget(state, manifest, cachedAnswers, { profile: args.profile, scope });
     stateChanged = true;
-  }
-
-  // guardrail-block-global
-  // writes the OPERATOR'S GLOBAL ~/.claude/settings.json, machine state
-  // outside this repo, and outside the blast radius the general per-run
-  // --yes consent (Step 3, below) is scoped to reason about. It must never
-  // ride that blanket consent into the ordinary towardEnabled pool. Its OWN
-  // recorded answer, target.items['guardrail-block-global'].overrides.
-  // consent ('yes'|'no'), is the ONLY thing that can. status-report.js's
-  // permanent 'n/a' downgrade for this item is lifted ONLY when consent is
-  // exactly 'yes' (see its own comment); that is what lets the ordinary
-  // Step 2 loop below pick it up like any other runnable item once
-  // consented, no separate injection path, so it gets the SAME dependency-
-  // closure checks, dry-run printing, and post-check verification as
-  // everything else. This block is the ONLY place that ever WRITES that
-  // override, and it NEVER treats silence (a closed/non-TTY stdin, or
-  // --dry-run) as consent, the one thing the ruling forbids outright.
-  //
-  // Gated on the same --items membership convention every other per-item
-  // check in this function already uses: a filtered run that doesn't name
-  // this item never touches it.
-  if (!args.noNetwork && (!args.items || args.items.indexOf('guardrail-block-global') !== -1)) {
-    const guardrailItem = manifest.items.find((i) => i.id === 'guardrail-block-global');
-    if (guardrailItem && guardrailItem.scopes.includes(scope) && guardrailItem.install
-        && installEngineLib.RUNNABLE_INSTALL_TYPES.indexOf(guardrailItem.install.type) !== -1) {
-      const guardrailCtx = { repoRoot: repoRoot(), targetPath: baseTargetPath, scope, env: process.env };
-      const guardrailProbe = probesLib.runProbe(guardrailItem, guardrailCtx);
-      if (guardrailProbe.actual !== 'present') {
-        const itemState = target.items['guardrail-block-global'];
-        // CR-style defensive normalize (same class as state.js's own
-        // malformed-overrides guards). A hand-edited or pre-this-ticket
-        // state.json could carry a non-object `overrides`.
-        if (!itemState.overrides || typeof itemState.overrides !== 'object' || Array.isArray(itemState.overrides)) {
-          itemState.overrides = {};
-        }
-        const consent = itemState.overrides.consent;
-        if (consent !== 'yes' && consent !== 'no' && !args.dryRun && isInteractive(args)) {
-          console.log('himmelctl: guardrail-block-global wires the safety-guardrail hooks into your GLOBAL ~/.claude/settings.json (every project on this machine, not just this one). Recommended: yes.');
-          const ans = await askConfirmSafe('Wire it now? [Y/n] ');
-          const decided = /^\s*n/i.test(ans) ? 'no' : 'yes';
-          itemState.overrides.consent = decided;
-          stateChanged = true;
-          if (args.items) {
-            // a scoped run saves no derive/reconcile bookkeeping,
-            // but the operator's own answer about the requested item is
-            // theirs to keep. Write that one field into a fresh state.
-            const fresh = stateLib.load();
-            const freshTarget = fresh.targets[targetKey] || stateLib.ensureTarget(fresh, manifest, cachedAnswers);
-            const freshItem = freshTarget.items['guardrail-block-global'] || (freshTarget.items['guardrail-block-global'] = { enabled: false, overrides: {} });
-            if (!freshItem.overrides || typeof freshItem.overrides !== 'object' || Array.isArray(freshItem.overrides)) freshItem.overrides = {};
-            freshItem.overrides.consent = decided;
-            stateLib.save(fresh);
-          }
-          console.log(`himmelctl: recorded guardrail-block-global consent = ${decided}`);
-        } else if (consent !== 'yes' && consent !== 'no') {
-          // No recorded answer, and this run cannot ask right now
-          // (--dry-run, or non-interactive/piped stdin). The one thing
-          // this gate must never do is treat that silence as consent.
-          console.log(`himmelctl: guardrail-block-global has no recorded consent yet — staying manual (run 'himmelctl ensure' interactively once to decide; recommended: yes). Direct fix: ${nodeScriptCmd(path.join(repoRoot(), 'scripts/hooks/guardrail-block.mjs'))} install --node <ABS_NODE> --bash <ABS_BASH>`);
-        }
-      }
-    }
   }
 
   // Step 1: pre-check. Passes the IN-MEMORY `state` (reflecting any
@@ -7276,12 +7213,7 @@ async function cmdEnsure(args) {
     } else {
       // this branch used to push the blocker UNCONDITIONALLY, without ever
       // probing the item's actual state, so a full-offboard-only item that
-      // is PERMANENTLY degraded (e.g. guardrail-block-global, which through
-      // this ticket's own round-3 fix could never reach 'present' from
-      // status output alone, later gave it a `status --json`
-      // verb rich enough to confirm a genuine full install, so it is no
-      // longer an example of a permanently-degraded item, but the general
-      // shape still applies to any probe that structurally can't confirm
+      // is PERMANENTLY degraded (any probe that structurally can't confirm
       // 'present') wedged EVERY `ensure` run the moment a profile change
       // put it in towardDisabled, with no way to ever clear it (there is no
       // unwire descriptor to run. Full-offboard-only items don't have one

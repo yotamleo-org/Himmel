@@ -3806,6 +3806,31 @@ else
     # read-sink-ok: these are this test's own scratch files under TMPDIR_ROOT
     fail "T8541r: returning caller handler (rc=$(cat "$H_RC_FILE_R" 2>/dev/null) out=$(cat "$H_OUT_R" 2>/dev/null) lock=$([ -d "$H_LK_R" ] && echo kept || echo gone) claim=$([ -d "$H_LK_R.claim" ] && echo leaked || echo gone)) tail: $(h_tail "$H_DOC_R")"
 fi
+H_OUT_S="$TMPDIR_ROOT/t8541s-out"; rm -f "$H_OUT_S"
+set -m
+bash -c ". '$LIB'; _ql_force_on_signal INT; echo SURVIVED" >"$H_OUT_S" 2>&1 &
+H_PID_S=$!
+wait "$H_PID_S"; H_RC_S=$?
+set +m
+# read-sink-ok: H_OUT_S is this test's own scratch file under TMPDIR_ROOT
+if [ "$H_RC_S" -eq 130 ] && ! grepq "$(cat "$H_OUT_S" 2>/dev/null)" SURVIVED; then
+    pass "T8541s: a caller with no INT trap dies by INT (rc 130) when a signal ends the forced release"
+else
+    # read-sink-ok: H_OUT_S is this test's own scratch file under TMPDIR_ROOT
+    fail "T8541s: INT re-raise at the top level (rc=$H_RC_S out=$(tr '\n' ' ' < "$H_OUT_S" 2>/dev/null))"
+fi
+H_OUT_T="$TMPDIR_ROOT/t8541t-out"; rm -f "$H_OUT_T"
+set -m
+bash -c ". '$LIB'; ( _ql_force_on_signal INT; echo SURVIVED ); echo sub-rc=\$?" >"$H_OUT_T" 2>&1 &
+H_PID_T=$!
+wait "$H_PID_T"; set +m
+# read-sink-ok: H_OUT_T is this test's own scratch file under TMPDIR_ROOT
+if [ "$(tr '\n' ' ' < "$H_OUT_T" 2>/dev/null)" = "sub-rc=130 " ]; then
+    pass "T8541t: the same from a subshell ends that subshell by INT (rc 130)"
+else
+    # read-sink-ok: H_OUT_T is this test's own scratch file under TMPDIR_ROOT
+    fail "T8541t: INT re-raise in a subshell (out=$(tr '\n' ' ' < "$H_OUT_T" 2>/dev/null))"
+fi
 # q: the forced release's EXIT handler frees its claim and then runs the EXIT action the caller had, with the exit status the caller would have seen (an exit inside the window, not a signal)
 H_OUT_Q="$TMPDIR_ROOT/t8541q-out"; H_CLAIM_Q="$TMPDIR_ROOT/t8541q.claim"; rm -f "$H_OUT_Q"; mkdir -p "$H_CLAIM_Q"; printf '%s' "release-pidq" > "$H_CLAIM_Q/owner"
 (

@@ -99,8 +99,7 @@
 #      of permanently blocking every ensure the way a 'present' item still
 #      does. The removal gate used to push ANY non-absent probe as an
 #      unconditional blocker, wedging a probe that can structurally never
-#      confirm 'present' (e.g. guardrail-block-global, before its
-#      `status --json` verb) forever, with no unwire descriptor to ever
+#      confirm 'present' (a probe that structurally cannot confirm 'present') forever, with no unwire descriptor to ever
 #      converge it. Asserted across TWO consecutive runs (not a one-shot
 #      fluke).
 #   q. pins the chosen asymmetric
@@ -1358,8 +1357,7 @@ echo "ok: case o — the TRANSITIVE reverse walk STOPS at an absent undesired in
 # 'absent') must NOT block/abort an `ensure` run the way a 'present' one
 # does. The toward-disabled removal gate used to push ANY non-absent probe
 # as an unconditional blocker, so a probe that structurally can never
-# confirm 'present' from status output alone (e.g. guardrail-block-global,
-# before its `status --json` verb) wedged EVERY run permanently,
+# confirm 'present' from status output alone (a probe that structurally cannot confirm 'present') wedged EVERY run permanently,
 # with no unwire descriptor to ever converge it. The fix probes the item
 # first: 'present' still blocks (case b, above,
 # unchanged); 'degraded' logs an ADVISORY line instead and the run PROCEEDS

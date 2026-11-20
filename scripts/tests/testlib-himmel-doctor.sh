@@ -45,11 +45,6 @@ export SALUS_VAULT_PATH=""
 # launching shell would otherwise point C27 at the operator's real config dir.
 export CLAUDE_GLM_CONFIG_DIR=""
 
-# Hermeticity: C28 reads himmelctl's own state.json (recorded
-# guardrail-block-global consent) at ${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}
-# — HOME is redirected per-case so the default already resolves under the
-# per-case temp HOME, but an inherited HIMMELCTL_CACHE_DIR from the launching
-# shell would otherwise point C28 at the operator's real himmelctl state.
 export HIMMELCTL_CACHE_DIR=""
 
 # Hermeticity: C31 resolves the codex config through

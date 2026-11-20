@@ -37,28 +37,13 @@ script's own `resolve_himmel_root`, which honours `UPSTREAM_WATCH_HIMMEL_ROOT`
 for tests) and uses that entry's `bucket_name` (falling back to the registry
 key) plus its `user` (falling back to `user_slug()` when the entry carries
 none). This mirrors — in the forward direction — the reverse (bucket → path)
-lookup `arm-resume.sh` already does for its own fallback
-(`scripts/handover/arm-resume.sh` around L2295).
+lookup `arm-resume.sh` does for its own registry fallback
+(`scripts/handover/arm-resume.sh`, the `bucket_name` match).
 
-**Path matching is the trap**: the registry stores paths Windows-style and
-lowercase (`c:/users/<you>/...`), while `resolve_himmel_root` under Git Bash
-returns MSYS-style (`/c/Users/<you>/...`). On **Windows** both sides are
-normalized before comparing — backslash → `/`, strip trailing slash, fold a
-leading `/c/` to `c:/`, then lowercase. Case folding and the drive-letter
-fold are **Windows-only** (gated on `process.platform`): a Linux filesystem is
-case-SENSITIVE, so folding there would let two genuinely different checkouts
-that differ only by case match the same registry entry and route the report
-into another repo's bucket.
-
-`process.platform` is a proxy for case-sensitivity, not a measurement of it,
-and the proxy is wrong on macOS — a default APFS/HFS+ volume is
-case-INSENSITIVE (and a macOS volume can be formatted case-sensitive, and a
-Linux host can mount a case-insensitive one), so a case-only path difference is
-refused there rather than matched. That is the fail-CLOSED direction — exit 2,
-state untouched, nothing misfiled — which is why it ships this way rather than
-folding unconditionally. Comparing path IDENTITY (`stat` dev+ino) instead of
-strings is the real answer and is a known
-follow-up.
+**Path matching:** a registry path matches when it equals this checkout after
+trailing-slash stripping, or when both name the same file (`stat` dev+ino, read
+as bigints; an inode of 0 is no identity), which covers symlinks and
+case-insensitive volumes without folding two distinct checkouts together.
 
 If the registry is missing, has no matching entry, the matched entry's user
 cannot be resolved, or either resolved segment is not a single safe path
@@ -82,27 +67,20 @@ with no report ever written for it.
   and leaving state alone means the same delta is retried next run instead of
   being permanently marked "seen" with no report ever written for it.
 
-## Windows: native `jq` writes CRLF
+## A single `jq` wrapper strips CR
 
-The native Windows `jq` (winget `jqlang.jq`) writes stdout in **text mode**:
-`jq -r` emits `value\r\n`, not `value\n`. Command substitution strips only
-the trailing *newline*; for a `jq -r` array dump (multiple lines), every line
-but the last keeps its `\r`. That silently turned a `jq --arg k "$k"
-'.[$k].title'` lookup into `null` for the report's first shipped run (every
-row read `- [owner/repo#N](null) — null`) — the delta key list carried a
-stray `\r` that never matched a real key.
-
-The script guards this at a **single chokepoint**: a local `jq()` shell
-function, defined once near the top of the script (right before `GH_BIN=`),
-wraps every `jq` invocation in the file with `| tr -d '\r'`. Do not
-additionally strip `\r` at individual capture sites — that treats the shim as
-optional and invites its removal later. On Linux/macOS `jq` already emits LF
-and the `tr` is a no-op.
+A captured key that carries an invisible trailing `\r` never matches a real
+key, and its lookup reads `null`. The script guards this at a **single
+chokepoint**: a local `jq()` shell function, defined once near the top of the
+script (right before `GH_BIN=`), wraps every `jq` invocation in the file with
+`| tr -d '\r'`. Do not additionally strip `\r` at individual capture sites —
+that treats the wrapper as optional and invites its removal. Where `jq`
+already emits LF the `tr` is a no-op.
 
 As defense in depth, `build_report` also refuses outright (exit 2, state
 untouched) if a required render field (title/url) still comes back
-null/empty — so a null row can never render as `- [...](null) — null` again,
-even from some future capture path this shim doesn't cover.
+null/empty — so a null row can never render as `- [...](null) — null`,
+even from a capture path the wrapper does not cover.
 
 ## Test seams
 

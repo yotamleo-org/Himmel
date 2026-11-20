@@ -799,6 +799,13 @@ rec12 "$W12" J "delta-noop-$B12" "**GO** for head \`$B12\`." 93 "delta: no-op"$'
 awk '{ printf "%s\r\n", $0 }' "$W12/J/delta-noop-$B12.md" > "$W12/J/delta-noop-$B12.md.crlf" && mv -f "$W12/J/delta-noop-$B12.md.crlf" "$W12/J/delta-noop-$B12.md"
 got=$(gg12 go_noop_chain "$W12" J "$B12")
 [ "$got" = "0|$B12 $A12"$'\n'"$A12 -" ] || fail "12 CRLF: a CRLF no-op record still chains to its judged head: $got"
+# an unreadable record (a directory) is rc 2 whatever sed does with a directory: GNU sed fails, BSD sed reads it as empty
+UR12="$ROOT/ur12"; mkdir -p "$UR12/J/delta-noop-$B12.md" "$UR12/bin"
+printf '#!/bin/sh\nexit 0\n' > "$UR12/bin/sed"; chmod +x "$UR12/bin/sed"
+got=$(gg12 go_noop_chain "$UR12" J "$B12")
+[ "${got%%|*}" = 2 ] || fail "12 unreadable: a directory where the no-op record should be is rc 2 under this sed: $got"
+got=$(PATH="$UR12/bin:$PATH" gg12 go_noop_chain "$UR12" J "$B12")
+[ "${got%%|*}" = 2 ] || fail "12 unreadable: a directory where the no-op record should be is rc 2 when sed reads it as empty, as BSD sed does: $got"
 
 R12="$ROOT/r12"; mkdir -p "$R12"
 NC12="$R12/u/b/verdicts"

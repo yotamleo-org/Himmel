@@ -179,7 +179,7 @@ shard reports than expected, is flagged `infra_suspect` — a shard died before
 reporting, so the list is incomplete. To read it back:
 
 ```bash
-bash scripts/ci/macos-breakage.sh report --repo yotamleo/Himmel --limit 12
+bash scripts/ci/macos-breakage.sh report --repo yotamleo-org/Himmel --limit 12
 ```
 
 It prints one line per recorded run (date, run id, head, previous head,

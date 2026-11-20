@@ -70,7 +70,7 @@ template_version: 1
 > Sonnet), `tier-return` (a Sonnet worker returned the question as above its
 > tier), or `operator-ruling` (a standing operator ruling on model choice,
 > e.g. `operator-ruling: Opus default for judges`).
-> `headed-arm-worker.sh:239-282` refuses the launch without this exact line —
+> The tier gate in `headed-arm-worker.sh` refuses the launch without this exact line —
 > `<category>: <free text>` must sit on this ONE physical line (the gate
 > reads one matched line, so wrapping the reason across a second markdown
 > line truncates it silently), the category tag is exact-lowercase, and the
@@ -79,7 +79,7 @@ template_version: 1
 > A native `--judge` defaults to `CLAUDE_CODE_EFFORT_LEVEL=high`. To dispatch a judge at a non-high effort, set
 > `HIMMEL_CONSOLE_JUDGE_EFFORT=<level>` in the LAUNCHING shell before calling
 > `headed-arm-worker.sh --judge` — the channel meant for a chief's deliberate
-> override (`headed-arm-worker.sh:461-466`; a caller-preset
+> override (`HIMMEL_CONSOLE_JUDGE_EFFORT` in `headed-arm-worker.sh`; a caller-preset
 > `HEADED_ARM_LAUNCHER_ENV` token is a separate, deliberate-only channel that
 > still wins downstream — see the comment there).
 
@@ -121,7 +121,7 @@ gathering, per the rule below.>
 > write a completion condition that only admits one answer.>
 
 > **Checkpoint to disk as you go.** A judge session launches at the standard
-> `--autocompact 200000` ceiling (`headed-arm-worker.sh:222-226`) — the same
+> `--autocompact 200000` ceiling (the `console-judge` profile's context) — the same
 > pin a design-grade question can outgrow. Do not hold your reasoning only in
 > context: write partial findings into your own Results bullets as you
 > gather them, so a compaction loses nothing that was not already on disk.
@@ -433,7 +433,7 @@ gathering, per the rule below.>
 | `description:` line (required) | A judge is named by its label and question id, which says nothing a reader of the board or tick can act on. The front-matter line is the plain-language description a surface shows next to the label; `worker_description` in `scripts/lib/worker-identity.sh` is its only reader. `brief-lint.sh` fails a fresh brief with no line or the `<placeholder>`, and `headed-arm-worker.sh --judge` refuses the launch (no flag skips it). Keep the `description:` line double-quoted, on one line: an unquoted colon or quote breaks the YAML, and the lint refuses it. |
 | Prior art line (required) | Chief, judge and consult sessions made 0 qmd calls in the 7 days to 2026-10-06, so a judge ruled on a question whose related tickets and prior fixes nobody had looked up. The chief retrieves once at dispatch; as pointers only, so blindness is kept. `brief-lint.sh` fails a missing, empty, placeholder or bare `none` line (`none found (<query>)` passes) and `headed-arm-worker.sh --judge` refuses the launch unless `--no-prior-art-check` is passed. |
 | `## Evidence` as a real, numbered section | A judge whose evidence is scattered through prose cannot cite it by number in its verdict's `## Evidence checked`, breaking the verdict template's contract. |
-| Tier line | `headed-arm-worker.sh:239-282` refuses to launch an Opus or Fable session without an exact-lowercase category tag and non-blank free text after it — every judge dispatch launches at one tier or the other (Opus by default), so this line is never optional. |
+| Tier line | The tier gate in `headed-arm-worker.sh` refuses to launch an Opus or Fable session without an exact-lowercase category tag and non-blank free text after it — every judge dispatch launches at one tier or the other (Opus by default), so this line is never optional. |
 | Completion condition | Without a stated shape for "done", a judge can return a verdict too vague to act on, or keep gathering evidence past the point the question needed — and a condition that only admits one answer produces a judge that cannot say no. |
 | RETASK block | The same asymmetry as a worker's: a narrowing needs no token, an EXPANSION does, and no revision from anyone widens what the judge may act with — which for a judge is nothing to begin with. |
 | Lifecycle rule | A judge that does not end its turn after writing its verdict holds a fleet slot the chief cannot reclaim without killing the window itself. |

@@ -307,14 +307,12 @@
       <details class="sstep">
         <summary><span class="n">10</span> Scheduled jobs <small>what runs on a timer</small></summary>
         <p class="intro">A menu of recurring jobs you can arm now. Only jobs whose requirement your answers meet are listed, and nothing arms unless you choose it.</p>
-        <div class="term"><pre aria-label="What the terminal shows"><span class="q">? cadences — recurring scheduled jobs to arm now [drift-fix,upstream-watch,doctor|none] (default: none)</span>
-<span>  1) drift-fix — nightly /drift-fix (bump auto-bumpable pins, open an ordinary PR)</span>
-<span>  2) upstream-watch — daily scan of himmel's open upstream PRs/issues for a delta</span>
-<span>  3) doctor — daily himmel-doctor run from the primary checkout</span>
+        <div class="term"><pre aria-label="What the terminal shows"><span class="q">? cadences — recurring scheduled jobs to arm now [doctor|none] (default: none)</span>
+<span>  1) doctor — daily himmel-doctor run from the primary checkout</span>
 <span>  (Enter accepts the recommended defaults; comma-separate multiple numbers)</span>
 <span class="in">&gt; none</span></pre></div>
         <div class="means">
-          <div><h3>What you see</h3><ul><li>3 jobs on offer for your path.</li><li>If you decline a job that is already armed from an earlier install, one more question asks whether to disarm it now.</li></ul></div>
+          <div><h3>What you see</h3><ul><li>1 job on offer for your path.</li><li>If you decline a job that is already armed from an earlier install, one more question asks whether to disarm it now.</li></ul></div>
           <div><h3>What it does</h3><ul><li>Each chosen job is armed with its own script; the rest are recorded as off. See the loops and graphs guide for what each job does.</li></ul></div>
         </div>
       </details>
@@ -515,15 +513,19 @@
   var cadenceRows = [
     { id: 'pipeline', req: 'vault', d: 'daily fetch-health/harvest/synthesize + weekly health runs against the vault' },
     { id: 'qmd', req: 'vault', d: 'daily qmd update+embed+completeness assert over every configured collection' },
-    { id: 'graphmap', req: 'vault', d: 'hourly free structural (AST) refresh + weekly semantic refresh of the luna/himmel graphify graphs' },
+    { id: 'graphmap', req: 'vault', d: "hourly free structural (AST) refresh + daily semantic refresh of himmel's graphify graph; the luna graph is opt-in" },
     { id: 'drift-fix', req: 'none', d: 'nightly /drift-fix (bump auto-bumpable pins, open an ordinary PR)' },
     { id: 'upstream-watch', req: 'none', d: "daily scan of himmel's open upstream PRs/issues for a delta" },
+    { id: 'security-audit', req: 'none', d: 'weekly read-only diff of existing GitHub, Snyk, Arnica and CodeRabbit findings' },
     { id: 'doctor', req: 'none', d: 'daily himmel-doctor run from the primary checkout' },
+    { id: 'rollup', req: 'none', d: 'weekly (Monday 06:00) velocity, cost and health roll-up for the Fleet Trends tab and the Health page' },
     { id: 'vault-stall', req: 'vault', vm: true, d: 'every 15 min: detect a stalled vault auto-commit' }
   ];
+  // bin.js hideCadenceIds: starter offers only the doctor among the 'none' rows
   function offered() {
     return cadenceRows.filter(function (r) {
       if (r.req === 'vault') return p.vault !== 'none';
+      if (p.profile === 'starter' && r.req === 'none') return r.id === 'doctor';
       return true;
     });
   }
@@ -619,7 +621,7 @@
       },
       means: function () {
         var rows = offered();
-        return { see: [rows.length + ' jobs on offer for your path.', 'If you decline a job that is already armed from an earlier install, one more question asks whether to disarm it now.'], does: ['Each chosen job is armed with its own script; the rest are recorded as off. See the loops and graphs guide for what each job does.'] };
+        return { see: [rows.length + (rows.length === 1 ? ' job' : ' jobs') + ' on offer for your path.', 'If you decline a job that is already armed from an earlier install, one more question asks whether to disarm it now.'], does: ['Each chosen job is armed with its own script; the rest are recorded as off. See the loops and graphs guide for what each job does.'] };
       } },
     // source: bin.js askQuestions() steps 9–11 (vault-gated); adopter-profile.js phiChecklistLines()
     { id: 'privacy', short: 'Health data', sub: 'privacy declaration', kind: 'ask',

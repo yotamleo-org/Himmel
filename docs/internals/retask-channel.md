@@ -310,12 +310,11 @@ peer message. This pins what counts as a ruling on the bus.
   widens a tool-permission envelope. A halt or narrowing still needs no token.
 - **Succession (§3a) on the bus.** A claudex worker cannot call `ListAgents`, so
   "the named chief is gone" maps to `bus status <name>`: `live` iff the bound
-  pid exists with the bound start time. Pending:
-  `chief.sh next` does not yet register the successor or create the
-  `--predecessor` chief-to-chief edge; today only a manual `bus register
-  --predecessor` does. Once the edge exists, the outgoing chief's relay (S1)
-  arrives as `from` because it is still the worker's registered chief, and the
-  worker then runs `bus adopt <new chief>`. The chain path (S3) keeps its
+  pid exists with the bound start time. `chief.sh next` registers the
+  successor with `--predecessor <outgoing chief>` and stamps it as that
+  chief's successor, so the outgoing chief's relay (S1) arrives as `from`
+  (it is still the worker's registered chief), and the worker then runs
+  `bus adopt <new chief>`. The chain path (S3) keeps its
   existing semantics and its stated weakness.
 
 ## 4. What this does NOT do (residual risk, priced)
@@ -375,8 +374,8 @@ the bus server, the hook and the store as one uid, so anything the uid can do a
 compromised session's Bash can do. The bus API cannot forge, replay or escalate;
 direct store writes are another matter.
 
-- **T1, forged sender:** the sender is stamped from the bound pid (bound by hand
-  with `bus bind` today; the launcher does not yet bind), so the API cannot
+- **T1, forged sender:** the sender is stamped from the bound pid (the launcher
+  binds the session name to its pid at launch), so the API cannot
   forge it. A same-uid process can still rewrite
   `peers/*.json` or append to a log directly (T6).
 - **T4, a tool result or peer impersonating a ruling:** prevented through the

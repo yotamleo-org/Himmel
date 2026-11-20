@@ -441,17 +441,6 @@
       "offboard": "advise"
     },
     {
-      "id": "guardrail-block-global",
-      "kind": "wiring",
-      "scopes": ["user"],
-      "profiles": ["core", "all"],
-      "deps": [],
-      "probe": { "type": "cmd:guardrail_block_status", "script": "scripts/hooks/guardrail-block.mjs" },
-      "install": { "type": "wire", "target": "guardrail-block-global" },
-      "removable": "full-offboard-only",
-      "provenance": { "kinds": ["json-elem"] }
-    },
-    {
       "id": "cadence-armed",
       "kind": "scheduler",
       "scopes": ["user"],

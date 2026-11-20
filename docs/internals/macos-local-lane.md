@@ -3,8 +3,9 @@
 A chief-owned way to get a real macOS proof for BSD-userland, `ps`/`stat`/`sed`,
 `sandbox-exec`, Keychain and launchd/cron fixes, on the Linux station. It is a
 **local repro lane only**: it is **not** wired into GitHub CI (EULA; a
-self-hosted runner on a public repo is a risk — the GitHub macOS dispatch in
-`.github/workflows/os-verify.yml` stays the CI path).
+self-hosted runner on a public repo is a risk — the CI path is GitHub's macOS
+runners: the scheduled `.github/workflows/macos-cadence.yml` run and on-demand
+`.github/workflows/os-verify.yml` dispatches).
 
 **Status: not usable unattended (first real run, 2026-10-08).** The runner is
 untouched by a real guest: no macOS disk exists on the station. The image the
@@ -14,8 +15,9 @@ ships no `BaseSystem.img` or `mac_hdd_ng.img`. A bootable disk needs a **one-tim
 interactive macOS install** (VNC on port 5900 for docker-osx, the browser viewer
 on port 8006 for `dockur/macos`) with the installer fetched from Apple, then
 Remote Login enabled by hand. Until someone does that, the lane cannot run a
-suite. The operator chose not to pursue it: macOS proof goes to GitHub Actions
-macOS runners (a nightly os-verify macOS run), which is the CI path named above.
+suite. The operator chose not to pursue it: macOS proof goes to the
+`macos-cadence.yml` runs (Tuesday and Friday, 05:43 UTC) and on-demand
+`os-verify.yml` dispatches, the CI path named above.
 
 ## Image choice
 
