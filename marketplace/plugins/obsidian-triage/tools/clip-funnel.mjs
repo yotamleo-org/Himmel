@@ -54,7 +54,7 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const t = argv[i];
     if (t === "--vault") a.vault = argv[++i];
-    else if (t === "--as-of") a.asOf = argv[++i];
+    else if (t === "--as-of") a.asOf = argv[++i] ?? "";
     else if (t === "--days") {
       const v = argv[++i];
       if (!/^[1-9]\d*$/.test(v || "")) die(`--days needs a positive integer, got: ${v}`);
@@ -204,7 +204,7 @@ function funnel(vault, asOf, days) {
 const a = parseArgs(process.argv.slice(2));
 if (!a.vault) die("usage: clip-funnel.mjs --vault <path> [--as-of YYYY-MM-DD] [--days N]");
 if (!fs.existsSync(a.vault) || !fs.statSync(a.vault).isDirectory()) die(`vault not found: ${a.vault}`);
-const asOf = a.asOf || localToday();
+const asOf = a.asOf ?? localToday();
 if (!isCalendarDate(asOf)) die("invalid --as-of (YYYY-MM-DD)");
 let result;
 try { result = funnel(a.vault, asOf, a.days); } catch (e) { die(`cannot read the vault: ${e.message}`); }
