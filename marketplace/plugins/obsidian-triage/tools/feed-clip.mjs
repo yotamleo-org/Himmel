@@ -96,7 +96,7 @@ function resolveVault(arg) {
 function parseFeedList(text, file) {
   const feeds = [];
   const problems = [];
-  text.replace(/^\u{FEFF}/u, "").split(/\r?\n/).forEach((raw, i) => {
+  text.split(/\r?\n/).forEach((raw, i) => {
     const line = raw.replace(/(^|\s)#.*$/, "").trim();
     if (!line) return;
     const [url, ...label] = line.split(/\s+/);
