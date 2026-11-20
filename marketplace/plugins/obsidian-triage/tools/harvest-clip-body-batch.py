@@ -2085,7 +2085,7 @@ def run_reflag_silent_partials(vault: Path, dry_run: bool, limit: int = 0) -> in
     idempotent (a partial note is not matched again)."""
     clips = sorted(
         p for p in (vault / "Clippings").rglob("*.md")
-        if "_synthesis" not in p.parts and p.name != "_deferred.md"
+        if "_synthesis" not in p.relative_to(vault / "Clippings").parts and p.name != "_deferred.md"
     )
     counts: dict = {}
     notes = failed = skipped = 0
@@ -2151,7 +2151,7 @@ def evidence_clips(clippings: Path) -> tuple[list, list]:
     if not root.is_dir():
         return retry, partials
     for p in sorted(root.rglob("*.md")):
-        if "_rejected" in p.parts:
+        if "_rejected" in p.relative_to(root).parts:
             continue
         try:
             fm, _raw, _body, ok = parse_frontmatter(p.read_text(encoding="utf-8"))
@@ -2220,9 +2220,7 @@ def main():
     clips = sorted(
         p
         for p in clippings.rglob("*.md")
-        if "_synthesis" not in p.parts
-        and "_done" not in p.parts
-        and "_evidence" not in p.parts
+        if not {"_synthesis", "_done", "_evidence"} & set(p.relative_to(clippings).parts)
         and p.name != "_deferred.md"
     )
     if args.reflag_silent_partials:

@@ -621,7 +621,7 @@ check("default run: a malformed .harvest-backends makes no call at all", log == 
 check("default run: a malformed .harvest-backends fails closed, loudly, and the clip stays partial",
       "fail closed" in out and fm_value(rt, "harvest_status") == "partial" and code == 0)
 
-SHORT_ARTICLE = ("# Release notes\n\nThe parser now accepts trailing commas in arrays and objects. A new flag keeps the old strict "
+SHORT_ARTICLE =("# Release notes\n\nThe parser now accepts trailing commas in arrays and objects. A new flag keeps the old strict "
                  "behaviour for callers that depend on it. Upgrading needs no config change, and the migration guide lists the "
                  "two renamed options with their new names.\n")
 LONG_WITH_PHRASE = "# Guide\n\nTo see the demo, enable JavaScript in the page settings. " + "A real sentence of article text. " * 30 + "\n"
@@ -744,6 +744,23 @@ for label, url in (("the repository root", "https://github.com/example-org/examp
                    ("an issue", "https://github.com/example-org/example-tool/issues/7")):
     r, out, log, code, v = harvest_one(feed_release_clip(NOTES, url=url))
     check(f"a github link to {label} with a body still goes to repository ingest", fm_value(r, "harvest_status") is None and "github-ingest" in out)
+
+for outer in ("_evidence", "_done", "_synthesis"):
+    log = []
+    install_backends(log)
+    v = Path(tempfile.mkdtemp(dir=os.environ.get("HIMMEL_TEST_TMP") or None)) / outer / "vault"
+    (v / "Clippings").mkdir(parents=True)
+    (v / "Clippings" / "in.md").write_text(triaged_clip("https://example.com/docs/in"), encoding="utf-8")
+    code, out = run_main(v)
+    check(f"vault under a directory named {outer}: the inbox clip is still fetched", [n for n, _ in log] == ["jina"])
+
+log = []
+install_backends(log)
+v = Path(tempfile.mkdtemp(dir=os.environ.get("HIMMEL_TEST_TMP") or None)) / "_rejected" / "vault"
+(v / "Clippings" / "_evidence").mkdir(parents=True)
+(v / "Clippings" / "_evidence" / "ev.md").write_text(triaged_clip("https://example.com/docs/ev", defer=1, status="partial"), encoding="utf-8")
+code, out = run_main(v)
+check("vault under a directory named _rejected: an _evidence partial is still retried", [n for n, _ in log] == ["jina"])
 
 mod.BACKEND_REGISTRY, mod.DEFAULT_SCRAPE_BACKENDS = _saved_registry, _saved_defaults
 
