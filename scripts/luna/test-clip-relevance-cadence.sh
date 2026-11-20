@@ -33,7 +33,7 @@ printf '%s\n' "\$*" >"$TMP/claude.args"
 printf '%s\n' "\$@" >"$TMP/claude.argv"
 printf '%s|%s\n' "\${ANTHROPIC_API_KEY-unset}" "\${ANTHROPIC_AUTH_TOKEN-unset}" >"$TMP/claude.env"
 echo x >>"$TMP/claude.calls"
-[ -f "$TMP/note.fixture" ] && { mkdir -p "\$CLIP_RELEVANCE_NOTE_DIR"; cp "$TMP/note.fixture" "\$CLIP_RELEVANCE_NOTE_DIR/\$CLIP_RELEVANCE_TODAY.md"; }
+[ -f "$TMP/note.fixture" ] && { note="\$(bash "$CAD" note-path)"; mkdir -p "\$(dirname "\$note")"; cp "$TMP/note.fixture" "\$note"; }
 if [ -f "$TMP/claude.json" ]; then cat "$TMP/claude.json"; else echo '{"is_error":false,"result":"done"}'; fi
 exit "\$(cat "$TMP/claude.rc" 2>/dev/null || echo 0)"
 EOF
@@ -62,7 +62,7 @@ ALLOWED_EXPECT="$(printf '%s\n' "Read" "Grep" "Edit(/$TMP/notes/**)" \
     "Bash(bash scripts/luna/clip-relevance-cadence.sh check:*)" \
     "Bash(node $REPO/scripts/jira/dist/index.js list:*)" \
     "Bash(node $REPO/scripts/jira/dist/index.js get:*)" | sort_lines)"
-reset_run() { rm -f "$TMP/send.log" "$TMP/alerts.log" "$TMP/notes/2026-11-20.md"; rm -rf "$TMP/alert-sent"; }
+reset_run() { rm -f "$TMP/send.log" "$TMP/alerts.log" "$TMP/notes/2026-11-20"*.md; rm -rf "$TMP/alert-sent"; }
 
 echo "1. arm, status, disarm"
 bash "$CAD" arm --dry-run >"$TMP/arm-dry.out" 2>&1
@@ -118,6 +118,25 @@ LUNA_VAULT_PATH=/data/luna bash "$CAD" arm --force >/dev/null 2>&1
 check "the arming shell's LUNA_VAULT_PATH is baked into the runner, since cron has none" 'grep -q "^LUNA_VAULT_PATH=/data/luna$" "$RUNNER"'
 env -u LUNA_VAULT_PATH bash "$CAD" arm --force >/dev/null 2>&1
 check "no LUNA_VAULT_PATH is baked when the arming shell has none, so the collector keeps its default" '! grep -q "LUNA_VAULT_PATH" "$RUNNER"'
+baked_of() { bash -c "$(grep '^PATH=' "$1"); printf %s \"\$PATH\""; }
+resolves_in() { bash -c 'PATH="$1"; command -v "$2"' _ "$1" "$2"; }
+mkdir -p "$TMP/.mount_fixA/usr/bin" "$TMP/.mount_fixB/lib"
+PATH="$TMP/.mount_fixA/usr/bin:$TMP/.mount_fixB/lib:$PATH" bash "$CAD" arm --force >/dev/null 2>&1
+baked_path="$(baked_of "$RUNNER")"
+check "the baked PATH holds no temporary folder from the arming shell, and keeps the system defaults" \
+    '[ -n "$baked_path" ] && case ":$baked_path:" in *"/.mount_"*|*":$TMP"*) false ;; *) true ;; esac && case ":$baked_path:" in *":/usr/bin:"*) true ;; *) false ;; esac && case ":$baked_path:" in *":/bin:"*) true ;; *) false ;; esac && case ":$baked_path:" in *":/usr/local/bin:"*) true ;; *) false ;; esac'
+tools_ok=1
+for t in bash claude node python3 git jq bun; do
+    exp="$(command -v "$t" 2>/dev/null)"; [ -n "$exp" ] || continue
+    [ "$(resolves_in "$baked_path" "$t")" = "$exp" ] || { tools_ok=0; echo "    unresolved: $t (want $exp)"; }
+done
+check "the baked PATH still resolves every tool the arming shell resolved (bash claude node python3 git jq bun) to the same file" '[ "$tools_ok" = 1 ]'
+printf '#!/bin/sh\nexit 0\n' >"$TMP/.mount_fixA/usr/bin/node"; chmod +x "$TMP/.mount_fixA/usr/bin/node"
+PATH="$TMP/.mount_fixA/usr/bin:$PATH" bash "$CAD" arm --force >/dev/null 2>&1
+baked_path="$(baked_of "$RUNNER")"
+check "a tool that sits first in a temporary folder is skipped: the folder is not baked and node resolves to the next one on PATH" \
+    'case ":$baked_path:" in *"/.mount_"*) false ;; *) [ "$(resolves_in "$baked_path" node)" = "$(PATH="${PATH//$TMP\/.mount_fixA\/usr\/bin:/}" command -v node)" ] ;; esac'
+rm -f "$TMP/.mount_fixA/usr/bin/node"
 bash "$CAD" arm --force >/dev/null 2>&1
 
 echo "3. firing the runner"
@@ -162,6 +181,26 @@ check "claude gets the runbook, the pinned model, the explicit mode and JSON out
 check "the note's Telegram block is sent once, as a cadence:clip-relevance message" \
     '[ "$(grep -c "^cadence:clip-relevance|" "$TMP/send.log")" = 1 ] && head -1 "$TMP/send.log" | grep -q "^cadence:clip-relevance|Clip relevance, week to 2026-11-20: 1 new of 2 candidates.$" && grep -q "1. Cap native message volume per session pair" "$TMP/send.log" && ! grep -q "^## " "$TMP/send.log"'
 check "a good run raises no alert" '[ ! -s "$TMP/alerts.log" ]'
+check "the first note of the day is the plain dated name, and the log and message name it" \
+    '[ -s "$TMP/notes/2026-11-20.md" ] && grep -q "note $TMP/notes/2026-11-20.md, message sent" "$TMP/runner/clip-relevance-cadence.log" && grep -q "^Note: specs/audits/clip-relevance/2026-11-20.md$" "$TMP/send.log"'
+
+echo "3b. a run never replaces a note it already wrote"
+first_sum="$(cksum "$TMP/notes/2026-11-20.md")"
+rm -f "$TMP/send.log" "$TMP/alerts.log"; rm -rf "$TMP/alert-sent"
+check "note-path with the day's note present names the first free numbered name, inside the note folder" \
+    '[ "$(bash "$CAD" note-path)" = "$TMP/notes/2026-11-20-2.md" ]'
+bash "$RUNNER" >"$TMP/fire-second.out" 2>&1; rc=$?
+check "a second run the same day leaves the first note byte for byte and writes 2026-11-20-2.md" \
+    '[ "$rc" = 0 ] && [ "$(cksum "$TMP/notes/2026-11-20.md")" = "$first_sum" ] && [ -s "$TMP/notes/2026-11-20-2.md" ]'
+check "the log line names the note actually written" 'grep -q "note $TMP/notes/2026-11-20-2.md, message sent" "$TMP/runner/clip-relevance-cadence.log"'
+check "the Telegram message names the note actually written, though the model wrote the plain name" \
+    '[ "$(grep -c "^cadence:clip-relevance|" "$TMP/send.log")" = 1 ] && grep -q "^Note: specs/audits/clip-relevance/2026-11-20-2.md$" "$TMP/send.log" && ! grep -q "^Note: specs/audits/clip-relevance/2026-11-20.md$" "$TMP/send.log"'
+check "the second note passes the same check as the first" '[ ! -s "$TMP/alerts.log" ]'
+rm -f "$TMP/send.log"
+bash "$RUNNER" >"$TMP/fire-third.out" 2>&1
+check "a third run writes 2026-11-20-3.md and leaves the first two alone" \
+    '[ -s "$TMP/notes/2026-11-20-3.md" ] && [ "$(cksum "$TMP/notes/2026-11-20.md")" = "$first_sum" ] && [ "$(ls "$TMP/notes" | wc -l)" = 3 ] && grep -q "^Note: specs/audits/clip-relevance/2026-11-20-3.md$" "$TMP/send.log"'
+rm -f "$TMP/notes/2026-11-20-2.md" "$TMP/notes/2026-11-20-3.md"
 
 echo "4. failures are loud and send no proposals"
 rm -f "$TMP/send.log" "$TMP/alerts.log"; rm -rf "$TMP/alert-sent"; echo 3 >"$TMP/claude.rc"
@@ -184,7 +223,8 @@ check "no note at all raises the alert" 'grep -q " clip-relevance note-invalid "
 rm -f "$TMP/send.log" "$TMP/alerts.log"; rm -rf "$TMP/alert-sent"
 mkdir -p "$TMP/notes"; printf '## Candidates\n\n## Telegram message\nan earlier run sent this\n' >"$TMP/notes/2026-11-20.md"
 bash "$RUNNER" >"$TMP/fire-stale.out" 2>&1
-check "a run that returns success without writing today's note cannot resend the earlier one" 'grep -q " clip-relevance note-unchanged " "$TMP/alerts.log" && ! grep -q "an earlier run sent this" "$TMP/send.log"'
+check "a run that returns success without writing a note cannot resend the earlier one, and leaves it untouched" \
+    'grep -q " clip-relevance note-invalid " "$TMP/alerts.log" && ! grep -q "an earlier run sent this" "$TMP/send.log" && grep -q "an earlier run sent this" "$TMP/notes/2026-11-20.md"'
 
 echo "5. check"
 good="$TMP/good.md"
@@ -243,6 +283,7 @@ check "six unnumbered ### headings in Candidates are refused, not counted as zer
 zero="$TMP/zero.md"
 printf '## Candidates\n\nNothing new this week.\n\n## Telegram message\nNothing new this week.\n' >"$zero"
 check "a quiet week with no candidate is valid" 'bash "$CAD" check "$zero" >/dev/null 2>&1'
+rm -f "$TMP/notes/2026-11-20"*.md
 check "note-path is the note folder plus the day" '[ "$(bash "$CAD" note-path)" = "$TMP/notes/2026-11-20.md" ]'
 
 echo "6. the crontab edges"
