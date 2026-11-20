@@ -102,7 +102,10 @@ live() { [ ! -e "$Q/stop" ] && [ "$(date +%s)" -lt "$EXPIRES" ]; }
 # owner's pid, made atomically by ln -s. A lock naming a pid that is gone, or a live pid that is not a
 # bypass-launchd (a reused pid), is stale; it is taken by rename, so only one starter reclaims it.
 LOCK="$Q/.lock.pid"
-lock_owner_alive() { [ -n "$1" ] && kill -0 "$1" 2>/dev/null && ps -p "$1" -o args= 2>/dev/null | grep -qE '(^|[ /])bypass-launchd\.sh'; }
+lock_owner_alive() {
+    local args re='(^|[ /])bypass-launchd\.sh'
+    [ -n "$1" ] && kill -0 "$1" 2>/dev/null && args=$(ps -p "$1" -o args= 2>/dev/null) && [[ $args =~ $re ]]
+}
 take_lock() {
     local seen moved="$LOCK.stale.$$"
     ln -s "$$" "$LOCK" 2>/dev/null && return 0

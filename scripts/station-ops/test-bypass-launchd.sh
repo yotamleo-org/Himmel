@@ -4,6 +4,8 @@
 set -uo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
+# shellcheck source=scripts/lib/portable-timeout.sh
+. "$REPO_ROOT/scripts/lib/portable-timeout.sh"
 SUT="$REPO_ROOT/scripts/station-ops/bypass-launchd.sh"
 OPERATOR=4242
 PASS=0
@@ -76,7 +78,7 @@ setup_repo() { setup "$1"; R="$D/repo"; mk_repo "$R"; DAEMON="$R/$DAEMON_REL"; }
 run_repo() {
     env -u CLAUDECODE BYPASSD_TEST_DIR="$D" BYPASSD_SEND="$tmp/send" BYPASSD_LAUNCHER="$tmp/launcher" BYPASSD_POLL=0.1 \
         BRIDGE_ROOT="$D/bridge" TELEGRAM_ACCESS_PATH="$D/access.json" XDG_RUNTIME_DIR="$D/run" \
-        timeout 5 bash "$DAEMON" --bucket "$B" --until "$UNTIL" 2>&1
+        timeout 5 bash "$DAEMON" --bucket "$B" --until "$UNTIL" 2>&1 # gnu-ok: portable-timeout.sh above supplies a timeout on macOS
 }
 start_line() { grep -m1 'start pid=' "$Q/daemon.log" 2>/dev/null; }
 launch_env_after_go() {
@@ -399,9 +401,9 @@ mk_shim() {
 mk_shim "$SHIM"
 assert_eq "control: the shim has no flock, setsid or sha256sum" "none" "$(for t in flock setsid sha256sum; do [ -e "$SHIM/$t" ] && echo "$t"; done | head -n 1 | grep . || echo none)"
 # gnu-ok: the control proves the shim refuses the GNU flag
-assert_eq "control: the shim date rejects -d like BSD date" "1" "$(PATH="$SHIM" date -d 2026-01-01 +%s >/dev/null 2>&1; echo $?)"
+assert_eq "control: the shim date rejects -d like BSD date" "1" "$(PATH="$SHIM" date -d 2026-01-01 +%s >/dev/null 2>&1; echo $?)" # gnu-ok: the control proves the shim refuses the GNU flag
 # gnu-ok: the control proves the shim refuses the GNU flag
-assert_eq "control: the shim stat rejects -c like BSD stat" "1" "$(PATH="$SHIM" stat -c %s /dev/null >/dev/null 2>&1; echo $?)"
+assert_eq "control: the shim stat rejects -c like BSD stat" "1" "$(PATH="$SHIM" stat -c %s /dev/null >/dev/null 2>&1; echo $?)" # gnu-ok: the control proves the shim refuses the GNU flag
 rm -f "$SHIM/stat.calls"
 
 echo "== HIMMEL-10430 B1: --until parses with BSD date =="
@@ -464,7 +466,7 @@ rm -f "$SHIM/stat.calls"
 start PATH="$SHIM" SHIM_DATE_ALLOW_D=1
 CODE=$(ask_code r)
 # gnu-ok: the assertion looks for the GNU flag among the shim's recorded calls
-assert_absent "B4: no GNU stat flag reaches the BSD-like stat" "stat -c" "$(cat "$SHIM/stat.calls" 2>/dev/null)"
+assert_absent "B4: no GNU stat flag reaches the BSD-like stat" "stat -c" "$(cat "$SHIM/stat.calls" 2>/dev/null)" # gnu-ok: the assertion looks for the GNU flag among the shim calls
 reply "$OPERATOR" "$OPERATOR" "go $CODE"
 wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
 assert_contains "B4: the go reply written after the ask is still read" "LAUNCHED HIMMEL-1-N1-sweep-pr1" "$(cat "$Q/daemon.log")"
