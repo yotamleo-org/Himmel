@@ -1,9 +1,12 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { constants } from "node:fs";
 import { GROUP_ANONYMOUS_BOT_ID } from "../telegram/gate";
 import { readChain } from "./chain";
 import type { Config } from "./config";
-import { parseControl, type Control } from "./grammar";
+import { IAT_FUTURE_SKEW_S, MAX_LINE_BYTES, parseEnvelopeLine, type Envelope } from "./envelope";
+import { ENV_LINE_RE, SIG_LINE_RE, parseControl, type Control } from "./grammar";
+import { liveKeys, verify } from "./sign";
 
 export class DedupWindow {
   private keys = new Set<string>();
@@ -17,18 +20,33 @@ export class DedupWindow {
   }
 }
 
+// Envelope ids, kept until each envelope's verified `exp` and never evicted by
+// count, so a flood of admitted text messages cannot flush a replayable `req`.
+// The poller persists each entry to S/<peer>/envelope-ids.jsonl and reloads it at start.
+export class EnvelopeWindow {
+  private exp = new Map<string, number>();
+  private key = (chat: number | string, from: number | string, id: string) => `${chat}:${from}:${id}`;
+  has(chat: number | string, from: number | string, id: string): boolean { return this.exp.has(this.key(chat, from, id)); }
+  add(chat: number | string, from: number | string, id: string, exp: number): void { this.exp.set(this.key(chat, from, id), exp); }
+  // An id past its exp is refused at step 7 anyway, so it can leave the window.
+  prune(nowS: number): void { for (const [k, e] of this.exp) if (e <= nowS) this.exp.delete(k); }
+  get size(): number { return this.exp.size; }
+}
+
 export type GateState = {
   ourBotId: string;
   ourUsername: string;
   committed: number;            // highest update_id already processed
   recent: DedupWindow;          // `${chat}:${from}:${id}` of the last 1000 admitted records
+  envIds: EnvelopeWindow;       // typed-envelope ids, a separate window (§4 step 1, step 7)
+  killed: Set<string>;          // peers whose C/<peer>.killed exists; the poller refreshes it
   roots: Set<string>;           // `${chat}:${message_id}` of every thread root, ours or theirs
   rate: Map<string, number[]>;  // peer -> ms timestamps of admitted messages
   now: number;                  // ms; the caller sets it before each batch
 };
 
 export function createGateState(init: { ourBotId: string; ourUsername: string; committed: number; now: number }): GateState {
-  return { ...init, recent: new DedupWindow(1000), roots: new Set(), rate: new Map() };
+  return { ...init, recent: new DedupWindow(1000), envIds: new EnvelopeWindow(), killed: new Set(), roots: new Set(), rate: new Map() };
 }
 
 export type PeerMsgRec = {
@@ -41,11 +59,17 @@ export type Admit =
   | { ok: true; peer: string; rec: PeerMsgRec; truncated: boolean }
   | { ok: false; rule: 1 | 2 | 3 | 4 | 5 | 6 | 7; reason: string; log: string; peer?: string; unknownChat?: UnknownChat };
 
+// Every message that passes rules 1-8 counts toward the peer's rate, an envelope
+// included, so a flood of bad envelopes is rate-limited like a flood of text.
+export function noteRate(state: GateState, peer: string, ts: number): void {
+  const list = state.rate.get(peer) ?? [];
+  list.push(ts * 1000);
+  state.rate.set(peer, list);
+}
+
 export function noteAdmitted(state: GateState, rec: Pick<PeerMsgRec, "peer" | "chat_id" | "from_id" | "id" | "ts">): void {
   if (rec.id) state.recent.add(`${rec.chat_id}:${rec.from_id}:${rec.id}`);
-  const list = state.rate.get(rec.peer) ?? [];
-  list.push(rec.ts * 1000);
-  state.rate.set(rec.peer, list);
+  noteRate(state, rec.peer, rec.ts);
 }
 
 export function rebuildFromInbox(state: GateState, records: Pick<PeerMsgRec, "peer" | "chat_id" | "from_id" | "id" | "ts">[]): void {
@@ -80,6 +104,8 @@ export function admit(update: any, cfg: Pick<Config, "peers" | "maxTextChars">, 
   const control: Control | undefined = text === undefined ? undefined : parseControl(text, state.ourUsername);
   const controlId = control && !control.untagged ? control.id : undefined;
   if (controlId && state.recent.has(`${chatId}:${fromId}:${controlId}`)) return drop(1, "duplicate message id");
+  const envId = text === undefined ? undefined : ENV_LINE_RE.exec(text.split("\n")[1] ?? "")?.[2];
+  if (envId && state.envIds.has(chatId, fromId, envId)) return drop(1, "duplicate envelope id");
 
   // 2. Supergroup only.
   const configured = Object.entries(cfg.peers).find(([, p]) => p.chatId === chatId);
@@ -146,6 +172,72 @@ export function admit(update: any, cfg: Pick<Config, "peers" | "maxTextChars">, 
     }
   }
   return { ok: true, peer: peerName, rec, truncated };
+}
+
+// ---- the typed path (§4): one predicate, one test row per step ----
+
+// The raw message of an admitted envelope, stored in inbox.jsonl under its own
+// kind, which the desk's reader (kind "peer-msg") never lists.
+export type PeerEnvRec = { kind: "peer-env"; untrusted: true; peer: string; from_id: string; chat_id: number; message_id: number; ts: number; id: string; text: string };
+export type MatchFn = (env: Envelope, peer: string, cfg: Pick<Config, "peers" | "self">, nowS: number) => { ok: true } | { ok: false; step: 8 | 9; reason: string };
+export type EnvAdmit =
+  | { ok: true; peer: string; env: Envelope; rec: PeerEnvRec }
+  | { ok: false; step: number; reason: string; log: string; peer?: string; env?: Envelope; rec?: PeerEnvRec; unknownChat?: UnknownChat };
+
+// Routing is on line 2: a message whose second line starts `#env:` is an envelope
+// attempt and never reaches the text path, whether or not it is well formed.
+export function looksLikeEnvelope(update: any): boolean {
+  const text = update?.message?.text;
+  return typeof text === "string" && (text.split("\n")[1] ?? "").startsWith("#env:");
+}
+
+// Steps 1-7, then `match` for steps 8-9 when given. Nothing is inserted into the
+// envelope window before step 7, so a bad-signature message cannot burn an id.
+export function admitEnvelope(update: any, cfg: Pick<Config, "peers" | "maxTextChars" | "self">, state: GateState, match?: MatchFn): EnvAdmit {
+  // 1. The text path's rules 1-8, with rule 1 also checking the envelope window.
+  const a = admit(update, cfg, state);
+  if (!a.ok) return { ok: false, step: 1, reason: `rule ${a.rule}: ${a.reason}`, log: a.log, peer: a.peer, unknownChat: a.unknownChat };
+  const m = update.message;
+  const text: string = m.text;
+  const peerName = a.peer;
+  const peer = cfg.peers[peerName];
+  const nowS = Math.floor(state.now / 1000);
+  const lines = text.split("\n");
+  const id = ENV_LINE_RE.exec(lines[1] ?? "")?.[2];
+  const sha = createHash("sha256").update(text).digest("hex");
+  const redacted = (step: number) => `env-drop step=${step} peer=${peerName} msg=${id ?? "-"} sha256=${sha}`;
+  const fail = (step: number, reason: string, extra: { env?: Envelope; rec?: PeerEnvRec } = {}): EnvAdmit => ({ ok: false, step, reason, log: redacted(step), peer: peerName, ...extra });
+
+  // 2. Exactly four lines, addressed to us, line 2 the envelope line.
+  if (lines.length !== 4 || lines[0] !== `/peer@${state.ourUsername}` || !id) return fail(2, "grammar");
+  const [, line2, line3, line4] = lines;
+  // 3. Line 3 printable ASCII and bounded, line 4 the signature shape.
+  if (!/^[\x20-\x7e]+$/.test(line3) || Buffer.byteLength(line3, "utf8") > MAX_LINE_BYTES || !SIG_LINE_RE.test(line4)) return fail(3, "line shape");
+  // 4. Not killed, and a live key whose id is `k`.
+  if (state.killed.has(peerName)) return fail(4, "peer killed");
+  const k = ENV_LINE_RE.exec(line2)![1];
+  const key = liveKeys(peer.theirs.keys ?? [], nowS).find(x => x.id === k);
+  if (!key) return fail(4, "no trusted key with that id");
+  // 5. Signature, before any parse.
+  if (!verify(line2, line3, line4.slice(4), key.pub)) return fail(5, "bad signature");
+  // 6. Parse, canonical re-encode, closed schema.
+  const parsed = parseEnvelopeLine(line3);
+  if (!parsed.ok) return fail(6, parsed.reason);
+  const env = parsed.env;
+  // 7. Binding.
+  if (env.msg !== id) return fail(7, "msg is not the line-2 id");
+  if (peer.theirs.stationName === undefined || env.from !== peer.theirs.stationName) return fail(7, "from is not the trusted station name");
+  if (cfg.self?.stationName === undefined || env.to !== cfg.self.stationName) return fail(7, "to is not our station name");
+  if (peer.chatId === null || env.chat !== String(peer.chatId)) return fail(7, "chat is not the configured chat");
+  if (env.iat > nowS + IAT_FUTURE_SKEW_S) return fail(7, "iat is in our future");
+  if (env.exp <= nowS) return fail(7, "expired");
+  state.envIds.add(m.chat.id, m.from.id, id, env.exp);
+  const rec: PeerEnvRec = { kind: "peer-env", untrusted: true, peer: peerName, from_id: String(m.from.id), chat_id: m.chat.id, message_id: m.message_id, ts: nowS, id, text };
+
+  // 8-9. Matching and budgets, owned by the caller.
+  const r = match?.(env, peerName, cfg, nowS);
+  if (r && !r.ok) return fail(r.step, r.reason, { env, rec });
+  return { ok: true, peer: peerName, env, rec };
 }
 
 // One row per unknown chat id, 0600, so `setup.ts confirm` can offer it.

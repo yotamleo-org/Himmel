@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,8 +9,10 @@ import { ackToken, digestFile } from "./digests";
 import { admit, createGateState, noteAdmitted } from "./gate";
 import { procHooks } from "./proc";
 import { Poller, type PollerDeps, type TgLike } from "./poller";
+import type { Kind } from "./envelope";
 import { RetryAfter, TelegramError } from "./telegram";
 import { Threads } from "./threads";
+import * as TE from "./testlib-envelope";
 import { failedTests, makeRedCopy } from "./testlib-red-copy";
 
 const REPO = join(import.meta.dir, "..", "..");
@@ -443,6 +445,97 @@ test("the poller process exits 78 on a loose peers.json, a token equal to operat
   expect(runPoller(processEnv({ mode: 0o644 })).status).toBe(78);
   expect(runPoller(processEnv({ operatorBotId: "1234567890" })).status).toBe(78);
   expect(runPoller(processEnv({ peerName: "Goomal!" })).status).toBe(78);
+});
+
+// ---- the typed path in the poller (Task 3) ----
+
+async function envSetup(over: { logs?: string[] } = {}) {
+  const st = TE.mkStation("goomal");
+  const e = await setup({ peerOver: { theirs: { username: "goomal_bot", opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07", stationName: "goomal", keys: [{ id: st.key.id, pub: st.key.pub, addedAt: "2026-11-08T00:00:00Z" }] } } });
+  (e.cfg as any).self = { stationName: "yotam" };
+  const logs = over.logs ?? [];
+  const poller = await Poller.create({ ...e.deps, log: l => logs.push(l) });
+  await poller.recover();
+  return { ...e, poller, st, logs };
+}
+const nowS = (e: { c: { t: number } }) => Math.floor(e.c.t / 1000);
+const envMsg = (e: { c: { t: number } }, st: TE.Station, kind: Kind = "halt", body: Record<string, unknown> = {}) => TE.envUpdate(TE.fromPeer(kind, body, nowS(e)), st);
+const chainOf = (e: { peerDir: string }, name: string) => readChain(join(e.peerDir, name));
+
+test("an admitted envelope is chained under its own kind, its id is persisted, and it reaches no reader, thread, template or wake", async () => {
+  const e = await envSetup();
+  const u = envMsg(e, e.st);
+  await e.poller.processBatch([u]);
+  expect(chainOf(e, "inbox.jsonl")).toHaveLength(1);
+  expect(chainOf(e, "inbox.jsonl")[0]).toMatchObject({ kind: "peer-env", untrusted: true, peer: "goomal", text: u.message.text });
+  expect(chainOf(e, "envelope-ids.jsonl")).toMatchObject([{ kind: "env-id", chat: CHAT, from: PEER_ID, exp: nowS(e) + 86400 }]);
+  expect(e.reads).toEqual([]);
+  expect(e.sent).toEqual([]);
+  expect(chainOf(e, "threads.jsonl")).toEqual([]);
+  expect(wakeLines(e)).toEqual([]);
+  expect(Number(readFileSync(join(e.stateDir, "offset"), "utf8"))).toBe(u.update_id + 1);
+});
+
+test("the desk's reader lists no envelope: read.ts keeps to peer-msg records", () => {
+  const src = readFileSync(join(REPO, "scripts/peer-bridge/read.ts"), "utf8");
+  expect(src).toContain(`r.kind === "peer-msg"`);
+});
+
+test("a refusal at steps 2-7 logs the step, the msg and a sha256 only, and writes nothing", async () => {
+  const e = await envSetup();
+  const u = envMsg(e, e.st);
+  const [a, b, c, d] = u.message.text.split("\n");
+  const bad = TE.tgUpdate([a, b, c.replace("yotam", "yotaé"), d].join("\n"));
+  e.logs.length = 0;
+  await e.poller.processBatch([bad]);
+  expect(e.logs).toHaveLength(1);
+  expect(e.logs[0]).toMatch(/^env-drop step=3 peer=goomal msg=[0-9a-f]{8} sha256=[0-9a-f]{64}$/);
+  expect(chainOf(e, "inbox.jsonl")).toEqual([]);
+  expect(chainOf(e, "envelope-ids.jsonl")).toEqual([]);
+  expect(e.sent).toEqual([]);
+  expect(Number(readFileSync(join(e.stateDir, "offset"), "utf8"))).toBe(bad.update_id + 1);
+});
+
+test("the envelope window survives a restart: a replay of an admitted envelope is dropped", async () => {
+  const e = await envSetup();
+  const u = envMsg(e, e.st);
+  await e.poller.processBatch([u]);
+  const logs: string[] = [];
+  const again = await Poller.create({ ...e.deps, log: l => logs.push(l) });
+  await again.recover();
+  await again.processBatch([TE.tgUpdate(u.message.text)]);
+  expect(chainOf(e, "inbox.jsonl")).toHaveLength(1);
+  expect(chainOf(e, "envelope-ids.jsonl")).toHaveLength(1);
+  expect(logs.join("\n")).toContain("duplicate envelope id");
+});
+
+test("a line-2 #env message that is not a valid envelope never reaches the text path", async () => {
+  const e = await envSetup();
+  await e.poller.processBatch([TE.tgUpdate(`/peer@${OUR_NAME}\n#env:v9 k=0123abcd id=89abcdef\n{}\nsig=x`)]);
+  expect(e.sent).toEqual([]);
+  expect(chainOf(e, "inbox.jsonl")).toEqual([]);
+  expect(chainOf(e, "threads.jsonl")).toEqual([]);
+  expect(e.reads).toEqual([]);
+});
+
+test("a killed peer's envelope is dropped at step 4, and admitted again once the kill file is gone", async () => {
+  const e = await envSetup();
+  const kill = join(e.configDir, "goomal.killed");
+  writeFileSync(kill, "", { mode: 0o600 });
+  await e.poller.processBatch([envMsg(e, e.st)]);
+  expect(e.logs.some(l => l.startsWith("env-drop step=4"))).toBe(true);
+  expect(chainOf(e, "inbox.jsonl")).toEqual([]);
+  rmSync(kill);
+  await e.poller.processBatch([envMsg(e, e.st)]);
+  expect(chainOf(e, "inbox.jsonl")).toHaveLength(1);
+});
+
+test("a flood of bad envelopes counts toward the peer's rate like text", async () => {
+  const e = await envSetup();
+  const bad = () => TE.tgUpdate(`/peer@${OUR_NAME}\n#env:v1 k=${e.st.key.id} id=89abcdef\n{}\nsig=${"A".repeat(86)}`);
+  await e.poller.processBatch(Array.from({ length: 12 }, bad));
+  const rate = e.logs.filter(l => l.includes("rule=7"));
+  expect(rate.length).toBe(2);
 });
 
 test("a second poller exits non-zero but not 78, and never reads the operator env", async () => {

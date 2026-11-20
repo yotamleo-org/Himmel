@@ -2,8 +2,9 @@
 // takes Telegram updates through the admission gate, keeps thread state and
 // deadlines, runs the tool-less reader, sends through the egress gate with an
 // intent record before every Telegram call, and drains the spool that send.ts,
-// read.ts and setup.ts fill. It parses peer text only with the two control-line
-// regexes and starts only the processes proc.ts lists.
+// read.ts and setup.ts fill. It parses peer text only with the three control-line
+// regexes (an envelope's JSON line only after its signature verifies, only in
+// envelope.ts) and starts only the processes proc.ts lists.
 import fs from "node:fs";
 import { join } from "node:path";
 import { atomicWrite } from "../telegram/bus";
@@ -11,7 +12,7 @@ import { Chain, PidLockError, acquirePidLock, drainSpool, readChain, sweepResult
 import { ConfigError, EXIT_CONFIG, loadConfig, type Config } from "./config";
 import { digestFile, parseAck, writeCursor, type DigestRec } from "./digests";
 import { checkOutbound, refusalRecord, type OutCtx, type Outcome, type Refusal } from "./egress";
-import { admit, appendUnknownChat, createGateState, noteAdmitted, rebuildFromInbox, type GateState, type PeerMsgRec } from "./gate";
+import { admit, admitEnvelope, appendUnknownChat, createGateState, looksLikeEnvelope, noteAdmitted, noteRate, rebuildFromInbox, type GateState, type PeerEnvRec, type PeerMsgRec } from "./gate";
 import { mintId } from "./grammar";
 import { botIdFromToken, configDir, peersFile, stateDir } from "./ids";
 import { ReaderLedger, runReader } from "./reader";
@@ -85,16 +86,30 @@ export class Poller {
   }
 
   private load() {
-    const threadRecs: ThreadRec[] = [], inbox: PeerMsgRec[] = [];
+    const threadRecs: ThreadRec[] = [], inbox: Pick<PeerMsgRec, "peer" | "chat_id" | "from_id" | "id" | "ts">[] = [], envIds: { chat: number; from: string; id: string; exp: number }[] = [];
     for (const peer of Object.keys(this.cfg.peers)) {
       for (const r of readChain(this.file(peer, "threads.jsonl"))) if (r.kind === "thread") threadRecs.push(r as unknown as ThreadRec);
-      for (const r of readChain(this.file(peer, "inbox.jsonl"))) if (r.kind === "peer-msg") inbox.push(r as unknown as PeerMsgRec);
+      // An envelope counts toward the rate window but never enters the text dedup window.
+      for (const r of readChain(this.file(peer, "inbox.jsonl"))) {
+        if (r.kind === "peer-msg") inbox.push(r as unknown as PeerMsgRec);
+        else if (r.kind === "peer-env") inbox.push({ peer: r.peer, chat_id: r.chat_id, from_id: r.from_id, ts: r.ts });
+      }
+      for (const r of readChain(this.file(peer, "envelope-ids.jsonl"))) if (r.kind === "env-id") envIds.push(r as any);
       this.loadOutbox(peer);
     }
     this.threads = Threads.load(threadRecs, this.threadOpts());
     this.gate = createGateState({ ourBotId: this.deps.ourBotId, ourUsername: "", committed: this.offset - 1, now: this.now() });
     for (const r of this.threads.roots()) this.gate.roots.add(r);
     rebuildFromInbox(this.gate, inbox);
+    for (const r of envIds) this.gate.envIds.add(r.chat, r.from, r.id, r.exp);
+    this.gate.envIds.prune(this.ts());
+    this.refreshKilled();
+  }
+
+  // C/<peer>.killed is the kill switch (§8); the gate reads this set, never the file.
+  private refreshKilled() {
+    this.gate.killed.clear();
+    for (const peer of Object.keys(this.cfg.peers)) if (fs.existsSync(join(this.deps.configDir, `${peer}.killed`))) this.gate.killed.add(peer);
   }
 
   private loadOutbox(peer: string) {
@@ -155,8 +170,14 @@ export class Poller {
     const jobs: PeerMsgRec[] = [];
     await this.serial(async () => {
       let max = this.offset - 1;
+      this.refreshKilled();
       for (const u of [...updates].sort((a, b) => a.update_id - b.update_id)) {
         this.gate.now = this.now();
+        if (looksLikeEnvelope(u)) {
+          await this.onEnvelope(u);
+          if (Number.isSafeInteger(u.update_id)) max = Math.max(max, u.update_id);
+          continue;
+        }
         const r = admit(u, this.cfg, this.gate);
         if (Number.isSafeInteger(u.update_id)) max = Math.max(max, u.update_id);
         if (!r.ok) {
@@ -181,6 +202,29 @@ export class Poller {
     for (const rec of jobs) await this.readAndDigest(rec);
   }
 
+  // A line-2 #env message: the typed path only. It never reaches the reader, the
+  // threads or the desk. A refusal at steps 2-7 logs {step, msg, sha256} and nothing else.
+  private async onEnvelope(u: any): Promise<void> {
+    const r = admitEnvelope(u, this.cfg, this.gate);
+    if (!r.ok) {
+      this.log(r.log);
+      if (r.unknownChat) appendUnknownChat(join(this.deps.stateDir, "unknown-chats.jsonl"), r.unknownChat);
+      if (r.step === 1 || !r.peer) return;
+      noteRate(this.gate, r.peer, this.ts());
+      if (!r.rec || !r.env) return;
+      await this.record(r.rec, r.env.exp);
+      return;
+    }
+    noteRate(this.gate, r.peer, this.ts());
+    await this.record(r.rec, r.env.exp);
+  }
+
+  // The raw message, then its id, last: a crash between the two replays the update whole.
+  private async record(rec: PeerEnvRec, exp: number): Promise<void> {
+    await this.chain.append(this.file(rec.peer, "inbox.jsonl"), rec);
+    await this.chain.append(this.file(rec.peer, "envelope-ids.jsonl"), { kind: "env-id", chat: rec.chat_id, from: rec.from_id, id: rec.id, exp });
+  }
+
   private async readAndDigest(rec: PeerMsgRec): Promise<void> {
     const peer = this.cfg.peers[rec.peer];
     if (!peer) return;
@@ -195,6 +239,8 @@ export class Poller {
   async tick(): Promise<void> {
     await this.serial(async () => {
       await this.ensureUsername();
+      this.refreshKilled();
+      this.gate.envIds.prune(this.ts());
       await this.apply(this.threads.tick(this.now()));
       await this.flush();
       for (const peer of Object.keys(this.cfg.peers)) sweepResults(this.dir(peer), 86_400_000, this.now());
