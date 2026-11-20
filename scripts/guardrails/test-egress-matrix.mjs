@@ -574,6 +574,12 @@ assert(corpora.includes("peer-desk"), "corpus peer-desk must be declared");
 for (const c of ["salus", "luna-personal", "handover-state", "jira-mirror"])
   assert(evaluate(c, "peer-telegram", "peer-message").effective === "deny", `${c} x peer-telegram x peer-message must deny`);
 
+assert(corpora.includes("peer-jobs"), "corpus peer-jobs must be declared");
+assert(evaluate("peer-jobs", "peer-telegram", "peer-message").effective === "allow", "peer-jobs x peer-telegram x peer-message must allow");
+for (const u of purposes.filter(x => x !== "peer-message"))
+  assert(evaluate("peer-jobs", "peer-telegram", u).effective === "deny", `peer-jobs x peer-telegram x ${u} must deny`);
+assert(evaluate("peer-jobs", "peer-telegram", "peer-message").rule?.corpus === "peer-jobs", "peer-jobs x peer-telegram x peer-message must come from its own row");
+
 assert(corpora.includes("adopter-repo"), "corpus adopter-repo must be declared");
 {
   const { effective, rule } = evaluate("adopter-repo", "anthropic", "extraction");
