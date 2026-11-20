@@ -84,8 +84,6 @@ function buildReport(vault, date, content, eol) {
     if (items) prior.push(items);
   }
   const { carried: open, seen } = carryOver(prior);
-  // An action the vault already shows applied (clips stamped archived, clips linked
-  // in the map) is done: neither listed again nor carried over.
   const sourcesByDate = loadSources(vault, [date, ...open.map((c) => c.since)]);
   const mocs = listMocs(vault);
   const applied = appliedIds(vault, sourcesByDate, mocs);

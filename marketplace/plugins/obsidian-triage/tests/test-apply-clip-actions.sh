@@ -1,14 +1,4 @@
 #!/usr/bin/env bash
-# Fixture-gated acceptance test for tools/apply-clip-actions.mjs: the daily
-# note's "Fold <clips> into <map>" and "Archive <clip>" actions apply
-# themselves (bounded, idempotent, ledgered, revertible with a divergence
-# guard), "Evaluate tool" / ticket actions are never applied, and the daily
-# timeline stops listing an action once the vault shows it applied.
-#
-# Fixtures are synthetic. Day D0 lists 7 actions (2 folds, 1 evaluate, 4
-# archives); day D lists 5 more (1 fold into a CRLF map, 3 archives, 1 ticket)
-# and carries D0's 7 over: 10 actions are apply-eligible, 2 never are.
-
 set -u -o pipefail
 export TZ='Etc/GMT-2'
 
@@ -39,7 +29,6 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/apply-clip-actions.XXXXXX")" || exit 1
 trap 'rm -rf "$tmp"' EXIT
 
 sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
-# Hash of every file under $1 except the ledger: one line, changes if any byte does.
 tree_hash() {
     ( cd "$1" && find . -type f ! -name "$LEDGER_NAME" | LC_ALL=C sort \
         | while read -r f; do sha "$f"; done | sha | cut -d' ' -f1 )
@@ -47,21 +36,22 @@ tree_hash() {
 count() { grep -c -- "$1" "$2" 2>/dev/null || true; }
 lines() { wc -l "$1" | awk '{print $1}'; }
 
-mkclip() { # name triaged_at tag extra-line
-    local f="$P/Clippings/_evidence/$1.md"
+mkclip() {
+    local name="$1" triaged_at="$2" tag="${3:-}" extra="${4:-}"
+    local f="$P/Clippings/_evidence/$name.md"
     {
         echo "---"
-        echo "title: \"Clip $1\""
+        echo "title: \"Clip $name\""
         echo "type: article"
         echo "status: reviewed"
         echo "processed: true"
-        echo "triaged_at: $2"
+        echo "triaged_at: $triaged_at"
         echo "evidence_kind:"
         echo "  - concepts"
-        if [ -n "${3:-}" ]; then echo "tags:"; echo "  - $3"; fi
-        if [ -n "${4:-}" ]; then echo "$4"; fi
+        if [ -n "$tag" ]; then echo "tags:"; echo "  - $tag"; fi
+        if [ -n "$extra" ]; then echo "$extra"; fi
         echo "---"
-        echo "Synthetic body for $1."
+        echo "Synthetic body for $name."
     } > "$f"
 }
 

@@ -27,8 +27,6 @@
  * recorded post-apply hash (exit 3): a page edited since is not ours to rewrite.
  * The daily notes are not edited; the daily timeline reads "applied" off the vault.
  * --apply and --revert hold <vault>/.apply-clip-actions.lock (exit 2 while held).
- *
- * Dependency-light: pure node + ./lib/{frontmatter,daily-report,clip-actions}.mjs.
  */
 
 import fs from "node:fs";
@@ -70,8 +68,6 @@ function parseArgs(argv) {
   return a;
 }
 
-// A vault-relative path from a ledger line is data: it is resolved inside the vault
-// (lexically: a symlinked folder inside the vault is a legitimate layout).
 function absOf(vault, rel) {
   const root = path.resolve(vault);
   const abs = path.resolve(root, ...rel.split("/"));
@@ -79,10 +75,6 @@ function absOf(vault, rel) {
   return abs;
 }
 
-/**
- * What applying `a` would do, without doing it: { skip } or
- * { line, edits: [{ abs, next }], entry } where `entry` is the ledger line minus its timestamp.
- */
 function plan(vault, a, date) {
   if (a.kind === "fold") {
     const rel = `${a.target}.md`;
@@ -120,6 +112,11 @@ function plan(vault, a, date) {
   };
 }
 
+function recordThenWrite(p, ledgerPath) {
+  fs.appendFileSync(ledgerPath, JSON.stringify({ ts: new Date().toISOString(), ...p.entry }) + "\n");
+  for (const e of p.edits) fs.writeFileSync(e.abs, e.next);
+}
+
 function runApply(vault, date, limit, ledgerPath, dryRun) {
   const open = openActions(vault, date);
   const sourcesByDate = loadSources(vault, open.map((o) => o.since));
@@ -141,11 +138,7 @@ function runApply(vault, date, limit, ledgerPath, dryRun) {
     const p = plan(vault, a, date);
     if (p.skip) { out(`⊘ ${a.kind} ${a.target} — ${p.skip}`); failed++; continue; }
     if (dryRun) { out(`would ${p.line}`); done[a.kind]++; continue; }
-    // The ledger line first, then the edits: a crash between them leaves a line for an
-    // edit that never landed, which --revert reads as "already reverted"; the other
-    // order would leave an edit nothing can undo.
-    fs.appendFileSync(ledgerPath, JSON.stringify({ ts: new Date().toISOString(), ...p.entry }) + "\n");
-    for (const e of p.edits) fs.writeFileSync(e.abs, e.next);
+    recordThenWrite(p, ledgerPath);
     out(`✓ ${p.line}`);
     done[a.kind]++;
   }
@@ -164,28 +157,22 @@ function runRevert(vault, revertPath) {
   }).filter((e) => e.action === "fold" || e.action === "archive");
 
   let reverted = 0, already = 0, refused = 0, gone = 0;
-  // Every recorded pre-apply hash of a page. Entries on one map chain (each one's
-  // "before" is the previous one's "after"), so a page sitting at ANY of them has
-  // already been rolled back at least that far.
-  const rolledBack = new Map();
-  const noteBefore = (rel, h) => {
-    if (!rolledBack.has(rel)) rolledBack.set(rel, new Set());
-    rolledBack.get(rel).add(h);
+  const preApplyHashes = new Map();
+  const notePreApply = (rel, h) => {
+    if (!preApplyHashes.has(rel)) preApplyHashes.set(rel, new Set());
+    preApplyHashes.get(rel).add(h);
   };
   for (const e of entries) {
-    if (e.action === "fold") noteBefore(e.map, e.map_sha256_before);
-    else for (const f of e.files) noteBefore(f.rel, f.sha256_before);
+    if (e.action === "fold") notePreApply(e.map, e.map_sha256_before);
+    else for (const f of e.files) notePreApply(f.rel, f.sha256_before);
   }
-  // Undo one page: `restore(cur)` returns the pre-apply bytes or null. A page is
-  // rewritten only when it still hashes to the recorded post-apply bytes AND the
-  // restored bytes hash to the recorded pre-apply bytes.
   const revertPage = (rel, shaBefore, shaAfter, restore, what) => {
     const abs = absOf(vault, rel);
     if (!fs.existsSync(abs)) { gone++; return; }
     const cur = fs.readFileSync(abs, "utf8");
     const h = sha256(cur);
     if (h !== shaAfter) {
-      if (rolledBack.get(rel).has(h)) { out(`= ${rel} — already reverted`); already++; return; }
+      if (preApplyHashes.get(rel).has(h)) { out(`= ${rel} — already reverted`); already++; return; }
       out(`⊘ ${rel} — diverged since ${what} (edited after the apply); refusing to revert`);
       refused++;
       return;
@@ -217,15 +204,13 @@ function runRevert(vault, revertPath) {
   if (refused) process.exitCode = 3;
 }
 
-// One writer at a time, as /archive-clips does (<vault>/.archive.lock): an atomic
-// mkdir. A killed run leaves the directory behind; the message says to remove it.
 function takeLock(vault) {
   const lock = path.join(vault, ".apply-clip-actions.lock");
   try { fs.mkdirSync(lock); } catch (e) {
     if (e.code === "EEXIST") die(2, `another run is active (or a stale lock at ${lock}); wait, or remove it`);
     throw e;
   }
-  process.on("exit", () => { try { fs.rmdirSync(lock); } catch { /* already gone */ } });
+  process.on("exit", () => { try { fs.rmdirSync(lock); } catch {} });
   for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => process.exit(130));
 }
 

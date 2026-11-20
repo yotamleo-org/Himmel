@@ -1,21 +1,3 @@
-/**
- * clip-actions.mjs — the daily report's suggested actions as vault state, shared
- * by daily-timeline.mjs (which lists them) and apply-clip-actions.mjs (which
- * applies the mechanical ones) so the two cannot disagree about what an action
- * is, which clips it covers, or whether it is already done.
- *
- * An action id is sha256(verb|target|date): it names what is done and the day it
- * was suggested, not the clips. This module re-derives, for a day, every action
- * the report could suggest (uncapped), tells fold / archive from the rest, and
- * reads "applied" off the vault:
- *   fold    — every clip's link is in the target map (`60-Maps/<moc>.md`)
- *   archive — every clip carries `archived: true`
- * Evaluate-tool and ticket actions are never applied, so never applied here.
- *
- * Reads the vault only; the pure string transforms (foldContent,
- * stampArchived) do no I/O either.
- */
-
 import fs from "node:fs";
 import path from "node:path";
 import { parse, fmScalar, fmList, hasKey, insertScalar } from "./frontmatter.mjs";
@@ -98,7 +80,6 @@ export function loadSources(vault, dates) {
   return byDate;
 }
 
-/** Report sources for one day. */
 export function reportSources(vault, date) {
   return loadSources(vault, [date]).get(date);
 }
@@ -110,19 +91,13 @@ export function hasLink(content, link) {
 
 const FOLD_TEXT = /^Fold .* into \[\[([^\]|]+)\]\]$/;
 
-/**
- * What the report's own rules (suggestActions) make of one source. The verb and
- * fold target are read off the rendered text and CHECKED against the id the
- * report would print; a mismatch is "other", so a drift between this reader and
- * the rules can never turn into a wrong edit.
- */
 function classify(src, mocs, date) {
   const [a] = suggestActions([src], mocs, { date });
-  const fold = FOLD_TEXT.exec(a.text);
-  if (fold && a.id === actionId("fold", fold[1], date)) return { id: a.id, kind: "fold", target: fold[1] };
-  if (a.text.startsWith("Archive ") && a.id === actionId("archive", src.link, date)) {
-    return { id: a.id, kind: "archive", target: src.link };
-  }
+  const renderedFold = FOLD_TEXT.exec(a.text);
+  const verifiedFoldTarget = renderedFold && a.id === actionId("fold", renderedFold[1], date) ? renderedFold[1] : null;
+  const verifiedArchive = a.text.startsWith("Archive ") && a.id === actionId("archive", src.link, date);
+  if (verifiedFoldTarget) return { id: a.id, kind: "fold", target: verifiedFoldTarget };
+  if (verifiedArchive) return { id: a.id, kind: "archive", target: src.link };
   return { id: a.id, kind: "other", target: "" };
 }
 
@@ -144,22 +119,23 @@ export function actionIndex(vault, sourcesByDate, mocs) {
   const mapText = (target) => {
     if (!maps.has(target)) {
       let text = "";
-      try { text = fs.readFileSync(path.join(vault, ...`${target}.md`.split("/")), "utf8"); } catch { /* unreadable map: nothing is folded into it */ }
+      try { text = fs.readFileSync(path.join(vault, ...`${target}.md`.split("/")), "utf8"); } catch {}
       maps.set(target, text);
     }
     return maps.get(target);
   };
+  const appliedInVault = (a) => {
+    if (a.kind === "fold") return a.clips.every((c) => hasLink(mapText(a.target), c.link));
+    if (a.kind === "archive") return a.clips.every((c) => c.archived);
+    return false;
+  };
   for (const a of index.values()) {
     a.clips.sort((x, y) => x.link.localeCompare(y.link));
-    a.applied =
-      a.kind === "fold" ? a.clips.every((c) => hasLink(mapText(a.target), c.link))
-      : a.kind === "archive" ? a.clips.every((c) => c.archived)
-      : false;
+    a.applied = appliedInVault(a);
   }
   return index;
 }
 
-/** The ids in the index whose work the vault already shows done. */
 export function appliedIds(vault, sourcesByDate, mocs) {
   const ids = new Set();
   for (const a of actionIndex(vault, sourcesByDate, mocs).values()) if (a.applied) ids.add(a.id);
