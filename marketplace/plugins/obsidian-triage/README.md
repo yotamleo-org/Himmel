@@ -358,7 +358,7 @@ node tools/apply-clip-actions.mjs --vault <v> --revert <vault>/.apply-clip-actio
   that is a symbolic link or other non-regular file is never replaced. Each is one
   printed refusal line (`⊘ <page> — refused: an existing symbolic link sits there,
   nothing written`), the same wording as `synthesize-stubs.mjs`; an apply counts it
-  on the summary line (`N refused (not a regular file)`) and still exits 0, a
+  on the summary line (`N refused`) and still exits 0, a
   revert exits 3. (Symlinked maps and clips are not offered by the discovery at all.)
 - **Ledger and revert:** one line per applied action in
   `<vault>/.apply-clip-actions.ledger.jsonl` (`--ledger` overrides), carrying the

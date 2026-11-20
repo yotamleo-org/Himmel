@@ -197,7 +197,7 @@ function runApply(vault, date, limit, ledgerPath, dryRun) {
     `${SELF}: ${n} ${dryRun ? "would-apply" : "applied"} (${done.fold} fold, ${done.archive} archive) of ` +
     `${eligible.length} eligible, limit ${limit}; skipped: ${skipped.never} never applied (evaluate/ticket), ` +
     `${skipped.unmatched} unmatched, ${skipped.applied} already applied, ${failed} unappliable` +
-    `${refused ? `, ${refused} refused (not a regular file)` : ""}`,
+    `${refused ? `, ${refused} refused` : ""}`,
   );
 }
 

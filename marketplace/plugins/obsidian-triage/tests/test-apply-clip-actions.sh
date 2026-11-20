@@ -420,6 +420,7 @@ ln -s "$tmp/victim.md" "$R/Clippings/_evidence/.arch-1.md.apply-clip-actions.tmp
 out="$(node "$APPLY" --vault "$R" --date "$D" --apply --limit 50 2>&1)"; rc=$?
 assert "a link planted at the temporary name: the victim file is byte for byte unchanged" "" "$(cmp "$tmp/victim.copy" "$tmp/victim.md" 2>&1)"
 assert "the planted link is reported as a refusal" "1" "$(printf '%s\n' "$out" | grep -c 'refused: .*apply-clip-actions.tmp')"
+assert "the apply summary counts the refusal" "1" "$(printf '%s\n' "$out" | grep -c ', 1 refused$')"
 assert "the page behind the planted link is not stamped" "0" "$(count '^archived' "$R/Clippings/_evidence/arch-1.md")"
 assert "the refused action leaves no ledger line" "0" "$(count 'arch-1' "$R/$LEDGER_NAME")"
 assert "the planted link is left in place" "yes" "$([ -L "$R/Clippings/_evidence/.arch-1.md.apply-clip-actions.tmp" ] && echo yes || echo no)"
