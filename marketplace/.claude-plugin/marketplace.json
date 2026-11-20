@@ -313,9 +313,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/lottiefiles/motion-design-skill.git",
-        "sha": "f9a8a041b85185ee4881b3471d3415e939aac772"
+        "sha": "4cc6b0d87afc618914317f3fcf5a0fb9f12ae039"
       },
-      "description": "[lottiefiles/motion-design-skill, MIT, vendor + attribution only, no carried delta] LottieFiles motion-design skill. Explicit HTTPS git url, pinned to a full sha f9a8a041b851 per himmel supply-chain policy. Design kit, design-motion profile.",
+      "description": "[lottiefiles/motion-design-skill, MIT, vendor + attribution only, no carried delta] LottieFiles motion-design skill. Explicit HTTPS git url, pinned to a full sha 4cc6b0d87afc per himmel supply-chain policy. Design kit, design-motion profile.",
       "strict": false,
       "author": {
         "name": "lottiefiles",
@@ -358,9 +358,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/youmind-openlab/ai-image-prompts-skill.git",
-        "sha": "e91273dd3861d3ee8687a9240df95d2af9d9e9cc"
+        "sha": "413d41591ffdfbfa025fe943ffa6f731a3839fcd"
       },
-      "description": "[youmind-openlab/ai-image-prompts-skill, MIT, vendor + attribution only, no carried delta] Offline AI image prompt library lookups (312 MB clone, no key). Root-skill shape UNPROVEN: add-on profile only. Explicit HTTPS git url, pinned to a full sha e91273dd3861d3ee8687a9240df95d2af9d9e9cc per himmel supply-chain policy. Design kit, design-imagegen profile.",
+      "description": "[youmind-openlab/ai-image-prompts-skill, MIT, vendor + attribution only, no carried delta] Offline AI image prompt library lookups (312 MB clone, no key). Root-skill shape UNPROVEN: add-on profile only. Explicit HTTPS git url, pinned to a full sha 413d41591ffdfbfa025fe943ffa6f731a3839fcd per himmel supply-chain policy. Design kit, design-imagegen profile.",
       "strict": false,
       "skills": [
         "./"
@@ -599,9 +599,9 @@
         "source": "git-subdir",
         "url": "https://github.com/upstash/context7.git",
         "path": "skills/find-docs",
-        "sha": "27ef14ca41a57563891135cad663732d43203a8b"
+        "sha": "c36522f3d4446288a272aedd727d665f7b8175f2"
       },
-      "description": "[upstash/context7, MIT, vendor + attribution only, no carried delta] /find-docs: current library, framework and API documentation lookup through the Context7 CLI. Replaces the user-scope ~/.claude/skills/find-docs copy, which ignored enabledPlugins and loaded in every session including bare. git-subdir on skills/find-docs (a single root SKILL.md, so strict:false with skills ./), explicit HTTPS git url, pinned to upstream commit 27ef14ca41a57563891135cad663732d43203a8b per himmel supply-chain policy. Enabled by the `user` profile only.",
+      "description": "[upstash/context7, MIT, vendor + attribution only, no carried delta] /find-docs: current library, framework and API documentation lookup through the Context7 CLI. Replaces the user-scope ~/.claude/skills/find-docs copy, which ignored enabledPlugins and loaded in every session including bare. git-subdir on skills/find-docs (a single root SKILL.md, so strict:false with skills ./), explicit HTTPS git url, pinned to upstream commit c36522f3d4446288a272aedd727d665f7b8175f2 per himmel supply-chain policy. Enabled by the `user` profile only.",
       "strict": false,
       "skills": [
         "./"

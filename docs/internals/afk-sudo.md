@@ -5,7 +5,10 @@ the operator approves it with a TOTP code. Slice 1a
 adds a second kind, `run`, which freezes one argv, shows it to the operator and
 runs exactly that once. Slice 1b adds root's notice bot and a nonce bound to each request
 and turns the run kind on. The helper is Linux-only: safe file
-validation needs `O_PATH`, `/proc/self/fd` and `fstatfs`.
+validation needs `O_PATH`, `/proc/self/fd` and `fstatfs`. On macOS only the sudo `request` kind installs and
+runs (`install.sh` names the group `wheel`, a Homebrew or system python in the helper's shebang, and checks that
+`/etc/sudoers` includes the drop-in directory); `run-request`, `grant-request`, `op-request` and `grant-spend`
+answer `result=unsupported-platform`.
 
 Files: `afk_sudo.py` (the helper, installed as `/usr/local/libexec/himmel/afk-sudo`),
 `approval_broker.py` (the pending slot, TOTP, ledger), `never_remote.py` (the floor),

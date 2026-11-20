@@ -5,7 +5,8 @@
 #   bypass-launchd.sh --bucket <handover bucket> --until <YYYY-MM-DD>
 #
 # The operator starts it once from their own shell, never from a Claude session (it refuses CLAUDECODE):
-#   setsid nohup bash <repo>/scripts/station-ops/bypass-launchd.sh --bucket <bucket> --until <date> >/dev/null 2>&1 &
+#   nohup bash <repo>/scripts/station-ops/bypass-launchd.sh --bucket <bucket> --until <date> >/dev/null 2>&1 &
+# (on Linux, put setsid before nohup; on macOS a LaunchAgent starts it.)
 # It stops at --until 00:00Z (at most 7 days ahead) or when <bucket>/bypass-queue/stop exists.
 #
 # A chief requests a launch by writing <bucket>/bypass-queue/<anything>.req holding these lines:
@@ -49,7 +50,12 @@ done
 BUCKET="$(cd "$BUCKET" && pwd -P)"
 Q="$BUCKET/bypass-queue"
 [[ "$until" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "--until wants YYYY-MM-DD"
-EXPIRES="$(date -u -d "$until" +%s 2>/dev/null)" || die "--until $until is not a date"
+# BSD date (macOS) has no -d; probe for its -j -f form once, so GNU date keeps the form it always used.
+if date -j -f %Y-%m-%d 2000-01-01 +%s >/dev/null 2>&1; then
+    EXPIRES="$(date -u -j -f '%Y-%m-%d %H:%M:%S' "$until 00:00:00" +%s 2>/dev/null)" || die "--until $until is not a date"
+else
+    EXPIRES="$(date -u -d "$until" +%s 2>/dev/null)" || die "--until $until is not a date"
+fi
 now="$(date +%s)"
 [ "$EXPIRES" -gt "$now" ] && [ "$EXPIRES" -le $((now + 7 * 86400)) ] || die "--until must be after now and at most 7 days ahead"
 OP="$(jq -r '.allowFrom[0] // empty' "$ACCESS" 2>/dev/null)" && [[ "$OP" =~ ^[1-9][0-9]*$ ]] || die "no operator id (allowFrom[0]) in $ACCESS"
@@ -74,7 +80,14 @@ GRANTABLE=$(awk -F'\t' 'NR == FNR { r[$1] = 1; next } ($2 == "grant" || $2 == "d
 grantable=$(printf '%s\n' "$GRANTABLE" | grep -c .)
 strip=()
 while IFS= read -r n; do strip+=(-u "$n"); done < <({ printf '%s\n' "$REG_NAMES"; printf '%s\n' "$TIER_ROWS" | cut -f1; compgen -e | grep -E '_OK$|_BYPASS'; } | sort -u)
-W="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/himmel-chief/gen-briefs"
+# macOS has no /run/user (and a read-only /run): its default is the per-user TMPDIR.
+if [ "$(uname -s)" = Darwin ]; then run_dir_default="${TMPDIR:-/tmp}"; run_dir_default="${run_dir_default%/}"; else run_dir_default="/run/user/$(id -u)"; fi
+W="${XDG_RUNTIME_DIR:-$run_dir_default}/himmel-chief/gen-briefs"
+sha256_of() { { sha256sum "$1" 2>/dev/null || shasum -a 256 "$1" 2>/dev/null; } | cut -d" " -f1; }
+# setsid is util-linux; stock macOS has perl, whose POSIX::setsid does the same before exec.
+if command -v setsid >/dev/null 2>&1; then DETACH=(setsid nohup)
+elif command -v perl >/dev/null 2>&1; then DETACH=(perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' nohup)
+else DETACH=(nohup); fi
 
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" >>"$LOG"; }
 send() {
@@ -85,8 +98,37 @@ field() { sed -n "s/^$1=//p" "$2" | head -n 1; }
 refuse() { log "REFUSED $2 $1"; mv "$1" "$1.refused"; send "bypass-launchd refused $(basename "$1"): $2"; }
 live() { [ ! -e "$Q/stop" ] && [ "$(date +%s)" -lt "$EXPIRES" ]; }
 
-exec 9>"$Q/.lock"
-flock -n 9 || { echo "bypass-launchd: already running"; exit 1; } # prim-ok: the lock is held on fd 9 for the whole run; Linux-only
+LOCK="$Q/.lock.pid"
+lock_owner_alive() {
+    local args re='(^|[ /])bypass-launchd\.sh'
+    [ -n "$1" ] && kill -0 "$1" 2>/dev/null && args=$(ps -p "$1" -o args= 2>/dev/null) && [[ $args =~ $re ]]
+}
+take_lock() {
+    local seen cur rc=1 rl="$LOCK.reclaim"
+    ln -s "$$" "$LOCK" 2>/dev/null && return 0
+    seen=$(readlink "$LOCK" 2>/dev/null)
+    ! lock_owner_alive "$seen" || return 1
+    # Only the holder of the reclaim link may remove the stale lock, so a live lock is never moved aside. A
+    # reclaim link left by a starter that died is never removed here (that would be a second check-then-unlink):
+    # the operator removes it, and the start is refused with its path.
+    if ! ln -s "$$" "$rl" 2>/dev/null; then
+        lock_owner_alive "$(readlink "$rl" 2>/dev/null)" && return 1
+        echo "bypass-launchd: $rl was left by a starter that died; remove it and start again" >&2
+        return 2
+    fi
+    cur=$(readlink "$LOCK" 2>/dev/null)
+    if [ "$cur" = "$seen" ] || [ -z "$cur" ]; then
+        [ -z "$cur" ] || rm -f "$LOCK"
+        ln -s "$$" "$LOCK" 2>/dev/null && rc=0
+    fi
+    rm -f "$rl"
+    return $rc
+}
+release_lock() { [ "$(readlink "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"; }
+take_lock; lock_rc=$?
+[ "$lock_rc" -ne 2 ] || exit 2
+[ "$lock_rc" -eq 0 ] || { echo "bypass-launchd: already running"; exit 1; }
+trap release_lock EXIT
 log "start pid=$$ until=$until head=${HEAD_SHA:0:12} registry=$(gitd rev-parse "$HEAD_SHA:$REG_REL" | cut -c1-12) tiers=$(gitd rev-parse "$HEAD_SHA:$TIER_REL" | cut -c1-12) grantable=$grantable"
 
 while :; do
@@ -140,9 +182,9 @@ while :; do
         [ -n "$effort" ] && envs+=("WORKER_SESSION_EFFORT=$effort")
         [ -n "$api_account" ] && { envs+=("WORKER_SESSION_API_LANE=on" "WORKER_SESSION_API_ACCOUNT=$api_account"); billed+=" API LANE ON, account $api_account."; }
         code=$(LC_ALL=C tr -dc 'A-Z2-9' </dev/urandom | head -c 6)
-        off=$(stat -c %s "$INBOUND" 2>/dev/null || echo 0) # gnu-ok: Linux-only (setsid, /run/user, the Telegram bridge)
+        off=$(wc -c 2>/dev/null <"$INBOUND") || off=0; off=${off//[[:space:]]/}
         desc=$(sed -n 's/^description: *//p' "$brief" | head -n 1)
-        sha=$(sha256sum "$brief" | cut -d" " -f1); [ ${#sha} -eq 64 ] || { refuse "$req" "brief unreadable"; continue; }
+        sha=$(sha256_of "$brief"); [ ${#sha} -eq 64 ] || { refuse "$req" "brief unreadable"; continue; }
         mv "$req" "$req.pending"
         log "ASK $base model=$model chief=$chief flags=$flags effort=${effort:-default} decision=${decision:-none} sha=${sha:0:12}"
         send "Bypass worker launch asked by $chief: $base on $model, effort ${effort:-default}, grants $grant_text.$billed What it does: $desc (brief sha ${sha:0:12}). Reply: go $code to launch, or no $code to refuse. Expires in 6 h."
@@ -157,7 +199,7 @@ while :; do
         if [ "$verdict" != go ]; then
             log "$verdict $base"; mv "$req.pending" "$req.$verdict"; send "bypass launch $base: $verdict, nothing ran."; continue
         fi
-        if ! live || [ -L "$brief" ] || [ "$(sha256sum "$brief" 2>/dev/null | cut -d" " -f1)" != "$sha" ]; then
+        if ! live || [ -L "$brief" ] || [ "$(sha256_of "$brief")" != "$sha" ]; then
             log "REFUSED after go $base (stop, expiry, or brief changed since the ask)"; mv "$req.pending" "$req.refused"
             send "bypass launch $base: refused after your go, the brief changed or the queue stopped. Nothing ran."; continue
         fi
@@ -166,9 +208,9 @@ while :; do
         mkdir -p "$W"
         [ -f "$BUCKET/$chief.fleet.json" ] && bash "$KIT/fleet-manifest.sh" add "$BUCKET/$chief.fleet.json" "$brief" --lane native >>"$LOG" 2>&1
         env "${strip[@]}" -u WORKER_SESSION_EFFORT -u CLAUDE_CODE_EFFORT_LEVEL -u WORKER_SESSION_API_LANE -u WORKER_SESSION_API_ACCOUNT \
-            -u HEADED_ARM_LAUNCHER_ENV -u HEADED_ARM_LAUNCHER_ENV_LINES "${envs[@]}" setsid nohup bash "$LAUNCHER" \
+            -u HEADED_ARM_LAUNCHER_ENV -u HEADED_ARM_LAUNCHER_ENV_LINES "${envs[@]}" "${DETACH[@]}" bash "$LAUNCHER" \
             --profile worker-impl --chief "$chief" "$base" "$brief" "$W/sig-$base" "$EXPIRES" "$W/$base.log" "$model" \
-            >"$W/$base.launch.out" 2>&1 9>&- &
+            >"$W/$base.launch.out" 2>&1 &
         lp=$!; sleep "${BYPASSD_SETTLE:-12}"; touch "$W/sig-$base"
         if ! kill -0 "$lp" 2>/dev/null; then
             wait "$lp"; lrc=$?

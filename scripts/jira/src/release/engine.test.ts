@@ -7,8 +7,9 @@ import { fileURLToPath } from 'node:url';
 import {
   ack, apply, bucketCheck, operatorWords, poolCurrent, claim, coreBypass, declare, decisionWords, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, operatorFence, recordRequestDecision, request, requestWithWords, rule, state, takeover, withdraw,
   JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readMirrorFilesUnverified, readOperatorRecords, rmRun, rmRunSummary, pinnedSha, signSpec, specCheck, specReview, standing,
-  type Ctx, type JiraPort, type Judge,
+  type Ctx, type JiraPort, type Judge, type JudgeInput,
 } from './engine.js';
+import { judgeOperatorRows } from './judge-input.js';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { Command } from 'commander';
 
@@ -947,6 +948,25 @@ describe('rm-run: the on-demand release manager', () => {
     const s = state(ctx());
     expect(s.lease).toMatchObject({ epoch: 1, released: true });
     expect(s.requests).toEqual({ open: [], claimed: [], oldest_open: null });
+  });
+
+  it('rm-run hands the judge only the operator rows its batch can use', async () => {
+    declared();
+    ask('K-3');
+    await rmRun(ctx(), admitAll);
+    const wide = operatorDecision(ctx(), { decision: '900', keys: ['K-900'], op: 'add', from_v: null, to_v: 'v1', verbatim: 'x'.repeat(160_000) });
+    for (let n = 0; n < 30; n++) operatorDecision(ctx(), { decision: String(901 + n), keys: [`K-${901 + n}`], op: 'add', from_v: null, to_v: 'v1', verbatim: 'x' });
+    ask('K-2');
+    const lines = (f: string) => readFileSync(join(ctx().dir, f), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const receipted = (lines('rulings.jsonl') as RulingRow[]).filter((r) => r.phase === 'receipted');
+    expect(receipted.length).toBeGreaterThan(0);
+    let seen: JudgeInput | undefined;
+    await rmRun(ctx(), async (input) => { seen = input; return admitAll(input); });
+    const all = lines('operator.jsonl') as OperatorRow[];
+    const got = seen!.operator.map((o) => o.id);
+    expect(got).not.toContain(wide.id);
+    expect(got).toEqual(judgeOperatorRows('R1', all, seen!.requests, seen!.issues, receipted).map((o) => o.id));
+    expect(got.length).toBeGreaterThan(30);
   });
 
   it('refuses a concurrent batch by the lease and rules nothing in it', async () => {

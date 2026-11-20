@@ -71,20 +71,51 @@ function parseArgs(argv) {
 function absOf(vault, rel) {
   const root = path.resolve(vault);
   const abs = path.resolve(root, ...rel.split("/"));
-  if (!abs.startsWith(root + path.sep)) die(1, `path escapes the vault: ${rel}`);
-  return abs;
+  return abs.startsWith(root + path.sep) ? abs : null;
 }
+
+function lstatOf(abs) {
+  try { return { st: fs.lstatSync(abs) }; } catch (e) {
+    if (e.code === "ENOENT") return { st: null };
+    return { why: `the page cannot be inspected (${e.code}), nothing written` };
+  }
+}
+
+function blockerOf(abs) {
+  const { st, why } = lstatOf(abs);
+  if (why) return why;
+  if (!st || st.isFile()) return null;
+  const kind = st.isSymbolicLink() ? "symbolic link" : st.isDirectory() ? "directory" : "special file";
+  return `an existing ${kind} sits there, nothing written`;
+}
+
+const tmpNameOf = (abs) => path.join(path.dirname(abs), `.${path.basename(abs)}.apply-clip-actions.tmp`);
+
+function refusalFor(abs) {
+  const blocked = blockerOf(abs);
+  if (blocked) return blocked;
+  const tmp = tmpNameOf(abs);
+  if (fs.lstatSync(tmp, { throwIfNoEntry: false })) {
+    return `an existing file sits at the temporary name ${path.basename(tmp)}, nothing written`;
+  }
+  return null;
+}
+
+const refusal = (msg) => Object.assign(new Error(msg), { refusal: msg });
 
 function plan(vault, a, date) {
   if (a.kind === "fold") {
     const rel = `${a.target}.md`;
+    const abs = absOf(vault, rel);
+    const why = abs && refusalFor(abs);
+    if (why) return { refused: `${rel} — refused: ${why}` };
     let before;
-    try { before = fs.readFileSync(absOf(vault, rel), "utf8"); } catch { return { skip: `${rel} unreadable` }; }
+    try { before = fs.readFileSync(abs, "utf8"); } catch { return { skip: `${rel} unreadable` }; }
     const f = foldContent(before, a.clips);
     if (!f) return { skip: `${rel} already links these clips` };
     return {
       line: `fold ${f.fresh.length} clip(s) into ${a.target} [act:${a.id} since:${a.since}]`,
-      edits: [{ abs: absOf(vault, rel), next: f.next }],
+      edits: [{ abs, next: f.next }],
       entry: {
         action: "fold", id: a.id, since: a.since, map: rel,
         map_sha256_before: sha256(before), map_sha256: sha256(f.next),
@@ -97,11 +128,14 @@ function plan(vault, a, date) {
   let why = "nothing to stamp";
   for (const c of a.clips) {
     const rel = `${c.link}.md`;
+    const abs = absOf(vault, rel);
+    const bad = abs && refusalFor(abs);
+    if (bad) return { refused: `${rel} — refused: ${bad}` };
     let before;
-    try { before = fs.readFileSync(absOf(vault, rel), "utf8"); } catch { why = `${rel} unreadable`; continue; }
+    try { before = fs.readFileSync(abs, "utf8"); } catch { why = `${rel} unreadable`; continue; }
     const s = stampArchived(before, date);
     if (s.skip) { if (s.skip !== "already archived") why = `${rel}: ${s.skip}`; continue; }
-    edits.push({ abs: absOf(vault, rel), next: s.next });
+    edits.push({ abs, next: s.next });
     files.push({ rel, sha256_before: sha256(before), sha256: sha256(s.next) });
   }
   if (!edits.length) return { skip: why };
@@ -113,13 +147,18 @@ function plan(vault, a, date) {
 }
 
 function replaceFile(abs, content) {
-  const tmp = path.join(path.dirname(abs), `.${path.basename(abs)}.apply-clip-actions.tmp`);
+  const blocked = blockerOf(abs);
+  if (blocked) throw refusal(blocked);
+  const tmp = tmpNameOf(abs);
+  let made = false;
   try {
-    fs.writeFileSync(tmp, content);
+    fs.writeFileSync(tmp, content, { flag: "wx" });
+    made = true;
     fs.chmodSync(tmp, fs.statSync(abs).mode & 0o7777);
     fs.renameSync(tmp, abs);
   } catch (e) {
-    fs.rmSync(tmp, { force: true });
+    if (made || e.code !== "EEXIST") fs.rmSync(tmp, { force: true });
+    if (!made && e.code === "EEXIST") throw refusal(`an existing file sits at the temporary name ${path.basename(tmp)}, nothing written`);
     throw e;
   }
 }
@@ -144,13 +183,19 @@ function runApply(vault, date, limit, ledgerPath, dryRun) {
   }
 
   const done = { fold: 0, archive: 0 };
-  let failed = 0;
+  let failed = 0, refused = 0;
   for (const a of eligible) {
     if (done.fold + done.archive >= limit) break;
     const p = plan(vault, a, date);
     if (p.skip) { out(`⊘ ${a.kind} ${a.target} — ${p.skip}`); failed++; continue; }
+    if (p.refused) { out(`⊘ ${p.refused}`); refused++; continue; }
     if (dryRun) { out(`would ${p.line}`); done[a.kind]++; continue; }
-    recordThenWrite(p, ledgerPath);
+    try { recordThenWrite(p, ledgerPath); } catch (e) {
+      if (!e.refusal) throw e;
+      out(`⊘ ${a.kind} ${a.target} — refused: ${e.refusal}`);
+      refused++;
+      continue;
+    }
     out(`✓ ${p.line}`);
     done[a.kind]++;
   }
@@ -158,17 +203,41 @@ function runApply(vault, date, limit, ledgerPath, dryRun) {
   out(
     `${SELF}: ${n} ${dryRun ? "would-apply" : "applied"} (${done.fold} fold, ${done.archive} archive) of ` +
     `${eligible.length} eligible, limit ${limit}; skipped: ${skipped.never} never applied (evaluate/ticket), ` +
-    `${skipped.unmatched} unmatched, ${skipped.applied} already applied, ${failed} unappliable`,
+    `${skipped.unmatched} unmatched, ${skipped.applied} already applied, ${failed} unappliable` +
+    `${refused ? `, ${refused} refused` : ""}`,
   );
 }
 
 function runRevert(vault, revertPath) {
   if (!fs.existsSync(revertPath)) die(1, `ledger not found: ${revertPath}`);
-  const entries = fs.readFileSync(revertPath, "utf8").split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
-    try { return JSON.parse(l); } catch (e) { return die(1, `corrupt ledger line: ${e.message}`); }
-  }).filter((e) => e.action === "fold" || e.action === "archive");
+  const entries = [];
+  fs.readFileSync(revertPath, "utf8").split("\n").forEach((raw, n) => {
+    const l = raw.trim();
+    if (!l) return;
+    let e;
+    try { e = JSON.parse(l); } catch (x) { return die(1, `corrupt ledger line ${n + 1}: ${x.message}`); }
+    if (e.action !== "fold" && e.action !== "archive") return;
+    const str = (v) => typeof v === "string";
+    const ok = e.action === "fold"
+      ? str(e.map) && str(e.map_sha256_before) && str(e.map_sha256) && Number.isInteger(e.at) && e.at >= 0 && str(e.appended)
+      : Array.isArray(e.files) && e.files.every((f) => f && str(f.rel) && str(f.sha256_before) && str(f.sha256));
+    if (!ok) die(1, `malformed ledger line ${n + 1}: nothing was reverted`);
+    entries.push(e);
+  });
 
   let reverted = 0, already = 0, refused = 0, gone = 0;
+  const outside = new Set();
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const e = entries[i];
+    for (const rel of e.action === "fold" ? [e.map] : e.files.map((f) => f.rel)) {
+      const abs = absOf(vault, rel);
+      const why = abs ? lstatOf(abs).why : "the path leaves the vault, nothing written";
+      if (!why) continue;
+      out(`⊘ ${rel} — refused: ${why}`);
+      refused++;
+      outside.add(rel);
+    }
+  }
   const preApplyHashes = new Map();
   const notePreApply = (rel, i, h) => {
     if (!preApplyHashes.has(rel)) preApplyHashes.set(rel, []);
@@ -180,13 +249,16 @@ function runRevert(vault, revertPath) {
   });
   const rolledBackPast = (rel, i, h) => preApplyHashes.get(rel).some((x) => x.i <= i && x.h === h);
   const refusedPages = new Set();
-  const refuse = (rel, why) => {
-    out(`⊘ ${rel} — ${why}; refusing to revert`);
+  const refuse = (rel, why, tail = "; refusing to revert") => {
+    out(`⊘ ${rel} — ${why}${tail}`);
     refused++;
     refusedPages.add(rel);
   };
   const revertPage = (rel, i, shaBefore, shaAfter, restore, what) => {
+    if (outside.has(rel)) return;
     const abs = absOf(vault, rel);
+    const blocked = blockerOf(abs);
+    if (blocked) return refuse(rel, `refused: ${blocked}`, "");
     if (!fs.existsSync(abs)) { gone++; return; }
     if (refusedPages.has(rel)) return refuse(rel, `diverged: a newer apply on this page was refused`);
     const cur = fs.readFileSync(abs, "utf8");
@@ -199,7 +271,10 @@ function runRevert(vault, revertPath) {
     if (restored === null || sha256(restored) !== shaBefore) {
       return refuse(rel, `diverged since ${what} (cannot restore the recorded bytes)`);
     }
-    replaceFile(abs, restored);
+    try { replaceFile(abs, restored); } catch (e) {
+      if (!e.refusal) throw e;
+      return refuse(rel, `refused: ${e.refusal}`, "");
+    }
     out(`↩ ${rel} — ${what} reverted`);
     reverted++;
   };
@@ -216,7 +291,7 @@ function runRevert(vault, revertPath) {
       }
     }
   }
-  out(`${SELF}: ${reverted} reverted, ${already} already-reverted, ${refused} refused (diverged), ${gone} already-gone`);
+  out(`${SELF}: ${reverted} reverted, ${already} already-reverted, ${refused} refused, ${gone} already-gone`);
   if (refused) process.exitCode = 3;
 }
 

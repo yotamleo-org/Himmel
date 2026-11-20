@@ -263,6 +263,11 @@
       "sender": "scripts/luna/pipeline-cadence.sh"
     },
     {
+      "kind": "cadence:pipeline-synthesize-index-lock",
+      "class": "monitor",
+      "sender": "scripts/luna/pipeline-cadence.sh"
+    },
+    {
       "kind": "cadence:upstream-watch",
       "class": "monitor",
       "sender": "scripts/upstreams/upstream-watch-cadence.sh"
