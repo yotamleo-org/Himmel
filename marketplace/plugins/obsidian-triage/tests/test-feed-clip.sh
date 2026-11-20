@@ -379,7 +379,7 @@ assert "non-printable title: the printable characters are kept, the rest dropped
 nonprint="$(CLIPF="$npclip" node --input-type=module -e "
 import {readFileSync} from 'node:fs';
 const t = readFileSync(process.env.CLIPF, 'utf8');
-console.log(/[^\t\n\r\x20-\x7E\xA0-퟿-�\u{10000}-\u{10FFFF}]/u.test(t.slice(0, t.indexOf('\n---', 4))) ? 'unprintable' : 'printable');
+console.log(/[^\t\n\r\x20-\x7E\xA0-\u{D7FF}\u{E000}-\u{FFFD}\u{10000}-\u{10FFFF}]/u.test(t.slice(0, t.indexOf('\n---', 4))) ? 'unprintable' : 'printable');
 ")"
 assert "non-printable title: the front matter holds only YAML-printable characters" printable "$nonprint"
 if python3 -I -c 'import yaml' 2>/dev/null; then

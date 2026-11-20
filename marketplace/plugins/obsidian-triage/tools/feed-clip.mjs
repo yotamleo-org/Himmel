@@ -96,7 +96,7 @@ function resolveVault(arg) {
 function parseFeedList(text, file) {
   const feeds = [];
   const problems = [];
-  text.replace(/^﻿/, "").split(/\r?\n/).forEach((raw, i) => {
+  text.replace(/^\u{FEFF}/u, "").split(/\r?\n/).forEach((raw, i) => {
     const line = raw.replace(/(^|\s)#.*$/, "").trim();
     if (!line) return;
     const [url, ...label] = line.split(/\s+/);
@@ -277,7 +277,7 @@ function htmlToText(html) {
     .trim();
 }
 
-const stripControls = (s) => s.replace(/[^\t\n\r\x20-\x7E\xA0-퟿-�\u{10000}-\u{10FFFF}]/gu, "");
+const stripControls = (s) => s.replace(/[^\t\n\r\x20-\x7E\xA0-\u{D7FF}\u{E000}-\u{FFFD}\u{10000}-\u{10FFFF}]/gu, "");
 const oneLine = (s) => stripControls(s).replace(/\s+/g, " ").trim();
 
 function parseFeed(xml, feedUrl) {
