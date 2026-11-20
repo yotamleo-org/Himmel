@@ -459,6 +459,26 @@ describe('jira release rm-run', () => {
     expect(() => parseDecisions(JSON.stringify({ is_error: false, result: JSON.stringify([{ req: 'Q-R1-0001', outcome: 'HOLD', reason: '  ' }]) }))).toThrow(/field reason/);
   });
 
+  it("the prompt carries the whole input except each row's chain hashes", () => {
+    const H = 'a'.repeat(64), P = 'b'.repeat(64);
+    const full = {
+      release: 'R1', current: 'v1', versions: ['v1', 'v2'],
+      requests: [{ req: 'Q-R1-0001', verb: 'INTAKE', key: 'K-1', from_v: null, to_v: 'v1', why: 'found work', evidence: { prev: 'R-keep-me', mac: 'keep-me-too' }, from: 'console', ts: '2026-11-20T00:00:00Z', state: 'claimed:3', mac: H, prev: P }],
+      records: [{ key: 'K-1', version: 'v1', placement: 'out', ruling: null }],
+      operator: [{ id: 'O-R1-0001', kind: 'decision', decision: '7', keys: ['K-1'], op: 'add', from_v: null, to_v: 'v1', verbatim: 'the words', ts: '2026-11-19T00:00:00Z', mac: H, prev: P }],
+      rulings: [{ id: 'R-R1-0001', epoch: 2, req: 'Q-R1-0000', key: 'K-1', outcome: 'BACKLOG', reason: 'why', phase: 'receipted', ts: '2026-11-18T00:00:00Z', mac: H, prev: P }],
+      issues: [{ key: 'K-1', status: 'To Do', type: 'Task', priority: 'Medium', fixVersions: [], resolution: null, sector: 's', labels: ['a'] }],
+    } as unknown as JudgeInput;
+    const want = structuredClone(full) as unknown as Record<string, Array<Record<string, unknown>>>;
+    for (const k of ['requests', 'operator', 'rulings']) for (const row of want[k]) { delete row.mac; delete row.prev; }
+    const before = JSON.stringify(full);
+    const prompt = judgePrompt(full, 'skill');
+    expect(JSON.parse(prompt.slice(prompt.indexOf('\n## Input\n') + '\n## Input\n'.length))).toEqual(want);
+    expect(prompt).not.toContain(H);
+    expect(prompt).not.toContain(P);
+    expect(JSON.stringify(full)).toBe(before);
+  });
+
   it('tells the judge to answer HOLD, never a refused outcome or a null ground, when it cannot rule', () => {
     const input = { release: 'R1', current: 'v1', versions: ['v1'], requests: [], records: [], operator: [], rulings: [], issues: [] };
     expect(judgePrompt(input, 'skill')).toMatch(/"outcome":"HOLD"/);

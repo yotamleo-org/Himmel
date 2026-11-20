@@ -268,8 +268,15 @@ export function judgePrompt(input: JudgeInput, skill: string): string {
     skill,
     '',
     '## Input',
-    JSON.stringify(input),
+    JSON.stringify({ ...input, requests: input.requests.map(withoutChain), operator: input.operator.map(withoutChain), rulings: input.rulings.map(withoutChain) }),
   ].join('\n');
+}
+
+// A ledger row's own chain hashes sign the ledger; they are the judge's to ignore, so they are not sent. Only the
+// row's top level is touched: a nested property of that name (a request's evidence) is kept.
+function withoutChain<T extends object>(row: T): Omit<T, 'mac' | 'prev'> {
+  const { mac: _mac, prev: _prev, ...rest } = row as T & { mac?: unknown; prev?: unknown };
+  return rest;
 }
 
 const isStr = (v: unknown): v is string => typeof v === 'string';
