@@ -3178,6 +3178,8 @@ name `scripts/lib/session-name.sh` trusts as a chief. Two rules, each a deny
   instances). An absent, unreadable, malformed or symlinked file or key means the
   default. A null value counts as absent; any other non-string value denies.
   `block-himmel-config-writes.sh` refuses agent writes to that file.
+  `scripts/t3/provider-instances.sh` prints the ids to add for every launch
+  profile (`docs/internals/t3-provider-instances.md`).
 - **Titles.** A string under a key named `title` anywhere in `tool_input` whose
   trimmed value ends in `-chief` or `-console` (any case) denies. A title inside
   a `delegatedFrom` object names the calling thread and is not judged.
