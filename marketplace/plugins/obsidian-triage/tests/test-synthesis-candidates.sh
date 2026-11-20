@@ -156,6 +156,7 @@ printf -- '---\ntype: synthesis\nprocessed: true\ntags:\n  - context-windows\n--
     > "$V/Clippings/_synthesis/2026-09-09-stray-marker.md"
 printf -- '---\nprocessed: true\ntags:\n  - context-windows\n---\nbody\n' > "$V/Clippings/_deferred.md"
 printf -- '---\ntitle: broken\nprocessed: true\ntags:\n  - context-windows\n' > "$EV/broken.md"
+printf -- '---\ntitle: malformed\nprocessed: true\nthis line is no key and no list item\n---\nbody\n' > "$EV/malformed.md"
 
 run() { node "$TOOL" "$V" --today "$TODAY" "$@"; }
 
@@ -252,8 +253,10 @@ assert "a promotion target that climbs out of the vault is no folder" "ABSENT" "
 
 echo "Test 7: counted inputs"
 assert "unprocessed / _done / _synthesis / _deferred clips do not count" "5" "$(field concept-context-windows clipCount)"
-assert "unclosed-frontmatter clip is an input exclusion" "1" "$(top 'j.inputsExcluded.length')"
-assert "…named by path" "Clippings/_evidence/broken.md" "$(top 'j.inputsExcluded[0].path')"
+assert "an unclosed and a malformed frontmatter are the input exclusions" "2" "$(top 'j.inputsExcluded.length')"
+assert "…the unclosed one named by path" "Clippings/_evidence/broken.md" "$(top 'j.inputsExcluded[0].path')"
+assert "…the malformed one named by path" "Clippings/_evidence/malformed.md" "$(top 'j.inputsExcluded[1].path')"
+assert "…with the line that is not a key" "frontmatter parse error: line 4 is not a \"key: value\" entry" "$(top 'j.inputsExcluded[1].reason')"
 assert "groups below the lens threshold are not candidates" "ABSENT" "$(field tag-blog-roll-moc status)"
 
 echo "Test 8: line output carries the runbook log lines"
