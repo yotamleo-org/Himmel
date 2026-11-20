@@ -27,8 +27,10 @@
 # the shared cadence-alert.sh on a failed model run, an invalid note or an undelivered message.
 #
 # `arm` and `disarm` touch only the one exact tagged, uncommented crontab row. Exit codes of arm: 0 ok, 1 or 2
-# usage or environment, 3 already armed (no --force), 4 crontab or runner write failed, 5 more than one live
-# tagged row (crontab untouched), 77 test-run guard refusal.
+# usage or environment, 3 already armed (no --force), 4 crontab read or write, or runner write, failed, 5 more
+# than one live tagged row (crontab untouched), 77 test-run guard refusal. disarm: 0 ok or nothing armed, 4 crontab
+# read or write failed, 77 guard. status: 0, 1 when the crontab cannot be read. note-path: 0, 1 when no note folder resolves.
+# check: 0 valid note, 1 any problem (printed). finish: 0 message sent, 1 any failure (alerted); no other code.
 #
 # Seams (tests): CLIP_RELEVANCE_CRONTAB, _RUNNER_DIR, _NOTE_DIR, _SEND_CMD, _TODAY, _PREFLIGHT, _CLAUDE, _ROOT,
 # plus cadence-alert.sh's CADENCE_ALERT_*. Platform: cron (Linux/macOS). Windows development is parked.

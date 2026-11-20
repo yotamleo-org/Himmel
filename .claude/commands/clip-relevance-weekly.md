@@ -37,7 +37,7 @@ Steps:
      never rate `new` on a failed search.
 5. Write the note at that path in this shape:
 
-   ```
+   ```text
    # Clip relevance, week ending <YYYY-MM-DD>
 
    Window <from..to>. Clips read <n> (<k> thin). Failure digests <d>. Candidates <c>: <a> new, <b> already-done, <t> already-tracked.
