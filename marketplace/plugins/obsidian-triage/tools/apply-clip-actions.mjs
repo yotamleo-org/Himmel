@@ -157,7 +157,6 @@ function runApply(vault, date, limit, ledgerPath, dryRun) {
   );
 }
 
-// ── revert (divergence-guarded) ──────────────────────────────────────────────
 function runRevert(vault, revertPath) {
   if (!fs.existsSync(revertPath)) die(1, `ledger not found: ${revertPath}`);
   const entries = fs.readFileSync(revertPath, "utf8").split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
@@ -230,7 +229,6 @@ function takeLock(vault) {
   for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => process.exit(130));
 }
 
-// ── main ─────────────────────────────────────────────────────────────────────
 const a = parseArgs(process.argv.slice(2));
 if (!a.vault) die(1, "usage: apply-clip-actions.mjs --vault <path> [--date YYYY-MM-DD] [--limit N] [--dry-run|--apply|--revert <ledger>]");
 if (!fs.existsSync(a.vault) || !fs.statSync(a.vault).isDirectory()) die(1, `vault not found: ${a.vault}`);

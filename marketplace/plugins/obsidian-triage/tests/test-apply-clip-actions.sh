@@ -65,7 +65,6 @@ mkclip() { # name triaged_at tag extra-line
     } > "$f"
 }
 
-# ── pristine vault ───────────────────────────────────────────────────────────
 P="$tmp/pristine"
 mkdir -p "$P/Clippings/_evidence" "$P/60-Maps" "$P/50-Journal/Daily"
 
@@ -121,7 +120,6 @@ NOTE="$P/50-Journal/Daily/$D.md"
 echo "Test group 0: fixture sanity"
 assert "day note lists 12 open actions (5 today + 7 carried)" "12" "$(count '^- \[ \] ' "$NOTE")"
 
-# ── 1. dry run changes nothing ───────────────────────────────────────────────
 echo "Test group 1: dry run (default mode)"
 A="$tmp/A"; cp -R "$P" "$A"
 h0="$(tree_hash "$A")"
@@ -139,7 +137,6 @@ assert "default limit bounds a dry run to 5 lines" "5" "$(printf '%s\n' "$out" |
 out="$(node "$APPLY" --vault "$A" --date "$D" --limit 3 2>&1)"
 assert "--limit 3 bounds a dry run to 3 lines" "3" "$(printf '%s\n' "$out" | grep -c '^would ')"
 
-# ── 2. apply: bounded, ledgered, idempotent ──────────────────────────────────
 echo "Test group 2: apply --limit 5"
 out="$(node "$APPLY" --vault "$A" --date "$D" --apply --limit 5 2>&1)"; rc=$?
 L="$A/$LEDGER_NAME"
@@ -177,9 +174,7 @@ GA="$A/60-Maps/Gamma-MOC.md"
 assert "CRLF map stays CRLF on every line" "$(lines "$GA")" "$(grep -c $'\r' "$GA")"
 assert "gamma clip linked" "1" "$(grep -c 'gamma-1' "$GA")"
 
-# ── 4. the daily timeline stops listing applied actions ──────────────────────
 echo "Test group 4: daily timeline after an apply"
-# B = the vault after the FIRST 5 applied actions only.
 node "$TIMELINE" --vault "$tmp/B" --date "$D" >/dev/null 2>&1
 BN="$tmp/B/50-Journal/Daily/$D.md"
 leak=0
@@ -189,7 +184,6 @@ done
 assert "none of the 5 applied actions is listed" "0" "$leak"
 assert "the 7 unapplied actions are still listed" "7" "$(count '^- \[ \] ' "$BN")"
 assert "the Evaluate tool action is still listed" "1" "$(count 'Evaluate tool' "$BN")"
-# C = after all 10.
 cp -R "$A" "$tmp/C"
 node "$TIMELINE" --vault "$tmp/C" --date "$D" >/dev/null 2>&1
 CN="$tmp/C/50-Journal/Daily/$D.md"
@@ -198,7 +192,6 @@ assert "Evaluate tool action still listed" "1" "$(count 'Evaluate tool' "$CN")"
 assert "ticket action still listed" "1" "$(count 'File a ticket' "$CN")"
 assert "timeline re-run is byte-identical" "$(sha "$CN" | cut -d' ' -f1)" "$(node "$TIMELINE" --vault "$tmp/C" --date "$D" >/dev/null 2>&1; sha "$CN" | cut -d' ' -f1)"
 
-# ── 5. revert ────────────────────────────────────────────────────────────────
 echo "Test group 5: revert"
 out="$(node "$APPLY" --vault "$A" --date "$D" --revert "$L" 2>&1)"; rc=$?
 assert "revert exits 0" "0" "$rc"
@@ -225,10 +218,6 @@ assert "untouched map is restored" "" "$(diff "$P/60-Maps/Beta-MOC.md" "$A/60-Ma
 assert "untouched CRLF map is restored" "" "$(diff "$P/60-Maps/Gamma-MOC.md" "$A/60-Maps/Gamma-MOC.md")"
 assert "untouched clip is restored" "" "$(diff "$P/Clippings/_evidence/arch-1.md" "$A/Clippings/_evidence/arch-1.md")"
 
-# ── 6b. edge branches ────────────────────────────────────────────────────────
-# E: arch-1 already carries `archived: false` (not ours to overwrite), arch-3/4
-# are gone (their open actions can no longer be reproduced), and Beta's
-# ## Evidence heading is empty and ends the file with no newline.
 echo "Test group 6b: unappliable, unmatched, empty Evidence, --ledger, --dry-run, vanished page"
 E="$tmp/E"; cp -R "$P" "$E"
 P_SAVED="$P"; P="$E"; mkclip arch-1 "$D0" "" 'archived: false'; P="$P_SAVED"
@@ -262,8 +251,6 @@ LIB="$PLUGIN_DIR/tools/lib/clip-actions.mjs" node --input-type=module -e \
     'const { stampArchived } = await import(process.env.LIB); console.log(JSON.stringify(stampArchived("body only", "2026-06-28")))' > "$tmp/stamp.out" 2>&1
 assert "a clip with no frontmatter is skipped, not stamped" '{"skip":"no frontmatter"}' "$(cat "$tmp/stamp.out")"
 
-# ── 6c. two folds on one map, the run lock, section boundary ─────────────────
-# G: a second alpha clip on day D, so day D adds a second fold into Alpha-MOC.
 echo "Test group 6c: chained folds revert twice, run lock, # heading ends the section"
 G="$tmp/G"; cp -R "$P" "$G"
 P_SAVED="$P"; P="$G"; mkclip alpha-d "$D" alpha; P="$P_SAVED"
@@ -297,7 +284,6 @@ LIB="$PLUGIN_DIR/tools/lib/clip-actions.mjs" node --input-type=module -e \
 assert "a level-1 heading ends the Evidence section" \
     "$(printf '## Evidence\n\n- a\n- [[x|X]]\n\n# Next\n\ntext')" "$(cat "$tmp/fold.out")"
 
-# ── 7. argument validation ───────────────────────────────────────────────────
 echo "Test group 7: arguments"
 node "$APPLY" --vault "$A" --date "$D" --limit 0 >/dev/null 2>&1; assert "--limit 0 is refused" "1" "$?"
 node "$APPLY" --vault "$A" --date "$D" --limit abc >/dev/null 2>&1; assert "--limit abc is refused" "1" "$?"
