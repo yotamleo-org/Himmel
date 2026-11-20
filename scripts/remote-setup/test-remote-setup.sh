@@ -45,6 +45,7 @@ eq() { [ "$1" = "$2" ]; }
 has() { case "$1" in *"$2"*) return 0 ;; esac; return 1; }
 lacks() { case "$1" in *"$2"*) return 1 ;; esac; return 0; }
 starts() { case "$1" in "$2"*) return 0 ;; esac; return 1; }
+file_mode() { stat -c %a "$1" 2> /dev/null || stat -f %Lp "$1"; } # GNU, then BSD
 file_has() { grep -qF -- "$2" "$1" 2>/dev/null; }
 file_lacks() { ! grep -qF -- "$2" "$1" 2>/dev/null; }
 
@@ -186,6 +187,7 @@ run_sut() {
     RC=$?
     rm -f "$T/id_root"
     tr -d '\r' < "$T/out.raw" > "$T/out"
+    cat "$T/out" "$T/err" >> "$T/allout.log"
     LAST=$(last_line "$T/out")
     ERR=$(cat "$T/err")
     if [ "$contract" = 1 ]; then
@@ -251,7 +253,7 @@ case_usage_rows_every_subcommand() {
 }
 
 # Subcommands whose rows are live. A later task adds its subcommand here when it builds it.
-BUILT_SUBS="status"
+BUILT_SUBS="status bot"
 
 case_contract_rows_every_subcommand() {
     local sub row
@@ -284,6 +286,36 @@ contract_row() {
             run_sut --no-tty --without jq "$T/in" status
             check "status without jq ends in FIX" starts "$LAST" "FIX:"
             check "status without jq names jq" has "$LAST" "jq"
+            ;;
+        bot:success)
+            rm -rf "$HOME_FIX/.claude"
+            seed_store "$(mk_token 111)"
+            seed_access 777
+            all_green
+            set_getme 111 cand_bot
+            feed ""
+            run_sut "$T/in" bot
+            check "bot success ends in DONE" starts "$LAST" "DONE:"
+            ;;
+        bot:getme_failure)
+            printf '{"ok":false,"error_code":401,"description":"Unauthorized"}' > "$T/tg/getMe.json"
+            feed "$(mk_token 111)"
+            run_sut "$T/in" bot
+            check "bot with a revoked token ends in FIX" starts "$LAST" "FIX:"
+            set_getme 111 cand_bot
+            ;;
+        bot:network_failure)
+            echo 6 > "$T/tg/getMe.curl_exit"
+            feed "$(mk_token 111)"
+            run_sut "$T/in" bot
+            check "bot with no network ends in FIX" starts "$LAST" "FIX:"
+            rm -f "$T/tg/getMe.curl_exit"
+            ;;
+        bot:preflight_miss)
+            feed "$(mk_token 111)"
+            run_sut --without jq "$T/in" bot
+            check "bot without jq ends in FIX" starts "$LAST" "FIX:"
+            check "bot without jq names jq" has "$LAST" "jq"
             ;;
         *) SKIPN=$((SKIPN + 1)) ;;
     esac
@@ -493,11 +525,467 @@ case_status_reads_no_daemon_log_peers_json_or_mode() {
     check "a changed himmelctl answer changes the output" has "$(part_field 0 detail)" "A-DIFFERENT-ANSWER"
 }
 
+# ── cases: Task 5, remote-setup.sh bot (part 1) ─────────────────────────
+
+CHANNEL_DIR() { printf '%s' "$HOME_FIX/.claude/channels/telegram"; }
+STORE_FILE() { printf '%s' "$HOME_FIX/.claude/channels/telegram/.env"; }
+ACCESS_FILE() { printf '%s' "$HOME_FIX/.claude/channels/telegram/access.json"; }
+BOTS_FILE() { printf '%s' "$HOME_FIX/.himmel/remote-setup/bots.json"; }
+
+seed_store() { # seed_store <token>: a main token already in the bridge store
+    mkdir -p "$(CHANNEL_DIR)"
+    printf 'TELEGRAM_BOT_TOKEN=%s\n' "$1" > "$(STORE_FILE)"
+    chmod 600 "$(STORE_FILE)"
+}
+seed_access() { mkdir -p "$(CHANNEL_DIR)"; printf '{"allowFrom":["%s"]}\n' "$1" > "$(ACCESS_FILE)"; }
+seed_bots() { mkdir -p "$HOME_FIX/.himmel/remote-setup"; printf '%s' "$1" > "$(BOTS_FILE)"; }
+
+# What the bun shim answers for onboard.ts: the nonce line, then the offer for a private chat.
+set_onboard() { # set_onboard <from-id> [label]
+    {
+        printf '[onboard] send this exact text to the bot (DM or an allowed group) to onboard: onboard-abcd1234\n'
+        printf '[onboard] this only REPORTS chat/user ids; access.json is NOT written automatically.\n'
+        printf '[onboard] chat.id=%s chat.type=private from.id=%s label=%s\n' "$1" "$1" "${2:-Ann Example}"
+        printf '[onboard] done: copy the id(s) above into access.json yourself.\n'
+    } > "$T/onboard.out"
+}
+
+onboard_calls() { [ -f "$T/onboard.calls" ] && wc -l < "$T/onboard.calls" | tr -d ' ' || echo 0; }
+curl_methods() { sed -n 's#^url = ".*/bot[^/]*/\(.*\)"$#\1#p' "$T/curl.stdin" 2> /dev/null | sort | uniq -c | tr -s ' ' | tr '\n' ';'; }
+
+# The line the FIX asks a chief to run, executed verbatim in the fixture HOME.
+run_paste_line() {
+    local line=${LAST#*run the same command again: }
+    env HOME="$HOME_FIX" bash -c "$line"
+}
+
+# The secret half of a canary may appear only in the store, the stdin file the suite wrote, and
+# the stdin config the curl shim recorded (in real use that config goes down a pipe).
+assert_secret_only_in_store() { # assert_secret_only_in_store <token>
+    local secret=${1#*:} leaks f
+    leaks=""
+    while IFS= read -r f; do
+        case "$f" in
+            "$T/in" | "$T/curl.stdin" | "$(STORE_FILE)") ;;
+            *) leaks="$leaks $f" ;;
+        esac
+    done <<EOF
+$(grep -rlF -- "$secret" "$T" 2> /dev/null)
+EOF
+    check "the token appears nowhere but the store (found in:$leaks)" eq "$leaks" ""
+}
+
+case_bot_red_bridge_id_as_main_refuses() {
+    local tok
+    tok=$(mk_token 111)
+    seed_bots '{"bridge":{"id":"111","publishedAt":"2026-11-20T10:00:00Z"}}'
+    set_getme 111 cand_bot
+    feed "$tok"
+    snapshot_stores
+    run_sut "$T/in" bot
+    check "exit 3" eq "$RC" 3
+    check "says it is already the bridge bot" has "$LAST" "already your bridge bot"
+    check "no pairing" eq "$(onboard_calls)" 0
+    assert_stores_unchanged
+}
+
+case_bot_relay_id_as_main_refuses() {
+    printf 'TELEGRAM_BOT_TOKEN=%s\n' "$(mk_token 444)" > "$ROOT/.env"
+    set_getme 444 cand_bot
+    feed "$(mk_token 444)"
+    snapshot_stores
+    run_sut "$T/in" bot
+    check "exit 3" eq "$RC" 3
+    check "says it is already the relay bot" has "$LAST" "already your relay bot"
+    assert_stores_unchanged
+}
+
+case_bot_notice_id_as_main_refuses() {
+    seed_bots '{"notice":{"id":"555","username":"notice_bot"}}'
+    set_getme 555 cand_bot
+    feed "$(mk_token 555)"
+    snapshot_stores
+    run_sut "$T/in" bot
+    check "exit 3" eq "$RC" 3
+    check "says it is already the notice bot" has "$LAST" "already your notice bot"
+    assert_stores_unchanged
+    # an id a half-finished setup step reserved counts as taken too
+    seed_bots '{"notice":{"id":"555","username":"notice_bot","pending":true}}'
+    snapshot_stores
+    run_sut "$T/in" bot
+    check "a pending id is refused" eq "$RC" 3
+    assert_stores_unchanged
+}
+
+case_bot_different_id_without_replace_refuses() {
+    local old new
+    old=$(mk_token 111)
+    new=$(mk_token 222)
+    seed_store "$old"
+    set_getme 222 other_bot
+    feed "$new"
+    snapshot_stores
+    run_sut "$T/in" bot
+    check "exit 3" eq "$RC" 3
+    check "names --replace" has "$LAST" "--replace"
+    assert_stores_unchanged
+    # with --replace the different bot is accepted
+    feed "$new"
+    set_onboard 777
+    run_sut "$T/in" bot --replace
+    check "--replace stores the new bot" file_has "$(STORE_FILE)" "$new"
+    check "--replace no longer holds the old one" file_lacks "$(STORE_FILE)" "$old"
+}
+
+case_bot_same_bot_new_token_is_stored() {
+    local old new
+    old=$(mk_token 111)
+    new=$(mk_token 111)
+    seed_store "$old"
+    set_getme 111 cand_bot
+    set_onboard 777
+    feed "$new"
+    run_sut "$T/in" bot
+    check "a rotation does not need --replace" lacks "$LAST" "--replace"
+    check "the new token is stored" file_has "$(STORE_FILE)" "$new"
+    check "the old token is gone" file_lacks "$(STORE_FILE)" "$old"
+    check "the store is private" eq "$(file_mode "$(STORE_FILE)")" 600
+}
+
+case_bot_same_token_skips_store() {
+    local tok
+    tok=$(mk_token 111)
+    seed_store "$tok"
+    touch -t 200001010000 "$(STORE_FILE)"
+    touch "$T/ref"
+    set_getme 111 cand_bot
+    set_onboard 777
+    feed "$tok"
+    run_sut "$T/in" bot
+    check "the same token string is not written again" test "$T/ref" -nt "$(STORE_FILE)"
+    check "the token is still stored" file_has "$(STORE_FILE)" "$tok"
+}
+
+case_bot_post_write_distinct_tokens_failure_restores_previous() {
+    local old new
+    old=$(mk_token 111)
+    new=$(mk_token 111)
+    seed_store "$old"
+    set_item distinct-tokens degraded "the main bot and the bridge bot are the same bot"
+    set_getme 111 cand_bot
+    set_onboard 777
+    feed "$new"
+    snapshot_stores
+    run_sut "$T/in" bot
+    check "exit 3" eq "$RC" 3
+    check "the FIX says the previous token was restored" has "$LAST" "restored"
+    check "no pairing after the rollback" eq "$(onboard_calls)" 0
+    assert_stores_unchanged
+    # a fresh station: nothing to restore, so the new token must not stay
+    rm -rf "$HOME_FIX/.claude"
+    feed "$new"
+    run_sut "$T/in" bot
+    check "fresh: exit 3" eq "$RC" 3
+    check "fresh: the token was removed again" file_lacks "$(STORE_FILE)" "${new#*:}"
+}
+
+case_bot_run1_prints_paste_line_and_exits_3() {
+    local tok
+    tok=$(mk_token 111)
+    set_onboard 777
+    feed "$tok"
+    run_sut "$T/in" bot
+    check "exit 3" eq "$RC" 3
+    check "the FIX asks the chief to create the allowlist" starts "$LAST" "FIX: have your chief create the allowlist with this line, then run the same command again: printf "
+    check "the line holds the round-trip id" has "$LAST" '{"allowFrom":["777"]}'
+    check "access.json stays absent" test ! -e "$(ACCESS_FILE)"
+    check "the deep link was shown" file_has "$T/out" "https://t.me/cand_bot?start=onboard-abcd1234"
+    check "one pairing" eq "$(onboard_calls)" 1
+    check "the token is stored" file_has "$(STORE_FILE)" "$tok"
+    check "the pairing label is shown" file_has "$T/out" "Ann Example"
+}
+
+case_bot_run2_after_paste_reaches_done() {
+    local tok
+    tok=$(mk_token 111)
+    set_onboard 777
+    feed "$tok"
+    run_sut "$T/in" bot
+    check "run 1 is a FIX" eq "$RC" 3
+    run_paste_line
+    check "the printed line created access.json" file_has "$(ACCESS_FILE)" '"777"'
+    all_green
+    feed ""
+    run_sut "$T/in" bot
+    check "run 2 is DONE" eq "$RC" 0
+    check "the DONE line" eq "$LAST" "DONE: bot — @cand_bot (id 111) reachable, bridge running, survives reboot"
+    check "run 2 did not pair again" eq "$(onboard_calls)" 1
+    check "run 2 enabled the bridge" file_has "$T/himmelctl.calls" "bridge enable"
+}
+
+case_bot_existing_access_json_other_id_fixes_unchanged() {
+    seed_access 111
+    local before
+    before=$(cksum < "$(ACCESS_FILE)")
+    set_getme 222 cand_bot
+    set_onboard 777
+    feed "$(mk_token 222)"
+    run_sut "$T/in" bot
+    check "exit 3" eq "$RC" 3
+    check "says access.json lists another account" has "$LAST" "different Telegram account"
+    check "access.json is unchanged" eq "$(cksum < "$(ACCESS_FILE)")" "$before"
+    # the same id passes pairing: no paste line, straight on
+    set_onboard 111
+    all_green
+    feed "$(mk_token 222)"
+    run_sut "$T/in" bot
+    check "the same id reaches DONE" starts "$LAST" "DONE: bot"
+}
+
+case_bot_existing_access_json_bad_shape_fixes_before_the_prompt() {
+    mkdir -p "$(CHANNEL_DIR)"
+    printf '{"allowFrom":["1","2"]}\n' > "$(ACCESS_FILE)"
+    feed "$(mk_token 111)"
+    snapshot_stores
+    run_sut "$T/in" bot
+    check "exit 3" eq "$RC" 3
+    check "names access.json" has "$LAST" "access.json"
+    check "no Telegram call" test ! -s "$T/curl.argv"
+    assert_stores_unchanged
+}
+
+case_bot_rerun_without_token_never_pairs() {
+    local tok
+    tok=$(mk_token 111)
+    seed_store "$tok"
+    set_onboard 777
+    feed ""
+    run_sut "$T/in" bot
+    check "no token and no access.json: a FIX" eq "$RC" 3
+    check "it says to paste the token" has "$LAST" "paste"
+    check "zero onboard calls" eq "$(onboard_calls)" 0
+    check "no getUpdates in any recorded config" lacks "$(curl_methods)" "getUpdates"
+    # with access.json in place the same Enter-only run finishes without pairing
+    seed_access 777
+    all_green
+    feed ""
+    run_sut "$T/in" bot
+    check "access.json present: DONE" starts "$LAST" "DONE: bot"
+    check "still zero onboard calls" eq "$(onboard_calls)" 0
+    check "still no getUpdates" lacks "$(curl_methods)" "getUpdates"
+    # positive control: pasting the token does pair, exactly once
+    rm -f "$(ACCESS_FILE)"
+    feed "$tok"
+    run_sut "$T/in" bot
+    check "with the token pasted: exactly one onboard call" eq "$(onboard_calls)" 1
+}
+
+case_bot_canary_token_absent_everywhere() {
+    local tok
+    tok=$(mk_token 111)
+    # a failure path first: a revoked token
+    printf '{"ok":false,"error_code":401,"description":"Unauthorized"}' > "$T/tg/getMe.json"
+    feed "$tok"
+    run_sut "$T/in" bot
+    check "a revoked token is a FIX" eq "$RC" 3
+    # then the two-run path
+    set_getme 111 cand_bot
+    set_onboard 777
+    feed "$tok"
+    run_sut "$T/in" bot
+    check "run 1 is a FIX" eq "$RC" 3
+    run_paste_line
+    all_green
+    feed ""
+    run_sut "$T/in" bot
+    check "run 2 is DONE" eq "$RC" 0
+    check "the token is in the store" file_has "$(STORE_FILE)" "$tok"
+    assert_secret_only_in_store "$tok"
+    check "the canary is not in the curl argv" file_lacks "$T/curl.argv" "${tok#*:}"
+    check "the canary is not in any output of any run" file_lacks "$T/allout.log" "${tok#*:}"
+}
+
+case_bot_done_rerun_changes_no_config_artifact() {
+    local tok
+    tok=$(mk_token 111)
+    seed_store "$tok"
+    seed_access 777
+    all_green
+    set_getme 111 cand_bot
+    feed ""
+    run_sut "$T/in" bot
+    check "first run: DONE" eq "$RC" 0
+    snapshot_stores
+    feed ""
+    run_sut "$T/in" bot
+    check "second run: DONE" eq "$RC" 0
+    assert_stores_unchanged
+    # pasting the same token again changes no setting either
+    snapshot_stores
+    set_onboard 777
+    feed "$tok"
+    run_sut "$T/in" bot
+    check "same token pasted: DONE" eq "$RC" 0
+    assert_stores_unchanged
+}
+
+case_bot_inputs_are_only_the_g2_set() {
+    local tok body
+    tok=$(mk_token 111)
+    set_onboard 777
+    feed "$tok" "EXTRA-LINE-NOBODY-ASKED-FOR"
+    run_sut "$T/in" bot
+    check "exactly one prompt in the whole run" eq "$(grep -c 'Paste the bot token' "$T/out")" 1
+    # structural: the token prompt is the only place the part reads the keyboard
+    body=$(sed -n '/^cmd_bot()/,/^}/p' "$HERE/remote-setup.sh")
+    check "cmd_bot has a body to read" test -n "$body"
+    check "cmd_bot reads input only through rs_secret" eq "$(printf '%s\n' "$body" | grep -cE '(^|[[:space:];|&(])read -')" 0
+    check "cmd_bot calls rs_secret once" eq "$(printf '%s\n' "$body" | grep -c 'rs_secret ')" 1
+}
+
+case_bot_sigint_during_onboard_restarts_unit() {
+    : > "$T/units/telegram-bridge.service.active"
+    : > "$T/onboard.hang"
+    set_onboard 777
+    feed "$(mk_token 111)"
+    run_sut "$T/in" bot
+    check "exit 3" eq "$RC" 3
+    check "says it was interrupted" has "$LAST" "interrupted"
+    check "the unit is active again" test -f "$T/units/telegram-bridge.service.active"
+    local stop start
+    stop=$(grep -n 'systemctl --user stop telegram-bridge.service' "$T/units.log" | head -n 1 | cut -d: -f1)
+    start=$(grep -n 'systemctl --user start telegram-bridge.service' "$T/units.log" | tail -n 1 | cut -d: -f1)
+    check "it was stopped" test -n "$stop"
+    check "and started after the stop" test "${start:-0}" -gt "${stop:-0}"
+    check "the onboard process was recorded" test -s "$T/onboard.pid"
+    check "and it is gone" eq "$(kill -0 "$(cat "$T/onboard.pid")" 2> /dev/null && echo alive || echo gone)" gone
+}
+
+case_bot_mac_bootout_before_onboard() {
+    echo Darwin > "$T/uname"
+    : > "$T/units/com.himmel.telegram-bridge.loaded"
+    set_onboard 777
+    feed "$(mk_token 111)"
+    run_sut "$T/in" bot
+    local out boot ob
+    out=$(grep -n 'launchctl bootout' "$T/units.log" | head -n 1 | cut -d: -f1)
+    ob=$(grep -n '^onboard ' "$T/units.log" | head -n 1 | cut -d: -f1)
+    boot=$(grep -n 'launchctl bootstrap' "$T/units.log" | tail -n 1 | cut -d: -f1)
+    check "bootout was called" test -n "$out"
+    check "bootout comes before onboard" test "${out:-99}" -lt "${ob:-0}"
+    check "bootstrap comes after onboard" test "${boot:-0}" -gt "${ob:-99}"
+    check "the agent is loaded again" test -f "$T/units/com.himmel.telegram-bridge.loaded"
+    check "no systemctl on a Mac" lacks "$(cat "$T/units.log")" "systemctl"
+}
+
+case_token_with_trailing_space_is_trimmed() {
+    local tok
+    tok=$(mk_token 111)
+    set_onboard 777
+    feed "$(printf '  %s \r' "$tok")"
+    run_sut "$T/in" bot
+    check "it is not rejected as a bad token" lacks "$LAST" "not a bot token"
+    check "it paired" eq "$(onboard_calls)" 1
+    check "the trimmed token is what was stored" file_has "$(STORE_FILE)" "TELEGRAM_BOT_TOKEN=$tok"
+    check "and nothing else was stored with it" eq "$(grep -c 'TELEGRAM_BOT_TOKEN=' "$(STORE_FILE)")" 1
+    # a real mistake still gets a plain message, never an echo of what was typed
+    feed "this is not a token"
+    run_sut "$T/in" bot
+    check "a non-token is a FIX" starts "$LAST" "FIX:"
+    check "that says what to paste" has "$LAST" "not a bot token"
+    check "and does not echo it" lacks "$(cat "$T/out")" "this is not a token"
+}
+
+case_curl_exit_6_restarts_unit_and_fixes() {
+    local tok
+    tok=$(mk_token 111)
+    : > "$T/units/telegram-bridge.service.active"
+    echo 6 > "$T/tg/getMe.curl_exit"
+    feed "$tok"
+    run_sut "$T/in" bot
+    check "exit 3" eq "$RC" 3
+    check "says it cannot reach Telegram" has "$LAST" "can't reach api.telegram.org"
+    check "the unit is still active" test -f "$T/units/telegram-bridge.service.active"
+    check "nothing was stored" test ! -e "$(STORE_FILE)"
+    # onboarding that dies while the bridge is stopped: the bridge comes back
+    rm -f "$T/tg/getMe.curl_exit"
+    printf '[onboard] getUpdates failed: network down\n' > "$T/onboard.out"
+    echo 1 > "$T/onboard.rc"
+    feed "$tok"
+    run_sut "$T/in" bot
+    check "a failed onboarding is a FIX" eq "$RC" 3
+    check "the unit is active again" test -f "$T/units/telegram-bridge.service.active"
+    check "it was stopped and started" eq "$(grep -cE 'systemctl --user (stop|start) telegram-bridge.service' "$T/units.log")" 2
+}
+
+# The onboard.ts offer grammar: the real producer, then every way it can be malformed or forged.
+parse() { # parse <file>
+    run_drive --no-tty --no-contract "$T/in" drive_parse "$1"
+    PARSED=$(grep '^parse ' "$T/out")
+}
+
+case_onboard_parse_real_producer() {
+    local line
+    if [ ! -x "$REAL_BUN" ]; then SKIPN=$((SKIPN + 1)); return 0; fi
+    line=$("$REAL_BUN" -e 'import { formatOffer } from "'"$REPO"'/scripts/telegram/onboard.ts"; console.log(formatOffer({ chatId: 777, chatType: "private", fromId: 777, label: "Ann Example" }));')
+    check "the producer printed an offer line" starts "$line" "[onboard] chat.id=777"
+    printf '%s\n' "$line" > "$T/offer.txt"
+    parse "$T/offer.txt"
+    check "the helper parses the real line" eq "$PARSED" "parse rc=0 id=777 label=Ann Example err="
+}
+
+case_onboard_parse_rejects_malformed() {
+    local l
+    for l in \
+        '[onboard] chat.id=-100123 chat.type=group from.id=777 label=A group' \
+        '[onboard] chat.id=777 chat.type=private from.id=n/a label=Anon' \
+        '[onboard] chat.id=77a chat.type=private from.id=777 label=X' \
+        '[onboard] chat.id=0 chat.type=private from.id=0 label=X' \
+        '[onboard] chat.id=7777777777777777777 chat.type=private from.id=7777777777777777777 label=X'; do
+        printf '%s\n' "$l" > "$T/offer.txt"
+        parse "$T/offer.txt"
+        check "refused: $l" has "$PARSED" "rc=1"
+        check "no id taken from: $l" has "$PARSED" "id= "
+    done
+    : > "$T/offer.txt"
+    parse "$T/offer.txt"
+    check "no offer at all" has "$PARSED" "err=none"
+}
+
+case_onboard_parse_rejects_duplicate_or_forged_line() {
+    # a label that carries a newline and a forged second offer
+    printf '[onboard] chat.id=777 chat.type=private from.id=777 label=Mallory\n[onboard] chat.id=1 chat.type=private from.id=1 label=forged\n' > "$T/offer.txt"
+    parse "$T/offer.txt"
+    check "two matching lines are a FIX, never a choice" has "$PARSED" "rc=1"
+    check "it says many" has "$PARSED" "err=many"
+    check "and takes no id" has "$PARSED" "id= "
+    # a forged line that is itself malformed still makes the answer untrustworthy
+    printf '[onboard] chat.id=777 chat.type=private from.id=777 label=Mallory\n[onboard] chat.id=1 chat.type=group from.id=1 label=forged\n' > "$T/offer.txt"
+    parse "$T/offer.txt"
+    check "one valid plus a forged line is refused too" has "$PARSED" "rc=1"
+}
+
+case_onboard_parse_rejects_chat_from_mismatch() {
+    printf '[onboard] chat.id=777 chat.type=private from.id=778 label=Ann\n' > "$T/offer.txt"
+    parse "$T/offer.txt"
+    check "chat.id must equal from.id" has "$PARSED" "rc=1"
+    check "and takes no id" has "$PARSED" "id= "
+}
+
 CASES="guard_matrix_every_writer usage_exits_2 usage_rows_every_subcommand contract_rows_every_subcommand
 curl_argv_is_exact getme_401_gives_revoked_fix tg_429_waits_retry_after_once outside_checkout_gives_cd_fix
 status_skips_unshipped_parts status_na_counts_not_ok status_part_prereq_message status_runs_under_claudecode
 status_json_is_single_object_on_success status_json_on_item_failure status_json_never_appends_done_line
-status_reads_no_daemon_log_peers_json_or_mode"
+status_reads_no_daemon_log_peers_json_or_mode
+bot_red_bridge_id_as_main_refuses bot_relay_id_as_main_refuses bot_notice_id_as_main_refuses
+bot_different_id_without_replace_refuses bot_same_bot_new_token_is_stored bot_same_token_skips_store
+bot_post_write_distinct_tokens_failure_restores_previous bot_run1_prints_paste_line_and_exits_3
+bot_run2_after_paste_reaches_done bot_existing_access_json_other_id_fixes_unchanged
+bot_existing_access_json_bad_shape_fixes_before_the_prompt bot_rerun_without_token_never_pairs
+bot_canary_token_absent_everywhere bot_done_rerun_changes_no_config_artifact bot_inputs_are_only_the_g2_set
+bot_sigint_during_onboard_restarts_unit bot_mac_bootout_before_onboard token_with_trailing_space_is_trimmed
+curl_exit_6_restarts_unit_and_fixes onboard_parse_real_producer onboard_parse_rejects_malformed
+onboard_parse_rejects_duplicate_or_forged_line onboard_parse_rejects_chat_from_mismatch"
 
 # ── run ─────────────────────────────────────────────────────────────────
 

@@ -69,7 +69,102 @@ rs_later() {
 cmd_away() { rs_later "part 2 (away launches)"; }
 cmd_sudo() { rs_later "part 3 (sudo bot)"; }
 cmd_peer() { rs_later "part 4 (bot-to-bot)"; }
-cmd_bot() { rs_later "part 1 (main bot)"; }
+# ── part 1: the main bot ────────────────────────────────────────────────
+# In order: every check that needs no write, the token (hidden prompt, getMe, role check), the token
+# store (checkpoint 1), pairing (only in a run where the token was pasted), the access.json line
+# (printed, never written: only your chief writes the allowlist), the bridge, and the final read.
+# A re-run with no token pasted never pairs.
+cmd_bot() {
+    rs_preflight curl jq node bun
+    local access="$HOME/.claude/channels/telegram/access.json"
+    local access_id tok="" pasted=0 stored_tok stored_id="" prev_tok="" conflict crc err out rc detail lbl doc state
+
+    access_id=$(rs_access_id "$access") \
+        || rs_fix "$(rs_tilde "$access") must hold exactly one Telegram id, like {\"allowFrom\":[\"123456789\"]}, and it does not: it was left unchanged. Fix it or move it away, then run the same command again"
+    rs_step "checked the tools and access.json"
+
+    rs_secret tok "Paste the bot token from @BotFather (or press Enter to keep the one already stored):" \
+        || rs_fix "no token was entered: run the same command again and paste the token from @BotFather"
+    stored_tok=$(rs_stored_token)
+    if [ -n "$tok" ]; then
+        rs_token_shape_ok "$tok" \
+            || rs_fix "that is not a bot token: copy the whole token from @BotFather again, it looks like 123456789 then a colon then 35 letters and digits"
+        pasted=1
+    else
+        [ -n "$stored_tok" ] || rs_fix "no bot token is stored yet: run the same command again and paste the token from @BotFather"
+        tok=$stored_tok
+    fi
+    RS_TOKEN=$tok
+    tok=""
+    rs_getme
+    rs_step "the token works (@$RS_BOT_USER, bot id $RS_BOT_ID)"
+
+    if [ "$pasted" = 1 ]; then
+        conflict=$(rs_role_check "$RS_BOT_ID" main)
+        crc=$?
+        if [ "$crc" -eq 2 ]; then
+            rs_fix "the other bots' ids could not be checked: run the same command again, and if it repeats tell your chief"
+        elif [ "$crc" -eq 1 ]; then
+            rs_fix "this bot is already your ${conflict%%|*} bot: each role needs its own bot, so make a new one with @BotFather (send /newbot) for the main bot, then run the same command again"
+        fi
+        case "$stored_tok" in [0-9]*:*) stored_id=${stored_tok%%:*} ;; esac
+        if [ -n "$stored_id" ] && [ "$stored_id" != "$RS_BOT_ID" ] && [ "$OPT_REPLACE" != 1 ]; then
+            rs_fix "a different main bot is already set up (bot id $stored_id): to switch to @$RS_BOT_USER on purpose, run: bash scripts/remote-setup/remote-setup.sh bot --replace"
+        fi
+
+        if [ "$RS_TOKEN" = "$stored_tok" ]; then
+            rs_step "the token is already stored" skip
+        else
+            prev_tok=$stored_tok
+            err=$(printf '%s\n' "$RS_TOKEN" | rs_store_token 2>&1) \
+                || rs_fix "the token could not be saved (${err#store refused: }): fix that, then run the same command again"
+            out=$(node "$RS_ROOT/scripts/himmelctl/bin.js" status --items distinct-tokens --json 2> /dev/null)
+            state=$(printf '%s' "$out" | jq -r '[.items[]? | select(.id == "distinct-tokens")] | first | .severity // ""' 2> /dev/null)
+            case "$state" in
+                degraded | red)
+                    detail=$(rs_clean "$(printf '%s' "$out" | jq -r '[.items[] | select(.id == "distinct-tokens")] | first | .detail // ""' 2> /dev/null)")
+                    if [ -n "$prev_tok" ]; then
+                        printf '%s\n' "$prev_tok" | rs_store_token > /dev/null 2>&1
+                        rs_fix "the new token collides with another bot (${detail:0:160}), so the previous token was restored: make a new bot with @BotFather (send /newbot), then run the same command again"
+                    fi
+                    rs_store_remove > /dev/null 2>&1
+                    rs_fix "the new token collides with another bot (${detail:0:160}), so it was removed again: make a new bot with @BotFather (send /newbot), then run the same command again"
+                    ;;
+            esac
+            rs_step "the token is saved"
+        fi
+        prev_tok=""
+        stored_tok=""
+
+        rs_pair
+        lbl=$(printf '%s' "$RS_PAIR_LABEL" | LC_ALL=C tr -d '\000-\037\177')
+        rs_step "paired with ${lbl:0:40} (Telegram id $RS_PAIR_ID)"
+        if [ -z "$access_id" ]; then
+            rs_fix "have your chief create the allowlist with this line, then run the same command again: printf '{\"allowFrom\":[\"$RS_PAIR_ID\"]}\\n' > ~/.claude/channels/telegram/access.json"
+        elif [ "$access_id" != "$RS_PAIR_ID" ]; then
+            rs_fix "access.json already lists a different Telegram account than the one that pressed Start, and it was left unchanged: press Start from the account it lists, or have your chief fix access.json, then run the same command again"
+        fi
+    else
+        [ -n "$access_id" ] || rs_fix "this bot is not paired yet: run the same command again, paste the token, and press Start in Telegram when the link appears"
+        rs_step "pairing" skip
+    fi
+
+    out=$(node "$RS_ROOT/scripts/himmelctl/bin.js" bridge enable 2> /dev/null)
+    rc=$?
+    if [ "$rc" -ne 0 ] || [ "$(printf '%s' "$out" | jq -r '.ok // false' 2> /dev/null)" != true ]; then
+        detail=$(rs_clean "$(printf '%s' "$out" | jq -r '.detail // "no detail"' 2> /dev/null)")
+        rs_fix "the bridge could not be turned on (${detail:0:200}): fix that, then run the same command again"
+    fi
+    rs_step "the bridge is on and set to start again after a reboot"
+
+    doc=$("$BASH" "$RS_SELF_DIR/remote-setup.sh" status --json 2> /dev/null)
+    if [ "$(printf '%s' "$doc" | jq -r '.parts[0].state // "error"' 2> /dev/null)" != ok ]; then
+        detail=$(rs_clean "$(printf '%s' "$doc" | jq -r '.parts[0].detail // "no detail"' 2> /dev/null)")
+        rs_fix "the bridge is not healthy yet (${detail:0:200}): wait a minute, then run the same command again"
+    fi
+    rs_step "the status check passes"
+    rs_done "bot — @$RS_BOT_USER (id $RS_BOT_ID) reachable, bridge running, survives reboot"
+}
 
 # ── status: the one aggregator ──────────────────────────────────────────
 # Maps himmelctl status items to the four parts, their state and their next command. It computes no

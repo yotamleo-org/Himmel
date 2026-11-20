@@ -21,6 +21,7 @@ RS_N=0
 RS_FINISHED=0
 RS_TOKEN=""
 RS_CHILD_PID=""
+RS_TMP_FILES=""
 RS_UNITS_STOPPED=""
 RS_JSON_MODE=0
 
@@ -99,11 +100,14 @@ rs_on_exit() {
 }
 
 rs_cleanup_children() {
+    local f
     if [ -n "${RS_CHILD_PID:-}" ]; then
         kill "$RS_CHILD_PID" 2>/dev/null
         wait "$RS_CHILD_PID" 2>/dev/null
         RS_CHILD_PID=""
     fi
+    for f in $RS_TMP_FILES; do rm -f "$f"; done
+    RS_TMP_FILES=""
 }
 
 # ── guards (invariant I2) ───────────────────────────────────────────────
@@ -340,5 +344,159 @@ EOF
         launchctl bootstrap "gui/$uid" "$HOME/Library/LaunchAgents/$label.plist" >/dev/null 2>&1
     else
         systemctl --user start "$unit" >/dev/null 2>&1
+    fi
+}
+
+# ── the main bot: token store, role check, access.json, pairing ─────────
+
+# The token store is the bridge .env, written only through himmelctl's secret-store (a 0600 temp
+# file plus rename). A token reaches these functions on stdin and leaves them on stdout, never argv.
+
+# rs_stored_token: prints the stored main token, nothing when there is none.
+rs_stored_token() {
+    node -e '
+const fs = require("fs");
+const roles = require(process.argv[1]);
+const file = roles.mainEnvFile({ home: process.env.HOME, env: process.env });
+let raw = "";
+try { raw = fs.readFileSync(file, "utf8"); } catch (_e) { process.exit(0); }
+for (const line of raw.split(/\r?\n/)) {
+  const m = /^\s*(?:export\s+)?TELEGRAM_BOT_TOKEN\s*=\s*(.*?)\s*$/.exec(line);
+  if (m) { process.stdout.write(m[1]); break; }
+}
+' "$RS_ROOT/scripts/himmelctl/lib/bot-roles.js"
+}
+
+# rs_store_token: the token on stdin goes into the store. Prints "store refused: <rule>" on stderr
+# and returns 1 when the store says no. The rule never carries the value.
+rs_store_token() {
+    node -e '
+const fs = require("fs");
+const path = require("path");
+const cp = require("child_process");
+const root = process.argv[1];
+const store = require(root + "/scripts/himmelctl/lib/secret-store.js");
+const value = fs.readFileSync(0, "utf8").replace(/\r?\n$/, "");
+const gitCheckIgnore = (f) => cp.spawnSync("git", ["check-ignore", "-q", f], { cwd: path.dirname(f) }).status === 0;
+try {
+  store.write("TELEGRAM_BOT_TOKEN", value, { home: process.env.HOME, himmelRoot: root, projectRoot: root, env: process.env, gitCheckIgnore });
+} catch (e) {
+  process.stderr.write("store refused: " + (e && e.message ? e.message : "unknown") + "\n");
+  process.exit(1);
+}
+' "$RS_ROOT"
+}
+
+# rs_store_remove: drops the stored main token (the way back after a first token that must not stay).
+rs_store_remove() {
+    node -e '
+const path = require("path");
+const cp = require("child_process");
+const root = process.argv[1];
+const store = require(root + "/scripts/himmelctl/lib/secret-store.js");
+const gitCheckIgnore = (f) => cp.spawnSync("git", ["check-ignore", "-q", f], { cwd: path.dirname(f) }).status === 0;
+try {
+  store.remove("TELEGRAM_BOT_TOKEN", { home: process.env.HOME, himmelRoot: root, projectRoot: root, env: process.env, gitCheckIgnore });
+} catch (e) {
+  process.stderr.write("store refused: " + (e && e.message ? e.message : "unknown") + "\n");
+  process.exit(1);
+}
+' "$RS_ROOT"
+}
+
+# rs_role_check <candidate-bot-id> <role>: the one rule from bot-roles.js, given only the ids. Prints
+# "<other role>|<reason>" and returns 1 when the candidate is another role's bot; returns 2 when the
+# check itself could not run; returns 0 when the bot may take the role.
+rs_role_check() {
+    node -e '
+const roles = require(process.argv[1]);
+const ids = roles.readRoleIds({ home: process.env.HOME, repoRoot: process.argv[2], env: process.env });
+const c = roles.roleConflict(process.argv[3], process.argv[4], ids);
+if (c) { console.log(c.conflictsWith + "|" + c.reason); process.exit(1); }
+' "$RS_ROOT/scripts/himmelctl/lib/bot-roles.js" "$RS_ROOT" "$1" "$2"
+    local rc=$?
+    [ "$rc" -le 1 ] || return 2
+    return "$rc"
+}
+
+# rs_access_id <file>: prints the one allowed Telegram id; prints nothing when the file is absent.
+# Returns 1 when the file is not an allowFrom list of exactly one digit string.
+rs_access_id() {
+    [ -e "$1" ] || return 0
+    local id
+    id=$(jq -r 'if ((.allowFrom | type) == "array") and ((.allowFrom | length) == 1) and ((.allowFrom[0] | type) == "string") and (.allowFrom[0] | test("^[0-9]{1,16}$")) then .allowFrom[0] else "BAD" end' "$1" 2> /dev/null) || return 1
+    [ -n "$id" ] && [ "$id" != BAD ] || return 1
+    printf '%s' "$id"
+}
+
+# rs_parse_onboard <file>: reads what onboard.ts printed. The producer is the fixed template
+#   [onboard] chat.id=<int> chat.type=<word> from.id=<int|n/a> label=<free text>
+# and only the label is free text, so a label can never move the two ids in front of it. Accepts
+# exactly one offer line, a private chat (chat.id equals from.id), both ids plain digits. Sets
+# RS_PAIR_ID and RS_PAIR_LABEL and returns 0; otherwise returns 1 with RS_PARSE_ERR = none (no
+# offer), bad (an offer that is not a private chat with a real user) or many (more than one).
+rs_parse_onboard() {
+    local line n=0 seen=0 re
+    RS_PAIR_ID=""
+    RS_PAIR_LABEL=""
+    RS_PARSE_ERR=""
+    re='^\[onboard\] chat\.id=([1-9][0-9]{0,15}) chat\.type=private from\.id=([1-9][0-9]{0,15}) label=(.*)$'
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in "[onboard] chat.id="*) seen=$((seen + 1)) ;; esac
+        if [[ $line =~ $re ]] && [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]; then
+            n=$((n + 1))
+            if [ "$n" = 1 ]; then
+                RS_PAIR_ID=${BASH_REMATCH[2]}
+                RS_PAIR_LABEL=${BASH_REMATCH[3]}
+            fi
+        fi
+    done < "$1"
+    if [ "$n" = 1 ] && [ "$seen" = 1 ]; then return 0; fi
+    RS_PAIR_ID=""
+    RS_PAIR_LABEL=""
+    if [ "$seen" -eq 0 ]; then RS_PARSE_ERR=none; elif [ "$seen" -gt 1 ]; then RS_PARSE_ERR=many; else RS_PARSE_ERR=bad; fi
+    return 1
+}
+
+# rs_pair: the deep-link round trip that learns which Telegram account is the operator. Stops the
+# bridge (a second getUpdates consumer would fight it), runs onboard.ts, shows the link, waits for
+# the Start press and puts the bridge back. Sets RS_PAIR_ID and RS_PAIR_LABEL, or FIXes.
+rs_pair() {
+    local out nonce i=0 orc
+    out=$(mktemp "${TMPDIR:-/tmp}/remote-setup-onboard.XXXXXX") || rs_fix "could not make a temporary file: check that your temp folder is writable, then run the same command again"
+    RS_TMP_FILES="$RS_TMP_FILES $out"
+    rs_unit_stop telegram-bridge.service com.himmel.telegram-bridge "$RS_ROOT/scripts/telegram/restart-bridge.sh" \
+        || rs_fix "the bridge could not be stopped for pairing: stop it with bash scripts/telegram/restart-bridge.sh stop, then run the same command again"
+    bun scripts/telegram/onboard.ts > "$out" 2>&1 &
+    RS_CHILD_PID=$!
+    nonce=""
+    while [ "$i" -lt 100 ]; do
+        nonce=$(sed -n 's/^\[onboard\] send this exact text to the bot (DM or an allowed group) to onboard: \(onboard-[0-9a-f]\{8\}\)$/\1/p' "$out" | head -n 1)
+        [ -n "$nonce" ] && break
+        kill -0 "$RS_CHILD_PID" 2> /dev/null || break
+        sleep 0.2
+        i=$((i + 1))
+    done
+    if [ -z "$nonce" ]; then
+        if grep -q 'refusing to start' "$out" 2> /dev/null; then
+            rs_fix "the bridge is still running, so pairing cannot start: stop it with bash scripts/telegram/restart-bridge.sh stop, then run the same command again"
+        fi
+        rs_fix "pairing did not start: check your internet connection, then run the same command again"
+    fi
+    rs_say "  Open this link on your phone and press Start in Telegram:"
+    rs_say "    https://t.me/$RS_BOT_USER?start=$nonce"
+    wait "$RS_CHILD_PID"
+    orc=$?
+    RS_CHILD_PID=""
+    rs_unit_restore || rs_fix "the bridge did not start again ($RS_RESTORE_FAILED): start it by hand, then run the same command again"
+    if ! rs_parse_onboard "$out"; then
+        case "$RS_PARSE_ERR" in
+            many) rs_fix "pairing saw more than one reply: run the same command again and press Start once" ;;
+            bad) rs_fix "the reply did not come from a private chat with your bot: open the link on your phone, press Start in that private chat, then run the same command again" ;;
+            *)
+                [ "$orc" -eq 0 ] || rs_fix "pairing failed: check your internet connection, then run the same command again"
+                rs_fix "no Start press arrived in time: run the same command again and press Start right after the link appears"
+                ;;
+        esac
     fi
 }
