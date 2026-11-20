@@ -9,6 +9,7 @@
  *
  *   node synthesize-stubs.mjs <vault> [--dry-run]   (default: dry-run, writes nothing)
  *   node synthesize-stubs.mjs <vault> --apply        create stubs + stamp + ledger
+ *   node synthesize-stubs.mjs <vault> --apply --limit N   write at most N pages this run
  *   node synthesize-stubs.mjs <vault> --revert <ledger.jsonl>   divergence-guarded undo
  *
  * Reversibility (handover HARD GUARDRAIL #1): every created page is recorded in
@@ -16,6 +17,11 @@
  * clears the `promoted_to:` it stamped ONLY when the page is byte-identical to
  * generation. A page the operator has touched (hash diverged) is REFUSED —
  * "delete to undo" is forbidden once a stub is hand-edited/densified.
+ *
+ * --limit N (a positive integer) bounds the pages one run creates or densifies:
+ * Obsidian hangs on bulk file churn. The rest stay for later runs and are
+ * reported as pending; a page that already cites its clips costs no slot.
+ * Singular and plural tag forms are one subject (lib/stub-synthesis.mjs).
  *
  * Dependency-light: pure node + ./lib/{frontmatter,stub-synthesis,url-canonical,evidence-kind}.mjs.
  */
@@ -27,7 +33,7 @@ import { canonicalize } from "./lib/url-canonical.mjs";
 import {
   parse, fmScalar, fmList, hasKey, insertScalar, removeScalar, sha256, stripCR,
 } from "./lib/frontmatter.mjs";
-import { planStubs, normalizeName } from "./lib/stub-synthesis.mjs";
+import { planStubs, subjectKey } from "./lib/stub-synthesis.mjs";
 import { repoSlugFromCanonical, claimTailSkippedRow } from "./lib/deferred-reconcile.mjs";
 import { buildPromotionDigest } from "./lib/telegram-digest.mjs";
 
@@ -38,7 +44,7 @@ function die(code, msg) { err(`${SELF}: ${msg}`); process.exit(code); }
 
 // ── args ─────────────────────────────────────────────────────────────────────
 function parseArgs(argv) {
-  const a = { mode: "dry-run", vault: null, ledger: null, revertPath: null, telegramDigest: true };
+  const a = { mode: "dry-run", vault: null, ledger: null, revertPath: null, telegramDigest: true, limit: 0 };
   const rest = [];
   for (let i = 0; i < argv.length; i++) {
     const t = argv[i];
@@ -47,6 +53,11 @@ function parseArgs(argv) {
     else if (t === "--revert") { a.mode = "revert"; a.revertPath = argv[++i]; }
     else if (t === "--ledger") a.ledger = argv[++i];
     else if (t === "--no-telegram-digest") a.telegramDigest = false;
+    else if (t === "--limit") {
+      const v = argv[++i];
+      if (!/^[1-9]\d*$/.test(v || "")) die(1, `--limit needs a positive integer, got: ${v}`);
+      a.limit = Number(v);
+    }
     else rest.push(t);
   }
   if (rest.length) a.vault = rest[0];
@@ -113,11 +124,11 @@ function buildSubjectIndex(vault) {
       let base = ent.name.replace(/\.md$/, "");
       // 60-Maps MOC pages: drop the -MOC suffix so "Context-Windows-MOC" -> "Context Windows".
       if (folder === "60-Maps") base = base.replace(/-?MOC$/i, "");
-      const keys = new Set([normalizeName(base)]);
+      const keys = new Set([subjectKey(base)]);
       const content = fs.readFileSync(path.join(dir, ent.name), "utf8");
       const { lines, bounds } = parse(content);
       if (bounds) {
-        for (const a of fmList(lines, bounds.close, "aliases")) keys.add(normalizeName(a));
+        for (const a of fmList(lines, bounds.close, "aliases")) keys.add(subjectKey(a));
       }
       for (const k of keys) {
         if (k && !byKey.has(k)) byKey.set(k, { path: rel });
@@ -129,7 +140,7 @@ function buildSubjectIndex(vault) {
 
 function fuzzyMatcher(vault) {
   const index = buildSubjectIndex(vault);
-  return (subjectName /*, target */) => index.get(normalizeName(subjectName)) || null;
+  return (subjectName /*, target */) => index.get(subjectKey(subjectName)) || null;
 }
 
 // ── stub page rendering ──────────────────────────────────────────────────────
@@ -211,13 +222,22 @@ function densifyContent(content, contributors) {
   return { newContent, appended, fresh };
 }
 
+function kindOfNonRegularFile(abs) {
+  let st;
+  try { st = fs.lstatSync(abs); } catch (e) { if (e.code === "ENOENT") return null; throw e; }
+  if (st.isFile()) return null;
+  if (st.isSymbolicLink()) return "symbolic link";
+  return st.isDirectory() ? "directory" : "special file";
+}
+
 // ── apply ────────────────────────────────────────────────────────────────────
-function runApply(vault, ledgerPath, dryRun) {
+function runApply(vault, ledgerPath, dryRun, limit) {
   const clips = scanEvidence(vault);
   const byRel = new Map(clips.map((c) => [c.rel, c]));
   const decisions = planStubs(clips, fuzzyMatcher(vault));
 
-  let created = 0, densified = 0, skipped = 0;
+  let created = 0, densified = 0, skipped = 0, unchanged = 0, pending = 0, refused = 0;
+  const full = () => limit > 0 && created + densified >= limit;
   // { subject, clipAbs } per contributor NEWLY stamped this run — fed to
   // the telegram promotion digest (filtered to telegram-origin clips in main()).
   const promotions = [];
@@ -234,7 +254,8 @@ function runApply(vault, ledgerPath, dryRun) {
       const subjectAbs = path.join(vault, subjectRel.split("/").join(path.sep));
       const before = fs.readFileSync(subjectAbs, "utf8");
       const plan = densifyContent(before, contributors);
-      if (!plan) { out(`≈ ${subjectRel} — already cites these clips, nothing to densify`); densified++; continue; }
+      if (!plan) { out(`≈ ${subjectRel} — already cites these clips, nothing to densify`); unchanged++; continue; }
+      if (full()) { pending++; continue; }
 
       if (dryRun) {
         out(`≈ would densify ${subjectRel} — +${plan.fresh.length} evidence, concept '${d.conceptKey}'`);
@@ -281,6 +302,9 @@ function runApply(vault, ledgerPath, dryRun) {
     const subjectRel = `${d.target.folder}/${d.subjectName}.md`;
     const subjectAbs = path.join(vault, d.target.folder, `${d.subjectName}.md`);
     const content = renderStub(d.subjectName, d.target, contributors);
+    const blocker = kindOfNonRegularFile(subjectAbs);
+    if (blocker) { out(`⊘ ${subjectRel} — refused: an existing ${blocker} sits there, nothing written`); refused++; continue; }
+    if (full()) { pending++; continue; }
 
     if (dryRun) {
       out(`✓ would create ${subjectRel} — ${contributors.length} contributors, concept '${d.conceptKey}'`);
@@ -289,7 +313,14 @@ function runApply(vault, ledgerPath, dryRun) {
     }
 
     fs.mkdirSync(path.dirname(subjectAbs), { recursive: true });
-    fs.writeFileSync(subjectAbs, content);
+    try {
+      fs.writeFileSync(subjectAbs, content, { flag: "wx" });
+    } catch (e) {
+      if (e.code !== "EEXIST") throw e;
+      out(`⊘ ${subjectRel} — refused: a file already sits there, nothing overwritten`);
+      refused++;
+      continue;
+    }
 
     // Stamp promoted_to on each contributor (skip if already stamped).
     const stamped = [];
@@ -328,7 +359,8 @@ function runApply(vault, ledgerPath, dryRun) {
     }
   }
 
-  out(`${SELF}: ${created} ${dryRun ? "would-create" : "created"}, ${densified} ${dryRun ? "would-densify" : "densified"}, ${skipped} skipped`);
+  out(`${SELF}: ${created} ${dryRun ? "would-create" : "created"}, ${densified} ${dryRun ? "would-densify" : "densified"}, ${skipped} skipped` +
+    `${unchanged ? `, ${unchanged} unchanged` : ""}${refused ? `, ${refused} refused (path taken)` : ""}${limit > 0 ? `, ${pending} pending (limit ${limit})` : ""}`);
   return promotions;
 }
 
@@ -475,7 +507,7 @@ if (a.mode === "revert") {
     process.exit(0);
   }
   const dryRun = a.mode === "dry-run";
-  const promotions = runApply(a.vault, ledgerPathFor(a.vault, a.ledger), dryRun);
+  const promotions = runApply(a.vault, ledgerPathFor(a.vault, a.ledger), dryRun, a.limit);
   // Only a live --apply produces promotion feedback (a --dry-run stamps
   // nothing). Suppress with --no-telegram-digest during migration backfill.
   if (!dryRun) emitTelegramDigest(a.vault, promotions, !a.telegramDigest);
