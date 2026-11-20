@@ -2,6 +2,7 @@
 # Test shim for systemctl. Unit state lives in $RST/units/<unit>.active|.enabled, every call
 # is logged to $RST/units.log. A unit with $RST/units/<unit>.startfail refuses to start.
 # enable/disable/restart/daemon-reload are understood; disable also stops the unit.
+# A unit with $RST/units/<unit>.stopfail refuses to stop or disable.
 RST=${RST:?RST must point at the test dir}
 printf 'systemctl %s\n' "$*" >> "$RST/units.log"
 mkdir -p "$RST/units"
@@ -21,6 +22,7 @@ case "$verb" in
         exit 1
         ;;
     stop)
+        [ -f "$RST/units/$unit.stopfail" ] && exit 1
         rm -f "$RST/units/$unit.active"
         exit 0
         ;;
@@ -34,6 +36,7 @@ case "$verb" in
         exit 0
         ;;
     disable)
+        [ -f "$RST/units/$unit.stopfail" ] && exit 1
         rm -f "$RST/units/$unit.enabled" "$RST/units/$unit.active"
         exit 0
         ;;

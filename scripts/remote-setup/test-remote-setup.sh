@@ -1751,6 +1751,41 @@ case_peer_remove_with_nothing_set_up_is_done() {
     check "setup.ts was not run" eq "$(setup_calls)" ""
 }
 
+case_peer_wait_pages_when_the_group_is_busy() {
+    # a fresh side that waits for the other hello keeps acknowledging: 100 messages of chatter arrive
+    # while it waits, and the hello behind them is still found
+    seed_main
+    set_getme "$OUR" bridge_bot
+    set_group
+    all_green
+    set_updates getUpdates.1.json "$(upd_hello 1 "$CHAT" "$FAR")"
+    printf '{"ok":true,"result":%s}' "$(noise_updates 2 101)" > "$T/tg/getUpdates.2.json"
+    set_updates getUpdates.3.json "$(upd_peer_hello 102 "$CHAT" "$THEIR" goomal_bot)"
+    feed "$(mk_token "$OUR")"
+    run_sut "$T/in" peer
+    check "the hello behind the chatter is found" eq "$RC" 0
+    check "the wait acknowledged the full batch before asking again" file_has "$T/curl.stdin" '\"offset\":102'
+}
+
+case_peer_remove_teardown_failure_is_a_fix() {
+    seed_confirmed_station
+    : > "$T/units/$UNIT_NAME.stopfail"
+    feed yes
+    run_sut "$T/in" peer --remove
+    check "a poller that will not stop is a FIX, never DONE" eq "$RC" 3
+    check "the FIX says the poller could not be stopped" has "$LAST" "could not be stopped"
+    check "the unit file is kept while the poller still runs" test -f "$(UNIT_FILE)"
+    check "the peer itself is already removed" eq "$(jq -r '.peers | has("goomal")' "$(PEERS_FILE)")" false
+    # the next run finishes the job
+    rm -f "$T/units/$UNIT_NAME.stopfail"
+    feed ""
+    run_sut "$T/in" peer --remove
+    check "the re-run reaches DONE" eq "$RC" 0
+    check "and cleans up the leftover poller" has "$LAST" "leftover poller"
+    check "the unit file is gone" test ! -e "$(UNIT_FILE)"
+    check "and the poller stopped" test ! -e "$T/units/$UNIT_NAME.active"
+}
+
 case_peer_mac_bootout_then_bootstrap_order() {
     echo Darwin > "$T/uname"
     seed_confirmed_station mac
@@ -1879,7 +1914,7 @@ peer_repoint_runs_remove_then_add_confirm peer_pending_publication_survives_inte
 peer_allowfrom_written_by_setup_ts_only_digit_strings peer_canary_token_absent_everywhere
 peer_sigint_during_discovery_restarts_poller renamed_peer_bot_keeps_name
 peer_done_rerun_changes_no_config_artifact peer_inputs_are_only_the_g2_set
-peer_remove_deletes_checkpoint_and_status_na peer_remove_interrupted_resumes peer_remove_with_nothing_set_up_is_done
+peer_remove_deletes_checkpoint_and_status_na peer_remove_interrupted_resumes peer_remove_with_nothing_set_up_is_done peer_remove_teardown_failure_is_a_fix peer_wait_pages_when_the_group_is_busy
 peer_mac_bootout_then_bootstrap_order peer_without_part1_fixes peer_bridge_equals_main_refuses
 peer_different_bridge_id_without_replace_refuses peer_hello_timeout_fixes peer_hostile_username_refused
 peer_name_second_collision_gets_3 peer_name_32_char_base_with_suffix_fits"

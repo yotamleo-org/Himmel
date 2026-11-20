@@ -376,18 +376,23 @@ peer_backlog_fix() {
     rs_fix "too many queued messages: let the bridge catch up for a minute, then ask the other operator to run the same command once more, then run it here again"
 }
 
-# peer_read_all <1|0>: the first read. 1 (a side with no poller to protect) pages through the backlog and
-# acknowledges as it goes; 0 reads once and never acknowledges, so the poller's own messages are not lost.
-peer_read_all() {
+# peer_page_on: while a full batch comes back, asks for the next one, which acknowledges the one before.
+peer_page_on() {
     local pages=0
-    PEER_PAGE=$1
-    peer_fetch "" 0
-    [ "$PEER_PAGE" = 1 ] || return 0
     while [ "$PEER_LAST_COUNT" -ge 100 ] && [ "$pages" -lt 50 ]; do
         pages=$((pages + 1))
         peer_fetch "$((PEER_LAST_ID + 1))" 0
     done
     [ "$PEER_LAST_COUNT" -lt 100 ] || peer_backlog_fix
+}
+
+# peer_read_all <1|0>: the first read. 1 (a side with no poller to protect) pages through the backlog and
+# acknowledges as it goes; 0 reads once and never acknowledges, so the poller's own messages are not lost.
+peer_read_all() {
+    PEER_PAGE=$1
+    peer_fetch "" 0
+    [ "$PEER_PAGE" = 1 ] || return 0
+    peer_page_on
 }
 
 # peer_chat_candidates: the groups this bridge bot is in: those its own membership updates name, else those
@@ -413,6 +418,7 @@ peer_wait() {
         i=$((i + 1))
         sleep 1
         peer_fetch "" 8
+        if [ "$PEER_PAGE" = 1 ]; then peer_page_on; fi
         if [ "$what" = chat ]; then
             peer_chat_candidates
             [ -n "$PEER_CANDS" ] && return 0
@@ -663,18 +669,28 @@ peer_log_hint() {
     if [ "$(uname)" = Darwin ]; then printf 'tail -n 30 ~/.himmel/peer-bridge/poller.log'; else printf 'journalctl --user -u %s -n 30' "$PEER_UNIT"; fi
 }
 
-# peer_unit_teardown: stops, disables and deletes the poller unit (the way back for peer --remove).
+# peer_unit_teardown: stops, disables and deletes the poller unit (the way back for peer --remove). The unit
+# file stays while the poller still runs, and the return is 1 then, so nothing reports a stop that did not happen.
 peer_unit_teardown() {
     local f
     f=$(peer_unit_file)
     if [ "$(uname)" = Darwin ]; then
         launchctl bootout "gui/$(id -u)/$PEER_LABEL" > /dev/null 2>&1
+        if peer_unit_active; then return 1; fi
         rm -f "$f"
     else
         systemctl --user disable --now "$PEER_UNIT" > /dev/null 2>&1
+        if peer_unit_active; then return 1; fi
         rm -f "$f"
         systemctl --user daemon-reload > /dev/null 2>&1
     fi
+    return 0
+}
+
+peer_teardown_fix() {
+    local how="systemctl --user disable --now $PEER_UNIT"
+    if [ "$(uname)" = Darwin ]; then how="launchctl bootout gui/$(id -u)/$PEER_LABEL"; fi
+    rs_fix "the peer poller could not be stopped (a peer that was removed stays removed, so the same command finishes the job): stop it yourself with $how, then run the same command again"
 }
 
 peer_finish() {
@@ -700,7 +716,10 @@ peer_remove() {
         names=$(printf '%s\n%s\n' "$names" "$listed" | grep . | sort -u)
     fi
     if [ -z "$names" ]; then
-        if [ -z "$(peer_peers_all)" ] && [ -f "$(peer_unit_file)" ]; then peer_unit_teardown; fi
+        if [ -z "$(peer_peers_all)" ] && [ -f "$(peer_unit_file)" ]; then
+            peer_unit_teardown || peer_teardown_fix
+            rs_done "peer — nothing to remove; the leftover poller was stopped and its unit deleted"
+        fi
         rs_done "peer — nothing to remove"
     fi
     lines=$(printf '%s\n' "$names" | awk '{print $0 "|" $0}')
@@ -721,7 +740,7 @@ $name
     peer_checkpoint_drop "$name"
     rs_step "the record of set-up peers no longer lists $name"
     if [ -z "$(peer_peers_all)" ]; then
-        peer_unit_teardown
+        peer_unit_teardown || peer_teardown_fix
         rs_done "peer — removed $name; the poller is stopped and its unit deleted"
     fi
     if peer_unit_active; then
