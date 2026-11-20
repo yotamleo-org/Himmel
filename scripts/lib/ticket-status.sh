@@ -321,13 +321,14 @@ ts_record_write() {
 }
 
 # ts_marker_newest <doc> — the newest Results marker in a worker doc (an empty line for a doc with none, rc 0);
-# rc 1 and nothing printed when the doc cannot be read (missing, unreadable, a directory, or a read that fails),
-# which is not the same as having no marker.
+# rc 1 and nothing printed when the doc cannot be read (missing, unreadable, not a regular file, holding a NUL byte,
+# or a read that fails), which is not the same as having no marker.
 ts_marker_newest() {
     local line newest="" bullets rc
     local succession_re='^- [0-9]{1,2}:[0-9]{2} SUCCESSION([^A-Za-z0-9-]|$)'
-    [ -r "$1" ] && [ ! -d "$1" ] || return 1
-    bullets=$(grep '^-' 2>/dev/null < "$1") && rc=0 || rc=$? # read-sink-ok: $1 is a worker handover doc path (the worker record, --doc, or status-drift's <key>-N*.md scan under --docs-dir or the handover root), bullet lines only, only a marker word comes out
+    [ -f "$1" ] && [ -r "$1" ] || return 1
+    [ "$(tr -d '\000' < "$1" | wc -c)" -eq "$(wc -c < "$1")" ] 2>/dev/null || return 1 # read-sink-ok: $1 is a worker handover doc path (the worker record, --doc, or status-drift's <key>-N*.md scan under --docs-dir or the handover root), only byte counts come out
+    bullets=$(grep -a '^-' -- "$1" 2>/dev/null) && rc=0 || rc=$? # read-sink-ok: $1 is a worker handover doc path (the worker record, --doc, or status-drift's <key>-N*.md scan under --docs-dir or the handover root), bullet lines only, only a marker word comes out
     [ "$rc" -le 1 ] || return 1
     while IFS= read -r line || [ -n "$line" ]; do
         if status_marker_parse "$line" >/dev/null; then

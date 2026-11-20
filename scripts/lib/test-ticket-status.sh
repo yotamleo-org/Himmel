@@ -851,6 +851,36 @@ check "X07-6 a doc that is a directory, with a refused receipt and a free lock, 
 check "X07-6 a directory that grep reads as empty, with a refused receipt and a free lock, reads unknown, not wrapped" "$(PATH="$tmp/gbin:$PATH" GREP_STANDIN_RC=1 ucall "$tmp/u8-dir.md" '"refused"')" unknown
 check "X07-6 a doc that opens but fails when read, with a refused receipt and a free lock, reads unknown, not wrapped" "$(PATH="$tmp/gbin:$PATH" GREP_STANDIN_RC=2 ucall "$tmp/u8-empty.md" '"refused"')" unknown
 check "X07-6 control: a readable doc that grep finds no marker in (exit 1), with a refused receipt and a free lock, reads wrapped" "$(PATH="$tmp/gbin:$PATH" GREP_STANDIN_RC=1 ucall "$tmp/u8-empty.md" '"refused"')" wrapped
+# A doc that is not a regular file, or holds a NUL byte, is unknown too; a byte that is not valid text is read as text.
+mkfifo "$tmp/u8-fifo.md"
+python3 -I -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$tmp/u8-sock.md"
+printf -- '- 10:00 LIVE — working\n\000\n' > "$tmp/u8-nul-live.md"
+printf -- '- a note\n\000\n' > "$tmp/u8-nul-plain.md"
+printf -- '- 10:00 LIVE — work\377ing\n' > "$tmp/u8-badutf.md"
+ln -s "$tmp/u8-wrapped.md" "$tmp/u8-link.md"
+fifo_state() { # the state of the FIFO doc under a refused receipt and a free lock, or HUNG when the call does not return within 3 s; a writer that opens the FIFO whenever a reader waits keeps every read of it from blocking for ever
+    local fid pid i=0 hung=""
+    ( while :; do : > "$tmp/u8-fifo.md"; done ) &
+    fid=$!
+    ( ucall "$tmp/u8-fifo.md" '"refused"' > "$tmp/fifo.out" 2>/dev/null ) &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        [ "$i" -lt 30 ] || { hung=yes; break; }
+        sleep 0.1 2>/dev/null || sleep 1
+        i=$((i + 1))
+    done
+    kill "$fid" 2>/dev/null
+    wait "$fid" 2>/dev/null
+    [ -z "$hung" ] || kill "$pid" 2>/dev/null
+    wait "$pid" 2>/dev/null
+    if [ -n "$hung" ]; then echo HUNG; else cat "$tmp/fifo.out"; fi
+}
+check "X07-6 a doc with a NUL byte and a LIVE marker, with a refused receipt and a free lock, reads unknown, not wrapped" "$(ucall "$tmp/u8-nul-live.md" '"refused"')" unknown
+check "X07-6 a doc with a NUL byte and no marker, with a refused receipt and a free lock, reads unknown, not wrapped" "$(ucall "$tmp/u8-nul-plain.md" '"refused"')" unknown
+check "X07-6 a doc with a byte that is not valid UTF-8 and a LIVE marker is read as text and reads unknown, not wrapped" "$(LC_ALL=C.UTF-8 ucall "$tmp/u8-badutf.md" '"refused"')" unknown
+check "X07-6 a UNIX socket as the doc, with a refused receipt and a free lock, reads unknown, not wrapped" "$(ucall "$tmp/u8-sock.md" '"refused"')" unknown
+check "X07-6 a FIFO as the doc, with a refused receipt and a free lock, returns and reads unknown, not wrapped" "$(fifo_state)" unknown
+check "X07-6 control: a symlink to a readable doc with an end marker is read as that doc" "$(ucall "$tmp/u8-link.md" '"refused"')" wrapped
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-ticket-status.sh"
