@@ -107,17 +107,18 @@ lock_owner_alive() {
     [ -n "$1" ] && kill -0 "$1" 2>/dev/null && args=$(ps -p "$1" -o args= 2>/dev/null) && [[ $args =~ $re ]]
 }
 take_lock() {
-    local seen cur rc=1 try rl="$LOCK.reclaim"
+    local seen cur rc=1 rl="$LOCK.reclaim"
     ln -s "$$" "$LOCK" 2>/dev/null && return 0
     seen=$(readlink "$LOCK" 2>/dev/null)
     ! lock_owner_alive "$seen" || return 1
-    # Only the holder of the reclaim link may remove the stale lock, so a live lock is never moved aside.
-    for try in 1 2; do
-        ln -s "$$" "$rl" 2>/dev/null && break
+    # Only the holder of the reclaim link may remove the stale lock, so a live lock is never moved aside. A
+    # reclaim link left by a starter that died is never removed here (that would be a second check-then-unlink):
+    # the operator removes it, and the start is refused with its path.
+    if ! ln -s "$$" "$rl" 2>/dev/null; then
         lock_owner_alive "$(readlink "$rl" 2>/dev/null)" && return 1
-        rm -f "$rl"
-        [ "$try" = 2 ] && return 1
-    done
+        echo "bypass-launchd: $rl was left by a starter that died; remove it and start again" >&2
+        return 2
+    fi
     cur=$(readlink "$LOCK" 2>/dev/null)
     if [ "$cur" = "$seen" ] || [ -z "$cur" ]; then
         [ -z "$cur" ] || rm -f "$LOCK"
@@ -127,7 +128,9 @@ take_lock() {
     return $rc
 }
 release_lock() { [ "$(readlink "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"; }
-take_lock || { echo "bypass-launchd: already running"; exit 1; }
+take_lock; lock_rc=$?
+[ "$lock_rc" -ne 2 ] || exit 2
+[ "$lock_rc" -eq 0 ] || { echo "bypass-launchd: already running"; exit 1; }
 trap release_lock EXIT
 log "start pid=$$ until=$until head=${HEAD_SHA:0:12} registry=$(gitd rev-parse "$HEAD_SHA:$REG_REL" | cut -c1-12) tiers=$(gitd rev-parse "$HEAD_SHA:$TIER_REL" | cut -c1-12) grantable=$grantable"
 

@@ -458,12 +458,18 @@ wait_for "$Q/daemon.log" "start pid="
 assert_contains "B2: a lock naming a live pid that is not a daemon is reclaimed" "start pid=" "$(start_line)"
 stop
 
-# A reclaim link left by a starter that died mid-reclaim is cleared, not obeyed.
+# A reclaim link left by a starter that died is never removed by the daemon: it refuses and names the path.
 setup_repo b2reclaim
 ln -s 999999 "$Q/.lock.pid"; ln -s 999998 "$Q/.lock.pid.reclaim"
+env -u CLAUDECODE PATH="$SHIM" SHIM_DATE_ALLOW_D=1 BRIDGE_ROOT="$D/bridge" TELEGRAM_ACCESS_PATH="$D/access.json" XDG_RUNTIME_DIR="$D/run" \
+    bash "$DAEMON" --bucket "$B" --until "$UNTIL" > "$D/reclaim.out" 2>&1
+assert_eq "B2: a dead reclaim link refuses the start with exit 2" "2" "$?"
+assert_contains "B2: the refusal names the reclaim link to remove" ".lock.pid.reclaim was left by a starter that died" "$(cat "$D/reclaim.out")"
+assert_eq "B2: the daemon leaves the dead reclaim link for the operator" "left" "$([ -L "$Q/.lock.pid.reclaim" ] && echo left || echo gone)"
+rm -f "$Q/.lock.pid.reclaim"
 start PATH="$SHIM" SHIM_DATE_ALLOW_D=1
 wait_for "$Q/daemon.log" "start pid="
-assert_contains "B2: a dead lock behind a dead reclaim link is reclaimed" "start pid=" "$(start_line)"
+assert_contains "B2: once the reclaim link is removed the dead lock is reclaimed" "start pid=" "$(start_line)"
 assert_eq "B2: the reclaim link is gone once the lock is taken" "gone" "$([ -L "$Q/.lock.pid.reclaim" ] && echo left || echo gone)"
 stop
 

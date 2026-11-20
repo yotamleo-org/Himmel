@@ -171,6 +171,7 @@ notice_env_steps() {
 # path_trusted <uid> <anchor> <path>: the file the path resolves to, and every directory from its parent up to
 # <anchor> ("/" for the real check), is owned by <uid> and writable by neither group nor other. The installed
 # helper runs as root through this interpreter, so one the operator can replace would be root without approval.
+# On success it prints the resolved path (links followed, parents canonical); callers use that, never <path>.
 path_trusted() {
     local uid=$1 anchor=$2 p=$3 n=0 t d own mode
     while [ -L "$p" ]; do
@@ -185,7 +186,7 @@ path_trusted() {
         own=$(stat -c %u "$t" 2>/dev/null || stat -f %u "$t" 2>/dev/null) || return 1 # gnu-ok: stat -f is the BSD form on the same line
         mode=$(stat -c %a "$t" 2>/dev/null || stat -f %Lp "$t" 2>/dev/null) || return 1 # gnu-ok: stat -f is the BSD form on the same line
         { [ "$own" = "$uid" ] && [ $((8#$mode & 8#022)) -eq 0 ]; } || return 1
-        if [ "$t" = "$anchor" ] || [ "$t" = / ]; then return 0; fi
+        if [ "$t" = "$anchor" ] || [ "$t" = / ]; then echo "$d/$(basename "$p")"; return 0; fi
         t=$(dirname "$t")
     done
 }
@@ -193,11 +194,12 @@ path_trusted() {
 # or newer. macOS has no distro python3 at a fixed path, so the installer names one. A candidate is never run
 # before it is trusted: the installer is root.
 pick_python() {
-    local uid=$1 anchor=$2 c
+    local uid=$1 anchor=$2 c r
     shift 2
     for c in "$@"; do
-        path_trusted "$uid" "$anchor" "$c" || continue
-        if "$c" -I -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then echo "$c"; return 0; fi
+        # The resolved path is what is run and named in the shebang: a link in a writable directory is never kept.
+        r=$(path_trusted "$uid" "$anchor" "$c") || continue
+        if "$r" -I -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then echo "$r"; return 0; fi
     done
     return 1
 }

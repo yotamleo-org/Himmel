@@ -2162,6 +2162,10 @@ assert_eq "RED 10430: a link to a trusted file is trusted" "yes" "$(trusted "$ME
 assert_eq "RED 10430: a link into a writable directory is not trusted" "no" "$(trusted "$ME" "$PY" "$PY/bin/viabad")"
 assert_eq "RED 10430: a file owned by someone else is not trusted" "no" "$(trusted "$((ME + 1))" "$PY" "$PY/bin/new")"
 assert_eq "RED 10430: a missing file is not trusted" "no" "$(trusted "$ME" "$PY" "$PY/bin/missing")"
+ln -s ../real/new "$PY/wbin/link"
+REAL=$(cd -P "$PY/real" && pwd -P)/new
+assert_eq "RED 10430: path_trusted prints the resolved path of a link" "$REAL" "$(inst path_trusted "$ME" "$PY" "$PY/bin/viagood" 2>/dev/null)"
+assert_eq "RED 10430: pick_python returns the resolved file, never a link in a writable directory" "$REAL" "$(inst pick_python "$ME" "$PY" "$PY/wbin/link" 2>/dev/null)"
 assert_eq "RED 10430: pick_python skips a missing, a non-executable, a too-old and an untrusted python" "$PY/bin/new" \
     "$(inst pick_python "$ME" "$PY" "$PY/bin/missing" "$PY/bin/noexec" "$PY/bin/old" "$PY/wbin/new" "$PY/bin/filew" "$PY/bin/new" 2>&1)"
 assert_eq "RED 10430: pick_python never runs an untrusted candidate" "1" "$(inst pick_python "$ME" "$PY" "$PY/wbin/new" >/dev/null 2>&1; echo $?)"
