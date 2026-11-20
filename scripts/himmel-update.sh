@@ -877,7 +877,7 @@ report_cadence_stale() {
                 echo ""
                 if [ "$arm_rc" -eq 0 ]; then
                     echo "==> $label runners were STALE (format v$ver < v$CADENCE_RUNNER_FORMAT_VERSION) — re-armed"
-                    echo "    $(_last_line_trimmed "$out")"
+                    echo "    $(_last_line_trimmed "$(printf '%s\n' "$out" | grep -v '^[=-]*$' || true)")"
                     continue
                 fi
                 echo "==> $label runners are STALE (format v$ver < v$CADENCE_RUNNER_FORMAT_VERSION) — re-arm failed (rc $arm_rc): $(_last_line_trimmed "$out")"
