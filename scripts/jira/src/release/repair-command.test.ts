@@ -4,7 +4,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Command } from 'commander';
 import { declare, leaseAcquire, operatorDecision, request, rmRun, state as engineState, type Ctx, type Judge, type JiraPort } from './engine.js';
 import { processIdentity, runSignature } from './repair-state.js';
@@ -1143,6 +1143,16 @@ describe('T8 C: one serialized repair-state writer and the retry clock', () => {
   const envOf = (): Record<string, string> => ({
     ...(process.env as Record<string, string>), HIMMEL_RELEASE_STATE_DIR: join(root, 'release'), HIMMEL_RELEASE_KEY_DIR: join(root, 'keys'), JIRA_PROJECT_KEY: 'TESTKEY',
   });
+  // A spawned CLI runs the real ancestry walk, which refuses outside the host's own namespaces and so takes no state lock. This preload hides
+  // /proc from that walk, the no-/proc path the vitest setup sends the in-process walk down, so the child runs unfenced under its env check.
+  const envOnlyFence = (): string => {
+    const p = join(root, 'env-only-fence.mjs');
+    writeFileSync(p, [
+      "import fs from 'node:fs';", "import { syncBuiltinESMExports } from 'node:module';", 'const realExists = fs.existsSync;',
+      "fs.existsSync = (p) => (p === '/proc' ? false : realExists(p));", 'syncBuiltinESMExports();', '',
+    ].join('\n'));
+    return pathToFileURL(p).href;
+  };
   const cli = async (...args: string[]): Promise<{ lines: string[]; code: number }> => {
     vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(root, 'release'));
     vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(root, 'keys'));
@@ -1292,7 +1302,7 @@ describe('T8 C: one serialized repair-state writer and the retry clock', () => {
     const lockDir = join(releaseDir(), 'repair-state.lock.d');
     mkdirSync(lockDir);
     const fd = openSync(join(lockDir, '.lock'), 'wx');
-    const child = spawn(process.execPath, [CLI, 'release', 'repair-state', 'R1', '--repo', 'o/r', '--json'], { env: envOf(), stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, ['--import', envOnlyFence(), CLI, 'release', 'repair-state', 'R1', '--repo', 'o/r', '--json'], { env: envOf(), stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
     child.stdout.on('data', (d: Buffer) => { out += d.toString(); });
     const closed = new Promise<void>((res) => { child.on('close', () => res()); });
@@ -1311,13 +1321,24 @@ describe('T8 C: one serialized repair-state writer and the retry clock', () => {
   it('9: concurrent attempts and a concurrent read lose no update: N attempts count N', async () => {
     setup();
     put({});
+    const fence = envOnlyFence();
     const run1 = (...extra: string[]) => new Promise<number>((res) => {
-      const c = spawn(process.execPath, [CLI, 'release', 'repair-state', 'R1', '--repo', 'o/r', '--json', ...extra], { env: envOf(), stdio: 'ignore' });
+      const c = spawn(process.execPath, ['--import', fence, CLI, 'release', 'repair-state', 'R1', '--repo', 'o/r', '--json', ...extra], { env: envOf(), stdio: 'ignore' });
       c.on('close', (code) => res(code ?? -1));
     });
     const codes = await Promise.all([run1('--attempt'), run1(), run1('--attempt'), run1('--attempt'), run1(), run1('--attempt'), run1('--attempt')]);
     expect(codes).toEqual([0, 0, 0, 0, 0, 0, 0]);
     expect(rec()).toMatchObject({ state: 'idle', attempts: 5 });
     expect(readdirSync(releaseDir()).filter((n) => n.includes('.tmp-'))).toEqual([]);
+  }, 30_000);
+
+  it('9: the preload hides only /proc: a spawned CLI under a fence marker still refuses --attempt and writes nothing', () => {
+    setup();
+    put({});
+    const run = spawnSync(process.execPath, ['--import', envOnlyFence(), CLI, 'release', 'repair-state', 'R1', '--repo', 'o/r', '--json', '--attempt'],
+      { env: { ...envOf(), HIMMEL_RELEASE_MANAGER: '1' }, encoding: 'utf8', timeout: 20_000 });
+    expect(run.status).toBe(2);
+    expect(JSON.parse(run.stdout)).toMatchObject({ attempts: 0 });
+    expect(rec()).toMatchObject({ attempts: 0 });
   }, 30_000);
 });
