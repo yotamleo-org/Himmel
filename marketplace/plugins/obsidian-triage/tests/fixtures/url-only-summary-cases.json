@@ -1,0 +1,40 @@
+{
+  "source": "https://example.com/docs/guide",
+  "cases": [
+    {
+      "name": "the marker opens the summary",
+      "thin": true,
+      "body": "# t\n\n## Summary\nInferred from the source URL only — re-read the source before promoting.\n\n## Source\n[l](https://example.com/docs/guide)\n"
+    },
+    {
+      "name": "a short lead-in before the marker",
+      "thin": true,
+      "body": "# t\n\n## Summary\nX long-form article by someone; the clipper captured no body. Inferred from the source URL only — re-read the source before promoting.\n\n## Source\n[l](https://example.com/docs/guide)\n"
+    },
+    {
+      "name": "the marker before a subheading",
+      "thin": true,
+      "body": "# t\n\n## Summary\nInferred from the source URL only — re-read the source before promoting.\n### Notes\nSome follow-up words that triage added.\n\n## Source\n[l](https://example.com/docs/guide)\n"
+    },
+    {
+      "name": "the marker only after a subheading, below a real summary",
+      "thin": false,
+      "body": "# t\n\n## Summary\nThe guide explains how to configure the tool and names its three modes in plain words.\n### Notes\nInferred from the source URL only — quoted from a vendor page.\n\n## Source\n[l](https://example.com/docs/guide)\n"
+    },
+    {
+      "name": "a real summary",
+      "thin": false,
+      "body": "# t\n\n## Summary\nA real summary of the page, naming its claims and numbers.\n\n## Source\n[l](https://example.com/docs/guide)\n"
+    },
+    {
+      "name": "the marker quoted in another section",
+      "thin": false,
+      "body": "# t\n\n## Highlights\nA quoted passage that says Inferred from the source URL only in running text, then goes on for a while.\n\n## Source\n[l](https://example.com/docs/guide)\n"
+    },
+    {
+      "name": "CRLF line endings",
+      "thin": true,
+      "body": "# t\r\n\r\n## Summary\r\nInferred from the source URL only — re-read the source before promoting.\r\n\r\n## Source\r\n[l](https://example.com/docs/guide)\r\n"
+    }
+  ]
+}
