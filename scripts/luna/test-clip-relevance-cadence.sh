@@ -19,7 +19,10 @@ STUB="$TMP/stub"; mkdir -p "$STUB" "$TMP/cron"
 CR="$TMP/cron"
 cat >"$STUB/crontab" <<EOF
 #!/usr/bin/env bash
-if [ "\$1" = "-l" ]; then [ -f "$CR/tab" ] && { cat "$CR/tab"; exit 0; }; echo "no crontab for test" >&2; exit 1; fi
+if [ "\$1" = "-l" ]; then
+    [ -f "$CR/readfail" ] && { echo "crontab: cannot read: permission denied" >&2; exit 1; }
+    [ -f "$CR/tab" ] && { cat "$CR/tab"; exit 0; }; echo "no crontab for test" >&2; exit 1
+fi
 [ -f "$CR/fail" ] && exit 1
 cat >"$CR/tab"
 EOF
@@ -27,9 +30,11 @@ chmod +x "$STUB/crontab"
 cat >"$STUB/claude" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >"$TMP/claude.args"
+printf '%s\n' "\$@" >"$TMP/claude.argv"
+printf '%s|%s\n' "\${ANTHROPIC_API_KEY-unset}" "\${ANTHROPIC_AUTH_TOKEN-unset}" >"$TMP/claude.env"
 echo x >>"$TMP/claude.calls"
 [ -f "$TMP/note.fixture" ] && { mkdir -p "\$CLIP_RELEVANCE_NOTE_DIR"; cp "$TMP/note.fixture" "\$CLIP_RELEVANCE_NOTE_DIR/\$CLIP_RELEVANCE_TODAY.md"; }
-echo '{"is_error":false,"result":"done"}'
+if [ -f "$TMP/claude.json" ]; then cat "$TMP/claude.json"; else echo '{"is_error":false,"result":"done"}'; fi
 exit "\$(cat "$TMP/claude.rc" 2>/dev/null || echo 0)"
 EOF
 chmod +x "$STUB/claude"
@@ -48,6 +53,16 @@ export CLIP_RELEVANCE_SEND_CMD="$STUB/send" CLIP_RELEVANCE_TODAY=2026-11-20 CLIP
 export CLIP_RELEVANCE_ROOT="$REPO" CLIP_RELEVANCE_CLAUDE="$STUB/claude" JIRA_PROJECT_KEY=HIMMEL
 export CADENCE_ALERT_FILE="$TMP/alerts.log" CADENCE_ALERT_DEDUPE_DIR="$TMP/alert-sent" CADENCE_ALERT_SEND_CMD="$STUB/send" CADENCE_ALERT_SEND_FAILED_MARK="$TMP/alert-send-failed"
 RUNNER="$TMP/runner/clip-relevance-cadence.sh"
+sort_lines() { python3 -I -c 'import sys; print("\n".join(sorted(sys.stdin.read().splitlines())))'; }
+allowed_in_runner() { sed -n 's/.*--allowedTools //p' "$1" | sed 's/ < \/dev\/null.*$//' | python3 -I -c 'import shlex,sys; print("\n".join(sorted(shlex.split(sys.stdin.read()))))'; }
+allowed_in_argv() { sed -n '/^--allowedTools$/,$p' "$1" | sed 1d | sort_lines; }
+ALLOWED_EXPECT="$(printf '%s\n' "Read" "Grep" "Write(/$TMP/notes/**)" \
+    "Bash(python3 -I scripts/luna/clip-relevance-collect.py:*)" \
+    "Bash(bash scripts/luna/clip-relevance-cadence.sh note-path)" \
+    "Bash(bash scripts/luna/clip-relevance-cadence.sh check:*)" \
+    "Bash(node $REPO/scripts/jira/dist/index.js list:*)" \
+    "Bash(node $REPO/scripts/jira/dist/index.js get:*)" | sort_lines)"
+reset_run() { rm -f "$TMP/send.log" "$TMP/alerts.log" "$TMP/notes/2026-11-20.md"; rm -rf "$TMP/alert-sent"; }
 
 echo "1. arm, status, disarm"
 bash "$CAD" arm --dry-run >"$TMP/arm-dry.out" 2>&1
@@ -95,9 +110,9 @@ check "a looping agent is bounded by a turn cap" 'grep -q -E -- "--max-turns [0-
 check "the weekly runbook is the prompt" 'grep -q -- "/clip-relevance-weekly" "$REAL_PF"'
 check "repo search is the Grep tool: no Bash git grep, whose -O flag runs a command" 'grep -q -- "--tools Read,Grep,Write,Bash" "$REAL_PF" && ! grep -q "Bash(git" "$REAL_PF"'
 check "the Jira key is baked, since cron has none" 'grep -q "JIRA_PROJECT_KEY=HIMMEL" "$REAL_PF"'
-check "the allowlist reads Jira with list and get only: no create, comment or transition" \
-    'grep -q "jira/dist/index.js list:" "$REAL_PF" && grep -q "jira/dist/index.js get:" "$REAL_PF" && ! grep -q -E "index.js (create|comment|transition|edit|update)" "$REAL_PF"'
-check "a write is allowed only inside the note folder (absolute path rule, //path)" 'grep -qF "Write(/$TMP/notes/**)" "$REAL_PF" && ! grep -q "Edit(" "$REAL_PF"'
+check "the runner's --allowedTools is exactly the expected eight entries: Jira list and get only, Write only inside the note folder, no bare Write or Bash(node ...)" \
+    '[ "$(allowed_in_runner "$REAL_PF")" = "$ALLOWED_EXPECT" ] && [ "$(allowed_in_runner "$REAL_PF" | wc -l)" = 8 ]'
+check "the runner's --tools is exactly Read,Grep,Write,Bash" '[ "$(sed -n "s/.*--tools \([^ ]*\) --allowedTools.*/\1/p" "$REAL_PF")" = "Read,Grep,Write,Bash" ]'
 check "the runner hands the result to finish" 'grep -q "clip-relevance-cadence.sh.* finish " "$REAL_PF"'
 bash "$CAD" arm --force >/dev/null 2>&1
 
@@ -129,9 +144,15 @@ Clip relevance, week to 2026-11-20: 1 new of 2 candidates.
 1. Cap native message volume per session pair
 Note: specs/audits/clip-relevance/2026-11-20.md
 EOF
+cp "$TMP/note.fixture" "$TMP/note.good"
 printf 'PROCEED\n' >"$TMP/verdict"; rm -f "$TMP/send.log" "$TMP/alerts.log"
+export ANTHROPIC_API_KEY=sk-test-sentinel ANTHROPIC_AUTH_TOKEN=tok-test-sentinel
 bash "$RUNNER" >"$TMP/fire-ok.out" 2>&1; rc=$?
+unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN
 check "PROCEED runs claude once, rc 0" '[ "$rc" = 0 ] && [ "$(wc -l <"$TMP/claude.calls")" = 1 ]'
+check "claude never sees an exported ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN (env -u): both read unset" '[ "$(cat "$TMP/claude.env")" = "unset|unset" ]'
+check "claude is handed exactly the expected --allowedTools set and --tools list" \
+    '[ "$(allowed_in_argv "$TMP/claude.argv")" = "$ALLOWED_EXPECT" ] && [ "$(sed -n "/^--tools\$/{n;p;}" "$TMP/claude.argv")" = "Read,Grep,Write,Bash" ]'
 check "claude gets the runbook, the pinned model, the explicit mode and JSON output" \
     'grep -q -- "/clip-relevance-weekly" "$TMP/claude.args" && grep -q -- "--model claude-sonnet-5-5" "$TMP/claude.args" && grep -q -- "--permission-mode dontAsk" "$TMP/claude.args" && grep -q -E -- "--max-turns [0-9]+" "$TMP/claude.args" && grep -q -- "--output-format json" "$TMP/claude.args" && grep -q -E -- "(^| )-p( |$)" "$TMP/claude.args"'
 check "the note's Telegram block is sent once, as a cadence:clip-relevance message" \
@@ -142,7 +163,14 @@ echo "4. failures are loud and send no proposals"
 rm -f "$TMP/send.log" "$TMP/alerts.log"; rm -rf "$TMP/alert-sent"; echo 3 >"$TMP/claude.rc"
 bash "$RUNNER" >"$TMP/fire-rc.out" 2>&1
 check "a failed claude raises the alert and sends no proposal" 'grep -q " clip-relevance claude-rc-3 " "$TMP/alerts.log" && ! grep -q "1 new of 2" "$TMP/send.log"'
-rm -f "$TMP/claude.rc" "$TMP/send.log" "$TMP/alerts.log"; rm -rf "$TMP/alert-sent"
+rm -f "$TMP/claude.rc"; cp "$TMP/note.good" "$TMP/note.fixture"
+reset_run; printf '%s\n' '{"is_error":true,"result":"overloaded"}' >"$TMP/claude.json"
+bash "$RUNNER" >"$TMP/fire-iserr.out" 2>&1
+check "claude exiting 0 with is_error:true raises claude-error and sends no proposal, though the note is good" 'grep -q " clip-relevance claude-error " "$TMP/alerts.log" && ! grep -q "1 new of 2" "$TMP/send.log"'
+reset_run; printf 'this is not json' >"$TMP/claude.json"
+bash "$RUNNER" >"$TMP/fire-badjson.out" 2>&1
+check "claude exiting 0 with unreadable output raises claude-error and sends no proposal, though the note is good" 'grep -q " clip-relevance claude-error " "$TMP/alerts.log" && ! grep -q "1 new of 2" "$TMP/send.log"'
+rm -f "$TMP/claude.json"; reset_run
 printf '# thin note\n\n## Candidates\n\n### 1. No search line [new]\n- Change: x\n\n## Telegram message\nhello\n' >"$TMP/note.fixture"
 bash "$RUNNER" >"$TMP/fire-bad.out" 2>&1
 check "an invalid note raises the alert and sends no proposal" 'grep -q " clip-relevance note-invalid " "$TMP/alerts.log" && ! grep -q "hello" "$TMP/send.log"'
@@ -185,6 +213,11 @@ tg7="$TMP/tg7.md"; tg8="$TMP/tg8.md"
 check "five new candidates fit the Telegram block (opening, five titles, note line: 7 lines)" 'bash "$CAD" check "$tg7" >/dev/null 2>&1'
 bash "$CAD" check "$tg8" >"$TMP/check-tg8.out" 2>&1; rc=$?
 check "an eighth Telegram line fails" '[ "$rc" = 1 ] && grep -q "longer than 7 lines" "$TMP/check-tg8.out"'
+cap_note() { printf '## Candidates\n\n### 1. C [new]\n- Search: s\n\n## Telegram message\n%s\n' "$(head -c "$1" /dev/zero | tr '\0' 'x')" >"$2"; }
+cap_note 1500 "$TMP/cap1500.md"; cap_note 1501 "$TMP/cap1501.md"
+check "a Telegram block of exactly 1,500 characters passes" 'bash "$CAD" check "$TMP/cap1500.md" >/dev/null 2>&1'
+bash "$CAD" check "$TMP/cap1501.md" >"$TMP/check-cap.out" 2>&1; rc=$?
+check "a Telegram block of 1,501 characters fails with the character cap named" '[ "$rc" = 1 ] && grep -q "longer than 1500 characters" "$TMP/check-cap.out"'
 badstatus="$TMP/badstatus.md"
 printf '## Candidates\n\n### 1. C [maybe]\n- Search: s\n\n## Telegram message\nx\n' >"$badstatus"
 bash "$CAD" check "$badstatus" >"$TMP/check-bs.out" 2>&1; rc=$?
@@ -203,6 +236,34 @@ zero="$TMP/zero.md"
 printf '## Candidates\n\nNothing new this week.\n\n## Telegram message\nNothing new this week.\n' >"$zero"
 check "a quiet week with no candidate is valid" 'bash "$CAD" check "$zero" >/dev/null 2>&1'
 check "note-path is the note folder plus the day" '[ "$(bash "$CAD" note-path)" = "$TMP/notes/2026-11-20.md" ]'
+
+echo "6. the crontab edges"
+rm -f "$CR/tab"; rm -rf "$TMP/runner"
+bash "$CAD" arm >/dev/null 2>&1
+cp "$CR/tab" "$TMP/tab.armed"; cp "$RUNNER" "$TMP/runner.armed"
+touch "$CR/readfail"
+bash "$CAD" arm --force --time 21:05 >"$TMP/arm-rf.out" 2>&1; rc=$?
+check "a crontab that cannot be read (not 'no crontab for') refuses arm: rc 4, the message, row and runner untouched" \
+    '[ "$rc" = 4 ] && grep -q "cannot read the crontab" "$TMP/arm-rf.out" && cmp -s "$CR/tab" "$TMP/tab.armed" && cmp -s "$RUNNER" "$TMP/runner.armed"'
+bash "$CAD" status >/dev/null 2>&1; rc=$?
+check "status exits 1 when the crontab cannot be read" '[ "$rc" = 1 ]'
+bash "$CAD" disarm >/dev/null 2>&1; rc=$?
+check "disarm exits 4 when the crontab cannot be read, and removes neither the row nor the runner" '[ "$rc" = 4 ] && cmp -s "$CR/tab" "$TMP/tab.armed" && [ -x "$RUNNER" ]'
+rm -f "$CR/readfail"
+touch "$CR/fail"
+bash "$CAD" arm --force --time 21:05 >"$TMP/arm-if.out" 2>&1; rc=$?
+rm -f "$CR/fail"
+check "a failed crontab install: rc 4, 'crontab install failed', the armed row and runner untouched, no .new left" \
+    '[ "$rc" = 4 ] && grep -q "crontab install failed" "$TMP/arm-if.out" && cmp -s "$CR/tab" "$TMP/tab.armed" && cmp -s "$RUNNER" "$TMP/runner.armed" && [ ! -e "$RUNNER.new" ]'
+MVF="$TMP/mvfail"; mkdir -p "$MVF"; printf '#!/usr/bin/env bash\nexit 1\n' >"$MVF/mv"; chmod +x "$MVF/mv"
+PATH="$MVF:$PATH" bash "$CAD" arm --force --time 21:05 >"$TMP/arm-mv.out" 2>&1; rc=$?
+check "a failed runner move restores the previous crontab: rc 4, 'crontab restored', the old row and runner back, no .new left" \
+    '[ "$rc" = 4 ] && grep -q "crontab restored" "$TMP/arm-mv.out" && cmp -s "$CR/tab" "$TMP/tab.armed" && cmp -s "$RUNNER" "$TMP/runner.armed" && [ ! -e "$RUNNER.new" ]'
+printf '%s\n' '45 8 * * 1 /a/clip-relevance-cadence.sh # HIMMEL-ClipRelevance' '50 9 * * * /b/runner.sh # HIMMEL-ClipRelevance' >"$CR/tab"
+cp "$CR/tab" "$TMP/tab.dup"
+bash "$CAD" arm --force >"$TMP/arm-dup.out" 2>&1; rc=$?
+check "two live tagged rows: arm --force refuses (rc 5), names the second row, crontab untouched" \
+    '[ "$rc" = 5 ] && cmp -s "$CR/tab" "$TMP/tab.dup" && grep -q "/b/runner.sh" "$TMP/arm-dup.out"'
 
 echo "test-clip-relevance-cadence: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
