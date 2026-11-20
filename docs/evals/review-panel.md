@@ -37,6 +37,15 @@ model re-pin of the same slug show up as a new critic (`codex:gpt-6-sol`,
 `codex:gpt-6.1-sol`). A slug with no responding model on record stays bare
 (`codex`, `claude`).
 
+The `claude` rows are history. Since 2026-11-20 the himmel default panel has no
+standing Claude critic (operator decisions 1084 and 1085). The order is codex
+first, then CodeRabbit as best effort. A Claude critic runs only when codex has
+run out, or when no non-Claude critic answered and one failed for a lasting
+reason such as auth or not installed (never a timeout or rate limit). Each such run sends a loud alert to Telegram and to the chief. Claude
+through the API runs only inside the eval work. An adopter can still add a Claude
+critic in `critics.local.json`; [Review by a second model](../guide/second-model-review.md)
+has the details.
+
 Intervals are 95% percentile bootstrap intervals (2,000 resamples, seed 0,
 `bootstrap_ci` in `scripts/eval/lib/eval_runs.py`) that **resample whole PRs**,
 not findings. Findings on one PR share an author, a diff and a review loop, so
