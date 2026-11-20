@@ -2054,15 +2054,15 @@ if grep -q 'stdin=tty' "$T32_REC" 2>/dev/null; then
         PATH="$SCHED_STUB_T17:$PATH" bash "$ARM" --time "$(future_time)" --handover "$1" --dry-run 2>&1 \
             | awk '/^DRY arm-resume: would at -t/ { on = 1; next } /^    CMD$/ { on = 0 } on { sub(/^    /, ""); print }'
     }
-    # t32_expect_tty <row title> <body> [<shell>]: runs the body through <shell> (default sh;
-    # "blind" is sh reading $' as t32_blind does), stdin=/dev/null.
+    # t32_expect_tty <row title> <body> [<shell>] [<path prefix>]: runs the body through <shell> (default sh;
+    # "blind" is sh reading $' as t32_blind does), stdin=/dev/null, with <path prefix> ahead of PATH when given.
     t32_expect_tty() {
         local rec shell="${3:-sh}" body="$2"
         [ "$shell" = blind ] && body=$(t32_blind "$body")
         [ "$shell" = sh ] || shell=$(t32_shell_cmd "$shell")
         rm -f "$T32_REC"
         # shellcheck disable=SC2086
-        env PATH="$T32_BIN:$PATH" T32_REC="$T32_REC" HOME="$POLICY_EMPTY_HOME" CADENCE_USAGE_LEDGER="$TMP/t32-cadence.jsonl" \
+        env PATH="${4:+$4:}$T32_BIN:$PATH" T32_REC="$T32_REC" HOME="$POLICY_EMPTY_HOME" CADENCE_USAGE_LEDGER="$TMP/t32-cadence.jsonl" \
             $shell -c "$body" </dev/null >"$TMP/t32-run.out" 2>&1
         rec=$(cat "$T32_REC" 2>/dev/null)
         assert_contains "$1" "stdin=tty" "$rec"
@@ -2071,15 +2071,15 @@ if grep -q 'stdin=tty' "$T32_REC" 2>/dev/null; then
             *) echo "     claude recorded: ${rec:-nothing}"; head -n 8 "$TMP/t32-run.out" | sed 's/^/     run output: /' ;;
         esac
     }
-    # t32_expect_tty_all <row title> <body>: the row under sh, then under each other shell of
+    # t32_expect_tty_all <row title> <body> [<path prefix>]: the row under sh, then under each other shell of
     # T32_SHELLS that this host has.
     t32_expect_tty_all() {
         local s cmd
-        t32_expect_tty "$1" "$2"
+        t32_expect_tty "$1" "$2" sh "${3:-}"
         for s in $T32_SHELLS; do
             cmd=$(t32_shell_cmd "$s")
             if [ -z "$cmd" ]; then echo "SKIP $1 under $s: not on this host"; continue; fi
-            t32_expect_tty "$1 [$s]" "$2" "$s"
+            t32_expect_tty "$1 [$s]" "$2" "$s" "${3:-}"
         done
     }
 
@@ -2096,7 +2096,19 @@ if grep -q 'stdin=tty' "$T32_REC" 2>/dev/null; then
     assert_contains "T32 managed fixture: the body hands the launch to the fleet runtime" "fleet_runtime.py run" "$T32_MANAGED"
     assert_not_contains "T32 unmanaged control: the body carries no fleet runtime" "fleet_runtime.py run" "$T32_PLAIN"
     t32_expect_tty_all "T32 unmanaged at body: claude's stdin is a tty" "$T32_PLAIN"
-    t32_expect_tty_all "T32 managed at body: claude's stdin is a tty (the pty is set up inside the runtime's bash -c)" "$T32_MANAGED"
+    # A managed body clears every registered seam of usage-preflight.sh before it starts the runtime (T32 seams, below), including the
+    # two this suite sets for its fixtures: HIMMEL_POLICY_FOLLOWS_HOME, which moves the runtime's slot directory to HIMMEL_FLEET_SLOTS,
+    # and FLEET_PS_CMD, the empty process table. Without them the runtime would look for slots in the live directory of this
+    # station, which is the clearing working as intended. This python3 belongs to the test: it sets both again for the runtime
+    # process alone, so the end-to-end row keeps running on the suite's own slot directory; no product path can find it.
+    T32_SHIM="$TMP/t32-shim"
+    mkdir -p "$T32_SHIM"
+    cat > "$T32_SHIM/python3" <<EOF
+#!/bin/sh
+HIMMEL_POLICY_FOLLOWS_HOME=1 FLEET_PS_CMD=$FLEET_PS_STUB exec $(command -v python3) "\$@"
+EOF
+    chmod +x "$T32_SHIM/python3"
+    t32_expect_tty_all "T32 managed at body: claude's stdin is a tty (the pty is set up inside the runtime's bash -c)" "$T32_MANAGED" "$T32_SHIM"
 
     # T32 (pause): a body armed while its doc was outside every fleet family reads the doc's
     # registration again when it fires. It refuses (exit 24, nothing started) once the doc is managed
@@ -2196,8 +2208,13 @@ case " $* " in
     *fleet_runtime.py*" resolve "*)
         case "${T32R_MODE:-}" in
             managed) printf '{"managed":true,"manifest":"%s"}\n' "$T32R_MANIFEST"; exit 0 ;;
+            managed-slots) printf '{"managed":true,"manifest":"%s","slots":"%s"}\n' "$T32R_MANIFEST" "${HIMMEL_FLEET_SLOTS:-/nonexistent}"; exit 0 ;;
             hang) trap '' TERM; sleep 30; exit 0 ;;
             record) printf 'attempt=[%s] manifest=[%s]\n' "${FLEET_LAUNCH_ATTEMPT-unset}" "${FLEET_LAUNCH_MANIFEST-unset}" >> "$T32R_ENV_LOG" ;;
+        esac ;;
+    *fleet_runtime.py*" run "*)
+        case "${T32R_MODE:-}" in
+            seams) for n in $T32R_SEAM_NAMES T32S_KEEP; do if [ -n "${!n+x}" ]; then echo "$n=set"; else echo "$n=unset"; fi; done > "$T32R_SEAM_LOG"; exit 0 ;;
         esac ;;
 esac
 exec "$T32R_REAL_PY" "$@"
@@ -2356,6 +2373,127 @@ if timeout --version 2>/dev/null | grep -qi coreutils; then
 else
     echo "SKIP T32 resolve-hang rows (no GNU coreutils timeout on this runner)"
 fi
+
+# T32 (seams): the fleet runtime runs usage-preflight.sh, a registered chokepoint, in the job's own
+# environment. An at job carries the arming session's environment and has no claude ancestor, so the
+# seam guard refuses any registered seam there. A managed body therefore clears every registered seam
+# of usage-preflight.sh before it starts the runtime; the names come from scripts/chokepoints.json
+# through the guard's own reader. The python3 stub records, for each name, whether the runtime process
+# sees it; T32S_KEEP is no registered seam and must stay.
+T32S_GUARD="$(dirname "$ARM")/../lib/chokepoint-seam-guard.sh"
+T32S_REGISTRY="$(dirname "$ARM")/../chokepoints.json"
+# shellcheck source=../lib/chokepoint-seam-guard.sh
+T32S_NAMES=$(. "$T32S_GUARD" && _csg_registry_seams "$T32S_REGISTRY" scripts/lib/usage-preflight.sh) || T32S_NAMES=""
+T32S_COUNT=0
+T32S_ASSIGN=""
+for n in $T32S_NAMES; do T32S_COUNT=$((T32S_COUNT + 1)); T32S_ASSIGN="$T32S_ASSIGN $n=1"; done
+if [ "$T32S_COUNT" -gt 0 ]; then
+    echo "PASS T32 seams: the registry names $T32S_COUNT seams for usage-preflight.sh"
+else
+    echo "FAIL T32 seams: the registry names no seam for usage-preflight.sh — the rows below would be vacuous"
+    FAILED=$((FAILED + 1))
+fi
+T32R_SEAM_LOG="$TMP/t32r-seams.log"
+T32S_CBIN="$TMP/t32s-cbin"
+mkdir -p "$T32S_CBIN"
+cat > "$T32S_CBIN/crontab" <<'EOF'
+#!/bin/sh
+case "${1:-}" in -l) exit 0 ;; *) cat > /dev/null; exit 0 ;; esac
+EOF
+chmod +x "$T32S_CBIN/crontab"
+# t32s_check <title> <body>: fires the body with every registered seam set, no claude ancestor.
+t32s_check() {
+    local seen bad got
+    : > "$T32R_SEAM_LOG"
+    # a crontab runner appends its output to the arm log of the arm that wrote it
+    mkdir -p "$ARM_RESUME_LOG_DIR"
+    # shellcheck disable=SC2086
+    env PATH="$T32R_PY:$T32S_CBIN:$T32R_BIN:$PATH" T32R_REAL_PY="$T32R_REAL_PY" T32R_MODE=seams T32R_SEAM_NAMES="$T32S_NAMES" \
+        T32R_SEAM_LOG="$T32R_SEAM_LOG" HOME="$POLICY_EMPTY_HOME" CADENCE_USAGE_LEDGER="$TMP/t32s-cadence.jsonl" \
+        CLAUDECODE=1 T32S_KEEP=1 $T32S_ASSIGN sh -c "$2" </dev/null >"$TMP/t32s-run.out" 2>&1
+    seen=$(grep -v '^T32S_KEEP=' "$T32R_SEAM_LOG")
+    bad=$(printf '%s\n' "$seen" | grep '=set$' | tr '\n' ' ')
+    got=$(printf '%s\n' "$seen" | grep -c '=unset$')
+    if [ -z "$bad" ] && [ "$got" -eq "$T32S_COUNT" ]; then
+        echo "PASS $1: the runtime process sees none of the $T32S_COUNT registered seams"
+    else
+        echo "FAIL $1: seams still set for the runtime: ${bad:-none}; cleared: $got of $T32S_COUNT"
+        FAILED=$((FAILED + 1))
+    fi
+    assert_contains "$1 (control): a variable that is no registered seam stays" "T32S_KEEP=set" "$(cat "$T32R_SEAM_LOG")"
+}
+T32S_DOC=$(make_handover "$WORK_REPO")
+out=$(t32r_arm T32R_MODE=managed bash "$ARM" --time "$(future_time)" --handover "$T32S_DOC" --dry-run 2>&1)
+T32S_BODY=$(printf '%s\n' "$out" | t32r_body)
+assert_contains "T32 seams: the at body carries the runtime line" "fleet_runtime.py run" "$T32S_BODY"
+t32s_check "T32 seams: a managed at body" "$T32S_BODY"
+out=$(t32r_arm PATH="$T32R_PY:$T32S_CBIN:$PATH" T32R_MODE=managed OSTYPE=darwin23 ARM_TERMINAL_APP=none bash "$ARM" --time "$(future_time)" --handover "$T32S_DOC" --dry-run 2>&1)
+T32S_RUNNER=$(printf '%s\n' "$out" | awk '/^DRY arm-resume: runner/ { on = 1; next } /^DRY arm-resume: NOTE/ { on = 0 } on { sub(/^    /, ""); print }')
+assert_contains "T32 seams: the crontab runner carries the runtime line" "fleet_runtime.py run" "$T32S_RUNNER"
+t32s_check "T32 seams: a managed crontab runner" "$T32S_RUNNER"
+
+# A registry that cannot be read leaves the seams of the scheduled job unknown, never empty: a managed
+# arm refuses (rc 22) and schedules nothing. A copy of the scripts without a registry stands in for the
+# tree; the python3 stub answers the doc as managed. A healthy registry schedules as before.
+T32S_TREE="$TMP/t32s-tree"
+mkdir -p "$T32S_TREE/handover" "$T32S_TREE/lib" "$T32S_TREE/lanes"
+cp "$(dirname "$ARM")"/*.sh "$T32S_TREE/handover/" 2>/dev/null || true
+cp "$(dirname "$ARM")/../lib"/*.sh "$(dirname "$ARM")/../lib"/*.mjs "$(dirname "$ARM")/../lib"/*.py "$T32S_TREE/lib/" 2>/dev/null || true
+cp "$(dirname "$ARM")/../lanes"/* "$T32S_TREE/lanes/" 2>/dev/null || true
+T32S_REG="$T32S_TREE/chokepoints.json"
+# t32s_arm <mode> <doc>: a real arm in that tree through the stubs; prints its output
+t32s_arm() {
+    : > "$T32R_AT_LOG"
+    t32r_arm T32R_MODE="$1" bash "$T32S_TREE/handover/arm-resume.sh" --time "$(future_time)" --handover "$2" 2>&1
+}
+# t32s_refused <title>: the managed arm refuses and the scheduler stub was never asked to schedule
+t32s_refused() {
+    local out rc scheduled
+    out=$(t32s_arm managed-slots "$(make_handover "$WORK_REPO")")
+    rc=$?
+    scheduled=$(grep -c '^at -t' "$T32R_AT_LOG")
+    assert_rc "$1: the arm refuses" 22 "$rc"
+    assert_contains "$1: the refusal names the registry" "chokepoints.json" "$out"
+    assert_contains "$1: the refusal says the job's seams could not be determined" "seams of the scheduled job could not be determined" "$out"
+    assert_contains "$1: the refusal says nothing was scheduled" "nothing was scheduled" "$out"
+    case "$scheduled" in
+        0) echo "PASS $1: the scheduler stub was not asked to schedule" ;;
+        *) echo "FAIL $1: the scheduler stub was asked to schedule $scheduled time(s)"; FAILED=$((FAILED + 1)) ;;
+    esac
+}
+rm -f "$T32S_REG"
+t32s_refused "T32 seams: a registry that is missing"
+printf 'not json at all\n' > "$T32S_REG"
+t32s_refused "T32 seams: a registry that is not JSON"
+printf '{}\n' > "$T32S_REG"
+t32s_refused "T32 seams: a registry without an entry for usage-preflight.sh"
+printf '[]\n' > "$T32S_REG"
+t32s_refused "T32 seams: a registry that is not an object"
+printf '{"scripts/lib/usage-preflight.sh": {"seam_env_vars": "FLEET_CAP_OK"}}\n' > "$T32S_REG"
+t32s_refused "T32 seams: a registry whose seam list is not a list"
+printf '{}\n' > "$T32S_REG"
+chmod 000 "$T32S_REG"
+if [ -r "$T32S_REG" ]; then
+    echo "SKIP T32 seams: unreadable registry (this user reads a mode 000 file)"
+else
+    t32s_refused "T32 seams: a registry that cannot be read"
+fi
+chmod 644 "$T32S_REG"
+rm -f "$T32S_REG"
+out=$(t32s_arm record "$(make_handover "$WORK_REPO")")
+rc=$?
+assert_rc "T32 seams (control): an unmanaged doc arms with no registry" 0 "$rc"
+cp "$T32S_REGISTRY" "$T32S_REG"
+out=$(t32s_arm managed-slots "$(make_handover "$WORK_REPO")")
+rc=$?
+assert_rc "T32 seams (control): a healthy registry schedules the managed arm" 0 "$rc"
+T32S_SCHEDULED=$(grep -c '^at -t' "$T32R_AT_LOG")
+T32S_JOB=$(cat "$T32R_AT_DIR/job-$(cat "$T32R_AT_DIR/.counter" 2>/dev/null)" 2>/dev/null)
+case "$T32S_SCHEDULED" in
+    1) echo "PASS T32 seams (control): a healthy registry asks the scheduler once" ;;
+    *) echo "FAIL T32 seams (control): a healthy registry asked the scheduler $T32S_SCHEDULED time(s)"; FAILED=$((FAILED + 1)) ;;
+esac
+assert_contains "T32 seams (control): the scheduled job clears the registry's seams" "{ unset ${T32S_NAMES%% *} " "$T32S_JOB"
 
 # T32 (pause, crontab): the crontab runner is built by the same function as the at body, so it carries
 # the same fire-time registration check; a runner armed while its doc was unmanaged refuses once the

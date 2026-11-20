@@ -488,6 +488,8 @@ mkdir -p "$FAKE/handover" "$FAKE/lib"
 cp "$SCRIPT_DIR/arm-resume.sh" "$FAKE/handover/arm-resume.sh"
 # arm-resume resolves its plugin profile through ../lanes (fail-closed).
 cp -R "$SCRIPT_DIR/../lanes" "$FAKE/lanes"
+# a managed launch's body reads the seams it clears from ../chokepoints.json.
+cp "$SCRIPT_DIR/../chokepoints.json" "$FAKE/chokepoints.json"
 for lib in chief-context py-armor handover-path telemetry macos-app-resolve chokepoint-seam-guard claude-version env-alias legacy-names prim fleet-launch; do
     cp "$SCRIPT_DIR/../lib/$lib.sh" "$FAKE/lib/$lib.sh"
 done

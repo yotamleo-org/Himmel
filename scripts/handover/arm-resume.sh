@@ -4470,8 +4470,14 @@ fi
 # A doc in no fleet family at arm time can join one before the job fires, so its body asks
 # fleet_runtime.py resolve again when it runs: it launches only while the answer is "not
 # managed", and exits 24 with a message when the doc is managed or the answer cannot be read.
+# A managed doc's body hands the launch to the fleet runtime, which runs usage-preflight.sh
+# in the job's own environment: the job has no claude ancestor, an at job carries the arming
+# session's Claude Code markers, and the seam guard refuses a registered seam there. The body
+# therefore clears every seam the registry names for usage-preflight.sh before it starts the
+# runtime, so the job never carries a seam of the arming session. A registry that cannot be
+# read leaves those names unknown, and the arm refuses.
 _arm_runtime_body() {
-    local scope q_runtime q_doc
+    local scope q_runtime q_doc seams seam names="" line
     if py_armor_capture -I "$SCRIPT_DIR/../lib/fleet_runtime.py" resolve --doc "$HANDOVER_PATH"; then scope=$PY_ARMOR_OUT; else scope='{"managed":true}'; fi
     if [ "$(printf '%s\n' "$scope" | jq -r .managed)" != true ]; then
         q_runtime=$(printf '%q' "$SCRIPT_DIR/../lib/fleet_runtime.py")
@@ -4490,9 +4496,24 @@ _arm_runtime_body() {
         echo "ERR arm-resume: cannot source $SCRIPT_DIR/../lib/fleet-launch.sh -- refusing to arm a managed launch without its runtime line." >&2
         exit 22
     }
+    seams=$(_csg_registry_seams "$SCRIPT_DIR/../chokepoints.json" scripts/lib/usage-preflight.sh) || {
+        echo "ERR arm-resume: the seams of the scheduled job could not be determined: $SCRIPT_DIR/../chokepoints.json is missing, unreadable or has no usable entry for scripts/lib/usage-preflight.sh -- nothing was scheduled." >&2
+        exit 22
+    }
+    for seam in $seams; do
+        case "$seam" in
+            [A-Za-z_]*) ;;
+            *) continue ;;
+        esac
+        case "$seam" in
+            *[!A-Za-z0-9_]*) continue ;;
+        esac
+        names="$names $seam"
+    done
     # $2, when given, is shell text that runs first inside the bash -c: a function
     # defined in the shell that runs this line is not visible in that new bash.
-    fleet_launch_runtime_line "$SCRIPT_DIR/../lib/fleet_runtime.py" "$HANDOVER_PATH" "${SESSION_NAME:-$TASK_NAME}" "$(printf '%s\n' "$scope" | jq -r '.manifest // ""')" "${2-}$1"
+    line=$(fleet_launch_runtime_line "$SCRIPT_DIR/../lib/fleet_runtime.py" "$HANDOVER_PATH" "${SESSION_NAME:-$TASK_NAME}" "$(printf '%s\n' "$scope" | jq -r '.manifest // ""')" "${2-}$1")
+    if [ -n "$names" ]; then printf '{ unset%s; %s; }' "$names" "$line"; else printf '%s' "$line"; fi
 }
 
 _crontab_schedule() {
