@@ -144,7 +144,7 @@
     {
       "name": "pstack",
       "source": "./plugins/pstack",
-      "description": "[himmel vendor] Ten opt-in skills from cursor/plugins pstack, pinned at bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7, including /statechart, /create-formal-verification-skill and /maintain-formal-verification-skill. All disable-model-invocation; no hooks, agents or autonomy. Statechart runs on a VM with optional Java/TLC prerequisites. Interactive profile only; one-step disable. See marketplace/plugins/pstack/README.md.",
+      "description": "[himmel vendor] Ten opt-in skills from cursor/plugins pstack, pinned at 0b46ec399d55f2829e88822998f53b84944837d3, including /statechart, /create-formal-verification-skill and /maintain-formal-verification-skill. All disable-model-invocation; no hooks, agents or autonomy. Statechart runs on a VM with optional Java/TLC prerequisites. Interactive profile only; one-step disable. See marketplace/plugins/pstack/README.md.",
       "author": {
         "name": "Lauren Tan (upstream) / yotamleo (vendor)"
       },
