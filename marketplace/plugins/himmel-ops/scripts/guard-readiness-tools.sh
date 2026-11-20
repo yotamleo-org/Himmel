@@ -9,9 +9,11 @@
 # READINESS CONTEXT: the environment variable HIMMEL_READINESS is exactly 1 (the value the signed supervisor/delivery
 # protocol uses). Anything else - unset, empty, 0, yes, "1 ", 01 - is the GENERIC context: this hook exits 0 at once,
 # reads nothing, prints nothing and has no effect, the existing protocol for a marker-gated guard (guard-judge-writes.sh).
-# DISCLOSURE: nothing sets HIMMEL_READINESS yet. The launcher marks the role with WORKER_SESSION_PROFILE_READINESS
-# (worker-claude-launcher.sh), which is a different, launcher-side variable; wiring the delivery marker, registering this
-# hook and the supervisor's fail-closed handling are later cycles. Until then this file is an unwired, inert script.
+# WIRING: headed-arm-worker.sh sets HIMMEL_READINESS=1 for the readiness role only and scrubs an inherited value from every
+# other launch. The himmel-ops plugin's hooks.json runs this project copy through the runner's lone `--optional
+# --fail-closed-when HIMMEL_READINESS=1` protocol: with the marker a missing script fails closed, without it the hook is
+# silent. WORKER_SESSION_PROFILE_READINESS (worker-claude-launcher.sh) is a different, launcher-side variable that selects the
+# readiness argv; it is not this hook's marker.
 #
 # This hook judges ONLY the tool name and the envelope shape. It never looks at tool_input beyond requiring a valid
 # JSON document, so ActRequest semantics stay the adapter's job and no new tool is granted here. No credential, lease
@@ -42,8 +44,9 @@
 # did not serialise is outside this guard's threat model. The environment of this process is trusted (launcher/supervisor
 # owned). The bounded read uses bash's read -n/-d '' and was exercised on bash 5.3 only, not on a 3.2 binary.
 #
-# Delivered by the himmel-ops plugin lane as a byte-identical copy that sources nothing (a readiness session's cwd is
-# outside any checkout, so a project-relative hook would not load there).
+# The himmel-ops plugin carries a byte-identical copy (marketplace/plugins/himmel-ops/scripts/) that sources nothing;
+# test-guard-readiness-tools.sh pins the identity. hooks.json runs the project copy, because the readiness session starts in
+# the launcher's checkout (headed-arm.sh changes into the checkout and opens the session there).
 set -uo pipefail
 
 # Generic context: the existing protocol, silent and effect-free.
