@@ -33,7 +33,7 @@ printf '%s\n' "\$*" >"$TMP/claude.args"
 printf '%s\n' "\$@" >"$TMP/claude.argv"
 printf '%s|%s\n' "\${ANTHROPIC_API_KEY-unset}" "\${ANTHROPIC_AUTH_TOKEN-unset}" >"$TMP/claude.env"
 echo x >>"$TMP/claude.calls"
-[ -f "$TMP/note.fixture" ] && { note="\$(bash "$CAD" note-path)"; mkdir -p "\$(dirname "\$note")"; cp "$TMP/note.fixture" "\$note"; }
+[ -f "$TMP/note.fixture" ] && { note="\$(printf '%s\\n' "\$*" | sed -n 's/.*The note path for this run is \\([^ ]*\\)\\. .*/\\1/p')"; [ -n "\$note" ] || note="\$(bash "$CAD" note-path)"; mkdir -p "\$(dirname "\$note")"; cp "$TMP/note.fixture" "\$note"; }
 if [ -f "$TMP/claude.json" ]; then cat "$TMP/claude.json"; else echo '{"is_error":false,"result":"done"}'; fi
 exit "\$(cat "$TMP/claude.rc" 2>/dev/null || echo 0)"
 EOF
@@ -184,23 +184,44 @@ check "a good run raises no alert" '[ ! -s "$TMP/alerts.log" ]'
 check "the first note of the day is the plain dated name, and the log and message name it" \
     '[ -s "$TMP/notes/2026-11-20.md" ] && grep -q "note $TMP/notes/2026-11-20.md, message sent" "$TMP/runner/clip-relevance-cadence.log" && grep -q "^Note: specs/audits/clip-relevance/2026-11-20.md$" "$TMP/send.log"'
 
-echo "3b. a run never replaces a note it already wrote"
+echo "3b. a run never replaces a note it already wrote, and takes its name atomically"
 first_sum="$(cksum "$TMP/notes/2026-11-20.md")"
 rm -f "$TMP/send.log" "$TMP/alerts.log"; rm -rf "$TMP/alert-sent"
-check "note-path with the day's note present names the first free numbered name, inside the note folder" \
-    '[ "$(bash "$CAD" note-path)" = "$TMP/notes/2026-11-20-2.md" ]'
+claimed="$(bash "$CAD" note-path)"
+check "note-path with the day's note present names the first free numbered name, inside the note folder, and takes it (the file exists)" \
+    '[ "$claimed" = "$TMP/notes/2026-11-20-2.md" ] && [ -e "$claimed" ]'
+check "a second note-path call does not hand the same name out again" '[ "$(bash "$CAD" note-path)" = "$TMP/notes/2026-11-20-3.md" ]'
+rm -f "$TMP/notes/2026-11-20-2.md" "$TMP/notes/2026-11-20-3.md"
 bash "$RUNNER" >"$TMP/fire-second.out" 2>&1; rc=$?
 check "a second run the same day leaves the first note byte for byte and writes 2026-11-20-2.md" \
     '[ "$rc" = 0 ] && [ "$(cksum "$TMP/notes/2026-11-20.md")" = "$first_sum" ] && [ -s "$TMP/notes/2026-11-20-2.md" ]'
 check "the log line names the note actually written" 'grep -q "note $TMP/notes/2026-11-20-2.md, message sent" "$TMP/runner/clip-relevance-cadence.log"'
-check "the Telegram message names the note actually written, though the model wrote the plain name" \
+check "the Telegram message names the note actually written" \
     '[ "$(grep -c "^cadence:clip-relevance|" "$TMP/send.log")" = 1 ] && grep -q "^Note: specs/audits/clip-relevance/2026-11-20-2.md$" "$TMP/send.log" && ! grep -q "^Note: specs/audits/clip-relevance/2026-11-20.md$" "$TMP/send.log"'
 check "the second note passes the same check as the first" '[ ! -s "$TMP/alerts.log" ]'
+check "claude is told the note path it must write, and the primary checkout whose Jira script is allowed" \
+    'grep -q "The note path for this run is $TMP/notes/2026-11-20-2.md\. " "$TMP/claude.args" && grep -q "The primary checkout is $REPO\. " "$TMP/claude.args"'
 rm -f "$TMP/send.log"
 bash "$RUNNER" >"$TMP/fire-third.out" 2>&1
 check "a third run writes 2026-11-20-3.md and leaves the first two alone" \
     '[ -s "$TMP/notes/2026-11-20-3.md" ] && [ "$(cksum "$TMP/notes/2026-11-20.md")" = "$first_sum" ] && [ "$(ls "$TMP/notes" | wc -l)" = 3 ] && grep -q "^Note: specs/audits/clip-relevance/2026-11-20-3.md$" "$TMP/send.log"'
 rm -f "$TMP/notes/2026-11-20-2.md" "$TMP/notes/2026-11-20-3.md"
+dups=0; bad_rep=""
+for rep in $(seq 1 20); do
+    rm -f "$TMP/notes/"2026-11-20*.md
+    bash "$CAD" note-path >"$TMP/np.a" & pa=$!
+    bash "$CAD" note-path >"$TMP/np.b" & pb=$!
+    wait "$pa" "$pb"
+    if [ -z "$(cat "$TMP/np.a")" ] || [ "$(cat "$TMP/np.a")" = "$(cat "$TMP/np.b")" ]; then dups=$((dups + 1)); bad_rep="$bad_rep $rep"; fi
+done
+check "two note-path calls started together end with two different names, across 20 repetitions (dup reps:${bad_rep:- none})" '[ "$dups" = 0 ]'
+rm -f "$TMP/notes/"2026-11-20*.md "$TMP/send.log" "$TMP/alerts.log"; rm -rf "$TMP/alert-sent"
+bash "$RUNNER" >"$TMP/fire-pa.out" 2>&1 & pa=$!
+bash "$RUNNER" >"$TMP/fire-pb.out" 2>&1 & pb=$!
+wait "$pa" "$pb"
+check "two runners started together end with two different, valid note files and two messages" \
+    '[ -s "$TMP/notes/2026-11-20.md" ] && [ -s "$TMP/notes/2026-11-20-2.md" ] && [ ! -s "$TMP/alerts.log" ] && [ "$(grep -c "^cadence:clip-relevance|" "$TMP/send.log")" = 2 ]'
+rm -f "$TMP/notes/"2026-11-20*.md
 
 echo "4. failures are loud and send no proposals"
 rm -f "$TMP/send.log" "$TMP/alerts.log"; rm -rf "$TMP/alert-sent"; echo 3 >"$TMP/claude.rc"
@@ -217,9 +238,30 @@ rm -f "$TMP/claude.json"; reset_run
 printf '# thin note\n\n## Candidates\n\n### 1. No search line [new]\n- Change: x\n\n## Telegram message\nhello\n' >"$TMP/note.fixture"
 bash "$RUNNER" >"$TMP/fire-bad.out" 2>&1
 check "an invalid note raises the alert and sends no proposal" 'grep -q " clip-relevance note-invalid " "$TMP/alerts.log" && ! grep -q "hello" "$TMP/send.log"'
+reset_run
+cat >"$TMP/note.fixture" <<'EOF2'
+# Clip relevance, week ending 2026-11-20
+
+## Candidates
+
+### 1. Guard the weekly search shape [unchecked]
+- Change: refuse a compound Jira search at the gate.
+- Evidence: Clippings/_evidence/synthetic-three.md
+- Decision: the Jira search was refused twice, so it is not rated.
+
+## Telegram message
+Clip relevance, week to 2026-11-20: 0 new of 1 candidates.
+1. Guard the weekly search shape (unchecked)
+Note: specs/audits/clip-relevance/2026-11-20.md
+EOF2
+bash "$RUNNER" >"$TMP/fire-unchecked.out" 2>&1
+check "a note holding an unchecked candidate raises no alert and its message is sent" \
+    '[ ! -s "$TMP/alerts.log" ] && [ "$(grep -c "^cadence:clip-relevance|" "$TMP/send.log")" = 1 ] && grep -q "(unchecked)" "$TMP/send.log"'
 rm -f "$TMP/send.log" "$TMP/alerts.log"; rm -rf "$TMP/alert-sent"; rm -f "$TMP/note.fixture" "$TMP/notes/2026-11-20.md"
 bash "$RUNNER" >"$TMP/fire-nonote.out" 2>&1
 check "no note at all raises the alert" 'grep -q " clip-relevance note-invalid " "$TMP/alerts.log"'
+check "a run that wrote no note leaves no empty claimed file behind" '[ -z "$(ls "$TMP/notes")" ]'
+check "finish writes one line to the runner's log when it alerts, naming the reason" '[ "$(tail -n 1 "$TMP/runner/clip-relevance-cadence.log" | grep -c "alert note-invalid")" = 1 ]'
 rm -f "$TMP/send.log" "$TMP/alerts.log"; rm -rf "$TMP/alert-sent"
 mkdir -p "$TMP/notes"; printf '## Candidates\n\n## Telegram message\nan earlier run sent this\n' >"$TMP/notes/2026-11-20.md"
 bash "$RUNNER" >"$TMP/fire-stale.out" 2>&1
@@ -266,10 +308,22 @@ badstatus="$TMP/badstatus.md"
 printf '## Candidates\n\n### 1. C [maybe]\n- Search: s\n\n## Telegram message\nx\n' >"$badstatus"
 bash "$CAD" check "$badstatus" >"$TMP/check-bs.out" 2>&1; rc=$?
 check "a status other than new, already-done or already-tracked fails" '[ "$rc" = 1 ] && grep -q "status" "$TMP/check-bs.out"'
+unchk="$TMP/unchk.md"
+printf '## Candidates\n\n### 1. C [unchecked]\n- Change: x\n- Decision: the Jira search was refused twice, so it is not rated.\n\n### 2. D [new]\n- Search: s\n\n## Telegram message\nx\n' >"$unchk"
+bash "$CAD" check "$unchk" >"$TMP/check-unchk.out" 2>&1; rc=$?
+check "a candidate marked unchecked passes with no Search line, and the summary counts it" '[ "$rc" = 0 ] && grep -q "2 candidates: 1 new, 0 already-done, 0 already-tracked, 1 unchecked" "$TMP/check-unchk.out"'
+unchk_only="$TMP/unchk-only.md"
+printf '## Candidates\n\n### 1. C [unchecked]\n- Change: x\n\n## Telegram message\n' >"$unchk_only"
+bash "$CAD" check "$unchk_only" >/dev/null 2>&1; rc=$?
+check "an unchecked candidate does not loosen the Telegram block rule: an empty block still fails" '[ "$rc" = 1 ]'
+six_u="$TMP/six-u.md"
+{ printf '## Candidates\n\n'; for i in 1 2 3 4 5 6; do printf '### %s. C%s [unchecked]\n\n' "$i" "$i"; done; printf '## Telegram message\nx\n'; } >"$six_u"
+bash "$CAD" check "$six_u" >"$TMP/check-six-u.out" 2>&1; rc=$?
+check "unchecked candidates count toward the cap of five" '[ "$rc" = 1 ] && grep -q "more than five" "$TMP/check-six-u.out"'
 nosearch="$TMP/nosearch.md"
 printf '## Candidates\n\n### 1. C [new]\n- Change: x\n\n## Telegram message\nx\n' >"$nosearch"
 bash "$CAD" check "$nosearch" >"$TMP/check-ns.out" 2>&1; rc=$?
-check "a candidate with no Search line fails" '[ "$rc" = 1 ] && grep -q "Search" "$TMP/check-ns.out"'
+check "a candidate rated new with no Search line still fails" '[ "$rc" = 1 ] && grep -q "Search" "$TMP/check-ns.out"'
 notg="$TMP/notg.md"
 printf '## Candidates\n\n### 1. C [new]\n- Search: s\n' >"$notg"
 bash "$CAD" check "$notg" >"$TMP/check-nt.out" 2>&1; rc=$?
@@ -285,6 +339,7 @@ printf '## Candidates\n\nNothing new this week.\n\n## Telegram message\nNothing 
 check "a quiet week with no candidate is valid" 'bash "$CAD" check "$zero" >/dev/null 2>&1'
 rm -f "$TMP/notes/2026-11-20"*.md
 check "note-path is the note folder plus the day" '[ "$(bash "$CAD" note-path)" = "$TMP/notes/2026-11-20.md" ]'
+rm -f "$TMP/notes/2026-11-20"*.md
 
 echo "6. the crontab edges"
 rm -f "$CR/tab"; rm -rf "$TMP/runner"
@@ -313,6 +368,30 @@ cp "$CR/tab" "$TMP/tab.dup"
 bash "$CAD" arm --force >"$TMP/arm-dup.out" 2>&1; rc=$?
 check "two live tagged rows: arm --force refuses (rc 5), names the second row, crontab untouched" \
     '[ "$rc" = 5 ] && cmp -s "$CR/tab" "$TMP/tab.dup" && grep -q "/b/runner.sh" "$TMP/arm-dup.out"'
+
+echo "7. arming checks that every tool the runner calls resolves on its shortened PATH"
+rm -f "$CR/tab"; rm -rf "$TMP/runner"
+bash "$CAD" arm >/dev/null 2>&1
+cp "$CR/tab" "$TMP/tab.armed7"; cp "$RUNNER" "$TMP/runner.armed7"
+mkdir -p "$TMP/.mount_fixC/usr/bin"; printf '#!/bin/sh\nexit 0\n' >"$TMP/.mount_fixC/usr/bin/zz-clip-tool"; chmod +x "$TMP/.mount_fixC/usr/bin/zz-clip-tool"
+PATH="$TMP/.mount_fixC/usr/bin:$PATH" CLIP_RELEVANCE_RUNNER_TOOLS="bash zz-clip-tool" bash "$CAD" arm --force >"$TMP/arm-tool.out" 2>&1; rc=$?
+check "a tool that resolves only in a temporary folder fails arming with its name: rc 2, crontab and runner untouched" \
+    '[ "$rc" = 2 ] && grep -q "zz-clip-tool" "$TMP/arm-tool.out" && cmp -s "$CR/tab" "$TMP/tab.armed7" && cmp -s "$RUNNER" "$TMP/runner.armed7"'
+CLIP_RELEVANCE_RUNNER_TOOLS="bash zz-no-such-tool" bash "$CAD" arm --force --dry-run >"$TMP/arm-tool2.out" 2>&1; rc=$?
+check "a tool found nowhere fails too, even on --dry-run, naming it" '[ "$rc" = 2 ] && grep -q "zz-no-such-tool" "$TMP/arm-tool2.out"'
+bash "$CAD" arm --force >/dev/null 2>&1; rc=$?
+check "the default tool list resolves on this station's baked PATH, so a plain arm still succeeds" '[ "$rc" = 0 ]'
+
+echo "8. the weekly runbook"
+RB="$REPO/.claude/commands/clip-relevance-weekly.md"
+check "it quotes the two allowed Jira commands verbatim" \
+    'grep -qF "node <primary>/scripts/jira/dist/index.js list --jql '"'"'<jql>'"'"' --limit 20" "$RB" && grep -qF "node <primary>/scripts/jira/dist/index.js get <KEY>" "$RB"'
+check "it forbids loops, pipes, variables, redirects and chaining, and says to retry a refused command once in the plain shape" \
+    'grep -qi "no loop, pipe, variable, redirect" "$RB" && grep -qi "retry it once" "$RB"'
+check "it ends every run with a note and marks a candidate it could not check unchecked, never new" \
+    'grep -qi "always end with a note" "$RB" && grep -q "\[unchecked\]" "$RB" && grep -qi "never .*new.* on a search that did not run" "$RB"'
+check "it says a candidate must come from at least one clip, and an empty week writes nothing new at once" \
+    'grep -qi "must come from at least one clip" "$RB" && grep -q "clips: 0 shown" "$RB" && grep -q "Nothing new this week" "$RB"'
 
 echo "test-clip-relevance-cadence: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
