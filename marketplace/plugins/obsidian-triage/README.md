@@ -315,6 +315,46 @@ the `/synthesize-stubs` runbook sends it through the telegram bridge `reply` too
 digest, and `--no-telegram-digest` suppresses it entirely during the one-time
 migration backfill. Pure builder: `tools/lib/telegram-digest.mjs`.
 
+### Synthesis candidates (`tools/synthesis-candidates.mjs`)
+
+`/synthesize-clips` starts from this read-only script instead of choosing what to
+look at: it lists **every** candidate of the four pattern kinds (concept, author,
+tag, folder) with its clip count, distinct sources and a PASS or skip verdict. The
+agent's remaining job is the substantive-content gate, the page, and one log line
+per candidate.
+
+```
+node tools/synthesis-candidates.mjs [vault] [--today YYYY-MM-DD] [--since YYYY-MM-DD] [--format lines|json]
+```
+
+- **Output.** `lines` (default): `PASS <rank> <kind> <slug> clips= evidence= urls= sources= [supersedes=]`
+  per passing candidate, the runbook's own `⊘ <slug> — skipped (<category>): <reason> — <detail>`
+  line per failing one, `⊘ … excluded from synthesis (input)` per unreadable clip, and a
+  `counts` line per kind. `json` adds each candidate's `evidence` list. Same vault and
+  same `--today`: byte-identical output. The vault is never written.
+- **Ranks interleave the kinds** (best concept, best author, best tag, best folder, then the
+  second of each…), so the runbook's per-run page cap cannot be spent on one lens.
+- **Skip reasons.** `confidence-floor`: `single-source-domain`, `single-author-on-platform`,
+  `single-24h-window`. `dedup`: `existing-vault-page` (a concept page or `60-Maps/` hub, a
+  person note, a `60-Maps/` MOC, or the folder already exists), `synthesis-page-within-14d`,
+  `no-new-evidence` (a page older than 14 days that lists as many clips). A page older than
+  14 days with more evidence passes with `supersedes=`.
+- **Sources.** For concept and tag groups, clips on a platform domain (x.com, youtube.com,
+  reddit.com, instagram.com, tiktok.com, linkedin.com, github.com, medium.com, substack.com,
+  threads.net, bsky.app, facebook.com) count one source per distinct author, so many unrelated
+  authors on x.com can form a concept page while one author cannot. Any other domain is one
+  source. Authors are exempt from the source test; folders keep the plain domain rule. The
+  author is the `author:` field, else the x.com or github.com URL; no author at all is one
+  shared unknown source.
+- **Lenses.** Concept and tag groups come from the clips' `tags:` (platform and clip-type
+  tags are ignored); thresholds are 3 clips (concept), 2 (author), 5 (tag), 5 (folder). A group
+  below its threshold is not a candidate. Each candidate lists its 40 newest clips (`evidence`);
+  `clipCount` is the group total.
+- **Gate.** No `<vault>/.harvest.done`: exit 2 with the runbook's message.
+- **Frontmatter** is read with the line-based helpers in `tools/lib/frontmatter.mjs`, not a
+  YAML parser: a processed clip whose frontmatter never closes, or has a top-level line that is
+  not `key: value`, is an input exclusion.
+
 ## Why a plugin
 
 A sibling task ships the install pipeline (Web Clipper extension + JSON templates landed in luna PR #11, see `_Templates/Web-Clipper/import/`). Without triage, clips become a bookmark graveyard inside the vault — the exact failure the source article called out. This plugin owns the triage rhythm.
@@ -426,6 +466,8 @@ no longer carries that plugin; this one hook is the only piece himmel still uses
 `tests/test-triage-invariants.sh` validates the scan helper, frontmatter mutation contract, and Phase 7 placement invariants on a portable bash matrix (verified on Git Bash for Windows). Fixture clips live in `tests/fixtures/clips/` — three cover real Web Clipper output shapes (`tags: []` flow-empty, `tags:` block-list with items, and edge-case unicode title).
 
 Run: `bash marketplace/plugins/obsidian-triage/tests/test-triage-invariants.sh`
+
+`tests/test-synthesis-candidates.sh` is the fixture-vault acceptance test for the candidate list: all four kinds list a passing candidate, every skip reason, the platform-domain rule (5 unrelated authors on one platform pass, 5 clips by one author fail), the 14-day dedup window and supersede rule, the evidence cap, input exclusions, the harvest-completion gate, byte-identical re-runs, a read-only vault, and the runbook wiring. Pure Node.
 
 A `tests/test-synthesize-invariants.sh` covers the synthesize-side invariants (processed-filter, 14-day dedup, confidence-floor single-source rejection for Patterns 1/3/4 + the Pattern 2 domain-floor exemption, deterministic slug derivation).
 

@@ -21,7 +21,11 @@ Every per-pattern outcome MUST emit one line to stdout before the final summary:
 - Skipped (substance floor): `⊘ <pattern-slug> — skipped (substance-floor): <reason — e.g. evidence clips share only 1 theme, recurring-themes extraction empty>`
 - Input parse failure: `⊘ <clip-path> — excluded from synthesis (input): <reason>`
 
-Final summary: `synthesize-clips: <N> written, <M> skipped-dedup, <K1> skipped-confidence-floor, <K2> skipped-substance-floor, <J> inputs-excluded. (See ✓ / ⊘ lines above.)`
+- Skipped (run cap): `⊘ <pattern-slug> — skipped (run-cap): passed the candidate tool but the per-run cap (<PAGE_CAP> pages written or <3×PAGE_CAP> candidates examined) was reached; offered again next run`
+
+Final summary: `synthesize-clips: <N> written, <M> skipped-dedup, <K1> skipped-confidence-floor, <K2> skipped-substance-floor, <K3> skipped-run-cap, <J> inputs-excluded. (See ✓ / ⊘ lines above.)`
+
+The candidate tool (Step 1) prints the dedup, confidence-floor and input-exclusion lines itself, in exactly these shapes; copy them unchanged. You write only the ✓ lines, the substance-floor lines and the run-cap lines.
 
 ### Date substitution rule
 
@@ -31,15 +35,32 @@ Wherever `YYYY-MM-DD` appears in instructions below (including YAML examples and
 
 Same as `/triage-clips`. Look at `$1`, then `$OBSIDIAN_VAULT_PATH`, then `~/Documents/luna` (canonical Luna vault path). Verify `<vault>/Clippings/` exists; exit 0 with `synthesize-clips: no Clippings/ — nothing to synthesize` if not.
 
-### G-8 — Harvest-completion gate (no stage runs on a dead harvest) — run FIRST after vault resolution
+### Step 1 — list the candidates with the tool (run FIRST, right after vault resolution)
 
-synthesize-clips consumes processed clips that trace back to harvest output. A hard-killed `/harvest-clips` mid-run leaves that state partial — synthesizing over it produces patterns from corrupted evidence. Before scanning:
+You do not choose which patterns to look at. A script lists every candidate of all four lenses below, applies input validation, the lens thresholds, the confidence floor and the 14-day dedup window, and marks each candidate PASS or skipped with a named reason. Run it once per run, it is read-only and also runs under `--dry-run`:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/tools/synthesis-candidates.mjs" "<vault>" --today "$TODAY" [--since YYYY-MM-DD]
+```
+
+Add `--format json` when you need a candidate's `evidence` list (the clips to read and cite, newest first, at most 40; `clipCount` is the group total). Same vault and same `--today` give byte-identical output.
+
+- Exit 2 is the G-8 gate below: abort with the message it printed.
+- Any other non-zero exit, or output you cannot read: abort with `synthesize-clips: candidate tool failed — <stderr>`. Never fall back to picking patterns by hand.
+- Output: one `PASS <rank> <kind> <slug> clips=… evidence=… urls=… sources=… [supersedes=<file>]` line per candidate that may be written, one `⊘ …` line per failing candidate, one `⊘ <clip-path> — excluded from synthesis (input)` line per excluded input (their count is `J`), and a `counts` line per kind.
+- Write one skip line per failing candidate: copy every `⊘` line the tool printed into your output, none dropped, none merged.
+
+Then work the PASS lines in rank order (ranks interleave the four kinds, so a cap cannot be spent on one lens). For each: read its evidence clips, apply the substantive-content gate, then write the page or emit the substance-floor line. Stop writing at **`PAGE_CAP` = 10 pages**, and stop examining at **3 × `PAGE_CAP` = 30 candidates** (written plus substance-skipped); every PASS candidate left unexamined gets its own run-cap line. The `supersedes=` value, when present, goes into the page's `supersedes:` frontmatter (see Idempotency).
+
+### G-8 — Harvest-completion gate (no stage runs on a dead harvest) — enforced by Step 1
+
+synthesize-clips consumes processed clips that trace back to harvest output. A hard-killed `/harvest-clips` mid-run leaves that state partial — synthesizing over it produces patterns from corrupted evidence. The candidate tool checks this before it scans anything:
 
 If `<vault>/.harvest.done` does not exist: abort with `synthesize-clips: upstream harvest incomplete — <vault>/.harvest.done not found; run /harvest-clips first.` Exit 2. No date-freshness check: G-2 invalidates the marker at the START of every harvest run, so its mere presence already means "the most recent harvest that started finished cleanly" — a night where harvest exits early without running (bank-threshold skip) leaves yesterday's marker valid, and that is correct.
 
 No operator override flag — keep it minimal; re-running `/harvest-clips` clears the gate.
 
-### Input validation (run for every candidate clip)
+### Input validation (the tool runs this for every candidate clip)
 
 Only consider clips with `processed: true` in frontmatter. Reason: unprocessed clips lack inferred tags and Related Notes, so synthesis would over-fit on raw author wording. Run `/triage-clips` first if needed.
 
@@ -60,18 +81,18 @@ Final summary MUST report `J = number of input-excluded clips`.
 
 ### Slug derivation (deterministic)
 
-Filename pattern is `TODAY-<slug>.md` where `<slug>` is derived as follows. Same pattern + same subject → same slug (for the 14-day dedup window).
+Filename pattern is `TODAY-<slug>.md` where `<slug>` is derived as follows. Same pattern + same subject → same slug (for the 14-day dedup window). The tool prints each candidate's slug; use it verbatim.
 
 - Pattern 1 (concept cluster): `concept-<concept-name>` where `<concept-name>` is the cluster's primary token, lowercased, non-alphanumerics → hyphens, multiple hyphens collapsed. E.g. concept "Attention Residue" → `concept-attention-residue`.
 - Pattern 2 (author convergence): `author-<author-name>` same normalization. E.g. "Jane Smith" → `author-jane-smith`.
 - Pattern 3 (tag overpopulation): `tag-<tag>-moc`. E.g. tag `focus` → `tag-focus-moc`.
 - Pattern 4 (folder pressure): `folder-<folder-path>` with `/` → `-`, lowercased. E.g. `30-Resources/Concepts/` → `folder-30-resources-concepts`.
 
-### Pattern detection — apply all 4 lenses
+### Pattern detection — the 4 lenses (implemented by the Step 1 tool)
 
-Each lens looks at the same eligible clip set, independent of the others. Order doesn't matter. (Do NOT issue 4 parallel tool calls — these are conceptual lenses applied serially within the agent's single context.)
+Each lens looks at the same eligible clip set, independent of the others. The tool applies all four on every run and lists the result; you do not re-detect. The definitions below are the contract it implements.
 
-**Pattern 1 — Concept clusters.** Find concepts appearing in 3+ unrelated clips (different `source` domains AND different `author:` fields). Judge concept recurrence by whatever signals the clips offer — tags, titles, headings, body prose; the 3+/unrelated floor is the contract, the detection method is yours. Exclude: concepts that already have a dedicated page at `<vault>/30-Resources/Concepts/<Concept>.md` (or `_CLAUDE.md` Folder Map equivalent).
+**Pattern 1 — Concept clusters.** Find concepts appearing in 3+ unrelated clips (unrelated = distinct sources, see the confidence floor). The tool judges concept recurrence by the clips' `tags:` (a tag that only names a platform or a clip type is not a concept). Exclude: concepts that already have a dedicated page at `<vault>/30-Resources/Concepts/<Concept>.md` or a `<vault>/60-Maps/<Concept>-MOC.md` hub.
 
 **Pattern 2 — Author / voice convergence.** Find authors appearing in 2+ clips. For each, check if a person note exists at `<vault>/20-Areas/<Author>.md` (or Folder Map equivalent). If no person note: synthesis signal — the author has thought-weight in the vault but no anchor.
 
@@ -83,7 +104,7 @@ Each lens looks at the same eligible clip set, independent of the others. Order 
 
 Skip any pattern where:
 - Evidence is <3 clips (concepts), <2 clips (authors), <5 clips (tags / folders)
-- Evidence clips all share `source:` domain — single-source patterns are noise, not signal (this filter applies to Patterns 1, 3 AND 4 — NOT Pattern 2 (the author is the source): for author convergence the author IS the source and authors are inherently single-platform (an X author's clips always share x.com), so the shared-domain test would skip every tweet author — exactly the thought-weight signal Pattern 2 exists to surface. Pattern 2's noise guards are the 24-hour window below plus its substance gate (≥3 distinct recurring themes))
+- Evidence clips all come from one source — single-source patterns are noise, not signal (this filter applies to Patterns 1, 3 AND 4 — NOT Pattern 2 (the author is the source): for author convergence the author IS the source and authors are inherently single-platform (an X author's clips always share x.com), so the shared-source test would skip every tweet author — exactly the thought-weight signal Pattern 2 exists to surface. Pattern 2's noise guards are the 24-hour window below plus its substance gate (≥3 distinct recurring themes)). A source is the `source:` domain, with one exception for **Patterns 1 and 3** (concept and tag groups): on a **platform domain** (x.com, youtube.com, reddit.com, instagram.com, tiktok.com, linkedin.com, github.com, medium.com, substack.com, threads.net, bsky.app, facebook.com) the domain says nothing about who is talking, so each distinct author on it is a separate source. Many unrelated authors on x.com are independent evidence and may form a concept or tag page; a group by one author on one platform is one source and still fails. Clips with no author field on a platform domain count as one unknown source together (the author is read from the `author:` field, else from the x.com or github.com URL). Pattern 4 keeps the plain domain rule.
 - Evidence clips all landed within a 24-hour window — could be a single news event, not a recurring theme
 
 If skipped: emit a `⊘` line, do not write.
@@ -103,7 +124,7 @@ If the agent cannot extract the minimum substance after reading the evidence cli
 
 ### Idempotency — 14-day dedup window
 
-Before writing each synthesis page:
+The tool applies the steps below to every candidate: it prints the dedup skip line, or a PASS line carrying `supersedes=<old-filename>` for step 3 (the evidence comparison uses the candidate's listed evidence, at most 40 clips). Before writing each synthesis page:
 1. Look in `<vault>/Clippings/_synthesis/` for existing pages with the same `<slug>` (using the deterministic derivation above), regardless of the leading date.
 2. If found AND the existing page's date is within the last 14 days: SKIP — emit `⊘` dedup log line, do not write.
 3. If found AND the existing page is >14 days old AND new evidence has accumulated (more clips than the old page's evidence list): write a new page with `supersedes: [[Clippings/_synthesis/<old-filename>]]` in frontmatter.
@@ -130,6 +151,8 @@ confidence: medium
 {2-3 sentences: what pattern was detected, why it matters, what action is proposed.}
 
 ## Evidence (N clips, M unique URLs)
+
+(List the candidate's `evidence` clips, newest first, at most 40. When the tool's `clipCount` is larger, say so in the "For future Claude" paragraph; `N` is still the number of bullets.)
 
 - [[Clippings/<clip-1>]] — {1-line why this clip evidences the pattern}
 - [[Clippings/<clip-2>]] — ...
