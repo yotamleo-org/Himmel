@@ -23,7 +23,8 @@ Usage:
         The default run. A thin-body article/web clip is fetched through the free
         rungs (local headless, then Jina) with no flag or key and written as a
         `## Harvested content` section; --fetch-budget (HARVEST_FETCH_BUDGET,
-        default 20) caps fetch attempts per run, failures included. A failed or
+        default 20) caps the clips fetched per run (one unit per clip, however
+        many rungs of the chain it tries), failures included. A failed or
         empty fetch leaves a retryable partial. A partial that triage moved to
         _evidence/ is retried there too (article and YouTube hosts), up to the
         defer count of 5, when the run would reprocess it; a YouTube clip whose
@@ -2195,7 +2196,8 @@ def main():
                          "uncaptured thread or a fetched bot-check notice as partial. "
                          "Frontmatter only; --limit N caps the clips changed.")
     ap.add_argument("--fetch-budget", type=int, default=None,
-                    help="Max free-rung fetch attempts per default run. "
+                    help="Max clips fetched per default run (one unit per clip, whatever "
+                         "the number of rungs tried). "
                          f"Default HARVEST_FETCH_BUDGET, else {FETCH_DEFAULT_BUDGET}.")
     ap.add_argument("--firecrawl-thin", action="store_true",
                     help="Escalation: after the free rungs (Jina, local headless, which every run "

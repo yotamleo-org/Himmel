@@ -580,6 +580,18 @@ code, out = run_main(v)
 moved = v / "Clippings" / "_evidence" / waiting_name
 check("a clip that waited for the budget and was then moved to _evidence/ is retried there and filled", log == [("jina", f"https://example.com/docs/{waiting.stem}")] and fm_value(moved, "harvest_status") == "ok")
 log = []
+install_backends(log, headless_exc=RuntimeError("headless: down"), jina_exc=RuntimeError("jina: 503"))
+v = vault_of(inbox=[(f"c{i}.md", triaged_clip(f"https://example.com/docs/c{i}")) for i in range(3)])
+code, out = run_main(v, "--fetch-budget", "2")
+check("the fetch budget is one unit per clip, however many rungs of the chain it tries: two clips, four rung calls",
+      [n for n, _ in log] == ["local-headless", "jina", "local-headless", "jina"] and len({u for _, u in log}) == 2)
+doc_budget = [(Path(__file__).resolve().parent.parent / "tools" / "README.md").read_text(encoding="utf-8"),
+              (Path(__file__).resolve().parent.parent / "commands" / "harvest-clips.md").read_text(encoding="utf-8"),
+              TOOL.read_text(encoding="utf-8")]
+check("the docs and the usage text say the budget is one unit per clip", all("one unit per clip" in t for t in doc_budget))
+check("no doc calls the fetch budget a cap on attempts", not any("fetch attempts" in t or "attempts per run" in t for t in doc_budget))
+
+log = []
 install_backends(log)
 v = vault_of(inbox=[(f"c{i}.md", triaged_clip(f"https://example.com/docs/c{i}")) for i in range(3)])
 code, out = run_main(v, env={"HARVEST_FETCH_BUDGET": "1"})

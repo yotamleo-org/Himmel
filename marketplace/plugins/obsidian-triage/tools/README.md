@@ -7,8 +7,8 @@ Batch tooling for the obsidian-triage plugin. Several flavors:
   youtube/instagram excluded — owned by their own paths) with no flag: the free
   rungs of the scrape chain (local headless, then Jina), written as a
   `## Harvested content` section (`harvest_skill` names the rung). Bounded:
-  `--fetch-budget N` / `HARVEST_FETCH_BUDGET` (default 20) caps fetch attempts per run,
-  failures included; a failed, empty or capped fetch stays a retryable partial. A
+  `--fetch-budget N` / `HARVEST_FETCH_BUDGET` (default 20) caps the clips fetched per run,
+  one unit per clip however many rungs of the chain it tries, failures included; a failed, empty or capped fetch stays a retryable partial. A
   partial that triage already moved to `_evidence/` is retried there, up to the
   defer count of 5, when the run would reprocess it (never stamped, a clip-body
   thin stamp, or a backend-stamped junk text); a YouTube clip whose transcript was
