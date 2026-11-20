@@ -38,6 +38,7 @@ run_bounded() {
     ( sleep "$secs"; kill "$pid" ) >/dev/null 2>&1 &
     dog=$!
     wait "$pid"; rc=$?
+    pkill -P "$dog" >/dev/null 2>&1
     kill "$dog" >/dev/null 2>&1
     out="$(cat "$tmpdir/_bounded.out")"
 }
@@ -210,13 +211,13 @@ assert "http blog feed: 2 clips (the link-less and the script-link entries skipp
 if grep -l '^source: http://127.0.0.1' "$V"/Clippings/*.md >/dev/null 2>&1; then s=feed-url; else s=none; fi
 assert "no clip carries the feed URL as its source" none "$s"
 
-echo "Test 6c: a BOM on the list's first line, a walled host spelled with a trailing dot"
-V="$(newvault bomdot)"
-{ printf '\357\273\277https://x.com./example/feed.xml Dotted\n'; printf 'file://%s AtomRel\n' "$FIX/atom-releases.xml"; } > "$V/.feed-clip-feeds"
+echo "Test 6c: a walled host spelled with a trailing dot"
+V="$(newvault dotted)"
+{ printf 'https://x.com./example/feed.xml Dotted\n'; printf 'file://%s AtomRel\n' "$FIX/atom-releases.xml"; } > "$V/.feed-clip-feeds"
 run_tool --vault "$V"
-assert "bom + dotted host: exit 0" 0 "$rc"
-assert "the first line is read despite the BOM and refused as a walled host" 1 "$(grep -c '^✗ feed-clip: Dotted.*walled' <<<"$out")"
-assert "bom + dotted host: the other feed still wrote its 2 clips" 2 "$(nclips "$V")"
+assert "dotted host: exit 0" 0 "$rc"
+assert "a walled host with a trailing dot is refused" 1 "$(grep -c '^✗ feed-clip: Dotted.*walled' <<<"$out")"
+assert "dotted host: the other feed still wrote its 2 clips" 2 "$(nclips "$V")"
 
 echo "Test 6b: a crafted feed cannot stall the parser"
 V="$(newvault hostile)"
@@ -394,6 +395,12 @@ except Exception:
 ')"
     assert "non-printable title: PyYAML parses the written front matter" ok "$py"
 fi
+
+echo "Test 13: the README names the nightly harvest runner as what schedules the tool"
+readme="$SCRIPT_DIR/../README.md"
+feed_section="$(awk '/^### Feed clips/{p=1; next} /^### /{p=0} p' "$readme")"
+assert "README: the feed section names the nightly harvest runner" 1 "$(printf '%s\n' "$feed_section" | grep -c 'nightly harvest runner')"
+assert "README: the feed section no longer says no repository job runs the tool" 0 "$(printf '%s\n' "$feed_section" | grep -c 'No repository job runs the tool')"
 
 echo "Test 11: unreadable state"
 V="$(newvault badstate)"

@@ -257,7 +257,7 @@ node tools/feed-clip.mjs --vault <path> --cap 3
 - **Clipped once** — `<vault>/.feed-clip-seen.jsonl` (append-only, one line per clipped entry) is the record; deleting a clip does not bring the entry back. A clip file that already exists is never overwritten.
 - **Cap** — at most `--cap` (default 3) new clips per feed per run, newest entry first; the rest stay unseen and arrive on later runs. A feed's first run therefore trickles in over several runs.
 - **Failures** — a feed that errors (HTTP status, timeout, not a feed, larger than 8 MiB, a malformed list line) is one `✗ feed-clip:` line; the other feeds are still processed and the exit code stays 0. Login-walled hosts (`x.com`, `instagram.com`, `reddit.com`, …) are refused, also when a redirect leads to one. Exit 2 is for an unusable vault or an unreadable or unwritable state file.
-- **Scheduling** — none here; the nightly run wires the tool in separately.
+- **Scheduling** — the nightly harvest runner that `scripts/luna/pipeline-cadence.sh` generates runs it before the harvest, at most `--feed-cap` (default 2, set when arming) new clips per feed (see the nightly paragraph below); outside that runner it runs only when invoked by hand.
 
 `tests/test-feed-clip.sh` covers it against synthetic fixture feeds served from local files and a loopback server (never a real feed): one clip per entry and none on the second run, the Telegram clip shape, failing feeds, the cap (3, 3, 3, 1, 0 for ten entries), the seen state, `--dry-run`, a crafted feed that must not stall the parser, a redirect loop, the body-size caps, and non-printable characters in a title. Each guard on untrusted input has a row that goes red when the guard is deleted.
 
@@ -346,7 +346,8 @@ the harvest, then after the synthesis `synthesize-stubs.mjs --apply --limit N
 --no-telegram-digest` and `apply-clip-actions.mjs --apply --limit N`. A failing
 step is reported and never fails the run; a step whose tool is not installed
 reports `skipped: tool not installed`. The two writers hold the vault's git index
-lock while they write, and both are undone with `--revert <their ledger>`.
+lock while they write, and both are undone with `--revert <their ledger>`, the actions
+ledger first (a clip archived after it was stamped refuses to revert once its stamp is gone).
 A clip stamped `archived: true` by the daily note's archive action feeds neither a
 subject page nor a synthesis candidate, and a page that already cites it is left as it is.
 
@@ -509,8 +510,8 @@ node tools/apply-clip-actions.mjs --vault <v> --revert <vault>/.apply-clip-actio
   no extra stamp for a fold: the link in the map is the evidence.
 
 The ledger and the lock are vault state like `.synthesize-stubs.ledger.jsonl`; add
-`.apply-clip-actions.*` to the vault's `.gitignore` if the vault is a git repo. Nothing schedules this tool yet;
-the nightly wiring is separate. Pure Node, no install: `tests/test-apply-clip-actions.sh`.
+`.apply-clip-actions.*` to the vault's `.gitignore` if the vault is a git repo. The nightly synthesize runner applies
+the mechanical actions after the promotion, at most 5 a night (`--actions-limit`). Pure Node, no install: `tests/test-apply-clip-actions.sh`.
 
 ## Why a plugin
 
