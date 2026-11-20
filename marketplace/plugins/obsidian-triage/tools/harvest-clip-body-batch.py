@@ -281,7 +281,6 @@ def is_github_blob_url(url: str) -> bool:
 
 
 def is_github_release_tag_url(url: str) -> bool:
-    """One release's page, /<owner>/<repo>/releases/tag/<tag>."""
     if not is_github_url(url):
         return False
     parts = [seg for seg in urlparse(url.strip().strip('"')).path.split("/") if seg]
@@ -289,10 +288,6 @@ def is_github_release_tag_url(url: str) -> bool:
 
 
 def has_release_notes(source: str, body: str) -> bool:
-    """A release-tag clip that carries text of its own (a feed clip carries the
-    release notes) is an article about that release: the repository is not
-    ingested and a short note is not a thin body. A body of only the link is
-    not notes."""
     return is_github_release_tag_url(source or "") and bool(_capture_lines(body))
 
 
@@ -336,8 +331,6 @@ _URL_ONLY_SUMMARY_RE = re.compile(
     r"(?ms)^## Summary[ \t]*\r?\n(?:(?!^#{1,6}[ \t]).)*?" + re.escape(URL_ONLY_MARKER) + r".*?(?=^## |\Z)")
 
 
-# A fetched text that is only a bot-check or error notice is no text. The one
-# list of notice phrases; a false rejection only costs a retry.
 BOT_CHECK_PHRASES = (
     "just a moment", "enable javascript", "enable cookies", "checking your browser",
     "verify you are human", "verifying you are human", "are you a robot", "not a robot",
@@ -347,12 +340,10 @@ BOT_CHECK_PHRASES = (
 )
 _BOT_CHECK_RE = re.compile("|".join(re.escape(p) for p in BOT_CHECK_PHRASES), re.IGNORECASE)
 FETCH_MIN_WORDS = 20
-BOT_CHECK_MAX_WORDS = 80  # a longer text that mentions a phrase is an article
+BOT_CHECK_MAX_WORDS = 80
 
 
 def unusable_fetch_reason(text: str) -> str | None:
-    """Why a fetched text counts as no text, else None. At most
-    BOT_CHECK_MAX_WORDS + 1 words are counted, however large the text."""
     words = sum(1 for _ in itertools.islice(re.finditer(r"\w+", text), BOT_CHECK_MAX_WORDS + 1))
     if words <= BOT_CHECK_MAX_WORDS and _BOT_CHECK_RE.search(text):
         return "fetched text is a bot-check or error notice"
@@ -365,8 +356,6 @@ _HARVESTED_SECTION_RE = re.compile(r"(?ms)^## Harvested content[ \t]*\r?\n(?:<!-
 
 
 def junk_fetch_section(fm: dict, body: str):
-    """The match of a `## Harvested content` section that a scrape backend
-    stamped over a text that counts as no text, else None."""
     if fm.get("harvest_skill") not in BACKEND_REGISTRY or fm.get("harvest_status") not in ("ok", "partial"):
         return None
     m = _HARVESTED_SECTION_RE.search(body)

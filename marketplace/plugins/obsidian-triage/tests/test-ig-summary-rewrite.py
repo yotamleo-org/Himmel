@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-"""A url-only Instagram summary is rewritten once the clip's transcript or slide
-digest arrives, and a bounded one-time repair does the same for the clips that
-already hold one. Offline: the download, whisper and the vault are stubs."""
 import importlib.util
 import io
 import contextlib
@@ -76,7 +73,6 @@ def refresh(p):
     return fn(p) if fn else None
 
 
-# --- the rewrite --------------------------------------------------------------
 p = clip("a.md", crawled=crawled())
 before = txt(p)
 kind = refresh(p)
@@ -185,7 +181,6 @@ result = refresh(p)
 mod.write_clip = real_write
 check("a write that drifts outside the Summary section is reverted byte for byte", result is None and txt(p) == before and len(writes) == 2)
 
-# --- the enrichment step -------------------------------------------------------
 V = SCRATCH / "vault-enrich"
 (V / "Clippings").mkdir(parents=True)
 mod.scrapling_python = lambda: "py"
@@ -219,7 +214,6 @@ with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.St
 check("a failed enrichment leaves the url-only summary as it was", MARK in txt(failing) and fmv(failing, "summary_basis") == "url-only")
 check("a failed enrichment leaves the thin-body flag as it was", fmv(failing, "harvest_flag") == "thin-body")
 
-# --- the slide digest step -------------------------------------------------------
 dg = SCRATCH / "digest.txt"
 dg.write_text(DIGEST, encoding="utf-8")
 pend = clip("pend.md", crawled=crawled(transcript="", slides=True, digest=None), extra_fm="harvest_flag: thin-body\n")
@@ -229,7 +223,6 @@ check("applying a digest rewrites the url-only summary", rc == 0 and MARK not in
       and fmv(pend, "summary_basis") not in (None, "url-only"))
 check("applying a digest clears the stale thin-body flag", fmv(pend, "harvest_flag") is None)
 
-# --- the one-time repair ----------------------------------------------------------
 R = SCRATCH / "vault-repair"
 files = {}
 affected = set()

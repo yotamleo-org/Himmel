@@ -245,7 +245,6 @@ console.log("OK 6320 per-file realpath");
 JS
 LIB="$LIBURL" OBSIDIAN_VAULT_PATH="$tmp/vault" node "$tmp/t6320.mjs" || { echo "6320 per-file symlink test FAILED"; exit 1; }
 
-# --- a github release-tag clip with release notes is not thin; the same link with only its URL, or another github link, still is ---
 cat > "$tmp/t10409.mjs" <<'JS'
 const { isThinClipBody } = await import(process.env.LIB);
 const NL = "\n";

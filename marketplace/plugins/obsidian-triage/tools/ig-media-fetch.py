@@ -253,12 +253,6 @@ def drop_ig_media_pending(fm_raw: str) -> str:
     return "\n".join(lines)
 
 
-# --- url-only summary refresh ----------------------------------------------------
-# Triage writes a clip's summary before this rung runs and never revisits it, so a
-# clip enriched afterwards keeps "Inferred from the source URL only". Once the
-# transcript or slide digest exists, the summary is rewritten from its opening
-# lines (no model call), summary_basis stops saying url-only and the stale
-# harvest_flag: thin-body goes in the same write.
 URL_ONLY_MARKER = "Inferred from the source URL only"
 SUMMARY_EXTRACT_CHARS = 400
 _SUMMARY_RE = re.compile(r"(?ms)^## Summary[ \t]*\n(.*?)(?=^## |\Z)")
@@ -274,8 +268,6 @@ def _injection_hits(text: str):
 
 
 def _media_text(body: str):
-    """("transcript"|"slides", text) from the ## Crawled content section, else
-    (None, ""). A reel's transcript wins over a slide digest."""
     m = re.search(r"(?m)^## Crawled content\b", body)
     if not m:
         return None, ""
@@ -295,9 +287,6 @@ def _media_text(body: str):
 
 
 def _excerpt(text: str) -> str:
-    """One plain line of at most SUMMARY_EXTRACT_CHARS: unprintable characters,
-    comment and link markers and code fences are dropped, whitespace collapsed,
-    the cut kept at a sentence end when there is one."""
     t = _UNPRINTABLE_RE.sub("", text)
     for tok in ("<!--", "-->", "[[", "]]", "```"):
         t = t.replace(tok, " ")
@@ -312,9 +301,6 @@ def _excerpt(text: str) -> str:
 
 
 def plan_summary_rewrite(text: str):
-    """(new_text, kind) for LF-normalised clip text whose url-only summary can be
-    rewritten from its media text, else None. Nothing is copied from a clip
-    already flagged injection-suspect or whose media text trips the screen."""
     fm, fm_raw, body, present = parse_frontmatter(text)
     if not present or not is_ig_source(fm.get("source", "").strip('"')):
         return None
@@ -337,16 +323,12 @@ def plan_summary_rewrite(text: str):
         if re.fullmatch(r"summary_basis:[ \t]*\"?url-only\"?[ \t]*", ln):
             ln = "summary_basis: crawled-extract"
         elif re.fullmatch(r"harvest_flag:[ \t]*\"?thin-body\"?[ \t]*", ln):
-            continue  # the clip has text now; the harvest's own success paths drop this flag the same way
+            continue
         fm_lines.append(ln)
     return f"---\n{chr(10).join(fm_lines)}\n---\n{new_body}", kind
 
 
 def refresh_url_only_summary(path: Path, dry_run: bool = False):
-    """Rewrite the clip's url-only summary from its media text under the same
-    verified-write discipline as the other writers: re-read, everything outside
-    the Summary section byte-identical, revert on any mismatch. Returns the
-    text kind ("transcript"/"slides") when rewritten (dry run: would be), else None."""
     text, has_crlf = read_clip(path)
     planned = plan_summary_rewrite(text)
     if planned is None:
@@ -375,10 +357,6 @@ def note_summary_refresh(path: Path, rel: str):
 
 
 def run_repair_summaries(args) -> int:
-    """--repair-summaries: one-time backfill over every Instagram clip, _evidence/
-    and _done/ included, whose summary is still url-only although a transcript
-    or slide digest exists. Dry run unless --apply; --limit N caps the clips
-    changed per run (default 10, 0 = all)."""
     root = args.vault / "Clippings"
     candidates = []
     for p in sorted(root.rglob("*.md")) if root.is_dir() else []:

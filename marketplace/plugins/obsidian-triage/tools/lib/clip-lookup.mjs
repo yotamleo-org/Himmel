@@ -137,9 +137,6 @@ export function isGithubReleaseTagUrl(sourceUrl) {
   } catch { return false; }
 }
 
-// A line of the clip's own text: not blank, a heading, a comment, a placeholder
-// or a bare link, outside the ## Source footer, a URL-only summary and the
-// triage promotion block (mirrors _capture_lines in harvest-clip-body-batch.py).
 function hasCapturedLine(body) {
   const srcIdx = body.lastIndexOf("\n## Source");
   const lines = (srcIdx >= 0 ? body.slice(0, srcIdx) : body).replace(/<!--[\s\S]*?-->/g, "").split(/\r?\n/);
