@@ -2,6 +2,7 @@
 import importlib.util
 import io
 import contextlib
+import json
 import os
 import sys
 import tempfile
@@ -277,6 +278,10 @@ check("repair left the flag on every clip it did not rewrite (no text, not Insta
 before = {k: txt(v) for k, v in files.items()}
 code, out = repair("--apply", "--limit", "0")
 check("a second repair run changes nothing", {k: txt(v) for k, v in files.items()} == before and "0 rewritten" in out)
+
+printable_cases = json.loads((Path(__file__).resolve().parent / "fixtures" / "printable-text-cases.json").read_text(encoding="utf-8"))
+for c in printable_cases["cases"]:
+    check(f"shared printable-text case: {c['name']}", mod._excerpt(c["input"]) == c["output"])
 
 print(f"\nResults: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

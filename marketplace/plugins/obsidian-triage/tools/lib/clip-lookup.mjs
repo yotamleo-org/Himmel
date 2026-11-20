@@ -137,26 +137,26 @@ export function isGithubReleaseTagUrl(sourceUrl) {
   } catch { return false; }
 }
 
+const PROMOTION_SECTION_RE = /^## Promotion candidate\b[\s\S]*?(?=^## |(?![\s\S]))/gm;
+const URL_ONLY_SUMMARY_RE = new RegExp(
+  `^## Summary[ \\t]*\\r?\\n(?:(?!^#{1,6}[ \\t])[\\s\\S])*?${URL_ONLY_MARKER}[\\s\\S]*?(?=^## |(?![\\s\\S]))`, "gm");
+const NOT_TEXT_LINE = /^(?:[-*+]\s*(?:\[[ xX]?\])?|\*\(.*\)\*|<!--.*-->|\[[^\]]*\]\(\S+\)|https?:\/\/\S+)$/;
+
 function hasCapturedLine(body) {
-  const srcIdx = body.lastIndexOf("\n## Source");
-  const lines = (srcIdx >= 0 ? body.slice(0, srcIdx) : body).replace(/<!--[\s\S]*?-->/g, "").split(/\r?\n/);
-  let derived = false;
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i].trim();
-    if (/^#{1,6}\s/.test(l)) {
-      derived = l.startsWith("## Promotion candidate") || isUrlOnlySummary(lines, i);
-      continue;
-    }
-    if (derived || PLACEHOLDER_LINE(l)) continue;
-    if (/^https?:\/\/\S+$/.test(l) || /^\[[^\]]*\]\(\S+\)$/.test(l)) continue;
-    return true;
-  }
-  return false;
+  const text = body.replace(/<!--[\s\S]*?-->/g, "").replace(PROMOTION_SECTION_RE, "").replace(URL_ONLY_SUMMARY_RE, "");
+  return text.split("\n").some((line) => {
+    const t = line.trim();
+    return t !== "" && !t.startsWith("#") && !NOT_TEXT_LINE.test(t);
+  });
+}
+
+export function hasReleaseNotes(source, body) {
+  return isGithubReleaseTagUrl(source) && hasCapturedLine(body);
 }
 
 export function isThinClipBody(body, type, source) {
   if (!body) return true;
-  if (isGithubReleaseTagUrl(source) && hasCapturedLine(body)) return false;
+  if (hasReleaseNotes(source, body)) return false;
   // Source-host override (host beats type) — spec §7. A legacy
   // type:article reddit clip must still route to the reddit predicate.
   if (isRedditHost(source)) return isThinRedditBody(body);

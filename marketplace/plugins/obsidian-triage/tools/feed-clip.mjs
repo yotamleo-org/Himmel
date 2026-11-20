@@ -176,10 +176,14 @@ async function fetchFeed(url) {
     });
     const loc = res.headers.get("location");
     if (res.status >= 300 && res.status < 400 && loc) {
+      await res.body?.cancel();
       u = new URL(loc, u);
       continue;
     }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      await res.body?.cancel();
+      throw new Error(`HTTP ${res.status}`);
+    }
     return await readCapped(res);
   }
   throw new Error("too many redirects");

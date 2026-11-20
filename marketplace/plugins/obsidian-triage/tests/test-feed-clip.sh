@@ -70,6 +70,16 @@ import { readFileSync } from "node:fs";
 const ok = readFileSync(process.argv[2]);
 const blog = readFileSync(process.argv[3]);
 const big = "<?xml version='1.0'?><rss version='2.0'><channel>" + "<!-- pad -->".repeat(2000) + "</channel></rss>";
+const closed = new Set();
+const atom = (title) => `<?xml version='1.0'?><feed xmlns='http://www.w3.org/2005/Atom'><title>t</title><entry><id>${title}</id><link href='https://example.com/${title}'/><title>${title}</title><content>body</content></entry></feed>`;
+const afterClose = (key, r) => {
+  const t0 = Date.now();
+  const tick = () => {
+    if (closed.has(key) || Date.now() - t0 > 3000) { r.writeHead(200, { "content-type": "application/atom+xml" }); r.end(atom((closed.has(key) ? "closed-" : "still-open-") + key)); }
+    else setTimeout(tick, 20);
+  };
+  tick();
+};
 const s = http.createServer((q, r) => {
   if (q.url === "/ok") { r.writeHead(200, { "content-type": "application/atom+xml" }); r.end(ok); }
   else if (q.url === "/blog") { r.writeHead(200, { "content-type": "application/rss+xml" }); r.end(blog); }
@@ -78,6 +88,10 @@ const s = http.createServer((q, r) => {
   else if (q.url === "/redir-walled") { r.writeHead(302, { location: "http://x.com/feed.xml" }); r.end(); }
   else if (q.url === "/loop") { r.writeHead(302, { location: "/loop" }); r.end(); }
   else if (q.url === "/redir-ok") { r.writeHead(302, { location: "/ok" }); r.end(); }
+  else if (q.url === "/err-open") { r.on("close", () => closed.add("err")); r.writeHead(500); r.write("partial"); }
+  else if (q.url === "/after-err") afterClose("err", r);
+  else if (q.url === "/redir-open") { r.on("close", () => closed.add("redir")); r.writeHead(302, { location: "/after-redir" }); r.write("partial"); }
+  else if (q.url === "/after-redir") afterClose("redir", r);
   else if (q.url === "/html") { r.writeHead(200, { "content-type": "text/html" }); r.end("<html><body>not a feed</body></html>"); }
   else if (q.url === "/big") { r.writeHead(200); r.end(big); }
   else { r.writeHead(404); r.end(); }
@@ -201,6 +215,18 @@ assert "oversized feed reported" ok "$(has '^✗ feed-clip: Big.*larger than' "$
 assert "malformed list line reported with its line number" ok "$(has 'feed-clip: .*feed-clip-feeds:10' "$out")"
 assert "the good feeds still wrote their clips (2 via redirect + 2 blog)" 4 "$(nclips "$V")"
 assert "failed feeds wrote no seen line" 4 "$(seen_lines)"
+
+echo "Test 6b: an error or redirect response body is cancelled before the next request"
+V="$(newvault cancelerr)"
+printf 'http://127.0.0.1:%s/err-open ErrOpen\nhttp://127.0.0.1:%s/after-err AfterErr\n' "$PORT" "$PORT" > "$V/.feed-clip-feeds"
+run_tool --vault "$V" --dry-run
+assert "error status: the feed is still reported as HTTP 500" ok "$(has '^✗ feed-clip: ErrOpen.*HTTP 500' "$out")"
+assert "error status: its open body is closed before the next feed is fetched" ok "$(has 'would clip: AfterErr: closed-err' "$out")"
+V="$(newvault cancelredir)"
+printf 'http://127.0.0.1:%s/redir-open Chain\n' "$PORT" > "$V/.feed-clip-feeds"
+run_tool --vault "$V" --dry-run
+assert "redirect: the chain is still followed to the feed" ok "$(has 'would clip: Chain: ' "$out")"
+assert "redirect: the redirect's open body is closed before the next hop" ok "$(has 'would clip: Chain: closed-redir' "$out")"
 
 echo "Test 6a: http feed with a link-less entry"
 V="$(newvault httpblog)"
@@ -395,6 +421,31 @@ except Exception:
 ')"
     assert "non-printable title: PyYAML parses the written front matter" ok "$py"
 fi
+
+echo "Test 12b: the printable-text rule agrees with the shared fixture"
+cat > "$tmpdir/printable.mjs" <<'EOF'
+import { readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+const [script, vault, feedFile, fixture] = process.argv.slice(2);
+const fx = JSON.parse(readFileSync(fixture, "utf8"));
+const ref = (s) => [...s].map((ch) => `&#x${ch.codePointAt(0).toString(16)};`).join("");
+const entries = fx.cases.map((c, i) => `<entry><id>p${i}</id><link href="https://example.com/p${i}"/><title>${ref(c.input)}</title><content>x</content></entry>`).join("");
+writeFileSync(feedFile, `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>t</title>${entries}</feed>`);
+writeFileSync(`${vault}/.feed-clip-feeds`, `file://${feedFile} Z9\n`);
+const out = execFileSync("node", [script, "--vault", vault, "--dry-run", "--cap", "100"], { encoding: "utf8" });
+const got = {};
+for (const m of out.matchAll(/^ {2}would clip: Z9: (.*) → https:\/\/example\.com\/p(\d+) /gmu)) got[m[2]] = m[1];
+let bad = 0;
+fx.cases.forEach((c, i) => {
+  if (got[i] !== c.output) { bad++; console.error(`FAIL: printable-text case "${c.name}": expected ${JSON.stringify(c.output)}, got ${JSON.stringify(got[i])}`); }
+});
+if (bad) process.exit(1);
+console.log(`OK printable-text cases (${fx.cases.length})`);
+EOF
+V="$(newvault printable)"
+node "$tmpdir/printable.mjs" "$SCRIPT" "$V" "$tmpdir/printable-feed.xml" "$SCRIPT_DIR/fixtures/printable-text-cases.json" >"$tmpdir/_printable" 2>&1; prc=$?
+if [ "$prc" -eq 0 ]; then s=ok; else s="$(cat "$tmpdir/_printable")"; fi
+assert "printable-text: every shared case agrees with the feed tool" ok "$s"
 
 echo "Test 13: the README names the nightly harvest runner as what schedules the tool"
 readme="$SCRIPT_DIR/../README.md"

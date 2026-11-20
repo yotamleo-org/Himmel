@@ -290,7 +290,7 @@ def _excerpt(text: str) -> str:
     t = _UNPRINTABLE_RE.sub("", text)
     for tok in ("<!--", "-->", "[[", "]]", "```"):
         t = t.replace(tok, " ")
-    t = re.sub(r"\s+", " ", t).strip()
+    t = re.sub(r"[\s\ufeff]+", " ", t).strip()
     if len(t) <= SUMMARY_EXTRACT_CHARS:
         return t
     cut = t[:SUMMARY_EXTRACT_CHARS]

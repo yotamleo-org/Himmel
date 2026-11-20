@@ -9,6 +9,7 @@ budget-exhausted / fetch-error / dry-run / injection re-screen).
 Run via tests/test-firecrawl-thin.sh (or directly with any python3).
 """
 import importlib.util
+import json
 import os
 import sys
 import tempfile
@@ -744,6 +745,14 @@ for label, url in (("the repository root", "https://github.com/example-org/examp
                    ("an issue", "https://github.com/example-org/example-tool/issues/7")):
     r, out, log, code, v = harvest_one(feed_release_clip(NOTES, url=url))
     check(f"a github link to {label} with a body still goes to repository ingest", fm_value(r, "harvest_status") is None and "github-ingest" in out)
+
+release_cases = json.loads((Path(__file__).resolve().parent / "fixtures" / "release-notes-cases.json").read_text(encoding="utf-8"))
+for c in release_cases["cases"]:
+    case_source = c["source"].replace("RELEASE", release_cases["release"])
+    case_body = c["body"].replace("RELEASE", release_cases["release"])
+    check(f"shared release-notes case: {c['name']}", mod.has_release_notes(case_source, case_body) == c["has_notes"])
+    if c["has_notes"]:
+        check(f"shared release-notes case, not thin: {c['name']}", mod.is_thin_clip(case_source, case_body) is False)
 
 for outer in ("_evidence", "_done", "_synthesis"):
     log = []

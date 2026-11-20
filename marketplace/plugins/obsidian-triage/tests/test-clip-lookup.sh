@@ -260,4 +260,21 @@ console.log("OK release-tag thinness");
 JS
 LIB="$LIBURL" node "$tmp/t10409.mjs" || { echo "release-tag thinness test FAILED"; exit 1; }
 
+cat > "$tmp/t10409-cases.mjs" <<'JS'
+import { readFileSync } from "node:fs";
+const lib = await import(process.env.LIB);
+const fx = JSON.parse(readFileSync(process.env.FIX, "utf8"));
+let bad = 0;
+for (const c of fx.cases) {
+  const src = c.source.replaceAll("RELEASE", fx.release);
+  const body = c.body.replaceAll("RELEASE", fx.release);
+  const got = typeof lib.hasReleaseNotes === "function" ? lib.hasReleaseNotes(src, body) : undefined;
+  if (got !== c.has_notes) { bad++; console.error(`FAIL: release-notes case "${c.name}": expected ${c.has_notes}, got ${got}`); }
+  if (c.has_notes && lib.isThinClipBody(body, "research", src) !== false) { bad++; console.error(`FAIL: thin although it has notes: "${c.name}"`); }
+}
+if (bad) process.exit(1);
+console.log(`OK release-notes cases (${fx.cases.length}) agree with the shared fixture`);
+JS
+FIX="$here/fixtures/release-notes-cases.json" LIB="$LIBURL" node "$tmp/t10409-cases.mjs" || { echo "release-notes shared-fixture test FAILED"; exit 1; }
+
 echo "ALL PASS"
