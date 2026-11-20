@@ -58,12 +58,16 @@ operator aliases), never an open-ended similarity guess. A densify is recorded
 in the ledger with the appended block, so `--revert` removes exactly that block
 (or refuses if the page diverged).
 
-A subject path that already holds a symbolic link (dangling or not), a directory
-or any other non-regular file is never written through: the engine prints
+A subject name holding `/` or `..` (a tag such as `ai/agents`) is skipped with
+that reason and counted in `skipped`: it would be a page in a folder the index
+never reads, or one outside `30-Resources/`. A subject path that already holds
+anything is never written to: a symbolic link (dangling or not), a directory or
+another non-regular file is refused before a write, and a regular file the index
+did not list is refused by the exclusive create itself. The engine prints
 `⊘ <path> — refused: an existing symbolic link sits there, nothing written`,
 stamps none of its clips, writes no ledger entry, and counts it on the summary
-as `N refused (not a regular file)`. The subject index lists regular files only,
-so a link is never matched for a densify either.
+as `N refused (path taken)`. The subject index lists regular files only, so a
+link is never matched for a densify either.
 
 ### Resolve vault path
 

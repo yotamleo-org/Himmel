@@ -313,7 +313,14 @@ function runApply(vault, ledgerPath, dryRun, limit) {
     }
 
     fs.mkdirSync(path.dirname(subjectAbs), { recursive: true });
-    fs.writeFileSync(subjectAbs, content);
+    try {
+      fs.writeFileSync(subjectAbs, content, { flag: "wx" });
+    } catch (e) {
+      if (e.code !== "EEXIST") throw e;
+      out(`⊘ ${subjectRel} — refused: a file already sits there, nothing overwritten`);
+      refused++;
+      continue;
+    }
 
     // Stamp promoted_to on each contributor (skip if already stamped).
     const stamped = [];
@@ -353,7 +360,7 @@ function runApply(vault, ledgerPath, dryRun, limit) {
   }
 
   out(`${SELF}: ${created} ${dryRun ? "would-create" : "created"}, ${densified} ${dryRun ? "would-densify" : "densified"}, ${skipped} skipped` +
-    `${unchanged ? `, ${unchanged} unchanged` : ""}${refused ? `, ${refused} refused (not a regular file)` : ""}${limit > 0 ? `, ${pending} pending (limit ${limit})` : ""}`);
+    `${unchanged ? `, ${unchanged} unchanged` : ""}${refused ? `, ${refused} refused (path taken)` : ""}${limit > 0 ? `, ${pending} pending (limit ${limit})` : ""}`);
   return promotions;
 }
 

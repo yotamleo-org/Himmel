@@ -192,6 +192,15 @@ export function planStubs(clips, matchExisting) {
       continue;
     }
 
+    if (/\/|\.\./.test(subjectName)) {
+      decisions.push({
+        conceptKey: tag, subjectName, action: "skip",
+        reason: "subject name holds '/' or '..'",
+        contributors: contributors.map((c) => c.rel),
+      });
+      continue;
+    }
+
     const target = targetForContributors(contributors);
     const existing = matchExisting ? matchExisting(subjectName, target) : null;
 
