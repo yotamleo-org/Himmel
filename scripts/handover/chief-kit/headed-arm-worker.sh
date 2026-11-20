@@ -81,7 +81,9 @@
 # ever execs into headed-arm.sh.
 #
 # Exit 10: the fleet-size cap refused the launch - see the
-# preflight call below. Exit 11: the $LANE bank is
+# preflight call below - or managed fleet control refused it: fleet-launch.sh
+# cannot be loaded, fleet_launch_prepare refused (the fleet-paused refusal
+# note), or the managed hand-off to headed-arm.sh refused. Exit 11: the $LANE bank is
 # exhausted (SKIPPED-BANK) - same preflight call, distinct refusal reason.
 # Exit 12: on macOS, worker_propagate_env refused a worker-process
 # env value that contains whitespace other than a space - neither
