@@ -11,8 +11,10 @@ Batch tooling for the obsidian-triage plugin. Several flavors:
   one unit per clip however many rungs of the chain it tries, failures included; a failed, empty or capped fetch stays a retryable partial. A
   partial that triage already moved to `_evidence/` is retried there, up to the
   defer count of 5, when the run would reprocess it (never stamped, a clip-body
-  thin stamp, or a backend-stamped junk text); a YouTube clip whose transcript was
-  unavailable is only listed in the pending report. A `## Summary` carrying `Inferred from the source URL only` is
+  thin stamp, a backend-stamped junk text, or a youtube-scrapling clip a re-flag
+  turned back to partial: that one keeps `harvested_at`, is fetched again through
+  the YouTube helper, and its `## Harvested content` section is replaced, not
+  repeated; a miss counts toward the same bound). A `## Summary` carrying `Inferred from the source URL only` is
   not page text, and an Instagram clip is judged by its media rule, so neither is
   stamped `ok` over nothing. Opt-in `--firecrawl-thin` adds the paid firecrawl
   `/v2/scrape` rung (`harvest_skill: firecrawl`; `--firecrawl-budget N`, default 20;
@@ -246,7 +248,10 @@ frontmatter-only marks, never the body:
 - `harvest_skill: clip-body` + `harvest_status: ok` + a placeholder/template
   body → `harvest_status: partial` + `harvest_flag: thin-body`.
 - `harvest_status: ok` + a `_Transcript unavailable` section → `harvest_status:
-  partial` + `harvest_flag: transcript-unavailable`.
+  partial` + `harvest_flag: transcript-unavailable`. The next run fetches the video
+  again through the YouTube helper (the note keeps `harvested_at`); a transcript
+  replaces the section and the flag, a miss is a deferred partial counted toward
+  the same bound of 5.
 - `enrichment_status: ok` + `needs_thread: true` → `enrichment_status: partial`
   + `last_error: thread_not_captured`.
 

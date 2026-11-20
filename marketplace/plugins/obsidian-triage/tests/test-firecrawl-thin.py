@@ -884,13 +884,72 @@ v = vault_of(evidence=[("yt.md", YT_PARTIAL),
 retry, partials = mod.evidence_clips(v / "Clippings")
 retry_names, partial_names = sorted(p.name for p in retry), sorted(p.name for p in partials)
 check("every partial _evidence clip is reported", partial_names == ["body.md", "junk.md", "thin.md", "yt.md"])
-check("a youtube-scrapling partial is not selected for a retry the run would skip", "yt.md" not in retry_names)
-check("controls: a never-stamped partial, a clip-body thin partial and a junk-stamped partial are still selected", retry_names == ["body.md", "junk.md", "thin.md"])
+check("a youtube-scrapling partial that kept harvested_at is selected for the retry", "yt.md" in retry_names)
+check("controls: a never-stamped partial, a clip-body thin partial and a junk-stamped partial are still selected", retry_names == ["body.md", "junk.md", "thin.md", "yt.md"])
+
+YT_CALLS = []
+YT_TRANSCRIPT = {"title": "A talk", "channel": "A channel", "description": "", "transcript": [{"ts": "0:01", "tx": "hello there"}]}
+YT_NO_TRANSCRIPT = {"title": "A talk", "channel": "A channel", "description": "", "transcript": [], "transcript_error": "transcript_empty"}
+
+
+def stub_youtube(result):
+    def fake(video_id, vault):
+        YT_CALLS.append(video_id)
+        return result
+    mod.youtube_scrapling = fake
+
+
+_real_youtube = mod.youtube_scrapling
+yt_path = v / "Clippings" / "_evidence" / "yt.md"
+stub_youtube((YT_TRANSCRIPT, None))
 log = []
 install_backends(log)
-yt_before = (v / "Clippings" / "_evidence" / "yt.md").read_text(encoding="utf-8")
 code, out = run_main(v)
-check("the run does not select and then skip the youtube partial", "yt.md" not in out and (v / "Clippings" / "_evidence" / "yt.md").read_text(encoding="utf-8") == yt_before)
+yt_line = [ln for ln in out.splitlines() if "yt.md" in ln]
+t = yt_path.read_text(encoding="utf-8")
+check("the run retries the youtube partial through the youtube helper, it is not skipped",
+      YT_CALLS == ["abc123DEF45"] and len(yt_line) == 1 and "skipped" not in yt_line[0])
+check("the retried youtube clip ends ok with the transcript and one harvested section",
+      "harvest_status: ok" in t and "harvested_at: 2026-11-21" in t and "hello there" in t and t.count("## Harvested content") == 1)
+check("the retried youtube clip drops the stale transcript-unavailable flag and the unavailable note",
+      "transcript-unavailable" not in t and "_Transcript unavailable" not in t)
+check("the retried youtube clip keeps the rest of its note", "## Source" in t and "[l](https://www.youtube.com/watch?v=abc123DEF45)" in t)
+
+YT_CALLS.clear()
+yt_path.write_text(YT_PARTIAL, encoding="utf-8")
+for result, label in (((YT_NO_TRANSCRIPT, None), "no transcript again"), ((None, "timeout"), "a helper failure")):
+    yt_path.write_text(YT_PARTIAL, encoding="utf-8")
+    stub_youtube(result)
+    code, out = run_main(v)
+    t = yt_path.read_text(encoding="utf-8")
+    check(f"a youtube partial stays a deferred partial when the retry meets {label}: counted, one section, nothing lost",
+          "harvest_status: partial" in t and "harvest_defer_count: 1" in t and t.count("## Harvested content") == 1
+          and "_Transcript unavailable" in t and "harvested_at: 2026-11-10" in t)
+    check(f"a youtube partial retried with {label} is not reported as skipped",
+          not [ln for ln in out.splitlines() if "yt.md" in ln and "skipped" in ln])
+
+yt_path.write_text(YT_PARTIAL, encoding="utf-8")
+YT_CALLS.clear()
+stub_youtube((None, "timeout"))
+for day in ("2026-11-21", "2026-11-22", "2026-11-23", "2026-11-24", "2026-11-25"):
+    run_main(v, "--date", day)
+t = yt_path.read_text(encoding="utf-8")
+check("a youtube partial that keeps failing is retried once a night and stops at the bounded count",
+      len(YT_CALLS) == 5 and "harvest_defer_count: 5" in t and "harvest_needs_attention: true" in t)
+run_main(v, "--date", "2026-11-26")
+check("past the bound the youtube partial is not retried again", len(YT_CALLS) == 5)
+pending = (v / ".harvest-pending.md").read_text(encoding="utf-8")
+check("the pending report lists the exhausted youtube partial under Needs attention, not Deferred",
+      pending.split("## Needs attention")[1].count("yt]]") == 1 and pending.split("## Needs attention")[0].count("yt]]") == 0)
+
+yt_path.write_text(YT_PARTIAL, encoding="utf-8")
+YT_CALLS.clear()
+stub_youtube((YT_TRANSCRIPT, None))
+code, out = run_main(v, "--dry-run")
+check("a dry run names the youtube retry and neither calls the helper nor writes",
+      YT_CALLS == [] and yt_path.read_text(encoding="utf-8") == YT_PARTIAL
+      and any("would harvest via youtube-scrapling" in ln for ln in out.splitlines() if "yt.md" in ln))
+mod.youtube_scrapling = _real_youtube
 
 mod.BACKEND_REGISTRY, mod.DEFAULT_SCRAPE_BACKENDS = _saved_registry, _saved_defaults
 

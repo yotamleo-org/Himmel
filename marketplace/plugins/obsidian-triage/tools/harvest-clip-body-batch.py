@@ -758,7 +758,7 @@ def write_youtube_harvest(path: Path, text: str, fm_raw: str, body: str, canonic
     if not hits:
         # A retried deferred partial carries harvest_flag: thin-body; it no
         # longer holds once the clip is harvested ok. injection-suspect stays.
-        new_fm = re.sub(r"^harvest_flag:[ \t]*thin-body[ \t]*\n?", "", new_fm, flags=re.MULTILINE)
+        new_fm = re.sub(r"^harvest_flag:[ \t]*(?:thin-body|transcript-unavailable)[ \t]*\n?", "", new_fm, flags=re.MULTILINE)
     try:
         path.write_text(f"---\n{new_fm}\n---\n{new_body}", encoding="utf-8", newline="\n")
         _dfm, disk_fm_raw, disk_body, disk_present = parse_frontmatter(path.read_text(encoding="utf-8"))
@@ -1518,9 +1518,13 @@ def stamped_thin(fm: dict, body: str) -> bool:
             and is_thin_clip(fm.get("source", ""), body))
 
 
+def stamped_youtube_partial(fm: dict) -> bool:
+    return fm.get("harvest_skill") == "youtube-scrapling" and fm.get("harvest_status") == "partial"
+
+
 def reharvest_due(fm_raw: str, fm: dict, body: str) -> bool:
     return (not already_harvested(fm_raw) or stamped_thin(fm, body)
-            or junk_fetch_section(fm, body) is not None)
+            or junk_fetch_section(fm, body) is not None or stamped_youtube_partial(fm))
 
 
 def insert_fm_lines(fm_raw: str, new_lines: list) -> str:
@@ -1915,18 +1919,21 @@ def process_clip(path: Path, dry_run: bool, chain=None, url_rules=None, park=Non
 
     yt_miss = ""
     yt = YT_WATCH_RE.match(canonical)
-    if yt and is_thin_body(body):
+    yt_partial = stamped_youtube_partial(fm)
+    if yt and (yt_partial or is_thin_body(body)):
         if dry_run:
-            return ("v", f"would harvest via youtube-scrapling (thin-body): {canonical} [dry-run]{flag_suffix}", injection_hits)
+            return ("v", f"would harvest via youtube-scrapling ({'partial retry' if yt_partial else 'thin-body'}): {canonical} [dry-run]{flag_suffix}", injection_hits)
         vault = next((q.parent for q in path.parents if q.name == "Clippings"), None)
         out, reason = youtube_scrapling(yt.group(1), vault)
         if out is not None and out.get("transcript"):
-            return write_youtube_harvest(path, text, fm_raw, body, canonical, out, injection_hits)
+            old = _HARVESTED_SECTION_RE.search(body) if yt_partial else None
+            base = body[:old.start()] + body[old.end():] if old else body
+            return write_youtube_harvest(path, text, fm_raw, base, canonical, out, injection_hits)
         if out is not None:
             reason = f"transcript unavailable ({out.get('transcript_error') or 'transcript_empty'})"
         yt_miss = f"; youtube-scrapling: {reason}"
 
-    if junk or is_thin_clip(canonical, body):
+    if junk or yt_partial or is_thin_clip(canonical, body):
         return thin_partial(yt_miss)
 
     # clip-body path
