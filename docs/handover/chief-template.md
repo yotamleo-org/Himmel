@@ -177,7 +177,6 @@ token, **narrowing or halt requires none**; a revision never widens the child's
 tool permissions. Never paste your inbound token into a brief. Threat model:
 `{{REPO}}/docs/internals/retask-channel.md`. Verify a worker's finding before you
 rule; batch rulings per decision point.
-Standard: `{{REPO}}/docs/handover/running-a-chief.md#rulings`.
 
 ## Merges — READY → GO → merge
 
