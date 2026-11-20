@@ -40,6 +40,7 @@ fi
 
 HASH='#'
 D='$'
+SQ="'"
 N=0
 mkrepo() {
     N=$((N + 1)); R="$T/r$N"
@@ -244,6 +245,13 @@ mkrepo
 printf 'const re = /[a/*]/;\nconst y = 1;\n' > "$R/src/r.mjs"; stage; want "a /* inside a regex class opens no block" 0
 mkrepo
 printf 'const u = /[/]/; // note\n' > "$R/src/r.mjs"; stage; refused_at "a comment after a regex literal" "src/r.mjs:1: // note"
+
+mkrepo
+printf 'print(%s"""%s)\n%s body note\ny = 2\n' "$SQ" "$SQ" "$HASH" > "$R/src/d.py"; stage; refused_at "a triple quote inside an ordinary string opens no string" "src/d.py:2: $HASH body note"
+mkrepo
+printf 'x = """one line"""\n%s body note\n' "$HASH" > "$R/src/d.py"; stage; refused_at "a triple-quoted string closed on its line" "src/d.py:2: $HASH body note"
+mkrepo
+printf '%s!/usr/bin/env node\n// n.mjs: a new tool\n// Usage: n.mjs\n\nconsole.log(1);\n' "$HASH" > "$R/src/n.mjs"; stage; want "a JS file header after a shebang" 0
 
 echo "== 15. a classifier change recounts untouched files only =="
 mkrepo

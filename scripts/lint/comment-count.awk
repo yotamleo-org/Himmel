@@ -91,6 +91,26 @@ function heredoc_tag(t,   i, c, q, n, r, depth) {
     return ""
 }
 
+function triple_open(s,   i, c, n, d, e) {
+    n = length(s)
+    for (i = 1; i <= n; i++) {
+        c = substr(s, i, 1)
+        if (c != sq && c != "\"") continue
+        d = substr(s, i, 3)
+        if (d == c c c) {
+            e = index(substr(s, i + 3), d)
+            if (!e) return d
+            i += e + 4
+            continue
+        }
+        for (i++; i <= n; i++) {
+            if (substr(s, i, 1) == "\\") i++
+            else if (substr(s, i, 1) == c) break
+        }
+    }
+    return ""
+}
+
 function triple_toggles(s, d,   n, rest) {
     n = 0; rest = s
     while (index(rest, d)) { n++; rest = substr(rest, index(rest, d) + 3) }
@@ -101,6 +121,7 @@ function triple_toggles(s, d,   n, rest) {
 function counted(p, t,   s, i, js, c, code, e) {
     s = ltrim(t)
     js = is_js(p)
+    if (FNR == 1 && s ~ /^#!/) return ""
     if (js) {
         if (blk) {
             e = index(t, "*/")
@@ -134,10 +155,9 @@ function counted(p, t,   s, i, js, c, code, e) {
             }
             i = comment_start(t, "py")
             code = i ? substr(t, 1, i - 1) : t
-            if (triple_toggles(code, "\"\"\"")) { pydoc = "\"\"\""; header = 0; return "" }
-            if (triple_toggles(code, sq sq sq)) { pydoc = sq sq sq; header = 0; return "" }
+            pydoc = triple_open(code)
+            if (pydoc != "") { header = 0; return "" }
         }
-        if (FNR == 1 && s ~ /^#!/) return ""
         if (s ~ /^#/) {
             c = s
         } else {
