@@ -434,6 +434,29 @@ assert "the undo leaves the victim byte for byte unchanged" "" "$(cmp "$tmp/vict
 assert "the undo reports the planted link" "1" "$(printf '%s\n' "$out" | grep -c '^⊘ .*refused: .*apply-clip-actions.tmp')"
 assert "the page behind the planted link keeps its applied bytes" "" "$(cmp "$tmp/W0/$REL_A" "$T3/$REL_A" 2>&1)"
 
+THRU='{"action":"fold","map":"'"$REL_A"'/x.md","map_sha256_before":"a","map_sha256":"b","at":0,"appended":"x"}'
+printf '%s\n%s\n%s\n' "$LINE_A" "$THRU" "$LINE_B" > "$tmp/through.jsonl"
+U="$tmp/U"; cp -R "$tmp/W0" "$U"
+out="$(node "$APPLY" --vault "$U" --revert "$tmp/through.jsonl" 2>&1)"; rc=$?
+assert "a ledger page path running through a regular file: the undo exits with the refusal code 3" "3" "$rc"
+assert "exactly one refusal line names that path" "1" "$(printf '%s\n' "$out" | grep -c "^⊘ $REL_A/x.md — refused: ")"
+assert "that refusal is decided before any page is restored (first output line)" "1" "$(printf '%s\n' "$out" | head -n 1 | grep -c "^⊘ $REL_A/x.md — refused: ")"
+assert "the other two lines are still undone" "$n_ab" "$(diff -rq "$tmp/W0" "$U" | grep -c '^Files')"
+cp -R "$U" "$tmp/U1"
+out="$(node "$APPLY" --vault "$U" --revert "$tmp/through.jsonl" 2>&1)"; rc=$?
+assert "a second run exits 3 again, not a crash" "3" "$rc"
+assert "a second run changes nothing" "" "$(diff -r "$tmp/U1" "$U" 2>&1)"
+assert "a second run refuses the same line" "1" "$(printf '%s\n' "$out" | grep -c "^⊘ $REL_A/x.md — refused: ")"
+
+printf 'const fs = require("node:fs");\nconst real = fs.lstatSync;\nfs.lstatSync = (p, o) => { if (String(p).endsWith("arch-1.md")) throw Object.assign(new Error("ENOTDIR"), { code: "ENOTDIR" }); return real(p, o); };\n' > "$tmp/lstat-fails.cjs"
+N="$tmp/N"; cp -R "$P" "$N"
+out="$(node --require "$tmp/lstat-fails.cjs" "$APPLY" --vault "$N" --date "$D" --apply --limit 50 2>&1)"; rc=$?
+assert "an apply whose page cannot be inspected exits 0 and does not crash" "0" "$rc"
+assert "the apply refuses it with one line" "1" "$(printf '%s\n' "$out" | grep -c 'refused: the page cannot be inspected (ENOTDIR)')"
+assert "the apply summary counts the refusal" "1" "$(printf '%s\n' "$out" | grep -c ', 1 refused$')"
+assert "the other actions are still applied" "yes" "$([ "$(printf '%s\n' "$out" | grep -c '^✓ ')" -gt 0 ] && echo yes || echo no)"
+assert "the refused action leaves no ledger line for that page" "0" "$(count 'arch-1' "$N/$LEDGER_NAME")"
+
 echo "Test group 7: arguments"
 node "$APPLY" --vault "$A" --date "$D" --limit 0 >/dev/null 2>&1; assert "--limit 0 is refused" "1" "$?"
 node "$APPLY" --vault "$A" --date "$D" --limit abc >/dev/null 2>&1; assert "--limit abc is refused" "1" "$?"

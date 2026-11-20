@@ -483,9 +483,12 @@ node tools/apply-clip-actions.mjs --vault <v> --revert <vault>/.apply-clip-actio
   inside the vault (checked on the path as written, so a symlinked folder inside
   the vault still works); the `--ledger` and `--revert` file paths themselves are
   not restricted. Every page path is checked before the first page is written: a
-  path that leaves the vault is refused on its own line (counted in the summary,
-  exit 3) and the other pages are still reverted, so a damaged line never leaves a
-  half-done undo with nothing saying which pages were restored. A ledger line that
+  path that leaves the vault, or that cannot be inspected (it runs through a
+  regular file, a symbolic-link loop, a folder with no access), is refused on its
+  own line (counted in the summary, exit 3) and the other pages are still
+  reverted, so a damaged line never leaves a half-done undo with nothing saying
+  which pages were restored (an apply refuses such a page the same way and counts
+  it). A ledger line that
   is not valid JSON or lacks the fields of its action stops the run with exit 1
   before anything is written. Reverting twice is a no-op ("already reverted"),
   also when several actions folded into one map. A map hand-edited between two
