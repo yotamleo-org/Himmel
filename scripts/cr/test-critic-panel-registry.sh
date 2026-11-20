@@ -185,8 +185,6 @@ check "check: set, lane on"             "$(printf '%s\n' "$CHK_ON" | grep '^effe
 check "check: set, app not armed"       "$(printf '%s\n' "$CHK_UN" | grep '^effective reviewers:')" "effective reviewers: codex"
 check "check: github-app row never probed" "$(printf '%s\n' "$CHK_ON" | grep -c '^row coderabbit')" "0"
 
-# The shipped registry (this checkout's critics.json, no overlay): codex plus
-# CodeRabbit, no standing claude panel member, lane on or off (decision 1084).
 check "shipped: no standing claude panel row" "$(jq '[.panel[] | select(.slug == "claude")] | length' "$HERE/critics.json")" "0"
 check "shipped: the claude floor is a top-level field, codex-exhausted only" "$(jq -r '.claude_floor.when' "$HERE/critics.json")" "codex-exhausted"
 ship() { env -u CR_PROFILE -u CRITICS_JSON "$@" CRITICS_BASE_JSON="$HERE/critics.json" CRITICS_LOCAL_JSON="$tmp/none.json" bash "$PANEL" --check 2>/dev/null; }
@@ -195,7 +193,6 @@ SHIP_ON=$(ship HIMMEL_API_LANE=on CR_APP=1)
 check "shipped: reviewer set, lane off" "$(printf '%s\n' "$SHIP_OFF" | grep '^effective reviewers:')" "effective reviewers: codex coderabbit"
 check "shipped: reviewer set, lane on" "$(printf '%s\n' "$SHIP_ON" | grep '^effective reviewers:')" "effective reviewers: codex coderabbit"
 check "shipped: no claude reviewer line" "$(printf '%s\n' "$SHIP_ON" | grep -c '^reviewer claude')" "0"
-# the station's drop:true overlay on the now-absent row stays harmless
 printf '%s' '{"panel":[{"slug":"claude","drop":true}]}' > "$tmp/ship-drop-claude.json"
 SHIP_DROP=$(env -u CR_PROFILE -u CRITICS_JSON CRITICS_BASE_JSON="$HERE/critics.json" CRITICS_LOCAL_JSON="$tmp/ship-drop-claude.json" CR_APP=1 bash "$PANEL" --check 2>/dev/null)
 check "shipped: a drop on the absent claude row is harmless" "$(printf '%s\n' "$SHIP_DROP" | grep '^effective reviewers:')" "effective reviewers: codex coderabbit"

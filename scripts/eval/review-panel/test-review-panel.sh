@@ -7,8 +7,6 @@
 set -u
 # shellcheck source=test_review_panel_lib.sh
 . "$(cd "$(dirname "$0")" && pwd)/test_review_panel_lib.sh"
-# run.sh merges critics.local.json over the swept tree's critics.json: no station overlay here
-# (a missing CRITICS_LOCAL_JSON means none); a row that needs one names its own.
 export CRITICS_LOCAL_JSON="$TMP/no-overlay.json"
 unset CRITICS_JSON CRITICS_BASE_JSON
 
@@ -474,10 +472,8 @@ slugs() { python3 -c 'import json,sys; print(",".join(r["slug"] for r in json.lo
 codexrow() { python3 -c 'import json,sys; print([r for r in json.load(open(sys.argv[1]))["panel"] if r["slug"]=="codex"])' "$1" 2>&1; }
 # --critics cuts the roster the panel runs, not just the report.
 eq "run: --critics codex hands the panel a roster of codex only" "$(slugs "$cj")" "codex"
-# A27 control: with no overlay the roster row is the swept tree's own critics.json row.
 rowkeys() { python3 -c 'import json,sys; print([(r["slug"], r.get("model"), r.get("provider"), r.get("tier")) for r in json.load(open(sys.argv[1]))["panel"] if r["slug"]=="codex"])' "$1" 2>&1; }
 eq "run: the roster row is the swept tree's critics.json row" "$(rowkeys "$cj")" "$(rowkeys "$HERE/../../cr/critics.json")"
-# The registry the claude-api rows below use: a base that still carries a claude-api row.
 python3 -c 'import json,sys; reg=json.load(open(sys.argv[1])); reg["panel"].append({"slug":"claude","model":"claude-opus-5-5","provider":"claude-api","route_provider":"claude-api","tier":"paid","mode":"advisory"}); json.dump(reg, open(sys.argv[2], "w"))' \
   "$HERE/../../cr/critics.json" "$TMP/base-claude.json"
 # A sweep that would reach a claude-api critic with no opt-in refuses before any case.
@@ -487,7 +483,6 @@ CRITICS_BASE_JSON="$TMP/base-claude.json" STUB_LOG_DIR="$TMP/stublog" REVIEW_PAN
 eq "run: a default sweep (claude-api in the tier) refuses" "$rc" "2"
 has "run: the refusal names the claude critic and the flag" "$(cat "$TMP/run-nopt.txt")" "--allow-claude-api"
 eq "run: no panel call on a refused claude sweep" "$(cat "$TMP/stublog/tiers")" ""
-# The short provider alias api is the billed API lane too: refused without the opt-in.
 python3 -c 'import json,sys; reg=json.load(open(sys.argv[1])); reg["panel"].append({"slug":"claude","model":"claude-opus-5-5","provider":"api","route_provider":"api","tier":"paid"}); json.dump(reg, open(sys.argv[2], "w"))' \
   "$HERE/../../cr/critics.json" "$TMP/base-claude-alias.json"
 CRITICS_BASE_JSON="$TMP/base-claude-alias.json" STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
@@ -498,14 +493,11 @@ CRITICS_BASE_JSON="$TMP/base-claude.json" STUB_LOG_DIR="$TMP/stublog" REVIEW_PAN
   bash "$RUN" --out "$TMP/run-opt" --fixtures "$FIX" --key "$KEY" --no-ledger --allow-claude-api --only case-01 >/dev/null 2>&1; rc=$?
 eq "run: --allow-claude-api lets the sweep run" "$rc" "0"
 eq "run: --allow-claude-api hands the panel codex and claude" "$(slugs "$TMP/run-opt/critics.run.json")" "codex,claude"
-# The overlay reaches the eval (decision 1085, RCA root cause 4): a critics.local.json that drops
-# claude leaves no Claude critic in the roster, even when --critics names it.
 printf '%s\n' '{"panel":[{"slug":"claude","drop":true}]}' > "$TMP/local-drop-claude.json"
 CRITICS_BASE_JSON="$TMP/base-claude.json" CRITICS_LOCAL_JSON="$TMP/local-drop-claude.json" STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
   bash "$RUN" --out "$TMP/run-drop" --fixtures "$FIX" --key "$KEY" --no-ledger --allow-claude-api --critics codex,claude --only case-01 >/dev/null 2>&1; rc=$?
 eq "run: an overlay drop: the sweep runs" "$rc" "0"
 eq "run: an overlay drop leaves no Claude critic in the roster" "$(slugs "$TMP/run-drop/critics.run.json")" "codex"
-# The shipped registry has no claude row: a default paid sweep needs no opt-in.
 : > "$TMP/stublog/tiers"
 STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
   bash "$RUN" --out "$TMP/run-ship" --fixtures "$FIX" --key "$KEY" --no-ledger --only case-01 >/dev/null 2>&1; rc=$?
@@ -662,7 +654,6 @@ mkdir -p "$G/scripts/eval/review-panel/key" "$G/scripts/cr/perspectives"
 cp -r "$FIX" "$G/scripts/eval/review-panel/fixtures"
 cp "$KEY" "$G/scripts/eval/review-panel/key/seeds.json"
 cp "$HERE/cbs.txt" "$G/scripts/eval/review-panel/cbs.txt"
-# the gate tree is a tree whose paid roster still held a claude row (the 2026-11-05 sweeps' shape)
 cp "$TMP/base-claude.json" "$G/scripts/cr/critics.json"
 printf '#!/bin/sh\n' > "$G/scripts/cr/critic-panel.sh"
 printf 'p\n' > "$G/scripts/cr/perspectives/skeptic.md"

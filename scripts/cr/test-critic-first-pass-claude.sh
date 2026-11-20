@@ -85,7 +85,6 @@ cat "$ENVELOPE"
 EOF
 chmod +x "$LAUNCH"
 export ENVELOPE="$W/envelope.json" HIMMEL_CLAUDE_BIN="$FAKE" CFP_CLAUDE_API_LAUNCHER="$LAUNCH"
-# the API lane is on for every row unless a row turns it off; the loud critic alert is recorded, never sent
 ALERTS="$W/critic-alerts.log"
 cat > "$W/alert-rec.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -93,7 +92,6 @@ printf '%s|%s\n' "$TG_NOTIFICATION_TYPE" "$TG_MESSAGE" >> "$ALERTS"
 EOF
 chmod +x "$W/alert-rec.sh"
 export HIMMEL_API_LANE=on CR_CRITIC_ALERT_CMD="$W/alert-rec.sh" ALERTS
-# the chief's bridge inbox the alert also writes one line to
 export BRIDGE_ROOT="$W/bridge" HIMMEL_CONSOLE_NAME=test-chief
 CHIEF_INBOX="$BRIDGE_ROOT/consoles/test-chief.md"
 mkdir -p "$BRIDGE_ROOT/consoles"
@@ -126,7 +124,6 @@ if [ "${1:-}" = --native-auth-skip ]; then
     [ "$FAIL" -eq 0 ]; exit "$?"
 fi
 
-# --- 0. the shipped registry: no standing claude row, a codex-exhausted floor ---
 row="$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(j.panel.some(r=>r.slug==="claude")?"PRESENT":"none")' "$REPO/scripts/cr/critics.json")"
 check "0 critics.json has no standing claude panel row" none "$row"
 row="$(node -e 'const f=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).claude_floor||{};process.stdout.write([f.slug,f.model,f.provider,f.effort,f.when].join(" "))' "$REPO/scripts/cr/critics.json")"
@@ -413,21 +410,17 @@ hasnt "12e api route: no tool name in the recorded argv" "Read|Glob|Grep|Edit|Wr
 hasnt "12e subscription route: no tool name in the recorded argv" "Read|Glob|Grep|Edit|Write|Bash|WebFetch|WebSearch" "$W/rec.12b/argv"
 ok "12e NOT-VERIFIED: the claude binary's own refusal of a tool call under --tools empty (a recorder sees what is offered, not what the binary does)"
 
-# --- 13. decision 1084: a critic never reaches the subscription ---------------
-# 13a the API lane off: the Claude critic is absent, the launcher never runs, no alert (off by design)
 fresh_rec 13a; rm -f "$ALERTS"; unset FAKE_REFUSE FAKE_FAIL
 RC=0; printf '%s\n' "$DIFF" | env -u HIMMEL_API_LANE bash "$CFP" --model claude-opus-5-5 --slug claude --provider claude-api >"$W/out" 2>"$W/err" || RC=$?
 check "13a lane off: the claude-api critic exits 5 (absent)" 5 "$RC"
 check "13a lane off: the launcher is never called" no "$([ -e "$REC/argv" ] && echo yes || echo no)"
 has "13a lane off: stderr says the lane is OFF" "api lane is OFF" "$W/err"
 check "13a lane off: no alert (the lane is off by design)" 0 "$(alerts)"
-# 13b positive control: the lane on runs the stubbed API path, with the subscription fallback switched off
 fresh_rec 13b; rm -f "$ALERTS"
 run_cfp claude-api
 check "13b lane on: the stubbed API path runs and reviews" 0 "$RC"
 has "13b lane on: the critic turns the launcher's subscription fallback off" "HIMMEL_API_FALLBACK=off" "$REC/env"
 check "13b lane on: no alert" 0 "$(alerts)"
-# 13c a launcher that ran on the subscription anyway: the review is refused, one loud alert
 fresh_rec 13c; reset_alerts; export FAKE_SUBFALLBACK=1
 run_cfp claude-api
 unset FAKE_SUBFALLBACK
@@ -437,9 +430,6 @@ check "13c the subscription review is not used" "" "$(cat "$W/out")"
 check "13c exactly one loud Telegram alert" 1 "$(alerts)"
 has "13c the alert says the subscription was used" "subscription" "$ALERTS"
 check "13c exactly one line to the chief's inbox" 1 "$(chief_lines)"
-# 13d the real launcher refusing: no subscription call at all. The credit state
-# lives under the account home, not $HOME, so the row points HIMMEL_API_CREDIT_CONFIG
-# at a config that does not exist: the station's real key and ledger are never read.
 fresh_rec 13d; reset_alerts; mkdir -p "$W/alerts.13d"
 printf '%s\n' '#!/usr/bin/env bash' "echo \"called key=\${ANTHROPIC_API_KEY:+set}\" >> \"$REC/sub-claude\"" 'exit 0' > "$W/sub-claude.sh"; chmod +x "$W/sub-claude.sh"
 printf '%s\n' '#!/usr/bin/env bash' "echo sent >> \"$REC/api-alert\"" > "$W/api-alert.sh"; chmod +x "$W/api-alert.sh"
@@ -451,7 +441,6 @@ check "13d the real launcher's refusal makes no claude call at all" no "$([ -e "
 hasnt "13d the station's real credit ledger was never read" "api:A grant-cycle" "$W/err"
 hasnt "13d the launcher did not run on the subscription" "fallback: running on the subscription" "$W/err"
 check "13d the critic prints no review" "" "$(cat "$W/out")"
-# 13e a caller or overlay that names the subscription explicitly runs as configured, with no per-call alert
 for sp in claude-subscription subscription; do
     fresh_rec "13e-$sp"; reset_alerts; bank 10
     run_cfp "$sp"
@@ -461,10 +450,8 @@ for sp in claude-subscription subscription; do
 done
 check "13e an explicit subscription run wrote nothing to the chief's inbox" 0 "$(chief_lines)"
 
-# --- 14. the provider default reads the merged registry (RCA root cause 3) ---
 printf '%s\n' '{"panel":[{"slug":"codex","model":"gpt-6.1-sol","provider":"openai-codex","tier":"paid"},{"slug":"claude","model":"claude-opus-5-5","provider":"claude-api","route_provider":"claude-api","tier":"paid"}]}' > "$W/base-with-claude.json"
 printf '%s\n' '{"panel":[{"slug":"claude","drop":true}]}' > "$W/local-drop14.json"
-# 14a an overlay that drops claude: --slug claude with no --provider starts no Claude critic
 fresh_rec 14a; reset_alerts; bank 10
 RC=0; printf '%s\n' "$DIFF" | CRITICS_BASE_JSON="$W/base-with-claude.json" CRITICS_LOCAL_JSON="$W/local-drop14.json" \
     bash "$CFP" --model claude-opus-5-5 --slug claude >"$W/out" 2>"$W/err" || RC=$?
@@ -472,19 +459,16 @@ check "14a an overlay drop: --slug claude exits 5 SKIPPED" 5 "$RC"
 has "14a stderr says no claude row" "no claude row in the merged critics registry" "$W/err"
 check "14a no API launcher and no subscription claude call" no "$([ -e "$REC/argv" ] && echo yes || echo no)"
 check "14a no alert" 0 "$(alerts)"
-# 14b the shipped base (no claude row) with no overlay: the same clean skip, by --model alone
 fresh_rec 14b; bank 10
 RC=0; printf '%s\n' "$DIFF" | CRITICS_BASE_JSON="$REPO/scripts/cr/critics.json" CRITICS_LOCAL_JSON="$W/none14.json" \
     bash "$CFP" --model claude-opus-5-5 >"$W/out" 2>"$W/err" || RC=$?
 check "14b the shipped registry: a claude model with no --provider exits 5" 5 "$RC"
 check "14b no Claude critic ran" no "$([ -e "$REC/argv" ] && echo yes || echo no)"
-# 14c control: the same base with no overlay defaults to claude-api and reviews (lane on)
 fresh_rec 14c; bank 10
 RC=0; printf '%s\n' "$DIFF" | CRITICS_BASE_JSON="$W/base-with-claude.json" CRITICS_LOCAL_JSON="$W/none14.json" \
     bash "$CFP" --model claude-opus-5-5 --slug claude >"$W/out" 2>"$W/err" || RC=$?
 check "14c control: a base claude row defaults the provider and reviews" 0 "$RC"
 has "14c the provider came from the registry" "--provider defaulted to 'claude-api'" "$W/err"
-# 14d an adopter overlay that re-adds claude on the subscription runs it, with no alert
 printf '%s\n' '{"panel":[{"slug":"claude","model":"claude-opus-5-5","provider":"claude-subscription","tier":"paid"}]}' > "$W/local-readd14.json"
 fresh_rec 14d; reset_alerts; bank 10
 RC=0; printf '%s\n' "$DIFF" | CRITICS_BASE_JSON="$REPO/scripts/cr/critics.json" CRITICS_LOCAL_JSON="$W/local-readd14.json" \
@@ -492,14 +476,12 @@ RC=0; printf '%s\n' "$DIFF" | CRITICS_BASE_JSON="$REPO/scripts/cr/critics.json" 
 check "14d an adopter overlay row on the subscription reviews" 0 "$RC"
 has "14d the provider came from the overlay" "--provider defaulted to 'claude-subscription'" "$W/err"
 check "14d no per-call alert" 0 "$(alerts)"
-# 14e an overlay that does not parse: the base-only fallback never routes a Claude row (fail closed)
 printf '%s\n' '{not json' > "$W/local-broken14.json"
 fresh_rec 14e; reset_alerts; bank 10
 RC=0; printf '%s\n' "$DIFF" | CRITICS_BASE_JSON="$W/base-with-claude.json" CRITICS_LOCAL_JSON="$W/local-broken14.json" \
     bash "$CFP" --model claude-opus-5-5 --slug claude >"$W/out" 2>"$W/err" || RC=$?
 check "14e a broken overlay: --slug claude exits 5 SKIPPED" 5 "$RC"
 check "14e a broken overlay: no Claude critic ran" no "$([ -e "$REC/argv" ] && echo yes || echo no)"
-# the short provider spellings api / subscription are Claude rows too
 for sp in api subscription; do
     printf '{"panel":[{"slug":"claude","model":"claude-opus-5-5","provider":"%s","tier":"paid"}]}\n' "$sp" > "$W/base-alias14.json"
     fresh_rec "14e-$sp"; bank 10
@@ -508,7 +490,6 @@ for sp in api subscription; do
     check "14e a broken overlay, base provider $sp: exits 5 SKIPPED" 5 "$RC"
     check "14e a broken overlay, base provider $sp: no Claude critic ran" no "$([ -e "$REC/argv" ] && echo yes || echo no)"
 done
-# 14f the floor's effort: an overlay claude_floor wins over the base's
 printf '%s\n' '{"claude_floor":{"slug":"claude","model":"claude-opus-5-5","provider":"claude-subscription","effort":"high","when":"codex-exhausted"}}' > "$W/local-floor14.json"
 fresh_rec 14f; bank 10
 RC=0; printf '%s\n' "$DIFF" | CRITICS_BASE_JSON="$REPO/scripts/cr/critics.json" CRITICS_LOCAL_JSON="$W/local-floor14.json" \
