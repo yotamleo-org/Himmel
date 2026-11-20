@@ -304,6 +304,16 @@ printf '## Ticket coverage\n- run the throwaway PR check: owed → proof by 2026
 printf '{"ts":"t","event":"merge","key":"HIMMEL-325","pr":"6106","contract":"no","result":"noop"}\n' >> "$STATE/status-events.jsonl"
 out_staged="$(READER_OVERRIDE="$REAL_READER" run)"
 has "proof owner retains operator-only staging" "$(printf '%s\n' "$out_staged" | grep $'^RESUME\tHIMMEL-325')" 'proof-staging=throwaway-repo'
+# needs() itself: the text of an owed answer handed to proof is a step, so a need named only there is found (the ticket text names none)
+cat > "$WORK/ps-direct.py" <<'EOF'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location('proof_staging', sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+answers = [dict(kind='owed', handed=['proof', '2026-11-20'], text='run the throwaway PR check')]
+print(';'.join('%s|%s|%s' % n for n in mod.needs('', answers) if n[0] != 'unknown'))
+EOF
+[ "$(python3 -I "$WORK/ps-direct.py" "$HERE/proof_staging.py")" = "throwaway-repo|operator|throwaway PR" ] && pass "needs(): an owed answer handed to proof contributes its text as a step" || fail "needs(): an owed answer handed to proof contributes its text as a step"
 owe="$HERE/owe.sh"
 KEEP_KEY="HIMMEL-$((300 + 24))" OPERATOR_KEY="HIMMEL-$((300 + 25))"
 validation="$(bash "$owe" add --bucket "$WORK" --chief old-chief --kind proof --key "$KEEP_KEY" --text validate --metadata '{"actor":"chief","action":"validate-proof"}')"
