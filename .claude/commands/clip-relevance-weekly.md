@@ -32,8 +32,8 @@ Steps:
    `thin: yes` has no fetched page text: judge it by title and source only and say so), the failure classes,
    the review-critic classes, and the candidates already proposed.
    If its first clips line says `clips: 0 shown`, the week has no unread clip: there is no candidate and you run
-   no search. Go straight to step 5 and write the empty-week note (`## Candidates` empty, the Telegram block
-   `Nothing new this week.`), then step 6. Skip steps 2 to 4 and step 7.
+   no search. Take the note path (step 2), skip steps 3 and 4, write the empty-week note in step 5
+   (`## Candidates` empty, the Telegram block `Nothing new this week.`), then step 6. Skip step 7.
 2. The note path: your prompt names it ("The note path for this run is ..."); the runner took the name for this
    run. Write there, and never over another file. Only when your prompt gave none (a hand run), run
    `bash scripts/luna/clip-relevance-cadence.sh note-path`: it takes a name no earlier note holds
