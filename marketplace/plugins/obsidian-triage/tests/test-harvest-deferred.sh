@@ -6,6 +6,7 @@
 # Blocking classes (failed, and the runbook-level stale-read / rate-limited /
 # catastrophic) keep the run from writing .harvest.done.
 set -euo pipefail
+export HARVEST_SCRAPE_DENY=all
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 tool="$here/../tools/harvest-clip-body-batch.py"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/harvest-deferred.XXXXXX")" || exit 1; trap 'rm -rf "$tmp"' EXIT
