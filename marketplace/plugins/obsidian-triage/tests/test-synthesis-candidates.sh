@@ -31,7 +31,7 @@ mkdir -p "$EV" "$V/Clippings/_done" "$V/Clippings/_synthesis" \
 echo "2026-11-20T01:00:00Z deadbeef" > "$V/.harvest.done"
 
 clip() {
-    local file="$1" author="$2" source="$3" dc="$4" tags="$5" promo="${6:-}" name
+    local file="$1" author="$2" source="$3" dc="$4" tags="$5" promo="${6:-}" extra="${7:-}" name
     name="$(basename "$file" .md)"
     {
         echo "---"
@@ -48,6 +48,7 @@ clip() {
             for t in ${tags//,/ }; do echo "  - $t"; done
         fi
         echo "processed: true"
+        [ -z "$extra" ] || echo "$extra"
         echo "triaged_at: $dc"
         echo "---"
         echo "# body of $name"
@@ -187,6 +188,16 @@ printf -- '---\ntitle: nodate\nauthor: Undated Wide 4\nsource: "https://udw-4.ex
 clip "$EV/dst-1.md" " Dst Author 1" "https://dst-1.example.org/p" "2026-03-08T01:00:00" "dst-pair"
 clip "$EV/dst-2.md" " Dst Author 2" "https://dst-2.example.org/p" "2026-03-08T13:00:00" "dst-pair"
 clip "$EV/dst-3.md" " Dst Author 3" "https://dst-3.example.org/p" "2026-03-09T01:30:00" "dst-pair"
+
+for i in 1 2; do
+    clip "$EV/arch-$i.md" " Arch Author $i" "https://arch-$i.example.org/p" "2026-05-0$((i * 3))" "archive-topic"
+    clip "$EV/arch-ctl-$i.md" " Ctl Author $i" "https://ctl-$i.example.org/p" "2026-05-0$((i * 3))" "control-topic"
+done
+clip "$EV/arch-3.md" " Arch Author 3" "https://arch-3.example.org/p" "2026-05-09" "archive-topic" "" "archived: true"
+clip "$EV/arch-ctl-3.md" " Ctl Author 3" "https://ctl-3.example.org/p" "2026-05-09" "control-topic" "" "archived: false"
+for i in 1 2 3 4 5; do
+    clip "$EV/arch-tag-$i.md" " Tag Author $i" "https://arch-tag-$i.example.org/p" "2026-05-1$i" "archive-tag-topic" "" "$([ "$i" -eq 5 ] && echo 'archived: true')"
+done
 
 printf -- '---\nauthor: Ghost\nsource: "https://ghost.example.org/x"\ndate_clipped: 2026-10-09\ntags:\n  - context-windows\n---\nbody\n' \
     > "$EV/unprocessed.md"
@@ -393,6 +404,15 @@ assert "runbook requires one skip line per failing candidate" "1" \
     "$(grep -c 'one skip line per failing candidate' "$RUNBOOK")"
 assert "runbook keeps the harvest-completion gate" "1" "$(grep -c '^### G-8' "$RUNBOOK")"
 assert "runbook keeps the counting invariant" "1" "$(grep -c 'Counting invariant' "$RUNBOOK")"
+
+echo "Test 14: an archived clip feeds no candidate"
+assert "three clips from three sources, one archived: no concept candidate" "ABSENT" "$(field concept-archive-topic status)"
+assert "the same group with none archived (archived: false counts as live): a concept passes" "pass" "$(field concept-control-topic status)"
+assert "…with its three clips" "3" "$(field concept-control-topic clipCount)"
+assert "five clips with the fifth archived: the tag lens needs five, so no candidate" "ABSENT" "$(field tag-archive-tag-topic-moc status)"
+assert "…and the concept lens sees the four live clips" "4" "$(field concept-archive-tag-topic clipCount)"
+assert "an archived clip is not an eligible clip" "false" "$(top 'j.candidates.some((c) => c.evidence.includes("Clippings/_evidence/arch-3") || c.evidence.includes("Clippings/_evidence/arch-tag-5"))')"
+assert "the runbook says an archived clip feeds no new page and an existing page keeps it" "1" "$(grep -c 'archived: true' "$RUNBOOK")"
 
 echo
 echo "Result: $pass passed, $fail failed"

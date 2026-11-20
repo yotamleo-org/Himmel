@@ -1695,7 +1695,7 @@ jobs:
       - run: HOOK_LIB_TEST_REPORT_DIR="$RUNNER_TEMP/js-suite-report/hook-lib" bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/hook-lib-suites -- bash scripts/hooks/check-hook-lib-suites.sh
       - name: JS suite manifest
         if: ${{ !cancelled() }}
-        run: node scripts/ci/js-suite-manifest.mjs --out js-suite-manifest/manifest-js-lanes-and-trust-suites.txt --report node "$RUNNER_TEMP/js-suite-report/node-lanes.jsonl" . --report node "$RUNNER_TEMP/js-suite-report/node-trust.jsonl" . --report node "$RUNNER_TEMP/js-suite-report/node-where-are-we.jsonl" . --report node "$RUNNER_TEMP/js-suite-report/node-lessons.jsonl" . --report node "$RUNNER_TEMP/js-suite-report/node-observability.jsonl" . --report node "$RUNNER_TEMP/js-suite-report/hook-lib/hooks.jsonl" . --report node "$RUNNER_TEMP/js-suite-report/hook-lib/lib.jsonl" . || echo "::warning title=js-suite-manifest::the writer failed, so these suites go local"
+        run: node scripts/ci/js-suite-manifest.mjs --out js-suite-manifest/manifest-js-lanes-and-trust-suites.txt --report node "$RUNNER_TEMP/js-suite-report/node-lanes.jsonl" . --report node "$RUNNER_TEMP/js-suite-report/node-trust.jsonl" . --report node "$RUNNER_TEMP/js-suite-report/node-where-are-we.jsonl" . --report node "$RUNNER_TEMP/js-suite-report/node-lessons.jsonl" . --report node "$RUNNER_TEMP/js-suite-report/node-observability.jsonl" . --report node "$RUNNER_TEMP/js-suite-report/node-himmelctl.jsonl" . --report node "$RUNNER_TEMP/js-suite-report/hook-lib/hooks.jsonl" . --report node "$RUNNER_TEMP/js-suite-report/hook-lib/lib.jsonl" . || echo "::warning title=js-suite-manifest::the writer failed, so these suites go local"
       - name: Upload JS suite manifest
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -2146,12 +2146,20 @@ jobs:
       # The remote-setup guide lint checks every command on docs/setup/remote-setup.md in bash, zsh and
       # fish, and under CI=true it fails when zsh or fish is missing, so it cannot pass by checking nothing.
       - name: Install zsh and fish (remote-setup guide lint)
-        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted' && !job.container.id
         timeout-minutes: 13
         run: |
           if command -v zsh > /dev/null && command -v fish > /dev/null; then exit 0; fi
           sudo rm -f /etc/apt/sources.list.d/google-chrome* /etc/apt/sources.list.d/microsoft-* /etc/apt/sources.list.d/azure-cli*
           bash .github/scripts/apt-install.sh zsh fish
+          command -v zsh > /dev/null && command -v fish > /dev/null
+      - name: Install zsh and fish (CI image, remote-setup guide lint)
+        if: ${{ job.container.id }}
+        timeout-minutes: 5
+        run: |
+          if command -v zsh > /dev/null && command -v fish > /dev/null; then exit 0; fi
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends zsh fish
           command -v zsh > /dev/null && command -v fish > /dev/null
       # ubuntu-24.04 refuses unprivileged user namespaces by default
       # (AppArmor), so bwrap fails with `RTM_NEWADDR: Operation not permitted` and

@@ -29,7 +29,7 @@ export function topicalTags(tags) {
   const out = [];
   for (const raw of tags || []) {
     const t = String(raw).trim().toLowerCase();
-    if (!t || STRUCTURAL_TAGS.has(t) || seen.has(t)) continue;
+    if (!t || STRUCTURAL_KEYS.has(tagKey(t)) || seen.has(t)) continue;
     seen.add(t);
     out.push(t);
   }
@@ -56,12 +56,13 @@ export function normalizeName(s) {
 
 const WORDS_KEPT_AS_THEY_ARE = new Set([
   "news", "series", "species", "lens", "bias", "canvas", "atlas", "chaos",
-  "kubernetes", "aws", "ios", "macos", "css", "gps",
+  "kubernetes", "aws", "ios", "macos", "css", "gps", "https",
 ]);
 
 const SINGULAR_OF_KEPT_PLURAL = new Map([
   ["lenses", "lens"], ["biases", "bias"], ["canvases", "canvas"], ["atlases", "atlas"],
   ["statuses", "status"], ["buses", "bus"], ["analyses", "analysis"],
+  ["syntheses", "synthesis"], ["quizzes", "quiz"],
 ]);
 
 function groupingStem(w) {
@@ -75,9 +76,12 @@ function groupingStem(w) {
 }
 
 export function tagKey(tag) {
-  const m = /^(.*[^a-z0-9])?([a-z0-9]+)$/.exec(String(tag).toLowerCase());
-  return m ? (m[1] || "") + groupingStem(m[2]) : String(tag).toLowerCase();
+  const t = String(tag).toLowerCase();
+  const m = /^(.*[^a-z0-9])?([a-z0-9]+)([^a-z0-9]*)$/.exec(t);
+  return m ? (m[1] || "") + groupingStem(m[2]) + m[3] : t;
 }
+
+const STRUCTURAL_KEYS = new Set([...STRUCTURAL_TAGS].map(tagKey));
 
 export function subjectKey(name) {
   return normalizeName(tagKey(String(name).trim()));

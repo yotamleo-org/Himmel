@@ -26,7 +26,8 @@ ARG JQ_SHA256=b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
 # rsync, xxd, sqlite3, column, ...); the minimal ubuntu base has none of it. The third
 # line is what the suites need beyond that: bison + gcc + libc6-dev build the bwk awk,
 # cron gives crontab, python-is-python3 the bare `python` the obsidian-triage suites
-# call, python3-yaml the PyYAML a suite imports, zsh runs the escape-corpus zsh shapes.
+# call, python3-yaml the PyYAML a suite imports, zsh runs the escape-corpus zsh shapes,
+# fish and zsh parse the remote-setup guide's commands.
 RUN apt-get update -qq \
  && apt-get install -y -qq --no-install-recommends \
       at bubblewrap ca-certificates curl ffmpeg=7:6.1.* gh git jq \
@@ -34,7 +35,7 @@ RUN apt-get update -qq \
       bsdextrautils expect file gawk iproute2 iputils-ping less lsof make \
       netcat-openbsd openssh-client patch procps psmisc rsync sqlite3 tmux tree \
       wget xxd zip zstd \
-      bison cron gcc libc6-dev python-is-python3 python3-yaml zsh=5.9-* \
+      bison cron fish gcc libc6-dev python-is-python3 python3-yaml zsh=5.9-* \
  && rm -rf /var/lib/apt/lists/*
 
 # runner: uid/gid 1001 like the GitHub-hosted runner user, so a job that runs as it

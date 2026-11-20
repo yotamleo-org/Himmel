@@ -47,3 +47,7 @@ the operator runs `--apply` at their own prompt, after the VM proof.
 ## Test
 
 `bash scripts/t3/test-provider-instances.sh` (fixture copies only).
+
+The chief-thread scripts (`t3-send.sh`, `keepalive.sh`, `chief-threads-check.sh`) are
+described in `docs/handover/running-a-chief.md`, "Chief threads in T3 Code"; their tests
+are `scripts/t3/test-t3-send.sh`, `test-keepalive.sh` and `test-chief-threads-check.sh`.

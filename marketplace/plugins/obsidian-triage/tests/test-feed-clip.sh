@@ -28,12 +28,15 @@ assert() {
 export FEED_CLIP_TODAY=2026-11-20
 
 out=""; rc=0
-run_tool() { out="$(node "$SCRIPT" "$@" 2>&1)"; rc=$?; }
+fixture_host() { if [ -n "${PORT:-}" ]; then printf '%s\n%s\n' --unsafe-allow-host "127.0.0.1:$PORT"; fi; }
+run_tool() { local extra=(); while IFS= read -r l; do extra+=("$l"); done < <(fixture_host); out="$(node "$SCRIPT" "$@" ${extra[@]+"${extra[@]}"} 2>&1)"; rc=$?; }
+run_strict() { out="$(node "$SCRIPT" "$@" 2>&1)"; rc=$?; }
 
 run_bounded() {
-    local secs="$1" pid dog
+    local secs="$1" pid dog extra=()
     shift
-    node "$SCRIPT" "$@" >"$tmpdir/_bounded.out" 2>&1 &
+    while IFS= read -r l; do extra+=("$l"); done < <(fixture_host)
+    node "$SCRIPT" "$@" ${extra[@]+"${extra[@]}"} >"$tmpdir/_bounded.out" 2>&1 &
     pid=$!
     ( sleep "$secs"; kill "$pid" ) >/dev/null 2>&1 &
     dog=$!
@@ -70,6 +73,17 @@ import { readFileSync } from "node:fs";
 const ok = readFileSync(process.argv[2]);
 const blog = readFileSync(process.argv[3]);
 const big = "<?xml version='1.0'?><rss version='2.0'><channel>" + "<!-- pad -->".repeat(2000) + "</channel></rss>";
+const closed = new Set();
+let hits = 0;
+const atom = (title) => `<?xml version='1.0'?><feed xmlns='http://www.w3.org/2005/Atom'><title>t</title><entry><id>${title}</id><link href='https://example.com/${title}'/><title>${title}</title><content>body</content></entry></feed>`;
+const afterClose = (key, r) => {
+  const t0 = Date.now();
+  const tick = () => {
+    if (closed.has(key) || Date.now() - t0 > 3000) { r.writeHead(200, { "content-type": "application/atom+xml" }); r.end(atom((closed.has(key) ? "closed-" : "still-open-") + key)); }
+    else setTimeout(tick, 20);
+  };
+  tick();
+};
 const s = http.createServer((q, r) => {
   if (q.url === "/ok") { r.writeHead(200, { "content-type": "application/atom+xml" }); r.end(ok); }
   else if (q.url === "/blog") { r.writeHead(200, { "content-type": "application/rss+xml" }); r.end(blog); }
@@ -78,6 +92,15 @@ const s = http.createServer((q, r) => {
   else if (q.url === "/redir-walled") { r.writeHead(302, { location: "http://x.com/feed.xml" }); r.end(); }
   else if (q.url === "/loop") { r.writeHead(302, { location: "/loop" }); r.end(); }
   else if (q.url === "/redir-ok") { r.writeHead(302, { location: "/ok" }); r.end(); }
+  else if (q.url === "/err-open") { r.on("close", () => closed.add("err")); r.writeHead(500); r.write("partial"); }
+  else if (q.url === "/after-err") afterClose("err", r);
+  else if (q.url === "/redir-open") { r.on("close", () => closed.add("redir")); r.writeHead(302, { location: "/after-redir" }); r.write("partial"); }
+  else if (q.url === "/after-redir") afterClose("redir", r);
+  else if (q.url === "/redir-meta") { r.writeHead(302, { location: "http://169.254.169.254/latest/meta-data/" }); r.end(); }
+  else if (q.url === "/redir-private") { r.writeHead(302, { location: "http://10.0.0.5/feed.xml" }); r.end(); } // leak-allow: private-lan-ip test fixture asserting the RFC1918 deny rule
+  else if (q.url === "/redir-name") { r.writeHead(302, { location: `http://localhost:${q.socket.localPort}/ok` }); r.end(); }
+  else if (q.url === "/rebind-hit") { hits++; r.writeHead(200, { "content-type": "application/atom+xml" }); r.end(atom("rebound")); }
+  else if (q.url === "/count") { r.writeHead(200); r.end(String(hits)); }
   else if (q.url === "/html") { r.writeHead(200, { "content-type": "text/html" }); r.end("<html><body>not a feed</body></html>"); }
   else if (q.url === "/big") { r.writeHead(200); r.end(big); }
   else { r.writeHead(404); r.end(); }
@@ -201,6 +224,18 @@ assert "oversized feed reported" ok "$(has '^✗ feed-clip: Big.*larger than' "$
 assert "malformed list line reported with its line number" ok "$(has 'feed-clip: .*feed-clip-feeds:10' "$out")"
 assert "the good feeds still wrote their clips (2 via redirect + 2 blog)" 4 "$(nclips "$V")"
 assert "failed feeds wrote no seen line" 4 "$(seen_lines)"
+
+echo "Test 6b: an error or redirect response body is cancelled before the next request"
+V="$(newvault cancelerr)"
+printf 'http://127.0.0.1:%s/err-open ErrOpen\nhttp://127.0.0.1:%s/after-err AfterErr\n' "$PORT" "$PORT" > "$V/.feed-clip-feeds"
+run_tool --vault "$V" --dry-run
+assert "error status: the feed is still reported as HTTP 500" ok "$(has '^✗ feed-clip: ErrOpen.*HTTP 500' "$out")"
+assert "error status: its open body is closed before the next feed is fetched" ok "$(has 'would clip: AfterErr: closed-err' "$out")"
+V="$(newvault cancelredir)"
+printf 'http://127.0.0.1:%s/redir-open Chain\n' "$PORT" > "$V/.feed-clip-feeds"
+run_tool --vault "$V" --dry-run
+assert "redirect: the chain is still followed to the feed" ok "$(has 'would clip: Chain: ' "$out")"
+assert "redirect: the redirect's open body is closed before the next hop" ok "$(has 'would clip: Chain: closed-redir' "$out")"
 
 echo "Test 6a: http feed with a link-less entry"
 V="$(newvault httpblog)"
@@ -396,6 +431,102 @@ except Exception:
     assert "non-printable title: PyYAML parses the written front matter" ok "$py"
 fi
 
+echo "Test 12b: the printable-text rule agrees with the shared fixture"
+cat > "$tmpdir/printable.mjs" <<'EOF'
+import { readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+const [script, vault, feedFile, fixture] = process.argv.slice(2);
+const fx = JSON.parse(readFileSync(fixture, "utf8"));
+const ref = (s) => [...s].map((ch) => `&#x${ch.codePointAt(0).toString(16)};`).join("");
+const entries = fx.cases.map((c, i) => `<entry><id>p${i}</id><link href="https://example.com/p${i}"/><title>${ref(c.input)}</title><content>x</content></entry>`).join("");
+writeFileSync(feedFile, `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>t</title>${entries}</feed>`);
+writeFileSync(`${vault}/.feed-clip-feeds`, `file://${feedFile} Z9\n`);
+const out = execFileSync("node", [script, "--vault", vault, "--dry-run", "--cap", "100"], { encoding: "utf8" });
+const got = {};
+for (const m of out.matchAll(/^ {2}would clip: Z9: (.*) → https:\/\/example\.com\/p(\d+) /gmu)) got[m[2]] = m[1];
+let bad = 0;
+fx.cases.forEach((c, i) => {
+  if (got[i] !== c.output) { bad++; console.error(`FAIL: printable-text case "${c.name}": expected ${JSON.stringify(c.output)}, got ${JSON.stringify(got[i])}`); }
+});
+if (bad) process.exit(1);
+console.log(`OK printable-text cases (${fx.cases.length})`);
+EOF
+V="$(newvault printable)"
+node "$tmpdir/printable.mjs" "$SCRIPT" "$V" "$tmpdir/printable-feed.xml" "$SCRIPT_DIR/fixtures/printable-text-cases.json" >"$tmpdir/_printable" 2>&1; prc=$?
+if [ "$prc" -eq 0 ]; then s=ok; else s="$(cat "$tmpdir/_printable")"; fi
+assert "printable-text: every shared case agrees with the feed tool" ok "$s"
+
+echo "Test 14: every hop's address is checked: no loopback, private, link-local or unspecified host"
+addr_row() {
+    local slug="$1" url="$2" why="$3" runner="${4:-run_strict}"
+    V="$(newvault "addr-$slug")"
+    printf '%s Target\nfile://%s AfterRefusal\n' "$url" "$FIX/atom-releases.xml" > "$V/.feed-clip-feeds"
+    FEED_CLIP_TIMEOUT_MS=1500 "$runner" --vault "$V" --dry-run
+    assert "$slug: refused with a named reason ($why)" ok "$(has "^✗ feed-clip: Target — failed: refused: .*$why" "$out")"
+    assert "$slug: the run continues with the next feed" ok "$(has 'would clip: AfterRefusal: ' "$out")"
+    assert "$slug: the run exits 0" 0 "$rc"
+}
+addr_row loopback-literal "http://127.0.0.1:$PORT/ok" loopback
+addr_row loopback-decimal "http://2130706433:$PORT/ok" loopback
+addr_row loopback-short "http://127.1:$PORT/ok" loopback
+addr_row loopback-v6 "http://[::1]:$PORT/ok" loopback
+addr_row mapped-loopback "http://[::ffff:127.0.0.1]:$PORT/ok" loopback
+addr_row unspecified "http://0.0.0.0:$PORT/ok" unspecified
+addr_row link-local-metadata "http://169.254.169.254/latest/meta-data/" link-local
+addr_row link-local-v6 "http://[fe80::1]/feed" link-local
+addr_row unique-local-v6 "http://[fd00::1]/feed" private
+addr_row private-10 "http://10.0.0.5/feed" private # leak-allow: private-lan-ip test fixture asserting the RFC1918 deny rule
+addr_row private-192 "http://192.168.1.10/feed" private # leak-allow: private-lan-ip test fixture asserting the RFC1918 deny rule
+addr_row mapped-private "http://[::ffff:10.0.0.5]/feed" private # leak-allow: private-lan-ip test fixture asserting the RFC1918 deny rule
+addr_row benchmarking-v4 "http://198.18.0.1/feed" reserved
+addr_row site-local-v6 "http://[fec0::1]/feed" reserved
+addr_row name-resolving-to-loopback "http://localhost:$PORT/ok" "resolves to .*loopback"
+addr_row redirect-to-link-local "http://127.0.0.1:$PORT/redir-meta" link-local run_tool
+addr_row redirect-to-private "http://127.0.0.1:$PORT/redir-private" private run_tool
+addr_row redirect-to-a-name-resolving-to-loopback "http://127.0.0.1:$PORT/redir-name" "resolves to .*loopback" run_tool
+
+V="$(newvault addr-control)"
+printf 'http://127.0.0.1:%s/ok Control\n' "$PORT" > "$V/.feed-clip-feeds"
+run_tool --vault "$V" --dry-run
+assert "control: a fixture host named with the test option is still fetched" ok "$(has 'would clip: Control: ' "$out")"
+node "$SCRIPT" --vault "$V" --unsafe-allow-host >/dev/null 2>&1; assert "the test option with no value exits 1" 1 "$?"
+
+V="$(newvault addr-optin)"
+printf 'http://127.0.0.1:%s/ok --unsafe-allow-host 127.0.0.1:%s\n' "$PORT" "$PORT" > "$V/.feed-clip-feeds"
+run_strict --vault "$V" --dry-run
+assert "the option written in a feed line does nothing: the host is refused" ok "$(has 'failed: refused: .*loopback' "$out")"
+V="$(newvault addr-env)"
+printf 'http://127.0.0.1:%s/ok EnvTry\n' "$PORT" > "$V/.feed-clip-feeds"
+out="$(FEED_CLIP_ALLOW_PRIVATE=1 FEED_CLIP_UNSAFE_ALLOW_HOST="127.0.0.1:$PORT" UNSAFE_ALLOW_HOST="127.0.0.1:$PORT" node "$SCRIPT" --vault "$V" --dry-run 2>&1)"
+assert "no environment variable lifts the check: the host is refused" ok "$(has 'failed: refused: .*loopback' "$out")"
+
+CADENCE="$SCRIPT_DIR/../../../../scripts/luna/pipeline-cadence.sh"
+ARM="$tmpdir/arm"
+mkdir -p "$ARM/bin" "$ARM/bat" "$ARM/vault/.obsidian" "$ARM/home"
+cat > "$ARM/crontab" <<'EOF'
+#!/bin/sh
+case "${1:-}" in
+  -l) echo "no crontab for fakeuser" >&2; exit 1 ;;
+  -) cat >/dev/null ;;
+esac
+EOF
+printf '#!/bin/sh\nexit 0\n' > "$ARM/bin/claude"
+chmod +x "$ARM/crontab" "$ARM/bin/claude"
+env OSTYPE=linux-gnu HOME="$ARM/home" PIPELINE_CRONTAB="$ARM/crontab" PIPELINE_BAT_DIR="$ARM/bat" PATH="$ARM/bin:$PATH" bash "$CADENCE" arm --force --vault "$ARM/vault" >"$ARM/arm.out" 2>&1
+runner="$(cat "$ARM/bat/pipeline-harvest.sh" 2>/dev/null)"
+assert "nightly runner: arming generated a harvest runner that runs the feed tool" ok "$(has 'nightly-feeds .*feed-clip\.mjs --vault .* --cap 2' "$runner")"
+assert "nightly runner: its generated command line carries no test option" 0 "$(printf '%s\n' "$runner" | grep -c 'unsafe-allow')"
+assert "nightly runner: the generator never writes the option" 0 "$(grep -c 'unsafe-allow' "$CADENCE")"
+
+V="$(newvault rebind)"
+printf 'http://rebind.test:%s/rebind-hit Rebind\n' "$PORT" > "$V/.feed-clip-feeds"
+: > "$tmpdir/rebind.log"
+out="$(REBIND_LOG="$tmpdir/rebind.log" FEED_CLIP_TIMEOUT_MS=500 node --import "$SCRIPT_DIR/fixtures/dns-rebind.mjs" "$SCRIPT" --vault "$V" --dry-run 2>&1)"; rc=$?
+rebind_hits="$(node -e 'fetch("http://127.0.0.1:"+process.argv[1]+"/count").then((r) => r.text()).then(console.log)' "$PORT")"
+assert "rebinding: a name that answers loopback on its second lookup is never connected to" 0 "$rebind_hits"
+assert "rebinding: the name is resolved once for the hop" 1 "$(wc -l < "$tmpdir/rebind.log" | tr -d ' ')"
+assert "rebinding: the feed fails and the run exits 0" ok "$([ "$rc" -eq 0 ] && has '^✗ feed-clip: Rebind' "$out" || echo no)"
+
 echo "Test 13: the README names the nightly harvest runner as what schedules the tool"
 readme="$SCRIPT_DIR/../README.md"
 feed_section="$(awk '/^### Feed clips/{p=1; next} /^### /{p=0} p' "$readme")"
@@ -413,6 +544,67 @@ V="$(newvault badlist)"
 mkdir "$V/.feed-clip-feeds"
 run_tool --vault "$V"
 assert "an unreadable feed list exits 2" 2 "$rc"
+
+echo "Test 12: a per-feed skip filter on entry titles"
+PRE="$FIX/atom-prerelease.xml"
+V="$(newvault prerel-open)"
+printf 'file://%s Prerel\n' "$PRE" > "$V/.feed-clip-feeds"
+run_tool --vault "$V" --cap 10
+assert "control: with no filter all five entries are clipped" 5 "$(nclips "$V")"
+
+V="$(newvault prerel)"
+printf 'file://%s Prerel skip=alpha,nightly,rc,mobile\n' "$PRE" > "$V/.feed-clip-feeds"
+run_tool --vault "$V"
+assert "skip filter: exits 0" 0 "$rc"
+assert "skip filter: five entries, three matching, two clips" 2 "$(nclips "$V")"
+assert "skip filter: no nightly clip" 0 "$(grep -l 'nightly' "$V"/Clippings/feed-*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert "skip filter: no alpha clip" 0 "$(grep -l 'alpha' "$V"/Clippings/feed-*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert "skip filter: no release-candidate clip" 0 "$(grep -l 'rc1' "$V"/Clippings/feed-*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert "skip filter: a title holding rc inside a word is not skipped" 1 "$(grep -l 'source maps fix' "$V"/Clippings/feed-*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert "skip filter: the label stays the label, the skip= word is not part of it" ok "$(hasline 'title: "Prerel: v2.0.0"' "$(cat "$(pick "$V" 'feed-*v2-0-0.md')")")"
+assert "skip filter: the feed line reports the skipped count" ok "$(has '3 skipped by filter' "$out")"
+assert "skip filter: skipped entries are not recorded as seen" 2 "$(seen_lines)"
+run_tool --vault "$V"
+assert "skip filter: a second run clips nothing more" 2 "$(nclips "$V")"
+
+V="$(newvault prerel-cap)"
+printf 'file://%s Prerel skip=alpha,nightly,rc\n' "$PRE" > "$V/.feed-clip-feeds"
+run_tool --vault "$V" --cap 1
+assert "skip filter: skipped newest entries do not use up the cap (cap 1 clips one)" 1 "$(nclips "$V")"
+assert "skip filter: the pending count leaves skipped entries out" ok "$(has '1 pending' "$out")"
+
+V="$(newvault prerel-dry)"
+printf 'file://%s Prerel skip=alpha,nightly,rc\n' "$PRE" > "$V/.feed-clip-feeds"
+run_tool --vault "$V" --dry-run
+assert "skip filter: a dry run lists no nightly tag" 0 "$(grep -c 'nightly' <<<"$out")"
+assert "skip filter: a dry run lists no alpha tag" 0 "$(grep -c 'alpha' <<<"$out")"
+assert "skip filter: a dry run lists the two kept entries" 2 "$(grep -c 'would clip' <<<"$out")"
+
+V="$(newvault bound)"
+printf 'file://%s Bound skip=rc\n' "$FIX/atom-boundary.xml" > "$V/.feed-clip-feeds"
+run_tool --vault "$V" --cap 10
+assert "skip word at the end of a longer word is not skipped (arc)" 1 "$(grep -l 'The arc release' "$V"/Clippings/feed-*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert "skip word at the start of a longer word is not skipped (rcs)" 1 "$(grep -l 'rcs update' "$V"/Clippings/feed-*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert "skip word followed by a digit is skipped (rc2)" 0 "$(grep -l 'rc2' "$V"/Clippings/feed-*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert "skip word boundaries: three clips, one skipped" 3 "$(nclips "$V")"
+
+cat > "$tmpdir/ctl-feed.xml" <<'EOF'
+<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>t</title>
+<entry><id>c1</id><link href="https://example.com/c1"/><title>v1.0 al&#x0;pha 1</title><content>x</content></entry>
+<entry><id>c2</id><link href="https://example.com/c2"/><title>v1.0 stable</title><content>x</content></entry></feed>
+EOF
+V="$(newvault ctlskip)"
+printf 'file://%s Ctl skip=alpha\n' "$tmpdir/ctl-feed.xml" > "$V/.feed-clip-feeds"
+run_tool --vault "$V" --dry-run
+assert "skip filter: a skip word split by a control character is screened as written, so the entry is skipped" 1 "$(grep -c 'would clip' <<<"$out")"
+
+for bad in 'skip=' 'skip=a;b' 'skip=,' 'skip=alpha skip=rc'; do
+    V="$(newvault prerel-bad)"
+    printf 'file://%s Prerel %s\n' "$PRE" "$bad" > "$V/.feed-clip-feeds"
+    run_tool --vault "$V"
+    assert "malformed '$bad': the line is reported and skipped, nothing clipped" ok "$([ "$(nclips "$V")" = 0 ] && grep -q 'skip' <<<"$out" && echo ok || echo no)"
+    rm -rf "$V"
+done
 
 echo ""
 echo "feed-clip tests: $pass passed, $fail failed"

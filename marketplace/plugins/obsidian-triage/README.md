@@ -97,7 +97,15 @@ in the inbox forever. A **partial** enrichment (some slides/videos survived,
 others dropped in recompress/transcode) writes what succeeded but is marked
 `media_enrichment_status: partial` with a `partial_media:` last-error and
 withholds `media_enriched_at`, so the clip stays selectable and is retried -
-partial media loss is never stamped a full success. Command runbook:
+partial media loss is never stamped a full success. A clip whose summary
+triage wrote from the URL alone (`summary_basis: url-only`) gets that summary
+rewritten from the opening of the transcript, else of the slide digest, right
+after a verified write (no model call; `summary_basis: crawled-extract`, and a
+stale `harvest_flag: thin-body` is dropped in the same write; never
+from an injection-flagged clip or text that trips the injection screen), and
+`ig-media-fetch.py --repair-summaries <vault> [--apply] [--limit N]` is the
+bounded one-time repair for clips enriched before that (dry run unless
+`--apply`, default 10 per run). Command runbook:
 `commands/ig-media-enrich.md`.
 
 #### One-time setup (whisper model)
@@ -252,11 +260,13 @@ node tools/feed-clip.mjs --dry-run            # print what it would clip, write 
 node tools/feed-clip.mjs --vault <path> --cap 3
 ```
 
-- **Feed list** — `<vault>/.feed-clip-feeds`, one feed per line: `<feed-url> [label]`, `#` starts a comment. The label prefixes the clip title (`Claude Code: v2.1.0`). The vault template ships a starter list (Claude Code, the Claude Agent SDK, Codex, T3 Code, the MCP specification, the OpenAI engineering blog); a vault made before it needs the file copied in once. `--feeds <file>` reads a list from another path.
+- **Feed list** — `<vault>/.feed-clip-feeds`, one feed per line: `<feed-url> [label] [skip=<word>,<word>]`, `#` starts a comment. The label prefixes the clip title (`Claude Code: v2.1.0`). The vault template ships a starter list (Claude Code, the Claude Agent SDK, Codex, T3 Code, the MCP specification, the OpenAI engineering blog); `/luna-upgrade` installs it into a vault that lacks it, once, and never overwrites a copy that exists. `--feeds <file>` reads a list from another path.
+- **Skip filter** — an entry whose title holds one of a line's `skip=` words (any case, not inside a longer word: `rc` skips `v2.1-rc1` and `rc2`, not `source` or `arc`) is not clipped and not counted as pending, so skipped newest entries do not use up the cap. The starter list skips `alpha`, `nightly`, `rc` and `mobile` on the Codex and T3 Code feeds. A malformed `skip=` (empty, a character outside letters, digits, `.`, `_`, `-`, or given twice) is a `✗` line and the feed line is skipped.
+- **Release notes** — the clip body is the entry's own text, so a GitHub release clip carries its release notes. `/harvest-clips` takes a `github.com/<owner>/<repo>/releases/tag/<tag>` clip that has text of its own as an article (clip-body path, injection screen, no repository ingest, a short note is not a thin body); a release link whose body is only the link, a repository root, the releases list and an issue still go to `luna-ingest`.
 - **Clip shape** — the front matter of a Telegram clip in the same order (`title`, `source`, `date_clipped`, `type`, `tags: []`, `status: unread`), with `clipped_via: feed` and no `telegram_*` keys; `type` comes from the Telegram classifier (a GitHub link is `research`, other links `article`). It carries no `harvested_at:` and no `processed:`, and lands top-level in `Clippings/`, so `/harvest-clips` and `/triage-clips` take it like any other clip. The body is the entry's text with markup stripped (capped at 6000 characters), then a `## Source` link. An entry without an http(s) link is skipped.
 - **Clipped once** — `<vault>/.feed-clip-seen.jsonl` (append-only, one line per clipped entry) is the record; deleting a clip does not bring the entry back. A clip file that already exists is never overwritten.
 - **Cap** — at most `--cap` (default 3) new clips per feed per run, newest entry first; the rest stay unseen and arrive on later runs. A feed's first run therefore trickles in over several runs.
-- **Failures** — a feed that errors (HTTP status, timeout, not a feed, larger than 8 MiB, a malformed list line) is one `✗ feed-clip:` line; the other feeds are still processed and the exit code stays 0. Login-walled hosts (`x.com`, `instagram.com`, `reddit.com`, …) are refused, also when a redirect leads to one. Exit 2 is for an unusable vault or an unreadable or unwritable state file.
+- **Failures** — a feed that errors (HTTP status, timeout, not a feed, larger than 8 MiB, a malformed list line) is one `✗ feed-clip:` line; the other feeds are still processed and the exit code stays 0. Login-walled hosts (`x.com`, `instagram.com`, `reddit.com`, …) are refused, also when a redirect leads to one. So is any host that is, or resolves to, a loopback, private (RFC 1918, unique-local IPv6), link-local, unspecified or reserved address, an IP literal and the IPv4-mapped IPv6 forms included, on every hop: the feed fails with `refused: <host> …` and the run goes on. A name is resolved once per hop and the socket connects to the address that was checked, so a name that answers differently the second time is never reached. The suite's loopback fixture server gets in only through the test-only `--unsafe-allow-host <host:port>` option, which the feed list, the environment and the nightly runner's command line cannot set. Exit 2 is for an unusable vault or an unreadable or unwritable state file.
 - **Scheduling** — the nightly harvest runner that `scripts/luna/pipeline-cadence.sh` generates runs it before the harvest, at most `--feed-cap` (default 2, set when arming) new clips per feed (see the nightly paragraph below); outside that runner it runs only when invoked by hand.
 
 `tests/test-feed-clip.sh` covers it against synthetic fixture feeds served from local files and a loopback server (never a real feed): one clip per entry and none on the second run, the Telegram clip shape, failing feeds, the cap (3, 3, 3, 1, 0 for ten entries), the seen state, `--dry-run`, a crafted feed that must not stall the parser, a redirect loop, the body-size caps, and non-printable characters in a title. Each guard on untrusted input has a row that goes red when the guard is deleted.
@@ -348,6 +358,8 @@ step is reported and never fails the run; a step whose tool is not installed
 reports `skipped: tool not installed`. The two writers hold the vault's git index
 lock while they write, and both are undone with `--revert <their ledger>`, the actions
 ledger first (a clip archived after it was stamped refuses to revert once its stamp is gone).
+A clip stamped `archived: true` by the daily note's archive action feeds neither a
+subject page nor a synthesis candidate, and a page that already cites it is left as it is.
 
 ### Synthesis candidates (`tools/synthesis-candidates.mjs`)
 
@@ -411,6 +423,9 @@ renders it as its `Clip funnel` block. It writes nothing to the vault, reads
 each file once and prints the same bytes on two runs.
 
 - **intake:** the flat `Clippings/_evidence/` pool (a subfolder is not evidence).
+  A clip stamped `archived: true` is counted in `intake.archived` (the report's
+  `Archived` line) and left out of `intake.clips`, of `cited` and of the intake
+  movement, so the share of clips cited is of the clips still in view.
 - **cited:** a clip is cited when a page in `Clippings/_synthesis/` links it by
   name; the folder in the link and a `.md` suffix do not matter, so a link to
   the clip's old `_done/` folder still counts. Accepted proposals under

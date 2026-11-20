@@ -452,7 +452,7 @@ function installLaunchAgent({ repoRoot, dryRun } = {}) {
   const plistPath = launchAgentPath();
   const domain = launchDomain();
   const rendered = template.split('@HIMMEL_REPO@').join(xmlEscape(repoRoot)).split('@HOME@').join(xmlEscape(os.homedir()));
-  const actions = [`write ${plistPath}`, `launchctl bootstrap ${domain} ${plistPath}`];
+  const actions = [`write ${plistPath}`, `launchctl bootstrap ${domain} ${plistPath}`]; // t13b-ok: dry-run text; the bridge LaunchAgent is opt-in via himmelctl bridge enable
   if (dryRun) {
     return { ok: true, actions, detail: `dry-run: would install ${LAUNCHD_LABEL}.plist at ${plistPath} with @HIMMEL_REPO@ -> ${repoRoot}` };
   }
@@ -492,7 +492,7 @@ function installLaunchAgent({ repoRoot, dryRun } = {}) {
   if (boot.status !== 0) {
     return partialFail(
       [`write ${plistPath}`],
-      `plist IS written at ${plistPath}, but launchctl bootstrap ${domain} failed (rc=${boot.status}): ${(boot.stderr || '').trim()} — the bridge is NOT loaded. Remediation: fix the error and re-run, or: launchctl bootstrap ${domain} ${plistPath}`,
+      `plist IS written at ${plistPath}, but launchctl bootstrap ${domain} failed (rc=${boot.status}): ${(boot.stderr || '').trim()} — the bridge is NOT loaded. Remediation: fix the error and re-run, or: launchctl bootstrap ${domain} ${plistPath}`, // t13b-ok: remediation message text only, starts nothing
     );
   }
   return { ok: true, actions, detail: `${LAUNCHD_LABEL} installed at ${plistPath}, loaded and started (RunAtLoad)` };
