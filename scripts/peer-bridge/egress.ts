@@ -40,7 +40,7 @@ const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 function privateIPv4(a: number, b: number): boolean {
   return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
 }
-function badHost(text: string, host: string): boolean {
+export function badHost(text: string, host: string): boolean {
   for (const m of text.matchAll(/(?<![0-9.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![0-9])/g)) {
     const o = [m[1], m[2], m[3], m[4]].map(Number);
     if (o.every(n => n <= 255) && privateIPv4(o[0], o[1])) return true;

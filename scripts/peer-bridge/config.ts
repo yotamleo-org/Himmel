@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import { constants } from "node:fs";
 import { isAbsolute } from "node:path";
+import { STATION_NAME_RE } from "./envelope";
 import { BOT_ID_RE, KINDS, PEER_NAME_RE, TOKEN_RE, botIdFromToken, type OpenKind } from "./ids";
+import { keyId, type TheirKey } from "./sign";
 
 export const EXIT_CONFIG = 78;
 
@@ -10,7 +12,7 @@ export class ConfigError extends Error {
   constructor(message: string) { super(message); this.name = "ConfigError"; }
 }
 
-export type Theirs = { username: string; opens: OpenKind[]; maxOpenThreads: number; maxPerMinute: number; copiedAt: string };
+export type Theirs = { username: string; opens: OpenKind[]; maxOpenThreads: number; maxPerMinute: number; copiedAt: string; stationName?: string; keys: TheirKey[] };
 export type Peer = {
   peerBotId: string;
   chatId: number | null;
@@ -24,6 +26,7 @@ export type Peer = {
   theirs: Theirs;
 };
 export type Config = {
+  self: { stationName?: string };
   operatorBotId: string;
   operatorChatId: number;
   bridgeRoot: string;
@@ -41,6 +44,25 @@ const opens = (v: unknown, what: string): OpenKind[] => {
   if (!Array.isArray(v) || !v.every(k => (KINDS as readonly string[]).includes(k))) return bad(`${what} must list only ${KINDS.join(", ")}`);
   return v as OpenKind[];
 };
+
+function stationName(v: unknown, what: string): string | undefined {
+  if (v === undefined) return undefined;
+  return typeof v === "string" && STATION_NAME_RE.test(v) ? v : bad(`${what} must match ${STATION_NAME_RE.source}`);
+}
+
+// At most two keys (current and next), each naming itself correctly: the id is the
+// first 8 hex of sha256 of the public key, so a hand-edited id cannot lie.
+function theirKeys(v: unknown, what: string): TheirKey[] {
+  if (v === undefined) return [];
+  if (!Array.isArray(v) || v.length > 2) return bad(`${what} must be a list of at most two keys`);
+  return v.map((k: any, i: number) => {
+    const pub = k?.pub, at = k?.addedAt;
+    if (typeof pub !== "string" || Buffer.from(pub, "base64").length !== 32 || Buffer.from(pub, "base64").toString("base64") !== pub) return bad(`${what}[${i}].pub must be a base64 32-byte key`);
+    if (k.id !== keyId(pub)) return bad(`${what}[${i}].id is not the id of its pub`);
+    if (typeof at !== "string" || Number.isNaN(Date.parse(at))) return bad(`${what}[${i}].addedAt must be a date`);
+    return { id: k.id, pub, addedAt: at };
+  });
+}
 
 function parsePeer(name: string, raw: any): Peer {
   if (!raw || typeof raw !== "object") bad(`peer ${name} must be an object`);
@@ -70,6 +92,8 @@ function parsePeer(name: string, raw: any): Peer {
       maxOpenThreads: posInt(t.maxOpenThreads, `peer ${name} theirs.maxOpenThreads`),
       maxPerMinute: posInt(t.maxPerMinute, `peer ${name} theirs.maxPerMinute`),
       copiedAt: str(t.copiedAt, `peer ${name} theirs.copiedAt`),
+      stationName: stationName(t.stationName, `peer ${name} theirs.stationName`),
+      keys: theirKeys(t.keys, `peer ${name} theirs.keys`),
     },
   };
 }
@@ -108,7 +132,9 @@ export function readPeersFile(path: string): Config {
     if (!PEER_NAME_RE.test(name)) bad(`peer name ${JSON.stringify(name)} is not ^[a-z0-9][a-z0-9-]{0,31}$`);
     peers[name] = parsePeer(name, p);
   }
-  return { operatorBotId, operatorChatId: raw.operatorChatId, bridgeRoot, himmelRoot, peers, maxTextChars, addressing: "command" };
+  const self = raw.self === undefined ? {} : raw.self;
+  if (!self || typeof self !== "object" || Array.isArray(self)) bad("self must be an object");
+  return { self: { stationName: stationName(self.stationName, "self.stationName") }, operatorBotId, operatorChatId: raw.operatorChatId, bridgeRoot, himmelRoot, peers, maxTextChars, addressing: "command" };
 }
 
 export function loadConfig(path: string, env: NodeJS.ProcessEnv = process.env): Config {

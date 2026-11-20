@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConfigError, loadConfig } from "./config";
 import { botIdFromToken, PEER_NAME_RE, SESSION_ID_RE } from "./ids";
+import { keyId } from "./sign";
 
 const TOKEN = "1234567890:" + "A".repeat(35);
 const OP_TOKEN = "9876543210:" + "B".repeat(35);
@@ -99,6 +100,32 @@ test("loading opens only peers.json, never the operator channel dir", () => {
   spy.mockRestore();
   expect(opened).toEqual([path]);
   expect(opened.some(p => p.includes(".claude/channels/telegram"))).toBe(false);
+});
+
+const PUB_A = Buffer.alloc(32, 1).toString("base64"), PUB_B = Buffer.alloc(32, 2).toString("base64");
+const key = (pub: string, addedAt = "2026-11-10T00:00:00Z") => ({ id: keyId(pub), pub, addedAt });
+const withTheirs = (over: Record<string, unknown>) => base({ peers: { goomal: peer({ theirs: { ...peer().theirs, ...over } }) } });
+
+test("station names and peer keys load; an older config without them still loads", () => {
+  const old = loadConfig(write(base()), ENV);
+  expect(old.self).toEqual({});
+  expect(old.peers.goomal.theirs.keys).toEqual([]);
+  expect(old.peers.goomal.theirs.stationName).toBeUndefined();
+
+  const cfg = loadConfig(write(base({ self: { stationName: "yotam" }, peers: { goomal: peer({ theirs: { ...peer().theirs, stationName: "goomal", keys: [key(PUB_A), key(PUB_B)] } }) } })), ENV);
+  expect(cfg.self.stationName).toBe("yotam");
+  expect(cfg.peers.goomal.theirs.stationName).toBe("goomal");
+  expect(cfg.peers.goomal.theirs.keys.map(k => k.pub)).toEqual([PUB_A, PUB_B]);
+});
+
+test("a station name outside the shape, or a key that is not what it says, refuses", () => {
+  expect(refusal(() => loadConfig(write(base({ self: { stationName: "Yo Tam" } })), ENV)).code).toBe(78);
+  expect(refusal(() => loadConfig(write(withTheirs({ stationName: "x.local" })), ENV)).code).toBe(78);
+  expect(refusal(() => loadConfig(write(withTheirs({ keys: [key(PUB_A), key(PUB_B), key(Buffer.alloc(32, 3).toString("base64"))] })), ENV)).code).toBe(78);
+  expect(refusal(() => loadConfig(write(withTheirs({ keys: [{ ...key(PUB_A), id: "00000000" }] })), ENV)).code).toBe(78);
+  expect(refusal(() => loadConfig(write(withTheirs({ keys: [key("c2hvcnQ=")] })), ENV)).code).toBe(78);
+  expect(refusal(() => loadConfig(write(withTheirs({ keys: [key(PUB_A, "yesterday")] })), ENV)).code).toBe(78);
+  expect(refusal(() => loadConfig(write(withTheirs({ keys: "none" })), ENV)).code).toBe(78);
 });
 
 test("ids: the bot id is the token prefix, and the session id shape is closed", () => {

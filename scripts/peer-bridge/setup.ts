@@ -6,11 +6,15 @@
 //   setup.ts confirm <peer> <chatId>
 //   setup.ts remove <peer>
 //   setup.ts uninstall
+//   setup.ts station-name <name>
+//   setup.ts keygen [--rotate | --activate]
+//   setup.ts trust <peer> <station-name> <pubkey-b64>
+//   setup.ts untrust <peer> [--key <id>]
 //
 // Exit: 0 done, 2 usage, 3 refused (nothing written).
 import { randomBytes } from "node:crypto";
 import fs, { constants } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, hostname as osHostname } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createInterface } from "node:readline";
@@ -18,8 +22,11 @@ import { defaultRoot } from "../telegram/bus";
 import { loadAccess, operatorChatId, type Access } from "../telegram/gate";
 import { submitSpool } from "./chain";
 import { readPeersFile, ConfigError } from "./config";
+import { badHost } from "./egress";
+import { STATION_NAME_RE } from "./envelope";
 import { BOT_ID_RE, PEER_NAME_RE, TOKEN_RE, botIdFromToken, configDir, peerDir, peersFile, stateDir } from "./ids";
 import { sanitize } from "./sanitize";
+import { fingerprint, keyId, keygen, keygenActivate, keygenRotate, type KeyInfo } from "./sign";
 import { PeerTelegram, TelegramError } from "./telegram";
 
 export class SetupError extends Error {
@@ -36,6 +43,7 @@ export type Deps = {
   loadToken?: () => string;
   makeTg?: (token: string) => Pick<PeerTelegram, "getChat" | "getChatMember">;
   stopUnit?: () => void;
+  hostname?: string;
 };
 
 const USERNAME_RE = /^[A-Za-z][A-Za-z0-9_]{2,31}$/;
@@ -224,6 +232,81 @@ export async function remove(peer: string, deps: Deps): Promise<void> {
   deps.out(`removed ${peer}; restart the poller to drop it`);
 }
 
+// A station name is what `from` and `to` carry. egress.ts refuses any text that
+// holds this host's name, so a name it would refuse would block every envelope.
+function checkStationName(name: string, deps: Deps): void {
+  if (!STATION_NAME_RE.test(name)) refuse("a station name must match ^[a-z0-9][a-z0-9-]{0,31}$");
+  if (badHost(name, deps.hostname ?? osHostname())) refuse(`the station name ${name} is refused by egress (it names this host or a private address)`);
+}
+
+export async function stationName(name: string, deps: Deps): Promise<void> {
+  guard(deps);
+  checkStationName(name, deps);
+  const raw = loadRaw();
+  raw.self = { ...(raw.self ?? {}), stationName: name };
+  replaceJson(peersFile(), raw);
+  deps.out(`our station name is ${name}`);
+}
+
+const showKey = (what: string, k: KeyInfo, deps: Deps) =>
+  deps.out(`${what}\n  public key:  ${k.pub}\n  key id:      ${k.id}\n  fingerprint: ${k.fingerprint}\nGive the public key to the peer's operator; read the fingerprint to them by call or another messenger, never over the group.`);
+
+export async function keygenCmd(mode: "new" | "rotate" | "activate", deps: Deps): Promise<void> {
+  guard(deps);
+  mkdir0700(configDir());
+  try {
+    if (mode === "new") showKey("created the station key", keygen(), deps);
+    else if (mode === "rotate") showKey("created the next key; we keep signing with the current one until --activate", keygenRotate(), deps);
+    else showKey("the next key is now the station key; the old key is deleted", keygenActivate(), deps);
+  } catch (e) {
+    refuse(`keygen: ${(e as NodeJS.ErrnoException).code === "EEXIST" ? "that key already exists" : (e as Error).message}`);
+  }
+}
+
+// The public key may travel over the group; the fingerprint must not, so the
+// operator types the one they were told out of band and nothing is written unless it matches.
+export async function trust(peer: string, name: string, pub: string, deps: Deps): Promise<void> {
+  guard(deps);
+  if (!PEER_NAME_RE.test(peer)) refuse("peer name must match ^[a-z0-9][a-z0-9-]{0,31}$");
+  checkStationName(name, deps);
+  const raw = loadRaw();
+  const p = raw.peers[peer];
+  if (!p) refuse(`unknown peer ${peer}; run setup.ts add first`);
+  const bytes = Buffer.from(pub, "base64");
+  if (bytes.length !== 32 || bytes.toString("base64") !== pub) refuse("the public key must be 32 bytes in base64");
+  const theirs = p.theirs;
+  const keys: { id: string; pub: string; addedAt: string }[] = theirs.keys ?? [];
+  const id = keyId(pub);
+  if (keys.some(k => k.id === id)) refuse(`key ${id} is already trusted`);
+  if (keys.length >= 2) refuse("two keys are already trusted; untrust one first");
+  if (theirs.stationName !== undefined && theirs.stationName !== name) refuse(`${peer} is already trusted as ${theirs.stationName}; untrust it first to change the name`);
+  deps.out(`fingerprint of this key: ${fingerprint(pub)}`);
+  const typed = (await deps.ask("Type the fingerprint the peer's operator read to you out of band: ")).toLowerCase().replace(/\s+/g, "");
+  if (typed !== fingerprint(pub).replace(/ /g, "")) refuse("the fingerprint does not match; nothing was written");
+  theirs.stationName = name;
+  theirs.keys = [...keys, { id, pub, addedAt: new Date().toISOString().replace(/\.\d{3}Z$/, "Z") }];
+  replaceJson(peersFile(), raw);
+  deps.out(`trusted ${peer} as ${name} with key ${id}`);
+}
+
+export async function untrust(peer: string, key: string | undefined, deps: Deps): Promise<void> {
+  guard(deps);
+  if (!PEER_NAME_RE.test(peer)) refuse("peer name must match ^[a-z0-9][a-z0-9-]{0,31}$");
+  const raw = loadRaw();
+  const p = raw.peers[peer];
+  if (!p) refuse(`unknown peer ${peer}`);
+  const keys: { id: string }[] = p.theirs.keys ?? [];
+  if (key !== undefined) {
+    if (!/^[0-9a-f]{8}$/.test(key)) refuse("--key must be an 8-hex key id");
+    if (!keys.some(k => k.id === key)) refuse(`${peer} has no trusted key ${key}`);
+    p.theirs.keys = keys.filter(k => k.id !== key);
+  } else {
+    p.theirs.keys = [];
+  }
+  replaceJson(peersFile(), raw);
+  deps.out(`${peer} now has ${p.theirs.keys.length} trusted key(s)`);
+}
+
 function stopUnitDefault(): void {
   if (process.platform === "linux") spawnSync("systemctl", ["--user", "disable", "--now", UNIT_NAME], { stdio: "ignore", timeout: 15_000 });
   else if (process.platform === "darwin") spawnSync("launchctl", ["bootout", `gui/${process.getuid!()}`, join(homeDir(), "Library", "LaunchAgents", PLIST_NAME)], { stdio: "ignore", timeout: 15_000 });
@@ -261,7 +344,14 @@ async function main(): Promise<void> {
     else if (cmd === "confirm" && args.length === 2) await confirm(args[0], args[1], deps);
     else if (cmd === "remove" && args.length === 1) await remove(args[0], deps);
     else if (cmd === "uninstall" && args.length === 0) await uninstall(deps);
-    else { console.error("usage: setup.ts add <peer> --peer-bot-id N [--peer-username U] | confirm <peer> <chatId> | remove <peer> | uninstall"); process.exit(2); }
+    else if (cmd === "station-name" && args.length === 1) await stationName(args[0], deps);
+    else if (cmd === "keygen" && args.length === 0) await keygenCmd("new", deps);
+    else if (cmd === "keygen" && args.length === 1 && args[0] === "--rotate") await keygenCmd("rotate", deps);
+    else if (cmd === "keygen" && args.length === 1 && args[0] === "--activate") await keygenCmd("activate", deps);
+    else if (cmd === "trust" && args.length === 3) await trust(args[0], args[1], args[2], deps);
+    else if (cmd === "untrust" && args.length === 1) await untrust(args[0], undefined, deps);
+    else if (cmd === "untrust" && args.length === 3 && args[1] === "--key") await untrust(args[0], args[2], deps);
+    else { console.error("usage: setup.ts add <peer> --peer-bot-id N [--peer-username U] | confirm <peer> <chatId> | remove <peer> | uninstall | station-name <name> | keygen [--rotate|--activate] | trust <peer> <station-name> <pubkey-b64> | untrust <peer> [--key <id>]"); process.exit(2); }
   } catch (e) {
     if (e instanceof SetupError) { console.error(`setup: ${e.message}`); process.exit(3); }
     throw e;
