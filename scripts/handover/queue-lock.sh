@@ -1676,8 +1676,8 @@ _ql_force_on_signal() {
     _QL_FORCE_ABORT="$code"
     # BASHPID does not exist on bash 3.2 and $$ is the outer shell inside a subshell; the exec'd child's parent is this shell. The signal itself comes from the builtin kill: bash drops an INT sent from a child it is waiting on.
     self=$(exec sh -c 'echo "$PPID"')
-    # Apple bash 3.2 keeps its own INT handler after a self-raised INT and carries on; resetting to the default first lets the signal land
-    [ "$sig" != INT ] || trap - INT
+    # Apple bash 3.2 keeps its own INT handler after a self-raised INT and carries on; with no INT handler of the caller's own, resetting to the default first lets the signal land (a handler or ignore of the caller's stays, so it still runs)
+    case "$sig:$caller_traps" in INT:*SIGINT*) ;; INT:*) trap - INT ;; esac
     kill -s "$sig" "$self"
     # still here with no INT handler of the caller's own: the raise did not end this shell, so end it by the status a killed one would report
     case "$sig:$caller_traps" in INT:*SIGINT*) ;; INT:*) exit "$code" ;; esac
