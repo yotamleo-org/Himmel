@@ -336,6 +336,8 @@ def role(p):
     """What a panel reviewer must do before a merge, in plain words (docs/configuration.md, Reviewer modes)."""
     if p["mode"] == "best-effort":
         return "best effort: holds a merge only on a posted finding"
+    if p["mode"] == "advisory":
+        return "advisory: its findings print a note and hold no merge until its precision reaches the floor in critics.json"
     if p["required"]:
         return "required: must pass before every merge"
     return "must pass where it runs; skipped on a machine without it"
@@ -378,8 +380,11 @@ def render(d):
     ]
     if pl and pl["pct"] is not None:
         who = ", ".join("`%s`" % s for s in pl["critics"]) or "the panel"
-        out.append("| Does the review panel catch bugs? | **%s%%**: %s caught %d of %d planted bugs | %s | %s |" % (
-            pl["pct"], who, pl["k"], pl["n"], rng(pl["wilson"]),
+        cr_out = "" if "coderabbit" in pl["critics"] else ", CodeRabbit is not in this eval"
+        out.append("| Does the review panel catch bugs? | **%s%%**: %s matched %d of %d planted defects on a strict "
+                   "key-match proxy%s; most are real review escapes, bugs earlier reviews already missed, so the set "
+                   "is hard by design, and an approved fresh sweep will replace this figure | 95%% range %s | %s |" % (
+            pl["pct"], who, pl["k"], pl["n"], cr_out, rng(pl["wilson"]),
             stamp(pl["as_of"], pl["n"], "planted bugs in %s test changes" % num(pl["cases"]))))
     else:
         out.append("| Does the review panel catch bugs? | not measured yet: no planted-bug run | | as of %s |" % r["as_of"])

@@ -115,10 +115,9 @@ CAL_B="[$(grader grader1 opus native anthropic),$(grader grader2 google/gemini-x
 } > "$E"
 
 # ── Fixture panel ───────────────────────────────────────────────────────────
-# beta is the required reviewer, delta:m9 runs where present but has no findings yet, coderabbit is best effort;
 # alpha is in the ledger but not the panel, so it is history.
 K="$TMP/critics.json"
-printf '{"panel":[{"slug":"beta","mode":"hard","required":true},{"slug":"delta","model":"m9","mode":"hard","required":false},{"slug":"coderabbit","provider":"github-app","mode":"best-effort"}]}\n' > "$K"
+printf '{"panel":[{"slug":"beta","mode":"hard","required":true},{"slug":"delta","model":"m9","mode":"hard","required":false},{"slug":"epsilon","model":"m7","mode":"advisory","required":false},{"slug":"coderabbit","provider":"github-app","mode":"best-effort"}]}\n' > "$K"
 
 OUT="$TMP/data.json"
 python3 -I "$GEN" data --ledger "$L" --eval-runs "$E" --critics "$K" --cache-probe "$C" --as-of 2026-10-25 --out "$OUT" > "$TMP/data.out" 2> "$TMP/data.err"; rc=$?
@@ -192,13 +191,19 @@ eq "render: exit 0" "$rc" "0"
 lacks "render: no draft marker" "$(head -5 "$R")" "draft:"
 eq "render: bottom line first, then the current setup, then history" \
   "$(grep -E '^## ' "$R" | head -4 | tr '\n' '|')" "## Bottom line|## Current setup|## History and what we learned|## Proof-first share and test-first adherence|"
-has "render: bottom line gives the planted-bug catch" "$(cat "$R")" "**75.0%**: \`beta\` caught 9 of 12 planted bugs"
+PROW=$(grep -F '| Does the review panel catch bugs? |' "$R")
+has "render: bottom line gives the planted-bug catch as a key-match proxy" "$PROW" "**75.0%**: \`beta\` matched 9 of 12 planted defects on a strict key-match proxy"
+has "render: the planted-bug row says CodeRabbit is not in the eval" "$PROW" "CodeRabbit is not in this eval"
+has "render: the planted-bug row says the set is hard by design" "$PROW" "most are real review escapes, bugs earlier reviews already missed, so the set is hard by design"
+has "render: the planted-bug row says a fresh sweep replaces the figure" "$PROW" "an approved fresh sweep will replace this figure"
+has "render: the planted-bug range is a 95% range" "$PROW" "| 95% range "
 has "render: planted-bug sample" "$(cat "$R")" "as of 2026-10-24, n = 12 planted bugs in 24 test changes"
 has "render: the planted-bug row says the set holds real escapes" "$(grep -F '| **Planted-bug catch** |' "$R")" "The set also holds real review escapes, each with a clean twin."
 has "render: bottom line gives the required reviewer's precision" "$(cat "$R")" "| **90.0%** of \`beta\` findings ruled right (recorded dispositions) |"
 has "render: bottom line says the pooled figure is not the headline" "$(cat "$R")" "not the all-reviewers pooled figure"
 has "render: current setup row with its role" "$(cat "$R")" "| \`beta\` | required: must pass before every merge | **90.0%** | 78.6 to 95.7 |"
 has "render: a panel reviewer with no findings yet" "$(cat "$R")" "| \`delta:m9\` | must pass where it runs; skipped on a machine without it | no ruled findings yet |"
+has "render: an advisory reviewer never reads as must pass" "$(cat "$R")" "| \`epsilon:m7\` | advisory: its findings print a note and hold no merge until its precision reaches the floor in critics.json | no ruled findings yet |"
 has "render: current setup links the options" "$(cat "$R")" "(../configuration.md#review-by-a-second-model)"
 has "render: pooled figure under history" "$(grep -F '| All reviewers pooled |' "$R")" "**88.3%**"
 has "render: a retired reviewer under the floor is counted out" "$(cat "$R")" "One reviewer with fewer than 30 ruled findings is left out"
