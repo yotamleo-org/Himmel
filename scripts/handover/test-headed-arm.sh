@@ -1840,6 +1840,37 @@ check "36j headless LINES: exit 0" "$rc36j" "0"
 check "36j headless LINES: launch env holds the spaced value" "$(cat "$d36j/envfile" 2>/dev/null || echo MISSING)" "/x/a b/PROJ-1-N1-x.md"
 check "36j headless LINES: settings env block holds the spaced value" "$(jq -r '.env.HIMMEL_HOLD_DOC' "$d36j/settings.json" 2>/dev/null || echo MISSING)" "/x/a b/PROJ-1-N1-x.md"
 
+# 36k: a launch from inside a worker (HIMMEL_CONSOLE_LEG set) must not hand its own API-lane
+# billing names to the new session; a chief launch keeps them, and a launcher-env line still carries one.
+d36k="$tmp/c36k"; mkdir -p "$d36k"
+printf '{}\n' > "$d36k/settings.json"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$d36k/pgrep"
+cat > "$d36k/cli" <<CLI_EOF
+#!/usr/bin/env bash
+d="$d36k"
+case "\$1" in
+  --version) echo "2.1.296 (Claude Code)" ;;
+  agents) if [ -e "\$d/launched" ]; then echo '[{"name":"HIMMEL-lines36k","pid":4242}]'; else echo '[]'; fi ;;
+  --bg) env | grep -E '^(HIMMEL_API_LANE|HIMMEL_API_ACCOUNT|WORKER_SESSION_API_LANE|WORKER_SESSION_API_ACCOUNT)=' | sort > "\$d/envfile"; : > "\$d/launched" ;;
+esac
+exit 0
+CLI_EOF
+chmod 755 "$d36k/pgrep" "$d36k/cli"
+run36k() { # run36k <extra env assignments...> -> the API-lane names the launched session saw
+  rm -f "$d36k/launched" "$d36k/envfile"
+  env "$@" HEADED_ARM_HEADLESS=1 WORKER_SESSION_PROFILE_SETTINGS="$d36k/settings.json" \
+    HEADED_ARM_CLAUDE_CLI="$d36k/cli" HEADED_ARM_LAUNCHER="$d36k/cli" PGREP_CMD="$d36k/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36k/proc" HEADED_ARM_LOCK_DIR="$d36k/locks" \
+    bash "$SCRIPT" "HIMMEL-lines36k" "doc36k.md" "$d36k/signal-never" "$PAST" "$d36k/log" >/dev/null 2>&1 || true
+  cat "$d36k/envfile" 2>/dev/null || echo MISSING
+}
+LANE36K='HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A WORKER_SESSION_API_LANE=on WORKER_SESSION_API_ACCOUNT=A'
+# shellcheck disable=SC2086
+check "36k a launch from inside a worker drops all four API-lane names" "$(run36k HIMMEL_CONSOLE_LEG=1 $LANE36K)" ""
+# shellcheck disable=SC2086
+check "36k control: a chief launch (no HIMMEL_CONSOLE_LEG) is unchanged" "$(run36k -u HIMMEL_CONSOLE_LEG $LANE36K | tr '\n' ' ')" "HIMMEL_API_ACCOUNT=A HIMMEL_API_LANE=on WORKER_SESSION_API_ACCOUNT=A WORKER_SESSION_API_LANE=on "
+check "36k control: a launcher-env line still carries the lane from a worker-side wrapper" \
+  "$(run36k HIMMEL_CONSOLE_LEG=1 HEADED_ARM_LAUNCHER_ENV_LINES=HIMMEL_API_LANE=on)" "HIMMEL_API_LANE=on"
+
 # --- 37. RED control: a mutant that always takes the RECORDER=1 branch
 # must fail case 36's "no script(1) wrapper" assertion for the DEFAULT
 # (unset) launcher - proves that assertion is not vacuous. -----------------
