@@ -177,12 +177,12 @@ run_sut() {
     : > "$T/err"
     if [ "$tty" = 1 ]; then
         if [ "$(uname)" = Darwin ]; then
-            (cd "$cwd" && script -q /dev/null "${envs[@]}" < "$stdin" > "$T/out.raw" 2> "$T/err")
+            (cd "$cwd" && script -q /dev/null "${envs[@]}" < "$stdin" > "$T/out.raw" 2> "$T/err") # read-sink-ok: the suite's own stdin file
         else
-            (cd "$cwd" && script -qec "$(printf '%q ' "${envs[@]}")" /dev/null -E never < "$stdin" > "$T/out.raw" 2> "$T/err")
+            (cd "$cwd" && script -qec "$(printf '%q ' "${envs[@]}")" /dev/null -E never < "$stdin" > "$T/out.raw" 2> "$T/err") # read-sink-ok: the suite's own stdin file
         fi
     else
-        (cd "$cwd" && "${envs[@]}" < "$stdin" > "$T/out.raw" 2> "$T/err")
+        (cd "$cwd" && "${envs[@]}" < "$stdin" > "$T/out.raw" 2> "$T/err") # read-sink-ok: the suite's own stdin file
     fi
     RC=$?
     rm -f "$T/id_root"

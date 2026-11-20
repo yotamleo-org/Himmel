@@ -452,7 +452,7 @@ rs_parse_onboard() {
                 RS_PAIR_LABEL=${BASH_REMATCH[3]}
             fi
         fi
-    done < "$1"
+    done < "$1" # read-sink-ok: the mktemp file rs_pair made, or a fixture the suite names
     if [ "$n" = 1 ] && [ "$seen" = 1 ]; then return 0; fi
     RS_PAIR_ID=""
     RS_PAIR_LABEL=""
