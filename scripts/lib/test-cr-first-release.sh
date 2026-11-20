@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
 # Tests for scripts/lib/cr-first-release.sh and scripts/cr/cr-trigger-ledger.sh
-# Hermetic: gh and curl are stubs driven by files in $S, so a
+# Hermetic: gh is a stub driven by files in $S, so a
 # label write is recorded and the next call reads it back from the stubbed
 # timeline, exactly as GitHub would answer. CodeRabbit status rows are the real
 # captures in scripts/ci/fixtures/cr-first-measure-bundle.jsonl (cr-first-measure
@@ -9,9 +9,8 @@
 # comment is the real PR 3215 reply.
 set -uo pipefail
 
-unset ARMAUTOMERGE CR_MERGE_GATE_OK HIMMEL_CONSOLE_DOC CR_FIRST_NOW CR_FIRST_STUCK_AFTER_S \
-      CR_FIRST_PROGRESS_S CR_FIRST_STATUS_URL CR_FIRST_CHEAP_RE CR_FIRST_HEAVY_RE \
-      CRITICS_JSON CR_PROFILE
+unset ARMAUTOMERGE CR_MERGE_GATE_OK HIMMEL_CONSOLE_DOC CR_FIRST_NOW CR_FIRST_CHEAP_RE \
+      CR_FIRST_HEAVY_RE CRITICS_JSON CR_PROFILE
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUNDLE="$SCRIPT_DIR/../ci/fixtures/cr-first-measure-bundle.jsonl"
@@ -23,7 +22,7 @@ S="$TMP/state"; mkdir -p "$S"
 export GH_STUB_STATE="$S"
 export CR_FIRST_LEDGER="$TMP/release-ledger.jsonl" CR_FIRST_ALERTS="$TMP/release-alerts"
 
-# ── stub gh / curl ───────────────────────────────────────────────────────────
+# ── stub gh ───────────────────────────────────────────────────────────
 mkdir -p "$TMP/bin"
 cat > "$TMP/bin/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -52,7 +51,7 @@ case "$A" in
   "api repos/o/r/pulls/"*) [ -f "$S/pull-after.json" ] && [ -f "$S/gate-began" ] && { cat "$S/pull-after.json"; exit 0; }; f pull.json '{}'; exit 0 ;;
   "api repos/o/r/issues/"*"/events"*) f events.json; exit 0 ;;
   "api repos/o/r/issues/"*"/labels"*) f labels.json; exit 0 ;;
-  "api repos/o/r/issues/"*"/comments"*) [ -f "$S/comments-fail" ] && exit 1; f comments.json; exit 0 ;;
+  "api repos/o/r/issues/"*"/comments"*) f comments.json; exit 0 ;;
   "api repos/o/r/actions/runs"*) [ -f "$S/runs-fail" ] && exit 1; f runs.json '{"workflow_runs":[]}'; exit 0 ;;
   "api repos/o/r/commits/"*"/check-runs"*) f checks.json '{"check_runs":[]}'; exit 0 ;;
   "api repos/o/r/commits/"*"/statuses"*) : > "$S/gate-began"; f statuses.json; exit 0 ;;
@@ -68,14 +67,7 @@ case "$A" in
 esac
 echo '{}'
 EOF
-cat > "$TMP/bin/curl" <<'EOF'
-#!/usr/bin/env bash
-S="${GH_STUB_STATE:?}"
-echo "curl $*" >> "$S/calls.log"
-[ -f "$S/statuspage-fail" ] && exit 22
-cat "$S/statuspage.json" 2>/dev/null || echo '{"status":{"indicator":"none"}}'
-EOF
-chmod +x "$TMP/bin/gh" "$TMP/bin/curl"
+chmod +x "$TMP/bin/gh"
 export PATH="$TMP/bin:$PATH"
 
 # ── the repo the gate runs IN, and the reviewer set ──────────────────────────
@@ -321,19 +313,21 @@ printf '{"pr":42,"head":"%s","reviewers":[]}\n' "$HEAD1" | bash "$SCRIPT_DIR/../
 checks cancelled "[$CHEAP_CANCELLED]"; run released-then-cheap-cancelled
 eq "$(wc -c < "$TMP/out-released-then-cheap-cancelled" | tr -d ' ')/$(deletes)/$(posts)" 0/0/0 "released head whose cheap run the go run cancelled: quiet, no hold, no second pair"
 
-# ── the reviewer gate at release (R-3595a-d, R1, R4-R8, RL1, RL3, RL6) ───────
+# ── the reviewer gate at release (R-3595a-e, R4-R8, RL1, RL3, RL6) ───────
 # The real PR 3222 "Review in progress" status is the newest once the two later
-# statuses are dropped; the clock sits two minutes after it, inside the stuck bound.
+# statuses are dropped; the clock sits two minutes after it: the review is running now.
 PEND_AT=$(iso_to_epoch "$(real_statuses 2 | jq -r '.[0].created_at')")
-stuck_reset() { reset; real_statuses 2 >"$S/statuses.json"; jq -nc --arg h "$HEAD1" '{sha:$h,commit:{committer:{date:"2026-10-19T18:00:00Z"}}}' > "$S/commit.json"; echo '[]' > "$S/comments.json"; }
-# R-3595a — the real "Review in progress" capture, codex pass, cheap green: HOLD (rev 6 gave GO).
-stuck_reset; export CR_FIRST_NOW=$((PEND_AT + 120)); run R-3595a-in-progress
-has "$TMP/out-R-3595a-in-progress" '^CR-FIRST HOLD coderabbit in-progress ' "R-3595a real pending capture: HOLD coderabbit in-progress"
-eq "$(deletes)/$(posts)" 0/0 "R-3595a real pending capture: no label"
-# R1 — pending, then the real completed status, 0 threads: hold, then GO on the status change.
-real_statuses 0 > "$S/statuses.json"; run R1-completed
-has "$TMP/out-R1-completed" '^CR-FIRST RELEASE ' "R1 pending then completed: GO on the status change"
-eq "$(deletes)/$(posts)" 1/1 "R1 one pair"
+pending_reset() { reset; real_statuses 2 >"$S/statuses.json"; jq -nc --arg h "$HEAD1" '{sha:$h,commit:{committer:{date:"2026-10-19T18:00:00Z"}}}' > "$S/commit.json"; export CR_FIRST_NOW=$((PEND_AT + 120)); }
+# R-3595a — CodeRabbit pending, hard reviewers pass: RELEASE at once (decision 1066: CodeRabbit is best effort).
+pending_reset; run R-3595a-pending-releases
+has "$TMP/out-R-3595a-pending-releases" '^CR-FIRST RELEASE ' "CodeRabbit pending, hard reviewers pass: RELEASE"
+hasnt "$TMP/out-R-3595a-pending-releases" '^CR-FIRST HOLD .*[Cc]ode[Rr]abbit' "CodeRabbit pending: no HOLD line names CodeRabbit"
+eq "$(deletes)/$(posts)" 1/1 "CodeRabbit pending: one pair"
+p1 R-3595a
+# R-3595e — CodeRabbit pending beside a posted, unresolved CodeRabbit thread: still HOLD naming it.
+pending_reset; threads "$(thread false x.sh 1)"; run R-3595e-pending-thread
+has "$TMP/out-R-3595e-pending-thread" '^CR-FIRST HOLD 1 unresolved CodeRabbit thread' "CodeRabbit pending + open thread: HOLD names the thread"
+eq "$(deletes)/$(posts)" 0/0 "CodeRabbit pending + open thread: no label"
 # R-3595b — a completed review and one unresolved Major thread: HOLD naming it.
 reset; threads "$(thread false scripts/lib/portable-timeout.sh 24)"; run R-3595b-one-thread
 has "$TMP/out-R-3595b-one-thread" '^CR-FIRST HOLD 1 unresolved CodeRabbit thread' "R-3595b one unresolved thread holds"
@@ -449,46 +443,6 @@ unset HIMMEL_CONSOLE_DOC; run M3p-no-chief
 has "$TMP/out-M3p-no-chief" '^CR-FIRST HOLD hard-unavailable codex ' "M3' no console: hold line printed"
 hasnt "$TMP/out-M3p-no-chief" 'CR-FIRST ERROR' "M3' no console: nothing errors"
 eq "$RC" 1 "M3' no console: a hold, not a failure"
-
-# ── the stuck-CodeRabbit probe (OQ2, decision 209) ───────────────────────────
-# S1 — pending under the bound: hold, and no probe reads at all.
-stuck_reset; export CR_FIRST_NOW=$((PEND_AT + 300)); run S1-under-bound
-has "$TMP/out-S1-under-bound" '^CR-FIRST HOLD coderabbit in-progress ' "S1 under the bound: HOLD"
-hasnt "$S/calls.log" 'issues/42/comments|^curl' "S1 under the bound: the probe does not run"
-# S2 — past the bound, a rate-limit comment: release loudly as best-effort.
-stuck_reset; cp "$RL_COMMENTS" "$S/comments.json"; jq -nc --arg h "$HEAD1" '{sha:$h,commit:{committer:{date:"2026-10-19T18:00:00Z"}}}' > "$S/commit.json"
-export CR_FIRST_NOW=$((PEND_AT + 2000)); run S2-rate-limit
-has "$TMP/out-S2-rate-limit" '^CR-FIRST RELEASE coderabbit-stuck .*rate.?limit' "S2 past the bound + rate-limit comment: loud release"
-eq "$(deletes)/$(posts)" 1/1 "S2 one pair"
-# S3 — past the bound, CodeRabbit is still active (a comment edited a minute ago), service ok: keep holding.
-stuck_reset; jq -nc --arg t "$(epoch_to_iso $((PEND_AT + 1950)))" '[{user:{id:136622811,login:"coderabbitai[bot]",type:"Bot"},created_at:"2026-10-19T18:16:00Z",updated_at:$t,body:"Walkthrough in progress"}]' > "$S/comments.json"
-export CR_FIRST_NOW=$((PEND_AT + 2000)); run S3-progressing
-has "$TMP/out-S3-progressing" '^CR-FIRST HOLD coderabbit in-progress ' "S3 still progressing: keep holding"
-eq "$(deletes)/$(posts)" 0/0 "S3 still progressing: no label"
-# S4 — past the bound, quiet, and the status page reports an incident: release.
-stuck_reset; echo '{"status":{"indicator":"major","description":"Partial System Outage"}}' > "$S/statuspage.json"
-jq -nc '[{user:{id:136622811,login:"coderabbitai[bot]",type:"Bot"},created_at:"2026-10-19T18:16:00Z",updated_at:"2026-10-19T18:16:00Z",body:"Walkthrough"}]' > "$S/comments.json"
-export CR_FIRST_NOW=$((PEND_AT + 2000)); run S4-status-page
-has "$TMP/out-S4-status-page" '^CR-FIRST RELEASE coderabbit-stuck .*status' "S4 status page not ok: loud release"
-# S5 — past the bound and quiet for longer than the progress window: release (no recent activity).
-stuck_reset; jq -nc '[{user:{id:136622811,login:"coderabbitai[bot]",type:"Bot"},created_at:"2026-10-19T18:16:00Z",updated_at:"2026-10-19T18:16:00Z",body:"Walkthrough"}]' > "$S/comments.json"
-export CR_FIRST_NOW=$((PEND_AT + 2000)); run S5-no-activity
-has "$TMP/out-S5-no-activity" '^CR-FIRST RELEASE coderabbit-stuck .*no activity' "S5 no CodeRabbit activity inside the window: loud release"
-# S6 — the probe cannot read: hold, never release.
-stuck_reset; touch "$S/comments-fail"; export CR_FIRST_NOW=$((PEND_AT + 2000)); run S6-probe-read-fails
-has "$TMP/out-S6-probe-read-fails" '^CR-FIRST HOLD ' "S6 probe read failure: HOLD"
-eq "$(deletes)/$(posts)" 0/0 "S6 probe read failure: no label"
-# S7 — the status page is unreachable but the comments say rate limit: the status page is one signal, not a gate.
-stuck_reset; cp "$RL_COMMENTS" "$S/comments.json"; touch "$S/statuspage-fail"; export CR_FIRST_NOW=$((PEND_AT + 2000)); run S7-status-page-down
-has "$TMP/out-S7-status-page-down" '^CR-FIRST RELEASE coderabbit-stuck ' "S7 status page unreachable: other signals still release"
-# S8 — a thread is open as well: the in-progress hold is not the sole hold, the probe does not release.
-stuck_reset; cp "$RL_COMMENTS" "$S/comments.json"; threads "$(thread false x.sh 1)"; export CR_FIRST_NOW=$((PEND_AT + 2000)); run S8-other-hold
-has "$TMP/out-S8-other-hold" '^CR-FIRST HOLD .*unresolved CodeRabbit thread' "S8 another hold present: still holds"
-eq "$(deletes)/$(posts)" 0/0 "S8 another hold present: the probe never releases"
-# S9 — the bound is configurable.
-stuck_reset; cp "$RL_COMMENTS" "$S/comments.json"; export CR_FIRST_NOW=$((PEND_AT + 400)) CR_FIRST_STUCK_AFTER_S=300; run S9-bound-env
-has "$TMP/out-S9-bound-env" '^CR-FIRST RELEASE coderabbit-stuck ' "S9 CR_FIRST_STUCK_AFTER_S moves the bound"
-unset CR_FIRST_STUCK_AFTER_S
 
 # ── read-only mode (ready-check.sh) ──────────────────────────────────────────
 reset; CR_FIRST_READONLY=1 run readonly-pass

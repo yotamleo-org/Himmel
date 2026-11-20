@@ -135,6 +135,10 @@ an API call, so it takes no reservation and `claude-api.sh` never sees it.
 | `cost_usd` | empty (no API credit spent) |
 | `sub_cost_usd` | the call's verified `total_cost_usd` (six places), empty when the call failed or printed none |
 | `rc` | the call's exit code (1 when it threw without one) |
+| `input_tokens` | the call's plain input tokens, read from the envelope's `usage` (the Opus call alone: the Haiku title call is in `modelUsage` only); null when the row has no cost or the call reported no usable usage |
+| `cache_creation_tokens` | the call's cache-write tokens; null on the same condition |
+| `cache_read_tokens` | the call's cache-read tokens; null on the same condition |
+| `cache_ttl` | the tier the call's environment asks for: `off`, `5m` or `1h` |
 
 A reader that sums API dollars skips every row with a `lane` other than `api` (the API launcher's own rows carry
 no `lane`): `shift-spend.mjs` does, so the native and `sub-fallback` rows are neither summed nor counted as unpriced.
@@ -190,7 +194,9 @@ secret, only role names and account letters:
 ```
 
 - **Known roles** are the `ROLES` export of `scripts/lib/api-roles.mjs`, the one owner of reading, validating and
-  writing the file: `graphify` and `judge`. `probe` and `other` are never roles.
+  writing the file: `graphify`, `judge` and `critic`. `probe` and `other` are never roles. Critics route on auto
+  through the role map (operator decision 1066): a PR critic on auto uses the accounts its `critic` entry names, and
+  with no entry it is refused like any other unmapped kind.
 - **No map means the default.** With no file, the graph pass uses every configured account and every other kind is
   refused (exit 2, no alert, no fallback). A role with no entry gets the same default.
 - **Four states.** `absent` (no file): the default. `valid`: the map. `partial` (the file parses but an entry has an

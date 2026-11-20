@@ -1291,6 +1291,20 @@ test('cache-report prints a per-kind hit rate and picks the TTL from the measure
   assert.equal(out['__proto__ | m | o'].runs, 1, 'a kind named like an Object property still groups');
 });
 
+test('cache-report gives no group to a native release judge row', () => {
+  const f = fixture();
+  const log = join(f.dir, 'launches.jsonl');
+  const native = JSON.stringify({ ts: '2026-11-20T10:01:00Z', kind: 'judge', model: 'opus', lane: 'native', cache_ttl: 'off', input_tokens: 336000, cache_creation_tokens: 0, cache_read_tokens: 649 });
+  const api = [usageRow('2026-11-20T10:00:00Z', 'judge', '5m', 10, 4000, 0, 'opus'), usageRow('2026-11-20T10:02:00Z', 'judge', '5m', 10, 100, 4000, 'opus')];
+  writeFileSync(log, api.join('\n') + '\n');
+  const alone = spawnSync(process.execPath, [REPORT, log], { encoding: 'utf8' });
+  writeFileSync(log, [api[0], native, api[1]].join('\n') + '\n');
+  const mixed = spawnSync(process.execPath, [REPORT, log], { encoding: 'utf8' });
+  assert.equal(mixed.status, 0, mixed.stderr);
+  assert.deepEqual(Object.keys(JSON.parse(mixed.stdout)), ['judge | opus | o']);
+  assert.equal(mixed.stdout, alone.stdout);
+});
+
 // a dead call must not hold its reservation (killed calls on account B kept 20.10 USD reserved).
 test('a call that exits non-zero settles its reservation instead of leaving it open', () => {
   const f = fixture();
@@ -1566,6 +1580,22 @@ test('judge mapped to B picks B; with the map removed the same call is refused-p
   assert.deepEqual(policyLines(f), []);
   const g = fixture();
   const refused = autoKind(g, 'judge');
+  assert.equal(refused.status, 2, refused.stderr);
+  assert.match(refused.stderr, /policy refusal: this call was not sent, and no alert or fallback follows\. Name an account \(A, B, C or D\) instead of auto/);
+  assert.equal(policyLines(g).length, 1);
+  assert.equal(g.called(), false);
+});
+
+test('critic mapped to B picks B; with the map removed the same call is refused-policy', () => {
+  const f = fixture();
+  putRoles(f, { critic: ['B'] });
+  const ok = autoKind(f, 'critic');
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.equal(usedKey(f), 'BBBB');
+  assert.equal(JSON.parse(f.record().trim()).account, 'B');
+  assert.deepEqual(policyLines(f), []);
+  const g = fixture();
+  const refused = autoKind(g, 'critic');
   assert.equal(refused.status, 2, refused.stderr);
   assert.match(refused.stderr, /policy refusal: this call was not sent, and no alert or fallback follows\. Name an account \(A, B, C or D\) instead of auto/);
   assert.equal(policyLines(g).length, 1);

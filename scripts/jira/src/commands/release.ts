@@ -268,8 +268,13 @@ export function judgePrompt(input: JudgeInput, skill: string): string {
     skill,
     '',
     '## Input',
-    JSON.stringify(input),
+    JSON.stringify({ ...input, requests: input.requests.map(withoutChain), operator: input.operator.map(withoutChain), rulings: input.rulings.map(withoutChain) }),
   ].join('\n');
+}
+
+function withoutChain<T extends object>(row: T): Omit<T, 'mac' | 'prev'> {
+  const { mac: _mac, prev: _prev, ...rest } = row as T & { mac?: unknown; prev?: unknown };
+  return rest;
 }
 
 const isStr = (v: unknown): v is string => typeof v === 'string';
@@ -386,6 +391,21 @@ export function judgeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     && (k === 'CLAUDE_CODE_OAUTH_TOKEN' || !['ANTHROPIC_', 'CLAUDE_CODE_'].some((p) => k.toUpperCase().startsWith(p)))));
 }
 
+export const JUDGE_CACHE: { env: Record<string, string>; ttl: 'off' | '5m' | '1h' } = { env: { DISABLE_PROMPT_CACHING: '1' }, ttl: 'off' };
+
+export function liveJudgeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const base = judgeEnv(env);
+  for (const k of ['DISABLE_PROMPT_CACHING', 'FORCE_PROMPT_CACHING_5M', 'ENABLE_PROMPT_CACHING_1H']) delete base[k];
+  return { ...base, ...JUDGE_CACHE.env };
+}
+
+export function liveJudgeArgs(sid: string, settings: string): string[] {
+  return [
+    '-p', '--session-id', sid, '--settings', settings, '--model', 'opus', '--effort', 'high', '--output-format', 'json', '--permission-mode', JUDGE_PERMISSION_MODE,
+    '--tools', '', '--max-turns', '1', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
+  ];
+}
+
 // The native-lane subscription preflight: its last line is the token.
 function judgePreflight(): string {
   const env: NodeJS.ProcessEnv = { ...process.env, CADENCE_USAGE_LANE: 'native', CADENCE_USAGE_WORKER: 'rm-judge' };
@@ -433,10 +453,8 @@ export const liveJudge: Judge = async (input, opts) => {
   let out: string | undefined;
   let rc = 1;
   try {
-    out = await judgeCall('claude', [
-      '-p', '--session-id', sid, '--settings', settings, '--model', 'opus', '--effort', 'high', '--output-format', 'json', '--permission-mode', JUDGE_PERMISSION_MODE,
-      '--tools', '', '--max-turns', '1', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
-    ], { input: judgePrompt(input, skill), cwd, env: judgeEnv(process.env), timeoutMs: JUDGE_TIMEOUT_S * 1000, signal: opts?.signal });
+    out = await judgeCall('claude', liveJudgeArgs(sid, settings),
+      { input: judgePrompt(input, skill), cwd, env: liveJudgeEnv(process.env), timeoutMs: JUDGE_TIMEOUT_S * 1000, signal: opts?.signal });
     rc = 0;
     return parseDecisions(out);
   } catch (e) {
@@ -461,20 +479,32 @@ function launchLedgerDir(env: NodeJS.ProcessEnv = process.env): string {
   return stateDir;
 }
 
+const NO_JUDGE_TOKENS = { input_tokens: null, cache_creation_tokens: null, cache_read_tokens: null } as { input_tokens: number | null; cache_creation_tokens: number | null; cache_read_tokens: number | null };
+function opusTokensFromUsage(usage: unknown): typeof NO_JUDGE_TOKENS {
+  const u = (usage ?? {}) as Record<string, unknown>;
+  const [input, created, read] = [u.input_tokens, u.cache_creation_input_tokens, u.cache_read_input_tokens];
+  if (![input, created, read].every((n) => Number.isInteger(n) && (n as number) >= 0)) return NO_JUDGE_TOKENS;
+  return { input_tokens: input as number, cache_creation_tokens: created as number, cache_read_tokens: read as number };
+}
+
 // The native judge run's row in launches.jsonl, the one ledger the cost page reads, carrying the session id so the run
 // reconciles with its transcript (scripts/usage/release-judge-reconcile.sh). The cost is the call's own verified
 // total_cost_usd (scripts/api-lane/outcome.mjs's rule), empty when the call failed or printed none. Best-effort like the launch
 // record: a row that cannot be written is said on stderr and the judge goes on.
 function recordJudgeLaunch(sid: string, rc: number, out: string | undefined): void {
   let cost = '';
+  let tokens = NO_JUDGE_TOKENS;
   try {
-    const r = JSON.parse(out ?? '') as { type?: unknown; is_error?: unknown; total_cost_usd?: unknown };
-    if (r && r.type === 'result' && r.is_error === false && typeof r.total_cost_usd === 'number' && Number.isFinite(r.total_cost_usd) && r.total_cost_usd >= 0) cost = r.total_cost_usd.toFixed(6);
+    const r = JSON.parse(out ?? '') as { type?: unknown; is_error?: unknown; total_cost_usd?: unknown; usage?: unknown };
+    if (r && r.type === 'result' && r.is_error === false && typeof r.total_cost_usd === 'number' && Number.isFinite(r.total_cost_usd) && r.total_cost_usd >= 0) {
+      cost = r.total_cost_usd.toFixed(6);
+      tokens = opusTokensFromUsage(r.usage);
+    }
   } catch { /* unparseable output: cost stays empty */ }
   const row = {
     ts: new Date().toISOString().slice(0, 19) + 'Z', job_id: '', session_id: sid, account: '', lane: 'native', model: 'opus', budget_usd: '',
-    outcome: rc === 0 ? 'native' : 'native-failed', cost_usd: '', sub_cost_usd: cost, rc, kind: 'judge',
-    input_tokens: null, cache_creation_tokens: null, cache_read_tokens: null, branch: '', head: '', pr: null,
+    outcome: rc === 0 ? 'native' : 'native-failed', cost_usd: '', sub_cost_usd: cost, rc, kind: 'judge', cache_ttl: JUDGE_CACHE.ttl,
+    ...tokens, branch: '', head: '', pr: null,
   };
   try {
     const dir = launchLedgerDir();

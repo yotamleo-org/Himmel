@@ -10,7 +10,7 @@ import { ACCOUNTS, configPathFor, configuredLetters } from './api-credit-state.m
 
 // The only kinds with an auto caller. probe and other are never roles (a probe names its account; other
 // is the unlabelled default). Plan P2 adds a kind in the same change as its caller.
-export const ROLES = ['graphify', 'judge'];
+export const ROLES = ['graphify', 'judge', 'critic'];
 
 export const rolesPathFor = (env = process.env) => join(dirname(configPathFor(env)), 'roles.json');
 
