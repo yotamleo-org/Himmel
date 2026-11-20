@@ -8,8 +8,11 @@
  * top-level in Clippings/) except `clipped_via: feed` and no telegram_* keys, so
  * /harvest-clips and /triage-clips treat it like any other clip. No model call.
  *
- * Feed list  <vault>/.feed-clip-feeds — one feed per line: `<url> [label]`,
- *   `#` starts a comment. The template ships a starter list.
+ * Feed list  <vault>/.feed-clip-feeds — one feed per line: `<url> [label]
+ *   [skip=<word>,<word>]`, `#` starts a comment. An entry whose title holds one
+ *   of the skip words (case-insensitive, not inside a longer word: `rc` skips
+ *   `v2-rc1`, not `source`) is never clipped and never counted as pending. The
+ *   template ships a starter list.
  * Seen state <vault>/.feed-clip-seen.jsonl — one line per clipped entry
  *   ({feed, id, file, clipped}); an entry is clipped once. Append-only.
  *
@@ -99,12 +102,20 @@ function parseFeedList(text, file) {
   text.replace(/^\u{FEFF}/u, "").split(/\r?\n/).forEach((raw, i) => {
     const line = raw.replace(/(^|\s)#.*$/, "").trim();
     if (!line) return;
-    const [url, ...label] = line.split(/\s+/);
+    const [url, ...rest] = line.split(/\s+/);
     if (!/^(?:https?|file):\/\/\S+$/i.test(url)) {
       problems.push(`${file}:${i + 1}: not a feed URL, line skipped: ${line.slice(0, 60)}`);
       return;
     }
-    feeds.push({ url, label: label.join(" ") });
+    const filters = rest.filter((t) => /^skip=/i.test(t));
+    const words = filters.flatMap((t) => t.slice(5).split(","));
+    if (filters.length > 1 || (filters.length && !words.every((w) => /^[\w.-]+$/.test(w)))) {
+      problems.push(`${file}:${i + 1}: skip= takes one comma list of words (letters, digits, . _ -), line skipped: ${line.slice(0, 60)}`);
+      return;
+    }
+    const literal = (w) => w.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
+    const skip = filters.length ? new RegExp(`(?<![a-z])(?:${words.map(literal).join("|")})(?![a-z])`, "i") : null;
+    feeds.push({ url, label: rest.filter((t) => !/^skip=/i.test(t)).join(" "), skip });
   });
   return { feeds, problems };
 }
@@ -386,8 +397,11 @@ async function main() {
     }
     label = feed.label || parsed.channel || feed.url;
 
+    const kept = feed.skip ? parsed.entries.filter((e) => !feed.skip.test(e.title || e.link)) : parsed.entries;
+    const skippedByFilter = parsed.entries.length - kept.length;
+    const filterNote = skippedByFilter ? `, ${skippedByFilter} skipped by filter` : "";
     const ids = new Set();
-    const fresh = parsed.entries
+    const fresh = kept
       .filter((e) => !seen.has(seenKey(feed.url, e.id)) && !ids.has(e.id) && ids.add(e.id))
       .sort((a, b) => b.ts - a.ts);
     const take = fresh.slice(0, args.cap);
@@ -428,8 +442,8 @@ async function main() {
     }
 
     const done = args.dryRun ? "to clip" : "clipped";
-    if (take.length === 0) process.stdout.write(`⊘ feed-clip: ${label} — nothing new\n`);
-    else process.stdout.write(`✓ feed-clip: ${label} — ${take.length} ${done}, ${pending} pending (cap ${args.cap})\n`);
+    if (take.length === 0) process.stdout.write(`⊘ feed-clip: ${label} — nothing new${filterNote}\n`);
+    else process.stdout.write(`✓ feed-clip: ${label} — ${take.length} ${done}, ${pending} pending (cap ${args.cap})${filterNote}\n`);
   }
 
   const ok = feeds.length - (failed - problems.length);

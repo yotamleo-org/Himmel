@@ -127,8 +127,39 @@ function isUrlOnlySummary(lines, at) {
   return false;
 }
 
+export function isGithubReleaseTagUrl(sourceUrl) {
+  if (!sourceUrl) return false;
+  try {
+    const u = new URL(String(sourceUrl).replace(/^["']|["']$/g, "").trim());
+    const parts = u.pathname.split("/").filter(Boolean);
+    return ["github.com", "www.github.com"].includes(u.hostname.toLowerCase())
+      && parts.length >= 5 && parts[2] === "releases" && parts[3] === "tag";
+  } catch { return false; }
+}
+
+// A line of the clip's own text: not blank, a heading, a comment, a placeholder
+// or a bare link, outside the ## Source footer, a URL-only summary and the
+// triage promotion block (mirrors _capture_lines in harvest-clip-body-batch.py).
+function hasCapturedLine(body) {
+  const srcIdx = body.lastIndexOf("\n## Source");
+  const lines = (srcIdx >= 0 ? body.slice(0, srcIdx) : body).replace(/<!--[\s\S]*?-->/g, "").split(/\r?\n/);
+  let derived = false;
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i].trim();
+    if (/^#{1,6}\s/.test(l)) {
+      derived = l.startsWith("## Promotion candidate") || isUrlOnlySummary(lines, i);
+      continue;
+    }
+    if (derived || PLACEHOLDER_LINE(l)) continue;
+    if (/^https?:\/\/\S+$/.test(l) || /^\[[^\]]*\]\(\S+\)$/.test(l)) continue;
+    return true;
+  }
+  return false;
+}
+
 export function isThinClipBody(body, type, source) {
   if (!body) return true;
+  if (isGithubReleaseTagUrl(source) && hasCapturedLine(body)) return false;
   // Source-host override (host beats type) — spec §7. A legacy
   // type:article reddit clip must still route to the reddit predicate.
   if (isRedditHost(source)) return isThinRedditBody(body);

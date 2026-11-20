@@ -245,4 +245,20 @@ console.log("OK 6320 per-file realpath");
 JS
 LIB="$LIBURL" OBSIDIAN_VAULT_PATH="$tmp/vault" node "$tmp/t6320.mjs" || { echo "6320 per-file symlink test FAILED"; exit 1; }
 
+# --- a github release-tag clip with release notes is not thin; the same link with only its URL, or another github link, still is ---
+cat > "$tmp/t10409.mjs" <<'JS'
+const { isThinClipBody } = await import(process.env.LIB);
+const NL = "\n";
+const rel = "https://github.com/example-org/example-tool/releases/tag/v2.0.0";
+const withNotes = NL + "# Tool: v2.0.0" + NL + NL + "Bug fixes." + NL + NL + "## Source" + NL + `[${rel}](${rel})`;
+const linkOnly = NL + "# Tool: v2.0.0" + NL + NL + rel + NL + NL + "## Source" + NL + `[${rel}](${rel})`;
+if (isThinClipBody(withNotes, "research", rel) !== false) { console.error("FAIL: release notes flagged thin"); process.exit(1); }
+if (isThinClipBody(linkOnly, "research", rel) !== true) { console.error("FAIL: link-only release clip not thin"); process.exit(1); }
+const root = "https://github.com/example-org/example-tool";
+if (isThinClipBody(withNotes, "research", root) !== true) { console.error("FAIL: repository link with a body not thin"); process.exit(1); }
+if (isThinClipBody(withNotes, "research", root + "/releases") !== true) { console.error("FAIL: releases list link not thin"); process.exit(1); }
+console.log("OK release-tag thinness");
+JS
+LIB="$LIBURL" node "$tmp/t10409.mjs" || { echo "release-tag thinness test FAILED"; exit 1; }
+
 echo "ALL PASS"

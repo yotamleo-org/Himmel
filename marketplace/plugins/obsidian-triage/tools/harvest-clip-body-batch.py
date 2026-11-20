@@ -280,6 +280,22 @@ def is_github_blob_url(url: str) -> bool:
     return len(parts) >= 5 and parts[2] == "blob"
 
 
+def is_github_release_tag_url(url: str) -> bool:
+    """One release's page, /<owner>/<repo>/releases/tag/<tag>."""
+    if not is_github_url(url):
+        return False
+    parts = [seg for seg in urlparse(url.strip().strip('"')).path.split("/") if seg]
+    return len(parts) >= 5 and parts[2] == "releases" and parts[3] == "tag"
+
+
+def has_release_notes(source: str, body: str) -> bool:
+    """A release-tag clip that carries text of its own (a feed clip carries the
+    release notes) is an article about that release: the repository is not
+    ingested and a short note is not a thin body. A body of only the link is
+    not notes."""
+    return is_github_release_tag_url(source or "") and bool(_capture_lines(body))
+
+
 def _normalized_host(url: str) -> str:
     try:
         host = (urlparse(url.strip().strip('"')).hostname or "").lower()
@@ -411,6 +427,8 @@ def is_thin_instagram_body(body: str) -> bool:
 
 
 def is_thin_clip(source: str, body: str) -> bool:
+    if has_release_notes(source, body):
+        return False
     host = _normalized_host(source or "")
     if host == "instagram.com" or host.endswith(".instagram.com"):
         return is_thin_instagram_body(body)
@@ -1780,7 +1798,7 @@ def process_clip(path: Path, dry_run: bool, chain=None, url_rules=None, park=Non
     if '"' in canonical or "\n" in canonical:
         # Would corrupt the quoted YAML value. Refuse rather than write garbage.
         return flagged_early("x", f"failed (canonicalize): canonical URL contains unsafe chars: {canonical!r}")
-    if is_github_url(canonical) and not is_github_blob_url(canonical):
+    if is_github_url(canonical) and not is_github_blob_url(canonical) and not has_release_notes(canonical, body):
         # Phase 5 luna-ingest replaces existing harvest_* keys in place
         # (no duplication) when the LLM later harvests this clip.
         return flagged_early("o", f"skipped (github-ingest needed; deferred to LLM): {canonical}")

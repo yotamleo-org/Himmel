@@ -407,6 +407,49 @@ mkdir "$V/.feed-clip-feeds"
 run_tool --vault "$V"
 assert "an unreadable feed list exits 2" 2 "$rc"
 
+echo "Test 12: a per-feed skip filter on entry titles"
+PRE="$FIX/atom-prerelease.xml"
+V="$(newvault prerel-open)"
+printf 'file://%s Prerel\n' "$PRE" > "$V/.feed-clip-feeds"
+run_tool --vault "$V" --cap 10
+assert "control: with no filter all five entries are clipped" 5 "$(nclips "$V")"
+
+V="$(newvault prerel)"
+printf 'file://%s Prerel skip=alpha,nightly,rc,mobile\n' "$PRE" > "$V/.feed-clip-feeds"
+run_tool --vault "$V"
+assert "skip filter: exits 0" 0 "$rc"
+assert "skip filter: five entries, three matching, two clips" 2 "$(nclips "$V")"
+assert "skip filter: no nightly clip" 0 "$(grep -l 'nightly' "$V"/Clippings/feed-*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert "skip filter: no alpha clip" 0 "$(grep -l 'alpha' "$V"/Clippings/feed-*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert "skip filter: no release-candidate clip" 0 "$(grep -l 'rc1' "$V"/Clippings/feed-*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert "skip filter: a title holding rc inside a word is not skipped" 1 "$(grep -l 'source maps fix' "$V"/Clippings/feed-*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert "skip filter: the label stays the label, the skip= word is not part of it" ok "$(hasline 'title: "Prerel: v2.0.0"' "$(cat "$(pick "$V" 'feed-*v2-0-0.md')")")"
+assert "skip filter: the feed line reports the skipped count" ok "$(has '3 skipped by filter' "$out")"
+assert "skip filter: skipped entries are not recorded as seen" 2 "$(seen_lines)"
+run_tool --vault "$V"
+assert "skip filter: a second run clips nothing more" 2 "$(nclips "$V")"
+
+V="$(newvault prerel-cap)"
+printf 'file://%s Prerel skip=alpha,nightly,rc\n' "$PRE" > "$V/.feed-clip-feeds"
+run_tool --vault "$V" --cap 1
+assert "skip filter: skipped newest entries do not use up the cap (cap 1 clips one)" 1 "$(nclips "$V")"
+assert "skip filter: the pending count leaves skipped entries out" ok "$(has '1 pending' "$out")"
+
+V="$(newvault prerel-dry)"
+printf 'file://%s Prerel skip=alpha,nightly,rc\n' "$PRE" > "$V/.feed-clip-feeds"
+run_tool --vault "$V" --dry-run
+assert "skip filter: a dry run lists no nightly tag" 0 "$(grep -c 'nightly' <<<"$out")"
+assert "skip filter: a dry run lists no alpha tag" 0 "$(grep -c 'alpha' <<<"$out")"
+assert "skip filter: a dry run lists the two kept entries" 2 "$(grep -c 'would clip' <<<"$out")"
+
+for bad in 'skip=' 'skip=a;b' 'skip=,'; do
+    V="$(newvault prerel-bad)"
+    printf 'file://%s Prerel %s\n' "$PRE" "$bad" > "$V/.feed-clip-feeds"
+    run_tool --vault "$V"
+    assert "malformed '$bad': the line is reported and skipped, nothing clipped" ok "$([ "$(nclips "$V")" = 0 ] && grep -q 'skip' <<<"$out" && echo ok || echo no)"
+    rm -rf "$V"
+done
+
 echo ""
 echo "feed-clip tests: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
