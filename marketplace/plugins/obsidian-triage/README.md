@@ -243,6 +243,24 @@ When a clip is promoted to `_evidence/`, its `evidence_kind:` frontmatter field 
 
 `tools/lib/evidence-kind.mjs` is dependency-free (pure ESM, bare `node`). Harvest, triage, and archive exclude `_evidence/` from their inbox scans; `/synthesize-clips` deliberately keeps visibility into it so synthesis can reference promoted evidence.
 
+### Feed clips: `tools/feed-clip.mjs`
+
+A second pipeline entry point beside `telegram-clip`, with no model call and no npm dependency: it reads the vault's feed list, fetches each RSS, Atom or GitHub `releases.atom` feed, and writes one inbox clip per unseen entry, so release notes and engineering posts reach the vault without a hand-forward.
+
+```bash
+node tools/feed-clip.mjs --dry-run            # print what it would clip, write nothing
+node tools/feed-clip.mjs --vault <path> --cap 3
+```
+
+- **Feed list** — `<vault>/.feed-clip-feeds`, one feed per line: `<feed-url> [label]`, `#` starts a comment. The label prefixes the clip title (`Claude Code: v2.1.0`). The vault template ships a starter list (Claude Code, the Claude Agent SDK, Codex, T3 Code, the MCP specification, the OpenAI engineering blog); a vault made before it needs the file copied in once. `--feeds <file>` reads a list from another path.
+- **Clip shape** — the front matter of a Telegram clip in the same order (`title`, `source`, `date_clipped`, `type`, `tags: []`, `status: unread`), with `clipped_via: feed` and no `telegram_*` keys; `type` comes from the Telegram classifier (a GitHub link is `research`, other links `article`). It carries no `harvested_at:` and no `processed:`, and lands top-level in `Clippings/`, so `/harvest-clips` and `/triage-clips` take it like any other clip. The body is the entry's text with markup stripped (capped at 6000 characters), then a `## Source` link. An entry without an http(s) link is skipped.
+- **Clipped once** — `<vault>/.feed-clip-seen.jsonl` (append-only, one line per clipped entry) is the record; deleting a clip does not bring the entry back. A clip file that already exists is never overwritten.
+- **Cap** — at most `--cap` (default 3) new clips per feed per run, newest entry first; the rest stay unseen and arrive on later runs. A feed's first run therefore trickles in over several runs.
+- **Failures** — a feed that errors (HTTP status, timeout, not a feed, larger than 8 MiB, a malformed list line) is one `✗ feed-clip:` line; the other feeds are still processed and the exit code stays 0. Login-walled hosts (`x.com`, `instagram.com`, `reddit.com`, …) are refused, also when a redirect leads to one. Exit 2 is for an unusable vault or an unreadable or unwritable state file.
+- **Scheduling** — none here; the nightly run wires the tool in separately.
+
+`tests/test-feed-clip.sh` covers it against synthetic fixture feeds served from local files and a loopback server (never a real feed): one clip per entry and none on the second run, the Telegram clip shape, failing feeds, the cap (3, 3, 3, 1, 0 for ten entries), the seen state, `--dry-run`, and a crafted feed that must not stall the parser.
+
 ### One-time backfill: `/migrate-clip-lifecycle`
 
 The TRIAGE exit-target change made **triage** drain new `processed: true` clips into `_evidence/`
