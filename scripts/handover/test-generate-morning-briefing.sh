@@ -36,6 +36,8 @@ export MORNING_WAITING_DIR=""
 # The shift record (shifts.jsonl) and the shift helper: empty means no such input unless a test names one.
 export SHIFTS_FILE=""
 export MORNING_SHIFT_CMD=""
+export CLIP_FUNNEL_VAULT=""
+unset OBSIDIAN_VAULT_PATH 2>/dev/null || true
 
 PASS=0
 FAIL=0
@@ -549,6 +551,40 @@ run_script --since "$MARKER" --out "$OUT_CH1" >/dev/null
 file=$(cat "$OUT_CH1")
 assert_contains "cache line: ratio"     "cache: 7d read ratio 97.5%"                "$file"
 unset CACHE_HEALTH_STATE_DIR
+
+echo "TEST: clip funnel block shows the vault's outcome counts and flags a stage with no movement"
+FUNNEL_BUILD="$SCRIPT_DIR/../../marketplace/plugins/obsidian-triage/tests/fixtures/clip-funnel/build-vault.sh"
+FUNNEL_VAULT="$TMP_ROOT/funnel-vault"
+bash "$FUNNEL_BUILD" "$FUNNEL_VAULT"
+OUT_CF0="$TMP_ROOT/cf0.md"
+run_script --since "$MARKER" --out "$OUT_CF0" >/dev/null
+assert_absent "clip funnel: no vault configured, no block" "Clip funnel" "$(cat "$OUT_CF0")"
+OUT_CF1="$TMP_ROOT/cf1.md"
+CLIP_FUNNEL_VAULT="$FUNNEL_VAULT" MORNING_TODAY=2026-06-28 run_script --since "$MARKER" --out "$OUT_CF1" >/dev/null
+file=$(cat "$OUT_CF1")
+assert_contains "clip funnel: section"        "Clip funnel"                              "$file"
+assert_contains "clip funnel: taken in"       "- Taken in: **10** clips (**6** in the last 7 days)" "$file"
+assert_contains "clip funnel: cited"          "- Cited by a synthesis page: **4** of 10 (**40%**)"  "$file"
+assert_contains "clip funnel: subject pages"  "- Subject pages: **2** created, **2** extended"      "$file"
+assert_contains "clip funnel: daily actions"  "- Daily actions: **3** open, **0** applied"          "$file"
+assert_contains "clip funnel: media"          "- Waiting on media: **3** clips"                      "$file"
+cf_cited=$(grep -F -- '- Cited by a synthesis page' "$OUT_CF1" || true)
+cf_subj=$(grep -F -- '- Subject pages' "$OUT_CF1" || true)
+assert_contains "clip funnel: a stage with no movement is flagged, with its last day" "no movement in 7 days (last 2026-06-18)" "$cf_cited"
+assert_absent   "clip funnel: a subject page created yesterday leaves the stage unflagged" "no movement" "$cf_subj"
+cf_h2=$(grep -E '^## ' "$OUT_CF1" | LC_ALL=C sed 's/[^ -~]//g' | tr -s ' ' || true)
+cf_order=$(printf '%s\n' "$cf_h2" | sed -n '/Prompt cache/,/Suggested order/p' | tr '\n' '|')
+if [ "$cf_order" = "## Prompt cache|## Clip funnel|## Suggested order|" ]; then pass "clip funnel: sits after Prompt cache and before Suggested order"; else fail "clip funnel: heading order" "got: $cf_order"; fi
+rm -f "$FUNNEL_VAULT/.synthesize-stubs.ledger.jsonl"
+OUT_CF2="$TMP_ROOT/cf2.md"
+CLIP_FUNNEL_VAULT="$FUNNEL_VAULT" MORNING_TODAY=2026-06-28 run_script --since "$MARKER" --out "$OUT_CF2" >/dev/null
+assert_contains "clip funnel: no subject page in seven days is flagged" "no movement in 7 days (none yet)" "$(grep -F -- '- Subject pages' "$OUT_CF2" || true)"
+OUT_CF3="$TMP_ROOT/cf3.md"
+( unset CLIP_FUNNEL_VAULT; OBSIDIAN_VAULT_PATH="$FUNNEL_VAULT" MORNING_TODAY=2026-06-28 run_script --since "$MARKER" --out "$OUT_CF3" >/dev/null )
+assert_contains "clip funnel: OBSIDIAN_VAULT_PATH names the vault" "- Taken in: **10** clips" "$(cat "$OUT_CF3")"
+OUT_CF4="$TMP_ROOT/cf4.md"
+CLIP_FUNNEL_VAULT="$TMP_ROOT/no-such-vault" MORNING_TODAY=2026-06-28 run_script --since "$MARKER" --out "$OUT_CF4" >/dev/null
+assert_contains "clip funnel: an unreadable vault says so" "Clip funnel not available" "$(cat "$OUT_CF4")"
 
 # The report leads with the frame 16 four answers; every older section stays below.
 echo "TEST: first four headings are the frame 16 answers, every older section kept below"

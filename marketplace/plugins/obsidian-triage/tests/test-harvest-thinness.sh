@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export HARVEST_SCRAPE_DENY=all
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lib="$here/../tools/lib/clip-lookup.mjs"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
@@ -15,6 +16,32 @@ if (isThinClipBody(real,"research")!==false){console.error("FAIL real");process.
 console.log("OK harvest thinness decision");
 JS
 LIB="$LIBURL" node "$tmp/h.mjs"
+cat > "$tmp/urlonly.mjs" <<'JS'
+const { isThinClipBody } = await import(process.env.LIB);
+const NL = "\n";
+const MARK = "Inferred from the source URL only — re-read the source before promoting.";
+const only = NL + "## Summary" + NL + MARK + " Clip captured no body; awaiting thin-body enrichment." + NL + NL
+  + "## Source" + NL + "[https://example.com/docs/guide](https://example.com/docs/guide)" + NL + NL
+  + "## Promotion candidate" + NL + "- **Suggested target:** `30-Resources/Tech/`" + NL;
+const src = "https://example.com/docs/guide";
+if (isThinClipBody(only, "article", src) !== true) { console.error("FAIL url-only summary reads rich (article)"); process.exit(1); }
+if (isThinClipBody(only, "research", src) !== true) { console.error("FAIL url-only summary reads rich (research)"); process.exit(1); }
+const realSummary = NL + "## Summary" + NL + "A real summary written from the page text, naming its claims and numbers." + NL;
+if (isThinClipBody(realSummary, "article", src) !== false) { console.error("FAIL real summary reads thin"); process.exit(1); }
+const withHighlights = only.replace("## Source", "## Highlights" + NL + "Quoted passage from the page that the clipper captured." + NL + NL + "## Source");
+if (isThinClipBody(withHighlights, "article", src) !== false) { console.error("FAIL url-only summary masks real Highlights"); process.exit(1); }
+const leadIn = NL + "## Summary" + NL + "X long-form article by @someone; the clipper captured no body. " + MARK + NL + NL + "## Source" + NL + "[l](" + src + ")" + NL;
+if (isThinClipBody(leadIn, "article", src) !== true) { console.error("FAIL url-only summary with a lead-in reads rich"); process.exit(1); }
+const otherSection = NL + "## Highlights" + NL + "Quoted passage that mentions " + MARK + " in running text." + NL;
+if (isThinClipBody(otherSection, "article", src) !== false) { console.error("FAIL marker outside ## Summary treated as url-only"); process.exit(1); }
+const { readFileSync } = await import("node:fs");
+const fx = JSON.parse(readFileSync(process.env.FIX, "utf8"));
+for (const c of fx.cases) {
+  if (isThinClipBody(c.body, "article", fx.source) !== c.thin) { console.error("FAIL shared url-only fixture (clip-lookup): " + c.name); process.exit(1); }
+}
+console.log("OK url-only summary is thin (clip-lookup)");
+JS
+FIX="$here/fixtures/url-only-summary-cases.json" LIB="$LIBURL" node "$tmp/urlonly.mjs"
 # Doc-contract: the runbook must instruct partial+thin-body, and must shell out
 # to the mechanical is-thin-cli (not "eyeball it").
 hc="$tmp/harvest-clips.all.md"  # body plus its on-demand references
@@ -39,14 +66,14 @@ p.write_text(
     "---\ntype: instagram\nsource: https://www.instagram.com/reel/IGTH043/\n---\nshort.\n",
     encoding="utf-8",
 )
-glyph, msg, _ = mod.process_clip(p, dry_run=False, firecrawl=None)
+glyph, msg, _ = mod.process_clip(p, dry_run=False, chain=None)
 first = p.read_text(encoding="utf-8")
 if glyph != "~" or "ig_media_pending: true" not in first:
     print("FAIL: thin instagram clip did not get ig_media_pending: true")
     print(first)
     sys.exit(1)
 
-glyph2, msg2, _ = mod.process_clip(p, dry_run=False, firecrawl=None)
+glyph2, msg2, _ = mod.process_clip(p, dry_run=False, chain=None)
 second = p.read_text(encoding="utf-8")
 if second.count("ig_media_pending:") != 1:
     print("FAIL: second run duplicated ig_media_pending (not idempotent)")
@@ -63,7 +90,7 @@ p2.write_text(
     "---\ntype: article\nsource: https://example.com/post\n---\nshort.\n",
     encoding="utf-8",
 )
-mod.process_clip(p2, dry_run=False, firecrawl=None)
+mod.process_clip(p2, dry_run=False, chain=None)
 if "ig_media_pending" in p2.read_text(encoding="utf-8"):
     print("FAIL: non-instagram thin clip got ig_media_pending")
     sys.exit(1)
@@ -158,14 +185,14 @@ if not mod.is_thin_body(BODY):
 
 p = Path("$tmp/tpl-fresh.md")
 p.write_text("---\n" + FM + "---\n" + BODY, encoding="utf-8")
-glyph, msg, _ = mod.process_clip(p, dry_run=False, firecrawl=None)
+glyph, msg, _ = mod.process_clip(p, dry_run=False, chain=None)
 t = p.read_text(encoding="utf-8")
 if glyph != "~" or "harvest_status: ok" in t or "harvest_status: partial" not in t:
     print("FAIL (A): fresh template skeleton was stamped ok:", glyph, msg); sys.exit(1)
 
 p2 = Path("$tmp/tpl-stamped.md")
 p2.write_text("---\n" + FM + OK + "---\n" + BODY, encoding="utf-8")
-glyph, msg, _ = mod.process_clip(p2, dry_run=False, firecrawl=None)
+glyph, msg, _ = mod.process_clip(p2, dry_run=False, chain=None)
 t2 = p2.read_text(encoding="utf-8")
 if glyph != "~" or "harvest_status: ok" in t2 or "harvest_status: partial" not in t2:
     print("FAIL (A): already-stamped-ok template skeleton was never re-checked:", glyph, msg); sys.exit(1)
@@ -176,7 +203,7 @@ real = "\n".join(f"Paragraph {i} with real article prose that is the capture." f
 p3 = Path("$tmp/real-stamped.md")
 p3.write_text("---\n" + FM + OK + "---\n# Real\n\n" + real + "\n", encoding="utf-8")
 before = p3.read_text(encoding="utf-8")
-glyph, msg, _ = mod.process_clip(p3, dry_run=False, firecrawl=None)
+glyph, msg, _ = mod.process_clip(p3, dry_run=False, chain=None)
 if glyph != "o" or p3.read_text(encoding="utf-8") != before:
     print("FAIL (A): a real harvested clip was touched:", glyph, msg); sys.exit(1)
 print("OK silent-partial A: template skeleton is thin, ok-stamped one is re-checked, real clip untouched")
@@ -211,5 +238,118 @@ python3 "$tool" "$VC" --reflag-silent-partials >"$tmp/crlf.out" 2>&1 || { echo "
 cmp -s "$VC/Clippings/_done/crlf.md" "$tmp/crlf-before.md" || { echo "FAIL: reflag rewrote a CRLF note"; exit 1; }
 grep -q "1 skipped" "$tmp/crlf.out" || { echo "FAIL: CRLF skip not reported"; cat "$tmp/crlf.out"; exit 1; }
 echo "OK --reflag-silent-partials: CRLF note left byte-identical and reported skipped"
+
+cat > "$tmp/url_only.py" <<PY
+import importlib.util, sys
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("harvest_batch", "$tool")
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+mod.TODAY = "2026-11-20"
+
+MARK = "Inferred from the source URL only — re-read the source before promoting."
+URL = "https://example.com/docs/guide"
+BODY = (
+    "# article from example.com/docs/guide\n\n" + URL + "\n\n"
+    "## Summary\n" + MARK + " Clip captured no body; awaiting thin-body enrichment.\n\n"
+    "## Source\n[" + URL + "](" + URL + ")\n\n"
+    "## Promotion candidate\n<!-- triage 2026-11-08 — do NOT auto-promote; user must explicitly accept -->\n"
+    "- **Suggested target:** \`30-Resources/Tech/\`\n"
+    "- **Rationale:** Tool/repo or docs reference fits Tech notes.\n"
+)
+FM = 'title: "article from example.com/docs/guide"\nsource: ' + URL + '\ntype: article\nprocessed: true\nsummary_basis: url-only\n'
+OKM = 'harvested_at: 2026-10-11\nharvest_skill: clip-body\nharvest_url_canonical: "' + URL + '"\nharvest_status: ok\n'
+
+if not mod.is_thin_body(BODY):
+    print("FAIL (U): a URL-only summary reads as source text"); sys.exit(1)
+LEAD = BODY.replace("## Summary\n" + MARK, "## Summary\nX long-form article by @someone; the clipper captured no body. " + MARK)
+if not mod.is_thin_body(LEAD) or mod.is_thin_body(BODY.replace("## Source", "## Highlights\nQuoted passage that says " + MARK + " in running text, then goes on for a while.\n\n## Source")):
+    print("FAIL (U): the marker rule is not scoped to ## Summary"); sys.exit(1)
+import json
+fx = json.load(open("$here/fixtures/url-only-summary-cases.json", encoding="utf-8"))
+for case in fx["cases"]:
+    if mod.is_thin_body(case["body"]) != case["thin"]:
+        print("FAIL (U): shared url-only fixture (batch tool):", case["name"]); sys.exit(1)
+
+p = Path("$tmp/u-fresh.md")
+p.write_text("---\n" + FM + "---\n" + BODY, encoding="utf-8")
+glyph, msg, _ = mod.process_clip(p, dry_run=False, chain=None)
+t = p.read_text(encoding="utf-8")
+if glyph != "~" or "harvest_status: ok" in t or "harvest_status: partial" not in t or "harvested_at" in t:
+    print("FAIL (U): a clip with no fetched text was recorded as a success:", glyph, msg); print(t); sys.exit(1)
+
+p2 = Path("$tmp/u-stamped.md")
+p2.write_text("---\n" + FM + OKM + "---\n" + BODY, encoding="utf-8")
+glyph, msg, _ = mod.process_clip(p2, dry_run=False, chain=None)
+t2 = p2.read_text(encoding="utf-8")
+if glyph != "~" or "harvest_status: ok" in t2 or "harvest_status: partial" not in t2:
+    print("FAIL (U): an ok-stamped empty clip was never re-checked:", glyph, msg); sys.exit(1)
+if t2.split("---\n", 2)[2] != BODY:
+    print("FAIL (U): re-check altered the body"); sys.exit(1)
+
+REAL = BODY.replace(MARK + " Clip captured no body; awaiting thin-body enrichment.", "The guide explains how to configure the tool, names its three modes and lists the flags each one accepts.")
+p3 = Path("$tmp/u-real.md")
+p3.write_text("---\n" + FM + OKM + "---\n" + REAL, encoding="utf-8")
+before = p3.read_text(encoding="utf-8")
+glyph, msg, _ = mod.process_clip(p3, dry_run=False, chain=None)
+if mod.is_thin_body(REAL) or glyph != "o" or p3.read_text(encoding="utf-8") != before:
+    print("FAIL (U): a clip with a real summary was touched:", glyph, msg); sys.exit(1)
+
+LONG = "\n".join(f"Captured paragraph {i} of the page, written by the clipper." for i in range(12))
+p4 = Path("$tmp/u-fresh-rich.md")
+p4.write_text("---\n" + FM + "---\n" + BODY.replace("## Source", "## Highlights\n" + LONG + "\n\n## Source"), encoding="utf-8")
+glyph, msg, _ = mod.process_clip(p4, dry_run=False, chain=None)
+t4 = p4.read_text(encoding="utf-8")
+if glyph != "v" or "harvest_status: ok" not in t4:
+    print("FAIL (U): a clip with real text beside the marker did not end as a success:", glyph, msg); sys.exit(1)
+print("OK url-only summary: partial when empty (fresh and ok-stamped), success when real text exists")
+
+IGURL = "https://www.instagram.com/p/CCCC333/"
+IGFM = 'title: "instagram"\nsource: ' + IGURL + '\ntype: instagram\nprocessed: true\nsummary_basis: url-only\n'
+IGSUM = "## Summary\n" + MARK + " Instagram post.\n\n"
+ig_rich = "# i\n\n" + IGURL + "\n\n" + IGSUM + "## Crawled content\n<!-- media-enriched 2026-10-10 via ig-media -->\n\nA caption.\n\n### Transcript\nSpoken words of the reel.\n\n## Source\n[l](" + IGURL + ")\n"
+ig_empty = "# i\n\n" + IGURL + "\n\n" + IGSUM + "## Crawled content\n<!-- media-enriched 2026-10-10 via ig-media -->\n\n## Source\n[l](" + IGURL + ")\n"
+if mod.is_thin_clip(IGURL, ig_rich) or not mod.is_thin_clip(IGURL, ig_empty):
+    print("FAIL (U): the Instagram media rule is not applied"); sys.exit(1)
+pr = Path("$tmp/ig-rich.md"); pr.write_text("---\n" + IGFM + "---\n" + ig_rich, encoding="utf-8")
+glyph, msg, _ = mod.process_clip(pr, dry_run=False, chain=None)
+tr = pr.read_text(encoding="utf-8")
+if glyph != "v" or "harvest_status: ok" not in tr or "ig_media_pending" in tr:
+    print("FAIL (U): an enriched Instagram clip was not a plain success:", glyph, msg); print(tr); sys.exit(1)
+pe = Path("$tmp/ig-empty.md"); pe.write_text("---\n" + IGFM + "---\n" + ig_empty, encoding="utf-8")
+glyph, msg, _ = mod.process_clip(pe, dry_run=False, chain=None)
+te = pe.read_text(encoding="utf-8")
+if glyph != "~" or "harvest_status: partial" not in te or "ig_media_pending: true" not in te:
+    print("FAIL (U): an empty Instagram crawl was not a partial queued for the media rung:", glyph, msg); sys.exit(1)
+pd = Path("$tmp/ig-done.md"); pd.write_text("---\n" + IGFM + "media_enrichment_status: ok\n---\n" + ig_empty, encoding="utf-8")
+glyph, msg, _ = mod.process_clip(pd, dry_run=False, chain=None)
+td = pd.read_text(encoding="utf-8")
+if glyph != "~" or "harvest_status: partial" not in td or "ig_media_pending" in td:
+    print("FAIL (U): a clip whose media rung ran ok was queued for it again:", glyph, msg); print(td); sys.exit(1)
+print("OK instagram: media rule decides thin, no second media queueing")
+PY
+python3 "$tmp/url_only.py"
+
+MARKT="Inferred from the source URL only — re-read the source before promoting."
+
+VE="$tmp/vault-evidence-retry"
+mkdir -p "$VE/Clippings/_evidence/_rejected"
+mk_partial() {
+    printf -- '---\ntype: article\nsource: %s\nsummary_basis: url-only\nharvest_status: partial\nharvest_flag: thin-body\nharvest_defer_count: %s\nharvest_defer_last: 2026-11-08\n%s---\n# t\n\n## Summary\n%s\n\n## Source\n[l](%s)\n' "$2" "$3" "$4" "$MARKT" "$2" > "$1"
+}
+mk_partial "$VE/Clippings/_evidence/art.md" "https://example.com/docs/art" 1 ""
+mk_partial "$VE/Clippings/_evidence/attention.md" "https://example.com/docs/att" 5 "harvest_needs_attention: true
+"
+mk_partial "$VE/Clippings/_evidence/ig.md" "https://www.instagram.com/p/BBBB222/" 1 ""
+mk_partial "$VE/Clippings/_evidence/x.md" "https://x.com/someone/article/1" 1 ""
+mk_partial "$VE/Clippings/_evidence/_rejected/rej.md" "https://example.com/docs/rej" 1 ""
+cp -r "$VE" "$tmp/vault-evidence-retry-before"
+HARVEST_SCRAPE_DENY=all python3 "$tool" "$VE" --date 2026-11-21 >"$tmp/ev.out" 2>&1 || { echo "FAIL (E): run failed"; cat "$tmp/ev.out"; exit 1; }
+grep -q "^harvest_defer_count: 2" "$VE/Clippings/_evidence/art.md" || { echo "FAIL (E): an _evidence/ partial was not retried"; cat "$tmp/ev.out"; exit 1; }
+for f in attention ig x _rejected/rej; do
+    cmp -s "$VE/Clippings/_evidence/$f.md" "$tmp/vault-evidence-retry-before/Clippings/_evidence/$f.md" || { echo "FAIL (E): _evidence/$f.md must be left alone"; exit 1; }
+done
+grep -q "Clippings/_evidence/art" "$VE/.harvest-pending.md" || { echo "FAIL (E): the retried partial is missing from the pending report"; exit 1; }
+echo "OK _evidence/ partial retried in place; needs-attention, Instagram, X and _rejected/ left alone"
 
 echo "HARVEST-THINNESS PASS"

@@ -116,6 +116,17 @@ const PLACEHOLDER_LINE = (l) => {
 // article/research content sections (tweet delegates to isThinTweetBody)
 const ARTICLE_SECTIONS = ["## Highlights", "## Summary", "## Key Points", "## Core Argument", "## Key Evidence"];
 
+const URL_ONLY_MARKER = "Inferred from the source URL only";
+
+function isUrlOnlySummary(lines, at) {
+  if (lines[at].trim() !== "## Summary") return false;
+  for (let j = at + 1; j < lines.length; j++) {
+    if (/^#{1,6}\s/.test(lines[j].trim())) break;
+    if (lines[j].includes(URL_ONLY_MARKER)) return true;
+  }
+  return false;
+}
+
 export function isThinClipBody(body, type, source) {
   if (!body) return true;
   // Source-host override (host beats type) — spec §7. A legacy
@@ -132,6 +143,7 @@ export function isThinClipBody(body, type, source) {
   const lines = main.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     if (ARTICLE_SECTIONS.includes(lines[i].trim())) {
+      if (isUrlOnlySummary(lines, i)) continue;
       for (let j = i + 1; j < lines.length; j++) {
         if (/^#{1,6}\s/.test(lines[j].trim())) break;   // next heading
         if (!PLACEHOLDER_LINE(lines[j])) return false;  // real content found

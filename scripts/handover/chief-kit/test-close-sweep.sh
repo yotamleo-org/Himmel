@@ -160,6 +160,7 @@ mk_repo() {
     BASE=$(g "$1" rev-parse HEAD)
     g "$1" update-ref refs/remotes/origin/main "$BASE"
     mkdir -p "$1/.claude/worktrees"
+    mkdir -p "$1/.git/info" || { echo "FAIL: mkdir .git/info failed" >&2; exit 1; }
     echo ".claude/" >> "$1/.git/info/exclude"
 }
 mk_wt() {
@@ -520,6 +521,8 @@ run_sweep "$S"
 check "kill: the re-run digests 5 to 10, 1 to 4 not again (10 calls in all)" "$(lines "$DIGEST_LOG")" "10"
 check "kill: each session was digested exactly once" "$(grep -o '\[4670c3a0-0000-4000-8000-[0-9]*\]' "$DIGEST_LOG" | sort | uniq -c | awk '{print $1}' | sort -u | tr '\n' ' ')" "1 "
 check "kill: all ten end in done/ with a digest" "$(njson "$S/done")" "10"
+for _i in $(seq 1 150); do pgrep -f "$W/stubs/digest.sh" >/dev/null || break; sleep 0.1; done
+check "kill: the killed digest stub's delayed write has landed before the next row" "$(pgrep -f "$W/stubs/digest.sh" >/dev/null && echo running || echo exited)" "exited"
 reset_logs
 
 echo "ROW: a failed prune is logged and does not stop the drain"

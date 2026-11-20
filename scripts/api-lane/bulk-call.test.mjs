@@ -204,9 +204,9 @@ test('a claude error result keeps its cost but is ERROR with no sites', () => {
   assert.deepEqual(r.art.sites, []);
 });
 
-test('the lane OFF is refused, alerts once, then the same call runs once on the subscription with no key', () => {
+test('an invalid account is refused, alerts once, then the same call runs once on the subscription with no key', () => {
   const f = fixture();
-  const r = f.run(f.args, { HIMMEL_API_LANE: 'off' });
+  const r = f.run(f.args, { HIMMEL_API_ACCOUNT: 'E' });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.art.status, 'OK');
   assert.equal(readFileSync(f.p.log, 'utf8'), 'called\n');
@@ -216,7 +216,7 @@ test('the lane OFF is refused, alerts once, then the same call runs once on the 
   assert.match(seen, /--tools Read,Glob,Grep /);
   const alerts = readFileSync(f.p.alertLog, 'utf8').trim().split('\n');
   assert.equal(alerts.length, 1);
-  assert.match(alerts[0], /^type=api-lane refused msg=kind bulk, .*api lane is OFF.*fallback: running on the subscription/);
+  assert.match(alerts[0], /^type=api-lane refused msg=kind bulk, .*HIMMEL_API_ACCOUNT must be.*fallback: running on the subscription/);
   assert.ok(!alerts[0].includes(DUMMY));
 });
 

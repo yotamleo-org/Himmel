@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xml:lang="en-US">
+  <id>tag:example.invalid,2008:https://github.com/example-org/example-repo/releases</id>
+  <link type="text/html" rel="alternate" href="https://github.com/example-org/example-repo/releases"/>
+  <link type="application/atom+xml" rel="self" href="https://github.com/example-org/example-repo/releases.atom"/>
+  <title>Release notes from example-repo</title>
+  <updated>2026-11-10T10:00:00Z</updated>
+  <entry>
+    <id>tag:example.invalid,2008:Repository/1/v1.1.0</id>
+    <updated>2026-11-02T09:00:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/example-org/example-repo/releases/tag/v1.1.0"/>
+    <title>v1.1.0</title>
+    <content type="html">&lt;p&gt;Older synthetic release.&lt;/p&gt;</content>
+    <author><name>example-bot</name></author>
+    <media:thumbnail height="30" width="30" url="https://example.invalid/avatar.png"/>
+  </entry>
+  <entry>
+    <id>tag:example.invalid,2008:Repository/1/v1.2.0</id>
+    <updated>2026-11-10T10:00:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/example-org/example-repo/releases/tag/v1.2.0"/>
+    <title>v1.2.0</title>
+    <content type="html">&lt;h2&gt;What's new&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Added the &lt;code&gt;--fast&lt;/code&gt; flag&lt;/li&gt;
+&lt;li&gt;Fixed a crash &amp;amp; a hang&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author><name>example-bot</name></author>
+    <media:thumbnail height="30" width="30" url="https://example.invalid/avatar.png"/>
+  </entry>
+</feed>

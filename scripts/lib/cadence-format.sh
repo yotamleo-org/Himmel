@@ -138,8 +138,16 @@
 # harvest printed no done line. An armed v25 harvest keeps firing the old prompt
 # (a batch that outruns the tool timeout and reports nothing); re-arm with
 # `pipeline-cadence.sh arm --force`.
+# v27: the pipeline-harvest runner pulls the vault's feeds before its worker, and
+# the pipeline-synthesize runner promotes converging clips into subject pages and
+# applies the daily note's mechanical actions after its worker (also on a night
+# the worker is skipped); none of the three calls a model, each is bounded by a
+# per-run limit and logs one `[nightly-...]` line. The tool paths are baked at arm
+# time. An armed v26 harvest or synthesize runner has none of the three steps, so
+# the subject pages and the daily actions stay as they are; re-arm with
+# `pipeline-cadence.sh arm --force`.
 # shellcheck disable=SC2034  # consumed by sourcing scripts (pipeline-cadence/doctor/update)
-CADENCE_RUNNER_FORMAT_VERSION=26
+CADENCE_RUNNER_FORMAT_VERSION=27
 
 # Marker line stamped into each generated runner: `# <marker> N`.
 CADENCE_FORMAT_MARKER="himmel-cadence-runner-format:"

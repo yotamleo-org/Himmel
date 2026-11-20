@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title><![CDATA[Example Engineering Blog]]></title>
+    <link>https://example.com/blog</link>
+    <description>Synthetic blog used by the feed-clip tests.</description>
+    <atom:link href="https://example.com/blog/rss.xml" rel="self" type="application/rss+xml"/>
+    <item>
+      <title><![CDATA[Scaling "queues" at <Example>]]></title>
+      <link>https://example.com/blog/scaling-queues</link>
+      <guid isPermaLink="true">https://example.com/blog/scaling-queues</guid>
+      <pubDate>Thu, 19 Nov 2026 08:00:00 GMT</pubDate>
+      <description><![CDATA[<p>How we scaled &amp; tuned the queue.</p>]]></description>
+    </item>
+    <item>
+      <title>Second post: a "colon" # hash &amp; more</title>
+      <link>https://example.com/blog/second-post</link>
+      <guid isPermaLink="false">post-2</guid>
+      <dc:date>2026-11-18T08:00:00Z</dc:date>
+      <description>short teaser</description>
+      <content:encoded><![CDATA[<p>First paragraph of the full post.</p><p>Second paragraph with <a href="https://example.com/x">a link</a>.</p><script>alert(1)</script>]]></content:encoded>
+    </item>
+    <item>
+      <title>Entry without a link</title>
+      <guid isPermaLink="false">post-3</guid>
+      <pubDate>Tue, 17 Nov 2026 08:00:00 GMT</pubDate>
+      <description>Nothing to clip: no source URL.</description>
+    </item>
+    <item>
+      <title>Entry with a script link</title>
+      <link>javascript:alert(1)</link>
+      <guid isPermaLink="false">post-4</guid>
+      <pubDate>Mon, 16 Nov 2026 08:00:00 GMT</pubDate>
+      <description>Not an http link.</description>
+    </item>
+  </channel>
+</rss>

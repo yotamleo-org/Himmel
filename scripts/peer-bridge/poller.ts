@@ -2,22 +2,25 @@
 // takes Telegram updates through the admission gate, keeps thread state and
 // deadlines, runs the tool-less reader, sends through the egress gate with an
 // intent record before every Telegram call, and drains the spool that send.ts,
-// read.ts and setup.ts fill. It parses peer text only with the two control-line
-// regexes and starts only the processes proc.ts lists.
+import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import { join } from "node:path";
 import { atomicWrite } from "../telegram/bus";
 import { Chain, PidLockError, acquirePidLock, drainSpool, readChain, sweepResults, writeResult, type IntentRec, type SpoolRec } from "./chain";
-import { ConfigError, EXIT_CONFIG, loadConfig, type Config } from "./config";
+import { ConfigError, DEFAULT_BUDGETS, EXIT_CONFIG, clampToSchema, loadAllowlist, loadConfig, type AllowEntry, type Config } from "./config";
 import { digestFile, parseAck, writeCursor, type DigestRec } from "./digests";
-import { checkOutbound, refusalRecord, type OutCtx, type Outcome, type Refusal } from "./egress";
-import { admit, appendUnknownChat, createGateState, noteAdmitted, rebuildFromInbox, type GateState, type PeerMsgRec } from "./gate";
+import { checkEnvelopeOutbound, checkOutbound, refusalRecord, type OutCtx, type Outcome, type Refusal } from "./egress";
+import { OUTCOMES, buildEnvelope, encodeCanonical, type Envelope } from "./envelope";
+import { admit, admitEnvelope, appendUnknownChat, createGateState, looksLikeEnvelope, matchEnvelope, noteAdmitted, noteRate, rebuildFromInbox, type GateState, type PeerEnvRec, type PeerMsgRec } from "./gate";
 import { mintId } from "./grammar";
 import { botIdFromToken, configDir, peersFile, stateDir } from "./ids";
+import { dueJobs, isTerminal, newInJob, newOutJob, queueDepth, remaining, step, type JobEvent, type SendSpec } from "./jobstate";
 import { ReaderLedger, runReader } from "./reader";
+import { resolveCapacity, resolveReq, resolveRes, type JobRecord } from "./resolve";
+import { currentSigningKey, sign } from "./sign";
 import { PeerTelegram, RetryAfter, TelegramError } from "./telegram";
-import { Threads, templateLine, type Action, type ThreadRec } from "./threads";
-import { Waker } from "./wake";
+import { MAX_AUTO_PER_HOUR, Threads, templateLine, type Action, type ThreadRec } from "./threads";
+import { Tripwire, Waker } from "./wake";
 
 export type TgLike = Pick<PeerTelegram, "getUpdates" | "sendMessage" | "getChatMember">;
 export type PollerDeps = {
@@ -30,6 +33,7 @@ export type PollerDeps = {
   reloadConfig?: () => Config;
   matrix?: OutCtx["matrix"];
   hostname?: string;
+  checkEnvelope?: typeof checkEnvelopeOutbound;
   readerRun?: typeof runReader;
   readerTimeoutMs?: number;
   log?: (line: string) => void;
@@ -38,6 +42,7 @@ export type PollerDeps = {
 type Pending = IntentRec & { n: number };
 type Item = { peer: string; msgKind: string; isRoot: boolean; isTemplate: boolean; replyTo: number | null; text: string; id?: string; spool?: string; resend?: boolean; allowShape?: string; checkUsage: boolean };
 
+const TRIPWIRE_COUNT = 3;
 const kindLine = (k: string) => (k === "question" ? "ask:question" : k);
 const PERMANENT = [400, 403, 404];
 
@@ -49,6 +54,11 @@ export class Poller {
   private chain = new Chain();
   private waker: Waker;
   private pending = new Map<string, Pending>();
+  private jobs = new Map<number, JobRecord>();
+  private capAsks = new Map<string, boolean>();
+  private match = matchEnvelope({ jobs: () => [...this.jobs.values()], asks: () => this.capAsks });
+  private tripwire = new Tripwire();
+  private answers = new Map<string, number[]>();
   private rootIntents = new Map<string, Pending>();
   private spoolDone = new Map<string, number>();
   private sentTimes = new Map<string, number[]>();
@@ -85,16 +95,36 @@ export class Poller {
   }
 
   private load() {
-    const threadRecs: ThreadRec[] = [], inbox: PeerMsgRec[] = [];
+    const threadRecs: ThreadRec[] = [], inbox: Pick<PeerMsgRec, "peer" | "chat_id" | "from_id" | "id" | "ts">[] = [], envIds: { chat: number; from: string; id: string; exp: number }[] = [];
     for (const peer of Object.keys(this.cfg.peers)) {
       for (const r of readChain(this.file(peer, "threads.jsonl"))) if (r.kind === "thread") threadRecs.push(r as unknown as ThreadRec);
-      for (const r of readChain(this.file(peer, "inbox.jsonl"))) if (r.kind === "peer-msg") inbox.push(r as unknown as PeerMsgRec);
+      for (const r of readChain(this.file(peer, "inbox.jsonl"))) {
+        if (r.kind === "peer-msg") inbox.push(r as unknown as PeerMsgRec);
+        else if (r.kind === "peer-env") inbox.push({ peer: r.peer, chat_id: r.chat_id, from_id: r.from_id, ts: r.ts });
+      }
+      for (const r of readChain(this.file(peer, "envelope-ids.jsonl"))) if (r.kind === "env-id") envIds.push(r as any);
+      for (const r of readChain(this.file(peer, "jobs.jsonl"))) {
+        if (r.kind === "cap-ask") this.capAsks.set(`${peer}:${r.msg}`, this.capAsks.get(`${peer}:${r.msg}`) ?? false);
+        else if (r.kind === "capacity") this.capAsks.set(`${peer}:${r.re}`, true);
+        else if (r.kind === "job") {
+          const { n: _n, h: _h, ...job } = r as any;
+          this.jobs.set(job.jobNo, job as JobRecord);
+        }
+      }
       this.loadOutbox(peer);
     }
     this.threads = Threads.load(threadRecs, this.threadOpts());
     this.gate = createGateState({ ourBotId: this.deps.ourBotId, ourUsername: "", committed: this.offset - 1, now: this.now() });
     for (const r of this.threads.roots()) this.gate.roots.add(r);
     rebuildFromInbox(this.gate, inbox);
+    for (const r of envIds) this.gate.envIds.add(r.chat, r.from, r.id, r.exp);
+    this.gate.envIds.prune(this.ts());
+    this.refreshKilled();
+  }
+
+  private refreshKilled() {
+    this.gate.killed.clear();
+    for (const peer of Object.keys(this.cfg.peers)) if (fs.existsSync(join(this.deps.configDir, `${peer}.killed`))) this.gate.killed.add(peer);
   }
 
   private loadOutbox(peer: string) {
@@ -130,10 +160,41 @@ export class Poller {
     } catch (e) { this.log(`username lookup failed: ${(e as Error).message}`); }
   }
 
+  jobsSnapshot(): Map<number, JobRecord> { return new Map(this.jobs); }
+  nextJobNo(): number { return Math.max(0, ...this.jobs.keys()) + 1; }
+
+  async start(): Promise<void> {
+    await this.recover();
+    await this.drainBacklog();
+    await this.tick();
+  }
+
+  private async drainBacklog(): Promise<void> {
+    for (let rounds = 0, failures = 0; rounds < 50;) {
+      let updates: any[];
+      try { updates = await this.deps.tg.getUpdates(this.offset, 0); } catch (e) {
+        if (e instanceof TelegramError && e.code === 401) throw e;
+        if (++failures > 12) throw e;
+        await sleep(e instanceof RetryAfter ? e.seconds * 1000 : 5000);
+        continue;
+      }
+      if (updates.length === 0) return;
+      rounds += 1;
+      await this.processBatch(updates);
+    }
+  }
+
   async recover(): Promise<void> {
     await this.serial(async () => {
       await this.ensureUsername();
       for (const i of [...this.pending.values()]) {
+        if (i.env) {              // an envelope is re-checked against the envelope policy, not the text one
+          const ok = await this.checkEnv(i.peer, i.text.split("\n"));
+          if (ok.ok) continue;
+          await this.chain.append(this.file(i.peer, "outbox.jsonl"), { ...refusalRecord(i.text, ok, this.ts()), intent: i.n });
+          this.pending.delete(`${i.peer}:${i.n}`);
+          continue;
+        }
         const res = await this.egress(i.text, this.ctxFor({ peer: i.peer, msgKind: i.msgKind, isRoot: i.isRoot, isTemplate: !!i.tpl, replyTo: i.root, text: i.text, checkUsage: false }));
         if (res.ok) continue;
         await this.chain.append(this.file(i.peer, "outbox.jsonl"), { ...refusalRecord(i.text, res, this.ts()), intent: i.n });
@@ -155,8 +216,14 @@ export class Poller {
     const jobs: PeerMsgRec[] = [];
     await this.serial(async () => {
       let max = this.offset - 1;
+      this.refreshKilled();
       for (const u of [...updates].sort((a, b) => a.update_id - b.update_id)) {
         this.gate.now = this.now();
+        if (looksLikeEnvelope(u)) {
+          await this.onEnvelope(u);
+          if (Number.isSafeInteger(u.update_id)) max = Math.max(max, u.update_id);
+          continue;
+        }
         const r = admit(u, this.cfg, this.gate);
         if (Number.isSafeInteger(u.update_id)) max = Math.max(max, u.update_id);
         if (!r.ok) {
@@ -181,6 +248,210 @@ export class Poller {
     for (const rec of jobs) await this.readAndDigest(rec);
   }
 
+  private async onEnvelope(u: any): Promise<void> {
+    const r = admitEnvelope(u, this.cfg, this.gate, this.match);
+    if (!r.ok) {
+      this.log(r.log);
+      if (r.unknownChat) appendUnknownChat(join(this.deps.stateDir, "unknown-chats.jsonl"), r.unknownChat);
+      if (r.step === 1 || !r.peer) return;
+      noteRate(this.gate, r.peer, this.ts());
+      if (r.step === 5 && this.tripwire.note(r.peer, this.now())) await this.waker.alert(r.peer, TRIPWIRE_COUNT);
+      if (!r.rec || !r.env) return;
+      await this.chain.append(this.file(r.peer, "inbox.jsonl"), r.rec);
+      if (r.env.kind === "req" && r.refused) await this.answer(r.peer, { kind: "res", body: { job: r.env.job, state: "refused", refused: r.refused } });
+      await this.recordId(r.rec, r.env.exp);
+      return;
+    }
+    noteRate(this.gate, r.peer, this.ts());
+    await this.chain.append(this.file(r.peer, "inbox.jsonl"), r.rec);
+    await this.handleEnvelope(r.peer, r.env);
+    await this.recordId(r.rec, r.env.exp);
+  }
+
+  private async recordId(rec: PeerEnvRec, exp: number): Promise<void> {
+    await this.chain.append(this.file(rec.peer, "envelope-ids.jsonl"), { kind: "env-id", chat: rec.chat_id, from: rec.from_id, id: rec.id, exp });
+  }
+
+  private async handleEnvelope(peer: string, env: Envelope): Promise<void> {
+    const drop = (why: string) => this.log(`env-drop step=8 peer=${peer} msg=${env.msg} ${why}`);
+    const mine = (dir: "in" | "out") => [...this.jobs.values()].filter(j => j.peer === peer && j.dir === dir);
+    if (env.kind === "res") {
+      const job = mine("out").filter(j => j.wire_job === env.job).pop();
+      const patch = resolveRes(env, job, { imageDigest: this.cfg.peers[peer].theirs.imageDigest });
+      if (!job || !patch) return drop("res for a job we did not send");
+      await this.applyJobEvent(job, { type: `res-${env.state}`, patch });
+    } else if (env.kind === "cancel") {
+      const job = mine("in").filter(j => j.peer_job === env.job).pop();
+      if (!job) return drop("cancel for a job the peer did not send");
+      await this.applyJobEvent(job, { type: "cancel" });
+    } else if (env.kind === "halt") {
+      for (const job of mine("in")) await this.applyJobEvent(job, { type: "halt" });
+    } else if (env.kind === "capacity-ask") {
+      await this.answer(peer, { kind: "capacity", body: this.capacityBody(peer, env.msg) });
+    } else if (env.kind === "capacity") {
+      const key = `${peer}:${env.re}`;
+      if (this.capAsks.get(key) !== false) return drop("capacity for an ask we did not send, or one already answered");
+      this.capAsks.set(key, true);
+      await this.chain.append(this.file(peer, "jobs.jsonl"), { kind: "capacity", peer, re: env.re, ts: this.ts(), ...resolveCapacity(env) });
+    } else if (env.kind === "req") {
+      let allow: AllowEntry[] = [];
+      try { allow = loadAllowlist(peer, this.deps.configDir); } catch (e) { this.log(`env-drop step=8 peer=${peer} msg=${env.msg} suite allowlist unreadable: ${(e as Error).message}`); }
+      const resolved = resolveReq(env, allow);
+      const job = newInJob({ jobNo: this.nextJobNo(), peer, now: this.ts(), fields: resolved.record });
+      await this.putJob(job);
+      if (!resolved.ok) await this.applyJobEvent(job, { type: "resolve-fail", refused: resolved.refused });
+    }
+  }
+
+  private async applyEnvOut(peer: string, name: string, rec: Extract<SpoolRec, { type: "env-out" }>): Promise<void> {
+    const dir = this.dir(peer);
+    const refuse = (rule: string) => writeResult(dir, name, { ok: false, rule });
+    const outJob = typeof rec.body.jobNo === "number" ? this.peerJobs(peer).find(j => j.dir === "out" && j.jobNo === rec.body.jobNo) : undefined;
+    let spec: SendSpec;
+    if (rec.kind === "req") {
+      const wire = randomBytes(8).toString("hex");
+      spec = { kind: "req", body: { job: wire, op: "run-suite", sha: rec.body.sha, suites: rec.body.suites } };
+    } else if (rec.kind === "cancel") {
+      if (!outJob || isTerminal(outJob)) return refuse("unknown-job");
+      spec = { kind: "cancel", body: { job: outJob.wire_job } };
+    } else spec = { kind: rec.kind, body: {} };
+    let made: ReturnType<Poller["makeEnvelope"]>;
+    try { made = this.makeEnvelope(peer, spec); } catch (e) { return refuse((e as Error).message.startsWith("no usable station key") ? "no-key" : "bad-request"); }
+    if (!made) return refuse("not-set-up");
+    if (rec.kind === "req") {
+      const b = made.env as Extract<Envelope, { kind: "req" }>;
+      const job = newOutJob({ jobNo: this.nextJobNo(), peer, wireJob: b.job, sha: b.sha, suites: b.suites, reqExp: b.exp, now: this.ts() });
+      await this.putJob(job);
+      if (!(await this.queueEnvelope(peer, made))) return refuse("egress");
+      writeResult(dir, name, { ok: true, job: job.jobNo });
+      return;
+    }
+    if (rec.kind === "capacity-ask") {
+      await this.chain.append(this.file(peer, "jobs.jsonl"), { kind: "cap-ask", peer, msg: made.env.msg, ts: this.ts() });
+      this.capAsks.set(`${peer}:${made.env.msg}`, false);
+    }
+    if (!(await this.queueEnvelope(peer, made))) return refuse("egress");
+    writeResult(dir, name, { ok: true });
+  }
+
+  private async applyJobSpool(peer: string, name: string, rec: Extract<SpoolRec, { type: "job-event" }>): Promise<void> {
+    const dir = this.dir(peer);
+    const job = this.jobs.get(rec.job);
+    if (!job || job.peer !== peer || job.dir !== "in") return writeResult(dir, name, { ok: false, rule: "unknown-job" });
+    this.refreshKilled();
+    if (this.gate.killed.has(peer)) { await this.fireKills(); return writeResult(dir, name, { ok: false, rule: "killed" }); }
+    const e: any = rec.event, p = this.cfg.peers[peer];
+    const isHex = (v: unknown, n: number) => typeof v === "string" && new RegExp(`^[0-9a-f]{${n}}$`).test(v);
+    let ev: JobEvent;
+    switch (e.type) {
+      case "resolve-ok":
+        if (!isHex(e.sha, 40)) return writeResult(dir, name, { ok: false, rule: "bad-event" });
+        ev = { type: "resolve-ok", sha: e.sha };
+        break;
+      case "resolve-fail":
+        if (e.refused !== "unknown-sha" && e.refused !== "too-old") return writeResult(dir, name, { ok: false, rule: "bad-event" });
+        ev = { type: "resolve-fail", refused: e.refused };
+        break;
+      case "approve":
+        ev = { type: "approve" };
+        break;
+      case "vm-start": {
+        const left = remaining(this.peerJobs(peer), p.budgets ?? DEFAULT_BUDGETS, this.ts());
+        ev = { type: "vm-start", backstop_s: Math.min((p.budgets ?? DEFAULT_BUDGETS).maxJobMinutes * 60, left.vmMinutes * 60) };
+        break;
+      }
+      default: {
+        const ok = (e.results === undefined || (Array.isArray(e.results) && e.results.every((o: unknown) => OUTCOMES.includes(o as any))))
+          && (e.golden === undefined || isHex(e.golden, 64)) && (e.log_sha256 === undefined || isHex(e.log_sha256, 64))
+          && (e.log_bytes === undefined || Number.isSafeInteger(e.log_bytes)) && (e.runner_minutes === undefined || Number.isSafeInteger(e.runner_minutes));
+        if (!ok) return writeResult(dir, name, { ok: false, rule: "bad-event" });
+        ev = { type: "vm-done", results: e.results, golden: e.golden, log_sha256: e.log_sha256, log_bytes: e.log_bytes, runner_minutes: e.runner_minutes };
+      }
+    }
+    await this.applyJobEvent(job, ev);
+    const after = this.jobs.get(job.jobNo)!;
+    if (ev.type === "resolve-ok" && after.state === "RESOLVED" && p.approve?.["run-suite"] === "auto") await this.applyJobEvent(after, { type: "approve" });
+    writeResult(dir, name, { ok: true });
+  }
+
+  private async applyJobEvent(job: JobRecord, event: JobEvent): Promise<void> {
+    const r = step(job, event, this.ts());
+    if (r.record !== job) await this.putJob(r.record);
+    if (r.send) await this.sendEnvelope(job.peer, r.send);
+  }
+
+  private async fireDeadlines(): Promise<void> {
+    for (const job of dueJobs([...this.jobs.values()], this.ts())) await this.applyJobEvent(job, { type: "deadline" });
+  }
+
+  private async fireKills(): Promise<void> {
+    for (const job of [...this.jobs.values()]) {
+      if (job.dir === "in" && this.gate.killed.has(job.peer) && !isTerminal(job)) await this.applyJobEvent(job, { type: "kill" });
+    }
+  }
+
+  private checkEnv(peer: string, lines: string[]): Promise<Outcome> {
+    return (this.deps.checkEnvelope ?? checkEnvelopeOutbound)(lines, {
+      peer: this.cfg.peers[peer], self: this.cfg.self?.stationName, keyDir: this.deps.configDir, himmelRoot: this.cfg.himmelRoot,
+      maxTextChars: this.cfg.maxTextChars, hostname: this.deps.hostname, matrix: this.deps.matrix,
+    });
+  }
+
+  private makeEnvelope(peer: string, spec: SendSpec): { env: Envelope; lines: string[] } | null {
+    const p = this.cfg.peers[peer];
+    const from = this.cfg.self?.stationName, to = p?.theirs.stationName;
+    if (!p || p.chatId === null || !from || !to) { this.log(`env-send peer=${peer} not sent: station names or chat are not set`); return null; }
+    const key = currentSigningKey(this.deps.configDir);
+    const env = buildEnvelope(spec.kind, spec.body, { from, to, chat: p.chatId, now: this.ts() });
+    const line2 = `#env:v1 k=${key.id} id=${env.msg}`, line3 = encodeCanonical(env);
+    return { env, lines: [`/peer@${p.theirs.username}`, line2, line3, `sig=${sign(line2, line3, key.path)}`] };
+  }
+
+  private async queueEnvelope(peer: string, made: { env: Envelope; lines: string[] }): Promise<boolean> {
+    const ok = await this.checkEnv(peer, made.lines);
+    if (!ok.ok) {
+      await this.chain.append(this.file(peer, "outbox.jsonl"), refusalRecord(made.lines[2], ok, this.ts()));
+      this.log(`env-send peer=${peer} refused: ${ok.rule}`);
+      return false;
+    }
+    const rec = await this.chain.append(this.file(peer, "outbox.jsonl"), { kind: "intent", peer, chat: this.cfg.peers[peer].chatId, id: made.env.msg, root: null, msgKind: "env", text: made.lines.join("\n"), isRoot: false, env: true });
+    this.pending.set(`${peer}:${rec.n}`, rec as unknown as Pending);
+    return true;
+  }
+
+  private async answer(peer: string, spec: SendSpec): Promise<void> {
+    const now = this.now();
+    const recent = (this.answers.get(peer) ?? []).filter(t => now - t < 3_600_000);
+    if (recent.length >= MAX_AUTO_PER_HOUR) { this.log(`env-drop peer=${peer} not answered: the hourly cap on answers is reached`); return; }
+    recent.push(now);
+    this.answers.set(peer, recent);
+    await this.sendEnvelope(peer, spec);
+  }
+
+  private async sendEnvelope(peer: string, spec: SendSpec): Promise<void> {
+    let made: ReturnType<Poller["makeEnvelope"]>;
+    try { made = this.makeEnvelope(peer, spec); } catch (e) { this.log(`env-send peer=${peer} not sent: ${(e as Error).message}`); return; }
+    if (made) await this.queueEnvelope(peer, made);
+  }
+
+  private async putJob(rec: JobRecord): Promise<void> {
+    await this.chain.append(this.file(rec.peer, "jobs.jsonl"), rec);
+    this.jobs.set(rec.jobNo, rec);
+  }
+
+  private peerJobs(peer: string): JobRecord[] { return [...this.jobs.values()].filter(j => j.peer === peer); }
+
+  private capacityBody(peer: string, re: string): Record<string, unknown> {
+    const p = this.cfg.peers[peer];
+    if ((p.serves ?? []).length === 0) return { re, state: "not-served", queue: 0, jobs_left: 0, vm_minutes_left: 0 };
+    const mine = this.peerJobs(peer);
+    const left = remaining(mine, p.budgets ?? DEFAULT_BUDGETS, this.ts());
+    return {
+      re, state: mine.some(j => j.dir === "in" && j.state === "RUNNING") ? "busy" : "idle",
+      queue: clampToSchema("queue", queueDepth(mine)), jobs_left: clampToSchema("jobs_left", left.jobs), vm_minutes_left: clampToSchema("vm_minutes_left", left.vmMinutes),
+    };
+  }
+
   private async readAndDigest(rec: PeerMsgRec): Promise<void> {
     const peer = this.cfg.peers[rec.peer];
     if (!peer) return;
@@ -195,7 +466,11 @@ export class Poller {
   async tick(): Promise<void> {
     await this.serial(async () => {
       await this.ensureUsername();
+      this.refreshKilled();
+      this.gate.envIds.prune(this.ts());
       await this.apply(this.threads.tick(this.now()));
+      await this.fireKills();
+      await this.fireDeadlines();
       await this.flush();
       for (const peer of Object.keys(this.cfg.peers)) sweepResults(this.dir(peer), 86_400_000, this.now());
     });
@@ -206,7 +481,7 @@ export class Poller {
       for (const peer of Object.keys(this.cfg.peers)) {
         if (!fs.existsSync(join(this.dir(peer), "spool"))) continue;
         for (const d of drainSpool(this.dir(peer))) {
-          if ("malformed" in d) { writeResult(this.dir(peer), d.name, { ok: false, rule: "malformed" }); continue; }
+          if ("malformed" in d) { this.log(`malformed spool file ${peer}/${d.name}`); writeResult(this.dir(peer), d.name, { ok: false, rule: "malformed" }); continue; }
           await this.applySpool(peer, d.name, d.rec);
         }
       }
@@ -216,6 +491,8 @@ export class Poller {
 
   private async applySpool(peer: string, name: string, rec: SpoolRec): Promise<void> {
     const dir = this.dir(peer);
+    if (rec.type === "env-out") return this.applyEnvOut(peer, name, rec);
+    if (rec.type === "job-event") return this.applyJobSpool(peer, name, rec);
     if (rec.type === "ack") {
       let key: Buffer;
       try { key = fs.readFileSync(join(this.deps.configDir, "hmac.key")); } catch { writeResult(dir, name, { ok: false, rule: "no-key" }); return; }
@@ -301,7 +578,7 @@ export class Poller {
   }
 
   private wire(i: Pending): string {
-    if (i.tpl) return i.text;
+    if (i.tpl || i.env) return i.text;
     const address = i.isRoot ? `/peer@${this.cfg.peers[i.peer].theirs.username}\n` : "";
     return `${address}#${kindLine(i.msgKind)} id=${i.id}\n${i.text}`;
   }
@@ -337,7 +614,7 @@ export class Poller {
       const times = this.sentTimes.get(i.peer) ?? []; times.push(this.now()); this.sentTimes.set(i.peer, times);
       if (i.isRoot && !i.resend && !i.tpl) this.rootIntents.set(`${i.peer}:${messageId}`, i);
       if (i.spool) { this.spoolDone.set(`${i.peer}/${i.spool}`, messageId); writeResult(this.dir(i.peer), i.spool, { ok: true, message_id: messageId }); }
-      if (i.tpl || i.resend) continue;
+      if (i.tpl || i.resend || i.env) continue;
       if (i.isRoot) await this.apply(this.threads.onOutbound({ peer: i.peer, chat: peer.chatId, root: messageId, kind: i.msgKind, isRoot: true }));
       else if (i.msgKind === "answer" && i.root !== null) await this.apply(this.threads.onOutbound({ peer: i.peer, chat: peer.chatId, root: i.root, kind: "answer", isRoot: false }));
     }
@@ -369,7 +646,10 @@ export async function main(): Promise<void> {
     cfg, tg, ourBotId: botIdFromToken(token), stateDir: stateDir(), configDir: configDir(),
     reloadConfig: () => loadConfig(peersFile()),
   });
-  await poller.recover();
+  try { await poller.start(); } catch (e) {
+    if (e instanceof TelegramError && e.code === 401) { console.error("peer-bridge: the bot token was refused"); release(); process.exit(EXIT_CONFIG); }
+    throw e;
+  }
   const guard = (fn: () => Promise<void>) => () => fn().catch(e => { console.error(`peer-bridge: ${(e as Error).message}`); process.exit(1); });
   setInterval(guard(() => poller.tick()), 30_000); // t13b-ok: the poller's own deadline tick
   setInterval(guard(() => poller.drainSpool()), 1_000); // t13b-ok: the poller's own spool drain

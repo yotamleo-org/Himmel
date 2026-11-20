@@ -1,8 +1,14 @@
 import { expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Peer } from "./config";
 import { checkOutbound } from "./egress";
+import { parseEnvelopeLine } from "./envelope";
 import { admit, createGateState } from "./gate";
+import { writeSpoolEvent } from "./spool-events";
+import { makeWorld, type World } from "./testlib-bridge";
 import { Threads } from "./threads";
 import { T0, CHAT, clock, inbound, mkThread, rootMsg, sig, threadsOf } from "./testlib-threads";
 
@@ -81,6 +87,180 @@ test("send refuses anything beyond theirs: a root kind they do not open, and eit
   expect(await out("hi", "info", true, { openOutbound: 2, sentLastMinute: 0 })).toMatchObject({ ok: false, rule: "their-open-threads" });
   expect(await out("hi", "info", false, { openOutbound: 0, sentLastMinute: 3 })).toMatchObject({ ok: false, rule: "their-rate" });
   expect(await out("hi", "info", true, { openOutbound: 1, sentLastMinute: 2 })).toEqual({ ok: true });
+});
+
+
+const SHA = "a".repeat(40), SUITE = "scripts/hooks/test-a.sh";
+const ALLOW = [{ alias: "alias-a", path: SUITE }];
+const askReq = (w: World, body: Record<string, unknown> = { sha: SHA, suites: [SUITE] }) => writeSpoolEvent({ t: "env-out", peer: "bravo", kind: "req", body }, w.alpha.peerDir);
+const bodiesOf = (w: World, from: "alpha" | "bravo") => w.wire.filter(m => m.from === from).map(m => (parseEnvelopeLine(m.text.split("\n")[2]) as any).env);
+
+test("serves: [] refuses every req with a signed refused, and answers every capacity-ask with not-served", async () => {
+  const w = await makeWorld({ serves: false, allow: ALLOW });
+  askReq(w);
+  writeSpoolEvent({ t: "env-out", peer: "bravo", kind: "capacity-ask", body: {} }, w.alpha.peerDir);
+  await w.step("alpha");
+  await w.step("bravo");
+  const answers = bodiesOf(w, "bravo");
+  expect(answers.map((a: any) => [a.kind, a.state, a.refused])).toEqual([["res", "refused", "not-served"], ["capacity", "not-served", undefined]]);
+  expect(answers[1]).toMatchObject({ queue: 0, jobs_left: 0, vm_minutes_left: 0 });
+  expect(w.bravo.jobs()).toEqual([]);
+  await w.step("alpha");
+  expect(w.alpha.jobs()).toMatchObject([{ state: "REFUSED", refused: "not-served" }]);
+  expect(w.alpha.chain("jobs.jsonl").find(r => r.kind === "capacity")).toMatchObject({ state: "not-served", capacity: "none" });
+  // And alpha now refuses to ask again while that answer is fresh.
+});
+
+test("cancel and halt are handled even when nothing is served any more", async () => {
+  const w = await makeWorld({ allow: ALLOW });
+  askReq(w);
+  await w.step("alpha");
+  await w.step("bravo");
+  w.bravo.cfg.peers.alpha.serves = [];
+  w.inject("alpha", "cancel", { job: w.alpha.jobs()[0].wire_job });
+  await w.step("bravo");
+  expect(w.bravo.jobs()[0].state).toBe("CANCELLED");
+  askReq(w);
+  w.bravo.cfg.peers.alpha.serves = ["run-suite"];
+  await w.step("alpha");
+  await w.step("bravo");
+  w.bravo.cfg.peers.alpha.serves = [];
+  w.inject("alpha", "halt", {});
+  await w.step("bravo");
+  expect(w.bravo.jobs().map(j => j.state)).toEqual(["CANCELLED", "CANCELLED"]);
+});
+
+test("an unmatched res, capacity or cancel is dropped and logged, never answered", async () => {
+  const w = await makeWorld({ allow: ALLOW });
+  const before = w.wire.length;
+  w.inject("alpha", "res", { job: "f".repeat(16), state: "accepted" });
+  w.inject("alpha", "capacity", { re: "89abcdef", state: "idle", queue: 0, jobs_left: 3, vm_minutes_left: 60 });
+  w.inject("alpha", "cancel", { job: "e".repeat(16) });
+  await w.step("bravo");
+  expect(w.wire.length).toBe(before);
+  expect(w.bravo.logs.filter(l => l.startsWith("env-drop step=8")).length).toBe(3);
+  expect(w.bravo.jobs()).toEqual([]);
+});
+
+test("a killed peer gets no answer at all, its live job is cancelled with nothing sent, and nothing it asks starts", async () => {
+  const w = await makeWorld({ allow: ALLOW });
+  askReq(w);
+  await w.step("alpha");
+  await w.step("bravo");
+  writeSpoolEvent({ t: "job-event", peer: "alpha", job: 1, event: { type: "resolve-ok", sha: SHA } }, w.bravo.peerDir);
+  await w.step("bravo");
+  const sent = w.wire.length;
+  fs.writeFileSync(join(w.bravo.configDir, "alpha.killed"), "", { mode: 0o600 });
+  w.inject("alpha", "capacity-ask", {});
+  w.inject("alpha", "req", { job: "d".repeat(16), op: "run-suite", sha: SHA, suites: [SUITE] });
+  await w.step("bravo");
+  await w.bravo.poller.tick();
+  expect(w.wire.length).toBe(sent);
+  expect(w.bravo.jobs()).toMatchObject([{ jobNo: 1, state: "CANCELLED" }]);
+  expect(w.bravo.logs.filter(l => l.startsWith("env-drop step=4")).length).toBe(2);
+  const name = writeSpoolEvent({ t: "job-event", peer: "alpha", job: 1, event: { type: "approve" } }, w.bravo.peerDir);
+  await w.bravo.poller.drainSpool();
+  expect(JSON.parse(fs.readFileSync(join(w.bravo.peerDir, "spool", "results", name), "utf8"))).toEqual({ ok: false, rule: "killed" });
+  fs.rmSync(join(w.bravo.configDir, "alpha.killed"));
+  w.inject("alpha", "capacity-ask", {});
+  await w.step("bravo");
+  expect(w.wire.length).toBe(sent + 1);
+});
+
+test("no envelope changes a config field, the allowlist or the kill file", async () => {
+  const w = await makeWorld({ allow: ALLOW });
+  const snapshot = () => ({
+    cfg: JSON.stringify(w.bravo.cfg),
+    files: fs.readdirSync(w.bravo.configDir).sort().map(n => [n, fs.readFileSync(join(w.bravo.configDir, n), "utf8")]),
+  });
+  const before = snapshot();
+  w.inject("alpha", "req", { job: "d".repeat(16), op: "run-suite", sha: SHA, suites: [SUITE] });
+  w.inject("alpha", "capacity-ask", {});
+  w.inject("alpha", "capacity", { re: "89abcdef", state: "idle", queue: 0, jobs_left: 1, vm_minutes_left: 1 });
+  w.inject("alpha", "res", { job: "f".repeat(16), state: "accepted" });
+  w.inject("alpha", "cancel", { job: "d".repeat(16) });
+  w.inject("alpha", "halt", {});
+  w.inject("alpha", "req", { job: "c".repeat(16), op: "run-suite", sha: SHA, suites: ["scripts/not-allowed.sh"] });
+  await w.step("bravo");
+  expect(snapshot()).toEqual(before);
+});
+
+
+function graphOf(entry: string): string[] {
+  const dir = fs.mkdtempSync(join(tmpdir(), "peer-meta-"));
+  try {
+    const r = spawnSync("bun", ["build", entry, "--target=bun", `--metafile=${join(dir, "meta.json")}`, `--outfile=${join(dir, "out.js")}`], { cwd: HIMMEL_ROOT, encoding: "utf8" });
+    expect([entry, r.status]).toEqual([entry, 0]);
+    return Object.keys(JSON.parse(fs.readFileSync(join(dir, "meta.json"), "utf8")).inputs).sort();
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+const read = (f: string) => fs.readFileSync(join(HIMMEL_ROOT, f), "utf8");
+const CLAUDE_CALL = /["'`]claude["'`]|\bclaude\s+(-p|--)/;
+const SPAWN_CALL = /(?<![.\w])(?:procHooks\.)?(spawnSync|spawn|execFileSync|execFile|execSync|runProc)\(\s*(\[?\s*"[^"]+"|[A-Za-z_.0-9]+)/g;
+const spawnSites = (files: string[]): string[] => files.flatMap(f => [...read(f).matchAll(SPAWN_CALL)].map(m => `${f}: ${m[1]}(${m[2]}`));
+
+test("envelope.ts reaches only itself, the grammar and the ids: no process, no claude", () => {
+  const g = graphOf("scripts/peer-bridge/envelope.ts");
+  expect(g).toEqual(["scripts/peer-bridge/envelope.ts", "scripts/peer-bridge/grammar.ts", "scripts/peer-bridge/ids.ts"]);
+  for (const f of g) { expect([f, CLAUDE_CALL.test(read(f))]).toEqual([f, false]); expect(spawnSites([f])).toEqual([]); }
+});
+
+test("the poller reaches the one claude call it always had, in the text reader, and nothing the typed path added", () => {
+  const g = graphOf("scripts/peer-bridge/poller.ts");
+  expect(g).toContain("scripts/peer-bridge/gate.ts");
+  expect(g).toContain("scripts/peer-bridge/jobstate.ts");
+  expect(g).toContain("scripts/peer-bridge/resolve.ts");
+  expect(g.filter(f => CLAUDE_CALL.test(read(f)))).toEqual(["scripts/peer-bridge/reader.ts"]);
+  for (const f of ["envelope", "sign", "resolve", "jobstate", "spool-events", "jobs"]) expect([f, CLAUDE_CALL.test(read(`scripts/peer-bridge/${f}.ts`))]).toEqual([f, false]);
+});
+
+test("the poller's spawn list is slice A's: ps, redact_check, the usage preflight, the reader and flock", () => {
+  const sites = spawnSites(graphOf("scripts/peer-bridge/poller.ts"));
+  expect(sites).toEqual([
+    'scripts/peer-bridge/chain.ts: spawnSync("ps"',
+    'scripts/peer-bridge/egress.ts: runProc(["bash"',
+    "scripts/peer-bridge/proc.ts: runProc(argv",
+    "scripts/peer-bridge/proc.ts: spawn(argv",
+    'scripts/peer-bridge/reader.ts: runProc(["bash"',
+    'scripts/peer-bridge/reader.ts: spawn("claude"',
+    'scripts/telegram/bus.ts: spawn("flock"',
+  ]);
+  expect(sites.filter(s => /git/.test(s))).toEqual([]);
+});
+
+test("git runs only in jobs.ts on the typed path, with the two verbs it was given", () => {
+  const typed = fs.readdirSync(join(HIMMEL_ROOT, "scripts/peer-bridge")).filter(n => /\.ts$/.test(n) && !/\.test\.ts$|^testlib-/.test(n));
+  const withGit = typed.filter(n => /["'`]git["'`]/.test(read(`scripts/peer-bridge/${n}`)));
+  expect(withGit.sort()).toEqual(["jobs.ts", "setup.ts"]);
+  const jobs = read("scripts/peer-bridge/jobs.ts");
+  expect(jobs.match(/await git\(deps,[^)]*\)/g)).toEqual(['await git(deps, "branch", "-r", "--contains", sha)', 'await git(deps, "cat-file", "-e", `${sha}:${s}`)']);
+  expect(jobs.match(/runProc\(/g)).toHaveLength(1);
+});
+
+test("an envelope can only narrow: serves, approve, budgets and the allowlist have no inbound writer", () => {
+  const src = (f: string) => fs.readFileSync(join(import.meta.dir, f), "utf8");
+  expect(src("poller.ts")).not.toMatch(/writeFileSync|renameSync|replaceJson|\.suites`|killed`\),? *["']|openSync\([^)]*(peers|suites|killed)/);
+  for (const f of ["gate.ts", "envelope.ts", "resolve.ts", "jobstate.ts", "jobs.ts"]) expect(src(f)).not.toMatch(/from "\.\/setup"/);
+});
+
+test("answers to a peer's asks are capped per hour, like slice A's automatic templates", async () => {
+  const w = await makeWorld({ allow: ALLOW });
+  for (let i = 0; i < 25; i++) w.inject("alpha", "capacity-ask", {});
+  await w.step("bravo");
+  expect(bodiesOf(w, "bravo").length).toBe(20);
+  expect(w.bravo.logs.filter(l => l.includes("hourly cap on answers")).length).toBe(5);
+  w.clock.t += 61 * 60_000;
+  w.inject("alpha", "capacity-ask", {});
+  await w.step("bravo");
+  expect(bodiesOf(w, "bravo").length).toBe(21);
+});
+
+test("req over budget is refused with budget, and the requester ends REFUSED", async () => {
+  const w = await makeWorld({ allow: ALLOW, budgets: { jobsPerDay: 1 } });
+  for (let i = 0; i < 2; i++) { askReq(w); await w.step("alpha"); await w.step("bravo"); if (i === 0) { writeSpoolEvent({ t: "job-event", peer: "alpha", job: 1, event: { type: "resolve-ok", sha: SHA } }, w.bravo.peerDir); await w.step("bravo"); } }
+  await w.step("alpha");
+  expect(w.alpha.jobs().map(j => j.state)).toEqual(["ACCEPTED", "REFUSED"]);
+  expect(w.alpha.jobs()[1].refused).toBe("budget");
 });
 
 test("our open outbound threads feed their cap", async () => {
