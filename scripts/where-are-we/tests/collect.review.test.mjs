@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, statSync, utimesSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync, statSync, utimesSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { makeTmpDir } from '../../lib/test-tmpdir.mjs';
 import { main, readJira, readPRBatch, runCLI } from '../collect.mjs';
@@ -114,6 +114,36 @@ test('all collector writers refuse concurrent reads and recover automatically af
   assert.match(fold(readRecords(ledger)).sources.jira.errors.join(' '), /pending or interrupted/);
   const next = spawnSync(process.execPath, [script, ledger, starts, '0'], { encoding: 'utf8', timeout: 3000 });
   assert.equal(next.status, 0, next.stderr);
+});
+
+test('the CLI refuses while another process holds the collection flock', async () => {
+  const dir = makeTmpDir('waw-flock-review-'), ledger = join(dir, 'ledger.jsonl');
+  writeFileSync(ledger, '');
+  const lock = join(realpathSync(dir), 'ledger.jsonl.collect.lock');
+  // The holder keeps descriptor 9 (and so the flock) until it is killed; it waits, because the probe below also takes the lock for an instant.
+  const holder = spawn('sh', ['-c', 'exec 9>"$0" && flock -w 5 9 && exec sleep 30', lock], { stdio: 'ignore' }), closed = once(holder, 'close');
+  try {
+    await waitFor(() => spawnSync('flock', ['-n', lock, 'true']).status === 1);
+    const held = runCLI(['--ledger', ledger]);
+    assert.equal(held.status, 1);
+    assert.match(held.stderr, /collector already running; freshness unchanged/);
+    assert.equal(readFileSync(ledger, 'utf8'), '', 'a refused collector appends nothing');
+  } finally { holder.kill('SIGKILL'); await closed; }
+});
+
+test('the CLI names a missing flock instead of collecting without the lock', () => {
+  const dir = makeTmpDir('waw-noflock-review-'), ledger = join(dir, 'ledger.jsonl'), bin = join(dir, 'bin');
+  writeFileSync(ledger, '');
+  // A PATH with only `timeout` on it: the CLI starts, and flock cannot.
+  mkdirSync(bin); symlinkSync('/usr/bin/timeout', join(bin, 'timeout'));
+  const saved = process.env.PATH;
+  try {
+    process.env.PATH = bin;
+    const missing = runCLI(['--ledger', ledger]);
+    assert.equal(missing.status, 1);
+    assert.match(missing.stderr, /collector lock unavailable; local flock support is required/);
+    assert.equal(readFileSync(ledger, 'utf8'), '', 'a refused collector appends nothing');
+  } finally { process.env.PATH = saved; }
 });
 
 test('real Jira client bridge only splits structured identity errors, not transport failures', () => {
