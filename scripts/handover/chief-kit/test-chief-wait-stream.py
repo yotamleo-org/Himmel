@@ -244,6 +244,28 @@ echo 'HANDLED close-wrapped'
         self.assertIn('adopted', self.path('wakes').read_text())
         self.stop(again)
 
+    def test_stream_child_honours_a_stop_request_at_its_safe_point(self):
+        self.path('stop').touch()
+        out = self.root / 'child-out'
+        with out.open('w') as f:
+            child = subprocess.run(['bash', str(HERE / 'chief-wait.sh'), str(self.inbox), '--doc', str(self.doc),
+                                    '--workers-from', str(self.fleet)], env=dict(self.env, CHIEF_WAIT_STREAM_SERVICE='1'),
+                                   stdin=subprocess.DEVNULL, stdout=f, stderr=subprocess.STDOUT, timeout=15)
+        self.assertEqual(child.returncode, 143, out.read_text())
+        self.assertIn('state=exited exit=stream-stop', Path(str(self.inbox) + '.wait').read_text())
+
+    def test_adopted_child_stopped_by_request_is_not_a_waiter_error(self):
+        self.script('tick', 'sleep 3\necho "TICK workers=0 livestate=0 prs=none tails=none acts=none workerset=0 board=ok tracker=ok denials=0 capacity=FULL"\n')
+        env = dict(self.env, CHIEF_WAIT_STREAM_SOFT_SEC='.3', CHIEF_WAIT_STREAM_HARD_SEC='1')
+        p, out = self.start(env=env)
+        self.assertEqual(p.wait(timeout=5), 0)
+        self.assertIn('child=busy', out.read_text())
+        again, adopted = self.start()
+        self.until(lambda: self.state().get('sup') == str(again.pid))
+        self.stop(again)
+        self.assertIn('STOPPED', adopted.read_text())
+        self.assertNotIn('waiter-error', adopted.read_text())
+
     def test_killed_after_output_replays_and_lock_is_not_inherited(self):
         env = dict(self.env, CHIEF_WAIT_STREAM_PAUSE_LOG='1')
         p, _ = self.start(env=env)
