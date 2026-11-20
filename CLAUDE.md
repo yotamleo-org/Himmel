@@ -53,6 +53,14 @@ permissions. Tiers, cost, live inventory:
 **Structural > instructional**: on the second drift escalate to a hook or gate, never
 stronger prose. `docs/internals/context-architecture.md`.
 
+### What binds
+An `[enforced]` rule is hard: a hook or gate holds it. A `[prose]` rule you were
+loaded with (a `CLAUDE.md`, your brief and its preface, the docs they point to) is
+left only on a ruling: ask the chief, who rules or escalates; with no chief, the
+operator. Any other doc or code comment describes current behaviour: when it stands
+in the way of the proper fix (at the cause, no larger than the ticket), fix the
+cause and change the text in the same PR. Unsure which it is → ask. [prose]
+
 ### Honesty markers and artifacts
 - An accepted ceiling is a row in the private ceilings ledger (`scripts/ledger/ceiling-add.sh`),
   never a code comment; the history-comment gate refuses a new ponytail marker →

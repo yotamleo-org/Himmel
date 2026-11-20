@@ -701,6 +701,15 @@ cross-lane persistence claim. No registry or hook authority changes here.
 A worker that hits something it cannot decide reports to the chief, not to the
 operator. The chief verifies the finding itself, then answers.
 
+**The chief rules for the proper fix at the smallest size.** A doc page or code
+comment that describes today's behaviour is not a constraint, so the fix lands at
+the cause and the text changes in the same PR. The fix adds no gate, abstraction
+or option the ticket does not need. When the proper fix is outside the worker's
+scope, the chief files a ticket for it, never accepts a silent workaround. Each
+ruling states its reason. A ruling that would change or set aside a `CLAUDE.md`
+rule, relax a guard or move scope goes to the operator; when unsure, the chief
+asks its judge one question first.
+
 Re-tasking a running worker goes through the **RETASK channel**: each dispatch
 carries a fresh nonce, and a genuine revision is a direct message quoting it.
 Expanding or redirecting a worker needs the token; narrowing it or halting it does

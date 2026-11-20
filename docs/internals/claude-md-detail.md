@@ -82,6 +82,26 @@ escalate to a hook, gate or classifier, never to stronger prose. Frame + worked
 examples:
 [`docs/internals/context-architecture.md`](context-architecture.md).
 
+### What binds
+Three kinds of text, told apart by how they reached you:
+
+- **Hard.** An `[enforced]` rule: a hook or gate holds it, whatever the prose says.
+- **Escalation.** A `[prose]` rule you were loaded with: a `CLAUDE.md`, your brief
+  and its preface, and the docs those point to for detail. Leave it only on a
+  ruling. A worker asks the chief with a `FINDING`; the chief rules, or takes it to
+  the operator when the ruling would change or set aside a `CLAUDE.md` rule, relax
+  a guard or move scope. A session with no chief asks the operator.
+- **Description.** Every other doc page and every code comment. It says how the
+  system works today. When it stands in the way of the proper fix, fix the cause
+  and change the text in the same PR. A workaround built to keep the text true
+  is the wrong fix.
+
+The proper fix lands at the cause and is no larger than the ticket: no new gate,
+abstraction or option the ticket does not need. A hook or gate still binds when
+its doc is wrong; the recovery is the stuck playbook, never a reshaped command.
+Nothing enforces this rule. A second observed drift earns a gate, not stronger
+wording.
+
 ### Honesty markers — the ceilings ledger
 An accepted ceiling (what the code deliberately does not do, and what would
 justify lifting it) is a row in the private ceilings ledger, written with
