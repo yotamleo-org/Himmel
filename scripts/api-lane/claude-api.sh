@@ -30,8 +30,8 @@
 #        permission mode, tool grant and budget cap, --output-format json. The fallback runs only when the native
 #        usage preflight says PROCEED, BANK-STALE or BANK-UNKNOWN; SKIPPED-BANK or SKIPPED-FLEET skips it and the
 #        alert says so. The api lane itself refuses only on a real block, named in the alert: its own admission
-#        limit, a live ledger lock or our own spend cap; an unknown, stale or low credit reading never refuses (an
-#        exhaustion mark orders auto routing, and a success clears it). A prompt on stdin is kept in a mode-600 scratch file (removed on every exit) that the API call
+#        limit or a live ledger lock; no credit reading, reset date or spend-cap estimate refuses unless the roster
+#        sets enforce_budget (an exhaustion mark orders auto routing, and a success clears it). A prompt on stdin is kept in a mode-600 scratch file (removed on every exit) that the API call
 #        reads and the fallback replays byte for byte; it is never printed, logged or put in an argv. A malformed request
 #        never falls back. A call granted
 #        Edit, Write or Bash falls back only from a refusal before any request (exit 2), never from a run that started
