@@ -93,9 +93,6 @@ function resolveVault(arg) {
   return resolve(candidate);
 }
 
-// ---------------------------------------------------------------- feed list
-
-/** `<url> [label]` per line; a `#` at the line start or after whitespace starts a comment. */
 function parseFeedList(text, file) {
   const feeds = [];
   const problems = [];
@@ -111,8 +108,6 @@ function parseFeedList(text, file) {
   });
   return { feeds, problems };
 }
-
-// ---------------------------------------------------------------- seen state
 
 const seenKey = (feed, id) => `${feed}\n${id}`;
 
@@ -137,8 +132,6 @@ function loadSeen(path) {
   return { seen, needsNewline: text !== "" && !text.endsWith("\n") };
 }
 
-// ---------------------------------------------------------------------- fetch
-
 const isWalled = (host) => WALLED_HOSTS.some((w) => host === w || host.endsWith(`.${w}`));
 
 async function readCapped(res) {
@@ -152,8 +145,6 @@ async function readCapped(res) {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-/** Feed text for one list URL. file:// serves local fixtures; http(s) follows up
- * to MAX_REDIRECTS hops by hand so a walled host is never contacted. */
 async function fetchFeed(url) {
   if (url.toLowerCase().startsWith("file://")) {
     const path = fileURLToPath(url);
@@ -186,8 +177,6 @@ function describeError(e) {
   return String((cause && `${e.message} (${cause})`) || (e && e.message) || e).replace(/\s+/g, " ").slice(0, 200);
 }
 
-// ---------------------------------------------------------------------- parse
-
 const NS = "(?:[\\w.-]+:)?";
 const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
 
@@ -203,12 +192,8 @@ function decodeEntities(s) {
   });
 }
 
-// The scans below are linear in the feed size on purpose: a feed is untrusted
-// input, and a regex with an unbounded lazy gap goes quadratic on a crafted one,
-// which no fetch timeout bounds. Tag attributes are capped at TAG_MAX characters.
 const TAG_MAX = 1000;
 
-/** Element text: CDATA sections verbatim, the rest entity-decoded. */
 function xmlText(raw) {
   let out = "";
   let i = 0;
@@ -222,7 +207,6 @@ function xmlText(raw) {
   return out + decodeEntities(raw.slice(i));
 }
 
-/** Text of the first non-empty element named one of `names` (any namespace prefix). */
 function field(block, names) {
   for (const n of names) {
     const open = new RegExp(`<(${NS}${n})(?![\\w:.-])[^>]{0,${TAG_MAX}}(?<!/)>`, "g");
@@ -242,7 +226,6 @@ const attr = (tag, name) => {
   return m ? decodeEntities(m[1] ?? m[2]) : "";
 };
 
-/** Atom `<link rel="alternate" href>` (rel optional), else RSS `<link>text</link>`. */
 function linkOf(block) {
   for (const m of block.matchAll(new RegExp(`<link(?![\\w:.-])([^>]{0,${TAG_MAX}}?)/?>`, "g"))) {
     const href = attr(m[1], "href");
@@ -262,7 +245,6 @@ function cleanLink(raw, base) {
   }
 }
 
-/** Plain text of an HTML fragment: block ends become blank lines, `<li>` a `- ` item, the rest of the markup goes. */
 function htmlToText(html) {
   let out = "";
   let skip = "";
@@ -292,11 +274,10 @@ function htmlToText(html) {
     .trim();
 }
 
-// eslint-disable-next-line no-control-regex
-const stripControls = (s) => s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "");
+const isControl = (c) => (c < 32 && c !== 9 && c !== 10 && c !== 13) || c === 127;
+const stripControls = (s) => Array.from(s).filter((ch) => !isControl(ch.charCodeAt(0))).join("");
 const oneLine = (s) => stripControls(s).replace(/\s+/g, " ").trim();
 
-/** → {channel, entries: [{id, title, link, ts, body}], skipped}. Throws when `xml` is no feed. */
 function parseFeed(xml, feedUrl) {
   if (!/<(?:rss|feed|rdf:RDF)(?![\w:.-])/i.test(xml)) throw new Error("not a feed (no rss, atom or rdf root element)");
   const blocks = [];
@@ -329,9 +310,6 @@ function parseFeed(xml, feedUrl) {
   return { channel, entries, skipped };
 }
 
-// ----------------------------------------------------------------------- clip
-
-/** Double-quoted, escaped YAML scalar (same escaping as the Telegram clip). */
 function yamlQuote(s) {
   return '"' + String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/[\n\t]+/g, " ") + '"';
 }
@@ -348,7 +326,6 @@ function clipBody(entry) {
   return b.length > MAX_BODY_CHARS ? `${b.slice(0, MAX_BODY_CHARS).trimEnd()}…` : b;
 }
 
-/** Same layout as the Telegram clip: front matter, `# title`, body, `## Source`. */
 function buildClip({ title, source, type, body }) {
   const fm = [
     "---",
@@ -366,8 +343,6 @@ function buildClip({ title, source, type, body }) {
 
 const clipFilename = (feed, id, title) =>
   `feed-${createHash("sha1").update(seenKey(feed, id)).digest("hex").slice(0, 10)}-${slugify(title)}.md`;
-
-// ------------------------------------------------------------------------ main
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -430,8 +405,6 @@ async function main() {
       let wrote = true;
       try {
         mkdirSync(clippings, { recursive: true });
-        // Exclusive create: a clip left by a run that died before its seen line
-        // was appended is kept as it is, and only recorded.
         writeFileSync(join(clippings, fname), clip, { encoding: "utf8", flag: "wx" });
       } catch (e) {
         if (e.code !== "EEXIST") die(2, `failed to write Clippings/${fname}: ${e.code || e.message}`);

@@ -1,25 +1,5 @@
 #!/usr/bin/env bash
-# Tests for feed-clip.mjs: feed entries become ordinary inbox clips.
-#
-# Scope (synthetic fixtures served from local files and a loopback http server;
-# no real feed is ever fetched):
-#   1. script parses; usage / arg-error exit codes; vault validation
-#   2. one inbox clip per entry (Atom + RSS), a second run writes none
-#   3. a written clip has the shape of a Telegram clip: same front-matter keys in
-#      the same order apart from telegram_*, `clipped_via: feed`, valid YAML,
-#      unharvested + unprocessed (the harvest scan lists it), type from the
-#      Telegram classifier
-#   4. body: markup stripped, script dropped, entities decoded, content:encoded
-#      wins over description; entries without an http(s) link are skipped
-#   5. a failing feed (missing file, HTTP 500, hang, walled host, redirect to a
-#      walled host, not a feed, oversized, malformed list line) is one line each,
-#      the other feeds are still processed, the exit code is 0
-#   6. per-feed cap: 10 unseen entries and a cap of 3 write 3, 3, 3, 1, 0
-#   7. state: the seen file is authoritative, lost state never overwrites a clip
-#   8. --dry-run writes nothing, not even the seen file
-#   9. no feed list is a one-line note, exit 0
-#
-# Cross-platform: bash on Linux/macOS. Uses node (not bun).
+# Tests for feed-clip.mjs. Fixtures are synthetic: local files and a loopback http server, never a real feed.
 
 set -u -o pipefail
 
@@ -47,19 +27,16 @@ assert() {
 
 export FEED_CLIP_TODAY=2026-11-20
 
-# run_tool <args...>: stdout+stderr in $out, exit code in $rc.
 out=""; rc=0
 run_tool() { out="$(node "$SCRIPT" "$@" 2>&1)"; rc=$?; }
 
 newvault() { local v="$tmpdir/$1"; mkdir -p "$v/.obsidian" "$v/Clippings"; echo "$v"; }
-# pick <vault> <glob>: the top-level Clippings/ files matching a glob, one per line.
 pick() { local f; for f in "$1"/Clippings/$2; do [ -e "$f" ] && echo "$f"; done; }
 nclips() { pick "$1" 'feed-*.md' | wc -l | tr -d ' '; }
 nlines() { if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; else echo 0; fi; }
 has() { if grep -q -- "$1" <<<"$2"; then echo ok; else echo no; fi; }
 hasline() { if grep -qxF -- "$1" <<<"$2"; then echo ok; else echo no; fi; }
 
-# -- Test 1: parse, usage, vault validation ---------------------------------
 echo "Test 1: parse + usage + vault validation"
 if [ -r "$SCRIPT" ]; then s=yes; else s=no; fi
 assert "feed-clip.mjs exists" yes "$s"
@@ -74,7 +51,6 @@ NOVAULT="$tmpdir/novault"; mkdir -p "$NOVAULT"
 node "$SCRIPT" --vault "$NOVAULT" >/dev/null 2>&1; assert "vault without .obsidian exits 2" 2 "$?"
 node "$SCRIPT" --vault "$tmpdir/does-not-exist" >/dev/null 2>&1; assert "missing vault exits 2" 2 "$?"
 
-# -- Test 2: loopback server for the http cases ------------------------------
 cat > "$tmpdir/server.mjs" <<'EOF'
 import http from "node:http";
 import { readFileSync } from "node:fs";
@@ -99,7 +75,6 @@ read -r PORT SRV_PID <&3
 if [ -n "${PORT:-}" ]; then s=yes; else s=no; fi
 assert "loopback fixture server started" yes "$s"
 
-# -- Test 3: one clip per entry, second run writes none ---------------------
 echo "Test 3: one inbox clip per entry; a second run writes none"
 V="$(newvault basic)"
 printf '# synthetic feeds\nfile://%s AtomRel\nfile://%s RssBlog\n' "$FIX/atom-releases.xml" "$FIX/rss-blog.xml" > "$V/.feed-clip-feeds"
@@ -112,7 +87,6 @@ assert "second run exits 0" 0 "$rc"
 assert "second run wrote no clip" 4 "$(nclips "$V")"
 assert "second run left the seen file alone" 4 "$(nlines "$V/.feed-clip-seen.jsonl")"
 
-# -- Test 4: clip shape ------------------------------------------------------
 echo "Test 4: a feed clip has the shape of a Telegram clip"
 rel="$(pick "$V" 'feed-*v1-2-0.md')"
 assert "release clip exists" 1 "$(printf '%s\n' "$rel" | grep -c .)"
@@ -131,7 +105,6 @@ assert "no harvested_at / processed / telegram_* key" absent "$s"
 blog="$(pick "$V" 'feed-*scaling-queues-at-example.md')"
 assert "non-github link is type article" ok "$(hasline 'type: article' "$(cat "$blog")")"
 
-# key set + order identical to a Telegram-built clip, telegram_* aside
 LIB="$TGLIB" CLIPF="$rel" node --input-type=module -e "
 import {readFileSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
@@ -145,7 +118,6 @@ console.log(a === b ? 'same' : a + ' != ' + b);
 " >"$tmpdir/_keys" 2>&1
 assert "front-matter keys + order match a Telegram clip (telegram_* aside)" same "$(cat "$tmpdir/_keys")"
 
-# every written clip is valid YAML with the expected values
 (cd "$TOOLS_DIR" && CLIPS_DIR="$V/Clippings" node --input-type=module -e "
 import {readFileSync, readdirSync} from 'node:fs';
 const _y = await import('js-yaml'); const yaml = _y.default ?? _y;
@@ -160,8 +132,6 @@ console.log(bad === 0 && n === 4 ? 'valid' : 'BAD ' + bad + '/' + n);
 ") >"$tmpdir/_yaml" 2>&1
 assert "every written clip is valid YAML (4 clips)" valid "$(cat "$tmpdir/_yaml")"
 
-# the harvest scan (harvest-clips.md, "Scan for unharvested clips"): .md files at
-# depth 1-2 minus _synthesis/, _done/, _evidence/, _deferred.md, without harvested_at
 unharv=0
 for f in "$V"/Clippings/*.md "$V"/Clippings/*/*.md; do
   [ -f "$f" ] || continue
@@ -170,7 +140,6 @@ for f in "$V"/Clippings/*.md "$V"/Clippings/*/*.md; do
 done
 assert "the harvest scan lists all 4 clips as unharvested" 4 "$unharv"
 
-# -- Test 5: titles + body ---------------------------------------------------
 echo "Test 5: titles and body text"
 assert "label prefixes a bare version title" ok "$(hasline 'title: "AtomRel: v1.2.0"' "$(cat "$rel")")"
 assert "release body: list item text kept" ok "$(hasline '- Added the --fast flag' "$(cat "$rel")")"
@@ -191,7 +160,6 @@ assert "entry without a link is not clipped" 0 "$nolink"
 nojs=$(grep -l 'javascript:' "$V"/Clippings/*.md 2>/dev/null | wc -l | tr -d ' ')
 assert "entry with a non-http link is not clipped" 0 "$nojs"
 
-# -- Test 6: failing feeds are one line each, the run still succeeds ----------
 echo "Test 6: failing feeds"
 V="$(newvault failing)"
 cat > "$V/.feed-clip-feeds" <<EOF
@@ -220,7 +188,6 @@ assert "malformed list line reported with its line number" ok "$(has 'feed-clip:
 assert "the good feeds still wrote their clips (2 via redirect + 2 blog)" 4 "$(nclips "$V")"
 assert "failed feeds wrote no seen line" 4 "$(nlines "$V/.feed-clip-seen.jsonl")"
 
-# -- Test 6a: over http an entry without a link is skipped, never given the feed URL
 echo "Test 6a: http feed with a link-less entry"
 V="$(newvault httpblog)"
 printf 'http://127.0.0.1:%s/blog Blog\n' "$PORT" > "$V/.feed-clip-feeds"
@@ -230,7 +197,6 @@ assert "http blog feed: 2 clips (the link-less and the script-link entries skipp
 if grep -l '^source: http://127.0.0.1' "$V"/Clippings/*.md >/dev/null 2>&1; then s=feed-url; else s=none; fi
 assert "no clip carries the feed URL as its source" none "$s"
 
-# -- Test 6b: a crafted feed cannot stall the parser --------------------------
 echo "Test 6b: a crafted feed cannot stall the parser"
 V="$(newvault hostile)"
 {
@@ -249,7 +215,6 @@ if [ "$elapsed" -le 15 ]; then s=fast; else s="${elapsed}s"; fi
 assert "crafted feed parsed in 15 s or less" fast "$s"
 assert "crafted feed still yielded its one entry" 1 "$(nclips "$V")"
 
-# -- Test 7: per-feed cap ----------------------------------------------------
 echo "Test 7: per-feed cap"
 V="$(newvault cap)"
 {
@@ -285,7 +250,6 @@ printf 'file://%s Ten\n' "$tmpdir/ten.xml" > "$V2/.feed-clip-feeds"
 run_tool --vault "$V2"
 assert "default cap is 3" 3 "$(nclips "$V2")"
 
-# -- Test 8: seen state is authoritative -------------------------------------
 echo "Test 8: seen state"
 V="$(newvault state)"
 printf 'file://%s Ten\n' "$tmpdir/ten.xml" > "$V/.feed-clip-feeds"
@@ -294,7 +258,6 @@ assert "10 clips" 10 "$(nclips "$V")"
 rm "$(find "$V/Clippings" -name '*ten-entry-5.md')"
 run_tool --vault "$V" --cap 10
 assert "a deleted clip is not clipped again" 9 "$(nclips "$V")"
-# a crash between the clip write and the seen append: clip exists, state lost
 V="$(newvault lost-state)"
 printf 'file://%s Ten\n' "$tmpdir/ten.xml" > "$V/.feed-clip-feeds"
 run_tool --vault "$V" --cap 10
@@ -306,12 +269,10 @@ assert "lost state: exit 0" 0 "$rc"
 assert "lost state: no duplicate clip" 10 "$(nclips "$V")"
 assert "lost state: existing clip never overwritten" ok "$(has 'EDITED BY HAND' "$(cat "$first")")"
 assert "lost state: seen file rebuilt" 10 "$(nlines "$V/.feed-clip-seen.jsonl")"
-# a half-written last line of the seen file is ignored, not fatal
 printf '{"feed":"x","id":"y' >> "$V/.feed-clip-seen.jsonl"
 run_tool --vault "$V" --cap 10
 assert "a truncated seen line does not fail the run" 0 "$rc"
 
-# -- Test 9: dry run ---------------------------------------------------------
 echo "Test 9: --dry-run"
 V="$(newvault dry)"
 printf 'file://%s AtomRel\n' "$FIX/atom-releases.xml" > "$V/.feed-clip-feeds"
@@ -325,7 +286,6 @@ assert "dry-run wrote no seen file" absent "$s"
 run_tool --vault "$V"
 assert "the real run after a dry run still clips both" 2 "$(nclips "$V")"
 
-# -- Test 10: no feed list, explicit --feeds ---------------------------------
 echo "Test 10: feed list location"
 V="$(newvault nolist)"
 run_tool --vault "$V"
@@ -338,7 +298,6 @@ assert "--feeds reads a list from another path" 2 "$(nclips "$V")"
 run_tool --vault "$V" --feeds "$tmpdir/does-not-exist.list"
 assert "--feeds with a missing file exits 0 with a note" ok "$(has 'no feed list' "$out")"
 
-# -- Test 11: an unusable state or list file is exit 2, never a silent re-clip -
 echo "Test 11: unreadable state"
 V="$(newvault badstate)"
 printf 'file://%s AtomRel\n' "$FIX/atom-releases.xml" > "$V/.feed-clip-feeds"
@@ -351,7 +310,6 @@ mkdir "$V/.feed-clip-feeds"
 run_tool --vault "$V"
 assert "an unreadable feed list exits 2" 2 "$rc"
 
-# -- Summary -----------------------------------------------------------------
 echo ""
 echo "feed-clip tests: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
