@@ -51,7 +51,6 @@ test('roleConflict_pending_counts_as_taken', () => {
   const c = roles.roleConflict('333', 'notice', ids);
   assert.equal(c.conflictsWith, 'pending');
   assert.equal(roles.roleConflict('333', 'bridge', ids).conflictsWith, 'pending');
-  // the part that published the pending id may resume with it
   assert.equal(roles.roleConflict('333', 'notice', { notice: '333', pending: ['333'] }), null);
   // the same pending id still blocks every other role
   assert.equal(roles.roleConflict('333', 'main', { notice: '333', pending: ['333'] }).conflictsWith, 'notice');

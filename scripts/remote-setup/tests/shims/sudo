@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Test shim for sudo. Records argv and refuses to run anything: slice 1a never needs sudo, so
-# any call is a test failure the suite can see in $RST/sudo.log.
+# Test shim for sudo: records argv to $RST/sudo.log and runs nothing.
 RST=${RST:?RST must point at the test dir}
 printf 'sudo %s\n' "$*" >> "$RST/sudo.log"
 exit 0

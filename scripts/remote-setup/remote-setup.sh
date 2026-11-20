@@ -61,7 +61,6 @@ for a in "$@"; do
     esac
 done
 
-# Slice 1a builds `bot` and `status`; the other parts say so plainly.
 rs_later() {
     rs_fix "$1 is not part of this himmel version yet: it arrives in a later update, so run /himmel-update now and then, and see docs/setup/remote-setup.md"
 }

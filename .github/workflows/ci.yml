@@ -2143,11 +2143,8 @@ jobs:
         run: |
           sudo atd
           pgrep -x atd > /dev/null || { echo "::error::atd is not running in the CI image; the arm-resume scheduler backend would fail later with an unrelated symptom" >&2; exit 1; }
-      # The remote-setup guide lint (scripts/remote-setup/test-remote-setup-guide.sh) checks every
-      # command on docs/setup/remote-setup.md in bash, zsh and fish, and under CI=true it FAILS when zsh
-      # or fish is missing, so it can never pass by checking nothing. The CI image bakes zsh, not fish yet;
-      # a fork or dependabot run has neither. Install what is missing on a hosted runner (the container
-      # has passwordless sudo, like the atd step above). The himmel-vm and gcp guests bake both.
+      # The remote-setup guide lint checks every command on docs/setup/remote-setup.md in bash, zsh and
+      # fish, and under CI=true it fails when zsh or fish is missing, so it cannot pass by checking nothing.
       - name: Install zsh and fish (remote-setup guide lint)
         if: runner.os == 'Linux' && runner.environment == 'github-hosted'
         timeout-minutes: 13

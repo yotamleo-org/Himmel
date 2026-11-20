@@ -203,8 +203,6 @@ run_drive() { # run_drive [run_sut options] <stdin-file> <lib function> [args]
     RUN_ENV=""
 }
 
-# ── cases: Task 1, the shared lib, the output contract and the harness ──
-
 # Every writing subcommand refuses, exit 3 with a FIX, and writes nothing, whatever way the
 # guard is tripped (I2). 4 subcommands x 4 ways = 16 cases, plus a positive control.
 case_guard_matrix_every_writer() {
@@ -252,14 +250,13 @@ case_usage_rows_every_subcommand() {
     done
 }
 
-# Subcommands whose rows are live. A later task adds its subcommand here when it builds it.
-BUILT_SUBS="status bot"
+LIVE_SUBCOMMANDS="status bot"
 
 case_contract_rows_every_subcommand() {
     local sub row
     for sub in bot away sudo peer status; do
         for row in success getme_failure network_failure preflight_miss; do
-            case " $BUILT_SUBS " in
+            case " $LIVE_SUBCOMMANDS " in
                 *" $sub "*) contract_row "$sub" "$row" ;;
                 *) SKIPN=$((SKIPN + 1)) ;;
             esac
@@ -394,8 +391,6 @@ case_outside_checkout_gives_cd_fix() {
     check "status too" has "$LAST" "run this from your himmel folder: cd "
 }
 
-# ── cases: Task 4, the status aggregator ────────────────────────────────
-
 part_field() { jq -r ".parts[$1].$2" "$T/out"; } # part_field <index 0-3> <field>
 
 # A fixture whose lib ships one more item, so a part beyond part 1 is live.
@@ -524,8 +519,6 @@ case_status_reads_no_daemon_log_peers_json_or_mode() {
     run_sut --json "$T/in" status --json
     check "a changed himmelctl answer changes the output" has "$(part_field 0 detail)" "A-DIFFERENT-ANSWER"
 }
-
-# ── cases: Task 5, remote-setup.sh bot (part 1) ─────────────────────────
 
 CHANNEL_DIR() { printf '%s' "$HOME_FIX/.claude/channels/telegram"; }
 STORE_FILE() { printf '%s' "$HOME_FIX/.claude/channels/telegram/.env"; }
@@ -681,7 +674,6 @@ case_bot_post_write_distinct_tokens_failure_restores_previous() {
     check "the FIX says the previous token was restored" has "$LAST" "restored"
     check "no pairing after the rollback" eq "$(onboard_calls)" 0
     assert_stores_unchanged
-    # a fresh station: nothing to restore, so the new token must not stay
     rm -rf "$HOME_FIX/.claude"
     feed "$new"
     run_sut "$T/in" bot

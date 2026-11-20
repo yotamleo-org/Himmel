@@ -478,7 +478,6 @@ function installLaunchAgent({ repoRoot, dryRun } = {}) {
   if (unchanged && loaded === true) {
     return { ok: true, actions: [], detail: `${LAUNCHD_LABEL} already installed at ${plistPath} and loaded` };
   }
-  // A changed plist behind a loaded job: boot the old one out so the new bytes are what runs.
   if (loaded === true) {
     const out = spawnSync('launchctl', ['bootout', `${domain}/${LAUNCHD_LABEL}`], { encoding: 'utf8' });
     if (out.status !== 0) {

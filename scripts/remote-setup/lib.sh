@@ -12,8 +12,6 @@
 RS_LIB_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 RS_ROOT_GUESS=$(cd "$RS_LIB_DIR/../.." && pwd -P)
 
-# Status item ids this version of the helper can read. Part 1 only in this release; a later
-# slice appends its ids here, and `status` marks any part whose items are not listed as skipped.
 RS_ITEMS_SHIPPED="bridge-health bridge-persistence distinct-tokens"
 
 RS_PART=""

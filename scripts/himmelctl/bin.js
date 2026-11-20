@@ -374,7 +374,6 @@ const ALLOWED_OPTIONS = {
   // ignore them); the option-validation pass keys on the subcommand only, so
   // both are admitted here and cmdScope ignores them on the read verbs.
   scope: ['yes', 'dryRun'],
-  // `bridge enable` previews with --dry-run and takes nothing else.
   bridge: ['dryRun'],
   // gaps owns its OWN grammar (from-profile
   // reused generically, --preset new, --json reused generically). A fresh
