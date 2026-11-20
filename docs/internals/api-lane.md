@@ -16,7 +16,7 @@ feature's own switch.
 | `scripts/api-lane/judge-call.sh` | API lane | always (a chief's verdict question) |
 | `scripts/api-lane/bulk-call.sh` | API lane | always |
 | `jira release rm-run` (release manager) | the subscription | only in the himmel repo with `judge` mapped in `roles.json` (see [The role map](#the-role-map)); there the launcher's fallback is off, and a failed lane call, a policy refusal included, makes `rm-run` rule the batch once on the subscription itself; a timed-out call ends the run |
-| `scripts/cr/critic-first-pass.sh` (claude critic) | the registry row's provider | provider `claude-api`; with the lane off, the refusal alerts (one per hour) and the review runs on the subscription; a policy refusal (exit 2 with the launcher's `claude-api: policy refusal:` line) makes the critic print `claude critic BROKE` and exit 1, never a clean skip |
+| `scripts/cr/critic-first-pass.sh` (claude critic) | the registry row's provider | provider `claude-api`; with the lane off, the refusal alerts (one per hour) and the critic is skipped; a critic never runs on the subscription, for any refusal or failure; a policy refusal (exit 2 with the launcher's `claude-api: policy refusal:` line) makes the critic print `claude critic BROKE` and exit 1, never a clean skip |
 | `scripts/graphify/graph-cadence.sh --semantic` | `claude-cli` when run bare; the armed `graph-publish-himmel` runner passes `claude-api` on auto | `GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api` |
 | `scripts/cleanup/steering-cull-cadence.sh` | `claude-cli` | `STEERING_CULL_BACKEND=claude-api`, or `arm --backend claude-api --api-account A\|B\|C\|D` |
 
@@ -44,6 +44,36 @@ one line in `policy-refusals.jsonl` in the alert directory (`HIMMEL_API_ALERT_DI
 default the stamp directory below), and the doctor's `C91-api-policy-refusals` check prints
 one WARN per kind and repo, with a count, for a refusal in the last 48 h.
 
+The api lane refuses a call only on a real block, and the refusal and its alert name it:
+its own admission limit (`api bank gate said SKIPPED-FLEET`), a ledger lock another holder
+keeps (`ledger-locked-or-unwritable`, with the lock path, age and holder), an invalid config
+or ledger, a duplicate or invalid job id, or an api preflight that exits nonzero (a seam-guard
+denial or a crash) or prints no known verdict (`api bank gate said BANK-UNKNOWN`, with a line
+before it saying which). No budget figure refuses or delays a call, named
+or auto: an unknown, stale or low credit reading (`BANK-UNKNOWN`, `BANK-STALE`,
+`SKIPPED-BANK` from the api preflight), a past reset date or a ledger estimate over the
+account's cap is our estimate, not a block. The launcher prints a note and the call goes on;
+the per-call budget bounds it and the API's own credit answer decides. A credit-exhausted
+answer marks the account (see the exhausted marker below), and a later successful call on
+that account clears the mark. A mark never refuses a named call; auto routing ranks
+unmarked accounts first.
+
+`"enforce_budget": true` at the top level of the roster `config.json` opts back into the
+enforcing gate: there the cap (`over-cap`), the headroom check and a stale reading refuse
+as before. It is off by default.
+
+On a credit-exhausted answer (exit 6) to an auto-routed call, the launcher marks the account
+and re-runs the same call on the next unmarked account the call may use, one pass over the
+accounts (`HIMMEL_API_ROTATE_TRIED` carries the tried letters to the re-run and only narrows
+the pool). Only a replayable call rotates: one with its prompt in argv or buffered from stdin
+and no `Edit`, `Write` or `Bash` grant. A named account never rotates. When no unmarked
+account is left, the failure path below runs as usual.
+
+A crashed ledger transaction can leave the lock directory behind. A waiter reclaims it only
+when it is empty, older than the call timeout plus the kill grace, and its recorded holder
+(`<lock>.pid`, beside the lock) is not running; a lock with contents, a young lock or a
+running holder is never touched and refuses by name after the lock wait.
+
 For every other failure the launcher:
 
 1. **Decides whether to fall back** (first match wins):
@@ -51,6 +81,8 @@ For every other failure the launcher:
    | Condition | Decision |
    |---|---|
    | `HIMMEL_API_FALLBACK=off` | no fallback |
+   | the call is kind `critic` (any refusal or failure) | no fallback; the critic is skipped |
+   | the lane is off (`HIMMEL_API_LANE` not `on`), any kind | no fallback: the caller chose the API, not the subscription |
    | the request itself was refused (bad argument, run kind, cache TTL, job id or tool grant) | no fallback |
    | the call was granted `Edit`, `Write` or `Bash` and ran (it may have half-done its edits; a rejected account can answer on a later turn) | no fallback; only a refusal before any request (exit 2) falls back |
    | the native usage preflight says `PROCEED`, `BANK-STALE` or `BANK-UNKNOWN` | **runs the fallback** |
@@ -64,7 +96,7 @@ For every other failure the launcher:
    `api-lane <class>`:
 
    ```text
-   kind judge, account auto, refused (exit 2): api lane is OFF (set HIMMEL_API_LANE=on); fallback: running on the subscription (preflight PROCEED)
+   kind judge, account A, call-failed (exit 1): error_during_execution; fallback: running on the subscription (preflight PROCEED)
    ```
 
    - The class is `refused`, `rejected` (exit 6) or `call-failed`.
@@ -136,6 +168,10 @@ an API call, so it takes no reservation and `claude-api.sh` never sees it.
 | `cost_usd` | empty (no API credit spent) |
 | `sub_cost_usd` | the call's verified `total_cost_usd` (six places), empty when the call failed or printed none |
 | `rc` | the call's exit code (1 when it threw without one) |
+| `input_tokens` | the call's plain input tokens, read from the envelope's `usage` (the Opus call alone: the Haiku title call is in `modelUsage` only); null when the row has no cost or the call reported no usable usage |
+| `cache_creation_tokens` | the call's cache-write tokens; null on the same condition |
+| `cache_read_tokens` | the call's cache-read tokens; null on the same condition |
+| `cache_ttl` | the tier the call's environment asks for: `off`, `5m` or `1h` |
 
 A reader that sums API dollars skips every row with a `lane` other than `api` (the API launcher's own rows carry
 no `lane`): `shift-spend.mjs` does, so the native and `sub-fallback` rows are neither summed nor counted as unpriced.
@@ -145,7 +181,7 @@ no `lane`): `shift-spend.mjs` does, so the native and `sub-fallback` rows are ne
 
 Account C is a third API org with a 200.00 USD cap. Account D is a fourth API org. A, B, C and D are treated
 identically: the same refusals (key from the caller `ANTHROPIC_API_KEY` or a mode-600 `key-<letter>.env` beside the
-ledger, `HIMMEL_API_KEY_ID` equal to the roster `key_id`, lane on, ledger spend estimate under the account's cap) and
+ledger, `HIMMEL_API_KEY_ID` equal to the roster `key_id`, lane on, and with `enforce_budget` on, a ledger spend estimate under the account's cap) and
 `pickAccount` ranks all four by grant expiry. The batch client (`semantic-batch.mjs`) takes C and D the same way. The
 lane never reads the keyring or `.env`. Any other letter (E and on) is refused everywhere.
 
@@ -191,7 +227,9 @@ secret, only role names and account letters:
 ```
 
 - **Known roles** are the `ROLES` export of `scripts/lib/api-roles.mjs`, the one owner of reading, validating and
-  writing the file: `graphify` and `judge`. `probe` and `other` are never roles.
+  writing the file: `graphify`, `judge` and `critic`. `probe` and `other` are never roles. Critics route on auto
+  through the role map (operator decision 1066): a PR critic on auto uses the accounts its `critic` entry names, and
+  with no entry it is refused like any other unmapped kind.
 - **No map means the default.** With no file, the graph pass uses every configured account and every other kind is
   refused (exit 2, no alert, no fallback). A role with no entry gets the same default.
 - **Four states.** `absent` (no file): the default. `valid`: the map. `partial` (the file parses but an entry has an
@@ -274,7 +312,8 @@ secret, only role names and account letters:
   marker older than an hour with a valid reading taken before the marker, and by `api-credit-state.test.mjs`.
   After a rotated key the operator clears the mark at once instead of waiting out the TTL:
   `HIMMEL_API_ACCOUNT=<L> node scripts/lib/api-credit-state.mjs clear-exhausted` removes `exhausted_at` and prints
-  `cleared` (or prints `none` and writes nothing when the account had no mark).
+  `cleared` (or prints `none` and writes nothing when the account had no mark). A successful `claude-api.sh` call
+  clears it the same way, and `status` prints `marked_exhausted` while a mark is in force.
 - **Nothing chosen on the API backend makes no API call.** With `GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api` and the lane
   off (`HIMMEL_API_LANE` unset) the cadence refuses the whole fire (exit 1) before any call; a direct call of
   `semantic-update.sh` refuses with exit 2 and says no API semantic call is made. Either way graphify makes no API semantic call. The

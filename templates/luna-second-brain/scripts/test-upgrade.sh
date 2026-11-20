@@ -2038,5 +2038,26 @@ mkdir -p "$V"; stamp_vault "$V" "0.9.0"
 run_upgrade --yes >/dev/null 2>&1; rc=$?
 assert_eq "T72 control: a vault with no .git skips the installer" "0" "$rc"
 
+T="$TMP/t73-tmpl"; V="$TMP/t73-vault"; make_template "$T" "1.0.0"; mkdir -p "$V"; stamp_vault "$V" "0.9.0"
+printf '# starter feeds\nhttps://example.invalid/releases.atom Example skip=alpha\n' > "$T/.feed-clip-feeds"
+out=$(run_upgrade 2>&1)
+case "$out" in *"WRITE-NEW    .feed-clip-feeds"*) pass "T73 dry run plans the feed list as a new file" ;; *) fail "T73 dry run plans the feed list as a new file" "got: $out" ;; esac
+assert_eq "T73 dry run writes nothing" "MISSING" "$(sha_of "$V/.feed-clip-feeds")"
+run_upgrade --yes >/dev/null 2>&1; rc=$?
+assert_eq "T73 upgrade rc" "0" "$rc"
+assert_eq "T73 a vault without the feed list gets the template's" "$(sha_of "$T/.feed-clip-feeds")" "$(sha_of "$V/.feed-clip-feeds")"
+
+T="$TMP/t73b-tmpl"; V="$TMP/t73b-vault"; make_template "$T" "1.0.0"; mkdir -p "$V"; stamp_vault "$V" "0.9.0"
+printf '# starter feeds\nhttps://example.invalid/releases.atom Example skip=alpha\n' > "$T/.feed-clip-feeds"
+printf '# my feeds\nhttps://example.invalid/mine.atom Mine\n' > "$V/.feed-clip-feeds"
+mine=$(sha_of "$V/.feed-clip-feeds")
+run_upgrade --yes >/dev/null 2>&1; rc=$?
+assert_eq "T73 upgrade rc over an edited feed list" "0" "$rc"
+assert_eq "T73 an edited feed list is left byte for byte" "$mine" "$(sha_of "$V/.feed-clip-feeds")"
+printf '# starter feeds, newer\nhttps://example.invalid/releases.atom Example skip=alpha,rc\n' > "$T/.feed-clip-feeds"
+stamp_vault "$V" "0.9.0"
+run_upgrade --yes >/dev/null 2>&1
+assert_eq "T73 a later template change to the feed list does not overwrite the vault's" "$mine" "$(sha_of "$V/.feed-clip-feeds")"
+
 echo
 if [ "$FAILED" -eq 0 ]; then echo "All upgrade tests passed."; else echo "$FAILED test(s) failed."; exit 1; fi

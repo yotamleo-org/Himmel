@@ -1,0 +1,21 @@
+{
+  "cases": [
+    {"name": "plain ASCII", "input": "Release notes v2", "output": "Release notes v2"},
+    {"name": "NUL and BEL are dropped", "input": "Re\u0000lease\u0007 notes", "output": "Release notes"},
+    {"name": "ESC is dropped, the rest stays", "input": "\u001b[31mred", "output": "[31mred"},
+    {"name": "DEL is dropped", "input": "a\u007fb", "output": "ab"},
+    {"name": "C1 controls are dropped", "input": "a\u0085b\u009fc", "output": "abc"},
+    {"name": "tab, CR and LF collapse to one space", "input": "a\tb\r\nc", "output": "a b c"},
+    {"name": "no-break space collapses", "input": "a\u00a0b", "output": "a b"},
+    {"name": "line and paragraph separators collapse", "input": "a\u2028b\u2029c", "output": "a b c"},
+    {"name": "a byte-order mark collapses like whitespace", "input": "a\ufeffb", "output": "a b"},
+    {"name": "a leading byte-order mark is trimmed", "input": "\ufeffTitle", "output": "Title"},
+    {"name": "zero-width space is kept", "input": "a\u200bb", "output": "a\u200bb"},
+    {"name": "bidi override is kept", "input": "a\u202eb", "output": "a\u202eb"},
+    {"name": "astral emoji is kept", "input": "ship \ud83d\ude80 now", "output": "ship \ud83d\ude80 now"},
+    {"name": "a lone surrogate is dropped", "input": "a\ud800b", "output": "ab"},
+    {"name": "non-characters are dropped", "input": "a\ufffeb\uffffc", "output": "abc"},
+    {"name": "private-use characters are kept", "input": "a\ue000b", "output": "a\ue000b"},
+    {"name": "runs of spaces collapse and the ends are trimmed", "input": "  a   b  ", "output": "a b"}
+  ]
+}

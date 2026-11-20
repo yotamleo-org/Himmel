@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import importlib.util
 import json
 import os
 import re
@@ -17,6 +18,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from functools import lru_cache
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -451,6 +453,94 @@ def probe_jina_reader(env: dict[str, str], http: Callable[..., HttpResult]) -> P
     return classify_http(result, auth_required=False, valid_body=valid)
 
 
+ARTICLE_FETCH_SKIP_HOSTS = {
+    "x.com", "twitter.com", "mobile.twitter.com", "instagram.com", "github.com",
+    "youtube.com", "m.youtube.com", "youtu.be",
+}
+ARTICLE_RETRY_MAX_AGE_DAYS = 2
+HARVEST_TOOL = Path(__file__).resolve().parents[2] / "marketplace" / "plugins" / "obsidian-triage" / "tools" / "harvest-clip-body-batch.py"
+
+
+@lru_cache(maxsize=1)
+def _harvest_tool():
+    try:
+        spec = importlib.util.spec_from_file_location("harvest_clip_body_batch", HARVEST_TOOL)
+        tool = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tool)
+        return tool
+    except Exception:
+        return None
+
+
+def _evidence_retry_reaches(source: str) -> bool:
+    tool = _harvest_tool()
+    return tool is None or tool.evidence_retry_host(tool.canonicalize(source) or "")
+
+
+def _clip_frontmatter(path: Path) -> dict[str, str]:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return {}
+    end = text.find("\n---", 4) if text.startswith("---\n") else -1
+    if end < 0:
+        return {}
+    fm = {}
+    for line in text[4:end].splitlines():
+        m = re.match(r"^([A-Za-z0-9_]+):\s*(.*)$", line)
+        if m:
+            fm[m.group(1)] = m.group(2).strip().strip('"')
+    return fm
+
+
+def luna_vault(env: dict[str, str]) -> Path:
+    for key in ("OBSIDIAN_VAULT_PATH", "LUNA_VAULT_PATH"):
+        value = (env.get(key) or "").strip()
+        if value:
+            return Path(value)
+    return resolve_home(env) / "Documents" / "luna"
+
+
+def probe_harvest_article_fetch(env: dict[str, str], today: datetime | None = None) -> ProbeResult:
+    clippings = luna_vault(env) / "Clippings"
+    if not clippings.is_dir():
+        return ProbeResult("ok", "no Clippings folder; nothing to check")
+    day = (today or utc_now()).date()
+    stuck: list[tuple[str, str]] = []
+    waiting = unreachable = 0
+    for path in sorted(clippings.rglob("*.md")):
+        parts = path.relative_to(clippings).parts
+        if any(part in ("_done", "_synthesis", "_rejected", "_media") for part in parts):
+            continue
+        fm = _clip_frontmatter(path)
+        if fm.get("harvest_status") != "partial" or fm.get("harvest_flag") != "thin-body":
+            continue
+        if fm.get("harvest_needs_attention") == "true":
+            continue
+        host = (urllib.parse.urlparse(fm.get("source", "")).hostname or "").lower().removeprefix("www.")
+        if not host or host in ARTICLE_FETCH_SKIP_HOSTS or host.endswith(".instagram.com"):
+            continue
+        if "_evidence" in parts and not _evidence_retry_reaches(fm.get("source", "")):
+            unreachable += 1
+            continue
+        waiting += 1
+        try:
+            last = datetime.strptime(fm["harvest_defer_last"], "%Y-%m-%d").date()
+        except (KeyError, ValueError):
+            last = None
+        if last is None or (day - last).days > ARTICLE_RETRY_MAX_AGE_DAYS:
+            stuck.append((last.isoformat() if last else "", path.name))
+    note = f"; {unreachable} partial clip(s) in _evidence/ cannot be retried (private host or non-http URL)" if unreachable else ""
+    if stuck:
+        oldest = min(stuck)
+        return ProbeResult(
+            "transport-fail",
+            f"{len(stuck)} thin article clip(s) partial and not tried for over {ARTICLE_RETRY_MAX_AGE_DAYS} days "
+            f"(oldest: {oldest[1]}, last tried {oldest[0] or 'never'}); the harvest is not fetching them{note}",
+        )
+    return ProbeResult("ok", f"{waiting} thin article clip(s) partial, all tried within {ARTICLE_RETRY_MAX_AGE_DAYS} days{note}")
+
+
 SCRAPLING_TIMEOUT_SECONDS = 120  # the helper's 60 s page load plus browser start-up
 IG_SCRAPLING_HELPER = Path("marketplace/plugins/obsidian-triage/tools/ig-scrapling-media.py")
 
@@ -698,6 +788,7 @@ def build_probe_registry(
         "bitbucket": lambda: probe_bitbucket(effective, http),
         "firecrawl": lambda: probe_firecrawl(effective, http),
         "jina-reader": lambda: probe_jina_reader(effective, http),
+        "harvest-article-fetch": lambda: probe_harvest_article_fetch(effective),
     }
     for source in IG_PROBE_SOURCES:
         registry[source] = (lambda s, p: lambda: guarded_instagram_probe(s, effective, p))(source, registry[source])
@@ -785,8 +876,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state", help="override output state path")
     parser.add_argument("--probe", metavar="SOURCE", help="run a single probe and print its JSON result (skips state writes)")
+    parser.add_argument("--vault", help="the luna vault the harvest probe reads (default: OBSIDIAN_VAULT_PATH, then LUNA_VAULT_PATH, then ~/Documents/luna)")
     args = parser.parse_args(argv)
     env = dict(os.environ)
+    if args.vault:
+        env["OBSIDIAN_VAULT_PATH"] = args.vault
 
     if args.probe:
         try:

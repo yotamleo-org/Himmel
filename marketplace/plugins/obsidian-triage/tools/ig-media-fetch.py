@@ -253,6 +253,142 @@ def drop_ig_media_pending(fm_raw: str) -> str:
     return "\n".join(lines)
 
 
+URL_ONLY_MARKER = "Inferred from the source URL only"
+SUMMARY_EXTRACT_CHARS = 400
+_SUMMARY_RE = re.compile(r"(?ms)^## Summary[ \t]*\n(.*?)(?=^## |\Z)")
+_UNPRINTABLE_RE = re.compile("[^\t\n\r\x20-\x7e\xa0-퟿-�\U00010000-\U0010ffff]")
+_BATCH = None
+
+
+def _injection_hits(text: str):
+    global _BATCH
+    if _BATCH is None:
+        _BATCH = _batch_module()
+    return _BATCH.scan_injection(text)
+
+
+def _media_text(body: str):
+    m = re.search(r"(?m)^## Crawled content\b", body)
+    if not m:
+        return None, ""
+    section = body[m.start():]
+    nxt = re.search(r"(?m)^## (?!Crawled content)", section[1:])
+    if nxt:
+        section = section[: nxt.start() + 1]
+    blocks = re.findall(r"(?ms)^### Transcript\b[^\n]*\n(.*?)(?=^### |\Z)", section)
+    text = " ".join(re.sub(r"(?m)^\*\*Slide \d+ \(video\):\*\*[ \t]*$", "", b) for b in blocks)
+    if re.search(r"\w", text):
+        return "transcript", text
+    blocks = re.findall(r"(?ms)^### Slide digest\b[^\n]*\n(.*?)(?=^### |\Z)", section)
+    text = " ".join(re.sub(r"(?m)^[ \t]*\d+[.)][ \t]*", "", b) for b in blocks)
+    if re.search(r"\w", text):
+        return "slides", text
+    return None, ""
+
+
+def _excerpt(text: str) -> str:
+    t = _UNPRINTABLE_RE.sub("", text)
+    for tok in ("<!--", "-->", "[[", "]]", "```"):
+        t = t.replace(tok, " ")
+    t = re.sub(r"[\s\ufeff]+", " ", t).strip()
+    if len(t) <= SUMMARY_EXTRACT_CHARS:
+        return t
+    cut = t[:SUMMARY_EXTRACT_CHARS]
+    end = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
+    if end >= SUMMARY_EXTRACT_CHARS // 3:
+        return cut[: end + 1]
+    return cut.rsplit(" ", 1)[0] + "…"
+
+
+def plan_summary_rewrite(text: str):
+    fm, fm_raw, body, present = parse_frontmatter(text)
+    if not present or not is_ig_source(fm.get("source", "").strip('"')):
+        return None
+    if fm.get("summary_basis", "").strip('"') != "url-only":
+        return None
+    if fm.get("harvest_flag", "").strip('"') == "injection-suspect":
+        return None
+    m = _SUMMARY_RE.search(body)
+    if not m or URL_ONLY_MARKER not in m.group(1):
+        return None
+    kind, source_text = _media_text(body)
+    excerpt = _excerpt(source_text) if kind else ""
+    if not excerpt:
+        return None
+    summary_line = {"transcript": "From the reel transcript (opening lines, not a full summary): ",
+                    "slides": "From the slide digest (opening slides, not a full summary): "}[kind] + excerpt
+    if _injection_hits(source_text) or _injection_hits(summary_line):
+        return None
+    new_body = body[:m.start(1)] + summary_line + "\n\n" + body[m.end(1):]
+    fm_lines = []
+    for ln in fm_raw.split("\n"):
+        if re.fullmatch(r"summary_basis:[ \t]*\"?url-only\"?[ \t]*", ln):
+            ln = "summary_basis: crawled-extract"
+        elif re.fullmatch(r"harvest_flag:[ \t]*\"?thin-body\"?[ \t]*", ln):
+            continue
+        fm_lines.append(ln)
+    return f"---\n{chr(10).join(fm_lines)}\n---\n{new_body}", kind
+
+
+def refresh_url_only_summary(path: Path, dry_run: bool = False):
+    text, has_crlf = read_clip(path)
+    planned = plan_summary_rewrite(text)
+    if planned is None:
+        return None
+    new_text, kind = planned
+    if dry_run:
+        return kind
+    write_clip(path, new_text, has_crlf)
+    disk, _ = read_clip(path)
+    _, _, disk_body, _ = parse_frontmatter(disk)
+    _, _, old_body, _ = parse_frontmatter(text)
+    if disk != new_text or _SUMMARY_RE.sub("", disk_body, count=1) != _SUMMARY_RE.sub("", old_body, count=1):
+        write_clip(path, text, has_crlf)
+        return None
+    return kind
+
+
+def note_summary_refresh(path: Path, rel: str):
+    try:
+        kind = refresh_url_only_summary(path)
+    except Exception as e:
+        print(f"~ {rel}: summary refresh failed ({type(e).__name__}); the url-only summary stays", file=sys.stderr)
+        return
+    if kind:
+        print(f"  {rel}: url-only summary rewritten from the {kind}")
+
+
+def run_repair_summaries(args) -> int:
+    root = args.vault / "Clippings"
+    candidates = []
+    for p in sorted(root.rglob("*.md")) if root.is_dir() else []:
+        if {"_synthesis", "_rejected"} & set(p.parts) or p.name == "_deferred.md":
+            continue
+        try:
+            kind = refresh_url_only_summary(p, dry_run=True)
+        except Exception:
+            continue
+        if kind:
+            candidates.append((p, kind))
+    picked = candidates[: args.limit] if args.limit > 0 else candidates
+    done = 0
+    for p, kind in picked:
+        rel = p.relative_to(args.vault).as_posix()
+        if not args.apply:
+            print(f"PLAN {rel} -- would rewrite the url-only summary from the {kind} [dry-run]")
+        elif refresh_url_only_summary(p):
+            print(f"FIX {rel} -- url-only summary rewritten from the {kind}")
+            done += 1
+        else:
+            print(f"SKIP {rel} -- verify failed, left unchanged", file=sys.stderr)
+    print(f"\nig-media-fetch --repair-summaries: {len(candidates)} matched, {done} rewritten (dry_run={not args.apply})")
+    if len(candidates) > len(picked):
+        print(f"ig-media-fetch: {len(candidates) - len(picked)} remaining (capped by --limit; pass --limit 0 for all)")
+    if not args.apply:
+        print("  (DRY-RUN - no files modified; pass --apply to rewrite)")
+    return 0
+
+
 # --- cache + preflight + download -----------------------------------------------
 def _emit_stderr_tail(label: str, stderr: str):
     """Emit a one-line, truncated (~200 char) tail of a failed subprocess'
@@ -852,6 +988,10 @@ def parse_args(argv):
     ap.add_argument("--digest-file", type=Path, default=None, metavar="FILE")
     ap.add_argument("--flag-screen", type=Path, default=None, metavar="CLIP")
     ap.add_argument("--detail", default=None, metavar="DETAIL")
+    ap.add_argument("--repair-summaries", action="store_true",
+                    help="one-time backfill: rewrite url-only summaries of clips that hold a "
+                         "transcript or slide digest; dry run unless --apply; --limit N caps it")
+    ap.add_argument("--apply", action="store_true")
     ap.add_argument("--budget", type=int, default=DEFAULT_BUDGET_S, metavar="SECONDS",
                     help="wall-clock budget for the batch; 0 = unbounded "
                          "(default IG_MEDIA_BUDGET_S, else 420)")
@@ -1028,6 +1168,7 @@ def enrich_batch(args, selected, matched_total, remaining):
                           f"{qual_suffix}, "
                           f"{len(transcripts)}/{expected_videos} transcripts; "
                           f"{descriptor})")
+                    note_summary_refresh(p, relpath)
                     partial += 1
                 else:
                     _cleanup_orphan_media(media_dir, slide_embeds,
@@ -1037,6 +1178,7 @@ def enrich_batch(args, selected, matched_total, remaining):
                                backend=backend):
                 print(f"v {relpath}: {len(slide_embeds)} slides{qual_suffix} + "
                       f"{len(transcripts)} transcript [{backend}]")
+                note_summary_refresh(p, relpath)
                 enriched += 1
             else:
                 _cleanup_orphan_media(media_dir, slide_embeds,
@@ -1135,6 +1277,7 @@ def run_apply_digest(clip: Path, digest_file: Path) -> int:
               "reverted", file=sys.stderr)
         return 3
     print(f"OK apply-digest {clip.name}: 1 ### Slide digest H3 added, marker stripped")
+    note_summary_refresh(clip, clip.name)
     return 0
 
 
@@ -1185,6 +1328,8 @@ def main():
     if args.vault is None or not args.vault.is_dir():
         print("ig-media-fetch: vault path required (or not a dir)", file=sys.stderr)
         sys.exit(1)
+    if args.repair_summaries:
+        sys.exit(run_repair_summaries(args))
     clips = find_clips(args.vault, args.include_evidence)
     selected = []
     for p in clips:

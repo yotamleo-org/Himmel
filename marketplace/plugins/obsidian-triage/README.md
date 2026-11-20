@@ -97,7 +97,15 @@ in the inbox forever. A **partial** enrichment (some slides/videos survived,
 others dropped in recompress/transcode) writes what succeeded but is marked
 `media_enrichment_status: partial` with a `partial_media:` last-error and
 withholds `media_enriched_at`, so the clip stays selectable and is retried -
-partial media loss is never stamped a full success. Command runbook:
+partial media loss is never stamped a full success. A clip whose summary
+triage wrote from the URL alone (`summary_basis: url-only`) gets that summary
+rewritten from the opening of the transcript, else of the slide digest, right
+after a verified write (no model call; `summary_basis: crawled-extract`, and a
+stale `harvest_flag: thin-body` is dropped in the same write; never
+from an injection-flagged clip or text that trips the injection screen), and
+`ig-media-fetch.py --repair-summaries <vault> [--apply] [--limit N]` is the
+bounded one-time repair for clips enriched before that (dry run unless
+`--apply`, default 10 per run). Command runbook:
 `commands/ig-media-enrich.md`.
 
 #### One-time setup (whisper model)
@@ -243,6 +251,26 @@ When a clip is promoted to `_evidence/`, its `evidence_kind:` frontmatter field 
 
 `tools/lib/evidence-kind.mjs` is dependency-free (pure ESM, bare `node`). Harvest, triage, and archive exclude `_evidence/` from their inbox scans; `/synthesize-clips` deliberately keeps visibility into it so synthesis can reference promoted evidence.
 
+### Feed clips: `tools/feed-clip.mjs`
+
+A second pipeline entry point beside `telegram-clip`, with no model call and no npm dependency: it reads the vault's feed list, fetches each RSS, Atom or GitHub `releases.atom` feed, and writes one inbox clip per unseen entry, so release notes and engineering posts reach the vault without a hand-forward.
+
+```bash
+node tools/feed-clip.mjs --dry-run            # print what it would clip, write nothing
+node tools/feed-clip.mjs --vault <path> --cap 3
+```
+
+- **Feed list** — `<vault>/.feed-clip-feeds`, one feed per line: `<feed-url> [label] [skip=<word>,<word>]`, `#` starts a comment. The label prefixes the clip title (`Claude Code: v2.1.0`). The vault template ships a starter list (Claude Code, the Claude Agent SDK, Codex, T3 Code, the MCP specification, the OpenAI engineering blog); `/luna-upgrade` installs it into a vault that lacks it, once, and never overwrites a copy that exists. `--feeds <file>` reads a list from another path.
+- **Skip filter** — an entry whose title holds one of a line's `skip=` words (any case, not inside a longer word: `rc` skips `v2.1-rc1` and `rc2`, not `source` or `arc`) is not clipped and not counted as pending, so skipped newest entries do not use up the cap. The starter list skips `alpha`, `nightly`, `rc` and `mobile` on the Codex and T3 Code feeds. A malformed `skip=` (empty, a character outside letters, digits, `.`, `_`, `-`, or given twice) is a `✗` line and the feed line is skipped.
+- **Release notes** — the clip body is the entry's own text, so a GitHub release clip carries its release notes. `/harvest-clips` takes a `github.com/<owner>/<repo>/releases/tag/<tag>` clip that has text of its own as an article (clip-body path, injection screen, no repository ingest, a short note is not a thin body); a release link whose body is only the link, a repository root, the releases list and an issue still go to `luna-ingest`.
+- **Clip shape** — the front matter of a Telegram clip in the same order (`title`, `source`, `date_clipped`, `type`, `tags: []`, `status: unread`), with `clipped_via: feed` and no `telegram_*` keys; `type` comes from the Telegram classifier (a GitHub link is `research`, other links `article`). It carries no `harvested_at:` and no `processed:`, and lands top-level in `Clippings/`, so `/harvest-clips` and `/triage-clips` take it like any other clip. The body is the entry's text with markup stripped (capped at 6000 characters), then a `## Source` link. An entry without an http(s) link is skipped.
+- **Clipped once** — `<vault>/.feed-clip-seen.jsonl` (append-only, one line per clipped entry) is the record; deleting a clip does not bring the entry back. A clip file that already exists is never overwritten.
+- **Cap** — at most `--cap` (default 3) new clips per feed per run, newest entry first; the rest stay unseen and arrive on later runs. A feed's first run therefore trickles in over several runs.
+- **Failures** — a feed that errors (HTTP status, timeout, not a feed, larger than 8 MiB, a malformed list line) is one `✗ feed-clip:` line; the other feeds are still processed and the exit code stays 0. Login-walled hosts (`x.com`, `instagram.com`, `reddit.com`, …) are refused, also when a redirect leads to one. So is any host that is, or resolves to, a loopback, private (RFC 1918, unique-local IPv6), link-local, unspecified or reserved address, an IP literal and the IPv4-mapped IPv6 forms included, on every hop: the feed fails with `refused: <host> …` and the run goes on. A name is resolved once per hop and the socket connects to the address that was checked, so a name that answers differently the second time is never reached. The suite's loopback fixture server gets in only through the test-only `--unsafe-allow-host <host:port>` option, which the feed list, the environment and the nightly runner's command line cannot set. Exit 2 is for an unusable vault or an unreadable or unwritable state file.
+- **Scheduling** — the nightly harvest runner that `scripts/luna/pipeline-cadence.sh` generates runs it before the harvest, at most `--feed-cap` (default 2, set when arming) new clips per feed (see the nightly paragraph below); outside that runner it runs only when invoked by hand.
+
+`tests/test-feed-clip.sh` covers it against synthetic fixture feeds served from local files and a loopback server (never a real feed): one clip per entry and none on the second run, the Telegram clip shape, failing feeds, the cap (3, 3, 3, 1, 0 for ten entries), the seen state, `--dry-run`, a crafted feed that must not stall the parser, a redirect loop, the body-size caps, and non-printable characters in a title. Each guard on untrusted input has a row that goes red when the guard is deleted.
+
 ### One-time backfill: `/migrate-clip-lifecycle`
 
 The TRIAGE exit-target change made **triage** drain new `processed: true` clips into `_evidence/`
@@ -295,7 +323,9 @@ calls it after a live `--apply`. A missing daily note is created from
   ticket; a GitHub source or `tools` kind → evaluate the tool (against
   `docs/tool-adoption/rubric.md`); a tag shared with a `60-Maps/` MOC → fold
   into it (clips sharing a MOC merge); else archive. Ranked (archive last, then
-  more clips, then engagement), top 7. Proposals only: nothing edits another note.
+  more clips, then engagement), top 7. The report only proposes: nothing here
+  edits another note. `tools/apply-clip-actions.mjs` (below) applies the fold and
+  archive kinds, and the report stops listing an action the vault shows applied.
 - **Markers:** `- [ ] … <!-- act:<id> since:<date> -->`. `[x]` = done, `[-]` =
   dismissed. A tick on today's report survives re-runs.
 - **Carry-over:** an action still unchecked in the prior 14 day notes, and not
@@ -314,6 +344,187 @@ the `/synthesize-stubs` runbook sends it through the telegram bridge `reply` too
 (operator-gated live send). A re-run that promotes nothing new clears the stale
 digest, and `--no-telegram-digest` suppresses it entirely during the one-time
 migration backfill. Pure builder: `tools/lib/telegram-digest.mjs`.
+
+**Subject promotion, per run and by night.** `synthesize-stubs.mjs` treats the
+singular and plural spelling of a tag as one subject (`workflow` and `workflows`
+make one page; regular English plurals only, and `class`, `status`, `analysis`
+keep their form), and `--apply --limit N` writes at most N pages a run, because
+Obsidian hangs on bulk file churn; the rest are reported as `pending`. The
+nightly runners `scripts/luna/pipeline-cadence.sh` generates run three steps that
+make no model call, each logging one `[nightly-...]` line: `feed-clip.mjs` before
+the harvest, then after the synthesis `synthesize-stubs.mjs --apply --limit N
+--no-telegram-digest` and `apply-clip-actions.mjs --apply --limit N`. A failing
+step is reported and never fails the run; a step whose tool is not installed
+reports `skipped: tool not installed`. The two writers hold the vault's git index
+lock while they write, and both are undone with `--revert <their ledger>`, the actions
+ledger first (a clip archived after it was stamped refuses to revert once its stamp is gone).
+A clip stamped `archived: true` by the daily note's archive action feeds neither a
+subject page nor a synthesis candidate, and a page that already cites it is left as it is.
+
+### Synthesis candidates (`tools/synthesis-candidates.mjs`)
+
+`/synthesize-clips` starts from this read-only script instead of choosing what to
+look at: it lists **every** candidate of the four pattern kinds (concept, author,
+tag, folder) with its clip count, distinct sources and a PASS or skip verdict. The
+agent's remaining job is the substantive-content gate, the page, and one log line
+per candidate.
+
+```bash
+node tools/synthesis-candidates.mjs [vault] [--today YYYY-MM-DD] [--since YYYY-MM-DD] [--format lines|json]
+```
+
+- **Output.** `lines` (default): `PASS <rank> <kind> <slug> clips= evidence= urls= sources= [supersedes=]`
+  per passing candidate, the runbook's own `⊘ <slug> — skipped (<category>): <reason> — <detail>`
+  line per failing one, `⊘ … excluded from synthesis (input)` per unreadable clip, and a
+  `counts` line per kind. `json` adds each candidate's `evidence` list. Same vault and
+  same `--today`: byte-identical output. The vault is never written.
+- **Ranks interleave the kinds** (best concept, best author, best tag, best folder, then the
+  second of each…), so the runbook's per-run page cap cannot be spent on one lens.
+- **The four lenses are independent**, as in the runbook: a subject may pass as a concept and as
+  a tag, because a concept synthesis and a tag index proposal are different pages. Each lens
+  applies its own dedup (a concept page, a person note, a `60-Maps/` MOC, a synthesis page).
+- **Skip reasons.** `confidence-floor`: `single-source-domain`, `single-author-on-platform`,
+  `too-few-sources` (a concept needs 3 distinct sources, a tag or folder 2), `single-24h-window`,
+  `undated-evidence` (fewer than 2 evidence clips carry a parseable date). `dedup`:
+  `existing-vault-page` (a concept page or
+  `60-Maps/` hub, a person note, a `60-Maps/` MOC, or the folder already exists), `synthesis-page-within-14d`,
+  `no-new-evidence` (a page older than 14 days that lists as many clips),
+  `substance-floor-recorded` (the runbook logged a substance-gate failure for the slug in
+  `Clippings/_synthesis/.substance-skips.tsv` within 14 days and the evidence has not grown, so
+  candidates that cannot pass do not use the examination budget every night). A page older than
+  14 days with more evidence passes with `supersedes=`.
+- **Sources.** For concept and tag groups, clips on a platform domain (x.com, youtube.com,
+  reddit.com, instagram.com, tiktok.com, linkedin.com, github.com, medium.com, substack.com,
+  threads.net, bsky.app, facebook.com) count one source per distinct author, so many unrelated
+  authors on x.com can form a concept page while one author cannot. Any other domain is one
+  source. Authors are exempt from the source test; folders keep the plain domain rule. The
+  author is the `author:` field, else the x.com or github.com URL; no author at all is one
+  shared unknown source.
+- **Lenses.** Concept and tag groups come from the clips' `tags:` (platform and clip-type
+  tags are ignored); thresholds are 3 clips (concept), 2 (author), 5 (tag), 5 (folder). A group
+  below its threshold is not a candidate. Each candidate lists its 40 newest clips (`evidence`);
+  `clipCount` is the group total.
+- **Dates.** The 24-hour floor reads `date_clipped` (else `triaged_at`); a clip without a
+  parseable date cannot help meet it, and a date-time with no zone is read as UTC, so the
+  output does not depend on the station's time zone.
+- **Gate.** No `<vault>/.harvest.done`: exit 2 with the runbook's message.
+- **Frontmatter** is read with the line-based helpers in `tools/lib/frontmatter.mjs`, not a
+  YAML parser: a processed clip whose frontmatter never closes, or has a top-level line that is
+  not `key: value`, is an input exclusion.
+
+### Clip funnel (outcomes, read-only)
+
+`tools/clip-funnel.mjs --vault <v> [--as-of YYYY-MM-DD] [--days N]` prints one
+JSON document answering "is the pipeline doing its job": of the clips taken in,
+how many a synthesis page cites, how many subject pages were created or
+extended, how many daily actions are open and applied, how many clips wait on
+media. The morning report (`scripts/handover/generate-morning-briefing.sh`)
+renders it as its `Clip funnel` block. It writes nothing to the vault, reads
+each file once and prints the same bytes on two runs.
+
+- **intake:** the flat `Clippings/_evidence/` pool (a subfolder is not evidence).
+  A clip stamped `archived: true` is counted in `intake.archived` (the report's
+  `Archived` line) and left out of `intake.clips`, of `cited` and of the intake
+  movement, so the share of clips cited is of the clips still in view.
+- **cited:** a clip is cited when a page in `Clippings/_synthesis/` links it by
+  name; the folder in the link and a `.md` suffix do not matter, so a link to
+  the clip's old `_done/` folder still counts. Accepted proposals under
+  `_synthesis/_done/` are not scanned.
+- **subjects:** `.synthesize-stubs.ledger.jsonl`, `stub-create` rows = created,
+  `densify` rows = extended, counted per distinct page.
+- **actions:** open = the `## Daily report` items in `50-Journal/Daily/` that
+  no report ticked or dismissed and the apply ledger has not applied; applied =
+  the distinct ids with a `fold` or `archive` row in
+  `.apply-clip-actions.ledger.jsonl`. An absent ledger is zero applied. A row
+  stays after `apply-clip-actions.mjs --revert`, and a crash can leave a row for
+  an edit that never landed, so either still reads as applied.
+- **media:** clips with `ig_media_pending: true` or `x_media_pending: true` in
+  `Clippings/` (the inbox) or `_evidence/`.
+
+Each stage reports `moved_in_window` (events dated inside the window, default
+the 7 days ending on `--as-of`) and `last` (its newest event). `stalled` names
+the stages with no movement in the window: `intake`, `cited` and `subjects`
+always, `actions` only while some are open, `media` only while some clips wait.
+
+### Applying the daily actions: `tools/apply-clip-actions.mjs`
+
+The two mechanical kinds of suggested action apply themselves; nobody has to
+tick them. "Evaluate tool" and "File a ticket" actions need judgement and are
+**never** applied.
+
+```bash
+node tools/apply-clip-actions.mjs --vault <v> [--date YYYY-MM-DD] [--limit N]            # dry-run (default): prints, writes nothing
+node tools/apply-clip-actions.mjs --vault <v> [--date YYYY-MM-DD] [--limit N] --apply    # apply + ledger
+node tools/apply-clip-actions.mjs --vault <v> --revert <vault>/.apply-clip-actions.ledger.jsonl
+```
+
+- **Fold** (`Fold <clips> into [[60-Maps/<moc>]]`): the clips whose link the map
+  lacks are added as `- [[Clippings/_evidence/<clip>|title]]` bullets at the end of
+  its `## Evidence` section, which ends at the next `#` or `##` heading (a new
+  `## Evidence` section at the end of the map when it has none). Line endings are
+  kept.
+- **Archive** (`Archive <clip>`): the clip is stamped with two frontmatter keys,
+  `archived: true` and `archived_at: <YYYY-MM-DD>` (the run's `--date`). Nothing
+  else changes: no move, no link rewrite, `status:` and every other key stay. The
+  clip stays in `Clippings/_evidence/`, so synthesis citations and the evidence
+  pool are untouched. A clip that already carries an `archived` or `archived_at`
+  key other than `archived: true` is left alone and reported. **Nothing reads
+  `archived` yet** beyond the daily timeline: excluding archived clips from
+  synthesis or promotion is a separate decision.
+- **Which actions:** the unticked actions in the day notes of the last 14 days,
+  oldest first, each re-derived from the vault by `tools/lib/clip-actions.mjs`, the
+  same code `daily-timeline.mjs` lists them with. An action already applied (every
+  clip stamped, or every clip linked in the map) is skipped, so a re-run never
+  repeats one. The summary line counts what was skipped: never-applied kinds,
+  actions the vault no longer reproduces (`unmatched`), and already applied.
+- **Bounded:** at most `--limit` actions per run (default 5), because Obsidian
+  hangs on bulk file churn. A dry run honours the same limit.
+- **Atomic page writes:** apply and revert each write the whole page to a hidden
+  temp file beside it, copy the page's permissions, then rename it over the page,
+  so a write that fails part-way (a full disk) leaves the page as it was and the
+  temp file removed. The temp file is created exclusively: anything already at its
+  name (a leftover, or a symbolic link) is never reused or followed, and a page
+  that is a symbolic link or other non-regular file is never replaced. Each is one
+  printed refusal line (`⊘ <page> — refused: an existing symbolic link sits there,
+  nothing written`), the same wording as `synthesize-stubs.mjs`; an apply counts it
+  on the summary line (`N refused`) and still exits 0, a
+  revert exits 3. (Symlinked maps and clips are not offered by the discovery at all.)
+- **Ledger and revert:** one line per applied action in
+  `<vault>/.apply-clip-actions.ledger.jsonl` (`--ledger` overrides), carrying the
+  page hashes before and after. `--revert` undoes newest-first and **refuses** any
+  page whose hash is no longer the recorded post-apply hash (a page edited since is
+  not rewritten) and any restore that would not reproduce the recorded bytes: it
+  exits 3 if it refused anything. A page path read from a ledger line must stay
+  inside the vault (checked on the path as written, so a symlinked folder inside
+  the vault still works); the `--ledger` and `--revert` file paths themselves are
+  not restricted. Every page path is checked before the first page is written: a
+  path that leaves the vault, or that cannot be inspected (it runs through a
+  regular file, a symbolic-link loop, a folder with no access), is refused on its
+  own line (counted in the summary, exit 3) and the other pages are still
+  reverted, so a damaged line never leaves a half-done undo with nothing saying
+  which pages were restored (an apply refuses such a page the same way and counts
+  it). A ledger line that
+  is not valid JSON or lacks the fields of its action stops the run with exit 1
+  before anything is written. Reverting twice is a no-op ("already reverted"),
+  also when several actions folded into one map. A map hand-edited between two
+  applies is refused for the earlier apply (and for anything older on that page),
+  not reported reverted: a page counts as already reverted only at a state from
+  before that entry or an older one. The ledger line is written before
+  its edits, so a crash can leave a line for an edit that never landed (read as
+  "already reverted"), never an edit with no line.
+- **One writer at a time:** `--apply` and `--revert` take `<vault>/.apply-clip-actions.lock`
+  (an atomic `mkdir`, as `/archive-clips` does) and exit 2 while it is held; a run
+  that was killed leaves it behind, and the message names it. A dry run ignores it.
+  A page open and being edited in Obsidian when the tool rewrites it is not
+  detected: Obsidian reloads a file changed on disk.
+- **The daily note is not edited.** "Applied" is read off the vault (the stamp, or
+  the link in the map), so `daily-timeline.mjs` drops an applied action from
+  `### Suggested actions` and `### Carried over` on its next run. The clip carries
+  no extra stamp for a fold: the link in the map is the evidence.
+
+The ledger and the lock are vault state like `.synthesize-stubs.ledger.jsonl`; add
+`.apply-clip-actions.*` to the vault's `.gitignore` if the vault is a git repo. The nightly synthesize runner applies
+the mechanical actions after the promotion, at most 5 a night (`--actions-limit`). Pure Node, no install: `tests/test-apply-clip-actions.sh`.
 
 ## Why a plugin
 
@@ -375,8 +586,9 @@ the vault **first** — the harvest/clipper pipeline has usually already capture
 the full clip body — instead of live-fetching. The priority order:
 
 1. **Vault clip, enriched** → read it; stop, no network.
-2. **Vault clip, thin** (skeleton/placeholder body) → enrich it (fxtwitter for X;
-   firecrawl for articles when enabled+gated), then read.
+2. **Vault clip, thin** (skeleton/placeholder body, or only a summary triage wrote
+   from the URL) → enrich it (fxtwitter for X; the free fetch rungs for articles,
+   plus firecrawl when enabled+gated), then read.
 3. **No clip** → live fetch as a last resort: `fxtwitter-enrich.mjs`
    (api.fxtwitter.com) for X, WebFetch for articles, `luna-ingest` for repos.
 4. **Never Grok.** `/x-read`'s x.ai path is dead (no credits) and is never called.
@@ -387,8 +599,9 @@ enriched)?"* — a filesystem-only canonical-URL/status-id match plus a per-type
 `isThinClipBody` thinness predicate. `telegram-clip.mjs` (`alreadyFiledByUrl`)
 and `dedup-sweep.mjs` (`indexVault`) derive their URL key from it, and
 `harvest-clips` shells out to `is-thin-cli.mjs` so a thin article clip on a
-default machine is marked `harvest_status: partial` + `harvest_flag: thin-body`
-rather than `ok` with an empty body. No vault / no clip degrades silently to
+default machine is fetched through the free rungs, and one the fetch could not
+fill is marked `harvest_status: partial` + `harvest_flag: thin-body` and retried
+on the next runs (also from `_evidence/`), never `ok` with an empty body. No vault / no clip degrades silently to
 live fetch (adopter-safe).
 
 **YouTube.** A YouTube URL, or any "watch / summarize this video" ask, goes to `/watch-youtube <url> [--visual]` (`tools/yt-watch.py`): Scrapling metadata + yt-dlp transcript from `yt-scrapling-meta.py`, plus with `--visual` a ≤720p yt-dlp download and ffmpeg scene frames (`-fps_mode vfr`; ffmpeg 9 rejects `-vsync`). No cookie and no Gemini/Grok/XAI key: Claude reads the transcript and frames itself. Do not use the vault plugin's `/youtube` for this (its upstream `-vsync` fix is still pending).
@@ -427,6 +640,8 @@ no longer carries that plugin; this one hook is the only piece himmel still uses
 
 Run: `bash marketplace/plugins/obsidian-triage/tests/test-triage-invariants.sh`
 
+`tests/test-synthesis-candidates.sh` is the fixture-vault acceptance test for the candidate list: all four kinds list a passing candidate, every skip reason, the platform-domain rule (5 unrelated authors on one platform pass, 5 clips by one author fail), the 14-day dedup window and supersede rule, the evidence cap, input exclusions, the harvest-completion gate, byte-identical re-runs, a read-only vault, and the runbook wiring. Pure Node.
+
 A `tests/test-synthesize-invariants.sh` covers the synthesize-side invariants (processed-filter, 14-day dedup, confidence-floor single-source rejection for Patterns 1/3/4 + the Pattern 2 domain-floor exemption, deterministic slug derivation).
 
 `tests/test-telegram-clip.sh` covers the telegram entry point: URL→type classification, frontmatter shape + provenance, idempotent re-run dedup, `--dry-run` no-write, no-sender refusal, and YAML-validity of the written clip. Requires `bun install` (or `npm install`) in `tools/` first (the YAML-validity check resolves the vendored `js-yaml`).
@@ -437,9 +652,13 @@ A `tests/test-synthesize-invariants.sh` covers the synthesize-side invariants (p
 
 `tests/test-daily-report.sh` is the fixture-vault acceptance test for the `## Daily report` section: sources grouped by kind with why and video lines, ranked actions citing their clips, carry-over with age (done, dismissed and older-ticked actions dropped), byte-identical re-run with ticks preserved, the no-intake line in a created note, CRLF, and shortened titles / capped citations. Pure Node.
 
+`tests/test-apply-clip-actions.sh` is the fixture-vault acceptance test for `tools/apply-clip-actions.mjs`: a dry run leaves the tree byte-identical, `--limit` bounds both dry-run and apply, a second run never repeats an action, fold lands inside `## Evidence` (CRLF kept, a seeded link not repeated), archive stamps only the two keys, evaluate and ticket actions are never touched, the daily timeline stops listing applied actions while keeping the rest, revert restores the vault byte for byte (twice over, also when several folds hit one map) and refuses a page edited since (exit 3), a held run lock stops `--apply` and `--revert` (exit 2), bad arguments are refused (exit 1), a ledger line naming a page outside the vault is refused on its own line while the rest is undone (exit 3), a malformed ledger line stops the revert before any write (exit 1), and a page that became a symbolic link or a link planted at the temporary file's name is refused with its target left byte for byte unchanged. Pure Node.
+
 `tests/test-telegram-digest.sh` + `tests/test-synthesize-telegram-digest.sh` + `tests/test-telegram-clip-inbox.sh` cover the promotion digest (one batched reply per chat — not per promotion — distinct-subject dedup, non-telegram/suppression exclusion, reply threading), its end-to-end emission from `synthesize-stubs --apply` (digest file written, stale-cleared on no-op re-run, suppressed under `--no-telegram-digest`), and the telegram-clip inbox-state contract (no `processed:`/`lifecycle:` marker, `telegram_chat_id` provenance). Pure Node.
 
 `tests/test-grow-feed-log.sh` covers the feed-log entry point against a temp fixture vault (never the real vault): feed-row placement inside the `## Log` table (right after the last existing row, `## Products` untouched), idempotent re-run by `--msg-id` (byte-identical no-op), pipe/newline cell sanitization, `--dry-run` no-write, product-mode section insertion before `## Notes` plus its own product-name idempotency gate, vault/target-file/`## Log`-table validation exit codes, and the `updated:` frontmatter bump on a real write only. Pure Node.
+
+`tests/test-clip-funnel.sh` covers the clip funnel against a synthetic fixture vault (`tests/fixtures/clip-funnel/`): every stage's count, the apply ledger present and absent, the seven-day stall boundary, `--days`, identical bytes on two runs, a vault left byte for byte unchanged, one read per file, and the bad-argument exits.
 
 ## Known issues (as of audit cycle 2026-05-25)
 

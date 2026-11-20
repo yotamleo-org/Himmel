@@ -114,10 +114,49 @@ const PLACEHOLDER_LINE = (l) => {
 };
 
 // article/research content sections (tweet delegates to isThinTweetBody)
-const ARTICLE_SECTIONS = ["## Highlights", "## Summary", "## Key Points", "## Core Argument", "## Key Evidence"];
+const ARTICLE_SECTIONS = ["## Highlights", "## Summary", "## Key Points", "## Core Argument", "## Key Evidence", "## Harvested content"];
+
+const URL_ONLY_MARKER = "Inferred from the source URL only";
+
+function isUrlOnlySummary(lines, at) {
+  if (lines[at].trim() !== "## Summary") return false;
+  for (let j = at + 1; j < lines.length; j++) {
+    if (/^#{1,6}\s/.test(lines[j].trim())) break;
+    if (lines[j].includes(URL_ONLY_MARKER)) return true;
+  }
+  return false;
+}
+
+export function isGithubReleaseTagUrl(sourceUrl) {
+  if (!sourceUrl) return false;
+  try {
+    const u = new URL(String(sourceUrl).replace(/^["']|["']$/g, "").trim());
+    const parts = u.pathname.split("/").filter(Boolean);
+    return ["github.com", "www.github.com"].includes(u.hostname.toLowerCase())
+      && parts.length >= 5 && parts[2] === "releases" && parts[3] === "tag";
+  } catch { return false; }
+}
+
+const PROMOTION_SECTION_RE = /^## Promotion candidate\b[\s\S]*?(?=^## |(?![\s\S]))/gm;
+const URL_ONLY_SUMMARY_RE = new RegExp(
+  `^## Summary[ \\t]*\\r?\\n(?:(?!^#{1,6}[ \\t])[\\s\\S])*?${URL_ONLY_MARKER}[\\s\\S]*?(?=^## |(?![\\s\\S]))`, "gm");
+const NOT_TEXT_LINE = /^(?:[-*+]\s*(?:\[[ xX]?\])?|\*\(.*\)\*|<!--.*-->|\[[^\]]*\]\(\S+\)|https?:\/\/\S+)$/;
+
+function hasCapturedLine(body) {
+  const text = body.replace(/<!--[\s\S]*?-->/g, "").replace(PROMOTION_SECTION_RE, "").replace(URL_ONLY_SUMMARY_RE, "");
+  return text.split("\n").some((line) => {
+    const t = line.trim();
+    return t !== "" && !t.startsWith("#") && !NOT_TEXT_LINE.test(t);
+  });
+}
+
+export function hasReleaseNotes(source, body) {
+  return isGithubReleaseTagUrl(source) && hasCapturedLine(body);
+}
 
 export function isThinClipBody(body, type, source) {
   if (!body) return true;
+  if (hasReleaseNotes(source, body)) return false;
   // Source-host override (host beats type) — spec §7. A legacy
   // type:article reddit clip must still route to the reddit predicate.
   if (isRedditHost(source)) return isThinRedditBody(body);
@@ -132,8 +171,10 @@ export function isThinClipBody(body, type, source) {
   const lines = main.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     if (ARTICLE_SECTIONS.includes(lines[i].trim())) {
+      if (isUrlOnlySummary(lines, i)) continue;
       for (let j = i + 1; j < lines.length; j++) {
         if (/^#{1,6}\s/.test(lines[j].trim())) break;   // next heading
+        if (/^<!--.*-->$/.test(lines[j].trim())) continue;
         if (!PLACEHOLDER_LINE(lines[j])) return false;  // real content found
       }
     }

@@ -48,7 +48,7 @@ test("GET with a partial file returns state partial and the unknown-role error",
   expect(j.roleMap.state).toBe("partial");
   expect(j.roleMap.errors).toContain("unknown-role:jduge");
   expect(j.roleMap.roles).toEqual({ judge: ["B"] });
-  expect(j.ROLES).toEqual(["graphify", "judge"]);
+  expect(j.ROLES).toEqual(["graphify", "judge", "critic"]);
   expect(j.rows.map((r: any) => r.account)).toEqual(["A", "B", "C", "D"]);
   expect(JSON.stringify(j)).not.toContain("org-A");
 });

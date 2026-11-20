@@ -4,7 +4,7 @@ A source-level, per-clip partial (the source cannot give more today) is **deferr
 
 | Class | Where it comes from | Verdict | Counted |
 |---|---|---|---|
-| `thin-body` skeleton | batch tool, clipper captured only placeholders | deferred | yes |
+| `thin-body` skeleton | batch tool, clipper captured only placeholders, or the free fetch failed, found no text or hit the per-run cap | deferred | yes (a cap cut-off bumps nothing) |
 | `enricher-gap` (`harvest_enricher_gap`) | batch tool, known platform with no enricher | deferred | yes |
 | `ig_media_pending` | batch tool / IG routing row, media rung pending | deferred | yes |
 | `x_media_pending` | `/x-media-enrich` parks a retryable X media failure | deferred | yes (when the clip is also a harvest partial) |
@@ -15,6 +15,6 @@ A source-level, per-clip partial (the source cannot give more today) is **deferr
 | `failed` (`✗`, batch tool `FAIL`) | read, canonicalize or G-3 failure | **blocking** | — |
 | `catastrophic` abort | exit 5 | **blocking** | — |
 
-**Retry count.** Each deferred, counted partial increments `harvest_defer_count` in the clip's own frontmatter — not the daily G-5 state file, which rotates at midnight and would reset it. At `harvest_defer_count: 5` the batch tool also writes `harvest_needs_attention: true`, and from then on the clip is skipped (`⊘ skipped (needs-attention)`) instead of re-read every night. Five nights covers a work-week of transient outages before a human looks. A needs-attention clip is never silently dropped: it stays listed. To retry it, fix the source or clip and delete `harvest_needs_attention`.
+**Retry count.** Each deferred, counted partial increments `harvest_defer_count` in the clip's own frontmatter — not the daily G-5 state file, which rotates at midnight and would reset it. At `harvest_defer_count: 5` the batch tool also writes `harvest_needs_attention: true`, and from then on the clip is skipped (`⊘ skipped (needs-attention)`) instead of re-read every night. Five nights covers a work-week of transient outages before a human looks. The retry reaches a partial clip wherever it sits, `_evidence/` included (X and Instagram partials there wait for their own enrichers and are only listed). A needs-attention clip is never silently dropped: it stays listed. To retry it, fix the source or clip and delete `harvest_needs_attention`.
 
 **Pending report.** Every non-dry run of `harvest-clip-body-batch.py` rebuilds `<vault>/.harvest-pending.md` from the clips' frontmatter: a `## Deferred` list (reason, count) and a `## Needs attention` bucket. The batch summary adds `harvest-clip-body-batch: D deferred (non-blocking), A needs-attention; pending report: .harvest-pending.md`. Every `PART` line the batch tool prints is deferred-class; only its `FAIL` lines (exit 4) block. The batch tool also owns `.harvest.done` (G-8): a non-dry run with no `FAIL` writes it, a run with a `FAIL` removes it.

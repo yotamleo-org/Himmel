@@ -1,7 +1,7 @@
 ---
 allowed-tools: Bash, Read
 description: SYNTHESIZE stub mode — compound the evidence pool into early stub subject pages; ledgered, --revert undoes it.
-argument-hint: "[vault-path] [--dry-run | --apply | --revert <ledger.jsonl>]"
+argument-hint: "[vault-path] [--dry-run | --apply [--limit N] | --revert <ledger.jsonl>]"
 ---
 
 ## Your task
@@ -24,15 +24,31 @@ gate below and never skip a step.
 
 A stub fires for a topical tag **T** only when ALL hold:
 1. >=2 evidence clips carry **T** (structural tags like `concepts`/`tools`/
-   `article` are excluded from being a concept key — see `STRUCTURAL_TAGS`).
+   `article` are excluded from being a concept key, in their singular and plural
+   form — see `STRUCTURAL_TAGS`).
 2. **After canonical-URL dedup** of the contributors (one article clipped twice
    collapses to a single contributor — reuses the dedup sweep's `canonicalize()`), the
    distinct-contributor count is still >=2.
 3. Those contributors span **>=2 distinct domains OR >=2 distinct authors** (the
    OR arm lets single-platform authors — every X clip is `x.com` — still pass).
 
+A clip stamped `archived: true` (the daily note's archive action) is not an
+evidence clip for any of this: it makes no tag converge, is never stamped, and a
+page that already cites it is left exactly as it is.
+
 Anything short of all three is logged `⊘ <tag> — skipped (<reason>)` and writes
 nothing. A single article clipped twice produces **0 stubs**, by construction.
+
+**Singular and plural are one tag.** `workflow` and `workflows` count as one tag
+and make one subject: the clips of both spellings are pooled, and the page is
+named for the spelling more clips use (the shorter on a tie). Only the last word
+of a tag is folded (`api-keys` = `api-key`), only regular English plurals fold
+(`dependencies`, `caches`, `boxes`), and words that merely end like a plural keep
+their form (`class`, `status`, `analysis`, `news`, `https`), while their own plurals
+(`statuses`, `biases`, `lenses`, `quizzes`) still meet them. Different words never
+merge: `workflow` and `workload` stay two subjects, and `http` and `https` stay two.
+A mark after the last word does not hide it (`Workflows!` is the `workflow`
+subject).
 
 ### Existing-subject match → densify, never duplicate
 
@@ -41,12 +57,33 @@ Before creating a stub the engine scans existing subjects in
 name** (case/punctuation-insensitive, `-MOC` suffix stripped — so the tag
 `context-windows` matches a `Context-Windows-MOC`) **or** a declared `aliases:`
 entry (so a `self-hosted` group densifies an existing `Local First` page that
-lists `self-hosted` as an alias). On a match it **densifies** — appends the
+lists `self-hosted` as an alias), or by the **exact file name** (so a page whose
+name has no Latin letter or digit, such as `Агенты.md`, is densified and not
+refused). The singular/plural fold applies here too: a
+`workflow` group densifies an existing `Workflows` page. On a match it **densifies** — appends the
 fresh contributors to the subject's `## Evidence` section and stamps them —
 and creates **0** new pages. Matching is BOUNDED (exact normalised equality +
 operator aliases), never an open-ended similarity guess. A densify is recorded
 in the ledger with the appended block, so `--revert` removes exactly that block
 (or refuses if the page diverged).
+
+A subject name holding `/` or `..` (a tag such as `ai/agents`) is skipped with
+that reason and counted in `skipped`: it would be a page in a folder the index
+never reads, or one outside `30-Resources/`. A subject path that already holds
+anything is never written to: a symbolic link (dangling or not), a directory or
+another non-regular file is refused before a write, and a regular file the index
+did not list is refused by the exclusive create itself. The engine prints
+`⊘ <path> — refused: an existing symbolic link sits there, nothing written`,
+stamps none of its clips, writes no ledger entry, and counts it on the summary
+as `N refused (path taken)`. The dry run prints the same refusal, in the same
+order and with the same counts, instead of `would create`. The subject index
+lists regular files only, so a link is never matched for a densify either.
+
+A subject name is written into each stamped clip's header as the double-quoted
+`promoted_to:` value with `"` and `\` escaped, so a tag holding a quote leaves
+the header parseable. `Clippings/_deferred.md` is written only when it is a
+plain file: a link, a directory or a special file there is refused with the same
+line, once per run, in the dry run, the apply and the revert alike.
 
 ### Resolve vault path
 
@@ -62,7 +99,24 @@ node tools/synthesize-stubs.mjs <vault>            # dry-run: report decisions o
 Read the `✓ would create …` / `⊘ … skipped` lines and the summary. Nothing is
 written, no clip is stamped.
 
+### Per-run limit
+
+`--apply --limit N` writes at most N pages in the run, creates and densifies
+together, in the order the dry run lists them. The rest are counted as pending
+and come up on later runs; a page that already cites its clips costs no slot.
+Obsidian hangs on bulk file churn, so the nightly run always passes a limit.
+The last line of the run is the summary, for example
+`synthesize-stubs.mjs: 5 created, 0 densified, 3 skipped, 2 unchanged, 40 pending (limit 5)`.
+A limit of 0, a negative one or a non-number is a usage error (exit 1).
+
 ### Live run = MANDATORY staging gate (irreversible-ish — operator-gated)
+
+This gate covers every live apply you run yourself. The one exception is the
+nightly run (`scripts/luna/pipeline-cadence.sh`), which applies without an
+operator: it passes `--limit` and `--no-telegram-digest`, holds the vault's git
+index lock for the apply so a git-based sync cannot commit a half-written
+state, and relies on the staging and divergence proofs below having been done
+once on a sample copy. It writes the same ledger, so `--revert` undoes it.
 
 A stub auto-creates real pages and stamps clips. Unlike a `_synthesis/` proposal
 it is NOT advisory. Before any `--apply` against the real `~/Documents/luna`:

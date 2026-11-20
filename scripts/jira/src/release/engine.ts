@@ -20,6 +20,7 @@ import { baselineId, effectOn, reduce, recordOf, scopeOk, terminalOf, unknownSta
 import { checkWords, decisionsDirFor, resolveDecision } from './verbatim.js';
 import { asksOperator, type TicketFacts } from './operator-work.js';
 import { FENCE_MARKERS, walk } from './fence-ancestry.js';
+import { KEY_IN, judgeOperatorRows } from './judge-input.js';
 import type {
   Authority, Baseline, Declaration, EventRow, IssueSnap, Lease, Op, OperatorKind, OperatorRow, OutOfVersionRow, PlacementClass, RequestRow, RulingRow, Verb,
 } from './types.js';
@@ -794,7 +795,6 @@ export function signSpec(ctx: Ctx, o: {
 }
 
 const KEY_LINE = /^Keys?:\s*(.+)$/gm;
-const KEY_IN = /[A-Z][A-Z0-9]*-\d+(?!\d)/g;
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export function specReview(ctx: Ctx, o: { keys: string[]; spec: string; plan?: string; verdicts: string[]; supersedes?: string }): OperatorRow {
@@ -2495,7 +2495,7 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
         decisions = !asked.length ? [] : await judged(judge({
           release: ctx.release, current: now.decl.current, versions: now.decl.versions, requests: asked,
           records: reduceLoaded(now, mirror).records.filter((r) => keys.has(r.key)),
-          operator: now.operator.verified,
+          operator: judgeOperatorRows(ctx.release, now.operator.verified, asked, issues, receipted),
           rulings: [...new Set([...receipted.filter((r) => keys.has(r.key)), ...receipted.slice(-40)])],
           issues,
         }, { signal: stop.signal }), stop, o.judgeTimeoutMs);

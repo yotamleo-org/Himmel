@@ -730,6 +730,16 @@ cross-lane persistence claim. No registry or hook authority changes here.
 A worker that hits something it cannot decide reports to the chief, not to the
 operator. The chief verifies the finding itself, then answers.
 
+**The chief rules for the proper fix at the smallest size.** A doc page or code
+comment that describes today's behaviour is not a constraint, so the fix lands at
+the cause and the text changes in the same PR. The fix adds no gate, abstraction
+or option the ticket does not need. When the proper fix is outside the worker's
+scope, the chief files a ticket for it, never accepts a silent workaround. Each
+ruling states its reason. A ruling that would change or set aside a `CLAUDE.md`
+rule, relax a guard or move scope goes to the operator, and so does a ruling the
+chief is unsure belongs in that set; the chief may ask its judge one question to
+test its reasoning, never to clear a ruling that belongs to the operator.
+
 Re-tasking a running worker goes through the **RETASK channel**: each dispatch
 carries a fresh nonce, and a genuine revision is a direct message quoting it.
 Expanding or redirecting a worker needs the token; narrowing it or halting it does
@@ -1311,6 +1321,42 @@ under the anchor's specs root makes every key of the record read `SPEC-STALE`, t
 cannot be re-signed while it exists: a supersession is itself a fresh group signing, so it must keep every key of the old
 record and releases no member. The check covers only the anchor's specs root; a member ledger under another specs root
 is not seen. No ledger is deleted to recover signability, and no automatic recovery is described or built.
+
+## Chief threads in T3 Code
+
+T3 Code closes a thread's claude process 30 minutes after its last turn ended,
+unless the thread has background work running (a background Bash or Monitor, a
+scheduled wakeup, a running subagent). That hold lasts at most 4 hours; a new
+turn resets it. **Settling a thread closes its process at once**, and T3 settles
+its subagent children too.
+
+- **Never settle or organize a chief-role thread.** A chief-role thread is one
+  whose title ends in `-chief` or `-console`, plus the titles in
+  `HIMMEL_T3_CHIEF_TITLES` (newline-separated; default `Manage T3 Code Sync`).
+  This binds the operator's own T3 UI as well. A released or settled thread is
+  not lost: it is woken from outside (below).
+- **The co-chief arms keepalive.** As its one background task
+  (`run_in_background`) it runs `bash scripts/t3/keepalive.sh`. That keeps its
+  session pinned so it stays on the bus. It ends (exit 0) when the wake file
+  `${XDG_RUNTIME_DIR:-/tmp}/himmel-t3/cochief.wake` appears (`WOKEN`, with the
+  file's contents) or after 3.5 hours (`KEEPALIVE-EXPIRED`). Either way the
+  co-chief gets a turn and re-arms it. `--wake-file` and `--max-seconds`
+  override the defaults.
+- **A chief wakes a released thread** with
+  `bash scripts/t3/t3-send.sh <title|threadId> <msg-file>` (`-` reads stdin). It
+  starts a turn with full context, queued if the thread is busy, and unsettles
+  the thread. A title must match one thread exactly: several matches (rc 3) are
+  listed and nothing is sent; none is rc 4.
+- **A check finds settled chief-role threads.**
+  `bash scripts/t3/chief-threads-check.sh` prints
+  `SETTLED <id> <title> <settledAt>` for each and exits 1 when there is any.
+  It skips imported sessions (ids starting `import:`) and threads settled more
+  than `T3_CHIEF_CHECK_WINDOW_HOURS` (default 24) ago. With `--wake` it sends a
+  wake message through `t3-send.sh` only to threads whose title is in
+  `HIMMEL_T3_CHIEF_TITLES`; a thread that matches only the `-chief` or
+  `-console` suffix is reported, marked `(report only: not in
+  HIMMEL_T3_CHIEF_TITLES)`, and never woken.
+  `keepalive.sh` runs it with `--wake` every 15 polls (about 5 minutes).
 
 ## See also
 

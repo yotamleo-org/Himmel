@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en-US">
+  <id>tag:example.invalid,2008:https://github.com/example-org/example-tool/releases</id>
+  <link type="text/html" rel="alternate" href="https://github.com/example-org/example-tool/releases"/>
+  <title>Release notes from example-tool</title>
+  <updated>2026-11-10T10:00:00Z</updated>
+  <entry>
+    <id>tag:example.invalid,2008:Repository/2/nightly</id>
+    <updated>2026-11-10T10:00:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/example-org/example-tool/releases/tag/v2.1.0-nightly.20261110"/>
+    <title>v2.1.0-nightly.20261110</title>
+    <content type="html">&lt;p&gt;Nightly build.&lt;/p&gt;</content>
+  </entry>
+  <entry>
+    <id>tag:example.invalid,2008:Repository/2/alpha</id>
+    <updated>2026-11-09T10:00:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/example-org/example-tool/releases/tag/v2.1.0-alpha.1"/>
+    <title>v2.1.0-alpha.1</title>
+    <content type="html">&lt;p&gt;Alpha build.&lt;/p&gt;</content>
+  </entry>
+  <entry>
+    <id>tag:example.invalid,2008:Repository/2/rc</id>
+    <updated>2026-11-08T10:00:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/example-org/example-tool/releases/tag/v2.1.0-rc1"/>
+    <title>v2.1.0-rc1</title>
+    <content type="html">&lt;p&gt;Release candidate.&lt;/p&gt;</content>
+  </entry>
+  <entry>
+    <id>tag:example.invalid,2008:Repository/2/v2.0.1</id>
+    <updated>2026-11-07T10:00:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/example-org/example-tool/releases/tag/v2.0.1"/>
+    <title>v2.0.1 source maps fix</title>
+    <content type="html">&lt;p&gt;Source maps now resolve.&lt;/p&gt;</content>
+  </entry>
+  <entry>
+    <id>tag:example.invalid,2008:Repository/2/v2.0.0</id>
+    <updated>2026-11-06T10:00:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/example-org/example-tool/releases/tag/v2.0.0"/>
+    <title>v2.0.0</title>
+    <content type="html">&lt;p&gt;Stable release.&lt;/p&gt;</content>
+  </entry>
+</feed>

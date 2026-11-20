@@ -29,7 +29,7 @@ export function topicalTags(tags) {
   const out = [];
   for (const raw of tags || []) {
     const t = String(raw).trim().toLowerCase();
-    if (!t || STRUCTURAL_TAGS.has(t) || seen.has(t)) continue;
+    if (!t || STRUCTURAL_KEYS.has(tagKey(t)) || seen.has(t)) continue;
     seen.add(t);
     out.push(t);
   }
@@ -52,6 +52,39 @@ export function domainOf(canonicalUrl) {
  */
 export function normalizeName(s) {
   return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+const WORDS_KEPT_AS_THEY_ARE = new Set([
+  "news", "series", "species", "lens", "bias", "canvas", "atlas", "chaos",
+  "kubernetes", "aws", "ios", "macos", "css", "gps", "https",
+]);
+
+const SINGULAR_OF_KEPT_PLURAL = new Map([
+  ["lenses", "lens"], ["biases", "bias"], ["canvases", "canvas"], ["atlases", "atlas"],
+  ["statuses", "status"], ["buses", "bus"], ["analyses", "analysis"],
+  ["syntheses", "synthesis"], ["quizzes", "quiz"],
+]);
+
+function groupingStem(w) {
+  if (SINGULAR_OF_KEPT_PLURAL.has(w)) return SINGULAR_OF_KEPT_PLURAL.get(w);
+  if (w.length <= 3 || WORDS_KEPT_AS_THEY_ARE.has(w)) return w;
+  if (/ss$|us$|[sx]is$/.test(w)) return w;
+  if (/[^aeiou]ies$/.test(w)) return w.slice(0, -3) + "y";
+  if (/(?:x|z|ch|sh|ss)es$/.test(w)) return w.slice(0, -2);
+  const bare = w.endsWith("s") ? w.slice(0, -1) : w;
+  return bare.replace(/(ch|sh|x|z)e$/, "$1").replace(/ie$/, "y");
+}
+
+export function tagKey(tag) {
+  const t = String(tag).toLowerCase();
+  const m = /^(.*[^a-z0-9])?([a-z0-9]+)([^a-z0-9]*)$/.exec(t);
+  return m ? (m[1] || "") + groupingStem(m[2]) + m[3] : t;
+}
+
+const STRUCTURAL_KEYS = new Set([...STRUCTURAL_TAGS].map(tagKey));
+
+export function subjectKey(name) {
+  return normalizeName(tagKey(String(name).trim()));
 }
 
 /** Title-case a tag slug: "context-windows" -> "Context Windows". */
@@ -95,6 +128,12 @@ export function targetForContributors(contributors) {
   return KIND_TARGET.concepts;
 }
 
+function mostUsedSpelling(clipCountBySpelling) {
+  const byCountThenLengthThenName = (a, b) =>
+    clipCountBySpelling.get(b) - clipCountBySpelling.get(a) || a.length - b.length || (a < b ? -1 : 1);
+  return [...clipCountBySpelling.keys()].sort(byCountThenLengthThenName)[0];
+}
+
 /**
  * Plan stub decisions over a clip set.
  *
@@ -108,19 +147,23 @@ export function planStubs(clips, matchExisting) {
   // Stable input order.
   const sorted = [...clips].sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
 
-  // tag -> clips carrying it.
-  const byTag = new Map();
+  const byKey = new Map();
   for (const clip of sorted) {
+    const keysOfClip = new Set();
     for (const tag of topicalTags(clip.tags)) {
-      if (!byTag.has(tag)) byTag.set(tag, []);
-      byTag.get(tag).push(clip);
+      const key = tagKey(tag);
+      if (!byKey.has(key)) byKey.set(key, { forms: new Map(), group: [] });
+      const entry = byKey.get(key);
+      entry.forms.set(tag, (entry.forms.get(tag) || 0) + 1);
+      if (!keysOfClip.has(key)) { keysOfClip.add(key); entry.group.push(clip); }
     }
   }
 
   const decisions = [];
-  for (const tag of [...byTag.keys()].sort()) {
-    const group = byTag.get(tag);
+  for (const key of [...byKey.keys()].sort()) {
+    const { forms, group } = byKey.get(key);
     if (group.length < 2) continue; // need >=2 raw clips even before dedup
+    const tag = mostUsedSpelling(forms);
 
     // (a) canonical-URL dedup — keep one representative per dedup key.
     const repByKey = new Map();
@@ -148,6 +191,15 @@ export function planStubs(clips, matchExisting) {
       decisions.push({
         conceptKey: tag, subjectName, action: "skip",
         reason: `distinct-source floor: ${domains.size} domain(s), ${authors.size} author(s)`,
+        contributors: contributors.map((c) => c.rel),
+      });
+      continue;
+    }
+
+    if (/\/|\.\./.test(subjectName)) {
+      decisions.push({
+        conceptKey: tag, subjectName, action: "skip",
+        reason: "subject name holds '/' or '..'",
         contributors: contributors.map((c) => c.rel),
       });
       continue;

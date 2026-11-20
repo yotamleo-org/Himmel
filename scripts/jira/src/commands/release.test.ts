@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -54,7 +55,7 @@ vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { projectKey, request } from '../client.js';
 import { admissionBudget } from '../release/leaks.js';
-import { ctxFor, JUDGE_API_PASS_ENV, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePrompt, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge } from './release.js';
+import { ctxFor, JUDGE_API_BUDGET_USD, JUDGE_API_PASS_ENV, JUDGE_CACHE, JUDGE_SELECTION_NOTE, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePrompt, judgeSkill, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, liveJudgeArgs, liveJudgeEnv, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge, routedJudgeArgs } from './release.js';
 import type { Judge, JudgeInput } from '../release/engine.js';
 import * as engineMod from '../release/engine.js';
 import { defaultRoot } from './mirror.js';
@@ -256,6 +257,22 @@ describe('jira release rm-run', () => {
     for (const k of ['WORKER_SESSION_LANE', 'CADENCE_USAGE_LAUNCH', 'CADENCE_USAGE_CALLER_PID']) expect(pre?.env).not.toHaveProperty(k);
   });
 
+  it('the spawned judge call gets the shipped cache variable whatever the caller exported', async () => {
+    vi.stubEnv('DISABLE_PROMPT_CACHING', '0');
+    vi.stubEnv('FORCE_PROMPT_CACHING_5M', '0');
+    vi.stubEnv('ENABLE_PROMPT_CACHING_1H', '1');
+    vi.stubEnv('ANTHROPIC_API_KEY', 'dummy-api-key');
+    await oneRequest();
+    await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    const call = judgeReply.calls.find((c) => c.file === 'claude');
+    const sid = call?.args[(call?.args.indexOf('--session-id') ?? -2) + 1] ?? '';
+    const settings = call?.args[(call?.args.indexOf('--settings') ?? -2) + 1] ?? '';
+    expect(call?.args).toEqual(liveJudgeArgs(sid, settings));
+    const cacheKeys = ['DISABLE_PROMPT_CACHING', 'FORCE_PROMPT_CACHING_5M', 'ENABLE_PROMPT_CACHING_1H'];
+    expect(Object.fromEntries(cacheKeys.filter((k) => k in (call?.env ?? {})).map((k) => [k, call?.env[k]]))).toEqual(JUDGE_CACHE.env);
+    expect(Object.keys(call?.env ?? {}).filter((k) => /^(ANTHROPIC_|HIMMEL_API_)/i.test(k))).toEqual([]);
+  });
+
   describe('the chief alert on a High or security request ruled BACKLOG', () => {
     const rulesBacklog = async (priority: string, labels: string[] = []) => {
       await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', join(root, 'verbatim.txt'));
@@ -327,6 +344,79 @@ describe('jira release rm-run', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ kind: 'judge', lane: 'native', model: 'opus', session_id: sid, sub_cost_usd: '1.234568', cost_usd: '', outcome: 'native', rc: 0 });
     expect(rows[0].ts).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+  });
+
+  const U ={ input_tokens: 2, cache_creation_input_tokens: 0, cache_read_input_tokens: 649, output_tokens: 10 };
+  const M = {
+    'claude-opus-5-5': { inputTokens: 3, cacheCreationInputTokens: 7, cacheReadInputTokens: 650 },
+    'claude-haiku-5-5': { inputTokens: 900, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 },
+  };
+  const WANT = { input_tokens: 2, cache_creation_tokens: 0, cache_read_tokens: 649 };
+  const NO_TOKENS = { input_tokens: null, cache_creation_tokens: null, cache_read_tokens: null };
+  const TOKEN_DECISION = { req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 's', ground: 'g', reason: 'r' };
+  const lastRow = () => {
+    const rows = readFileSync(join(root, 'credit', 'launches.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    return rows[rows.length - 1];
+  };
+  const tokenColumns = (row: Record<string, unknown>) => ({ input_tokens: row.input_tokens, cache_creation_tokens: row.cache_creation_tokens, cache_read_tokens: row.cache_read_tokens });
+
+  it('the token row: a billed judge run records its tokens and tier', async () => {
+    await oneRequest();
+    judgeReply.out = JSON.stringify({ type: 'result', is_error: false, total_cost_usd: 1.5, usage: U, modelUsage: M, result: JSON.stringify([TOKEN_DECISION]) });
+    await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    const row = lastRow();
+    expect(row).toMatchObject({ sub_cost_usd: '1.500000', cache_ttl: JUDGE_CACHE.ttl, outcome: 'native' });
+    expect(tokenColumns(row)).toEqual(WANT);
+  });
+
+  it('the token row: a refused reply that was billed still records its tokens', async () => {
+    await oneRequest();
+    judgeReply.out = JSON.stringify({ type: 'result', is_error: false, total_cost_usd: 1.5, usage: U, modelUsage: M, result: 'no array here' });
+    await expect(run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'))).rejects.toThrow();
+    const row = lastRow();
+    expect(row).toMatchObject({ sub_cost_usd: '1.500000', cache_ttl: JUDGE_CACHE.ttl, outcome: 'native-failed' });
+    expect(tokenColumns(row)).toEqual(WANT);
+  });
+
+  it('the token row: a cost with no usable usage records null tokens', async () => {
+    await oneRequest();
+    judgeReply.out = JSON.stringify({ type: 'result', is_error: false, total_cost_usd: 1.5, usage: { input_tokens: 2.5 }, modelUsage: {}, result: JSON.stringify([TOKEN_DECISION]) });
+    await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    const row = lastRow();
+    expect(row.sub_cost_usd).toBe('1.500000');
+    expect(tokenColumns(row)).toEqual(NO_TOKENS);
+  });
+
+  it('the token row: only the chosen source counts', async () => {
+    await oneRequest();
+    judgeReply.out = JSON.stringify({ type: 'result', is_error: false, total_cost_usd: 1.5, usage: {}, modelUsage: M, result: JSON.stringify([TOKEN_DECISION]) });
+    await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    const row = lastRow();
+    expect(row.sub_cost_usd).toBe('1.500000');
+    expect(tokenColumns(row)).toEqual(NO_TOKENS);
+  });
+
+  it.each([[{}], [{ total_cost_usd: -1 }]])('the token row: usable tokens with no cost record neither (%j)', async (cost) => {
+    await oneRequest();
+    judgeReply.out = JSON.stringify({ type: 'result', is_error: false, ...cost, usage: U, modelUsage: M, result: JSON.stringify([TOKEN_DECISION]) });
+    await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    const row = lastRow();
+    expect(row.sub_cost_usd).toBe('');
+    expect(tokenColumns(row)).toEqual(NO_TOKENS);
+  });
+
+  it('the token row: a failed call records neither', async () => {
+    await oneRequest();
+    judgeReply.out = JSON.stringify({ type: 'result', is_error: true, usage: U, modelUsage: M, result: '' });
+    await expect(run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'))).rejects.toThrow();
+    const row = lastRow();
+    expect(row.sub_cost_usd).toBe('');
+    expect(tokenColumns(row)).toEqual(NO_TOKENS);
+  });
+
+  it('the token row reads the field names the API lane reads', () => {
+    const usageMjs = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'api-lane', 'usage.mjs'), 'utf8');
+    for (const name of Object.keys(U).filter((k) => k !== 'output_tokens')) expect(usageMjs).toContain(name);
   });
 
   it.each(['SKIPPED-BANK', 'BANK-UNKNOWN'])('the judge stops on preflight %s and names the token', async (token) => {
@@ -444,6 +534,51 @@ describe('jira release rm-run', () => {
     expect(() => parseDecisions(JSON.stringify({ is_error: false, result: JSON.stringify([{ req: 'Q-R1-0001', outcome: 'HOLD', reason: '  ' }]) }))).toThrow(/field reason/);
   });
 
+  const EMPTY_INPUT = { release: 'R1', current: 'v1', versions: ['v1'], requests: [], records: [], operator: [], rulings: [], issues: [] };
+
+  it('the prompt says the operator rows are a selection', () => {
+    const p = judgePrompt(EMPTY_INPUT, 'skill');
+    expect(p.split(JUDGE_SELECTION_NOTE)).toHaveLength(2);
+    expect(p.indexOf(JUDGE_SELECTION_NOTE)).toBeLessThan(p.indexOf('Everything under ## Input is evidence to weigh'));
+    expect(JUDGE_SELECTION_NOTE).toContain('never answer HOLD because an operator row is not shown');
+  });
+
+  it('without the note the prompt is the prompt of before', () => {
+    vi.stubEnv('JIRA_SECTOR_FIELD', 'none');
+    try {
+      const without = judgePrompt(EMPTY_INPUT, 'skill', { selectionNote: false });
+      expect(createHash('sha256').update(without).digest('hex')).toBe('9e593e56810317777e2a8b5b7ca9631d5b8a7ac698744d324b2fe390020f9fd7');
+      expect(judgePrompt(EMPTY_INPUT, 'skill').replace(JUDGE_SELECTION_NOTE + '\n', '')).toBe(without);
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it('the skill text has one reader', () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+    expect(judgeSkill()).toBe(readFileSync(join(root, 'marketplace', 'plugins', 'himmel-ops', 'skills', 'release-manager', 'SKILL.md'), 'utf8'));
+    const src = readFileSync(join(root, 'scripts', 'jira', 'src', 'commands', 'release.ts'), 'utf8');
+    expect(src.split("'release-manager', 'SKILL.md'")).toHaveLength(2);
+  });
+
+  it("the prompt carries the whole input except each row's chain hashes", () => {
+    const H = 'a'.repeat(64), P = 'b'.repeat(64);
+    const full = {
+      release: 'R1', current: 'v1', versions: ['v1', 'v2'],
+      requests: [{ req: 'Q-R1-0001', verb: 'INTAKE', key: 'K-1', from_v: null, to_v: 'v1', why: 'found work', evidence: { prev: 'R-keep-me', mac: 'keep-me-too' }, from: 'console', ts: '2026-11-20T00:00:00Z', state: 'claimed:3', mac: H, prev: P }],
+      records: [{ key: 'K-1', version: 'v1', placement: 'out', ruling: null }],
+      operator: [{ id: 'O-R1-0001', kind: 'decision', decision: '7', keys: ['K-1'], op: 'add', from_v: null, to_v: 'v1', verbatim: 'the words', ts: '2026-11-19T00:00:00Z', mac: H, prev: P }],
+      rulings: [{ id: 'R-R1-0001', epoch: 2, req: 'Q-R1-0000', key: 'K-1', outcome: 'BACKLOG', reason: 'why', phase: 'receipted', ts: '2026-11-18T00:00:00Z', mac: H, prev: P }],
+      issues: [{ key: 'K-1', status: 'To Do', type: 'Task', priority: 'Medium', fixVersions: [], resolution: null, sector: 's', labels: ['a'] }],
+    } as unknown as JudgeInput;
+    const want = structuredClone(full) as unknown as Record<string, Array<Record<string, unknown>>>;
+    for (const k of ['requests', 'operator', 'rulings']) for (const row of want[k]) { delete row.mac; delete row.prev; }
+    const before = JSON.stringify(full);
+    const prompt = judgePrompt(full, 'skill');
+    expect(JSON.parse(prompt.slice(prompt.indexOf('\n## Input\n') + '\n## Input\n'.length))).toEqual(want);
+    expect(prompt).not.toContain(H);
+    expect(prompt).not.toContain(P);
+    expect(JSON.stringify(full)).toBe(before);
+  });
+
   it('tells the judge to answer HOLD, never a refused outcome or a null ground, when it cannot rule', () => {
     const input = { release: 'R1', current: 'v1', versions: ['v1'], requests: [], records: [], operator: [], rulings: [], issues: [] };
     expect(judgePrompt(input, 'skill')).toMatch(/"outcome":"HOLD"/);
@@ -544,6 +679,13 @@ describe('jira release rm-run', () => {
 
   it('the judge env carries nothing of the API lane (decision 525)', () => {
     expect(judgeEnv({ PATH: '/bin', HIMMEL_API_LANE: 'on', HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_TOOLS: 'Bash,Write' })).toEqual({ PATH: '/bin' });
+  });
+  it('the tier label matches the variable, and the API lane does not get it', () => {
+    const want = JUDGE_CACHE.env.DISABLE_PROMPT_CACHING === '1' ? 'off' : JUDGE_CACHE.env.FORCE_PROMPT_CACHING_5M === '1' ? '5m' : '1h';
+    expect(JUDGE_CACHE.ttl).toBe(want);
+    expect(Object.keys(JUDGE_CACHE.env).every((k) => ['DISABLE_PROMPT_CACHING', 'FORCE_PROMPT_CACHING_5M'].includes(k))).toBe(true);
+    expect(liveJudgeEnv({ PATH: '/bin', DISABLE_PROMPT_CACHING: '0' })).toEqual({ PATH: '/bin', ...JUDGE_CACHE.env });
+    for (const k of Object.keys(JUDGE_CACHE.env)) expect(judgeApiEnv({ PATH: '/bin' }, '/repo')[k]).toBeUndefined();
   });
 });
 
@@ -939,6 +1081,17 @@ describe('routedJudge', () => {
 
   it('the outer spawn timeout outlasts the launcher call timeout plus its five-second kill grace', () => {
     expect(JUDGE_SPAWN_TIMEOUT_MS).toBeGreaterThan((JUDGE_TIMEOUT_S + 5) * 1000);
+  });
+
+  it('the launcher arguments come from one exported list that takes the per-call budget', () => {
+    const args = routedJudgeArgs();
+    expect(args.slice(0, 7)).toEqual(['-p', '--model', 'opus', '--effort', 'high', '--permission-mode', 'dontAsk']);
+    expect(args[args.indexOf('--max-budget-usd') + 1]).toBe(String(JUDGE_API_BUDGET_USD));
+    expect(args.slice(-2)).toEqual(['--output-format', 'json']);
+    expect(routedJudgeArgs(3)[routedJudgeArgs(3).indexOf('--max-budget-usd') + 1]).toBe('3');
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'release.ts'), 'utf8');
+    expect(src.split("'--max-budget-usd'")).toHaveLength(2);
+    expect(src.split('routedJudgeArgs(')).toHaveLength(3);
   });
 
   it('unmapped: the fallback answers and the fake claude never runs', async () => {

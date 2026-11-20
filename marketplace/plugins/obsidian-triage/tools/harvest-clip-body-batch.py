@@ -19,12 +19,20 @@ Implements the mechanical subset of /harvest-clips that needs no LLM:
 Idempotent. Re-running skips already-harvested clips.
 
 Usage:
-    python harvest-clip-body-batch.py <vault-path> [--dry-run] [--limit N]
+    python harvest-clip-body-batch.py <vault-path> [--dry-run] [--limit N] [--fetch-budget N]
+        The default run. A thin-body article/web clip is fetched through the free
+        rungs (local headless, then Jina) with no flag or key and written as a
+        `## Harvested content` section; --fetch-budget (HARVEST_FETCH_BUDGET,
+        default 20) caps the clips fetched per run (one unit per clip, however
+        many rungs of the chain it tries), failures included. A failed or
+        empty fetch leaves a retryable partial. A partial that triage moved to
+        _evidence/ is retried there too (article and YouTube hosts), up to the
+        defer count of 5, when the run would reprocess it; a YouTube clip whose
+        transcript was unavailable is listed in the pending report only.
+        HARVEST_SCRAPE_DENY=all turns the fetch off.
     python harvest-clip-body-batch.py <vault-path> --firecrawl-thin [--firecrawl-budget N] [--dry-run]
-        Opt-in escalation (the firecrawl rung): for thin-body
-        article/web clips, fetch clean markdown via firecrawl's
-        /v2/scrape API and write it as a `## Harvested content` section
-        instead of leaving the clip thin. Needs FIRECRAWL_API_KEY (and
+        Opt-in escalation: the same, plus the paid firecrawl rung after the
+        free ones, via firecrawl's /v2/scrape API. Needs FIRECRAWL_API_KEY (and
         optionally FIRECRAWL_BASE_URL for self-hosted). Credit-conscious:
         skips X/github/youtube (owned by cheaper paths) and caps scrape
         calls at --firecrawl-budget (default 20) per run. Default runs
@@ -43,8 +51,10 @@ Cross-platform paths via pathlib. Windows / Git Bash / macOS / Linux all work.
 Batch tooling. Triage stage stays LLM-driven via /triage-clips.
 """
 import argparse
+import itertools
 import os
 import re
+import socket
 import sys
 from pathlib import Path
 from typing import NamedTuple
@@ -72,6 +82,7 @@ TRACKING_PARAMS = {
 MAX_DECODE_PASSES = 4
 FIRECRAWL_DEFAULT_BASE_URL = "https://api.firecrawl.dev"
 FIRECRAWL_DEFAULT_BUDGET = 20  # max scrape calls per run (~1 credit each)
+FETCH_DEFAULT_BUDGET = 20
 FIRECRAWL_DEFAULT_MAX_CREDITS = 5  # per-call ceiling: a stealth call (5) passes, anything above stops firecrawl for the run
 
 # Hosts firecrawl must NOT scrape — a cheaper/better path already owns them:
@@ -105,7 +116,7 @@ ENRICHER_GAP_HOSTS = {
 
 # Thin-body heuristic (harvest-clips.md Phase 4): a clip-body clip is NOT
 # thin if it carries one of these section headings with real content.
-_RICH_SECTION_HEADINGS = ("## highlights", "## the idea", "## summary", "## key points")
+_RICH_SECTION_HEADINGS = ("## highlights", "## the idea", "## summary", "## key points", "## harvested content")
 
 # Prompt-injection screen.
 # CANONICAL pattern list — the runbook describes these classes in prose;
@@ -273,6 +284,17 @@ def is_github_blob_url(url: str) -> bool:
     return len(parts) >= 5 and parts[2] == "blob"
 
 
+def is_github_release_tag_url(url: str) -> bool:
+    if not is_github_url(url):
+        return False
+    parts = [seg for seg in urlparse(url.strip().strip('"')).path.split("/") if seg]
+    return len(parts) >= 5 and parts[2] == "releases" and parts[3] == "tag"
+
+
+def has_release_notes(source: str, body: str) -> bool:
+    return is_github_release_tag_url(source or "") and bool(_capture_lines(body))
+
+
 def _normalized_host(url: str) -> str:
     try:
         host = (urlparse(url.strip().strip('"')).hostname or "").lower()
@@ -308,13 +330,52 @@ _PLACEHOLDER_LINE_RE = re.compile(
 _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 # triage-authored, never source text
 _PROMOTION_SECTION_RE = re.compile(r"(?ms)^## Promotion candidate\b.*?(?=^## |\Z)")
+URL_ONLY_MARKER = "Inferred from the source URL only"
+_URL_ONLY_SUMMARY_RE = re.compile(
+    r"(?ms)^## Summary[ \t]*\r?\n(?:(?!^#{1,6}[ \t]).)*?" + re.escape(URL_ONLY_MARKER) + r".*?(?=^## |\Z)")
+
+
+BOT_CHECK_PHRASES = (
+    "just a moment", "enable javascript", "enable cookies", "checking your browser",
+    "verify you are human", "verifying you are human", "are you a robot", "not a robot",
+    "attention required", "access denied", "request blocked", "captcha",
+    "403 forbidden", "404 not found", "page not found", "too many requests",
+    "unusual traffic", "security check", "something went wrong",
+)
+_BOT_CHECK_RE = re.compile("|".join(re.escape(p) for p in BOT_CHECK_PHRASES), re.IGNORECASE)
+FETCH_MIN_WORDS = 20
+BOT_CHECK_MAX_WORDS = 80
+
+
+def unusable_fetch_reason(text: str) -> str | None:
+    words = sum(1 for _ in itertools.islice(re.finditer(r"\w+", text), BOT_CHECK_MAX_WORDS + 1))
+    if words <= BOT_CHECK_MAX_WORDS and _BOT_CHECK_RE.search(re.sub(r"\s+", " ", text)):
+        return "fetched text is a bot-check or error notice"
+    if words < FETCH_MIN_WORDS:
+        return f"fetched text has too few words ({words})"
+    return None
+
+
+_HARVESTED_SECTION_RE = re.compile(r"(?ms)^## Harvested content[ \t]*\r?\n(?:<!--.*?-->[ \t]*\r?\n)?(.*?)(?=^## |\Z)")
+
+
+def junk_fetch_section(fm: dict, body: str):
+    if fm.get("harvest_skill") not in BACKEND_REGISTRY or fm.get("harvest_status") not in ("ok", "partial"):
+        return None
+    m = _HARVESTED_SECTION_RE.search(body)
+    return m if m and unusable_fetch_reason(m.group(1)) else None
+
+
+def _source_text(body: str) -> str:
+    return _URL_ONLY_SUMMARY_RE.sub("", _PROMOTION_SECTION_RE.sub("", _COMMENT_RE.sub("", body)))
 
 
 def _capture_lines(body: str) -> list:
     """The non-blank, non-heading lines that can carry captured source text:
-    HTML comments, template placeholders and the triage promotion block are
-    not capture (a Web Clipper skeleton is not a harvested article)."""
-    body = _PROMOTION_SECTION_RE.sub("", _COMMENT_RE.sub("", body))
+    HTML comments, template placeholders, the triage promotion block and a
+    URL-only summary are not capture (a Web Clipper skeleton is not a
+    harvested article)."""
+    body = _source_text(body)
     return [
         ln for ln in body.split("\n")
         if ln.strip() and not ln.lstrip().startswith("#")
@@ -329,7 +390,7 @@ def is_thin_body(body: str) -> bool:
     content (>40 chars below the heading, before the next H2)."""
     if len(_capture_lines(body)) >= 10:
         return False
-    body = _PROMOTION_SECTION_RE.sub("", _COMMENT_RE.sub("", body))
+    body = _source_text(body)
     lowered = body.lower()
     for heading in _RICH_SECTION_HEADINGS:
         idx = lowered.find(heading)
@@ -347,28 +408,99 @@ def is_thin_body(body: str) -> bool:
     return True
 
 
+def is_thin_instagram_body(body: str) -> bool:
+    m = re.search(r"(?m)^## Crawled content\b", body)
+    if not m:
+        return True
+    section = body[m.start():]
+    nxt = re.search(r"(?m)^## (?!Crawled content)", section[1:])
+    if nxt:
+        section = section[:nxt.start() + 1]
+    return not (re.search(r"(?m)^### Transcript\b", section) or re.search(r"(?m)^### Slides\b", section))
+
+
+def is_thin_clip(source: str, body: str) -> bool:
+    if has_release_notes(source, body):
+        return False
+    host = _normalized_host(source or "")
+    if host == "instagram.com" or host.endswith(".instagram.com"):
+        return is_thin_instagram_body(body)
+    return is_thin_body(body)
+
+
+_resolve_host = socket.getaddrinfo
+
+PRIVATE_REASON = "is or resolves to a private address"
+
+
+def _parse_ip(host: str):
+    """The address `host` spells, else None. Chromium also dials decimal / hex /
+    short IPv4 spellings (2130706433, 0x7f.1, 127.1) that ipaddress rejects."""
+    import ipaddress
+    try:
+        return ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        try:
+            return ipaddress.ip_address(socket.inet_aton(host.lower().strip(".")))
+        except (OSError, ValueError):
+            return None
+
+
+def _ip_is_private(ip) -> bool:
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+
+
 def _is_private_host(host: str) -> bool:
     """True for hosts that must never be shipped to an external scraper:
     localhost, internal TLDs (.local/.lan/.internal), and RFC1918 / loopback
     / link-local / reserved IP literals. Mirrors the harvest-clips.md G-1
     privacy gate for the firecrawl egress path."""
-    import ipaddress
     h = host.lower().strip(".")
     if h == "localhost" or h.endswith((".local", ".lan", ".internal")):
         return True
+    ip = _parse_ip(host)
+    return ip is not None and _ip_is_private(ip)
+
+
+def _resolved_ips(host: str) -> list:
+    import ipaddress
+    ips = [ipaddress.ip_address(sockaddr[0].split("%", 1)[0])
+           for *_, sockaddr in _resolve_host(host.strip("[]"), None, type=socket.SOCK_STREAM)]
+    if not ips:
+        raise OSError("no address")
+    return ips
+
+
+def _private_denial(host: str, cache: dict):
+    if host not in cache:
+        if _is_private_host(host):
+            cache[host] = f"{host} {PRIVATE_REASON}"
+        elif _parse_ip(host) is not None:
+            cache[host] = None
+        else:
+            try:
+                private = any(_ip_is_private(ip) for ip in _resolved_ips(host))
+                cache[host] = f"{host} {PRIVATE_REASON}" if private else None
+            except Exception as e:
+                cache[host] = f"{host} did not resolve ({type(e).__name__}), refused"
+    return cache[host]
+
+
+def _remote_refusal(url: str):
+    host = (urlparse(url).hostname or "").lower()
+    if not host:
+        return None
+    if _is_private_host(host):
+        return f"{host} {PRIVATE_REASON}"
+    if _parse_ip(host) is not None:
+        return None
     try:
-        ip = ipaddress.ip_address(host.strip("[]"))
-    except ValueError:
-        # Chromium also dials decimal / hex / short IPv4 spellings
-        # (2130706433, 0x7f.1, 127.1) that ipaddress rejects.
-        import socket
-        try:
-            ip = ipaddress.ip_address(socket.inet_aton(h))
-        except (OSError, ValueError):
-            return False
-    if ip.version == 6 and ip.ipv4_mapped:
-        ip = ip.ipv4_mapped
-    return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+        private = any(_ip_is_private(ip) for ip in _resolved_ips(host))
+    except Exception:
+        return None
+    return f"{host} {PRIVATE_REASON}" if private else None
 
 
 def firecrawl_eligible(canonical: str) -> bool:
@@ -678,7 +810,7 @@ def write_youtube_harvest(path: Path, text: str, fm_raw: str, body: str, canonic
     if not hits:
         # A retried deferred partial carries harvest_flag: thin-body; it no
         # longer holds once the clip is harvested ok. injection-suspect stays.
-        new_fm = re.sub(r"^harvest_flag:[ \t]*thin-body[ \t]*\n?", "", new_fm, flags=re.MULTILINE)
+        new_fm = re.sub(r"^harvest_flag:[ \t]*(?:thin-body|transcript-unavailable)[ \t]*\n?", "", new_fm, flags=re.MULTILINE)
     try:
         path.write_text(f"---\n{new_fm}\n---\n{new_body}", encoding="utf-8", newline="\n")
         _dfm, disk_fm_raw, disk_body, disk_present = parse_frontmatter(path.read_text(encoding="utf-8"))
@@ -933,22 +1065,23 @@ def drop_media_cookies(cookies: list) -> list:
 def _block_private_requests(page, state):
     """Scrapling page_setup hook (runs before navigation). Aborts the browser's
     navigations, redirect hops and same-process subresources to a private host,
-    and page-level websockets. The decision is on the request URL alone, before
-    the browser resolves or connects.
+    and page-level websockets, before the browser connects.
 
     NOT covered: cross-site iframes (separate CDP targets, so their
-    redirect hops are never paused), dedicated/shared-worker traffic including
-    worker websockets, and DNS rebinding (the check is hostname-only).
+    redirect hops are never paused), and dedicated/shared-worker traffic
+    including worker websockets.
 
     Fail closed: Scrapling swallows an exception raised here and navigates
     anyway, so the first thing installed is a deny-all route that only lets
     requests through once state["armed"] is set, which happens after the last
     guard is in place. A failed install leaves the browser denying everything."""
+    resolved = state.setdefault("resolved", {})
+
     def blocked(url) -> bool:
         p = urlparse(str(url))
         if p.scheme in ("data", "blob", "about"):
             return False
-        return not p.hostname or _is_private_host(p.hostname)
+        return not p.hostname or bool(_private_denial(p.hostname.lower(), resolved))
 
     def on_request(route):
         try:
@@ -1031,13 +1164,19 @@ class LocalHeadlessClient:
             fetch, to_markdown = self._load()
         except ImportError:
             raise BackendNotImplemented("scrapling is not installed")
-        state = {"armed": False}
+        state = {"armed": False, "resolved": {}}
         cookies = drop_media_cookies(load_jar_cookies(self.cookie_dir, url))
-        page = fetch(url, headless=True, timeout=self.TIMEOUT_MS,
-                     cookies=cookies,
-                     page_setup=lambda pg: _block_private_requests(pg, state),
-                     # a service worker's traffic bypasses every route/CDP guard
-                     additional_args={"service_workers": "block"})
+        try:
+            page = fetch(url, headless=True, timeout=self.TIMEOUT_MS,
+                         cookies=cookies,
+                         page_setup=lambda pg: _block_private_requests(pg, state),
+                         # a service worker's traffic bypasses every route/CDP guard
+                         additional_args={"service_workers": "block"})
+        except Exception as e:
+            refused = state["resolved"].get((urlparse(url).hostname or "").lower())
+            if refused:
+                raise RuntimeError(f"refused, {refused}") from e
+            raise
         # Scrapling swallows a page_setup exception and navigates anyway; the
         # hook's deny-all route kept the browser closed, and this refuses the result
         if not state["armed"]:
@@ -1045,8 +1184,9 @@ class LocalHeadlessClient:
         # defence in depth: _block_private_requests already aborted any request to
         # a private host; refuse to ingest a page that still landed on one
         final_host = (urlparse(str(getattr(page, "url", "") or url)).hostname or "").lower()
-        if final_host and _is_private_host(final_host):
-            raise RuntimeError("local-headless: redirected to a private host")
+        refused = _private_denial(final_host, state["resolved"]) if final_host else None
+        if refused:
+            raise RuntimeError(f"local-headless: redirected to a private host, {refused}")
         status = getattr(page, "status", 200)
         if status >= 400:
             raise RuntimeError(f"local-headless: HTTP {status}")
@@ -1250,6 +1390,10 @@ def resolve_firecrawl_budget(flag, env):
     return flag if flag is not None else _env_int(env, "HARVEST_FIRECRAWL_BUDGET", FIRECRAWL_DEFAULT_BUDGET)
 
 
+def resolve_fetch_budget(flag, env):
+    return flag if flag is not None else _env_int(env, "HARVEST_FETCH_BUDGET", FETCH_DEFAULT_BUDGET)
+
+
 class BackendRoutes:
     """The vault's .harvest-backends lines. `error` is set when the file exists
     but cannot be read or parsed: the chain then refuses every URL (fail closed)."""
@@ -1330,11 +1474,12 @@ class ScrapeChain:
     already removed killed backends at build time, so a route can never re-add
     one."""
 
-    def __init__(self, backends, budget, routes=None):
+    def __init__(self, backends, budget, routes=None, charge_failures=False):
         self.backends = list(backends)
         self.remaining = budget
         self.routes = routes
         self.last_backend = None
+        self.charge_failures = charge_failures
 
     def backends_for(self, url: str) -> list:
         if self.routes is None:
@@ -1355,7 +1500,15 @@ class ScrapeChain:
         if not usable:
             raise RuntimeError("no scrape backend permitted for this URL (kill switch, .harvest-backends or no key)")
         fc_reason = None
+        remote_refusal, remote_checked = None, False
         for b in usable:
+            spec = BACKEND_REGISTRY.get(b.name)
+            if spec is not None and spec.egress_host:
+                if not remote_checked:
+                    remote_refusal, remote_checked = _remote_refusal(url), True
+                if remote_refusal:
+                    errors.append(f"{b.name}: refused, {remote_refusal}")
+                    continue
             if b.name == "firecrawl":
                 if getattr(b, "unavailable", None):
                     fc_reason = b.unavailable
@@ -1380,7 +1533,7 @@ class ScrapeChain:
         raise RuntimeError("all scrape backends failed" + (f" ({'; '.join(errors)})" if errors else ""))
 
 
-def build_scrape_chain(env, budget):
+def build_scrape_chain(env, budget, paid=True):
     """Build the chain from HARVEST_SCRAPE_BACKEND (comma list, default: the
     registry order). HARVEST_SCRAPE_DENY (comma list, or `all`) is a kill switch
     that removes backends whatever the order or routing says. A backend that
@@ -1394,12 +1547,12 @@ def build_scrape_chain(env, budget):
     killed = set(BACKEND_REGISTRY) if "all" in killed else set(named)
     backends = []
     for n in names:
-        if n in killed:
+        if n in killed or (BACKEND_REGISTRY[n].needs_key and not paid):
             continue
         client = BACKEND_REGISTRY[n].cls.from_env(env, budget)
         if client is not None:
             backends.append(client)
-    return ScrapeChain(backends, budget)
+    return ScrapeChain(backends, budget, charge_failures=not paid)
 
 
 def parse_frontmatter(text: str):
@@ -1430,7 +1583,16 @@ def stamped_thin(fm: dict, body: str) -> bool:
     good. Other harvest skills wrote their own content and are left alone."""
     return (fm.get("harvest_skill") == "clip-body"
             and fm.get("harvest_status") in ("ok", "partial")
-            and is_thin_body(body))
+            and is_thin_clip(fm.get("source", ""), body))
+
+
+def stamped_youtube_partial(fm: dict) -> bool:
+    return fm.get("harvest_skill") == "youtube-scrapling" and fm.get("harvest_status") == "partial"
+
+
+def reharvest_due(fm_raw: str, fm: dict, body: str) -> bool:
+    return (not already_harvested(fm_raw) or stamped_thin(fm, body)
+            or junk_fetch_section(fm, body) is not None or stamped_youtube_partial(fm))
 
 
 def insert_fm_lines(fm_raw: str, new_lines: list) -> str:
@@ -1522,7 +1684,7 @@ def persist_thin_partial(path: Path, text: str, fm: dict, fm_raw: str, body: str
         pairs.append(("harvest_flag_detail", f"harvest_flag_detail: {','.join(hits)}"))
     if gap_host and "harvest_enricher_gap" not in fm:
         pairs.append(("harvest_enricher_gap", f"harvest_enricher_gap: {gap_host}"))
-    if is_instagram and "ig_media_pending" not in fm:
+    if is_instagram and "ig_media_pending" not in fm and fm.get("media_enrichment_status") != "ok":
         # a thin instagram clip needs the media rung
         # (/ig-media-enrich), so park it the same way harvest-clips.md
         # Phase 4's own instagram routing row does.
@@ -1652,7 +1814,7 @@ def _stamp_refused(path: Path, text: str, fm_raw: str, body: str, canonical: str
     return " [harvest_status: refused_sensitivity written]"
 
 
-def process_clip(path: Path, dry_run: bool, firecrawl=None, url_rules=None, park=None) -> tuple[str, str, list]:
+def process_clip(path: Path, dry_run: bool, chain=None, url_rules=None, park=None) -> tuple[str, str, list]:
     """Return (glyph, message, injection_hits) per logging contract.
 
     injection_hits is returned STRUCTURALLY (not just embedded in the
@@ -1665,7 +1827,8 @@ def process_clip(path: Path, dry_run: bool, firecrawl=None, url_rules=None, park
     fm, fm_raw, body, fm_present = parse_frontmatter(text)
     if not fm_present:
         return ("o", "skipped (frontmatter): no closing --- delimiter", [])
-    if already_harvested(fm_raw) and not stamped_thin(fm, body):
+    junk = junk_fetch_section(fm, body)
+    if not reharvest_due(fm_raw, fm, body):
         return ("o", "skipped (already-harvested)", [])
     # Injection screen — flag-only, never blocks the harvest.
     # Runs BEFORE the outcome branches so skips/failures still carry the
@@ -1704,46 +1867,69 @@ def process_clip(path: Path, dry_run: bool, firecrawl=None, url_rules=None, park
     if '"' in canonical or "\n" in canonical:
         # Would corrupt the quoted YAML value. Refuse rather than write garbage.
         return flagged_early("x", f"failed (canonicalize): canonical URL contains unsafe chars: {canonical!r}")
-    if is_github_url(canonical) and not is_github_blob_url(canonical):
+    if is_github_url(canonical) and not is_github_blob_url(canonical) and not has_release_notes(canonical, body):
         # Phase 5 luna-ingest replaces existing harvest_* keys in place
         # (no duplication) when the LLM later harvests this clip.
         return flagged_early("o", f"skipped (github-ingest needed; deferred to LLM): {canonical}")
 
-    # Firecrawl thin-body escalation (opt-in --firecrawl-thin). Only fires
-    # for genuine article/web URLs whose clipper-captured body is thin —
-    # the firecrawl gap. X/github/youtube are excluded (owned elsewhere) and
-    # fall straight through to the normal clip-body path, so the flag's
-    # blast radius is exactly "thin eligible article clips". Budget-
-    # exhausted / fetch-failed clips return a retryable partial WITHOUT
-    # marking harvested_at, so a later run retries them.
-    if firecrawl is not None and firecrawl_eligible(canonical) and is_thin_body(body):
+    def thin_partial(note: str = "") -> tuple[str, str, list]:
+        gap_host = enricher_gap_host(canonical)
+        gap_suffix = f"; harvest_enricher_gap={gap_host}" if gap_host else ""
+        is_instagram = _normalized_host(canonical) in {
+            "instagram.com", "m.instagram.com"}
+        ig_suffix = "; ig_media_pending=true" if is_instagram else ""
+        if dry_run:
+            return ("~", f"partial (thin-body): clipper captured only a skeleton{gap_suffix}{ig_suffix} [dry-run]{flag_suffix}", injection_hits)
+        if persist_thin_partial(path, text, fm, fm_raw, body, gap_host, injection_hits, is_instagram):
+            n = bump_defer(path)
+            if n is None:
+                return ("x", f"failed (G-3): defer-count write altered body; reverted{flag_suffix}", injection_hits)
+            return ("~", f"partial (thin-body): clipper captured only a skeleton{gap_suffix}{ig_suffix}{note}{defer_suffix(n)}{flag_suffix}", injection_hits)
+        return ("x", f"failed (G-3): thin-body frontmatter mark altered body; reverted{flag_suffix}", injection_hits)
+
+    def waiting_partial(msg: str) -> tuple[str, str, list]:
+        is_instagram = _normalized_host(canonical) in {"instagram.com", "m.instagram.com"}
+        if persist_thin_partial(path, text, fm, fm_raw, body, enricher_gap_host(canonical), injection_hits, is_instagram):
+            return ("~", f"{msg}{flag_suffix}", injection_hits)
+        return ("x", f"failed (G-3): thin-body frontmatter mark altered body; reverted{flag_suffix}", injection_hits)
+
+    if chain is not None and firecrawl_eligible(canonical) and (junk or is_thin_body(body)):
         denied = url_gate(canonical, url_rules)
         if denied:
             return flagged_early("o", f"skipped (sensitivity): {denied}{_stamp_refused(path, text, fm_raw, body, canonical, dry_run)}")
         if dry_run:
             # Never spend a credit on a dry-run — report the plan only.
-            return ("v", f"would harvest via firecrawl (thin-body escalation): {canonical} [dry-run]{flag_suffix}", injection_hits)
-        if firecrawl.remaining <= 0:
-            return ("~", "partial (thin-body): firecrawl budget exhausted this run; re-run to retry", injection_hits)
+            return ("v", f"would fetch via the scrape chain (thin-body escalation): {canonical} [dry-run]{flag_suffix}", injection_hits)
+        if chain.remaining <= 0:
+            return waiting_partial("partial (thin-body): scrape budget exhausted this run; re-run to retry")
         try:
-            md = firecrawl.scrape(canonical)
+            md = chain.scrape(canonical)
+            reason = unusable_fetch_reason(md)
+            if reason:
+                raise RuntimeError(reason)
         except FirecrawlUnavailable as e:
             if park is not None:
                 park(path, e.reason)
-            return ("~", f"partial (thin-body): deferred: firecrawl-unavailable ({e.reason}); parked, retried first once credits return", injection_hits)
+            return waiting_partial(f"partial (thin-body): deferred: firecrawl-unavailable ({e.reason}); parked, retried first once credits return")
         except Exception as e:
-            n = bump_defer(path)
-            if n is None:
-                return ("x", "failed (G-3): defer-count write altered body; reverted", injection_hits)
-            return ("~", f"partial (thin-body): firecrawl fetch failed ({type(e).__name__}: {str(e)[:120]}); re-run to retry{defer_suffix(n)}", injection_hits)
-        firecrawl.remaining -= 1
-        served_by = getattr(firecrawl, "last_backend", None) or "firecrawl"
+            if getattr(chain, "charge_failures", False):
+                chain.remaining -= 1
+            return thin_partial(f"; fetch failed ({type(e).__name__}: {str(e)[:120]}); re-run to retry")
+        chain.remaining -= 1
+        try:
+            on_disk = path.read_text(encoding="utf-8")
+        except Exception as e:
+            return ("x", f"failed (post-fetch read, credit spent): {e}", injection_hits)
+        if on_disk != text:
+            return ("~", "partial (thin-body): the clip changed while it was fetched; nothing written (credit spent), re-run to retry", injection_hits)
+        served_by = getattr(chain, "last_backend", None) or "firecrawl"
         section = (
             f"## Harvested content\n"
             f"<!-- harvest-clips {TODAY} via {served_by} ({canonical}) -->\n\n"
             f"{md.strip()}\n\n"
         )
-        new_body, insert_ok = insert_harvested_section(body, section)
+        base = body[:junk.start()] + body[junk.end():] if junk else body
+        new_body, insert_ok = insert_harvested_section(base, section)
         if not insert_ok:
             # Credit already spent (decremented above) — note it like the
             # other post-fetch failures. Nothing was written, so no revert
@@ -1762,7 +1948,10 @@ def process_clip(path: Path, dry_run: bool, firecrawl=None, url_rules=None, park
         if merged_hits:
             markers["harvest_flag"] = "injection-suspect"
             markers["harvest_flag_detail"] = ",".join(merged_hits)
-        new_text = f"---\n{insert_markers(fm_raw, markers)}\n---\n{new_body}"
+        new_fm = insert_markers(fm_raw, markers)
+        if not merged_hits:
+            new_fm = re.sub(r"^harvest_flag:[ \t]*thin-body[ \t]*\n?", "", new_fm, flags=re.MULTILINE)
+        new_text = f"---\n{new_fm}\n---\n{new_body}"
         # The scrape already spent a credit (firecrawl.remaining decremented
         # above), so EVERY post-fetch failure below notes "credit spent" — an
         # operator can't otherwise tell a free failure from a paid one. The
@@ -1798,31 +1987,22 @@ def process_clip(path: Path, dry_run: bool, firecrawl=None, url_rules=None, park
 
     yt_miss = ""
     yt = YT_WATCH_RE.match(canonical)
-    if yt and is_thin_body(body):
+    yt_partial = stamped_youtube_partial(fm)
+    if yt and (yt_partial or is_thin_body(body)):
         if dry_run:
-            return ("v", f"would harvest via youtube-scrapling (thin-body): {canonical} [dry-run]{flag_suffix}", injection_hits)
+            return ("v", f"would harvest via youtube-scrapling ({'partial retry' if yt_partial else 'thin-body'}): {canonical} [dry-run]{flag_suffix}", injection_hits)
         vault = next((q.parent for q in path.parents if q.name == "Clippings"), None)
         out, reason = youtube_scrapling(yt.group(1), vault)
         if out is not None and out.get("transcript"):
-            return write_youtube_harvest(path, text, fm_raw, body, canonical, out, injection_hits)
+            old = _HARVESTED_SECTION_RE.search(body) if yt_partial else None
+            base = body[:old.start()] + body[old.end():] if old else body
+            return write_youtube_harvest(path, text, fm_raw, base, canonical, out, injection_hits)
         if out is not None:
             reason = f"transcript unavailable ({out.get('transcript_error') or 'transcript_empty'})"
         yt_miss = f"; youtube-scrapling: {reason}"
 
-    if is_thin_body(body):
-        gap_host = enricher_gap_host(canonical)
-        gap_suffix = f"; harvest_enricher_gap={gap_host}" if gap_host else ""
-        is_instagram = _normalized_host(canonical) in {
-            "instagram.com", "m.instagram.com"}
-        ig_suffix = "; ig_media_pending=true" if is_instagram else ""
-        if dry_run:
-            return ("~", f"partial (thin-body): clipper captured only a skeleton{gap_suffix}{ig_suffix} [dry-run]{flag_suffix}", injection_hits)
-        if persist_thin_partial(path, text, fm, fm_raw, body, gap_host, injection_hits, is_instagram):
-            n = bump_defer(path)
-            if n is None:
-                return ("x", f"failed (G-3): defer-count write altered body; reverted{flag_suffix}", injection_hits)
-            return ("~", f"partial (thin-body): clipper captured only a skeleton{gap_suffix}{ig_suffix}{yt_miss}{defer_suffix(n)}{flag_suffix}", injection_hits)
-        return ("x", f"failed (G-3): thin-body frontmatter mark altered body; reverted{flag_suffix}", injection_hits)
+    if junk or yt_partial or is_thin_clip(canonical, body):
+        return thin_partial(yt_miss)
 
     # clip-body path
     markers = {
@@ -1962,14 +2142,17 @@ def silent_partial_marks(fm: dict, body: str) -> tuple[list, list]:
     can carry a thin body and an uncaptured thread."""
     reasons, pairs = [], []
     harvest_ok = fm.get("harvest_status") == "ok"
-    if harvest_ok and fm.get("harvest_skill") == "clip-body" and is_thin_body(body):
+    if harvest_ok and fm.get("harvest_skill") == "clip-body" and is_thin_clip(fm.get("source", ""), body):
         reasons.append("thin-body")
     elif harvest_ok and fm.get("harvest_skill") == "youtube-scrapling" and "_Transcript unavailable" in body:
         reasons.append("transcript-unavailable")
+    elif harvest_ok and junk_fetch_section(fm, body):
+        reasons.append("junk-fetch")
     if reasons:
         pairs.append(("harvest_status", "harvest_status: partial"))
         if "harvest_flag" not in fm:
-            pairs.append(("harvest_flag", f"harvest_flag: {reasons[0]}"))
+            flag = "thin-body" if reasons[0] == "junk-fetch" else reasons[0]
+            pairs.append(("harvest_flag", f"harvest_flag: {flag}"))
     if fm.get("enrichment_status") == "ok" and fm.get("needs_thread") == "true":
         reasons.append("thread-not-captured")
         pairs.append(("enrichment_status", "enrichment_status: partial"))
@@ -1978,7 +2161,7 @@ def silent_partial_marks(fm: dict, body: str) -> tuple[list, list]:
     return reasons, pairs
 
 
-def run_reflag_silent_partials(vault: Path, dry_run: bool) -> int:
+def run_reflag_silent_partials(vault: Path, dry_run: bool, limit: int = 0) -> int:
     """--reflag-silent-partials: one-time backfill over EVERY clip, _done/ and
     _evidence/ included (the loss is already archived there). Notes stamped
     ok over a template-only body, an unavailable transcript or an uncaptured
@@ -1986,7 +2169,7 @@ def run_reflag_silent_partials(vault: Path, dry_run: bool) -> int:
     idempotent (a partial note is not matched again)."""
     clips = sorted(
         p for p in (vault / "Clippings").rglob("*.md")
-        if "_synthesis" not in p.parts and p.name != "_deferred.md"
+        if "_synthesis" not in p.relative_to(vault / "Clippings").parts and p.name != "_deferred.md"
     )
     counts: dict = {}
     notes = failed = skipped = 0
@@ -2005,6 +2188,8 @@ def run_reflag_silent_partials(vault: Path, dry_run: bool) -> int:
         reasons, pairs = silent_partial_marks(fm, body)
         if not reasons:
             continue
+        if limit > 0 and notes >= limit:
+            break
         reason = "+".join(reasons)
         if b"\r" in raw:
             print(f"SKIP {relpath} -- silent partial ({reason}) but CRLF; left untouched", file=sys.stderr)
@@ -2040,6 +2225,33 @@ def run_reflag_silent_partials(vault: Path, dry_run: bool) -> int:
     return 4 if failed else 0
 
 
+def evidence_retry_host(canonical: str) -> bool:
+    return firecrawl_eligible(canonical) or bool(YT_WATCH_RE.match(canonical))
+
+
+def evidence_clips(clippings: Path) -> tuple[list, list]:
+    retry, partials = [], []
+    root = clippings / "_evidence"
+    if not root.is_dir():
+        return retry, partials
+    for p in sorted(root.rglob("*.md")):
+        if "_rejected" in p.relative_to(root).parts:
+            continue
+        try:
+            fm, fm_raw, body, ok = parse_frontmatter(p.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not ok or fm.get("harvest_status") != "partial":
+            continue
+        partials.append(p)
+        if fm.get("harvest_needs_attention") == "true" or not reharvest_due(fm_raw, fm, body):
+            continue
+        canonical = canonicalize((fm.get("source") or "").strip().strip('"')) or ""
+        if evidence_retry_host(canonical):
+            retry.append(p)
+    return retry, partials
+
+
 def main():
     global TODAY
     ap = argparse.ArgumentParser()
@@ -2055,11 +2267,17 @@ def main():
                          "harvest_flag/_detail on hits.")
     ap.add_argument("--reflag-silent-partials", action="store_true",
                     help="Backfill: mark clips (_done/ included) stamped ok over a "
-                         "template-only body, an unavailable transcript or an "
-                         "uncaptured thread as partial. Frontmatter only.")
+                         "template-only body, an unavailable transcript, an "
+                         "uncaptured thread or a fetched bot-check notice as partial. "
+                         "Frontmatter only; --limit N caps the clips changed.")
+    ap.add_argument("--fetch-budget", type=int, default=None,
+                    help="Max clips fetched per default run (one unit per clip, whatever "
+                         "the number of rungs tried). "
+                         f"Default HARVEST_FETCH_BUDGET, else {FETCH_DEFAULT_BUDGET}.")
     ap.add_argument("--firecrawl-thin", action="store_true",
-                    help="Escalation: fetch clean markdown via firecrawl for "
-                         "thin-body article/web clips (keyless Jina first; the firecrawl rung needs FIRECRAWL_API_KEY). "
+                    help="Escalation: after the free rungs (Jina, local headless, which every run "
+                         "already tries), also use the paid firecrawl rung for thin-body "
+                         "article/web clips (needs FIRECRAWL_API_KEY). "
                          "Off by default — conserves the free-tier credits.")
     ap.add_argument("--firecrawl-budget", type=int, default=None,
                     help="Max firecrawl scrape calls per run (~1 credit each). "
@@ -2087,46 +2305,62 @@ def main():
     clips = sorted(
         p
         for p in clippings.rglob("*.md")
-        if "_synthesis" not in p.parts
-        and "_done" not in p.parts
-        and "_evidence" not in p.parts
+        if not {"_synthesis", "_done", "_evidence"} & set(p.relative_to(clippings).parts)
         and p.name != "_deferred.md"
     )
     if args.reflag_silent_partials:
-        sys.exit(run_reflag_silent_partials(args.vault, args.dry_run))
+        sys.exit(run_reflag_silent_partials(args.vault, args.dry_run, args.limit))
     if args.rescan_flags:
         # Backfill mode ignores --limit (one-time full pass).
         sys.exit(run_rescan_flags(clips, args.vault, args.dry_run))
 
-    firecrawl = None
+    import os
+    chain = None
     url_rules = None
-    if args.firecrawl_thin:
-        import os
+    paid = args.firecrawl_thin
+    if paid:
         url_rules = load_url_rules(args.vault)
         try:
-            firecrawl = build_scrape_chain(os.environ, resolve_firecrawl_budget(args.firecrawl_budget, os.environ))
+            chain = build_scrape_chain(os.environ, resolve_firecrawl_budget(args.firecrawl_budget, os.environ))
         except ValueError as e:
             print(f"harvest-clip-body-batch: {e}", file=sys.stderr)
             sys.exit(2)
-        firecrawl.routes = load_backend_routes(args.vault)
-        if not any(b.name != "local-headless" for b in firecrawl.backends):
+        chain.routes = load_backend_routes(args.vault)
+        if not any(b.name != "local-headless" for b in chain.backends):
             print(
                 "harvest-clip-body-batch: --firecrawl-thin has no usable scrape backend "
                 "(needs jina, or firecrawl with FIRECRAWL_API_KEY; check HARVEST_SCRAPE_DENY).", file=sys.stderr,
             )
             sys.exit(2)
+    else:
+        try:
+            chain = build_scrape_chain(os.environ, resolve_fetch_budget(args.fetch_budget, os.environ), paid=False)
+        except ValueError as e:
+            print(f"harvest-clip-body-batch: {e}; thin articles are not fetched this run", file=sys.stderr)
+            chain = None
+        if chain is not None and not chain.backends:
+            chain = None
+        if chain is not None:
+            chain.routes = load_backend_routes(args.vault)
+            url_rules = load_url_rules(args.vault)
+
+    ev_retry, ev_partials = evidence_clips(clippings)
+    in_scan = set(clips)
+    clips = clips + [p for p in ev_retry if p not in in_scan]
+    scanned = set(clips)
+    report_extra = [p for p in ev_partials if p not in scanned]
 
     # items parked while Firecrawl was unavailable are retried FIRST.
     vault_key = str(args.vault)
     mine, status, fc = {}, None, None
-    if firecrawl is not None and not args.dry_run:
+    if paid and chain is not None and not args.dry_run:
         items, status = parked_load()
         mine = {it: r for (vp, it), r in items.items() if vp == vault_key}
         for it in list(mine):
             if not (args.vault / it).exists():
                 parked_append("resolved", call_site="harvest-clip-body-batch", vault=vault_key, item=it, via="gone")
                 del mine[it]
-        fc = next((b for b in firecrawl.backends if b.name == "firecrawl"), None)
+        fc = next((b for b in chain.backends if b.name == "firecrawl"), None)
         if mine and fc is not None and fc.remaining > 0:
             # Free credit-usage probe before spending: 0 remaining keeps the items parked
             # without a scrape call; a failed probe falls back to ONE attempt.
@@ -2165,12 +2399,12 @@ def main():
             break
         relpath = clip.relative_to(args.vault).as_posix()
         was_parked = relpath in mine
-        if firecrawl is not None:
-            firecrawl.last_backend = None
-        glyph, msg, injection_hits = process_clip(clip, args.dry_run, firecrawl, url_rules, park)
+        if chain is not None:
+            chain.last_backend = None
+        glyph, msg, injection_hits = process_clip(clip, args.dry_run, chain, url_rules, park)
         if was_parked and glyph in ("v", "o") and not args.dry_run:
             # ANY success (jina, local, firecrawl) or a clip that no longer waits resolves it.
-            via = (getattr(firecrawl, "last_backend", None) or "other") if glyph == "v" else "skipped"
+            via = (getattr(chain, "last_backend", None) or "other") if glyph == "v" else "skipped"
             parked_append("resolved", call_site="harvest-clip-body-batch", vault=vault_key, item=relpath, via=via)
             mine.pop(relpath, None)
         if injection_hits:
@@ -2199,7 +2433,7 @@ def main():
     if not args.dry_run:
         # every partial this tool emits is source-level and
         # deferred (non-blocking); only FAIL lines block .harvest.done.
-        n_def, n_att = write_pending_report(args.vault, clips_all)
+        n_def, n_att = write_pending_report(args.vault, clips_all + report_extra)
         print(f"harvest-clip-body-batch: {n_def} deferred (non-blocking), {n_att} needs-attention; "
               f"pending report: {PENDING_REPORT}")
     if fc is not None and fc.unavailable is None and status is not None and (fc.served or fc.probed_ok):

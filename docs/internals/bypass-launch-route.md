@@ -158,15 +158,19 @@ does, the command waits for the operator.
 - **It is bounded.** `--until <YYYY-MM-DD>` is required and may be at most 7
   days ahead. `<bucket>/bypass-queue/stop` stops the daemon. It refuses to
   start inside a Claude session (`CLAUDECODE` set) and holds one instance per
-  queue (`flock`).
+  queue (a pid lock in `bypass-queue/.lock.pid`, so it needs no `flock`).
 
 ## Starting and stopping it
 
 The operator starts it from their own shell, never from a session:
 
 ```bash
-setsid nohup bash <repo>/scripts/station-ops/bypass-launchd.sh --bucket <bucket> --until <YYYY-MM-DD> >/dev/null 2>&1 &
+nohup bash <repo>/scripts/station-ops/bypass-launchd.sh --bucket <bucket> --until <YYYY-MM-DD> >/dev/null 2>&1 &
 ```
+
+On Linux put `setsid` before `nohup` to detach the daemon from your shell's session. On macOS start it from a
+LaunchAgent (the worker window needs your GUI session); the daemon detaches each worker itself, with `setsid`
+when present and perl's `POSIX::setsid` otherwise.
 
 To replace a running instance, `touch <bucket>/bypass-queue/stop`, wait for
 `stop file` in `daemon.log`, remove the stop file, then start it again. bash

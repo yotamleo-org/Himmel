@@ -185,6 +185,19 @@ so a late-vs-early gap is read from the transcript when a row is close;
 upgrade path: add a per-gap context column when a judge lands within 10 % of
 break-even.
 
+### The release judge call
+
+`rm-run`'s judge is not a subagent: it is a one-turn `claude -p` call in a fresh session and a fresh temp directory,
+and nothing reads back what it caches. Its environment (`liveJudgeEnv` in `scripts/jira/src/commands/release.ts`)
+sets `DISABLE_PROMPT_CACHING=1` (`JUDGE_CACHE.env`), whatever the caller exported, so the call writes no cache at
+all. A probe through the same argument and environment builders, on a prompt of about 60,000 tokens of fresh random
+text, wrote 59,868 tokens at the 1-hour tier without the variable and 0 written and 0 read with it. The measured
+call of 2026-11-20 had written 394,637 tokens at the 1-hour tier and read 649, for 3.40 USD. The prompt also no
+longer carries the ledger chain hashes (`mac` and `prev` of each request, operator and ruling row): they were
+113,133 of 693,337 bytes of the operator rows, 16.3 percent. The API-lane judge keeps its own tier
+(`HIMMEL_API_CACHE_TTL`). The native launch row records the call's tokens and its tier (`cache_ttl`), see
+`docs/internals/api-lane.md`.
+
 <a id="worker-keepalive-or-wrap"></a>
 
 ## Worker keepalive or wrap
@@ -222,7 +235,8 @@ Re-measure with the `idle-gap` command below over the worker transcripts of the
 ## Direct API calls: a cached prefix
 
 `scripts/api-lane/cache-report.mjs` groups `launches.jsonl` by kind, model and
-organization. On 2026-10-31 the untagged `other | sonnet` group (graphify's
+organization. It leaves out rows whose `lane` is `native` (the release judge's one-turn call has no tier to advise).
+On 2026-10-31 the untagged `other | sonnet` group (graphify's
 claude-api shim) read 3 % over 442 runs on one organization (19.5 M tokens written,
 0.6 M read) while `eval` read 91 %. Two fixes:
 

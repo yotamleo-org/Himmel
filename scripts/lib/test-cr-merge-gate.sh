@@ -933,9 +933,9 @@ done
 if [ -z "$h16_bad" ]; then pass=$((pass+1)); echo "ok   H16 merge GO implies release GO"; else fail=$((fail+1)); echo "FAIL H16 merge GO but release not GO:$h16_bad"; fi
 led "$CRIT_OK"
 
-# G1-G3 — `--release` changes exactly one cell: a best-effort CodeRabbit row in
-# state in-progress (status pending) holds at release; the merge gate keeps it
-# relaxed (H11).
+# G1-G3 — CodeRabbit reads the same at release as at merge (decision 1066): a
+# best-effort row in state in-progress (status pending) relaxes with the NOTE,
+# and a posted, unresolved CodeRabbit thread holds in both modes.
 rgr() { # rgr <name> <expected-rc> — like rg, with --release
   local name="$1" want="$2" rc=0
   export GH_STUB_LOG="$TMP/calls-$name.log"; : > "$GH_STUB_LOG"
@@ -943,14 +943,17 @@ rgr() { # rgr <name> <expected-rc> — like rg, with --release
   if [ "$rc" = "$want" ]; then pass=$((pass+1)); echo "ok   $name"
   else fail=$((fail+1)); echo "FAIL $name (rc=$rc want=$want)"; sed 's/^/  out: /' "$TMP/out-$name"; sed 's/^/  err: /' "$TMP/err-$name"; fi
 }
-GH_STUB_MODE=inflight rgr G1-release-coderabbit-in-progress-holds 1
-has "$TMP/out-G1-release-coderabbit-in-progress-holds" '^HOLD: CodeRabbit .*in progress' "G1 HOLD names the in-progress review"
+GH_STUB_MODE=inflight rgr G1-release-coderabbit-in-progress-relaxed 0
+has "$TMP/out-G1-release-coderabbit-in-progress-relaxed" '^NOTE: CodeRabbit pending' "G1 release mode relaxes the in-progress review with the NOTE"
+hasnt "$TMP/out-G1-release-coderabbit-in-progress-relaxed" '^HOLD:' "G1 release mode: no HOLD line"
+GH_STUB_MODE=unresolved rgr G1b-release-posted-finding-holds 1
+has "$TMP/out-G1b-release-posted-finding-holds" '^HOLD: [0-9]+ unresolved CodeRabbit review thread' "G1b release mode: a posted CodeRabbit finding still holds"
 GH_STUB_MODE=inflight rg G2-merge-mode-in-progress-relaxed 0
 has "$TMP/out-G2-merge-mode-in-progress-relaxed" '^NOTE: CodeRabbit pending' "G2 merge mode keeps the NOTE"
 GH_STUB_MODE=cr-ratelimited rgr G3-release-rate-limited-relaxed 0
 GH_STUB_MODE=clean rgr G3b-release-clean-go 0
 GH_STUB_MODE=cr-absent rgr G3c-release-absent-relaxed 0
-# J1-J6 — `--release` changes a second cell: a judge-go row (status ok, exact
+# J1-J6 — `--release` changes one cell: a judge-go row (status ok, exact
 # head, bound to the PR's branch) stands in for each hard reviewer that is not
 # pass, so a PR past the round cap releases ci:go without the carry row (which
 # only green CI writes). The merge gate never reads it. JG_ROW is a judge-go

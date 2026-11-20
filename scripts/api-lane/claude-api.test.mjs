@@ -24,6 +24,7 @@ const DUMMY = 'sk-ant-dummy-not-a-real-key-0000';
 const STUB = `#!/bin/bash
 FB=""; [ -n "\${ANTHROPIC_API_KEY:-}" ] || FB=.fb
 echo called >> "$STUB_LOG$FB"
+[ -n "$FB" ] || echo "\${ANTHROPIC_API_KEY: -4}" >> "$STUB_LOG.keys"
 if [ -n "\${STUB_STDIN:-}" ]; then
   cat > "$STUB_STDIN$FB"
   for p in "$TMPDIR"/claude-api-prompt.*; do [ -e "$p" ] && { stat -c %a "$p" 2>/dev/null || stat -f %Lp "$p"; } >> "$STUB_STDIN$FB.mode"; done
@@ -44,6 +45,7 @@ if [ -n "$FB" ]; then printf '%s' "\${STUB_FB_OUT:-$STUB_OUT}"; exit "\${STUB_FB
 [ -z "\${STUB_IGNORE_TERM:-}" ] || trap '' TERM
 [ -z "\${STUB_CHILD:-}" ] || { sleep 300 & echo "child_pid=$!" >> "$STUB_ENV"; }
 while [ -n "\${STUB_HOLD:-}" ] && [ -e "$STUB_HOLD" ]; do sleep 0.05; done
+case ",\${STUB_DEAD_TAILS:-}," in *",\${ANTHROPIC_API_KEY: -4},"*) printf '%s' "$STUB_DEAD_OUT"; exit 1 ;; esac
 printf '%s' "$STUB_OUT"
 [ -z "\${STUB_DIE:-}" ] || kill -9 $$
 [ -z "\${STUB_TERM:-}" ] || { ( sleep 0.05; kill -TERM "$PPID" ) </dev/null >/dev/null 2>&1 & kill -TERM $$; }
@@ -391,13 +393,13 @@ function keyNowhere(f, r) {
   for (const p of walk(f.dir)) assert.ok(!readFileSync(p, 'utf8').includes(DUMMY), `key in ${p}`);
 }
 
-test('a refused call (lane off) sends one alert and re-runs the prompt once on the subscription, native auth, no key', () => {
+test('a refused call (an invalid account) sends one alert and re-runs the prompt once on the subscription, native auth, no key', () => {
   const f = fixture();
-  const r = f.run(f.good, { ...FB_ON, HIMMEL_API_LANE: '', STUB_FB_OUT: FB_OK, CLAUDE_CODE_OAUTH_TOKEN: 'oauth-dummy',
+  const r = f.run(f.good, { ...FB_ON, HIMMEL_API_ACCOUNT: 'E', STUB_FB_OUT: FB_OK, CLAUDE_CODE_OAUTH_TOKEN: 'oauth-dummy',
     ANTHROPIC_BASE_URL: 'https://evil.example', ANTHROPIC_ORG_A_KEY: DUMMY, LQ_API_KEY: DUMMY, CLAUDECODE: '1' },
   { argv0: SESSION_ARGV0 }); // a marker needs a `claude` ancestor, or the subscription preflight's seam guard refuses on CI's primary checkout
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stderr, /api lane is OFF/);
+  assert.match(r.stderr, /HIMMEL_API_ACCOUNT must be/);
   assert.equal(r.stdout, FB_OK);
   assert.equal(f.called(), false, 'the API call must not run');
   assert.equal(fbCalls(f), 1);
@@ -415,7 +417,7 @@ test('a refused call (lane off) sends one alert and re-runs the prompt once on t
   const a = alerts(f);
   assert.equal(a.length, 1);
   assert.match(alertText(f), /refused/);
-  assert.match(alertText(f), /api lane is OFF/);
+  assert.match(alertText(f), /HIMMEL_API_ACCOUNT must be/);
   assert.match(alertText(f), /fallback: running on the subscription/);
   const fb = rows(f).at(-1);
   assert.equal(fb.lane, 'sub-fallback');
@@ -477,7 +479,7 @@ test('a call granted Edit, Write or Bash re-runs only after a refusal before any
     assert.equal(fbCalls(g), 0, `${tools}: a rejection on a later turn could follow an edit, so exit 6 is not replayed`);
     assert.match(alertText(g), /fallback: not run: the call could change files/, tools);
     const h = fixture();
-    assert.equal(h.run(h.good, { ...FB_ON, HIMMEL_API_TOOLS: tools, HIMMEL_API_LANE: '', STUB_FB_OUT: FB_OK }).status, 0, tools);
+    assert.equal(h.run(h.good, { ...FB_ON, HIMMEL_API_TOOLS: tools, HIMMEL_API_ACCOUNT: 'E', STUB_FB_OUT: FB_OK }).status, 0, tools);
     assert.equal(fbCalls(h), 1, `${tools}: a refusal (exit 2) re-runs`);
   }
   const k = fixture();
@@ -524,7 +526,7 @@ test('the call watchdog ending a hung read-only call is a failed call: one alert
 test('a subscription preflight refusal runs no fallback, the alert names it and the original code stands', () => {
   const f = fixture();
   native(f, 100);
-  const r = f.run(f.good, { ...FB_ON, HIMMEL_API_LANE: '' });
+  const r = f.run(f.good, { ...FB_ON, HIMMEL_API_ACCOUNT: 'E' });
   assert.equal(r.status, 2);
   assert.equal(fbCalls(f), 0);
   assert.equal(alerts(f).length, 1);
@@ -536,27 +538,27 @@ test('a subscription preflight refusal runs no fallback, the alert names it and 
   assert.equal(fbCalls(g), 0);
   const h = fixture();
   native(h, 10);
-  assert.equal(h.run(h.good, { ...FB_ON, HIMMEL_API_LANE: '', STUB_FB_OUT: FB_OK }).status, 0);
+  assert.equal(h.run(h.good, { ...FB_ON, HIMMEL_API_ACCOUNT: 'E', STUB_FB_OUT: FB_OK }).status, 0);
   assert.equal(fbCalls(h), 1, 'PROCEED runs the fallback');
 });
 
 test('one alert per kind and class per hour; a new class or an hour later alerts again', () => {
   const f = fixture();
-  for (let i = 0; i < 2; i++) assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_LANE: '' }).status, 0);
+  for (let i = 0; i < 2; i++) assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_ACCOUNT: 'E' }).status, 0);
   assert.equal(alerts(f).length, 1, 'the second refusal within the hour alerted again');
   assert.equal(fbCalls(f), 2, 'the rate limit holds the alert, never the fallback');
   assert.equal(f.run(f.good, { ...FB_ON, STUB_OUT: CREDIT_LOW, STUB_RC: '1' }).status, 0);
   assert.equal(alerts(f).length, 2);
   const old = (Date.now() - 2 * 3600 * 1000) / 1000;
   for (const s of readdirSync(join(f.dir, 'alerts'))) utimesSync(join(f.dir, 'alerts', s), old, old);
-  assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_LANE: '' }).status, 0);
+  assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_ACCOUNT: 'E' }).status, 0);
   assert.equal(alerts(f).length, 3);
 });
 
 test('a failed alert send writes no stamp, so the next failure inside the hour alerts again', () => {
   const f = fixture();
-  assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_LANE: '', ALERT_RC: '1' }).status, 0);
-  assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_LANE: '' }).status, 0);
+  assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_ACCOUNT: 'E', ALERT_RC: '1' }).status, 0);
+  assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_ACCOUNT: 'E' }).status, 0);
   assert.equal(alerts(f).length, 2, 'a failed send muted the next alert');
 });
 
@@ -622,16 +624,18 @@ test('the scratch prompt file is gone after success, a refusal before and after 
   assert.deepEqual(promptFiles(ok), [], 'left behind after success');
   assert.equal(fbCalls(ok), 0);
 
-  // lane off: refused before stdin is read, the fallback still gets the unread prompt
+  // an invalid account: refused before stdin is read, the fallback still gets the unread prompt
   const early = fixture();
-  const b = early.run(STDIN_ONLY, { ...withStdin(early), HIMMEL_API_LANE: '', STUB_FB_OUT: FB_OK }, { input: PROMPT });
+  const b = early.run(STDIN_ONLY, { ...withStdin(early), HIMMEL_API_ACCOUNT: 'E', STUB_FB_OUT: FB_OK }, { input: PROMPT });
   assert.equal(b.status, 0, b.stderr);
   assert.equal(early.called(), false, 'the API call must not run');
   assert.equal(seenStdin(early, '.fb'), PROMPT);
   assert.deepEqual(promptFiles(early), []);
 
-  // a budget the account cannot cover: refused at the reservation, after the prompt was buffered
+  // a budget the account cannot cover, with enforce_budget on: refused at the reservation, after the prompt was buffered
   const late = fixture();
+  late.config.enforce_budget = true;
+  late.save();
   const big = [...STDIN_ONLY.slice(0, -1), '50'];
   const c = late.run(big, { ...withStdin(late), STUB_FB_OUT: FB_OK }, { input: PROMPT });
   assert.equal(c.status, 0, c.stderr);
@@ -723,7 +727,7 @@ test('a launcher stopped while it buffers a stdin prompt removes the scratch fil
 test('a launcher stopped during the subscription fallback still writes the fallback launch record', async () => {
   const f = fixture();
   const hold = join(f.dir, 'fb-hold'); writeFileSync(hold, '');
-  const child = spawn('bash', [LAUNCH, ...f.good], { env: { ...f.env, ...FB_ON, HIMMEL_API_LANE: '', STUB_FB_HOLD: hold }, stdio: 'ignore' });
+  const child = spawn('bash', [LAUNCH, ...f.good], { env: { ...f.env, ...FB_ON, HIMMEL_API_ACCOUNT: 'E', STUB_FB_HOLD: hold }, stdio: 'ignore' });
   const done = new Promise((resolve) => child.on('close', resolve));
   try {
     const until = Date.now() + 15000;
@@ -847,23 +851,28 @@ test('source metadata is preserved in the secret-free launch record', () => {
   for (const text of [f.record(), readFileSync(f.paths.state, 'utf8')]) assert.ok(!text.includes(DUMMY));
 });
 
-test('empty API account refuses even though native is funded, and never spawns claude', () => {
+test('a reading of zero left is our estimate, not a block: the named account runs and the API credit answer decides', () => {
   const f = fixture();
   f.snapshot.accounts.A.remaining_usd = '0';
   f.save();
   writeFileSync(f.env.CADENCE_USAGE_CACHE, JSON.stringify({ five_hour: { utilization: 1 }, seven_day: { utilization: 1 } }));
   const r = f.run();
-  assert.equal(r.status, 2);
-  assert.match(r.stderr, /api bank gate said SKIPPED-BANK/);
-  assert.equal(f.called(), false);
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stderr, /refused/);
+  assert.equal(f.called(), true);
+  // with enforce_budget on, the gate's SKIPPED-BANK is still only a note for the named account; the reservation decides
+  f.config.enforce_budget = true;
+  f.save();
+  const e = f.run(f.good, { HIMMEL_API_JOB_ID: 'job-enforce' });
+  assert.match(e.stderr, /api bank gate said SKIPPED-BANK; an unknown, stale or estimated balance is not a block/);
 });
 
-test('no automatic A/B rotation: empty A refuses and B stays untouched', () => {
+test('no automatic A/B rotation: a named A with zero left runs on A and B stays untouched', () => {
   const f = fixture();
   f.snapshot.accounts.A.remaining_usd = '0';
   f.save();
-  assert.equal(f.run().status, 2);
-  assert.equal(f.called(), false);
+  assert.equal(f.run().status, 0);
+  assert.equal(f.called(), true);
   assert.equal(f.status('B').reserved_usd, '0.000000');
   assert.equal(f.status('B').spent_est_usd, '0.000000');
 });
@@ -1000,7 +1009,7 @@ test('--append-system-prompt-file, in both spellings, takes a readable regular f
     assert.ok(readFileSync(ok.paths.env, 'utf8').includes(`${FLAG} ${seen} `), spelled.join(' '));
   }
   const fb = fixture();
-  const r = fb.run([...fb.good, FLAG, file], { ...FB_ON, HIMMEL_API_LANE: '', STUB_FB_OUT: FB_OK, CLAUDE_CODE_OAUTH_TOKEN: 'oauth-dummy', CLAUDECODE: '1' }, { argv0: SESSION_ARGV0 });
+  const r = fb.run([...fb.good, FLAG, file], { ...FB_ON, HIMMEL_API_ACCOUNT: 'E', STUB_FB_OUT: FB_OK, CLAUDE_CODE_OAUTH_TOKEN: 'oauth-dummy', CLAUDECODE: '1' }, { argv0: SESSION_ARGV0 });
   assert.equal(r.status, 0, r.stderr);
   assert.ok(fbArgs(fb).join(' ').includes(`${FLAG} ${file}`), 'the subscription fallback carries the same system prompt');
 });
@@ -1101,12 +1110,22 @@ test('model and job id with JSON-unsafe characters refuse before any spawn', () 
   assert.equal(existsSync(join(f.dir, 'launches.jsonl')), false);
 });
 
-test('a budget above the available credit refuses at reservation', () => {
+test('with enforce_budget on, a budget above the available credit refuses at reservation', () => {
   const f = fixture();
+  f.config.enforce_budget = true;
+  f.save();
   const r = f.run(['-p', 'x', '--model', 'm', '--permission-mode', 'plan', '--max-budget-usd', '5.00']);
   assert.equal(r.status, 2);
   assert.match(r.stderr, /reservation refused|bank gate/);
   assert.equal(f.called(), false);
+});
+
+test('by default a budget above the available credit and past our own cap still runs: only the provider refuses for credit', () => {
+  const f = fixture();
+  const r = f.run(['-p', 'x', '--model', 'm', '--permission-mode', 'plan', '--max-budget-usd', '5.00']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stderr, /refused/);
+  assert.equal(f.called(), true);
 });
 
 test('a non-API child is stripped of the key and every lane selector', () => {
@@ -1194,9 +1213,10 @@ test('HIMMEL_API_ACCOUNT=auto spends the earliest-expiring grant first, never pa
   assert.equal(second.status, 0, second.stderr);
   assert.match(readFileSync(f.paths.env, 'utf8'), /^key_tail=AAAA$/m);
   assert.deepEqual(f.record().trim().split('\n').map((l) => JSON.parse(l).account), ['B', 'A']);
-  // Neither fits: refuse, no spawn.
+  // Neither fits, with enforce_budget on: refuse, no spawn.
   f.snapshot.accounts.A.remaining_usd = '0.05';
   f.snapshot.accounts.A.reconciled_spent_usd = '0.012345';
+  f.config.enforce_budget = true;
   f.save();
   rmSync(f.paths.log);
   const third = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-auto-3' });
@@ -1244,27 +1264,136 @@ test('auto routing goes on past the bank gate when the old reading and the ledge
   assert.equal(f.called(), true);
 });
 
-test('a caller-set optional flag does not let an explicit account launch without a credit reading', () => {
+test('with enforce_budget on, a caller-set optional flag does not widen the cap: an explicit account over our own cap still refuses', () => {
   const f = fixture();
-  rmSync(f.paths.snapshot);
+  f.config.enforce_budget = true;
+  f.save();
+  writeFileSync(f.paths.state, JSON.stringify({ version: 1, accounts: { A: { organization_id: 'org-a', cycle_id: 'cycle-a', discrepancy: false,
+    jobs: { spent: { status: 'settled', maximum_usd: '0.950000', actual_usd: '0.950000', reserved_at: f.now, timeout_s: 3600 } } } } }));
   const r = f.run(f.good, { HIMMEL_API_SNAPSHOT_OPTIONAL: '1' });
   assert.equal(r.status, 2);
-  assert.match(r.stderr, /api bank gate said/);
+  assert.match(r.stderr, /reservation refused/);
   assert.equal(f.called(), false);
 });
 
-test('a credit-exhausted result marks the account and the next auto call rotates to the other', () => {
+test('a lane-off refusal never takes the subscription fallback, whatever the kind', () => {
+  for (const kind of ['other', 'eval', 'judge', 'critic']) {
+    const f = fixture();
+    const r = f.run(f.good, { ...FB_ON, HIMMEL_API_LANE: '', HIMMEL_API_KIND: kind, STUB_FB_OUT: FB_OK });
+    assert.equal(r.status, 2, `${kind}: ${r.stderr}`);
+    assert.match(r.stderr, /api lane is OFF/);
+    assert.match(r.stderr, /fallback: not run: /, kind);
+    assert.equal(fbCalls(f), 0, kind);
+    assert.equal(f.called(), false, kind);
+  }
+});
+
+test('a critic call never takes the subscription fallback, for a refusal or a failed call', () => {
+  const refused = fixture();
+  const a = refused.run(refused.good, { ...FB_ON, HIMMEL_API_KIND: 'critic', HIMMEL_API_ACCOUNT: 'E', STUB_FB_OUT: FB_OK });
+  assert.equal(a.status, 2, a.stderr);
+  assert.match(a.stderr, /fallback: not run: a critic call never runs on the subscription/);
+  assert.equal(fbCalls(refused), 0);
+  const failed = fixture();
+  const b = failed.run(failed.good, { ...FB_ON, HIMMEL_API_KIND: 'critic', STUB_OUT: CALL_FAIL, STUB_RC: '1', STUB_FB_OUT: FB_OK });
+  assert.equal(b.status, 1, b.stderr);
+  assert.match(b.stderr, /fallback: not run: a critic call never runs on the subscription/);
+  assert.equal(fbCalls(failed), 0);
+  const dry = fixture();
+  const c = dry.run(dry.good, { ...FB_ON, HIMMEL_API_KIND: 'critic', STUB_OUT: DEAD, STUB_RC: '1', STUB_FB_OUT: FB_OK });
+  assert.equal(c.status, 6, c.stderr);
+  assert.equal(fbCalls(dry), 0);
+  const other = fixture();
+  const d = other.run(other.good, { ...FB_ON, HIMMEL_API_KIND: 'judge', HIMMEL_API_ACCOUNT: 'E', STUB_FB_OUT: FB_OK });
+  assert.equal(d.status, 0, d.stderr);
+  assert.equal(fbCalls(other), 1);
+});
+
+const DEAD = JSON.stringify({ type: 'result', is_error: true, result: 'API Error: 400 Your credit balance is too low to access the Anthropic API.' });
+const keysUsed = (f) => (existsSync(`${f.paths.log}.keys`) ? readFileSync(`${f.paths.log}.keys`, 'utf8').trim().split('\n') : []);
+const exhaustedAt = (f, a) => JSON.parse(readFileSync(f.paths.state, 'utf8')).accounts[a]?.exhausted_at;
+
+test('a credit-refused auto call marks the account and the same call runs again on the next account', () => {
+  const f = fixture();
+  const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-dry-1',
+    STUB_DEAD_TAILS: 'AAAA', STUB_DEAD_OUT: DEAD });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(keysUsed(f), ['AAAA', 'BBBB']);
+  assert.match(r.stderr, /rotating this call to account B \(tried A\)/);
+  assert.match(r.stdout, /"result":"hi"/);
+  assert.equal(Number.isInteger(exhaustedAt(f, 'A')), true);
+  assert.deepEqual(f.record().trim().split('\n').map((l) => [JSON.parse(l).account, JSON.parse(l).outcome]), [['A', 'exhausted'], ['B', 'settled']]);
+  assert.equal(f.status('A').reserved_usd, '0.000000');
+  assert.equal(f.status('B').reserved_usd, '0.000000');
+  // the next auto call starts on the unmarked B
+  rmSync(`${f.paths.log}.keys`);
+  const next = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-dry-2' });
+  assert.equal(next.status, 0, next.stderr);
+  assert.deepEqual(keysUsed(f), ['BBBB']);
+});
+
+test('a stdin prompt is replayed to the rotated call', () => {
+  const f = fixture();
+  const r = spawnSync('bash', [LAUNCH, ...STDIN_ONLY], { env: { ...keyFiles(f), HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify',
+    HIMMEL_API_JOB_ID: 'job-dry-in', STUB_STDIN: join(f.dir, 'stdin.seen'), STUB_DEAD_TAILS: 'AAAA', STUB_DEAD_OUT: DEAD },
+  input: PROMPT, encoding: 'utf8', cwd: HIMMEL_REPO });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(keysUsed(f), ['AAAA', 'BBBB']);
+  assert.equal(readFileSync(join(f.dir, 'stdin.seen'), 'utf8'), PROMPT);
+});
+
+test('rotation stops after one pass: every account credit-refused exits 6 with one alert and one fallback decision', () => {
+  const f = fixture();
+  const r = launch(keyFiles(f), { ...FB_ON, HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-dry-all',
+    STUB_DEAD_TAILS: 'AAAA,BBBB', STUB_DEAD_OUT: DEAD });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(keysUsed(f), ['AAAA', 'BBBB']);
+  assert.equal(fbCalls(f), 1);
+  assert.equal(alerts(f).length, 1);
+  assert.equal(Number.isInteger(exhaustedAt(f, 'A')), true);
+  assert.equal(Number.isInteger(exhaustedAt(f, 'B')), true);
+  const off = fixture();
+  const o = launch(keyFiles(off), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-dry-off',
+    STUB_DEAD_TAILS: 'AAAA,BBBB', STUB_DEAD_OUT: DEAD });
+  assert.equal(o.status, 6, o.stderr);
+  assert.deepEqual(keysUsed(off), ['AAAA', 'BBBB']);
+});
+
+test('rotation skips an account already marked exhausted: with the only other account marked, the fallback follows', () => {
   const f = fixture();
   const env = keyFiles(f);
-  const dead = JSON.stringify({ type: 'result', is_error: true, result: 'API Error: 400 Your credit balance is too low to access the Anthropic API.' });
-  const first = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-dry-1', STUB_OUT: dead, STUB_RC: '1' });
-  assert.equal(first.status, 6);
-  assert.match(readFileSync(f.paths.env, 'utf8'), /^key_tail=AAAA$/m);
-  assert.match(first.stderr, /credit exhausted/);
-  assert.equal(Number.isInteger(JSON.parse(readFileSync(f.paths.state, 'utf8')).accounts.A.exhausted_at), true);
-  const second = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-dry-2' });
-  assert.equal(second.status, 0, second.stderr);
-  assert.match(readFileSync(f.paths.env, 'utf8'), /^key_tail=BBBB$/m);
+  spawnSync(process.execPath, [STATE, 'exhausted'], { env: { ...f.env, HIMMEL_API_ACCOUNT: 'B' }, encoding: 'utf8' });
+  const r = launch(env, { ...FB_ON, HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-dry-skip',
+    STUB_DEAD_TAILS: 'AAAA', STUB_DEAD_OUT: DEAD });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(keysUsed(f), ['AAAA']);
+  assert.doesNotMatch(r.stderr, /rotating this call/);
+  assert.equal(fbCalls(f), 1);
+});
+
+test('rotation never fires for a named account or a call granted Edit, Write or Bash', () => {
+  const named = fixture();
+  const n = launch(keyFiles(named), { HIMMEL_API_ACCOUNT: 'A', HIMMEL_API_JOB_ID: 'job-dry-named', STUB_DEAD_TAILS: 'AAAA', STUB_DEAD_OUT: DEAD });
+  assert.equal(n.status, 6, n.stderr);
+  assert.deepEqual(keysUsed(named), ['AAAA']);
+  for (const tool of ['Edit', 'Write', 'Bash']) {
+    const w = fixture();
+    const r = launch(keyFiles(w), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: `job-dry-${tool}`,
+      HIMMEL_API_TOOLS: `Read,${tool}`, STUB_DEAD_TAILS: 'AAAA', STUB_DEAD_OUT: DEAD });
+    assert.equal(r.status, 6, `${tool}: ${r.stderr}`);
+    assert.deepEqual(keysUsed(w), ['AAAA'], tool);
+    assert.doesNotMatch(r.stderr, /rotating this call/, tool);
+  }
+});
+
+test('a caller cannot widen the route through the tried list: a malformed list is ignored, a full one refuses', () => {
+  const f = fixture();
+  const all = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-tried-all', HIMMEL_API_ROTATE_TRIED: 'A,B' });
+  assert.equal(all.status, 2, all.stderr);
+  assert.match(all.stderr, /every account was already tried/);
+  assert.equal(f.called(), false);
+  const bad = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-tried-bad', HIMMEL_API_ROTATE_TRIED: 'A;B' });
+  assert.equal(bad.status, 0, bad.stderr);
 });
 
 test('a credit-too-low result exits 6, the non-retryable code, and the launch record names it exhausted', () => {
@@ -1501,6 +1630,20 @@ test('cache-report prints a per-kind hit rate and picks the TTL from the measure
   assert.equal(out['bulk | m | o'].recommended_ttl, '1h');
   assert.equal(out['eval | m | other-org'].runs, 1, 'a run in another organization is its own group');
   assert.equal(out['__proto__ | m | o'].runs, 1, 'a kind named like an Object property still groups');
+});
+
+test('cache-report gives no group to a native release judge row', () => {
+  const f = fixture();
+  const log = join(f.dir, 'launches.jsonl');
+  const native = JSON.stringify({ ts: '2026-11-20T10:01:00Z', kind: 'judge', model: 'opus', lane: 'native', cache_ttl: 'off', input_tokens: 336000, cache_creation_tokens: 0, cache_read_tokens: 649 });
+  const api = [usageRow('2026-11-20T10:00:00Z', 'judge', '5m', 10, 4000, 0, 'opus'), usageRow('2026-11-20T10:02:00Z', 'judge', '5m', 10, 100, 4000, 'opus')];
+  writeFileSync(log, api.join('\n') + '\n');
+  const alone = spawnSync(process.execPath, [REPORT, log], { encoding: 'utf8' });
+  writeFileSync(log, [api[0], native, api[1]].join('\n') + '\n');
+  const mixed = spawnSync(process.execPath, [REPORT, log], { encoding: 'utf8' });
+  assert.equal(mixed.status, 0, mixed.stderr);
+  assert.deepEqual(Object.keys(JSON.parse(mixed.stdout)), ['judge | opus | o']);
+  assert.equal(mixed.stdout, alone.stdout);
 });
 
 // a dead call must not hold its reservation (killed calls on account B kept 20.10 USD reserved).
@@ -1784,10 +1927,37 @@ test('judge mapped to B picks B; with the map removed the same call is refused-p
   assert.equal(g.called(), false);
 });
 
-test('a role mapped to B whose fresh reading has no room is refused, and A is never used', () => {
+test('critic mapped to B picks B; with the map removed the same call is refused-policy', () => {
+  const f = fixture();
+  putRoles(f, { critic: ['B'] });
+  const ok = autoKind(f, 'critic');
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.equal(usedKey(f), 'BBBB');
+  assert.equal(JSON.parse(f.record().trim()).account, 'B');
+  assert.deepEqual(policyLines(f), []);
+  const g = fixture();
+  const refused = autoKind(g, 'critic');
+  assert.equal(refused.status, 2, refused.stderr);
+  assert.match(refused.stderr, /policy refusal: this call was not sent, and no alert or fallback follows\. Name an account \(A, B, C or D\) instead of auto/);
+  assert.equal(policyLines(g).length, 1);
+  assert.equal(g.called(), false);
+});
+
+test('a role mapped to B whose fresh reading has no room runs on B by default, and A is never used', () => {
   const f = fixture();
   putRoles(f, { judge: ['B'] });
   f.snapshot.accounts.B.remaining_usd = '0.05';
+  f.save();
+  const r = autoKind(f, 'judge');
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(usedKey(f), 'BBBB');
+});
+
+test('with enforce_budget on, a role mapped to B whose fresh reading has no room is refused, and A is never used', () => {
+  const f = fixture();
+  putRoles(f, { judge: ['B'] });
+  f.snapshot.accounts.B.remaining_usd = '0.05';
+  f.config.enforce_budget = true;
   f.save();
   const r = autoKind(f, 'judge');
   assert.notEqual(r.status, 0, r.stderr);
@@ -1973,4 +2143,103 @@ test('K5 and K5b: a broken role map refuses an auto graphify call before any spa
   const p = autoKind(g, 'graphify');
   assert.equal(p.status, 0, p.stderr);
   assert.equal(usedKey(g), 'BBBB');
+});
+
+const markAt = (f, at) => {
+  spawnSync(process.execPath, [STATE, 'exhausted'], { env: f.env, encoding: 'utf8' });
+  const ledger = JSON.parse(readFileSync(f.paths.state, 'utf8'));
+  ledger.accounts.A.exhausted_at = at;
+  writeFileSync(f.paths.state, JSON.stringify(ledger));
+};
+
+test('10425: an unknown balance (no snapshot, BANK-UNKNOWN) is not a block: the call runs on the named account', () => {
+  const f = fixture();
+  rmSync(f.paths.snapshot);
+  const r = f.run(f.good, FB_ON);
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stderr, /refused/);
+  assert.equal(f.called(), true);
+  assert.match(readFileSync(f.paths.env, 'utf8'), /^key_present=1$/m);
+  assert.equal(fbCalls(f), 0);
+});
+
+test('10425: a stale balance (BANK-STALE) is not a block: the call runs on the named account', () => {
+  const f = fixture();
+  Object.assign(f.snapshot.accounts.A, { source: 'automatic-snapshot', observed_at: f.now - 700 });
+  f.save();
+  const r = f.run(f.good, FB_ON);
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stderr, /refused/);
+  assert.equal(f.called(), true);
+  assert.equal(fbCalls(f), 0);
+});
+
+test('10425: a locked ledger refuses under its own name, and the alert says ledger-locked, never a bare BANK-UNKNOWN', () => {
+  const f = fixture();
+  mkdirSync(`${f.paths.state}.lock`);
+  const r = f.run(f.good, { ...FB_ON, HIMMEL_API_LOCK_WAIT_MS: '100' });
+  assert.equal(f.called(), false, r.stderr);
+  assert.equal(fbCalls(f), 1);
+  assert.match(r.stderr, /refused: .*ledger-locked/);
+  assert.equal(alerts(f).length, 1);
+  assert.match(alertText(f), /ledger-locked/);
+  assert.doesNotMatch(alertText(f), /api bank gate said BANK-UNKNOWN/);
+});
+
+test('10425: a later successful call clears an older exhaustion mark', () => {
+  const f = fixture();
+  markAt(f, f.now - 4000);
+  const r = f.run();
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(f.status().exhausted_at, null);
+});
+
+test('10425: our own cap never blocks by default; with enforce_budget on it refuses before any call and names it', () => {
+  const f = fixture();
+  const spent = () => writeFileSync(f.paths.state, JSON.stringify({ version: 1, accounts: { A: { organization_id: 'org-a', cycle_id: 'cycle-a', discrepancy: false,
+    jobs: { spent: { status: 'settled', maximum_usd: '0.950000', actual_usd: '0.950000', reserved_at: f.now, timeout_s: 3600 } } } } }));
+  spent();
+  const free = f.run();
+  assert.equal(free.status, 0, free.stderr);
+  assert.equal(f.called(), true);
+  rmSync(f.paths.log);
+  spent();
+  f.config.enforce_budget = true;
+  f.save();
+  const r = f.run(f.good, { HIMMEL_API_JOB_ID: 'job-enforce' });
+  assert.equal(r.status, 2, r.stderr);
+  assert.equal(f.called(), false);
+  assert.match(r.stderr, /refused: .*(over-cap|insufficient-headroom)/);
+});
+
+function shadowPreflight(f, body) {
+  const root = join(f.dir, 'shadow');
+  mkdirSync(join(root, 'scripts', 'lib'), { recursive: true });
+  for (const e of readdirSync(HIMMEL_REPO)) if (e !== 'scripts') symlinkSync(join(HIMMEL_REPO, e), join(root, e));
+  for (const e of readdirSync(join(HIMMEL_REPO, 'scripts'))) if (e !== 'lib') symlinkSync(join(HIMMEL_REPO, 'scripts', e), join(root, 'scripts', e));
+  for (const e of readdirSync(join(HIMMEL_REPO, 'scripts', 'lib'))) if (e !== 'usage-preflight.sh') symlinkSync(join(HIMMEL_REPO, 'scripts', 'lib', e), join(root, 'scripts', 'lib', e));
+  writeFileSync(join(root, 'scripts', 'lib', 'usage-preflight.sh'), `#!/bin/bash\n${body}\n`, { mode: 0o700 });
+  // a linked .mjs runs as main only when node keeps the link path it was started with
+  const env = { ...f.env, NODE_OPTIONS: '--preserve-symlinks-main' };
+  return () => spawnSync('bash', [join(root, 'scripts', 'api-lane', 'claude-api.sh'), ...f.good], { env, encoding: 'utf8', cwd: HIMMEL_REPO });
+}
+
+test('Uj5606a: a preflight that exits nonzero with no output (seam guard exit 96) refuses, and no claude runs', () => {
+  const f = fixture();
+  const r = shadowPreflight(f, 'exit 96')();
+  assert.equal(r.status, 2, r.stderr);
+  assert.equal(f.called(), false, 'the API call must not run');
+  assert.match(r.stderr, /^claude-api: refused: api bank gate said BANK-UNKNOWN$/m);
+});
+
+test('Uj5606a: a preflight that prints no known verdict refuses; a printed BANK-STALE still proceeds', () => {
+  const f = fixture();
+  const r = shadowPreflight(f, 'echo MAYBE')();
+  assert.equal(r.status, 2, r.stderr);
+  assert.equal(f.called(), false, 'the API call must not run');
+  assert.match(r.stderr, /^claude-api: refused: api bank gate said BANK-UNKNOWN$/m);
+  const g = fixture();
+  const ok = shadowPreflight(g, 'echo BANK-STALE')();
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.equal(g.called(), true);
 });

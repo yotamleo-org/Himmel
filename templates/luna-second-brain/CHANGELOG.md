@@ -8,6 +8,31 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.113] — 2026-11-20
+
+### Changed
+- The upgrade test script drops a section-banner comment above its T73 rows; no executable line changed.
+
+## [0.4.112] — 2026-11-20
+
+### Added
+- `/luna-upgrade` now installs the feed list `.feed-clip-feeds` into a vault that
+  lacks it, once, and never overwrites a copy that exists, whatever the template
+  says. This replaces the 0.4.111 note that an existing vault had to copy it by hand.
+- A feed line can end in `skip=<word>,<word>`: an entry whose title holds one of
+  the words (`alpha`, `nightly`, `rc`, `mobile`) is not clipped. The starter list
+  uses it for the Codex and T3 Code feeds.
+
+## [0.4.111] — 2026-11-20
+
+### Added
+- A starter feed list, `.feed-clip-feeds`, for the clip pipeline's feed tool
+  (`obsidian-triage` `tools/feed-clip.mjs`): the release feeds of Claude Code,
+  the Claude Agent SDK, Codex, T3 Code and the MCP specification, and the
+  OpenAI engineering blog. A vault made from the template has it; an existing
+  vault copies it to its root once, because `/luna-upgrade` does not add new
+  top-level files.
+
 ## [0.4.110] — 2026-11-18
 
 ### Changed

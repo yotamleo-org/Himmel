@@ -2,16 +2,24 @@
 
 Batch tooling for the obsidian-triage plugin. Several flavors:
 
-- **Pure-Python harvest** (`harvest-clip-body-batch.py`) — no fetch, marks
-  clip-body harvest frontmatter. Predates the thin-body crawl. Opt-in `--firecrawl-thin`
-  escalation (the thin-body crawl follow-up): for thin-body **article/web** clips
-  (X/github/youtube excluded — owned by cheaper paths), fetches clean
-  markdown via firecrawl `/v2/scrape` and writes a `## Harvested content`
-  section (`harvest_skill: firecrawl`). Credit-conscious — off by default,
-  `--firecrawl-budget N` (default 20) caps scrapes/run, budget-exhausted or
-  failed fetches stay retryable partials. Needs `FIRECRAWL_API_KEY` (opt.
-  `FIRECRAWL_BASE_URL` for self-hosted). Re-screens fetched text for
-  injection. Tests: `tests/test-firecrawl-thin.{sh,py}`.
+- **Pure-Python harvest** (`harvest-clip-body-batch.py`) — marks clip-body harvest
+  frontmatter and fetches the page text of a thin **article/web** clip (X/github/
+  youtube/instagram excluded — owned by their own paths) with no flag: the free
+  rungs of the scrape chain (local headless, then Jina), written as a
+  `## Harvested content` section (`harvest_skill` names the rung). Bounded:
+  `--fetch-budget N` / `HARVEST_FETCH_BUDGET` (default 20) caps the clips fetched per run,
+  one unit per clip however many rungs of the chain it tries, failures included; a failed, empty or capped fetch stays a retryable partial. A
+  partial that triage already moved to `_evidence/` is retried there, up to the
+  defer count of 5, when the run would reprocess it (never stamped, a clip-body
+  thin stamp, a backend-stamped junk text, or a youtube-scrapling clip a re-flag
+  turned back to partial: that one keeps `harvested_at`, is fetched again through
+  the YouTube helper, and its `## Harvested content` section is replaced, not
+  repeated; a miss counts toward the same bound). A `## Summary` carrying `Inferred from the source URL only` is
+  not page text, and an Instagram clip is judged by its media rule, so neither is
+  stamped `ok` over nothing. Opt-in `--firecrawl-thin` adds the paid firecrawl
+  `/v2/scrape` rung (`harvest_skill: firecrawl`; `--firecrawl-budget N`, default 20;
+  needs `FIRECRAWL_API_KEY`, opt. `FIRECRAWL_BASE_URL`). Re-screens fetched text
+  for injection. Tests: `tests/test-firecrawl-thin.{sh,py}`, `tests/test-harvest-thinness.sh`.
 - **fxtwitter enricher** (`fxtwitter-enrich.mjs`) — **default X path**
   (the fast path for public tweets). Browser-free + auth-free; hits `api.fxtwitter.com`. Handles
   plain tweets, long tweets (`is_note_tweet`), X Articles (Draft.js
@@ -240,7 +248,10 @@ frontmatter-only marks, never the body:
 - `harvest_skill: clip-body` + `harvest_status: ok` + a placeholder/template
   body → `harvest_status: partial` + `harvest_flag: thin-body`.
 - `harvest_status: ok` + a `_Transcript unavailable` section → `harvest_status:
-  partial` + `harvest_flag: transcript-unavailable`.
+  partial` + `harvest_flag: transcript-unavailable`. The next run fetches the video
+  again through the YouTube helper (the note keeps `harvested_at`); a transcript
+  replaces the section and the flag, a miss is a deferred partial counted toward
+  the same bound of 5.
 - `enrichment_status: ok` + `needs_thread: true` → `enrichment_status: partial`
   + `last_error: thread_not_captured`.
 

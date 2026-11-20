@@ -96,7 +96,10 @@ release is declared (`jira release state <R>` prints a status other than
 
 - **The batch reads only disk.** Anything the RM must weigh goes in the
   request's `--why` or in an operator `O-` record; nothing said in a message
-  reaches it.
+  reaches it. The judge is shown the records that name the request's ticket, its
+  parent and its blockers, the rules of the release, the records recent rulings
+  use and the newest ones; to have it read any other record, put the record's
+  `O-` id or `decision <n>` in `--why`.
 - **A worker's FINDING that asks "file it where?"** is a request. So is a
   follow-up you file yourself: file it to backlog, then request its INTAKE.
 - **A launch on a ticket outside the current version is refused** (`brief-lint.sh`
