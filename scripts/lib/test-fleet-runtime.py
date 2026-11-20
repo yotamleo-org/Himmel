@@ -1912,6 +1912,25 @@ exit 1''')
         self.assertEqual([json.loads(line)['outcome'] for line in lines[:-1]], ['attempt-started', 'indeterminate'])
         self.assertEqual(lines[-1], '')
 
+    def test_settle_refuses_when_a_torn_line_sits_in_the_middle_of_the_history(self):
+        other = json.dumps(dict(v=2, kind='launch-attempt', attempt_id='other', name='other', doc='/nowhere', outcome='attempt-started'))
+        history, intact = self.settle_after_history_tail(self.launched_line()[:60] + '\n' + other + '\n')
+        self.assertEqual(history.read_text().splitlines()[-1], other)
+        self.refused_settle('history has a line that cannot be read')
+        self.assertEqual(list(self.anchor_attempts()), ['one'])
+
+    def test_settle_refuses_when_a_later_receipt_leaves_the_torn_line_in_the_middle(self):
+        self.active()
+        self.stuck()
+        history = self.bucket / '.himmel/launch-refusals.jsonl'
+        with history.open('a') as stream:
+            stream.write(self.launched_line()[:60])
+        self.rt('outcome', extra=('--phase', 'unknown'))  # the receipt starts its own line: the torn line is now mid-file
+        self.assertEqual(json.loads(history.read_text().splitlines()[-1])['outcome'], 'indeterminate')
+        self.forge(start='0')
+        self.refused_settle('history has a line that cannot be read')
+        self.assertEqual(list(self.anchor_attempts()), ['one'])
+
     # A supervised program that cannot be spawned never started: its attempt is refused and released, not left unknown.
     def run_supervised(self, *command):
         argv = ['python3', '-I', str(ROOT / 'scripts/lib/fleet_runtime.py'), 'run', '--doc', str(self.doc), '--manifest', str(self.m),
@@ -1941,6 +1960,21 @@ exit 1''')
         self.assertEqual([row['outcome'] for row in self.history_all()], ['attempt-started', 'complete'])
         self.assertEqual(self.anchor_attempts(), {})
         self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
+
+    def test_a_plain_refused_outcome_cannot_free_a_committed_attempt(self):
+        self.active()
+        self.stuck()
+        anchor, history, slot = self.bucket / 'fleet-control.json', self.bucket / '.himmel/launch-refusals.jsonl', self.bucket / 'slots' / self.doc.stem
+        before = (anchor.read_text(), self.m.read_text(), history.read_text())
+        p = self.rt('outcome', extra=('--phase', 'refused'), ok=False)
+        self.assertIn('committed attempt needs affirmative terminal evidence', p.stderr)
+        self.assertEqual((anchor.read_text(), self.m.read_text(), history.read_text()), before)
+        self.assertEqual(self.anchor_attempts()['one']['phase'], 'committed')
+        self.assertTrue((slot / 'managed.json').is_file())
+        for flag in ('--spawn-failed', '--spawn_failed'):  # the supervisor's flag is not an option
+            p = self.rt('outcome', extra=('--phase', 'refused', flag), ok=False)
+            self.assertIn('unrecognized arguments', p.stderr)
+        self.assertEqual((anchor.read_text(), self.m.read_text(), history.read_text()), before)
 
     # A terminal receipt releases a pending row only when the doc's newest marker is absent or an end marker.
     def sibling_owners(self, outcome, *lines, pending=True):
