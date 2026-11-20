@@ -146,7 +146,6 @@ cron_without_entry() { printf '%s\n' "$CRON_TAB" | { grep -vE "$(cron_row_re)" |
 
 sq() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
 
-# A temp-dir folder (an application mount) is gone by the time cron fires, so it is never baked.
 runner_path() {
     local d t out="" IFS=:
     for d in $PATH; do
