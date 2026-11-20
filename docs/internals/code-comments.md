@@ -52,8 +52,9 @@ dependency, platform or protocol stays by carrying the link to that constraint.
 Detection is line-based: a heredoc body and a Python triple-quoted string are skipped;
 a `#` inside any other multi-line string is not tracked. A changed path git has to
 quote (a double quote, backslash or control character in its name), a classifier
-that prints no count, or a baseline row whose count is not a plain number makes the
-gate exit 2 (cannot evaluate). The paths left out are the
+that prints no count, or a baseline row whose count is not a plain number of at most
+nine digits makes the gate exit 2 (cannot evaluate), as does any lookup or compare
+that itself fails. The paths left out are the
 whole-file rows of `scripts/lint/ticket-ref-allow.tsv` (fixtures, archives, generated
 and vendored trees).
 

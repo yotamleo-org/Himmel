@@ -29,6 +29,30 @@ set -uo pipefail
 usage() { echo "usage: check-new-comments.sh --staged | --range <base> [--tip <ref>] | --write-baseline" >&2; exit 2; }
 die() { echo "check-new-comments: $1, cannot evaluate" >&2; exit 2; }
 [ $# -ge 1 ] || usage
+count_ok() { case "$1" in ''|*[!0-9]*|??????????*) return 1 ;; esac; }
+gt() {
+    if ! count_ok "$1" || ! count_ok "$2"; then die "cannot compare the counts '$1' and '$2'"; fi
+    test "$1" -gt "$2"
+    case $? in
+        0) return 0 ;;
+        1) return 1 ;;
+        *) die "cannot compare the counts '$1' and '$2'" ;;
+    esac
+}
+has_at() {
+    if [ -z "$1" ]; then
+        git --literal-pathspecs ls-files --cached -- "$2" > "$W/has" || die "cannot list the index"
+    else
+        git --literal-pathspecs ls-tree -r --name-only "$1" -- "$2" > "$W/has" || die "cannot list $1"
+    fi
+    [ -s "$W/has" ]
+}
+listed() {
+    local r=0
+    grep -qxF -- "$1" "$2" || r=$?
+    [ "$r" -le 1 ] || die "grep failed on $2"
+    return "$r"
+}
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 classifier="$here/comment-count.awk"
@@ -85,31 +109,41 @@ fi
 case "$mode" in
     staged) base=HEAD
             git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1 && base=MERGE_HEAD
-            tipspec=":"
+            tipspec=":" tiprev=""
             set -- --cached "$base" ;;
     range)  base="$arg"
-            tipspec="$tip:"
+            tipspec="$tip:" tiprev="$tip"
             set -- "$base" "$tip" ;;
 esac
 
 git -c core.quotePath=false diff "$@" --name-status --find-renames --diff-filter=ACMRT > "$W/status" || die "git diff failed"
 git -c core.quotePath=false diff "$@" -U0 --text --no-color --no-ext-diff --find-renames --diff-filter=ACMRT > "$W/diff" || die "git diff failed"
 
-if grep -q "$(printf '\t')\"" "$W/status"; then die "git quotes a changed path (a double quote, backslash or control character in its name)"; fi
+grep -q "$(printf '\t')\"" "$W/status"
+case $? in
+    0) die "git quotes a changed path (a double quote, backslash or control character in its name)" ;;
+    1) ;;
+    *) die "grep failed on the changed paths" ;;
+esac
 awk -F'\t' '{ print $NF }' "$W/status" > "$W/touched"
 cp "$W/touched" "$W/indiff" || die "cp failed"
 recount=0
-if grep -qxF "scripts/lint/comment-count.awk" "$W/indiff"; then
+if listed "scripts/lint/comment-count.awk" "$W/indiff"; then
     git show "${tipspec}scripts/lint/comment-count.awk" > "$W/tip.awk" || die "cannot read the classifier at the tip"
     recount=1
 fi
 awk -F'\t' '$1 ~ /^R/ { print $3 "\t" $2 }' "$W/status" > "$W/renames"
 
 git show "$tipspec$BL" > "$W/tip.tsv" 2>/dev/null || die "$BL is absent at the tip"
-has_base=1
-git show "$base:$BL" > "$W/base.tsv" 2>/dev/null || { has_base=0; : > "$W/base.tsv"; }
+git rev-parse -q --verify "$base^{commit}" >/dev/null || die "cannot read the base $base"
+has_base=0
+: > "$W/base.tsv"
+if has_at "$base" "$BL"; then
+    git show "$base:$BL" > "$W/base.tsv" || die "cannot read $BL at the base"
+    has_base=1
+fi
 for f in tip base; do
-    awk -F'\t' '$2 !~ /^[0-9]+$/ { bad = 1 } END { exit bad }' "$W/$f.tsv" || die "a row of $BL at the $f carries no count"
+    awk -F'\t' '$2 !~ /^[0-9]+$/ || length($2) > 9 { bad = 1 } END { exit bad }' "$W/$f.tsv" || die "a row of $BL at the $f carries no count of at most 9 digits"
 done
 if [ "$has_base" -eq 1 ]; then
     awk -F'\t' 'FILENAME == ARGV[1] { b[$1] = $2; next } !($1 in b) || b[$1] != $2 { print $1 }' "$W/base.tsv" "$W/tip.tsv" >> "$W/touched" || die "awk failed"
@@ -119,10 +153,10 @@ judged "$W/touched.u" "$W/paths"
 
 : > "$W/counts"
 while IFS= read -r p; do
-    if ! git cat-file -e "$tipspec$p" 2>/dev/null; then printf '%s\t0\n' "$p" >> "$W/counts"; continue; fi
+    if ! has_at "$tiprev" "$p"; then printf '%s\t0\n' "$p" >> "$W/counts"; continue; fi
     git show "$tipspec$p" > "$W/blob" || die "cannot read $p at the tip"
     n="$(LC_ALL=C awk -f "$classifier" -v mode=count -v path="$p" "$W/blob")" || die "the classifier failed on $p"
-    case "$n" in ''|*[!0-9]*) die "the classifier printed no count for $p" ;; esac
+    count_ok "$n" || die "the classifier printed no count for $p"
     printf '%s\t%s\n' "$p" "$n" >> "$W/counts"
 done < "$W/paths"
 
@@ -141,18 +175,18 @@ LC_ALL=C awk -F'\t' -v has_base="$has_base" '
 
 : > "$W/findings"
 while IFS="$(printf '\t')" read -r kind p n lim; do
-    if [ "$kind" = "A" ] && ! grep -qxF -- "$p" "$W/indiff"; then continue; fi
+    if [ "$kind" = "A" ] && ! listed "$p" "$W/indiff"; then continue; fi
     was="$(awk -F'\t' -v p="$p" '$1 == p { print $2; exit }' "$W/renames")"
     m=0
-    if git cat-file -e "$base:${was:-$p}" 2>/dev/null; then
+    if has_at "$base" "${was:-$p}"; then
         git show "$base:${was:-$p}" > "$W/blob" || die "cannot read ${was:-$p} at the base"
         capper="$classifier"
-        if [ "$recount" -eq 1 ] && ! grep -qxF -- "$p" "$W/indiff"; then capper="$W/tip.awk"; fi
+        if [ "$recount" -eq 1 ] && ! listed "$p" "$W/indiff"; then capper="$W/tip.awk"; fi
         m="$(LC_ALL=C awk -f "$capper" -v mode=count -v path="$p" "$W/blob")" || die "the classifier failed on $p"
-        case "$m" in ''|*[!0-9]*) die "the classifier printed no count for $p" ;; esac
+        count_ok "$m" || die "the classifier printed no count for $p"
     fi
-    [ "$n" -gt "$m" ] || continue
-    if [ "$kind" = "B" ] && [ "$m" -gt "$lim" ]; then lim="$m"; fi
+    gt "$n" "$m" || continue
+    if [ "$kind" = "B" ] && gt "$m" "$lim"; then lim="$m"; fi
     printf '%s\t%s\t%s\t%s\n' "$kind" "$p" "$n" "$lim" >> "$W/findings"
 done < "$W/raw"
 

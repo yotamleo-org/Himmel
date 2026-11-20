@@ -305,7 +305,7 @@ base="$(git -C "$R" rev-parse HEAD)"
 printf 'echo n\n%s body note\necho m\n' "$HASH" > "$R/-n.sh"
 git -C "$R" add -A; git -C "$R" commit -q -m "a file named like an option"
 gate --range "$base"; want "a comment in a file named like an option" 1
-for bad in +nan +inf; do
+for bad in +nan +inf 99999999999999999999 9223372036854775808; do
     mkrepo
     printf '%s third\necho t\n' "$HASH" >> "$R/src/a.sh"
     printf 'src/a.sh\t%s\n' "$bad" > "$R/$BL"
