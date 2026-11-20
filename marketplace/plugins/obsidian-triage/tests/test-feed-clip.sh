@@ -396,10 +396,11 @@ except Exception:
     assert "non-printable title: PyYAML parses the written front matter" ok "$py"
 fi
 
-echo "Test 13: the README does not claim a scheduler runs the tool"
+echo "Test 13: the README names the nightly harvest runner as what schedules the tool"
 readme="$SCRIPT_DIR/../README.md"
-assert "README: no claim that a nightly run wires the tool in" 0 "$(grep -c 'nightly run wires' "$readme")"
-assert "README: says no repository job runs the tool" 1 "$(grep -c 'No repository job runs the tool' "$readme")"
+feed_section="$(awk '/^### Feed clips/{p=1; next} /^### /{p=0} p' "$readme")"
+assert "README: the feed section names the nightly harvest runner" 1 "$(printf '%s\n' "$feed_section" | grep -c 'nightly harvest runner')"
+assert "README: the feed section no longer says no repository job runs the tool" 0 "$(printf '%s\n' "$feed_section" | grep -c 'No repository job runs the tool')"
 
 echo "Test 11: unreadable state"
 V="$(newvault badstate)"
