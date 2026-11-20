@@ -34,7 +34,8 @@
 #        never falls back. A call granted
 #        Edit, Write or Bash falls back only from a refusal before any request (exit 2), never from a run that started
 #        (exit 6 included), which may have half-done its edits. The fallback writes its own launch record row (lane sub-fallback).
-# Exit: the call's own code; 2 a refusal before any request; 6 the provider answered "Credit balance is too low" or
+# Exit: the call's own code; 2 a refusal before any request; 10 a managed fleet launch refused or not committed,
+#       before any request; 6 the provider answered "Credit balance is too low" or
 #       "Invalid API key" (the account is marked, and a looping caller stops instead of retrying it).
 #       When the fallback ran, its own exit code replaces any of these.
 set -u
