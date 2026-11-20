@@ -693,7 +693,7 @@ peer_finish() {
 }
 
 peer_remove() {
-    local names listed name lines
+    local names listed name lines known
     names=$(peer_peers_all | cut -d'|' -f1)
     if [ -f "$(peer_confirmed_file)" ]; then
         listed=$(jq -r '(.peers // [])[]?.name | select(type == "string" and test("^[a-z0-9][a-z0-9-]{0,31}$"))' "$(peer_confirmed_file)" 2> /dev/null)
@@ -706,12 +706,18 @@ peer_remove() {
     lines=$(printf '%s\n' "$names" | awk '{print $0 "|" $0}')
     peer_choose "$lines"
     name=${PEER_CHOSEN%%|*}
-    if peer_peers_all | cut -d'|' -f1 | grep -qxF -- "$name"; then
-        peer_setup_run remove "$name"
-        rs_step "setup.ts removed $name"
-    else
-        rs_step "setup.ts no longer has $name" skip
-    fi
+    known=$(peer_peers_all | cut -d'|' -f1)
+    case "
+$known
+" in
+        *"
+$name
+"*)
+            peer_setup_run remove "$name"
+            rs_step "setup.ts removed $name"
+            ;;
+        *) rs_step "setup.ts no longer has $name" skip ;;
+    esac
     peer_checkpoint_drop "$name"
     rs_step "the record of set-up peers no longer lists $name"
     if [ -z "$(peer_peers_all)" ]; then
