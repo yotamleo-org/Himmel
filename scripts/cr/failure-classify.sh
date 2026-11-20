@@ -178,9 +178,7 @@ $(cat "$_cf_err" 2>/dev/null)"
 # happened to end on. The signature set is this file's own quota/auth/status
 # vocabulary, so it cannot drift from classify_failure. cfp's own
 # "Raw output: <mktemp path>" line is skipped: the random suffix can spell a
-# status code ("cfp-raw.a429bc"). cfp's own whole-line BROKE line comes first
-# (classify_failure's critic-broke match): it carries the reason, such as a
-# policy refusal, whose stderr otherwise ends on an empty raw tail.
+# status code ("cfp-raw.a429bc").
 #
 _FC_SIGNAL_SIG="$_FC_QUOTA_SIG|past 5 hours|hit your usage limit|purchase more credits|weekly|per[- ]week|7[- ]day|plan (has )?expired|subscription (has )?expired|insufficient balance|balance depleted|rate[ -]?limit|(^|[^0-9-])[45][0-9][0-9]([^0-9]|\$)|invalid api key|unauthorized|access[ -]?denied|authentication failed"
 

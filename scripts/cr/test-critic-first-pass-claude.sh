@@ -279,7 +279,6 @@ fresh_rec 10l; export FAKE_REFUSE="auto routing is for the himmel graph pass onl
 run_cfp claude-api
 check "10l the policy wording without the launcher's marker line is a decision: exits 5" 5 "$RC"
 unset FAKE_REFUSE
-# the refusal reason reaches the case .err and is the line the panel reason takes (first_signal_line)
 fresh_rec 10m; export FAKE_POLICY="auto routing is for the himmel graph pass only (kind critic, repo none); name HIMMEL_API_ACCOUNT=A, B or C"
 run_cfp claude-api
 unset FAKE_POLICY

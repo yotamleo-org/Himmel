@@ -915,10 +915,6 @@ fi
 # Case 22 is intentionally absent: the SHIPPED registry no longer carries a glm
 # critic row (subscription cancelled), so there is nothing to assert on.
 
-# Case 23: a critic the API lane refused on policy. The member's stderr is the
-# shape critic-first-pass.sh leaves (test-critic-first-pass-claude.sh 10m runs
-# the real file): its BROKE line per attempt, then the fail-open lines ending on
-# an empty raw tail. The panel reason carries the BROKE line, not the empty tail.
 STUB_POLICY="$tmp/stub-policy.sh"
 cat > "$STUB_POLICY" <<'EOS'
 #!/usr/bin/env bash
