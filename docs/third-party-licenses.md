@@ -228,14 +228,14 @@ docs reviewer cites it as its NIT-only generic layer. Its licence is the same
 ## Vendored plugin: `pstack` (MIT, Lauren Tan)
 
 Added 2026-10-15, expanded 2026-10-30 (the pin bump that took the Claude Code
-harness mapping, and the statechart trial). `marketplace/plugins/pstack/`, ten skills
+harness mapping, and the statechart trial), re-vendored 2026-11-20 (`pstack/LICENSE` unchanged). `marketplace/plugins/pstack/`, ten skills
 (`correct`, `blast-radius`, `create-verification-skill`,
 `maintain-verification-skill`, `benchmark-checklist`,
 `principle-explain-the-number`, `in-your-own-words`, `statechart`,
 `create-formal-verification-skill`, `maintain-formal-verification-skill`),
 including statechart's runtime, tests and fixtures, plus the Claude Code harness
 mapping, sourced from `cursor/plugins` at pinned commit
-`bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7`, path `pstack/`. The inventory and
+`0b46ec399d55f2829e88822998f53b84944837d3`, path `pstack/`. The inventory and
 per-file hashes in `marketplace/plugins/pstack/VENDORED.md` record the pin and
 deviations. The separate `unslop`, `no-comments` and `comment-sicko` copies
 above remain at `99743e9c`. Never

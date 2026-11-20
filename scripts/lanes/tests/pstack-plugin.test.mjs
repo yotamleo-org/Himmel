@@ -17,7 +17,7 @@ const REG = JSON.parse(readFileSync(join(ROOT, 'scripts', 'lanes', 'plugin-profi
 const MP = JSON.parse(readFileSync(join(ROOT, 'marketplace', '.claude-plugin', 'marketplace.json'), 'utf8'));
 const PLUGIN = join(ROOT, 'marketplace', 'plugins', 'pstack');
 const ID = 'pstack@himmel';
-const PIN = 'bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7';
+const PIN = '0b46ec399d55f2829e88822998f53b84944837d3';
 const SKILLS = ['correct', 'blast-radius', 'create-verification-skill', 'maintain-verification-skill',
   'benchmark-checklist', 'principle-explain-the-number', 'in-your-own-words',
   'statechart', 'create-formal-verification-skill', 'maintain-formal-verification-skill'];
@@ -140,8 +140,8 @@ test('the principle matches the new upstream pin after reversing recorded deviat
     .replace(/^<!-- Vendored from[^\n]*-->\n\n/m, '')
     .replace('Prove It Works (not shipped here)', '[Prove It Works](../principle-prove-it-works/SKILL.md)');
   assert.equal(createHash('sha256').update(text).digest('hex'),
-    '3c84fbf9a7d9842abcfcd134010782b32092ac3d3fb4aaf9ed5732dca83aa58c',
-    'vendored file drifted from cursor/plugins@bf0c7cd8');
+    'e6a3f00991f4949cf18a0b5c77dd3126ca4402b8553f88c9c7905e577512676e',
+    'vendored file drifted from cursor/plugins@0b46ec39');
 });
 
 for (const [name, env, message] of [
@@ -197,6 +197,6 @@ if (['statechart.ts', 'worker.ts', 'java.ts'].includes(basename(process.argv[1] 
   }
 });
 
-test('plugin.json keeps the release-managed version 0.1.7', () => {
-  assert.equal(JSON.parse(readFileSync(join(PLUGIN, '.claude-plugin', 'plugin.json'), 'utf8')).version, '0.1.7');
+test('plugin.json keeps the release-managed version 0.1.8', () => {
+  assert.equal(JSON.parse(readFileSync(join(PLUGIN, '.claude-plugin', 'plugin.json'), 'utf8')).version, '0.1.8');
 });
