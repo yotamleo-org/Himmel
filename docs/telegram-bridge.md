@@ -19,6 +19,9 @@ is the front door.
 
 ## Required config
 
+To set up the token, the pairing and the bridge with one command and no ids to type, follow
+[setup/remote-setup.md](setup/remote-setup.md#part-1). The manual files are:
+
 - `~/.claude/channels/telegram/.env` with `TELEGRAM_BOT_TOKEN=<your bot token>`
 - `~/.claude/channels/telegram/access.json` with `{"allowFrom":["<your-telegram-user-id>"]}`
 

@@ -104,6 +104,7 @@ const lunaConfig = require('./luna-config.js');
 // imported here, never redeclared (that module's own header comment: "a
 // sibling status item (S6) registers against these constants").
 const bridgePersistence = require('./bridge-persistence.js');
+const botRoles = require('./bot-roles.js');
 
 // ── file-exists ──────────────────────────────────────────────────────────
 
@@ -2714,16 +2715,50 @@ function probeDistinctTokens(item, ctx) {
   };
   const a = readToken(item.probe.envFileA, item.probe.tokenKeyA);
   const b = readToken(item.probe.envFileB, item.probe.tokenKeyB);
-  if (!nonEmpty(a.value) || !nonEmpty(b.value)) {
-    return { actual: 'present', detail: 'nothing to collide with — at least one of the two tokens is unconfigured' };
-  }
-  if (a.value === b.value) {
+  if (nonEmpty(a.value) && nonEmpty(b.value) && a.value === b.value) {
     return {
       actual: 'degraded',
       detail: `${item.probe.tokenKeyA} in ${a.filePath} is IDENTICAL to ${item.probe.tokenKeyB} in ${b.filePath} — two different bots must not share one token (competing getUpdates offsets)`,
     };
   }
-  return { actual: 'present', detail: `${a.filePath} and ${b.filePath} carry distinct tokens` };
+  // The bot ids of the four roles (main, bridge, notice, relay), compared by bot-roles.js, the one
+  // owner of that rule. main and relay come from the two token files this probe was pointed at; the
+  // bridge and notice ids are the ones remote-setup published to bots.json. The peer-bridge dirs are
+  // never opened: sessions run this probe and may not read them.
+  const home = (ctx.env && ctx.env.HOME) || os.homedir();
+  const published = botRoles.readPublished({ home });
+  const ids = {
+    main: botRoles.idFromToken(a.value) || undefined,
+    relay: botRoles.idFromToken(b.value) || undefined,
+    bridge: published.bridge,
+    notice: published.notice,
+    pending: published.pending,
+  };
+  for (const role of botRoles.ROLES) {
+    if (!ids[role]) continue;
+    const c = botRoles.roleConflict(ids[role], role, ids);
+    if (c) {
+      const other = c.conflictsWith === 'pending' ? 'a bot reserved by an interrupted setup step' : `${c.conflictsWith} bot`;
+      return { actual: 'degraded', detail: `the ${role} bot and the ${other} are the same bot — each role needs its own bot (a separate /newbot in @BotFather)` };
+    }
+  }
+  const bridgeNote = published.bridge
+    ? `; bridge: as published ${/^\d{4}-\d{2}-\d{2}/.test(published.bridgePublishedAt || '') ? published.bridgePublishedAt.slice(0, 10) : 'earlier'}`
+    : '';
+  const mainUnset = !nonEmpty(a.value);
+  if (!nonEmpty(a.value) || !nonEmpty(b.value)) {
+    if (!published.bridge && !published.notice) {
+      return Object.assign(
+        { actual: 'present', detail: 'nothing to collide with — at least one of the two tokens is unconfigured' },
+        mainUnset ? { cleanAbsence: true } : {},
+      );
+    }
+    return Object.assign(
+      { actual: 'present', detail: `the configured bot tokens are distinct${bridgeNote}` },
+      mainUnset ? { cleanAbsence: true } : {},
+    );
+  }
+  return { actual: 'present', detail: `${a.filePath} and ${b.filePath} carry distinct tokens${bridgeNote}` };
 }
 
 // ── luna-sources ─────────────────────────────────────────────────────────
@@ -3936,10 +3971,10 @@ function probeBridgeHealth(item, ctx) {
 // generic "unit missing"). A user unit without linger only runs while the
 // operator is logged in, the exact failure spec A12/V5 calls out.
 //
-// macOS/other: launchd support is explicitly Stage 2 (A12). This does NOT
-// build a process/service-inspection library for it; it reads a LOUD
-// degraded naming the limitation (never a silent pass), the
-// same platform posture bridge-health's own poller-count
+// macOS: persistence = the LaunchAgent plist installed AND loaded into the
+// user's gui domain (launchctl print), the counterpart of the Linux unit.
+// Any other platform reads a LOUD degraded naming the limitation (never a
+// silent pass), the same platform posture bridge-health's own poller-count
 // check already established.
 // the SPAWN side of the same
 // ctx.env class scopeConfigPathToCtx already fixed for the config-path read,
@@ -4069,9 +4104,35 @@ function probeBridgePersistence(item, ctx) {
     };
   }
 
+  if (platform === 'darwin') {
+    // The LaunchAgent bridge-persistence.js installs: the plist must be there AND launchd must have
+    // the job loaded (`launchctl print gui/<uid>/<label>`), or the bridge does not come back after a reboot.
+    const agent = scopeEnvToCtx(ctx, () => bridgePersistence.launchAgentInstalled());
+    const label = bridgePersistence.LAUNCHD_LABEL;
+    if (!agent.fileExists) {
+      return {
+        actual: 'degraded',
+        detail: `LaunchAgent '${label}' is not installed at ${agent.plistPath} (bridge.enabled=true) — the bridge will not survive a reboot/logout without it (fix: himmelctl bridge enable)`,
+      };
+    }
+    if (agent.loaded === null) {
+      return {
+        actual: 'degraded',
+        detail: `LaunchAgent '${label}' is installed at ${agent.plistPath}, but whether launchd has it loaded could not be determined (launchctl is unavailable) (bridge.enabled=true) — verify manually: launchctl print gui/$(id -u)/${label}`,
+      };
+    }
+    if (agent.loaded === false) {
+      return {
+        actual: 'degraded',
+        detail: `LaunchAgent '${label}' is installed at ${agent.plistPath} but not loaded (bridge.enabled=true) — launchd will not run the bridge (fix: himmelctl bridge enable)`,
+      };
+    }
+    return { actual: 'present', detail: `LaunchAgent '${label}' installed at ${agent.plistPath} and loaded` };
+  }
+
   return {
     actual: 'degraded',
-    detail: `bridge-persistence check not implemented on '${platform}' — launchd/macOS persistence is Stage 2 (A12); persistence is UNVERIFIED here, not assumed healthy (bridge.enabled=true)`,
+    detail: `bridge-persistence check not implemented on '${platform}' — persistence is UNVERIFIED here, not assumed healthy (bridge.enabled=true)`,
   };
 }
 

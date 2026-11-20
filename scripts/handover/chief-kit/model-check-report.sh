@@ -58,7 +58,7 @@ runner="$(existing_file "${STATECHART:-}")" || error 'set STATECHART to the pinn
 [ -x "$runner" ] || error 'STATECHART is not executable'
 case "$runner" in
     */marketplace/plugins/pstack/skills/statechart/scripts/statechart)
-        approved_tree=403817bea2639d991d2cc23b4e2907646b85f3425c234736bb34abb29d918c26 ;;
+        approved_tree=101703b74b084c2bbc497ca54900cf91da85507abff3d16c50c36cd31e5cb3c2 ;;
     *) approved_tree=bdaaae64c31c8a71f50d76f2168379d728ea6744007b70453e6f8865791b13d6 ;;
 esac
 # Pin every reachable compiler file, not just the launcher; execute the checked private snapshot.

@@ -25,6 +25,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 ## Setup
 
 - [setup/new-machine.md](setup/new-machine.md) — fresh-machine setup: required tools + per-platform (Linux / macOS) install.
+- [setup/remote-setup.md](setup/remote-setup.md) — set up the remote pieces from one page, one helper command per part: the main bot now, away launches, the sudo bot and bot-to-bot later.
 - [setup/install.md](setup/install.md) — install himmel into an existing repo with `himmelctl`: scopes, install profiles, and the adaptation checklist.
 - [setup/migrating.md](setup/migrating.md) — converge an older himmel install (old `adopt.sh`, hand-wired, or a pre-`himmelctl` station) onto the current installer.
 - [setup/updating.md](setup/updating.md) — update the harness (`/himmel-update`) and upgrade luna vaults (`/luna-upgrade`); also points to the symmetric `scripts/uninstall.sh` teardown.

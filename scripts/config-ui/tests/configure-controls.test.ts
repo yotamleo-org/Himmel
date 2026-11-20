@@ -231,3 +231,9 @@ test("no secret field renders outside the Secrets tile, and the Secrets tile hol
   const mine = tileHtml("secrets");
   for (const name of ["TELEGRAM_BOT_TOKEN", "JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN", "JIRA_PROJECT_KEY"]) expect(mine, name).toContain(`data-secret="${name}"`);
 });
+
+test("the Telegram token row points at the one-command setup, and no other secret row does", () => {
+  const mine = tileHtml("secrets");
+  expect(mine.split("scripts/remote-setup/remote-setup.sh bot").length - 1).toBe(1);
+  expect(mine).toContain("docs/setup/remote-setup.md, Part 1");
+});
