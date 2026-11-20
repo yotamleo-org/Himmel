@@ -7,7 +7,7 @@
 #   cited     4 clips (40%) by 2 synthesis pages, 0 pages in the window, last 2026-06-18
 #   subjects  2 created, 2 extended, 2 touched in the window, last 2026-06-27
 #   actions   3 open, 0 applied, last applied none
-#   media     3 waiting, 1 enriched in the window, last 2026-06-26
+#   media     3 waiting, 2 enriched in the window (one still in the inbox), last 2026-06-26
 #   stalled   cited, actions
 # With --apply-ledger: actions 1 open, 2 applied (1 in the window, last 2026-06-27); stalled cited.
 set -uo pipefail
@@ -42,7 +42,7 @@ clip "$E/_rejected/r1.md" 2026-06-28 "x_media_pending: true"
 printf 'not a clip\n' > "$E/notes.txt"
 # The inbox holds the clips still on their way in; _done is history.
 clip "$V/Clippings/inbox-ig.md" 2026-06-28 "ig_media_pending: true"
-clip "$V/Clippings/inbox-plain.md" 2026-06-28
+clip "$V/Clippings/inbox-plain.md" 2026-06-28 "media_enriched_at: 2026-06-24"
 clip "$V/Clippings/_done/2026-05/old.md" 2026-05-01 "ig_media_pending: true"
 # Neither is a clip: the rolling deferral table and a file with no frontmatter.
 clip "$V/Clippings/_deferred.md" 2026-06-28 "ig_media_pending: true"

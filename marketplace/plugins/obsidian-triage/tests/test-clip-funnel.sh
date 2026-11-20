@@ -64,7 +64,7 @@ assert "actions: open (a dismissed, a ticked and a non-report line are not)" "3"
 assert "actions: an absent ledger is zero applied" "0" "$(jget actions.applied "$out")"
 assert "actions: last applied" "null" "$(jget actions.last "$out")"
 assert "media: clips waiting (an inbox ig flag and two x flags; _done, _rejected and false do not)" "3" "$(jget media.waiting "$out")"
-assert "media: enriched inside the window" "1" "$(jget media.moved_in_window "$out")"
+assert "media: enriched inside the window, an inbox clip included" "2" "$(jget media.moved_in_window "$out")"
 assert "media: last" '"2026-06-26"' "$(jget media.last "$out")"
 assert "stalled lists the stages with no movement, in stage order" '["cited","actions"]' "$(jget stalled "$out")"
 
@@ -138,6 +138,19 @@ printf 'A clip with no frontmatter.\n' > "$tmp/nofm/Clippings/_evidence/x.md"
 outn="$(node "$TOOL" --vault "$tmp/nofm" --as-of "$D" 2>&1)"
 assert "a clip with no frontmatter is taken in but has no day" "1 0 null" "$(jget intake.clips "$outn") $(jget intake.moved_in_window "$outn") $(jget intake.last "$outn")"
 assert "a clip with no frontmatter is not waiting on media" "0" "$(jget media.waiting "$outn")"
+
+echo "Group 9: a vault folder that cannot be read is an error, not a zero"
+mkdir -p "$tmp/locked/Clippings/_evidence"
+chmod 000 "$tmp/locked/Clippings/_evidence"
+if [ -r "$tmp/locked/Clippings/_evidence" ]; then
+    echo "  SKIP  this user is not bound by the directory mode: unreadable-folder case"
+else
+    node "$TOOL" --vault "$tmp/locked" --as-of "$D" >/dev/null 2>"$tmp/locked.err"; assert "an unreadable evidence folder exits 1" "1" "$?"
+    assert "the error says the vault could not be read" "yes" "$(grep -q 'cannot read the vault' "$tmp/locked.err" && echo yes || echo no)"
+fi
+chmod 755 "$tmp/locked/Clippings/_evidence"
+mkdir -p "$tmp/odd/Clippings"; printf 'not a folder\n' > "$tmp/odd/Clippings/_evidence"
+node "$TOOL" --vault "$tmp/odd" --as-of "$D" >/dev/null 2>&1; assert "a file where the evidence folder belongs reads as no evidence" "0" "$?"
 
 echo
 echo "test-clip-funnel: $pass passed, $fail failed"

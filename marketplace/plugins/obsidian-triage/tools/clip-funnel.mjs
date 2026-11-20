@@ -70,10 +70,13 @@ function dayOf(value) {
   return m ? m[0] : "";
 }
 
-/** The `.md` files of one directory (no subfolder, no symlink), sorted by name. */
+/** The `.md` files of one directory (no subfolder, no symlink), sorted by name. A folder the vault lacks has none; one that cannot be read is an error. */
 function mdFiles(dir) {
   let entries;
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; }
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) {
+    if (e.code === "ENOENT" || e.code === "ENOTDIR") return [];
+    throw e;
+  }
   return entries.filter((e) => e.isFile() && e.name.endsWith(".md")).map((e) => e.name).sort();
 }
 
@@ -132,7 +135,9 @@ function funnel(vault, asOf, days) {
   for (const name of mdFiles(clips)) {
     if (name === "_deferred.md") continue;
     const get = readClip(path.join(clips, name));
-    if (get && pendingMedia(get)) waiting++;
+    if (!get) continue;
+    enriched.see(dayOf(get("media_enriched_at")));
+    if (pendingMedia(get)) waiting++;
   }
 
   // cited: a synthesis page cites a clip when it links the clip's name, whatever folder the link names.
@@ -209,4 +214,6 @@ if (!a.vault) die("usage: clip-funnel.mjs --vault <path> [--as-of YYYY-MM-DD] [-
 if (!fs.existsSync(a.vault) || !fs.statSync(a.vault).isDirectory()) die(`vault not found: ${a.vault}`);
 const asOf = a.asOf || localToday();
 if (!isCalendarDate(asOf)) die("invalid --as-of (YYYY-MM-DD)");
-process.stdout.write(JSON.stringify(funnel(a.vault, asOf, a.days), null, 2) + "\n");
+let result;
+try { result = funnel(a.vault, asOf, a.days); } catch (e) { die(`cannot read the vault: ${e.message}`); }
+process.stdout.write(JSON.stringify(result, null, 2) + "\n");
