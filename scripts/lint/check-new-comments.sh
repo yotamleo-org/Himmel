@@ -9,8 +9,9 @@
 #   a touched file's count of comment lines outside the keep list may not exceed its row
 #   a row may not rise above the base's row for that path (or for the path it was renamed
 #   from in this change), and a new row may not be above zero
-#   a change to comment-count.awk recounts the tree, so in that change the row of a file
-#   the change does not touch may rise, as far as the changed classifier's own count
+#   a count or a row above that limit still passes when it is no higher than the count of
+#   the base's version of the file (a change to comment-count.awk recounts the tree, so
+#   for a file that change does not touch the changed classifier takes that count)
 # A base without a baseline has no rows to compare: the first baseline is taken as it is.
 # The classifier is comment-count.awk; the paths left out are the whole-file rows of
 # ticket-ref-allow.tsv (fixtures, archives, generated and vendored trees), read through
@@ -97,7 +98,10 @@ git -c core.quotePath=false diff "$@" -U0 --text --no-color --no-ext-diff --find
 awk -F'\t' '{ print $NF }' "$W/status" > "$W/touched"
 cp "$W/touched" "$W/indiff" || die "cp failed"
 recount=0
-grep -qxF "scripts/lint/comment-count.awk" "$W/indiff" && recount=1
+if grep -qxF "scripts/lint/comment-count.awk" "$W/indiff"; then
+    git show "${tipspec}scripts/lint/comment-count.awk" > "$W/tip.awk" || die "cannot read the classifier at the tip"
+    recount=1
+fi
 awk -F'\t' '$1 ~ /^R/ { print $3 "\t" $2 }' "$W/status" > "$W/renames"
 
 git show "$tipspec$BL" > "$W/tip.tsv" 2>/dev/null || die "$BL is absent at the tip"
@@ -117,36 +121,33 @@ while IFS= read -r p; do
     printf '%s\t%s\n' "$p" "$n" >> "$W/counts"
 done < "$W/paths"
 
-LC_ALL=C awk -F'\t' -v has_base="$has_base" -v recount="$recount" '
-    FILENAME == ARGV[1] { indiff[$0] = 1; next }
-    FILENAME == ARGV[2] { from[$1] = $2; next }
-    FILENAME == ARGV[3] { base[$1] = $2 + 0; next }
-    FILENAME == ARGV[4] {
+LC_ALL=C awk -F'\t' -v has_base="$has_base" '
+    FILENAME == ARGV[1] { from[$1] = $2; next }
+    FILENAME == ARGV[2] { base[$1] = $2 + 0; next }
+    FILENAME == ARGV[3] {
         tip[$1] = $2 + 0
         if (!has_base) next
-        if (recount && !($1 in indiff)) {
-            if ($2 + 0 > base[$1] + 0) printf "R\t%s\t%d\t%d\n", $1, $2, base[$1] + 0
-            next
-        }
         lim = ($1 in base) ? base[$1] : (($1 in from) && (from[$1] in base)) ? base[from[$1]] : 0
         if ($2 + 0 > lim) printf "B\t%s\t%d\t%d\n", $1, $2, lim
         next
     }
     { if ($2 + 0 > tip[$1] + 0) printf "A\t%s\t%d\t%d\n", $1, $2, tip[$1] + 0 }
-' "$W/indiff" "$W/renames" "$W/base.tsv" "$W/tip.tsv" "$W/counts" > "$W/raw" || die "awk failed"
+' "$W/renames" "$W/base.tsv" "$W/tip.tsv" "$W/counts" > "$W/raw" || die "awk failed"
 
 : > "$W/findings"
-if [ "$recount" -eq 1 ]; then
-    git show "${tipspec}scripts/lint/comment-count.awk" > "$W/tip.awk" || die "cannot read the classifier at the tip"
-fi
 while IFS="$(printf '\t')" read -r kind p n lim; do
-    if [ "$kind" != "R" ]; then printf '%s\t%s\t%s\t%s\n' "$kind" "$p" "$n" "$lim" >> "$W/findings"; continue; fi
+    was="$(awk -F'\t' -v p="$p" '$1 == p { print $2; exit }' "$W/renames")"
     m=0
-    if git cat-file -e "$tipspec$p" 2>/dev/null; then
-        git show "$tipspec$p" > "$W/blob" || die "cannot read $p at the tip"
-        m="$(LC_ALL=C awk -f "$W/tip.awk" -v mode=count -v path="$p" "$W/blob")" || die "the classifier failed on $p"
+    if git cat-file -e "$base:${was:-$p}" 2>/dev/null; then
+        git show "$base:${was:-$p}" > "$W/blob" || die "cannot read ${was:-$p} at the base"
+        capper="$classifier"
+        if [ "$recount" -eq 1 ] && ! grep -qxF "$p" "$W/indiff"; then capper="$W/tip.awk"; fi
+        m="$(LC_ALL=C awk -f "$capper" -v mode=count -v path="$p" "$W/blob")" || die "the classifier failed on $p"
+        case "$m" in ''|*[!0-9]*) die "the classifier printed no count for $p" ;; esac
     fi
-    if [ "$n" -gt "$m" ]; then printf 'C\t%s\t%s\t%s\n' "$p" "$n" "$m" >> "$W/findings"; fi
+    [ "$n" -gt "$m" ] || continue
+    if [ "$kind" = "B" ] && [ "$m" -gt "$lim" ]; then lim="$m"; fi
+    printf '%s\t%s\t%s\t%s\n' "$kind" "$p" "$n" "$lim" >> "$W/findings"
 done < "$W/raw"
 
 [ -s "$W/findings" ] || exit 0
@@ -167,10 +168,6 @@ moved=0
 while IFS="$(printf '\t')" read -r kind p n lim; do
     if [ "$kind" = "B" ]; then
         echo "$BL: $p raised to $n, the base allows $lim"
-        continue
-    fi
-    if [ "$kind" = "C" ]; then
-        echo "$BL: $p raised to $n, the changed classifier counts $lim"
         continue
     fi
     echo "$p: $n comment lines outside the keep list, baseline $lim"

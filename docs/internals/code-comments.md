@@ -32,10 +32,12 @@ does not keep, and compares the count with the file's row in
 - The baseline only goes down. A row may not rise above the base's row for that path,
   or for the path the file was renamed from in the same change; a new row above zero
   is refused. CI reads the base's baseline, so a change cannot raise the rows that
-  judge it. One exception: a change to the classifier recounts the tree, so in a
-  change that edits `comment-count.awk` the row of a file that change does not touch
-  may rise, as far as the changed classifier's count of that file and no further. A
-  file it does touch is still held to the base's row.
+  judge it.
+- A change that adds no comment always passes: a count or a row above that limit is
+  accepted when it is no higher than the count of the base's version of the file, so a
+  row that fell behind the tree bills nobody. A change to `comment-count.awk` recounts
+  the tree, so for a file that change does not touch the changed classifier takes that
+  count; a file it does touch is counted by the classifier the gate runs.
 - Rewording a comment in place, or editing a code line that carries one, leaves the
   count unchanged and passes. The refusal names the file, its count and its row, then
   the added comment lines as `path:line: text`.
