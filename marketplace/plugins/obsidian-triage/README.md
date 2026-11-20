@@ -346,7 +346,8 @@ the harvest, then after the synthesis `synthesize-stubs.mjs --apply --limit N
 --no-telegram-digest` and `apply-clip-actions.mjs --apply --limit N`. A failing
 step is reported and never fails the run; a step whose tool is not installed
 reports `skipped: tool not installed`. The two writers hold the vault's git index
-lock while they write, and both are undone with `--revert <their ledger>`.
+lock while they write, and both are undone with `--revert <their ledger>`, the actions
+ledger first (a clip archived after it was stamped refuses to revert once its stamp is gone).
 
 ### Synthesis candidates (`tools/synthesis-candidates.mjs`)
 
@@ -504,8 +505,8 @@ node tools/apply-clip-actions.mjs --vault <v> --revert <vault>/.apply-clip-actio
   no extra stamp for a fold: the link in the map is the evidence.
 
 The ledger and the lock are vault state like `.synthesize-stubs.ledger.jsonl`; add
-`.apply-clip-actions.*` to the vault's `.gitignore` if the vault is a git repo. Nothing schedules this tool yet;
-the nightly wiring is separate. Pure Node, no install: `tests/test-apply-clip-actions.sh`.
+`.apply-clip-actions.*` to the vault's `.gitignore` if the vault is a git repo. The nightly synthesize runner applies
+the mechanical actions after the promotion, at most 5 a night (`--actions-limit`). Pure Node, no install: `tests/test-apply-clip-actions.sh`.
 
 ## Why a plugin
 
