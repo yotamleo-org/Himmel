@@ -295,7 +295,9 @@ calls it after a live `--apply`. A missing daily note is created from
   ticket; a GitHub source or `tools` kind → evaluate the tool (against
   `docs/tool-adoption/rubric.md`); a tag shared with a `60-Maps/` MOC → fold
   into it (clips sharing a MOC merge); else archive. Ranked (archive last, then
-  more clips, then engagement), top 7. Proposals only: nothing edits another note.
+  more clips, then engagement), top 7. The report only proposes: nothing here
+  edits another note. `tools/apply-clip-actions.mjs` (below) applies the fold and
+  archive kinds, and the report stops listing an action the vault shows applied.
 - **Markers:** `- [ ] … <!-- act:<id> since:<date> -->`. `[x]` = done, `[-]` =
   dismissed. A tick on today's report survives re-runs.
 - **Carry-over:** an action still unchecked in the prior 14 day notes, and not
@@ -327,6 +329,123 @@ the harvest, then after the synthesis `synthesize-stubs.mjs --apply --limit N
 step is reported and never fails the run; a step whose tool is not installed
 reports `skipped: tool not installed`. The two writers hold the vault's git index
 lock while they write, and both are undone with `--revert <their ledger>`.
+
+### Synthesis candidates (`tools/synthesis-candidates.mjs`)
+
+`/synthesize-clips` starts from this read-only script instead of choosing what to
+look at: it lists **every** candidate of the four pattern kinds (concept, author,
+tag, folder) with its clip count, distinct sources and a PASS or skip verdict. The
+agent's remaining job is the substantive-content gate, the page, and one log line
+per candidate.
+
+```bash
+node tools/synthesis-candidates.mjs [vault] [--today YYYY-MM-DD] [--since YYYY-MM-DD] [--format lines|json]
+```
+
+- **Output.** `lines` (default): `PASS <rank> <kind> <slug> clips= evidence= urls= sources= [supersedes=]`
+  per passing candidate, the runbook's own `⊘ <slug> — skipped (<category>): <reason> — <detail>`
+  line per failing one, `⊘ … excluded from synthesis (input)` per unreadable clip, and a
+  `counts` line per kind. `json` adds each candidate's `evidence` list. Same vault and
+  same `--today`: byte-identical output. The vault is never written.
+- **Ranks interleave the kinds** (best concept, best author, best tag, best folder, then the
+  second of each…), so the runbook's per-run page cap cannot be spent on one lens.
+- **The four lenses are independent**, as in the runbook: a subject may pass as a concept and as
+  a tag, because a concept synthesis and a tag index proposal are different pages. Each lens
+  applies its own dedup (a concept page, a person note, a `60-Maps/` MOC, a synthesis page).
+- **Skip reasons.** `confidence-floor`: `single-source-domain`, `single-author-on-platform`,
+  `too-few-sources` (a concept needs 3 distinct sources, a tag or folder 2), `single-24h-window`,
+  `undated-evidence` (fewer than 2 evidence clips carry a parseable date). `dedup`:
+  `existing-vault-page` (a concept page or
+  `60-Maps/` hub, a person note, a `60-Maps/` MOC, or the folder already exists), `synthesis-page-within-14d`,
+  `no-new-evidence` (a page older than 14 days that lists as many clips),
+  `substance-floor-recorded` (the runbook logged a substance-gate failure for the slug in
+  `Clippings/_synthesis/.substance-skips.tsv` within 14 days and the evidence has not grown, so
+  candidates that cannot pass do not use the examination budget every night). A page older than
+  14 days with more evidence passes with `supersedes=`.
+- **Sources.** For concept and tag groups, clips on a platform domain (x.com, youtube.com,
+  reddit.com, instagram.com, tiktok.com, linkedin.com, github.com, medium.com, substack.com,
+  threads.net, bsky.app, facebook.com) count one source per distinct author, so many unrelated
+  authors on x.com can form a concept page while one author cannot. Any other domain is one
+  source. Authors are exempt from the source test; folders keep the plain domain rule. The
+  author is the `author:` field, else the x.com or github.com URL; no author at all is one
+  shared unknown source.
+- **Lenses.** Concept and tag groups come from the clips' `tags:` (platform and clip-type
+  tags are ignored); thresholds are 3 clips (concept), 2 (author), 5 (tag), 5 (folder). A group
+  below its threshold is not a candidate. Each candidate lists its 40 newest clips (`evidence`);
+  `clipCount` is the group total.
+- **Dates.** The 24-hour floor reads `date_clipped` (else `triaged_at`); a clip without a
+  parseable date cannot help meet it, and a date-time with no zone is read as UTC, so the
+  output does not depend on the station's time zone.
+- **Gate.** No `<vault>/.harvest.done`: exit 2 with the runbook's message.
+- **Frontmatter** is read with the line-based helpers in `tools/lib/frontmatter.mjs`, not a
+  YAML parser: a processed clip whose frontmatter never closes, or has a top-level line that is
+  not `key: value`, is an input exclusion.
+
+### Applying the daily actions: `tools/apply-clip-actions.mjs`
+
+The two mechanical kinds of suggested action apply themselves; nobody has to
+tick them. "Evaluate tool" and "File a ticket" actions need judgement and are
+**never** applied.
+
+```bash
+node tools/apply-clip-actions.mjs --vault <v> [--date YYYY-MM-DD] [--limit N]            # dry-run (default): prints, writes nothing
+node tools/apply-clip-actions.mjs --vault <v> [--date YYYY-MM-DD] [--limit N] --apply    # apply + ledger
+node tools/apply-clip-actions.mjs --vault <v> --revert <vault>/.apply-clip-actions.ledger.jsonl
+```
+
+- **Fold** (`Fold <clips> into [[60-Maps/<moc>]]`): the clips whose link the map
+  lacks are added as `- [[Clippings/_evidence/<clip>|title]]` bullets at the end of
+  its `## Evidence` section, which ends at the next `#` or `##` heading (a new
+  `## Evidence` section at the end of the map when it has none). Line endings are
+  kept.
+- **Archive** (`Archive <clip>`): the clip is stamped with two frontmatter keys,
+  `archived: true` and `archived_at: <YYYY-MM-DD>` (the run's `--date`). Nothing
+  else changes: no move, no link rewrite, `status:` and every other key stay. The
+  clip stays in `Clippings/_evidence/`, so synthesis citations and the evidence
+  pool are untouched. A clip that already carries an `archived` or `archived_at`
+  key other than `archived: true` is left alone and reported. **Nothing reads
+  `archived` yet** beyond the daily timeline: excluding archived clips from
+  synthesis or promotion is a separate decision.
+- **Which actions:** the unticked actions in the day notes of the last 14 days,
+  oldest first, each re-derived from the vault by `tools/lib/clip-actions.mjs`, the
+  same code `daily-timeline.mjs` lists them with. An action already applied (every
+  clip stamped, or every clip linked in the map) is skipped, so a re-run never
+  repeats one. The summary line counts what was skipped: never-applied kinds,
+  actions the vault no longer reproduces (`unmatched`), and already applied.
+- **Bounded:** at most `--limit` actions per run (default 5), because Obsidian
+  hangs on bulk file churn. A dry run honours the same limit.
+- **Atomic page writes:** apply and revert each write the whole page to a hidden
+  temp file beside it, copy the page's permissions, then rename it over the page,
+  so a write that fails part-way (a full disk) leaves the page as it was and the
+  temp file removed.
+- **Ledger and revert:** one line per applied action in
+  `<vault>/.apply-clip-actions.ledger.jsonl` (`--ledger` overrides), carrying the
+  page hashes before and after. `--revert` undoes newest-first and **refuses** any
+  page whose hash is no longer the recorded post-apply hash (a page edited since is
+  not rewritten) and any restore that would not reproduce the recorded bytes: it
+  exits 3 if it refused anything. A page path read from a ledger line must stay
+  inside the vault (checked on the path as written, so a symlinked folder inside
+  the vault still works); the `--ledger` and `--revert` file paths themselves are
+  not restricted. Reverting twice is a no-op ("already reverted"),
+  also when several actions folded into one map. A map hand-edited between two
+  applies is refused for the earlier apply (and for anything older on that page),
+  not reported reverted: a page counts as already reverted only at a state from
+  before that entry or an older one. The ledger line is written before
+  its edits, so a crash can leave a line for an edit that never landed (read as
+  "already reverted"), never an edit with no line.
+- **One writer at a time:** `--apply` and `--revert` take `<vault>/.apply-clip-actions.lock`
+  (an atomic `mkdir`, as `/archive-clips` does) and exit 2 while it is held; a run
+  that was killed leaves it behind, and the message names it. A dry run ignores it.
+  A page open and being edited in Obsidian when the tool rewrites it is not
+  detected: Obsidian reloads a file changed on disk.
+- **The daily note is not edited.** "Applied" is read off the vault (the stamp, or
+  the link in the map), so `daily-timeline.mjs` drops an applied action from
+  `### Suggested actions` and `### Carried over` on its next run. The clip carries
+  no extra stamp for a fold: the link in the map is the evidence.
+
+The ledger and the lock are vault state like `.synthesize-stubs.ledger.jsonl`; add
+`.apply-clip-actions.*` to the vault's `.gitignore` if the vault is a git repo. Nothing schedules this tool yet;
+the nightly wiring is separate. Pure Node, no install: `tests/test-apply-clip-actions.sh`.
 
 ## Why a plugin
 
@@ -440,6 +559,8 @@ no longer carries that plugin; this one hook is the only piece himmel still uses
 
 Run: `bash marketplace/plugins/obsidian-triage/tests/test-triage-invariants.sh`
 
+`tests/test-synthesis-candidates.sh` is the fixture-vault acceptance test for the candidate list: all four kinds list a passing candidate, every skip reason, the platform-domain rule (5 unrelated authors on one platform pass, 5 clips by one author fail), the 14-day dedup window and supersede rule, the evidence cap, input exclusions, the harvest-completion gate, byte-identical re-runs, a read-only vault, and the runbook wiring. Pure Node.
+
 A `tests/test-synthesize-invariants.sh` covers the synthesize-side invariants (processed-filter, 14-day dedup, confidence-floor single-source rejection for Patterns 1/3/4 + the Pattern 2 domain-floor exemption, deterministic slug derivation).
 
 `tests/test-telegram-clip.sh` covers the telegram entry point: URL→type classification, frontmatter shape + provenance, idempotent re-run dedup, `--dry-run` no-write, no-sender refusal, and YAML-validity of the written clip. Requires `bun install` (or `npm install`) in `tools/` first (the YAML-validity check resolves the vendored `js-yaml`).
@@ -449,6 +570,8 @@ A `tests/test-synthesize-invariants.sh` covers the synthesize-side invariants (p
 `tests/test-daily-timeline.sh` is the fixture-gated acceptance test for the daily `## Clip pipeline` timeline: correct captured/reviewed-by-kind/promoted/densified counts anchored to the target date, byte-identical second-run idempotency, in-place refresh on state change, CRLF preservation, missing-note creation, and the triage/synthesize runbook wiring. Pure Node.
 
 `tests/test-daily-report.sh` is the fixture-vault acceptance test for the `## Daily report` section: sources grouped by kind with why and video lines, ranked actions citing their clips, carry-over with age (done, dismissed and older-ticked actions dropped), byte-identical re-run with ticks preserved, the no-intake line in a created note, CRLF, and shortened titles / capped citations. Pure Node.
+
+`tests/test-apply-clip-actions.sh` is the fixture-vault acceptance test for `tools/apply-clip-actions.mjs`: a dry run leaves the tree byte-identical, `--limit` bounds both dry-run and apply, a second run never repeats an action, fold lands inside `## Evidence` (CRLF kept, a seeded link not repeated), archive stamps only the two keys, evaluate and ticket actions are never touched, the daily timeline stops listing applied actions while keeping the rest, revert restores the vault byte for byte (twice over, also when several folds hit one map) and refuses a page edited since (exit 3), a held run lock stops `--apply` and `--revert` (exit 2), and bad arguments or a ledger path leaving the vault are refused. Pure Node.
 
 `tests/test-telegram-digest.sh` + `tests/test-synthesize-telegram-digest.sh` + `tests/test-telegram-clip-inbox.sh` cover the promotion digest (one batched reply per chat — not per promotion — distinct-subject dedup, non-telegram/suppression exclusion, reply threading), its end-to-end emission from `synthesize-stubs --apply` (digest file written, stale-cleared on no-op re-run, suppressed under `--no-telegram-digest`), and the telegram-clip inbox-state contract (no `processed:`/`lifecycle:` marker, `telegram_chat_id` provenance). Pure Node.
 
