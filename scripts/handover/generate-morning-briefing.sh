@@ -888,6 +888,7 @@ fi
 clip_funnel_jq='def flag($k; $last): if (.stalled | index($k)) then " — ⚠️ no movement in \(.window_days) days" + (if $last then " (last \($last))" else " (none yet)" end) else "" end;
     "The \(.window_days) days to \(.as_of); counts from the vault, nothing written.", "",
     "- Taken in: **\(.intake.clips)** clips (**\(.intake.moved_in_window)** in the last \(.window_days) days)" + flag("intake"; .intake.last),
+    "- Archived: **\(.intake.archived)** clips (left out of taken in and cited)",
     "- Cited by a synthesis page: **\(.cited.clips)** of \(.intake.clips) (**\(.cited.share * 100 | round)%**)" + flag("cited"; .cited.last),
     "- Subject pages: **\(.subjects.created)** created, **\(.subjects.extended)** extended" + flag("subjects"; .subjects.last),
     "- Daily actions: **\(.actions.open)** open, **\(.actions.applied)** applied" + flag("actions"; .actions.last),

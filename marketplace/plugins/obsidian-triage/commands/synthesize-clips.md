@@ -65,7 +65,7 @@ No operator override flag — keep it minimal; re-running `/harvest-clips` clear
 
 ### Input validation (the tool runs this for every candidate clip)
 
-Only consider clips with `processed: true` in frontmatter. Reason: unprocessed clips lack inferred tags and Related Notes, so synthesis would over-fit on raw author wording. Run `/triage-clips` first if needed.
+Only consider clips with `processed: true` in frontmatter. Reason: unprocessed clips lack inferred tags and Related Notes, so synthesis would over-fit on raw author wording. Run `/triage-clips` first if needed. A clip stamped `archived: true` (the daily note's archive action) is left out of every lens and is not an input exclusion; a synthesis page that already cites it keeps the citation and is not rewritten.
 
 **Inbox-internal exclusions.** When enumerating clips, exclude the three names under `Clippings/` that are never source clips: `_synthesis/` (this command's own output — naturally filtered since proposal pages lack `processed: true`, but exclude by path too so a stray marker can't pull them in), `_done/` (`/archive-clips` archive — those clips already fed synthesis once; re-walking them every run is wasted work and would double-count evidence), and `_deferred.md`. Use:
 ```bash

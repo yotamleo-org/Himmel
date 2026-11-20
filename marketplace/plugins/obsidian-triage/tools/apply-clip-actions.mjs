@@ -43,6 +43,17 @@ const out = (s) => process.stdout.write(s + "\n");
 const err = (s) => process.stderr.write(s + "\n");
 function die(code, msg) { err(`${SELF}: ${msg}`); process.exit(code); }
 
+const USAGE = "usage: apply-clip-actions.mjs --vault <path> [--date YYYY-MM-DD] [--limit N] [--dry-run|--apply|--revert <ledger>]";
+
+function valueOf(argv, i, flag) {
+  const v = argv[i + 1];
+  if (v === undefined || v === "" || v.startsWith("--")) {
+    err(`${SELF}: ${flag} needs a value`);
+    die(1, USAGE);
+  }
+  return v;
+}
+
 function localToday() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -53,16 +64,16 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const t = argv[i];
     if (t === "--vault") a.vault = argv[++i];
-    else if (t === "--date") a.date = argv[++i];
+    else if (t === "--date") { a.date = valueOf(argv, i, t); i++; }
     else if (t === "--limit") {
       const v = argv[++i];
       if (!/^[1-9]\d*$/.test(v || "")) die(1, `--limit needs a positive integer, got: ${v}`);
       a.limit = Number(v);
     }
-    else if (t === "--ledger") a.ledger = argv[++i];
+    else if (t === "--ledger") { a.ledger = valueOf(argv, i, t); i++; }
     else if (t === "--dry-run") a.mode = "dry-run";
     else if (t === "--apply") a.mode = "apply";
-    else if (t === "--revert") { a.mode = "revert"; a.revertPath = argv[++i]; }
+    else if (t === "--revert") { a.mode = "revert"; a.revertPath = valueOf(argv, i, t); i++; }
     else die(1, `unknown arg: ${t}`);
   }
   return a;
@@ -297,7 +308,7 @@ function takeLock(vault) {
 }
 
 const a = parseArgs(process.argv.slice(2));
-if (!a.vault) die(1, "usage: apply-clip-actions.mjs --vault <path> [--date YYYY-MM-DD] [--limit N] [--dry-run|--apply|--revert <ledger>]");
+if (!a.vault) die(1, USAGE);
 if (!fs.existsSync(a.vault) || !fs.statSync(a.vault).isDirectory()) die(1, `vault not found: ${a.vault}`);
 const date = a.date || localToday();
 if (!isCalendarDate(date)) die(1, "invalid --date (YYYY-MM-DD)");

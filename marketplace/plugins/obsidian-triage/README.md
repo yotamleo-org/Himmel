@@ -358,6 +358,8 @@ step is reported and never fails the run; a step whose tool is not installed
 reports `skipped: tool not installed`. The two writers hold the vault's git index
 lock while they write, and both are undone with `--revert <their ledger>`, the actions
 ledger first (a clip archived after it was stamped refuses to revert once its stamp is gone).
+A clip stamped `archived: true` by the daily note's archive action feeds neither a
+subject page nor a synthesis candidate, and a page that already cites it is left as it is.
 
 ### Synthesis candidates (`tools/synthesis-candidates.mjs`)
 
@@ -421,6 +423,9 @@ renders it as its `Clip funnel` block. It writes nothing to the vault, reads
 each file once and prints the same bytes on two runs.
 
 - **intake:** the flat `Clippings/_evidence/` pool (a subfolder is not evidence).
+  A clip stamped `archived: true` is counted in `intake.archived` (the report's
+  `Archived` line) and left out of `intake.clips`, of `cited` and of the intake
+  movement, so the share of clips cited is of the clips still in view.
 - **cited:** a clip is cited when a page in `Clippings/_synthesis/` links it by
   name; the folder in the link and a `.md` suffix do not matter, so a link to
   the clip's old `_done/` folder still counts. Accepted proposals under
