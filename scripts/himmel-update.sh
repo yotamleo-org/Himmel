@@ -873,9 +873,9 @@ _pipeline_rearm_args() {
         '*') d=DAILY ;; 0|7) d=SUN ;; 1) d=MON ;; 2) d=TUE ;; 3) d=WED ;; 4) d=THU ;; 5) d=FRI ;; 6) d=SAT ;;
         *) return 1 ;;
     esac
-    hm=$(_runner_flag_value "$dir/pipeline-harvest.sh" 's/.*claude --model \([^ ]*\) .*/\1/p') || return 1
-    sm=$(_runner_flag_value "$dir/pipeline-synthesize.sh" 's/.*claude --model \([^ ]*\) .*/\1/p') || return 1
-    lm=$(_runner_flag_value "$dir/pipeline-health.sh" 's/.*claude --model \([^ ]*\) .*/\1/p') || return 1
+    hm=$(_runner_flag_value "$dir/pipeline-harvest.sh" 's/.* --model \([^ ]*\) .*/\1/p') || return 1
+    sm=$(_runner_flag_value "$dir/pipeline-synthesize.sh" 's/.* --model \([^ ]*\) .*/\1/p') || return 1
+    lm=$(_runner_flag_value "$dir/pipeline-health.sh" 's/.* --model \([^ ]*\) .*/\1/p') || return 1
     feed=$(_runner_flag_value "$dir/pipeline-harvest.sh" 's/.*nightly-feeds .* --cap \([0-9]*\).*/\1/p') || return 1
     prom=$(_runner_flag_value "$dir/pipeline-synthesize.sh" 's/.*nightly-promote .* --limit \([0-9]*\).*/\1/p') || return 1
     act=$(_runner_flag_value "$dir/pipeline-synthesize.sh" 's/.*nightly-actions .* --limit \([0-9]*\).*/\1/p') || return 1
