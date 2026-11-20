@@ -1332,7 +1332,7 @@ describe('T8 C: one serialized repair-state writer and the retry clock', () => {
     expect(readdirSync(releaseDir()).filter((n) => n.includes('.tmp-'))).toEqual([]);
   }, 30_000);
 
-  it('9: the preload hides only /proc: a spawned CLI under a fence marker still refuses --attempt and writes nothing', () => {
+  it('9: with the /proc-hiding preload present, a spawned CLI whose own environment carries a fence marker still refuses --attempt and writes nothing (the own-environment check; the ancestry walk is not exercised)', () => {
     setup();
     put({});
     const run = spawnSync(process.execPath, ['--import', envOnlyFence(), CLI, 'release', 'repair-state', 'R1', '--repo', 'o/r', '--json', '--attempt'],
