@@ -240,11 +240,23 @@ printf 'r="%s(cat <<EOF\n%s heredoc text\nEOF\n)"\necho r\n' "$D" "$HASH" > "$R/
 mkrepo
 printf 'x = 1  %s """\n%s body note\ny = 2\n' "$HASH" "$HASH" > "$R/src/d.py"; stage; refused_at "a triple quote inside a comment opens no string" "src/d.py:2: $HASH body note"
 
+mkrepo
+printf 'const re = /[a/*]/;\nconst y = 1;\n' > "$R/src/r.mjs"; stage; want "a /* inside a regex class opens no block" 0
+mkrepo
+printf 'const u = /[/]/; // note\n' > "$R/src/r.mjs"; stage; refused_at "a comment after a regex literal" "src/r.mjs:1: // note"
+
 echo "== 15. a classifier change recounts untouched files only =="
 mkrepo
 echo >> "$R/scripts/lint/comment-count.awk"
 printf 'src/a.sh\t3\n' > "$R/$BL"
-stage; want "an untouched file's row may rise with the classifier" 0
+stage
+if [ "$RC" -eq 1 ] && has "$BL: src/a.sh raised to 3, the changed classifier counts 2"; then pass "a row raised past the changed classifier's count is refused"; else fail "inflated row -> rc=$RC: $OUT"; fi
+mkrepo
+printf 'echo u\n%s https://example.invalid/x\n' "$HASH" > "$R/src/u.sh"
+git -C "$R" add -A; git -C "$R" commit -q -m link
+grep -v 'https?:' "$R/scripts/lint/comment-count.awk" > "$R/cc.awk"; mv "$R/cc.awk" "$R/scripts/lint/comment-count.awk"
+printf 'src/a.sh\t2\nsrc/u.sh\t1\n' > "$R/$BL"
+stage; want "an untouched file's row may rise to the changed classifier's count" 0
 mkrepo
 echo >> "$R/scripts/lint/comment-count.awk"
 printf '%s third\necho t\n' "$HASH" >> "$R/src/a.sh"

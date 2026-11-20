@@ -782,7 +782,7 @@ scripts/config-ui/tests/board.test.ts	51
 scripts/config-ui/tests/configure-controls.test.ts	3
 scripts/config-ui/tests/cost.test.ts	4
 scripts/config-ui/tests/design-layer-agui.test.ts	5
-scripts/config-ui/tests/design-layer-pages.test.ts	27
+scripts/config-ui/tests/design-layer-pages.test.ts	28
 scripts/config-ui/tests/design-layer-roadmap.test.ts	3
 scripts/config-ui/tests/design-layer-workflow.test.ts	6
 scripts/config-ui/tests/design-layer.test.ts	16
@@ -831,7 +831,7 @@ scripts/config-ui/tests/render.test.ts	9
 scripts/config-ui/tests/report-page.test.ts	4
 scripts/config-ui/tests/review-gate.test.ts	5
 scripts/config-ui/tests/roadmap-history.test.ts	6
-scripts/config-ui/tests/roadmap.test.ts	192
+scripts/config-ui/tests/roadmap.test.ts	193
 scripts/config-ui/tests/rollup-route.test.ts	2
 scripts/config-ui/tests/server-idle-callback.test.ts	8
 scripts/config-ui/tests/service-mode.test.ts	7
@@ -2218,7 +2218,7 @@ scripts/lanes/funded-max-pct.mjs	10
 scripts/lanes/git-clean.mjs	3
 scripts/lanes/lane-canary.sh	15
 scripts/lanes/lane-readiness.mjs	21
-scripts/lanes/launch-site-scan.mjs	7
+scripts/lanes/launch-site-scan.mjs	9
 scripts/lanes/lib/burn-weights.sh	3
 scripts/lanes/lib/claude-sessions.sh	109
 scripts/lanes/lib/worker-cost-row.sh	11
@@ -2957,7 +2957,7 @@ scripts/telegram/round-guard.test.ts	51
 scripts/telegram/round-guard.ts	129
 scripts/telegram/router.test.ts	30
 scripts/telegram/router.ts	64
-scripts/telegram/run.test.ts	56
+scripts/telegram/run.test.ts	57
 scripts/telegram/run.ts	193
 scripts/telegram/session-status.test.ts	3
 scripts/telegram/session-status.ts	5

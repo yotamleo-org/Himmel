@@ -23,7 +23,21 @@ function is_js(p) { return p ~ /\.(js|mjs|cjs|ts|tsx|mts|cts)$/ }
 
 function ltrim(s) { sub(/^[ \t]+/, "", s); return s }
 
-function comment_start(s, kind,   i, c, q, n, prev, js) {
+function regex_end(s, i, n,   before, j, c, cls) {
+    before = substr(s, 1, i - 1)
+    sub(/[ \t]+$/, "", before)
+    if (before != "" && before !~ /[(,=:\[!&|?{};+*%<>~^-]$/) return 0
+    for (j = i + 1; j <= n; j++) {
+        c = substr(s, j, 1)
+        if (c == "\\") { j++; continue }
+        if (c == "[") cls = 1
+        else if (c == "]") cls = 0
+        else if (c == "/" && !cls) return j
+    }
+    return 0
+}
+
+function comment_start(s, kind,   i, c, q, n, prev, js, j) {
     js = (kind == "js")
     n = length(s)
     for (i = 1; i <= n; i++) {
@@ -33,8 +47,10 @@ function comment_start(s, kind,   i, c, q, n, prev, js) {
         if (c == sq || c == "\"" || (c == "`" && js)) { q = c; continue }
         prev = substr(s, i - 1, 1)
         if (js) {
-            if (c == "/" && substr(s, i + 1, 1) == "/") return i
-            if (c == "/" && substr(s, i + 1, 1) == "*" && prev != "[") return i
+            if (c != "/") continue
+            if (substr(s, i + 1, 1) == "/" || substr(s, i + 1, 1) == "*") return i
+            j = regex_end(s, i, n)
+            if (j) i = j
             continue
         }
         if (c == "#" && (kind == "py" || i == 1 || prev ~ /[ \t;&|]/)) return i
