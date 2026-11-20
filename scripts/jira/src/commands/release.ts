@@ -388,7 +388,7 @@ export function judgeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 
 // The prompt-cache setting of the native judge call: the call is one turn in a fresh session that nothing reads back,
 // so `ttl` is the tier its cache write is priced at and `env` is what asks for it (docs/internals/prompt-cache.md).
-export const JUDGE_CACHE: { env: Record<string, string>; ttl: 'off' | '5m' | '1h' } = { env: {}, ttl: '1h' };
+export const JUDGE_CACHE: { env: Record<string, string>; ttl: 'off' | '5m' | '1h' } = { env: { DISABLE_PROMPT_CACHING: '1' }, ttl: 'off' };
 
 // The call's environment: judgeEnv's, with the caller's own cache variables removed so the tier never depends on who ran it.
 export function liveJudgeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
