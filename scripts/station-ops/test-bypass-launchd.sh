@@ -402,7 +402,7 @@ mk_shim() {
     # shellcheck disable=SC2016 # the shim's own source
     printf '#!/bin/sh\n[ -z "$SHIM_DATE_ALLOW_D" ] || exec %s "$@"\nu=; str=; fmt=; out=\nwhile [ $# -gt 0 ]; do\n  case $1 in\n    -d) echo "date: illegal option -- d" >&2; exit 1 ;;\n    -u) u=-u ;;\n    -j) ;;\n    -f) fmt=$2; shift ;;\n    +*) out=$1 ;;\n    *) str=$1 ;;\n  esac\n  shift\ndone\nif [ -n "$fmt" ]; then exec %s $u -d "$str" ${out:+"$out"}; fi\nexec %s $u ${out:+"$out"}\n' "$real_date" "$real_date" "$real_date" > "$d/date"
     # shellcheck disable=SC2016
-    printf '#!/bin/sh\necho "stat $*" >> "%s/stat.calls"\ncase $1 in\n  -c) echo "stat: illegal option -- c" >&2; exit 1 ;;\n  -f) wc -c < "$3" | tr -d " " ;;\n  *) exit 1 ;;\nesac\n' "$d" > "$d/stat"
+    printf '#!/bin/sh\necho "stat $*" >> "%s/stat.calls"\ncase $1 in\n  -c) echo "stat: illegal option -- c" >&2; exit 1 ;;\n  -f) wc -c < "$3" | tr -d " " ;;\n  *) exit 1 ;;\nesac\n' "$d" > "$d/stat" # read-sink-ok: writes a fake BSD stat into a test temp dir; it reads only files the test made
     # shellcheck disable=SC2016
     printf '#!/bin/sh\nif [ "$1" = -a ] && [ "$2" = 256 ]; then shift 2; fi\nexec %s "$@"\n' "$real_sha" > "$d/shasum"
     chmod +x "$d/uname" "$d/date" "$d/stat" "$d/shasum"
