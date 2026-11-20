@@ -23,7 +23,8 @@ function is_js(p) { return p ~ /\.(js|mjs|cjs|ts|tsx|mts|cts)$/ }
 
 function ltrim(s) { sub(/^[ \t]+/, "", s); return s }
 
-function comment_start(s, js,   i, c, q, n, prev) {
+function comment_start(s, kind,   i, c, q, n, prev, js) {
+    js = (kind == "js")
     n = length(s)
     for (i = 1; i <= n; i++) {
         c = substr(s, i, 1)
@@ -31,9 +32,12 @@ function comment_start(s, js,   i, c, q, n, prev) {
         if (q != "") { if (c == q) q = ""; continue }
         if (c == sq || c == "\"" || (c == "`" && js)) { q = c; continue }
         prev = substr(s, i - 1, 1)
-        if (i > 1 && prev !~ /[ \t]/) continue
-        if (!js && c == "#") return i
-        if (js && c == "/" && (substr(s, i + 1, 1) == "/" || substr(s, i + 1, 1) == "*")) return i
+        if (js) {
+            if (c == "/" && substr(s, i + 1, 1) == "/") return i
+            if (c == "/" && substr(s, i + 1, 1) == "*" && prev != "[") return i
+            continue
+        }
+        if (c == "#" && (kind == "py" || i == 1 || prev ~ /[ \t;&|]/)) return i
     }
     return 0
 }
@@ -47,6 +51,30 @@ function kept(c,   l) {
     return 0
 }
 
+function heredoc_tag(t,   i, c, q, n, r, depth) {
+    n = length(t)
+    for (i = 1; i <= n; i++) {
+        c = substr(t, i, 1)
+        if (c == "\\" && q != sq) { i++; continue }
+        if (q == "\"" && c == "$" && substr(t, i + 1, 1) == "(") { q = ""; depth = 1; i++; continue }
+        if (q != "") { if (c == q) q = ""; continue }
+        if (depth && c == "(") depth++
+        if (depth && c == ")" && --depth == 0) { q = "\""; continue }
+        if (c == sq || c == "\"") { q = c; continue }
+        if (c == "#" && (i == 1 || substr(t, i - 1, 1) ~ /[ \t;&|]/)) return ""
+        if (c != "<" || substr(t, i + 1, 1) != "<") continue
+        if (substr(t, i + 2, 1) == "<") { i += 2; continue }
+        r = substr(t, i)
+        if (match(r, /^<<-?[ \t]*["\\']?[A-Za-z_][A-Za-z0-9_]*/)) {
+            r = substr(r, 1, RLENGTH)
+            sub(/^<<-?[ \t]*["\\']?/, "", r)
+            return r
+        }
+        i++
+    }
+    return ""
+}
+
 function triple_toggles(s, d,   n, rest) {
     n = 0; rest = s
     while (index(rest, d)) { n++; rest = substr(rest, index(rest, d) + 3) }
@@ -54,23 +82,26 @@ function triple_toggles(s, d,   n, rest) {
 }
 
 # The comment text of one line, "" when the line carries no counted comment.
-function counted(p, t,   s, i, js, c) {
+function counted(p, t,   s, i, js, c, code, e) {
     s = ltrim(t)
     js = is_js(p)
     if (js) {
         if (blk) {
-            if (index(t, "*/")) blk = 0
+            e = index(t, "*/")
+            if (e) { blk = 0; if (ltrim(substr(t, e + 2)) != "") header = 0 }
             c = s
             if (blkdoc) return ""
         } else if (s ~ /^\/\//) {
             c = s
         } else {
-            i = comment_start(t, 1)
+            i = comment_start(t, "js")
             if (i == 0) { if (s != "") header = 0; return "" }
             c = substr(t, i)
             if (substr(c, 1, 2) == "/*") {
                 blkdoc = (substr(c, 1, 3) == "/**")
-                if (!index(substr(c, 3), "*/")) blk = 1
+                e = index(substr(c, 3), "*/")
+                if (!e) blk = 1
+                else if (ltrim(substr(c, e + 4)) != "") header = 0
                 if (blkdoc) { if (i > 1 && ltrim(substr(t, 1, i - 1)) != "") header = 0; return "" }
             }
             if (ltrim(substr(t, 1, i - 1)) != "") header = 0
@@ -85,19 +116,18 @@ function counted(p, t,   s, i, js, c) {
                 if (triple_toggles(t, pydoc)) pydoc = ""
                 return ""
             }
-            if (triple_toggles(t, "\"\"\"")) { pydoc = "\"\"\""; header = 0; return "" }
-            if (triple_toggles(t, sq sq sq)) { pydoc = sq sq sq; header = 0; return "" }
+            i = comment_start(t, "py")
+            code = i ? substr(t, 1, i - 1) : t
+            if (triple_toggles(code, "\"\"\"")) { pydoc = "\"\"\""; header = 0; return "" }
+            if (triple_toggles(code, sq sq sq)) { pydoc = sq sq sq; header = 0; return "" }
         }
         if (FNR == 1 && s ~ /^#!/) return ""
         if (s ~ /^#/) {
             c = s
         } else {
             if (s != "") header = 0
-            if (p !~ /\.py$/ && !index(t, "((") && match(t, /<<-?[ \t]*["\\']?[A-Za-z_][A-Za-z0-9_]*/) && substr(t, RSTART, 3) != "<<<" && (RSTART == 1 || substr(t, RSTART - 1, 1) != "<")) {
-                heredoc = substr(t, RSTART, RLENGTH)
-                sub(/^<<-?[ \t]*["\\']?/, "", heredoc)
-            }
-            i = comment_start(t, 0)
+            if (p !~ /\.py$/ && !index(t, "((")) heredoc = heredoc_tag(t)
+            i = comment_start(t, (p ~ /\.py$/) ? "py" : "sh")
             if (i == 0) return ""
             c = substr(t, i)
         }

@@ -9,6 +9,8 @@
 #   a touched file's count of comment lines outside the keep list may not exceed its row
 #   a row may not rise above the base's row for that path (or for the path it was renamed
 #   from in this change), and a new row may not be above zero
+#   a change to comment-count.awk recounts the tree, so in that change the row of a file
+#   the change does not touch may rise
 # A base without a baseline has no rows to compare: the first baseline is taken as it is.
 # The classifier is comment-count.awk; the paths left out are the whole-file rows of
 # ticket-ref-allow.tsv (fixtures, archives, generated and vendored trees), read through
@@ -93,6 +95,9 @@ git -c core.quotePath=false diff "$@" --name-status --find-renames --diff-filter
 git -c core.quotePath=false diff "$@" -U0 --text --no-color --no-ext-diff --find-renames --diff-filter=ACMRT > "$W/diff" || die "git diff failed"
 
 awk -F'\t' '{ print $NF }' "$W/status" > "$W/touched"
+cp "$W/touched" "$W/indiff" || die "cp failed"
+recount=0
+grep -qxF "scripts/lint/comment-count.awk" "$W/indiff" && recount=1
 awk -F'\t' '$1 ~ /^R/ { print $3 "\t" $2 }' "$W/status" > "$W/renames"
 
 git show "$tipspec$BL" > "$W/tip.tsv" 2>/dev/null || die "$BL is absent at the tip"
@@ -112,18 +117,20 @@ while IFS= read -r p; do
     printf '%s\t%s\n' "$p" "$n" >> "$W/counts"
 done < "$W/paths"
 
-LC_ALL=C awk -F'\t' -v has_base="$has_base" '
-    FILENAME == ARGV[1] { from[$1] = $2; next }
-    FILENAME == ARGV[2] { base[$1] = $2 + 0; next }
-    FILENAME == ARGV[3] {
+LC_ALL=C awk -F'\t' -v has_base="$has_base" -v recount="$recount" '
+    FILENAME == ARGV[1] { indiff[$0] = 1; next }
+    FILENAME == ARGV[2] { from[$1] = $2; next }
+    FILENAME == ARGV[3] { base[$1] = $2 + 0; next }
+    FILENAME == ARGV[4] {
         tip[$1] = $2 + 0
         if (!has_base) next
+        if (recount && !($1 in indiff)) next
         lim = ($1 in base) ? base[$1] : (($1 in from) && (from[$1] in base)) ? base[from[$1]] : 0
         if ($2 + 0 > lim) printf "B\t%s\t%d\t%d\n", $1, $2, lim
         next
     }
     { if ($2 + 0 > tip[$1] + 0) printf "A\t%s\t%d\t%d\n", $1, $2, tip[$1] + 0 }
-' "$W/renames" "$W/base.tsv" "$W/tip.tsv" "$W/counts" > "$W/findings" || die "awk failed"
+' "$W/indiff" "$W/renames" "$W/base.tsv" "$W/tip.tsv" "$W/counts" > "$W/findings" || die "awk failed"
 
 [ -s "$W/findings" ] || exit 0
 

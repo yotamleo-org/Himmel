@@ -39,6 +39,7 @@ if [ ! -f "$GATE" ]; then
 fi
 
 HASH='#'
+D='$'
 N=0
 mkrepo() {
     N=$((N + 1)); R="$T/r$N"
@@ -215,6 +216,41 @@ if [ -s "$STEP" ]; then
 else
     fail "ci.yml has no 'new-comment gate (PR range)' step"
 fi
+
+echo "== 14. shapes that must not hide a comment =="
+refused_at() {
+    if [ "$RC" -eq 1 ] && has "$2"; then pass "$1"; else fail "$1 -> rc=$RC: $OUT"; fi
+}
+mkrepo
+printf 'f();// note\n' > "$R/src/t.mjs"; stage; refused_at "a trailing // with no space before it" "src/t.mjs:1: // note"
+mkrepo
+printf 'f()%s note\n' "$HASH" > "$R/src/p.py"; stage; refused_at "a trailing Python comment with no space before it" "src/p.py:1: $HASH note"
+mkrepo
+printf 'f;%s note\n' "$HASH" > "$R/src/s.sh"; stage; refused_at "a shell comment straight after a semicolon" "src/s.sh:1: $HASH note"
+mkrepo
+printf 'echo "%s{%sx} %s%s a%sb"\n' "$D" "$HASH" "$D" "$HASH" "$HASH" > "$R/src/s.sh"; printf 'n=%s{%sx}; echo a%sb %s%s\n' "$D" "$HASH" "$HASH" "$D" "$HASH" >> "$R/src/s.sh"; stage; want "a shell hash inside a word is no comment" 0
+mkrepo
+printf '/* head */ const x = 1;\n// body note\nconst y = 2;\n' > "$R/src/h.mjs"; stage; refused_at "code after a leading block comment ends the header" "src/h.mjs:2: // body note"
+mkrepo
+printf 'echo "<<EOF"\n%s body note\necho x\n' "$HASH" > "$R/src/q.sh"; stage; refused_at "a quoted << opens no heredoc" "src/q.sh:2: $HASH body note"
+mkrepo
+printf 'echo x  %s see <<EOF\n%s body note\necho y\n' "$HASH" "$HASH" > "$R/src/q.sh"; stage; refused_at "a << inside a comment opens no heredoc" "src/q.sh:2: $HASH body note"
+mkrepo
+printf 'r="%s(cat <<EOF\n%s heredoc text\nEOF\n)"\necho r\n' "$D" "$HASH" > "$R/src/q.sh"; stage; want "a heredoc opened inside a quoted command substitution is skipped" 0
+mkrepo
+printf 'x = 1  %s """\n%s body note\ny = 2\n' "$HASH" "$HASH" > "$R/src/d.py"; stage; refused_at "a triple quote inside a comment opens no string" "src/d.py:2: $HASH body note"
+
+echo "== 15. a classifier change recounts untouched files only =="
+mkrepo
+echo >> "$R/scripts/lint/comment-count.awk"
+printf 'src/a.sh\t3\n' > "$R/$BL"
+stage; want "an untouched file's row may rise with the classifier" 0
+mkrepo
+echo >> "$R/scripts/lint/comment-count.awk"
+printf '%s third\necho t\n' "$HASH" >> "$R/src/a.sh"
+printf 'src/a.sh\t3\n' > "$R/$BL"
+stage
+if [ "$RC" -eq 1 ] && has "$BL: src/a.sh raised to 3, the base allows 2"; then pass "a touched file's row may not rise with the classifier"; else fail "touched file with classifier change -> rc=$RC: $OUT"; fi
 
 echo
 echo "test-check-new-comments: $PASS passed, $FAIL failed"
