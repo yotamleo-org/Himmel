@@ -414,8 +414,8 @@ export function judgeSkill(): string {
 }
 
 // The native-lane subscription preflight: its last line is the token.
-export function judgePreflight(worker = 'rm-judge'): string {
-  const env: NodeJS.ProcessEnv = { ...process.env, CADENCE_USAGE_LANE: 'native', CADENCE_USAGE_WORKER: worker };
+function judgePreflight(): string {
+  const env: NodeJS.ProcessEnv = { ...process.env, CADENCE_USAGE_LANE: 'native', CADENCE_USAGE_WORKER: 'rm-judge' };
   for (const k of ['WORKER_SESSION_LANE', 'CADENCE_USAGE_LAUNCH', 'CADENCE_USAGE_CALLER_PID']) delete env[k];
   return execFileSync('bash', [join(repoRoot, 'scripts', 'lib', 'usage-preflight.sh')], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] })
     .trim().split('\n').pop() ?? '';
@@ -498,7 +498,7 @@ function opusTokensFromUsage(usage: unknown): typeof NO_JUDGE_TOKENS {
 // reconciles with its transcript (scripts/usage/release-judge-reconcile.sh). The cost is the call's own verified
 // total_cost_usd (scripts/api-lane/outcome.mjs's rule), empty when the call failed or printed none. Best-effort like the launch
 // record: a row that cannot be written is said on stderr and the judge goes on.
-export function recordJudgeLaunch(sid: string, rc: number, out: string | undefined, kind = 'judge'): void {
+function recordJudgeLaunch(sid: string, rc: number, out: string | undefined): void {
   let cost = '';
   let tokens = NO_JUDGE_TOKENS;
   try {
@@ -510,7 +510,7 @@ export function recordJudgeLaunch(sid: string, rc: number, out: string | undefin
   } catch { /* unparseable output: cost stays empty */ }
   const row = {
     ts: new Date().toISOString().slice(0, 19) + 'Z', job_id: '', session_id: sid, account: '', lane: 'native', model: 'opus', budget_usd: '',
-    outcome: rc === 0 ? 'native' : 'native-failed', cost_usd: '', sub_cost_usd: cost, rc, kind, cache_ttl: JUDGE_CACHE.ttl,
+    outcome: rc === 0 ? 'native' : 'native-failed', cost_usd: '', sub_cost_usd: cost, rc, kind: 'judge', cache_ttl: JUDGE_CACHE.ttl,
     ...tokens, branch: '', head: '', pr: null,
   };
   try {
