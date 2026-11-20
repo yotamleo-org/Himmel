@@ -1893,8 +1893,23 @@ assert_rc "sync busy: someone else's lock is left alone" 1 "$([ -e "$NT_VAULT/.g
 rm -f "$NT_VAULT/.git/index.lock"
 printf 'himmel-nightly 2147483646\n' > "$NT_VAULT/.git/index.lock"
 nt_fire synthesize
-assert_contains "stale own lock (dead pid): taken over, the promotion runs" "promote lock=held" "$(cat "$NT_REC")"
-assert_rc "stale own lock: released after the run" 0 "$([ -e "$NT_VAULT/.git/index.lock" ] && echo 1 || echo 0)"
+assert_contains "stale own lock (dead pid): both steps skip and name the pid and the file" "[nightly-promote] skipped: vault sync busy (stale himmel-nightly lock of dead pid 2147483646, remove .git/index.lock)" "$NT_LOG"
+assert_contains "stale own lock: the action apply skips too" "[nightly-actions] skipped: vault sync busy (stale himmel-nightly lock of dead pid 2147483646" "$NT_LOG"
+assert_rc "stale own lock: no tool ran" 0 "$(count_lines "$NT_REC")"
+assert_rc "stale own lock: left in place for the operator, never removed by a runner" 1 "$([ -e "$NT_VAULT/.git/index.lock" ] && echo 1 || echo 0)"
+assert_contains "stale own lock: alerts under its own key" "pipeline-synthesize-index-lock stale-lock $NT_DIR/pipeline-synthesize.log" "$(cat "$CADENCE_ALERT_FILE")"
+assert_rc "stale own lock: the runner still exits 0" 0 "$rc"
+assert_rc "stale own lock: one send" 1 "$(count_lines "$ALERT_SENDS")"
+sh "$NT_DIR/pipeline-synthesize.sh" || true
+assert_rc "the same stale lock the next night does not send again" 1 "$(count_lines "$ALERT_SENDS")"
+rm -f "$NT_VAULT/.git/index.lock"
+nt_fire synthesize
+assert_contains "once the lock is gone the steps run again" "promote lock=held" "$(cat "$NT_REC")"
+printf 'himmel-nightly 2147483646\n' > "$NT_VAULT/.git/index.lock"
+: > "$ALERT_SENDS"; : > "$NT_REC"
+sh "$NT_DIR/pipeline-synthesize.sh" || true
+assert_rc "after a good night a new stale lock sends again" 1 "$(count_lines "$ALERT_SENDS")"
+rm -f "$NT_VAULT/.git/index.lock"
 printf 'himmel-nightly %s\n' "$$" > "$NT_VAULT/.git/index.lock"
 nt_fire synthesize
 assert_contains "own lock of a live pid: treated as busy" "[nightly-promote] skipped: vault sync busy" "$NT_LOG"

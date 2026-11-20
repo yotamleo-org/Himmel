@@ -279,6 +279,14 @@ mkclip5 "$EV5" wl-b.md "Ian Author"  "https://ii.com/wl"   "workload"
 # Words that only look plural keep their form.
 mkclip5 "$EV5" an-a.md "Jo Author"   "https://jj.com/an"   "analysis"
 mkclip5 "$EV5" an-b.md "Kim Author"  "https://kk.com/an"   "analysis"
+# A word that keeps its form still meets its plural.
+mkclip5 "$EV5" bi-a.md "Pat Author"  "https://pp.com/bi"   "bias"
+mkclip5 "$EV5" bi-b.md "Quin Author" "https://qq.com/bi"   "biases"
+mkclip5 "$EV5" bi-c.md "Rae Author"  "https://rr.com/bi"   "biases"
+mkclip5 "$EV5" ln-a.md "Sal Author"  "https://ss.com/ln"   "lens"
+mkclip5 "$EV5" ln-b.md "Tom Author"  "https://tt.com/ln"   "lenses"
+mkclip5 "$EV5" st-a.md "Uma Author"  "https://uu.com/st"   "status"
+mkclip5 "$EV5" st-b.md "Val Author"  "https://vv.com/st"   "statuses"
 # -ies / -y fold together.
 mkclip5 "$EV5" lb-a.md "Lee Author"  "https://ll.com/lb"   "dependency"
 mkclip5 "$EV5" lb-b.md "Max Author"  "https://mm.com/lb"   "dependencies"
@@ -298,7 +306,11 @@ assert "workload stays its own subject" "yes" "$([ -f "$C5/Workload.md" ] && ech
 assert "analysis keeps its form" "yes" "$([ -f "$C5/Analysis.md" ] && echo yes || echo no)"
 assert "no page named Analysi" "no" "$([ -f "$C5/Analysi.md" ] && echo yes || echo no)"
 assert "dependency + dependencies: one page" "1" "$(pages_like "$C5" Dependenc | wc -w | tr -d ' ')"
-assert "five subjects in all" "5" "$(find "$C5" -type f -name '*.md' | wc -l | tr -d ' ')"
+assert "bias (1) + biases (2): one page, named for the more common form" "Biases.md" "$(pages_like "$C5" Bias)"
+assert "the bias page lists all three contributors" "3" "$(grep -c '^- \[\[Clippings/_evidence/bi-' "$C5/Biases.md" 2>/dev/null || echo 0)"
+assert "lens + lenses: one page, the shorter on a tie" "Lens.md" "$(pages_like "$C5" Lens)"
+assert "status + statuses: one page, the shorter on a tie" "Status.md" "$(pages_like "$C5" Status)"
+assert "eight subjects in all" "8" "$(find "$C5" -type f -name '*.md' | wc -l | tr -d ' ')"
 
 # An existing page in either form is densified, never joined by a second page.
 tmp5b="$(mktemp -d -t synth5b.XXXXXX)" || exit 1

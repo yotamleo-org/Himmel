@@ -60,6 +60,12 @@ const KEEP_FORM = new Set([
   "kubernetes", "aws", "ios", "macos", "css", "gps",
 ]);
 
+// The plurals of words that keep their form, which the general rule would cut wrong.
+const PLURAL_OF_KEPT = new Map([
+  ["lenses", "lens"], ["biases", "bias"], ["canvases", "canvas"], ["atlases", "atlas"],
+  ["statuses", "status"], ["buses", "bus"], ["analyses", "analysis"],
+]);
+
 /**
  * Fold a regular English plural onto its singular so both forms make the same
  * key ("workflows" -> "workflow", "libraries" -> "library", "caches" and
@@ -68,6 +74,7 @@ const KEEP_FORM = new Set([
  * end like a plural (class, status, analysis) keep their form.
  */
 function foldWord(w) {
+  if (PLURAL_OF_KEPT.has(w)) return PLURAL_OF_KEPT.get(w);
   if (w.length <= 3 || KEEP_FORM.has(w)) return w;
   if (/ss$|us$|[sx]is$/.test(w)) return w;
   if (/[^aeiou]ies$/.test(w)) return w.slice(0, -3) + "y";

@@ -767,11 +767,15 @@ SH
 # index lock, run the promotion then the action apply, release the lock. Holding
 # .git/index.lock is the pause: a git-based sync that tries to stage or commit
 # meanwhile fails that tick and commits the finished state on the next. The lock
-# is created exclusively; a lock that is not ours (a sync mid-commit) means both
-# steps skip. Our own lock carries `himmel-nightly <pid>`, so one left by a runner
-# that died is taken over when that pid is gone. A vault with no git repo has no
-# sync to pause and the steps run without a lock.
-# $1 q_vault, $2 q_promote_tool, $3 q_actions_tool (all already %q-quoted).
+# is created exclusively and only this runner ever removes it, and only its own;
+# a lock that is not ours (a sync mid-commit) means both steps skip. Our lock
+# carries `himmel-nightly <pid>`: when that pid is gone the lock is left by a
+# runner that died, and no runner removes it (two runners could take it over at
+# once); both steps skip, naming the file, and an alert under its own key asks the
+# operator to delete it. A vault with no git repo has no sync to pause and the
+# steps run without a lock.
+# $1 q_vault, $2 q_promote_tool, $3 q_actions_tool, $4 q_alert_lib (all already
+# %q-quoted; $4 may be empty).
 # shellcheck disable=SC2016  # the runner's own $vars are emitted literally
 emit_nightly_writers() {
     cat <<'SH'
@@ -779,21 +783,30 @@ emit_nightly_writers() {
         ( set -C; printf 'himmel-nightly %s\n' "$$" > "$1" ) 2>/dev/null && return 0
         _nl_pid=$(sed -n 's/^himmel-nightly //p' "$1" 2>/dev/null)
         case "$_nl_pid" in ''|*[!0-9]*) return 1 ;; esac
-        kill -0 "$_nl_pid" 2>/dev/null && return 1
-        rm -f "$1"
-        ( set -C; printf 'himmel-nightly %s\n' "$$" > "$1" ) 2>/dev/null
+        kill -0 "$_nl_pid" 2>/dev/null || _nl_stale=$_nl_pid
+        return 1
     }
     _nightly_writers() {
         _nw_hold=$(git rev-parse --git-path index.lock 2>/dev/null) || _nw_hold=
-        _nw_held=0
+        _nw_held=0; _nl_stale=
         if [ -n "$_nw_hold" ]; then
             if _nightly_lock_take "$_nw_hold"; then
                 _nw_held=1
                 trap 'rm -f "$_nw_hold"' EXIT
                 trap 'exit 1' INT TERM
+SH
+    if [ -n "$4" ]; then printf '                %s clear pipeline-synthesize-index-lock || true\n' "$4"; fi
+    cat <<'SH'
             else
-                echo "[nightly-promote] skipped: vault sync busy (git index lock held)"
-                echo "[nightly-actions] skipped: vault sync busy (git index lock held)"
+                _nw_why="vault sync busy (git index lock held)"
+                if [ -n "$_nl_stale" ]; then
+                    _nw_why="vault sync busy (stale himmel-nightly lock of dead pid $_nl_stale, remove $_nw_hold)"
+SH
+    if [ -n "$4" ]; then printf '                    %s fail pipeline-synthesize-index-lock stale-lock "$log" || true\n' "$4"; fi
+    cat <<'SH'
+                fi
+                echo "[nightly-promote] skipped: $_nw_why"
+                echo "[nightly-actions] skipped: $_nw_why"
                 return 0
             fi
         fi
@@ -856,7 +869,7 @@ emit_runner() {
         printf '    _nightly_step nightly-feeds %s --vault %s --cap %s\n' "$NIGHTLY_FEED_TOOL" "$q_vault" "$FEED_CAP"
     fi
     if [ "$flow" = pipeline-synthesize ]; then
-        emit_nightly_writers "$q_vault" "$NIGHTLY_PROMOTE_TOOL" "$NIGHTLY_ACTIONS_TOOL"
+        emit_nightly_writers "$q_vault" "$NIGHTLY_PROMOTE_TOOL" "$NIGHTLY_ACTIONS_TOOL" "$q_alert_lib"
     fi
     # The two gates. Both live INSIDE the `{ } >> $log`
     # group, so each helper's stderr diagnostics land in the worker log while its
