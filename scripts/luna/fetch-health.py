@@ -493,9 +493,16 @@ def _clip_frontmatter(path: Path) -> dict[str, str]:
     return fm
 
 
+def luna_vault(env: dict[str, str]) -> Path:
+    for key in ("OBSIDIAN_VAULT_PATH", "LUNA_VAULT_PATH"):
+        value = (env.get(key) or "").strip()
+        if value:
+            return Path(value)
+    return resolve_home(env) / "Documents" / "luna"
+
+
 def probe_harvest_article_fetch(env: dict[str, str], today: datetime | None = None) -> ProbeResult:
-    vault = Path((env.get("OBSIDIAN_VAULT_PATH") or "").strip() or resolve_home(env) / "Documents" / "luna")
-    clippings = vault / "Clippings"
+    clippings = luna_vault(env) / "Clippings"
     if not clippings.is_dir():
         return ProbeResult("ok", "no Clippings folder; nothing to check")
     day = (today or utc_now()).date()
@@ -869,8 +876,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state", help="override output state path")
     parser.add_argument("--probe", metavar="SOURCE", help="run a single probe and print its JSON result (skips state writes)")
+    parser.add_argument("--vault", help="the luna vault the harvest probe reads (default: OBSIDIAN_VAULT_PATH, then LUNA_VAULT_PATH, then ~/Documents/luna)")
     args = parser.parse_args(argv)
     env = dict(os.environ)
+    if args.vault:
+        env["OBSIDIAN_VAULT_PATH"] = args.vault
 
     if args.probe:
         try:
