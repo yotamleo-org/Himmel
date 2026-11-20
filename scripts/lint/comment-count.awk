@@ -117,7 +117,6 @@ function triple_toggles(s, d,   n, rest) {
     return n % 2
 }
 
-# The comment text of one line, "" when the line carries no counted comment.
 function counted(p, t,   s, i, js, c, code, e) {
     s = ltrim(t)
     js = is_js(p)

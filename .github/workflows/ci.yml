@@ -1275,10 +1275,6 @@ jobs:
             fi
           done
           bash "$gate/check-history-comments.sh" --range "$BASE_SHA"
-      # The new-comment gate, same shape: the PR range judged by the BASE copies of
-      # the gate, its classifier and the exemption list, against the base's baseline
-      # (a PR cannot raise the rows that judge it). A base from before the gate has
-      # nothing to judge with and passes with a notice.
       - name: new-comment gate (PR range)
         if: github.event_name == 'pull_request'
         env:
