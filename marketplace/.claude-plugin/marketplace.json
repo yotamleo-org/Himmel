@@ -407,7 +407,7 @@
         "url": "https://github.com/BuilderIO/skills.git",
         "sha": "5af301099beda993735bc3dc88ceb75a7a8ab361"
       },
-      "description": "[BuilderIO/skills, MIT, vendor + attribution only, no carried delta] Builder.io skills: all upstream skills load, including visual-plan and visual-recap. strict:true because upstream ships a plugin.json: strict:false plus a marketplace skills list is a manifest conflict that loads nothing. Explicit HTTPS git url, pinned to a full sha 5af3010f244a per himmel supply-chain policy. Design kit, design-diagram profile.",
+      "description": "[BuilderIO/skills, MIT, vendor + attribution only, no carried delta] Builder.io skills: all upstream skills load, including visual-plan and visual-recap. strict:true because upstream ships a plugin.json: strict:false plus a marketplace skills list is a manifest conflict that loads nothing. Explicit HTTPS git url, pinned to a full sha 5af301099bed per himmel supply-chain policy. Design kit, design-diagram profile.",
       "strict": true,
       "author": {
         "name": "BuilderIO",
@@ -530,7 +530,7 @@
         "url": "https://github.com/anthropics/skills.git",
         "sha": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba"
       },
-      "description": "[anthropics/skills, mixed per skill LICENSE.txt: Apache-2.0 for the design skills, source-available for docx/pdf/pptx/xlsx, vendor + attribution only, no carried delta] anthropics/skills: the whole upstream skills/ dir loads (a marketplace skills list cannot subset it), including the source-available docx/pdf/pptx/xlsx; the design ones are theme-factory, brand-guidelines, canvas-design. Explicit HTTPS git url, pinned to a full sha e4bb5d95a552 per himmel supply-chain policy. Design kit, design-reference profile.",
+      "description": "[anthropics/skills, mixed per skill LICENSE.txt: Apache-2.0 for the design skills, source-available for docx/pdf/pptx/xlsx, vendor + attribution only, no carried delta] anthropics/skills: the whole upstream skills/ dir loads (a marketplace skills list cannot subset it), including the source-available docx/pdf/pptx/xlsx; the design ones are theme-factory, brand-guidelines, canvas-design. Explicit HTTPS git url, pinned to a full sha e4bb5d960d87 per himmel supply-chain policy. Design kit, design-reference profile.",
       "strict": false,
       "author": {
         "name": "anthropics",
