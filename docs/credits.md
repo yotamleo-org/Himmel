@@ -17,18 +17,18 @@ How used: installed from the pin, or vendored in-tree where the pin links a vend
 
 | Name | Source | Author | Licence | Pin / tracking |
 |---|---|---|---|---|
-| ai-image-prompts | https://github.com/youmind-openlab/ai-image-prompts-skill | youmind-openlab | MIT | 3991a8b47d5addb97ee83ed424b52eb30eade9fa |
+| ai-image-prompts | https://github.com/youmind-openlab/ai-image-prompts-skill | youmind-openlab | MIT | e91273d47d5addb97ee83ed424b52eb30eade9fa |
 | animejs-skills | https://github.com/BowTiedSwan/animejs-skills | BowTiedSwan | Unknown (not declared upstream) | cf2bed8d6654a6cfd02d3ff11b74ff3a7a7631e2 |
-| anthropic-design-skills | https://github.com/anthropics/skills | anthropics | Mixed: Apache-2.0 design skills; source-available docx/pdf/pptx/xlsx (per-skill LICENSE.txt) | 1780c5e5a552fd4d1c9d6a7b0cab26b0c2bef064 |
+| anthropic-design-skills | https://github.com/anthropics/skills | anthropics | Mixed: Apache-2.0 design skills; source-available docx/pdf/pptx/xlsx (per-skill LICENSE.txt) | e4bb5d95a552fd4d1c9d6a7b0cab26b0c2bef064 |
 | anydesign | https://github.com/uxKero/anydesign | uxKero | MIT | v0.6.0 |
-| builder-visual | https://github.com/BuilderIO/skills | BuilderIO | MIT | 7a10d06f244a66f925503cd1f31789aa3de9a8e5 |
+| builder-visual | https://github.com/BuilderIO/skills | BuilderIO | MIT | 5af3010f244a66f925503cd1f31789aa3de9a8e5 |
 | claude-obsidian | https://github.com/AgriciDaniel/claude-obsidian | AgriciDaniel | MIT | v3.0.1 |
 | design-dna | https://github.com/zanwei/design-dna | zanwei | MIT | 593e39bc9e3652734653bd75544a333d7d43615e |
 | design-md | https://github.com/NousResearch/hermes-agent | Nous Research | MIT | v2026.9.24 |
 | diagram-design | https://github.com/cathrynlavery/diagram-design | cathrynlavery | MIT | f6db0decea96de66b901331a0f79a8d4b147ebae |
 | domain-modeling | https://github.com/mattpocock/skills | Matt Pocock (upstream) / yotamleo (vendor) | MIT | [Vendoring pin](../marketplace/plugins/domain-modeling/VENDORED.md) |
 | emilkowalski-skills | https://github.com/emilkowalski/skills | Emil Kowalski | MIT | 64eb3deb9a5fbfa041faf783e0bc3fd635872e9c |
-| find-docs | https://github.com/upstash/context7 | Upstash | MIT | 4087030ad2dc16578130e2dab1e48ba735f8ea38 |
+| find-docs | https://github.com/upstash/context7 | Upstash | MIT | 27ef14cad2dc16578130e2dab1e48ba735f8ea38 |
 | frontend-slides | https://github.com/zarazhangrui/frontend-slides | zarazhangrui | MIT | v2.1.0 |
 | graphify | https://github.com/Graphify-Labs/graphify | Graphify-Labs / yotamleo (wrapper) | Apache-2.0 | [Package pin](../scripts/lib/graphify-bin.sh) |
 | gsap-skills | https://github.com/greensock/gsap-skills | greensock | MIT | aed9cfd3277740755f6bfc1155c7aa645403b760 |
