@@ -133,7 +133,7 @@ def live_remainder(key):
 
     The partial PRs come from the status log (TICKET_STATUS_STATE_DIR, else ~/.himmel/state) through merge-rows-effective.py, a
     completing merge row clearing the earlier ones; each body is read with `gh pr view` (NEXT_DISPATCH_GH_CMD, else ND_GH_READ,
-    else gh); the grammar and the newest-PR-wins rule are pr_remainder.py's own, and so is the path pattern a unit naming a file
+    else scripts/lib/gh-read.sh, else gh); the grammar and the newest-PR-wins rule are pr_remainder.py's own, and so is the path pattern a unit naming a file
     is code by (holds.py's FILE_RE, the copy of the dispatcher's own). The whole read has one budget (PROOF_REMAINDER_BUDGET_SECS,
     default 90 s), under the 100 s the Jira CLI waits for the validator; what it cannot finish is unreadable, never nothing.
     Returns (blocking, unreadable): what stops a CLOSE (open code work, an owed chief or operator line, a body that records no
@@ -180,7 +180,8 @@ def live_remainder(key):
         return [], ['status log %s unreadable (the log helper ran past the read budget)' % log]
     except (OSError, subprocess.SubprocessError) as exc:
         return [], ['status log %s unreadable (%s)' % (log, getattr(exc, 'strerror', None) or exc)]
-    gh = os.environ.get('NEXT_DISPATCH_GH_CMD') or os.environ.get('ND_GH_READ') or 'gh'
+    read_helper = HERE.parent.parent / 'lib' / 'gh-read.sh'
+    gh = os.environ.get('NEXT_DISPATCH_GH_CMD') or os.environ.get('ND_GH_READ') or (str(read_helper) if read_helper.is_file() and os.access(read_helper, os.X_OK) else 'gh')
     answers, unreadable = [], []
     for pr in prs:
         left = deadline - time.monotonic()
