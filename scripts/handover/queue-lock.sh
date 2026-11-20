@@ -1660,7 +1660,7 @@ _ql_force_claim_cleanup() {
 
 # _ql_force_trap_reset <saved-traps> -- forget the forced release's claim and put back the traps the caller had (trap -p output).
 _ql_force_trap_reset() {
-    _QL_FORCE_CLAIM="" _QL_FORCE_TOKEN="" _QL_FORCE_PREV="" _QL_FORCE_PREV_EXIT=""
+    _QL_FORCE_CLAIM="" _QL_FORCE_TOKEN="" _QL_FORCE_PREV="" _QL_FORCE_PREV_EXIT="" _QL_FORCE_PREV_INT=""
     trap - EXIT INT TERM HUP
     [ -z "$1" ] || eval "$1"
     return 0
@@ -1668,8 +1668,8 @@ _ql_force_trap_reset() {
 
 # _ql_force_on_signal <SIG> -- free the claim, give the caller its traps back, then raise the signal again so the caller's own handling (or the default) applies.
 _ql_force_on_signal() {
-    local sig="$1" code=0 self own_int=0 caller_traps="${_QL_FORCE_PREV:-}"
-    case "$caller_traps"$'\n' in *" SIGINT"$'\n'*) own_int=1 ;; esac
+    local sig="$1" code=0 self own_int=0
+    [ -z "${_QL_FORCE_PREV_INT:-}" ] || own_int=1
     case "$sig" in INT) code=130 ;; TERM) code=143 ;; HUP) code=129 ;; esac
     _ql_force_claim_cleanup
     _ql_force_trap_reset "${_QL_FORCE_PREV:-}"
@@ -2393,7 +2393,7 @@ queue_lock_release() {
         local f_claim_token="release-pid$$-r$RANDOM" f_prev_traps="" f_rc=0
         f_prev_traps=$(trap -p EXIT INT TERM HUP)
         _QL_FORCE_ABORT=""
-        _QL_FORCE_PREV="$f_prev_traps" _QL_FORCE_PREV_EXIT=$(trap -p EXIT)
+        _QL_FORCE_PREV="$f_prev_traps" _QL_FORCE_PREV_EXIT=$(trap -p EXIT) _QL_FORCE_PREV_INT=$(trap -p INT)
         _QL_FORCE_CLAIM="${lockdir}.claim" _QL_FORCE_TOKEN="$f_claim_token"
         trap '_ql_force_on_exit' EXIT
         trap '_ql_force_on_signal INT' INT
