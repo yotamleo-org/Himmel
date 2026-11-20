@@ -635,23 +635,23 @@ test('source metadata is preserved in the secret-free launch record', () => {
   for (const text of [f.record(), readFileSync(f.paths.state, 'utf8')]) assert.ok(!text.includes(DUMMY));
 });
 
-test('empty API account refuses even though native is funded, and never spawns claude', () => {
+test('a reading of zero left is our estimate, not a block: the named account runs and the API credit answer decides', () => {
   const f = fixture();
   f.snapshot.accounts.A.remaining_usd = '0';
   f.save();
   writeFileSync(f.env.CADENCE_USAGE_CACHE, JSON.stringify({ five_hour: { utilization: 1 }, seven_day: { utilization: 1 } }));
   const r = f.run();
-  assert.equal(r.status, 2);
-  assert.match(r.stderr, /api bank gate said SKIPPED-BANK/);
-  assert.equal(f.called(), false);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /api bank gate said SKIPPED-BANK; an unknown, stale or estimated balance is not a block/);
+  assert.equal(f.called(), true);
 });
 
-test('no automatic A/B rotation: empty A refuses and B stays untouched', () => {
+test('no automatic A/B rotation: a named A with zero left runs on A and B stays untouched', () => {
   const f = fixture();
   f.snapshot.accounts.A.remaining_usd = '0';
   f.save();
-  assert.equal(f.run().status, 2);
-  assert.equal(f.called(), false);
+  assert.equal(f.run().status, 0);
+  assert.equal(f.called(), true);
   assert.equal(f.status('B').reserved_usd, '0.000000');
   assert.equal(f.status('B').spent_est_usd, '0.000000');
 });
@@ -1032,12 +1032,13 @@ test('auto routing goes on past the bank gate when the old reading and the ledge
   assert.equal(f.called(), true);
 });
 
-test('a caller-set optional flag does not let an explicit account launch without a credit reading', () => {
+test('a caller-set optional flag does not widen the cap: an explicit account over our own cap still refuses', () => {
   const f = fixture();
-  rmSync(f.paths.snapshot);
+  writeFileSync(f.paths.state, JSON.stringify({ version: 1, accounts: { A: { organization_id: 'org-a', cycle_id: 'cycle-a', discrepancy: false,
+    jobs: { spent: { status: 'settled', maximum_usd: '0.950000', actual_usd: '0.950000', reserved_at: f.now, timeout_s: 3600 } } } } }));
   const r = f.run(f.good, { HIMMEL_API_SNAPSHOT_OPTIONAL: '1' });
   assert.equal(r.status, 2);
-  assert.match(r.stderr, /api bank gate said/);
+  assert.match(r.stderr, /reservation refused/);
   assert.equal(f.called(), false);
 });
 
@@ -1761,4 +1762,65 @@ test('K5 and K5b: a broken role map refuses an auto graphify call before any spa
   const p = autoKind(g, 'graphify');
   assert.equal(p.status, 0, p.stderr);
   assert.equal(usedKey(g), 'BBBB');
+});
+
+// --- the api bank gate refuses only on a real block, never on an unknown, stale or low reading ---
+const markAt = (f, at) => {
+  spawnSync(process.execPath, [STATE, 'exhausted'], { env: f.env, encoding: 'utf8' });
+  const ledger = JSON.parse(readFileSync(f.paths.state, 'utf8'));
+  ledger.accounts.A.exhausted_at = at;
+  writeFileSync(f.paths.state, JSON.stringify(ledger));
+};
+
+test('10425: an unknown balance (no snapshot, BANK-UNKNOWN) is not a block: the call runs on the named account', () => {
+  const f = fixture();
+  rmSync(f.paths.snapshot);
+  const r = f.run(f.good, FB_ON);
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stderr, /refused/);
+  assert.match(r.stderr, /BANK-UNKNOWN/);
+  assert.equal(f.called(), true);
+  assert.match(readFileSync(f.paths.env, 'utf8'), /^key_present=1$/m);
+  assert.equal(fbCalls(f), 0);
+});
+
+test('10425: a stale balance (BANK-STALE) is not a block: the call runs on the named account', () => {
+  const f = fixture();
+  Object.assign(f.snapshot.accounts.A, { source: 'automatic-snapshot', observed_at: f.now - 700 });
+  f.save();
+  const r = f.run(f.good, FB_ON);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /BANK-STALE/);
+  assert.equal(f.called(), true);
+  assert.equal(fbCalls(f), 0);
+});
+
+test('10425: a locked ledger refuses under its own name, and the alert says ledger-locked, never a bare BANK-UNKNOWN', () => {
+  const f = fixture();
+  mkdirSync(`${f.paths.state}.lock`);
+  const r = f.run(f.good, { ...FB_ON, HIMMEL_API_LOCK_WAIT_MS: '100' });
+  assert.equal(f.called(), false, r.stderr);
+  assert.equal(fbCalls(f), 1);
+  assert.match(r.stderr, /refused: .*ledger-locked/);
+  assert.equal(alerts(f).length, 1);
+  assert.match(alertText(f), /ledger-locked/);
+  assert.doesNotMatch(alertText(f), /api bank gate said BANK-UNKNOWN/);
+});
+
+test('10425: a later successful call clears an older exhaustion mark', () => {
+  const f = fixture();
+  markAt(f, f.now - 4000);
+  const r = f.run();
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(f.status().exhausted_at, null);
+});
+
+test('10425: our own cap still refuses before any call, and the refusal names it', () => {
+  const f = fixture();
+  writeFileSync(f.paths.state, JSON.stringify({ version: 1, accounts: { A: { organization_id: 'org-a', cycle_id: 'cycle-a', discrepancy: false,
+    jobs: { spent: { status: 'settled', maximum_usd: '0.950000', actual_usd: '0.950000', reserved_at: f.now, timeout_s: 3600 } } } } }));
+  const r = f.run();
+  assert.equal(r.status, 2, r.stderr);
+  assert.equal(f.called(), false);
+  assert.match(r.stderr, /refused: .*over-cap/);
 });

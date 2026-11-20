@@ -1,9 +1,9 @@
 // local, secret-free API grant accounting. No auth or network.
 // Amounts are decimal-string USD with at most six places; arithmetic is BigInt.
-// One shared ledger/lock covers both accounts. Locks are never reclaimed by age
-// or PID: a crashed holder requires operator recovery, not guessed free credit.
+// One shared ledger/lock covers both accounts. A lock is reclaimed only when it is empty, older than the call
+// timeout and its recorded holder is not running (a crashed transaction); any other lock refuses by name.
 import {
-  closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync,
+  closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, statSync,
   lstatSync, realpathSync, renameSync, rmdirSync, unlinkSync, writeFileSync,
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
@@ -37,8 +37,35 @@ const CALL_TIMEOUT = 3600;
 const KILL_GRACE = 5;
 const SOURCES = ['operator-console-snapshot', 'automatic-snapshot'];
 // parallel admissions queue on the ledger lock instead of failing; the
-// wait is bounded so a crashed holder still refuses, never admits.
+// wait is bounded so a held lock still refuses, never admits.
 const LOCK_WAIT_MS = 5000;
+// The holder's pid sits beside the lock, never inside it, so a holder that crashes still leaves the lock empty.
+const holderPid = (lock) => {
+  try { const pid = Number(readFileSync(`${lock}.pid`, 'utf8').trim()); return Number.isSafeInteger(pid) && pid > 0 ? pid : null; } catch { return null; }
+};
+const running = (pid) => {
+  try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
+};
+function lockFacts(lock) {
+  let age = null, entries = null;
+  try { age = Math.floor((Date.now() - statSync(lock).mtimeMs) / 1000); entries = readdirSync(lock).length; } catch { /* gone or unreadable */ }
+  const pid = holderPid(lock);
+  return { age, entries, pid, alive: pid !== null && running(pid) };
+}
+// A transaction holds the lock for milliseconds, so an empty lock older than the call timeout whose recorded holder
+// is not running is a crashed one. The check and the removal run under a second mutex: two waiters never both remove
+// it, and one that saw the old lock never removes the fresh lock a third process took meanwhile.
+function reclaim(lock, env) {
+  const guard = `${lock}.reclaim`;
+  try { mkdirSync(guard, { mode: 0o700 }); } catch { return false; }
+  try {
+    const f = lockFacts(lock);
+    if (f.age === null || f.age <= callTimeout(env) + KILL_GRACE || f.entries !== 0 || f.alive) return false;
+    rmdirSync(lock);
+    console.error(`api credit-state: reclaimed a stale empty ledger lock ${lock} (age ${f.age}s, holder ${f.pid ?? 'unrecorded'} not running)`);
+    return true;
+  } catch { return false; } finally { try { rmdirSync(guard); } catch { /* already gone */ } }
+}
 function takeLock(lock, env) {
   // An empty value is unset (Number('') is 0, which would disable the retry).
   const raw = env.HIMMEL_API_LOCK_WAIT_MS;
@@ -47,11 +74,24 @@ function takeLock(lock, env) {
   const sleeper = new Int32Array(new SharedArrayBuffer(4));
   const deadline = Date.now() + wait;
   for (let pause = 5; ; pause = Math.min(pause * 2, 50)) {
-    try { mkdirSync(lock, { mode: 0o700 }); return; } catch (e) {
-      if (e.code !== 'EEXIST' || Date.now() >= deadline) refuse('ledger-locked-or-unwritable');
+    try { mkdirSync(lock, { mode: 0o700 }); } catch (e) {
+      if (e.code === 'EEXIST' && reclaim(lock, env)) continue;
+      if (e.code !== 'EEXIST' || Date.now() >= deadline) {
+        const f = lockFacts(lock);
+        refuse('ledger-locked-or-unwritable', 'BANK-UNKNOWN', f.age === null ? `${lock} could not be created`
+          : `${lock} age ${f.age}s, ${f.entries === 0 ? 'empty' : 'holds files'}, holder ${f.pid ?? 'unrecorded'}${f.alive ? ' running' : ''}`);
+      }
+      Atomics.wait(sleeper, 0, 0, pause + Math.floor(Math.random() * pause));
+      continue;
     }
-    Atomics.wait(sleeper, 0, 0, pause + Math.floor(Math.random() * pause));
+    try { writeFileSync(`${lock}.pid`, `${process.pid}\n`, { mode: 0o600 }); } catch { /* an unrecorded holder only ages out */ }
+    return;
   }
+}
+function releaseLock(lock) {
+  try { unlinkSync(join(lock, 'ledger.json')); } catch { /* no temporary file */ }
+  try { if (holderPid(lock) === process.pid) unlinkSync(`${lock}.pid`); } catch { /* not ours */ }
+  try { rmdirSync(lock); } catch { /* a lock left behind ages out through reclaim */ }
 }
 function callTimeout(env) {
   const raw = env.HIMMEL_API_CALL_TIMEOUT_S;
@@ -64,7 +104,11 @@ function instant(text) {
     || !Number.isFinite(t) || new Date(t).toISOString().replace('.000Z', 'Z') !== text) refuse('invalid-config');
   return Math.floor(t / 1000);
 }
-const resetAt = (c, account) => instant(c.reset_at ?? GRANT_RESET_AT[account]);
+// C and D have no default reset date: without a reset_at of their own the snapshot's expiry stands.
+const resetAt = (c, account) => {
+  const at = c.reset_at ?? GRANT_RESET_AT[account];
+  return at === undefined ? null : instant(at);
+};
 const ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 const object = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const own = (v, k) => Object.hasOwn(v, k);
@@ -122,10 +166,14 @@ function ledgerCheck(state) {
     }
   }
 }
-function totals(a) {
+// `since` (a grant's start) leaves out spend settled on a job reserved before it: that spend drew an earlier grant.
+function totals(a, since) {
   let spent = 0n, reserved = 0n;
   for (const j of Object.values(a?.jobs ?? {})) {
-    if (j.status === 'settled') spent += money(j.actual_usd);
+    if (j.status === 'settled') {
+      const amount = money(j.actual_usd);
+      if (!(Number.isSafeInteger(since) && Number.isSafeInteger(j.reserved_at) && j.reserved_at < since)) spent += amount;
+    }
     else reserved += money(j.maximum_usd);
   }
   return { spent, reserved };
@@ -137,7 +185,7 @@ function snapshotRow(config, snapshot, a, account, now) {
   identity(s, config);
   const grant = money(s.grant_usd), remaining = money(s.remaining_usd), cap = money(config.cap_usd);
   const watermark = money(s.reconciled_spent_usd);
-  const { spent, reserved } = totals(a);
+  const { spent, reserved } = totals(a, s.starts_at);
   if (remaining > grant || cap > grant || watermark > spent || watermark > grant - remaining) refuse('unreconciled-amounts');
   if (s.exclusive_org !== true || s.discrepancy !== false || a?.discrepancy || !SOURCES.includes(s.source)) refuse('unverified-or-discrepant');
   for (const t of [s.starts_at, s.expires_at, s.observed_at]) {
@@ -146,7 +194,7 @@ function snapshotRow(config, snapshot, a, account, now) {
   if (s.starts_at >= s.expires_at || s.starts_at > now || s.observed_at < s.starts_at) refuse('invalid-grant-interval');
   // A grant that began before the reset date ends there; one that begins on or after it is the next cycle.
   const reset = resetAt(config, account);
-  const expires = s.starts_at < reset ? Math.min(s.expires_at, reset) : s.expires_at;
+  const expires = reset !== null && s.starts_at < reset ? Math.min(s.expires_at, reset) : s.expires_at;
   if (expires <= now) refuse('expired-grant', 'SKIPPED-BANK');
   const age = now - s.observed_at;
   // an operator reading never goes stale; the remaining credit is derived
@@ -311,8 +359,9 @@ export function creditState(command, options = {}, env = process.env) {
       // (the pick marks it over_estimate); a fresh reading with nothing left, or a discrepancy, still refuses
       if (command === 'status') {
         const keyMark = Number.isInteger(a?.key_rejected_at) ? { key_rejected_at: a.key_rejected_at } : {};
+        const marks = { ...keyMark, marked_exhausted: markedExhausted(result, now) };
         return optional && result.snapshot_stale && result.verdict === 'SKIPPED-BANK'
-          ? { ...result, verdict: 'PROCEED', over_estimate: true, ...keyMark } : { ...result, ...keyMark };
+          ? { ...result, verdict: 'PROCEED', over_estimate: true, ...marks } : { ...result, ...marks };
       }
       id(options.id);
       const maximum = money(options.usd);
@@ -321,7 +370,11 @@ export function creditState(command, options = {}, env = process.env) {
       // our own estimate (the cap and the ledger) never refuses a start while the credit reading is old or absent:
       // only a fresh reading with too little left does, and the API's own credit-too-low answer is the hard stop
       const overEstimate = maximum > money(result.available_est_usd);
-      if (overEstimate && !(optional && result.snapshot_stale)) return { ...result, verdict: 'SKIPPED-BANK', reason: 'insufficient-headroom' };
+      // under optional routing a fresh reading with too little left is still only our estimate: our own cap decides
+      if (overEstimate && !(optional && result.snapshot_stale)) {
+        if (!optional) return { ...result, verdict: 'SKIPPED-BANK', reason: 'insufficient-headroom' };
+        if (maximum > money(ledgerRow(c, a, account).available_est_usd)) return { ...result, verdict: 'SKIPPED-BANK', reason: 'over-cap' };
+      }
       if (!a) {
         a = { organization_id: c.organization_id, cycle_id: c.cycle_id, discrepancy: false, jobs: {} };
         state.accounts[account] = a;
@@ -380,13 +433,9 @@ export function creditState(command, options = {}, env = process.env) {
     return { verdict: a.discrepancy ? 'BANK-UNKNOWN' : 'PROCEED', account, job_id: options.id,
       reason: a.discrepancy ? 'reservation-overrun' : 'settled' };
   } catch (e) {
-    return { verdict: e.verdict || 'BANK-UNKNOWN', reason: e.verdict ? e.message : 'state-io-failure' };
+    return { verdict: e.verdict || 'BANK-UNKNOWN', reason: e.verdict ? e.message : 'state-io-failure', ...(e.detail ? { detail: e.detail } : {}) };
   } finally {
-    if (held) {
-      // Only our private lock is released; no stale-owner sweep anywhere.
-      try { unlinkSync(join(lock, 'ledger.json')); } catch { /* no temporary file */ }
-      try { rmdirSync(lock); } catch { /* orphan lock blocks future admissions */ }
-    }
+    if (held) releaseLock(lock);
   }
 }
 
@@ -499,7 +548,8 @@ function accountRows(env, config) {
 // with it; without that the billed spend counts twice. It moves by the smaller
 // of the local spend and the billed spend added since the previous reading, so
 // spend billed earlier (outside the ledger) never hides a settlement the Console
-// does not show yet. A new grant row starts the watermark at zero (conservative).
+// does not show yet. A new grant row starts it at the smaller of the local spend
+// since the grant's start and the billed spend, the part the reading already covers.
 export function refreshSnapshot(env, account, { remaining, grant, starts, expires, source = 'operator-console-snapshot', expect, pulled = false }) {
   let lock = null;
   try {
@@ -543,16 +593,13 @@ export function refreshSnapshot(env, account, { remaining, grant, starts, expire
     if (left > granted) refuse('unreconciled-amounts');
     const ledger = existsSync(ledgerPath) ? read(ledgerPath) : { version: 1, accounts: {} };
     ledgerCheck(ledger);
-    const { spent } = totals(ledger.accounts[account]);
+    const { spent } = totals(ledger.accounts[account], s.starts_at);
     const billed = granted - left;
     const same = object(prior) && ['grant_usd', 'starts_at', 'expires_at'].every((k) => prior[k] === s[k]);
-    let mark = 0n;
-    if (same) {
-      const was = money(prior.reconciled_spent_usd);
-      const step = [spent - was, billed - (money(prior.grant_usd) - money(prior.remaining_usd))]
-        .reduce((x, y) => (x < y ? x : y));
-      mark = was + (step > 0n ? step : 0n);
-    }
+    const was = same ? money(prior.reconciled_spent_usd) : 0n;
+    const step = [spent - was, billed - (same ? money(prior.grant_usd) - money(prior.remaining_usd) : 0n)]
+      .reduce((x, y) => (x < y ? x : y));
+    const mark = was + (step > 0n ? step : 0n);
     s.reconciled_spent_usd = usd(mark);
     s.remaining_usd = usd(left);
     s.observed_at = Math.floor(Date.now() / 1000);
@@ -564,9 +611,9 @@ export function refreshSnapshot(env, account, { remaining, grant, starts, expire
     return { verdict: 'PROCEED', account, remaining_usd: s.remaining_usd,
       reconciled_spent_usd: s.reconciled_spent_usd, expires_at: s.expires_at };
   } catch (e) {
-    return { verdict: e.verdict || 'BANK-UNKNOWN', reason: e.verdict ? e.message : 'state-io-failure' };
+    return { verdict: e.verdict || 'BANK-UNKNOWN', reason: e.verdict ? e.message : 'state-io-failure', ...(e.detail ? { detail: e.detail } : {}) };
   } finally {
-    if (lock) try { rmdirSync(lock); } catch { /* an orphan lock blocks admissions, never frees them */ }
+    if (lock) releaseLock(lock);
   }
 }
 
@@ -690,7 +737,7 @@ function main() {
   if (process.env.HIMMEL_API_CREDIT_FORMAT === 'bank') {
     if (result.account && result.grant_usd) {
       console.error(`api:${result.account} grant-cycle=${result.cycle_id} grant=${result.grant_usd} spent-est=${result.spent_est_usd} reserved=${result.reserved_usd} available-est=${result.available_est_usd} expires=${new Date(result.expires_at * 1000).toISOString()} age=${result.age_seconds} source=${result.source}${result.snapshot_stale ? ' stale-snapshot (older than 24 h: auto routing goes on our own estimate and the credit answer from the API is the hard stop)' : ''}`);
-    } else console.error(`api credit-state: ${result.reason}`);
+    } else console.error(`api credit-state: ${result.reason}${result.detail ? ` (${result.detail})` : ''}`);
     console.log(result.verdict);
   } else console.log(JSON.stringify(result));
 }

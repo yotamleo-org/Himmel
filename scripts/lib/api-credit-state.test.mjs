@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1103,4 +1103,102 @@ test('K5: clear-exhausted with no mark prints none and leaves the ledger bytes u
   const g = fixture();
   assert.equal(keyVerb(g, 'clear-exhausted').stdout, 'none\n');
   assert.equal(existsSync(g.paths.state), false);
+});
+
+// --- a stale empty ledger lock is recovered, the new-grant spend is not counted twice, C and D need no
+// reset_at, and status names an exhaustion mark still in force ---
+const LOCK_TIMEOUT = { HIMMEL_API_CALL_TIMEOUT_S: '60', HIMMEL_API_LOCK_WAIT_MS: '100' };
+const age = (path, seconds) => { const t = Date.now() / 1000 - seconds; utimesSync(path, t, t); };
+const statusOf = (f, extra = {}) => JSON.parse(spawnSync(process.execPath, f.args('status'), { env: { ...f.env, ...extra }, encoding: 'utf8' }).stdout);
+
+test('an empty lock older than the call timeout with no live holder is recovered, and status reads normally', () => {
+  const f = fixture();
+  const lock = `${f.paths.state}.lock`;
+  mkdirSync(lock); age(lock, 120);
+  const r = statusOf(f, LOCK_TIMEOUT);
+  assert.equal(r.verdict, 'PROCEED', JSON.stringify(r));
+  assert.equal(existsSync(lock), false);
+  // positive control: the same young lock is a live transaction and is never reclaimed
+  const g = fixture();
+  mkdirSync(`${g.paths.state}.lock`);
+  const y = statusOf(g, LOCK_TIMEOUT);
+  assert.equal(y.reason, 'ledger-locked-or-unwritable');
+  assert.equal(existsSync(`${g.paths.state}.lock`), true);
+});
+
+test('a lock that holds a file, or whose recorded holder is alive, is left alone however old, and the refusal names the path and age', () => {
+  const f = fixture();
+  const lock = `${f.paths.state}.lock`;
+  mkdirSync(lock); writeFileSync(join(lock, 'ledger.json'), '{}'); age(lock, 120);
+  const r = statusOf(f, LOCK_TIMEOUT);
+  assert.equal(r.reason, 'ledger-locked-or-unwritable');
+  assert.ok(r.detail.includes(lock), r.detail);
+  assert.match(r.detail, /age 1[0-9]{2}s/);
+  assert.equal(existsSync(join(lock, 'ledger.json')), true);
+  const g = fixture();
+  const held = `${g.paths.state}.lock`;
+  const holder = spawn('sleep', ['30']);
+  try {
+    mkdirSync(held); writeFileSync(`${held}.pid`, `${holder.pid}\n`); age(held, 120);
+    assert.equal(statusOf(g, LOCK_TIMEOUT).reason, 'ledger-locked-or-unwritable');
+    assert.equal(existsSync(held), true);
+  } finally { holder.kill(); }
+  // positive control: a recorded holder that has exited does not keep an old empty lock
+  const h = fixture();
+  const dead = `${h.paths.state}.lock`;
+  const gone = spawnSync('sh', ['-c', 'echo $$']).stdout.toString().trim();
+  mkdirSync(dead); writeFileSync(`${dead}.pid`, `${gone}\n`); age(dead, 120);
+  assert.equal(statusOf(h, LOCK_TIMEOUT).verdict, 'PROCEED');
+  assert.equal(existsSync(dead), false);
+});
+
+test('a new grant row counts the spend its reading already billed once, and spend from before the grant not at all', () => {
+  const f = fixture();
+  const starts = Math.floor(Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`) / 1000);
+  const ledger = { version: 1, accounts: { A: { organization_id: 'org-a', cycle_id: 'cycle-a', discrepancy: false, jobs: {
+    before: { status: 'settled', maximum_usd: '1.000000', actual_usd: '1.000000', reserved_at: starts - 100, timeout_s: 60 },
+    inside: { status: 'settled', maximum_usd: '0.500000', actual_usd: '0.500000', reserved_at: Math.min(starts + 1, f.now), timeout_s: 60 },
+  } } } };
+  writeFileSync(f.paths.state, JSON.stringify(ledger));
+  const day = (t) => new Date(t * 1000).toISOString().slice(0, 10);
+  const r = spawnSync(process.execPath, [join(HERE, '..', 'api-lane', 'grant-snapshot.mjs'), 'A', '1.40', '2.00', day(starts), day(starts + 30 * 86400)],
+    { env: f.env, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const s = statusOf(f);
+  assert.equal(s.spent_est_usd, '0.600000', JSON.stringify(s));
+  assert.equal(s.verdict, 'PROCEED');
+});
+
+test('accounts C and D with a snapshot row and no reset_at read their snapshot, never invalid-config', () => {
+  const f = fixture();
+  withC(f);
+  delete f.config.accounts.C.reset_at;
+  f.save();
+  const r = statusOf(f, { HIMMEL_API_ACCOUNT: 'C' });
+  assert.equal(r.verdict, 'PROCEED', JSON.stringify(r));
+  assert.equal(r.source, 'operator-console-snapshot');
+});
+
+test('status names an exhaustion mark still in force, and not one that a clear removed', () => {
+  const f = fixture();
+  f.snapshot.accounts.A.observed_at = f.now - 200; f.save();
+  f.call('exhausted');
+  assert.equal(f.call().marked_exhausted, true);
+  assert.equal(spawnSync(process.execPath, f.args('clear-exhausted'), { env: f.env, encoding: 'utf8' }).stdout, 'cleared\n');
+  assert.equal(f.call().marked_exhausted, false);
+});
+
+test('under optional routing a fresh reading with too little left is only our estimate: our cap admits, and refuses past it', () => {
+  const f = fixture();
+  f.snapshot.accounts.A.remaining_usd = '0'; f.save();
+  const opt = { ...f.env, HIMMEL_API_SNAPSHOT_OPTIONAL: '1' };
+  const reserve = (id, usd) => JSON.parse(spawnSync(process.execPath, f.args('reserve', ['--id', id, '--usd', usd]), { env: opt, encoding: 'utf8' }).stdout);
+  const ok = reserve('one', '0.60');
+  assert.equal(ok.verdict, 'PROCEED', JSON.stringify(ok));
+  assert.equal(ok.over_estimate, true);
+  const over = reserve('two', '0.60');
+  assert.equal(over.verdict, 'SKIPPED-BANK');
+  assert.equal(over.reason, 'over-cap');
+  // an explicit call without the optional flag keeps refusing on the reading
+  assert.equal(f.call('reserve', ['--id', 'three', '--usd', '0.10']).verdict, 'SKIPPED-BANK');
 });

@@ -43,6 +43,20 @@ one line in `policy-refusals.jsonl` in the alert directory (`HIMMEL_API_ALERT_DI
 default the stamp directory below), and the doctor's `C91-api-policy-refusals` check prints
 one WARN per kind and repo, with a count, for a refusal in the last 48 h.
 
+The api lane refuses a call only on a real block, and the refusal and its alert name it:
+its own admission limit (`api bank gate said SKIPPED-FLEET`), a ledger lock another holder
+keeps (`ledger-locked-or-unwritable`, with the lock path, age and holder), or our own spend
+cap (`over-cap`). An unknown, stale or low credit reading (`BANK-UNKNOWN`, `BANK-STALE`,
+`SKIPPED-BANK` from the api preflight) is our estimate, not a block: the launcher prints a
+note and the call goes on; the per-call budget bounds it and the API's own credit answer
+decides. A credit-exhausted answer marks the account (see the exhausted marker below), and
+a later successful call on that account clears the mark.
+
+A crashed ledger transaction can leave the lock directory behind. A waiter reclaims it only
+when it is empty, older than the call timeout plus the kill grace, and its recorded holder
+(`<lock>.pid`, beside the lock) is not running; a lock with contents, a young lock or a
+running holder is never touched and refuses by name after the lock wait.
+
 For every other failure the launcher:
 
 1. **Decides whether to fall back** (first match wins):
@@ -273,7 +287,8 @@ secret, only role names and account letters:
   marker older than an hour with a valid reading taken before the marker, and by `api-credit-state.test.mjs`.
   After a rotated key the operator clears the mark at once instead of waiting out the TTL:
   `HIMMEL_API_ACCOUNT=<L> node scripts/lib/api-credit-state.mjs clear-exhausted` removes `exhausted_at` and prints
-  `cleared` (or prints `none` and writes nothing when the account had no mark).
+  `cleared` (or prints `none` and writes nothing when the account had no mark). A successful `claude-api.sh` call
+  clears it the same way, and `status` prints `marked_exhausted` while a mark is in force.
 - **Nothing chosen on the API backend makes no API call.** With `GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api` and the lane
   off (`HIMMEL_API_LANE` unset) the cadence refuses the whole fire (exit 1) before any call; a direct call of
   `semantic-update.sh` refuses with exit 2 and says no API semantic call is made. Either way graphify makes no API semantic call. The

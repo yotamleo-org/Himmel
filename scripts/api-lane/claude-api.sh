@@ -29,7 +29,9 @@
 #        once as a subscription `claude -p`: native auth (every API-key variable removed), the same model,
 #        permission mode, tool grant and budget cap, --output-format json. The fallback runs only when the native
 #        usage preflight says PROCEED, BANK-STALE or BANK-UNKNOWN; SKIPPED-BANK or SKIPPED-FLEET skips it and the
-#        alert says so. A prompt on stdin is kept in a mode-600 scratch file (removed on every exit) that the API call
+#        alert says so. The api lane itself refuses only on a real block, named in the alert: its own admission
+#        limit, a live ledger lock or our own spend cap; an unknown, stale or low credit reading never refuses (an
+#        exhaustion mark orders auto routing, and a success clears it). A prompt on stdin is kept in a mode-600 scratch file (removed on every exit) that the API call
 #        reads and the fallback replays byte for byte; it is never printed, logged or put in an argv. A malformed request
 #        never falls back. A call granted
 #        Edit, Write or Bash falls back only from a refusal before any request (exit 2), never from a run that started
@@ -438,7 +440,13 @@ BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY "${LLM_API_O
   CADENCE_USAGE_LANE=api CADENCE_USAGE_LAUNCH=1 WORKER_SESSION_LANE=api \
   CADENCE_USAGE_WORKER="$WORKER_SESSION_NAME" CADENCE_USAGE_CALLER_PID="$$" \
   bash "$REPO/scripts/lib/usage-preflight.sh")" || BANK_VERDICT=BANK-UNKNOWN
-[ "$BANK_VERDICT" = "PROCEED" ] || refuse "api bank gate said $BANK_VERDICT"
+# Only our own admission limit refuses here. An unknown, stale or low reading is our estimate, not a block: the
+# reservation below (our cap, a live ledger lock) and the API's own credit answer decide.
+case "$BANK_VERDICT" in
+  PROCEED) ;;
+  SKIPPED-FLEET) refuse "api bank gate said SKIPPED-FLEET: the api lane is at its own admission limit" ;;
+  *) echo "claude-api: note: the api bank gate said $BANK_VERDICT; an unknown, stale or estimated balance is not a block" >&2 ;;
+esac
 
 [ -z "$GRANT_ERR" ] || refuse "$GRANT_ERR"
 
@@ -488,8 +496,11 @@ immune() { ( trap '' TERM INT HUP; exec "$@" ); }
 
 # --- reserve the full budget before spending; refusal here means no launch ---
 state() { immune node "$REPO/scripts/lib/api-credit-state.mjs" "$@"; }
-RESERVED="$(state reserve --id "$JOB_ID" --usd "$BUDGET")"
-case "$RESERVED" in *'"verdict":"PROCEED"'*) ;; *) refuse "reservation refused: $RESERVED" ;; esac
+# the reading is our estimate, so it never blocks; our own cap still does (reason over-cap)
+RESERVED="$(HIMMEL_API_SNAPSHOT_OPTIONAL=1 state reserve --id "$JOB_ID" --usd "$BUDGET")"
+case "$RESERVED" in *'"verdict":"PROCEED"'*) ;; *)
+  refuse "reservation refused ($(printf '%s' "$RESERVED" | sed -n 's/.*"reason":"\([^"]*\)".*/\1/p')): $RESERVED" ;;
+esac
 
 # A call that dies settles its reservation (verified cost, else zero) so nothing stays reserved past it.
 # The call runs in the background so a signal reaches this shell at once: the handler stops the call before it
@@ -606,6 +617,8 @@ if [ "$REJECTED" = key_invalid ]; then
 elif [ "$RC" -eq 0 ] && [ "$(state key-ok 2>/dev/null)" = cleared ]; then
   graph_alert clear "graph-key-$HIMMEL_API_ACCOUNT"
 fi
+# a success proves the account has credit: an older exhaustion mark no longer holds it
+[ "$RC" -ne 0 ] || state clear-exhausted >/dev/null 2>&1 || true
 
 # --- secret-free launch record (no key, no prompt) ---
 # the usage split, so cache-report.mjs can read the hit rate back; null when the result has none.
