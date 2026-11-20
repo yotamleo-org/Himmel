@@ -26,7 +26,9 @@ Usage:
         default 20) caps fetch attempts per run, failures included. A failed or
         empty fetch leaves a retryable partial. A partial that triage moved to
         _evidence/ is retried there too (article and YouTube hosts), up to the
-        defer count of 5. HARVEST_SCRAPE_DENY=all turns the fetch off.
+        defer count of 5, when the run would reprocess it; a YouTube clip whose
+        transcript was unavailable is listed in the pending report only.
+        HARVEST_SCRAPE_DENY=all turns the fetch off.
     python harvest-clip-body-batch.py <vault-path> --firecrawl-thin [--firecrawl-budget N] [--dry-run]
         Opt-in escalation: the same, plus the paid firecrawl rung after the
         free ones, via firecrawl's /v2/scrape API. Needs FIRECRAWL_API_KEY (and
@@ -1515,6 +1517,11 @@ def stamped_thin(fm: dict, body: str) -> bool:
             and is_thin_clip(fm.get("source", ""), body))
 
 
+def reharvest_due(fm_raw: str, fm: dict, body: str) -> bool:
+    return (not already_harvested(fm_raw) or stamped_thin(fm, body)
+            or junk_fetch_section(fm, body) is not None)
+
+
 def insert_fm_lines(fm_raw: str, new_lines: list) -> str:
     """Insert zero-indent YAML key lines after the last existing non-empty
     frontmatter line, preserving existing content."""
@@ -1748,7 +1755,7 @@ def process_clip(path: Path, dry_run: bool, chain=None, url_rules=None, park=Non
     if not fm_present:
         return ("o", "skipped (frontmatter): no closing --- delimiter", [])
     junk = junk_fetch_section(fm, body)
-    if already_harvested(fm_raw) and not stamped_thin(fm, body) and not junk:
+    if not reharvest_due(fm_raw, fm, body):
         return ("o", "skipped (already-harvested)", [])
     # Injection screen — flag-only, never blocks the harvest.
     # Runs BEFORE the outcome branches so skips/failures still carry the
@@ -2155,13 +2162,13 @@ def evidence_clips(clippings: Path) -> tuple[list, list]:
         if "_rejected" in p.relative_to(root).parts:
             continue
         try:
-            fm, _raw, _body, ok = parse_frontmatter(p.read_text(encoding="utf-8"))
+            fm, fm_raw, body, ok = parse_frontmatter(p.read_text(encoding="utf-8"))
         except Exception:
             continue
         if not ok or fm.get("harvest_status") != "partial":
             continue
         partials.append(p)
-        if fm.get("harvest_needs_attention") == "true":
+        if fm.get("harvest_needs_attention") == "true" or not reharvest_due(fm_raw, fm, body):
             continue
         canonical = canonicalize((fm.get("source") or "").strip().strip('"')) or ""
         if evidence_retry_host(canonical):

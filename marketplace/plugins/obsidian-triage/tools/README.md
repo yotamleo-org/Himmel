@@ -10,7 +10,9 @@ Batch tooling for the obsidian-triage plugin. Several flavors:
   `--fetch-budget N` / `HARVEST_FETCH_BUDGET` (default 20) caps fetch attempts per run,
   failures included; a failed, empty or capped fetch stays a retryable partial. A
   partial that triage already moved to `_evidence/` is retried there, up to the
-  defer count of 5. A `## Summary` carrying `Inferred from the source URL only` is
+  defer count of 5, when the run would reprocess it (never stamped, a clip-body
+  thin stamp, or a backend-stamped junk text); a YouTube clip whose transcript was
+  unavailable is only listed in the pending report. A `## Summary` carrying `Inferred from the source URL only` is
   not page text, and an Instagram clip is judged by its media rule, so neither is
   stamped `ok` over nothing. Opt-in `--firecrawl-thin` adds the paid firecrawl
   `/v2/scrape` rung (`harvest_skill: firecrawl`; `--firecrawl-budget N`, default 20;

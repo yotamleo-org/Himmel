@@ -855,6 +855,31 @@ v = Path(tempfile.mkdtemp(dir=os.environ.get("HIMMEL_TEST_TMP") or None)) / "_re
 code, out = run_main(v)
 check("vault under a directory named _rejected: an _evidence partial is still retried", [n for n, _ in log] == ["jina"])
 
+YT_URL = "https://www.youtube.com/watch?v=abc123DEF45"
+
+
+def stamped_clip(skill, status, section, flag="", url="https://example.com/docs/st"):
+    return (f"---\ntype: article\nsource: {url}\nprocessed: true\nharvested_at: 2026-11-10\nharvest_skill: {skill}\n"
+            f"harvest_url_canonical: \"{url}\"\nharvest_status: {status}\n{flag}---\n# t\n\n## Harvested content\n<!-- harvest-clips 2026-11-10 via {skill} ({url}) -->\n\n{section}\n\n## Source\n[l]({url})\n")
+
+
+YT_PARTIAL = stamped_clip("youtube-scrapling", "partial", "**Title:** A talk\n**Channel:** A channel\n\n### Transcript\n\n_Transcript unavailable: transcript_empty_",
+                          flag="harvest_flag: transcript-unavailable\n", url=YT_URL)
+v = vault_of(evidence=[("yt.md", YT_PARTIAL),
+                       ("thin.md", triaged_clip("https://example.com/docs/thin", defer=1, status="partial")),
+                       ("body.md", stamped_clip("clip-body", "partial", "x", flag="harvest_flag: thin-body\n", url="https://example.com/docs/body")),
+                       ("junk.md", stamped_clip("jina", "partial", JUNK_LINE, flag="harvest_flag: thin-body\n", url="https://example.com/docs/junk"))])
+retry, partials = mod.evidence_clips(v / "Clippings")
+retry_names, partial_names = sorted(p.name for p in retry), sorted(p.name for p in partials)
+check("every partial _evidence clip is reported", partial_names == ["body.md", "junk.md", "thin.md", "yt.md"])
+check("a youtube-scrapling partial is not selected for a retry the run would skip", "yt.md" not in retry_names)
+check("controls: a never-stamped partial, a clip-body thin partial and a junk-stamped partial are still selected", retry_names == ["body.md", "junk.md", "thin.md"])
+log = []
+install_backends(log)
+yt_before = (v / "Clippings" / "_evidence" / "yt.md").read_text(encoding="utf-8")
+code, out = run_main(v)
+check("the run does not select and then skip the youtube partial", "yt.md" not in out and (v / "Clippings" / "_evidence" / "yt.md").read_text(encoding="utf-8") == yt_before)
+
 mod.BACKEND_REGISTRY, mod.DEFAULT_SCRAPE_BACKENDS = _saved_registry, _saved_defaults
 
 print(f"\nResults: {passed} passed, {failed} failed")
