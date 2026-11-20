@@ -97,7 +97,14 @@ in the inbox forever. A **partial** enrichment (some slides/videos survived,
 others dropped in recompress/transcode) writes what succeeded but is marked
 `media_enrichment_status: partial` with a `partial_media:` last-error and
 withholds `media_enriched_at`, so the clip stays selectable and is retried -
-partial media loss is never stamped a full success. Command runbook:
+partial media loss is never stamped a full success. A clip whose summary
+triage wrote from the URL alone (`summary_basis: url-only`) gets that summary
+rewritten from the opening of the transcript, else of the slide digest, right
+after a verified write (no model call; `summary_basis: crawled-extract`; never
+from a flagged clip or text that trips the injection screen), and
+`ig-media-fetch.py --repair-summaries <vault> [--apply] [--limit N]` is the
+bounded one-time repair for clips enriched before that (dry run unless
+`--apply`, default 10 per run). Command runbook:
 `commands/ig-media-enrich.md`.
 
 #### One-time setup (whisper model)
@@ -252,7 +259,9 @@ node tools/feed-clip.mjs --dry-run            # print what it would clip, write 
 node tools/feed-clip.mjs --vault <path> --cap 3
 ```
 
-- **Feed list** — `<vault>/.feed-clip-feeds`, one feed per line: `<feed-url> [label]`, `#` starts a comment. The label prefixes the clip title (`Claude Code: v2.1.0`). The vault template ships a starter list (Claude Code, the Claude Agent SDK, Codex, T3 Code, the MCP specification, the OpenAI engineering blog); a vault made before it needs the file copied in once. `--feeds <file>` reads a list from another path.
+- **Feed list** — `<vault>/.feed-clip-feeds`, one feed per line: `<feed-url> [label] [skip=<word>,<word>]`, `#` starts a comment. The label prefixes the clip title (`Claude Code: v2.1.0`). The vault template ships a starter list (Claude Code, the Claude Agent SDK, Codex, T3 Code, the MCP specification, the OpenAI engineering blog); `/luna-upgrade` installs it into a vault that lacks it, once, and never overwrites a copy that exists. `--feeds <file>` reads a list from another path.
+- **Skip filter** — an entry whose title holds one of a line's `skip=` words (any case, not inside a longer word: `rc` skips `v2.1-rc1` and `rc2`, not `source` or `arc`) is not clipped and not counted as pending, so skipped newest entries do not use up the cap. The starter list skips `alpha`, `nightly`, `rc` and `mobile` on the Codex and T3 Code feeds. A malformed `skip=` (empty, a character outside letters, digits, `.`, `_`, `-`, or given twice) is a `✗` line and the feed line is skipped.
+- **Release notes** — the clip body is the entry's own text, so a GitHub release clip carries its release notes. `/harvest-clips` takes a `github.com/<owner>/<repo>/releases/tag/<tag>` clip that has text of its own as an article (clip-body path, injection screen, no repository ingest, a short note is not a thin body); a release link whose body is only the link, a repository root, the releases list and an issue still go to `luna-ingest`.
 - **Clip shape** — the front matter of a Telegram clip in the same order (`title`, `source`, `date_clipped`, `type`, `tags: []`, `status: unread`), with `clipped_via: feed` and no `telegram_*` keys; `type` comes from the Telegram classifier (a GitHub link is `research`, other links `article`). It carries no `harvested_at:` and no `processed:`, and lands top-level in `Clippings/`, so `/harvest-clips` and `/triage-clips` take it like any other clip. The body is the entry's text with markup stripped (capped at 6000 characters), then a `## Source` link. An entry without an http(s) link is skipped.
 - **Clipped once** — `<vault>/.feed-clip-seen.jsonl` (append-only, one line per clipped entry) is the record; deleting a clip does not bring the entry back. A clip file that already exists is never overwritten.
 - **Cap** — at most `--cap` (default 3) new clips per feed per run, newest entry first; the rest stay unseen and arrive on later runs. A feed's first run therefore trickles in over several runs.

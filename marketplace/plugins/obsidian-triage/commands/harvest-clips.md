@@ -73,16 +73,17 @@ fi
 
 Detection variable list may grow; refine during calibration cycle 1. Smoke-test in `test-harvest-clips-headless-refuse.sh`.
 
-**Env-var preflight.** Since the clip-body pivot, only github URLs other than `/blob/` file URLs trigger an external skill dispatch (`obsidian-triage:luna-ingest`), which uses `gh api` and requires `gh auth status` to be ok. All other types use the **clip-body path** (described in Phase 4) and need no env vars.
+**Env-var preflight.** Since the clip-body pivot, only github URLs other than `/blob/` file URLs and release-tag clips that carry their notes trigger an external skill dispatch (`obsidian-triage:luna-ingest`), which uses `gh api` and requires `gh auth status` to be ok. All other types use the **clip-body path** (described in Phase 4) and need no env vars.
 
 | `type:` + URL pattern | Required env var | Skill that needs it |
 |-----------------------|------------------|---------------------|
-| `research` / `article` with any `github.com/*` URL except a `/blob/` file (repo-root, `/tree/`, issues, pulls) | none | `obsidian-triage:luna-ingest` (needs `gh auth status` ok) |
+| `research` / `article` with any `github.com/*` URL except a `/blob/` file or a release-tag clip with notes (repo-root, `/tree/`, issues, pulls) | none | `obsidian-triage:luna-ingest` (needs `gh auth status` ok) |
+| a `github.com/<owner>/<repo>/releases/tag/<tag>` clip with text of its own (a feed clip carries the release notes; a body of only the link is not notes) | none | clip-body path (no dispatch): the notes are the article, the repository is not ingested, the injection screen runs, a short note is not a thin body |
 | thin article/web clip, default run | none (free rungs: local headless, Jina) | `harvest-clip-body-batch.py` thin-body fetch |
 | thin article/web clip **with `--firecrawl-thin`** | `FIRECRAWL_API_KEY` (opt. `FIRECRAWL_BASE_URL`) | the same, plus the paid firecrawl rung |
 | every other type, including a `/blob/<branch>/<path>` github file clip | none | clip-body path (no dispatch) |
 
-If `gh auth status` is non-zero AND the batch contains any non-`/blob/` github URL: abort with `harvest-clips: gh not authenticated (needed for obsidian-triage:luna-ingest on github URLs); run 'gh auth login' and re-run.` Exit 2. (Skip the check if the batch has no github URLs, or only `/blob/` github URLs: no `gh auth` is needed for those, they take the clip-body path.)
+If `gh auth status` is non-zero AND the batch contains any non-`/blob/` github URL: abort with `harvest-clips: gh not authenticated (needed for obsidian-triage:luna-ingest on github URLs); run 'gh auth login' and re-run.` Exit 2. (Skip the check if the batch has no github URLs, or only `/blob/` github URLs and release-tag clips with notes: no `gh auth` is needed for those, they take the clip-body path.)
 
 A default run fetches a thin article through the free rungs (no flag, no key; `--fetch-budget N` / `HARVEST_FETCH_BUDGET`, default 20 attempts per run), and also retries a still-partial clip that triage moved to `_evidence/` (Phase 4). `--firecrawl-thin` adds the paid rung; `FIRECRAWL_API_KEY` is needed only for the `firecrawl` rung (keyless Jina Reader works without it; with the flag the batch tool exits 2 only when no backend in `HARVEST_SCRAPE_BACKEND` is usable, and a default run never exits 2 for a missing backend). Default runs never need a key. A fetched text that is only a bot-check or error notice (under 80 words and holding a listed phrase, or under 20 words) counts as no text: the clip stays a retryable partial and the run line gives the reason. `--reflag-silent-partials [--dry-run] [--limit N]` flips a clip an earlier run stamped ok over such a text back to partial, and the next run fetches it again and replaces the notice.
 

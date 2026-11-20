@@ -449,7 +449,15 @@ assert "skip filter: a dry run lists no nightly tag" 0 "$(grep -c 'nightly' <<<"
 assert "skip filter: a dry run lists no alpha tag" 0 "$(grep -c 'alpha' <<<"$out")"
 assert "skip filter: a dry run lists the two kept entries" 2 "$(grep -c 'would clip' <<<"$out")"
 
-for bad in 'skip=' 'skip=a;b' 'skip=,'; do
+V="$(newvault bound)"
+printf 'file://%s Bound skip=rc\n' "$FIX/atom-boundary.xml" > "$V/.feed-clip-feeds"
+run_tool --vault "$V" --cap 10
+assert "skip word at the end of a longer word is not skipped (arc)" 1 "$(grep -l 'The arc release' "$V"/Clippings/feed-*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert "skip word at the start of a longer word is not skipped (rcs)" 1 "$(grep -l 'rcs update' "$V"/Clippings/feed-*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert "skip word followed by a digit is skipped (rc2)" 0 "$(grep -l 'rc2' "$V"/Clippings/feed-*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert "skip word boundaries: three clips, one skipped" 3 "$(nclips "$V")"
+
+for bad in 'skip=' 'skip=a;b' 'skip=,' 'skip=alpha skip=rc'; do
     V="$(newvault prerel-bad)"
     printf 'file://%s Prerel %s\n' "$PRE" "$bad" > "$V/.feed-clip-feeds"
     run_tool --vault "$V"

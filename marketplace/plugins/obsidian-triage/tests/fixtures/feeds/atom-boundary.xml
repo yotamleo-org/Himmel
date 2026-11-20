@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en-US">
+  <id>tag:example.invalid,2008:https://github.com/example-org/example-bound/releases</id>
+  <link type="text/html" rel="alternate" href="https://github.com/example-org/example-bound/releases"/>
+  <title>Release notes from example-bound</title>
+  <updated>2026-11-10T10:00:00Z</updated>
+  <entry>
+    <id>tag:example.invalid,2008:Repository/3/arc</id>
+    <updated>2026-11-10T10:00:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/example-org/example-bound/releases/tag/b-arc"/>
+    <title>The arc release</title>
+    <content type="html">&lt;p&gt;Ends in the letters rc.&lt;/p&gt;</content>
+  </entry>
+  <entry>
+    <id>tag:example.invalid,2008:Repository/3/rcs</id>
+    <updated>2026-11-09T10:00:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/example-org/example-bound/releases/tag/b-rcs"/>
+    <title>rcs update</title>
+    <content type="html">&lt;p&gt;Starts with the letters rc.&lt;/p&gt;</content>
+  </entry>
+  <entry>
+    <id>tag:example.invalid,2008:Repository/3/rc2</id>
+    <updated>2026-11-08T10:00:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/example-org/example-bound/releases/tag/b-rc2"/>
+    <title>v1.0 rc2</title>
+    <content type="html">&lt;p&gt;A real release candidate.&lt;/p&gt;</content>
+  </entry>
+  <entry>
+    <id>tag:example.invalid,2008:Repository/3/final</id>
+    <updated>2026-11-07T10:00:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/example-org/example-bound/releases/tag/b-final"/>
+    <title>v1.0 final</title>
+    <content type="html">&lt;p&gt;Final.&lt;/p&gt;</content>
+  </entry>
+</feed>
