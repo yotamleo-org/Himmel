@@ -44,6 +44,9 @@ printf 'not a clip\n' > "$E/notes.txt"
 clip "$V/Clippings/inbox-ig.md" 2026-06-28 "ig_media_pending: true"
 clip "$V/Clippings/inbox-plain.md" 2026-06-28
 clip "$V/Clippings/_done/2026-05/old.md" 2026-05-01 "ig_media_pending: true"
+# Neither is a clip: the rolling deferral table and a file with no frontmatter.
+clip "$V/Clippings/_deferred.md" 2026-06-28 "ig_media_pending: true"
+printf 'A note with no frontmatter.\n' > "$V/Clippings/inbox-nofm.md"
 
 # synthesis pages: a link names its clip by name, so a stale folder still counts.
 cat > "$V/Clippings/_synthesis/s1.md" <<'EOF'
@@ -75,6 +78,8 @@ cat > "$V/.synthesize-stubs.ledger.jsonl" <<'EOF'
 {"ts":"2026-06-13T10:00:00.000Z","action":"densify","subject":"60-Maps/x-MOC.md"}
 {"ts":"2026-06-13T11:00:00.000Z","action":"densify","subject":"30-Resources/Concepts/Alpha.md"}
 this line is not json
+42
+{"ts":"2026-06-27T13:00:00.000Z","action":"densify"}
 {"ts":"2026-06-27T12:00:00.000Z","action":"claim-deferred","subject":"30-Resources/Concepts/Beta.md"}
 EOF
 
@@ -101,6 +106,12 @@ cat > "$V/50-Journal/Daily/2026-06-27.md" <<'EOF'
 
 - [ ] An unrelated task <!-- act:aaaaaaa9 since:2026-06-27 -->
 EOF
+# only a note named for its day is a daily note.
+cat > "$V/50-Journal/Daily/not-a-date.md" <<'EOF'
+## Daily report
+
+- [ ] Archive e07 <!-- act:aaaaaaa8 since:2026-06-27 -->
+EOF
 
 if [ "${2:-}" = "--apply-ledger" ]; then
     cat > "$V/.apply-clip-actions.ledger.jsonl" <<'EOF'
@@ -108,5 +119,6 @@ if [ "${2:-}" = "--apply-ledger" ]; then
 {"ts":"2026-06-27T09:00:00.000Z","action":"fold","id":"aaaaaaa1","since":"2026-06-25"}
 {"ts":"2026-05-29T08:00:00.000Z","action":"archive","id":"aaaaaaa2","since":"2026-06-25"}
 {"ts":"2026-06-27T09:30:00.000Z","action":"note","id":"aaaaaaa4"}
+{"ts":"2026-06-27T09:40:00.000Z","action":"fold"}
 EOF
 fi

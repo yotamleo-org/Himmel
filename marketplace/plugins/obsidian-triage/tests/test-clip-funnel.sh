@@ -130,6 +130,15 @@ node "$TOOL" --vault "$A" --as-of 2026-13-01 >/dev/null 2>&1; assert "an impossi
 node "$TOOL" --vault "$A" --days 0 >/dev/null 2>&1; assert "--days 0 exits 1" "1" "$?"
 node "$TOOL" --vault "$A" --bogus >/dev/null 2>&1; assert "an unknown flag exits 1" "1" "$?"
 
+echo "Group 8: the default day and a clip without frontmatter"
+oute="$(node "$TOOL" --vault "$tmp/empty" 2>&1)"
+assert "--as-of defaults to today, local" "\"$(date +%F)\"" "$(jget as_of "$oute")"
+mkdir -p "$tmp/nofm/Clippings/_evidence"
+printf 'A clip with no frontmatter.\n' > "$tmp/nofm/Clippings/_evidence/x.md"
+outn="$(node "$TOOL" --vault "$tmp/nofm" --as-of "$D" 2>&1)"
+assert "a clip with no frontmatter is taken in but has no day" "1 0 null" "$(jget intake.clips "$outn") $(jget intake.moved_in_window "$outn") $(jget intake.last "$outn")"
+assert "a clip with no frontmatter is not waiting on media" "0" "$(jget media.waiting "$outn")"
+
 echo
 echo "test-clip-funnel: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
