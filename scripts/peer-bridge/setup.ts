@@ -2,7 +2,7 @@
 // runs only from the station's own operator at a terminal. No inbound module
 // imports it, and nothing a peer sends can reach it.
 //
-//   setup.ts add <peer> --peer-bot-id N [--peer-username U]
+//   setup.ts add <peer> --peer-bot-id N [--operator-bot-id N] [--peer-username U]
 //   setup.ts confirm <peer> <chatId>
 //   setup.ts remove <peer>
 //   setup.ts uninstall
@@ -106,22 +106,24 @@ export function primaryCheckout(cwd: string): string {
   return dirname(common);
 }
 
-type AddOpts = { peerBotId?: string; peerUsername?: string };
+type AddOpts = { peerBotId?: string; peerUsername?: string; operatorBotId?: string };
 
 export async function add(peer: string, opts: AddOpts, deps: Deps): Promise<void> {
   guard(deps);
   if (!PEER_NAME_RE.test(peer)) refuse("peer name must match ^[a-z0-9][a-z0-9-]{0,31}$");
   if (!opts.peerBotId || !BOT_ID_RE.test(opts.peerBotId)) refuse("--peer-bot-id must be the peer bot's numeric id");
+  if (opts.operatorBotId !== undefined && !BOT_ID_RE.test(opts.operatorBotId)) refuse("--operator-bot-id must be the operator bot's numeric id");
   if (!hasJq(deps.env)) refuse("jq is required (desk.sh reads peers.json with it)");
 
   const existing = fs.existsSync(peersFile()) ? loadRaw() : null;
   if (existing?.peers?.[peer]) refuse(`peer ${peer} is already set up; remove it first`);
+  if (existing && opts.operatorBotId !== undefined && opts.operatorBotId !== existing.operatorBotId) refuse("--operator-bot-id differs from the operator bot id already in peers.json");
 
   let operatorBotId: string, chatId: number | null, bridgeRoot: string, himmelRoot: string;
   if (existing) {
     ({ operatorBotId, operatorChatId: chatId, bridgeRoot, himmelRoot } = existing);
   } else {
-    operatorBotId = (await deps.ask("The operator bot's numeric id: ")).trim();
+    operatorBotId = opts.operatorBotId ?? (await deps.ask("The operator bot's numeric id: ")).trim();
     if (!BOT_ID_RE.test(operatorBotId)) refuse("the operator bot id must be digits");
     chatId = operatorChatId(deps.access ?? await loadAccess());
     if (chatId === null) refuse("no operator chat id: the operator bot's access.json has no usable allowFrom entry");
@@ -404,7 +406,7 @@ async function main(): Promise<void> {
     out: l => console.log(l),
   };
   try {
-    if (cmd === "add" && args[0]) await add(args[0], { peerBotId: flag(args, "--peer-bot-id"), peerUsername: flag(args, "--peer-username") }, deps);
+    if (cmd === "add" && args[0]) await add(args[0], { peerBotId: flag(args, "--peer-bot-id"), operatorBotId: flag(args, "--operator-bot-id"), peerUsername: flag(args, "--peer-username") }, deps);
     else if (cmd === "confirm" && args.length === 2) await confirm(args[0], args[1], deps);
     else if (cmd === "remove" && args.length === 1) await remove(args[0], deps);
     else if (cmd === "uninstall" && args.length === 0) await uninstall(deps);
@@ -419,7 +421,7 @@ async function main(): Promise<void> {
     else if (cmd === "deny-suite" && args.length === 2) await denySuite(args[0], args[1], deps);
     else if (cmd === "kill" && args.length === 1) await kill(args[0], deps);
     else if (cmd === "unkill" && args.length === 1) await unkill(args[0], deps);
-    else { console.error("usage: setup.ts add <peer> --peer-bot-id N [--peer-username U] | confirm <peer> <chatId> | remove <peer> | uninstall | station-name <name> | keygen [--rotate|--activate] | trust <peer> <station-name> <pubkey-b64> | untrust <peer> [--key <id>] | allow-suite <peer> <alias> <path> | deny-suite <peer> <alias> | kill <peer> | unkill <peer>"); process.exit(2); }
+    else { console.error("usage: setup.ts add <peer> --peer-bot-id N [--operator-bot-id N] [--peer-username U] | confirm <peer> <chatId> | remove <peer> | uninstall | station-name <name> | keygen [--rotate|--activate] | trust <peer> <station-name> <pubkey-b64> | untrust <peer> [--key <id>] | allow-suite <peer> <alias> <path> | deny-suite <peer> <alias> | kill <peer> | unkill <peer>"); process.exit(2); }
   } catch (e) {
     if (e instanceof SetupError) { console.error(`setup: ${e.message}`); process.exit(3); }
     throw e;
