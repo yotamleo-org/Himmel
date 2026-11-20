@@ -1952,7 +1952,7 @@ if [ "${HIMMEL_API_LANE:-}" != on ] && [ -n "$rows" ]; then
         while IFS= read -r _lo_row; do
             [ -n "$_lo_row" ] || continue
             _lo_slug="${_lo_row%%	*}"
-            if printf '%s\n' "$_lane_off_slugs" | grep -qxF -- "$_lo_slug"; then
+            if grep -qxF -- "$_lo_slug" <<< "$_lane_off_slugs"; then
                 echo "panel-availability: $_lo_slug unavailable (not launched) reason=critic-skipped: claude critic SKIPPED (api lane is OFF (set HIMMEL_API_LANE=on))" >&2
                 _queue_avail "$_lo_slug" unavailable "" critic-skipped "claude critic SKIPPED (api lane is OFF (set HIMMEL_API_LANE=on)), not launched"
                 continue

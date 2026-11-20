@@ -46,8 +46,9 @@ critic_loud_alert() {
             load_dotenv --root "${env_root:-$repo}" TELEGRAM_GROUP_CHAT_ID 2>/dev/null
         [ -n "${TELEGRAM_GROUP_CHAT_ID:-}" ] || exit 0
         export TELEGRAM_GROUP_CHAT_ID
-        if command -v timeout >/dev/null 2>&1; then exec timeout 30 bun run "$repo/scripts/telegram/session-status.ts" notification; fi
-        exec bun run "$repo/scripts/telegram/session-status.ts" notification
+        # shellcheck source=scripts/lib/timeout-bin.sh
+        { [ -r "$repo/scripts/lib/timeout-bin.sh" ] && . "$repo/scripts/lib/timeout-bin.sh"; } 2>/dev/null
+        exec ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 30} bun run "$repo/scripts/telegram/session-status.ts" notification
     ) </dev/null >/dev/null 2>&1 || echo "critic-alert: the Telegram send failed (the CRITIC-ALERT line above stands)" >&2
     _cra_route_chief "$msg" || echo "critic-alert: no chief inbox reached (HIMMEL_CONSOLE_NAME unset or its inbox absent)" >&2
     return 0

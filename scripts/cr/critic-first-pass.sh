@@ -18,8 +18,10 @@
 #      callers treat it like 1 (not clean, proceed claude-only)
 #   5  SKIPPED: the Claude critic (provider claude-api / claude-subscription)
 #      had no key, a closed API lane (HIMMEL_API_LANE not on: the launcher is
-#      never called), exhausted credit or a bank that is not PROCEED. A clean
-#      no-op, no stdout, no score row; never a review verdict
+#      never called), exhausted credit or a bank that is not PROCEED; or a
+#      Claude critic (slug claude or a claude-* model) was asked for with no
+#      --provider and the merged critics registry has no row for it (dropped
+#      or absent). A clean no-op, no stdout, no score row; never a review verdict
 #
 # Claude critic: effort = CR_CLAUDE_CRITIC_EFFORT, else the claude row's effort,
 # else medium; CR_CLAUDE_CRITIC_MAX_USD caps one API review (default 1.00).
