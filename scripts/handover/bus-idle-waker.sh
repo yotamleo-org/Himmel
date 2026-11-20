@@ -209,7 +209,7 @@ while :; do
             named_target
             # a dialog can open between the first read and the keystroke: read the screen again right before sending
             if at_prompt; then
-                konsole sendText "You have unread himmel messages: read them now."$'\r'
+                konsole sendText "You have unread himmel messages: call mcp__himmel-bus__read now."$'\r'
                 last="$now"
                 wakes=$((wakes + 1))
                 if [ "$wakes" -ge "$MAX_WAKES" ]; then

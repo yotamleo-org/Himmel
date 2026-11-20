@@ -257,7 +257,7 @@ const setupFailed = (setup) => (setup ? `<div class="nodata" role="alert">${esc(
 
 // ---- Multi accounts: which API account may serve each kind of run on auto. The data is GET /api/api-roles:
 // the role map's state and live roles, ROLES, one row per account and the account letters. The page holds no role list.
-const ROLE_NOTE = { graphify: "every configured account (this station's own himmel graph pass only; the graph choices for your repos are on Project scope)", judge: "the subscription, no API account" };
+const ROLE_NOTE = { graphify: "every configured account (this station's own himmel graph pass only; the graph choices for your repos are on Project scope)", judge: "the subscription, no API account", critic: "the PR critic on API credit: auto picks among the accounts set here, and with none auto is refused" };
 const BANK_STYLE = { "not configured": "off", unknown: "warn", "marked exhausted": "fail", "no room": "fail", "last resort": "warn", "no reading": "warn", "stale reading": "warn", room: "ok" };
 const ROLES_FILE = "~/.himmel/state/api-credit/roles.json";
 

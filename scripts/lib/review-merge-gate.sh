@@ -556,8 +556,6 @@ _crg_eval() {
                 if [ "$mode" = hard ]; then
                     hold="${hold}HOLD: $slug (hard) is $disp at head $head of PR #$num — a hard reviewer must pass at the head; re-run it, or change its mode in critics.local.json (docs/configuration.md)."$'\n'
                     [ "$state" = unavailable ] && _crg_alert "$slug" "$head" "$slug (hard) is $disp at head $head of PR #$num — it cannot review, so the PR holds until it can or its mode changes."
-                elif [ "${_CRG_RELEASE:-0}" = 1 ] && [ "$prov" = github-app ] && [ "$state" = in-progress ]; then
-                    hold="${hold}HOLD: CodeRabbit review is in progress at head $head of PR #$num (status $_CRG_CR_RAW) — the CI release waits for its verdict; it ends when the status settles or a stuck-review probe finds the cause."$'\n'
                 else
                     disp="relaxed(${detail:-$state})"
                     if [ "$prov" = github-app ]; then
@@ -599,15 +597,14 @@ _crg_eval() {
 #   always hold, including for an advisory app. No hard row is a config error,
 #   unless the config says "review": "no_code_review" (or CR_PROFILE=none):
 #   then GO with a NOTE and no gh call.
-#   --release (the CI release check, cr-first-release.sh) changes exactly two
-#   cells. A best-effort github-app row in state in-progress (CodeRabbit status
-#   pending) holds instead of relaxing. And a hard reviewer in state
-#   not-yet-run or unavailable is judge-go when a status-ok judge-go row
-#   (review-round.sh judge-go: past the round cap, a signed judge GO) stands at
-#   exactly <head> and names the PR's head branch; its NOTE names the judge.
-#   Open findings still hold, and CodeRabbit is untouched. The merge gate omits
-#   both (H11): a merge also needs green heavy CI at the head, and the carry row
-#   clear-review-marker.sh writes once that CI is green.
+#   --release (the CI release check, cr-first-release.sh) changes exactly one
+#   cell: a hard reviewer in state not-yet-run or unavailable is judge-go when a
+#   status-ok judge-go row (review-round.sh judge-go: past the round cap, a
+#   signed judge GO) stands at exactly <head> and names the PR's head branch;
+#   its NOTE names the judge. Open findings still hold, and CodeRabbit is
+#   untouched. The merge gate omits it (H11): a merge also needs green heavy CI
+#   at the head, and the carry row clear-review-marker.sh writes once that CI
+#   is green.
 #   One cell is the same in both modes: a hard reviewer in state not-yet-run or
 #   unavailable is dependabot-go when a status-ok dependabot-go row
 #   (scripts/cr/dependabot-go.sh) stands at exactly <head>, names the PR's head
