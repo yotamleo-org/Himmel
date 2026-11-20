@@ -1714,12 +1714,6 @@ env OSTYPE=linux-gnu PIPELINE_CRONTAB="$FAKE_CRONTAB" \
     PIPELINE_BAT_DIR="$FIRE_DIR" bash "$SCRIPT" disarm >/dev/null
 
 # Test C15f: the nightly feed pull, subject promotion and action apply ------------
-# Three steps that make no model call: the feed pull runs in the harvest runner
-# before the worker, the promotion and the action apply in the synthesize runner
-# after it (and on a night the worker is skipped). Each is bounded by a per-run
-# limit, prints exactly one `[nightly-...]` line, and never changes the runner's
-# rc. `node` is a recording stub, so no tool touches a real vault; the stub also
-# notes whether the vault's git index lock was held at the moment it ran.
 echo "TEST: nightly feeds, promote and actions steps: order, limits, one line each"
 NT_DIR="$TMP_ROOT/nt-rnr"
 NT_VAULT="$TMP_ROOT/nt-vault"
@@ -1764,7 +1758,6 @@ nt_fire() { # <worker> — fresh record, fresh alerts; the runner's rc lands in 
 nt_arm
 use_claude ok
 
-# Order and limits, harvest side.
 nt_fire harvest
 assert_rc "harvest: the feed pull leaves the runner's rc at 0" 0 "$rc"
 assert_contains "harvest: the feed pull gets the vault and the default cap of 2" "feeds lock=free --vault $NT_VAULT --cap 2" "$(cat "$NT_REC")"
@@ -1779,7 +1772,6 @@ fi
 assert_not_contains "harvest: no promotion in the harvest runner" "promote lock=" "$(cat "$NT_REC")"
 assert_not_contains "harvest: no action apply in the harvest runner" "actions lock=" "$(cat "$NT_REC")"
 
-# Order and limits, synthesize side.
 nt_fire synthesize
 assert_rc "synthesize: the steps leave the runner's rc at 0" 0 "$rc"
 assert_contains "synthesize: promotion applies with the default limit of 5 and no digest" "promote lock=held $NT_VAULT --apply --limit 5 --no-telegram-digest" "$(cat "$NT_REC")"
@@ -1798,13 +1790,11 @@ fi
 assert_rc "synthesize: the vault's git index lock is released after the steps" 0 "$([ -e "$NT_VAULT/.git/index.lock" ] && echo 1 || echo 0)"
 assert_rc "synthesize: a good night raises no alert" 0 "$(count_lines "$CADENCE_ALERT_FILE")"
 
-# Control characters in a tool's last line (feed text can reach it) never reach the log.
 NT_ESC=1 nt_fire harvest
 assert_contains "an escape sequence in the tool's line is stripped, its text kept" "[nightly-feeds] feeds-summary: [31mred[0m done" "$NT_LOG"
 assert_not_contains "no ESC byte reaches the log" "$(printf '\033')" "$NT_LOG"
 assert_not_contains "no CR byte reaches the log" "$(printf '\r')" "$NT_LOG"
 
-# The limits are arm flags, baked into the runner, and validated.
 nt_arm --feed-cap 4 --promote-limit 7 --actions-limit 9
 nt_fire harvest
 assert_contains "--feed-cap reaches the feed pull" "feeds lock=free --vault $NT_VAULT --cap 4" "$(cat "$NT_REC")"
@@ -1820,7 +1810,6 @@ for _flag in --feed-cap --promote-limit --actions-limit; do
 done
 nt_arm
 
-# A step whose tool is absent says so and the run goes on.
 mv "$NT_TOOLS/apply-clip-actions.mjs" "$NT_TOOLS/apply-clip-actions.away"
 nt_fire synthesize
 assert_rc "absent actions tool: the runner still exits 0" 0 "$rc"
@@ -1841,7 +1830,6 @@ assert_contains "absent feed tool: reported as skipped" "[nightly-feeds] skipped
 assert_contains "absent feed tool: the worker still ran" "claude-stub-ran" "$NT_LOG"
 mv "$NT_TOOLS/feed-clip.away" "$NT_TOOLS/feed-clip.mjs"
 
-# A failing step is reported, never fails the run and never blocks the next one.
 NT_RC_PROMOTE=3 nt_fire synthesize
 assert_rc "failing promotion: the runner still exits 0" 0 "$rc"
 assert_contains "failing promotion: reported with its rc and the tool's last line" "[nightly-promote] failed rc=3: promote-summary: 3 done" "$NT_LOG"
@@ -1860,7 +1848,6 @@ NT_RC_PROMOTE=3 nt_fire synthesize
 assert_rc "a parked worker beside a failing step still exits 3" 3 "$rc"
 use_claude ok
 
-# The free steps also run on a night the worker is skipped (no new input, bank at threshold).
 printf '#!/bin/sh\necho NONE\n' > "$TMP_ROOT/gate-none-stub.sh"
 printf '#!/bin/sh\necho SKIPPED-BANK\n' > "$TMP_ROOT/bank-skip-stub2.sh"
 chmod +x "$TMP_ROOT/gate-none-stub.sh" "$TMP_ROOT/bank-skip-stub2.sh"
@@ -1882,7 +1869,6 @@ sed "s#[^ ]*usage-preflight\\.sh#$TMP_ROOT/bank-skip-stub2.sh#" "$NT_DIR/pipelin
 assert_contains "bank at threshold: the feed pull still ran" "[nightly-feeds] feeds-summary: 3 done" "$(cat "$NT_DIR/pipeline-harvest.log")"
 rm -f "$NT_DIR"/pipeline-synthesize-none.sh "$NT_DIR"/pipeline-synthesize-bank.sh "$NT_DIR"/pipeline-harvest-bank.sh
 
-# The sync pause: the vault's index lock. A lock someone else holds is never taken or removed.
 : > "$NT_VAULT/.git/index.lock"
 nt_fire synthesize
 assert_rc "sync busy: the runner still exits 0" 0 "$rc"
@@ -1914,7 +1900,6 @@ printf 'himmel-nightly %s\n' "$$" > "$NT_VAULT/.git/index.lock"
 nt_fire synthesize
 assert_contains "own lock of a live pid: treated as busy" "[nightly-promote] skipped: vault sync busy" "$NT_LOG"
 rm -f "$NT_VAULT/.git/index.lock"
-# A vault that is not a git repo has no sync to pause; the steps run.
 nt_fire synthesize
 assert_contains "a git vault: held while the tools run" "promote lock=held" "$(cat "$NT_REC")"
 env OSTYPE=linux-gnu PIPELINE_CRONTAB="$FAKE_CRONTAB" PIPELINE_BAT_DIR="$TMP_ROOT/nt-rnr-nogit" \
@@ -1924,7 +1909,6 @@ env OSTYPE=linux-gnu PIPELINE_CRONTAB="$FAKE_CRONTAB" PIPELINE_BAT_DIR="$TMP_ROO
 assert_contains "no git repo: the promotion runs without a lock" "promote lock=free" "$(cat "$NT_REC")"
 assert_rc "no git repo: exits 0" 0 "$rc"
 
-# The runners carry the steps as text too, and the health runner none.
 assert_contains "synthesize runner names the promotion tool" "synthesize-stubs.mjs" "$(cat "$NT_DIR/pipeline-synthesize.sh")"
 assert_contains "harvest runner names the feed tool" "feed-clip.mjs" "$(cat "$NT_DIR/pipeline-harvest.sh")"
 assert_not_contains "health runner has no nightly step" "nightly" "$(cat "$NT_DIR/pipeline-health.sh")"

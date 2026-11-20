@@ -54,28 +54,19 @@ export function normalizeName(s) {
   return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
-// Words that end like a plural but are not one, or that must keep their form.
-const KEEP_FORM = new Set([
+const WORDS_KEPT_AS_THEY_ARE = new Set([
   "news", "series", "species", "lens", "bias", "canvas", "atlas", "chaos",
   "kubernetes", "aws", "ios", "macos", "css", "gps",
 ]);
 
-// The plurals of words that keep their form, which the general rule would cut wrong.
-const PLURAL_OF_KEPT = new Map([
+const SINGULAR_OF_KEPT_PLURAL = new Map([
   ["lenses", "lens"], ["biases", "bias"], ["canvases", "canvas"], ["atlases", "atlas"],
   ["statuses", "status"], ["buses", "bus"], ["analyses", "analysis"],
 ]);
 
-/**
- * Fold a regular English plural onto its singular so both forms make the same
- * key ("workflows" -> "workflow", "libraries" -> "library", "caches" and
- * "cache" -> "cach"). The result is a grouping key, never shown: it only has to
- * be the same for both forms. Irregular plurals are not handled, and words that
- * end like a plural (class, status, analysis) keep their form.
- */
-function foldWord(w) {
-  if (PLURAL_OF_KEPT.has(w)) return PLURAL_OF_KEPT.get(w);
-  if (w.length <= 3 || KEEP_FORM.has(w)) return w;
+function groupingStem(w) {
+  if (SINGULAR_OF_KEPT_PLURAL.has(w)) return SINGULAR_OF_KEPT_PLURAL.get(w);
+  if (w.length <= 3 || WORDS_KEPT_AS_THEY_ARE.has(w)) return w;
   if (/ss$|us$|[sx]is$/.test(w)) return w;
   if (/[^aeiou]ies$/.test(w)) return w.slice(0, -3) + "y";
   if (/(?:x|z|ch|sh|ss)es$/.test(w)) return w.slice(0, -2);
@@ -86,7 +77,7 @@ function foldWord(w) {
 /** Grouping key of a tag: only its last word is folded ("api-keys" -> "api-key"). */
 export function tagKey(tag) {
   const m = /^(.*[^a-z0-9])?([a-z0-9]+)$/.exec(String(tag).toLowerCase());
-  return m ? (m[1] || "") + foldWord(m[2]) : String(tag).toLowerCase();
+  return m ? (m[1] || "") + groupingStem(m[2]) : String(tag).toLowerCase();
 }
 
 /** Match key of a subject name: tagKey of the name, then normalizeName. */
@@ -135,6 +126,12 @@ export function targetForContributors(contributors) {
   return KIND_TARGET.concepts;
 }
 
+function mostUsedSpelling(clipCountBySpelling) {
+  const byCountThenLengthThenName = (a, b) =>
+    clipCountBySpelling.get(b) - clipCountBySpelling.get(a) || a.length - b.length || (a < b ? -1 : 1);
+  return [...clipCountBySpelling.keys()].sort(byCountThenLengthThenName)[0];
+}
+
 /**
  * Plan stub decisions over a clip set.
  *
@@ -148,8 +145,6 @@ export function planStubs(clips, matchExisting) {
   // Stable input order.
   const sorted = [...clips].sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
 
-  // tagKey -> { forms: tag -> clips carrying that spelling, group: clips }.
-  // Singular and plural spellings share one key, so they are one subject.
   const byKey = new Map();
   for (const clip of sorted) {
     const keysOfClip = new Set();
@@ -166,8 +161,7 @@ export function planStubs(clips, matchExisting) {
   for (const key of [...byKey.keys()].sort()) {
     const { forms, group } = byKey.get(key);
     if (group.length < 2) continue; // need >=2 raw clips even before dedup
-    // The spelling most clips use names the subject; a tie goes to the shorter, then the earlier.
-    const tag = [...forms.keys()].sort((a, b) => forms.get(b) - forms.get(a) || a.length - b.length || (a < b ? -1 : 1))[0];
+    const tag = mostUsedSpelling(forms);
 
     // (a) canonical-URL dedup — keep one representative per dedup key.
     const repByKey = new Map();

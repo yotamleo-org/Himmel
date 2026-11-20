@@ -141,8 +141,6 @@ SYNTH_GATE="$HIMMEL_ROOT/scripts/luna/synth-input-check.sh"
 # (clears the dedupe). Baked by absolute path at arm time like the libs above.
 CADENCE_ALERT="$HIMMEL_ROOT/scripts/luna/cadence-alert.sh"
 
-# The obsidian-triage tools the no-model nightly steps call, baked by absolute
-# path at arm time. A tool missing at FIRE time is a skipped step, not an error.
 TRIAGE_TOOLS="${PIPELINE_TRIAGE_TOOLS_DIR:-$HIMMEL_ROOT/marketplace/plugins/obsidian-triage/tools}"
 
 # The marker line a runner writes to its log when a gate refused the worker. The
@@ -198,9 +196,9 @@ HEALTH_TIME="04:00"
 HEALTH_DAY="SUN"
 # Per-run limits of the no-model nightly steps. Small on purpose: Obsidian hangs
 # on bulk file churn, so a backlog drains over nights instead of in one.
-FEED_CAP="2"          # new clips per feed per night
-PROMOTE_LIMIT="5"     # subject pages created or extended per night
-ACTIONS_LIMIT="5"     # daily-note actions applied per night
+FEED_CAP="2"
+PROMOTE_LIMIT="5"
+ACTIONS_LIMIT="5"
 # Human-readable cadence label for the summary blocks; recomputed by
 # validate_arm_inputs once --health-day is canonicalised.
 HEALTH_CADENCE_LABEL="weekly  SUN 04:00"
@@ -741,14 +739,6 @@ runner_path_snapshot() {
     printf '%q' "$full"
 }
 
-# The shell the harvest and synthesize runners share for their no-model nightly
-# steps, printed inside the runner's `{ ... } >> "$log"` group (four-space indent).
-# _nightly_step runs one node tool with its output captured and prints exactly one
-# `[label] ...` line: the tool's own last line, `failed rc=N: <last line>`, or
-# `skipped: tool not installed`. It always returns 0, so no step can fail the run
-# or stop the next one. The tool's per-item lines are dropped (the tools keep their
-# own ledgers) and control characters are stripped from the one that stays, since
-# feed text can reach it.
 # shellcheck disable=SC2016  # the runner's own $vars are emitted literally
 emit_nightly_step_helper() {
     cat <<'SH'
@@ -763,21 +753,10 @@ emit_nightly_step_helper() {
 SH
 }
 
-# The synthesize runner's two writing steps, as one function: take the vault's git
-# index lock, run the promotion then the action apply, release the lock. Holding
-# .git/index.lock is the pause: a git-based sync that tries to stage or commit
-# meanwhile fails that tick and commits the finished state on the next. The lock
-# is created exclusively and only this runner ever removes it, and only its own;
-# a lock that is not ours (a sync mid-commit) means both steps skip. Our lock
-# carries `himmel-nightly <pid>`: when that pid is gone the lock is left by a
-# runner that died, and no runner removes it (two runners could take it over at
-# once); both steps skip, naming the file, and an alert under its own key asks the
-# operator to delete it. A vault with no git repo has no sync to pause and the
-# steps run without a lock.
-# $1 q_vault, $2 q_promote_tool, $3 q_actions_tool, $4 q_alert_lib (all already
-# %q-quoted; $4 may be empty).
+# git refuses to stage or commit while .git/index.lock exists; holding it is how the writers pause a git-based sync.
 # shellcheck disable=SC2016  # the runner's own $vars are emitted literally
 emit_nightly_writers() {
+    local q_vault="$1" q_promote_tool="$2" q_actions_tool="$3" q_alert_lib="$4"
     cat <<'SH'
     _nightly_lock_take() {
         ( set -C; printf 'himmel-nightly %s\n' "$$" > "$1" ) 2>/dev/null && return 0
@@ -795,14 +774,14 @@ emit_nightly_writers() {
                 trap 'rm -f "$_nw_hold"' EXIT
                 trap 'exit 1' INT TERM
 SH
-    if [ -n "$4" ]; then printf '                %s clear pipeline-synthesize-index-lock || true\n' "$4"; fi
+    if [ -n "$q_alert_lib" ]; then printf '                %s clear pipeline-synthesize-index-lock || true\n' "$q_alert_lib"; fi
     cat <<'SH'
             else
                 _nw_why="vault sync busy (git index lock held)"
                 if [ -n "$_nl_stale" ]; then
                     _nw_why="vault sync busy (stale himmel-nightly lock of dead pid $_nl_stale, remove $_nw_hold)"
 SH
-    if [ -n "$4" ]; then printf '                    %s fail pipeline-synthesize-index-lock stale-lock "$log" || true\n' "$4"; fi
+    if [ -n "$q_alert_lib" ]; then printf '                    %s fail pipeline-synthesize-index-lock stale-lock "$log" || true\n' "$q_alert_lib"; fi
     cat <<'SH'
                 fi
                 echo "[nightly-promote] skipped: $_nw_why"
@@ -811,8 +790,8 @@ SH
             fi
         fi
 SH
-    printf '        _nightly_step nightly-promote %s %s --apply --limit %s --no-telegram-digest\n' "$2" "$1" "$PROMOTE_LIMIT"
-    printf '        _nightly_step nightly-actions %s --vault %s --apply --limit %s\n' "$3" "$1" "$ACTIONS_LIMIT"
+    printf '        _nightly_step nightly-promote %s %s --apply --limit %s --no-telegram-digest\n' "$q_promote_tool" "$q_vault" "$PROMOTE_LIMIT"
+    printf '        _nightly_step nightly-actions %s --vault %s --apply --limit %s\n' "$q_actions_tool" "$q_vault" "$ACTIONS_LIMIT"
     cat <<'SH'
         if [ "$_nw_held" = 1 ]; then rm -f "$_nw_hold"; trap - EXIT INT TERM; fi
         return 0
@@ -860,8 +839,6 @@ emit_runner() {
     else
         printf '    cd %s || exit 1\n' "$q_vault"
     fi
-    # The no-model nightly steps. They sit BEFORE the gates: the gates guard model
-    # spend and these make no model call, so they run on a skipped night too.
     if [ "$flow" = pipeline-harvest ] || [ "$flow" = pipeline-synthesize ]; then
         emit_nightly_step_helper
     fi
@@ -954,8 +931,6 @@ emit_runner() {
     if [ -n "$q_gate_lib" ]; then
         printf '    { [ "$_flow_outcome" = complete ] && %s --stamp .; } || true\n' "$q_gate_lib"
     fi
-    # The promotion and the action apply come after the worker and before the
-    # day-note refresh below, so that refresh counts what they just wrote.
     if [ "$flow" = pipeline-synthesize ]; then printf '    _nightly_writers\n'; fi
     # Refresh the day note's `## Clip pipeline` + `## Daily report`
     # sections after the worker. Must-not-abort: it runs after _rc / _flow_outcome
@@ -1145,7 +1120,6 @@ cmd_arm() {
     q_gate_lib=$(printf '%q' "$SYNTH_GATE")
     q_alert_lib=$(printf '%q' "$CADENCE_ALERT")
     q_timeline=$(printf '%q' "$HIMMEL_ROOT/marketplace/plugins/obsidian-triage/tools/daily-timeline.mjs")
-    # Globals, read by emit_runner for the harvest and synthesize runners.
     NIGHTLY_FEED_TOOL=$(printf '%q' "$TRIAGE_TOOLS/feed-clip.mjs")
     NIGHTLY_PROMOTE_TOOL=$(printf '%q' "$TRIAGE_TOOLS/synthesize-stubs.mjs")
     NIGHTLY_ACTIONS_TOOL=$(printf '%q' "$TRIAGE_TOOLS/apply-clip-actions.mjs")

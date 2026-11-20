@@ -236,10 +236,6 @@ nstamp_after="$(grep -lF 'promoted_to:' "$EV4"/lf-*.md 2>/dev/null | wc -l | tr 
 assert "no stranded stamp after revert (all 4 cleared)" "0" "$nstamp_after"
 
 # ── 5. Singular and plural tag forms are ONE subject ──────────────────────────
-# Dry runs of the nightly promotion showed `Workflow` and `Workflows` as two
-# pages. Fixture: `workflow` x2 and `workflows` x2 (distinct authors each) must
-# make exactly one page that lists all four, with one ledger entry. Protected
-# words keep their form, and different words stay different subjects.
 echo "Test group 5: singular and plural are one subject"
 tmp5="$(mktemp -d -t synth5.XXXXXX)" || exit 1
 trap 'rm -rf "$tmp" "$tmp4" "$tmp5"' EXIT
@@ -269,17 +265,13 @@ mkclip5 "$EV5" wf-a.md "Ann Author"  "https://aa.com/wf"   "workflow"
 mkclip5 "$EV5" wf-b.md "Ben Author"  "https://bb.com/wf"   "workflow"
 mkclip5 "$EV5" wf-c.md "Cy Author"   "https://cc.com/wf"   "workflows"
 mkclip5 "$EV5" wf-d.md "Di Author"   "https://dd.com/wf"   "workflows"
-# One clip per form, different authors and domains: converges only if folded.
 mkclip5 "$EV5" ag-a.md "Eli Author"  "https://ee.com/ag"   "agent"
 mkclip5 "$EV5" ag-b.md "Flo Author"  "https://ff.com/ag"   "agents"
 mkclip5 "$EV5" ag-c.md "Gus Author"  "https://gg.com/ag"   "agents"
-# Different words stay different subjects.
 mkclip5 "$EV5" wl-a.md "Hal Author"  "https://hh.com/wl"   "workload"
 mkclip5 "$EV5" wl-b.md "Ian Author"  "https://ii.com/wl"   "workload"
-# Words that only look plural keep their form.
 mkclip5 "$EV5" an-a.md "Jo Author"   "https://jj.com/an"   "analysis"
 mkclip5 "$EV5" an-b.md "Kim Author"  "https://kk.com/an"   "analysis"
-# A word that keeps its form still meets its plural.
 mkclip5 "$EV5" bi-a.md "Pat Author"  "https://pp.com/bi"   "bias"
 mkclip5 "$EV5" bi-b.md "Quin Author" "https://qq.com/bi"   "biases"
 mkclip5 "$EV5" bi-c.md "Rae Author"  "https://rr.com/bi"   "biases"
@@ -287,7 +279,6 @@ mkclip5 "$EV5" ln-a.md "Sal Author"  "https://ss.com/ln"   "lens"
 mkclip5 "$EV5" ln-b.md "Tom Author"  "https://tt.com/ln"   "lenses"
 mkclip5 "$EV5" st-a.md "Uma Author"  "https://uu.com/st"   "status"
 mkclip5 "$EV5" st-b.md "Val Author"  "https://vv.com/st"   "statuses"
-# -ies / -y fold together.
 mkclip5 "$EV5" lb-a.md "Lee Author"  "https://ll.com/lb"   "dependency"
 mkclip5 "$EV5" lb-b.md "Max Author"  "https://mm.com/lb"   "dependencies"
 
@@ -312,7 +303,6 @@ assert "lens + lenses: one page, the shorter on a tie" "Lens.md" "$(pages_like "
 assert "status + statuses: one page, the shorter on a tie" "Status.md" "$(pages_like "$C5" Status)"
 assert "eight subjects in all" "8" "$(find "$C5" -type f -name '*.md' | wc -l | tr -d ' ')"
 
-# An existing page in either form is densified, never joined by a second page.
 tmp5b="$(mktemp -d -t synth5b.XXXXXX)" || exit 1
 trap 'rm -rf "$tmp" "$tmp4" "$tmp5" "$tmp5b"' EXIT
 EV5B="$tmp5b/Clippings/_evidence"
