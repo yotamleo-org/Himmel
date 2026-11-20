@@ -16,8 +16,8 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 WAKE_FILE="${XDG_RUNTIME_DIR:-/tmp}/himmel-t3/cochief.wake"
 MAX=12600
-POLL="${T3_KEEPALIVE_POLL:-20}"
-EVERY="${T3_KEEPALIVE_CHECK_EVERY:-15}"
+POLL="${T3_KEEPALIVE_POLL-20}"
+EVERY="${T3_KEEPALIVE_CHECK_EVERY-15}"
 die() { echo "keepalive: $2" >&2; exit "$1"; }
 utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
@@ -28,7 +28,10 @@ while [ $# -gt 0 ]; do
         *) die 2 "usage: keepalive.sh [--wake-file <path>] [--max-seconds N] (got '$1')" ;;
     esac
 done
-case "$MAX$POLL$EVERY" in *[!0-9]*|"") die 2 "--max-seconds, T3_KEEPALIVE_POLL and T3_KEEPALIVE_CHECK_EVERY must be whole numbers" ;; esac
+for v in "$MAX" "$POLL" "$EVERY"; do
+    case "$v" in ""|*[!0-9]*) die 2 "--max-seconds, T3_KEEPALIVE_POLL and T3_KEEPALIVE_CHECK_EVERY must be whole numbers" ;; esac
+done
+POLL=$((10#$POLL)); EVERY=$((10#$EVERY)); MAX=$((10#$MAX))
 { [ "$POLL" -gt 0 ] && [ "$EVERY" -gt 0 ]; } || die 2 "poll and check-every must be above 0"
 mkdir -p "$(dirname "$WAKE_FILE")" || die 2 "cannot create the wake file directory"
 

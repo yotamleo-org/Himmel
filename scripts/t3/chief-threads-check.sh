@@ -8,7 +8,7 @@
 # (default 24) ago. Prints "SETTLED <id> <title> <settledAt>" per remaining one; a suffix-only
 # match is marked "(report only: ...)". With --wake, only threads listed in
 # HIMMEL_T3_CHIEF_TITLES are sent a wake message through t3-send.sh (send rc printed).
-# rc 0 nothing to report; rc 1 something reported; rc 2 usage / list failure.
+# rc 0 nothing to report; rc 1 something reported; rc 2 usage / list or filter failure.
 # Env seams: T3_SEND_BIN, T3_SEND_PROJECT (as t3-send.sh), HIMMEL_T3_CHIEF_TITLES,
 # T3_CHIEF_CHECK_WINDOW_HOURS.
 # Platform: POSIX bash 3.2+, jq.
@@ -42,7 +42,7 @@ ROWS="$(printf '%s' "$LIST" | jq -r --arg extra "$TITLES" --argjson hours "$HOUR
     | (.title // "") as $t | ($t | gsub("^\\s+|\\s+$"; "")) as $tt
     | ($names | index($tt) != null) as $listed
     | select($listed or ($tt | ascii_downcase | test("-(chief|console)$")))
-    | [.threadId, $t, .settledAt, (if $listed then "1" else "0" end)] | @tsv')"
+    | [.threadId, $t, .settledAt, (if $listed then "1" else "0" end)] | @tsv')" || die 2 "could not filter the thread list (bad settledAt or thread entry)"
 
 [ -n "$ROWS" ] || exit 0
 MSG="A chief-role thread was settled (T3 closed its process). You are woken by chief-threads-check; resume your role and tell your chief you are back."

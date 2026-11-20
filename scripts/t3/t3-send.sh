@@ -5,7 +5,7 @@
 # The title must match one thread exactly (after trimming). Sends with
 # `t3 thread send <id> -`, which starts a turn (queued if busy) and unsettles the thread.
 # rc 0 sent (prints "sent <id> (<title>)"); rc 1 the t3 CLI failed (its stderr passes
-# through); rc 2 usage / unreadable msg file; rc 3 title matches more than one thread
+# through); rc 2 usage / unreadable msg file (not a regular file, or stdin cannot be read); rc 3 title matches more than one thread
 # (every match is printed, nothing sent); rc 4 no thread has that title.
 # Env seams: T3_SEND_BIN (default $HOME/.t3/bin/t3 - the running server's CLI; the one on
 # ~/.local/bin points at a different instance), T3_SEND_PROJECT (default: this repo's root).
@@ -20,14 +20,14 @@ die() { echo "t3-send: $2" >&2; exit "$1"; }
 KEY="$(printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
 MSG="$2"
 [ -n "$KEY" ] || die 2 "empty thread title"
-if [ "$MSG" != "-" ] && [ ! -r "$MSG" ]; then die 2 "msg-file not readable: $MSG"; fi
+if [ "$MSG" != "-" ] && { [ ! -f "$MSG" ] || [ ! -r "$MSG" ]; }; then die 2 "msg-file not readable: $MSG"; fi
 command -v jq >/dev/null 2>&1 || die 2 "jq is required"
 
 # shellcheck source=../lib/prim.sh
 . "$HERE/../lib/prim.sh" || die 2 "cannot load scripts/lib/prim.sh"
 TMP="$(tmpdir)" || die 1 "mktemp failed"
 trap 'rm -rf "$TMP"' EXIT
-if [ "$MSG" = "-" ]; then cat > "$TMP/msg"; else cp "$MSG" "$TMP/msg"; fi
+if [ "$MSG" = "-" ]; then cat > "$TMP/msg" || die 2 "cannot read the message"; else cp "$MSG" "$TMP/msg" || die 2 "cannot read the message"; fi
 
 "$BIN" thread list --json --project "$PROJECT" > "$TMP/list" 2> "$TMP/err" \
     || { cat "$TMP/err" >&2; die 1 "thread list failed"; }

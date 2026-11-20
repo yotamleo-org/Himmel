@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # scripts/t3/test-keepalive.sh - fixture suite for keepalive.sh.
 set -u
+unset T3_KEEPALIVE_CHECK_EVERY HIMMEL_T3_CHIEF_TITLES
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 KA="$HERE/keepalive.sh"
 T="$(mktemp -d "${TMPDIR:-/tmp}/t3ka-test.XXXXXX")" || exit 1
@@ -44,10 +45,19 @@ T3_KEEPALIVE_CHECK_EVERY=2 bash "$KA" --wake-file "$T/never.wake" --max-seconds 
 expect_in "periodic check prints findings" "^SETTLED t1 Manage T3 Code Sync " "$T/out"
 expect_in "periodic check wakes the settled thread" "^thread send t1 -$" "$T/log"
 
+W3="$T/oct.wake"
+( sleep 2; printf 'octal ok\n' > "$W3" ) &
+T3_KEEPALIVE_CHECK_EVERY=08 bash "$KA" --wake-file "$W3" --max-seconds 20 >"$T/out" 2>&1; rc=$?
+wait
+expect_eq "leading-zero check-every exits 0" "$rc" 0
+expect_in "leading-zero check-every prints WOKEN" "^WOKEN 20" "$T/out"
+
 bash "$KA" --bogus >"$T/out" 2>&1; rc=$?
 expect_eq "bad flag exits 2" "$rc" 2
 bash "$KA" --max-seconds x >"$T/out" 2>&1; rc=$?
 expect_eq "non-numeric max exits 2" "$rc" 2
+env T3_KEEPALIVE_POLL='' bash "$KA" --wake-file "$T/never.wake" --max-seconds 2 >"$T/out" 2>&1; rc=$?
+expect_eq "empty poll exits 2" "$rc" 2
 
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" = 0 ]

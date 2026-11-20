@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # scripts/t3/test-chief-threads-check.sh - fixture suite for chief-threads-check.sh.
 set -u
+unset HIMMEL_T3_CHIEF_TITLES T3_CHIEF_CHECK_WINDOW_HOURS
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 CHK="$HERE/chief-threads-check.sh"
 T="$(mktemp -d "${TMPDIR:-/tmp}/t3chk-test.XXXXXX")" || exit 1
@@ -75,6 +76,11 @@ expect_in "suffix-only match still reported under --wake" "^SETTLED t4 bar-conso
 
 expect_rc "bad flag exits 2" 2 bash "$CHK" --bogus
 expect_rc "non-numeric window exits 2" 2 env T3_CHIEF_CHECK_WINDOW_HOURS=x bash "$CHK"
+
+cat > "$T/badts.json" <<JSON
+[{"threadId":"t7","title":"bad-chief","status":"idle","settled":true,"settledAt":"not-a-date"}]
+JSON
+expect_rc "unparseable settledAt exits 2" 2 env STUB_LIST="$T/badts.json" bash "$CHK"
 
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" = 0 ]

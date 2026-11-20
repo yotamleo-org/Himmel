@@ -50,6 +50,11 @@ expect_in "missing title says so" "no thread titled 'no such'" "$T/err"
 expect_rc "unreadable msg file exits 2" 2 bash "$SEND" id-a "$T/nope"
 expect_rc "no args exits 2" 2 bash "$SEND"
 
+mkdir "$T/msgdir"
+: > "$T/log"
+expect_rc "msg-file that is a directory exits 2" 2 bash "$SEND" id-a "$T/msgdir"
+expect_eq "directory msg-file sends nothing" "$(cat "$T/log")" ""
+
 printf 'from stdin\n' | bash "$SEND" id-a - >"$T/out" 2>&1; rc=$?
 expect_eq "stdin dash exits 0" "$rc" 0
 expect_eq "stdin body forwarded" "$(cat "$T/stdin")" "from stdin"
