@@ -158,6 +158,11 @@
       "sender": "scripts/cleanup/steering-cull-cadence.sh"
     },
     {
+      "kind": "cadence:clip-relevance",
+      "class": "monitor",
+      "sender": "scripts/luna/clip-relevance-cadence.sh"
+    },
+    {
       "kind": "cadence:cache-health",
       "class": "monitor",
       "sender": "scripts/eval/cache-health-cadence.sh"
