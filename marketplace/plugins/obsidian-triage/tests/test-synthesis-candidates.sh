@@ -140,7 +140,8 @@ printf -- '---\ntype: synthesis\n---\n## Evidence (3 clips, 3 unique URLs)\n\n- 
 diverse recskip 3 rec-recent 0
 diverse recold 3 rec-old 0
 diverse recgrown 4 rec-grown 0
-printf '2026-11-17\tconcept-rec-recent\t3\n2026-10-25\tconcept-rec-old\t3\n2026-11-17\tconcept-rec-grown\t3\nnot a record\n' \
+diverse recsame 4 rec-same 0
+printf '2026-11-17\tconcept-rec-recent\t3\n2026-10-25\tconcept-rec-old\t3\n2026-11-17\tconcept-rec-grown\t3\n2026-11-17\tconcept-rec-same\t3\n2026-11-17\tconcept-rec-same\t4\nnot a record\n' \
     > "$V/Clippings/_synthesis/.substance-skips.tsv"
 
 # ── G10/G11/G12: folder pressure ────────────────────────────────────────────
@@ -265,6 +266,7 @@ assert "failed 3 days ago, same evidence: skipped" "substance-floor-recorded" "$
 assert "…as a dedup skip" "dedup" "$(field concept-rec-recent category)"
 assert "failed 26 days ago: offered again" "pass" "$(field concept-rec-old status)"
 assert "failed 3 days ago, evidence since grew: offered again" "pass" "$(field concept-rec-grown status)"
+assert "two records the same day: the later one wins" "substance-floor-recorded" "$(field concept-rec-same reason)"
 
 echo "Test 5b: evidence cap"
 assert "group of 45 reports its full size" "45" "$(field concept-big-topic clipCount)"

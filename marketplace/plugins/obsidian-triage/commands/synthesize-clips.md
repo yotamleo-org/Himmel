@@ -52,7 +52,7 @@ Add `--format json` when you need a candidate's `evidence` list (the clips to re
 
 Then work the PASS lines in rank order (ranks interleave the four kinds, so a cap cannot be spent on one lens). For each: read its evidence clips, apply the substantive-content gate, then write the page or emit the substance-floor line. Stop writing at **`PAGE_CAP` = 10 pages**, and stop examining at **3 × `PAGE_CAP` = 30 candidates** (written plus substance-skipped); every PASS candidate left unexamined gets its own run-cap line. The `supersedes=` value, when present, goes into the page's `supersedes:` frontmatter (see Idempotency).
 
-Record every substance-floor skip so it does not use the examination budget again tomorrow: unless `DRY_RUN=1`, append one line to `<vault>/Clippings/_synthesis/.substance-skips.tsv` — `printf '%s\t%s\t%s\n' "$TODAY" '<slug>' <evidence=N from the PASS line> >> '<vault>/Clippings/_synthesis/.substance-skips.tsv'`. The tool then lists that candidate as `skipped (dedup): substance-floor-recorded` for 14 days, unless its evidence has grown past `N`.
+Record every substance-floor skip so it does not use the examination budget again tomorrow: unless `DRY_RUN=1`, create `<vault>/Clippings/_synthesis/` if it is missing (`mkdir -p`) and append one line to `<vault>/Clippings/_synthesis/.substance-skips.tsv` — `printf '%s\t%s\t%s\n' "$TODAY" '<slug>' <evidence=N from the PASS line> >> '<vault>/Clippings/_synthesis/.substance-skips.tsv'`. The newest line for a slug wins (a later line the same day replaces an earlier one). The tool then lists that candidate as `skipped (dedup): substance-floor-recorded` for 14 days, unless its evidence has grown past `N`.
 
 ### G-8 — Harvest-completion gate (no stage runs on a dead harvest) — enforced by Step 1
 

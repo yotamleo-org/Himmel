@@ -251,7 +251,7 @@ function substanceSkips(vault) {
     const [date, slug, n] = stripCR(line).split("\t");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "") || !slug || !/^\d+$/.test(n || "")) continue;
     const prev = bySlug.get(slug);
-    if (!prev || date > prev.date) bySlug.set(slug, { date, evidence: Number(n) });
+    if (!prev || date >= prev.date) bySlug.set(slug, { date, evidence: Number(n) });
   }
   return bySlug;
 }
