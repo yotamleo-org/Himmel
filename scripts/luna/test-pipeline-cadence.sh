@@ -1713,7 +1713,6 @@ assert_not_contains "status resolves a real mtime (no '?' fallback)" "last write
 env OSTYPE=linux-gnu PIPELINE_CRONTAB="$FAKE_CRONTAB" \
     PIPELINE_BAT_DIR="$FIRE_DIR" bash "$SCRIPT" disarm >/dev/null
 
-# Test C15f: the nightly feed pull, subject promotion and action apply ------------
 echo "TEST: nightly feeds, promote and actions steps: order, limits, one line each"
 NT_DIR="$TMP_ROOT/nt-rnr"
 NT_VAULT="$TMP_ROOT/nt-vault"
@@ -1751,7 +1750,7 @@ nt_arm() {
 }
 nt_count() { grep -cF -- "$2" "$1" || true; }
 nt_line() { { grep -nF -m1 -- "$2" "$1" || true; } | cut -d: -f1; }
-nt_fire() { # <worker> — fresh record, fresh alerts; the runner's rc lands in $rc
+nt_fire() {
     : > "$NT_REC"; reset_alerts; rc=0; sh "$NT_DIR/pipeline-$1.sh" || rc=$?
     NT_LOG=$(cat "$NT_DIR/pipeline-$1.log" 2>/dev/null || echo MISSING)
 }

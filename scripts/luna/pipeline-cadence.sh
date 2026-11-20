@@ -194,8 +194,6 @@ HEALTH_TIME="04:00"
 # again; `--health-day daily` restores the every-night shape for an operator who
 # genuinely wants it, so this is a default change, not a capability removal.
 HEALTH_DAY="SUN"
-# Per-run limits of the no-model nightly steps. Small on purpose: Obsidian hangs
-# on bulk file churn, so a backlog drains over nights instead of in one.
 FEED_CAP="2"
 PROMOTE_LIMIT="5"
 ACTIONS_LIMIT="5"
@@ -739,7 +737,6 @@ runner_path_snapshot() {
     printf '%q' "$full"
 }
 
-# shellcheck disable=SC2016  # the runner's own $vars are emitted literally
 emit_nightly_step_helper() {
     cat <<'SH'
     _nightly_step() {

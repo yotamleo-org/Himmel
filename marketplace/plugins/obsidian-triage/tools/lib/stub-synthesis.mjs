@@ -74,13 +74,11 @@ function groupingStem(w) {
   return bare.replace(/(ch|sh|x|z)e$/, "$1").replace(/ie$/, "y");
 }
 
-/** Grouping key of a tag: only its last word is folded ("api-keys" -> "api-key"). */
 export function tagKey(tag) {
   const m = /^(.*[^a-z0-9])?([a-z0-9]+)$/.exec(String(tag).toLowerCase());
   return m ? (m[1] || "") + groupingStem(m[2]) : String(tag).toLowerCase();
 }
 
-/** Match key of a subject name: tagKey of the name, then normalizeName. */
 export function subjectKey(name) {
   return normalizeName(tagKey(String(name).trim()));
 }

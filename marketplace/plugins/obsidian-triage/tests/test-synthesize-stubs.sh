@@ -235,30 +235,30 @@ node "$TOOL" "$tmp4" --revert "$LEDGER4" >/dev/null 2>&1
 nstamp_after="$(grep -lF 'promoted_to:' "$EV4"/lf-*.md 2>/dev/null | wc -l | tr -d ' ')"
 assert "no stranded stamp after revert (all 4 cleared)" "0" "$nstamp_after"
 
-# ── 5. Singular and plural tag forms are ONE subject ──────────────────────────
 echo "Test group 5: singular and plural are one subject"
 tmp5="$(mktemp -d -t synth5.XXXXXX)" || exit 1
 trap 'rm -rf "$tmp" "$tmp4" "$tmp5"' EXIT
 EV5="$tmp5/Clippings/_evidence"
 mkdir -p "$EV5" "$tmp5/30-Resources/Concepts"
-pages_like() { # $1=dir $2=name prefix: the .md files starting with it, space-separated
-  local f out=""
-  for f in "$1"/"$2"*.md; do [ -e "$f" ] && out="$out${out:+ }$(basename "$f")"; done
+pages_like() {
+  local dir="$1" prefix="$2" f out=""
+  for f in "$dir"/"$prefix"*.md; do [ -e "$f" ] && out="$out${out:+ }$(basename "$f")"; done
   printf '%s' "$out"
 }
-mkclip5() { # $1=dir $2=file $3=author $4=url $5=tag
-  cat > "$1/$2" <<EOF
+mkclip5() {
+  local dir="$1" file="$2" author="$3" url="$4" tag="$5"
+  cat > "$dir/$file" <<EOF
 ---
 type: article
-source: "$4"
-author: $3
+source: "$url"
+author: $author
 processed: true
 evidence_kind:
   - concepts
 tags:
-  - $5
+  - $tag
 ---
-clip $2
+clip $file
 EOF
 }
 mkclip5 "$EV5" wf-a.md "Ann Author"  "https://aa.com/wf"   "workflow"
@@ -314,8 +314,6 @@ node "$TOOL" "$tmp5b" --apply >/dev/null 2>&1
 assert "tag workflow densifies the existing Workflows page" "2" "$(grep -c '^- \[\[Clippings/_evidence/e-' "$tmp5b/30-Resources/Concepts/Workflows.md" 2>/dev/null || echo 0)"
 assert "tag workflow adds no second page beside Workflows" "1" "$(find "$tmp5b/30-Resources/Concepts" -type f -name '*.md' | wc -l | tr -d ' ')"
 
-# ── 6. A per-run limit bounds the pages one apply writes ───────────────────────
-# The nightly run applies with a small limit (Obsidian hangs on bulk file churn).
 echo "Test group 6: --limit bounds one apply"
 tmp6="$(mktemp -d -t synth6.XXXXXX)" || exit 1
 trap 'rm -rf "$tmp" "$tmp4" "$tmp5" "$tmp5b" "$tmp6"' EXIT
