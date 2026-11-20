@@ -55,7 +55,7 @@ vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { projectKey, request } from '../client.js';
 import { admissionBudget } from '../release/leaks.js';
-import { ctxFor, JUDGE_API_PASS_ENV, JUDGE_CACHE, JUDGE_SELECTION_NOTE, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePreflight, judgePrompt, judgeSkill, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, liveJudgeArgs, liveJudgeEnv, makeRoutedJudge, parseDecisions, recordJudgeLaunch, refuseRequest, registerRelease, renderState, routedJudge } from './release.js';
+import { ctxFor, JUDGE_API_BUDGET_USD, JUDGE_API_PASS_ENV, JUDGE_CACHE, JUDGE_SELECTION_NOTE, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePreflight, judgePrompt, judgeSkill, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, liveJudgeArgs, liveJudgeEnv, makeRoutedJudge, parseDecisions, recordJudgeLaunch, refuseRequest, registerRelease, renderState, routedJudge, routedJudgeArgs } from './release.js';
 import type { Judge, JudgeInput } from '../release/engine.js';
 import { defaultRoot } from './mirror.js';
 import { appendChain, loadKey, readChain } from '../release/ledger.js';
@@ -1084,6 +1084,17 @@ describe('routedJudge', () => {
 
   it('the outer spawn timeout outlasts the launcher call timeout plus its five-second kill grace', () => {
     expect(JUDGE_SPAWN_TIMEOUT_MS).toBeGreaterThan((JUDGE_TIMEOUT_S + 5) * 1000);
+  });
+
+  it('the launcher arguments come from one exported list that takes the per-call budget', () => {
+    const args = routedJudgeArgs();
+    expect(args.slice(0, 7)).toEqual(['-p', '--model', 'opus', '--effort', 'high', '--permission-mode', 'dontAsk']);
+    expect(args[args.indexOf('--max-budget-usd') + 1]).toBe(String(JUDGE_API_BUDGET_USD));
+    expect(args.slice(-2)).toEqual(['--output-format', 'json']);
+    expect(routedJudgeArgs(3)[routedJudgeArgs(3).indexOf('--max-budget-usd') + 1]).toBe('3');
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'release.ts'), 'utf8');
+    expect(src.split("'--max-budget-usd'")).toHaveLength(2);
+    expect(src.split('routedJudgeArgs(')).toHaveLength(3);
   });
 
   it('unmapped: the fallback answers and the fake claude never runs', async () => {

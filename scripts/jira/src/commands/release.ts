@@ -555,6 +555,10 @@ export function judgeApiEnv(processEnv: NodeJS.ProcessEnv, repoDir: string = aut
   };
 }
 
+export function routedJudgeArgs(budgetUsd: number = JUDGE_API_BUDGET_USD): string[] {
+  return ['-p', '--model', 'opus', '--effort', 'high', '--permission-mode', JUDGE_PERMISSION_MODE, '--max-budget-usd', String(budgetUsd), '--output-format', 'json'];
+}
+
 const SIGNALLED_EXIT = new Set([128 + 1, 128 + 2, 128 + 15]);
 
 function launcherStopped(e: unknown): boolean {
@@ -578,9 +582,8 @@ export function makeRoutedJudge(fallback: Judge = liveJudge, callTimeoutS: numbe
     try {
       let out: string;
       try {
-        out = await judgeCall('bash', [join(repoRoot, 'scripts', 'api-lane', 'claude-api.sh'),
-          '-p', '--model', 'opus', '--effort', 'high', '--permission-mode', JUDGE_PERMISSION_MODE, '--max-budget-usd', String(JUDGE_API_BUDGET_USD), '--output-format', 'json',
-        ], { input: judgePrompt(input, skill), cwd, env, timeoutMs: spawnTimeoutMs, signal: opts?.signal });
+        out = await judgeCall('bash', [join(repoRoot, 'scripts', 'api-lane', 'claude-api.sh'), ...routedJudgeArgs()],
+          { input: judgePrompt(input, skill), cwd, env, timeoutMs: spawnTimeoutMs, signal: opts?.signal });
       } catch (e) {
         if (opts?.signal?.aborted || launcherStopped(e)) throw e;
         return fallback(input, opts);
