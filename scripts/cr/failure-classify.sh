@@ -184,6 +184,10 @@ _FC_SIGNAL_SIG="$_FC_QUOTA_SIG|past 5 hours|hit your usage limit|purchase more c
 
 first_signal_line() {
     [ -n "${1:-}" ] && [ -f "$1" ] || return 0
+    if grep -q '^critic-first-pass.sh: claude critic BROKE (' "$1" 2>/dev/null; then
+        grep '^critic-first-pass.sh: claude critic BROKE (' "$1" | sed -n 1p | cut -c1-300
+        return 0
+    fi
     grep -iE "$_FC_SIGNAL_SIG" "$1" 2>/dev/null | grep -vF 'Raw output:' | sed -n 1p | cut -c1-300
     return 0
 }
