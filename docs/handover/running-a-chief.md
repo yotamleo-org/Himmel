@@ -1193,6 +1193,42 @@ bash scripts/handover/chief-kit/vm-runner.sh status
 - A classifier denial of one of these commands means the allow rule is missing
   or mismatched; see the stuck playbook, never reshape the command.
 
+## Chief threads in T3 Code
+
+T3 Code closes a thread's claude process 30 minutes after its last turn ended,
+unless the thread has background work running (a background Bash or Monitor, a
+scheduled wakeup, a running subagent). That hold lasts at most 4 hours; a new
+turn resets it. **Settling a thread closes its process at once**, and T3 settles
+its subagent children too.
+
+- **Never settle or organize a chief-role thread.** A chief-role thread is one
+  whose title ends in `-chief` or `-console`, plus the titles in
+  `HIMMEL_T3_CHIEF_TITLES` (newline-separated; default `Manage T3 Code Sync`).
+  This binds the operator's own T3 UI as well. A released or settled thread is
+  not lost: it is woken from outside (below).
+- **The co-chief arms keepalive.** As its one background task
+  (`run_in_background`) it runs `bash scripts/t3/keepalive.sh`. That keeps its
+  session pinned so it stays on the bus. It ends (exit 0) when the wake file
+  `${XDG_RUNTIME_DIR:-/tmp}/himmel-t3/cochief.wake` appears (`WOKEN`, with the
+  file's contents) or after 3.5 hours (`KEEPALIVE-EXPIRED`). Either way the
+  co-chief gets a turn and re-arms it. `--wake-file` and `--max-seconds`
+  override the defaults.
+- **A chief wakes a released thread** with
+  `bash scripts/t3/t3-send.sh <title|threadId> <msg-file>` (`-` reads stdin). It
+  starts a turn with full context, queued if the thread is busy, and unsettles
+  the thread. A title must match one thread exactly: several matches (rc 3) are
+  listed and nothing is sent; none is rc 4.
+- **A check finds settled chief-role threads.**
+  `bash scripts/t3/chief-threads-check.sh` prints
+  `SETTLED <id> <title> <settledAt>` for each and exits 1 when there is any.
+  It skips imported sessions (ids starting `import:`) and threads settled more
+  than `T3_CHIEF_CHECK_WINDOW_HOURS` (default 24) ago. With `--wake` it sends a
+  wake message through `t3-send.sh` only to threads whose title is in
+  `HIMMEL_T3_CHIEF_TITLES`; a thread that matches only the `-chief` or
+  `-console` suffix is reported, marked `(report only: not in
+  HIMMEL_T3_CHIEF_TITLES)`, and never woken.
+  `keepalive.sh` runs it with `--wake` every 15 polls (about 5 minutes).
+
 ## See also
 
 - [`chief-template.md`](chief-template.md): the chief's operating contract
