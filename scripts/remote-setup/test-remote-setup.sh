@@ -251,7 +251,7 @@ case_usage_rows_every_subcommand() {
 }
 
 # Subcommands whose rows are live. A later task adds its subcommand here when it builds it.
-BUILT_SUBS=""
+BUILT_SUBS="status"
 
 case_contract_rows_every_subcommand() {
     local sub row
@@ -264,7 +264,36 @@ case_contract_rows_every_subcommand() {
         done
     done
 }
-contract_row() { :; }
+# One contract row: a subcommand under one situation. run_sut itself checks the contract; a
+# situation that cannot happen for a subcommand (status never calls Telegram) is a skip.
+contract_row() {
+    local sub=$1 row=$2
+    rm -f "$T/himmelctl.fail" "$T/items.json" "$T/items.omit"
+    case "$sub:$row" in
+        status:success)
+            all_green
+            run_sut --no-tty "$T/in" status
+            check "status success ends in DONE" starts "$LAST" "DONE:"
+            ;;
+        status:network_failure)
+            echo 7 > "$T/himmelctl.fail"
+            run_sut --no-tty "$T/in" status
+            check "status with an unreadable himmelctl ends in FIX" starts "$LAST" "FIX:"
+            ;;
+        status:preflight_miss)
+            run_sut --no-tty --without jq "$T/in" status
+            check "status without jq ends in FIX" starts "$LAST" "FIX:"
+            check "status without jq names jq" has "$LAST" "jq"
+            ;;
+        *) SKIPN=$((SKIPN + 1)) ;;
+    esac
+}
+
+all_green() {
+    set_item bridge-health green "@main_bot reachable, 1 poller"
+    set_item bridge-persistence green "unit installed and enabled"
+    set_item distinct-tokens green "tokens distinct"
+}
 
 case_curl_argv_is_exact() {
     local tok line n=0
@@ -333,8 +362,142 @@ case_outside_checkout_gives_cd_fix() {
     check "status too" has "$LAST" "run this from your himmel folder: cd "
 }
 
+# ── cases: Task 4, the status aggregator ────────────────────────────────
+
+part_field() { jq -r ".parts[$1].$2" "$T/out"; } # part_field <index 0-3> <field>
+
+# A fixture whose lib ships one more item, so a part beyond part 1 is live.
+ship_item() {
+    sed "s/^RS_ITEMS_SHIPPED=\"\(.*\)\"/RS_ITEMS_SHIPPED=\"\1 $1\"/" "$HERE/lib.sh" > "$ROOT/scripts/remote-setup/lib.sh"
+}
+
+case_status_skips_unshipped_parts() {
+    all_green
+    run_sut --json "$T/in" status --json
+    check "exit 0" eq "$RC" 0
+    check "four parts" eq "$(jq '.parts | length' "$T/out")" 4
+    check "part 1 ok" eq "$(part_field 0 state)" ok
+    check "part 2 skipped" eq "$(part_field 1 state)" skipped
+    check "part 3 skipped" eq "$(part_field 2 state)" skipped
+    check "part 4 skipped" eq "$(part_field 3 state)" skipped
+    check "a skipped part does not fail status" eq "$(jq -r .ok "$T/out")" true
+    check "himmelctl was asked only for part 1's items" eq "$(grep '^status' "$T/himmelctl.calls")" "status --items bridge-health,bridge-persistence,distinct-tokens --json"
+    # the shape of one part
+    check "a part has name, detail, command, guide" eq "$(jq -r '.parts[0] | [has("name"), has("detail"), has("command"), has("guide")] | all' "$T/out")" true
+    check "an ok part has no next command" eq "$(part_field 0 command)" null
+}
+
+case_status_na_counts_not_ok() {
+    # nothing set up: every item n/a. n/a is not ok; skipped parts are not counted.
+    run_sut --json "$T/in" status --json
+    check "exit 3" eq "$RC" 3
+    check "part 1 is not set" eq "$(part_field 0 state)" "not set"
+    check "overall not ok" eq "$(jq -r .ok "$T/out")" false
+    check "the next command is the bot helper" eq "$(part_field 0 command)" "bash scripts/remote-setup/remote-setup.sh bot"
+    check "the guide link points at part 1" eq "$(part_field 0 guide)" "docs/setup/remote-setup.md#part-1"
+    run_sut --no-tty "$T/in" status
+    check "text mode: exit 3" eq "$RC" 3
+    check "text mode: names the part and the command" has "$LAST" "part 1 (Main bot) is not set up. Run: bash scripts/remote-setup/remote-setup.sh bot"
+    # one item red, the rest green: partial, and the FIX names the item
+    all_green
+    set_item bridge-health red "getMe refused"
+    run_sut --json "$T/in" status --json
+    check "partial" eq "$(part_field 0 state)" partial
+    check "partial detail names the failing item" has "$(part_field 0 detail)" "bridge-health"
+    check "partial still names the helper" eq "$(part_field 0 command)" "bash scripts/remote-setup/remote-setup.sh bot"
+}
+
+case_status_part_prereq_message() {
+    ship_item remote-peer
+    set_item remote-peer red "poller stopped"
+    # part 1 not ok: part 4 says to do part 1 first and offers no command
+    run_sut --json "$T/in" status --json
+    check "part 4 is live" eq "$(part_field 3 state)" partial
+    check "part 4 detail" eq "$(part_field 3 detail)" "do part 1 first"
+    check "part 4 has no command" eq "$(part_field 3 command)" null
+    check "himmelctl was asked for the peer item too" has "$(grep '^status' "$T/himmelctl.calls" | tail -n 1)" "remote-peer"
+    # part 1 ok: part 4 offers its own command
+    all_green
+    run_sut --json "$T/in" status --json
+    check "part 4 keeps its detail" has "$(part_field 3 detail)" "remote-peer"
+    check "part 4 offers its command" eq "$(part_field 3 command)" "bash scripts/remote-setup/remote-setup.sh peer"
+    check "a not-ok part fails the whole" eq "$(jq -r .ok "$T/out")" false
+}
+
+case_status_runs_under_claudecode() {
+    all_green
+    run_sut --no-tty --inject CLAUDECODE=1 "$T/in" status
+    check "status is read-only and runs under CLAUDECODE" starts "$LAST" "DONE: status"
+    check "no guard refusal" lacks "$(cat "$T/out")" "plain Terminal"
+    run_sut --no-tty --inject CLAUDE_CODE_SESSION_ID=x "$T/in" status
+    check "nor under a session id" starts "$LAST" "DONE: status"
+}
+
+case_status_json_is_single_object_on_success() {
+    all_green
+    run_sut --json "$T/in" status --json
+    check "exit 0" eq "$RC" 0
+    check "stdout is exactly one object" eq "$(jq -s 'length' "$T/out")" 1
+    check "ok is true" eq "$(jq -r .ok "$T/out")" true
+    check "the human header went to stderr" has "$ERR" "remote-setup status:"
+    check "and not to stdout" lacks "$(cat "$T/out")" "remote-setup status:"
+}
+
+case_status_json_on_item_failure() {
+    echo 7 > "$T/himmelctl.fail"
+    run_sut --json "$T/in" status --json
+    check "exit 3" eq "$RC" 3
+    check "part 1 state is error" eq "$(part_field 0 state)" error
+    check "part 1 carries the error" has "$(part_field 0 error)" "himmelctl"
+    check "part 1 offers no command" eq "$(part_field 0 command)" null
+    check "overall not ok" eq "$(jq -r .ok "$T/out")" false
+    # an item missing from the answer is an error too
+    rm -f "$T/himmelctl.fail"
+    all_green
+    echo "distinct-tokens" > "$T/items.omit"
+    run_sut --json "$T/in" status --json
+    check "a missing item: error" eq "$(part_field 0 state)" error
+    check "a missing item: names it" has "$(part_field 0 error)" "distinct-tokens"
+}
+
+case_status_json_never_appends_done_line() {
+    all_green
+    run_sut --json "$T/in" status --json
+    check "no DONE on stdout" eq "$(grep -c '^DONE:' "$T/out")" 0
+    check "the DONE line is on stderr" has "$ERR" "DONE: status"
+    rm -f "$T/items.json"
+    run_sut --json "$T/in" status --json
+    check "no FIX on stdout" eq "$(grep -c '^FIX:' "$T/out")" 0
+    check "the FIX line is on stderr" has "$ERR" "FIX: part 1"
+}
+
+# Status computes nothing itself: with every source a direct reader could use made unreadable
+# or absent, it still shows exactly what himmelctl says (I8).
+case_status_reads_no_daemon_log_peers_json_or_mode() {
+    local q=$HOME_FIX/handovers/bypass-queue d=$HOME_FIX/.config/himmel/peer-bridge
+    mkdir -p "$q" "$d"
+    : > "$q/daemon.log"
+    : > "$q/mode"
+    : > "$d/peers.json"
+    chmod 000 "$q/daemon.log" "$q/mode" "$d/peers.json" "$d"
+    set_item bridge-health green "ONLY-FROM-HIMMELCTL"
+    set_item bridge-persistence green "p"
+    set_item distinct-tokens green "t"
+    run_sut --json "$T/in" status --json
+    chmod 700 "$d"
+    check "status still answers" eq "$RC" 0
+    check "and shows himmelctl's words" has "$(part_field 0 detail)" "ONLY-FROM-HIMMELCTL"
+    # a different answer from himmelctl moves the output, so the output is himmelctl's
+    set_item bridge-health red "A-DIFFERENT-ANSWER"
+    run_sut --json "$T/in" status --json
+    check "a changed himmelctl answer changes the output" has "$(part_field 0 detail)" "A-DIFFERENT-ANSWER"
+}
+
 CASES="guard_matrix_every_writer usage_exits_2 usage_rows_every_subcommand contract_rows_every_subcommand
-curl_argv_is_exact getme_401_gives_revoked_fix tg_429_waits_retry_after_once outside_checkout_gives_cd_fix"
+curl_argv_is_exact getme_401_gives_revoked_fix tg_429_waits_retry_after_once outside_checkout_gives_cd_fix
+status_skips_unshipped_parts status_na_counts_not_ok status_part_prereq_message status_runs_under_claudecode
+status_json_is_single_object_on_success status_json_on_item_failure status_json_never_appends_done_line
+status_reads_no_daemon_log_peers_json_or_mode"
 
 # ── run ─────────────────────────────────────────────────────────────────
 
