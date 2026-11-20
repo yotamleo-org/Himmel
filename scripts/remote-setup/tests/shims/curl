@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Test shim for curl. Records argv and the stdin config, serves canned Telegram JSON.
 # Layout under $RST/tg: <method>.json (default answer), <method>.<n>.json (the n-th call),
+# <method>.u<user_id>.json (the answer for a body that names that user_id; checked first),
 # <method>.curl_exit (a transport failure: print nothing, exit with that code).
 RST=${RST:?RST must point at the test dir}
 printf '%s\n' "$*" >> "$RST/curl.argv"
@@ -17,7 +18,10 @@ printf '%s' "$n" > "$d/$method.n"
 if [ -f "$d/$method.curl_exit" ]; then
     exit "$(cat "$d/$method.curl_exit")"
 fi
-if [ -f "$d/$method.$n.json" ]; then
+uid=$(printf '%s\n' "$cfg" | sed -n 's/.*\\"user_id\\":\(-\{0,1\}[0-9]*\).*/\1/p' | head -n 1)
+if [ -n "$uid" ] && [ -f "$d/$method.u$uid.json" ]; then
+    cat "$d/$method.u$uid.json"
+elif [ -f "$d/$method.$n.json" ]; then
     cat "$d/$method.$n.json"
 elif [ -f "$d/$method.json" ]; then
     cat "$d/$method.json"

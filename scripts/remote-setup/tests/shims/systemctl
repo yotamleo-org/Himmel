@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Test shim for systemctl. Unit state lives in $RST/units/<unit>.active|.enabled, every call
 # is logged to $RST/units.log. A unit with $RST/units/<unit>.startfail refuses to start.
+# enable/disable/restart/daemon-reload are understood; disable also stops the unit.
 RST=${RST:?RST must point at the test dir}
 printf 'systemctl %s\n' "$*" >> "$RST/units.log"
 mkdir -p "$RST/units"
-args=("$@")
-[ "${args[0]:-}" = "--user" ] && args=("${args[@]:1}")
+args=()
+for a in "$@"; do
+    case "$a" in --user | --quiet | --now) ;; *) args[${#args[@]}]=$a ;; esac
+done
 verb=${args[0]:-}
 unit=${args[1]:-}
-# --quiet may sit between the verb and the unit
-[ "$unit" = "--quiet" ] && unit=${args[2]:-}
 case "$verb" in
     is-active)
         [ -f "$RST/units/$unit.active" ] && exit 0
@@ -23,9 +24,17 @@ case "$verb" in
         rm -f "$RST/units/$unit.active"
         exit 0
         ;;
-    start)
+    start | restart)
         [ -f "$RST/units/$unit.startfail" ] && exit 1
         : > "$RST/units/$unit.active"
+        exit 0
+        ;;
+    enable)
+        : > "$RST/units/$unit.enabled"
+        exit 0
+        ;;
+    disable)
+        rm -f "$RST/units/$unit.enabled" "$RST/units/$unit.active"
         exit 0
         ;;
     *)

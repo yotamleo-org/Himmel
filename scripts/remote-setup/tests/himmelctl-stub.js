@@ -7,6 +7,7 @@
 //   himmelctl.lockstore  present: `status` makes the bridge store directory read-only
 //   bridge-enable.rc  an exit code for `bridge enable` (default 0)
 //   himmelctl.calls   every call, one line each
+//   himmelctl.checkpoint  one line per status call: the peers-confirmed record was present or absent
 const fs = require('fs');
 const path = require('path');
 const RST = process.env.RST;
@@ -26,6 +27,8 @@ if (argv[0] === 'status') {
   if (read('himmelctl.lockstore', null) !== null) {
     try { fs.chmodSync(path.join(process.env.HOME, '.claude', 'channels', 'telegram'), 0o500); } catch (_e) { /* no store dir yet */ }
   }
+  // himmelctl.checkpoint: for each status call, whether the peers-confirmed record existed at that moment
+  fs.appendFileSync(at('himmelctl.checkpoint'), (fs.existsSync(path.join(process.env.HOME, '.himmel', 'remote-setup', 'peers-confirmed.json')) ? 'present' : 'absent') + '\n');
   const i = argv.indexOf('--items');
   const ids = i >= 0 ? argv[i + 1].split(',') : [];
   let table = {};

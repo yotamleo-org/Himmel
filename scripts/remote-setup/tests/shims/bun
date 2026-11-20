@@ -3,6 +3,17 @@
 # answered from $RST/onboard.out (rc from $RST/onboard.rc). With $RST/onboard.hang it prints
 # the nonce line, signals its parent with SIGINT (a Ctrl-C), then waits to be killed; its pid
 # goes to $RST/onboard.pid so a test can check it is gone.
+#
+# A peer-bridge setup.ts call (add, confirm, remove) is recorded to $RST/setup.calls and units.log
+# and stands in for the real verbs against the fixture HOME's peers.json (the same shape the real
+# one writes), so no run touches Telegram:
+#   add <peer> --peer-bot-id N --peer-username U --operator-bot-id M   writes the entry, chatId null
+#   confirm <peer> <chatId>                                           sets chatId ($RST/setup.confirm.rc
+#                                                                     non-zero: refuses with that code)
+#   remove <peer>                                                     reads a line, needs "yes"; with
+#                                                                     $RST/setup.remove.sigint it then
+#                                                                     sends its parent a SIGINT
+# With $RST/setup.real, `add` runs the REAL setup.ts ($RST_REAL_SETUP) instead.
 # Anything else runs the real bun ($RST_REAL_BUN).
 RST=${RST:?RST must point at the test dir}
 case "$*" in
@@ -19,6 +30,52 @@ case "$*" in
         rc=0
         [ -f "$RST/onboard.rc" ] && rc=$(cat "$RST/onboard.rc")
         exit "$rc"
+        ;;
+    *setup.ts*)
+        shift
+        sub=${1:-}
+        printf '%s\n' "$*" >> "$RST/setup.calls"
+        printf 'setup %s\n' "$*" >> "$RST/units.log"
+        if [ -f "$RST/setup.real" ] && [ "$sub" = add ]; then
+            exec "${RST_REAL_BUN:?}" "${RST_REAL_SETUP:?}" "$@"
+        fi
+        peers=$HOME/.config/himmel/peer-bridge/peers.json
+        name=${2:-}
+        case "$sub" in
+            add)
+                shift 2
+                pid="" user=""
+                while [ $# -gt 0 ]; do
+                    case "$1" in
+                        --peer-bot-id) pid=$2 ;;
+                        --peer-username) user=$2 ;;
+                    esac
+                    shift 2
+                done
+                mkdir -p "$(dirname "$peers")"
+                [ -f "$peers" ] || echo '{"operatorBotId":"0","operatorChatId":1,"bridgeRoot":"/x","himmelRoot":"/y","peers":{},"maxTextChars":4000,"addressing":"command"}' > "$peers"
+                jq --arg n "$name" --arg b "$pid" --arg u "$user" '.peers[$n] = {peerBotId: $b, chatId: null, allowFrom: [$b], theirs: {username: $u}}' "$peers" > "$peers.new" && mv "$peers.new" "$peers"
+                chmod 600 "$peers"
+                echo "added $name"
+                ;;
+            confirm)
+                if [ -f "$RST/setup.confirm.rc" ]; then
+                    echo "setup: our bot (222) has the right can_delete_messages; promote it to administrator with every right off first" >&2
+                    exit "$(cat "$RST/setup.confirm.rc")"
+                fi
+                jq --arg n "$name" --argjson c "$3" '.peers[$n].chatId = $c' "$peers" > "$peers.new" && mv "$peers.new" "$peers"
+                echo "confirmed $name"
+                ;;
+            remove)
+                read -r ans
+                if [ "$ans" != yes ]; then echo "setup: not removed" >&2; exit 3; fi
+                jq --arg n "$name" 'del(.peers[$n])' "$peers" > "$peers.new" && mv "$peers.new" "$peers"
+                echo "removed $name; restart the poller to drop it"
+                if [ -f "$RST/setup.remove.sigint" ]; then kill -INT "$PPID"; fi
+                ;;
+            *) exit 2 ;;
+        esac
+        exit 0
         ;;
     *)
         exec "${RST_REAL_BUN:?}" "$@"
