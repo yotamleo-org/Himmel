@@ -313,11 +313,13 @@ def plan_summary_rewrite(text: str):
         return None
     kind, source_text = _media_text(body)
     excerpt = _excerpt(source_text) if kind else ""
-    if not excerpt or _injection_hits(source_text):
+    if not excerpt:
         return None
-    label = {"transcript": "From the reel transcript (opening lines, not a full summary): ",
-             "slides": "From the slide digest (opening slides, not a full summary): "}[kind]
-    new_body = body[:m.start(1)] + label + excerpt + "\n\n" + body[m.end(1):]
+    summary_line = {"transcript": "From the reel transcript (opening lines, not a full summary): ",
+                    "slides": "From the slide digest (opening slides, not a full summary): "}[kind] + excerpt
+    if _injection_hits(source_text) or _injection_hits(summary_line):
+        return None
+    new_body = body[:m.start(1)] + summary_line + "\n\n" + body[m.end(1):]
     fm_lines = []
     for ln in fm_raw.split("\n"):
         if re.fullmatch(r"summary_basis:[ \t]*\"?url-only\"?[ \t]*", ln):
