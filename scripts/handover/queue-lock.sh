@@ -1660,7 +1660,7 @@ _ql_force_claim_cleanup() {
 
 # _ql_force_trap_reset <saved-traps> -- forget the forced release's claim and put back the traps the caller had (trap -p output).
 _ql_force_trap_reset() {
-    _QL_FORCE_CLAIM="" _QL_FORCE_TOKEN="" _QL_FORCE_PREV="" _QL_FORCE_PREV_EXIT=""
+    _QL_FORCE_CLAIM="" _QL_FORCE_TOKEN="" _QL_FORCE_PREV="" _QL_FORCE_PREV_EXIT="" _QL_FORCE_PREV_INT=""
     trap - EXIT INT TERM HUP
     [ -z "$1" ] || eval "$1"
     return 0
@@ -1668,7 +1668,8 @@ _ql_force_trap_reset() {
 
 # _ql_force_on_signal <SIG> -- free the claim, give the caller its traps back, then raise the signal again so the caller's own handling (or the default) applies.
 _ql_force_on_signal() {
-    local sig="$1" code=0 self
+    local sig="$1" code=0 self own_int=0
+    [ -z "${_QL_FORCE_PREV_INT:-}" ] || own_int=1
     case "$sig" in INT) code=130 ;; TERM) code=143 ;; HUP) code=129 ;; esac
     _ql_force_claim_cleanup
     _ql_force_trap_reset "${_QL_FORCE_PREV:-}"
@@ -1676,7 +1677,11 @@ _ql_force_on_signal() {
     _QL_FORCE_ABORT="$code"
     # BASHPID does not exist on bash 3.2 and $$ is the outer shell inside a subshell; the exec'd child's parent is this shell. The signal itself comes from the builtin kill: bash drops an INT sent from a child it is waiting on.
     self=$(exec sh -c 'echo "$PPID"')
+    # Apple bash 3.2 keeps its own INT handler after a self-raised INT and carries on; with no INT handler of the caller's own, resetting to the default first lets the signal land (a handler or ignore of the caller's stays, so it still runs)
+    case "$sig:$own_int" in INT:0) trap - INT ;; esac
     kill -s "$sig" "$self"
+    # still here with no INT handler of the caller's own: the raise did not end this shell, so end it by the status a killed one would report
+    case "$sig:$own_int" in INT:0) exit "$code" ;; esac
 }
 
 # _ql_force_on_exit -- free the claim, then run the EXIT action the caller had before the forced release replaced it, with the exit status it would have seen.
@@ -2388,7 +2393,7 @@ queue_lock_release() {
         local f_claim_token="release-pid$$-r$RANDOM" f_prev_traps="" f_rc=0
         f_prev_traps=$(trap -p EXIT INT TERM HUP)
         _QL_FORCE_ABORT=""
-        _QL_FORCE_PREV="$f_prev_traps" _QL_FORCE_PREV_EXIT=$(trap -p EXIT)
+        _QL_FORCE_PREV="$f_prev_traps" _QL_FORCE_PREV_EXIT=$(trap -p EXIT) _QL_FORCE_PREV_INT=$(trap -p INT)
         _QL_FORCE_CLAIM="${lockdir}.claim" _QL_FORCE_TOKEN="$f_claim_token"
         trap '_ql_force_on_exit' EXIT
         trap '_ql_force_on_signal INT' INT
