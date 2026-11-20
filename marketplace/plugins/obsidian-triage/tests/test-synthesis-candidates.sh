@@ -198,14 +198,14 @@ run > "$tmp/lines1.txt" 2>/dev/null
 run > "$tmp/lines2.txt" 2>/dev/null
 
 J="$tmp/out1.json"
-field() {  # <slug> <field>
+field() {
     node -e '
       const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
       const c = j.candidates.find((x) => x.slug === process.argv[2]);
       console.log(c ? String(c[process.argv[3]]) : "ABSENT");
     ' "$J" "$1" "$2" 2>/dev/null || echo "NO-JSON"
 }
-top() {  # <expr over j>
+top() {
     node -e '
       const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
       console.log(String(eval(process.argv[2])));

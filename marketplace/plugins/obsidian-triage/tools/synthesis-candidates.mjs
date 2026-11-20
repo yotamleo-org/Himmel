@@ -136,7 +136,6 @@ function sectionTarget(lines) {
   return { has, target: "" };
 }
 
-/** -> { skip: true } | { excluded: reason } | { clip } */
 function readClip(vault, abs, since) {
   const rel = path.relative(vault, abs).split(path.sep).join("/");
   let content = fs.readFileSync(abs, "utf8");
