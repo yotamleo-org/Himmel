@@ -44,9 +44,11 @@ and make one subject: the clips of both spellings are pooled, and the page is
 named for the spelling more clips use (the shorter on a tie). Only the last word
 of a tag is folded (`api-keys` = `api-key`), only regular English plurals fold
 (`dependencies`, `caches`, `boxes`), and words that merely end like a plural keep
-their form (`class`, `status`, `analysis`, `news`), while their own plurals
-(`statuses`, `biases`, `lenses`) still meet them. Different words never merge:
-`workflow` and `workload` stay two subjects.
+their form (`class`, `status`, `analysis`, `news`, `https`), while their own plurals
+(`statuses`, `biases`, `lenses`, `quizzes`) still meet them. Different words never
+merge: `workflow` and `workload` stay two subjects, and `http` and `https` stay two.
+A mark after the last word does not hide it (`Workflows!` is the `workflow`
+subject).
 
 ### Existing-subject match → densify, never duplicate
 

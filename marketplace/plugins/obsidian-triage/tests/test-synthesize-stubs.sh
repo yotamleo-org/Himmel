@@ -679,6 +679,52 @@ assert "control: a value given for each option is still taken (apply with --ledg
 node "$TOOL" "$tmp16/control" --revert "$tmp16/own.jsonl" >/dev/null 2>&1
 assert "control: and --revert <ledger> still undoes it" "no" "$([ -e "$tmp16/control/30-Resources/Concepts/Arg Topic.md" ] && echo yes || echo no)"
 
+echo "Test group 17: the plural fold keeps quiz and quizzes together, https apart from http, and ignores trailing punctuation"
+keys17="$(node --input-type=module -e '
+const { tagKey, subjectKey } = await import("file://" + process.argv[1]);
+const same = (a, b) => (tagKey(a) === tagKey(b) ? "same" : "differ");
+process.stdout.write([
+  same("quiz", "quizzes"), same("buzz", "buzzes"), same("https", "http"), same("c++", "c"), same("workflow", "workflows"), same("agent", "agents"),
+  subjectKey("Workflows!") === subjectKey("workflow") ? "same" : "differ",
+  subjectKey("Https") === subjectKey("Http") ? "same" : "differ",
+  tagKey("https"), tagKey("quizzes"), tagKey("status"), tagKey("statuses"), tagKey("workflows!"),
+].join(" "));
+' "$PLUGIN_DIR/tools/lib/stub-synthesis.mjs" 2>&1)"
+assert "quiz and quizzes share a key" "same" "$(cut -d' ' -f1 <<<"$keys17")"
+assert "buzz and buzzes still share a key" "same" "$(cut -d' ' -f2 <<<"$keys17")"
+assert "https and http keep two keys" "differ" "$(cut -d' ' -f3 <<<"$keys17")"
+assert "https keeps its form" "https" "$(cut -d' ' -f9 <<<"$keys17")"
+assert "c++ and c keep two tag keys" "differ" "$(cut -d' ' -f4 <<<"$keys17")"
+assert "control: workflow and workflows, agent and agents still fold together" "same same" "$(cut -d' ' -f5-6 <<<"$keys17")"
+assert "a trailing mark does not hide the plural: Workflows! and workflow are one subject key" "same" "$(cut -d' ' -f7 <<<"$keys17")"
+assert "Https and Http are two subject keys" "differ" "$(cut -d' ' -f8 <<<"$keys17")"
+assert "the stem of quizzes is quiz" "quiz" "$(cut -d' ' -f10 <<<"$keys17")"
+assert "control: statuses still folds to the stem of status" "status status" "$(cut -d' ' -f11-12 <<<"$keys17")"
+assert "the plural of a word followed by a mark folds under the mark" "workflow!" "$(cut -d' ' -f13 <<<"$keys17")"
+
+tmp17="$(mktemp -d -t synth17.XXXXXX)" || exit 1
+trap 'rm -rf "$tmp" "$tmp4" "$tmp5" "$tmp5b" "$tmp6" "$tmp6b" "$tmp7" "$tmp8" "$tmp9" "$tmp10" "$tmp11" "$tmp12" "$tmp13" "$tmp14" "$tmp15" "$tmp16" "$tmp17"' EXIT
+EV17="$tmp17/Clippings/_evidence"
+C17="$tmp17/30-Resources/Concepts"
+mkdir -p "$EV17" "$C17"
+mkclip5 "$EV17" qz-a.md "Ann Author" "https://qa.com/q" "quiz"
+mkclip5 "$EV17" qz-b.md "Ben Author" "https://qb.com/q" "quizzes"
+mkclip5 "$EV17" qz-c.md "Cy Author" "https://qc.com/q" "quizzes"
+mkclip5 "$EV17" ht-a.md "Di Author" "https://da.com/h" "http"
+mkclip5 "$EV17" ht-b.md "Eli Author" "https://db.com/h" "http"
+mkclip5 "$EV17" hs-a.md "Flo Author" "https://ea.com/h" "https"
+mkclip5 "$EV17" hs-b.md "Gus Author" "https://eb.com/h" "https"
+mkclip5 "$EV17" wf-a.md "Hal Author" "https://fa.com/w" "workflow"
+mkclip5 "$EV17" wf-b.md "Ian Author" "https://fb.com/w" "workflow"
+printf -- '---\ntype: concept\ntags:\n  - concept\n---\n# Workflows!\n\n## Evidence\n\n- [[Clippings/_evidence/seed]] — seeded by hand\n' > "$C17/Workflows!.md"
+out17="$(node "$TOOL" "$tmp17" --apply 2>&1)"; printf '%s
+' "$out17"
+assert "quiz (1) and quizzes (2): one page for the three clips" "3" "$(cat "$C17"/Quiz*.md 2>/dev/null | grep -c '^- \[\[Clippings/_evidence/qz-')"
+assert "quiz and quizzes make exactly one page" "1" "$(pages_like "$C17" Quiz | wc -w | tr -d ' ')"
+assert "http and https make two pages, each with its own two clips" "2 2 2" "$(pages_like "$C17" Http | wc -w | tr -d ' ') $(grep -c '^- \[\[Clippings/_evidence/ht-' "$C17/Http.md" 2>/dev/null) $(grep -c '^- \[\[Clippings/_evidence/hs-' "$C17/Https.md" 2>/dev/null)"
+assert "an https clip is never listed on the http page" "0" "$(grep -c '/hs-' "$C17/Http.md" 2>/dev/null)"
+assert "a planned workflow subject extends the existing Workflows!.md and makes no second page" "1 2" "$(pages_like "$C17" Workflow | wc -w | tr -d ' ') $(grep -c '^- \[\[Clippings/_evidence/wf-' "$C17/Workflows!.md" 2>/dev/null)"
+
 # ── summary ──────────────────────────────────────────────────────────────────
 echo ""
 echo "test-synthesize-stubs: $pass passed, $fail failed"
