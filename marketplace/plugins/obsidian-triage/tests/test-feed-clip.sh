@@ -33,7 +33,7 @@ run_tool() { out="$(node "$SCRIPT" "$@" 2>&1)"; rc=$?; }
 newvault() { local v="$tmpdir/$1"; mkdir -p "$v/.obsidian" "$v/Clippings"; echo "$v"; }
 pick() { local f; for f in "$1"/Clippings/$2; do [ -e "$f" ] && echo "$f"; done; }
 nclips() { pick "$1" 'feed-*.md' | wc -l | tr -d ' '; }
-nlines() { if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; else echo 0; fi; }
+nlines() { if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; else echo 0; fi; } # read-sink-ok: hermetic test helper, only called with paths inside this suite's temp vaults
 has() { if grep -q -- "$1" <<<"$2"; then echo ok; else echo no; fi; }
 hasline() { if grep -qxF -- "$1" <<<"$2"; then echo ok; else echo no; fi; }
 
