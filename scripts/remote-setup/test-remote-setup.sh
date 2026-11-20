@@ -882,7 +882,6 @@ case_bot_rerun_without_token_never_pairs() {
 case_bot_canary_token_absent_everywhere() {
     local tok
     tok=$(mk_token 111)
-    # a failure path first: a revoked token
     printf '{"ok":false,"error_code":401,"description":"Unauthorized"}' > "$T/tg/getMe.json"
     feed "$tok"
     run_sut "$T/in" bot
@@ -919,7 +918,6 @@ case_bot_done_rerun_changes_no_config_artifact() {
     run_sut "$T/in" bot
     check "second run: DONE" eq "$RC" 0
     assert_stores_unchanged
-    # pasting the same token again changes no setting either
     snapshot_stores
     set_onboard 777
     feed "$tok"
@@ -1289,7 +1287,6 @@ case_peer_no_offset_ack_on_confirmed_side() {
     check "it read the updates" test "$(method_count getUpdates)" -ge 1
     check "and acknowledged none of them" file_lacks "$T/curl.stdin" 'offset'
     check "the poller ran again" test -f "$T/units/$UNIT_NAME.active"
-    # the unconfirmed side does acknowledge as it pages (control)
     sub_case peer_no_offset_ack_control
     seed_main
     set_getme "$OUR" bridge_bot
@@ -1339,7 +1336,6 @@ case_peer_check_group_unknown_right_names_raw_field() {
     check "the FIX names the raw field" has "$LAST" "can_manage_tags"
     check "and where to switch it off" has "$LAST" "Edit → Administrators"
     check "nothing was added" eq "$(setup_calls)" ""
-    # a known right gets its button name
     set_member "$THEIR" administrator '{"can_pin_messages":true}'
     feed ""
     run_sut "$T/in" peer
@@ -1358,7 +1354,6 @@ case_peer_chatid_two_groups_newest_hello_after_start_or_pick() {
     run_sut "$T/in" peer
     check "exit 0" eq "$RC" 0
     check "the hello went to the newer group" eq "$(sent_chat)" "$other"
-    # two groups that both qualify: a digit pick
     sub_case peer_chatid_two_groups_pick
     seed_main
     set_getme "$OUR" bridge_bot
@@ -1446,7 +1441,6 @@ case_peer_checkpoint_written_after_confirm_before_status() {
     check "exit 0" eq "$RC" 0
     check "the final status read found the checkpoint already written" eq "$(tail -n 1 "$T/himmelctl.checkpoint")" present
     check "confirm ran before the unit started" test "$(line_of 'setup confirm')" -lt "$(line_of 'systemctl --user start')"
-    # confirm refused: no checkpoint, no unit, no status read
     sub_case peer_checkpoint_confirm_refused
     seed_main
     set_getme "$OUR" bridge_bot
@@ -1599,13 +1593,11 @@ case_peer_canary_token_absent_everywhere() {
     set_group
     set_good_updates
     all_green
-    # a failure path first: a revoked token
     printf '{"ok":false,"error_code":401,"description":"Unauthorized"}' > "$T/tg/getMe.json"
     feed "$tok"
     run_sut "$T/in" peer
     check "a revoked token is a FIX" eq "$RC" 3
     set_getme "$OUR" bridge_bot
-    # then the whole path, then a re-run
     feed "$tok"
     run_sut "$T/in" peer
     check "the full path is DONE" eq "$RC" 0
@@ -1681,7 +1673,6 @@ case_peer_done_rerun_changes_no_config_artifact() {
     run_sut "$T/in" peer
     check "second run: DONE" eq "$RC" 0
     assert_stores_unchanged
-    # pasting the same token again changes no setting either
     snapshot_stores
     feed "$(sed -n 's/^PEER_BOT_TOKEN=//p' "$(PEER_ENV)")"
     run_sut "$T/in" peer
@@ -1717,7 +1708,6 @@ case_peer_remove_deletes_checkpoint_and_status_na() {
     check "the checkpoint is gone" test ! -e "$(CONFIRMED_FILE)"
     check "the poller unit is gone" test ! -e "$(UNIT_FILE)"
     check "and not running" test ! -e "$T/units/$UNIT_NAME.active"
-    # the real aggregator now reports part 4 as not set (the stub says n/a, as the real probe does)
     set_item remote-peer n/a "no peer bridge has been set up with remote-setup"
     run_sut --json "$T/in" status --json
     check "part 4 reads not set" eq "$(part_field 3 state)" "not set"
@@ -1776,7 +1766,6 @@ case_peer_remove_teardown_failure_is_a_fix() {
     check "the FIX says the poller could not be stopped" has "$LAST" "could not be stopped"
     check "the unit file is kept while the poller still runs" test -f "$(UNIT_FILE)"
     check "the peer itself is already removed" eq "$(jq -r '.peers | has("goomal")' "$(PEERS_FILE)")" false
-    # the next run finishes the job
     rm -f "$T/units/$UNIT_NAME.stopfail"
     feed ""
     run_sut "$T/in" peer --remove
@@ -1797,7 +1786,6 @@ case_peer_remove_unit_delete_failure_is_a_fix() {
     check "the FIX says the unit file could not be deleted" has "$LAST" "unit file could not be deleted"
     check "the poller itself was stopped" test ! -e "$T/units/$UNIT_NAME.active"
     check "the unit file is still there" test -f "$(UNIT_FILE)"
-    # the next run finishes the job
     feed ""
     run_sut "$T/in" peer --remove
     check "the re-run reaches DONE" eq "$RC" 0
@@ -1841,6 +1829,16 @@ case_peer_remove_one_of_two_restarts_poller() {
     check "a poller that does not restart is a FIX" eq "$RC" 3
     check "the FIX says it did not restart" has "$LAST" "did not restart"
     check "the removed peer stays removed" eq "$(jq -r '.peers | has("goomal")' "$(PEERS_FILE)")" false
+    # nothing was running, so nothing was restarted, and DONE does not say it was
+    sub_case peer_remove_one_of_two_poller_not_running
+    seed_confirmed_station
+    seed_second_peer
+    rm -f "$T/units/$UNIT_NAME.active"
+    feed 1 yes
+    run_sut "$T/in" peer --remove
+    check "exit 0" eq "$RC" 0
+    check "DONE does not claim a restart" lacks "$LAST" "restarted"
+    check "DONE says the poller was not running" has "$LAST" "was not running"
 }
 
 case_peer_mac_bootout_then_bootstrap_order() {

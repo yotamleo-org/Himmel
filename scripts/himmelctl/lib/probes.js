@@ -4138,19 +4138,9 @@ function probeBridgePersistence(item, ctx) {
 
 // ── remote-peer (status item) ────────────────────────────────────────
 
-// "The peer bridge is set up, and its poller runs." No descriptor fields.
-//
-// Sessions run this probe, and the peer-bridge state and key dirs are fenced off from every session, so it
-// reads neither of them. Its data is ~/.himmel/remote-setup/peers-confirmed.json, which only
-// `remote-setup.sh peer` writes (right after `setup.ts confirm` succeeds), and the poller unit's state
-// (`systemctl --user is-active` / `launchctl print`). The claim is narrow on purpose: it is not a live
-// reachability check, and a peer removed with `setup.ts remove` outside the helper leaves a stale entry
-// until the next `peer` run.
-//
-// No peer-derived byte reaches the result. The only value shown from the record is the peer's name, and only
-// when it passes the same pattern setup.ts enforces (PEER_NAME_RE); an entry that fails it, or carries an
-// id that is not digits, makes the whole record unreadable and is never echoed. Any extra field in an entry
-// (a chat title, a username) is ignored.
+// Sessions run this probe and may not open the peer-bridge state or key dirs, so it reads only the record
+// `remote-setup.sh peer` keeps (peers-confirmed.json) and the poller unit's state. The one value it shows from
+// the record is a peer name that passes setup.ts's PEER_NAME_RE; any other field, or a bad entry, is never echoed.
 const REMOTE_PEER_NAME_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const REMOTE_PEER_UNIT = 'himmel-peer-bridge.service';
 const REMOTE_PEER_LABEL = 'com.himmel.peer-bridge';

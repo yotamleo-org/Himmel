@@ -581,8 +581,6 @@ function checkProbeShape(probe, label, errors) {
       break;
     }
     case 'remote-peer': {
-      // No fields. Reads ~/.himmel/remote-setup/peers-confirmed.json and the peer poller unit's
-      // state, both fixed conventions of scripts/remote-setup/remote-setup.sh, never per-item config.
       reportExtra([]);
       break;
     }

@@ -272,7 +272,6 @@ t_guide_fix_rows_exist_in_helper() {
     else
         bad "guide_fix_rows_exist_in_helper: $n rows on the page, not in the helper:$missing"
     fi
-    # control: a row the helper never prints is caught
     p=$(fixture fix-drift '| The line says | What to do |' '|---|---|' '| `no helper prints this phrase` | Do something. |')
     if [ -n "$(fix_missing "$p")" ]; then ok guide_fix_rows_control_catches_a_drifted_row; else bad "guide_fix_rows_control: a phrase nothing prints passed"; fi
 }
@@ -284,7 +283,6 @@ t_guide_part_4_is_written() {
         case "$sec" in *"$w"*) ;; *) if [ "$w" != 'never post' ]; then missing="$missing [$w]"; fi ;; esac
     done
     case "$sec" in *'arrives in a later update'*) missing="$missing [still a stub]" ;; esac
-    # the group steps keep their order: type, permissions, members, administrators, hello
     for w in 'Group type' 'Permissions' 'Add Members' 'Administrators' 'send the word'; do
         ln=$(printf '%s\n' "$sec" | grep -n -- "$w" | head -n 1 | cut -d: -f1)
         if [ -z "$ln" ] || [ "$ln" -le "$prev" ]; then order_ok=0; fi

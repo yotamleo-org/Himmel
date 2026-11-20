@@ -191,7 +191,6 @@ rs_secret() {
     return 0
 }
 
-# rs_enter <prompt>: waits for Enter, after a notice or a Telegram-app action. Returns 1 at end of input.
 rs_enter() {
     local _x=""
     printf '%s\n' "$1"
@@ -377,10 +376,7 @@ EOF
     fi
 }
 
-# ── small records the helper owns ───────────────────────────────────────
 
-# rs_atomic_write <file>: stdin is published by a same-folder rename (atomic_write in scripts/lib/prim.sh),
-# so a reader sees the old file or the new one, never half of it. The new file is private (0600).
 rs_atomic_write() {
     if ! command -v atomic_write > /dev/null 2>&1; then
         # shellcheck source=../lib/prim.sh

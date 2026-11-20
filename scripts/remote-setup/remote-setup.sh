@@ -211,7 +211,6 @@ peer_unit_active() {
     fi
 }
 
-# peer_stored_token: prints the stored bridge token, nothing when there is none.
 peer_stored_token() {
     local f line
     f="$(peer_cfg)/env"
@@ -224,7 +223,6 @@ peer_stored_token() {
     printf '%s' "$line"
 }
 
-# peer_store_token: writes the token in $RS_TOKEN as one PEER_BOT_TOKEN= line, mode 0600, by rename.
 peer_store_token() {
     local d
     d=$(peer_cfg)
@@ -253,7 +251,6 @@ peer_peers_check() {
         || rs_fix "the peer list at $(rs_tilde "$f") cannot be read (is it valid, and is it yours?): fix that or move it away, then run the same command again"
 }
 
-# peer_bots_state: prints "<bridge id>|<1 if pending else 0>", nothing when no bridge id is published.
 peer_bots_state() {
     local f
     f=$(peer_bots_file)
@@ -261,7 +258,6 @@ peer_bots_state() {
     jq -r 'if (.bridge.id // null) == null then empty else "\(.bridge.id)|\(if .bridge.pending == true then 1 else 0 end)" end' "$f" 2> /dev/null
 }
 
-# peer_publish_bridge <id> <pending 1|0>: the bridge bot id, non-secret, for the other roles' checks.
 peer_publish_bridge() {
     local f rc
     f=$(peer_bots_file)
@@ -278,7 +274,6 @@ peer_publish_bridge() {
     rs_fix "the bot record $(rs_tilde "$f") could not be written: check that you own that folder, then run the same command again"
 }
 
-# peer_checkpoint <name> <peer bot id> <chat id>: records a set-up peer; unchanged when it is already there.
 peer_checkpoint() {
     local f cur
     f=$(peer_confirmed_file)
@@ -291,7 +286,6 @@ peer_checkpoint() {
         || rs_fix "the record of set-up peers could not be written ($(rs_tilde "$f")): check that it is valid and yours, then run the same command again"
 }
 
-# peer_checkpoint_drop <name>: removes one recorded peer; the file goes when the last one does.
 peer_checkpoint_drop() {
     local f
     f=$(peer_confirmed_file)
@@ -348,7 +342,6 @@ peer_setup_run() {
     RS_TMP_FILE=""
 }
 
-# ── reading Telegram ────────────────────────────────────────────────────
 
 peer_post_hello() { # <chat id>
     local body out
@@ -376,7 +369,6 @@ peer_backlog_fix() {
     rs_fix "too many queued messages: let the bridge catch up for a minute, then ask the other operator to run the same command once more, then run it here again"
 }
 
-# peer_page_on: while a full batch comes back, asks for the next one, which acknowledges the one before.
 peer_page_on() {
     local pages=0
     while [ "$PEER_LAST_COUNT" -ge 100 ] && [ "$pages" -lt 50 ]; do
@@ -406,12 +398,10 @@ peer_chat_candidates() {
       | map(. + {chat: ($mig[.chat] // .chat)}) | unique_by(.chat) | .[] | "\(.chat)|\(.type)|\(.title)"' "$RS_UPD_FILE")
 }
 
-# peer_find_peer: the bots that posted the hello line in $PEER_CHAT. Lines are bot id|username.
 peer_find_peer() {
     PEER_BOTS=$(jq -r --arg chat "$PEER_CHAT" '[.[] | select(.k == "peer" and .chat == $chat)] | sort_by(.u) | unique_by(.from) | .[] | "\(.from)|\(.user)"' "$RS_UPD_FILE")
 }
 
-# peer_wait <chat|peer>: reads Telegram until the wanted fact shows up, at most 60 reads (about 10 minutes).
 peer_wait() {
     local what=$1 i=0
     while [ "$i" -lt 60 ]; do
@@ -431,8 +421,6 @@ peer_wait() {
     return 1
 }
 
-# peer_choose <lines>: one option per line (id|description). One line is taken as is; more get a numbered list
-# and a digit. Sets PEER_CHOSEN to the chosen line.
 peer_choose() {
     local lines=$1 n i=1 label
     n=$(printf '%s\n' "$lines" | grep -c .)
@@ -448,7 +436,6 @@ peer_choose() {
     PEER_CHOSEN=$(printf '%s\n' "$lines" | sed -n "${RS_PICK}p")
 }
 
-# peer_discover <1|0>: sets PEER_CHAT, PEER_BOT_ID and PEER_BOT_USER.
 peer_discover() {
     local lines n pick
     peer_read_all "$1"
@@ -482,9 +469,7 @@ peer_discover() {
     rs_step "found the other station's bridge bot (@$PEER_BOT_USER)"
 }
 
-# ── checking the group ──────────────────────────────────────────────────
 
-# peer_right_button <can_ field>: Telegram's button name for an admin right; prints nothing for a field it does not know.
 peer_right_button() {
     case "$1" in
         can_change_info) printf 'Change group info' ;;
@@ -516,7 +501,6 @@ peer_group_fix() {
     rs_fix "$1: ask the group owner to $2, then run the same command again"
 }
 
-# peer_check_group <chat id> <peer bot id> <peer bot username>: sets PEER_CHAT (a migrated group's new id), or FIXes.
 peer_check_group() {
     local out rc ty mig bad f btn who id user label problem field
     PEER_CHAT=$1
@@ -582,9 +566,7 @@ peer_check_group() {
     rs_step "the group is a supergroup and both bridge bots are administrators with every right off"
 }
 
-# ── the peer in setup.ts, the unit, and the finish ──────────────────────
 
-# peer_register: sets PEER_NAME and has setup.ts add and confirm the discovered peer, then records it.
 peer_register() {
     local line name rest bid chat names="" match_name="" match_chat="" chat_name="" old_bid=""
     for line in $(peer_peers_all); do
@@ -627,7 +609,6 @@ peer_register() {
     peer_checkpoint "$PEER_NAME" "$PEER_BOT_ID" "$PEER_CHAT"
 }
 
-# peer_unit_ensure: the poller unit is rendered from its template, installed, enabled and running.
 peer_unit_ensure() {
     local tpl dest content cur changed=0 uid
     uid=$(id -u)
@@ -761,8 +742,9 @@ $name
         else
             systemctl --user restart "$PEER_UNIT" > /dev/null 2>&1 || peer_restart_fix
         fi
+        rs_done "peer — removed $name; the poller was restarted"
     fi
-    rs_done "peer — removed $name; the poller was restarted"
+    rs_done "peer — removed $name; the poller was not running, so there was nothing to restart"
 }
 
 cmd_peer() {
@@ -828,7 +810,6 @@ cmd_peer() {
         fresh=0
     fi
     if [ "$fresh" = 0 ]; then
-        # the peer is confirmed already: post the hello (the other side may be waiting for it) and finish
         local chat
         for chat in $(peer_confirmed_lines | cut -d'|' -f3 | sort -u); do
             peer_post_hello "$chat"
