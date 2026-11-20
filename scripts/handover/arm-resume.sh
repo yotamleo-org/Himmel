@@ -247,6 +247,9 @@
 #      exhaustion, burned the fleet on 2026-09-07). Checked at
 #      ARM time (before the scheduler entry is created), --dry-run exempt.
 #      Set FLEET_CAP_OK=1 in the LAUNCHING shell to arm anyway.
+#      Also 22: managed fleet control refused — the scope `resolve` failed,
+#      the fleet slots could not be read, or scripts/lib/fleet-launch.sh could
+#      not be loaded to build the managed runtime line.
 #   23 restart cap refused — a --limit-reset arm found three `armed-resume`
 #      start rows for this handover's task in the flow-run ledger inside the
 #      last 5 minutes (a crash loop). --force overrides. A --limit-reset
