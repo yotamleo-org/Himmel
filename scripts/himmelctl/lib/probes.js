@@ -104,6 +104,7 @@ const lunaConfig = require('./luna-config.js');
 // imported here, never redeclared (that module's own header comment: "a
 // sibling status item (S6) registers against these constants").
 const bridgePersistence = require('./bridge-persistence.js');
+const botRoles = require('./bot-roles.js');
 
 // ── file-exists ──────────────────────────────────────────────────────────
 
@@ -2714,16 +2715,50 @@ function probeDistinctTokens(item, ctx) {
   };
   const a = readToken(item.probe.envFileA, item.probe.tokenKeyA);
   const b = readToken(item.probe.envFileB, item.probe.tokenKeyB);
-  if (!nonEmpty(a.value) || !nonEmpty(b.value)) {
-    return { actual: 'present', detail: 'nothing to collide with — at least one of the two tokens is unconfigured' };
-  }
-  if (a.value === b.value) {
+  if (nonEmpty(a.value) && nonEmpty(b.value) && a.value === b.value) {
     return {
       actual: 'degraded',
       detail: `${item.probe.tokenKeyA} in ${a.filePath} is IDENTICAL to ${item.probe.tokenKeyB} in ${b.filePath} — two different bots must not share one token (competing getUpdates offsets)`,
     };
   }
-  return { actual: 'present', detail: `${a.filePath} and ${b.filePath} carry distinct tokens` };
+  // The bot ids of the four roles (main, bridge, notice, relay), compared by bot-roles.js, the one
+  // owner of that rule. main and relay come from the two token files this probe was pointed at; the
+  // bridge and notice ids are the ones remote-setup published to bots.json. The peer-bridge dirs are
+  // never opened: sessions run this probe and may not read them.
+  const home = (ctx.env && ctx.env.HOME) || os.homedir();
+  const published = botRoles.readPublished({ home });
+  const ids = {
+    main: botRoles.idFromToken(a.value) || undefined,
+    relay: botRoles.idFromToken(b.value) || undefined,
+    bridge: published.bridge,
+    notice: published.notice,
+    pending: published.pending,
+  };
+  for (const role of botRoles.ROLES) {
+    if (!ids[role]) continue;
+    const c = botRoles.roleConflict(ids[role], role, ids);
+    if (c) {
+      const other = c.conflictsWith === 'pending' ? 'a bot reserved by an interrupted setup step' : `${c.conflictsWith} bot`;
+      return { actual: 'degraded', detail: `the ${role} bot and the ${other} are the same bot — each role needs its own bot (a separate /newbot in @BotFather)` };
+    }
+  }
+  const bridgeNote = published.bridge
+    ? `; bridge: as published ${/^\d{4}-\d{2}-\d{2}/.test(published.bridgePublishedAt || '') ? published.bridgePublishedAt.slice(0, 10) : 'earlier'}`
+    : '';
+  const mainUnset = !nonEmpty(a.value);
+  if (!nonEmpty(a.value) || !nonEmpty(b.value)) {
+    if (!published.bridge && !published.notice) {
+      return Object.assign(
+        { actual: 'present', detail: 'nothing to collide with — at least one of the two tokens is unconfigured' },
+        mainUnset ? { cleanAbsence: true } : {},
+      );
+    }
+    return Object.assign(
+      { actual: 'present', detail: `the configured bot tokens are distinct${bridgeNote}` },
+      mainUnset ? { cleanAbsence: true } : {},
+    );
+  }
+  return { actual: 'present', detail: `${a.filePath} and ${b.filePath} carry distinct tokens${bridgeNote}` };
 }
 
 // ── luna-sources ─────────────────────────────────────────────────────────

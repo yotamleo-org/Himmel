@@ -615,6 +615,16 @@
       "offboard": "advise"
     },
     {
+      "id": "distinct-tokens",
+      "kind": "lane",
+      "scopes": ["user"],
+      "profiles": ["core", "all"],
+      "deps": ["telegram-bridge"],
+      "probe": { "type": "distinct-tokens", "envFileA": ".claude/channels/telegram/.env", "tokenKeyA": "TELEGRAM_BOT_TOKEN", "envFileB": ".env", "tokenKeyB": "TELEGRAM_BOT_TOKEN" },
+      "removable": "full-offboard-only",
+      "offboard": "advise"
+    },
+    {
       "id": "observability-stack",
       "kind": "scheduler",
       "scopes": ["user"],
