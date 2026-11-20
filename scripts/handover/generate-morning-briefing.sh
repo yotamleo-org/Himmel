@@ -113,6 +113,8 @@ Environment overrides:
   SHIFTS_FILE                                The shift record (default $HANDOVER_DIR/shifts.jsonl).
   MORNING_SHIFT_CMD / MORNING_SHIFT_SPEND_CMD  The shift helper (run first) and the spend reader.
   MORNING_TODAY=YYYY-MM-DD                   Test override of the report day.
+  CLIP_FUNNEL_VAULT                          The luna vault the Clip funnel block reads (empty = no block).
+                                             Default: OBSIDIAN_VAULT_PATH, else ~/Documents/luna when it is a vault.
   STALE_BRANCH_DAYS=N                        Idle days before a remote branch is listed as stale. Default 7.
 EOF
 }
@@ -875,6 +877,36 @@ failure_review_body() {   # <digest .md> <digest .json> <report day>
     fi
 }
 
+# Clip funnel body ---------------------------------------------------------------
+# The luna clip pipeline's outcomes, read-only from the vault by tools/clip-funnel.mjs. The block is only where that tool ships
+# and a vault is named: CLIP_FUNNEL_VAULT (empty = none), else OBSIDIAN_VAULT_PATH, else ~/Documents/luna when it holds a .obsidian.
+clip_funnel_tool="$SCRIPT_DIR/../../marketplace/plugins/obsidian-triage/tools/clip-funnel.mjs"
+if [ "${CLIP_FUNNEL_VAULT+set}" = set ]; then
+    clip_funnel_vault="$CLIP_FUNNEL_VAULT"
+else
+    clip_funnel_vault="${OBSIDIAN_VAULT_PATH:-${HOME:-}/Documents/luna}"
+    [ -d "$clip_funnel_vault/.obsidian" ] || clip_funnel_vault=""
+fi
+# shellcheck disable=SC2016  # the jq program: $k and $last are jq variables, not shell ones
+clip_funnel_jq='def flag($k; $last): if (.stalled | index($k)) then " — ⚠️ no movement in \(.window_days) days" + (if $last then " (last \($last))" else " (none yet)" end) else "" end;
+    "The \(.window_days) days to \(.as_of); counts from the vault, nothing written.", "",
+    "- Taken in: **\(.intake.clips)** clips (**\(.intake.moved_in_window)** in the last \(.window_days) days)" + flag("intake"; .intake.last),
+    "- Cited by a synthesis page: **\(.cited.clips)** of \(.intake.clips) (**\(.cited.share * 100 | round)%**)" + flag("cited"; .cited.last),
+    "- Subject pages: **\(.subjects.created)** created, **\(.subjects.extended)** extended" + flag("subjects"; .subjects.last),
+    "- Daily actions: **\(.actions.open)** open, **\(.actions.applied)** applied" + flag("actions"; .actions.last),
+    "- Waiting on media: **\(.media.waiting)** clips" + flag("media"; .media.last)'
+clip_funnel_body() {   # <vault> <report day>
+    local json body
+    if ! command -v node >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+        printf '_Clip funnel not available (node and jq are required)._\n'
+    # swallow-ok: a failed read or render is reported in the block as not available, never as a zero count
+    elif ! json=$(node "$clip_funnel_tool" --vault "$1" --as-of "$2" 2>/dev/null) || ! body=$(printf '%s\n' "$json" | jq -r "$clip_funnel_jq" 2>/dev/null); then
+        printf '_Clip funnel not available (the funnel read failed)._\n'
+    else
+        printf '%s\n' "$body"
+    fi
+}
+
 # Template ---------------------------------------------------------------------
 
 briefing=$(
@@ -1133,6 +1165,12 @@ EOF_WIP
             ${CACHE_HEALTH_STATE_DIR:+--state-dir "$CACHE_HEALTH_STATE_DIR"} 2>/dev/null; then
             printf 'cache: unmonitored (reader failed)\n'
         fi
+    fi
+
+    # Clip funnel -------------------------------------------------------------
+    if [ -f "$clip_funnel_tool" ] && [ -n "$clip_funnel_vault" ]; then
+        printf '\n## 🔬 Clip funnel\n\n'
+        clip_funnel_body "$clip_funnel_vault" "$today"
     fi
 
     # Suggested order ---------------------------------------------------------

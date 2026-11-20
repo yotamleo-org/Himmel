@@ -315,6 +315,37 @@ the `/synthesize-stubs` runbook sends it through the telegram bridge `reply` too
 digest, and `--no-telegram-digest` suppresses it entirely during the one-time
 migration backfill. Pure builder: `tools/lib/telegram-digest.mjs`.
 
+### Clip funnel (outcomes, read-only)
+
+`tools/clip-funnel.mjs --vault <v> [--as-of YYYY-MM-DD] [--days N]` prints one
+JSON document answering "is the pipeline doing its job": of the clips taken in,
+how many a synthesis page cites, how many subject pages were created or
+extended, how many daily actions are open and applied, how many clips wait on
+media. The morning report (`scripts/handover/generate-morning-briefing.sh`)
+renders it as its `Clip funnel` block. It writes nothing to the vault, reads
+each file once and prints the same bytes on two runs.
+
+- **intake:** the flat `Clippings/_evidence/` pool (a subfolder is not evidence).
+- **cited:** a clip is cited when a page in `Clippings/_synthesis/` links it by
+  name; the folder in the link and a `.md` suffix do not matter, so a link to
+  the clip's old `_done/` folder still counts. Accepted proposals under
+  `_synthesis/_done/` are not scanned.
+- **subjects:** `.synthesize-stubs.ledger.jsonl`, `stub-create` rows = created,
+  `densify` rows = extended, counted per distinct page.
+- **actions:** open = the `## Daily report` items in `50-Journal/Daily/` that
+  no report ticked or dismissed and the apply ledger has not applied; applied =
+  the distinct ids with a `fold` or `archive` row in
+  `.apply-clip-actions.ledger.jsonl`. An absent ledger is zero applied. A row
+  stays after `apply-clip-actions.mjs --revert`, so a reverted action still
+  reads as applied.
+- **media:** clips with `ig_media_pending: true` or `x_media_pending: true` in
+  `Clippings/` (the inbox) or `_evidence/`.
+
+Each stage reports `moved_in_window` (events dated inside the window, default
+the 7 days ending on `--as-of`) and `last` (its newest event). `stalled` names
+the stages with no movement in the window: `intake`, `cited` and `subjects`
+always, `actions` only while some are open, `media` only while some clips wait.
+
 ## Why a plugin
 
 A sibling task ships the install pipeline (Web Clipper extension + JSON templates landed in luna PR #11, see `_Templates/Web-Clipper/import/`). Without triage, clips become a bookmark graveyard inside the vault — the exact failure the source article called out. This plugin owns the triage rhythm.
@@ -440,6 +471,8 @@ A `tests/test-synthesize-invariants.sh` covers the synthesize-side invariants (p
 `tests/test-telegram-digest.sh` + `tests/test-synthesize-telegram-digest.sh` + `tests/test-telegram-clip-inbox.sh` cover the promotion digest (one batched reply per chat — not per promotion — distinct-subject dedup, non-telegram/suppression exclusion, reply threading), its end-to-end emission from `synthesize-stubs --apply` (digest file written, stale-cleared on no-op re-run, suppressed under `--no-telegram-digest`), and the telegram-clip inbox-state contract (no `processed:`/`lifecycle:` marker, `telegram_chat_id` provenance). Pure Node.
 
 `tests/test-grow-feed-log.sh` covers the feed-log entry point against a temp fixture vault (never the real vault): feed-row placement inside the `## Log` table (right after the last existing row, `## Products` untouched), idempotent re-run by `--msg-id` (byte-identical no-op), pipe/newline cell sanitization, `--dry-run` no-write, product-mode section insertion before `## Notes` plus its own product-name idempotency gate, vault/target-file/`## Log`-table validation exit codes, and the `updated:` frontmatter bump on a real write only. Pure Node.
+
+`tests/test-clip-funnel.sh` covers the clip funnel against a synthetic fixture vault (`tests/fixtures/clip-funnel/`): every stage's count, the apply ledger present and absent, the seven-day stall boundary, `--days`, identical bytes on two runs, a vault left byte for byte unchanged, one read per file, and the bad-argument exits.
 
 ## Known issues (as of audit cycle 2026-05-25)
 
