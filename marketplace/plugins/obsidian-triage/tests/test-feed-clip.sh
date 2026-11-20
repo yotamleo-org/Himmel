@@ -508,6 +508,16 @@ assert "skip word at the start of a longer word is not skipped (rcs)" 1 "$(grep 
 assert "skip word followed by a digit is skipped (rc2)" 0 "$(grep -l 'rc2' "$V"/Clippings/feed-*.md 2>/dev/null | wc -l | tr -d ' ')"
 assert "skip word boundaries: three clips, one skipped" 3 "$(nclips "$V")"
 
+cat > "$tmpdir/ctl-feed.xml" <<'EOF'
+<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>t</title>
+<entry><id>c1</id><link href="https://example.com/c1"/><title>v1.0 al&#x0;pha 1</title><content>x</content></entry>
+<entry><id>c2</id><link href="https://example.com/c2"/><title>v1.0 stable</title><content>x</content></entry></feed>
+EOF
+V="$(newvault ctlskip)"
+printf 'file://%s Ctl skip=alpha\n' "$tmpdir/ctl-feed.xml" > "$V/.feed-clip-feeds"
+run_tool --vault "$V" --dry-run
+assert "skip filter: a skip word split by a control character is screened as written, so the entry is skipped" 1 "$(grep -c 'would clip' <<<"$out")"
+
 for bad in 'skip=' 'skip=a;b' 'skip=,' 'skip=alpha skip=rc'; do
     V="$(newvault prerel-bad)"
     printf 'file://%s Prerel %s\n' "$PRE" "$bad" > "$V/.feed-clip-feeds"
