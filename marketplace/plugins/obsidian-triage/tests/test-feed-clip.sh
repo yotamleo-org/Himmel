@@ -323,6 +323,19 @@ assert "--feeds reads a list from another path" 2 "$(nclips "$V")"
 run_tool --vault "$V" --feeds "$tmpdir/does-not-exist.list"
 assert "--feeds with a missing file exits 0 with a note" ok "$(has 'no feed list' "$out")"
 
+# -- Test 11: an unusable state or list file is exit 2, never a silent re-clip -
+echo "Test 11: unreadable state"
+V="$(newvault badstate)"
+printf 'file://%s AtomRel\n' "$FIX/atom-releases.xml" > "$V/.feed-clip-feeds"
+mkdir "$V/.feed-clip-seen.jsonl"
+run_tool --vault "$V"
+assert "an unreadable seen file exits 2" 2 "$rc"
+assert "an unreadable seen file clips nothing" 0 "$(nclips "$V")"
+V="$(newvault badlist)"
+mkdir "$V/.feed-clip-feeds"
+run_tool --vault "$V"
+assert "an unreadable feed list exits 2" 2 "$rc"
+
 # -- Summary -----------------------------------------------------------------
 echo ""
 echo "feed-clip tests: $pass passed, $fail failed"
