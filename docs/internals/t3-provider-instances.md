@@ -26,7 +26,7 @@ One `providerInstances.claudeAgent_<profile>` entry per profile:
 
 ## Dry run, then apply
 
-```
+```bash
 bash scripts/t3/provider-instances.sh --settings-file ~/.t3/userdata/settings.json
 bash scripts/t3/provider-instances.sh --apply --settings-file ~/.t3/userdata/settings.json
 ```
