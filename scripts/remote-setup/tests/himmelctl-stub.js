@@ -4,6 +4,7 @@
 //   items.json        {"<item id>": {"severity": "green|degraded|red|n/a", "detail": "..."}}
 //   items.omit        item ids the stub leaves out of a status answer
 //   himmelctl.fail    an exit code: `status` then fails with it
+//   himmelctl.lockstore  present: `status` makes the bridge store directory read-only
 //   bridge-enable.rc  an exit code for `bridge enable` (default 0)
 //   himmelctl.calls   every call, one line each
 const fs = require('fs');
@@ -19,6 +20,11 @@ if (argv[0] === 'status') {
   if (failure !== null) {
     process.stderr.write('himmelctl stub: refused\n');
     process.exit(Number(failure.trim()) || 1);
+  }
+  // himmelctl.lockstore: make the bridge store read-only the moment status runs, so the helper's
+  // rollback write after a failed distinct-tokens check cannot succeed.
+  if (read('himmelctl.lockstore', null) !== null) {
+    try { fs.chmodSync(path.join(process.env.HOME, '.claude', 'channels', 'telegram'), 0o500); } catch (_e) { /* no store dir yet */ }
   }
   const i = argv.indexOf('--items');
   const ids = i >= 0 ? argv[i + 1].split(',') : [];

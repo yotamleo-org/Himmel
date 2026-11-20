@@ -689,6 +689,47 @@ case_bot_post_write_distinct_tokens_failure_restores_previous() {
     check "fresh: the token was removed again" file_lacks "$(STORE_FILE)" "${new#*:}"
 }
 
+# When the rollback write itself fails the FIX must say so, never "restored".
+case_bot_post_write_restore_failure_is_not_reported_as_restored() {
+    if [ "$(id -u)" = 0 ]; then SKIPN=$((SKIPN + 1)); return 0; fi # root ignores a read-only directory
+    local old new
+    old=$(mk_token 111)
+    new=$(mk_token 111)
+    seed_store "$old"
+    set_item distinct-tokens degraded "the main bot and the bridge bot are the same bot"
+    : > "$T/himmelctl.lockstore"
+    set_getme 111 cand_bot
+    set_onboard 777
+    feed "$new"
+    run_sut "$T/in" bot
+    chmod 700 "$(CHANNEL_DIR)"
+    check "exit 3" eq "$RC" 3
+    check "it does not claim the previous token was restored" lacks "$LAST" "was restored"
+    check "it says the previous token could not be put back" has "$LAST" "could NOT be put back"
+    check "and the new token really is still saved" file_has "$(STORE_FILE)" "$new"
+    # a fresh station: the same honesty when the new token cannot be removed
+    rm -rf "$HOME_FIX/.claude"
+    feed "$new"
+    run_sut "$T/in" bot
+    chmod 700 "$(CHANNEL_DIR)"
+    check "fresh: it does not claim the token was removed" lacks "$LAST" "so it was removed"
+    check "fresh: it says the token could not be removed" has "$LAST" "could NOT be removed again"
+}
+
+# A hand-edited store may quote the value; pressing Enter must reuse it without the quotes.
+case_bot_enter_reuses_a_quoted_stored_token() {
+    local tok
+    tok=$(mk_token 111)
+    mkdir -p "$(CHANNEL_DIR)"
+    printf 'TELEGRAM_BOT_TOKEN="%s"\n' "$tok" > "$(STORE_FILE)"
+    seed_access 777
+    all_green
+    feed ""
+    run_sut "$T/in" bot
+    check "the quoted token is reused" starts "$LAST" "DONE: bot"
+    check "the quotes did not reach Telegram" file_has "$T/curl.stdin" "/bot$tok/getMe"
+}
+
 case_bot_run1_prints_paste_line_and_exits_3() {
     local tok
     tok=$(mk_token 111)
@@ -996,7 +1037,8 @@ status_json_is_single_object_on_success status_json_on_item_failure status_json_
 status_reads_no_daemon_log_peers_json_or_mode
 bot_red_bridge_id_as_main_refuses bot_relay_id_as_main_refuses bot_notice_id_as_main_refuses
 bot_different_id_without_replace_refuses bot_same_bot_new_token_is_stored bot_same_token_skips_store
-bot_post_write_distinct_tokens_failure_restores_previous bot_run1_prints_paste_line_and_exits_3
+bot_post_write_distinct_tokens_failure_restores_previous bot_post_write_restore_failure_is_not_reported_as_restored
+bot_enter_reuses_a_quoted_stored_token bot_run1_prints_paste_line_and_exits_3
 bot_run2_after_paste_reaches_done bot_existing_access_json_other_id_fixes_unchanged
 bot_existing_access_json_bad_shape_fixes_before_the_prompt bot_rerun_without_token_never_pairs
 bot_canary_token_absent_everywhere bot_done_rerun_changes_no_config_artifact bot_inputs_are_only_the_g2_set

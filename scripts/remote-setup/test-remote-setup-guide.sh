@@ -196,8 +196,8 @@ t_guide_lint_fails_without_fish_in_ci() {
     else
         bad "guide_lint_fails_without_fish_in_ci: failed, but not for the missing fish: $(cat "$WORK/ci.out")"
     fi
-    # outside CI a missing fish only warns
-    if PATH="$WORK/nofish" bash "$HERE/test-remote-setup-guide.sh" --lint "$p" > /dev/null 2>&1; then
+    # outside CI a missing fish only warns (CI is unset for the child: GitHub Actions sets it for this very run)
+    if env -u CI PATH="$WORK/nofish" bash "$HERE/test-remote-setup-guide.sh" --lint "$p" > /dev/null 2>&1; then
         ok guide_lint_only_warns_without_fish_outside_ci
     else
         bad "guide_lint_only_warns_without_fish_outside_ci: it failed outside CI"

@@ -124,11 +124,15 @@ cmd_bot() {
                 degraded | red)
                     detail=$(rs_clean "$(printf '%s' "$out" | jq -r '[.items[] | select(.id == "distinct-tokens")] | first | .detail // ""' 2> /dev/null)")
                     if [ -n "$prev_tok" ]; then
-                        printf '%s\n' "$prev_tok" | rs_store_token > /dev/null 2>&1
-                        rs_fix "the new token collides with another bot (${detail:0:160}), so the previous token was restored: make a new bot with @BotFather (send /newbot), then run the same command again"
+                        if printf '%s\n' "$prev_tok" | rs_store_token > /dev/null 2>&1; then
+                            rs_fix "the new token collides with another bot (${detail:0:160}), so the previous token was restored: make a new bot with @BotFather (send /newbot), then run the same command again"
+                        fi
+                        rs_fix "the new token collides with another bot (${detail:0:160}) and the previous token could NOT be put back, so the new token is still saved: put your previous token back into $(rs_tilde "$HOME")/.claude/channels/telegram/.env by hand, then run the same command again"
                     fi
-                    rs_store_remove > /dev/null 2>&1
-                    rs_fix "the new token collides with another bot (${detail:0:160}), so it was removed again: make a new bot with @BotFather (send /newbot), then run the same command again"
+                    if rs_store_remove > /dev/null 2>&1; then
+                        rs_fix "the new token collides with another bot (${detail:0:160}), so it was removed again: make a new bot with @BotFather (send /newbot), then run the same command again"
+                    fi
+                    rs_fix "the new token collides with another bot (${detail:0:160}) and could NOT be removed again: delete the TELEGRAM_BOT_TOKEN line in $(rs_tilde "$HOME")/.claude/channels/telegram/.env by hand, then run the same command again"
                     ;;
             esac
             rs_step "the token is saved"

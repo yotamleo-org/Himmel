@@ -189,4 +189,5 @@ DONE: status — all shipped parts ok
 ```
 
 If a part is not ready, the last line is a `FIX:` that names the part and its command. This
-command only reads: it is safe to run anywhere, and it changes nothing.
+command only reads, so it is safe to run at any time and it changes nothing. Like every command
+on this page it runs from your himmel folder (step 0).

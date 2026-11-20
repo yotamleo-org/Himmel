@@ -367,7 +367,7 @@ let raw = "";
 try { raw = fs.readFileSync(file, "utf8"); } catch (_e) { process.exit(0); }
 for (const line of raw.split(/\r?\n/)) {
   const m = /^\s*(?:export\s+)?TELEGRAM_BOT_TOKEN\s*=\s*(.*?)\s*$/.exec(line);
-  if (m) { process.stdout.write(m[1]); break; }
+  if (m) { process.stdout.write(m[1].replace(/^(["\x27])(.*)\1$/, (_all, _quote, inner) => inner)); break; }
 }
 ' "$RS_ROOT/scripts/himmelctl/lib/bot-roles.js"
 }
