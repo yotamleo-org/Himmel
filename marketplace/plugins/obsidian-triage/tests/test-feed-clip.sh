@@ -79,9 +79,11 @@ cat > "$tmpdir/server.mjs" <<'EOF'
 import http from "node:http";
 import { readFileSync } from "node:fs";
 const ok = readFileSync(process.argv[2]);
+const blog = readFileSync(process.argv[3]);
 const big = "<?xml version='1.0'?><rss version='2.0'><channel>" + "<!-- pad -->".repeat(2000) + "</channel></rss>";
 const s = http.createServer((q, r) => {
   if (q.url === "/ok") { r.writeHead(200, { "content-type": "application/atom+xml" }); r.end(ok); }
+  else if (q.url === "/blog") { r.writeHead(200, { "content-type": "application/rss+xml" }); r.end(blog); }
   else if (q.url === "/500") { r.writeHead(500); r.end("boom"); }
   else if (q.url === "/hang") { /* never answers */ }
   else if (q.url === "/redir-walled") { r.writeHead(302, { location: "http://x.com/feed.xml" }); r.end(); }
@@ -92,7 +94,7 @@ const s = http.createServer((q, r) => {
 });
 s.listen(0, "127.0.0.1", () => console.log(s.address().port + " " + process.pid));
 EOF
-exec 3< <(node "$tmpdir/server.mjs" "$FIX/atom-releases.xml")
+exec 3< <(node "$tmpdir/server.mjs" "$FIX/atom-releases.xml" "$FIX/rss-blog.xml")
 read -r PORT SRV_PID <&3
 if [ -n "${PORT:-}" ]; then s=yes; else s=no; fi
 assert "loopback fixture server started" yes "$s"
@@ -218,6 +220,16 @@ assert "malformed list line reported with its line number" ok "$(has 'feed-clip:
 assert "the good feeds still wrote their clips (2 via redirect + 2 blog)" 4 "$(nclips "$V")"
 assert "failed feeds wrote no seen line" 4 "$(nlines "$V/.feed-clip-seen.jsonl")"
 
+# -- Test 6a: over http an entry without a link is skipped, never given the feed URL
+echo "Test 6a: http feed with a link-less entry"
+V="$(newvault httpblog)"
+printf 'http://127.0.0.1:%s/blog Blog\n' "$PORT" > "$V/.feed-clip-feeds"
+run_tool --vault "$V"
+assert "http blog feed: exit 0" 0 "$rc"
+assert "http blog feed: 2 clips (the link-less and the script-link entries skipped)" 2 "$(nclips "$V")"
+if grep -l '^source: http://127.0.0.1' "$V"/Clippings/*.md >/dev/null 2>&1; then s=feed-url; else s=none; fi
+assert "no clip carries the feed URL as its source" none "$s"
+
 # -- Test 6b: a crafted feed cannot stall the parser --------------------------
 echo "Test 6b: a crafted feed cannot stall the parser"
 V="$(newvault hostile)"
@@ -250,6 +262,9 @@ V="$(newvault cap)"
   printf '</feed>\n'
 } > "$tmpdir/ten.xml"
 printf 'file://%s Ten\n' "$tmpdir/ten.xml" > "$V/.feed-clip-feeds"
+FEED_CLIP_MAX_BYTES=500 run_tool --vault "$V"
+assert "a local feed larger than the size limit is one failure line" 1 "$(grep -c '^✗ feed-clip: Ten.*larger than' <<<"$out")"
+assert "an oversized local feed clips nothing" 0 "$(nclips "$V")"
 run_tool --vault "$V" --cap 3
 assert "run 1 exits 0" 0 "$rc"
 assert "run 1 wrote exactly 3 clips" 3 "$(nclips "$V")"

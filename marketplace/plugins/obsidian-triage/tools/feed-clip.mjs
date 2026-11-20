@@ -155,7 +155,11 @@ async function readCapped(res) {
 /** Feed text for one list URL. file:// serves local fixtures; http(s) follows up
  * to MAX_REDIRECTS hops by hand so a walled host is never contacted. */
 async function fetchFeed(url) {
-  if (url.toLowerCase().startsWith("file://")) return readFileSync(fileURLToPath(url), "utf8");
+  if (url.toLowerCase().startsWith("file://")) {
+    const path = fileURLToPath(url);
+    if (statSync(path).size > MAX_BYTES) throw new Error(`feed larger than ${MAX_BYTES} bytes`);
+    return readFileSync(path, "utf8");
+  }
   let u = new URL(url);
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error(`unsupported scheme ${u.protocol}`);
@@ -249,6 +253,7 @@ function linkOf(block) {
 }
 
 function cleanLink(raw, base) {
+  if (!raw.trim()) return ""; // an empty href would resolve to the feed URL itself
   try {
     const u = new URL(raw.trim(), base);
     return u.protocol === "http:" || u.protocol === "https:" ? u.href : "";
