@@ -632,9 +632,9 @@ peer_unit_ensure() {
     if [ "$(uname)" = Darwin ]; then
         if [ "$changed" = 1 ] && peer_unit_active; then launchctl bootout "gui/$uid/$PEER_LABEL" > /dev/null 2>&1; fi
     else
-        if [ "$changed" = 1 ]; then systemctl --user daemon-reload > /dev/null 2>&1 || rs_fix "systemd did not accept the poller unit: run systemctl --user daemon-reload yourself and read its error, then run the same command again"; fi
+        if [ "$changed" = 1 ]; then systemctl --user daemon-reload > /dev/null 2>&1 || rs_fix "systemd did not accept the poller unit: run systemctl --user daemon-reload yourself and read its error, then run the same command again"; fi # t13b-ok: reloads unit files after the operator-run peer setup wrote the poller unit; the FIX text only names that command
         if ! systemctl --user is-enabled --quiet "$PEER_UNIT" > /dev/null 2>&1; then
-            systemctl --user enable "$PEER_UNIT" > /dev/null 2>&1 || rs_fix "the poller unit could not be enabled: run systemctl --user enable $PEER_UNIT yourself and read its error, then run the same command again"
+            systemctl --user enable "$PEER_UNIT" > /dev/null 2>&1 || rs_fix "the poller unit could not be enabled: run systemctl --user enable $PEER_UNIT yourself and read its error, then run the same command again" # t13b-ok: enables the peer poller unit that this operator-run peer setup just installed (Part 4 opt-in), nothing else
         fi
         if [ "$changed" = 1 ] && peer_unit_active; then
             systemctl --user restart "$PEER_UNIT" > /dev/null 2>&1 || rs_fix "the poller did not restart: look at why with: journalctl --user -u $PEER_UNIT -n 30, then run the same command again"
@@ -676,7 +676,7 @@ peer_teardown_fix() {
     if [ "$(uname)" = Darwin ]; then how="launchctl bootout gui/$(id -u)/$PEER_LABEL"; fi
     case "$PEER_TEARDOWN_FAILED" in
         delete) rs_fix "the peer poller is stopped, but its unit file could not be deleted (a peer that was removed stays removed, so the same command finishes the job): delete $(rs_tilde "$f") yourself, then run the same command again" ;;
-        reload) rs_fix "the peer poller is stopped and its unit file is deleted, but systemd did not reload its unit list: run systemctl --user daemon-reload yourself, and nothing else is left to do" ;;
+        reload) rs_fix "the peer poller is stopped and its unit file is deleted, but systemd did not reload its unit list: run systemctl --user daemon-reload yourself, and nothing else is left to do" ;; # t13b-ok: remediation message text only, starts nothing
     esac
     rs_fix "the peer poller could not be stopped (a peer that was removed stays removed, so the same command finishes the job): stop it yourself with $how, then run the same command again"
 }
