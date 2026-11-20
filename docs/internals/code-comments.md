@@ -15,7 +15,46 @@ Every other comment goes. A surprise in our own code is a refactor target, not a
 comment. History does not belong in code: ticket IDs, review rounds, "CR fix" notes
 and judge qids live in git and Jira. A known limitation does not belong in code
 either: it is a row in the ceilings ledger (below). A comment that explains a
-workaround is a signal to fix the code, or to file one ticket for the workaround.
+workaround is a signal to fix the code, or to file one ticket for the workaround. A
+decision worth keeping is a short record in the state repo bucket `specs/decisions/`.
+
+### The new-comment gate
+
+`scripts/lint/check-new-comments.sh` refuses a new comment outside the keep list, at
+pre-commit (`--staged`) and in CI (`--range <base>`, run from the BASE copies). It
+counts, per code file, the comment lines its classifier `scripts/lint/comment-count.awk`
+does not keep, and compares the count with the file's row in
+`scripts/lint/comment-baseline.tsv` (`path<TAB>count`):
+
+- Only the code files a change touches are judged, so a change that touches no
+  commented file can never fail. A touched file's count may not exceed its row; a file
+  with no row is allowed none, so a new file starts at zero.
+- The baseline only goes down. A row may not rise above the base's row for that path,
+  or for the path the file was renamed from in the same change; a new row above zero
+  is refused. CI reads the base's baseline, so a change cannot raise the rows that
+  judge it.
+- Rewording a comment in place, or editing a code line that carries one, leaves the
+  count unchanged and passes. The refusal names the file, its count and its row, then
+  the added comment lines as `path:line: text`.
+
+What the classifier keeps, because a line-based check can recognise it: the leading
+comment block of a file before its first code line (purpose, usage, exit codes); a
+license or copyright line; a lint suppression directive (`shellcheck`, `eslint`,
+`prettier-ignore`, `@ts-…`, `noqa`, `type: ignore`, `pylint`, and the `<name>-ok:`
+markers this repo's own lints read); a comment carrying an `http(s)` link; a `/** */`
+doc block. There is no keep marker. A comment about behaviour forced by an external
+dependency, platform or protocol stays by carrying the link to that constraint.
+Detection is line-based: a heredoc body and a Python triple-quoted string are skipped;
+a `#` inside any other multi-line string is not tracked. The paths left out are the
+whole-file rows of `scripts/lint/ticket-ref-allow.tsv` (fixtures, archives, generated
+and vendored trees).
+
+`bash scripts/lint/check-new-comments.sh --write-baseline` rewrites the baseline from
+the working tree. Run it after a sweep deletes comments, and after a rename so the row
+moves with the file. The sweep itself is the `/no-comments` skill
+(`.claude/skills/no-comments/SKILL.md`).
+
+### The history-comment gate
 
 `scripts/lint/check-history-comments.sh` enforces this at pre-commit (`--staged`)
 and in CI (`--range <base>`, run from the BASE copies). It reads one classifier,
