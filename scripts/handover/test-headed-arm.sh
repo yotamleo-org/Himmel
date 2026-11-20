@@ -1840,8 +1840,6 @@ check "36j headless LINES: exit 0" "$rc36j" "0"
 check "36j headless LINES: launch env holds the spaced value" "$(cat "$d36j/envfile" 2>/dev/null || echo MISSING)" "/x/a b/PROJ-1-N1-x.md"
 check "36j headless LINES: settings env block holds the spaced value" "$(jq -r '.env.HIMMEL_HOLD_DOC' "$d36j/settings.json" 2>/dev/null || echo MISSING)" "/x/a b/PROJ-1-N1-x.md"
 
-# 36k: a launch from inside a worker (HIMMEL_CONSOLE_LEG set) must not hand its own API-lane
-# billing names to the new session; a chief launch keeps them, and a launcher-env line still carries one.
 d36k="$tmp/c36k"; mkdir -p "$d36k"
 printf '{}\n' > "$d36k/settings.json"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$d36k/pgrep"
@@ -1863,11 +1861,9 @@ run36k() { # run36k <extra env assignments...> -> the API-lane names the launche
     bash "$SCRIPT" "HIMMEL-lines36k" "doc36k.md" "$d36k/signal-never" "$PAST" "$d36k/log" >/dev/null 2>&1 || true
   cat "$d36k/envfile" 2>/dev/null || echo MISSING
 }
-LANE36K='HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A WORKER_SESSION_API_LANE=on WORKER_SESSION_API_ACCOUNT=A'
-# shellcheck disable=SC2086
-check "36k a launch from inside a worker drops all four API-lane names" "$(run36k HIMMEL_CONSOLE_LEG=1 $LANE36K)" ""
-# shellcheck disable=SC2086
-check "36k control: a chief launch (no HIMMEL_CONSOLE_LEG) is unchanged" "$(run36k -u HIMMEL_CONSOLE_LEG $LANE36K | tr '\n' ' ')" "HIMMEL_API_ACCOUNT=A HIMMEL_API_LANE=on WORKER_SESSION_API_ACCOUNT=A WORKER_SESSION_API_LANE=on "
+LANE36K=(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A WORKER_SESSION_API_LANE=on WORKER_SESSION_API_ACCOUNT=A)
+check "36k a launch from inside a worker drops all four API-lane names" "$(run36k HIMMEL_CONSOLE_LEG=1 "${LANE36K[@]}")" ""
+check "36k control: a chief launch (no HIMMEL_CONSOLE_LEG) is unchanged" "$(run36k -u HIMMEL_CONSOLE_LEG "${LANE36K[@]}" | tr '\n' ' ')" "HIMMEL_API_ACCOUNT=A HIMMEL_API_LANE=on WORKER_SESSION_API_ACCOUNT=A WORKER_SESSION_API_LANE=on "
 check "36k control: a launcher-env line still carries the lane from a worker-side wrapper" \
   "$(run36k HIMMEL_CONSOLE_LEG=1 HEADED_ARM_LAUNCHER_ENV_LINES=HIMMEL_API_LANE=on)" "HIMMEL_API_LANE=on"
 
