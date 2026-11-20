@@ -429,7 +429,7 @@ assert_contains "RED B2: a second daemon says already running" "bypass-launchd: 
 stop
 assert_eq "B2: a stopped daemon leaves no lock behind" "none" "$([ -e "$Q/.lock.pid" ] || [ -L "$Q/.lock.pid" ] && echo held || echo none)"
 start PATH="$SHIM" SHIM_DATE_ALLOW_D=1
-wait_for "$Q/daemon.log" "start pid="
+for _ in $(seq 100); do [ "$(grep -c 'start pid=' "$Q/daemon.log")" -ge 2 ] && break; sleep 0.1; done
 assert_eq "B2: the bucket can be started again after a stop" "2" "$(grep -c 'start pid=' "$Q/daemon.log")"
 stop
 # A lock left by a killed daemon (dead pid) is reclaimed.
