@@ -308,7 +308,7 @@ import {readFileSync} from 'node:fs';
 let n = 0;
 for (const l of readFileSync(process.env.SEEN, 'utf8').split('\n')) {
   if (!l) continue;
-  try { const r = JSON.parse(l); if (r.feed && r.id) n++; } catch { /* the truncated line */ }
+  try { const r = JSON.parse(l); if (r.feed && r.id) n++; } catch { continue; }
 }
 console.log(n);
 ")"
