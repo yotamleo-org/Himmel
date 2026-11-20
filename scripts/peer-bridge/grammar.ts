@@ -3,6 +3,9 @@ import { randomBytes } from "node:crypto";
 export const KIND_LINE_RE = /^#(ask:question|status|info|answer) id=([0-9a-f]{8})$/;
 export const TPL_LINE_RE = /^#tpl:(receipt|nudge|deferred|closing|declined-kind|busy) #([0-9]+) id=([0-9a-f]{8})(?: by=([0-9]{8}T[0-9]{6}Z))?$/;
 
+export const ENV_LINE_RE = /^#env:v1 k=([0-9a-f]{8}) id=([0-9a-f]{8})$/;
+export const SIG_LINE_RE = /^sig=[A-Za-z0-9_-]{86}$/;
+
 export type Kind = "ask:question" | "status" | "info" | "answer";
 export type Tpl = "receipt" | "nudge" | "deferred" | "closing" | "declined-kind" | "busy";
 

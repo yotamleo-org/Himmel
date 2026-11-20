@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { byStamp, mintId, parseControl } from "./grammar";
+import { ENV_LINE_RE, SIG_LINE_RE, byStamp, mintId, parseControl } from "./grammar";
 
 const US = "ours_bot";
 
@@ -50,4 +50,23 @@ test("only the exact address line is stripped", () => {
 
 test("a control line below line 2 is not a control line", () => {
   expect(parseControl("hello\n#info id=a1b2c3d4", US)).toMatchObject({ untagged: true });
+});
+
+test("ENV_LINE_RE matches the envelope line and refuses uppercase hex and trailing space", () => {
+  const m = ENV_LINE_RE.exec("#env:v1 k=0123abcd id=89abcdef");
+  expect(m?.[1]).toBe("0123abcd");
+  expect(m?.[2]).toBe("89abcdef");
+  for (const t of ["#env:v1 k=0123ABCD id=89abcdef", "#env:v1 k=0123abcd id=89ABCDEF", "#env:v1 k=0123abcd id=89abcdef ", " #env:v1 k=0123abcd id=89abcdef", "#env:v2 k=0123abcd id=89abcdef", "#env:v1 k=0123abc id=89abcdef", "#env:v1 id=89abcdef k=0123abcd", "#env:v1 k=0123abcd id=89abcdef\n"]) {
+    expect(ENV_LINE_RE.test(t)).toBe(false);
+  }
+});
+
+test("an envelope message is untagged to the text parser: the third regex is not a text kind", () => {
+  expect(parseControl("/peer@ours_bot\n#env:v1 k=0123abcd id=89abcdef\n{}\nsig=x", US)).toMatchObject({ addr: true, untagged: true });
+});
+
+test("SIG_LINE_RE wants sig= and exactly 86 base64url characters", () => {
+  const s = "A".repeat(86);
+  expect(SIG_LINE_RE.test(`sig=${s}`)).toBe(true);
+  for (const t of [`sig=${s}A`, `sig=${s.slice(1)}`, `sig=${s.slice(1)}+`, `sig=${s} `, `SIG=${s}`, `sig=${s}\n`]) expect(SIG_LINE_RE.test(t)).toBe(false);
 });
