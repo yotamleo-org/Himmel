@@ -8,12 +8,6 @@
 #   --apply    back <path> up to <path>.bak.<UTC stamp>, then replace it atomically.
 # rc 0 ok; rc 2 usage / unreadable or malformed settings file / resolver failure;
 # rc 3 an instance environment entry names a himmel guard bypass flag (nothing written).
-#
-# Per profile: --settings <stable path from scripts/lanes/profile-settings.sh>, plus
-# --mcp-config <file> --strict-mcp-config when the profile declares an mcpServers allowlist.
-# A profile already reachable through another instance (same <profile>.json in a launchArgs)
-# gets no new id; existing instances are never edited except a claudeAgent_<profile> whose
-# stable path moved. This script never writes ~/.himmel/config.json: it prints the ids.
 # Env seams (tests): T3_PI_RESOLVER (resolver script), T3_PI_PROFILES (comma list),
 # T3_PI_EMPTY_OK (comma list of profiles that resolve to no settings; default "operator").
 # Platform: POSIX bash 3.2+, jq, node (default resolver).
