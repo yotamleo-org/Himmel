@@ -109,7 +109,7 @@ done_lines() {
 helper_done_regexes() {
     local tpl
     grep -o 'rs_done "[^"]*"' "$HERE/remote-setup.sh" | sed 's/^rs_done "//; s/"$//' | while IFS= read -r tpl; do
-        printf '^DONE: %s$\n' "$(printf '%s' "$tpl" | sed -e 's#[][\.*^$()+?{}|/]#\\&#g' -e 's#\\\$RS_BOT_USER#[A-Za-z0-9_]+#g' -e 's#\\\$RS_BOT_ID#[0-9]+#g')"
+        printf '^DONE: %s$\n' "$(printf '%s' "$tpl" | sed -e 's#[][\.*^$()+?{}|/]#\\&#g' -e 's#\\\$RS_BOT_USER#[A-Za-z0-9_]+#g' -e 's#\\\$RS_BOT_ID#[0-9]+#g' -e 's#\\\$names#[a-z0-9][a-z0-9, -]*#g' -e 's#\\\$name#[a-z0-9][a-z0-9-]*#g')"
     done
 }
 
@@ -246,6 +246,53 @@ t_guide_lint_catches_placeholder_outside_terminal_sections() {
     lint_fails guide_lint_catches_an_unclosed_fence "$p" "never closed"
 }
 
+# fix_phrases <page>: the first-column phrase of each row of a FIX table, cut where a placeholder starts.
+fix_phrases() {
+    sed -n 's/^| `\([^`]*\)` |.*/\1/p' "$1" | sed -e 's/ *\.\.\..*$//' -e 's/ N .*$//' | grep -v '^$'
+}
+
+# fix_missing <page>: the FIX-table phrases that no line of the helper can print.
+fix_missing() {
+    local phrase missing=""
+    while IFS= read -r phrase; do
+        [ -n "$phrase" ] || continue
+        grep -qF -- "$phrase" "$HERE/remote-setup.sh" "$HERE/lib.sh" || missing="$missing [$phrase]"
+    done <<EOF
+$(fix_phrases "$1")
+EOF
+    printf '%s' "$missing"
+}
+
+t_guide_fix_rows_exist_in_helper() {
+    local missing n p
+    n=$(fix_phrases "$PAGE" | grep -c .)
+    missing=$(fix_missing "$PAGE")
+    if [ "$n" -gt 0 ] && [ -z "$missing" ]; then
+        ok "guide_fix_rows_exist_in_helper ($n rows)"
+    else
+        bad "guide_fix_rows_exist_in_helper: $n rows on the page, not in the helper:$missing"
+    fi
+    # control: a row the helper never prints is caught
+    p=$(fixture fix-drift '| The line says | What to do |' '|---|---|' '| `no helper prints this phrase` | Do something. |')
+    if [ -n "$(fix_missing "$p")" ]; then ok guide_fix_rows_control_catches_a_drifted_row; else bad "guide_fix_rows_control: a phrase nothing prints passed"; fi
+}
+
+t_guide_part_4_is_written() {
+    local sec missing="" w prev=0 ln order_ok=1
+    sec=$(awk '/<a id="part-4">/ {on = 1; next} /^## Check everything/ {on = 0} on' "$PAGE")
+    for w in 'Bot-to-Bot mode' 'Group Privacy' 'Group type' 'Permissions' 'Add Members' 'Administrators' '`hello`' 'peer --remove' 'peer --replace' 'run the same command once' 'chief-to-chief' 'never post' 'DONE: peer'; do
+        case "$sec" in *"$w"*) ;; *) if [ "$w" != 'never post' ]; then missing="$missing [$w]"; fi ;; esac
+    done
+    case "$sec" in *'arrives in a later update'*) missing="$missing [still a stub]" ;; esac
+    # the group steps keep their order: type, permissions, members, administrators, hello
+    for w in 'Group type' 'Permissions' 'Add Members' 'Administrators' 'send the word'; do
+        ln=$(printf '%s\n' "$sec" | grep -n -- "$w" | head -n 1 | cut -d: -f1)
+        if [ -z "$ln" ] || [ "$ln" -le "$prev" ]; then order_ok=0; fi
+        prev=${ln:-0}
+    done
+    if [ -z "$missing" ] && [ "$order_ok" = 1 ]; then ok guide_part_4_is_written_in_order; else bad "guide_part_4_is_written_in_order: missing:$missing in order: $order_ok"; fi
+}
+
 if [ "${1:-}" = --lint ]; then
     if [ -z "${2:-}" ] || [ ! -f "$2" ]; then
         echo "usage: test-remote-setup-guide.sh [--lint FILE]" >&2
@@ -264,5 +311,7 @@ t_guide_commands_parse_in_bash_zsh_fish
 t_guide_lint_fails_without_fish_in_ci
 t_guide_done_lines_match_helper
 t_guide_lint_catches_placeholder_outside_terminal_sections
+t_guide_fix_rows_exist_in_helper
+t_guide_part_4_is_written
 printf '%s passed, %s failed\n' "$PASS" "$FAILN"
 [ "$FAILN" -eq 0 ]
