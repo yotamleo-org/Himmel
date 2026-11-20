@@ -3,7 +3,8 @@ import fs from "node:fs";
 import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ConfigError, loadConfig } from "./config";
+import { ConfigError, MAX_JOB_MINUTES_MAX, clampToSchema, loadAllowlist, loadConfig } from "./config";
+import { ALLOWANCE_S, TIMEOUT_S_MAX } from "./envelope";
 import { botIdFromToken, PEER_NAME_RE, SESSION_ID_RE } from "./ids";
 import { keyId } from "./sign";
 
@@ -126,6 +127,109 @@ test("a station name outside the shape, or a key that is not what it says, refus
   expect(refusal(() => loadConfig(write(withTheirs({ keys: [key("c2hvcnQ=")] })), ENV)).code).toBe(78);
   expect(refusal(() => loadConfig(write(withTheirs({ keys: [key(PUB_A, "yesterday")] })), ENV)).code).toBe(78);
   expect(refusal(() => loadConfig(write(withTheirs({ keys: "none" })), ENV)).code).toBe(78);
+});
+
+const withPeer = (over: Record<string, unknown>) => base({ peers: { goomal: peer(over) } });
+const BUDGETS = { jobsPerDay: 10, vmMinutesPerDay: 120, queueMax: 3, maxJobMinutes: 130 };
+const MAX_JOB_MIN = TIMEOUT_S_MAX / 60 - ALLOWANCE_S / 60;
+
+test("serving defaults: nothing served, approval at a TTY, the spec's budgets, no repo", () => {
+  const p = loadConfig(write(base()), ENV).peers.goomal;
+  expect(p.serves).toEqual([]);
+  expect(p.approve).toEqual({ "run-suite": "tty" });
+  expect(p.budgets).toEqual(BUDGETS);
+  expect(p.repoUrl).toBeUndefined();
+  expect(p.theirs.imageDigest).toBeUndefined();
+});
+
+test("serving fields load when set", () => {
+  const p = loadConfig(write(withPeer({
+    serves: ["run-suite"], approve: { "run-suite": "auto" }, budgets: { jobsPerDay: 1000, vmMinutesPerDay: 10000, queueMax: 1, maxJobMinutes: 30 },
+    repoUrl: "https://example.org/x/y.git", theirs: { ...peer().theirs, imageDigest: "a".repeat(64) },
+  })), ENV).peers.goomal;
+  expect(p.serves).toEqual(["run-suite"]);
+  expect(p.approve["run-suite"]).toBe("auto");
+  expect(p.budgets).toEqual({ jobsPerDay: 1000, vmMinutesPerDay: 10000, queueMax: 1, maxJobMinutes: 30 });
+  expect(p.repoUrl).toBe("https://example.org/x/y.git");
+  expect(p.theirs.imageDigest).toBe("a".repeat(64));
+});
+
+test("each budget outside its bound is refused at load, and each bound itself loads", () => {
+  const load = (b: Record<string, unknown>) => loadConfig(write(withPeer({ budgets: { ...BUDGETS, ...b } })), ENV);
+  for (const [k, lo, hi] of [["jobsPerDay", 1, 1000], ["vmMinutesPerDay", 1, 10000], ["queueMax", 1, 3], ["maxJobMinutes", 30, MAX_JOB_MIN]] as const) {
+    expect(load({ [k]: lo }).peers.goomal.budgets[k]).toBe(lo);
+    expect(load({ [k]: hi }).peers.goomal.budgets[k]).toBe(hi);
+    expect(refusal(() => load({ [k]: lo - 1 })).code).toBe(78);
+    expect(refusal(() => load({ [k]: hi + 1 })).code).toBe(78);
+    expect(refusal(() => load({ [k]: lo + 0.5 })).code).toBe(78);
+    expect(refusal(() => load({ [k]: String(lo) })).code).toBe(78);
+  }
+  expect(refusal(() => loadConfig(write(withPeer({ budgets: { ...BUDGETS, extra: 1 } })), ENV)).code).toBe(78);
+  expect(refusal(() => loadConfig(write(withPeer({ budgets: { jobsPerDay: 10 } })), ENV)).code).toBe(78);
+});
+
+test("the maxJobMinutes ceiling is derived from the two time constants, 150 today", () => {
+  expect(MAX_JOB_MIN).toBe(150);
+  expect(MAX_JOB_MINUTES_MAX).toBe(MAX_JOB_MIN);
+  expect(MAX_JOB_MINUTES_MAX * 60 + ALLOWANCE_S).toBe(TIMEOUT_S_MAX);
+});
+
+test("serves, approve, repoUrl and imageDigest outside their shape are refused", () => {
+  for (const over of [
+    { serves: ["run-suite", "run-prompt"] }, { serves: "run-suite" }, { serves: [1] },
+    { approve: { "run-suite": "yes" } }, { approve: { "run-suite": "tty", "run-prompt": "auto" } }, { approve: "tty" },
+    { repoUrl: "" }, { repoUrl: "ftp://x/y" }, { repoUrl: "https://a b" }, { repoUrl: 5 },
+    { theirs: { ...peer().theirs, imageDigest: "xyz" } }, { theirs: { ...peer().theirs, imageDigest: "A".repeat(64) } },
+  ]) expect([JSON.stringify(over), refusal(() => loadConfig(write(withPeer(over)), ENV)).code]).toEqual([JSON.stringify(over), 78]);
+});
+
+test("a reported value is clamped to the schema's range, so our own egress re-check passes", () => {
+  expect(clampToSchema("queue", 7)).toBe(3);
+  expect(clampToSchema("queue", -2)).toBe(0);
+  expect(clampToSchema("jobs_left", 5000)).toBe(1000);
+  expect(clampToSchema("vm_minutes_left", 99_999)).toBe(10000);
+  expect(clampToSchema("minutes", 181)).toBe(180);
+  expect(clampToSchema("minutes", 12.9)).toBe(12);
+  expect(clampToSchema("timeout_s", 5)).toBe(60);
+  expect(clampToSchema("timeout_s", 99_999)).toBe(TIMEOUT_S_MAX);
+  expect(clampToSchema("bytes", 6_000_000)).toBe(5_242_880);
+  expect(clampToSchema("minutes", Number.NaN)).toBe(0);
+  expect(() => clampToSchema("nope", 1)).toThrow();
+});
+
+function suitesFile(text: string, mode = 0o600): string {
+  const dir = mkdtempSync(join(tmpdir(), "peer-suites-"));
+  writeFileSync(join(dir, "goomal.suites"), text, { mode });
+  chmodSync(join(dir, "goomal.suites"), mode);
+  return dir;
+}
+
+test("loadAllowlist reads alias/path pairs from C/<peer>.suites", () => {
+  expect(loadAllowlist("goomal", suitesFile("peer-taint scripts/hooks/test-peer-taint.sh\nledger scripts/ci/test-suite-ledger.sh\n"))).toEqual([
+    { alias: "peer-taint", path: "scripts/hooks/test-peer-taint.sh" }, { alias: "ledger", path: "scripts/ci/test-suite-ledger.sh" },
+  ]);
+  expect(loadAllowlist("goomal", suitesFile(""))).toEqual([]);
+  expect(loadAllowlist("goomal", suitesFile("\na scripts/x.sh\n\n"))).toEqual([{ alias: "a", path: "scripts/x.sh" }]);
+  expect(loadAllowlist("goomal", mkdtempSync(join(tmpdir(), "peer-nosuites-")))).toEqual([]);
+});
+
+test("loadAllowlist refuses a bad alias, a path failing the suite regex, a bad line shape or a duplicate", () => {
+  for (const line of [
+    "Bad scripts/x.sh", "a_b scripts/x.sh", `${"a".repeat(33)} scripts/x.sh`, "a scripts/../x.sh", "a scripts/UP.sh", "a /etc/passwd", "a scripts/x.py",
+    "a", "a scripts/x.sh extra", "a  scripts/x.sh", " a scripts/x.sh", "a\tscripts/x.sh", "a scripts/x.sh ", "# a scripts/x.sh",
+  ]) {
+    const e = refusal(() => loadAllowlist("goomal", suitesFile(line + "\n")));
+    expect([line, e.code]).toEqual([line, 78]);
+  }
+  expect(refusal(() => loadAllowlist("goomal", suitesFile("a scripts/x.sh\na scripts/y.sh\n"))).message).toContain("duplicate");
+  expect(refusal(() => loadAllowlist("goomal", suitesFile("a scripts/x.sh\nb scripts/x.sh\n"))).message).toContain("duplicate");
+  expect(refusal(() => loadAllowlist("goomal", suitesFile("a scripts/x.sh\n", 0o644))).message).toContain("0600");
+  expect(refusal(() => loadAllowlist("../x", suitesFile(""))).code).toBe(78);
+});
+
+test("config.ts holds no literal of the time constants: 1200, 150 or 10200 (P12)", () => {
+  const src = fs.readFileSync(join(import.meta.dir, "config.ts"), "utf8");
+  expect(src.match(/\b(1200|150|10200)\b/g)).toBeNull();
 });
 
 test("ids: the bot id is the token prefix, and the session id shape is closed", () => {

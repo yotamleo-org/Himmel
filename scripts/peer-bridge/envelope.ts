@@ -13,6 +13,13 @@ export const LIFETIME_S = 86400;      // exp = iat + LIFETIME_S, for every kind
 export const IAT_FUTURE_SKEW_S = 600; // an iat further than this in our future is refused
 export const MAX_LINE_BYTES = 3000;
 
+// The numeric ranges the wire can carry. config.ts clamps a reported value to its
+// range before it is encoded, so a reply can never fail our own egress re-check.
+export const RANGES = {
+  timeout_s: [60, TIMEOUT_S_MAX], minutes: [0, 180], bytes: [0, 5_242_880],
+  queue: [0, 3], jobs_left: [0, 1000], vm_minutes_left: [0, 10000],
+} as const;
+
 export const STATION_NAME_RE = PEER_NAME_RE;
 export const SUITE_PATH_RE = /^scripts\/[a-z0-9_/.-]{1,120}\.sh$/;
 const CHAT_RE = /^-100[0-9]{1,16}$/;
@@ -66,7 +73,7 @@ const logField: Field = {
     if (!v || typeof v !== "object" || Array.isArray(v)) return false;
     const o = v as Record<string, unknown>;
     const keys = Object.keys(o);
-    return keys.length === 2 && keys.every(k => k === "sha256" || k === "bytes") && isStr(o.sha256, HEX64_RE) && isInt(o.bytes, 0, 5_242_880);
+    return keys.length === 2 && keys.every(k => k === "sha256" || k === "bytes") && isStr(o.sha256, HEX64_RE) && isInt(o.bytes, ...RANGES.bytes);
   },
   enc: (v: { sha256: string; bytes: number }) => `{"sha256":${jstr(v.sha256)},"bytes":${v.bytes}}`,
 };
@@ -79,16 +86,16 @@ const JOB = str("job", HEX16_RE);
 const RES_BY_STATE: Record<ResState, Field[]> = {
   accepted: [], cancelled: [], expired: [],
   refused: [oneOf("refused", REFUSED)],
-  running: [int("timeout_s", 60, TIMEOUT_S_MAX)],
+  running: [int("timeout_s", ...RANGES.timeout_s)],
   done: [
     list("results", 1, 10, v => typeof v === "string" && (OUTCOMES as readonly string[]).includes(v), jstr),
-    int("minutes", 0, 180), str("image", HEX64_RE), logField,
+    int("minutes", ...RANGES.minutes), str("image", HEX64_RE), logField,
   ],
 };
 const BODY: Record<Exclude<Kind, "res">, Field[]> = {
   req: [JOB, oneOf("op", ["run-suite"]), str("sha", HEX40_RE), list("suites", 1, 10, suite, jstr)],
   "capacity-ask": [],
-  capacity: [str("re", HEX8_RE), oneOf("state", CAPACITY_STATES), int("queue", 0, 3), int("jobs_left", 0, 1000), int("vm_minutes_left", 0, 10000)],
+  capacity: [str("re", HEX8_RE), oneOf("state", CAPACITY_STATES), int("queue", ...RANGES.queue), int("jobs_left", ...RANGES.jobs_left), int("vm_minutes_left", ...RANGES.vm_minutes_left)],
   cancel: [JOB],
   halt: [],
 };
