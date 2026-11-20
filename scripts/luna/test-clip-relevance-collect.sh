@@ -33,7 +33,6 @@ TODAY=2026-11-20
 # The ledger path is an environment value, never a flag: the weekly run allows the script with any arguments.
 export CLIP_RELEVANCE_SEEN="$SEEN"
 
-# clip <file> <triaged_at|-> <title> <body>
 clip() {
     {
         printf -- '---\ntitle: %s\nsource: https://example.invalid/%s\ntype: tweet\ntags:\n  - synthetic\n' "$3" "$1"

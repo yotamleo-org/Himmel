@@ -40,7 +40,6 @@ TASK_NAME="HIMMEL-ClipRelevance"
 WORKER="clip-relevance"
 MODEL="claude-sonnet-5-5"
 PERMISSION_MODE="dontAsk"
-# A run is about 35 tool calls; the turn cap bounds a looping agent, which the bank check before the run cannot.
 MAX_TURNS=80
 MAX_CANDIDATES=5
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -60,7 +59,6 @@ resolve_primary() {
     (cd "$(dirname "$common")" 2>/dev/null && pwd)
 }
 
-# The state repo bucket's specs/audits/clip-relevance, the way snyk-scan.sh finds specs/security/snyk.
 note_dir() (
     [ -z "${CLIP_RELEVANCE_NOTE_DIR:-}" ] || { printf '%s' "$CLIP_RELEVANCE_NOTE_DIR"; exit 0; }
     repo="$(resolve_primary)" || exit 1
@@ -79,7 +77,6 @@ cmd_note_path() {
     printf '%s/%s.md\n' "$dir" "${CLIP_RELEVANCE_TODAY:-$(date +%F)}"
 }
 
-# The lines of the note's "## Telegram message" section, blank lines dropped.
 telegram_text() { awk '/^## /{f=($0=="## Telegram message"); next} f && NF' "$1"; }
 
 cmd_check() {
@@ -115,8 +112,6 @@ cmd_check() {
 
 alert_fail() { bash "$ALERT" fail "$WORKER" "$1" "$LOG" "$2" "$3"; }
 
-# The runner calls this once claude has returned: claude's exit status, its --output-format json file and the
-# note's checksum from before the run, so a same-day rerun that wrote nothing cannot resend the earlier note.
 cmd_finish() {
     local rc="${1:-1}" out="${2:-}" before="${3:-}" iserr note chk first msg
     if [ "$rc" -ne 0 ]; then
@@ -161,15 +156,12 @@ cron_read() {
         *) echo "ERR clip-relevance-cadence: cannot read the crontab: $err" >&2; return 1 ;;
     esac
 }
-# Only the exact tagged, uncommented row is ours: a commented row, a lookalike tag and every other line stay.
 cron_row_re() { printf '^[[:space:]]*[^#[:space:]].*[[:space:]]# %s[[:space:]]*$' "$TASK_NAME"; }
 cron_entry() { printf '%s\n' "$CRON_TAB" | grep -E "$(cron_row_re)" || true; }
 cron_without_entry() { printf '%s\n' "$CRON_TAB" | { grep -vE "$(cron_row_re)" || true; }; }
 
 sq() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
 
-# The runner: log, bank check, claude, finish. The allowlist is the safety: the run reads the repo, reads
-# Jira (list, get), runs the collector and the note check, and writes inside the note folder only.
 write_runner() { # <file> <root> <bash> <claude> <preflight> <note-dir>
     local file="$1" root="$2" bash_bin="$3" claude="$4" pf="$5" ndir="$6" tool
     # Repo search is the Grep tool: `git grep -O<cmd>` runs a command, and a prefix rule cannot exclude a flag.
@@ -245,11 +237,9 @@ cmd_arm() {
         echo "DRY clip-relevance-cadence: would write $runner and install: $entry"
         return 0
     fi
-    # A test on the station never writes the real crontab or a runner under the real home; only exit 77 refuses.
     bash "$SCRIPT_DIR/../lib/test-run-guard" check --tool "$CRONTAB_BIN" clip-relevance-cadence-arm "$RUNNER_DIR" || guard_rc=$?
     [ "$guard_rc" -ne 77 ] || return 77
     mkdir -p "$RUNNER_DIR" || return 4
-    # The new runner goes in beside the old one and replaces it only once the crontab is installed.
     if ! { write_runner "$runner.new" "$root" "$bash_bin" "$claude" "$pf" "$ndir" && chmod +x "$runner.new"; }; then
         rm -f "$runner.new"; echo "ERR clip-relevance-cadence: cannot write the runner $runner.new" >&2; return 4
     fi
