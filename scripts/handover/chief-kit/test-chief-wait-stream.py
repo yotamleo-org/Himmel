@@ -255,16 +255,30 @@ echo 'HANDLED close-wrapped'
         self.assertIn('state=exited exit=stream-stop', Path(str(self.inbox) + '.wait').read_text())
 
     def test_adopted_child_stopped_by_request_is_not_a_waiter_error(self):
-        self.script('tick', 'sleep 3\necho "TICK workers=0 livestate=0 prs=none tails=none acts=none workerset=0 board=ok tracker=ok denials=0 capacity=FULL"\n')
-        env = dict(self.env, CHIEF_WAIT_STREAM_SOFT_SEC='.3', CHIEF_WAIT_STREAM_HARD_SEC='1')
-        p, out = self.start(env=env)
-        self.assertEqual(p.wait(timeout=5), 0)
-        self.assertIn('child=busy', out.read_text())
-        again, adopted = self.start()
-        self.until(lambda: self.state().get('sup') == str(again.pid))
-        self.stop(again)
-        self.assertIn('STOPPED', adopted.read_text())
+        entered, gate = self.root / 'tick-entered', self.root / 'tick-gate'
+        self.script('tick', f'touch "{entered}"\nn=0\nwhile [ ! -e "{gate}" ] && [ "$n" -lt 600 ]; do sleep .1; n=$((n + 1)); done\n'
+                    'echo "TICK workers=0 livestate=0 prs=none tails=none acts=none workerset=0 board=ok tracker=ok denials=0 capacity=FULL"\n')
+        env = dict(self.env, CHIEF_WAIT_STREAM_REAP_MAX_SEC='120')
+        first, _ = self.start(env=env)
+        self.until(entered.exists, seconds=30)
+        child = self.state()['child']
+        self.assertIn(f'pid={child} ', Path(str(self.inbox) + '.wait').read_text())
+        first.send_signal(signal.SIGTERM)
+        self.assertEqual(first.wait(timeout=30), 0)
+        os.kill(int(child), 0)
+        again, adopted = self.start(env=env)
+        self.until(lambda: self.state().get('sup') == str(again.pid), seconds=30)
+        self.assertEqual(self.state()['child'], child, 'the successor adopted the held child')
+        self.assertFalse(gate.exists())
+        self.path('stop').touch()
+        gate.touch()
+        rc = again.wait(timeout=60)
         self.assertNotIn('waiter-error', adopted.read_text())
+        self.assertIn('STOPPED', adopted.read_text())
+        heartbeat = Path(str(self.inbox) + '.wait').read_text()
+        self.assertIn(f'pid={child} ', heartbeat)
+        self.assertIn('state=exited exit=stream-stop', heartbeat)
+        self.assertEqual(rc, 0)
 
     def test_killed_after_output_replays_and_lock_is_not_inherited(self):
         env = dict(self.env, CHIEF_WAIT_STREAM_PAUSE_LOG='1')
