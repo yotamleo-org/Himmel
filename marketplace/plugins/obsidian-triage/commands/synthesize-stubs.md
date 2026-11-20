@@ -1,7 +1,7 @@
 ---
 allowed-tools: Bash, Read
 description: SYNTHESIZE stub mode — compound the evidence pool into early stub subject pages; ledgered, --revert undoes it.
-argument-hint: "[vault-path] [--dry-run | --apply | --revert <ledger.jsonl>]"
+argument-hint: "[vault-path] [--dry-run | --apply [--limit N] | --revert <ledger.jsonl>]"
 ---
 
 ## Your task
@@ -34,6 +34,14 @@ A stub fires for a topical tag **T** only when ALL hold:
 Anything short of all three is logged `⊘ <tag> — skipped (<reason>)` and writes
 nothing. A single article clipped twice produces **0 stubs**, by construction.
 
+**Singular and plural are one tag.** `workflow` and `workflows` count as one tag
+and make one subject: the clips of both spellings are pooled, and the page is
+named for the spelling more clips use (the shorter on a tie). Only the last word
+of a tag is folded (`api-keys` = `api-key`), only regular English plurals fold
+(`dependencies`, `caches`, `boxes`), and words that merely end like a plural keep
+their form (`class`, `status`, `analysis`, `news`). Different words never merge:
+`workflow` and `workload` stay two subjects.
+
 ### Existing-subject match → densify, never duplicate
 
 Before creating a stub the engine scans existing subjects in
@@ -41,7 +49,8 @@ Before creating a stub the engine scans existing subjects in
 name** (case/punctuation-insensitive, `-MOC` suffix stripped — so the tag
 `context-windows` matches a `Context-Windows-MOC`) **or** a declared `aliases:`
 entry (so a `self-hosted` group densifies an existing `Local First` page that
-lists `self-hosted` as an alias). On a match it **densifies** — appends the
+lists `self-hosted` as an alias). The singular/plural fold applies here too: a
+`workflow` group densifies an existing `Workflows` page. On a match it **densifies** — appends the
 fresh contributors to the subject's `## Evidence` section and stamps them —
 and creates **0** new pages. Matching is BOUNDED (exact normalised equality +
 operator aliases), never an open-ended similarity guess. A densify is recorded
@@ -62,7 +71,24 @@ node tools/synthesize-stubs.mjs <vault>            # dry-run: report decisions o
 Read the `✓ would create …` / `⊘ … skipped` lines and the summary. Nothing is
 written, no clip is stamped.
 
+### Per-run limit
+
+`--apply --limit N` writes at most N pages in the run, creates and densifies
+together, in the order the dry run lists them. The rest are counted as pending
+and come up on later runs; a page that already cites its clips costs no slot.
+Obsidian hangs on bulk file churn, so the nightly run always passes a limit.
+The last line of the run is the summary, for example
+`synthesize-stubs.mjs: 5 created, 0 densified, 3 skipped, 2 unchanged, 40 pending (limit 5)`.
+A limit of 0, a negative one or a non-number is a usage error (exit 1).
+
 ### Live run = MANDATORY staging gate (irreversible-ish — operator-gated)
+
+This gate covers every live apply you run yourself. The one exception is the
+nightly run (`scripts/luna/pipeline-cadence.sh`), which applies without an
+operator: it passes `--limit` and `--no-telegram-digest`, holds the vault's git
+index lock for the apply so a git-based sync cannot commit a half-written
+state, and relies on the staging and divergence proofs below having been done
+once on a sample copy. It writes the same ledger, so `--revert` undoes it.
 
 A stub auto-creates real pages and stamps clips. Unlike a `_synthesis/` proposal
 it is NOT advisory. Before any `--apply` against the real `~/Documents/luna`:

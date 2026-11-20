@@ -54,6 +54,39 @@ export function normalizeName(s) {
   return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
+// Words that end like a plural but are not one, or that must keep their form.
+const KEEP_FORM = new Set([
+  "news", "series", "species", "lens", "bias", "canvas", "atlas", "chaos",
+  "kubernetes", "aws", "ios", "macos", "css", "gps",
+]);
+
+/**
+ * Fold a regular English plural onto its singular so both forms make the same
+ * key ("workflows" -> "workflow", "libraries" -> "library", "caches" and
+ * "cache" -> "cach"). The result is a grouping key, never shown: it only has to
+ * be the same for both forms. Irregular plurals are not handled, and words that
+ * end like a plural (class, status, analysis) keep their form.
+ */
+function foldWord(w) {
+  if (w.length <= 3 || KEEP_FORM.has(w)) return w;
+  if (/ss$|us$|[sx]is$/.test(w)) return w;
+  if (/[^aeiou]ies$/.test(w)) return w.slice(0, -3) + "y";
+  if (/(?:x|z|ch|sh|ss)es$/.test(w)) return w.slice(0, -2);
+  const bare = w.endsWith("s") ? w.slice(0, -1) : w;
+  return bare.replace(/(ch|sh|x|z)e$/, "$1").replace(/ie$/, "y");
+}
+
+/** Grouping key of a tag: only its last word is folded ("api-keys" -> "api-key"). */
+export function tagKey(tag) {
+  const m = /^(.*[^a-z0-9])?([a-z0-9]+)$/.exec(String(tag).toLowerCase());
+  return m ? (m[1] || "") + foldWord(m[2]) : String(tag).toLowerCase();
+}
+
+/** Match key of a subject name: tagKey of the name, then normalizeName. */
+export function subjectKey(name) {
+  return normalizeName(tagKey(String(name).trim()));
+}
+
 /** Title-case a tag slug: "context-windows" -> "Context Windows". */
 export function subjectNameFromTag(tag) {
   return String(tag)
@@ -108,19 +141,26 @@ export function planStubs(clips, matchExisting) {
   // Stable input order.
   const sorted = [...clips].sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
 
-  // tag -> clips carrying it.
-  const byTag = new Map();
+  // tagKey -> { forms: tag -> clips carrying that spelling, group: clips }.
+  // Singular and plural spellings share one key, so they are one subject.
+  const byKey = new Map();
   for (const clip of sorted) {
+    const keysOfClip = new Set();
     for (const tag of topicalTags(clip.tags)) {
-      if (!byTag.has(tag)) byTag.set(tag, []);
-      byTag.get(tag).push(clip);
+      const key = tagKey(tag);
+      if (!byKey.has(key)) byKey.set(key, { forms: new Map(), group: [] });
+      const entry = byKey.get(key);
+      entry.forms.set(tag, (entry.forms.get(tag) || 0) + 1);
+      if (!keysOfClip.has(key)) { keysOfClip.add(key); entry.group.push(clip); }
     }
   }
 
   const decisions = [];
-  for (const tag of [...byTag.keys()].sort()) {
-    const group = byTag.get(tag);
+  for (const key of [...byKey.keys()].sort()) {
+    const { forms, group } = byKey.get(key);
     if (group.length < 2) continue; // need >=2 raw clips even before dedup
+    // The spelling most clips use names the subject; a tie goes to the shorter, then the earlier.
+    const tag = [...forms.keys()].sort((a, b) => forms.get(b) - forms.get(a) || a.length - b.length || (a < b ? -1 : 1))[0];
 
     // (a) canonical-URL dedup — keep one representative per dedup key.
     const repByKey = new Map();

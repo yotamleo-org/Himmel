@@ -315,6 +315,19 @@ the `/synthesize-stubs` runbook sends it through the telegram bridge `reply` too
 digest, and `--no-telegram-digest` suppresses it entirely during the one-time
 migration backfill. Pure builder: `tools/lib/telegram-digest.mjs`.
 
+**Subject promotion, per run and by night.** `synthesize-stubs.mjs` treats the
+singular and plural spelling of a tag as one subject (`workflow` and `workflows`
+make one page; regular English plurals only, and `class`, `status`, `analysis`
+keep their form), and `--apply --limit N` writes at most N pages a run, because
+Obsidian hangs on bulk file churn; the rest are reported as `pending`. The
+nightly runners `scripts/luna/pipeline-cadence.sh` generates run three steps that
+make no model call, each logging one `[nightly-...]` line: `feed-clip.mjs` before
+the harvest, then after the synthesis `synthesize-stubs.mjs --apply --limit N
+--no-telegram-digest` and `apply-clip-actions.mjs --apply --limit N`. A failing
+step is reported and never fails the run; a step whose tool is not installed
+reports `skipped: tool not installed`. The two writers hold the vault's git index
+lock while they write, and both are undone with `--revert <their ledger>`.
+
 ## Why a plugin
 
 A sibling task ships the install pipeline (Web Clipper extension + JSON templates landed in luna PR #11, see `_Templates/Web-Clipper/import/`). Without triage, clips become a bookmark graveyard inside the vault — the exact failure the source article called out. This plugin owns the triage rhythm.
