@@ -13,7 +13,7 @@
 #   flags=<comma list, at most 5, each in the flag registry>   (optional; default HIMMEL_HOOK_INTEGRITY_BYPASS_OK)
 #   effort=<low|medium|high|xhigh>                 (optional)
 #   decision=<operator decision number>            (required when a flag is decision tier, HIMMEL_BILLED_OK included)
-#   api_account=<A|B|C|D|auto>                     (optional, absent by default; launches with WORKER_SESSION_API_LANE=on and
+#   api_account=<A, B, C, D or auto>               (optional, absent by default; launches with WORKER_SESSION_API_LANE=on and
 #                                                   WORKER_SESSION_API_ACCOUNT=<name>, named in the ask and the GRANT log line)
 # Which flag a go code may grant: the registry scripts/himmelctl/lib/bypass-flags.json is the list of hook flags and
 # scripts/station-ops/bypass-flag-tiers.tsv gives each a tier: grant, decision (needs decision=), floor (never granted;
@@ -103,7 +103,7 @@ while :; do
            ! [[ "$base" =~ ^[A-Z][A-Z0-9]+-[0-9]+-N[0-9]+[a-z]?-[A-Za-z0-9.-]+$ ]] ||
            ! [[ "$model" =~ ^claude-(opus|sonnet|haiku)-5-5$ ]] || ! [[ "$chief" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{2,119}$ ]] ||
            ! [[ -z "$effort" || "$effort" =~ ^(low|medium|high|xhigh)$ ]] ||
-           ! [[ -z "$api_account" || "$api_account" =~ ^(A|B|C|D|auto)$ ]]; then
+           ! [[ -z "$api_account" || "$api_account" =~ ^([ABCD]|auto)$ ]]; then
             refuse "$req" malformed; continue
         fi
         envs=(); bad=""; grant_text=""; paid=""; others=""; undecided=""

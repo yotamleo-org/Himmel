@@ -1165,6 +1165,13 @@ out=$(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=not-an-account-name mstamp); rc=$?
 eq "lane_recorded: a non-name account is never written to the manifest" \
   "$(grep -c 'not-an-account-name' "$MS/run-manifest.json")" "0"
 rm -f "$MS/run-manifest.json"
+for knob in CR_CLAUDE_CRITIC_EFFORT CR_CLAUDE_CRITIC_MAX_USD CFP_CLAUDE_API_LAUNCHER HIMMEL_API_CALL_TIMEOUT_S \
+    HIMMEL_API_FALLBACK HIMMEL_API_KEY_ID HIMMEL_API_CACHE_TTL HIMMEL_API_CLAUDE_BIN; do
+  out=$(env "HIMMEL_API_LANE=on" "$knob=low" python3 "$GSCORE" stamp "$MS" --repo "$RR" --fixtures "$RR/scripts/eval/review-panel/fixtures" \
+    --key "$RR/scripts/eval/review-panel/key/seeds.json" --critics codex 2>&1); rc=$?
+  eq "lane_recorded: the claude-api setting $knob refuses the stamp" "$rc" "2"; has "lane_recorded: $knob is named" "$out" "$knob"
+  rm -f "$MS/run-manifest.json"
+done
 out=$(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=$'A\n' mstamp); rc=$?
 eq "lane_recorded: an account with a trailing newline is not recorded" \
   "$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["protocol"].get("api_account"))' "$MS/run-manifest.json" 2>&1)" "None"

@@ -219,7 +219,7 @@
 #
 # WORKER_SESSION_API_LANE=on: set in the launching shell to give this worker HIMMEL_API_LANE=on
 # and HIMMEL_API_ACCOUNT=auto, so the PR critic runs on API credit. Opt-in,
-# default OFF: unset changes nothing. WORKER_SESSION_API_ACCOUNT=<A|B|C|D|auto>
+# default OFF: unset changes nothing. WORKER_SESSION_API_ACCOUNT=<A, B, C, D or auto>
 # (with the seam on) names the account instead of auto.
 set -u
 # refuse a chokepoint seam that differs from the session's launch env.
@@ -1659,19 +1659,23 @@ fi
 
 # WORKER_SESSION_API_LANE=on: opt-in seam, set in the LAUNCHING shell, that
 # carries the API-lane switch into the worker so the PR critic bills API credit
-# (claude-api.sh refuses rc 5 without HIMMEL_API_LANE=on). Account is "auto";
-# the credit guard and per-call routing stay in claude-api.sh. Default OFF:
+# (claude-api.sh refuses rc 5 without HIMMEL_API_LANE=on). The account is "auto"
+# unless WORKER_SESSION_API_ACCOUNT names one; the credit guard and per-call routing stay in claude-api.sh. Default OFF:
 # unset or any other value changes nothing.
 if [ "${WORKER_SESSION_API_LANE:-}" = "on" ]; then
     case "${WORKER_SESSION_API_ACCOUNT:-auto}" in
-        A|B|C|D|auto) ;;
+        [ABCD]|auto) ;;
         *)
             echo "headed-arm-worker: WORKER_SESSION_API_ACCOUNT must be A, B, C, D or auto" >&2
             exit 2
             ;;
     esac
     worker_propagate_env HIMMEL_API_LANE on
-    worker_propagate_env HIMMEL_API_ACCOUNT "${WORKER_SESSION_API_ACCOUNT:-auto}"
+fi
+if [ "${WORKER_SESSION_API_LANE:-}" = "on" ] && [ -n "${WORKER_SESSION_API_ACCOUNT:-}" ]; then
+    worker_propagate_env HIMMEL_API_ACCOUNT "$WORKER_SESSION_API_ACCOUNT"
+elif [ "${WORKER_SESSION_API_LANE:-}" = "on" ]; then
+    worker_propagate_env HIMMEL_API_ACCOUNT auto
 fi
 
 # IMPL_GUARD_OK=1 / INLINE_IMPL_OK=1: worker-only env for

@@ -40,7 +40,7 @@ the flag in a worker's launch script. Both shapes are now refused. Instead:
    flags=HIMMEL_BILLED_OK
    effort=high
    decision=<operator decision number>
-   api_account=<A|B|C|D|auto>   # optional; launches with the API lane on for that account
+   api_account=<A, B, C, D or auto>   # optional; launches with the API lane on for that account
    ```
 
 3. The daemon sends the operator an ask on Telegram. It names every granted
