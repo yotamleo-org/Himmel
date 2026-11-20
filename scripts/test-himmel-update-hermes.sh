@@ -798,6 +798,44 @@ if [ "$ver" = "$CADENCE_RUNNER_FORMAT_VERSION" ]; then echo "ok: retired platfor
 uh=$(USERPROFILE='' HOME="$tmp/fake-home" cadence_user_home)
 if [ "$uh" = "$tmp/fake-home" ]; then echo "ok: cadence_user_home falls back to HOME"; else echo "FAIL: cadence_user_home got '$uh'"; fail=1; fi
 
+# Case 14: `apply` re-arms an ALREADY-ARMED stale cadence with its own arm
+# command and never arms one that has no runner files. Stub arm scripts log their argv.
+rr="$tmp/rearm-root"; mkdir -p "$rr/scripts/luna" "$rr/scripts/cleanup" "$rr/scripts/upstreams" "$rr/scripts/graphify"
+for s in luna/pipeline-cadence luna/graphmap-cadence luna/qmd-cadence upstreams/upstream-watch-cadence graphify/graph-choices-cadence cleanup/steering-cull-cadence; do
+  printf '#!/usr/bin/env bash\necho "%s $*" >> "%s/arm.log"\necho "stub ARMED"\n' "$s" "$rr" > "$rr/scripts/$s.sh"
+done
+mkdir -p "$tmp/rr-pipeline" "$tmp/rr-graphmap-absent" "$tmp/rr-qmd-absent"
+printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\necho old\n' "$((CADENCE_RUNNER_FORMAT_VERSION - 1))" > "$tmp/rr-pipeline/pipeline-harvest.sh"
+rr_env() { HIMMEL_REARM_ROOT="$rr" PIPELINE_BAT_DIR="$tmp/rr-pipeline" GRAPHMAP_BAT_DIR="$tmp/rr-graphmap-absent" \
+  QMD_CADENCE_BAT_DIR="$tmp/rr-qmd-absent" UPSTREAMWATCH_BAT_DIR="$tmp/rr-none" GRAPH_CHOICES_BAT_DIR="$tmp/rr-none" \
+  STEERING_CULL_RUNNER_DIR="$tmp/rr-none" "$@"; }
+: > "$rr/arm.log"
+out=$(rr_env report_cadence_stale check 2>&1)
+check "check mode still only nudges the stale pipeline cadence" "pipeline-cadence runners are STALE" "$out"
+if [ ! -s "$rr/arm.log" ]; then echo "ok: check mode arms nothing"; else echo "FAIL: check mode ran an arm command"; cat "$rr/arm.log"; fail=1; fi
+out=$(rr_env report_cadence_stale apply 2>&1)
+check "apply re-arms the stale armed pipeline cadence (one line)" "pipeline-cadence runners were STALE" "$out"
+check "apply ran the pipeline arm --force" "luna/pipeline-cadence arm --force" "$(cat "$rr/arm.log")"
+if [ "$(wc -l < "$rr/arm.log")" -eq 1 ]; then echo "ok: unarmed graphmap/qmd/others were not armed"; else echo "FAIL: apply armed an unarmed cadence"; cat "$rr/arm.log"; fail=1; fi
+# steering-cull: the arm args come from the armed runner and the crontab entry.
+mkdir -p "$tmp/rr-steer" "$tmp/rr-cronstub"
+# shellcheck disable=SC2016  # the fixture runner's own $log stays literal
+printf '#!/usr/bin/env bash\n# himmel-cadence-runner-format: %s\nlog=x\nexport STEERING_CULL_BACKEND=claude-cli\nbash /r/steering-cull-cadence.sh run --repo /r --proposal-dir /p/dir --chief chief-a >> "$log" 2>&1\n' "$((CADENCE_RUNNER_FORMAT_VERSION - 1))" > "$tmp/rr-steer/steering-cull-cadence.sh"
+printf '#!/bin/sh\necho "30 6 * * 3 \\"/x/steering-cull-cadence.sh\\" # HIMMEL-SteeringCull"\n' > "$tmp/rr-cronstub/crontab"; chmod +x "$tmp/rr-cronstub/crontab"
+: > "$rr/arm.log"
+out=$(PIPELINE_BAT_DIR="$tmp/rr-none" HIMMEL_REARM_ROOT="$rr" GRAPHMAP_BAT_DIR="$tmp/rr-none" QMD_CADENCE_BAT_DIR="$tmp/rr-none" \
+  UPSTREAMWATCH_BAT_DIR="$tmp/rr-none" GRAPH_CHOICES_BAT_DIR="$tmp/rr-none" STEERING_CULL_RUNNER_DIR="$tmp/rr-steer" \
+  STEERING_CULL_CRONTAB="$tmp/rr-cronstub/crontab" report_cadence_stale apply 2>&1)
+check "steering-cull re-armed with its proposal dir, schedule, chief and backend" \
+  "cleanup/steering-cull-cadence arm --force --proposal-dir /p/dir --day 3 --time 06:30 --chief chief-a --backend claude-cli" "$(cat "$rr/arm.log")"
+rm -f "$tmp/rr-steer/steering-cull-cadence.sh"; printf '#!/usr/bin/env bash\n# himmel-cadence-runner-format: 1\nunreadable\n' > "$tmp/rr-steer/steering-cull-cadence.sh"
+: > "$rr/arm.log"
+out=$(PIPELINE_BAT_DIR="$tmp/rr-none" HIMMEL_REARM_ROOT="$rr" GRAPHMAP_BAT_DIR="$tmp/rr-none" QMD_CADENCE_BAT_DIR="$tmp/rr-none" \
+  UPSTREAMWATCH_BAT_DIR="$tmp/rr-none" GRAPH_CHOICES_BAT_DIR="$tmp/rr-none" STEERING_CULL_RUNNER_DIR="$tmp/rr-steer" \
+  STEERING_CULL_CRONTAB="$tmp/rr-cronstub/crontab" report_cadence_stale apply 2>&1)
+check "steering-cull with an unreadable runner falls back to the nudge" "steering-cull-cadence runners are STALE" "$out"
+if [ ! -s "$rr/arm.log" ]; then echo "ok: unreadable steering-cull runner is not armed blind"; else echo "FAIL: steering-cull armed without its proposal dir"; fail=1; fi
+
 # a PM-managed install (.hermes/bin/hermes) owns its dependency
 # generations — apply must NOT pip-install into its interpreter. A legacy venv
 # install keeps the editable refresh. Both cases pull nothing (heads equal), so
