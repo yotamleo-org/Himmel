@@ -77,7 +77,7 @@ TRACKING_PARAMS = {
 MAX_DECODE_PASSES = 4
 FIRECRAWL_DEFAULT_BASE_URL = "https://api.firecrawl.dev"
 FIRECRAWL_DEFAULT_BUDGET = 20  # max scrape calls per run (~1 credit each)
-FETCH_DEFAULT_BUDGET = 20  # default run: max free-rung fetch attempts per run
+FETCH_DEFAULT_BUDGET = 20
 FIRECRAWL_DEFAULT_MAX_CREDITS = 5  # per-call ceiling: a stealth call (5) passes, anything above stops firecrawl for the run
 
 # Hosts firecrawl must NOT scrape — a cheaper/better path already owns them:
@@ -314,9 +314,6 @@ _PLACEHOLDER_LINE_RE = re.compile(
 _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 # triage-authored, never source text
 _PROMOTION_SECTION_RE = re.compile(r"(?ms)^## Promotion candidate\b.*?(?=^## |\Z)")
-# The summary triage writes when it had no page text to read carries this marker
-# (triage-clips.md; the sentence is usually first, sometimes after a short lead-in),
-# so the section describes the URL and is not a capture.
 URL_ONLY_MARKER = "Inferred from the source URL only"
 _URL_ONLY_SUMMARY_RE = re.compile(
     r"(?ms)^## Summary[ \t]*\r?\n(?:(?!^## ).)*?" + re.escape(URL_ONLY_MARKER) + r".*?(?=^## |\Z)")
@@ -1383,9 +1380,6 @@ class ScrapeChain:
         self.remaining = budget
         self.routes = routes
         self.last_backend = None
-        # free rungs only (the default run): the cap counts every fetch attempt,
-        # so a night of failures cannot run past it. With the paid rung a
-        # failed call costs no credit and is not charged.
         self.charge_failures = charge_failures
 
     def backends_for(self, url: str) -> list:
@@ -1579,8 +1573,7 @@ def persist_thin_partial(path: Path, text: str, fm: dict, fm_raw: str, body: str
     if is_instagram and "ig_media_pending" not in fm and fm.get("media_enrichment_status") != "ok":
         # a thin instagram clip needs the media rung
         # (/ig-media-enrich), so park it the same way harvest-clips.md
-        # Phase 4's own instagram routing row does. A clip whose media rung
-        # already ran ok is not queued for it again.
+        # Phase 4's own instagram routing row does.
         pairs.append(("ig_media_pending", "ig_media_pending: true"))
     new_fm = insert_frontmatter_pairs(fm_raw, pairs, preserve_existing=preserve)
     path.write_text(f"---\n{new_fm}\n---\n{body}", encoding="utf-8", newline="\n")
@@ -1782,13 +1775,7 @@ def process_clip(path: Path, dry_run: bool, firecrawl=None, url_rules=None, park
             return ("~", f"partial (thin-body): clipper captured only a skeleton{gap_suffix}{ig_suffix}{note}{defer_suffix(n)}{flag_suffix}", injection_hits)
         return ("x", f"failed (G-3): thin-body frontmatter mark altered body; reverted{flag_suffix}", injection_hits)
 
-    # Thin-body fetch. Only fires for genuine article/web URLs whose
-    # clipper-captured body is thin. `firecrawl` is the scrape chain: the free
-    # rungs on a default run, plus the paid rung under --firecrawl-thin.
-    # X/github/youtube are excluded (owned elsewhere) and fall straight
-    # through, so the blast radius is exactly "thin eligible article clips".
-    # Budget-exhausted / fetch-failed clips return a retryable partial WITHOUT
-    # marking harvested_at, so a later run retries them.
+    # `firecrawl` is the scrape chain: the free rungs, plus the paid one under --firecrawl-thin.
     if firecrawl is not None and firecrawl_eligible(canonical) and is_thin_body(body):
         denied = url_gate(canonical, url_rules)
         if denied:
@@ -1801,7 +1788,6 @@ def process_clip(path: Path, dry_run: bool, firecrawl=None, url_rules=None, park
         try:
             md = firecrawl.scrape(canonical)
             if not re.search(r"\w", md):
-                # a page with no text is not a harvest: it must never end ok
                 raise RuntimeError(f"fetched no text ({len(md.strip())} chars)")
         except FirecrawlUnavailable as e:
             if park is not None:
@@ -1809,8 +1795,7 @@ def process_clip(path: Path, dry_run: bool, firecrawl=None, url_rules=None, park
             return flagged_early("~", f"partial (thin-body): deferred: firecrawl-unavailable ({e.reason}); parked, retried first once credits return")
         except Exception as e:
             if getattr(firecrawl, "charge_failures", False):
-                firecrawl.remaining -= 1  # free rungs: the cap counts attempts, so a bad night cannot run long
-            # the same partial marks as a clip nobody fetched (injection flag, gap host, defer count)
+                firecrawl.remaining -= 1
             return thin_partial(f"; fetch failed ({type(e).__name__}: {str(e)[:120]}); re-run to retry")
         firecrawl.remaining -= 1
         served_by = getattr(firecrawl, "last_backend", None) or "firecrawl"
@@ -1840,7 +1825,6 @@ def process_clip(path: Path, dry_run: bool, firecrawl=None, url_rules=None, park
             markers["harvest_flag_detail"] = ",".join(merged_hits)
         new_fm = insert_markers(fm_raw, markers)
         if not merged_hits:
-            # the clip now holds the page text: the thin-body mark of the earlier deferral no longer holds
             new_fm = re.sub(r"^harvest_flag:[ \t]*thin-body[ \t]*\n?", "", new_fm, flags=re.MULTILINE)
         new_text = f"---\n{new_fm}\n---\n{new_body}"
         # The scrape already spent a credit (firecrawl.remaining decremented
@@ -2217,9 +2201,6 @@ def main():
             )
             sys.exit(2)
     else:
-        # The default run fetches a thin article through the free rungs only (Jina,
-        # local headless) and never needs a flag or a key. A bad setting must not
-        # fail the nightly harvest: report it and leave the clips partial.
         try:
             chain = build_scrape_chain(os.environ, resolve_fetch_budget(args.fetch_budget, os.environ), paid=False)
         except ValueError as e:
@@ -2230,7 +2211,6 @@ def main():
             url_rules = load_url_rules(args.vault)
             firecrawl = chain
 
-    # A partial that triage already moved to _evidence/ is retried in place, after the inbox.
     ev_retry, ev_partials = evidence_clips(clippings)
     in_scan = set(clips)
     clips = clips + [p for p in ev_retry if p not in in_scan]

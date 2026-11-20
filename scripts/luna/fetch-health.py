@@ -451,8 +451,6 @@ def probe_jina_reader(env: dict[str, str], http: Callable[..., HttpResult]) -> P
     return classify_http(result, auth_required=False, valid_body=valid)
 
 
-# Hosts the harvest's article fetch leaves to their own enrichers (X, Instagram,
-# github, YouTube): a partial clip from one of them is not a stuck article.
 ARTICLE_FETCH_SKIP_HOSTS = {
     "x.com", "twitter.com", "mobile.twitter.com", "instagram.com", "github.com",
     "youtube.com", "m.youtube.com", "youtu.be",
@@ -505,7 +503,7 @@ def probe_harvest_article_fetch(env: dict[str, str], today: datetime | None = No
         except (KeyError, ValueError):
             last = None
         if last is None or (day - last).days > ARTICLE_RETRY_MAX_AGE_DAYS:
-            stuck.append((last.isoformat() if last else "", path.name))  # "" sorts first: never tried
+            stuck.append((last.isoformat() if last else "", path.name))
     if stuck:
         oldest = min(stuck)
         return ProbeResult(
