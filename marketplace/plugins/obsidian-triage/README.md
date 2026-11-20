@@ -384,7 +384,13 @@ node tools/apply-clip-actions.mjs --vault <v> --revert <vault>/.apply-clip-actio
 - **Atomic page writes:** apply and revert each write the whole page to a hidden
   temp file beside it, copy the page's permissions, then rename it over the page,
   so a write that fails part-way (a full disk) leaves the page as it was and the
-  temp file removed.
+  temp file removed. The temp file is created exclusively: anything already at its
+  name (a leftover, or a symbolic link) is never reused or followed, and a page
+  that is a symbolic link or other non-regular file is never replaced. Each is one
+  printed refusal line (`⊘ <page> — refused: an existing symbolic link sits there,
+  nothing written`), the same wording as `synthesize-stubs.mjs`; an apply counts it
+  on the summary line (`N refused`) and still exits 0, a
+  revert exits 3. (Symlinked maps and clips are not offered by the discovery at all.)
 - **Ledger and revert:** one line per applied action in
   `<vault>/.apply-clip-actions.ledger.jsonl` (`--ledger` overrides), carrying the
   page hashes before and after. `--revert` undoes newest-first and **refuses** any
@@ -393,7 +399,12 @@ node tools/apply-clip-actions.mjs --vault <v> --revert <vault>/.apply-clip-actio
   exits 3 if it refused anything. A page path read from a ledger line must stay
   inside the vault (checked on the path as written, so a symlinked folder inside
   the vault still works); the `--ledger` and `--revert` file paths themselves are
-  not restricted. Reverting twice is a no-op ("already reverted"),
+  not restricted. Every page path is checked before the first page is written: a
+  path that leaves the vault is refused on its own line (counted in the summary,
+  exit 3) and the other pages are still reverted, so a damaged line never leaves a
+  half-done undo with nothing saying which pages were restored. A ledger line that
+  is not valid JSON or lacks the fields of its action stops the run with exit 1
+  before anything is written. Reverting twice is a no-op ("already reverted"),
   also when several actions folded into one map. A map hand-edited between two
   applies is refused for the earlier apply (and for anything older on that page),
   not reported reverted: a page counts as already reverted only at a state from
@@ -569,7 +580,7 @@ A `tests/test-synthesize-invariants.sh` covers the synthesize-side invariants (p
 
 `tests/test-daily-report.sh` is the fixture-vault acceptance test for the `## Daily report` section: sources grouped by kind with why and video lines, ranked actions citing their clips, carry-over with age (done, dismissed and older-ticked actions dropped), byte-identical re-run with ticks preserved, the no-intake line in a created note, CRLF, and shortened titles / capped citations. Pure Node.
 
-`tests/test-apply-clip-actions.sh` is the fixture-vault acceptance test for `tools/apply-clip-actions.mjs`: a dry run leaves the tree byte-identical, `--limit` bounds both dry-run and apply, a second run never repeats an action, fold lands inside `## Evidence` (CRLF kept, a seeded link not repeated), archive stamps only the two keys, evaluate and ticket actions are never touched, the daily timeline stops listing applied actions while keeping the rest, revert restores the vault byte for byte (twice over, also when several folds hit one map) and refuses a page edited since (exit 3), a held run lock stops `--apply` and `--revert` (exit 2), and bad arguments or a ledger path leaving the vault are refused. Pure Node.
+`tests/test-apply-clip-actions.sh` is the fixture-vault acceptance test for `tools/apply-clip-actions.mjs`: a dry run leaves the tree byte-identical, `--limit` bounds both dry-run and apply, a second run never repeats an action, fold lands inside `## Evidence` (CRLF kept, a seeded link not repeated), archive stamps only the two keys, evaluate and ticket actions are never touched, the daily timeline stops listing applied actions while keeping the rest, revert restores the vault byte for byte (twice over, also when several folds hit one map) and refuses a page edited since (exit 3), a held run lock stops `--apply` and `--revert` (exit 2), bad arguments are refused (exit 1), a ledger line naming a page outside the vault is refused on its own line while the rest is undone (exit 3), a malformed ledger line stops the revert before any write (exit 1), and a page that became a symbolic link or a link planted at the temporary file's name is refused with its target left byte for byte unchanged. Pure Node.
 
 `tests/test-telegram-digest.sh` + `tests/test-synthesize-telegram-digest.sh` + `tests/test-telegram-clip-inbox.sh` cover the promotion digest (one batched reply per chat — not per promotion — distinct-subject dedup, non-telegram/suppression exclusion, reply threading), its end-to-end emission from `synthesize-stubs --apply` (digest file written, stale-cleared on no-op re-run, suppressed under `--no-telegram-digest`), and the telegram-clip inbox-state contract (no `processed:`/`lifecycle:` marker, `telegram_chat_id` provenance). Pure Node.
 
