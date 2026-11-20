@@ -29,7 +29,9 @@
 #        once as a subscription `claude -p`: native auth (every API-key variable removed), the same model,
 #        permission mode, tool grant and budget cap, --output-format json. The fallback runs only when the native
 #        usage preflight says PROCEED, BANK-STALE or BANK-UNKNOWN; SKIPPED-BANK or SKIPPED-FLEET skips it and the
-#        alert says so. A prompt on stdin is kept in a mode-600 scratch file (removed on every exit) that the API call
+#        alert says so. The api lane itself refuses only on a real block, named in the alert: its own admission
+#        limit or a live ledger lock; no credit reading, reset date or spend-cap estimate refuses unless the roster
+#        sets enforce_budget (an exhaustion mark orders auto routing, and a success clears it). A prompt on stdin is kept in a mode-600 scratch file (removed on every exit) that the API call
 #        reads and the fallback replays byte for byte; it is never printed, logged or put in an argv. A malformed request
 #        never falls back. A call granted
 #        Edit, Write or Bash falls back only from a refusal before any request (exit 2), never from a run that started
@@ -218,6 +220,8 @@ fail_over() {
   [ "$class" != refused-role-map ] || return 0
   if [ "${HIMMEL_API_FALLBACK:-on}" = off ]; then
     decision="off (HIMMEL_API_FALLBACK=off)"
+  elif [ "$KIND_SAFE" = critic ]; then
+    decision="not run: a critic call never runs on the subscription"
   elif [ -n "$NO_FB" ]; then
     decision="not run: $NO_FB"
   elif [ "$class" != refused ] && [[ ",$ALLOWED_TOOLS," =~ ,(Edit|Write|Bash), ]]; then
@@ -249,6 +253,7 @@ refuse_policy() { echo "claude-api: refused: $*" >&2; fail_over 2 refused-policy
 # in its old place (after the lane and provider checks).
 PRINT=0 MODE="" MODEL="" BUDGET="" FORMAT="" PARSE_ERR="" HAS_PROMPT=0
 ARGS=()
+ORIG_ARGS=("$@")
 while [ "$#" -gt 0 ] && [ -z "$PARSE_ERR" ]; do
   a="$1"; shift
   # Allowlist: only -p/--print, --model, --permission-mode, --max-budget-usd, --output-format, --effort,
@@ -335,7 +340,7 @@ case "${HIMMEL_API_JOB_ID:-x}" in *[!A-Za-z0-9._:-]*) BAD_REQ=1 ;; esac
 [ -z "$BAD_REQ" ] || NO_FB="the request itself was refused"
 
 # --- lane opt-in and credentials (presence checks only) ---
-[ "${HIMMEL_API_LANE:-}" = "on" ] || refuse "api lane is OFF (set HIMMEL_API_LANE=on)"
+[ "${HIMMEL_API_LANE:-}" = "on" ] || { NO_FB="${NO_FB:-api lane is off}"; refuse "api lane is OFF (set HIMMEL_API_LANE=on)"; }
 llm_backend_api_account_ok "${HIMMEL_API_ACCOUNT:-}" || [ "${HIMMEL_API_ACCOUNT:-}" = auto ] ||
   refuse "HIMMEL_API_ACCOUNT must be $LLM_API_ACCOUNTS_TEXT (or auto)"
 [ "$HIMMEL_API_ACCOUNT" != auto ] || [ -z "${ANTHROPIC_API_KEY:-}" ] ||
@@ -380,7 +385,14 @@ CACHE_TTL="${HIMMEL_API_CACHE_TTL:-5m}"
 case "$CACHE_TTL" in 5m|1h) ;; *) refuse "HIMMEL_API_CACHE_TTL must be 5m or 1h" ;; esac
 
 # --- auto = the grant that expires first among accounts with room for the whole budget ---
+AUTO_ROUTED=0 ROTATED=""
+if [ "$HIMMEL_API_ACCOUNT" = auto ] && llm_backend_api_account_list_ok "${HIMMEL_API_ROTATE_TRIED:-}"; then
+  ROTATED="$HIMMEL_API_ROTATE_TRIED"
+  ROLE_ACCTS="$(printf '%s' "${ROLE_ACCTS:-${LLM_API_ACCOUNTS// /,}}" | tr ',' '\n' | grep -vxF -e "${ROTATED//,/$'\n'}" | paste -sd, -)"
+  [ -n "$ROLE_ACCTS" ] || refuse "auto routing: every account was already tried for this call ($ROTATED)"
+fi
 if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
+  AUTO_ROUTED=1 REQ_ACCOUNT="$HIMMEL_API_ACCOUNT"
   PICK="$(node "$REPO/scripts/lib/api-credit-state.mjs" pick --usd "$BUDGET" ${ROLE_ACCTS:+--only "$ROLE_ACCTS"})"
   case "$PICK" in *'"verdict":"PROCEED"'*) ;; *) refuse "auto routing: no account has room for the budget ($PICK)" ;; esac
   # an absent or old credit reading never blocks an auto route: the per-call budget bounds each call, our own estimate
@@ -437,8 +449,16 @@ WORKER_SESSION_NAME="claude-api:$JOB_ID"   # never the inherited CADENCE_USAGE_W
 BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY "${LLM_API_ORG_KEY_UNSET[@]}" \
   CADENCE_USAGE_LANE=api CADENCE_USAGE_LAUNCH=1 WORKER_SESSION_LANE=api \
   CADENCE_USAGE_WORKER="$WORKER_SESSION_NAME" CADENCE_USAGE_CALLER_PID="$$" \
-  bash "$REPO/scripts/lib/usage-preflight.sh")" || BANK_VERDICT=BANK-UNKNOWN
-[ "$BANK_VERDICT" = "PROCEED" ] || refuse "api bank gate said $BANK_VERDICT"
+  bash "$REPO/scripts/lib/usage-preflight.sh")" || {
+  echo "claude-api: the api bank gate exited $? before a verdict" >&2
+  refuse "api bank gate said BANK-UNKNOWN"
+}
+case "$BANK_VERDICT" in
+  PROCEED) ;;
+  SKIPPED-FLEET) refuse "api bank gate said SKIPPED-FLEET: the api lane is at its own admission limit" ;;
+  BANK-UNKNOWN|BANK-STALE|SKIPPED-BANK) echo "claude-api: note: the api bank gate said $BANK_VERDICT; an unknown, stale or estimated balance is not a block" >&2 ;;
+  *) echo "claude-api: the api bank gate printed no known verdict" >&2; refuse "api bank gate said BANK-UNKNOWN" ;;
+esac
 
 [ -z "$GRANT_ERR" ] || refuse "$GRANT_ERR"
 
@@ -489,7 +509,9 @@ immune() { ( trap '' TERM INT HUP; exec "$@" ); }
 # --- reserve the full budget before spending; refusal here means no launch ---
 state() { immune node "$REPO/scripts/lib/api-credit-state.mjs" "$@"; }
 RESERVED="$(state reserve --id "$JOB_ID" --usd "$BUDGET")"
-case "$RESERVED" in *'"verdict":"PROCEED"'*) ;; *) refuse "reservation refused: $RESERVED" ;; esac
+case "$RESERVED" in *'"verdict":"PROCEED"'*) ;; *)
+  refuse "reservation refused: $(printf '%s' "$RESERVED" | sed -n 's/.*"reason":"\([^"]*\)".*/\1/p'): $RESERVED" ;;
+esac
 
 # A call that dies settles its reservation (verified cost, else zero) so nothing stays reserved past it.
 # The call runs in the background so a signal reaches this shell at once: the handler stops the call before it
@@ -606,6 +628,7 @@ if [ "$REJECTED" = key_invalid ]; then
 elif [ "$RC" -eq 0 ] && [ "$(state key-ok 2>/dev/null)" = cleared ]; then
   graph_alert clear "graph-key-$HIMMEL_API_ACCOUNT"
 fi
+[ "$RC" -ne 0 ] || state clear-exhausted >/dev/null 2>&1 || true
 
 # --- secret-free launch record (no key, no prompt) ---
 # the usage split, so cache-report.mjs can read the hit rate back; null when the result has none.
@@ -617,6 +640,32 @@ SOURCE="$(printf '%s' "$RESERVED" | sed -n 's/.*"source":"\([^"]*\)".*/\1/p')"
     "$ROSTER_CYCLE" "$MODEL" "$BUDGET" "$SOURCE" "$OUTCOME" "$COST" "$RC" "$KIND" "$CACHE_TTL" \
     "${U_IN:-null}" "${U_CREATE:-null}" "${U_READ:-null}" "$R_BRANCH" "$R_HEAD" "${R_PR:-null}"
 } >>"$STATE_DIR/launches.jsonl" 2>/dev/null || echo "claude-api: warning: launch record not written" >&2
+
+# --- an auto call the provider refused for credit runs again on the next unmarked account: one pass, then the fallback ---
+# Only a replayable prompt rotates, and never a call granted Edit, Write or Bash (a run that started may have half-done
+# its edits). A named account never rotates. The next call takes its own reservation, slot and launch record.
+if [ "$REJECTED" = exhausted ] && [ "$AUTO_ROUTED" = 1 ] && [ "$STOPPED" = 0 ] && [ -z "$NO_FB" ] &&
+   ! [[ ",$ALLOWED_TOOLS," =~ ,(Edit|Write|Bash), ]] && { [ "$HAS_PROMPT" = 1 ] || [ -n "$PROMPT_FILE" ]; }; then
+  TRIED="${ROTATED:+$ROTATED,}$HIMMEL_API_ACCOUNT"
+  REST="$(printf '%s' "${ROLE_ACCTS:-${LLM_API_ACCOUNTS// /,}}" | tr ',' '\n' | grep -vxF "$HIMMEL_API_ACCOUNT" | paste -sd, -)"
+  NEXT=""
+  [ -z "$REST" ] || NEXT="$(node "$REPO/scripts/lib/api-credit-state.mjs" pick --usd "$BUDGET" --only "$REST" 2>/dev/null)"
+  case "$NEXT" in *'"exhausted_at"'*|'') NEXT="" ;; *'"verdict":"PROCEED"'*) ;; *) NEXT="" ;; esac
+  if [ -n "$NEXT" ]; then
+    echo "claude-api: rotating this call to account $(printf '%s' "$NEXT" | llm_backend_pick_account) (tried $TRIED)" >&2
+    release_slot
+    rotate_child() {
+      env -u ANTHROPIC_API_KEY HIMMEL_API_ACCOUNT="$REQ_ACCOUNT" HIMMEL_API_ROTATE_TRIED="$TRIED" HIMMEL_API_JOB_ID="$JOB_ID.r${#TRIED}" \
+        bash "$REPO/scripts/api-lane/claude-api.sh" "${ORIG_ARGS[@]}"
+    }
+    if [ -n "$PROMPT_FILE" ]; then rotate_child <"$PROMPT_FILE" 3<&- &
+    else rotate_child </dev/null 3<&- & fi
+    ROT_PID=$!
+    trap 'kill -TERM "$ROT_PID" 2>/dev/null; wait "$ROT_PID" 2>/dev/null; exit 143' TERM INT HUP
+    wait "$ROT_PID"
+    exit $?
+  fi
+fi
 
 # --- a failed call: alert, then the subscription fallback (never returns when it ran) ---
 # the reason is a class and a subtype only: the call's own result text may quote the prompt

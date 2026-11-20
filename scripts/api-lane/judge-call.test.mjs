@@ -263,7 +263,7 @@ test('the question carries the ceilings rows under a Claude chain, withheld unde
 
 test('a refused launch alerts once, then the judge runs once on the subscription with no key and its verdict is recorded', () => {
   const f = fixture();
-  const r = f.run(f.args, { HIMMEL_API_LANE: 'off' });
+  const r = f.run(f.args, { HIMMEL_API_ACCOUNT: 'E' });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.art.status, 'RECORDED');
   assert.equal(r.art.verdict, 'GO');
@@ -274,7 +274,7 @@ test('a refused launch alerts once, then the judge runs once on the subscription
   assert.match(seen, /--model claude-opus-5-5/);
   const alerts = readFileSync(f.p.alertLog, 'utf8').trim().split('\n');
   assert.equal(alerts.length, 1);
-  assert.match(alerts[0], /^type=api-lane refused msg=kind judge, .*api lane is OFF.*fallback: running on the subscription/);
+  assert.match(alerts[0], /^type=api-lane refused msg=kind judge, .*HIMMEL_API_ACCOUNT must be.*fallback: running on the subscription/);
   assert.ok(!alerts[0].includes(DUMMY));
 });
 
