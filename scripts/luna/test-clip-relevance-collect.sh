@@ -87,8 +87,8 @@ echo "4. the seen-ledger"
 check "a clip in the seen-ledger is omitted" '! grep -q "clip-seen" "$TMP/out1"'
 python3 -I "$COL" mark clip Clippings/_evidence/clip-a.md Clippings/_evidence/clip-b.md --today "$TODAY" >"$TMP/mark1" 2>&1; rc=$?
 check "mark exits 0 and appends two rows" '[ "$rc" = 0 ] && [ "$(grep -c "^clip	" "$SEEN")" = 3 ]'
-python3 -I "$COL" mark clip Clippings/_evidence/clip-a.md --today "$TODAY" >/dev/null 2>&1
-check "marking a clip again adds no row" '[ "$(grep -c "clip-a.md" "$SEEN")" = 1 ]'
+python3 -I "$COL" mark clip Clippings/_evidence/clip-a.md --today "$TODAY" >/dev/null 2>&1; rc=$?
+check "marking a clip again exits 0 and adds no row" '[ "$rc" = 0 ] && [ "$(grep -c "clip-a.md" "$SEEN")" = 1 ]'
 python3 -I "$COL" mark clip Clippings/_evidence/clip-x.md --seen "$TMP/elsewhere.tsv" >/dev/null 2>&1; rc=$?
 python3 -I "$COL" collect --vault "$V" --seen "$TMP/elsewhere.tsv" >/dev/null 2>&1; rc2=$?
 check "the ledger path is not a flag: --seen is refused (rc 2) and nothing is written there" '[ "$rc" = 2 ] && [ "$rc2" = 2 ] && [ ! -e "$TMP/elsewhere.tsv" ]'

@@ -71,7 +71,8 @@ cmd_check() {
             if (match($0, /\[(new|already-done|already-tracked)\]$/)) cnt[substr($0, RSTART + 1, RLENGTH - 2)]++
             else print "P: candidate " n " has no status [new], [already-done] or [already-tracked]: " $0
             next }
-        /^## /{ close_cand(); tg = ($0 == "## Telegram message"); if (tg) seen = 1; next }
+        cs && /^### /{ print "P: a ### heading in Candidates that is not a numbered candidate (### <n>. <title> [status]): " $0 }
+        /^## /{ close_cand(); cs = ($0 == "## Candidates"); tg = ($0 == "## Telegram message"); if (tg) seen = 1; next }
         inc && /^- Search:/{ has = 1 }
         tg && NF { tn++ }
         END { close_cand()
@@ -148,7 +149,7 @@ sq() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
 write_runner() {
     local file="$1" root="$2" bash_bin="$3" claude="$4" pf="$5" ndir="$6" tool
     # Repo search is the Grep tool: `git grep -O<cmd>` runs a command, and a prefix rule cannot exclude a flag.
-    local tools=("Read" "Grep" "Write(/$ndir/**)"
+    local tools=("Read" "Grep" "Edit(/$ndir/**)"
         "Bash(python3 -I scripts/luna/clip-relevance-collect.py:*)"
         "Bash(bash scripts/luna/clip-relevance-cadence.sh note-path)"
         "Bash(bash scripts/luna/clip-relevance-cadence.sh check:*)"
@@ -159,6 +160,7 @@ write_runner() {
         printf 'PATH=%q\nexport PATH\n' "$PATH"
         cadence_oauth_token_lines
         printf 'JIRA_PROJECT_KEY=%q\nexport JIRA_PROJECT_KEY\n' "$JIRA_PROJECT_KEY"
+        [ -z "${LUNA_VAULT_PATH:-}" ] || printf 'LUNA_VAULT_PATH=%q\nexport LUNA_VAULT_PATH\n' "$LUNA_VAULT_PATH"
         printf 'CLIP_RELEVANCE_NOTE_DIR=%q\nexport CLIP_RELEVANCE_NOTE_DIR\n' "$ndir"
         printf 'log=%q\n' "$LOG"
         printf '[ -f "$log" ] && mv -f "$log" "$log.prev"\n'

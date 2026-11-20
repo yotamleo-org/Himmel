@@ -56,7 +56,7 @@ RUNNER="$TMP/runner/clip-relevance-cadence.sh"
 sort_lines() { python3 -I -c 'import sys; print("\n".join(sorted(sys.stdin.read().splitlines())))'; }
 allowed_in_runner() { sed -n 's/.*--allowedTools //p' "$1" | sed 's/ < \/dev\/null.*$//' | python3 -I -c 'import shlex,sys; print("\n".join(sorted(shlex.split(sys.stdin.read()))))'; }
 allowed_in_argv() { sed -n '/^--allowedTools$/,$p' "$1" | sed 1d | sort_lines; }
-ALLOWED_EXPECT="$(printf '%s\n' "Read" "Grep" "Write(/$TMP/notes/**)" \
+ALLOWED_EXPECT="$(printf '%s\n' "Read" "Grep" "Edit(/$TMP/notes/**)" \
     "Bash(python3 -I scripts/luna/clip-relevance-collect.py:*)" \
     "Bash(bash scripts/luna/clip-relevance-cadence.sh note-path)" \
     "Bash(bash scripts/luna/clip-relevance-cadence.sh check:*)" \
@@ -110,10 +110,14 @@ check "a looping agent is bounded by a turn cap" 'grep -q -E -- "--max-turns [0-
 check "the weekly runbook is the prompt" 'grep -q -- "/clip-relevance-weekly" "$REAL_PF"'
 check "repo search is the Grep tool: no Bash git grep, whose -O flag runs a command" 'grep -q -- "--tools Read,Grep,Write,Bash" "$REAL_PF" && ! grep -q "Bash(git" "$REAL_PF"'
 check "the Jira key is baked, since cron has none" 'grep -q "JIRA_PROJECT_KEY=HIMMEL" "$REAL_PF"'
-check "the runner's --allowedTools is exactly the expected eight entries: Jira list and get only, Write only inside the note folder, no bare Write or Bash(node ...)" \
+check "the runner's --allowedTools is exactly the expected eight entries: Jira list and get only, writes allowed by an Edit rule on the note folder (Write(path) rules match nothing), no bare Edit, Write or Bash(node ...)" \
     '[ "$(allowed_in_runner "$REAL_PF")" = "$ALLOWED_EXPECT" ] && [ "$(allowed_in_runner "$REAL_PF" | wc -l)" = 8 ]'
 check "the runner's --tools is exactly Read,Grep,Write,Bash" '[ "$(sed -n "s/.*--tools \([^ ]*\) --allowedTools.*/\1/p" "$REAL_PF")" = "Read,Grep,Write,Bash" ]'
 check "the runner hands the result to finish" 'grep -q "clip-relevance-cadence.sh.* finish " "$REAL_PF"'
+LUNA_VAULT_PATH=/data/luna bash "$CAD" arm --force >/dev/null 2>&1
+check "the arming shell's LUNA_VAULT_PATH is baked into the runner, since cron has none" 'grep -q "^LUNA_VAULT_PATH=/data/luna$" "$RUNNER"'
+env -u LUNA_VAULT_PATH bash "$CAD" arm --force >/dev/null 2>&1
+check "no LUNA_VAULT_PATH is baked when the arming shell has none, so the collector keeps its default" '! grep -q "LUNA_VAULT_PATH" "$RUNNER"'
 bash "$CAD" arm --force >/dev/null 2>&1
 
 echo "3. firing the runner"
@@ -213,7 +217,7 @@ tg7="$TMP/tg7.md"; tg8="$TMP/tg8.md"
 check "five new candidates fit the Telegram block (opening, five titles, note line: 7 lines)" 'bash "$CAD" check "$tg7" >/dev/null 2>&1'
 bash "$CAD" check "$tg8" >"$TMP/check-tg8.out" 2>&1; rc=$?
 check "an eighth Telegram line fails" '[ "$rc" = 1 ] && grep -q "longer than 7 lines" "$TMP/check-tg8.out"'
-cap_note() { printf '## Candidates\n\n### 1. C [new]\n- Search: s\n\n## Telegram message\n%s\n' "$(head -c "$1" /dev/zero | tr '\0' 'x')" >"$2"; }
+cap_note() { printf '## Candidates\n\n### 1. C [new]\n- Search: s\n\n## Telegram message\n%s\n' "$(printf '%*s' "$1" '' | tr ' ' x)" >"$2"; }
 cap_note 1500 "$TMP/cap1500.md"; cap_note 1501 "$TMP/cap1501.md"
 check "a Telegram block of exactly 1,500 characters passes" 'bash "$CAD" check "$TMP/cap1500.md" >/dev/null 2>&1'
 bash "$CAD" check "$TMP/cap1501.md" >"$TMP/check-cap.out" 2>&1; rc=$?
@@ -232,6 +236,10 @@ bash "$CAD" check "$notg" >"$TMP/check-nt.out" 2>&1; rc=$?
 check "a note with no Telegram block fails" '[ "$rc" = 1 ] && grep -q "Telegram" "$TMP/check-nt.out"'
 bash "$CAD" check "$TMP/no-such-note.md" >/dev/null 2>&1; rc=$?
 check "a missing note fails" '[ "$rc" = 1 ]'
+badhead="$TMP/badhead.md"
+{ printf '## Candidates\n\n'; for i in 1 2 3 4 5 6; do printf '### Change %s [new]\n- Search: s\n\n' "$i"; done; printf '## Telegram message\nx\n'; } >"$badhead"
+bash "$CAD" check "$badhead" >"$TMP/check-bh.out" 2>&1; rc=$?
+check "six unnumbered ### headings in Candidates are refused, not counted as zero candidates" '[ "$rc" = 1 ] && grep -q "not a numbered candidate" "$TMP/check-bh.out"'
 zero="$TMP/zero.md"
 printf '## Candidates\n\nNothing new this week.\n\n## Telegram message\nNothing new this week.\n' >"$zero"
 check "a quiet week with no candidate is valid" 'bash "$CAD" check "$zero" >/dev/null 2>&1'
