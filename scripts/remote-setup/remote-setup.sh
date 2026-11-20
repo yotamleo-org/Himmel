@@ -669,27 +669,34 @@ peer_log_hint() {
     if [ "$(uname)" = Darwin ]; then printf 'tail -n 30 ~/.himmel/peer-bridge/poller.log'; else printf 'journalctl --user -u %s -n 30' "$PEER_UNIT"; fi
 }
 
-# peer_unit_teardown: stops, disables and deletes the poller unit (the way back for peer --remove). The unit
-# file stays while the poller still runs, and the return is 1 then, so nothing reports a stop that did not happen.
+# peer_unit_teardown: stops, disables and deletes the poller unit (the way back for peer --remove). It returns
+# 1 and sets PEER_TEARDOWN_FAILED to the step that did not happen (stop, delete or reload), so nothing reports
+# a stop or a deletion that did not take place. The unit file stays while the poller still runs.
 peer_unit_teardown() {
     local f
     f=$(peer_unit_file)
+    PEER_TEARDOWN_FAILED=""
     if [ "$(uname)" = Darwin ]; then
         launchctl bootout "gui/$(id -u)/$PEER_LABEL" > /dev/null 2>&1
-        if peer_unit_active; then return 1; fi
-        rm -f "$f"
+        if peer_unit_active; then PEER_TEARDOWN_FAILED=stop; return 1; fi
+        if ! rm -f "$f" 2> /dev/null || [ -e "$f" ]; then PEER_TEARDOWN_FAILED=delete; return 1; fi
     else
         systemctl --user disable --now "$PEER_UNIT" > /dev/null 2>&1
-        if peer_unit_active; then return 1; fi
-        rm -f "$f"
-        systemctl --user daemon-reload > /dev/null 2>&1
+        if peer_unit_active; then PEER_TEARDOWN_FAILED=stop; return 1; fi
+        if ! rm -f "$f" 2> /dev/null || [ -e "$f" ]; then PEER_TEARDOWN_FAILED=delete; return 1; fi
+        if ! systemctl --user daemon-reload > /dev/null 2>&1; then PEER_TEARDOWN_FAILED=reload; return 1; fi
     fi
     return 0
 }
 
 peer_teardown_fix() {
-    local how="systemctl --user disable --now $PEER_UNIT"
+    local how="systemctl --user disable --now $PEER_UNIT" f
+    f=$(peer_unit_file)
     if [ "$(uname)" = Darwin ]; then how="launchctl bootout gui/$(id -u)/$PEER_LABEL"; fi
+    case "$PEER_TEARDOWN_FAILED" in
+        delete) rs_fix "the peer poller is stopped, but its unit file could not be deleted (a peer that was removed stays removed, so the same command finishes the job): delete $(rs_tilde "$f") yourself, then run the same command again" ;;
+        reload) rs_fix "the peer poller is stopped and its unit file is deleted, but systemd did not reload its unit list: run systemctl --user daemon-reload yourself, and nothing else is left to do" ;;
+    esac
     rs_fix "the peer poller could not be stopped (a peer that was removed stays removed, so the same command finishes the job): stop it yourself with $how, then run the same command again"
 }
 
@@ -706,6 +713,10 @@ peer_finish() {
     fi
     rs_step "the status check passes"
     rs_done "peer $names — group confirmed, poller running"
+}
+
+peer_restart_fix() {
+    rs_fix "the peer poller did not restart (the peer you removed stays removed): look at why with: $(peer_log_hint), then run: bash scripts/remote-setup/remote-setup.sh peer"
 }
 
 peer_remove() {
@@ -746,9 +757,9 @@ $name
     if peer_unit_active; then
         if [ "$(uname)" = Darwin ]; then
             launchctl bootout "gui/$(id -u)/$PEER_LABEL" > /dev/null 2>&1
-            rs_unit_start "$PEER_UNIT" "$PEER_LABEL"
+            rs_unit_start "$PEER_UNIT" "$PEER_LABEL" || peer_restart_fix
         else
-            systemctl --user restart "$PEER_UNIT" > /dev/null 2>&1
+            systemctl --user restart "$PEER_UNIT" > /dev/null 2>&1 || peer_restart_fix
         fi
     fi
     rs_done "peer — removed $name; the poller was restarted"

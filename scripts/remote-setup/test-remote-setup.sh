@@ -1786,6 +1786,63 @@ case_peer_remove_teardown_failure_is_a_fix() {
     check "and the poller stopped" test ! -e "$T/units/$UNIT_NAME.active"
 }
 
+case_peer_remove_unit_delete_failure_is_a_fix() {
+    if [ "$(id -u)" = 0 ]; then SKIPN=$((SKIPN + 1)); return 0; fi
+    seed_confirmed_station
+    chmod 500 "$(dirname "$(UNIT_FILE)")"
+    feed yes
+    run_sut "$T/in" peer --remove
+    chmod 700 "$(dirname "$(UNIT_FILE)")"
+    check "a unit file that cannot be deleted is a FIX, never DONE" eq "$RC" 3
+    check "the FIX says the unit file could not be deleted" has "$LAST" "unit file could not be deleted"
+    check "the poller itself was stopped" test ! -e "$T/units/$UNIT_NAME.active"
+    check "the unit file is still there" test -f "$(UNIT_FILE)"
+    # the next run finishes the job
+    feed ""
+    run_sut "$T/in" peer --remove
+    check "the re-run reaches DONE" eq "$RC" 0
+    check "the unit file is gone" test ! -e "$(UNIT_FILE)"
+}
+
+case_peer_remove_reload_failure_is_a_fix() {
+    seed_confirmed_station
+    : > "$T/units/daemon-reload.fail"
+    feed yes
+    run_sut "$T/in" peer --remove
+    check "a systemd reload that fails is a FIX, never DONE" eq "$RC" 3
+    check "the FIX names the reload command" has "$LAST" "systemctl --user daemon-reload"
+    check "the unit file was deleted" test ! -e "$(UNIT_FILE)"
+}
+
+seed_second_peer() { # yotam, a second confirmed peer in another group
+    jq '.peers.yotam = {peerBotId: "666", chatId: -1002, allowFrom: ["666"], theirs: {username: "y_bot"}}' "$(PEERS_FILE)" > "$(PEERS_FILE).new" && mv "$(PEERS_FILE).new" "$(PEERS_FILE)"
+    jq '.peers += [{name: "yotam", peerBotId: "666", chatId: -1002, confirmedAt: "2026-11-20T10:00:00Z"}]' "$(CONFIRMED_FILE)" > "$(CONFIRMED_FILE).new" && mv "$(CONFIRMED_FILE).new" "$(CONFIRMED_FILE)"
+}
+
+case_peer_remove_one_of_two_restarts_poller() {
+    seed_confirmed_station
+    seed_second_peer
+    feed 1 yes
+    run_sut "$T/in" peer --remove
+    check "exit 0" eq "$RC" 0
+    check "the numbered pick offered both peers" has "$(cat "$T/out")" "2) yotam"
+    check "DONE names the removed peer and the restart" has "$LAST" "removed goomal; the poller was restarted"
+    check "setup.ts removed only goomal" eq "$(setup_calls)" "remove goomal"
+    check "yotam stays on the record" eq "$(jq -r '.peers | map(.name) | join(",")' "$(CONFIRMED_FILE)")" yotam
+    check "the poller was restarted" test -n "$(line_of 'systemctl --user restart himmel-peer-bridge.service')"
+    check "and its unit file stays" test -f "$(UNIT_FILE)"
+    # a restart that fails is a FIX: the removed peer stays removed
+    sub_case peer_remove_one_of_two_restart_fails
+    seed_confirmed_station
+    seed_second_peer
+    : > "$T/units/$UNIT_NAME.startfail"
+    feed 1 yes
+    run_sut "$T/in" peer --remove
+    check "a poller that does not restart is a FIX" eq "$RC" 3
+    check "the FIX says it did not restart" has "$LAST" "did not restart"
+    check "the removed peer stays removed" eq "$(jq -r '.peers | has("goomal")' "$(PEERS_FILE)")" false
+}
+
 case_peer_mac_bootout_then_bootstrap_order() {
     echo Darwin > "$T/uname"
     seed_confirmed_station mac
@@ -1914,7 +1971,7 @@ peer_repoint_runs_remove_then_add_confirm peer_pending_publication_survives_inte
 peer_allowfrom_written_by_setup_ts_only_digit_strings peer_canary_token_absent_everywhere
 peer_sigint_during_discovery_restarts_poller renamed_peer_bot_keeps_name
 peer_done_rerun_changes_no_config_artifact peer_inputs_are_only_the_g2_set
-peer_remove_deletes_checkpoint_and_status_na peer_remove_interrupted_resumes peer_remove_with_nothing_set_up_is_done peer_remove_teardown_failure_is_a_fix peer_wait_pages_when_the_group_is_busy
+peer_remove_deletes_checkpoint_and_status_na peer_remove_interrupted_resumes peer_remove_with_nothing_set_up_is_done peer_remove_teardown_failure_is_a_fix peer_wait_pages_when_the_group_is_busy peer_remove_unit_delete_failure_is_a_fix peer_remove_reload_failure_is_a_fix peer_remove_one_of_two_restarts_poller
 peer_mac_bootout_then_bootstrap_order peer_without_part1_fixes peer_bridge_equals_main_refuses
 peer_different_bridge_id_without_replace_refuses peer_hello_timeout_fixes peer_hostile_username_refused
 peer_name_second_collision_gets_3 peer_name_32_char_base_with_suffix_fits"

@@ -284,6 +284,8 @@ The name after `peer` is the other station's name, taken from its bridge bot's u
 | `not a usable Telegram username` | Ask the other operator to check their bridge bot's username, then run the command again. |
 | `setup.ts did not` | The line carries setup.ts's reason, usually one of the group rules above. Fix that, then run the command again. |
 | `the peer poller did not start` | The line names a command that shows the poller's log. Read it, fix what it says, then run the command again; your setup is kept. |
+| `unit file could not be deleted` | Delete the file the line names, then run the command with `--remove` again. |
+| `the peer poller did not restart` | Read the poller's log (the line names the command), fix what it says, then run the command without `--remove`. The peer you removed stays removed. |
 | `the peer poller could not be stopped` | Run the stop command the line gives, then run the command with `--remove` again. The peer itself is already removed. |
 | `the peer bridge is not running yet` | Wait a minute, read the poller's log (the line names the command), then run the command again. |
 
