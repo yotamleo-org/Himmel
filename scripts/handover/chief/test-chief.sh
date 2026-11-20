@@ -2084,6 +2084,8 @@ cat > "$tmp/stub-arm-66.sh" <<STUB
     printf 'HIMMEL_CONSOLE_LEG=%s\n' "\${HIMMEL_CONSOLE_LEG+set}"
     printf 'WORKER_SESSION_LANE=%s\n' "\${WORKER_SESSION_LANE+set}"
     printf 'OPENROUTER_MODEL=%s\n' "\${OPENROUTER_MODEL+set}"
+    printf 'WORKER_SESSION_API_LANE=%s\n' "\${WORKER_SESSION_API_LANE+set}"
+    printf 'WORKER_SESSION_API_ACCOUNT=%s\n' "\${WORKER_SESSION_API_ACCOUNT+set}"
     printf 'HEADED_ARM_REQUIRED_AUTOCOMPACT=%s\n' "\${HEADED_ARM_REQUIRED_AUTOCOMPACT+set}"
     printf 'HEADED_ARM_LAUNCHER_ENV_LINES=%s\n' "\${HEADED_ARM_LAUNCHER_ENV_LINES+set}"
     printf 'HIMMEL_HOLD_KEY=%s\n' "\${HIMMEL_HOLD_KEY+set}"
@@ -2114,6 +2116,7 @@ out66b="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PR
     HIMMEL_LEAN_WORKER_SESSION=1 HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=leaked-chief-66 \
     WORKER_SESSION_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL=high CLAUDEX_LANE_OK=1 \
     WORKER_SESSION_LANE=openrouter OPENROUTER_MODEL=anthropic/claude-sonnet-5.5 \
+    WORKER_SESSION_API_LANE=on WORKER_SESSION_API_ACCOUNT=A \
     CR_TRIGGER_SUPPRESS=1 IMPL_GUARD_OK=1 INLINE_IMPL_OK=1 HIMMEL_READ_CLAMP_LINES=4000 \
     HIMMEL_CONSOLE_RELAY=1 HIMMEL_HOLD_KEY=HIMMEL-1 HIMMEL_HOLD_DOC=/leaked-66/doc.md HIMMEL_HOLD_LABEL=N1 WRITE_HOLD_OK=1 \
     HEADED_ARM_LAUNCHER=/leaked-66/worker-claude-launcher.sh HEADED_ARM_RECORDER=1 \
@@ -2162,6 +2165,10 @@ for hold67 in HIMMEL_HOLD_KEY HIMMEL_HOLD_DOC HIMMEL_HOLD_LABEL WRITE_HOLD_OK; d
 done
 check "67 armed child's own environment strips WORKER_SESSION_LANE" \
     "$(grep -c '^WORKER_SESSION_LANE=set$' "$tmp/child-env-66.txt")" "0"
+for api67 in WORKER_SESSION_API_LANE WORKER_SESSION_API_ACCOUNT; do
+    check "67 the strip list names $api67" "$(printf '%s\n' "$strip_list67" | grep -c "^$api67\$")" "1"
+    check "67 armed child's own environment strips $api67" "$(grep -c "^$api67=set\$" "$tmp/child-env-66.txt")" "0"
+done
 check "67 armed child's own environment strips OPENROUTER_MODEL" \
     "$(grep -c '^OPENROUTER_MODEL=set$' "$tmp/child-env-66.txt")" "0"
 check "67 armed child's own environment strips HIMMEL_WORKER_SESSION_PROFILE" \

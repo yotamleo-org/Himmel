@@ -198,6 +198,7 @@ Every message the harness sends to Telegram carries a kind, and `scripts/telegra
 | `cadence:failure-review-route` | monitor | `scripts/eval/worker-digest/failure-route-notify.sh` | The failure-review-route scheduled worker reported a failure. |
 | `cadence:claudex-inbox` | monitor | `scripts/lib/claudex-inbox.sh` | The claudex-inbox scheduled worker reported a failure. |
 | `cadence:steering-cull` | monitor | `scripts/cleanup/steering-cull-cadence.sh` | The steering-cull scheduled worker reported a failure. |
+| `cadence:clip-relevance` | monitor | `scripts/luna/clip-relevance-cadence.sh` | The weekly clip-relevance pass proposed himmel changes (up to five, one message), or its scheduled worker reported a failure. |
 | `cadence:cache-health` | monitor | `scripts/eval/cache-health-cadence.sh` | The cache-health scheduled worker reported a failure. |
 | `cadence:qmd-quality` | monitor | `scripts/eval/qmd-quality/qmd-quality-cadence.sh` | The qmd-quality scheduled worker reported a failure. |
 | `cadence:ledger-drift` | monitor | `scripts/handover/chief-kit/ci-cadence.sh` | The ledger-drift scheduled worker reported a failure. |
