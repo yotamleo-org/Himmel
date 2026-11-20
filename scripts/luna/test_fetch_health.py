@@ -404,6 +404,28 @@ class FetchHealthTests(unittest.TestCase):
             bad = fetch_health.probe_harvest_article_fetch(env, today)
             self.assertIn("2 thin article clip(s)", bad.reason)
 
+    def test_harvest_article_fetch_reads_the_vault_the_cadence_targets(self):
+        today = datetime(2026, 11, 20, tzinfo=timezone.utc)
+        stale = ("---\ntype: article\nsource: https://wiki.internal/inbox\nharvest_status: partial\n"
+                 "harvest_flag: thin-body\nharvest_defer_last: 2026-11-01\n---\n# t\n")
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home:
+            custom, other = Path(tmp) / "custom", Path(tmp) / "other"
+            for vault in (custom, other):
+                (vault / "Clippings").mkdir(parents=True)
+            (custom / "Clippings" / "stale.md").write_text(stale, encoding="utf-8")
+            (other / "Clippings" / "fine.md").write_text("---\ntype: article\n---\n# t\n", encoding="utf-8")
+            only_luna = fetch_health.probe_harvest_article_fetch({"HOME": home, "LUNA_VAULT_PATH": str(custom)}, today)
+            self.assertEqual(only_luna.status, "transport-fail", only_luna.reason)
+            both = fetch_health.probe_harvest_article_fetch(
+                {"HOME": home, "OBSIDIAN_VAULT_PATH": str(other), "LUNA_VAULT_PATH": str(custom)}, today)
+            self.assertEqual(both.status, "ok", both.reason)
+            neither = fetch_health.probe_harvest_article_fetch({"HOME": home}, today)
+            self.assertEqual((neither.status, "no Clippings folder" in neither.reason), ("ok", True))
+            out = io.StringIO()
+            with patch.dict(os.environ, {"HOME": home, "PATH": ""}, clear=True), redirect_stdout(out):
+                rc = fetch_health.main(["--probe", "harvest-article-fetch", "--vault", str(custom)])
+            self.assertEqual((rc, "stale.md" in out.getvalue()), (1, True), out.getvalue())
+
     def test_harvest_article_fetch_reads_paths_relative_to_the_vault(self):
         today = datetime(2026, 11, 20, tzinfo=timezone.utc)
         for outer in ("_evidence", "_done", "_synthesis", "_rejected", "_media"):

@@ -1889,7 +1889,7 @@ assert_rc "stale own lock: one send" 1 "$(count_lines "$ALERT_SENDS")"
 sh "$NT_DIR/pipeline-synthesize.sh" || true
 assert_rc "the same stale lock the next night does not send again" 1 "$(count_lines "$ALERT_SENDS")"
 rm -f "$NT_VAULT/.git/index.lock"
-nt_fire synthesize
+: > "$NT_REC"; rc=0; sh "$NT_DIR/pipeline-synthesize.sh" || rc=$?
 assert_contains "once the lock is gone the steps run again" "promote lock=held" "$(cat "$NT_REC")"
 printf 'himmel-nightly 2147483646\n' > "$NT_VAULT/.git/index.lock"
 : > "$ALERT_SENDS"; : > "$NT_REC"

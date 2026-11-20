@@ -4,7 +4,8 @@ Pick ONE of two paths per clip:
 
 | `type:` + URL pattern | Path | Skill |
 |-----------------------|------|-------|
-| `research` / `article` with any `github.com/*` URL except a `/blob/` file (repo-root, `/tree/<branch>`, issues, pulls) | **github-ingest** | `obsidian-triage:luna-ingest` |
+| `research` / `article` with any `github.com/*` URL except a `/blob/` file or a release-tag clip with notes (repo-root, `/tree/<branch>`, issues, pulls) | **github-ingest** | `obsidian-triage:luna-ingest` |
+| a `github.com/<owner>/<repo>/releases/tag/<tag>` clip that carries text of its own (a feed clip carries the release notes; a body of only the link is not notes) | **clip-body** | none — the notes are the article: the repository is not ingested, the Phase 4.5 injection screen runs, and a short note is not a thin body |
 | `research` / `article` with a `github.com/<owner>/<repo>/blob/<branch>/<path>` URL (one file is a distinct document from the repo root) | **clip-body** | none — luna-ingest keeps only owner/repo and would re-ingest the README, so the clip's own captured body is the harvest |
 | every other case (tweet, youtube, reddit, newsletter, non-github research/article, unrecognised `type:`) | **clip-body** | none — clip body IS the harvest |
 

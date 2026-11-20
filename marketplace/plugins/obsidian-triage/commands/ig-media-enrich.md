@@ -110,6 +110,10 @@ mixed-carousel video items) go through whisper only and NEVER enter the vault -
 the reel stays in the `~/.luna/ig-media/` cache; only the transcript TEXT is
 written.
 
+A clip triage summarised before this rung ran carries `summary_basis: url-only` and the `Inferred from the source URL only` sentence, and triage never revisits a processed clip. Right after a verified write (and after Step 4's digest apply) the tool rewrites that `## Summary` from the opening lines of the transcript, else of the slide digest (no model call), and sets `summary_basis: crawled-extract`; in the same write it drops a stale `harvest_flag: thin-body` (the clip has text now, as the harvest's own success paths do), and keeps any other flag and the flag on a clip it cannot rewrite. Nothing is copied from a clip already flagged `injection-suspect` or whose text trips the injection screen; a clip with no text, a non-Instagram clip and a summary that is not url-only stay as they are. The rewrite is verified (everything outside `## Summary` byte-identical, reverted otherwise) and a failure never fails the enrichment.
+
+One-time repair for clips enriched before this existed: `ig-media-fetch.py --repair-summaries "<vault>" [--apply] [--limit N]` walks `Clippings/` (`_evidence/` and `_done/` included, `_synthesis/` and `_rejected/` not) and lists, or with `--apply` rewrites, each such clip. It is a dry run unless `--apply`; `--limit N` (default 10, 0 = all) caps the clips changed per run.
+
 ### Step 3 - Slide digest (agent reads images, tool writes)
 
 Scan the vault **vault-wide** for every clip whose body carries the

@@ -245,4 +245,72 @@ console.log("OK 6320 per-file realpath");
 JS
 LIB="$LIBURL" OBSIDIAN_VAULT_PATH="$tmp/vault" node "$tmp/t6320.mjs" || { echo "6320 per-file symlink test FAILED"; exit 1; }
 
+cat > "$tmp/t10409.mjs" <<'JS'
+const { isThinClipBody } = await import(process.env.LIB);
+const NL = "\n";
+const rel = "https://github.com/example-org/example-tool/releases/tag/v2.0.0";
+const withNotes = NL + "# Tool: v2.0.0" + NL + NL + "Bug fixes." + NL + NL + "## Source" + NL + `[${rel}](${rel})`;
+const linkOnly = NL + "# Tool: v2.0.0" + NL + NL + rel + NL + NL + "## Source" + NL + `[${rel}](${rel})`;
+if (isThinClipBody(withNotes, "research", rel) !== false) { console.error("FAIL: release notes flagged thin"); process.exit(1); }
+if (isThinClipBody(linkOnly, "research", rel) !== true) { console.error("FAIL: link-only release clip not thin"); process.exit(1); }
+const root = "https://github.com/example-org/example-tool";
+if (isThinClipBody(withNotes, "research", root) !== true) { console.error("FAIL: repository link with a body not thin"); process.exit(1); }
+if (isThinClipBody(withNotes, "research", root + "/releases") !== true) { console.error("FAIL: releases list link not thin"); process.exit(1); }
+console.log("OK release-tag thinness");
+JS
+LIB="$LIBURL" node "$tmp/t10409.mjs" || { echo "release-tag thinness test FAILED"; exit 1; }
+
+cat > "$tmp/t10409-cases.mjs" <<'JS'
+import { readFileSync } from "node:fs";
+const lib = await import(process.env.LIB);
+const fx = JSON.parse(readFileSync(process.env.FIX, "utf8"));
+let bad = 0;
+for (const c of fx.cases) {
+  const src = c.source.replaceAll("RELEASE", fx.release);
+  const body = c.body.replaceAll("RELEASE", fx.release);
+  const got = typeof lib.hasReleaseNotes === "function" ? lib.hasReleaseNotes(src, body) : undefined;
+  if (got !== c.has_notes) { bad++; console.error(`FAIL: release-notes case "${c.name}": expected ${c.has_notes}, got ${got}`); }
+  if (c.has_notes && lib.isThinClipBody(body, "research", src) !== false) { bad++; console.error(`FAIL: thin although it has notes: "${c.name}"`); }
+}
+if (bad) process.exit(1);
+console.log(`OK release-notes cases (${fx.cases.length}) agree with the shared fixture`);
+JS
+FIX="$here/fixtures/release-notes-cases.json" LIB="$LIBURL" node "$tmp/t10409-cases.mjs" || { echo "release-notes shared-fixture test FAILED"; exit 1; }
+
+cat > "$tmp/vault/Clippings/fetched-guide.md" <<'EOF'
+---
+title: "guide"
+source: "https://example.com/docs/fetched-guide"
+type: article
+processed: true
+summary_basis: url-only
+harvested_at: 2026-11-20
+harvest_skill: jina
+harvest_status: ok
+---
+# guide
+
+## Summary
+Inferred from the source URL only — re-read the source before promoting.
+
+## Harvested content
+<!-- harvest-clips 2026-11-20 via jina (https://example.com/docs/fetched-guide) -->
+
+The guide explains how to configure the tool and names its three modes in plain words.
+
+## Source
+[l](https://example.com/docs/fetched-guide)
+EOF
+sed -e 's#fetched-guide#empty-fetch#g' -e '/^The guide explains/d' "$tmp/vault/Clippings/fetched-guide.md" > "$tmp/vault/Clippings/empty-fetch.md"
+cat > "$tmp/t10419.mjs" <<'JS'
+const { findHarvestedClipForUrl } = await import(process.env.LIB);
+const root = process.env.VAULT;
+const fetched = findHarvestedClipForUrl(root, "https://example.com/docs/fetched-guide");
+if (!fetched || fetched.enriched !== true) { console.error("FAIL: a fetched clip with a url-only summary is not enriched (read-link would refetch it)", fetched); process.exit(1); }
+const empty = findHarvestedClipForUrl(root, "https://example.com/docs/empty-fetch");
+if (!empty || empty.enriched !== false) { console.error("FAIL: a clip whose fetched section holds only its harvest comment is enriched", empty); process.exit(1); }
+console.log("OK fetched clips are enriched, an empty fetched section is not");
+JS
+LIB="$LIBURL" VAULT="$tmp/vault" node "$tmp/t10419.mjs" || { echo "fetched-clip enrichment test FAILED"; exit 1; }
+
 echo "ALL PASS"

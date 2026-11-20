@@ -783,6 +783,10 @@ grep -qE "github\.com/.*/blob/.*\*\*clip-body\*\*|/blob/.*clip-body" "$PLUGIN_DI
 assert "phase-4 dispatch table routes /blob/ to clip-body" "yes" "$found"
 grep -qE "/blob/.*(no|skip|only).*gh auth|gh auth.*/blob/" "$PLUGIN_DIR/commands/harvest-clips.md" && found=yes || found=no
 assert "gh-auth preflight skipped for blob-only batches" "yes" "$found"
+grep -qE "releases/tag/.*\*\*clip-body\*\*" "$PLUGIN_DIR/references/harvest-clips/phase-4-dispatch.md" && found=yes || found=no
+assert "phase-4 dispatch table routes a release-tag clip with notes to clip-body" "yes" "$found"
+grep -qE "any .github\.com/\*. URL except a ./blob/. file or a release-tag clip with notes" "$PLUGIN_DIR/references/harvest-clips/phase-4-dispatch.md" && found=yes || found=no
+assert "phase-4 dispatch table keeps release-tag clips with notes out of github-ingest" "yes" "$found"
 
 echo ""
 echo "Results: $pass passed, $fail failed"
