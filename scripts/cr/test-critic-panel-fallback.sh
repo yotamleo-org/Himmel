@@ -957,6 +957,8 @@ if [ "$slug" = codex ]; then
     case "${CX_MODE:-ok}" in
         exhaust) cat "$CX_FIXTURE" >&2; exit 1 ;;
         timeout) exit 124 ;;
+        missing) echo "critic-first-pass.sh: line 1: codex: command not found" >&2; exit 127 ;;
+        auth) echo "Error: 401 Unauthorized: not logged in, run codex login" >&2; exit 1 ;;
     esac
 fi
 printf '# %s First-Pass Review\n\n## Critical Issues (0 found)\n\n## Important Issues (0 found)\n\n## Suggestions (0 found)\n' "$slug"
@@ -1000,8 +1002,36 @@ check "24c: parallel: the Claude floor ran once" "$(grep -c '^claude provider=cl
 check "24c: parallel: exactly one alert" "$(n_lines "$tmp/alerts24c")" "1"
 
 floor_run d CRITICS_JSON="$JSON_FLOOR" CX_MODE=timeout
-check "24d: codex timeout: no Claude floor" "$(grep -c '^claude ' "$tmp/cap24d")" "0"
-check "24d: codex timeout: no alert" "$(n_lines "$tmp/alerts24d")" "0"
+check "24d: codex timeout, no other non-Claude critic answered: the Claude floor ran once" "$(grep -c '^claude provider=claude-subscription$' "$tmp/cap24d")" "1"
+check "24d: codex timeout, nobody answered: one alert" "$(n_lines "$tmp/alerts24d")" "1"
+check_contains "24d: the alert names the timeout" "$(cat "$tmp/alerts24d")" "codex reason=timeout"
+
+floor_run j CRITICS_JSON="$JSON_FLOOR" CX_MODE=missing
+check "24j: codex not installed: the Claude floor ran once" "$(grep -c '^claude provider=claude-subscription$' "$tmp/cap24j")" "1"
+check "24j: codex not installed: exactly one alert" "$(n_lines "$tmp/alerts24j")" "1"
+check_contains "24j: the alert says no non-Claude critic answered" "$(cat "$tmp/alerts24j")" "CRITIC-ALERT: no non-Claude critic answered on"
+check_contains "24j: the alert names codex's reason" "$(cat "$tmp/alerts24j")" "codex reason=generic-rc-127"
+check_contains "24j: the floor's review counts" "$(cat "$tmp/err24j")" "panel-availability: claude ok"
+
+floor_run k CRITICS_JSON="$JSON_FLOOR" CX_MODE=auth
+check "24k: codex not logged in: the Claude floor ran once" "$(grep -c '^claude provider=claude-subscription$' "$tmp/cap24k")" "1"
+check "24k: codex not logged in: exactly one alert" "$(n_lines "$tmp/alerts24k")" "1"
+check_contains "24k: the alert names the auth failure" "$(cat "$tmp/alerts24k")" "codex reason=auth"
+check "24k: exactly one line to the chief's inbox" "$(grep -c 'CRITIC-ALERT' "$CHIEF24")" "1"
+
+JSON_FLOOR2="$tmp/critics-floor2.json"
+cat > "$JSON_FLOOR2" <<'EOF'
+{"claude_floor":{"slug":"claude","model":"claude-opus-5-5","provider":"claude-subscription","effort":"medium","when":"codex-exhausted"},
+ "panel":[{"slug":"codex","model":"gpt-6.1-sol","provider":"openai-codex","route_provider":"openai-codex","tier":"paid","mode":"hard","required":true},
+          {"slug":"glm","model":"glm-5","provider":"zai","tier":"paid","mode":"advisory"}]}
+EOF
+floor_run l CRITICS_JSON="$JSON_FLOOR2" CX_MODE=timeout
+check "24l: codex timeout, another non-Claude critic answered: no Claude floor" "$(grep -c '^claude ' "$tmp/cap24l")" "0"
+check "24l: codex timeout, another answered: no alert" "$(n_lines "$tmp/alerts24l")" "0"
+check "24l: the other critic ran" "$(grep -c '^glm ' "$tmp/cap24l")" "1"
+floor_run m CRITICS_JSON="$JSON_FLOOR2" CX_MODE=auth
+check "24m: codex not logged in, another non-Claude critic answered: no Claude floor" "$(grep -c '^claude ' "$tmp/cap24m")" "0"
+check "24m: no alert" "$(n_lines "$tmp/alerts24m")" "0"
 
 printf '%s\n' '{"panel":[{"slug":"claude","model":"claude-opus-5-5","provider":"claude-subscription","route_provider":"claude-subscription","tier":"paid","mode":"advisory"}]}' > "$tmp/local-readd24.json"
 floor_run e CRITICS_BASE_JSON="$JSON_FLOOR" CRITICS_LOCAL_JSON="$tmp/local-readd24.json" CX_MODE=ok

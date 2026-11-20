@@ -2186,9 +2186,10 @@ fi
 
 # The Claude floor (decisions 1084 and 1085): the registry's top-level
 # claude_floor field, never a panel member, runs ONE Claude critic only when a
-# codex member ran out (its avail reason is quota-5h or quota-long; a timeout or
-# rate limit is not exhaustion), and sends one loud alert to Telegram and the
-# chief every time. It never runs when the merged registry already has a claude
+# codex member ran out (its avail reason is quota-5h or quota-long), or when no
+# non-Claude member answered at all for any reason (not installed, auth, a
+# timeout or rate limit with nobody else answering), and sends one loud alert
+# to Telegram and the chief every time. It never runs when the merged registry already has a claude
 # row, even one absent this run (an adopter's overlay row is their own design). The merged registry keeps no
 # top-level field, so the floor is read from CRITICS_JSON or the base file; a
 # top-level claude_floor in the critics.local.json overlay replaces it, and null
@@ -2211,22 +2212,38 @@ _floor="$(FLOOR_SRC="${CRITICS_JSON:-$_REG_BASE}" FLOOR_LOCAL="$_floor_local" RE
     if (p.some(r => r && r.slug === slug && !r.drop)) process.exit(0);
     process.stdout.write([slug, f.model, f.provider].join("\t")); } catch (e) {}' 2>/dev/null)" || _floor=""
 _codex_out=""
+_nc_ok=0
+_nc_out=""
 if [ -n "$_floor" ]; then
     while IFS="	" read -r _cx_slug _cx_model _cx_p _cx_fb _cx_route _cx_rest; do
         [ -n "$_cx_slug" ] || continue
-        { [ "$_cx_slug" = codex ] || [ "$_cx_route" = openai-codex ]; } || continue
-        [ -f "$PANEL_SPOOL_DIR/avail.${_cx_slug//\//_}" ] || continue
-        _cx_row="$(tail -n 1 "$PANEL_SPOOL_DIR/avail.${_cx_slug//\//_}")"
+        [ "$_cx_slug" != "${_floor%%	*}" ] || continue
+        case "$_cx_route" in claude*) continue ;; esac
+        _cx_row=""
+        [ -f "$PANEL_SPOOL_DIR/avail.${_cx_slug//\//_}" ] && _cx_row="$(tail -n 1 "$PANEL_SPOOL_DIR/avail.${_cx_slug//\//_}")"
+        if [ "$(printf '%s' "$_cx_row" | awk -F '\034' '{print $2}')" = ok ]; then _nc_ok=1; continue; fi
         _cx_reason="$(printf '%s' "$_cx_row" | awk -F '\034' '{print $4}')"
+        _cx_line="$_cx_slug reason=${_cx_reason:-none}: $(printf '%s' "$_cx_row" | awk -F '\034' '{print $5}')"
+        _nc_out="${_nc_out:+$_nc_out; }$_cx_line"
+        { [ "$_cx_slug" = codex ] || [ "$_cx_route" = openai-codex ]; } || continue
         case "$_cx_reason" in
-            quota-5h|quota-long)
-                [ -n "$_codex_out" ] || _codex_out="$_cx_slug reason=$_cx_reason: $(printf '%s' "$_cx_row" | awk -F '\034' '{print $5}')" ;;
+            quota-5h|quota-long) [ -n "$_codex_out" ] || _codex_out="$_cx_line" ;;
         esac
     done << FLOORROWSEOF
 $rows
 FLOORROWSEOF
 fi
+# A codex quota run-out fires the floor; so does a run where no non-Claude
+# member answered at all, whatever the reason (not installed, auth, timeout).
+_fl_why=""
 if [ -n "$_codex_out" ]; then
+    _fl_why="codex ran out"
+    _fl_detail="$_codex_out"
+elif [ -n "$_floor" ] && [ "$_nc_ok" -eq 0 ]; then
+    _fl_why="no non-Claude critic answered"
+    _fl_detail="${_nc_out:-no non-Claude member in the panel}"
+fi
+if [ -n "$_fl_why" ]; then
     _fl_slug="${_floor%%	*}"; _fl_rest="${_floor#*	}"
     _fl_model="${_fl_rest%%	*}"; _fl_provider="${_fl_rest#*	}"
     _fl_head="${REVIEW_HEAD:-}"
@@ -2240,7 +2257,7 @@ if [ -n "$_codex_out" ]; then
         _fl_timeout="$(_clamp_to_panel_budget "$(_resolve_member_timeout "$_fl_slug" "")")"
         _fl_out="$(mktemp -t critic-panel-floor.XXXXXX)" || { echo "critic-panel: mktemp failed" >&2; exit 2; }
         _fl_err="$(mktemp -t critic-panel-floor-err.XXXXXX)" || { rm -f "$_fl_out"; echo "critic-panel: mktemp failed" >&2; exit 2; }
-        echo "critic-panel.sh: codex ran out ($_codex_out) — running the Claude floor $_fl_model on $_fl_provider" >&2
+        echo "critic-panel.sh: $_fl_why ($_fl_detail) — running the Claude floor $_fl_model on $_fl_provider" >&2
         _fl_start="$(date +%s)"
         _RM_TIMEOUT_SECS="$_fl_timeout"
         _run_cfp_member "$_fl_model" "$_fl_slug" "" "$_fl_out" "$_fl_err" "$_fl_provider"
@@ -2252,9 +2269,9 @@ if [ -n "$_codex_out" ]; then
     fi
     [ -r "$SCRIPT_DIR/critic-alert.sh" ] && . "$SCRIPT_DIR/critic-alert.sh"
     if command -v critic_loud_alert >/dev/null 2>&1; then
-        critic_loud_alert codex-exhausted "codex ran out on $_fl_where ($_codex_out); the Claude floor $_fl_model on $_fl_provider $_fl_result"
+        critic_loud_alert codex-exhausted "$_fl_why on $_fl_where ($_fl_detail); the Claude floor $_fl_model on $_fl_provider $_fl_result"
     else
-        echo "CRITIC-ALERT (codex-exhausted): critic-alert.sh unreadable — codex ran out on $_fl_where ($_codex_out); the Claude floor $_fl_result" >&2
+        echo "CRITIC-ALERT (codex-exhausted): critic-alert.sh unreadable — $_fl_why on $_fl_where ($_fl_detail); the Claude floor $_fl_result" >&2
     fi
 fi
 
