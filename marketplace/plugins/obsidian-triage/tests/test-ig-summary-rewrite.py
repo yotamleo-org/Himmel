@@ -124,8 +124,35 @@ p = clip("m.md", summary="A person rewrote this summary but left the basis line.
 before = txt(p)
 check("a url-only basis over a summary without the URL-only sentence is left unchanged", refresh(p) is None and txt(p) == before)
 
-p = clip("i.md", crawled=crawled(), extra_fm="harvest_flag: thin-body\n")
+p = clip("i.md", crawled=crawled(), extra_fm="harvest_status: ok\nharvest_flag: thin-body\nmedia_enrichment_status: ok\n")
+before = txt(p)
 check("a stale thin-body flag does not block the rewrite", refresh(p) == "transcript")
+check("the stale thin-body flag is cleared in the same write, every other key kept",
+      fmv(p, "harvest_flag") is None and fmv(p, "harvest_status") == "ok" and fmv(p, "media_enrichment_status") == "ok"
+      and txt(p).split("\n---\n", 1)[0].count("\n") == before.split("\n---\n", 1)[0].count("\n") - 1)
+p = clip("i6.md", crawled=crawled(), extra_fm="harvest_flag: thin-body\n")
+refresh(p)
+check("a flag that was the last front matter key leaves no blank line before the closing ---",
+      fmv(p, "harvest_flag") is None and "\n\n---\n" not in txt(p).split("## Summary")[0])
+
+p = clip("i2.md", crawled="", extra_fm="harvest_flag: thin-body\n")
+before = txt(p)
+check("a thin-body clip with NO crawled text keeps its flag, byte for byte", refresh(p) is None and txt(p) == before and fmv(p, "harvest_flag") == "thin-body")
+
+p = clip("i3.md", summary="A summary the person wrote.", basis=None, crawled=crawled(), extra_fm="harvest_flag: thin-body\n")
+before = txt(p)
+check("a thin-body flag on a clip whose summary is not url-only is left alone", refresh(p) is None and txt(p) == before)
+
+p = clip("i4.md", crawled=crawled(), extra_fm="harvest_flag: transcript-unavailable\n")
+check("a flag other than thin-body is kept when the summary is rewritten", refresh(p) == "transcript" and fmv(p, "harvest_flag") == "transcript-unavailable")
+
+p = clip("i5.md", crawled=crawled(), extra_fm="harvest_status: partial\nharvest_flag: thin-body\nig_media_pending: true\n")
+refresh(p)
+bm = mod._batch_module()
+bm.TODAY = "2026-11-20"
+glyph, msg, _hits = bm.process_clip(p, dry_run=False)
+check("a rewritten clip the harvest had left partial is harvested ok on its next run, with no flag back",
+      glyph == "v" and fmv(p, "harvest_status") == "ok" and fmv(p, "harvest_flag") is None and fmv(p, "harvest_skill") == "clip-body")
 
 hostile = ("Intro line.\n\n---\nkey: value\n#### Sneaky heading\n<!-- hidden --> [[Private/Note]] ```code``` \x00\x07 end of the first part. "
            + "word " * 400)
@@ -175,49 +202,53 @@ class Args:
 
 
 enrich_clip = V / "Clippings" / "pending.md"
-enrich_clip.write_bytes(clip("src.md", extra_fm="ig_media_pending: true\n").read_bytes())
+enrich_clip.write_bytes(clip("src.md", extra_fm="ig_media_pending: true\nharvest_flag: thin-body\n").read_bytes())
 out = io.StringIO()
 with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
     mod.enrich_batch(Args, [(enrich_clip, mod.is_ig_source("https://www.instagram.com/reel/AAAA111/"))], 1, 0)
 check("enrichment writes the transcript", "### Transcript" in txt(enrich_clip) and fmv(enrich_clip, "media_enrichment_status") == "ok")
 check("enrichment rewrites the url-only summary in the same run", MARK not in txt(enrich_clip) and fmv(enrich_clip, "summary_basis") not in (None, "url-only"))
+check("enrichment clears the stale thin-body flag in the same run", fmv(enrich_clip, "harvest_flag") is None)
 
 mod.transcribe_videos = lambda videos, model: ([], [], [1])
 failing = V / "Clippings" / "fails.md"
-failing.write_bytes(clip("src2.md", extra_fm="ig_media_pending: true\n").read_bytes())
+failing.write_bytes(clip("src2.md", extra_fm="ig_media_pending: true\nharvest_flag: thin-body\n").read_bytes())
 before = txt(failing)
 with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
     mod.enrich_batch(Args, [(failing, mod.is_ig_source("https://www.instagram.com/reel/AAAA111/"))], 1, 0)
 check("a failed enrichment leaves the url-only summary as it was", MARK in txt(failing) and fmv(failing, "summary_basis") == "url-only")
+check("a failed enrichment leaves the thin-body flag as it was", fmv(failing, "harvest_flag") == "thin-body")
 
 # --- the slide digest step -------------------------------------------------------
 dg = SCRATCH / "digest.txt"
 dg.write_text(DIGEST, encoding="utf-8")
-pend = clip("pend.md", crawled=crawled(transcript="", slides=True, digest=None))
+pend = clip("pend.md", crawled=crawled(transcript="", slides=True, digest=None), extra_fm="harvest_flag: thin-body\n")
 with contextlib.redirect_stdout(io.StringIO()):
     rc = mod.run_apply_digest(pend, dg)
 check("applying a digest rewrites the url-only summary", rc == 0 and MARK not in txt(pend) and "starter on a counter" in txt(pend)
       and fmv(pend, "summary_basis") not in (None, "url-only"))
+check("applying a digest clears the stale thin-body flag", fmv(pend, "harvest_flag") is None)
 
 # --- the one-time repair ----------------------------------------------------------
 R = SCRATCH / "vault-repair"
 files = {}
 affected = set()
+FLAG = "harvest_status: ok\nharvest_flag: thin-body\n"
 for i in range(10):
     key = f"Clippings/{'_evidence/' if i % 2 else ''}r{i}.md"
-    files[key] = clip(f"vault-repair/{key}", crawled=crawled())
+    files[key] = clip(f"vault-repair/{key}", crawled=crawled(), extra_fm=FLAG)
     affected.add(key)
 for i in range(10):
     key = f"Clippings/_evidence/s{i}.md"
-    files[key] = clip(f"vault-repair/{key}", crawled=crawled(transcript="", slides=True, digest=DIGEST))
+    files[key] = clip(f"vault-repair/{key}", crawled=crawled(transcript="", slides=True, digest=DIGEST), extra_fm=FLAG)
     affected.add(key)
 for i in range(10):
-    files[f"Clippings/_evidence/n{i}.md"] = clip(f"vault-repair/Clippings/_evidence/n{i}.md", crawled="")
+    files[f"Clippings/_evidence/n{i}.md"] = clip(f"vault-repair/Clippings/_evidence/n{i}.md", crawled="", extra_fm=FLAG)
 for i in range(10):
-    files[f"Clippings/_evidence/x{i}.md"] = clip(f"vault-repair/Clippings/_evidence/x{i}.md", crawled=crawled(), source=f"https://example.com/p{i}")
+    files[f"Clippings/_evidence/x{i}.md"] = clip(f"vault-repair/Clippings/_evidence/x{i}.md", crawled=crawled(), source=f"https://example.com/p{i}", extra_fm=FLAG)
 for i in range(5):
-    files[f"Clippings/_evidence/w{i}.md"] = clip(f"vault-repair/Clippings/_evidence/w{i}.md", summary="Written by a person.", basis=None, crawled=crawled())
-files["Clippings/_evidence/_rejected/z.md"] = clip("vault-repair/Clippings/_evidence/_rejected/z.md", crawled=crawled())
+    files[f"Clippings/_evidence/w{i}.md"] = clip(f"vault-repair/Clippings/_evidence/w{i}.md", summary="Written by a person.", basis=None, crawled=crawled(), extra_fm=FLAG)
+files["Clippings/_evidence/_rejected/z.md"] = clip("vault-repair/Clippings/_evidence/_rejected/z.md", crawled=crawled(), extra_fm=FLAG)
 snapshot = {k: txt(v) for k, v in files.items()}
 
 
@@ -247,6 +278,9 @@ check("repair --apply --limit 5 changes exactly five clips", len(changed()) == 5
 code, out = repair("--apply", "--limit", "0")
 check("repair --apply changes the affected clips and no other file", changed() == affected)
 check("repair rewrote each from its text", all(MARK not in txt(files[k]) for k in affected))
+check("repair cleared the stale thin-body flag on the rewritten clips", all(fmv(files[k], "harvest_flag") is None for k in affected))
+check("repair left the flag on every clip it did not rewrite (no text, not Instagram, person-written, rejected)",
+      all(fmv(files[k], "harvest_flag") == "thin-body" for k in files if k not in affected))
 before = {k: txt(v) for k, v in files.items()}
 code, out = repair("--apply", "--limit", "0")
 check("a second repair run changes nothing", {k: txt(v) for k, v in files.items()} == before and "0 rewritten" in out)

@@ -100,8 +100,9 @@ withholds `media_enriched_at`, so the clip stays selectable and is retried -
 partial media loss is never stamped a full success. A clip whose summary
 triage wrote from the URL alone (`summary_basis: url-only`) gets that summary
 rewritten from the opening of the transcript, else of the slide digest, right
-after a verified write (no model call; `summary_basis: crawled-extract`; never
-from a flagged clip or text that trips the injection screen), and
+after a verified write (no model call; `summary_basis: crawled-extract`, and a
+stale `harvest_flag: thin-body` is dropped in the same write; never
+from an injection-flagged clip or text that trips the injection screen), and
 `ig-media-fetch.py --repair-summaries <vault> [--apply] [--limit N]` is the
 bounded one-time repair for clips enriched before that (dry run unless
 `--apply`, default 10 per run). Command runbook:

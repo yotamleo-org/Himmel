@@ -257,7 +257,8 @@ def drop_ig_media_pending(fm_raw: str) -> str:
 # Triage writes a clip's summary before this rung runs and never revisits it, so a
 # clip enriched afterwards keeps "Inferred from the source URL only". Once the
 # transcript or slide digest exists, the summary is rewritten from its opening
-# lines (no model call) and summary_basis stops saying url-only.
+# lines (no model call), summary_basis stops saying url-only and the stale
+# harvest_flag: thin-body goes in the same write.
 URL_ONLY_MARKER = "Inferred from the source URL only"
 SUMMARY_EXTRACT_CHARS = 400
 _SUMMARY_RE = re.compile(r"(?ms)^## Summary[ \t]*\n(.*?)(?=^## |\Z)")
@@ -331,8 +332,14 @@ def plan_summary_rewrite(text: str):
     label = {"transcript": "From the reel transcript (opening lines, not a full summary): ",
              "slides": "From the slide digest (opening slides, not a full summary): "}[kind]
     new_body = body[:m.start(1)] + label + excerpt + "\n\n" + body[m.end(1):]
-    new_fm_raw = re.sub(r"(?m)^summary_basis:[ \t]*\"?url-only\"?[ \t]*$", "summary_basis: crawled-extract", fm_raw)
-    return f"---\n{new_fm_raw}\n---\n{new_body}", kind
+    fm_lines = []
+    for ln in fm_raw.split("\n"):
+        if re.fullmatch(r"summary_basis:[ \t]*\"?url-only\"?[ \t]*", ln):
+            ln = "summary_basis: crawled-extract"
+        elif re.fullmatch(r"harvest_flag:[ \t]*\"?thin-body\"?[ \t]*", ln):
+            continue  # the clip has text now; the harvest's own success paths drop this flag the same way
+        fm_lines.append(ln)
+    return f"---\n{chr(10).join(fm_lines)}\n---\n{new_body}", kind
 
 
 def refresh_url_only_summary(path: Path, dry_run: bool = False):
