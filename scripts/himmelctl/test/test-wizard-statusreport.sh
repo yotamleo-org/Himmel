@@ -749,6 +749,36 @@ echo "$outI2" | jq -e '.summary.degraded == 1 and .summary.na == 0' >/dev/null \
   || fail "case i2: a genuine bridge-persistence warn must count toward summary.degraded, not summary.na (got: $(echo "$outI2" | jq -c '.summary'))"
 echo "ok: case i2 — bridge-persistence with bridge.enabled=true and persistence missing stays severity degraded, never silently swallowed to n/a"
 
+# ── case i3: distinct-tokens reads n/a while no main bot token exists (nothing to compare), green once one does ──
+manifestI3="$work/manifestI3.json"
+cat > "$manifestI3" <<'JSON'
+{
+  "schemaVersion": 2,
+  "harness": "claude",
+  "items": [
+    {
+      "id": "distinct-tokens",
+      "kind": "lane",
+      "scopes": ["project"],
+      "profiles": ["core", "all"],
+      "deps": [],
+      "probe": { "type": "distinct-tokens", "envFileA": ".claude/channels/telegram/.env", "tokenKeyA": "TELEGRAM_BOT_TOKEN", "envFileB": ".env", "tokenKeyB": "TELEGRAM_BOT_TOKEN" }
+    }
+  ]
+}
+JSON
+outI3a=$(run_case_i "$cfgIdisabled" env MANIFEST_I_PATH="$(winpath "$manifestI3")")
+echo "$outI3a" | jq -e '.items[0].desired == true and .items[0].actual == "present" and .items[0].severity == "n/a" and (.items[0].detail | test("opt-in"; "i"))' >/dev/null \
+  || fail "case i3: distinct-tokens with no main bot token should read severity n/a with an opt-in hint, never green (got: $outI3a)"
+echo "$outI3a" | jq -e '.summary.na == 1 and .summary.green == 0' >/dev/null \
+  || fail "case i3: the n/a distinct-tokens row must count toward summary.na, not summary.green (got: $(echo "$outI3a" | jq -c '.summary'))"
+mkdir -p "$caseI_dir/.claude/channels/telegram"
+printf 'TELEGRAM_BOT_TOKEN=AAA111\n' > "$caseI_dir/.claude/channels/telegram/.env"
+outI3b=$(run_case_i "$cfgIdisabled" env MANIFEST_I_PATH="$(winpath "$manifestI3")")
+echo "$outI3b" | jq -e '.items[0].severity == "green"' >/dev/null \
+  || fail "case i3: distinct-tokens with a main bot token should read green (got: $outI3b)"
+echo "ok: case i3 — distinct-tokens reads n/a with no main bot token and green once one exists"
+
 # ── case j: telegram-bridge/hermes-lanes/codex-cli have no
 # config.json flag of their own (unlike bridge-health/bridge-persistence/
 # cadence-armed above): their ONLY selection record is the recorded wizard

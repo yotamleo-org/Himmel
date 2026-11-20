@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Test shim for uname: $RST/uname holds the answer (for example Darwin); otherwise the real one.
+if [ -n "${RST:-}" ] && [ -f "$RST/uname" ]; then
+    cat "$RST/uname"
+    exit 0
+fi
+exec /usr/bin/uname "$@"

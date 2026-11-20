@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Test shim for systemctl. Unit state lives in $RST/units/<unit>.active|.enabled, every call
+# is logged to $RST/units.log. A unit with $RST/units/<unit>.startfail refuses to start.
+RST=${RST:?RST must point at the test dir}
+printf 'systemctl %s\n' "$*" >> "$RST/units.log"
+mkdir -p "$RST/units"
+args=("$@")
+[ "${args[0]:-}" = "--user" ] && args=("${args[@]:1}")
+verb=${args[0]:-}
+unit=${args[1]:-}
+# --quiet may sit between the verb and the unit
+[ "$unit" = "--quiet" ] && unit=${args[2]:-}
+case "$verb" in
+    is-active)
+        [ -f "$RST/units/$unit.active" ] && exit 0
+        exit 3
+        ;;
+    is-enabled)
+        [ -f "$RST/units/$unit.enabled" ] && exit 0
+        exit 1
+        ;;
+    stop)
+        rm -f "$RST/units/$unit.active"
+        exit 0
+        ;;
+    start)
+        [ -f "$RST/units/$unit.startfail" ] && exit 1
+        : > "$RST/units/$unit.active"
+        exit 0
+        ;;
+    *)
+        exit 0
+        ;;
+esac

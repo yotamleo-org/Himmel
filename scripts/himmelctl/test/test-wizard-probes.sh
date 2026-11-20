@@ -242,8 +242,8 @@
 #                  explicit anti-false-green case: a plausible runner file on
 #                  disk must not flip this), a failed scheduler query reads
 #                  degraded/unknown, never present; an unsupported platform
-#                  (darwin) reads a loud degraded naming the launchd/Stage-2
-#                  limitation; a malformed config.json degrades cleanly,
+#                  (freebsd) reads a loud degraded naming the gap (darwin has
+#                  its own LaunchAgent check); a malformed config.json degrades cleanly,
 #                  never crashes. Part B (bridge.envPath /
 #                  bridge.whisper.{cli,model}, previously read by nothing):
 #                  a configured envPath resolves the token from THAT path
@@ -6042,8 +6042,8 @@ fi
 # bridge.enabled:false is a clean opt-out (cleanAbsence:true), never red.
 # Windows registration is verified by QUERYING THE SCHEDULER (stub schtasks
 # on PATH), never inferred from a file on disk, the exact S1 false-green
-# class this item exists to close. macOS/other reads a LOUD degraded naming
-# the Stage-2 limitation (A12), never a silent pass.
+# class this item exists to close. macOS checks its LaunchAgent; any other
+# platform reads a LOUD degraded naming the gap, never a silent pass.
 bp_cfg_enabled="$work/bp-config-enabled.json"
 cat > "$bp_cfg_enabled" <<'JSON'
 {"version":1,"luna":{"vaultPath":"/x","cadence":{"enabled":false,"schedules":{"fetchHealth":{"time":"01:30"},"harvest":{"time":"02:00"},"synthesize":{"time":"03:00"},"health":{"time":"04:00","day":"SUN"}},"models":{"harvest":"sonnet","synthesize":"sonnet","health":"haiku"}},"phi":{"declared":false}},"bridge":{"enabled":true,"envPath":"~/x/.env","whisper":{"cli":null,"model":"ggml-small.bin"}}}
@@ -6325,17 +6325,18 @@ else
   echo "SKIP: bridge-persistence — ctx.env spawn-routing case: no evidence in the stub log that systemctl/loginctl actually spawned on this host"
 fi
 
-# ── case 8: unsupported platform (darwin) -> loud degraded naming Stage 2 ──
+# ── case 8: unsupported platform (freebsd) -> loud degraded, never a silent pass ──
+# (darwin has its own LaunchAgent check, covered by scripts/himmelctl/test/bridge-persistence.test.js)
 outBP8=$(run_bp "$bp_cfg_enabled" "
 $bp_item_js
-const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user', platform: 'darwin', env: process.env };
+const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user', platform: 'freebsd', env: process.env };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outBP8" | jq -e '.actual == "degraded"' >/dev/null \
-  || fail "bridge-persistence: an unsupported platform (darwin) should read a LOUD degraded, never a silent pass (got: $outBP8)"
-echo "$outBP8" | jq -e '.detail | test("Stage 2"; "i") or (.detail | test("launchd"; "i"))' >/dev/null \
-  || fail "bridge-persistence: the unsupported-platform detail should name the launchd/Stage-2 limitation explicitly (got: $outBP8)"
-echo "ok: bridge-persistence — an unsupported platform (darwin) reads a LOUD degraded naming the launchd/Stage-2 limitation, never a silent pass"
+  || fail "bridge-persistence: an unsupported platform (freebsd) should read a LOUD degraded, never a silent pass (got: $outBP8)"
+echo "$outBP8" | jq -e '.detail | test("not implemented on .freebsd.") and test("UNVERIFIED")' >/dev/null \
+  || fail "bridge-persistence: the unsupported-platform detail should say persistence is not implemented there and unverified (got: $outBP8)"
+echo "ok: bridge-persistence — an unsupported platform (freebsd) reads a LOUD degraded naming the gap, never a silent pass"
 
 # ── case: malformed config must not crash the probe (Part B #12, shared) ───
 outBPmalformed=$(run_bp "$bp_cfg_malformed" "

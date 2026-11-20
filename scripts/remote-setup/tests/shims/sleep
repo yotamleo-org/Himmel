@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Test shim for sleep: records the request, then waits at most a twentieth of a second.
+RST=${RST:?RST must point at the test dir}
+printf 'sleep %s\n' "$*" >> "$RST/sleep.log"
+/bin/sleep 0.05
+exit 0

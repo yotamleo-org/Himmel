@@ -32,7 +32,7 @@ done <<< "$proxy_env"
 # shellcheck disable=SC2154  # exported by the loop above
 printf 'Acquire::http::Proxy "%s";\nAcquire::https::Proxy "%s";\n' "$http_proxy" "$https_proxy" > /etc/apt/apt.conf.d/95ci-proxy
 apt-get update -qq || exit 1
-apt-get install -y -qq iptables at bubblewrap socat ffmpeg git jq curl unzip shellcheck python3-pip nodejs npm || exit 1
+apt-get install -y -qq iptables at bubblewrap socat ffmpeg git jq curl unzip shellcheck python3-pip nodejs npm zsh fish || exit 1
 systemctl enable --now atd  # t13b-ok: stock at daemon on a throwaway CI VM, not a himmel service
 systemctl is-active --quiet atd || exit 1
 sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true

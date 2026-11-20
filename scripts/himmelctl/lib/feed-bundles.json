@@ -25,7 +25,7 @@
       "id": "bridge",
       "title": "Telegram bridge",
       "rows": [
-        "telegram-bridge", "bridge-health", "bridge-persistence",
+        "telegram-bridge", "bridge-health", "bridge-persistence", "distinct-tokens",
         "doctor:C30-bridge-liveness", "probe-disagree:C30-bridge-liveness", "doctor:C77-bridge-stale",
         "plugin:telegram-himmel@himmel", "secret:TELEGRAM_BOT_TOKEN"
       ]

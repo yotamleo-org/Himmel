@@ -25,6 +25,7 @@ function secretRow(s, msg, cfg) {
       <input type="${TEXT_FIELDS.has(s.name) ? "text" : "password"}" data-secret="${esc(s.name)}" autocomplete="${TEXT_FIELDS.has(s.name) ? "off" : "new-password"}" spellcheck="false" aria-label="${esc(s.name)} value"${cfg && s.example ? ` placeholder="e.g. ${esc(s.example)}"` : ""}>
       ${cfg ? `<span class="acts">${TEXT_FIELDS.has(s.name) ? "" : revealButton(s.name)}<button class="btn primary" type="submit">save</button>${remove}</span>` : `${TEXT_FIELDS.has(s.name) ? "" : revealButton(s.name)}<button class="btn primary" type="submit">save</button>${remove}`}</form>
     ${s.example && !cfg ? `<span class="ro">e.g. ${esc(s.example)}</span>` : ""}
+    ${s.name === "TELEGRAM_BOT_TOKEN" ? `<span class="ro">Easier: one command in a Terminal sets up the bot, pairing and the bridge: bash scripts/remote-setup/remote-setup.sh bot. Steps: docs/setup/remote-setup.md, Part 1.</span>` : ""}
     ${msg ? `<span class="ro" role="status">${esc(msg)}</span>` : ""}</div>`;
 }
 

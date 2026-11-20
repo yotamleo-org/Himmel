@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Test shim for sudo: records argv to $RST/sudo.log and runs nothing.
+RST=${RST:?RST must point at the test dir}
+printf 'sudo %s\n' "$*" >> "$RST/sudo.log"
+exit 0

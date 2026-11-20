@@ -57,7 +57,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -o Acquire::Retries=3
 apt-get install -y --no-install-recommends ca-certificates curl git jq unzip rsync \
     nftables at 'ffmpeg=7:6.1.*' python3-venv \
-    bubblewrap socat nodejs npm python-is-python3
+    bubblewrap socat nodejs npm python-is-python3 zsh fish
 systemctl enable atd
 # ubuntu 24.04 refuses unprivileged user namespaces (AppArmor); the hosted
 # shard flips it with sudo, which `runner` lacks, so it is set at boot here.
