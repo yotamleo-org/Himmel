@@ -232,7 +232,6 @@ scripts/handover/chief-kit/worker-digest-step.sh	gnu-flag	10	renamed from leg-di
 scripts/handover/chief-kit/ops-run.sh	gnu-flag	1
 scripts/handover/chief-kit/test-close-wrapped-worker.sh	gnu-flag	1
 scripts/handover/chief-kit/test-go.sh	mktemp	1
-scripts/handover/chief-kit/test-headed-arm-worker.sh	gnu-flag	2
 scripts/handover/chief-kit/test-inbox-send.sh	gnu-flag	1
 scripts/handover/chief-kit/test-next-dispatchable.sh	gnu-flag	1
 scripts/handover/chief-kit/test-ops-run.sh	gnu-flag	1

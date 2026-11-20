@@ -5412,7 +5412,7 @@ only the tick's `denials=` field.
   an ack reads as acked). A `<dir>#<sid8>` worker can be paged and acked but a
   launch cannot be matched to it. The refusal covers only denials a running
   `chief-wait.sh` paged. Tests: `test-ack-denial.sh`, `test-chief-wait.sh`
-  (`p*` cases), `test-headed-arm-worker.sh` (case 38).
+  (`p*` cases), `test-headed-arm-worker-b.sh` (case 38).
 
 **What the classifier is told to allow.** `docs/setup/settings-template.json`
 carries a `permissions.allow` block and an `autoMode` block for the steps our own
