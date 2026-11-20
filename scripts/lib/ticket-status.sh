@@ -422,12 +422,13 @@ ts_worker_state() {
 # _ts_worker_state <doc> [<disposition>] — ts_worker_state without the subshell: sets
 # TS_WORKER_STATE and TS_LOCK_HELD (yes | no | "" when the lock was not read) and TS_LOCK_DEAD
 # (yes: the lock answered rc 12 with status STALE-DEAD; no: rc 12 with any other status; "" otherwise) and
-# TS_ATTEMPT_LAUNCHED (yes: the managed attempt is launched, so its worker may not hold the lock yet).
+# TS_OPEN_EVIDENCE (yes: apart from the lock, the doc may still be worked: a launched attempt, whose worker may not
+# hold the lock yet, a marker that is not an end marker, or a doc that could not be read).
 # A caller that has already read the doc's disposition (fleet_runtime.py WorkerStates, one read for a whole run)
 # passes it as the JSON word `disposition` prints; only such a word is taken, anything else is read here.
 _ts_worker_state() {
     local marker out rc hb hb_epoch age=0 warn
-    TS_LOCK_HELD="" TS_LOCK_DEAD="" TS_ATTEMPT_LAUNCHED=""
+    TS_LOCK_HELD="" TS_LOCK_DEAD="" TS_OPEN_EVIDENCE=""
     [ -n "$1" ] || { TS_WORKER_STATE=unknown; return 0; }
     local attempt_protected terminal="" marker_unread=""
     case "${2-}" in
@@ -436,11 +437,12 @@ _ts_worker_state() {
     esac
     case "$attempt_protected" in
         '"pending"'|'"committed"'|'"unknown"') TS_WORKER_STATE=unknown; return 0 ;;
-        '"launched"') TS_ATTEMPT_LAUNCHED=yes ;;
+        '"launched"') TS_OPEN_EVIDENCE=yes ;;
         '"refused"'|'"complete"') terminal=yes ;; # an ended attempt's receipt: it ends ownership only when the lock and the markers agree
     esac
     marker=$(ts_marker_newest "$1") || marker_unread=yes
     case "$marker" in WRAPPED|HALTED) TS_WORKER_STATE=wrapped; return 0 ;; esac
+    [ -z "$marker$marker_unread" ] || TS_OPEN_EVIDENCE=yes
     if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then
         out=$("$TICKET_STATUS_QUEUE_LOCK" status "$1" 2>/dev/null); rc=$?
     else
@@ -821,16 +823,16 @@ ts_derive() {
             [ "$TS_GONE" -lt 2 ] || TS_WORKER_STATE=wrapped
         fi
     fi
-    # A second worker on the key keeps the ticket owned unless it reads wrapped or its lock was read free. A held
-    # lock, a lock that could not be read, a managed attempt that is pending, committed or unknown, and a launched
-    # attempt whose worker has not taken its lock yet all keep it, so one worker's wrap never demotes a ticket
-    # another worker is working.
+    # A second worker on the key keeps the ticket owned unless it reads wrapped, or its lock was read free and nothing
+    # else says its doc may be worked. A held lock, a lock that could not be read, a managed attempt that is pending,
+    # committed or unknown, and a free lock beside a launched attempt, a marker that is not an end marker or a doc
+    # that could not be read all keep it, so one worker's wrap never demotes a ticket another worker is working.
     if [ "$TS_WORKER_STATE" = wrapped ]; then
         while IFS= read -r other; do
             [ -n "$other" ] && [ "$other" != "$doc" ] || continue
             _ts_worker_state "$other"
             [ "$TS_WORKER_STATE" != wrapped ] || continue
-            [ "$TS_LOCK_HELD" != no ] || [ "$TS_ATTEMPT_LAUNCHED" = yes ] || continue
+            [ "$TS_LOCK_HELD" != no ] || [ "$TS_OPEN_EVIDENCE" = yes ] || continue
             owner=$TS_WORKER_STATE; TS_OWNER_DOC=$other; break
         done <<<"$(jq -r '(.docs // [])[]' <<<"$TS_REC")"
         TS_WORKER_STATE=${owner:-wrapped}

@@ -96,8 +96,9 @@ rbrief no "$tmp/missing-brief.md"
 check "9323 unreadable owner doc, the resume_brief names an unreadable file: D6 (control)" "$TS_RULE/$TS_DERIVED" 'D6/To Do'
 
 # A sibling doc whose managed launch attempt is pending, committed, unknown or launched (the worker may not hold its
-# lock yet), or whose lock cannot be read, keeps the ticket owned, so the wrapped primary does not demote it. A sibling
-# with no attempt, one whose attempt ended, or one that wrapped itself, with a free lock, leaves the primary's wrap as it is.
+# lock yet), whose lock cannot be read, or whose doc says it may be worked (a marker that is not an end marker, or a doc
+# that cannot be read), keeps the ticket owned, so the wrapped primary does not demote it. A sibling that wrapped itself,
+# or has no attempt and no marker, with a free lock, leaves the primary's wrap as it is.
 mkdir -p "$tmp/sdbin"
 cat > "$tmp/sdbin/python3" <<'EOF'
 #!/usr/bin/env bash
@@ -113,11 +114,15 @@ SD_REAL_PYTHON=$(command -v python3)
 export SD_REAL_PYTHON
 printf '#!/usr/bin/env bash\nexit 3\n' > "$tmp/lock-err.sh"
 chmod +x "$tmp/lock-err.sh"
-sib() { # <sibling disposition word, or empty for the real read> <a line for the sibling doc, or empty> [<queue lock, default a free one>] - the wrapped primary, the sibling; then the derive
+sib() { # <sibling disposition word, or empty for the real read> <a line for the sibling doc, or empty> [<queue lock, default a free one>] [<unreadable | dir>] [<any: a second sibling with no attempt and no marker>] - the wrapped primary, the sibling; then the derive
+    local b="$tmp/sb.md"
     printf -- '- 10:00 WRAPPED — primary ended\n' > "$tmp/sa.md"
-    printf -- '%s\n' "$2" > "$tmp/sb.md"
-    jq -nc --arg a "$tmp/sa.md" --arg b "$tmp/sb.md" '{doc:$a,docs:[$a,$b],prs:{}}' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9001.json"
-    PATH="$tmp/sdbin:$PATH" SD_DOC="${1:+$tmp/sb.md}" SD_WORD="$1" TICKET_STATUS_QUEUE_LOCK="${3:-$tmp/lock-free.sh}" ts_derive HIMMEL-9001
+    printf -- '\n' > "$tmp/sc.md"
+    if [ "${4:-}" = dir ]; then b="$tmp/sbdir.md"; mkdir -p "$b"; else printf -- '%s\n' "$2" > "$b"; fi
+    [ "${4:-}" != unreadable ] || chmod 000 "$b"
+    jq -nc --arg a "$tmp/sa.md" --arg b "$b" --arg c "${5:+$tmp/sc.md}" '{doc:$a,docs:([$a,$b] + (if $c == "" then [] else [$c] end)),prs:{}}' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9001.json"
+    PATH="$tmp/sdbin:$PATH" SD_DOC="${1:+$b}" SD_WORD="$1" TICKET_STATUS_QUEUE_LOCK="${3:-$tmp/lock-free.sh}" ts_derive HIMMEL-9001
+    [ "${4:-}" != unreadable ] || chmod 644 "$b"
 }
 for word in pending committed unknown; do
     sib "\"$word\"" ''
@@ -148,6 +153,32 @@ check "X07-3 a sibling whose lock read fails is the owner doc" "$TS_OWNER_DOC" "
 sib '' '- 10:00 WRAPPED — sibling ended' "$tmp/lock-err.sh"
 check "X07-3 control: a sibling that wrapped itself leaves the primary's wrap whatever its lock read says" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6/To Do'
 check "X07-3 control: a sibling that wrapped itself is no owner doc whatever its lock read says" "$TS_OWNER_DOC" ''
+printf x > "$tmp/probe-un.md"
+chmod 000 "$tmp/probe-un.md"
+if [ -r "$tmp/probe-un.md" ]; then un_ok=no; else un_ok=yes; fi
+chmod 644 "$tmp/probe-un.md"
+for word in legacy refused complete; do
+    for marker in LIVE READY BLOCKED PARKED-USAGE; do
+        want='unknown/D5/In Progress/sb.md'
+        [ "$marker" != PARKED-USAGE ] || want='parked/D5/In Progress/sb.md'
+        sib "\"$word\"" "- 10:00 $marker — sibling working"
+        check "X07-3 a sibling with a $word attempt, a free lock and a $marker marker keeps the ticket owned" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" "$want"
+    done
+    sib "\"$word\"" '' '' dir
+    check "X07-3 a sibling with a $word attempt, a free lock and a doc that is a directory keeps the ticket owned" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" 'unknown/D5/In Progress/sbdir.md'
+    if [ "$un_ok" = yes ]; then
+        sib "\"$word\"" 'x' '' unreadable
+        check "X07-3 a sibling with a $word attempt, a free lock and an unreadable doc keeps the ticket owned" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" 'unknown/D5/In Progress/sb.md'
+    else
+        echo "SKIP - X07-3 a sibling with a $word attempt, a free lock and an unreadable doc keeps the ticket owned: this user reads a mode 000 file"
+    fi
+done
+sib '"refused"' '- 10:00 WRAPPED — sibling ended'
+check "X07-3 control: a sibling with a refused attempt and a WRAPPED marker leaves the primary's wrap" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" 'wrapped/D6/To Do/'
+sib '"complete"' '- 10:00 HALTED — out of budget'
+check "X07-3 control: a sibling with a complete attempt and a HALTED marker leaves the primary's wrap" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" 'wrapped/D6/To Do/'
+sib '"launched"' '- 10:00 WRAPPED — sibling ended' '' '' any
+check "X07-3 control: a launched sibling that wrapped itself leaves no sign behind for the next sibling (none, no marker, free lock)" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" 'wrapped/D6/To Do/'
 rt_sib() { # <pending|launched> - the wrapped primary and a sibling with a real managed attempt in that phase (fleet-manifest.sh runtime begin, and for launched the preflight's reservation, commit and outcome); prints the derive
     local a="$tmp/rtb-$1/HIMMEL-9001-N1-a.md" b="$tmp/rtb-$1/HIMMEL-9001-N2-b.md" m="$tmp/rtb-$1/chief.fleet.json" fm="$HERE/../handover/chief-kit/fleet-manifest.sh"
     mkdir -p "$tmp/rtb-$1" "$tmp/rth-$1"
@@ -168,6 +199,7 @@ rt_sib() { # <pending|launched> - the wrapped primary and a sibling with a real 
         bash "$fm" runtime commit --doc "$b" --manifest "$m" --name b --attempt-id one --pid $$ >/dev/null 2>&1 || { printf 'fixture failed: commit'; return 0; }
         bash "$fm" runtime outcome --doc "$b" --manifest "$m" --name b --attempt-id one --pid $$ --phase launched >/dev/null 2>&1 || { printf 'fixture failed: outcome'; return 0; }
     fi
+    [ "$(python3 -I "$HERE/fleet_runtime.py" disposition --doc="$b")" = "\"$1\"" ] || { printf 'fixture failed: phase'; return 0; }
     jq -nc --arg a "$a" --arg b "$b" '{doc:$a,docs:[$a,$b],prs:{}}' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9001.json"
     TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" ts_derive HIMMEL-9001
     printf '%s/%s/%s' "$TS_WORKER_STATE" "$TS_RULE" "$TS_DERIVED"
