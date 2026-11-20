@@ -337,8 +337,10 @@ node tools/synthesis-candidates.mjs [vault] [--today YYYY-MM-DD] [--since YYYY-M
 - **Skip reasons.** `confidence-floor`: `single-source-domain`, `single-author-on-platform`,
   `too-few-sources` (a concept needs 3 distinct sources, a tag or folder 2), `single-24h-window`,
   `undated-evidence` (fewer than 2 evidence clips carry a parseable date). `dedup`:
-  `same-subject-as-concept` (a tag that passes under the same name as a passing concept is not
-  listed twice: the concept, Pattern 1, is kept), `existing-vault-page` (a concept page or
+  `same-subject-as-concept` (a tag that passes under the same name as a concept that passes, or
+  that is skipped because its own page already covers the subject, is not listed as a second page:
+  the concept, Pattern 1, wins; a concept that fails its own floors or a recorded substance-gate
+  failure frees its tag), `existing-vault-page` (a concept page or
   `60-Maps/` hub, a person note, a `60-Maps/` MOC, or the folder already exists), `synthesis-page-within-14d`,
   `no-new-evidence` (a page older than 14 days that lists as many clips),
   `substance-floor-recorded` (the runbook logged a substance-gate failure for the slug in

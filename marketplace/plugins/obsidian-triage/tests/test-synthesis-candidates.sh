@@ -118,8 +118,15 @@ diverse recskip 3 rec-recent 0
 diverse recold 3 rec-old 0
 diverse recgrown 4 rec-grown 0
 diverse recsame 4 rec-same 0
-printf '2026-11-17\tconcept-rec-recent\t3\n2026-10-25\tconcept-rec-old\t3\n2026-11-17\tconcept-rec-grown\t3\n2026-11-17\tconcept-rec-same\t3\n2026-11-17\tconcept-rec-same\t4\nnot a record\n' \
+diverse recfive 5 rec-five 0
+printf '2026-11-17\tconcept-rec-recent\t3\n2026-10-25\tconcept-rec-old\t3\n2026-11-17\tconcept-rec-grown\t3\n2026-11-17\tconcept-rec-same\t3\n2026-11-17\tconcept-rec-same\t4\n2026-11-17\tconcept-rec-five\t5\nnot a record\n' \
     > "$V/Clippings/_synthesis/.substance-skips.tsv"
+
+diverse covrecent 5 covered-recent 0
+printf -- '---\ntype: synthesis\n---\n## Evidence (5 clips, 5 unique URLs)\n\n- [[Clippings/_evidence/covrecent-1]] — a\n- [[Clippings/_evidence/covrecent-2]] — b\n- [[Clippings/_evidence/covrecent-3]] — c\n- [[Clippings/_evidence/covrecent-4]] — d\n- [[Clippings/_evidence/covrecent-5]] — e\n' \
+    > "$V/Clippings/_synthesis/2026-11-17-concept-covered-recent.md"
+diverse haspagefive 5 has-page-five 0
+printf -- '---\ntype: concept\n---\nExisting.\n' > "$V/30-Resources/Concepts/Has Page Five.md"
 
 diverse idea 5 "" 0 "Ideas/"
 diverse inbox 5 "" 5 "00-Inbox/"
@@ -284,6 +291,14 @@ assert "…as a dedup skip" "dedup" "$(field concept-rec-recent category)"
 assert "failed 26 days ago: offered again" "pass" "$(field concept-rec-old status)"
 assert "failed 3 days ago, evidence since grew: offered again" "pass" "$(field concept-rec-grown status)"
 assert "two records the same day: the later one wins" "substance-floor-recorded" "$(field concept-rec-same reason)"
+
+echo "Test 5c: a concept that is skipped because its page exists still covers the subject"
+assert "concept page 3 days old: concept skipped" "synthesis-page-within-14d" "$(field concept-covered-recent reason)"
+assert "…so its tag is not a second page for the subject" "same-subject-as-concept" "$(field tag-covered-recent-moc reason)"
+assert "concept page older than 14 days, no new evidence: its tag is not a second page" "same-subject-as-concept" "$(field tag-big-topic-moc reason)"
+assert "concept with a vault page: its tag is not a second page" "same-subject-as-concept" "$(field tag-has-page-five-moc reason)"
+assert "control: a concept below the source floor frees its tag" "pass" "$(field tag-two-voices-five-moc status)"
+assert "control: a concept whose substance gate failed frees its tag" "pass" "$(field tag-rec-five-moc status)"
 
 echo "Test 5b: evidence cap"
 assert "group of 45 reports its full size" "45" "$(field concept-big-topic clipCount)"
