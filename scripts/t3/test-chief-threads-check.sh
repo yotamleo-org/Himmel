@@ -90,8 +90,8 @@ cat > "$T/pr.json" <<JSON
 JSON
 export STUB_LIST="$T/pr.json"; : > "$T/log"
 expect_rc "open linked PR on an unsettled chief exits 1" 1 bash "$CHK"
-expect_in "unsettled listed title with an open PR reported" "^LINKED-PR p1 Manage T3 Code Sync open=1$" "$T/out"
-expect_out "zero open PRs gives no line" "p2 " "$T/out"
+expect_in "unsettled listed title with an open PR reported" "^LINKED-PR p1 Manage T3 Code Sync linked=1 open=1$" "$T/out"
+expect_in "an unsettled chief holding only a merged PR is reported" "^LINKED-PR p2 Zero-chief linked=1 open=0$" "$T/out"
 expect_out "non-chief thread with an open PR gives no line" "p3 " "$T/out"
 expect_in "settled chief with an open PR is reported as SETTLED" "^SETTLED p4 Done-chief " "$T/out"
 expect_out "settled chief with an open PR is not reported twice" "LINKED-PR p4 " "$T/out"
@@ -100,6 +100,16 @@ cat > "$T/pronly.json" <<JSON
 JSON
 STUB_LIST="$T/pronly.json" bash "$CHK" >"$T/out" 2>&1
 expect_out "LINKED-PR-only output has no SETTLED line" "^SETTLED" "$T/out"
+cat > "$T/merged.json" <<JSON
+[{"threadId":"m1","title":"Manage T3 Code Sync","settled":false,"pullRequestCount":1,"openPullRequestCount":0},
+ {"threadId":"m2","title":"Clean-chief","settled":false,"pullRequestCount":0,"openPullRequestCount":0},
+ {"threadId":"m3","title":"Bare-chief","settled":false}]
+JSON
+STUB_LIST="$T/merged.json" bash "$CHK" >"$T/out" 2>&1; rc=$?
+expect_eq "merged-only linked PR on an unsettled chief exits 1" "$rc" 1
+expect_in "merged-only linked PR reported" "^LINKED-PR m1 Manage T3 Code Sync linked=1 open=0$" "$T/out"
+expect_out "zero linked PRs gives no line" "m2 " "$T/out"
+expect_out "missing count gives no line" "m3 " "$T/out"
 expect_rc "--wake with a LINKED-PR case exits 1" 1 bash "$CHK" --wake
 expect_eq "--wake sends nothing for LINKED-PR" "$(grep -c 'thread send p1' "$T/log")" 0
 

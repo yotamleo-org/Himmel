@@ -1221,7 +1221,8 @@ its subagent children too.
 - **A chief-role thread never opens its own PR.** T3 links any PR a thread
   creates, even a plain `gh pr create`, and settles that thread when the PR
   merges. Hand the PR open to a worker child thread, or unlink it right after
-  create.
+  create. Unlink a PR after it merges too: T3 re-settles a thread that holds a
+  merged linked PR every time it goes idle.
 - **A check finds settled chief-role threads.**
   `bash scripts/t3/chief-threads-check.sh` prints
   `SETTLED <id> <title> <settledAt>` for each and exits 1 when there is any.
@@ -1231,8 +1232,9 @@ its subagent children too.
   `HIMMEL_T3_CHIEF_TITLES`; a thread that matches only the `-chief` or
   `-console` suffix is reported, marked `(report only: not in
   HIMMEL_T3_CHIEF_TITLES)`, and never woken.
-  It also prints `LINKED-PR <id> <title> open=<n>` for an unsettled chief-role
-  thread holding an open linked PR (report only, never woken).
+  It also prints `LINKED-PR <id> <title> linked=<n> open=<m>` for an unsettled
+  chief-role thread holding any linked PR, open or merged (report only, never
+  woken).
   `keepalive.sh` runs it with `--wake` every 15 polls (about 5 minutes).
 
 ## See also
