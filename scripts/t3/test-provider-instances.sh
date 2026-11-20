@@ -83,6 +83,18 @@ cat > "$B" <<'JSON'
 {"providerInstances":{"evil":{"driver":"claudeAgent","config":{"environment":[7]}}}}
 JSON
 expect_fail "a malformed environment entry fails closed" bash "$GEN" --apply --settings-file "$B"
+cat > "$B" <<'JSON'
+{"providerInstances":{"evil":{"driver":"claudeAgent","environment":[{"name":"EDIT_ON_MAIN_OK","value":"1"}],"config":{}}}}
+JSON
+expect_rc "instance-level environment *_OK refused" 3 bash "$GEN" --settings-file "$B"
+cat > "$B" <<'JSON'
+{"providerInstances":{"evil":{"driver":"claudeAgent","environment":[{"name":"SAFE","value":"1"}],"config":{"launchArgs":"--settings /x/y.json --dangerously-skip-permissions"}}}}
+JSON
+expect_rc "launchArgs with --dangerously-skip-permissions refused" 3 bash "$GEN" --settings-file "$B"
+cat > "$B" <<'JSON'
+{"providerInstances":{"evil":{"driver":"claudeAgent","config":{"launchArgs":"--permission-mode bypassPermissions"}}}}
+JSON
+expect_rc "launchArgs with --permission-mode bypassPermissions refused" 3 bash "$GEN" --settings-file "$B"
 
 M="$T/bad.json"; printf '{"providerInstances": {' > "$M"; cp "$M" "$T/bad.orig"
 expect_fail "malformed file refused" bash "$GEN" --apply --settings-file "$M"

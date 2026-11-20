@@ -7,7 +7,8 @@
 #              allowlist ids to add to .t3.instance_allowlist in ~/.himmel/config.json.
 #   --apply    back <path> up to <path>.bak.<UTC stamp>, then replace it atomically.
 # rc 0 ok; rc 2 usage / unreadable or malformed settings file / resolver failure;
-# rc 3 an instance environment entry names a himmel guard bypass flag (nothing written).
+# rc 3 an instance environment entry names a himmel guard bypass flag, or an instance's
+# launchArgs carry a permission-bypass flag (nothing written).
 # Env seams (tests): T3_PI_RESOLVER (resolver script), T3_PI_PROFILES (comma list),
 # T3_PI_EMPTY_OK (comma list of profiles that resolve to no settings; default "operator").
 # Platform: POSIX bash 3.2+, jq, node (default resolver).
@@ -39,10 +40,13 @@ else
     PROFILES="$(cd "$HERE/../.." && node scripts/lanes/plugin-profiles.mjs --list)" || die 2 "cannot list profiles"
 fi
 
-# shellcheck disable=SC2016  # jq program: $id is a jq variable
-BYPASS_JQ='[ .providerInstances // {} | to_entries[] | .key as $id | (.value.config // {}) | ((.env, .environment) | select(. != null))
-  | (if type == "object" then keys[] elif type == "array" then .[] | (if type == "object" then (.name // .key // "") else (split("=")[0]) end) else empty end)
-  | select(test("_OK$") or test("BYPASS"; "i")) | "\($id): \(.)" ] | .[]'
+# shellcheck disable=SC2016
+BYPASS_JQ='[ .providerInstances // {} | to_entries[] | .key as $id | .value as $v | ($v.config // {}) as $c
+  | ( ( ($v.env, $v.environment, $c.env, $c.environment) | select(. != null)
+        | (if type == "object" then keys[] elif type == "array" then .[] | (if type == "object" then (.name // .key // "") else (split("=")[0]) end) else empty end)
+        | select(test("_OK$") or test("BYPASS"; "i")) )
+      , ( ($c.launchArgs // "") | select(test("dangerously-skip-permissions|bypassPermissions"; "i")) | "launchArgs" ) )
+  | "\($id): \(.)" ] | .[]'
 
 SUM_READ="$(cksum < "$FILE")"
 GEN='{}'

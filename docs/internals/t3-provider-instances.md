@@ -23,8 +23,11 @@ One `providerInstances.claudeAgent_<profile>` entry per profile:
   `claudeAgent_<profile>` whose stable path moved (its `launchArgs` is refreshed).
 - A resolved path containing whitespace is refused (rc 2): `launchArgs` would split it.
   If the settings file changes while the profiles resolve, `--apply` writes nothing (rc 2).
-- A final settings document in which any instance `env` / `environment` entry is
-  named `*_OK` or `*BYPASS*` is refused (rc 3), nothing written.
+- A final settings document in which any `env` / `environment` entry is named
+  `*_OK` or `*BYPASS*` is refused (rc 3), nothing written. T3 keeps an instance's
+  `environment` list on the instance itself, beside `config` (checked in T3 0.1.10's
+  schema); the scan reads that and the `config` copies. An instance whose `launchArgs`
+  carry `--dangerously-skip-permissions` or `bypassPermissions` is refused the same way.
 - A malformed settings file is refused (rc 2) and left untouched.
 
 ## Dry run, then apply
