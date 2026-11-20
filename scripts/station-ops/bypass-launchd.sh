@@ -98,9 +98,6 @@ field() { sed -n "s/^$1=//p" "$2" | head -n 1; }
 refuse() { log "REFUSED $2 $1"; mv "$1" "$1.refused"; send "bypass-launchd refused $(basename "$1"): $2"; }
 live() { [ ! -e "$Q/stop" ] && [ "$(date +%s)" -lt "$EXPIRES" ]; }
 
-# One daemon per bucket, with no flock (stock macOS has none): the lock is a symlink whose target is the
-# owner's pid, made atomically by ln -s. A lock naming a pid that is gone, or a live pid that is not a
-# bypass-launchd (a reused pid), is stale; it is taken by rename, so only one starter reclaims it.
 LOCK="$Q/.lock.pid"
 lock_owner_alive() {
     local args re='(^|[ /])bypass-launchd\.sh'

@@ -378,8 +378,6 @@ wait_for "$Q/daemon.log" "start pid="
 assert_eq "R14 the fsmonitor command never ran" "no" "$([ -e "$D/fsm.ran" ] && echo ran || echo no)"
 stop
 
-# The shim section simulates macOS on a GNU host (it wraps the host's GNU date and sha256sum); a real Mac
-# has the BSD tools, so everything above already ran on them.
 if [ "$(uname -s)" = Darwin ]; then
     echo "SKIP: the BSD-like shim section simulates macOS on a GNU host"
     echo
@@ -387,8 +385,6 @@ if [ "$(uname -s)" = Darwin ]; then
     [ "$FAIL" -eq 0 ]
     exit
 fi
-# --- The daemon on macOS. SHIM is a PATH of BSD-like tools: no flock, no setsid, no sha256sum, a
-# date that rejects -d (it takes -j -f), a stat that rejects -c (it takes -f), and uname answering Darwin.
 SHIM="$tmp/macshim"
 mk_shim() {
     local d=$1 t p real_date real_sha
@@ -409,9 +405,7 @@ mk_shim() {
 }
 mk_shim "$SHIM"
 assert_eq "control: the shim has no flock, setsid or sha256sum" "none" "$(for t in flock setsid sha256sum; do [ -e "$SHIM/$t" ] && echo "$t"; done | head -n 1 | grep . || echo none)"
-# gnu-ok: the control proves the shim refuses the GNU flag
 assert_eq "control: the shim date rejects -d like BSD date" "1" "$(PATH="$SHIM" date -d 2026-01-01 +%s >/dev/null 2>&1; echo $?)" # gnu-ok: the control proves the shim refuses the GNU flag
-# gnu-ok: the control proves the shim refuses the GNU flag
 assert_eq "control: the shim stat rejects -c like BSD stat" "1" "$(PATH="$SHIM" stat -c %s /dev/null >/dev/null 2>&1; echo $?)" # gnu-ok: the control proves the shim refuses the GNU flag
 rm -f "$SHIM/stat.calls"
 
@@ -443,14 +437,12 @@ start PATH="$SHIM" SHIM_DATE_ALLOW_D=1
 for _ in $(seq 100); do [ "$(grep -c 'start pid=' "$Q/daemon.log")" -ge 2 ] && break; sleep 0.1; done
 assert_eq "B2: the bucket can be started again after a stop" "2" "$(grep -c 'start pid=' "$Q/daemon.log")"
 stop
-# A lock left by a killed daemon (dead pid) is reclaimed.
 setup_repo b2stale
 ln -s 999999 "$Q/.lock.pid"
 start PATH="$SHIM" SHIM_DATE_ALLOW_D=1
 wait_for "$Q/daemon.log" "start pid="
 assert_contains "B2: a lock naming a dead pid is reclaimed" "start pid=" "$(start_line)"
 stop
-# A lock naming a live process that is not a daemon (a reused pid) is reclaimed too.
 setup_repo b2reuse
 ln -s $$ "$Q/.lock.pid"
 start PATH="$SHIM" SHIM_DATE_ALLOW_D=1
@@ -458,7 +450,6 @@ wait_for "$Q/daemon.log" "start pid="
 assert_contains "B2: a lock naming a live pid that is not a daemon is reclaimed" "start pid=" "$(start_line)"
 stop
 
-# A reclaim link left by a starter that died is never removed by the daemon: it refuses and names the path.
 setup_repo b2reclaim
 ln -s 999999 "$Q/.lock.pid"; ln -s 999998 "$Q/.lock.pid.reclaim"
 env -u CLAUDECODE PATH="$SHIM" SHIM_DATE_ALLOW_D=1 BRIDGE_ROOT="$D/bridge" TELEGRAM_ACCESS_PATH="$D/access.json" XDG_RUNTIME_DIR="$D/run" \
@@ -489,7 +480,6 @@ setup_repo b4
 rm -f "$SHIM/stat.calls"
 start PATH="$SHIM" SHIM_DATE_ALLOW_D=1
 CODE=$(ask_code r)
-# gnu-ok: the assertion looks for the GNU flag among the shim's recorded calls
 assert_absent "B4: no GNU stat flag reaches the BSD-like stat" "stat -c" "$(cat "$SHIM/stat.calls" 2>/dev/null)" # gnu-ok: the assertion looks for the GNU flag among the shim calls
 reply "$OPERATOR" "$OPERATOR" "go $CODE"
 wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"

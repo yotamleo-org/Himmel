@@ -168,10 +168,6 @@ notice_env_steps() {
     echo "  2. Open the new bot's chat and send it /start, so it may message you."
     echo "  3. $(enable_cmd "$NOTICE_ENV") and put the token after TELEGRAM_BOT_TOKEN= on its last line."
 }
-# path_trusted <uid> <anchor> <path>: the file the path resolves to, and every directory from its parent up to
-# <anchor> ("/" for the real check), is owned by <uid> and writable by neither group nor other. The installed
-# helper runs as root through this interpreter, so one the operator can replace would be root without approval.
-# On success it prints the resolved path (links followed, parents canonical); callers use that, never <path>.
 path_trusted() {
     local uid=$1 anchor=$2 p=$3 n=0 t d own mode
     while [ -L "$p" ]; do
@@ -190,21 +186,15 @@ path_trusted() {
         t=$(dirname "$t")
     done
 }
-# pick_python <uid> <anchor> <candidate...>: the first candidate that path_trusted accepts and that is Python 3.9
-# or newer. macOS has no distro python3 at a fixed path, so the installer names one. A candidate is never run
-# before it is trusted: the installer is root.
 pick_python() {
     local uid=$1 anchor=$2 c r
     shift 2
     for c in "$@"; do
-        # The resolved path is what is run and named in the shebang: a link in a writable directory is never kept.
         r=$(path_trusted "$uid" "$anchor" "$c") || continue
         if "$r" -I -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then echo "$r"; return 0; fi
     done
     return 1
 }
-# install_helper <src> <dst> [python]: copy the helper root-owned. With a python path the installed copy's
-# shebang names it (the copy is root-owned, so the operator cannot swap the path).
 install_helper() {
     local src=$1 dst=$2 py=${3:-} t rc
     if [ -z "$py" ]; then install -o root -g "$ROOT_GROUP" -m 0755 "$src" "$dst"; return; fi
