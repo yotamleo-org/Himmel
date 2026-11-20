@@ -108,6 +108,9 @@ awk -F'\t' '$1 ~ /^R/ { print $3 "\t" $2 }' "$W/status" > "$W/renames"
 git show "$tipspec$BL" > "$W/tip.tsv" 2>/dev/null || die "$BL is absent at the tip"
 has_base=1
 git show "$base:$BL" > "$W/base.tsv" 2>/dev/null || { has_base=0; : > "$W/base.tsv"; }
+for f in tip base; do
+    awk -F'\t' '$2 !~ /^[0-9]+$/ { bad = 1 } END { exit bad }' "$W/$f.tsv" || die "a row of $BL at the $f carries no count"
+done
 if [ "$has_base" -eq 1 ]; then
     awk -F'\t' 'FILENAME == ARGV[1] { b[$1] = $2; next } !($1 in b) || b[$1] != $2 { print $1 }' "$W/base.tsv" "$W/tip.tsv" >> "$W/touched" || die "awk failed"
 fi

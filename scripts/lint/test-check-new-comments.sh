@@ -305,6 +305,18 @@ base="$(git -C "$R" rev-parse HEAD)"
 printf 'echo n\n%s body note\necho m\n' "$HASH" > "$R/-n.sh"
 git -C "$R" add -A; git -C "$R" commit -q -m "a file named like an option"
 gate --range "$base"; want "a comment in a file named like an option" 1
+for bad in +nan +inf; do
+    mkrepo
+    printf '%s third\necho t\n' "$HASH" >> "$R/src/a.sh"
+    printf 'src/a.sh\t%s\n' "$bad" > "$R/$BL"
+    stage; want "a comment added under a $bad baseline row" 2
+done
+mkrepo
+printf 'src/a.sh\t+nan\n' > "$R/$BL"
+git -C "$R" commit -q -am "a base row that is no count"
+echo 'echo more' >> "$R/src/a.sh"
+printf 'src/a.sh\t2\n' > "$R/$BL"
+stage; want "a base baseline row that is no count" 2
 
 echo
 echo "test-check-new-comments: $PASS passed, $FAIL failed"
