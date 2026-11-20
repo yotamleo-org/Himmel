@@ -274,9 +274,9 @@ test("the envelope window keeps an id until its exp, with no count eviction, and
   for (let i = 0; i < 5000; i++) w.add(CHAT, 1, i.toString(16).padStart(8, "0"), 2000 + i);
   expect(w.size).toBe(5000);
   expect(w.has(CHAT, 1, "00000000")).toBe(true);
-  expect(w.has(CHAT, 2, "00000000")).toBe(false);   // keyed on the sender too
-  expect(w.has(CHAT - 1, 1, "00000000")).toBe(false); // and on the chat
-  w.prune(2000);                                   // exp 2000 is no longer in the future
+  expect(w.has(CHAT, 2, "00000000")).toBe(false);
+  expect(w.has(CHAT - 1, 1, "00000000")).toBe(false);
+  w.prune(2000);
   expect(w.has(CHAT, 1, "00000000")).toBe(false);
   expect(w.has(CHAT, 1, "00000001")).toBe(true);
   const state = fresh();

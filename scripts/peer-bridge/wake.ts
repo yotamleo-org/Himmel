@@ -10,9 +10,6 @@ const stamp = (ms: number) => { const d = new Date(ms); return `${pad(d.getMonth
 
 type WakeCfg = Pick<Config, "bridgeRoot" | "operatorChatId" | "himmelRoot"> & { peers: Record<string, { maxWakesPerDay: number }> };
 
-// Counts bad signatures per peer. It alerts, never kills: a key rotation in progress or a
-// junk sender must not be able to cut the link. `note` is true for the failure that
-// reaches `max` inside the window, and not again for a peer until the window has passed.
 export class Tripwire {
   private fails = new Map<string, number[]>();
   private alerted = new Map<string, number>();
@@ -59,8 +56,6 @@ export class Waker {
     await this.write(`peer ${ev.peer} · T${ev.root} · ${ev.label}${by} · open the desk: bash ${this.cfg.himmelRoot}/scripts/peer-bridge/desk.sh ${ev.peer}`);
   }
 
-  // The tripwire's line (§8): a peer name and a count of ours, never a byte of what arrived.
-  // It counts against the same daily wake budget as every other wake.
   async alert(peer: string, count: number): Promise<void> {
     if (!PEER_NAME_RE.test(peer) || !Number.isSafeInteger(count) || count < 1) throw new Error("alert: bad peer or count");
     const now = this.clock();

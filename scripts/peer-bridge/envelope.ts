@@ -1,20 +1,12 @@
-// The typed envelope: the closed schema, the canonical encoder and the only
-// JSON.parse of an envelope line. Callers verify the Ed25519 signature before
-// they call parseEnvelopeLine (gate.ts admitEnvelope, egress.ts for our own
-// outbound lines), so a peer's bytes are never parsed unsigned.
-//
-// Every time here is UTC seconds. `chat` travels as a string.
 import { mintId } from "./grammar";
 import { PEER_NAME_RE } from "./ids";
 
-export const TIMEOUT_S_MAX = 10200;   // the longest `timeout_s` a res running can carry
-export const ALLOWANCE_S = 1200;      // setup-and-pull allowance and the backstop floor
-export const LIFETIME_S = 86400;      // exp = iat + LIFETIME_S, for every kind
-export const IAT_FUTURE_SKEW_S = 600; // an iat further than this in our future is refused
+export const TIMEOUT_S_MAX = 10200;
+export const ALLOWANCE_S = 1200;
+export const LIFETIME_S = 86400;
+export const IAT_FUTURE_SKEW_S = 600;
 export const MAX_LINE_BYTES = 3000;
 
-// The numeric ranges the wire can carry. config.ts clamps a reported value to its
-// range before it is encoded, so a reply can never fail our own egress re-check.
 export const RANGES = {
   timeout_s: [60, TIMEOUT_S_MAX], minutes: [0, 180], bytes: [0, 5_242_880],
   queue: [0, 3], jobs_left: [0, 1000], vm_minutes_left: [0, 10000],
@@ -52,7 +44,6 @@ export type Envelope = Common & (
   | { kind: "halt" }
 );
 
-// A field: its key, a check, and how it is written. Every table below is in wire order.
 type Field = { key: string; ok: (v: unknown) => boolean; enc: (v: any) => string };
 const isInt = (v: unknown, lo: number, hi: number): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= lo && v <= hi;
 const isStr = (v: unknown, re: RegExp): v is string => typeof v === "string" && re.test(v);
@@ -111,7 +102,6 @@ function fieldsFor(o: Record<string, unknown>): Field[] | null {
   return BODY[kind as Exclude<Kind, "res">];
 }
 
-// Returns the schema's complaint, or null. The key set must match exactly.
 function problem(o: unknown): string | null {
   if (!o || typeof o !== "object" || Array.isArray(o)) return "schema: not an object";
   const rec = o as Record<string, unknown>;
@@ -129,8 +119,6 @@ function problem(o: unknown): string | null {
   return null;
 }
 
-// The canonical line: schema order, no whitespace, integers only. It throws on an
-// envelope the schema refuses, so a bug cannot send a field the peer would refuse.
 function encodeFields(rec: Record<string, unknown>): string {
   const fields = [...COMMON, ...fieldsFor(rec)!];
   return `{${fields.map(f => `${jstr(f.key)}:${f.enc(rec[f.key])}`).join(",")}}`;
@@ -144,11 +132,7 @@ export function encodeCanonical(e: Envelope): string {
 
 export type ParseResult = { ok: true; env: Envelope } | { ok: false; reason: string };
 
-// Line 3 of a message whose signature has already verified. Parse, the closed
-// schema, then byte-equality with the canonical re-encode. A line that equals its
 // own re-encode has no duplicate key (JSON.parse keeps the last, so the re-encode
-// drops one), no key out of order, no 1.0 or exponent and no whitespace. Nothing
-// acts on the parse result before all three pass, so their order is not visible.
 export function parseEnvelopeLine(line3: string): ParseResult {
   if (Buffer.byteLength(line3, "utf8") > MAX_LINE_BYTES) return { ok: false, reason: "length: over 3000 bytes" };
   if (!/^[\x20-\x7e]+$/.test(line3)) return { ok: false, reason: "ascii: not printable ASCII" };
@@ -162,10 +146,9 @@ export function parseEnvelopeLine(line3: string): ParseResult {
 
 export type BuildCtx = { from: string; to: string; chat: number; now: number };
 
-// A fresh msg id, iat = now and exp = iat + 86400 for every kind.
 export function buildEnvelope(kind: Kind, body: Record<string, unknown>, ctx: BuildCtx): Envelope {
-  // The body goes first: a key in it that names a common field is overwritten, so a caller cannot choose msg, from, to, chat, the times or the kind.
-  const env = { ...body, v: 1, msg: mintId(), from: ctx.from, to: ctx.to, chat: String(ctx.chat), iat: ctx.now, exp: ctx.now + LIFETIME_S, kind } as Envelope;
+  const common = { v: 1, msg: mintId(), from: ctx.from, to: ctx.to, chat: String(ctx.chat), iat: ctx.now, exp: ctx.now + LIFETIME_S, kind };
+  const env = { ...body, ...common } as Envelope;
   encodeCanonical(env);
   return env;
 }

@@ -88,8 +88,6 @@ export type SpoolRec =
 export type SendResult = { ok: true; message_id?: number; job?: number } | { ok: false; rule: string; shape?: string };
 export type Drained = { name: string; rec: SpoolRec } | { name: string; malformed: true };
 
-// The typed path's spool records (spool-events.ts writes them): which envelopes a
-// chief may ask the poller to send, and which job events a runner or chief may inject.
 export const SPOOL_ENV_KINDS = ["req", "capacity-ask", "cancel", "halt"] as const;
 export const SPOOL_JOB_EVENTS = ["resolve-ok", "resolve-fail", "approve", "vm-start", "vm-done"] as const;
 

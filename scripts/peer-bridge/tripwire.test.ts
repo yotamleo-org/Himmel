@@ -11,11 +11,10 @@ test("three bad signatures in an hour send one wake line, kill nothing, and a la
   await w.step("bravo");
   expect(wakeLines(w.bravo)).toEqual(["peer alpha: 3 bad signatures in 1 h"]);
   expect(w.bravo.logs.filter(l => l.startsWith("env-drop step=5")).length).toBe(3);
-  // Nothing was killed: no kill file, and the peer is not in the gate's killed set.
   expect(fs.readdirSync(w.bravo.configDir).some(n => n.endsWith(".killed"))).toBe(false);
   w.inject("alpha", "capacity-ask", {});
   await w.step("bravo");
-  expect(w.wire.map(m => m.from)).toEqual(["bravo"]);                        // the valid ask was answered
+  expect(w.wire.map(m => m.from)).toEqual(["bravo"]);
   expect(wakeLines(w.bravo)).toHaveLength(1);
 });
 
@@ -62,8 +61,8 @@ test("a wake line holds the peer's name and a count, never a byte of the message
 test("the tripwire counts per peer and says so once per window", () => {
   const t = new Tripwire(3, H);
   expect([t.note("a", 0), t.note("a", 1), t.note("a", 2), t.note("a", 3)]).toEqual([false, false, true, false]);
-  expect(t.note("b", 3)).toBe(false);                      // another peer starts its own count
-  expect(t.note("a", 2 * H)).toBe(false);                  // an old burst has left the window
+  expect(t.note("b", 3)).toBe(false);
+  expect(t.note("a", 2 * H)).toBe(false);
   expect([t.note("a", 2 * H + 1), t.note("a", 2 * H + 2)]).toEqual([false, true]);
 });
 

@@ -15,9 +15,8 @@ const EV = {
   vmDone: { type: "vm-done", results: ["pass"] } as JobEvent,
 };
 
-// ---- a table row per cell of §6 ----
 
-type Expect = null | [state: string, send: string | null]; // null: logged and ignored
+type Expect = null | [state: string, send: string | null];
 const SERVER_EVENTS = ["resolve-ok", "resolve-fail", "approve", "vm-start", "vm-done", "cancel", "halt", "kill", "deadline"] as const;
 const eventOf = (type: string): JobEvent => {
   switch (type) {
@@ -28,7 +27,6 @@ const eventOf = (type: string): JobEvent => {
     default: return { type } as JobEvent;
   }
 };
-// [state, event] -> [next state, the res state sent or null]
 const SERVER: Record<string, Record<string, Expect>> = {
   RECEIVED: { "resolve-ok": ["RESOLVED", "accepted"], "resolve-fail": ["REFUSED", "refused"], approve: null, "vm-start": null, "vm-done": null, cancel: ["CANCELLED", "cancelled"], halt: ["CANCELLED", "cancelled"], kill: ["CANCELLED", null], deadline: ["REFUSED", "refused"] },
   RESOLVED: { "resolve-ok": null, "resolve-fail": null, approve: ["APPROVED", null], "vm-start": null, "vm-done": null, cancel: ["CANCELLED", "cancelled"], halt: ["CANCELLED", "cancelled"], kill: ["CANCELLED", null], deadline: ["EXPIRED", "expired"] },
@@ -50,7 +48,6 @@ test("every cell of the server table: state x event gives the spec's next state 
       const r = step(before, eventOf(type), NOW_S);
       const label = `${state} x ${type}`;
       if (want === null) {
-        // Logged and ignored: the same state and the same deadline, and nothing sent.
         expect([label, r.record.state, r.record.by, r.send]).toEqual([label, state, before.by, undefined]);
       } else {
         expect([label, r.record.state]).toEqual([label, want[0]]);
@@ -81,7 +78,6 @@ const REQUESTER: Record<string, Record<string, Expect>> = {
 };
 for (const t of ["DONE", "REFUSED", "EXPIRED", "CANCELLED", "LOST"]) for (const e of REQ_EVENTS) REQUESTER[t][e] = null;
 
-// The event the poller builds from a real signed res, through resolveRes.
 function resEvent(job: JobRecord, type: string, over: Record<string, unknown> = {}): JobEvent {
   const bodies: Record<string, Record<string, unknown>> = {
     "res-accepted": { state: "accepted" }, "res-running": { state: "running", timeout_s: 4200 },
@@ -132,7 +128,6 @@ test("step does not mutate its input and keeps the peer's fields out of what it 
   expect(r.record).not.toBe(before);
 });
 
-// ---- deadlines ----
 
 test("requester SENT and ACCEPTED deadline is req.exp + TIMEOUT_S_MAX + 2 h, importing no server config", () => {
   expect(deadlineFor(outJob({ state: "SENT" }))).toBe(REQ_EXP + TIMEOUT_S_MAX + 7200);
@@ -151,7 +146,6 @@ test("server deadlines: RECEIVED +10 min, RESOLVED and APPROVED at req.exp, RUNN
 
 test("every requester deadline falls after every server deadline reachable from one req", () => {
   const t0 = NOW_S, exp = t0 + 86400;
-  // Server entry times anywhere from the req's own time to just before its exp.
   const times = [t0, t0 + 12 * H, exp - 60];
   for (const recvAt of times) {
     for (const backstop of [ALLOWANCE_S, 3000, 9000]) {
@@ -160,7 +154,6 @@ test("every requester deadline falls after every server deadline reachable from 
           inJob({ state: "RECEIVED", created: recvAt, req_exp: exp }), inJob({ state: "RESOLVED", req_exp: exp }), inJob({ state: "APPROVED", req_exp: exp }),
           inJob({ state: "RUNNING", running_at: startAt, backstop_s: backstop, req_exp: exp }),
         ];
-        // The requester learns of a start only after it happened, however late.
         for (const learnedAt of [startAt, startAt + 2 * H]) {
           const requesters: JobRecord[] = [
             outJob({ state: "SENT", req_exp: exp }), outJob({ state: "ACCEPTED", req_exp: exp }),
@@ -184,10 +177,8 @@ test("dueJobs lists overdue non-terminal jobs, oldest deadline first", () => {
   expect(dueJobs(jobs, NOW_S).map(j => j.jobNo)).toEqual([4, 2, 5]);
 });
 
-// ---- two bridges, a fake clock ----
 
 type Pair = { req: JobRecord; srv: JobRecord; sent: string[] };
-// A requester record and the server's record of the same job; messages cross with the delays the test chooses.
 function pair(): Pair {
   return { req: outJob({ state: "SENT", created: NOW_S, req_exp: REQ_EXP, by: deadlineFor(outJob({ req_exp: REQ_EXP })) }), srv: inJob({ state: "RECEIVED", created: NOW_S, req_exp: REQ_EXP, by: NOW_S + 600 }), sent: [] };
 }
@@ -207,9 +198,9 @@ function server(p: Pair, ev: JobEvent, at: number): SendSpec | undefined {
 
 test("a req delivered 12 h late still runs, and a res delivered 12 h late still lands", () => {
   const p = pair();
-  let at = NOW_S + 12 * H;                    // the peer was offline
+  let at = NOW_S + 12 * H;
   p.srv = { ...p.srv, created: at, by: at + 600 };
-  toRequester(p, server(p, EV.resolveOk, at), at + 12 * H - 100);   // res accepted lands 12 h late
+  toRequester(p, server(p, EV.resolveOk, at), at + 12 * H - 100);
   expect(p.req.state).toBe("ACCEPTED");
   server(p, { type: "approve" }, at);
   at += 60;
@@ -229,7 +220,7 @@ test("a job started at req.exp - 60 s whose res running arrives 2 h late ends DO
   server(p, { type: "approve" }, NOW_S + 20);
   const start = REQ_EXP - 60;
   const running = server(p, EV.vmStart(9000), start);
-  expect(due(p.req, start + 2 * H)).toBe(false);              // the requester's deadline is still ahead
+  expect(due(p.req, start + 2 * H)).toBe(false);
   toRequester(p, running, start + 2 * H);
   expect(p.req.state).toBe("RUNNING");
   toRequester(p, server(p, { type: "vm-done", results: ["pass", "pass"] }, start + 3000), start + 3000);
@@ -244,10 +235,9 @@ test("a 150-minute job approved at req.exp - 60 s whose res running is lost ends
   server(p, EV.resolveOk, NOW_S + 10);
   server(p, { type: "approve" }, NOW_S + 20);
   const start = REQ_EXP - 60;
-  server(p, EV.vmStart(150 * 60), start);                  // res running is lost: it is never delivered
+  server(p, EV.vmStart(150 * 60), start);
   const serverEnd = p.srv.by!;
-  expect(due(p.req, serverEnd)).toBe(false);               // the requester has not given up by the time the server must be done
-  // The runner is dead: the server's own deadline ends the job and sends the result.
+  expect(due(p.req, serverEnd)).toBe(false);
   toRequester(p, server(p, { type: "deadline" }, serverEnd), serverEnd + 60);
   expect(p.srv.state).toBe("DONE");
   expect(p.req.state).toBe("DONE");
@@ -289,8 +279,8 @@ test("a restart in the middle of a deadline fires it once", () => {
   const jobs = [outJob({ jobNo: 1, state: "SENT", by: NOW_S - 10 })];
   const first = dueJobs(jobs, NOW_S);
   expect(first).toHaveLength(1);
-  const after = [step(first[0], { type: "deadline" }, NOW_S).record];   // what the poller persisted
-  expect(dueJobs(after, NOW_S + 1)).toEqual([]);                         // the reload finds it terminal
+  const after = [step(first[0], { type: "deadline" }, NOW_S).record];
+  expect(dueJobs(after, NOW_S + 1)).toEqual([]);
 });
 
 test("a kill during RUNNING ends CANCELLED and sends nothing", () => {
@@ -307,7 +297,6 @@ test("a backstop under the allowance refuses with budget before RUNNING", () => 
   expect(step(serverAt("APPROVED"), EV.vmStart(ALLOWANCE_S), NOW_S).record.state).toBe("RUNNING");
 });
 
-// ---- accounting ----
 
 test("a job cancelled at minute 110 is charged 110", () => {
   const running = step(serverAt("APPROVED"), EV.vmStart(9000), NOW_S).record;
@@ -322,7 +311,7 @@ test("a charge rounds up to a whole minute, and a job that never ran is charged 
   expect(chargedMinutes(step(running, { type: "cancel" }, NOW_S + 61).record)).toBe(2);
   expect(chargedMinutes(step(running, { type: "cancel" }, NOW_S + 60).record)).toBe(1);
   expect(chargedMinutes(step(serverAt("RESOLVED"), { type: "cancel" }, NOW_S).record)).toBe(0);
-  expect(chargedMinutes(running, NOW_S + 600)).toBe(10);       // still running: charged up to now
+  expect(chargedMinutes(running, NOW_S + 600)).toBe(10);
 });
 
 test("a vm-done on a cancelled job is accounting only: it does not reopen and the charge stays", () => {
@@ -355,15 +344,11 @@ test("remaining counts only today, only server jobs, and floors at zero", () => 
 });
 
 test("a job that ran across local midnight is charged to each day for the minutes it ran in it", () => {
-  const midnight = new Date(2026, 10, 20).getTime() / 1000;          // local midnight, whatever the station's zone
+  const midnight = new Date(2026, 10, 20).getTime() / 1000;
   const across = (over: Partial<JobRecord> = {}) => inJob({ jobNo: 50, state: "DONE", by: null, resolved_at: midnight - 4000, running_at: midnight - 30 * MIN, ended_at: midnight + 40 * MIN, ...over });
-  // Today it ran 40 minutes, not the 70 it ran in all.
   expect(remaining([across()], DEFAULT_BUDGETS, midnight + H).vmMinutes).toBe(DEFAULT_BUDGETS.vmMinutesPerDay - 40);
-  // Yesterday's share is on yesterday's budget.
   expect(remaining([across()], DEFAULT_BUDGETS, midnight - 5 * MIN).vmMinutes).toBe(DEFAULT_BUDGETS.vmMinutesPerDay - 25);
-  // One still running after midnight counts from midnight up to now.
   expect(remaining([across({ state: "RUNNING", by: midnight + 2 * H, ended_at: undefined })], DEFAULT_BUDGETS, midnight + 20 * MIN).vmMinutes).toBe(DEFAULT_BUDGETS.vmMinutesPerDay - 20);
-  // A job that began and ended yesterday takes nothing from today, and a whole day inside today is charged whole.
   expect(remaining([across({ running_at: midnight - 3 * H, ended_at: midnight - 2 * H })], DEFAULT_BUDGETS, midnight + H).vmMinutes).toBe(DEFAULT_BUDGETS.vmMinutesPerDay);
   expect(remaining([across({ running_at: midnight + 10 * MIN, ended_at: midnight + 25 * MIN })], DEFAULT_BUDGETS, midnight + H).vmMinutes).toBe(DEFAULT_BUDGETS.vmMinutesPerDay - 15);
 });
@@ -380,7 +365,6 @@ test("a res done builds a schema-clean body: results, minutes, image and log", (
   expect(done.send?.body).toEqual({ job: WIRE, state: "done", results: ["pass", "error"], minutes: 7, image: "e".repeat(64), log: { sha256: "d".repeat(64), bytes: 77 } });
   const env = buildEnvelope("res", done.send!.body, CTX);
   expect(env.kind).toBe("res");
-  // A runner that reports the wrong number of outcomes gets every suite marked error.
   const wrong = step(running, { type: "vm-done", results: ["pass"] }, NOW_S + 60);
   expect((wrong.send!.body.results as string[])).toEqual(["error", "error"]);
 });

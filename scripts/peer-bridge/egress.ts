@@ -30,7 +30,6 @@ const refuse = (rule: string, shape?: string): Refusal => (shape ? { ok: false, 
 const OPENING = ["question", "status", "info"];
 let defaultMatrix: any;
 
-// The text path's corpus is the desk; an envelope's is "envelopes built by jobs.ts, the poller and runner.ts from resolved values".
 function matrixAllows(ctx: Pick<OutCtx, "matrix">, corpus: "peer-desk" | "peer-jobs" = "peer-desk"): boolean {
   try {
     const m = ctx.matrix ?? (defaultMatrix ??= loadMatrix());
@@ -94,9 +93,6 @@ export async function checkOutbound(text: string, ctx: OutCtx): Promise<Outcome>
   return contentRules(text, ctx);
 }
 
-// The content rules every outbound byte passes: private hosts, .env names, absolute
-// paths, authority tokens and secret shapes. The text path runs them on the whole
-// message, the envelope path on line 3 alone.
 async function contentRules(text: string, ctx: Pick<OutCtx, "hostname" | "himmelRoot" | "allowShape" | "claudecode" | "tty" | "tainted">): Promise<Outcome> {
   if (badHost(text, ctx.hostname ?? osHostname())) return refuse("host");
   if (ENV_FILE_RE.test(text)) return refuse("env-file");
@@ -108,20 +104,14 @@ async function contentRules(text: string, ctx: Pick<OutCtx, "hostname" | "himmel
 
 export type EnvOutCtx = {
   peer: Peer | undefined;
-  self: string | undefined;     // our station name, what `from` must carry
-  keyDir: string;               // where our station key lives
+  self: string | undefined;
+  keyDir: string;
   himmelRoot: string;
   maxTextChars?: number;
   hostname?: string;
   matrix?: { default: string; rules: unknown[] };
 };
 
-// The envelope policy (§9). The message is four lines built by our code: the address
-// line and line 2 are checked by their own anchored shapes against our config, line 3
-// is re-validated with the receiver's schema and canonical encoder and then meets every
-// content rule, and line 4 passes only by verifying as our signature over lines 2 and 3 -
-// a shape that merely looks like a signature (a bot token's secret part fits) is refused.
-// An envelope opens no text thread, so the thread and opens checks do not run.
 export async function checkEnvelopeOutbound(lines: string[], ctx: EnvOutCtx): Promise<Outcome> {
   const peer = ctx.peer;
   if (!peer) return refuse("unknown-peer");

@@ -33,7 +33,6 @@ const BODIES: Record<string, [Kind, Record<string, unknown>]> = {
 const make = (name: string): Envelope => buildEnvelope(BODIES[name][0], BODIES[name][1] as any, CTX);
 const line = (name: string) => encodeCanonical(make(name));
 
-// A line built by hand from a sample object, so a test can break one rule at a time.
 const reqObj = () => JSON.parse(line("req"));
 const doneObj = () => JSON.parse(line("res done"));
 const text = (o: unknown) => JSON.stringify(o);
@@ -223,7 +222,6 @@ test("the suite-path regex has the spec shape", () => {
   expect(SUITE_PATH_RE.test("scripts/" + "a".repeat(121) + ".sh")).toBe(false);
 });
 
-// ---- admission, §4 steps 1-7 (gate.ts admitEnvelope) ----
 
 const peerSt = T.mkStation("goomal");
 afterAll(() => T.dropStation(peerSt));
@@ -278,7 +276,6 @@ test("step 1: the text path's rules apply first, and the envelope window is rule
 test("step 2: not four lines, not addressed to us, or line 2 off-grammar", () => {
   const env = good();
   const base = T.envLines(env, peerSt);
-  // [text, step]. Another bot's address is no root for us: slice A's rule 6 (step 1) refuses it.
   const cases: Record<string, [string, number]> = {
     "a fifth line": [[...base, "extra"].join("\n"), 2],
     "three lines": [base.slice(0, 3).join("\n"), 2],
@@ -316,7 +313,6 @@ test("step 4: an unknown k, no trusted key, or a killed peer is dropped before a
   const r = admitEnvelope(T.envUpdate(good(), peerSt), killed.cfg, killed.state);
   expect(stepOf(r)).toBe(4);
   if (!r.ok) expect(r.reason).toContain("killed");
-  // A killed peer's envelope is never inserted into the window either.
   killed.state.killed.clear();
   expect(killed.state.envIds.size).toBe(0);
   expect(admitEnvelope(T.envUpdate(good(), peerSt), killed.cfg, killed.state).ok).toBe(true);
@@ -332,7 +328,6 @@ test("step 5: a flipped byte in line 2, 3 or 4 fails the signature, and the id i
   expect(stepOf(admitEnvelope(T.tgUpdate([a, b, flip(c, 20), d].join("\n")), w.cfg, w.state))).toBe(5);
   expect(stepOf(admitEnvelope(T.tgUpdate([a, b, c, flip(d, 10)].join("\n")), w.cfg, w.state))).toBe(5);
   expect(stepOf(admitEnvelope(T.tgUpdate([a, b, c, "sig=" + "A".repeat(86)].join("\n")), w.cfg, w.state))).toBe(5);
-  // The same id, now correctly signed, is still admitted: nothing burned it.
   expect(admitEnvelope(T.tgUpdate([a, b, c, d].join("\n")), w.cfg, w.state).ok).toBe(true);
 });
 
@@ -355,9 +350,9 @@ test.skipIf(!!process.env.PEER_RED_COPY)("RED control: a gate that parses before
   expect(run().status).toBe(0);
   const target = join(root, "scripts/peer-bridge/gate.ts");
   const src = readFileSync(target, "utf8");
-  const marker = "  // 5. Signature, before any parse.\n";
-  expect(src.split(marker)).toHaveLength(2);
-  writeFileSync(target, src.replace(marker, "  try { JSON.parse(line3); } catch {}\n"));
+  const verifyLine = "  if (!verify(line2, line3, line4.slice(4), key.pub)) return fail(5, \"bad signature\");\n";
+  expect(src.split(verifyLine)).toHaveLength(2);
+  writeFileSync(target, src.replace(verifyLine, `  try { JSON.parse(line3); } catch {}\n${verifyLine}`));
   const mutated = run();
   expect(mutated.status).not.toBe(0);
   expect(failedTests(mutated.stdout + mutated.stderr)).toEqual(["step 5 comes before any parse: a flipped byte in line 3 never reaches JSON.parse"]);
@@ -398,18 +393,15 @@ test("step 7: a wrong msg, from, to or chat, an iat too far ahead, or an expired
     const w = world();
     expect([name, stepOf(admitEnvelope(u, w.cfg, w.state))]).toEqual([name, 7]);
   }
-  // msg differs from line 2's id: sign a line 2 that names another id.
   const line2 = `#env:v1 k=${peerSt.key.id} id=00000000`;
   const line3 = encodeCanonical(good());
   const w = world();
   expect(stepOf(admitEnvelope(T.tgUpdate([`/peer@${T.BOT_US}`, line2, line3, `sig=${sign(line2, line3, peerSt.keyPath)}`].join("\n")), w.cfg, w.state))).toBe(7);
-  // A station name nobody set is no binding at all.
   const bare = world();
   (bare.cfg.peers.goomal.theirs as any).stationName = undefined;
   expect(stepOf(admitEnvelope(T.envUpdate(good(), peerSt), bare.cfg, bare.state))).toBe(7);
   const noSelf = world(); (noSelf.cfg as any).self = {};
   expect(stepOf(admitEnvelope(T.envUpdate(good(), peerSt), noSelf.cfg, noSelf.state))).toBe(7);
-  // Nothing refused at step 7 entered the window.
   expect(w.state.envIds.size).toBe(0);
 });
 
@@ -443,7 +435,7 @@ test("1001 admitted text messages do not flush a replayable req", () => {
     expect(r.ok).toBe(true);
     if (r.ok) noteAdmitted(w.state, r.rec);
   }
-  expect(w.state.recent.has(`${T.ENV_CHAT}:${T.PEER_BOT_ID}:00000000`)).toBe(false); // slice A's window has flushed its oldest
+  expect(w.state.recent.has(`${T.ENV_CHAT}:${T.PEER_BOT_ID}:00000000`)).toBe(false);
   expect(stepOf(admitEnvelope(T.tgUpdate(first.message.text), w.cfg, w.state))).toBe(1);
   expect(DedupWindow.name).toBe("DedupWindow");
 });
@@ -455,11 +447,9 @@ test("rotation admission: envelopes under the old and the new key are both admit
     const w = world({ keys });
     expect(admitEnvelope(T.envUpdate(good(), peerSt), w.cfg, w.state).ok).toBe(true);
     expect(admitEnvelope(T.envUpdate(good(), next), w.cfg, w.state).ok).toBe(true);
-    // After untrust --key <old>, an old-key envelope is refused at step 4.
     const after = world({ keys: [keys[1]] });
     expect(stepOf(admitEnvelope(T.envUpdate(good(), peerSt), after.cfg, after.state))).toBe(4);
     expect(admitEnvelope(T.envUpdate(good(), next), after.cfg, after.state).ok).toBe(true);
-    // And the old key ages out 30 days after the new one was added.
     const aged = world({ keys: [{ ...keys[0], addedAt: T.iso(T.NOW_S - 60 * 86400) }, { ...keys[1], addedAt: T.iso(T.NOW_S - 31 * 86400) }] });
     expect(stepOf(admitEnvelope(T.envUpdate(good(), peerSt), aged.cfg, aged.state))).toBe(4);
   } finally { T.dropStation(next); }
@@ -475,12 +465,10 @@ test("steps 8 and 9 come from the caller's match, after step 7, and the id is al
   expect(calls).toEqual([`req:goomal:${T.NOW_S}`]);
   expect(w.state.envIds.size).toBe(1);
   expect(admitEnvelope(T.envUpdate(good("halt", {}), peerSt), w.cfg, w.state, match).ok).toBe(true);
-  // A failure before step 7 never calls match.
   expect(stepOf(admitEnvelope(T.envUpdate(good(), peerSt, { kid: "00000000" }), w.cfg, w.state, match))).toBe(4);
   expect(calls.length).toBe(2);
 });
 
-// ---- steps 8 and 9: matching and budgets ----
 
 const SERVING = { serves: ["run-suite"], budgets: { jobsPerDay: 3, vmMinutesPerDay: 120, queueMax: 2, maxJobMinutes: 60 } };
 function matched(kind: Kind, body: Record<string, unknown>, jobs: JobRecord[] = [], asks: [string, boolean][] = [], peerOver: Record<string, unknown> = SERVING) {
@@ -501,7 +489,7 @@ test("step 8: a cancel needs a job the peer sent us, a res a job we sent it, a c
   expect(stepRefusal(matched("cancel", { job: WIRE16 }))).toEqual({ step: 8, refused: undefined });
   expect(matched("cancel", { job: WIRE16 }, [inJob({ peer_job: WIRE16 })]).ok).toBe(true);
   expect(stepRefusal(matched("cancel", { job: WIRE16 }, [inJob({ peer: "someone-else", peer_job: WIRE16 })]))?.step).toBe(8);
-  expect(stepRefusal(matched("cancel", { job: WIRE16 }, [outJob({ wire_job: WIRE16 })]))?.step).toBe(8);   // our own job is not one the peer sent
+  expect(stepRefusal(matched("cancel", { job: WIRE16 }, [outJob({ wire_job: WIRE16 })]))?.step).toBe(8);
 
   expect(stepRefusal(matched("res", { job: WIRE16, state: "accepted" }))?.step).toBe(8);
   expect(matched("res", { job: WIRE16, state: "accepted" }, [outJob({ wire_job: WIRE16 })]).ok).toBe(true);
@@ -519,11 +507,11 @@ test("halt and capacity-ask always pass, even for a station that serves nothing"
 });
 
 test("step 9: a req over any budget is refused with budget", () => {
-  expect(matched("req", T.REQ_BODY, inJobs(2, { state: "DONE", by: null })).ok).toBe(true);                    // 2 of 3 jobs today
+  expect(matched("req", T.REQ_BODY, inJobs(2, { state: "DONE", by: null })).ok).toBe(true);
   expect(stepRefusal(matched("req", T.REQ_BODY, inJobs(3, { state: "DONE", by: null })))).toEqual({ step: 9, refused: "budget" });
-  expect(stepRefusal(matched("req", T.REQ_BODY, inJobs(2, { state: "RESOLVED" })))).toEqual({ step: 9, refused: "budget" });   // queueMax 2
+  expect(stepRefusal(matched("req", T.REQ_BODY, inJobs(2, { state: "RESOLVED" })))).toEqual({ step: 9, refused: "budget" });
   const used = inJobs(1, { state: "DONE", by: null, running_at: T.NOW_S - 7000, ended_at: T.NOW_S - 100, resolved_at: T.NOW_S - 7000 });
-  expect(stepRefusal(matched("req", T.REQ_BODY, used))).toEqual({ step: 9, refused: "budget" });               // 117 of 120 minutes used: under the allowance
+  expect(stepRefusal(matched("req", T.REQ_BODY, used))).toEqual({ step: 9, refused: "budget" });
   expect(matched("req", T.REQ_BODY, inJobs(1, { state: "DONE", by: null, running_at: T.NOW_S - 1800, ended_at: T.NOW_S - 100, resolved_at: T.NOW_S - 1800 })).ok).toBe(true);
 });
 

@@ -302,7 +302,6 @@ t("station-name refuses a name egress would refuse, and writes ours into self", 
     await refused(stationName(bad, mk({ hostname: host }).deps));
     expect(peersBytes().equals(before)).toBe(true);
   }
-  // The host's first label is "box" on a host named box.lan.
   await refused(stationName("box", mk({ hostname: "box.lan" }).deps));
   await stationName("goomal", mk({ hostname: host }).deps);
   expect(readPeersFile(peersFile()).self.stationName).toBe("goomal");

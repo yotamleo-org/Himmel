@@ -1,5 +1,3 @@
-// Two in-process bridges on a fake Telegram, for the typed path's round trips.
-// "alpha" is the requester, "bravo" the server; each lists the other as its one peer.
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,7 +16,7 @@ export type Side = "alpha" | "bravo";
 
 export type Bridge = {
   side: Side;
-  other: Side;                  // the name of the one peer, as this bridge knows it
+  other: Side;
   poller: Poller;
   cfg: Config;
   stateDir: string;
@@ -26,9 +24,7 @@ export type Bridge = {
   peerDir: string;
   key: KeyInfo;
   logs: string[];
-  /** Every updates batch waiting for this bridge's getUpdates. */
   inbox: any[];
-  /** Every envelope the poller put through the envelope policy, and what it said. */
   checked: { lines: string[]; ok: boolean }[];
   jobs(): any[];
   chain(file: string): any[];
@@ -105,8 +101,6 @@ export async function makeWorld(opts: WorldOpts = {}): Promise<World> {
       },
     };
   }
-  // A signed message `from` a bridge that the bridge itself never sent: it goes straight
-  // to the other side's Telegram inbox. `tamper` flips one byte of line 3 after signing.
   const inject = (from: Side, kind: Kind, body: Record<string, unknown>, opts: { tamper?: boolean; text?: string } = {}): string => {
     const sender = bridges[from], to = sender.other;
     let text = opts.text;
@@ -122,7 +116,6 @@ export async function makeWorld(opts: WorldOpts = {}): Promise<World> {
   };
   return {
     alpha: bridges.alpha, bravo: bridges.bravo, clock, wire, inject,
-    // One pass for a bridge: take what Telegram holds for it, then drain its spool.
     async step(side: Side) {
       const b = bridges[side];
       await b.poller.processBatch(b.inbox.splice(0));
@@ -131,7 +124,6 @@ export async function makeWorld(opts: WorldOpts = {}): Promise<World> {
   };
 }
 
-// The wake lines written to a bridge's operator chat, oldest first.
 export function wakeLines(b: Bridge): string[] {
   try { return readFileSync(join(b.cfg.bridgeRoot, "sessions", "__chat__", "outbox.jsonl"), "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l).text as string); } catch { return []; }
 }

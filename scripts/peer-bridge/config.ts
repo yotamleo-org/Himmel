@@ -18,7 +18,6 @@ export type Approve = "tty" | "auto";
 export type Budgets = { jobsPerDay: number; vmMinutesPerDay: number; queueMax: number; maxJobMinutes: number };
 export type AllowEntry = { alias: string; path: string };
 
-// The longest job the wire can carry, less the setup-and-pull allowance, in minutes.
 export const MAX_JOB_MINUTES_MAX = TIMEOUT_S_MAX / 60 - ALLOWANCE_S / 60;
 const BUDGET_BOUNDS: Record<keyof Budgets, [number, number]> = {
   jobsPerDay: [1, 1000], vmMinutesPerDay: [1, 10000], queueMax: [1, 3], maxJobMinutes: [30, MAX_JOB_MINUTES_MAX],
@@ -31,7 +30,7 @@ export type Peer = {
   serves: Op[];
   approve: Record<Op, Approve>;
   budgets: Budgets;
-  repoUrl?: string;   // the repo a serving runner fetches; it has no default, setup writes it
+  repoUrl?: string;
   peerBotId: string;
   chatId: number | null;
   allowFrom: string[];
@@ -68,8 +67,6 @@ function stationName(v: unknown, what: string): string | undefined {
   return typeof v === "string" && STATION_NAME_RE.test(v) ? v : bad(`${what} must match ${STATION_NAME_RE.source}`);
 }
 
-// At most two keys (current and next), each naming itself correctly: the id is the
-// first 8 hex of sha256 of the public key, so a hand-edited id cannot lie.
 function theirKeys(v: unknown, what: string): TheirKey[] {
   if (v === undefined) return [];
   if (!Array.isArray(v) || v.length > 2) return bad(`${what} must be a list of at most two keys`);
@@ -97,8 +94,6 @@ function approve(v: unknown, what: string): Record<Op, Approve> {
   return mode === "tty" || mode === "auto" ? { "run-suite": mode } : bad(`${what}.run-suite must be tty or auto`);
 }
 
-// Every budget is an integer inside the range the wire can carry, so a capacity
-// reply can always name what is left. All four keys, or none (the defaults).
 function budgets(v: unknown, what: string): Budgets {
   if (v === undefined) return { ...DEFAULT_BUDGETS };
   if (!v || typeof v !== "object" || Array.isArray(v)) return bad(`${what} must be an object`);
@@ -125,8 +120,6 @@ function imageDigest(v: unknown, what: string): string | undefined {
   return typeof v === "string" && /^[0-9a-f]{64}$/.test(v) ? v : bad(`${what} must be 64 lowercase hex`);
 }
 
-// The server's own suite allowlist, C/<peer>.suites: `<alias> <path>` per line. Only
-// `setup.ts allow-suite` writes it. A bad line refuses the whole file.
 export function loadAllowlist(peer: string, dir: string = configDir()): AllowEntry[] {
   if (!PEER_NAME_RE.test(peer)) bad("peer name must match ^[a-z0-9][a-z0-9-]{0,31}$");
   const path = join(dir, `${peer}.suites`);
@@ -155,8 +148,6 @@ export function loadAllowlist(peer: string, dir: string = configDir()): AllowEnt
   return out;
 }
 
-// A value a station reports (minutes left, queue depth) is cut to its wire range
-// before it is encoded, so the envelope it goes in always passes our own egress.
 export function clampToSchema(field: string, n: number): number {
   const r = (RANGES as Record<string, readonly [number, number]>)[field];
   if (!r) throw new Error(`no schema range for ${field}`);

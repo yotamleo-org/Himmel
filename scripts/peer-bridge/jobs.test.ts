@@ -39,13 +39,11 @@ beforeEach(() => {
   shaOnMain = git(work, "rev-parse", "HEAD");
   git(work, "remote", "add", "origin", origin);
   git(work, "push", "-q", "origin", "main");
-  // A commit reachable only through refs/pull/1/head on the origin.
   git(work, "checkout", "-q", "-b", "pr");
   fs.writeFileSync(join(work, "pr.txt"), "x");
   git(work, "add", "."); git(work, "commit", "-q", "-m", "pr");
   shaPullOnly = git(work, "rev-parse", "HEAD");
   git(work, "push", "-q", "origin", "HEAD:refs/pull/1/head");
-  // A commit with no suites in it.
   git(work, "checkout", "-q", "--orphan", "bare");
   git(work, "rm", "-rqf", ".");
   fs.writeFileSync(join(work, "readme"), "x");
@@ -53,7 +51,7 @@ beforeEach(() => {
   shaEmpty = git(work, "rev-parse", "HEAD");
   git(work, "push", "-q", "origin", "HEAD:refs/heads/bare");
   git(root, "clone", "-q", origin, checkout);
-  git(checkout, "fetch", "-q", "origin", "refs/pull/1/head");   // the object is local, on no remote branch
+  git(checkout, "fetch", "-q", "origin", "refs/pull/1/head");
   spawned = [];
   procHooks.spawn = ((cmd: string, args: string[], o: any) => { spawned.push([cmd, ...args]); return (orig as any)(cmd, args, o); }) as any;
 });
@@ -72,7 +70,6 @@ const jobsFile = () => join(peerDir, "jobs.jsonl");
 const seed = (...recs: Record<string, unknown>[]) => recs.reduce((p, r) => p.then(() => new Chain().append(jobsFile(), r)), Promise.resolve() as Promise<unknown>);
 const capacityRec = (over: Record<string, unknown> = {}) => ({ kind: "capacity", peer: "goomal", re: "89abcdef", ts: NOW_S - 600, state: "idle", capacity: "ok", queue: "free", ...over });
 
-// A stand-in for the poller: it answers every spool file with `result` and keeps what it read.
 function responder(result: Record<string, unknown>): { recs: any[]; stop(): void } {
   const recs: any[] = [];
   const t = setInterval(() => {
@@ -85,7 +82,6 @@ async function refused(p: Promise<unknown>, code: number, rule?: string): Promis
   throw new Error("expected a JobsError");
 }
 
-// ---- request ----
 
 test("request sends a req for a SHA on our origin branches, with the suites present at it", async () => {
   const r = responder({ ok: true, job: 7 });
@@ -111,7 +107,6 @@ test("request refuses a suite missing at the SHA", async () => {
   const r = responder({ ok: true, job: 1 });
   try {
     await refused(requestCmd("goomal", "run-suite", shaOnMain, [SUITE, "scripts/ci/nope.sh"], deps()), 2, "suite-missing");
-    // shaEmpty is on origin/bare but holds no suite at all.
     await refused(requestCmd("goomal", "run-suite", shaEmpty, [SUITE], deps()), 2, "suite-missing");
     expect(r.recs).toEqual([]);
   } finally { r.stop(); }
@@ -133,9 +128,9 @@ test("request honours a recent capacity: not-served and no budget refuse, an old
   const r = responder({ ok: true, job: 1 });
   try {
     const go = () => requestCmd("goomal", "run-suite", shaOnMain, [SUITE], deps());
-    await go();                                                                    // no capacity on record: send, the server decides
+    await go();
     await seed(capacityRec({ ts: NOW_S - 7200, state: "not-served", capacity: "none" }));
-    await go();                                                                    // two hours old: ignored
+    await go();
     await seed(capacityRec({ ts: NOW_S - 1800, state: "not-served", capacity: "none" }));
     await refused(go(), 2, "not-served");
     await seed(capacityRec({ ts: NOW_S - 600, state: "idle", capacity: "none" }));
@@ -143,7 +138,7 @@ test("request honours a recent capacity: not-served and no budget refuse, an old
     await seed(capacityRec({ ts: NOW_S - 300, state: "no-vm", capacity: "none" }));
     await refused(go(), 2, "no-vm");
     await seed(capacityRec({ ts: NOW_S - 100, state: "idle", capacity: "low" }));
-    await go();                                                                    // low is still a yes
+    await go();
     expect(r.recs.length).toBe(3);
   } finally { r.stop(); }
 });
@@ -188,7 +183,6 @@ test("a refusal from the poller names its rule", async () => {
   try { await refused(requestCmd("goomal", "run-suite", shaOnMain, [SUITE], deps()), 2, "refused: egress"); } finally { r.stop(); }
 });
 
-// ---- cancel, halt, capacity ----
 
 test("cancel and halt spool their envelope; cancel names a job we sent and has not finished", async () => {
   const r = responder({ ok: true });
@@ -217,7 +211,6 @@ test("capacity asks the peer and prints the last answer in our words", async () 
   } finally { r.stop(); }
 });
 
-// ---- list and show ----
 
 test("show prints exactly render(record), list one line per job, and neither prints a peer_* field", async () => {
   const a = outJob({ jobNo: 1, state: "DONE", by: null, results: ["pass", "fail"], peer_minutes: 7, peer_image: "d".repeat(64), peer_log_sha256: "c".repeat(64), image: "unpinned" });
@@ -238,7 +231,6 @@ test("show prints exactly render(record), list one line per job, and neither pri
   await refused(showCmd("J42", deps()), 2, "unknown-job");
 });
 
-// ---- approve ----
 
 test("approve exits 3 without a TTY and under CLAUDECODE, and writes nothing", async () => {
   await seed(inJob({ jobNo: 2, state: "RESOLVED" }));
@@ -265,7 +257,6 @@ test("approve asks about the resolved job, then spools the approval; anything bu
   } finally { r.stop(); }
 });
 
-// ---- the process ----
 
 test("the process: approve with no TTY exits 3, and a bad job argument exits 2", () => {
   const env = { PATH: process.env.PATH!, HOME: root };

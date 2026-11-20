@@ -1,11 +1,5 @@
-// jobs.ts: the CLI a chief runs for the typed path. It writes only spool events and
-// reads jobs.jsonl, which the poller alone writes. Every argument is checked
-// against its token class before anything runs, and the only processes it starts
-// are two git verbs on our own checkout.
-//
 //   jobs.ts request <peer> run-suite --sha <40hex> --suite <path> [--suite <path>…]
 //   jobs.ts capacity <peer> | halt <peer> | cancel <job> | show <job> | list [--peer P] | approve <job>
-//
 // Exit: 0 ok, 2 refused (names the rule), 3 not a TTY (approve), 4 queued but unconfirmed: do not resend.
 import fs from "node:fs";
 import { join } from "node:path";
@@ -31,15 +25,14 @@ export type JobsDeps = {
   tty: boolean;
   ask: (question: string) => Promise<string>;
   out: (line: string) => void;
-  now: () => number;       // ms
-  waitMs: number;          // how long to wait for the poller's answer
+  now: () => number;
+  waitMs: number;
 };
 
 const SHA_RE = /^[0-9a-f]{40}$/;
 const JOB_RE = /^J([0-9]{1,9})$/;
 const CAPACITY_FRESH_S = 3600;
 
-// ---- argument classes ----
 
 function peerArg(deps: JobsDeps, peer: string): string {
   if (!PEER_NAME_RE.test(peer)) refuse("bad-peer");
@@ -51,7 +44,6 @@ function jobArg(job: string): number {
   return m ? Number(m[1]) : refuse("bad-job");
 }
 
-// ---- reading what the poller wrote ----
 
 function allJobs(deps: JobsDeps, only?: string): JobRecord[] {
   const m = new Map<number, JobRecord>();
@@ -71,7 +63,6 @@ function lastCapacity(deps: JobsDeps, peer: string): (CapacityView & { ts: numbe
   return last;
 }
 
-// ---- the poller's answer ----
 
 async function wait(deps: JobsDeps, peer: string, name: string): Promise<{ ok: true; job?: number } | { ok: false; rule: string }> {
   const file = join(deps.peerDir(peer), "spool", "results", name);
@@ -99,14 +90,12 @@ function setUp(deps: JobsDeps, peer: string): void {
   if (!deps.cfg.self?.stationName || !p.theirs?.stationName || p.chatId === null || p.chatId === undefined) refuse("not-set-up");
 }
 
-// ---- the two git verbs, on our own checkout ----
 
 async function git(deps: JobsDeps, ...argv: string[]): Promise<{ code: number | null; stdout: string }> {
   const r = await runProc(["git", "-C", deps.cfg.himmelRoot, ...argv], { env: { PATH: deps.env.PATH ?? "/usr/bin:/bin", HOME: deps.env.HOME ?? "/nonexistent" }, timeoutMs: 15_000 });
   return { code: r.code, stdout: r.stdout };
 }
 
-// ---- commands ----
 
 export async function requestCmd(peerName: string, op: string, sha: string, suites: string[], deps: JobsDeps): Promise<void> {
   const peer = peerArg(deps, peerName);
@@ -116,7 +105,6 @@ export async function requestCmd(peerName: string, op: string, sha: string, suit
   for (const s of suites) if (!SUITE_PATH_RE.test(s) || s.includes("..")) refuse("bad-suite");
   setUp(deps, peer);
 
-  // A recent answer that says the peer cannot take it is cheaper than a round trip; with none, the server decides.
   const cap = lastCapacity(deps, peer);
   if (cap && deps.now() / 1000 - cap.ts < CAPACITY_FRESH_S) {
     if (cap.state === "not-served") refuse("not-served");
@@ -124,7 +112,6 @@ export async function requestCmd(peerName: string, op: string, sha: string, suit
     if (cap.capacity === "none") refuse("no-budget");
   }
 
-  // The SHA must be on a branch of our own origin: refs/pull/* and fork-network objects are not ours.
   const on = await git(deps, "branch", "-r", "--contains", sha);
   if (on.code !== 0 || !on.stdout.split("\n").some(l => /^\s*origin\/(?!HEAD\b)\S+/.test(l))) refuse("unknown-sha");
   for (const s of suites) if ((await git(deps, "cat-file", "-e", `${sha}:${s}`)).code !== 0) refuse(`suite-missing`);
@@ -166,7 +153,6 @@ export async function listCmd(peer: string | undefined, deps: JobsDeps): Promise
   for (const j of allJobs(deps, peer)) deps.out(renderLine(j));
 }
 
-// The serving side's approval, at a terminal. It shows the resolved job (SHA and our own aliases) first.
 function needTerminal(env: NodeJS.ProcessEnv, tty: boolean): void {
   if (env.CLAUDECODE || env.CLAUDE_CODE_SESSION_ID) refuse("run this yourself in a terminal, not from a Claude session", 3);
   if (!tty) refuse("needs a human at a terminal", 3);
@@ -185,14 +171,13 @@ export async function approveCmd(jobArgText: string, deps: JobsDeps): Promise<vo
   deps.out(`approved J${job.jobNo}`);
 }
 
-// ---- the process ----
 
 export async function main(argv: string[]): Promise<void> {
   const rl = createInterface({ input: process.stdin, output: process.stderr });
   const [cmd, ...a] = argv;
   try {
     const tty = Boolean(process.stdin.isTTY && process.stdout.isTTY);
-    if (cmd === "approve") needTerminal(process.env, tty);   // before anything is read
+    if (cmd === "approve") needTerminal(process.env, tty);
     let cfg: Config;
     try { cfg = readPeersFile(peersFile()); } catch { return refuse("not-set-up"); }
     const deps: JobsDeps = {

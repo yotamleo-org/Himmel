@@ -2,9 +2,6 @@
 // takes Telegram updates through the admission gate, keeps thread state and
 // deadlines, runs the tool-less reader, sends through the egress gate with an
 // intent record before every Telegram call, and drains the spool that send.ts,
-// read.ts and setup.ts fill. It parses peer text only with the three control-line
-// regexes (an envelope's JSON line only after its signature verifies, only in
-// envelope.ts) and starts only the processes proc.ts lists.
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import { join } from "node:path";
@@ -36,7 +33,7 @@ export type PollerDeps = {
   reloadConfig?: () => Config;
   matrix?: OutCtx["matrix"];
   hostname?: string;
-  checkEnvelope?: typeof checkEnvelopeOutbound;   // tests wrap it to see every envelope that is sent
+  checkEnvelope?: typeof checkEnvelopeOutbound;
   readerRun?: typeof runReader;
   readerTimeoutMs?: number;
   log?: (line: string) => void;
@@ -57,11 +54,11 @@ export class Poller {
   private chain = new Chain();
   private waker: Waker;
   private pending = new Map<string, Pending>();
-  private jobs = new Map<number, JobRecord>();   // jobs.jsonl, the latest snapshot of each job
-  private capAsks = new Map<string, boolean>();   // `${peer}:${msg}` of each capacity-ask we sent, true once answered
+  private jobs = new Map<number, JobRecord>();
+  private capAsks = new Map<string, boolean>();
   private match = matchEnvelope({ jobs: () => [...this.jobs.values()], asks: () => this.capAsks });
   private tripwire = new Tripwire();
-  private answers = new Map<string, number[]>();  // ms times of the answers we sent each peer in the last hour
+  private answers = new Map<string, number[]>();
   private rootIntents = new Map<string, Pending>();
   private spoolDone = new Map<string, number>();
   private sentTimes = new Map<string, number[]>();
@@ -101,7 +98,6 @@ export class Poller {
     const threadRecs: ThreadRec[] = [], inbox: Pick<PeerMsgRec, "peer" | "chat_id" | "from_id" | "id" | "ts">[] = [], envIds: { chat: number; from: string; id: string; exp: number }[] = [];
     for (const peer of Object.keys(this.cfg.peers)) {
       for (const r of readChain(this.file(peer, "threads.jsonl"))) if (r.kind === "thread") threadRecs.push(r as unknown as ThreadRec);
-      // An envelope counts toward the rate window but never enters the text dedup window.
       for (const r of readChain(this.file(peer, "inbox.jsonl"))) {
         if (r.kind === "peer-msg") inbox.push(r as unknown as PeerMsgRec);
         else if (r.kind === "peer-env") inbox.push({ peer: r.peer, chat_id: r.chat_id, from_id: r.from_id, ts: r.ts });
@@ -126,7 +122,6 @@ export class Poller {
     this.refreshKilled();
   }
 
-  // C/<peer>.killed is the kill switch (§8); the gate reads this set, never the file.
   private refreshKilled() {
     this.gate.killed.clear();
     for (const peer of Object.keys(this.cfg.peers)) if (fs.existsSync(join(this.deps.configDir, `${peer}.killed`))) this.gate.killed.add(peer);
@@ -168,9 +163,6 @@ export class Poller {
   jobsSnapshot(): Map<number, JobRecord> { return new Map(this.jobs); }
   nextJobNo(): number { return Math.max(0, ...this.jobs.keys()) + 1; }
 
-  // Start order is the point: the Telegram backlog (res envelopes that arrived while
-  // we were down) lands before the first deadline tick, so a job whose answer is
-  // waiting in the backlog is not declared lost and cancelled.
   async start(): Promise<void> {
     await this.recover();
     await this.drainBacklog();
@@ -256,8 +248,6 @@ export class Poller {
     for (const rec of jobs) await this.readAndDigest(rec);
   }
 
-  // A line-2 #env message: the typed path only. It never reaches the reader, the
-  // threads or the desk. A refusal at steps 2-7 logs {step, msg, sha256} and nothing else.
   private async onEnvelope(u: any): Promise<void> {
     const r = admitEnvelope(u, this.cfg, this.gate, this.match);
     if (!r.ok) {
@@ -265,12 +255,9 @@ export class Poller {
       if (r.unknownChat) appendUnknownChat(join(this.deps.stateDir, "unknown-chats.jsonl"), r.unknownChat);
       if (r.step === 1 || !r.peer) return;
       noteRate(this.gate, r.peer, this.ts());
-      // A bad signature feeds the tripwire. It alerts the operator and kills nothing.
       if (r.step === 5 && this.tripwire.note(r.peer, this.now())) await this.waker.alert(r.peer, TRIPWIRE_COUNT);
       if (!r.rec || !r.env) return;
       await this.chain.append(this.file(r.peer, "inbox.jsonl"), r.rec);
-      // Only a req refused at step 8 or 9 is answered, with the reason our own match chose.
-      // An unmatched res, capacity or cancel is dropped and logged, never answered.
       if (r.env.kind === "req" && r.refused) await this.answer(r.peer, { kind: "res", body: { job: r.env.job, state: "refused", refused: r.refused } });
       await this.recordId(r.rec, r.env.exp);
       return;
@@ -281,13 +268,10 @@ export class Poller {
     await this.recordId(r.rec, r.env.exp);
   }
 
-  // The id goes to disk last: a crash before it replays the whole update.
   private async recordId(rec: PeerEnvRec, exp: number): Promise<void> {
     await this.chain.append(this.file(rec.peer, "envelope-ids.jsonl"), { kind: "env-id", chat: rec.chat_id, from: rec.from_id, id: rec.id, exp });
   }
 
-  // What an admitted envelope does. A res moves our record of a job we sent; a cancel
-  // or halt narrows what the peer sent us. An envelope that matches no job of ours is dropped.
   private async handleEnvelope(peer: string, env: Envelope): Promise<void> {
     const drop = (why: string) => this.log(`env-drop step=8 peer=${peer} msg=${env.msg} ${why}`);
     const mine = (dir: "in" | "out") => [...this.jobs.values()].filter(j => j.peer === peer && j.dir === dir);
@@ -308,7 +292,6 @@ export class Poller {
       const key = `${peer}:${env.re}`;
       if (this.capAsks.get(key) !== false) return drop("capacity for an ask we did not send, or one already answered");
       this.capAsks.set(key, true);
-      // Only our own words are stored: the peer's numbers are reduced to ok / low / none here.
       await this.chain.append(this.file(peer, "jobs.jsonl"), { kind: "capacity", peer, re: env.re, ts: this.ts(), ...resolveCapacity(env) });
     } else if (env.kind === "req") {
       let allow: AllowEntry[] = [];
@@ -320,8 +303,6 @@ export class Poller {
     }
   }
 
-  // The poller's own part of a spool event from a chief or the runner: which envelope to
-  // send, or which job event to apply. Every field is checked here; the spool is untrusted input.
   private async applyEnvOut(peer: string, name: string, rec: Extract<SpoolRec, { type: "env-out" }>): Promise<void> {
     const dir = this.dir(peer);
     const refuse = (rule: string) => writeResult(dir, name, { ok: false, rule });
@@ -357,7 +338,6 @@ export class Poller {
     const dir = this.dir(peer);
     const job = this.jobs.get(rec.job);
     if (!job || job.peer !== peer || job.dir !== "in") return writeResult(dir, name, { ok: false, rule: "unknown-job" });
-    // No job from a killed peer is started, resolved or approved, whatever the tick has reached.
     this.refreshKilled();
     if (this.gate.killed.has(peer)) { await this.fireKills(); return writeResult(dir, name, { ok: false, rule: "killed" }); }
     const e: any = rec.event, p = this.cfg.peers[peer];
@@ -376,7 +356,6 @@ export class Poller {
         ev = { type: "approve" };
         break;
       case "vm-start": {
-        // The backstop is the server's own number, written into the RUNNING record; the runner reads it there.
         const left = remaining(this.peerJobs(peer), p.budgets ?? DEFAULT_BUDGETS, this.ts());
         ev = { type: "vm-start", backstop_s: Math.min((p.budgets ?? DEFAULT_BUDGETS).maxJobMinutes * 60, left.vmMinutes * 60) };
         break;
@@ -395,7 +374,6 @@ export class Poller {
     writeResult(dir, name, { ok: true });
   }
 
-  // jobstate.ts decides; the poller writes the new snapshot, then sends what step asked for.
   private async applyJobEvent(job: JobRecord, event: JobEvent): Promise<void> {
     const r = step(job, event, this.ts());
     if (r.record !== job) await this.putJob(r.record);
@@ -406,16 +384,12 @@ export class Poller {
     for (const job of dueJobs([...this.jobs.values()], this.ts())) await this.applyJobEvent(job, { type: "deadline" });
   }
 
-  // The kill switch is a file, not a message: every live job a killed peer sent us is
-  // cancelled, nothing is sent, and the runner destroys the VM of a RUNNING one.
   private async fireKills(): Promise<void> {
     for (const job of [...this.jobs.values()]) {
       if (job.dir === "in" && this.gate.killed.has(job.peer) && !isTerminal(job)) await this.applyJobEvent(job, { type: "kill" });
     }
   }
 
-  // The envelope send path: build from resolved values, sign with the current station
-  // key, check, then the same intent-before-send machinery as every text message.
   private checkEnv(peer: string, lines: string[]): Promise<Outcome> {
     return (this.deps.checkEnvelope ?? checkEnvelopeOutbound)(lines, {
       peer: this.cfg.peers[peer], self: this.cfg.self?.stationName, keyDir: this.deps.configDir, himmelRoot: this.cfg.himmelRoot,
@@ -423,19 +397,16 @@ export class Poller {
     });
   }
 
-  // Build and sign, with no I/O but reading the key: a caller that must record
-  // something about the envelope (a job, an ask) does so before it is queued.
   private makeEnvelope(peer: string, spec: SendSpec): { env: Envelope; lines: string[] } | null {
     const p = this.cfg.peers[peer];
     const from = this.cfg.self?.stationName, to = p?.theirs.stationName;
     if (!p || p.chatId === null || !from || !to) { this.log(`env-send peer=${peer} not sent: station names or chat are not set`); return null; }
-    const key = currentSigningKey(this.deps.configDir);                                  // throws without a station key
-    const env = buildEnvelope(spec.kind, spec.body, { from, to, chat: p.chatId, now: this.ts() });   // throws on a body the schema refuses
+    const key = currentSigningKey(this.deps.configDir);
+    const env = buildEnvelope(spec.kind, spec.body, { from, to, chat: p.chatId, now: this.ts() });
     const line2 = `#env:v1 k=${key.id} id=${env.msg}`, line3 = encodeCanonical(env);
     return { env, lines: [`/peer@${p.theirs.username}`, line2, line3, `sig=${sign(line2, line3, key.path)}`] };
   }
 
-  // Outbound envelopes leave only through here: check, intent record, then flush sends.
   private async queueEnvelope(peer: string, made: { env: Envelope; lines: string[] }): Promise<boolean> {
     const ok = await this.checkEnv(peer, made.lines);
     if (!ok.ok) {
@@ -448,9 +419,6 @@ export class Poller {
     return true;
   }
 
-  // An answer to something the peer asked (a refused req, a capacity reply) goes at most
-  // once per msg, because the envelope window admits a msg once, and under the same
-  // hourly cap as slice A's automatic templates, so a peer cannot make us talk without limit.
   private async answer(peer: string, spec: SendSpec): Promise<void> {
     const now = this.now();
     const recent = (this.answers.get(peer) ?? []).filter(t => now - t < 3_600_000);
@@ -473,8 +441,6 @@ export class Poller {
 
   private peerJobs(peer: string): JobRecord[] { return [...this.jobs.values()].filter(j => j.peer === peer); }
 
-  // What the server answers a capacity-ask with, from its own records. A station that
-  // serves nothing says not-served, and its numbers are zero.
   private capacityBody(peer: string, re: string): Record<string, unknown> {
     const p = this.cfg.peers[peer];
     if ((p.serves ?? []).length === 0) return { re, state: "not-served", queue: 0, jobs_left: 0, vm_minutes_left: 0 };

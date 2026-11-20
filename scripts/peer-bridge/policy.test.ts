@@ -89,7 +89,6 @@ test("send refuses anything beyond theirs: a root kind they do not open, and eit
   expect(await out("hi", "info", true, { openOutbound: 1, sentLastMinute: 2 })).toEqual({ ok: true });
 });
 
-// ---- the typed path's serving policy (I20, I22) ----
 
 const SHA = "a".repeat(40), SUITE = "scripts/hooks/test-a.sh";
 const ALLOW = [{ alias: "alias-a", path: SUITE }];
@@ -105,7 +104,7 @@ test("serves: [] refuses every req with a signed refused, and answers every capa
   const answers = bodiesOf(w, "bravo");
   expect(answers.map((a: any) => [a.kind, a.state, a.refused])).toEqual([["res", "refused", "not-served"], ["capacity", "not-served", undefined]]);
   expect(answers[1]).toMatchObject({ queue: 0, jobs_left: 0, vm_minutes_left: 0 });
-  expect(w.bravo.jobs()).toEqual([]);                                  // nothing was queued, nothing counted
+  expect(w.bravo.jobs()).toEqual([]);
   await w.step("alpha");
   expect(w.alpha.jobs()).toMatchObject([{ state: "REFUSED", refused: "not-served" }]);
   expect(w.alpha.chain("jobs.jsonl").find(r => r.kind === "capacity")).toMatchObject({ state: "not-served", capacity: "none" });
@@ -117,7 +116,7 @@ test("cancel and halt are handled even when nothing is served any more", async (
   askReq(w);
   await w.step("alpha");
   await w.step("bravo");
-  w.bravo.cfg.peers.alpha.serves = [];                                  // the operator stops serving
+  w.bravo.cfg.peers.alpha.serves = [];
   w.inject("alpha", "cancel", { job: w.alpha.jobs()[0].wire_job });
   await w.step("bravo");
   expect(w.bravo.jobs()[0].state).toBe("CANCELLED");
@@ -156,14 +155,12 @@ test("a killed peer gets no answer at all, its live job is cancelled with nothin
   w.inject("alpha", "req", { job: "d".repeat(16), op: "run-suite", sha: SHA, suites: [SUITE] });
   await w.step("bravo");
   await w.bravo.poller.tick();
-  expect(w.wire.length).toBe(sent);                                     // not one reply, to the ask, the req or the cancelled job
+  expect(w.wire.length).toBe(sent);
   expect(w.bravo.jobs()).toMatchObject([{ jobNo: 1, state: "CANCELLED" }]);
   expect(w.bravo.logs.filter(l => l.startsWith("env-drop step=4")).length).toBe(2);
-  // Nothing it asked for can be started while the file exists.
   const name = writeSpoolEvent({ t: "job-event", peer: "alpha", job: 1, event: { type: "approve" } }, w.bravo.peerDir);
   await w.bravo.poller.drainSpool();
   expect(JSON.parse(fs.readFileSync(join(w.bravo.peerDir, "spool", "results", name), "utf8"))).toEqual({ ok: false, rule: "killed" });
-  // The kill is a file: remove it and the peer is heard again.
   fs.rmSync(join(w.bravo.configDir, "alpha.killed"));
   w.inject("alpha", "capacity-ask", {});
   await w.step("bravo");
@@ -188,9 +185,7 @@ test("no envelope changes a config field, the allowlist or the kill file", async
   expect(snapshot()).toEqual(before);
 });
 
-// ---- no LLM on the typed path, and the poller's spawn list (I2, I20) ----
 
-// The modules `bun build` pulls in for an entry point, relative to the repo root.
 function graphOf(entry: string): string[] {
   const dir = fs.mkdtempSync(join(tmpdir(), "peer-meta-"));
   try {
@@ -201,7 +196,6 @@ function graphOf(entry: string): string[] {
 }
 const read = (f: string) => fs.readFileSync(join(HIMMEL_ROOT, f), "utf8");
 const CLAUDE_CALL = /["'`]claude["'`]|\bclaude\s+(-p|--)/;
-// Every place a module starts a process: the verb and its first argument.
 const SPAWN_CALL = /(?<![.\w])(?:procHooks\.)?(spawnSync|spawn|execFileSync|execFile|execSync|runProc)\(\s*(\[?\s*"[^"]+"|[A-Za-z_.0-9]+)/g;
 const spawnSites = (files: string[]): string[] => files.flatMap(f => [...read(f).matchAll(SPAWN_CALL)].map(m => `${f}: ${m[1]}(${m[2]}`));
 
@@ -217,7 +211,6 @@ test("the poller reaches the one claude call it always had, in the text reader, 
   expect(g).toContain("scripts/peer-bridge/jobstate.ts");
   expect(g).toContain("scripts/peer-bridge/resolve.ts");
   expect(g.filter(f => CLAUDE_CALL.test(read(f)))).toEqual(["scripts/peer-bridge/reader.ts"]);
-  // The typed path's own modules hold no claude call at all.
   for (const f of ["envelope", "sign", "resolve", "jobstate", "spool-events", "jobs"]) expect([f, CLAUDE_CALL.test(read(`scripts/peer-bridge/${f}.ts`))]).toEqual([f, false]);
 });
 
@@ -232,14 +225,12 @@ test("the poller's spawn list is slice A's: ps, redact_check, the usage prefligh
     'scripts/peer-bridge/reader.ts: spawn("claude"',
     'scripts/telegram/bus.ts: spawn("flock"',
   ]);
-  // git runs in jobs.ts and, in the next change, runner.ts: never in the poller's graph.
   expect(sites.filter(s => /git/.test(s))).toEqual([]);
 });
 
 test("git runs only in jobs.ts on the typed path, with the two verbs it was given", () => {
   const typed = fs.readdirSync(join(HIMMEL_ROOT, "scripts/peer-bridge")).filter(n => /\.ts$/.test(n) && !/\.test\.ts$|^testlib-/.test(n));
   const withGit = typed.filter(n => /["'`]git["'`]/.test(read(`scripts/peer-bridge/${n}`)));
-  // setup.ts asks git where the primary checkout is, at a terminal, and is imported by nothing inbound.
   expect(withGit.sort()).toEqual(["jobs.ts", "setup.ts"]);
   const jobs = read("scripts/peer-bridge/jobs.ts");
   expect(jobs.match(/await git\(deps,[^)]*\)/g)).toEqual(['await git(deps, "branch", "-r", "--contains", sha)', 'await git(deps, "cat-file", "-e", `${sha}:${s}`)']);
@@ -248,7 +239,6 @@ test("git runs only in jobs.ts on the typed path, with the two verbs it was give
 
 test("an envelope can only narrow: serves, approve, budgets and the allowlist have no inbound writer", () => {
   const src = (f: string) => fs.readFileSync(join(import.meta.dir, f), "utf8");
-  // The poller reads config and never writes peers.json, the allowlist or the kill file.
   expect(src("poller.ts")).not.toMatch(/writeFileSync|renameSync|replaceJson|\.suites`|killed`\),? *["']|openSync\([^)]*(peers|suites|killed)/);
   for (const f of ["gate.ts", "envelope.ts", "resolve.ts", "jobstate.ts", "jobs.ts"]) expect(src(f)).not.toMatch(/from "\.\/setup"/);
 });

@@ -574,7 +574,6 @@ assert(corpora.includes("peer-desk"), "corpus peer-desk must be declared");
 for (const c of ["salus", "luna-personal", "handover-state", "jira-mirror"])
   assert(evaluate(c, "peer-telegram", "peer-message").effective === "deny", `${c} x peer-telegram x peer-message must deny`);
 
-// The typed envelopes corpus: one allow cell to peer-telegram, for the one purpose.
 assert(corpora.includes("peer-jobs"), "corpus peer-jobs must be declared");
 assert(evaluate("peer-jobs", "peer-telegram", "peer-message").effective === "allow", "peer-jobs x peer-telegram x peer-message must allow");
 for (const u of purposes.filter(x => x !== "peer-message"))

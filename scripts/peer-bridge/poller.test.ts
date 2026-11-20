@@ -449,7 +449,6 @@ test("the poller process exits 78 on a loose peers.json, a token equal to operat
   expect(runPoller(processEnv({ peerName: "Goomal!" })).status).toBe(78);
 });
 
-// ---- the typed path in the poller (Task 3) ----
 
 async function envSetup(over: { logs?: string[] } = {}) {
   const st = TE.mkStation("goomal");
@@ -541,7 +540,6 @@ test("a flood of bad envelopes counts toward the peer's rate like text", async (
   expect(rate.length).toBe(2);
 });
 
-// ---- jobs, deadlines and the send path (Task 5) ----
 
 const WIRE = "0123456789abcdef";
 const seedJob = (e: { peerDir: string }, job: JobRecord) => new Chain().append(join(e.peerDir, "jobs.jsonl"), job);
@@ -605,22 +603,21 @@ test("the tick fires each overdue deadline once, oldest first, and signs and sen
   expect(jobs.get(1)).toMatchObject({ state: "LOST", ended_at: nowS(e), by: null });
   expect(jobs.get(2)).toMatchObject({ state: "LOST" });
   expect(chainOf(e, "jobs.jsonl").filter(r => r.jobNo === 2 && r.state === "LOST")).toHaveLength(1);
-  // Oldest deadline first: job 2 was written before job 1.
   expect(chainOf(e, "jobs.jsonl").filter(r => r.state === "LOST").map(r => r.jobNo)).toEqual([2, 1]);
   const envs = sentEnvelopes(e);
-  expect(envs).toHaveLength(1);                       // only the SENT job sends a cancel
+  expect(envs).toHaveLength(1);
   const [addr, line2, line3, line4] = envs[0];
   expect(addr).toBe("/peer@goomal_bot");
   const parsed = parseEnvelopeLine(line3);
   expect(parsed.ok && parsed.env).toMatchObject({ kind: "cancel", job: WIRE, from: "yotam", to: "goomal", chat: String(CHAT) });
   expect(line2).toBe(`#env:v1 k=${e.ours.id} id=${(parsed as any).env.msg}`);
   expect(verify(line2, line3, line4.slice(4), e.ours.pub)).toBe(true);
-  expect(chainOf(e, "threads.jsonl")).toEqual([]);   // an envelope opens no text thread
+  expect(chainOf(e, "threads.jsonl")).toEqual([]);
 });
 
 test("restart order: the Telegram backlog lands before the first deadline tick, so no cancel is sent", async () => {
   const e = await envSetup();
-  await seedJob(e, outJobAt(e, { by: nowS(e) - 100 }));        // overdue while we were down
+  await seedJob(e, outJobAt(e, { by: nowS(e) - 100 }));
   const backlog = [resMsg(e, e.st, { state: "accepted" })];
   const tg: TgLike = { ...e.tg, getUpdates: async () => backlog.splice(0) };
   const p = await Poller.create({ ...e.deps, tg, log: l => e.logs.push(l) });
@@ -655,7 +652,7 @@ test("an envelope the envelope policy refuses is never queued or sent, and its r
   expect(out.filter(r => r.kind === "intent")).toEqual([]);
   expect(out).toMatchObject([{ kind: "refused", reason: "schema" }]);
   expect(JSON.stringify(out)).not.toContain(WIRE);
-  expect(latestJobs(e).get(1)).toMatchObject({ state: "LOST" });   // the job still ends; only the cancel was refused
+  expect(latestJobs(e).get(1)).toMatchObject({ state: "LOST" });
 });
 
 test("a queued envelope that the policy now refuses is dropped on restart, not sent", async () => {
@@ -664,7 +661,7 @@ test("a queued envelope that the policy now refuses is dropped on restart, not s
   const tg: TgLike = { ...e.tg, sendMessage: async () => { throw new TelegramError("down", 500); } };
   const down = await Poller.create({ ...e.deps, tg, log: l => e.logs.push(l) });
   await down.recover();
-  await down.tick();                                   // the cancel is queued (intent) but Telegram is down
+  await down.tick();
   expect(chainOf(e, "outbox.jsonl").filter(r => r.kind === "intent")).toHaveLength(1);
   const again = await Poller.create({ ...e.deps, checkEnvelope: async () => ({ ok: false, rule: "signature" }), log: l => e.logs.push(l) });
   await again.recover();
@@ -706,7 +703,6 @@ test("jobs.jsonl reloads at start: the latest snapshot per job wins, and job num
   expect(p.nextJobNo()).toBe(8);
 });
 
-// ---- spool events (Task 5A) ----
 
 const jobEvent = (e: { peerDir: string }, job: number, event: Record<string, unknown>) => submitSpool(e.peerDir, { type: "job-event", job, event } as any);
 
@@ -719,7 +715,6 @@ test("a vm-start event writes a RUNNING record whose backstop is min(maxJobMinut
   await p.recover();
   jobEvent(e, 2, { type: "vm-start" });
   await p.drainSpool();
-  // 120 minutes a day, 30 used by job 3: 90 left, less than the 130-minute job cap.
   expect(latestJobs(e).get(2)).toMatchObject({ state: "RUNNING", backstop_s: 90 * 60, running_at: nowS(e), by: nowS(e) + 90 * 60 + 1200 });
   const env = sentEnvelopes(e).map(l => (parseEnvelopeLine(l[2]) as any).env);
   expect(env.map((x: any) => [x.kind, x.state, x.timeout_s])).toEqual([["res", "running", 90 * 60 + 1200]]);
@@ -740,7 +735,7 @@ test("a day with under the allowance left refuses the start with budget", async 
   const e = await envSetup();
   (e.cfg.peers.goomal as any).budgets = { jobsPerDay: 10, vmMinutesPerDay: 120, queueMax: 3, maxJobMinutes: 130 };
   await seedJob(e, inJobAt(e, { jobNo: 2, state: "APPROVED" }));
-  await seedJob(e, inJobAt(e, { jobNo: 3, state: "DONE", by: null, peer_job: "a".repeat(16), resolved_at: nowS(e) - 100, running_at: nowS(e) - 110 * 60, ended_at: nowS(e) - 100 }));   // 109 of 120 minutes used: 11 left
+  await seedJob(e, inJobAt(e, { jobNo: 3, state: "DONE", by: null, peer_job: "a".repeat(16), resolved_at: nowS(e) - 100, running_at: nowS(e) - 110 * 60, ended_at: nowS(e) - 100 }));
   const p = await Poller.create({ ...e.deps, log: l => e.logs.push(l) });
   await p.recover();
   jobEvent(e, 2, { type: "vm-start" });
@@ -755,7 +750,7 @@ test("an unknown spool event type is logged and dropped; an event for no such jo
   await p.recover();
   const bad = jobEvent(e, 2, { type: "frobnicate" });
   const none = jobEvent(e, 99, { type: "approve" });
-  const mine = jobEvent(e, 1, { type: "approve" });   // job 1 is one we sent: no such event applies
+  const mine = jobEvent(e, 1, { type: "approve" });
   e.logs.length = 0;
   await p.drainSpool();
   expect(readResult(e, bad)).toEqual({ ok: false, rule: "malformed" });

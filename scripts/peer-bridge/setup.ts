@@ -236,8 +236,6 @@ export async function remove(peer: string, deps: Deps): Promise<void> {
   deps.out(`removed ${peer}; restart the poller to drop it`);
 }
 
-// A station name is what `from` and `to` carry. egress.ts refuses any text that
-// holds this host's name, so a name it would refuse would block every envelope.
 function checkStationName(name: string, deps: Deps): void {
   if (!STATION_NAME_RE.test(name)) refuse("a station name must match ^[a-z0-9][a-z0-9-]{0,31}$");
   if (badHost(name, deps.hostname ?? osHostname())) refuse(`the station name ${name} is refused by egress (it names this host or a private address)`);
@@ -267,8 +265,6 @@ export async function keygenCmd(mode: "new" | "rotate" | "activate", deps: Deps)
   }
 }
 
-// The public key may travel over the group; the fingerprint must not, so the
-// operator types the one they were told out of band and nothing is written unless it matches.
 export async function trust(peer: string, name: string, pub: string, deps: Deps): Promise<void> {
   guard(deps);
   if (!PEER_NAME_RE.test(peer)) refuse("peer name must match ^[a-z0-9][a-z0-9-]{0,31}$");
@@ -333,8 +329,6 @@ function currentAllowlist(peer: string): AllowEntry[] {
 }
 const writeAllowlist = (peer: string, entries: AllowEntry[]) => replaceText(suitesFile(peer), entries.map(e => `${e.alias} ${e.path}\n`).join(""));
 
-// The server's suite allowlist (C/<peer>.suites). Only these two commands write it,
-// at a terminal, so a git pull or a peer message can never widen it.
 export async function allowSuite(peer: string, alias: string, path: string, deps: Deps): Promise<void> {
   guard(deps);
   knownPeer(peer);
@@ -358,8 +352,6 @@ export async function denySuite(peer: string, alias: string, deps: Deps): Promis
   deps.out(`${alias} is no longer allowed for ${peer}`);
 }
 
-// The kill switch is a file: while C/<peer>.killed exists the poller drops every
-// envelope from the peer unanswered and the runner cancels its running job.
 export async function kill(peer: string, deps: Deps): Promise<void> {
   guard(deps);
   knownPeer(peer);

@@ -1,5 +1,3 @@
-// Shared fixtures for the typed path's tests: two stations with real Ed25519
-// keys, a config that trusts the peer's key, and signed four-line messages.
 import fs from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,7 +8,7 @@ import { keygen, sign, STATION_KEY, type KeyInfo } from "./sign";
 export const BOT_US = "ours_bot", BOT_THEM = "goomal_bot";
 export const OUR_BOT_ID = "111000111", PEER_BOT_ID = "555000111";
 export const ENV_CHAT = -1001234567890;
-export const NOW_S = 1_730_973_600;   // 2024-11-07 10:00 UTC, far from local midnight in the usual zones
+export const NOW_S = 1_730_973_600;
 export const HEX16 = "0123456789abcdef", SHA40 = "a".repeat(40), H64 = "b".repeat(64);
 
 export type Station = { name: string; dir: string; keyPath: string; key: KeyInfo };
@@ -24,7 +22,6 @@ export const dropStation = (s: Station) => fs.rmSync(s.dir, { recursive: true, f
 
 export const iso = (s: number) => new Date(s * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
 
-// A config in which "goomal" is the peer, with the given trusted keys.
 export function envConfig(keys: { id: string; pub: string; addedAt?: string }[], over: Record<string, unknown> = {}): Pick<Config, "peers" | "maxTextChars" | "self"> {
   return {
     maxTextChars: 4000,
@@ -43,7 +40,6 @@ export function envConfig(keys: { id: string; pub: string; addedAt?: string }[],
   };
 }
 
-// An envelope from the peer ("goomal") to us ("yotam").
 export const fromPeer = (kind: Kind, body: Record<string, unknown>, now = NOW_S): Envelope =>
   buildEnvelope(kind, body, { from: "goomal", to: "yotam", chat: ENV_CHAT, now });
 
@@ -58,7 +54,6 @@ export const KIND_SAMPLES: [string, Kind, Record<string, unknown>][] = [
   ["halt", "halt", {}],
 ];
 
-// The four lines of a signed message. `kid` overrides k, `to` the address line.
 export function envLines(env: Envelope, st: Station, opts: { kid?: string; to?: string } = {}): string[] {
   const line2 = `#env:v1 k=${opts.kid ?? st.key.id} id=${env.msg}`;
   const line3 = encodeCanonical(env);

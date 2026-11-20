@@ -67,7 +67,6 @@ test("the key file is 0600 and a second keygen refuses (O_EXCL)", () => {
   const path = join(dir, STATION_KEY);
   expect(fs.statSync(path).mode & 0o777).toBe(0o600);
   expect(() => keygen(dir)).toThrow();
-  // The refused call left the first key untouched.
   expect(currentSigningKey(dir).id).toBe(keyId(publicKeyOf(path)));
 });
 
@@ -115,8 +114,8 @@ test("a key in theirs.keys ages out 30 days after its successor was added", () =
   const old = { id: "00000001", pub: "a", addedAt: "2026-11-01T00:00:00Z" };
   const fresh = { id: "00000002", pub: "b", addedAt: "2026-11-10T00:00:00Z" };
   const ids = (ks: typeof old[], now: number) => liveKeys(ks, now).map(k => k.id);
-  expect(ids([old], t0 + 400 * day)).toEqual(["00000001"]);                 // no successor: never ages out
-  expect(ids([old, fresh], t0 + 20 * day)).toEqual(["00000001", "00000002"]); // 10 days after the successor
+  expect(ids([old], t0 + 400 * day)).toEqual(["00000001"]);
+  expect(ids([old, fresh], t0 + 20 * day)).toEqual(["00000001", "00000002"]);
   expect(ids([old, fresh], t0 + 9 * day + 30 * day - 1)).toEqual(["00000001", "00000002"]);
   expect(ids([old, fresh], t0 + 9 * day + 30 * day)).toEqual(["00000002"]);
   expect(ids([fresh, old], t0 + 100 * day)).toEqual(["00000002"]);

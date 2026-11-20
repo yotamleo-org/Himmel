@@ -170,13 +170,11 @@ test("a refused send chains only reason, shape, sha256, length and ts", async ()
   expect(readdirSync(dir)).toEqual(["outbox.jsonl"]);
 });
 
-// ---- envelopes (Task 7): policy for a signed four-line message ----
 
 const ourStation = TE.mkStation("yotam");
 const otherStation = TE.mkStation("someone");
 afterAll(() => { TE.dropStation(ourStation); TE.dropStation(otherStation); });
 
-// From us ("yotam") to the peer ("goomal"), signed with our key and addressed to the peer's bot.
 const ours = (kind: Kind, body: Record<string, unknown>, over: Record<string, unknown> = {}) =>
   ({ ...buildEnvelope(kind, body, { from: "yotam", to: "goomal", chat: -1001234567890, now: TE.NOW_S }), ...over }) as Envelope;
 const outLines = (env: Envelope, st = ourStation, to = "goomal_bot"): string[] => TE.envLines(env, st, { to });
@@ -206,12 +204,12 @@ test("a field the schema refuses is refused, even when the line is validly signe
 test("line 4 passes only as our signature over lines 2 and 3: another key, a token-shaped line, a bad shape and a changed byte all fail", async () => {
   const env = ours("halt", {});
   const good = outLines(env);
-  await envRefused(outLines(env, otherStation).map((l, i) => (i === 1 ? good[1] : l)), "signature");           // another key signed it
-  await envRefused([good[0], good[1], good[2], "sig=" + "T".repeat(86)], "signature");                         // fits a bot token's secret part
+  await envRefused(outLines(env, otherStation).map((l, i) => (i === 1 ? good[1] : l)), "signature");
+  await envRefused([good[0], good[1], good[2], "sig=" + "T".repeat(86)], "signature");
   await envRefused([good[0], good[1], good[2], "sig=" + "1234567890".repeat(8) + "abcdef"], "signature");
   await envRefused([good[0], good[1], good[2], good[3].slice(0, -1)], "signature");
   await envRefused([good[0], good[1], good[2], "ghp_" + "a1B2c3D4e5F6g7H8i9J0k1L2"], "signature");
-  await envRefused([good[0], good[1], good[2] + " ", good[3]], "signature");                                   // a byte changed after signing
+  await envRefused([good[0], good[1], good[2] + " ", good[3]], "signature");
 });
 
 test("line 3 meets every slice A content rule", async () => {
@@ -258,5 +256,5 @@ test("the matrix row decides: peer-jobs to peer-telegram is allowed, and no rule
   const empty = { default: "deny", rules: [] };
   await envRefused(outLines(ours("halt", {})), "egress-matrix", { matrix: empty });
   const textOnly = { default: "deny", rules: [{ corpus: "peer-desk", provider: "peer-telegram", purpose: "peer-message", verdict: "allow" }] };
-  await envRefused(outLines(ours("halt", {})), "egress-matrix", { matrix: textOnly });   // the desk's row does not cover envelopes
+  await envRefused(outLines(ours("halt", {})), "egress-matrix", { matrix: textOnly });
 });

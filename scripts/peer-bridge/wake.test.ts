@@ -97,7 +97,7 @@ test("the alert counts against the same daily budget as a thread wake, and the n
   const { w, c, lines } = setup(2);
   await w.wake({ peer: "goomal", root: 1, label: "new question" });
   await w.alert("goomal", 3);
-  await w.alert("goomal", 3);                    // over budget: one notice, then silence
+  await w.alert("goomal", 3);
   await w.alert("goomal", 3);
   expect(lines().map(l => l.text).slice(2)).toEqual(["peer goomal · wake budget reached (2 today) · later wakes stay silent until tomorrow"]);
   c.t += 24 * 3_600_000;

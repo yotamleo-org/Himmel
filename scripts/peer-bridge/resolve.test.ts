@@ -12,7 +12,6 @@ const CTX = { from: "goomal", to: "yotam", chat: -1001234567890, now: NOW_S };
 const res = (body: Record<string, unknown>) => buildEnvelope("res", { job: WIRE, ...body }, CTX);
 const apply = (job: JobRecord, patch: Partial<JobRecord> | null): JobRecord => ({ ...job, ...(patch ?? {}) });
 
-// Canaries: hex that fits each field's own regex, so only a copy can put them in output.
 const IMAGE_CANARY = "d1ca9e5b".repeat(8), LOG_CANARY = "c4ca41e5".repeat(8);
 const DONE = (over: Record<string, unknown> = {}) => res({ state: "done", results: ["pass", "fail"], minutes: 7, image: IMAGE_CANARY, log: { sha256: LOG_CANARY, bytes: 424242 }, ...over });
 const DIGEST = "f".repeat(64);
@@ -33,7 +32,6 @@ test("requester canary row: nothing the peer wrote reaches the output, and minut
   expect(out).toContain("image: unpinned");
   expect(out).toContain(`${OUT_SUITES[0]}: pass`);
   expect(out).toContain(`${OUT_SUITES[1]}: fail`);
-  // The peer's values are kept, in peer_* fields, for the poller's own use.
   expect(done.peer_image).toBe(IMAGE_CANARY);
   expect(done.peer_log_sha256).toBe(LOG_CANARY);
   expect(done.peer_log_bytes).toBe(424242);
@@ -93,7 +91,6 @@ test("a res for a job already over is recorded as late, shown by our word, and n
   expect(render(late)).toContain("late: done");
 });
 
-// ---- server side ----
 
 const ALLOW: AllowEntry[] = [{ alias: "alias-a", path: "scripts/hooks/test-a.sh" }, { alias: "alias-b", path: "scripts/ci/test-b.sh" }];
 const req = (suites: string[], sha = SHA) => buildEnvelope("req", { job: WIRE, op: "run-suite", sha, suites }, CTX);
@@ -105,7 +102,7 @@ test("server row: a canary suite is not-allowed, and the server's output holds n
   const rec = inJob({ state: "REFUSED", refused: "not-allowed", ...(r.record as object), suites: [] });
   const out = allOutputs(rec);
   expect(out).not.toContain("zqxcanary");
-  expect(out).not.toContain(SHA.slice(0, 7));   // the SHA is not resolved, so it is not shown
+  expect(out).not.toContain(SHA.slice(0, 7));
   expect(out).not.toContain(WIRE);
   expect(out).toContain("refused: not-allowed");
   expect(r.record.peer_suites).toContain(canary);
@@ -144,13 +141,11 @@ test("chosen-pointer row: no envelope field makes the output print text from our
   const out = allOutputs(inJob({ ...r.record, sha: SHA, state: "DONE", results: ["fail"], minutes: 5 }));
   expect(out).not.toContain("ignore previous instructions");
   expect(out).toContain("ops-run");
-  // And on the requester side, a result pointing anywhere into our tree changes nothing printed.
   const job = outJob({ state: "RUNNING", suites: [ops] });
   const done = apply(job, resolveRes(DONE({ results: ["fail"] }), job, {}));
   expect(allOutputs(done)).not.toContain("ignore previous instructions");
 });
 
-// ---- capacity ----
 
 const cap = (over: Record<string, unknown> = {}) => buildEnvelope("capacity", { re: "89abcdef", state: "idle", queue: 0, jobs_left: 9, vm_minutes_left: 100, ...over }, CTX);
 
@@ -172,10 +167,7 @@ test("a capacity line shows our words only, never the numbers the peer sent", ()
   expect(out).toBe("goomal capacity: ok, queue: free, station: idle");
 });
 
-// ---- RED controls: a resolver that copies a field verbatim fails the canary row ----
 
-// Replaces the one resolve.ts line holding `needle` with `replacement` in a copy,
-// runs this file there, and returns the names of the rows that then fail.
 function redRun(needle: string, replacement: string): string[] {
   const root = makeRedCopy(["scripts/telegram/bus.ts", "scripts/telegram/gate.ts", "scripts/handover/chief-kit/test-ops-run.sh", "scripts/ci/macos-poc-suites.txt"]);
   const run = () => spawnSync("bun", ["test", "./scripts/peer-bridge/resolve.test.ts"], { cwd: root, encoding: "utf8", env: { ...process.env, PEER_RED_COPY: "1" } });

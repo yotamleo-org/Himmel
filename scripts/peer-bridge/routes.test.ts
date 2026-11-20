@@ -1,7 +1,3 @@
-// Where peer-origin data may travel. A peer result is attested, never gating: no merge,
-// check or Jira script may name or import the peer bridge, and none of the index roots
-// may hold its state directory. Each check below runs once over the real sources and
-// once over a copy with the forbidden reference planted, which must fail.
 import { expect, test } from "bun:test";
 import fs from "node:fs";
 import { tmpdir } from "node:os";
@@ -20,7 +16,6 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-// The scripts that decide whether something merges, passes or moves in Jira.
 const GATE_FILES = ["scripts/handover/merge-on-green.sh", "scripts/check-ci.sh", "scripts/lib/check-ci-watch.sh"];
 const gateFiles = (root: string): string[] => [
   ...GATE_FILES.map(f => join(root, f)),
@@ -28,7 +23,6 @@ const gateFiles = (root: string): string[] => [
   ...fs.readdirSync(join(root, "scripts/ci")).filter(n => n.endsWith(".sh")).map(n => join(root, "scripts/ci", n)),
 ];
 
-// A line that names the bridge's directory, however it is spelled: a path, an import or a bun command.
 const NAMES_BRIDGE = /scripts\/peer-bridge|\.\.?\/peer-bridge|peer-bridge\/|\.himmel\/peer-bridge/;
 const offenders = (files: string[]): string[] => files.filter(f => NAMES_BRIDGE.test(fs.readFileSync(f, "utf8")));
 
@@ -48,15 +42,12 @@ test("RED control: the same check fails over a merge script with a peer-bridge r
     expect(offenders(gateFiles(root))).toEqual([]);
     fs.appendFileSync(join(root, "scripts/handover/merge-on-green.sh"), "\nbun scripts/peer-bridge/jobs.ts show J1\n");
     expect(offenders(gateFiles(root)).map(f => relative(root, f))).toEqual(["scripts/handover/merge-on-green.sh"]);
-    // The Jira side and the ci side are covered the same way.
     fs.writeFileSync(join(root, "scripts/jira/src/x.ts"), 'import "../../peer-bridge/resolve";\n');
     fs.writeFileSync(join(root, "scripts/ci/x.sh"), "cat ~/.himmel/peer-bridge/goomal/jobs.jsonl\n");
     expect(offenders(gateFiles(root)).map(f => relative(root, f)).sort()).toEqual(["scripts/ci/x.sh", "scripts/handover/merge-on-green.sh", "scripts/jira/src/x.ts"]);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-// The index roots a repo-held config names. A peer's files live in the state dir under
-// ~/.himmel/peer-bridge, which none of them may contain.
 const INDEX_CONFIGS = ["scripts/qmd/qmd-collection-corpus.json", "scripts/luna/luna-index-hygiene.sh", ".graphifyignore"];
 
 test("no qmd, graphify or luna-hygiene config root contains the peer bridge's state directory", () => {
@@ -64,7 +55,6 @@ test("no qmd, graphify or luna-hygiene config root contains the peer bridge's st
     const text = fs.readFileSync(join(REPO, f), "utf8");
     expect([f, /peer-bridge/.test(text)]).toEqual([f, false]);
   }
-  // The state directory is the fixed ~/.himmel/peer-bridge, outside the checkout and any vault root.
   expect(stateDir().endsWith(join(".himmel", "peer-bridge"))).toBe(true);
   expect(relative(REPO, stateDir()).startsWith("..")).toBe(true);
 });

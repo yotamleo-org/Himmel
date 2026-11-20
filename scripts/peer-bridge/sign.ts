@@ -1,7 +1,3 @@
-// Ed25519 over the exact bytes of an envelope's lines 2 and 3, and the station
-// key files. The private key never leaves C/ (the config dir): it is created with
-// O_EXCL at mode 0600, read only here, and never printed. Rotation keeps the old
-// key signing until `activate`, so there is no gap.
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign as edSign, verify as edVerify, type KeyObject } from "node:crypto";
 import fs, { constants } from "node:fs";
 import { join } from "node:path";
@@ -40,8 +36,6 @@ const digest = (pubB64: string): string => createHash("sha256").update(Buffer.fr
 export const keyId = (pubB64: string): string => digest(pubB64).slice(0, 8);
 export const fingerprint = (pubB64: string): string => digest(pubB64).slice(0, 20).replace(/(.{4})(?=.)/g, "$1 ");
 
-// base64url without padding, and only the canonical spelling of it: a signature
-// has one text form, so a re-spelled one is not a second valid line 4.
 function sigBytes(sig: string): Buffer | null {
   if (!/^[A-Za-z0-9_-]{86}$/.test(sig)) return null;
   const b = Buffer.from(sig, "base64url");
@@ -62,12 +56,10 @@ export function verify(line2: string, line3: string, sig: string, pubB64: string
   } catch { return false; }
 }
 
-// ---- the station key files ----
 
 export type KeyInfo = { id: string; pub: string; fingerprint: string };
 const infoOf = (path: string): KeyInfo => { const pub = publicKeyOf(path); return { id: keyId(pub), pub, fingerprint: fingerprint(pub) }; };
 
-// O_CREAT|O_EXCL: an existing key is never overwritten.
 function createKeyFile(path: string): void {
   const { privateKey } = generateKeyPairSync("ed25519");
   const fd = fs.openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
@@ -80,7 +72,6 @@ export function keygen(dir: string = configDir()): KeyInfo {
   return infoOf(path);
 }
 
-// A next key, printed for the peer to trust. We keep signing with the current one.
 export function keygenRotate(dir: string = configDir()): KeyInfo {
   if (!fs.existsSync(join(dir, STATION_KEY))) throw new Error("no station key yet; run keygen first");
   const path = join(dir, NEXT_KEY);
@@ -88,7 +79,6 @@ export function keygenRotate(dir: string = configDir()): KeyInfo {
   return infoOf(path);
 }
 
-// The next key becomes the current one; the old key file is gone.
 export function keygenActivate(dir: string = configDir()): KeyInfo {
   const next = join(dir, NEXT_KEY);
   if (!fs.existsSync(next)) throw new Error("no next key; run keygen --rotate first");
@@ -102,8 +92,6 @@ export function currentSigningKey(dir: string = configDir()): { id: string; path
   try { return { id: keyId(publicKeyOf(path)), path }; } catch { throw new Error("no usable station key; run setup.ts keygen"); }
 }
 
-// The keys a peer may sign with now: a key ages out 30 days after its successor
-// was added, so a rotation never needs a flag day.
 export function liveKeys(keys: TheirKey[], nowS: number): TheirKey[] {
   const at = (k: TheirKey) => Date.parse(k.addedAt) / 1000;
   return keys.filter(k => !keys.some(s => s !== k && at(s) > at(k) && nowS >= at(s) + KEY_OVERLAP_S));
