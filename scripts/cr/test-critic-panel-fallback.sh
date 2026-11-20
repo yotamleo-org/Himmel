@@ -959,6 +959,7 @@ if [ "$slug" = codex ]; then
         timeout) exit 124 ;;
         missing) echo "critic-first-pass.sh: line 1: codex: command not found" >&2; exit 127 ;;
         auth) echo "Error: 401 Unauthorized: not logged in, run codex login" >&2; exit 1 ;;
+        ratelimit) echo "Error: HTTP 429 Too Many Requests" >&2; exit 1 ;;
     esac
 fi
 printf '# %s First-Pass Review\n\n## Critical Issues (0 found)\n\n## Important Issues (0 found)\n\n## Suggestions (0 found)\n' "$slug"
@@ -1004,10 +1005,15 @@ check "24c: parallel: exactly one alert" "$(n_lines "$tmp/alerts24c")" "1"
 floor_run d CRITICS_JSON="$JSON_FLOOR" CX_MODE=timeout
 check "24d: codex timeout: no Claude floor" "$(grep -c '^claude ' "$tmp/cap24d")" "0"
 check "24d: codex timeout: no alert" "$(n_lines "$tmp/alerts24d")" "0"
-printf '%s\n' '{"claude_floor":{"slug":"claude","model":"claude-opus-5-5","provider":"claude-subscription","effort":"medium","when":"codex-exhausted"},"panel":[{"slug":"codex","model":"gpt-6.1-sol","provider":"openai-codex","route_provider":"openai-codex","tier":"paid","mode":"hard","required":true}]}' > "$tmp/critics-codex-only.json"
-floor_run n CRITICS_JSON="$tmp/critics-codex-only.json" CX_MODE=timeout
-check "24n: codex the only member, timed out: no Claude floor" "$(grep -c '^claude ' "$tmp/cap24n")" "0"
-check "24n: codex the only member, timed out: no alert" "$(n_lines "$tmp/alerts24n")" "0"
+floor_run o CRITICS_JSON="$JSON_FLOOR" CX_MODE=ratelimit
+check_contains "24o: codex hit a 429" "$(cat "$tmp/err24o")" "reason=rate-limit"
+check "24o: codex rate-limited: no Claude floor" "$(grep -c '^claude ' "$tmp/cap24o")" "0"
+check "24o: codex rate-limited: no alert" "$(n_lines "$tmp/alerts24o")" "0"
+
+floor_run p CRITICS_JSON="$JSON_FLOOR" CX_MODE=ok CRITIC_PANEL_TOTAL_TIMEOUT_SECS=1 CRITIC_PANEL_STARTED_AT=1000
+check_contains "24p: the panel deadline skipped codex" "$(cat "$tmp/err24p")" "codex unavailable (panel-deadline)"
+check "24p: panel deadline: no Claude floor" "$(grep -c '^claude ' "$tmp/cap24p")" "0"
+check "24p: panel deadline: no alert" "$(n_lines "$tmp/alerts24p")" "0"
 
 floor_run j CRITICS_JSON="$JSON_FLOOR" CX_MODE=missing
 check "24j: codex not installed: the Claude floor ran once" "$(grep -c '^claude provider=claude-subscription$' "$tmp/cap24j")" "1"

@@ -28,11 +28,17 @@ The shipped file has no standing Claude critic. The order is:
 
 1. codex reviews every change.
 2. CodeRabbit reviews as best effort.
-3. A Claude critic runs only when codex has run out. This is the `claude_floor`
-   field of `critics.json`, which is not a panel row. When a codex run fails
-   on a usage limit (reason `quota-5h` or `quota-long`; a timeout or a rate
-   limit does not count), the panel runs one Claude critic on your Claude
-   subscription and sends a loud alert to Telegram and to the chief every time.
+3. A Claude critic runs only when no other reviewer can. This is the
+   `claude_floor` field of `critics.json`, which is not a panel row. The panel
+   runs one Claude critic on your Claude subscription, and sends a loud alert
+   to Telegram and to the chief every time, when either:
+   - a codex run fails on a usage limit (reason `quota-5h` or `quota-long`), or
+   - no non-Claude critic answered and one failed for a lasting reason: auth,
+     not installed or another error exit, or the panel has no non-Claude
+     member at all.
+
+   A timeout, a rate limit or the total panel deadline never runs it: the next
+   round retries.
    It is the same model family as the author, so it never counts as
    cross-model evidence, and the merge still holds on the `hard` codex row.
 4. Claude through the API lane runs only in the eval work, never as a default

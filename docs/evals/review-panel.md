@@ -40,7 +40,8 @@ model re-pin of the same slug show up as a new critic (`codex:gpt-6-sol`,
 The `claude` rows are history. Since 2026-11-20 the himmel default panel has no
 standing Claude critic (operator decisions 1084 and 1085). The order is codex
 first, then CodeRabbit as best effort. A Claude critic runs only when codex has
-run out, and each such run sends a loud alert to Telegram and to the chief. Claude
+run out, or when no non-Claude critic answered and one failed for a lasting
+reason such as auth or not installed (never a timeout or rate limit). Each such run sends a loud alert to Telegram and to the chief. Claude
 through the API runs only inside the eval work. An adopter can still add a Claude
 critic in `critics.local.json`; [Review by a second model](../guide/second-model-review.md)
 has the details.
