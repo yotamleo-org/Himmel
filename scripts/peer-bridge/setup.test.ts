@@ -186,6 +186,32 @@ t("add refuses a peer that exists, and a second peer keeps the key and the opera
   expect(fs.readFileSync(join(configDir(), "hmac.key")).equals(key)).toBe(true);
   expect(Object.keys(readPeersFile(peersFile()).peers).sort()).toEqual(["goomal", "other"]);
 });
+t("add with --operator-bot-id asks nothing", async () => {
+  const asked: string[] = [];
+  const m = mk({ ask: async q => { asked.push(q); return "yes"; } });
+  await add("goomal", { peerBotId: PEER_ID, peerUsername: "goomal_bot", operatorBotId: "222" }, m.deps);
+  expect(asked).toEqual([]);
+  expect(JSON.parse(peersBytes().toString()).operatorBotId).toBe("222");
+});
+t("add refuses a non-digit --operator-bot-id and writes nothing", async () => {
+  const msg = await refused(add("goomal", { peerBotId: PEER_ID, peerUsername: "goomal_bot", operatorBotId: "12a" }, mk().deps));
+  expect(msg).toMatch(/--operator-bot-id must be/);
+  expect(fs.existsSync(peersFile())).toBe(false);
+});
+t("add without the flag still prompts", async () => {
+  const asked: string[] = [];
+  const m = mk({ ask: async q => { asked.push(q); return "333"; } });
+  await add("goomal", { peerBotId: PEER_ID, peerUsername: "goomal_bot" }, m.deps);
+  expect(asked).toEqual(["The operator bot's numeric id: "]);
+  expect(JSON.parse(peersBytes().toString()).operatorBotId).toBe("333");
+});
+t("add refuses an --operator-bot-id that differs from peers.json", async () => {
+  await add("goomal", { peerBotId: PEER_ID, peerUsername: "goomal_bot", operatorBotId: "222" }, mk().deps);
+  const before = peersBytes();
+  const msg = await refused(add("other", { peerBotId: "777000222", peerUsername: "other_bot", operatorBotId: "999" }, mk().deps));
+  expect(msg).toMatch(/differs from the operator bot id already in peers.json/);
+  expect(peersBytes().equals(before)).toBe(true);
+});
 
 t("confirm accepts two admins with only can_manage_chat, writes the chat id and queues a confirm", async () => {
   await addGoomal();
