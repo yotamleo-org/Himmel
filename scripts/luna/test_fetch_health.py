@@ -404,6 +404,46 @@ class FetchHealthTests(unittest.TestCase):
             bad = fetch_health.probe_harvest_article_fetch(env, today)
             self.assertIn("2 thin article clip(s)", bad.reason)
 
+    def test_harvest_article_fetch_reads_paths_relative_to_the_vault(self):
+        today = datetime(2026, 11, 20, tzinfo=timezone.utc)
+        for outer in ("_evidence", "_done", "_synthesis", "_rejected", "_media"):
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp) / outer / "vault"
+                (root / "Clippings").mkdir(parents=True)
+                (root / "Clippings" / "stale.md").write_text(
+                    "---\ntype: article\nsource: https://wiki.internal/inbox\nharvest_status: partial\n"
+                    "harvest_flag: thin-body\nharvest_defer_last: 2026-11-01\n---\n# t\n", encoding="utf-8")
+                env = {"HOME": tmp, "OBSIDIAN_VAULT_PATH": str(root)}
+                result = fetch_health.probe_harvest_article_fetch(env, today)
+                self.assertEqual(result.status, "transport-fail", f"vault under a directory named {outer}: {result.reason}")
+
+    def test_harvest_article_fetch_failure_names_the_unreachable_and_fails_toward_alarm_without_the_tool(self):
+        def clip(root, name, source):
+            path = root / "Clippings" / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                f"---\ntype: article\nsource: {source}\nharvest_status: partial\nharvest_flag: thin-body\n"
+                "harvest_defer_last: 2026-11-01\n---\n# t\n", encoding="utf-8")
+
+        today = datetime(2026, 11, 20, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {"HOME": tmp, "OBSIDIAN_VAULT_PATH": str(root)}
+            clip(root, "_evidence/private.md", "https://wiki.internal/guide")
+            clip(root, "_evidence/stuck.md", "https://example.com/stuck")
+            bad = fetch_health.probe_harvest_article_fetch(env, today)
+            self.assertEqual(bad.status, "transport-fail")
+            self.assertIn("1 thin article clip(s)", bad.reason)
+            self.assertIn("1 partial clip(s) in _evidence/ cannot be retried", bad.reason)
+            with patch.object(fetch_health, "HARVEST_TOOL", root / "missing-tool.py"):
+                fetch_health._harvest_tool.cache_clear()
+                try:
+                    alarm = fetch_health.probe_harvest_article_fetch(env, today)
+                finally:
+                    fetch_health._harvest_tool.cache_clear()
+            self.assertEqual(alarm.status, "transport-fail")
+            self.assertIn("2 thin article clip(s)", alarm.reason)
+
     def test_redirect_handler_strips_auth_off_scope(self):
         handler = fetch_health.AuthScopedRedirectHandler({"www.reddit.com"})
         request = urllib.request.Request("https://www.reddit.com/a", headers={"Cookie": "secret", "Authorization": "Bearer secret"})

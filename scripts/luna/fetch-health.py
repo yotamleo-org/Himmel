@@ -502,7 +502,8 @@ def probe_harvest_article_fetch(env: dict[str, str], today: datetime | None = No
     stuck: list[tuple[str, str]] = []
     waiting = unreachable = 0
     for path in sorted(clippings.rglob("*.md")):
-        if any(part in ("_done", "_synthesis", "_rejected", "_media") for part in path.parts):
+        parts = path.relative_to(clippings).parts
+        if any(part in ("_done", "_synthesis", "_rejected", "_media") for part in parts):
             continue
         fm = _clip_frontmatter(path)
         if fm.get("harvest_status") != "partial" or fm.get("harvest_flag") != "thin-body":
@@ -512,7 +513,7 @@ def probe_harvest_article_fetch(env: dict[str, str], today: datetime | None = No
         host = (urllib.parse.urlparse(fm.get("source", "")).hostname or "").lower().removeprefix("www.")
         if not host or host in ARTICLE_FETCH_SKIP_HOSTS or host.endswith(".instagram.com"):
             continue
-        if "_evidence" in path.parts and not _evidence_retry_reaches(fm.get("source", "")):
+        if "_evidence" in parts and not _evidence_retry_reaches(fm.get("source", "")):
             unreachable += 1
             continue
         waiting += 1
@@ -522,14 +523,14 @@ def probe_harvest_article_fetch(env: dict[str, str], today: datetime | None = No
             last = None
         if last is None or (day - last).days > ARTICLE_RETRY_MAX_AGE_DAYS:
             stuck.append((last.isoformat() if last else "", path.name))
+    note = f"; {unreachable} partial clip(s) in _evidence/ cannot be retried (private host or non-http URL)" if unreachable else ""
     if stuck:
         oldest = min(stuck)
         return ProbeResult(
             "transport-fail",
             f"{len(stuck)} thin article clip(s) partial and not tried for over {ARTICLE_RETRY_MAX_AGE_DAYS} days "
-            f"(oldest: {oldest[1]}, last tried {oldest[0] or 'never'}); the harvest is not fetching them",
+            f"(oldest: {oldest[1]}, last tried {oldest[0] or 'never'}); the harvest is not fetching them{note}",
         )
-    note = f"; {unreachable} partial clip(s) in _evidence/ cannot be retried (private host or non-http URL)" if unreachable else ""
     return ProbeResult("ok", f"{waiting} thin article clip(s) partial, all tried within {ARTICLE_RETRY_MAX_AGE_DAYS} days{note}")
 
 

@@ -618,6 +618,23 @@ check("default run: a malformed .harvest-backends makes no call at all", log == 
 check("default run: a malformed .harvest-backends fails closed, loudly, and the clip stays partial",
       "fail closed" in out and fm_value(rt, "harvest_status") == "partial" and code == 0)
 
+for outer in ("_evidence", "_done", "_synthesis"):
+    log = []
+    install_backends(log)
+    v = Path(tempfile.mkdtemp(dir=os.environ.get("HIMMEL_TEST_TMP") or None)) / outer / "vault"
+    (v / "Clippings").mkdir(parents=True)
+    (v / "Clippings" / "in.md").write_text(triaged_clip("https://example.com/docs/in"), encoding="utf-8")
+    code, out = run_main(v)
+    check(f"vault under a directory named {outer}: the inbox clip is still fetched", [n for n, _ in log] == ["jina"])
+
+log = []
+install_backends(log)
+v = Path(tempfile.mkdtemp(dir=os.environ.get("HIMMEL_TEST_TMP") or None)) / "_rejected" / "vault"
+(v / "Clippings" / "_evidence").mkdir(parents=True)
+(v / "Clippings" / "_evidence" / "ev.md").write_text(triaged_clip("https://example.com/docs/ev", defer=1, status="partial"), encoding="utf-8")
+code, out = run_main(v)
+check("vault under a directory named _rejected: an _evidence partial is still retried", [n for n, _ in log] == ["jina"])
+
 mod.BACKEND_REGISTRY, mod.DEFAULT_SCRAPE_BACKENDS = _saved_registry, _saved_defaults
 
 print(f"\nResults: {passed} passed, {failed} failed")
