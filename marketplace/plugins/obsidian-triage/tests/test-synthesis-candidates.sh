@@ -1,13 +1,4 @@
 #!/usr/bin/env bash
-# Fixture-vault acceptance test for tools/synthesis-candidates.mjs — the
-# read-only, deterministic candidate list that /synthesize-clips starts from.
-#
-# Covers: all four pattern kinds, every skip reason, the platform-domain rule
-# (unrelated authors on ONE platform domain are distinct sources for concept
-# and tag groups; one author is still one source), the harvest-completion
-# gate, input exclusions, the 14-day dedup window, and byte-identical re-runs.
-#
-# Every fixture is synthetic. Pure Node, no installs.
 
 set -u -o pipefail
 
@@ -39,9 +30,6 @@ mkdir -p "$EV" "$V/Clippings/_done" "$V/Clippings/_synthesis" \
          "$V/30-Resources/Concepts" "$V/60-Maps" "$V/20-Areas" "$V/00-Inbox"
 echo "2026-11-20T01:00:00Z deadbeef" > "$V/.harvest.done"
 
-# clip <file> <author-yaml> <source> <date_clipped> <tags-csv> [promo-target]
-#   author-yaml: raw text after `author:` ("" = empty field; a leading "\n"
-#   block such as '\n  - "@x"' makes a block list).
 clip() {
     local file="$1" author="$2" source="$3" dc="$4" tags="$5" promo="${6:-}" name
     name="$(basename "$file" .md)"
@@ -72,8 +60,6 @@ clip() {
     } > "$file"
 }
 
-# diverse <prefix> <count> <tag> <first-day-of-sep> [promo]: <count> clips on
-# distinct domains, distinct authors, distinct days (2026-09-<day>..).
 diverse() {
     local p="$1" n="$2" tag="$3" d0="$4" promo="${5:-}" i
     for i in $(seq 1 "$n"); do
@@ -82,7 +68,6 @@ diverse() {
     done
 }
 
-# ── G1: 5 unrelated X authors on ONE platform (x.com + twitter.com spellings) ─
 for i in 1 2 3 4; do
     clip "$EV/ctx-$i.md" "\n  - \"@voice_$i\"" "https://x.com/voice_$i/status/100$i" \
          "2026-10-0$i" "context-windows"
@@ -90,32 +75,26 @@ done
 clip "$EV/ctx-5.md" "\n  - \"@voice_5\"" "https://mobile.twitter.com/voice_5/status/1005" \
      "2026-10-05" "context-windows"
 
-# ── G2: 5 clips, ONE author, one platform ───────────────────────────────────
 for i in 1 2 3 4 5; do
     clip "$EV/solo-$i.md" " @lone_voice" "https://x.com/lone_voice/status/200$i" \
          "2026-10-0$((i+5))" "solo-voice"
 done
 
-# ── G3: non-platform single domain, several authors ─────────────────────────
 for i in 1 2 3; do
     clip "$EV/blog-$i.md" " Blog Author $i" "https://example.com/p$i" \
          "2026-09-0$i" "blog-roll"
 done
 
-# ── G4: three domains, all clipped the same day ─────────────────────────────
 clip "$EV/burst-1.md" " Burst Author 1" "https://alpha.example.org/a" "2026-11-10" "same-day-burst"
 clip "$EV/burst-2.md" " Burst Author 2" "https://beta.example.net/b"  "2026-11-10" "same-day-burst"
 clip "$EV/burst-3.md" " Burst Author 3" "https://gamma.example.com/c" "2026-11-10" "same-day-burst"
 
-# ── G5: concept page already exists ─────────────────────────────────────────
 diverse haspage 3 has-page 0
 printf -- '---\ntype: concept\n---\nExisting.\n' > "$V/30-Resources/Concepts/Has Page.md"
 
-# ── G6: tag MOC already exists (5 diverse clips) ────────────────────────────
 diverse mapped 5 mapped 10
 printf -- '---\ntype: moc\n---\nMap.\n' > "$V/60-Maps/mapped-MOC.md"
 
-# ── G6b: 45 diverse clips, prior page already lists the 40-clip cap ─────────
 for i in $(seq 1 45); do
     clip "$EV/big-$i.md" " Big Writer $i" "https://big-$i.example.org/post" \
          "2026-0$((i / 28 + 1))-$(printf '%02d' $((i % 28 + 1)))" "big-topic"
@@ -125,7 +104,6 @@ done
     for i in $(seq 1 40); do printf -- '- [[Clippings/_evidence/big-%s]] — x\n' "$i"; done
 } > "$V/Clippings/_synthesis/2026-10-01-concept-big-topic.md"
 
-# ── G7/G8/G9: 14-day dedup window, supersede, no new evidence ───────────────
 diverse recent 3 recent-topic 0
 printf -- '---\ntype: synthesis\n---\n## Evidence (3 clips, 3 unique URLs)\n\n- [[Clippings/_evidence/recent-1]] — a\n- [[Clippings/_evidence/recent-2]] — b\n- [[Clippings/_evidence/recent-3]] — c\n' \
     > "$V/Clippings/_synthesis/2026-11-17-concept-recent-topic.md"
@@ -136,7 +114,6 @@ diverse steady 3 steady-topic 0
 printf -- '---\ntype: synthesis\n---\n## Evidence (3 clips, 3 unique URLs)\n\n- [[Clippings/_evidence/steady-1]] — a\n- [[Clippings/_evidence/steady-2]] — b\n- [[Clippings/_evidence/steady-3]] — c\n' \
     > "$V/Clippings/_synthesis/2026-10-01-concept-steady-topic.md"
 
-# ── G9b: substance-gate failures recorded by the runbook ────────────────────
 diverse recskip 3 rec-recent 0
 diverse recold 3 rec-old 0
 diverse recgrown 4 rec-grown 0
@@ -144,7 +121,6 @@ diverse recsame 4 rec-same 0
 printf '2026-11-17\tconcept-rec-recent\t3\n2026-10-25\tconcept-rec-old\t3\n2026-11-17\tconcept-rec-grown\t3\n2026-11-17\tconcept-rec-same\t3\n2026-11-17\tconcept-rec-same\t4\nnot a record\n' \
     > "$V/Clippings/_synthesis/.substance-skips.tsv"
 
-# ── G10/G11/G12: folder pressure ────────────────────────────────────────────
 diverse idea 5 "" 0 "Ideas/"
 diverse inbox 5 "" 5 "00-Inbox/"
 for i in 1 2 3 4 5; do
@@ -154,7 +130,6 @@ done
 
 diverse escape 5 "" 15 "../escape/"
 
-# ── Authors ─────────────────────────────────────────────────────────────────
 clip "$EV/alice-1.md" " Alice Researcher" "https://one.example.org/a" "2026-07-10" ""
 clip "$EV/alice-2.md" " Alice Researcher" "https://two.example.org/a" "2026-07-20" ""
 clip "$EV/bob-1.md"   " Bob Writer"       "https://one.example.org/b" "2026-07-11" ""
@@ -167,25 +142,19 @@ clip "$EV/dan-2.md"   " Dan Recent"       "https://two.example.org/d" "2026-07-2
 printf -- '---\ntype: synthesis\n---\n## Evidence (2 clips, 2 unique URLs)\n\n- [[Clippings/_evidence/dan-1]] — a\n- [[Clippings/_evidence/dan-2]] — b\n' \
     > "$V/Clippings/_synthesis/2026-11-18-author-dan-recent.md"
 
-# ── G13: X clips with no author field and /i/ URLs: one unknown source ──────
 for i in 1 2 3 4 5; do
     clip "$EV/noauth-$i.md" "" "https://x.com/i/status/300$i" "2026-06-0$i" "no-author-feed"
 done
-# ── G14: no author field, author recoverable from the status URL ────────────
 clip "$EV/urlv-1.md" "" "https://x.com/u_one/status/4001"   "2026-05-01" "url-voices"
 clip "$EV/urlv-2.md" "" "https://x.com/u_two/status/4002"   "2026-05-02" "url-voices"
 clip "$EV/urlv-3.md" "" "https://x.com/u_three/status/4003" "2026-05-03" "url-voices"
 
-# ── Inputs that must NOT count ──────────────────────────────────────────────
-# unprocessed clip carrying G1's tag
 printf -- '---\nauthor: Ghost\nsource: "https://ghost.example.org/x"\ndate_clipped: 2026-10-09\ntags:\n  - context-windows\n---\nbody\n' \
     > "$EV/unprocessed.md"
-# archived / output / deferred files carrying G1's tag
 clip "$V/Clippings/_done/archived.md" " Done Author" "https://done.example.org/x" "2026-10-09" "context-windows"
 printf -- '---\ntype: synthesis\nprocessed: true\ntags:\n  - context-windows\n---\nbody\n' \
     > "$V/Clippings/_synthesis/2026-09-09-stray-marker.md"
 printf -- '---\nprocessed: true\ntags:\n  - context-windows\n---\nbody\n' > "$V/Clippings/_deferred.md"
-# processed marker but the frontmatter never closes: input exclusion
 printf -- '---\ntitle: broken\nprocessed: true\ntags:\n  - context-windows\n' > "$EV/broken.md"
 
 run() { node "$TOOL" "$V" --today "$TODAY" "$@"; }
