@@ -499,7 +499,7 @@ state() { immune node "$REPO/scripts/lib/api-credit-state.mjs" "$@"; }
 # the reading is our estimate, so it never blocks; our own cap still does (reason over-cap)
 RESERVED="$(HIMMEL_API_SNAPSHOT_OPTIONAL=1 state reserve --id "$JOB_ID" --usd "$BUDGET")"
 case "$RESERVED" in *'"verdict":"PROCEED"'*) ;; *)
-  refuse "reservation refused ($(printf '%s' "$RESERVED" | sed -n 's/.*"reason":"\([^"]*\)".*/\1/p')): $RESERVED" ;;
+  refuse "reservation refused: $(printf '%s' "$RESERVED" | sed -n 's/.*"reason":"\([^"]*\)".*/\1/p'): $RESERVED" ;;
 esac
 
 # A call that dies settles its reservation (verified cost, else zero) so nothing stays reserved past it.
