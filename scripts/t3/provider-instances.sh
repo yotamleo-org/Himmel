@@ -45,12 +45,12 @@ else
     PROFILES="$(cd "$HERE/../.." && node scripts/lanes/plugin-profiles.mjs --list)" || die 2 "cannot list profiles"
 fi
 
-# Bypass-flag refusal: any env/environment entry named *_OK or *BYPASS*, in the final document.
 # shellcheck disable=SC2016  # jq program: $id is a jq variable
 BYPASS_JQ='[ .providerInstances // {} | to_entries[] | .key as $id | (.value.config // {}) | ((.env, .environment) | select(. != null))
   | (if type == "object" then keys[] elif type == "array" then .[] | (if type == "object" then (.name // .key // "") else (split("=")[0]) end) else empty end)
   | select(test("_OK$") or test("BYPASS"; "i")) | "\($id): \(.)" ] | .[]'
 
+SUM_READ="$(cksum < "$FILE")"
 GEN='{}'
 for p in $PROFILES; do
     case "$p" in ''|*[!A-Za-z0-9._-]*) die 2 "bad profile name '$p'" ;; esac
@@ -65,7 +65,6 @@ for p in $PROFILES; do
     GEN="$(printf '%s' "$GEN" | jq --arg p "$p" --arg a "$args" '.[$p] = $a')" || die 2 "jq failed"
 done
 
-SUM_READ="$(cksum < "$FILE")"
 NEW="$(jq --argjson gen "$GEN" '
   def basenames: (.config.launchArgs // "") | [scan("--settings ([^ ]+)")[0] | split("/")[-1]];
   . as $doc

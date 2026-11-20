@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # scripts/t3/test-provider-instances.sh - fixture suite for provider-instances.sh.
-# Never touches ~/.t3 or ~/.himmel/config.json: every file lives in a temp dir.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 GEN="$HERE/provider-instances.sh"
@@ -9,18 +8,12 @@ trap 'rm -rf "$T"' EXIT
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); echo "ok   $1"; }
 bad() { FAIL=$((FAIL+1)); echo "FAIL $1"; }
-# expect_ok NAME CMD...    passes when CMD exits 0
-# expect_fail NAME CMD...  passes when CMD exits non-zero
-# expect_rc NAME RC CMD... passes when CMD exits RC
-# expect_eq NAME GOT WANT
 expect_ok()   { local n="$1"; shift; if "$@" >/dev/null 2>&1; then ok "$n"; else bad "$n"; fi; }
 expect_fail() { local n="$1"; shift; if "$@" >/dev/null 2>&1; then bad "$n"; else ok "$n"; fi; }
 expect_rc()   { local n="$1" want="$2" rc; shift 2; "$@" >/dev/null 2>&1; rc=$?; if [ "$rc" = "$want" ]; then ok "$n"; else bad "$n (rc=$rc)"; fi; }
 expect_eq()   { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (got: $2)"; fi; }
 launch_args() { jq -r --arg id "$2" '.providerInstances[$id].config.launchArgs' "$1"; }
 
-# Fake resolver: <profile> [--mcp-config] -> stable path. "alpha" has an MCP file, "beta" does not,
-# "ghost" resolves to nothing (like the operator profile), "broken" fails.
 cat > "$T/resolver.sh" <<'RES'
 #!/usr/bin/env bash
 case "$1" in
@@ -45,7 +38,6 @@ cat > "$S" <<'JSON'
 JSON
 cp "$S" "$T/orig.json"
 
-# 1. dry-run (default) changes nothing and shows a diff
 out="$(bash "$GEN" --settings-file "$S" 2>&1)"; rc=$?
 expect_eq "dry-run exits 0" "$rc" 0
 expect_ok "dry-run leaves file untouched" cmp -s "$S" "$T/orig.json"
@@ -53,30 +45,25 @@ expect_ok "dry-run diff names claudeAgent_alpha" grep -q 'claudeAgent_alpha' <<<
 expect_ok "prints allowlist id claudeAgent_alpha" grep -q '^claudeAgent_alpha$' <<<"$out"
 expect_fail "no allowlist id for a profile already covered" grep -q '^claudeAgent_chief$' <<<"$out"
 
-# 2. apply: one instance per resolvable profile
 expect_ok "apply exits 0" bash "$GEN" --apply --settings-file "$S"
 expect_eq "alpha launchArgs has settings and mcp" "$(launch_args "$S" claudeAgent_alpha)" "--settings /stable/h1/alpha.json --mcp-config /stable/mcp-aaa/alpha.mcp.json --strict-mcp-config"
 expect_eq "beta launchArgs has settings only" "$(launch_args "$S" claudeAgent_beta)" "--settings /stable/h1/beta.json"
 expect_eq "instance driver is claudeAgent" "$(jq -r '.providerInstances.claudeAgent_alpha.driver' "$S")" claudeAgent
 
-# 3. existing instances preserved; a profile already covered by another id is not duplicated
 expect_eq "unrelated instance preserved" "$(jq -r '.providerInstances.mine.driver' "$S")" codex
 expect_eq "existing chief instance untouched" "$(launch_args "$S" claudeAgent_claude_chief)" "$CHIEF_ARGS"
 expect_eq "covered profile not duplicated" "$(jq -r '.providerInstances|has("claudeAgent_chief")' "$S")" false
 expect_eq "unrelated top-level keys preserved" "$(jq -r '.idleCompaction' "$S")" true
 
-# 4. idempotent second run
 cp "$S" "$T/after1.json"
 expect_ok "second apply exits 0" bash "$GEN" --apply --settings-file "$S"
 expect_ok "second apply leaves file byte-identical" cmp -s "$S" "$T/after1.json"
 nbak=0; for f in "$T"/settings.json.bak.*; do [ -e "$f" ] && nbak=$((nbak+1)); done
 expect_eq "apply wrote exactly one timestamped backup" "$nbak" 1
 
-# 5. an empty-resolving profile is skipped; any other resolver failure is refused
 expect_ok "empty-resolving profile skipped, rc 0" env T3_PI_PROFILES="alpha,ghost" bash "$GEN" --settings-file "$S"
 expect_fail "resolver failure refused" env T3_PI_PROFILES="alpha,broken" bash "$GEN" --settings-file "$S"
 
-# 6. bypass-flag refusal
 B="$T/bypass.json"
 cat > "$B" <<'JSON'
 {"providerInstances":{"evil":{"driver":"claudeAgent","config":{"environment":[{"name":"EDIT_ON_MAIN_OK","value":"1"}]}}}}
@@ -97,14 +84,12 @@ cat > "$B" <<'JSON'
 JSON
 expect_fail "a malformed environment entry fails closed" bash "$GEN" --apply --settings-file "$B"
 
-# 7. malformed settings file refused untouched
 M="$T/bad.json"; printf '{"providerInstances": {' > "$M"; cp "$M" "$T/bad.orig"
 expect_fail "malformed file refused" bash "$GEN" --apply --settings-file "$M"
 expect_ok "malformed file untouched" cmp -s "$M" "$T/bad.orig"
 nbad=0; for f in "$T"/bad.json.bak.*; do [ -e "$f" ] && nbad=$((nbad+1)); done
 expect_eq "no backup made for malformed file" "$nbad" 0
 
-# 8. missing settings file / missing flag refused
 expect_fail "missing settings file refused" bash "$GEN" --apply --settings-file "$T/nope.json"
 expect_fail "missing --settings-file refused" bash "$GEN" --apply
 
