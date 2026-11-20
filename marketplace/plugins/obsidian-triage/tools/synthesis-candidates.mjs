@@ -19,7 +19,8 @@ import { frontmatterBounds, fmScalar, fmList, splitLines, stripCR } from "./lib/
 
 const KINDS = ["concept", "author", "tag", "folder"];
 const MIN_CLIPS = { concept: 3, author: 2, tag: 5, folder: 5 };
-const MIN_SOURCES = { concept: 3, tag: 2, folder: 2 };const DEDUP_DAYS = 14;
+const MIN_SOURCES = { concept: 3, tag: 2, folder: 2 };
+const DEDUP_DAYS = 14;
 const EVIDENCE_CAP = 40;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_DEPTH = 3;
