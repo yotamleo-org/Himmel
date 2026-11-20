@@ -26,6 +26,8 @@
 
 set -u -o pipefail
 
+export HARVEST_SCRAPE_DENY=all
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # sections moved to references/harvest-clips/ are part of the
@@ -308,7 +310,7 @@ fi
 assert "runbook scan uses -not -path '*/_synthesis/*'" "yes" "$found"
 
 # 12b — functional: the documented find command actually skips a _synthesis file.
-tmp_vault="$(mktemp -d)"
+tmp_vault="$(mktemp -d)" || exit 1
 trap 'rm -rf "$tmp_vault"' EXIT
 mkdir -p "$tmp_vault/Clippings/_synthesis"
 # A normal unharvested clip (should be picked up).

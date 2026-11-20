@@ -219,6 +219,7 @@ Every message the harness sends to Telegram carries a kind, and `scripts/telegra
 | `cadence:pipeline-synthesize` | monitor | `scripts/luna/pipeline-cadence.sh` | The pipeline-synthesize scheduled worker reported a failure. |
 | `cadence:pipeline-health` | monitor | `scripts/luna/pipeline-cadence.sh` | The pipeline-health scheduled worker reported a failure. |
 | `cadence:pipeline-fetch-health` | monitor | `scripts/luna/pipeline-cadence.sh` | The pipeline-fetch-health scheduled worker reported a failure. |
+| `cadence:pipeline-synthesize-index-lock` | monitor | `scripts/luna/pipeline-cadence.sh` | The pipeline-synthesize-index-lock scheduled worker reported a failure. |
 | `cadence:upstream-watch` | monitor | `scripts/upstreams/upstream-watch-cadence.sh` | The upstream-watch scheduled worker reported a failure. |
 | `cadence:security-audit` | escalate | `scripts/security/security-audit-cadence.sh` | security-audit: 2 new high or critical findings. Cause: new-high-critical findings in the dependency audit. Blocks: nothing yet. Do: read the audit log and decide which finding to fix |
 | `cadence:snyk-scan` | escalate | `scripts/security/snyk-scan-cadence.sh` | snyk-scan: the scan found high findings. Cause: high-findings. Blocks: nothing yet. Do: read the scan log and decide which finding to fix |
