@@ -23,7 +23,8 @@ Steps:
 1. Collect: `python3 -I scripts/luna/clip-relevance-collect.py collect`. Read all of it: the clips (a clip with
    `thin: yes` has no fetched page text: judge it by title and source only and say so), the failure classes,
    the review-critic classes, and the candidates already proposed.
-2. Get the note path: `bash scripts/luna/clip-relevance-cadence.sh note-path`.
+2. Get the note path: `bash scripts/luna/clip-relevance-cadence.sh note-path`. It is a name no earlier note holds
+   (`<date>.md`, or `<date>-2.md` when a note for the day exists): write there, and never over another file.
 3. Draft candidates. A candidate is one concrete himmel change (a guard, a check, a doc rule, a lane setting,
    an eval) that a clip points at, ideally one that a failure or review pattern also points at. Skip anything
    listed under SEEN CANDIDATES, news that implies no himmel change, and vague "consider" ideas.
@@ -59,7 +60,7 @@ Steps:
 
    The heading ends in exactly `[new]`, `[already-done]` or `[already-tracked]`. The Telegram block opens with
    `Clip relevance, week to <date>: <n> new of <c> candidates.`, then one `<n>. <title>` line per `new`
-   candidate, then `Note: specs/audits/clip-relevance/<date>.md`; for a week with nothing new say
+   candidate, then `Note: specs/audits/clip-relevance/<the note's file name>`; for a week with nothing new say
    `Nothing new this week.` Quote no clip text in it. With no candidate, write the note with an empty
    `## Candidates`.
 6. Check: `bash scripts/luna/clip-relevance-cadence.sh check <note path>`. Fix the note and rerun until it prints
