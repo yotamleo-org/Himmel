@@ -48,6 +48,7 @@ Cross-platform paths via pathlib. Windows / Git Bash / macOS / Linux all work.
 Batch tooling. Triage stage stays LLM-driven via /triage-clips.
 """
 import argparse
+import itertools
 import os
 import re
 import sys
@@ -317,6 +318,43 @@ _PROMOTION_SECTION_RE = re.compile(r"(?ms)^## Promotion candidate\b.*?(?=^## |\Z
 URL_ONLY_MARKER = "Inferred from the source URL only"
 _URL_ONLY_SUMMARY_RE = re.compile(
     r"(?ms)^## Summary[ \t]*\r?\n(?:(?!^#{1,6}[ \t]).)*?" + re.escape(URL_ONLY_MARKER) + r".*?(?=^## |\Z)")
+
+
+# A fetched text that is only a bot-check or error notice is no text. The one
+# list of notice phrases; a false rejection only costs a retry.
+BOT_CHECK_PHRASES = (
+    "just a moment", "enable javascript", "enable cookies", "checking your browser",
+    "verify you are human", "verifying you are human", "are you a robot", "not a robot",
+    "attention required", "access denied", "request blocked", "captcha",
+    "403 forbidden", "404 not found", "page not found", "too many requests",
+    "unusual traffic", "security check", "something went wrong",
+)
+_BOT_CHECK_RE = re.compile("|".join(re.escape(p) for p in BOT_CHECK_PHRASES), re.IGNORECASE)
+FETCH_MIN_WORDS = 20
+BOT_CHECK_MAX_WORDS = 80  # a longer text that mentions a phrase is an article
+
+
+def unusable_fetch_reason(text: str) -> str | None:
+    """Why a fetched text counts as no text, else None. At most
+    BOT_CHECK_MAX_WORDS + 1 words are counted, however large the text."""
+    words = sum(1 for _ in itertools.islice(re.finditer(r"\w+", text), BOT_CHECK_MAX_WORDS + 1))
+    if words <= BOT_CHECK_MAX_WORDS and _BOT_CHECK_RE.search(text):
+        return "fetched text is a bot-check or error notice"
+    if words < FETCH_MIN_WORDS:
+        return f"fetched text has too few words ({words})"
+    return None
+
+
+_HARVESTED_SECTION_RE = re.compile(r"(?ms)^## Harvested content[ \t]*\r?\n(?:<!--.*?-->[ \t]*\r?\n)?(.*?)(?=^## |\Z)")
+
+
+def junk_fetch_section(fm: dict, body: str):
+    """The match of a `## Harvested content` section that a scrape backend
+    stamped over a text that counts as no text, else None."""
+    if fm.get("harvest_skill") not in BACKEND_REGISTRY or fm.get("harvest_status") not in ("ok", "partial"):
+        return None
+    m = _HARVESTED_SECTION_RE.search(body)
+    return m if m and unusable_fetch_reason(m.group(1)) else None
 
 
 def _source_text(body: str) -> str:
@@ -1702,7 +1740,8 @@ def process_clip(path: Path, dry_run: bool, chain=None, url_rules=None, park=Non
     fm, fm_raw, body, fm_present = parse_frontmatter(text)
     if not fm_present:
         return ("o", "skipped (frontmatter): no closing --- delimiter", [])
-    if already_harvested(fm_raw) and not stamped_thin(fm, body):
+    junk = junk_fetch_section(fm, body)
+    if already_harvested(fm_raw) and not stamped_thin(fm, body) and not junk:
         return ("o", "skipped (already-harvested)", [])
     # Injection screen — flag-only, never blocks the harvest.
     # Runs BEFORE the outcome branches so skips/failures still carry the
@@ -1772,8 +1811,9 @@ def process_clip(path: Path, dry_run: bool, chain=None, url_rules=None, park=Non
             return flagged_early("~", "partial (thin-body): scrape budget exhausted this run; re-run to retry")
         try:
             md = chain.scrape(canonical)
-            if not re.search(r"\w", md):
-                raise RuntimeError(f"fetched no text ({len(md.strip())} chars)")
+            reason = unusable_fetch_reason(md)
+            if reason:
+                raise RuntimeError(reason)
         except FirecrawlUnavailable as e:
             if park is not None:
                 park(path, e.reason)
@@ -1789,7 +1829,8 @@ def process_clip(path: Path, dry_run: bool, chain=None, url_rules=None, park=Non
             f"<!-- harvest-clips {TODAY} via {served_by} ({canonical}) -->\n\n"
             f"{md.strip()}\n\n"
         )
-        new_body, insert_ok = insert_harvested_section(body, section)
+        base = body[:junk.start()] + body[junk.end():] if junk else body
+        new_body, insert_ok = insert_harvested_section(base, section)
         if not insert_ok:
             # Credit already spent (decremented above) — note it like the
             # other post-fetch failures. Nothing was written, so no revert
@@ -2003,10 +2044,13 @@ def silent_partial_marks(fm: dict, body: str) -> tuple[list, list]:
         reasons.append("thin-body")
     elif harvest_ok and fm.get("harvest_skill") == "youtube-scrapling" and "_Transcript unavailable" in body:
         reasons.append("transcript-unavailable")
+    elif harvest_ok and junk_fetch_section(fm, body):
+        reasons.append("junk-fetch")
     if reasons:
         pairs.append(("harvest_status", "harvest_status: partial"))
         if "harvest_flag" not in fm:
-            pairs.append(("harvest_flag", f"harvest_flag: {reasons[0]}"))
+            flag = "thin-body" if reasons[0] == "junk-fetch" else reasons[0]
+            pairs.append(("harvest_flag", f"harvest_flag: {flag}"))
     if fm.get("enrichment_status") == "ok" and fm.get("needs_thread") == "true":
         reasons.append("thread-not-captured")
         pairs.append(("enrichment_status", "enrichment_status: partial"))
@@ -2015,7 +2059,7 @@ def silent_partial_marks(fm: dict, body: str) -> tuple[list, list]:
     return reasons, pairs
 
 
-def run_reflag_silent_partials(vault: Path, dry_run: bool) -> int:
+def run_reflag_silent_partials(vault: Path, dry_run: bool, limit: int = 0) -> int:
     """--reflag-silent-partials: one-time backfill over EVERY clip, _done/ and
     _evidence/ included (the loss is already archived there). Notes stamped
     ok over a template-only body, an unavailable transcript or an uncaptured
@@ -2042,6 +2086,8 @@ def run_reflag_silent_partials(vault: Path, dry_run: bool) -> int:
         reasons, pairs = silent_partial_marks(fm, body)
         if not reasons:
             continue
+        if limit > 0 and notes >= limit:
+            break
         reason = "+".join(reasons)
         if b"\r" in raw:
             print(f"SKIP {relpath} -- silent partial ({reason}) but CRLF; left untouched", file=sys.stderr)
@@ -2119,8 +2165,9 @@ def main():
                          "harvest_flag/_detail on hits.")
     ap.add_argument("--reflag-silent-partials", action="store_true",
                     help="Backfill: mark clips (_done/ included) stamped ok over a "
-                         "template-only body, an unavailable transcript or an "
-                         "uncaptured thread as partial. Frontmatter only.")
+                         "template-only body, an unavailable transcript, an "
+                         "uncaptured thread or a fetched bot-check notice as partial. "
+                         "Frontmatter only; --limit N caps the clips changed.")
     ap.add_argument("--fetch-budget", type=int, default=None,
                     help="Max free-rung fetch attempts per default run. "
                          f"Default HARVEST_FETCH_BUDGET, else {FETCH_DEFAULT_BUDGET}.")
@@ -2161,7 +2208,7 @@ def main():
         and p.name != "_deferred.md"
     )
     if args.reflag_silent_partials:
-        sys.exit(run_reflag_silent_partials(args.vault, args.dry_run))
+        sys.exit(run_reflag_silent_partials(args.vault, args.dry_run, args.limit))
     if args.rescan_flags:
         # Backfill mode ignores --limit (one-time full pass).
         sys.exit(run_rescan_flags(clips, args.vault, args.dry_run))

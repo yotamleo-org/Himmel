@@ -215,6 +215,9 @@ class FakeBrowserPage:
         self.context = self.ctx_class(self)
 
 
+PAGE_TEXT = "The page body carries enough ordinary words to read as a real article and not as a notice or an error page."
+
+
 class FakePage:
     def __init__(self, status=200, html="<h1>Real</h1><p>body</p>", url=None):
         self.status = status
@@ -245,7 +248,7 @@ class FetchRecorder:
         return self.page
 
     def to_markdown(self, page):
-        return "# Real\n\nbody\n" if page.html else ""
+        return f"# Real\n\nbody. {PAGE_TEXT}\n" if page.html else ""
 
 
 def install_local(rec):
@@ -551,7 +554,7 @@ class FakeChain:
 
     def scrape(self, url):
         self.calls.append(url)
-        return "# Real\n\nclean body\n"
+        return f"# Real\n\nclean body. {PAGE_TEXT}\n"
 
 
 p = make_clip(THIN)
@@ -929,7 +932,7 @@ def net_open(req, timeout=None):
     url = req.full_url if hasattr(req, "full_url") else req
     if "r.jina.ai" in url:
         if Net.jina == "ok":
-            return Resp(b"Markdown Content:\n# J\n\njina body\n")
+            return Resp(f"Markdown Content:\n# J\n\njina body. {PAGE_TEXT}\n".encode())
         raise OSError("jina down")
     if url.endswith("/v2/team/credit-usage"):
         Net.usage_calls += 1
@@ -943,7 +946,7 @@ def net_open(req, timeout=None):
         if Net.scrape in ("402", "429"):
             body = b'{"success":false,"error":"Insufficient credits to perform this request."}' if Net.scrape == "402" else b'{"success":false,"error":"Rate limit exceeded for your request quota"}'
             raise urllib.error.HTTPError(url, int(Net.scrape), "x", {}, io.BytesIO(body))
-        return Resp(json.dumps({"success": True, "data": {"markdown": "# FC\n\nfirecrawl body", "metadata": {"creditsUsed": 1}}}).encode())
+        return Resp(json.dumps({"success": True, "data": {"markdown": f"# FC\n\nfirecrawl body. {PAGE_TEXT}", "metadata": {"creditsUsed": 1}}}).encode())
     raise AssertionError("unexpected url " + url)
 
 
