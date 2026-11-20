@@ -65,7 +65,6 @@ cmd_note_path() {
 }
 
 telegram_text() { awk '/^## /{f=($0=="## Telegram message"); next} f && NF' "$1"; }
-# The message that goes out: the note's block, with its Note line always naming the file actually written.
 send_text() { { telegram_text "$1" | awk '!/^Note:/'; printf 'Note: specs/audits/clip-relevance/%s\n' "${1##*/}"; }; }
 
 cmd_check() {
@@ -147,9 +146,7 @@ cron_without_entry() { printf '%s\n' "$CRON_TAB" | { grep -vE "$(cron_row_re)" |
 
 sq() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
 
-# The runner's PATH: the arming PATH cut to the folders of the tools the run calls (the shell, claude and the node it
-# needs, python3, git, jq, bun), in the arming order so each tool resolves as it did, then the system defaults.
-# A folder under the temp dir (an application mount) is dropped: it is gone by the time cron fires.
+# A temp-dir folder (an application mount) is gone by the time cron fires, so it is never baked.
 runner_path() {
     local d t out="" IFS=:
     for d in $PATH; do
