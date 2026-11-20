@@ -15,7 +15,6 @@ assert_absent() { case "$3" in *"$2"*) fail "$1" "$3" ;; *) pass "$1" ;; esac; }
 assert_eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1" "$3"; fi; }
 
 command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
-command -v flock >/dev/null 2>&1 || { echo "SKIP: flock not on PATH"; exit 0; }
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/bypass-launchd-test.XXXXXX")" || { echo "FAIL: mktemp"; exit 1; }
 DPID=""
@@ -30,10 +29,12 @@ cat > "$tmp/launcher" <<'STUB'
 #!/usr/bin/env bash
 env | grep -E '^([A-Za-z0-9_]*_OK|WORKER_SESSION_EFFORT|WORKER_SESSION_API_LANE|WORKER_SESSION_API_ACCOUNT|SKIP_FORCE_PUSH_GATE|IMPL_GUARD_DISABLE|SECURITY_REVIEW_NO_FETCH)=' | sort > "$BYPASSD_TEST_DIR/launch.env"
 printf '%s\n' "$@" > "$BYPASSD_TEST_DIR/launch.args"
+ps -o sid= -p $$ 2>/dev/null | tr -d ' ' > "$BYPASSD_TEST_DIR/launch.sid"
+echo $$ > "$BYPASSD_TEST_DIR/launch.pid"
 exit "${BYPASSD_TEST_RC:-0}"
 STUB
 chmod +x "$tmp/send" "$tmp/launcher"
-UNTIL="$(date -u -d '+3 days' +%F)"
+UNTIL="$(date -u -d '+3 days' +%F 2>/dev/null || date -u -v+3d +%F)"
 
 setup() {
     D="$tmp/$1"; B="$D/bucket"; Q="$B/bypass-queue"; DAEMON=""
@@ -75,7 +76,7 @@ setup_repo() { setup "$1"; R="$D/repo"; mk_repo "$R"; DAEMON="$R/$DAEMON_REL"; }
 run_repo() {
     env -u CLAUDECODE BYPASSD_TEST_DIR="$D" BYPASSD_SEND="$tmp/send" BYPASSD_LAUNCHER="$tmp/launcher" BYPASSD_POLL=0.1 \
         BRIDGE_ROOT="$D/bridge" TELEGRAM_ACCESS_PATH="$D/access.json" XDG_RUNTIME_DIR="$D/run" \
-        timeout 5 bash "$DAEMON" --bucket "$B" --until "$UNTIL" 2>&1 # gnu-ok: the daemon is Linux-only and this suite skips without flock
+        timeout 5 bash "$DAEMON" --bucket "$B" --until "$UNTIL" 2>&1
 }
 start_line() { grep -m1 'start pid=' "$Q/daemon.log" 2>/dev/null; }
 launch_env_after_go() {
@@ -373,6 +374,131 @@ rm -f "$D/fsm.ran"
 start
 wait_for "$Q/daemon.log" "start pid="
 assert_eq "R14 the fsmonitor command never ran" "no" "$([ -e "$D/fsm.ran" ] && echo ran || echo no)"
+stop
+
+# --- The daemon on macOS. SHIM is a PATH of BSD-like tools: no flock, no setsid, no sha256sum, a
+# date that rejects -d (it takes -j -f), a stat that rejects -c (it takes -f), and uname answering Darwin.
+SHIM="$tmp/macshim"
+mk_shim() {
+    local d=$1 t p real_date real_sha
+    mkdir -p "$d"
+    for t in bash env jq git awk sed grep cut tr head tail sort mkdir mv rm cat sleep touch dirname basename id ps readlink wc nohup perl ln rmdir; do
+        p=$(command -v "$t") && ln -sf "$p" "$d/$t"
+    done
+    ln -sf "$BASH" "$d/bash"
+    real_date=$(command -v date); real_sha=$(command -v sha256sum)
+    printf '#!/bin/sh\necho Darwin\n' > "$d/uname"
+    # shellcheck disable=SC2016 # the shim's own source
+    printf '#!/bin/sh\n[ -z "$SHIM_DATE_ALLOW_D" ] || exec %s "$@"\nu=; str=; fmt=; out=\nwhile [ $# -gt 0 ]; do\n  case $1 in\n    -d) echo "date: illegal option -- d" >&2; exit 1 ;;\n    -u) u=-u ;;\n    -j) ;;\n    -f) fmt=$2; shift ;;\n    +*) out=$1 ;;\n    *) str=$1 ;;\n  esac\n  shift\ndone\nif [ -n "$fmt" ]; then exec %s $u -d "$str" ${out:+"$out"}; fi\nexec %s $u ${out:+"$out"}\n' "$real_date" "$real_date" "$real_date" > "$d/date"
+    # shellcheck disable=SC2016
+    printf '#!/bin/sh\necho "stat $*" >> "%s/stat.calls"\ncase $1 in\n  -c) echo "stat: illegal option -- c" >&2; exit 1 ;;\n  -f) wc -c < "$3" | tr -d " " ;;\n  *) exit 1 ;;\nesac\n' "$d" > "$d/stat"
+    # shellcheck disable=SC2016
+    printf '#!/bin/sh\nif [ "$1" = -a ] && [ "$2" = 256 ]; then shift 2; fi\nexec %s "$@"\n' "$real_sha" > "$d/shasum"
+    chmod +x "$d/uname" "$d/date" "$d/stat" "$d/shasum"
+}
+mk_shim "$SHIM"
+assert_eq "control: the shim has no flock, setsid or sha256sum" "none" "$(for t in flock setsid sha256sum; do [ -e "$SHIM/$t" ] && echo "$t"; done | head -n 1 | grep . || echo none)"
+# gnu-ok: the control proves the shim refuses the GNU flag
+assert_eq "control: the shim date rejects -d like BSD date" "1" "$(PATH="$SHIM" date -d 2026-01-01 +%s >/dev/null 2>&1; echo $?)"
+# gnu-ok: the control proves the shim refuses the GNU flag
+assert_eq "control: the shim stat rejects -c like BSD stat" "1" "$(PATH="$SHIM" stat -c %s /dev/null >/dev/null 2>&1; echo $?)"
+rm -f "$SHIM/stat.calls"
+
+echo "== HIMMEL-10430 B1: --until parses with BSD date =="
+setup_repo b1
+start PATH="$SHIM"
+wait_for "$Q/daemon.log" "start pid="
+assert_contains "RED B1: the daemon starts when date has no -d" "start pid=" "$(start_line)"
+assert_absent "RED B1: --until is not called a non-date" "is not a date" "$(cat "$D/daemon.out")"
+stop
+setup_repo b1bad
+env -u CLAUDECODE PATH="$SHIM" TELEGRAM_ACCESS_PATH="$D/access.json" bash "$DAEMON" --bucket "$B" --until 2026-13-45 > "$D/bad.out" 2>&1
+assert_contains "B1: a real non-date is still refused" "is not a date" "$(cat "$D/bad.out")"
+
+echo "== HIMMEL-10430 B2: the single-instance lock needs no flock =="
+setup_repo b2
+start PATH="$SHIM" SHIM_DATE_ALLOW_D=1
+wait_for "$Q/daemon.log" "start pid="
+assert_contains "RED B2: the daemon holds its lock and starts without flock" "start pid=" "$(start_line)"
+assert_absent "RED B2: a missing flock is not reported as already running" "already running" "$(cat "$D/daemon.out")"
+env -u CLAUDECODE PATH="$SHIM" SHIM_DATE_ALLOW_D=1 BRIDGE_ROOT="$D/bridge" TELEGRAM_ACCESS_PATH="$D/access.json" XDG_RUNTIME_DIR="$D/run" \
+    bash "$DAEMON" --bucket "$B" --until "$UNTIL" > "$D/second.out" 2>&1
+second_rc=$?
+assert_eq "RED B2: a second daemon on the bucket exits 1" "1" "$second_rc"
+assert_contains "RED B2: a second daemon says already running" "bypass-launchd: already running" "$(cat "$D/second.out")"
+stop
+assert_eq "B2: a stopped daemon leaves no lock behind" "none" "$([ -e "$Q/.lock.pid" ] || [ -L "$Q/.lock.pid" ] && echo held || echo none)"
+start PATH="$SHIM" SHIM_DATE_ALLOW_D=1
+wait_for "$Q/daemon.log" "start pid="
+assert_eq "B2: the bucket can be started again after a stop" "2" "$(grep -c 'start pid=' "$Q/daemon.log")"
+stop
+# A lock left by a killed daemon (dead pid) is reclaimed.
+setup_repo b2stale
+ln -s 999999 "$Q/.lock.pid"
+start PATH="$SHIM" SHIM_DATE_ALLOW_D=1
+wait_for "$Q/daemon.log" "start pid="
+assert_contains "B2: a lock naming a dead pid is reclaimed" "start pid=" "$(start_line)"
+stop
+# A lock naming a live process that is not a daemon (a reused pid) is reclaimed too.
+setup_repo b2reuse
+ln -s $$ "$Q/.lock.pid"
+start PATH="$SHIM" SHIM_DATE_ALLOW_D=1
+wait_for "$Q/daemon.log" "start pid="
+assert_contains "B2: a lock naming a live pid that is not a daemon is reclaimed" "start pid=" "$(start_line)"
+stop
+
+echo "== HIMMEL-10430 B3: no /run/user on macOS =="
+setup_repo b3
+mkdir -p "$D/tmpdir"
+start PATH="$SHIM" SHIM_DATE_ALLOW_D=1 XDG_RUNTIME_DIR= TMPDIR="$D/tmpdir/"
+CODE=$(ask_code r)
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_eq "RED B3: with no XDG_RUNTIME_DIR the launch log lands under TMPDIR" "yes" \
+    "$([ -e "$D/tmpdir/himmel-chief/gen-briefs/$(basename "$BRIEF" .md).launch.out" ] && echo yes || echo no)"
+stop
+
+echo "== HIMMEL-10430 B4: the journal offset needs no GNU stat =="
+setup_repo b4
+rm -f "$SHIM/stat.calls"
+start PATH="$SHIM" SHIM_DATE_ALLOW_D=1
+CODE=$(ask_code r)
+# gnu-ok: the assertion looks for the GNU flag among the shim's recorded calls
+assert_absent "B4: no GNU stat flag reaches the BSD-like stat" "stat -c" "$(cat "$SHIM/stat.calls" 2>/dev/null)"
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_contains "B4: the go reply written after the ask is still read" "LAUNCHED HIMMEL-1-N1-sweep-pr1" "$(cat "$Q/daemon.log")"
+stop
+
+echo "== HIMMEL-10430 B5: the brief hash needs no sha256sum =="
+setup_repo b5
+start PATH="$SHIM" SHIM_DATE_ALLOW_D=1
+CODE=$(ask_code r)
+assert_absent "RED B5: the request is not refused as unreadable" "brief unreadable" "$(cat "$Q/daemon.log" "$D/sent" 2>/dev/null)"
+assert_contains "RED B5: the ASK line carries a 12-character brief hash" "sha=$(sha256sum "$BRIEF" | cut -c1-12)" "$(cat "$Q/daemon.log")"
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_contains "B5: the re-hash after the go matches, so the worker launches" "LAUNCHED HIMMEL-1-N1-sweep-pr1" "$(cat "$Q/daemon.log")"
+stop
+
+echo "== HIMMEL-10430 B6: the worker detaches without setsid =="
+setup_repo b6
+start PATH="$SHIM" SHIM_DATE_ALLOW_D=1
+CODE=$(ask_code r)
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_absent "B6: the launch does not fail for want of setsid" "LAUNCH-FAILED" "$(cat "$Q/daemon.log")"
+assert_eq "B6: the launcher runs as the leader of its own session" "$(cat "$D/launch.pid" 2>/dev/null)" "$(cat "$D/launch.sid" 2>/dev/null)"
+stop
+
+echo "== HIMMEL-10430: every fix together under the BSD-like tools =="
+setup_repo e2e
+mkdir -p "$D/tmpdir"
+start PATH="$SHIM" XDG_RUNTIME_DIR= TMPDIR="$D/tmpdir"
+CODE=$(ask_code r)
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_contains "RED 10430: one go code launches a worker with BSD-like date, stat, hash and no flock, setsid or /run/user" "LAUNCHED HIMMEL-1-N1-sweep-pr1" "$(cat "$Q/daemon.log")"
 stop
 
 echo
