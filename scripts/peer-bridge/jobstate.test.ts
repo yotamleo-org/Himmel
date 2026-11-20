@@ -354,6 +354,20 @@ test("remaining counts only today, only server jobs, and floors at zero", () => 
   expect(remaining(many, { ...DEFAULT_BUDGETS, jobsPerDay: 10 }, NOW_S).jobs).toBe(0);
 });
 
+test("a job that ran across local midnight is charged to each day for the minutes it ran in it", () => {
+  const midnight = new Date(2026, 10, 20).getTime() / 1000;          // local midnight, whatever the station's zone
+  const across = (over: Partial<JobRecord> = {}) => inJob({ jobNo: 50, state: "DONE", by: null, resolved_at: midnight - 4000, running_at: midnight - 30 * MIN, ended_at: midnight + 40 * MIN, ...over });
+  // Today it ran 40 minutes, not the 70 it ran in all.
+  expect(remaining([across()], DEFAULT_BUDGETS, midnight + H).vmMinutes).toBe(DEFAULT_BUDGETS.vmMinutesPerDay - 40);
+  // Yesterday's share is on yesterday's budget.
+  expect(remaining([across()], DEFAULT_BUDGETS, midnight - 5 * MIN).vmMinutes).toBe(DEFAULT_BUDGETS.vmMinutesPerDay - 25);
+  // One still running after midnight counts from midnight up to now.
+  expect(remaining([across({ state: "RUNNING", by: midnight + 2 * H, ended_at: undefined })], DEFAULT_BUDGETS, midnight + 20 * MIN).vmMinutes).toBe(DEFAULT_BUDGETS.vmMinutesPerDay - 20);
+  // A job that began and ended yesterday takes nothing from today, and a whole day inside today is charged whole.
+  expect(remaining([across({ running_at: midnight - 3 * H, ended_at: midnight - 2 * H })], DEFAULT_BUDGETS, midnight + H).vmMinutes).toBe(DEFAULT_BUDGETS.vmMinutesPerDay);
+  expect(remaining([across({ running_at: midnight + 10 * MIN, ended_at: midnight + 25 * MIN })], DEFAULT_BUDGETS, midnight + H).vmMinutes).toBe(DEFAULT_BUDGETS.vmMinutesPerDay - 15);
+});
+
 test("the queue holds jobs waiting for a slot, not the one that is running or ones that are over", () => {
   const jobs = [serverAt("RECEIVED"), serverAt("RESOLVED"), serverAt("APPROVED"), serverAt("RUNNING"), serverAt("DONE"), serverAt("EXPIRED"), requesterAt("SENT")];
   expect(queueDepth(jobs)).toBe(3);

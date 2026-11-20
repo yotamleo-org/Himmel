@@ -1,7 +1,7 @@
 // Job-record fixtures shared by the resolver, state-machine and CLI tests.
 import type { JobRecord } from "./resolve";
 
-export const NOW_S = 1_731_000_000;
+export const NOW_S = 1_730_973_600;   // 2024-11-07 10:00 UTC, far from local midnight in the usual zones
 export const SHA = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
 export const WIRE = "0123456789abcdef";
 export const OUT_SUITES = ["scripts/hooks/test-a.sh", "scripts/ci/test-b.sh"];

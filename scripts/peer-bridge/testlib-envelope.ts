@@ -10,7 +10,7 @@ import { keygen, sign, STATION_KEY, type KeyInfo } from "./sign";
 export const BOT_US = "ours_bot", BOT_THEM = "goomal_bot";
 export const OUR_BOT_ID = "111000111", PEER_BOT_ID = "555000111";
 export const ENV_CHAT = -1001234567890;
-export const NOW_S = 1_731_000_000;
+export const NOW_S = 1_730_973_600;   // 2024-11-07 10:00 UTC, far from local midnight in the usual zones
 export const HEX16 = "0123456789abcdef", SHA40 = "a".repeat(40), H64 = "b".repeat(64);
 
 export type Station = { name: string; dir: string; keyPath: string; key: KeyInfo };

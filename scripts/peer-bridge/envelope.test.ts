@@ -204,6 +204,13 @@ test("encodeCanonical refuses an envelope the schema would refuse", () => {
   expect(() => encodeCanonical({ ...e, sha: "xyz" })).toThrow();
 });
 
+test("a body cannot choose the common fields: msg, from, to, chat, the times and the kind are the builder's", () => {
+  const e = buildEnvelope("halt", { v: 2, msg: "00000000", from: "intruder", to: "someone", chat: "-1009", iat: 1, exp: 2, kind: "req" }, CTX);
+  expect(e).toMatchObject({ v: 1, from: "yotam", to: "goomal", chat: "-1001234567890", iat: NOW, exp: NOW + 86400, kind: "halt" });
+  expect(e.msg).not.toBe("00000000");
+  expect(parseEnvelopeLine(encodeCanonical(e)).ok).toBe(true);
+});
+
 test("buildEnvelope refuses a body the schema refuses", () => {
   expect(() => buildEnvelope("res", { job: HEX16, state: "running", timeout_s: 10201 } as any, CTX)).toThrow();
   expect(() => buildEnvelope("cancel", { job: "nope" } as any, CTX)).toThrow();

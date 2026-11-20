@@ -185,7 +185,8 @@ exact bytes, so the domain tag and line 2 are bound. Line 3 must equal its own
 canonical re-encode (schema order, integers only, no whitespace), which refuses a
 duplicate key, a key out of order, `1.0`, an exponent and any whitespace. Common
 fields, in order: `v`, `msg` (equals line 2's `id`), `from`, `to` (station names),
-`chat` (a string), `iat`, `exp`, `kind`. `exp` is `iat + 86400` for every kind. The
+`chat` (a string), `iat`, `exp`, `kind`. We set `exp` to `iat + 86400` for every
+kind; a receiver accepts any `exp` with `iat < exp <= iat + 86400`. The
 body is closed per kind; `envelope.ts` owns the schema, the suite-path regex
 `^scripts/[a-z0-9_/.-]{1,120}\.sh$` and the two time constants `TIMEOUT_S_MAX`
 (10200 s) and `ALLOWANCE_S` (1200 s).

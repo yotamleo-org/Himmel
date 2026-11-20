@@ -73,13 +73,15 @@ export function chargedMinutes(r: JobRecord, now?: number): number {
 const startOfLocalDay = (nowS: number): number => { const d = new Date(nowS * 1000); d.setHours(0, 0, 0, 0); return d.getTime() / 1000; };
 
 // What a peer has left today. `records` are that peer's jobs; only the ones it sent
-// us count. jobsPerDay counts every job that reached RESOLVED, vmMinutesPerDay what
-// RUNNING jobs were charged, a running job up to `now`.
+// us count. jobsPerDay counts every job that reached RESOLVED today. vmMinutesPerDay
+// is charged the part of each job's run that falls inside today, a running job up to
+// `now`, so a job that crosses midnight spends each day's budget for its own minutes.
 export function remaining(records: JobRecord[], budgets: Budgets, now: number): { jobs: number; vmMinutes: number } {
   const day = startOfLocalDay(now);
   const mine = records.filter(r => r.dir === "in");
   const jobs = mine.filter(r => (r.resolved_at ?? -1) >= day).length;
-  const used = mine.filter(r => (r.running_at ?? -1) >= day).reduce((n, r) => n + chargedMinutes(r, now), 0);
+  const today = (r: JobRecord): number => r.running_at === undefined ? 0 : Math.max(0, Math.min(r.ended_at ?? now, now) - Math.max(r.running_at, day));
+  const used = mine.reduce((n, r) => n + Math.ceil(today(r) / 60), 0);
   return { jobs: Math.max(0, budgets.jobsPerDay - jobs), vmMinutes: Math.max(0, budgets.vmMinutesPerDay - used) };
 }
 

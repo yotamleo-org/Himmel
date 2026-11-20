@@ -164,7 +164,8 @@ export type BuildCtx = { from: string; to: string; chat: number; now: number };
 
 // A fresh msg id, iat = now and exp = iat + 86400 for every kind.
 export function buildEnvelope(kind: Kind, body: Record<string, unknown>, ctx: BuildCtx): Envelope {
-  const env = { v: 1, msg: mintId(), from: ctx.from, to: ctx.to, chat: String(ctx.chat), iat: ctx.now, exp: ctx.now + LIFETIME_S, kind, ...body } as Envelope;
+  // The body goes first: a key in it that names a common field is overwritten, so a caller cannot choose msg, from, to, chat, the times or the kind.
+  const env = { ...body, v: 1, msg: mintId(), from: ctx.from, to: ctx.to, chat: String(ctx.chat), iat: ctx.now, exp: ctx.now + LIFETIME_S, kind } as Envelope;
   encodeCanonical(env);
   return env;
 }
