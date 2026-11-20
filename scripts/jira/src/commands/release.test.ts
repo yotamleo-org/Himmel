@@ -344,6 +344,81 @@ describe('jira release rm-run', () => {
     expect(rows[0].ts).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
   });
 
+  // `usage` is the token source: it equals the Opus entry of `modelUsage` alone, while
+  // `modelUsage` also held the Haiku title call. The two sources hold different numbers here on purpose.
+  const U = { input_tokens: 2, cache_creation_input_tokens: 0, cache_read_input_tokens: 649, output_tokens: 10 };
+  const M = {
+    'claude-opus-5-5': { inputTokens: 3, cacheCreationInputTokens: 7, cacheReadInputTokens: 650 },
+    'claude-haiku-5-5': { inputTokens: 900, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 },
+  };
+  const WANT = { input_tokens: 2, cache_creation_tokens: 0, cache_read_tokens: 649 };
+  const NO_TOKENS = { input_tokens: null, cache_creation_tokens: null, cache_read_tokens: null };
+  const TOKEN_DECISION = { req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 's', ground: 'g', reason: 'r' };
+  const lastRow = () => {
+    const rows = readFileSync(join(root, 'credit', 'launches.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    return rows[rows.length - 1];
+  };
+  const tokenColumns = (row: Record<string, unknown>) => ({ input_tokens: row.input_tokens, cache_creation_tokens: row.cache_creation_tokens, cache_read_tokens: row.cache_read_tokens });
+
+  it('the token row: a billed judge run records its tokens and tier', async () => {
+    await oneRequest();
+    judgeReply.out = JSON.stringify({ type: 'result', is_error: false, total_cost_usd: 1.5, usage: U, modelUsage: M, result: JSON.stringify([TOKEN_DECISION]) });
+    await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    const row = lastRow();
+    expect(row).toMatchObject({ sub_cost_usd: '1.500000', cache_ttl: JUDGE_CACHE.ttl, outcome: 'native' });
+    expect(tokenColumns(row)).toEqual(WANT);
+  });
+
+  it('the token row: a refused reply that was billed still records its tokens', async () => {
+    await oneRequest();
+    judgeReply.out = JSON.stringify({ type: 'result', is_error: false, total_cost_usd: 1.5, usage: U, modelUsage: M, result: 'no array here' });
+    await expect(run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'))).rejects.toThrow();
+    const row = lastRow();
+    expect(row).toMatchObject({ sub_cost_usd: '1.500000', cache_ttl: JUDGE_CACHE.ttl, outcome: 'native-failed' });
+    expect(tokenColumns(row)).toEqual(WANT);
+  });
+
+  it('the token row: a cost with no usable usage records null tokens', async () => {
+    await oneRequest();
+    judgeReply.out = JSON.stringify({ type: 'result', is_error: false, total_cost_usd: 1.5, usage: { input_tokens: 2.5 }, modelUsage: {}, result: JSON.stringify([TOKEN_DECISION]) });
+    await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    const row = lastRow();
+    expect(row.sub_cost_usd).toBe('1.500000');
+    expect(tokenColumns(row)).toEqual(NO_TOKENS);
+  });
+
+  it('the token row: only the chosen source counts', async () => {
+    await oneRequest();
+    judgeReply.out = JSON.stringify({ type: 'result', is_error: false, total_cost_usd: 1.5, usage: {}, modelUsage: M, result: JSON.stringify([TOKEN_DECISION]) });
+    await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    const row = lastRow();
+    expect(row.sub_cost_usd).toBe('1.500000');
+    expect(tokenColumns(row)).toEqual(NO_TOKENS);
+  });
+
+  it.each([[{}], [{ total_cost_usd: -1 }]])('the token row: usable tokens with no cost record neither (%j)', async (cost) => {
+    await oneRequest();
+    judgeReply.out = JSON.stringify({ type: 'result', is_error: false, ...cost, usage: U, modelUsage: M, result: JSON.stringify([TOKEN_DECISION]) });
+    await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    const row = lastRow();
+    expect(row.sub_cost_usd).toBe('');
+    expect(tokenColumns(row)).toEqual(NO_TOKENS);
+  });
+
+  it('the token row: a failed call records neither', async () => {
+    await oneRequest();
+    judgeReply.out = JSON.stringify({ type: 'result', is_error: true, usage: U, modelUsage: M, result: '' });
+    await expect(run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'))).rejects.toThrow();
+    const row = lastRow();
+    expect(row.sub_cost_usd).toBe('');
+    expect(tokenColumns(row)).toEqual(NO_TOKENS);
+  });
+
+  it('the token row reads the field names the API lane reads', () => {
+    const usageMjs = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'api-lane', 'usage.mjs'), 'utf8');
+    for (const name of Object.keys(U).filter((k) => k !== 'output_tokens')) expect(usageMjs).toContain(name);
+  });
+
   it.each(['SKIPPED-BANK', 'BANK-UNKNOWN'])('the judge stops on preflight %s and names the token', async (token) => {
     await oneRequest();
     judgeReply.preflight = `bank-preflight: note\n${token}\n`;

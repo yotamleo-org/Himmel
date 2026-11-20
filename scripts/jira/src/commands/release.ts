@@ -484,20 +484,35 @@ function launchLedgerDir(env: NodeJS.ProcessEnv = process.env): string {
   return stateDir;
 }
 
+// The call's token counts, read from the envelope's `usage` (the field names scripts/api-lane/usage.mjs reads for the API
+// lane's row). The `usage` of a billed call is its Opus count alone: `modelUsage` also holds the Haiku title call, while
+// `usage` equals the one Opus entry. All three are kept only when all are non-negative integers.
+const NO_JUDGE_TOKENS = { input_tokens: null, cache_creation_tokens: null, cache_read_tokens: null } as { input_tokens: number | null; cache_creation_tokens: number | null; cache_read_tokens: number | null };
+function judgeTokens(usage: unknown): typeof NO_JUDGE_TOKENS {
+  const u = (usage ?? {}) as Record<string, unknown>;
+  const [input, created, read] = [u.input_tokens, u.cache_creation_input_tokens, u.cache_read_input_tokens];
+  if (![input, created, read].every((n) => Number.isInteger(n) && (n as number) >= 0)) return NO_JUDGE_TOKENS;
+  return { input_tokens: input as number, cache_creation_tokens: created as number, cache_read_tokens: read as number };
+}
+
 // The native judge run's row in launches.jsonl, the one ledger the cost page reads, carrying the session id so the run
 // reconciles with its transcript (scripts/usage/release-judge-reconcile.sh). The cost is the call's own verified
 // total_cost_usd (scripts/api-lane/outcome.mjs's rule), empty when the call failed or printed none. Best-effort like the launch
 // record: a row that cannot be written is said on stderr and the judge goes on.
 function recordJudgeLaunch(sid: string, rc: number, out: string | undefined): void {
   let cost = '';
+  let tokens = NO_JUDGE_TOKENS;
   try {
-    const r = JSON.parse(out ?? '') as { type?: unknown; is_error?: unknown; total_cost_usd?: unknown };
-    if (r && r.type === 'result' && r.is_error === false && typeof r.total_cost_usd === 'number' && Number.isFinite(r.total_cost_usd) && r.total_cost_usd >= 0) cost = r.total_cost_usd.toFixed(6);
-  } catch { /* unparseable output: cost stays empty */ }
+    const r = JSON.parse(out ?? '') as { type?: unknown; is_error?: unknown; total_cost_usd?: unknown; usage?: unknown };
+    if (r && r.type === 'result' && r.is_error === false && typeof r.total_cost_usd === 'number' && Number.isFinite(r.total_cost_usd) && r.total_cost_usd >= 0) {
+      cost = r.total_cost_usd.toFixed(6);
+      tokens = judgeTokens(r.usage);
+    }
+  } catch { /* unparseable output: cost and tokens stay empty */ }
   const row = {
     ts: new Date().toISOString().slice(0, 19) + 'Z', job_id: '', session_id: sid, account: '', lane: 'native', model: 'opus', budget_usd: '',
-    outcome: rc === 0 ? 'native' : 'native-failed', cost_usd: '', sub_cost_usd: cost, rc, kind: 'judge',
-    input_tokens: null, cache_creation_tokens: null, cache_read_tokens: null, branch: '', head: '', pr: null,
+    outcome: rc === 0 ? 'native' : 'native-failed', cost_usd: '', sub_cost_usd: cost, rc, kind: 'judge', cache_ttl: JUDGE_CACHE.ttl,
+    ...tokens, branch: '', head: '', pr: null,
   };
   try {
     const dir = launchLedgerDir();
