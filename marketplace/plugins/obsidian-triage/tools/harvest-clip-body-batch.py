@@ -112,7 +112,7 @@ ENRICHER_GAP_HOSTS = {
 
 # Thin-body heuristic (harvest-clips.md Phase 4): a clip-body clip is NOT
 # thin if it carries one of these section headings with real content.
-_RICH_SECTION_HEADINGS = ("## highlights", "## the idea", "## summary", "## key points")
+_RICH_SECTION_HEADINGS = ("## highlights", "## the idea", "## summary", "## key points", "## harvested content")
 
 # Prompt-injection screen.
 # CANONICAL pattern list — the runbook describes these classes in prose;

@@ -277,4 +277,40 @@ console.log(`OK release-notes cases (${fx.cases.length}) agree with the shared f
 JS
 FIX="$here/fixtures/release-notes-cases.json" LIB="$LIBURL" node "$tmp/t10409-cases.mjs" || { echo "release-notes shared-fixture test FAILED"; exit 1; }
 
+cat > "$tmp/vault/Clippings/fetched-guide.md" <<'EOF'
+---
+title: "guide"
+source: "https://example.com/docs/fetched-guide"
+type: article
+processed: true
+summary_basis: url-only
+harvested_at: 2026-11-20
+harvest_skill: jina
+harvest_status: ok
+---
+# guide
+
+## Summary
+Inferred from the source URL only — re-read the source before promoting.
+
+## Harvested content
+<!-- harvest-clips 2026-11-20 via jina (https://example.com/docs/fetched-guide) -->
+
+The guide explains how to configure the tool and names its three modes in plain words.
+
+## Source
+[l](https://example.com/docs/fetched-guide)
+EOF
+sed -e 's#fetched-guide#empty-fetch#g' -e '/^The guide explains/d' "$tmp/vault/Clippings/fetched-guide.md" > "$tmp/vault/Clippings/empty-fetch.md"
+cat > "$tmp/t10419.mjs" <<'JS'
+const { findHarvestedClipForUrl } = await import(process.env.LIB);
+const root = process.env.VAULT;
+const fetched = findHarvestedClipForUrl(root, "https://example.com/docs/fetched-guide");
+if (!fetched || fetched.enriched !== true) { console.error("FAIL: a fetched clip with a url-only summary is not enriched (read-link would refetch it)", fetched); process.exit(1); }
+const empty = findHarvestedClipForUrl(root, "https://example.com/docs/empty-fetch");
+if (!empty || empty.enriched !== false) { console.error("FAIL: a clip whose fetched section holds only its harvest comment is enriched", empty); process.exit(1); }
+console.log("OK fetched clips are enriched, an empty fetched section is not");
+JS
+LIB="$LIBURL" VAULT="$tmp/vault" node "$tmp/t10419.mjs" || { echo "fetched-clip enrichment test FAILED"; exit 1; }
+
 echo "ALL PASS"

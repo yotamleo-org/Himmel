@@ -114,7 +114,7 @@ const PLACEHOLDER_LINE = (l) => {
 };
 
 // article/research content sections (tweet delegates to isThinTweetBody)
-const ARTICLE_SECTIONS = ["## Highlights", "## Summary", "## Key Points", "## Core Argument", "## Key Evidence"];
+const ARTICLE_SECTIONS = ["## Highlights", "## Summary", "## Key Points", "## Core Argument", "## Key Evidence", "## Harvested content"];
 
 const URL_ONLY_MARKER = "Inferred from the source URL only";
 
@@ -174,6 +174,7 @@ export function isThinClipBody(body, type, source) {
       if (isUrlOnlySummary(lines, i)) continue;
       for (let j = i + 1; j < lines.length; j++) {
         if (/^#{1,6}\s/.test(lines[j].trim())) break;   // next heading
+        if (/^<!--.*-->$/.test(lines[j].trim())) continue;
         if (!PLACEHOLDER_LINE(lines[j])) return false;  // real content found
       }
     }
