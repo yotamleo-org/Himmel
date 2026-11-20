@@ -54,6 +54,7 @@ import argparse
 import itertools
 import os
 import re
+import socket
 import sys
 from pathlib import Path
 from typing import NamedTuple
@@ -427,28 +428,79 @@ def is_thin_clip(source: str, body: str) -> bool:
     return is_thin_body(body)
 
 
+_resolve_host = socket.getaddrinfo
+
+PRIVATE_REASON = "is or resolves to a private address"
+
+
+def _parse_ip(host: str):
+    """The address `host` spells, else None. Chromium also dials decimal / hex /
+    short IPv4 spellings (2130706433, 0x7f.1, 127.1) that ipaddress rejects."""
+    import ipaddress
+    try:
+        return ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        try:
+            return ipaddress.ip_address(socket.inet_aton(host.lower().strip(".")))
+        except (OSError, ValueError):
+            return None
+
+
+def _ip_is_private(ip) -> bool:
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+
+
 def _is_private_host(host: str) -> bool:
     """True for hosts that must never be shipped to an external scraper:
     localhost, internal TLDs (.local/.lan/.internal), and RFC1918 / loopback
     / link-local / reserved IP literals. Mirrors the harvest-clips.md G-1
     privacy gate for the firecrawl egress path."""
-    import ipaddress
     h = host.lower().strip(".")
     if h == "localhost" or h.endswith((".local", ".lan", ".internal")):
         return True
+    ip = _parse_ip(host)
+    return ip is not None and _ip_is_private(ip)
+
+
+def _resolved_ips(host: str) -> list:
+    import ipaddress
+    ips = [ipaddress.ip_address(sockaddr[0].split("%", 1)[0])
+           for *_, sockaddr in _resolve_host(host.strip("[]"), None, type=socket.SOCK_STREAM)]
+    if not ips:
+        raise OSError("no address")
+    return ips
+
+
+def _private_denial(host: str, cache: dict):
+    if host not in cache:
+        if _is_private_host(host):
+            cache[host] = f"{host} {PRIVATE_REASON}"
+        elif _parse_ip(host) is not None:
+            cache[host] = None
+        else:
+            try:
+                private = any(_ip_is_private(ip) for ip in _resolved_ips(host))
+                cache[host] = f"{host} {PRIVATE_REASON}" if private else None
+            except Exception as e:
+                cache[host] = f"{host} did not resolve ({type(e).__name__}), refused"
+    return cache[host]
+
+
+def _remote_refusal(url: str):
+    host = (urlparse(url).hostname or "").lower()
+    if not host:
+        return None
+    if _is_private_host(host):
+        return f"{host} {PRIVATE_REASON}"
+    if _parse_ip(host) is not None:
+        return None
     try:
-        ip = ipaddress.ip_address(host.strip("[]"))
-    except ValueError:
-        # Chromium also dials decimal / hex / short IPv4 spellings
-        # (2130706433, 0x7f.1, 127.1) that ipaddress rejects.
-        import socket
-        try:
-            ip = ipaddress.ip_address(socket.inet_aton(h))
-        except (OSError, ValueError):
-            return False
-    if ip.version == 6 and ip.ipv4_mapped:
-        ip = ip.ipv4_mapped
-    return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+        private = any(_ip_is_private(ip) for ip in _resolved_ips(host))
+    except Exception:
+        return None
+    return f"{host} {PRIVATE_REASON}" if private else None
 
 
 def firecrawl_eligible(canonical: str) -> bool:
@@ -1013,22 +1065,33 @@ def drop_media_cookies(cookies: list) -> list:
 def _block_private_requests(page, state):
     """Scrapling page_setup hook (runs before navigation). Aborts the browser's
     navigations, redirect hops and same-process subresources to a private host,
-    and page-level websockets. The decision is on the request URL alone, before
-    the browser resolves or connects.
+    and page-level websockets, before the browser connects. A host is judged by
+    its spelling (localhost, internal TLDs, private address literals) and, for a
+    name, by what this machine's resolver answers: any private, loopback,
+    link-local, unspecified or reserved answer (an IPv4-mapped form included)
+    denies the request, and so does a lookup that fails. One lookup per host per
+    fetch, shared by routes, redirect hops, websockets and the final-URL check.
 
     NOT covered: cross-site iframes (separate CDP targets, so their
     redirect hops are never paused), dedicated/shared-worker traffic including
-    worker websockets, and DNS rebinding (the check is hostname-only).
+    worker websockets, and DNS rebinding. Chromium resolves a name again when it
+    connects, so the answer checked here is not pinned to the address dialled:
+    a name that answers a public address to this check and a private one to
+    the browser is narrowed (every hop is checked, a failed lookup is denied),
+    not closed. Pinning the connection needs the browser's host-resolver rules,
+    which this hook does not set.
 
     Fail closed: Scrapling swallows an exception raised here and navigates
     anyway, so the first thing installed is a deny-all route that only lets
     requests through once state["armed"] is set, which happens after the last
     guard is in place. A failed install leaves the browser denying everything."""
+    resolved = state.setdefault("resolved", {})
+
     def blocked(url) -> bool:
         p = urlparse(str(url))
         if p.scheme in ("data", "blob", "about"):
             return False
-        return not p.hostname or _is_private_host(p.hostname)
+        return not p.hostname or bool(_private_denial(p.hostname.lower(), resolved))
 
     def on_request(route):
         try:
@@ -1111,13 +1174,19 @@ class LocalHeadlessClient:
             fetch, to_markdown = self._load()
         except ImportError:
             raise BackendNotImplemented("scrapling is not installed")
-        state = {"armed": False}
+        state = {"armed": False, "resolved": {}}
         cookies = drop_media_cookies(load_jar_cookies(self.cookie_dir, url))
-        page = fetch(url, headless=True, timeout=self.TIMEOUT_MS,
-                     cookies=cookies,
-                     page_setup=lambda pg: _block_private_requests(pg, state),
-                     # a service worker's traffic bypasses every route/CDP guard
-                     additional_args={"service_workers": "block"})
+        try:
+            page = fetch(url, headless=True, timeout=self.TIMEOUT_MS,
+                         cookies=cookies,
+                         page_setup=lambda pg: _block_private_requests(pg, state),
+                         # a service worker's traffic bypasses every route/CDP guard
+                         additional_args={"service_workers": "block"})
+        except Exception as e:
+            refused = state["resolved"].get((urlparse(url).hostname or "").lower())
+            if refused:
+                raise RuntimeError(f"refused, {refused}") from e
+            raise
         # Scrapling swallows a page_setup exception and navigates anyway; the
         # hook's deny-all route kept the browser closed, and this refuses the result
         if not state["armed"]:
@@ -1125,8 +1194,9 @@ class LocalHeadlessClient:
         # defence in depth: _block_private_requests already aborted any request to
         # a private host; refuse to ingest a page that still landed on one
         final_host = (urlparse(str(getattr(page, "url", "") or url)).hostname or "").lower()
-        if final_host and _is_private_host(final_host):
-            raise RuntimeError("local-headless: redirected to a private host")
+        refused = _private_denial(final_host, state["resolved"]) if final_host else None
+        if refused:
+            raise RuntimeError(f"local-headless: redirected to a private host, {refused}")
         status = getattr(page, "status", 200)
         if status >= 400:
             raise RuntimeError(f"local-headless: HTTP {status}")
@@ -1440,7 +1510,15 @@ class ScrapeChain:
         if not usable:
             raise RuntimeError("no scrape backend permitted for this URL (kill switch, .harvest-backends or no key)")
         fc_reason = None
+        remote_refusal, remote_checked = None, False
         for b in usable:
+            spec = BACKEND_REGISTRY.get(b.name)
+            if spec is not None and spec.egress_host:
+                if not remote_checked:
+                    remote_refusal, remote_checked = _remote_refusal(url), True
+                if remote_refusal:
+                    errors.append(f"{b.name}: refused, {remote_refusal}")
+                    continue
             if b.name == "firecrawl":
                 if getattr(b, "unavailable", None):
                     fc_reason = b.unavailable

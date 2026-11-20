@@ -10,6 +10,8 @@ import importlib.util
 import io
 import json
 import os
+import re
+import socket
 import sys
 import tempfile
 import urllib.request
@@ -36,6 +38,28 @@ def check(desc, cond):
     else:
         print(f"  FAIL  {desc}")
         failed += 1
+
+
+check("the resolver seam defaults to the real socket.getaddrinfo when nothing stubs it",
+      getattr(mod, "_resolve_host", None) is socket.getaddrinfo)
+_src = TOOL.read_text(encoding="utf-8")
+check("production never reassigns the seam: one definition, no override",
+      len(re.findall(r"(?m)^[ \t]*_resolve_host[ \t]*=", _src)) == 1 and "global _resolve_host" not in _src)
+
+RESOLVES = {}
+LOOKUPS = []
+
+
+def stub_resolve(host, port=None, family=0, type=0, proto=0, flags=0):
+    LOOKUPS.append(host)
+    ans = RESOLVES.get(host, ["93.184.216.34"])
+    if isinstance(ans, Exception):
+        raise ans
+    return [(socket.AF_INET6 if ":" in a else socket.AF_INET, socket.SOCK_STREAM, 6, "",
+             (a, 0, 0, 0) if ":" in a else (a, 0)) for a in ans]
+
+
+mod._resolve_host = stub_resolve
 
 
 class Resp(io.BytesIO):
@@ -439,6 +463,84 @@ if callable(setup):
                     ("https://example.com/next", "Fetch.continueRequest")):
         check(f"local-headless: redirect hop {u} -> {want}", bp.cdp.pause(u) == want)
 
+    RESOLVES.update({
+        "loop.example.net": ["127.0.0.1"],
+        "lan.example.net": ["10.0.0.7"],  # leak-allow: private-lan-ip test fixture asserting the RFC1918 deny rule
+        "meta.example.net": ["169.254.169.254"],
+        "mapped.example.net": ["::ffff:10.0.0.7"],  # leak-allow: private-lan-ip test fixture asserting the RFC1918 deny rule
+        "mappedloop.example.net": ["::ffff:127.0.0.1"],
+        "zero.example.net": ["0.0.0.0"],
+        "reserved.example.net": ["240.0.0.1"],
+        "v6loop.example.net": ["::1"],
+        "ula.example.net": ["fd00::5"],
+        "v6ll.example.net": ["fe80::1"],
+        "mixed.example.net": ["93.184.216.34", "10.0.0.7"],  # leak-allow: private-lan-ip test fixture asserting the RFC1918 deny rule
+        "down.example.net": OSError("resolver down"),
+        "badlabel.example.net": UnicodeError("label too long"),
+        "none.example.net": [],
+        "pub6.example.net": ["2606:2800:220:1:248:1893:25c8:1946"],
+    })
+    for label, name in (("loopback", "loop.example.net"), ("RFC1918", "lan.example.net"),
+                        ("the link-local metadata address", "meta.example.net"),
+                        ("an IPv4-mapped RFC1918 address", "mapped.example.net"),
+                        ("an IPv4-mapped loopback address", "mappedloop.example.net"),
+                        ("the unspecified address", "zero.example.net"),
+                        ("a reserved address", "reserved.example.net"),
+                        ("IPv6 loopback", "v6loop.example.net"), ("an IPv6 ULA", "ula.example.net"),
+                        ("an IPv6 link-local address", "v6ll.example.net"),
+                        ("one private answer beside a public one", "mixed.example.net")):
+        check(f"local-headless: a name resolving to {label} is aborted", verdict_for(setup, f"https://{name}/x") == "abort")
+    for label, name in (("a resolver that fails", "down.example.net"),
+                        ("a name that cannot be encoded", "badlabel.example.net"),
+                        ("an empty answer", "none.example.net")):
+        check(f"local-headless: {label} fails closed (abort)", verdict_for(setup, f"https://{name}/x") == "abort")
+    for label, name in (("a public IPv4 name", "pub.example.net"), ("a public IPv6 name", "pub6.example.net")):
+        check(f"local-headless: {label} still loads", verdict_for(setup, f"https://{name}/x") == "continue")
+
+    def fresh_setup():
+        r = FetchRecorder()
+        install_local(r)
+        mod.LocalHeadlessClient(cookie_dir=COOKIES).scrape("https://example.com/")
+        return r.calls[0][1]["page_setup"]
+
+    setup2 = fresh_setup()
+    bp = FakeBrowserPage()
+    setup2(bp)
+    LOOKUPS.clear()
+    seen = []
+    for u in ("https://cdn2.example.net/a", "https://cdn2.example.net/b"):
+        fr = FakeRoute(u, bp)
+        bp.routes[0][1](fr)
+        seen.append(fr.verdict)
+    seen.append(bp.cdp.pause("https://cdn2.example.net/hop"))
+    w = FakeWS("wss://cdn2.example.net/live")
+    bp.ws_routes[0][1](w)
+    check("local-headless: a host is looked up once per fetch, shared by routes, redirect hops and websockets",
+          LOOKUPS == ["cdn2.example.net"] and seen == ["continue", "continue", "Fetch.continueRequest"] and w.verdict == "connect")
+    setup3 = fresh_setup()
+    bp = FakeBrowserPage()
+    setup3(bp)
+    LOOKUPS.clear()
+    fails = [bp.cdp.pause("https://down.example.net/a"), bp.cdp.pause("https://down.example.net/b")]
+    check("local-headless: a failed lookup is cached too (one lookup, every request denied)",
+          LOOKUPS == ["down.example.net"] and fails == ["Fetch.failRequest"] * 2)
+    LOOKUPS.clear()
+    fresh_setup()
+    fresh_setup()
+    check("local-headless: a new fetch looks the host up again", LOOKUPS == ["example.com"] * 2)
+    install_local(rec)
+    LOOKUPS.clear()
+    for u in ("http://93.184.216.34/x", "http://127.0.0.1/x", "http://nas.internal/x", "http://2130706433/x"):
+        verdict_for(setup, u)
+    check("local-headless: an address literal or an internal name is judged without a lookup", LOOKUPS == [])
+    bp = FakeBrowserPage()
+    setup(bp)
+    check("local-headless: a redirect hop to a name resolving privately is failed",
+          bp.cdp.pause("https://loop.example.net/next") == "Fetch.failRequest")
+    w = FakeWS("wss://loop.example.net/x")
+    bp.ws_routes[0][1](w)
+    check("local-headless: a websocket to a name resolving privately is closed", w.verdict == "close")
+
     class NoWsCtx(FakeBrowserPage._Ctx):
         route_web_socket = property(lambda self: (_ for _ in ()).throw(AttributeError("route_web_socket")))
 
@@ -587,6 +689,128 @@ rec.calls.clear()
 mod.process_clip(make_clip(THIN), False, real, mod.UrlRules(deny=[("example.com/**", mod._glob_to_regex(mod._norm_target("example.com/**", True)[0]))]))
 check("process_clip: .harvest-deny never reaches local-headless", rec.calls == [])
 uninstall_local()
+
+
+class NavRecorder(FetchRecorder):
+    def fetch(self, url, **kw):
+        self.calls.append((url, kw))
+        self.browser = FakeBrowserPage()
+        kw["page_setup"](self.browser)
+        fr = FakeRoute(url, self.browser)
+        self.browser.routes[0][1](fr)
+        if fr.verdict == "abort":
+            raise RuntimeError("net::ERR_BLOCKED_BY_CLIENT")
+        return self.page
+
+
+def clip_text(path):
+    return path.read_text(encoding="utf-8")
+
+
+install_local(FetchRecorder(page=FakePage(url="https://loop.example.net/admin")))
+try:
+    mod.LocalHeadlessClient(cookie_dir=COOKIES).scrape("https://example.com/")
+    check("local-headless: a page that landed on a name resolving privately is refused", False)
+except Exception as e:
+    check("local-headless: a page that landed on a name resolving privately is refused",
+          "private address" in str(e) and "loop.example.net" in str(e))
+
+PRIV_SRC = "https://loop.example.net/post"
+DAYS = [f"2026-10-0{d}" for d in range(1, 7)]
+nav = NavRecorder()
+install_local(nav)
+local_chain = mod.ScrapeChain([mod.LocalHeadlessClient(cookie_dir=COOKIES)], 50)
+p = make_clip(f"---\ntype: article\nsource: {PRIV_SRC}\n---\nshort.\n")
+runs = []
+for day in DAYS[:5]:
+    mod.TODAY = day
+    runs.append(mod.process_clip(p, False, local_chain, mod.UrlRules()))
+t = clip_text(p)
+check("a denied page leaves the clip a deferred partial, whose note names the refusal",
+      runs[0][0] == "~" and "private address" in runs[0][1] and "harvest_status: partial" in t and "harvested_at" not in t)
+check("a denied page is retried once a night: the defer count follows the days",
+      [r[0] for r in runs] == ["~"] * 5 and "harvest_defer_count: 5" in t)
+check("a denied page stops being retried at the bounded count (needs-attention)", "harvest_needs_attention: true" in t)
+fetches = len(nav.calls)
+mod.TODAY = DAYS[5]
+g, m, _ = mod.process_clip(p, False, local_chain, mod.UrlRules())
+check("a clip past the bound is skipped and no further fetch is made", g == "o" and "needs-attention" in m and len(nav.calls) == fetches)
+check("the denied clip's body is untouched", t.endswith("---\nshort.\n"))
+
+RESOLVES["flaky.example.net"] = OSError("resolver down")
+nav = NavRecorder()
+install_local(nav)
+local_chain = mod.ScrapeChain([mod.LocalHeadlessClient(cookie_dir=COOKIES)], 50)
+p = make_clip("---\ntype: article\nsource: https://flaky.example.net/post\n---\nshort.\n")
+mod.TODAY = DAYS[0]
+g1, m1, _ = mod.process_clip(p, False, local_chain, mod.UrlRules())
+check("a resolver that fails once defers the clip (fail closed), it is not lost",
+      g1 == "~" and "harvest_defer_count: 1" in clip_text(p) and "harvested_at" not in clip_text(p))
+RESOLVES["flaky.example.net"] = ["93.184.216.34"]
+mod.TODAY = DAYS[1]
+g2, m2, _ = mod.process_clip(p, False, local_chain, mod.UrlRules())
+check("the same clip is harvested once the resolver answers (no loop)",
+      g2 == "v" and "harvested_at" in clip_text(p) and "harvest_skill: local-headless" in clip_text(p))
+uninstall_local()
+mod.TODAY = "2026-10-04"
+
+RESOLVES["bad.example.net"] = ["10.0.0.7"]  # leak-allow: private-lan-ip test fixture asserting the RFC1918 deny rule
+for label, name in (("loopback", "loop.example.net"), ("RFC1918", "bad.example.net"),
+                    ("an IPv4-mapped answer", "mapped.example.net"), ("one private answer among public ones", "mixed.example.net")):
+    reset()
+    stub_urlopen(["Markdown Content:\n# leaked\n\nbody\n", json.dumps({"success": True, "data": {"markdown": "# leaked\n\nbody"}})])
+    chain = mod.build_scrape_chain({"FIRECRAWL_API_KEY": "k", "HARVEST_SCRAPE_BACKEND": "jina,firecrawl"}, 5)
+    fc_budget = chain.backends[1].remaining
+    LOOKUPS.clear()
+    try:
+        chain.scrape(f"https://{name}/post")
+        err = None
+    except Exception as e:
+        err = str(e)
+    check(f"remote: a name resolving to {label} is refused with the same reason", err is not None and "private address" in err)
+    check(f"remote ({label}): the reader stub recorded no call and firecrawl spent nothing",
+          SEEN == [] and fc_lines() == [] and chain.backends[1].remaining == fc_budget)
+    check(f"remote ({label}): one lookup serves both remote rungs", LOOKUPS == [name])
+
+reset()
+stub_urlopen(["Markdown Content:\n# From jina\n\nbody\n"])
+chain = mod.build_scrape_chain({"HARVEST_SCRAPE_BACKEND": "jina"}, 5)
+md = chain.scrape("https://pub.example.net/post")
+check("remote: a public name is still sent", "From jina" in md and len(SEEN) == 1)
+reset()
+stub_urlopen(["Markdown Content:\n# From jina\n\nbody\n"])
+chain = mod.build_scrape_chain({"HARVEST_SCRAPE_BACKEND": "jina"}, 5)
+try:
+    md = chain.scrape("https://down.example.net/post")
+except Exception as e:
+    md = f"refused: {e}"
+check("remote: a name this resolver cannot resolve is still sent (it may be public elsewhere)",
+      "From jina" in md and len(SEEN) == 1)
+
+reset()
+stub_urlopen(["Markdown Content:\n# leaked\n\nbody\n"])
+nav = NavRecorder()
+install_local(nav)
+full = mod.ScrapeChain([mod.LocalHeadlessClient(cookie_dir=COOKIES), mod.JinaReaderClient()], 5)
+try:
+    full.scrape(PRIV_SRC)
+    err = None
+except Exception as e:
+    err = str(e)
+check("the whole chain refuses a name resolving privately: local-headless denied, jina refused, nothing sent",
+      err is not None and err.count("private address") >= 1 and SEEN == [] and len(nav.calls) == 1)
+uninstall_local()
+
+reset()
+stub_urlopen(["Markdown Content:\n# leaked\n\nbody\n"])
+remote_chain = mod.ScrapeChain([mod.JinaReaderClient(), mod.FirecrawlClient("k", budget=5)], 5)
+p = make_clip(f"---\ntype: article\nsource: {PRIV_SRC}\n---\nshort.\n")
+mod.TODAY = DAYS[0]
+g, m, _ = mod.process_clip(p, False, remote_chain, mod.UrlRules())
+t = clip_text(p)
+check("process_clip: a clip naming an internal host is a deferred partial, nothing sent to a reader",
+      g == "~" and "private address" in m and "harvest_defer_count: 1" in t and "harvested_at" not in t and SEEN == [] and fc_lines() == [])
+mod.TODAY = "2026-10-04"
 
 # --- registry, per-site routing, kill switch, caps -------------
 import contextlib
@@ -1058,6 +1282,14 @@ Net.scrape, Net.jina = "402", "fail"
 before = len(parked_rows())
 run_main(v5)
 check("denied URL is never parked", not [r for r in parked_rows()[before:] if r["kind"] == "parked"])
+
+_hook_doc = mod._block_private_requests.__doc__ or ""
+_cmd_doc = (TOOL.parent.parent / "commands" / "harvest-clips.md").read_text(encoding="utf-8")
+for where, text in (("the _block_private_requests docstring", _hook_doc), ("commands/harvest-clips.md", _cmd_doc)):
+    flat = " ".join(text.split())
+    check(f"{where} says Chromium resolves again at connect, so a rebinding name is narrowed, not closed",
+          "resolves a name again when it connects" in flat and "narrowed" in flat and "not closed" in flat)
+check("the docs name what is not set: no host-resolver pinning", "host-resolver rules" in " ".join(_hook_doc.split()) and "host-resolver rules" in " ".join(_cmd_doc.split()))
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

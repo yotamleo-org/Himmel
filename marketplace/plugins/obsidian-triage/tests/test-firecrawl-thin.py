@@ -20,6 +20,7 @@ spec = importlib.util.spec_from_file_location("harvest_batch", TOOL)
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
 mod.TODAY = "2026-06-16"
+mod._resolve_host = lambda host, *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))]
 NR = mod.UrlRules()  # explicit empty rules: no vault lists
 
 passed = failed = 0
