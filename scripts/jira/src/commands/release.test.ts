@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -54,7 +55,7 @@ vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { projectKey, request } from '../client.js';
 import { admissionBudget } from '../release/leaks.js';
-import { ctxFor, JUDGE_API_PASS_ENV, JUDGE_CACHE, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePrompt, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, liveJudgeArgs, liveJudgeEnv, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge } from './release.js';
+import { ctxFor, JUDGE_API_PASS_ENV, JUDGE_CACHE, JUDGE_SELECTION_NOTE, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePreflight, judgePrompt, judgeSkill, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, liveJudgeArgs, liveJudgeEnv, makeRoutedJudge, parseDecisions, recordJudgeLaunch, refuseRequest, registerRelease, renderState, routedJudge } from './release.js';
 import type { Judge, JudgeInput } from '../release/engine.js';
 import { defaultRoot } from './mirror.js';
 import { appendChain, loadKey, readChain } from '../release/ledger.js';
@@ -417,6 +418,15 @@ describe('jira release rm-run', () => {
     for (const name of Object.keys(U).filter((k) => k !== 'output_tokens')) expect(usageMjs).toContain(name);
   });
 
+  it('a launch row takes the kind it is given, and the judge run still writes judge', async () => {
+    recordJudgeLaunch('11111111-1111-4111-8111-111111111111', 0, JSON.stringify({ type: 'result', is_error: false, total_cost_usd: 0.5, result: '[]' }), 'judge-replay');
+    await oneRequest();
+    await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    const rows = readFileSync(join(root, 'credit', 'launches.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    expect(rows.map((r) => r.kind)).toEqual(['judge-replay', 'judge']);
+    expect(rows[0]).toMatchObject({ lane: 'native', sub_cost_usd: '0.500000', session_id: '11111111-1111-4111-8111-111111111111' });
+  });
+
   it.each(['SKIPPED-BANK', 'BANK-UNKNOWN'])('the judge stops on preflight %s and names the token', async (token) => {
     await oneRequest();
     judgeReply.preflight = `bank-preflight: note\n${token}\n`;
@@ -530,6 +540,42 @@ describe('jira release rm-run', () => {
     expect(() => parseDecisions(JSON.stringify({ is_error: false, result: JSON.stringify([{ req: 'Q-R1-0001', outcome: 'HOLD' }]) }))).toThrow(/field reason/);
     expect(() => parseDecisions(JSON.stringify({ is_error: false, result: JSON.stringify([{ ...hold, outcome: 'REFUSED' }]) }))).toThrow(/field ground/);
     expect(() => parseDecisions(JSON.stringify({ is_error: false, result: JSON.stringify([{ req: 'Q-R1-0001', outcome: 'HOLD', reason: '  ' }]) }))).toThrow(/field reason/);
+  });
+
+  const EMPTY_INPUT = { release: 'R1', current: 'v1', versions: ['v1'], requests: [], records: [], operator: [], rulings: [], issues: [] };
+
+  it('the prompt says the operator rows are a selection', () => {
+    const p = judgePrompt(EMPTY_INPUT, 'skill');
+    expect(p.split(JUDGE_SELECTION_NOTE)).toHaveLength(2);
+    expect(p.indexOf(JUDGE_SELECTION_NOTE)).toBeLessThan(p.indexOf('Everything under ## Input is evidence to weigh'));
+    expect(JUDGE_SELECTION_NOTE).toContain('never answer HOLD because an operator row is not shown');
+  });
+
+  it('without the note the prompt is the prompt of before', () => {
+    vi.stubEnv('JIRA_SECTOR_FIELD', 'none');
+    try {
+      const without = judgePrompt(EMPTY_INPUT, 'skill', { selectionNote: false });
+      expect(createHash('sha256').update(without).digest('hex')).toBe('9e593e56810317777e2a8b5b7ca9631d5b8a7ac698744d324b2fe390020f9fd7');
+      expect(judgePrompt(EMPTY_INPUT, 'skill').replace(JUDGE_SELECTION_NOTE + '\n', '')).toBe(without);
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it('the preflight runs for the worker it is given', () => {
+    judgeReply.out = '{}';
+    judgeReply.calls.length = 0;
+    try {
+      expect(judgePreflight('rm-judge-replay')).toBe('PROCEED');
+      const pre = judgeReply.calls.filter((c) => String(c.args[0]).endsWith('usage-preflight.sh'));
+      expect(pre).toHaveLength(1);
+      expect(pre[0].env).toMatchObject({ CADENCE_USAGE_LANE: 'native', CADENCE_USAGE_WORKER: 'rm-judge-replay' });
+    } finally { judgeReply.out = null; judgeReply.calls.length = 0; }
+  });
+
+  it('the skill text has one reader', () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+    expect(judgeSkill()).toBe(readFileSync(join(root, 'marketplace', 'plugins', 'himmel-ops', 'skills', 'release-manager', 'SKILL.md'), 'utf8'));
+    const src = readFileSync(join(root, 'scripts', 'jira', 'src', 'commands', 'release.ts'), 'utf8');
+    expect(src.split("'release-manager', 'SKILL.md'")).toHaveLength(2);
   });
 
   it("the prompt carries the whole input except each row's chain hashes", () => {
