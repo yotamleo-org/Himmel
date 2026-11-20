@@ -300,6 +300,16 @@ run --format json > /dev/null 2>&1
 after=$(find "$V" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum)
 assert "no file written or touched" "$before" "$after"
 
+echo "Test 11b: vault resolution and usage errors"
+OBSIDIAN_VAULT_PATH="$V" node "$TOOL" --today "$TODAY" --format json > "$tmp/env.json" 2>/dev/null
+cmp -s "$tmp/env.json" "$tmp/out1.json" && same=identical || same=differs
+assert "vault defaults to OBSIDIAN_VAULT_PATH" "identical" "$same"
+node "$TOOL" "$V" --bogus > /dev/null 2>&1; assert "unknown flag: exit 1" "1" "$?"
+node "$TOOL" "$V" --format xml > /dev/null 2>&1; assert "bad --format: exit 1" "1" "$?"
+node "$TOOL" "$V" --today 20-11-2026 > /dev/null 2>&1; assert "bad --today: exit 1" "1" "$?"
+node "$TOOL" "$V" --since soon > /dev/null 2>&1; assert "bad --since: exit 1" "1" "$?"
+node "$TOOL" "$V" "$V" > /dev/null 2>&1; assert "second positional argument: exit 1" "1" "$?"
+
 echo "Test 12: no Clippings/ is a clean no-op"
 mkdir -p "$tmp/empty"
 out=$(node "$TOOL" "$tmp/empty" --today "$TODAY" 2>&1); rc=$?

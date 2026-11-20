@@ -323,7 +323,7 @@ tag, folder) with its clip count, distinct sources and a PASS or skip verdict. T
 agent's remaining job is the substantive-content gate, the page, and one log line
 per candidate.
 
-```
+```bash
 node tools/synthesis-candidates.mjs [vault] [--today YYYY-MM-DD] [--since YYYY-MM-DD] [--format lines|json]
 ```
 

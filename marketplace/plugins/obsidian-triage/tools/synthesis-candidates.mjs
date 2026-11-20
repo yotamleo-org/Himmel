@@ -79,8 +79,6 @@ function parseArgs(argv) {
     if (t === "--today") a.today = argv[++i];
     else if (t === "--since") a.since = argv[++i];
     else if (t === "--format") a.format = argv[++i];
-    else if (t === "--json") a.format = "json";
-    else if (t === "--lines") a.format = "lines";
     else if (t.startsWith("--")) die(1, `unknown flag ${t}`);
     else if (a.vault === null) a.vault = t;
     else die(1, `unexpected argument ${t}`);
