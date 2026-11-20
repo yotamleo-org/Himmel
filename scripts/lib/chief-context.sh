@@ -202,6 +202,8 @@ chief_context_worker_env_unset_names() {
         CR_TRIGGER_SUPPRESS \
         HIMMEL_API_LANE \
         HIMMEL_API_ACCOUNT \
+        WORKER_SESSION_API_LANE \
+        WORKER_SESSION_API_ACCOUNT \
         IMPL_GUARD_OK \
         INLINE_IMPL_OK \
         HIMMEL_CONSOLE_LEG \

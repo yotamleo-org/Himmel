@@ -488,7 +488,9 @@ requested and resolved model and effort, the protocol (tiers, `--only`,
 context mode, known-findings and triviality settings, the runner digest and the
 recorded panel overrides `CRITIC_TIMEOUT_SECS`,
 `CRITIC_PANEL_TOTAL_TIMEOUT_SECS`, `CRITIC_KILL_GRACE_SECS`, `CRITIC_PARALLEL`,
-`CRITIC_FIRST_PASS_CAP_BYTES`) and the input digests of every case (diff,
+`CRITIC_FIRST_PASS_CAP_BYTES`), `api_lane` (`on` when `HIMMEL_API_LANE=on`, else null)
+and `api_account` (the account name, null unless it is A, B, C, D or auto; the claude-api
+settings the stamp cannot record, such as `CR_CLAUDE_CRITIC_EFFORT`, refuse it) and the input digests of every case (diff,
 context, intent, base). `stamp --recheck` completes it: `finished_at`, each
 case's responding models from its `ok responding-model(...)` or `fallback(...)`
 receipts, the run's observed set per critic, and each case's anomalies (an
