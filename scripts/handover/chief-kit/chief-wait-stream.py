@@ -120,7 +120,7 @@ def watchdog(inbox, sup, start):
     dead_since = None
     last_sleep = ''
     last_safe = None
-    while True:  # t13b-ok: waits while its own supervisor lives (that one ends by its own bounds); once it is gone this ends when a successor supervisor is alive, when its child is gone, when the child reaches a safe point (CHIEF_WAIT_STREAM_ADOPT_SEC, 300 s default, after a hand-off), or at CHIEF_WAIT_STREAM_BUSY_MAX_SEC (7200 s default) or CHIEF_WAIT_STREAM_REAP_MAX_SEC (1800 s default); each setting is read from the environment
+    while True:  # t13b-ok: only waits while its supervisor process exists, even a stopped or hung one, so it has no bound of its own then; once that process is gone it ends when a successor supervisor is alive, when its child is gone, or when the child is at a safe point (at once, or CHIEF_WAIT_STREAM_ADOPT_SEC, 300 s default, after a hand-off), and it ends the child after CHIEF_WAIT_STREAM_BUSY_MAX_SEC (7200 s default) without a safe point or CHIEF_WAIT_STREAM_REAP_MAX_SEC (1800 s default) after the supervisor went, then up to CHIEF_WAIT_STREAM_KILL_GRACE_SEC (10 s default) more; not bounded for nan, inf or huge settings; the settings are read from the environment with no clamp
         data = load(side)
         if alive(sup, start):
             time.sleep(.2)
@@ -406,7 +406,7 @@ class Supervisor:
             return result
         soft = float(os.getenv('CHIEF_WAIT_STREAM_SOFT_SEC', '1440'))
         hard = float(os.getenv('CHIEF_WAIT_STREAM_HARD_SEC', '1680'))
-        while True:  # t13b-ok: ends at CHIEF_WAIT_STREAM_HARD_SEC (1680 s default) at the latest, sooner when the waiter child has finished after CHIEF_WAIT_STREAM_SOFT_SEC (1440 s default), 60 s after a stop request, on a refusal or on an error; each setting is read from the environment
+        while True:  # t13b-ok: ends at the first pass after CHIEF_WAIT_STREAM_HARD_SEC (1680 s default, wall clock) while the waiter child lives, 60 s after a stop request while it lives, once the child is gone and CHIEF_WAIT_STREAM_SOFT_SEC (1440 s default) has passed or a stop request or a recorded reason (repeat, rate limit) is set, or on a refusal or an error (a child busy past CHIEF_WAIT_STREAM_BUSY_MAX_SEC, 7200 s default, is an error); not bounded for nan, inf or huge settings, for SOFT at or above HARD with a child that dies at once, or while CHIEF_WAIT_STREAM_PAUSE_LOG=1 (a test pause hook) is set; the settings are read from the environment with no clamp
             self.acknowledge()
             now = time.time()
             self.lines = [t for t in self.lines if time.monotonic() - t < 60]
