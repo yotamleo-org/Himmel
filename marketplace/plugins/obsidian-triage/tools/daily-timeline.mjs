@@ -24,13 +24,14 @@
  * It also upserts the `## Daily report` section: that day's
  * triaged sources, ranked deterministic suggested actions, and a carry-over of
  * unacted actions from the prior REPORT_LOOKBACK_DAYS day notes (see
- * ./lib/daily-report.mjs).
+ * ./lib/daily-report.mjs). An action the vault already shows applied (see
+ * ./lib/clip-actions.mjs and apply-clip-actions.mjs) is no longer listed or carried.
  *
  * A missing daily note is CREATED from `_Templates/Daily-Note.md`
  * with `{{date}}` filled in (a minimal note when there is no template), so a
  * no-intake day still gets its "No intake" line and its carry-over.
  *
- * Dependency-light: pure node + ./lib/{frontmatter,daily-timeline,daily-report}.mjs.
+ * Dependency-light: pure node + ./lib/{frontmatter,daily-timeline,daily-report,clip-actions}.mjs.
  */
 
 import fs from "node:fs";
@@ -38,11 +39,13 @@ import path from "node:path";
 import { parse, fmScalar, fmList } from "./lib/frontmatter.mjs";
 import { renderPipelineSection, upsertSection, PIPELINE_HEADING } from "./lib/daily-timeline.mjs";
 import {
-  REPORT_HEADING, sourceFromClip, suggestActions, sectionLines, parseItems, carryOver, renderReportSection, isResolved,
+  REPORT_HEADING, suggestActions, sectionLines, parseItems, carryOver, renderReportSection, isResolved,
 } from "./lib/daily-report.mjs";
+import {
+  REPORT_LOOKBACK_DAYS, shiftDate, isCalendarDate, resolveDaily, reportItems, listMocs, loadSources, appliedIds,
+} from "./lib/clip-actions.mjs";
 
 const SELF = "daily-timeline.mjs";
-const REPORT_LOOKBACK_DAYS = 14;
 const out = (s) => process.stdout.write(s + "\n");
 const err = (s) => process.stderr.write(s + "\n");
 function die(code, msg) { err(`${SELF}: ${msg}`); process.exit(code); }
@@ -59,20 +62,6 @@ function parseArgs(argv) {
   return a;
 }
 
-/** Resolve the daily note for <date>, or null if none exists (no phantom). */
-function resolveDaily(vault, date, override) {
-  const candidates = override
-    ? [override]
-    : [
-        path.join(vault, "50-Journal", "Daily", `${date}.md`),
-        path.join(vault, "Daily", `${date}.md`),
-      ];
-  for (const c of candidates) {
-    if (fs.existsSync(c) && fs.statSync(c).isFile()) return c;
-  }
-  return null;
-}
-
 /** Create the missing daily note for <date> from the vault template; returns its path. */
 function createDaily(vault, date, override) {
   const target = override || path.join(vault, "50-Journal", "Daily", `${date}.md`);
@@ -87,65 +76,26 @@ function createDaily(vault, date, override) {
   return target;
 }
 
-/** YYYY-MM-DD shifted by n days (calendar arithmetic, no timezone). */
-function shiftDate(date, n) {
-  return new Date(Date.parse(`${date}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
-}
-
-/** YYYY-MM-DD naming a real day: refuses 2026-13-01 and 2026-02-30 before a note is created for it. */
-function isCalendarDate(date) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(Date.parse(`${date}T00:00:00Z`)) && shiftDate(date, 0) === date;
-}
-
-/** Report sources: _evidence/ clips with `triaged_at: <date>`. */
-function reportSources(vault, date) {
-  const dir = path.join(vault, "Clippings", "_evidence");
-  let entries;
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; }
-  const sources = [];
-  for (const e of entries) {
-    if (!e.isFile() || !e.name.endsWith(".md")) continue;
-    let content;
-    try { content = fs.readFileSync(path.join(dir, e.name), "utf8"); } catch { continue; }
-    const { lines, bounds } = parse(content);
-    if (!bounds || fmScalar(lines, bounds.close, "triaged_at") !== date) continue;
-    sources.push(sourceFromClip(`Clippings/_evidence/${e.name.replace(/\.md$/, "")}`, content));
-  }
-  return sources;
-}
-
-/** MOCs in 60-Maps/ (`type: moc`) with their tags: the fold targets. */
-function listMocs(vault) {
-  const dir = path.join(vault, "60-Maps");
-  let entries;
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; }
-  const mocs = [];
-  for (const e of entries) {
-    if (!e.isFile() || !e.name.endsWith(".md")) continue;
-    let content;
-    try { content = fs.readFileSync(path.join(dir, e.name), "utf8"); } catch { continue; }
-    const { lines, bounds } = parse(content);
-    if (!bounds || fmScalar(lines, bounds.close, "type") !== "moc") continue;
-    const tags = fmList(lines, bounds.close, "tags").filter((t) => t !== "moc");
-    if (tags.length) mocs.push({ link: `60-Maps/${e.name.replace(/\.md$/, "")}`, tags });
-  }
-  return mocs;
-}
-
 /** Render the `## Daily report` section for <date> against the note's current content. */
 function buildReport(vault, date, content, eol) {
   const prior = [];
   for (let n = REPORT_LOOKBACK_DAYS; n >= 1; n--) {
-    const p = resolveDaily(vault, shiftDate(date, -n), null);
-    if (!p) continue;
-    prior.push(parseItems(sectionLines(fs.readFileSync(p, "utf8"), REPORT_HEADING)));
+    const items = reportItems(vault, shiftDate(date, -n));
+    if (items) prior.push(items);
   }
-  const { carried, seen } = carryOver(prior);
-  const sources = reportSources(vault, date);
+  const { carried: open, seen } = carryOver(prior);
+  // An action the vault already shows applied (clips stamped archived, clips linked
+  // in the map) is done: neither listed again nor carried over.
+  const sourcesByDate = loadSources(vault, [date, ...open.map((c) => c.since)]);
+  const mocs = listMocs(vault);
+  const applied = appliedIds(vault, sourcesByDate, mocs);
+  const carried = open.filter((c) => !applied.has(c.id));
+  for (const id of applied) seen.add(id);
+  const sources = sourcesByDate.get(date);
   const today = parseItems(sectionLines(content, REPORT_HEADING));
   // Only today's own suggestions; a resolved carried line stays under Carried over.
   const kept = today.filter((it) => it.since === date && isResolved(it.mark));
-  const actions = suggestActions(sources, listMocs(vault), { date, seen, kept });
+  const actions = suggestActions(sources, mocs, { date, seen, kept });
   const marks = new Map(today.map((it) => [it.id, it.mark]));
   return { section: renderReportSection({ date, sources, actions, carried, marks }, eol), sources, actions, carried };
 }
