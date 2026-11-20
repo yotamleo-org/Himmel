@@ -37,7 +37,18 @@ test('rolesPathFor sits beside the credit config', async () => {
   const f = fixture();
   const { rolesPathFor, ROLES } = await import('./api-roles.mjs');
   assert.equal(rolesPathFor(f.env), f.roles);
-  assert.deepEqual(ROLES, ['graphify', 'judge']);
+  assert.deepEqual(ROLES, ['graphify', 'judge', 'critic']);
+});
+
+test('a clean critic:[B] map is valid and accounts critic prints B', () => {
+  const f = fixture(doc({ critic: ['B'] }));
+  const r = f.cli(['accounts', 'critic']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout.trim(), 'B');
+  assert.equal(r.stderr, '');
+  const m = JSON.parse(f.cli(['check']).stdout).roleMap;
+  assert.equal(m.state, 'valid');
+  assert.deepEqual(m.errors, []);
 });
 
 test('a clean judge:[B] map is valid and accounts judge prints B', () => {
@@ -84,13 +95,13 @@ test('an empty or non-array entry is ignored with empty-role and an ignored line
   }
 });
 
-test('I8: probe, other and critic are never roles', () => {
-  const f = fixture(doc({ probe: ['A'], other: ['B'], critic: ['C'] }));
+test('I8: probe and other are never roles', () => {
+  const f = fixture(doc({ probe: ['A'], other: ['B'] }));
   const m = JSON.parse(f.cli(['check']).stdout).roleMap;
   assert.equal(m.state, 'partial');
   assert.deepEqual(m.roles, {});
-  assert.deepEqual(m.errors, ['unknown-role:probe', 'unknown-role:other', 'unknown-role:critic']);
-  for (const kind of ['probe', 'other', 'critic']) assert.equal(f.cli(['accounts', kind]).stdout, '');
+  assert.deepEqual(m.errors, ['unknown-role:probe', 'unknown-role:other']);
+  for (const kind of ['probe', 'other']) assert.equal(f.cli(['accounts', kind]).stdout, '');
 });
 
 test('not JSON, version 2 and roles:[] are invalid: no roles and an invalid-role-map error', () => {
@@ -200,7 +211,7 @@ test('check with a valid map prints state, roles, errors [] and ROLES', () => {
   const f = fixture(doc({ judge: ['B'] }));
   const out = JSON.parse(f.cli(['check']).stdout);
   assert.deepEqual(out.roleMap, { state: 'valid', roles: { judge: ['B'] }, errors: [] });
-  assert.deepEqual(out.ROLES, ['graphify', 'judge']);
+  assert.deepEqual(out.ROLES, ['graphify', 'judge', 'critic']);
 });
 
 test('the roles dir need not exist for an absent read', () => {

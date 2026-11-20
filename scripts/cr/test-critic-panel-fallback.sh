@@ -915,6 +915,29 @@ fi
 # Case 22 is intentionally absent: the SHIPPED registry no longer carries a glm
 # critic row (subscription cancelled), so there is nothing to assert on.
 
+# Case 23: a critic the API lane refused on policy. The member's stderr is the
+# shape critic-first-pass.sh leaves (test-critic-first-pass-claude.sh 10m runs
+# the real file): its BROKE line per attempt, then the fail-open lines ending on
+# an empty raw tail. The panel reason carries the BROKE line, not the empty tail.
+STUB_POLICY="$tmp/stub-policy.sh"
+cat > "$STUB_POLICY" <<'EOS'
+#!/usr/bin/env bash
+cat >/dev/null
+for _a in 1 2 3; do
+    printf '%s\n' 'critic-first-pass.sh: claude critic BROKE (policy refusal (a caller asked for account auto): auto routing is for the himmel graph pass only (kind critic, repo none); name HIMMEL_API_ACCOUNT=A, B or C) — not a clean no-op' >&2
+    [ "$_a" -lt 3 ] && printf 'critic-first-pass.sh: empty/failed hermes response (attempt %s/3) — retrying\n' "$_a" >&2
+done
+printf '%s\n' 'critic-first-pass.sh: invoke failed (rc=1) — fail-open, proceed claude-only. Raw output: /tmp/cfp-raw.x41b2c' 'critic-first-pass.sh: raw tail: ' >&2
+exit 1
+EOS
+chmod +x "$STUB_POLICY"
+printf '%s' "$DIFF" | CRITICS_JSON="$JSON_NOFB" CRITIC_FIRST_PASS="$STUB_POLICY" \
+    bash "$PANEL" >"$tmp/out23" 2>"$tmp/err23"
+check_contains "23: a policy-refused critic's panel reason names the policy refusal" "$(cat "$tmp/err23")" \
+    "panel-availability: qwen3coder unavailable (rc=1) reason=critic-broke: critic-first-pass.sh: claude critic BROKE (policy refusal (a caller asked for account auto): auto routing is for the himmel graph pass only"
+check_not_contains "23: the reason is not the empty raw tail" "$(cat "$tmp/err23")" \
+    "reason=critic-broke: critic-first-pass.sh: raw tail:"
+
 if [ "$fails" -eq 0 ]; then
     if [ "$_skips" -gt 0 ]; then
         echo "ALL PASS ($_skips skipped)"

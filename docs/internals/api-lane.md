@@ -190,7 +190,9 @@ secret, only role names and account letters:
 ```
 
 - **Known roles** are the `ROLES` export of `scripts/lib/api-roles.mjs`, the one owner of reading, validating and
-  writing the file: `graphify` and `judge`. `probe` and `other` are never roles.
+  writing the file: `graphify`, `judge` and `critic`. `probe` and `other` are never roles. Critics route on auto
+  through the role map (operator decision 1066): a PR critic on auto uses the accounts its `critic` entry names, and
+  with no entry it is refused like any other unmapped kind.
 - **No map means the default.** With no file, the graph pass uses every configured account and every other kind is
   refused (exit 2, no alert, no fallback). A role with no entry gets the same default.
 - **Four states.** `absent` (no file): the default. `valid`: the map. `partial` (the file parses but an entry has an

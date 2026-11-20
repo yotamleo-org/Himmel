@@ -281,4 +281,17 @@ check "47: upstream error marker + 401 line -> auth (finer class wins)" \
 critic-first-pass.sh: raw tail: 401 unauthorized')" \
     "auth"
 
+# ── cfp's whole-line BROKE line is the signal line (a policy refusal ends on an
+# empty raw tail), and only at the start of a line.
+check "48: a BROKE line before an empty raw tail is the signal line" \
+    "$(fsl 'critic-first-pass.sh: claude critic BROKE (policy refusal (a caller asked for account auto): auto routing is for the himmel graph pass only (kind critic, repo none); name HIMMEL_API_ACCOUNT=A, B or C) — not a clean no-op
+critic-first-pass.sh: invoke failed (rc=1) — fail-open, proceed claude-only. Raw output: /tmp/cfp-raw.x41b2c
+critic-first-pass.sh: raw tail: ')" \
+    "critic-first-pass.sh: claude critic BROKE (policy refusal (a caller asked for account auto): auto routing is for the himmel graph pass only (kind critic, repo none); name HIMMEL_API_ACCOUNT=A, B or C) — not a clean no-op"
+check "49: BROKE wording inside a line is not the signal line" \
+    "$(fsl 'provider echoed critic-first-pass.sh: claude critic BROKE (x)')" ""
+check "50: the same BROKE line still classifies critic-broke" \
+    "$(classify 1 '' 'critic-first-pass.sh: claude critic BROKE (policy refusal (a caller asked for account auto): x) — not a clean no-op
+critic-first-pass.sh: raw tail: ')" "critic-broke"
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

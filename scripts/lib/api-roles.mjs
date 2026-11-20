@@ -9,8 +9,9 @@ import { pathToFileURL } from 'node:url';
 import { ACCOUNTS, configPathFor, configuredLetters } from './api-credit-state.mjs';
 
 // The only kinds with an auto caller. probe and other are never roles (a probe names its account; other
-// is the unlabelled default). Plan P2 adds a kind in the same change as its caller.
-export const ROLES = ['graphify', 'judge'];
+// is the unlabelled default). Plan P2 adds a kind in the same change as its caller: critic's caller is
+// scripts/cr/critic-first-pass.sh, which sends HIMMEL_API_KIND=critic.
+export const ROLES = ['graphify', 'judge', 'critic'];
 
 export const rolesPathFor = (env = process.env) => join(dirname(configPathFor(env)), 'roles.json');
 
