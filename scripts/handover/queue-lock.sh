@@ -1668,7 +1668,7 @@ _ql_force_trap_reset() {
 
 # _ql_force_on_signal <SIG> -- free the claim, give the caller its traps back, then raise the signal again so the caller's own handling (or the default) applies.
 _ql_force_on_signal() {
-    local sig="$1" code=0 self
+    local sig="$1" code=0 self caller_traps="${_QL_FORCE_PREV:-}"
     case "$sig" in INT) code=130 ;; TERM) code=143 ;; HUP) code=129 ;; esac
     _ql_force_claim_cleanup
     _ql_force_trap_reset "${_QL_FORCE_PREV:-}"
@@ -1676,7 +1676,11 @@ _ql_force_on_signal() {
     _QL_FORCE_ABORT="$code"
     # BASHPID does not exist on bash 3.2 and $$ is the outer shell inside a subshell; the exec'd child's parent is this shell. The signal itself comes from the builtin kill: bash drops an INT sent from a child it is waiting on.
     self=$(exec sh -c 'echo "$PPID"')
+    # Apple bash 3.2 keeps its own INT handler after a self-raised INT and carries on; resetting to the default first lets the signal land
+    [ "$sig" != INT ] || trap - INT
     kill -s "$sig" "$self"
+    # still here with no INT handler of the caller's own: the raise did not end this shell, so end it by the status a killed one would report
+    case "$sig:$caller_traps" in INT:*SIGINT*) ;; INT:*) exit "$code" ;; esac
 }
 
 # _ql_force_on_exit -- free the claim, then run the EXIT action the caller had before the forced release replaced it, with the exit status it would have seen.
