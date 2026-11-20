@@ -1350,7 +1350,8 @@ on demand; nothing here runs automatically.
   `firecrawl-ledger.jsonl`), `jina-reader` (keyless), and
   `harvest-article-fetch` (not a route: it reads the vault and fails when a thin
   article clip has sat `partial` and untried for over two days, i.e. the routes
-  are healthy but the harvest is not calling them). The full run (armed by `pipeline-cadence.sh`'s
+  are healthy but the harvest is not calling them; an `_evidence/` partial the
+  retry cannot reach, such as a private host, is named in the `ok` line instead). The full run (armed by `pipeline-cadence.sh`'s
   fetch-health job) probes every source, writes `~/.himmel/fetch-health.json`
   (`last_success_timestamp` preserved per source across runs), and exits 0 iff
   every source is `ok`. `--probe <source>` (Task 2) runs exactly

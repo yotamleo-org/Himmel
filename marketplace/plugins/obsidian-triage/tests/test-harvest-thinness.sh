@@ -34,9 +34,14 @@ const leadIn = NL + "## Summary" + NL + "X long-form article by @someone; the cl
 if (isThinClipBody(leadIn, "article", src) !== true) { console.error("FAIL url-only summary with a lead-in reads rich"); process.exit(1); }
 const otherSection = NL + "## Highlights" + NL + "Quoted passage that mentions " + MARK + " in running text." + NL;
 if (isThinClipBody(otherSection, "article", src) !== false) { console.error("FAIL marker outside ## Summary treated as url-only"); process.exit(1); }
+const { readFileSync } = await import("node:fs");
+const fx = JSON.parse(readFileSync(process.env.FIX, "utf8"));
+for (const c of fx.cases) {
+  if (isThinClipBody(c.body, "article", fx.source) !== c.thin) { console.error("FAIL shared url-only fixture (clip-lookup): " + c.name); process.exit(1); }
+}
 console.log("OK url-only summary is thin (clip-lookup)");
 JS
-LIB="$LIBURL" node "$tmp/urlonly.mjs"
+FIX="$here/fixtures/url-only-summary-cases.json" LIB="$LIBURL" node "$tmp/urlonly.mjs"
 # Doc-contract: the runbook must instruct partial+thin-body, and must shell out
 # to the mechanical is-thin-cli (not "eyeball it").
 hc="$tmp/harvest-clips.all.md"  # body plus its on-demand references
@@ -260,6 +265,11 @@ if not mod.is_thin_body(BODY):
 LEAD = BODY.replace("## Summary\n" + MARK, "## Summary\nX long-form article by @someone; the clipper captured no body. " + MARK)
 if not mod.is_thin_body(LEAD) or mod.is_thin_body(BODY.replace("## Source", "## Highlights\nQuoted passage that says " + MARK + " in running text, then goes on for a while.\n\n## Source")):
     print("FAIL (U): the marker rule is not scoped to ## Summary"); sys.exit(1)
+import json
+fx = json.load(open("$here/fixtures/url-only-summary-cases.json", encoding="utf-8"))
+for case in fx["cases"]:
+    if mod.is_thin_body(case["body"]) != case["thin"]:
+        print("FAIL (U): shared url-only fixture (batch tool):", case["name"]); sys.exit(1)
 
 p = Path("$tmp/u-fresh.md")
 p.write_text("---\n" + FM + "---\n" + BODY, encoding="utf-8")

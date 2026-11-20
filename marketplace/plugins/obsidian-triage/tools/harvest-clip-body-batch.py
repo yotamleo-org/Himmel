@@ -316,7 +316,7 @@ _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _PROMOTION_SECTION_RE = re.compile(r"(?ms)^## Promotion candidate\b.*?(?=^## |\Z)")
 URL_ONLY_MARKER = "Inferred from the source URL only"
 _URL_ONLY_SUMMARY_RE = re.compile(
-    r"(?ms)^## Summary[ \t]*\r?\n(?:(?!^## ).)*?" + re.escape(URL_ONLY_MARKER) + r".*?(?=^## |\Z)")
+    r"(?ms)^## Summary[ \t]*\r?\n(?:(?!^#{1,6}[ \t]).)*?" + re.escape(URL_ONLY_MARKER) + r".*?(?=^## |\Z)")
 
 
 def _source_text(body: str) -> str:
@@ -2077,6 +2077,10 @@ def run_reflag_silent_partials(vault: Path, dry_run: bool) -> int:
     return 4 if failed else 0
 
 
+def evidence_retry_host(canonical: str) -> bool:
+    return firecrawl_eligible(canonical) or bool(YT_WATCH_RE.match(canonical))
+
+
 def evidence_clips(clippings: Path) -> tuple[list, list]:
     retry, partials = [], []
     root = clippings / "_evidence"
@@ -2095,7 +2099,7 @@ def evidence_clips(clippings: Path) -> tuple[list, list]:
         if fm.get("harvest_needs_attention") == "true":
             continue
         canonical = canonicalize((fm.get("source") or "").strip().strip('"')) or ""
-        if firecrawl_eligible(canonical) or YT_WATCH_RE.match(canonical):
+        if evidence_retry_host(canonical):
             retry.append(p)
     return retry, partials
 

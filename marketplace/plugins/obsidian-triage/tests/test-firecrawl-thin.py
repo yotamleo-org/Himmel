@@ -592,6 +592,32 @@ v = vault_of(inbox=[("p.md", triaged_clip("https://example.com/docs/p"))])
 code, out = run_main(v, env={"FIRECRAWL_API_KEY": "k"})
 check("default run with a key set: paid rung still not called", [n for n, _ in log] == ["jina"])
 
+log = []
+install_backends(log)
+v = vault_of(inbox=[("rt.md", triaged_clip("https://example.com/docs/rt"))])
+(v / ".harvest-backends").write_text("example.com/** skip=jina\n", encoding="utf-8")
+code, out = run_main(v)
+rt = v / "Clippings" / "rt.md"
+check("default run: .harvest-backends skip=jina makes no jina call", not any(n == "jina" for n, _ in log))
+check("default run: skip=jina leaves the clip partial", fm_value(rt, "harvest_status") == "partial" and code == 0)
+
+log = []
+install_backends(log)
+v = vault_of(inbox=[("rt.md", triaged_clip("https://example.com/docs/rt"))])
+(v / ".harvest-backends").write_text("other.org/** skip=jina\n", encoding="utf-8")
+code, out = run_main(v)
+check("default run: a routing line for another site still fetches through jina", [n for n, _ in log] == ["jina"])
+
+log = []
+install_backends(log)
+v = vault_of(inbox=[("rt.md", triaged_clip("https://example.com/docs/rt"))])
+(v / ".harvest-backends").write_text("this is not a routing line\n", encoding="utf-8")
+code, out = run_main(v)
+rt = v / "Clippings" / "rt.md"
+check("default run: a malformed .harvest-backends makes no call at all", log == [])
+check("default run: a malformed .harvest-backends fails closed, loudly, and the clip stays partial",
+      "fail closed" in out and fm_value(rt, "harvest_status") == "partial" and code == 0)
+
 mod.BACKEND_REGISTRY, mod.DEFAULT_SCRAPE_BACKENDS = _saved_registry, _saved_defaults
 
 print(f"\nResults: {passed} passed, {failed} failed")

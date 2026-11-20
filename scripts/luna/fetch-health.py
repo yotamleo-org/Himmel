@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import importlib.util
 import json
 import os
 import re
@@ -17,6 +18,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from functools import lru_cache
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -456,6 +458,23 @@ ARTICLE_FETCH_SKIP_HOSTS = {
     "youtube.com", "m.youtube.com", "youtu.be",
 }
 ARTICLE_RETRY_MAX_AGE_DAYS = 2
+HARVEST_TOOL = Path(__file__).resolve().parents[2] / "marketplace" / "plugins" / "obsidian-triage" / "tools" / "harvest-clip-body-batch.py"
+
+
+@lru_cache(maxsize=1)
+def _harvest_tool():
+    try:
+        spec = importlib.util.spec_from_file_location("harvest_clip_body_batch", HARVEST_TOOL)
+        tool = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tool)
+        return tool
+    except Exception:
+        return None
+
+
+def _evidence_retry_reaches(source: str) -> bool:
+    tool = _harvest_tool()
+    return tool is None or tool.evidence_retry_host(tool.canonicalize(source) or "")
 
 
 def _clip_frontmatter(path: Path) -> dict[str, str]:
@@ -481,7 +500,7 @@ def probe_harvest_article_fetch(env: dict[str, str], today: datetime | None = No
         return ProbeResult("ok", "no Clippings folder; nothing to check")
     day = (today or utc_now()).date()
     stuck: list[tuple[str, str]] = []
-    waiting = 0
+    waiting = unreachable = 0
     for path in sorted(clippings.rglob("*.md")):
         if any(part in ("_done", "_synthesis", "_rejected", "_media") for part in path.parts):
             continue
@@ -492,6 +511,9 @@ def probe_harvest_article_fetch(env: dict[str, str], today: datetime | None = No
             continue
         host = (urllib.parse.urlparse(fm.get("source", "")).hostname or "").lower().removeprefix("www.")
         if not host or host in ARTICLE_FETCH_SKIP_HOSTS or host.endswith(".instagram.com"):
+            continue
+        if "_evidence" in path.parts and not _evidence_retry_reaches(fm.get("source", "")):
+            unreachable += 1
             continue
         waiting += 1
         try:
@@ -507,7 +529,8 @@ def probe_harvest_article_fetch(env: dict[str, str], today: datetime | None = No
             f"{len(stuck)} thin article clip(s) partial and not tried for over {ARTICLE_RETRY_MAX_AGE_DAYS} days "
             f"(oldest: {oldest[1]}, last tried {oldest[0] or 'never'}); the harvest is not fetching them",
         )
-    return ProbeResult("ok", f"{waiting} thin article clip(s) partial, all tried within {ARTICLE_RETRY_MAX_AGE_DAYS} days")
+    note = f"; {unreachable} partial clip(s) in _evidence/ cannot be retried (private host or non-http URL)" if unreachable else ""
+    return ProbeResult("ok", f"{waiting} thin article clip(s) partial, all tried within {ARTICLE_RETRY_MAX_AGE_DAYS} days{note}")
 
 
 SCRAPLING_TIMEOUT_SECONDS = 120  # the helper's 60 s page load plus browser start-up

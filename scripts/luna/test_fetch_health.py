@@ -379,6 +379,31 @@ class FetchHealthTests(unittest.TestCase):
             clip(root, "_evidence/never.md", "https://example.com/n")
             self.assertIn("never", fetch_health.probe_harvest_article_fetch(env, today).reason)
 
+    def test_harvest_article_fetch_counts_only_clips_the_retry_can_reach(self):
+        def clip(root, name, source, last):
+            path = root / "Clippings" / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                f"---\ntype: article\nsource: {source}\nharvest_status: partial\nharvest_flag: thin-body\n"
+                f"harvest_defer_last: {last}\n---\n# t\n", encoding="utf-8")
+
+        today = datetime(2026, 11, 20, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {"HOME": tmp, "OBSIDIAN_VAULT_PATH": str(root)}
+            clip(root, "_evidence/private.md", "https://wiki.internal/guide", "2026-11-01")
+            clip(root, "_evidence/ftp.md", "ftp://example.com/guide", "2026-11-01")
+            clip(root, "_evidence/fresh.md", "https://example.com/a", "2026-11-19")
+            ok = fetch_health.probe_harvest_article_fetch(env, today)
+            self.assertEqual(ok.status, "ok", ok.reason)
+            self.assertIn("2 partial clip(s) in _evidence/ cannot be retried", ok.reason)
+            clip(root, "private-inbox.md", "https://wiki.internal/inbox", "2026-11-01")
+            inbox = fetch_health.probe_harvest_article_fetch(env, today)
+            self.assertEqual((inbox.status, "1 thin article clip(s)" in inbox.reason, "private-inbox.md" in inbox.reason), ("transport-fail", True, True))
+            clip(root, "_evidence/stuck.md", "https://example.com/stuck", "2026-11-01")
+            bad = fetch_health.probe_harvest_article_fetch(env, today)
+            self.assertIn("2 thin article clip(s)", bad.reason)
+
     def test_redirect_handler_strips_auth_off_scope(self):
         handler = fetch_health.AuthScopedRedirectHandler({"www.reddit.com"})
         request = urllib.request.Request("https://www.reddit.com/a", headers={"Cookie": "secret", "Authorization": "Bearer secret"})
