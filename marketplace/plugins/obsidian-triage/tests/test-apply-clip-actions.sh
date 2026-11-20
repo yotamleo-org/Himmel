@@ -225,6 +225,43 @@ assert "untouched map is restored" "" "$(diff "$P/60-Maps/Beta-MOC.md" "$A/60-Ma
 assert "untouched CRLF map is restored" "" "$(diff "$P/60-Maps/Gamma-MOC.md" "$A/60-Maps/Gamma-MOC.md")"
 assert "untouched clip is restored" "" "$(diff "$P/Clippings/_evidence/arch-1.md" "$A/Clippings/_evidence/arch-1.md")"
 
+# ── 6b. edge branches ────────────────────────────────────────────────────────
+# E: arch-1 already carries `archived: false` (not ours to overwrite), arch-3/4
+# are gone (their open actions can no longer be reproduced), and Beta's
+# ## Evidence heading is empty and ends the file with no newline.
+echo "Test group 6b: unappliable, unmatched, empty Evidence, --ledger, --dry-run, vanished page"
+E="$tmp/E"; cp -R "$P" "$E"
+P_SAVED="$P"; P="$E"; mkclip arch-1 "$D0" "" 'archived: false'; P="$P_SAVED"
+rm -f "$E/Clippings/_evidence/arch-3.md" "$E/Clippings/_evidence/arch-4.md"
+printf -- '---\ntype: moc\ntitle: "Beta MOC"\ntags:\n  - beta\n  - moc\n---\n\n# Beta\n\n## Evidence' > "$E/60-Maps/Beta-MOC.md"
+cp -R "$E" "$tmp/E0"
+eh="$(tree_hash "$E")"
+out="$(node "$APPLY" --vault "$E" --date "$D" --limit 50 --dry-run 2>&1)"
+assert "explicit --dry-run prints the 7 appliable actions" "7" "$(printf '%s\n' "$out" | grep -c '^would ')"
+assert "explicit --dry-run changes nothing" "$eh" "$(tree_hash "$E")"
+CL="$tmp/custom.jsonl"
+out="$(node "$APPLY" --vault "$E" --date "$D" --apply --limit 50 --ledger "$CL" 2>&1)"
+assert "summary counts 7 applied of 8 eligible" "1" "$(printf '%s\n' "$out" | grep -c ': 7 applied (3 fold, 4 archive) of 8 eligible')"
+assert "summary counts the unmatched actions" "1" "$(printf '%s\n' "$out" | grep -c ', 2 unmatched,')"
+assert "summary counts the unappliable action" "1" "$(printf '%s\n' "$out" | grep -c ', 1 unappliable')"
+assert "the unappliable clip is reported" "1" "$(printf '%s\n' "$out" | grep -c '^⊘ archive .*arch-1')"
+assert "--ledger writes the named ledger" "7" "$(lines "$CL")"
+assert "--ledger leaves no default ledger" "no" "$([ -e "$E/$LEDGER_NAME" ] && echo yes || echo no)"
+assert "a clip with archived: false is left as it was" "" "$(diff "$tmp/E0/Clippings/_evidence/arch-1.md" "$E/Clippings/_evidence/arch-1.md")"
+BE="$E/60-Maps/Beta-MOC.md"
+assert "empty Evidence at EOF gets the bullets after a blank line" \
+    "$(printf -- '---\ntype: moc\ntitle: "Beta MOC"\ntags:\n  - beta\n  - moc\n---\n\n# Beta\n\n## Evidence\n\n- [[Clippings/_evidence/beta-1|Clip beta-1]]\n- [[Clippings/_evidence/beta-2|Clip beta-2]]')" \
+    "$(cat "$BE")"
+assert "a map with no final newline keeps having none" "]" "$(tail -c1 "$BE")"
+rm -f "$E/Clippings/_evidence/arch-2.md"
+out="$(node "$APPLY" --vault "$E" --date "$D" --revert "$CL" 2>&1)"; rc=$?
+assert "revert exits 0 when a stamped page has vanished" "0" "$rc"
+assert "revert reports the vanished page as already-gone" "1" "$(printf '%s\n' "$out" | grep -c ' 1 already-gone')"
+assert "revert restores every page that is still there" "" "$(diff -r "$tmp/E0" "$E" --exclude=arch-2.md 2>&1)"
+LIB="$PLUGIN_DIR/tools/lib/clip-actions.mjs" node --input-type=module -e \
+    'const { stampArchived } = await import(process.env.LIB); console.log(JSON.stringify(stampArchived("body only", "2026-06-28")))' > "$tmp/stamp.out" 2>&1
+assert "a clip with no frontmatter is skipped, not stamped" '{"skip":"no frontmatter"}' "$(cat "$tmp/stamp.out")"
+
 # ── 7. argument validation ───────────────────────────────────────────────────
 echo "Test group 7: arguments"
 node "$APPLY" --vault "$A" --date "$D" --limit 0 >/dev/null 2>&1; assert "--limit 0 is refused" "1" "$?"
