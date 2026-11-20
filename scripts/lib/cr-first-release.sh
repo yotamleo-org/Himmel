@@ -29,24 +29,21 @@
 #
 # The release is `scripts/lib/review-merge-gate.sh` cr_reviewer_gate with
 # --release: no cheap job may be red (the latest check-run of each cheap name
-# decides), then every hard reviewer must pass at the head and a CodeRabbit
-# review still in progress holds. A cheap run still in flight does not hold:
+# decides), then every hard reviewer must pass at the head; a CodeRabbit
+# review still in progress relaxes with a NOTE (decision 1066: CodeRabbit is
+# best effort), while a posted CodeRabbit finding or an open thread holds. A
+# cheap run still in flight does not hold:
 # the heavy run re-runs every cheap job at the head, so the reviewers are the
 # only wait and the two runs overlap. The per-head ledger it writes is
 # scripts/cr/cr-trigger-ledger.sh — NOT the CodeRabbit trigger ledger in
 # scripts/lib/coderabbit-trigger-ledger.sh. Its cheap_settled_at is the last
 # cheap completion when the cheap run had settled at release, null when not.
 #
-# A CodeRabbit status stuck in `pending` is probed once it is older than
-# CR_FIRST_STUCK_AFTER_S (1800): a rate-limit reply, a CodeRabbit error
-# comment, a status-page incident, or no CodeRabbit activity for
-# CR_FIRST_PROGRESS_S (600) releases loudly, but only when that in-progress
-# review is the one thing holding; a probe that cannot read holds.
 # A `ci:go` while the cheap run is still going cancels that run (OQ3); the go
 # run's same-named check-runs then supersede the cancelled ones.
 #
 # Env: CR_FIRST_HEAVY_RE / CR_FIRST_CHEAP_RE (check-run name regexes),
-# CR_FIRST_STATUS_URL (statuspage JSON), CR_FIRST_NOW (epoch seam for tests),
+# CR_FIRST_NOW (epoch seam for tests),
 # CR_FIRST_LEDGER / CR_FIRST_ALERTS (see cr-trigger-ledger.sh),
 # CR_FIRST_READONLY=1 (a passing gate prints `CR-FIRST PENDING-RELEASE ...` and
 # writes no label, no ledger line and no alert: ready-check.sh is a read-only script),
@@ -125,9 +122,6 @@ _crf_alert() {
 # _crf_map_hold <gate HOLD line> — the short reason of one gate HOLD line.
 _crf_map_hold() {
     local l="${1#HOLD: }" re
-    case "$l" in
-        "CodeRabbit review is in progress"*) echo "coderabbit in-progress"; return 0 ;;
-    esac
     re='^([0-9]+) unresolved CodeRabbit review thread\(s\) on PR #[0-9]+ \[(.*)\]\. '
     if [[ "$l" =~ $re ]]; then echo "${BASH_REMATCH[1]} unresolved CodeRabbit thread(s) [${BASH_REMATCH[2]}]"; return 0; fi
     re='^([^ ]+) \(hard\) is not-yet-run at head '
@@ -139,42 +133,6 @@ _crf_map_hold() {
     re='^([^ ]+) \([a-z-]+\) cannot be read at head '
     if [[ "$l" =~ $re ]]; then echo "${BASH_REMATCH[1]} unreadable"; return 0; fi
     printf '%s\n' "${l:0:100}"
-}
-
-# _crf_stuck_probe <owner/name> <pr> <head> — OQ2 / decision 209. rc 0 and the
-# cause in _CRF_STUCK when the pending CodeRabbit status is provably stuck;
-# rc 1 for anything else, including a read that failed (hold, never release).
-_crf_stuck_probe() {
-    local repo="$1" pr="$2" head="$3" owner name probe pst pcreated pepoch now bound prog rl uid
-    local comments reviews n page ind last lepoch url
-    owner=${repo%%/*}; name=${repo#*/}
-    bound=${CR_FIRST_STUCK_AFTER_S:-1800}; prog=${CR_FIRST_PROGRESS_S:-600}
-    probe=$(cr_signal_probe "$owner" "$name" "$head" </dev/null) || return 1
-    pst=${probe%% *}; pcreated=${probe#* }
-    { [ "$pst" = pending ] && [ -n "$pcreated" ]; } || return 1
-    pepoch=$(_crf_epoch "$pcreated"); [ -n "$pepoch" ] || return 1
-    now=$(_crf_now)
-    [ $((now - pepoch)) -ge "$bound" ] || return 1
-    uid=$(cr_signal_bot_id)
-    rl=$(cr_signal_rate_limit "$owner" "$name" "$pr" "$head" </dev/null) || return 1
-    if [ "$rl" = rate_limited ]; then _CRF_STUCK="rate-limited"; return 0; fi
-    comments=$(_crf_list "repos/$repo/issues/$pr/comments?per_page=100") || return 1
-    reviews=$(_crf_list "repos/$repo/pulls/$pr/reviews?per_page=100") || return 1
-    n=$(printf '%s' "$comments" | jq -r --argjson uid "$uid" --arg since "$pcreated" \
-        '[.[] | select(.user.id == $uid and .created_at >= $since
-                       and ((.body // "") | test("review failed|unable to complete|an error occurred|something went wrong"; "i")))] | length' 2>/dev/null) || return 1
-    if [ "${n:-0}" -gt 0 ] 2>/dev/null; then _CRF_STUCK="coderabbit error comment"; return 0; fi
-    url=${CR_FIRST_STATUS_URL:-https://status.coderabbit.ai/api/v2/status.json}
-    if page=$(curl -fsS --max-time 10 "$url" 2>/dev/null </dev/null); then
-        ind=$(printf '%s' "$page" | jq -r '.status.indicator // empty' 2>/dev/null || true)
-        if [ -n "$ind" ] && [ "$ind" != none ]; then _CRF_STUCK="status page $ind"; return 0; fi
-    fi
-    last=$(jq -nr --argjson c "$comments" --argjson r "$reviews" --argjson uid "$uid" --arg ps "$pcreated" \
-        '([$ps] + [$c[] | select(.user.id == $uid) | (.created_at, (.updated_at // empty))]
-                + [$r[] | select(.user.id == $uid) | (.submitted_at // empty)]) | max' 2>/dev/null) || return 1
-    lepoch=$(_crf_epoch "$last"); [ -n "$lepoch" ] || return 1
-    if [ $((now - lepoch)) -ge "$prog" ]; then _CRF_STUCK="no activity for $((now - lepoch))s"; return 0; fi
-    return 1
 }
 
 # _crf_do_release <owner/name> <pr> <head> <reason> <gate state line> <cheap_settled_at>
@@ -244,8 +202,8 @@ cr_first_switch_on() {
 
 cr_first_release() {
     local pr="${1:-}" head="${2:-}" repo="${3:-}" sw pull pinfo pstate psha pfork commit cdate cepoch age
-    local checks_raw checks events cheap cstate csettled out grc holds="" line mapped state_line n_hold=0
-    local only_cr=0 slug reason heavy_suites runs_raw runs_rc
+    local checks_raw checks events cheap cstate csettled out grc holds="" line mapped state_line
+    local slug reason heavy_suites runs_raw runs_rc
     case "$pr" in ''|*[!0-9]*) echo "CR-FIRST ERROR usage: cr_first_release <pr> <head> [<owner/name>]"; return 2 ;; esac
     [ -n "$head" ] || { echo "CR-FIRST ERROR usage: cr_first_release <pr> <head> [<owner/name>]"; return 2; }
     command -v jq >/dev/null 2>&1 || return 0
@@ -347,18 +305,7 @@ cr_first_release() {
                 case "$line" in HOLD:\ *) ;; *) continue ;; esac
                 mapped=$(_crf_map_hold "$line")
                 holds="${holds}${mapped}"$'\n'
-                n_hold=$((n_hold + 1))
-                case "$line" in "HOLD: CodeRabbit review is in progress"*) only_cr=1 ;; esac
             done <<<"$out"
-            if [ "$n_hold" -eq 1 ] && [ "$only_cr" -eq 1 ] && _crf_stuck_probe "$repo" "$pr" "$head"; then
-                grc=0
-                out=$(cr_reviewer_gate "$pr" "$head" "$repo" 2>&1 </dev/null) || grc=$?
-                if [ "$grc" -eq 0 ]; then
-                    state_line=$(printf '%s\n' "$out" | grep -m1 '^cr-reviewer-gate: PR #' || true)
-                    _crf_do_release "$repo" "$pr" "$head" "coderabbit-stuck $_CRF_STUCK" "$state_line" "$csettled"
-                    return $?
-                fi
-            fi
             while IFS= read -r mapped; do
                 [ -n "$mapped" ] || continue
                 echo "CR-FIRST HOLD $mapped $age"
