@@ -175,18 +175,23 @@ known_block=""
 # openai-codex. An explicit --provider still wins; a model the registry does
 # not know still falls through to hermes' default, unchanged.
 #
-# Reads the tracked, UNIVERSAL critics.json — NOT the operator's local overlay
-# — the same adopter-neutral choice advisory-rows.sh makes and for the same
-# reason: a hand-run critic must behave identically on any checkout.
-# node (not jq): the registry is already read with node in advisory-rows.sh,
-# and node is a hard himmel dependency where jq is not.
+# Reads the MERGED registry (critics.local.json over critics.json) through
+# scripts/lib/critics-config.sh, the resolver critic-panel.sh and
+# review-merge-gate.sh read, so an overlay drop reaches a hand-run or wrapped
+# critic too (decision 1085); a resolver failure falls back to the base file.
+# A Claude critic (slug claude or a claude-* model) with no registry row and no
+# --provider is absent: exit 5 SKIPPED, never a hermes call.
+# node (not jq): node is a hard himmel dependency where jq is not.
 if [ -z "$provider" ] && command -v node >/dev/null 2>&1; then
-    _cfp_reg="${CRITICS_BASE_JSON:-$SCRIPT_DIR/critics.json}"
-    if [ -f "$_cfp_reg" ]; then
-        _cfp_row="$(REG="$_cfp_reg" WSLUG="${slug:-}" WMODEL="$model" node -e '
-          const fs = require("fs");
+    _cfp_reg="$( . "$SCRIPT_DIR/../lib/critics-config.sh" 2>/dev/null && critics_config_resolve "$SCRIPT_DIR" 2>/dev/null )" || _cfp_reg=""  # swallow-ok: falls back to the base file below
+    if [ -z "$_cfp_reg" ]; then
+        # read-sink-ok: CRITICS_BASE_JSON is the test seam for the base registry; only a row's slug and provider are read from it
+        _cfp_reg="$(cat "${CRITICS_BASE_JSON:-$SCRIPT_DIR/critics.json}" 2>/dev/null || true)"  # swallow-ok: an unreadable registry leaves the provider unset
+    fi
+    if [ -n "$_cfp_reg" ]; then
+        _cfp_row="$(printf '%s' "$_cfp_reg" | WSLUG="${slug:-}" WMODEL="$model" node -e '
           let panel = [];
-          try { panel = JSON.parse(fs.readFileSync(process.env.REG, "utf8")).panel || []; }
+          try { panel = JSON.parse(require("fs").readFileSync(0, "utf8")).panel || []; }
           catch (e) { panel = []; }
           const eq = (a, b) => !!a && !!b && String(a).toLowerCase() === String(b).toLowerCase();
           // --slug is the more specific key, so it decides when given; --model
@@ -205,6 +210,17 @@ if [ -z "$provider" ] && command -v node >/dev/null 2>&1; then
                 ;;
         esac
     fi
+fi
+if [ -z "$provider" ]; then
+    _cfp_lslug="$(printf '%s' "${slug:-}" | tr '[:upper:]' '[:lower:]')"
+    _cfp_lmodel="$(printf '%s' "$model" | tr '[:upper:]' '[:lower:]')"
+    case "$_cfp_lslug" in claude) _cfp_lmodel="claude-" ;; esac
+    case "$_cfp_lmodel" in
+        claude-*)
+            cat >/dev/null
+            echo "critic-first-pass.sh: claude critic SKIPPED (no claude row in the merged critics registry, dropped or absent, and no --provider) — clean no-op" >&2
+            exit 5 ;;
+    esac
 fi
 
 if [ -z "${slug:-}" ]; then
@@ -597,6 +613,12 @@ _cfp_claude_effort() {
         _cce_e="$(printf '%s' "$_cce_reg" | node -e '
           try { const r = (JSON.parse(require("fs").readFileSync(0, "utf8")).panel || []).find(x => x && x.slug === "claude" && !x.drop);
             if (r && r.effort) process.stdout.write(String(r.effort)); } catch (e) {}' 2>/dev/null || true)"  # swallow-ok: unreadable row falls to the medium default
+        if [ -z "$_cce_e" ]; then
+            # no claude panel row: the base registry's claude_floor effort (the merged output keeps no top-level field)
+            _cce_e="$(FLOOR_SRC="${CRITICS_BASE_JSON:-$SCRIPT_DIR/critics.json}" node -e '
+              try { const f = JSON.parse(require("fs").readFileSync(process.env.FLOOR_SRC, "utf8")).claude_floor;
+                if (f && f.effort) process.stdout.write(String(f.effort)); } catch (e) {}' 2>/dev/null || true)"  # swallow-ok: an unreadable floor falls to the medium default
+        fi
     fi
     case "$_cce_e" in low|medium|high|xhigh|max) printf '%s' "$_cce_e" ;; *) printf 'medium' ;; esac
 }

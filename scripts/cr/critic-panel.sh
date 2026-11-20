@@ -1937,6 +1937,35 @@ PARSEDFINDINGSEOF
     fi
 }
 
+# Lane off means absent at dispatch too, the --check rule above: a row reached
+# through the Claude API lane (route_provider or provider claude-api) is never
+# launched while HIMMEL_API_LANE is not on. It leaves the reviewer set (not
+# counted in total), and its avail row carries the phrase critics_skip_class
+# reads as absent.
+if [ "${HIMMEL_API_LANE:-}" != on ] && [ -n "$rows" ]; then
+    _lane_off_slugs="$(REG="$REG" node -e '
+      try { const p = JSON.parse(require("fs").readFileSync(process.env.REG, "utf8")).panel || [];
+        process.stdout.write(p.filter(r => r && typeof r.slug === "string" && !r.drop
+          && (r.route_provider === "claude-api" || r.provider === "claude-api")).map(r => r.slug).join("\n")); } catch (e) {}' 2>/dev/null)" || _lane_off_slugs=""
+    if [ -n "$_lane_off_slugs" ]; then
+        _kept_rows=""
+        while IFS= read -r _lo_row; do
+            [ -n "$_lo_row" ] || continue
+            _lo_slug="${_lo_row%%	*}"
+            if printf '%s\n' "$_lane_off_slugs" | grep -qxF -- "$_lo_slug"; then
+                echo "panel-availability: $_lo_slug unavailable (not launched) reason=critic-skipped: claude critic SKIPPED (api lane is OFF (set HIMMEL_API_LANE=on))" >&2
+                _queue_avail "$_lo_slug" unavailable "" critic-skipped "claude critic SKIPPED (api lane is OFF (set HIMMEL_API_LANE=on)), not launched"
+                continue
+            fi
+            _kept_rows="${_kept_rows:+$_kept_rows
+}$_lo_row"
+        done << LANEOFFROWSEOF
+$rows
+LANEOFFROWSEOF
+        rows="$_kept_rows"
+    fi
+fi
+
 # ---------------------------------------------------------------------------
 # Sequential path (CRITIC_PARALLEL=0, default)
 # ---------------------------------------------------------------------------
@@ -2153,6 +2182,69 @@ ROWSEOF
         process_member "$slug" "$outdir/$i.out" "$rc_val" "$outdir/$i.err" "$fb_val" "$persp_val" "$model_val" "$fbprov_val" "$trig_val" "$timeout_val" "$dur_val"
         i=$((i + 1))
     done
+fi
+
+# The Claude floor (decisions 1084 and 1085): the registry's top-level
+# claude_floor field, never a panel member, runs ONE Claude critic only when a
+# codex member ran out (its avail reason is quota-5h or quota-long; a timeout or
+# rate limit is not exhaustion), and sends one loud alert to Telegram and the
+# chief every time. It never runs when the merged registry already has a claude
+# row, even one absent this run (an adopter's overlay row is their own design). The merged registry keeps no
+# top-level field, so the floor is read from CRITICS_JSON or the base file.
+_floor="$(FLOOR_SRC="${CRITICS_JSON:-$_REG_BASE}" REG="$REG" node -e '
+  const fs = require("fs");
+  try { const f = JSON.parse(fs.readFileSync(process.env.FLOOR_SRC, "utf8")).claude_floor;
+    if (!f || typeof f !== "object" || f.when !== "codex-exhausted" || !f.model || !f.provider) process.exit(0);
+    const slug = f.slug || "claude";
+    const p = JSON.parse(fs.readFileSync(process.env.REG, "utf8")).panel || [];
+    if (p.some(r => r && r.slug === slug && !r.drop)) process.exit(0);
+    process.stdout.write([slug, f.model, f.provider].join("\t")); } catch (e) {}' 2>/dev/null)" || _floor=""
+_codex_out=""
+if [ -n "$_floor" ]; then
+    while IFS="	" read -r _cx_slug _cx_model _cx_p _cx_fb _cx_route _cx_rest; do
+        [ -n "$_cx_slug" ] || continue
+        { [ "$_cx_slug" = codex ] || [ "$_cx_route" = openai-codex ]; } || continue
+        [ -f "$PANEL_SPOOL_DIR/avail.${_cx_slug//\//_}" ] || continue
+        _cx_row="$(tail -n 1 "$PANEL_SPOOL_DIR/avail.${_cx_slug//\//_}")"
+        _cx_reason="$(printf '%s' "$_cx_row" | awk -F '\034' '{print $4}')"
+        case "$_cx_reason" in
+            quota-5h|quota-long)
+                [ -n "$_codex_out" ] || _codex_out="$_cx_slug reason=$_cx_reason: $(printf '%s' "$_cx_row" | awk -F '\034' '{print $5}')" ;;
+        esac
+    done << FLOORROWSEOF
+$rows
+FLOORROWSEOF
+fi
+if [ -n "$_codex_out" ]; then
+    _fl_slug="${_floor%%	*}"; _fl_rest="${_floor#*	}"
+    _fl_model="${_fl_rest%%	*}"; _fl_provider="${_fl_rest#*	}"
+    _fl_head="${REVIEW_HEAD:-}"
+    _fl_where="${REVIEW_BRANCH:-?}@${_fl_head:0:12}${CR_TARGET_PR:+ PR #$CR_TARGET_PR}"
+    if _panel_deadline_passed; then
+        echo "panel-availability: $_fl_slug unavailable (panel-deadline) reason=panel-deadline" >&2
+        _queue_avail "$_fl_slug" unavailable "" panel-deadline ""
+        _fl_result="skipped (total panel deadline reached)"
+    else
+        total=$((total + 1))
+        _fl_timeout="$(_clamp_to_panel_budget "$(_resolve_member_timeout "$_fl_slug" "")")"
+        _fl_out="$(mktemp -t critic-panel-floor.XXXXXX)" || { echo "critic-panel: mktemp failed" >&2; exit 2; }
+        _fl_err="$(mktemp -t critic-panel-floor-err.XXXXXX)" || { rm -f "$_fl_out"; echo "critic-panel: mktemp failed" >&2; exit 2; }
+        echo "critic-panel.sh: codex ran out ($_codex_out) — running the Claude floor $_fl_model on $_fl_provider" >&2
+        _fl_start="$(date +%s)"
+        _RM_TIMEOUT_SECS="$_fl_timeout"
+        _run_cfp_member "$_fl_model" "$_fl_slug" "" "$_fl_out" "$_fl_err" "$_fl_provider"
+        unset _RM_TIMEOUT_SECS
+        _fl_rc=$_rm_rc
+        process_member "$_fl_slug" "$_fl_out" "$_fl_rc" "$_fl_err" "" "" "$_fl_model" "" "" "$_fl_timeout" "$(( $(date +%s) - _fl_start ))"
+        rm -f "$_fl_out" "$_fl_err"
+        _fl_result="ran rc=$_fl_rc"
+    fi
+    [ -r "$SCRIPT_DIR/critic-alert.sh" ] && . "$SCRIPT_DIR/critic-alert.sh"
+    if command -v critic_loud_alert >/dev/null 2>&1; then
+        critic_loud_alert codex-exhausted "codex ran out on $_fl_where ($_codex_out); the Claude floor $_fl_model on $_fl_provider $_fl_result"
+    else
+        echo "CRITIC-ALERT (codex-exhausted): critic-alert.sh unreadable — codex ran out on $_fl_where ($_codex_out); the Claude floor $_fl_result" >&2
+    fi
 fi
 
 # Match current findings against the latest durable disposition for the same

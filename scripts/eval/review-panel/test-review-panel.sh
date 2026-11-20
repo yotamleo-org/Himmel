@@ -7,6 +7,10 @@
 set -u
 # shellcheck source=test_review_panel_lib.sh
 . "$(cd "$(dirname "$0")" && pwd)/test_review_panel_lib.sh"
+# run.sh merges critics.local.json over the swept tree's critics.json: no station overlay here
+# (a missing CRITICS_LOCAL_JSON means none); a row that needs one names its own.
+export CRITICS_LOCAL_JSON="$TMP/no-overlay.json"
+unset CRITICS_JSON CRITICS_BASE_JSON
 
 # --- fixture + key integrity ------------------------------------------------------
 eq "fixtures: 24 frozen diffs" "$(find "$FIX" -name 'case-*.patch' | wc -l | tr -d ' ')" "24"
@@ -470,20 +474,37 @@ slugs() { python3 -c 'import json,sys; print(",".join(r["slug"] for r in json.lo
 codexrow() { python3 -c 'import json,sys; print([r for r in json.load(open(sys.argv[1]))["panel"] if r["slug"]=="codex"])' "$1" 2>&1; }
 # --critics cuts the roster the panel runs, not just the report.
 eq "run: --critics codex hands the panel a roster of codex only" "$(slugs "$cj")" "codex"
-# A27 control: the roster is the swept tree's own critics.json row, not a local overlay.
-eq "run: the roster row is the swept tree's critics.json row" "$(codexrow "$cj")" "$(codexrow "$HERE/../../cr/critics.json")"
+# A27 control: with no overlay the roster row is the swept tree's own critics.json row.
+rowkeys() { python3 -c 'import json,sys; print([(r["slug"], r.get("model"), r.get("provider"), r.get("tier")) for r in json.load(open(sys.argv[1]))["panel"] if r["slug"]=="codex"])' "$1" 2>&1; }
+eq "run: the roster row is the swept tree's critics.json row" "$(rowkeys "$cj")" "$(rowkeys "$HERE/../../cr/critics.json")"
+# The registry the claude-api rows below use: a base that still carries a claude-api row.
+python3 -c 'import json,sys; reg=json.load(open(sys.argv[1])); reg["panel"].append({"slug":"claude","model":"claude-opus-5-5","provider":"claude-api","route_provider":"claude-api","tier":"paid","mode":"advisory"}); json.dump(reg, open(sys.argv[2], "w"))' \
+  "$HERE/../../cr/critics.json" "$TMP/base-claude.json"
 # A sweep that would reach a claude-api critic with no opt-in refuses before any case.
 : > "$TMP/stublog/tiers"
-STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
+CRITICS_BASE_JSON="$TMP/base-claude.json" STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
   bash "$RUN" --out "$TMP/run-nopt" --fixtures "$FIX" --key "$KEY" --no-ledger >"$TMP/run-nopt.txt" 2>&1; rc=$?
 eq "run: a default sweep (claude-api in the tier) refuses" "$rc" "2"
 has "run: the refusal names the claude critic and the flag" "$(cat "$TMP/run-nopt.txt")" "--allow-claude-api"
 eq "run: no panel call on a refused claude sweep" "$(cat "$TMP/stublog/tiers")" ""
 # Control: with the opt-in both critics run.
-STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
+CRITICS_BASE_JSON="$TMP/base-claude.json" STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
   bash "$RUN" --out "$TMP/run-opt" --fixtures "$FIX" --key "$KEY" --no-ledger --allow-claude-api --only case-01 >/dev/null 2>&1; rc=$?
 eq "run: --allow-claude-api lets the sweep run" "$rc" "0"
 eq "run: --allow-claude-api hands the panel codex and claude" "$(slugs "$TMP/run-opt/critics.run.json")" "codex,claude"
+# The overlay reaches the eval (decision 1085, RCA root cause 4): a critics.local.json that drops
+# claude leaves no Claude critic in the roster, even when --critics names it.
+printf '%s\n' '{"panel":[{"slug":"claude","drop":true}]}' > "$TMP/local-drop-claude.json"
+CRITICS_BASE_JSON="$TMP/base-claude.json" CRITICS_LOCAL_JSON="$TMP/local-drop-claude.json" STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
+  bash "$RUN" --out "$TMP/run-drop" --fixtures "$FIX" --key "$KEY" --no-ledger --allow-claude-api --critics codex,claude --only case-01 >/dev/null 2>&1; rc=$?
+eq "run: an overlay drop: the sweep runs" "$rc" "0"
+eq "run: an overlay drop leaves no Claude critic in the roster" "$(slugs "$TMP/run-drop/critics.run.json")" "codex"
+# The shipped registry has no claude row: a default paid sweep needs no opt-in.
+: > "$TMP/stublog/tiers"
+STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
+  bash "$RUN" --out "$TMP/run-ship" --fixtures "$FIX" --key "$KEY" --no-ledger --only case-01 >/dev/null 2>&1; rc=$?
+eq "run: the shipped registry: a default sweep runs without --allow-claude-api" "$rc" "0"
+eq "run: the shipped registry: the default roster is codex only" "$(slugs "$TMP/run-ship/critics.run.json")" "codex"
 eq "run: one ledger row" "$(grep -c . "$TMP/run-ledger.jsonl" 2>/dev/null)" "1"
 eq "run: --model reaches the row" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["model"])' "$TMP/run-ledger.jsonl")" "$CODEX_MODEL"
 eq "provenance: a sweep through another panel than the tree's is not decision-eligible" \
@@ -571,8 +592,9 @@ eq "run --delta: no panel call on either refusal" "$(find "$DL" -type f | wc -l 
 # A full sweep from a committed copy of this eval, whose own critic-panel.sh is the stub, stamps clean;
 # the same sweep whose panel edits a CBS file mid-run is caught by run.sh's re-stamp after the loop.
 RR="$TMP/run-repo"
-mkdir -p "$RR/scripts/eval/review-panel/key" "$RR/scripts/eval/lib" "$RR/scripts/cr"
+mkdir -p "$RR/scripts/eval/review-panel/key" "$RR/scripts/eval/lib" "$RR/scripts/cr" "$RR/scripts/lib"
 cp "$RUN" "$SCORE" "$HERE/adjudication.py" "$HERE/cbs.txt" "$RR/scripts/eval/review-panel/"
+cp "$HERE/../../lib/critics-config.sh" "$RR/scripts/lib/"
 cp -r "$FIX" "$RR/scripts/eval/review-panel/fixtures"; cp "$KEY" "$RR/scripts/eval/review-panel/key/seeds.json"
 cp "$HERE/../lib/"*.py "$RR/scripts/eval/lib/"; cp "$HERE/../feedback-rules.json" "$RR/scripts/eval/"
 cp "$HERE/../../cr/critics.json" "$RR/scripts/cr/critics.json"
@@ -634,7 +656,8 @@ mkdir -p "$G/scripts/eval/review-panel/key" "$G/scripts/cr/perspectives"
 cp -r "$FIX" "$G/scripts/eval/review-panel/fixtures"
 cp "$KEY" "$G/scripts/eval/review-panel/key/seeds.json"
 cp "$HERE/cbs.txt" "$G/scripts/eval/review-panel/cbs.txt"
-cp "$HERE/../../cr/critics.json" "$G/scripts/cr/critics.json"
+# the gate tree is a tree whose paid roster still held a claude row (the 2026-11-05 sweeps' shape)
+cp "$TMP/base-claude.json" "$G/scripts/cr/critics.json"
 printf '#!/bin/sh\n' > "$G/scripts/cr/critic-panel.sh"
 printf 'p\n' > "$G/scripts/cr/perspectives/skeptic.md"
 printf 'not a critic\n' > "$G/scripts/cr/review-round.sh"

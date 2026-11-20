@@ -126,9 +126,11 @@ if [ "${1:-}" = --native-auth-skip ]; then
     [ "$FAIL" -eq 0 ]; exit "$?"
 fi
 
-# --- 0. the shipped registry row -------------------------------------------
-row="$(node -e 'const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).panel.find(r=>r.slug==="claude");process.stdout.write(p?[p.model,p.effort,p.route_provider,p.tier].join(" "):"MISSING")' "$REPO/scripts/cr/critics.json")"
-check "0 critics.json carries the claude row: opus, medium, claude-api, paid" "claude-opus-5-5 medium claude-api paid" "$row"
+# --- 0. the shipped registry: no standing claude row, a codex-exhausted floor ---
+row="$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(j.panel.some(r=>r.slug==="claude")?"PRESENT":"none")' "$REPO/scripts/cr/critics.json")"
+check "0 critics.json has no standing claude panel row" none "$row"
+row="$(node -e 'const f=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).claude_floor||{};process.stdout.write([f.slug,f.model,f.provider,f.effort,f.when].join(" "))' "$REPO/scripts/cr/critics.json")"
+check "0 the claude_floor field: claude, opus, claude-subscription, medium, codex-exhausted" "claude claude-opus-5-5 claude-subscription medium codex-exhausted" "$row"
 
 # --- 1. api provider: the review parses through the normalizer ------------
 fresh_rec 1; unset FAKE_REFUSE FAKE_FAIL
@@ -455,6 +457,38 @@ for sp in claude-subscription subscription; do
     check "13e provider $sp named explicitly: no alert" 0 "$(alerts)"
 done
 check "13e an explicit subscription run wrote nothing to the chief's inbox" 0 "$(chief_lines)"
+
+# --- 14. the provider default reads the merged registry (RCA root cause 3) ---
+printf '%s\n' '{"panel":[{"slug":"codex","model":"gpt-6.1-sol","provider":"openai-codex","tier":"paid"},{"slug":"claude","model":"claude-opus-5-5","provider":"claude-api","route_provider":"claude-api","tier":"paid"}]}' > "$W/base-with-claude.json"
+printf '%s\n' '{"panel":[{"slug":"claude","drop":true}]}' > "$W/local-drop14.json"
+# 14a an overlay that drops claude: --slug claude with no --provider starts no Claude critic
+fresh_rec 14a; reset_alerts; bank 10
+RC=0; printf '%s\n' "$DIFF" | CRITICS_BASE_JSON="$W/base-with-claude.json" CRITICS_LOCAL_JSON="$W/local-drop14.json" \
+    bash "$CFP" --model claude-opus-5-5 --slug claude >"$W/out" 2>"$W/err" || RC=$?
+check "14a an overlay drop: --slug claude exits 5 SKIPPED" 5 "$RC"
+has "14a stderr says no claude row" "no claude row in the merged critics registry" "$W/err"
+check "14a no API launcher and no subscription claude call" no "$([ -e "$REC/argv" ] && echo yes || echo no)"
+check "14a no alert" 0 "$(alerts)"
+# 14b the shipped base (no claude row) with no overlay: the same clean skip, by --model alone
+fresh_rec 14b; bank 10
+RC=0; printf '%s\n' "$DIFF" | CRITICS_BASE_JSON="$REPO/scripts/cr/critics.json" CRITICS_LOCAL_JSON="$W/none14.json" \
+    bash "$CFP" --model claude-opus-5-5 >"$W/out" 2>"$W/err" || RC=$?
+check "14b the shipped registry: a claude model with no --provider exits 5" 5 "$RC"
+check "14b no Claude critic ran" no "$([ -e "$REC/argv" ] && echo yes || echo no)"
+# 14c control: the same base with no overlay defaults to claude-api and reviews (lane on)
+fresh_rec 14c; bank 10
+RC=0; printf '%s\n' "$DIFF" | CRITICS_BASE_JSON="$W/base-with-claude.json" CRITICS_LOCAL_JSON="$W/none14.json" \
+    bash "$CFP" --model claude-opus-5-5 --slug claude >"$W/out" 2>"$W/err" || RC=$?
+check "14c control: a base claude row defaults the provider and reviews" 0 "$RC"
+has "14c the provider came from the registry" "--provider defaulted to 'claude-api'" "$W/err"
+# 14d an adopter overlay that re-adds claude on the subscription runs it, with no alert
+printf '%s\n' '{"panel":[{"slug":"claude","model":"claude-opus-5-5","provider":"claude-subscription","tier":"paid"}]}' > "$W/local-readd14.json"
+fresh_rec 14d; reset_alerts; bank 10
+RC=0; printf '%s\n' "$DIFF" | CRITICS_BASE_JSON="$REPO/scripts/cr/critics.json" CRITICS_LOCAL_JSON="$W/local-readd14.json" \
+    bash "$CFP" --model claude-opus-5-5 --slug claude >"$W/out" 2>"$W/err" || RC=$?
+check "14d an adopter overlay row on the subscription reviews" 0 "$RC"
+has "14d the provider came from the overlay" "--provider defaulted to 'claude-subscription'" "$W/err"
+check "14d no per-call alert" 0 "$(alerts)"
 
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" -eq 0 ]
