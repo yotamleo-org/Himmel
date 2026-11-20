@@ -59,7 +59,7 @@ printf 'claude\0-n\0legX\0' > "$tmp/proc/4242/cmdline"
 printf 'claude\0-n\0HIMMEL-nextleg-2026-10-19H-roadmap-chief\0' > "$tmp/proc/4343/cmdline"
 printf 'zsh\0' > "$tmp/proc/4444/cmdline"
 printf 'python3\0-n\0legX\0' > "$tmp/proc/4646/cmdline"
-FIXED='You have unread himmel messages: read them now.'
+FIXED='You have unread himmel messages: call mcp__himmel-bus__read now.'
 
 run() { # run <polls> <grace> [extra args]; env BUS_N / inbox decide the count
   local polls="$1" grace="$2"; shift 2
@@ -170,7 +170,7 @@ bash "$WAKER" --name legX --service s --session /S --pid 0 >/dev/null 2>&1
 rc=$?
 [ "$rc" -eq 64 ] && pass "--pid 0 is refused (rc=64): kill -0 0 would probe the process group" || fail "--pid 0: expected rc=64, got rc=$rc"
 BUS_N=2 run 3 0 --pid "$$"
-[ "$RUN_RC" -eq 0 ] && grep -qF 'unread himmel messages: read them now.' "$QLOG" && pass "--pid: a live konsole still gets the wake" || fail "--pid live: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+[ "$RUN_RC" -eq 0 ] && grep -qF 'unread himmel messages: call mcp__himmel-bus__read now.' "$QLOG" && pass "--pid: a live konsole still gets the wake" || fail "--pid live: rc=$RUN_RC, qlog: $(cat "$QLOG")"
 
 echo "== rewake cap (HIMMEL-8863) =="
 # Mail that is never read (the worker is over the fill line and cannot read it) must not be re-typed forever:
