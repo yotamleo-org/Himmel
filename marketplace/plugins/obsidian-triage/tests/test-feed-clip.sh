@@ -33,7 +33,7 @@ run_tool() { out="$(node "$SCRIPT" "$@" 2>&1)"; rc=$?; }
 newvault() { local v="$tmpdir/$1"; mkdir -p "$v/.obsidian" "$v/Clippings"; echo "$v"; }
 pick() { local f; for f in "$1"/Clippings/$2; do [ -e "$f" ] && echo "$f"; done; }
 nclips() { pick "$1" 'feed-*.md' | wc -l | tr -d ' '; }
-nlines() { if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; else echo 0; fi; } # read-sink-ok: hermetic test helper, only called with paths inside this suite's temp vaults
+seen_lines() { if [ -f "$V/.feed-clip-seen.jsonl" ]; then wc -l < "$V/.feed-clip-seen.jsonl" | tr -d ' '; else echo 0; fi; }
 has() { if grep -q -- "$1" <<<"$2"; then echo ok; else echo no; fi; }
 hasline() { if grep -qxF -- "$1" <<<"$2"; then echo ok; else echo no; fi; }
 
@@ -81,11 +81,11 @@ printf '# synthetic feeds\nfile://%s AtomRel\nfile://%s RssBlog\n' "$FIX/atom-re
 run_tool --vault "$V"
 assert "first run exits 0" 0 "$rc"
 assert "first run wrote 4 clips (2 atom + 2 rss; no-link and script-link entries skipped)" 4 "$(nclips "$V")"
-assert "seen file has 4 lines" 4 "$(nlines "$V/.feed-clip-seen.jsonl")"
+assert "seen file has 4 lines" 4 "$(seen_lines)"
 run_tool --vault "$V"
 assert "second run exits 0" 0 "$rc"
 assert "second run wrote no clip" 4 "$(nclips "$V")"
-assert "second run left the seen file alone" 4 "$(nlines "$V/.feed-clip-seen.jsonl")"
+assert "second run left the seen file alone" 4 "$(seen_lines)"
 
 echo "Test 4: a feed clip has the shape of a Telegram clip"
 rel="$(pick "$V" 'feed-*v1-2-0.md')"
@@ -186,7 +186,7 @@ assert "non-feed reported" ok "$(has '^✗ feed-clip: NotAFeed.*not a feed' "$ou
 assert "oversized feed reported" ok "$(has '^✗ feed-clip: Big.*larger than' "$out")"
 assert "malformed list line reported with its line number" ok "$(has 'feed-clip: .*feed-clip-feeds:10' "$out")"
 assert "the good feeds still wrote their clips (2 via redirect + 2 blog)" 4 "$(nclips "$V")"
-assert "failed feeds wrote no seen line" 4 "$(nlines "$V/.feed-clip-seen.jsonl")"
+assert "failed feeds wrote no seen line" 4 "$(seen_lines)"
 
 echo "Test 6a: http feed with a link-less entry"
 V="$(newvault httpblog)"
@@ -268,7 +268,7 @@ run_tool --vault "$V" --cap 10
 assert "lost state: exit 0" 0 "$rc"
 assert "lost state: no duplicate clip" 10 "$(nclips "$V")"
 assert "lost state: existing clip never overwritten" ok "$(has 'EDITED BY HAND' "$(cat "$first")")"
-assert "lost state: seen file rebuilt" 10 "$(nlines "$V/.feed-clip-seen.jsonl")"
+assert "lost state: seen file rebuilt" 10 "$(seen_lines)"
 printf '{"feed":"x","id":"y' >> "$V/.feed-clip-seen.jsonl"
 run_tool --vault "$V" --cap 10
 assert "a truncated seen line does not fail the run" 0 "$rc"
