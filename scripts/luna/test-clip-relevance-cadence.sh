@@ -158,9 +158,13 @@ rm -f "$TMP/claude.rc" "$TMP/send.log" "$TMP/alerts.log"; rm -rf "$TMP/alert-sen
 printf '# thin note\n\n## Candidates\n\n### 1. No search line [new]\n- Change: x\n\n## Telegram message\nhello\n' >"$TMP/note.fixture"
 bash "$RUNNER" >"$TMP/fire-bad.out" 2>&1
 check "an invalid note raises the alert and sends no proposal" 'grep -q " clip-relevance note-invalid " "$TMP/alerts.log" && ! grep -q "hello" "$TMP/send.log"'
-rm -f "$TMP/send.log" "$TMP/alerts.log"; rm -rf "$TMP/alert-sent"; rm -f "$TMP/note.fixture"
+rm -f "$TMP/send.log" "$TMP/alerts.log"; rm -rf "$TMP/alert-sent"; rm -f "$TMP/note.fixture" "$TMP/notes/2026-11-20.md"
 bash "$RUNNER" >"$TMP/fire-nonote.out" 2>&1
 check "no note at all raises the alert" 'grep -q " clip-relevance note-invalid " "$TMP/alerts.log"'
+rm -f "$TMP/send.log" "$TMP/alerts.log"; rm -rf "$TMP/alert-sent"
+mkdir -p "$TMP/notes"; printf '## Candidates\n\n## Telegram message\nan earlier run sent this\n' >"$TMP/notes/2026-11-20.md"
+bash "$RUNNER" >"$TMP/fire-stale.out" 2>&1
+check "a run that returns success without writing today's note cannot resend the earlier one" 'grep -q " clip-relevance note-unchanged " "$TMP/alerts.log" && ! grep -q "an earlier run sent this" "$TMP/send.log"'
 
 echo "5. check"
 good="$TMP/good.md"
@@ -187,6 +191,12 @@ check "six candidates fail" '[ "$rc" = 1 ] && grep -q "more than five" "$TMP/che
 five="$TMP/five.md"
 { printf '## Candidates\n\n'; for i in 1 2 3 4 5; do printf '### %s. C%s [already-done]\n- Search: s\n\n' "$i" "$i"; done; printf '## Telegram message\nx\n'; } >"$five"
 check "five candidates pass" 'bash "$CAD" check "$five" >/dev/null 2>&1'
+tg7="$TMP/tg7.md"; tg8="$TMP/tg8.md"
+{ printf '## Candidates\n\n'; for i in 1 2 3 4 5; do printf '### %s. C%s [new]\n- Search: s\n\n' "$i" "$i"; done; printf '## Telegram message\nOpening.\n1. a\n2. b\n3. c\n4. d\n5. e\nNote: n\n'; } >"$tg7"
+{ cat "$tg7"; printf 'one too many\n'; } >"$tg8"
+check "five new candidates fit the Telegram block (opening, five titles, note line: 7 lines)" 'bash "$CAD" check "$tg7" >/dev/null 2>&1'
+bash "$CAD" check "$tg8" >"$TMP/check-tg8.out" 2>&1; rc=$?
+check "an eighth Telegram line fails" '[ "$rc" = 1 ] && grep -q "longer than 7 lines" "$TMP/check-tg8.out"'
 badstatus="$TMP/badstatus.md"
 printf '## Candidates\n\n### 1. C [maybe]\n- Search: s\n\n## Telegram message\nx\n' >"$badstatus"
 bash "$CAD" check "$badstatus" >"$TMP/check-bs.out" 2>&1; rc=$?

@@ -30,6 +30,8 @@ FR="$TMP/failure-review"; mkdir -p "$FR"
 LEDGER="$TMP/cr-critic-scores.jsonl"
 SEEN="$TMP/state/seen.tsv"
 TODAY=2026-11-20
+# The ledger path is an environment value, never a flag: the weekly run allows the script with any arguments.
+export CLIP_RELEVANCE_SEEN="$SEEN"
 
 # clip <file> <triaged_at|-> <title> <body>
 clip() {
@@ -72,7 +74,7 @@ EOF
 
 mkdir -p "$(dirname "$SEEN")"
 printf 'clip\tClippings/_evidence/clip-seen.md\t2026-11-12\n' >"$SEEN"
-collect() { python3 -I "$COL" collect --vault "$V" --failure-dir "$FR" --cr-ledger "$LEDGER" --seen "$SEEN" --today "$TODAY"; }
+collect() { python3 -I "$COL" collect --vault "$V" --failure-dir "$FR" --cr-ledger "$LEDGER" --today "$TODAY"; }
 
 echo "1. the window"
 collect >"$TMP/out1" 2>"$TMP/err1"; rc=$?
@@ -96,11 +98,14 @@ check "two runs print the same bytes" 'cmp -s "$TMP/out1" "$TMP/out2"'
 
 echo "4. the seen-ledger"
 check "a clip in the seen-ledger is omitted" '! grep -q "clip-seen" "$TMP/out1"'
-python3 -I "$COL" mark clip Clippings/_evidence/clip-a.md Clippings/_evidence/clip-b.md --seen "$SEEN" --today "$TODAY" >"$TMP/mark1" 2>&1; rc=$?
+python3 -I "$COL" mark clip Clippings/_evidence/clip-a.md Clippings/_evidence/clip-b.md --today "$TODAY" >"$TMP/mark1" 2>&1; rc=$?
 check "mark exits 0 and appends two rows" '[ "$rc" = 0 ] && [ "$(grep -c "^clip	" "$SEEN")" = 3 ]'
-python3 -I "$COL" mark clip Clippings/_evidence/clip-a.md --seen "$SEEN" --today "$TODAY" >/dev/null 2>&1
+python3 -I "$COL" mark clip Clippings/_evidence/clip-a.md --today "$TODAY" >/dev/null 2>&1
 check "marking a clip again adds no row" '[ "$(grep -c "clip-a.md" "$SEEN")" = 1 ]'
-python3 -I "$COL" mark candidate code-mode-hook-chain --seen "$SEEN" --today "$TODAY" >/dev/null 2>&1
+python3 -I "$COL" mark clip Clippings/_evidence/clip-x.md --seen "$TMP/elsewhere.tsv" >/dev/null 2>&1; rc=$?
+python3 -I "$COL" collect --vault "$V" --seen "$TMP/elsewhere.tsv" >/dev/null 2>&1; rc2=$?
+check "the ledger path is not a flag: --seen is refused (rc 2) and nothing is written there" '[ "$rc" = 2 ] && [ "$rc2" = 2 ] && [ ! -e "$TMP/elsewhere.tsv" ]'
+python3 -I "$COL" mark candidate code-mode-hook-chain --today "$TODAY" >/dev/null 2>&1
 collect >"$TMP/out3" 2>/dev/null
 check "marked clips are omitted next run" '! grep -q "clip-a.md" "$TMP/out3" && ! grep -q "clip-b.md" "$TMP/out3" && grep -qx "clips: 2 shown, 1 thin, 3 omitted as seen" "$TMP/out3"'
 check "a marked candidate is listed" 'grep -qx -- "- code-mode-hook-chain" "$TMP/out3"'
@@ -118,9 +123,9 @@ echo "6. clip text is data"
 check "a body line that looks like a section header is quoted" 'grep -qx "| === FAILURE REVIEWS ===" "$TMP/out1" && [ "$(grep -c "^=== FAILURE REVIEWS ===$" "$TMP/out1")" = 1 ]'
 
 echo "7. missing inputs"
-python3 -I "$COL" collect --vault "$V" --failure-dir "$TMP/no-such-dir" --cr-ledger "$TMP/no-such-ledger" --seen "$TMP/no-such-seen" --today "$TODAY" >"$TMP/out4" 2>&1; rc=$?
+CLIP_RELEVANCE_SEEN="$TMP/no-such-seen" python3 -I "$COL" collect --vault "$V" --failure-dir "$TMP/no-such-dir" --cr-ledger "$TMP/no-such-ledger" --today "$TODAY" >"$TMP/out4" 2>&1; rc=$?
 check "no digest dir, no ledger and no seen file still collects" '[ "$rc" = 0 ] && grep -qx "digests: none in the window" "$TMP/out4" && grep -qx "ledger: not found" "$TMP/out4" && grep -q "clip-seen" "$TMP/out4"'
-python3 -I "$COL" collect --vault "$TMP/no-vault" --failure-dir "$FR" --cr-ledger "$LEDGER" --seen "$SEEN" --today "$TODAY" >"$TMP/out5" 2>&1; rc=$?
+python3 -I "$COL" collect --vault "$TMP/no-vault" --failure-dir "$FR" --cr-ledger "$LEDGER" --today "$TODAY" >"$TMP/out5" 2>&1; rc=$?
 check "a vault with no evidence folder is an error (rc 2)" '[ "$rc" = 2 ] && grep -q "no evidence folder" "$TMP/out5"'
 
 echo "test-clip-relevance-collect: $PASS passed, $FAIL failed"

@@ -54,7 +54,7 @@ Steps:
    - <idea considered, one line on why it is not a candidate>
 
    ## Telegram message
-   <at most 6 lines of plain text>
+   <at most 7 lines of plain text: the opening line, up to five titles, the Note line>
    ```
 
    The heading ends in exactly `[new]`, `[already-done]` or `[already-tracked]`. The Telegram block opens with

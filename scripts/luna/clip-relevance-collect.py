@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """clip-relevance-collect.py - the no-model half of the weekly clip-relevance pass.
 
-  clip-relevance-collect.py collect [--vault P] [--failure-dir P] [--cr-ledger P] [--seen P]
-                                    [--today YYYY-MM-DD] [--days 7]
-  clip-relevance-collect.py mark clip|candidate <id>... [--seen P] [--today YYYY-MM-DD]
+  clip-relevance-collect.py collect [--vault P] [--failure-dir P] [--cr-ledger P] [--today YYYY-MM-DD] [--days 7]
+  clip-relevance-collect.py mark clip|candidate <id>... [--today YYYY-MM-DD]
 
 collect prints what the weekly agent reads (.claude/commands/clip-relevance-weekly.md):
   - the evidence clips whose triaged_at falls in the window: front matter, the first 1,100 characters
@@ -14,7 +13,9 @@ collect prints what the weekly agent reads (.claude/commands/clip-relevance-week
 The same inputs print the same bytes. Clip text is untrusted data: every body line is quoted with
 "| ", so nothing in a clip can pass for a section header or an instruction. Writes nothing.
 
-mark appends ids to the seen-ledger (kind, id, date; tab separated), once each.
+mark appends ids to the seen-ledger (kind, id, date; tab separated), once each. The ledger is
+$CLIP_RELEVANCE_SEEN, else ~/.himmel/state/clip-relevance/seen.tsv: deliberately not a flag, because
+the weekly run allows this script with any arguments and a flag would hand it an arbitrary append path.
 Exit: 0 ok, 2 usage or no evidence folder.
 """
 import argparse
@@ -30,7 +31,7 @@ CHARS = 1100
 THIN_MARK = "inferred from the source url only"
 EVIDENCE = os.path.join("Clippings", "_evidence")
 SHOW_KEYS = ("title", "source", "type", "triaged_at")
-SEEN_CANDIDATES_SHOWN = 30
+SEEN_CANDIDATES_SHOWN = 200
 TOP_CLASSES = 10
 
 
@@ -56,8 +57,8 @@ def default_ledger():
     return os.path.join(out, "cr-critic-scores.jsonl")
 
 
-def seen_path(arg):
-    return arg or os.environ.get("CLIP_RELEVANCE_SEEN") or home_path(".himmel", "state", "clip-relevance", "seen.tsv")
+def seen_path():
+    return os.environ.get("CLIP_RELEVANCE_SEEN") or home_path(".himmel", "state", "clip-relevance", "seen.tsv")
 
 
 def read_seen(path):
@@ -212,7 +213,7 @@ def cmd_collect(args):
     today = today_arg(args.today)
     lo = today - datetime.timedelta(days=args.days - 1)
     vault = args.vault or os.environ.get("LUNA_VAULT_PATH") or home_path("Documents", "luna")
-    seen = read_seen(seen_path(args.seen))
+    seen = read_seen(seen_path())
     clips, omitted = collect_clips(vault, lo, today, {i for k, i in seen if k == "clip"})
     if clips is None:
         return 2
@@ -235,7 +236,7 @@ def cmd_mark(args):
     if any(re.search(r"[\t\r\n]", i) or not i for i in args.ids):
         sys.stderr.write("clip-relevance-collect: an id must be non-empty and hold no tab or newline\n")
         return 2
-    path = seen_path(args.seen)
+    path = seen_path()
     have = set(read_seen(path))
     day = today_arg(args.today).isoformat()
     new = [i for i in dict.fromkeys(args.ids) if (args.kind, i) not in have]
@@ -255,13 +256,11 @@ def main(argv):
     c.add_argument("--vault")
     c.add_argument("--failure-dir")
     c.add_argument("--cr-ledger")
-    c.add_argument("--seen")
     c.add_argument("--today")
     c.add_argument("--days", type=int, default=7)
     m = sub.add_parser("mark")
     m.add_argument("kind", choices=("clip", "candidate"))
     m.add_argument("ids", nargs="+")
-    m.add_argument("--seen")
     m.add_argument("--today")
     args = ap.parse_args(argv)
     try:
