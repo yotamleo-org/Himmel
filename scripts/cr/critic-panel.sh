@@ -2187,9 +2187,9 @@ fi
 # The Claude floor (decisions 1084 and 1085): the registry's top-level
 # claude_floor field, never a panel member, runs ONE Claude critic only when a
 # codex member ran out (its avail reason is quota-5h or quota-long), or when no
-# non-Claude member answered at all for any reason (not installed, auth, a
-# timeout or rate limit with nobody else answering), and sends one loud alert
-# to Telegram and the chief every time. It never runs when the merged registry already has a claude
+# non-Claude member answered and one failed for a lasting reason (not
+# installed, auth; a timeout or rate limit is transient and never fires it),
+# and sends one loud alert to Telegram and the chief every time. It never runs when the merged registry already has a claude
 # row, even one absent this run (an adopter's overlay row is their own design). The merged registry keeps no
 # top-level field, so the floor is read from CRITICS_JSON or the base file; a
 # top-level claude_floor in the critics.local.json overlay replaces it, and null
@@ -2213,6 +2213,7 @@ _floor="$(FLOOR_SRC="${CRITICS_JSON:-$_REG_BASE}" FLOOR_LOCAL="$_floor_local" RE
     process.stdout.write([slug, f.model, f.provider].join("\t")); } catch (e) {}' 2>/dev/null)" || _floor=""
 _codex_out=""
 _nc_ok=0
+_nc_hard=0
 _nc_out=""
 if [ -n "$_floor" ]; then
     while IFS="	" read -r _cx_slug _cx_model _cx_p _cx_fb _cx_route _cx_rest; do
@@ -2225,6 +2226,10 @@ if [ -n "$_floor" ]; then
         _cx_reason="$(printf '%s' "$_cx_row" | awk -F '\034' '{print $4}')"
         _cx_line="$_cx_slug reason=${_cx_reason:-none}: $(printf '%s' "$_cx_row" | awk -F '\034' '{print $5}')"
         _nc_out="${_nc_out:+$_nc_out; }$_cx_line"
+        case "$_cx_reason" in
+            timeout|rate-limit|panel-deadline|keep-one-skipped|tier-excluded) ;;
+            *) _nc_hard=1 ;;
+        esac
         { [ "$_cx_slug" = codex ] || [ "$_cx_route" = openai-codex ]; } || continue
         case "$_cx_reason" in
             quota-5h|quota-long) [ -n "$_codex_out" ] || _codex_out="$_cx_line" ;;
@@ -2234,12 +2239,13 @@ $rows
 FLOORROWSEOF
 fi
 # A codex quota run-out fires the floor; so does a run where no non-Claude
-# member answered at all, whatever the reason (not installed, auth, timeout).
+# member answered and one failed for a lasting reason (not installed, auth).
+# A timeout or rate limit is transient: the next round retries, no floor.
 _fl_why=""
 if [ -n "$_codex_out" ]; then
     _fl_why="codex ran out"
     _fl_detail="$_codex_out"
-elif [ -n "$_floor" ] && [ "$_nc_ok" -eq 0 ]; then
+elif [ -n "$_floor" ] && [ "$_nc_ok" -eq 0 ] && { [ "$_nc_hard" -eq 1 ] || [ -z "$_nc_out" ]; }; then
     _fl_why="no non-Claude critic answered"
     _fl_detail="${_nc_out:-no non-Claude member in the panel}"
 fi

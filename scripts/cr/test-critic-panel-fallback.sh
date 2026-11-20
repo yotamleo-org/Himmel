@@ -1002,9 +1002,12 @@ check "24c: parallel: the Claude floor ran once" "$(grep -c '^claude provider=cl
 check "24c: parallel: exactly one alert" "$(n_lines "$tmp/alerts24c")" "1"
 
 floor_run d CRITICS_JSON="$JSON_FLOOR" CX_MODE=timeout
-check "24d: codex timeout, no other non-Claude critic answered: the Claude floor ran once" "$(grep -c '^claude provider=claude-subscription$' "$tmp/cap24d")" "1"
-check "24d: codex timeout, nobody answered: one alert" "$(n_lines "$tmp/alerts24d")" "1"
-check_contains "24d: the alert names the timeout" "$(cat "$tmp/alerts24d")" "codex reason=timeout"
+check "24d: codex timeout: no Claude floor" "$(grep -c '^claude ' "$tmp/cap24d")" "0"
+check "24d: codex timeout: no alert" "$(n_lines "$tmp/alerts24d")" "0"
+printf '%s\n' '{"claude_floor":{"slug":"claude","model":"claude-opus-5-5","provider":"claude-subscription","effort":"medium","when":"codex-exhausted"},"panel":[{"slug":"codex","model":"gpt-6.1-sol","provider":"openai-codex","route_provider":"openai-codex","tier":"paid","mode":"hard","required":true}]}' > "$tmp/critics-codex-only.json"
+floor_run n CRITICS_JSON="$tmp/critics-codex-only.json" CX_MODE=timeout
+check "24n: codex the only member, timed out: no Claude floor" "$(grep -c '^claude ' "$tmp/cap24n")" "0"
+check "24n: codex the only member, timed out: no alert" "$(n_lines "$tmp/alerts24n")" "0"
 
 floor_run j CRITICS_JSON="$JSON_FLOOR" CX_MODE=missing
 check "24j: codex not installed: the Claude floor ran once" "$(grep -c '^claude provider=claude-subscription$' "$tmp/cap24j")" "1"
