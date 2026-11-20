@@ -67,7 +67,7 @@ the fields retain their normal interpretation.
 | Watchers    | `... watch HIMMEL-N [user]` / `... unwatch HIMMEL-N [user]` / `... watchers HIMMEL-N` | (none) |
 | Sprint      | `... boards` / `... sprints [--board N]` / `... sprint HIMMEL-N <sprintId\|backlog>` (Agile API `/rest/agile/1.0`; `JIRA_BOARD_ID` default) | (none — MCP has no Agile-board ops) |
 | Sector      | `... edit HIMMEL-N --sector "Ship loop"` (single-select custom field named by `jira.sectorField` in `~/.himmel/config.json`, opt-in via `... sector setup`; case-insensitive against the live option list, unknown option refused, value read back after the PUT) / `... edit-batch --file <tsv>` (columns `key`, `sector`; prints one `key<TAB>sector<TAB>set\|unchanged\|failed[<TAB>reason]` row per input row; a failed row never aborts, exit 1 if any failed; re-running is idempotent). `get` prints a `Sector:` line. | (none) |
-| Versions    | `... versions` / `... version-create <name> [--start-date YYYY-MM-DD] [--release-date YYYY-MM-DD] [--released] [--description ...]` / `... version-edit <name> [--name <new>] [--start-date] [--release-date] [--description]` (`--name` renames in place; `version-create` and `--name` refuse a non-semver name - only `vX.Y.Z` or `vX.Y.Z-pre.N`) / `... version-release <name> [--date YYYY-MM-DD]` / `... version-archive <name> [--unarchive] [--force]` (REST `PUT /version/{id}` `archived`, refused while `relatedIssueCounts` shows issues unless `--force`; MCP twin `manageJiraProjectVersion` action=archive) / `... version-move <name> --after <name>\|--position First\|Last` (REST `POST /version/{id}/move`) / `... affects-version HIMMEL-N --add\|--remove <name\|current>` (the `update.versions` add/remove verbs, same validation; `current` = earliest unreleased version) / `... fix-version HIMMEL-N --add\|--remove <name>` (REST `/project/{key}/versions`, `/version`, and the issue `update.fixVersions` add/remove verbs, so other versions on the ticket are untouched) | `manageJiraProjectVersion` action=archive for `version-archive`; no other version op has an MCP twin |
+| Versions    | `... versions` / `... version-create <name> [--start-date YYYY-MM-DD] [--release-date YYYY-MM-DD] [--released] [--description ...]` / `... version-edit <name> [--name <new>] [--start-date] [--release-date] [--description]` (`--name` renames in place; `version-create` and `--name` refuse a non-semver name - only `vX.Y.Z` or `vX.Y.Z-pre.N`) / `... version-release <name> [--date YYYY-MM-DD]` / `... version-archive <name> [--unarchive] [--force]` (REST `PUT /version/{id}` `archived`, refused while `relatedIssueCounts` shows issues unless `--force`; MCP twin `manageJiraProjectVersion` action=archive) / `... version-move <name> --after <name>\|--position First\|Last` (REST `POST /version/{id}/move`) / `... affects-version HIMMEL-N --add\|--remove <name\|current>` (the `update.versions` add/remove verbs, same validation; `current` = earliest unreleased version) / `... fix-version HIMMEL-N --add\|--remove <name> [--gate G] [--chief-override R]` (REST `/project/{key}/versions`, `/version`, and the issue `update.fixVersions` add/remove verbs, so other versions on the ticket are untouched) | `manageJiraProjectVersion` action=archive for `version-archive`; no other version op has an MCP twin |
 | Freeze      | `... version-freeze <name> [--at YYYY-MM-DD] [--keys-file <path>] [--dry-run]` (writes `frozen: <date>` and `frozen-keys: A,B` into the version description and labels the set `scope-<name>`; the set is the version's open tickets, or the `--keys-file` list (one key per line, `#` comments) for a freeze that happened before the tool; refused on an already-frozen version) / `... version-ready <name> [--chief-override <row-id> "<reason>"]...` (prints the P1 tag criterion as tab-separated `PASS`/`FAIL` rows: `frozen-set` every frozen key Done or deferred from this version (label `deferred` plus a deferral ledger row for it) and every key in the version but not in the frozen list either carrying an admission ledger row or Done (a Done key with no row is a Done-fold; any other without a row is a leak and fails the row), `no-blocker-bug` no open Highest-priority or `critical`/`blocker`/`v1-blocker`-labelled Bug in the version, `main-ci` every CI run green at main's head, `done-fold` every Done frozen key still carries the version; then `frozen-open`, `admitted-after-freeze` and `done-folded` counts, one `admitted<TAB><key><TAB><reason>[<TAB><by>]` line per ruled admission, and every ledger override/deferral; informational, exit 0, it refuses nothing, gates on no count and prints no roll date) / `... version-admit <KEY> --version <name> --reason "<why>" --by <rm-session>` (records a release-manager admission as an `rm-admit` ledger row) / `... version-defer <KEY> --version <name> --reason "<why>" [--to <version>]` (with `--to`, first adds that version through the intake gate, so a refused target leaves the ticket where it was; then removes the source version, read back, and takes the target off again if the source stays on; then labels `deferred` and records the deferral). `--chief-override` is per row and repeatable, each overridden row gets its own ledger row; it and `version-admit` and `version-defer` need `HIMMEL_CONSOLE=1` (the same marker as `create --chief-override`) and a non-blank reason; every row lands in the admissions ledger (`$HANDOVER_DIR/admissions-ledger.jsonl`, `HIMMEL_ADMISSIONS_LEDGER` overrides) | (none) |
 | Mirror      | `... mirror [--full] [--status] [--qmd] [--root DIR]` (read-only Jira → one `<KEY>.md` per issue under `~/.himmel/state/jira-mirror/<PROJECT>/`, first run full backfill, later runs `updated >=` cursor; `--qmd` registers/re-embeds the `jira-himmel` qmd collection, non-fatal; `--status` prints mirror age, no network; a failed or short key listing deletes nothing) | (none) |
 | Roadmap     | `... roadmap fields [--json]` / `... roadmap set HIMMEL-N [--readiness 0-4] [--theme T] [--goals G1,G3] [--impact 1-5] [--alignment N] [--effort XS\|S\|M\|L\|XL [--guard]] [--audit-date D] [--audit-evidence URL] [--close-candidate yes\|no] [--no-roi]` / `... roadmap get HIMMEL-N` (prints `declared readiness N (source jira); evidence <state>`, the state one of declared, linked, verified, stale or unknown; verified only from a passing spec check, never from a score or a URL) / `... roadmap export --out F.json` / `... roadmap sync-sprints [--board N] [--dry-run]` (`--theme` is the retired Theme field: it works only while `HIMMEL_LEGACY_NAMES` is on (the default) and is refused when that is 0, false, no or off, naming `edit --sector`; the config-ui Roadmap and Kanban group by Sector (the mirror's `sector:` line, the old `theme-*` label as the fallback, "no sector" for neither) and a card's select writes the Sector with `edit --sector`, never a theme label; fields resolved by name, ROI = impact × alignment × confidence ÷ effort recomputed after every set; `sync-sprints` gives each dated unreleased fixVersion a same-named sprint carrying its dates and moves its open issues in — an issue on several dated versions goes to the earliest-releasing one — and `--dry-run` exits 1 on drift) | (none) |
@@ -136,11 +136,10 @@ the bridge). A direct Jira UI or REST writer, and a concurrent external edit
 between a check and its write, are outside it. A read-back detects a change
 that did not land; it does not prevent one.
 
-**JIRA_PROJECT_KEY is required.** The plugin no longer
-hardcodes `HIMMEL` as a fallback in `projectKey()`. Operators must set
-`JIRA_PROJECT_KEY=<your-key>` in `.env` or the launching shell.
-`scripts/setup.sh` step 0.4 verifies this at install time and fails
-loud when unset.
+**JIRA_PROJECT_KEY is required.** `projectKey()` has no fallback key.
+Operators must set `JIRA_PROJECT_KEY=<your-key>` in `.env` or the launching
+shell. `scripts/setup.sh --with-jira` fails at step 0.4 when it is unset;
+without the flag, setup prints a skip notice and leaves out the Jira steps.
 
 **Do NOT pass `--project` or export `JIRA_*`, from any cwd.** The CLI loads
 its `.env` at startup from its own install path (the checkout that holds
@@ -284,7 +283,7 @@ template. The rules:
 Explicit exemptions: an `Epic` and a `Subtask` only **warn** (on stderr) and
 are filed anyway; a body-less create of any other type is refused like a body
 without the block. `edit` that touches the description, labels, parent or
-sector may not add a new violation (see "Write outcomes" below), so a legacy
+sector may not add a new violation (see "Write outcomes" above), so a legacy
 ticket can be repaired one piece at a time.
 
 Writing rules, adopted from the roadmap pipeline's plain-language ruling
@@ -315,9 +314,9 @@ refuses, and an Epic or Subtask is not checked. The check is `titleVerdict` in
 `scripts/jira/src/plain-block.ts`. Existing titles are retitled in approved
 batches with `edit --title`, never in bulk without the operator's approval.
 
-**`create` has no `--priority`; `edit` does.** `create --help` does not list
-a priority flag — file the ticket, then `node <repo-root>/scripts/jira/dist/index.js
-edit <key> --priority High` to set the real field. A priority stated only in
+**Set priority at filing.** `create --priority <name>` sets the Jira
+priority field (a Highest Bug is also placed in the active version), and
+`edit <key> --priority <name>` changes it later. A priority stated only in
 the body text leaves the field empty and the ticket unsorted in any priority
 view.
 
@@ -465,9 +464,9 @@ before the ticket is filed. After
 the create it appends one JSON row `{ts, version, key, gate|kind, actor, reason}`
 (`kind: "override"`) to `$HANDOVER_DIR/admissions-ledger.jsonl`. The marker is
 spoofable by any same-uid caller (a known ceiling; the upgrade path is the release manager's signed state). Code:
-`scripts/jira/src/commands/admissions-ledger.ts` (`appendAdmission(row)`,
-`readAdmissions(version?)` and the preflight `assertAdmissionsWritable()`, the
-whole API).
+`scripts/jira/src/commands/admissions-ledger.ts` (among its exports
+`appendAdmission(row)`, `readAdmissions(version?)` and the preflight
+`assertAdmissionsWritable()`).
 
 **Intake gate for a frozen version.** A version whose description
 has a line `frozen: <date>` takes no new ticket without a reason. `create` checks
@@ -484,7 +483,8 @@ gate reason is recorded, not verified (a known ceiling; the upgrade path is the 
 `edit --fix-version` and `edit --add-fix-version` run the same check with the same
 `--gate` and `--chief-override` flags: the refusal lands before the PUT, and the
 gate or override row is appended after the edit reads back.
-`jira fix-version --add` is not gated yet. Code:
+`jira fix-version --add` runs the same check, with the same `--gate` and
+`--chief-override` flags. Code:
 `scripts/jira/src/commands/intake-gate.ts` (`frozenDate`, `assertIntakeGate`,
 `checkIntakeGate`, `checkConsoleOverride`).
 

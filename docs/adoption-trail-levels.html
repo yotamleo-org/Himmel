@@ -546,7 +546,7 @@ Open a PR from a worktree branch instead.</code></pre></div>
 <tbody>
 <tr><td><code>pipeline</code></td><td>Daily: pulls in what you clipped and writes summaries into the vault. Uses your Claude usage.</td><td>a vault exists</td></tr>
 <tr><td><code>qmd</code></td><td>Daily: re-indexes the vault for search. No model usage.</td><td>a vault exists</td></tr>
-<tr><td><code>graphmap</code></td><td>Hourly: refreshes the map of links between notes, no model usage; a weekly deeper pass uses Claude.</td><td>a vault exists</td></tr>
+<tr><td><code>graphmap</code></td><td>Hourly: refreshes himmel's code graph, no model usage; a daily deeper pass runs on the Claude API, billed to the station's API key, only where the station opted in (elsewhere it logs a skip). The vault-note graph is opt-in.</td><td>a vault exists</td></tr>
 <tr><td><code>vault-stall</code></td><td>Every 15 minutes: notices when the vault stops saving itself to git, clears a few known harmless causes, and alerts you.</td><td>a vault exists</td></tr>
 <tr><td><code>doctor</code></td><td>Daily health check of your install; reports, fixes nothing.</td><td>always</td></tr>
 </tbody>
@@ -569,7 +569,7 @@ Open a PR from a worktree branch instead.</code></pre></div>
 </details></li>
 <li><details class="comp">
 <summary><span class="cn">Note graph (graphify)</span></summary>
-<div class="cd"><p>A map of how your notes link to each other, kept current by the graphmap job.</p></div>
+<div class="cd"><p>A map of how your notes link to each other, kept current once you arm the vault graph with <code>graphmap-cadence.sh arm --luna-only</code>.</p></div>
 </details></li>
 <li><details class="comp">
 <summary><span class="cn">Memory compounding: <code>/memory-compound</code></span></summary>
@@ -581,7 +581,7 @@ Open a PR from a worktree branch instead.</code></pre></div>
 <p>You see whether the job is armed, its schedule and its last run. <code>arm</code> refuses to arm it twice, and <code>disarm</code> removes exactly what <code>arm</code> added.</p></dd>
 <dt>You need</dt><dd><ul><li>Levels 0 and 1.</li><li>A vault made from <code>templates/luna-second-brain/</code>.</li><li>bun, for qmd search (about 2.1 GB of models).</li><li>cron on Linux or macOS.</li></ul></dd>
 <dt>Setup time</dt><dd><p>Not measured yet.</p></dd>
-<dt>What it costs</dt><dd><ul><li>Disk: about 2.1 GB for search models.</li><li>Search re-indexing and the hourly graph refresh: no model usage.</li><li>The pipeline's summaries and the weekly graph pass: your Claude usage, per run.</li></ul></dd>
+<dt>What it costs</dt><dd><ul><li>Disk: about 2.1 GB for search models.</li><li>Search re-indexing and the graph's structural refresh: no model usage.</li><li>The pipeline's summaries and the graph's semantic pass: your Claude usage, per run.</li></ul></dd>
 <dt>Turn it off</dt><dd><p>One command per job; every job script takes <code>arm</code>, <code>status</code> and <code>disarm</code>, for example <code>bash ~/himmel/scripts/luna/pipeline-cadence.sh disarm</code>.</p></dd>
 <dt>Who it is for</dt><dd><p>Anyone with an Obsidian vault, or ready to start one.</p></dd>
 <dt>Read more</dt><dd><p><a href="luna/">Second brain (luna)</a> · <a href="cadences/">Cadences (scheduled jobs)</a> · <a href="luna/compounding/">The compounding loop</a></p></dd>
@@ -632,7 +632,7 @@ Open a PR from a worktree branch instead.</code></pre></div>
 </div>
 </details>
 <details class="lvl climb" id="lvl-4">
-<summary><span class="lk">4</span><span class="lt"><strong>Review depth</strong><span>A second model family (OpenAI GPT, on your ChatGPT/Codex subscription) reviews every diff alongside Claude, and its track record tunes the review.</span></span><span class="lc"><span class="badge b-beta">1 preview</span><span class="badge b-road">1 planned</span></span></summary>
+<summary><span class="lk">4</span><span class="lt"><strong>Review depth</strong><span>A second model family (OpenAI GPT, on your ChatGPT/Codex subscription) reviews every diff alongside Claude, and its track record tunes the review.</span></span><span class="lc"><span class="badge b-road">1 planned</span></span></summary>
 <div class="lvl-body">
 <p class="outcome">Every <code>/pr-check</code> round is read by two model families, and you can see which reviewer's findings hold up.</p>
 <dl class="schema">
@@ -653,10 +653,6 @@ Open a PR from a worktree branch instead.</code></pre></div>
 <li><details class="comp">
 <summary><span class="cn"><code>/cr-learnings-refresh</code> known findings</span></summary>
 <div class="cd"><p>Updates the list of known findings from the ledger, and from a CodeRabbit learnings export if you use CodeRabbit.</p></div>
-</details></li>
-<li><details class="comp">
-<summary><span class="cn">Free hermes critics</span><span class="badge b-beta">preview</span></summary>
-<div class="cd"><p>Critics on free model tiers, called the same way. Early: works, still changing.</p></div>
 </details></li>
 <li><details class="comp">
 <summary><span class="cn">Multi-model front end</span><span class="badge b-road">planned</span></summary>
@@ -734,15 +730,15 @@ Open a PR from a worktree branch instead.</code></pre></div>
 </details></li>
 <li><details class="comp">
 <summary><span class="cn">Morning report</span></summary>
-<div class="cd"><p><code>/morning-report</code> sums up what merged, what failed and what waits on you since you left.</p></div>
+<div class="cd"><p><code>/morning-report</code> sums up what merged, what failed and what waits on you since you left. A template (<code>MORNING_REPORT_TEMPLATE</code>, or <code>morning-report.tmpl</code> in your handover root) picks its sections and their order.</p></div>
 </details></li>
 <li><details class="comp">
 <summary><span class="cn">Monitoring set up for you</span><span class="badge b-road">planned</span></summary>
 <div class="cd"><p>Dashboards for the fleet's health, installed and wired by the installer. Not built yet.</p></div>
 </details></li>
 <li><details class="comp">
-<summary><span class="cn">A morning report you can shape</span><span class="badge b-road">planned</span></summary>
-<div class="cd"><p>Choose what the report covers and where it goes. Not built yet.</p></div>
+<summary><span class="cn">A morning report sent where you choose</span><span class="badge b-road">planned</span></summary>
+<div class="cd"><p>Choose where the report goes. Not built yet.</p></div>
 </details></li>
 </ul></dd>
 <dt>Try it</dt><dd class="example"><p><b>End a session so the next one can pick up</b></p>
@@ -760,7 +756,7 @@ Open a PR from a worktree branch instead.</code></pre></div>
 </div>
 </details>
 <details class="lvl climb" id="lvl-7">
-<summary><span class="lk">7</span><span class="lt"><strong>Command a fleet</strong><span>Many workers ship tickets in parallel under one chief, and you watch them live.</span></span><span class="lc"><span class="badge b-beta">2 preview</span><span class="badge b-road">2 planned</span></span></summary>
+<summary><span class="lk">7</span><span class="lt"><strong>Command a fleet</strong><span>Many workers ship tickets in parallel under one chief, and you watch them live.</span></span><span class="lc"><span class="badge b-beta">2 preview</span><span class="badge b-road">1 planned</span></span></summary>
 <div class="lvl-body">
 <p class="outcome">You hand the chief a list of tickets, and workers ship them in parallel, each through the same review and merge gate as your own changes.</p>
 <dl class="schema">
@@ -795,8 +791,8 @@ Open a PR from a worktree branch instead.</code></pre></div>
 <div class="cd"><p>A session that rules which tickets go into each version and reports the burn-down. Works, still changing.</p></div>
 </details></li>
 <li><details class="comp">
-<summary><span class="cn">Trends over days and weeks</span><span class="badge b-road">planned</span></summary>
-<div class="cd"><p>Throughput and cost per merged change, over time, from real runs. Not built yet.</p></div>
+<summary><span class="cn">Trends over days and weeks</span></summary>
+<div class="cd"><p>The Trends tab on the Fleet page shows fleet velocity, fleet health, tool health and roadmap reality over time, fed by the weekly roll-up job.</p></div>
 </details></li>
 <li><details class="comp">
 <summary><span class="cn">Installable chief module</span><span class="badge b-road">planned</span></summary>

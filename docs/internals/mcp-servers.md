@@ -19,7 +19,7 @@ production implementations have source-derived counts instead.
 | `luna-correlate` server | `marketplace/plugins/luna-correlate/{package.json,bun.lock,server.ts,.mcp.json}` | Before: monolith 1.32.1; pilot target: split server **2.4.0** | stdio, Bun | **5** | Low: low-level handlers retain JSON schemas, custom validation and text/error output. Exact pin; regression initializes, lists tools, calls offline `series.load`, rejects bad arguments/unknown tools and checks EOF. |
 | `jira` server | `scripts/jira/{package.json,package-lock.json,src/mcp.ts}`; CLI `mcp` verb | Before: monolith 1.32.1; now split server **2.4.0** (spec 2025-11-25) | stdio, Node | **14** | Migrated, low-level `Server` kept: Jira writes, attachments, transition and roadmap dispatch and typed errors unchanged. |
 | `telegram` server | `marketplace/plugins/telegram-himmel/{package.json,bun.lock,server.ts,.mcp.json}` | Before: monolith 1.32.1; now split server **2.4.0** | stdio, Bun; Telegram network I/O is not MCP transport | **4** | Migrated, low-level `Server` kept: tools, schemas, notifications, poller gate and EOF shutdown unchanged. `tests/stdio.test.ts` drives a non-owner session with a dummy token and a dead proxy, no live bot. |
-| Obsidian Local REST API embedded server | `templates/luna-second-brain/.obsidian/plugins/obsidian-local-rest-api/{main.js,manifest.json}`; plugin **5.4.0** | Already split `@modelcontextprotocol/server`, `core`, `node` bundle; exact SDK release **not recorded** | Streamable HTTP (`NodeStreamableHTTPServerTransport`), sessionful/sessionless | **17** base + **2** signed-URL tools + **1** event-listener tool when enabled; extensions can add more | Medium: already v2 API (`McpServer.registerTool`, Standard Schema adapter). Re-vendor upstream, do not codemod compiled bundle; unknown exact pin needs upstream evidence. |
+| Obsidian Local REST API embedded server | `templates/luna-second-brain/.obsidian/plugins/obsidian-local-rest-api/{main.js,manifest.json}`; plugin **5.5.2** | Already split `@modelcontextprotocol/server`, `core`, `node` bundle; exact SDK release **not recorded** | Streamable HTTP (`NodeStreamableHTTPServerTransport`), sessionful/sessionless | **17** base + **2** signed-URL tools + **1** event-listener tool when enabled; extensions can add more | Medium: already v2 API (`McpServer.registerTool`, Standard Schema adapter). Re-vendor upstream, do not codemod compiled bundle; unknown exact pin needs upstream evidence. |
 | `fake-mcp` test server | `scripts/testing/fixtures/fake-mcp-server.mjs` | **None**, handwritten JSON-RPC | newline-delimited stdio, Node | **1** (`fake_echo`) | No dependency migration. Credential-free fixture echoes requested protocol; default 2025-06-18 is not a supported-version negotiation implementation. |
 | stdio regression test client | `marketplace/plugins/luna-correlate/tests/stdio.test.ts` | **None**, handwritten JSON-RPC test client | stdio subprocess | Calls the pilot's 5-tool list | No SDK object crossing. Uses literal 2025-11-25 initialize and offline fixtures. |
 | Claude Code / Codex harness clients | `scripts/mcp/build-mcp-profiles.mjs`, `scripts/lanes/plugin-profiles.json`, `scripts/codex/` | External binaries; no in-repo SDK client imports | Configured stdio / HTTP | Server-dependent | Generated config is not an SDK client implementation. Upgrade client binaries separately; do not infer SDK from CLI version. |
@@ -115,9 +115,9 @@ contract. The five JSON schemas and business logic remain unchanged.
 
 The codemod emits a caret dependency; tighten it to exact **2.4.0**, regenerate
 `bun.lock`, and remove the v1 monolith only after no imports remain. The plugin
-manifest advances from **0.2.6** through **0.2.7** and **0.2.8** to **0.2.9**
-(schema-baseline and warm-upgrade review fixes); the existing wire server identity
-is intentionally unchanged. Tests use no client SDK and never pass objects
+manifest carries its own version
+(`marketplace/plugins/luna-correlate/.claude-plugin/plugin.json`); the existing
+wire server identity is intentionally unchanged. Tests use no client SDK and never pass objects
 between SDK majors. Startup always refreshes dependencies with
 `bun install --frozen-lockfile --no-summary`, sending installer diagnostics to
 stderr so stdout remains JSON-RPC-only. An existing `node_modules` directory

@@ -106,8 +106,9 @@ bun scripts/luna-vitals/connectors/google-health.ts auth-exchange --code "<code-
 You can pass either the bare `code` value or the full `http://localhost/?code=...` URL; the
 connector extracts the code either way.
 
-On success it prints `OK: refresh token written to .env` and adds
-`GOOGLE_HEALTH_REFRESH_TOKEN=...` to `.env`. The token value is never printed.
+On success it prints `OK: refresh token written to <where>`: the keyring when it is
+unlocked, else your `.env` file (a `GOOGLE_HEALTH_REFRESH_TOKEN=...` line already in `.env`
+is kept in step either way). The token value is never printed.
 
 ---
 
@@ -121,8 +122,11 @@ wrapper exits with code **75** and prints a re-consent reminder on stderr:
 [pull-cadence] To re-auth, run auth-url then auth-exchange: ...
 ```
 
-To refresh: re-run Steps 2–4 above. The `auth-exchange` command overwrites the old
-`GOOGLE_HEALTH_REFRESH_TOKEN` line in `.env` in place.
+To refresh: re-run Steps 2–4 above. The `auth-exchange` command stores the new token
+the same way: the keyring when it is unlocked, else the `GOOGLE_HEALTH_REFRESH_TOKEN` line in `.env`.
+If the keyring is unlocked but refuses the write, the token goes to `.env` and the command
+exits with an error: an older keyring token still outranks `.env`, so store the new one with
+`himmel-secrets put --stdin GOOGLE_HEALTH_REFRESH_TOKEN`.
 
 Going **Production** (verified app) removes the expiry but requires a CASA Tier 2 security
 assessment for restricted scopes, which is out of scope for alpha personal use.
@@ -174,14 +178,17 @@ thin wrapper that:
 - Exits non-zero on any other error.
 - Does **not** call `write`; that remains a manual step.
 
-Wire it into your scheduler using the **pipeline-cadence** mechanism (`/pipeline-cadence` in
-himmel):
+The same script is its own scheduler controller (one daily crontab entry, no Claude
+session). A scheduled pull reads the keyring only when it is unlocked at fire time; with the
+token in a locked keyring and not in `.env`, the pull fails with `missing required env vars:
+GOOGLE_HEALTH_REFRESH_TOKEN`. `arm` and `disarm` manage only the line marked
+`# HIMMEL-LunaVitalsPull`: if you added a `pull-cadence.sh` line by hand earlier, remove it
+(`crontab -e`) before you run `arm`.
 
 ```sh
-# Example: run daily at 06:00 UTC (cron)
-0 6 * * * LUNA_VITALS_ARTIFACT_DIR=/path/to/artifacts \
-  /path/to/scripts/luna-vitals/connectors/pull-cadence.sh
-
+bash scripts/luna-vitals/connectors/pull-cadence.sh arm [--time HH:MM]   # default 06:30 local
+bash scripts/luna-vitals/connectors/pull-cadence.sh status
+bash scripts/luna-vitals/connectors/pull-cadence.sh disarm
 ```
 
 **Date overrides** (useful for backfill or testing):
@@ -222,7 +229,7 @@ HR-zone config, nutrition-log multi-nutrient arrays) are excluded from the serie
 
 Vitals are personal health information (PHI):
 
-- Keep `GOOGLE_HEALTH_REFRESH_TOKEN` in `.env` only. The `.env` file is gitignored; confirm
+- Keep `GOOGLE_HEALTH_REFRESH_TOKEN` in the keyring or `.env` only. The `.env` file is gitignored; confirm
   `git check-ignore -v .env` before the first commit in a new clone.
 - The connector **never prints secret values**: `auth-exchange` prints only a confirmation
   message and the granted scope string.

@@ -180,7 +180,7 @@ rule; batch rulings per decision point.
 
 A worker reports `READY <pr> <head> GREEN`. Verify:
 `bash scripts/handover/chief-kit/ready-check.sh --contract yes|no <pr> <full-head-sha>` (`run_in_background`; all check-runs success
-at that head, zero unresolved threads, trailers in the first commit; the diff stays
+at that head, zero unresolved threads, trailers in a non-merge commit; the diff stays
 your judgement), then `bash scripts/handover/chief-kit/go.sh --contract yes|no <pr> <head>`: that write IS the GO
 (`gh pr merge` needs the file; a messaged `GO` only notifies). `go.sh`
 refuses (exit 4) unless `ready-check.sh` passes; a head with no ok CR-ledger row
@@ -192,7 +192,7 @@ of the PR title; check a second key by hand. Never merge with open review
 threads or on a handoff calling a PR clean: query it yourself. A worker's
 `BLOCKED resolve`: verify, resolve, never the operator. **A PR whose diff
 matches a pattern in `scripts/ci/ci-trust-paths.txt`** needs adversarial review and
-`bash scripts/handover/chief-kit/go.sh --trust-reviewed <qid> <pr> <head>` (an ordinary GO exits 21). Tag cuts and the
+`bash scripts/handover/chief-kit/go.sh --trust-reviewed <qid> <pr> <head>` (a plain `go.sh` GO exits 8; `merge-on-green.sh` refuses an ordinary GO with exit 21). Tag cuts and the
 merged-docs list: `chief-sections/merges.md`.
 
 **An unlisted outside author's PR walks a staged path** at its exact head `H` (a new head restarts it; a listed

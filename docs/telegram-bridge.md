@@ -47,13 +47,11 @@ DM the bot once it's running:
 - `status` / `sessions` / `stop <TICKET-KEY>`: control commands.
 - Anything else: ordinary chat with the current session.
 
-The bot also answers three Telegram slash commands, **in a DM only** (it stays
-silent in groups so pairing codes never leak to other members):
-
-- `/start`: pairing instructions.
-- `/help`: what the bot does and the two commands below.
-- `/status`: your pairing state: paired (and as whom), a pending code to
-  approve with `/telegram:access pair <code>` in Claude Code, or not paired.
+The bun bridge has no `/start`, `/help` or `/status` reply. Those three
+pairing commands are answered, in a DM only, by the official Telegram
+plugin's own server, which runs only in a `claude --channels` session; stop
+the bridge before you launch one (see
+[the one-poller-per-token trap](#the-one-poller-per-token-trap)).
 
 Privileged actions (arming a resume, restarting the bridge, and other
 operator-only ops) are gated behind an explicit auto-command syntax and an
@@ -68,15 +66,18 @@ trigger one of these commands.
 
 `/chief <text>` delivers to the **one live chief**, without needing its
 session name. Live means its waiter heartbeat is `waiting` or `sampling` and
-less than five minutes old. With none live, nothing is queued; with several,
-the bridge lists them and asks you to choose `/chief <session-name> <text>`.
+less than five minutes old. With none live, nothing is queued. With several
+of one lineage (the same prefix and name), the newest gets it; with several
+lineages, the bridge lists them and asks you to choose
+`/chief <session-name> <text>`. `/chief chief:<project> <text>` reaches the
+newest live chief of that project.
 The first word names a chief only when that inbox already exists; otherwise
 it is part of the bare text. `/chiefs` lists live names, heartbeat timestamps,
 and bucket/project (older chiefs without launch metadata show `unknown`).
 The first word also selects a chief by a unique fragment of its name, and a
 message to an armed chief that is busy is queued rather than dropped. `/chief`, the fleet verbs and `/lockdown` accept any letter
 case and the `/verb@botname` form; the auto ops stay
-strict. The older `/console` and `/consoles` aliases were removed; they are now ordinary chat.
+strict. `/console` and `/consoles` are not bridge verbs; they reach the session as ordinary chat.
 These bridge verbs are separate from Claude Code's commands, where `/chief` is the only name.
 
 Each chief's first waiter arm queues a DM: “Chief <name> is live — just

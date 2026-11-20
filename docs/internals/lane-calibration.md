@@ -89,8 +89,8 @@ cost is joined later from the session transcript, not written at launch.
 
 `worker-impl` is the profile a worker gets from
 `headed-arm-worker.sh --profile worker-impl`. **The worker profiles are thin on purpose:** `worker-impl`
-is `lane-impl` minus `i-have-adhd` (the operator reads chief windows, not worker windows) — an
-audit, 33650 to 31219 first-turn tokens — because the measured worker floor is schema-shaped, not roster-shaped (~40k of a
+is the floor plus base `lean-skills` (dropped on the native lane), with a tool deny list, workflows
+off and an MCP allowlist (`qmd`, `himmel-bus`), because the measured worker floor is schema-shaped, not roster-shaped (~40k of a
 74.3k first-turn floor is tool and MCP schemas, ~9k the base system prompt), so
 a profile by skill set would either resolve to `bare` and
 lose the floor's guards and skills or duplicate `worker-impl` exactly. `worker-eval`
@@ -102,8 +102,8 @@ measured attainable floor**. The context-budget audit below retains it for lack 
 three attributable workers; measure a real worker with `scripts/lanes/worker-burn.sh`.
 
 `gateAllow` is one registry-level list of validated Bash rules;
-`lane-impl`, `worker-impl`, `lane-review`, and `lane-content` opt in with
-`gateAllow: true`, adding `permissions.allow` to their resolved settings.
+`lane-impl`, `lane-review`, `lane-content`, every `worker-*` profile and
+`chief-relay` opt in with `gateAllow: true`, adding `permissions.allow` to their resolved settings.
 Matching allow rules are evaluated before the narrative-sensitive auto-mode
 classifier, giving deterministic routing; the deny list still wins and is
 untouched. `operator`, `user`, and `bare` keep byte-identical resolver output.
@@ -146,7 +146,7 @@ resolves for every cold `claude` spawn dispatched from a Telegram message,
 via `resolveProfileSettings` (the same seam `spawn-claudex.ts` already uses)
 plus a poller-local `--mcp-config`/`--strict-mcp-config` helper built from
 `mcpServersForProfile`/`collectMcpServerDefs`. Its plugin set is
-`lane-content` minus `claude-obsidian` (floor + `obsidian-triage`) and its `mcpServers: ["qmd"]` is `worker-impl`'s
+the floor plus `obsidian-triage` and `i-have-adhd`, and its `mcpServers: ["qmd"]` is `worker-impl`'s
 allowlist without `himmel-bus`. Measured (`profile-context-probe.mjs`): `telegram` = 32541
 first-turn tokens against `contextBudget: 45000`, below the unleaned
 `bare` baseline of 33493 — so unlike `worker-impl`'s token-reduction win, this
@@ -505,10 +505,9 @@ Notes a future reader needs:
   to get the benefit — inheriting 240s is not wrong, only
   loose. The 108.2s p95 run overlapped a concurrent 900K context probe; the
   two clean runs were 57.3s and 82.8s, so 180s carries real margin.
-- **No hermes row exists in `scripts/cr/critics.json` today** (the panel is
-  `codex` only), so there is no timeout value to correct here, and — contrary
-  to what an earlier draft of this note said — adding one is NOT a config-only
-  follow-up. `critic-panel.sh`'s per-member reviewer, `critic-first-pass.sh`,
+- **No hermes row exists in `scripts/cr/critics.json`** (the panel is
+  `codex`, `claude` and `coderabbit`), so there is no timeout value to correct
+  here, and adding one is NOT a config-only change. `critic-panel.sh`'s per-member reviewer, `critic-first-pass.sh`,
   hard-requires `--model` (`exit 2` on empty), so a row deferring to the
   profile default (`model: ""`, the whole point of #1811) needs a
   real code change there first. Separately, a live free-tier panel row would
@@ -567,17 +566,17 @@ setting alone. The worker launcher mirrors this for native-lane workers — see 
 **Ruling (2026-09-26): effort-at-dispatch is shipped, on both
 paths.** Re-verified live on main at `cb43cfbfa`. Two mechanisms cover the two
 dispatch surfaces, both keyed off the same `lanes.json` `effort` field
-(`scripts/lanes/lanes.json:8-9`, e.g. `"id": "haiku"` → `"effort": "low"`,
+(the `lanes` rows of `scripts/lanes/lanes.json`, e.g. `"id": "haiku"` → `"effort": "low"`,
 `"id": "sonnet"` → `"effort": "medium"`):
 - **Telegram/native dispatch** (`bfa9201a0`): `laneEffort()` in
-  `scripts/telegram/run.ts:318` resolves the model to its lane row and
-  `run.ts:328-329` folds the row's `effort` into `CLAUDE_CODE_EFFORT_LEVEL` for
+  `scripts/telegram/run.ts` resolves the model to its lane row and
+  `spawnSpec()` folds the row's `effort` into `CLAUDE_CODE_EFFORT_LEVEL` for
   the spawned session's env.
 - **Chief-launched native worker** (`79b205218`):
-  `scripts/handover/chief-kit/headed-arm-worker.sh:746-764` mirrors the same
+  the native-lane effort block of `scripts/handover/chief-kit/headed-arm-worker.sh` mirrors the same
   match rule (exact model id, or `claude-<tier-id>-` prefix) for `LANE=native`
   — an explicit ambient `CLAUDE_CODE_EFFORT_LEVEL` always wins (checked before
-  the lookup, `headed-arm-worker.sh:747-748`); otherwise it resolves the row via
+  the lookup); otherwise it resolves the row via
   `jq` against `lanes.json` and exports it. `scripts/handover/chief-kit/
   test-headed-arm-worker.sh` and its part `test-headed-arm-worker-b.sh` carry 18 assertions on `CLAUDE_CODE_EFFORT_LEVEL`
   (including cases 34a-34c, in the `-b` part: tier-row export, no-row leaves it unset, ambient
@@ -589,7 +588,7 @@ A third, related mechanism — the tier-reason gate that requires a sanctioned
 `> **Tier:** opus|fable — <category>: <reason>` line before an Opus/Fable worker
 launches (`a3260c8f6`; category tags added in
 `d5a71757f`) — is the "raise effort before tier" enforcement point referenced
-above; it lives at `headed-arm-worker.sh:565-584`. All four shipping SHAs are
+above; it is the tier gate in `headed-arm-worker.sh`. All four shipping SHAs are
 ancestors of current main and none has been reverted. This closes the question
 as answered, not as a gap: no lane class was found uncovered.
 
@@ -643,22 +642,18 @@ usage budget attribution table, which this change leaves untouched.
 
 ## Usage-scarcity routing rule
 
-While the **Claude weekly subscription usage budget is the scarce bucket** (`usage-preflight.sh` now
-prints both usage budgets on its one line — `five_hour=… seven_day=… codex=5h<n>/wk<n>`,
-`codex=?` when the codex figure is missing, stale or the probe fails, and never
-a refusal on that account), an **Opus parent routes implementation chunks
-codex-exec first**:
+`usage-preflight.sh` prints both usage budgets on its one line
+(`five_hour=… seven_day=… codex=5h<n>/wk<n>`, `codex=?` when the codex figure
+is missing, stale or the probe fails, and never a refusal on that account).
+Implementation chunks go to native Claude subagents: `codex-exec` is dormant
+in `scripts/lanes/lanes.json`. A dispatch that opts in with
+`CODEX_EXEC_LANE_OK` (`scripts/codex/dispatch-codex-exec.sh`, default model
+the `codex` critic in `scripts/cr/critics.json`, at
+**`--reasoning-effort medium`**, `low` for a mechanical chunk) draws the codex
+usage budget instead of the Claude one; the limits below apply to it.
 
-1. **codex-exec** (`scripts/codex/dispatch-codex-exec.sh`; Sol — the wrapper's
-   default model is the `codex` critic in `scripts/cr/critics.json`, currently
-   `gpt-6.1-sol` (`gpt-6-sol` before it) — at
-   **`--reasoning-effort medium`**, `low` for a mechanical
-   chunk) — the default home of a well-specified implementation chunk, because
-   it draws the codex usage budget rather than the Claude one.
-2. **A Sonnet child** — only where the codex lane **cannot act**.
-
-**Where codex-exec cannot act today** (from the wrapper and the harness docs, not
-invented — extend this list only from a new observation):
+**Where an opted-in codex-exec dispatch cannot act** (from the wrapper and the
+harness docs, not invented — extend this list only from a new observation):
 
 - **It cannot commit in a git worktree.** The dispatcher pins
   `--sandbox workspace-write` and refuses `--add-dir` / `-C` / `--cd` and every
@@ -684,21 +679,16 @@ invented — extend this list only from a new observation):
   chunks onto one branch are serial by construction.
 
 Everything else — editing files inside the worktree, running a scoped suite —
-is codex-exec's. This rule is the **routing default**, not a measurement: the
-measured before/after of the Claude usage budget saving is deliberately left to the
-usage budget attribution table (out of scope here, and unchanged).
+an opted-in codex-exec dispatch can do.
 
 ## Context mode — an arming-time choice, not a station default
 
-Context mode used to be set once, station-wide, by a `[1m]` suffix on the
-user-level `model` key in `~/.claude/settings.json`. It is now chosen **per arm**
-via `--context 1m|standard` (`arm-resume.sh`, and the 7th positional of
-`headed-arm.sh`). The baseline default is **`standard`**;
-the headed launchers now use per-profile defaults, including
-`design`'s declared `1m` mode and numeric ceiling, without an operator override. A
-chief arm (launched through `chief.sh`, which has no `--context` flag of
-its own) can still opt into `1m` via `CHIEF_CONTEXT=1m` in the launching
-shell.
+Context mode is chosen **per arm** via `--context 1m|standard`
+(`arm-resume.sh`, and the 7th positional of `headed-arm.sh`). The baseline
+default is **`standard`**; the headed launchers use per-profile defaults,
+including `design`'s declared `1m` mode and numeric ceiling, without an
+operator override. A chief arm defaults to `1m`; `chief.sh --context standard`
+or `CHIEF_CONTEXT=standard` in the launching shell opts down to 200000.
 
 `--context` drives two independent levers, because measurement showed one of
 them alone is a no-op on this account:
@@ -771,7 +761,7 @@ table; it is the operator's ruling, and the table states what it costs.
 
 `WORKER_SESSION_CONTEXT=1m` plus the sanctioned brief line
 `> **Context:** 1m — operator-ruling: <reason>` remains a per-worker override to
-`auto`, as does `CHIEF_CONTEXT=1m` for a chief. The brief line alone does
+`auto`; a chief needs no override, since it defaults to `1m`. The brief line alone does
 not elevate a standard profile; a bare `WORKER_SESSION_CONTEXT=1m` without it refuses. Launch logs
 record the resolved profile, ceiling and context source; argv must match the
 profile plus the sanctioned override. The older `arm-resume.sh` context API is
@@ -798,14 +788,15 @@ values have 100-token precision; aggregates are rounded to whole tokens, not
 claims of exact underlying usage. This is Q8 data, **not authorization to lower
 the relay ceiling**.
 
-| Profile cohort | Attributable merged workers (n) | Existing profile observation | Budget decision |
+| Profile cohort | Attributable merged workers (n) | Existing profile observation | `contextBudget` |
 |---|---:|---|---|
-| `worker-impl` | 0 | 70,500 first-turn, #777 (73,000 control) | keep 35,000 |
-| `telegram` | 0 | 32,541 first-turn, #680 | keep 45,000 |
-| `lane-impl`, `lane-review`, `lane-content`, `bare` (each) | 0 | none | keep 45,000 each |
-| `chief-relay`, `console-judge` (each) | 0 | none | keep 35,000 each |
-| `user`, `design`, `chief` (each) | 0 | none | keep 50,000 each |
-| `design-motion`, `design-3d`, `design-imagegen`, `design-a11y`, `design-diagram`, `design-slides`, `design-reference`, `design-trial` (each) | 0 | none | keep 50,000 each |
+| `worker-impl` | 0 | 70,500 first-turn, #777 (73,000 control) | 55,000 |
+| `telegram` | 0 | 32,541 first-turn, #680 | 45,000 |
+| `lane-impl`, `lane-review`, `lane-content`, `bare` (each) | 0 | none | 45,000 each |
+| `chief-relay` | 0 | none | 35,000 |
+| `console-judge` | 0 | none | 55,000 |
+| `user`, `design`, `chief` (each) | 0 | none | 50,000 each |
+| `design-motion`, `design-3d`, `design-imagegen`, `design-a11y`, `design-diagram`, `design-slides`, `design-reference`, `design-trial` (each) | 0 | none | 50,000 each |
 | `operator` | 0 | null sentinel, no budget | unchanged |
 
 The two historical observations come from the registry's existing `_comment`s;
@@ -897,7 +888,7 @@ measured** — do not assume a `standard` worker makes its children compact earl
 
 | lane | default mode | override |
 |---|---|---|
-| chief arm (`*-chief.md`) | `standard` | `CHIEF_CONTEXT=1m` |
+| chief arm (`*-chief.md`) | `1m` | `--context standard` / `CHIEF_CONTEXT=standard` |
 | headed worker / worker arm | profile default (`design`: `1m` / 1000000; Sonnet 5.5 `worker-impl` and `worker-eval` on the native lane: `standard` / 850000; Opus 5.5 `worker-*` on the native lane: `standard` / 850000; others: `standard` / 200000) | `WORKER_SESSION_CONTEXT=1m` plus reasoned brief Context line; either alone does not enable 1m |
 | subagent of either | inherits the parent | none — set it on the parent's arm |
 
@@ -959,8 +950,9 @@ cache_creation_input_tokens` from the last assistant message in that session's
 own transcript; it excludes output tokens and is not cumulative spend.
 `scripts/context-fill.sh` prints that count alongside fill, keeps `--percent`
 as the bare integer compatibility surface, and interprets `--warn-at 1..100`
-as percent versus values above 100 as token counts. A worker checks
-`--warn-at 75` after every completed step (`docs/handover/worker-preface.md`). The
+as percent versus values above 100 as token counts. A worker runs the
+context-fill probe after every completed step
+(`docs/handover/worker-sections/context-guard.md`). The
 handover skill's generic task template still checks `--warn-at 45`; it serves
 general handover sessions, not workers.
 
@@ -1131,7 +1123,7 @@ fallback to the full set) and the profile is picked from the role:
 
 | Launch path | Profile |
 |---|---|
-| `chief.sh` arm / `headed-arm.sh --role chief` | `chief` (handover, himmel-ops, qmd, lean-skills; no pr-review-toolkit) |
+| `chief.sh` arm / `headed-arm.sh --role chief` | `chief` (floor only: handover, himmel-ops, qmd; MCP qmd and himmel-bus) |
 | `arm-resume.sh`, `schedule-resume.sh` | from the resumed doc via `scripts/lanes/role-profile.sh`; `--profile <name>` overrides (arm-resume) |
 | `hop.sh` | `HOP_PROFILE`, else `chief` / `worker-impl` from the caller's role env, else `user` |
 | worker brief (`headed-arm-worker.sh`) | `--profile` / `WORKER_SESSION_PROFILE` win; else a `profile: <name>` line in the brief's first 60 lines; else the unprofiled-launch refusal stands |
@@ -1187,9 +1179,8 @@ rather than the mean, keep the subagent only where folding scores worse.
 ## Cost posture
 
 Fable stays **conserved** (limited release) — the spread optimizes
-Sonnet/Opus/impl lanes. Sonnet 5 carried introductory pricing ($2 per
-million input tokens / $10 per million output tokens) through 2026-08-31;
-recalibrate in September against Anthropic's published pricing.
+Sonnet/Opus/impl lanes. Sonnet 5.5 lists at $2 / $10 per million input /
+output tokens (`scripts/lanes/lib/model-prices.tsv`).
 
 Pricing and per-lane benchmark analysis are volatile: treat any figure here as
 needing revalidation before it drives a routing decision.

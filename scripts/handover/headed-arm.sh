@@ -318,6 +318,9 @@ fi
 # script's own source location never moves with it.
 . "$(cd "$(dirname "$0")" && pwd)/../lib/chief-context.sh"
 CHIEF_CONTEXT="${CHIEF_CONTEXT:-}"
+if [ -n "${HIMMEL_CONSOLE_LEG:-}" ]; then
+    unset -v HIMMEL_API_LANE HIMMEL_API_ACCOUNT WORKER_SESSION_API_LANE WORKER_SESSION_API_ACCOUNT
+fi
 # shellcheck source=../lib/claude-version.sh
 . "$(cd "$(dirname "$0")" && pwd)/../lib/claude-version.sh"
 # shellcheck source=../lib/dedupe-path.sh

@@ -65,7 +65,6 @@ docs/handover/afk-mode.md	counters context-budget anxiety (Fable 5 occasionally 
 docs/handover/afk-mode.md	written-deliverable padding (Opus 5 pads documents by default, and this
 docs/handover/afk-mode.md	notification** (observed on Opus 4.8, community-measured, @PawelHuryn).
 docs/handover/afk-mode.md	header contract before invoking it. A wrong repo slug, an MSYS-mangled
-docs/handover/afk-mode.md	grant), and Windows sessions are not covered.
 docs/handover/afk-mode.md	- **Effort tiering (Fable-5):** on Fable 5, `low` effort ≈ `xhigh` on prior models, which strengthens the raise-effort-before-tier rule of the Subagent delegation & escalation policy (root `CLAUDE.md`). For mechanical subagent work, raise effort before raising the model tier; reach for Opus-class only with a concrete reason. Default effort `high`; `max` is a re-verification tax (2-3× time for the same answer, community-measured); reserve it for capability-critical single calls, not pipeline phases.
 docs/handover/chief-sections/waiter.md	    a closing `# pool=<rows>/<slack>` line, `,LOW` when the pool fills fewer slots than the slack, and `POOL-EMPTY` when it has nothing, followed by the next tier (tier-4 To Do rows in rank order) as `NEXT-TIER` rows: then unblock collisions, draft specs for the next priority items, or fill from the NEXT-TIER rows when the operator has ruled so); dispatch it with `gen-briefs.py`; both refuse Windows/WSL work per `chief-kit/platform-dropped.re` unless the ticket is labelled `windows-removal` / the worker sets `platform_removal` and its title says remove/drop/delete/retire/sweep/clean), or
 docs/handover/running-a-chief.md	`[1m]` is appended to the model only for the 4.6 family (`claude-opus-4-6`,
@@ -256,7 +255,6 @@ docs/internals/lane-calibration.md	Opus 5.5 at `medium` (its default; Opus 5 def
 docs/internals/lane-calibration.md	Opus 5 at `high` on coding and knowledge work, `low` comes close on several
 docs/internals/lane-calibration.md	fleet, and carrying `xhigh` over from Opus 4.8/5 would buy longer, costlier
 docs/internals/lane-calibration.md	> OpenAI/Tibo says GPT-6 Astra on **low** performs better than GPT-5.6 Sol on
-docs/internals/lane-calibration.md	   `gpt-6.1-sol` (`gpt-6-sol` before it) — at
 docs/internals/lane-calibration.md	| `claude-opus-5[1m]` | `claude-opus-5[1m]` | `Opus 5 (1M context)` | yes |
 docs/internals/lane-calibration.md	| `opus[1m]` (alias) | `claude-opus-5[1m]` | `Opus 5 (1M context)` | yes |
 docs/internals/lane-calibration.md	| `claude-opus-4-8[1m]` | `claude-opus-4-8[1m]` | `Opus 4.8 (1M context)` | yes |
@@ -270,7 +268,6 @@ docs/internals/lane-calibration.md	| `--model claude-opus-5` (plain) | 1000000 |
 docs/internals/lane-calibration.md	| `--model claude-sonnet-5` (plain) | 1000000 |
 docs/internals/lane-calibration.md	| `--model claude-opus-5 --autocompact 200000` | 1000000 |
 docs/internals/lane-calibration.md	A live session launched with a plain `--model claude-opus-5` ninety seconds
-docs/internals/lane-calibration.md	Sonnet/Opus/impl lanes. Sonnet 5 carried introductory pricing ($2 per
 docs/internals/lane-calibration.md	`anthropic/claude-haiku-4.5`, which logs `unrecognized_model` with
 docs/internals/lesson-provenance.md	Bash/PowerShell `command` surface, which as of **round 4** uses an
 docs/internals/lesson-provenance.md	redirects, attached `-t` flags, PowerShell built-in aliases — and each

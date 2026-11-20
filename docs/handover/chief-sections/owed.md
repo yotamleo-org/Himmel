@@ -6,7 +6,7 @@ shift (a ticket to file, a proof to run, a ruling to ask for) is a row in
 at a handover; the ledger is carried by the tick, the HANDOFF and the queue fold.
 
 - **Owed means a row.** The moment you say "ticket owed", "proof owed" or "ruling owed",
-  write it: `bash <kit>/owe.sh add --bucket <dir of this doc> --chief <letter> --kind ticket|proof|ruling --text "<one line>"`.
+  write it: `bash <kit>/owe.sh add --bucket <dir of this doc> --chief <letter> --kind ticket|proof|ruling|step --text "<one line>"`.
   It prints the row id (`o1`, `o2`, ...). `--key <KEY>` is for a row that already has one.
 - **Close it with what proves it.** `bash <kit>/owe.sh close --bucket <dir> --id <id> --key <key>`:
   a ticket key for a `ticket`, a commit sha for a `proof`, a decision id for a `ruling`. A close

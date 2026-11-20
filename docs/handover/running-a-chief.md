@@ -130,7 +130,7 @@ decisions you cannot pre-write, or will outlive one context window.
 
 ```bash
 /chief new                        # writes the doc, takes the lock, prints the launch line
-/chief new --name night           # a differently-named succession in the same bucket
+/chief new --name night-chief     # a differently-named succession in the same bucket
 /chief new --arm                  # also arms it headed, on a signal file + deadline
 /chief new --dry-run              # print what it would write, touch nothing
 ```
@@ -146,13 +146,10 @@ writes `…B-chief.md`; it never overwrites.
 `--name roadmap`. The suffix is load-bearing. `chief-compact-reinject.sh`
 re-injects the live state after a compaction only for a session whose
 launch-time `-n` name ends in `-chief` (or the older `-console`), and `/rename`
-does not change that name. A `--name roadmap-chief` is mapped to
-`roadmap-chief`, and `next` on a `…-console.md` predecessor arms a `…-chief.md`
-successor; every guard and reader still treats a live `-chief` session as a
-chief. `next` derives the successor's name from its `--doc`, so a doc without
-the suffix hands the mistake down the chain. To fix a mis-named chief, copy
-its doc to a `…-chief.md` path, take the lock on the new path, release the
-old one, and leave a pointer stub behind.
+does not change that name. `new` and `next` refuse (exit 1) a name that is
+not `chief` and does not end in `-chief`. A pre-rename `--name roadmap-console`
+is mapped to `roadmap-chief`, and `next` on a `…-console.md` predecessor arms a
+`…-chief.md` successor.
 
 It then acquires the queue lock on that document and prints the
 `release-token:` line. **That token belongs to the chief you are about to
@@ -169,21 +166,27 @@ That prefix is load-bearing, not decoration: you are almost always pasting into
 a terminal that was itself spawned from a claude session, and it clears the
 `CLAUDE_CODE_CHILD_SESSION` / `CLAUDE_PID` / `CLAUDE_CODE_SESSION_ID` variables
 that shell inherited, plus the `CLAUDE_CODE_MESSAGING_SOCKET` / `_TOKEN` pair
-and `CLAUDE_JOB_DIR`: a session that keeps them answers to the name of the
-session that launched it. A chief that keeps the first three writes no transcript and gets
+and `CLAUDE_JOB_DIR` (it also unsets `NO_COLOR`): a session that keeps them
+answers to the name of the session that launched it. A chief that keeps the first three writes no transcript and gets
 `UNKNOWN` from `scripts/context-fill.sh --percent`, which is the signal its
 own handover contract runs on. Trimming the line to just
 `claude …` silently recreates that failure.
 
 Finally it prints the launch line. Without `--arm`, run it in a terminal of its
-own:
+own. The printed line is authoritative; its shape is:
 
 ```text
-env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
-    -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR \
+cd <himmel checkout> && { bash <checkout>/scripts/handover/chief/record-launch.sh <session-name> <context> <source> <autocompact>; \
+    env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
+    -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR -u NO_COLOR \
     CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 \
-    claude --model '<model>' --autocompact auto -n <session-name> "load <doc> and continue"
+    claude --settings <console profile file> --model '<model>' [--mcp-config <file> --strict-mcp-config] \
+    --append-system-prompt-file <checkout>/docs/handover/chief-adhd-brief.md \
+    --autocompact <autocompact> -n <session-name> "load <doc> and continue"; }
 ```
+
+When the `console` profile opts into the bus, the `claude` call runs through
+`chief-bus-exec.sh`, which registers and binds the session on the bus first.
 
 `[1m]` is appended to the model only for the 4.6 family (`claude-opus-4-6`,
 `claude-sonnet-4-6`); Opus 4.7+, Sonnet 5+, Haiku 5.5 and Fable run 1M natively
@@ -856,7 +859,7 @@ rows until it does, so read each `backfill: <label> <result>` line.
 
 `READY <pr> <head> GREEN` → the chief verifies independently (all check-runs
 green at that exact head, zero unresolved review threads, attestation trailers
-in the first commit) → `GO` → the worker merges and writes `WRAPPED`; the relay wraps it (claudex: the chief merges and sends the worker `MERGED #<n> → <sha>`) and the next wake shows `merged=<n> (#<pr>)`.
+in a non-merge commit) → `GO` → the worker merges and writes `WRAPPED`; the relay wraps it (claudex: the chief merges and sends the worker `MERGED #<n> → <sha>`) and the next wake shows `merged=<n> (#<pr>)`.
 
 <!-- mem:d21a0c8458ad -->
 A worker's `READY`, or a predecessor's note that a PR is clean, is not
@@ -876,7 +879,7 @@ by hand.
 mechanizes that independent verification: it re-runs checks
 1-6 (head match + clean merge state, statusCheckRollup all green, zero
 unresolved review threads, an automated review ledger row for that head, attestation
-trailers in the first commit, a ticket ID on every commit subject) and
+trailers in a non-merge commit, a ticket ID on every commit subject) and
 prints `READY-CHECK PASS|FAIL`. It is read-only (no ledger rows, GO files,
 or PR comments) and it does **not** read the three-dot diff; that judgement
 call stays the chief's own, which the script says on its last line. On a
@@ -951,7 +954,7 @@ fresh GO.
 
 ## Handing over
 
-Chiefs hand over at **45 % context fill, or 90 k input tokens in one turn**.
+Chiefs hand over at **45 % context fill, 90 k input tokens in one turn, or 400 turns / 120 M cumulative cache-read** (`chief-budget.sh`), whichever comes first.
 
 ```bash
 /chief next --arm --doc <this chief's own doc> --bucket <its bucket> --prefix <its prefix> --model <its model>

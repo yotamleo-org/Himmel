@@ -58,7 +58,8 @@ Run `node marketplace/plugins/himmel-bus/bin/bus <verb>`.
 `wait` defaults to 300 seconds. Exit **0** means a message was printed, **3**
 means it timed out, and any other non-zero exit is an error (unbound identity,
 halted log, bad `--timeout`). `send` takes the body as a file; the body is
-limited to 64 KiB and the summary to 300 characters.
+limited to 64 KiB and the summary to 300 bytes, and a body over 1500 bytes
+needs `--summary`.
 
 ## MCP tools
 
@@ -77,8 +78,9 @@ worker system prompt.
 
 At-least-once, not exactly-once: a consumer must tolerate a replayed record.
 A tampered or unreadable cursor halts the log fail-closed and the next read
-returns one explicit notice; only an explicit `unhalt` after you have
-investigated clears it. Filesystem errors (`EACCES`, `EIO` and similar) are
+returns one explicit notice; only an explicit call to the store's
+`unhalt(root, name)` (there is no CLI verb) after you have investigated
+clears it. Filesystem errors (`EACCES`, `EIO` and similar) are
 reported without marking the chain tampered; fix the cause and retry.
 
 ## See also
