@@ -255,30 +255,63 @@ echo 'HANDLED close-wrapped'
         self.assertIn('state=exited exit=stream-stop', Path(str(self.inbox) + '.wait').read_text())
 
     def test_adopted_child_stopped_by_request_is_not_a_waiter_error(self):
-        entered, gate = self.root / 'tick-entered', self.root / 'tick-gate'
-        self.script('tick', f'touch "{entered}"\nn=0\nwhile [ ! -e "{gate}" ] && [ "$n" -lt 600 ]; do sleep .1; n=$((n + 1)); done\n'
+        entered, gate, expired = self.root / 'tick-entered', self.root / 'tick-gate', self.root / 'tick-expired'
+        self.script('tick', f'touch "{entered}"\nn=0\nwhile [ ! -e "{gate}" ]; do\n'
+                    f'    [ "$n" -lt 600 ] || {{ touch "{expired}"; exit 1; }}\n    sleep .1; n=$((n + 1))\ndone\n'
                     'echo "TICK workers=0 livestate=0 prs=none tails=none acts=none workerset=0 board=ok tracker=ok denials=0 capacity=FULL"\n')
+
+        def sidecar():
+            try:
+                return self.state()
+            except (OSError, ValueError):
+                return {}
+
+        def heartbeat():
+            try:
+                return Path(str(self.inbox) + '.wait').read_text()
+            except OSError:
+                return ''
+
+        def alive(pid):
+            try:
+                return Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[0] != 'Z'
+            except (OSError, IndexError):
+                return False
+        seen = []
+
+        def held():
+            child, hb = sidecar().get('child', '0'), heartbeat()
+            if entered.exists() and child.isdecimal() and int(child) > 0 and f'pid={child} ' in hb and 'state=sampling' in hb:
+                seen.append(child)
+            return bool(seen)
         env = dict(self.env, CHIEF_WAIT_STREAM_REAP_MAX_SEC='120')
-        first, _ = self.start(env=env)
-        self.until(entered.exists, seconds=30)
-        child = self.state()['child']
-        self.assertIn(f'pid={child} ', Path(str(self.inbox) + '.wait').read_text())
-        first.send_signal(signal.SIGTERM)
-        self.assertEqual(first.wait(timeout=30), 0)
-        os.kill(int(child), 0)
-        again, adopted = self.start(env=env)
-        self.until(lambda: self.state().get('sup') == str(again.pid), seconds=30)
-        self.assertEqual(self.state()['child'], child, 'the successor adopted the held child')
-        self.assertFalse(gate.exists())
-        self.path('stop').touch()
-        gate.touch()
-        rc = again.wait(timeout=60)
-        self.assertNotIn('waiter-error', adopted.read_text())
-        self.assertIn('STOPPED', adopted.read_text())
-        heartbeat = Path(str(self.inbox) + '.wait').read_text()
-        self.assertIn(f'pid={child} ', heartbeat)
-        self.assertIn('state=exited exit=stream-stop', heartbeat)
-        self.assertEqual(rc, 0)
+        try:
+            first, _ = self.start(env=env)
+            self.until(held, seconds=30)
+            child = seen[0]
+            first.send_signal(signal.SIGTERM)
+            self.assertEqual(first.wait(timeout=30), 0)
+            self.assertTrue(alive(child), f'the held child {child} outlived its supervisor')
+            again, adopted = self.start(env=env)
+            self.until(lambda: sidecar().get('sup') == str(again.pid), seconds=30)
+            self.assertEqual(sidecar().get('child'), child, 'the successor adopted the held child')
+            self.assertFalse(gate.exists())
+            self.path('stop').touch()
+            gate.touch()
+            rc = again.wait(timeout=60)
+            self.assertNotIn('waiter-error', adopted.read_text())
+            self.assertNotIn('child=busy', adopted.read_text(), 'the adopted child was reaped, not left busy')
+            self.assertIn('STOPPED', adopted.read_text())
+            final = heartbeat()
+            self.assertIn(f'pid={child} ', final)
+            self.assertIn('state=exited exit=stream-stop', final)
+            after = sidecar()
+            self.assertEqual(after.get('child'), '0', f'the normal reap clears the child: {after}')
+            self.assertNotIn('part', after, f'the normal reap drops the live part: {after}')
+            self.assertFalse(expired.exists(), 'the tick gate ran out before the test opened it')
+            self.assertEqual(rc, 0)
+        finally:
+            gate.touch()
 
     def test_killed_after_output_replays_and_lock_is_not_inherited(self):
         env = dict(self.env, CHIEF_WAIT_STREAM_PAUSE_LOG='1')
