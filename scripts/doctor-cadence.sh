@@ -159,7 +159,7 @@ holds_maintenance() { # <primary root>
     for ((i = 0; i < n; i++)); do
         if [ "${repos[i]}" = "$want" ] || { [ -z "$want" ] && [ "${repos[i]}" = "$root" ]; }; then start=$i; break; fi
     done
-    end=$((SECONDS + budget))
+    end=$((SECONDS + 10#$budget))
     progress=1
     while [ "$progress" -eq 1 ] && [ "$n" -gt 0 ]; do
         progress=0

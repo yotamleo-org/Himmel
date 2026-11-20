@@ -614,6 +614,16 @@ doctor" "$(cat "$GC_LOG")"
 GC_STUB_MODE=partial DOCTORCAD_HOLDS_GC_BUDGET=0 run_cad_ok "the next run with no budget"
 check "... and the register it left out goes first on the next run" "gc $W/hr-live
 doctor" "$(cat "$GC_LOG")"
+# a budget with a leading zero is a decimal number: read as octal, 08 aborts the pass and 010 is eight seconds
+gc_reset; gc_reg "$P"
+GC_STUB_MODE=partial DOCTORCAD_HOLDS_GC_PASSES=2 DOCTORCAD_HOLDS_GC_BUDGET=08 run_cad_ok "a run whose budget is 08"
+check "a budget of 08 does not abort the pass: the register gets its passes" 2 "$(gc_calls)"
+case "$(tail -n 1 "$STATE/holds-gc.log")" in *"run registers=1 served=1 starved=0 partial=1 failed=0 passes=2") pass "a budget of 08 still ends in the run summary" ;; *) fail "a budget of 08 still ends in the run summary ($(tail -n 1 "$STATE/holds-gc.log"))" ;; esac
+if [ "${DOCTORCAD_TEST_GREP_ERROR:-0}" = 0 ]; then
+    gc_reset; gc_reg "$W/hr-live" "$W/hr-live2" "$P"
+    GC_STUB_MODE=partial GC_STUB_SLEEP=2 DOCTORCAD_HOLDS_GC_BUDGET=010 run_cad_ok "a run whose budget is 010"
+    check "a budget of 010 is ten seconds, not eight: five passes of two seconds fit" 5 "$(gc_calls)"
+fi
 gc_reset; gc_reg "$P"
 GC_STUB_MODE=fail run_cad_ok "a run whose gc fails"
 check "a failing gc never fails the run: the doctor still ran" "gc $P
