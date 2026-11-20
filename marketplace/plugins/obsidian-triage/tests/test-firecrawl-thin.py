@@ -160,6 +160,28 @@ check("fetch error → glyph ~ (partial)", glyph == "~")
 check("fetch error → budget not consumed", fc.remaining == 20)
 check("fetch error → clip NOT marked harvested (retryable)", "harvested_at" not in p.read_text(encoding="utf-8"))
 
+class EditingChain(FakeFirecrawl):
+    def __init__(self, path, **kw):
+        super().__init__(**kw)
+        self.path = path
+
+    def scrape(self, url):
+        self.path.write_text(self.path.read_text(encoding="utf-8") + "\nA line the person added while the page was being fetched.\n", encoding="utf-8")
+        return super().scrape(url)
+
+
+p = make_clip(THIN)
+fc = EditingChain(p)
+glyph, msg, _ = mod.process_clip(p, dry_run=False, chain=fc, url_rules=NR)
+after = p.read_text(encoding="utf-8")
+check("a clip edited while it is fetched keeps the edit", "A line the person added while the page was being fetched." in after)
+check("nothing is written over the edit: no fetched section, not stamped", "## Harvested content" not in after and "harvested_at" not in after and "harvest_status" not in after)
+check("the run says the clip changed and leaves a partial outcome", glyph == "~" and "changed while it was fetched" in msg)
+check("the fetch's credit is counted as spent", fc.remaining == 19)
+glyph, msg, _ = mod.process_clip(p, dry_run=False, chain=FakeFirecrawl(), url_rules=NR)
+again = p.read_text(encoding="utf-8")
+check("the next run fetches it and keeps the edit", glyph == "v" and "## Harvested content" in again and "A line the person added while the page was being fetched." in again)
+
 # 5. dry-run → no scrape, no write.
 fc = FakeFirecrawl()
 p = make_clip(THIN)
@@ -546,6 +568,17 @@ code, out = run_main(v, "--fetch-budget", "2")
 check("fetch budget 2: two clips fetched", len(log) == 2)
 left = [p for p in sorted((v / "Clippings").glob("c*.md")) if fm_value(p, "harvest_status") != "ok"]
 check("fetch budget 2: the third waits, no deferral charged", len(left) == 1 and fm_value(left[0], "harvest_defer_count") in (None, "0"))
+check("fetch budget 2: the clip that waits is recorded as a partial with the thin-body flag", fm_value(left[0], "harvest_status") == "partial" and fm_value(left[0], "harvest_flag") == "thin-body" and fm_value(left[0], "harvested_at") is None)
+check("fetch budget 2: the clip that waits is in the pending report", f"[[Clippings/{left[0].stem}]]" in (v / ".harvest-pending.md").read_text(encoding="utf-8"))
+waiting = left[0]
+(v / "Clippings" / "_evidence").mkdir(exist_ok=True)
+waiting_name = waiting.name
+waiting.rename(v / "Clippings" / "_evidence" / waiting_name)
+log = []
+install_backends(log)
+code, out = run_main(v)
+moved = v / "Clippings" / "_evidence" / waiting_name
+check("a clip that waited for the budget and was then moved to _evidence/ is retried there and filled", log == [("jina", f"https://example.com/docs/{waiting.stem}")] and fm_value(moved, "harvest_status") == "ok")
 log = []
 install_backends(log)
 v = vault_of(inbox=[(f"c{i}.md", triaged_clip(f"https://example.com/docs/c{i}")) for i in range(3)])

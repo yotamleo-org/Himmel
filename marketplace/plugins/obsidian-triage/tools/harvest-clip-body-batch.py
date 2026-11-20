@@ -1807,6 +1807,12 @@ def process_clip(path: Path, dry_run: bool, chain=None, url_rules=None, park=Non
             return ("~", f"partial (thin-body): clipper captured only a skeleton{gap_suffix}{ig_suffix}{note}{defer_suffix(n)}{flag_suffix}", injection_hits)
         return ("x", f"failed (G-3): thin-body frontmatter mark altered body; reverted{flag_suffix}", injection_hits)
 
+    def waiting_partial(msg: str) -> tuple[str, str, list]:
+        is_instagram = _normalized_host(canonical) in {"instagram.com", "m.instagram.com"}
+        if persist_thin_partial(path, text, fm, fm_raw, body, enricher_gap_host(canonical), injection_hits, is_instagram):
+            return ("~", f"{msg}{flag_suffix}", injection_hits)
+        return ("x", f"failed (G-3): thin-body frontmatter mark altered body; reverted{flag_suffix}", injection_hits)
+
     if chain is not None and firecrawl_eligible(canonical) and (junk or is_thin_body(body)):
         denied = url_gate(canonical, url_rules)
         if denied:
@@ -1815,7 +1821,7 @@ def process_clip(path: Path, dry_run: bool, chain=None, url_rules=None, park=Non
             # Never spend a credit on a dry-run — report the plan only.
             return ("v", f"would fetch via the scrape chain (thin-body escalation): {canonical} [dry-run]{flag_suffix}", injection_hits)
         if chain.remaining <= 0:
-            return flagged_early("~", "partial (thin-body): scrape budget exhausted this run; re-run to retry")
+            return waiting_partial("partial (thin-body): scrape budget exhausted this run; re-run to retry")
         try:
             md = chain.scrape(canonical)
             reason = unusable_fetch_reason(md)
@@ -1824,12 +1830,18 @@ def process_clip(path: Path, dry_run: bool, chain=None, url_rules=None, park=Non
         except FirecrawlUnavailable as e:
             if park is not None:
                 park(path, e.reason)
-            return flagged_early("~", f"partial (thin-body): deferred: firecrawl-unavailable ({e.reason}); parked, retried first once credits return")
+            return waiting_partial(f"partial (thin-body): deferred: firecrawl-unavailable ({e.reason}); parked, retried first once credits return")
         except Exception as e:
             if getattr(chain, "charge_failures", False):
                 chain.remaining -= 1
             return thin_partial(f"; fetch failed ({type(e).__name__}: {str(e)[:120]}); re-run to retry")
         chain.remaining -= 1
+        try:
+            on_disk = path.read_text(encoding="utf-8")
+        except Exception as e:
+            return ("x", f"failed (post-fetch read, credit spent): {e}", injection_hits)
+        if on_disk != text:
+            return ("~", "partial (thin-body): the clip changed while it was fetched; nothing written (credit spent), re-run to retry", injection_hits)
         served_by = getattr(chain, "last_backend", None) or "firecrawl"
         section = (
             f"## Harvested content\n"

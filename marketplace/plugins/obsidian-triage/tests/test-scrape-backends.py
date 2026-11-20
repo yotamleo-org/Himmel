@@ -997,6 +997,8 @@ check("402: rows carry the standard envelope",
       all(all(k in r for k in ("v", "ts", "host", "source", "kind")) for r in rows))
 check("402: clips stay eligible (no harvested_at, not failed)",
       all("harvested_at" not in (v / "Clippings" / f"c{i}.md").read_text() for i in range(3)) and "FAIL" not in err)
+check("402: each parked clip is recorded as a partial with no deferral charged",
+      all("harvest_status: partial" in (v / "Clippings" / f"c{i}.md").read_text() and "harvest_defer_count" not in (v / "Clippings" / f"c{i}.md").read_text() for i in range(3)))
 check("402: ledger row for the failed call carries the reason",
       any(l.get("reason") == "exhausted" and l.get("ok") is False for l in ledger_lines()))
 
