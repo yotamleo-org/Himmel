@@ -437,15 +437,18 @@ check "13c the subscription review is not used" "" "$(cat "$W/out")"
 check "13c exactly one loud Telegram alert" 1 "$(alerts)"
 has "13c the alert says the subscription was used" "subscription" "$ALERTS"
 check "13c exactly one line to the chief's inbox" 1 "$(chief_lines)"
-# 13d the real launcher refusing (no key): no subscription call at all
+# 13d the real launcher refusing: no subscription call at all. The credit state
+# lives under the account home, not $HOME, so the row points HIMMEL_API_CREDIT_CONFIG
+# at a config that does not exist: the station's real key and ledger are never read.
 fresh_rec 13d; reset_alerts; mkdir -p "$W/alerts.13d"
-printf '%s\n' '#!/usr/bin/env bash' "echo called >> \"$REC/sub-claude\"" 'exit 0' > "$W/sub-claude.sh"; chmod +x "$W/sub-claude.sh"
+printf '%s\n' '#!/usr/bin/env bash' "echo \"called key=\${ANTHROPIC_API_KEY:+set}\" >> \"$REC/sub-claude\"" 'exit 0' > "$W/sub-claude.sh"; chmod +x "$W/sub-claude.sh"
 printf '%s\n' '#!/usr/bin/env bash' "echo sent >> \"$REC/api-alert\"" > "$W/api-alert.sh"; chmod +x "$W/api-alert.sh"
 bank 10
-RC=0; printf '%s\n' "$DIFF" | env -u ANTHROPIC_API_KEY CFP_CLAUDE_API_LAUNCHER="$REPO/scripts/api-lane/claude-api.sh" \
+RC=0; printf '%s\n' "$DIFF" | env -u ANTHROPIC_API_KEY CFP_CLAUDE_API_LAUNCHER="$REPO/scripts/api-lane/claude-api.sh" HIMMEL_API_CREDIT_CONFIG="$W/no-credit-config.json" \
     HIMMEL_API_ACCOUNT=A HIMMEL_API_CLAUDE_BIN="$W/sub-claude.sh" HIMMEL_API_ALERT_CMD="$W/api-alert.sh" HIMMEL_API_ALERT_DIR="$W/alerts.13d" \
     bash "$CFP" --model claude-opus-5-5 --slug claude --provider claude-api >"$W/out" 2>"$W/err" || RC=$?
-check "13d the real launcher's refusal makes no subscription claude call" no "$([ -e "$REC/sub-claude" ] && echo yes || echo no)"
+check "13d the real launcher's refusal makes no claude call at all" no "$([ -e "$REC/sub-claude" ] && echo yes || echo no)"
+hasnt "13d the station's real credit ledger was never read" "api:A grant-cycle" "$W/err"
 hasnt "13d the launcher did not run on the subscription" "fallback: running on the subscription" "$W/err"
 check "13d the critic prints no review" "" "$(cat "$W/out")"
 # 13e a caller or overlay that names the subscription explicitly runs as configured, with no per-call alert
