@@ -131,11 +131,12 @@ test('the CLI refuses while another process holds the collection flock', async (
   } finally { holder.kill('SIGKILL'); await closed; }
 });
 
-test('the CLI names a missing flock instead of collecting without the lock', () => {
+const timeoutBin = spawnSync('sh', ['-c', 'command -v timeout'], { encoding: 'utf8' }).stdout.trim();
+test('the CLI names a missing flock instead of collecting without the lock', { skip: timeoutBin ? false : 'timeout is not on PATH, so the CLI cannot start without flock either' }, () => {
   const dir = makeTmpDir('waw-noflock-review-'), ledger = join(dir, 'ledger.jsonl'), bin = join(dir, 'bin');
   writeFileSync(ledger, '');
   // A PATH with only `timeout` on it: the CLI starts, and flock cannot.
-  mkdirSync(bin); symlinkSync('/usr/bin/timeout', join(bin, 'timeout'));
+  mkdirSync(bin); symlinkSync(timeoutBin, join(bin, 'timeout'));
   const saved = process.env.PATH;
   try {
     process.env.PATH = bin;
