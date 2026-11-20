@@ -82,13 +82,22 @@ export function verifyChain(file: string): { ok: boolean; n: number } {
 export type SpoolRec =
   | { type: "send"; kind: "question" | "status" | "info" | "answer"; replyTo?: number; text: string; allowShape?: string }
   | { type: "ack"; sid: string; token: string }
-  | { type: "confirm"; chatId: number };
-export type SendResult = { ok: true; message_id?: number } | { ok: false; rule: string; shape?: string };
+  | { type: "confirm"; chatId: number }
+  | { type: "env-out"; kind: (typeof SPOOL_ENV_KINDS)[number]; body: Record<string, unknown> }
+  | { type: "job-event"; job: number; event: { type: (typeof SPOOL_JOB_EVENTS)[number]; [k: string]: unknown } };
+export type SendResult = { ok: true; message_id?: number; job?: number } | { ok: false; rule: string; shape?: string };
 export type Drained = { name: string; rec: SpoolRec } | { name: string; malformed: true };
+
+// The typed path's spool records (spool-events.ts writes them): which envelopes a
+// chief may ask the poller to send, and which job events a runner or chief may inject.
+export const SPOOL_ENV_KINDS = ["req", "capacity-ask", "cancel", "halt"] as const;
+export const SPOOL_JOB_EVENTS = ["resolve-ok", "resolve-fail", "approve", "vm-start", "vm-done"] as const;
 
 const SEND_KINDS = ["question", "status", "info", "answer"];
 function validSpool(r: any): r is SpoolRec {
   if (!r || typeof r !== "object") return false;
+  if (r.type === "env-out") return (SPOOL_ENV_KINDS as readonly string[]).includes(r.kind) && !!r.body && typeof r.body === "object" && !Array.isArray(r.body);
+  if (r.type === "job-event") return Number.isSafeInteger(r.job) && r.job > 0 && !!r.event && typeof r.event === "object" && (SPOOL_JOB_EVENTS as readonly string[]).includes(r.event.type);
   if (r.type === "send") return SEND_KINDS.includes(r.kind) && typeof r.text === "string" && (r.replyTo === undefined || (Number.isSafeInteger(r.replyTo) && r.replyTo > 0)) && (r.allowShape === undefined || /^[a-z_]{1,20}$/.test(r.allowShape));
   if (r.type === "ack") return typeof r.sid === "string" && SESSION_ID_RE.test(r.sid) && typeof r.token === "string" && /^[A-Za-z0-9]+$/.test(r.token);
   if (r.type === "confirm") return Number.isSafeInteger(r.chatId);
@@ -151,7 +160,7 @@ export function sweepResults(peerDir: string, maxAgeMs: number, now = Date.now()
   }
 }
 
-export type IntentRec = { kind: "intent"; peer: string; chat: number; id: string; root: number | null; msgKind: string; text: string; isRoot: boolean; tpl?: boolean; resend?: boolean; spool?: string };
+export type IntentRec = { kind: "intent"; peer: string; chat: number; id: string; root: number | null; msgKind: string; text: string; isRoot: boolean; tpl?: boolean; resend?: boolean; spool?: string; env?: boolean };
 export type SentRec = { kind: "sent"; id: string; intent: number; message_id: number; ts: number };
 
 export class PidLockError extends Error {

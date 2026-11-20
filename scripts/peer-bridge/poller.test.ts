@@ -9,7 +9,9 @@ import { ackToken, digestFile } from "./digests";
 import { admit, createGateState, noteAdmitted } from "./gate";
 import { procHooks } from "./proc";
 import { Poller, type PollerDeps, type TgLike } from "./poller";
-import type { Kind } from "./envelope";
+import { TIMEOUT_S_MAX, parseEnvelopeLine, type Kind } from "./envelope";
+import type { JobRecord } from "./resolve";
+import { keygen, verify } from "./sign";
 import { RetryAfter, TelegramError } from "./telegram";
 import { Threads } from "./threads";
 import * as TE from "./testlib-envelope";
@@ -453,10 +455,11 @@ async function envSetup(over: { logs?: string[] } = {}) {
   const st = TE.mkStation("goomal");
   const e = await setup({ peerOver: { theirs: { username: "goomal_bot", opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07", stationName: "goomal", keys: [{ id: st.key.id, pub: st.key.pub, addedAt: "2026-11-08T00:00:00Z" }] } } });
   (e.cfg as any).self = { stationName: "yotam" };
+  const ours = keygen(e.configDir);
   const logs = over.logs ?? [];
   const poller = await Poller.create({ ...e.deps, log: l => logs.push(l) });
   await poller.recover();
-  return { ...e, poller, st, logs };
+  return { ...e, poller, st, logs, ours };
 }
 const nowS = (e: { c: { t: number } }) => Math.floor(e.c.t / 1000);
 const envMsg = (e: { c: { t: number } }, st: TE.Station, kind: Kind = "halt", body: Record<string, unknown> = {}) => TE.envUpdate(TE.fromPeer(kind, body, nowS(e)), st);
@@ -536,6 +539,201 @@ test("a flood of bad envelopes counts toward the peer's rate like text", async (
   await e.poller.processBatch(Array.from({ length: 12 }, bad));
   const rate = e.logs.filter(l => l.includes("rule=7"));
   expect(rate.length).toBe(2);
+});
+
+// ---- jobs, deadlines and the send path (Task 5) ----
+
+const WIRE = "0123456789abcdef";
+const seedJob = (e: { peerDir: string }, job: JobRecord) => new Chain().append(join(e.peerDir, "jobs.jsonl"), job);
+const latestJobs = (e: { peerDir: string }) => {
+  const m = new Map<number, any>();
+  for (const r of chainOf(e, "jobs.jsonl")) if (r.kind === "job") m.set(r.jobNo as number, r);
+  return m;
+};
+const outJobAt = (e: { c: { t: number } }, over: Partial<JobRecord> = {}): JobRecord => ({
+  kind: "job", jobNo: 1, peer: "goomal", dir: "out", state: "SENT", created: nowS(e) - 3600, req_exp: nowS(e) + 82800, by: nowS(e) + 82800 + TIMEOUT_S_MAX + 7200,
+  sha: "a".repeat(40), suites: ["scripts/hooks/test-a.sh"], wire_job: WIRE, ...over,
+});
+const inJobAt = (e: { c: { t: number } }, over: Partial<JobRecord> = {}): JobRecord => ({
+  kind: "job", jobNo: 2, peer: "goomal", dir: "in", state: "RESOLVED", created: nowS(e) - 600, req_exp: nowS(e) + 80000, by: nowS(e) + 80000,
+  sha: "a".repeat(40), suites: ["alias-a"], paths: ["scripts/hooks/test-a.sh"], peer_job: WIRE, resolved_at: nowS(e) - 500, ...over,
+});
+const sentEnvelopes = (e: { sent: { text: string }[] }) => e.sent.map(s => s.text.split("\n")).filter(l => l.length === 4);
+const resMsg = (e: { c: { t: number } }, st: TE.Station, body: Record<string, unknown>) => envMsg(e, st, "res", { job: WIRE, ...body });
+
+test("a signed res moves the requester's record, is chained in jobs.jsonl, and is not answered", async () => {
+  const e = await envSetup();
+  await seedJob(e, outJobAt(e));
+  const p = await Poller.create({ ...e.deps, log: l => e.logs.push(l) });
+  await p.recover();
+  await p.processBatch([resMsg(e, e.st, { state: "accepted" })]);
+  expect(latestJobs(e).get(1)).toMatchObject({ state: "ACCEPTED", dir: "out" });
+  await p.processBatch([resMsg(e, e.st, { state: "running", timeout_s: 3000 })]);
+  expect(latestJobs(e).get(1)).toMatchObject({ state: "RUNNING", peer_timeout_s: 3000 });
+  await p.processBatch([resMsg(e, e.st, { state: "done", results: ["pass"], minutes: 7, image: "b".repeat(64), log: { sha256: "c".repeat(64), bytes: 1 } })]);
+  expect(latestJobs(e).get(1)).toMatchObject({ state: "DONE", results: ["pass"], peer_minutes: 7, image: "unpinned" });
+  expect(e.sent).toEqual([]);
+  expect(chainOf(e, "jobs.jsonl").every(r => r.kind === "job")).toBe(true);
+});
+
+test("a res for a job we never sent is dropped and logged", async () => {
+  const e = await envSetup();
+  await e.poller.processBatch([envMsg(e, e.st, "res", { job: "f".repeat(16), state: "accepted" })]);
+  expect(chainOf(e, "jobs.jsonl")).toEqual([]);
+  expect(e.logs.some(l => l.includes("res for a job we did not send"))).toBe(true);
+});
+
+test("a late res on a LOST job is recorded as late and never reopens it", async () => {
+  const e = await envSetup();
+  await seedJob(e, outJobAt(e, { state: "LOST", by: null, ended_at: nowS(e) - 10 }));
+  const p = await Poller.create({ ...e.deps, log: l => e.logs.push(l) });
+  await p.recover();
+  await p.processBatch([resMsg(e, e.st, { state: "accepted" })]);
+  expect(latestJobs(e).get(1)).toMatchObject({ state: "LOST", late: "accepted" });
+  expect(e.sent).toEqual([]);
+});
+
+test("the tick fires each overdue deadline once, oldest first, and signs and sends the one cancel", async () => {
+  const e = await envSetup();
+  await seedJob(e, outJobAt(e, { jobNo: 1, by: nowS(e) - 50, wire_job: WIRE }));
+  await seedJob(e, outJobAt(e, { jobNo: 2, by: nowS(e) - 500, wire_job: "e".repeat(16), state: "ACCEPTED" }));
+  const p = await Poller.create({ ...e.deps, log: l => e.logs.push(l) });
+  await p.recover();
+  await p.tick();
+  await p.tick();
+  const jobs = latestJobs(e);
+  expect(jobs.get(1)).toMatchObject({ state: "LOST", ended_at: nowS(e), by: null });
+  expect(jobs.get(2)).toMatchObject({ state: "LOST" });
+  expect(chainOf(e, "jobs.jsonl").filter(r => r.jobNo === 2 && r.state === "LOST")).toHaveLength(1);
+  // Oldest deadline first: job 2 was written before job 1.
+  expect(chainOf(e, "jobs.jsonl").filter(r => r.state === "LOST").map(r => r.jobNo)).toEqual([2, 1]);
+  const envs = sentEnvelopes(e);
+  expect(envs).toHaveLength(1);                       // only the SENT job sends a cancel
+  const [addr, line2, line3, line4] = envs[0];
+  expect(addr).toBe("/peer@goomal_bot");
+  const parsed = parseEnvelopeLine(line3);
+  expect(parsed.ok && parsed.env).toMatchObject({ kind: "cancel", job: WIRE, from: "yotam", to: "goomal", chat: String(CHAT) });
+  expect(line2).toBe(`#env:v1 k=${e.ours.id} id=${(parsed as any).env.msg}`);
+  expect(verify(line2, line3, line4.slice(4), e.ours.pub)).toBe(true);
+  expect(chainOf(e, "threads.jsonl")).toEqual([]);   // an envelope opens no text thread
+});
+
+test("restart order: the Telegram backlog lands before the first deadline tick, so no cancel is sent", async () => {
+  const e = await envSetup();
+  await seedJob(e, outJobAt(e, { by: nowS(e) - 100 }));        // overdue while we were down
+  const backlog = [resMsg(e, e.st, { state: "accepted" })];
+  const tg: TgLike = { ...e.tg, getUpdates: async () => backlog.splice(0) };
+  const p = await Poller.create({ ...e.deps, tg, log: l => e.logs.push(l) });
+  await p.start();
+  expect(latestJobs(e).get(1)).toMatchObject({ state: "ACCEPTED" });
+  expect(e.sent).toEqual([]);
+  expect(chainOf(e, "outbox.jsonl").filter(r => r.kind === "intent")).toEqual([]);
+});
+
+test.skipIf(!!process.env.PEER_RED_COPY)("RED control: a start that ticks before it drains the backlog sends the cancel", () => {
+  const root = makeRedCopy(["scripts/telegram/bus.ts", "scripts/telegram/gate.ts", "scripts/guardrails/egress-matrix-eval.mjs", "scripts/guardrails/egress-matrix.json", "scripts/lib/redact.sh"]);
+  const run = () => spawnSync("bun", ["test", "./scripts/peer-bridge/poller.test.ts"], { cwd: root, encoding: "utf8", env: { ...process.env, PEER_RED_COPY: "1" } });
+  expect(run().status).toBe(0);
+  const target = join(root, "scripts/peer-bridge/poller.ts");
+  const lines = readFileSync(target, "utf8").split("\n");
+  expect(lines.filter(l => l.trim() === "await this.drainBacklog();")).toHaveLength(1);
+  const swapped = lines.filter(l => l.trim() !== "await this.drainBacklog();").flatMap(l => (l.trim() === "await this.tick();" && l.startsWith("    ") ? [l, "    await this.drainBacklog();"] : [l]));
+  writeFileSync(target, swapped.join("\n"));
+  const mutated = run();
+  expect(mutated.status).not.toBe(0);
+  expect(failedTests(mutated.stdout + mutated.stderr)).toEqual(["restart order: the Telegram backlog lands before the first deadline tick, so no cancel is sent"]);
+}, 90_000);
+
+test("a cancel from the peer cancels its job and sends a signed res cancelled; halt cancels them all", async () => {
+  const e = await envSetup();
+  await seedJob(e, inJobAt(e, { jobNo: 2, peer_job: WIRE }));
+  await seedJob(e, inJobAt(e, { jobNo: 3, peer_job: "a".repeat(16), state: "APPROVED" }));
+  await seedJob(e, inJobAt(e, { jobNo: 4, peer_job: "b".repeat(16), state: "DONE", by: null, ended_at: nowS(e) - 5 }));
+  const p = await Poller.create({ ...e.deps, log: l => e.logs.push(l) });
+  await p.recover();
+  await p.processBatch([envMsg(e, e.st, "cancel", { job: WIRE })]);
+  expect(latestJobs(e).get(2)).toMatchObject({ state: "CANCELLED" });
+  expect(latestJobs(e).get(3)).toMatchObject({ state: "APPROVED" });
+  await p.processBatch([envMsg(e, e.st, "halt", {})]);
+  expect(latestJobs(e).get(3)).toMatchObject({ state: "CANCELLED" });
+  expect(latestJobs(e).get(4)).toMatchObject({ state: "DONE" });
+  const bodies = sentEnvelopes(e).map(l => (parseEnvelopeLine(l[2]) as any).env);
+  expect(bodies.map((b: any) => [b.kind, b.state, b.job])).toEqual([["res", "cancelled", WIRE], ["res", "cancelled", "a".repeat(16)]]);
+});
+
+test("a cancel for a job the peer did not send is dropped", async () => {
+  const e = await envSetup();
+  await e.poller.processBatch([envMsg(e, e.st, "cancel", { job: "9".repeat(16) })]);
+  expect(chainOf(e, "jobs.jsonl")).toEqual([]);
+  expect(e.sent).toEqual([]);
+});
+
+test("jobs.jsonl reloads at start: the latest snapshot per job wins, and job numbers continue", async () => {
+  const e = await envSetup();
+  await seedJob(e, outJobAt(e, { jobNo: 7 }));
+  await seedJob(e, outJobAt(e, { jobNo: 7, state: "ACCEPTED" }));
+  const p = await Poller.create({ ...e.deps, log: l => e.logs.push(l) });
+  expect(p.jobsSnapshot().get(7)?.state).toBe("ACCEPTED");
+  expect(p.nextJobNo()).toBe(8);
+});
+
+// ---- spool events (Task 5A) ----
+
+const jobEvent = (e: { peerDir: string }, job: number, event: Record<string, unknown>) => submitSpool(e.peerDir, { type: "job-event", job, event } as any);
+
+test("a vm-start event writes a RUNNING record whose backstop is min(maxJobMinutes, minutes left) in seconds", async () => {
+  const e = await envSetup();
+  (e.cfg.peers.goomal as any).budgets = { jobsPerDay: 10, vmMinutesPerDay: 120, queueMax: 3, maxJobMinutes: 130 };
+  await seedJob(e, inJobAt(e, { jobNo: 2, state: "APPROVED" }));
+  await seedJob(e, inJobAt(e, { jobNo: 3, state: "DONE", by: null, peer_job: "a".repeat(16), resolved_at: nowS(e) - 100, running_at: nowS(e) - 100 - 1800, ended_at: nowS(e) - 100 }));
+  const p = await Poller.create({ ...e.deps, log: l => e.logs.push(l) });
+  await p.recover();
+  jobEvent(e, 2, { type: "vm-start" });
+  await p.drainSpool();
+  // 120 minutes a day, 30 used by job 3: 90 left, less than the 130-minute job cap.
+  expect(latestJobs(e).get(2)).toMatchObject({ state: "RUNNING", backstop_s: 90 * 60, running_at: nowS(e), by: nowS(e) + 90 * 60 + 1200 });
+  const env = sentEnvelopes(e).map(l => (parseEnvelopeLine(l[2]) as any).env);
+  expect(env.map((x: any) => [x.kind, x.state, x.timeout_s])).toEqual([["res", "running", 90 * 60 + 1200]]);
+});
+
+test("the backstop is capped by maxJobMinutes when the day has more left", async () => {
+  const e = await envSetup();
+  (e.cfg.peers.goomal as any).budgets = { jobsPerDay: 10, vmMinutesPerDay: 1000, queueMax: 3, maxJobMinutes: 45 };
+  await seedJob(e, inJobAt(e, { jobNo: 2, state: "APPROVED" }));
+  const p = await Poller.create({ ...e.deps, log: l => e.logs.push(l) });
+  await p.recover();
+  jobEvent(e, 2, { type: "vm-start" });
+  await p.drainSpool();
+  expect(latestJobs(e).get(2)).toMatchObject({ state: "RUNNING", backstop_s: 45 * 60 });
+});
+
+test("a day with under the allowance left refuses the start with budget", async () => {
+  const e = await envSetup();
+  (e.cfg.peers.goomal as any).budgets = { jobsPerDay: 10, vmMinutesPerDay: 120, queueMax: 3, maxJobMinutes: 130 };
+  await seedJob(e, inJobAt(e, { jobNo: 2, state: "APPROVED" }));
+  await seedJob(e, inJobAt(e, { jobNo: 3, state: "DONE", by: null, peer_job: "a".repeat(16), resolved_at: nowS(e) - 100, running_at: nowS(e) - 110 * 60, ended_at: nowS(e) - 100 }));   // 109 of 120 minutes used: 11 left
+  const p = await Poller.create({ ...e.deps, log: l => e.logs.push(l) });
+  await p.recover();
+  jobEvent(e, 2, { type: "vm-start" });
+  await p.drainSpool();
+  expect(latestJobs(e).get(2)).toMatchObject({ state: "REFUSED", refused: "budget" });
+});
+
+test("an unknown spool event type is logged and dropped; an event for no such job names the rule", async () => {
+  const e = await envSetup();
+  await seedJob(e, outJobAt(e, { jobNo: 1 }));
+  const p = await Poller.create({ ...e.deps, log: l => e.logs.push(l) });
+  await p.recover();
+  const bad = jobEvent(e, 2, { type: "frobnicate" });
+  const none = jobEvent(e, 99, { type: "approve" });
+  const mine = jobEvent(e, 1, { type: "approve" });   // job 1 is one we sent: no such event applies
+  e.logs.length = 0;
+  await p.drainSpool();
+  expect(readResult(e, bad)).toEqual({ ok: false, rule: "malformed" });
+  expect(readResult(e, none)).toEqual({ ok: false, rule: "unknown-job" });
+  expect(readResult(e, mine)).toEqual({ ok: false, rule: "unknown-job" });
+  expect(e.logs.some(l => l.includes("malformed spool"))).toBe(true);
+  expect(latestJobs(e).get(1)).toMatchObject({ state: "SENT" });
 });
 
 test("a second poller exits non-zero but not 78, and never reads the operator env", async () => {
