@@ -1285,11 +1285,11 @@ check("denied URL is never parked", not [r for r in parked_rows()[before:] if r[
 
 _hook_doc = mod._block_private_requests.__doc__ or ""
 _cmd_doc = (TOOL.parent.parent / "commands" / "harvest-clips.md").read_text(encoding="utf-8")
-for where, text in (("the _block_private_requests docstring", _hook_doc), ("commands/harvest-clips.md", _cmd_doc)):
-    flat = " ".join(text.split())
-    check(f"{where} says Chromium resolves again at connect, so a rebinding name is narrowed, not closed",
-          "resolves a name again when it connects" in flat and "narrowed" in flat and "not closed" in flat)
-check("the docs name what is not set: no host-resolver pinning", "host-resolver rules" in " ".join(_hook_doc.split()) and "host-resolver rules" in " ".join(_cmd_doc.split()))
+check("the _block_private_requests docstring lists DNS rebinding as not covered and says Chromium resolves again at connect",
+      "DNS rebinding" in " ".join(_hook_doc.split()) and "resolves a name again when it connects" in " ".join(_hook_doc.split()))
+_cmd_flat = " ".join(_cmd_doc.split())
+check("commands/harvest-clips.md says Chromium resolves again at connect, so a rebinding name is narrowed, not closed, and nothing pins the connection",
+      "resolves a name again when it connects" in _cmd_flat and "narrowed" in _cmd_flat and "not closed" in _cmd_flat and "host-resolver rules" in _cmd_flat)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

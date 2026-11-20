@@ -1074,12 +1074,8 @@ def _block_private_requests(page, state):
 
     NOT covered: cross-site iframes (separate CDP targets, so their
     redirect hops are never paused), dedicated/shared-worker traffic including
-    worker websockets, and DNS rebinding. Chromium resolves a name again when it
-    connects, so the answer checked here is not pinned to the address dialled:
-    a name that answers a public address to this check and a private one to
-    the browser is narrowed (every hop is checked, a failed lookup is denied),
-    not closed. Pinning the connection needs the browser's host-resolver rules,
-    which this hook does not set.
+    worker websockets, and DNS rebinding: Chromium resolves a name again when it
+    connects, so the answer checked here is not the address it dials.
 
     Fail closed: Scrapling swallows an exception raised here and navigates
     anyway, so the first thing installed is a deny-all route that only lets
