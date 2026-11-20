@@ -1,0 +1,10 @@
+{
+  "jsPlugins": [{ "name": "landmines-testing", "specifier": "@interfere/landmines/testing" }],
+  "categories": { "correctness": "off", "suspicious": "off", "pedantic": "off", "perf": "off", "style": "off", "restriction": "off", "nursery": "off" },
+  "options": { "respectEslintDisableDirectives": false },
+  "rules": {
+    "landmines-testing/no-fixed-sleep": ["error", { "allow": {} }],
+    "landmines-testing/no-flake-masking": ["error", { "allow": {} }],
+    "landmines-testing/no-unsignaled-poll": ["error", { "allow": {} }]
+  }
+}

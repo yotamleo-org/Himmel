@@ -11,4 +11,5 @@
 scripts/ci/
 scripts/lint/
 scripts/hooks/check-
+scripts/lanes/skill-cost.mjs
 scripts/install/
