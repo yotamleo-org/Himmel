@@ -335,8 +335,11 @@ node tools/synthesis-candidates.mjs [vault] [--today YYYY-MM-DD] [--since YYYY-M
 - **Ranks interleave the kinds** (best concept, best author, best tag, best folder, then the
   second of each…), so the runbook's per-run page cap cannot be spent on one lens.
 - **Skip reasons.** `confidence-floor`: `single-source-domain`, `single-author-on-platform`,
-  `single-24h-window`. `dedup`: `existing-vault-page` (a concept page or `60-Maps/` hub, a
-  person note, a `60-Maps/` MOC, or the folder already exists), `synthesis-page-within-14d`,
+  `too-few-sources` (a concept needs 3 distinct sources, a tag or folder 2), `single-24h-window`,
+  `undated-evidence` (fewer than 2 evidence clips carry a parseable date). `dedup`:
+  `same-subject-as-concept` (a tag that passes under the same name as a passing concept is not
+  listed twice: the concept, Pattern 1, is kept), `existing-vault-page` (a concept page or
+  `60-Maps/` hub, a person note, a `60-Maps/` MOC, or the folder already exists), `synthesis-page-within-14d`,
   `no-new-evidence` (a page older than 14 days that lists as many clips),
   `substance-floor-recorded` (the runbook logged a substance-gate failure for the slug in
   `Clippings/_synthesis/.substance-skips.tsv` within 14 days and the evidence has not grown, so
@@ -353,6 +356,9 @@ node tools/synthesis-candidates.mjs [vault] [--today YYYY-MM-DD] [--since YYYY-M
   tags are ignored); thresholds are 3 clips (concept), 2 (author), 5 (tag), 5 (folder). A group
   below its threshold is not a candidate. Each candidate lists its 40 newest clips (`evidence`);
   `clipCount` is the group total.
+- **Dates.** The 24-hour floor reads `date_clipped` (else `triaged_at`); a clip without a
+  parseable date cannot help meet it, and a date-time with no zone is read as UTC, so the
+  output does not depend on the station's time zone.
 - **Gate.** No `<vault>/.harvest.done`: exit 2 with the runbook's message.
 - **Frontmatter** is read with the line-based helpers in `tools/lib/frontmatter.mjs`, not a
   YAML parser: a processed clip whose frontmatter never closes, or has a top-level line that is

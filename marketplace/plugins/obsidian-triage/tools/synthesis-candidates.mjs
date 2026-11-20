@@ -1,40 +1,14 @@
 #!/usr/bin/env node
 /**
- * synthesis-candidates.mjs — the deterministic candidate list /synthesize-clips
- * starts from. READ-ONLY: it never writes to the vault.
+ * synthesis-candidates.mjs - the read-only, deterministic candidate list
+ * /synthesize-clips starts from (same vault + same --today => same bytes).
  *
  *   node synthesis-candidates.mjs [vault] [--today YYYY-MM-DD] [--since YYYY-MM-DD]
  *                                 [--format lines|json]
  *
- * Why a script: coverage that depends on which patterns an agent chooses to
- * check is not coverage. This lists EVERY candidate of all four pattern kinds
- * (concept, author, tag, folder) with its clip count, distinct sources and a
- * pass / skip verdict, so the agent's job is only the substance gate, the page
- * and one log line per candidate. Same vault + same --today => same bytes.
- *
- * What is decided here (everything that is a function of clip metadata):
- *   - input validation (processed: true, parse failures, --since)
- *   - the lens thresholds and the "already has a dedicated page" exclusion
- *   - the confidence floor (distinct sources, 24-hour window)
- *   - the 14-day dedup window, the supersede rule and the substance-gate
- *     failures the runbook records in Clippings/_synthesis/.substance-skips.tsv
- * What is NOT decided here: the substantive-content gate (it needs the clip
- * prose). A PASS means "eligible for the substance gate and a page".
- *
- * Sources: for concept and tag groups, clips on a PLATFORM domain (x.com,
- * github.com, ...) count one source per distinct author, because a platform
- * domain says nothing about who is talking; every other domain is one source.
- * One author on one platform is therefore still one source. Authors are
- * exempt (the author is the source). Folders keep the plain domain rule.
- *
- * A concept is "already covered" by a page in 30-Resources/Concepts/ OR a
- * 60-Maps/<name>-MOC.md of the same name (the topic already has a hub).
- * Each candidate lists at most EVIDENCE_CAP newest clips; clipCount is the
- * group total. The supersede rule compares that capped list with the old
- * page's list, so a group larger than the cap is not re-proposed forever.
- *
- * Exit: 0 ok | 2 harvest-completion gate (no <vault>/.harvest.done) | 1 usage.
- * Dependency-light: node builtins + ./lib/{frontmatter,url-canonical}.mjs.
+ * Lists every concept, author, tag and folder candidate as PASS or a named skip;
+ * the substantive-content gate stays with the agent. Exit: 0 ok | 2 harvest gate
+ * (no <vault>/.harvest.done) | 1 usage. Rules, skip reasons and output: README.
  */
 
 import fs from "node:fs";
@@ -45,6 +19,7 @@ import { frontmatterBounds, fmScalar, fmList, splitLines, stripCR } from "./lib/
 
 const KINDS = ["concept", "author", "tag", "folder"];
 const MIN_CLIPS = { concept: 3, author: 2, tag: 5, folder: 5 };
+const MIN_SOURCES = { concept: 3, tag: 2, folder: 2 };
 const DEDUP_DAYS = 14;
 const EVIDENCE_CAP = 40;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -128,9 +103,10 @@ function authorFromUrl(rawUrl) {
 }
 
 function whenOf(s) {
-  const t = String(s || "").trim();
+  const t = String(s || "").trim().replace(" ", "T");
   if (!/^\d{4}-\d{2}-\d{2}/.test(t)) return NaN;
-  return Date.parse(t.length === 10 ? `${t}T00:00:00Z` : t);
+  if (t.length === 10) return Date.parse(`${t}T00:00:00Z`);
+  return Date.parse(/(Z|[+-]\d{2}(:?\d{2})?)$/i.test(t) ? t : `${t}Z`);
 }
 
 function walk(dir, depth, out) {
@@ -309,7 +285,11 @@ function evaluate(kind, key, clips, ctx) {
   const existing = ctx.existing[kind](key);
   if (existing) return skip("dedup", "existing-vault-page", `vault page ${existing} already covers this pattern`);
 
-  if (kind !== "author" && sources.size < 2) {
+  if (kind !== "author" && sources.size < MIN_SOURCES[kind]) {
+    if (sources.size >= 2) {
+      return skip("confidence-floor", "too-few-sources",
+        `${sorted.length} evidence clips come from ${sources.size} distinct sources; a ${kind} group needs at least ${MIN_SOURCES[kind]}`);
+    }
     const domains = new Set(sorted.map((c) => c.domain));
     const d = [...domains][0] || "(no source)";
     if (domains.size === 1 && kind !== "folder" && PLATFORM_DOMAINS.has(d)) {
@@ -319,10 +299,14 @@ function evaluate(kind, key, clips, ctx) {
     }
     return skip("confidence-floor", "single-source-domain", `all ${sorted.length} evidence clips share source domain ${d}`);
   }
-  const times = sorted.map((c) => c.landed);
-  if (times.every((t) => !Number.isNaN(t)) && Math.max(...times) - Math.min(...times) < DAY_MS) {
+  const dated = sorted.filter((c) => !Number.isNaN(c.landed));
+  if (dated.length < 2) {
+    return skip("confidence-floor", "undated-evidence",
+      `${dated.length} of ${sorted.length} evidence clips carry a parseable date; the 24-hour floor cannot be shown`);
+  }
+  if (dated[0].landed - dated[dated.length - 1].landed < DAY_MS) {
     return skip("confidence-floor", "single-24h-window",
-      `all ${sorted.length} evidence clips landed within 24 hours (${sorted[sorted.length - 1].landedText} to ${sorted[0].landedText})`);
+      `all ${dated.length} dated evidence clips landed within 24 hours (${dated[dated.length - 1].landedText} to ${dated[0].landedText})`);
   }
 
   const prior = (ctx.pages.get(slug) || [])[0];
@@ -399,6 +383,17 @@ function build(args) {
       if (kind === "author") c.name = mostCommon(members.map((m) => m.authorLabel));
       candidates.push(c);
     }
+  }
+
+  const conceptPasses = new Map(candidates.filter((c) => c.kind === "concept" && c.status === "pass").map((c) => [c.key, c]));
+  for (const c of candidates) {
+    const twin = c.kind === "tag" && c.status === "pass" ? conceptPasses.get(c.key) : null;
+    if (!twin) continue;
+    delete c.supersedes;
+    Object.assign(c, {
+      status: "skip", category: "dedup", reason: "same-subject-as-concept",
+      detail: `candidate ${twin.slug} covers the same subject and is listed instead`,
+    });
   }
 
   const byKind = Object.fromEntries(KINDS.map((k) => [k, candidates

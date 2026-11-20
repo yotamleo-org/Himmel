@@ -48,6 +48,7 @@ Add `--format json` when you need a candidate's `evidence` list (the clips to re
 - Exit 2 is the G-8 gate below: abort with the message it printed.
 - Any other non-zero exit, or output you cannot read: abort with `synthesize-clips: candidate tool failed — <stderr>`. Never fall back to picking patterns by hand.
 - Output: one `PASS <rank> <kind> <slug> clips=… evidence=… urls=… sources=… [supersedes=<file>]` line per candidate that may be written, one `⊘ …` line per failing candidate, one `⊘ <clip-path> — excluded from synthesis (input)` line per excluded input (their count is `J`), and a `counts` line per kind.
+- A subject that passes as both a concept and a tag is listed once, as the concept (Pattern 1); its tag line is a `skipped (dedup)` line.
 - Write one skip line per failing candidate: copy every `⊘` line the tool printed into your output, none dropped, none merged.
 
 Then work the PASS lines in rank order (ranks interleave the four kinds, so a cap cannot be spent on one lens). For each: read its evidence clips, apply the substantive-content gate, then write the page or emit the substance-floor line. Stop writing at **`PAGE_CAP` = 10 pages**, and stop examining at **3 × `PAGE_CAP` = 30 candidates** (written plus substance-skipped); every PASS candidate left unexamined gets its own run-cap line. The `supersedes=` value, when present, goes into the page's `supersedes:` frontmatter (see Idempotency).

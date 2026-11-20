@@ -149,6 +149,32 @@ clip "$EV/urlv-1.md" "" "https://x.com/u_one/status/4001"   "2026-05-01" "url-vo
 clip "$EV/urlv-2.md" "" "https://x.com/u_two/status/4002"   "2026-05-02" "url-voices"
 clip "$EV/urlv-3.md" "" "https://x.com/u_three/status/4003" "2026-05-03" "url-voices"
 
+clip "$EV/twov-1.md" " @alice_t" "https://x.com/alice_t/status/5001" "2026-04-01" "two-voices"
+clip "$EV/twov-2.md" " @alice_t" "https://x.com/alice_t/status/5002" "2026-04-05" "two-voices"
+clip "$EV/twov-3.md" " @bob_t"   "https://x.com/bob_t/status/5003"   "2026-04-09" "two-voices"
+for i in 1 2 3; do
+    clip "$EV/twovf-$i.md" " @alice_f" "https://x.com/alice_f/status/600$i" "2026-04-1$i" "two-voices-five"
+done
+for i in 4 5; do
+    clip "$EV/twovf-$i.md" " @bob_f" "https://x.com/bob_f/status/600$i" "2026-04-1$i" "two-voices-five"
+done
+
+clip "$EV/udm-1.md" " Undated Mixed 1" "https://udm-1.example.org/p" "2026-02-10" "undated-mixed"
+clip "$EV/udm-2.md" " Undated Mixed 2" "https://udm-2.example.org/p" "2026-02-10" "undated-mixed"
+printf -- '---\ntitle: nodate\nauthor: Undated Mixed 3\nsource: "https://udm-3.example.org/p"\ntags:\n  - undated-mixed\nprocessed: true\n---\nbody\n' > "$EV/udm-3.md"
+clip "$EV/uds-1.md" " Undated Sparse 1" "https://uds-1.example.org/p" "2026-02-10" "undated-sparse"
+for i in 2 3; do
+    printf -- '---\ntitle: nodate\nauthor: Undated Sparse %s\nsource: "https://uds-%s.example.org/p"\ntags:\n  - undated-sparse\nprocessed: true\n---\nbody\n' "$i" "$i" > "$EV/uds-$i.md"
+done
+for i in 1 2 3; do
+    clip "$EV/udw-$i.md" " Undated Wide $i" "https://udw-$i.example.org/p" "2026-01-0$((i * 3))" "undated-wide"
+done
+printf -- '---\ntitle: nodate\nauthor: Undated Wide 4\nsource: "https://udw-4.example.org/p"\ntags:\n  - undated-wide\nprocessed: true\n---\nbody\n' > "$EV/udw-4.md"
+
+clip "$EV/dst-1.md" " Dst Author 1" "https://dst-1.example.org/p" "2026-03-08T01:00:00" "dst-pair"
+clip "$EV/dst-2.md" " Dst Author 2" "https://dst-2.example.org/p" "2026-03-08T13:00:00" "dst-pair"
+clip "$EV/dst-3.md" " Dst Author 3" "https://dst-3.example.org/p" "2026-03-09T01:30:00" "dst-pair"
+
 printf -- '---\nauthor: Ghost\nsource: "https://ghost.example.org/x"\ndate_clipped: 2026-10-09\ntags:\n  - context-windows\n---\nbody\n' \
     > "$EV/unprocessed.md"
 clip "$V/Clippings/_done/archived.md" " Done Author" "https://done.example.org/x" "2026-10-09" "context-windows"
@@ -203,7 +229,14 @@ echo "Test 3: platform-domain rule (concept + tag)"
 assert "5 unrelated authors on one platform: concept passes" "pass" "$(field concept-context-windows status)"
 assert "…with 5 evidence clips" "5" "$(field concept-context-windows clipCount)"
 assert "…counting 5 distinct sources" "5" "$(field concept-context-windows distinctSources)"
-assert "…and the tag lens passes too" "pass" "$(field tag-context-windows-moc status)"
+assert "…and its tag lens is dropped: one candidate per subject, the concept" "same-subject-as-concept" "$(field tag-context-windows-moc reason)"
+assert "…as a dedup skip" "dedup" "$(field tag-context-windows-moc category)"
+assert "3 clips from 2 sources (2 by one author, 1 by another): concept skipped" "skip" "$(field concept-two-voices status)"
+assert "…as too-few-sources" "too-few-sources" "$(field concept-two-voices reason)"
+assert "…a confidence-floor skip" "confidence-floor" "$(field concept-two-voices category)"
+assert "5 clips from 2 sources: concept skipped" "too-few-sources" "$(field concept-two-voices-five reason)"
+assert "…and the tag lens, which needs 2 sources, passes" "pass" "$(field tag-two-voices-five-moc status)"
+assert "exactly 3 distinct sources: concept passes" "pass" "$(field concept-url-voices status)"
 assert "5-clip single-author group: concept skipped" "skip" "$(field concept-solo-voice status)"
 assert "…reason names the single author" "single-author-on-platform" "$(field concept-solo-voice reason)"
 assert "…as a confidence-floor skip" "confidence-floor" "$(field concept-solo-voice category)"
@@ -222,6 +255,20 @@ assert "existing person note excludes the author" "existing-vault-page" "$(field
 assert "same-day author pair skipped" "single-24h-window" "$(field author-carol-burst reason)"
 assert "existing folder excludes the folder" "existing-vault-page" "$(field folder-00-inbox reason)"
 assert "single-domain folder skipped" "single-source-domain" "$(field folder-notes reason)"
+
+echo "Test 4b: the 24-hour floor fails closed on undated clips"
+assert "2 dated clips on one day plus an undated one: skipped" "single-24h-window" "$(field concept-undated-mixed reason)"
+assert "fewer than 2 dated clips: skipped" "undated-evidence" "$(field concept-undated-sparse reason)"
+assert "…as a confidence-floor skip" "confidence-floor" "$(field concept-undated-sparse category)"
+assert "dated clips spread over weeks plus an undated one: passes" "pass" "$(field concept-undated-wide status)"
+
+echo "Test 4c: a zoneless date-time is UTC, whatever the station zone"
+assert "24.5 h apart in UTC, 23.5 h in a DST zone: passes" "pass" "$(field concept-dst-pair status)"
+for z in UTC America/Los_Angeles Pacific/Kiritimati; do
+    TZ=$z node "$TOOL" "$V" --today "$TODAY" --format json > "$tmp/tz.json" 2>/dev/null
+    cmp -s "$tmp/tz.json" "$tmp/out1.json" && same=identical || same=differs
+    assert "TZ=$z prints the same output" "identical" "$same"
+done
 
 echo "Test 5: 14-day dedup window"
 assert "synthesis page 3 days old: skipped" "synthesis-page-within-14d" "$(field concept-recent-topic reason)"
