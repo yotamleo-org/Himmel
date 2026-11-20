@@ -1462,6 +1462,8 @@ for _worker_env_scrub in $(chief_context_worker_env_unset_names); do
         # the operator's single-writer bypass is launch input, propagated below when set; a worker's own launch
         # (HIMMEL_CONSOLE_LEG set, kept above) inherited it from the worker, not the operator, so it is scrubbed there.
         WRITE_HOLD_OK) [ -z "${HIMMEL_CONSOLE_LEG:-}" ] && continue ;;
+        # the launching chief's API-lane opt-in is launch input, read below; inside a worker it was inherited, never named.
+        WORKER_SESSION_API_LANE|WORKER_SESSION_API_ACCOUNT) [ -z "${HIMMEL_CONSOLE_LEG:-}" ] && continue ;;
         # the chief's chosen context mode is launch input, read below.
         HIMMEL_WORKER_SESSION_CONTEXT_MODE) continue ;;
         WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_PREFACE|WORKER_SESSION_PROFILE_MCP_CONFIG) continue ;;

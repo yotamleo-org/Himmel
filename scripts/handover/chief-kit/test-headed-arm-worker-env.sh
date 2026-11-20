@@ -295,6 +295,9 @@ contains "W14 seam alone still reports account auto" "$out" "HIMMEL_API_LANE=on 
 rc=0; out="$(WORKER_SESSION_API_ACCOUNT=A dry)" || rc=$?
 check "W14 an account without the seam: exit 0" "$rc" "0"
 contains "W14 an account without the seam leaves both unset" "$out" "HIMMEL_API_LANE=<unset> HIMMEL_API_ACCOUNT=<unset>"
+rc=0; out="$(HIMMEL_CONSOLE_LEG=1 WORKER_SESSION_API_LANE=on WORKER_SESSION_API_ACCOUNT=A dry)" || rc=$?
+check "W14 a launch from inside a worker with both seam names set: exit 0" "$rc" "0"
+contains "W14 a worker's inherited seam is not turned back into the lane or an account" "$out" "HIMMEL_API_LANE=<unset> HIMMEL_API_ACCOUNT=<unset>"
 rc=0; out="$(WORKER_SESSION_API_LANE=on WORKER_SESSION_API_ACCOUNT='A;x' dry)" || rc=$?
 check "W14 a malformed account refuses the launch (exit 2)" "$rc" "2"
 contains "W14 the refusal names the account variable" "$out" "WORKER_SESSION_API_ACCOUNT"
