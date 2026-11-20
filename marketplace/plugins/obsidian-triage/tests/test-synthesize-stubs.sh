@@ -36,7 +36,7 @@ assert() {
 }
 
 # ── Build a temp vault with fixture F ────────────────────────────────────────
-tmp="$(mktemp -d)"
+tmp="$(mktemp -d)" || exit 1
 trap 'rm -rf "$tmp"' EXIT
 EV="$tmp/Clippings/_evidence"
 mkdir -p "$EV/_rejected" "$tmp/30-Resources/Concepts" "$tmp/_Templates"
@@ -196,7 +196,7 @@ assert "revert reports divergence refusal" "yes" "$f"
 # must yield ONE page listing ALL contributors, ONE ledger entry, and revert
 # must un-stamp every contributor (no stranded promoted_to).
 echo "Test group 4: subject-name collision merge"
-tmp4="$(mktemp -d)"
+tmp4="$(mktemp -d)" || exit 1
 trap 'rm -rf "$tmp" "$tmp4"' EXIT
 EV4="$tmp4/Clippings/_evidence"
 mkdir -p "$EV4" "$tmp4/30-Resources/Concepts"

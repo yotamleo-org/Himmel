@@ -117,6 +117,8 @@ assert "empty: the flow stages are stalled" '["intake","cited","subjects"]' "$(j
 node "$TOOL" --vault "$tmp/none" --as-of "$D" >/dev/null 2>&1; assert "a missing vault exits 1" "1" "$?"
 node "$TOOL" --as-of "$D" >/dev/null 2>&1; assert "no --vault exits 1" "1" "$?"
 node "$TOOL" --vault "$A" --as-of 2026-13-01 >/dev/null 2>&1; assert "an impossible --as-of exits 1" "1" "$?"
+node "$TOOL" --vault "$A" --as-of >/dev/null 2>&1; assert "--as-of with no value exits 1" "1" "$?"
+node "$TOOL" --vault "$A" --as-of "" >/dev/null 2>&1; assert "--as-of with an empty value exits 1" "1" "$?"
 node "$TOOL" --vault "$A" --days 0 >/dev/null 2>&1; assert "--days 0 exits 1" "1" "$?"
 node "$TOOL" --vault "$A" --bogus >/dev/null 2>&1; assert "an unknown flag exits 1" "1" "$?"
 

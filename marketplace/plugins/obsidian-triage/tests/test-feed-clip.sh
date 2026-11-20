@@ -9,7 +9,7 @@ SCRIPT="$TOOLS_DIR/feed-clip.mjs"
 TGLIB="$TOOLS_DIR/lib/telegram-clip.mjs"
 FIX="$SCRIPT_DIR/fixtures/feeds"
 
-tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/feed-clip-test.XXXXXX")"
+tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/feed-clip-test.XXXXXX")" || exit 1
 SRV_PID=""
 cleanup() { [ -n "$SRV_PID" ] && kill "$SRV_PID" 2>/dev/null; rm -rf "$tmpdir"; }
 trap cleanup EXIT
