@@ -21,7 +21,7 @@
 # check: 0 valid note, 1 any problem (printed). finish: 0 message sent, 1 any failure (alerted); no other code.
 #
 # Seams (tests): CLIP_RELEVANCE_CRONTAB, _RUNNER_DIR, _NOTE_DIR, _SEND_CMD, _TODAY, _PREFLIGHT, _CLAUDE, _ROOT,
-# plus cadence-alert.sh's CADENCE_ALERT_*. Platform: cron (Linux/macOS). Windows development is parked.
+# plus cadence-alert.sh's CADENCE_ALERT_*. Platform: cron (Linux/macOS).
 set -uo pipefail
 
 TASK_NAME="HIMMEL-ClipRelevance"
@@ -200,7 +200,6 @@ cmd_arm() {
     [[ "${JIRA_PROJECT_KEY:-}" =~ ^[A-Z][A-Z0-9]+$ ]] || { echo "ERR clip-relevance-cadence: arm needs JIRA_PROJECT_KEY set to a project key (got: ${JIRA_PROJECT_KEY:-<unset>})" >&2; return 2; }
     [ -n "$ndir" ] || ndir="$(note_dir)" || { echo "ERR clip-relevance-cadence: cannot resolve the state repo note folder; pass --note-dir" >&2; return 2; }
     case "$ndir" in /*) ;; *) echo "ERR clip-relevance-cadence: --note-dir must be an absolute path, got: $ndir" >&2; return 1 ;; esac
-    case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) echo "ERR clip-relevance-cadence: cron only; Windows is parked" >&2; return 2 ;; esac
     command -v "$CRONTAB_BIN" >/dev/null 2>&1 || { echo "ERR clip-relevance-cadence: '$CRONTAB_BIN' not on PATH" >&2; return 2; }
     root="${CLIP_RELEVANCE_ROOT:-$(resolve_primary)}" || { echo "ERR clip-relevance-cadence: cannot resolve the primary checkout" >&2; return 2; }
     claude="${CLIP_RELEVANCE_CLAUDE:-$(command -v claude 2>/dev/null)}"
