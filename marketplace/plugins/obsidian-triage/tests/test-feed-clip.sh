@@ -395,6 +395,11 @@ except Exception:
     assert "non-printable title: PyYAML parses the written front matter" ok "$py"
 fi
 
+echo "Test 13: the README does not claim a scheduler runs the tool"
+readme="$SCRIPT_DIR/../README.md"
+assert "README: no claim that a nightly run wires the tool in" 0 "$(grep -c 'nightly run wires' "$readme")"
+assert "README: says no repository job runs the tool" 1 "$(grep -c 'No repository job runs the tool' "$readme")"
+
 echo "Test 11: unreadable state"
 V="$(newvault badstate)"
 printf 'file://%s AtomRel\n' "$FIX/atom-releases.xml" > "$V/.feed-clip-feeds"
