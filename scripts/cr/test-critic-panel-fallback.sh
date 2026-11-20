@@ -970,7 +970,7 @@ EOS
 chmod +x "$tmp/alert-rec.sh"
 mkdir -p "$tmp/bridge/consoles"
 CHIEF24="$tmp/bridge/consoles/test-chief.md"
-floor_run() { # floor_run <tag> [env...]: the panel with the floor stub, recorded alerts and chief inbox
+floor_run() {
     _ft="$1"; shift
     : > "$tmp/cap24$_ft"; : > "$tmp/alerts24$_ft"; : > "$CHIEF24"
     printf '%s' "$DIFF" | env -u HIMMEL_API_LANE CRITIC_PANEL_TIERS=paid CR_TRIVIALITY_OVERRIDE=full CRITIC_FIRST_PASS="$STUB_FLOOR" \
