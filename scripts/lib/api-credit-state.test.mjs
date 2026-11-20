@@ -20,7 +20,7 @@ const FAR_RESET = '2099-01-01T00:00:00Z';
 function fixture() {
   const dir = mkdtempSync(join(T, 'case-'));
   const now = Math.floor(Date.now() / 1000);
-  const config = { version: 1, accounts: {
+  const config = { version: 1, enforce_budget: true, accounts: {
     A: { organization_id: 'org-a', cycle_id: 'cycle-a', cap_usd: '1.00', reset_at: FAR_RESET },
     B: { organization_id: 'org-b', cycle_id: 'cycle-b', cap_usd: '2.00', reset_at: FAR_RESET },
   } };

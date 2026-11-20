@@ -16,7 +16,7 @@ feature's own switch.
 | `scripts/api-lane/judge-call.sh` | API lane | always (a chief's verdict question) |
 | `scripts/api-lane/bulk-call.sh` | API lane | always |
 | `jira release rm-run` (release manager) | the subscription | only in the himmel repo with `judge` mapped in `roles.json` (see [The role map](#the-role-map)); there the launcher's fallback is off, and a failed lane call, a policy refusal included, makes `rm-run` rule the batch once on the subscription itself; a timed-out call ends the run |
-| `scripts/cr/critic-first-pass.sh` (claude critic) | the registry row's provider | provider `claude-api`; with the lane off, the refusal alerts (one per hour) and the review runs on the subscription; a policy refusal (exit 2 with the launcher's `claude-api: policy refusal:` line) makes the critic print `claude critic BROKE` and exit 1, never a clean skip |
+| `scripts/cr/critic-first-pass.sh` (claude critic) | the registry row's provider | provider `claude-api`; with the lane off, the refusal alerts (one per hour) and the critic is skipped; a critic never runs on the subscription, for any refusal or failure; a policy refusal (exit 2 with the launcher's `claude-api: policy refusal:` line) makes the critic print `claude critic BROKE` and exit 1, never a clean skip |
 | `scripts/graphify/graph-cadence.sh --semantic` | `claude-cli` when run bare; the armed `graph-publish-himmel` runner passes `claude-api` on auto | `GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api` |
 | `scripts/cleanup/steering-cull-cadence.sh` | `claude-cli` | `STEERING_CULL_BACKEND=claude-api`, or `arm --backend claude-api --api-account A\|B\|C\|D` |
 
@@ -45,12 +45,26 @@ one WARN per kind and repo, with a count, for a refusal in the last 48 h.
 
 The api lane refuses a call only on a real block, and the refusal and its alert name it:
 its own admission limit (`api bank gate said SKIPPED-FLEET`), a ledger lock another holder
-keeps (`ledger-locked-or-unwritable`, with the lock path, age and holder), or our own spend
-cap (`over-cap`). An unknown, stale or low credit reading (`BANK-UNKNOWN`, `BANK-STALE`,
-`SKIPPED-BANK` from the api preflight) is our estimate, not a block: the launcher prints a
-note and the call goes on; the per-call budget bounds it and the API's own credit answer
-decides. A credit-exhausted answer marks the account (see the exhausted marker below), and
-a later successful call on that account clears the mark.
+keeps (`ledger-locked-or-unwritable`, with the lock path, age and holder), an invalid config
+or ledger, or a duplicate or invalid job id. No budget figure refuses or delays a call, named
+or auto: an unknown, stale or low credit reading (`BANK-UNKNOWN`, `BANK-STALE`,
+`SKIPPED-BANK` from the api preflight), a past reset date or a ledger estimate over the
+account's cap is our estimate, not a block. The launcher prints a note and the call goes on;
+the per-call budget bounds it and the API's own credit answer decides. A credit-exhausted
+answer marks the account (see the exhausted marker below), and a later successful call on
+that account clears the mark. A mark never refuses a named call; auto routing ranks
+unmarked accounts first.
+
+`"enforce_budget": true` at the top level of the roster `config.json` opts back into the
+enforcing gate: there the cap (`over-cap`), the headroom check and a stale reading refuse
+as before. It is off by default.
+
+On a credit-exhausted answer (exit 6) to an auto-routed call, the launcher marks the account
+and re-runs the same call on the next unmarked account the call may use, one pass over the
+accounts (`HIMMEL_API_ROTATE_TRIED` carries the tried letters to the re-run and only narrows
+the pool). Only a replayable call rotates: one with its prompt in argv or buffered from stdin
+and no `Edit`, `Write` or `Bash` grant. A named account never rotates. When no unmarked
+account is left, the failure path below runs as usual.
 
 A crashed ledger transaction can leave the lock directory behind. A waiter reclaims it only
 when it is empty, older than the call timeout plus the kill grace, and its recorded holder
@@ -64,6 +78,8 @@ For every other failure the launcher:
    | Condition | Decision |
    |---|---|
    | `HIMMEL_API_FALLBACK=off` | no fallback |
+   | the call is kind `critic` (any refusal or failure) | no fallback; the critic is skipped |
+   | the lane is off (`HIMMEL_API_LANE` not `on`), any kind | no fallback: the caller chose the API, not the subscription |
    | the request itself was refused (bad argument, run kind, cache TTL, job id or tool grant) | no fallback |
    | the call was granted `Edit`, `Write` or `Bash` and ran (it may have half-done its edits; a rejected account can answer on a later turn) | no fallback; only a refusal before any request (exit 2) falls back |
    | the native usage preflight says `PROCEED`, `BANK-STALE` or `BANK-UNKNOWN` | **runs the fallback** |
@@ -77,7 +93,7 @@ For every other failure the launcher:
    `api-lane <class>`:
 
    ```text
-   kind judge, account auto, refused (exit 2): api lane is OFF (set HIMMEL_API_LANE=on); fallback: running on the subscription (preflight PROCEED)
+   kind judge, account A, call-failed (exit 1): error_during_execution; fallback: running on the subscription (preflight PROCEED)
    ```
 
    - The class is `refused`, `rejected` (exit 6) or `call-failed`.
@@ -158,7 +174,7 @@ no `lane`): `shift-spend.mjs` does, so the native and `sub-fallback` rows are ne
 
 Account C is a third API org with a 200.00 USD cap. Account D is a fourth API org. A, B, C and D are treated
 identically: the same refusals (key from the caller `ANTHROPIC_API_KEY` or a mode-600 `key-<letter>.env` beside the
-ledger, `HIMMEL_API_KEY_ID` equal to the roster `key_id`, lane on, ledger spend estimate under the account's cap) and
+ledger, `HIMMEL_API_KEY_ID` equal to the roster `key_id`, lane on, and with `enforce_budget` on, a ledger spend estimate under the account's cap) and
 `pickAccount` ranks all four by grant expiry. The batch client (`semantic-batch.mjs`) takes C and D the same way. The
 lane never reads the keyring or `.env`. Any other letter (E and on) is refused everywhere.
 

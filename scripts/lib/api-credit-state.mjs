@@ -147,6 +147,15 @@ function configs(config) {
     if (orgs.has(c.organization_id)) refuse('duplicate-organization');
     orgs.add(c.organization_id);
   }
+  if (own(config, 'enforce_budget') && typeof config.enforce_budget !== 'boolean') refuse('invalid-config');}
+// By default no budget figure (a reading, a reset date, the cap, the ledger) refuses or delays a call: the provider's
+// own credit refusal is the only budget signal. `enforce_budget: true` in the config opts into enforcing them.
+const enforcing = (config) => config.enforce_budget === true;
+// The default mode's row: the usual estimate when it can be formed, else the ledger's, and always a start.
+function freeRow(config, snapshot, a, account, now, need) {
+  let r;
+  try { r = row(config, snapshot, a, account, now, true, need); } catch { r = ledgerRow(config, a, account, false); }
+  return r.verdict === 'PROCEED' && money(r.available_est_usd) >= need ? r : { ...r, verdict: 'PROCEED', over_estimate: true };
 }
 function identity(a, c) {
   if (a.organization_id !== c.organization_id || a.cycle_id !== c.cycle_id) refuse('identity-or-cycle-mismatch');
@@ -216,10 +225,10 @@ function snapshotRow(config, snapshot, a, account, now) {
 }
 // No usable credit reading: what the local ledger and the account cap still allow. Anthropic's own limits
 // decide the rest (a credit-exhausted answer marks the account, see 'exhausted').
-function ledgerRow(config, a, account) {
+function ledgerRow(config, a, account, strict = true) {
   const cap = money(config.cap_usd);
   const { spent, reserved } = totals(a);
-  if (a?.discrepancy) refuse('unverified-or-discrepant');
+  if (strict && a?.discrepancy) refuse('unverified-or-discrepant');
   const available = cap - spent - reserved;
   return {
     verdict: available > 0n ? 'PROCEED' : 'SKIPPED-BANK', account,
@@ -352,9 +361,11 @@ export function creditState(command, options = {}, env = process.env) {
     if (command === 'status' || command === 'reserve') {
       const now = Math.floor(Date.now() / 1000);
       if (sweep(a, now, callTimeout(env))) save(statePath, state, lock, sentinels);
+      const enforce = enforcing(config);
       let snapshot = null;
-      try { snapshot = read(env.HIMMEL_API_CREDIT_SNAPSHOT || join(root, 'snapshot.json')); } catch (e) { if (!optional) throw e; }
-      const result = row(c, snapshot, a, account, now, optional, options.usd ? money(options.usd) : 0n);
+      try { snapshot = read(env.HIMMEL_API_CREDIT_SNAPSHOT || join(root, 'snapshot.json')); } catch (e) { if (enforce && !optional) throw e; }
+      const need = options.usd ? money(options.usd) : 0n;
+      const result = enforce ? row(c, snapshot, a, account, now, optional, need) : freeRow(c, snapshot, a, account, now, need);
       // under optional routing an old or absent reading with no room in our own estimate still proceeds
       // (the pick marks it over_estimate); a fresh reading with nothing left, or a discrepancy, still refuses
       if (command === 'status') {
@@ -371,7 +382,7 @@ export function creditState(command, options = {}, env = process.env) {
       // only a fresh reading with too little left does, and the API's own credit-too-low answer is the hard stop
       const overEstimate = maximum > money(result.available_est_usd);
       // under optional routing a fresh reading with too little left is still only our estimate: our own cap decides
-      if (overEstimate && !(optional && result.snapshot_stale)) {
+      if (enforce && overEstimate && !(optional && result.snapshot_stale)) {
         if (!optional) return { ...result, verdict: 'SKIPPED-BANK', reason: 'insufficient-headroom' };
         if (maximum > money(ledgerRow(c, a, account).available_est_usd)) return { ...result, verdict: 'SKIPPED-BANK', reason: 'over-cap' };
       }
@@ -462,6 +473,7 @@ export function pickAccount(budget, env = process.env, only, withRows = false) {
     const config = read(configPathFor(env));
     configs(config);
     const pickEnv = { ...env, HIMMEL_API_SNAPSHOT_OPTIONAL: '1' };
+    const enforce = enforcing(config);
     const now = Math.floor(Date.now() / 1000);
     const letters = Object.keys(config.accounts).sort().filter((account) => !only?.length || only.includes(account));
     if (letters.length === 0) return refusal({ verdict: 'SKIPPED-BANK', reason: 'no-role-account-configured' });
@@ -476,7 +488,8 @@ export function pickAccount(budget, env = process.env, only, withRows = false) {
     const fresh = open.filter((r) => !r.snapshot_stale).sort(byExpiry);
     // a row with an old or no reading whose own estimate has no room still serves: only a real credit-exhausted
     // answer stops it, so it ranks after every row with room, an unmarked one before a marked one
-    const over = all.filter((r) => r.snapshot_stale && !roomy.includes(r));
+    // by default a fresh reading with too little left serves too: only the provider's own credit refusal stops a row
+    const over = all.filter((r) => (r.snapshot_stale || (!enforce && r.verdict === 'PROCEED')) && !roomy.includes(r));
     const byRoom = (x, y) => Number(money(y.available_est_usd) - money(x.available_est_usd));
     const rows = fresh.length > 0 ? fresh
       : open.length > 0 ? open.sort(byExpiry)
@@ -722,8 +735,7 @@ function main() {
     console.log(JSON.stringify(ok ? pickAccount(args[1], process.env, only, withRows) : { verdict: 'BANK-UNKNOWN', reason: 'invalid-arguments' }));
     return;
   }
-  if (command === 'accounts') { console.log(JSON.stringify(accountTags(process.env))); return; }
-  const options = {};
+  if (command === 'accounts') { console.log(JSON.stringify(accountTags(process.env))); return; }  const options = {};
   for (let i = 0; i < args.length; i += 2) {
     const name = args[i]?.slice(2);
     if (!['--id', '--usd', '--completion'].includes(args[i]) || !args[i + 1] || own(options, name)) {

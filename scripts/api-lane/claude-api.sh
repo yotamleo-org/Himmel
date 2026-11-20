@@ -220,6 +220,9 @@ fail_over() {
   [ "$class" != refused-role-map ] || return 0
   if [ "${HIMMEL_API_FALLBACK:-on}" = off ]; then
     decision="off (HIMMEL_API_FALLBACK=off)"
+  elif [ "$KIND_SAFE" = critic ]; then
+    # a critic is an api-credit reviewer: on any refusal or failure it is skipped, never charged to the subscription
+    decision="not run: a critic call never runs on the subscription"
   elif [ -n "$NO_FB" ]; then
     decision="not run: $NO_FB"
   elif [ "$class" != refused ] && [[ ",$ALLOWED_TOOLS," =~ ,(Edit|Write|Bash), ]]; then
@@ -251,6 +254,7 @@ refuse_policy() { echo "claude-api: refused: $*" >&2; fail_over 2 refused-policy
 # in its old place (after the lane and provider checks).
 PRINT=0 MODE="" MODEL="" BUDGET="" FORMAT="" PARSE_ERR="" HAS_PROMPT=0
 ARGS=()
+ORIG_ARGS=("$@")   # a credit-refused auto call runs again on the next account with the same arguments
 while [ "$#" -gt 0 ] && [ -z "$PARSE_ERR" ]; do
   a="$1"; shift
   # Allowlist: only -p/--print, --model, --permission-mode, --max-budget-usd, --output-format, --effort,
@@ -337,7 +341,8 @@ case "${HIMMEL_API_JOB_ID:-x}" in *[!A-Za-z0-9._:-]*) BAD_REQ=1 ;; esac
 [ -z "$BAD_REQ" ] || NO_FB="the request itself was refused"
 
 # --- lane opt-in and credentials (presence checks only) ---
-[ "${HIMMEL_API_LANE:-}" = "on" ] || refuse "api lane is OFF (set HIMMEL_API_LANE=on)"
+# a call the lane is not opted into never runs on the subscription instead: the caller chose the API, not the bank
+[ "${HIMMEL_API_LANE:-}" = "on" ] || { NO_FB="${NO_FB:-api lane is off}"; refuse "api lane is OFF (set HIMMEL_API_LANE=on)"; }
 llm_backend_api_account_ok "${HIMMEL_API_ACCOUNT:-}" || [ "${HIMMEL_API_ACCOUNT:-}" = auto ] ||
   refuse "HIMMEL_API_ACCOUNT must be $LLM_API_ACCOUNTS_TEXT (or auto)"
 [ "$HIMMEL_API_ACCOUNT" != auto ] || [ -z "${ANTHROPIC_API_KEY:-}" ] ||
@@ -382,7 +387,15 @@ CACHE_TTL="${HIMMEL_API_CACHE_TTL:-5m}"
 case "$CACHE_TTL" in 5m|1h) ;; *) refuse "HIMMEL_API_CACHE_TTL must be 5m or 1h" ;; esac
 
 # --- auto = the grant that expires first among accounts with room for the whole budget ---
+# HIMMEL_API_ROTATE_TRIED (set by the rotation below) names the accounts this call already tried; it only narrows
+AUTO_ROUTED=0 ROTATED=""
+if [ "$HIMMEL_API_ACCOUNT" = auto ] && llm_backend_api_account_list_ok "${HIMMEL_API_ROTATE_TRIED:-}"; then
+  ROTATED="$HIMMEL_API_ROTATE_TRIED"
+  ROLE_ACCTS="$(printf '%s' "${ROLE_ACCTS:-${LLM_API_ACCOUNTS// /,}}" | tr ',' '\n' | grep -vxF -e "${ROTATED//,/$'\n'}" | paste -sd, -)"
+  [ -n "$ROLE_ACCTS" ] || refuse "auto routing: every account was already tried for this call ($ROTATED)"
+fi
 if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
+  AUTO_ROUTED=1 REQ_ACCOUNT="$HIMMEL_API_ACCOUNT"
   PICK="$(node "$REPO/scripts/lib/api-credit-state.mjs" pick --usd "$BUDGET" ${ROLE_ACCTS:+--only "$ROLE_ACCTS"})"
   case "$PICK" in *'"verdict":"PROCEED"'*) ;; *) refuse "auto routing: no account has room for the budget ($PICK)" ;; esac
   # an absent or old credit reading never blocks an auto route: the per-call budget bounds each call, our own estimate
@@ -496,8 +509,9 @@ immune() { ( trap '' TERM INT HUP; exec "$@" ); }
 
 # --- reserve the full budget before spending; refusal here means no launch ---
 state() { immune node "$REPO/scripts/lib/api-credit-state.mjs" "$@"; }
-# the reading is our estimate, so it never blocks; our own cap still does (reason over-cap)
-RESERVED="$(HIMMEL_API_SNAPSHOT_OPTIONAL=1 state reserve --id "$JOB_ID" --usd "$BUDGET")"
+# by default no budget figure refuses here (only enforce_budget in the credit config opts into that); a held ledger
+# lock, a duplicate job or a broken config or ledger still does
+RESERVED="$(state reserve --id "$JOB_ID" --usd "$BUDGET")"
 case "$RESERVED" in *'"verdict":"PROCEED"'*) ;; *)
   refuse "reservation refused: $(printf '%s' "$RESERVED" | sed -n 's/.*"reason":"\([^"]*\)".*/\1/p'): $RESERVED" ;;
 esac
@@ -630,6 +644,32 @@ SOURCE="$(printf '%s' "$RESERVED" | sed -n 's/.*"source":"\([^"]*\)".*/\1/p')"
     "$ROSTER_CYCLE" "$MODEL" "$BUDGET" "$SOURCE" "$OUTCOME" "$COST" "$RC" "$KIND" "$CACHE_TTL" \
     "${U_IN:-null}" "${U_CREATE:-null}" "${U_READ:-null}" "$R_BRANCH" "$R_HEAD" "${R_PR:-null}"
 } >>"$STATE_DIR/launches.jsonl" 2>/dev/null || echo "claude-api: warning: launch record not written" >&2
+
+# --- an auto call the provider refused for credit runs again on the next unmarked account: one pass, then the fallback ---
+# Only a replayable prompt rotates, and never a call granted Edit, Write or Bash (a run that started may have half-done
+# its edits). A named account never rotates. The next call takes its own reservation, slot and launch record.
+if [ "$REJECTED" = exhausted ] && [ "$AUTO_ROUTED" = 1 ] && [ "$STOPPED" = 0 ] && [ -z "$NO_FB" ] &&
+   ! [[ ",$ALLOWED_TOOLS," =~ ,(Edit|Write|Bash), ]] && { [ "$HAS_PROMPT" = 1 ] || [ -n "$PROMPT_FILE" ]; }; then
+  TRIED="${ROTATED:+$ROTATED,}$HIMMEL_API_ACCOUNT"
+  REST="$(printf '%s' "${ROLE_ACCTS:-${LLM_API_ACCOUNTS// /,}}" | tr ',' '\n' | grep -vxF "$HIMMEL_API_ACCOUNT" | paste -sd, -)"
+  NEXT=""
+  [ -z "$REST" ] || NEXT="$(node "$REPO/scripts/lib/api-credit-state.mjs" pick --usd "$BUDGET" --only "$REST" 2>/dev/null)"
+  case "$NEXT" in *'"exhausted_at"'*|'') NEXT="" ;; *'"verdict":"PROCEED"'*) ;; *) NEXT="" ;; esac
+  if [ -n "$NEXT" ]; then
+    echo "claude-api: rotating this call to account $(printf '%s' "$NEXT" | llm_backend_pick_account) (tried $TRIED)" >&2
+    release_slot
+    rotate_child() {
+      env -u ANTHROPIC_API_KEY HIMMEL_API_ACCOUNT="$REQ_ACCOUNT" HIMMEL_API_ROTATE_TRIED="$TRIED" HIMMEL_API_JOB_ID="$JOB_ID.r${#TRIED}" \
+        bash "$REPO/scripts/api-lane/claude-api.sh" "${ORIG_ARGS[@]}"
+    }
+    if [ -n "$PROMPT_FILE" ]; then rotate_child <"$PROMPT_FILE" 3<&- &
+    else rotate_child </dev/null 3<&- & fi
+    ROT_PID=$!
+    trap 'kill -TERM "$ROT_PID" 2>/dev/null; wait "$ROT_PID" 2>/dev/null; exit 143' TERM INT HUP
+    wait "$ROT_PID"
+    exit $?
+  fi
+fi
 
 # --- a failed call: alert, then the subscription fallback (never returns when it ran) ---
 # the reason is a class and a subtype only: the call's own result text may quote the prompt
