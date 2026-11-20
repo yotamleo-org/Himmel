@@ -47,7 +47,7 @@ fi
 
 # Bypass-flag refusal: any env/environment entry named *_OK or *BYPASS*, in the final document.
 # shellcheck disable=SC2016  # jq program: $id is a jq variable
-BYPASS_JQ='[ .providerInstances // {} | to_entries[] | .key as $id | (.value.config // {}) | (.env // .environment // empty)
+BYPASS_JQ='[ .providerInstances // {} | to_entries[] | .key as $id | (.value.config // {}) | ((.env, .environment) | select(. != null))
   | (if type == "object" then keys[] elif type == "array" then .[] | (if type == "object" then (.name // .key // "") else (split("=")[0]) end) else empty end)
   | select(test("_OK$") or test("BYPASS"; "i")) | "\($id): \(.)" ] | .[]'
 
@@ -59,11 +59,13 @@ for p in $PROFILES; do
         die 2 "profile '$p' did not resolve to a settings file"
     fi
     mp="$("$RESOLVER" "$p" --mcp-config 2>/dev/null)" || die 2 "profile '$p' mcp-config did not resolve"
+    case "$sp$mp" in *[[:space:]]*) die 2 "profile '$p' resolved to a path with whitespace; launchArgs would split it" ;; esac
     args="--settings $sp"
     [ -n "$mp" ] && args="$args --mcp-config $mp --strict-mcp-config"
     GEN="$(printf '%s' "$GEN" | jq --arg p "$p" --arg a "$args" '.[$p] = $a')" || die 2 "jq failed"
 done
 
+SUM_READ="$(cksum < "$FILE")"
 NEW="$(jq --argjson gen "$GEN" '
   def basenames: (.config.launchArgs // "") | [scan("--settings ([^ ]+)")[0] | split("/")[-1]];
   . as $doc
@@ -76,7 +78,7 @@ NEW="$(jq --argjson gen "$GEN" '
               | .config = ((.config // {}) + {launchArgs: $gen[$p]}))
         end)' "$FILE")" || die 2 "merge failed"
 
-BAD="$(printf '%s' "$NEW" | jq -r "$BYPASS_JQ")"
+BAD="$(printf '%s' "$NEW" | jq -r "$BYPASS_JQ")" || die 2 "bypass-flag check could not run (left untouched)"
 if [ -n "$BAD" ]; then
     echo "provider-instances: REFUSED - an instance environment names a himmel guard bypass flag:" >&2
     printf '%s\n' "$BAD" >&2
@@ -102,6 +104,7 @@ for p in $(printf '%s' "$GEN" | jq -r 'keys_unsorted[]'); do
 done
 
 if [ "$MODE" = apply ] && ! cmp -s "$WORK/before.json" "$WORK/after.json"; then
+    [ "$(cksum < "$FILE")" = "$SUM_READ" ] || die 2 "$FILE changed while the profiles were resolved; nothing written, re-run"
     STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
     BAK="$FILE.bak.$STAMP"
     cp -p "$FILE" "$BAK" || die 2 "cannot write backup $BAK"

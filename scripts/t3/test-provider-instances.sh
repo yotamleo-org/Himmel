@@ -88,6 +88,14 @@ cat > "$B" <<'JSON'
 {"providerInstances":{"evil":{"driver":"claudeAgent","config":{"env":{"GUARD_BYPASS_X":"1"}}}}}
 JSON
 expect_rc "env object *BYPASS* refused (dry-run too)" 3 bash "$GEN" --settings-file "$B"
+cat > "$B" <<'JSON'
+{"providerInstances":{"evil":{"driver":"claudeAgent","config":{"env":{},"environment":[{"name":"X_OK","value":"1"}]}}}}
+JSON
+expect_rc "empty env does not hide a bypass flag in environment" 3 bash "$GEN" --settings-file "$B"
+cat > "$B" <<'JSON'
+{"providerInstances":{"evil":{"driver":"claudeAgent","config":{"environment":[7]}}}}
+JSON
+expect_fail "a malformed environment entry fails closed" bash "$GEN" --apply --settings-file "$B"
 
 # 7. malformed settings file refused untouched
 M="$T/bad.json"; printf '{"providerInstances": {' > "$M"; cp "$M" "$T/bad.orig"

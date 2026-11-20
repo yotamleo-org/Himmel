@@ -19,7 +19,10 @@ One `providerInstances.claudeAgent_<profile>` entry per profile:
 - `operator` resolves to no settings file and is skipped.
 - A profile already reachable through another instance (same `<profile>.json` in
   its `--settings`, e.g. the hand-made `claudeAgent_claude_chief`) gets no new id.
-  Existing instances are never edited or removed.
+  Existing instances are never removed, and none is edited except a
+  `claudeAgent_<profile>` whose stable path moved (its `launchArgs` is refreshed).
+- A resolved path containing whitespace is refused (rc 2): `launchArgs` would split it.
+  If the settings file changes while the profiles resolve, `--apply` writes nothing (rc 2).
 - A final settings document in which any instance `env` / `environment` entry is
   named `*_OK` or `*BYPASS*` is refused (rc 3), nothing written.
 - A malformed settings file is refused (rc 2) and left untouched.
