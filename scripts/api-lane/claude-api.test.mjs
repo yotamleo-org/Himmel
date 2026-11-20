@@ -2000,8 +2000,6 @@ test('10425: our own cap never blocks by default; with enforce_budget on it refu
   assert.match(r.stderr, /refused: .*(over-cap|insufficient-headroom)/);
 });
 
-// --- Uj5606a: a preflight that exits nonzero or prints no known verdict refuses ---
-// a tree whose scripts/lib/usage-preflight.sh is a stub; every other file links to this checkout
 function shadowPreflight(f, body) {
   const root = join(f.dir, 'shadow');
   mkdirSync(join(root, 'scripts', 'lib'), { recursive: true });

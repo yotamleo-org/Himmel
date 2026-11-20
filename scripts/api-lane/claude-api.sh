@@ -450,7 +450,6 @@ BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY "${LLM_API_O
   CADENCE_USAGE_LANE=api CADENCE_USAGE_LAUNCH=1 WORKER_SESSION_LANE=api \
   CADENCE_USAGE_WORKER="$WORKER_SESSION_NAME" CADENCE_USAGE_CALLER_PID="$$" \
   bash "$REPO/scripts/lib/usage-preflight.sh")" || {
-  # the preflight prints its verdict and exits 0; any other exit is a seam-guard denial or a crash, with no fleet slot taken
   echo "claude-api: the api bank gate exited $? before a verdict" >&2
   refuse "api bank gate said BANK-UNKNOWN"
 }
