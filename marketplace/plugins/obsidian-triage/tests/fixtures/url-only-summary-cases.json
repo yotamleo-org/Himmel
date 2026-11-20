@@ -35,6 +35,21 @@
       "name": "CRLF line endings",
       "thin": true,
       "body": "# t\r\n\r\n## Summary\r\nInferred from the source URL only — re-read the source before promoting.\r\n\r\n## Source\r\n[l](https://example.com/docs/guide)\r\n"
+    },
+    {
+      "name": "fetched text under Harvested content beside a url-only summary",
+      "thin": false,
+      "body": "# t\n\n## Summary\nInferred from the source URL only — re-read the source before promoting.\n\n## Harvested content\n<!-- harvest-clips 2026-11-20 via jina (https://example.com/docs/guide) -->\n\nThe guide explains how to configure the tool and names its three modes in plain words.\n\n## Source\n[l](https://example.com/docs/guide)\n"
+    },
+    {
+      "name": "a Harvested content section holding only its harvest comment",
+      "thin": true,
+      "body": "# t\n\n## Summary\nInferred from the source URL only — re-read the source before promoting.\n\n## Harvested content\n<!-- harvest-clips 2026-11-20 via jina (https://example.com/docs/guide) -->\n\n## Source\n[l](https://example.com/docs/guide)\n"
+    },
+    {
+      "name": "a Harvested content section of placeholder lines only",
+      "thin": true,
+      "body": "# t\n\n## Harvested content\n<!-- harvest-clips 2026-11-20 via jina (https://example.com/docs/guide) -->\n\n-\n\n## Source\n[l](https://example.com/docs/guide)\n"
     }
   ]
 }

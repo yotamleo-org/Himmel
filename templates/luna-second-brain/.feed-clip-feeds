@@ -1,23 +1,32 @@
 # <vault>/.feed-clip-feeds: release and blog feeds the clip pipeline pulls.
 #
-# One feed per line:   <feed-url> [label]
+# One feed per line:   <feed-url> [label] [skip=<word>,<word>]
 # `#` starts a comment. The label prefixes the clip title ("Claude Code: v2.1.0").
 # RSS, Atom and GitHub releases.atom feeds work. Each run clips at most 3 new
 # entries per feed, newest first; the rest arrive on later runs. A feed that
 # fails is reported on one line and never fails the run.
 # Login-walled hosts (x.com, instagram.com, reddit.com) are refused.
 #
+# skip= names words that mark an entry you do not want: an entry whose title holds
+# one (any case, not inside a longer word: `rc` skips "v2.1-rc1", not "source") is
+# not clipped, and it does not count as pending. A malformed skip= skips the line.
+#
 # Run:  node <obsidian-triage plugin dir>/tools/feed-clip.mjs --vault <this vault> --dry-run
 # prints what it would clip and writes nothing. Entries already clipped are
 # remembered in .feed-clip-seen.jsonl.
 #
-# The codex and t3code release feeds include pre-release and nightly builds.
+# A release clip carries the release notes as its text; /harvest-clips saves it
+# as an article and does not ingest the repository.
+# The vault upgrade installs this file once and never overwrites your copy.
+#
+# The codex and t3code release feeds include alpha, nightly, release-candidate
+# and mobile-build tags, which skip= leaves out.
 # Anthropic's engineering blog publishes no feed; add it here when it does.
 
 https://github.com/anthropics/claude-code/releases.atom Claude Code
 https://github.com/anthropics/claude-agent-sdk-python/releases.atom Claude Agent SDK (Python)
 https://github.com/anthropics/claude-agent-sdk-typescript/releases.atom Claude Agent SDK (TypeScript)
-https://github.com/openai/codex/releases.atom Codex
-https://github.com/pingdotgg/t3code/releases.atom T3 Code
+https://github.com/openai/codex/releases.atom Codex skip=alpha,nightly,rc,mobile
+https://github.com/pingdotgg/t3code/releases.atom T3 Code skip=alpha,nightly,rc,mobile
 https://github.com/modelcontextprotocol/modelcontextprotocol/releases.atom MCP specification
 https://openai.com/news/engineering/rss.xml OpenAI Engineering

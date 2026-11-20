@@ -64,6 +64,7 @@ owned_class() {
         .obsidian/community-plugins.json)             echo jsonmerge ;;
         .obsidian/plugins/*/data.json)                echo skipexists ;;
         .obsidian/plugins/*/main.js|.obsidian/plugins/*/manifest.json|.obsidian/plugins/*/styles.css) echo skipexists ;;
+        .feed-clip-feeds)                             echo skipexists ;;
         .obsidian/PLUGINS-SETUP.md)                   echo overwrite ;;
         .obsidian/app.json|.obsidian/appearance.json|.obsidian/graph.json|.obsidian/core-plugins.json) echo overwrite ;;
         scripts/*)                                    echo overwrite ;;

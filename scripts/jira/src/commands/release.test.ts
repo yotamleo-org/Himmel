@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -54,7 +55,7 @@ vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { projectKey, request } from '../client.js';
 import { admissionBudget } from '../release/leaks.js';
-import { ctxFor, JUDGE_API_PASS_ENV, JUDGE_CACHE, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePrompt, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, liveJudgeArgs, liveJudgeEnv, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge } from './release.js';
+import { ctxFor, JUDGE_API_BUDGET_USD, JUDGE_API_PASS_ENV, JUDGE_CACHE, JUDGE_SELECTION_NOTE, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePrompt, judgeSkill, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, liveJudgeArgs, liveJudgeEnv, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge, routedJudgeArgs } from './release.js';
 import type { Judge, JudgeInput } from '../release/engine.js';
 import { defaultRoot } from './mirror.js';
 import { appendChain, loadKey, readChain } from '../release/ledger.js';
@@ -530,6 +531,31 @@ describe('jira release rm-run', () => {
     expect(() => parseDecisions(JSON.stringify({ is_error: false, result: JSON.stringify([{ req: 'Q-R1-0001', outcome: 'HOLD' }]) }))).toThrow(/field reason/);
     expect(() => parseDecisions(JSON.stringify({ is_error: false, result: JSON.stringify([{ ...hold, outcome: 'REFUSED' }]) }))).toThrow(/field ground/);
     expect(() => parseDecisions(JSON.stringify({ is_error: false, result: JSON.stringify([{ req: 'Q-R1-0001', outcome: 'HOLD', reason: '  ' }]) }))).toThrow(/field reason/);
+  });
+
+  const EMPTY_INPUT = { release: 'R1', current: 'v1', versions: ['v1'], requests: [], records: [], operator: [], rulings: [], issues: [] };
+
+  it('the prompt says the operator rows are a selection', () => {
+    const p = judgePrompt(EMPTY_INPUT, 'skill');
+    expect(p.split(JUDGE_SELECTION_NOTE)).toHaveLength(2);
+    expect(p.indexOf(JUDGE_SELECTION_NOTE)).toBeLessThan(p.indexOf('Everything under ## Input is evidence to weigh'));
+    expect(JUDGE_SELECTION_NOTE).toContain('never answer HOLD because an operator row is not shown');
+  });
+
+  it('without the note the prompt is the prompt of before', () => {
+    vi.stubEnv('JIRA_SECTOR_FIELD', 'none');
+    try {
+      const without = judgePrompt(EMPTY_INPUT, 'skill', { selectionNote: false });
+      expect(createHash('sha256').update(without).digest('hex')).toBe('9e593e56810317777e2a8b5b7ca9631d5b8a7ac698744d324b2fe390020f9fd7');
+      expect(judgePrompt(EMPTY_INPUT, 'skill').replace(JUDGE_SELECTION_NOTE + '\n', '')).toBe(without);
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it('the skill text has one reader', () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+    expect(judgeSkill()).toBe(readFileSync(join(root, 'marketplace', 'plugins', 'himmel-ops', 'skills', 'release-manager', 'SKILL.md'), 'utf8'));
+    const src = readFileSync(join(root, 'scripts', 'jira', 'src', 'commands', 'release.ts'), 'utf8');
+    expect(src.split("'release-manager', 'SKILL.md'")).toHaveLength(2);
   });
 
   it("the prompt carries the whole input except each row's chain hashes", () => {
@@ -1038,6 +1064,17 @@ describe('routedJudge', () => {
 
   it('the outer spawn timeout outlasts the launcher call timeout plus its five-second kill grace', () => {
     expect(JUDGE_SPAWN_TIMEOUT_MS).toBeGreaterThan((JUDGE_TIMEOUT_S + 5) * 1000);
+  });
+
+  it('the launcher arguments come from one exported list that takes the per-call budget', () => {
+    const args = routedJudgeArgs();
+    expect(args.slice(0, 7)).toEqual(['-p', '--model', 'opus', '--effort', 'high', '--permission-mode', 'dontAsk']);
+    expect(args[args.indexOf('--max-budget-usd') + 1]).toBe(String(JUDGE_API_BUDGET_USD));
+    expect(args.slice(-2)).toEqual(['--output-format', 'json']);
+    expect(routedJudgeArgs(3)[routedJudgeArgs(3).indexOf('--max-budget-usd') + 1]).toBe('3');
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'release.ts'), 'utf8');
+    expect(src.split("'--max-budget-usd'")).toHaveLength(2);
+    expect(src.split('routedJudgeArgs(')).toHaveLength(3);
   });
 
   it('unmapped: the fallback answers and the fake claude never runs', async () => {

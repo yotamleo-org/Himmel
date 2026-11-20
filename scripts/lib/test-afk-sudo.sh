@@ -2133,6 +2133,83 @@ lay_out "$LX"
 printf '\n' >> "$LX/never_remote.py"
 assert_eq "RED 9691: an installed floor that differs is named" "$LX/never_remote.py" "$(inst stale_files "$LIB" "$LX" 2>&1)"
 
+echo "== HIMMEL-10430: the request kind installs on macOS =="
+INSTALL="$LIB/install.sh"
+# shellcheck disable=SC2030,SC2031,SC1090,SC2123
+root_group_on() { ( PATH="$STUBS/$1"; export AFK_OS_RELEASE="$tmp/os-arch"; source "$INSTALL" && echo "$ROOT_GROUP" ); }
+assert_eq "RED 10430: on macOS gid 0's group is wheel" "wheel" "$(root_group_on mac)"
+assert_eq "10430: on Linux the group stays root" "root" "$(root_group_on linux)"
+# shellcheck disable=SC2016 # the patterns are literal text
+assert_eq "RED 10430: no install site names the root group literally" "none" \
+    "$(grep -nE -e '-g root([[:space:]]|$)' -e 'root:root' "$INSTALL" | head -n 1 | grep . || echo none)"
+assert_eq "RED 10430: no install call takes /dev/null as its source (BSD install refuses it)" "none" \
+    "$(grep -n '^[^#]*install .*/dev/null' "$INSTALL" | head -n 1 | grep . || echo none)"
+mkdir -p "$tmp/py/bin" "$tmp/py/wbin" "$tmp/py/real"
+chmod 755 "$tmp/py" "$tmp/py/bin" "$tmp/py/real"; chmod 775 "$tmp/py/wbin"
+printf '#!/bin/sh\nexit 0\n' > "$tmp/py/bin/new"; printf '#!/bin/sh\nexit 1\n' > "$tmp/py/bin/old"; printf 'x\n' > "$tmp/py/bin/noexec"
+chmod 755 "$tmp/py/bin/new" "$tmp/py/bin/old"; chmod 644 "$tmp/py/bin/noexec"
+cp "$tmp/py/bin/new" "$tmp/py/wbin/new"; chmod 755 "$tmp/py/wbin/new"
+cp "$tmp/py/bin/new" "$tmp/py/bin/filew"; chmod 757 "$tmp/py/bin/filew"
+cp "$tmp/py/bin/new" "$tmp/py/real/new"; chmod 755 "$tmp/py/real/new"
+ln -s ../real/new "$tmp/py/bin/viagood"
+ln -s ../wbin/new "$tmp/py/bin/viabad"
+ME=$(id -u); PY="$tmp/py"
+trusted() { inst path_trusted "$@" >/dev/null 2>&1 && echo yes || echo no; }
+assert_eq "RED 10430: a file and directories owned by the uid and not group- or world-writable are trusted" "yes" "$(trusted "$ME" "$PY" "$PY/bin/new")"
+assert_eq "RED 10430: a group-writable directory on the path is not trusted" "no" "$(trusted "$ME" "$PY" "$PY/wbin/new")"
+assert_eq "RED 10430: a world-writable file is not trusted" "no" "$(trusted "$ME" "$PY" "$PY/bin/filew")"
+assert_eq "RED 10430: a link to a trusted file is trusted" "yes" "$(trusted "$ME" "$PY" "$PY/bin/viagood")"
+assert_eq "RED 10430: a link into a writable directory is not trusted" "no" "$(trusted "$ME" "$PY" "$PY/bin/viabad")"
+assert_eq "RED 10430: a file owned by someone else is not trusted" "no" "$(trusted "$((ME + 1))" "$PY" "$PY/bin/new")"
+assert_eq "RED 10430: a missing file is not trusted" "no" "$(trusted "$ME" "$PY" "$PY/bin/missing")"
+ln -s ../real/new "$PY/wbin/link"
+REAL=$(cd -P "$PY/real" && pwd -P)/new
+assert_eq "RED 10430: path_trusted prints the resolved path of a link" "$REAL" "$(inst path_trusted "$ME" "$PY" "$PY/bin/viagood" 2>/dev/null)"
+assert_eq "RED 10430: pick_python returns the resolved file, never a link in a writable directory" "$REAL" "$(inst pick_python "$ME" "$PY" "$PY/wbin/link" 2>/dev/null)"
+assert_eq "RED 10430: pick_python skips a missing, a non-executable, a too-old and an untrusted python" "$PY/bin/new" \
+    "$(inst pick_python "$ME" "$PY" "$PY/bin/missing" "$PY/bin/noexec" "$PY/bin/old" "$PY/wbin/new" "$PY/bin/filew" "$PY/bin/new" 2>&1)"
+assert_eq "RED 10430: pick_python never runs an untrusted candidate" "1" "$(inst pick_python "$ME" "$PY" "$PY/wbin/new" >/dev/null 2>&1; echo $?)"
+assert_eq "RED 10430: pick_python fails when none qualifies" "1" "$(inst pick_python "$ME" "$PY" "$PY/bin/old" >/dev/null 2>&1; echo $?)"
+inst install_helper "$LIB/afk_sudo.py" "$tmp/helper-out" /opt/homebrew/bin/python3 >/dev/null 2>&1
+assert_eq "RED 10430: the installed helper's shebang names the chosen python" "#!/opt/homebrew/bin/python3 -I" "$(head -n 1 "$tmp/helper-out" 2>/dev/null)"
+assert_eq "RED 10430: only the shebang line differs from the source" "" "$(diff <(tail -n +2 "$LIB/afk_sudo.py") <(tail -n +2 "$tmp/helper-out" 2>/dev/null) 2>&1)"
+assert_eq "RED 10430: the installed helper is executable" "755" "$(mode_of "$tmp/helper-out" 2>/dev/null)"
+assert_eq "RED 10430: a python path with a space is refused" "1" "$(inst install_helper "$LIB/afk_sudo.py" "$tmp/helper-bad" "/opt/my python/bin/python3" >/dev/null 2>&1; echo $?)"
+inst install_helper "$LIB/afk_sudo.py" "$tmp/helper-plain" >/dev/null 2>&1
+assert_eq "10430: with no python named the helper is copied as it is (Linux)" "" "$(cmp "$LIB/afk_sudo.py" "$tmp/helper-plain" 2>&1)"
+inst create_ledger "$tmp/ledger-out" >/dev/null 2>&1
+assert_eq "RED 10430: the ledger is created empty, mode 644, without /dev/null" "644 0" "$(mode_of "$tmp/ledger-out" 2>/dev/null) $(wc -c < "$tmp/ledger-out" 2>/dev/null | tr -d ' ')"
+printf 'Defaults env_reset\n#includedir /etc/sudoers.d\n' > "$tmp/sudoers-ok"
+printf 'Defaults env_reset\n@includedir /private/etc/sudoers.d\n' > "$tmp/sudoers-at"
+printf 'Defaults env_reset\n# includedir /etc/sudoers.d\n' > "$tmp/sudoers-comment"
+printf 'Defaults env_reset\n#includedir /etc/other.d\n' > "$tmp/sudoers-other"
+assert_eq "RED 10430: #includedir /etc/sudoers.d passes the preflight" "0" "$(inst sudoers_includes_dropin "$tmp/sudoers-ok" >/dev/null 2>&1; echo $?)"
+assert_eq "RED 10430: @includedir /private/etc/sudoers.d passes the preflight" "0" "$(inst sudoers_includes_dropin "$tmp/sudoers-at" >/dev/null 2>&1; echo $?)"
+assert_eq "RED 10430: a commented include fails the preflight" "1" "$(inst sudoers_includes_dropin "$tmp/sudoers-comment" >/dev/null 2>&1; echo $?)"
+assert_eq "RED 10430: another directory fails the preflight" "1" "$(inst sudoers_includes_dropin "$tmp/sudoers-other" >/dev/null 2>&1; echo $?)"
+assert_eq "RED 10430: a missing sudoers file fails the preflight" "no" "$(inst sudoers_includes_dropin "$tmp/sudoers-none" >/dev/null 2>&1 && echo yes || echo no)"
+
+echo "== HIMMEL-10430: run, grant and op requests refuse plainly on macOS =="
+cat > "$tmp/darwin-shim.py" <<'DARWIN'
+import os, sys
+sys.path.insert(0, sys.argv[1])
+import afk_sudo as s
+sys.platform = "darwin"
+if hasattr(os, "O_PATH"):
+    del os.O_PATH
+sys.exit(s.main(sys.argv[2:]))
+DARWIN
+new_root darwin; cfg "$ALL" true; DT="HIMMEL-""8067"
+dh() { local off="$1"; shift; AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + off)) AFK_SUDO_RUN=1 python3 -I "$tmp/darwin-shim.py" "$LIB" "$@" </dev/null 2>&1; echo "rc=$?"; }
+UNSUP=$'result=unsupported-platform\nrc=5'
+assert_eq "RED 10430: run-request answers unsupported-platform, no traceback" "$UNSUP" "$(dh 0 run-request --session S1 --ticket "$DT" --blocked-by prompt -- true)"
+assert_eq "RED 10430: op-request answers unsupported-platform" "$UNSUP" "$(dh 0 op-request --session S1 --ticket "$DT" -- status)"
+assert_eq "RED 10430: grant-request answers unsupported-platform" "$UNSUP" "$(dh 0 grant-request --session S1 --ticket "$DT" --cwd /work)"
+assert_eq "RED 10430: grant-spend answers unsupported-platform" "$UNSUP" "$(dh 0 grant-spend --session S1 --sha256 "$(printf 'a%.0s' $(seq 64))" --cwd /work)"
+out=$(dh 0 request --session S1 --ticket HIMMEL-8066 --cwd /work -- systemctl restart himmel-test.service)
+assert_contains "10430: the sudo request kind still files its request on macOS" "result=pending" "$out"
+assert_absent "10430: and prints no traceback" "Traceback" "$out"
+
 echo
 echo "test summary: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

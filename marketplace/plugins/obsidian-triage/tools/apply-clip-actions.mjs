@@ -43,6 +43,17 @@ const out = (s) => process.stdout.write(s + "\n");
 const err = (s) => process.stderr.write(s + "\n");
 function die(code, msg) { err(`${SELF}: ${msg}`); process.exit(code); }
 
+const USAGE = "usage: apply-clip-actions.mjs --vault <path> [--date YYYY-MM-DD] [--limit N] [--dry-run|--apply|--revert <ledger>]";
+
+function valueOf(argv, i, flag) {
+  const v = argv[i + 1];
+  if (v === undefined || v === "" || v.startsWith("--")) {
+    err(`${SELF}: ${flag} needs a value`);
+    die(1, USAGE);
+  }
+  return v;
+}
+
 function localToday() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -53,16 +64,16 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const t = argv[i];
     if (t === "--vault") a.vault = argv[++i];
-    else if (t === "--date") a.date = argv[++i];
+    else if (t === "--date") { a.date = valueOf(argv, i, t); i++; }
     else if (t === "--limit") {
       const v = argv[++i];
       if (!/^[1-9]\d*$/.test(v || "")) die(1, `--limit needs a positive integer, got: ${v}`);
       a.limit = Number(v);
     }
-    else if (t === "--ledger") a.ledger = argv[++i];
+    else if (t === "--ledger") { a.ledger = valueOf(argv, i, t); i++; }
     else if (t === "--dry-run") a.mode = "dry-run";
     else if (t === "--apply") a.mode = "apply";
-    else if (t === "--revert") { a.mode = "revert"; a.revertPath = argv[++i]; }
+    else if (t === "--revert") { a.mode = "revert"; a.revertPath = valueOf(argv, i, t); i++; }
     else die(1, `unknown arg: ${t}`);
   }
   return a;
@@ -89,7 +100,7 @@ function blockerOf(abs) {
   return `an existing ${kind} sits there, nothing written`;
 }
 
-const tmpNameOf = (abs) => path.join(path.dirname(abs), `.${path.basename(abs)}.apply-clip-actions.tmp`);
+const tmpNameOf = (abs) => path.join(path.dirname(abs), `.${sha256(path.basename(abs)).slice(0, 16)}.apply-clip-actions.tmp`);
 
 function refusalFor(abs) {
   const blocked = blockerOf(abs);
@@ -226,18 +237,20 @@ function runRevert(vault, revertPath) {
   });
 
   let reverted = 0, already = 0, refused = 0, gone = 0;
-  const outside = new Set();
+  const outside = new Map();
   for (let i = entries.length - 1; i >= 0; i--) {
     const e = entries[i];
     for (const rel of e.action === "fold" ? [e.map] : e.files.map((f) => f.rel)) {
       const abs = absOf(vault, rel);
       const why = abs ? lstatOf(abs).why : "the path leaves the vault, nothing written";
       if (!why) continue;
-      out(`⊘ ${rel} — refused: ${why}`);
       refused++;
-      outside.add(rel);
+      const seen = outside.get(rel) ?? { why, n: 0 };
+      seen.n++;
+      outside.set(rel, seen);
     }
   }
+  for (const [rel, { why, n }] of outside) out(`⊘ ${rel} — refused: ${why}${n > 1 ? ` (${n} ledger lines)` : ""}`);
   const preApplyHashes = new Map();
   const notePreApply = (rel, i, h) => {
     if (!preApplyHashes.has(rel)) preApplyHashes.set(rel, []);
@@ -306,7 +319,7 @@ function takeLock(vault) {
 }
 
 const a = parseArgs(process.argv.slice(2));
-if (!a.vault) die(1, "usage: apply-clip-actions.mjs --vault <path> [--date YYYY-MM-DD] [--limit N] [--dry-run|--apply|--revert <ledger>]");
+if (!a.vault) die(1, USAGE);
 if (!fs.existsSync(a.vault) || !fs.statSync(a.vault).isDirectory()) die(1, `vault not found: ${a.vault}`);
 const date = a.date || localToday();
 if (!isCalendarDate(date)) die(1, "invalid --date (YYYY-MM-DD)");

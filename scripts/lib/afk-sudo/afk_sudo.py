@@ -1755,6 +1755,11 @@ def main(argv):
     sub.add_parser("mode").add_argument("cmd", nargs=argparse.REMAINDER)
     args = p.parse_args(argv)
 
+    # These kinds execute by descriptor (O_PATH, /proc/self/fd, setpriv), which macOS lacks; refuse them
+    # plainly instead of failing with an AttributeError as root. The sudo `request` kind is portable.
+    if sys.platform == "darwin" and args.verb in ("run-request", "grant-request", "op-request", "grant-spend"):
+        print("result=unsupported-platform")
+        return 5
     if os.geteuid() != 0 and not SEAM:
         print("result=not-root")
         return 5

@@ -34,6 +34,7 @@ tree_hash() {
         | while read -r f; do sha "$f"; done | sha | cut -d' ' -f1 )
 }
 count() { grep -c -- "$1" "$2" 2>/dev/null || true; }
+tmpname_of() { node -e 'process.stdout.write("." + require("crypto").createHash("sha256").update(process.argv[1]).digest("hex").slice(0, 16) + ".apply-clip-actions.tmp")' "$1"; }
 lines() { wc -l "$1" | awk '{print $1}'; }
 
 mkclip() {
@@ -416,17 +417,17 @@ assert "the link is still a link after an apply" "yes" "$([ -L "$Q/60-Maps/Beta-
 
 R="$tmp/R"; cp -R "$P" "$R"
 printf 'victim of a planted link\n' > "$tmp/victim.md"; cp "$tmp/victim.md" "$tmp/victim.copy"
-ln -s "$tmp/victim.md" "$R/Clippings/_evidence/.arch-1.md.apply-clip-actions.tmp"
+ln -s "$tmp/victim.md" "$R/Clippings/_evidence/$(tmpname_of arch-1.md)"
 out="$(node "$APPLY" --vault "$R" --date "$D" --apply --limit 50 2>&1)"; rc=$?
 assert "a link planted at the temporary name: the victim file is byte for byte unchanged" "" "$(cmp "$tmp/victim.copy" "$tmp/victim.md" 2>&1)"
 assert "the planted link is reported as a refusal" "1" "$(printf '%s\n' "$out" | grep -c 'refused: .*apply-clip-actions.tmp')"
 assert "the apply summary counts the refusal" "1" "$(printf '%s\n' "$out" | grep -c ', 1 refused$')"
 assert "the page behind the planted link is not stamped" "0" "$(count '^archived' "$R/Clippings/_evidence/arch-1.md")"
 assert "the refused action leaves no ledger line" "0" "$(count 'arch-1' "$R/$LEDGER_NAME")"
-assert "the planted link is left in place" "yes" "$([ -L "$R/Clippings/_evidence/.arch-1.md.apply-clip-actions.tmp" ] && echo yes || echo no)"
+assert "the planted link is left in place" "yes" "$([ -L "$R/Clippings/_evidence/$(tmpname_of arch-1.md)" ] && echo yes || echo no)"
 
 T3="$tmp/T3"; cp -R "$tmp/W0" "$T3"
-TMPNAME="$(dirname "$T3/$REL_A")/.$(basename "$REL_A").apply-clip-actions.tmp"
+TMPNAME="$(dirname "$T3/$REL_A")/$(tmpname_of "$(basename "$REL_A")")"
 ln -s "$tmp/victim.md" "$TMPNAME"
 out="$(node "$APPLY" --vault "$T3" --revert "$T3/$LEDGER_NAME" 2>&1)"; rc=$?
 assert "a link planted at the temporary name during an undo: exit 3" "3" "$rc"
@@ -434,6 +435,34 @@ assert "the undo leaves the victim byte for byte unchanged" "" "$(cmp "$tmp/vict
 assert "the undo reports the planted link" "1" "$(printf '%s\n' "$out" | grep -c '^⊘ .*refused: .*apply-clip-actions.tmp')"
 assert "the page behind the planted link keeps its applied bytes" "" "$(cmp "$tmp/W0/$REL_A" "$T3/$REL_A" 2>&1)"
 
+echo "Test group 6j: a page named at the file system's name limit"
+for len in 232 255; do
+    LONGN="$(head -c "$((len - 3))" /dev/zero | tr '\0' k)"
+    LV="$tmp/LV$len"; mkdir -p "$LV/Clippings/_evidence" "$LV/60-Maps" "$LV/50-Journal/Daily"
+    P_SAVED="$P"; P="$LV"; mkclip "$LONGN" "$D0" "" 2>/dev/null; P="$P_SAVED"
+    if [ ! -e "$LV/Clippings/_evidence/$LONGN.md" ]; then echo "  SKIP  a page name of $len bytes (this file system refuses it)"; continue; fi
+    node "$TIMELINE" --vault "$LV" --date "$D0" >/dev/null 2>&1
+    node "$TIMELINE" --vault "$LV" --date "$D" >/dev/null 2>&1
+    out="$(node "$APPLY" --vault "$LV" --date "$D" --apply --limit 5 2>&1)"; rc=$?
+    assert "a $len-byte page name: the apply exits 0" "0" "$rc"
+    assert "a $len-byte page name: the page is stamped archived" "1" "$(count '^archived: true$' "$LV/Clippings/_evidence/$LONGN.md")"
+    assert "a $len-byte page name: no temporary file is left beside it" "0" "$(find "$LV/Clippings/_evidence" -name '*.tmp' | wc -l | tr -d ' ')"
+    out="$(node "$APPLY" --vault "$LV" --revert "$LV/$LEDGER_NAME" 2>&1)"; rc=$?
+    assert "a $len-byte page name: the undo exits 0" "0" "$rc"
+    assert "a $len-byte page name: the undo restores the page" "0" "$(count '^archived' "$LV/Clippings/_evidence/$LONGN.md")"
+done
+
+echo "Test group 6k: an escaping page named by several ledger lines is refused on one line"
+printf '%s\n%s\n%s\n%s\n%s\n' "$LINE_A" "$EVIL" "$EVIL" "$EVIL" "$LINE_B" > "$tmp/same.jsonl"
+W3="$tmp/W3"; cp -R "$tmp/W0" "$W3"
+out="$(node "$APPLY" --vault "$W3" --revert "$tmp/same.jsonl" 2>&1)"; rc=$?
+assert "three ledger lines naming one escaping page: the undo exits 3" "3" "$rc"
+assert "the page is named on exactly one refusal line" "1" "$(printf '%s\n' "$out" | grep -c '^⊘ ../outside.md — ')"
+assert "that line says how many ledger lines named it" "1" "$(printf '%s\n' "$out" | grep -c '^⊘ ../outside.md — .*(3 ledger lines)')"
+assert "the refused total still counts every ledger line" "1" "$(printf '%s\n' "$out" | grep -c ', 3 refused')"
+assert "every page of the other two lines is still restored" "$n_ab" "$(diff -rq "$tmp/W0" "$W3" | grep -c '^Files')"
+
+echo "Test group 6l: a ledger page path through a regular file, and a page that cannot be inspected"
 THRU='{"action":"fold","map":"'"$REL_A"'/x.md","map_sha256_before":"a","map_sha256":"b","at":0,"appended":"x"}'
 printf '%s\n%s\n%s\n' "$LINE_A" "$THRU" "$LINE_B" > "$tmp/through.jsonl"
 U="$tmp/U"; cp -R "$tmp/W0" "$U"
@@ -456,6 +485,8 @@ assert "the apply refuses it with one line" "1" "$(printf '%s\n' "$out" | grep -
 assert "the apply summary counts the refusal" "1" "$(printf '%s\n' "$out" | grep -c ', 1 refused$')"
 assert "the other actions are still applied" "yes" "$([ "$(printf '%s\n' "$out" | grep -c '^✓ ')" -gt 0 ] && echo yes || echo no)"
 assert "the refused action leaves no ledger line for that page" "0" "$(count 'arch-1' "$N/$LEDGER_NAME")"
+assert "the refused page keeps its bytes" "" "$(cmp "$P/Clippings/_evidence/arch-1.md" "$N/Clippings/_evidence/arch-1.md" 2>&1)"
+assert "the ledger holds one line per applied action and none for the refused one" "$(printf '%s\n' "$out" | grep -c '^✓ ')" "$(lines "$N/$LEDGER_NAME")"
 
 echo "Test group 7: arguments"
 node "$APPLY" --vault "$A" --date "$D" --limit 0 >/dev/null 2>&1; assert "--limit 0 is refused" "1" "$?"
@@ -465,6 +496,26 @@ node "$APPLY" --vault "$A" --date 2026-13-40 >/dev/null 2>&1; assert "an impossi
 node "$APPLY" --vault "$A" --date "$D" --revert "$tmp/none.jsonl" >/dev/null 2>&1; assert "a missing ledger is refused" "1" "$?"
 printf '{"action":"fold","map":"../escape.md","map_sha256_before":"a","map_sha256":"b","at":0,"appended":"x"}\n' > "$tmp/evil.jsonl"
 node "$APPLY" --vault "$A" --revert "$tmp/evil.jsonl" >/dev/null 2>&1; assert "a ledger path escaping the vault is refused (exit 3)" "3" "$?"
+
+echo "Test group 7b: an option that takes a value, given none or followed by another option, is refused and writes nothing"
+V7="$tmp/args-vault"; cp -R "$P" "$V7"
+mkdir -p "$tmp/args-cwd"
+whole_hash() { ( cd "$1" && find . | LC_ALL=C sort; find . -type f -exec cksum {} + | LC_ALL=C sort ) | cksum; }
+refused_untouched() {
+    local label="$1" rc hv hc
+    shift
+    hv="$(whole_hash "$V7")"; hc="$(whole_hash "$tmp/args-cwd")"
+    ( cd "$tmp/args-cwd" && node "$APPLY" --vault "$V7" "$@" >"$tmp/args.out" 2>"$tmp/args.err" ); rc=$?
+    assert "$label: exit 1, a usage line, the vault and the working directory untouched" "1 1 same same" \
+        "$rc $(grep -c 'usage: apply-clip-actions.mjs' "$tmp/args.err") $([ "$hv" = "$(whole_hash "$V7")" ] && echo same || echo changed) $([ "$hc" = "$(whole_hash "$tmp/args-cwd")" ] && echo same || echo changed)"
+}
+refused_untouched "--date with no value" --apply --date
+refused_untouched "--date followed by another option" --date --apply
+refused_untouched "--ledger with no value" --apply --ledger
+refused_untouched "--ledger followed by another option" --ledger --apply
+refused_untouched "--revert with no value" --revert
+refused_untouched "--revert followed by another option" --revert --apply
+refused_untouched "--date given an empty value" --apply --date ""
 
 echo
 echo "apply-clip-actions: $pass passed, $fail failed"

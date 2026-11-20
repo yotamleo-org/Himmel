@@ -150,6 +150,7 @@ function readClip(vault, abs, since) {
       : { skip: true };
   }
   if (fmScalar(lines, b.close, "processed") !== "true") return { skip: true };
+  if (fmScalar(lines, b.close, "archived") === "true") return { skip: true };
   for (let i = 1; i < b.close; i++) {
     const l = stripCR(lines[i]);
     if (l === "" || /^[\s#-]/.test(l) || /^[^\s:#][^:]*:(\s|$)/.test(l)) continue;
