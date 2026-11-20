@@ -846,6 +846,12 @@ out=$(QMD_CADENCE_CRONTAB="$tmp/rr-crons/crontab-hourly" PIPELINE_BAT_DIR="$tmp/
   UPSTREAMWATCH_BAT_DIR="$tmp/rr-none" GRAPH_CHOICES_BAT_DIR="$tmp/rr-none" STEERING_CULL_RUNNER_DIR="$tmp/rr-none" report_cadence_stale apply 2>&1)
 check "qmd armed --hourly falls back to the nudge" "qmd-cadence runners are STALE" "$out"
 if [ ! -s "$rr/arm.log" ]; then echo "ok: hourly qmd is not re-armed at the daily default"; else echo "FAIL: hourly qmd re-armed"; cat "$rr/arm.log"; fail=1; fi
+printf '#!/bin/sh\ncat <<EOT\n45 01 * * * /x/f.sh # HIMMEL-Pipeline-FetchHealth\n00 09 * * 2 /x/h.sh # HIMMEL-Pipeline-Harvest\n08 08 * * * /x/s.sh # HIMMEL-Pipeline-Synthesize\n30 09 * * 3 /x/l.sh # HIMMEL-Pipeline-Health\nEOT\n' > "$tmp/rr-crons/crontab-weekly"; chmod +x "$tmp/rr-crons/crontab-weekly"
+: > "$rr/arm.log"
+out=$(PIPELINE_CRONTAB="$tmp/rr-crons/crontab-weekly" PIPELINE_BAT_DIR="$rrp" HIMMEL_REARM_ROOT="$rr" GRAPHMAP_BAT_DIR="$tmp/rr-none" QMD_CADENCE_BAT_DIR="$tmp/rr-none" \
+  UPSTREAMWATCH_BAT_DIR="$tmp/rr-none" GRAPH_CHOICES_BAT_DIR="$tmp/rr-none" STEERING_CULL_RUNNER_DIR="$tmp/rr-none" report_cadence_stale apply 2>&1)
+check "pipeline harvest armed on a weekday falls back to the nudge" "pipeline-cadence runners are STALE" "$out"
+if [ ! -s "$rr/arm.log" ]; then echo "ok: weekly harvest is not re-armed as daily"; else echo "FAIL: weekly harvest re-armed"; cat "$rr/arm.log"; fail=1; fi
 mkdir -p "$tmp/rr-steer" "$tmp/rr-cronstub"
 # shellcheck disable=SC2016  # the fixture runner's own $log stays literal
 printf '#!/usr/bin/env bash\n# himmel-cadence-runner-format: %s\nlog=x\nexport STEERING_CULL_BACKEND=claude-cli\nbash /r/steering-cull-cadence.sh run --repo /r --proposal-dir /p/dir --chief chief-a >> "$log" 2>&1\n' "$((CADENCE_RUNNER_FORMAT_VERSION - 1))" > "$tmp/rr-steer/steering-cull-cadence.sh"

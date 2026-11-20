@@ -867,6 +867,7 @@ _pipeline_rearm_args() {
     hv=$(_cron_entry_time "$bin" HIMMEL-Pipeline-Harvest) || return 1
     sy=$(_cron_entry_time "$bin" HIMMEL-Pipeline-Synthesize) || return 1
     he=$(_cron_entry_time "$bin" HIMMEL-Pipeline-Health) || return 1
+    [ "${fh#* }" = "*" ] && [ "${hv#* }" = "*" ] && [ "${sy#* }" = "*" ] || return 1
     hdow="${he#* }"
     case "$hdow" in
         '*') d=DAILY ;; 0|7) d=SUN ;; 1) d=MON ;; 2) d=TUE ;; 3) d=WED ;; 4) d=THU ;; 5) d=FRI ;; 6) d=SAT ;;
