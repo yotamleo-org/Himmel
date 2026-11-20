@@ -40,8 +40,8 @@ case "$verb" in
         rm -f "$RST/units/$unit.enabled" "$RST/units/$unit.active"
         exit 0
         ;;
-    daemon-reload)
-        [ -f "$RST/units/daemon-reload.fail" ] && exit 1
+    daemon-reload) # t13b-ok: test shim case pattern for systemctl daemon-reload, runs nothing
+        [ -f "$RST/units/daemon-reload.fail" ] && exit 1 # t13b-ok: test shim fails a faked daemon-reload on request, runs nothing
         exit 0
         ;;
     *)
