@@ -642,6 +642,11 @@ trap 'lookonly_carry; digest_flush; heartbeat exited "$exit_reason"' EXIT
 trap "exit_reason='signal-TERM'; exit 143" TERM
 trap "exit_reason='signal-INT'; exit 130" INT
 trap "exit_reason='signal-HUP'; exit 129" HUP
+# The supervisor only samples for a safe point, so a stream child honours a stop request at each one itself.
+stream_stop_point() {
+    [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ] && [ -e "$inbox.wait.stop" ] || return 0
+    exit_reason='stream-stop'; exit 143
+}
 
 # with --workers-from (or WORKERS_FROM) the argv never changes when the
 # chief dispatches or wraps, so the manifest's worker list is folded into the
@@ -2774,6 +2779,7 @@ while :; do
             [ "$(date +%s)" -lt "$next_tick" ] || stream_tick_turn=1
             idle_passes=0
             heartbeat waiting
+            stream_stop_point
             sleep "$poll" 9>&-
             continue
         fi
@@ -3048,6 +3054,7 @@ while :; do
         exit_reason='wake-housekeeping'; exit 0
     fi
     heartbeat waiting
+    stream_stop_point
     # an offer is work of the pass that saw it only: read and cleared here, so a pass that skips the service block
     # (handover mode) never counts an earlier pass's offer as its own
     [ -z "${r0_offered:-}" ] || idle_passes=0

@@ -542,7 +542,7 @@ class Supervisor:
         reason = hb['exit']
         if reason.startswith('wake-'):
             return 0
-        return {'signal-TERM': 143, 'signal-INT': 130, 'signal-HUP': 129}.get(reason, 1)
+        return {'signal-TERM': 143, 'stream-stop': 143, 'signal-INT': 130, 'signal-HUP': 129}.get(reason, 1)
 
     def finish(self, busy):
         stopped = self.stop_started is not None
