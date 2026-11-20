@@ -177,14 +177,7 @@ token, **narrowing or halt requires none**; a revision never widens the child's
 tool permissions. Never paste your inbound token into a brief. Threat model:
 `{{REPO}}/docs/internals/retask-channel.md`. Verify a worker's finding before you
 rule; batch rulings per decision point.
-
-**Rule for the proper fix at the smallest size.** The fix lands at the cause, never
-around a doc or comment that only describes today's behaviour, and adds no gate,
-abstraction or option the ticket does not need. A proper fix outside the worker's
-scope becomes a ticket, never a silent workaround. State the reason with the ruling.
-Take it to the operator, never rule alone, when it would change or set aside a
-`CLAUDE.md` rule, relax a guard or move scope; when unsure, ask one `judge-ro`
-question first.
+Standard: `{{REPO}}/docs/handover/running-a-chief.md#rulings`.
 
 ## Merges — READY → GO → merge
 

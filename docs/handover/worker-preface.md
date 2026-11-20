@@ -73,10 +73,6 @@ Adopt a fresh token if one came; then in your very next tool batch `append-resul
 
 - **Do the work yourself** unless the brief says otherwise; never spawn a
   subagent to verify your own work. **No unrequested features, tests or files.** [prose]
-- **A doc page or code comment describes; it is not a rule.** When one stands in the
-  way of the proper fix, fix the cause and change the text in the same PR, never a
-  workaround that keeps the text true. If it reads as a deliberate constraint, or
-  the fix leaves your `Writes`, send a `FINDING` and keep working on the rest. [prose]
 - **A write onto another holder's file is denied, and the deny says how to ask.** A
   free file outside `Writes` is claimed and named on your PR's `outside-writes:` line. [prose]
 - **Search with Bash** (`git grep`, `git ls-files`), no Grep/Glob. Structure:

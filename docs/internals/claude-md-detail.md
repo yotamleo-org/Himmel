@@ -86,11 +86,14 @@ examples:
 Three kinds of text, told apart by how they reached you:
 
 - **Hard.** An `[enforced]` rule: a hook or gate holds it, whatever the prose says.
-- **Escalation.** A `[prose]` rule you were loaded with: a `CLAUDE.md`, your brief
-  and its preface, and the docs those point to for detail. Leave it only on a
-  ruling. A worker asks the chief with a `FINDING`; the chief rules, or takes it to
-  the operator when the ruling would change or set aside a `CLAUDE.md` rule, relax
-  a guard or move scope. A session with no chief asks the operator.
+  A hook or gate that looks wrong is reported, never worked around.
+- **Escalation.** A rule you were loaded with and nothing enforces: a `CLAUDE.md`,
+  your brief and its preface, a skill or command you run with its reference files,
+  and the docs those point to for detail. Leave it only on a ruling. A worker asks
+  the chief with a `FINDING` and keeps working on what does not depend on the
+  answer; the chief rules, or takes it to the operator when the ruling would change
+  or set aside a `CLAUDE.md` rule, relax a guard or move scope. A session with no
+  chief asks the operator.
 - **Description.** Every other doc page and every code comment. It says how the
   system works today. When it stands in the way of the proper fix, fix the cause
   and change the text in the same PR. A workaround built to keep the text true
