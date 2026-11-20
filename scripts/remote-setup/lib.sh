@@ -238,7 +238,7 @@ rs_tg() {
             continue
         fi
         printf '%s\n' "$out"
-        [ "$(printf '%s' "$out" | jq -r '.ok // false')" = true ]
+        [ "$(printf '%s' "$out" | jq -r '.ok == true')" = true ]
         return
     done
 }
@@ -283,7 +283,7 @@ rs_getme() {
 # an EXIT, INT or TERM puts it back. With no active unit, a launcher script that still
 # reports a running process is stopped through that script. Returns 1 when a stop failed.
 rs_unit_stop() {
-    local unit=$1 label=$2 fallback=${3:-} uid
+    local unit=$1 label=$2 fallback=${3:-} uid running
     uid=$(id -u)
     if [ "$(uname)" = Darwin ]; then
         if command -v launchctl >/dev/null 2>&1 && launchctl print "gui/$uid/$label" >/dev/null 2>&1; then
@@ -298,9 +298,14 @@ rs_unit_stop() {
             return 0
         fi
     fi
-    if [ -n "$fallback" ] && [ -f "$fallback" ] && bash "$fallback" status 2>/dev/null | grep -q 'bridge process(es):'; then
-        bash "$fallback" stop >/dev/null 2>&1 || return 1
-        RS_UNITS_STOPPED="${RS_UNITS_STOPPED}R|$fallback"$'\n'
+    if [ -n "$fallback" ] && [ -f "$fallback" ]; then
+        running=$(bash "$fallback" status 2>/dev/null)
+        case "$running" in
+            *'bridge process(es):'*)
+                bash "$fallback" stop >/dev/null 2>&1 || return 1
+                RS_UNITS_STOPPED="${RS_UNITS_STOPPED}R|$fallback"$'\n'
+                ;;
+        esac
     fi
     return 0
 }

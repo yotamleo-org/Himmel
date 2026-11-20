@@ -118,7 +118,7 @@ line_matches_helper() {
     local re
     while IFS= read -r re; do
         [ -n "$re" ] || continue
-        if printf '%s\n' "$2" | grep -Eq "$re"; then return 0; fi
+        if grep -Eq "$re" <<< "$2"; then return 0; fi
     done <<EOF
 $1
 EOF

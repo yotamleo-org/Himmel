@@ -45,7 +45,7 @@ eq() { [ "$1" = "$2" ]; }
 has() { case "$1" in *"$2"*) return 0 ;; esac; return 1; }
 lacks() { case "$1" in *"$2"*) return 1 ;; esac; return 0; }
 starts() { case "$1" in "$2"*) return 0 ;; esac; return 1; }
-file_mode() { stat -c %a "$1" 2> /dev/null || stat -f %Lp "$1"; } # GNU, then BSD
+file_mode() { stat -c %a "$1" 2> /dev/null || stat -f %Lp "$1"; } # gnu-ok: GNU stat -c first, the BSD stat -f spelling on the same line
 file_has() { grep -qF -- "$2" "$1" 2>/dev/null; }
 file_lacks() { ! grep -qF -- "$2" "$1" 2>/dev/null; }
 
@@ -878,6 +878,23 @@ case_bot_mac_bootout_before_onboard() {
     check "no systemctl on a Mac" lacks "$(cat "$T/units.log")" "systemctl"
 }
 
+# A bridge started by hand (no unit) is stopped through the launcher for pairing, and started again.
+case_bot_pairing_stops_a_bridge_that_runs_without_a_unit() {
+    : > "$T/restart-bridge.running"
+    set_onboard 777
+    feed "$(mk_token 111)"
+    run_sut "$T/in" bot
+    check "the launcher was asked for its status" file_has "$T/restart-bridge.log" "restart-bridge status"
+    check "then told to stop" file_has "$T/restart-bridge.log" "restart-bridge stop"
+    check "then told to start again" file_has "$T/restart-bridge.log" "restart-bridge start"
+    local stop start
+    stop=$(grep -n 'restart-bridge stop' "$T/restart-bridge.log" | head -n 1 | cut -d: -f1)
+    start=$(grep -n 'restart-bridge start' "$T/restart-bridge.log" | tail -n 1 | cut -d: -f1)
+    check "stop comes before start" test "${stop:-99}" -lt "${start:-0}"
+    check "the bridge is running again" test -f "$T/restart-bridge.running"
+    check "no unit command was needed" lacks "$(cat "$T/units.log" 2> /dev/null)" "systemctl --user stop"
+}
+
 case_token_with_trailing_space_is_trimmed() {
     local tok
     tok=$(mk_token 111)
@@ -983,7 +1000,8 @@ bot_post_write_distinct_tokens_failure_restores_previous bot_run1_prints_paste_l
 bot_run2_after_paste_reaches_done bot_existing_access_json_other_id_fixes_unchanged
 bot_existing_access_json_bad_shape_fixes_before_the_prompt bot_rerun_without_token_never_pairs
 bot_canary_token_absent_everywhere bot_done_rerun_changes_no_config_artifact bot_inputs_are_only_the_g2_set
-bot_sigint_during_onboard_restarts_unit bot_mac_bootout_before_onboard token_with_trailing_space_is_trimmed
+bot_sigint_during_onboard_restarts_unit bot_mac_bootout_before_onboard
+bot_pairing_stops_a_bridge_that_runs_without_a_unit token_with_trailing_space_is_trimmed
 curl_exit_6_restarts_unit_and_fixes onboard_parse_real_producer onboard_parse_rejects_malformed
 onboard_parse_rejects_duplicate_or_forged_line onboard_parse_rejects_chat_from_mismatch"
 

@@ -151,7 +151,7 @@ cmd_bot() {
 
     out=$(node "$RS_ROOT/scripts/himmelctl/bin.js" bridge enable 2> /dev/null)
     rc=$?
-    if [ "$rc" -ne 0 ] || [ "$(printf '%s' "$out" | jq -r '.ok // false' 2> /dev/null)" != true ]; then
+    if [ "$rc" -ne 0 ] || [ "$(printf '%s' "$out" | jq -r '.ok == true' 2> /dev/null)" != true ]; then
         detail=$(rs_clean "$(printf '%s' "$out" | jq -r '.detail // "no detail"' 2> /dev/null)")
         rs_fix "the bridge could not be turned on (${detail:0:200}): fix that, then run the same command again"
     fi
