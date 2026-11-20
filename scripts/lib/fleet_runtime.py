@@ -832,7 +832,7 @@ def run(args):
             legacy_deadline = time.monotonic() + 5
             for sibling in manifest.parent.glob('*.fleet.json'):
                 listed = read(sibling)
-                for row in listed.get('workers', listed.get('legs', [])):
+                for row in listed.get('workers', []) + listed.get('legs', []):
                     if row.get('registration') != 'pending' and (row.get('doc') == doc or set(worker_keys(row['doc'])) & set(keys)):
                         if time.monotonic() >= legacy_deadline or worker_state(row['doc'], max(.01, legacy_deadline - time.monotonic())) != 'wrapped':
                             raise Refused('unknown legacy family ownership')

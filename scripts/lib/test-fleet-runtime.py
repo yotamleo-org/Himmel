@@ -1790,12 +1790,15 @@ exit 1''')
         self.assertEqual(runtime.TITLE_KEY_RE.pattern, dispatcher['TITLE_KEY_RE'].pattern)
 
     # A legacy sibling that lists its rows under `legs` holds them as one that lists them under `workers` does.
-    def begin_beside_old_sibling(self, key):
+    def begin_beside_old_sibling(self, key, empty=None):
         self.active()
         old, new = self.bucket / 'HIMMEL-101-N1-old.md', self.bucket / 'HIMMEL-101-N2-new.md'
         old.write_text('# HIMMEL-101 old worker\n- 09:00 LIVE\n')
         new.write_text('# HIMMEL-101 new worker\n')
-        (self.bucket / 'old.fleet.json').write_text(json.dumps({'schema': 1, key: [dict(doc=str(old), label='N1', added='2026-11-01T00:00:00Z', lane='native')]}))
+        sibling = {'schema': 1, key: [dict(doc=str(old), label='N1', added='2026-11-01T00:00:00Z', lane='native')]}
+        if empty:
+            sibling[empty] = []  # the other key present and empty, as run leaves a manifest it has written
+        (self.bucket / 'old.fleet.json').write_text(json.dumps(sibling))
         self.call('add', self.m, new, '--lane', 'native', '--pending')
         p = self.rt('begin', aid='n1', doc=new, ok=False)
         self.assertIn('unknown legacy family ownership', p.stderr)
@@ -1806,6 +1809,12 @@ exit 1''')
 
     def test_begin_is_refused_beside_a_live_row_a_legs_sibling_holds(self):
         self.begin_beside_old_sibling('legs')
+
+    def test_begin_is_refused_beside_a_live_legs_row_when_the_sibling_also_has_an_empty_workers(self):
+        self.begin_beside_old_sibling('legs', empty='workers')
+
+    def test_begin_is_refused_beside_a_live_workers_row_when_the_sibling_also_has_an_empty_legs(self):
+        self.begin_beside_old_sibling('workers', empty='legs')
 
     # An owner identity that is not exactly the four recorded fields is unknown, never dead.
     def test_a_damaged_owner_reads_unknown_and_only_an_exact_identity_reads_dead(self):
