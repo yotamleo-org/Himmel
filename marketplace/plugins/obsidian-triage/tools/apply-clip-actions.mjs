@@ -84,8 +84,6 @@ function kindOfNonRegularFile(abs) {
 
 const tmpNameOf = (abs) => path.join(path.dirname(abs), `.${path.basename(abs)}.apply-clip-actions.tmp`);
 
-// Why a page must not be written, or null: it is not a regular file, or something
-// already sits at its temporary name (never reused, never followed).
 function refusalFor(abs) {
   const kind = kindOfNonRegularFile(abs);
   if (kind) return `an existing ${kind} sits there, nothing written`;
@@ -221,8 +219,6 @@ function runRevert(vault, revertPath) {
   });
 
   let reverted = 0, already = 0, refused = 0, gone = 0;
-  // Every page path is checked before the first write: one that leaves the vault is
-  // refused on its own line and skipped, the rest of the ledger is still undone.
   const outside = new Set();
   for (let i = entries.length - 1; i >= 0; i--) {
     const e = entries[i];

@@ -366,7 +366,6 @@ W="$tmp/W"; cp -R "$P" "$W"
 node "$APPLY" --vault "$W" --date "$D" --apply --limit 50 >/dev/null 2>&1
 WL="$W/$LEDGER_NAME"
 cp -R "$W" "$tmp/W0"
-# the first and the last archive line of the real ledger (their pages are touched by no other line)
 ledger_pick() { node -e 'const l=require("fs").readFileSync(process.argv[1],"utf8").trim().split("\n").map((x)=>JSON.parse(x)).filter((e)=>e.action==="archive"); const e=process.argv[2]==="first"?l[0]:l[l.length-1]; process.stdout.write(process.argv[3]==="line"?JSON.stringify(e):e.files.map((f)=>f.rel).join("\n"))' "$@"; }
 LINE_A="$(ledger_pick "$WL" first line)"; LINE_B="$(ledger_pick "$WL" last line)"
 RELS_A="$(ledger_pick "$WL" first rels)"; RELS_B="$(ledger_pick "$WL" last rels)"
