@@ -337,7 +337,10 @@ node tools/synthesis-candidates.mjs [vault] [--today YYYY-MM-DD] [--since YYYY-M
 - **Skip reasons.** `confidence-floor`: `single-source-domain`, `single-author-on-platform`,
   `single-24h-window`. `dedup`: `existing-vault-page` (a concept page or `60-Maps/` hub, a
   person note, a `60-Maps/` MOC, or the folder already exists), `synthesis-page-within-14d`,
-  `no-new-evidence` (a page older than 14 days that lists as many clips). A page older than
+  `no-new-evidence` (a page older than 14 days that lists as many clips),
+  `substance-floor-recorded` (the runbook logged a substance-gate failure for the slug in
+  `Clippings/_synthesis/.substance-skips.tsv` within 14 days and the evidence has not grown, so
+  candidates that cannot pass do not use the examination budget every night). A page older than
   14 days with more evidence passes with `supersedes=`.
 - **Sources.** For concept and tag groups, clips on a platform domain (x.com, youtube.com,
   reddit.com, instagram.com, tiktok.com, linkedin.com, github.com, medium.com, substack.com,

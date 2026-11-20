@@ -16,7 +16,8 @@
  *   - input validation (processed: true, parse failures, --since)
  *   - the lens thresholds and the "already has a dedicated page" exclusion
  *   - the confidence floor (distinct sources, 24-hour window)
- *   - the 14-day dedup window and the supersede rule
+ *   - the 14-day dedup window, the supersede rule and the substance-gate
+ *     failures the runbook records in Clippings/_synthesis/.substance-skips.tsv
  * What is NOT decided here: the substantive-content gate (it needs the clip
  * prose). A PASS means "eligible for the substance gate and a page".
  *
@@ -83,7 +84,11 @@ function parseArgs(argv) {
     else if (a.vault === null) a.vault = t;
     else die(1, `unexpected argument ${t}`);
   }
-  const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
+  const isDate = (s) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s || "")) return false;
+    const d = new Date(`${s}T00:00:00Z`);
+    return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+  };
   if (!["lines", "json"].includes(a.format)) die(1, `--format must be lines or json`);
   if (a.today !== null && !isDate(a.today)) die(1, "--today needs YYYY-MM-DD");
   if (a.since !== null && !isDate(a.since)) die(1, "--since needs YYYY-MM-DD");
@@ -238,6 +243,21 @@ function synthesisPages(vault) {
   return bySlug;
 }
 
+function substanceSkips(vault) {
+  const bySlug = new Map();
+  const file = path.join(vault, "Clippings", "_synthesis", ".substance-skips.tsv");
+  if (!fs.existsSync(file)) return bySlug;
+  for (const line of splitLines(fs.readFileSync(file, "utf8"))) {
+    const [date, slug, n] = stripCR(line).split("\t");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "") || !slug || !/^\d+$/.test(n || "")) continue;
+    const prev = bySlug.get(slug);
+    if (!prev || date > prev.date) bySlug.set(slug, { date, evidence: Number(n) });
+  }
+  return bySlug;
+}
+
+const ageDays = (today, date) => Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${date}T00:00:00Z`)) / DAY_MS);
+
 function groupBy(clips, keysOf) {
   const g = new Map();
   for (const c of clips) {
@@ -307,17 +327,20 @@ function evaluate(kind, key, clips, ctx) {
 
   const prior = (ctx.pages.get(slug) || [])[0];
   if (prior) {
-    const age = Math.round((Date.parse(`${ctx.today}T00:00:00Z`) - Date.parse(`${prior.date}T00:00:00Z`)) / DAY_MS);
-    if (age <= DEDUP_DAYS) {
+    if (ageDays(ctx.today, prior.date) <= DEDUP_DAYS) {
       return skip("dedup", "synthesis-page-within-14d", `existing synthesis page ${prior.file} within 14d window`);
     }
     if (listed.length <= prior.evidence) {
       return skip("dedup", "no-new-evidence",
         `existing synthesis page ${prior.file} lists ${prior.evidence} clips and the evidence has not grown`);
     }
-    return { ...cand, status: "pass", supersedes: prior.file };
   }
-  return { ...cand, status: "pass", supersedes: null };
+  const failed = ctx.substanceSkips.get(slug);
+  if (failed && ageDays(ctx.today, failed.date) <= DEDUP_DAYS && listed.length <= failed.evidence) {
+    return skip("dedup", "substance-floor-recorded",
+      `substance gate failed on ${failed.date} with ${failed.evidence} evidence clips; not re-examined within 14d unless the evidence grows`);
+  }
+  return { ...cand, status: "pass", supersedes: prior ? prior.file : null };
 }
 
 function mostCommon(values) {
@@ -351,6 +374,7 @@ function build(args) {
   const ctx = {
     today: args.today,
     pages: synthesisPages(vault),
+    substanceSkips: substanceSkips(vault),
     existing: {
       concept: (k) => concepts.get(norm(k)) || maps.get(norm(k)) || "",
       author: (k) => people.get(norm(k)) || "",

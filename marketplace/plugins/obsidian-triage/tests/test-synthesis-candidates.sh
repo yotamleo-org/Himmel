@@ -136,6 +136,13 @@ diverse steady 3 steady-topic 0
 printf -- '---\ntype: synthesis\n---\n## Evidence (3 clips, 3 unique URLs)\n\n- [[Clippings/_evidence/steady-1]] — a\n- [[Clippings/_evidence/steady-2]] — b\n- [[Clippings/_evidence/steady-3]] — c\n' \
     > "$V/Clippings/_synthesis/2026-10-01-concept-steady-topic.md"
 
+# ── G9b: substance-gate failures recorded by the runbook ────────────────────
+diverse recskip 3 rec-recent 0
+diverse recold 3 rec-old 0
+diverse recgrown 4 rec-grown 0
+printf '2026-11-17\tconcept-rec-recent\t3\n2026-10-25\tconcept-rec-old\t3\n2026-11-17\tconcept-rec-grown\t3\nnot a record\n' \
+    > "$V/Clippings/_synthesis/.substance-skips.tsv"
+
 # ── G10/G11/G12: folder pressure ────────────────────────────────────────────
 diverse idea 5 "" 0 "Ideas/"
 diverse inbox 5 "" 5 "00-Inbox/"
@@ -253,6 +260,12 @@ assert "old page + more clips: passes" "pass" "$(field concept-grown-topic statu
 assert "…supersedes the old page" "2026-10-01-concept-grown-topic.md" "$(field concept-grown-topic supersedes)"
 assert "old page, no new evidence: skipped" "no-new-evidence" "$(field concept-steady-topic reason)"
 
+echo "Test 5a: a candidate that failed the substance gate is not re-offered every run"
+assert "failed 3 days ago, same evidence: skipped" "substance-floor-recorded" "$(field concept-rec-recent reason)"
+assert "…as a dedup skip" "dedup" "$(field concept-rec-recent category)"
+assert "failed 26 days ago: offered again" "pass" "$(field concept-rec-old status)"
+assert "failed 3 days ago, evidence since grew: offered again" "pass" "$(field concept-rec-grown status)"
+
 echo "Test 5b: evidence cap"
 assert "group of 45 reports its full size" "45" "$(field concept-big-topic clipCount)"
 assert "…lists the 40 newest clips" "40" "$(field concept-big-topic evidenceCount)"
@@ -308,6 +321,8 @@ node "$TOOL" "$V" --bogus > /dev/null 2>&1; assert "unknown flag: exit 1" "1" "$
 node "$TOOL" "$V" --format xml > /dev/null 2>&1; assert "bad --format: exit 1" "1" "$?"
 node "$TOOL" "$V" --today 20-11-2026 > /dev/null 2>&1; assert "bad --today: exit 1" "1" "$?"
 node "$TOOL" "$V" --since soon > /dev/null 2>&1; assert "bad --since: exit 1" "1" "$?"
+node "$TOOL" "$V" --today 2026-99-99 > /dev/null 2>&1; assert "--today with no such month: exit 1" "1" "$?"
+node "$TOOL" "$V" --today 2026-02-30 > /dev/null 2>&1; assert "--today with no such day: exit 1" "1" "$?"
 node "$TOOL" "$V" "$V" > /dev/null 2>&1; assert "second positional argument: exit 1" "1" "$?"
 
 echo "Test 12: no Clippings/ is a clean no-op"
