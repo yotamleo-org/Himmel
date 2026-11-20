@@ -56,5 +56,20 @@ fleet_launch_release() {
 # (the python armor's bound would end every managed session).
 fleet_launch_runtime_line() {
     printf 'python3 -I %s run --doc %s --name %s --manifest %s -- bash -c %s' \
-        "$(printf '%q' "$1")" "$(printf '%q' "$2")" "$(printf '%q' "$3")" "$(printf '%q' "$4")" "$(printf '%q' "$5")"
+        "$(fleet_launch_sh_quote "$1")" "$(fleet_launch_sh_quote "$2")" "$(fleet_launch_sh_quote "$3")" \
+        "$(fleet_launch_sh_quote "$4")" "$(fleet_launch_sh_quote "$5")"
+}
+
+# fleet_launch_sh_quote <text>
+# prints <text> as one shell word that a plain POSIX sh reads back byte for byte. printf %q
+# is used while it stays in the backslash form; for text with a newline or another control
+# byte it writes the ANSI-C form ($'...'), which a POSIX sh without that form (dash before
+# 0.5.13) reads as a literal dollar and a single-quoted string, so that text is single-quoted.
+fleet_launch_sh_quote() {
+    local q sq="'" esc="'\\''"
+    q=$(printf '%q' "$1")
+    case "$q" in
+        "\$'"*) printf "'%s'" "${1//$sq/$esc}" ;;
+        *) printf '%s' "$q" ;;
+    esac
 }

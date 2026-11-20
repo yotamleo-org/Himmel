@@ -2026,6 +2026,23 @@ if [ -t 0 ]; then echo stdin=tty; else echo stdin=notty; fi > "$T32_REC"
 exit 0
 EOF
 chmod +x "$T32_BIN/claude"
+# t32_blind <text>: <text> as a dash older than 0.5.13 reads it. That dash has no $'...' form, so
+# each $' is a literal dollar followed by a single-quoted string; a station whose dash is newer
+# (or whose sh is bash) still gets that reading here.
+t32_blind() {
+    local dq='$'"'" lit='\$'"'"
+    printf '%s' "${1//$dq/$lit}"
+}
+# t32_other_shells: the POSIX shells besides sh that the T32 rows also run a body under.
+T32_SHELLS="dash bash ash mksh ksh yash posh busybox blind"
+# t32_shell_cmd <name>: the command that runs <name> -c; empty when the shell is absent.
+t32_shell_cmd() {
+    case "$1" in
+        blind) echo sh ;;
+        busybox) command -v busybox >/dev/null 2>&1 && echo "busybox sh" ;;
+        *) command -v "$1" >/dev/null 2>&1 && echo "$1" ;;
+    esac
+}
 # A host that cannot hand a command a pty (BSD script(1) wants a real tty on its
 # stdin) cannot tell tty from no tty, so the rows below need the stub to see one here.
 rm -f "$T32_REC"
@@ -2037,18 +2054,33 @@ if grep -q 'stdin=tty' "$T32_REC" 2>/dev/null; then
         PATH="$SCHED_STUB_T17:$PATH" bash "$ARM" --time "$(future_time)" --handover "$1" --dry-run 2>&1 \
             | awk '/^DRY arm-resume: would at -t/ { on = 1; next } /^    CMD$/ { on = 0 } on { sub(/^    /, ""); print }'
     }
-    # t32_expect_tty <row title> <body>: runs the body through sh, stdin=/dev/null.
+    # t32_expect_tty <row title> <body> [<shell>]: runs the body through <shell> (default sh;
+    # "blind" is sh reading $' as t32_blind does), stdin=/dev/null.
     t32_expect_tty() {
-        local rec
+        local rec shell="${3:-sh}" body="$2"
+        [ "$shell" = blind ] && body=$(t32_blind "$body")
+        [ "$shell" = sh ] || shell=$(t32_shell_cmd "$shell")
         rm -f "$T32_REC"
+        # shellcheck disable=SC2086
         env PATH="$T32_BIN:$PATH" T32_REC="$T32_REC" HOME="$POLICY_EMPTY_HOME" CADENCE_USAGE_LEDGER="$TMP/t32-cadence.jsonl" \
-            sh -c "$2" </dev/null >"$TMP/t32-run.out" 2>&1
+            $shell -c "$body" </dev/null >"$TMP/t32-run.out" 2>&1
         rec=$(cat "$T32_REC" 2>/dev/null)
         assert_contains "$1" "stdin=tty" "$rec"
         case "$rec" in
             *stdin=tty*) ;;
             *) echo "     claude recorded: ${rec:-nothing}"; head -n 8 "$TMP/t32-run.out" | sed 's/^/     run output: /' ;;
         esac
+    }
+    # t32_expect_tty_all <row title> <body>: the row under sh, then under each other shell of
+    # T32_SHELLS that this host has.
+    t32_expect_tty_all() {
+        local s cmd
+        t32_expect_tty "$1" "$2"
+        for s in $T32_SHELLS; do
+            cmd=$(t32_shell_cmd "$s")
+            if [ -z "$cmd" ]; then echo "SKIP $1 under $s: not on this host"; continue; fi
+            t32_expect_tty "$1 [$s]" "$2" "$s"
+        done
     }
 
     T32_BUCKET="$TMP/t32-fleet"
@@ -2063,8 +2095,8 @@ if grep -q 'stdin=tty' "$T32_REC" 2>/dev/null; then
     T32_PLAIN=$(t32_body "$(make_handover "$WORK_REPO")")
     assert_contains "T32 managed fixture: the body hands the launch to the fleet runtime" "fleet_runtime.py run" "$T32_MANAGED"
     assert_not_contains "T32 unmanaged control: the body carries no fleet runtime" "fleet_runtime.py run" "$T32_PLAIN"
-    t32_expect_tty "T32 unmanaged at body: claude's stdin is a tty" "$T32_PLAIN"
-    t32_expect_tty "T32 managed at body: claude's stdin is a tty (the pty is set up inside the runtime's bash -c)" "$T32_MANAGED"
+    t32_expect_tty_all "T32 unmanaged at body: claude's stdin is a tty" "$T32_PLAIN"
+    t32_expect_tty_all "T32 managed at body: claude's stdin is a tty (the pty is set up inside the runtime's bash -c)" "$T32_MANAGED"
 else
     echo "SKIP T32 pty rows: this host cannot hand a command a pty"
 fi
@@ -2146,6 +2178,66 @@ assert_contains "T32 managed at body: the runtime line goes on --manifest <manif
 out=$(t32r_arm T32R_MODE=managed OSTYPE=darwin23 ARM_TERMINAL_APP=none bash "$ARM" --time "$(future_time)" --handover "$T32R_DOC" --dry-run 2>&1)
 assert_contains "T32 managed crontab runner: the same runtime line start" "python3 -I $T32R_RTQ run --doc $T32R_DOCQ --name " "$out"
 assert_contains "T32 managed crontab runner: the same runtime line end" " --manifest $T32R_MFQ -- bash -c " "$out"
+# The at job runs under /bin/sh, and a dash older than 0.5.13 has no $'...' form: a body with a
+# newline must reach the runtime's bash -c quoted in a form every POSIX sh reads.
+assert_not_contains "T32 managed at body: no ANSI-C quoting opener (this holds whatever /bin/sh is)" "\$'" "$T32R_BODY"
+
+T32Q_BIN="$TMP/t32q-bin"
+T32Q_GOT="$TMP/t32q-got"
+mkdir -p "$T32Q_BIN"
+cat > "$T32Q_BIN/python3" <<'EOF'
+#!/bin/sh
+for a in "$@"; do last=$a; done
+printf '%s' "$last" > "$T32Q_GOT"
+EOF
+chmod +x "$T32Q_BIN/python3"
+T32Q_LIB="$(dirname "$ARM")/../lib/fleet-launch.sh"
+# t32q_line <body>: the runtime line for <body>.
+t32q_line() {
+    # shellcheck source=../lib/fleet-launch.sh
+    ( . "$T32Q_LIB" && fleet_launch_runtime_line /opt/rt/fleet_runtime.py "/tmp/a b.md" "TEST-1 w" /tmp/m.json "$1" )
+}
+# t32q_got <shell name> <line>: runs <line> under the shell with a python3 stub that records the
+# last argument (the text the runtime's bash -c receives), and prints it plus a closing x.
+t32q_got() {
+    local shell="$1" line="$2"
+    [ "$shell" = blind ] && line=$(t32_blind "$line")
+    [ "$shell" = sh ] || shell=$(t32_shell_cmd "$shell")
+    rm -f "$T32Q_GOT"
+    # shellcheck disable=SC2086
+    env PATH="$T32Q_BIN:$PATH" T32Q_GOT="$T32Q_GOT" $shell -c "$line" </dev/null >/dev/null 2>&1
+    cat "$T32Q_GOT" 2>/dev/null # read-sink-ok: the python3 stub above wrote it
+    printf x
+}
+T32Q_NL=$'x=\'a b\'\necho "$x" `y` \\z\ttab\r\nlast $HOME'
+# shellcheck disable=SC2016
+T32Q_FLAT='echo "a b" '"'"'$HOME'"'"' ; x=1'
+assert_not_contains "T32 runtime line: a body with a newline and a single quote is quoted without the ANSI-C form" "\$'" "$(t32q_line "$T32Q_NL")"
+T32Q_WANT="python3 -I $(printf '%q' /opt/rt/fleet_runtime.py) run --doc $(printf '%q' "/tmp/a b.md") --name $(printf '%q' "TEST-1 w") --manifest $(printf '%q' /tmp/m.json) -- bash -c $(printf '%q' "$T32Q_FLAT")"
+if [ "$(t32q_line "$T32Q_FLAT")" = "$T32Q_WANT" ]; then
+    echo "PASS T32 runtime line: a body without a newline is quoted exactly as printf %q quotes it"
+else
+    echo "FAIL T32 runtime line: a body without a newline changed: $(t32q_line "$T32Q_FLAT")"
+    FAILED=$((FAILED + 1))
+fi
+for T32Q_S in sh $T32_SHELLS; do
+    if [ -z "$(t32_shell_cmd "$T32Q_S")" ] && [ "$T32Q_S" != sh ]; then
+        echo "SKIP T32 runtime line rows under $T32Q_S: not on this host"
+        continue
+    fi
+    if [ "$(t32q_got "$T32Q_S" "$(t32q_line "$T32Q_NL")")" = "${T32Q_NL}x" ]; then
+        echo "PASS T32 runtime line [$T32Q_S]: a body with a newline, a single quote and control bytes reaches bash -c byte for byte"
+    else
+        echo "FAIL T32 runtime line [$T32Q_S]: the body changed on its way to bash -c"
+        FAILED=$((FAILED + 1))
+    fi
+    if [ "$(t32q_got "$T32Q_S" "$(t32q_line "$T32Q_FLAT")")" = "${T32Q_FLAT}x" ]; then
+        echo "PASS T32 runtime line [$T32Q_S]: a body without a newline reaches bash -c byte for byte"
+    else
+        echo "FAIL T32 runtime line [$T32Q_S]: a body without a newline changed on its way to bash -c"
+        FAILED=$((FAILED + 1))
+    fi
+done
 
 # The fleet preflight clears the two launch variables for its own resolve call: an arm made with them set
 # still hands the runtime empty ones (the first resolve call of a real arm is the preflight's).
