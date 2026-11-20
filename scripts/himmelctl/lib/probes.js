@@ -4193,7 +4193,7 @@ function probeRemotePeer(item, ctx) {
   const probeArgs = platform === 'darwin'
     ? ['launchctl', ['print', `gui/${process.getuid()}/${REMOTE_PEER_LABEL}`]]
     : ['systemctl', ['--user', 'is-active', REMOTE_PEER_UNIT]];
-  const r = spawnSync(probeArgs[0], probeArgs[1], { env, encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'ignore', 'ignore'] });
+  const r = spawnProbeSync(probeArgs[0], probeArgs[1], { env, encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'ignore', 'ignore'] });
   if (r.error || r.status === null) {
     return { actual: 'degraded', detail: 'the peer poller state could not be read (systemctl or launchctl did not answer)' };
   }
