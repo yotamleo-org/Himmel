@@ -858,7 +858,8 @@ _steering_cull_rearm_args() {
 }
 
 report_cadence_stale() {
-    local mode="${1:-check}" label bat_dir script flags rearm ver uh arm_root out arm_rc args
+    local mode="${1:-check}" label bat_dir script flags rearm ver uh arm_root out arm_rc steer a
+    local -a args
     uh="$(cadence_user_home)"
     arm_root="${HIMMEL_REARM_ROOT:-$ROOT}"
     while IFS='|' read -r label bat_dir script flags; do
@@ -867,13 +868,15 @@ report_cadence_stale() {
         [ "$ver" -lt "$CADENCE_RUNNER_FORMAT_VERSION" ] || continue
         rearm="bash $script arm $flags"
         if [ "$mode" = "apply" ]; then
-            args="$flags"
+            args=()
             if [ "$label" = "steering-cull-cadence" ]; then
-                args=$(_steering_cull_rearm_args "$bat_dir" | tr '\n' ' ') || args=""
+                steer=$(_steering_cull_rearm_args "$bat_dir") || steer=""
+                while IFS= read -r a; do [ -z "$a" ] || args+=("$a"); done <<<"$steer"
+            else
+                read -r -a args <<<"$flags"
             fi
-            if [ -n "$args" ]; then
-                # shellcheck disable=SC2086
-                if out=$(bash "$arm_root/$script" arm $args 2>&1); then arm_rc=0; else arm_rc=$?; fi
+            if [ "${#args[@]}" -gt 0 ]; then
+                if out=$(bash "$arm_root/$script" arm "${args[@]}" 2>&1); then arm_rc=0; else arm_rc=$?; fi
                 echo ""
                 if [ "$arm_rc" -eq 0 ]; then
                     echo "==> $label runners were STALE (format v$ver < v$CADENCE_RUNNER_FORMAT_VERSION) — re-armed"
@@ -2176,13 +2179,13 @@ update_luna_template() {
         held=$(printf '%s\n' "$out" | sed -n 's/^ *local edits withheld (not overwritten): \(.*\) (backup:.*/\1/p; t; s/^ *local edits withheld (not overwritten): \(.*\)$/\1/p')
         while IFS= read -r rel; do
             [ -n "$rel" ] || continue
-            keeps="$keeps --keep $rel"
+            keeps="$keeps --keep $(printf %q "$rel")"
         done <<EOF
 $held
 EOF
         if [ -n "$keeps" ]; then
             echo "    reconcile: keep your edit(s), or delete the vault copy to take the template's, then re-run:"
-            echo "        bash $upgrade --template-dir $template --vault-dir $vault$keeps --yes"
+            printf '        bash %q --template-dir %q --vault-dir %q%s --yes\n' "$upgrade" "$template" "$vault" "$keeps"
         fi
         return 0
     fi

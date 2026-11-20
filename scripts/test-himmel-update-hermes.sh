@@ -802,7 +802,7 @@ if [ "$uh" = "$tmp/fake-home" ]; then echo "ok: cadence_user_home falls back to 
 # command and never arms one that has no runner files. Stub arm scripts log their argv.
 rr="$tmp/rearm-root"; mkdir -p "$rr/scripts/luna" "$rr/scripts/cleanup" "$rr/scripts/upstreams" "$rr/scripts/graphify"
 for s in luna/pipeline-cadence luna/graphmap-cadence luna/qmd-cadence upstreams/upstream-watch-cadence graphify/graph-choices-cadence cleanup/steering-cull-cadence; do
-  printf '#!/usr/bin/env bash\necho "%s $*" >> "%s/arm.log"\necho "stub ARMED"\n' "$s" "$rr" > "$rr/scripts/$s.sh"
+  printf '#!/usr/bin/env bash\necho "%s $* [$#]" >> "%s/arm.log"\necho "stub ARMED"\n' "$s" "$rr" > "$rr/scripts/$s.sh"
 done
 mkdir -p "$tmp/rr-pipeline" "$tmp/rr-graphmap-absent" "$tmp/rr-qmd-absent"
 printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\necho old\n' "$((CADENCE_RUNNER_FORMAT_VERSION - 1))" > "$tmp/rr-pipeline/pipeline-harvest.sh"
@@ -828,6 +828,14 @@ out=$(PIPELINE_BAT_DIR="$tmp/rr-none" HIMMEL_REARM_ROOT="$rr" GRAPHMAP_BAT_DIR="
   STEERING_CULL_CRONTAB="$tmp/rr-cronstub/crontab" report_cadence_stale apply 2>&1)
 check "steering-cull re-armed with its proposal dir, schedule, chief and backend" \
   "cleanup/steering-cull-cadence arm --force --proposal-dir /p/dir --day 3 --time 06:30 --chief chief-a --backend claude-cli" "$(cat "$rr/arm.log")"
+# a proposal dir holding a space keeps its argument boundary (12 stub args, 13 when split)
+# shellcheck disable=SC2016  # the fixture runner's own $log stays literal
+printf '#!/usr/bin/env bash\n# himmel-cadence-runner-format: %s\nlog=x\nexport STEERING_CULL_BACKEND=claude-cli\nbash /r/steering-cull-cadence.sh run --repo /r --proposal-dir /p/my\\ dir --chief chief-a >> "$log" 2>&1\n' "$((CADENCE_RUNNER_FORMAT_VERSION - 1))" > "$tmp/rr-steer/steering-cull-cadence.sh"
+: > "$rr/arm.log"
+out=$(PIPELINE_BAT_DIR="$tmp/rr-none" HIMMEL_REARM_ROOT="$rr" GRAPHMAP_BAT_DIR="$tmp/rr-none" QMD_CADENCE_BAT_DIR="$tmp/rr-none" \
+  UPSTREAMWATCH_BAT_DIR="$tmp/rr-none" GRAPH_CHOICES_BAT_DIR="$tmp/rr-none" STEERING_CULL_RUNNER_DIR="$tmp/rr-steer" \
+  STEERING_CULL_CRONTAB="$tmp/rr-cronstub/crontab" report_cadence_stale apply 2>&1)
+check "steering-cull proposal dir with a space stays one argument" "steering-cull-cadence arm --force --proposal-dir /p/my dir --day 3 --time 06:30 --chief chief-a --backend claude-cli \[12\]" "$(cat "$rr/arm.log")"
 rm -f "$tmp/rr-steer/steering-cull-cadence.sh"; printf '#!/usr/bin/env bash\n# himmel-cadence-runner-format: 1\nunreadable\n' > "$tmp/rr-steer/steering-cull-cadence.sh"
 : > "$rr/arm.log"
 out=$(PIPELINE_BAT_DIR="$tmp/rr-none" HIMMEL_REARM_ROOT="$rr" GRAPHMAP_BAT_DIR="$tmp/rr-none" QMD_CADENCE_BAT_DIR="$tmp/rr-none" \
