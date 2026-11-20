@@ -1,5 +1,3 @@
-// Test preload: log how many times each path is read through fs.readFileSync,
-// to the file named by FUNNEL_READ_LOG, one "<count>\t<path>" line per path.
 import fs from "node:fs";
 
 const counts = new Map();

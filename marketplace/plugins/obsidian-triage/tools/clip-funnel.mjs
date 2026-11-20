@@ -64,13 +64,11 @@ function parseArgs(argv) {
   return a;
 }
 
-/** YYYY-MM-DD at the start of a date or ISO timestamp, else "". */
 function dayOf(value) {
   const m = /^\d{4}-\d{2}-\d{2}/.exec(value || "");
   return m ? m[0] : "";
 }
 
-/** The `.md` files of one directory (no subfolder, no symlink), sorted by name. A folder the vault lacks has none; one that cannot be read is an error. */
 function mdFiles(dir) {
   let entries;
   try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) {
@@ -80,7 +78,6 @@ function mdFiles(dir) {
   return entries.filter((e) => e.isFile() && e.name.endsWith(".md")).map((e) => e.name).sort();
 }
 
-/** A ledger's rows; an absent ledger has none and a line that is not JSON is skipped. */
 function ledgerRows(file) {
   if (!fs.existsSync(file)) return [];
   const rows = [];
@@ -88,12 +85,11 @@ function ledgerRows(file) {
     try {
       const row = JSON.parse(line);
       if (row && typeof row === "object") rows.push(row);
-    } catch { /* a blank or torn line */ }
+    } catch { continue; }
   }
   return rows;
 }
 
-/** Counts events dated inside the window and remembers the newest. */
 function movement(inWindow) {
   let moved = 0;
   let last = "";
@@ -113,7 +109,6 @@ function funnel(vault, asOf, days) {
   const inWindow = (day) => day >= start && day <= asOf;
   const clips = path.join(vault, "Clippings");
 
-  // intake + media: the evidence pool, one read per clip.
   const intake = movement(inWindow);
   const enriched = movement(inWindow);
   const names = new Set();
@@ -140,7 +135,6 @@ function funnel(vault, asOf, days) {
     if (pendingMedia(get)) waiting++;
   }
 
-  // cited: a synthesis page cites a clip when it links the clip's name, whatever folder the link names.
   const pages = movement(inWindow);
   const cited = new Set();
   let synthesisPages = 0;
@@ -155,7 +149,6 @@ function funnel(vault, asOf, days) {
     }
   }
 
-  // subjects: one row per page written by the stub synthesizer.
   let subjectLast = "";
   const created = new Set();
   const extended = new Set();
@@ -169,7 +162,6 @@ function funnel(vault, asOf, days) {
     if (day > subjectLast) subjectLast = day;
   }
 
-  // actions: the unresolved ids of the daily reports, less those the apply ledger has applied.
   let appliedLast = "";
   const applied = new Set();
   const appliedInWindow = new Set();

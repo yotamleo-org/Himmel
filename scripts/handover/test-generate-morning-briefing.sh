@@ -36,7 +36,6 @@ export MORNING_WAITING_DIR=""
 # The shift record (shifts.jsonl) and the shift helper: empty means no such input unless a test names one.
 export SHIFTS_FILE=""
 export MORNING_SHIFT_CMD=""
-# Hermetic: the clip funnel reads the operator's real luna vault; empty means "no vault" unless a test names one.
 export CLIP_FUNNEL_VAULT=""
 unset OBSIDIAN_VAULT_PATH 2>/dev/null || true
 
@@ -553,7 +552,6 @@ file=$(cat "$OUT_CH1")
 assert_contains "cache line: ratio"     "cache: 7d read ratio 97.5%"                "$file"
 unset CACHE_HEALTH_STATE_DIR
 
-# The clip pipeline funnel: outcomes of the luna clip pipeline, from the vault, read-only.
 echo "TEST: clip funnel block shows the vault's outcome counts and flags a stage with no movement"
 FUNNEL_BUILD="$SCRIPT_DIR/../../marketplace/plugins/obsidian-triage/tests/fixtures/clip-funnel/build-vault.sh"
 FUNNEL_VAULT="$TMP_ROOT/funnel-vault"
@@ -577,12 +575,10 @@ assert_absent   "clip funnel: a subject page created yesterday leaves the stage 
 cf_h2=$(grep -E '^## ' "$OUT_CF1" | LC_ALL=C sed 's/[^ -~]//g' | tr -s ' ' || true)
 cf_order=$(printf '%s\n' "$cf_h2" | sed -n '/Prompt cache/,/Suggested order/p' | tr '\n' '|')
 if [ "$cf_order" = "## Prompt cache|## Clip funnel|## Suggested order|" ]; then pass "clip funnel: sits after Prompt cache and before Suggested order"; else fail "clip funnel: heading order" "got: $cf_order"; fi
-# No subject page in seven days: the stage is flagged.
 rm -f "$FUNNEL_VAULT/.synthesize-stubs.ledger.jsonl"
 OUT_CF2="$TMP_ROOT/cf2.md"
 CLIP_FUNNEL_VAULT="$FUNNEL_VAULT" MORNING_TODAY=2026-06-28 run_script --since "$MARKER" --out "$OUT_CF2" >/dev/null
 assert_contains "clip funnel: no subject page in seven days is flagged" "no movement in 7 days (none yet)" "$(grep -F -- '- Subject pages' "$OUT_CF2" || true)"
-# The vault found the way the cadence run finds it, then a vault that cannot be read.
 OUT_CF3="$TMP_ROOT/cf3.md"
 ( unset CLIP_FUNNEL_VAULT; OBSIDIAN_VAULT_PATH="$FUNNEL_VAULT" MORNING_TODAY=2026-06-28 run_script --since "$MARKER" --out "$OUT_CF3" >/dev/null )
 assert_contains "clip funnel: OBSIDIAN_VAULT_PATH names the vault" "- Taken in: **10** clips" "$(cat "$OUT_CF3")"

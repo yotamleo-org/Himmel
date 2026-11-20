@@ -1,13 +1,4 @@
 #!/usr/bin/env bash
-# Acceptance test for tools/clip-funnel.mjs: the read-only funnel of the clip pipeline.
-#
-#   node clip-funnel.mjs --vault V [--as-of YYYY-MM-DD] [--days N]
-#
-# prints one JSON object: how many of the clips taken in were cited by a synthesis
-# page, how many subject pages were created or extended, how many daily actions are
-# open and applied, how many clips wait on media, and which stages made no
-# movement in the window. The fixture vault (fixtures/clip-funnel/build-vault.sh) is
-# synthetic; its expected counts are listed in that file.
 set -u -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,7 +22,6 @@ assert() {
     fi
 }
 
-# jget <path.to.key> <json> — the value at that path, JSON-encoded.
 jget() {
     node -e 'let o = JSON.parse(process.argv[2]); for (const k of process.argv[1].split(".")) o = o?.[k]; process.stdout.write(JSON.stringify(o))' "$1" "$2"
 }
@@ -77,7 +67,7 @@ assert "last applied" '"2026-06-27"' "$(jget actions.last "$outb")"
 assert "a stage with movement is not stalled" '["cited"]' "$(jget stalled "$outb")"
 
 echo "Group 3: the seven-day stall flag on the subject stage"
-subj() { # <ledger-body> -> the tool's JSON on a copy of the fixture with that subject ledger
+subj() {
     local v="$tmp/s"; rm -rf "$v"; bash "$BUILD" "$v"
     if [ -n "$1" ]; then printf '%s\n' "$1" > "$v/.synthesize-stubs.ledger.jsonl"; else rm -f "$v/.synthesize-stubs.ledger.jsonl"; fi
     node "$TOOL" --vault "$v" --as-of "$D" 2>&1

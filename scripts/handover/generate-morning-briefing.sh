@@ -877,9 +877,6 @@ failure_review_body() {   # <digest .md> <digest .json> <report day>
     fi
 }
 
-# Clip funnel body ---------------------------------------------------------------
-# The luna clip pipeline's outcomes, read-only from the vault by tools/clip-funnel.mjs. The block is only where that tool ships
-# and a vault is named: CLIP_FUNNEL_VAULT (empty = none), else OBSIDIAN_VAULT_PATH, else ~/Documents/luna when it holds a .obsidian.
 clip_funnel_tool="$SCRIPT_DIR/../../marketplace/plugins/obsidian-triage/tools/clip-funnel.mjs"
 if [ "${CLIP_FUNNEL_VAULT+set}" = set ]; then
     clip_funnel_vault="$CLIP_FUNNEL_VAULT"
@@ -895,7 +892,7 @@ clip_funnel_jq='def flag($k; $last): if (.stalled | index($k)) then " — ⚠️
     "- Subject pages: **\(.subjects.created)** created, **\(.subjects.extended)** extended" + flag("subjects"; .subjects.last),
     "- Daily actions: **\(.actions.open)** open, **\(.actions.applied)** applied" + flag("actions"; .actions.last),
     "- Waiting on media: **\(.media.waiting)** clips" + flag("media"; .media.last)'
-clip_funnel_body() {   # <vault> <report day>
+clip_funnel_body() {
     local json body
     if ! command -v node >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
         printf '_Clip funnel not available (node and jq are required)._\n'
@@ -1167,7 +1164,6 @@ EOF_WIP
         fi
     fi
 
-    # Clip funnel -------------------------------------------------------------
     if [ -f "$clip_funnel_tool" ] && [ -n "$clip_funnel_vault" ]; then
         printf '\n## 🔬 Clip funnel\n\n'
         clip_funnel_body "$clip_funnel_vault" "$today"
