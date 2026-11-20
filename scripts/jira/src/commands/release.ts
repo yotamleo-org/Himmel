@@ -386,6 +386,24 @@ export function judgeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     && (k === 'CLAUDE_CODE_OAUTH_TOKEN' || !['ANTHROPIC_', 'CLAUDE_CODE_'].some((p) => k.toUpperCase().startsWith(p)))));
 }
 
+// The prompt-cache setting of the native judge call: the call is one turn in a fresh session that nothing reads back,
+// so `ttl` is the tier its cache write is priced at and `env` is what asks for it (docs/internals/prompt-cache.md).
+export const JUDGE_CACHE: { env: Record<string, string>; ttl: 'off' | '5m' | '1h' } = { env: {}, ttl: '1h' };
+
+// The call's environment: judgeEnv's, with the caller's own cache variables removed so the tier never depends on who ran it.
+export function liveJudgeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const base = judgeEnv(env);
+  for (const k of ['DISABLE_PROMPT_CACHING', 'FORCE_PROMPT_CACHING_5M', 'ENABLE_PROMPT_CACHING_1H']) delete base[k];
+  return { ...base, ...JUDGE_CACHE.env };
+}
+
+export function liveJudgeArgs(sid: string, settings: string): string[] {
+  return [
+    '-p', '--session-id', sid, '--settings', settings, '--model', 'opus', '--effort', 'high', '--output-format', 'json', '--permission-mode', JUDGE_PERMISSION_MODE,
+    '--tools', '', '--max-turns', '1', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
+  ];
+}
+
 // The native-lane subscription preflight: its last line is the token.
 function judgePreflight(): string {
   const env: NodeJS.ProcessEnv = { ...process.env, CADENCE_USAGE_LANE: 'native', CADENCE_USAGE_WORKER: 'rm-judge' };
@@ -433,10 +451,8 @@ export const liveJudge: Judge = async (input, opts) => {
   let out: string | undefined;
   let rc = 1;
   try {
-    out = await judgeCall('claude', [
-      '-p', '--session-id', sid, '--settings', settings, '--model', 'opus', '--effort', 'high', '--output-format', 'json', '--permission-mode', JUDGE_PERMISSION_MODE,
-      '--tools', '', '--max-turns', '1', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
-    ], { input: judgePrompt(input, skill), cwd, env: judgeEnv(process.env), timeoutMs: JUDGE_TIMEOUT_S * 1000, signal: opts?.signal });
+    out = await judgeCall('claude', liveJudgeArgs(sid, settings),
+      { input: judgePrompt(input, skill), cwd, env: liveJudgeEnv(process.env), timeoutMs: JUDGE_TIMEOUT_S * 1000, signal: opts?.signal });
     rc = 0;
     return parseDecisions(out);
   } catch (e) {

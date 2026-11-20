@@ -54,7 +54,7 @@ vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { projectKey, request } from '../client.js';
 import { admissionBudget } from '../release/leaks.js';
-import { ctxFor, JUDGE_API_PASS_ENV, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePrompt, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge } from './release.js';
+import { ctxFor, JUDGE_API_PASS_ENV, JUDGE_CACHE, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePrompt, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, liveJudgeArgs, liveJudgeEnv, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge } from './release.js';
 import type { Judge, JudgeInput } from '../release/engine.js';
 import { defaultRoot } from './mirror.js';
 import { appendChain, loadKey, readChain } from '../release/ledger.js';
@@ -253,6 +253,22 @@ describe('jira release rm-run', () => {
     const pre = judgeReply.calls.find((c) => String(c.args[0]).endsWith('usage-preflight.sh'));
     expect(pre?.env).toMatchObject({ CADENCE_USAGE_LANE: 'native', CADENCE_USAGE_WORKER: 'rm-judge' });
     for (const k of ['WORKER_SESSION_LANE', 'CADENCE_USAGE_LAUNCH', 'CADENCE_USAGE_CALLER_PID']) expect(pre?.env).not.toHaveProperty(k);
+  });
+
+  it('the spawned judge call gets the shipped cache variable whatever the caller exported', async () => {
+    vi.stubEnv('DISABLE_PROMPT_CACHING', '0');
+    vi.stubEnv('FORCE_PROMPT_CACHING_5M', '0');
+    vi.stubEnv('ENABLE_PROMPT_CACHING_1H', '1');
+    vi.stubEnv('ANTHROPIC_API_KEY', 'dummy-api-key');
+    await oneRequest();
+    await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    const call = judgeReply.calls.find((c) => c.file === 'claude');
+    const sid = call?.args[(call?.args.indexOf('--session-id') ?? -2) + 1] ?? '';
+    const settings = call?.args[(call?.args.indexOf('--settings') ?? -2) + 1] ?? '';
+    expect(call?.args).toEqual(liveJudgeArgs(sid, settings));
+    const cacheKeys = ['DISABLE_PROMPT_CACHING', 'FORCE_PROMPT_CACHING_5M', 'ENABLE_PROMPT_CACHING_1H'];
+    expect(Object.fromEntries(cacheKeys.filter((k) => k in (call?.env ?? {})).map((k) => [k, call?.env[k]]))).toEqual(JUDGE_CACHE.env);
+    expect(Object.keys(call?.env ?? {}).filter((k) => /^(ANTHROPIC_|HIMMEL_API_)/i.test(k))).toEqual([]);
   });
 
   describe('the chief alert on a High or security request ruled BACKLOG', () => {
@@ -543,6 +559,13 @@ describe('jira release rm-run', () => {
 
   it('the judge env carries nothing of the API lane (decision 525)', () => {
     expect(judgeEnv({ PATH: '/bin', HIMMEL_API_LANE: 'on', HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_TOOLS: 'Bash,Write' })).toEqual({ PATH: '/bin' });
+  });
+  it('the tier label matches the variable, and the API lane does not get it', () => {
+    const want = JUDGE_CACHE.env.DISABLE_PROMPT_CACHING === '1' ? 'off' : JUDGE_CACHE.env.FORCE_PROMPT_CACHING_5M === '1' ? '5m' : '1h';
+    expect(JUDGE_CACHE.ttl).toBe(want);
+    expect(Object.keys(JUDGE_CACHE.env).every((k) => ['DISABLE_PROMPT_CACHING', 'FORCE_PROMPT_CACHING_5M'].includes(k))).toBe(true);
+    expect(liveJudgeEnv({ PATH: '/bin', DISABLE_PROMPT_CACHING: '0' })).toEqual({ PATH: '/bin', ...JUDGE_CACHE.env });
+    for (const k of Object.keys(JUDGE_CACHE.env)) expect(judgeApiEnv({ PATH: '/bin' }, '/repo')[k]).toBeUndefined();
   });
 });
 
