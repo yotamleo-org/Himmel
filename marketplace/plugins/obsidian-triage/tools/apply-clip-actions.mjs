@@ -93,7 +93,7 @@ function kindOfNonRegularFile(abs) {
   return st.isDirectory() ? "directory" : "special file";
 }
 
-const tmpNameOf = (abs) => path.join(path.dirname(abs), `.${path.basename(abs)}.apply-clip-actions.tmp`);
+const tmpNameOf = (abs) => path.join(path.dirname(abs), `.${sha256(path.basename(abs)).slice(0, 16)}.apply-clip-actions.tmp`);
 
 function refusalFor(abs) {
   const kind = kindOfNonRegularFile(abs);
@@ -230,16 +230,16 @@ function runRevert(vault, revertPath) {
   });
 
   let reverted = 0, already = 0, refused = 0, gone = 0;
-  const outside = new Set();
+  const outside = new Map();
   for (let i = entries.length - 1; i >= 0; i--) {
     const e = entries[i];
     for (const rel of e.action === "fold" ? [e.map] : e.files.map((f) => f.rel)) {
       if (absOf(vault, rel)) continue;
-      out(`⊘ ${rel} — refused: the path leaves the vault, nothing written`);
       refused++;
-      outside.add(rel);
+      outside.set(rel, (outside.get(rel) ?? 0) + 1);
     }
   }
+  for (const [rel, n] of outside) out(`⊘ ${rel} — refused: the path leaves the vault, nothing written${n > 1 ? ` (${n} ledger lines)` : ""}`);
   const preApplyHashes = new Map();
   const notePreApply = (rel, i, h) => {
     if (!preApplyHashes.has(rel)) preApplyHashes.set(rel, []);
