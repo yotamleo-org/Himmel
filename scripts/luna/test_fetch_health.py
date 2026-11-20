@@ -348,6 +348,62 @@ class FetchHealthTests(unittest.TestCase):
         limited = fetch_health.probe_jina_reader({}, lambda url, **kw: fetch_health.HttpResult(429, b""))
         self.assertEqual(limited.status, "blocked-or-rate-limited")
 
+    def test_harvest_article_fetch_fails_when_thin_article_clips_sit_unfetched(self):
+        def clip(root, name, source, last=None, **extra):
+            fm = f"---\ntype: article\nsource: {source}\nharvest_status: partial\nharvest_flag: thin-body\n"
+            if last:
+                fm += f"harvest_defer_last: {last}\n"
+            fm += "".join(f"{k}: {v}\n" for k, v in extra.items()) + "---\n# t\n"
+            path = root / "Clippings" / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(fm, encoding="utf-8")
+
+        today = datetime(2026, 11, 20, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {"HOME": tmp, "OBSIDIAN_VAULT_PATH": str(root)}
+            self.assertEqual(fetch_health.probe_harvest_article_fetch({"HOME": tmp}, today).status, "ok")
+            clip(root, "_evidence/fresh.md", "https://example.com/a", last="2026-11-19")
+            ok = fetch_health.probe_harvest_article_fetch(env, today)
+            self.assertEqual((ok.status, "1 thin article clip" in ok.reason), ("ok", True))
+            clip(root, "_evidence/ig.md", "https://www.instagram.com/p/abc/", last="2026-11-01")
+            clip(root, "_evidence/x.md", "https://x.com/u/status/1", last="2026-11-01")
+            clip(root, "_evidence/gone.md", "https://example.com/g", last="2026-11-01", harvest_needs_attention="true")
+            clip(root, "_done/old.md", "https://example.com/o", last="2026-11-01")
+            self.assertEqual(fetch_health.probe_harvest_article_fetch(env, today).status, "ok")
+            clip(root, "_evidence/stuck.md", "https://claude.com/resources/articles/x", last="2026-11-08")
+            bad = fetch_health.probe_harvest_article_fetch(env, today)
+            self.assertEqual(bad.status, "transport-fail")
+            self.assertIn("stuck.md", bad.reason)
+            self.assertIn("2026-11-08", bad.reason)
+            clip(root, "_evidence/never.md", "https://example.com/n")
+            self.assertIn("never", fetch_health.probe_harvest_article_fetch(env, today).reason)
+
+    def test_harvest_article_fetch_counts_only_clips_the_retry_can_reach(self):
+        def clip(root, name, source, last):
+            path = root / "Clippings" / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                f"---\ntype: article\nsource: {source}\nharvest_status: partial\nharvest_flag: thin-body\n"
+                f"harvest_defer_last: {last}\n---\n# t\n", encoding="utf-8")
+
+        today = datetime(2026, 11, 20, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {"HOME": tmp, "OBSIDIAN_VAULT_PATH": str(root)}
+            clip(root, "_evidence/private.md", "https://wiki.internal/guide", "2026-11-01")
+            clip(root, "_evidence/ftp.md", "ftp://example.com/guide", "2026-11-01")
+            clip(root, "_evidence/fresh.md", "https://example.com/a", "2026-11-19")
+            ok = fetch_health.probe_harvest_article_fetch(env, today)
+            self.assertEqual(ok.status, "ok", ok.reason)
+            self.assertIn("2 partial clip(s) in _evidence/ cannot be retried", ok.reason)
+            clip(root, "private-inbox.md", "https://wiki.internal/inbox", "2026-11-01")
+            inbox = fetch_health.probe_harvest_article_fetch(env, today)
+            self.assertEqual((inbox.status, "1 thin article clip(s)" in inbox.reason, "private-inbox.md" in inbox.reason), ("transport-fail", True, True))
+            clip(root, "_evidence/stuck.md", "https://example.com/stuck", "2026-11-01")
+            bad = fetch_health.probe_harvest_article_fetch(env, today)
+            self.assertIn("2 thin article clip(s)", bad.reason)
+
     def test_redirect_handler_strips_auth_off_scope(self):
         handler = fetch_health.AuthScopedRedirectHandler({"www.reddit.com"})
         request = urllib.request.Request("https://www.reddit.com/a", headers={"Cookie": "secret", "Authorization": "Bearer secret"})
@@ -385,7 +441,7 @@ class FetchHealthTests(unittest.TestCase):
                 raise RuntimeError("stub failure")
 
             results = fetch_health.run_probes(env, http=broken_http, command=lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("stub failure")), repo_root=Path(tmp))
-            self.assertEqual(set(results), {"reddit", "x-fxtwitter", "instagram-embed", "instagram-scrapling", "x-scrapling", "youtube-scrapling", "github", "bitbucket", "firecrawl", "jina-reader"})
+            self.assertEqual(set(results), {"reddit", "x-fxtwitter", "instagram-embed", "instagram-scrapling", "x-scrapling", "youtube-scrapling", "github", "bitbucket", "firecrawl", "jina-reader", "harvest-article-fetch"})
             self.assertTrue(all(result.status in fetch_health.STATUSES for result in results.values()))
 
     def test_probe_mode_matches_full_run_for_every_source(self):

@@ -23,7 +23,7 @@
  * (its newest event, or null). `stalled` names the stages with no movement in the
  * window: intake, cited and subjects always; actions only while some are open; media
  * only while some clips wait. Nothing is written to the vault, not even a lock.
- * Exit 1: usage error or a vault that is not a directory.
+ * Exit 1: usage error, or a vault that is not a directory or cannot be read.
  */
 
 import fs from "node:fs";

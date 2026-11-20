@@ -142,6 +142,21 @@ chmod 755 "$tmp/locked/Clippings/_evidence"
 mkdir -p "$tmp/odd/Clippings"; printf 'not a folder\n' > "$tmp/odd/Clippings/_evidence"
 node "$TOOL" --vault "$tmp/odd" --as-of "$D" >/dev/null 2>&1; assert "a file where the evidence folder belongs reads as no evidence" "0" "$?"
 
+echo "Group 10: the funnel reads the ledger the real apply tool writes"
+R="$tmp/real"
+mkdir -p "$R/.obsidian" "$R/Clippings/_evidence" "$R/60-Maps" "$R/50-Journal/Daily"
+printf -- '---\ntype: moc\ntitle: "Alpha MOC"\ntags:\n  - alpha\n  - moc\n---\n\n# Alpha\n\n## Evidence\n' > "$R/60-Maps/Alpha-MOC.md"
+for n in a1 a2; do
+    printf -- '---\ntitle: "Clip %s"\ntype: article\nstatus: reviewed\nprocessed: true\ntriaged_at: %s\nevidence_kind:\n  - concepts\ntags:\n  - alpha\n---\nBody.\n' "$n" "$D" > "$R/Clippings/_evidence/$n.md"
+done
+printf -- '---\ntitle: "Clip z1"\ntype: article\nstatus: reviewed\nprocessed: true\ntriaged_at: %s\nevidence_kind:\n  - concepts\n---\nBody.\n' "$D" > "$R/Clippings/_evidence/z1.md"
+node "$PLUGIN_DIR/tools/daily-timeline.mjs" --vault "$R" --date "$D" >/dev/null 2>&1
+outr="$(node "$TOOL" --vault "$R" --as-of "$D" 2>&1)"
+assert "before the apply: a fold and an archive are open, none applied" "2 0" "$(jget actions.open "$outr") $(jget actions.applied "$outr")"
+node "$PLUGIN_DIR/tools/apply-clip-actions.mjs" --vault "$R" --date "$D" --apply --limit 50 >/dev/null 2>&1
+outr="$(node "$TOOL" --vault "$R" --as-of "$D" 2>&1)"
+assert "after the apply: both are applied and none is open" "0 2" "$(jget actions.open "$outr") $(jget actions.applied "$outr")"
+
 echo
 echo "test-clip-funnel: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

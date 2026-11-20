@@ -22,7 +22,7 @@ Read a link vault-first. NEVER call Grok / x.ai / x_search.
 
 3. **Thin hit → enrich, then read.** If a hit exists but `enriched` is `false`:
    - X url → **first** run `bash <plugin>/tools/ensure-deps.sh` (resolve `<plugin>` from the installed plugin root, matching harvest-clips.md — a repo-relative path fails in a cache-installed plugin, the very case this preflight exists for). It installs the `js-yaml` dep `fxtwitter-enrich.mjs` needs but `tools/.gitignore` keeps out of git — fast no-op when present, browser-download-free install when absent; needed only on this X-enrich path, not for a non-X url. **If it exits non-zero, STOP and report its remediation message — do NOT run the enricher** (it would just throw the `js-yaml` error). Only on success run `node <plugin>/tools/fxtwitter-enrich.mjs --vault <vault>` (browser-free, api.fxtwitter.com).
-   - article → if the privacy gate passes, enrich via the harvest scrape chain (keyless Jina Reader, then capped Firecrawl only when `FIRECRAWL_API_KEY` is set; see `HARVEST_SCRAPE_BACKEND` in harvest-clips.md); otherwise present what the clip has and note it is `thin-body` (do not fabricate).
+   - article → if the privacy gate passes, enrich via the harvest scrape chain (the free rungs, local headless then keyless Jina Reader; capped Firecrawl only when `FIRECRAWL_API_KEY` is set; see `HARVEST_SCRAPE_BACKEND` in harvest-clips.md); otherwise present what the clip has and note it is `thin-body` (do not fabricate). A clip whose only text is a `## Summary` saying `Inferred from the source URL only` is thin: that summary is a guess from the URL, so say so and do not present it as the page's content.
    - Re-read the clip and present.
 
 4. **Miss → live fetch (last resort).**

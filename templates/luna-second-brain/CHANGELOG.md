@@ -8,6 +8,16 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.111] — 2026-11-20
+
+### Added
+- A starter feed list, `.feed-clip-feeds`, for the clip pipeline's feed tool
+  (`obsidian-triage` `tools/feed-clip.mjs`): the release feeds of Claude Code,
+  the Claude Agent SDK, Codex, T3 Code and the MCP specification, and the
+  OpenAI engineering blog. A vault made from the template has it; an existing
+  vault copies it to its root once, because `/luna-upgrade` does not add new
+  top-level files.
+
 ## [0.4.110] — 2026-11-18
 
 ### Changed

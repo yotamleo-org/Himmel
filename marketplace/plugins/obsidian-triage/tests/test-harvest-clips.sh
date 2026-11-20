@@ -26,6 +26,8 @@
 
 set -u -o pipefail
 
+export HARVEST_SCRAPE_DENY=all
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # sections moved to references/harvest-clips/ are part of the
