@@ -77,8 +77,8 @@ Run these, in order, and write the result as the first bullet under
 10. **Start the approved waiter mode now.** Stream mode stays paused until the parent accepts the native
     Claude Monitor proof (delivery, session end). Then arm **Monitor** (`timeout_ms: 1800000`):
     `bash scripts/handover/chief-kit/chief-wait.sh "{{INBOX}}" --stream --since prev-arm --doc "<this file>" --token <your token> --workers-from "{{FLEET_MANIFEST}}" [--succession {{SESSION_NAME}}]`
-    `WAKE#<seq>` names the saved block in `out=`; service continues while you handle it. A WAKE may add an `absorbed since last wake:` wraps/merges line.
-    Re-arm only on `REARM`, `STOPPED`, refusal or `waiter-error`, using your last seen seq (`prev-arm` when unsure). Dispatch/wrap reload the manifest, no re-arm.
+    A WAKE may add an `absorbed since last wake:` wraps/merges line. Re-arm only on `REARM`, using your last seen seq
+    (`prev-arm` when unsure); on `STOPPED`, a refusal or `waiter-error`, read `waiter.md` before any arm.
     Before approval keep the one-shot Bash arm (`run_in_background: true`, `timeout: 7200000`), re-armed per wake (`waiter.md`). On `worker-silent` relaunch
     that worker from a RESUME doc or run its blocked step yourself, then tell the
     operator which. Record the task id in your first bullet (`cat "<inbox>.wait"` is the

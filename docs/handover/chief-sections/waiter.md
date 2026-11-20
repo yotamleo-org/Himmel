@@ -11,6 +11,10 @@ continues while the chief is busy. It reconciles existing READY at startup;
 replay never authorizes a second GO. Ambiguous exact-head GO delivery requires
 chief reconciliation before any resend.
 
+`WAKE#<seq>` names the saved block in `out=`; service continues while you
+handle it. A WAKE may add an `absorbed since last wake:` wraps/merges line.
+Dispatch and wrap reload the manifest: no re-arm.
+
 Read each `out=` block. `REPLAY seqs=a-b n=k index=<file>` lists retained wakes;
 `GAP` means the requested range was rotated away or the log reset: reconcile
 that range. `W` rows record wakes, `P` rows record printing, and `D`/`K` rows
