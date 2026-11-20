@@ -162,7 +162,7 @@ export function parseEnvelopeLine(line3: string): ParseResult {
 
 export type BuildCtx = { from: string; to: string; chat: number; now: number };
 
-// A fresh msg id, iat = now and exp = iat + 86400 for every kind (R4-F6).
+// A fresh msg id, iat = now and exp = iat + 86400 for every kind.
 export function buildEnvelope(kind: Kind, body: Record<string, unknown>, ctx: BuildCtx): Envelope {
   const env = { v: 1, msg: mintId(), from: ctx.from, to: ctx.to, chat: String(ctx.chat), iat: ctx.now, exp: ctx.now + LIFETIME_S, kind, ...body } as Envelope;
   encodeCanonical(env);

@@ -227,7 +227,7 @@ test("loadAllowlist refuses a bad alias, a path failing the suite regex, a bad l
   expect(refusal(() => loadAllowlist("../x", suitesFile(""))).code).toBe(78);
 });
 
-test("config.ts holds no literal of the time constants: 1200, 150 or 10200 (P12)", () => {
+test("config.ts holds no literal of the time constants: 1200, 150 or 10200", () => {
   const src = fs.readFileSync(join(import.meta.dir, "config.ts"), "utf8");
   expect(src.match(/\b(1200|150|10200)\b/g)).toBeNull();
 });

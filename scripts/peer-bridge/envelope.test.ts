@@ -45,7 +45,7 @@ test("every kind and res state builds, encodes and parses back to the same envel
   }
 });
 
-test("exp - iat is 86400 for every kind (R4-F6)", () => {
+test("exp - iat is 86400 for every kind", () => {
   for (const name of Object.keys(BODIES)) {
     const e = make(name);
     expect(e.exp - e.iat).toBe(86400);

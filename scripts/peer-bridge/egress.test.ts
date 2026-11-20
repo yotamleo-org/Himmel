@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,7 +6,11 @@ import { mintRetaskNonce as briefNonce } from "../telegram/brief-blocks";
 import { mintRetaskNonce as spawnNonce } from "../telegram/spawn-common";
 import type { Peer } from "./config";
 import { Chain, readChain } from "./chain";
-import { checkOutbound, refusalRecord, type OutCtx } from "./egress";
+import { loadMatrix } from "../guardrails/egress-matrix-eval.mjs";
+import { checkEnvelopeOutbound, checkOutbound, refusalRecord, type EnvOutCtx, type OutCtx } from "./egress";
+import { buildEnvelope, encodeCanonical, type Envelope, type Kind } from "./envelope";
+import { sign } from "./sign";
+import * as TE from "./testlib-envelope";
 
 const ip = (...o: number[]) => o.join(".");
 const HIMMEL_ROOT = join(import.meta.dir, "..", "..");
@@ -164,4 +168,95 @@ test("a refused send chains only reason, shape, sha256, length and ts", async ()
   expect(readFileSync(file, "utf8")).not.toContain("ghp_");
   expect(readChain(file)).toHaveLength(1);
   expect(readdirSync(dir)).toEqual(["outbox.jsonl"]);
+});
+
+// ---- envelopes (Task 7): policy for a signed four-line message ----
+
+const ourStation = TE.mkStation("yotam");
+const otherStation = TE.mkStation("someone");
+afterAll(() => { TE.dropStation(ourStation); TE.dropStation(otherStation); });
+
+// From us ("yotam") to the peer ("goomal"), signed with our key and addressed to the peer's bot.
+const ours = (kind: Kind, body: Record<string, unknown>, over: Record<string, unknown> = {}) =>
+  ({ ...buildEnvelope(kind, body, { from: "yotam", to: "goomal", chat: -1001234567890, now: TE.NOW_S }), ...over }) as Envelope;
+const outLines = (env: Envelope, st = ourStation, to = "goomal_bot"): string[] => TE.envLines(env, st, { to });
+const envPeer = () => peer({ theirs: { username: "goomal_bot", opens: [], maxOpenThreads: 1, maxPerMinute: 1, copiedAt: "2026-11-20", stationName: "goomal", keys: [] } });
+const ectx = (over: Partial<EnvOutCtx> = {}): EnvOutCtx => ({ peer: envPeer(), self: "yotam", keyDir: ourStation.dir, himmelRoot: HIMMEL_ROOT, hostname: "testbox", ...over });
+async function envRefused(lines: string[], rule: string, over: Partial<EnvOutCtx> = {}) {
+  expect(await checkEnvelopeOutbound(lines, ectx(over))).toMatchObject({ ok: false, rule });
+}
+const envPasses = async (lines: string[], over: Partial<EnvOutCtx> = {}) => expect(await checkEnvelopeOutbound(lines, ectx(over))).toEqual({ ok: true });
+
+test("a signed envelope of every kind passes the envelope policy", async () => {
+  for (const [name, kind, body] of TE.KIND_SAMPLES) {
+    const lines = outLines(ours(kind, body));
+    expect([name, await checkEnvelopeOutbound(lines, ectx())]).toEqual([name, { ok: true }]);
+  }
+});
+
+test("a field the schema refuses is refused, even when the line is validly signed", async () => {
+  const bad = ours("req", TE.REQ_BODY);
+  const line2 = `#env:v1 k=${ourStation.key.id} id=${bad.msg}`;
+  const signed = (line3: string) => ["/peer@goomal_bot", line2, line3, `sig=${sign(line2, line3, ourStation.keyPath)}`];
+  const line3 = encodeCanonical(bad);
+  await envRefused(signed(line3.replace("scripts/hooks/test-a.sh", "scripts/../x.sh")), "schema");
+  await envRefused(signed(line3.replace("run-suite", "run-prompt")), "schema");
+});
+
+test("line 4 passes only as our signature over lines 2 and 3: another key, a token-shaped line, a bad shape and a changed byte all fail", async () => {
+  const env = ours("halt", {});
+  const good = outLines(env);
+  await envRefused(outLines(env, otherStation).map((l, i) => (i === 1 ? good[1] : l)), "signature");           // another key signed it
+  await envRefused([good[0], good[1], good[2], "sig=" + "T".repeat(86)], "signature");                         // fits a bot token's secret part
+  await envRefused([good[0], good[1], good[2], "sig=" + "1234567890".repeat(8) + "abcdef"], "signature");
+  await envRefused([good[0], good[1], good[2], good[3].slice(0, -1)], "signature");
+  await envRefused([good[0], good[1], good[2], "ghp_" + "a1B2c3D4e5F6g7H8i9J0k1L2"], "signature");
+  await envRefused([good[0], good[1], good[2] + " ", good[3]], "signature");                                   // a byte changed after signing
+});
+
+test("line 3 meets every slice A content rule", async () => {
+  const toHost = ours("halt", {}, { to: "testbox" });
+  await envRefused(outLines(toHost), "host", { peer: { ...envPeer(), theirs: { ...envPeer().theirs, stationName: "testbox" } } as Peer, hostname: "testbox" });
+  await envRefused(outLines(ours("req", { ...TE.REQ_BODY, suites: ["scripts/prod.env.sh"] })), "env-file");
+});
+
+test("the /peer@ line does not trip the path rule, though the whole text would", async () => {
+  const lines = outLines(ours("halt", {}));
+  expect(await checkOutbound(lines.join("\n"), ctx())).toMatchObject({ ok: false, rule: "path" });
+  await envPasses(lines);
+});
+
+test("no thread or opens check runs: a peer that opens nothing and allows one thread still gets envelopes", async () => {
+  expect(envPeer().theirs.opens).toEqual([]);
+  await envPasses(outLines(ours("capacity-ask", {})), { peer: envPeer() });
+});
+
+test("the address line, line 2, the key id and the binding are checked against our config", async () => {
+  const env = ours("halt", {});
+  const [a, b, c, d] = outLines(env);
+  await envRefused([a.replace("goomal_bot", "other_bot"), b, c, d], "address");
+  await envRefused([a, b.replace(/k=[0-9a-f]{8}/, "k=00000000"), c, d], "key-id");
+  await envRefused([a, b.toUpperCase(), c, d], "line-shape");
+  await envRefused([a, b, c], "line-shape");
+  await envRefused([a, b, c, d, "extra"], "line-shape");
+  await envRefused(outLines(ours("halt", {}, { from: "intruder" })), "binding");
+  await envRefused(outLines(ours("halt", {}, { to: "someone-else" })), "binding");
+  await envRefused(outLines(ours("halt", {}, { chat: "-1009999999999" })), "binding");
+  await envRefused(outLines(env), "binding", { self: "another-name" });
+  await envRefused(outLines(env), "no-key", { keyDir: otherStation.dir + "-missing" });
+});
+
+test("the envelope is refused for an unknown or not-live peer, and past the text cap", async () => {
+  const lines = outLines(ours("halt", {}));
+  await envRefused(lines, "unknown-peer", { peer: undefined });
+  await envRefused(lines, "peer-not-live", { peer: { ...envPeer(), chatId: null } });
+  await envRefused(lines, "too-long", { maxTextChars: 100 });
+});
+
+test("the matrix row decides: peer-jobs to peer-telegram is allowed, and no rule means refused", async () => {
+  await envPasses(outLines(ours("halt", {})), { matrix: loadMatrix() });
+  const empty = { default: "deny", rules: [] };
+  await envRefused(outLines(ours("halt", {})), "egress-matrix", { matrix: empty });
+  const textOnly = { default: "deny", rules: [{ corpus: "peer-desk", provider: "peer-telegram", purpose: "peer-message", verdict: "allow" }] };
+  await envRefused(outLines(ours("halt", {})), "egress-matrix", { matrix: textOnly });   // the desk's row does not cover envelopes
 });

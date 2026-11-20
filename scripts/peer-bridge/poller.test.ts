@@ -644,6 +644,35 @@ test.skipIf(!!process.env.PEER_RED_COPY)("RED control: a start that ticks before
   expect(failedTests(mutated.stdout + mutated.stderr)).toEqual(["restart order: the Telegram backlog lands before the first deadline tick, so no cancel is sent"]);
 }, 90_000);
 
+test("an envelope the envelope policy refuses is never queued or sent, and its refusal is chained without its text", async () => {
+  const e = await envSetup();
+  await seedJob(e, outJobAt(e, { by: nowS(e) - 50 }));
+  const p = await Poller.create({ ...e.deps, checkEnvelope: async () => ({ ok: false, rule: "schema" }), log: l => e.logs.push(l) });
+  await p.recover();
+  await p.tick();
+  expect(e.sent).toEqual([]);
+  const out = chainOf(e, "outbox.jsonl");
+  expect(out.filter(r => r.kind === "intent")).toEqual([]);
+  expect(out).toMatchObject([{ kind: "refused", reason: "schema" }]);
+  expect(JSON.stringify(out)).not.toContain(WIRE);
+  expect(latestJobs(e).get(1)).toMatchObject({ state: "LOST" });   // the job still ends; only the cancel was refused
+});
+
+test("a queued envelope that the policy now refuses is dropped on restart, not sent", async () => {
+  const e = await envSetup();
+  await seedJob(e, outJobAt(e, { by: nowS(e) - 50 }));
+  const tg: TgLike = { ...e.tg, sendMessage: async () => { throw new TelegramError("down", 500); } };
+  const down = await Poller.create({ ...e.deps, tg, log: l => e.logs.push(l) });
+  await down.recover();
+  await down.tick();                                   // the cancel is queued (intent) but Telegram is down
+  expect(chainOf(e, "outbox.jsonl").filter(r => r.kind === "intent")).toHaveLength(1);
+  const again = await Poller.create({ ...e.deps, checkEnvelope: async () => ({ ok: false, rule: "signature" }), log: l => e.logs.push(l) });
+  await again.recover();
+  await again.flushIntents();
+  expect(e.sent).toEqual([]);
+  expect(chainOf(e, "outbox.jsonl").filter(r => r.kind === "refused")).toMatchObject([{ reason: "signature", intent: expect.any(Number) }]);
+});
+
 test("a cancel from the peer cancels its job and sends a signed res cancelled; halt cancels them all", async () => {
   const e = await envSetup();
   await seedJob(e, inJobAt(e, { jobNo: 2, peer_job: WIRE }));

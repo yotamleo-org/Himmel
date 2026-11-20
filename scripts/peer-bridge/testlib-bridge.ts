@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readChain } from "./chain";
 import type { AllowEntry, Config } from "./config";
+import { checkEnvelopeOutbound } from "./egress";
 import { Poller, type TgLike } from "./poller";
 import { keygen, type KeyInfo } from "./sign";
 
@@ -26,6 +27,8 @@ export type Bridge = {
   logs: string[];
   /** Every updates batch waiting for this bridge's getUpdates. */
   inbox: any[];
+  /** Every envelope the poller put through the envelope policy, and what it said. */
+  checked: { lines: string[]; ok: boolean }[];
   jobs(): any[];
   chain(file: string): any[];
 };
@@ -58,7 +61,7 @@ export async function makeWorld(opts: WorldOpts = {}): Promise<World> {
     };
     const serving = side === "bravo" && opts.serves !== false;
     const cfg = {
-      self: { stationName: side }, operatorBotId: "999000999", operatorChatId: 4242, bridgeRoot: mkdtempSync(join(tmpdir(), "peer-w-bridge-")), himmelRoot: "/nonexistent", maxTextChars: 4000, addressing: "command",
+      self: { stationName: side }, operatorBotId: "999000999", operatorChatId: 4242, bridgeRoot: mkdtempSync(join(tmpdir(), "peer-w-bridge-")), himmelRoot: join(import.meta.dir, "..", ".."), maxTextChars: 4000, addressing: "command",
       peers: {
         [other]: {
           serves: serving ? ["run-suite"] : [], approve: { "run-suite": opts.approve ?? "tty" },
@@ -83,10 +86,12 @@ export async function makeWorld(opts: WorldOpts = {}): Promise<World> {
         return { message_id: messageId };
       },
     };
-    const poller = await Poller.create({ cfg, tg, ourBotId: BOT_ID[side], stateDir, configDir, clock: clock.now, hostname: "testbox", log: l => logs.push(l) });
+    const checked: { lines: string[]; ok: boolean }[] = [];
+    const checkEnvelope: typeof checkEnvelopeOutbound = async (lines, ctx) => { const r = await checkEnvelopeOutbound(lines, ctx); checked.push({ lines, ok: r.ok }); return r; };
+    const poller = await Poller.create({ cfg, tg, ourBotId: BOT_ID[side], stateDir, configDir, clock: clock.now, hostname: "testbox", checkEnvelope, log: l => logs.push(l) });
     await poller.recover();
     bridges[side] = {
-      side, other, poller, cfg, stateDir, configDir, peerDir, key: keys[side], logs, inbox,
+      side, other, poller, cfg, stateDir, configDir, peerDir, key: keys[side], logs, inbox, checked,
       chain: (f: string) => readChain(join(peerDir, f)),
       jobs() {
         const m = new Map<number, any>();

@@ -62,7 +62,7 @@ function enter(r: JobRecord, state: string, now: number, patch: JobRecordPatch =
   return isTerminal(next) ? { ...next, by: null, ended_at: now } : { ...next, by: deadlineFor(next) };
 }
 
-// VM minutes are charged from RUNNING entry to the terminal timestamp (R4-F2),
+// VM minutes are charged from RUNNING entry to the terminal timestamp,
 // whatever the runner later reports; a job still running is charged up to `now`.
 export function chargedMinutes(r: JobRecord, now?: number): number {
   const end = r.ended_at ?? now;

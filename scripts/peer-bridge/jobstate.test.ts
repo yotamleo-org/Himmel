@@ -149,7 +149,7 @@ test("server deadlines: RECEIVED +10 min, RESOLVED and APPROVED at req.exp, RUNN
   expect(deadlineFor(inJob({ state: "REFUSED" }))).toBeNull();
 });
 
-test("P11: every requester deadline falls after every server deadline reachable from one req", () => {
+test("every requester deadline falls after every server deadline reachable from one req", () => {
   const t0 = NOW_S, exp = t0 + 86400;
   // Server entry times anywhere from the req's own time to just before its exp.
   const times = [t0, t0 + 12 * H, exp - 60];
@@ -307,7 +307,7 @@ test("a backstop under the allowance refuses with budget before RUNNING", () => 
   expect(step(serverAt("APPROVED"), EV.vmStart(ALLOWANCE_S), NOW_S).record.state).toBe("RUNNING");
 });
 
-// ---- accounting (R4-F2) ----
+// ---- accounting ----
 
 test("a job cancelled at minute 110 is charged 110", () => {
   const running = step(serverAt("APPROVED"), EV.vmStart(9000), NOW_S).record;

@@ -108,6 +108,12 @@ test("every message on the wire is a four-line envelope, signed by its sender's 
     expect(parseEnvelopeLine(lines[2]).ok).toBe(true);
     expect(verify(lines[1], lines[2], lines[3].slice(4), w[m.from].key.pub)).toBe(true);
   }
+  // Every one of them went build -> sign -> envelope policy before it was sent (I18).
+  for (const m of w.wire) {
+    const seen = w[m.from].checked.filter(c => c.lines.join("\n") === m.text);
+    expect([m.text.split("\n")[1], seen.map(c => c.ok)]).toEqual([m.text.split("\n")[1], [true]]);
+  }
+  expect(w.alpha.checked.length + w.bravo.checked.length).toBe(w.wire.length);
   // An envelope opens no text thread on either side.
   expect(w.alpha.chain("threads.jsonl")).toEqual([]);
   expect(w.bravo.chain("threads.jsonl")).toEqual([]);

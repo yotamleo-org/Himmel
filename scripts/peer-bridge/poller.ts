@@ -12,7 +12,7 @@ import { atomicWrite } from "../telegram/bus";
 import { Chain, PidLockError, acquirePidLock, drainSpool, readChain, sweepResults, writeResult, type IntentRec, type SpoolRec } from "./chain";
 import { ConfigError, DEFAULT_BUDGETS, EXIT_CONFIG, clampToSchema, loadAllowlist, loadConfig, type AllowEntry, type Config } from "./config";
 import { digestFile, parseAck, writeCursor, type DigestRec } from "./digests";
-import { checkOutbound, refusalRecord, type OutCtx, type Outcome, type Refusal } from "./egress";
+import { checkEnvelopeOutbound, checkOutbound, refusalRecord, type OutCtx, type Outcome, type Refusal } from "./egress";
 import { OUTCOMES, buildEnvelope, encodeCanonical, type Envelope } from "./envelope";
 import { admit, admitEnvelope, appendUnknownChat, createGateState, looksLikeEnvelope, noteAdmitted, noteRate, rebuildFromInbox, type GateState, type PeerEnvRec, type PeerMsgRec } from "./gate";
 import { mintId } from "./grammar";
@@ -36,6 +36,7 @@ export type PollerDeps = {
   reloadConfig?: () => Config;
   matrix?: OutCtx["matrix"];
   hostname?: string;
+  checkEnvelope?: typeof checkEnvelopeOutbound;   // tests wrap it to see every envelope that is sent
   readerRun?: typeof runReader;
   readerTimeoutMs?: number;
   log?: (line: string) => void;
@@ -191,7 +192,13 @@ export class Poller {
     await this.serial(async () => {
       await this.ensureUsername();
       for (const i of [...this.pending.values()]) {
-        if (i.env) continue;      // an envelope was checked against the envelope policy when it was queued
+        if (i.env) {              // an envelope is re-checked against the envelope policy, not the text one
+          const ok = await this.checkEnv(i.peer, i.text.split("\n"));
+          if (ok.ok) continue;
+          await this.chain.append(this.file(i.peer, "outbox.jsonl"), { ...refusalRecord(i.text, ok, this.ts()), intent: i.n });
+          this.pending.delete(`${i.peer}:${i.n}`);
+          continue;
+        }
         const res = await this.egress(i.text, this.ctxFor({ peer: i.peer, msgKind: i.msgKind, isRoot: i.isRoot, isTemplate: !!i.tpl, replyTo: i.root, text: i.text, checkUsage: false }));
         if (res.ok) continue;
         await this.chain.append(this.file(i.peer, "outbox.jsonl"), { ...refusalRecord(i.text, res, this.ts()), intent: i.n });
@@ -389,7 +396,12 @@ export class Poller {
 
   // The envelope send path: build from resolved values, sign with the current station
   // key, check, then the same intent-before-send machinery as every text message.
-  private checkEnv(_lines: string[]): { ok: true } | Refusal { return { ok: true }; }
+  private checkEnv(peer: string, lines: string[]): Promise<Outcome> {
+    return (this.deps.checkEnvelope ?? checkEnvelopeOutbound)(lines, {
+      peer: this.cfg.peers[peer], self: this.cfg.self?.stationName, keyDir: this.deps.configDir, himmelRoot: this.cfg.himmelRoot,
+      maxTextChars: this.cfg.maxTextChars, hostname: this.deps.hostname, matrix: this.deps.matrix,
+    });
+  }
 
   // Build and sign, with no I/O but reading the key: a caller that must record
   // something about the envelope (a job, an ask) does so before it is queued.
@@ -405,7 +417,7 @@ export class Poller {
 
   // Outbound envelopes leave only through here: check, intent record, then flush sends.
   private async queueEnvelope(peer: string, made: { env: Envelope; lines: string[] }): Promise<boolean> {
-    const ok = this.checkEnv(made.lines);
+    const ok = await this.checkEnv(peer, made.lines);
     if (!ok.ok) {
       await this.chain.append(this.file(peer, "outbox.jsonl"), refusalRecord(made.lines[2], ok, this.ts()));
       this.log(`env-send peer=${peer} refused: ${ok.rule}`);

@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 import { hostname as osHostname } from "node:os";
 import { evaluate, loadMatrix } from "../guardrails/egress-matrix-eval.mjs";
 import type { Peer } from "./config";
+import { parseEnvelopeLine } from "./envelope";
+import { ENV_LINE_RE, SIG_LINE_RE } from "./grammar";
 import { runProc } from "./proc";
+import { currentSigningKey, publicKeyOf, verify } from "./sign";
 
 export type OutCtx = {
   peer: Peer | undefined;
@@ -27,10 +30,11 @@ const refuse = (rule: string, shape?: string): Refusal => (shape ? { ok: false, 
 const OPENING = ["question", "status", "info"];
 let defaultMatrix: any;
 
-function matrixAllows(ctx: OutCtx): boolean {
+// The text path's corpus is the desk; an envelope's is "envelopes built by jobs.ts, the poller and runner.ts from resolved values".
+function matrixAllows(ctx: Pick<OutCtx, "matrix">, corpus: "peer-desk" | "peer-jobs" = "peer-desk"): boolean {
   try {
     const m = ctx.matrix ?? (defaultMatrix ??= loadMatrix());
-    const { verdict } = evaluate(m, "peer-desk", "peer-telegram", "peer-message");
+    const { verdict } = evaluate(m, corpus, "peer-telegram", "peer-message");
     return verdict === "allow" || verdict === "allow+log";
   } catch { return false; }
 }
@@ -87,13 +91,61 @@ export async function checkOutbound(text: string, ctx: OutCtx): Promise<Outcome>
   if (text.trim() === "") return refuse("empty");
   if (text.length > (ctx.maxTextChars ?? 4000)) return refuse("too-long");
   if (!matrixAllows(ctx)) return refuse("egress-matrix");
+  return contentRules(text, ctx);
+}
 
+// The content rules every outbound byte passes: private hosts, .env names, absolute
+// paths, authority tokens and secret shapes. The text path runs them on the whole
+// message, the envelope path on line 3 alone.
+async function contentRules(text: string, ctx: Pick<OutCtx, "hostname" | "himmelRoot" | "allowShape" | "claudecode" | "tty" | "tainted">): Promise<Outcome> {
   if (badHost(text, ctx.hostname ?? osHostname())) return refuse("host");
   if (ENV_FILE_RE.test(text)) return refuse("env-file");
   if (PATH_RE.test(text.replace(URL_RE, " "))) return refuse("path");
   if (AUTHORITY.some(re => re.test(text))) return refuse("authority-token");
 
   return secretShapes(text, ctx);
+}
+
+export type EnvOutCtx = {
+  peer: Peer | undefined;
+  self: string | undefined;     // our station name, what `from` must carry
+  keyDir: string;               // where our station key lives
+  himmelRoot: string;
+  maxTextChars?: number;
+  hostname?: string;
+  matrix?: { default: string; rules: unknown[] };
+};
+
+// The envelope policy (§9). The message is four lines built by our code: the address
+// line and line 2 are checked by their own anchored shapes against our config, line 3
+// is re-validated with the receiver's schema and canonical encoder and then meets every
+// content rule, and line 4 passes only by verifying as our signature over lines 2 and 3 -
+// a shape that merely looks like a signature (a bot token's secret part fits) is refused.
+// An envelope opens no text thread, so the thread and opens checks do not run.
+export async function checkEnvelopeOutbound(lines: string[], ctx: EnvOutCtx): Promise<Outcome> {
+  const peer = ctx.peer;
+  if (!peer) return refuse("unknown-peer");
+  if (peer.chatId === null) return refuse("peer-not-live");
+  if (lines.length !== 4) return refuse("line-shape");
+  const [l1, l2, l3, l4] = lines;
+  if (l1 !== `/peer@${peer.theirs.username}`) return refuse("address");
+  const m = ENV_LINE_RE.exec(l2);
+  if (!m) return refuse("line-shape");
+  if (lines.join("\n").length > (ctx.maxTextChars ?? 4000)) return refuse("too-long");
+
+  if (!SIG_LINE_RE.test(l4)) return refuse("signature");
+  let key: { id: string; path: string };
+  try { key = currentSigningKey(ctx.keyDir); } catch { return refuse("no-key"); }
+  if (m[1] !== key.id) return refuse("key-id");
+  if (!verify(l2, l3, l4.slice(4), publicKeyOf(key.path))) return refuse("signature");
+
+  const parsed = parseEnvelopeLine(l3);
+  if (!parsed.ok) return refuse("schema");
+  const env = parsed.env;
+  if (env.msg !== m[2] || env.from !== ctx.self || env.to !== peer.theirs.stationName || env.chat !== String(peer.chatId)) return refuse("binding");
+
+  if (!matrixAllows(ctx, "peer-jobs")) return refuse("egress-matrix");
+  return contentRules(l3, { hostname: ctx.hostname, himmelRoot: ctx.himmelRoot });
 }
 
 const SAFE_ROOT = /^[A-Za-z0-9_\/.@+-]+$/;
