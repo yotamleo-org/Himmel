@@ -30,6 +30,18 @@ export FEED_CLIP_TODAY=2026-11-20
 out=""; rc=0
 run_tool() { out="$(node "$SCRIPT" "$@" 2>&1)"; rc=$?; }
 
+run_bounded() {
+    local secs="$1" pid dog
+    shift
+    node "$SCRIPT" "$@" >"$tmpdir/_bounded.out" 2>&1 &
+    pid=$!
+    ( sleep "$secs"; kill "$pid" ) >/dev/null 2>&1 &
+    dog=$!
+    wait "$pid"; rc=$?
+    kill "$dog" >/dev/null 2>&1
+    out="$(cat "$tmpdir/_bounded.out")"
+}
+
 newvault() { local v="$tmpdir/$1"; mkdir -p "$v/.obsidian" "$v/Clippings"; echo "$v"; }
 pick() { local f; for f in "$1"/Clippings/$2; do [ -e "$f" ] && echo "$f"; done; }
 nclips() { pick "$1" 'feed-*.md' | wc -l | tr -d ' '; }
@@ -63,6 +75,7 @@ const s = http.createServer((q, r) => {
   else if (q.url === "/500") { r.writeHead(500); r.end("boom"); }
   else if (q.url === "/hang") { /* never answers */ }
   else if (q.url === "/redir-walled") { r.writeHead(302, { location: "http://x.com/feed.xml" }); r.end(); }
+  else if (q.url === "/loop") { r.writeHead(302, { location: "/loop" }); r.end(); }
   else if (q.url === "/redir-ok") { r.writeHead(302, { location: "/ok" }); r.end(); }
   else if (q.url === "/html") { r.writeHead(200, { "content-type": "text/html" }); r.end("<html><body>not a feed</body></html>"); }
   else if (q.url === "/big") { r.writeHead(200); r.end(big); }
@@ -216,12 +229,17 @@ V="$(newvault hostile)"
 } > "$tmpdir/hostile.xml"
 printf 'file://%s Hostile\n' "$tmpdir/hostile.xml" > "$V/.feed-clip-feeds"
 SECONDS=0
-run_tool --vault "$V"
+run_bounded 15 --vault "$V"
 elapsed=$SECONDS
 assert "crafted feed: exit 0" 0 "$rc"
 if [ "$elapsed" -le 15 ]; then s=fast; else s="${elapsed}s"; fi
 assert "crafted feed parsed in 15 s or less" fast "$s"
 assert "crafted feed still yielded its one entry" 1 "$(nclips "$V")"
+hostile_clip="$(pick "$V" 'feed-*hostile-t.md')"
+assert "crafted feed: the entry's title" ok "$(hasline 'title: "Hostile: t"' "$(cat "$hostile_clip")")"
+assert "crafted feed: the entry's source" ok "$(hasline 'source: https://example.com/h1' "$(cat "$hostile_clip")")"
+assert "crafted feed: the long body ends at the cap with an ellipsis" ok "$(has '…$' "$(tail -n 4 "$hostile_clip" | head -n 1)")"
+assert "crafted feed: the clip stays under 7 KB" small "$([ "$(wc -c < "$hostile_clip")" -lt 7000 ] && echo small || echo big)"
 
 echo "Test 7: per-feed cap"
 V="$(newvault cap)"
@@ -277,9 +295,27 @@ assert "lost state: exit 0" 0 "$rc"
 assert "lost state: no duplicate clip" 10 "$(nclips "$V")"
 assert "lost state: existing clip never overwritten" ok "$(has 'EDITED BY HAND' "$(cat "$first")")"
 assert "lost state: seen file rebuilt" 10 "$(seen_lines)"
+V="$(newvault truncated)"
+printf 'file://%s Ten\n' "$tmpdir/ten.xml" > "$V/.feed-clip-feeds"
+run_tool --vault "$V" --cap 3
 printf '{"feed":"x","id":"y' >> "$V/.feed-clip-seen.jsonl"
-run_tool --vault "$V" --cap 10
+run_tool --vault "$V" --cap 3
 assert "a truncated seen line does not fail the run" 0 "$rc"
+assert "after a truncated seen line the next 3 entries were clipped" 6 "$(nclips "$V")"
+assert "the record written after a truncated line starts its own line" 7 "$(seen_lines)"
+valid_records="$(SEEN="$V/.feed-clip-seen.jsonl" node --input-type=module -e "
+import {readFileSync} from 'node:fs';
+let n = 0;
+for (const l of readFileSync(process.env.SEEN, 'utf8').split('\n')) {
+  if (!l) continue;
+  try { const r = JSON.parse(l); if (r.feed && r.id) n++; } catch { /* the truncated line */ }
+}
+console.log(n);
+")"
+assert "every record but the truncated one is valid JSON" 6 "$valid_records"
+run_tool --vault "$V" --cap 10
+assert "no record was lost: the remaining 4 entries clip and none is written twice" 0 "$(grep -c 'already exists' <<<"$out")"
+assert "all 10 entries are clipped exactly once" 10 "$(nclips "$V")"
 
 echo "Test 9: --dry-run"
 V="$(newvault dry)"
@@ -305,6 +341,59 @@ run_tool --vault "$V" --feeds "$tmpdir/elsewhere.list"
 assert "--feeds reads a list from another path" 2 "$(nclips "$V")"
 run_tool --vault "$V" --feeds "$tmpdir/does-not-exist.list"
 assert "--feeds with a missing file exits 0 with a note" ok "$(has 'no feed list' "$out")"
+
+echo "Test 12: redirect loop, body caps, non-printable characters"
+V="$(newvault loop)"
+printf 'http://127.0.0.1:%s/loop Loop\nfile://%s AtomRel\n' "$PORT" "$FIX/atom-releases.xml" > "$V/.feed-clip-feeds"
+run_bounded 10 --vault "$V"
+assert "redirect loop: the run ends by itself with exit 0" 0 "$rc"
+assert "redirect loop: one line, too many redirects" 1 "$(grep -c '^✗ feed-clip: Loop.*too many redirects' <<<"$out")"
+assert "redirect loop: the next feed still ran" 2 "$(nclips "$V")"
+
+{
+  printf '<feed xmlns="http://www.w3.org/2005/Atom"><title>Caps</title>\n'
+  printf '<entry><id>long</id><updated>2026-11-02T10:00:00Z</updated><link rel="alternate" href="https://example.com/long"/><title>Long body</title><summary>'
+  yes word | head -n 8000 | tr '\n' ' '
+  printf '</summary></entry>\n'
+  printf '<entry><id>wide</id><updated>2026-11-01T10:00:00Z</updated><link rel="alternate" href="https://example.com/wide"/><title>Wide markup</title><content type="html"><![CDATA[HEADMARK '
+  yes '<i></i>' | head -n 30000 | tr -d '\n'
+  printf 'TAILMARK]]></content></entry>\n</feed>\n'
+} > "$tmpdir/caps.xml"
+V="$(newvault caps)"
+printf 'file://%s Caps\n' "$tmpdir/caps.xml" > "$V/.feed-clip-feeds"
+run_tool --vault "$V"
+longclip="$(pick "$V" 'feed-*long-body.md')"
+wideclip="$(pick "$V" 'feed-*wide-markup.md')"
+assert "long body: the clip stays under 7 KB" small "$([ "$(wc -c < "$longclip")" -lt 7000 ] && echo small || echo big)"
+assert "long body: the text ends at the cap with an ellipsis" ok "$(has '…$' "$(tail -n 4 "$longclip" | head -n 1)")"
+assert "wide markup: text inside the HTML limit is kept" ok "$(has 'HEADMARK' "$(cat "$wideclip")")"
+if grep -q TAILMARK "$wideclip"; then s=present; else s=absent; fi
+assert "wide markup: text past the HTML limit is dropped" absent "$s"
+
+printf '<feed xmlns="http://www.w3.org/2005/Atom"><title>NP</title><entry><id>np1</id><link rel="alternate" href="https://example.com/np1"/><title>A&#x90;B&#xFFFE;C&#xFFFF;D&#xD800;E&#x7F;F\302\237G</title><summary>body &#x90; text</summary></entry></feed>\n' > "$tmpdir/np.xml"
+V="$(newvault nonprintable)"
+printf 'file://%s NP\n' "$tmpdir/np.xml" > "$V/.feed-clip-feeds"
+run_tool --vault "$V"
+npclip="$(pick "$V" 'feed-*np-*.md')"
+assert "non-printable title: the printable characters are kept, the rest dropped" ok "$(hasline 'title: "NP: ABCDEFG"' "$(cat "$npclip")")"
+nonprint="$(CLIPF="$npclip" node --input-type=module -e "
+import {readFileSync} from 'node:fs';
+const t = readFileSync(process.env.CLIPF, 'utf8');
+console.log(/[^\t\n\r\x20-\x7E\xA0-퟿-�\u{10000}-\u{10FFFF}]/u.test(t.slice(0, t.indexOf('\n---', 4))) ? 'unprintable' : 'printable');
+")"
+assert "non-printable title: the front matter holds only YAML-printable characters" printable "$nonprint"
+if python3 -I -c 'import yaml' 2>/dev/null; then
+    py="$(CLIPF="$npclip" python3 -I -c '
+import os, yaml
+t = open(os.environ["CLIPF"], encoding="utf8").read()
+try:
+    yaml.safe_load(t[4:t.index("\n---", 4)])
+    print("ok")
+except Exception:
+    print("error")
+')"
+    assert "non-printable title: PyYAML parses the written front matter" ok "$py"
+fi
 
 echo "Test 11: unreadable state"
 V="$(newvault badstate)"

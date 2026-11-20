@@ -259,7 +259,7 @@ node tools/feed-clip.mjs --vault <path> --cap 3
 - **Failures** — a feed that errors (HTTP status, timeout, not a feed, larger than 8 MiB, a malformed list line) is one `✗ feed-clip:` line; the other feeds are still processed and the exit code stays 0. Login-walled hosts (`x.com`, `instagram.com`, `reddit.com`, …) are refused, also when a redirect leads to one. Exit 2 is for an unusable vault or an unreadable or unwritable state file.
 - **Scheduling** — none here; the nightly run wires the tool in separately.
 
-`tests/test-feed-clip.sh` covers it against synthetic fixture feeds served from local files and a loopback server (never a real feed): one clip per entry and none on the second run, the Telegram clip shape, failing feeds, the cap (3, 3, 3, 1, 0 for ten entries), the seen state, `--dry-run`, and a crafted feed that must not stall the parser.
+`tests/test-feed-clip.sh` covers it against synthetic fixture feeds served from local files and a loopback server (never a real feed): one clip per entry and none on the second run, the Telegram clip shape, failing feeds, the cap (3, 3, 3, 1, 0 for ten entries), the seen state, `--dry-run`, a crafted feed that must not stall the parser, a redirect loop, the body-size caps, and non-printable characters in a title. Each guard on untrusted input has a row that goes red when the guard is deleted.
 
 ### One-time backfill: `/migrate-clip-lifecycle`
 

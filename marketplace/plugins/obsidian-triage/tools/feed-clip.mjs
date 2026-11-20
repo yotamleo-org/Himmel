@@ -277,8 +277,7 @@ function htmlToText(html) {
     .trim();
 }
 
-const isControl = (c) => (c < 32 && c !== 9 && c !== 10 && c !== 13) || c === 127;
-const stripControls = (s) => Array.from(s).filter((ch) => !isControl(ch.charCodeAt(0))).join("");
+const stripControls = (s) => s.replace(/[^\t\n\r\x20-\x7E\xA0-퟿-�\u{10000}-\u{10FFFF}]/gu, "");
 const oneLine = (s) => stripControls(s).replace(/\s+/g, " ").trim();
 
 function parseFeed(xml, feedUrl) {
