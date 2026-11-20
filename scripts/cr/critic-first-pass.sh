@@ -180,7 +180,8 @@ known_block=""
 # review-merge-gate.sh read, so an overlay drop reaches a hand-run or wrapped
 # critic too (decision 1085); a resolver failure falls back to the base file.
 # A Claude critic (slug claude or a claude-* model) with no registry row and no
-# --provider is absent: exit 5 SKIPPED, never a hermes call.
+# --provider is absent: exit 5 SKIPPED, never a hermes call (--print-prompt makes
+# no call, so it still prints).
 # node (not jq): node is a hard himmel dependency where jq is not.
 if [ -z "$provider" ] && command -v node >/dev/null 2>&1; then
     _cfp_reg="$( . "$SCRIPT_DIR/../lib/critics-config.sh" 2>/dev/null && critics_config_resolve "$SCRIPT_DIR" 2>/dev/null )" || _cfp_reg=""  # swallow-ok: falls back to the base file below
@@ -211,7 +212,7 @@ if [ -z "$provider" ] && command -v node >/dev/null 2>&1; then
         esac
     fi
 fi
-if [ -z "$provider" ]; then
+if [ -z "$provider" ] && [ "$print_prompt" -eq 0 ]; then
     _cfp_lslug="$(printf '%s' "${slug:-}" | tr '[:upper:]' '[:lower:]')"
     _cfp_lmodel="$(printf '%s' "$model" | tr '[:upper:]' '[:lower:]')"
     case "$_cfp_lslug" in claude) _cfp_lmodel="claude-" ;; esac

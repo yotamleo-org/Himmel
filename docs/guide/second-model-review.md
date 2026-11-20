@@ -20,14 +20,37 @@ The reviewers are the rows of `scripts/cr/critics.json`. As shipped:
 - **codex**: an OpenAI GPT model through the Codex CLI (the row's `model`
   field pins which one). Mode `hard`, `required`. This is the second model
   family and, as shipped, the only one.
-- **claude**: a Claude model through the Claude API lane. Mode `advisory`:
-  its open findings are recorded and print a NOTE until its precision reaches
-  the configured floor, and then it gates as `hard`. It is absent while that
-  lane is off, so it leaves the set. It is the same model
-  family as the author, so it never counts as cross-model evidence.
 - **coderabbit**: the CodeRabbit GitHub app on your repo. It reviews the pull
   request once it opens and posts threads and a commit status. Mode
   `best-effort`.
+
+The shipped file has no standing Claude critic. The order is:
+
+1. codex reviews every change.
+2. CodeRabbit reviews as best effort.
+3. A Claude critic runs only when codex has run out. This is the `claude_floor`
+   field of `critics.json`, which is not a panel row. When a codex run fails
+   on a usage limit (reason `quota-5h` or `quota-long`; a timeout or a rate
+   limit does not count), the panel runs one Claude critic on your Claude
+   subscription and sends a loud alert to Telegram and to the chief every time.
+   It is the same model family as the author, so it never counts as
+   cross-model evidence, and the merge still holds on the `hard` codex row.
+4. Claude through the API lane runs only in the eval work, never as a default
+   reviewer.
+
+You can design your own panel in `critics.local.json`, for example with a full
+Claude setup. A row that re-adds `claude` with provider `claude-subscription`
+or `claude-api` runs as a panel member, as you configured it, with no per-run
+alert, and the floor stays off. A `claude-api` row is left out while the API
+lane is off. A `"drop": true` row removes a slug. `/pr-check`, a hand-run
+`critic-first-pass.sh` and the review-panel eval all read the same merged
+registry, so a drop reaches every one of them.
+<!-- source: scripts/cr/critic-panel.sh, scripts/cr/critic-first-pass.sh, scripts/lib/critics-config.sh -->
+
+A critic never falls back to your subscription silently. If a Claude API
+critic's call would fall back to the subscription, the review is refused and
+one loud alert goes to Telegram and to the chief.
+<!-- source: scripts/cr/critic-first-pass.sh, scripts/cr/critic-alert.sh -->
 
 The critic tier, `CR_PROFILE`, picks which rows `/pr-check` dispatches:
 <!-- source: scripts/cr/critic-panel.sh -->
@@ -36,7 +59,7 @@ The critic tier, `CR_PROFILE`, picks which rows `/pr-check` dispatches:
 - `free` (the default when unset): the free rows. The shipped file has none,
   so the panel falls back to the paid codex critic, which spends on your
   OpenAI account.
-- `paid`: the paid rows, codex and claude.
+- `paid`: the paid rows. As shipped, that is codex.
 
 If every critic fails, `/pr-check` falls back to a Claude-only review.
 

@@ -736,7 +736,12 @@ CRITICS_JSON="$TMP/m10.json" GH_STUB_MODE=clean rg M10-finding-without-avail-row
 # Advisory findings stay visible without holding; precision at the floor restores hard mode.
 led "$CRIT_OK" '{"kind":"finding","head":"abc123","model":"claude","finding_id":"claude-advisory-critical","severity":"crit","verdict":""}'
 GH_STUB_MODE=clean t advisory-hard-claude-control-blocks 2
-CRITICS_JSON="$SCRIPT_DIR/../cr/critics.json" GH_STUB_MODE=clean t advisory-shipped-claude-finding-note 0
+has_no_claude_row="$(jq '[.panel[] | select(.slug == "claude")] | length' "$SCRIPT_DIR/../cr/critics.json")"
+if [ "$has_no_claude_row" = 0 ]; then pass=$((pass+1)); echo "ok   the shipped critics.json has no claude panel row"
+else fail=$((fail+1)); echo "FAIL the shipped critics.json has no claude panel row (got $has_no_claude_row)"; fi
+# the registry shape that shipped an advisory claude row (before decision 1084)
+cfg "$TMP/advisory-old-shipped.json" '{"advisory_precision_floor":0.60,"coderabbit_outside_precision":0.55,"panel":[{"slug":"codex","provider":"openai-codex","route_provider":"openai-codex","tier":"paid","mode":"hard","required":true},{"slug":"claude","provider":"claude-api","route_provider":"claude-api","tier":"paid","mode":"advisory","precision":0.482,"required":false},{"slug":"coderabbit","provider":"github-app","mode":"best-effort"}]}'
+CRITICS_JSON="$TMP/advisory-old-shipped.json" GH_STUB_MODE=clean t advisory-shipped-claude-finding-note 0
 has "$TMP/out-advisory-shipped-claude-finding-note" '^NOTE: .*claude.*claude-advisory-critical' "advisory Critical finding is surfaced"
 has "$TMP/err-advisory-shipped-claude-finding-note" '^NOTE: .*claude.*claude-advisory-critical' "advisory Critical finding survives hook stdout capture"
 has "$LEDGER" '"finding_id":"claude-advisory-critical","severity":"crit"' "advisory Critical finding stays recorded"
