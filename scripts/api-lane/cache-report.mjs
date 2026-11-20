@@ -16,6 +16,7 @@ for (const line of readFileSync(file, 'utf8').split('\n')) {
   let r;
   try { r = JSON.parse(line); } catch { continue; }
   if (![r.input_tokens, r.cache_creation_tokens, r.cache_read_tokens].every(Number.isInteger)) continue;
+  if (r.lane === 'native') continue;
   // Only runs of one kind on one model in one organization can read each other's prefix.
   (kinds[`${r.kind ?? 'other'} | ${r.model ?? '?'} | ${r.organization_id ?? '?'}`] ??= []).push({ ...r, t: Date.parse(r.ts) });
 }

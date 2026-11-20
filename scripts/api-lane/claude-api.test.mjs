@@ -1423,6 +1423,20 @@ test('cache-report prints a per-kind hit rate and picks the TTL from the measure
   assert.equal(out['__proto__ | m | o'].runs, 1, 'a kind named like an Object property still groups');
 });
 
+test('cache-report gives no group to a native release judge row', () => {
+  const f = fixture();
+  const log = join(f.dir, 'launches.jsonl');
+  const native = JSON.stringify({ ts: '2026-11-20T10:01:00Z', kind: 'judge', model: 'opus', lane: 'native', cache_ttl: 'off', input_tokens: 336000, cache_creation_tokens: 0, cache_read_tokens: 649 });
+  const api = [usageRow('2026-11-20T10:00:00Z', 'judge', '5m', 10, 4000, 0, 'opus'), usageRow('2026-11-20T10:02:00Z', 'judge', '5m', 10, 100, 4000, 'opus')];
+  writeFileSync(log, api.join('\n') + '\n');
+  const alone = spawnSync(process.execPath, [REPORT, log], { encoding: 'utf8' });
+  writeFileSync(log, [api[0], native, api[1]].join('\n') + '\n');
+  const mixed = spawnSync(process.execPath, [REPORT, log], { encoding: 'utf8' });
+  assert.equal(mixed.status, 0, mixed.stderr);
+  assert.deepEqual(Object.keys(JSON.parse(mixed.stdout)), ['judge | opus | o']);
+  assert.equal(mixed.stdout, alone.stdout);
+});
+
 // a dead call must not hold its reservation (killed calls on account B kept 20.10 USD reserved).
 test('a call that exits non-zero settles its reservation instead of leaving it open', () => {
   const f = fixture();

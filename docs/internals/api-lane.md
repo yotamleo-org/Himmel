@@ -165,6 +165,10 @@ an API call, so it takes no reservation and `claude-api.sh` never sees it.
 | `cost_usd` | empty (no API credit spent) |
 | `sub_cost_usd` | the call's verified `total_cost_usd` (six places), empty when the call failed or printed none |
 | `rc` | the call's exit code (1 when it threw without one) |
+| `input_tokens` | the call's plain input tokens, read from the envelope's `usage` (the Opus call alone: the Haiku title call is in `modelUsage` only); null when the row has no cost or the call reported no usable usage |
+| `cache_creation_tokens` | the call's cache-write tokens; null on the same condition |
+| `cache_read_tokens` | the call's cache-read tokens; null on the same condition |
+| `cache_ttl` | the tier the call's environment asks for: `off`, `5m` or `1h` |
 
 A reader that sums API dollars skips every row with a `lane` other than `api` (the API launcher's own rows carry
 no `lane`): `shift-spend.mjs` does, so the native and `sub-fallback` rows are neither summed nor counted as unpriced.
