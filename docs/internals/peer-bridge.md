@@ -42,6 +42,8 @@ supergroup with a new chat id, and `confirm` refuses the old id.
    bun scripts/peer-bridge/setup.ts add goomal --peer-bot-id <peer bot id> --peer-username <peer bot username>
    ```
 
+   Pass `--operator-bot-id <id>` to skip the operator-bot-id prompt; a helper that already knows the id uses it.
+
    It asks for the operator bot's id, reads the operator chat id from the
    operator bot's `access.json`, records the operator's bridge root and the
    primary himmel checkout, and creates the dirs (0700), the empty chain files
