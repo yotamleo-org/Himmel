@@ -1738,6 +1738,7 @@ esac
 lock=free; [ -e .git/index.lock ] && lock=held
 shift
 printf '%s lock=%s %s\n' "$kind" "$lock" "$*" >> "$NT_REC"
+if [ -n "${NT_HANG:-}" ] && [ "$kind" = promote ]; then echo $$ > "$NT_PIDFILE"; exec sleep 20; fi
 echo "per-item detail line for $kind"
 if [ -n "${NT_ESC:-}" ]; then printf '%s-summary: \033[31mred\033[0m\r done\n' "$kind"; else echo "$kind-summary: 3 done"; fi
 exit "$rc"
@@ -1901,6 +1902,30 @@ assert_contains "own lock of a live pid: treated as busy" "[nightly-promote] ski
 rm -f "$NT_VAULT/.git/index.lock"
 nt_fire synthesize
 assert_contains "a git vault: held while the tools run" "promote lock=held" "$(cat "$NT_REC")"
+NT_PIDFILE="$TMP_ROOT/nt-stub-pid"
+nt_term() {
+    local runner="$1" i=0 runner_pid stub_pid p
+    : > "$NT_REC"; rm -f "$NT_PIDFILE"
+    NT_HANG=1 NT_PIDFILE="$NT_PIDFILE" sh "$runner" >/dev/null 2>&1 &
+    runner_pid=$!
+    while [ ! -s "$NT_PIDFILE" ] && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
+    stub_pid=$(cat "$NT_PIDFILE" 2>/dev/null || true)
+    NT_HELD_MID_STEP=free; [ -e "$NT_VAULT/.git/index.lock" ] && NT_HELD_MID_STEP=held
+    kill -TERM "$runner_pid" 2>/dev/null || true
+    if [ -n "$stub_pid" ]; then kill -TERM "$stub_pid" 2>/dev/null || true; fi
+    i=0; while kill -0 "$runner_pid" 2>/dev/null && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
+    NT_LEFT=0
+    for p in "$runner_pid" $stub_pid; do
+        if kill -0 "$p" 2>/dev/null; then NT_LEFT=$((NT_LEFT + 1)); kill -KILL "$p" 2>/dev/null || true; fi
+    done
+    { wait "$runner_pid" || true; } 2>/dev/null
+    NT_LOCK_AFTER=free; [ -e "$NT_VAULT/.git/index.lock" ] && NT_LOCK_AFTER=held
+    rm -f "$NT_VAULT/.git/index.lock"
+}
+nt_term "$NT_DIR/pipeline-synthesize.sh"
+assert_rc "TERM mid-step: the promotion was running with the lock held" "held" "$NT_HELD_MID_STEP"
+assert_rc "TERM mid-step: the vault lock is gone once the runner is stopped" "free" "$NT_LOCK_AFTER"
+assert_rc "TERM mid-step: no process of the run is left" 0 "$NT_LEFT"
 env OSTYPE=linux-gnu PIPELINE_CRONTAB="$FAKE_CRONTAB" PIPELINE_BAT_DIR="$TMP_ROOT/nt-rnr-nogit" \
     PIPELINE_TRIAGE_TOOLS_DIR="$NT_TOOLS" PATH="$BIN_REC_POSIX:$PATH" \
     bash "$SCRIPT" arm --force --vault "$FIRE_VAULT" >/dev/null 2>&1

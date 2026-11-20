@@ -222,13 +222,21 @@ function densifyContent(content, contributors) {
   return { newContent, appended, fresh };
 }
 
+function kindOfNonRegularFile(abs) {
+  let st;
+  try { st = fs.lstatSync(abs); } catch (e) { if (e.code === "ENOENT") return null; throw e; }
+  if (st.isFile()) return null;
+  if (st.isSymbolicLink()) return "symbolic link";
+  return st.isDirectory() ? "directory" : "special file";
+}
+
 // ── apply ────────────────────────────────────────────────────────────────────
 function runApply(vault, ledgerPath, dryRun, limit) {
   const clips = scanEvidence(vault);
   const byRel = new Map(clips.map((c) => [c.rel, c]));
   const decisions = planStubs(clips, fuzzyMatcher(vault));
 
-  let created = 0, densified = 0, skipped = 0, unchanged = 0, pending = 0;
+  let created = 0, densified = 0, skipped = 0, unchanged = 0, pending = 0, refused = 0;
   const full = () => limit > 0 && created + densified >= limit;
   // { subject, clipAbs } per contributor NEWLY stamped this run — fed to
   // the telegram promotion digest (filtered to telegram-origin clips in main()).
@@ -294,6 +302,8 @@ function runApply(vault, ledgerPath, dryRun, limit) {
     const subjectRel = `${d.target.folder}/${d.subjectName}.md`;
     const subjectAbs = path.join(vault, d.target.folder, `${d.subjectName}.md`);
     const content = renderStub(d.subjectName, d.target, contributors);
+    const blocker = kindOfNonRegularFile(subjectAbs);
+    if (blocker) { out(`⊘ ${subjectRel} — refused: an existing ${blocker} sits there, nothing written`); refused++; continue; }
     if (full()) { pending++; continue; }
 
     if (dryRun) {
@@ -343,7 +353,7 @@ function runApply(vault, ledgerPath, dryRun, limit) {
   }
 
   out(`${SELF}: ${created} ${dryRun ? "would-create" : "created"}, ${densified} ${dryRun ? "would-densify" : "densified"}, ${skipped} skipped` +
-    `${unchanged ? `, ${unchanged} unchanged` : ""}${limit > 0 ? `, ${pending} pending (limit ${limit})` : ""}`);
+    `${unchanged ? `, ${unchanged} unchanged` : ""}${refused ? `, ${refused} refused (not a regular file)` : ""}${limit > 0 ? `, ${pending} pending (limit ${limit})` : ""}`);
   return promotions;
 }
 

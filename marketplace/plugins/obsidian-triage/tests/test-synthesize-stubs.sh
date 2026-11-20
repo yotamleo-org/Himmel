@@ -344,6 +344,62 @@ node "$TOOL" "$tmp6" --revert "$LEDGER6" >/dev/null 2>&1
 assert "a limited run reverts through the one ledger" "0" "$(find "$tmp6/30-Resources/Concepts" -type f | wc -l | tr -d ' ')"
 assert "and leaves no stamp behind" "0" "$(grep -lF 'promoted_to:' "$EV6"/*.md | wc -l | tr -d ' ')"
 
+echo "Test group 6b: --limit counts densifies"
+tmp6b="$(mktemp -d -t synth6b.XXXXXX)" || exit 1
+trap 'rm -rf "$tmp" "$tmp4" "$tmp5" "$tmp5b" "$tmp6" "$tmp6b"' EXIT
+EV6B="$tmp6b/Clippings/_evidence"
+C6B="$tmp6b/30-Resources/Concepts"
+mkdir -p "$EV6B" "$C6B"
+for t in alpha beta gamma delta; do
+  title="$(printf '%s' "$t" | cut -c1 | tr '[:lower:]' '[:upper:]')$(printf '%s' "$t" | cut -c2-)"
+  printf -- '---\ntype: concept\ntags:\n  - concept\n---\n# %s\n\n## Evidence\n\n- (hand-written)\n' "$title" > "$C6B/$title.md"
+  mkclip5 "$EV6B" "$t-1.md" "$t One" "https://$t-one.com/x" "$t"
+  mkclip5 "$EV6B" "$t-2.md" "$t Two" "https://$t-two.org/x" "$t"
+done
+LEDGER6B="$tmp6b/.synthesize-stubs.ledger.jsonl"
+out6ba="$(node "$TOOL" "$tmp6b" --dry-run --limit 2 2>&1)"
+assert "dry run with --limit 2 over 4 densifies plans 2" "2" "$(grep -c '^≈ would densify' <<<"$out6ba")"
+assert "dry run changes no page" "0" "$(grep -lF 'Clippings/_evidence' "$C6B"/*.md | wc -l | tr -d ' ')"
+out6bb="$(node "$TOOL" "$tmp6b" --apply --limit 2 2>&1)"
+assert "--limit 2 densifies exactly 2 of 4 pages" "2" "$(grep -lF 'Clippings/_evidence' "$C6B"/*.md | wc -l | tr -d ' ')"
+assert "the summary names the 2 left pending" "synthesize-stubs.mjs: 0 created, 2 densified, 0 skipped, 2 pending (limit 2)" "$(tail -n 1 <<<"$out6bb")"
+assert "only the densified pages' clips are stamped" "4" "$(grep -lF 'promoted_to:' "$EV6B"/*.md | wc -l | tr -d ' ')"
+out6bc="$(node "$TOOL" "$tmp6b" --apply --limit 2 2>&1)"
+assert "the next run densifies the 2 left" "4" "$(grep -lF 'Clippings/_evidence' "$C6B"/*.md | wc -l | tr -d ' ')"
+assert "and reports the first 2 as unchanged" "synthesize-stubs.mjs: 0 created, 2 densified, 0 skipped, 2 unchanged, 0 pending (limit 2)" "$(tail -n 1 <<<"$out6bc")"
+node "$TOOL" "$tmp6b" --revert "$LEDGER6B" >/dev/null 2>&1
+assert "revert takes every appended block back out" "0" "$(grep -lF 'Clippings/_evidence' "$C6B"/*.md | wc -l | tr -d ' ')"
+assert "and keeps the hand-written line" "4" "$(grep -lF '(hand-written)' "$C6B"/*.md | wc -l | tr -d ' ')"
+
+echo "Test group 7: a subject path that is a link is refused, never written through"
+tmp7="$(mktemp -d -t synth7.XXXXXX)" || exit 1
+trap 'rm -rf "$tmp" "$tmp4" "$tmp5" "$tmp5b" "$tmp6" "$tmp6b" "$tmp7"' EXIT
+EV7="$tmp7/Clippings/_evidence"
+C7="$tmp7/30-Resources/Concepts"
+mkdir -p "$EV7" "$C7" "$tmp7/outside"
+printf 'a note of the operator that is not a subject page\n' > "$tmp7/outside/original.md"
+cp "$tmp7/outside/original.md" "$tmp7/original.copy"
+ln -s "$tmp7/outside/original.md" "$C7/Local First.md"
+ln -s "$tmp7/outside/never-created.md" "$C7/Dangling Topic.md"
+for t in local-first dangling-topic clean-topic; do
+  mkclip5 "$EV7" "$t-1.md" "$t One" "https://$t-one.com/x" "$t"
+  mkclip5 "$EV7" "$t-2.md" "$t Two" "https://$t-two.org/x" "$t"
+done
+LEDGER7="$tmp7/.synthesize-stubs.ledger.jsonl"
+out7="$(node "$TOOL" "$tmp7" --apply 2>&1)"; printf '%s
+' "$out7"
+assert "the target of a linked subject page is byte for byte unchanged" "same" "$(cmp -s "$tmp7/original.copy" "$tmp7/outside/original.md" && echo same || echo changed)"
+assert "the link is still a link" "yes" "$([ -L "$C7/Local First.md" ] && echo yes || echo no)"
+assert "a dangling link creates nothing at its target" "no" "$([ -e "$tmp7/outside/never-created.md" ] && echo yes || echo no)"
+assert "each refused page prints its reason" "2" "$(grep -c 'refused: an existing symbolic link' <<<"$out7")"
+assert "the summary counts the refusals" "synthesize-stubs.mjs: 1 created, 0 densified, 0 skipped, 2 refused (not a regular file)" "$(tail -n 1 <<<"$out7")"
+assert "the clips of a refused page are not stamped" "0" "$(grep -lF 'promoted_to:' "$EV7"/local-first-*.md "$EV7"/dangling-topic-*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert "a clean subject in the same run is still created" "yes" "$([ -f "$C7/Clean Topic.md" ] && echo yes || echo no)"
+node "$TOOL" "$tmp7" --revert "$LEDGER7" >/dev/null 2>&1
+assert "after revert the target is still byte for byte unchanged" "same" "$(cmp -s "$tmp7/original.copy" "$tmp7/outside/original.md" && echo same || echo changed)"
+assert "after revert the link is still a link" "yes" "$([ -L "$C7/Local First.md" ] && echo yes || echo no)"
+assert "and the created page is gone" "no" "$([ -e "$C7/Clean Topic.md" ] && echo yes || echo no)"
+
 # ── summary ──────────────────────────────────────────────────────────────────
 echo ""
 echo "test-synthesize-stubs: $pass passed, $fail failed"
