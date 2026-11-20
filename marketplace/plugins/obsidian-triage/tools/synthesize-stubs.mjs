@@ -88,6 +88,7 @@ function scanEvidence(vault) {
     const { lines, bounds } = parse(content);
     if (!bounds) continue;
     const close = bounds.close;
+    if (fmScalar(lines, close, "archived") === "true") continue; // archived by the daily note: feeds no page
     const rel = `Clippings/_evidence/${ent.name}`;
     const author = fmScalar(lines, close, "author") || (fmList(lines, close, "authors")[0] || "");
     const rawUrl = fmScalar(lines, close, "harvest_url_canonical") || fmScalar(lines, close, "source");

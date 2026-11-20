@@ -586,6 +586,21 @@ OUT_CF4="$TMP_ROOT/cf4.md"
 CLIP_FUNNEL_VAULT="$TMP_ROOT/no-such-vault" MORNING_TODAY=2026-06-28 run_script --since "$MARKER" --out "$OUT_CF4" >/dev/null
 assert_contains "clip funnel: an unreadable vault says so" "Clip funnel not available" "$(cat "$OUT_CF4")"
 
+echo "TEST: clip funnel block counts archived clips on a line of their own"
+assert_contains "clip funnel: no archived clip reads as zero" "- Archived: **0** clips" "$(cat "$OUT_CF1")"
+FUNNEL_ARCH_VAULT="$TMP_ROOT/funnel-arch-vault"
+bash "$FUNNEL_BUILD" "$FUNNEL_ARCH_VAULT"
+for n in e11 e12; do
+    printf -- '---\ntype: tweet\ntriaged_at: 2026-06-28\narchived: true\narchived_at: 2026-06-28\n---\n\nSynthetic clip body.\n' > "$FUNNEL_ARCH_VAULT/Clippings/_evidence/$n.md"
+done
+OUT_CF5="$TMP_ROOT/cf5.md"
+CLIP_FUNNEL_VAULT="$FUNNEL_ARCH_VAULT" MORNING_TODAY=2026-06-28 run_script --since "$MARKER" --out "$OUT_CF5" >/dev/null
+file=$(cat "$OUT_CF5")
+assert_contains "clip funnel: two archived clips are counted" "- Archived: **2** clips" "$file"
+assert_contains "clip funnel: they are left out of taken in" "- Taken in: **10** clips (**6** in the last 7 days)" "$file"
+assert_contains "clip funnel: they are left out of the cited share" "- Cited by a synthesis page: **4** of 10 (**40%**)" "$file"
+if [ "$(grep -c -F -- '- Archived:' "$OUT_CF5")" = "1" ]; then pass "clip funnel: the archived count is one line"; else fail "clip funnel: the archived count is one line"; fi
+
 # The report leads with the frame 16 four answers; every older section stays below.
 echo "TEST: first four headings are the frame 16 answers, every older section kept below"
 OUT_F16="$TMP_ROOT/f16.md"

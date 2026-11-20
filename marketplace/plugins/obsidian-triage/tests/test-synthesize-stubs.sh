@@ -587,6 +587,43 @@ process.stdout.write(leaks.join(" "));
 ' "$PLUGIN_DIR/tools/lib/stub-synthesis.mjs" 2>&1)"
 assert "every housekeeping word is ignored in both forms" "" "$leaks13"
 
+echo "Test group 14: an archived clip feeds no subject page"
+tmp14="$(mktemp -d -t synth14.XXXXXX)" || exit 1
+trap 'rm -rf "$tmp" "$tmp4" "$tmp5" "$tmp5b" "$tmp6" "$tmp6b" "$tmp7" "$tmp8" "$tmp9" "$tmp10" "$tmp11" "$tmp12" "$tmp13" "$tmp14"' EXIT
+EV14="$tmp14/Clippings/_evidence"
+C14="$tmp14/30-Resources/Concepts"
+mkdir -p "$EV14" "$C14"
+mkclip14() { # $1 = file, $2 = tag, $3 = the archived line ("" for a live clip); the author and URL follow the file name
+  local f="$1" tag="$2" arch="$3" name="${1%.md}"
+  { printf -- '---\ntype: article\nsource: "https://%s.example.com/x"\nauthor: %s Author\nprocessed: true\nevidence_kind:\n  - concepts\ntags:\n  - %s\n' "$name" "$name" "$tag"
+    [ -z "$arch" ] || printf '%s\narchived_at: 2026-11-20\n' "$arch"
+    printf -- '---\nclip %s\n' "$f"; } > "$EV14/$f"
+}
+mkclip14 only-live.md  "converges-late"  ""
+mkclip14 only-arch.md  "converges-late"  "archived: true"
+mkclip14 ctl-a.md      "converges-ctl"   ""
+mkclip14 ctl-b.md      "converges-ctl"   "archived: false"
+mkclip14 held-a.md     "held-topic"      "archived: true"
+mkclip14 held-b.md     "held-topic"      ""
+printf -- '---\ntype: concept\ntags:\n  - concept\n---\n# Held Topic\n\n## Evidence\n\n- [[Clippings/_evidence/held-a]] — cited before the clip was archived\n' > "$C14/Held Topic.md"
+cp "$C14/Held Topic.md" "$tmp14/held.copy"
+cp "$EV14/only-arch.md" "$tmp14/only-arch.copy"
+LEDGER14="$tmp14/.synthesize-stubs.ledger.jsonl"
+dry14="$(node "$TOOL" "$tmp14" --dry-run 2>&1)"; printf '%s
+' "$dry14"
+assert "a tag that converges only through an archived clip makes no page in a dry run" "0" "$(grep -c "would create.*Converges Late" <<<"$dry14")"
+assert "the same tag with no clip archived does (archived: false is live)" "1" "$(grep -c "would create.*Converges Ctl" <<<"$dry14")"
+assert "an existing page that cites an archived clip is not densified in a dry run" "0" "$(grep -c "Held Topic" <<<"$dry14")"
+out14="$(node "$TOOL" "$tmp14" --apply 2>&1)"; printf '%s
+' "$out14"
+assert "no page is made for the archived convergence" "no" "$([ -e "$C14/Converges Late.md" ] && echo yes || echo no)"
+assert "the live convergence is made" "yes" "$([ -f "$C14/Converges Ctl.md" ] && echo yes || echo no)"
+assert "an existing page that cites an archived clip is byte for byte unchanged" "same" "$(cmp -s "$tmp14/held.copy" "$C14/Held Topic.md" && echo same || echo changed)"
+assert "the archived clip is byte for byte unchanged (no promoted_to stamp)" "same" "$(cmp -s "$tmp14/only-arch.copy" "$EV14/only-arch.md" && echo same || echo changed)"
+assert "the summary counts one created and nothing densified" "synthesize-stubs.mjs: 1 created, 0 densified, 0 skipped" "$(tail -n 1 <<<"$out14")"
+node "$TOOL" "$tmp14" --revert "$LEDGER14" >/dev/null 2>&1
+assert "revert removes the one page made" "0" "$(find "$C14" -type f -name '*.md' | grep -vc 'Held Topic')"
+
 # ── summary ──────────────────────────────────────────────────────────────────
 echo ""
 echo "test-synthesize-stubs: $pass passed, $fail failed"

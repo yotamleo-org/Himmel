@@ -157,6 +157,29 @@ node "$PLUGIN_DIR/tools/apply-clip-actions.mjs" --vault "$R" --date "$D" --apply
 outr="$(node "$TOOL" --vault "$R" --as-of "$D" 2>&1)"
 assert "after the apply: both are applied and none is open" "0 2" "$(jget actions.open "$outr") $(jget actions.applied "$outr")"
 
+echo "Group 11: archived clips are counted on their own line and left out of the rest"
+R="$tmp/arch"; bash "$BUILD" "$R"
+arch_clip() { printf -- '---\ntype: tweet\ntriaged_at: %s\n%s\n---\n\nSynthetic clip body.\n' "$2" "$3" > "$R/Clippings/_evidence/$1.md"; }
+arch_clip e11 2026-06-28 $'archived: true\narchived_at: 2026-06-28'
+arch_clip e12 2026-06-27 $'archived: true\narchived_at: 2026-06-28'
+arch_clip e13 2026-06-26 'archived: false'
+printf -- '---\ndate: 2026-06-20\ntype: synthesis\n---\n\n- [[Clippings/_evidence/e12]]\n- [[Clippings/_evidence/e13]]\n' > "$R/Clippings/_synthesis/s3.md"
+outr="$(node "$TOOL" --vault "$R" --as-of "$D" 2>&1)"
+assert "archived: the two archived clips are counted" "2" "$(jget intake.archived "$outr")"
+assert "archived: on a line of its own" "1" "$(grep -c '^    "archived": 2,$' <<<"$outr")"
+assert "archived: a vault with none archived reports zero" "0" "$(jget intake.archived "$out")"
+assert "intake: the archived clips are left out (the eleven live clips; archived: false is live)" "11" "$(jget intake.clips "$outr")"
+assert "intake: an archived clip is not a clip taken in" "7" "$(jget intake.moved_in_window "$outr")"
+assert "cited: a live clip cited by the new page counts, an archived one does not" "5" "$(jget cited.clips "$outr")"
+assert "cited: the share is of the live clips" "0.455" "$(jget cited.share "$outr")"
+assert "not yet cited: the archived clips are not in it" "6" "$(( $(jget intake.clips "$outr") - $(jget cited.clips "$outr") ))"
+FUNNEL_READ_LOG="$tmp/reads-arch.log" node --import "$PRELOAD" "$TOOL" --vault "$R" --as-of "$D" >/dev/null 2>&1
+assert "archived: no path is read twice" "" "$(awk -F'\t' '$1 > 1' "$tmp/reads-arch.log")"
+assert "archived: the archived clips were read (the check is not vacuous)" "2" "$(grep -c '/Clippings/_evidence/e1[12]\.md' "$tmp/reads-arch.log")"
+before_r="$(snap "$R")"
+node "$TOOL" --vault "$R" --as-of "$D" >/dev/null 2>&1
+assert "archived: the vault is byte for byte unchanged after a run" "$before_r" "$(snap "$R")"
+
 echo
 echo "test-clip-funnel: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -12,7 +12,8 @@
  *
  * Every stage reads files the pipeline already writes, once each, keeping a few
  * small records and no file body:
- *   intake    Clippings/_evidence/*.md                        (flat; a subfolder is not evidence)
+ *   intake    Clippings/_evidence/*.md                        (flat; a subfolder is not evidence;
+ *                                                             `archived: true` clips count as `archived`, not as intake or cited)
  *   cited     Clippings/_synthesis/*.md                       a page cites a clip it links by name
  *   subjects  .synthesize-stubs.ledger.jsonl                  stub-create = created, densify = extended
  *   actions   50-Journal/Daily/<date>.md `## Daily report`    open = unticked, undismissed, not applied
@@ -119,11 +120,14 @@ function funnel(vault, asOf, days) {
     return (key) => fmScalar(lines, bounds.close, key);
   };
   const pendingMedia = (get) => get("ig_media_pending") === "true" || get("x_media_pending") === "true";
+  let archived = 0;
   for (const name of mdFiles(path.join(clips, "_evidence"))) {
-    names.add(name.slice(0, -3));
     const get = readClip(path.join(clips, "_evidence", name));
+    const isArchived = Boolean(get) && get("archived") === "true";
+    if (isArchived) archived++;
+    else names.add(name.slice(0, -3));
     if (!get) continue;
-    intake.see(dayOf(get("triaged_at")));
+    if (!isArchived) intake.see(dayOf(get("triaged_at")));
     enriched.see(dayOf(get("media_enriched_at")));
     if (pendingMedia(get)) waiting++;
   }
@@ -179,7 +183,7 @@ function funnel(vault, asOf, days) {
   const open = carryOver(lists).carried.filter((it) => !applied.has(it.id)).length;
 
   const stages = {
-    intake: { clips: names.size, moved_in_window: intake.moved, last: intake.last },
+    intake: { clips: names.size, archived, moved_in_window: intake.moved, last: intake.last },
     cited: {
       clips: cited.size,
       share: names.size ? Math.round((cited.size / names.size) * 1000) / 1000 : 0,

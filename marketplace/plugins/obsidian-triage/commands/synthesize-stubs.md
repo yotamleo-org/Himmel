@@ -32,6 +32,10 @@ A stub fires for a topical tag **T** only when ALL hold:
 3. Those contributors span **>=2 distinct domains OR >=2 distinct authors** (the
    OR arm lets single-platform authors — every X clip is `x.com` — still pass).
 
+A clip stamped `archived: true` (the daily note's archive action) is not an
+evidence clip for any of this: it makes no tag converge, is never stamped, and a
+page that already cites it is left exactly as it is.
+
 Anything short of all three is logged `⊘ <tag> — skipped (<reason>)` and writes
 nothing. A single article clipped twice produces **0 stubs**, by construction.
 
