@@ -158,30 +158,34 @@ function runRevert(vault, revertPath) {
 
   let reverted = 0, already = 0, refused = 0, gone = 0;
   const preApplyHashes = new Map();
-  const notePreApply = (rel, h) => {
-    if (!preApplyHashes.has(rel)) preApplyHashes.set(rel, new Set());
-    preApplyHashes.get(rel).add(h);
+  const notePreApply = (rel, i, h) => {
+    if (!preApplyHashes.has(rel)) preApplyHashes.set(rel, []);
+    preApplyHashes.get(rel).push({ i, h });
   };
-  for (const e of entries) {
-    if (e.action === "fold") notePreApply(e.map, e.map_sha256_before);
-    else for (const f of e.files) notePreApply(f.rel, f.sha256_before);
-  }
-  const revertPage = (rel, shaBefore, shaAfter, restore, what) => {
+  entries.forEach((e, i) => {
+    if (e.action === "fold") notePreApply(e.map, i, e.map_sha256_before);
+    else for (const f of e.files) notePreApply(f.rel, i, f.sha256_before);
+  });
+  const rolledBackPast = (rel, i, h) => preApplyHashes.get(rel).some((x) => x.i <= i && x.h === h);
+  const refusedPages = new Set();
+  const refuse = (rel, why) => {
+    out(`⊘ ${rel} — ${why}; refusing to revert`);
+    refused++;
+    refusedPages.add(rel);
+  };
+  const revertPage = (rel, i, shaBefore, shaAfter, restore, what) => {
     const abs = absOf(vault, rel);
     if (!fs.existsSync(abs)) { gone++; return; }
+    if (refusedPages.has(rel)) return refuse(rel, `diverged: a newer apply on this page was refused`);
     const cur = fs.readFileSync(abs, "utf8");
     const h = sha256(cur);
     if (h !== shaAfter) {
-      if (preApplyHashes.get(rel).has(h)) { out(`= ${rel} — already reverted`); already++; return; }
-      out(`⊘ ${rel} — diverged since ${what} (edited after the apply); refusing to revert`);
-      refused++;
-      return;
+      if (rolledBackPast(rel, i, h)) { out(`= ${rel} — already reverted`); already++; return; }
+      return refuse(rel, `diverged since ${what} (edited after the apply)`);
     }
     const restored = restore(cur);
     if (restored === null || sha256(restored) !== shaBefore) {
-      out(`⊘ ${rel} — diverged since ${what} (cannot restore the recorded bytes); refusing to revert`);
-      refused++;
-      return;
+      return refuse(rel, `diverged since ${what} (cannot restore the recorded bytes)`);
     }
     fs.writeFileSync(abs, restored);
     out(`↩ ${rel} — ${what} reverted`);
@@ -191,12 +195,12 @@ function runRevert(vault, revertPath) {
   for (let i = entries.length - 1; i >= 0; i--) {
     const e = entries[i];
     if (e.action === "fold") {
-      revertPage(e.map, e.map_sha256_before, e.map_sha256,
+      revertPage(e.map, i, e.map_sha256_before, e.map_sha256,
         (cur) => (cur.slice(e.at, e.at + e.appended.length) === e.appended ? cur.slice(0, e.at) + cur.slice(e.at + e.appended.length) : null),
         "fold");
     } else {
       for (const f of e.files) {
-        revertPage(f.rel, f.sha256_before, f.sha256, (cur) => removeScalar(removeScalar(cur, "archived_at"), "archived"), "archive");
+        revertPage(f.rel, i, f.sha256_before, f.sha256, (cur) => removeScalar(removeScalar(cur, "archived_at"), "archived"), "archive");
       }
     }
   }

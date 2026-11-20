@@ -355,10 +355,14 @@ node tools/apply-clip-actions.mjs --vault <v> --revert <vault>/.apply-clip-actio
   page hashes before and after. `--revert` undoes newest-first and **refuses** any
   page whose hash is no longer the recorded post-apply hash (a page edited since is
   not rewritten) and any restore that would not reproduce the recorded bytes: it
-  exits 3 if it refused anything. A ledger path must stay inside the vault; that is
-  checked on the path as written, so a symlinked folder inside the vault still works.
-  Reverting twice is a no-op ("already reverted"),
-  also when several actions folded into one map. The ledger line is written before
+  exits 3 if it refused anything. A page path read from a ledger line must stay
+  inside the vault (checked on the path as written, so a symlinked folder inside
+  the vault still works); the `--ledger` and `--revert` file paths themselves are
+  not restricted. Reverting twice is a no-op ("already reverted"),
+  also when several actions folded into one map. A map hand-edited between two
+  applies is refused for the earlier apply (and for anything older on that page),
+  not reported reverted: a page counts as already reverted only at a state from
+  before that entry or an older one. The ledger line is written before
   its edits, so a crash can leave a line for an edit that never landed (read as
   "already reverted"), never an edit with no line.
 - **One writer at a time:** `--apply` and `--revert` take `<vault>/.apply-clip-actions.lock`

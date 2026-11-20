@@ -274,6 +274,51 @@ LIB="$PLUGIN_DIR/tools/lib/clip-actions.mjs" node --input-type=module -e \
 assert "a level-1 heading ends the Evidence section" \
     "$(printf '## Evidence\n\n- a\n- [[x|X]]\n\n# Next\n\ntext')" "$(cat "$tmp/fold.out")"
 
+echo "Test group 6d: a map hand-edited between two applies is refused on revert, not reported reverted"
+H="$tmp/H"; cp -R "$tmp/G0" "$H"
+node "$APPLY" --vault "$H" --date "$D" --apply --limit 6 >/dev/null 2>&1
+printf 'hand edit between two applies\n' >> "$H/60-Maps/Alpha-MOC.md"
+node "$APPLY" --vault "$H" --date "$D" --apply --limit 50 >/dev/null 2>&1
+HL="$H/$LEDGER_NAME"
+assert "two folds on the edited map, one before and one after the edit" "2" "$(grep -c '"map":"60-Maps/Alpha-MOC.md"' "$HL")"
+out="$(node "$APPLY" --vault "$H" --date "$D" --revert "$HL" 2>&1)"; rc=$?
+assert "revert exits 3: the earlier fold sits under a hand edit" "3" "$rc"
+assert "the earlier fold on the edited map is refused as diverged" "1" "$(printf '%s\n' "$out" | grep -c '^⊘ 60-Maps/Alpha-MOC.md — diverged')"
+assert "the earlier fold on the edited map is not reported already reverted" "0" "$(printf '%s\n' "$out" | grep -c '^= 60-Maps/Alpha-MOC.md')"
+assert "revert summary counts 10 reverted and 1 refused" "1" "$(printf '%s\n' "$out" | grep -c ': 10 reverted, 0 already-reverted, 1 refused')"
+assert "the earlier fold's links are still in the map" "2" "$(grep -cE 'alpha-[23]' "$H/60-Maps/Alpha-MOC.md")"
+assert "the hand edit is kept" "1" "$(grep -c 'hand edit between two applies' "$H/60-Maps/Alpha-MOC.md")"
+assert "the later fold was reverted" "0" "$(grep -c 'alpha-d' "$H/60-Maps/Alpha-MOC.md")"
+assert "every other page is restored" "" "$(diff -r "$tmp/G0" "$H" --exclude="$LEDGER_NAME" --exclude=Alpha-MOC.md 2>&1)"
+
+H2="$tmp/H2"; cp -R "$tmp/G0" "$H2"
+node "$APPLY" --vault "$H2" --date "$D" --apply --limit 6 >/dev/null 2>&1
+cp "$H2/60-Maps/Alpha-MOC.md" "$tmp/alpha-after-first-apply.md"
+printf 'hand edit between two applies\n' >> "$H2/60-Maps/Alpha-MOC.md"
+node "$APPLY" --vault "$H2" --date "$D" --apply --limit 50 >/dev/null 2>&1
+cp "$tmp/alpha-after-first-apply.md" "$H2/60-Maps/Alpha-MOC.md"
+out="$(node "$APPLY" --vault "$H2" --date "$D" --revert "$H2/$LEDGER_NAME" 2>&1)"; rc=$?
+assert "a map put back to an older recorded state exits 3" "3" "$rc"
+assert "the newer apply on that map is refused" "1" "$(printf '%s\n' "$out" | grep -c '^⊘ 60-Maps/Alpha-MOC.md — diverged since fold')"
+assert "the older apply on that map is refused too, once the newer one was" "1" "$(printf '%s\n' "$out" | grep -c 'a newer apply on this page was refused')"
+assert "the refused map is left as it was" "" "$(diff "$tmp/alpha-after-first-apply.md" "$H2/60-Maps/Alpha-MOC.md")"
+
+echo "Test group 6e: a restore that cannot reproduce the recorded bytes is refused"
+K="$tmp/K"; cp -R "$P" "$K"
+kh="$(tree_hash "$K")"
+kmap_sha="$(sha "$K/60-Maps/Beta-MOC.md" | cut -d' ' -f1)"
+zero64="$(printf '%064d' 0)"
+printf '{"action":"fold","map":"60-Maps/Beta-MOC.md","map_sha256_before":"%s","map_sha256":"%s","at":0,"appended":"zzz"}\n' "$zero64" "$kmap_sha" > "$tmp/badslice.jsonl"
+out="$(node "$APPLY" --vault "$K" --revert "$tmp/badslice.jsonl" 2>&1)"; rc=$?
+assert "a block that is not where the ledger says exits 3" "3" "$rc"
+assert "a block that is not where the ledger says is refused" "1" "$(printf '%s\n' "$out" | grep -c 'cannot restore the recorded bytes')"
+assert "a refused restore leaves the vault untouched" "$kh" "$(tree_hash "$K")"
+printf '{"action":"fold","map":"60-Maps/Beta-MOC.md","map_sha256_before":"%s","map_sha256":"%s","at":0,"appended":"---"}\n' "$zero64" "$kmap_sha" > "$tmp/badhash.jsonl"
+out="$(node "$APPLY" --vault "$K" --revert "$tmp/badhash.jsonl" 2>&1)"; rc=$?
+assert "a restore that does not hash to the recorded bytes exits 3" "3" "$rc"
+assert "a restore that does not hash to the recorded bytes is refused" "1" "$(printf '%s\n' "$out" | grep -c 'cannot restore the recorded bytes')"
+assert "that refusal leaves the vault untouched" "$kh" "$(tree_hash "$K")"
+
 echo "Test group 7: arguments"
 node "$APPLY" --vault "$A" --date "$D" --limit 0 >/dev/null 2>&1; assert "--limit 0 is refused" "1" "$?"
 node "$APPLY" --vault "$A" --date "$D" --limit abc >/dev/null 2>&1; assert "--limit abc is refused" "1" "$?"
