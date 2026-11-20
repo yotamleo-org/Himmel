@@ -1064,7 +1064,6 @@ test('with enforce_budget on, a caller-set optional flag does not widen the cap:
   assert.equal(f.called(), false);
 });
 
-// --- the subscription fallback never runs for a call the lane is off for, nor for any critic call ---
 test('a lane-off refusal never takes the subscription fallback, whatever the kind', () => {
   for (const kind of ['other', 'eval', 'judge', 'critic']) {
     const f = fixture();
@@ -1092,14 +1091,12 @@ test('a critic call never takes the subscription fallback, for a refusal or a fa
   const c = dry.run(dry.good, { ...FB_ON, HIMMEL_API_KIND: 'critic', STUB_OUT: DEAD, STUB_RC: '1', STUB_FB_OUT: FB_OK });
   assert.equal(c.status, 6, c.stderr);
   assert.equal(fbCalls(dry), 0);
-  // the control: the same refusal on another kind still falls back
   const other = fixture();
   const d = other.run(other.good, { ...FB_ON, HIMMEL_API_KIND: 'judge', HIMMEL_API_ACCOUNT: 'E', STUB_FB_OUT: FB_OK });
   assert.equal(d.status, 0, d.stderr);
   assert.equal(fbCalls(other), 1);
 });
 
-// --- same-call rotation: a credit-refused auto call runs again on the next unmarked account, one pass ---
 const DEAD = JSON.stringify({ type: 'result', is_error: true, result: 'API Error: 400 Your credit balance is too low to access the Anthropic API.' });
 const keysUsed = (f) => (existsSync(`${f.paths.log}.keys`) ? readFileSync(`${f.paths.log}.keys`, 'utf8').trim().split('\n') : []);
 const exhaustedAt = (f, a) => JSON.parse(readFileSync(f.paths.state, 'utf8')).accounts[a]?.exhausted_at;
@@ -1936,7 +1933,6 @@ test('K5 and K5b: a broken role map refuses an auto graphify call before any spa
   assert.equal(usedKey(g), 'BBBB');
 });
 
-// --- the api bank gate refuses only on a real block, never on an unknown, stale or low reading ---
 const markAt = (f, at) => {
   spawnSync(process.execPath, [STATE, 'exhausted'], { env: f.env, encoding: 'utf8' });
   const ledger = JSON.parse(readFileSync(f.paths.state, 'utf8'));

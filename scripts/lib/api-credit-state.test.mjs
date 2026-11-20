@@ -1105,8 +1105,6 @@ test('K5: clear-exhausted with no mark prints none and leaves the ledger bytes u
   assert.equal(existsSync(g.paths.state), false);
 });
 
-// --- a stale empty ledger lock is recovered, the new-grant spend is not counted twice, C and D need no
-// reset_at, and status names an exhaustion mark still in force ---
 const LOCK_TIMEOUT = { HIMMEL_API_CALL_TIMEOUT_S: '60', HIMMEL_API_LOCK_WAIT_MS: '100' };
 const age = (path, seconds) => { const t = Date.now() / 1000 - seconds; utimesSync(path, t, t); };
 const statusOf = (f, extra = {}) => JSON.parse(spawnSync(process.execPath, f.args('status'), { env: { ...f.env, ...extra }, encoding: 'utf8' }).stdout);
@@ -1118,7 +1116,6 @@ test('an empty lock older than the call timeout with no live holder is recovered
   const r = statusOf(f, LOCK_TIMEOUT);
   assert.equal(r.verdict, 'PROCEED', JSON.stringify(r));
   assert.equal(existsSync(lock), false);
-  // positive control: the same young lock is a live transaction and is never reclaimed
   const g = fixture();
   mkdirSync(`${g.paths.state}.lock`);
   const y = statusOf(g, LOCK_TIMEOUT);
@@ -1143,7 +1140,6 @@ test('a lock that holds a file, or whose recorded holder is alive, is left alone
     assert.equal(statusOf(g, LOCK_TIMEOUT).reason, 'ledger-locked-or-unwritable');
     assert.equal(existsSync(held), true);
   } finally { holder.kill(); }
-  // positive control: a recorded holder that has exited does not keep an old empty lock
   const h = fixture();
   const dead = `${h.paths.state}.lock`;
   const gone = spawnSync('sh', ['-c', 'echo $$']).stdout.toString().trim();

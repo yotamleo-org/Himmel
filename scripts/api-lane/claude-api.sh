@@ -221,7 +221,6 @@ fail_over() {
   if [ "${HIMMEL_API_FALLBACK:-on}" = off ]; then
     decision="off (HIMMEL_API_FALLBACK=off)"
   elif [ "$KIND_SAFE" = critic ]; then
-    # a critic is an api-credit reviewer: on any refusal or failure it is skipped, never charged to the subscription
     decision="not run: a critic call never runs on the subscription"
   elif [ -n "$NO_FB" ]; then
     decision="not run: $NO_FB"
@@ -254,7 +253,7 @@ refuse_policy() { echo "claude-api: refused: $*" >&2; fail_over 2 refused-policy
 # in its old place (after the lane and provider checks).
 PRINT=0 MODE="" MODEL="" BUDGET="" FORMAT="" PARSE_ERR="" HAS_PROMPT=0
 ARGS=()
-ORIG_ARGS=("$@")   # a credit-refused auto call runs again on the next account with the same arguments
+ORIG_ARGS=("$@")
 while [ "$#" -gt 0 ] && [ -z "$PARSE_ERR" ]; do
   a="$1"; shift
   # Allowlist: only -p/--print, --model, --permission-mode, --max-budget-usd, --output-format, --effort,
@@ -341,7 +340,6 @@ case "${HIMMEL_API_JOB_ID:-x}" in *[!A-Za-z0-9._:-]*) BAD_REQ=1 ;; esac
 [ -z "$BAD_REQ" ] || NO_FB="the request itself was refused"
 
 # --- lane opt-in and credentials (presence checks only) ---
-# a call the lane is not opted into never runs on the subscription instead: the caller chose the API, not the bank
 [ "${HIMMEL_API_LANE:-}" = "on" ] || { NO_FB="${NO_FB:-api lane is off}"; refuse "api lane is OFF (set HIMMEL_API_LANE=on)"; }
 llm_backend_api_account_ok "${HIMMEL_API_ACCOUNT:-}" || [ "${HIMMEL_API_ACCOUNT:-}" = auto ] ||
   refuse "HIMMEL_API_ACCOUNT must be $LLM_API_ACCOUNTS_TEXT (or auto)"
@@ -387,7 +385,6 @@ CACHE_TTL="${HIMMEL_API_CACHE_TTL:-5m}"
 case "$CACHE_TTL" in 5m|1h) ;; *) refuse "HIMMEL_API_CACHE_TTL must be 5m or 1h" ;; esac
 
 # --- auto = the grant that expires first among accounts with room for the whole budget ---
-# HIMMEL_API_ROTATE_TRIED (set by the rotation below) names the accounts this call already tried; it only narrows
 AUTO_ROUTED=0 ROTATED=""
 if [ "$HIMMEL_API_ACCOUNT" = auto ] && llm_backend_api_account_list_ok "${HIMMEL_API_ROTATE_TRIED:-}"; then
   ROTATED="$HIMMEL_API_ROTATE_TRIED"
@@ -453,8 +450,6 @@ BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY "${LLM_API_O
   CADENCE_USAGE_LANE=api CADENCE_USAGE_LAUNCH=1 WORKER_SESSION_LANE=api \
   CADENCE_USAGE_WORKER="$WORKER_SESSION_NAME" CADENCE_USAGE_CALLER_PID="$$" \
   bash "$REPO/scripts/lib/usage-preflight.sh")" || BANK_VERDICT=BANK-UNKNOWN
-# Only our own admission limit refuses here. An unknown, stale or low reading is our estimate, not a block: the
-# reservation below (our cap, a live ledger lock) and the API's own credit answer decide.
 case "$BANK_VERDICT" in
   PROCEED) ;;
   SKIPPED-FLEET) refuse "api bank gate said SKIPPED-FLEET: the api lane is at its own admission limit" ;;
@@ -509,8 +504,6 @@ immune() { ( trap '' TERM INT HUP; exec "$@" ); }
 
 # --- reserve the full budget before spending; refusal here means no launch ---
 state() { immune node "$REPO/scripts/lib/api-credit-state.mjs" "$@"; }
-# by default no budget figure refuses here (only enforce_budget in the credit config opts into that); a held ledger
-# lock, a duplicate job or a broken config or ledger still does
 RESERVED="$(state reserve --id "$JOB_ID" --usd "$BUDGET")"
 case "$RESERVED" in *'"verdict":"PROCEED"'*) ;; *)
   refuse "reservation refused: $(printf '%s' "$RESERVED" | sed -n 's/.*"reason":"\([^"]*\)".*/\1/p'): $RESERVED" ;;
@@ -631,7 +624,6 @@ if [ "$REJECTED" = key_invalid ]; then
 elif [ "$RC" -eq 0 ] && [ "$(state key-ok 2>/dev/null)" = cleared ]; then
   graph_alert clear "graph-key-$HIMMEL_API_ACCOUNT"
 fi
-# a success proves the account has credit: an older exhaustion mark no longer holds it
 [ "$RC" -ne 0 ] || state clear-exhausted >/dev/null 2>&1 || true
 
 # --- secret-free launch record (no key, no prompt) ---

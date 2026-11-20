@@ -1,7 +1,5 @@
 // local, secret-free API grant accounting. No auth or network.
 // Amounts are decimal-string USD with at most six places; arithmetic is BigInt.
-// One shared ledger/lock covers both accounts. A lock is reclaimed only when it is empty, older than the call
-// timeout and its recorded holder is not running (a crashed transaction); any other lock refuses by name.
 import {
   closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, statSync,
   lstatSync, realpathSync, renameSync, rmdirSync, unlinkSync, writeFileSync,
@@ -36,10 +34,7 @@ const CALL_TIMEOUT = 3600;
 // The launcher stops a call at its timeout and kills what ignored TERM this many seconds later.
 const KILL_GRACE = 5;
 const SOURCES = ['operator-console-snapshot', 'automatic-snapshot'];
-// parallel admissions queue on the ledger lock instead of failing; the
-// wait is bounded so a held lock still refuses, never admits.
 const LOCK_WAIT_MS = 5000;
-// The holder's pid sits beside the lock, never inside it, so a holder that crashes still leaves the lock empty.
 const holderPid = (lock) => {
   try { const pid = Number(readFileSync(`${lock}.pid`, 'utf8').trim()); return Number.isSafeInteger(pid) && pid > 0 ? pid : null; } catch { return null; }
 };
@@ -84,14 +79,14 @@ function takeLock(lock, env) {
       Atomics.wait(sleeper, 0, 0, pause + Math.floor(Math.random() * pause));
       continue;
     }
-    try { writeFileSync(`${lock}.pid`, `${process.pid}\n`, { mode: 0o600 }); } catch { /* an unrecorded holder only ages out */ }
+    try { writeFileSync(`${lock}.pid`, `${process.pid}\n`, { mode: 0o600 }); } catch { }
     return;
   }
 }
 function releaseLock(lock) {
   try { unlinkSync(join(lock, 'ledger.json')); } catch { /* no temporary file */ }
   try { if (holderPid(lock) === process.pid) unlinkSync(`${lock}.pid`); } catch { /* not ours */ }
-  try { rmdirSync(lock); } catch { /* a lock left behind ages out through reclaim */ }
+  try { rmdirSync(lock); } catch { }
 }
 function callTimeout(env) {
   const raw = env.HIMMEL_API_CALL_TIMEOUT_S;
@@ -104,7 +99,6 @@ function instant(text) {
     || !Number.isFinite(t) || new Date(t).toISOString().replace('.000Z', 'Z') !== text) refuse('invalid-config');
   return Math.floor(t / 1000);
 }
-// C and D have no default reset date: without a reset_at of their own the snapshot's expiry stands.
 const resetAt = (c, account) => {
   const at = c.reset_at ?? GRANT_RESET_AT[account];
   return at === undefined ? null : instant(at);
@@ -148,10 +142,7 @@ function configs(config) {
     orgs.add(c.organization_id);
   }
   if (own(config, 'enforce_budget') && typeof config.enforce_budget !== 'boolean') refuse('invalid-config');}
-// By default no budget figure (a reading, a reset date, the cap, the ledger) refuses or delays a call: the provider's
-// own credit refusal is the only budget signal. `enforce_budget: true` in the config opts into enforcing them.
 const enforcing = (config) => config.enforce_budget === true;
-// The default mode's row: the usual estimate when it can be formed, else the ledger's, and always a start.
 function freeRow(config, snapshot, a, account, now, need) {
   let r;
   try { r = row(config, snapshot, a, account, now, true, need); } catch { r = ledgerRow(config, a, account, false); }
@@ -175,7 +166,6 @@ function ledgerCheck(state) {
     }
   }
 }
-// `since` (a grant's start) leaves out spend settled on a job reserved before it: that spend drew an earlier grant.
 function totals(a, since) {
   let spent = 0n, reserved = 0n;
   for (const j of Object.values(a?.jobs ?? {})) {
@@ -378,10 +368,7 @@ export function creditState(command, options = {}, env = process.env) {
       const maximum = money(options.usd);
       if (maximum === 0n) refuse('positive-maximum-required');
       if (a && own(a.jobs, options.id)) refuse('duplicate-job');
-      // our own estimate (the cap and the ledger) never refuses a start while the credit reading is old or absent:
-      // only a fresh reading with too little left does, and the API's own credit-too-low answer is the hard stop
       const overEstimate = maximum > money(result.available_est_usd);
-      // under optional routing a fresh reading with too little left is still only our estimate: our own cap decides
       if (enforce && overEstimate && !(optional && result.snapshot_stale)) {
         if (!optional) return { ...result, verdict: 'SKIPPED-BANK', reason: 'insufficient-headroom' };
         if (maximum > money(ledgerRow(c, a, account).available_est_usd)) return { ...result, verdict: 'SKIPPED-BANK', reason: 'over-cap' };
@@ -486,9 +473,6 @@ export function pickAccount(budget, env = process.env, only, withRows = false) {
     const byExpiry = (x, y) => x.expires_at - y.expires_at;
     const open = roomy.filter((r) => !marked(r));
     const fresh = open.filter((r) => !r.snapshot_stale).sort(byExpiry);
-    // a row with an old or no reading whose own estimate has no room still serves: only a real credit-exhausted
-    // answer stops it, so it ranks after every row with room, an unmarked one before a marked one
-    // by default a fresh reading with too little left serves too: only the provider's own credit refusal stops a row
     const over = all.filter((r) => (r.snapshot_stale || (!enforce && r.verdict === 'PROCEED')) && !roomy.includes(r));
     const byRoom = (x, y) => Number(money(y.available_est_usd) - money(x.available_est_usd));
     const rows = fresh.length > 0 ? fresh
@@ -556,13 +540,6 @@ function accountRows(env, config) {
   });
 }
 
-// operator snapshot refresh from a Console reading. The reading
-// already includes every job the provider has billed, so the watermark moves up
-// with it; without that the billed spend counts twice. It moves by the smaller
-// of the local spend and the billed spend added since the previous reading, so
-// spend billed earlier (outside the ledger) never hides a settlement the Console
-// does not show yet. A new grant row starts it at the smaller of the local spend
-// since the grant's start and the billed spend, the part the reading already covers.
 export function refreshSnapshot(env, account, { remaining, grant, starts, expires, source = 'operator-console-snapshot', expect, pulled = false }) {
   let lock = null;
   try {
