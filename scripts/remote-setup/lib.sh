@@ -12,7 +12,7 @@
 RS_LIB_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 RS_ROOT_GUESS=$(cd "$RS_LIB_DIR/../.." && pwd -P)
 
-RS_ITEMS_SHIPPED="bridge-health bridge-persistence distinct-tokens"
+RS_ITEMS_SHIPPED="bridge-health bridge-persistence distinct-tokens remote-peer"
 
 RS_PART=""
 RS_N=0

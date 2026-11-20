@@ -4136,6 +4136,83 @@ function probeBridgePersistence(item, ctx) {
   };
 }
 
+// ── remote-peer (status item) ────────────────────────────────────────
+
+// "The peer bridge is set up, and its poller runs." No descriptor fields.
+//
+// Sessions run this probe, and the peer-bridge state and key dirs are fenced off from every session, so it
+// reads neither of them. Its data is ~/.himmel/remote-setup/peers-confirmed.json, which only
+// `remote-setup.sh peer` writes (right after `setup.ts confirm` succeeds), and the poller unit's state
+// (`systemctl --user is-active` / `launchctl print`). The claim is narrow on purpose: it is not a live
+// reachability check, and a peer removed with `setup.ts remove` outside the helper leaves a stale entry
+// until the next `peer` run.
+//
+// No peer-derived byte reaches the result. The only value shown from the record is the peer's name, and only
+// when it passes the same pattern setup.ts enforces (PEER_NAME_RE); an entry that fails it, or carries an
+// id that is not digits, makes the whole record unreadable and is never echoed. Any extra field in an entry
+// (a chat title, a username) is ignored.
+const REMOTE_PEER_NAME_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
+const REMOTE_PEER_UNIT = 'himmel-peer-bridge.service';
+const REMOTE_PEER_LABEL = 'com.himmel.peer-bridge';
+
+function remotePeerRead(home) {
+  const file = path.join(home, '.himmel', 'remote-setup', 'peers-confirmed.json');
+  let raw;
+  try {
+    raw = fs.readFileSync(file, 'utf8');
+  } catch (e) {
+    return e && e.code === 'ENOENT' ? { state: 'none' } : { state: 'bad' };
+  }
+  let doc;
+  try { doc = JSON.parse(raw); } catch (_e) { return { state: 'bad' }; }
+  if (!doc || typeof doc !== 'object' || !Array.isArray(doc.peers)) return { state: 'bad' };
+  const names = [];
+  for (const e of doc.peers) {
+    const okEntry = e && typeof e === 'object'
+      && typeof e.name === 'string' && REMOTE_PEER_NAME_RE.test(e.name)
+      && /^[0-9]{1,15}$/.test(String(e.peerBotId))
+      && /^-[0-9]{1,15}$/.test(String(e.chatId));
+    if (!okEntry) return { state: 'bad' };
+    names.push(e.name);
+  }
+  return { state: 'ok', names };
+}
+
+function probeRemotePeer(item, ctx) {
+  const env = ctx.env || process.env;
+  const home = env.HOME || os.homedir();
+  const platform = ctx.platform || process.platform;
+  if (platform !== 'linux' && platform !== 'darwin') {
+    return { actual: 'degraded', detail: `remote-peer check not implemented on '${platform}' — Linux/macOS only today` };
+  }
+  const unitFile = platform === 'darwin'
+    ? path.join(home, 'Library', 'LaunchAgents', `${REMOTE_PEER_LABEL}.plist`)
+    : path.join(home, '.config', 'systemd', 'user', REMOTE_PEER_UNIT);
+  const unitInstalled = fs.existsSync(unitFile);
+  const rec = remotePeerRead(home);
+  if (rec.state === 'bad') {
+    return { actual: 'degraded', detail: 'the list of set-up peers could not be read — run: bash scripts/remote-setup/remote-setup.sh peer' };
+  }
+  const names = rec.state === 'ok' ? rec.names : [];
+  if (names.length === 0 && !unitInstalled) {
+    return { actual: 'absent', detail: 'no peer bridge has been set up with remote-setup', cleanAbsence: true };
+  }
+  if (names.length === 0) {
+    return { actual: 'degraded', detail: 'the peer poller is installed, but no peer is recorded as set up — run: bash scripts/remote-setup/remote-setup.sh peer' };
+  }
+  const probeArgs = platform === 'darwin'
+    ? ['launchctl', ['print', `gui/${process.getuid()}/${REMOTE_PEER_LABEL}`]]
+    : ['systemctl', ['--user', 'is-active', REMOTE_PEER_UNIT]];
+  const r = spawnSync(probeArgs[0], probeArgs[1], { env, encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'ignore', 'ignore'] });
+  if (r.error || r.status === null) {
+    return { actual: 'degraded', detail: 'the peer poller state could not be read (systemctl or launchctl did not answer)' };
+  }
+  if (r.status === 0) {
+    return { actual: 'present', detail: names.map((n) => `${n}: set up, poller running`).join('; ') };
+  }
+  return { actual: 'degraded', detail: names.map((n) => `${n}: poller stopped`).join('; ') };
+}
+
 // ── observability-stack ───────────────────────────────────
 //
 // No descriptor fields: a fixed convention (same posture as
@@ -4222,6 +4299,7 @@ const PROBES = {
   'engine-allowlist': probeEngineAllowlist,
   'bridge-health': probeBridgeHealth,
   'bridge-persistence': probeBridgePersistence,
+  'remote-peer': probeRemotePeer,
   'observability-stack': probeObservabilityStack,
   'observability-grafana': (item, ctx) => require('./probes-observability.js').probeObservabilityGrafana(item, ctx, { scopeConfigPathToCtx, spawnBashProbe, probeTimeoutSecs }),
 };

@@ -625,6 +625,16 @@
       "offboard": "advise"
     },
     {
+      "id": "remote-peer",
+      "kind": "lane",
+      "scopes": ["user"],
+      "profiles": ["core", "luna", "all"],
+      "deps": [],
+      "probe": { "type": "remote-peer" },
+      "removable": "full-offboard-only",
+      "offboard": "advise"
+    },
+    {
       "id": "observability-stack",
       "kind": "scheduler",
       "scopes": ["user"],

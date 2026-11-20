@@ -545,6 +545,12 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
       severity = 'n/a';
       detail = `${probe.detail} — opt-in (set up the main bot: bash scripts/remote-setup/remote-setup.sh bot)`;
     }
+    // remote-peer: no peers-confirmed.json and no peer poller unit means part 4 was never started,
+    // which is a clean n/a, not a failure.
+    if (item.id === 'remote-peer' && probe.cleanAbsence) {
+      severity = 'n/a';
+      detail = `${probe.detail} — opt-in (set up bot-to-bot: bash scripts/remote-setup/remote-setup.sh peer)`;
+    }
     // surface WHY this item is desired when the persisted
     // state.json entry alone would have said "not enabled for this
     // target". An operator must be able to SEE that their recorded

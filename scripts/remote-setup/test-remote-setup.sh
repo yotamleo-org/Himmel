@@ -322,6 +322,7 @@ all_green() {
     set_item bridge-health green "@main_bot reachable, 1 poller"
     set_item bridge-persistence green "unit installed and enabled"
     set_item distinct-tokens green "tokens distinct"
+    set_item remote-peer green "goomal: set up, poller running"
 }
 
 case_curl_argv_is_exact() {
@@ -406,9 +407,9 @@ case_status_skips_unshipped_parts() {
     check "part 1 ok" eq "$(part_field 0 state)" ok
     check "part 2 skipped" eq "$(part_field 1 state)" skipped
     check "part 3 skipped" eq "$(part_field 2 state)" skipped
-    check "part 4 skipped" eq "$(part_field 3 state)" skipped
+    check "part 4 is live since remote-peer ships" eq "$(part_field 3 state)" ok
     check "a skipped part does not fail status" eq "$(jq -r .ok "$T/out")" true
-    check "himmelctl was asked only for part 1's items" eq "$(grep '^status' "$T/himmelctl.calls")" "status --items bridge-health,bridge-persistence,distinct-tokens --json"
+    check "himmelctl was asked only for the shipped parts' items" eq "$(grep '^status' "$T/himmelctl.calls")" "status --items bridge-health,bridge-persistence,distinct-tokens,remote-peer --json"
     # the shape of one part
     check "a part has name, detail, command, guide" eq "$(jq -r '.parts[0] | [has("name"), has("detail"), has("command"), has("guide")] | all' "$T/out")" true
     check "an ok part has no next command" eq "$(part_field 0 command)" null
@@ -435,7 +436,6 @@ case_status_na_counts_not_ok() {
 }
 
 case_status_part_prereq_message() {
-    ship_item remote-peer
     set_item remote-peer red "poller stopped"
     # part 1 not ok: part 4 says to do part 1 first and offers no command
     run_sut --json "$T/in" status --json
@@ -445,6 +445,7 @@ case_status_part_prereq_message() {
     check "himmelctl was asked for the peer item too" has "$(grep '^status' "$T/himmelctl.calls" | tail -n 1)" "remote-peer"
     # part 1 ok: part 4 offers its own command
     all_green
+    set_item remote-peer red "poller stopped"
     run_sut --json "$T/in" status --json
     check "part 4 keeps its detail" has "$(part_field 3 detail)" "remote-peer"
     check "part 4 offers its command" eq "$(part_field 3 command)" "bash scripts/remote-setup/remote-setup.sh peer"
@@ -510,6 +511,7 @@ case_status_reads_no_daemon_log_peers_json_or_mode() {
     set_item bridge-health green "ONLY-FROM-HIMMELCTL"
     set_item bridge-persistence green "p"
     set_item distinct-tokens green "t"
+    set_item remote-peer green "r"
     run_sut --json "$T/in" status --json
     chmod 700 "$d"
     check "status still answers" eq "$RC" 0
