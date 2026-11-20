@@ -834,12 +834,74 @@ _steering_cull_rearm_args() {
     [ -n "$ent" ] || return 1
     m=$(printf '%s' "$ent" | awk '{print $1}'); h=$(printf '%s' "$ent" | awk '{print $2}'); day=$(printf '%s' "$ent" | awk '{print $5}')
     case "$m$h$day" in ''|*[!0-9]*) return 1 ;; esac
-    time=$(printf '%02d:%02d' "$h" "$m")
+    time=$(printf '%02d:%02d' "$((10#$h))" "$((10#$m))")
     printf '%s\n' --force --proposal-dir "$pdir" --day "$day" --time "$time"
     [ -z "$chief" ] || printf '%s\n' --chief "$chief"
     [ -z "$backend" ] || printf '%s\n' --backend "$backend"
     [ -z "$acct" ] || printf '%s\n' --api-account "$acct"
     return 0
+}
+
+_cron_entry_time() {
+    local bin="$1" tag="$2" ent m h dom mon dow rest
+    ent=$("$bin" -l 2>/dev/null | grep -F -- "# $tag" | head -1) || return 1
+    [ -n "$ent" ] || return 1
+    read -r m h dom mon dow rest <<<"$ent"
+    case "$m$h" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$dom$mon" = "**" ] || return 1
+    printf '%02d:%02d %s\n' "$((10#$h))" "$((10#$m))" "$dow"
+}
+
+_runner_flag_value() {
+    local runner="$1" pattern="$2" v
+    [ -f "$runner" ] || return 1
+    v=$(sed -n "$pattern" "$runner" | head -1)
+    case "$v" in ''|*[!A-Za-z0-9._/-]*) return 1 ;; esac
+    printf '%s\n' "$v"
+}
+
+_pipeline_rearm_args() {
+    local dir="$1" bin="${PIPELINE_CRONTAB:-crontab}" d fh hv sy he hdow
+    local hm sm lm vault feed prom act ig
+    fh=$(_cron_entry_time "$bin" HIMMEL-Pipeline-FetchHealth) || return 1
+    hv=$(_cron_entry_time "$bin" HIMMEL-Pipeline-Harvest) || return 1
+    sy=$(_cron_entry_time "$bin" HIMMEL-Pipeline-Synthesize) || return 1
+    he=$(_cron_entry_time "$bin" HIMMEL-Pipeline-Health) || return 1
+    hdow="${he#* }"
+    case "$hdow" in
+        '*') d=DAILY ;; 0|7) d=SUN ;; 1) d=MON ;; 2) d=TUE ;; 3) d=WED ;; 4) d=THU ;; 5) d=FRI ;; 6) d=SAT ;;
+        *) return 1 ;;
+    esac
+    hm=$(_runner_flag_value "$dir/pipeline-harvest.sh" 's/.*claude --model \([^ ]*\) .*/\1/p') || return 1
+    sm=$(_runner_flag_value "$dir/pipeline-synthesize.sh" 's/.*claude --model \([^ ]*\) .*/\1/p') || return 1
+    lm=$(_runner_flag_value "$dir/pipeline-health.sh" 's/.*claude --model \([^ ]*\) .*/\1/p') || return 1
+    feed=$(_runner_flag_value "$dir/pipeline-harvest.sh" 's/.*nightly-feeds .* --cap \([0-9]*\).*/\1/p') || return 1
+    prom=$(_runner_flag_value "$dir/pipeline-synthesize.sh" 's/.*nightly-promote .* --limit \([0-9]*\).*/\1/p') || return 1
+    act=$(_runner_flag_value "$dir/pipeline-synthesize.sh" 's/.*nightly-actions .* --limit \([0-9]*\).*/\1/p') || return 1
+    ig=$(_runner_flag_value "$dir/pipeline-harvest.sh" 's/.*ig-media-enrich\\ --limit\\ \([0-9]*\)\\ .*/\1/p') || return 1
+    vault=$(_runner_flag_value "$dir/pipeline-harvest.sh" 's/^[[:space:]]*cd \([^ ]*\) || .*/\1/p') || return 1
+    printf '%s\n' --force --fetch-health-time "${fh% *}" --harvest-time "${hv% *}" --synth-time "${sy% *}" \
+        --health-day "$d" --health-time "${he% *}" --harvest-model "$hm" --synth-model "$sm" --health-model "$lm" \
+        --feed-cap "$feed" --promote-limit "$prom" --actions-limit "$act" --ig-limit "$ig" --vault "$vault"
+}
+
+_time_only_rearm_args() {
+    local e
+    e=$(_cron_entry_time "$1" "$2") || return 1
+    [ "${e#* }" = "*" ] || return 1
+    printf '%s\n' --force --time "${e% *}"
+}
+
+_cadence_rearm_args() {
+    local label="$1" bat_dir="$2" flags="$3" f
+    case "$label" in
+        steering-cull-cadence) _steering_cull_rearm_args "$bat_dir" ;;
+        pipeline-cadence) _pipeline_rearm_args "$bat_dir" ;;
+        qmd-cadence) _time_only_rearm_args "${QMD_CADENCE_CRONTAB:-crontab}" HIMMEL-Qmd-Reindex ;;
+        upstream-watch-cadence) _time_only_rearm_args "${UPSTREAMWATCH_CRONTAB:-crontab}" HIMMEL-UpstreamWatch ;;
+        graph-choices-cadence) _time_only_rearm_args "${GRAPH_CHOICES_CRONTAB:-crontab}" HIMMEL-GraphChoices ;;
+        *) for f in $flags; do printf '%s\n' "$f"; done ;;
+    esac
 }
 
 report_cadence_stale() {
@@ -854,12 +916,8 @@ report_cadence_stale() {
         rearm="bash $script arm $flags"
         if [ "$mode" = "apply" ]; then
             args=()
-            if [ "$label" = "steering-cull-cadence" ]; then
-                steer=$(_steering_cull_rearm_args "$bat_dir") || steer=""
-                while IFS= read -r a; do [ -z "$a" ] || args+=("$a"); done <<<"$steer"
-            else
-                read -r -a args <<<"$flags"
-            fi
+            steer=$(_cadence_rearm_args "$label" "$bat_dir" "$flags") || steer=""
+            while IFS= read -r a; do [ -z "$a" ] || args+=("$a"); done <<<"$steer"
             if [ "${#args[@]}" -gt 0 ]; then
                 if out=$(bash "$arm_root/$script" arm "${args[@]}" 2>&1); then arm_rc=0; else arm_rc=$?; fi
                 echo ""

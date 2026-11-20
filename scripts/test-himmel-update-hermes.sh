@@ -812,9 +812,40 @@ out=$(rr_env report_cadence_stale check 2>&1)
 check "check mode still only nudges the stale pipeline cadence" "pipeline-cadence runners are STALE" "$out"
 if [ ! -s "$rr/arm.log" ]; then echo "ok: check mode arms nothing"; else echo "FAIL: check mode ran an arm command"; cat "$rr/arm.log"; fail=1; fi
 out=$(rr_env report_cadence_stale apply 2>&1)
-check "apply re-arms the stale armed pipeline cadence (one line)" "pipeline-cadence runners were STALE" "$out"
-check "apply ran the pipeline arm --force" "luna/pipeline-cadence arm --force" "$(cat "$rr/arm.log")"
+check "pipeline with no readable settings falls back to the nudge" "pipeline-cadence runners are STALE" "$out"
+if [ ! -s "$rr/arm.log" ]; then echo "ok: unreadable pipeline settings are not armed at defaults"; else echo "FAIL: pipeline armed without its settings"; cat "$rr/arm.log"; fail=1; fi
+rrp="$tmp/rr-pipeline-full"; mkdir -p "$rrp"
+stampP="$((CADENCE_RUNNER_FORMAT_VERSION - 1))"
+# shellcheck disable=SC2016  # fixture runner text stays literal
+printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\n    cd /v/my-vault || { echo x; }\n    _nightly_step nightly-feeds /t/feed.mjs --vault /v/my-vault --cap 3\n_rc=0; /bin/claude --model m-harvest --permission-mode acceptEdits x ig-media-enrich\\ --limit\\ 7\\ --include-evidence.\\ The\n' "$stampP" > "$rrp/pipeline-harvest.sh"
+printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\n_nightly_step nightly-promote /t/p.mjs /v/my-vault --apply --limit 9 --no-telegram-digest\n_nightly_step nightly-actions /t/a.mjs --vault /v/my-vault --apply --limit 4\n_rc=0; /bin/claude --model m-synth --permission-mode acceptEdits x\n' "$stampP" > "$rrp/pipeline-synthesize.sh"
+printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\n_rc=0; /bin/claude --model m-health --permission-mode acceptEdits x\n' "$stampP" > "$rrp/pipeline-health.sh"
+mkdir -p "$tmp/rr-crons"
+printf '#!/bin/sh\ncat <<EOT\n45 01 * * * /x/f.sh # HIMMEL-Pipeline-FetchHealth\n00 09 * * * /x/h.sh # HIMMEL-Pipeline-Harvest\n08 08 * * * /x/s.sh # HIMMEL-Pipeline-Synthesize\n30 09 * * 3 /x/l.sh # HIMMEL-Pipeline-Health\n05 03 * * * /x/q.sh # HIMMEL-Qmd-Reindex\n09 08 * * * /x/u.sh # HIMMEL-UpstreamWatch\n40 09 * * * /x/g.sh # HIMMEL-GraphChoices\nEOT\n' > "$tmp/rr-crons/crontab"; chmod +x "$tmp/rr-crons/crontab"
+: > "$rr/arm.log"
+out=$(PIPELINE_CRONTAB="$tmp/rr-crons/crontab" PIPELINE_BAT_DIR="$rrp" HIMMEL_REARM_ROOT="$rr" GRAPHMAP_BAT_DIR="$tmp/rr-none" QMD_CADENCE_BAT_DIR="$tmp/rr-none" \
+  UPSTREAMWATCH_BAT_DIR="$tmp/rr-none" GRAPH_CHOICES_BAT_DIR="$tmp/rr-none" STEERING_CULL_RUNNER_DIR="$tmp/rr-none" report_cadence_stale apply 2>&1)
+check "stale armed pipeline cadence is re-armed (one line)" "pipeline-cadence runners were STALE" "$out"
+check "pipeline re-armed with its own non-default settings, zero-padded 08/09 intact" \
+  "luna/pipeline-cadence arm --force --fetch-health-time 01:45 --harvest-time 09:00 --synth-time 08:08 --health-day WED --health-time 09:30 --harvest-model m-harvest --synth-model m-synth --health-model m-health --feed-cap 3 --promote-limit 9 --actions-limit 4 --ig-limit 7 --vault /v/my-vault" "$(cat "$rr/arm.log")"
 if [ "$(wc -l < "$rr/arm.log")" -eq 1 ]; then echo "ok: unarmed graphmap/qmd/others were not armed"; else echo "FAIL: apply armed an unarmed cadence"; cat "$rr/arm.log"; fail=1; fi
+mkdir -p "$tmp/rr-qmd" "$tmp/rr-up" "$tmp/rr-gc"
+printf '#!/bin/sh\n# himmel-cadence-runner-format: 1\n' > "$tmp/rr-qmd/qmd-reindex.sh"
+printf '#!/bin/sh\n# himmel-cadence-runner-format: 1\n' > "$tmp/rr-up/upstream-watch.sh"
+printf '#!/bin/sh\n# himmel-cadence-runner-format: 1\n' > "$tmp/rr-gc/graph-choices.sh"
+: > "$rr/arm.log"
+out=$(QMD_CADENCE_CRONTAB="$tmp/rr-crons/crontab" UPSTREAMWATCH_CRONTAB="$tmp/rr-crons/crontab" GRAPH_CHOICES_CRONTAB="$tmp/rr-crons/crontab" \
+  PIPELINE_BAT_DIR="$tmp/rr-none" HIMMEL_REARM_ROOT="$rr" GRAPHMAP_BAT_DIR="$tmp/rr-none" QMD_CADENCE_BAT_DIR="$tmp/rr-qmd" \
+  UPSTREAMWATCH_BAT_DIR="$tmp/rr-up" GRAPH_CHOICES_BAT_DIR="$tmp/rr-gc" STEERING_CULL_RUNNER_DIR="$tmp/rr-none" report_cadence_stale apply 2>&1)
+check "qmd re-armed at its own time" "luna/qmd-cadence arm --force --time 03:05" "$(cat "$rr/arm.log")"
+check "upstream-watch re-armed at its own zero-padded 08:09" "upstreams/upstream-watch-cadence arm --force --time 08:09" "$(cat "$rr/arm.log")"
+check "graph-choices re-armed at its own time" "graphify/graph-choices-cadence arm --force --time 09:40" "$(cat "$rr/arm.log")"
+printf '#!/bin/sh\necho "17 * * * * /x/q.sh # HIMMEL-Qmd-Reindex"\n' > "$tmp/rr-crons/crontab-hourly"; chmod +x "$tmp/rr-crons/crontab-hourly"
+: > "$rr/arm.log"
+out=$(QMD_CADENCE_CRONTAB="$tmp/rr-crons/crontab-hourly" PIPELINE_BAT_DIR="$tmp/rr-none" HIMMEL_REARM_ROOT="$rr" GRAPHMAP_BAT_DIR="$tmp/rr-none" QMD_CADENCE_BAT_DIR="$tmp/rr-qmd" \
+  UPSTREAMWATCH_BAT_DIR="$tmp/rr-none" GRAPH_CHOICES_BAT_DIR="$tmp/rr-none" STEERING_CULL_RUNNER_DIR="$tmp/rr-none" report_cadence_stale apply 2>&1)
+check "qmd armed --hourly falls back to the nudge" "qmd-cadence runners are STALE" "$out"
+if [ ! -s "$rr/arm.log" ]; then echo "ok: hourly qmd is not re-armed at the daily default"; else echo "FAIL: hourly qmd re-armed"; cat "$rr/arm.log"; fail=1; fi
 mkdir -p "$tmp/rr-steer" "$tmp/rr-cronstub"
 # shellcheck disable=SC2016  # the fixture runner's own $log stays literal
 printf '#!/usr/bin/env bash\n# himmel-cadence-runner-format: %s\nlog=x\nexport STEERING_CULL_BACKEND=claude-cli\nbash /r/steering-cull-cadence.sh run --repo /r --proposal-dir /p/dir --chief chief-a >> "$log" 2>&1\n' "$((CADENCE_RUNNER_FORMAT_VERSION - 1))" > "$tmp/rr-steer/steering-cull-cadence.sh"
@@ -832,6 +863,12 @@ out=$(PIPELINE_BAT_DIR="$tmp/rr-none" HIMMEL_REARM_ROOT="$rr" GRAPHMAP_BAT_DIR="
   UPSTREAMWATCH_BAT_DIR="$tmp/rr-none" GRAPH_CHOICES_BAT_DIR="$tmp/rr-none" STEERING_CULL_RUNNER_DIR="$tmp/rr-steer" \
   STEERING_CULL_CRONTAB="$tmp/rr-cronstub/crontab" report_cadence_stale apply 2>&1)
 check "steering-cull proposal dir with a space stays one argument" "steering-cull-cadence arm --force --proposal-dir /p/my dir --day 3 --time 06:30 --chief chief-a --backend claude-cli \[12\]" "$(cat "$rr/arm.log")"
+printf '#!/bin/sh\necho "09 08 * * 3 \\"/x/steering-cull-cadence.sh\\" # HIMMEL-SteeringCull"\n' > "$tmp/rr-cronstub/crontab"
+: > "$rr/arm.log"
+out=$(PIPELINE_BAT_DIR="$tmp/rr-none" HIMMEL_REARM_ROOT="$rr" GRAPHMAP_BAT_DIR="$tmp/rr-none" QMD_CADENCE_BAT_DIR="$tmp/rr-none" \
+  UPSTREAMWATCH_BAT_DIR="$tmp/rr-none" GRAPH_CHOICES_BAT_DIR="$tmp/rr-none" STEERING_CULL_RUNNER_DIR="$tmp/rr-steer" \
+  STEERING_CULL_CRONTAB="$tmp/rr-cronstub/crontab" report_cadence_stale apply 2>&1)
+check "steering-cull zero-padded 08:09 is not read as octal" "steering-cull-cadence arm --force --proposal-dir /p/my dir --day 3 --time 08:09" "$(cat "$rr/arm.log")"
 rm -f "$tmp/rr-steer/steering-cull-cadence.sh"; printf '#!/usr/bin/env bash\n# himmel-cadence-runner-format: 1\nunreadable\n' > "$tmp/rr-steer/steering-cull-cadence.sh"
 : > "$rr/arm.log"
 out=$(PIPELINE_BAT_DIR="$tmp/rr-none" HIMMEL_REARM_ROOT="$rr" GRAPHMAP_BAT_DIR="$tmp/rr-none" QMD_CADENCE_BAT_DIR="$tmp/rr-none" \
