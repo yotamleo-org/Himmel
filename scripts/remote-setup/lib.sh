@@ -19,7 +19,7 @@ RS_N=0
 RS_FINISHED=0
 RS_TOKEN=""
 RS_CHILD_PID=""
-RS_TMP_FILES=""
+RS_TMP_FILE=""
 RS_UNITS_STOPPED=""
 RS_JSON_MODE=0
 
@@ -98,14 +98,13 @@ rs_on_exit() {
 }
 
 rs_cleanup_children() {
-    local f
     if [ -n "${RS_CHILD_PID:-}" ]; then
         kill "$RS_CHILD_PID" 2>/dev/null
         wait "$RS_CHILD_PID" 2>/dev/null
         RS_CHILD_PID=""
     fi
-    for f in $RS_TMP_FILES; do rm -f "$f"; done
-    RS_TMP_FILES=""
+    if [ -n "$RS_TMP_FILE" ]; then rm -f "$RS_TMP_FILE"; fi
+    RS_TMP_FILE=""
 }
 
 # ── guards (invariant I2) ───────────────────────────────────────────────
@@ -465,18 +464,19 @@ rs_parse_onboard() {
 # bridge (a second getUpdates consumer would fight it), runs onboard.ts, shows the link, waits for
 # the Start press and puts the bridge back. Sets RS_PAIR_ID and RS_PAIR_LABEL, or FIXes.
 rs_pair() {
-    local out nonce i=0 orc
+    local out nonce i=0 orc alive
     out=$(mktemp "${TMPDIR:-/tmp}/remote-setup-onboard.XXXXXX") || rs_fix "could not make a temporary file: check that your temp folder is writable, then run the same command again"
-    RS_TMP_FILES="$RS_TMP_FILES $out"
+    RS_TMP_FILE=$out
     rs_unit_stop telegram-bridge.service com.himmel.telegram-bridge "$RS_ROOT/scripts/telegram/restart-bridge.sh" \
         || rs_fix "the bridge could not be stopped for pairing: stop it with bash scripts/telegram/restart-bridge.sh stop, then run the same command again"
     bun scripts/telegram/onboard.ts > "$out" 2>&1 &
     RS_CHILD_PID=$!
     nonce=""
     while [ "$i" -lt 100 ]; do
+        alive=0
+        if kill -0 "$RS_CHILD_PID" 2> /dev/null; then alive=1; fi
         nonce=$(sed -n 's/^\[onboard\] send this exact text to the bot (DM or an allowed group) to onboard: \(onboard-[0-9a-f]\{8\}\)$/\1/p' "$out" | head -n 1)
-        [ -n "$nonce" ] && break
-        kill -0 "$RS_CHILD_PID" 2> /dev/null || break
+        if [ -n "$nonce" ] || [ "$alive" = 0 ]; then break; fi
         sleep 0.2
         i=$((i + 1))
     done

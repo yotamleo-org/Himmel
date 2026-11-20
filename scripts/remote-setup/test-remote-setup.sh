@@ -55,7 +55,7 @@ new_case() {
     CASE=$1
     CASE_FAILS=0
     T=$WORK/$1
-    mkdir -p "$T/home" "$T/tmp" "$T/bin" "$T/tg" "$T/units" "$T/root"
+    mkdir -p "$T/home" "$T/tmp dir" "$T/bin" "$T/tg" "$T/units" "$T/root"
     cp "$HERE"/tests/shims/* "$T/bin/"
     ROOT=$T/root
     HOME_FIX=$T/home
@@ -166,7 +166,7 @@ run_sut() {
         pbase=$T/pbin
     fi
     local envs
-    envs=(env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID "HOME=$HOME_FIX" "PATH=$T/bin:$pbase" "RST=$T" "RST_REAL_BUN=$REAL_BUN" "TMPDIR=$T/tmp" TERM=dumb)
+    envs=(env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID "HOME=$HOME_FIX" "PATH=$T/bin:$pbase" "RST=$T" "RST_REAL_BUN=$REAL_BUN" "TMPDIR=$T/tmp dir" TERM=dumb)
     local i
     for i in $inj $RUN_ENV; do envs[${#envs[@]}]=$i; done
     # the SUT runs under the same bash as this suite, so a 3.2 run of the suite is a 3.2 run of the SUT
@@ -659,6 +659,31 @@ case_bot_same_token_skips_store() {
     check "the token is still stored" file_has "$(STORE_FILE)" "$tok"
 }
 
+case_bot_post_write_check_that_cannot_run_is_a_fix() {
+    local tok
+    tok=$(mk_token 111)
+    set_getme 111 cand_bot
+    set_onboard 777
+    echo 7 > "$T/himmelctl.fail"
+    feed "$tok"
+    run_sut "$T/in" bot
+    check "a failing himmelctl is a FIX" eq "$RC" 3
+    check "it says the check could not be made" has "$LAST" "could not be checked against your other bots"
+    check "the saved token stays as a checkpoint" file_has "$(STORE_FILE)" "$tok"
+    check "and nothing was paired" eq "$(onboard_calls)" 0
+    rm -f "$T/himmelctl.fail"
+    rm -rf "$HOME_FIX/.claude"
+    echo "distinct-tokens" > "$T/items.omit"
+    feed "$tok"
+    run_sut "$T/in" bot
+    check "an answer with no distinct-tokens row is a FIX too" has "$LAST" "could not be checked against your other bots"
+    rm -f "$T/items.omit"
+    rm -rf "$HOME_FIX/.claude"
+    feed "$tok"
+    run_sut "$T/in" bot
+    check "and the same run goes on once himmelctl answers" eq "$(onboard_calls)" 1
+}
+
 case_bot_post_write_distinct_tokens_failure_restores_previous() {
     local old new
     old=$(mk_token 111)
@@ -736,6 +761,7 @@ case_bot_run1_prints_paste_line_and_exits_3() {
     check "one pairing" eq "$(onboard_calls)" 1
     check "the token is stored" file_has "$(STORE_FILE)" "$tok"
     check "the pairing label is shown" file_has "$T/out" "Ann Example"
+    check "no onboarding temp file is left in a TMPDIR that has a space in it" eq "$(find "$T/tmp dir" -type f | wc -l | tr -d ' ')" 0
 }
 
 case_bot_run2_after_paste_reaches_done() {
@@ -1029,7 +1055,8 @@ status_json_is_single_object_on_success status_json_on_item_failure status_json_
 status_reads_no_daemon_log_peers_json_or_mode
 bot_red_bridge_id_as_main_refuses bot_relay_id_as_main_refuses bot_notice_id_as_main_refuses
 bot_different_id_without_replace_refuses bot_same_bot_new_token_is_stored bot_same_token_skips_store
-bot_post_write_distinct_tokens_failure_restores_previous bot_post_write_restore_failure_is_not_reported_as_restored
+bot_post_write_check_that_cannot_run_is_a_fix bot_post_write_distinct_tokens_failure_restores_previous
+bot_post_write_restore_failure_is_not_reported_as_restored
 bot_enter_reuses_a_quoted_stored_token bot_run1_prints_paste_line_and_exits_3
 bot_run2_after_paste_reaches_done bot_existing_access_json_other_id_fixes_unchanged
 bot_existing_access_json_bad_shape_fixes_before_the_prompt bot_rerun_without_token_never_pairs

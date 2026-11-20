@@ -32,7 +32,7 @@ function sandbox() {
   const stub = (name, body) => {
     fs.writeFileSync(path.join(s.bin, name), `#!/bin/sh\necho "${name} $*" >> "$STUB_LOG"\n${body}\n`, { mode: 0o755 });
   };
-  stub('launchctl', 'case "$1" in\n print) [ -f "$STUB_LOADED" ] && exit 0; exit 113;;\n bootstrap) : > "$STUB_LOADED"; exit 0;;\n bootout) rm -f "$STUB_LOADED"; exit 0;;\nesac\nexit 0');
+  stub('launchctl', 'case "$1" in\n print) [ -f "$STUB_LOADED" ] && exit 0; exit 113;;\n bootstrap) : > "$STUB_LOADED"; exit 0;;\n bootout) [ -n "$STUB_BOOTOUT_FAIL" ] && exit 1; rm -f "$STUB_LOADED"; exit 0;;\nesac\nexit 0');
   stub('systemctl', 'case "$2" in\n is-enabled) [ -f "$STUB_LOADED" ] && exit 0; exit 1;;\n enable) : > "$STUB_LOADED"; exit 0;;\nesac\nexit 0');
   stub('loginctl', 'case "$1" in show-user) echo Linger=yes;; esac\nexit 0');
   s.env = Object.assign({}, process.env, {
@@ -63,6 +63,7 @@ test('installLaunchAgent_renders_repo_and_home', () => {
   assert.ok(!text.includes('@'), 'no placeholder is left in the rendered plist');
   assert.ok(text.includes('/tmp/some repo &amp; co/scripts/telegram/restart-bridge.sh'), 'the repo path is XML-escaped into ProgramArguments');
   assert.ok(text.includes(`${s.home}/Library/Logs/himmel-telegram-bridge.log`), 'HOME is rendered');
+  assert.ok(text.includes(`<string>${s.home}/.bun/bin:`), 'the bun installer directory leads the agent PATH');
   assert.match(text, /<key>SuccessfulExit<\/key>\s*<false\/>/);
   assert.match(text, /<key>RunAtLoad<\/key>\s*<true\/>/);
   const boot = s.logLines().filter((l) => l.startsWith('launchctl bootstrap '));
@@ -88,6 +89,32 @@ test('installLaunchAgent_twice_changes_nothing', () => {
   assert.equal(r.ok, true, r.detail);
   assert.equal(sha(plist), before);
   assert.equal(s.logLines().filter((l) => l.startsWith('launchctl bootstrap ')).length, 1, 'a loaded agent is not bootstrapped again');
+});
+
+test('installLaunchAgent_replaces_a_changed_plist_behind_a_loaded_job', () => {
+  const s = sandbox();
+  const plist = path.join(s.agents, `${LABEL}.plist`);
+  install(s, '/tmp/repo-a', false);
+  const r = install(s, '/tmp/repo-b', false);
+  assert.equal(r.ok, true, r.detail);
+  assert.ok(fs.readFileSync(plist, 'utf8').includes('/tmp/repo-b/scripts/telegram/restart-bridge.sh'));
+  const verbs = s.logLines().map((l) => l.split(' ')[1]);
+  assert.deepEqual(verbs.filter((v) => v === 'bootout' || v === 'bootstrap'), ['bootstrap', 'bootout', 'bootstrap'], 'the old job is booted out, then the new plist is bootstrapped');
+});
+
+test('installLaunchAgent_a_failed_bootout_leaves_the_plist_and_a_retry_reloads', () => {
+  const s = sandbox();
+  const plist = path.join(s.agents, `${LABEL}.plist`);
+  install(s, '/tmp/repo-a', false);
+  const before = sha(plist);
+  const failed = runNode(s, `console.log(JSON.stringify(require(${JSON.stringify(path.join(LIB, 'bridge-persistence.js'))}).installLaunchAgent({repoRoot:'/tmp/repo-b'})))`, { STUB_BOOTOUT_FAIL: '1' });
+  assert.equal(failed.ok, false);
+  assert.match(failed.detail, /was NOT changed/);
+  assert.equal(sha(plist), before, 'the old plist is still on disk');
+  const retry = install(s, '/tmp/repo-b', false);
+  assert.equal(retry.ok, true, retry.detail);
+  assert.ok(fs.readFileSync(plist, 'utf8').includes('/tmp/repo-b/'), 'the retry installs the new bytes instead of reporting "already installed"');
+  assert.notEqual(sha(plist), before);
 });
 
 test('installLaunchAgent_refuses_a_missing_launchctl', () => {

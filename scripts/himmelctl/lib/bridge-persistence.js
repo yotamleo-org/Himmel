@@ -463,6 +463,18 @@ function installLaunchAgent({ repoRoot, dryRun } = {}) {
   let existing = null;
   try { existing = fs.readFileSync(plistPath, 'utf8'); } catch (_e) { existing = null; }
   const unchanged = existing === rendered;
+  const loaded = launchAgentLoaded();
+  if (unchanged && loaded === true) {
+    return { ok: true, actions: [], detail: `${LAUNCHD_LABEL} already installed at ${plistPath} and loaded` };
+  }
+  let bootedOut = false;
+  if (!unchanged && loaded === true) {
+    const out = spawnSync('launchctl', ['bootout', `${domain}/${LAUNCHD_LABEL}`], { encoding: 'utf8' });
+    if (out.status !== 0) {
+      return { ok: false, actions: [], detail: `launchctl bootout of the running ${LAUNCHD_LABEL} failed (rc=${out.status}): ${(out.stderr || '').trim()} — the plist at ${plistPath} was NOT changed. Remediation: launchctl bootout ${domain}/${LAUNCHD_LABEL}, then re-run.` };
+    }
+    bootedOut = true;
+  }
   if (!unchanged) {
     try {
       fs.mkdirSync(path.dirname(plistPath), { recursive: true });
@@ -470,18 +482,10 @@ function installLaunchAgent({ repoRoot, dryRun } = {}) {
       fs.writeFileSync(tmp, rendered, 'utf8');
       fs.renameSync(tmp, plistPath);
     } catch (e) {
-      return { ok: false, actions: [], detail: `failed to write ${plistPath}: ${e.message}` };
-    }
-  }
-
-  const loaded = launchAgentLoaded();
-  if (unchanged && loaded === true) {
-    return { ok: true, actions: [], detail: `${LAUNCHD_LABEL} already installed at ${plistPath} and loaded` };
-  }
-  if (loaded === true) {
-    const out = spawnSync('launchctl', ['bootout', `${domain}/${LAUNCHD_LABEL}`], { encoding: 'utf8' });
-    if (out.status !== 0) {
-      return partialFail([`write ${plistPath}`], `plist IS written at ${plistPath}, but launchctl bootout of the running ${LAUNCHD_LABEL} failed (rc=${out.status}): ${(out.stderr || '').trim()} — the old job is still loaded. Remediation: launchctl bootout ${domain}/${LAUNCHD_LABEL}, then re-run.`);
+      const detail = `failed to write ${plistPath}: ${e.message}`;
+      return bootedOut
+        ? partialFail([`launchctl bootout ${domain}/${LAUNCHD_LABEL}`], `${detail} — the old job was already booted out, so the bridge is NOT running. Remediation: fix the error and re-run.`)
+        : { ok: false, actions: [], detail };
     }
   }
   const boot = spawnSync('launchctl', ['bootstrap', domain, plistPath], { encoding: 'utf8' });

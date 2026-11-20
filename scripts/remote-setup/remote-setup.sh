@@ -118,7 +118,11 @@ cmd_bot() {
             err=$(printf '%s\n' "$RS_TOKEN" | rs_store_token 2>&1) \
                 || rs_fix "the token could not be saved (${err#store refused: }): fix that, then run the same command again"
             out=$(node "$RS_ROOT/scripts/himmelctl/bin.js" status --items distinct-tokens --json 2> /dev/null)
+            rc=$?
             state=$(printf '%s' "$out" | jq -r '[.items[]? | select(.id == "distinct-tokens")] | first | .severity // ""' 2> /dev/null)
+            if [ "$rc" -ne 0 ] || [ -z "$state" ]; then
+                rs_fix "the new token is saved, but it could not be checked against your other bots because himmelctl status gave no answer: run the same command again, and if it repeats tell your chief"
+            fi
             case "$state" in
                 degraded | red)
                     detail=$(rs_clean "$(printf '%s' "$out" | jq -r '[.items[] | select(.id == "distinct-tokens")] | first | .detail // ""' 2> /dev/null)")
