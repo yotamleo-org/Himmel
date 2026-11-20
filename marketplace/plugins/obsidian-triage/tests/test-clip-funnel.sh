@@ -120,6 +120,15 @@ node "$TOOL" --vault "$A" --as-of 2026-13-01 >/dev/null 2>&1; assert "an impossi
 node "$TOOL" --vault "$A" --as-of >/dev/null 2>&1; assert "--as-of with no value exits 1" "1" "$?"
 node "$TOOL" --vault "$A" --as-of "" >/dev/null 2>&1; assert "--as-of with an empty value exits 1" "1" "$?"
 node "$TOOL" --vault "$A" --days 0 >/dev/null 2>&1; assert "--days 0 exits 1" "1" "$?"
+huge="$(head -c 400 /dev/zero | tr '\0' '9')"
+err="$(node "$TOOL" --vault "$A" --as-of "$D" --days "$huge" 2>&1 >/dev/null)"; rc=$?
+assert "--days with hundreds of digits exits 1" "1" "$rc"
+case "$err" in *"from 1 to 36500"*) s=ok ;; *) s="$(printf '%s' "$err" | head -c 200)" ;; esac
+assert "--days with hundreds of digits names the bound in its usage line" "ok" "$s"
+case "$err" in *"cannot read the vault"*) s=reached ;; *) s=refused-early ;; esac
+assert "--days with hundreds of digits never reaches the date code" "refused-early" "$s"
+node "$TOOL" --vault "$A" --as-of "$D" --days 36500 >/dev/null 2>&1; assert "--days at the bound is accepted" "0" "$?"
+node "$TOOL" --vault "$A" --as-of "$D" --days 36501 >/dev/null 2>&1; assert "--days past the bound exits 1" "1" "$?"
 node "$TOOL" --vault "$A" --bogus >/dev/null 2>&1; assert "an unknown flag exits 1" "1" "$?"
 
 echo "Group 8: the default day and a clip without frontmatter"

@@ -35,6 +35,7 @@ import { REPORT_HEADING, sectionLines, parseItems, carryOver } from "./lib/daily
 
 const SELF = path.basename(fileURLToPath(import.meta.url));
 const DEFAULT_DAYS = 7;
+const MAX_DAYS = 36500;
 const die = (msg) => { process.stderr.write(`${SELF}: ${msg}\n`); process.exit(1); };
 
 function shiftDate(date, n) {
@@ -58,7 +59,7 @@ function parseArgs(argv) {
     else if (t === "--as-of") a.asOf = argv[++i] ?? "";
     else if (t === "--days") {
       const v = argv[++i];
-      if (!/^[1-9]\d*$/.test(v || "")) die(`--days needs a positive integer, got: ${v}`);
+      if (!/^[1-9]\d{0,4}$/.test(v || "") || Number(v) > MAX_DAYS) die(`--days needs a whole number from 1 to ${MAX_DAYS}, got: ${String(v).slice(0, 12)}`);
       a.days = Number(v);
     } else die(`unknown arg: ${t}`);
   }
