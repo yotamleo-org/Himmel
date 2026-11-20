@@ -487,6 +487,12 @@ CRITICS_BASE_JSON="$TMP/base-claude.json" STUB_LOG_DIR="$TMP/stublog" REVIEW_PAN
 eq "run: a default sweep (claude-api in the tier) refuses" "$rc" "2"
 has "run: the refusal names the claude critic and the flag" "$(cat "$TMP/run-nopt.txt")" "--allow-claude-api"
 eq "run: no panel call on a refused claude sweep" "$(cat "$TMP/stublog/tiers")" ""
+# The short provider alias api is the billed API lane too: refused without the opt-in.
+python3 -c 'import json,sys; reg=json.load(open(sys.argv[1])); reg["panel"].append({"slug":"claude","model":"claude-opus-5-5","provider":"api","route_provider":"api","tier":"paid"}); json.dump(reg, open(sys.argv[2], "w"))' \
+  "$HERE/../../cr/critics.json" "$TMP/base-claude-alias.json"
+CRITICS_BASE_JSON="$TMP/base-claude-alias.json" STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
+  bash "$RUN" --out "$TMP/run-nopt-alias" --fixtures "$FIX" --key "$KEY" --no-ledger >"$TMP/run-nopt-alias.txt" 2>&1; rc=$?
+eq "run: a provider-api alias claude row refuses without --allow-claude-api" "$rc" "2"
 # Control: with the opt-in both critics run.
 CRITICS_BASE_JSON="$TMP/base-claude.json" STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
   bash "$RUN" --out "$TMP/run-opt" --fixtures "$FIX" --key "$KEY" --no-ledger --allow-claude-api --only case-01 >/dev/null 2>&1; rc=$?

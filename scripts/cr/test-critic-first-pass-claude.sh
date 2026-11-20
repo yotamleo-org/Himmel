@@ -496,6 +496,15 @@ RC=0; printf '%s\n' "$DIFF" | CRITICS_BASE_JSON="$W/base-with-claude.json" CRITI
     bash "$CFP" --model claude-opus-5-5 --slug claude >"$W/out" 2>"$W/err" || RC=$?
 check "14e a broken overlay: --slug claude exits 5 SKIPPED" 5 "$RC"
 check "14e a broken overlay: no Claude critic ran" no "$([ -e "$REC/argv" ] && echo yes || echo no)"
+# the short provider spellings api / subscription are Claude rows too
+for sp in api subscription; do
+    printf '{"panel":[{"slug":"claude","model":"claude-opus-5-5","provider":"%s","tier":"paid"}]}\n' "$sp" > "$W/base-alias14.json"
+    fresh_rec "14e-$sp"; bank 10
+    RC=0; printf '%s\n' "$DIFF" | CRITICS_BASE_JSON="$W/base-alias14.json" CRITICS_LOCAL_JSON="$W/local-broken14.json" \
+        bash "$CFP" --model claude-opus-5-5 --slug claude >"$W/out" 2>"$W/err" || RC=$?
+    check "14e a broken overlay, base provider $sp: exits 5 SKIPPED" 5 "$RC"
+    check "14e a broken overlay, base provider $sp: no Claude critic ran" no "$([ -e "$REC/argv" ] && echo yes || echo no)"
+done
 # 14f the floor's effort: an overlay claude_floor wins over the base's
 printf '%s\n' '{"claude_floor":{"slug":"claude","model":"claude-opus-5-5","provider":"claude-subscription","effort":"high","when":"codex-exhausted"}}' > "$W/local-floor14.json"
 fresh_rec 14f; bank 10

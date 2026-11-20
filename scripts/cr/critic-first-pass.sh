@@ -205,7 +205,7 @@ if [ -z "$provider" ] && command -v node >/dev/null 2>&1; then
           // matches otherwise. A row marked drop:true is a removal directive in
           // the overlay format, never a routing target.
           const row = panel.find(r => r && typeof r === "object" && !r.drop
-              && !(process.env.BASE_ONLY === "1" && String(r.provider || "").startsWith("claude"))
+              && !(process.env.BASE_ONLY === "1" && /^(claude|api$|subscription$)/.test(String(r.provider || "")))
               && (process.env.WSLUG ? eq(r.slug, process.env.WSLUG) : eq(r.model, process.env.WMODEL)));
           if (row && row.provider) process.stdout.write((row.slug || "") + "\t" + row.provider);
         ' 2>/dev/null || true)"

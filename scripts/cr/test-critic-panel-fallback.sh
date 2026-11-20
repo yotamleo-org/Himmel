@@ -1035,6 +1035,11 @@ check_contains "24f: lane off: the absent row leaves the count" "$(cat "$tmp/out
 floor_run f2 CRITICS_BASE_JSON="$JSON_FLOOR" CRITICS_LOCAL_JSON="$tmp/local-api24.json" CX_MODE=ok HIMMEL_API_LANE=on
 check "24f: lane on (control): the claude-api row is launched" "$(grep -c '^claude provider=claude-api$' "$tmp/cap24f2")" "1"
 
+# the short provider alias api is the API lane too
+printf '%s\n' '{"panel":[{"slug":"claude","model":"claude-opus-5-5","provider":"api","route_provider":"api","tier":"paid","mode":"advisory"}]}' > "$tmp/local-apialias24.json"
+floor_run f3 CRITICS_BASE_JSON="$JSON_FLOOR" CRITICS_LOCAL_JSON="$tmp/local-apialias24.json" CX_MODE=ok
+check "24f: lane off: a provider-api alias row is not launched" "$(grep -c '^claude ' "$tmp/cap24f3")" "0"
+
 # 24g an overlay claude_floor of null turns the floor off: codex exhausted, no Claude critic, no alert
 printf '%s\n' '{"claude_floor":null}' > "$tmp/local-floor-off24.json"
 floor_run g CRITICS_BASE_JSON="$JSON_FLOOR" CRITICS_LOCAL_JSON="$tmp/local-floor-off24.json" CX_MODE=exhaust

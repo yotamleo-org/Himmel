@@ -1938,7 +1938,7 @@ PARSEDFINDINGSEOF
 }
 
 # Lane off means absent at dispatch too, the --check rule above: a row reached
-# through the Claude API lane (route_provider or provider claude-api) is never
+# through the Claude API lane (route_provider or provider claude-api, or its alias api) is never
 # launched while HIMMEL_API_LANE is not on. It leaves the reviewer set (not
 # counted in total), and its avail row carries the phrase critics_skip_class
 # reads as absent.
@@ -1946,7 +1946,7 @@ if [ "${HIMMEL_API_LANE:-}" != on ] && [ -n "$rows" ]; then
     _lane_off_slugs="$(REG="$REG" node -e '
       try { const p = JSON.parse(require("fs").readFileSync(process.env.REG, "utf8")).panel || [];
         process.stdout.write(p.filter(r => r && typeof r.slug === "string" && !r.drop
-          && (r.route_provider === "claude-api" || r.provider === "claude-api")).map(r => r.slug).join("\n")); } catch (e) {}' 2>/dev/null)" || _lane_off_slugs=""
+          && ["claude-api", "api"].some(p => r.route_provider === p || r.provider === p)).map(r => r.slug).join("\n")); } catch (e) {}' 2>/dev/null)" || _lane_off_slugs=""
     if [ -n "$_lane_off_slugs" ]; then
         _kept_rows=""
         while IFS= read -r _lo_row; do

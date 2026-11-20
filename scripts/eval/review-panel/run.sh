@@ -159,7 +159,8 @@ python3 -c 'import json,sys
 src,dst,critics,tiers,allow=sys.argv[1:6]
 reg=json.load(open(src)); keep=set(critics.split(","))
 reg["panel"]=[r for r in reg["panel"] if r["slug"] in keep]
-bill=[r["slug"] for r in reg["panel"] if r.get("tier") in set(tiers.split(",")) and str(r.get("provider","")).startswith("claude")]
+claude_like=lambda p: str(p or "").startswith("claude") or p in ("api", "subscription")
+bill=[r["slug"] for r in reg["panel"] if r.get("tier") in set(tiers.split(",")) and (claude_like(r.get("provider")) or claude_like(r.get("route_provider")))]
 if bill and allow != "1":
     sys.exit("run.sh: the roster holds a billed claude-api critic (%s) - pass --allow-claude-api or drop it from --critics - no panel call made" % ",".join(bill))
 json.dump(reg, open(dst, "w"))' "$registry" "$roster" "$critics" "$tiers" "$allow_claude" || exit 2
