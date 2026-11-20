@@ -16,6 +16,7 @@ import { baselineId, effectOn, reduce, recordOf, scopeOk, terminalOf, unknownSta
 import { checkWords, decisionsDirFor, resolveDecision } from './verbatim.js';
 import { asksOperator, type TicketFacts } from './operator-work.js';
 import { FENCE_MARKERS, walk } from './fence-ancestry.js';
+import { KEY_IN } from './judge-input.js';
 import type {
   Authority, Baseline, Declaration, EventRow, IssueSnap, Lease, Op, OperatorKind, OperatorRow, OutOfVersionRow, PlacementClass, RequestRow, RulingRow, Verb,
 } from './types.js';
@@ -618,7 +619,6 @@ export function signSpec(ctx: Ctx, o: {
 
 const REVIEWED = /^Reviewed: spec ([0-9a-f]{64})\b/gm;
 const KEY_LINE = /^Keys?:\s*(.+)$/gm;
-const KEY_IN = /[A-Z][A-Z0-9]*-\d+(?!\d)/g;
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export function specReview(ctx: Ctx, o: { keys: string[]; spec: string; plan?: string; verdicts: string[]; supersedes?: string }): OperatorRow {
