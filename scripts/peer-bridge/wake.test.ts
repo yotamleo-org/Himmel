@@ -83,6 +83,28 @@ test("the 31st wake in a day writes one over-budget line, then silence, and the 
   expect(lines()).toHaveLength(32);
 });
 
+test("the tripwire alert names the peer and a count and nothing else, and refuses a peer or count this code did not write", async () => {
+  const { w, lines } = setup();
+  await w.alert("goomal", 3);
+  expect(lines()).toEqual([{ text: "peer goomal: 3 bad signatures in 1 h" }]);
+  await expect(w.alert("Goo mal", 3)).rejects.toThrow();
+  await expect(w.alert("goomal", 0)).rejects.toThrow();
+  await expect(w.alert("goomal", 1.5)).rejects.toThrow();
+  expect(lines()).toHaveLength(1);
+});
+
+test("the alert counts against the same daily budget as a thread wake, and the next day resets", async () => {
+  const { w, c, lines } = setup(2);
+  await w.wake({ peer: "goomal", root: 1, label: "new question" });
+  await w.alert("goomal", 3);
+  await w.alert("goomal", 3);                    // over budget: one notice, then silence
+  await w.alert("goomal", 3);
+  expect(lines().map(l => l.text).slice(2)).toEqual(["peer goomal · wake budget reached (2 today) · later wakes stay silent until tomorrow"]);
+  c.t += 24 * 3_600_000;
+  await w.alert("goomal", 3);
+  expect(lines().at(-1)).toEqual({ text: "peer goomal: 3 bad signatures in 1 h" });
+});
+
 test("the operator bridge's flushOutboxes delivers the line to the operator chat, for a peer it has never seen", async () => {
   const { w, bridgeRoot } = setup();
   await w.wake({ peer: "goomal", root: 12, label: "new info" });

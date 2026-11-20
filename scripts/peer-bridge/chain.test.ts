@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { Chain, PidLockError, acquirePidLock, drainSpool, readChain, startIdentity, submitSpool, sweepResults, verifyChain, writeResult } from "./chain";
+import { writeSpoolEvent } from "./spool-events";
 
 const tmp = (p = "peer-chain-") => mkdtempSync(join(tmpdir(), p));
 const peerDirWithSpool = () => { const d = tmp(); mkdirSync(join(d, "spool"), { mode: 0o700 }); return d; };
@@ -146,6 +147,30 @@ test("spool: each record type round-trips through drainSpool oldest first, 0600"
   const drained = drainSpool(dir);
   expect(drained.map(d => d.rec)).toEqual(recs as any);
   expect(drained.map(d => d.name)).toEqual([...names].sort());
+});
+
+test("spool: the typed path's records round-trip through writeSpoolEvent, and an unknown kind, event or shape is malformed", () => {
+  const dir = peerDirWithSpool();
+  const good = [
+    { t: "env-out", peer: "goomal", kind: "req", body: { sha: "a".repeat(40), suites: ["scripts/x.sh"] } },
+    { t: "env-out", peer: "goomal", kind: "capacity-ask", body: {} },
+    { t: "env-out", peer: "goomal", kind: "cancel", body: { jobNo: 3 } },
+    { t: "env-out", peer: "goomal", kind: "halt", body: {} },
+    ...["resolve-ok", "resolve-fail", "approve", "vm-start", "vm-done"].map(type => ({ t: "job-event", peer: "goomal", job: 4, event: { type } })),
+  ] as const;
+  const names = good.map(e => writeSpoolEvent(e as any, dir));
+  for (const n of names) expect(mode(join(dir, "spool", n))).toBe(0o600);
+  expect(drainSpool(dir).map(d => ("rec" in d ? d.rec.type : "malformed"))).toEqual(good.map(e => e.t));
+  for (const d of drainSpool(dir)) writeResult(dir, d.name, { ok: true });
+
+  const bad: unknown[] = [
+    { type: "env-out", kind: "res", body: {} }, { type: "env-out", kind: "req" }, { type: "env-out", kind: "req", body: [] }, { type: "env-out", kind: "req", body: null },
+    { type: "job-event", job: 0, event: { type: "approve" } }, { type: "job-event", job: 1.5, event: { type: "approve" } }, { type: "job-event", job: 1 },
+    { type: "job-event", job: 1, event: { type: "kill" } }, { type: "job-event", job: 1, event: { type: "deadline" } }, { type: "job-event", job: 1, event: { type: "res-done" } },
+  ];
+  bad.forEach((b, i) => writeFileSync(join(dir, "spool", `${i}-bad.json`), JSON.stringify(b), { mode: 0o600 }));
+  expect(drainSpool(dir).every(d => "malformed" in d && d.malformed)).toBe(true);
+  expect(drainSpool(dir)).toHaveLength(bad.length);
 });
 
 test("spool: an O_EXCL name collision is refused", () => {
