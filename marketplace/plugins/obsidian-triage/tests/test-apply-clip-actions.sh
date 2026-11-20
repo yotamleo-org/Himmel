@@ -485,6 +485,8 @@ assert "the apply refuses it with one line" "1" "$(printf '%s\n' "$out" | grep -
 assert "the apply summary counts the refusal" "1" "$(printf '%s\n' "$out" | grep -c ', 1 refused$')"
 assert "the other actions are still applied" "yes" "$([ "$(printf '%s\n' "$out" | grep -c '^✓ ')" -gt 0 ] && echo yes || echo no)"
 assert "the refused action leaves no ledger line for that page" "0" "$(count 'arch-1' "$N/$LEDGER_NAME")"
+assert "the refused page keeps its bytes" "" "$(cmp "$P/Clippings/_evidence/arch-1.md" "$N/Clippings/_evidence/arch-1.md" 2>&1)"
+assert "the ledger holds one line per applied action and none for the refused one" "$(printf '%s\n' "$out" | grep -c '^✓ ')" "$(lines "$N/$LEDGER_NAME")"
 
 echo "Test group 7: arguments"
 node "$APPLY" --vault "$A" --date "$D" --limit 0 >/dev/null 2>&1; assert "--limit 0 is refused" "1" "$?"
