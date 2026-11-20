@@ -129,11 +129,14 @@ PR_REPO = 'yotamleo-org/Himmel'  # env-literal-ok: the canonical slug, read the 
 
 
 def live_remainder(key):
-    """What the ticket's merged partial pull requests still leave undone, read the way next-dispatchable.sh reads it.
+    """What the ticket's merged partial pull requests still leave undone, as their bodies on GitHub say.
 
     The partial PRs come from the status log (TICKET_STATUS_STATE_DIR, else ~/.himmel/state) through merge-rows-effective.py, a
-    completing merge row clearing the earlier ones; each body is read with `gh pr view` (NEXT_DISPATCH_GH_CMD, else ND_GH_READ,
-    else scripts/lib/gh-read.sh, else gh); the grammar and the newest-PR-wins rule are pr_remainder.py's own, and so is the path pattern a unit naming a file
+    completing merge row clearing the earlier ones; each body is read with `gh pr view` through NEXT_DISPATCH_GH_CMD, else ND_GH_READ, else
+    scripts/lib/gh-read.sh when that file beside the kit is an executable file, else plain `gh`. The helper reads on the read token and retries a
+    refused read on the main token; next-dispatchable.sh exports GH_READ_NO_MAIN_FALLBACK=1 for its own reads through the helper, which stops that
+    retry on a rate limit, and this function does not set it. A helper that is present and fails leaves the body unreadable; there is no retry on plain `gh`.
+    The grammar and the newest-PR-wins rule are pr_remainder.py's own, and so is the path pattern a unit naming a file
     is code by (holds.py's FILE_RE, the copy of the dispatcher's own). The whole read has one budget (PROOF_REMAINDER_BUDGET_SECS,
     default 90 s), under the 100 s the Jira CLI waits for the validator; what it cannot finish is unreadable, never nothing.
     Returns (blocking, unreadable): what stops a CLOSE (open code work, an owed chief or operator line, a body that records no

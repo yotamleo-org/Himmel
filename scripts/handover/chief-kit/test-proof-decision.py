@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import re
+import shlex
 import shutil
 from pathlib import Path
 import subprocess
@@ -1388,6 +1389,118 @@ class ChiefDecision(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0, r.stdout)
         self.assertIn('live pull-request remainder unreadable', r.stderr)
         self.assertIn('PR #77', r.stderr)
+
+    # The default read of live_remainder, with NEXT_DISPATCH_GH_CMD and ND_GH_READ unset: scripts/lib/gh-read.sh beside the validator when that is an
+    # executable file, else `gh` on PATH. The validator finds the helper from its own resolved path, so these rows run a copy of it in a scratch tree
+    # whose scripts/lib holds a stub helper (the other files it loads are copies from the tree under test) and put a stub `gh` first on PATH: the real
+    # helper and the real `gh` never run.
+    ROUTED_ARGV = ['pr', 'view', '77', '--repo', 'yotamleo-org/Himmel', '--json', 'body', '--jq', '.body']
+    HELPER_BODY = 'Remaining: from the helper (scripts/helper.sh)'
+    PATH_BODY = 'Remaining: from gh on PATH (scripts/path-gh.sh)'
+    SEAM_BODY = 'Remaining: from the seam (scripts/seam.sh)'
+    ROUTED_DRIVER = ('import importlib.util, json, sys\n'
+                     'spec = importlib.util.spec_from_file_location("proof_validate", sys.argv[1])\n'
+                     'module = importlib.util.module_from_spec(spec)\n'
+                     'spec.loader.exec_module(module)\n'
+                     'print(json.dumps(module.live_remainder(sys.argv[2])))\n')
+
+    def stub(self, path, body='', exit_code=0):
+        # appends its arguments to <path>.calls (one per line, then `--`), prints the body and exits with exit_code
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('#!/bin/sh\nprintf "%s\\n" "$@" -- >> ' + shlex.quote(str(path) + '.calls') + '\nprintf "%s\\n" ' + shlex.quote(body) + '\nexit ' + str(exit_code) + '\n')
+        path.chmod(0o755)
+
+    def calls(self, path):
+        log = Path(str(path) + '.calls')
+        calls, current = [], []
+        for line in log.read_text().splitlines() if log.exists() else []:
+            if line == '--':
+                calls.append(current)
+                current = []
+            else:
+                current.append(line)
+        return calls
+
+    def routed(self, seam=None, helper_exit=0):
+        env = {k: v for k, v in {**os.environ, **self.world()}.items() if k not in ('NEXT_DISPATCH_GH_CMD', 'ND_GH_READ')}
+        env['PATH'] = str(self.live / 'bin') + os.pathsep + os.environ.get('PATH', '/usr/bin:/bin')
+        if seam:
+            env[seam] = str(self.live / 'gh')  # the world's stub gh: it logs to gh.log and serves bodies/77
+        self.partial(77, self.SEAM_BODY)
+        lib = HERE.parent.parent / 'lib'
+        scripts = self.b / 'kit' / 'scripts'
+        for source, folder in ((HERE / 'proof-validate.py', 'handover/chief-kit'), (HERE / 'holds.py', 'handover/chief-kit'),
+                               (lib / 'status_marker.py', 'lib'), (lib / 'pr_remainder.py', 'lib'), (lib / 'merge-rows-effective.py', 'lib')):
+            (scripts / folder).mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, scripts / folder / source.name)
+        self.validator = scripts / 'handover' / 'chief-kit' / 'proof-validate.py'
+        self.helper = scripts / 'lib' / 'gh-read.sh'
+        self.path_gh = self.live / 'bin' / 'gh'
+        self.stub(self.helper, self.HELPER_BODY, helper_exit)
+        self.stub(self.path_gh, self.PATH_BODY)
+        return env
+
+    def routed_remainder(self, env):
+        r = subprocess.run(['python3', '-I', '-c', self.ROUTED_DRIVER, str(self.validator), 'HIMMEL-9848'], capture_output=True, text=True, timeout=30, env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def routed_check(self, env):
+        data = {'key': 'HIMMEL-9848', 'description': self.requirements + '\n', 'status': 'Done', 'category': 'done'}
+        return subprocess.run(['python3', '-I', str(self.validator), '--bucket', str(self.b), '--check', 'o1', '--decision', str(self.decision), '--current-stdin'],
+                              input=json.dumps(data), text=True, capture_output=True, timeout=30, env={**env, 'PROOF_OWE_BIN': str(HERE / 'owe.sh')})
+
+    def test_the_routed_default_reads_the_body_through_the_helper_beside_the_validator(self):
+        env = self.routed()
+        result = self.routed_remainder(env)
+        self.assertEqual(self.calls(self.path_gh), [])
+        self.assertEqual(self.calls(self.helper), [self.ROUTED_ARGV])
+        self.assertEqual(result, [['PR #77 Remaining: from the helper (scripts/helper.sh)'], []])
+
+    def test_a_routed_helper_that_fails_is_unreadable_and_the_close_is_refused_with_no_retry_on_gh(self):
+        env = self.routed(helper_exit=7)  # the failing helper still prints a body: it is not judged
+        result = self.routed_remainder(env)
+        self.assertEqual(self.calls(self.path_gh), [])
+        self.assertEqual(self.calls(self.helper), [self.ROUTED_ARGV])
+        self.assertEqual(result, [[], ['PR #77 body unreadable (gh exit 7)']])
+        before = (self.b / 'owed.jsonl').read_bytes()
+        r = self.routed_check(env)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('live pull-request remainder unreadable: PR #77 body unreadable (gh exit 7)', r.stderr)
+        self.assertEqual((self.b / 'owed.jsonl').read_bytes(), before)
+        self.assertEqual((self.calls(self.helper), self.calls(self.path_gh)), ([self.ROUTED_ARGV] * 2, []))
+        self.stub(self.helper, self.NO_CODE)  # the same check passes once the helper reads a body that owes no code
+        r = self.routed_check(env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual((self.calls(self.helper), self.calls(self.path_gh)), ([self.ROUTED_ARGV] * 3, []))
+
+    def test_a_routed_helper_without_its_executable_bit_falls_back_to_gh_on_path(self):
+        env = self.routed()
+        self.helper.chmod(0o644)
+        result = self.routed_remainder(env)
+        self.assertEqual(self.calls(self.path_gh), [self.ROUTED_ARGV])
+        self.assertEqual(self.calls(self.helper), [])
+        self.assertEqual(result, [['PR #77 Remaining: from gh on PATH (scripts/path-gh.sh)'], []])
+
+    def test_an_absent_routed_helper_falls_back_to_gh_on_path(self):
+        env = self.routed()
+        self.helper.unlink()
+        result = self.routed_remainder(env)
+        self.assertEqual(self.calls(self.path_gh), [self.ROUTED_ARGV])
+        self.assertEqual(result, [['PR #77 Remaining: from gh on PATH (scripts/path-gh.sh)'], []])
+
+    def seam_wins(self, seam):
+        env = self.routed(seam=seam)
+        result = self.routed_remainder(env)
+        self.assertEqual(self.gh_calls(), [' '.join(self.ROUTED_ARGV)])
+        self.assertEqual((self.calls(self.helper), self.calls(self.path_gh)), ([], []))
+        self.assertEqual(result, [['PR #77 Remaining: from the seam (scripts/seam.sh)'], []])
+
+    def test_a_set_next_dispatch_gh_cmd_wins_over_the_routed_default(self):
+        self.seam_wins('NEXT_DISPATCH_GH_CMD')
+
+    def test_a_set_nd_gh_read_wins_over_the_routed_default(self):
+        self.seam_wins('ND_GH_READ')
 
     def test_the_callers_wait_covers_the_readers_whole_budget(self):
         # else a slow read ends in the CLI's exec timeout (and, after the move, in a settle that never ran) instead of the unreadable refusal
