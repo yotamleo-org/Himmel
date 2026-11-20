@@ -475,10 +475,6 @@ def _clip_frontmatter(path: Path) -> dict[str, str]:
 
 
 def probe_harvest_article_fetch(env: dict[str, str], today: datetime | None = None) -> ProbeResult:
-    """The routes can all be healthy while the harvest never calls them: this
-    fails when a thin article clip sits partial and nothing has tried it for
-    more than ARTICLE_RETRY_MAX_AGE_DAYS days. A clip the harvest filled, one it
-    gave up on (needs-attention) and a vault with no Clippings/ do not count."""
     vault = Path((env.get("OBSIDIAN_VAULT_PATH") or "").strip() or resolve_home(env) / "Documents" / "luna")
     clippings = vault / "Clippings"
     if not clippings.is_dir():

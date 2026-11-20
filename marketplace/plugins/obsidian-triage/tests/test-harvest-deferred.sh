@@ -83,13 +83,13 @@ class Chain:
 
 # Class: firecrawl fetch failed (source-level) -> deferred, counted.
 p = clip("fc-fail.md", "https://example.org/a")
-g, msg, _ = mod.process_clip(p, dry_run=False, firecrawl=Chain(3, RuntimeError("boom")), url_rules=mod.UrlRules())
+g, msg, _ = mod.process_clip(p, dry_run=False, chain=Chain(3, RuntimeError("boom")), url_rules=mod.UrlRules())
 check("firecrawl fetch failed is deferred + counted", g == "~"
       and fm(p).get("harvest_defer_count") == "1", msg + "\n" + p.read_text())
 
 # Class: firecrawl budget exhausted (run-level) -> deferred, NOT counted.
 p = clip("fc-budget.md", "https://example.org/b")
-g, msg, _ = mod.process_clip(p, dry_run=False, firecrawl=Chain(0), url_rules=mod.UrlRules())
+g, msg, _ = mod.process_clip(p, dry_run=False, chain=Chain(0), url_rules=mod.UrlRules())
 check("budget exhausted is deferred, not counted", g == "~"
       and "harvest_defer_count" not in fm(p), msg + "\n" + p.read_text())
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-export HARVEST_SCRAPE_DENY=all  # the default run fetches thin articles; this suite stays offline
+export HARVEST_SCRAPE_DENY=all
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lib="$here/../tools/lib/clip-lookup.mjs"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
@@ -16,9 +16,6 @@ if (isThinClipBody(real,"research")!==false){console.error("FAIL real");process.
 console.log("OK harvest thinness decision");
 JS
 LIB="$LIBURL" node "$tmp/h.mjs"
-# Triage's own URL-only `## Summary` is not source text: an article carrying only
-# that line (and the Source footer + triage promotion block) stays thin, while a
-# real summary, or real text in another section next to it, stays rich.
 cat > "$tmp/urlonly.mjs" <<'JS'
 const { isThinClipBody } = await import(process.env.LIB);
 const NL = "\n";
@@ -64,14 +61,14 @@ p.write_text(
     "---\ntype: instagram\nsource: https://www.instagram.com/reel/IGTH043/\n---\nshort.\n",
     encoding="utf-8",
 )
-glyph, msg, _ = mod.process_clip(p, dry_run=False, firecrawl=None)
+glyph, msg, _ = mod.process_clip(p, dry_run=False, chain=None)
 first = p.read_text(encoding="utf-8")
 if glyph != "~" or "ig_media_pending: true" not in first:
     print("FAIL: thin instagram clip did not get ig_media_pending: true")
     print(first)
     sys.exit(1)
 
-glyph2, msg2, _ = mod.process_clip(p, dry_run=False, firecrawl=None)
+glyph2, msg2, _ = mod.process_clip(p, dry_run=False, chain=None)
 second = p.read_text(encoding="utf-8")
 if second.count("ig_media_pending:") != 1:
     print("FAIL: second run duplicated ig_media_pending (not idempotent)")
@@ -88,7 +85,7 @@ p2.write_text(
     "---\ntype: article\nsource: https://example.com/post\n---\nshort.\n",
     encoding="utf-8",
 )
-mod.process_clip(p2, dry_run=False, firecrawl=None)
+mod.process_clip(p2, dry_run=False, chain=None)
 if "ig_media_pending" in p2.read_text(encoding="utf-8"):
     print("FAIL: non-instagram thin clip got ig_media_pending")
     sys.exit(1)
@@ -183,14 +180,14 @@ if not mod.is_thin_body(BODY):
 
 p = Path("$tmp/tpl-fresh.md")
 p.write_text("---\n" + FM + "---\n" + BODY, encoding="utf-8")
-glyph, msg, _ = mod.process_clip(p, dry_run=False, firecrawl=None)
+glyph, msg, _ = mod.process_clip(p, dry_run=False, chain=None)
 t = p.read_text(encoding="utf-8")
 if glyph != "~" or "harvest_status: ok" in t or "harvest_status: partial" not in t:
     print("FAIL (A): fresh template skeleton was stamped ok:", glyph, msg); sys.exit(1)
 
 p2 = Path("$tmp/tpl-stamped.md")
 p2.write_text("---\n" + FM + OK + "---\n" + BODY, encoding="utf-8")
-glyph, msg, _ = mod.process_clip(p2, dry_run=False, firecrawl=None)
+glyph, msg, _ = mod.process_clip(p2, dry_run=False, chain=None)
 t2 = p2.read_text(encoding="utf-8")
 if glyph != "~" or "harvest_status: ok" in t2 or "harvest_status: partial" not in t2:
     print("FAIL (A): already-stamped-ok template skeleton was never re-checked:", glyph, msg); sys.exit(1)
@@ -201,7 +198,7 @@ real = "\n".join(f"Paragraph {i} with real article prose that is the capture." f
 p3 = Path("$tmp/real-stamped.md")
 p3.write_text("---\n" + FM + OK + "---\n# Real\n\n" + real + "\n", encoding="utf-8")
 before = p3.read_text(encoding="utf-8")
-glyph, msg, _ = mod.process_clip(p3, dry_run=False, firecrawl=None)
+glyph, msg, _ = mod.process_clip(p3, dry_run=False, chain=None)
 if glyph != "o" or p3.read_text(encoding="utf-8") != before:
     print("FAIL (A): a real harvested clip was touched:", glyph, msg); sys.exit(1)
 print("OK silent-partial A: template skeleton is thin, ok-stamped one is re-checked, real clip untouched")
@@ -237,9 +234,6 @@ cmp -s "$VC/Clippings/_done/crlf.md" "$tmp/crlf-before.md" || { echo "FAIL: refl
 grep -q "1 skipped" "$tmp/crlf.out" || { echo "FAIL: CRLF skip not reported"; cat "$tmp/crlf.out"; exit 1; }
 echo "OK --reflag-silent-partials: CRLF note left byte-identical and reported skipped"
 
-# U: triage's URL-only `## Summary` is not a capture. A clip whose only text is that
-# line is a thin-body partial (never ok), also when an earlier run already stamped it
-# ok; a clip with a real summary, or real text beside the marker, stays a success.
 cat > "$tmp/url_only.py" <<PY
 import importlib.util, sys
 from pathlib import Path
@@ -269,14 +263,14 @@ if not mod.is_thin_body(LEAD) or mod.is_thin_body(BODY.replace("## Source", "## 
 
 p = Path("$tmp/u-fresh.md")
 p.write_text("---\n" + FM + "---\n" + BODY, encoding="utf-8")
-glyph, msg, _ = mod.process_clip(p, dry_run=False, firecrawl=None)
+glyph, msg, _ = mod.process_clip(p, dry_run=False, chain=None)
 t = p.read_text(encoding="utf-8")
 if glyph != "~" or "harvest_status: ok" in t or "harvest_status: partial" not in t or "harvested_at" in t:
     print("FAIL (U): a clip with no fetched text was recorded as a success:", glyph, msg); print(t); sys.exit(1)
 
 p2 = Path("$tmp/u-stamped.md")
 p2.write_text("---\n" + FM + OKM + "---\n" + BODY, encoding="utf-8")
-glyph, msg, _ = mod.process_clip(p2, dry_run=False, firecrawl=None)
+glyph, msg, _ = mod.process_clip(p2, dry_run=False, chain=None)
 t2 = p2.read_text(encoding="utf-8")
 if glyph != "~" or "harvest_status: ok" in t2 or "harvest_status: partial" not in t2:
     print("FAIL (U): an ok-stamped empty clip was never re-checked:", glyph, msg); sys.exit(1)
@@ -287,22 +281,19 @@ REAL = BODY.replace(MARK + " Clip captured no body; awaiting thin-body enrichmen
 p3 = Path("$tmp/u-real.md")
 p3.write_text("---\n" + FM + OKM + "---\n" + REAL, encoding="utf-8")
 before = p3.read_text(encoding="utf-8")
-glyph, msg, _ = mod.process_clip(p3, dry_run=False, firecrawl=None)
+glyph, msg, _ = mod.process_clip(p3, dry_run=False, chain=None)
 if mod.is_thin_body(REAL) or glyph != "o" or p3.read_text(encoding="utf-8") != before:
     print("FAIL (U): a clip with a real summary was touched:", glyph, msg); sys.exit(1)
 
 LONG = "\n".join(f"Captured paragraph {i} of the page, written by the clipper." for i in range(12))
 p4 = Path("$tmp/u-fresh-rich.md")
 p4.write_text("---\n" + FM + "---\n" + BODY.replace("## Source", "## Highlights\n" + LONG + "\n\n## Source"), encoding="utf-8")
-glyph, msg, _ = mod.process_clip(p4, dry_run=False, firecrawl=None)
+glyph, msg, _ = mod.process_clip(p4, dry_run=False, chain=None)
 t4 = p4.read_text(encoding="utf-8")
 if glyph != "v" or "harvest_status: ok" not in t4:
     print("FAIL (U): a clip with real text beside the marker did not end as a success:", glyph, msg); sys.exit(1)
 print("OK url-only summary: partial when empty (fresh and ok-stamped), success when real text exists")
 
-# An Instagram clip is judged by the media rule (a Transcript or Slides subsection under
-# ## Crawled content is the capture), so a short enriched clip is a success, an empty
-# crawl is a partial, and a clip whose media rung already ran ok is not queued for it again.
 IGURL = "https://www.instagram.com/p/CCCC333/"
 IGFM = 'title: "instagram"\nsource: ' + IGURL + '\ntype: instagram\nprocessed: true\nsummary_basis: url-only\n'
 IGSUM = "## Summary\n" + MARK + " Instagram post.\n\n"
@@ -311,17 +302,17 @@ ig_empty = "# i\n\n" + IGURL + "\n\n" + IGSUM + "## Crawled content\n<!-- media-
 if mod.is_thin_clip(IGURL, ig_rich) or not mod.is_thin_clip(IGURL, ig_empty):
     print("FAIL (U): the Instagram media rule is not applied"); sys.exit(1)
 pr = Path("$tmp/ig-rich.md"); pr.write_text("---\n" + IGFM + "---\n" + ig_rich, encoding="utf-8")
-glyph, msg, _ = mod.process_clip(pr, dry_run=False, firecrawl=None)
+glyph, msg, _ = mod.process_clip(pr, dry_run=False, chain=None)
 tr = pr.read_text(encoding="utf-8")
 if glyph != "v" or "harvest_status: ok" not in tr or "ig_media_pending" in tr:
     print("FAIL (U): an enriched Instagram clip was not a plain success:", glyph, msg); print(tr); sys.exit(1)
 pe = Path("$tmp/ig-empty.md"); pe.write_text("---\n" + IGFM + "---\n" + ig_empty, encoding="utf-8")
-glyph, msg, _ = mod.process_clip(pe, dry_run=False, firecrawl=None)
+glyph, msg, _ = mod.process_clip(pe, dry_run=False, chain=None)
 te = pe.read_text(encoding="utf-8")
 if glyph != "~" or "harvest_status: partial" not in te or "ig_media_pending: true" not in te:
     print("FAIL (U): an empty Instagram crawl was not a partial queued for the media rung:", glyph, msg); sys.exit(1)
 pd = Path("$tmp/ig-done.md"); pd.write_text("---\n" + IGFM + "media_enrichment_status: ok\n---\n" + ig_empty, encoding="utf-8")
-glyph, msg, _ = mod.process_clip(pd, dry_run=False, firecrawl=None)
+glyph, msg, _ = mod.process_clip(pd, dry_run=False, chain=None)
 td = pd.read_text(encoding="utf-8")
 if glyph != "~" or "harvest_status: partial" not in td or "ig_media_pending" in td:
     print("FAIL (U): a clip whose media rung ran ok was queued for it again:", glyph, msg); print(td); sys.exit(1)
@@ -331,11 +322,9 @@ python3 "$tmp/url_only.py"
 
 MARKT="Inferred from the source URL only — re-read the source before promoting."
 
-# E: a partial clip is retried wherever it sits. Run with every scrape backend denied, so
-# the only visible effect is the defer counter (no network in this suite).
 VE="$tmp/vault-evidence-retry"
 mkdir -p "$VE/Clippings/_evidence/_rejected"
-mk_partial() { # path source defer extra
+mk_partial() {
     printf -- '---\ntype: article\nsource: %s\nsummary_basis: url-only\nharvest_status: partial\nharvest_flag: thin-body\nharvest_defer_count: %s\nharvest_defer_last: 2026-11-08\n%s---\n# t\n\n## Summary\n%s\n\n## Source\n[l](%s)\n' "$2" "$3" "$4" "$MARKT" "$2" > "$1"
 }
 mk_partial "$VE/Clippings/_evidence/art.md" "https://example.com/docs/art" 1 ""

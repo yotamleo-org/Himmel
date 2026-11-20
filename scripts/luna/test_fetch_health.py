@@ -349,8 +349,6 @@ class FetchHealthTests(unittest.TestCase):
         self.assertEqual(limited.status, "blocked-or-rate-limited")
 
     def test_harvest_article_fetch_fails_when_thin_article_clips_sit_unfetched(self):
-        # The routes can be green while the harvest never calls them. This probe fails
-        # on the vault state itself: a thin article clip left partial and untried.
         def clip(root, name, source, last=None, **extra):
             fm = f"---\ntype: article\nsource: {source}\nharvest_status: partial\nharvest_flag: thin-body\n"
             if last:
@@ -364,23 +362,20 @@ class FetchHealthTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             env = {"HOME": tmp, "OBSIDIAN_VAULT_PATH": str(root)}
-            self.assertEqual(fetch_health.probe_harvest_article_fetch({"HOME": tmp}, today).status, "ok")  # no vault
+            self.assertEqual(fetch_health.probe_harvest_article_fetch({"HOME": tmp}, today).status, "ok")
             clip(root, "_evidence/fresh.md", "https://example.com/a", last="2026-11-19")
             ok = fetch_health.probe_harvest_article_fetch(env, today)
             self.assertEqual((ok.status, "1 thin article clip" in ok.reason), ("ok", True))
-            # not article clips, or already given up on: never counted
             clip(root, "_evidence/ig.md", "https://www.instagram.com/p/abc/", last="2026-11-01")
             clip(root, "_evidence/x.md", "https://x.com/u/status/1", last="2026-11-01")
             clip(root, "_evidence/gone.md", "https://example.com/g", last="2026-11-01", harvest_needs_attention="true")
             clip(root, "_done/old.md", "https://example.com/o", last="2026-11-01")
             self.assertEqual(fetch_health.probe_harvest_article_fetch(env, today).status, "ok")
-            # a thin article clip nothing has tried for days: the harvest is not fetching it
             clip(root, "_evidence/stuck.md", "https://claude.com/resources/articles/x", last="2026-11-08")
             bad = fetch_health.probe_harvest_article_fetch(env, today)
             self.assertEqual(bad.status, "transport-fail")
             self.assertIn("stuck.md", bad.reason)
             self.assertIn("2026-11-08", bad.reason)
-            # a partial with no attempt date at all counts as untried
             clip(root, "_evidence/never.md", "https://example.com/n")
             self.assertIn("never", fetch_health.probe_harvest_article_fetch(env, today).reason)
 

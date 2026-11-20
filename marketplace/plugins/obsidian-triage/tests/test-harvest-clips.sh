@@ -26,8 +26,6 @@
 
 set -u -o pipefail
 
-# The default harvest run fetches a thin article through the free rungs; this suite
-# stays offline, so every backend is switched off for the whole run.
 export HARVEST_SCRAPE_DENY=all
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

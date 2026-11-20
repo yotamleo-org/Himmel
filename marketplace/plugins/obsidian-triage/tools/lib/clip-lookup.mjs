@@ -118,7 +118,6 @@ const ARTICLE_SECTIONS = ["## Highlights", "## Summary", "## Key Points", "## Co
 
 const URL_ONLY_MARKER = "Inferred from the source URL only";
 
-/** True when the `## Summary` heading at lines[at] has the marker anywhere in its section. */
 function isUrlOnlySummary(lines, at) {
   if (lines[at].trim() !== "## Summary") return false;
   for (let j = at + 1; j < lines.length; j++) {
