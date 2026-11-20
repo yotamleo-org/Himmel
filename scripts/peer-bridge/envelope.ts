@@ -132,7 +132,7 @@ export function encodeCanonical(e: Envelope): string {
 
 export type ParseResult = { ok: true; env: Envelope } | { ok: false; reason: string };
 
-// own re-encode has no duplicate key (JSON.parse keeps the last, so the re-encode
+// JSON.parse keeps the last of two duplicate keys, so only the byte-equality with the re-encode refuses one.
 export function parseEnvelopeLine(line3: string): ParseResult {
   if (Buffer.byteLength(line3, "utf8") > MAX_LINE_BYTES) return { ok: false, reason: "length: over 3000 bytes" };
   if (!/^[\x20-\x7e]+$/.test(line3)) return { ok: false, reason: "ascii: not printable ASCII" };
