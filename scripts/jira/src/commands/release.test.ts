@@ -344,9 +344,7 @@ describe('jira release rm-run', () => {
     expect(rows[0].ts).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
   });
 
-  // `usage` is the token source: it equals the Opus entry of `modelUsage` alone, while
-  // `modelUsage` also held the Haiku title call. The two sources hold different numbers here on purpose.
-  const U = { input_tokens: 2, cache_creation_input_tokens: 0, cache_read_input_tokens: 649, output_tokens: 10 };
+  const U ={ input_tokens: 2, cache_creation_input_tokens: 0, cache_read_input_tokens: 649, output_tokens: 10 };
   const M = {
     'claude-opus-5-5': { inputTokens: 3, cacheCreationInputTokens: 7, cacheReadInputTokens: 650 },
     'claude-haiku-5-5': { inputTokens: 900, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 },
