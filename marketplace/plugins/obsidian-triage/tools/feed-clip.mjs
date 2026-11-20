@@ -96,7 +96,7 @@ function resolveVault(arg) {
 function parseFeedList(text, file) {
   const feeds = [];
   const problems = [];
-  text.split(/\r?\n/).forEach((raw, i) => {
+  text.replace(/^﻿/, "").split(/\r?\n/).forEach((raw, i) => {
     const line = raw.replace(/(^|\s)#.*$/, "").trim();
     if (!line) return;
     const [url, ...label] = line.split(/\s+/);
@@ -132,7 +132,10 @@ function loadSeen(path) {
   return { seen, needsNewline: text !== "" && !text.endsWith("\n") };
 }
 
-const isWalled = (host) => WALLED_HOSTS.some((w) => host === w || host.endsWith(`.${w}`));
+const isWalled = (hostname) => {
+  const host = hostname.toLowerCase().replace(/\.+$/, "");
+  return WALLED_HOSTS.some((w) => host === w || host.endsWith(`.${w}`));
+};
 
 async function readCapped(res) {
   const chunks = [];
@@ -154,7 +157,7 @@ async function fetchFeed(url) {
   let u = new URL(url);
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error(`unsupported scheme ${u.protocol}`);
-    if (isWalled(u.hostname.toLowerCase())) throw new Error(`walled host ${u.hostname} (fetch it with scripts/web/fetch-url.sh)`);
+    if (isWalled(u.hostname)) throw new Error(`walled host ${u.hostname} (fetch it with scripts/web/fetch-url.sh)`);
     const res = await fetch(u, {
       redirect: "manual",
       headers: { Accept: "application/atom+xml, application/rss+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5", "User-Agent": "feed-clip/1.0" },

@@ -197,6 +197,14 @@ assert "http blog feed: 2 clips (the link-less and the script-link entries skipp
 if grep -l '^source: http://127.0.0.1' "$V"/Clippings/*.md >/dev/null 2>&1; then s=feed-url; else s=none; fi
 assert "no clip carries the feed URL as its source" none "$s"
 
+echo "Test 6c: a BOM on the list's first line, a walled host spelled with a trailing dot"
+V="$(newvault bomdot)"
+{ printf '\357\273\277https://x.com./example/feed.xml Dotted\n'; printf 'file://%s AtomRel\n' "$FIX/atom-releases.xml"; } > "$V/.feed-clip-feeds"
+run_tool --vault "$V"
+assert "bom + dotted host: exit 0" 0 "$rc"
+assert "the first line is read despite the BOM and refused as a walled host" 1 "$(grep -c '^✗ feed-clip: Dotted.*walled' <<<"$out")"
+assert "bom + dotted host: the other feed still wrote its 2 clips" 2 "$(nclips "$V")"
+
 echo "Test 6b: a crafted feed cannot stall the parser"
 V="$(newvault hostile)"
 {

@@ -7,7 +7,7 @@
 # fails is reported on one line and never fails the run.
 # Login-walled hosts (x.com, instagram.com, reddit.com) are refused.
 #
-# Run:  node marketplace/plugins/obsidian-triage/tools/feed-clip.mjs --dry-run
+# Run:  node <obsidian-triage plugin dir>/tools/feed-clip.mjs --vault <this vault> --dry-run
 # prints what it would clip and writes nothing. Entries already clipped are
 # remembered in .feed-clip-seen.jsonl.
 #
