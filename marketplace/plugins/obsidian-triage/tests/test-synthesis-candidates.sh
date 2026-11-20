@@ -125,6 +125,12 @@ printf '2026-11-17\tconcept-rec-recent\t3\n2026-10-25\tconcept-rec-old\t3\n2026-
 diverse covrecent 5 covered-recent 0
 printf -- '---\ntype: synthesis\n---\n## Evidence (5 clips, 5 unique URLs)\n\n- [[Clippings/_evidence/covrecent-1]] — a\n- [[Clippings/_evidence/covrecent-2]] — b\n- [[Clippings/_evidence/covrecent-3]] — c\n- [[Clippings/_evidence/covrecent-4]] — d\n- [[Clippings/_evidence/covrecent-5]] — e\n' \
     > "$V/Clippings/_synthesis/2026-11-17-concept-covered-recent.md"
+diverse ownpage 5 own-page 0
+printf -- '---\ntype: synthesis\n---\n## Evidence (5 clips, 5 unique URLs)\n\n- [[Clippings/_evidence/ownpage-1]] — a\n- [[Clippings/_evidence/ownpage-2]] — b\n- [[Clippings/_evidence/ownpage-3]] — c\n- [[Clippings/_evidence/ownpage-4]] — d\n- [[Clippings/_evidence/ownpage-5]] — e\n' \
+    > "$V/Clippings/_synthesis/2026-11-17-tag-own-page-moc.md"
+diverse ownold 5 own-old 0
+printf -- '---\ntype: synthesis\n---\n## Evidence (5 clips, 5 unique URLs)\n\n- [[Clippings/_evidence/ownold-1]] — a\n- [[Clippings/_evidence/ownold-2]] — b\n- [[Clippings/_evidence/ownold-3]] — c\n- [[Clippings/_evidence/ownold-4]] — d\n- [[Clippings/_evidence/ownold-5]] — e\n' \
+    > "$V/Clippings/_synthesis/2026-10-01-tag-own-old-moc.md"
 diverse haspagefive 5 has-page-five 0
 printf -- '---\ntype: concept\n---\nExisting.\n' > "$V/30-Resources/Concepts/Has Page Five.md"
 
@@ -236,8 +242,6 @@ echo "Test 3: platform-domain rule (concept + tag)"
 assert "5 unrelated authors on one platform: concept passes" "pass" "$(field concept-context-windows status)"
 assert "…with 5 evidence clips" "5" "$(field concept-context-windows clipCount)"
 assert "…counting 5 distinct sources" "5" "$(field concept-context-windows distinctSources)"
-assert "…and its tag lens is dropped: one candidate per subject, the concept" "same-subject-as-concept" "$(field tag-context-windows-moc reason)"
-assert "…as a dedup skip" "dedup" "$(field tag-context-windows-moc category)"
 assert "3 clips from 2 sources (2 by one author, 1 by another): concept skipped" "skip" "$(field concept-two-voices status)"
 assert "…as too-few-sources" "too-few-sources" "$(field concept-two-voices reason)"
 assert "…a confidence-floor skip" "confidence-floor" "$(field concept-two-voices category)"
@@ -292,13 +296,20 @@ assert "failed 26 days ago: offered again" "pass" "$(field concept-rec-old statu
 assert "failed 3 days ago, evidence since grew: offered again" "pass" "$(field concept-rec-grown status)"
 assert "two records the same day: the later one wins" "substance-floor-recorded" "$(field concept-rec-same reason)"
 
-echo "Test 5c: a concept that is skipped because its page exists still covers the subject"
+echo "Test 5c: the lenses are independent, a subject may pass as a concept and as a tag"
+assert "5 clips, 5 sources, no MOC: the concept passes" "pass" "$(field concept-context-windows status)"
+assert "…and the tag passes too: a concept synthesis and a tag index are different pages" "pass" "$(field tag-context-windows-moc status)"
 assert "concept page 3 days old: concept skipped" "synthesis-page-within-14d" "$(field concept-covered-recent reason)"
-assert "…so its tag is not a second page for the subject" "same-subject-as-concept" "$(field tag-covered-recent-moc reason)"
-assert "concept page older than 14 days, no new evidence: its tag is not a second page" "same-subject-as-concept" "$(field tag-big-topic-moc reason)"
-assert "concept with a vault page: its tag is not a second page" "same-subject-as-concept" "$(field tag-has-page-five-moc reason)"
-assert "control: a concept below the source floor frees its tag" "pass" "$(field tag-two-voices-five-moc status)"
-assert "control: a concept whose substance gate failed frees its tag" "pass" "$(field tag-rec-five-moc status)"
+assert "…the tag, with no page and no MOC of its own, still passes" "pass" "$(field tag-covered-recent-moc status)"
+assert "concept page older than 14 days, no new evidence: concept skipped" "no-new-evidence" "$(field concept-big-topic reason)"
+assert "…the tag still passes" "pass" "$(field tag-big-topic-moc status)"
+assert "concept with a vault page: its tag still passes" "pass" "$(field tag-has-page-five-moc status)"
+assert "a tag with an existing MOC is skipped" "existing-vault-page" "$(field tag-mapped-moc reason)"
+assert "the tag's own page 3 days old: tag skipped" "synthesis-page-within-14d" "$(field tag-own-page-moc reason)"
+assert "…the concept of that subject is judged on its own and passes" "pass" "$(field concept-own-page status)"
+assert "the tag's own page older than 14 days listing as many clips: tag skipped" "no-new-evidence" "$(field tag-own-old-moc reason)"
+assert "a concept below the source floor: its tag passes" "pass" "$(field tag-two-voices-five-moc status)"
+assert "a concept whose substance gate failed: its tag passes" "pass" "$(field tag-rec-five-moc status)"
 
 echo "Test 5b: evidence cap"
 assert "group of 45 reports its full size" "45" "$(field concept-big-topic clipCount)"

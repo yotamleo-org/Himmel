@@ -19,9 +19,7 @@ import { frontmatterBounds, fmScalar, fmList, splitLines, stripCR } from "./lib/
 
 const KINDS = ["concept", "author", "tag", "folder"];
 const MIN_CLIPS = { concept: 3, author: 2, tag: 5, folder: 5 };
-const MIN_SOURCES = { concept: 3, tag: 2, folder: 2 };
-const COVERED_REASONS = new Set(["existing-vault-page", "synthesis-page-within-14d", "no-new-evidence"]);
-const DEDUP_DAYS = 14;
+const MIN_SOURCES = { concept: 3, tag: 2, folder: 2 };const DEDUP_DAYS = 14;
 const EVIDENCE_CAP = 40;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_DEPTH = 3;
@@ -383,19 +381,6 @@ function build(args) {
       if (kind === "author") c.name = mostCommon(members.map((m) => m.authorLabel));
       candidates.push(c);
     }
-  }
-
-  const conceptCovers = new Map(candidates
-    .filter((c) => c.kind === "concept" && (c.status === "pass" || COVERED_REASONS.has(c.reason)))
-    .map((c) => [c.key, c]));
-  for (const c of candidates) {
-    const twin = c.kind === "tag" && c.status === "pass" ? conceptCovers.get(c.key) : null;
-    if (!twin) continue;
-    delete c.supersedes;
-    Object.assign(c, {
-      status: "skip", category: "dedup", reason: "same-subject-as-concept",
-      detail: `${twin.slug} covers the same subject (${twin.status === "pass" ? "listed instead" : twin.reason})`,
-    });
   }
 
   const byKind = Object.fromEntries(KINDS.map((k) => [k, candidates
