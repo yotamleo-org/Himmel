@@ -20,6 +20,21 @@
 #   HIMMEL-Pipeline-Health      daily   (default 04:00, model: haiku)
 #       claude --model haiku "vault-lint (obsidian-triage:vault-lint) …" < /dev/null
 #
+# Three more steps make no model call and run inside those runners, each bounded
+# by a per-run limit and each printing exactly one `[nightly-...]` line to the log:
+#   [nightly-feeds]    harvest runner, before the worker: feed-clip.mjs --cap N
+#   [nightly-promote]  synthesize runner, after the worker: synthesize-stubs.mjs
+#                      --apply --limit N (converging clips -> subject pages)
+#   [nightly-actions]  synthesize runner, after the promotion: apply-clip-actions.mjs
+#                      --apply --limit N (the daily note's fold/archive actions)
+# A step that fails prints `failed rc=N: <last line>` and a step whose tool is
+# not in the plugin prints `skipped: tool not installed`; neither changes the
+# runner's rc or stops the next step. The two writers also run on a night the
+# worker is skipped, and hold the vault's git index lock while they write so a
+# git-based sync cannot commit a half-applied state (a lock someone else holds
+# makes both steps skip with `vault sync busy`). Their ledgers are the tools' own
+# (.synthesize-stubs.ledger.jsonl, .apply-clip-actions.ledger.jsonl): --revert undoes a run.
+#
 # Defaults:
 # harvest+triage+ig-media-enrich daily at 02:00 (cheap, idempotent,
 # keeps the Clippings/ inbox flowing and drains pending Instagram media
@@ -57,13 +72,15 @@
 #   bash scripts/luna/pipeline-cadence.sh arm [--fetch-health-time HH:MM]
 #       [--harvest-time HH:MM] [--ig-limit N] [--synth-time HH:MM]
 #       [--health-time HH:MM] [--harvest-model M] [--synth-model M]
-#       [--health-model M] [--vault PATH] [--force] [--dry-run]
+#       [--health-model M] [--feed-cap N] [--promote-limit N]
+#       [--actions-limit N] [--vault PATH] [--force] [--dry-run]
 #   bash scripts/luna/pipeline-cadence.sh status
 #   bash scripts/luna/pipeline-cadence.sh disarm
 #
 # Test seams (used by test-pipeline-cadence.sh):
 #   PIPELINE_CRONTAB   — command invoked instead of `crontab`
 #   PIPELINE_BAT_DIR   — where the persistent runners (.sh) live
+#   PIPELINE_TRIAGE_TOOLS_DIR — the obsidian-triage tools dir the nightly steps call
 #
 # Exit codes (mirrors arm-resume.sh):
 #   0  done (armed / status printed / disarmed / dry-run)
@@ -124,6 +141,10 @@ SYNTH_GATE="$HIMMEL_ROOT/scripts/luna/synth-input-check.sh"
 # (clears the dedupe). Baked by absolute path at arm time like the libs above.
 CADENCE_ALERT="$HIMMEL_ROOT/scripts/luna/cadence-alert.sh"
 
+# The obsidian-triage tools the no-model nightly steps call, baked by absolute
+# path at arm time. A tool missing at FIRE time is a skipped step, not an error.
+TRIAGE_TOOLS="${PIPELINE_TRIAGE_TOOLS_DIR:-$HIMMEL_ROOT/marketplace/plugins/obsidian-triage/tools}"
+
 # The marker line a runner writes to its log when a gate refused the worker. The
 # sibling of WORKER_SESSION_DONE_MARKER: DONE means the session ran and finished, SKIPPED
 # means no session was ever launched. Distinct words on purpose — a skipped
@@ -175,6 +196,11 @@ HEALTH_TIME="04:00"
 # again; `--health-day daily` restores the every-night shape for an operator who
 # genuinely wants it, so this is a default change, not a capability removal.
 HEALTH_DAY="SUN"
+# Per-run limits of the no-model nightly steps. Small on purpose: Obsidian hangs
+# on bulk file churn, so a backlog drains over nights instead of in one.
+FEED_CAP="2"          # new clips per feed per night
+PROMOTE_LIMIT="5"     # subject pages created or extended per night
+ACTIONS_LIMIT="5"     # daily-note actions applied per night
 # Human-readable cadence label for the summary blocks; recomputed by
 # validate_arm_inputs once --health-day is canonicalised.
 HEALTH_CADENCE_LABEL="weekly  SUN 04:00"
@@ -250,6 +276,12 @@ Flags (arm only, except --dry-run):
   --harvest-model <m>    claude --model for the harvest worker (default claude-sonnet-5-5)
   --synth-model <m>      claude --model for the synthesize worker (default claude-sonnet-5-5)
   --health-model <m>     claude --model for the health worker (default haiku)
+  --feed-cap <N>         New clips per feed per night, pulled before the harvest
+                         (default 2)
+  --promote-limit <N>    Subject pages created or extended per night after the
+                         synthesis (default 5)
+  --actions-limit <N>    Daily-note fold/archive actions applied per night
+                         (default 5)
   --vault <PATH>         Luna vault root (default: $LUNA_VAULT_PATH if set,
                          else $HOME/Documents/luna)
   --force                Replace existing HIMMEL-Pipeline-* tasks
@@ -298,7 +330,13 @@ while [ $# -gt 0 ]; do
         --synth-model=*) SYNTH_MODEL="${1#--synth-model=}"; shift ;;
         --health-model)  HEALTH_MODEL="${2:-}"; shift 2 ;;
         --health-model=*) HEALTH_MODEL="${1#--health-model=}"; shift ;;
-        --vault)         VAULT="${2:-}"; shift 2 ;;
+        --feed-cap)        FEED_CAP="${2:-}"; shift 2 ;;
+        --feed-cap=*)      FEED_CAP="${1#--feed-cap=}"; shift ;;
+        --promote-limit)   PROMOTE_LIMIT="${2:-}"; shift 2 ;;
+        --promote-limit=*) PROMOTE_LIMIT="${1#--promote-limit=}"; shift ;;
+        --actions-limit)   ACTIONS_LIMIT="${2:-}"; shift 2 ;;
+        --actions-limit=*) ACTIONS_LIMIT="${1#--actions-limit=}"; shift ;;
+        --vault)        VAULT="${2:-}"; shift 2 ;;
         --vault=*)       VAULT="${1#--vault=}"; shift ;;
         --force)         FORCE=1; shift ;;
         --dry-run)       DRY_RUN=1; shift ;;
@@ -556,6 +594,13 @@ validate_arm_inputs() {
         echo "ERR pipeline-cadence: --ig-limit must be a non-negative integer, got: $IG_LIMIT" >&2
         exit 1
     fi
+    local _lim
+    for _lim in "--feed-cap:$FEED_CAP" "--promote-limit:$PROMOTE_LIMIT" "--actions-limit:$ACTIONS_LIMIT"; do
+        if ! [[ "${_lim#*:}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "ERR pipeline-cadence: ${_lim%%:*} must be a positive integer, got: ${_lim#*:}" >&2
+            exit 1
+        fi
+    done
     # Canonicalise --health-day once, here, so every consumer below (the cron
     # DOW field, the summary block) reads one spelling.
     # bash 3.2 has no ${v^^}.
@@ -696,6 +741,72 @@ runner_path_snapshot() {
     printf '%q' "$full"
 }
 
+# The shell the harvest and synthesize runners share for their no-model nightly
+# steps, printed inside the runner's `{ ... } >> "$log"` group (four-space indent).
+# _nightly_step runs one node tool with its output captured and prints exactly one
+# `[label] ...` line: the tool's own last line, `failed rc=N: <last line>`, or
+# `skipped: tool not installed`. It always returns 0, so no step can fail the run
+# or stop the next one. The tool's per-item lines are dropped (the tools keep their
+# own ledgers) and control characters are stripped from the one that stays, since
+# feed text can reach it.
+# shellcheck disable=SC2016  # the runner's own $vars are emitted literally
+emit_nightly_step_helper() {
+    cat <<'SH'
+    _nightly_step() {
+        _ns_label=$1; _ns_tool=$2; shift 2
+        if [ ! -f "$_ns_tool" ]; then echo "[$_ns_label] skipped: tool not installed"; return 0; fi
+        _ns_rc=0; _ns_out=$(node "$_ns_tool" "$@" 2>&1 < /dev/null) || _ns_rc=$?
+        _ns_last=$(printf '%s\n' "$_ns_out" | grep . | tail -n 1 | tr -d '\000-\010\013-\037\177' | cut -c1-300)
+        if [ "$_ns_rc" = 0 ]; then echo "[$_ns_label] ${_ns_last:-no output}"; else echo "[$_ns_label] failed rc=$_ns_rc: ${_ns_last:-no output}"; fi
+        return 0
+    }
+SH
+}
+
+# The synthesize runner's two writing steps, as one function: take the vault's git
+# index lock, run the promotion then the action apply, release the lock. Holding
+# .git/index.lock is the pause: a git-based sync that tries to stage or commit
+# meanwhile fails that tick and commits the finished state on the next. The lock
+# is created exclusively; a lock that is not ours (a sync mid-commit) means both
+# steps skip. Our own lock carries `himmel-nightly <pid>`, so one left by a runner
+# that died is taken over when that pid is gone. A vault with no git repo has no
+# sync to pause and the steps run without a lock.
+# $1 q_vault, $2 q_promote_tool, $3 q_actions_tool (all already %q-quoted).
+# shellcheck disable=SC2016  # the runner's own $vars are emitted literally
+emit_nightly_writers() {
+    cat <<'SH'
+    _nightly_lock_take() {
+        ( set -C; printf 'himmel-nightly %s\n' "$$" > "$1" ) 2>/dev/null && return 0
+        _nl_pid=$(sed -n 's/^himmel-nightly //p' "$1" 2>/dev/null)
+        case "$_nl_pid" in ''|*[!0-9]*) return 1 ;; esac
+        kill -0 "$_nl_pid" 2>/dev/null && return 1
+        rm -f "$1"
+        ( set -C; printf 'himmel-nightly %s\n' "$$" > "$1" ) 2>/dev/null
+    }
+    _nightly_writers() {
+        _nw_hold=$(git rev-parse --git-path index.lock 2>/dev/null) || _nw_hold=
+        _nw_held=0
+        if [ -n "$_nw_hold" ]; then
+            if _nightly_lock_take "$_nw_hold"; then
+                _nw_held=1
+                trap 'rm -f "$_nw_hold"' EXIT
+                trap 'exit 1' INT TERM
+            else
+                echo "[nightly-promote] skipped: vault sync busy (git index lock held)"
+                echo "[nightly-actions] skipped: vault sync busy (git index lock held)"
+                return 0
+            fi
+        fi
+SH
+    printf '        _nightly_step nightly-promote %s %s --apply --limit %s --no-telegram-digest\n' "$2" "$1" "$PROMOTE_LIMIT"
+    printf '        _nightly_step nightly-actions %s --vault %s --apply --limit %s\n' "$3" "$1" "$ACTIONS_LIMIT"
+    cat <<'SH'
+        if [ "$_nw_held" = 1 ]; then rm -f "$_nw_hold"; trap - EXIT INT TERM; fi
+        return 0
+    }
+SH
+}
+
 # Emit the runner .sh body for one cadence task: rotate the run log
 # (one prior run kept as .log.prev), stamp the fire time, cd into the
 # vault (a failing cd lands in the log instead of silently running
@@ -736,6 +847,17 @@ emit_runner() {
     else
         printf '    cd %s || exit 1\n' "$q_vault"
     fi
+    # The no-model nightly steps. They sit BEFORE the gates: the gates guard model
+    # spend and these make no model call, so they run on a skipped night too.
+    if [ "$flow" = pipeline-harvest ] || [ "$flow" = pipeline-synthesize ]; then
+        emit_nightly_step_helper
+    fi
+    if [ "$flow" = pipeline-harvest ]; then
+        printf '    _nightly_step nightly-feeds %s --vault %s --cap %s\n' "$NIGHTLY_FEED_TOOL" "$q_vault" "$FEED_CAP"
+    fi
+    if [ "$flow" = pipeline-synthesize ]; then
+        emit_nightly_writers "$q_vault" "$NIGHTLY_PROMOTE_TOOL" "$NIGHTLY_ACTIONS_TOOL"
+    fi
     # The two gates. Both live INSIDE the `{ } >> $log`
     # group, so each helper's stderr diagnostics land in the worker log while its
     # single verdict token is captured. `exit` from a brace group (not a
@@ -748,6 +870,7 @@ emit_runner() {
         printf '        echo "[%s no-new-input]"\n' "$WORKER_SESSION_SKIPPED_MARKER"
         printf '        _sid=$(%s --append-start %s "" "" claude %s %s "$log" "$$" 2>/dev/null) || _sid=\n' "$q_flow_lib" "$q_flow" "$q_model" "$q_task"
         printf '        test "$_sid" != "" && %s --append-end %s "$_sid" "" 0 skipped 0 no-new-input >/dev/null 2>&1 || true\n' "$q_flow_lib" "$q_flow"
+        if [ "$flow" = pipeline-synthesize ]; then printf '        _nightly_writers\n'; fi
         printf '        exit 0\n'
         printf '    fi\n'
     fi
@@ -765,6 +888,7 @@ emit_runner() {
         fi
         printf '        _sid=$(%s --append-start %s "" "" claude %s %s "$log" "$$" 2>/dev/null) || _sid=\n' "$q_flow_lib" "$q_flow" "$q_model" "$q_task"
         printf '        test "$_sid" != "" && %s --append-end %s "$_sid" "" 0 skipped 0 bank-at-threshold >/dev/null 2>&1 || true\n' "$q_flow_lib" "$q_flow"
+        if [ "$flow" = pipeline-synthesize ]; then printf '        _nightly_writers\n'; fi
         printf '        exit 0\n'
         printf '    fi\n'
     fi
@@ -817,6 +941,9 @@ emit_runner() {
     if [ -n "$q_gate_lib" ]; then
         printf '    { [ "$_flow_outcome" = complete ] && %s --stamp .; } || true\n' "$q_gate_lib"
     fi
+    # The promotion and the action apply come after the worker and before the
+    # day-note refresh below, so that refresh counts what they just wrote.
+    if [ "$flow" = pipeline-synthesize ]; then printf '    _nightly_writers\n'; fi
     # Refresh the day note's `## Clip pipeline` + `## Daily report`
     # sections after the worker. Must-not-abort: it runs after _rc / _flow_outcome
     # are final and writes only its own _tl_rc, so a failing timeline logs and
@@ -1005,6 +1132,10 @@ cmd_arm() {
     q_gate_lib=$(printf '%q' "$SYNTH_GATE")
     q_alert_lib=$(printf '%q' "$CADENCE_ALERT")
     q_timeline=$(printf '%q' "$HIMMEL_ROOT/marketplace/plugins/obsidian-triage/tools/daily-timeline.mjs")
+    # Globals, read by emit_runner for the harvest and synthesize runners.
+    NIGHTLY_FEED_TOOL=$(printf '%q' "$TRIAGE_TOOLS/feed-clip.mjs")
+    NIGHTLY_PROMOTE_TOOL=$(printf '%q' "$TRIAGE_TOOLS/synthesize-stubs.mjs")
+    NIGHTLY_ACTIONS_TOOL=$(printf '%q' "$TRIAGE_TOOLS/apply-clip-actions.mjs")
     # Shared arm-time PATH snapshot — one helper, both emitters,
     # so they can no longer disagree about what a cadence runner's PATH is.
     q_runner_path=$(runner_path_snapshot "$PATH" "$node_dir")
@@ -1127,6 +1258,10 @@ cmd_arm() {
   $TASK_HARVEST  daily   $HARVEST_TIME  [model: $HARVEST_MODEL]  -> $DAILY_CHAIN
   $TASK_SYNTH    daily   $SYNTH_TIME    [model: $SYNTH_MODEL]    -> /synthesize-clips + /archive-clips
   $TASK_HEALTH   $HEALTH_CADENCE_LABEL   [model: $HEALTH_MODEL]   -> vault-lint (obsidian-triage:vault-lint)
+  No-model steps inside them, one log line each:
+    [nightly-feeds]    before the harvest: feed pull, at most $FEED_CAP new clips per feed
+    [nightly-promote]  after the synthesis: subject promotion, at most $PROMOTE_LIMIT pages
+    [nightly-actions]  after the promotion: daily-note actions, at most $ACTIONS_LIMIT
   Vault: $VAULT
   Runner .sh: $BAT_DIR
 
