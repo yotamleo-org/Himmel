@@ -45,7 +45,7 @@ tree_hash() {
         | while read -r f; do sha "$f"; done | sha | cut -d' ' -f1 )
 }
 count() { grep -c -- "$1" "$2" 2>/dev/null || true; }
-lines() { wc -l < "$1" | tr -d ' '; }
+lines() { wc -l "$1" | awk '{print $1}'; }
 
 mkclip() { # name triaged_at tag extra-line
     local f="$P/Clippings/_evidence/$1.md"
