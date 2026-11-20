@@ -165,7 +165,7 @@ while :; do
         log "GRANT $base env=${envs[*]} decision=${decision:-none} go=$code"
         mkdir -p "$W"
         [ -f "$BUCKET/$chief.fleet.json" ] && bash "$KIT/fleet-manifest.sh" add "$BUCKET/$chief.fleet.json" "$brief" --lane native >>"$LOG" 2>&1
-        env "${strip[@]}" -u WORKER_SESSION_EFFORT -u CLAUDE_CODE_EFFORT_LEVEL \
+        env "${strip[@]}" -u WORKER_SESSION_EFFORT -u CLAUDE_CODE_EFFORT_LEVEL -u WORKER_SESSION_API_LANE -u WORKER_SESSION_API_ACCOUNT \
             -u HEADED_ARM_LAUNCHER_ENV -u HEADED_ARM_LAUNCHER_ENV_LINES "${envs[@]}" setsid nohup bash "$LAUNCHER" \
             --profile worker-impl --chief "$chief" "$base" "$brief" "$W/sig-$base" "$EXPIRES" "$W/$base.log" "$model" \
             >"$W/$base.launch.out" 2>&1 9>&- &

@@ -135,10 +135,11 @@ stop
 
 echo "== no api_account= leaves the API lane seam out =="
 setup api-account-absent
-start
+start WORKER_SESSION_API_LANE=on WORKER_SESSION_API_ACCOUNT=B
 CODE=$(ask_code r flags=HIMMEL_HOOK_INTEGRITY_BYPASS_OK)
 reply "$OPERATOR" "$OPERATOR" "go $CODE"
-wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+if wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"; then pass "the omitted-account launch ran"; else fail "the omitted-account launch ran"; fi
+if [ -e "$D/launch.env" ]; then pass "the omitted-account launch wrote its env record"; else fail "the omitted-account launch wrote its env record"; fi
 assert_absent "without the field the launch carries no API lane seam" "WORKER_SESSION_API" "$(cat "$D/launch.env" 2>/dev/null)"
 stop
 
