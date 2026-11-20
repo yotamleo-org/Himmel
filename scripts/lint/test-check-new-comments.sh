@@ -2,20 +2,7 @@
 # test-check-new-comments.sh — tests for scripts/lint/check-new-comments.sh.
 #
 # Each case builds a throwaway git repo that carries the gate, its classifier and a
-# baseline, then stages or commits one change. Cases:
-#   1.  an added restating comment is refused, path:line named      (the RED row)
-#   2.  keep-list comments pass: license, link, suppression, doc block, file header
-#   3.  the baseline: a count above its row fails, equal and lower pass
-#   4.  a raised baseline row and a new non-zero row are refused
-#   5.  a new file: a body comment is refused, a header alone passes
-#   6.  a renamed file keeps its allowance when its row moves with it
-#   7.  --range judges a committed range, --tip a branch HEAD is not on
-#   8.  a heredoc body and a Python triple-quoted string are not comments
-#   9.  a fixtures path and a non-code file are not judged
-#   10. a missing classifier or a missing baseline exits 2
-#   11. --write-baseline writes the counts the gate then accepts
-#   12. a base without a baseline takes the first baseline as it is
-#   13. the ci.yml step runs the base copies and passes a base without the gate
+# baseline, then stages or commits one change.
 #
 # Exit: 0 all passed, 1 any failed. bash 3.2-safe.
 
