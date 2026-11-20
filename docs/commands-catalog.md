@@ -93,7 +93,7 @@ and their rows are paraphrased one-liners rather than verbatim frontmatter
 > [marketplace/plugins/i-have-adhd/README.md](../marketplace/plugins/i-have-adhd/README.md).
 
 > **Not itemized: `marketplace/plugins/pstack/skills/`**.
-> Ten vendored `cursor/plugins` pstack skills at `bf0c7cd8`, all `disable-model-invocation: true`
+> Ten vendored `cursor/plugins` pstack skills at `0b46ec39`, all `disable-model-invocation: true`
 > (`/correct`, `/blast-radius`, `/create-verification-skill`,
 > `/maintain-verification-skill`, `/benchmark-checklist`,
 > `principle-explain-the-number`, `/in-your-own-words`, `/statechart`,

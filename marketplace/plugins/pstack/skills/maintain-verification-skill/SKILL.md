@@ -4,7 +4,7 @@ description: "Periodic pass that keeps a project's verification skill and featur
 disable-model-invocation: true
 ---
 
-<!-- Vendored from cursor/plugins pstack/skills/maintain-verification-skill/SKILL.md at bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7 (MIT, (c) 2026 Lauren Tan; ../../LICENSE). HIMMEL-5803. Deviations: generated-skill path `.cursor/skills/` is `.claude/skills/`, the directory Claude discovers. -->
+<!-- Vendored from cursor/plugins pstack/skills/maintain-verification-skill/SKILL.md at 0b46ec399d55f2829e88822998f53b84944837d3 (MIT, (c) 2026 Lauren Tan; ../../LICENSE). HIMMEL-5803. Deviations: generated-skill path `.cursor/skills/` is `.claude/skills/`, the directory Claude discovers. -->
 
 # Maintain a verification skill
 

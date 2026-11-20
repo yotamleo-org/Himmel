@@ -4,7 +4,7 @@ description: "Check a TLA+ model of a system that moves between states, such as 
 disable-model-invocation: true
 ---
 
-<!-- Vendored from cursor/plugins pstack/skills/statechart/SKILL.md at bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7 (MIT, (c) 2026 Lauren Tan; ../../LICENSE). HIMMEL-6690. Deviations: see ../../VENDORED.md. -->
+<!-- Vendored from cursor/plugins pstack/skills/statechart/SKILL.md at 0b46ec399d55f2829e88822998f53b84944837d3 (MIT, (c) 2026 Lauren Tan; ../../LICENSE). HIMMEL-6690. Deviations: see ../../VENDORED.md. -->
 
 # Statechart
 
@@ -18,7 +18,7 @@ Work in a scratch folder outside the repo. Write a TLA+ spec and its config. The
 <skill dir>/scripts/statechart SPEC.tla [--config FILE] [--view FILE] [--out DIR]
 ```
 
-`scripts/statechart.ts` is TypeScript, so run it with a runtime that can execute TypeScript.
+`scripts/statechart.ts` is TypeScript, so run it with a runtime that can execute TypeScript. `scripts/statechart` is a POSIX shell script that picks one. On native Windows, run `node --disable-warning=ExperimentalWarning <skill dir>/scripts/statechart.ts` with Node 22.18 to 22.x, or Node 23.6 or later.
 
 Java and TLC are optional prerequisites for this opt-in skill, not dependencies of the other pstack skills. Once the runtime revision is validated, routine trusted model checks may run on the station host: keep the model small and finite, and bound the run with `timeout`. Isolation (a VM) is for an unvalidated or changed runtime, untrusted executable views, and destructive real-code replay. Use the absolute `JAVA` (Java 11+) and `TLA2TOOLS` (tla2tools 1.7.4) paths that himmel's `scripts/machine-setup/setup-statechart.sh --check` reports; `--install` there owns installation, and this skill stays check-only. Verify the jar SHA-256 against `../../README.md`. If either prerequisite is absent, stop and report a blocked check; do not install Java, TLC or mise. Keep the model and any trusted `--view` module in the scratch folder.
 
