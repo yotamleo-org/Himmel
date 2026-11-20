@@ -8,6 +8,11 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.113] — 2026-11-20
+
+### Changed
+- The upgrade test script drops a section-banner comment above its T73 rows; no executable line changed.
+
 ## [0.4.112] — 2026-11-20
 
 ### Added

@@ -2038,9 +2038,6 @@ mkdir -p "$V"; stamp_vault "$V" "0.9.0"
 run_upgrade --yes >/dev/null 2>&1; rc=$?
 assert_eq "T72 control: a vault with no .git skips the installer" "0" "$rc"
 
-# ---------------------------------------------------------------------------
-# T73: the feed list (.feed-clip-feeds) is installed once into a vault that
-# lacks it and never overwritten once it exists, whatever the template says.
 T="$TMP/t73-tmpl"; V="$TMP/t73-vault"; make_template "$T" "1.0.0"; mkdir -p "$V"; stamp_vault "$V" "0.9.0"
 printf '# starter feeds\nhttps://example.invalid/releases.atom Example skip=alpha\n' > "$T/.feed-clip-feeds"
 out=$(run_upgrade 2>&1)
