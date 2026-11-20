@@ -138,13 +138,13 @@ LC_ALL=C awk -F'\t' -v has_base="$has_base" '
 
 : > "$W/findings"
 while IFS="$(printf '\t')" read -r kind p n lim; do
-    if [ "$kind" = "A" ] && ! grep -qxF "$p" "$W/indiff"; then continue; fi
+    if [ "$kind" = "A" ] && ! grep -qxF -- "$p" "$W/indiff"; then continue; fi
     was="$(awk -F'\t' -v p="$p" '$1 == p { print $2; exit }' "$W/renames")"
     m=0
     if git cat-file -e "$base:${was:-$p}" 2>/dev/null; then
         git show "$base:${was:-$p}" > "$W/blob" || die "cannot read ${was:-$p} at the base"
         capper="$classifier"
-        if [ "$recount" -eq 1 ] && ! grep -qxF "$p" "$W/indiff"; then capper="$W/tip.awk"; fi
+        if [ "$recount" -eq 1 ] && ! grep -qxF -- "$p" "$W/indiff"; then capper="$W/tip.awk"; fi
         m="$(LC_ALL=C awk -f "$capper" -v mode=count -v path="$p" "$W/blob")" || die "the classifier failed on $p"
         case "$m" in ''|*[!0-9]*) die "the classifier printed no count for $p" ;; esac
     fi

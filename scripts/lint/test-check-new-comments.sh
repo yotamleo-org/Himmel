@@ -300,7 +300,12 @@ printf 'echo q\n%s body note\necho r\n' "$HASH" > "$R/src/q\"x.sh"; stage; want 
 mkrepo
 printf 'END { }\n' > "$R/scripts/lint/comment-count.awk"
 echo 'echo more' >> "$R/src/a.sh"; stage; want "a classifier that prints no count" 2
+mkrepo
+base="$(git -C "$R" rev-parse HEAD)"
+printf 'echo n\n%s body note\necho m\n' "$HASH" > "$R/-n.sh"
+git -C "$R" add -A; git -C "$R" commit -q -m "a file named like an option"
+gate --range "$base"; want "a comment in a file named like an option" 1
 
 echo
-echo "test-check-new-comments:$PASS passed, $FAIL failed"
+echo "test-check-new-comments: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
