@@ -262,6 +262,41 @@ LIB="$PLUGIN_DIR/tools/lib/clip-actions.mjs" node --input-type=module -e \
     'const { stampArchived } = await import(process.env.LIB); console.log(JSON.stringify(stampArchived("body only", "2026-06-28")))' > "$tmp/stamp.out" 2>&1
 assert "a clip with no frontmatter is skipped, not stamped" '{"skip":"no frontmatter"}' "$(cat "$tmp/stamp.out")"
 
+# ── 6c. two folds on one map, the run lock, section boundary ─────────────────
+# G: a second alpha clip on day D, so day D adds a second fold into Alpha-MOC.
+echo "Test group 6c: chained folds revert twice, run lock, # heading ends the section"
+G="$tmp/G"; cp -R "$P" "$G"
+P_SAVED="$P"; P="$G"; mkclip alpha-d "$D" alpha; P="$P_SAVED"
+node "$TIMELINE" --vault "$G" --date "$D" >/dev/null 2>&1
+cp -R "$G" "$tmp/G0"
+node "$APPLY" --vault "$G" --date "$D" --apply --limit 50 >/dev/null 2>&1
+GL="$G/$LEDGER_NAME"
+assert "11 actions applied, two of them folds into the same map" "2" "$(grep -c '"map":"60-Maps/Alpha-MOC.md"' "$GL")"
+assert "the map holds all four alpha links" "4" "$(grep -cE 'alpha-(1|2|3|d)' "$G/60-Maps/Alpha-MOC.md")"
+out="$(node "$APPLY" --vault "$G" --date "$D" --revert "$GL" 2>&1)"; rc=$?
+assert "reverting the chained folds exits 0" "0" "$rc"
+assert "reverting the chained folds restores the vault byte for byte" "" "$(diff -r "$tmp/G0" "$G" --exclude="$LEDGER_NAME" 2>&1)"
+out="$(node "$APPLY" --vault "$G" --date "$D" --revert "$GL" 2>&1)"; rc=$?
+assert "a second revert of chained folds exits 0, not 3" "0" "$rc"
+assert "a second revert of chained folds reports 11 already-reverted" "1" "$(printf '%s\n' "$out" | grep -c ' 0 reverted, 11 already-reverted, 0 refused')"
+
+L2="$tmp/lock-vault"; cp -R "$P" "$L2"
+lh="$(tree_hash "$L2")"
+mkdir "$L2/.apply-clip-actions.lock"
+node "$APPLY" --vault "$L2" --date "$D" --apply --limit 5 >/dev/null 2>&1; assert "--apply under a held lock exits 2" "2" "$?"
+node "$APPLY" --vault "$L2" --date "$D" --revert "$GL" >/dev/null 2>&1; assert "--revert under a held lock exits 2" "2" "$?"
+assert "a held lock leaves the vault untouched" "$lh" "$(tree_hash "$L2")"
+node "$APPLY" --vault "$L2" --date "$D" >/dev/null 2>&1; assert "a dry run ignores the lock" "0" "$?"
+assert "the held lock was not removed by the refused runs" "yes" "$([ -d "$L2/.apply-clip-actions.lock" ] && echo yes || echo no)"
+rmdir "$L2/.apply-clip-actions.lock"
+node "$APPLY" --vault "$L2" --date "$D" --apply --limit 5 >/dev/null 2>&1; assert "--apply with no lock exits 0" "0" "$?"
+assert "a finished run releases its lock" "no" "$([ -e "$L2/.apply-clip-actions.lock" ] && echo yes || echo no)"
+
+LIB="$PLUGIN_DIR/tools/lib/clip-actions.mjs" node --input-type=module -e \
+    'const { foldContent } = await import(process.env.LIB); process.stdout.write(foldContent("## Evidence\n\n- a\n\n# Next\n\ntext\n", [{ link: "x", title: "X" }]).next)' > "$tmp/fold.out" 2>&1
+assert "a level-1 heading ends the Evidence section" \
+    "$(printf '## Evidence\n\n- a\n- [[x|X]]\n\n# Next\n\ntext')" "$(cat "$tmp/fold.out")"
+
 # ── 7. argument validation ───────────────────────────────────────────────────
 echo "Test group 7: arguments"
 node "$APPLY" --vault "$A" --date "$D" --limit 0 >/dev/null 2>&1; assert "--limit 0 is refused" "1" "$?"

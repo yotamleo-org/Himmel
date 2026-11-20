@@ -181,7 +181,8 @@ export function openActions(vault, date, lookback = REPORT_LOOKBACK_DAYS) {
 
 /**
  * Add the clips whose link a map lacks, as bullets at the end of its
- * `## Evidence` section (a new section at EOF when it has none), in the map's
+ * `## Evidence` section (which ends at the next `#`/`##` heading; a new section
+ * at EOF when it has none), in the map's
  * own line endings. Returns { next, at, appended, fresh } — `appended` is the
  * literal text inserted at offset `at`, so a revert can cut exactly it — or
  * null when every clip is already linked.
@@ -197,7 +198,7 @@ export function foldContent(content, clips) {
     return { next: content + appended, at: content.length, appended, fresh };
   }
   const bodyStart = head.index + head[0].length;
-  const nextHead = content.slice(bodyStart).search(/^## /m);
+  const nextHead = content.slice(bodyStart).search(/^#{1,2} /m);
   const bodyEnd = nextHead === -1 ? content.length : bodyStart + nextHead;
   const kept = content.slice(bodyStart, bodyEnd).replace(/\s+$/, "").length;
   const at = bodyStart + kept;
