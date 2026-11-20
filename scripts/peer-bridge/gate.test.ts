@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readChain } from "./chain";
 import type { Config } from "./config";
-import { admit, appendUnknownChat, createGateState, noteAdmitted, rebuildFromInbox, type GateState } from "./gate";
+import { EnvelopeWindow, admit, appendUnknownChat, createGateState, noteAdmitted, rebuildFromInbox, type GateState } from "./gate";
 import { failedTests, makeRedCopy } from "./testlib-red-copy";
 
 const OUR_ID = "111000111", OUR_NAME = "ours_bot", PEER_ID = "555000111", HUMAN = "42";
@@ -267,6 +267,21 @@ test("every drop is one log line with no message text", () => {
   const r = admit(rootUpd({ from: { id: 999, is_bot: false } }, "SECRET-CANARY-TEXT"), cfg(), fresh());
   expect(r.ok).toBe(false);
   if (!r.ok) { expect(r.log.includes("\n")).toBe(false); expect(r.log).not.toContain("SECRET-CANARY"); }
+});
+
+test("the envelope window keeps an id until its exp, with no count eviction, and is separate from the text window", () => {
+  const w = new EnvelopeWindow();
+  for (let i = 0; i < 5000; i++) w.add(CHAT, 1, i.toString(16).padStart(8, "0"), 2000 + i);
+  expect(w.size).toBe(5000);
+  expect(w.has(CHAT, 1, "00000000")).toBe(true);
+  expect(w.has(CHAT, 2, "00000000")).toBe(false);
+  expect(w.has(CHAT - 1, 1, "00000000")).toBe(false);
+  w.prune(2000);
+  expect(w.has(CHAT, 1, "00000000")).toBe(false);
+  expect(w.has(CHAT, 1, "00000001")).toBe(true);
+  const state = fresh();
+  state.recent.add(`${CHAT}:1:00000001`);
+  expect(state.envIds.has(CHAT, 1, "00000001")).toBe(false);
 });
 
 test.skipIf(!!process.env.PEER_RED_COPY)("RED control: removing the empty-allowFrom check fails the empty allowFrom row and no other", () => {
