@@ -160,7 +160,7 @@ mk_repo() {
     BASE=$(g "$1" rev-parse HEAD)
     g "$1" update-ref refs/remotes/origin/main "$BASE"
     mkdir -p "$1/.claude/worktrees"
-    mkdir -p "$1/.git/info"
+    mkdir -p "$1/.git/info" || { echo "FAIL: mkdir .git/info failed" >&2; exit 1; }
     echo ".claude/" >> "$1/.git/info/exclude"
 }
 mk_wt() {
