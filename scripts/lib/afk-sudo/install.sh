@@ -168,12 +168,35 @@ notice_env_steps() {
     echo "  2. Open the new bot's chat and send it /start, so it may message you."
     echo "  3. $(enable_cmd "$NOTICE_ENV") and put the token after TELEGRAM_BOT_TOKEN= on its last line."
 }
-# pick_python <candidate...>: the first one that is executable and Python 3.9 or newer. macOS has no distro
-# python3 at a fixed path (the Xcode shim, or Homebrew under /opt/homebrew), so the installer names one.
+# path_trusted <uid> <anchor> <path>: the file the path resolves to, and every directory from its parent up to
+# <anchor> ("/" for the real check), is owned by <uid> and writable by neither group nor other. The installed
+# helper runs as root through this interpreter, so one the operator can replace would be root without approval.
+path_trusted() {
+    local uid=$1 anchor=$2 p=$3 n=0 t d own mode
+    while [ -L "$p" ]; do
+        n=$((n + 1)); [ "$n" -le 20 ] || return 1
+        t=$(readlink "$p") || return 1
+        case $t in /*) p=$t ;; *) p=$(dirname "$p")/$t ;; esac
+    done
+    [ -f "$p" ] || return 1
+    d=$(cd -P "$(dirname "$p")" 2>/dev/null && pwd -P) || return 1
+    t=$d/$(basename "$p")
+    while :; do
+        own=$(stat -c %u "$t" 2>/dev/null || stat -f %u "$t" 2>/dev/null) || return 1
+        mode=$(stat -c %a "$t" 2>/dev/null || stat -f %Lp "$t" 2>/dev/null) || return 1
+        { [ "$own" = "$uid" ] && [ $((8#$mode & 8#022)) -eq 0 ]; } || return 1
+        if [ "$t" = "$anchor" ] || [ "$t" = / ]; then return 0; fi
+        t=$(dirname "$t")
+    done
+}
+# pick_python <uid> <anchor> <candidate...>: the first candidate that path_trusted accepts and that is Python 3.9
+# or newer. macOS has no distro python3 at a fixed path, so the installer names one. A candidate is never run
+# before it is trusted: the installer is root.
 pick_python() {
-    local c
+    local uid=$1 anchor=$2 c
+    shift 2
     for c in "$@"; do
-        [ -x "$c" ] || continue
+        path_trusted "$uid" "$anchor" "$c" || continue
         if "$c" -I -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then echo "$c"; return 0; fi
     done
     return 1
@@ -247,10 +270,10 @@ id -u "$user" >/dev/null 2>&1 || { echo "install.sh: no such user: $user" >&2; e
 case "$user" in *[!A-Za-z0-9._-]*) echo "install.sh: unexpected characters in user name" >&2; exit 2 ;; esac
 
 # macOS preflight, before anything is written: a python3 to name in the helper's shebang (sudo's PATH has no
-# Homebrew, and /usr/bin/python3 is the Xcode shim), and a sudoers file that reads the drop-in directory.
+# Homebrew, and /usr/bin/python3 is the Xcode shim; a Homebrew python is operator-writable, so it is refused), and a sudoers file that reads the drop-in directory.
 HELPER_PY=""
 if [ "$(os_family)" = mac ]; then
-    HELPER_PY=$(pick_python /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3) || die "no Python 3.9 or newer at /opt/homebrew/bin, /usr/local/bin or /usr/bin; install one (brew install python) and run again"
+    HELPER_PY=$(pick_python 0 / /usr/bin/python3 /opt/homebrew/bin/python3 /usr/local/bin/python3) || die "no Python 3.9 or newer whose whole path is root-owned and not group- or world-writable (root would run an interpreter the operator can replace); run xcode-select --install for /usr/bin/python3, or install a root-owned python, and run again"
     PYTHON=$HELPER_PY
     sudoers_includes_dropin /etc/sudoers || die "/etc/sudoers has no #includedir line for /private/etc/sudoers.d, so the rule would never apply; add that line with sudo visudo and run again"
 fi

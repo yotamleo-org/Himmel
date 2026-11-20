@@ -378,6 +378,15 @@ wait_for "$Q/daemon.log" "start pid="
 assert_eq "R14 the fsmonitor command never ran" "no" "$([ -e "$D/fsm.ran" ] && echo ran || echo no)"
 stop
 
+# The shim section simulates macOS on a GNU host (it wraps the host's GNU date and sha256sum); a real Mac
+# has the BSD tools, so everything above already ran on them.
+if [ "$(uname -s)" = Darwin ]; then
+    echo "SKIP: the BSD-like shim section simulates macOS on a GNU host"
+    echo
+    echo "bypass-launchd: $PASS passed, $FAIL failed"
+    [ "$FAIL" -eq 0 ]
+    exit
+fi
 # --- The daemon on macOS. SHIM is a PATH of BSD-like tools: no flock, no setsid, no sha256sum, a
 # date that rejects -d (it takes -j -f), a stat that rejects -c (it takes -f), and uname answering Darwin.
 SHIM="$tmp/macshim"
@@ -447,6 +456,15 @@ ln -s $$ "$Q/.lock.pid"
 start PATH="$SHIM" SHIM_DATE_ALLOW_D=1
 wait_for "$Q/daemon.log" "start pid="
 assert_contains "B2: a lock naming a live pid that is not a daemon is reclaimed" "start pid=" "$(start_line)"
+stop
+
+# A reclaim link left by a starter that died mid-reclaim is cleared, not obeyed.
+setup_repo b2reclaim
+ln -s 999999 "$Q/.lock.pid"; ln -s 999998 "$Q/.lock.pid.reclaim"
+start PATH="$SHIM" SHIM_DATE_ALLOW_D=1
+wait_for "$Q/daemon.log" "start pid="
+assert_contains "B2: a dead lock behind a dead reclaim link is reclaimed" "start pid=" "$(start_line)"
+assert_eq "B2: the reclaim link is gone once the lock is taken" "gone" "$([ -L "$Q/.lock.pid.reclaim" ] && echo left || echo gone)"
 stop
 
 echo "== HIMMEL-10430 B3: no /run/user on macOS =="

@@ -2144,12 +2144,28 @@ assert_eq "RED 10430: no install site names the root group literally" "none" \
     "$(grep -nE -e '-g root([[:space:]]|$)' -e 'root:root' "$INSTALL" | head -n 1 | grep . || echo none)"
 assert_eq "RED 10430: no install call takes /dev/null as its source (BSD install refuses it)" "none" \
     "$(grep -n '^[^#]*install .*/dev/null' "$INSTALL" | head -n 1 | grep . || echo none)"
-mkdir -p "$tmp/py"
-printf '#!/bin/sh\nexit 0\n' > "$tmp/py/new"; printf '#!/bin/sh\nexit 1\n' > "$tmp/py/old"; printf 'x\n' > "$tmp/py/noexec"
-chmod +x "$tmp/py/new" "$tmp/py/old"
-assert_eq "RED 10430: pick_python skips a missing, a non-executable and a too-old python" "$tmp/py/new" \
-    "$(inst pick_python "$tmp/py/missing" "$tmp/py/noexec" "$tmp/py/old" "$tmp/py/new" 2>&1)"
-assert_eq "RED 10430: pick_python fails when none qualifies" "1" "$(inst pick_python "$tmp/py/old" >/dev/null 2>&1; echo $?)"
+mkdir -p "$tmp/py/bin" "$tmp/py/wbin" "$tmp/py/real"
+chmod 755 "$tmp/py" "$tmp/py/bin" "$tmp/py/real"; chmod 775 "$tmp/py/wbin"
+printf '#!/bin/sh\nexit 0\n' > "$tmp/py/bin/new"; printf '#!/bin/sh\nexit 1\n' > "$tmp/py/bin/old"; printf 'x\n' > "$tmp/py/bin/noexec"
+chmod 755 "$tmp/py/bin/new" "$tmp/py/bin/old"; chmod 644 "$tmp/py/bin/noexec"
+cp "$tmp/py/bin/new" "$tmp/py/wbin/new"; chmod 755 "$tmp/py/wbin/new"
+cp "$tmp/py/bin/new" "$tmp/py/bin/filew"; chmod 757 "$tmp/py/bin/filew"
+cp "$tmp/py/bin/new" "$tmp/py/real/new"; chmod 755 "$tmp/py/real/new"
+ln -s ../real/new "$tmp/py/bin/viagood"
+ln -s ../wbin/new "$tmp/py/bin/viabad"
+ME=$(id -u); PY="$tmp/py"
+trusted() { inst path_trusted "$@" >/dev/null 2>&1 && echo yes || echo no; }
+assert_eq "RED 10430: a file and directories owned by the uid and not group- or world-writable are trusted" "yes" "$(trusted "$ME" "$PY" "$PY/bin/new")"
+assert_eq "RED 10430: a group-writable directory on the path is not trusted" "no" "$(trusted "$ME" "$PY" "$PY/wbin/new")"
+assert_eq "RED 10430: a world-writable file is not trusted" "no" "$(trusted "$ME" "$PY" "$PY/bin/filew")"
+assert_eq "RED 10430: a link to a trusted file is trusted" "yes" "$(trusted "$ME" "$PY" "$PY/bin/viagood")"
+assert_eq "RED 10430: a link into a writable directory is not trusted" "no" "$(trusted "$ME" "$PY" "$PY/bin/viabad")"
+assert_eq "RED 10430: a file owned by someone else is not trusted" "no" "$(trusted "$((ME + 1))" "$PY" "$PY/bin/new")"
+assert_eq "RED 10430: a missing file is not trusted" "no" "$(trusted "$ME" "$PY" "$PY/bin/missing")"
+assert_eq "RED 10430: pick_python skips a missing, a non-executable, a too-old and an untrusted python" "$PY/bin/new" \
+    "$(inst pick_python "$ME" "$PY" "$PY/bin/missing" "$PY/bin/noexec" "$PY/bin/old" "$PY/wbin/new" "$PY/bin/filew" "$PY/bin/new" 2>&1)"
+assert_eq "RED 10430: pick_python never runs an untrusted candidate" "1" "$(inst pick_python "$ME" "$PY" "$PY/wbin/new" >/dev/null 2>&1; echo $?)"
+assert_eq "RED 10430: pick_python fails when none qualifies" "1" "$(inst pick_python "$ME" "$PY" "$PY/bin/old" >/dev/null 2>&1; echo $?)"
 inst install_helper "$LIB/afk_sudo.py" "$tmp/helper-out" /opt/homebrew/bin/python3 >/dev/null 2>&1
 assert_eq "RED 10430: the installed helper's shebang names the chosen python" "#!/opt/homebrew/bin/python3 -I" "$(head -n 1 "$tmp/helper-out" 2>/dev/null)"
 assert_eq "RED 10430: only the shebang line differs from the source" "" "$(diff <(tail -n +2 "$LIB/afk_sudo.py") <(tail -n +2 "$tmp/helper-out" 2>/dev/null) 2>&1)"
@@ -2175,7 +2191,8 @@ import os, sys
 sys.path.insert(0, sys.argv[1])
 import afk_sudo as s
 sys.platform = "darwin"
-del os.O_PATH
+if hasattr(os, "O_PATH"):
+    del os.O_PATH
 sys.exit(s.main(sys.argv[2:]))
 DARWIN
 new_root darwin; cfg "$ALL" true; DT="HIMMEL-""8067"

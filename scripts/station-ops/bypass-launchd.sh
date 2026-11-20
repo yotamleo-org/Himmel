@@ -107,14 +107,24 @@ lock_owner_alive() {
     [ -n "$1" ] && kill -0 "$1" 2>/dev/null && args=$(ps -p "$1" -o args= 2>/dev/null) && [[ $args =~ $re ]]
 }
 take_lock() {
-    local seen moved="$LOCK.stale.$$"
+    local seen cur rc=1 try rl="$LOCK.reclaim"
     ln -s "$$" "$LOCK" 2>/dev/null && return 0
     seen=$(readlink "$LOCK" 2>/dev/null)
     ! lock_owner_alive "$seen" || return 1
-    mv "$LOCK" "$moved" 2>/dev/null || return 1
-    if [ "$(readlink "$moved" 2>/dev/null)" != "$seen" ]; then mv -n "$moved" "$LOCK" 2>/dev/null; rm -f "$moved"; return 1; fi
-    rm -f "$moved"
-    ln -s "$$" "$LOCK" 2>/dev/null
+    # Only the holder of the reclaim link may remove the stale lock, so a live lock is never moved aside.
+    for try in 1 2; do
+        ln -s "$$" "$rl" 2>/dev/null && break
+        lock_owner_alive "$(readlink "$rl" 2>/dev/null)" && return 1
+        rm -f "$rl"
+        [ "$try" = 2 ] && return 1
+    done
+    cur=$(readlink "$LOCK" 2>/dev/null)
+    if [ "$cur" = "$seen" ] || [ -z "$cur" ]; then
+        [ -z "$cur" ] || rm -f "$LOCK"
+        ln -s "$$" "$LOCK" 2>/dev/null && rc=0
+    fi
+    rm -f "$rl"
+    return $rc
 }
 release_lock() { [ "$(readlink "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"; }
 take_lock || { echo "bypass-launchd: already running"; exit 1; }
