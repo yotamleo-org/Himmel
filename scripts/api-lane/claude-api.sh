@@ -449,11 +449,16 @@ WORKER_SESSION_NAME="claude-api:$JOB_ID"   # never the inherited CADENCE_USAGE_W
 BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY "${LLM_API_ORG_KEY_UNSET[@]}" \
   CADENCE_USAGE_LANE=api CADENCE_USAGE_LAUNCH=1 WORKER_SESSION_LANE=api \
   CADENCE_USAGE_WORKER="$WORKER_SESSION_NAME" CADENCE_USAGE_CALLER_PID="$$" \
-  bash "$REPO/scripts/lib/usage-preflight.sh")" || BANK_VERDICT=BANK-UNKNOWN
+  bash "$REPO/scripts/lib/usage-preflight.sh")" || {
+  # the preflight prints its verdict and exits 0; any other exit is a seam-guard denial or a crash, with no fleet slot taken
+  echo "claude-api: the api bank gate exited $? before a verdict" >&2
+  refuse "api bank gate said BANK-UNKNOWN"
+}
 case "$BANK_VERDICT" in
   PROCEED) ;;
   SKIPPED-FLEET) refuse "api bank gate said SKIPPED-FLEET: the api lane is at its own admission limit" ;;
-  *) echo "claude-api: note: the api bank gate said $BANK_VERDICT; an unknown, stale or estimated balance is not a block" >&2 ;;
+  BANK-UNKNOWN|BANK-STALE|SKIPPED-BANK) echo "claude-api: note: the api bank gate said $BANK_VERDICT; an unknown, stale or estimated balance is not a block" >&2 ;;
+  *) echo "claude-api: the api bank gate printed no known verdict" >&2; refuse "api bank gate said BANK-UNKNOWN" ;;
 esac
 
 [ -z "$GRANT_ERR" ] || refuse "$GRANT_ERR"

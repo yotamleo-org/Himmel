@@ -1999,3 +1999,37 @@ test('10425: our own cap never blocks by default; with enforce_budget on it refu
   assert.equal(f.called(), false);
   assert.match(r.stderr, /refused: .*(over-cap|insufficient-headroom)/);
 });
+
+// --- Uj5606a: a preflight that exits nonzero or prints no known verdict refuses ---
+// a tree whose scripts/lib/usage-preflight.sh is a stub; every other file links to this checkout
+function shadowPreflight(f, body) {
+  const root = join(f.dir, 'shadow');
+  mkdirSync(join(root, 'scripts', 'lib'), { recursive: true });
+  for (const e of readdirSync(HIMMEL_REPO)) if (e !== 'scripts') symlinkSync(join(HIMMEL_REPO, e), join(root, e));
+  for (const e of readdirSync(join(HIMMEL_REPO, 'scripts'))) if (e !== 'lib') symlinkSync(join(HIMMEL_REPO, 'scripts', e), join(root, 'scripts', e));
+  for (const e of readdirSync(join(HIMMEL_REPO, 'scripts', 'lib'))) if (e !== 'usage-preflight.sh') symlinkSync(join(HIMMEL_REPO, 'scripts', 'lib', e), join(root, 'scripts', 'lib', e));
+  writeFileSync(join(root, 'scripts', 'lib', 'usage-preflight.sh'), `#!/bin/bash\n${body}\n`, { mode: 0o700 });
+  // a linked .mjs runs as main only when node keeps the link path it was started with
+  const env = { ...f.env, NODE_OPTIONS: '--preserve-symlinks-main' };
+  return () => spawnSync('bash', [join(root, 'scripts', 'api-lane', 'claude-api.sh'), ...f.good], { env, encoding: 'utf8', cwd: HIMMEL_REPO });
+}
+
+test('Uj5606a: a preflight that exits nonzero with no output (seam guard exit 96) refuses, and no claude runs', () => {
+  const f = fixture();
+  const r = shadowPreflight(f, 'exit 96')();
+  assert.equal(r.status, 2, r.stderr);
+  assert.equal(f.called(), false, 'the API call must not run');
+  assert.match(r.stderr, /^claude-api: refused: api bank gate said BANK-UNKNOWN$/m);
+});
+
+test('Uj5606a: a preflight that prints no known verdict refuses; a printed BANK-STALE still proceeds', () => {
+  const f = fixture();
+  const r = shadowPreflight(f, 'echo MAYBE')();
+  assert.equal(r.status, 2, r.stderr);
+  assert.equal(f.called(), false, 'the API call must not run');
+  assert.match(r.stderr, /^claude-api: refused: api bank gate said BANK-UNKNOWN$/m);
+  const g = fixture();
+  const ok = shadowPreflight(g, 'echo BANK-STALE')();
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.equal(g.called(), true);
+});

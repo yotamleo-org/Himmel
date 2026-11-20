@@ -46,7 +46,9 @@ one WARN per kind and repo, with a count, for a refusal in the last 48 h.
 The api lane refuses a call only on a real block, and the refusal and its alert name it:
 its own admission limit (`api bank gate said SKIPPED-FLEET`), a ledger lock another holder
 keeps (`ledger-locked-or-unwritable`, with the lock path, age and holder), an invalid config
-or ledger, or a duplicate or invalid job id. No budget figure refuses or delays a call, named
+or ledger, a duplicate or invalid job id, or an api preflight that exits nonzero (a seam-guard
+denial or a crash) or prints no known verdict (`api bank gate said BANK-UNKNOWN`, with a line
+before it saying which). No budget figure refuses or delays a call, named
 or auto: an unknown, stale or low credit reading (`BANK-UNKNOWN`, `BANK-STALE`,
 `SKIPPED-BANK` from the api preflight), a past reset date or a ledger estimate over the
 account's cap is our estimate, not a block. The launcher prints a note and the call goes on;
