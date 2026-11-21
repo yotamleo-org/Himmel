@@ -439,7 +439,7 @@ peer_choose() {
 }
 
 peer_discover() {
-    local lines n pick
+    local lines l r
     peer_read_all "$1"
     peer_chat_candidates
     if [ -z "$PEER_CANDS" ]; then
@@ -447,7 +447,14 @@ peer_discover() {
         rs_say "  In Telegram, open the group and send the word hello in it. Waiting up to 10 minutes..."
         peer_wait chat || rs_fix "no hello arrived from the group: send the word hello in the group, then run the same command again"
     fi
-    lines=$(printf '%s\n' "$PEER_CANDS" | awk -F'|' '{printf "%s|%s (%s)\n", $1, $3, $2}')
+    lines=""
+    while IFS= read -r l; do
+        [ -n "$l" ] || continue
+        r=${l#*|}
+        lines="${lines:+$lines$'\n'}${l%%|*}|${r#*|} (${r%%|*})"
+    done <<EOF
+$PEER_CANDS
+EOF
     peer_choose "$lines"
     PEER_CHAT=${PEER_CHOSEN%%|*}
     [[ $PEER_CHAT =~ ^-[0-9]{1,15}$ ]] || rs_fix "Telegram gave a group id the helper does not trust: run the same command again"

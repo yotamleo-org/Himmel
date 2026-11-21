@@ -1386,6 +1386,21 @@ case_peer_chatid_two_groups_newest_hello_after_start_or_pick() {
     check "two pick prompts: the group, then the sole bot" eq "$(grep -c 'Type the number' "$T/out")" 2
 }
 
+case_peer_group_titles_with_a_pipe_stay_whole_in_the_pick() {
+    local other=-1009999999999
+    seed_main
+    set_getme "$OUR" bridge_bot
+    set_group "$other"
+    all_green
+    set_updates getUpdates.json "$(upd_hello 101 "$CHAT" "$FAR" supergroup 'Ops|East')" "$(upd_hello 102 "$other" "$FAR" supergroup 'Ops|West')" "$(upd_peer_hello 103 "$other" "$THEIR" goomal_bot)"
+    feed "$(mk_token "$OUR")" 2 1
+    run_sut "$T/in" peer
+    check "exit 0" eq "$RC" 0
+    check "the first title is whole" has "$(cat "$T/out")" "1) Ops|East (supergroup)"
+    check "the second title is whole" has "$(cat "$T/out")" "2) Ops|West (supergroup)"
+    check "the pick chose the second group" eq "$(sent_chat)" "$other"
+}
+
 case_peer_check_group_basic_group_fix() {
     seed_main
     set_getme "$OUR" bridge_bot
@@ -2139,7 +2154,7 @@ onboard_parse_rejects_duplicate_or_forged_line onboard_parse_rejects_chat_from_m
 peer_fresh_fresh_discovers_via_hello peer_confirmed_side_posts_hello_without_waiting peer_unconfirmed_pages_101_backlog
 peer_confirmed_repoint_backlog_full_gives_fix_and_restarts_poller peer_no_offset_ack_on_confirmed_side
 peer_gate_drops_plain_hello_real_gate peer_check_group_unknown_right_names_raw_field
-peer_chatid_two_groups_newest_hello_after_start_or_pick peer_check_group_basic_group_fix
+peer_chatid_two_groups_newest_hello_after_start_or_pick peer_group_titles_with_a_pipe_stay_whole_in_the_pick peer_check_group_basic_group_fix
 peer_check_group_member_change_info_fix peer_non_owner_fix_says_ask_owner
 peer_checkpoint_written_after_confirm_before_status peer_unit_start_failure_keeps_checkpoint
 peer_adoption_from_goomal_end_state_reaches_done peer_rerun_posts_exactly_one_hello
