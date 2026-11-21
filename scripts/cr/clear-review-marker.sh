@@ -337,7 +337,7 @@ floor_clear_alert() (
     fi
     _fca_msg="CLAUDE-ONLY-CLEAR ${_fca_repo} ${pr_num:+PR #$pr_num }branch ${branch} @${tip:0:12}: the review marker cleared on the same-model Claude floor, NOT cross-model review. Exhausted reviewers: ${exhausted_lanes:-none}"
     _fca_rc=0
-    _mba_send "$_fca_chat" "$_fca_msg" || _fca_rc=$?
+    _mba_send "$_fca_chat" "$_fca_msg" claude-only-clear || _fca_rc=$?
     if [ "$_fca_rc" != 0 ]; then
         rm -f "$_fca_dir/$_fca_key" 2>/dev/null
         audit "FLOOR-ALERT-FAILED branch=$branch sha=$tip reason=send-rc-$_fca_rc"

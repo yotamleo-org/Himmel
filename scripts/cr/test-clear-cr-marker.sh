@@ -167,7 +167,7 @@ export MERGE_BLOCK_ALERT_CMD=true
 # stub_alert_sink <tmp> <rc> — a sender that appends "chat|text" to <tmp>/alert.log and exits <rc>.
 stub_alert_sink() {
     # shellcheck disable=SC2016  # the sink script's $1/$2 expand when it runs, not here
-    printf '#!/usr/bin/env bash\nprintf "%%s|%%s\\n" "$1" "$2" >> %q\nexit %s\n' "$1/alert.log" "$2" > "$1/bin/alert-sink"
+    printf '#!/usr/bin/env bash\nprintf "%%s|%%s\\n" "$1" "$2" >> %q\nprintf "%%s\\n" "${3:-}" >> %q\nexit %s\n' "$1/alert.log" "$1/alert.kind" "$2" > "$1/bin/alert-sink"
     chmod +x "$1/bin/alert-sink"
     export MERGE_BLOCK_ALERT_CMD="$1/bin/alert-sink"
 }
@@ -3845,6 +3845,9 @@ alert_line=$(cat "$tmp/alert.log" 2>/dev/null || true)
 if grepq "$alert_line" -F '12345|' && grepq "$alert_line" -F 'feat/x' && grepq "$alert_line" -F "${sha:0:12}" \
         && grepq "$alert_line" -F 'coderabbit(reason=rate-limit)' && grepq "$alert_line" -F 'codex(reason=quota-5h)'; then pass; else
     fail "5p-alert alert must go to the operator and name branch, head and exhausted lanes: $alert_line"
+fi
+if [ "$(cat "$tmp/alert.kind" 2>/dev/null)" = claude-only-clear ]; then pass; else
+    fail "5p-alert alert must pass its kind claude-only-clear to the sender: $(cat "$tmp/alert.kind" 2>/dev/null)"
 fi
 # A second clear at the same head sends no second alert.
 write_marker "$tmp" "$sha"
