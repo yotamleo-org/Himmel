@@ -1,8 +1,3 @@
-// runner.ts - the serving side of the peer bridge's run-suite jobs. It is a user
-// unit, installed only on a station whose peers.json lists run-suite in some
-// peer's `serves`. It reads jobs.jsonl, never writes a chain file, and moves a
-// job only by submitting events through the peer's spool.
-//
 // Exit: 0 refused (says why; the unit does not restart), 1 error.
 import { createHash } from "node:crypto";
 import fs, { constants } from "node:fs";

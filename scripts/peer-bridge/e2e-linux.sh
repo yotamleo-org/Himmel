@@ -14,9 +14,6 @@
 #                             administrators there with every right off
 #   E2E_A_USERNAME, E2E_B_USERNAME   bot usernames (default himmel_test_a_bot, _b_bot)
 #   E2E_MAX_S                 wait for the job at most this long (default 3600)
-# B's HOME must already hold the Task 11 fixture: `vmsdk-job.py
-# golden-build-linux` wrote C/golden.guest and C/golden.digest and registered
-# the golden VM. Everything else of B's peer bridge must be absent.
 #
 # Exit 0 and `E2E PASS`, else 1 with `E2E FAIL: <why>`.
 set -uo pipefail
@@ -37,7 +34,7 @@ SB="$B/.himmel/peer-bridge"
 [ -r "${E2E_CHAT_FILE:-}" ] || die "E2E_CHAT_FILE is not readable"
 chat="$(tr -d '[:space:]' < "$E2E_CHAT_FILE")"
 case "$chat" in -[0-9]*) ;; *) die "E2E_CHAT_FILE holds no negative chat id" ;; esac
-[ -s "$CB/golden.guest" ] && [ -s "$CB/golden.digest" ] || die "no Task 11 fixture: run vmsdk-job.py golden-build-linux first"
+[ -s "$CB/golden.guest" ] && [ -s "$CB/golden.digest" ] || die "no golden fixture: run vmsdk-job.py golden-build-linux first"
 extra="$(find "$CB" -mindepth 1 -maxdepth 1 ! -name golden.guest ! -name golden.digest)"
 [ ! -e "$SB" ] && [ -z "$extra" ] || die "B already has a peer bridge under $B; this run would mix with it"
 

@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for vmsdk-job.py (stdlib unittest; run: python3 scripts/lib/test-vmsdk-job.py).
-
-The stub-backend and fake-VBoxManage rows run anywhere. The real VirtualBox
-rows run only inside a test VM with PEER_BRIDGE_VM_TEST=1 and a golden VM
-built by `vmsdk-job.py golden-build-linux`.
-"""
+"""Tests for vmsdk-job.py (stdlib unittest; run: python3 scripts/lib/test-vmsdk-job.py)."""
 import ast
 import json
 import os

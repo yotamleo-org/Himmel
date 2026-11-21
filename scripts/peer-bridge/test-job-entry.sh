@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# test-job-entry.sh - the in-guest job contract: job-entry.sh against a fake
-# run-shell-tests.sh and a fake clock, then against a real tree at MIN_SHA.
 # Bash 3.2-compatible.
 set -u
 
