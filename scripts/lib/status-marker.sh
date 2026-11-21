@@ -31,3 +31,51 @@ status_marker_is_parked() {
   esac
   return 1
 }
+
+_status_marker_scope() {
+  local LC_ALL=C doc="${1-}" line head scope=0 seen=0 fence="" ftype
+  local hre=$'^## Results([ \t]|$)' fre='^ {0,3}(```|~~~)'
+  local rre=$'^## (Chief|Console) Rulings([ \t]|$)'  # old-term-ok
+  [ -f "$doc" ] && [ -r "$doc" ] || return 3
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [[ $line =~ $fre ]]; then
+      ftype="${BASH_REMATCH[1]}"
+      if [ -z "$fence" ]; then fence="$ftype"; elif [ "$fence" = "$ftype" ]; then fence=""; fi
+      continue
+    fi
+    [ -z "$fence" ] || continue
+    head="${line%$'\r'}"
+    case "$head" in
+      '## '*)
+        if [[ $head =~ $hre ]]; then scope=1; seen=1
+        elif [ "$seen" = 1 ] && [[ $head =~ $rre ]]; then scope=1
+        else scope=0; fi ;;
+      *)
+        if [ "$scope" = 1 ]; then printf '%s\n' "$line"; fi ;;
+    esac
+  done < "$doc"
+  return 0
+}
+
+status_marker_newest() {
+  local LC_ALL=C scope line marker last=""
+  scope=$(_status_marker_scope "${1-}") || return $?
+  while IFS= read -r line; do
+    case "$line" in
+      '- '*) marker=$(status_marker_parse "$line") && last="$marker" ;;
+    esac
+  done <<< "$scope"
+  [ -n "$last" ] || return 1
+  printf '%s\n' "$last"
+}
+
+status_marker_actionable() {
+  local LC_ALL=C scope line last="" n=0
+  local re='^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?(READY|BLOCKED|FINDING|MERGED)([^A-Za-z0-9_].*)?$'
+  scope=$(_status_marker_scope "${1-}") || return $?
+  while IFS= read -r line; do
+    if [[ $line =~ $re ]]; then last="${BASH_REMATCH[3]}"; n=$((n + 1)); fi
+  done <<< "$scope"
+  [ "$n" -gt 0 ] || return 1
+  printf '%s#%s\n' "$last" "$n"
+}
