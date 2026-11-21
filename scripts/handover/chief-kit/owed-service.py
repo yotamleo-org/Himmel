@@ -42,7 +42,7 @@ def run(inbox, doc, chief):
         key = 't2-' + row['id']
         delivered = receipt(doc, key)
         attempt = Path(inbox + '.wait.operator-' + row['id'])
-        opts = ['--chief', chief, '--owed', key, '--doc', str(doc), 'operator', row['text']]
+        opts = ['--chief', chief, '--owed', key, '--doc', str(doc), '--kind', 'chief-reply', 'operator', row['text']]
         sender = os.getenv('CHIEF_WAIT_OWED_SEND')
         def helper(verb):
             if sender:

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, existsSync, writeFileSync, readFileSync, truncateSync, symlinkSync, lstatSync, statSync } from "node:fs";
+import { mkdtempSync, existsSync, writeFileSync, readFileSync, truncateSync, symlinkSync, lstatSync, statSync, mkdirSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sessionDir, ensureSession, readMeta, writeMeta, atomicWrite } from "./bus";
@@ -530,4 +530,15 @@ test("truncateFullyConsumed empties the outbox in place, keeping the inode a san
   expect(await truncateFullyConsumed(outbox, outbox + ".cursor")).toBe(true);
   expect(statSync(outbox).ino).toBe(ino);
   expect(readFileSync(outbox, "utf8")).toBe("");
+});
+
+test("truncateFullyConsumed resets the cursor before it truncates: a failed cursor reset leaves the log intact", async () => {
+  if (process.getuid?.() === 0) return;
+  const r = root(); const outbox = join(r, "outbox.jsonl"); const frozen = join(r, "frozen"); mkdirSync(frozen);
+  writeFileSync(outbox, "a-long-sent-row\n"); writeFileSync(join(frozen, "cursor"), "16");
+  chmodSync(frozen, 0o500);
+  try { await expect(truncateFullyConsumed(outbox, join(frozen, "cursor"))).rejects.toThrow(); }
+  finally { chmodSync(frozen, 0o700); }
+  expect(readFileSync(outbox, "utf8")).toBe("a-long-sent-row\n");
+  expect(readFileSync(join(frozen, "cursor"), "utf8")).toBe("16");
 });
