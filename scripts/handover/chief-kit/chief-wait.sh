@@ -644,8 +644,13 @@ trap "exit_reason='signal-INT'; exit 130" INT
 trap "exit_reason='signal-HUP'; exit 129" HUP
 # The supervisor only samples for a safe point, so a stream child honours a stop request at each one itself.
 stream_stop_point() {
-    [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ] && [ -e "$inbox.wait.stop" ] || return 0
-    exit_reason='stream-stop'; exit 143
+    [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ] || return 0
+    if [ -e "$inbox.wait.stop" ]; then exit_reason='stream-stop'; exit 143; fi
+    [ -e "$inbox.wait.reap" ] || return 0
+    local reap=""
+    IFS= read -r reap 2>/dev/null < "$inbox.wait.reap"
+    [ "$reap" = "pid=$$" ] || return 0
+    exit_reason='stream-reap'; exit 143
 }
 
 # with --workers-from (or WORKERS_FROM) the argv never changes when the

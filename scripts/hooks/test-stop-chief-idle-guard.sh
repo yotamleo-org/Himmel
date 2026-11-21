@@ -407,7 +407,23 @@ for sidecar in absent present; do
         *) bad "missing waiter must name both modes ($sidecar sidecar): $out" ;;
     esac
 done
-rm -f "$WAIT_HB.stream"
+rm -f "$WAIT_HB.stream" "$WAIT_HB"
+out="$(run_guard "$CHIEF_PAYLOAD")"
+reason_names_exceptions() {
+    local w
+    for w in STOPPED refusal waiter-error waiter.md 'step 10'; do
+        case "$1" in *"$w"*) ;; *) return 1 ;; esac
+    done
+}
+if reason_names_exceptions "$out"; then ok "(o2) the no-waiter reason names STOPPED, a refusal, a waiter-error, waiter.md and keeps the step 10 pointer"
+else bad "(o2) the no-waiter reason lacks an exception word or the step 10 pointer — got: $out"; fi
+old_sentence="No live chief-wait.sh waiter is armed (x): re-arm it with the Monitor --stream arm if your approved waiter mode is stream (chief doc ACTION ZERO step 10), otherwise with Bash run_in_background, before ending the turn, or Telegram lines and tick changes will not wake you."
+if reason_names_exceptions "$old_sentence"; then bad "(o2) control: a reason that keeps re-arm it but drops the exception words still passed the row"
+else ok "(o2) control: a reason that keeps re-arm it but drops the exception words fails the row"; fi
+for w in STOPPED refusal waiter-error waiter.md 'step 10'; do
+    if reason_names_exceptions "${out//"$w"/}"; then bad "(o2) control: a reason without '$w' still passed the row"
+    else ok "(o2) control: a reason without '$w' fails the row"; fi
+done
 out="$(run_guard "$WORKER_SESSION_PAYLOAD")"
 if is_block "$out"; then bad "(p) non-chief stop with no waiter -> expected allow, got: $out"; else ok "(p) non-chief stop with no waiter -> allow"; fi
 

@@ -293,7 +293,7 @@ fi
 [ "$worker_count" -eq 0 ] || [ "$waiter_live" -eq 0 ] || exit 0
 
 waiter_clause=""
-[ "$waiter_live" -eq 1 ] || waiter_clause=" No live chief-wait.sh waiter is armed ($waiter_note): re-arm it with the Monitor --stream arm if your approved waiter mode is stream (chief doc ACTION ZERO step 10), otherwise with Bash run_in_background, before ending the turn, or Telegram lines and tick changes will not wake you."
+[ "$waiter_live" -eq 1 ] || waiter_clause=" No live chief-wait.sh waiter is armed ($waiter_note): re-arm it with the Monitor --stream arm if your approved waiter mode is stream (chief doc ACTION ZERO step 10), otherwise with Bash run_in_background, before ending the turn, or Telegram lines and tick changes will not wake you. Do not re-arm blindly: after STOPPED, a refusal or a waiter-error, read docs/handover/chief-sections/waiter.md first."
 
 reason="Chief stop guard: this session still holds the queue-lock on $chief_doc_name — ending the turn now would leave it structurally dead (no Stop hook, no monitor event, starts a new one).$waiter_clause Before stopping: dispatch the next queued item, verify a READY PR, or run \`/chief next --arm\` to hand off. State read at this stop — $bank_fleet_line; bank: $bank_token; worker locks held ($worker_count): $worker_names."
 
