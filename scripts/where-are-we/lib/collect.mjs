@@ -27,6 +27,7 @@ export function jiraRecords(rows, now) {
     key: row.key,
     kind: 'ticket',
     status: normalizeJiraStatus(row.status),
+    ...(row.statusCategory ? { status_category: normalizeJiraStatus(row.statusCategory) } : {}),
   }));
 }
 
@@ -71,7 +72,9 @@ export function prRecords(prs, now) {
       status: pr.state.toLowerCase(),
       branch: pr.headRefName,
     };
-    if (pr.mergeable !== undefined) {
+    if (['MERGED', 'CLOSED'].includes(String(pr.state).toUpperCase())) {
+      rec.awaiting_operator = [];
+    } else if (pr.mergeable !== undefined) {
       rec.awaiting_operator = isGreenMergeable(pr)
         ? [`green + mergeable: ${pr.title ?? pr.headRefName}`]
         : [];

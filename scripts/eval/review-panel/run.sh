@@ -15,12 +15,13 @@
 #              A delta case (key "delta": true, files <id>.patch + <id>.delta.patch) is fed as
 #              diff = the fix delta, with --context-file = the round-1 diff then the delta; any
 #              sweep feeds delta cases that way, with or without --delta.
-#   --tiers   CRITIC_PANEL_TIERS for the panel (default paid: the codex row AND the claude row,
-#              a claude-api critic billed per token, so a default sweep refuses without --allow-claude-api).
+#   --tiers   CRITIC_PANEL_TIERS for the panel (default paid: the paid rows of the registry; a
+#              claude-api row an overlay adds is billed per token, so that sweep refuses without --allow-claude-api).
 #   --model    the critic model, recorded on the row and in its config.
-#   --critics  the critics the sweep runs and reports (default: the critics.json rows in --tiers).
-#              The panel roster is the swept tree's critics.json cut to these slugs, so
-#              "--critics codex" never calls the claude row.
+#   --critics  the critics the sweep runs and reports (default: the registry rows in --tiers).
+#              The registry is the swept tree's critics.json with critics.local.json merged over it
+#              (scripts/lib/critics-config.sh); the panel roster is it cut to these slugs, so
+#              "--critics codex" never calls a claude row and a slug the overlay drops never runs.
 #
 #   --src      the repo real cases' base and fix commits live in (default this checkout).
 #
@@ -96,11 +97,23 @@ if ! python3 "$HERE/score.py" lint --fixtures "$fixtures" --key "$key" ${src:+--
     exit 2
 fi
 
+# The registry: the swept tree's critics.json (A27; CRITICS_BASE_JSON is the test seam) with the
+# operator's critics.local.json merged over it by scripts/lib/critics-config.sh, the resolver
+# critic-panel.sh and review-merge-gate.sh read, so an overlay drop reaches the eval too (decision 1085).
+registry="$(mktemp -t review-panel-registry.XXXXXX)" || exit 2
+trap 'rm -f "$registry"' EXIT
+# shellcheck source=../../lib/critics-config.sh
+if ! { . "$HERE/../../lib/critics-config.sh" &&
+       CRITICS_BASE_JSON="${CRITICS_BASE_JSON:-$HERE/../../cr/critics.json}" critics_config_resolve "$HERE/../../cr" > "$registry"; }; then
+    echo "run.sh: the critics registry does not resolve - no panel call made" >&2
+    exit 2
+fi
+
 if [ -z "$critics" ]; then
     critics="$(python3 -c 'import json,sys
 tiers=set(sys.argv[2].split(","))
 print(",".join(r["slug"] for r in json.load(open(sys.argv[1]))["panel"] if r.get("tier") in tiers))' \
-        "$HERE/../../cr/critics.json" "$tiers")" || critics=""
+        "$registry" "$tiers")" || critics=""
 fi
 
 # The key marks delta cases; a sweep feeds each as its fix delta, whether or not --delta is given.
@@ -139,17 +152,18 @@ if git -C "$scratch" rev-parse --git-dir >/dev/null 2>&1; then
     exit 2
 fi
 
-# The roster the panel runs: the swept tree's critics.json (A27, never a local overlay) cut to the
-# --critics slugs. A claude-api critic left in it needs --allow-claude-api (decision 525).
+# The roster the panel runs: the merged registry above cut to the --critics slugs, so a slug the
+# overlay drops never runs. A claude-api critic left in it needs --allow-claude-api (decision 525).
 roster="$out/critics.run.json"
 python3 -c 'import json,sys
 src,dst,critics,tiers,allow=sys.argv[1:6]
 reg=json.load(open(src)); keep=set(critics.split(","))
 reg["panel"]=[r for r in reg["panel"] if r["slug"] in keep]
-bill=[r["slug"] for r in reg["panel"] if r.get("tier") in set(tiers.split(",")) and str(r.get("provider","")).startswith("claude")]
+claude_like=lambda p: str(p or "").startswith("claude") or p in ("api", "subscription")
+bill=[r["slug"] for r in reg["panel"] if r.get("tier") in set(tiers.split(",")) and (claude_like(r.get("provider")) or claude_like(r.get("route_provider")))]
 if bill and allow != "1":
     sys.exit("run.sh: the roster holds a billed claude-api critic (%s) - pass --allow-claude-api or drop it from --critics - no panel call made" % ",".join(bill))
-json.dump(reg, open(dst, "w"))' "$HERE/../../cr/critics.json" "$roster" "$critics" "$tiers" "$allow_claude" || exit 2
+json.dump(reg, open(dst, "w"))' "$registry" "$roster" "$critics" "$tiers" "$allow_claude" || exit 2
 
 python3 "$HERE/score.py" stamp "$out" --fixtures "$fixtures" --key "$key" --panel "$PANEL" --tiers "$tiers" --only "$only" \
     --critics "$critics" ${model:+--model "$model"} || exit 2

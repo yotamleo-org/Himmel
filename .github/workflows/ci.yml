@@ -1529,6 +1529,10 @@ jobs:
       - name: JS suite report dir
         if: ${{ matrix.pkg != 'himmel-bus' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         run: mkdir -p "$RUNNER_TEMP/js-suite-report"
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: ${{ (matrix.pkg == 'jira' || matrix.pkg == 'jira-node22-floor') && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+        with:
+          bun-version-file: .bun-version
       - if: ${{ matrix.pkg != 'himmel-bus' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/${{ matrix.pkg }} -- npm test -- --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/js-suite-report/vitest.json"
         working-directory: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}
@@ -1555,6 +1559,14 @@ jobs:
         run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/root-vitest-sandbox -- bash scripts/ci/test-root-vitest-sandbox.sh
         env:
           HIMMEL_REQUIRE_JIRA_VITEST: "1"
+      # test-proof-transition.py drives the built jira CLI (scripts/jira/dist, which the npm test
+      # step's pretest tsc leaves here) against loopback fixtures; the shell-unit shards lack that build.
+      - if: ${{ matrix.pkg == 'jira' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/proof-transition -- python3 scripts/handover/chief-kit/test-proof-transition.py
+      # readiness-adapter-suite.sh runs the whole readiness-tools.test.mjs file, whose credential and port groups drive the built jira CLI
+      # the same way; a missing build fails it by name (PREREQUISITE-ABSENT), and the shell-unit shards, which lack the build, never run it.
+      - if: ${{ matrix.pkg == 'jira' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/readiness-adapter -- bash scripts/handover/chief-kit/readiness-adapter-suite.sh
 
   # Nothing built or ran the jira dist CLI end to end; the unit suite
   # mocks `request`, so a broken tsc build or a dist that crashes at startup merged

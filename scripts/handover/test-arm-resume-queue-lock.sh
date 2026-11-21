@@ -488,7 +488,7 @@ mkdir -p "$FAKE/handover" "$FAKE/lib"
 cp "$SCRIPT_DIR/arm-resume.sh" "$FAKE/handover/arm-resume.sh"
 # arm-resume resolves its plugin profile through ../lanes (fail-closed).
 cp -R "$SCRIPT_DIR/../lanes" "$FAKE/lanes"
-for lib in chief-context py-armor handover-path telemetry macos-app-resolve chokepoint-seam-guard claude-version env-alias legacy-names prim; do
+for lib in chief-context py-armor handover-path telemetry macos-app-resolve chokepoint-seam-guard claude-version env-alias legacy-names prim fleet-launch; do
     cp "$SCRIPT_DIR/../lib/$lib.sh" "$FAKE/lib/$lib.sh"
 done
 # lanes/plugin-profiles.mjs imports ../lib/env-alias.mjs (which imports is-main.mjs).
@@ -516,6 +516,16 @@ out=$(bash "$FAKE/handover/arm-resume.sh" --time "$(future_time)" --handover "$H
 rc=$?
 assert_rc "T13: arm proceeds with queue-lock.sh missing" 0 "$rc"
 assert_contains "T13: WARN names the missing queue-lock.sh" "queue-lock.sh not found" "$out"
+
+# --- T13a: a managed launch's runtime line comes from lib/fleet-launch.sh. This tree has no
+# fleet_runtime.py, so the doc reads as managed; with fleet-launch.sh missing too the arm
+# refuses (rc 22) instead of arming a launch that has no runtime line.
+mv "$FAKE/lib/fleet-launch.sh" "$FAKE/lib/fleet-launch.sh.off"
+out=$(bash "$FAKE/handover/arm-resume.sh" --time "$(future_time)" --handover "$HO13" --dry-run 2>&1)
+rc=$?
+mv "$FAKE/lib/fleet-launch.sh.off" "$FAKE/lib/fleet-launch.sh"
+assert_rc "T13a: arm refuses with fleet-launch.sh missing" 22 "$rc"
+assert_contains "T13a: ERR names the missing fleet-launch.sh" "cannot source" "$out"
 
 # --- T13b: missing handover-path.sh degrades to raw identity, never aborts ---
 # The library is fail-open, but its identity helpers are used before the

@@ -5,7 +5,10 @@
 # WHY: himmel-doctor flagged the missing pre-commit/commit-msg hooks (C16) for
 # nine days and nobody saw it, because nothing ran the doctor on a
 # schedule. This is the visibility half; repair is `himmel-update`'s drift pass.
-# Nothing here fixes anything.
+# The one thing a run does besides look: it prunes the holds registers with
+# `holds.py gc` before the doctor reads them (holds_maintenance below: holds-gc.log
+# holds the run's passes and ends with its summary, which `status` shows;
+# holds-gc.next names the register to serve first). Nothing else here fixes anything.
 #
 #   doctor-cadence.sh run                  one pass (what cron fires)
 #   doctor-cadence.sh arm [--time HH:MM] [--force] [--dry-run]
@@ -31,6 +34,7 @@
 #
 #
 # Seams (tests): HIMMEL_DOCTOR_STATE_DIR, DOCTORCAD_CRONTAB, DOCTORCAD_RUNNER_DIR.
+# Bounds: DOCTORCAD_HOLDS_GC_PASSES (gc passes per register, 12), DOCTORCAD_HOLDS_GC_BUDGET (seconds for all registers, 120).
 # Platform: cron (Linux/macOS). Windows development is parked.
 set -uo pipefail
 
@@ -112,6 +116,95 @@ $(grep -A1 -E "^WARN +$id:" "$log" | head -2)"
     done <<< "$keys"
 }
 
+# Before the doctor reads the holds registers, prune them: holds.py gc stops at its own 10 s box and the next pass
+# resumes where it left off, so a register bigger than one box is swept over several passes. Passes go round the
+# registers whose repo still exists (one each before any gets a second), so no register waits behind another. A
+# register the budget stopped at is written to holds-gc.next and goes first on the next run, so the extra passes
+# rotate as well as the first ones. A busy answer judged nothing: that register is counted as starved, not served, and
+# the first one to answer busy goes first on the next run, so the pass is retried and never read as progress. Passes per
+# register stop at a complete cycle (or a busy answer, or a failure) and are capped; the whole step has one time
+# budget (DOCTORCAD_HOLDS_GC_BUDGET) that never stops the first pass of a run, so it ends within the budget plus one
+# pass (30 s). Whether a repo is gone is holds.py's answer (repo-gone), the same one the doctor's C95 uses; only a
+# proven removal skips a register. The run lock held by cmd_run keeps two scheduled runs from overlapping; holds.py's
+# own per-repo lock covers a manual gc. The step is best-effort: holds-gc.log holds this run's pass lines and ends
+# with one summary line (or one skipped line), which `status` shows; a failure never fails the run. The passes run
+# gc --keep-aged-resume: a row whose only sign of death is an unwrapped RESUME doc past 24 hours is never pruned by the
+# schedule, because nothing frees ownership by age on its own. Each such row is counted: a pass line ends waiting=<n>, and
+# the summary line ends waiting=<total> when any waited; a chief or the operator releases them by running gc by hand.
+holds_gc_note() { printf '%s %s\n' "$(date +%FT%T)" "$*" >> "$STATE_DIR/holds-gc.log"; }
+
+holds_maintenance() { # <primary root>
+    local root="$1" py="$1/scripts/handover/chief-kit/holds.py" holds="${HOME:-}/.himmel/state/holds"
+    local nextf="$STATE_DIR/holds-gc.next" passes="${DOCTORCAD_HOLDS_GC_PASSES:-12}" budget="${DOCTORCAD_HOLDS_GC_BUDGET:-120}"
+    local reg repo i k n end out rc tmo want w waited="" start=0 total=0 served=0 starved=0 partial=0 failed=0 waiting=0 progress stop_at=""
+    local -a repos=() count=() state=()
+    [[ "$passes" =~ ^[0-9]+$ ]] || passes=12
+    [[ "$budget" =~ ^[0-9]+$ ]] || budget=120
+    : > "$STATE_DIR/holds-gc.log" || return 0
+    [ -f "$py" ] || { holds_gc_note "skipped: no holds.py at the primary checkout"; return 0; }
+    [ -d "$holds" ] || { holds_gc_note "skipped: no holds register on this station"; return 0; }
+    command -v python3 >/dev/null 2>&1 || { holds_gc_note "skipped: python3 not on PATH"; return 0; }
+    tmo="$(command -v timeout || command -v gtimeout || true)"
+    for reg in "$holds"/%2F*; do
+        [ -d "$reg" ] || continue
+        repo="$(printf '%s' "${reg##*/}" | sed -e 's/%2F/\//g' -e 's/%25/%/g')"
+        if ${tmo:+"$tmo" -k 1 10} python3 -I "$py" repo-gone --repo "$repo" </dev/null >/dev/null 2>&1; then
+            holds_gc_note "skip $repo: the repo is gone"
+            continue
+        fi
+        repos+=("$repo"); count+=(0); state+=(open)
+    done
+    n=${#repos[@]}
+    want=""; [ ! -f "$nextf" ] || IFS= read -r want < "$nextf" || true
+    for ((i = 0; i < n; i++)); do
+        if [ "${repos[i]}" = "$want" ] || { [ -z "$want" ] && [ "${repos[i]}" = "$root" ]; }; then start=$i; break; fi
+    done
+    end=$((SECONDS + 10#$budget))
+    progress=1
+    while [ "$progress" -eq 1 ] && [ "$n" -gt 0 ]; do
+        progress=0
+        for ((k = 0; k < n; k++)); do
+            i=$(((start + k) % n))
+            case "${state[i]}" in open|partial) ;; *) continue ;; esac
+            if [ "${count[i]}" -ge "$passes" ]; then state[i]=capped; continue; fi
+            if [ "$total" -gt 0 ] && [ "$SECONDS" -ge "$end" ]; then stop_at="${repos[i]}"; break 2; fi
+            out="$(${tmo:+"$tmo" -k 2 30} python3 -I "$py" gc --repo "${repos[i]}" --keep-aged-resume </dev/null 2>&1)"; rc=$?
+            count[i]=$((count[i] + 1)); total=$((total + 1))
+            if [ "$rc" -ne 0 ]; then
+                holds_gc_note "gc ${repos[i]}: failed (rc $rc): $out"
+                state[i]=failed
+                continue
+            fi
+            holds_gc_note "gc ${repos[i]}: $out"
+            case "$out" in *" waiting="[0-9]*) w="${out##* waiting=}"; waiting=$((waiting + 10#${w%%[!0-9]*})) ;; esac
+            case "$out" in
+                *"gc busy"*) state[i]=busy ;;
+                *"cycle=partial"*) state[i]=partial; progress=1 ;;
+                *) state[i]=finished ;;
+            esac
+        done
+    done
+    for ((k = 0; k < n; k++)); do
+        i=$(((start + k) % n))
+        case "${state[i]}" in
+            open|busy) starved=$((starved + 1)) ;;
+            partial|capped) served=$((served + 1)); partial=$((partial + 1)) ;;
+            failed) served=$((served + 1)); failed=$((failed + 1)) ;;
+            *) served=$((served + 1)) ;;
+        esac
+    done
+    if [ -z "$stop_at" ]; then
+        for ((k = 0; k < n; k++)); do
+            i=$(((start + k) % n))
+            if [ "${state[i]}" = busy ]; then stop_at="${repos[i]}"; break; fi
+        done
+    fi
+    if [ -n "$stop_at" ]; then printf '%s\n' "$stop_at" > "$nextf"; else rm -f "$nextf"; fi
+    [ "$waiting" -eq 0 ] || waited=" waiting=$waiting"
+    holds_gc_note "run registers=$n served=$served starved=$starved partial=$partial failed=$failed passes=$total$waited"
+    return 0
+}
+
 # cmd_run is a plain pass; cmd_arm/cmd_status/cmd_disarm are the contract
 # test-wizard-cadence-registry.sh lints every registry row for.
 cmd_run() (
@@ -135,6 +228,7 @@ cmd_run() (
     fi
     [ "$lock_rc" -eq 1 ] && return 0
     [ "$lock_rc" -eq 0 ] || { echo "doctor-cadence: cannot acquire the run lock" >&2; return 2; }
+    holds_maintenance "$root"
     out="$STATE_DIR/last-run.log"
     (cd "$root" && bash "$root/scripts/himmel-doctor.sh" --no-color </dev/null) > "$out" 2>&1
     if ! grep -q '^Summary: ' "$out"; then
@@ -297,6 +391,9 @@ cmd_status() {
         esac
         echo "  last run   $(cat "$STATE_DIR/counts") ($stamp)"
     fi
+    if [ -s "$STATE_DIR/holds-gc.log" ]; then
+        echo "  holds gc   $(tail -n 1 "$STATE_DIR/holds-gc.log" | cut -c1-200) ($STATE_DIR/holds-gc.log)"  # read-sink-ok: the cadence's own log under STATE_DIR
+    else echo "  holds gc   no pass recorded"; fi
     return 0
 }
 

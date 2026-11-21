@@ -412,6 +412,9 @@ do_arm() {
     local bus_var bus_cli bus_args
     for bus_var in $(compgen -v HIMMEL_BUS_); do unset "$bus_var"; done
     unset HEADED_ARM_BUS HEADED_ARM_BUS_CLI HIMMEL_CHIEF_PREDECESSOR
+    # A worker's launch exports its worktree here, and headed-arm.sh takes it as
+    # the session's working directory; the chief always opens in this checkout.
+    unset HEADED_ARM_REPO
     # The successor's workers tab into the window of the chief it succeeds
     # (headed-arm.sh tab_launch reads this); a fresh chain exports nothing.
     [ -z "$CHIEF_BUS_PREDECESSOR" ] || export HIMMEL_CHIEF_PREDECESSOR="$CHIEF_BUS_PREDECESSOR"

@@ -104,6 +104,9 @@ pgrep_x_stub   # default: no live sessions at all
 KILL_STUB="$W/bin/kill"
 cat > "$KILL_STUB" <<'STUB'
 #!/usr/bin/env bash
+if [ -n "${PROOF_EXPECT_LEDGER:-}" ]; then
+    jq -e 'select(.action == "validate-proof" and .validation == "pending")' "$PROOF_EXPECT_LEDGER" >/dev/null || exit 77
+fi
 echo "kill $*" >> "$CALLS_LOG"
 if [ "${CWL_KILL_FAIL:-0}" = "1" ]; then
     exit 1
@@ -1425,7 +1428,7 @@ rm -rf "$W/proc/999"
 # match the worker's names, its resume_cwd and the doc's LIVE..WRAPPED window
 dg_ledgers fb
 FB_DOC="$W/HIMMEL-9-N1-demo-2026-10-06.md"
-FB_LIVE=$(date -d '2026-10-06T12:00:01Z' +%H:%M); FB_WRAP=$(date -d '2026-10-06T13:30:00Z' +%H:%M)
+FB_LIVE=$(date -d '2026-10-06T12:00:01Z' +%H:%M); FB_WRAP=$(date -d '2026-10-06T13:30:00Z' +%H:%M) # gnu-ok: close worker fixtures are Linux-only
 { printf -- '---\nresume_cwd: %s\n---\n# worker\n## Results\n- %s LIVE - go\n- %s WRAPPED - done\n' "$W/dg-cwd" "$FB_LIVE" "$FB_WRAP"; } > "$FB_DOC"
 FB_SLUG=$(printf '%s' "$W/dg-cwd" | sed 's/[^A-Za-z0-9]/-/g'); mkdir -p "$DG_PROJ/$FB_SLUG"
 FB_OTHER=4670c3a0-0000-4000-8000-0000000000aa
@@ -2737,6 +2740,46 @@ post_handovers=absent
 check "no-leak: this suite left no handovers/ dir behind in the repo root" "$post_handovers" "$pre_handovers"
 
 echo "----"
+# Real direct/sweep close gates, including CLOSED-ALREADY retirement.
+PKEY=HIMMEL-9848
+PDOC="$W/$PKEY-N990-proof.md"; PFLEET="$W/proof-fleet.json"
+printf '# proof\n## Results\n- 10:00 WRAPPED — proof %s verdict=KEEP evidence=%s\n' "$PKEY" "$W/absent-proof.md" > "$PDOC"
+jq -n --arg d "$PDOC" '{schema:1,workers:[{doc:$d,label:"N990"}]}' > "$PFLEET"
+pgrep_x_stub
+export PROOF_MIRROR_DIR="$W/absent-mirror"
+before_proof="$(cat "$W/owed.jsonl" 2>/dev/null)"
+out=$(run --check --fleet "$PFLEET" "$PDOC" 2>&1); rc=$?
+check "9848 check rc" "$rc" 0
+check "9848 check writes no ledger" "$(cat "$W/owed.jsonl" 2>/dev/null)" "$before_proof"
+out=$(PROOF_OWE_BIN=/bin/false run --fleet "$PFLEET" "$PDOC" 2>&1); rc=$?
+check "9848 failed persistence blocks direct retirement" "$rc" 9
+check "9848 failed persistence keeps manifest" "$(jq '.workers | length' "$PFLEET")" 1
+out=$(PROOF_OWE_BIN=/bin/false run --sweep --fleet "$PFLEET" 2>&1)
+contains "9848 sweep reports persistence refusal" "$out" 'refused=1'
+check "9848 failed sweep keeps manifest" "$(jq '.workers | length' "$PFLEET")" 1
+out=$(run --sweep --fleet "$PFLEET" 2>&1); rc=$?
+check "9848 sweep rc" "$rc" 0
+check "9848 sweep persisted pending proof" "$(jq -r 'select(.action == "validate-proof") | .validation' "$W/owed.jsonl" 2>/dev/null)" pending
+check "9848 sweep retires only after persistence" "$(jq '.workers | length' "$PFLEET")" 0
+out=$(run "$PDOC" 2>&1); rc=$?
+check "9848 direct replay rc" "$rc" 0
+check "9848 direct replay leaves one action" "$(jq -s '[.[] | select(.action == "validate-proof")] | length' "$W/owed.jsonl" 2>/dev/null)" 1
+unset PROOF_MIRROR_DIR
+
+# The actual TERM stub checks persistence before recording a signal. A failed
+# writer must prevent that signal even when the same action already exists.
+mkcmdline 990 claude -n "$PKEY-N990-proof"
+pgrep_x_stub 990
+reset_calls
+export PROOF_EXPECT_LEDGER="$W/owed.jsonl" PROOF_MIRROR_DIR="$W/no-mirror"
+out=$(PROOF_OWE_BIN=/bin/false run "$PDOC" 2>&1); rc=$?
+check "9848 writer failure blocks TERM" "$rc" 9
+check "9848 no signal on persistence failure" "$(cat "$CALLS")" ""
+out=$(run "$PDOC" 2>&1); rc=$?
+check "9848 live proof closes after persistence" "$rc" 0
+contains "9848 TERM stub observed pending action" "$(cat "$CALLS")" 'kill -TERM 990'
+unset PROOF_EXPECT_LEDGER PROOF_MIRROR_DIR
+
 if [ "$fails" -eq 0 ]; then
     echo "ALL OK"
     exit 0

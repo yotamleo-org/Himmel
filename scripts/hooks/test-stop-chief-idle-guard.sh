@@ -399,6 +399,15 @@ case "$out" in
     *chief-wait.sh*) ok "(o) the no-waiter reason names chief-wait.sh" ;;
     *) bad "(o) the no-waiter reason does not name chief-wait.sh — got: $out" ;;
 esac
+for sidecar in absent present; do
+    if [ "$sidecar" = present ]; then : > "$WAIT_HB.stream"; else rm -f "$WAIT_HB.stream"; fi
+    out="$(run_guard "$CHIEF_PAYLOAD")"
+    case "$out" in
+        *Monitor*--stream*Bash*run_in_background*) ok "missing waiter names both modes ($sidecar sidecar)" ;;
+        *) bad "missing waiter must name both modes ($sidecar sidecar): $out" ;;
+    esac
+done
+rm -f "$WAIT_HB.stream"
 out="$(run_guard "$WORKER_SESSION_PAYLOAD")"
 if is_block "$out"; then bad "(p) non-chief stop with no waiter -> expected allow, got: $out"; else ok "(p) non-chief stop with no waiter -> allow"; fi
 

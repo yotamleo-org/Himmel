@@ -1,0 +1,37 @@
+{
+  "queue": [
+    { "key": "HIMMEL-1", "text": "operator-owed: record the proof verdict", "actor": "chief" },
+    { "key": "HIMMEL-2", "text": "operator words: approve the paid spend grant", "actor": "operator" },
+    { "key": "HIMMEL-5", "text": "operator sign-off: ordinary spec hygiene", "actor": "chief" }
+  ],
+  "specs": [
+    { "key": "HIMMEL-1", "marker": "", "actor": "chief" },
+    { "key": "HIMMEL-2", "marker": "OPERATOR-CRITICAL: spend-grant", "actor": "operator" },
+    { "key": "HIMMEL-5", "marker": "OPERATOR-CRITICAL: reverses-ruling", "actor": "operator" },
+    { "key": "HIMMEL-7", "marker": "asks_operator: true", "actor": "chief" }
+  ],
+  "holds": [
+    { "key": "HIMMEL-1", "class": "no-authority", "actor": "chief" },
+    { "key": "HIMMEL-2", "class": "authority", "words": "Hold until I decide", "actor": "operator" },
+    { "key": "HIMMEL-5", "class": "unchecked", "reason": "source unread", "actor": "unknown" }
+  ],
+  "statuses": [
+    { "status": "To Do", "category": "To Do", "bucket": "todo", "open": true },
+    { "status": "Wont Fix", "category": "To Do", "bucket": "wont", "open": false },
+    { "status": "Won't Fix", "category": "To Do", "bucket": "wont", "open": false },
+    { "status": "Resolved", "category": "To Do", "bucket": "done", "open": false },
+    { "status": "Won’t Fix", "category": "To Do", "bucket": "wont", "open": false },
+    { "status": "Won’t Do", "category": "To Do", "bucket": "wont", "open": false },
+    { "status": "Won't Do", "category": "To Do", "bucket": "wont", "open": false },
+    { "status": "Wont Do", "category": "To Do", "bucket": "wont", "open": false },
+    { "status": "Closed", "category": "To Do", "bucket": "wont", "open": false },
+    { "status": "In Public", "category": "To Do", "bucket": "done", "open": false },
+    { "status": "Done", "category": "To Do", "bucket": "done", "open": false },
+    { "status": "To Do", "category": "Done", "bucket": "done", "open": false },
+    { "status": "Custom", "category": "Resolved", "bucket": "done", "open": false },
+    { "status": "Custom", "category": "Won’t Fix", "bucket": "wont", "open": false },
+    { "status": "Unknown", "category": "Unknown", "bucket": "todo", "open": true },
+    { "status": "Not Done", "category": "To Do", "bucket": "todo", "open": true },
+    { "status": "In Progress", "category": "In Progress", "bucket": "prog", "open": true }
+  ]
+}

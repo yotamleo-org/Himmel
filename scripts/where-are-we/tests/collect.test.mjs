@@ -92,6 +92,7 @@ test('prRecords: maps prs to pr records with lowercased status and branch', () =
     kind: 'pr',
     status: 'merged',
     branch: 'fix/y',
+    awaiting_operator: [],
   });
 });
 

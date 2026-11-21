@@ -58,6 +58,28 @@
 #   WORKER_SESSION_REMOTE_CONTROL    a session name -> --remote-control <name>
 #                           Set only on a native-lane launch; the
 #                           claudex proxy endpoint makes that lane ineligible.
+#   WORKER_SESSION_PROFILE_READINESS exactly 1 -> the READINESS role. The final argv for
+#                           that role is built HERE and nowhere else, and the real exec and the
+#                           validation-only render below are the same construction:
+#                             --settings S [--append-system-prompt-file P] --mcp-config M
+#                             --strict-mcp-config --tools "" [--permission-mode auto]
+#                             --allowedTools mcp__readiness__inspect mcp__readiness__act
+#                             --session-id ID <the caller's argv, untouched and in order>
+#                           It is a finite protocol check, not a reading of prose: the lane and binary
+#                           must be supported, no other role marker may be set, the settings must allow
+#                           exactly the two grants and deny the native tools, the MCP config must name
+#                           exactly the readiness server, a session id must be minted, and the caller's
+#                           argv may not name any availability/settings/mode override (it may carry ONE
+#                           `--permission-mode auto`, which is kept in place; otherwise one is added).
+#                           Every other case refuses with exit 2 BEFORE anything runs. Each variadic
+#                           option (--mcp-config, --tools, --allowedTools) is followed by a flag, so a
+#                           caller's bare prompt can never be read as one more value.
+#   WORKER_SESSION_RENDER_ARGV       exactly 1, readiness only -> print that final argv (binary first)
+#                           NUL-terminated on stdout, exec nothing, run no native binary. headed-arm-worker
+#                           calls it before acquiring the readiness lease (it prints nothing it must keep).
+#                           The --session-id above is bound to the trusted private startup config: the MCP server
+#                           must be `<readiness-tools.mjs> --startup-config <startup.json>`, and that private
+#                           mode-0600 file (in a mode-0700 directory) must hold WORKER_SESSION_ID as its session scope.
 # Seam: WORKER_SESSION_CLAUDE_BIN overrides the `claude` binary this execs (default:
 # `claude` from PATH). headed-arm-worker.sh sets it to scripts/claude-codex on
 # the claudex lane so all profile flags reach that backend;
@@ -75,6 +97,117 @@ WORKER_SESSION_PROFILE_SETTINGS="${WORKER_SESSION_PROFILE_SETTINGS:-}"
 WORKER_SESSION_PROFILE_PREFACE="${WORKER_SESSION_PROFILE_PREFACE:-}"
 WORKER_SESSION_PROFILE_MCP_CONFIG="${WORKER_SESSION_PROFILE_MCP_CONFIG:-}"
 WORKER_SESSION_PROFILE_NO_SETTING_SOURCES="${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-}"
+WORKER_SESSION_PROFILE_READINESS="${WORKER_SESSION_PROFILE_READINESS:-}"
+WORKER_SESSION_RENDER_ARGV="${WORKER_SESSION_RENDER_ARGV:-}"
+
+# --- READINESS role: validate everything the final argv depends on before any of it is built. ---
+# With neither variable set none of this runs and the launcher is the byte-identical pass-through below.
+_ready_refuse() {
+    echo "worker-claude-launcher: refusing to launch the readiness role: $*" >&2
+    exit 2
+}
+_readiness=0
+_render=0
+_caller_modes=0
+case "$WORKER_SESSION_RENDER_ARGV" in
+    '') ;;
+    1) _render=1 ;;
+    *) _ready_refuse "WORKER_SESSION_RENDER_ARGV must be exactly 1 or unset" ;;
+esac
+case "$WORKER_SESSION_PROFILE_READINESS" in
+    '') ;;
+    1) _readiness=1 ;;
+    *) _ready_refuse "WORKER_SESSION_PROFILE_READINESS must be exactly 1 or unset (a restriction marker is never half-on)" ;;
+esac
+[ "$_render" = 0 ] || [ "$_readiness" = 1 ] || _ready_refuse "the validation-only render is readiness-only (WORKER_SESSION_PROFILE_READINESS=1 is not set)"
+
+if [ "$_readiness" = 1 ]; then
+    # Supported lane: native only (the isolation of every other lane's tool surface is unproved).
+    case "${WORKER_SESSION_LANE:-native}" in
+        native) ;;
+        *) _ready_refuse "unsupported lane '${WORKER_SESSION_LANE}': native only" ;;
+    esac
+    # Supported binary: the plain `claude` on PATH, or an absolute executable (the suites' recording seam and
+    # the VM wrapper). A lane launcher (claude-codex, claude-openrouter, ...) is never accepted.
+    case "${CLAUDE_BIN##*/}" in
+        claude-*) _ready_refuse "the lane launcher ${CLAUDE_BIN##*/} is not a supported binary" ;;
+    esac
+    case "$CLAUDE_BIN" in
+        claude) command -v claude >/dev/null 2>&1 || _ready_refuse "no claude on PATH" ;;
+        /*) { [ -f "$CLAUDE_BIN" ] && [ -x "$CLAUDE_BIN" ]; } || _ready_refuse "the binary $CLAUDE_BIN is not an executable file" ;;
+        *) _ready_refuse "the binary must be 'claude' or an absolute path (got '$CLAUDE_BIN')" ;;
+    esac
+    # No mixed roles: any other role's marker in this launch refuses it.
+    for _role_marker in "HIMMEL_CONSOLE_JUDGE=${HIMMEL_CONSOLE_JUDGE:-}" "HIMMEL_CONSOLE_RELAY=${HIMMEL_CONSOLE_RELAY:-}" \
+        "HIMMEL_RELEASE_MANAGER=${HIMMEL_RELEASE_MANAGER:-}" "CHIEF_CONTEXT=${CHIEF_CONTEXT:-}" \
+        "WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-}" \
+        "WORKER_SESSION_REMOTE_CONTROL=${WORKER_SESSION_REMOTE_CONTROL:-}"; do
+        [ -z "${_role_marker#*=}" ] || _ready_refuse "${_role_marker%%=*} is set: a judge, relay, release-manager, chief, consult or remote-control launch cannot also be the readiness role"
+    done
+    # The restrictions must exist: the settings, the strict MCP config and a minted session id.
+    [ -n "$WORKER_SESSION_PROFILE_SETTINGS" ] && [ -f "$WORKER_SESSION_PROFILE_SETTINGS" ] || _ready_refuse "WORKER_SESSION_PROFILE_SETTINGS is unset or missing"
+    [ -n "$WORKER_SESSION_PROFILE_MCP_CONFIG" ] && [ -f "$WORKER_SESSION_PROFILE_MCP_CONFIG" ] || _ready_refuse "WORKER_SESSION_PROFILE_MCP_CONFIG is unset or missing"
+    [[ "${WORKER_SESSION_ID:-}" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || _ready_refuse "WORKER_SESSION_ID must be the minted session UUID"
+    command -v node >/dev/null 2>&1 || _ready_refuse "node is required to check the generated settings and MCP config"
+    # The two generated files must carry exactly the role: two grants, the native tools denied, one MCP server.
+    # The grant and deny lists mirror READINESS_GRANTS / READINESS_DENY in plugin-profiles.mjs; a suite pins both.
+    _ready_why="$(node -e '
+const fs = require("fs");
+const grants = ["mcp__readiness__inspect", "mcp__readiness__act"];
+const deny = ["Bash", "Read", "Write", "Edit", "NotebookEdit", "Glob", "Grep", "WebFetch", "WebSearch", "Agent", "Artifact"];
+const why = (m) => { process.stdout.write(m); process.exit(1); };
+let s; let m;
+try { s = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); } catch (e) { why("the settings file is not valid JSON"); }
+try { m = JSON.parse(fs.readFileSync(process.argv[2], "utf8")); } catch (e) { why("the MCP config is not valid JSON"); }
+const strs = (v) => Array.isArray(v) && v.every((x) => typeof x === "string");
+const p = s && s.permissions;
+if (!p || !strs(p.allow) || p.allow.length !== grants.length || !grants.every((g) => p.allow.includes(g))) why("the settings must allow exactly mcp__readiness__inspect and mcp__readiness__act");
+if (!strs(p.deny) || !deny.every((d) => p.deny.includes(d))) why("the settings must deny every native tool");
+if (Object.keys(p).some((key) => !["allow", "deny"].includes(key)) || Object.keys(s).some((key) => !["enabledPlugins", "permissions", "skillListingBudgetFraction", "skillOverrides"].includes(key))) why("the settings contain an unknown permission or settings key");
+const sv = m && m.mcpServers;
+if (!sv || typeof sv !== "object" || Array.isArray(sv) || Object.keys(sv).join(",") !== "readiness") why("the MCP config must name exactly the readiness server");
+const server = sv.readiness;
+if (!server || typeof server !== "object" || Array.isArray(server) || typeof server.command !== "string" || !server.command || (server.args !== undefined && !strs(server.args))) why("the readiness MCP server entry is malformed");
+if (Object.keys(server).some((key) => !["command", "args"].includes(key))) why("the readiness MCP server entry contains an unknown key");
+// The --session-id this launcher emits is bound to the trusted private startup config: the adapter is started against
+// exactly one private startup file, and that file must hold the minted id as its immutable session scope. The id is
+// never a caller argument and no other flag or environment value names it.
+const path = require("path");
+const a = server.args;
+if (!Array.isArray(a) || a.length !== 3 || a[1] !== "--startup-config" || !path.isAbsolute(a[0]) || path.basename(a[0]) !== "readiness-tools.mjs" || !path.isAbsolute(a[2]) || path.basename(a[2]) !== "startup.json") why("the readiness MCP server must be started as: <readiness-tools.mjs> --startup-config <startup.json>");
+let dst; let fst; let c;
+try { dst = fs.lstatSync(path.dirname(a[2])); fst = fs.lstatSync(a[2]); } catch (e) { why("the private startup config is missing"); }
+const uid = process.getuid();
+if (!dst.isDirectory() || dst.uid !== uid || (dst.mode & 0o777) !== 0o700) why("the private startup config directory must be a mode-0700 directory owned by the launching user");
+if (!fst.isFile() || fst.uid !== uid || (fst.mode & 0o777) !== 0o600 || fst.nlink !== 1) why("the private startup config must be a mode-0600 regular file owned by the launching user");
+try { c = JSON.parse(fs.readFileSync(a[2], "utf8")); } catch (e) { why("the private startup config is not valid JSON"); }
+if (!c || c.schema !== "readiness-startup-v1" || c.lane !== "native") why("the private startup config is not a native readiness startup config");
+if (c.session_scope !== process.argv[3]) why("the private startup config binds a different session id than the minted one");
+' "$WORKER_SESSION_PROFILE_SETTINGS" "$WORKER_SESSION_PROFILE_MCP_CONFIG" "$WORKER_SESSION_ID" 2>&1)" || _ready_refuse "$_ready_why"
+    # The caller's argv: no availability, settings, session or run-mode override, and at most one auto mode.
+    _expect_value=""
+    for _a in "$@"; do
+        if [ -n "$_expect_value" ]; then
+            if [ "$_expect_value" = --permission-mode ]; then
+                [ "$_a" = auto ] || _ready_refuse "--permission-mode must be exactly auto"
+            else
+                case "$_a" in ''|-*) _ready_refuse "$_expect_value requires a non-option value" ;; esac
+            fi
+            _expect_value=""
+            continue
+        fi
+        case "$_a" in
+            --permission-mode) _caller_modes=$((_caller_modes + 1)); _expect_value=--permission-mode ;;
+            --permission-mode=auto) _caller_modes=$((_caller_modes + 1)) ;;
+            --permission-mode=*) _ready_refuse "--permission-mode must be exactly auto" ;;
+            --model|--autocompact|-n) _expect_value="$_a" ;;
+            --model=*|--autocompact=*) case "${_a#*=}" in ''|-*) _ready_refuse "${_a%%=*} requires a non-option value" ;; esac ;;
+            -*) _ready_refuse "the caller's argv names unsupported option $_a: readiness permits only model, autocompact, name and auto mode" ;;
+        esac
+    done
+    [ -z "$_expect_value" ] || _ready_refuse "$_expect_value has no value"
+    [ "$_caller_modes" -le 1 ] || _ready_refuse "the caller's argv names --permission-mode more than once"
+fi
 
 # Under a consult the caller's PATH must not pick the binary: a
 # foreign `claude` first on PATH could ignore `--setting-sources ""`. Resolve it
@@ -138,6 +271,15 @@ if [ -n "${WORKER_SESSION_PROFILE_MCP_CONFIG:-}" ]; then
     PRE+=(--mcp-config "$WORKER_SESSION_PROFILE_MCP_CONFIG" --strict-mcp-config)
 fi
 
+# The readiness role's hard boundary: no native tool at all (an EMPTY --tools value, kept as an empty argv
+# element), one explicit auto mode unless the caller already carries its one, and exactly the two grants.
+# --session-id follows immediately (it is required above), so a flag always ends the variadic grant list.
+if [ "$_readiness" = 1 ]; then
+    PRE+=(--tools "")
+    [ "$_caller_modes" -eq 1 ] || PRE+=(--permission-mode auto)
+    PRE+=(--allowedTools mcp__readiness__inspect mcp__readiness__act)
+fi
+
 # headed-arm-worker.sh minted this id and already recorded it in the
 # worker doc's front matter, so the digest step finds the session by id.
 _session_id="${WORKER_SESSION_ID:-}"
@@ -170,6 +312,17 @@ if [ "${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-}" = 1 ]; then
                 exit 2 ;;
         esac
     done
+fi
+
+# The readiness role's real exec and its validation-only render are ONE array: build it once, then either
+# print it (NUL-terminated, binary first; nothing runs) or exec it.
+if [ "$_readiness" = 1 ]; then
+    _final=("$CLAUDE_BIN" "${PRE[@]}" "$@")
+    if [ "$_render" = 1 ]; then
+        printf '%s\0' "${_final[@]}"
+        exit 0
+    fi
+    exec "${_final[@]}"
 fi
 
 exec "$CLAUDE_BIN" ${PRE[@]+"${PRE[@]}"} "$@"

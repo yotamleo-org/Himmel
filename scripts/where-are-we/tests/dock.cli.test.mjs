@@ -69,8 +69,8 @@ test('main: missing marker → stale true + never-refreshed header', () => {
   assert.match(r.text, /never refreshed/);
 });
 
-test('main: malformed/unreadable ledger → fail-open {text:"", stale:true} (heal)', () => {
+test('main: malformed/unreadable ledger → visible failure and stale evidence', () => {
   const r = main(argv({}), deps({ readRecords: () => { throw new Error('malformed JSON'); } }));
-  assert.equal(r.text, '');
+  assert.match(r.text, /ledger unread or malformed/);
   assert.equal(r.stale, true);
 });

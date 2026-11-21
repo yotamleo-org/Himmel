@@ -244,7 +244,7 @@ lacks "an unflagged worker's brief does not" "$b1" "copied from the real environ
 l1="$(cat "$BUCKET/launch-N901.sh" 2>/dev/null)"; l2="$(cat "$BUCKET/launch-N902.sh" 2>/dev/null)"
 lacks "a plain worker's launcher has NO bypass export" "$l1" "HIMMEL_HOOK_INTEGRITY_BYPASS_OK"
 has "a hook worker's launcher exports the bypass" "$l2" "export HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1"
-has "the launcher calls headed-arm-worker.sh under the repo" "$l1" "$REPO/scripts/handover/chief-kit/headed-arm-worker.sh --profile worker-impl --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief"
+has "the launcher passes the real manifest to headed-arm-worker.sh" "$l1" "$REPO/scripts/handover/chief-kit/headed-arm-worker.sh --fleet $WORK/fleet.json --profile worker-impl --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief"
 has "the launcher passes the deadline and model" "$l1" "1791475000"
 has "the launcher is syntactically valid bash" "$(bash -n "$BUCKET/launch-N901.sh" 2>&1 && echo ok)" "ok"
 [ -x "$BUCKET/launch-N901.sh" ] && pass "launchers are executable" || fail "launcher not executable"
@@ -608,7 +608,7 @@ has "a scope stating neither keeps the yes Ship step" "$ship_none" "merge-on-gre
 for shape_case in "yes:$ship_yes" "no:$ship_no"; do
     shape_name="${shape_case%%:*}"; shape_ship="${shape_case#*:}"
     has "the $shape_name Ship step names the deferred shape" "$shape_ship" '`- <ask>: deferred → KEY` coverage line'
-    has "the $shape_name Ship step names the owed shape" "$shape_ship" '`- <ask>: owed → chief|operator by YYYY-MM-DD`, at most 14 days out'
+    has "the $shape_name Ship step names the owed shape" "$shape_ship" '`- <ask>: owed → chief|operator|proof by YYYY-MM-DD`, at most 14 days out'
 done
 # shellcheck disable=SC2016 # literal backticks in the expected brief text
 has "the yes Ship step names the relative merge spelling" "$ship_yes" '`bash scripts/handover/merge-on-green.sh --jira-transition`'
@@ -904,7 +904,7 @@ rc=0; env -u GEN_BRIEFS_WORKTREE_CMD python3 "$KIT/scripts/handover/chief-kit/ge
 has "the adopter worktree is made by himmel's _new-worktree.sh run inside the adopter, without the install step" "$(cat "$WORK/adp-wt.log" 2>/dev/null)" "$ADP|fix/himmel-9001-plain-fix|--no-install"
 has "and so is the second worker's" "$(cat "$WORK/adp-wt.log" 2>/dev/null)" "$ADP|fix/himmel-9002-hook-fix|--no-install"
 al="$(cat "$WORK/hr/tester/adp/launch-N901.sh" 2>/dev/null)"
-has "the adopter launcher names himmel's headed-arm-worker.sh" "$al" "$KIT/scripts/handover/chief-kit/headed-arm-worker.sh --profile worker-impl"
+has "the adopter launcher names himmel's headed-arm-worker.sh and manifest" "$al" "$KIT/scripts/handover/chief-kit/headed-arm-worker.sh --fleet $WORK/adp.fleet.json --profile worker-impl"
 lacks "and not a copy under the adopter" "$al" "$ADP/scripts/handover/chief-kit/"
 has "the adopter launcher exports the adopter worktree as WORKER_SESSION_REPO" "$al" "export WORKER_SESSION_REPO=$ADP/.claude/worktrees/fix+himmel-9001-plain-fix"
 has "the adopter launcher's manifest add uses himmel's fleet-manifest.sh" "$al" "$KIT/scripts/handover/chief-kit/fleet-manifest.sh add"
@@ -1865,12 +1865,12 @@ cgo="$(cgrun on9421)"; rc=$?
 WS="$WORK/handovers/yotamleo/himmel/specs"; mkdir -p "$WS/designs" "$WS/ledgers/spec-rounds"
 NOLEDGER_KEY="HIMMEL-9432" EMPTY_KEY="HIMMEL-9439"
 # shellcheck disable=SC2016  # the instruction line's backticks are literal product text
-INSTR='each id is a `## Ticket coverage` line: `- <id>: done` or `- <id>: deferred → HIMMEL-<n>`'
+INSTR='each kind-scoped id is a `## Ticket coverage` line: `- <kind>:<id>: done` or `- <kind>:<id>: deferred → HIMMEL-<n>` (for example `spec:F1` and `plan:F1` are separate)'
 cg_signed_at() {
     printf '%s O-R1-%s\n' "$2" "$1" > "$CG_STUB_SIGNED/$1"
 }
 cg_mirror HIMMEL-9431 Task Medium '[]'; cg_signed_at HIMMEL-9431 "$WS/designs/HIMMEL-9431-fold.md"
-printf -- '- m-a (minor) spec r3 %s\n- c1 (minor; out-of-closure) spec r4 %s\n' "$WS/designs/HIMMEL-9431-fold.md.critic-spec-r3.md" "$WS/designs/HIMMEL-9431-fold.md.critic-spec-r4.md" > "$ROUTE_STUB/HIMMEL-9431-fold.md.fold"
+printf -- '- m-a (minor) spec r3 %s\n- c1 (minor; out-of-closure) spec r4 %s\n- F1 (minor) spec r3 %s\n- F1 (medium) plan r3 %s\n' "$WS/designs/HIMMEL-9431-fold.md.critic-spec-r3.md" "$WS/designs/HIMMEL-9431-fold.md.critic-spec-r4.md" "$WS/designs/HIMMEL-9431-fold.md.critic-spec-r3.md" "$WS/designs/HIMMEL-9431-fold.md.critic-plan-r3.md" > "$ROUTE_STUB/HIMMEL-9431-fold.md.fold"
 cg_workers r13 HIMMEL-9431 "$CORE_WRITES" ''
 : > "$ROUTE_LOG"; cgo="$(cgrun r13)"; rc=$?
 B13="$(cat "$(cg_brief r13)" 2>/dev/null)"
@@ -1878,6 +1878,8 @@ B13="$(cat "$(cg_brief r13)" 2>/dev/null)"
 has "R13: the brief carries the Folded critic findings heading" "$B13" "## Folded critic findings"
 has "R13: the brief carries the first fold-list line" "$B13" "- m-a (minor) spec r3 $WS/designs/HIMMEL-9431-fold.md.critic-spec-r3.md"
 has "R13: the brief carries the second fold-list line" "$B13" "- c1 (minor; out-of-closure) spec r4 $WS/designs/HIMMEL-9431-fold.md.critic-spec-r4.md"
+has "folded kind collisions reach brief: complete SPEC F1 provenance" "$B13" "- F1 (minor) spec r3 $WS/designs/HIMMEL-9431-fold.md.critic-spec-r3.md"
+has "folded kind collisions reach brief: complete PLAN F1 provenance" "$B13" "- F1 (medium) plan r3 $WS/designs/HIMMEL-9431-fold.md.critic-plan-r3.md"
 has "R13: the block ends with the Ticket coverage instruction line" "$B13" "$INSTR"
 has "R13: the stand-in saw fold-list --spec <the SPEC ok path>" "$(cat "$ROUTE_LOG")" "fold-list --spec $WS/designs/HIMMEL-9431-fold.md"
 BRIEF_LINT_MIRROR="$CG/mirror" bash "$HERE/brief-lint.sh" "$(cg_brief r13)" 2>"$CG/lint13.err"; rc=$?
@@ -1907,14 +1909,25 @@ cgo="$(cgrun r13fail)"; rc=$?
 [ "$rc" = 1 ] && has "R13: a failing fold-list refuses the brief naming its error" "$cgo" "HIMMEL-9438 ledger line 3 does not parse" || fail "R13 fold-list failure rc=$rc: $cgo"
 [ -z "$(cg_brief r13fail)" ] && pass "R13: a failing fold-list writes no brief" || fail "R13: a brief was written though fold-list failed"
 
-T13='HIMMEL-9434 has had its writer rounds; sign it under 848, send the page to the operator, or record round-override'
+T13='HIMMEL-9434 has had its writer rounds'
 cg_mirror HIMMEL-9434 Task Medium '[]'
 printf '{"key":"HIMMEL-9434","spec":3,"plan":3,"writer":3,"next":"none","why":"spec round 4: HIMMEL-9434 spec round 4 needs a blocking finding in round 3 of either kind; plan round 4: HIMMEL-9434 plan round 4 needs a blocking finding in round 3 of either kind"}\n' > "$ROUTE_STUB/HIMMEL-9434.json"
 cg_workers r14 HIMMEL-9434 "$WS/designs/HIMMEL-9434-x.md" ''
 : > "$ROUTE_LOG"; cgo="$(cgrun r14)"; rc=$?
 [ "$rc" = 1 ] && has "R14: a writer leg at next=none is refused with T13" "$cgo" "$T13" || fail "R14 rc=$rc: $cgo"
+for hint in 'normal signing' '--spec' 'canonical spec' '--plan' 'distinct canonical plan' 'both actual latest paired' '--verdict' 'verified carry' 'frozen bytes unchanged'; do
+    has "exhausted writer verified carry hint: $hint" "$cgo" "$hint"
+done
 [ -z "$(cg_brief r14)" ] && [ ! -e "$CG/b-r14/launch-N941.sh" ] && pass "R14: the refused writer leg gets no brief and no launcher" || fail "R14: a brief was written for a key with no rounds left"
 has "R14: round-status is asked for the key over the path's specs root" "$(cat "$ROUTE_LOG")" "round-status HIMMEL-9434 --specs $WS --json"
+printf '{"key":"HIMMEL-9434","spec":4,"plan":4,"writer":4,"next":"none","why":"spec round 5: HIMMEL-9434 writer round 5 needs a round-override or round-critical record"}\n' > "$ROUTE_STUB/HIMMEL-9434.json"
+cgo="$(cgrun r14)"; rc=$?
+[ "$rc" = 1 ] && has "exhausted blocking writer keeps its actual authority route" "$cgo" "needs a round-override or round-critical record" || fail "R14 blocking rc=$rc: $cgo"
+lacks "exhausted blocking writer does not suggest verified carry" "$cgo" "verified carry"
+printf '{"key":"HIMMEL-9434","spec":3,"plan":3,"writer":3,"next":"none","why":"no round opens","critical_open":[{"id":"O1","class":"spend-grant"}]}\n' > "$ROUTE_STUB/HIMMEL-9434.json"
+cgo="$(cgrun r14)"; rc=$?
+[ "$rc" = 1 ] && has "exhausted critical writer needs the operator ruling" "$cgo" "operator rules on open operator-critical findings first (round-critical)" || fail "R14 critical rc=$rc: $cgo"
+lacks "exhausted critical writer does not suggest verified carry" "$cgo" "verified carry"
 cg_mirror HIMMEL-9435 Task Medium '[]'
 cg_workers r14full HIMMEL-9435 "$WS/designs/HIMMEL-9435-x.md" ''
 cgo="$(cgrun r14full)"; rc=$?
@@ -2288,6 +2301,7 @@ o="$(cgrun p1)"; rc=$?
 PB="$(cg_brief p1)"
 [ "$rc" = 0 ] && [ -f "$PB" ] && pass "P1 a kind proof entry with bucket-only Writes generates (rc 0)" || fail "P1 proof entry rc=$rc: $o"
 PBT="$(cat "$PB" 2>/dev/null)"
+if printf '%s\n' "$PBT" | grep -qE '^requirements-sha256 HIMMEL-1=[0-9a-f]{64}$'; then pass "P1 generated proof freezes original requirement identity"; else fail "P1 generated proof has no original requirement binding"; fi
 has "P1 the brief carries the Proof leg line" "$PBT" "> **Proof leg:** HIMMEL-1"
 has "P1 the brief carries Completes ticket: no" "$PBT" "> **Completes ticket:** no"
 has "P1 the brief carries the literal Contract header" "$PBT" "> **Contract:**"
@@ -2370,7 +2384,7 @@ pf_key p3series "w['series']=['N942']" series
 pf_key p3hook "w['hook']=True" hook
 pfmk p3yes "w['scope']='read only. completes-ticket: yes'"
 o="$(cgrun p3yes)"; rc=$?
-[ "$rc" = 1 ] && has "P3 a completes-ticket: yes scope is refused with the operator-closes text" "$o" "worker N941: a proof brief never completes its ticket; the operator closes it (decision 847)" || fail "P3 completes yes rc=$rc: $o"
+[ "$rc" = 1 ] && has "P3 a completes-ticket: yes scope is refused with the chief-validates text" "$o" "worker N941: a proof brief never completes its ticket; the chief validates and closes fully proven work" || fail "P3 completes yes rc=$rc: $o"
 
 pfmk p4proof "w['keys']=['HIMMEL-9801']"
 pfmk p4plain "w['keys']=['HIMMEL-9801']; del w['kind']; w['commit']='docs(x): [HIMMEL-9801] f'; w['live_test']={'none':'x'}"

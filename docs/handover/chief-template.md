@@ -1,8 +1,8 @@
 # {{LETTER}} — CHIEF — successor to {{PREDECESSOR}} (fill signal {{FILL_PERCENT}} %)
 
-> **{{LETTER}} PREFACE.** This document is the chief's operating contract; the
-> predecessor's learnings are in **{{PREDECESSOR_HANDOFF}}** and win where they
-> differ. Named sections are read **on demand** from
+> **{{LETTER}} PREFACE.** This is the chief's contract; the
+> predecessor's learnings in **{{PREDECESSOR_HANDOFF}}** win where they
+> differ. Read sections **on demand** from
 > `{{REPO}}/docs/handover/chief-sections/`. Session: **`{{SESSION_NAME}}`**.
 > Handover root: **`{{HANDOVER_ROOT}}`**; bucket **`{{BUCKET}}`** (at
 > `{{STATE_DIR}}`); you ship from and always run in
@@ -74,15 +74,12 @@ Run these, in order, and write the result as the first bullet under
    not relayed. `WAKE succession complete` or `WAKE succession partial` is
    informational: write fresh nonces into `## Live state`, re-arm **without `--succession`**.
    Then close its window, re-ask judges: `chief-sections/successor-start.md`.
-10. **Start the event waiter now.** Run `chief-wait.sh` **once** with the
-    **Bash tool's `run_in_background: true` AND `timeout: 7200000`**; the harness
-    re-invokes you when it exits:
-    `bash scripts/handover/chief-kit/chief-wait.sh "{{INBOX}}" --doc "<this file>" --token <your token> --workers "<absolute worker docs>" [--succession {{SESSION_NAME}}]`
-    It exits on the first real event (`WAKE telegram | tick | underfilled |
-    tick-fail | worker-silent`), so an idle chief takes **zero** turns; a WAKE may add an
-    `absorbed since last wake:` wraps/merges line. **Re-start it in the
-    turn that handles each wake and on every dispatch and wrap** (`TaskStop` the
-    old one, absolute worker doc paths) or you go deaf. On `worker-silent` relaunch
+10. **Start the approved waiter mode now.** Stream mode stays paused until the parent accepts the native
+    Claude Monitor proof (delivery, session end). Then arm **Monitor** (`timeout_ms: 1800000`):
+    `bash scripts/handover/chief-kit/chief-wait.sh "{{INBOX}}" --stream --since prev-arm --doc "<this file>" --token <your token> --workers-from "{{FLEET_MANIFEST}}" [--succession {{SESSION_NAME}}]`
+    A WAKE may add an `absorbed since last wake:` wraps/merges line. Re-arm only on `REARM`, using your last seen seq
+    (`prev-arm` when unsure); on `STOPPED`, a refusal or `waiter-error`, read `waiter.md` before any arm.
+    Before approval keep the one-shot Bash arm (`run_in_background: true`, `timeout: 7200000`), re-armed per wake (`waiter.md`). On `worker-silent` relaunch
     that worker from a RESUME doc or run its blocked step yourself, then tell the
     operator which. Record the task id in your first bullet (`cat "<inbox>.wait"` is the
     heartbeat); wake keys, states, fleet-manifest arming: `chief-sections/waiter.md`.

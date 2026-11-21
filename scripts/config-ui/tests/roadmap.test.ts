@@ -3,7 +3,7 @@
 // worker -> Jira sync plan the chief kit writes, and the librarian's ready-to-approve lists. Read-only throughout.
 import { test, expect, afterEach } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { legSync, readRoadmap, SYNC_LABEL } from "../roadmap";
@@ -1607,10 +1607,98 @@ const owedUi = { version: null, theme: null };
 const waitingSec = (html: string) => html.match(/<section id="rm-waiting"[\s\S]*?<\/section>/)?.[0] ?? "";
 const noChains = { state: "absent", reason: "no chain registry" };
 
-test("Board: an unsigned spec is a Waiting on you row with the ticket's title, a context line and the action, and leaves once its record lands", () => {
+test("view parity: operator-labelled roadmap rows follow shared terminal buckets and preserve non-shipping resolutions", () => {
+  const s = station();
+  const rows = JSON.parse(readFileSync(resolve(import.meta.dir, "../../handover/chief-kit/fixtures/t1-views.json"), "utf8")).statuses;
+  for (const [i, row] of rows.entries()) writeFileSync(join(s.mirror, `HIMMEL-${101 + i}.md`), issue(101 + i, row.status, row.category, ["v1.1.2"], `status-${101 + i}`, ["operator-decision"]));
+  writeFileSync(join(s.mirror, "HIMMEL-121.md"), issue(121, "Done", "Done", ["v1.1.2"], "duplicate done", ["operator"], "", "Duplicate"));
+  writeFileSync(join(s.mirror, "HIMMEL-122.md"), issue(122, "Resolved", "To Do", ["v1.1.2"], "duplicate resolved", ["operator"], "", "Duplicate"));
+  writeFileSync(join(s.mirror, "HIMMEL-123.md"), issue(123, "Closed", "Done", ["v1.1.2"], "closed fixed", ["operator"], "", "Fixed"));
+  writeFileSync(join(s.mirror, "HIMMEL-124.md"), issue(124, "To Do", "To Do", ["v1.1.2"], "corrupt-cat", ["operator"]).replace('statusCategory: "To Do"', 'statusCategory: "Done'));
+  const r = read(s), tickets = byKey(r);
+  expect(rows.map((_: unknown, i: number) => tickets[101 + i].b)).toEqual(rows.map((row: any) => row.bucket));
+  expect([tickets[121].b, tickets[122].b, tickets[123].b]).toEqual(["wont", "wont", "wont"]);
+  expect(tickets[124].b).toBe("todo");
+  const waiting = waitingSec(renderBoard(r, owedUi, { chains: noChains }));
+  expect([...waiting.matchAll(/status-(\d+)/g)].map((m) => Number(m[1]))).toEqual([101, 115, 116, 117]);
+  expect(waiting).toContain("corrupt-cat");
+});
+
+test("T1 responsibility: board and tracker fixtures keep chief work out of the operator count", async () => {
+  const { readOwed } = await import("../board");
+  const fixture = JSON.parse(readFileSync(resolve(import.meta.dir, "../../handover/chief-kit/fixtures/t1-views.json"), "utf8"));
+  const s = station(), bucket = join(s.d, "bucket"), designs = join(bucket, "specs", "designs"), state = join(s.d, "tick");
+  mkdirSync(designs, { recursive: true }); mkdirSync(state);
+  const doc = join(bucket, "chief.md"), handoff = join(bucket, "chief-HANDOFF.md");
+  for (const row of fixture.specs) {
+    writeFileSync(join(designs, `${row.key}-fixture.md`), `# spec\n${row.marker}\n`);
+    writeFileSync(join(designs, `${row.key}-fixture.md.critic-spec-r1.md`), "SPEC CLEAN\n");
+  }
+  seedSpecs(join(bucket, "specs"));
+  writeFileSync(handoff, "## Open operator items\n- <placeholder>\n");
+  const lines = fixture.holds.map((r: any) => `${r.key} hold fixture`);
+  writeFileSync(doc, `## Live state\nqueue: ${fixture.queue.map((r: any) => `${r.key} ${r.text}`).join(" | ")}\n${lines.map((l: string) => `pool-disposition: ${l}`).join("\n")}\n`);
+  const { createHash } = await import("node:crypto");
+  writeFileSync(join(state, "pool-holds-chief.json"), JSON.stringify({ rows: fixture.holds.map((r: any, i: number) => ({ ...r, verb: "hold", line: createHash("sha256").update(lines[i]).digest("hex").slice(0, 12) })) }));
+  const env = { PATH: process.env.PATH, HOME: s.d, HIMMEL_JIRA_MIRROR: s.mirror, HIMMEL_BUCKET_DIR: bucket, HIMMEL_CHIEF_DOC: doc, TICK_STATE_DIR: state };
+  const o = readOwed(env);
+  if (o.state !== "ok") throw new Error(o.reason);
+  for (const [source, rows] of [["unsigned spec", fixture.specs], ["chief doc", fixture.queue], ["pool hold", fixture.holds]] as const) {
+    expect(o.items.filter((i) => i.source === source).map((i) => [i.key, i.actor])).toEqual(rows.map((r: any) => [r.key, r.actor]));
+  }
+  expect(o.items.filter((i) => i.source === "handoff")).toEqual([]);
+  const html = renderBoard(read(s), owedUi, { chains: noChains, owed: o });
+  expect(waitingSec(html)).not.toContain("ordinary spec hygiene");
+  expect(waitingSec(html)).toContain("paid spend grant");
+  expect(html).toContain('id="rm-chief-wait"');
+  expect(html).toContain("Reconciliation");
+  expect(html).toContain("source unread");
+  writeFileSync(join(designs, "HIMMEL-7-fixture.md"), Buffer.from([0xff]));
+  const unread = readOwed(env);
+  expect(unread.state === "ok" && unread.items.find((i) => i.source === "unsigned spec" && i.key === "HIMMEL-7")?.actor).toBe("unknown");
+  expect(unread.state === "ok" && unread.skipped).toContain("HIMMEL-7-fixture.md");
+  writeFileSync(handoff, '## Open operator items\n- HIMMEL-2 "approve the held spend"\n');
+  const decisions = join(bucket, "specs", "decisions"); mkdirSync(decisions, { recursive: true });
+  writeFileSync(join(decisions, "verbatim-decision-1.txt"), `${K(2)}: "approve the held spend"\n`);
+  utimesSync(handoff, 1000, 1000);
+  const answered = readOwed(env);
+  expect(answered.state === "ok" && answered.items.find((i) => i.source === "handoff")?.actor).toBe("chief");
+});
+
+test("T1 responsibility: unknown, legacy and unread evidence stays visible without an operator count", () => {
   const r = read(station());
-  const spec = { source: "unsigned spec", key: K(2), title: "Orphaned work", ctx: "HIMMEL-2-orphans.md: latest critic round 1 reads SPEC CLEAN, no spec row in operator.jsonl", act: "sign the spec, or rule on its findings" };
-  const sec = waitingSec(renderBoard(r, owedUi, { drift: null, chains: noChains, owed: { state: "ok", items: [spec], unread: [] } }));
+  const html = renderBoard(r, owedUi, { chains: noChains, owed: { state: "ok", unread: ["round ledger"], items: [
+    { source: "chief doc", key: null, title: "ownership not established", ctx: "legacy evidence", act: "reconcile" },
+    { actor: "unknown", source: "pool hold", key: null, title: "hold source unread", ctx: "source failed", act: "reconcile" },
+    { actor: "worker", source: "chief doc", key: null, title: "worker action", ctx: "worker owns it", act: "finish" },
+    { actor: "external", source: "chief doc", key: null, title: "external event", ctx: "wait for receipt", act: "observe" },
+  ] } });
+  expect(waitingSec(html)).toBe("");
+  for (const text of ["Reconciliation", "ownership not established", "hold source unread", "round ledger not read", "worker action", "external event"]) expect(html).toContain(text);
+});
+
+test("T1 readOwed: affirmative terminal status/category suppresses obsolete spec obligations", async () => {
+  const { readOwed } = await import("../board");
+  const s = station(), bucket = join(s.d, "bucket"), designs = join(bucket, "specs", "designs");
+  mkdirSync(designs, { recursive: true });
+  const rows = JSON.parse(readFileSync(resolve(import.meta.dir, "../../handover/chief-kit/fixtures/t1-views.json"), "utf8")).statuses;
+  for (const name of readdirSync(s.mirror)) if (name.endsWith(".md")) rmSync(join(s.mirror, name));
+  for (const [i, row] of rows.entries()) {
+    writeFileSync(join(s.mirror, `HIMMEL-${i + 1}.md`), `---\nkey: "HIMMEL-${i + 1}"\nstatus: ${JSON.stringify(row.status)}\nstatusCategory: ${JSON.stringify(row.category)}\nfixVersions: ["v1.1.2"]\nlabels: []\n---\n# HIMMEL-${i + 1}: status fixture\n`);
+    writeFileSync(join(designs, `HIMMEL-${i + 1}.md.critic-spec-r1.md`), "SPEC CLEAN\n");
+  }
+  seedSpecs(join(bucket, "specs"));
+  const o = readOwed({ PATH: process.env.PATH, HOME: s.d, HIMMEL_JIRA_MIRROR: s.mirror, HIMMEL_BUCKET_DIR: bucket });
+  if (o.state !== "ok") throw new Error(o.reason);
+  expect(o.items.map((i) => i.key)).toEqual(["HIMMEL-1", "HIMMEL-15", "HIMMEL-16", "HIMMEL-17"]);
+});
+
+test("Board: an ordinary unsigned spec stays chief-visible and leaves once its record lands", () => {
+  const r = read(station());
+  const spec = { actor: "chief", source: "unsigned spec", key: K(2), title: "Orphaned work", ctx: "HIMMEL-2-orphans.md: latest critic round 1 reads SPEC CLEAN, no spec row in operator.jsonl", act: "sign the spec, or rule on its findings" };
+  const html = renderBoard(r, owedUi, { drift: null, chains: noChains, owed: { state: "ok", items: [spec], unread: [] } });
+  expect(waitingSec(html)).toBe("");
+  const sec = html.match(/<section id="rm-chief-wait"[\s\S]*?<\/section>/)?.[0] ?? "";
   expect(sec).toContain("Orphaned work"); // the title, never a bare key
   expect(sec).toContain("latest critic round 1 reads SPEC CLEAN");
   expect(sec).toContain("Action: sign the spec, or rule on its findings");
@@ -1618,7 +1706,7 @@ test("Board: an unsigned spec is a Waiting on you row with the ticket's title, a
   expect(renderBoard(r, owedUi, { drift: null, chains: noChains, owed: { state: "ok", items: [], unread: [] } })).not.toContain("rm-waiting");
   // a read that failed is said, never shown as nobody owing the operator anything
   const bad = renderBoard(r, owedUi, { drift: null, chains: noChains, owed: { state: "absent", reason: "no bucket" } });
-  expect(bad).not.toContain("rm-waiting");
+  expect(waitingSec(bad)).toBe("");
   expect(bad).toContain("the operator-owed sources not read");
   const part = renderBoard(r, owedUi, { drift: null, chains: noChains, owed: { state: "ok", items: [], unread: ["handoff items"] } });
   expect(part).toContain("handoff items not read");
@@ -1650,8 +1738,8 @@ test("Board: an operator hold on a ticket with an open PR is a Waiting on you ro
 test("Board: a chief doc line naming a ticket joins that ticket's row, and a HANDOFF item naming none is a row of its own, each with the action", () => {
   const r = read(station());
   const items = [
-    { source: "chief doc", key: K(5), title: "Resumed work", ctx: "HIMMEL-5 operator sign-off before the merge", act: "the operator acts on what the line names" },
-    { source: "handoff", key: null, title: "9271: run the apply at the station", ctx: "VE-HANDOFF.md", act: "answer the open item" },
+    { actor: "operator", source: "chief doc", key: K(5), title: "Resumed work", ctx: "HIMMEL-5 operator sign-off before the merge", act: "the operator acts on what the line names" },
+    { actor: "operator", source: "handoff", key: null, title: "9271: run the apply at the station", ctx: "VE-HANDOFF.md", act: "answer the open item" },
   ];
   const sec = waitingSec(renderBoard(r, owedUi, { drift: null, chains: noChains, owed: { state: "ok", items, unread: [] } }));
   expect(sec).toContain("Resumed work");
@@ -1693,7 +1781,7 @@ test("readOwed: reads the unsigned specs, the newest chief doc's lines naming th
   expect(o.items.find((i) => i.key === K(1))!.ctx).toContain("latest critic round 1 reads SPEC CLEAN");
   expect(o.items.find((i) => i.key === K(7))!.ctx).toContain("latest critic round 3 reads SPEC FINDINGS 1");
   const chief = o.items.filter((i) => i.source === "chief doc");
-  expect(chief.map((i) => i.key)).toEqual([K(5), null]); // 4 is Done in v1.1.1, so its title is the line itself; what follows " || " is history, so the old wait named there is no item
+  expect(chief.map((i) => i.key)).toEqual([K(5), K(4)]); // the previous version's open ticket keeps its identity; text after " || " is history
   expect(chief[0].title).toBe("Resumed work");
   expect(o.items.filter((i) => i.source === "handoff").map((i) => i.title)).toEqual(["9271: run the apply at the station"]);
   // no HANDOFF: that source is named, the others still read
@@ -1746,7 +1834,7 @@ test("readOwed: the tick's pool-holds file adds the Blocked-on-you rows of the g
   expect(of(4)).toBeUndefined();
   expect(of(5)).toBeUndefined();
   const chief = o.items.filter((i) => i.source === "chief doc");
-  expect(chief.map((i) => i.key ?? i.title)).toEqual([`${K(6)} question operator words: still asked`]);
+  expect(chief.map((i) => i.key)).toEqual([K(6)]);
   expect(o.unread).toEqual(["handoff items"]);
   gdDoc("question one more round, reworded authority=O-v1.1.3-0001");
   const moved = readOwed(env);
@@ -1762,7 +1850,7 @@ test("readOwed: the tick's pool-holds file adds the Blocked-on-you rows of the g
   rmSync(join(state, `pool-holds-${stem}.json`));
   const gone = readOwed(env);
   expect(gone.state === "ok" && gone.unread).toEqual(["handoff items", "pool holds"]);
-  expect(gone.state === "ok" && gone.items.filter((i) => i.source === "chief doc").map((i) => i.key ?? i.title)).toEqual([K(2), `${K(6)} question operator words: still asked`]);
+  expect(gone.state === "ok" && gone.items.filter((i) => i.source === "chief doc").map((i) => i.key)).toEqual([K(2), K(6)]);
 });
 
 test("readOwed: the round, the classes and the open operator-critical findings come from the round ledger; a ledger that cannot be read skips the specs", async () => {
@@ -2126,12 +2214,12 @@ test("9559 slice 3: the interim boxed-section rule is gone and the phone keeps a
   expect(css).toMatch(/@media \(max-width:760px\)\{[^@]*\.cp \.rm-sdrift :is\(th,td\):is\(:nth-child\(3\),:nth-child\(4\),:nth-child\(5\)\)\{display:none\}/);
 });
 
-test("Board: an unclosed worker is listed apart from Waiting on you and leaves the operator count at 0, while an owed item without a receipt counts", () => {
+test("Board: unclosed workers and undelivered chief replies leave the operator count at zero", () => {
   const r = read(station());
   const ch = chainsOk();
   ch.tickets[K(5)].state = "in flight";
-  const worker = { source: "unclosed worker", key: null, label: "N5805", since: Math.floor(Date.now() / 1000) - 7200, title: "N5805 is finished and its window is still open", ctx: "held", act: "the chief closes it" };
-  const owedItem = { source: "owed undelivered", key: null, title: "sig-9608: sign the spec", ctx: "OWED sig-9608 has no DELIVERED receipt", act: "the chief sends it" };
+  const worker = { actor: "chief", source: "unclosed worker", key: null, label: "N5805", since: Math.floor(Date.now() / 1000) - 7200, title: "N5805 is finished and its window is still open", ctx: "held", act: "the chief closes it" };
+  const owedItem = { actor: "chief", source: "owed undelivered", key: null, title: "sig-9608: sign the spec", ctx: "OWED sig-9608 has no DELIVERED receipt", act: "the chief sends it" };
   const only = renderBoard(r, { version: null, theme: null }, { drift: null, chains: ch, owed: { state: "ok", items: [worker], unread: [] } });
   expect(only).not.toContain('id="rm-waiting"');
   expect(asideOf(only)).toContain("0 tickets wait for you, any version");
@@ -2141,7 +2229,7 @@ test("Board: an unclosed worker is listed apart from Waiting on you and leaves t
   expect(chiefSec).toContain("held 2 h");
   expect(chiefSec).toContain("Action: the chief closes it");
   const both = renderBoard(r, { version: null, theme: null }, { drift: null, chains: ch, owed: { state: "ok", items: [worker, owedItem], unread: [] } });
-  expect(waitingSec(both)).toContain("sig-9608: sign the spec");
+  expect(both.match(/<section id="rm-chief-wait"[\s\S]*?<\/section>/)?.[0]).toContain("sig-9608: sign the spec");
   expect(waitingSec(both)).not.toContain("N5805");
-  expect(asideOf(both)).toContain("1 ticket waits for you, any version");
+  expect(asideOf(both)).toContain("0 tickets wait for you, any version");
 });

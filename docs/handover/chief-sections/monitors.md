@@ -96,13 +96,11 @@ left a state file.
 
 `chief-kit/denied-launch-alert.sh` sends the operator ONE `DENIED-LAUNCH <worker>` Telegram per classifier-denied `headed-arm-worker.sh` launch (worker, tool and the local log path only; the denied command and reason stay on the host). Run it by hand after a launch that stalls; the waiter does not call it yet.
 
-Five, and no more — every event wakes a full-context turn, so each one filters
-to terminal-state changes and emits nothing otherwise. The tick and Telegram
-rows are **not** `Monitor` arms: both run inside the one event waiter,
-`chief-wait.sh`, started in ACTION ZERO step 10 with Bash
-`run_in_background`. Never arm them as `Monitor` loops — the
-tool caps an arm at 30 min, and every expiry costs a full-context turn only to
-re-arm.
+Five, and no more — each filters to actionable changes. Tick and Telegram run
+inside the single step-10 waiter. Approved stream mode arms `chief-wait.sh
+--stream` under Monitor (`timeout_ms: 1800000`); its bounded supervisor handles
+relaunch/replay and requests re-arm before the cap. One-shot mode uses Bash
+`run_in_background`. Never add separate tick or Telegram Monitor loops.
 
 | Monitor | Cadence | What it is |
 |---|---|---|

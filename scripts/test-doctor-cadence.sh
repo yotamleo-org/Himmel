@@ -43,6 +43,7 @@ if [ -n "${STUB_GATE:-}" ]; then
     while [ ! -f "$STUB_GATE" ] && [ "$i" -lt 100 ]; do sleep 0.05; i=$((i + 1)); done
     [ -f "$STUB_GATE" ] || exit 1
 fi
+[ -z "${GC_STUB_LOG:-}" ] || echo doctor >> "$GC_STUB_LOG"
 cat "$STUB_OUT"
 SH
 git -C "$P" add -A
@@ -510,6 +511,219 @@ check "concurrent arms both exit 0" "0 0" "$r1 $r2"
 check "concurrent arms keep the doctor entry" 1 "$(grep -c '# HIMMEL-Doctor' "$FAKE_CRON")"
 check "concurrent arms keep the morning-report entry" 1 "$(grep -c '# HIMMEL-MorningReport' "$FAKE_CRON")"
 check "concurrent arms keep the unrelated job" 1 "$(grep -c 'keepme' "$FAKE_CRON")"
+
+# 12. a run prunes the holds registers (bounded gc, no overlap) before the doctor reads them.
+HOLDS_PY="$P/scripts/handover/chief-kit/holds.py"; mkdir -p "$(dirname "$HOLDS_PY")"
+cat > "$HOLDS_PY" <<'PY'
+import os, sys, time
+repo = sys.argv[sys.argv.index('--repo') + 1]
+if sys.argv[1] == 'repo-gone':
+    sys.exit(1 if os.path.lexists(repo) else 0)
+log = os.environ['GC_STUB_LOG']
+open(log, 'a').write('gc %s\n' % repo)
+n = sum(1 for l in open(log) if l.rstrip('\n') == 'gc %s' % repo)
+time.sleep(float(os.environ.get('GC_STUB_SLEEP', '0')))
+mode = os.environ.get('GC_STUB_MODE', 'complete')
+if mode == 'fail':
+    sys.exit(1)
+if mode == 'busy' or repo == os.environ.get('GC_STUB_BUSY_REPO'):
+    print('gc busy: another pass holds this register')
+elif mode == 'partial' or (mode == 'partial2' and n < 3):
+    print('gc visited=1 removed=0 rows=9 cycle=partial')
+else:
+    print('gc visited=1 removed=0 rows=9 cycle=complete')
+PY
+HREG="$HOME/.himmel/state/holds"
+esc_w() { local s="${1//%/%25}"; printf '%s' "${s//\//%2F}"; }
+GC_LOG="$W/gc.log"; export GC_STUB_LOG="$GC_LOG"
+gc_reset() { rm -rf "$HREG" "$STATE"; : > "$GC_LOG"; mkdir -p "$HREG"; }
+gc_reg() { local r; for r in "$@"; do mkdir -p "$r" "$HREG/$(esc_w "$r")"; done; }
+gc_calls() { grep -c '^gc ' "$GC_LOG" || true; }
+doctor_out "" ""
+
+gc_reset; gc_reg "$W/hr-live" "$W/hr-live2" "$P"; mkdir -p "$HREG/$(esc_w "$W/hr-gone")"
+run_cad_ok "a run with registers"
+check "gc runs on each register of an existing repo, the primary's first, then the doctor" "gc $P
+gc $W/hr-live
+gc $W/hr-live2
+doctor" "$(cat "$GC_LOG")"
+[ -s "$STATE/holds-gc.log" ] && pass "the pass leaves a run log in the state dir" || fail "the pass leaves a run log in the state dir"
+
+gc_reset; gc_reg "$P"
+GC_STUB_MODE=partial2 run_cad_ok "a run with a register needing 3 passes"
+check "passes repeat while the cycle is partial and stop at complete" 3 "$(gc_calls)"
+gc_reset; gc_reg "$P"
+GC_STUB_MODE=partial DOCTORCAD_HOLDS_GC_PASSES=4 run_cad_ok "a run with an endless register"
+check "the pass count per register is capped" 4 "$(gc_calls)"
+case "$(tail -n 1 "$STATE/holds-gc.log")" in *"run registers=1 served=1 starved=0 partial=1 failed=0 passes=4") pass "a pass-capped register remains partial in the run summary" ;; *) fail "a pass-capped register remains partial in the run summary ($(tail -n 1 "$STATE/holds-gc.log"))" ;; esac
+gc_reset; gc_reg "$P"
+GC_STUB_MODE=busy run_cad_ok "a run whose register is busy"
+check "a busy answer ends the register's passes at once" 1 "$(gc_calls)"
+# a busy answer judged nothing: it is not served and not progress, and the register is retried first by the next run
+case "$(tail -n 1 "$STATE/holds-gc.log")" in *"run registers=1 served=0 starved=1 partial=0 failed=0 passes=1") pass "a busy register is starved in the run summary, not served" ;; *) fail "a busy register is starved in the run summary, not served ($(tail -n 1 "$STATE/holds-gc.log"))" ;; esac
+check "a register that answered busy is named for the next run" "$P" "$(cat "$STATE/holds-gc.next" 2>/dev/null)"
+gc_reset; gc_reg "$W/hr-live" "$W/hr-live2" "$P"
+GC_STUB_BUSY_REPO="$W/hr-live" run_cad_ok "a run where one of three registers is busy"
+check "the busy register does not stop the others: each still gets its pass" "gc $P
+gc $W/hr-live
+gc $W/hr-live2
+doctor" "$(cat "$GC_LOG")"
+case "$(tail -n 1 "$STATE/holds-gc.log")" in *"run registers=3 served=2 starved=1 partial=0 failed=0 passes=3") pass "two served and one starved when one register is busy" ;; *) fail "two served and one starved when one register is busy ($(tail -n 1 "$STATE/holds-gc.log"))" ;; esac
+: > "$GC_LOG"
+run_cad_ok "the next run after a busy register"
+check "the register that answered busy is retried first by the next run" "gc $W/hr-live" "$(grep '^gc ' "$GC_LOG" | head -n 1)"
+case "$(tail -n 1 "$STATE/holds-gc.log")" in *"run registers=3 served=3 starved=0 partial=0 failed=0 passes=3") pass "the retried register is served once it answers" ;; *) fail "the retried register is served once it answers ($(tail -n 1 "$STATE/holds-gc.log"))" ;; esac
+check "a clean run leaves no retry mark" "no" "$([ -e "$STATE/holds-gc.next" ] && echo yes || echo no)"
+# fairness: every register gets one pass before any gets a second; a register the budget starved is served first on the next run
+gc_reset; gc_reg "$W/hr-live" "$W/hr-live2" "$P"
+GC_STUB_MODE=partial DOCTORCAD_HOLDS_GC_PASSES=2 run_cad_ok "a run with three endless registers"
+check "passes go round the registers (one each, then a second each), not all of them to the first" "gc $P
+gc $W/hr-live
+gc $W/hr-live2
+gc $P
+gc $W/hr-live
+gc $W/hr-live2
+doctor" "$(cat "$GC_LOG")"
+gc_reset; gc_reg "$W/hr-live" "$W/hr-live2" "$P"
+GC_STUB_MODE=partial GC_STUB_SLEEP=2.5 DOCTORCAD_HOLDS_GC_BUDGET=4 run_cad_ok "a run whose passes outlast the budget"
+check "a budget that covers two passes gives two registers one pass each, not the primary two" "gc $P
+gc $W/hr-live
+doctor" "$(cat "$GC_LOG")"
+case "$(tail -n 1 "$STATE/holds-gc.log")" in *"run registers=3 served=2 starved=1 partial=2 failed=0 passes=2") pass "the run summary names the starved register count" ;; *) fail "the run summary names the starved register count ($(tail -n 1 "$STATE/holds-gc.log"))" ;; esac
+: > "$GC_LOG"
+GC_STUB_MODE=partial GC_STUB_SLEEP=2.5 DOCTORCAD_HOLDS_GC_BUDGET=4 run_cad_ok "the next run after a starved register"
+check "the register the last run starved is served first by the next" "gc $W/hr-live2" "$(grep '^gc ' "$GC_LOG" | head -n 1)"
+if [ "${DOCTORCAD_TEST_GREP_ERROR:-0}" = 0 ]; then
+    # the extra passes rotate too: a run that spends its budget in a second round leaves the next run to start where it stopped
+    gc_reset; gc_reg "$W/hr-live" "$W/hr-live2" "$P"
+    GC_STUB_MODE=partial GC_STUB_SLEEP=2 DOCTORCAD_HOLDS_GC_BUDGET=8 run_cad_ok "a run with a budget for four passes over three registers"
+    check "four passes over three registers: one each, then the primary again" "gc $P
+gc $W/hr-live
+gc $W/hr-live2
+gc $P
+doctor" "$(cat "$GC_LOG")"
+    : > "$GC_LOG"
+    GC_STUB_MODE=partial GC_STUB_SLEEP=2 DOCTORCAD_HOLDS_GC_BUDGET=8 run_cad_ok "the next run with the same budget"
+    check "the next run starts at the register the budget stopped at, so the extra pass is not always the primary's" "gc $W/hr-live" "$(grep '^gc ' "$GC_LOG" | head -n 1)"
+fi
+gc_reset; gc_reg "$W/hr-live" "$P"
+GC_STUB_MODE=partial DOCTORCAD_HOLDS_GC_BUDGET=0 run_cad_ok "a run whose budget is smaller than one pass"
+check "a budget below one pass still runs one pass, so progress never stops" "gc $P
+doctor" "$(cat "$GC_LOG")"
+: > "$GC_LOG"
+GC_STUB_MODE=partial DOCTORCAD_HOLDS_GC_BUDGET=0 run_cad_ok "the next run with no budget"
+check "... and the register it left out goes first on the next run" "gc $W/hr-live
+doctor" "$(cat "$GC_LOG")"
+# a budget with a leading zero is a decimal number: read as octal, 08 aborts the pass
+gc_reset; gc_reg "$P"
+GC_STUB_MODE=partial DOCTORCAD_HOLDS_GC_PASSES=2 DOCTORCAD_HOLDS_GC_BUDGET=08 run_cad_ok "a run whose budget is 08"
+check "a budget of 08 does not abort the pass: the register gets its passes" 2 "$(gc_calls)"
+case "$(tail -n 1 "$STATE/holds-gc.log")" in *"run registers=1 served=1 starved=0 partial=1 failed=0 passes=2") pass "a budget of 08 still ends in the run summary" ;; *) fail "a budget of 08 still ends in the run summary ($(tail -n 1 "$STATE/holds-gc.log"))" ;; esac
+gc_reset; gc_reg "$P"
+GC_STUB_MODE=fail run_cad_ok "a run whose gc fails"
+check "a failing gc never fails the run: the doctor still ran" "gc $P
+doctor" "$(cat "$GC_LOG")"
+gc_reset
+run_cad_ok "a run with no holds register"
+check "no register: no gc call, the doctor still ran" "doctor" "$(cat "$GC_LOG")"
+
+# no overlap: a second run while one is inside the doctor returns at once and runs no gc
+gc_reset; gc_reg "$P"; : > "$STUB_WHERE"; rm -f "$W/ovl.release"
+STUB_GATE="$W/ovl.release" run_cad &
+OVL=$!
+n=0; while [ ! -s "$STUB_WHERE" ] && [ "$n" -lt 100 ]; do sleep 0.05; n=$((n + 1)); done
+run_cad
+check "a run that finds the lock held runs no second gc" 1 "$(gc_calls)"
+touch "$W/ovl.release"; wait "$OVL"; check "the run that held the lock exits 0" 0 "$?"
+
+# a missing holds.py is not an error (an older primary checkout)
+gc_reset; gc_reg "$P"; mv "$HOLDS_PY" "$HOLDS_PY.off"
+run_cad_ok "a run whose primary has no holds.py"
+check "no holds.py: no gc call, the doctor still ran" "doctor" "$(cat "$GC_LOG")"
+mv "$HOLDS_PY.off" "$HOLDS_PY"
+
+# status names the last gc pass, so an installed schedule can be seen to have used it
+gc_reset; gc_reg "$P"
+run_cad_ok "a run for the status line"
+st="$(bash "$P/scripts/doctor-cadence.sh" status 2>&1)"
+case "$st" in *"holds gc"*"run registers=1 served=1 starved=0 partial=0 failed=0 passes=1"*) pass "status shows this run's summary stamp, not the last pass line" ;; *) fail "status shows this run's summary stamp ($st)" ;; esac
+case "$(cat "$STATE/holds-gc.log")" in *"gc $P: gc visited="*"run registers=1"*) pass "the log keeps the pass line above the summary" ;; *) fail "the log keeps the pass line above the summary ($(cat "$STATE/holds-gc.log"))" ;; esac
+gc_reset; gc_reg "$W/hr-live" "$P"
+GC_STUB_MODE=fail run_cad_ok "a run whose gc fails everywhere"
+case "$(tail -n 1 "$STATE/holds-gc.log")" in *"run registers=2 served=2 starved=0 partial=0 failed=2 passes=2") pass "a failure of any register shows in the summary" ;; *) fail "a failure of any register shows in the summary ($(tail -n 1 "$STATE/holds-gc.log"))" ;; esac
+# an early return writes its own stamp, so status never shows a pass from an older run
+gc_reset; gc_reg "$P"; mv "$HOLDS_PY" "$HOLDS_PY.off"
+mkdir -p "$STATE"; printf '2020-01-01T00:00:00 gc /old/repo: gc visited=1 cycle=complete\n' > "$STATE/holds-gc.log"
+run_cad_ok "a run with a stale log and no holds.py"
+case "$(cat "$STATE/holds-gc.log")" in *"/old/repo"*) fail "a stale pass line survives an early return" ;; *"skipped: no holds.py"*) pass "an early return replaces the stale log with its own stamp" ;; *) fail "an early return stamps the log ($(cat "$STATE/holds-gc.log"))" ;; esac
+mv "$HOLDS_PY.off" "$HOLDS_PY"
+rm -f "$STATE/holds-gc.log"
+st="$(bash "$P/scripts/doctor-cadence.sh" status 2>&1)"
+case "$st" in *"holds gc"*"no pass recorded"*) pass "status says so when no pass is recorded" ;; *) fail "status says so when no pass is recorded ($st)" ;; esac
+
+# eventual progress with the REAL holds.py (its BOX shrunk by a shim): one pass per run still prunes a register bigger than a box
+if [ "${DOCTORCAD_TEST_GREP_ERROR:-0}" = 0 ]; then
+    cat > "$HOLDS_PY" <<'PY'
+import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location('holds_real', os.environ['REAL_HOLDS'])
+h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
+h.BOX = 1.0
+sys.exit(h.main(sys.argv[1:]))
+PY
+    export REAL_HOLDS="$DIR/handover/chief-kit/holds.py"
+    # shellcheck disable=SC2016  # the stub's $3 stays literal
+    printf '#!/usr/bin/env bash\nsleep 0.4\ncase "$3" in 7*) echo OPEN ;; *) echo MERGED ;; esac\n' > "$W/gh-prog"; chmod +x "$W/gh-prog"
+    gc_reset; HPROG="$W/hr-prog"; gc_reg "$HPROG"; git -C "$HPROG" init -q
+    for i in 1 2 3 4 5 6; do printf 'PROJ-970%s\tlab\t\tpr\t700%s\n' "$i" "$i" > "$HREG/$(esc_w "$HPROG")/scripts%2Fa$i.sh"; done
+    for i in 1 2; do printf 'PROJ-979%s\tlab\t\tpr\t800%s\n' "$i" "$i" > "$HREG/$(esc_w "$HPROG")/scripts%2Fz$i.sh"; done
+    find "$HREG/$(esc_w "$HPROG")" -type f -exec touch -d '2 hours ago' {} +
+    runs=0
+    while [ "$runs" -lt 8 ] && [ -e "$HREG/$(esc_w "$HPROG")/scripts%2Fz2.sh" ]; do
+        HOLDS_GH="$W/gh-prog" DOCTORCAD_HOLDS_GC_PASSES=1 run_cad; runs=$((runs + 1))
+    done
+    check "one boxed pass per run prunes the dead rows behind a slow alive prefix within 8 runs" none "$([ -e "$HREG/$(esc_w "$HPROG")/scripts%2Fz2.sh" ] && echo row || echo none)"
+    check "... and more than one run was needed (the register was bigger than a box)" yes "$([ "$runs" -gt 1 ] && echo yes || echo no)"
+    check "... and the alive rows are all still there" 6 "$(find "$HREG/$(esc_w "$HPROG")" -type f -name 'scripts%2Fa*' | grep -c . || true)"
+    # the cadence and the doctor ask holds.py the same question about a repo: a removed repo is left alone, an unreadable one is not
+    mkdir -p "$HREG/$(esc_w "$W/hr-removed")"
+    : > "$STATE/holds-gc.log"
+    run_cad
+    case "$(cat "$STATE/holds-gc.log")" in *"gc $W/hr-removed"*) fail "the cadence swept the register of a removed repo" ;; *"skip $W/hr-removed: the repo is gone"*) pass "the register of a removed repo is not swept, and the log says why" ;; *) fail "the removed repo's register is neither swept nor named as skipped ($(cat "$STATE/holds-gc.log"))" ;; esac
+    if [ "$(id -u)" -ne 0 ]; then
+        mkdir -p "$W/hr-locked/under" "$HREG/$(esc_w "$W/hr-locked/under")"; chmod 000 "$W/hr-locked"
+        run_cad
+        chmod 700 "$W/hr-locked"
+        case "$(cat "$STATE/holds-gc.log")" in *"gc $W/hr-locked/under: gc "*) pass "a register behind an unsearchable directory is still swept (not proven removed)" ;; *) fail "a register behind an unsearchable directory is still swept ($(cat "$STATE/holds-gc.log"))" ;; esac
+        rm -rf "$W/hr-locked"
+    else
+        echo "SKIP the unsearchable-parent sweep (root searches any directory)"
+    fi
+    # the pass is scheduled, so nothing in it frees ownership by age: a row whose only sign of death is an unwrapped RESUME doc past
+    # 24 hours stays, and the count of those rows reaches the run log and the status line for a chief to decide
+    printf '#!/usr/bin/env bash\necho "sweep: no held locks"\n' > "$W/ql-none"; chmod +x "$W/ql-none"
+    gc_reset; HAGE="$W/hr-aged"; HAGE2="$W/hr-aged2"; HAGEH="$W/hr-aged-h"
+    gc_reg "$HAGE" "$HAGE2"; git -C "$HAGE" init -q; git -C "$HAGE2" init -q
+    mkdir -p "$HAGEH/u/r"
+    printf '# resume\n- 10:00 PARKED-BANK stopped for takeover\n' > "$HAGEH/u/r/PROJ-9811-N1-RESUME.md"
+    printf '# resume\n- 10:00 WRAPPED — done\n' > "$HAGEH/u/r/PROJ-9812-N1-RESUME.md"
+    printf '# resume\n- 10:00 PARKED-BANK stopped for takeover\n' > "$HAGEH/u/r/PROJ-9813-N1-RESUME.md"
+    printf '# resume\n- 10:00 PARKED-BANK stopped for takeover\n' > "$HAGEH/u/r/PROJ-9814-N1-RESUME.md"
+    touch -d '30 hours ago' "$HAGEH/u/r/PROJ-9811-N1-RESUME.md" "$HAGEH/u/r/PROJ-9812-N1-RESUME.md" "$HAGEH/u/r/PROJ-9814-N1-RESUME.md"
+    for i in 1 2 3; do printf 'PROJ-981%s\tlab\t%s\tbrief\t\n' "$i" "$HAGEH/u/r/PROJ-981$i-N1-RESUME.md" > "$HREG/$(esc_w "$HAGE")/scripts%2Fag$i.sh"; done
+    printf 'PROJ-9814\tlab\t%s\tbrief\t\n' "$HAGEH/u/r/PROJ-9814-N1-RESUME.md" > "$HREG/$(esc_w "$HAGE2")/scripts%2Fag4.sh"
+    find "$HREG" -type f -exec touch -d '2 hours ago' {} +
+    agr() { [ -e "$HREG/$(esc_w "$1")/scripts%2F$2.sh" ] && echo row || echo none; }
+    HANDOVER_DIR="$HAGEH" HOLDS_QUEUE_LOCK="$W/ql-none" run_cad_ok "a run over registers with parked workers"
+    check "a scheduled pass keeps a row whose only sign of death is an unwrapped RESUME doc past 24 hours" row "$(agr "$HAGE" ag1)"
+    check "... and keeps the same kind of row in a second register" row "$(agr "$HAGE2" ag4)"
+    check "... and keeps a row whose unwrapped RESUME doc is fresh" row "$(agr "$HAGE" ag3)"
+    check "... and still removes a row whose RESUME doc is WRAPPED" none "$(agr "$HAGE" ag2)"
+    case "$(cat "$STATE/holds-gc.log")" in *"gc $HAGE: gc visited=3 removed=1 cut=0 rows=3 cycle=complete waiting=1"*) pass "the pass line counts the rows kept for a decision" ;; *) fail "the pass line counts the rows kept for a decision ($(cat "$STATE/holds-gc.log"))" ;; esac
+    case "$(tail -n 1 "$STATE/holds-gc.log")" in *"run registers=2 served=2 starved=0 partial=0 failed=0 passes=2 waiting=2") pass "the run summary adds the rows that wait, over every register" ;; *) fail "the run summary adds the rows that wait ($(tail -n 1 "$STATE/holds-gc.log"))" ;; esac
+    st="$(bash "$P/scripts/doctor-cadence.sh" status 2>&1)"
+    case "$st" in *"holds gc"*"passes=2 waiting=2"*) pass "status shows the count of rows that wait" ;; *) fail "status shows the count of rows that wait ($st)" ;; esac
+fi
+unset GC_STUB_LOG
 
 if [ "${DOCTORCAD_TEST_GREP_ERROR:-0}" = 0 ]; then
     REAL_GREP="$(command -v grep)"

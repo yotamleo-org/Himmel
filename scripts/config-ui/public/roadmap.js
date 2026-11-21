@@ -357,7 +357,7 @@ function waitingRows(d, ch, nv, owed, prs) {
   // an owed item naming a ticket joins that ticket's row (one row per key); one naming none is a row of its own
   const loose = [];
   if (owed && owed.state === "ok") (owed.items || []).forEach((item, i) => {
-    if (item.source === "unclosed worker") return;
+    if (item.actor !== "operator") return;
     if (item.key) { const r = get(item.key, item.title, false); r.ctx.push(item.ctx); r.acts.push(item.act); }
     else loose.push({ key: "", title: item.title, labels: [], noVersion: false, ctx: [item.ctx], acts: [item.act], loose: true, id: `owed-${i}` });
   });
@@ -403,10 +403,14 @@ const heldFor = (since) => {
   return s < 3600 ? `${Math.floor(s / 60)} min` : s < 86400 ? `${Math.floor(s / 3600)} h` : `${Math.floor(s / 86400)} d`;
 };
 function chiefWaitHtml(owed) {
-  const items = owed && owed.state === "ok" ? (owed.items || []).filter((i) => i.source === "unclosed worker") : [];
-  if (!items.length) return "";
-  const row = (i) => `<li>${esc(i.label || i.title)} is finished and its window is still open${Number.isFinite(i.since) ? ` <span class="ro">held ${heldFor(i.since)}</span>` : ""}<br><span class="ro">Action: ${esc(i.act)}</span></li>`;
-  return `<section id="rm-chief-wait" aria-label="Waiting on the chief"><div class="gh">Waiting on the chief · not counted as waiting on you</div><div class="cc"><ul class="rm-waiting">${items.map(row).join("")}</ul></div></section>`;
+  const items = owed && owed.state === "ok" ? (owed.items || []) : [];
+  const actorOf = (i) => ["chief", "operator", "worker", "external"].includes(i.actor) ? i.actor : "unknown";
+  const row = (i) => `<li>${esc(i.key ? i.key + " " : "")}${esc(i.title)}${Number.isFinite(i.since) ? ` <span class="ro">held ${heldFor(i.since)}</span>` : ""}<br><span class="ro">${esc(i.ctx)} · Action: ${esc(i.act)}</span></li>`;
+  return [["chief", "rm-chief-wait", "Waiting on the chief"], ["worker", "rm-worker-wait", "Waiting on workers"], ["external", "rm-external-wait", "Waiting on external events"], ["unknown", "rm-reconcile", "Reconciliation"]].map(([actor, id, title]) => {
+    const rows = items.filter((i) => actorOf(i) === actor), warnings = actor === "unknown" ? unreadOwed(owed) : [];
+    if (!rows.length && !warnings.length) return "";
+    return `<section id="${id}" aria-label="${title}"><div class="gh">${title} · not counted as waiting on you</div><div class="cc">${warnings.length ? `<p class="sub">${warnings.map(esc).join("; ")}</p>` : ""}<ul class="rm-waiting">${rows.map(row).join("")}</ul></div></section>`;
+  }).join("");
 }
 
 function tabsHtml(d, ui, tab, ch, dr, sel) {

@@ -36,7 +36,8 @@
 #        never falls back. A call granted
 #        Edit, Write or Bash falls back only from a refusal before any request (exit 2), never from a run that started
 #        (exit 6 included), which may have half-done its edits. The fallback writes its own launch record row (lane sub-fallback).
-# Exit: the call's own code; 2 a refusal before any request; 6 the provider answered "Credit balance is too low" or
+# Exit: the call's own code; 2 a refusal before any request; 10 a managed fleet launch refused or not committed,
+#       before any request; 6 the provider answered "Credit balance is too low" or
 #       "Invalid API key" (the account is marked, and a looping caller stops instead of retrying it).
 #       When the fallback ran, its own exit code replaces any of these.
 set -u
@@ -45,6 +46,17 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CLAUDE_BIN="${HIMMEL_API_CLAUDE_BIN:-claude}"
 # shellcheck source=scripts/lib/llm-backend.sh
 . "$REPO/scripts/lib/llm-backend.sh" || { echo "claude-api: cannot load scripts/lib/llm-backend.sh -- refusing" >&2; exit 2; }
+
+# Resolve managed API scope before any fallback or alert can start a call.
+# shellcheck source=scripts/lib/fleet-launch.sh
+. "$REPO/scripts/lib/fleet-launch.sh" || exit 10
+if ! fleet_launch_prepare "${FLEET_LAUNCH_DOC:-${WORKER_SESSION_DOC:-}}" \
+    "${FLEET_LAUNCH_NAME:-${CADENCE_USAGE_WORKER:-api-managed}}" "${FLEET_LAUNCH_MANIFEST:-}"; then
+  if [ "${FLEET_LAUNCH_MANAGED:-false}" = true ]; then
+    fleet_launch_op finish >/dev/null || echo 'claude-api: managed attempt remains protected' >&2
+  fi
+  exit 10
+fi
 
 # --- failure path state: set before any refusal can fire ---
 KEY="" STATE_DIR="" WORKER_SESSION_NAME="" OUT="" FB_OUT="" PROMPT_FILE="" NO_FB="" POLICY_REPO="" FAILING_OVER=0 STOPPED=0
@@ -63,6 +75,7 @@ R_PR=""
 # Release the fleet-slot reservation at call end, only when its pid file names this shell.
 # shellcheck disable=SC2329 # invoked from the EXIT trap string below and before a fallback
 release_slot() {
+  [ "${FLEET_LAUNCH_MANAGED:-false}" != true ] || return 0
   [ -n "$WORKER_SESSION_NAME" ] || return 0
   # shellcheck source=scripts/lib/fleet-reservation-key.sh
   . "$REPO/scripts/lib/fleet-reservation-key.sh" 2>/dev/null || return 0
@@ -73,7 +86,19 @@ release_slot() {
   done
   return 0
 }
-trap 'rm -f "$OUT" "$FB_OUT" "$PROMPT_FILE" ${OUT:+"$OUT.timeout"}; release_slot' EXIT
+# shellcheck disable=SC2329  # invoked by EXIT
+api_runtime_exit() {
+  rm -f "$OUT" "$FB_OUT" "$PROMPT_FILE" ${OUT:+"$OUT.timeout"}
+  if [ "${FLEET_LAUNCH_MANAGED:-false}" = true ]; then
+    if [ "${_API_CALL_REAPED:-0}" = 1 ]; then
+      fleet_launch_outcome complete || echo 'claude-api: terminal receipt remains unknown' >&2
+    else fleet_launch_op finish >/dev/null || echo 'claude-api: managed attempt remains protected' >&2
+    fi
+    fleet_launch_release || echo 'claude-api: managed reservation remains protected' >&2
+  else release_slot
+  fi
+}
+trap api_runtime_exit EXIT
 
 # one line for the alert: the key (ours or any the caller holds) and anything key-shaped become [key], no control characters
 redact() {
@@ -203,6 +228,8 @@ run_fallback() {
 # the failure path: decide, alert once, then fall back (never returns when the fallback ran)
 fail_over() {
   local rc="$1" class="$2" reason="$3" decision token="" run=0
+  # A managed attempt never replays an ambiguous call on another lane.
+  [ "${FLEET_LAUNCH_MANAGED:-false}" != true ] || return 0
   [ "$FAILING_OVER" = 0 ] || return 0
   FAILING_OVER=1
   # a decision-525 policy refusal means a caller regressed: one quiet record for the doctor, no alert, no stamp, no
@@ -442,6 +469,9 @@ JOB_ID="${HIMMEL_API_JOB_ID:-api-$(date +%s)-$$}"
 case "$JOB_ID" in ""|*[!A-Za-z0-9._:-]*) refuse "job id has characters outside [A-Za-z0-9._:-]" ;; esac
 JOB_SAFE="$JOB_ID"
 WORKER_SESSION_NAME="claude-api:$JOB_ID"   # never the inherited CADENCE_USAGE_WORKER: it could escape the api cap
+if [ "${FLEET_LAUNCH_MANAGED:-false}" = true ]; then
+  WORKER_SESSION_NAME="$FLEET_LAUNCH_NAME"
+fi
 # the reservation is owned by THIS shell, which waits on claude below, so it
 # lives exactly as long as the call and the cap bounds real concurrency. (The default
 # owner, bank-preflight's own $$ in a command substitution, dies at once.)
@@ -535,10 +565,11 @@ descendants() {
 }
 # The call and its subprocesses get TERM first; any that ignore it are KILLed after five seconds
 # (the credit-state sweep holds the reservation for that grace), so none outlives its stop.
+# It returns 0 only when it saw every pid it stopped leave the process table; no call started, or a pid that stays, returns 1.
 # shellcheck disable=SC2329 # invoked from the signal trap and the watchdog below
 stop_call() {
   local i=0 all p
-  [ -n "$CALL_PID" ] || return 0
+  [ -n "$CALL_PID" ] || return 1
   all="$(descendants "$CALL_PID") $CALL_PID"
   # shellcheck disable=SC2086 # a list of pids
   kill -TERM $all 2>/dev/null
@@ -550,20 +581,32 @@ stop_call() {
   # shellcheck disable=SC2086
   kill -KILL $all 2>/dev/null
   wait "$CALL_PID" 2>/dev/null
+  # a pid that still answers after the KILL (a dead child its parent has not reaped, a process stuck in the kernel) is a tree not seen to end
+  i=0
+  while [ "$i" -lt 20 ]; do
+    for p in $all; do kill -0 "$p" 2>/dev/null && break; p=""; done
+    [ -n "$p" ] || return 0
+    sleep 0.1; i=$((i + 1))
+  done
+  return 1
 }
 # shellcheck disable=SC2329 # invoked from the signal trap below
 on_signal() {
   # a second TERM (the bounded wrapper's group kill) must not cut the settle short; the ignore is inherited by it
   trap '' TERM INT HUP
   [ -z "$WATCHDOG_PID" ] || kill "$WATCHDOG_PID" 2>/dev/null
-  stop_call; settle_dead; exit 143
+  # a managed attempt is reported ended only for a call this shell started and stop_call saw gone; any other stop leaves it unknown
+  if stop_call; then _API_CALL_REAPED=1; fi
+  settle_dead; exit 143
 }
 trap on_signal TERM INT HUP
 
 # --- launch: provider vars removed, endpoint pinned, only the key carried in ---
+CADENCE_USAGE_LANE=api fleet_launch_commit || { NO_FB=1; exit 10; }
 # The key is a prefix assignment, so it reaches env (and claude) through the environment, never an argv.
 # one-shot API-credit launch; bank gate, reservation and explicit --permission-mode above
 ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u ANTHROPIC_FEDERATION_RULE_ID \
+  -u FLEET_LAUNCH_ATTEMPT -u FLEET_LAUNCH_DOC -u FLEET_LAUNCH_NAME -u FLEET_LAUNCH_MANIFEST -u FLEET_LAUNCH_WORKER_INTENT -u FLEET_LAUNCH_LANE \
   -u ANTHROPIC_ORGANIZATION_ID -u ANTHROPIC_AUTH_TOKEN -u HIMMEL_API_LANE -u HIMMEL_API_KEY_ID \
   "${LLM_API_ORG_KEY_UNSET[@]}" -u HIMMEL_DOTENV_FILE -u HIMMEL_API_SNAPSHOT_OPTIONAL \
   -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE -u HIMMEL_API_KIND -u HIMMEL_API_CACHE_TTL \
@@ -580,6 +623,7 @@ CALL_PID=$!
 WATCHDOG_PID=$!
 wait "$CALL_PID"
 RC=$?
+_API_CALL_REAPED=1
 kill "$WATCHDOG_PID" 2>/dev/null
 # a cancel kills the call first and this shell right after: a default TERM here would end it before the settle below
 trap 'STOPPED=1' TERM INT HUP

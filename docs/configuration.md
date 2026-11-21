@@ -508,7 +508,7 @@ in `.env` or the launching shell):
 | `CHIEF_WAIT_READY_CI_TIMEOUT` | `30` | seconds the chief waiter's one CI read for a READY may take (`gh pr checks` on the read token through `gh-read.sh`); a timeout reads `ci=PENDING` |
 | `CHIEF_WAIT_PAUSED_REPROBE_SEC` | `300` | seconds the chief waiter waits before it probes a paused pool again (one the dispatcher answered with `# quota-pause` / `# gh-stall`, or one its outer timeout killed), so a stalled dispatcher cannot block every sample |
 | `CHIEF_WAIT_DISPOSITION_TIMEOUT` | `90` | seconds the chief waiter's `cr-disposition.sh check` for a READY may take; a cut is a stall, and the second stalled sample wakes `disposition=STALLED` |
-| `NEXT_DISPATCH_DEADLINE` | `400` | seconds `scripts/handover/chief-kit/next-dispatchable.sh` may run in all; a cut prints the one `# gh-stall` line and no rows; `0` = no bound |
+| `NEXT_DISPATCH_DEADLINE` | `400` | seconds `scripts/handover/chief-kit/next-dispatchable.sh` may run in all; a cut prints the one `# gh-stall` line and no rows; `0` = no bound; under `--why-ticket` a cut prints `UNKNOWN <KEY>: timed out after <n>s` and exits 3 |
 | `NEXT_DISPATCH_GH_TIMEOUT` | (unset) | seconds that replace every gh read bound in the dispatcher (60 or 120) and its classifier's 300 (a test seam) |
 
 The cache is a head-bound file per PR: a snapshot is used only for the head SHA

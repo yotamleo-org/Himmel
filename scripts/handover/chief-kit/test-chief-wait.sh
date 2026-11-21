@@ -350,45 +350,75 @@ if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null;
 timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/wt-ceiling-rearm.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
 check "(wt-ceiling) an unchanged alarm keeps waiting" "124" "$rc"
 check "(wt-ceiling) an unchanged alarm does not re-wake" "" "$(cat "$WORK/wt-ceiling-rearm.out")"
-# cap=<version>:<n> (a version past the residual soft cap) is in the key whole: it appearing
+# residual-cap=<version>:<n> (a version past the residual soft cap) is in the key whole: it appearing
 # or its value moving wakes once, an unchanged value stays silent on a re-arm, and its going away is no wake.
 reset_stub
 I="$(new_inbox cap-field)"
 start "$I" "$WORK/cap-field.out" --workers "N1.md"
 wait_hb "$I" || fail "(cap) no baseline heartbeat"
-sed -i 's/ denials=none/ cap=v1.1.3:16 denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+sed -i 's/ denials=none/ residual-cap=v1.1.3:16 denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 wait_exit "$WPID"
 check "(cap) a version crossing the soft cap ends the wait" "0" "$rc"
-check "(cap) the wake names the cap field" "WAKE tick changed=cap usage=PROCEED" "$(head -n1 "$WORK/cap-field.out")"
+check "(cap) the wake names the cap field" "WAKE tick changed=residual-cap usage=PROCEED" "$(head -n1 "$WORK/cap-field.out")"
 if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
 timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/cap-field-rearm.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
 check "(cap) an unchanged cap keeps waiting" "124" "$rc"
 check "(cap) an unchanged cap does not re-wake" "" "$(cat "$WORK/cap-field-rearm.out")"
 start "$I" "$WORK/cap-field-move.out" --workers "N1.md"
 wait_hb "$I" || fail "(cap) no re-armed heartbeat"
-sed -i 's/ cap=v1.1.3:16/ cap=v1.1.3:17/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+sed -i 's/ residual-cap=v1.1.3:16/ residual-cap=v1.1.3:17/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 wait_exit "$WPID"
 check "(cap) a moved cap count ends the wait" "0" "$rc"
-check "(cap) the moved count wakes as cap" "WAKE tick changed=cap usage=PROCEED" "$(head -n1 "$WORK/cap-field-move.out")"
+check "(cap) the moved count wakes as cap" "WAKE tick changed=residual-cap usage=PROCEED" "$(head -n1 "$WORK/cap-field-move.out")"
 if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
 start "$I" "$WORK/cap-field-gone.out" --workers "N1.md"
 wait_hb "$I" || fail "(cap) no cleared heartbeat"
-sed -i 's/ cap=v1.1.3:17//' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+sed -i 's/ residual-cap=v1.1.3:17//' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 wait_exit "$WPID"
 check "(cap) a cap that goes away keeps waiting" "running" "$rc"
 if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
 reset_stub
-sed -i 's/ denials=none/ cap=v1.1.3:16 denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+sed -i 's/ denials=none/ residual-cap=v1.1.3:16 denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 I="$(new_inbox cap-cut)"
 start "$I" "$WORK/cap-cut.out" --workers "N1.md"
 wait_hb "$I" || fail "(cap) no saved-cap heartbeat"
-sed -i 's/ cap=v1.1.3:16/ cap=?/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+sed -i 's/ residual-cap=v1.1.3:16/ residual-cap=?/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 wait_exit "$WPID"
-check "(cap) cap=? (a cut read) keeps the saved cap and wakes nothing" "running" "$rc"
-sed -i 's/ cap=?/ cap=v1.1.3:17/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+check "(cap) residual-cap=? (a cut read) keeps the saved cap and wakes nothing" "running" "$rc"
+sed -i 's/ residual-cap=?/ residual-cap=v1.1.3:17/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 wait_exit "$WPID"
-check "(cap) a moved cap after cap=? wakes as cap" "WAKE tick changed=cap usage=PROCEED" "$(head -n1 "$WORK/cap-cut.out")"
+check "(cap) a moved cap after residual-cap=? wakes as cap" "WAKE tick changed=residual-cap usage=PROCEED" "$(head -n1 "$WORK/cap-cut.out")"
 if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+# a wake key carrying both residual-cap= and open=: each is in the key whole, a
+# moved open count wakes as open, open=? keeps the saved value, and a key saved under the old
+# cap= name reads as residual-cap=, so the rename is no wake. RED control (chief-wait.sh before the rename):
+# the new names are not in the key, so no change is seen.
+reset_stub
+sed -i 's/ denials=none/ residual-cap=v1.1.3:16 open=v1.1.3:40 denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+I="$(new_inbox cap-open)"
+start "$I" "$WORK/cap-open.out" --workers "N1.md"
+wait_hb "$I" || fail "(open) no baseline heartbeat"
+sed -i 's/ open=v1.1.3:40/ open=v1.1.3:41/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(open) a moved open count alone wakes as open" "WAKE tick changed=open usage=PROCEED" "$(head -n1 "$WORK/cap-open.out")"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+sed -i 's/ residual-cap=v1.1.3:16 open=v1.1.3:41/ residual-cap=v1.1.3:17 open=v1.1.3:42/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+start "$I" "$WORK/cap-open-both.out" --workers "N1.md"
+wait_exit "$WPID"
+check "(open) both fields moving at once wake as both" "WAKE tick changed=residual-cap,open usage=PROCEED" "$(head -n1 "$WORK/cap-open-both.out")"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+sed -i 's/ open=v1.1.3:42/ open=?/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+start "$I" "$WORK/cap-open-cut.out" --workers "N1.md"
+wait_exit "$WPID"
+check "(open) open=? (a cut read) keeps the saved count and wakes nothing" "running" "$rc"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+sed -i 's/ residual-cap=v1.1.3:17 open=?/ residual-cap=v1.1.3:17 open=v1.1.3:42/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/cap-open-same.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+check "(open) the saved count returning is no change" "124" "$rc"
+sed -i 's/residual-cap=/cap=/' "$I.wait.state"  # gnu-ok: Linux-only kit
+timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/cap-open-migrate.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+check "(open) a key saved under the old cap= name is no change under residual-cap=" "124" "$rc"
+check "(open) and prints no wake" "" "$(cat "$WORK/cap-open-migrate.out")"
 # hreg=<live-no-rows>/<stale>/<asks> is in the key whole: a moved value wakes once, an unchanged one
 # stays silent, hreg=? keeps the saved value and its going away is no wake. RED control (chief-wait.sh before this change):
 # the waiter has no hreg key, so none of these wakes.

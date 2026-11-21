@@ -40,6 +40,9 @@ node_suites     ^scripts/handover/(console|chief)-kit/
 node_suites     ^scripts/himmelctl/lib/secret-store\.js$
 node_suites     ^plugins/(himmel-gh|himmel-jira)/
 node_suites     ^marketplace/plugins/himmel-bus/
+# scripts/jira/src/release/engine.test.ts copies the two minerva validators into a
+# fixture checkout and the release engine runs them there.
+node_suites     ^marketplace/plugins/himmel-ops/scripts/minerva-(spec-gate|trace-lint)\.sh$
 node_suites     (^|/)package(-lock)?\.json$
 
 # bun-suites, claude-startup and lint are UNGATED too (trust judge j2543g, third

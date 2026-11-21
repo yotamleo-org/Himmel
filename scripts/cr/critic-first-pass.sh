@@ -17,11 +17,19 @@
 #      treats 4 as responded and raises its citation guard; guard-less
 #      callers treat it like 1 (not clean, proceed claude-only)
 #   5  SKIPPED: the Claude critic (provider claude-api / claude-subscription)
-#      had no key, a closed API lane, exhausted credit or a bank that is not
-#      PROCEED. A clean no-op, no stdout, no score row; never a review verdict
+#      had no key, a closed API lane (HIMMEL_API_LANE not on: the launcher is
+#      never called), exhausted credit or a bank that is not PROCEED; or a
+#      Claude critic (slug claude or a claude-* model) was asked for with no
+#      --provider and the merged critics registry has no row for it (dropped
+#      or absent). A clean no-op, no stdout, no score row; never a review verdict
 #
 # Claude critic: effort = CR_CLAUDE_CRITIC_EFFORT, else the claude row's effort,
 # else medium; CR_CLAUDE_CRITIC_MAX_USD caps one API review (default 1.00).
+# A claude-api critic never falls back to the subscription silently (decision
+# 1084): the launcher runs with HIMMEL_API_FALLBACK=off, and a launcher that
+# ran on the subscription anyway is BROKE, its review dropped, with one loud
+# alert (critic-alert.sh). Provider claude-subscription runs only when a caller
+# or an overlay row names it.
 #
 # Env: CRITIC_FIRST_PASS_CAP_BYTES — diff byte cap (default 204800).
 # Bash 3.2 safe.
@@ -169,24 +177,35 @@ known_block=""
 # openai-codex. An explicit --provider still wins; a model the registry does
 # not know still falls through to hermes' default, unchanged.
 #
-# Reads the tracked, UNIVERSAL critics.json — NOT the operator's local overlay
-# — the same adopter-neutral choice advisory-rows.sh makes and for the same
-# reason: a hand-run critic must behave identically on any checkout.
-# node (not jq): the registry is already read with node in advisory-rows.sh,
-# and node is a hard himmel dependency where jq is not.
+# Reads the MERGED registry (critics.local.json over critics.json) through
+# scripts/lib/critics-config.sh, the resolver critic-panel.sh and
+# review-merge-gate.sh read, so an overlay drop reaches a hand-run or wrapped
+# critic too (decision 1085); a resolver failure falls back to the base file.
+# A Claude critic (slug claude or a claude-* model) with no registry row and no
+# --provider is absent: exit 5 SKIPPED, never a hermes call (--print-prompt makes
+# no call, so it still prints).
+# node (not jq): node is a hard himmel dependency where jq is not.
 if [ -z "$provider" ] && command -v node >/dev/null 2>&1; then
-    _cfp_reg="${CRITICS_BASE_JSON:-$SCRIPT_DIR/critics.json}"
-    if [ -f "$_cfp_reg" ]; then
-        _cfp_row="$(REG="$_cfp_reg" WSLUG="${slug:-}" WMODEL="$model" node -e '
-          const fs = require("fs");
+    _cfp_reg="$( . "$SCRIPT_DIR/../lib/critics-config.sh" 2>/dev/null && critics_config_resolve "$SCRIPT_DIR" 2>/dev/null )" || _cfp_reg=""  # swallow-ok: falls back to the base file below
+    _cfp_base_only=0
+    if [ -z "$_cfp_reg" ]; then
+        # read-sink-ok: CRITICS_BASE_JSON is the test seam for the base registry; only a row's slug and provider are read from it
+        _cfp_reg="$(cat "${CRITICS_BASE_JSON:-$SCRIPT_DIR/critics.json}" 2>/dev/null || true)"  # swallow-ok: an unreadable registry leaves the provider unset
+        _cfp_base_only=1
+    fi
+    if [ -n "$_cfp_reg" ]; then
+        # On the base-only fallback the overlay was not read, so a Claude row there
+        # may be one the overlay drops: it is never a routing target (fail closed).
+        _cfp_row="$(printf '%s' "$_cfp_reg" | WSLUG="${slug:-}" WMODEL="$model" BASE_ONLY="$_cfp_base_only" node -e '
           let panel = [];
-          try { panel = JSON.parse(fs.readFileSync(process.env.REG, "utf8")).panel || []; }
+          try { panel = JSON.parse(require("fs").readFileSync(0, "utf8")).panel || []; }
           catch (e) { panel = []; }
           const eq = (a, b) => !!a && !!b && String(a).toLowerCase() === String(b).toLowerCase();
           // --slug is the more specific key, so it decides when given; --model
           // matches otherwise. A row marked drop:true is a removal directive in
           // the overlay format, never a routing target.
           const row = panel.find(r => r && typeof r === "object" && !r.drop
+              && !(process.env.BASE_ONLY === "1" && /^(claude|api$|subscription$)/.test(String(r.provider || "")))
               && (process.env.WSLUG ? eq(r.slug, process.env.WSLUG) : eq(r.model, process.env.WMODEL)));
           if (row && row.provider) process.stdout.write((row.slug || "") + "\t" + row.provider);
         ' 2>/dev/null || true)"
@@ -199,6 +218,17 @@ if [ -z "$provider" ] && command -v node >/dev/null 2>&1; then
                 ;;
         esac
     fi
+fi
+if [ -z "$provider" ] && [ "$print_prompt" -eq 0 ]; then
+    _cfp_lslug="$(printf '%s' "${slug:-}" | tr '[:upper:]' '[:lower:]')"
+    _cfp_lmodel="$(printf '%s' "$model" | tr '[:upper:]' '[:lower:]')"
+    case "$_cfp_lslug" in claude) _cfp_lmodel="claude-" ;; esac
+    case "$_cfp_lmodel" in
+        claude-*)
+            cat >/dev/null
+            echo "critic-first-pass.sh: claude critic SKIPPED (no claude row in the merged critics registry, dropped or absent, and no --provider) — clean no-op" >&2
+            exit 5 ;;
+    esac
 fi
 
 if [ -z "${slug:-}" ]; then
@@ -279,7 +309,7 @@ fi
 # New-file hunk ranges "file start end" per line — used by the citation guard
 # and computed on the (possibly truncated) diff.
 # shellcheck disable=SC2317,SC2329  # cleanup is invoked indirectly via trap (SC2329 = false-positive for trap-invoked functions)
-cleanup() { rm -f "${ranges_file:-}" "${headings_file:-}" "${newside_file:-}" "${ctx_ranges_file:-}" "${ctx_snap:-}" "${pf:-}"; }
+cleanup() { rm -f "${ranges_file:-}" "${headings_file:-}" "${newside_file:-}" "${ctx_ranges_file:-}" "${ctx_snap:-}" "${pf:-}" ${pf:+"$pf.sub-used"}; }
 trap cleanup EXIT
 ranges_file="$(mktemp -t cfp-ranges.XXXXXX)" || { echo "critic-first-pass.sh: mktemp failed — fail-open, proceed claude-only" >&2; exit 1; }
 headings_file="$(mktemp -t cfp-headings.XXXXXX)" || { echo "critic-first-pass.sh: mktemp failed — fail-open, proceed claude-only" >&2; exit 1; }
@@ -591,6 +621,21 @@ _cfp_claude_effort() {
         _cce_e="$(printf '%s' "$_cce_reg" | node -e '
           try { const r = (JSON.parse(require("fs").readFileSync(0, "utf8")).panel || []).find(x => x && x.slug === "claude" && !x.drop);
             if (r && r.effort) process.stdout.write(String(r.effort)); } catch (e) {}' 2>/dev/null || true)"  # swallow-ok: unreadable row falls to the medium default
+        if [ -z "$_cce_e" ]; then
+            # no claude panel row: the claude_floor effort, the overlay's floor over the
+            # base's (the merged output keeps no top-level field)
+            _cce_local=""
+            [ -n "${CRITICS_JSON:-}" ] || _cce_local="$( . "$SCRIPT_DIR/../lib/critics-config.sh" 2>/dev/null && _ccfg_local_path "$SCRIPT_DIR" 2>/dev/null )" || _cce_local=""  # swallow-ok: no overlay path leaves the base floor
+            [ -f "$_cce_local" ] || _cce_local=""
+            _cce_e="$(FLOOR_SRC="${CRITICS_BASE_JSON:-$SCRIPT_DIR/critics.json}" FLOOR_LOCAL="$_cce_local" node -e '
+              const fs = require("fs");
+              try { let f = JSON.parse(fs.readFileSync(process.env.FLOOR_SRC, "utf8")).claude_floor;
+                if (process.env.FLOOR_LOCAL) {
+                  const l = JSON.parse(fs.readFileSync(process.env.FLOOR_LOCAL, "utf8"));
+                  if (l && Object.prototype.hasOwnProperty.call(l, "claude_floor")) f = l.claude_floor;
+                }
+                if (f && f.effort) process.stdout.write(String(f.effort)); } catch (e) {}' 2>/dev/null || true)"  # swallow-ok: an unreadable floor falls to the medium default
+        fi
     fi
     case "$_cce_e" in low|medium|high|xhigh|max) printf '%s' "$_cce_e" ;; *) printf 'medium' ;; esac
 }
@@ -610,6 +655,10 @@ _cfp_claude_unwrap() {
 }
 
 _cfp_claude_invoke() {
+    if [ "$provider" = claude-api ] && [ "${HIMMEL_API_LANE:-}" != on ]; then
+        echo "critic-first-pass.sh: claude critic SKIPPED (api lane is OFF (set HIMMEL_API_LANE=on)) — clean no-op" >&2
+        return 5
+    fi
     _cc_effort="$(_cfp_claude_effort)"
     _cc_dir="$(tmpdir)" || { echo "critic-first-pass.sh: mktemp failed" >&2; return 1; }
     _cc_out=""
@@ -624,12 +673,22 @@ _cfp_claude_invoke() {
             _cc_err="$_cc_dir/stderr"
             _cc_branch="$(git branch --show-current 2>/dev/null || true)"  # swallow-ok: an empty branch is recorded as empty
             _cc_head="$(git rev-parse HEAD 2>/dev/null || true)"  # swallow-ok: an empty head is recorded as empty
-            _cc_out="$(cd "$_cc_dir" && HIMMEL_API_KIND=critic HIMMEL_API_JOB_ID="cr-claude-critic-$$" \
+            _cc_out="$(cd "$_cc_dir" && HIMMEL_API_FALLBACK=off HIMMEL_API_KIND=critic HIMMEL_API_JOB_ID="cr-claude-critic-$$" \
                 HIMMEL_API_BRANCH="${CR_TARGET_BRANCH:-$_cc_branch}" HIMMEL_API_HEAD="${CR_TARGET_HEAD:-$_cc_head}" HIMMEL_API_PR="${CR_TARGET_PR:-}" \
                 HIMMEL_API_TOOLS='' \
                 bash "${CFP_CLAUDE_API_LAUNCHER:-$SCRIPT_DIR/../api-lane/claude-api.sh}" \
                 -p --model "$model" --permission-mode dontAsk --max-budget-usd "$_cc_budget" \
                 --output-format json --effort "$_cc_effort" < "$_cc_pf" 2>"$_cc_err")" || _cc_rc=$?
+            if grep -q '^claude-api: fallback: running on the subscription' "$_cc_err" 2>/dev/null; then
+                cat "$_cc_err" >&2
+                rm -rf "$_cc_dir"
+                # shellcheck source=scripts/cr/critic-alert.sh
+                . "$SCRIPT_DIR/critic-alert.sh"
+                critic_loud_alert subscription-used "the claude-api launcher ran critic ${slug:-?} ($model) on the Claude subscription despite HIMMEL_API_FALLBACK=off, head ${CR_TARGET_HEAD:-$_cc_head}${CR_TARGET_PR:+, PR #$CR_TARGET_PR}; its review is dropped."
+                echo "critic-first-pass.sh: claude critic BROKE (the launcher ran on the subscription) — not a clean no-op" >&2
+                : > "$pf.sub-used"
+                return 1
+            fi
             # only the launcher's own exit 2 is a refusal; the same line behind any other rc is a failure
             if [ "$_cc_rc" -eq 2 ] && grep -q '^claude-api: refused:' "$_cc_err" 2>/dev/null; then
                 _cc_why="$(grep -m1 '^claude-api: refused:' "$_cc_err" | sed 's/^claude-api: refused: //')"
@@ -821,6 +880,8 @@ while [ "$_attempt" -lt 3 ]; do
     rc=$?
     # a skip is a decision, not a failure: no retry, no raw log, no score row
     [ "$rc" -eq 5 ] && exit 5
+    # a run that reached the subscription is never retried: a retry would spend it again
+    [ -e "$pf.sub-used" ] && exit 1
     _trimmed="$(printf '%s' "$raw" | tr -d '[:space:]')"
     if [ "$rc" -eq 0 ] && [ -n "$_trimmed" ]; then
         break

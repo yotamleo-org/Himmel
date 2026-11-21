@@ -23,12 +23,19 @@ release is declared (`jira release state <R>` prints a status other than
 - **A request for operator work carries the operator's words.** An INTAKE or
   REVERSION into a version, for an open ticket labelled `operator-directed` or of
   priority High or Highest, is refused before it is filed unless it names the
-  decision and the operator's exact words in it:
+  decision and the operator's exact words in it, or a record already on file covers
+  it (next paragraph):
   ```text
-  release request: <KEY> is operator-directed and High; a request that places it needs a record of the operator's words.
+  release request: <KEY> is operator-directed and High; a request that places it needs a record of the operator's words: cite one on file that already names <KEY> and exactly this placement (a words record newer than the key's last ruling is cited with no --decision), or record them.
     jira release request <R> --verb INTAKE --key <KEY> --from backlog --to <v> --why "<why>" --decision <n> --words "<the operator's exact words>"
     (<n>: specs/decisions/verbatim-decision-<n>-*.txt)
   ```
+  A gated request files without words only when one words-checked operator decision
+  already on record names that key and that exact placement; it must be the newest
+  decision on the key among those for the request's versions, for no version, or
+  keeping the key in the backlog (two at the same instant refuse), newer than every
+  ruling on the key, and the operator and rulings chains must verify to their end.
+  Otherwise the words are required as before, and a work permission never counts.
   `--decision <n>` must match exactly one `verbatim-decision-<n>-*.txt` in the
   bucket's `specs/decisions`. `--words` must occur byte for byte in one paragraph
   of that file, never in a paragraph that opens with a gloss word (`Read`,
@@ -44,7 +51,7 @@ release is declared (`jira release state <R>` prints a status other than
   the new words, `jira release withdraw <R> --req <id> --reason "<why>"` it first,
   then run the request again. The
   gate reads the ticket from the mirror, else from one live read; a ticket neither
-  can read is refused with both fixes (`jira mirror`, or `--decision`). `jira
+  can read is refused, unless a record covers it as above, with both fixes (`jira mirror`, or `--decision`). `jira
   create`, `jira move` and the MCP `create` tool take the same `--decision` and
   `--words` and check them before anything is filed. A backlog target, a closed
   ticket, a request filed inside a worker you spawned, the close-time Done fold,
@@ -59,14 +66,34 @@ release is declared (`jira release state <R>` prints a status other than
   ack ends one. The tick prints `rm-refused=<n>:<KEY>@<ruling>,...` (n counts all,
   the list names the operator-asked ones) and writes them to
   `rm-refused-<doc stem>.tsv` in its state dir; the waiter wakes you once per new
-  operator-asked pair (`WAKE rm-refused <KEY>@<ruling> — fix: <reason>`) and sends
-  the rest as one digest a day (`WAKE rm-refused-digest <n> new: ...`). Answer an
+  operator-asked pair (`WAKE rm-refused <KEY>@<ruling> — fix: <reason> — ground: <ground> — remedy: <the exact command>`)
+  and sends the rest as one digest a day (`WAKE rm-refused-digest <n> new: ... — remedy: <the first command>`). The tsv
+  rows carry the ground and remedy (bounded, control characters flattened); an older four-column row wakes as before.
+  A changed ruling is a new pair and wakes again; the same pair wakes once. Answer an
   operator-asked one by asking again with the operator's words (`--decision
   --words`), recording an `O-` record, or closing the ticket. A refusal you hold
   right on any other key ends with `jira release ack <R> --ruling <R-id> --reason
   "<why the refusal is right>"`; the ack is refused for an operator-asked key, for a
   key the mirror does not hold, and inside a worker you spawned. With the mirror
   unreadable a refused ask's `asks_operator` reads `null`, and the tick skips the field.
+- **Explicit changes and blocked recovery.**
+
+  A pending request keeps its known required-parent relation when a repeat omits
+  `--required-by`; forgetting the flag does not withdraw a requirement. To record
+  an explicit removal, repeat the request with `--evidence '{"remainder":false}'`
+  after deciding the parent can finish independently. To change the parent, use
+  `--required-by <new-parent>`. These append the changed evidence through the
+  normal request writer; they do not admit the child or close the parent.
+
+  An unfinished move marked `blocked` belongs to the chief (the tick and the waiter
+  tell you: see "A blocked ruling wakes you" below). Read its observed
+  membership and actual finish/restore remedy before running another batch;
+  `rm-run` alone cannot resolve conflicting membership. A read-only release
+  directory or unavailable repair-state lock is an explicit read/attempt failure,
+  not a successful scheduled repair. Keep the last verified record and use the
+  normal lock/storage recovery path; do not invent a launch timestamp or claim
+  an unpersisted state is authoritative.
+
 - **The batch reads only disk.** Anything the RM must weigh goes in the
   request's `--why` or in an operator `O-` record; nothing said in a message
   reaches it. The judge is shown the records that name the request's ticket, its
@@ -130,7 +157,7 @@ release is declared (`jira release state <R>` prints a status other than
   in the current version under `O-<R>-emergency`, and repair starts at once.
   The next `rm-run` records its class and sector.
 - **Open requests are ruled without you.** The waiter's tick shows
-  `rm-queue=<n>,<oldest age>m` and, when the oldest open request is older than
+  `rm-queue=<n>,<oldest age>m[,claimed=<n>][,replay=<n>][,run]` and, when the oldest open request is older than
   `TICK_RMRUN_MIN` minutes (default 30), the lease is free and no run started in
   the last `TICK_RMRUN_MIN_SECS` seconds (default 600), it launches one detached
   `jira release rm-run <R>` for the `release:` line of the chief's doc
@@ -141,19 +168,76 @@ release is declared (`jira release state <R>` prints a status other than
   the wiring, so retry on the next tick.
   Claimed requests append `,claimed=<n>`, including `0,0m,claimed=<n>` when no open
   requests remain. Claimed-only work never launches an RM: inspect the held ruling
-  instead of re-billing it. An empty open-and-claimed queue, no declaration,
-  explicit `release: none`, or an unreadable doc shows no field.
+  instead of re-billing it. An empty open-and-claimed queue with no ruling to replay,
+  no declaration, explicit `release: none`, or an unreadable doc shows no field.
+- **An interrupted ruling is replayed without you.** A ruling interrupted after its
+  Jira write (the admissions row or the receipt still owed) leaves its request in
+  `ruled:<R>`, not open, so the open count never shows it. The tick reads the state's
+  `unfinished_rulings`, counts those with `status: replay` and appends `,replay=<n>`
+  (`0,0m,replay=<n>` when the queue is empty). With one to replay, a free lease, an OK
+  state and no run launched in the last `TICK_RMRUN_MIN_SECS` seconds (default 600),
+  it launches the same one detached `jira release rm-run <R>` as for an aged request
+  and marks it `,run`; there is no age gate, because the state carries no age for a
+  ruling. The lease also counts as free when the state says `lease.owner_gone`: the
+  jira CLI found the recorded owner pid absent on this host (a run killed hard), the
+  same proof `rm-run`'s own reclaim uses; the tick judges no pid itself, and a live or
+  reused pid keeps the lease held. A replay `rm-run` cannot finish is retried at most
+  once per that interval, never on every tick, and `replay=<n>` stays on the line until
+  `jira release state <R> --json` lists no `unfinished_rulings` for it; nothing
+  wakes the chief for a replay that never finishes, so read that list when
+  `replay=<n>` lingers on the line. The tick never launches for a `status: blocked`
+  move (not counted in `replay=<n>`: it wakes the chief instead, see the next
+  bullet), for claimed-only work, behind a held lease whose owner is not
+  proven gone, or on a state that is not OK, and it writes no release state (the
+  `rm-run` it starts does).
+- **A blocked ruling wakes you.** An unfinished move with `status: blocked` is
+  yours: `rm-run` never repairs one and the replay launch above never counts it. From
+  the same state read as `rm-queue=`, the tick prints `rm-blocked=<n>:<KEY>@<ruling>,...`
+  after `rm-refused=`: n counts the blocked rulings, the pairs are sorted, and the
+  field is absent when none is blocked or the chief doc declares no release. It reads
+  `?` when the tick cannot tell: the state read failed or is not OK, the state's
+  mirror input is `UNKNOWN` (the engine then lists every unfinished ruling as
+  `replay`, a blocked one too), or `unfinished_rulings` is not a list of rows that
+  each carry a key and a ruling id. The field is in the waiter's key, so it wakes you
+  once for a set (a `WAKE tick` naming `rm-blocked` in `changed=`, the tick line
+  follows) and again only when the set changes: a ruling joins, leaves or is swapped
+  for another. A `?` keeps the last known set and wakes nobody, so the same set coming
+  back after one wakes nobody and a different set wakes once; a set that empties
+  wakes nobody. Nothing reminds you while a set stands, and nothing stores it: the
+  tick derives it from the state on every tick. A set already on the tick line when a
+  waiter has no saved key, or a saved key taken under different tick args or manifest
+  worker set, is that waiter's silent baseline, so a chief that starts or takes over
+  reads `rm-blocked=` on the tick line. To act, read `jira release state <R> --json`,
+  find each listed ruling under `unfinished_rulings`, and follow its `observed` and
+  `next` (finish or restore the move with `jira fix-version`); then
+  `jira release rm-run <R>` writes the row and receipt once. A ruling stuck in
+  `replay` still wakes nobody.
 - **Version drift is repaired by the tick, not alerted.** Three fields follow
   `rm-queue=`, each elided when empty, none in the wake key, none a message.
   `held=<n>:<sig8>` is the count of keys the repair cannot place on its own and
   the first 8 hex of the held signature, which moves only when the held set moves.
-  `unfiled=<n>` counts signed operator records no request carries yet. Both read
-  `release/<R>/repair-held.json`. `repair=off:<why>` shows while the repair cannot
+  `unfiled=<n>` counts signed operator records no request carries yet. All three
+  read `release/<R>/repair-state.json`, the one record the jira CLI writes
+  (`jira release repair-state <R> --json` prints it; `operator_command` is stored in
+  the record itself while no review marker exists and the state is `off:unreviewed`,
+  `off:error` or `lost`: the first apply, the one permitted act); the tick reads it and writes no repair file. Every writer of the record (the read, `--attempt`, the run's
+  begin and end) takes the short `repair-state.lock.d` lock and re-reads under it, always
+  after `repair.lock` (the run's lifetime lock) and never the other way.
+  `repair-held.json` and the other repair files stay as written copies for now.
+  `repair=off:<why>` shows while the repair cannot
   run: `mirror-unknown` or `bad-input` (a stop), `error` (a run that reported an
   error, retried on the `TICK_RMRUN_MIN_SECS` gap), `lost` (a launched run
-  left no end record: it failed to start or died mid-run; the tick retries it on a
+  left no end record: it failed to start or died mid-run, or its owner cannot be bound
+  to its process: a pid counts as live only while it shows the recorded process
+  identity; the tick retries it on a
   backoff from `TICK_RMRUN_MIN_SECS`, capped at 6 h, and `repair-run.log` holds its
-  stderr), or `unreviewed` (no `repair-reviewed` marker,
+  stderr; it shows before any review too, but nothing launches without the marker),
+  `unavailable` (the tick wanted to launch and no launch attempt could be recorded:
+  the CLI is absent, refused it or a run is alive), `unread` (no record can be read
+  even through the CLI). Before each detached start the tick asks the CLI to record the
+  attempt (`repair-state <R> --attempt`); the record's attempt time and count time the
+  next try at the gap, doubling to 6 h, so a launcher that never starts the CLI is not
+  retried every tick. `unreviewed` (no review marker in the record,
   so the first `jira release repair <R> --apply --repo <owner/name>` is yours, after
   a dry run). That first apply is the station's first repair run. Run the same
   command without `--apply` first: the dry run writes nothing, prints the lanes and

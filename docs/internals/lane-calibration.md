@@ -578,11 +578,11 @@ dispatch surfaces, both keyed off the same `lanes.json` `effort` field
   — an explicit ambient `CLAUDE_CODE_EFFORT_LEVEL` always wins (checked before
   the lookup); otherwise it resolves the row via
   `jq` against `lanes.json` and exports it. `scripts/handover/chief-kit/
-  test-headed-arm-worker.sh` carries 18 assertions on `CLAUDE_CODE_EFFORT_LEVEL`
-  (including cases 34a-34c: tier-row export, no-row leaves it unset, ambient
+  test-headed-arm-worker.sh` and its part `test-headed-arm-worker-b.sh` carry 18 assertions on `CLAUDE_CODE_EFFORT_LEVEL`
+  (including cases 34a-34c, in the `-b` part: tier-row export, no-row leaves it unset, ambient
   value survives the lookup), all passing on current main
   (`bash scripts/quiet-run.sh suite -- bash scripts/handover/chief-kit/
-  test-headed-arm-worker.sh`).
+  test-headed-arm-worker.sh`, and the same for `test-headed-arm-worker-b.sh`).
 
 A third, related mechanism — the tier-reason gate that requires a sanctioned
 `> **Tier:** opus|fable — <category>: <reason>` line before an Opus/Fable worker

@@ -35,6 +35,7 @@ if [ -n "$FB" ]; then env > "$STUB_ENV.fb.full"; printf '%s\\n' "$@" > "$STUB_EN
   echo "use_bedrock=\${CLAUDE_CODE_USE_BEDROCK:-}"; echo "auth_token=\${ANTHROPIC_AUTH_TOKEN:-}"
   echo "lq_api=$(env | grep -c '^LQ_API_')"
   echo "key_tail=\${ANTHROPIC_API_KEY: -4}"; echo "lane_on=\${HIMMEL_API_LANE:-}"; echo "scrub=\${CLAUDE_CODE_SUBPROCESS_ENV_SCRUB:-}"; echo "cache_ttl=\${CLAUDE_CODE_PROMPT_CACHE_TTL:-}"
+  echo "launch_markers=$(env | grep -c '^FLEET_LAUNCH_')"
   echo "session_markers=$(env | grep -E '^(CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_JOB_DIR|CLAUDE_CODE_[A-Z0-9_]*)=' | grep -vc '^CLAUDE_CODE_\\(SUBPROCESS_ENV_SCRUB\\|PROMPT_CACHE_TTL\\)=')"
   echo "org_keys=$(env | grep -c '^ANTHROPIC_ORG_[AB]_KEY=')"
   echo "stub_pid=$$"; echo "ppid=$PPID"; echo "resv_pid=$(cat "$HIMMEL_FLEET_SLOTS/claude-api:\${HIMMEL_API_JOB_ID:-}/pid" 2>/dev/null)"
@@ -94,7 +95,7 @@ function fixture() {
     HIMMEL_API_CREDIT_STATE: state, HIMMEL_API_LANE: 'on', HIMMEL_API_ACCOUNT: 'A',
     HIMMEL_API_KEY_ID: 'key-a', ANTHROPIC_API_KEY: DUMMY, HIMMEL_API_CLAUDE_BIN: paths.stub,
     HIMMEL_API_JOB_ID: 'job-1', STUB_LOG: paths.log, STUB_ENV: paths.env, STUB_OUT: ok,
-    HIMMEL_FLEET_CAP: '4', HIMMEL_FLEET_SLOTS: join(dir, 'slots'), FLEET_PS_CMD: paths.ps, FLEET_PROC: dir,
+    HIMMEL_FLEET_CAP: '4', HIMMEL_POLICY_FOLLOWS_HOME: '1', HIMMEL_FLEET_SLOTS: join(dir, 'slots'), FLEET_PS_CMD: paths.ps, FLEET_PROC: dir,
     CADENCE_USAGE_LEDGER: join(dir, 'bank-ledger'), CADENCE_USAGE_SKIP_REFRESH: '1',
     CADENCE_USAGE_CACHE: join(dir, 'native-cache.json'),
     HIMMEL_API_FALLBACK: 'off', HIMMEL_API_ALERT_CMD: paths.alert, HIMMEL_API_ALERT_DIR: join(dir, 'alerts') };
@@ -109,6 +110,217 @@ function fixture() {
   const record = () => readFileSync(join(dir, 'launches.jsonl'), 'utf8');
   return { dir, now, config, snapshot, paths, save, env, good, run, status, called, record };
 }
+
+function managedFixture(f, active = false) {
+  const doc = join(f.dir, 'TEST-1-N1-api.md');
+  const manifest = join(f.dir, 'chief.fleet.json');
+  writeFileSync(doc, '# API fixture\n');
+  const writer = join(HIMMEL_REPO, 'scripts/handover/chief-kit/fleet-manifest.sh');
+  for (const args of [['control', 'init', manifest, '--target', '2'],
+    ['add', manifest, doc, '--lane', 'native', '--pending'],
+    ...(active ? [['control', 'set', manifest, '--mode', 'active', '--expect-gen', '1']] : [])]) {
+    const r = spawnSync('bash', [writer, ...args], { env: f.env, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+  }
+  return { WORKER_SESSION_DOC: doc, FLEET_LAUNCH_MANIFEST: manifest, CADENCE_USAGE_WORKER: 'TEST-1-N1-api' };
+}
+
+function managedEvidence(f, name, extra = {}) {
+  if (!process.env.FLEET_RUNTIME_EVIDENCE) return;
+  mkdirSync(process.env.FLEET_RUNTIME_EVIDENCE, { recursive: true });
+  const receiptPath = join(f.dir, '.himmel/launch-refusals.jsonl');
+  writeFileSync(join(process.env.FLEET_RUNTIME_EVIDENCE, `${name}.json`), JSON.stringify({
+    control: JSON.parse(readFileSync(join(f.dir, 'fleet-control.json'))),
+    manifest: JSON.parse(readFileSync(join(f.dir, 'chief.fleet.json'))),
+    receipts: existsSync(receiptPath) ? readFileSync(receiptPath, 'utf8') : '', ...extra,
+  }, null, 2));
+}
+
+test('managed API pause precedes credit, fallback and cap overrides', () => {
+  const f = fixture();
+  const managed = managedFixture(f);
+  const r = f.run(f.good, { ...managed, FLEET_CAP_OK: '1', FLEET_CONTROL_HELD: 'true', HIMMEL_API_FALLBACK: 'on' });
+  assert.equal(r.status, 10, r.stderr);
+  assert.match(r.stderr, /fleet-paused/);
+  assert.equal(f.called(), false);
+  assert.equal(JSON.parse(readFileSync(managed.FLEET_LAUNCH_MANIFEST)).workers.length, 0);
+  managedEvidence(f, 'api-paused');
+});
+
+test('managed funded API commits exact ownership and releases it on a terminal call', () => {
+  const f = fixture();
+  const managed = managedFixture(f, true);
+  const r = f.run(f.good, managed);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(JSON.parse(r.stdout).result, 'hi');
+  assert.equal(f.called(), true);
+  const control = JSON.parse(readFileSync(join(f.dir, 'fleet-control.json')));
+  assert.match(readFileSync(f.paths.env, 'utf8'), /launch_markers=0/);
+  assert.deepEqual(control.attempts, {});
+  assert.equal(readdirSync(f.env.HIMMEL_FLEET_SLOTS).filter(n => !n.startsWith('.')).length, 0);
+  const receipts = readFileSync(join(f.dir, '.himmel/launch-refusals.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+  assert.equal(new Set(receipts.map(r => r.attempt_id)).size, 1);
+  assert.equal(receipts.at(-1).outcome, 'complete');
+  assert.ok(receipts.at(-1).owner.boot);
+  assert.ok(receipts.at(-1).owner.start);
+  managedEvidence(f, 'api-complete');
+});
+
+test('managed API reservation racing pause in another chief refuses before the call', async () => {
+  const f = fixture();
+  const managed = managedFixture(f, true);
+  const successor = join(f.dir, 'successor.fleet.json');
+  writeFileSync(successor, readFileSync(managed.FLEET_LAUNCH_MANIFEST));
+  const hold = join(f.dir, 'hold');
+  const ready = join(f.dir, 'reserved');
+  const hook = join(f.dir, 'admission-hook');
+  writeFileSync(hold, '');
+  writeFileSync(hook, `#!/bin/bash\n[ "$1" = admission-complete ] || exit 0\ntouch '${ready}'\nfor i in {1..400}; do [ -e '${hold}' ] || exit 0; sleep .02; done\nexit 1\n`, { mode: 0o700 });
+  const child = spawn('bash', [LAUNCH, ...f.good], { env: { ...f.env, ...managed, FLEET_LAUNCH_MANIFEST: successor, FLEET_ADMIT_TEST_HOOK: hook }, stdio: 'ignore' });
+  const done = new Promise(r => child.on('close', r));
+  try {
+    const until = Date.now() + 6000;
+    while (!existsSync(ready) && Date.now() < until) await new Promise(r => setTimeout(r, 20));
+    assert.ok(existsSync(ready), 'API preflight reached its real reservation barrier');
+    const pause = spawnSync('bash', [join(HIMMEL_REPO, 'scripts/handover/chief-kit/fleet-manifest.sh'), 'control', 'set', managed.FLEET_LAUNCH_MANIFEST, '--mode', 'paused', '--expect-gen', '2'], { env: f.env, encoding: 'utf8' });
+    assert.equal(pause.status, 0, pause.stderr);
+    rmSync(hold);
+    assert.equal(await done, 10);
+    assert.equal(f.called(), false);
+    assert.equal(readdirSync(f.env.HIMMEL_FLEET_SLOTS).filter(n => !n.startsWith('.')).length, 0);
+    const owners = spawnSync('bash', [join(HIMMEL_REPO, 'scripts/handover/chief-kit/fleet-manifest.sh'), 'runtime', 'owners', '--manifest', managed.FLEET_LAUNCH_MANIFEST], { env: f.env, encoding: 'utf8' });
+    assert.equal(owners.status, 0, owners.stderr);
+    assert.deepEqual(JSON.parse(owners.stdout), []);
+    managedEvidence(f, 'api-reservation-paused', { successor: JSON.parse(readFileSync(successor)) });
+  } finally {
+    rmSync(hold, { force: true });
+    child.kill('SIGTERM');
+    await done;
+  }
+});
+
+test('managed API commitment is visible to pause until its terminal call is reaped', async () => {
+  const f = fixture();
+  const managed = managedFixture(f, true);
+  const hold = join(f.dir, 'call-hold');
+  writeFileSync(hold, '');
+  const child = spawn('bash', [LAUNCH, ...f.good], { env: { ...f.env, ...managed, STUB_HOLD: hold }, stdio: 'ignore' });
+  const done = new Promise(r => child.on('close', r));
+  const writer = join(HIMMEL_REPO, 'scripts/handover/chief-kit/fleet-manifest.sh');
+  try {
+    const until = Date.now() + 6000;
+    while (!f.called() && Date.now() < until) await new Promise(r => setTimeout(r, 20));
+    assert.ok(f.called(), 'stub call started only after commitment');
+    const pause = spawnSync('bash', [writer, 'control', 'set', managed.FLEET_LAUNCH_MANIFEST, '--mode', 'paused', '--expect-gen', '2'], { env: f.env, encoding: 'utf8' });
+    assert.equal(pause.status, 0, pause.stderr);
+    const ack = spawnSync('bash', [writer, 'control', 'ack', managed.FLEET_LAUNCH_MANIFEST], { env: f.env, encoding: 'utf8' });
+    assert.equal(ack.status, 0, ack.stderr);
+    assert.equal(JSON.parse(ack.stdout).quiescent, false);
+    assert.equal(JSON.parse(ack.stdout).in_flight.length, 1);
+    managedEvidence(f, 'api-in-flight-ack', { acknowledgement: JSON.parse(ack.stdout) });
+    rmSync(hold);
+    assert.equal(await done, 0);
+  } finally {
+    rmSync(hold, { force: true });
+    child.kill('SIGTERM');
+    await done;
+  }
+});
+
+// A managed call held open by the stub, then a TERM to its launcher. The hold file stays: only the launcher can end the call.
+// Resolves once the launcher is gone, with its exit code and the pids of the stub and (STUB_CHILD) its subprocess.
+async function termMidCall(f, managed, extra = {}) {
+  const hold = join(f.dir, 'call-hold');
+  writeFileSync(hold, '');
+  const child = spawn('bash', [LAUNCH, ...f.good], { env: { ...f.env, ...managed, ...extra, STUB_HOLD: hold }, stdio: 'ignore' });
+  const done = new Promise(r => child.on('close', r));
+  try {
+    const up = extra.STUB_CHILD ? /^child_pid=\d+$/m : /^args=/m;
+    const ready = () => existsSync(f.paths.env) && up.test(readFileSync(f.paths.env, 'utf8'));
+    const until = Date.now() + 15000;
+    while (!ready() && Date.now() < until) await new Promise(r => setTimeout(r, 20));
+    assert.ok(ready(), 'the call started after commitment');
+    assert.deepEqual(Object.values(controlOf(f).attempts).map(a => a.phase), ['committed'], 'the attempt is committed while the call runs');
+    const seen = readFileSync(f.paths.env, 'utf8');
+    child.kill('SIGTERM');
+    const code = await Promise.race([done, new Promise(r => setTimeout(() => r('hung'), 20000))]);
+    return { code, stub: Number(/^stub_pid=(\d+)$/m.exec(seen)[1]), sub: Number(/^child_pid=(\d+)$/m.exec(seen)?.[1] ?? 0) };
+  } finally {
+    rmSync(hold, { force: true });
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+  }
+}
+const controlOf = (f) => JSON.parse(readFileSync(join(f.dir, 'fleet-control.json')));
+const slotsOf = (f) => readdirSync(f.env.HIMMEL_FLEET_SLOTS).filter(n => !n.startsWith('.'));
+const receiptsOf = (f) => readFileSync(join(f.dir, '.himmel/launch-refusals.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+function pausedAck(f, managed) {
+  const writer = join(HIMMEL_REPO, 'scripts/handover/chief-kit/fleet-manifest.sh');
+  const pause = spawnSync('bash', [writer, 'control', 'set', managed.FLEET_LAUNCH_MANIFEST, '--mode', 'paused', '--expect-gen', '2'], { env: f.env, encoding: 'utf8' });
+  assert.equal(pause.status, 0, pause.stderr);
+  const ack = spawnSync('bash', [writer, 'control', 'ack', managed.FLEET_LAUNCH_MANIFEST], { env: f.env, encoding: 'utf8' });
+  assert.equal(ack.status, 0, ack.stderr);
+  return JSON.parse(ack.stdout);
+}
+
+test('a managed API call stopped by TERM mid-call leaves no attempt, no slot and a quiescent pause', async () => {
+  const f = fixture();
+  const managed = managedFixture(f, true);
+  const { code, stub } = await termMidCall(f, managed);
+  try {
+    assert.equal(code, 143);
+    assert.equal(alive(stub), false, 'the call outlived its terminated launcher');
+    assert.deepEqual(controlOf(f).attempts, {});
+    assert.deepEqual(slotsOf(f), []);
+    assert.equal(receiptsOf(f).at(-1).outcome, 'complete');
+    const ack = pausedAck(f, managed);
+    assert.equal(ack.quiescent, true);
+    assert.deepEqual([ack.in_flight, ack.unknown], [[], []]);
+  } finally { if (alive(stub)) process.kill(stub, 'SIGKILL'); }
+});
+
+test('a managed API call that ignores TERM and has a subprocess is ended by the KILL and leaves nothing behind', async () => {
+  const f = fixture();
+  const managed = managedFixture(f, true);
+  const { code, stub, sub } = await termMidCall(f, managed, { STUB_IGNORE_TERM: '1', STUB_CHILD: '1' });
+  try {
+    assert.equal(code, 143);
+    assert.equal(alive(stub), false, 'the call outlived its terminated launcher');
+    assert.equal(alive(sub), false, 'a subprocess of the call outlived its terminated launcher');
+    assert.deepEqual(controlOf(f).attempts, {});
+    assert.deepEqual(slotsOf(f), []);
+    assert.equal(pausedAck(f, managed).quiescent, true);
+  } finally { for (const p of [stub, sub]) if (p && alive(p)) process.kill(p, 'SIGKILL'); }
+});
+
+test('a managed API call stopped by TERM with a process of its tree that stays in the table leaves the attempt unknown', async () => {
+  const f = fixture();
+  const managed = managedFixture(f, true);
+  // The stop KILLs what TERM leaves, so no live process outlasts it. A dead child whose parent never reaps it stays in the
+  // process table; a pgrep ahead of the real one lists that pid as a child of the call, so the stop cannot see its tree end.
+  const holder = spawn('python3', ['-c', 'import os, time\npid = os.fork()\nif pid == 0:\n    os._exit(0)\nprint(pid, flush=True)\ntime.sleep(600)'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  let stub = 0;
+  try {
+    const zombie = await new Promise((resolve, reject) => { holder.once('error', reject); holder.stdout.once('data', d => resolve(Number(String(d).trim()))); });
+    const bin = join(f.dir, 'bin');
+    mkdirSync(bin);
+    const real = spawnSync('bash', ['-c', 'command -v pgrep'], { env: f.env, encoding: 'utf8' }).stdout.trim();
+    assert.ok(real, 'pgrep is on the PATH');
+    writeFileSync(join(bin, 'pgrep'), '#!/bin/bash\n[ "$1" = -P ] && [ "$2" != "$ZOMBIE_PID" ] && { echo "$ZOMBIE_PID"; exit 0; }\nexec "$REAL_PGREP" "$@"\n', { mode: 0o700 });
+    const run = await termMidCall(f, managed, { PATH: `${bin}:${f.env.PATH}`, ZOMBIE_PID: String(zombie), REAL_PGREP: real });
+    stub = run.stub;
+    assert.equal(run.code, 143);
+    assert.equal(alive(stub), false, 'the call outlived its terminated launcher');
+    assert.deepEqual(Object.values(controlOf(f).attempts).map(a => a.phase), ['unknown']);
+    assert.equal(slotsOf(f).length, 1);
+    assert.equal(receiptsOf(f).at(-1).outcome, 'indeterminate');
+    const ack = pausedAck(f, managed);
+    assert.equal(ack.quiescent, false);
+    assert.equal(ack.unknown.length, 1);
+  } finally {
+    holder.kill('SIGKILL');
+    if (stub && alive(stub)) process.kill(stub, 'SIGKILL');
+  }
+});
 
 test('funded API account proceeds while the native bank is exhausted; child sees an isolated env', () => {
   const f = fixture();

@@ -406,19 +406,33 @@ ts_await_due() {
 # ts_worker_state <doc> — live | idle | IDLE-HELD | parked | wrapped | unknown, from the
 # doc's newest marker and its queue lock. Only an end marker is positive end
 # evidence: a free lock with no end marker (a hand-off, a cloud or
-# other-station worker) is unknown, which still counts as an owner.
+# other-station worker) is unknown, which still counts as an owner. A managed attempt that is
+# pending, committed or unknown is unknown too, never live and never free. A terminal receipt
+# (refused or complete) ends ownership only when the lock is free, the newest marker is absent or
+# an end marker and no live named session works the doc; otherwise the lock and the markers decide.
 ts_worker_state() {
-    _ts_worker_state "$1"
+    _ts_worker_state "$1" ${2+"$2"}
     echo "$TS_WORKER_STATE"
 }
 
-# _ts_worker_state <doc> — ts_worker_state without the subshell: sets
+# _ts_worker_state <doc> [<disposition>] — ts_worker_state without the subshell: sets
 # TS_WORKER_STATE and TS_LOCK_HELD (yes | no | "" when the lock was not read) and TS_LOCK_DEAD
 # (yes: the lock answered rc 12 with status STALE-DEAD; no: rc 12 with any other status; "" otherwise).
+# A caller that has already read the doc's disposition (fleet_runtime.py WorkerStates, one read for a whole run)
+# passes it as the JSON word `disposition` prints; only such a word is taken, anything else is read here.
 _ts_worker_state() {
     local marker out rc hb hb_epoch age=0 warn
     TS_LOCK_HELD="" TS_LOCK_DEAD=""
     [ -n "$1" ] || { TS_WORKER_STATE=unknown; return 0; }
+    local attempt_protected terminal=""
+    case "${2-}" in
+        '"pending"'|'"committed"'|'"unknown"'|'"launched"'|'"refused"'|'"complete"'|'"legacy"') attempt_protected=$2 ;;
+        *) attempt_protected=$(python3 -I "$_TS_LIB_DIR/fleet_runtime.py" disposition --doc="$1") || attempt_protected='"unknown"' ;;
+    esac
+    case "$attempt_protected" in
+        '"pending"'|'"committed"'|'"unknown"') TS_WORKER_STATE=unknown; return 0 ;;
+        '"refused"'|'"complete"') terminal=yes ;; # an ended attempt's receipt: it ends ownership only when the lock and the markers agree
+    esac
     marker=$(ts_marker_newest "$1")
     case "$marker" in WRAPPED|HALTED) TS_WORKER_STATE=wrapped; return 0 ;; esac
     if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then
@@ -434,6 +448,9 @@ _ts_worker_state() {
     if [ "$rc" -eq 12 ]; then
         if grep -q '^status: STALE-DEAD' <<<"$out"; then TS_LOCK_DEAD=yes; else TS_LOCK_DEAD=no; fi
     fi
+    # A terminal receipt with a free lock and no marker at all is the failed or finished launch with nothing after it.
+    # A held lock, or any marker that is not an end marker (it is later than the receipt or was never wrapped), decides below.
+    if [ -n "$terminal" ] && [ "$TS_LOCK_HELD" = no ] && [ -z "$marker" ]; then TS_WORKER_STATE=wrapped; return 0; fi
     if status_marker_is_parked "$marker"; then TS_WORKER_STATE=parked; return 0; fi
     if [ "$TS_LOCK_HELD" = no ]; then TS_WORKER_STATE=unknown; return 0; fi
     hb=$(printf '%s\n' "$out" | sed -n 's/.*"heartbeat"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
@@ -687,19 +704,7 @@ _ts_remainder_owner() {
 # list line under `## Ticket coverage` before the next heading (`→` or `->`); text is the line without its list mark, ask the
 # text before the owed clause, the date as written.
 ts_owed_lines() {
-    awk '{ sub(/\r$/, "") }
-        /^#/ { cov = (tolower($0) ~ /^##[ \t]+ticket coverage[ \t]*$/); next }
-        cov && /^([-*]|[0-9]+[.)])[ \t]/ {
-            l = tolower($0)
-            if (l ~ /deferred[ \t]*(→|->)/) next
-            if (!match(l, /owed[ \t]*(→|->)[ \t]*(chief|operator)[ \t]+by[ \t]+[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9][^a-z0-9]*$/)) next
-            s = substr(l, RSTART)
-            who = (s ~ /^owed[ \t]*(→|->)[ \t]*chief/) ? "chief" : "operator"
-            match(s, /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)
-            a = substr($0, 1, length($0) - length(s)); sub(/^([-*]|[0-9]+[.)])[ \t]+/, "", a); sub(/[ \t:]+$/, "", a); gsub(/\t/, " ", a)
-            t = $0; sub(/^([-*]|[0-9]+[.)])[ \t]+/, "", t); gsub(/\t/, " ", t)
-            print who "\t" substr(s, RSTART, RLENGTH) "\t" a "\t" t
-        }'
+    python3 -I "$_TS_LIB_DIR/pr_remainder.py" --owed-lines
 }
 
 # ts_owed_chief_paths <reader> <KEY> — stdin: a PR body. Runs the reader (pr_remainder.py, the caller's anchor copy) with
@@ -724,6 +729,17 @@ ts_owed_chief_paths() {
     return "$found"
 }
 
+# The broader chief-only policy preserves the path reader's established API.
+ts_owed_chief_steps() {
+    local body paths invalid rc=0
+    body=$(cat) || return 3
+    paths=$(printf '%s' "$body" | ts_owed_chief_paths "$1" "$2") || rc=$?
+    case "$rc" in 0) printf '%s\n' "$paths"; return 0 ;; 3) return 3 ;; esac
+    invalid=$(printf '%s' "$body" | python3 -I "$1" --chief-invalid "$2" 2>/dev/null) || return 3
+    [ -n "$invalid" ] || return 1
+    printf '%s\n' "$invalid"
+}
+
 # _ts_d5d <KEY> <merged PR> [repo] [owed who] [owed due] — rc 0 when the merged PR's remainder names its owner, in
 # TS_D5D_OWNER.
 _ts_d5d() {
@@ -736,7 +752,7 @@ _ts_d5d() {
         if [ -n "$owner" ]; then TS_D5D_OWNER=$owner TS_MERGED_PR=$mpr; return 0; fi
     fi
     case "$owho" in
-        chief|operator) if _ts_date_ok "$odue"; then TS_D5D_OWNER="$owho by $odue" TS_MERGED_PR=$mpr; return 0; fi ;;
+        chief|operator|proof) if _ts_date_ok "$odue"; then TS_D5D_OWNER="$owho by $odue" TS_MERGED_PR=$mpr; return 0; fi ;;
     esac
     [ -z "${TS_SNAPSHOT_DIR:-}" ] || return 1
     body=$(_ts_gh pr view "$mpr" ${repo:+--repo "$repo"} --json body -q .body 2>/dev/null) || return 1
@@ -747,7 +763,7 @@ _ts_d5d() {
         remaining) rest=$(grep -iE '^[[:space:]]*remaining:' <<<"$body") || return 1; owner=$(_ts_remainder_owner "$key" "$rest") || return 1 ;;
         owed)
             rest=${ans#*$'\t'}; owho=${rest%%$'\t'*}; rest=${rest#*$'\t'}; odue=${rest%%$'\t'*}
-            case "$owho" in chief|operator) _ts_date_ok "$odue" || return 1; owner="$owho by $odue" ;; *) return 1 ;; esac ;;
+            case "$owho" in chief|operator|proof) _ts_date_ok "$odue" || return 1; owner="$owho by $odue" ;; *) return 1 ;; esac ;;
         *) return 1 ;;
     esac
     [ -n "$owner" ] || return 1

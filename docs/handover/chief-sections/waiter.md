@@ -2,6 +2,125 @@
 
 Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step 7. Moved verbatim from the template.
 
+Stream mode (`--stream`) is implemented but production activation awaits the
+parent's native Claude Monitor proof. Once approved, arm the step-10 command
+with Monitor `timeout_ms: 1800000`, `--workers-from <manifest>` and
+`--since <last WAKE# seen>` (or `prev-arm` when unsure). The same supervisor
+services pending READY/cleanup through worker-event between full ticks and
+continues while the chief is busy. It reconciles existing READY at startup;
+replay never authorizes a second GO. Ambiguous exact-head GO delivery requires
+chief reconciliation before any resend.
+
+`WAKE#<seq>` names the saved block in `out=`; service continues while you
+handle it. A WAKE may add an `absorbed since last wake:` wraps/merges line.
+Dispatch and wrap reload the manifest: no re-arm.
+
+Read each `out=` block. `REPLAY seqs=a-b n=k index=<file>` lists retained wakes;
+`GAP` means the requested range was rotated away or the log reset: reconcile
+that range. `W` rows record wakes, `P` rows record printing, and `D`/`K` rows
+record an external delivery assertion and acknowledgment. Monitor offers no
+automatic delivery receipt. After actually receiving a block, acknowledge with
+`chief-wait.sh <inbox> --ack <seq> --receipt <delivery-reference>`. The live/next
+supervisor consumes that request; it closes only chief notification actions
+named by the block, never proof or source step decisions. Operator digest
+actions close only after the existing chief-route `--owed` sender records a
+Telegram `DELIVERED` receipt. Queue/drain success is insufficient; failures
+stay open and retry on a bounded cadence.
+
+Acknowledgement failures emit `waiter-error kind=ack-stuck` with the request
+path and next retry time. This supervisor remains live: do not arm a second
+one for `ack-stuck`. Requests persist across restart and retry after
+30 seconds, doubling to at most 30 minutes; another queued acknowledgment
+can still proceed. After repair, settlement takes at most the remaining
+30-minute backoff plus one service pass. To retry sooner, preserve a copy of
+the named `.json.retry` sidecar for diagnosis, then remove only that sidecar;
+the next pass retries the existing acknowledgment. Corrupt/unreadable retry
+state stays untouched and is named for explicit repair, with one warning per
+request streak. Never close proof or source debt to suppress a warning.
+An uncaught supervisor failure emits `waiter-error kind=supervisor` and
+`REARM`; the owned child retains its watchdog/adoption bounds. If the same
+fault recurs within five minutes, the arm ends with
+`STOPPED reason=supervisor-repeat`. Unwritable supervisor fault state ends
+with `STOPPED reason=supervisor-state-unwritable`. Reconcile the named state
+before manually arming again; neither terminal outcome requests an automatic
+re-arm. A malformed wake row stays for reconciliation: its first supervisor fault
+emits REARM; a repeat within five minutes emits STOPPED reason=supervisor-repeat.
+Repair the persisted state before re-arming after that stop; no row is discarded.
+
+Owed operator sends reuse a stable outbox identity for the chief, document,
+owed key and part number; conflicting content under that key is refused.
+The raw owed text binds its content hash; mirror titles cannot change the
+first enqueue's frozen parts. Only matching send receipts for every part
+permit `DELIVERED`; unrelated replies never count. Service passes enqueue or
+reconcile without waiting for the poller, with at most one send helper per
+pass (two-second helper timeout). Receipt-only checks run each pass even
+during send backoff. Ordinary in-flight delivery gets a 30-second grace
+(`CHIEF_WAIT_OPERATOR_GRACE_SEC`); after that, pending debt wakes/reminds on
+the existing notification cadence. Enqueueing alone never discharges debt.
+Part i waits for part i-1's receipt. Failed/corrupt requests retain their
+state for reconciliation while unrelated owed and ordinary replies proceed.
+Ordinary replies preserve their own order, with local completion markers
+preventing repeats while an earlier owed row remains unreceipted.
+
+`REARM` requests the next stream arm. `STOPPED` is terminal; resume manually
+only when intended and after resolving any named fault. `STREAM-REFUSED`
+needs its refusal resolved; `live-supervisor` means keep the existing arm.
+Inspect a `waiter-error` without arming again while its supervisor is live. A normal
+`WAKE#` needs no re-arm, including a succession or relay-on-live block whose
+legacy tail says to re-arm: the supervisor performs that relaunch and removes
+`--succession`. Never mix a bare waiter into stream mode; `child=busy` requires
+a stream arm to adopt the bounded child. `reason=repeat|rate` requires handling
+the repeating cause first. A mistaken second arm is refused.
+`waiter-error kind=hung` means the busy/orphan bound killed a stuck child;
+inspect its saved output and step before re-arming.
+
+Worker documents with read failures emit one actionable
+`waiter-error worker-doc-unread` per unread streak, while healthy peers
+continue. Repair the named document; a successful read resets that warning.
+Handled READY identity follows the READY-event prefix, so atomic rewrites,
+retitles and other prose edits do not replay it. First observation and genuine
+READY replacement select the newest head; subsequent READY appends keep order.
+
+To stop normally, touch `<inbox>.wait.stop`. The supervisor waits up to 60 s
+for a safe point, prints `STOPPED`, and removes the request. A busy child stays
+under its bounded watchdog until adoption or a safe stop. `TaskStop` is the
+hard stop: native Monitor may kill the whole tree within about 2 s, including
+a step in progress. Printed/partial blocks remain replayable; a kill between
+an action's marker and its print retains the existing loss window. Session-end,
+Remote-Control-only delivery and this adapter's runtime survival/receipt proof
+are still owed. Offline fixtures do not establish them.
+
+Per-field policy is `chief-wait.sh --rules` (`wake-rules.tsv`): station BEHIND
+entry and 60-minute reminders, CLI repair-off states with the persisted remedy,
+RM queue older than twice its launch gap, and `mon-down` once per down streak.
+Open-count/residual-cap and persistent underfill retain their existing semantics.
+`rm-blocked=` is a plain key field: one wake per distinct set of blocked unfinished
+rulings, `?` keeps the last known set, and the wake is the shared `WAKE tick` line
+naming it in `changed=` with the tick line after it. Like every key field it is
+silent on a waiter's baseline: with no saved key, or a saved key taken under different
+tick args or manifest worker set, the first sample only records what is on the line,
+so a chief that starts or takes over reads the tick line for `rm-blocked=` (the
+release-manager section, "A blocked ruling wakes you").
+The detailed one-shot behavior below remains the default without `--stream`.
+In one-shot mode a printed `WAKE owed-actions` also leaves its notification
+open: after receipt the chief acknowledges with `owe.sh close --bucket <bucket>
+--id <id> --key <delivery-reference>`.
+The persisted notification observation marker suppresses immediate re-arms;
+new notification ids wake immediately and pending debt reminds after 60 minutes
+(`CHIEF_WAIT_NOTIFY_REWAKE_MIN`). Stream notifications use the same reminder
+interval. Observation does not assert receipt or discharge any obligation.
+
+On startup or document replacement, the stream collector selects only the
+newest READY per worker; normal appended READY entries retain their order.
+Unreadable worker documents are diagnosed in `<inbox>.wait.pending-diagnostic`
+without stalling healthy workers. A manifest/cursor failure wakes once per
+continuous failure streak, resetting after a successful read.
+
+Printed replay advances the next `REARM since=` cursor. Replay indexes are
+arm-scoped: the current and preceding advertised indexes remain available;
+older indexes are pruned on a new arm. Read the current index before re-arming.
+Retained wake rows/blocks still govern replay and `GAP` reconciliation.
+
 10. **Start the event waiter now** (it replaces the `tick` and
     `telegram` Monitor loops). Loops are pure code, never model turns: a
     `Monitor` arm is capped at 30 min, and every expiry woke this full-context
@@ -13,7 +132,7 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     silent while nothing happens and **exits on an urgent event or a due
     housekeeping digest**, printing one block: `WAKE telegram` plus the operator's line(s), or
     `WAKE tick changed=<fields> usage=<verdict>` plus the tick line, or
-    `WAKE underfilled capacity=UNDERFILLED:<slack>` (with `dispatchable=<n> keys=<KEY>,...` when the count is above 0, on this wake and on `WAKE pool-unresolved` alike, and ` backlog=unread` when the second pass failed, which then never prints `dispatchable=0`; `dispatchable` is one meaning in the tick and the waiter: the LOCAL, CLOUD, RESUME and DESIGN rows of the pool and a series' tickets (`tick.sh --pool-dispositions` prints them as `# pool-dispatchable <KEY>`), so a pool of only RESUME rows reads above zero; parked rows stay in that count and are named by `# pool-parked <KEY>` (`# pool-chief-owed <KEY>` when the line names a proof, signature, critic round or go code), and the tick carries `pool-parked=<n>`, `chief-owed=<m>` and `supply=SHORT:<free>` beside `capacity=UNDERFILLED:<slack>` when fewer unparked rows than slots remain; a short pool runs the second pass only when no release is declared (no `# dropped from <version>:` line): a declared release offers no row of another version, and the wake prints `# rows left in <version>` with a `# pool-left-out <KEY> <reason>` line for every other open ticket of that version; a carried `pool-disposition:` line does not silence this wake while the pool lists a row: those keys are the set to dispatch or disposition from a fresh read, never a carried pool list; `next-dispatchable.sh --doc <doc> --workers-from <fleet manifest> --why` prints a `# why <KEY> listed <lane> tier <n>` line per key, and without `--priority-pool-only` it can list keys the wake lacks when more tickets qualify than free slots (it lists up to 50 rows when no `--top` is given); on the streak's first sample, and again once each time the pool's key set changes: it is re-probed every 30 min, `CHIEF_WAIT_UNDERFILL_REPOOL_SEC`, each probe cut at `CHIEF_WAIT_REPOOL_TIMEOUT` (120 s), and a pool that grows from empty counts, while a pool that empties or a failed probe does not wake; plus the tick line and `next-dispatchable.sh --priority-pool-only`'s
+    `WAKE underfilled capacity=UNDERFILLED:<slack>` (with `dispatchable=<n> keys=<KEY>,...` when the count is above 0, on this wake and on `WAKE pool-unresolved` alike, and ` backlog=unread` when the second pass failed, which then never prints `dispatchable=0`; `dispatchable` is one meaning in the tick and the waiter: the LOCAL, CLOUD, RESUME and DESIGN rows of the pool and a series' tickets (`tick.sh --pool-dispositions` prints them as `# pool-dispatchable <KEY>`), so a pool of only RESUME rows reads above zero; parked rows stay in that count and are named by `# pool-parked <KEY>` (`# pool-chief-owed <KEY>` when the line names a proof, signature, critic round or go code), and the tick carries `pool-parked=<n>`, `chief-owed=<m>` and `supply=SHORT:<free>` beside `capacity=UNDERFILLED:<slack>` when fewer unparked rows than slots remain; a short pool runs the second pass only when no release is declared (no `# dropped from <version>:` line): a declared release offers no row of another version, and the wake prints `# rows left in <version>` with a `# pool-left-out <KEY> <reason>` line for every other open ticket of that version; a carried `pool-disposition:` line does not silence this wake while the pool lists a row: those keys are the set to dispatch or disposition from a fresh read, never a carried pool list; when the version's readiness record (`release/<version>/readiness.jsonl`) holds a live c or d row, this wake and `WAKE pool-unresolved` print `# readiness rows in <version>` after the unresolved lines, then one `# readiness-held c|d <KEY> blocker=<blocker|-> age=<age>` line per row, and no wake fires because of those lines; `next-dispatchable.sh --doc <doc> --workers-from <fleet manifest> --why` prints a `# why <KEY> listed <lane> tier <n>` line per key, and without `--priority-pool-only` it can list keys the wake lacks when more tickets qualify than free slots (it lists up to 50 rows when no `--top` is given); on the streak's first sample, and again once each time the pool's key set changes: it is re-probed every 30 min, `CHIEF_WAIT_UNDERFILL_REPOOL_SEC`, each probe cut at `CHIEF_WAIT_REPOOL_TIMEOUT` (120 s), and a pool that grows from empty counts, while a pool that empties or a failed probe does not wake; plus the tick line and `next-dispatchable.sh --priority-pool-only`'s
     ranked list (the pool: the `priority:` line in Live state, labels `ps3-blocker` / `must-<current version>` (the earliest unreleased version) / `operator-directed`, High+ bugs, security and data-integrity; per tier its `RESUME` rows, In Progress with no worker and no open PR, lead the To Do rows, only when a worker source (`--owners` / `--workers-from`) is given, and they are kept in `--priority-pool-only` by design (operator decision 29: drain In Progress work with no worker first): the waiter passes its own `--workers-from` file when it was started with one, and no `--owners`;
     a closing `# pool=<rows>/<slack>` line, `,LOW` when the pool fills fewer slots than the slack, and `POOL-EMPTY` when it has nothing, followed by the next tier (tier-4 To Do rows in rank order) as `NEXT-TIER` rows: then unblock collisions, draft specs for the next priority items, or fill from the NEXT-TIER rows when the operator has ruled so); dispatch it with `gen-briefs.py`; both refuse Windows/WSL work per `chief-kit/platform-dropped.re` unless the ticket is labelled `windows-removal` / the worker sets `platform_removal` and its title says remove/drop/delete/retire/sweep/clean), or
     `WAKE tick-fail samples=<n>` when 3 samples in a row failed (the tick or
@@ -126,6 +245,9 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     `N<n>` in a target is refused. A free-text promise ("will look at it after the release") stays in the pool as
     `# pool-unresolved unowned <KEY> ...`; the tick still prints and never fails on it. When the tick cannot read the pool at
     all, the wake says `backlog=unread` instead of `dispatchable=0`.
+    A live c or d row for the key in the version's readiness record counts as a ruling too: the key leaves `# pool-unresolved`,
+    and the wake lists the record's rows under `# readiness rows in <version>` (`# readiness-held`), so a ruling that outlives
+    its chief stays in view.
     A stale key (every target gone, per `pool-stale=`) is `# pool-unresolved stale <KEY> its pool-disposition target is gone: <targets>; ...`
     until the line is rewritten, unless the key is owned, held or blocked (the line is then not its only reason); a failed or
     paused read keeps that verdict while the line is unchanged and no target reads open, so the wake fires once, not per read.
@@ -282,7 +404,29 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     subtree alive) stays retryable. The next sample starts after that worker,
     using an atomically saved label in `<inbox>.wait.r0-next` even after a
     waiter re-arm; a missing or stale label leaves plain candidate order.
-    A standing refusal cannot starve later workers. Anything else wakes you once per
+    A standing refusal cannot starve later workers. In stream mode it is also paced, so a
+    stacked series waiting on a live worker does not read GitHub every few seconds: each refusal
+    in a row of the same cleanup event holds that event back longer, the retry window
+    (`CHIEF_WAIT_SERVICE_RETRY_SEC`, 5 s) times 1, 2, 6, 24 and 60, that is 5, 10, 30, 120, then
+    300 s. The relay owns the count, in `<inbox>.wait.le-<label>.tries` (`<refusals in a row>
+    <checksum of the bullet being retried> <checksum of the bullet already woken for>`); the
+    collector only reads it. The count belongs to the event, not to the document: a new or changed
+    cleanup event (another bullet checksum, for example a WRAPPED after a MERGED) starts the
+    ladder over, while the lines a live worker keeps appending do not, so a refusal that persists
+    reaches the top step however busy the document is. A restarted waiter reads the same file and
+    keeps its step. A file written by the earlier format (count, mtime, size, woke) reads as another
+    event, so after an upgrade an event already woken before it is woken once more, at its next
+    fifth refusal. The refusal that reaches the top step wakes you once per bullet with
+    `WAKE worker-event ESCALATE cleanup-still-refused worker=<label> event=<marker> tries=<n>
+    next-try-in=<s>s refusal=<its first line> out=<file>`, and the waiter goes on trying at the
+    top pace until the cleanup succeeds or the event changes. A refusal record dated in the
+    future (a clock stepped back) is offered, not held. The ladder only spaces the attempts: it
+    never closes, wraps, reaps or frees anything and never records the bullet as
+    handled. `wrap-merged.sh` also exits 6 or 7 when its own log or board step fails; those run
+    after the window is closed and the worker retired, so asking again would find nothing and
+    the failure would be lost. They wake at once instead, with `wrap-merged: step log failed` or
+    `step board failed` in the line: finish by hand (`wrapping.md`). A refused close inside the
+    wrap (`step close-wrapped-worker failed`) stays retryable. Anything else wakes you once per
     bullet with `WAKE worker-event <its first non-blank line> rc=<n> out=<file>` plus the
     tick line. A silent timeout writes `ESCALATE relay-timeout <label> rc=<n>
     limit=240s` to both the wake and the out file; another silent failure names
@@ -292,6 +436,49 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     when the relay absorbed anything (labels and PR numbers only), and the
     digest starts over. The relay takes no lock and sends nothing to a worker;
     the chief keeps every authority write (GO, judge, dispatch, Jira).
+
+    **How long an event waits, and where to read it.** The waiter is one foreground loop. While a
+    sample runs nothing reads the inbox or the worker documents, so an event that lands mid-sample
+    is relayed only when the loop is back at its service pass. **The bound stated here covers the
+    sample alone**: its two bounded reads (`tick.sh`, then the usage read, each under
+    `CHIEF_WAIT_TICK_TIMEOUT`, 120 s plus a 5 s kill grace) allow about 250 s. It leaves out three
+    things that add to a wait. First, what the loop does after a sample before it serves events
+    again: the focus rebuild after every sample (a status read bounded at 60 s plus a 2 s grace),
+    the status sweep when it is due (every 15 minutes by default, 60 s plus a grace, and a second
+    focus read), and the chain of wake checks that follows, each under its own bound if it has one
+    and several of them reading GitHub or Jira; with the `auto_go` flag off that includes a READY's
+    own checks (165 + 30 + 90 s and a 5 s grace each). Second, the events queued ahead: one handler
+    call per pass, each up to 245 s. Third, the ticks that interleave between queued events: a due
+    tick takes the next turn after a handler call, so a queue can meet a full sample after each
+    handler. None of these is added up here, so 250 s is the sample's share of a wait, not the
+    whole path. Once the loop is back at its service pass an event waits one poll: 0.2 s while the
+    loop is busy, and up to one idle interval (`CHIEF_WAIT_IDLE_POLL_SEC`, 1 s, never below the
+    poll) after `CHIEF_WAIT_IDLE_PASSES` (10) passes in a row that offered nothing, attempted
+    nothing and ran no tick. The first pass that offers an event, attempts a relay or runs a tick
+    goes back to the poll at once; the backoff is in stream mode only and only paces the loop. What a real sample takes is the
+    host's: a station's recorded per-tick log (62 ticks) shows a median of about 36 s of wall time
+    and a maximum of 104 s. A tick starts every 180 s counted from the start of the previous one,
+    so a busy loop answers within a poll, a loop that has been quiet for ten passes within one idle
+    interval plus the pass (and starts a tick that fell due within the same), and a loop inside a
+    sample after the rest of the sample in progress.
+    The master plan's 30-second bar is the bar of the stubbed 50-event test, where the tick is
+    instant; it is not a promise about a real wave. The waiter records the real numbers: every
+    `worker-event` call appends one line to `<inbox>.wait.relaylog`
+    (`start=<epoch> label=<l> marker=<m> pending=<s> handler=<s> rc=<rc>`), also for a refused
+    attempt that will be retried; an idle pass writes nothing, and past 1 MiB the file is renamed
+    to `<inbox>.wait.relaylog.1`, replacing the older copy. `pending=` counts from the moment
+    this waiter process first saw the event, so it does not include the time the event sat unseen
+    while a sample held the loop (a waiter restart starts it again); read that part from the
+    sample's `wall=` in `<inbox>.wait.ticklog`.
+
+    **A successor replays the newest READY per worker.** The cursors, the handled set and the snapshots
+    are per inbox, so a chief that takes over on a new inbox meets every worker as new and relays that
+    worker's newest READY once more. That is a repeated message and one more `AUTO-GO` bullet, never a
+    second GO: `auto-go.sh` takes `.auto-go-<pr>.<head>.lock`, and when `.locks/go/<pr>.<head>` exists it
+    returns the recorded `GO-SENT` without writing or sending anything, or fails closed (`fail 9`, an
+    ESCALATE) when no audit row matches. With `auto_go` off, `<inbox>.wait.readywoke` is per inbox as
+    well, so the successor is woken once more for a READY its predecessor already woke for; a GO still
+    happens only by the chief's hand.
 
     **A READY wakes you once, already checked**. Armed with
     `--workers-from` and the `auto_go` flag off, a worker whose newest marker bullet

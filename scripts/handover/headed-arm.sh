@@ -852,7 +852,29 @@ fi
 # Exit 0 means launched OR already running: the launcher's attempt record (headed-arm-worker.sh) cannot tell them
 # apart from the status, so the decision point writes its typed result to HEADED_ARM_OUTCOME_FILE when given.
 # Best-effort: a write that fails leaves the record indeterminate, never changes this exit.
-_ha_outcome() { [ -z "${HEADED_ARM_OUTCOME_FILE:-}" ] || printf '%s\n' "$1" > "$HEADED_ARM_OUTCOME_FILE" 2>/dev/null; return 0; }
+_ha_outcome() {
+    [ -z "${HEADED_ARM_OUTCOME_FILE:-}" ] || printf '%s\n' "$1" > "$HEADED_ARM_OUTCOME_FILE" 2>/dev/null
+    if [ "${FLEET_LAUNCH_MANAGED:-false}" = true ] && [ "$1" = launched ]; then
+        fleet_launch_outcome launched || echo 'headed-arm: managed receipt remains unknown' >&2
+        _HA_MANAGED_SETTLED=1
+    fi
+    return 0
+}
+# shellcheck source=scripts/lib/fleet-launch.sh
+. "$(dirname "$0")/../lib/fleet-launch.sh" || exit 10
+_HA_MANAGED_SETTLED=0
+# shellcheck disable=SC2329  # invoked by EXIT
+_ha_exit() {
+    if [ "${FLEET_LAUNCH_MANAGED:-false}" = true ] && [ "$_HA_MANAGED_SETTLED" != 1 ]; then
+        if fleet_launch_outcome refused 2>/dev/null; then
+            fleet_launch_release || echo 'headed-arm: owned reservation remains protected' >&2
+        else fleet_launch_finish || echo 'headed-arm: managed attempt remains protected' >&2
+        fi
+    fi
+    [ -z "${TICKET_LOCK:-}" ] || rm -rf "$TICKET_LOCK" 2>/dev/null
+}
+trap _ha_exit EXIT
+fleet_launch_prepare "$DOC" "$NAME" "${FLEET_LAUNCH_MANIFEST:-}" "${FLEET_LAUNCH_ATTEMPT:-}" || exit 10
 
 echo "$(date +%F_%T) armed: name=$NAME doc=$DOC signal=$SIGNAL deadline=$DEADLINE role=${ROLE:-unsplit}" >> "$LOG"
 # The header calls $DEADLINE a hard deadline, but a flat `sleep
@@ -1083,7 +1105,7 @@ fi
 # secret-named vars are never copied into the file.
 _hl_worker_var() {
     case "$1" in
-        HIMMEL_*|WORKER_SESSION_*|CHIEF_*|CONSOLE_*|HANDOVER_*|IMPL_*|*_OK|CR_*|ARM*|JIRA_PROJECT_KEY) return 0 ;;
+        FLEET_LAUNCH_*|HIMMEL_*|WORKER_SESSION_*|CHIEF_*|CONSOLE_*|HANDOVER_*|IMPL_*|*_OK|CR_*|ARM*|JIRA_PROJECT_KEY) return 0 ;;
     esac
     return 1
 }
@@ -1141,6 +1163,7 @@ headless_launch() {
     [ -f "$settings" ] || headless_fail 2 "headless: settings file $settings is missing - it must exist before the launch"
     for name in $(compgen -e); do
         _hl_worker_var "$name" || continue
+        case "$name" in FLEET_LAUNCH_*) _hl_set "$name" ""; continue ;; esac
         _hl_secret_var "$name" && continue
         [ "$name" = HIMMEL_HOOK_INTEGRITY_BYPASS_OK ] && continue
         _hl_set "$name" "${!name}"
@@ -1195,8 +1218,9 @@ headless_launch() {
     chmod 600 "$settings" 2>/dev/null || true
 
     local lrc=0
+    fleet_launch_commit || headless_fail 10 'fleet-paused: final commitment refused'
     # shellcheck disable=SC2086  # deliberately word-split env tokens, the same shape as the konsole branches.
-    env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR -u NO_COLOR $ROLE_ENV_UNSET \
+    env -u FLEET_LAUNCH_ATTEMPT -u FLEET_LAUNCH_DOC -u FLEET_LAUNCH_NAME -u FLEET_LAUNCH_MANIFEST -u FLEET_LAUNCH_WORKER_INTENT -u FLEET_LAUNCH_LANE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR -u NO_COLOR $ROLE_ENV_UNSET \
         CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"} \
         "${LAUNCH_ARGV[@]}" < /dev/null >> "$LOG" 2>&1 || lrc=$?
     [ "$lrc" -eq 0 ] || headless_fail 1 "headless: the background launch for $NAME exited $lrc - see $LOG for its output"
@@ -1567,7 +1591,7 @@ if [ "$ALLOW_TICKET_DUP" != 1 ] && [ "$HEADLESS" != 1 ] && [[ "$NAME" =~ ^([A-Z]
     while :; do
         if claim_lock "$ticket_claim"; then
             TICKET_LOCK="$ticket_claim"
-            trap '[ -z "$TICKET_LOCK" ] || rm -rf "$TICKET_LOCK" 2>/dev/null' EXIT
+            trap _ha_exit EXIT
             printf '%s\n' "$NAME" > "$TICKET_LOCK/holder" 2>/dev/null  # swallow-ok: the holder name only decorates a refusal; an unreadable one is retried as same-lineage
             break
         fi
@@ -1760,13 +1784,13 @@ if [ "$RECORDER" = "1" ]; then
     # launch stdout/stderr (spawn errors before script even starts) into the
     # same file. -a is load-bearing: without it, `script -f` TRUNCATES $LOG on
     # open, discarding whatever the outer >> already wrote there.
-    TERM_ARGV=(env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR -u NO_COLOR $ROLE_ENV_UNSET
+    TERM_ARGV=(env -u FLEET_LAUNCH_ATTEMPT -u FLEET_LAUNCH_DOC -u FLEET_LAUNCH_NAME -u FLEET_LAUNCH_MANIFEST -u FLEET_LAUNCH_WORKER_INTENT -u FLEET_LAUNCH_LANE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR -u NO_COLOR $ROLE_ENV_UNSET
         CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} SHELL="$BASH_BIN" $LAUNCHER_ENV ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"} PATH="$DEDUPED_PATH"
         script -q -a -f "$LOG" -c "$LAUNCH_CMD")
 else
     # shellcheck disable=SC2206  # LAUNCHER_ENV and ROLE_ENV_UNSET
     # word-split, same contract as the recorder branch above.
-    TERM_ARGV=(env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR -u NO_COLOR $ROLE_ENV_UNSET
+    TERM_ARGV=(env -u FLEET_LAUNCH_ATTEMPT -u FLEET_LAUNCH_DOC -u FLEET_LAUNCH_NAME -u FLEET_LAUNCH_MANIFEST -u FLEET_LAUNCH_WORKER_INTENT -u FLEET_LAUNCH_LANE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR -u NO_COLOR $ROLE_ENV_UNSET
         CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"} PATH="$DEDUPED_PATH"
         "${LAUNCH_ARGV[@]}")
 fi
@@ -1894,14 +1918,17 @@ tab_launch() {
     "$QDBUS" "org.kde.konsole-$wpid" "/Sessions/$sid" setTabTitleFormat 1 "$NAME" >> "$LOG" 2>&1
     # The leading space keeps the line out of the tab shell's history.
     if ! "$QDBUS" "org.kde.konsole-$wpid" "/Sessions/$sid" runCommand " exec bash $tab_sh" >> "$LOG" 2>&1; then
+        # The tab exists and the typed line may still have been delivered: a second window under this attempt could start a
+        # second worker. Keep the tab as this launch's window; the post-launch poll below confirms a worker or reports the
+        # launch unconfirmed (exit 7), which a managed attempt records as unknown and never retries blindly.
         rm -f "$tab_sh"
-        echo "$(date +%F_%T) WARN: tab launch for $NAME failed (runCommand on /Sessions/$sid) - opening its own window" >> "$LOG"
-        return 1
+        echo "$(date +%F_%T) WARN: tab launch for $NAME is ambiguous (runCommand on /Sessions/$sid failed after the tab opened) - not opening a second window" >> "$LOG"
     fi
     KPID="$wpid"
     TAB_SESSION="$sid"
 }
 
+fleet_launch_commit || { echo 'headed-arm: fleet-paused: final commitment refused' >&2; exit 10; }
 if ! tab_launch; then
     "$KONSOLE" --separate --workdir "$REPO" -p "tabtitle=$NAME" -e "${TERM_ARGV[@]}" >> "$LOG" 2>&1 &
     KPID=$!

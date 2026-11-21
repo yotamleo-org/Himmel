@@ -96,7 +96,7 @@ test('main: writes records to ledger and returns summary string', () => {
 
   // The ledger should hold exactly the records collectAll produces
   const expectedCount = collectAll(NOW, fixtureReaders).length;
-  const stored = readRecords(ledger);
+  const stored = readRecords(ledger).filter((r) => r.kind !== 'collection');
   assert.equal(stored.length, expectedCount, 'ledger should hold all collected records');
 
   // Summary string should contain appended=N dropped=0
@@ -171,7 +171,7 @@ test('main: dropped > 0 branch — invalid record is counted and absent from led
   assert.match(summary, /appended=1/, 'summary should report appended=1');
 
   // The ledger should contain only the valid record, not the empty-key one
-  const stored = readRecords(ledger);
+  const stored = readRecords(ledger).filter((r) => r.kind !== 'collection');
   assert.equal(stored.length, 1, 'ledger should hold exactly 1 valid record');
   assert.equal(stored[0].key, 'HIMMEL-1', 'only the valid record should be in the ledger');
   assert.ok(!stored.some((r) => r.key === ''), 'empty-key record must not appear in ledger');
