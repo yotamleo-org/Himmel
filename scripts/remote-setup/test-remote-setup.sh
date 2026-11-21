@@ -2004,7 +2004,7 @@ case_peer_mac_start_failure_names_the_poller_log() {
     feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     check "an agent that will not start is a FIX" eq "$RC" 3
-    check "the FIX names the tail command for the log" has "$LAST" "tail -n 30 ~/.himmel/peer-bridge/poller.log"
+    check "the FIX points at the poller log in peer-bridge.md" has "$LAST" "poller log named in docs/internals/peer-bridge.md (Audit trail)"
 }
 
 case_peer_changed_token_restarts_the_running_poller() {

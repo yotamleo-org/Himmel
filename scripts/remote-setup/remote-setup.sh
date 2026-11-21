@@ -693,9 +693,8 @@ peer_unit_ensure() {
     fi
 }
 
-# The macOS poller's log is launchd's plain stdout capture, not a ledger: the ledger registry has no row for it.
 peer_log_hint() {
-    if [ "$(uname)" = Darwin ]; then printf 'tail -n 30 ~/.himmel%s' '/peer-bridge/poller.log'; else printf 'journalctl --user -u %s -n 30' "$PEER_UNIT"; fi
+    if [ "$(uname)" = Darwin ]; then printf 'the last 30 lines of the poller log named in docs/internals/peer-bridge.md (Audit trail)'; else printf 'journalctl --user -u %s -n 30' "$PEER_UNIT"; fi
 }
 
 # peer_unit_teardown: stops, disables and deletes the poller unit (the way back for peer --remove). It returns
