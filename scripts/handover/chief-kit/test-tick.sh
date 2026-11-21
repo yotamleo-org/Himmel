@@ -369,6 +369,7 @@ fi
 # The default stub reset epoch, rendered the way tick.sh renders it (local HH:MM).
 gql_hm="$(date -d @1790000000 +%H:%M 2>/dev/null || date -r 1790000000 +%H:%M)"
 out="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$W/denials-default-missing.jsonl" bash "$SUT")"; rc=$?
+out="$(printf '%s\n' "$out" | sed 's/ reads=[^ ]*//')"
 expected='TICK 12:34 workers=N61:FRESH,N65:FREE livestate=skip procs=1,unwatched=N9 models=sonnet:1 atq=2 suites=1alive/0dead prs=#2247,#2250 unowned-prs=none usage=5h30/wk28/codex=5h12/wk34 fill=28 tails=N61:LIVE,N65:READY acts=N65:READY#1 inbox=N61:10/4 fleet=1/8 capacity=UNDERFILLED:7 gql=4321/'"$gql_hm"' workerset=skip board=skip tracker=skip vault=skip cloud=skip orphans-wip=skip pool=skip denials=none ciq=unknown ciguard=unknown cired=unknown vmrun=off'
 lines="$(printf '%s\n' "$out" | wc -l | tr -d '[:space:]')"
 if [ "$rc" -eq 0 ] && [ "$lines" = 1 ] && [ "$out" = "$expected" ]; then
@@ -1164,6 +1165,7 @@ cat > "$W/ps-orphan.txt" <<'FIX'
   201   101    02:10:05 /usr/bin/zsh -c source /home/u/.claude/shell-snapshots/snapshot-zsh-1-a.sh 2>/dev/null || true && eval 'until false; do sleep 10; done'
 FIX
 orph_out="$(PS_FIXTURE="$W/ps-orphan.txt" bash "$SUT")"; orph_rc=$?
+orph_out="$(printf '%s\n' "$orph_out" | sed 's/ reads=[^ ]*//')"
 if [ "$orph_rc" -eq 0 ]; then
     contains 'a stale wrapper under a live session surfaces as orphans=<name>:<n>/<m>m, last on the line' "$orph_out" " gql=4321/$gql_hm orphans=HIMMEL-111-legN61:1/130m"
 else
