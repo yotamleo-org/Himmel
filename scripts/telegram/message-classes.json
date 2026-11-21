@@ -313,9 +313,10 @@
     },
     {
       "kind": "version-approval",
-      "class": "monitor",
+      "class": "escalate",
       "sender": "scripts/handover/chief-kit/version-approval-alert.sh",
-      "pin": "_mba_send \"$chat\" \"$text\" version-approval"
+      "pin": "_mba_send \"$chat\" \"$text\" version-approval",
+      "sample": "An out-of-version approval was signed for a ticket in the current version, for 14 days; 3 approvals are open. Blocks: nothing. Do: check you gave this approval, else revoke it"
     },
     {
       "kind": "cadence:graph-semantic-*",

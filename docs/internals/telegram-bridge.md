@@ -188,7 +188,7 @@ Every message the harness sends to Telegram carries a kind, and `scripts/telegra
 | `silent-go-merge` | monitor | `scripts/handover/chief-kit/silent-go-merge.sh` | A GO'd PR whose worker went silent was merged by the chief's script. |
 | `claude-only-clear` | monitor | `scripts/cr/clear-review-marker.sh` | The review marker was cleared on the Claude-only fallback after every other review lane was out. |
 | `bypass-result` | monitor | `scripts/station-ops/bypass-launchd.sh` | A bypass worker launch you answered with go or no ran, was refused, or did not run; the outcome is logged on the station. |
-| `version-approval` | monitor | `scripts/handover/chief-kit/version-approval-alert.sh` | Your out-of-version approval was recorded for a ticket, for 14 days; this repeats your own words back. |
+| `version-approval` | escalate | `scripts/handover/chief-kit/version-approval-alert.sh` | An out-of-version approval was signed for a ticket in the current version, for 14 days; 3 approvals are open. Blocks: nothing. Do: check you gave this approval, else revoke it |
 | `cache-health` | monitor | `scripts/eval/cache-health-cadence.sh` | The hourly prompt-cache health check crossed a threshold. |
 | `failure-review` | monitor | `scripts/eval/worker-digest/failure_review.py` | The daily failure review found something in the last 24 hours. |
 | `upstream-watch` | monitor | `scripts/upstreams/upstream-watch.sh` | An upstream project the harness tracks has news to review. |

@@ -23,7 +23,7 @@ PIN_PENDING = ["merge-blocked", "token-in-output", "config-audit", "recover-fail
 NAMED = {"bypass-ask": ("escalate", "scripts/station-ops/bypass-launchd.sh"),
          "bypass-failed": ("escalate", "scripts/station-ops/bypass-launchd.sh"),
          "bypass-result": ("monitor", "scripts/station-ops/bypass-launchd.sh"),
-         "version-approval": ("monitor", "scripts/handover/chief-kit/version-approval-alert.sh"),
+         "version-approval": ("escalate", "scripts/handover/chief-kit/version-approval-alert.sh"),
          "claude-only-clear": ("monitor", "scripts/cr/clear-review-marker.sh"),
          "cadence:graph-key-*": ("escalate", "scripts/graphify/semantic-update.sh")}
 NAMED_PINNED = ["cadence:graph-key-*", "version-approval", "claude-only-clear"]
@@ -283,7 +283,7 @@ for k in bypass-ask bypass-failed bypass-result version-approval 'cadence:graph-
   mut "$T/named-drop.json" "t['kinds']=[r for r in t['kinds'] if r['kind']!='$k']"
   lint_dirty "a table copy with the $k row dropped fails the lint" "$k has no row" --table "$T/named-drop.json" --only named
 done
-for k in bypass-ask bypass-failed 'cadence:graph-key-*'; do
+for k in bypass-ask bypass-failed version-approval 'cadence:graph-key-*'; do
   mut "$T/named-down.json" "[r.update({'class':'monitor'}) for r in t['kinds'] if r['kind']=='$k']"
   lint_dirty "the operator-owned $k set to monitor fails the lint" "$k must be escalate" --table "$T/named-down.json" --only named
 done

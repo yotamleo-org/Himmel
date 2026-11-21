@@ -301,7 +301,7 @@ audit() {
     return 0
 }
 
-# Tell the operator ONCE that a head cleared on the Claude-only floor
+# Alert ONCE (kind claude-only-clear: monitoring group) that a head cleared on the Claude-only floor
 # (decision 483: fall back to Claude "and alert"). Fail-open by
 # construction: it runs in a subshell, always returns 0, and only ever adds to
 # the verdict, so it can never change this gate's exit code or what it clears.
