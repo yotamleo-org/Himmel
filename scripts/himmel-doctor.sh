@@ -2903,7 +2903,7 @@ check_c33_graph_stale() {
             case "$err" in
                 *"no account has room"*) why=" (no API account has credit room)" ;;
                 *"credit exhausted"*) why=" (API credit exhausted)" ;;
-                *) why="${err%%:*}"; why=" (${why:0:120})" ;;
+                *) why=" (${err:0:160})" ;;
             esac
             case "$err" in
                 *"no account has room"*|*"credit exhausted"*)
