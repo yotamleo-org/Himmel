@@ -315,7 +315,7 @@
         "url": "https://github.com/lottiefiles/motion-design-skill.git",
         "sha": "d77a9fc8cb371cab1ba5420df5bfd232cd14c9bb"
       },
-      "description": "[lottiefiles/motion-design-skill, MIT, vendor + attribution only, no carried delta] LottieFiles motion-design skill. Explicit HTTPS git url, pinned to a full sha 4cc6b0d87afc per himmel supply-chain policy. Design kit, design-motion profile.",
+      "description": "[lottiefiles/motion-design-skill, MIT, vendor + attribution only, no carried delta] LottieFiles motion-design skill. Explicit HTTPS git url, pinned to a full sha d77a9fc8cb37 per himmel supply-chain policy. Design kit, design-motion profile.",
       "strict": false,
       "author": {
         "name": "lottiefiles",
@@ -407,7 +407,7 @@
         "url": "https://github.com/BuilderIO/skills.git",
         "sha": "551e97e687444f8f627e4099475a92527bbd5b03"
       },
-      "description": "[BuilderIO/skills, MIT, vendor + attribution only, no carried delta] Builder.io skills: all upstream skills load, including visual-plan and visual-recap. strict:true because upstream ships a plugin.json: strict:false plus a marketplace skills list is a manifest conflict that loads nothing. Explicit HTTPS git url, pinned to a full sha 5af301099bed per himmel supply-chain policy. Design kit, design-diagram profile.",
+      "description": "[BuilderIO/skills, MIT, vendor + attribution only, no carried delta] Builder.io skills: all upstream skills load, including visual-plan and visual-recap. strict:true because upstream ships a plugin.json: strict:false plus a marketplace skills list is a manifest conflict that loads nothing. Explicit HTTPS git url, pinned to a full sha 551e97e68744 per himmel supply-chain policy. Design kit, design-diagram profile.",
       "strict": true,
       "author": {
         "name": "BuilderIO",
