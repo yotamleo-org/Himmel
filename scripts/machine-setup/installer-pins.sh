@@ -27,12 +27,12 @@ UV_VERSION="0.13.8"
 UV_SHA256="5acfd9177cfecf0bf87578f059728215ccc884388988f55f7a65041b57387d91"
 
 # Claude Code — the native binary, checksum from the release manifest.
-CLAUDE_VERSION="2.1.325"
-CLAUDE_LINUX_X64_SHA256="0dc4f4a9a165fc60746d7ae8489712e5fc352f1e7ad4eb22e7141bd0812eb0cf"
+CLAUDE_VERSION="2.1.330"
+CLAUDE_LINUX_X64_SHA256="f390eaa0814e6a1bff74cbb47acb74cb9c89d30ced809fe0af5af00c7bfe8ebb"
 
 # RTK — the versioned .deb, never the mutable rtk_amd64.deb alias.
-RTK_VERSION="1.2.0"
-RTK_DEB_SHA256="d847c771b86a98c5dfbc5a3bad0bf6a51293d91ad52123583664b48d091853ff"
+RTK_VERSION="1.2.1"
+RTK_DEB_SHA256="0a56f0481565a23922662a8f05a354cc6ae7d0b16b8f7e12a39faf71e8e1694a"
 
 # TLC — tla2tools.jar from the tlaplus release, consumed by setup-statechart.sh
 # (the optional statechart check). The same bytes the pstack statechart runtime

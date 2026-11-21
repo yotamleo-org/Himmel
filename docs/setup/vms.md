@@ -15,7 +15,7 @@ Two **different** dependency sets; do not conflate them:
 | Set | Who needs it | Deps | Installed by |
 |-----|--------------|------|--------------|
 | **Test harness** | throwaway test VMs + CI runners (to *run* himmel's bash suites) | `bash git jq` | `scripts/machine-setup/test-bootstrap.sh` |
-| **User runtime** | himmel adopters (to *use* himmel) | `bash git node npm bun python3 jq gh mktemp` (+ `claude`) | `scripts/setup.sh` `[0/10]` (R6 `ensure-tools` auto-installs git/jq/python3, flags the rest) |
+| **User runtime** | himmel adopters (to *use* himmel) | `bash git node npm bun python3 jq gh mktemp` (+ `claude`) | `scripts/setup.sh` `[0/9]` (R6 `ensure-tools` auto-installs git/jq/python3, flags the rest) |
 
 A bare test VM only needs `test-bootstrap.sh` to run the suites; it does **not**
 need the full user runtime. `bash scripts/machine-setup/test-bootstrap.sh`

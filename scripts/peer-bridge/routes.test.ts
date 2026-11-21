@@ -43,7 +43,7 @@ test("RED control: the same check fails over a merge script with a peer-bridge r
     fs.appendFileSync(join(root, "scripts/handover/merge-on-green.sh"), "\nbun scripts/peer-bridge/jobs.ts show J1\n");
     expect(offenders(gateFiles(root)).map(f => relative(root, f))).toEqual(["scripts/handover/merge-on-green.sh"]);
     fs.writeFileSync(join(root, "scripts/jira/src/x.ts"), 'import "../../peer-bridge/resolve";\n');
-    fs.writeFileSync(join(root, "scripts/ci/x.sh"), "cat ~/.himmel/peer-bridge/goomal/jobs.jsonl\n");
+    fs.writeFileSync(join(root, "scripts/ci/x.sh"), "cat ~/.himmel/peer-bridge/example/jobs.jsonl\n");
     expect(offenders(gateFiles(root)).map(f => relative(root, f)).sort()).toEqual(["scripts/ci/x.sh", "scripts/handover/merge-on-green.sh", "scripts/jira/src/x.ts"]);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
@@ -63,7 +63,7 @@ test("RED control: a config that lists the state directory fails the same check"
   const dir = fs.mkdtempSync(join(tmpdir(), "peer-routes-cfg-"));
   try {
     const cfg = join(dir, "qmd-collection-corpus.json");
-    fs.writeFileSync(cfg, JSON.stringify({ "peer-state": `${stateDir()}/goomal` }));
+    fs.writeFileSync(cfg, JSON.stringify({ "peer-state": `${stateDir()}/example` }));
     expect(/peer-bridge/.test(fs.readFileSync(cfg, "utf8"))).toBe(true);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

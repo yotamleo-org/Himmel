@@ -36,9 +36,9 @@
 # refuses a caller ANTHROPIC_API_KEY, and fails closed (exit 2) otherwise,
 # before any call: it never switches itself to the claude-cli backend. Each
 # chunk call then follows the lane's own failure rule: a refusal or a failed
-# call alerts and re-runs the chunk once on the subscription, replaying its
-# stdin prompt, unless HIMMEL_API_FALLBACK=off (docs/internals/api-lane.md). When
-# the credit runs out mid-run the run therefore carries on chunk by chunk on the
+# call alerts, and re-runs the chunk once on the subscription, replaying its
+# stdin prompt, only with HIMMEL_API_FALLBACK=on (default off; docs/internals/api-lane.md). With it on,
+# when the credit runs out mid-run the run carries on chunk by chunk on the
 # subscription, gated only by the lane's per-call usage preflight; that cost is
 # never added to the API spend or reserve files (it is not API spend). Spend is bounded by
 # --max-files, a per-call lane budget (GRAPHIFY_API_CALL_BUDGET_USD, default
@@ -620,7 +620,7 @@ for d in "${parts[@]}"; do [ "$d" = "$here" ] || newpath="${newpath:+$newpath:}$
 export PATH="$newpath"
 cd "$here" || exit 2
 # The lane exits 6 when the provider rejects the account's credit or key and the subscription fallback does not
-# replay the chunk (HIMMEL_API_FALLBACK=off, or the fallback's usage preflight skipped it). That account would answer
+# replay the chunk (HIMMEL_API_FALLBACK not on, the default, or the fallback's usage preflight skipped it). That account would answer
 # every remaining chunk the same way, so dispatch stops: one rejection on a pinned account, N on auto (N = the accounts in play, one per
 # account). When the fallback does run, the lane exits with its own code, not 6, so this breaker never trips and the
 # remaining chunks go on on the subscription.

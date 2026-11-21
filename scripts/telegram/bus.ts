@@ -216,8 +216,10 @@ export async function truncateFullyConsumed(file: string, cursorFile: string): P
   // In place, not by rename: a bridge session's sandbox binds its outbox by inode, so a replaced file would strand its appends.
   // oxlint-disable-next-line oxc/bad-bitwise-operator -- combine integer open(2) flags, not boolean conditions
   const handle = await open(file, constants.O_WRONLY | constants.O_NOFOLLOW);
-  try { await handle.truncate(0); } finally { await handle.close(); }
-  await atomicWrite(cursorFile, "0");
+  try {
+    await atomicWrite(cursorFile, "0");
+    await handle.truncate(0);
+  } finally { await handle.close(); }
   return true;
 }
 // Per-surface rotation for a cursor-read ledger (inbound.jsonl), mirroring

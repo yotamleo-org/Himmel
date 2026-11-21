@@ -1,0 +1,15 @@
+[Unit]
+Description=himmel peer bridge runner
+After=himmel-peer-bridge.service
+
+[Service]
+Type=simple
+Environment=PATH=%h/.bun/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PEER_JOB_BACKEND=vbox
+ExecStart=/usr/bin/env bun @HIMMEL_ROOT@/scripts/peer-bridge/runner.ts
+Restart=on-failure
+RestartSec=30
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

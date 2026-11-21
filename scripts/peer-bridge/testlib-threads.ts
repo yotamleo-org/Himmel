@@ -14,13 +14,13 @@ export function clock(start = T0) {
   return c;
 }
 
-export function threadsOf(recs: ThreadRec[], c = clock(), peers: string[] = ["goomal"], maxOpen = 5) {
+export function threadsOf(recs: ThreadRec[], c = clock(), peers: string[] = ["example"], maxOpen = 5) {
   return Threads.load(recs, { peers: Object.fromEntries(peers.map(p => [p, peerCfg(maxOpen)])), clock: c.now });
 }
 
 export function mkThread(dir: Dir, state: string, over: Partial<ThreadRec> = {}): ThreadRec {
   return {
-    kind: "thread", peer: "goomal", chat: CHAT, root: 100, dir, msgKind: "question", state,
+    kind: "thread", peer: "example", chat: CHAT, root: 100, dir, msgKind: "question", state,
     alloc: T0, deadline: T0 + 24 * H, remindAt: null, resent: false, deferred: false, auto: 0, closingSent: false, ts: T0,
     ...over,
   };
@@ -28,7 +28,7 @@ export function mkThread(dir: Dir, state: string, over: Partial<ThreadRec> = {})
 
 let mid = 5000;
 export function inbound(tag: string, root: number, over: Partial<PeerMsgRec> = {}): PeerMsgRec {
-  return { kind: "peer-msg", untrusted: true, peer: "goomal", from_id: "555000111", from_is_bot: true, chat_id: CHAT, message_id: ++mid, root_id: root, id: "0a0b0c0d", tag, ts: T0 / 1000, text: "x", ...over };
+  return { kind: "peer-msg", untrusted: true, peer: "example", from_id: "555000111", from_is_bot: true, chat_id: CHAT, message_id: ++mid, root_id: root, id: "0a0b0c0d", tag, ts: T0 / 1000, text: "x", ...over };
 }
 export function rootMsg(tag: string, message_id: number, over: Partial<PeerMsgRec> = {}): PeerMsgRec {
   return inbound(tag, message_id, { message_id, ...over });

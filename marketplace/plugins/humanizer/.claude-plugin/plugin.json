@@ -1,7 +1,7 @@
 {
   "name": "humanizer",
-  "version": "0.1.2",
-  "description": "[himmel vendor] One opt-in skill from blader/humanizer pinned at b48c832f: /humanizer rewrites AI-sounding prose. disable-model-invocation. No hooks, agents or scripts.",
+  "version": "0.1.3",
+  "description": "[himmel vendor] One opt-in skill from blader/humanizer pinned at a32f2440: /humanizer rewrites AI-sounding prose. disable-model-invocation. No hooks, agents or scripts.",
   "author": {
     "name": "Siqi Chen (upstream) / yotamleo (vendor)"
   },

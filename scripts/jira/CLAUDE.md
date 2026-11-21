@@ -58,7 +58,7 @@ helpers.
   request ask for an open parent's current version, with a why of facts (parent, status,
   version) and the same in its evidence; `--remainder` adds that the parent cannot close
   without this ticket; a Done parent asks for none; a parent in a frozen version still asks
-  for that version (the why says frozen) and the release manager rules; the residual cap is not checked (an explicit `--fix-version`, `--backlog`,
+  for that version (the why says frozen) and the release manager rules (an explicit `--fix-version`, `--backlog`,
   `--proposed-version` or `--why` wins); a Bug that blocks open work goes
   into a version, then needs a requested INTAKE. Open tickets
   that already have no version: `scripts/handover/chief-kit/intake-backfill.sh` prints a

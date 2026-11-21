@@ -121,12 +121,8 @@ row wins. "Next" means the earliest unreleased version after the current one.
 - The release manager can override any placement later with a REVERSION. The
   verb's class is a default, not a gate.
 - Placement never throws on a frozen version: a frozen or missing next sends the
-  follow-up to the backlog. Over the follow-up budget (15 open follow-ups per
-  version, or the version description's `residual-budget:<n>` line), a newcomer
-  that outranks the version's lowest-ranked To Do follow-up takes its slot and
-  that follow-up steps down, unless that follow-up is admitted or ruled, or the
-  rulings cannot be read; otherwise the newcomer steps down, labelled
-  `residual-displaced`. See the glossary's Cap gate entry.
+  follow-up to the backlog. No count of the follow-ups a version holds moves a
+  newcomer out of it or displaces a resident; see the glossary's Cap gate entry.
 
 ## What the verb files
 
@@ -278,8 +274,7 @@ version close (decision 23), the release manager looks at:
   like the first point.
 - **Reclasses.** How often the release manager moves a follow-up from one class
   to another. Many moves mean the definitions are unclear to the people filing.
-- **The mix per version.** How many follow-ups each class adds, and how many
-  were displaced from a version for lack of room.
+- **The mix per version.** How many follow-ups each class adds.
 - **The polish recount.** At the v1.1.3 close the release manager re-runs the
   audit of findings noted as polish with no ticket (the spec named under "What the
   verb files", decision D7). It counts the noted rows since the audit's cutoff and

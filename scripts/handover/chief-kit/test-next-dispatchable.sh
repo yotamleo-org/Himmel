@@ -2032,10 +2032,21 @@ lacks "and hands nothing off" "$pmd" "HANDED-OFF HIMMEL-133"
 
 # A reader answer the dispatcher does not recognise, or one of the wrong shape, reads as an unreadable body: never dispatched blind.
 cat > "$WORK/odd-reader.py" <<'EOF'
-import sys
+import json, sys
 answers = {140: "garbage", 141: "remaining", 142: "remaining\ta\tb", 143: "handed-off\tHIMMEL-9", 144: "handed-off\tHIMMEL-9\ttext\textra"}
-units = "\tnowrite=0\tchief-owed=" if "--units" in sys.argv else ""
-sys.stdout.write(answers[int(sys.argv[-1].rsplit("-", 1)[1])] + units + "\n")
+n = int(sys.argv[-1].rsplit("-", 1)[1])
+answer = answers[n]
+if "--full-units" in sys.argv:
+    a = {"kind": "remaining", "handed": [], "text": "x", "nowrite": False, "chief_owed": [], "chief_invalid": [], "owed_lines": []}
+    if n == 140: a["kind"] = "garbage"
+    if n == 141: del a["text"]
+    if n == 142: a["b"] = "b"
+    if n == 143: a.update(kind="handed-off", handed=["HIMMEL-9"]); del a["text"]
+    if n == 144: a.update(kind="handed-off", handed=["HIMMEL-9"], extra="extra")
+    sys.stdout.write(json.dumps({"schema": 1, "answer": a}) + "\n")
+else:
+    units = "\tnowrite=0\tchief-owed=" if "--units" in sys.argv else ""
+    sys.stdout.write(answer + units + "\n")
 EOF
 PME_STATE="$WORK/pme"; mkdir -p "$PME_STATE/workers"
 MPME="$WORK/mpme/HIMMEL"; mkdir -p "$MPME"

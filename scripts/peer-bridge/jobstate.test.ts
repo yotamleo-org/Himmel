@@ -7,7 +7,7 @@ import { NOW_S, SHA, WIRE, inJob, outJob } from "./testlib-jobs";
 
 const H = 3600, MIN = 60;
 const REQ_EXP = NOW_S + 86400;
-const CTX = { from: "goomal", to: "yotam", chat: -1001234567890, now: NOW_S };
+const CTX = { from: "example", to: "yotam", chat: -1001234567890, now: NOW_S };
 const EV = {
   resolveOk: { type: "resolve-ok", sha: SHA } as JobEvent,
   resolveFail: { type: "resolve-fail", refused: "unknown-sha" } as JobEvent,
