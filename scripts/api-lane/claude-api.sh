@@ -154,6 +154,7 @@ send_alert() {
     73) why="TELEGRAM_GROUP_CHAT_ID is set empty: suppressed" ;;
     74) why="no TELEGRAM_GROUP_CHAT_ID or TELEGRAM_CHAT_ID" ;;
     75) why="bun not on PATH" ;;
+    *) why="the sender exited $sent" ;;
   esac
   [ -n "$why" ] || return 0
   echo "claude-api: alert NOT delivered ($why): kind $KIND_SAFE, $class (exit $rc); recorded in $undelivered" >&2

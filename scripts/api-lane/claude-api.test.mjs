@@ -656,6 +656,10 @@ test('an alert with no chat id at all is never dropped silently: stderr, one und
   assert.deepEqual(quiet.stamps(), []);
   assert.equal(quiet.undelivered().length, 1);
   assert.ok(!readFileSync(join(quiet.f.dir, 'alerts', 'undelivered.jsonl'), 'utf8').includes('1234567'), 'a chat id reached the record');
+  const failed = routeFixture('TELEGRAM_CHAT_ID=1234567\n');
+  assert.match(failed.go({ BUN_RC: '124' }).stderr, /alert NOT delivered \(the sender exited 124\)/);
+  assert.deepEqual(failed.stamps(), []);
+  assert.equal(failed.undelivered()[0].why, 'the sender exited 124');
 });
 
 // a prompt on stdin is kept in a mode-600 scratch file, so the fallback can replay it

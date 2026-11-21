@@ -111,8 +111,8 @@ For every other failure the launcher:
      `TELEGRAM_GROUP_CHAT_ID`, or to the operator chat `TELEGRAM_CHAT_ID` when no
      group id is set (both read from the environment, `himmel.conf` or `.env`).
    - An alert is never dropped silently. With no chat id, with an explicitly empty
-     `TELEGRAM_GROUP_CHAT_ID` (a deliberate suppression of the send) or without
-     `bun`, the launcher prints `claude-api: alert NOT delivered (<why>)` on stderr
+     `TELEGRAM_GROUP_CHAT_ID` (a deliberate suppression of the send), without
+     `bun`, or when the sender fails (a timeout included), the launcher prints `claude-api: alert NOT delivered (<why>)` on stderr
      and appends one row to `undelivered.jsonl` in the alert directory (kind,
      class, exit code, the redacted reason and why; never a key or a chat id). It
      writes no stamp, so the next failure alerts again.
