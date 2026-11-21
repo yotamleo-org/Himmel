@@ -1201,7 +1201,6 @@ seed_unit() { # [linux|mac]: the poller unit installed and running
         : > "$T/units/$UNIT_NAME.enabled"
     fi
 }
-# A station that finished part 4 once: example confirmed, checkpoint written, poller running.
 seed_confirmed_station() { # [linux|mac]
     seed_main
     seed_peer_env
