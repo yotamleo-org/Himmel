@@ -323,6 +323,18 @@ runs. The runner's closed list of git verbs is `init --bare`, `fetch --prune` of
 `merge-base --is-ancestor`, `init` and `fetch --depth 1` of one SHA from the
 cache. `policy.test.ts` pins the list.
 
+Testing the runner and the VM verbs:
+
+- `bun test scripts/peer-bridge/runner.test.ts` runs the runner on real git
+  against the stub backend, on any host.
+- `python3 scripts/lib/test-vmsdk-job.py` runs the verbs on the stub backend;
+  with `PEER_BRIDGE_VM_TEST=1` inside a test VM it also runs the VirtualBox rows.
+- `scripts/peer-bridge/e2e-linux.sh` is the end-to-end run, only inside a test VM
+  that already holds the golden fixture (`vmsdk-job.py golden-build-linux`). It
+  needs `PEER_BRIDGE_VM_TEST=1`, `E2E_BOTS_FILE` (a 0600 file with the two test
+  bot tokens) and `E2E_CHAT_FILE` (the test supergroup id), and prints
+  `E2E PASS`. It never runs on a station host.
+
 ### What a chief sees
 
 `jobs.ts` is the CLI, and it prints only values this station produced or looked up
