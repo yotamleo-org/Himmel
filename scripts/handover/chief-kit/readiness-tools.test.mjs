@@ -1,5 +1,3 @@
-// readiness-tools.test.mjs -- C0s cycle 1: the host-private credential channel and the minimal real
-// Jira port (readIssue / addReadinessLabel / readback) of readiness-tools.mjs.
 //
 // Everything here is fixture-only: a scratch HOME, FAKE credentials, and a loopback issue service
 // the REAL built primary Jira CLI is pointed at. No real Jira, provider, user config or secret
@@ -54,7 +52,6 @@ const leaks = (value) => {
   return credForms().filter((f) => f.length > 6 && text.includes(f));
 };
 
-// ---- loopback issue service (the oracle) ---------------------------------------------------------
 class JiraFixture {
   constructor() {
     this.labels = ['a'];
@@ -112,7 +109,6 @@ class JiraFixture {
   }
 }
 
-// ---- scratch layout -------------------------------------------------------------------------------
 const roots = [];
 function scratch() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'c0s-port-')));

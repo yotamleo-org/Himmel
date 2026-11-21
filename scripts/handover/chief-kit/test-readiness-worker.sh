@@ -138,7 +138,6 @@ process.stdout.write(`${JSON.stringify(out)}\n`);
 DRIVER_EOF
 adapter() { env -i PATH="$PATH" HOME="$HOME" node "$DRIVER" "$HERE" "$D/PROJ-9999-rw$n.leg-mcp.json" "$1" 2>"$tmp/adapter.err"; }
 
-# --- 1. the launch: minted id, private config, real render, C0p, on-behalf acquire
 launch 1
 check "launch: exit 0 and the launch reached konsole" "$RC:$([ -s "$D/record" ] && echo yes)" "0:yes"
 check "launch: the lease is held on behalf, fresh, before any session exists" "$(lock_status "$DOC")" "status: FRESH"
@@ -151,7 +150,6 @@ adapter check > "$tmp/a0.json"
 check "before the session starts: every act is refused and the port is never touched" \
     "$(jq -c '[.check.code, .label.code, .port_calls]' "$tmp/a0.json" 2>/dev/null)" '["not-adopted","not-adopted",0]'
 
-# --- 2. a session that starts under ANOTHER id adopts nothing
 session_start "$(cat /proc/sys/kernel/random/uuid)"
 check "another session id: the hook exits 0, silent" "$HOOK_RC:$(cat "$tmp/hook.out"):$(cat "$tmp/hook.err")" "0::"
 check "another session id: the lease is still the launcher's on-behalf lease and nothing is confirmed" \
@@ -162,7 +160,6 @@ session_start "$SID" -
 check "no transcript in the payload: the hook exits 0 and nothing is confirmed (the transport waits for the session or its cleanup)" \
     "$HOOK_RC:$([ -e "$A/confirmation.json" ] && echo confirmed || echo none):$([ -e "$A/lease-token" ] && echo transport)" "0:none:transport"
 
-# --- 3. the actual session start adopts: the same id the launcher minted
 session_start "$SID"
 check "session start: the hook exits 0 and prints nothing" "$HOOK_RC:$(cat "$tmp/hook.out"):$(cat "$tmp/hook.err")" "0::"
 check "session start: the private confirmation exists and the transport is gone" \
@@ -170,14 +167,12 @@ check "session start: the private confirmation exists and the transport is gone"
 check "session start: the adopted lease is still fresh and the token never reached the hook output" \
     "$(lock_status "$DOC"):$(cat "$tmp/hook.out" "$tmp/hook.err" | grep -cF -- "$TOKEN" || true)" "status: FRESH:0"
 
-# --- 4. the adapter's acts and finish, each verified afresh
 adapter finish > "$tmp/a.json"
 check "adopted: the act reaches the port once, then finish succeeds" \
     "$(jq -c '[.check.ok, .label.outcome, .port_calls, .finish.outcome]' "$tmp/a.json")" '[true,"updated",1,"finished"]'
 check "finish: the lease is released and the attempt directory is gone" "$(lock_status "$DOC"):$([ -e "$A" ] && echo present || echo gone)" "free:gone"
 check "no token or credential appears in any adapter result or error output" "$(cat "$tmp/a.json" "$tmp/adapter.err" | grep -cF -- "$TOKEN" || true)" "0"
 
-# --- 5. a lost lease stops the next act before its effect, and finish never releases the successor
 launch 2
 session_start "$SID"
 TOKEN2="$(bash "$QL" status "$DOC" 2>/dev/null | sed -n 's/.*"session":"\([^"]*\)".*/\1/p' | head -n 1)"
@@ -188,7 +183,6 @@ check "a successor took the lease: the act and finish are both refused, the port
 check "a successor took the lease: it still holds it" "$(bash "$QL" status "$DOC" 2>/dev/null | sed -n 's/.*"session":"\([^"]*\)".*/\1/p' | head -n 1)" "successor-token-rw2"
 bash "$QL" release "$DOC" successor-token-rw2 >/dev/null 2>&1
 
-# --- 6. a failed hand-off after the acquire releases the launcher's own token and leaves nothing adoptable
 printf '%s\n' '#!/usr/bin/env bash' 'exit 5' > "$tmp/fail-target.sh"; chmod 755 "$tmp/fail-target.sh"
 attempts_before="$(attempts)"
 launch 3 HEADED_ARM_WORKER_TARGET="$tmp/fail-target.sh"
@@ -203,7 +197,6 @@ w=0; while [ -e "$A" ] && [ "$w" -lt 200 ]; do sleep 0.1; w=$((w + 1)); done
 check "cleanup of a session that never adopted releases the transported token and removes the attempt" \
     "$(lock_status "$DOC"):$([ -e "$A" ] && echo present || echo gone)" "free:gone"
 
-# --- 8. the future VM run stays blocked here
 rc=0; bash "$0" --vm-capability > "$tmp/vm.out" 2> "$tmp/vm.err" || rc=$?
 check "--vm-capability is BLOCKED (exit 3) and runs nothing" "$rc:$(grep -c 'BLOCKED' "$tmp/vm.err")" "3:1"
 

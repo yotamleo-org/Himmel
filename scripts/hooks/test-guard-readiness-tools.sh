@@ -63,7 +63,6 @@ pass=0 fail=0
 ok() { echo "ok   $*"; pass=$((pass + 1)); }
 bad() { echo "FAIL $*"; fail=$((fail + 1)); }
 
-# ---------------------------------------------------------------------------------------------------- payloads
 NAME_INSPECT=mcp__readiness__inspect NAME_ACT=mcp__readiness__act
 nm() { "$JQ_ABS" -nc --arg t "$2" '{tool_name:$t,tool_input:{}}' >"$PL/$1"; }   # nm <id> <tool_name string>
 raw() { printf '%s' "$2" >"$PL/$1"; }                                           # raw <id> <exact text>
@@ -132,7 +131,6 @@ raw in-key-space "{\"tool_name \":\"$NAME_INSPECT\"}"
 raw in-name-only-nested "{\"tool_input\":{\"tool_name\":\"$NAME_INSPECT\"}}"
 bytes in-binary '\x01\x02\xff\xfe\x80garbage'
 
-# ---------------------------------------------------------------------------------------------------- stubs, stand-ins
 mkdir -p "$STUBS/crash" "$STUBS/silent" "$STUBS/rc1" "$STUBS/early"
 printf '#!/bin/sh\nexit 134\n' >"$STUBS/crash/jq"
 printf '#!/bin/sh\ncat >/dev/null\nexit 0\n' >"$STUBS/silent/jq"
@@ -157,7 +155,6 @@ DENY_LINE='printf '"'"'{"hookSpecificOutput":{"hookEventName":"PreToolUse","perm
     echo "$DENY_LINE"; echo 'exit 2'
 } >"$STANDINS/failopen.sh"
 
-# ---------------------------------------------------------------------------------------------------- row registry
 R_ID=() R_CLS=() R_EXP=() R_RSN=() R_LBL=() R_PL=() R_MK=() R_ENV=() R_IO=() R_RES=()
 add() { # add <id> <class> <expect> <reason> <label> <payload id> <marker> <env mode> <io mode>
     [ -f "$PL/$6" ] || { echo "FATAL: row $1 names a payload that does not exist: $6" >&2; exit 1; }
@@ -214,7 +211,6 @@ neg key-upper bad-envelope "key TOOL_NAME" in-key-upper
 neg key-camel bad-envelope "key toolName" in-key-camel
 neg key-space bad-envelope "key with a trailing space" in-key-space
 
-# oversize: more than 262144 bytes denies, even when the envelope is otherwise valid
 neg over-limit oversize-input "valid allowed envelope of 262145 bytes" in-over-limit
 neg over-limit-pipe oversize-input "valid allowed envelope of 262145 bytes through a pipe" in-over-limit
 add neg-over-limit-forbidden neg deny oversize-input "forbidden-name envelope of 262145 bytes" in-over-limit-forbidden 1 normal normal
@@ -316,7 +312,6 @@ gen marker-1space "marker '1 ' (not exactly 1)" in-bash "1 "
 gen marker-space1 "marker ' 1' (not exactly 1)" in-bash " 1"
 gen marker-11 "marker 11" in-bash 11
 
-# ---------------------------------------------------------------------------------------------------- execution
 GOT_RC=0 WHY=""
 exec_row() { # exec_row <index> <hook> -> GOT_RC, $OUT, $ERR
     local i="$1" hook="$2" pathv="$REAL_PATH"
@@ -416,14 +411,12 @@ count() { # count <class|-> <bad|all> : rows of a class (or every row) that fail
 }
 res() { local i n="${#R_ID[@]}"; for ((i = 0; i < n; i++)); do [ "${R_ID[$i]}" = "$1" ] && { echo "${R_RES[$i]}"; return; }; done; echo missing; }
 
-# ---------------------------------------------------------------------------------------------------- 0. fixtures
 sz() { wc -c <"$PL/$1" | tr -d ' '; }
 [ "$(sz in-at-limit)" = 262144 ] && ok "fixture: at-limit envelope is exactly 262144 bytes" || bad "fixture: at-limit envelope is $(sz in-at-limit) bytes"
 [ "$(sz in-over-limit)" = 262145 ] && ok "fixture: over-limit envelope is exactly 262145 bytes" || bad "fixture: over-limit envelope is $(sz in-over-limit) bytes"
 [ "$(sz in-1mib)" = 1048576 ] && ok "fixture: 1 MiB envelope is exactly 1048576 bytes" || bad "fixture: 1 MiB envelope is $(sz in-1mib) bytes"
 [ "$(sz w-nl)" -gt "$(sz in-inspect)" ] && ok "fixture: the trailing-newline name payload carries the newline" || bad "fixture: the trailing-newline name payload lost its newline"
 
-# ---------------------------------------------------------------------------------------------------- 1. harness controls
 echo "--- harness controls: wrong stand-in guards must be caught by this harness"
 total_rows="$(count - all)"
 run_rows "$STANDINS/permissive.sh" 0
@@ -452,7 +445,6 @@ else
     bad "control: fail-open stand-in NOT caught (nojq=$(res fail-nojq) crash=$(res fail-jq-crash) nonjson=$(res neg-nonjson) empty=$(res neg-empty))"
 fi
 
-# ---------------------------------------------------------------------------------------------------- 2. availability
 if [ ! -f "$HOOK" ]; then
     echo "UNAVAILABLE: $HOOK does not exist - availability, not causal security evidence (controls above ran)"
     echo
@@ -460,7 +452,6 @@ if [ ! -f "$HOOK" ]; then
     exit 3
 fi
 
-# ---------------------------------------------------------------------------------------------------- 3. the actual guard
 echo "--- the actual guard ($(wc -c <"$HOOK" | tr -d ' ') bytes), $total_rows rows"
 run_rows "$HOOK" 1
 for c in pos neg gen fail; do echo "rows $c: $(count "$c" all) run, $(count "$c" bad) failed"; done

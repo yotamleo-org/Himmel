@@ -2740,7 +2740,6 @@ post_handovers=absent
 check "no-leak: this suite left no handovers/ dir behind in the repo root" "$post_handovers" "$pre_handovers"
 
 echo "----"
-# Real direct/sweep close gates, including CLOSED-ALREADY retirement.
 PKEY=HIMMEL-9848
 PDOC="$W/$PKEY-N990-proof.md"; PFLEET="$W/proof-fleet.json"
 printf '# proof\n## Results\n- 10:00 WRAPPED — proof %s verdict=KEEP evidence=%s\n' "$PKEY" "$W/absent-proof.md" > "$PDOC"
