@@ -100,6 +100,7 @@ usage() {
     echo "       review-round.sh abort --branch <name> --head <sha>   (give back the round started at <sha> when its panel reviewed nothing)" >&2
     echo "       review-round.sh from --branch <name>   (the reviewed head this round 2 or 3 started from; nothing at other rounds)" >&2
     echo "       review-round.sh trivial-descendant [--tests-only] <from-sha> <to-sha>   (exit 0 yes, 1 no)" >&2
+    echo "       review-round.sh clean-merge-forward <base-sha> <from-sha> <to-sha>   (exit 0 when <to> only merges the base into <from>, conflict-free; 1 no)" >&2
     echo "       review-round.sh start|check --pr <n> --head <40-hex sha>   (an outside PR reviewed from its diff, its branch not checked out; check reads only)" >&2
     echo "       review-round.sh abort --pr <n> --head <40-hex sha>   (give back that PR's round when its panel reviewed nothing)" >&2
     exit 2
@@ -230,6 +231,54 @@ EOF
     return 0
 }
 
+# merge_forward_shape <from> <to> succeeds when <to> merges the
+# captured base into <from> and nothing else: at least one merge, every
+# non-merge commit it brought already on the base, and every merge a plain
+# two-parent merge whose first parent descends from <from> (not on the base)
+# and whose second parent is a point on the base newer than the base point
+# <from> had. Sets mf_merged_base.
+merge_forward_shape() {
+    [ -n "$base_sha" ] || return 1
+    [ -n "$(git rev-list --merges "$1..$2" "^$base_sha" 2>/dev/null)" ] || return 1
+    [ -z "$(git rev-list --no-merges "$1..$2" "^$base_sha" 2>/dev/null)" ] || return 1
+    _mf_old="$(git merge-base "$1" "$base_sha" 2>/dev/null)" || return 1
+    [ -n "$_mf_old" ] || return 1
+    for _mf_m in $(git rev-list --merges "$1..$2" "^$base_sha" 2>/dev/null); do
+        _mf_p1="" _mf_p2="" _mf_p3=""
+        read -r _mf_p1 _mf_p2 _mf_p3 <<EOF
+$(git rev-list --parents -n 1 "$_mf_m" 2>/dev/null | cut -d' ' -f2-)
+EOF
+        [ -n "$_mf_p2" ] && [ -z "$_mf_p3" ] || return 1
+        git merge-base --is-ancestor "$1" "$_mf_p1" 2>/dev/null || return 1
+        ! git merge-base --is-ancestor "$_mf_p1" "$base_sha" 2>/dev/null || return 1
+        git merge-base --is-ancestor "$_mf_p2" "$base_sha" 2>/dev/null || return 1
+        [ "$_mf_p2" != "$_mf_old" ] || return 1
+        git merge-base --is-ancestor "$_mf_old" "$_mf_p2" 2>/dev/null || return 1
+    done
+    mf_merged_base="$(git merge-base "$2" "$base_sha" 2>/dev/null)" || return 1
+    [ -n "$mf_merged_base" ]
+}
+# own_diff <base> <head>: the PR's own diff as text, minus the index and
+# hunk-header lines a moved base shifts.
+own_diff() {
+    _od_raw="$(git diff --no-ext-diff --no-textconv --no-color --no-renames "$1" "$2" 2>/dev/null)" || return 1
+    printf '%s\n' "$_od_raw" | sed -e '/^index /d' -e 's/^@@ [^@]* @@.*$/@@/'
+}
+# clean_merge_forward <from> <to> succeeds only for a CLEAN merge-forward:
+# <to>'s tree is exactly the conflict-free merge of <from> with the base point
+# it merged, and the PR's own diff is the same text at <to> as at <from>. A
+# merge that edits or resolves anything fails.
+clean_merge_forward() {
+    merge_forward_shape "$1" "$2" || return 1
+    _cm_tree="$(git merge-tree --write-tree "$1" "$mf_merged_base" 2>/dev/null)" || return 1
+    [ "$_cm_tree" = "$(git rev-parse "$2^{tree}" 2>/dev/null)" ] || return 1
+    _cm_old="$(git merge-base "$1" "$base_sha" 2>/dev/null)" || return 1
+    [ -n "$_cm_old" ] || return 1
+    _cm_a="$(own_diff "$_cm_old" "$1")" || return 1
+    _cm_b="$(own_diff "$mf_merged_base" "$2")" || return 1
+    [ "$_cm_a" = "$_cm_b" ]
+}
+
 verb="${1:-}"
 [ -n "$verb" ] || usage
 shift
@@ -240,6 +289,13 @@ if [ "$verb" = "trivial-descendant" ]; then
     if [ "${1:-}" = "--tests-only" ]; then _td_tests_only=1; shift; fi
     [ $# -eq 2 ] || usage
     trivial_descendant "$1" "$2"
+    exit $?
+fi
+if [ "$verb" = "clean-merge-forward" ]; then
+    [ $# -eq 3 ] && [[ "$1" =~ ^[0-9a-f]{40}$ ]] || usage
+    git cat-file -e "$1^{commit}" 2>/dev/null || exit 1
+    base_sha="$1"
+    clean_merge_forward "$2" "$3"
     exit $?
 fi
 branch=""
@@ -832,54 +888,6 @@ EOF_SNAP
     [ -n "$hits" ] || exit 1
     printf '%s\n' "$hits"
 )
-
-# merge_forward_shape <from> <to> succeeds when <to> merges the
-# captured base into <from> and nothing else: at least one merge, every
-# non-merge commit it brought already on the base, and every merge a plain
-# two-parent merge whose first parent descends from <from> (not on the base)
-# and whose second parent is a point on the base newer than the base point
-# <from> had. Sets mf_merged_base.
-merge_forward_shape() {
-    [ -n "$base_sha" ] || return 1
-    [ -n "$(git rev-list --merges "$1..$2" "^$base_sha" 2>/dev/null)" ] || return 1
-    [ -z "$(git rev-list --no-merges "$1..$2" "^$base_sha" 2>/dev/null)" ] || return 1
-    _mf_old="$(git merge-base "$1" "$base_sha" 2>/dev/null)" || return 1
-    [ -n "$_mf_old" ] || return 1
-    for _mf_m in $(git rev-list --merges "$1..$2" "^$base_sha" 2>/dev/null); do
-        _mf_p1="" _mf_p2="" _mf_p3=""
-        read -r _mf_p1 _mf_p2 _mf_p3 <<EOF
-$(git rev-list --parents -n 1 "$_mf_m" 2>/dev/null | cut -d' ' -f2-)
-EOF
-        [ -n "$_mf_p2" ] && [ -z "$_mf_p3" ] || return 1
-        git merge-base --is-ancestor "$1" "$_mf_p1" 2>/dev/null || return 1
-        ! git merge-base --is-ancestor "$_mf_p1" "$base_sha" 2>/dev/null || return 1
-        git merge-base --is-ancestor "$_mf_p2" "$base_sha" 2>/dev/null || return 1
-        [ "$_mf_p2" != "$_mf_old" ] || return 1
-        git merge-base --is-ancestor "$_mf_old" "$_mf_p2" 2>/dev/null || return 1
-    done
-    mf_merged_base="$(git merge-base "$2" "$base_sha" 2>/dev/null)" || return 1
-    [ -n "$mf_merged_base" ]
-}
-# own_diff <base> <head>: the PR's own diff as text, minus the index and
-# hunk-header lines a moved base shifts.
-own_diff() {
-    _od_raw="$(git diff --no-ext-diff --no-textconv --no-color --no-renames "$1" "$2" 2>/dev/null)" || return 1
-    printf '%s\n' "$_od_raw" | sed -e '/^index /d' -e 's/^@@ [^@]* @@.*$/@@/'
-}
-# clean_merge_forward <from> <to> succeeds only for a CLEAN merge-forward:
-# <to>'s tree is exactly the conflict-free merge of <from> with the base point
-# it merged, and the PR's own diff is the same text at <to> as at <from>. A
-# merge that edits or resolves anything fails.
-clean_merge_forward() {
-    merge_forward_shape "$1" "$2" || return 1
-    _cm_tree="$(git merge-tree --write-tree "$1" "$mf_merged_base" 2>/dev/null)" || return 1
-    [ "$_cm_tree" = "$(git rev-parse "$2^{tree}" 2>/dev/null)" ] || return 1
-    _cm_old="$(git merge-base "$1" "$base_sha" 2>/dev/null)" || return 1
-    [ -n "$_cm_old" ] || return 1
-    _cm_a="$(own_diff "$_cm_old" "$1")" || return 1
-    _cm_b="$(own_diff "$mf_merged_base" "$2")" || return 1
-    [ "$_cm_a" = "$_cm_b" ]
-}
 
 # Print "<qid>/<name> <scope>" for a judge GO on head $2 (the
 # delta's new head) written by chief-kit/write-verdict.sh, whose evidence
