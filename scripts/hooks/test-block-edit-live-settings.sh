@@ -4062,6 +4062,34 @@ assert_rc "9962 control: cp -r between two unrelated scratch directories with T3
 assert_rc "9963 control: the scratch-copy exception still lets a settings.json reach an unrelated scratch dir" 0 \
     "$(bash_rc_of "$WT2" "cp $PAY/userdata/settings.json $SANDBOX/ctlb/" HOME="$T3H" T3CODE_HOME="$T3TMP")"
 
+T3GEN="$PRIMARY/scripts/t3/provider-instances.sh"
+assert_rc "9970 himmel-update.sh --only t3_providers by absolute path allows" 0 \
+    "$(bash_rc_of "$WT2" "bash $PRIMARY/scripts/himmel-update.sh --only t3_providers" HOME="$T3H")"
+assert_rc "9971 himmel-update.sh --only t3_providers by relative path allows" 0 \
+    "$(bash_rc_of "$WT2" 'bash scripts/himmel-update.sh --only t3_providers' HOME="$T3H" T3CODE_HOME="$T3ALT")"
+assert_rc "9972 the generator run directly with --apply on T3's settings file denies" 2 \
+    "$(bash_rc_of "$WT2" "bash $T3GEN --apply --settings-file $T3S" HOME="$T3H")"
+assert_rc "9973 the generator run directly with --dry-run on T3's settings file denies" 2 \
+    "$(bash_rc_of "$WT2" "bash $T3GEN --dry-run --settings-file $T3S" HOME="$T3H")"
+assert_rc "9974 the generator --apply on ~/.t3/userdata/settings.json denies" 2 \
+    "$(bash_rc_of "$WT2" "bash $T3GEN --apply --settings-file ~/.t3/userdata/settings.json" HOME="$T3H")"
+assert_rc "9975 the generator --apply on the T3CODE_HOME settings file denies" 2 \
+    "$(bash_rc_of "$WT2" "bash $T3GEN --apply --settings-file $T3ALT/userdata/settings.json" HOME="$T3H" T3CODE_HOME="$T3ALT")"
+assert_rc "9977 --only t3_providers chained with a cp onto T3's settings file denies" 2 \
+    "$(bash_rc_of "$WT2" "bash scripts/himmel-update.sh --only t3_providers; cp /etc/hostname $T3S" HOME="$T3H")"
+assert_rc "9978 --only t3_providers with a redirect onto T3's settings file denies" 2 \
+    "$(bash_rc_of "$WT2" "bash scripts/himmel-update.sh --only t3_providers > $T3S" HOME="$T3H")"
+assert_rc "9979 --only t3_providers carrying a substitution that writes T3's settings file denies" 2 \
+    "$(bash_rc_of "$WT2" 'bash scripts/himmel-update.sh --only t3_providers $(cp /etc/hostname '"$T3S"')' HOME="$T3H")"
+assert_rc "9980 an env-prefixed generator --apply on T3's settings file denies" 2 \
+    "$(bash_rc_of "$WT2" "T3_PI_PROFILES=x bash $T3GEN --apply --settings-file $T3S" HOME="$T3H")"
+assert_rc "9981 tee onto T3's settings file denies" 2 \
+    "$(bash_rc_of "$WT2" "echo {} | tee $T3S" HOME="$T3H")"
+assert_rc "9982 an in-place sed on T3's settings file denies" 2 \
+    "$(bash_rc_of "$WT2" "sed -i.bak s/a/b/ $T3S" HOME="$T3H")"
+assert_rc "9983 jq into T3's settings file denies" 2 \
+    "$(bash_rc_of "$WT2" "jq . $WT2/data/settings.json > $T3S" HOME="$T3H")"
+
 # Clean up worktree registrations before removing the sandbox (avoids
 # dangling `git worktree` admin records under SANDBOX/primary).
 git -C "$SANDBOX/primary" worktree remove --force "$SANDBOX/primary/.claude/worktrees/feat+x" 2>/dev/null || true
