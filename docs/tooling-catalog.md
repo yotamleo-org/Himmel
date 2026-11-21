@@ -1287,7 +1287,7 @@ of blaming the wrong one). 3 of the 13 entries carry `sources`, 3 carry
 `core|vault|cadence|bridge|whisper|lane:codex|lane:hermes`
 (`scripts/himmelctl/lib/adopter-profile.js`'s `FEATURE_IDS`, mirrored in
 `scripts/lib/gen-secrets-doc.mjs`) — naming which recorded wizard selection
-the secret belongs to: 8 entries are `vault`, the four Jira entries are
+the secret belongs to: 7 entries are `vault`, the four Jira entries are
 `core`, `TELEGRAM_BOT_TOKEN` is `bridge`, `WHISPER_MODEL` is `whisper`. The wizard's secrets walk scopes
 itself to the recorded profile's active features (an unselected feature's
 secrets are skipped, with one honest line naming how many and why); the
