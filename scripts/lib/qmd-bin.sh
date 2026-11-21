@@ -382,7 +382,7 @@ _qmd_ensure_wrapper() {
   fi
   tmp="$wrapper.tmp.$$"
   if ! _qmd_wrapper_text "$lib" "$fork_bin" >"$tmp" 2>/dev/null \
-     || ! chmod +x -- "$tmp" \
+     || ! chmod -- +x "$tmp" \
      || ! mv -f -- "$tmp" "$wrapper"; then
     rm -f -- "$tmp"
     echo "  WARNING: could not write the qmd wrapper at $wrapper." >&2

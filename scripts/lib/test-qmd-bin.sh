@@ -1459,7 +1459,8 @@ shape_run "$(shape_cfg not-utf8 'collections:\n  c:\n    path: /x\0377\n    patt
 assert "a config that is not UTF-8 is refused" refused
 
 echo "[test-qmd-bin] reader_expands_braces: {a,b} expands into one glob per alternative"
-shape_run "$(shape_cfg brace 'collections:\n  c:\n    path: /x\n    pattern: "{docs,notes}/**/*.md"\n')" c docs/a.md notes/x/y.md other/a.md
+brace_yml='collections:\n  c:\n    path: /x\n    pattern: "{docs,notes}/**/*.md"\n'
+shape_run "$(shape_cfg brace "$brace_yml")" c docs/a.md notes/x/y.md other/a.md
 assert "a brace pattern exits 0" test "$shape_rc" -eq 0
 assert "a brace pattern keeps docs/a.md and notes/x/y.md and drops other/a.md" \
   test "$shape_out" = "$(printf 'docs/a.md\nnotes/x/y.md')"
