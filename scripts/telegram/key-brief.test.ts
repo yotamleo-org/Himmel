@@ -1,13 +1,14 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { briefText, findDo } from "./key-brief";
+import { briefText, briefTextCounted, findDo } from "./key-brief";
 
 const MIRROR = join(import.meta.dir, "fixtures", "jira-mirror");
 const NOT_READ = "summary not readable on the station";
 const cut = (s: string) => (s.length > 80 ? `${s.slice(0, 79)}…` : s);
 const S9503 = cut("Visibility: the operator's Telegram gets short escalations, routine goes to monitoring");
 const S9012 = cut("Ship loop: an allowed contributor's PR gets our review with no checkout on the station");
-const S1 = "HIMMEL-1";
 
 test("a ticket key in the running text gets its summary inline", () => {
   expect(briefText("HIMMEL-9503 needs you", MIRROR, "PR")).toBe(`HIMMEL-9503 (${S9503}) needs you`);
@@ -22,28 +23,30 @@ test("the HOLD-ASK grant command keeps --key HIMMEL-9012 unchanged and gains a t
 });
 
 test("a Do: step and a backtick span are byte-identical, and the trailer sits before ` Do: `", () => {
-  const doText = "Merge refused. Do: go.sh HIMMEL-1 abc";
+  const doText = "Merge refused. Do: go.sh HIMMEL-9012 abc";
   const out = briefText(doText, MIRROR, "PR");
-  expect(out.endsWith("Do: go.sh HIMMEL-1 abc")).toBe(true);
-  expect(out.indexOf(`${S1}: ${NOT_READ}`)).toBeGreaterThan(-1);
-  expect(out.indexOf(`${S1}: ${NOT_READ}`)).toBeLessThan(out.lastIndexOf("Do: "));
+  expect(out.endsWith("Do: go.sh HIMMEL-9012 abc")).toBe(true);
+  expect(out.indexOf(`HIMMEL-9012: ${S9012}`)).toBeGreaterThan(-1);
+  expect(out.indexOf(`HIMMEL-9012: ${S9012}`)).toBeLessThan(out.lastIndexOf("Do: "));
   expect(out.startsWith("Merge refused.")).toBe(true);
-  const tick = "Run `jira get HIMMEL-1` now";
+  const tick = "Run `jira get HIMMEL-9012` now";
   const out2 = briefText(tick, MIRROR, "PR");
   expect(out2.startsWith(tick)).toBe(true);
-  expect(out2.slice(tick.length)).toBe(`\n${S1}: ${NOT_READ}`);
+  expect(out2.slice(tick.length)).toBe(`\nHIMMEL-9012: ${S9012}`);
 });
 
 test("a `!` line with no Do: and a line starting `$ ` are byte-identical", () => {
-  for (const line of ["! bash /x/go.sh HIMMEL-1 abc123", "$ bash /x/go.sh HIMMEL-1 abc123"]) {
+  for (const line of ["! bash /x/go.sh HIMMEL-9012 abc123", "$ bash /x/go.sh HIMMEL-9012 abc123"]) {
     const out = briefText(line, MIRROR, "PR");
     expect(out.startsWith(line)).toBe(true);
-    expect(out.slice(line.length)).toBe(`\n${S1}: ${NOT_READ}`);
+    expect(out.slice(line.length)).toBe(`\nHIMMEL-9012: ${S9012}`);
   }
 });
 
-test("a key of a known project with no mirror file gets the fixed text", () => {
-  expect(briefText("HIMMEL-1 is stuck", MIRROR, "PR")).toBe(`HIMMEL-1 (${NOT_READ}) is stuck`);
+test("a key of a known project with no mirror file and no tracker answer stays bare, with no filler", () => {
+  const out = briefText("HIMMEL-1 is stuck", MIRROR, "PR");
+  expect(out).toBe("HIMMEL-1 is stuck");
+  expect(out).not.toContain(NOT_READ);
 });
 
 test("SHA-256 and UTF-8 are untouched", () => {
@@ -68,22 +71,108 @@ test("PR numbers and worker labels get words outside Do:, and himmel#81843b5d st
 });
 
 test("a backtick span or a ! line that contains ` Do: ` stays whole, and the real Do: step is the last one outside them", () => {
-  const span = "`jira get HIMMEL-1 Do: x`";
+  const span = "`jira get HIMMEL-9012 Do: x`";
   const out = briefText(`A ${span} is shown`, MIRROR, "PR");
   expect(out.startsWith(`A ${span} is shown`)).toBe(true);
-  expect(out.slice(`A ${span} is shown`.length)).toBe(`\n${S1}: ${NOT_READ}`);
-  const bang = "! echo 1 Do: HIMMEL-1";
+  expect(out.slice(`A ${span} is shown`.length)).toBe(`\nHIMMEL-9012: ${S9012}`);
+  const bang = "! echo 1 Do: HIMMEL-9012";
   const both = briefText(`First line.\n${bang}\nLast. Do: finish`, MIRROR, "PR");
   expect(both).toContain(`\n${bang}\n`);
   expect(both.endsWith("Do: finish")).toBe(true);
 });
 
 test("a trailer line leaves the Do: step findable by the cap's own search", () => {
-  const out = briefText("Merge refused. Blocks: x. Do: go.sh HIMMEL-1 abc", MIRROR, "PR");
+  const out = briefText("Merge refused. Blocks: x. Do: go.sh HIMMEL-9012 abc", MIRROR, "PR");
   expect(findDo(out)).toBeGreaterThan(0);
-  expect(out.slice(findDo(out)).trimStart()).toBe("Do: go.sh HIMMEL-1 abc");
+  expect(out.slice(findDo(out)).trimStart()).toBe("Do: go.sh HIMMEL-9012 abc");
 });
 
 test("the ref word comes from the kind's row", () => {
   expect(briefText("octo/x#12 changed", MIRROR, "PR or issue")).toBe("PR or issue 12 in octo/x changed");
+});
+
+const scratch = mkdtempSync(join(tmpdir(), "key-brief-"));
+afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+const stub = (name: string, body: string) => { const f = join(scratch, name); writeFileSync(f, body); chmodSync(f, 0o755); return f; };
+const withCli = <T>(cli: string, fn: () => T): T => {
+  const saved = process.env.HIMMEL_JIRA_CLI; process.env.HIMMEL_JIRA_CLI = cli;
+  try { return fn(); } finally { if (saved === undefined) delete process.env.HIMMEL_JIRA_CLI; else process.env.HIMMEL_JIRA_CLI = saved; }
+};
+const withEnv = <T>(vars: Record<string, string>, fn: () => T): T => {
+  const saved = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
+  Object.assign(process.env, vars);
+  try { return fn(); } finally { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
+};
+const FILED = stub("filed.js", `if (process.argv[4] !== "--short") process.exit(1); console.log("HIMMEL-7001\\tTask\\tTo Do\\tFleet orchestration: a chief session starts with Remote Control on");`);
+const WRONG_KEY = stub("wrong.js", `console.log("HIMMEL-1\\tTask\\tTo Do\\tSomebody else's ticket");`);
+const PID = join(scratch, "hang.pid");
+const HANG = stub("hang.js", `require("node:fs").writeFileSync(${JSON.stringify(PID)}, String(process.pid)); setInterval(() => {}, 1000);`);
+const DEAD = stub("dead.js", `process.stderr.write("jira: 401\\n"); process.exit(1);`);
+const savedCli = process.env.HIMMEL_JIRA_CLI;
+process.env.HIMMEL_JIRA_CLI = DEAD;
+afterAll(() => { if (savedCli === undefined) delete process.env.HIMMEL_JIRA_CLI; else process.env.HIMMEL_JIRA_CLI = savedCli; });
+
+test("a key filed a moment ago, absent from the mirror, gets its real title from the tracker", () => {
+  const out = withCli(FILED, () => briefText("Filed HIMMEL-7001 (High) for you", MIRROR, "PR"));
+  expect(out).toBe("Filed HIMMEL-7001 (Fleet orchestration: a chief session starts with Remote Control on) (High) for you");
+  expect(out).not.toContain(NOT_READ);
+});
+
+test("a title the tracker cannot give is never replaced by a filler: the key stays bare and is reported as unresolved", () => {
+  const r = withCli(DEAD, () => briefTextCounted("HIMMEL-7002 is stuck", MIRROR, "PR"));
+  expect(r.text).toBe("HIMMEL-7002 is stuck");
+  expect(r.unresolved).toEqual(["HIMMEL-7002"]);
+  const t = withCli(DEAD, () => briefTextCounted("Run `jira get HIMMEL-7002` now", MIRROR, "PR"));
+  expect(t.text).toBe("Run `jira get HIMMEL-7002` now");
+  expect(t.unresolved).toEqual(["HIMMEL-7002"]);
+});
+
+const CALLS = join(scratch, "calls.log");
+const RECORDING = stub("recording.js", `require("node:fs").appendFileSync(${JSON.stringify(CALLS)}, process.argv[3] + "\\n"); process.exit(1);`);
+const callsMade = () => (existsSync(CALLS) ? readFileSync(CALLS, "utf8").split("\n").filter(Boolean) : []);
+
+test("a key the mirror does hold is never sent to the tracker; one it lacks is, once", () => {
+  rmSync(CALLS, { force: true });
+  const r = withCli(RECORDING, () => briefTextCounted("HIMMEL-9503 needs you, HIMMEL-7003 too", MIRROR, "PR"));
+  expect(r.text).toBe(`HIMMEL-9503 (${S9503}) needs you, HIMMEL-7003 too`);
+  expect(r.unresolved).toEqual(["HIMMEL-7003"]);
+  expect(callsMade()).toEqual(["HIMMEL-7003"]);
+});
+
+test("the tracker is asked for the short form, and a line for another key is never used as the title", () => {
+  const r = withCli(WRONG_KEY, () => briefTextCounted("HIMMEL-7007 is stuck", MIRROR, "PR"));
+  expect(r.text).toBe("HIMMEL-7007 is stuck");
+  expect(r.unresolved).toEqual(["HIMMEL-7007"]);
+});
+
+const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
+test("a tracker that hangs is killed at the budget, and the default budget stays under the owed send's 2 s bound", () => {
+  for (const budget of [300, undefined]) {
+    rmSync(PID, { force: true });
+    const t0 = Date.now();
+    const r = withCli(HANG, () => briefTextCounted("HIMMEL-7008 is stuck", MIRROR, "PR", budget));
+    expect(Date.now() - t0).toBeLessThan(1800);
+    expect(r.unresolved).toEqual(["HIMMEL-7008"]);
+    expect(alive(Number(readFileSync(PID, "utf8")))).toBe(false);
+  }
+});
+
+test("a fixture run reaches no tracker of its own, only a stub it names", () => {
+  const fakeNode = join(scratch, "bin"); mkdirSync(fakeNode);
+  const nodeStub = join(fakeNode, "node"); writeFileSync(nodeStub, `#!/bin/sh\necho "$@" >> ${CALLS}\nexit 1\n`); chmodSync(nodeStub, 0o755);
+  rmSync(CALLS, { force: true });
+  const bare = withEnv({ HIMMEL_TEST_FIXTURE: "1", HIMMEL_JIRA_CLI: "", PATH: `${fakeNode}:${process.env.PATH}` }, () => briefTextCounted("HIMMEL-7009 is stuck", MIRROR, "PR"));
+  expect(bare.unresolved).toEqual(["HIMMEL-7009"]);
+  expect(callsMade()).toEqual([]);
+  const named = withEnv({ HIMMEL_TEST_FIXTURE: "1" }, () => withCli(FILED, () => briefText("HIMMEL-7001 is filed", MIRROR, "PR")));
+  expect(named).toContain("Fleet orchestration");
+});
+
+test("a spent tracker budget stops the lookups: the remaining keys stay bare and no call is made", () => {
+  rmSync(CALLS, { force: true });
+  const r = withCli(RECORDING, () => briefTextCounted("HIMMEL-7004 and HIMMEL-7005", MIRROR, "PR", 0));
+  expect(r.text).toBe("HIMMEL-7004 and HIMMEL-7005");
+  expect(r.unresolved).toEqual(["HIMMEL-7004", "HIMMEL-7005"]);
+  expect(callsMade()).toEqual([]);
 });
