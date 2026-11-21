@@ -66,17 +66,15 @@ class BadSetting(ValueError):
     pass
 
 
-# Duration settings in seconds: (default, longest accepted). A Monitor arm (timeout_ms 1800000) lives 1800 s, the one-shot Bash
-# arm (timeout 7200000) 7200 s, and a stop request waits 60 s for a safe point; no setting outlasts the arm it serves, and
-# SOFT ends the arm that 60 s before the longest HARD.
+MONITOR_ARM_SEC, BASH_ARM_SEC, STOP_WAIT_SEC = 1800, 7200, 60
 LIMITS = {
-    'CHIEF_WAIT_STREAM_SOFT_SEC': (1440, 1740),
-    'CHIEF_WAIT_STREAM_HARD_SEC': (1680, 1800),
-    'CHIEF_WAIT_STREAM_BUSY_MAX_SEC': (7200, 7200),
-    'CHIEF_WAIT_STREAM_REAP_MAX_SEC': (1800, 1800),
-    'CHIEF_WAIT_STREAM_ADOPT_SEC': (300, 1800),
-    'CHIEF_WAIT_STREAM_KILL_GRACE_SEC': (10, 60),
-    'CHIEF_WAIT_STREAM_REPEAT_SEC': (60, 1800),
+    'CHIEF_WAIT_STREAM_SOFT_SEC': (1440, MONITOR_ARM_SEC - STOP_WAIT_SEC),
+    'CHIEF_WAIT_STREAM_HARD_SEC': (1680, MONITOR_ARM_SEC),
+    'CHIEF_WAIT_STREAM_BUSY_MAX_SEC': (7200, BASH_ARM_SEC),
+    'CHIEF_WAIT_STREAM_REAP_MAX_SEC': (1800, MONITOR_ARM_SEC),
+    'CHIEF_WAIT_STREAM_ADOPT_SEC': (300, MONITOR_ARM_SEC),
+    'CHIEF_WAIT_STREAM_KILL_GRACE_SEC': (10, STOP_WAIT_SEC),
+    'CHIEF_WAIT_STREAM_REPEAT_SEC': (60, MONITOR_ARM_SEC),
 }
 
 
@@ -180,8 +178,6 @@ def release(path, requested):
 
 
 def watchdog(inbox, sup, start):
-    # The bounds are read, and the one terminate() reads is checked, before anything runs: the watchdog can outlive its
-    # supervisor, so it refuses a setting outside its range itself.
     adopt = bound('CHIEF_WAIT_STREAM_ADOPT_SEC')
     busy = bound('CHIEF_WAIT_STREAM_BUSY_MAX_SEC')
     reap_max = bound('CHIEF_WAIT_STREAM_REAP_MAX_SEC')
@@ -204,7 +200,7 @@ def watchdog(inbox, sup, start):
         if not child_alive(data, inbox):
             release(reap, requested)
             return 0
-        now = time.time()
+        now = time.monotonic()
         dead_since = dead_since or now
         sleep = safe_point(data, inbox)
         if sleep and sleep != last_sleep:
@@ -215,7 +211,6 @@ def watchdog(inbox, sup, start):
         deadline = (float(handoff) + adopt
                     if handoff != '-' else dead_since)
         if now >= deadline and not requested:
-            # Re-read ownership and request the reap under the lock a new owner publishes under; a concurrent adoption wins.
             with ownership(inbox):
                 current = load(side)
                 if current.get('sup') != data.get('sup'):
@@ -230,7 +225,7 @@ def watchdog(inbox, sup, start):
                 terminate(data, inbox, hard=True)
             release(reap, requested)
             atomic(inbox + '.wait.stream.hung',
-                   f"pid={data['child']} age={int(age)} part={data['part']} epoch={int(now)}\n")
+                   f"pid={data['child']} age={int(age)} part={data['part']} epoch={int(time.time())}\n")
             return 0
         time.sleep(.1)
 
@@ -276,6 +271,7 @@ class Supervisor:
         self.reason = ''
         self.last_sleep = ''
         self.started = clock()
+        self.began = clock(time.monotonic)
         self.arm = time.time_ns()
         self.owned = False
         self.dog = None
@@ -374,8 +370,6 @@ class Supervisor:
         since = self.pairs.get('--since', 'prev-arm')
         if since != 'prev-arm' and not since.isdecimal():
             return self.refuse('since', 2)
-        # Every duration setting, the watchdog's included, is checked before the lock, a child or a watchdog exists; run()
-        # then reads the SOFT and HARD values this has just accepted.
         try:
             check_limits()
         except BadSetting as exc:
@@ -419,8 +413,6 @@ class Supervisor:
         stop = self.path('stop')
         if stop.exists() and stop.stat().st_mtime < self.started and not carried:
             stop.unlink()
-        while os.getenv('CHIEF_WAIT_STREAM_PAUSE_ADOPT') == '1' and self.adopted:
-            time.sleep(.1)
         live_part = self.data.get('part') if self.adopted else None
         known = {r[5] for r in rows if r[0] == 'W'}
         # Recover rename-before-log crashes as well as completed child parts.
@@ -434,7 +426,6 @@ class Supervisor:
         keep = max(1, int(os.getenv('CHIEF_WAIT_STREAM_KEEP', '200')))
         retained = wakes[-keep:]
         if len(wakes) > keep:
-            # A wake a pending ack request names is kept with the retained ones, and so are the D/K rows of kept wakes.
             asked = {p.name[len(Path(self.base).name + 'ack-'):-len('.json')]
                      for p in self.path('stream').parent.glob(Path(self.base).name + 'ack-*.json')}
             kept = [r for r in wakes[:-keep] if r[1] in asked] + retained
@@ -487,8 +478,6 @@ class Supervisor:
         part = str(self.path(f'part-{self.arm}-{self.launches}'))
         env = dict(os.environ, CHIEF_WAIT_STREAM_SERVICE='1')
         env.setdefault('CHIEF_WAIT_POLL_SEC', '0.2')
-        # The child blocks on its stdin until its pid is published and then becomes the waiter; if this process dies
-        # first the pipe closes and the child exits before it holds anything.
         gate = 'read -r _ || exit 1; exec bash "$@" </dev/null'
         with open(part, 'a') as out:
             self.proc = subprocess.Popen(['bash', '-c', gate, 'chief-wait-gate',
@@ -497,13 +486,13 @@ class Supervisor:
                                          stdout=out, stderr=out, env=env, start_new_session=True, close_fds=True)
         self.adopted = False
         self.data.update(child=self.proc.pid, child_start=identity(self.proc.pid), part=part,
-                         safe=clock(), handoff='-')
+                         safe=clock(time.monotonic), handoff='-')
         self.publish()
         try:
             self.proc.stdin.write(b'go\n')
             self.proc.stdin.close()
         except BrokenPipeError:
-            pass  # the child already exited; the run loop reads its status
+            pass
 
     def run(self):
         result = self.prepare()
@@ -511,21 +500,21 @@ class Supervisor:
             return result
         soft = float(os.getenv('CHIEF_WAIT_STREAM_SOFT_SEC', '1440'))
         hard = float(os.getenv('CHIEF_WAIT_STREAM_HARD_SEC', '1680'))
-        while True:  # t13b-ok: ends at the first pass after CHIEF_WAIT_STREAM_HARD_SEC (1680 s default, wall clock) while the waiter child lives, 60 s after a stop request while it lives, once the child is gone and CHIEF_WAIT_STREAM_SOFT_SEC (1440 s default) has passed or a stop request or a recorded reason (repeat, rate limit) is set, or on a refusal or an error (a child busy past CHIEF_WAIT_STREAM_BUSY_MAX_SEC, 7200 s default, is an error); not bounded for nan, inf or huge settings, for SOFT at or above HARD with a child that dies at once, or while CHIEF_WAIT_STREAM_PAUSE_LOG=1 (a test pause hook) is set; the settings are read from the environment with no clamp
+        while True:  # t13b-ok: ends at the first pass after CHIEF_WAIT_STREAM_HARD_SEC (1680 s default, 1800 s at most, monotonic clock) or 60 s after a stop request, checked on every pass; earlier once the child is gone and CHIEF_WAIT_STREAM_SOFT_SEC (1440 s default, below HARD) has passed or a stop request or a recorded reason (repeat, rate limit) is set, or on a refusal or an error (a child busy past CHIEF_WAIT_STREAM_BUSY_MAX_SEC, 7200 s at most, is an error); a setting outside its range refuses the start
             self.acknowledge()
-            now = clock()
+            now = clock(time.monotonic)
             self.lines = [t for t in self.lines if clock(time.monotonic) - t < 60]
             if len(self.lines) >= int(os.getenv('CHIEF_WAIT_STREAM_MAX_PER_MIN', '6')):
                 self.reason = self.reason or 'rate'
             if self.path('stop').exists():
                 self.stop_started = self.stop_started or now
-            ending = self.reason or now - self.started >= soft or self.stop_started is not None
+            ending = self.reason or now - self.began >= soft or self.stop_started is not None
             live = child_alive(self.data, self.inbox)
             if self.proc is not None and self.proc.poll() is None:
                 live = True
+            if (self.stop_started is not None and now - self.stop_started >= 60) or now - self.began >= hard:
+                return self.finish(live)
             if not live and self.data.get('part'):
-                while os.getenv('CHIEF_WAIT_STREAM_PAUSE_LOG') == '1':
-                    time.sleep(.1)
                 rc = self.proc.wait() if self.proc else self.adopted_rc()
                 if self.honoured(self.data.get('child')):
                     self.stop_started = self.stop_started or now
@@ -560,9 +549,6 @@ class Supervisor:
                 self.record(self.data['part'], self.adopted)
                 self.error(f"kind=hung pid={self.data['child']} age={int(age)}")
                 return 1
-            if ((self.stop_started is not None and now - self.stop_started >= 60) or
-                    now - self.started >= hard):
-                return self.finish(True)
             time.sleep(.1)
 
     def acknowledge(self):
@@ -666,7 +652,7 @@ class Supervisor:
             self.stop_started, busy = time.time(), False
             self.data['child'] = 0
         stopped = self.stop_started is not None
-        self.data['handoff'] = time.time() if busy and not stopped else '-'
+        self.data['handoff'] = clock(time.monotonic) if busy and not stopped else '-'
         self.publish()
         line = ('STOPPED' if stopped else 'REARM') + f' since={self.printed}'
         if not stopped:
@@ -710,7 +696,6 @@ def main():
         return supervisor.run()
     except Exception as exc:
         if not supervisor.owned:
-            # Before the lock is held nothing may be written, not even a fault report.
             if isinstance(exc, ValueError):
                 return Supervisor.refuse(str(exc), 2)
             return Supervisor.refuse('before-lock ' + type(exc).__name__, 3)

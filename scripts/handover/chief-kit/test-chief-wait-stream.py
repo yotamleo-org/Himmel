@@ -26,7 +26,7 @@ stop = Path(sys.argv[1] + '.wait.stop')
 fired = Path(sys.argv[1] + '.wait.schedule-fired')
 armed = []
 acknowledge = mod.Supervisor.acknowledge
-safe_point = mod.safe_point
+child_alive = mod.child_alive
 publish = mod.Supervisor.publish
 
 
@@ -34,16 +34,16 @@ def after_one_wake(self):
     acknowledge(self)
     if not armed and self.wakes >= 1 and self.proc is not None and self.proc.poll() is None:
         armed.append(self)
-        self.started -= float(os.environ['CHIEF_WAIT_STREAM_HARD_SEC']) + 1
+        self.began -= float(os.environ['CHIEF_WAIT_STREAM_HARD_SEC']) + 1
 
 
 def touched_after_the_sample(data, inbox):
+    live = child_alive(data, inbox)
     if armed and not fired.exists():
         stop.touch()
         armed[0].proc.wait(timeout=30)
         fired.write_text(str(data['child']))
-        return ''
-    return safe_point(data, inbox)
+    return live
 
 
 def honoured_during_adoption(self):
@@ -60,14 +60,12 @@ def honoured_during_adoption(self):
 
 if os.environ['SCHEDULE'] == 'touched-after-the-sample':
     mod.Supervisor.acknowledge = after_one_wake
-    mod.safe_point = touched_after_the_sample
+    mod.child_alive = touched_after_the_sample
 else:
     mod.Supervisor.publish = honoured_during_adoption
 sys.exit(mod.main())
 '''
 
-# Runs the supervisor and ends it the way SIGKILL does (no cleanup) at one point of its launch window, between starting the
-# waiter child and publishing the child's pid. `stall` only pauses there, as a slow but live supervisor does.
 LAUNCH_WINDOW = r'''
 import importlib.util, os, sys, time
 spec = importlib.util.spec_from_file_location('cws', sys.argv[1])
@@ -106,7 +104,7 @@ real_record = m.Supervisor.record
 
 def record(self, part, adopted=False, emit=True):
     if point == 'record':
-        os._exit(137)  # the child's output is complete and nothing of it is recorded
+        os._exit(137)
     return real_record(self, part, adopted, emit)
 
 
@@ -114,8 +112,6 @@ m.identity, m.atomic, m.Supervisor.publish, m.Supervisor.record = identity, atom
 sys.exit(sup.run())
 '''
 
-# A dead supervisor's watchdog reaches its adoption deadline while a waiter sleeps. A real supervisor object (the next owner)
-# publishes itself right after the watchdog's `when`-th read of the sidecar, and every signal records who the sidecar names.
 WATCHDOG_RACE = r'''
 import importlib.util, json, os, subprocess, sys, threading, time
 from pathlib import Path
@@ -138,8 +134,8 @@ while not m.safe_point(m.load(side), inbox) and time.monotonic() < end:
     time.sleep(.05)
 adopter = m.Supervisor(inbox, ['--doc', 'x', '--workers-from', 'y'])
 adopter.data = dict(child=child.pid, child_start=start, part=part, safe=time.monotonic(), handoff='-')
-real_load, real_kill = m.load, os.kill
-reads, publishers, kills = [], [], []
+real_load, real_kill, real_atomic = m.load, os.kill, m.atomic
+reads, publishers, kills, requests = [], [], [], []
 
 
 def load(path):
@@ -159,11 +155,18 @@ def kill(pid, sig):
     real_kill(pid, sig)
 
 
-m.load, os.kill = load, kill
+def atomic(path, data):
+    if path == inbox + '.wait.reap':
+        requests.append(dict(data=data.strip(), owner=real_load(side).get('sup')))
+    return real_atomic(path, data)
+
+
+m.load, os.kill, m.atomic = load, kill, atomic
 rc = m.watchdog(inbox, str(dead.pid), '1')
 for thread in publishers:
     thread.join(10)
-print(json.dumps(dict(rc=rc, kills=kills, dead=dead.pid, me=os.getpid(), owner=real_load(side).get('sup'),
+print(json.dumps(dict(rc=rc, kills=kills, requests=requests, reap_left=Path(inbox + '.wait.reap').exists(),
+                      dead=dead.pid, me=os.getpid(), owner=real_load(side).get('sup'),
                       child_running=child.poll() is None, publishers_done=not any(t.is_alive() for t in publishers))))
 os.killpg(child.pid, 9)
 '''
@@ -550,7 +553,6 @@ echo 'HANDLED close-wrapped'
         self.stop(again)
 
     def test_pid_reuse_is_never_adopted_or_signalled(self):
-        # The reused pid passes the argv test (it names the inbox and a chief-wait script); only its start time differs.
         unrelated = subprocess.Popen(['bash', '-c', 'sleep 30; :', 'chief-wait-reused', str(self.inbox)], start_new_session=True)
         try:
             self.path('stream').write_text(f'child={unrelated.pid} child_start=wrong host={socket.gethostname()} boot={Path("/proc/sys/kernel/random/boot_id").read_text().strip()} seq=0\n')
@@ -619,7 +621,6 @@ echo 'HANDLED close-wrapped'
         self.check_a_supervisor_killed_in_the_launch_window_leaves_no_orphan_waiter('after-publish')
 
     def test_a_slow_live_supervisor_keeps_its_waiter_waiting_for_the_publish(self):
-        # The launch handshake has no clock: a supervisor that is alive but slow to publish still gets its waiter.
         p, out = self.launch_window('stall')
         self.armed()
         self.until(lambda: self.state().get('child', '0') != '0', seconds=10)
@@ -705,7 +706,7 @@ echo 'HANDLED close-wrapped'
         ledger = self.root / 'owed.jsonl'
         ledger.write_text(json.dumps(row) + '\n')
         self.env['CHIEF_WAIT_OWED_SEND'] = self.script('send', 'echo "$*" >> "$TEST_ROOT/sends"\necho queued\n')
-        self.env['CHIEF_WAIT_OPERATOR_RETRY_SEC'] = '600'  # no retry inside the test: its one send is the first attempt
+        self.env['CHIEF_WAIT_OPERATOR_RETRY_SEC'] = '600'
         p, out = self.start()
         self.until(lambda: 'owed-actions' in out.read_text())
         self.assertIn('operator-delivery-pending', self.path('wake-1').read_text())
@@ -746,7 +747,6 @@ echo 'HANDLED close-wrapped'
                 f.write(f'busy consumer event {minute}\n')
             self.until(lambda: f'WAKE#{minute + 1} telegram' in out.read_text())
             self.assertIsNone(p.poll())
-        # the supervisor's own soft bound runs on its simulated clock: it ends the arm only once that clock passes it
         self.assertNotIn('REARM', out.read_text())
         set_clock(1794800000 + 1440 + 60)
         self.until(lambda: 'REARM' in out.read_text())
@@ -787,7 +787,6 @@ echo 'HANDLED close-wrapped'
             self.until(lambda: 'REPLAY seqs=1-1' in replay.read_text())
             advertised.append(re.search(r'index=(\S+)', replay.read_text())[1])
             self.stop(again)
-        # three arms each advertised an index; the current arm and its predecessor keep theirs, older ones go
         self.assertEqual([Path(index).exists() for index in advertised], [False, True, True])
         wakes = [line.split('\t') for line in self.path('wakes').read_text().splitlines() if line.startswith('W\t')]
         for index in advertised[1:]:
@@ -1112,7 +1111,6 @@ class AckRows(StreamFixture):
         self.assertIn(['K', '1'], kept, 'the accepted ack names a wake the rotation dropped')
         self.assertIn(['D', '2'], kept, 'a retained wake lost its delivery row')
         self.assertIn(['K', '2'], kept, 'a retained wake lost its acknowledgement row')
-        # with the ack done nothing pins the wake: the next arm rotates it out with its rows
         again, _ = self.start(('--since', '0'))
         self.until(lambda: sum(row[0] == 'A' for row in self.rows()) >= 2)
         self.stop(again)
@@ -1129,7 +1127,7 @@ class RefusedArm(StreamFixture):
         super().setUp()
         self.lock = open(str(self.path('stream.lock')), 'a')
         self.addCleanup(self.lock.close)
-        fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)  # this process is the live supervisor
+        fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         self.path('wake-1').write_text('WAKE telegram ORIGINAL-WAKE-1\n')
         now = int(time.time())
         self.path('wakes').write_text(f'W\t1\t{now}\t77\ttelegram\t{self.path("wake-1")}\nP\t1\t{now}\t77\n')
@@ -1166,7 +1164,7 @@ class RefusedArm(StreamFixture):
 
 
 class WatchdogOwner(StreamFixture):
-    """The watchdog of a dead supervisor signals only while the sidecar still names the owner it checked."""
+    """The watchdog of a dead supervisor requests a reap, or signals, only while the sidecar still names the owner it checked."""
 
     def race(self, when):
         script = self.root / 'watchdog-race.py'
@@ -1178,30 +1176,27 @@ class WatchdogOwner(StreamFixture):
 
     def test_an_owner_that_publishes_before_the_final_check_is_never_signalled_for(self):
         seen = self.race(1)
-        self.assertEqual(seen['kills'], [])
+        self.assertEqual((seen['kills'], seen['requests']), ([], []))
         self.assertTrue(seen['child_running'])
         self.assertEqual(seen['owner'], str(seen['me']))
 
     def test_an_owner_that_publishes_right_after_the_final_check_does_not_get_its_child_signalled(self):
         seen = self.race(2)
-        self.assertEqual([kill['owner'] for kill in seen['kills']], [str(seen['dead'])],
-                         'the watchdog signalled after the next owner had published itself')
+        self.assertEqual([request['owner'] for request in seen['requests']], [str(seen['dead'])],
+                         'the watchdog requested a reap after the next owner had published itself')
+        self.assertEqual(seen['kills'], [])
+        self.assertFalse(seen['reap_left'], 'the reap request outlived the next owner')
         self.assertTrue(seen['publishers_done'])
         self.assertEqual(seen['owner'], str(seen['me']))
 
 
-# The longest value each duration setting accepts, in seconds: a Monitor arm lives 1800 s (timeout_ms 1800000), the one-shot
-# Bash arm 7200 s (timeout 7200000), and a stop request waits 60 s for a safe point (so SOFT ends 60 s before the longest HARD).
 BOUNDS = {'CHIEF_WAIT_STREAM_SOFT_SEC': 1740, 'CHIEF_WAIT_STREAM_HARD_SEC': 1800,
           'CHIEF_WAIT_STREAM_BUSY_MAX_SEC': 7200, 'CHIEF_WAIT_STREAM_REAP_MAX_SEC': 1800,
           'CHIEF_WAIT_STREAM_ADOPT_SEC': 1800, 'CHIEF_WAIT_STREAM_KILL_GRACE_SEC': 60,
           'CHIEF_WAIT_STREAM_REPEAT_SEC': 1800}
-# The ones the detached watchdog reads itself.
 WATCHDOG_BOUNDS = ('CHIEF_WAIT_STREAM_ADOPT_SEC', 'CHIEF_WAIT_STREAM_BUSY_MAX_SEC', 'CHIEF_WAIT_STREAM_REAP_MAX_SEC',
                    'CHIEF_WAIT_STREAM_KILL_GRACE_SEC')
 
-# Runs the supervisor in-process. `unchecked` turns the start-time settings check off (SOFT above HARD would be refused before
-# the loop; the loop itself must still end at HARD); `step` moves the wall clock back an hour one second in.
 SUPERVISOR_PROBE = r'''
 import importlib.util, sys, threading, time
 spec = importlib.util.spec_from_file_location('cws', sys.argv[1])
@@ -1216,17 +1211,11 @@ if mode == 'step':
     def step():
         time.sleep(1.0)
         time.time = lambda: real() - 3600
-        m.clock.__defaults__ = (time.time,)  # clock() holds time.time as its default argument
+        m.clock.__defaults__ = (time.time,)
     threading.Thread(target=step, daemon=True).start()
 sys.exit(m.Supervisor(sys.argv[3], sys.argv[4:]).run())
 '''
 
-# Runs the watchdog in-process for a waiter child (the sidecar's `safe` is a wall-clock time, so the busy bound, which compares it
-# with the watchdog's own clock, cannot fire on either clock and only the bound under test can end the child).
-# `gone`: its supervisor is gone; `hung`: its supervisor lives for the whole
-# run (a stopped or hung one) and the maxima that make up the watchdog's age are one second (the kill grace 0.2);
-# `alive`: the same supervisor with the real maxima;
-# `step` is `gone` with the wall clock moved back an hour half a second in.
 WATCHDOG_AGE = r'''
 import importlib.util, json, os, subprocess, sys, threading, time
 from pathlib import Path
@@ -1265,7 +1254,6 @@ class StreamBounds(StreamFixture):
     refuses the start with one line that names the setting, the value and the range."""
 
     def tearDown(self):
-        # Only processes that name this fixture's own directory: the supervisors, watchdogs and waiters it started.
         for entry in Path('/proc').iterdir():
             if entry.name.isdigit() and int(entry.name) != os.getpid():
                 try:
@@ -1333,7 +1321,6 @@ class StreamBounds(StreamFixture):
     def test_the_maximum_itself_starts(self):
         for n, (name, longest) in enumerate(BOUNDS.items()):
             with self.subTest(setting=name):
-                # SOFT must stay below HARD, so its maximum is tried with the longest HARD
                 extra = {'CHIEF_WAIT_STREAM_HARD_SEC': '1800'} if name == 'CHIEF_WAIT_STREAM_SOFT_SEC' else {}
                 code, text, started = self.arm(self.fresh(n), **{name: str(longest)}, **extra)
                 self.assertTrue(started, text)
@@ -1379,8 +1366,6 @@ class StreamBounds(StreamFixture):
         return p.returncode, err.read_text(), False
 
     def test_the_watchdog_refuses_a_bound_that_is_too_long_zero_empty_or_not_finite(self):
-        # It refuses by itself, before it loops: it can outlive its supervisor. An empty value ended the old watchdog by an
-        # exception and left its child.
         for name in WATCHDOG_BOUNDS:
             for value in (str(BOUNDS[name] + 1), '0', '-1', 'abc', '', 'nan', 'inf'):
                 with self.subTest(setting=name, value=value):
@@ -1398,8 +1383,6 @@ class StreamBounds(StreamFixture):
         self.assertTrue(running, text)
 
     def test_a_frozen_test_clock_does_not_skip_a_bound_outside_a_fixture(self):
-        # The simulated clock is honoured only under HIMMEL_TEST_FIXTURE=1; without it a clock file that never advances
-        # cannot keep the arm past its soft bound.
         clock = self.root / 'frozen-clock'
         clock.write_text('1794800000')
         env = dict(self.env, CHIEF_WAIT_STREAM_TEST_CLOCK=str(clock), CHIEF_WAIT_STREAM_SOFT_SEC='.3',
@@ -1418,7 +1401,6 @@ class StreamBounds(StreamFixture):
             return None, out.read_text()
 
     def test_a_pause_setting_does_not_hold_the_supervisor(self):
-        # The pause settings were test hooks inside two loops of the shipped code; no setting holds a loop now.
         child = self.script('chief-wait-exit', 'exit 0\n')
         env = dict(self.env, CHIEF_WAIT_STREAM_CHILD=child, CHIEF_WAIT_STREAM_SOFT_SEC='1', CHIEF_WAIT_STREAM_HARD_SEC='2',
                    CHIEF_WAIT_STREAM_PAUSE_LOG='1')
@@ -1463,8 +1445,6 @@ class StreamBounds(StreamFixture):
         return (str(self.fresh(n)), '--doc', str(self.doc), '--workers-from', str(self.fleet))
 
     def test_the_hard_bound_is_checked_on_every_pass_of_the_loop(self):
-        # A child that dies at once sends every pass down the record or the launch path, which `continue`s; the hard check
-        # sits before them, so SOFT above HARD (refused at the start; the check is turned off here) still ends at HARD.
         child = self.script('chief-wait-exit', 'exit 0\n')
         code, text = self.run_script(SUPERVISOR_PROBE, 'unchecked', *self.supervisor_args(0), seconds=12,
                                      CHIEF_WAIT_STREAM_CHILD=child, CHIEF_WAIT_STREAM_SOFT_SEC='100',
@@ -1487,7 +1467,6 @@ class StreamBounds(StreamFixture):
         self.assertEqual((seen['rc'], seen['child_running'], seen['hung']), (0, False, True))
 
     def test_the_watchdog_ends_its_child_and_itself_when_its_supervisor_never_ends(self):
-        # A stopped or hung supervisor stays alive, so the watchdog never sees it die: its own age ends it.
         code, text = self.run_script(WATCHDOG_AGE, str(self.fresh(0)), 'hung', seconds=12)
         self.assertIsNotNone(code, 'the watchdog is still waiting on a supervisor that never ends')
         seen = json.loads(text.splitlines()[-1])
@@ -1891,9 +1870,8 @@ class StackedWorker(StreamFixture):
         time.sleep(1.0)
         q.terminate()
         q.wait(timeout=6)
-        # The successor starts every worker over: the relay offers the newest READY of each once, nothing older, nothing twice.
-        # The audit below is the stand-in's own list (it dedupes by itself), so it shows the heads the relay offered and
-        # cannot show a second send by the real auto-go; test-auto-go.sh pins that rule.
+        # The successor starts every worker over: the relay offers the newest READY of each once, nothing older, nothing twice;
+        # the stand-in's audit dedupes by itself, so test-auto-go.sh pins the real auto-go's one send.
         self.assertEqual(len(self.seen(f'N1 READY #1 {self.H[1]}')), 2)
         self.assertEqual(len(self.seen(f'N2 READY #2 {self.H[2]}')), 1)
         self.assertEqual(len(self.seen(f'N2 READY #3 {self.H[3]}')), 1)
@@ -2083,8 +2061,6 @@ class IdlePoll(StreamFixture):
         self.post_ready(1)
         self.until(lambda: (self.root / 'events').exists())
         at = float((self.root / 'events').read_text().split()[0])
-        # The first idle sleep after that event's run of empty passes starts a fresh idle stretch: a second event posted
-        # while it runs is served when it ends, one idle interval after it began, plus the pass.
         self.until(lambda: self.sleeps(at).count('0.5') >= 1, seconds=10)
         began = float(next(line.split()[0] for line in (self.root / 'sleeps').read_text().splitlines()
                            if float(line.split()[0]) > at and line.split()[1] == '0.5'))
