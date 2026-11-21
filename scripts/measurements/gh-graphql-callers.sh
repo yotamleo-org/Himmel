@@ -151,7 +151,7 @@ cmd_watch() {
     local seen=" " pid st key args w cost n=0 after="?" reset1=""
     { mkdir -p "$(dirname "$log")" && : >>"$log"; } || { echo "gh-graphql-callers: cannot write log '$log'; nothing was watched" >&2; exit 2; }
     while [ "$SECONDS" -lt "$end" ]; do
-        for pid in $(pgrep -x gh 2>/dev/null); do
+        for pid in $(pgrep -f '(^|/)gh( |$)' 2>/dev/null); do
             st=$(ps -o lstart= -p "$pid" 2>/dev/null | tr -d ' ')
             [ -n "$st" ] || continue
             key="$pid.$st"
