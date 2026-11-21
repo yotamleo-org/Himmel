@@ -21,7 +21,7 @@ exec >> "$work/job.log" 2>&1
 suites=()
 while IFS= read -r line || [ -n "$line" ]; do
     [ -n "$line" ] && suites+=("$line")
-done < "$list"
+done < "$list"  # read-sink-ok: runs only in the offline job guest, which holds no host file; the runner passes its own /tmp/job/suites.txt
 count=${#suites[@]}
 outcomes=()
 
