@@ -11,6 +11,8 @@ test-status_marker.py and test-status-marker.sh.
 CLI: python3 status_marker.py parse LINE -> marker on stdout, exit 0, or exit 1
 when there is none; is-parked WORD -> exit 0 or 1; bad usage exits 2.
 """
+import errno
+import os
 import re
 import sys
 
@@ -31,6 +33,63 @@ def parse(line):
 
 def is_parked(word):
     return word in ("PARKED-BANK", "PARKED-USAGE")
+
+
+_FENCE = re.compile(r" {0,3}(```|~~~)")
+_RESULTS = re.compile(r"## Results(?:[ \t]|\Z)")
+_RULINGS = re.compile(r"## (?:Chief|Console) Rulings(?:[ \t]|\Z)")  # old-term-ok
+_ACTIONABLE = re.compile(
+    r"- (?:[0-9]{1,2}:[0-9]{2}[ \t\n\v\f\r]+)?(?:\*\*)?"
+    r"(READY|BLOCKED|FINDING|MERGED)"
+    r"(?:[^A-Za-z0-9_].*)?",
+    re.DOTALL,
+)
+
+
+def _scope_lines(path):
+    if not os.path.isfile(path):
+        raise OSError(errno.EINVAL, "not a regular file", path)
+    with open(path, "rb") as f:
+        text = f.read().decode("latin-1")
+    out, scope, seen, fence = [], False, False, ""
+    for raw in text.split("\n"):
+        m = _FENCE.match(raw)
+        if m:
+            if not fence:
+                fence = m.group(1)
+            elif fence == m.group(1):
+                fence = ""
+            continue
+        if fence:
+            continue
+        head = raw[:-1] if raw.endswith("\r") else raw
+        if head.startswith("## "):
+            is_results = _RESULTS.match(head) is not None
+            scope = is_results or (seen and _RULINGS.match(head) is not None)
+            seen = seen or is_results
+            continue
+        if scope:
+            out.append(raw)
+    return out
+
+
+def newest(path):
+    last = None
+    for line in _scope_lines(path):
+        if line.startswith("- "):
+            marker = parse(line)
+            if marker is not None:
+                last = marker
+    return last
+
+
+def actionable(path):
+    word, count = None, 0
+    for line in _scope_lines(path):
+        m = _ACTIONABLE.fullmatch(line)
+        if m:
+            word, count = m.group(1), count + 1
+    return None if word is None else f"{word}#{count}"
 
 
 def main(argv):

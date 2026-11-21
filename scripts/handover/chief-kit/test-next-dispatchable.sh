@@ -312,7 +312,7 @@ has "9321: --resume-only with a scope-less live worker lists the orphan" "$r9o" 
 lacks "9321: --resume-only with a scope-less live worker drops the ticket it owns" "$r9o" "HIMMEL-61	"
 printf '{"schema":1,"workers":[{"doc":"%s","label":"N10"},{"doc":"%s/HIMMEL-62-N11-gone.md","label":"N11"}]}\n' "$NOSCOPE9" "$WORK" > "$WORK/fleet9b.json"
 r9b="$(NEXT_DISPATCH_MIRROR="$M9" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --resume-only --workers-from "$WORK/fleet9b.json" 2>/dev/null)"
-has "9321: a worker doc that cannot be read still lets the orphan list as RESUME" "$r9b" "RESUME	HIMMEL-60"
+lacks "9335 flip311: a worker doc that cannot be read withholds the orphan too (N1 sets owners_unknown)" "$r9b" "RESUME	HIMMEL-60"
 lacks "9321: a worker doc that cannot be read still owns the key in its name" "$r9b" "HIMMEL-62	"
 # a scope-less worker owns every full key on its Ticket lines and its description, and the title keys of the predecessor doc it names
 M_SAVE="$M"; M="$M9"
@@ -1625,9 +1625,7 @@ b8s="$(run8 "$C8/HIMMEL-nextleg-2026-10-31MB-roadmap-chief.fleet.json" --top 20 
 lacks "(8436) inactivity alone cannot clear unknown sibling ownership" "$b8s" "RESUME${TAB}HIMMEL-53${TAB}"
 # malformed sibling manifests never break the read: a list, entries that are not objects, a null or numeric doc, a doc-less entry
 touch "$W53"
-printf '[]\n' > "$C8/HIMMEL-nextleg-2026-10-31MC-roadmap-chief.fleet.json"
 printf '{"schema":1,"workers":["N1",{"doc":null,"label":"N2"},{"doc":5,"label":"N3"},{"label":"N4"}]}\n' > "$C8/HIMMEL-nextleg-2026-10-31MD-roadmap-chief.fleet.json"
-printf '{"schema":1,"workers":{"doc":"x"}}\n' > "$C8/HIMMEL-nextleg-2026-10-31ME-roadmap-chief.fleet.json"
 b8m="$(run8 "$C8/HIMMEL-nextleg-2026-10-31MB-roadmap-chief.fleet.json" --top 20)"
 has "(8436) malformed sibling manifests do not stop the list" "$b8m" "${TAB}HIMMEL-57${TAB}"
 lacks "(8436) a good sibling still holds its ticket beside malformed ones" "$b8m" "RESUME${TAB}HIMMEL-53${TAB}"
@@ -2825,7 +2823,7 @@ has "S1: a scope-less live worker no longer removes the SERIES FAMILY row" "$sf1
 has "S1: the family run names the scope-less worker overlap unknown" "$sf1" "# overlap unknown for live worker N10"
 mkfleet "$WORK/fleet-s11.json" "N11:$WORK/HIMMEL-851-N11-gone.md"
 sf2="$(runs "$S1FAM" 1 --workers-from "$WORK/fleet-s11.json" --why)"
-has "S1: an unreadable worker doc no longer removes the SERIES FAMILY row" "$sf2" "SERIES FAMILY docs/handover HIMMEL-870,HIMMEL-871"
+lacks "9335 flip2824: an unreadable worker doc withholds the SERIES FAMILY row (N1 sets owners_unknown)" "$sf2" "SERIES FAMILY docs/handover HIMMEL-870,HIMMEL-871"
 has "S1: an unreadable worker doc prints overlap unknown for that worker" "$sf2" "# overlap unknown for live worker N11"
 sf3="$(runs "$SM" 1 --workers-from "$WORK/fleet-s11.json" --why)"
 has "S1: control: an unreadable worker doc still owns the key in its name" "$sf3" "# drop HIMMEL-851 owned by live worker N11"
@@ -3928,6 +3926,610 @@ u8_same="$(cat "$U8/out.samebase")"
 lacks "(U8) two docs with one basename keep their own states: the live one holds its ticket although the wrapped one was asked first" "$u8_same" "${TAB}HIMMEL-115${TAB}"
 has "(U8) two docs with one basename: a ticket no worker holds is still offered" "$u8_same" "${TAB}HIMMEL-120${TAB}"
 u8_eq "(U8) two docs with one basename are each evaluated once" "$(awk -F'\t' '$1 == "worker_state" { c[$2]++ } END { n = 0; for (d in c) n++; print n }' "$U8/count.samebase")" 2
+
+# --- 9335: a named worker source that cannot be fully read withholds what it may own ---
+# Fixture M (ow_mirror): an In Progress orphan with one scope file, an In Progress bundle sibling with no PR, an IN CI ticket with no merged PR
+# and a To Do ticket with one scope file, all in version v1.0.1. The controls below hold whatever the dispatcher does about an unknown owner.
+OW="$WORK/ow9335"; mkdir -p "$OW"
+ow_mirror() { # <name>: fixture M under $OW/<name>/HIMMEL, sets OW_M
+    OW_M="$OW/$1/HIMMEL"; mkdir -p "$OW_M"
+    local M="$OW_M"
+    mk HIMMEL-60 "In Progress" High '[]' '["v1.0.1"]' '[]' "orphan with a scope" "Edit scripts/lib/s1.sh only."
+    mk HIMMEL-63 "In Progress" High '[]' '["v1.0.1"]' '[]' "bundle sibling with no PR" "Edit scripts/lib/s3.sh only."
+    mk HIMMEL-65 "IN CI" High '[]' '["v1.0.1"]' '[]' "in CI with no merged PR" "Edit scripts/lib/s5.sh only."
+    mk HIMMEL-90 "To Do" High '[]' '["v1.0.1"]' '[]' "free to do" "Edit scripts/lib/x.sh only."
+    printf 'v1.0.1\tfalse\t\n' > "$OW/$1/HIMMEL.versions.tsv"
+}
+ow_mk() { local M="$OW_M"; mk "$@"; }  # add one ticket to the mirror OW_M points at
+ow_run() { NEXT_DISPATCH_MIRROR="$OW_M" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" 2>/dev/null; }
+ow_run2() { NEXT_DISPATCH_MIRROR="$OW_M" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" 2>&1; }
+ow_err() { { NEXT_DISPATCH_MIRROR="$OW_M" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" > /dev/null; } 2>&1; }  # stderr only
+ow_oracle() { # <doc> [home]: the answer fleet_runtime.worker_state asks of ticket-status.sh, with HOME set to <home> (default: the fixture HOME)
+    HOME="${2:-$HOME}" bash -c '. "$1/ticket-status.sh"; ts_worker_state "$2"' fleet-runtime "$HERE/../../lib" "$1" 2>/dev/null
+}
+ow_n() { printf '%s\n' "$1" | grep -c -E "$2" || true; }  # <text> <regex>: the count of matching lines
+ow_tree_sum() { find "$OW" "$HOME" "$HANDOVER_DIR" "$TICKET_STATUS_STATE_DIR" -type f -exec cksum {} + 2>/dev/null | LC_ALL=C sort | cksum; }
+ow_doc() { printf '# worker\n\n## Results\n%s\n' "$2" > "$1"; }  # <path> <one results line>
+ow_lockstub() { # <path> <status line or empty> <rc>: a queue-lock stand-in that logs every call to $OW/qlock.log
+    { printf '#!/usr/bin/env bash\n'; printf 'printf "%%s\\n" "$*" >> "%s/qlock.log"\n' "$OW"; [ -z "$2" ] || printf 'echo "%s"\n' "$2"; printf 'exit %s\n' "$3"; } > "$1"
+    chmod +x "$1"
+}
+
+# X6: a caller naming no worker source (E3) keeps the base's output: no line, no withhold of the pool
+mkdir -p "$OW/x6a/HIMMEL" "$OW/x6b/HIMMEL"
+OW_M="$OW/x6a/HIMMEL"; ow_mk HIMMEL-420 "In Progress" Low '["must-v1.0.1"]' '[]' '[]' "only a worker-less pool ticket" "Edit scripts/lib/t1.sh only."
+printf 'v1.0.1\tfalse\t\n' > "$OW/x6a/HIMMEL.versions.tsv"
+OW_M="$OW/x6b/HIMMEL"; ow_mk HIMMEL-160 "To Do" Highest '[]' '["v1.0.1"]' '[]' "only tier5" "Edit scripts/lib/w1.sh only."
+OW_M="$OW/x6a/HIMMEL"
+ow_x6n_out="$(ow_run --priority-pool-only)"; ow_x6n_err="$(ow_err --priority-pool-only)"
+has "9335 X6: the n12 shape says on stderr that it has no worker source" "$ow_x6n_err" "no worker source"
+lacks "9335 X6: the n12 shape offers no RESUME row" "$ow_x6n_out" "RESUME"
+lacks "9335 X6: the n12 shape prints no owner-unknown line" "$ow_x6n_out$ow_x6n_err" "# owner unknown"
+has "9335 X6: the n12 shape prints POOL-EMPTY" "$ow_x6n_out" "POOL-EMPTY"
+OW_M="$OW/x6b/HIMMEL"
+ow_x6e_out="$(ow_run --priority-pool-only)"; ow_x6e_err="$(ow_err --priority-pool-only)"
+has "9335 X6: the e8 shape says on stderr that it has no worker source" "$ow_x6e_err" "no worker source"
+lacks "9335 X6: the e8 shape prints no owner-unknown line" "$ow_x6e_out$ow_x6e_err" "# owner unknown"
+has "9335 X6: the e8 shape prints POOL-EMPTY" "$ow_x6e_out" "POOL-EMPTY"
+has "9335 X6: the e8 shape lists the next-tier candidate" "$ow_x6e_out" "NEXT-TIER${TAB}HIMMEL-160"
+ow_x6t_out="$(ow_run --priority-pool-only --top 8)"; ow_x6t_err="$(ow_err --priority-pool-only --top 8)"
+has "9335 X6: the e10 shape says on stderr that it has no worker source" "$ow_x6t_err" "no worker source"
+lacks "9335 X6: the e10 shape prints no owner-unknown line" "$ow_x6t_out$ow_x6t_err" "# owner unknown"
+has "9335 X6: the e10 shape prints pool=0/8,LOW" "$ow_x6t_out" "pool=0/8,LOW"
+has "9335 X6: the e10 shape lists the next-tier candidate" "$ow_x6t_out" "NEXT-TIER${TAB}HIMMEL-160"
+OW_M="$OW/x6a/HIMMEL"
+has "9335 X6.ctl: with an --owners key the same pool lists the worker-less ticket" "$(ow_run --priority-pool-only --owners "$KP-999")" "RESUME${TAB}HIMMEL-420"
+
+# X2: the WORKERS_FROM environment source is not read by --why-ticket, and --why-ticket refuses --workers-from
+ow_mirror x2
+mkfleet "$OW/fleet-x2.json" "N1:$WORKER"
+ow_x2_set="$( export WORKERS_FROM="$OW/fleet-x2.json"; ow_run --why-ticket "$KP-90" )"
+ow_x2_unset="$( unset WORKERS_FROM; ow_run --why-ticket "$KP-90" )"
+check "9335 X2: --why-ticket answers the same with and without WORKERS_FROM in the environment" "$ow_x2_unset" "$ow_x2_set"
+has "9335 X2.ans: the --why-ticket answer is a verdict for the ticket" "$ow_x2_unset" "HIMMEL-90"
+ow_run --why-ticket "$KP-90" --workers-from "$OW/fleet-x2.json" > /dev/null; ow_x2_rc=$?
+check "9335 X2.rc: --why-ticket with --workers-from exits 2" "2" "$ow_x2_rc"
+
+# U10: a worker doc that ends WRAPPED frees its ticket and prints no unknown line (over-withholding control)
+ow_mirror u10
+mkdir -p "$OW/u10"
+ow_doc "$OW/u10/HIMMEL-63-N10-done.md" "- 10:30 WRAPPED - done"
+mkfleet "$OW/u10/fleet-w.json" "N10:$OW/u10/HIMMEL-63-N10-done.md"
+ow_u10w="$(ow_run --resume-only --workers-from "$OW/u10/fleet-w.json")"
+has "9335 U10: a WRAPPED own doc frees its ticket: RESUME HIMMEL-63 lists" "$ow_u10w" "RESUME${TAB}HIMMEL-63"
+lacks "9335 U10: a WRAPPED own doc prints no owner-unknown line" "$ow_u10w" "# owner unknown"
+ow_doc "$OW/u10/HIMMEL-63-N10-live.md" "- 10:00 LIVE - started"
+mkfleet "$OW/u10/fleet-l.json" "N10:$OW/u10/HIMMEL-63-N10-live.md"
+ow_u10l="$(ow_run --resume-only --workers-from "$OW/u10/fleet-l.json")"
+lacks "9335 U10.ctl: the same doc ending LIVE holds the ticket" "$ow_u10l" "RESUME${TAB}HIMMEL-63"
+
+# SB3: a sibling manifest whose readable doc ends WRAPPED frees its ticket and prints no unknown line
+ow_mirror sb3
+mkdir -p "$OW/sb3"
+ow_doc "$OW/sb3/HIMMEL-71-N14-own.md" "- 10:00 LIVE - started"
+mkfleet "$OW/sb3/HIMMEL-nextleg-2026-11-18B-ow.fleet.json" "N14:$OW/sb3/HIMMEL-71-N14-own.md"
+ow_doc "$OW/sb3/HIMMEL-63-N15-sib.md" "- 10:30 WRAPPED - done"
+mkfleet "$OW/sb3/HIMMEL-nextleg-2026-11-17A-ow.fleet.json" "N15:$OW/sb3/HIMMEL-63-N15-sib.md"
+ow_sb3="$(ow_run --resume-only --workers-from "$OW/sb3/HIMMEL-nextleg-2026-11-18B-ow.fleet.json")"
+has "9335 SB3: a sibling doc that ends WRAPPED frees its ticket: RESUME HIMMEL-63 lists" "$ow_sb3" "RESUME${TAB}HIMMEL-63"
+lacks "9335 SB3: a sibling doc that ends WRAPPED prints no owner-unknown line" "$ow_sb3" "# owner unknown"
+ow_doc "$OW/sb3/HIMMEL-63-N15-sib.md" "- 10:00 LIVE - started"
+ow_sb3l="$(ow_run --resume-only --workers-from "$OW/sb3/HIMMEL-nextleg-2026-11-18B-ow.fleet.json")"
+lacks "9335 SB3.ctl: the same sibling doc ending LIVE holds the ticket" "$ow_sb3l" "RESUME${TAB}HIMMEL-63"
+
+# P1: only an end marker frees a doc; the oracle (ts_worker_state, as fleet_runtime.worker_state asks it) is asserted first
+ow_mirror p1
+mkdir -p "$OW/p1"
+for ow_pm in READY:71 LIVE:72 WRAPPED:73 HALTED:74 PARKED-USAGE:75; do
+    ow_mark="${ow_pm%%:*}"; ow_key="${ow_pm##*:}"
+    ow_ok="$(printf '%s' "$ow_mark" | tr '[:upper:]' '[:lower:]')"
+    ow_mk "HIMMEL-$ow_key" "In Progress" High '[]' '["v1.0.1"]' '[]' "marker $ow_mark" "Edit scripts/lib/p$ow_key.sh only."
+    ow_pdoc="$OW/p1/HIMMEL-$ow_key-N$ow_key-$ow_ok.md"
+    ow_doc "$ow_pdoc" "- 10:00 $ow_mark - marker under test"
+    mkfleet "$OW/p1/fleet-$ow_key.json" "N$ow_key:$ow_pdoc"
+    ow_orc="$(ow_oracle "$ow_pdoc")"
+    case "$ow_mark" in WRAPPED|HALTED) ow_want=wrapped ;; *) ow_want=held ;; esac
+    [ "$ow_orc" = wrapped ] || ow_orc=held
+    check "9335 P1: the oracle answers $ow_want for a doc whose newest marker is $ow_mark" "$ow_want" "$ow_orc"
+    ow_pl="$(ow_run --resume-only --workers-from "$OW/p1/fleet-$ow_key.json")"
+    if [ "$ow_want" = wrapped ]; then
+        has "9335 P1: a doc ending $ow_mark frees its ticket" "$ow_pl" "RESUME${TAB}HIMMEL-$ow_key"
+    else
+        lacks "9335 P1: a doc ending $ow_mark holds its ticket" "$ow_pl" "RESUME${TAB}HIMMEL-$ow_key"
+    fi
+done
+
+# P2: a dead, a stale and a free lock over a LIVE doc never free it; the lock stage is reached (the stub logs its call)
+ow_mirror p2
+mkdir -p "$OW/p2"
+ow_mk HIMMEL-76 "In Progress" High '[]' '["v1.0.1"]' '[]' "live doc under a lock stub" "Edit scripts/lib/p76.sh only."
+ow_doc "$OW/p2/HIMMEL-76-N76-live.md" "- 10:00 LIVE - started"
+mkfleet "$OW/p2/fleet.json" "N76:$OW/p2/HIMMEL-76-N76-live.md"
+for ow_ls in "dead:status: STALE-DEAD:12" "stale:status: STALE (age 9999s >= ttl 1800s):12" "free::0"; do
+    ow_lname="${ow_ls%%:*}"; ow_rest="${ow_ls#*:}"; ow_lline="${ow_rest%:*}"; ow_lrc="${ow_rest##*:}"
+    ow_lockstub "$OW/p2/lock-$ow_lname.sh" "$ow_lline" "$ow_lrc"
+    : > "$OW/qlock.log"
+    ow_p2="$(TICKET_STATUS_QUEUE_LOCK="$OW/p2/lock-$ow_lname.sh" ow_run --resume-only --workers-from "$OW/p2/fleet.json")"
+    lacks "9335 P2: a $ow_lname lock over a LIVE doc leaves the ticket owned" "$ow_p2" "RESUME${TAB}HIMMEL-76"
+    [ -s "$OW/qlock.log" ] && pass "9335 P2: the $ow_lname lock stub was asked (the lock stage was reached)" || fail "9335 P2: the $ow_lname lock stub was never asked"
+done
+
+# P3: a doc untouched for 48 hours is owned like a fresh one: age is a label only
+ow_mirror p3
+mkdir -p "$OW/p3"
+ow_mk HIMMEL-77 "In Progress" High '[]' '["v1.0.1"]' '[]' "old live doc under a held lock" "Edit scripts/lib/p77.sh only."
+ow_lockstub "$OW/p3/lock-held.sh" "status: FRESH" 11
+mkfleet "$OW/p3/fleet.json" "N77:$OW/p3/HIMMEL-77-N77-live.md"
+for ow_age in old fresh; do
+    ow_doc "$OW/p3/HIMMEL-77-N77-live.md" "- 08:00 LIVE - started"
+    [ "$ow_age" = old ] && ago "$OW/p3/HIMMEL-77-N77-live.md" 48
+    : > "$OW/qlock.log"
+    ow_p3="$(TICKET_STATUS_QUEUE_LOCK="$OW/p3/lock-held.sh" ow_run --resume-only --workers-from "$OW/p3/fleet.json")"
+    lacks "9335 P3: the $ow_age LIVE doc under a held lock leaves the ticket owned" "$ow_p3" "RESUME${TAB}HIMMEL-77"
+    [ -s "$OW/qlock.log" ] && pass "9335 P3: the $ow_age run asked the lock stub" || fail "9335 P3: the $ow_age run never asked the lock stub"
+done
+
+
+# --- 9335 N1: an own or sibling worker doc that cannot be opened withholds the existing lists and prints one line ---
+ow_go() { ow_run "$@" > "$OW/last.out"; OW_RC=$?; OW_OUT="$(cat "$OW/last.out")"; }    # stdout only; sets OW_RC and OW_OUT
+ow_go2() { ow_run2 "$@" > "$OW/last.out"; OW_RC=$?; OW_OUT="$(cat "$OW/last.out")"; }  # stdout and stderr merged
+ow_forged() { printf '%s\n' "$1" | grep -cE "^LOCAL${TAB}${KP}-9([^0-9]|\$)" || true; }  # output lines that are the forged row for the short key (the real row carries a longer key)
+ow_norm() { sed 's/live worker [A-Za-z0-9._-]*/live worker L/; s/chief on [^ ]*/chief on S/; s/mirror_age_min=[0-9]*/mirror_age_min=N/'; }  # the mirror's age in minutes can tick between two runs
+OW_LINE_TAIL="withheld: RESUME, IN CI, STACKABLE, SERIES FAMILY, To Do, DESIGN, NEXT-TIER; reconcile: restore the doc, record the worker's end, or fleet-manifest.sh remove"
+
+# U1: an own row whose doc cannot be opened holds the keys in its file name and withholds RESUME, with one line
+ow_mirror u1
+ow_u1m="$OW_M"
+mkfleet "$OW/fleet-u1.json" "N11:$OW/HIMMEL-62-N11-gone.md"   # the doc is never created
+ow_u1="$(ow_run --resume-only --workers-from "$OW/fleet-u1.json")"
+lacks "9335 U1: an own doc that cannot be opened withholds the orphan HIMMEL-60" "$ow_u1" "RESUME${TAB}HIMMEL-60"
+lacks "9335 U1: an own doc that cannot be opened withholds the bundle sibling HIMMEL-63" "$ow_u1" "RESUME${TAB}HIMMEL-63"
+lacks "9335 U1: an own doc that cannot be opened withholds the IN CI ticket HIMMEL-65" "$ow_u1" "RESUME${TAB}HIMMEL-65"
+has "9335 U1: the line names the worker, the doc, the key it still holds, the withheld lists and the remedy" "$ow_u1" "# owner unknown: live worker N11 (doc HIMMEL-62-N11-gone.md unreadable; keys held: HIMMEL-62); $OW_LINE_TAIL"
+check "9335 U1: exactly one owner-unknown line prints" "1" "$(ow_n "$ow_u1" '^# owner unknown:')"
+has "9335 U1: the header still says live workers unknown" "$ow_u1" "live workers unknown"
+printf '# live\nno scope named here\n' > "$OW/HIMMEL-62-N11-readable.md"
+mkfleet "$OW/fleet-u1c.json" "N11:$OW/HIMMEL-62-N11-readable.md"
+ow_u1c="$(ow_run --resume-only --workers-from "$OW/fleet-u1c.json")"
+has "9335 U1.ctl: the same worker with a readable scope-less doc lists the orphan HIMMEL-60" "$ow_u1c" "RESUME${TAB}HIMMEL-60"
+lacks "9335 U1.ctl: a readable doc prints no owner-unknown line" "$ow_u1c" "# owner unknown"
+mkfleet "$OW/fleet-u1dup.json" "N11:$OW/HIMMEL-62-N11-gone.md" "N11:$OW/HIMMEL-62-N11-gone.md"
+ow_u1d="$(ow_run --resume-only --workers-from "$OW/fleet-u1dup.json")"
+check "9335 U1: the same own row twice prints its line once" "1" "$(ow_n "$ow_u1d" '^# owner unknown:')"
+
+# U1.h9c: a label that splits the line cannot forge a row (the label is escaped where the line and the owner map are built)
+ow_mirror u1h9c
+ow_mk HIMMEL-62 "To Do" High '[]' '["v1.0.1"]' '[]' "To Do whose key an absent doc holds" "Edit scripts/lib/s62.sh only."
+mkdir -p "$OW/u1h9c"
+printf '%s\n' '{"schema":1,"workers":[{"label":"N9\nLOCAL\tHIMMEL-9","doc":"/x/HIMMEL-62-N9-gone.md"}]}' > "$OW/u1h9c/fleet.json"
+ow_go2 --why --workers-from "$OW/u1h9c/fleet.json"
+check "9335 U1.h9c: ND exits 0" "0" "$OW_RC"
+check "9335 U1.h9c: exactly one owner-unknown line prints" "1" "$(ow_n "$OW_OUT" '^# owner unknown:')"
+has "9335 U1.h9c: the line shows the label escaped" "$OW_OUT" "# owner unknown: live worker N9\\nLOCAL\\tHIMMEL-9 (doc ${KP}-62-N9-gone.md unreadable; keys held: ${KP}-62)"
+has "9335 U1.h9c: the overlap line shows the label escaped" "$OW_OUT" "# overlap unknown for live worker N9\\nLOCAL\\tHIMMEL-9"
+has "9335 U1.h9c: the drop line shows the label escaped" "$OW_OUT" "# drop HIMMEL-62 owned by live worker N9\\nLOCAL\\tHIMMEL-9"
+check "9335 U1.h9c: no output line is the forged row for the key HIMMEL-9" "0" "$(ow_forged "$OW_OUT")"
+printf '%s\n' '{"schema":1,"workers":[{"label":"N9b","doc":"/x/HIMMEL-62-N9b-a\nLOCAL\tHIMMEL-9-gone.md"}]}' > "$OW/u1h9c/fleet-doc.json"
+ow_go2 --why --workers-from "$OW/u1h9c/fleet-doc.json"
+has "9335 U1.h9c: a doc name holding a line break is escaped in the line" "$OW_OUT" "(doc ${KP}-62-N9b-a\\nLOCAL\\t${KP}-9-gone.md unreadable; keys held: ${KP}-62,${KP}-9)"
+check "9335 U1.h9c: that doc name forges no row for the key HIMMEL-9" "0" "$(ow_forged "$OW_OUT")"
+
+# U4: the IN CI probe is not run while the fleet is unknown (a clean fleet's run asks GitHub for the merged PRs of the IN CI ticket)
+OW_M="$ow_u1m"
+: > "$GH_ARGS"
+ow_run --workers-from "$OW/fleet-u1.json" > /dev/null
+check "9335 U4: the unknown fleet runs no merged-PR search" "0" "$(grep -c 'pr list.*merged' "$GH_ARGS" || true)"
+ow_doc "$OW/HIMMEL-71-N12-clean.md" "- 10:00 LIVE - started"
+mkfleet "$OW/fleet-u4c.json" "N12:$OW/HIMMEL-71-N12-clean.md"
+: > "$GH_ARGS"
+ow_run --workers-from "$OW/fleet-u4c.json" > /dev/null
+check "9335 U4.ctl: a clean fleet's run searches the merged PRs for HIMMEL-65" "1" "$(grep -c 'pr list.*merged' "$GH_ARGS" || true)"
+
+# U7: a typed refusal receipt does not free an unreadable own doc: it is never asked (the oracle shows the receipt WOULD free it if it were)
+ow_mirror u7
+mkdir -p "$OW/u7x" "$OW/u7y" "$OW/u7emptyhome" "$HOME/.himmel"
+ow_u7doc="$OW/u7y/HIMMEL-62-N11-gone.md"
+printf '{"family":"F9335","attempts":{}}\n' > "$OW/u7y/fleet-control.json"
+printf '{"v":2,"kind":"launch-attempt","attempt_id":"u7-r1","doc":"%s","outcome":"refused","name":"u7-none","ts":"2026-01-01T00:00:00Z"}\n' "$ow_u7doc" > "$HOME/.himmel/launch-refusals.jsonl"
+check "9335 U7.oracle: with the receipt the oracle answers wrapped for the absent doc" "wrapped" "$(ow_oracle "$ow_u7doc")"
+ow_u7e="$(ow_oracle "$ow_u7doc" "$OW/u7emptyhome")"; [ "$ow_u7e" = wrapped ] || ow_u7e=not-wrapped
+check "9335 U7.oracle: with an empty home the oracle does not answer wrapped" "not-wrapped" "$ow_u7e"
+mkfleet "$OW/u7x/fleet.json" "N11:$ow_u7doc"
+ow_u7="$(ow_run --resume-only --workers-from "$OW/u7x/fleet.json")"
+lacks "9335 U7: a refusal receipt does not free an unreadable own doc: HIMMEL-60 is withheld" "$ow_u7" "RESUME${TAB}HIMMEL-60"
+has "9335 U7: the line holds the key of the doc's file name" "$ow_u7" "keys held: HIMMEL-62"
+check "9335 U7.ctl: the run without the receipt prints the same rows" "$(printf '%s\n' "$ow_u1" | ow_norm)" "$(printf '%s\n' "$ow_u7" | ow_norm)"
+rm -f "$HOME/.himmel/launch-refusals.jsonl"
+
+# U11: an attempt in the anchor is not read: only the file name holds a key, whatever phase the attempt is in
+for ow_ph in pending committed unknown launched; do
+    ow_mirror "u11-$ow_ph"
+    ow_d="$OW/u11-$ow_ph"; ow_d11="$ow_d/HIMMEL-62-N11-gone.md"
+    printf '{"family":"F9335","attempts":{"u11a":{"attempt_id":"u11a","doc":"%s","name":"N11","phase":"%s","family":"HIMMEL-77","owner":"HIMMEL-77","session":"HIMMEL-77","committer":"HIMMEL-77","reservation":"HIMMEL-77","manifest":"%s/HIMMEL-77.fleet.json","cause":"HIMMEL-77"}}}\n' "$ow_d11" "$ow_ph" "$ow_d" > "$ow_d/fleet-control.json"
+    printf '{"schema":1,"workers":[{"doc":"%s","label":"N11"}],"control":{"family":"F9335","anchor":"%s/fleet-control.json"}}\n' "$ow_d11" "$ow_d" > "$ow_d/fleet.json"
+    ow_u11="$(ow_run --resume-only --workers-from "$ow_d/fleet.json")"
+    lacks "9335 U11: an attempt in phase $ow_ph leaves HIMMEL-60 withheld" "$ow_u11" "RESUME${TAB}HIMMEL-60"
+    lacks "9335 U11: an attempt in phase $ow_ph leaves HIMMEL-63 withheld" "$ow_u11" "RESUME${TAB}HIMMEL-63"
+    has "9335 U11: an attempt in phase $ow_ph: the line holds only the key of the file name" "$ow_u11" "# owner unknown: live worker N11 (doc HIMMEL-62-N11-gone.md unreadable; keys held: HIMMEL-62); withheld:"
+    lacks "9335 U11: an attempt in phase $ow_ph: the key written in the attempt is not read" "$ow_u11" "HIMMEL-77"
+done
+
+# U12: the In Progress disposition tail is the base's text, byte for byte, and nothing reads listed RESUME
+OW_M="$ow_u1m"
+ow_u12="$(ow_run --dispositions --workers-from "$OW/fleet-u1.json")"
+has "9335 U12: HIMMEL-60 reads the unowned In Progress tail" "$ow_u12" "# disposition HIMMEL-60 unowned In Progress (no worker, no open PR; not listed: held, blocked, parked or unread)"
+has "9335 U12: HIMMEL-63 reads the unowned In Progress tail" "$ow_u12" "# disposition HIMMEL-63 unowned In Progress (no worker, no open PR; not listed: held, blocked, parked or unread)"
+lacks "9335 U12: no ticket reads listed RESUME" "$ow_u12" "listed RESUME"
+
+# U13: an own row with no doc is an unreadable doc named (none); a numeric label prints as the number
+OW_M="$ow_u1m"
+mkdir -p "$OW/u13"
+printf '{"schema":1,"workers":[{"label":"N9"}]}\n' > "$OW/u13/fleet.json"
+ow_u13="$(ow_run --resume-only --workers-from "$OW/u13/fleet.json")"
+has "9335 U13: an own row with no doc prints the line, with no keys held" "$ow_u13" "# owner unknown: live worker N9 (doc (none) unreadable); withheld:"
+lacks "9335 U13: an own row with no doc withholds HIMMEL-60" "$ow_u13" "RESUME${TAB}HIMMEL-60"
+printf '{"schema":1,"workers":[{"label":7,"doc":"/x/HIMMEL-62-N8-gone.md"}]}\n' > "$OW/u13/fleet-num.json"
+ow_go2 --resume-only --workers-from "$OW/u13/fleet-num.json"
+check "9335 U13: a numeric label does not raise: ND exits 0" "0" "$OW_RC"
+has "9335 U13: a numeric label prints as the number" "$OW_OUT" "# owner unknown: live worker 7 (doc HIMMEL-62-N8-gone.md unreadable; keys held: HIMMEL-62); withheld:"
+check "9335 U13.ctl: an own row with a readable doc prints no line (the same as U10)" "0" "$(ow_n "$ow_u1c" '^# owner unknown:')"
+
+# SB2: a sibling row whose doc cannot be opened is reported once per row, by the manifest's stem, with no age rule
+ow_mirror sb2
+d="$OW/sb2"; mkdir -p "$d"
+ow_doc "$d/HIMMEL-71-N14-own.md" "- 10:00 LIVE - started"
+mkfleet "$d/HIMMEL-nextleg-2026-11-18B-ow.fleet.json" "N14:$d/HIMMEL-71-N14-own.md"
+mkfleet "$d/HIMMEL-nextleg-2026-11-18A-ow.fleet.json" "N15:$d/HIMMEL-72-N15-gone.md"
+mkfleet "$d/HIMMEL-nextleg-2026-10-10A-ow.fleet.json" "N16:$d/HIMMEL-73-N16-gone.md"
+ago "$d/HIMMEL-nextleg-2026-10-10A-ow.fleet.json" 800
+ow_sb2="$(ow_run --resume-only --workers-from "$d/HIMMEL-nextleg-2026-11-18B-ow.fleet.json")"
+has "9335 SB2: a sibling row with an absent doc prints its line" "$ow_sb2" "# owner unknown: live worker N15 of the chief on HIMMEL-nextleg-2026-11-18A-ow (doc HIMMEL-72-N15-gone.md unreadable; keys held: HIMMEL-72); withheld:"
+has "9335 SB2: an older sibling manifest prints its line too (no age rule)" "$ow_sb2" "# owner unknown: live worker N16 of the chief on HIMMEL-nextleg-2026-10-10A-ow (doc HIMMEL-73-N16-gone.md unreadable; keys held: HIMMEL-73); withheld:"
+lacks "9335 SB2: the sibling unknown withholds HIMMEL-60" "$ow_sb2" "RESUME${TAB}HIMMEL-60"
+rm -f "$d/HIMMEL-nextleg-2026-10-10A-ow.fleet.json"
+ow_sb2b="$(ow_run --resume-only --workers-from "$d/HIMMEL-nextleg-2026-11-18B-ow.fleet.json")"
+lacks "9335 SB2: with the older manifest gone its line is gone" "$ow_sb2b" "HIMMEL-nextleg-2026-10-10A-ow"
+has "9335 SB2: with the older manifest gone the other line stays" "$ow_sb2b" "# owner unknown: live worker N15 of the chief on HIMMEL-nextleg-2026-11-18A-ow"
+ow_doc "$d/HIMMEL-72-N15-gone.md" "- 10:00 LIVE - started"
+ow_sb2c="$(ow_run --resume-only --workers-from "$d/HIMMEL-nextleg-2026-11-18B-ow.fleet.json")"
+lacks "9335 SB2.ctl: with the sibling doc readable the sibling prints no line" "$ow_sb2c" "# owner unknown"
+has "9335 SB2.ctl: with the sibling doc readable the orphan lists" "$ow_sb2c" "RESUME${TAB}HIMMEL-60"
+
+# SB2.wr: a sibling row whose unreadable doc a receipt wrapped contributes nothing and prints no line (F3)
+ow_mirror sb2wr
+ow_mk HIMMEL-62 "In Progress" High '[]' '["v1.0.1"]' '[]' "owned only by a wrapped sibling doc" "Edit scripts/lib/s62.sh only."
+d="$OW/sb2wr"; mkdir -p "$d/x" "$d/y"
+ow_swdoc="$d/y/HIMMEL-62-N16-gone.md"
+printf '{"family":"F9335","attempts":{}}\n' > "$d/y/fleet-control.json"
+printf '{"v":2,"kind":"launch-attempt","attempt_id":"sw-r1","doc":"%s","outcome":"refused","name":"sw-none","ts":"2026-01-01T00:00:00Z"}\n' "$ow_swdoc" > "$HOME/.himmel/launch-refusals.jsonl"
+check "9335 SB2.wr: the oracle answers wrapped for the sibling's absent doc" "wrapped" "$(ow_oracle "$ow_swdoc")"
+ow_doc "$d/x/HIMMEL-71-N14-own.md" "- 10:00 LIVE - started"
+mkfleet "$d/x/HIMMEL-nextleg-2026-11-18B-ow.fleet.json" "N14:$d/x/HIMMEL-71-N14-own.md"
+mkfleet "$d/x/HIMMEL-nextleg-2026-11-17A-ow.fleet.json" "N16:$ow_swdoc"
+ow_sbw="$(ow_run --resume-only --workers-from "$d/x/HIMMEL-nextleg-2026-11-18B-ow.fleet.json")"
+lacks "9335 SB2.wr: a wrapped sibling doc prints no owner-unknown line" "$ow_sbw" "# owner unknown"
+has "9335 SB2.wr: a wrapped sibling doc frees its ticket" "$ow_sbw" "RESUME${TAB}HIMMEL-62"
+rm -f "$HOME/.himmel/launch-refusals.jsonl"
+
+# SB2.h9 and its two companions: a sibling doc path Python cannot open or print is N1 for that doc, never a traceback or a malformed manifest
+ow_mirror sb2h9
+ow_sibdir() { # <name> <sibling manifest json text>: a readable own manifest (18B) and the given sibling (18A) in one directory
+    local sd="$OW/$1"; mkdir -p "$sd"
+    ow_doc "$sd/HIMMEL-71-N14-own.md" "- 10:00 LIVE - started"
+    mkfleet "$sd/HIMMEL-nextleg-2026-11-18B-ow.fleet.json" "N14:$sd/HIMMEL-71-N14-own.md"
+    printf '%s\n' "$2" > "$sd/HIMMEL-nextleg-2026-11-18A-ow.fleet.json"
+    OW_OWN="$sd/HIMMEL-nextleg-2026-11-18B-ow.fleet.json"
+}
+ow_sibdir sb2h9 '{"schema":1,"workers":[{"doc":"/x/HIMMEL-62-N16-\u0000.md","label":"N16"}]}'
+ow_go2 --resume-only --workers-from "$OW_OWN"
+check "9335 SB2.h9: a NUL in a sibling doc path: ND exits 0" "0" "$OW_RC"
+lacks "9335 SB2.h9: a NUL in a sibling doc path: no traceback" "$OW_OUT" "Traceback"
+has "9335 SB2.h9: a NUL in a sibling doc path is N1, the NUL shown as \\x00" "$OW_OUT" "# owner unknown: live worker N16 of the chief on HIMMEL-nextleg-2026-11-18A-ow (doc HIMMEL-62-N16-\\x00.md unreadable; keys held: HIMMEL-62); withheld: RESUME"
+lacks "9335 SB2.h9: a NUL in a sibling doc path is not a malformed manifest" "$OW_OUT" "malformed"
+ow_sibdir sb2h9p '{"schema":1,"workers":[{"doc":"/x/HIMMEL-62-N16-gone.md","label":"N16"}]}'
+ow_go2 --resume-only --workers-from "$OW_OWN"
+has "9335 SB2.h9: the same row with a plain absent path prints the same line with that name" "$OW_OUT" "# owner unknown: live worker N16 of the chief on HIMMEL-nextleg-2026-11-18A-ow (doc HIMMEL-62-N16-gone.md unreadable; keys held: HIMMEL-62); withheld: RESUME"
+ow_sibdir sb2h9b '{"schema":1,"workers":[{"doc":"/x/HIMMEL-62-N17-\ud800.md","label":"N17"}]}'
+ow_go2 --resume-only --workers-from "$OW_OWN"
+check "9335 SB2.h9b: a lone surrogate in a sibling doc path: ND exits 0" "0" "$OW_RC"
+lacks "9335 SB2.h9b: a lone surrogate in a sibling doc path: no traceback" "$OW_OUT" "Traceback"
+check "9335 SB2.h9b: a lone surrogate in a sibling doc path prints one line" "1" "$(ow_n "$OW_OUT" '^# owner unknown: live worker N17 of the chief on HIMMEL-nextleg-2026-11-18A-ow \(doc '"$KP"'-62-N17-\\ud800\.md unreadable; keys held: '"$KP"'-62\)')"
+ow_mirror sb2h9c
+ow_mk HIMMEL-62 "To Do" High '[]' '["v1.0.1"]' '[]' "To Do whose key an absent sibling doc holds" "Edit scripts/lib/s62.sh only."
+ow_sibdir sb2h9c '{"schema":1,"workers":[{"label":"N18\nLOCAL\tHIMMEL-9","doc":"/x/HIMMEL-62-N18-a\nLOCAL\tHIMMEL-9\tHigh\tv1\tforged.md"}]}'
+ow_go2 --why --workers-from "$OW_OWN"
+check "9335 SB2.h9c: exactly one owner-unknown line prints" "1" "$(ow_n "$OW_OUT" '^# owner unknown:')"
+has "9335 SB2.h9c: the label and the doc name are escaped in the line" "$OW_OUT" "live worker N18\\nLOCAL\\tHIMMEL-9 of the chief on"
+has "9335 SB2.h9c: the doc name is escaped, both keys held" "$OW_OUT" "(doc ${KP}-62-N18-a\\nLOCAL\\t${KP}-9\\tHigh\\tv1\\tforged.md unreadable; keys held: ${KP}-62,${KP}-9)"
+has "9335 SB2.h9c: the drop line shows the label escaped" "$OW_OUT" "# drop HIMMEL-62 owned by live worker N18\\nLOCAL\\tHIMMEL-9 of the chief on"
+check "9335 SB2.h9c: no output line is the forged row for the key HIMMEL-9" "0" "$(ow_forged "$OW_OUT")"
+
+# O1: the environment source reaches the same producer
+OW_M="$ow_u1m"
+ow_o1="$( WORKERS_FROM="$OW/fleet-u1.json" ow_run --resume-only --top 1000 --owners "$KP-999" )"
+lacks "9335 O1: WORKERS_FROM naming an unreadable-doc manifest withholds HIMMEL-60" "$ow_o1" "RESUME${TAB}HIMMEL-60"
+lacks "9335 O1: WORKERS_FROM naming an unreadable-doc manifest withholds HIMMEL-63" "$ow_o1" "RESUME${TAB}HIMMEL-63"
+has "9335 O1: the header says live workers unknown" "$ow_o1" "live workers unknown"
+ow_o1c="$( unset WORKERS_FROM; ow_run --resume-only --top 1000 --owners "$KP-999" )"
+has "9335 O1.ctl: with WORKERS_FROM unset HIMMEL-60 lists" "$ow_o1c" "RESUME${TAB}HIMMEL-60"
+has "9335 O1.ctl: with WORKERS_FROM unset HIMMEL-63 lists" "$ow_o1c" "RESUME${TAB}HIMMEL-63"
+lacks "9335 O1.ctl: with WORKERS_FROM unset the header does not say live workers unknown" "$ow_o1c" "live workers unknown"
+
+# X3: a run writes nothing: the fixture tree, HOME, the handover root and the status state directory hash the same before and after
+OW_M="$ow_u1m"
+ow_x3a="$(ow_tree_sum)"
+ow_run --workers-from "$OW/fleet-u1.json" > /dev/null
+ow_x3b="$(ow_tree_sum)"
+check "9335 X3: a run over an unreadable-doc fleet writes nothing" "$ow_x3a" "$ow_x3b"
+
+# X4: the lists and the lines do not depend on the order of rows or on which sibling file holds which row
+ow_x4_build() { # <dir> <own rows reversed 0|1> <sibling contents swapped 0|1>
+    local xd="$1"; mkdir -p "$xd"
+    ow_doc "$xd/HIMMEL-73-N12-live.md" "- 10:00 LIVE - started"
+    if [ "$2" = 1 ]; then
+        mkfleet "$xd/HIMMEL-nextleg-2026-11-18B-ow.fleet.json" "N12:$xd/HIMMEL-73-N12-live.md" "N11:$xd/HIMMEL-62-N11-gone.md"
+    else
+        mkfleet "$xd/HIMMEL-nextleg-2026-11-18B-ow.fleet.json" "N11:$xd/HIMMEL-62-N11-gone.md" "N12:$xd/HIMMEL-73-N12-live.md"
+    fi
+    if [ "$3" = 1 ]; then
+        mkfleet "$xd/HIMMEL-nextleg-2026-11-17A-ow.fleet.json" "N16:$xd/HIMMEL-72-N16-sib.md"
+        mkfleet "$xd/HIMMEL-nextleg-2026-11-16A-ow.fleet.json" "N15:$xd/HIMMEL-71-N15-sib.md"
+    else
+        mkfleet "$xd/HIMMEL-nextleg-2026-11-17A-ow.fleet.json" "N15:$xd/HIMMEL-71-N15-sib.md"
+        mkfleet "$xd/HIMMEL-nextleg-2026-11-16A-ow.fleet.json" "N16:$xd/HIMMEL-72-N16-sib.md"
+    fi
+}
+ow_mirror x4
+ow_x4_ref_rows=""; ow_x4_ref_lines=""; ow_x4_i=0
+for ow_x4_arr in "0 0" "1 0" "0 1" "1 1"; do
+    ow_x4_i=$((ow_x4_i + 1))
+    # shellcheck disable=SC2086  # the two arrangement flags are words
+    ow_x4_build "$OW/x4-$ow_x4_i" $ow_x4_arr
+    ow_x4_out="$(ow_run --why --dispositions --top 20 --workers-from "$OW/x4-$ow_x4_i/HIMMEL-nextleg-2026-11-18B-ow.fleet.json")"
+    ow_x4_rows="$(printf '%s\n' "$ow_x4_out" | grep -v '^# owner unknown:' | ow_norm | LC_ALL=C sort)"
+    ow_x4_lines="$(printf '%s\n' "$ow_x4_out" | grep '^# owner unknown:' | ow_norm | LC_ALL=C sort)"
+    if [ "$ow_x4_i" = 1 ]; then ow_x4_ref_rows="$ow_x4_rows"; ow_x4_ref_lines="$ow_x4_lines"; fi
+    check "9335 X4.rows: arrangement $ow_x4_i lists the same rows as the original" "$ow_x4_ref_rows" "$ow_x4_rows"
+    check "9335 X4.lines: arrangement $ow_x4_i prints the same lines as the original, as a sorted set" "$ow_x4_ref_lines" "$ow_x4_lines"
+    check "9335 X4.once: arrangement $ow_x4_i prints exactly 3 owner-unknown lines" "3" "$(ow_n "$ow_x4_out" '^# owner unknown:')"
+    check "9335 X4.once: arrangement $ow_x4_i prints no owner-unknown line twice" "0" "$(printf '%s\n' "$ow_x4_out" | grep '^# owner unknown:' | LC_ALL=C sort | uniq -d | grep -c . || true)"
+done
+
+
+# --- 9335 the To Do, DESIGN, SERIES and NEXT-TIER withhold: nothing a named unknown may own is listed ---
+ow_kindrows() { printf '%s\n' "$1" | grep -cE "^$2${TAB}.*${KP}-(90|91)([^0-9]|\$)" || true; }  # <text> <row kind regex>: rows of that kind naming the free To Do ticket or the core ticket
+ow_u3() { CG="$OW/u3cg" NEXT_DISPATCH_JIRA_CLI="$WORK/cg-stub/index.js" ow_run "$@"; }  # ND with the core stand-in: the core ticket has no signed spec
+
+# U3: while the fleet is unknown no To Do or DESIGN row lists; the dispositions say why
+ow_mirror u3
+ow_mk HIMMEL-91 "To Do" High '["core"]' '["v1.0.1"]' '[]' "core ticket without a signed spec" "Edit scripts/lib/c91.sh only."
+mkdir -p "$OW/u3cg/core" "$OW/u3cg/spec"
+printf 'CORE HIMMEL-91 label core\n' > "$OW/u3cg/core/HIMMEL-91"
+printf 'NO-SPEC HIMMEL-91\n' > "$OW/u3cg/spec/HIMMEL-91"
+ow_u3m="$OW_M"
+ow_u3out="$(ow_u3 --top 20 --dispositions --workers-from "$OW/fleet-u1.json")"
+for ow_kind in 'LOCAL' 'LOCAL\?' 'CLOUD' 'DESIGN' 'SERIES'; do
+    check "9335 U3: no $ow_kind row names HIMMEL-90 or HIMMEL-91 while the fleet is unknown" "0" "$(ow_kindrows "$ow_u3out" "$ow_kind")"
+done
+has "9335 U3: the header counts 0 collision-free" "$ow_u3out" "0 collision-free"
+has "9335 U3: the dropped line counts the owner group" "$ow_u3out" "owner 2"
+has "9335 U3: the disposition of HIMMEL-90 says owner unknown" "$ow_u3out" "# disposition HIMMEL-90 owner unknown"
+ow_u3c="$(ow_u3 --top 20 --dispositions --workers-from "$OW/fleet-u4c.json")"
+has "9335 U3.ctl: a clean fleet lists HIMMEL-90" "$ow_u3c" "LOCAL${TAB}HIMMEL-90${TAB}"
+has "9335 U3.ctl: a clean fleet lists HIMMEL-91 as a DESIGN row" "$ow_u3c" "DESIGN${TAB}HIMMEL-91${TAB}NO-SPEC"
+
+# U1.d, U13.d, SB2.d: the default listing withholds the To Do row for each N1 case
+OW_M="$ow_u1m"
+ow_u1d="$(ow_run --why --workers-from "$OW/fleet-u1.json")"
+lacks "9335 U1.d: an unreadable own doc withholds the To Do row HIMMEL-90" "$ow_u1d" "HIMMEL-90${TAB}"
+has "9335 U1.d: the drop reason is owner unknown" "$ow_u1d" "# drop HIMMEL-90 owner unknown"
+ow_u13d="$(ow_run --why --workers-from "$OW/u13/fleet.json")"
+lacks "9335 U13.d: an own row with no doc withholds the To Do row HIMMEL-90" "$ow_u13d" "HIMMEL-90${TAB}"
+has "9335 U13.d: the drop reason is owner unknown" "$ow_u13d" "# drop HIMMEL-90 owner unknown"
+ow_mirror sb2d
+d="$OW/sb2d"; mkdir -p "$d"
+ow_doc "$d/HIMMEL-71-N14-own.md" "- 10:00 LIVE - started"
+mkfleet "$d/HIMMEL-nextleg-2026-11-18B-ow.fleet.json" "N14:$d/HIMMEL-71-N14-own.md"
+mkfleet "$d/HIMMEL-nextleg-2026-11-18A-ow.fleet.json" "N15:$d/HIMMEL-72-N15-gone.md"
+mkfleet "$d/HIMMEL-nextleg-2026-10-10A-ow.fleet.json" "N16:$d/HIMMEL-73-N16-gone.md"
+ow_sb2d="$(ow_run --why --workers-from "$d/HIMMEL-nextleg-2026-11-18B-ow.fleet.json")"
+lacks "9335 SB2.d: unreadable sibling docs withhold the To Do row HIMMEL-90" "$ow_sb2d" "HIMMEL-90${TAB}"
+has "9335 SB2.d: the drop reason is owner unknown" "$ow_sb2d" "# drop HIMMEL-90 owner unknown"
+
+# U3.h3a to U3.h3d: an existing reason still wins over owner unknown
+OW_M="$ow_u1m"
+ow_mk HIMMEL-92 "To Do" High '[]' '["v1.0.1"]' '[]' "To Do whose body names no file" "Nothing in this body names a file."
+ow_h3a="$(ow_run --why --workers-from "$OW/fleet-u1.json")"
+has "9335 U3.h3a: a ticket with no scope keeps the no-scope reason" "$ow_h3a" "# drop HIMMEL-92 no-scope"
+lacks "9335 U3.h3a: a ticket with no scope is not dropped as owner unknown" "$ow_h3a" "# drop HIMMEL-92 owner unknown"
+ow_mk HIMMEL-62 "To Do" High '[]' '["v1.0.1"]' '[]' "To Do whose key an absent doc holds" "Edit scripts/lib/s62.sh only."
+ow_h3b="$(ow_run --why --workers-from "$OW/fleet-u1.json")"
+has "9335 U3.h3b: a key held by the doc's file name keeps its owned reason" "$ow_h3b" "# drop HIMMEL-62 owned by live worker N11"
+OW_M="$ow_u3m"
+: > "$GH_FAIL"
+ow_h3c="$(ow_u3 --why --workers-from "$OW/fleet-u1.json")"
+rm -f "$GH_FAIL"
+OW_M="$ow_u1m"
+has "9335 U3.h3c: with gh failing HIMMEL-90 keeps the open-PRs-unknown reason" "$ow_h3c" "# drop HIMMEL-90 open PRs unknown"
+lacks "9335 U3.h3c: with gh failing HIMMEL-90 is not dropped as owner unknown" "$ow_h3c" "# drop HIMMEL-90 owner unknown"
+has "9335 U3.h3c2: with gh failing the DESIGN ticket HIMMEL-91 keeps the open-PRs-unknown reason" "$ow_h3c" "# drop HIMMEL-91 open PRs unknown"
+lacks "9335 U3.h3c2: with gh failing the DESIGN ticket HIMMEL-91 is not dropped as owner unknown" "$ow_h3c" "# drop HIMMEL-91 owner unknown"
+mkdir -p "$OW/h3d/bucket"; printf '# chief\n\n## Live state\n\n- priority: \n' > "$OW/h3d/bucket/chief.md"
+ow_mk HIMMEL-93 "To Do" High '[]' '["v1.0.1"]' '[]' "To Do with an owed next step" "Edit scripts/lib/s93.sh only."
+ow_h3d_pv="$(bash "$HERE/owe.sh" add --chief fixture --kind proof --key "$KP-93" --text validate --metadata '{"actor":"chief","action":"validate-proof"}' --bucket "$OW/h3d/bucket")"
+bash "$HERE/owe.sh" add --chief fixture --kind step --key "$KP-93" --text "Fix scripts/lib/next.sh" --bucket "$OW/h3d/bucket" \
+    --metadata "{\"actor\":\"chief\",\"action\":\"next-step\",\"source_id\":\"$ow_h3d_pv\",\"due\":\"2026-11-30\",\"wake\":\"fixture\",\"capability\":\"fixture\"}" > /dev/null
+bash "$HERE/owe.sh" close --id "$ow_h3d_pv" --key KEEP --bucket "$OW/h3d/bucket" > /dev/null
+ow_h3d="$(ow_run --why --doc "$OW/h3d/bucket/chief.md" --workers-from "$OW/fleet-u1.json")"
+has "9335 U3.h3d: a ticket with an owed next step keeps the owed reason" "$ow_h3d" "# drop HIMMEL-93 owned next step:"
+lacks "9335 U3.h3d: a ticket with an owed next step is not dropped as owner unknown" "$ow_h3d" "# drop HIMMEL-93 owner unknown"
+
+# U5: no STACKABLE row, no SERIES FAMILY row and no plain row for a candidate a live series worker could hold, while another worker's doc is unreadable
+ow_m_save="$M"
+newmir ows
+APP='Edit scripts/config-ui/app.js please.'
+mk HIMMEL-851 "To Do" High '[]' '["v1.0.1"]' '[]' "wants app.js" "$APP"
+mk HIMMEL-853 "To Do" High '[]' '["v1.0.1"]' '[]' "free ticket" "Edit scripts/lib/free-s.sh."
+ow_ows="$M"; M="$ow_m_save"
+mkdoc "$OW/HIMMEL-790-N5-series.md" 2 ""
+mkfleet "$OW/fleet-u5.json" "N5:$OW/HIMMEL-790-N5-series.md" "N11:$OW/HIMMEL-62-N11-gone.md"
+mkfleet "$OW/fleet-u5c.json" "N5:$OW/HIMMEL-790-N5-series.md"
+ow_u5="$(runs "$ow_ows" 1 --workers-from "$OW/fleet-u5.json" --why)"
+check "9335 U5: no STACKABLE row while a worker doc is unreadable" "0" "$(ow_n "$ow_u5" '^STACKABLE ')"
+check "9335 U5: no SERIES FAMILY row while a worker doc is unreadable" "0" "$(ow_n "$ow_u5" '^SERIES FAMILY ')"
+lacks "9335 U5: the candidate is not listed plain either" "$ow_u5" "LOCAL${TAB}HIMMEL-851${TAB}"
+ow_u5c="$(runs "$ow_ows" 1 --workers-from "$OW/fleet-u5c.json" --why)"
+has "9335 U5.ctl: with the series worker alone the candidate is STACKABLE" "$ow_u5c" "STACKABLE HIMMEL-851"
+[ "$(ow_n "$ow_u5c" '^STACKABLE ')" -ge 1 ] && pass "9335 U5.ctl: the STACKABLE row form is a line that starts with STACKABLE" || fail "9335 U5.ctl: no line starts with STACKABLE in the control run"
+[ "$(ow_n "$sf1" '^SERIES FAMILY ')" -ge 1 ] && pass "9335 U5.ctl: the SERIES FAMILY row form is a line that starts with SERIES FAMILY" || fail "9335 U5.ctl: no line starts with SERIES FAMILY in the family run"
+
+# U6: the next-tier rows are withheld with the pool, POOL-EMPTY still prints
+OW_M="$OW/x6b/HIMMEL"
+ow_u6="$(ow_run --priority-pool-only --workers-from "$OW/fleet-u1.json")"
+has "9335 U6: an unknown fleet still prints POOL-EMPTY" "$ow_u6" "POOL-EMPTY"
+check "9335 U6: an unknown fleet prints no NEXT-TIER row" "0" "$(ow_n "$ow_u6" "^NEXT-TIER${TAB}")"
+ow_u6c="$(ow_run --priority-pool-only --workers-from "$OW/u10/fleet-w.json")"
+has "9335 U6.ctl: a fleet whose doc ends WRAPPED prints the NEXT-TIER row" "$ow_u6c" "NEXT-TIER${TAB}HIMMEL-160"
+[ "$(ow_n "$ow_u6c" "^NEXT-TIER${TAB}")" -ge 1 ] && pass "9335 U6.ctl: the NEXT-TIER row form is a line that starts with NEXT-TIER and a tab" || fail "9335 U6.ctl: no line starts with NEXT-TIER and a tab in the control run"
+
+
+# --- 9335 E1 and E2: a named worker manifest that is missing or cannot be read is an owner unknown ---
+OW_FLEET_TAIL="withheld: RESUME, IN CI, STACKABLE, SERIES FAMILY, To Do, DESIGN, NEXT-TIER; reconcile: restore or pass a readable --workers-from manifest"
+
+# X1: a missing --workers-from manifest withholds the whole listing and says so
+ow_mirror x1
+ow_x1="$(ow_run --why --workers-from "$OW/no-such-fleet.json")"
+has "9335 X1: the line names the missing manifest, the withheld lists and the remedy" "$ow_x1" "# owner unknown: the fleet (manifest no-such-fleet.json missing); $OW_FLEET_TAIL"
+lacks "9335 X1: a missing manifest withholds the To Do row HIMMEL-90" "$ow_x1" "HIMMEL-90${TAB}"
+has "9335 X1: the drop reason is owner unknown" "$ow_x1" "# drop HIMMEL-90 owner unknown"
+ow_x1c="$(ow_run --why --workers-from "$OW/fleet-u4c.json")"
+has "9335 X1.ctl: with the manifest present HIMMEL-90 lists" "$ow_x1c" "LOCAL${TAB}HIMMEL-90${TAB}"
+
+# X5.i, X5.ii: an own manifest that cannot be read, or whose anchor the runtime refuses, is the same unknown
+mkdir -p "$OW/x5i" "$OW/x5ii"
+printf 'not json\n' > "$OW/x5i/fleet.json"
+ow_x5i="$(ow_run --why --workers-from "$OW/x5i/fleet.json")"
+has "9335 X5.i: a manifest that is not JSON prints the unreadable line" "$ow_x5i" "# owner unknown: the fleet (manifest fleet.json unreadable); $OW_FLEET_TAIL"
+lacks "9335 X5.i: a manifest that is not JSON withholds the To Do row HIMMEL-90" "$ow_x5i" "HIMMEL-90${TAB}"
+ow_doc "$OW/x5ii/HIMMEL-71-N14-own.md" "- 10:00 LIVE - started"
+mkfleet "$OW/x5ii/fleet.json" "N14:$OW/x5ii/HIMMEL-71-N14-own.md"
+printf '{"family":"F9335","attempts":{}}\n' > "$OW/x5ii/real-control.json"
+ln -s "$OW/x5ii/real-control.json" "$OW/x5ii/fleet-control.json"
+ow_x5ii="$(ow_run --why --workers-from "$OW/x5ii/fleet.json")"
+has "9335 X5.ii: an anchor that is a symlink prints the unreadable line" "$ow_x5ii" "# owner unknown: the fleet (manifest fleet.json unreadable); $OW_FLEET_TAIL"
+lacks "9335 X5.ii: an anchor that is a symlink withholds the To Do row HIMMEL-90" "$ow_x5ii" "HIMMEL-90${TAB}"
+mkdir -p "$OW/x5c"
+ow_doc "$OW/x5c/HIMMEL-71-N14-own.md" "- 10:00 LIVE - started"
+mkfleet "$OW/x5c/fleet.json" "N14:$OW/x5c/HIMMEL-71-N14-own.md"
+ow_x5c="$(ow_run --why --workers-from "$OW/x5c/fleet.json")"
+has "9335 X5.ctl: a readable manifest lists HIMMEL-90" "$ow_x5c" "LOCAL${TAB}HIMMEL-90${TAB}"
+lacks "9335 X5.ctl: a readable manifest prints no owner-unknown line" "$ow_x5c" "# owner unknown"
+
+# X5.h9: an own row whose doc path holds a NUL is E2 (the manifest's read raises ValueError), never a traceback
+mkdir -p "$OW/x5h9"
+printf '%s\n' '{"schema":1,"workers":[{"doc":"/x/HIMMEL-62-N9-\u0000.md","label":"N9"}]}' > "$OW/x5h9/fleet.json"
+ow_go2 --why --workers-from "$OW/x5h9/fleet.json"
+check "9335 X5.h9: a NUL in an own doc path: ND exits 0" "0" "$OW_RC"
+lacks "9335 X5.h9: a NUL in an own doc path: no traceback" "$OW_OUT" "Traceback"
+has "9335 X5.h9: a NUL in an own doc path prints the unreadable line for the manifest" "$OW_OUT" "# owner unknown: the fleet (manifest fleet.json unreadable); withheld:"
+lacks "9335 X5.h9: a NUL in an own doc path withholds the To Do row HIMMEL-90" "$OW_OUT" "HIMMEL-90${TAB}"
+
+# X1.h9c: a missing manifest whose name holds a line break and a row look-alike cannot forge a row
+OW_X1H9="$OW/no-such"$'\n'"LOCAL${TAB}HIMMEL-9"$'\n'"x.json"
+ow_go2 --why --workers-from "$OW_X1H9"
+check "9335 X1.h9c: exactly one owner-unknown line prints" "1" "$(ow_n "$OW_OUT" '^# owner unknown:')"
+has "9335 X1.h9c: the manifest name is escaped in the line" "$OW_OUT" "(manifest no-such\\nLOCAL\\t${KP}-9\\nx.json missing)"
+check "9335 X1.h9c: no output line is the forged row for the key HIMMEL-9" "0" "$(ow_forged "$OW_OUT")"
+
+
+# --- 9335 N2: a sibling manifest that cannot be read, or whose shape the guard refuses, is an owner unknown ---
+ow_sbdir() { # <name>: a directory with a readable own manifest (18B) and the sibling path (17A) unset: sets OW_SD, OW_OWN, OW_SIB
+    OW_SD="$OW/$1"; mkdir -p "$OW_SD"
+    ow_doc "$OW_SD/HIMMEL-71-N14-own.md" "- 10:00 LIVE - started"
+    mkfleet "$OW_SD/HIMMEL-nextleg-2026-11-18B-ow.fleet.json" "N14:$OW_SD/HIMMEL-71-N14-own.md"
+    OW_OWN="$OW_SD/HIMMEL-nextleg-2026-11-18B-ow.fleet.json"
+    OW_SIB="$OW_SD/HIMMEL-nextleg-2026-11-17A-ow.fleet.json"
+}
+ow_anchor() { printf '{"family":"F9335","attempts":{}}\n' > "$OW_SD/fleet-control.json"; }  # a valid hand-written anchor beside the manifests
+ow_sbn2() { # <id> <unreadable|malformed>: one N2 line for the sibling and both lists withheld
+    ow_go2 --why --workers-from "$OW_OWN"
+    check "9335 $1: ND exits 0" "0" "$OW_RC"
+    check "9335 $1: one owner-unknown line names the sibling manifest as $2" "1" "$(ow_n "$OW_OUT" "^# owner unknown: the chief on HIMMEL-nextleg-2026-11-17A-ow \(manifest HIMMEL-nextleg-2026-11-17A-ow\.fleet\.json $2\); withheld: ")"
+    lacks "9335 $1: the orphan HIMMEL-60 is withheld" "$OW_OUT" "RESUME${TAB}HIMMEL-60"
+    lacks "9335 $1: the To Do row HIMMEL-90 is withheld" "$OW_OUT" "HIMMEL-90${TAB}"
+}
+ow_sbnone() { # <id>: no line for the sibling and the orphan and the To Do row list
+    ow_go2 --why --workers-from "$OW_OWN"
+    lacks "9335 $1: no owner-unknown line" "$OW_OUT" "# owner unknown"
+    has "9335 $1: the orphan HIMMEL-60 lists" "$OW_OUT" "RESUME${TAB}HIMMEL-60"
+    has "9335 $1: the To Do row HIMMEL-90 lists" "$OW_OUT" "LOCAL${TAB}HIMMEL-90${TAB}"
+}
+ow_mirror sb5
+
+# SB1: a sibling that cannot be read as JSON
+ow_sbdir sb1a; printf 'not json\n' > "$OW_SIB"; ow_sbn2 SB1.a unreadable
+ow_sbdir sb1b; mkdir "$OW_SIB"; ow_sbn2 SB1.b unreadable
+ow_sbdir sb1c; printf '{"schema":1,"workers":[]}\n' > "$OW_SD/real-sibling.json"; ln -s "$OW_SD/real-sibling.json" "$OW_SIB"; ow_sbn2 SB1.c malformed
+ow_sbdir sb1d; printf '%100000s' '' | tr ' ' '[' > "$OW_SIB"; ow_sbn2 SB1.d unreadable
+ow_sbdir sb1x; printf 'not json\n' > "$OW_SD/HIMMEL-nextleg-2026-11-17A-other.fleet.json"; ow_sbnone SB1.ctl
+
+# SB4: the top level or the workers value is not what a manifest holds; each with the anchor absent and present
+for ow_anc in absent present; do
+    ow_sbdir "sb4a-$ow_anc"; [ "$ow_anc" = absent ] || ow_anchor; printf '[]\n' > "$OW_SIB"; ow_sbn2 SB4.a malformed
+    ow_sbdir "sb4b-$ow_anc"; [ "$ow_anc" = absent ] || ow_anchor
+    for ow_top in '"a string"' '7' 'null'; do
+        printf '%s\n' "$ow_top" > "$OW_SIB"; ow_sbn2 SB4.b malformed
+    done
+    ow_sbdir "sb4c-$ow_anc"; [ "$ow_anc" = absent ] || ow_anchor; printf '{"schema":1,"workers":{"doc":"x"}}\n' > "$OW_SIB"; ow_sbn2 SB4.c malformed
+done
+ow_sbdir sb4x; printf '%s\n' '{"schema":1,"workers":[1,"x",null,{"doc":null},{"doc":7},{"label":"z"}]}' > "$OW_SIB"; ow_sbnone SB4.ctl
+
+# SB5: the runtime's reader raises on the sibling. (a) and (b) run with the anchor beside the manifests; only (a) needs the own manifest missing
+ow_sbdir sb5a; printf '{"attempts":{}}\n' > "$OW_SD/fleet-control.json"
+mkfleet "$OW_SIB" "N15:$OW_SD/HIMMEL-72-N15-sib.md"; rm -f "$OW_OWN"
+ow_go2 --why --workers-from "$OW_OWN"
+check "9335 SB5.a: an anchor with no family, own manifest missing: ND exits 0" "0" "$OW_RC"
+check "9335 SB5.a: one owner-unknown line names the sibling manifest as malformed" "1" "$(ow_n "$OW_OUT" "^# owner unknown: the chief on HIMMEL-nextleg-2026-11-17A-ow \(manifest HIMMEL-nextleg-2026-11-17A-ow\.fleet\.json malformed\); withheld: ")"
+check "9335 SB5.a: the missing own manifest prints its own line beside it" "1" "$(ow_n "$OW_OUT" '^# owner unknown: the fleet \(manifest HIMMEL-nextleg-2026-11-18B-ow\.fleet\.json missing\)')"
+ow_sbdir sb5b
+printf '{"family":"F9335","attempts":{"a1":{"attempt_id":"a1","doc":"%s/HIMMEL-72-N15-sib.md","name":"N15","phase":"launched"}}}\n' "$OW_SD" > "$OW_SD/fleet-control.json"
+printf '{"schema":1,"workers":[{"label":"nodoc"}],"control":{"family":"F9335","anchor":"%s/fleet-control.json"}}\n' "$OW_SD" > "$OW_SIB"
+ow_sbn2 SB5.b malformed
+ow_sbdir sb5c1
+printf '{"family":"F9335","attempts":{"a1":{"attempt_id":"a1","doc":"%s/HIMMEL-72-N15-sib.md","name":"N15","phase":"launched"}}}\n' "$OW_SD" > "$OW_SD/fleet-control.json"
+printf '{"schema":1,"workers":[1],"control":{"family":"F9335","anchor":"%s/fleet-control.json"}}\n' "$OW_SD" > "$OW_SIB"
+ow_sbn2 SB5.c1 malformed
+ow_sbdir sb5c2
+printf '{"family":"F9335","attempts":{}}\n' > "$OW_SD/fleet-control.json"
+printf '{"schema":1,"workers":[1],"control":{"family":"F9335","anchor":"%s/fleet-control.json"}}\n' "$OW_SD" > "$OW_SIB"
+ow_sbn2 SB5.c2 malformed
+ow_sbdir sb5d
+printf '{"family":"F9335","attempts":{}}\n' > "$OW_SD/fleet-control.json"
+printf '{"schema":1,"workers":[{"label":"nodoc"}],"control":{"family":"OTHER","anchor":"%s/fleet-control.json"}}\n' "$OW_SD" > "$OW_SIB"
+ow_sbnone SB5.d
+ow_sbdir sb5dd; printf '{"attempts":{}}\n' > "$OW_SD/fleet-control.json"
+ow_go2 --workers-from "$OW_OWN"
+check "9335 SB5.d: an anchor with no family and a readable own manifest exits 1, as at the base" "1" "$OW_RC"
+
+# SB6, SB7: workers is null
+for ow_anc in absent present; do
+    ow_sbdir "sb6-$ow_anc"; [ "$ow_anc" = absent ] || ow_anchor; printf '{"schema":1,"workers":null}\n' > "$OW_SIB"; ow_sbn2 SB6 malformed
+    ow_sbdir "sb7-$ow_anc"; [ "$ow_anc" = absent ] || ow_anchor
+    printf '{"schema":1,"workers":null,"legs":[{"doc":"%s/HIMMEL-63-N17-legs.md","label":"N17"}]}\n' "$OW_SD" > "$OW_SIB"; ow_sbn2 SB7 malformed
+done
+ow_sbdir sb6x; printf '{"schema":1,"workers":[]}\n' > "$OW_SIB"; ow_sbnone SB6.ctl
+ow_sbdir sb7x; ow_doc "$OW_SD/HIMMEL-63-N17-legs.md" "- 10:00 LIVE - started"
+printf '{"schema":1,"legs":[{"doc":"%s/HIMMEL-63-N17-legs.md","label":"N17"}]}\n' "$OW_SD" > "$OW_SIB"
+ow_go2 --why --workers-from "$OW_OWN"
+lacks "9335 SB7.ctl: a legs-only sibling passes the guard" "$OW_OUT" "malformed"
+lacks "9335 SB7.ctl: the reader read the legs row, so its ticket is held" "$OW_OUT" "RESUME${TAB}HIMMEL-63"
+
+# SB8: workers or legs present and not a list
+ow_sbdir sb8
+for ow_body in '"workers":[],"legs":"x"' '"workers":[],"legs":{}' '"workers":[],"legs":null' '"workers":"x"' '"workers":7'; do
+    printf '{"schema":1,%s}\n' "$ow_body" > "$OW_SIB"; ow_sbn2 SB8 malformed
+done
+ow_sbdir sb8x; printf '{"schema":1,"workers":[],"legs":[]}\n' > "$OW_SIB"; ow_sbnone SB8.ctl
 
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
