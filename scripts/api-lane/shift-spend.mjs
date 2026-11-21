@@ -12,10 +12,10 @@
 // file the OpenRouter field reads "not available" and nothing is fetched. --live reads OPENROUTER_API_KEY; a key
 // is used only as a request header and never printed; a missing key marks the column unavailable(no key).
 //
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { dirname, isAbsolute, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const NA = 'not available';
 const DAY = 86400000;
@@ -270,4 +270,4 @@ async function main(argv, env) {
   });
   console.log(JSON.stringify(record, null, 2));
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) await main(process.argv.slice(2), process.env);
+if (process.argv[1] && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])) await main(process.argv.slice(2), process.env);

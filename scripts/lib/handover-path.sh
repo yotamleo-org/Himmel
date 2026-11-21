@@ -344,8 +344,8 @@ _arm_cache_dir_ensure() {
     _arm_cache_dir_usable && return 0
     [ "${BASH_SUBSHELL:-0}" -eq 0 ] || return 0
     _arm_cache_dir_gc_rate_limited || true
-    # prim-ok: on the hook hot path, where sourcing prim.sh would add a process to every hook; the arm-resume-cache. prefix is reaped by _arm_cache_dir_gc; an explicit template, since macOS mktemp -t ignores TMPDIR
-    _ARM_CACHE_DIR=$(mktemp -d "${TMPDIR:-/tmp}/arm-resume-cache.XXXXXX" 2>/dev/null) || _ARM_CACHE_DIR=""
+    # prim-ok: on the hook hot path, where sourcing prim.sh would add a process to every hook; the arm-resume-cache. prefix is reaped by _arm_cache_dir_gc
+    _ARM_CACHE_DIR=$(mktemp -d -t arm-resume-cache.XXXXXX 2>/dev/null) || _ARM_CACHE_DIR=""
     export _ARM_CACHE_DIR
     return 0
 }
