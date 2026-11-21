@@ -893,6 +893,12 @@ class StackedWorker(StreamFixture):
         rows = [line.split(' ', 1) for line in path.read_text().splitlines()] if path.exists() else []
         return [(float(t), text) for t, text in rows]
 
+    def rows(self, path):
+        try:
+            return path.read_text().splitlines()
+        except FileNotFoundError:
+            return []
+
     def seen(self, prefix):
         return [t for t, text in self.events() if text.startswith(prefix)]
 
@@ -1309,7 +1315,7 @@ class StackedWorker(StreamFixture):
         second = seed('N9')  # the next rotation replaces the copy: at most two files ever exist
         log.write_text(second)
         self.add('N1', '- 10:05 MERGED #1')
-        self.until(lambda: rotated.read_text() == second and any(' marker=MERGED ' in r for r in log.read_text().splitlines()), seconds=10)
+        self.until(lambda: rotated.read_text() == second and any(' marker=MERGED ' in r for r in self.rows(log)), seconds=10)
         self.stop(p)
         for path in (log, rotated):
             self.assertTrue(all(row.match(r) for r in path.read_text().splitlines()), f'a torn line in {path.name}')
