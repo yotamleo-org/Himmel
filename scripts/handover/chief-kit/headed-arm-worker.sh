@@ -39,7 +39,8 @@
 # --dry-run: prints the argv this would hand to headed-arm.sh (name, doc,
 # signal, deadline, log, model, resolved context) plus the worker env this
 # wrapper adds, and exits 0 without touching the signal/deadline wait loop,
-# the claim lock, or konsole. The test seam - but not the ONLY proof: the
+# the claim lock, or konsole. It runs the real launch's fleet admission read
+# only, so a fleet refusal exits 10 under --dry-run too. The test seam - but not the ONLY proof: the
 # suite also drives the real (non-dry) path with KONSOLE_CMD/PGREP_CMD stubs
 # (the same seams headed-arm.sh's own suite uses) to confirm the launched
 # argv matches what --dry-run predicted.
@@ -86,7 +87,8 @@
 # Exit 10: the fleet-size cap refused the launch - see the
 # preflight call below - or managed fleet control refused it: fleet-launch.sh
 # cannot be loaded, fleet_launch_prepare refused (the fleet-paused refusal
-# note), or the managed hand-off to headed-arm.sh refused. Exit 11: the $LANE bank is
+# note; under --dry-run, fleet_runtime.py admit refused the same way), or the
+# managed hand-off to headed-arm.sh refused. Exit 11: the $LANE bank is
 # exhausted (SKIPPED-BANK) - same preflight call, distinct refusal reason.
 # Exit 12: on macOS, worker_propagate_env refused a worker-process
 # env value that contains whitespace other than a space - neither

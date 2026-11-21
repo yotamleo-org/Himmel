@@ -39,7 +39,7 @@ t0=$(date +%s)
 rc=0; out="$(HIMMEL_CONSOLE_NAME=lc-chief bash "$SUT" --secs 2 PROJ-1-N2-silent "$WORK/b.log" 2>&1)" || rc=$?
 check "(b) no session exits 1" 1 "$rc"
 check "(b) ... within the window" yes "$([ $(( $(date +%s) - t0 )) -le 5 ] && echo yes || echo no)"
-check "(b) ... says LAUNCH-UNCONFIRMED on stderr" yes "$(printf '%s\n' "$out" | grep -qF 'LAUNCH-UNCONFIRMED PROJ-1-N2-silent no claude session within 2s' && echo yes || echo no)"
+check "(b) ... says LAUNCH-UNCONFIRMED on stderr" yes "$(grep -qF 'LAUNCH-UNCONFIRMED PROJ-1-N2-silent no claude session within 2s' <<< "$out" && echo yes || echo no)"
 check "(b) ... appends it to the launch log" yes "$(has "$WORK/b.log" 'LAUNCH-UNCONFIRMED PROJ-1-N2-silent no claude session within 2s')"
 check "(b) ... and to the chief inbox (HIMMEL_CONSOLE_NAME)" yes "$(has "$inbox" "LAUNCH-UNCONFIRMED PROJ-1-N2-silent no claude session within 2s (log $WORK/b.log)")"
 
