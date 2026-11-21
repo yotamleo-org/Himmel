@@ -141,6 +141,7 @@ send_alert() {
     # shellcheck source=scripts/lib/load-dotenv.sh
     { [ -r "$REPO/scripts/lib/load-dotenv.sh" ] && . "$REPO/scripts/lib/load-dotenv.sh"; } 2>/dev/null &&
       load_dotenv --root "${HIMMEL_API_ALERT_ENV_ROOT:-${env_root:-$REPO}}" TELEGRAM_GROUP_CHAT_ID TELEGRAM_CHAT_ID 2>/dev/null
+    if [ "${TELEGRAM_GROUP_CHAT_ID+set}" = set ] && [ -z "$TELEGRAM_GROUP_CHAT_ID" ]; then exit 73; fi
     [ -n "${TELEGRAM_GROUP_CHAT_ID:-}" ] || TELEGRAM_GROUP_CHAT_ID="${TELEGRAM_CHAT_ID:-}"
     [ -n "$TELEGRAM_GROUP_CHAT_ID" ] || exit 74
     export TELEGRAM_GROUP_CHAT_ID

@@ -656,6 +656,11 @@ test('an alert with no chat id at all is never dropped silently: stderr, one und
   assert.deepEqual(quiet.stamps(), []);
   assert.equal(quiet.undelivered().length, 1);
   assert.ok(!readFileSync(join(quiet.f.dir, 'alerts', 'undelivered.jsonl'), 'utf8').includes('1234567'), 'a chat id reached the record');
+  const dotQuiet = routeFixture('TELEGRAM_CHAT_ID=1234567\nTELEGRAM_GROUP_CHAT_ID=\n');
+  assert.match(dotQuiet.go().stderr, /alert NOT delivered \(TELEGRAM_GROUP_CHAT_ID is set empty: suppressed\)/);
+  assert.equal(dotQuiet.sends(), '', 'an empty group id in .env reached the operator chat');
+  assert.deepEqual(dotQuiet.stamps(), []);
+  assert.equal(dotQuiet.undelivered().length, 1);
   const failed = routeFixture('TELEGRAM_CHAT_ID=1234567\n');
   assert.match(failed.go({ BUN_RC: '124' }).stderr, /alert NOT delivered \(the sender exited 124\)/);
   assert.deepEqual(failed.stamps(), []);
