@@ -1,14 +1,4 @@
 #!/usr/bin/env bash
-# test-himmel-update-t3-providers.sh — `himmel-update.sh --only t3_providers`
-# makes every launch profile a T3 Code provider instance in T3's settings file.
-#
-# Hermetic: a mock clone carries the real himmel-update.sh and the real
-# scripts/t3/provider-instances.sh; the generator's own seams (T3_PI_RESOLVER,
-# T3_PI_PROFILES) replace the profile registry, and HOME / T3CODE_HOME point at
-# fixture settings files under this suite's tmp dir. No live T3 file is read.
-#
-# Bash 3.2 compatible.
-
 set -uo pipefail
 
 SCRIPT="$(cd "$(dirname "$0")" && pwd)/himmel-update.sh"
