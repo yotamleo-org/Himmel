@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import signal
 import socket
 import subprocess
@@ -164,6 +165,15 @@ class StreamFixture(unittest.TestCase):
 
     def wake_rows(self):
         return [l for l in self.path('wakes').read_text().splitlines() if l.startswith('W\t')]
+
+    def unsampleable_sleep_env(self, **extra):
+        nap = self.root / 'nap'
+        shutil.copy2(shutil.which('sleep'), nap)
+        env = dict(self.env, **extra)
+        env['BASH_FUNC_sleep%%'] = f'() {{  {nap} "$@"\n}}'
+        kind = subprocess.run(['bash', '-c', 'type -t sleep'], env=env, capture_output=True, text=True).stdout.strip()
+        self.assertEqual(kind, 'function', 'the sleep shim is not active')
+        return env
 
     def driven(self, schedule, **extra):
         driver = self.root / 'schedule-driver.py'
@@ -766,6 +776,51 @@ echo 'HANDLED close-wrapped'
         self.assertFalse(self.path('stop').exists())
         self.assertEqual(self.state().get('child'), '0', 'a new child was launched')
         self.assertEqual(len(self.wake_rows()), 0)
+
+    def test_the_watchdog_ends_a_busy_child_that_no_sample_can_catch_asleep(self):
+        entered, gate = self.gated_tick()
+        env = self.unsampleable_sleep_env(CHIEF_WAIT_STREAM_SOFT_SEC='.3', CHIEF_WAIT_STREAM_HARD_SEC='1',
+                                          CHIEF_WAIT_STREAM_ADOPT_SEC='.5', CHIEF_WAIT_STREAM_REAP_MAX_SEC='120')
+        p, out = self.start(env=env)
+        self.until(entered.exists)
+        self.assertEqual(p.wait(timeout=10), 0)
+        self.assertIn('child=busy', out.read_text())
+        child = self.state()['child']
+        self.until(lambda: time.time() > float(self.state()['handoff']) + 2)
+        self.assertFalse(self.gone(child), 'the busy child was ended inside its step')
+        self.assertFalse(self.path('stop').exists())
+        gate.touch()
+        self.until(lambda: self.gone(child), seconds=8)
+        self.assertIn(f'pid={child} ', self.heartbeat())
+        self.assertNotIn('exit=stream-stop', self.heartbeat())
+        self.assertFalse(self.path('stream.hung').exists(), 'the child was killed by the reap bound, not ended at a safe point')
+        self.assertFalse(self.path('stop').exists())
+
+    def test_a_reap_request_for_the_watchdog_leaves_the_next_owner_an_unchanged_adoption(self):
+        entered, gate = self.gated_tick()
+        env = self.unsampleable_sleep_env(CHIEF_WAIT_STREAM_SOFT_SEC='.3', CHIEF_WAIT_STREAM_HARD_SEC='1',
+                                          CHIEF_WAIT_STREAM_ADOPT_SEC='.5', CHIEF_WAIT_STREAM_REAP_MAX_SEC='120')
+        p, out = self.start(env=env)
+        self.until(entered.exists)
+        self.assertEqual(p.wait(timeout=10), 0)
+        child, dog = self.state()['child'], int(self.state()['dog'])
+        self.until(lambda: self.path('reap').exists())
+        self.assertFalse(self.path('stop').exists())
+        os.kill(dog, signal.SIGKILL)
+        self.until(lambda: self.gone(dog))
+        self.assertTrue(self.path('reap').exists(), 'the request outlives a watchdog that was killed')
+        again, adopted = self.start(env=env)
+        self.until(lambda: self.state().get('sup') == str(again.pid))
+        self.until(lambda: not self.path('reap').exists())
+        self.assertEqual(self.state()['child'], child, 'the successor adopted the busy child')
+        self.assertFalse(self.path('stop').exists())
+        gate.touch()
+        self.inbox.write_text('during adoption\n')
+        self.until(lambda: 'WAKE#1 telegram' in adopted.read_text())
+        self.assertTrue(self.wake_rows()[0].endswith('\tadopted'), self.wake_rows())
+        self.assertEqual(len(self.wake_rows()), 1)
+        self.assertNotIn('waiter-error', adopted.read_text())
+        self.stop(again)
 
     def test_a_stale_stop_nothing_honoured_is_cleared_by_the_next_arm(self):
         self.path('stop').touch()

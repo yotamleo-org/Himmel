@@ -115,20 +115,29 @@ def terminate(data, inbox, hard=False):
                 pass
 
 
+def release(path, requested):
+    if requested and read(path).strip() == requested:
+        Path(path).unlink(missing_ok=True)
+
+
 def watchdog(inbox, sup, start):
     side = inbox + '.wait.stream'
+    reap = inbox + '.wait.reap'
+    requested = ''
     dead_since = None
     last_sleep = ''
     last_safe = None
-    while True:  # t13b-ok: only waits while its supervisor process exists, even a stopped or hung one, so it has no bound of its own then; once that process is gone it ends when a successor supervisor is alive, when its child is gone, or when the child is at a safe point (at once, or CHIEF_WAIT_STREAM_ADOPT_SEC, 300 s default, after a hand-off), and it ends the child after CHIEF_WAIT_STREAM_BUSY_MAX_SEC (7200 s default) without a safe point or CHIEF_WAIT_STREAM_REAP_MAX_SEC (1800 s default) after the supervisor went, then up to CHIEF_WAIT_STREAM_KILL_GRACE_SEC (10 s default) more; not bounded for nan, inf or huge settings; the settings are read from the environment with no clamp
+    while True:  # t13b-ok: only waits while its supervisor process exists, even a stopped or hung one, so it has no bound of its own then; once that process is gone it ends when a successor supervisor is alive, when its child is gone, or when the child honours its reap request at a safe point (requested at once, or CHIEF_WAIT_STREAM_ADOPT_SEC, 300 s default, after a hand-off), and it ends the child after CHIEF_WAIT_STREAM_BUSY_MAX_SEC (7200 s default) without a safe point or CHIEF_WAIT_STREAM_REAP_MAX_SEC (1800 s default) after the supervisor went, then up to CHIEF_WAIT_STREAM_KILL_GRACE_SEC (10 s default) more; not bounded for nan, inf or huge settings; the settings are read from the environment with no clamp
         data = load(side)
         if alive(sup, start):
             time.sleep(.2)
             continue
         if alive(data.get('sup', 0), data.get('sup_start', ''),
                  data.get('host', ''), data.get('boot', '')):
+            release(reap, requested)
             return 0
         if not child_alive(data, inbox):
+            release(reap, requested)
             return 0
         now = time.time()
         dead_since = dead_since or now
@@ -140,19 +149,23 @@ def watchdog(inbox, sup, start):
         handoff = data.get('handoff', '-')
         deadline = (float(handoff) + float(os.getenv('CHIEF_WAIT_STREAM_ADOPT_SEC', '300'))
                     if handoff != '-' else dead_since)
-        if now >= deadline and sleep:
-            # Re-read ownership before any signal; a concurrent adoption wins.
+        if now >= deadline and not requested:
             current = load(side)
             if current.get('sup') != data.get('sup'):
                 continue
-            terminate(data, inbox)
-            return 0
+            requested = f"pid={data['child']}"
+            atomic(reap, requested + '\n')
+            current = load(side)
+            if current.get('sup') != data.get('sup'):
+                release(reap, requested)
+                continue
         if (age >= float(os.getenv('CHIEF_WAIT_STREAM_BUSY_MAX_SEC', '7200')) or
                 now - dead_since >= float(os.getenv('CHIEF_WAIT_STREAM_REAP_MAX_SEC', '1800'))):
             current = load(side)
             if current.get('sup') != data.get('sup'):
                 continue
             terminate(data, inbox, hard=True)
+            release(reap, requested)
             atomic(inbox + '.wait.stream.hung',
                    f"pid={data['child']} age={int(age)} part={data['part']} epoch={int(now)}\n")
             return 0
@@ -328,6 +341,7 @@ class Supervisor:
         self.publish()
         for sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
             signal.signal(sig, self.signal_stop)
+        self.path('reap').unlink(missing_ok=True)
         stop = self.path('stop')
         if stop.exists() and stop.stat().st_mtime < self.started and not carried:
             stop.unlink()
@@ -428,6 +442,7 @@ class Supervisor:
                 self.record(self.data['part'], self.adopted)
                 self.data.pop('part', None)
                 self.data['child'] = 0
+                self.path('reap').unlink(missing_ok=True)
                 self.proc = None
                 self.publish()
                 if rc == 3:
@@ -545,7 +560,7 @@ class Supervisor:
         reason = hb['exit']
         if reason.startswith('wake-'):
             return 0
-        return {'signal-TERM': 143, 'stream-stop': 143, 'signal-INT': 130, 'signal-HUP': 129}.get(reason, 1)
+        return {'signal-TERM': 143, 'stream-stop': 143, 'stream-reap': 143, 'signal-INT': 130, 'signal-HUP': 129}.get(reason, 1)
 
     def honoured(self, child):
         hb, child = load(self.inbox + '.wait'), str(child or 0)
