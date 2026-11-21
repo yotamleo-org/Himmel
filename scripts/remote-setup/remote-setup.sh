@@ -723,6 +723,7 @@ peer_restart_fix() {
 
 peer_remove() {
     local names listed name lines known
+    peer_peers_check
     names=$(peer_peers_all | cut -d'|' -f1)
     if [ -f "$(peer_confirmed_file)" ]; then
         listed=$(jq -r '(.peers // [])[]?.name | select(type == "string" and test("^[a-z0-9][a-z0-9-]{0,31}$"))' "$(peer_confirmed_file)" 2> /dev/null)
