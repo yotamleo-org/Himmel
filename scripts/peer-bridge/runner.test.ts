@@ -1,5 +1,3 @@
-// runner.ts on real git; only vmsdk-job.py is stubbed (its stub backend), and a
-// fake poller applies each spool event with the real jobstate table.
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test";
 import * as cp from "node:child_process";
 import { createHash } from "node:crypto";

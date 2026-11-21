@@ -1,8 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- launchd agent for the peer bridge runner (serving side). setup.ts runner
-     installs it, with @HIMMEL_ROOT@ and @HOME@ replaced, only while some peer
-     serves run-suite. It reads no env file: the runner holds no token or key. -->
 <plist version="1.0">
 <dict>
     <key>Label</key>

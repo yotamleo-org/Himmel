@@ -1,6 +1,3 @@
-# systemd user unit for the peer bridge runner (serving side). setup.ts runner
-# installs it, with @HIMMEL_ROOT@ replaced, only while some peer serves
-# run-suite. It reads no env file: the runner holds no bot token and no key.
 [Unit]
 Description=himmel peer bridge runner
 After=himmel-peer-bridge.service

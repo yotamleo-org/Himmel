@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Job VM verbs for the peer bridge runner (slice B).
+"""Job VM verbs for the peer bridge runner.
 
   vmsdk-job.py vm-clone <job>
   vmsdk-job.py vm-push <job> <host file>
@@ -13,12 +13,10 @@
 Exit: 0 ok, 124 timeout, 2 refused, 1 backend error.
 
 PEER_JOB_BACKEND picks the backend: `vbox` (Linux test bed), `stub` (tests),
-`tart` (slice C; not built here). A job's files live in the
+`tart`. A job's files live in the
 guest under /tmp/job. A vm-exec timeout kills every process in the command's
 guest session (setsid, then pkill -s) and leaves the guest up for vm-pull.
-The session id is kept in the job-writable /tmp/job, so that kill stops a hung
-suite, not a hostile one: vm-destroy is the containment. vm-pull reads at most
---max-bytes + 1 bytes from the guest. This file is a separate entry point; it never uses vmsdk.py.
+vm-pull reads at most --max-bytes + 1 bytes from the guest.
 """
 import hashlib
 import json
@@ -72,8 +70,6 @@ def guest_file(path):
 
 
 class StubBackend:
-    """A directory per clone under PEER_JOB_STUB_DIR; exec does what exec.json says."""
-
     def __init__(self):
         root = os.environ.get("PEER_JOB_STUB_DIR")
         if not root or not os.path.isabs(root):
@@ -134,8 +130,6 @@ class StubBackend:
 
 
 class VBoxJobBackend:
-    """VirtualBox clones of the golden VM, no NIC, driven through guestcontrol."""
-
     GOLDEN = "himmel-peer-golden"
     PREFIX = "himmel-peerjob-"
     USER = "peerjob"
@@ -346,8 +340,6 @@ class VBoxJobBackend:
 
 
 class TartJobBackend:
-    """The Mac backend (slice C) implements the same verbs on tart."""
-
     def __init__(self):
         raise Refused("no backend: tart is slice C and not built yet")
 

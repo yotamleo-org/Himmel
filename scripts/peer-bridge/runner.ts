@@ -3,21 +3,6 @@
 // peer's `serves`. It reads jobs.jsonl, never writes a chain file, and moves a
 // job only by submitting events through the peer's spool.
 //
-// It spawns git (the closed list below, each with GIT_CONFIG_GLOBAL=/dev/null,
-// GIT_CONFIG_NOSYSTEM=1 and -c core.hooksPath=/dev/null) and python3
-// scripts/lib/vmsdk-job.py with fixed verbs. Every argument is a resolved hex
-// sha, a path it built, the peer's configured repoUrl or a literal. The host
-// never checks a job's tree out: it fetches the commit into a fresh .git, tars
-// that, and the offline guest checks it out. It holds no bot token or key.
-//
-//   git init -q --bare <S>/cache/<peer>
-//   git -C <cache> fetch -q --prune <repoUrl> +refs/heads/*:refs/remotes/origin/*
-//   git -C <cache> cat-file -e <sha>^{commit}
-//   git -C <cache> branch -r --contains <sha>
-//   git -C <cache> merge-base --is-ancestor <MIN_SHA> <sha>
-//   git init -q <S>/<peer>/jobs/<job>/src
-//   git -C <src> fetch -q --depth 1 file://<cache> <sha>
-//
 // Exit: 0 refused (says why; the unit does not restart), 1 error.
 import { createHash } from "node:crypto";
 import fs, { constants } from "node:fs";
