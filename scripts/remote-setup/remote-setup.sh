@@ -345,11 +345,36 @@ peer_setup_run() {
 }
 
 
-peer_post_hello() { # <chat id>
-    local body out
+# peer_post_hello <chat id>: posts the hello; sets PEER_POSTED_CHAT to the group it went to, which is the
+# supergroup id when Telegram answers that the group was upgraded to one.
+peer_post_hello() {
+    local body out mig
     [[ $1 =~ ^-[0-9]{1,15}$ ]] || rs_fix "Telegram gave a group id the helper does not trust: run the same command again"
+    PEER_POSTED_CHAT=$1
     body=$(jq -nc --argjson c "$1" --arg t "$PEER_HELLO" '{chat_id: $c, text: $t}')
-    out=$(rs_tg sendMessage "$body") || rs_tg_fail "$out" "posting the hello in the group"
+    if ! out=$(rs_tg sendMessage "$body"); then
+        mig=$(printf '%s' "$out" | jq -r '.parameters.migrate_to_chat_id // empty' 2> /dev/null)
+        [[ $mig =~ ^-[0-9]{1,15}$ ]] || rs_tg_fail "$out" "posting the hello in the group"
+        PEER_POSTED_CHAT=$mig
+        body=$(jq -nc --argjson c "$mig" --arg t "$PEER_HELLO" '{chat_id: $c, text: $t}')
+        out=$(rs_tg sendMessage "$body") || rs_tg_fail "$out" "posting the hello in the group"
+    fi
+}
+
+# peer_rehome <old chat> <new chat>: every confirmed peer in a group that became a supergroup is confirmed
+# again in the new one, so setup.ts and the record of set-up peers keep the id the hello went to.
+peer_rehome() {
+    local line name rest bid chat
+    for line in $(peer_confirmed_lines); do
+        name=${line%%|*}
+        rest=${line#*|}
+        bid=${rest%%|*}
+        chat=${rest#*|}
+        [ "$chat" = "$1" ] || continue
+        peer_setup_run confirm "$name" "$2"
+        peer_checkpoint "$name" "$bid" "$2"
+        rs_step "$name now lives in the supergroup $2"
+    done
 }
 
 # peer_fetch <offset or empty> <long-poll seconds>: one getUpdates; its facts join the events in $RS_UPD_FILE.
@@ -439,7 +464,7 @@ peer_choose() {
 }
 
 peer_discover() {
-    local lines l r
+    local lines
     peer_read_all "$1"
     peer_chat_candidates
     if [ -z "$PEER_CANDS" ]; then
@@ -447,20 +472,14 @@ peer_discover() {
         rs_say "  In Telegram, open the group and send the word hello in it. Waiting up to 10 minutes..."
         peer_wait chat || rs_fix "no hello arrived from the group: send the word hello in the group, then run the same command again"
     fi
-    lines=""
-    while IFS= read -r l; do
-        [ -n "$l" ] || continue
-        r=${l#*|}
-        lines="${lines:+$lines$'\n'}${l%%|*}|${r#*|} (${r%%|*})"
-    done <<EOF
-$PEER_CANDS
-EOF
+    lines=$(printf '%s\n' "$PEER_CANDS" | sed -E 's/^([^|]*)\|([^|]*)\|(.*)$/\1|\3 (\2)/')
     peer_choose "$lines"
     PEER_CHAT=${PEER_CHOSEN%%|*}
     [[ $PEER_CHAT =~ ^-[0-9]{1,15}$ ]] || rs_fix "Telegram gave a group id the helper does not trust: run the same command again"
     rs_step "found the group"
 
     peer_post_hello "$PEER_CHAT"
+    PEER_CHAT=$PEER_POSTED_CHAT
     rs_step "posted the hello in the group"
     peer_find_peer
     if [ -z "$PEER_BOTS" ]; then
@@ -868,6 +887,7 @@ cmd_peer() {
         local chat
         for chat in $(peer_confirmed_lines | cut -d'|' -f3 | sort -u); do
             peer_post_hello "$chat"
+            if [ "$PEER_POSTED_CHAT" != "$chat" ]; then peer_rehome "$chat" "$PEER_POSTED_CHAT"; fi
         done
         rs_step "posted the hello; if the other station is not finished, ask its operator to run the same command once"
         names=$(peer_confirmed_lines | cut -d'|' -f1 | tr '\n' ',' | sed 's/,$//; s/,/, /g')

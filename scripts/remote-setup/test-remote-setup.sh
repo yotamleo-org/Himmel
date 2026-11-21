@@ -1431,6 +1431,44 @@ case_peer_check_group_basic_group_fix() {
     check "confirm used the new id" has "$(setup_calls)" "confirm goomal -1008888888888"
 }
 
+case_peer_hello_post_follows_a_migrated_group() {
+    local new=-1008888888888
+    seed_main
+    set_getme "$OUR" bridge_bot
+    set_group "$new"
+    printf '{"ok":false,"error_code":400,"description":"Bad Request: group chat was upgraded to a supergroup chat","parameters":{"migrate_to_chat_id":%s}}' "$new" > "$T/tg/sendMessage.1.json"
+    printf '{"ok":true,"result":{"message_id":9}}' > "$T/tg/sendMessage.2.json"
+    set_updates getUpdates.json "$(upd_hello 101 "$CHAT" "$FAR" group)" "$(upd_peer_hello 102 "$new" "$THEIR" goomal_bot)"
+    all_green
+    feed "$(mk_token "$OUR")" 1
+    run_sut "$T/in" peer
+    check "a hello post that gets the migration error: exit 0" eq "$RC" 0
+    check "the hello was posted again to the new id" eq "$(sent_chat)" "$new"
+    check "two posts in all" eq "$(sent_count)" 2
+    check "confirm used the new id" has "$(setup_calls)" "confirm goomal $new"
+    check "the checkpoint keeps the new id" eq "$(jq -r '.peers[0].chatId' "$(CONFIRMED_FILE)")" "$new"
+    sub_case peer_hello_post_follows_a_migrated_group_confirmed_side
+    seed_confirmed_station
+    set_group "$new"
+    printf '{"ok":false,"error_code":400,"description":"Bad Request: group chat was upgraded to a supergroup chat","parameters":{"migrate_to_chat_id":%s}}' "$new" > "$T/tg/sendMessage.1.json"
+    printf '{"ok":true,"result":{"message_id":9}}' > "$T/tg/sendMessage.2.json"
+    feed ""
+    run_sut "$T/in" peer
+    check "confirmed side, group migrated: exit 0" eq "$RC" 0
+    check "the hello went to the new id" eq "$(sent_chat)" "$new"
+    check "setup.ts confirmed the peer in the new group" has "$(setup_calls)" "confirm goomal $new"
+    check "the peer list holds the new id" eq "$(jq -r '.peers.goomal.chatId' "$(PEERS_FILE)")" "$new"
+    check "the checkpoint holds the new id" eq "$(jq -r '.peers[0].chatId' "$(CONFIRMED_FILE)")" "$new"
+    sub_case peer_hello_post_other_error_stays_a_fix
+    seed_confirmed_station
+    printf '{"ok":false,"error_code":403,"description":"Forbidden: bot was kicked from the supergroup chat"}' > "$T/tg/sendMessage.json"
+    feed ""
+    run_sut "$T/in" peer
+    check "any other refusal is still one FIX" eq "$RC" 3
+    check "and names the refused action" has "$LAST" "posting the hello in the group"
+    check "no confirm ran" eq "$(setup_calls)" ""
+}
+
 case_peer_check_group_member_change_info_fix() {
     seed_main
     set_getme "$OUR" bridge_bot
@@ -2198,7 +2236,7 @@ onboard_parse_rejects_duplicate_or_forged_line onboard_parse_rejects_chat_from_m
 peer_fresh_fresh_discovers_via_hello peer_confirmed_side_posts_hello_without_waiting peer_unconfirmed_pages_101_backlog
 peer_confirmed_repoint_backlog_full_gives_fix_and_restarts_poller peer_no_offset_ack_on_confirmed_side
 peer_gate_drops_plain_hello_real_gate peer_check_group_unknown_right_names_raw_field
-peer_chatid_two_groups_newest_hello_after_start_or_pick peer_group_titles_with_a_pipe_stay_whole_in_the_pick peer_check_group_basic_group_fix
+peer_chatid_two_groups_newest_hello_after_start_or_pick peer_group_titles_with_a_pipe_stay_whole_in_the_pick peer_hello_post_follows_a_migrated_group peer_check_group_basic_group_fix
 peer_check_group_member_change_info_fix peer_non_owner_fix_says_ask_owner
 peer_checkpoint_written_after_confirm_before_status peer_unit_start_failure_keeps_checkpoint
 peer_adoption_from_goomal_end_state_reaches_done peer_rerun_posts_exactly_one_hello
