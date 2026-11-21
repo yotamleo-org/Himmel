@@ -823,7 +823,7 @@ STUB
 }
 real_lane_off() { cp "$WS/claude-api.stub.sh" "$REPO/scripts/api-lane/claude-api.sh"; rm -f "$WS/bank-native"; }
 run_real_lane() {
-  env "${LANE_ENV[@]}" HOME="$WS/home" PATH="$WS/bin:$PATH" HIMMEL_API_CREDIT_CONFIG="$RL/config.json" HIMMEL_API_CREDIT_SNAPSHOT="$RL/snapshot.json" \
+  env -u WORKER_SESSION_DOC -u WORKER_SESSION_PROFILE -u HIMMEL_CONSOLE_LEG -u FLEET_LAUNCH_WORKER_INTENT -u FLEET_LAUNCH_MANIFEST -u FLEET_LAUNCH_ATTEMPT "${LANE_ENV[@]}" HOME="$WS/home" PATH="$WS/bin:$PATH" HIMMEL_API_CREDIT_CONFIG="$RL/config.json" HIMMEL_API_CREDIT_SNAPSHOT="$RL/snapshot.json" \
     HIMMEL_API_CREDIT_STATE="$RL/ledger.json" HIMMEL_API_CLAUDE_BIN="$RL/claude-stub" HIMMEL_API_ALERT_CMD="$RL/alert-stub" \
     HIMMEL_API_ALERT_DIR="$RL/alerts" HIMMEL_FLEET_SLOTS="$RL/slots" CADENCE_USAGE_SKIP_REFRESH=1 GRAPHIFY_STUB_CALL_CLAUDE=1 \
     bash "$SCRIPT" "$@" 2>&1
