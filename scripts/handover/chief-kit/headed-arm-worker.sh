@@ -3370,7 +3370,7 @@ _ready_private_dir() {
     [ ! -L "$1" ] || return 1
     [ -d "$1" ] || ( umask 077 && mkdir -p -- "$1" ) 2>/dev/null || return 1
     [ -d "$1" ] && [ ! -L "$1" ] && [ "$(_ready_stat %u %u "$1")" = "$(id -u)" ] || return 1
-    chmod 700 -- "$1" 2>/dev/null || return 1
+    chmod -- 700 "$1" 2>/dev/null || return 1
     [ "$(_ready_stat %a %Lp "$1")" = 700 ]
 }
 # the attempt directory is removed only when it is exactly <root>/<uuid>

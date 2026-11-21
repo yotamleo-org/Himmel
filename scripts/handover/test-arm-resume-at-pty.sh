@@ -83,8 +83,8 @@ cat > "$STUB_BIN/claude" <<'EOF'
     echo "armauto=${ARMAUTOMERGE-unset}"
     echo "argc=$#"
     for a in "$@"; do printf 'arg=%s\n' "$a"; done
-    IFS= read -r -t 2 _line; rc=$?
-    if [ "$rc" -gt 128 ]; then echo stdin=idle; else echo stdin=eof; fi
+    SECONDS=0; IFS= read -r -t 3 _line; rc=$?
+    if [ "$rc" -gt 128 ] || [ "$SECONDS" -ge 2 ]; then echo stdin=idle; else echo stdin=eof; fi
 } > "$CLAUDE_REC"
 exit 3
 EOF
