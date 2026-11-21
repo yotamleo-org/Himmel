@@ -1874,6 +1874,28 @@ case_peer_mac_bootout_then_bootstrap_order() {
     check "the plist is the rendered template" file_has "$(PLIST_FILE)" "$ROOT/scripts/peer-bridge/run.sh"
 }
 
+case_peer_mac_old_agent_is_not_accepted_as_the_updated_poller() {
+    local uid
+    uid=$(id -u)
+    echo Darwin > "$T/uname"
+    seed_confirmed_station mac
+    printf 'an older render of the plist\n' > "$(PLIST_FILE)"
+    : > "$T/units/$UNIT_LABEL.bootoutfail"
+    feed ""
+    run_sut "$T/in" peer
+    check "a job that will not stop is a FIX, never DONE" eq "$RC" 3
+    check "the FIX says the old poller could not be stopped" has "$LAST" "old poller could not be stopped"
+    check "and names the stop command" has "$LAST" "launchctl bootout gui/$uid/$UNIT_LABEL"
+    check "the plist on disk is still the old one, so a re-run sees the change" eq "$(cat "$(PLIST_FILE)")" "an older render of the plist"
+    rm -f "$T/units/$UNIT_LABEL.bootoutfail"
+    feed ""
+    run_sut "$T/in" peer
+    check "the re-run reaches DONE" eq "$RC" 0
+    check "the plist is the rendered template now" file_has "$(PLIST_FILE)" "$ROOT/scripts/peer-bridge/run.sh"
+    check "the old job was stopped and the new one started" test "$(last_line_of 'launchctl bootstrap')" -gt "$(last_line_of 'launchctl bootout')"
+    check "the agent is loaded" test -f "$T/units/$UNIT_LABEL.loaded"
+}
+
 case_peer_without_part1_fixes() {
     feed "$(mk_token "$OUR")"
     snapshot_stores
@@ -2041,7 +2063,7 @@ peer_allowfrom_written_by_setup_ts_only_digit_strings peer_canary_token_absent_e
 peer_sigint_during_discovery_restarts_poller renamed_peer_bot_keeps_name
 peer_done_rerun_changes_no_config_artifact peer_inputs_are_only_the_g2_set
 peer_remove_deletes_checkpoint_and_status_na peer_remove_interrupted_resumes peer_remove_with_nothing_set_up_is_done peer_remove_teardown_failure_is_a_fix peer_wait_pages_when_the_group_is_busy peer_remove_unit_delete_failure_is_a_fix peer_remove_reload_failure_is_a_fix peer_remove_one_of_two_restarts_poller
-peer_mac_bootout_then_bootstrap_order peer_without_part1_fixes peer_bridge_equals_main_refuses
+peer_mac_bootout_then_bootstrap_order peer_mac_old_agent_is_not_accepted_as_the_updated_poller peer_without_part1_fixes peer_bridge_equals_main_refuses
 peer_different_bridge_id_without_replace_refuses peer_hello_timeout_fixes peer_sole_candidate_needs_a_yes peer_hostile_username_refused
 peer_name_second_collision_gets_3 peer_name_32_char_base_with_suffix_fits"
 

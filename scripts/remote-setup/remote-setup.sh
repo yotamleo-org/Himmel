@@ -638,13 +638,17 @@ peer_unit_ensure() {
     [ -f "$dest" ] && cur=$(cat "$dest")
     if [ "$cur" != "$content" ]; then
         changed=1
+        if [ "$(uname)" = Darwin ] && peer_unit_active; then
+            launchctl bootout "gui/$uid/$PEER_LABEL" > /dev/null 2>&1
+            if peer_unit_active; then
+                rs_fix "the old poller could not be stopped, so the updated one was not applied (nothing was changed): stop it yourself with launchctl bootout gui/$uid/$PEER_LABEL, then run the same command again"
+            fi
+        fi
         (umask 022; mkdir -p "$(dirname "$dest")") || rs_fix "the poller unit folder could not be made: check that you own your home folder, then run the same command again"
         printf '%s\n' "$content" | rs_atomic_write "$dest" \
             || rs_fix "the poller unit could not be written: check that you own your home folder, then run the same command again"
     fi
-    if [ "$(uname)" = Darwin ]; then
-        if [ "$changed" = 1 ] && peer_unit_active; then launchctl bootout "gui/$uid/$PEER_LABEL" > /dev/null 2>&1; fi
-    else
+    if [ "$(uname)" != Darwin ]; then
         if [ "$changed" = 1 ]; then systemctl --user daemon-reload > /dev/null 2>&1 || rs_fix "systemd did not accept the poller unit: run systemctl --user daemon-reload yourself and read its error, then run the same command again"; fi # t13b-ok: reloads unit files after the operator-run peer setup wrote the poller unit; the FIX text only names that command
         if ! systemctl --user is-enabled --quiet "$PEER_UNIT" > /dev/null 2>&1; then
             systemctl --user enable "$PEER_UNIT" > /dev/null 2>&1 || rs_fix "the poller unit could not be enabled: run systemctl --user enable $PEER_UNIT yourself and read its error, then run the same command again" # t13b-ok: enables the peer poller unit that this operator-run peer setup just installed (Part 4 opt-in), nothing else
