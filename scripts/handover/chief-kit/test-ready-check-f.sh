@@ -677,7 +677,7 @@ reset_stubs
 r4_shared="$tmp/lock-cache-r4"; mkdir -p "$r4_shared"
 r4_mark="$tmp/r4-holder.pid"; rm -f "$r4_mark"
 r4_t0=$SECONDS
-rc=0; out="$(STUB_MSS=UNKNOWN STUB_HOLD_MARK="$r4_mark" STUB_HOLD_TIMEOUT="$REAL_TIMEOUT" STUB_HOLD_LIB="$HERE/../../lib/gh-pr-snapshot.sh" RUN_CACHE="$r4_shared" run)" || rc=$?
+rc=0; out="$(STUB_MSS=UNKNOWN STUB_HOLD_MARK="$r4_mark" STUB_HOLD_TIMEOUT="$REAL_TIMEOUT" STUB_HOLD_LIFE=90 STUB_HOLD_LIB="$HERE/../../lib/gh-pr-snapshot.sh" RUN_CACHE="$r4_shared" run)" || rc=$?
 r4_elapsed=$((SECONDS - r4_t0))
 check "R4: the peer read was started" "$([ -s "$r4_mark" ] && echo yes || echo no)" "yes"
 check "R4: a mergeStateStatus that stays UNKNOWN fails the run" "$rc" "1"
@@ -687,7 +687,7 @@ for r4_item in 2 3 5 6; do
 done
 notcontains "R4: no cannot read" "$out" "cannot read"
 contains "R4: item 1 names the re-read's 5 s lock wait" "$out" "after 5 s"
-check "R4: the re-reads ended inside the peer's life (took $r4_elapsed s)" "$([ "$r4_elapsed" -lt 40 ] && echo yes || echo no)" "yes"
+check "R4: the re-reads ended inside the peer's life (took $r4_elapsed s)" "$([ "$r4_elapsed" -lt 90 ] && echo yes || echo no)" "yes"
 r4_hpid=$(cat "$r4_mark" 2>/dev/null) || r4_hpid=""
 [ -z "$r4_hpid" ] || kill "$r4_hpid" 2>/dev/null || true
 for _ in $(seq 1 100); do compgen -G "$r4_shared/*.lock" > /dev/null || break; sleep 0.1; done
