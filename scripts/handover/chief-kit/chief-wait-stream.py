@@ -316,6 +316,7 @@ class Supervisor:
         self.args_hash = hashlib.sha256(repr(self.args).encode()).hexdigest()[:16]
         self.old_hash = self.data.get('args')
         self.adopted = child_alive(self.data, self.inbox)
+        carried = not self.adopted and self.honoured(self.data.get('child'))
         if not self.adopted:
             self.data.update(child=0, child_start='')
         # close_fds prevents child/watchdog inheritance of the supervisor flock.
@@ -328,7 +329,7 @@ class Supervisor:
         for sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
             signal.signal(sig, self.signal_stop)
         stop = self.path('stop')
-        if stop.exists() and stop.stat().st_mtime < self.started:
+        if stop.exists() and stop.stat().st_mtime < self.started and not carried:
             stop.unlink()
         while os.getenv('CHIEF_WAIT_STREAM_PAUSE_ADOPT') == '1' and self.adopted:
             time.sleep(.1)
@@ -422,6 +423,8 @@ class Supervisor:
                 while os.getenv('CHIEF_WAIT_STREAM_PAUSE_LOG') == '1':
                     time.sleep(.1)
                 rc = self.proc.wait() if self.proc else self.adopted_rc()
+                if self.honoured(self.data.get('child')):
+                    self.stop_started = self.stop_started or now
                 self.record(self.data['part'], self.adopted)
                 self.data.pop('part', None)
                 self.data['child'] = 0
@@ -544,7 +547,14 @@ class Supervisor:
             return 0
         return {'signal-TERM': 143, 'stream-stop': 143, 'signal-INT': 130, 'signal-HUP': 129}.get(reason, 1)
 
+    def honoured(self, child):
+        hb, child = load(self.inbox + '.wait'), str(child or 0)
+        return child != '0' and hb.get('pid') == child and hb.get('exit') == 'stream-stop'
+
     def finish(self, busy):
+        if busy and self.stop_started is None and self.honoured(self.data.get('child')):
+            self.stop_started, busy = time.time(), False
+            self.data['child'] = 0
         stopped = self.stop_started is not None
         self.data['handoff'] = time.time() if busy and not stopped else '-'
         self.publish()

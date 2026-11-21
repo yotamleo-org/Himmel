@@ -5,11 +5,63 @@ from pathlib import Path
 import signal
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
 
 HERE = Path(__file__).resolve().parent
+
+SCHEDULE_DRIVER = '''
+import importlib.util, os, sys, time
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location('chief_wait_stream', os.environ['STREAM_PY'])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+stop = Path(sys.argv[1] + '.wait.stop')
+fired = Path(sys.argv[1] + '.wait.schedule-fired')
+armed = []
+acknowledge = mod.Supervisor.acknowledge
+safe_point = mod.safe_point
+publish = mod.Supervisor.publish
+
+
+def after_one_wake(self):
+    acknowledge(self)
+    if not armed and self.wakes >= 1 and self.proc is not None and self.proc.poll() is None:
+        armed.append(self)
+        self.started -= float(os.environ['CHIEF_WAIT_STREAM_HARD_SEC']) + 1
+
+
+def touched_after_the_sample(data, inbox):
+    if armed and not fired.exists():
+        stop.touch()
+        armed[0].proc.wait(timeout=30)
+        fired.write_text(str(data['child']))
+        return ''
+    return safe_point(data, inbox)
+
+
+def honoured_during_adoption(self):
+    publish(self)
+    if self.adopted and not fired.exists():
+        Path(os.environ['TICK_GATE']).touch()
+        stop.touch()
+        os.utime(stop, (1, 1))
+        end = time.monotonic() + 30
+        while mod.child_alive(self.data, self.inbox) and time.monotonic() < end:
+            time.sleep(.02)
+        fired.write_text(str(self.data['child']))
+
+
+if os.environ['SCHEDULE'] == 'touched-after-the-sample':
+    mod.Supervisor.acknowledge = after_one_wake
+    mod.safe_point = touched_after_the_sample
+else:
+    mod.Supervisor.publish = honoured_during_adoption
+sys.exit(mod.main())
+'''
 
 
 class StreamFixture(unittest.TestCase):
@@ -91,6 +143,39 @@ class StreamFixture(unittest.TestCase):
     def stop(self, proc):
         self.path('stop').touch()
         proc.wait(timeout=6)
+
+    def heartbeat(self):
+        try:
+            return Path(str(self.inbox) + '.wait').read_text()
+        except OSError:
+            return ''
+
+    def gone(self, pid):
+        try:
+            return Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[0] == 'Z'
+        except (OSError, IndexError):
+            return True
+
+    def gated_tick(self):
+        entered, gate = self.root / 'tick-entered', self.root / 'tick-gate'
+        self.script('tick', f'touch "{entered}"\nn=0\nwhile [ ! -e "{gate}" ] && [ "$n" -lt 600 ]; do sleep .1; n=$((n + 1)); done\n'
+                    'echo "TICK workers=0 livestate=0 prs=none tails=none acts=none workerset=0 board=ok tracker=ok denials=0 capacity=FULL"\n')
+        return entered, gate
+
+    def wake_rows(self):
+        return [l for l in self.path('wakes').read_text().splitlines() if l.startswith('W\t')]
+
+    def driven(self, schedule, **extra):
+        driver = self.root / 'schedule-driver.py'
+        driver.write_text(SCHEDULE_DRIVER)
+        env = dict(self.env, STREAM_PY=str(HERE / 'chief-wait-stream.py'), SCHEDULE=schedule, **extra)
+        output = self.root / ('driven-out' + str(len(self.procs)))
+        with output.open('w') as out:
+            p = subprocess.Popen([sys.executable, '-I', str(driver), str(self.inbox), '--stream', '--doc', str(self.doc),
+                                  '--workers-from', str(self.fleet)], env=env, stdout=out, stderr=subprocess.STDOUT,
+                                 start_new_session=True)
+        self.procs.append((p, output))
+        return p, output
 
     def tearDown(self):
         for proc, _ in self.procs:
@@ -607,6 +692,92 @@ echo 'HANDLED close-wrapped'
         self.until(lambda: 'owed-actions-unread' in out.read_text(), seconds=2)
         self.assertEqual(ledger.read_text(), 'unread ledger\n')
         self.stop(p)
+
+    def test_a_stop_touched_after_the_marker_sample_and_honoured_before_the_hard_finish_ends_with_stopped(self):
+        p, out = self.driven('touched-after-the-sample', CHIEF_WAIT_STREAM_MAX_PER_MIN='100')
+        self.armed()
+        self.inbox.write_text('first\n')
+        self.until(lambda: 'WAKE#1 telegram' in out.read_text())
+        self.assertEqual(p.wait(timeout=30), 0, out.read_text())
+        fired = Path(str(self.inbox) + '.wait.schedule-fired')
+        self.assertTrue(fired.exists(), 'the schedule was not forced: ' + out.read_text())
+        self.assertIn(f'pid={fired.read_text()} ', self.heartbeat())
+        self.assertIn('state=exited exit=stream-stop', self.heartbeat(), 'the child did not honour the stop')
+        self.assertIn('STOPPED since=1', out.read_text())
+        self.assertNotIn('REARM', out.read_text())
+        self.assertNotIn('child=busy', out.read_text())
+        self.assertFalse(self.path('stop').exists())
+        self.assertEqual(len(self.wake_rows()), 1)
+        again, replay = self.start(('--since', '1'))
+        self.until(lambda: self.state().get('sup') == str(again.pid))
+        with self.inbox.open('a') as f:
+            f.write('second\n')
+        self.until(lambda: 'WAKE#2 telegram' in replay.read_text())
+        self.assertNotIn('WAKE#1', replay.read_text())
+        self.stop(again)
+        self.assertEqual(len(self.wake_rows()), 2)
+
+    def test_a_stop_the_child_honoured_while_no_supervisor_ran_is_not_answered_with_a_new_child(self):
+        entered, gate = self.gated_tick()
+        env = dict(self.env, CHIEF_WAIT_STREAM_SOFT_SEC='.3', CHIEF_WAIT_STREAM_HARD_SEC='1',
+                   CHIEF_WAIT_STREAM_ADOPT_SEC='120', CHIEF_WAIT_STREAM_REAP_MAX_SEC='240')
+        p, out = self.start(env=env)
+        self.until(entered.exists)
+        self.assertEqual(p.wait(timeout=10), 0)
+        self.assertIn('REARM since=0 wakes=0 child=busy', out.read_text())
+        child = self.state()['child']
+        self.path('stop').touch()
+        gate.touch()
+        self.until(lambda: self.gone(child))
+        self.assertIn(f'pid={child} ', self.heartbeat())
+        self.assertIn('state=exited exit=stream-stop', self.heartbeat())
+        self.assertTrue(self.path('stop').exists())
+        again, answer = self.start(env=env)
+        self.until(lambda: 'STOPPED' in answer.read_text())
+        self.assertEqual(again.wait(timeout=10), 0)
+        self.assertNotIn('REARM', answer.read_text())
+        self.assertFalse(self.path('stop').exists())
+        self.assertEqual(self.state().get('child'), '0', 'a new child was launched')
+        third, wake = self.start(env=env)
+        self.until(lambda: self.state().get('sup') == str(third.pid))
+        self.inbox.write_text('after the stop\n')
+        self.until(lambda: 'WAKE#1 telegram' in wake.read_text())
+        self.stop(third)
+        self.assertEqual(wake.read_text().count('WAKE#'), 1)
+        self.assertEqual(len(self.wake_rows()), 1)
+
+    def test_a_stop_the_adopted_child_honours_before_the_stale_request_is_cleared_ends_with_stopped(self):
+        entered, gate = self.gated_tick()
+        env = dict(self.env, CHIEF_WAIT_STREAM_SOFT_SEC='.3', CHIEF_WAIT_STREAM_HARD_SEC='1',
+                   CHIEF_WAIT_STREAM_ADOPT_SEC='120', CHIEF_WAIT_STREAM_REAP_MAX_SEC='240')
+        first, out = self.start(env=env)
+        self.until(entered.exists)
+        self.assertEqual(first.wait(timeout=10), 0)
+        self.assertIn('child=busy', out.read_text())
+        child = self.state()['child']
+        again, answer = self.driven('adopted', TICK_GATE=str(gate), CHIEF_WAIT_STREAM_SOFT_SEC='.3',
+                                    CHIEF_WAIT_STREAM_HARD_SEC='1', CHIEF_WAIT_STREAM_ADOPT_SEC='120',
+                                    CHIEF_WAIT_STREAM_REAP_MAX_SEC='240')
+        self.assertEqual(again.wait(timeout=30), 0, answer.read_text())
+        self.assertEqual(Path(str(self.inbox) + '.wait.schedule-fired').read_text(), child, 'the schedule was not forced')
+        self.assertIn('state=exited exit=stream-stop', self.heartbeat())
+        self.assertIn('STOPPED', answer.read_text())
+        self.assertNotIn('REARM', answer.read_text())
+        self.assertFalse(self.path('stop').exists())
+        self.assertEqual(self.state().get('child'), '0', 'a new child was launched')
+        self.assertEqual(len(self.wake_rows()), 0)
+
+    def test_a_stale_stop_nothing_honoured_is_cleared_by_the_next_arm(self):
+        self.path('stop').touch()
+        p, out = self.start()
+        self.armed()
+        self.until(lambda: not self.path('stop').exists())
+        self.inbox.write_text('runs on\n')
+        self.until(lambda: 'WAKE#1 telegram' in out.read_text())
+        self.assertIsNone(p.poll())
+        self.assertNotIn('STOPPED', out.read_text())
+        self.stop(p)
+        self.assertEqual(len(self.wake_rows()), 1)
 
 
 # Worker-event stand-in that keeps auto-go's exact-head audit rule: the first READY of a
