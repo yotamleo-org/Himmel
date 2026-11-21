@@ -25,6 +25,7 @@
 # list or the tip's baseline is missing or unreadable, or git/awk failed
 
 set -uo pipefail
+export LC_ALL=C
 
 usage() { echo "usage: check-new-comments.sh --staged | --range <base> [--tip <ref>] | --write-baseline" >&2; exit 2; }
 die() { echo "check-new-comments: $1, cannot evaluate" >&2; exit 2; }
@@ -87,7 +88,7 @@ trap 'rm -rf "$W"' EXIT
 judged() {
     grep -E "$CODE_RE" "$1" > "$W/code"
     [ $? -le 1 ] || die "grep failed"
-    LC_ALL=C awk -f "$exempt_awk" -v allow="$rules" -v mode=exempt "$W/code" > "$W/exempt" || die "the rule list did not load"
+    awk -f "$exempt_awk" -v allow="$rules" -v mode=exempt "$W/code" > "$W/exempt" || die "the rule list did not load"
     awk 'FILENAME == ARGV[1] { x[$0] = 1; next } !($0 in x)' "$W/exempt" "$W/code" > "$2" || die "awk failed"
 }
 
@@ -99,9 +100,9 @@ if [ "$mode" = "write" ]; then
         if [ -f "$p" ] && [ ! -L "$p" ]; then printf '%s\0' "$p"; fi
     done < "$W/paths" > "$W/paths0"
     if [ -s "$W/paths0" ]; then
-        LC_ALL=C xargs -0 awk -f "$classifier" -v mode=tree < "$W/paths0" > "$W/rows" || die "the classifier failed"
+        xargs -0 awk -f "$classifier" -v mode=tree < "$W/paths0" > "$W/rows" || die "the classifier failed"
     fi
-    LC_ALL=C sort "$W/rows" > "$BL" || die "cannot write $BL"
+    sort "$W/rows" > "$BL" || die "cannot write $BL"
     echo "check-new-comments: wrote $BL ($(awk -F'\t' '{ n += $2 } END { print NR " files, " n + 0 " comment lines" }' "$BL"))"
     exit 0
 fi
@@ -148,19 +149,19 @@ done
 if [ "$has_base" -eq 1 ]; then
     awk -F'\t' 'FILENAME == ARGV[1] { b[$1] = $2; next } !($1 in b) || b[$1] != $2 { print $1 }' "$W/base.tsv" "$W/tip.tsv" >> "$W/touched" || die "awk failed"
 fi
-LC_ALL=C sort -u "$W/touched" > "$W/touched.u" || die "sort failed"
+sort -u "$W/touched" > "$W/touched.u" || die "sort failed"
 judged "$W/touched.u" "$W/paths"
 
 : > "$W/counts"
 while IFS= read -r p; do
     if ! has_at "$tiprev" "$p"; then printf '%s\t0\n' "$p" >> "$W/counts"; continue; fi
     git show "$tipspec$p" > "$W/blob" || die "cannot read $p at the tip"
-    n="$(LC_ALL=C awk -f "$classifier" -v mode=count -v path="$p" "$W/blob")" || die "the classifier failed on $p"
+    n="$(awk -f "$classifier" -v mode=count -v path="$p" "$W/blob")" || die "the classifier failed on $p"
     count_ok "$n" || die "the classifier printed no count for $p"
     printf '%s\t%s\n' "$p" "$n" >> "$W/counts"
 done < "$W/paths"
 
-LC_ALL=C awk -F'\t' -v has_base="$has_base" '
+awk -F'\t' -v has_base="$has_base" '
     FILENAME == ARGV[1] { from[$1] = $2; next }
     FILENAME == ARGV[2] { base[$1] = $2 + 0; next }
     FILENAME == ARGV[3] {
@@ -182,7 +183,7 @@ while IFS="$(printf '\t')" read -r kind p n lim; do
         git show "$base:${was:-$p}" > "$W/blob" || die "cannot read ${was:-$p} at the base"
         capper="$classifier"
         if [ "$recount" -eq 1 ] && ! listed "$p" "$W/indiff"; then capper="$W/tip.awk"; fi
-        m="$(LC_ALL=C awk -f "$capper" -v mode=count -v path="$p" "$W/blob")" || die "the classifier failed on $p"
+        m="$(awk -f "$capper" -v mode=count -v path="$p" "$W/blob")" || die "the classifier failed on $p"
         count_ok "$m" || die "the classifier printed no count for $p"
     fi
     gt "$n" "$m" || continue
@@ -214,7 +215,7 @@ while IFS="$(printf '\t')" read -r kind p n lim; do
     r="$(added_ranges "$p")"
     git show "$tipspec$p" > "$W/blob" 2>/dev/null || die "cannot read $p at the tip"
     if [ -n "$r" ]; then
-        LC_ALL=C awk -f "$classifier" -v mode=list -v ranges="$r" -v path="$p" "$W/blob" | sed 's/^/  /'
+        awk -f "$classifier" -v mode=list -v ranges="$r" -v path="$p" "$W/blob" | sed 's/^/  /'
     fi
     if grep -q "^$(printf '%s' "$p" | sed 's/[][\.*^$]/\\&/g')$(printf '\t')" "$W/renames"; then moved=1; fi
 done < "$W/findings"

@@ -317,6 +317,12 @@ git -C "$R" commit -q -am "a base row that is no count"
 echo 'echo more' >> "$R/src/a.sh"
 printf 'src/a.sh\t2\n' > "$R/$BL"
 stage; want "a base baseline row that is no count" 2
+mkrepo
+base="$(git -C "$R" rev-parse HEAD)"
+printf 'echo n\n%s body note\necho m\n' "$HASH" > "$R/src/caf$(printf '\351').sh"
+git -C "$R" add -A; git -C "$R" commit -q -m "a file name that is not UTF-8"
+OUT="$(cd "$R" && LC_ALL=C.UTF-8 bash scripts/lint/check-new-comments.sh --range "$base" 2>&1)"; RC=$?
+want "a comment in a file whose name is not UTF-8, under a UTF-8 locale" 1
 
 echo
 echo "test-check-new-comments: $PASS passed, $FAIL failed"
