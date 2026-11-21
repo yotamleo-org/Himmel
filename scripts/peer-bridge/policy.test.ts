@@ -228,13 +228,41 @@ test("the poller's spawn list is slice A's: ps, redact_check, the usage prefligh
   expect(sites.filter(s => /git/.test(s))).toEqual([]);
 });
 
-test("git runs only in jobs.ts on the typed path, with the two verbs it was given", () => {
+test("the runner reaches no claude, and spawns only git, vmsdk-job.py and the lock helpers", () => {
+  const g = graphOf("scripts/peer-bridge/runner.ts");
+  expect(g.filter(f => CLAUDE_CALL.test(read(f)))).toEqual([]);
+  expect(g).not.toContain("scripts/peer-bridge/reader.ts");
+  expect(spawnSites(g)).toEqual([
+    'scripts/peer-bridge/chain.ts: spawnSync("ps"',
+    "scripts/peer-bridge/proc.ts: runProc(argv",
+    "scripts/peer-bridge/proc.ts: spawn(argv",
+    'scripts/peer-bridge/runner.ts: runProc(["git"',
+    'scripts/peer-bridge/runner.ts: runProc(["python3"',
+    'scripts/peer-bridge/runner.ts: spawn("python3"',
+    'scripts/telegram/bus.ts: spawn("flock"',
+  ]);
+});
+
+test("git runs only in jobs.ts and runner.ts on the typed path, each with its closed list of verbs", () => {
   const typed = fs.readdirSync(join(HIMMEL_ROOT, "scripts/peer-bridge")).filter(n => /\.ts$/.test(n) && !/\.test\.ts$|^testlib-/.test(n));
   const withGit = typed.filter(n => /["'`]git["'`]/.test(read(`scripts/peer-bridge/${n}`)));
-  expect(withGit.sort()).toEqual(["jobs.ts", "setup.ts"]);
+  expect(withGit.sort()).toEqual(["jobs.ts", "runner.ts", "setup.ts"]);
   const jobs = read("scripts/peer-bridge/jobs.ts");
   expect(jobs.match(/await git\(deps,[^)]*\)/g)).toEqual(['await git(deps, "branch", "-r", "--contains", sha)', 'await git(deps, "cat-file", "-e", `${sha}:${s}`)']);
   expect(jobs.match(/runProc\(/g)).toHaveLength(1);
+  const runner = read("scripts/peer-bridge/runner.ts");
+  expect(runner.match(/await git\(deps, [^)]*\)/g)).toEqual([
+    'await git(deps, null, "init", "-q", "--bare", cache)',
+    'await git(deps, cache, "fetch", "-q", "--prune", url, "+refs/heads/*:refs/remotes/origin/*")',
+    'await git(deps, cache, "cat-file", "-e", `${sha}^{commit}`)',
+    'await git(deps, cache, "branch", "-r", "--contains", sha)',
+    'await git(deps, cache, "merge-base", "--is-ancestor", deps.minSha, sha)',
+    'await git(deps, null, "init", "-q", src)',
+    'await git(deps, src, "fetch", "-q", "--depth", "1", from, rec.sha)',
+  ]);
+  expect(runner.match(/runProc\(/g)).toHaveLength(2);
+  expect(runner).toContain('runProc(["git", "-c", "core.hooksPath=/dev/null", ');
+  expect(runner).toContain('GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1"');
 });
 
 test("an envelope can only narrow: serves, approve, budgets and the allowlist have no inbound writer", () => {

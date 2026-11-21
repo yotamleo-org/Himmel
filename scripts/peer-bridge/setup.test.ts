@@ -10,7 +10,7 @@ import { join, relative } from "node:path";
 import { drainSpool } from "./chain";
 import { loadAllowlist, readPeersFile } from "./config";
 import { configDir, peerDir, peersFile, stateDir } from "./ids";
-import { SetupError, add, allowSuite, confirm, denySuite, keygenCmd, kill, remove, stationName, trust, unkill, uninstall, untrust, type Deps } from "./setup";
+import { SetupError, add, allowSuite, confirm, denySuite, keygenCmd, kill, remove, runner, stationName, trust, unkill, uninstall, untrust, type Deps } from "./setup";
 import { NEXT_KEY, STATION_KEY, currentSigningKey, fingerprint, keyId, publicKeyOf } from "./sign";
 import { TelegramError } from "./telegram";
 
@@ -98,7 +98,7 @@ const spoolFiles = () => fs.readdirSync(join(peerDir("goomal"), "spool")).filter
 
 const PUB_X = Buffer.alloc(32, 7).toString("base64");
 const CLI: [string, string[]][] = [
-  ["add", ["goomal", "--peer-bot-id", PEER_ID]], ["confirm", ["goomal", String(CHAT)]], ["remove", ["goomal"]], ["uninstall", []],
+  ["add", ["goomal", "--peer-bot-id", PEER_ID]], ["confirm", ["goomal", String(CHAT)]], ["remove", ["goomal"]], ["uninstall", []], ["runner", []],
   ["station-name", ["yotam"]], ["keygen", []], ["keygen", ["--rotate"]], ["keygen", ["--activate"]],
   ["trust", ["goomal", "goomal", PUB_X]], ["untrust", ["goomal"]], ["untrust", ["goomal", "--key", "0123abcd"]],
   ["allow-suite", ["goomal", "ledger", "scripts/ci/test-suite-ledger.sh"]], ["deny-suite", ["goomal", "ledger"]], ["kill", ["goomal"]], ["unkill", ["goomal"]],
@@ -469,6 +469,64 @@ t("add, remove and uninstall leave only the declared paths, then nothing", async
   await uninstall(mk({ answers: ["yes"], stopUnit: () => { stopped++; } }).deps);
   expect(stopped).toBe(1);
   expect(listing(home)).toEqual(before);
+});
+const RUNNER_PATH = () => process.platform === "darwin"
+  ? join(home, "Library", "LaunchAgents", "com.himmel.peer-runner.plist")
+  : join(home, ".config", "systemd", "user", "himmel-peer-runner.service");
+const setServes = (peer: string, serves: string[]) => {
+  const raw = JSON.parse(fs.readFileSync(peersFile(), "utf8"));
+  raw.peers[peer].serves = serves;
+  fs.writeFileSync(peersFile(), JSON.stringify(raw, null, 2) + "\n", { mode: 0o600 });
+};
+t("runner: serves [] installs no unit; serves run-suite installs the OS unit; removing the peer removes it", async () => {
+  const calls: string[] = [];
+  const ctl = { runnerCtl: (verb: "start" | "stop", p: string) => { calls.push(`${verb} ${p}`); return true; } };
+  await addGoomal();
+  await runner(mk(ctl).deps);
+  expect(fs.existsSync(RUNNER_PATH())).toBe(false);
+  expect(calls).toEqual([]);
+
+  setServes("goomal", ["run-suite"]);
+  await runner(mk(ctl).deps);
+  const unit = fs.readFileSync(RUNNER_PATH(), "utf8");
+  expect(unit).toContain(`${REPO}/scripts/peer-bridge/runner.ts`);
+  expect(unit).not.toContain("@HIMMEL_ROOT@");
+  expect(unit).not.toContain("@HOME@");
+  expect(fs.statSync(RUNNER_PATH()).mode & 0o777).toBe(0o644);
+  expect(calls).toEqual([`start ${RUNNER_PATH()}`]);
+
+  await runner(mk(ctl).deps);
+  expect(calls.length).toBe(1);
+
+  await remove("goomal", mk({ answers: ["yes"], ...ctl }).deps);
+  expect(fs.existsSync(RUNNER_PATH())).toBe(false);
+  expect(calls).toEqual([`start ${RUNNER_PATH()}`, `stop ${RUNNER_PATH()}`]);
+});
+t("runner: dropping run-suite from serves stops and removes the unit", async () => {
+  const calls: string[] = [];
+  const ctl = { runnerCtl: (verb: "start" | "stop", p: string) => { calls.push(`${verb} ${p}`); return true; } };
+  await addGoomal();
+  setServes("goomal", ["run-suite"]);
+  await runner(mk(ctl).deps);
+  setServes("goomal", []);
+  await runner(mk(ctl).deps);
+  expect(fs.existsSync(RUNNER_PATH())).toBe(false);
+  expect(calls).toEqual([`start ${RUNNER_PATH()}`, `stop ${RUNNER_PATH()}`]);
+});
+t("runner: a failed start removes the unit and refuses; a failed stop keeps it and refuses", async () => {
+  let ok = false;
+  const ctl = { runnerCtl: () => ok };
+  await addGoomal();
+  setServes("goomal", ["run-suite"]);
+  expect(await refused(runner(mk(ctl).deps))).toContain("could not start the runner unit");
+  expect(fs.existsSync(RUNNER_PATH())).toBe(false);
+  ok = true;
+  await runner(mk(ctl).deps);
+  expect(fs.existsSync(RUNNER_PATH())).toBe(true);
+  ok = false;
+  setServes("goomal", []);
+  expect(await refused(runner(mk(ctl).deps))).toContain("could not stop the runner unit");
+  expect(fs.existsSync(RUNNER_PATH())).toBe(true);
 });
 t("remove and uninstall need a typed yes", async () => {
   await addGoomal();
