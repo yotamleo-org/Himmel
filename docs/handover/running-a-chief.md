@@ -306,9 +306,11 @@ console inbox, which wakes the waiter. The full stderr is in
 `<log>.launcher.out`. `--dry-run` makes the same fleet admission and worktree
 checks without writing anything, so when a dry run passes, the real launch
 starts. The launcher opens each attempt with a `LAUNCH-START` line in `<log>`
-and closes an exit-0 attempt with `LAUNCH-OK`. `launch-confirm.sh` reads only
-the newest attempt's lines and waits up to 60 s for that attempt to end
-`LAUNCH-OK` with a claude session named `<session-name>` running. It prints `LAUNCH-CONFIRMED <session> pid=<pid>`, or exits 1
+and closes an exit-0 attempt with `LAUNCH-OK`. Run the three lines above as
+one call. `launch-confirm.sh` then reads only the attempt that started in the
+last 30 s. It waits up to 60 s for that attempt to end `LAUNCH-OK` with a
+claude session named `<session-name>` running. To check later, pass
+`--since <epoch taken before the launch>`. It prints `LAUNCH-CONFIRMED <session> pid=<pid>`, or exits 1
 with a `LAUNCH-UNCONFIRMED` line on stderr, in the log and in your inbox. Never
 report a worker as running until it confirms.
 

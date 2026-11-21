@@ -62,7 +62,7 @@ check "(d) an older session with the name does not confirm a refused relaunch" 1
 check "(d) ... which is reported as refused" yes "$(says "$out" 'LAUNCH-UNCONFIRMED PROJ-1-N4-stale the launcher refused: holds: a file is held')"
 
 : > "$WORK/SEEN"
-{ start_line PROJ-1-N5-retry "$((now - 30))"; echo '2026-11-21_18:59:31 LAUNCH-REFUSED PROJ-1-N5-retry an earlier refusal'; } > "$WORK/e.log"
+{ start_line PROJ-1-N5-retry "$((now - 60))"; echo '2026-11-21_18:59:01 LAUNCH-REFUSED PROJ-1-N5-retry an earlier refusal'; } > "$WORK/e.log"
 ( sleep 1; { start_line PROJ-1-N5-retry "$fresh"; echo '2026-11-21_19:00:05 LAUNCH-OK PROJ-1-N5-retry launched'; } >> "$WORK/e.log"; echo PROJ-1-N5-retry > "$WORK/SEEN" ) &
 rc=0; out="$(bash "$SUT" --chief lc-chief --secs 5 PROJ-1-N5-retry "$WORK/e.log" 2>&1)" || rc=$?
 wait
@@ -74,6 +74,14 @@ check "(e) ... which confirms" "LAUNCH-CONFIRMED PROJ-1-N5-retry pid=4242" "$out
 rc=0; out="$(bash "$SUT" --chief lc-chief --secs 1 PROJ-1-N6-old "$WORK/f.log" 2>&1)" || rc=$?
 check "(f) only an attempt older than --since: not reported as that old refusal" no "$(says "$out" 'an old refusal')"
 check "(f) ... but as no launch attempt started" yes "$(says "$out" "LAUNCH-UNCONFIRMED PROJ-1-N6-old no launch attempt started in $WORK/f.log within 1s")"
+echo PROJ-1-N9-prior > "$WORK/SEEN"
+{ start_line PROJ-1-N9-prior "$((now - 60))"; echo '2026-11-21_18:59:05 LAUNCH-OK PROJ-1-N9-prior launched'; } > "$WORK/j.log"
+rc=0; out="$(bash "$SUT" --chief lc-chief --secs 1 PROJ-1-N9-prior "$WORK/j.log" 2>&1)" || rc=$?
+check "(j) an earlier attempt's LAUNCH-OK and its running session do not confirm a launch that logged no start" 1 "$rc"
+check "(j) ... reported as no launch attempt started" yes "$(says "$out" "LAUNCH-UNCONFIRMED PROJ-1-N9-prior no launch attempt started in $WORK/j.log within 1s")"
+rc=0; out="$(bash "$SUT" --chief lc-chief --secs 1 --since "$((now - 90))" PROJ-1-N9-prior "$WORK/j.log" 2>&1)" || rc=$?
+check "(j) a later check that passes --since from before that launch confirms it" "LAUNCH-CONFIRMED PROJ-1-N9-prior pid=4242" "$out"
+: > "$WORK/SEEN"
 start_line PROJ-1-N7-slow "$fresh" > "$WORK/g.log"
 rc=0; out="$(bash "$SUT" --chief lc-chief --secs 1 PROJ-1-N7-slow "$WORK/g.log" 2>&1)" || rc=$?
 check "(g) a launcher still running at the window's end exits 1" 1 "$rc"

@@ -3,11 +3,11 @@
 #
 # usage: launch-confirm.sh [--chief <name>] [--secs <n>] [--since <epoch>] <session-name> <log>
 #
-# Run by the chief right after it launches a worker (headed-arm-worker.sh, detached) and touches its signal file.
-# Polls once a second, up to --secs (default 60, or LAUNCH_CONFIRM_SECS), on this launch attempt only: the lines
-# <log> holds after its newest `LAUNCH-START <session> epoch=<s>` line with <s> at or after --since (default: 120 s
-# before this run), so an older attempt's lines and an older session never decide it. An attempt whose START predates
-# this run decides nothing for the first 3 s: a launch made just before this run gets that long to log its own START.
+# Run by the chief in the same call that launches a worker (headed-arm-worker.sh, detached) and touches its signal
+# file. Polls once a second, up to --secs (default 60, or LAUNCH_CONFIRM_SECS), on one launch attempt only: the lines
+# <log> holds after its newest `LAUNCH-START <session> epoch=<s>` line with <s> at or after --since (default: 30 s
+# before this run), so an older attempt's lines and an older session never decide it. A check run later than that
+# passes --since <epoch taken before the launch>.
 #   the attempt wrote LAUNCH-OK and a claude process carries `-n <session-name>` (headed-arm.sh's pattern)
 #                             -> prints `LAUNCH-CONFIRMED <session> pid=<pid>`, exit 0
 #   the attempt wrote LAUNCH-REFUSED, or the window ends first
@@ -19,7 +19,7 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() { echo "usage: launch-confirm.sh [--chief <name>] [--secs <n>] [--since <epoch>] <session-name> <log>" >&2; exit 2; }
-chief="${HIMMEL_CONSOLE_NAME:-}" secs="${LAUNCH_CONFIRM_SECS:-60}" since=$(( $(date +%s) - 120 ))
+chief="${HIMMEL_CONSOLE_NAME:-}" secs="${LAUNCH_CONFIRM_SECS:-60}" since=$(( $(date +%s) - 30 ))
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --chief) [ "$#" -ge 2 ] || usage; chief="$2"; shift 2 ;;
@@ -53,31 +53,27 @@ unconfirmed() {
 attempt_state() {
     [ -r "$log" ] || { echo none; return 0; }
     awk -v n="$name" -v since="$since" '
-        $2 == "LAUNCH-START" && $3 == n { e = $4; sub(/^epoch=/, "", e); if (e + 0 >= since) { s = 1; at = e + 0; r = ""; ok = 0 } else { s = 0 }; next }
+        $2 == "LAUNCH-START" && $3 == n { e = $4; sub(/^epoch=/, "", e); if (e + 0 >= since) { s = 1; r = ""; ok = 0 } else { s = 0 }; next }
         s && $2 == "LAUNCH-REFUSED" && $3 == n { r = $0; sub(/^[^ ]+ [^ ]+ [^ ]+ /, "", r); if (r == "") r = "no reason given" }
         s && $2 == "LAUNCH-OK" && $3 == n { ok = 1 }
-        END { if (!s) print "none 0"; else if (r != "") print "refused " at " " r; else if (ok) print "ok " at; else print "running " at }
+        END { if (!s) print "none"; else if (r != "") print "refused " r; else if (ok) print "ok"; else print "running" }
     ' "$log"
 }
 
-began=$(date +%s)
 n=0
 while :; do
     state="$(attempt_state)"
-    kind="${state%% *}" rest="${state#* }" at="${state#* }"; at="${at%% *}"
-    if [ "$n" -ge 3 ] || [ "$n" -ge "$secs" ] || [ "$at" -ge "$began" ]; then
-        case "$kind" in
-            refused) unconfirmed "the launcher refused: ${rest#* }" ;;
-            ok)
-                pid="$("$pgrep_bin" -f "$pat" 2>/dev/null | head -n 1)"  # swallow-ok: a failed scan reads as no session yet; the window still ends in LAUNCH-UNCONFIRMED
-                if [ -n "$pid" ]; then
-                    echo "LAUNCH-CONFIRMED $name pid=$pid"
-                    exit 0
-                fi ;;
-        esac
-    fi
+    case "$state" in
+        refused\ *) unconfirmed "the launcher refused: ${state#refused }" ;;
+        ok)
+            pid="$("$pgrep_bin" -f "$pat" 2>/dev/null | head -n 1)"  # swallow-ok: a failed scan reads as no session yet; the window still ends in LAUNCH-UNCONFIRMED
+            if [ -n "$pid" ]; then
+                echo "LAUNCH-CONFIRMED $name pid=$pid"
+                exit 0
+            fi ;;
+    esac
     if [ "$n" -ge "$secs" ]; then
-        case "$kind" in
+        case "$state" in
             none) unconfirmed "no launch attempt started in $log within ${secs}s" ;;
             running) unconfirmed "the launcher had not finished within ${secs}s" ;;
             *) unconfirmed "the launcher exited 0 but no claude session within ${secs}s" ;;
