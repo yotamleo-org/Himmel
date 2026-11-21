@@ -279,11 +279,6 @@ export async function planResidual(project: string, o: ResidualOptions): Promise
   return { labels, affectsVersion: current, frozen, fixVersion };
 }
 
-/**
- * Sets fixVersions and versions on a new ticket. No count of what a version
- * already holds refuses, labels or redirects a filing; a residual is routed
- * by planResidual.
- */
 export async function applyVersions(
   project: string,
   options: { type: string; fixVersion?: string; affectsVersion?: string },
@@ -298,10 +293,6 @@ export async function applyVersions(
     const version = await resolveAffectsVersion(project, options.affectsVersion);
     fields['versions'] = [{ name: version }];
   }
-  // A Highest or gated Bug without an explicit --fix-version defaults to the
-  // earliest unreleased version; an unreadable/empty version list files with
-  // no fixVersion rather than guess. Any other Bug was placed in the backlog
-  // before this point.
   if (o.bugDefault) {
     let defaultVersion: string | undefined;
     try {
@@ -642,7 +633,6 @@ export async function checkExistingBlocker(project: string, fixVersions: unknown
 }
 
 
-/** Only ungated frozen inheritance is suppressed for a residual. */
 export async function residualInheritedVersion(
   o: RelationshipOptions & { gate?: string },
   residual: ResidualPlan | undefined,

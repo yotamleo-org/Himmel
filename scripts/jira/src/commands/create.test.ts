@@ -914,8 +914,6 @@ describe('create --residual-of placement', () => {
   });
 });
 
-// A residual is placed by its class, gate and chain alone. A version holding many open residuals
-// keeps every one of them and takes the newcomer: no count displaces a resident or steps a newcomer down.
 describe('create --residual-of in a version holding many open residuals', () => {
   const residual = (key: string, labels = ['residual', 'fu-hardening'], status = 'To Do', priority = 'Medium') => ({
     key,
@@ -1206,8 +1204,6 @@ describe('create — unplaced follow-up', () => {
   });
 });
 
-// No count of the open residuals in a version warns, labels, redirects or refuses a filing. The mock
-// plays Jira: a version list and a search whose hit count is the open residuals in the current version.
 describe('create — no count gate', () => {
   type Opts = { open?: number; budgetDesc?: string; noNext?: boolean; searchFails?: boolean };
   let searches: string[];
