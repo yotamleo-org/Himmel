@@ -157,7 +157,7 @@ function parserPlugins(file) {
 }
 
 function guardedRule(rule) {
-  return rule.includes('landmines') || RULES.includes(rule.split('/').pop());
+  return rule.includes('landmines') || RULES.some((r) => rule.endsWith(r));
 }
 
 export function checkDirectives(absPath) {

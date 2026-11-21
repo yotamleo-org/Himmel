@@ -447,6 +447,9 @@ dir_row() {
     hs "$REPO" --check-directives "$f"
     [ "$want" = refuse ] && rc=1
     assert_eq "i7-directive-table $id ($want)" "$rc" "$HS_RC"
+    if [ "$want" = refuse ]; then
+        assert_has "i7-directive-table $id is refused, not unparsed" "refused directive" "$HS_OUT"
+    fi
 }
 
 case_i7_directives() {
@@ -475,6 +478,8 @@ case_i7_directives() {
     dir_row 20 inner '// oxlint-disable-next-line no-console --reason' refuse
     dir_row 21 inner '// oxlint-disable-next-line landmines-testing' refuse
     dir_row 22 tail '// oxlint-disable-line' refuse
+    dir_row 23 inner '// oxlint-disable-next-line foo-no-fixed-sleep' refuse
+    dir_row 24 inner '// oxlint-disable-next-line foo/bar-no-unsignaled-poll' refuse
     hs "$REPO" --check-directives a/dir-01.test.ts
     assert_has "i7-directive-table refusal names path, line and text" \
         'a/dir-01.test.ts:3: refused directive: "oxlint-disable-next-line landmines-testing/no-fixed-sleep' "$HS_OUT"
