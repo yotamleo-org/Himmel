@@ -2025,6 +2025,7 @@ cat >"$W19/m.json" <<'JSON'
 JSON
 printf '{}' >"$W19/u.json"; printf '{"entries":[]}' >"$W19/reg.json"
 : >"$W19/calls"
+unset GH_TOKEN GITHUB_TOKEN
 GH19LOG="$W19/calls" GH_READ_ENV_ROOT="$W19/root" PATH="$W19/bin:$PATH" DRIFT_MJSON="$W19/m.json" DRIFT_UPSTREAMS="$W19/u.json" DRIFT_REGISTRY="$W19/reg.json" DRIFT_KNOWN_MARKETPLACES=/dev/null bash "$SCRIPT" >"$W19/out.txt" 2>&1
 api_n=$(grep -c '^tok=' "$W19/calls"); read_n=$(grep -c '^tok=ghp_DRIFTREAD0123456789 ' "$W19/calls")
 if [ "$api_n" -gt 0 ] && [ "$api_n" -eq "$read_n" ]; then ok "read token: all $api_n sweep api calls carried the read token"; else bad "read token: $read_n of $api_n sweep api calls carried the read token; on main: $(grep -v '^tok=ghp_DRIFTREAD0123456789 ' "$W19/calls" | sort -u | head -5 | cut -c1-110 | tr '\n' '|')"; fi

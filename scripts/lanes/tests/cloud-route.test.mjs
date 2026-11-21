@@ -743,6 +743,8 @@ exit 1`);
   mkdirSync(empty);
   const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_SEARCH_TTL: '0', GH_READ_ENV_ROOT: empty };
   delete env.CLOUD_ROUTE_GH_CMD;
+  delete env.GH_READ_QUIET;
+  delete env.GH_TOKEN;
   const g = mainRepo(dir, 'fix(x): an unrelated change (#1)');
   const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9001'], {
     encoding: 'utf8', env: { ...env, CLOUD_ROUTE_GIT_DIR: g, CLOUD_ROUTE_MAIN_REF: 'main' },
