@@ -41,8 +41,8 @@ if [ "$got" = "how long does the prompt cache keep a prefix warm" ]; then pass "
 else fail "V4 got='$got'"; fi
 
 # V5: a question that already is a query document, or a lex line would reject, passes through.
-got="$(doc query "lex: console worker")|$(doc search 'the "chief worker')|$(doc query "chief -worker")"
-if [ "$got" = 'lex: console worker|the "chief worker|chief -worker' ]; then pass "V5 document, odd quote and negation unchanged"
+got="$(doc query "lex: console worker")|$(doc search 'the "chief worker')|$(doc query 'chief -"worker"')"
+if [ "$got" = 'lex: console worker|the "chief worker|chief -"worker"' ]; then pass "V5 document, odd quote and a deliberate -\"negation\" unchanged"
 else fail "V5 got='$got'"; fi
 
 # V6: a phrase already in the new vocabulary is not grown ("parallel wave" never "parallel parallel wave").
@@ -86,7 +86,7 @@ if [ "$got" = "$want" ]; then pass "V11 lex line drops filler words"
 else fail "V11 got='$got'"; fi
 
 got="$(doc query "claude -p mode")|$(doc query "how does the waiter wake")"
-if [ "$got" = 'claude -p mode|how does the waiter wake' ]; then pass "V12 a query naming no registry word keeps qmd's own expansion, filler or dash word or not"
+if [ "$got" = 'claude "-p" mode|how does the waiter wake' ]; then pass "V12 a query naming no registry word keeps qmd's own expansion, its dash word quoted"
 else fail "V12 got='$got'"; fi
 
 vxpy() { python3 -I -c 'import importlib.util, sys; s = importlib.util.spec_from_file_location("vx", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m); print(eval(sys.argv[2], {"m": m}))' "$VX" "$1"; }
@@ -95,7 +95,7 @@ if [ "$got" = 'claude --bg mode|claude "-p" "--bg" mode|claude -p mode' ]; then 
 else fail "V15 got='$got'"; fi
 
 got="$(doc search "how does the waiter wake -p")|$(doc search "how does the waiter wake")"
-if [ "$got" = 'how does the waiter wake -p|how does the waiter wake' ]; then pass "V16 a search naming no registry word runs as given, so qmd search keeps its own limits and scores"
+if [ "$got" = 'how does the waiter wake "-p"|how does the waiter wake' ]; then pass "V16 a search naming no registry word keeps its words, so qmd search keeps its own limits and scores, its dash word quoted"
 else fail "V16 got='$got'"; fi
 
 got="$(vxpy 'm.shape_lex("what is \"the end\" mode")')|$(vxpy 'm.shape_lex("how does the")')"
@@ -105,6 +105,11 @@ else fail "V13 got='$got'"; fi
 got="$(vxpy 'm.shape_lex("what is (\"state of the art\") mode")')"
 if [ "$got" = '("state of the art") mode' ]; then pass "V14 quoted phrase inside punctuation keeps its filler words"
 else fail "V14 got='$got'"; fi
+
+got="$(doc search "how does the chief run claude -p")|$(doc query "chief --bg")|$(argv search -c himmel "claude -p")"
+want="lex: chief run claude \"-p\"${nl}lex: console run claude \"-p\"|lex: chief \"--bg\"${nl}lex: console \"--bg\"${nl}vec: chief \"--bg\"|search|-c|himmel|--|claude \"-p\"|"
+if [ "$got" = "$want" ]; then pass "V17 a dash word is quoted in every lex line, the vec line and a search that does not expand"
+else fail "V17 got='$got'"; fi
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"
