@@ -94,7 +94,7 @@ it what it needs (a new bus message wakes it once more), relaunch it from its RE
 or close it. A `capped` worker whose doc has had no write for `CHIEF_WAIT_WORKER_SILENT_MIN` minutes wakes the chief as `WAKE worker-silent` (`waiter.md`); rc 3 and rc 4 wake nothing, read them at the next tick. Absent when no waker
 left a state file.
 
-`chief-kit/denied-launch-alert.sh` sends the operator ONE `DENIED-LAUNCH <worker>` Telegram per classifier-denied `headed-arm-worker.sh` launch (worker, tool and the local log path only; the denied command and reason stay on the host). Run it by hand after a launch that stalls; the waiter does not call it yet.
+`chief-kit/denied-launch-alert.sh` sends the operator ONE `DENIED-LAUNCH <worker>` Telegram per classifier-denied `headed-arm-worker.sh` launch (worker, tool and the local log path only; the denied command and reason stay on the host). Run it by hand after a launch that stalls; the waiter does not call it yet. A launch the launcher itself refuses or fails (exit non-zero) needs no monitor: `headed-arm-worker.sh` appends `LAUNCH-REFUSED <session> <reason>` to the launch log and to your console inbox, which wakes the waiter; `chief-kit/launch-confirm.sh` reports a launch that started no session as `LAUNCH-UNCONFIRMED` the same way.
 
 Five, and no more — each filters to actionable changes. Tick and Telegram run
 inside the single step-10 waiter. Approved stream mode arms `chief-wait.sh

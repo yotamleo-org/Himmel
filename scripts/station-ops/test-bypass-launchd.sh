@@ -559,6 +559,28 @@ wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
 assert_contains "RED 10430: one go code launches a worker with BSD-like date, stat, hash and no flock, setsid or /run/user" "LAUNCHED HIMMEL-1-N1-sweep-pr1" "$(cat "$Q/daemon.log")"
 stop
 
+echo "== the requesting chief's manifest is the launch's explicit --fleet locator =="
+if command -v flock >/dev/null 2>&1; then
+    setup fleet-locator
+    MF="$B/HIMMEL-nextleg-2026-11-13A-roadmap-chief.fleet.json"
+    bash "$REPO_ROOT/scripts/handover/chief-kit/fleet-manifest.sh" control init "$MF" --target 4 >/dev/null 2>&1
+    start
+    CODE=$(ask_code r)
+    reply "$OPERATOR" "$OPERATOR" "go $CODE"
+    wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+    assert_contains "RED: a chief with a manifest launches with --fleet <its manifest>" "--fleet"$'\n'"$MF" "$(cat "$D/launch.args" 2>/dev/null)"
+    stop
+else
+    echo "SKIP - fleet locator row (fleet-manifest.sh needs util-linux flock)"
+fi
+setup fleet-none
+start
+CODE=$(ask_code r)
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_absent "a chief with no manifest launches without --fleet" "--fleet" "$(cat "$D/launch.args" 2>/dev/null)"
+stop
+
 echo
 echo "bypass-launchd: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

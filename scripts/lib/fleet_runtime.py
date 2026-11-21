@@ -682,8 +682,8 @@ def settle_attempt(args, attempts, rows, doc, history):
     return {'phase': 'refused', 'cause': 'settled-no-session'}
 
 
-def reconcile(attempts, rows, history, deadline):
-    """Run under manifest→anchor locks, before admission as well as ack."""
+def reconcile(attempts, rows, history, deadline, effects=True):
+    """Run under manifest→anchor locks, before admission as well as ack; effects=False settles in memory only (no receipt, no slot release)."""
     settled = set()
     for aid, record in list(attempts.items()):
         if time.monotonic() >= deadline:
@@ -704,12 +704,14 @@ def reconcile(attempts, rows, history, deadline):
             session = session_evidence(record, min(deadline, time.monotonic() + 1))
             if session:
                 record['session'], record['phase'] = session, 'launched'
-                receipt(record, 'launched')
+                if effects:
+                    receipt(record, 'launched')
         if not terminal and record.get('phase') == 'launched' and marker(record['doc']) != record.get('initial_marker') and session_ended(record, deadline) and time.monotonic() < deadline and worker_state(record['doc'], max(.01, deadline - time.monotonic())) == 'wrapped':
             terminal = 'complete'
         if terminal:
-            receipt(record, terminal)
-            release_reservation(record)
+            if effects:
+                receipt(record, terminal)
+                release_reservation(record)
             del attempts[aid]
             settled.add(aid)
         # A copied manifest can retain an old attempt after another manifest
@@ -722,6 +724,31 @@ def reconcile(attempts, rows, history, deadline):
         aid = row.get('attempt', {}).get('attempt_id')
         if aid in attempts:
             row['attempt'] = attempts[aid].copy()
+
+
+def ownership_check(attempts, manifest, doc, name, keys):
+    """begin's family ownership refusals, shared with the read-only admit a dry run uses."""
+    if any(r['doc'] == doc or r['name'] == name or set(r['keys']) & set(keys) for r in attempts.values()):
+        raise Refused('family already owns worker or ticket')
+    legacy_deadline = time.monotonic() + 5
+    for sibling in manifest.parent.glob('*.fleet.json'):
+        listed = read(sibling)
+        for row in listed.get('workers', []) + listed.get('legs', []):
+            if row.get('registration') != 'pending' and (row.get('doc') == doc or set(worker_keys(row['doc'])) & set(keys)):
+                if time.monotonic() >= legacy_deadline or worker_state(row['doc'], max(.01, legacy_deadline - time.monotonic())) != 'wrapped':
+                    raise Refused('unknown legacy family ownership')
+
+
+def admit_read_only(manifest, doc, name):
+    """The admission a real launch's begin and check make, with no lock, no write and no receipt."""
+    value = snapshot(manifest)
+    if value['mode'] != 'active':
+        raise Refused('fleet-paused')
+    attempts = read(manifest.parent / 'fleet-control.json').get('attempts', {})
+    reconcile(attempts, read(manifest).get('workers', []), receipts(set(attempts)), time.monotonic() + 5, effects=False)
+    doc = str(Path(doc).resolve())
+    ownership_check(attempts, manifest, doc, name, worker_keys(doc))
+    return value
 
 
 def run(args):
@@ -764,8 +791,8 @@ def run(args):
             raise Refused('settle refused: the doc is not a managed worker')
         return {'managed': False, 'administrative': bool(args.doc and (Path(args.doc).resolve().parent / 'fleet-control.json').exists())}
     anchor = manifest.parent / 'fleet-control.json'
-    if args.op == 'resolve':
-        value = snapshot(manifest)
+    if args.op in ('resolve', 'admit'):
+        value = admit_read_only(manifest, args.doc, args.name) if args.op == 'admit' else snapshot(manifest)
         return dict(value, managed=True, manifest=str(manifest), slots=str(slots_root()))
     with lock(manifest), lock(anchor):
         value = snapshot(manifest)
@@ -826,15 +853,7 @@ def run(args):
             if args.attempt_id in history:
                 raise Refused('attempt already has receipt history')
             keys = worker_keys(doc)
-            if any(r['doc'] == doc or r['name'] == args.name or set(r['keys']) & set(keys) for r in attempts.values()):
-                raise Refused('family already owns worker or ticket')
-            legacy_deadline = time.monotonic() + 5
-            for sibling in manifest.parent.glob('*.fleet.json'):
-                listed = read(sibling)
-                for row in listed.get('workers', []) + listed.get('legs', []):
-                    if row.get('registration') != 'pending' and (row.get('doc') == doc or set(worker_keys(row['doc'])) & set(keys)):
-                        if time.monotonic() >= legacy_deadline or worker_state(row['doc'], max(.01, legacy_deadline - time.monotonic())) != 'wrapped':
-                            raise Refused('unknown legacy family ownership')
+            ownership_check(attempts, manifest, doc, args.name, keys)
             matches = [w for w in rows if w.get('doc') == doc]
             if not matches:
                 result = subprocess.run(['bash', '-c', '. "$1/worker-identity.sh"; worker_label "$2"',
@@ -933,7 +952,7 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('op', choices=['resolve', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'disposition', 'owners', 'reservation', 'settle'])
+    parser.add_argument('op', choices=['resolve', 'admit', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'disposition', 'owners', 'reservation', 'settle'])
     parser.add_argument('--doc', default='')
     parser.add_argument('--manifest', default='')
     parser.add_argument('--name', default='')

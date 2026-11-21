@@ -30,13 +30,19 @@
 #
 # Usage: headed-arm-worker.sh [--dry-run] [--fleet <manifest>] <session-name> <handover-doc> \
 #                           <signal-file> <deadline-epoch> <log> [model]
-# Run detached, same as headed-arm.sh itself:
-#   setsid nohup bash headed-arm-worker.sh ... >/dev/null 2>&1 &
+# Run detached, stderr kept in a file beside the log:
+#   setsid nohup bash headed-arm-worker.sh --fleet <manifest> ... <log> <model> >>"<log>.launcher.out" 2>&1 &
+# A real launch first appends `LAUNCH-START <session> epoch=<s>` to <log>. Exit 0 appends `LAUNCH-OK <session>
+# <outcome>`; every non-zero exit, the seam guard's exit 96 included, appends one `LAUNCH-REFUSED <session> <reason>`
+# line there and in the owning chief's console inbox (--chief, else HIMMEL_CONSOLE_NAME) when that inbox exists.
+# chief-kit/launch-confirm.sh --since <epoch> reads the lines after that attempt's LAUNCH-START to confirm it started.
 #
 # --dry-run: prints the argv this would hand to headed-arm.sh (name, doc,
 # signal, deadline, log, model, resolved context) plus the worker env this
 # wrapper adds, and exits 0 without touching the signal/deadline wait loop,
-# the claim lock, or konsole. The test seam - but not the ONLY proof: the
+# the claim lock, or konsole. It runs, read only, the fleet admission a real launch makes
+# before it claims a slot (the manifest reference, a paused fleet, a family that already owns
+# the worker or ticket), so those refusals exit 10 under --dry-run too. The test seam - but not the ONLY proof: the
 # suite also drives the real (non-dry) path with KONSOLE_CMD/PGREP_CMD stubs
 # (the same seams headed-arm.sh's own suite uses) to confirm the launched
 # argv matches what --dry-run predicted.
@@ -83,7 +89,8 @@
 # Exit 10: the fleet-size cap refused the launch - see the
 # preflight call below - or managed fleet control refused it: fleet-launch.sh
 # cannot be loaded, fleet_launch_prepare refused (the fleet-paused refusal
-# note), or the managed hand-off to headed-arm.sh refused. Exit 11: the $LANE bank is
+# note; under --dry-run, fleet_runtime.py admit refused the same way), or the
+# managed hand-off to headed-arm.sh refused. Exit 11: the $LANE bank is
 # exhausted (SKIPPED-BANK) - same preflight call, distinct refusal reason.
 # Exit 12: on macOS, worker_propagate_env refused a worker-process
 # env value that contains whitespace other than a space - neither
@@ -228,20 +235,69 @@ set -u
 # Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
 # what is sourced before the seam guard.
 case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
+_LAUNCH_REFUSAL_SKIP=0 _LAUNCH_REFUSAL_FWD=0 _LAUNCH_REFUSAL_CAUSE='' _LAUNCH_REFUSAL_LINE=''
+_LAUNCH_ATTEMPT_ID='' _LAUNCH_OUTCOME='' _LAUNCH_OUTCOME_FILE=''
+for _lr_a in "$@"; do [ "$_lr_a" != --dry-run ] || _LAUNCH_REFUSAL_SKIP=1; done
+unset _lr_a
+_LR_NAME='' _LR_LOG='' _LR_CHIEF="${HIMMEL_CONSOLE_NAME:-}"
+_lr_scan() {
+    local n=0
+    while [ "$#" -gt 0 ]; do
+        if [ "$n" -eq 0 ]; then
+            case "$1" in
+                --chief) _LR_CHIEF="${2:-}"; shift; [ "$#" -eq 0 ] || shift; continue ;;
+                --fleet|--lane|--profile|--rm-release|--context-guard) shift; [ "$#" -eq 0 ] || shift; continue ;;
+                --*) shift; continue ;;
+            esac
+        fi
+        n=$((n + 1))
+        [ "$n" -ne 1 ] || _LR_NAME="$1"
+        [ "$n" -ne 5 ] || _LR_LOG="$1"
+        shift
+    done
+}
+_lr_scan "$@"
+if [ "$_LAUNCH_REFUSAL_SKIP" -ne 1 ] && [ -n "$_LR_LOG" ]; then
+    printf '%s LAUNCH-START %s epoch=%s\n' "$(date +%F_%T)" "${_LR_NAME:-<unnamed>}" "$(date +%s)" >> "$_LR_LOG"
+fi 2>/dev/null
+# shellcheck disable=SC2329  # called from _launch_refusal_exit, which only the EXIT trap invokes
+_launch_refused_notify() {
+    local name="${NAME:-${_LR_NAME:-}}" log="${LOG:-$_LR_LOG}" chief="${CHIEF_NAME:-$_LR_CHIEF}" reason root inbox guard_rc=0
+    [ -n "$name" ] || name='<unnamed>'
+    reason="$_LAUNCH_REFUSAL_LINE"
+    [ -n "$reason" ] || reason="${_LAUNCH_REFUSAL_CAUSE:-refused} (exit $1, full refusal on the launcher stderr)"
+    reason="$(printf '%s' "$reason" | tr '\n' ' ' | LC_ALL=C tr -d '\000-\037')"
+    [ -z "$log" ] || printf '%s LAUNCH-REFUSED %s %s\n' "$(date +%F_%T)" "$name" "$reason" >> "$log"
+    case "$chief" in ''|.|..|*[!A-Za-z0-9._-]*) return 0 ;; esac
+    [ "${HIMMEL_TEST_FIXTURE:-}" != 1 ] || [ -n "${BRIDGE_ROOT:-}" ] || return 0
+    root="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}"
+    bash "$_csg_dir/../../lib/test-run-guard" check --quiet launch-refused-route "$root" || guard_rc=$?
+    [ "$guard_rc" != 77 ] || return 0
+    # shellcheck source=scripts/lib/merge-block-alert.sh
+    . "$_csg_dir/../../lib/merge-block-alert.sh" || return 0
+    inbox="$(_mba_chief_inbox_path "$root" "$chief")" || return 0
+    _mba_append_if_exists "$inbox" "- $(date +%H:%M) LAUNCH-REFUSED $name $reason${log:+ (log $log)}"
+    return 0
+}
+_launch_refusal_note() { _LAUNCH_REFUSAL_CAUSE="$1"; _LAUNCH_REFUSAL_LINE="${2:-}"; return 0; }
+# shellcheck disable=SC2329  # invoked by the EXIT trap below, which the full handler replaces once the seam guard passes
+_lr_guard_exit() {
+    local rc=$?
+    [ "$rc" -ne 0 ] && [ "$_LAUNCH_REFUSAL_SKIP" -ne 1 ] || return 0
+    [ -n "$_LAUNCH_REFUSAL_LINE" ] || _launch_refusal_note seam-guard "the chokepoint seam guard refused this launch environment"
+    _launch_refused_notify "$rc"
+}
+trap '_lr_guard_exit 2>/dev/null' EXIT
 _csg_lib="$_csg_dir/../../lib/chokepoint-seam-guard.sh"
 # shellcheck source=scripts/lib/chokepoint-seam-guard.sh
 # shellcheck disable=SC1091
 if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
     echo "headed-arm-worker.sh: cannot load $_csg_lib - refusing" >&2
+    _launch_refusal_note seam-guard "cannot load $_csg_lib"
     exit 96
 fi
 chokepoint_seam_guard scripts/handover/chief-kit/headed-arm-worker.sh || exit 96
 
-_LAUNCH_REFUSAL_SKIP=0 _LAUNCH_REFUSAL_FWD=0 _LAUNCH_REFUSAL_CAUSE='' _LAUNCH_REFUSAL_LINE=''
-_LAUNCH_ATTEMPT_ID='' _LAUNCH_OUTCOME='' _LAUNCH_OUTCOME_FILE=''
-for _lr_a in "$@"; do [ "$_lr_a" != --dry-run ] || _LAUNCH_REFUSAL_SKIP=1; done
-unset _lr_a
-_launch_refusal_note() { _LAUNCH_REFUSAL_CAUSE="$1"; _LAUNCH_REFUSAL_LINE="${2:-}"; return 0; }
 # shellcheck disable=SC2329  # called from _launch_refusal_exit, which only the EXIT trap invokes
 _lr_json() {
     local s="${2%%$'\n'*}"
@@ -260,7 +316,7 @@ _lr_json() {
 # shellcheck disable=SC2329  # called by the EXIT trap and the attempt start
 _lr_phase() {
     case "$1" in
-        brief-lint|denial-unacked|handover-root|unguarded-checkout) echo brief-validation ;;
+        brief-lint|denial-unacked|handover-root|unguarded-checkout|worktree-missing) echo brief-validation ;;
         bank-exhausted|fleet-cap|fleet-duplicate|fleet-paused) echo usage-preflight ;;
         bus-register|bus-name-too-long) echo bus-registration ;;
         headed-arm|dedup-indeterminate|konsole-up-claude-unseen|signal) echo handoff ;;
@@ -292,6 +348,12 @@ _launch_attempt_start() {
 # shellcheck disable=SC2329  # invoked by the EXIT trap
 _launch_refusal_exit() {
     local rc=$?
+    if [ "${DRY_RUN:-0}" != 1 ] && [ "$_LAUNCH_REFUSAL_SKIP" -ne 1 ]; then
+        if [ "$rc" -ne 0 ]; then _launch_refused_notify "$rc"
+        elif [ -n "${LOG:-$_LR_LOG}" ]; then
+            printf '%s LAUNCH-OK %s %s\n' "$(date +%F_%T)" "${NAME:-${_LR_NAME:-<unnamed>}}" "${_LAUNCH_OUTCOME:-indeterminate}" >> "${LOG:-$_LR_LOG}"
+        fi
+    fi
     # the readiness role holds a lease the launcher acquired for a session that has not been started yet: any exit between
     # that acquire and the child's start (a refusal, the managed fleet hand-off refusal, a fatal signal) releases the
     # launcher's OWN captured token. The existing receipt and fleet handling below is unchanged.
@@ -842,10 +904,21 @@ _launch_attempt_start
 if [ "$DRY_RUN" -ne 1 ]; then
     # shellcheck source=scripts/lib/fleet-launch.sh
     . "$_csg_dir/../../lib/fleet-launch.sh" || exit 10
-    if ! FLEET_LAUNCH_WORKER_INTENT=1 fleet_launch_prepare "$DOC" "$NAME" "$FLEET_MANIFEST" "$_LAUNCH_ATTEMPT_ID" "$LANE"; then
-        _launch_refusal_note fleet-paused
+    _fl_err="$(mktemp "${TMPDIR:-/tmp}/headed-arm-fleet.XXXXXX" 2>/dev/null)" || _fl_err=/dev/null  # swallow-ok: no temp file loses only the reason text, the refusal still exits 10
+    _fl_rc=0 _fl_line=''
+    FLEET_LAUNCH_WORKER_INTENT=1 fleet_launch_prepare "$DOC" "$NAME" "$FLEET_MANIFEST" "$_LAUNCH_ATTEMPT_ID" "$LANE" 2>"$_fl_err" || _fl_rc=$?
+    if [ "$_fl_err" != /dev/null ]; then
+        cat -- "$_fl_err" >&2
+        _fl_line="$(sed -n 's/^fleet-runtime: //p' "$_fl_err" | tail -n 1)"
+        rm -f -- "$_fl_err"
+    fi
+    if [ "$_fl_rc" -ne 0 ]; then
+        _launch_refusal_note fleet-paused "$_fl_line"
         exit 10
     fi
+    unset -v _fl_err _fl_rc _fl_line
+elif ! FLEET_LAUNCH_WORKER_INTENT=1 python3 -I "$_csg_dir/../../lib/fleet_runtime.py" admit --doc "$DOC" --manifest "$FLEET_MANIFEST" --name "$NAME" >/dev/null; then
+    exit 10
 fi
 if [ "$DRY_RUN" -ne 1 ]; then _lr_row attempt-started null; fi
 
@@ -1341,6 +1414,7 @@ case "$_worker_rcwd" in
     _worker_wt_phys="$(cd -P "$_worker_rcwd" 2>/dev/null && pwd -P)" || _worker_wt_phys=""
     if [ -z "$_worker_wt_top" ] || [ "$_worker_wt_top" != "$_worker_wt_phys" ]; then
         _worker_wt_base="${_worker_rcwd%/}"; _worker_wt_base="${_worker_wt_base##*/}"
+        _launch_refusal_note worktree-missing "the doc's resume_cwd ($_worker_rcwd) is not an existing git worktree"
         echo "headed-arm-worker: refusing to launch $NAME: the doc's resume_cwd ($_worker_rcwd) is not an existing git worktree. Create it first, from the repo's primary checkout: bash scripts/worktree.sh new ${_worker_wt_base/+//} --no-prune" >&2
         exit 2
     fi
