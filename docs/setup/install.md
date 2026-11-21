@@ -430,6 +430,16 @@ scripts/hooks/lib/guard-unwrap.sh
 scripts/hooks/lib/shell-tokenize.sh
 scripts/guardrails/lib.sh
 scripts/lib/py-armor.sh
+scripts/lib/prim.sh
+scripts/lib/project-mode.sh
+scripts/lib/forge.sh
+scripts/lib/forge-github.sh
+scripts/lib/forge-bitbucket.sh
+scripts/lib/coderabbit-trigger-ledger.sh
+scripts/lib/coderabbit-available.sh
+scripts/lib/branch-shipped.sh
+scripts/lib/worktree-inuse.sh
+scripts/lib/worktree-fresh-lock.sh
 scripts/clean-garden.sh
 scripts/worktree.sh
 scripts/clean.sh

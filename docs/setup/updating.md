@@ -384,7 +384,6 @@ himmel ships as two delivery layers, and only one of them is a "plugin":
 | `settings.json` wiring, `scripts/*`, `CLAUDE.md`, docs | your checkout | **`git pull`** |
 | himmel plugins (`marketplace/plugins/*`) | your checkout, sourced `./plugins/*` | see below |
 | Upstream plugin (`claude-obsidian`) | GitHub `AgriciDaniel/claude-obsidian`, **tag-pinned** | only when the pin is bumped (= a `git pull`) |
-| Vendored plugin (`obsidian`) | GitHub, **SHA-pinned** | only when the pin is bumped (= a `git pull`) |
 
 The hooks and commands are **not plugins**: they execute out of your repo
 checkout, so nothing but a pull changes them.
@@ -397,7 +396,7 @@ The himmel *plugins* depend on **how the marketplace was registered**:
   has nothing to fetch over the network; `autoUpdate` only **re-syncs plugins
   from the on-disk dir**, which changes only when you `git pull`. So with the
   default setup, **everything is pull-gated**, plugins included.
-- **Direct-install path** (`claude plugin marketplace add yotamleo/himmel`) uses a
+- **Direct-install path** (`claude plugin marketplace add yotamleo-org/Himmel`) uses a
   **github** source. There `autoUpdate` pulls a separate Claude-managed clone from
   GitHub, so *plugin* updates arrive without pulling your working checkout, but
   the core hooks and commands still run from your checkout and **still need a
@@ -472,19 +471,25 @@ After a clean chain the **.env migration** runs; see
 [below](#the-env-migration).
 
 After the chain (win or lose, these never abort and always run,
-including on a chain failure), six **best-effort advisory
-steps** run: a codex plugin re-sync, a
-statusLine hud re-wire, a **plugin install-state report**
-(`marketplace update` only re-syncs *already-installed*
+including on a chain failure), a block of **best-effort advisory
+steps** runs, among them: a codex plugin re-sync, the agent CLI sync, a
+statusLine hud re-wire, the graphify pin sync and graph pull, the config UI
+rebuild, the cli-proxy host roll, the installed-marketplaces catch-up, the
+himmel plugin install, update and cache refresh, a **plugin install-state
+report** (`marketplace update` only re-syncs *already-installed*
 plugins, so it can't surface a himmel plugin that is missing or being served
 from a non-`@himmel` marketplace; the report prints the
 `claude plugin install …@himmel` / migrate commands for any gap; run it
 standalone with `bash scripts/himmel-update.sh --plugins-check`), a lean
-plugin-set reconcile, stale cadence-runner / guardrail-mode
-block drift checks, and a **retired-plugin removal offer** (`scripts/machine-setup/remove-retired-plugin.sh`: silent when the retired
+plugin-set reconcile, the `i-have-adhd` always-on flag, a **retired-plugin
+removal offer** (`scripts/machine-setup/remove-retired-plugin.sh`: silent when the retired
 response-compression plugin is absent; on a TTY it asks `Remove now? [Y/n]`
 with the default being remove; a non-interactive run prints the advisory and
-the two manual commands and removes nothing).
+the two manual commands and removes nothing), stale cadence-runner and
+guardrail-mode block checks, the node/npm/bun toolchain report, the probe-tool
+sync, a dependency-readiness report, the working-principles backfill, the
+installer-drift pass and the T3 provider sync. The list in
+`scripts/himmel-update.sh` is the source of truth.
 
 ### The .env migration
 
@@ -862,9 +867,10 @@ unconditional rather than drift-driven:
   routine no-op.
 
 `--only <item>` re-runs any single step (`pull`, `marketplace`, `jira_cli`,
-`qmd_fork`, `hermes`, `luna_template`, `graphify`, `cli_proxy`, `marketplaces`,
-`toolchain`, `t3_providers`) without walking the chain, for the one thing that
-did not land. `t3_providers` makes every launch profile a T3 Code provider
+`config_ui`, `qmd_fork`, `hermes`, `luna_template`, `graphify`, `graph`,
+`cli_proxy`, `marketplaces`, `toolchain`, `clis`, `plugins`, `plugin-refresh`,
+`tools`, `drift`, `drift-check`, `env_migration`, `t3_providers`) without
+walking the chain, for the one thing that did not land. `t3_providers` makes every launch profile a T3 Code provider
 instance (`docs/internals/t3-provider-instances.md`); it also runs as the last
 advisory step of a full update, and skips with one line when T3 is not installed.
 
@@ -948,14 +954,14 @@ that `settings.local.json` protects.)
   rebase it into your branch as you would any upstream change. The hook files
   resolve from `$CLAUDE_PROJECT_DIR`, so the updated file is on disk as long as
   the default branch is checked out at pull time.
-- **Forked `yotamleo/Himmel`** instead of cloning it directly? Add an `upstream`
+- **Forked `yotamleo-org/Himmel`** instead of cloning it directly? Add an `upstream`
   remote and `git pull upstream main`; a plain `git pull origin` only pulls your
   fork.
 - Whether the *default* registration should switch to a github (floating) source
   so plugins auto-deliver without a pull is a deliberate trade-off (it would leave the core hooks pull-only regardless).
 - **Vendored plugin served from its external marketplace?** If `--plugins-check`
-  flags `claude-obsidian` / `obsidian` as "served from another marketplace", an
-  external auto-updating copy is shadowing the himmel SHA pin. Migrate it to the
+  flags `claude-obsidian` as "served from another marketplace", an
+  external auto-updating copy is shadowing the himmel tag pin. Migrate it to the
   pinned `@himmel` source **operator-present, in a fresh session**:
   `bash scripts/machine-setup/migrate-plugin-to-himmel.sh --apply <name@market> …`
   (it mutates `settings.json` via `claude plugin`, so it is an operator step).
