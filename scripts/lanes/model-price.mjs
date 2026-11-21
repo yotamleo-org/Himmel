@@ -31,13 +31,11 @@ export function loadPrices(path = TABLE) {
   return rows;
 }
 
-// First row whose prefix the model id starts with, else null.
 export function priceFor(model, rows) {
   if (!model) return null;
   return rows.find((r) => model.startsWith(r.prefix)) ?? null;
 }
 
-// call: { model, usage } with the transcript usage keys. `asModel` prices the call at that model's row.
 export function priceCall(call, rows, asModel) {
   const row = priceFor(asModel ?? call.model, rows);
   if (!row) return { priced: false, model: call.model, usd: null };
@@ -45,7 +43,6 @@ export function priceCall(call, rows, asModel) {
   const split = u.cache_creation;
   const counts = [u.input_tokens, u.output_tokens, u.cache_read_input_tokens,
     split ? split.ephemeral_5m_input_tokens : u.cache_creation_input_tokens, split ? split.ephemeral_1h_input_tokens : 0];
-  // a missing count is 0; a count that is not a finite non-negative number makes the call malformed, never NaN
   if (counts.some((n) => n != null && !(typeof n === 'number' && Number.isFinite(n) && n >= 0))) {
     return { priced: false, malformed: true, model: call.model, usd: null };
   }
@@ -79,7 +76,6 @@ function count(v, name) {
   return v;
 }
 
-// usage: the transcript usage object. Throws UsageError('malformed-usage' | 'cache-split-mismatch').
 export function normalizeUsage(usage) {
   if (!usage || typeof usage !== 'object' || Array.isArray(usage)) throw new UsageError('malformed-usage', 'usage is not an object');
   const split = usage.cache_creation;
@@ -113,10 +109,6 @@ function idOf(v) {
   return typeof v === 'string' && v !== '' ? v : null;
 }
 
-// One transcript record folded into one transcript's call state. Pure: `previous` is a Map of key to the stored
-// entry {messageId, requestId, model, usage}; the caller stores `next` under `key`.
-// record: the parsed transcript line; sourceOffset: the decimal byte offset of its line.
-// Throws UsageError (code identity-conflict | synthetic-nonzero | malformed-usage | cache-split-mismatch, with .key).
 export function foldUsageCall(previous, record, sourceOffset) {
   const message = record?.message ?? {};
   const messageId = idOf(message.id);
@@ -165,8 +157,6 @@ function* linesWithOffsets(file) {
   for (const [text, pos] of bufferLines(readFileSync(file))) yield [text, pos];
 }
 
-// Read-only walk of a transcripts dir. since: ISO date; a call whose FIRST record is older than it, or has no
-// parseable timestamp, is skipped, whatever a later correction of the same call says.
 export function priceTranscripts(dir, rows, { since, priceAs } = {}) {
   const sinceMs = since === undefined ? null : Date.parse(since);
   if (Number.isNaN(sinceMs)) throw new Error(`--since is not a date: ${since}`);
@@ -357,9 +347,6 @@ function callRows(f, { state, meta }, ctx) {
 const byTimeThenId = (a, b) => (a.first_timestamp < b.first_timestamp ? -1 : a.first_timestamp > b.first_timestamp ? 1 : a.call_id < b.call_id ? -1 : a.call_id > b.call_id ? 1 : 0);
 const stringOrNull = (v) => (typeof v === 'string' ? v : null);
 
-// manifest: the parsed projection manifest. opts.manifestSha256: SHA256 of its exact bytes. opts.baseDir resolves a
-// relative root. opts.io swaps the filesystem calls (a read spy). Returns {calls, coverage, exitCode}; an invalid
-// export carries no calls. Nothing is persisted and no title is read.
 export function projectCalls(manifest, prices, { manifestSha256 = null, baseDir = null, io = REAL_IO } = {}) {
   const priceSha = priceTableSha256(prices);
   const errors = [];
@@ -529,8 +516,6 @@ function validateOne(e, v) {
   if (footer) checkFooter(footer, rows, e, parsed, v);
 }
 
-// Pure: no I/O, no transcript reread, no repricing. exports: [{lines, producerExitCode, manifestBytes, expectedManifestSha256}],
-// expectedSessions: [{provider, parent, session}], expectations: {price_sha256, usage_rule, timezone}.
 export function validateCallExport(exports, expectedSessions, expectations) {
   if (!Array.isArray(exports) || !Array.isArray(expectedSessions) || !isObject(expectations)
     || ['price_sha256', 'usage_rule', 'timezone'].some((k) => typeof expectations[k] !== 'string')) throw new TypeError('validateCallExport: bad arguments');
@@ -592,8 +577,6 @@ function declaredPath(p, carrier, io) {
   return real;
 }
 
-// Synchronous. Reads EXPORT_SET.json and only the export and projection-manifest files it declares, all confined to the
-// carrier directory. Returns {exports, expectedSessions, expectations}; throws CallExportLoadError for a handled failure.
 export function loadExportSet(path, { io = REAL_IO } = {}) {
   if (typeof path !== 'string') throw new TypeError('loadExportSet: path must be a string');
   let setReal;

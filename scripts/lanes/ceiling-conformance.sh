@@ -75,8 +75,6 @@ NF < 4 { next }
     is_chief = (name ~ /-(console|chief)$/)
     is_worker = (name ~ /-worker/) && !is_chief
 
-    # A profile may give a claude-sonnet-5 or claude-opus-5 worker 850000; any other
-    # worker is 200000.
     if (is_worker)          { drift = (ceiling != "200000" && !(ceiling == "850000" && ($3 ~ /^claude-sonnet-5/ || $3 ~ /^claude-opus-5/))) }
     else if (is_chief) { drift = 0 }
     else                 { drift = (ceiling == "auto" || ceiling == "unset") }
@@ -85,10 +83,6 @@ NF < 4 { next }
     if (drift) drifted = drifted (drifted == "" ? "" : ",") name
 }
 END {
-    # An incomplete scan cannot certify conformance -- report
-    # which pids it could not judge and fall back to the same "cannot tell"
-    # summary the pgrep-failure path above already uses, instead of ok/DRIFT
-    # over a partial table.
     if (degraded != "") {
         print "scan-degraded:" degraded
         print "ceiling=?"

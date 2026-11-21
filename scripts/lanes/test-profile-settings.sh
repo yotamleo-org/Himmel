@@ -16,7 +16,6 @@ FAILED=0
 ok() { echo "PASS $1"; }
 bad() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
 
-# Registry B differs from the shipped one in what `user` resolves to.
 python3 - "$HERE/plugin-profiles.json" "$TMP/registry-b.json" <<'E'
 import json, sys
 d = json.load(open(sys.argv[1]))
@@ -42,8 +41,6 @@ cmp -s "$A1" "$B"; cmp_rc=$?
 bash "$PS" no-such-profile >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && ok "T5 unknown profile fails closed (rc=2)" || bad "T5 rc=$rc"
 
-# --mcp-config resolves the profile's mcpServers allowlist to a
-# content-addressed --mcp-config file; a profile with no allowlist prints nothing.
 M=$(bash "$PS" chief --mcp-config); rc=$?
 [ "$rc" = 0 ] && ok "T6 chief --mcp-config rc=0" || bad "T6 rc=$rc"
 case "$M" in */chief.mcp.json) ok "T6 basename is <profile>.mcp.json" ;; *) bad "T6 basename: $M" ;; esac
@@ -58,9 +55,6 @@ N=$(bash "$PS" user --mcp-config); rc=$?
 bash "$PS" no-such-profile --mcp-config >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && ok "T8 unknown profile --mcp-config fails closed (rc=2)" || bad "T8 rc=$rc"
 
-# T9: the settings resolve but the allowlist names an undefined server, so only
-# the --mcp-config step fails: the fail-closed branch itself (a `|| true` on it
-# must turn this red, which T8's earlier unknown-profile refusal cannot).
 python3 - "$HERE/plugin-profiles.json" "$TMP/registry-c.json" <<'E'
 import json, sys
 d = json.load(open(sys.argv[1]))
@@ -72,8 +66,6 @@ PLUGIN_PROFILES_REGISTRY="$TMP/registry-c.json" bash "$PS" chief >/dev/null 2>&1
 O=$(PLUGIN_PROFILES_REGISTRY="$TMP/registry-c.json" bash "$PS" chief --mcp-config 2>/dev/null); rc=$?
 [ "$rc" = 2 ] && [ -z "$O" ] && ok "T9 undefined mcp server: --mcp-config fails closed (rc=2, no path)" || bad "T9 mcp rc=$rc out=[$O]"
 
-# T10-T13: the readiness role (C0s cycle 1). A scratch HOME and CLAUDE_CONFIG_DIR keep the resolver
-# off the operator's real plugin universe and settings; nothing here launches a model.
 RH="$TMP/readiness-home"; mkdir -p "$RH/.claude"
 rprof() { HOME="$RH" CLAUDE_CONFIG_DIR="$RH/.claude" bash "$PS" "$@"; }
 R=$(rprof readiness); rc=$?
@@ -111,7 +103,6 @@ json.dump(d, open(sys.argv[2], "w"))
 E
 E12=$(PLUGIN_PROFILES_REGISTRY="$TMP/registry-e.json" rprof readiness --mcp-config 2>&1 >/dev/null); rc=$?
 case "$E12" in *'registry invalid'*readiness*mcpServers*) [ "$rc" = 2 ] && ok "T12 readiness with a named MCP server fails closed (rc=2, names the registry error)" || bad "T12 mcp rc=$rc" ;; *) bad "T12 mcp wrong refusal reason (rc=$rc): $E12" ;; esac
-# profile-settings.sh takes a single profile name; a list reaches only the resolver CLI itself.
 for list in readiness,worker-impl worker-impl,readiness; do
     E13=$(cd "$RH" && HOME="$RH" CLAUDE_CONFIG_DIR="$RH/.claude" node "$HERE/plugin-profiles.mjs" "$list" 2>&1 >/dev/null); rc=$?
     case "$E13" in *'cannot be composed'*) [ "$rc" = 2 ] && ok "T13 $list refuses to compose (rc=2)" || bad "T13 $list rc=$rc" ;; *) bad "T13 $list wrong refusal reason (rc=$rc): $E13" ;; esac

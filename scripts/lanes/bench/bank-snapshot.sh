@@ -18,12 +18,6 @@
 # this script sets none of them, so the same test hooks bank-status.test.mjs
 # already relies on work here too.
 set -u
-# pipefail is load-bearing here, not hygiene (codex CR): every command below is
-# `bun usage-status.ts | node core`. Without it, a bun failure is masked — node
-# reads EMPTY stdin, both lanes resolve to "unmeasured", no threshold can trip,
-# and preflight/check exit 0. That is a fail-OPEN on the one gate whose entire
-# job is to REFUSE when a bank is exhausted. With pipefail the pipeline's status
-# reflects bun's, so `exit $?` propagates the failure and the batch stops.
 set -o pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

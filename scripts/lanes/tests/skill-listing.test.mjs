@@ -30,14 +30,13 @@ test('skillOverrides: every non-plugin skill and command is name-only, plugin sk
   assert.equal(s.skillOverrides['find-docs'], 'name-only');
   assert.equal(s.skillOverrides.worktree, 'name-only');
   assert.equal(Object.hasOwn(s.skillOverrides, 'impeccable'), false);
-  assert.equal(s.skillOverrides['update-config'], 'name-only'); // a bundled skill
+  assert.equal(s.skillOverrides['update-config'], 'name-only');
   assert.ok(BUILTIN_SKILL_NAMES.includes('update-config'));
 });
 
 test('fraction: sized on the UNSHRUNK enabled plugin skills (overrides do not help plugin skills), floor 0.01, 3 decimals', () => {
   const big = [plugin('a', 4000, 'p1'), plugin('b', 4000, 'p1'), plugin('c', 4000, 'p2')];
   const s = skillListingSettings({ entries: big, enabledIds: ['p1@himmel', 'p2@himmel'], requiredIds: ['p1@himmel'] });
-  // each ~ (1+2+4000+3)/4 = 1002 tok -> 3006 plus name-only tokens and the unscanned reserve, over 200k
   assert.ok(s.skillListingBudgetFraction > 0.015 && s.skillListingBudgetFraction < 0.03, String(s.skillListingBudgetFraction));
   assert.equal(s.skillListingBudgetFraction, Math.ceil(s.skillListingBudgetFraction * 1000) / 1000);
   const small = skillListingSettings({ entries: [plugin('a', 10, 'p1')], enabledIds: ['p1@himmel'], requiredIds: ['p1@himmel'] });
@@ -56,14 +55,12 @@ test('fraction above the 0.05 sanity cap is refused, not emitted', () => {
   assert.throws(() => skillListingSettings({ entries, enabledIds: ['p1@himmel'], requiredIds: ['p1@himmel'], window: 200000 / 2 }), /exceeds the 0\.05 sanity cap/);
 });
 
-// The plugin match is the plugin-cache DIRECTORY COMPONENT.
 test('fraction: a skill DIRECTORY named like an enabled plugin does not count toward that plugin', () => {
   const decoy = { ...plugin('p1', 40000, 'other'), path: '/h/.claude/plugins/cache/himmel/other/1.0/skills/p1/SKILL.md' };
   const s = skillListingSettings({ entries: [plugin('a', 10, 'p1'), decoy], enabledIds: ['p1@himmel'], requiredIds: ['p1@himmel'] });
   assert.ok(s.skillListingBudgetFraction < 0.02, String(s.skillListingBudgetFraction));
 });
 
-// The unscanned reserve is a scan of skills-dir command trees.
 const tmpDirs = [];
 after(() => { for (const d of tmpDirs) rmSync(d, { recursive: true, force: true }); });
 const mkConfigDir = (trees) => {
@@ -108,7 +105,6 @@ const selfLoop = (t, dir) => {
   }
 };
 
-// A command tree path the scan could not read is reported, as scanSkillCosts does.
 test('scanCommandTrees: a skipped (ELOOP) command path lands in the caller\'s skipped array, entries still returned', (t) => {
   const dir = mkConfigDir({ t: { 'ok.md': '---\ndescription: d\n---\nbody\n' } });
   if (!selfLoop(t, dir)) return;
@@ -157,7 +153,6 @@ test('resolveProfile: opts.skillEntries adds skillOverrides + budget fraction to
 
 test('resolveProfile: without opts.skillEntries the output is unchanged (goldens stay byte-identical)', () => {
   const r = resolveProfile(registry, 'user', {});
-  // A profile without artifact: true also carries the default Artifact deny; no listing keys.
   assert.deepEqual(Object.keys(r), ['enabledPlugins', 'permissions']);
 });
 
@@ -166,7 +161,6 @@ test('resolveProfile: a profile with no required plugins (bare) gets no override
   assert.deepEqual(Object.keys(r), ['enabledPlugins', 'permissions'], 'no skillOverrides; permissions is the default Artifact deny');
 });
 
-// Omitting cwd at either forwarding seam loses project runtime names.
 const scopedListingFixture = () => {
   const configDir = mkConfigDir({});
   const cwd = join(configDir, 'checkout');
@@ -205,8 +199,6 @@ test('resolveProfile: forwards cwd to the project-scoped listing calculation', (
   assert.ok(current > userOnly, `${current} vs ${userOnly}`);
 });
 
-// The listing line is `<manifest name>:<skill> ...`, and the manifest
-// name (strict:true) can differ from the marketplace entry name the cache dir carries.
 test('fraction: a plugin listed under a longer manifest name costs more than under its entry name', () => {
   const entries = Array.from({ length: 4 }, (_, i) => plugin(`s${i}`, 1000, 'p1'));
   const base = { entries, enabledIds: ['p1@himmel'], requiredIds: ['p1@himmel'] };
@@ -215,7 +207,6 @@ test('fraction: a plugin listed under a longer manifest name costs more than und
   assert.ok(longer > same, `${longer} vs ${same}`);
 });
 
-// The window is the profile's own (contextMode 1m = 1_000_000), not a fixed 200k.
 const bigEntries = Array.from({ length: 20 }, (_, i) => plugin(`s${i}`, 2500, 'lean-skills'));
 const regWindow = (contextMode) => ({ ...registry, profiles: { ...registry.profiles, user: { enable: ['lean-skills@himmel'], contextMode, ...(contextMode === '1m' ? { autocompact: 1000000 } : {}) } } });
 

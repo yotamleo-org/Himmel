@@ -7,6 +7,11 @@
 #   sends agents to. A query or search question is first asked in both fleet
 #   vocabularies by scripts/qmd/vocab-expand.py (an expanded search runs as a
 #   lex-only query with --no-rerank); QMD_VOCAB_EXPAND=0 turns that off.
+#   Flags: qmd's lex parser reads a bare leading dash as a NOT, so a search
+#   for "claude -p" would return every doc except the ones about -p. The same
+#   step quotes each bare dash word ("-p", "--bg"), which qmd then matches as
+#   the literal term, expanded or not. A leading dash is therefore never a NOT
+#   here; a deliberate one is written -"term", which is passed on as typed.
 # Source it, then: qmd_bounded <secs> <cmd> [args...]
 #   rc      the command's own rc, or 124 when the deadline fired (as timeout(1))
 #   <secs>  whole seconds; 0 runs the command unbounded

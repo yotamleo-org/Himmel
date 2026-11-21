@@ -286,8 +286,26 @@ lex: console
 vec: the chief|" "$(t8 query "the chief")"
 assert_eq "T8c QMD_VOCAB_EXPAND=0 runs the argv as given" "search|-c|himmel|the chief|" "$(QMD_VOCAB_EXPAND=0 t8 search -c himmel "the chief")"
 assert_eq "T8d a question with no fleet word and no filler runs as given" "search|prompt cache|" "$(t8 search "prompt cache")"
-assert_eq "T8e a natural question, with filler or a dash word, passes through to qmd's own expansion" "query|how does the waiter wake -p|query|how does the waiter wake|" "$(t8 query "how does the waiter wake -p")$(t8 query "how does the waiter wake")"
-assert_eq "T8f a search naming no fleet word runs as given, filler or dash word or not" "search|how does the waiter wake -p|search|how does the waiter wake|" "$(t8 search "how does the waiter wake -p")$(t8 search "how does the waiter wake")"
+assert_eq "T8e a natural question passes through to qmd's own expansion, a dash word quoted" "query|--|how does the waiter wake \"-p\"|query|how does the waiter wake|" "$(t8 query "how does the waiter wake -p")$(t8 query "how does the waiter wake")"
+assert_eq "T8f a search naming no fleet word keeps its verb and words, a dash word quoted" "search|--|how does the waiter wake \"-p\"|search|how does the waiter wake|" "$(t8 search "how does the waiter wake -p")$(t8 search "how does the waiter wake")"
+
+if command -v qmd >/dev/null 2>&1; then
+    T9="$TMP/t9"
+    mkdir -p "$T9/corpus" "$T9/cfg/qmd" "$T9/cache"
+    printf '%s\n' 'claude -p runs one prompt and exits.' >"$T9/corpus/flag-doc.md"
+    printf '%s\n' 'claude starts an interactive session.' >"$T9/corpus/other.md"
+    t9() {
+        env -u QMD_EMBED_MODEL -u QMD_RERANK_MODEL -u QMD_GENERATE_MODEL \
+            INDEX_PATH="$T9/index.sqlite" QMD_INDEX_PATH="$T9/index.sqlite" XDG_CONFIG_HOME="$T9/cfg" \
+            XDG_CACHE_HOME="$T9/cache" QMD_CONFIG_DIR="$T9/cfg/qmd" QMD_TIMEOUT_SECS=60 "$@" </dev/null 2>/dev/null
+    }
+    t9 qmd collection add "$T9/corpus" --name t9 >/dev/null
+    t9_out=$(t9 bash "$LIB_DIR/qmd-bounded.sh" search -c t9 --files "claude -p")
+    assert_eq "T9 real qmd, lex leg on a fixture corpus: a search for claude -p returns the doc about -p, not the doc without it" "flag-doc.md" \
+        "$(printf '%s\n' "$t9_out" | sed -n 's|.*qmd://t9/\([^ ,]*\).*|\1|p' | tr '\n' ' ' | sed 's/ $//')"
+else
+    echo "SKIP T9: no qmd on PATH"
+fi
 
 if [ "$FAILED" -eq 0 ]; then
     echo "ALL PASS"

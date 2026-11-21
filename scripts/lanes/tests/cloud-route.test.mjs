@@ -47,7 +47,6 @@ test('LOCAL-NATIVE: run-time need (luna / vault / handover state / qmd query, ve
   }
 });
 
-// fixture text of the real tickets (no live Jira).
 const T4660 = {
   key: 'HIMMEL-4660', type: 'Task', status: 'To Do', title: 'qmd-quality: backfill baselines into live ledger and arm cadence on a test VM',
   description: 'Follow-up to HIMMEL-4650 (its Ask items 3 live part and 4).\n1. Run scripts/eval/qmd-quality/backfill-ledger.sh on the stored gemma and qwen outputs under ~/.himmel/eval/qmd-index/out/ (and the wiring-proof run) against the LIVE eval-runs ledger. HIMMEL-4650 rehearsed it on scratch copies and a scratch ledger only, so no live ledger row was written.\n2. Arm the qmd-quality cadence on a test VM first (himmel-ops:vm); the station arm stays an operator step.\nBoth need an operator go (live ledger / VM arming), so they were out of the HIMMEL-4650 PR.',
@@ -263,7 +262,6 @@ test('launch line is exactly the konsole shape and quotes odd paths', () => {
   assert.match(launchLine('/b dir/x.md'), /cat '\/b dir\/x\.md'/);
 });
 
-// ---- CLI end to end with stubbed jira + gh ----
 function stub(dir, name, body) {
   const p = join(dir, name);
   writeFileSync(p, `#!/usr/bin/env bash\n${body}\n`);
@@ -328,7 +326,6 @@ test('CLI: the old --console is refused even with HIMMEL_LEGACY_NAMES=1; only --
   assert.equal(old.r.status, 2);
   assert.match(old.r.stderr, /unknown option: --console/);
   assert.ok(!existsSync(old.brief));
-  // with --chief present the old flag must not fall through as a ticket key and route the earlier ticket first
   const { bucket, jira, gh } = setup();
   const both = spawnSync(process.execPath, [CLI, '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9001', '--console', 'AD'], {
     encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh, HIMMEL_LEGACY_NAMES: '1' },
@@ -361,7 +358,6 @@ test('CLI: --held file shows the overlap in the reason, and --classify-only writ
   assert.ok(!existsSync(join(bucket, 'cloud-route.jsonl')));
 });
 
-// fixture text of the real tickets (no live Jira).
 const STATE_SPEC = 'Spec, threat model, token budget and plan: state repo handovers/yotamleo/himmel/specs/HIMMEL-4818/.';
 const T4827 = { key: 'HIMMEL-4827', type: 'Task', status: 'To Do', title: 'himmel-bus T4: MCP server', description: `Add the server in scripts/bus/server.mjs.\n${STATE_SPEC}` };
 const T4836 = { key: 'HIMMEL-4836', type: 'Task', status: 'To Do', title: 'himmel-bus T13: docs', description: `Document it in docs/internals/bus.md.\n${STATE_SPEC}` };
@@ -394,9 +390,6 @@ test('brief makes every Jira step conditional on the Atlassian tools, with a PR-
   assert.match(b, /a `## Jira steps not done` section listing each Jira step you skipped/);
 });
 
-// a ticket already fixed on main routes to a local verify, never to the cloud.
-// Fixture: real merged PR 1982 (trimmed to its title, merge time, file list and the body line
-// that cites a given key), whose files are the ones that key's HLS allowlist work sits in.
 const PR1982 = {
   number: 1982, title: 'fix(pipeline): [HIMMEL-4677] Scrapling-first for YouTube and X media, cookies demoted to fallback',
   body: 'Deferred as v1.0.2c hardening/polish (the Playwright/gallery-dl fallback still covers each miss):\n- HLS segment-host allowlist → HIMMEL-4686\n- removed video without `videoDetails` → HIMMEL-4688',
@@ -430,7 +423,6 @@ test('BLOCKED: merged-PR list unavailable, so the ticket cannot be proven unfixe
   assert.equal(classifyTicket(T4686, ctx({ mergedUnknown: true })).class, 'BLOCKED');
 });
 
-// A fixture main ref: one commit per message, so merged-or-not is answered by a repo this test owns, never the real origin/main.
 function mainRepo(dir, ...messages) {
   const g = join(dir, 'main-repo');
   mkdirSync(g, { recursive: true });
@@ -456,7 +448,6 @@ exit 1`);
   assert.match(r.stdout, /HIMMEL-9001\tBLOCKED\t.*merged-PR list unavailable/);
 });
 
-// A truncated key blocks only its own ticket, never the whole run (the throw it replaces stopped every ticket).
 test('CLI: a key with a full page of merged PRs blocks that ticket alone; the others still classify', () => {
   const { dir, bucket, jira } = setup();
   const page = JSON.stringify(Array.from({ length: 30 }, (_, i) => ({ number: 3000 + i, title: 'x', body: '', mergedAt: '2000-01-01T00:00:00Z', files: [] })));
@@ -494,7 +485,6 @@ exit 1`);
   assert.deepEqual(searched(), ['HIMMEL-9002'], 'only the key a commit names is searched');
   const slugs = new Set(readFileSync(log, 'utf8').split('\n').flatMap((l) => l.match(/(?:--repo |repos\/)[\w-]+\/\w+/g) ?? []));
   assert.deepEqual([...slugs].sort(), ['--repo yotamleo-org/Himmel']);
-  // unknown (no such ref) fails closed: every key is searched
   writeFileSync(log, '');
   assert.equal(run({ CLOUD_ROUTE_GIT_DIR: g, CLOUD_ROUTE_MAIN_REF: 'no-such-ref' }).status, 0);
   assert.deepEqual(searched(), ['HIMMEL-9001', 'HIMMEL-9002', 'HIMMEL-9003']);
@@ -513,7 +503,6 @@ exit 1`);
   });
   const searched = () => readFileSync(log, 'utf8').split('\n').filter((l) => l.includes('in:title,body')).length;
   const git = (g, env, ...a) => spawnSync('git', ['-C', g, '-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...a], { encoding: 'utf8', env: { ...process.env, ...env } });
-  // a shallow clone whose boundary hides the commit that names the key
   const src = join(dir, 'src-repo');
   mkdirSync(src, { recursive: true });
   git(src, {}, 'init', '-q', '-b', 'main');
@@ -524,7 +513,6 @@ exit 1`);
   writeFileSync(log, '');
   assert.equal(run(shallow).status, 0);
   assert.equal(searched(), 1, 'a shallow ref cannot show the key is absent');
-  // a whole ref whose tip is older than the 14-day window
   const old = join(dir, 'old-repo');
   mkdirSync(old, { recursive: true });
   git(old, {}, 'init', '-q', '-b', 'main');
@@ -532,7 +520,6 @@ exit 1`);
   writeFileSync(log, '');
   assert.equal(run(old).status, 0);
   assert.equal(searched(), 1, 'a ref last updated before the window cannot show the key is absent');
-  // control: a whole, fresh ref that does not name the key skips the search
   const fresh = mainRepo(dir, 'fix(x): an unrelated change (#4)');
   writeFileSync(log, '');
   assert.equal(run(fresh).status, 0);
@@ -572,8 +559,6 @@ exit 1`);
   assert.match(r.stdout, /HIMMEL-9001\s+CLOUD-OK/);
 });
 
-// fixture text of the real tickets (no live Jira). 4503 and 4517 name the
-// hook only as guard-pr-check-literal; 4653 says VM-only / On a VM snapshot.
 const TREE = ['scripts/hooks/guard-pr-check-literal.sh', 'scripts/hooks/block-destructive-commands.sh', 'scripts/cr/pr-check-context.sh', 'scripts/lanes/example.sh', 'scripts/test-check-ci.sh', 'docs/x.md'];
 const T4503 = {
   key: 'HIMMEL-4503', type: 'Task', status: 'To Do', title: 'guard-pr-check-literal: nested shell re-read over-denies eval/bash -c words in argument position',

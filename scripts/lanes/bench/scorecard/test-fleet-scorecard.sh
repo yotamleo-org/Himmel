@@ -21,8 +21,6 @@ check() {
     fi
 }
 
-# cell <report> <section heading> <first cell> <field>: one trimmed table cell;
-# field 2 is the first column (awk -F'|' leaves field 1 empty).
 cell() {
     printf '%s\n' "$1" | awk -F'|' -v sec="## $2" -v key="$3" -v f="$4" '
         /^## / { on = ($0 == sec) }
@@ -42,10 +40,6 @@ run() {
 OUT=$(run --since 2026-10-25T00:00:00Z 2>/dev/null); RC=$?
 check "runs over the fixture cohort (exit 0)" "$RC" "0"
 
-# --- (a) the DoD RED control: a planted claudex worker with one judge NO-GO and
-# two chief interventions (a FINDING ask and a nudge; the ruling that answers
-# the ask is not a third, and the nudge logged both in the doc and in the chief
-# doc counts once)
 check "(a) planted worker is on the claudex lane" "$(cell "$OUT" "Output quality" N9001 3)" "claudex"
 check "(a) planted worker judge cell shows NO-GO=1 with its blocker and major" \
     "$(cell "$OUT" "Output quality" N9001 7)" "GO 1, NO-GO 1 (blocker 1, major 1)"
@@ -56,8 +50,6 @@ check "(a) a nudge only in the worker doc and another only in the chief doc coun
     "$(cell "$OUT" "Fleet management" N9003 7)" "1/1/2/0"
 check "(a) a chief GO record is not a judge verdict" "$(cell "$OUT" "Output quality" N9003 7)" "GO 1, NO-GO 0"
 
-# --- (b) both halves print for every worker; a missing source is n/a with its
-# reason, never 0
 check "(b) every worker has an output-quality row" "$(rows "$OUT" "Output quality")" "4"
 check "(b) every worker has a fleet-management row" "$(rows "$OUT" "Fleet management")" "4"
 check "(b) CR findings per reviewed head" "$(cell "$OUT" "Output quality" N9001 8)" "crit 0, imp 1, sug 1 over 3 heads"
@@ -101,8 +93,6 @@ check "(b) a missing worker doc leaves its lane merged and in-flight n/a" \
 check "(b) a missing chief doc is named on the Sources line" \
     "$(printf '%s\n' "$GONE" | grep '^- chief docs:')" "- chief docs: $FX/FT-roadmap-chief.md (missing: $FX/absent-chief.md)"
 
-# --- (c) per-lane totals and medians; a total that skips an n/a worker says so,
-# and the cost median runs over merged PRs (N9002 merged two), not workers
 check "(c) claudex lane row" "$(printf '%s\n' "$OUT" | grep '^| claudex |')" \
     "| claudex | 2 | 2 | 0 | 2 | 1 | 1 | 1 | 2 | 1.5 | 7.5m | 80m | 2 | 1 | 2 | 800.0k |"
 check "(c) native lane row" "$(printf '%s\n' "$OUT" | grep '^| native |')" \
@@ -110,7 +100,6 @@ check "(c) native lane row" "$(printf '%s\n' "$OUT" | grep '^| native |')" \
 SINCE=$(run --since 2026-10-25T16:05:00Z 2>/dev/null)
 check "(c) --since keeps only workers launched at or after it" "$(rows "$SINCE" "Fleet management")" "1"
 
-# --- (d) the report goes to stdout or --out <local path>, nothing else
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/fleet-scorecard.XXXXXX") || exit 1
 trap 'rm -rf "$TMP"' EXIT
 TOFILE=$(run --out "$TMP/report.md" 2>/dev/null); RC=$?
@@ -128,7 +117,6 @@ check "(d) an --out bucket URI is refused by the scheme guard" \
     "$ERR" "fleet-scorecard: --out is a local path, never a URL: gs://bucket/report.md"
 check "(d) a refused --out writes nothing in the working dir" "$(ls -A "$TMP")" "report.md"
 
-# --- (b) continued: a source that cannot be read is n/a, never read as another
 mkdir -p "$TMP/m" "$TMP/mirror/HIMMEL-1.md"
 cp "$FX/FT-roadmap-chief.fleet.json" "$TMP/m/workers.json"
 OTHER=$(run --manifest "$TMP/m/workers.json" 2>/dev/null)
@@ -160,7 +148,6 @@ check "(b) a worker in the shared primary checkout gets no denials from that che
 check "(b) the report says a message-delivered worker's interventions are a floor" \
     "$(printf '%s\n' "$OUT" | grep -c '^- interventions: a ruling or nudge sent by SendMessage counts only when a doc logs it, so a worker with message delivery shows a floor$')" "1"
 
-# --- (e) option spellings: --doc=<path> is --doc <path>; an abbreviation or a --label is refused
 EQ=$("$FLEET" --doc="$FX/HIMMEL-9003-N9003-native-merged-2026-10-25.md" --tz UTC 2>/dev/null); RC=$?
 check "(e) --doc=<path> exits 0" "$RC" "0"
 check "(e) --doc=<path> scores the worker under its label" "$(rows "$EQ" "Fleet management")" "1"

@@ -94,7 +94,6 @@ test('a nearer settings layer\'s false overrides an outer layer\'s true', () => 
   });
   const cwd = makeTmpDir('vsd-cwd-');
   mkdirSync(join(cwd, '.claude'), { recursive: true });
-  // nearer layer (cwd) disables superpowers again — must win over the outer home `true`.
   writeFileSync(join(cwd, '.claude', 'settings.local.json'), JSON.stringify({
     enabledPlugins: { 'superpowers@claude-plugins-official': false },
   }));
@@ -102,12 +101,6 @@ test('a nearer settings layer\'s false overrides an outer layer\'s true', () => 
   assert.deepEqual(out, [], 'nearer false must suppress the overlap the outer true would have reported');
 });
 
-// settingsLayers must not reverse the whole file list, which would
-// reverse each directory's own (settings.json, settings.local.json) pair as
-// well as the directory order -- so within ONE directory the shared
-// settings.json would be applied last and overwrite the local override. Both files
-// live in the SAME directory here, so only the pair order can decide it; the
-// existing outer-vs-nearer test passes under either ordering.
 test('settings.local.json beats settings.json in the SAME directory', () => {
   const home = settingsHome({ 'lean-skills@himmel': true });
   const cwd = makeTmpDir('vsd-cwd-pair-');
@@ -122,12 +115,6 @@ test('settings.local.json beats settings.json in the SAME directory', () => {
   assert.deepEqual(out, [], 'the local override must win over its sibling settings.json');
 });
 
-// The CLI's env-var parsing must not use `||`, which treats an
-// explicit empty string (the test-hermetic "skip the cwd walk" seam) the same
-// as "unset" and falls back to the REAL process.cwd() — silently walking the
-// operator's actual ~/.claude ancestry into what was meant to be an isolated
-// fixture run. Exercised at the CLI (spawnSync), because `findOverlap` itself
-// never had this bug — only the `isMain` env-var seam did.
 test('CLI: an explicit empty VENDORED_DUPES_CWD is honoured as "no cwd layers", not the real cwd', () => {
   const home = settingsHome({
     'lean-skills@himmel': true,
@@ -141,10 +128,6 @@ test('CLI: an explicit empty VENDORED_DUPES_CWD is honoured as "no cwd layers", 
       ...process.env,
       VENDORED_DUPES_HOME: home,
       VENDORED_DUPES_CWD: '',
-      // The CLI falls back to CLAUDE_CONFIG_DIR when the
-      // seam is unset, and a non-empty configDir REPLACES the home layer
-      // outright -- a runner with CLAUDE_CONFIG_DIR exported would bypass this
-      // fixture's settings.json entirely and assert against live operator state.
       VENDORED_DUPES_CONFIG_DIR: '',
     },
   });

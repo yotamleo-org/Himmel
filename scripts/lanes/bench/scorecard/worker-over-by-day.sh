@@ -58,7 +58,6 @@ ts_of() { grep -o '"timestamp":"[0-9TZ:.-]*"' "$1" 2>/dev/null | "$2" -1 | cut -
 day_of() { printf '%s' "$1" | cut -c1-10; }
 
 FAILS=""; FILES=""; DISC_ERR=""; DAYS=""
-# trap first: a later mktemp failing must not leak the files already created
 trap 'rm -f "$FAILS" "$FILES" "$DISC_ERR" "$DAYS" "$SC_COV"' EXIT
 FAILS=$(mktemp "${TMPDIR:-/tmp}/worker-over-by-day-fails.XXXXXX") || { echo "worker-over-by-day: mktemp failed" >&2; exit 1; }
 FILES=$(mktemp "${TMPDIR:-/tmp}/worker-over-by-day-files.XXXXXX") || { echo "worker-over-by-day: mktemp failed" >&2; exit 1; }
@@ -66,7 +65,6 @@ DISC_ERR=$(mktemp "${TMPDIR:-/tmp}/worker-over-by-day-discerr.XXXXXX") || { echo
 DAYS=$(mktemp "${TMPDIR:-/tmp}/worker-over-by-day-days.XXXXXX") || { echo "worker-over-by-day: mktemp failed" >&2; exit 1; }
 sc_cov_init || exit 1
 
-# A discovery error must not vanish (the agg-burn.sh rule).
 if ! sc_discover "$FILES" "$DISC_ERR"; then
     echo "worker-over-by-day: transcript discovery failed under the transcript root(s) - refusing to print a partial table:" >&2
     cat "$DISC_ERR" >&2
@@ -74,8 +72,6 @@ if ! sc_discover "$FILES" "$DISC_ERR"; then
 fi
 
 while IFS= read -r f; do
-    # title_of silences read errors: an unreadable file would read as an empty
-    # title and be misfiled as an intentional not-worker exclusion
     [ -r "$f" ] || { sc_cov unreadable; continue; }
     case "$f" in */subagents/*) sc_cov subagent; continue ;; esac
     name=$(title_of "$f")

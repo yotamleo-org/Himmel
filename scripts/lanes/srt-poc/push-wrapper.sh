@@ -13,8 +13,6 @@
 # a URL or path as the remote (only a configured remote name).
 #
 set -u
-# the full repository-redirecting set, as scripts/lib/git-clean.sh git_env_scrub
-# (inline: this script runs where the lib may not be reachable)
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE \
     GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX \
     GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE \
@@ -87,8 +85,4 @@ for spec in $refspecs; do
 done
 
 # shellcheck disable=SC2086 # flags and refspecs are validated words
-# Hooks are disabled because this runs OUTSIDE the sandbox in a worker-writable
-# worktree. Config-injected commands (core.sshCommand, credential helpers,
-# includeIf) in the worker's .git/config are NOT closed here: the production
-# broker must push from a launcher-owned clone instead.
 exec git -c core.hooksPath=/dev/null push $flags "$remote" $refspecs

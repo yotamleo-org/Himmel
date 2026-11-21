@@ -65,8 +65,6 @@ LOCK="${CANARY_LOCK:-$SELF_REPO/scripts/handover/queue-lock.sh}"
 APPEND="${CANARY_APPEND:-$KIT/append-results.sh}"
 TEMPLATE="$SELF_REPO/docs/handover/lane-canary-brief-template.md"
 
-# The worker runs from the PRIMARY checkout: close-wrapped-worker.sh prunes any
-# .claude/worktrees path the doc names, so a worktree cwd would be pruned.
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
 if [ -n "${CANARY_REPO:-}" ]; then
     REPO="$CANARY_REPO"
@@ -88,7 +86,6 @@ fi
 mkdir -p "$ROOT" || { echo "lane-canary: cannot create $ROOT" >&2; exit 2; }
 STAMP="$(date +%Y%m%d-%H%M%S)-$$"
 
-# lane_unconfigured <lane>: prints why the lane cannot run here, empty if it can.
 lane_unconfigured() {
     case "$1" in
         native) ;;
@@ -98,27 +95,21 @@ lane_unconfigured() {
         *) echo "unknown lane" ;;
     esac
 }
-# _key_present NAME: set non-empty in the env or defined in the repo .env
-# (the name is tested, the value is never read out).
 _key_present() {
     eval "[ -n \"\${$1:-}\" ]" && return 0
     [ -f "$DOTENV" ] && grep -Eq "^(export )?$1=.+" "$DOTENV"
 }
 
-# lane_model <lane>: the cheapest model the lane offers ('' = launcher default).
 lane_model() {
     case "$1" in native) echo claude-haiku-5-5 ;; *) echo "" ;; esac
 }
 
-# doc_has <doc> <MARKER>: a Results bullet that STARTS with the marker (the
-# brief text itself names WRAPPED, so a bare grep would match the instructions).
 doc_has() { grep -Eq "^- [0-9]{2}:[0-9]{2} $2( |$)" "$1" 2>/dev/null; }
 
 lock_free() { [ "$(bash "$LOCK" status "$1" 2>/dev/null | tail -1)" = "free" ]; }
 
 now() { date +%s; }
 
-# run_lane <lane>: prints "<result>|<first-bullet-s>|<wrapped-s>|<detail>".
 run_lane() {
     lane="$1"
     why="$(lane_unconfigured "$lane")"
@@ -134,8 +125,6 @@ run_lane() {
 
     model="$(lane_model "$lane")"
     start="$(now)"
-    # The window inherits the launcher's cwd, so launch from $REPO (the
-    # primary checkout, whose trust the operator already granted).
     # shellcheck disable=SC2086  # $model is one word or empty by construction
     (cd "$REPO" && exec setsid nohup bash "$LAUNCHER" --profile worker-impl --lane "$lane" "$name" "$doc" \
         "$ROOT/$name.signal" "$((start + 5))" "$ROOT/$name.log" $model >/dev/null 2>&1) &
@@ -147,7 +136,6 @@ run_lane() {
         [ -z "$first" ] && doc_has "$doc" LIVE && first="$t"
         if doc_has "$doc" WRAPPED; then
             wrapped="$t"
-            # LIVE may have landed between the two reads above
             [ -z "$first" ] && doc_has "$doc" LIVE && first="$t"
             break
         fi
@@ -165,8 +153,6 @@ run_lane() {
         if [ -n "$lrc" ] && [ "$lrc" -ne 0 ] && [ -z "$first" ]; then detail="launcher exit $lrc before any bullet"
         elif [ -z "$first" ]; then detail="no first bullet within ${TIMEOUT}s"
         else detail="first bullet but no WRAPPED within ${TIMEOUT}s"; fi
-        # nothing may outlive the run: stop a launcher still starting (it would
-        # open its window after the closer ran), write the wrap, drop the lock.
         if kill -0 "$lpid" 2>/dev/null; then
             kill "$lpid" 2>/dev/null; sleep 1
             kill -KILL "$lpid" 2>/dev/null
@@ -190,7 +176,6 @@ run_lane() {
         result=FAIL
         detail="${detail:+$detail; }window not closed (close-wrapped-worker refused)"
     fi
-    # a PASS leaves nothing to diagnose; a FAIL keeps its doc and launch log.
     [ "$result" = PASS ] && [ -z "$detail" ] && rm -f "$ROOT/$name".*
     echo "$result|$first|$wrapped|$detail"
 }
