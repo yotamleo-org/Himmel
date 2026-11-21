@@ -322,8 +322,10 @@ ts_record_write() {
 
 # ts_marker_newest <doc> — the newest Results marker in a worker doc.
 ts_marker_newest() {
-    local line newest="" bullets rc
+    local line newest="" bullets rc dir=.
     local succession_re='^- [0-9]{1,2}:[0-9]{2} SUCCESSION([^A-Za-z0-9-]|$)'
+    case "$1" in */*) dir=${1%/*}; [ -n "$dir" ] || dir=/ ;; esac
+    if [ ! -e "$1" ] && [ ! -L "$1" ] && [ -d "$dir" ] && [ -x "$dir" ]; then return 2; fi
     [ -f "$1" ] && [ -r "$1" ] || return 1
     [ "$(tr -d '\000' < "$1" | wc -c)" -eq "$(wc -c < "$1")" ] 2>/dev/null || return 1 # read-sink-ok: $1 is a worker handover doc path (the worker record, --doc, or status-drift's <key>-N*.md scan under --docs-dir or the handover root), only byte counts come out
     bullets=$(grep -a '^-' -- "$1" 2>/dev/null) && rc=0 || rc=$? # read-sink-ok: $1 is a worker handover doc path (the worker record, --doc, or status-drift's <key>-N*.md scan under --docs-dir or the handover root), bullet lines only, only a marker word comes out
@@ -427,7 +429,7 @@ _ts_worker_state() {
     local marker out rc hb hb_epoch age=0 warn
     TS_LOCK_HELD="" TS_LOCK_DEAD="" TS_OPEN_EVIDENCE=""
     [ -n "$1" ] || { TS_WORKER_STATE=unknown; return 0; }
-    local attempt_protected terminal="" marker_unread=""
+    local attempt_protected terminal="" marker_unread="" doc_absent=""
     case "${2-}" in
         '"pending"'|'"committed"'|'"unknown"'|'"launched"'|'"refused"'|'"complete"'|'"legacy"') attempt_protected=$2 ;;
         *) attempt_protected=$(python3 -I "$_TS_LIB_DIR/fleet_runtime.py" disposition --doc="$1") || attempt_protected='"unknown"' ;;
@@ -437,9 +439,10 @@ _ts_worker_state() {
         '"launched"') TS_OPEN_EVIDENCE=yes ;;
         '"refused"'|'"complete"') terminal=yes ;; # an ended attempt's receipt: it ends ownership only when the lock and the markers agree
     esac
-    marker=$(ts_marker_newest "$1") || marker_unread=yes
+    marker=$(ts_marker_newest "$1") && rc=0 || rc=$?
+    case "$rc" in 0) ;; 2) doc_absent=yes ;; *) marker_unread=yes ;; esac
     case "$marker" in WRAPPED|HALTED) TS_WORKER_STATE=wrapped; return 0 ;; esac
-    [ -z "$marker$marker_unread" ] || TS_OPEN_EVIDENCE=yes
+    [ -z "$marker$marker_unread$doc_absent" ] || TS_OPEN_EVIDENCE=yes
     if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then
         out=$("$TICKET_STATUS_QUEUE_LOCK" status "$1" 2>/dev/null); rc=$?
     else

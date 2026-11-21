@@ -828,11 +828,13 @@ else
 fi
 chmod 644 "$tmp/u8-unread.md"
 for word in refused complete; do
-    check "X07-6 a missing doc with a $word receipt and a free lock reads unknown, not wrapped" "$(ucall "$tmp/u8-missing.md" "\"$word\"")" unknown
+    check "X07-6 a missing doc with a $word receipt and a free lock reads wrapped" "$(ucall "$tmp/u8-missing.md" "\"$word\"")" wrapped
 done
-ts_marker_newest "$tmp/u8-missing.md" >/dev/null; check "X07-6 ts_marker_newest: a doc it cannot read is rc 1" "$?" 1
 ts_marker_newest "$tmp/u8-empty.md" >/dev/null; check "X07-6 ts_marker_newest control: a readable doc with no marker is rc 0" "$?" 0
 mkdir -p "$tmp/gbin" "$tmp/u8-dir.md"
+ts_marker_newest "$tmp/u8-dir.md" >/dev/null; check "X07-6 ts_marker_newest: a doc it cannot read is rc 1" "$?" 1
+ts_marker_newest "$tmp/u8-missing.md" >/dev/null; check "X07-6 ts_marker_newest: a missing doc is rc 2" "$?" 2
+(cd "$tmp" && ts_marker_newest u8-no-such-here.md >/dev/null); check "X07-6 ts_marker_newest: a missing doc named without a slash is rc 2" "$?" 2
 cat > "$tmp/gbin/grep" <<'EOF'
 #!/bin/sh
 [ "${GREP_STANDIN_RC:-1}" -ne 2 ] || echo "grep: (standard input): Input/output error" >&2
@@ -872,6 +874,21 @@ check "X07-6 a doc with a byte that is not valid UTF-8 and a LIVE marker is read
 check "X07-6 a UNIX socket as the doc, with a refused receipt and a free lock, reads unknown, not wrapped" "$(ucall "$tmp/u8-sock.md" '"refused"')" unknown
 check "X07-6 a FIFO as the doc, with a refused receipt and a free lock, returns and reads unknown, not wrapped" "$(fifo_state)" unknown
 check "X07-6 control: a symlink to a readable doc with an end marker is read as that doc" "$(ucall "$tmp/u8-link.md" '"refused"')" wrapped
+ln -s "$tmp/u8-no-target.md" "$tmp/u8-dangling.md"
+for word in refused complete; do
+    check "X07-6 a dangling symlink as the doc, with a $word receipt and a free lock, reads unknown, not wrapped" "$(ucall "$tmp/u8-dangling.md" "\"$word\"")" unknown
+done
+mkdir -p "$tmp/u8-locked"
+chmod 000 "$tmp/u8-locked"
+if [ -x "$tmp/u8-locked" ]; then
+    echo "SKIP - X07-6 a missing doc inside a directory that cannot be searched reads unknown, not wrapped: this user searches a mode 000 directory"
+else
+    for word in refused complete; do
+        check "X07-6 a missing doc inside a directory that cannot be searched, with a $word receipt and a free lock, reads unknown, not wrapped" "$(ucall "$tmp/u8-locked/gone.md" "\"$word\"")" unknown
+    done
+    ts_marker_newest "$tmp/u8-locked/gone.md" >/dev/null; check "X07-6 ts_marker_newest: a doc whose directory cannot be searched is rc 1" "$?" 1
+fi
+chmod 755 "$tmp/u8-locked"
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-ticket-status.sh"
