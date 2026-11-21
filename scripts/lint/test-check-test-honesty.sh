@@ -733,8 +733,8 @@ case_i3_version_mismatch() {
         assert_has "i3-version-mismatch-$dep prints a version-mismatch line" "version mismatch: $dep" "$GATE_OUT"
     done <<'EOF'
 oxlint 1.93.0 1.93.1
-@interfere/landmines 0.1.0 0.1.1
-@babel/parser 8.0.4 8.0.5
+@interfere/landmines 0.1.1 0.1.2
+@babel/parser 8.1.3 8.1.4
 EOF
 }
 
@@ -770,7 +770,7 @@ fake_plugin() {
     mkdir -p "$d/dist"
     ln -sfn "$PKG/node_modules/@interfere/landmines/dist/testing.mjs" "$d/dist/testing.mjs"
     printf '%s\n' 'export default {};' > "$d/dist/noop.mjs"
-    printf '{"name":"@interfere/landmines","version":"0.1.0","type":"module","exports":{"./testing":%s}}\n' "$1" > "$d/package.json"
+    printf '{"name":"@interfere/landmines","version":"0.1.1","type":"module","exports":{"./testing":%s}}\n' "$1" > "$d/package.json"
 }
 
 case_resolved_specifier() {
