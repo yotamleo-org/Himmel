@@ -244,11 +244,15 @@ async function runJob(deps: RunnerDeps, peer: string, j: JobRecord): Promise<voi
     destroyed = (await vm(deps, "vm-destroy", id)) === 0;
     fs.rmSync(work, { recursive: true, force: true });
   }
-  if (!stopped && live()) {
-    const runner_minutes = Math.max(0, Math.ceil((deps.now() - t0) / 60_000));
-    await deps.submit(peer, j.jobNo, { type: "vm-done", results, golden: golden(deps), ...log, runner_minutes });
-  }
+  let failed: unknown;
+  try {
+    if (!stopped && live()) {
+      const runner_minutes = Math.max(0, Math.ceil((deps.now() - t0) / 60_000));
+      await deps.submit(peer, j.jobNo, { type: "vm-done", results, golden: golden(deps), ...log, runner_minutes });
+    }
+  } catch (e) { failed = e; }
   if (!destroyed) throw new RunnerFatal(`vm-destroy ${id} failed; exiting so the restart sweeps it`);
+  if (failed) throw failed;
 }
 
 function sweepLogs(deps: RunnerDeps): void {

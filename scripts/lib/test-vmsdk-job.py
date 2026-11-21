@@ -5,6 +5,7 @@ The stub-backend and fake-VBoxManage rows run anywhere. The real VirtualBox
 rows run only inside a test VM with PEER_BRIDGE_VM_TEST=1 and a golden VM
 built by `vmsdk-job.py golden-build-linux`.
 """
+import ast
 import json
 import os
 import re
@@ -145,6 +146,15 @@ class TestRefusals(StubCase):
     def test_tart_backend_is_interface_only(self):
         r = run(["vm-sweep"], env={"HOME": str(self.home), "PEER_JOB_BACKEND": "tart"})
         self.assertEqual(r.returncode, 2)
+
+    def test_every_backend_self_call_names_a_method_of_its_class(self):
+        tree = ast.parse(CLI.read_text())
+        for cls in [n for n in tree.body if isinstance(n, ast.ClassDef) and n.name.endswith("Backend")]:
+            defined = {n.name for n in cls.body if isinstance(n, ast.FunctionDef)}
+            called = {n.func.attr for n in ast.walk(cls) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                      and isinstance(n.func.value, ast.Name) and n.func.value.id == "self"}
+            with self.subTest(cls=cls.name):
+                self.assertEqual(called - defined, set())
 
     def test_golden_build_linux_refuses_outside_a_test_vm(self):
         r = run(["golden-build-linux", "--ova", "/nonexistent.ova"], env={"HOME": str(self.home), "PEER_JOB_BACKEND": "vbox"})

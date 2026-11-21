@@ -274,6 +274,14 @@ test("a failed vm-destroy still submits vm-done, then stops the runner with Runn
   expect(done(w).length).toBe(1);
 });
 
+test("a failed vm-destroy stops the runner with RunnerFatal even when the vm-done submit throws", async () => {
+  const w = mkWorld({ exec: RESULT, fail: { "vm-destroy": 1 } });
+  const submit = w.deps.submit;
+  w.deps.submit = (peer, job, event) => event.type === "vm-done" ? Promise.reject(new Error("spool write failed")) : submit(peer, job, event);
+  await start(w.deps);
+  await expect(tick(w.deps)).rejects.toBeInstanceOf(RunnerFatal);
+});
+
 test("the log is kept 0600 under S/<peer>/logs and only its sha256 and size are submitted", async () => {
   const w = mkWorld({ exec: RESULT });
   await run(w);

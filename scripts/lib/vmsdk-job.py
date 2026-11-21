@@ -341,8 +341,8 @@ class VBoxJobBackend:
             raise BackendError(f"{self.GOLDEN} did not power off")
         nic_args = [a for n in range(1, self.NICS + 1) for a in (f"--nic{n}", "none")]
         self._ok("modifyvm", self.GOLDEN, *nic_args)
-        if not self._nics_none(self.GOLDEN):
-            raise BackendError("a NIC is still attached to the golden VM")
+        if not self._isolated(self.GOLDEN):
+            raise BackendError("a NIC or a shared folder is still attached to the golden VM")
 
 
 class TartJobBackend:
