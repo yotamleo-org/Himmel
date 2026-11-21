@@ -1238,8 +1238,7 @@ check    "9479: the symlink target is untouched" "$(cat "$victim31")" "keep"
 fresh31
 ki_t0=$SECONDS
 ki_rc=0
-sigint_default_exec=(perl -e "\$SIG{INT} = 'DEFAULT'; exec @ARGV")
-(cd "$S31" && PATH="$S31/bin:$PATH" HANDOVER_DIR="$ROOT31" HIMMEL_QUOTA_DIR="$Q31" STUB_RC_SLEEP=10 GO_DEADLINE=30 "${sigint_default_exec[@]}" timeout -s INT -k 5 3 bash "$S31/scripts/handover/chief-kit/go.sh" 77 "$SHA" > /dev/null 2>&1) || ki_rc=$?  # gnu-ok: Linux-only kit
+(cd "$S31" && PATH="$S31/bin:$PATH" HANDOVER_DIR="$ROOT31" HIMMEL_QUOTA_DIR="$Q31" STUB_RC_SLEEP=10 GO_DEADLINE=30 timeout -s INT -k 5 3 bash "$S31/scripts/handover/chief-kit/go.sh" 77 "$SHA" > /dev/null 2>&1) || ki_rc=$?  # gnu-ok: Linux-only kit
 ki_took=$((SECONDS - ki_t0))
 sleep 9
 check    "9479: an outer INT ends go.sh (exit 124)" "$ki_rc" "124"

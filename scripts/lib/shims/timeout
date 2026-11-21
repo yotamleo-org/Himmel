@@ -69,17 +69,22 @@ shift
 case "$sig" in [0-9]*) ;; *) sig="${sig#SIG}" ;; esac
 kill -l "$sig" >/dev/null 2>&1 || usage "'$sig': invalid signal"
 
-if [ "$secs" = "0" ]; then exec "$@"; fi
+dfl=()
+if command -v perl >/dev/null 2>&1; then
+    dfl=(perl -e "\$SIG{INT} = 'DEFAULT'; \$SIG{QUIT} = 'DEFAULT'; exec {\$ARGV[0]} @ARGV; exit 127")
+fi
+
+if [ "$secs" = "0" ]; then exec ${dfl[@]+"${dfl[@]}"} "$@"; fi
 
 flag="$(mktemp "${TMPDIR:-/tmp}/portable-timeout.XXXXXX")" || usage "cannot create a state file"
 trap 'rm -f "$flag" "$flag.done"' EXIT
 
 if [ "$foreground" = 1 ]; then
     # the explicit <&0 stops bash redirecting an async command's stdin from /dev/null
-    "$@" <&0 &
+    ${dfl[@]+"${dfl[@]}"} "$@" <&0 &
 else
     set -m
-    "$@" &
+    ${dfl[@]+"${dfl[@]}"} "$@" &
 fi
 pid=$!
 set +m
