@@ -216,7 +216,7 @@
       "coverage": "shell-lint GNU_FLAG_PAT + PCRE_CLASS cover sed/date/readlink/grep -P/stat/\\s; bare `timeout N` and `find -maxdepth` were NOT covered (3+ App re-raises each since 2026-08-10) — this detector adds them. 20 App re-raises in the class since 2026-08-10 (largest real-defect class). 2026-09-02 refresh: 3 further portability raises in the window — /usr/bin/cat absent on macOS (CodeRabbit App finding, PR #2107: \"/usr/bin/cat does not exist on macOS; macOS ships cat at /bin/cat only\" — the only /usr/bin/<coreutil> entry this detector asserts, deliberately; the list grows one evidenced finding at a time rather than from an unverified enumeration of the macOS /bin layout), a GNU-only hard-link identity check, and BSD grep \\| alternation (the latter two prose-only, no detector).",
       "prompt": false,
       "evidence": {
-        "learnings_uses": 20,
+        "learnings_uses": 18,
         "cr_app_finding_comments_since_2026-08-10": 20,
         "ledger": {
           "findings": 261,
@@ -237,7 +237,7 @@
           },
           "disproved_pct": 7
         },
-        "learnings_rows": 6
+        "learnings_rows": 5
       }
     },
     {
@@ -397,14 +397,14 @@
         "learnings_uses": 0,
         "cr_app_finding_comments_since_2026-08-10": 21,
         "ledger": {
-          "findings": 19054,
-          "agreed": 10828,
+          "findings": 19055,
+          "agreed": 10829,
           "disproved": 2431,
           "deferred": 5104,
           "other": 79,
           "unadjudicated": 612,
           "models": {
-            "codex": 13243,
+            "codex": 13244,
             "coderabbit": 3900,
             "": 71,
             "claude": 824,
@@ -647,7 +647,7 @@
       "coverage": "scripts/hooks/CLAUDE.md prose only. Ledger: scripts/hooks is the largest finding bucket (521 rows); 10 App re-raises on fail-open/closed since 2026-08-10.",
       "prompt": false,
       "evidence": {
-        "learnings_uses": 1,
+        "learnings_uses": 0,
         "cr_app_finding_comments_since_2026-08-10": 10,
         "ledger": {
           "findings": 60,
@@ -664,7 +664,7 @@
           },
           "disproved_pct": 11
         },
-        "learnings_rows": 7
+        "learnings_rows": 6
       }
     },
     {
@@ -687,7 +687,7 @@
       "coverage": "cr-tune already clusters this bucket (test-fixture); no prompt-side carve-out existed before this entry. Ledger: the test-fixture bucket disproves at ~29% vs ~21% overall.",
       "prompt": true,
       "evidence": {
-        "learnings_uses": 2,
+        "learnings_uses": 1,
         "cr_app_finding_comments_since_2026-08-10": 0,
         "ledger": {
           "findings": 200,
@@ -705,7 +705,7 @@
           },
           "disproved_pct": 15
         },
-        "learnings_rows": 14
+        "learnings_rows": 12
       }
     },
     {
@@ -843,7 +843,7 @@
       "coverage": "No structural check: shell-lint does not flag an unchecked mktemp assignment and .coderabbit.yaml has no instruction for it. 3 App raises in the measured window (2026-08-20..09-02) — unchecked mktemp/jq in a positive control, unchecked mktemp for TMP_ROOT, and check_hermetic ignoring a child suite's exit status. All three were legitimate. Shapes (d) and (e) folded in (2026-09-21): ledger rows since 2026-09-04 — assert_not_matches reporting PASS for every nonzero grep status (adc611c), cmp absent from the hermetic HBIN list in test-uninstall.sh (01d38c7, a0f25eb; unadjudicated). No CodeRabbit-export row matches either shape and no deterministic detector exists (a single-line ADDED-line regex cannot see a branch's else arm or a tool list's reachability), so they extend this class instead of minting two prompt entries.",
       "prompt": true,
       "evidence": {
-        "learnings_uses": 1,
+        "learnings_uses": 0,
         "cr_app_finding_comments_since_2026-08-10": 3,
         "ledger": {
           "findings": 116,
@@ -861,7 +861,7 @@
           },
           "disproved_pct": 17
         },
-        "learnings_rows": 6
+        "learnings_rows": 5
       }
     },
     {
@@ -885,7 +885,7 @@
       "coverage": "No structural check; docs-flag-drift covers a removed --flag still documented, not an exit code whose MEANING widened. 2 App raises in the window: rc=21 documented only for a non-clean fence when a certification failure also returns it, and exit 5 gaining a second meaning in coderabbit-review.sh without its documented contract moving.",
       "prompt": true,
       "evidence": {
-        "learnings_uses": 1,
+        "learnings_uses": 0,
         "cr_app_finding_comments_since_2026-08-10": 2,
         "ledger": {
           "findings": 115,
@@ -902,7 +902,7 @@
           },
           "disproved_pct": 11
         },
-        "learnings_rows": 1
+        "learnings_rows": 0
       }
     },
     {
@@ -1050,7 +1050,7 @@
           "disproved_pct": 15
         },
         "learnings_uses": 0,
-        "learnings_rows": 2
+        "learnings_rows": 4
       }
     },
     {
@@ -1091,7 +1091,7 @@
           "disproved_pct": 18
         },
         "learnings_uses": 0,
-        "learnings_rows": 3
+        "learnings_rows": 2
       }
     },
     {
@@ -1152,14 +1152,14 @@
       "prompt": true,
       "evidence": {
         "ledger": {
-          "findings": 388,
-          "agreed": 222,
+          "findings": 389,
+          "agreed": 223,
           "disproved": 50,
           "deferred": 88,
           "other": 0,
           "unadjudicated": 28,
           "models": {
-            "codex": 354,
+            "codex": 355,
             "claude": 27,
             "self": 2,
             "coderabbit": 3,
@@ -1427,10 +1427,10 @@
     }
   ],
   "learnings_export": {
-    "rows": 110,
-    "total_uses": 117,
-    "live_rows": 98,
-    "stale_rows": 12,
-    "unmatched_rows": 72
+    "rows": 113,
+    "total_uses": 112,
+    "live_rows": 103,
+    "stale_rows": 10,
+    "unmatched_rows": 78
   }
 }
