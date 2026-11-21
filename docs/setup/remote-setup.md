@@ -285,6 +285,7 @@ The name after `peer` is the other station's name, taken from its bridge bot's u
 | `is not set up as a plain administrator` | The bot is posting anonymously or is not a normal administrator. Open Edit → Administrators → the bot, switch every right and "Remain anonymous" off, and Save. |
 | `your main bot is in the group` | Remove your main bot from the group. Only the bridge bots belong in it. |
 | `another program is already reading this bot's messages` | Something else is using this bridge bot's token. Stop it (or the old poller), then run the command again. |
+| `this bot has a webhook set` | The bot is set to push its messages to a web address, and Telegram then refuses to hand them out by polling. Remove the webhook (Telegram's `deleteWebhook` method), or use another bot, then run the command again. |
 | `not a usable Telegram username` | Ask the other operator to check their bridge bot's username, then run the command again. |
 | `setup.ts did not` | The line carries setup.ts's reason, usually one of the group rules above. Fix that, then run the command again. |
 | `the peer poller did not start` | The line names a command that shows the poller's log. Read it, fix what it says, then run the command again; your setup is kept. |

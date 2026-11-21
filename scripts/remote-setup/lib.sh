@@ -281,7 +281,13 @@ rs_tg_fail() {
             rs_fix "Telegram asked to wait $retry s: wait that long, then run the same command again"
             ;;
         409)
-            rs_fix "another program is already reading this bot's messages (is its poller running?): stop that program, then run the same command again"
+            desc=$(rs_clean "$desc")
+            case "$desc" in
+                *[Ww]ebhook*)
+                    rs_fix "this bot has a webhook set, so Telegram will not hand out its messages by polling (${desc:0:100}): remove the webhook (Telegram's deleteWebhook method), then run the same command again"
+                    ;;
+            esac
+            rs_fix "another program is already reading this bot's messages (${desc:0:100}): stop that program (is its poller running?), then run the same command again"
             ;;
         *)
             desc=$(rs_clean "$desc")
