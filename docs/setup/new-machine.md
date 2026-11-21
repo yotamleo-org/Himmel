@@ -39,7 +39,7 @@ value that isn't backed by one of these links.
 
 | Tool | Min version | Why |
 |---|---|---|
-| `bash` | 3.2 | macOS ships bash 3.2, and himmel's scripts run on it (none uses `mapfile`) |
+| `bash` | 3.2 | macOS ships bash 3.2, and himmel's scripts run on it; the one bash-4 exception is listed [below](#scripts-requiring-bash-4) |
 | `git` | 2.30+ | Worktrees + `--show-toplevel` |
 | `node` | 18+ to build · **20.17+ to push** | Jira plugin build + plugin-install workflow. The pre-push signature gate needs npm 11, whose own engine floor is `^20.17.0 \|\| >=22.9.0`, so a node-18 box can build and commit but cannot push. |
 | `npm` | 11+ (needs node `^20.17.0 \|\| >=22.9.0`) | Lockfile audit hooks + plugin install. NOT bundled on Debian/Ubuntu, and apt's own `npm` is 9.2 — old enough that its expired registry key fails `npm audit signatures` on every push. See the Linux table. |
@@ -387,8 +387,9 @@ own fail-open path instead of printing anything.)
 
 ### Scripts requiring bash 4+
 
-None today: no tracked script calls `mapfile` or `readarray`, so every script
-runs on macOS system bash (3.2). A new script that needs bash 4+ is listed here.
+One: `packaging/aur/test-pkgbuild.sh` (the AUR package test) uses `mapfile`
+and runs on Arch only. Every other tracked script runs on macOS system bash
+(3.2).
 
 ### Single-source tool dependencies
 

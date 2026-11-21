@@ -428,9 +428,12 @@ scripts/hooks/block-edit-on-main.sh
 scripts/hooks/block-read-secrets.sh
 scripts/hooks/lib/guard-unwrap.sh
 scripts/hooks/lib/shell-tokenize.sh
+scripts/lib/guard-empty-expansion.sh
+scripts/lib/bash-ast.sh
 scripts/guardrails/lib.sh
 scripts/lib/py-armor.sh
 scripts/lib/prim.sh
+scripts/lib/canon-path.sh
 scripts/lib/project-mode.sh
 scripts/lib/forge.sh
 scripts/lib/forge-github.sh
