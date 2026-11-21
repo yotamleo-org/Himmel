@@ -66,13 +66,48 @@ function load(p = statePath()) {
 // state.json round-trips byte-identically across repeated saves of the same
 // object (JS objects preserve string-key insertion order, so re-stringifying
 // a just-parsed object reproduces the same key order it was read in).
-function save(state) {
-  const dir = cacheDir();
-  fs.mkdirSync(dir, { recursive: true });
+function writeState(state) {
   const p = statePath();
   const tmp = `${p}.tmp-${process.pid}`;
   fs.writeFileSync(tmp, JSON.stringify(state, null, 2) + '\n');
   fs.renameSync(tmp, p);
+}
+
+const LOCK_STALE_MS = 30000;
+const LOCK_WAIT_MS = 15000;
+
+function withStateLock(fn) {
+  const dir = cacheDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const lock = path.join(dir, 'state.json.lock');
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  for (;;) {
+    try {
+      fs.mkdirSync(lock);
+      break;
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+      let age = 0;
+      try { age = Date.now() - fs.statSync(lock).mtimeMs; } catch (_e) { continue; }
+      if (age > LOCK_STALE_MS) { fs.rmSync(lock, { recursive: true, force: true }); continue; }
+      if (Date.now() > deadline) throw new Error(`state.json is locked by another himmelctl (${lock}); retry, or remove it if none is running`);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    fs.rmSync(lock, { recursive: true, force: true });
+  }
+}
+
+function save(state) {
+  withStateLock(() => {
+    const disk = load();
+    if (disk.given) state.given = disk.given;
+    else delete state.given;
+    writeState(state);
+  });
 }
 
 // The state.targets key for a given scope: project scope keys off the
@@ -425,16 +460,18 @@ function addTarget(dir, { items = [], nwo, stateRepoOk = false } = {}) {
       return { ok: false, error: v.error || `${key} is a state repo; pass --state-repo-ok to list it anyway` };
     }
   }
-  const state = load();
-  if (!state.given || typeof state.given !== 'object' || Array.isArray(state.given)) state.given = {};
-  const prior = state.given[key];
-  const priorItems = prior && Array.isArray(prior.items) ? prior.items : [];
-  const entry = { items: [...new Set([...priorItems, ...items])] };
-  const keptNwo = nwo !== undefined ? nwo : prior && prior.nwo;
-  if (keptNwo) entry.nwo = keptNwo;
-  entry.adoptedAt = (prior && typeof prior.adoptedAt === 'string') ? prior.adoptedAt : new Date().toISOString();
-  state.given[key] = entry;
-  save(state);
+  withStateLock(() => {
+    const state = load();
+    if (!state.given || typeof state.given !== 'object' || Array.isArray(state.given)) state.given = {};
+    const prior = state.given[key];
+    const priorItems = prior && Array.isArray(prior.items) ? prior.items : [];
+    const entry = { items: [...new Set([...priorItems, ...items])] };
+    const keptNwo = nwo !== undefined ? nwo : prior && prior.nwo;
+    if (keptNwo) entry.nwo = keptNwo;
+    entry.adoptedAt = (prior && typeof prior.adoptedAt === 'string') ? prior.adoptedAt : new Date().toISOString();
+    state.given[key] = entry;
+    writeState(state);
+  });
   return { ok: true, key };
 }
 
@@ -443,13 +480,15 @@ function removeTarget(dir) {
     return { ok: false, error: 'remove-target is operator-only; refused inside a Claude session (CLAUDECODE / CLAUDE_CODE_* is set). Run it from your own terminal.' };
   }
   const key = givenKey(dir);
-  const state = load();
-  if (!state.given || !Object.prototype.hasOwnProperty.call(state.given, key)) {
-    return { ok: false, error: `not a given project: ${key}` };
-  }
-  delete state.given[key];
-  save(state);
-  return { ok: true, key };
+  return withStateLock(() => {
+    const state = load();
+    if (!state.given || !Object.prototype.hasOwnProperty.call(state.given, key)) {
+      return { ok: false, error: `not a given project: ${key}` };
+    }
+    delete state.given[key];
+    writeState(state);
+    return { ok: true, key };
+  });
 }
 
 function listTargets({ station = false, forDir } = {}) {

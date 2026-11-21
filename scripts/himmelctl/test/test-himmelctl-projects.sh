@@ -178,4 +178,28 @@ CLAUDECODE=1 node "$statejs" remove-target "$s1" > "$work/i.log" 2>&1 && fail "i
 jq -e --arg k "$s1" '.given | has($k) | not' "$state_file" >/dev/null || fail "i: $s1 still listed after remove-target"
 ok "i: remove-target refuses under CLAUDECODE=1 and drops the entry outside a session"
 
+pids=()
+for n in 1 2 3 4 5 6 7 8; do
+  new_repo "$work/par$n"
+  node "$statejs" add-target "$work/par$n" >/dev/null 2>&1 &
+  pids+=("$!")
+done
+for p in "${pids[@]}"; do wait "$p" || fail "j: a parallel add-target failed"; done
+for n in 1 2 3 4 5 6 7 8; do
+  jq -e --arg k "$work/par$n" '.given | has($k)' "$state_file" >/dev/null || fail "j: parallel add-target lost $work/par$n"
+done
+ok "j: eight parallel add-targets all land"
+
+s6="$work/s6"; new_repo "$s6"
+node -e '
+const { spawnSync } = require("child_process");
+const s = require(process.argv[1]);
+const stale = s.load();
+const r = spawnSync(process.execPath, [process.argv[1], "add-target", process.argv[2]], { encoding: "utf8" });
+if (r.status !== 0) { console.error(r.stderr); process.exit(1); }
+s.save(stale);
+' "$statejs" "$s6" || fail "k: stale-save fixture failed"
+jq -e --arg k "$s6" '.given | has($k)' "$state_file" >/dev/null || fail "k: a save from a state loaded before add-target dropped $s6"
+ok "k: a writer holding an older state does not drop a listed project"
+
 echo "PASS: test-himmelctl-projects.sh"
