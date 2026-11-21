@@ -101,7 +101,8 @@ function fixture() {
     HIMMEL_API_FALLBACK: 'off', HIMMEL_API_ALERT_CMD: paths.alert, HIMMEL_API_ALERT_DIR: join(dir, 'alerts') };
   writeFileSync(env.CADENCE_USAGE_CACHE, JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
   const good = ['-p', 'say hi', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10'];
-  const run = (args = good, extra = {}, opts = {}) => spawnSync('bash', [LAUNCH, ...args], { env: { ...env, ...extra }, encoding: 'utf8', cwd: HIMMEL_REPO, ...opts });
+  const run = (args = good, extra = {}, opts = {}) => spawnSync('bash', [LAUNCH, ...args], {
+    env: Object.fromEntries(Object.entries({ ...env, ...extra }).filter(([, v]) => v !== undefined)), encoding: 'utf8', cwd: HIMMEL_REPO, ...opts });
   const status = (account = 'A') => {
     const r = spawnSync(process.execPath, [STATE, 'status'], { env: { ...env, HIMMEL_API_ACCOUNT: account }, encoding: 'utf8' });
     return JSON.parse(r.stdout);
@@ -582,6 +583,79 @@ test('HIMMEL_API_FALLBACK=off still alerts but runs no fallback; a malformed req
     assert.equal(fbCalls(m), 0, JSON.stringify(env));
     assert.match(alertText(m), /fallback: not run: the request itself was refused/);
   }
+});
+
+test('HIMMEL_API_FALLBACK unset or any value but on is off: no fallback, no sub-fallback row; on still runs it', () => {
+  for (const [value, want] of [[undefined, /fallback: off \(HIMMEL_API_FALLBACK unset: default off\)/],
+    ['', /fallback: off \(HIMMEL_API_FALLBACK unset: default off\)/], ['On', /fallback: off \(HIMMEL_API_FALLBACK=On is not on\)/],
+    ['yes', /fallback: off \(HIMMEL_API_FALLBACK=yes is not on\)/]]) {
+    const f = fixture();
+    native(f, 10);
+    const r = f.run(f.good, { HIMMEL_API_FALLBACK: value, HIMMEL_API_ACCOUNT: 'E', STUB_FB_OUT: FB_OK });
+    assert.equal(r.status, 2, `${value}: ${r.stderr}`);
+    assert.equal(fbCalls(f), 0, `${value}: the subscription ran`);
+    assert.ok(!rows(f).some((row) => row.lane === 'sub-fallback'), `${value}: a sub-fallback row was written`);
+    assert.equal(alerts(f).length, 1, `${value}: no alert`);
+    assert.match(alertText(f), want);
+  }
+  const g = fixture();
+  native(g, 10);
+  assert.equal(g.run(g.good, { ...FB_ON, HIMMEL_API_ACCOUNT: 'E', STUB_FB_OUT: FB_OK }).status, 0);
+  assert.equal(fbCalls(g), 1, 'on no longer runs the fallback');
+});
+
+function routeFixture(dotenv) {
+  const f = fixture();
+  const bin = join(f.dir, 'bin');
+  mkdirSync(bin);
+  const sent = join(f.dir, 'sent.log');
+  writeFileSync(join(bin, 'bun'), `#!/bin/bash\n{ echo "chat=$TELEGRAM_GROUP_CHAT_ID"; echo "args=$*"; echo "msg=$TG_MESSAGE"; } >> '${sent}'\nexit "\${BUN_RC:-0}"\n`, { mode: 0o700 });
+  if (dotenv !== undefined) writeFileSync(join(f.dir, '.env'), dotenv);
+  const go = (extra = {}) => f.run(f.good, { HIMMEL_API_ACCOUNT: 'E', HIMMEL_API_ALERT_CMD: undefined, HIMMEL_API_ALERT_ENV_ROOT: f.dir,
+    PATH: `${bin}:${process.env.PATH}`, ...extra });
+  const sends = () => (existsSync(sent) ? readFileSync(sent, 'utf8') : '');
+  const stamps = () => readdirSync(join(f.dir, 'alerts')).filter((n) => !n.endsWith('.jsonl'));
+  const undelivered = () => {
+    const p = join(f.dir, 'alerts', 'undelivered.jsonl');
+    return existsSync(p) ? readFileSync(p, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
+  };
+  return { f, go, sends, stamps, undelivered };
+}
+
+test('an alert with no group chat id goes to the operator chat (TELEGRAM_CHAT_ID); a group id still wins', () => {
+  const op = routeFixture('TELEGRAM_CHAT_ID=1234567\n');
+  assert.equal(op.go().status, 2);
+  assert.match(op.sends(), /^chat=1234567$/m);
+  assert.match(op.sends(), /^args=run .*scripts\/telegram\/session-status\.ts notification$/m);
+  assert.equal(op.stamps().length, 1, 'a delivered alert stamps the hour');
+  assert.equal(op.undelivered().length, 0);
+  const grp = routeFixture('TELEGRAM_CHAT_ID=1234567\nTELEGRAM_GROUP_CHAT_ID=-7654321\n');
+  assert.equal(grp.go().status, 2);
+  assert.match(grp.sends(), /^chat=-7654321$/m);
+});
+
+test('an alert with no chat id at all is never dropped silently: stderr, one undelivered row, no stamp, the next failure alerts again', () => {
+  const none = routeFixture();
+  const r = none.go();
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /claude-api: alert NOT delivered \(no TELEGRAM_GROUP_CHAT_ID or TELEGRAM_CHAT_ID\)/);
+  assert.equal(none.sends(), '', 'a sender ran with no chat id');
+  assert.deepEqual(none.stamps(), [], 'an undelivered alert stamped the hour');
+  const [row] = none.undelivered();
+  assert.equal(row.class, 'refused');
+  assert.equal(row.rc, 2);
+  assert.match(row.reason, /HIMMEL_API_ACCOUNT must be/);
+  assert.equal(row.why, 'no TELEGRAM_GROUP_CHAT_ID or TELEGRAM_CHAT_ID');
+  assert.match(none.go().stderr, /alert NOT delivered/);
+  assert.equal(none.undelivered().length, 2, 'the second failure inside the hour was not recorded');
+  keyNowhere(none.f, r);
+  const quiet = routeFixture('TELEGRAM_CHAT_ID=1234567\n');
+  const q = quiet.go({ TELEGRAM_GROUP_CHAT_ID: '' });
+  assert.match(q.stderr, /alert NOT delivered \(TELEGRAM_GROUP_CHAT_ID is set empty: suppressed\)/);
+  assert.equal(quiet.sends(), '');
+  assert.deepEqual(quiet.stamps(), []);
+  assert.equal(quiet.undelivered().length, 1);
+  assert.ok(!readFileSync(join(quiet.f.dir, 'alerts', 'undelivered.jsonl'), 'utf8').includes('1234567'), 'a chat id reached the record');
 });
 
 // a prompt on stdin is kept in a mode-600 scratch file, so the fallback can replay it

@@ -19,13 +19,16 @@
 #        [HIMMEL_API_CALL_TIMEOUT_S=<seconds>] the launcher stops a call at this age, and the credit-state sweep releases a reservation older than it plus the five-second kill grace (default 3600)
 #        [HIMMEL_API_BRANCH=<branch> HIMMEL_API_HEAD=<sha> HIMMEL_API_PR=<number>] the work the call belongs to; written to
 #        the launch record so a cost can be joined to a PR by key (absent = empty / null)
-#        [HIMMEL_API_FALLBACK=off] switches the subscription fallback below off for this caller (default on)
+#        [HIMMEL_API_FALLBACK=on] opts this caller into the subscription fallback below; unset or any other value is off (default off)
 #        [HIMMEL_API_ALERT_CMD=<path>] test seam: the alert sender, run with TG_* in its env (default the Telegram
 #        notification sender, scripts/telegram/session-status.ts)  [HIMMEL_API_ALERT_DIR=<dir>] rate-limit stamps
+#        [HIMMEL_API_ALERT_ENV_ROOT=<dir>] test seam: the directory whose .env the alert reads its chat ids from
 # OFF by default. Failure path (docs/internals/api-lane.md): a refusal (exit 2), a rejected account (exit 6)
 #        or any other non-zero call exit still happens first, then sends ONE Telegram alert (kind, account, class,
 #        exit code, one-line reason, never the key; one per kind and class per hour; never for the decision-525 auto
-#        refusal, which only appends one line to <alert dir>/policy-refusals.jsonl and never falls back), then re-runs the same prompt
+#        refusal, which only appends one line to <alert dir>/policy-refusals.jsonl and never falls back) to the group
+#        chat, or to TELEGRAM_CHAT_ID when no group id is set; an alert with no chat id is a stderr line and one
+#        <alert dir>/undelivered.jsonl row, never a stamp. Only with HIMMEL_API_FALLBACK=on does it then re-run the same prompt
 #        once as a subscription `claude -p`: native auth (every API-key variable removed), the same model,
 #        permission mode, tool grant and budget cap, --output-format json. The fallback runs only when the native
 #        usage preflight says PROCEED, BANK-STALE or BANK-UNKNOWN; SKIPPED-BANK or SKIPPED-FLEET skips it and the
@@ -113,9 +116,10 @@ redact() {
 
 # ONE alert per kind and class per hour, through the existing Telegram notification sender; never blocks the fallback
 send_alert() {
-  local class="$1" rc="$2" reason="$3" decision="$4" dir stamp account msg repo_name env_root
+  local class="$1" rc="$2" reason="$3" decision="$4" dir stamp account msg repo_name env_root sent why="" undelivered
   dir="${HIMMEL_API_ALERT_DIR:-${HOME:-/tmp}/.himmel/state/api-lane-alerts}"
   stamp="$dir/$KIND_SAFE.$class"
+  undelivered="$dir/undelivered.jsonl"
   mkdir -p "$dir" 2>/dev/null || return 0
   if [ -n "$(find "$stamp" -maxdepth 0 -mmin -60 2>/dev/null)" ]; then # gnu-ok: BSD find has -maxdepth/-mmin too
     echo "claude-api: alert: one already sent for $KIND_SAFE $class within the hour" >&2
@@ -133,17 +137,29 @@ send_alert() {
     done
     export TG_REPO_NAME="$repo_name" TG_NOTIFICATION_TYPE="api-lane $class" TG_MESSAGE="$msg"
     [ -z "${HIMMEL_API_ALERT_CMD:-}" ] || exec "$HIMMEL_API_ALERT_CMD" notification
-    # an explicitly empty chat id is a deliberate suppression and never falls back to .env
-    if [ "${TELEGRAM_GROUP_CHAT_ID+set}" = set ] && [ -z "$TELEGRAM_GROUP_CHAT_ID" ]; then exit 0; fi
+    if [ "${TELEGRAM_GROUP_CHAT_ID+set}" = set ] && [ -z "$TELEGRAM_GROUP_CHAT_ID" ]; then exit 73; fi
     # shellcheck source=scripts/lib/load-dotenv.sh
     { [ -r "$REPO/scripts/lib/load-dotenv.sh" ] && . "$REPO/scripts/lib/load-dotenv.sh"; } 2>/dev/null &&
-      load_dotenv --root "${env_root:-$REPO}" TELEGRAM_GROUP_CHAT_ID 2>/dev/null
-    [ -n "${TELEGRAM_GROUP_CHAT_ID:-}" ] || exit 0
+      load_dotenv --root "${HIMMEL_API_ALERT_ENV_ROOT:-${env_root:-$REPO}}" TELEGRAM_GROUP_CHAT_ID TELEGRAM_CHAT_ID 2>/dev/null
+    [ -n "${TELEGRAM_GROUP_CHAT_ID:-}" ] || TELEGRAM_GROUP_CHAT_ID="${TELEGRAM_CHAT_ID:-}"
+    [ -n "$TELEGRAM_GROUP_CHAT_ID" ] || exit 74
     export TELEGRAM_GROUP_CHAT_ID
-    command -v bun >/dev/null 2>&1 || exit 0
+    command -v bun >/dev/null 2>&1 || exit 75
     if command -v timeout >/dev/null 2>&1; then exec timeout 30 bun run "$REPO/scripts/telegram/session-status.ts" notification; fi
     exec bun run "$REPO/scripts/telegram/session-status.ts" notification
-  ) </dev/null >/dev/null 2>&1 && touch "$stamp" 2>/dev/null
+  ) </dev/null >/dev/null 2>&1
+  sent=$?
+  case "$sent" in
+    0) touch "$stamp" 2>/dev/null ;;
+    73) why="TELEGRAM_GROUP_CHAT_ID is set empty: suppressed" ;;
+    74) why="no TELEGRAM_GROUP_CHAT_ID or TELEGRAM_CHAT_ID" ;;
+    75) why="bun not on PATH" ;;
+  esac
+  [ -n "$why" ] || return 0
+  echo "claude-api: alert NOT delivered ($why): kind $KIND_SAFE, $class (exit $rc); recorded in $undelivered" >&2
+  printf '{"ts":%s,"kind":"%s","class":"%s","rc":%s,"reason":"%s","why":"%s"}\n' "$(date +%s)" "$KIND_SAFE" "$class" "$rc" \
+    "$(redact "$reason" | sed 's/\\/\\\\/g; s/"/\\"/g')" "$why" >>"$undelivered" 2>/dev/null ||
+    echo "claude-api: warning: undelivered alert record not written" >&2
   return 0
 }
 
@@ -245,8 +261,12 @@ fail_over() {
     return 0
   fi
   [ "$class" != refused-role-map ] || return 0
-  if [ "${HIMMEL_API_FALLBACK:-on}" = off ]; then
+  if [ -z "${HIMMEL_API_FALLBACK:-}" ]; then
+    decision="off (HIMMEL_API_FALLBACK unset: default off)"
+  elif [ "$HIMMEL_API_FALLBACK" = off ]; then
     decision="off (HIMMEL_API_FALLBACK=off)"
+  elif [ "$HIMMEL_API_FALLBACK" != on ]; then
+    decision="off (HIMMEL_API_FALLBACK=$HIMMEL_API_FALLBACK is not on)"
   elif [ "$KIND_SAFE" = critic ]; then
     decision="not run: a critic call never runs on the subscription"
   elif [ -n "$NO_FB" ]; then
@@ -611,7 +631,7 @@ ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u 
   "${LLM_API_ORG_KEY_UNSET[@]}" -u HIMMEL_DOTENV_FILE -u HIMMEL_API_SNAPSHOT_OPTIONAL \
   -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE -u HIMMEL_API_KIND -u HIMMEL_API_CACHE_TTL \
   -u HIMMEL_API_BRANCH -u HIMMEL_API_HEAD -u HIMMEL_API_PR \
-  -u HIMMEL_API_FALLBACK -u HIMMEL_API_ALERT_CMD -u HIMMEL_API_ALERT_DIR \
+  -u HIMMEL_API_FALLBACK -u HIMMEL_API_ALERT_CMD -u HIMMEL_API_ALERT_DIR -u HIMMEL_API_ALERT_ENV_ROOT \
   ${SESSION_UNSET[@]+"${SESSION_UNSET[@]}"} \
   ANTHROPIC_BASE_URL=https://api.anthropic.com CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 CLAUDE_CODE_PROMPT_CACHE_TTL="$CACHE_TTL" \
   "$CLAUDE_BIN" "${ARGS[@]}" --model "$MODEL" --permission-mode "$MODE" \
