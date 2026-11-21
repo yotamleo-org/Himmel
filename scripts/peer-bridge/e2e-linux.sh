@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-# e2e-linux.sh - the peer bridge typed path end to end, inside ONE VirtualBox
-# test VM: station A (requester, temp HOME) asks station B (server, this VM
-# user's HOME) to run two real suites; B's runner runs them in a nested job
-# guest with no NIC and no PAT; A's `jobs.ts show` must list both outcomes.
-# Then a probe in a fresh job guest must reach nothing on the network.
-# It never runs on a station host.
-#
 # Inputs (environment, set by the VM driver):
 #   PEER_BRIDGE_VM_TEST=1     required
 #   E2E_BOTS_FILE             0600 file with TELEGRAM_TEST_A_BOT=<token> and

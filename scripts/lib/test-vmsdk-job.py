@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Tests for vmsdk-job.py (stdlib unittest; run: python3 scripts/lib/test-vmsdk-job.py)."""
 import ast
 import json
 import os
