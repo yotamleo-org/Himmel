@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { briefText, briefTextCounted, findDo } from "./key-brief";
@@ -98,7 +98,15 @@ const withCli = <T>(cli: string, fn: () => T): T => {
   const saved = process.env.HIMMEL_JIRA_CLI; process.env.HIMMEL_JIRA_CLI = cli;
   try { return fn(); } finally { if (saved === undefined) delete process.env.HIMMEL_JIRA_CLI; else process.env.HIMMEL_JIRA_CLI = saved; }
 };
-const FILED = stub("filed.js", `console.log("HIMMEL-7001\\tTask\\tTo Do\\tFleet orchestration: a chief session starts with Remote Control on\\n\\nbody text");`);
+const withEnv = <T>(vars: Record<string, string>, fn: () => T): T => {
+  const saved = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
+  Object.assign(process.env, vars);
+  try { return fn(); } finally { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
+};
+const FILED = stub("filed.js", `if (process.argv[4] !== "--short") process.exit(1); console.log("HIMMEL-7001\\tTask\\tTo Do\\tFleet orchestration: a chief session starts with Remote Control on");`);
+const WRONG_KEY = stub("wrong.js", `console.log("HIMMEL-1\\tTask\\tTo Do\\tSomebody else's ticket");`);
+const PID = join(scratch, "hang.pid");
+const HANG = stub("hang.js", `require("node:fs").writeFileSync(${JSON.stringify(PID)}, String(process.pid)); setInterval(() => {}, 1000);`);
 const DEAD = stub("dead.js", `process.stderr.write("jira: 401\\n"); process.exit(1);`);
 const savedCli = process.env.HIMMEL_JIRA_CLI;
 process.env.HIMMEL_JIRA_CLI = DEAD;
@@ -129,6 +137,36 @@ test("a key the mirror does hold is never sent to the tracker; one it lacks is, 
   expect(r.text).toBe(`HIMMEL-9503 (${S9503}) needs you, HIMMEL-7003 too`);
   expect(r.unresolved).toEqual(["HIMMEL-7003"]);
   expect(callsMade()).toEqual(["HIMMEL-7003"]);
+});
+
+test("the tracker is asked for the short form, and a line for another key is never used as the title", () => {
+  const r = withCli(WRONG_KEY, () => briefTextCounted("HIMMEL-7007 is stuck", MIRROR, "PR"));
+  expect(r.text).toBe("HIMMEL-7007 is stuck");
+  expect(r.unresolved).toEqual(["HIMMEL-7007"]);
+});
+
+const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
+test("a tracker that hangs is killed at the budget, and the default budget stays under the owed send's 2 s bound", () => {
+  for (const budget of [300, undefined]) {
+    rmSync(PID, { force: true });
+    const t0 = Date.now();
+    const r = withCli(HANG, () => briefTextCounted("HIMMEL-7008 is stuck", MIRROR, "PR", budget));
+    expect(Date.now() - t0).toBeLessThan(1800);
+    expect(r.unresolved).toEqual(["HIMMEL-7008"]);
+    expect(alive(Number(readFileSync(PID, "utf8")))).toBe(false);
+  }
+});
+
+test("a fixture run reaches no tracker of its own, only a stub it names", () => {
+  const fakeNode = join(scratch, "bin"); mkdirSync(fakeNode);
+  const nodeStub = join(fakeNode, "node"); writeFileSync(nodeStub, `#!/bin/sh\necho "$@" >> ${CALLS}\nexit 1\n`); chmodSync(nodeStub, 0o755);
+  rmSync(CALLS, { force: true });
+  const bare = withEnv({ HIMMEL_TEST_FIXTURE: "1", HIMMEL_JIRA_CLI: "", PATH: `${fakeNode}:${process.env.PATH}` }, () => briefTextCounted("HIMMEL-7009 is stuck", MIRROR, "PR"));
+  expect(bare.unresolved).toEqual(["HIMMEL-7009"]);
+  expect(callsMade()).toEqual([]);
+  const named = withEnv({ HIMMEL_TEST_FIXTURE: "1" }, () => withCli(FILED, () => briefText("HIMMEL-7001 is filed", MIRROR, "PR")));
+  expect(named).toContain("Fleet orchestration");
 });
 
 test("a spent tracker budget stops the lookups: the remaining keys stay bare and no call is made", () => {

@@ -6,8 +6,7 @@ const KEY = /[A-Z][A-Z0-9]{1,9}-[0-9]+/g;
 const REF = /(?:[A-Za-z0-9_.-]+\/)?[A-Za-z0-9_.-]+#[0-9]+/g;
 const WORKER = /N[0-9]+[a-z]*/g;
 const SUMMARY_MAX = 80;
-const TRACKER_TIMEOUT_MS = 5000;
-const TRACKER_BUDGET_MS = 8000;
+const TRACKER_BUDGET_MS = 1000;
 
 export type Range = [number, number];
 
@@ -44,12 +43,13 @@ function trackerTitle(key: string, deadline: number): string | null {
   const left = deadline - Date.now();
   const cli = process.env.HIMMEL_JIRA_CLI || join(import.meta.dir, "..", "jira", "dist", "index.js");
   if (left <= 0 || (process.env.HIMMEL_TEST_FIXTURE === "1" && !process.env.HIMMEL_JIRA_CLI) || !existsSync(cli)) return null;
-  const r = spawnSync("node", [cli, "get", key], {
-    encoding: "utf8", timeout: Math.min(TRACKER_TIMEOUT_MS, left), maxBuffer: 1 << 20, stdio: ["ignore", "pipe", "ignore"],
+  const r = spawnSync("node", [cli, "get", key, "--short"], {
+    encoding: "utf8", timeout: left, killSignal: "SIGKILL", maxBuffer: 1 << 16, stdio: ["ignore", "pipe", "ignore"],
     env: { ...process.env, JIRA_PROJECT_KEY: key.slice(0, key.lastIndexOf("-")) },
   });
   if (r.status !== 0) return null;
-  return /^[^\t\n]+\t[^\t\n]*\t[^\t\n]*\t([^\n]+)/.exec(r.stdout)?.[1].trim() || null;
+  const [got, , , title] = r.stdout.split("\n")[0].split("\t");
+  return got === key && title?.trim() ? title.trim() : null;
 }
 
 function summaryOf(mirrorRoot: string, key: string, deadline: number): string | null {
