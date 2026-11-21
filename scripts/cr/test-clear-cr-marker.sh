@@ -4319,7 +4319,8 @@ write_ledger "$tmp" "$(avail_ok "$sha")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 14 "11b non-trivial unreviewed delta is still refused -> exit 14"
 if marker_exists "$tmp"; then pass; else fail "11b: marker must REMAIN"; fi
-if grep -qF "\"head\":\"$B\"" "$tmp/.git/cr-critic-scores.jsonl"; then fail "11b: a refused non-trivial head must get no ledger row"; else pass; fi
+_11b_rc=0; grep -qF "\"head\":\"$B\"" "$tmp/.git/cr-critic-scores.jsonl" || _11b_rc=$?
+if [ "$_11b_rc" -eq 1 ]; then pass; else fail "11b: a refused non-trivial head must get no ledger row (grep rc=$_11b_rc)"; fi
 rm -rf "$tmp"
 
 # 11c. a blocking finding at A still blocks B (the gates run at A, not around it).
