@@ -664,8 +664,6 @@ stream_stop_point() {
 legs_from="${WORKERS_FROM:-}"
 console_doc=""
 prev_arg=""
-# --succession / --silent-min / --since / --receipt belong to this waiter, not to tick.sh:
-# take them out of the tick args before anything hashes or forwards them.
 succession=""; silent_min=20
 rest_args=()
 for a in "$@"; do

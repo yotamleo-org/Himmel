@@ -38,7 +38,6 @@ cat > "$STUB/tick.sh" <<'EOF'
 printf x >> "$STUB/ticks"
 printf '%s\n' "$*" >> "$STUB/tick.args"
 [ -f "$STUB/tick.rc" ] && exit "$(cat "$STUB/tick.rc")"
-# tick.strict: like the real tick.sh, exits 2 with a usage line on a flag it does not own.
 if [ -f "$STUB/tick.strict" ]; then
     for a in "$@"; do case "$a" in --since|--receipt) echo "tick.sh: unknown flag $a" >&2; echo "second stderr line" >&2; exit 2 ;; esac; done
 fi
