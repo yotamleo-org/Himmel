@@ -1753,6 +1753,9 @@ hbfx 'Asked on Telegram: "an ask no decision repeats"' '' ''
 contains '10189 control: a HANDOFF item no newer decision answers stays under Waiting on you' "$hbw" 'an ask no decision repeats'
 hbfx 'move the obsidian key out of the codex config' 'Decision 951. move the obsidian key out of the codex config.' '2026-11-15 10:30:00'
 contains '10189 control: a HANDOFF item with no key and no quoted ask is never answered' "$hbw" 'obsidian key'
+hbfx 'Waiting on the operator for HIMMEL-8002 sign-off' 'The operator ruled on HIMMEL-8002.' '2026-11-15 10:30:00'
+contains '10357 a HANDOFF item with a key and no quoted ask stays under Waiting on you when a newer decision names the key' "$hbw" 'HIMMEL-8002 sign-off'
+not_contains '10357 that key-only item is not under Chief owes' "$hbc" 'HIMMEL-8002 sign-off'
 
 printf '%s\n' '# chief' '## Live state' 'queue: HIMMEL-21 operator-owed lines remain | HIMMEL-25 operator words: the sudo root reinstall' 'pool-disposition: HIMMEL-24 close decision 847 operator-owed: proof verdict' > "$cod/chief.md"
 codrender --owed-dir "$cod/bucket" --chief-doc "$cod/chief.md" >/dev/null || fail '10189 the Live-state render exited non-zero'
