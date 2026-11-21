@@ -580,6 +580,7 @@
     }
   }
   function fallback(text, done) {
+    var prev = document.activeElement;
     var ta = document.createElement('textarea');
     ta.value = text;
     ta.setAttribute('readonly', '');
@@ -589,6 +590,7 @@
     ta.select();
     try { if (document.execCommand('copy')) done(); } catch (e) { /* the text stays selectable by hand */ }
     document.body.removeChild(ta);
+    if (prev && prev.focus) prev.focus();
   }
   var blocks = document.querySelectorAll('.cmd:not(.out)');
   for (var j = 0; j < blocks.length; j++) {
