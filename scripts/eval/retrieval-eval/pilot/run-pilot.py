@@ -399,8 +399,12 @@ def start_broker_killed_when_runner_pipe_closes(argv):
         null = os.open(os.devnull, os.O_RDWR)
         for fd in (0, 1, 2):
             os.dup2(null, fd)
-        os.closerange(3, tie[0])
-        os.closerange(tie[0] + 1, 4096)
+        for fd in [int(n) for n in os.listdir("/dev/fd")]:
+            if fd > 2 and fd != tie[0]:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
         while not select.select([tie[0]], [], [], 0.2)[0] and os.getppid() == broker:
             pass
         if os.getppid() == broker:

@@ -99,13 +99,11 @@ _himmel_pty_run() (
             _hp_e=
             if "$_hp_script" -qe /dev/null true </dev/null >/dev/null 2>&1; then _hp_e=e; fi
             exec 3<&-
+            trap 'kill "$(cat "$_hp_d/holder" 2>/dev/null)" 2>/dev/null; rm -f "$_hp_d/holder"; rmdir "$_hp_d" 2>/dev/null' EXIT
+            trap 'exit 143' HUP INT TERM
             { sleep 2147483647 & echo $! >"$_hp_d/holder"; } |
                 "$_hp_script" "-q$_hp_e" /dev/null sh -c "$HIMMEL_PTY_CMD" >/dev/null
-            _hp_rc=$?
-            kill "$(cat "$_hp_d/holder" 2>/dev/null)" 2>/dev/null
-            rm -f "$_hp_d/holder"
-            rmdir "$_hp_d" 2>/dev/null
-            exit "$_hp_rc"
+            exit $?
             ;;
     esac
 )
