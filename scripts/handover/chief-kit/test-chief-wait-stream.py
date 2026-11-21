@@ -101,7 +101,16 @@ def publish(self):
         os._exit(137)
 
 
-m.identity, m.atomic, m.Supervisor.publish = identity, atomic, publish
+real_record = m.Supervisor.record
+
+
+def record(self, part, adopted=False, emit=True):
+    if point == 'record':
+        os._exit(137)  # the child's output is complete and nothing of it is recorded
+    return real_record(self, part, adopted, emit)
+
+
+m.identity, m.atomic, m.Supervisor.publish, m.Supervisor.record = identity, atomic, publish, record
 sys.exit(sup.run())
 '''
 
@@ -115,7 +124,7 @@ m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 inbox, when = sys.argv[2], int(sys.argv[3])
 side = inbox + '.wait.stream'
-os.environ['CHIEF_WAIT_STREAM_ADOPT_SEC'] = '0'
+os.environ['CHIEF_WAIT_STREAM_ADOPT_SEC'] = '0.001'
 child = subprocess.Popen(['bash', '-c', 'sleep 300; :', 'chief-wait-x', inbox], start_new_session=True)
 start = m.identity(child.pid)
 Path(inbox + '.wait').write_text(f'hb={int(time.time())} pid={child.pid} key=- tick=ok state=waiting\n')
@@ -123,12 +132,12 @@ dead = subprocess.Popen(['true'])
 dead.wait()
 part = inbox + '.wait.part-1-1'
 Path(side).write_text(f'sup={dead.pid} sup_start=1 host={m.HOST} boot={m.BOOT} child={child.pid} child_start={start} '
-                      f'part={part} safe={time.time() - 5} handoff={time.time() - 10} seq=0\n')
+                      f'part={part} safe={time.monotonic() - 5} handoff={time.monotonic() - 10} seq=0\n')
 end = time.monotonic() + 5
 while not m.safe_point(m.load(side), inbox) and time.monotonic() < end:
     time.sleep(.05)
 adopter = m.Supervisor(inbox, ['--doc', 'x', '--workers-from', 'y'])
-adopter.data = dict(child=child.pid, child_start=start, part=part, safe=time.time(), handoff='-')
+adopter.data = dict(child=child.pid, child_start=start, part=part, safe=time.monotonic(), handoff='-')
 real_load, real_kill = m.load, os.kill
 reads, publishers, kills = [], [], []
 
@@ -410,7 +419,7 @@ echo 'HANDLED close-wrapped'
         self.assertIn('reason=repeat', out.read_text())
         self.assertIn('full detail retained', self.path('wake-2').read_text())
         self.assertNotIn('full detail retained', out.read_text())
-        env['CHIEF_WAIT_STREAM_REPEAT_SEC'] = '0'
+        env['CHIEF_WAIT_STREAM_REPEAT_SEC'] = '0.001'
         again, flood = self.start(('--since', '0'), env=env)
         self.assertEqual(again.wait(timeout=5), 0)
         self.assertLessEqual(len(flood.read_text().splitlines()), 7)
@@ -529,14 +538,11 @@ echo 'HANDLED close-wrapped'
             gate.touch()
 
     def test_killed_after_output_replays_and_lock_is_not_inherited(self):
-        env = dict(self.env, CHIEF_WAIT_STREAM_PAUSE_LOG='1')
-        p, _ = self.start(env=env)
+        p, _ = self.launch_window('record')
         self.armed()
         self.inbox.write_text('record before print\n')
-        self.until(lambda: bool(list(self.root.glob('consoles/*.wait.part-*'))) and
-                   any('WAKE telegram' in part.read_text() for part in self.root.glob('consoles/*.wait.part-*')))
-        p.kill()
-        p.wait(timeout=3)
+        self.assertEqual(p.wait(timeout=10), 137)
+        self.assertTrue(any('WAKE telegram' in part.read_text() for part in self.root.glob('consoles/*.wait.part-*')))
         time.sleep(.5)
         again, out = self.start(('--since', '0'))
         self.until(lambda: 'REPLAY seqs=1-1 n=1' in out.read_text())
@@ -838,7 +844,7 @@ echo 'HANDLED close-wrapped'
     def test_persistent_underfill_reminds_with_unchanged_pool(self):
         self.script('tick', 'echo "TICK workers=0 livestate=0 prs=none tails=none acts=none workerset=0 board=ok tracker=ok denials=0 capacity=UNDERFILLED:1"\n')
         self.env.update(CHIEF_WAIT_INTERVAL='1', CHIEF_WAIT_UNDERFILL_REPOOL_SEC='1',
-                        CHIEF_WAIT_STREAM_REPEAT_SEC='0',
+                        CHIEF_WAIT_STREAM_REPEAT_SEC='0.001',
                         CHIEF_WAIT_DISPATCH=self.script('pool', 'echo POOL-EMPTY\n'))
         p, out = self.start()
         self.until(lambda: out.read_text().count('underfilled') >= 2)
@@ -859,7 +865,7 @@ echo 'HANDLED close-wrapped'
     def test_watchdog_bounds_unadopted_busy_child_and_replays_hang_once(self):
         self.script('tick', 'sleep 4\n')
         env = dict(self.env, CHIEF_WAIT_STREAM_SOFT_SEC='.2', CHIEF_WAIT_STREAM_HARD_SEC='.6',
-                   CHIEF_WAIT_STREAM_ADOPT_SEC='0', CHIEF_WAIT_STREAM_REAP_MAX_SEC='1')
+                   CHIEF_WAIT_STREAM_ADOPT_SEC='0.001', CHIEF_WAIT_STREAM_REAP_MAX_SEC='1')
         p, out = self.start(env=env)
         self.assertEqual(p.wait(timeout=4), 0)
         self.assertIn('child=busy', out.read_text())
@@ -1184,6 +1190,317 @@ class WatchdogOwner(StreamFixture):
         self.assertEqual(seen['owner'], str(seen['me']))
 
 
+# The longest value each duration setting accepts, in seconds: a Monitor arm lives 1800 s (timeout_ms 1800000), the one-shot
+# Bash arm 7200 s (timeout 7200000), and a stop request waits 60 s for a safe point (so SOFT ends 60 s before the longest HARD).
+BOUNDS = {'CHIEF_WAIT_STREAM_SOFT_SEC': 1740, 'CHIEF_WAIT_STREAM_HARD_SEC': 1800,
+          'CHIEF_WAIT_STREAM_BUSY_MAX_SEC': 7200, 'CHIEF_WAIT_STREAM_REAP_MAX_SEC': 1800,
+          'CHIEF_WAIT_STREAM_ADOPT_SEC': 1800, 'CHIEF_WAIT_STREAM_KILL_GRACE_SEC': 60,
+          'CHIEF_WAIT_STREAM_REPEAT_SEC': 1800}
+# The ones the detached watchdog reads itself.
+WATCHDOG_BOUNDS = ('CHIEF_WAIT_STREAM_ADOPT_SEC', 'CHIEF_WAIT_STREAM_BUSY_MAX_SEC', 'CHIEF_WAIT_STREAM_REAP_MAX_SEC',
+                   'CHIEF_WAIT_STREAM_KILL_GRACE_SEC')
+
+# Runs the supervisor in-process. `unchecked` turns the start-time settings check off (SOFT above HARD would be refused before
+# the loop; the loop itself must still end at HARD); `step` moves the wall clock back an hour one second in.
+SUPERVISOR_PROBE = r'''
+import importlib.util, sys, threading, time
+spec = importlib.util.spec_from_file_location('cws', sys.argv[1])
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+mode = sys.argv[2]
+if mode == 'unchecked':
+    m.check_limits = lambda: None
+if mode == 'step':
+    real = time.time
+
+    def step():
+        time.sleep(1.0)
+        time.time = lambda: real() - 3600
+        m.clock.__defaults__ = (time.time,)  # clock() holds time.time as its default argument
+    threading.Thread(target=step, daemon=True).start()
+sys.exit(m.Supervisor(sys.argv[3], sys.argv[4:]).run())
+'''
+
+# Runs the watchdog in-process for a waiter child (the sidecar's `safe` is a wall-clock time, so the busy bound, which compares it
+# with the watchdog's own clock, cannot fire on either clock and only the bound under test can end the child).
+# `gone`: its supervisor is gone; `hung`: its supervisor lives for the whole
+# run (a stopped or hung one) and the maxima that make up the watchdog's age are one second (the kill grace 0.2);
+# `alive`: the same supervisor with the real maxima;
+# `step` is `gone` with the wall clock moved back an hour half a second in.
+WATCHDOG_AGE = r'''
+import importlib.util, json, os, subprocess, sys, threading, time
+from pathlib import Path
+spec = importlib.util.spec_from_file_location('cws', sys.argv[1])
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+inbox, mode = sys.argv[2], sys.argv[3]
+side = inbox + '.wait.stream'
+child = subprocess.Popen(['bash', '-c', 'sleep 600; :', 'chief-wait-x', inbox], start_new_session=True)
+holder = subprocess.Popen(['bash', '-c', 'sleep 600; :', 'holder', inbox], start_new_session=True)
+time.sleep(.3)
+sup, start = (holder.pid, m.identity(holder.pid)) if mode in ('hung', 'alive') else (999999, 'x')
+Path(side).write_text(f'sup={sup} sup_start={start} host={m.HOST} boot={m.BOOT} child={child.pid} '
+                      f'child_start={m.identity(child.pid)} part={inbox}.wait.part-1-1 safe={time.time()} handoff=- seq=0\n')
+limits = getattr(m, 'LIMITS', None)
+if mode == 'hung' and limits is not None:
+    for name in ('CHIEF_WAIT_STREAM_HARD_SEC', 'CHIEF_WAIT_STREAM_ADOPT_SEC', 'CHIEF_WAIT_STREAM_REAP_MAX_SEC'):
+        limits[name] = (1, 1)
+    limits['CHIEF_WAIT_STREAM_KILL_GRACE_SEC'] = (0.2, 0.2)
+if mode == 'step':
+    real = time.time
+
+    def step():
+        time.sleep(.5)
+        time.time = lambda: real() - 3600
+    threading.Thread(target=step, daemon=True).start()
+began = time.monotonic()
+rc = m.watchdog(inbox, str(sup), str(start))
+print(json.dumps(dict(rc=rc, took=round(time.monotonic() - began, 1), child_running=child.poll() is None,
+                      hung=Path(inbox + '.wait.stream.hung').exists())))
+'''
+
+
+class StreamBounds(StreamFixture):
+    """Every duration the supervisor and its watchdog read from the environment has a maximum; a value outside it
+    refuses the start with one line that names the setting, the value and the range."""
+
+    def tearDown(self):
+        # Only processes that name this fixture's own directory: the supervisors, watchdogs and waiters it started.
+        for entry in Path('/proc').iterdir():
+            if entry.name.isdigit() and int(entry.name) != os.getpid():
+                try:
+                    if os.fsencode(str(self.root)) in (entry / 'cmdline').read_bytes():
+                        os.kill(int(entry.name), signal.SIGKILL)
+                except OSError:
+                    pass
+        super().tearDown()
+
+    def refusal(self, name, value):
+        return f'STREAM-REFUSED bad-setting {name}={value!r} (allowed: a number above 0 and at most {BOUNDS[name]})\n'
+
+    def fresh(self, n):
+        inbox = self.root / f'consoles/bound{n}.md'
+        inbox.touch()
+        Path(str(inbox) + '.announced').touch()
+        return inbox
+
+    def arm(self, inbox, drop=(), **setting):
+        """Starts the supervisor with the settings (and without those in `drop`) and returns (rc, output, started); a
+        supervisor that started is stopped."""
+        out = self.root / (inbox.name + '.out')
+        env = dict(self.env, **setting)
+        for name in drop:
+            env.pop(name, None)
+        with out.open('w') as f:
+            p = subprocess.Popen([sys.executable, '-I', str(HERE / 'chief-wait-stream.py'), str(inbox), '--doc', str(self.doc),
+                                  '--workers-from', str(self.fleet)], env=env, stdout=f,
+                                 stderr=subprocess.STDOUT, start_new_session=True)
+        self.procs.append((p, out))
+        stream = Path(str(inbox) + '.wait.stream')
+        end = time.monotonic() + 8
+        while p.poll() is None and not stream.exists() and time.monotonic() < end:
+            time.sleep(.05)
+        started = p.poll() is None
+        if started:
+            Path(str(inbox) + '.wait.stop').touch()
+            try:
+                p.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                os.killpg(p.pid, signal.SIGKILL)
+                p.wait()
+        return p.returncode, out.read_text(), started
+
+    def check_refused(self, n, name, value):
+        inbox = self.fresh(n)
+        code, text, started = self.arm(inbox, **{name: value})
+        self.assertFalse(started, f'{name}={value!r} started the supervisor')
+        self.assertEqual(code, 2)
+        self.assertEqual(set(text.splitlines(keepends=True)), {self.refusal(name, value)})
+        self.assertEqual([p.name for p in inbox.parent.glob(inbox.name + '.wait.*')], [], 'a refused start left state')
+
+    def test_a_value_over_its_maximum_refuses(self):
+        for n, (name, longest) in enumerate(BOUNDS.items()):
+            for value in (str(longest + 1), '1e9', 'inf'):
+                with self.subTest(setting=name, value=value):
+                    self.check_refused(n, name, value)
+
+    def test_zero_a_negative_an_empty_and_a_non_number_refuse(self):
+        for n, name in enumerate(BOUNDS):
+            for value in ('0', '-1', '-inf', 'abc', 'nan', '', '1,5'):
+                with self.subTest(setting=name, value=value):
+                    self.check_refused(n, name, value)
+
+    def test_the_maximum_itself_starts(self):
+        for n, (name, longest) in enumerate(BOUNDS.items()):
+            with self.subTest(setting=name):
+                # SOFT must stay below HARD, so its maximum is tried with the longest HARD
+                extra = {'CHIEF_WAIT_STREAM_HARD_SEC': '1800'} if name == 'CHIEF_WAIT_STREAM_SOFT_SEC' else {}
+                code, text, started = self.arm(self.fresh(n), **{name: str(longest)}, **extra)
+                self.assertTrue(started, text)
+                self.assertNotIn('STREAM-REFUSED', text)
+
+    def test_unset_settings_start_on_their_defaults(self):
+        code, text, started = self.arm(self.fresh(0), drop=BOUNDS)
+        self.assertTrue(started, text)
+        self.assertNotIn('STREAM-REFUSED', text)
+
+    def test_soft_at_or_above_hard_refuses(self):
+        soft, hard = 'CHIEF_WAIT_STREAM_SOFT_SEC', 'CHIEF_WAIT_STREAM_HARD_SEC'
+        for n, (low, high) in enumerate((('100', '4'), ('4', '4'), ('1700', '1699.5'))):
+            with self.subTest(soft=low, hard=high):
+                inbox = self.fresh(n)
+                code, text, started = self.arm(inbox, **{soft: low, hard: high})
+                self.assertFalse(started, f'SOFT={low} HARD={high} started the supervisor')
+                self.assertEqual(code, 2)
+                self.assertEqual(set(text.splitlines(keepends=True)),
+                                 {f'STREAM-REFUSED bad-setting {soft}={low!r} (must be below {hard}={high!r})\n'})
+                self.assertEqual([p.name for p in inbox.parent.glob(inbox.name + '.wait.*')], [], 'a refused start left state')
+        code, text, started = self.arm(self.fresh(9), **{soft: '4', hard: '4.5'})
+        self.assertTrue(started, text)
+
+    def watchdog(self, drop=(), **setting):
+        """Starts a watchdog for a live supervisor (this process) and returns (rc, stderr, still running after 2 s)."""
+        inbox = self.fresh(0)
+        fields = Path('/proc/self/stat').read_text().rsplit(')', 1)[1].split()
+        err = self.root / 'watchdog.err'
+        env = dict(self.env, **setting)
+        for name in drop:
+            env.pop(name, None)
+        with err.open('w') as f:
+            p = subprocess.Popen([sys.executable, '-I', str(HERE / 'chief-wait-stream.py'), '--watchdog', str(inbox),
+                                  str(os.getpid()), fields[19]], env=env, stdout=subprocess.DEVNULL,
+                                 stderr=f, start_new_session=True)
+        try:
+            p.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            os.killpg(p.pid, signal.SIGKILL)
+            p.wait()
+            return None, err.read_text(), True
+        return p.returncode, err.read_text(), False
+
+    def test_the_watchdog_refuses_a_bound_that_is_too_long_zero_empty_or_not_finite(self):
+        # It refuses by itself, before it loops: it can outlive its supervisor. An empty value ended the old watchdog by an
+        # exception and left its child.
+        for name in WATCHDOG_BOUNDS:
+            for value in (str(BOUNDS[name] + 1), '0', '-1', 'abc', '', 'nan', 'inf'):
+                with self.subTest(setting=name, value=value):
+                    code, text, running = self.watchdog(**{name: value})
+                    self.assertFalse(running, f'a watchdog started with {name}={value!r}')
+                    self.assertEqual(code, 2)
+                    self.assertEqual(text, self.refusal(name, value))
+
+    def test_the_watchdog_starts_at_the_maximum_and_on_the_defaults(self):
+        for name in WATCHDOG_BOUNDS:
+            with self.subTest(setting=name):
+                code, text, running = self.watchdog(**{name: str(BOUNDS[name])})
+                self.assertTrue(running, text)
+        code, text, running = self.watchdog(drop=WATCHDOG_BOUNDS)
+        self.assertTrue(running, text)
+
+    def test_a_frozen_test_clock_does_not_skip_a_bound_outside_a_fixture(self):
+        # The simulated clock is honoured only under HIMMEL_TEST_FIXTURE=1; without it a clock file that never advances
+        # cannot keep the arm past its soft bound.
+        clock = self.root / 'frozen-clock'
+        clock.write_text('1794800000')
+        env = dict(self.env, CHIEF_WAIT_STREAM_TEST_CLOCK=str(clock), CHIEF_WAIT_STREAM_SOFT_SEC='.3',
+                   CHIEF_WAIT_STREAM_HARD_SEC='1')
+        env.pop('HIMMEL_TEST_FIXTURE')
+        p, out = self.start(env=env)
+        self.until(lambda: 'REARM' in out.read_text() or 'STOPPED' in out.read_text(), seconds=8)
+        self.assertEqual(p.wait(timeout=6), 0)
+
+    def ends_by_itself(self, env, seconds=8):
+        """Starts a supervisor; returns (rc, output) once it has ended, rc None if it was still running after `seconds`."""
+        p, out = self.start(env=env)
+        try:
+            return p.wait(timeout=seconds), out.read_text()
+        except subprocess.TimeoutExpired:
+            return None, out.read_text()
+
+    def test_a_pause_setting_does_not_hold_the_supervisor(self):
+        # The pause settings were test hooks inside two loops of the shipped code; no setting holds a loop now.
+        child = self.script('chief-wait-exit', 'exit 0\n')
+        env = dict(self.env, CHIEF_WAIT_STREAM_CHILD=child, CHIEF_WAIT_STREAM_SOFT_SEC='1', CHIEF_WAIT_STREAM_HARD_SEC='2',
+                   CHIEF_WAIT_STREAM_PAUSE_LOG='1')
+        code, text = self.ends_by_itself(env)
+        self.assertEqual(code, 0, 'PAUSE_LOG held the supervisor: ' + text)
+        self.assertIn('REARM', text)
+
+    def test_a_pause_setting_does_not_hold_the_supervisor_that_adopts_a_child(self):
+        waiter = subprocess.Popen(['bash', '-c', 'sleep 60; :', 'chief-wait-adopted', str(self.inbox)], start_new_session=True)
+        try:
+            fields = Path(f'/proc/{waiter.pid}/stat').read_text().rsplit(')', 1)[1].split()
+            boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+            self.path('stream').write_text(f'child={waiter.pid} child_start={fields[19]} host={socket.gethostname()} boot={boot} '
+                                           f'part={self.path("part-9-1")} safe={time.monotonic()} handoff=- seq=0\n')
+            env = dict(self.env, CHIEF_WAIT_STREAM_SOFT_SEC='1', CHIEF_WAIT_STREAM_HARD_SEC='2',
+                       CHIEF_WAIT_STREAM_PAUSE_ADOPT='1')
+            code, text = self.ends_by_itself(env)
+            self.assertEqual(code, 0, 'PAUSE_ADOPT held the supervisor: ' + text)
+            self.assertIn('child=busy', text)
+        finally:
+            os.killpg(waiter.pid, signal.SIGKILL)
+            waiter.wait()
+
+    def run_script(self, script, *args, seconds=10, **setting):
+        """Runs a probe script; returns (rc, output), rc None when it was still running after `seconds`."""
+        path = self.root / 'bounds-probe.py'
+        path.write_text(script)
+        out = self.root / 'bounds-probe.out'
+        env = {k: v for k, v in self.env.items() if not k.startswith('CHIEF_WAIT_STREAM_')}
+        env.update(CHIEF_WAIT_STREAM_STDOUT_OK='1', CHIEF_WAIT_STREAM_KILL_GRACE_SEC='0.2', **setting)
+        with out.open('w') as f:
+            p = subprocess.Popen([sys.executable, '-I', str(path), str(HERE / 'chief-wait-stream.py'), *args], env=env,
+                                 stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
+        try:
+            return p.wait(timeout=seconds), out.read_text()
+        except subprocess.TimeoutExpired:
+            os.killpg(p.pid, signal.SIGKILL)
+            p.wait()
+            return None, out.read_text()
+
+    def supervisor_args(self, n):
+        return (str(self.fresh(n)), '--doc', str(self.doc), '--workers-from', str(self.fleet))
+
+    def test_the_hard_bound_is_checked_on_every_pass_of_the_loop(self):
+        # A child that dies at once sends every pass down the record or the launch path, which `continue`s; the hard check
+        # sits before them, so SOFT above HARD (refused at the start; the check is turned off here) still ends at HARD.
+        child = self.script('chief-wait-exit', 'exit 0\n')
+        code, text = self.run_script(SUPERVISOR_PROBE, 'unchecked', *self.supervisor_args(0), seconds=12,
+                                     CHIEF_WAIT_STREAM_CHILD=child, CHIEF_WAIT_STREAM_SOFT_SEC='100',
+                                     CHIEF_WAIT_STREAM_HARD_SEC='4')
+        self.assertEqual(code, 0, 'the supervisor ran past HARD: ' + text)
+        self.assertIn('REARM', text)
+
+    def test_a_backward_wall_clock_step_does_not_lengthen_the_supervisor(self):
+        child = self.script('chief-wait-busy', 'sleep 600\n')
+        code, text = self.run_script(SUPERVISOR_PROBE, 'step', *self.supervisor_args(0), seconds=12,
+                                     CHIEF_WAIT_STREAM_CHILD=child, CHIEF_WAIT_STREAM_SOFT_SEC='2',
+                                     CHIEF_WAIT_STREAM_HARD_SEC='3')
+        self.assertEqual(code, 0, 'the supervisor outlived HARD after the wall clock stepped back: ' + text)
+        self.assertIn('child=busy', text)
+
+    def test_a_backward_wall_clock_step_does_not_lengthen_the_watchdog(self):
+        code, text = self.run_script(WATCHDOG_AGE, str(self.fresh(0)), 'step', seconds=12, CHIEF_WAIT_STREAM_REAP_MAX_SEC='2')
+        self.assertIsNotNone(code, 'the watchdog outlived its reap bound after the wall clock stepped back')
+        seen = json.loads(text.splitlines()[-1])
+        self.assertEqual((seen['rc'], seen['child_running'], seen['hung']), (0, False, True))
+
+    def test_the_watchdog_ends_its_child_and_itself_when_its_supervisor_never_ends(self):
+        # A stopped or hung supervisor stays alive, so the watchdog never sees it die: its own age ends it.
+        code, text = self.run_script(WATCHDOG_AGE, str(self.fresh(0)), 'hung', seconds=12)
+        self.assertIsNotNone(code, 'the watchdog is still waiting on a supervisor that never ends')
+        seen = json.loads(text.splitlines()[-1])
+        self.assertEqual((seen['rc'], seen['child_running'], seen['hung']), (0, False, True))
+        self.assertLess(seen['took'], 8)
+
+    def test_the_watchdog_keeps_waiting_while_its_supervisor_lives_inside_the_age_bound(self):
+        inbox = self.fresh(0)
+        code, text = self.run_script(WATCHDOG_AGE, str(inbox), 'alive', seconds=4)
+        self.assertIsNone(code, 'the watchdog left a live supervisor early: ' + text)
+        self.assertFalse(Path(str(inbox) + '.wait.stream.hung').exists())
+
+
 # Worker-event stand-in that models auto-go's exact-head audit rule (the real rule is pinned in
 # test-auto-go.sh): the first READY of a (pr, head) records one GO-SENT row, a replay of the same
 # pair records none, and a cleanup event never records a GO. TEST_ROOT/refuse-cleanup makes cleanup refuse with the
@@ -1221,7 +1538,7 @@ class StackedWorker(StreamFixture):
     def setUp(self):
         super().setUp()
         self.env.update(HIMMEL_FLAG_AUTO_GO='1', CHIEF_WAIT_SERVICE_RETRY_SEC='1',
-                        CHIEF_WAIT_STREAM_MAX_PER_MIN='100', CHIEF_WAIT_STREAM_REPEAT_SEC='0')
+                        CHIEF_WAIT_STREAM_MAX_PER_MIN='100', CHIEF_WAIT_STREAM_REPEAT_SEC='0.001')
         self.env['CHIEF_WAIT_WORKER_EVENT'] = self.script('event', GO_AUDIT_EVENT)
 
     def worker(self, label, *lines):

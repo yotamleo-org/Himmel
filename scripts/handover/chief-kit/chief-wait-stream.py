@@ -56,9 +56,53 @@ def alive(pid, start, host=HOST, boot=BOOT):
 
 
 def clock(real=time.time):
-    """The supervisor's own clock; a test points CHIEF_WAIT_STREAM_TEST_CLOCK at a file holding the time to simulate."""
-    path = os.getenv('CHIEF_WAIT_STREAM_TEST_CLOCK')
+    """The supervisor's own clock; only under HIMMEL_TEST_FIXTURE=1 does it follow the time in the file named by
+    CHIEF_WAIT_STREAM_TEST_CLOCK, so a real environment always runs on the real clocks."""
+    path = os.getenv('CHIEF_WAIT_STREAM_TEST_CLOCK') if os.getenv('HIMMEL_TEST_FIXTURE') == '1' else None
     return float(Path(path).read_text()) if path else real()
+
+
+class BadSetting(ValueError):
+    pass
+
+
+# Duration settings in seconds: (default, longest accepted). A Monitor arm (timeout_ms 1800000) lives 1800 s, the one-shot Bash
+# arm (timeout 7200000) 7200 s, and a stop request waits 60 s for a safe point; no setting outlasts the arm it serves, and
+# SOFT ends the arm that 60 s before the longest HARD.
+LIMITS = {
+    'CHIEF_WAIT_STREAM_SOFT_SEC': (1440, 1740),
+    'CHIEF_WAIT_STREAM_HARD_SEC': (1680, 1800),
+    'CHIEF_WAIT_STREAM_BUSY_MAX_SEC': (7200, 7200),
+    'CHIEF_WAIT_STREAM_REAP_MAX_SEC': (1800, 1800),
+    'CHIEF_WAIT_STREAM_ADOPT_SEC': (300, 1800),
+    'CHIEF_WAIT_STREAM_KILL_GRACE_SEC': (10, 60),
+    'CHIEF_WAIT_STREAM_REPEAT_SEC': (60, 1800),
+}
+
+
+def bound(name):
+    """The setting in seconds: its default when unset, otherwise a finite number above 0 and at most its maximum."""
+    default, longest = LIMITS[name]
+    raw = os.getenv(name)
+    if raw is None:
+        return float(default)
+    try:
+        value = float(raw)
+    except ValueError:
+        value = 0.0
+    if not 0 < value <= longest:
+        raise BadSetting(f'bad-setting {name}={raw!r} (allowed: a number above 0 and at most {longest})')
+    return value
+
+
+def check_limits():
+    """Raises BadSetting unless every duration setting is acceptable and SOFT is below HARD."""
+    for name in LIMITS:
+        bound(name)
+    soft, hard = 'CHIEF_WAIT_STREAM_SOFT_SEC', 'CHIEF_WAIT_STREAM_HARD_SEC'
+    if bound(soft) >= bound(hard):
+        shown = {name: os.getenv(name, str(LIMITS[name][0])) for name in (soft, hard)}
+        raise BadSetting(f'bad-setting {soft}={shown[soft]!r} (must be below {hard}={shown[hard]!r})')
 
 
 @contextlib.contextmanager
@@ -116,7 +160,7 @@ def terminate(data, inbox, hard=False):
     except ProcessLookupError:
         return
     if hard:
-        end = time.monotonic() + float(os.getenv('CHIEF_WAIT_STREAM_KILL_GRACE_SEC', '10'))
+        end = time.monotonic() + bound('CHIEF_WAIT_STREAM_KILL_GRACE_SEC')
         while child_alive(data, inbox) and time.monotonic() < end:
             time.sleep(.05)
         if child_alive(data, inbox):
@@ -136,6 +180,12 @@ def release(path, requested):
 
 
 def watchdog(inbox, sup, start):
+    # The bounds are read, and the one terminate() reads is checked, before anything runs: the watchdog can outlive its
+    # supervisor, so it refuses a setting outside its range itself.
+    adopt = bound('CHIEF_WAIT_STREAM_ADOPT_SEC')
+    busy = bound('CHIEF_WAIT_STREAM_BUSY_MAX_SEC')
+    reap_max = bound('CHIEF_WAIT_STREAM_REAP_MAX_SEC')
+    bound('CHIEF_WAIT_STREAM_KILL_GRACE_SEC')
     side = inbox + '.wait.stream'
     reap = inbox + '.wait.reap'
     requested = ''
@@ -162,7 +212,7 @@ def watchdog(inbox, sup, start):
         safe = last_safe or float(data['safe'])
         age = now - safe
         handoff = data.get('handoff', '-')
-        deadline = (float(handoff) + float(os.getenv('CHIEF_WAIT_STREAM_ADOPT_SEC', '300'))
+        deadline = (float(handoff) + adopt
                     if handoff != '-' else dead_since)
         if now >= deadline and not requested:
             # Re-read ownership and request the reap under the lock a new owner publishes under; a concurrent adoption wins.
@@ -172,8 +222,7 @@ def watchdog(inbox, sup, start):
                     continue
                 requested = f"pid={data['child']}"
                 atomic(reap, requested + '\n')
-        if (age >= float(os.getenv('CHIEF_WAIT_STREAM_BUSY_MAX_SEC', '7200')) or
-                now - dead_since >= float(os.getenv('CHIEF_WAIT_STREAM_REAP_MAX_SEC', '1800'))):
+        if age >= busy or now - dead_since >= reap_max:
             with ownership(inbox):
                 current = load(side)
                 if current.get('sup') != data.get('sup'):
@@ -282,8 +331,8 @@ class Supervisor:
             body = text.split('absorbed since last wake:')[0].split('look-only since last wake:')[0]
             sig = hashlib.sha256(body.encode()).hexdigest()
             now = clock(time.monotonic)
-            repeat_sec = float(os.getenv('CHIEF_WAIT_STREAM_REPEAT_SEC', '60'))
-            if repeat_sec > 0 and sig == self.last_sig and now - self.last_wake < repeat_sec:
+            repeat_sec = bound('CHIEF_WAIT_STREAM_REPEAT_SEC')
+            if sig == self.last_sig and now - self.last_wake < repeat_sec:
                 self.reason = 'repeat'
             self.last_sig, self.last_wake = sig, now
         if first.startswith('WAKE succession '):
@@ -325,6 +374,12 @@ class Supervisor:
         since = self.pairs.get('--since', 'prev-arm')
         if since != 'prev-arm' and not since.isdecimal():
             return self.refuse('since', 2)
+        # Every duration setting, the watchdog's included, is checked before the lock, a child or a watchdog exists; run()
+        # then reads the SOFT and HARD values this has just accepted.
+        try:
+            check_limits()
+        except BadSetting as exc:
+            return self.refuse(str(exc), 2)
         self.lock = open(self.base + 'stream.lock', 'a')
         try:
             fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -500,7 +555,7 @@ class Supervisor:
             if sleep and (ending or self.adopted and self.old_hash != self.args_hash):
                 terminate(self.data, self.inbox)
             age = now - float(self.data['safe'])
-            if age >= float(os.getenv('CHIEF_WAIT_STREAM_BUSY_MAX_SEC', '7200')):
+            if age >= bound('CHIEF_WAIT_STREAM_BUSY_MAX_SEC'):
                 terminate(self.data, self.inbox, hard=True)
                 self.record(self.data['part'], self.adopted)
                 self.error(f"kind=hung pid={self.data['child']} age={int(age)}")
@@ -628,7 +683,11 @@ class Supervisor:
 
 def main():
     if sys.argv[1:2] == ['--watchdog']:
-        return watchdog(*sys.argv[2:])
+        try:
+            return watchdog(*sys.argv[2:])
+        except BadSetting as exc:
+            print('STREAM-REFUSED ' + str(exc), file=sys.stderr)
+            return 2
     if sys.argv[1:2] == ['--ack']:
         inbox = sys.argv[2]
         _, pairs, _ = parse(sys.argv[3:])
