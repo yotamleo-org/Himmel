@@ -36,7 +36,11 @@ mkdir -p "$STUB"
 cat > "$STUB/tick.sh" <<'EOF'
 #!/usr/bin/env bash
 printf x >> "$STUB/ticks"
+printf '%s\n' "$*" >> "$STUB/tick.args"
 [ -f "$STUB/tick.rc" ] && exit "$(cat "$STUB/tick.rc")"
+if [ -f "$STUB/tick.strict" ]; then
+    for a in "$@"; do case "$a" in --since|--receipt) echo "tick.sh: unknown flag $a" >&2; echo "second stderr line" >&2; exit 2 ;; esac; done
+fi
 # tick.sleep: a slow tick (seconds), as a real gh-bound tick can be.
 [ -f "$STUB/tick.sleep" ] && sleep "$(cat "$STUB/tick.sleep")"
 # tick.ignoreterm: a hung tick that ignores SIGTERM (timeout needs -k).
@@ -1268,6 +1272,66 @@ reset_stub
 I="$(new_inbox kctl)"
 timeout 3 bash "$WAIT" "$I" --workers "N1.md" >/dev/null 2>&1; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(k) an absolute inbox path still starts the waiter (rc 124)" "124" "$rc"
+
+reset_stub
+: > "$STUB/tick.strict"; rm -f "$STUB/tick.args"
+I="$(new_inbox ws1)"
+start "$I" "$WORK/ws1.out" --since prev-arm --receipt r1 --workers "N1.md"
+wait_hb "$I" || fail "(ws1) no baseline heartbeat: the tick failed on a waiter flag"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+check "(ws1) --since and --receipt reach no tick sample" "" "$(grep -e '--since' -e '--receipt' -e 'prev-arm' "$STUB/tick.args")"
+check "(ws1) the tick still got the other flags" "yes" "$(grep -q -e '--workers N1.md' "$STUB/tick.args" && echo yes)"
+check "(ws1) no tick-usage or tick-fail wake printed" "" "$(cat "$WORK/ws1.out")"
+timeout 3 bash "$WAIT" "$I" --since >/dev/null 2>&1; rc=$?  # gnu-ok: Linux-only kit
+check "(ws1) a trailing --since with no value is a usage error (rc 2)" "2" "$rc"
+timeout 3 bash "$WAIT" "$I" --receipt >/dev/null 2>&1; rc=$?  # gnu-ok: Linux-only kit
+check "(ws1) a trailing --receipt with no value is a usage error (rc 2)" "2" "$rc"
+
+reset_stub
+rm -f "$STUB/tick.strict"
+printf '#!/usr/bin/env bash\necho "tick.sh: unknown flag --bogus" >&2\necho "second stderr line" >&2\nexit 2\n' > "$STUB/tick-usage.sh"
+I="$(new_inbox ws2)"
+CHIEF_WAIT_TICK="$STUB/tick-usage.sh" start "$I" "$WORK/ws2.out" --workers "N1.md"
+wait_exit "$WPID"
+check "(ws2) a tick exit 2 ends the wait at once, rc 0" "0" "$rc"
+[ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
+check "(ws2) the wake names tick-usage and tick's first stderr line" "WAKE tick-usage rc=2 tick.sh: unknown flag --bogus" "$(head -n1 "$WORK/ws2.out")"
+check "(ws2) only the first stderr line is carried" "" "$(grep 'second stderr line' "$WORK/ws2.out")"
+printf '#!/usr/bin/env bash\nsleep 25\n' > "$STUB/focus-stall.sh"
+I="$(new_inbox ws2b)"
+WAIT_FOCUS_CMD="$STUB/focus-stall.sh" CHIEF_WAIT_TICK="$STUB/tick-usage.sh" timeout 10 bash "$WAIT" "$I" --doc "$SUCD" --workers "N1.md" > "$WORK/ws2b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+check "(ws2b) the usage wake is not held behind a stalled focus status check (rc 0, not 124)" "0" "$rc"
+check "(ws2b) and carries the tick's first stderr line" "WAKE tick-usage rc=2 tick.sh: unknown flag --bogus" "$(head -n1 "$WORK/ws2b.out")"
+
+printf '#!/usr/bin/env bash\necho "boom" >&2\nexit 1\n' > "$STUB/tick-exit1.sh"
+I="$(new_inbox ws3)"
+CHIEF_WAIT_TICK="$STUB/tick-exit1.sh" start "$I" "$WORK/ws3.out" --workers "N1.md"
+wait_exit "$WPID"
+check "(ws3) a tick exit 1 does not wake (CHIEF_WAIT_FAIL_WAKE not reached)" "running" "$rc"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+check "(ws3) and prints no tick-usage line" "" "$(grep 'tick-usage' "$WORK/ws3.out")"
+
+reset_stub
+rm -f "$STUB/tick.args"
+printf 'N1 quoted-back\nN2 missing\nINCOMPLETE 1/2 (waiting on: N2)\n' > "$STUB/su.out"
+I="$(new_inbox ws4)"
+CHIEF_WAIT_TRACKER="$STUB/su-tracker.sh" CHIEF_WAIT_SUCCESSION_SEC=1 start "$I" "$WORK/ws4.out" --since prev-arm --doc "$SUCD" --succession S2 --silent-min 0 --workers "N1.md"
+wait_exit "$WPID"
+check "(ws4) --succession still wakes with --since beside it" "WAKE succession partial 1/2 silent 0 min" "$(head -n1 "$WORK/ws4.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+ws5_run() {
+    local label="$1"; shift
+    rm -f "$STUB/tick.args"
+    I="$(new_inbox "ws5-$label")"
+    CHIEF_WAIT_TRACKER="$STUB/su-tracker.sh" CHIEF_WAIT_SUCCESSION_SEC=1 start "$I" "$WORK/ws5-$label.out" "$@" --doc "$SUCD" --succession S2 --silent-min 5 --workers "N1.md"
+    wait_hb "$I" || fail "(ws5 $label) no baseline heartbeat"
+    kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+    check "(ws5 $label) a tick sample ran with the other flags" "yes" "$(grep -q -e '--workers N1.md' "$STUB/tick.args" 2>/dev/null && echo yes)"
+    check "(ws5 $label) and got none of --succession, --silent-min, --since" "" "$(grep -e '--succession' -e '--silent-min' -e '--since' "$STUB/tick.args")"
+}
+ws5_run with-since --since prev-arm
+ws5_run no-since
 
 case "$DISPATCH_SEAM_AT_START" in "$STUB"/*) seam_at_start=stub ;; *) seam_at_start="$DISPATCH_SEAM_AT_START" ;; esac
 check "(hermetic) the dispatch seam named a stub from the first case" "stub" "$seam_at_start"

@@ -79,7 +79,7 @@ Run these, in order, and write the result as the first bullet under
     `bash scripts/handover/chief-kit/chief-wait.sh "{{INBOX}}" --stream --since prev-arm --doc "<this file>" --token <your token> --workers-from "{{FLEET_MANIFEST}}" [--succession {{SESSION_NAME}}]`
     A WAKE may add an `absorbed since last wake:` wraps/merges line. Re-arm only on `REARM`, using your last seen seq
     (`prev-arm` when unsure); on `STOPPED`, a refusal or `waiter-error`, read `waiter.md` before any arm.
-    Before approval keep the one-shot Bash arm (`run_in_background: true`, `timeout: 7200000`), re-armed per wake (`waiter.md`). On `worker-silent` relaunch
+    Before approval keep the one-shot Bash arm (`run_in_background: true`, `timeout: 7200000`), re-armed per wake (`waiter.md`): the line above minus `--stream --since prev-arm`. On `worker-silent` relaunch
     that worker from a RESUME doc or run its blocked step yourself, then tell the
     operator which. Record the task id in your first bullet (`cat "<inbox>.wait"` is the
     heartbeat); wake keys, states, fleet-manifest arming: `chief-sections/waiter.md`.
