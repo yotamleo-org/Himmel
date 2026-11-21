@@ -199,7 +199,7 @@ sb --arm V --home "$W/home-V" "${base[@]}" --print -- x > "$W/argv-V"
 mkdir -p "$W/fakebin"; printf '#!/bin/sh\necho usr/lib64\n' > "$W/fakebin/readlink"; chmod +x "$W/fakebin/readlink"
 eq "sandbox: /lib64 mirrors the host link, so the loader resolves on a usr/lib64 host" "usr/lib64" "$(PATH="$W/fakebin:$PATH" sb --arm V --home "$W/home-V" "${base[@]}" --print -- x | grep -B1 -x /lib64 | head -n1)"
 eq "P14: V's namespace has no /run/pilot mount at all" 0 "$(grep -c '^/run/pilot' "$W/argv-V")"
-eq "P14: S and Q mount the same retrieval paths except key versus weights" "/run/pilot/key|/run/pilot/models" "$(diff <(grep '^/run/pilot' "$W/argv-S") <(grep '^/run/pilot' "$W/argv-Q") | grep -E '^[<>]' | sed 's/^[<>] //' | sort | paste -sd'|')"
+eq "P14: S and Q mount the same retrieval paths except key versus weights" "/run/pilot/key|/run/pilot/models" "$(diff <(grep '^/run/pilot' "$W/argv-S") <(grep '^/run/pilot' "$W/argv-Q") | grep -E '^[<>]' | sed 's/^[<>] //' | sort | paste -sd'|' -)"
 if ! command -v bwrap >/dev/null 2>&1 || ! bwrap --ro-bind / / true 2>/dev/null; then
   printf 'SKIP - P15 real namespace rows: no unprivileged bwrap on this host\n'
 else
