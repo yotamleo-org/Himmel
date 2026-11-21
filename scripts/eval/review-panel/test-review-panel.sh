@@ -498,6 +498,25 @@ CRITICS_BASE_JSON="$TMP/base-claude.json" CRITICS_LOCAL_JSON="$TMP/local-drop-cl
   bash "$RUN" --out "$TMP/run-drop" --fixtures "$FIX" --key "$KEY" --no-ledger --allow-claude-api --critics codex,claude --only case-01 >/dev/null 2>&1; rc=$?
 eq "run: an overlay drop: the sweep runs" "$rc" "0"
 eq "run: an overlay drop leaves no Claude critic in the roster" "$(slugs "$TMP/run-drop/critics.run.json")" "codex"
+floorrow() { python3 -c 'import json,sys; print([(r["provider"], r["route_provider"], r["tier"], r.get("effort"), r.get("perspective")) for r in json.load(open(sys.argv[1]))["panel"] if r["slug"]=="claude"])' "$1" 2>&1; }
+CRITICS_LOCAL_JSON="$TMP/local-drop-claude.json" STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
+  bash "$RUN" --out "$TMP/run-floor" --fixtures "$FIX" --key "$KEY" --no-ledger --allow-claude-api --critics codex,claude --only case-01 >/dev/null 2>&1; rc=$?
+eq "run: the shipped registry: --critics codex,claude runs past an overlay drop" "$rc" "0"
+eq "run: the shipped registry: the eval's claude critic is the claude_floor" "$(slugs "$TMP/run-floor/critics.run.json")" "codex,claude"
+eq "run: the eval's floor critic runs on the API with the floor's effort and no perspective" "$(floorrow "$TMP/run-floor/critics.run.json")" "[('claude-api', 'claude-api', 'paid', 'medium', None)]"
+: > "$TMP/stublog/tiers"
+STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
+  bash "$RUN" --out "$TMP/run-floor-nopt" --fixtures "$FIX" --key "$KEY" --no-ledger --critics codex,claude --only case-01 >/dev/null 2>&1; rc=$?
+eq "run: the eval's floor critic refuses without --allow-claude-api, before any panel call" "$rc:$(cat "$TMP/stublog/tiers")" "2:"
+printf '%s\n' '{"claude_floor":null}' > "$TMP/local-floor-off.json"
+CRITICS_LOCAL_JSON="$TMP/local-floor-off.json" STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
+  bash "$RUN" --out "$TMP/run-floor-off" --fixtures "$FIX" --key "$KEY" --no-ledger --allow-claude-api --critics codex,claude --only case-01 >/dev/null 2>&1
+eq "run: an overlay claude_floor null leaves no floor critic in the roster" "$(slugs "$TMP/run-floor-off/critics.run.json")" "codex"
+CRITICS_LOCAL_JSON="$TMP/local-drop-claude.json" STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
+  bash "$RUN" --out "$TMP/run-floor-default" --fixtures "$FIX" --key "$KEY" --no-ledger --only case-01 >/dev/null 2>&1
+eq "run: --critics unset: the roster is the live panel's paid rows, no floor critic" "$(slugs "$TMP/run-floor-default/critics.run.json")" "codex"
+eq "live panel: the shipped registry under an overlay drop is codex and coderabbit only" \
+  "$(CRITICS_LOCAL_JSON="$TMP/local-drop-claude.json" bash -c '. "$1" && critics_config_resolve "$2"' _ "$HERE/../../lib/critics-config.sh" "$HERE/../../cr" | python3 -c 'import json,sys; print(",".join(r["slug"] for r in json.load(sys.stdin)["panel"]))' 2>&1)" "codex,coderabbit"
 : > "$TMP/stublog/tiers"
 STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
   bash "$RUN" --out "$TMP/run-ship" --fixtures "$FIX" --key "$KEY" --no-ledger --only case-01 >/dev/null 2>&1; rc=$?
