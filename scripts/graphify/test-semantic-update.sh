@@ -792,7 +792,7 @@ real_lane_on() {
   mkdir -p "$RL/alerts" "$RL/slots" "$WS/home"
   cp "$REPO/scripts/api-lane/claude-api.sh" "$WS/claude-api.stub.sh"
   cp "$REAL_REPO/scripts/api-lane/claude-api.sh" "$REAL_REPO/scripts/api-lane/roster.mjs" "$REAL_REPO/scripts/api-lane/usage.mjs" "$REPO/scripts/api-lane/"
-  cp "$REAL_REPO/scripts/lib/api-credit-state.mjs" "$REAL_REPO/scripts/lib/api-roles.mjs" "$REAL_REPO/scripts/lib/fleet-reservation-key.sh" "$REAL_REPO/scripts/lib/native-auth-pin.sh" "$REPO/scripts/lib/"
+  cp "$REAL_REPO/scripts/lib/api-credit-state.mjs" "$REAL_REPO/scripts/lib/api-roles.mjs" "$REAL_REPO/scripts/lib/fleet-reservation-key.sh" "$REAL_REPO/scripts/lib/native-auth-pin.sh" "$REAL_REPO/scripts/lib/fleet-launch.sh" "$REAL_REPO/scripts/lib/fleet_runtime.py" "$REPO/scripts/lib/"
   local now; now=$(date +%s)
   printf '{"version":1,"ledger_path":"%s","accounts":{"A":{"organization_id":"org-a","cycle_id":"cycle-a","cap_usd":"50.00","key_id":"key-a","reset_at":"2099-01-01T00:00:00Z"}}}' "$RL/ledger.json" > "$RL/config.json"
   printf '{"version":1,"accounts":{"A":{"organization_id":"org-a","cycle_id":"cycle-a","grant_usd":"50.00","remaining_usd":"50.00","reconciled_spent_usd":"0","starts_at":%d,"expires_at":%d,"observed_at":%d,"source":"operator-console-snapshot","exclusive_org":true,"discrepancy":false}}}' $((now-1000)) $((now+3600)) "$now" > "$RL/snapshot.json"

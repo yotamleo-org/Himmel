@@ -907,7 +907,7 @@ o7 "9561 S4a 7c: 2026-02-30 fails under the BSD date shim" 1 "x: owed $o_ar chie
 o7 "9561 S4a 7c: yesterday fails" 1 "x: owed $o_ar chief by $(o_day -1)"
 o7 "9561 S4a 7c: 15 days out fails" 1 "x: owed $o_ar chief by $(o_day 15)"
 o7 "9561 S4a 7c: 15 days out fails under the BSD date shim" 1 "x: owed $o_ar chief by $(o_day 15)" "$o_bsdpath"
-contains "9561 S4a 7c: a failing owed line prints the owed shape" "$out" "owed → chief|operator by YYYY-MM-DD"
+contains "9561 S4a 7c: a failing owed line prints the owed shape" "$out" "owed → chief|operator|proof by YYYY-MM-DD"
 # item 7 never reads TICKET_STATUS_AWAIT_MAX: the window is a fixed 14 days
 TICKET_STATUS_AWAIT_MAX=7d o7 "9561 S4a 7c: AWAIT_MAX=7d does not shrink the window (10 days out passes)" 0 "x: owed $o_ar chief by $(o_day 10)"
 TICKET_STATUS_AWAIT_MAX=30d o7 "9561 S4a 7c: AWAIT_MAX=30d does not widen the window (15 days out fails)" 1 "x: owed $o_ar chief by $(o_day 15)"

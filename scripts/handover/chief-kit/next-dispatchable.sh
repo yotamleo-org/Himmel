@@ -9,6 +9,12 @@
 #                        [--held FILE] [--no-classify] [--doc CHIEF_DOC]
 #                        [--priority-pool-only] [--workers-dir DIR] [--why] [--dispositions]
 #
+# --why-ticket KEY [--body-file FILE] judges one ticket without GitHub or fleet
+# outside reads. It prints all GATE KEY name: detail lines (exit 1), READY KEY
+# (exit 0), or UNKNOWN KEY: reason (exit 3). Bad keys/combinations are usage (2).
+# --mirror, --doc, --workers-dir and --no-classify are accepted; listing flags
+# are refused. A body file replaces this key only, with optional mirror front matter.
+#
 # Source: the Jira mirror (`jira ... mirror`, one <KEY>.md per issue). A
 # candidate is a To Do issue that is not an Epic/Sub-task, has no contract=yes
 # merge row in status-events.jsonl (merged to Done, the mirror lags), carries none of
@@ -52,8 +58,8 @@
 # `deferred -> <KEY>` lines under `## Ticket coverage` (scripts/lib/pr_remainder.py, the one reader merge-on-green.sh and
 # the brief generator share). A remainder kept on the ticket is a RESUME row (`partial=PR #n merged, Remaining: <text>`); one
 # handed wholly to other tickets prints `HANDED-OFF <KEY>: remainder on <keys>` (the chief closes the ticket or keeps it as an
-# umbrella by hand); a step owed to the chief or operator by a date (`owed -> chief|operator by YYYY-MM-DD`) prints
-# `OWED <KEY>: merged PR #n owes <who> by <date>` (no RESUME row, no chief note: the owner and the date are named); a body with
+# umbrella by hand); a chief/operator step (`owed -> chief|operator|proof by YYYY-MM-DD`) prints
+# `OWED <KEY>: merged PR #n owes <who> by <date>`; proof instead lists as an executable proof RESUME row. A body with
 # neither form prints `NEEDS-CHIEF-NOTE` naming the PR and the line that clears it. PRs read in
 # merge order: a clear remainder supersedes every older PR that records none; a PR newer than it that records none still asks.
 # A newer hand-off or owed PR also supersedes an older `remaining` PR.
@@ -83,8 +89,8 @@
 # Chain workers: with --workers-from naming a `<prefix>-nextleg-<date><letter>-<name>.fleet.json`,
 # the other manifests of that chain in the same directory (same prefix and name, any letter) also own their live
 # workers' tickets, so a worker the other chief armed after `chief.sh next` copied the manifest is not offered
-# again. Ownership of the ticket only: a doc that is missing, WRAPPED, or untouched for
-# NEXT_DISPATCH_SIBLING_MAX_AGE_MIN (default 1440) holds nothing, and an unreadable sibling never marks the fleet unknown. Where the
+# again. Ownership of the ticket only: affirmative shared terminal evidence clears it;
+# unknown or inactive-looking siblings remain protected. Where the
 # handover root has a queue-lock dir, a doc past its first hour also needs a lock on its ticket with a heartbeat inside QUEUE_LOCK_TTL_SECONDS.
 #
 # Wrapped tickets: a To Do ticket whose worker record (--workers-dir, default
@@ -181,9 +187,17 @@ REPO="$(cd "$HERE/../../.." && pwd)"
 . "$REPO/scripts/lib/jira-project.sh"
 top=8; top_set=0; mirror="${NEXT_DISPATCH_MIRROR:-$(jira_mirror_dir)}"
 workers_from="${WORKERS_FROM:-}"; held=""; classify=1; resume_only=0; owners=""; doc=""; pool_only=0; why=0; dispo=0
+why_ticket=""; body_file=""; nd_list_flags=0
+nd_usage() {
+    echo 'usage: next-dispatchable.sh --why-ticket KEY [--body-file FILE] [--mirror DIR] [--doc CHIEF_DOC] [--workers-dir DIR] [--no-classify]; or listing flags --top --why --dispositions --priority-pool-only --resume-only --owners --workers-from --held' >&2
+    exit 2
+}
 workers="${TICKET_STATUS_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/workers"
 while [ "$#" -gt 0 ]; do
+    case "$1" in --top|--why|--dispositions|--priority-pool-only|--resume-only|--owners|--workers-from|--held) nd_list_flags=1 ;; esac
     case "$1" in
+        --why-ticket) [ "$#" -ge 2 ] && [ -n "$2" ] || nd_usage; why_ticket="$2"; shift 2 ;;
+        --body-file) [ "$#" -ge 2 ] && [ -n "$2" ] || nd_usage; body_file="$2"; shift 2 ;;
         --workers-dir) workers="${2:-}"; shift 2 || exit 2 ;;
         --resume-only) resume_only=1; classify=0; shift ;;
         --owners) owners="${2:-}"; shift 2 || exit 2 ;;
@@ -199,6 +213,12 @@ while [ "$#" -gt 0 ]; do
         *) echo "usage: next-dispatchable.sh [--top N] [--mirror DIR] [--workers-from MANIFEST] [--held FILE] [--no-classify] [--doc CHIEF_DOC] [--priority-pool-only] [--resume-only] [--owners \"KEY ...\"] [--workers-dir DIR] [--why] [--dispositions]" >&2; exit 2 ;;
     esac
 done
+if [ -n "$why_ticket" ]; then
+    [[ "$why_ticket" =~ ^[A-Z]+-[0-9]+$ ]] || nd_usage
+    [ "$nd_list_flags" = 0 ] || nd_usage
+elif [ -n "$body_file" ]; then nd_usage
+fi
+export ND_WHY_TICKET="$why_ticket" ND_BODY_FILE="$body_file"
 case "$top" in ''|*[!0-9]*|0*) echo "next-dispatchable: --top needs a positive number" >&2; exit 2 ;; esac
 # --why with no --top asks for the whole list, not the first 8 slots the worker-less RESUME rows fill; the
 # waiter counts dispatchable work against the free slots, and 50 is the fleet cap
@@ -219,17 +239,31 @@ export ND_STACKED="$stacked"
 export ND_GIT_DIR="${NEXT_DISPATCH_GIT_DIR:-$REPO}" ND_MAIN_REF="${NEXT_DISPATCH_MAIN_REF:-origin/main}"
 export ND_TOP="$top" ND_MIRROR="$mirror" ND_WORKERS_FROM="$workers_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_DISPO="$dispo" ND_LEDGER="$ledger" ND_HOLDS="${ND_HOLDS:-$HERE/holds.py}"
 export ND_STAGING="${ND_STAGING:-$HERE/proof_staging.py}" ND_TICKET_POLICY_CLI="${ND_TICKET_POLICY_CLI:-$REPO/marketplace/plugins/himmel-ops/scripts/ticket-policy-cli.mjs}"
+export ND_OWE="$HERE/owe.sh"
 
 # shellcheck source=scripts/lib/gh-quota.sh
 . "$REPO/scripts/lib/gh-quota.sh"
 # shellcheck disable=SC2034  # read by the probes in gh-graphql-budget.sh
 GHQ_GH_CMD="${NEXT_DISPATCH_GH_CMD:-gh}"
-nd_qtmp=""
+nd_qtmp=""; nd_out=""; nd_flags=""; nd_pred_tmp=""; nd_pid=""
+nd_temp_failure() {
+    if [ -n "$why_ticket" ]; then
+        printf 'UNKNOWN %s: temporary storage unavailable\n' "$why_ticket"
+        exit 3
+    fi
+    exit 1
+}
+trap '[ -z "$nd_out" ] || rm -f "$nd_out"; [ -z "$nd_flags" ] || rm -f "$nd_flags"; [ -z "$nd_qtmp" ] || rm -rf "$nd_qtmp"; [ -z "$nd_pred_tmp" ] || rm -rf "$nd_pred_tmp"' EXIT
 if [ -n "${NEXT_DISPATCH_GH_CMD:-}" ] && [ -z "${HIMMEL_QUOTA_DIR:-}" ]; then
-    nd_qtmp=$(tmpdir) || exit 1
+    nd_qtmp=$(tmpdir) || nd_temp_failure
     export HIMMEL_QUOTA_DIR="$nd_qtmp"
-    trap 'rm -rf "$nd_qtmp"' EXIT
 fi
+nd_pause() {
+    case "$1" in GH-STALL*) printf '# gh-stall %s\n' "$1" ;; *) printf '# quota-pause %s\n' "$1" ;; esac
+    exit 0
+}
+nd_tok=main
+if [ -z "$why_ticket" ]; then
 export GH_READ_NO_MAIN_FALLBACK=1
 if [ -z "${NEXT_DISPATCH_GH_CMD:-}" ] && [ -f "$REPO/scripts/lib/gh-read.sh" ]; then
     # shellcheck source=scripts/lib/gh-read.sh
@@ -238,10 +272,6 @@ if [ -z "${NEXT_DISPATCH_GH_CMD:-}" ] && [ -f "$REPO/scripts/lib/gh-read.sh" ]; 
     [ -n "$_GHR_TOK" ] || export GH_READ_QUIET=1
     export ND_GH_READ="$REPO/scripts/lib/gh-read.sh"
 fi
-nd_pause() {
-    case "$1" in GH-STALL*) printf '# gh-stall %s\n' "$1" ;; *) printf '# quota-pause %s\n' "$1" ;; esac
-    exit 0
-}
 nd_tok=main
 [ -z "${ND_GH_READ:-}" ] || nd_tok=$(ghq_scan_token next-dispatchable)
 for nd_bucket in graphql core; do
@@ -254,13 +284,19 @@ fi
 if [ "$nd_tok" = read ] && [ "$classify" = 1 ] && [ -z "${NEXT_DISPATCH_CLASSIFY_CMD:-}" ]; then
     nd_line=$(ghq_scan_gate main graphql next-dispatchable) || { [ $? -ne 75 ] || nd_pause "$nd_line"; }
 fi
+else
+    unset ND_GH_READ
+    export ND_WORKERS_FROM=""
+fi
 export ND_TOK="$nd_tok"
 nd_deadline="${NEXT_DISPATCH_DEADLINE:-400}"
 case "$nd_deadline" in ''|*[!0-9]*) nd_deadline=400 ;; esac
-nd_out=$(mktemp "${TMPDIR:-/tmp}/next-dispatch-out.XXXXXX") || exit 1
-nd_flags=$(mktemp "${TMPDIR:-/tmp}/next-dispatch-flags.XXXXXX") || { rm -f "$nd_out"; exit 1; }
-nd_pid=""
-trap 'rm -f "$nd_out" "$nd_flags"; [ -z "$nd_qtmp" ] || rm -rf "$nd_qtmp"' EXIT
+nd_out=$(mktemp "${TMPDIR:-/tmp}/next-dispatch-out.XXXXXX") || nd_temp_failure
+nd_flags=$(mktemp "${TMPDIR:-/tmp}/next-dispatch-flags.XXXXXX") || nd_temp_failure
+if [ -n "$why_ticket" ]; then
+    nd_pred_tmp=$(tmpdir) || nd_temp_failure
+fi
+export ND_PRED_TMP="$nd_pred_tmp"
 # an outer kill reaches the run's own process group through timeout, which relays the signal
 trap '[ -z "$nd_pid" ] || kill -TERM "$nd_pid" 2>/dev/null; exit 143' TERM INT HUP
 _TIMEOUT_BIN=""
@@ -271,10 +307,29 @@ nd_left=$((nd_deadline - SECONDS))
 ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 "$nd_left"} python3 -I - > "$nd_out" <<'PY' &
 import datetime, json, os, re, subprocess, sys, tempfile, time
 
+why_key = os.environ.get('ND_WHY_TICKET', '')
+
+def unknown(reason):
+    print('UNKNOWN %s: %s' % (why_key, ' '.join(str(reason).split())))
+    sys.exit(3)
+
+def load_failure(reason, rc=3):
+    if why_key:
+        unknown(reason)
+    print('# next-dispatchable: ' + reason, file=sys.stderr)
+    sys.exit(rc)
+
+if why_key:
+    def predicate_error(typ, value, traceback):
+        unknown('internal error ' + typ.__name__)
+    sys.excepthook = predicate_error
+
 top = int(os.environ['ND_TOP']); mirror = os.environ['ND_MIRROR']
 repo = os.environ['ND_REPO']
 sys.path.insert(0, os.path.join(repo, 'scripts', 'lib'))
 from env_alias import legacy_names_on
+from fleet_runtime import owned_rows, WorkerStates
+worker_state = WorkerStates()  # one run: each doc's worker state is asked once, and each directory's manifests are read once for all of them
 
 RATE_LIMIT_RE = re.compile(r'rate limit|RATE_LIMIT|abuse detection|secondary rate', re.I)
 rate_limited = []
@@ -358,7 +413,7 @@ try:
     _spec.loader.exec_module(_reader)
     NO_WRITE_RE, live_answers = _reader.NO_WRITE_RE, _reader.live_answers
 except Exception as e:
-    print('# next-dispatchable: pr_remainder.py unreadable (%s)' % e, file=sys.stderr); sys.exit(3)
+    load_failure('pr_remainder.py unreadable (%s)' % e)
 
 def split_reads(text):
     # (paths it writes, paths it only runs)
@@ -377,6 +432,23 @@ def scope_of(body):
     # files, the source --why names, reads, and no_scope: nothing says what the ticket writes, not even that it writes nothing
     cut = body.find('\n## Comments')
     desc = body if cut < 0 else body[:cut]
+    comments = body[cut:] if cut >= 0 else ''
+    readiness = []
+    for comment in re.split(r'^### ', comments, flags=re.M)[1:]:
+        heading, _, text = comment.partition('\n')
+        lines = [line for line in text.splitlines() if line.strip()]
+        if lines and re.match(r'^readiness:', lines[0], re.I):
+            readiness.append((heading.partition(' — ')[2], lines))
+    if readiness:
+        stamp, lines = readiness[-1]
+        files, nowrite = [], False
+        for line in lines:
+            match = EXPLICIT_RE.match(line)
+            if match and match.group(1)[0].lower() == 'w':
+                files.extend(path for path in files_in(line) if path not in files)
+                nowrite = nowrite or bool(NO_WRITE_RE.search(line))
+        if files or nowrite:
+            return dict(files=files, reads=[], no_scope=False, nowrite=not files and nowrite, src='readiness comment ' + stamp)
     explicit, kinds, nowrite_line, writes_hit = [], set(), False, False
     for line in desc.splitlines():
         m = EXPLICIT_RE.match(line)
@@ -498,11 +570,28 @@ def last_owed(body):
             hit = line.strip()
     return hit[:160]
 
+def issue_from_match(m, txt):
+    fm, body = m.groups()
+    key = unq(fm_val(fm, 'key'))
+    t = re.search(r'^# [A-Z]+-\d+: (.*)$', body, re.M)
+    return {
+        'key': key, 'type': unq(fm_val(fm, 'type')), 'status': unq(fm_val(fm, 'status')), 'cat': unq(fm_val(fm, 'statusCategory')),
+        'prio': unq(fm_val(fm, 'priority')), 'parent': unq(fm_val(fm, 'parent')).replace('null', ''), 'labels': set(re.findall(r'"([^"]+)"', fm_val(fm, 'labels'))),
+        'ver': re.findall(r'"([^"]+)"', fm_val(fm, 'fixVersions')),
+        'blocked_by': re.findall(r'[A-Z]+-\d+', re.search(r'blocked_by: (.*)', fm).group(1)) if re.search(r'blocked_by: (.*)', fm) else [],
+        'title': t.group(1).strip() if t else '',
+        'last': last_owed(body),
+        'text': txt, 'description': (re.search(r'^## Description\n(.*?)(?=^## |\Z)', body, re.M | re.S).group(1) if re.search(r'^## Description\n(.*?)(?=^## |\Z)', body, re.M | re.S) else body.split('\n## Comments', 1)[0]),
+        'comments': body.split('\n## Comments', 1)[1] if '\n## Comments' in body else '',
+        'linked': [key for line in re.findall(r'^\s*(?:blocks|blocked_by): (.*)$', fm, re.M) for key in re.findall(r'[A-Z]+-\d+', line)],
+        **scope_of(body),
+    }
+
 issues = {}
 try:
     names = sorted(n for n in os.listdir(mirror) if re.match(r'^[A-Z]+-\d+\.md$', n))
 except OSError as e:
-    print('# next-dispatchable: mirror missing or unreadable (%s)' % e, file=sys.stderr); sys.exit(3)  # an error, never an empty pool
+    load_failure('mirror missing or unreadable (%s)' % e)  # an error, never an empty pool
 try:
     mirror_age_min = int((time.time() - max([os.path.getmtime(os.path.join(mirror, n)) for n in names] or [os.path.getmtime(mirror)])) // 60)
 except OSError:
@@ -512,29 +601,40 @@ for n in names:
     try:
         txt = open(os.path.join(mirror, n), encoding='utf-8', errors='replace').read()
     except OSError as e:
-        print('# next-dispatchable: mirror missing or unreadable (%s)' % e, file=sys.stderr); sys.exit(3)  # a listed file that cannot be read is the same error
+        load_failure('mirror missing or unreadable (%s)' % e)  # a listed file that cannot be read is the same error
     m = re.match(r'^---\n(.*?)\n---\n(.*)$', txt, re.S)
-    if not m:
-        continue
-    fm, body = m.groups()
-    key = unq(fm_val(fm, 'key'))
-    t = re.search(r'^# [A-Z]+-\d+: (.*)$', body, re.M)
-    issues[key] = {
-        'key': key, 'type': unq(fm_val(fm, 'type')), 'status': unq(fm_val(fm, 'status')), 'cat': unq(fm_val(fm, 'statusCategory')),
-        'prio': unq(fm_val(fm, 'priority')), 'parent': unq(fm_val(fm, 'parent')).replace('null', ''), 'labels': set(re.findall(r'"([^"]+)"', fm_val(fm, 'labels'))),
-        'ver': re.findall(r'"([^"]+)"', fm_val(fm, 'fixVersions')),
-        'blocked_by': re.findall(r'[A-Z]+-\d+', re.search(r'blocked_by: (.*)', fm).group(1)) if re.search(r'blocked_by: (.*)', fm) else [],
-        'title': t.group(1).strip() if t else '',
-        'last': last_owed(body),
-        **scope_of(body),
-    }
+    if m:
+        issue = issue_from_match(m, txt)
+        issues[issue['key']] = issue
+
+if why_key and os.environ.get('ND_BODY_FILE'):
+    try:
+        txt = open(os.environ['ND_BODY_FILE'], encoding='utf-8', errors='replace').read()
+    except OSError as e:
+        unknown('body file unreadable (%s)' % e)
+    m = re.match(r'^---\n(.*?)\n---\n(.*)$', txt, re.S)
+    if txt.startswith('---\n') and not m:
+        unknown('malformed body file front matter')
+    fm, body = m.groups() if m else ('', '## Description\n' + txt)
+    body_key = unq(fm_val(fm, 'key'))
+    if body_key and body_key != why_key:
+        unknown('body file key %s differs' % body_key)
+    defaults = {'key': why_key, 'type': 'Task', 'status': 'To Do'}
+    fm += ''.join('\n%s: "%s"' % (k, v) for k, v in defaults.items() if not fm_val(fm, k))
+    txt = '---\n' + fm.strip() + '\n---\n' + body
+    issue = issue_from_match(re.match(r'^---\n(.*?)\n---\n(.*)$', txt, re.S), txt)
+    issues[why_key] = issue
+    body_mirror = os.path.join(os.environ['ND_PRED_TMP'], 'mirror')
+    os.mkdir(body_mirror)
+    with open(os.path.join(body_mirror, why_key + '.md'), 'w', encoding='utf-8') as f:
+        f.write(txt)
 
 try:
     _sspec = importlib.util.spec_from_file_location('proof_staging', os.environ['ND_STAGING'])
     proof_staging = importlib.util.module_from_spec(_sspec)
     _sspec.loader.exec_module(proof_staging)
 except Exception as e:
-    print('# next-dispatchable: proof_staging.py unreadable (%s)' % e, file=sys.stderr); sys.exit(3)
+    load_failure('proof_staging.py unreadable (%s)' % e)
 _staged = {}
 
 def staging_of(i):
@@ -545,7 +645,10 @@ def staging_of(i):
             txt = open(os.path.join(mirror, k + '.md'), encoding='utf-8', errors='replace').read()
         except OSError:
             unread.append('mirror file absent')
-        _staged[k] = needs(txt, i.get('parts', ()), unread, os.environ['ND_TICKET_POLICY_CLI'])
+        answers = i.get('parts', ())
+        if i.get('owed_next'):
+            answers = [dict(kind='remaining', text='; '.join(r['text'] for r in i['owed_next']), nowrite=i.get('nowrite', False))]
+        _staged[k] = needs(txt, answers, unread, os.environ['ND_TICKET_POLICY_CLI'])
     return _staged[k]
 
 def proof_field(i):
@@ -667,12 +770,12 @@ def proof_missing(i):
     k = i['key']
     if k not in proof_cache:
         try:
-            txt = open(os.path.join(mirror, k + '.md'), encoding='utf-8', errors='replace').read()
+            txt = i['text']
             m = re.search(r'^## Description\n(.*?)(?=^## |\Z)', txt, re.M | re.S)
-            with tempfile.TemporaryDirectory() as d:
+            with tempfile.TemporaryDirectory(dir=os.environ.get('ND_PRED_TMP') or None) as d:
                 draft = os.path.join(d, 'draft.md')
                 with open(draft, 'w', encoding='utf-8') as f:
-                    f.write(m.group(1) if m else '')
+                    f.write(i['description'] if why_key and os.environ.get('ND_BODY_FILE') else m.group(1) if m else '')
                 r = subprocess.run(['bash', proof_checker, '--type', 'Task', '--draft', draft], capture_output=True, text=True, timeout=30,
                                    env=dict(os.environ, TICKET_STANDARD_QUEUE_DIR=os.path.join(d, 'queue')))
             if r.returncode not in (0, 1):
@@ -722,7 +825,7 @@ def load_platform_re():
                 return re.compile(line.strip(), re.I)
     except OSError:
         pass
-    print('next-dispatchable: cannot read the dropped-platform pattern from %s' % path, file=sys.stderr); sys.exit(2)
+    load_failure('cannot read the dropped-platform pattern from %s' % path, 2)
 
 platform_re = load_platform_re()
 # a removal ticket names the dropped platform only to take it out: the windows-removal label, or a title that opens with a
@@ -751,17 +854,37 @@ for name in names:
 done_pending = set()  # keys whose LATEST contract-bearing merge row is contract=yes
 partials = {}  # KEY -> PR numbers of its merged contract=no (partial) merges, oldest first
 status_unreadable = False
+hold_row = {}
+merge_fields = {}
+unconfirmed = set()
 
 
 def effective_rows(path):
     """The log's lines without a pre-merge row whose PR did not merge; an unreadable log raises OSError."""
     open(path).close()
+    env = None
+    if why_key:
+        sliced = os.path.join(os.environ['ND_PRED_TMP'], 'status-events.jsonl')
+        with open(path, encoding='utf-8') as source, open(sliced, 'w', encoding='utf-8') as target:
+            for line in source:
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(row, dict):
+                    continue
+                if str(row.get('key', '')).upper() == why_key:
+                    target.write(line)
+        path = sliced
+        env = dict(os.environ, MERGE_ROWS_GH='false')
     try:  # the helper bounds its GitHub reads, not parsing a large log: a timeout reads as an unreadable log
-        r = subprocess.run([sys.executable, '-I', os.path.join(repo, 'scripts', 'lib', 'merge-rows-effective.py'), path], capture_output=True, text=True, timeout=120)
+        r = subprocess.run([sys.executable, '-I', os.path.join(repo, 'scripts', 'lib', 'merge-rows-effective.py'), path], capture_output=True, text=True, timeout=120, env=env)
     except subprocess.TimeoutExpired:
         raise OSError('merge-rows-effective timed out')
     if r.returncode != 0:
         raise OSError(r.stderr.strip() or 'merge-rows-effective failed')
+    if why_key:
+        unconfirmed.update(re.findall(r'warn: PR (\d+) unreadable on GitHub', r.stderr))
     return r.stdout.splitlines()
 
 
@@ -771,6 +894,11 @@ try:
             r = json.loads(line)
         except ValueError:
             continue
+        if why_key and isinstance(r, dict) and str(r.get('key', '')).upper() == why_key:
+            if r.get('event') in ('hold', 'hold-release') and r.get('result') == 'moved':
+                hold_row[why_key] = r
+            if r.get('event') == 'merge' and r.get('contract') == 'no':
+                merge_fields[(why_key, str(r.get('pr', '')))] = r
         if not (isinstance(r, dict) and r.get('event') == 'merge' and r.get('contract') in ('yes', 'no')):
             continue
         mkey = str(r.get('key', '')).upper()
@@ -830,15 +958,16 @@ def partial_resume(key):
 # 8 in parallel, every key read: no cap), through NEXT_DISPATCH_JIRA_CMD (`<cmd> get KEY` prints a tab line KEY, type, status, title) or the real
 # jira CLI of the primary checkout. The real read runs only where the classifier is real too; an unreadable key
 # is UNREADABLE (the candidate drops as blocker-unknown).
-DONE_STATES = ('Done', 'Closed')
+DONE_RE = re.compile(r"^(?:done|closed|resolved|in public|won['’]?t (?:do|fix))$", re.I)
 # Done = the Jira statusCategory is Done (catches 'wont do', 'wont fix', ...); the status names stay as a fallback
 def done_key(k):
     i = issues.get(k)
-    return bool(i) and (i['cat'] == 'Done' or i['status'] in DONE_STATES)
+    return bool(i) and (i['cat'].strip().lower() == 'done' or DONE_RE.fullmatch(i['status'].strip()))
 # a live read carries only the status name, so its Done-category names are listed here
-LIVE_DONE = DONE_STATES + ('wont do', 'wont fix', 'Resolved', 'In Public')
 jira_cmd = os.environ.get('NEXT_DISPATCH_JIRA_CMD')
 live_on = bool(jira_cmd) or (os.environ.get('ND_CLASSIFY') == '1' and not os.environ.get('NEXT_DISPATCH_CLASSIFY_CMD'))
+if why_key and os.environ.get('ND_CLASSIFY') != '1':
+    live_on = False
 live_cache = {}
 
 def jira_argv(key):
@@ -874,7 +1003,7 @@ def blocker_state(b):
         live = live_cache[b]
         if live is None:
             return UNREADABLE
-        if live in LIVE_DONE:
+        if DONE_RE.fullmatch(live.strip()):
             return None
         return 'reopened live' if done_key(b) else '%s, live' % live
     if done_key(b):
@@ -895,45 +1024,89 @@ def family_candidate(i):
                 and not re.match(r'\s*parked:', i['title'], re.I) and not residual_out(i) and not platform_dropped(i))
 
 # every hard blocker of a candidate is read live, whatever the mirror says; so is every blocker of an in-work ticket (RESUME rows)
-live_fetch([b for i in issues.values() if reaches_blocker_check(i) for b in i['blocked_by']]
-           + [b for i in issues.values() if i['status'] in ('To Do', 'In Progress', 'In Review', 'IN CI') and i['type'] not in ('Epic', 'Sub-task')
-              for b in i['blocked_by']]
-           + [b for i in issues.values() if family_candidate(i) for b in i['blocked_by']])  # a SERIES FAMILY member's blockers
+if why_key:
+    live_fetch(issues.get(why_key, {}).get('blocked_by', []))
+else:
+    live_fetch([b for i in issues.values() if reaches_blocker_check(i) for b in i['blocked_by']]
+               + [b for i in issues.values() if i['status'] in ('To Do', 'In Progress', 'In Review', 'IN CI') and i['type'] not in ('Epic', 'Sub-task')
+                  for b in i['blocked_by']]
+               + [b for i in issues.values() if family_candidate(i) for b in i['blocked_by']])  # a SERIES FAMILY member's blockers
 print('# source live_reads=%d' % len(live_cache))
 skipped_platform = []
 withheld_unreadable = []
-cands = []
-for i in issues.values():
-    if i['status'] != 'To Do' or i['key'] in briefs or (partial_resume(i['key']) and i['type'] not in ('Epic', 'Sub-task')):
-        continue
+def role_of(i):
+    if i['status'] == 'To Do':
+        if i['key'] in briefs or (partial_resume(i['key']) and i['type'] not in ('Epic', 'Sub-task')):
+            return 'RESUME'
+        return 'To Do'
+    if i['status'] in ('In Progress', 'In Review'):
+        return 'RESUME'
+    return 'IN CI' if i['status'] == 'IN CI' else None
+
+def refusals(i, role, first=False):
+    out = []
+    def hit(tag, reason):
+        out.append((tag, reason))
+    if role == 'RESUME':
+        if i['type'] in ('Epic', 'Sub-task'):
+            hit('type', 'type ' + i['type'])
+            if first: return out
+        if i['key'] in done_pending:
+            hit('done-pending', 'done-pending (a contract=yes merge row; the mirror lags)')
+            if first: return out
+        labels = (i['labels'] & excl) | {l for l in i['labels'] if 'parked' in l}
+        if labels:
+            hit('label', 'label ' + ','.join(sorted(labels)))
+            if first: return out
+        if pool_only:
+            if i['key'] in prio_cloud:
+                hit('cloud', 'cloud-only on the priority line')
+                if first: return out
+            if platform_dropped(i):
+                hit('platform', 'platform (dropped-platform title)')
+                if first: return out
+            if residual_out(i):
+                hit('residual', 'residual-depth %d (no residual-must line, no admissions-ledger row)' % residual_depth(i))
+        return out
     if i['type'] in ('Epic', 'Sub-task'):
-        drop(i, 'type ' + i['type'])
-        continue
+        hit('type', 'type ' + i['type'])
+        if first: return out
     if i['key'] in done_pending:
-        drop(i, 'done-pending (a contract=yes merge row; the mirror lags)')
-        continue
+        hit('done-pending', 'done-pending (a contract=yes merge row; the mirror lags)')
+        if first: return out
     if i['labels'] & excl or re.match(r'\s*parked:', i['title'], re.I):
-        drop(i, 'label ' + (','.join(sorted(i['labels'] & excl)) or 'parked: title'))
-        continue
+        hit('label', 'label ' + (','.join(sorted(i['labels'] & excl)) or 'parked: title'))
+        if first: return out
     if platform_dropped(i):
-        skipped_platform.append(i['key'])
-        drop(i, 'platform (windows/wsl title)')
-        continue
+        hit('platform', 'platform (dropped-platform title)')
+        if first: return out
     open_b = [(b, blocker_state(b)) for b in i['blocked_by'] if blocker_state(b)]
     if open_b:
         known = ['%s (%s)' % bs for bs in open_b if bs[1] != UNREADABLE]
         unknown = [b for b, st in open_b if st == UNREADABLE]
-        drop(i, '; '.join(([('blocker ' + ', '.join(known))] if known else []) + ([('blocker-unknown ' + ', '.join(unknown))] if unknown else [])))
-        continue
+        hit('blocker', '; '.join(([('blocker ' + ', '.join(known))] if known else []) + ([('blocker-unknown ' + ', '.join(unknown))] if unknown else [])))
+        if first: return out
     if i['key'] in prio_cloud:
-        drop(i, 'cloud-only on the priority line')
-        continue
+        hit('cloud', 'cloud-only on the priority line')
+        if first: return out
     if residual_out(i):
-        drop(i, 'residual-depth %d (no residual-must line, no admissions-ledger row)' % residual_depth(i))
-        continue
+        hit('residual', 'residual-depth %d (no residual-must line, no admissions-ledger row)' % residual_depth(i))
+        if first: return out
     if status_unreadable and merged_on_main(i['key']):
-        withheld_unreadable.append(i['key'])
-        drop(i, 'status-events.jsonl unreadable and the key has a merge on main')
+        hit('status-unreadable', 'status-events.jsonl unreadable and the key has a merge on main')
+        if first: return out
+    return out
+
+cands = []
+for i in issues.values():
+    if role_of(i) != 'To Do':
+        continue
+    r = refusals(i, 'To Do', first=True)
+    if r:
+        tag, reason = r[0]
+        if tag == 'platform': skipped_platform.append(i['key'])
+        if tag == 'status-unreadable': withheld_unreadable.append(i['key'])
+        drop(i, reason)
         continue
     cands.append(i)
 if withheld_unreadable:
@@ -981,14 +1154,18 @@ def core_lines(out, keys, spec=False):
             got[t[1]] = line  # a line shorter than its verb needs is no answer: a truncated BYPASS must never read as a bypass
     return {k: got[k] for k in keys if k in got}
 
+core_problem = {}
+
 def core_spec_pass(cs):
     # the candidates that may still list (a DESIGN one is recorded in `design`); core-check takes ONE --paths per call, so
     # tickets naming the same files share a call (the calls run in parallel), then spec-check asks once for every CORE key
-    mdir = os.path.abspath(mirror)
+    mdir = body_mirror if why_key and os.environ.get('ND_BODY_FILE') else os.path.abspath(mirror)
     project = cs[0]['key'].split('-')[0]
     def fail(why):
         print('# WARN CORE-CHECK-FAILED %s' % ' '.join(why.split()))
         for i in cs:
+            if why_key:
+                core_problem[i['key']] = 'core check could not run: ' + ' '.join(why.split())
             drop(i, 'core-check failed (a gate that cannot run lists no To Do row)')
         return []
     groups = {}
@@ -1010,6 +1187,8 @@ def core_spec_pass(cs):
     for i in cs:
         verb = verdict[i['key']].split()[0]
         if verb == 'UNKNOWN':
+            if why_key:
+                core_problem[i['key']] = 'core status unknown (not in the mirror)'
             drop(i, 'core-unknown (not in the mirror: neither core nor a bypass can be proven)')
             continue
         keep.append(i)
@@ -1029,7 +1208,7 @@ def core_spec_pass(cs):
                 design[k] = got[k].split()[0]
     return keep
 
-if cands and os.environ.get('ND_RESUME_ONLY') != '1':  # --resume-only lists no To Do row
+if not why_key and cands and os.environ.get('ND_RESUME_ONLY') != '1':  # --resume-only lists no To Do row
     cands = core_spec_pass(cands)
 
 # held files: live workers, open PRs, --held
@@ -1047,7 +1226,8 @@ if workers_from and not os.path.isfile(workers_from):
     workers_unknown = owners_unknown = True
 if workers_from and os.path.isfile(workers_from):
     try:
-        for worker in manifest_workers(json.load(open(workers_from))):
+        manifest_workers(json.load(open(workers_from)))  # validate legacy-array policy before shared ownership
+        for worker in owned_rows(workers_from):
             doc = worker.get('doc', '')
             if doc:
                 manifest_docs.add(os.path.realpath(doc))
@@ -1060,7 +1240,8 @@ if workers_from and os.path.isfile(workers_from):
                 note_unknown('live worker %s' % worker.get('label', '?'))
                 continue
             marks = [m.group(1) for m in (MARKER_RE.match(l) for l in lines) if m]
-            if marks and marks[-1] == 'WRAPPED':  # a wrapped worker holds no files and owns no ticket
+            state = worker_state(doc)
+            if state == 'wrapped':
                 continue
             for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)) + owned_keys(doc, lines):
                 worker_keys.add(k); owner.setdefault(k, 'live worker %s' % worker.get('label', '?'))
@@ -1082,49 +1263,11 @@ if workers_from and os.path.isfile(workers_from):
         workers_unknown = owners_unknown = True
 # `chief.sh next` copies the manifest once, so a worker the other chief of this chain arms later is
 # in no manifest but its own. Read the chain's other manifests (same bucket, same prefix and chief name, any
-# letter) for ownership of a ticket only: a doc that is gone, WRAPPED, or untouched for a day holds nothing, and
+# letter) for ownership of a ticket only: shared terminal evidence releases it, and
 # an unreadable sibling never marks the fleet unknown (it is not this chief's fleet).
 chain_m = re.match(r'^(.+)-nextleg-\d{4}-\d{2}-\d{2}[A-Z]+-(.+)\.fleet\.json$', os.path.basename(workers_from)) if workers_from else None
-SIB_ARM_GRACE_S = 3600  # a worker takes its queue lock in its first minutes
-lock_keys_of = {}
-def fresh_lock_keys(start):
-    # the ticket keys of the docs whose queue lock has a heartbeat inside queue-lock.sh's TTL, or None when no lock dir sits above start
-    d = start
-    for _ in range(4):
-        if os.path.isdir(os.path.join(d, '.locks', 'queue')):
-            break
-        d = os.path.dirname(d)
-    else:
-        return None
-    q = os.path.join(d, '.locks', 'queue')
-    if q not in lock_keys_of:
-        try:
-            ttl = int(os.environ.get('QUEUE_LOCK_TTL_SECONDS') or 21600)
-        except ValueError:
-            ttl = 21600
-        keys = set()
-        for lock in os.listdir(q) if os.access(q, os.R_OK) else []:
-            if not lock.endswith('.lock'):
-                continue
-            named = lock
-            try:
-                o = json.load(open(os.path.join(q, lock, 'owner.json'), encoding='utf-8'))
-                named = os.path.basename(o.get('handover') or lock)
-                beat = datetime.datetime.strptime(o.get('heartbeat', ''), '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc).timestamp()
-                if time.time() - beat > ttl:
-                    continue
-            except (OSError, ValueError, TypeError, AttributeError):
-                pass  # swallow-ok: a lock that cannot be read may be live, and an unparsable heartbeat is fresh, as queue-lock.sh status reads it
-            keys.add(named)  # a doc whose name carries no ticket is matched by the name itself
-            keys.update(re.findall(r'[A-Z]+-\d+', named))
-        lock_keys_of[q] = keys
-    return lock_keys_of[q]
 if chain_m:
     sib_dir = os.path.dirname(os.path.abspath(workers_from))
-    try:
-        sib_age_s = int(os.environ.get('NEXT_DISPATCH_SIBLING_MAX_AGE_MIN', '1440')) * 60
-    except ValueError:
-        sib_age_s = 1440 * 60  # a non-integer window reads as the default, never a crash
     try:
         siblings = sorted(os.listdir(sib_dir))
     except OSError:
@@ -1135,25 +1278,19 @@ if chain_m:
             continue
         try:
             sib_manifest = json.load(open(os.path.join(sib_dir, sib)))
-            sib_workers = manifest_workers(sib_manifest) if isinstance(sib_manifest, dict) else []
+            sib_workers = owned_rows(os.path.join(sib_dir, sib)) if isinstance(sib_manifest, dict) else []
             for worker in sib_workers if isinstance(sib_workers, list) else []:
                 sdoc = worker.get('doc') if isinstance(worker, dict) else None
                 if not isinstance(sdoc, str) or not sdoc:
                     continue  # an entry that names no doc owns nothing
                 try:
-                    sage = time.time() - os.path.getmtime(sdoc)
-                    if sage > sib_age_s:
-                        continue
                     slines = open(sdoc, encoding='utf-8', errors='replace').read().splitlines()
                 except OSError:
-                    continue
+                    slines = []
                 smarks = [m.group(1) for m in (MARKER_RE.match(l) for l in slines) if m]
-                if smarks and smarks[-1] == 'WRAPPED':
+                if worker_state(sdoc) == 'wrapped':
                     continue
                 skeys = re.findall(r'[A-Z]+-\d+', os.path.basename(sdoc)) + owned_keys(sdoc, slines)
-                slocked = fresh_lock_keys(os.path.dirname(sdoc))
-                if slocked is not None and sage > SIB_ARM_GRACE_S and not slocked & set(skeys + [os.path.basename(sdoc)]):
-                    continue  # past the arming hour with no fresh lock on the ticket: that worker is gone
                 for k in skeys:
                     worker_keys.add(k); owner.setdefault(k, 'live worker %s of the chief on %s' % (worker.get('label', '?'), sib[:-len('.fleet.json')]))
         except (OSError, ValueError, TypeError, AttributeError):
@@ -1178,55 +1315,6 @@ if cloud_tsv and os.path.isfile(cloud_tsv):
 hf = os.environ.get('ND_HELD', '')
 if hf and os.path.isfile(hf):
     held += [(l.strip(), 'held list', True) for l in open(hf) if l.strip()]
-pr_unknown = False
-pr_keys = set()
-pr_file_map = {}  # PR number -> its files
-pr_meta = {}  # PR number -> (title, head branch)
-outside_idle = {}
-now_s = float(os.environ.get('NEXT_DISPATCH_NOW') or time.time())
-gh = os.environ.get('NEXT_DISPATCH_GH_CMD') or os.environ.get('ND_GH_READ') or 'gh'
-gh_repo = 'yotamleo-org/Himmel'  # env-literal-ok: the canonical slug; --search does not follow a repo rename
-try:
-    nums = ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number', '--jq', '.[].number'],
-                          capture_output=True, text=True, timeout=gh_t(60), check=True).stdout.split()
-    def pr_files(num):
-        # the paginated files API, not `gh pr diff`: that fails with HTTP 406 on a PR over 300 files. A rename holds both names.
-        try:
-            files = ghrun([gh, 'api', '--paginate', 'repos/%s/pulls/%s/files' % (gh_repo, num), '--jq', '.[] | .filename, (.previous_filename // empty)'],
-                                   capture_output=True, text=True, timeout=gh_t(120), check=True).stdout.splitlines()
-        except (OSError, subprocess.SubprocessError):
-            return None  # this PR's files are unknown; the rest are still read
-        return None if len(files) >= 3000 else files  # the API stops at 3000 files: a PR that long is cut short, so its files are unknown
-    pr_nums = [] if resume_only else nums
-    if pr_nums:
-        from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=min(8, len(pr_nums))) as pool:
-            for num, d in zip(pr_nums, pool.map(pr_files, pr_nums)):
-                if d is None:
-                    note_unknown('PR %s' % num)
-                    continue
-                held += [(f, 'open PR %s' % num, False) for f in d if f]  # a diff is files: compared exactly
-                pr_file_map[num] = [f for f in d if f]
-    # an open PR cites a ticket by its title or head branch (the commit/PR gate puts the key in both)
-    for line in ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName,isCrossRepository,updatedAt', '--jq', '.[] | [.number, .title, .headRefName, .isCrossRepository, .updatedAt] | @tsv'],
-                               capture_output=True, text=True, timeout=gh_t(60), check=True).stdout.splitlines():
-        cols = line.split('\t')
-        if len(cols) >= 3:
-            pr_meta[cols[0]] = (cols[1], cols[2])
-        idle = None
-        if len(cols) >= 5 and cols[3] == 'true':
-            try:
-                idle = int((now_s - datetime.datetime.fromisoformat(cols[4].replace('Z', '+00:00')).timestamp()) // 86400)
-            except ValueError:
-                idle = None
-        for k in re.findall(r'[A-Za-z]+-\d+', '\t'.join(cols[1:3]) if len(cols) >= 3 else line):
-            if idle is not None and idle >= OUTSIDE_OWN_DAYS:
-                outside_idle.setdefault(k.upper(), (cols[0], idle))
-            else:
-                pr_keys.add(k.upper()); owner.setdefault(k.upper(), 'open PR %s' % cols[0])
-except (OSError, subprocess.SubprocessError):
-    pr_unknown = True
-
 # The remainder of a merged partial PR's body, read by the ONE reader every partial-merge site shares
 # (scripts/lib/pr_remainder.py): a `Remaining:` line, or the `deferred -> <KEY>` lines under `## Ticket coverage`.
 # A body gh cannot read, or a reader that fails or answers without the two --units fields, is recorded in unread_prs and
@@ -1317,24 +1405,299 @@ def resume_eligible(i):
     # the gates an in-work ticket (or a wrapped To Do one) passes whoever holds its files
     if pool_only and (tier_of(i) > 4 or i['key'] in prio_cloud):
         return False
-    wrapped = i['status'] == 'To Do' and (i['key'] in briefs or partial_resume(i['key']))
-    if not (wrapped or i['status'] in ('In Progress', 'In Review', 'IN CI')) or i['type'] in ('Epic', 'Sub-task'):
+    if role_of(i) not in ('RESUME', 'IN CI'):
         return False
-    if i['key'] in done_pending or i['labels'] & excl or any('parked' in l for l in i['labels']):
-        return False
-    return not (pool_only and (platform_dropped(i) or residual_out(i)))
+    return not refusals(i, 'RESUME', first=True)
+
+
+def override_from_parts(i, parts):
+    i['parts'] = parts
+    latest = [p for p in i['parts'] if p['kind'] == 'remaining'][-1:]
+    proof_parts = [p for p in i['parts'] if p['kind'] == 'owed' and p['handed'][0] == 'proof']
+    if proof_parts and not latest:
+        i.update(files=[], reads=[], src='remainder of PR #%s' % proof_parts[-1]['pr'], no_scope=False, nowrite=True,
+                 proof_only=True, proof_due=proof_parts[-1]['handed'][1])
+    if latest:
+        files, reads = split_reads(latest[0]['text'])
+        nowrite = not files and latest[0]['nowrite']
+        if files or nowrite:
+            i.update(files=files, reads=reads, src='remainder of PR #%s' % latest[0]['pr'], no_scope=False, nowrite=nowrite)
+
+def apply_owed_scope(issues, actions, worker_keys, pr_keys):
+    closed = {r['id']: r for r in actions if r['closed'] and r.get('action') == 'validate-proof'}
+    latest_validation = {r.get('key'): r['id'] for r in actions if r.get('action') == 'validate-proof'}
+    # The proof step stays open until the chief's outcome, so while the newest validation of a key is open the original
+    # proof-owned scope is the chief's to settle: no second paid run. A code scope of the same ticket is a different unit.
+    open_validation = {r['id'] for r in actions if not r['closed'] and r.get('action') == 'validate-proof'}
+    for key, vid in latest_validation.items():
+        i = issues.get(key)
+        if vid in open_validation and i and i.get('proof_only') and key not in worker_keys and key not in pr_keys:
+            i['owed_wait'] = {'id': vid, 'actor': 'chief', 'due': i.get('proof_due', '')}
+    replacements = {}
+    for action in actions:
+        parent = closed.get(action.get('source_id'))
+        if not action['closed'] and action.get('action') == 'next-step' and action.get('actor') in ('proof', 'worker', 'chief', 'operator') and parent and parent.get('key') == action.get('key') and latest_validation.get(action.get('key')) == parent['id']:
+            replacements.setdefault(action['key'], []).append(action)
+    for key, steps in replacements.items():
+        i = issues.get(key)
+        if not i or key in worker_keys or key in pr_keys:
+            continue
+        runnable = [s for s in steps if s['actor'] in ('proof', 'worker')]
+        if not runnable:
+            i['owed_wait'] = min(steps, key=lambda s: s.get('due', ''))
+            continue
+        steps = runnable
+        code = [s for s in steps if s['actor'] == 'worker']
+        files, reads = split_reads('; '.join(s['text'] for s in code)) if code else ([], [])
+        i.update(files=files, reads=reads, src='owed next step ' + ','.join(s['id'] for s in steps),
+                 no_scope=bool(code) and not files, nowrite=not code, owed_next=steps)
+
+def read_owed_actions():
+    bucket = os.path.dirname(os.environ.get('ND_DOC') or os.environ.get('ND_WORKERS_FROM') or '')
+    if not bucket or not os.path.lexists(os.path.join(bucket, 'owed.jsonl')):
+        return []
+    result = subprocess.run(['bash', os.environ['ND_OWE'], 'list', '--bucket', bucket, '--all', '--json'],
+                            capture_output=True, text=True, timeout=10)
+    if result.returncode:
+        raise ValueError('owed reader refused')
+    actions = json.loads(result.stdout)
+    if not isinstance(actions, list):
+        raise ValueError('owed reader returned no action list')
+    return actions
+
+def predicate_remainder(i):
+    answers, problems = [], []
+    for pr in partials.get(i['key'], []):
+        answer = cached_remainder(pr, i['key'])
+        if answer is not None:
+            answers.append(dict(answer, pr=pr))
+            continue
+        row = merge_fields.get((i['key'], pr), {})
+        kind = row.get('remainder')
+        text = None
+        for comment in re.split(r'^### ', i['comments'], flags=re.M)[1:]:
+            marker = re.search(r'PR #%s \(.*?as a partial merge; the ticket is not complete\.\s*Remaining: (.*)' % re.escape(pr), comment, re.S)
+            if marker:
+                text = marker.group(1).strip()
+        if not kind:
+            if text is None:
+                problems.append('remainder of PR #%s not in the mirror' % pr)
+                continue
+            if text.startswith('not recorded in the PR body'):
+                problems.append('remainder of PR #%s not recorded (no GitHub read)' % pr)
+                continue
+            if _reader.OWED_ANY_RE.search(text) or _reader.DEFERRED_RE.search(text):
+                problems.append('remainder kind of PR #%s unknown without GitHub (owed or deferred text in the breadcrumb)' % pr)
+                continue
+            kind = 'remaining'
+        answer = dict(kind=kind, handed=[], text=text or '', nowrite=False, chief_owed=[], pr=pr)
+        if kind == 'remaining':
+            if text is None:
+                problems.append('remainder of PR #%s not yet in the mirror' % pr)
+                continue
+            try:
+                r = subprocess.run([sys.executable, '-I', reader, '--units', i['key']], input='Remaining: ' + text,
+                                   capture_output=True, text=True, timeout=60, check=True)
+                fields = r.stdout.rstrip('\n').split('\t')
+                sizes = {'remaining': 4, 'handed-off': 5, 'owed': 6, 'none': 3}
+                if not fields or len(fields) != sizes.get(fields[0]) or fields[-2] not in ('nowrite=0', 'nowrite=1') or not fields[-1].startswith('chief-owed='):
+                    raise ValueError('unrecognised --units answer')
+                answer.update(nowrite=fields[-2] == 'nowrite=1', chief_owed=[t for t in fields[-1][len('chief-owed='):].split('¦') if t])
+            except (OSError, ValueError, subprocess.SubprocessError) as e:
+                unknown('pr_remainder.py could not read PR #%s (%s)' % (pr, e))
+        elif kind == 'owed':
+            who, due = row.get('owed'), row.get('owed_due')
+            if who not in ('chief', 'operator', 'proof') or not isinstance(due, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', due):
+                problems.append('remainder kind of PR #%s unknown without GitHub (owed owner or date missing)' % pr)
+                continue
+            answer['handed'] = [who, due]
+        elif kind not in ('handed-off', 'none'):
+            unknown('malformed remainder kind of PR #%s' % pr)
+        answers.append(answer)
+    return live_answers(answers), problems
+
+def gate_detail(tag, reason):
+    if tag == 'label':
+        return 'title parked:' if reason == 'label parked: title' else 'labels ' + reason[len('label '):]
+    if tag == 'blocker':
+        details = []
+        for part in reason.split('; '):
+            if part.startswith('blocker-unknown '):
+                details.extend(k + ' (unreadable)' for k in part[len('blocker-unknown '):].split(', '))
+            else:
+                details.append(part[len('blocker '):])
+        return ', '.join(details)
+    return reason
+
+def prose_deps(i):
+    desc = i['description']
+    declared = set(i['linked']) | {i['key']}
+    for line in desc.splitlines():
+        if re.match(r'^\W*Edges\W{0,3}:', line, re.I):
+            declared.update(re.findall(r'HIMMEL-\d+', line, re.I))
+    found = {}
+    for pattern in (tracker._DEP_RE, label_dep_re):
+        for match in pattern.finditer(desc):
+            for key in re.findall(r'HIMMEL-\d+', match.group(1), re.I):
+                key = key.upper()
+                if key not in declared and not done_key(key):
+                    found.setdefault(key, ' '.join(match.group(0).split())[:60])
+    return [(key, quote) for key, quote in found.items()]
+
+def why_ticket(i):
+    key = i['key']
+    order = ('drop', 'held-label', 'open-blocker', 'blocker-no-version', 'stale-hold', 'prose-dependency', 'no-scope', 'no-proof', 'core-no-spec')
+    gates = {tag: [] for tag in order}
+    role = role_of(i)
+    if status_unreadable and role in ('To Do', 'RESUME') and not (role == 'To Do' and merged_on_main(key)):
+        unknown('status-events unreadable; merge context cannot be judged')
+    if role == 'IN CI':
+        gates['drop'].append('IN CI (whether a merged PR already closes it needs a GitHub read)')
+    elif role is None:
+        gates['drop'].append('status ' + i['status'])
+    else:
+        for tag, reason in refusals(i, role):
+            name = 'held-label' if tag == 'label' else 'open-blocker' if tag == 'blocker' else 'drop'
+            gates[name].append(gate_detail(tag, reason))
+        if role == 'RESUME':
+            blockers = [(b, blocker_state(b)) for b in i['blocked_by'] if blocker_state(b)]
+            if blockers:
+                gates['open-blocker'].append(', '.join('%s (%s)' % (b, 'unreadable' if st == UNREADABLE else st) for b, st in blockers))
+        for pr in sorted(unconfirmed, key=int):
+            gates['drop'].append('merge of PR #%s unconfirmed (pre-merge row; no GitHub read)' % pr)
+        open_blockers = [b for b in i['blocked_by'] if blocker_state(b)]
+        unversioned = [b for b in open_blockers if b in issues and not any(v in vorder for v in issues[b]['ver'])]
+        if unversioned:
+            gates['blocker-no-version'].append(', '.join(b + ' (no fixVersion)' for b in unversioned))
+        hold = hold_row.get(key, {})
+        on = hold.get('on', '')
+        if 'held' in i['labels'] and hold.get('event') == 'hold' and isinstance(on, str) and re.fullmatch(r'[A-Z]+-\d+', on) and done_key(on):
+            gates['stale-hold'].append('held on %s (%s); release: bash scripts/handover/chief-kit/ticket-hold.sh %s --release' % (on, issues[on]['status'], key))
+        for dep, quote in prose_deps(i):
+            gates['prose-dependency'].append('%s%s ("%s")' % (dep, ' (not in mirror)' if dep not in issues else '', quote))
+        gates['drop'].extend(i.get('remainder_problems', []))
+        parts = [] if i.get('owed_next') else i.get('parts', [])
+        if i.get('owed_wait'):
+            gates['drop'].append('owned next step: ' + i['owed_wait']['actor'])
+        if role == 'RESUME':
+            owed = [p for p in parts if p['kind'] == 'owed']
+            if owed and not any(p['kind'] == 'remaining' or (p['kind'] == 'owed' and p['handed'][0] == 'proof') for p in parts):
+                first_due = min(owed, key=lambda p: p['handed'][1])
+                gates['drop'].append('merged PR #%s owes %s by %s' % (first_due['pr'], first_due['handed'][0], first_due['handed'][1]))
+            if parts and all(p['kind'] == 'handed-off' for p in parts):
+                gates['drop'].append('remainder on ' + ', '.join(k for p in parts for k in p['handed']))
+        for part in parts:
+            if part['kind'] == 'none':
+                gates['no-scope'].append('merged PR #%s records no remainder' % part['pr'])
+        if i['no_scope'] and key not in briefs:
+            gates['no-scope'].append('nothing says what it writes: no Remaining: text, no readiness: Writes line, no Writes:/Files: line, no path in the description')
+        if role == 'To Do':
+            missing = proof_missing(i)
+            if missing:
+                gates['no-proof'].append('missing ' + missing)
+            if key in core_problem:
+                gates['core-no-spec'].append(core_problem[key])
+            elif key in design:
+                gates['core-no-spec'].append(design[key])
+    lines = ['# scope %s %s: %s reads=%s' % (key, i['src'], ','.join(i['files']) or '-', ','.join(i['reads']) or '-')]
+    for tag in order:
+        if gates[tag]:
+            lines.append('GATE %s %s: %s' % (key, tag, ' '.join(', '.join(gates[tag]).split())))
+    refused = any(gates.values())
+    if not refused:
+        lines.append('READY ' + key)
+    return lines, int(refused)
+
+if why_key:
+    if why_key not in issues:
+        unknown('not in the mirror or the body file')
+    try:
+        spec = importlib.util.spec_from_file_location('tracker', os.path.join(repo, 'scripts/handover/chief-kit/tracker.py'))
+        tracker = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tracker)
+        label_dep_re = re.compile(r'^\s*(?:[-*]\s+)?[*_]*(?:depends\s+on|blocked[\s-]*by)[*_]*\s*:?[*_]*\s*[A-Z]{1,3}\d*(?:[-.]\d+)+\s*\(\s*' + tracker._KEYS + r'\s*\)', re.I | re.M)
+    except Exception as e:
+        unknown('tracker.py unreadable (%s)' % e)
+    issue = issues[why_key]
+    if partial_resume(why_key):
+        parts, issue['remainder_problems'] = predicate_remainder(issue)
+        override_from_parts(issue, parts)
+    if not os.environ.get('ND_DOC'):
+        print('# owed-ledger not read (no --doc)')
+    try:
+        apply_owed_scope({why_key: issue}, read_owed_actions(), set(), set())
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as e:
+        unknown('owed next-step state unreadable: ' + str(e))
+    core_spec_pass([issue])
+    lines, rc = why_ticket(issues[why_key])
+    print('\n'.join(lines))
+    sys.exit(rc)
+
+pr_unknown = False
+pr_keys = set()
+pr_file_map = {}  # PR number -> its files
+pr_meta = {}  # PR number -> (title, head branch)
+outside_idle = {}
+now_s = float(os.environ.get('NEXT_DISPATCH_NOW') or time.time())
+gh = os.environ.get('NEXT_DISPATCH_GH_CMD') or os.environ.get('ND_GH_READ') or 'gh'
+gh_repo = 'yotamleo-org/Himmel'  # env-literal-ok: the canonical slug; --search does not follow a repo rename
+try:
+    nums = ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number', '--jq', '.[].number'],
+                          capture_output=True, text=True, timeout=gh_t(60), check=True).stdout.split()
+    def pr_files(num):
+        # the paginated files API, not `gh pr diff`: that fails with HTTP 406 on a PR over 300 files. A rename holds both names.
+        try:
+            files = ghrun([gh, 'api', '--paginate', 'repos/%s/pulls/%s/files' % (gh_repo, num), '--jq', '.[] | .filename, (.previous_filename // empty)'],
+                                   capture_output=True, text=True, timeout=gh_t(120), check=True).stdout.splitlines()
+        except (OSError, subprocess.SubprocessError):
+            return None  # this PR's files are unknown; the rest are still read
+        return None if len(files) >= 3000 else files  # the API stops at 3000 files: a PR that long is cut short, so its files are unknown
+    pr_nums = [] if resume_only else nums
+    if pr_nums:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(8, len(pr_nums))) as pool:
+            for num, d in zip(pr_nums, pool.map(pr_files, pr_nums)):
+                if d is None:
+                    note_unknown('PR %s' % num)
+                    continue
+                held += [(f, 'open PR %s' % num, False) for f in d if f]  # a diff is files: compared exactly
+                pr_file_map[num] = [f for f in d if f]
+    # an open PR cites a ticket by its title or head branch (the commit/PR gate puts the key in both)
+    for line in ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName,isCrossRepository,updatedAt', '--jq', '.[] | [.number, .title, .headRefName, .isCrossRepository, .updatedAt] | @tsv'],
+                               capture_output=True, text=True, timeout=gh_t(60), check=True).stdout.splitlines():
+        cols = line.split('\t')
+        if len(cols) >= 3:
+            pr_meta[cols[0]] = (cols[1], cols[2])
+        idle = None
+        if len(cols) >= 5 and cols[3] == 'true':
+            try:
+                idle = int((now_s - datetime.datetime.fromisoformat(cols[4].replace('Z', '+00:00')).timestamp()) // 86400)
+            except ValueError:
+                idle = None
+        for k in re.findall(r'[A-Za-z]+-\d+', '\t'.join(cols[1:3]) if len(cols) >= 3 else line):
+            if idle is not None and idle >= OUTSIDE_OWN_DAYS:
+                outside_idle.setdefault(k.upper(), (cols[0], idle))
+            else:
+                pr_keys.add(k.upper()); owner.setdefault(k.upper(), 'open PR %s' % cols[0])
+except (OSError, subprocess.SubprocessError):
+    pr_unknown = True
 
 for i in issues.values() if not pr_unknown else ():
     if partial_resume(i['key']) and i['key'] not in worker_keys and i['key'] not in pr_keys and resume_eligible(i):
-        i['parts'] = live_answers([dict(remainder_of(pr, i['key']), pr=pr) for pr in partials[i['key']]])
-        latest = [p for p in i['parts'] if p['kind'] == 'remaining'][-1:]
-        if latest:
-            files, reads = split_reads(latest[0]['text'])
-            nowrite = not files and latest[0]['nowrite']
-            if files or nowrite:
-                i.update(files=files, reads=reads, src='remainder of PR #%s' % latest[0]['pr'], no_scope=False, nowrite=nowrite)
+        override_from_parts(i, live_answers([dict(remainder_of(pr, i['key']), pr=pr) for pr in partials[i['key']]]))
 
 holds_py = os.environ['ND_HOLDS']
+# A KEEP replacement becomes executable only after its validation action closed.
+# Read the existing ledger once; metadata supplies routing, never permission.
+owed_bucket = os.path.dirname(os.environ.get('ND_DOC') or os.environ.get('ND_WORKERS_FROM') or '')
+if owed_bucket and os.path.lexists(os.path.join(owed_bucket, 'owed.jsonl')):
+    try:
+        actions = read_owed_actions()
+        apply_owed_scope(issues, actions, worker_keys, pr_keys)
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
+        print('# next-dispatchable: owed next-step state unreadable: ' + str(exc), file=sys.stderr)
+        sys.exit(3)
+
 for label, doc, lines, wkeys in live_workers:
     try:
         r = subprocess.run([sys.executable, '-I', holds_py, 'parse', doc, '--repo', repo], capture_output=True, text=True, timeout=30)
@@ -1465,6 +1828,10 @@ handed_off = []  # (key, tickets) of in-work tickets whose every partial PR hand
 owed_rows = []  # (key, pr, who, date) of in-work tickets whose newest clear partial PR records a step owed to the chief or operator by a date
 resume = []
 for i in issues.values():
+    if i.get('owed_wait'):
+        step = i['owed_wait']
+        owed_rows.append((i['key'], 'owed:' + step['id'], step['actor'], step['due']))
+        continue
     if not resume_eligible(i):
         continue
     if i['status'] == 'IN CI' and merged_unknown:  # an unread merged-PR set could hide the ticket's merge
@@ -1479,13 +1846,13 @@ for i in issues.values():
         continue
     if any(blocker_state(b) for b in i['blocked_by']):
         continue
-    parts = i.get('parts', [])
+    parts = [] if i.get('owed_next') else i.get('parts', [])
     i['partial'] = [(p['pr'], p['text']) for p in parts]
     if any(p['kind'] == 'none' for p in parts):  # a merged slice whose PR body names no remaining work: not dispatched blind
         needs_note.append((i['key'], [p['pr'] for p in parts if p['kind'] == 'none']))
         continue
     owed_parts = [p for p in parts if p['kind'] == 'owed']
-    if owed_parts and not any(p['kind'] == 'remaining' for p in parts):  # a dated step is owed to the chief or operator and nothing else stays on the ticket: nothing to dispatch (the owed PR with the earliest due date is named)
+    if owed_parts and not any(p['kind'] == 'remaining' or (p['kind'] == 'owed' and p['handed'][0] == 'proof') for p in parts):
         first_due = min(owed_parts, key=lambda p: p['handed'][1])  # the earliest due date; min keeps the older PR on a tie
         owed_rows.append((i['key'], first_due['pr'], first_due['handed'][0], first_due['handed'][1]))
         continue
@@ -1513,6 +1880,9 @@ def stackable_on(i):
 stackable_rows = []
 free = []
 for i in cands:
+    if i.get('owed_wait'):
+        drop(i, 'owned next step: ' + i['owed_wait']['actor'])
+        continue
     if i['key'] in worker_keys or i['key'] in pr_keys:  # a live worker or an open PR already owns the ticket
         drop(i, 'owned by ' + owner.get(i['key'], 'a live worker'))
         continue
@@ -1581,7 +1951,8 @@ for k, keys in handed_off:
 for k, pr, who, due in owed_rows:
     chief_owed = any(a['chief_owed'] for a in issues[k].get('parts', []))
     named = staging_of(issues[k]) if chief_owed else []
-    print('OWED %s: merged PR #%s owes %s by %s%s' % (k, pr, who, due, (' proof-staging=' + ','.join(x[0] for x in named)) if named else ''))
+    source = 'owed action ' + pr[5:] if isinstance(pr, str) and pr.startswith('owed:') else 'merged PR #%s' % pr
+    print('OWED %s: %s owes %s by %s%s' % (k, source, who, due, (' proof-staging=' + ','.join(x[0] for x in named)) if named else ''))
     if named and os.environ.get('ND_WHY') == '1':
         staging_why(issues[k])
 for sid, wdoc in series_orphans:
@@ -1926,6 +2297,25 @@ PY
 nd_pid=$!
 wait "$nd_pid"; nd_rc=$?
 nd_pid=""
+if [ -n "$why_ticket" ]; then
+    if [ "$nd_rc" = 124 ] || [ "$nd_rc" = 137 ]; then
+        printf 'UNKNOWN %s: timed out after %ss\n' "$why_ticket" "$nd_deadline"
+        exit 3
+    fi
+    if ! awk -v key="$why_ticket" -v rc="$nd_rc" '
+        /^#/ { next }
+        $0 == "READY " key { ready++; next }
+        index($0, "GATE " key " ") == 1 && $0 ~ /^GATE [A-Z]+-[0-9]+ (drop|held-label|open-blocker|blocker-no-version|stale-hold|prose-dependency|no-scope|no-proof|core-no-spec): [^ \t][^\t]*$/ { gate++; next }
+        index($0, "UNKNOWN " key ": ") == 1 && $0 ~ /^UNKNOWN [A-Z]+-[0-9]+: [^ \t].*$/ { unknown++; next }
+        { bad++ }
+        END { exit !(!bad && ((rc == 0 && ready == 1 && !gate && !unknown) || (rc == 1 && gate && !ready && !unknown) || (rc == 3 && unknown == 1 && !ready && !gate))) }
+    ' "$nd_out"; then
+        printf 'UNKNOWN %s: unexpected exit %s\n' "$why_ticket" "$nd_rc"
+        exit 3
+    fi
+    cat "$nd_out"
+    exit "$nd_rc"
+fi
 IFS="$(printf '\t')" read -r nd_why nd_bucket nd_at nd_ftok < "$nd_flags" 2>/dev/null || nd_why=""
 case "$nd_why" in
     rate-limit) nd_pause "$(ghq_line "${nd_ftok:-main}" "$nd_bucket" next-dispatchable rate-limit "$nd_at")" ;;

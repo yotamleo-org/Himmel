@@ -575,15 +575,22 @@ def num(key):
     return int(key.split('-')[1])
 
 
-# the Jira-first view. Buckets come from the status NAME (statusCategory only for a name not listed).
+# The Jira-first view keeps shipped and closed-without-shipping separate; either terminal field closes a ticket.
 BUCKETS = {'to do': 'todo', 'backlog': 'todo', 'in progress': 'prog', 'in review': 'rev', 'ci': 'ci', 'in ci': 'ci',
-           'done': 'done', 'closed': 'wont', 'in public': 'done', 'wont do': 'wont', 'wont fix': 'wont'}
+           'done': 'done', 'resolved': 'done', 'closed': 'wont', 'in public': 'done',
+           'wont do': 'wont', "won't do": 'wont', 'wont fix': 'wont', "won't fix": 'wont'}
 SHIPPED = ('', 'done', 'fixed')
+
+
+def status_name(value):
+    return str(value or '').strip().lower().replace('’', "'")
 
 
 def bucket(m):
     """'wont' is every closed-without-shipping state: Closed, wont do/fix, or Done with a resolution other than Done/Fixed."""
-    b = BUCKETS.get(m['sn'].strip().lower()) or {'Done': 'done', 'In Progress': 'prog'}.get(m['cat'], 'todo')
+    name, cat = (status_name(m.get(k)) for k in ('sn', 'cat'))
+    terminal = [BUCKETS.get(s) for s in (name, cat) if BUCKETS.get(s) in ('done', 'wont')]
+    b = ('wont' if 'wont' in terminal else 'done') if terminal else BUCKETS.get(name) or {'in progress': 'prog'}.get(cat, 'todo')
     return 'wont' if b == 'done' and m['res'].strip().lower() not in SHIPPED else b
 
 
@@ -662,7 +669,7 @@ def jira_parity(tk, vers, cur):
         return 'parity: %s unavailable' % v
     lines = [l.split('\t') for l in r.stdout.splitlines() if l.strip()]
     if r.returncode != 0 or any(len(f) < 3 or not KEY_RE.fullmatch(f[0])
-                                or f[2].strip().lower() not in BUCKETS for f in lines):
+                                or status_name(f[2]) not in BUCKETS for f in lines):
         return 'parity: %s unavailable' % v
     order = ('done', 'prog', 'rev', 'todo')
 
@@ -674,7 +681,7 @@ def jira_parity(tk, vers, cur):
         return '/'.join(str(c[b]) for b in order)
     rank = {'todo': 0, 'prog': 1, 'rev': 2, 'ci': 2, 'done': 3}
     pg = {t['k']: (t['b'], t['s']) for t in tk if t['v'] == cur}
-    jr = {num(f[0]): (BUCKETS[f[2].strip().lower()], f[2].strip()) for f in lines if BUCKETS[f[2].strip().lower()] != 'wont'}
+    jr = {num(f[0]): (BUCKETS[status_name(f[2])], f[2].strip()) for f in lines if BUCKETS[status_name(f[2])] != 'wont'}
     page = tally(b for b, _ in pg.values())
     jira = tally(b for b, _ in jr.values())
     tail = ' (done/in progress/in review/to do)'
@@ -1424,6 +1431,14 @@ OWED_RE = re.compile(r'operator[ -](?:sign-?off|runs?|words|signs?|decides?|on T
 OPERATOR_CLASS_RE = re.compile(r'\bspend|\bgrants?\b|\bpaid\b|billing|payment|\baccounts?\b|\bterms\b|\btos\b|\broot\b|\bsudo(?:ers)?\b|reinstall|admin install|\boauth\b|api credit|\bphysical(?:ly)?\b|hardware|public[ -]polic|policy call', re.I)
 
 
+class OwedRow(tuple):
+    """Keep the five-field reader contract and expose the projection's responsible actor."""
+    def __new__(cls, row, actor):
+        item = super().__new__(cls, row)
+        item.actor = actor
+        return item
+
+
 def handoff_answered(handover_dir, handoff, line):
     keys = set(re.findall(r'HIMMEL-\d+', line))
     asks = {' '.join(q.lower().split()) for q in re.findall(r'"([^"]{6,})"', line)}
@@ -1479,14 +1494,18 @@ def round_status_all(handover_dir):
     return s if ok else None
 
 
-def operator_critical(spec, critic, critical_re):
+def operator_critical(spec, critic, critical_re, unread):
+    unknown = False
     for p in (spec if spec.endswith('.md') else spec + '.md', critic):
         try:
             if critical_re.search(open(p, encoding='utf-8').read()):
                 return True
-        except (OSError, ValueError):
+        except FileNotFoundError:
             continue
-    return False
+        except (OSError, ValueError):
+            unread.append(os.path.basename(p))
+            unknown = True
+    return None if unknown else False
 
 
 def operator_owed(handover_dir, chief_doc, version, opn, mir):
@@ -1509,6 +1528,7 @@ def operator_owed(handover_dir, chief_doc, version, opn, mir):
             readable = os.path.isdir(os.path.join(handover_dir, 'specs', 'designs'))
         except OSError:
             signed = None
+            unread.append('operator.jsonl')
         if signed is not None:
             status = round_status_all(handover_dir)
             if status is None and os.path.isdir(os.path.join(handover_dir, 'specs')):
@@ -1534,10 +1554,12 @@ def operator_owed(handover_dir, chief_doc, version, opn, mir):
                     continue
                 if k and int(k.group(1)) in opn and int(k.group(1)) not in signed_ticket_numbers and spec_id(spec) not in signed and (last == 'SPEC CLEAN' or rnd >= status['cap']):
                     n = int(k.group(1))
-                    (items if operator_critical(spec, f, critical_re) else chief_owes).append(('unsigned spec', n, clip(opn[n]['title'], 100),
+                    critical = operator_critical(spec, f, critical_re, unread)
+                    (items if critical else chief_owes).append(OwedRow(('unsigned spec', n, clip(opn[n]['title'], 100),
                                   '%s: latest critic round %d reads %s, no spec row in operator.jsonl' % (
                                       os.path.basename(spec), rnd, last if re.fullmatch(r'SPEC (?:CLEAN|FINDINGS \d+)', last) else 'no verdict line'),
-                                  'sign the spec, or rule on its findings'))
+                                  'reconcile the unread spec evidence' if critical is None else 'sign the spec, or rule on its findings'),
+                                  'unknown' if critical is None else 'operator' if critical else 'chief'))
             for n, crit in sorted((int(key[7:]), st.get('critical_open')) for key, st in (status or {'keys': {}})['keys'].items()
                                   if re.fullmatch(r'HIMMEL-\d+', key) and isinstance(st, dict)):
                 if n in opn and isinstance(crit, list) and crit:
@@ -1549,7 +1571,7 @@ def operator_owed(handover_dir, chief_doc, version, opn, mir):
         if sec is not None:
             readable = True
             for l in sec:
-                if l.strip() and not re.fullmatch(r'[-*\s]*none\.?', l.strip(), re.I):
+                if l.strip() and not re.fullmatch(r'[-*\s]*(?:none\.?|<placeholder>)', l.strip(), re.I):
                     answered = handoff_answered(handover_dir, hand[-1], l)
                     (chief_owes if answered else items).append(('handoff', None, clip(l.strip(), 140), os.path.basename(hand[-1]),
                                                                 'the chief records the operator answer' if answered else 'answer the open item'))
@@ -1563,7 +1585,8 @@ def operator_owed(handover_dir, chief_doc, version, opn, mir):
                 (items if OPERATOR_CLASS_RE.search(m.group(6)) else chief_owes).append(('drift', int(m.group(2)), 'close %s or name a worker (%s, owed: %s)' % (m.group(1), m.group(5), m.group(6)),
                               'CLOSE-OR-DISPATCH: no event since %s (%s h)' % (m.group(3), m.group(4)), 'close the ticket, or name a worker for the rest'))
     held, holds_unread = pool_hold_items(chief_doc, opn) if chief_doc else ([], [])
-    items += held
+    items += [r for r in held if r.actor == 'operator']
+    chief_owes += [r for r in held if r.actor != 'operator']
     held_keys = {n for _, n, _, _, _ in held if n}
     live = md_section(chief_doc, 'Live state') if chief_doc else None
     if live is not None:
@@ -1581,7 +1604,8 @@ def operator_owed(handover_dir, chief_doc, version, opn, mir):
                     mine = OPERATOR_CLASS_RE.search(s)
                     (items if mine else chief_owes).append(('chief doc', n, clip(opn[n]['title'], 100) if n in opn else clip(s.strip(), 140), clip(s.strip(), 160),
                                   'the operator acts on what the line names' if mine else 'the chief acts on what the line names'))
-    return items, readable, unread, chief_owes, holds_unread
+    return ([r if isinstance(r, OwedRow) else OwedRow(r, 'operator') for r in items], readable, unread,
+            [r if isinstance(r, OwedRow) else OwedRow(r, 'chief') for r in chief_owes], holds_unread)
 
 
 POOL_HOLD_ACT = "record the operator's words (O- record) or a near wake=, or dispatch it"
@@ -1620,11 +1644,18 @@ def pool_hold_items(chief_doc, opn):
             ctx, act = '%s on the operator\'s words: "%s"' % (verb, r.get('words')), 'none, unless the words do not say this'
         elif cls == 'wake' and isinstance(days, int) and days >= 7 and re.search(r'(?:^|,)(?:pr[:-]|done:)', wake):
             ctx, act = '%s on wake=%s for %d days' % (verb, wake, days), "re-decide: dispatch it, or record the operator's words"
-        else:
+        elif cls == 'wake':
             continue
+        else:
+            ctx, act = '%s (unchecked: unknown hold class %s)' % (verb, cls), 'reconcile the hold evidence'
+        actor = 'chief'
+        if lines[key] != r.get('line') or cls not in ('no-authority', 'authority', 'wake'):
+            actor = 'unknown'
+        elif cls == 'authority':
+            actor = 'operator' if isinstance(r.get('words'), str) and r['words'].strip() else 'unknown'
         seen.add(key)
         n = num(key)
-        out.append(('pool hold', n, clip(opn[n]['title'], 100) if n in opn else key, clip(ctx, 200), act))
+        out.append(OwedRow(('pool hold', n, clip(opn[n]['title'], 100) if n in opn else key, clip(ctx, 200), act), actor))
     return out, []
 
 
@@ -1824,7 +1855,7 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
     wait = [k for k in sorted(opn, key=order.get) if set(OPERATOR_LABELS) & set(opn[k].get('labels', []))]
     owed, owed_read, owed_unread, chief_owes, holds_unread = operator_owed(bucket_dir, chief_doc, version, opn, mir)
     nwait = len(wait) + len(owed)
-    waithtml = '<section data-section="waiting" data-count="%d"><h2 class="sh">Waiting on you <span class="n">%d</span>%s%s%s</h2>%s</section>' % (
+    waithtml = '<section data-section="waiting" data-count="%d" data-actor="operator"><h2 class="sh">Waiting on you <span class="n">%d</span>%s%s%s</h2>%s</section>' % (
         nwait, nwait, '' if owed_read else ' <span class="n">no operator-owed source read</span>',
         ' <span class="n">%d critic file%s unread, skipped: %s</span>' % (
             len(owed_unread), '' if len(owed_unread) == 1 else 's', esc(', '.join(owed_unread))) if owed_unread else '',
@@ -1835,10 +1866,12 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
                 key_html(n) + ' ' if n else '', esc(t), esc(src), esc(ctx), esc(act)) for src, n, t, ctx, act in owed))
         if nwait else '<div class="empty">%s</div>' % ('nothing is waiting on you' if owed_read else
                                                        'no operator-owed source read: the Jira labels name no waiting ticket, and that is all that was checked'))
-    if chief_owes:
-        waithtml += '\n<section data-section="chief-owes" data-count="%d"><h2 class="sh">Chief owes <span class="n">%d</span></h2><ul>%s</ul></section>' % (
-            len(chief_owes), len(chief_owes), ''.join('<li class="owed">%s%s <span class="own">%s · %s · action: %s</span></li>' % (
-                key_html(n) + ' ' if n else '', esc(t), esc(src), esc(ctx), esc(act)) for src, n, t, ctx, act in chief_owes))
+    for actor, section, title in [('chief', 'chief-owes', 'Chief owes'), ('unknown', 'reconciliation', 'Reconciliation')]:
+        rows = [r for r in chief_owes if r.actor == actor]
+        if rows:
+            waithtml += '\n<section data-section="%s" data-actor="%s" data-count="%d"><h2 class="sh">%s <span class="n">%d</span></h2><ul>%s</ul></section>' % (
+                section, actor, len(rows), title, len(rows), ''.join('<li class="owed">%s%s <span class="own">%s · %s · action: %s</span></li>' % (
+                    key_html(n) + ' ' if n else '', esc(t), esc(src), esc(ctx), esc(act)) for src, n, t, ctx, act in rows))
     legend = ''.join('<span class="lg b%d">%s</span>' % (min(i, 7), esc(n)) for i, n in enumerate(names))
     seclegend = ''.join('<span class="sec" style="--s:%s">%s %d</span>' % (c, esc(n), sum(1 for m in opn.values() if m['sector'] == n))
                         for n, c in SECTOR_COLORS.items() if any(m['sector'] == n for m in opn.values()))

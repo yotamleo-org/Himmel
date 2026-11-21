@@ -16,6 +16,22 @@ For Jira ops in this repo, use the local CLI at
 `scripts/jira/dist/index.js`. The Atlassian MCP server
 (`mcp__plugin_atlassian_atlassian__*`) is denied for Jira, reads included.
 
+`release operator spec <release>` accepts optional `--source-root <path>` when
+source citations refer to work in an unmerged branch. The physical directory
+must be primary or a currently registered live linked worktree sharing primary's
+Git common directory. Validation uses the unchanged minerva scripts from primary,
+the verified source root as the trace lint's cwd, and the spec's repository
+(normally the state repo) as the alternate citation root. Omitting the option
+keeps primary as the citation root.
+
+Explicit roots add canonical `source_root` and `source_head` fields to the signed
+spec record. Git registration, physical identity and HEAD are checked around
+validation and again under the append lock; a changed root or HEAD refuses the
+record. Operator fencing and spec, plan and verdict hash checks still apply.
+These fields describe validation provenance, not authority over future source
+code or a claim that every working file is committed. Existing records without
+the fields retain their normal interpretation.
+
 **Why:**
 - The CLI is one shell call with the schema in `--help` — fewer
   input/output tokens than MCP, which fetches a verbose JSON schema

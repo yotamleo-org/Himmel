@@ -223,6 +223,7 @@ bash "$HERE/fleet-manifest.sh" remove "$MANIFEST" "$WORKER" >/dev/null 2>&1 || {
 WM_CLOSE_RC=6 WM_CLOSE_ERR='close-wrapped-worker: refusing - subtree alive' run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 check "11: rc 6 propagates" "$rc" 6
 contains "11: close was asked" "$calls" "close --fleet $MANIFEST $WORKER"
+contains "11: a refused close says so on the line the waiter reads as retryable" "$out" "wrap-merged: step close-wrapped-worker failed"
 lacks "11: no pull" "$calls" "pull"
 check "11: no bullet" "$(tail -n 1 "$CHIEF")" "- 10:00 LIVE chief"
 lacks "11: never says window closed" "$out" "window already closed"
@@ -252,6 +253,7 @@ WM_BOARD_RC=1 run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 check "13: rc 7" "$rc" 7
 contains "13: names the step" "$out" "board"
 contains "13: bullet was written first" "$(tail -n 1 "$CHIEF")" "MERGED #777"
+contains "13: the board failure line the waiter reports, not retries" "$out" "wrap-merged: step board failed"
 
 # --- 14. append failure -> rc 6, the board still re-rendered ----------------
 fixture
@@ -261,6 +263,7 @@ chmod 644 "$CHIEF"
 check "14: rc 6" "$rc" 6
 contains "14: names the step" "$out" "append-results"
 contains "14: the board is still re-rendered" "$calls" "board --doc $CHIEF --changed"
+contains "14: the log failure line the waiter reports, not retries" "$out" "wrap-merged: step log failed"
 
 # --- 15-18. tracker refresh ------------------------------------
 # On MERGED the wrap re-mirrors Jira, snapshots the versions and re-renders the

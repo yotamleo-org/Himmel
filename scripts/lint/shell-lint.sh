@@ -146,13 +146,10 @@ _has_prim_ok() {
     return 1
 }
 
-# _prim_report FILE TAG PATTERN HINT — report each non-comment line of FILE
-# with a non-probe ERE PATTERN hit and no reasoned prim-ok marker, as [TAG]. Appends to the
-# caller's file_report/file_issues.
-_prim_report() {
-    local _pf="$1" _ptag="$2" _ppat="$3" _phint="$4" _ph _pln _prest _pout="" _pall _pstrip
+# Print original matching lines after excluding tool lookups and literal messages.
+_nonprobe_hits() {
+    local _pf="$1" _ppat="$2" _pln _prest _pall _pstrip
     _pall="$(_grep_hits "$_pf" "$_ppat")"
-    _ph=""
     # Only the probe text is dropped: a call sharing the line with its probe
     # (`command -v flock && flock -x 9`) still matches the pattern.
     while IFS=: read -r _pln _prest; do
@@ -160,10 +157,18 @@ _prim_report() {
         _pstrip="$(printf '%s\n' "$_prest" | sed -E -e "s/$PRIM_MESSAGE/\1\2 /g" \
             -e ':probe' -e "s/$PRIM_PROBE/\1\4/g" -e 't probe')"
         printf '%s\n' "$_pstrip" | grep -qE "$_ppat" || continue
-        _ph="${_ph}${_pln}:${_prest}"$'\n'
+        printf '%s:%s\n' "$_pln" "$_prest"
     done <<EOF
 $_pall
 EOF
+}
+
+# _prim_report FILE TAG PATTERN HINT — report each non-comment line of FILE
+# with a non-probe ERE PATTERN hit and no reasoned prim-ok marker, as [TAG]. Appends to the
+# caller's file_report/file_issues.
+_prim_report() {
+    local _pf="$1" _ptag="$2" _ppat="$3" _phint="$4" _ph _pln _prest _pout=""
+    _ph="$(_nonprobe_hits "$_pf" "$_ppat")"
     [ -n "$_ph" ] || return 0
     while IFS=: read -r _pln _prest; do
         [ -n "$_pln" ] || continue
@@ -294,7 +299,7 @@ PRIM_LOCK='(^|[^[:alnum:]_-])mkdir[[:space:]]+["'"'"']?[^-"'"'"'|;&[:space:]][^|
 PRIM_ATOMIC='(^|[^[:alnum:]_-])(mv[[:space:]]+(-[A-Za-z]+[[:space:]]+)*["'"'"']?\$[{]?[A-Za-z_]*([Tt][Mm][Pp]|[Tt][Ee][Mm][Pp])|sed[[:space:]]+-i)'
 PRIM_CANON='(^|[^[:alnum:]_-])(readlink[[:space:]]+-f|realpath)([[:space:]]|$)'
 # A probe for the tool (`command -v flock`) is not a use of it.
-PRIM_PROBE='(^|[^[:alnum:]_./-])(command[[:space:]]+-v|type|which)[[:space:]]+(flock|realpath)($|[[:space:];&|()<>])'
+PRIM_PROBE='(^|[^[:alnum:]_./-])(command[[:space:]]+-v|type|which)[[:space:]]+(flock|realpath|mktemp)($|[[:space:];&|()<>])'
 # Literal echo/printf arguments are messages, not calls; keep expansions visible.
 PRIM_MESSAGE="(^|[;&|({[:space:]])(echo|printf)([[:space:]]+(-v[[:space:]]+[[:alpha:]_][[:alnum:]_]*|--|-[[:alpha:]]+))*([[:space:]]+(\"[^\"\$\`]*\"|'[^']*'))+"
 
@@ -540,7 +545,7 @@ EOF
         "POSIX ERE has no \s/\d/\w (matches a literal letter); use [[:space:]]/[[:digit:]]/[[:alnum:]]"
 
     # [mktemp] — GNU mktemp works with no template arg; BSD/macOS requires one.
-    _mt="$(_grep_hits "$f" "$MKTEMP_NOARG")"
+    _mt="$(_nonprobe_hits "$f" "$MKTEMP_NOARG")"
     _report_hits mktemp "$_mt" \
         "BSD/macOS mktemp needs a template arg (e.g. mktemp -d -t prefix.XXXXXX)"
 

@@ -264,8 +264,9 @@
 #                               the re-arm stays quiet until a sample succeeds. Look-only
 #                               (8934): queued in the digest, a wake only with
 #                               HOUSEKEEPING_DIGEST_SECS=0. The usual step is
-#                               tick-timeout:120s under host load (tick.sh costs about 62 s
-#                               of CPU), not a broken monitor.
+#                               tick-timeout:120s under host load (the recorded ticks took up to 104 s
+#                               of wall time and about 17 CPU-s at the median; 62 CPU-s was
+#                               the figure before the refreshes were detached), not a broken monitor.
 #   WAKE worker-silent <worker> signal=<capped-waker|succession-partial> [silent=<n>m]
 #                               a worker went silent. capped-waker: with --workers-from, the
 #                               tick lists wakerstate=<worker>:capped (its bus mail went unread) and the
@@ -285,74 +286,8 @@
 #                               blocked step itself and says which it did (chief-template.md). The tick line
 #                               follows a capped-waker wake.
 #
-# The action key is the tick fields a chief acts on: workers= (an older tick's legs=),
-# livestate=, prs=, tails=, acts= (a worker's newest READY, BLOCKED, FINDING or MERGED bullet and a count:
-# a repeat or a later LIVE bullet cannot hide it; absent when a worker has none), workerset= (an older
-# tick's legset=), board= and tracker= (class only, the STALE
-# age is dropped; tracker= is absent from an older tick line, never a failure),
-# vault= (class only, wakes ONLY on a move to STALL or PUSH-LAG --
-# never on a change of its age or count, nor a move back to ok/skip/unknown --
-# and the wake adds a `vault: reproduce with git -C <vault> hook run pre-commit`
-# line; absent from an older tick line, never a failure),
-# cloud= (class only, wakes ONLY on a move to STALL -- never on a
-# change of the ticket list, nor a move back to ok/skip; absent from an older
-# tick line, never a failure),
-# orphans-wip= (in-work tickets with no worker and no open PR; `n:KEY,...`, `?` or
-# `skip`) is in the key whole, so any change of its value wakes; absent from an older
-# tick line, never a failure.
-# vmismatch= (tick.sh: RESET rows of the version-status audit) wakes while it is a positive
-# count and on any change of that count; 0, ? and an absent field are left out of the key.
-# wt-ceiling= (the live/cap alarm) is in the key whole: reaching the ceiling
-# wakes once, while an unchanged alarm stays silent; absent is not a failure. cap= (`<version>:<n>`, past 15 open residuals) likewise,
-# and cap=? (the tick's deadline cut the read) keeps the saved value.
-# unowned-prs= is NOT in the action key (its minutes grow every tick): a
-# non-empty list is queued on first sight (`unowned-prs <list>`, look-only: see below; with
-# HOUSEKEEPING_DIGEST_SECS=0 it is `WAKE unowned-prs <list>`), again when
-# a PR joins it, and again every CHIEF_WAIT_UNOWNED_REWAKE_MIN (default 60) while it
-# stays non-empty. The marker `<inbox>.wait.unowned` (its body the PR numbers last
-# woken for) outlives the waiter like the underfill one; it clears after two
-# consecutive samples reading none, so one failed gh read is not an all-clear. A tick
-# line without the field is skipped.
-# pool-stale= (`n:KEY,...`, `?` for an unreadable blocker, never in the action key) wakes
-# once per newly stale disposition key (`WAKE pool-stale <KEYS>`): the marker `<inbox>.wait.stale`
-# holds the keys last seen, shrinks to the current set on a full read and has no re-wake
-# window. A `?`-only value, a partial read (`1:KEY,?`, which only adds to the marker) and an
-# absent or skip field keep it (a failed read is not an all-clear); an explicit 0 clears it,
-# so a key that leaves and rejoins wakes again.
-# rm-refused= (`n:KEY@ruling,...`, never in the action key), with --doc: the tick's
-# rm-refused-<doc stem>.tsv under $TICK_STATE_DIR is read. Each operator-asked KEY@ruling new to the
-# marker `<inbox>.wait.refused` wakes once (`WAKE rm-refused <KEY>@<ruling> — fix: <reason, 200 chars>`,
-# one line each); the other new pairs wait for one digest a day (`WAKE rm-refused-digest <n> new:
-# <KEY>@<ruling>,...`, the first 20; the UTC day in `<inbox>.wait.refused.day`). A pair whose operator status
-# is `?` (the mirror does not hold the key) is neither woken nor digested until it is known. A woken pair joins
-# the marker, which keeps only pairs the tsv still lists; an absent field reads nothing and keeps it.
-# procs=...,unwatched=N1+N2 (a live worker outside the fleet manifest; tick.sh drops other
-# chiefs' workers) wakes the same way (`WAKE unwatched <labels>`): first sight, a label new
-# to the marker `<inbox>.wait.unwatched`, or every CHIEF_WAIT_UNWATCHED_REWAKE_MIN (default
-# 60) while it stays non-empty. The marker clears when the field is gone.
-# vmrun= (class only, wakes ONLY on a move to DEAD, STUCK or DISAGREE -- never
-# on the busy count, nor a move to ok/off/FAILING; absent from an older tick line,
-# never a failure),
-# parked= (the workers sitting on an unanswered permission prompt, names only so the
-# growing age never re-wakes; absent from the tick line when none is parked, never
-# a failure; a worker joining or leaving the set wakes),
-# holds= (tick.sh: `<worker>:<age>m,...`, BLOCKED workers past TICK_HOLD_MIN; names only, so the
-# age never re-wakes) wakes when a worker ENTERS the set, once per hold: a worker leaving or the
-# set emptying wakes nothing; absent when no worker holds, never a failure),
-# hreg= (tick.sh: `<live workers with no rows>/<stale rows>/<pending trust-path asks>`) is in the key whole: a
-# moved value wakes once (`WAKE tick changed=hreg`), an unchanged one does not; hreg=? keeps the saved value; absent
-# (0/0/0, no register, an older tick) is never a failure and its going away wakes nothing. Every sample that reads a
-# non-zero third count also pages each pending ask ONCE: `HOLD-ASK <key> wants <path> ... <paste-ready grant command>`
-# through the same sender as DENIAL-PAGE.
-# stall= (tick.sh: `<pr>:<class>,...` from pr-stall.sh) wakes ONCE per new
-# conflict or no-ci token (a PR, a class): ci-slow and idle are report-only, an unchanged set
-# and a stall resolving do not wake; stall=? (a probe outage) keeps the saved set; absent
-# from an older tick line, never a failure),
-# denials= (a new worker, a higher count or a higher class
-# (SHIP-STEP > PAUSE-RISK > REPEAT) is exactly the alert this exists to
-# surface; the same denial ageing out of tick.sh's 30-min window, moving it to
-# none or lowering a count, is NOT a wake, so one denial wakes once) and the
-# bank-preflight verdict word.
+# Per-field key, entry and reminder policy: wake-rules.tsv, printed by --rules.
+# Specialized readers below retain exact-head, set/rise and receipt semantics.
 #
 # PAGE: when a wake's denials= change raised a worker's
 # class to SHIP-STEP or PAUSE-RISK (a new worker, or a higher class; a count rising
@@ -438,6 +373,20 @@
 #   <inbox>.wait.r0      the bullets the relay already handled or woke for
 #                        (`<label> <marker> <cksum>`); <inbox>.wait.le-<label> holds
 #                        worker-event's last output for that worker, tokens scrubbed.
+#   <inbox>.wait.relaylog  one line per worker-event call, whether it handled, refused or woke:
+#                        `start=<epoch> label=<l> marker=<m> pending=<s> handler=<s> rc=<rc>`. pending= is how
+#                        long this waiter process had known the event when the call began (a waiter restart
+#                        starts it again; time spent unseen while a sample held the loop is not in it), handler=
+#                        how long worker-event ran. An idle pass writes nothing. Past 1 MiB (the cap of the
+#                        classifier denial log) it is renamed to <inbox>.wait.relaylog.1, replacing the older
+#                        copy, so at most two files exist; nothing the waiter decides from is in it.
+#   <inbox>.wait.le-<label>.tries  stream mode: a refused cleanup's retry ladder, `<refusals in a row> <cksum of the
+#                        bullet being retried> <cksum of the bullet already woken for or ->`. The relay owns the
+#                        count; the collector reads it and holds the event back for the retry window times 1, 2,
+#                        6, 24, 60 by it. A new or changed event (another bullet checksum) starts the count over;
+#                        lines appended to the worker document do not. The refusal that reaches the top step wakes
+#                        once per bullet. It only paces: nothing is closed, wrapped, reaped or recorded as handled.
+#                        Removed when the cleanup succeeds or answers anything but a retryable refusal.
 #   <inbox>.wait.ready   `<label><TAB><line>`, the last READY bullet handed on to worker-event.
 #   <inbox>.wait.readywoke  with auto_go off: `<pr> <head40>`, each READY already woken for;
 #                        <inbox>.wait.ready-<pr> holds that wake's checks, tokens scrubbed.
@@ -466,7 +415,11 @@
 # 2 = usage or an inbox outside the */consoles/<name>.md layout; 3 = another waiter is already live on this inbox (its pid is named).
 #
 # Env: CHIEF_WAIT_INTERVAL tick interval in seconds (default 180);
-# CHIEF_WAIT_POLL_SEC inbox poll (default 1); CHIEF_WAIT_TICK_TIMEOUT
+# CHIEF_WAIT_POLL_SEC inbox poll (default 1); CHIEF_WAIT_IDLE_PASSES (default 10) and
+# CHIEF_WAIT_IDLE_POLL_SEC (default 1, never below the poll; a value that is not a plain decimal number is the
+# default): in stream mode the loop sleeps the idle poll
+# instead of the poll after that many passes in a row that offered nothing, attempted nothing and ran no tick,
+# and the first pass with an event or work puts the poll back; CHIEF_WAIT_TICK_TIMEOUT
 # seconds a tick may run before it counts as failed (default 120), so a hung
 # tick cannot freeze the Telegram path; CHIEF_WAIT_FAIL_WAKE consecutive
 # failed samples before a tick-fail wake (default 3); CHIEF_WAIT_TICK / CHIEF_WAIT_USAGE
@@ -509,6 +462,7 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 . "$_ah_d/../../cr/anchor-handoff.sh" || exit 2
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ "${1:-}" = --rules ]; then cat "$HERE/wake-rules.tsv"; exit 0; fi
 REPO="$(cd "$HERE/../../.." && pwd)"
 GH_READ_BIN="$REPO/scripts/lib/gh-read.sh"; [ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 # shellcheck source=../../lib/prim.sh
@@ -572,6 +526,17 @@ if [ "$tick_count_mode" = 1 ]; then
         END { printf "ticks=%d tick-timeouts=%d window=24h\n", t, n }' "$tick_log"
     exit $?
 fi
+# Match mode flags only outside option values. Keep tick's value options here
+# so a literal --stream token used as a value stays on the one-shot path.
+mode_value=0
+for mode_arg in "$@"; do
+    if [ "$mode_value" = 1 ]; then mode_value=0; continue; fi
+    case "$mode_arg" in
+        --ack) exec python3 -I "$HERE/chief-wait-stream.py" --ack "$inbox" "$@" ;;
+        --doc|--token|--workers|--workers-from|--handover-dir|--repo|--ready-dir|--prior|--succession|--silent-min|--since|--receipt) mode_value=1 ;;
+        --stream) exec bash "$HERE/chief-wait-stream.sh" "$inbox" "$@" ;;
+    esac
+done
 # page/ack record helpers. A missing lib fails open: no records, the
 # page still sends.
 if [ -r "$HERE/denial-ack-lib.sh" ]; then . "$HERE/denial-ack-lib.sh"; else denial_page_write() { return 1; }; fi
@@ -579,6 +544,16 @@ hb_file="$inbox.wait"
 key_file="$inbox.wait.state"
 interval="${CHIEF_WAIT_INTERVAL:-180}"
 poll="${CHIEF_WAIT_POLL_SEC:-1}"
+# Stream service only: after CHIEF_WAIT_IDLE_PASSES passes in a row with nothing offered, nothing attempted and no tick
+# the loop sleeps CHIEF_WAIT_IDLE_POLL_SEC (never less than the poll) instead of the poll, and the first pass with an
+# event or work puts the poll back. It only paces: nothing is decided, dropped or marked by it.
+idle_poll="${CHIEF_WAIT_IDLE_POLL_SEC:-1}"
+idle_poll_re='^([0-9]+\.?[0-9]*|\.[0-9]+)$'  # a plain non-negative decimal number; anything else (1.2.3, text) is the default
+[[ $idle_poll =~ $idle_poll_re ]] || idle_poll=1
+idle_runs="${CHIEF_WAIT_IDLE_PASSES:-10}"
+case "$idle_runs" in ''|0|*[!0-9]*) idle_runs=10 ;; esac
+awk -v a="$idle_poll" -v b="$poll" 'BEGIN { exit !(a + 0 > b + 0) }' || idle_poll="$poll"
+idle_passes=0
 tick_timeout="${CHIEF_WAIT_TICK_TIMEOUT:-120}"
 tick_cmd="${CHIEF_WAIT_TICK:-$HERE/tick.sh}"
 
@@ -667,6 +642,11 @@ trap 'lookonly_carry; digest_flush; heartbeat exited "$exit_reason"' EXIT
 trap "exit_reason='signal-TERM'; exit 143" TERM
 trap "exit_reason='signal-INT'; exit 130" INT
 trap "exit_reason='signal-HUP'; exit 129" HUP
+# The supervisor only samples for a safe point, so a stream child honours a stop request at each one itself.
+stream_stop_point() {
+    [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ] && [ -e "$inbox.wait.stop" ] || return 0
+    exit_reason='stream-stop'; exit 143
+}
 
 # with --workers-from (or WORKERS_FROM) the argv never changes when the
 # chief dispatches or wraps, so the manifest's worker list is folded into the
@@ -735,11 +715,23 @@ bank_word() {
 field() { # <name> <tick line>
     printf '%s\n' "$2" | tr ' ' '\n' | sed -n "s/^$1=//p" | head -n 1
 }
+rule_rewake() { awk -F'\t' -v f="$1" '$1 == f { print $4; exit }' "$HERE/wake-rules.tsv"; }
+table_wake_read() {
+    local root="${HIMMEL_RELEASE_STATE_DIR:-}" anchor hr
+    if [ -z "$root" ] && [ -n "${USER_SLUG:-}" ] && [ -n "$(field repair "$tick_line")" ]; then
+        anchor="$(cd "$REPO" && . "$REPO/scripts/lib/git-clean.sh" && git_env_scrub && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || anchor=""  # swallow-ok: an unresolved root is reported as an unavailable remedy, never an invented command
+        if [ -n "$anchor" ]; then
+            hr="$(cd "${anchor%/.git}" && . "$REPO/scripts/lib/handover-path.sh" && handover_root 2>/dev/null)" || hr=""  # swallow-ok: an unreadable state root keeps the repair wake with remedy unavailable
+            [ -z "$hr" ] || root="$hr/$USER_SLUG/$(basename "${anchor%/.git}")/release"
+        fi
+    fi
+    printf '%s\n' "$tick_line" | python3 -I "$HERE/wake-rules.py" --inbox "$inbox" --doc "$console_doc" --release-root "$root" 9>&-
+}
 
 # old_key_names: a key saved under the old field names (legs=, legset=, bank=) reads
 # as the same key under the new ones, so a restart over it is no change.
 old_key_names() {
-    printf '%s\n' "$1" | sed -E 's/(^|\|)legs=/\1workers=/; s/(^|\|)legset=/\1workerset=/; s/(^|\|)bank=/\1usage=/'
+    printf '%s\n' "$1" | sed -E 's/(^|\|)legs=/\1workers=/; s/(^|\|)legset=/\1workerset=/; s/(^|\|)bank=/\1usage=/; s/(^|\|)cap=/\1residual-cap=/'
 }
 
 # tick_stamp: `<epoch.nanos> <children user> <children sys>`; the `times` builtin's second line is
@@ -762,7 +754,7 @@ tick_log_add() {
 
 # sample: sets tick_line and key (empty on a failed tick, with fail_step naming why).
 sample() {
-    local f v raw bank rc owed_n t0 t1
+    local f v raw bank rc owed_n t0 t1 extract
     key=""; cap_val=""; fail_step=""
     tick_stamp; t0="$ts"
     raw="$(timeout -k 5 "$tick_timeout" bash "$tick_cmd" "$@" 2>/dev/null)"; rc=$?  # gnu-ok: Linux-only kit
@@ -774,13 +766,16 @@ sample() {
         tick_state=fail; return
     fi
     tick_line="$(printf '%s\n' "$raw" | grep '^TICK ' | head -n 1)"
+    owed_notifications="$(printf '%s\n' "$raw" | sed -n 's/^ACTION owed-notify=//p' | head -n 1)"
     if [ -z "$tick_line" ]; then fail_step=no-tick-line; tick_state=fail; return; fi
     # A failed or garbled bank read is a failed sample, not a verdict.
     bank="$(bank_word)" || { fail_step=usage-read; tick_state=fail; return; }
     tick_state=ok
     cap_val="$(field capacity "$tick_line")"
-    for f in workers livestate prs tails acts holds hreg workerset board tracker vault cloud orphans-wip wt-ceiling vmismatch cap vmrun parked stall dispatch denials closable deadwin; do
+    # shellcheck disable=SC2013  # table field names are single words, never paths or free text
+    for f in $(awk -F'\t' '$0 !~ /^#/ && $5 == "key" && $1 != "usage" { print $1 }' "$HERE/wake-rules.tsv"); do
         v="$(field "$f" "$tick_line")"
+        extract="$(awk -F'\t' -v f="$f" '$1 == f {print $2}' "$HERE/wake-rules.tsv")"
         # An older tick.sh prints legs= and legset=; field() matches whole tokens, so max_workers= is never workers=.
         if [ -z "$v" ]; then
             case "$f" in
@@ -791,11 +786,11 @@ sample() {
         # tracker= is newer than the other fields; a tick line
         # without it (an older kit) just has no tracker key, not a failed sample.
         # vault= is newer still, the same way.
-        if { [ "$f" = tracker ] || [ "$f" = acts ] || [ "$f" = holds ] || [ "$f" = hreg ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = wt-ceiling ] || [ "$f" = vmismatch ] || [ "$f" = cap ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = stall ] || [ "$f" = closable ] || [ "$f" = deadwin ] || [ "$f" = dispatch ]; } && [ -z "$v" ]; then continue; fi
+        case "$extract" in *!) ;; *) [ -n "$v" ] || continue ;; esac
         # A field missing from a malformed/partial tick line is a failed
         # sample, never a key with an empty value baked in.
         if [ -z "$v" ]; then fail_step="missing-field:$f"; tick_state=fail; key=""; return; fi
-        case "$f" in board|tracker|vault|cloud|vmrun) v="${v%%:*}" ;; esac
+        case "$extract" in class:*) v="${v%%:*}" ;; esac
         # vmrun= keeps its class only, not the counts.
         [ "$f" = vmrun ] && v="${v%%,*}"
         # vmismatch= stays in the key only as a positive count: 0 leaves it out, and ? (a failed
@@ -805,19 +800,14 @@ sample() {
             case "$v" in ''|0) continue ;; esac
         fi
         # hreg= stays in the key whole; hreg=? (a failed read) keeps the saved value, so a blip is no change.
-        if [ "$f" = hreg ]; then
-            [ "$v" != '?' ] || v="$(key_field hreg "$saved")"
-            [ -n "$v" ] || continue
-        fi
-        if [ "$f" = cap ]; then
-            [ "$v" != '?' ] || v="$(key_field cap "$saved")"
+        if [ "$extract" = whole-retain-unknown ]; then
+            [ "$v" != '?' ] || v="$(key_field "$f" "$saved")"
             [ -n "$v" ] || continue
         fi
         # parked= keeps the worker names only: the age grows every tick and must not re-wake.
         # The names are sorted: the doc order must not decide the key.
-        [ "$f" = parked ] && v="$(printf '%s' "$v" | sed -E 's/:[0-9]+m(,|$)/\1/g' | tr ',' '\n' | LC_ALL=C sort | paste -sd, -)"
+        [ "$extract" = names ] && v="$(printf '%s' "$v" | sed -E 's/:[0-9]+m(,|$)/\1/g' | tr ',' '\n' | LC_ALL=C sort | paste -sd, -)"
         # holds= keeps the worker names only, sorted: the age grows every tick and must not re-wake.
-        [ "$f" = holds ] && v="$(printf '%s' "$v" | sed -E 's/:[0-9]+m(,|$)/\1/g' | tr ',' '\n' | LC_ALL=C sort | paste -sd, -)"
         # stall= keeps the actionable tokens (conflict, no-ci) only, sorted: ci-slow and idle are
         # report-only. A set with none is left out of the key altogether. stall=? (a probe
         # outage) keeps the saved set, so the same conflict returning is not a new one.
@@ -900,25 +890,17 @@ key_field() {
 # itself a wake (only a move to STALE/MISSING is); strip it from a changed=
 # list so a combined change still names its other real fields.
 drop_board_ok() {
-    local board_new tracker_new vault_new cloud_new vmrun_new
-    vmrun_new="$(key_field vmrun "$2")"
-    board_new="$(key_field board "$2")"
-    tracker_new="$(key_field tracker "$2")"
-    vault_new="$(key_field vault "$2")"
-    cloud_new="$(key_field cloud "$2")"
+    local extract targets value
     printf '%s\n' "$1" | tr ',' '\n' | while IFS= read -r f; do
-        [ "$f" = board ] && [ "$board_new" = ok ] && continue
-        [ "$f" = tracker ] && [ "$tracker_new" = ok ] && continue
-        # vault= wakes only on a class move TO STALL / PUSH-LAG.
-        if [ "$f" = vault ]; then
-            case "$vault_new" in STALL|PUSH-LAG) ;; *) continue ;; esac
-        fi
-        # cloud= wakes only on a class move TO STALL, never back to ok/skip.
-        [ "$f" = cloud ] && [ "$cloud_new" != STALL ] && continue
-        # vmrun= wakes only on a class move TO DEAD / STUCK / DISAGREE.
-        if [ "$f" = vmrun ]; then
-            case "$vmrun_new" in DEAD|STUCK|DISAGREE) ;; *) continue ;; esac
-        fi
+        extract="$(awk -F'\t' -v f="$f" '$1 == f {print $2}' "$HERE/wake-rules.tsv")"
+        case "$extract" in class:*)
+            targets="${extract#class:}"; targets="${targets%!}"
+            value="$(key_field "$f" "$2")"
+            case "$targets" in
+                !*) [ "$value" != "${targets#!}" ] || continue ;;
+                *) case ",$targets," in *",$value,"*) ;; *) continue ;; esac ;;
+            esac ;;
+        esac
         printf '%s\n' "$f"
     done | paste -sd, -
 }
@@ -1257,7 +1239,7 @@ underfill_wake() {
     printf '%s\n' "$blk"
 }
 underfill_block() { # prints the WAKE block for the pool pool_probe just read; fail-open on the dispatchable list
-    local back="" back_keys="" back_dispatch="" back_summary="" extra="" count="" dkeys="" intake_ver="" wake=underfilled short="" listed="" back_failed="" tail="" declared="" left=""
+    local back="" back_keys="" back_dispatch="" back_summary="" extra="" count="" dkeys="" intake_ver="" wake=underfilled short="" listed="" back_failed="" tail="" declared="" left="" ready_held="" ready_ver=""
     if [ -n "$pool_unresolved" ]; then wake=pool-unresolved
     else
         case "$pool_counts" in
@@ -1303,6 +1285,11 @@ underfill_block() { # prints the WAKE block for the pool pool_probe just read; f
     fi
     [ -z "$pool_out" ] || printf '%s\n' "$pool_out" | pool_view
     [ -z "$pool_unresolved" ] || printf '%s\n' "$pool_unresolved"
+    ready_held="$(printf '%s\n' "$pool_summary" | sed -n '/^# readiness-held /p')"
+    if [ -n "$ready_held" ]; then  # no sum or wake key reads these lines: the record adds no wake
+        ready_ver="$(printf '%s\n' "$pool_summary" | sed -n 's/^# readiness \([^ ][^ ]*\) blocked=.*/\1/p' | head -n 1)"
+        printf '# readiness rows in %s (c blocked on, d chief-only; release/%s/readiness.jsonl):\n%s\n' "${ready_ver:-$declared}" "${ready_ver:-$declared}" "$ready_held"
+    fi
     intake_ver="$(printf '%s\n' "$pool_out" | sed -n 's/^# intake [0-9][0-9]* for \([^:]*\):.*/\1/p' | head -n 1)"  # the line's candidates already printed with the pool; this names the way to file them
     [ "$intake_ver" != "no open version" ] || intake_ver=""  # an older dispatcher's line for no open version: nothing to file into
     [ -z "$intake_ver" ] || printf '%s\n' "# INTAKE: versionless operator work is not in the pool; file each key above with \`jira release request <release> --verb INTAKE --key <KEY> --to $(printf '%q' "$intake_ver") --why <why>\`, then run the rm-run once for the batch"
@@ -1314,7 +1301,7 @@ underfill_block() { # prints the WAKE block for the pool pool_probe just read; f
 # probe the pool; an unresolved key prints the pool-unresolved wake and succeeds.
 pool_watch_wake() {
     local pool_watch="$inbox.wait.pool"
-    if [ ! -e "$pool_watch" ] || [ "$(( $(date +%s) - $(stat -c %Y "$pool_watch" 2>/dev/null || echo 0) ))" -ge "${CHIEF_WAIT_UNDERFILL_REPOOL_SEC:-1800}" ]; then  # gnu-ok: chief kit is Linux-only; swallow-ok: an unreadable marker is due
+    if [ ! -e "$pool_watch" ] || [ "$(( $(date +%s) - $(stat -c %Y "$pool_watch" 2>/dev/null || echo 0) ))" -ge "${CHIEF_WAIT_UNDERFILL_REPOOL_SEC:-$(( $(rule_rewake capacity) * 60 ))}" ]; then  # gnu-ok: chief kit is Linux-only; swallow-ok: an unreadable marker is due
         pool_probe "${CHIEF_WAIT_REPOOL_TIMEOUT:-120}" || return 1
         touch "$pool_watch" 2>/dev/null
         if [ -n "$pool_unresolved" ] && underfill_wake; then
@@ -1331,7 +1318,7 @@ pool_watch_wake() {
 underfill_repool() {
     local age saved_sig
     age=$(( $(date +%s) - $(stat -c %Y "$underfill_file" 2>/dev/null || echo 0) ))  # gnu-ok: Linux-only kit; swallow-ok: a failed stat reads epoch 0, so the probe is simply due
-    [ "$age" -ge "${CHIEF_WAIT_UNDERFILL_REPOOL_SEC:-1800}" ] || return 1
+    [ "$age" -ge "${CHIEF_WAIT_UNDERFILL_REPOOL_SEC:-$(( $(rule_rewake capacity) * 60 ))}" ] || return 1
     saved_sig="$(sed -n 1p "$underfill_file" 2>/dev/null)"  # swallow-ok: an unreadable marker reads no saved set, so a non-empty pool wakes
     heartbeat sampling
     pool_probe "${CHIEF_WAIT_REPOOL_TIMEOUT:-120}" || return 1
@@ -1346,6 +1333,10 @@ underfill_repool() {
         return 1
     fi
     touch "$underfill_file" 2>/dev/null
+    # A successful unchanged/empty pool read does not resolve idle capacity.
+    # Stream service reminds on the bounded probe cadence; T5 consumes the
+    # same observation without introducing another supervisor.
+    [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" != 1 ] || return 0
     return 1
 }
 
@@ -1394,7 +1385,7 @@ resume_stale_scan() {
 resume_stale_wake() {
     [ -n "$resume_stale_read" ] || return 1
     if [ -z "$resume_stale_keys" ]; then rm -f "$resume_stale_file"; return 1; fi
-    set_wake "$(printf '%s\n' "$resume_stale_keys" | tr ',' '\n')" "$resume_stale_file" "${CHIEF_WAIT_RESUME_STALE_REWAKE_MIN:-240}" || return 1
+    set_wake "$(printf '%s\n' "$resume_stale_keys" | tr ',' '\n')" "$resume_stale_file" "${CHIEF_WAIT_RESUME_STALE_REWAKE_MIN:-$(rule_rewake resume-stale)}" || return 1
     printf '%s\n' "$resume_stale_keys"
 }
 
@@ -1404,14 +1395,14 @@ resume_stale_wake() {
 unowned_wake() {
     local nums
     nums="$(printf '%s\n' "$1" | tr ',' '\n' | sed 's/:.*//')"
-    set_wake "$nums" "$unowned_file" "${CHIEF_WAIT_UNOWNED_REWAKE_MIN:-60}"
+    set_wake "$nums" "$unowned_file" "${CHIEF_WAIT_UNOWNED_REWAKE_MIN:-$(rule_rewake unowned-prs)}"
 }
 unowned_aged_file="$inbox.wait.unowned-aged"
 unowned_aged_wake() {
     local aged
     aged="$(printf '%s\n' "$1" | tr ',' '\n' | sed -n 's/^#\([0-9][0-9]*\):\([0-9][0-9]*\)m.*/\1 \2/p' | awk -v m="${CHIEF_WAIT_UNOWNED_WAKE_MIN:-30}" '$2 + 0 >= m + 0 { print $1 }')"
     [ -n "$aged" ] || { rm -f "$unowned_aged_file"; return 1; }
-    set_wake "$aged" "$unowned_aged_file" "${CHIEF_WAIT_UNOWNED_REWAKE_MIN:-60}" || return 1
+    set_wake "$aged" "$unowned_aged_file" "${CHIEF_WAIT_UNOWNED_REWAKE_MIN:-$(rule_rewake unowned-prs)}" || return 1
     printf '%s\n' "$aged" | paste -sd, -
 }
 # set_wake: <newline-separated items> <marker file> <re-wake minutes> — the shared marker
@@ -1447,10 +1438,20 @@ unclosed_wake() {
     for l in $items; do
         if [ ! -f "$unclosed_file" ] || ! grep -qxF -- "$l" "$unclosed_file"; then fresh="${fresh:+$fresh,}$l"; fi
     done
-    set_wake "$items" "$unclosed_file" "${CHIEF_WAIT_UNCLOSED_REWAKE_MIN:-60}" || return 1
+    set_wake "$items" "$unclosed_file" "${CHIEF_WAIT_UNCLOSED_REWAKE_MIN:-$(rule_rewake unclosed)}" || return 1
     printf '%s\n' "${fresh:-$1}"
 }
 owed_file="$inbox.wait.owed"
+notify_file="$inbox.wait.notify"
+notification_wake() {
+    if [ -z "$owed_notifications" ]; then
+        rm -f "$notify_file"
+        return 1
+    fi
+    # Observation is only the reminder clock. Debt stays in the owed ledger
+    # until a real receipt or an explicit chief acknowledgment closes it.
+    set_wake "$(printf '%s\n' "$owed_notifications" | tr ',' '\n')" "$notify_file" "${CHIEF_WAIT_NOTIFY_REWAKE_MIN:-60}"
+}
 owed_wake() {
     local now keys k st first woken new="" out=""
     [ -n "$console_doc" ] && [ -r "$console_doc" ] || return 1
@@ -1518,7 +1519,7 @@ except Exception:
     fi
     win="${CHIEF_WAIT_RMLEASE_STALE_MIN:-30}"
     if [ "$age" -lt "$win" ]; then rm -f "$rmlease_file"; return 1; fi
-    set_wake "$rel:$epoch" "$rmlease_file" "${CHIEF_WAIT_RMLEASE_REWAKE_MIN:-60}" || return 1
+    set_wake "$rel:$epoch" "$rmlease_file" "${CHIEF_WAIT_RMLEASE_REWAKE_MIN:-$(rule_rewake rm-lease)}" || return 1
     printf 'WAKE rm-lease-stale %s %sm\ntakeover: JIRA_PROJECT_KEY=%s node %s release operator takeover %s --epoch %s --doc <absolute successor run doc>, then rm-run %s --doc <the same doc>\n' \
         "$epoch" "$age" "$pk" "$cli" "$rel" "$epoch" "$rel"
 }
@@ -1540,7 +1541,7 @@ intake_wake() {
     [ $(( now - 10#$first )) -gt $(( 10#${CHIEF_WAIT_INTAKE_ARM_HOURS:-6} * 3600 )) ] || return 1
     last="$(sed -n 2p "$intake_file" 2>/dev/null)"  # swallow-ok: a missing second line reads as never woken
     case "$last" in ''|*[!0-9]*) last=0 ;; esac
-    [ $(( now - 10#$last )) -ge $(( 10#${CHIEF_WAIT_INTAKE_REWAKE_MIN:-360} * 60 )) ] || return 1
+    [ $(( now - 10#$last )) -ge $(( 10#${CHIEF_WAIT_INTAKE_REWAKE_MIN:-$(rule_rewake INTAKE)} * 60 )) ] || return 1
     [ -n "$console_doc" ] && [ -r "$console_doc" ] || return 1
     rel="$(sed -n 's/^release:[[:space:]]*//p' "$console_doc" 2>/dev/null | head -n 1 | sed 's/[[:space:]]*$//')"  # swallow-ok: an unreadable doc reads no release
     [[ "$rel" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || return 1
@@ -1575,7 +1576,7 @@ except Exception:
 # (tick.sh already drops other chiefs' workers). Same marker logic, own marker, own window.
 unwatched_file="$inbox.wait.unwatched"
 unwatched_wake() {
-    set_wake "$(printf '%s\n' "$1" | tr '+' '\n')" "$unwatched_file" "${CHIEF_WAIT_UNWATCHED_REWAKE_MIN:-60}"
+    set_wake "$(printf '%s\n' "$1" | tr '+' '\n')" "$unwatched_file" "${CHIEF_WAIT_UNWATCHED_REWAKE_MIN:-$(rule_rewake procs)}"
 }
 # orphan_wake: at an underfilled sample, with --doc, an open PR whose ticket's worker record reads
 # wrapped or none (or is absent) and that the doc's `queue:` line does not name wakes (`WAKE orphan-pr <n,...>`
@@ -1600,7 +1601,7 @@ orphan_wake() { # prints the WAKE block and returns 0 on a wake
     esac
     nums="$(printf '%s\n' "$out" | sed -n 's/^UNMAPPED \([0-9][0-9]*\) .*/\1/p')"
     [ -n "$nums" ] || return 1
-    set_wake "$nums" "$orphan_file" "${CHIEF_WAIT_ORPHAN_REWAKE_MIN:-60}" || return 1
+    set_wake "$nums" "$orphan_file" "${CHIEF_WAIT_ORPHAN_REWAKE_MIN:-$(rule_rewake orphan-pr)}" || return 1
     printf 'WAKE orphan-pr %s\n%s\n%s\n' "$(printf '%s\n' "$nums" | paste -sd, -)" "$out" "$tick_line"
 }
 
@@ -1633,13 +1634,15 @@ refused_wake() {
     stem="${stem%.md}"
     # shellcheck disable=SC2016  # the python program is single-quoted on purpose
     python3 -I -c '
-import os, sys
+import os, re, sys
 tsv, marker, today = sys.argv[1:4]
 try:
     rows = [l.rstrip("\n").split("\t") for l in open(tsv) if l.strip()]
 except OSError:
     sys.exit(1)
-rows = [r for r in rows if len(r) == 4]
+# a row is key, ruling, reason, asks_operator and, from a newer tick, ground and remedy; an older four-column row has neither
+rows = [r + ["", ""] if len(r) == 4 else r for r in rows if len(r) in (4, 6)]
+cl = lambda s: " ".join(re.sub(r"[\x00-\x1f\x7f]", " ", s).split())
 try:
     seen = set(l.strip() for l in open(marker))
 except OSError:
@@ -1650,11 +1653,15 @@ except OSError:
     day = ""
 pair = lambda r: "%s@%s" % (r[0], r[1])
 fresh = [r for r in rows if pair(r) not in seen]
-lines = ["WAKE rm-refused %s — fix: %s" % (pair(r), r[2][:200]) for r in fresh if r[3] == "1"]
+def extra(r):
+    g, m = cl(r[4])[:60], cl(r[5])[:500]
+    return (" — ground: " + g if g else "") + (" — remedy: " + m if m else "")
+lines = ["WAKE rm-refused %s — fix: %s%s" % (pair(r), cl(r[2])[:200], extra(r)) for r in fresh if r[3] == "1"]
 woke = [pair(r) for r in fresh if r[3] == "1"]
 other = [pair(r) for r in fresh if r[3] == "0"]
 if other and day != today:
-    lines.append("WAKE rm-refused-digest %d new: %s" % (len(other), ",".join(other[:20])))
+    first = next((cl(r[5])[:300] for r in fresh if r[3] == "0" and r[5]), "")
+    lines.append("WAKE rm-refused-digest %d new: %s%s" % (len(other), ",".join(other[:20]), " — remedy: " + first if first else ""))
     woke += other
     with open(marker + ".day", "w") as f:
         f.write(today + "\n")
@@ -1749,11 +1756,11 @@ review_wake() {
 # streak passes CHIEF_WAIT_TRACKER_STALE_MIN (default 30). Any other value ends
 # the streak. The marker outlives the waiter, so a re-arm inside a streak stays quiet.
 tracker_stale_file="$inbox.wait.trackerstale"
-tracker_stale_wake() { stale_streak_wake "$1" "$tracker_stale_file" "${CHIEF_WAIT_TRACKER_STALE_MIN:-30}" 30; }
+tracker_stale_wake() { stale_streak_wake "$1" "$tracker_stale_file" "${CHIEF_WAIT_TRACKER_STALE_MIN:-$(rule_rewake tracker)}" "$(rule_rewake tracker)"; }
 # board_stale_wake: <board= value> — the same for a board that stays stale, marker
 # <inbox>.wait.boardstale, threshold CHIEF_WAIT_BOARD_STALE_MIN (default 10).
 board_stale_file="$inbox.wait.boardstale"
-board_stale_wake() { stale_streak_wake "$1" "$board_stale_file" "${CHIEF_WAIT_BOARD_STALE_MIN:-10}" 10; }
+board_stale_wake() { stale_streak_wake "$1" "$board_stale_file" "${CHIEF_WAIT_BOARD_STALE_MIN:-$(rule_rewake board)}" "$(rule_rewake board)"; }
 # stale_streak_wake: <value> <marker> <minutes> <default minutes>
 stale_streak_wake() {
     local since stale_min
@@ -1924,7 +1931,9 @@ predecessor_close() { # prints the WAKE block and returns 0 only for an unexpect
 # marker (labelled with N<k>, else the doc stem; a WRAPPED is preferred, its residual
 # check runs). HANDLED appends `<label> <what> <pr|->` to the digest and sets
 # r0_handled; rc 10 with a `-failed rc=3/4/6/7` that is not `step pr-state` (lock held,
-# tail not WRAPPED, subtree or subagent alive) stays retryable; anything else
+# tail not WRAPPED, subtree or subagent alive) stays retryable, except the wrap's own log and board
+# steps (they run after the window is closed and the worker retired, so there is nothing to ask
+# again); anything else
 # prints `WAKE worker-event <first line> rc=<n> out=<file>` and returns 0. After one
 # call the relay yields to the inbox; the next sample starts after a retryable worker
 # so its standing refusal cannot starve later workers. HANDLED and WAKE record
@@ -1974,8 +1983,48 @@ ready_advance() { # <label> <line>: the cursor moves once the bullet was handed 
     { awk -F'\t' -v l="$1" '$1 != l' "$ready_file" 2>/dev/null; printf '%s\t%s\n' "$1" "$2"; } | atomic_write "$ready_file"
 }
 
+r0_seen=""
+r0_stamp_seen() { # <candidate lines>: when this process first saw each offered event
+    local l m n now
+    [ -n "$1" ] || return 0
+    now="$(date +%s%N)"  # gnu-ok: Linux-only kit (%N)
+    while read -r l m n; do
+        [ -n "$l" ] && [ "$l" != WARN ] || continue
+        case $'\n'"$r0_seen" in *$'\n'"$l $m $n "*) ;; *) r0_seen="${r0_seen:+$r0_seen$'\n'}$l $m $n $now" ;; esac
+    done <<EOF
+$1
+EOF
+}
+r0_ladder() { # <label> <event cksum> <marker> <out>: space a refused cleanup's retries; returns 0 after printing the top-step wake
+    local f="$inbox.wait.le-$1.tries" count="" k="" w="" top=""
+    IFS=' ' read -r count k w 2>/dev/null < "$f" || true  # swallow-ok: no file or a torn one starts the count again
+    case "$count" in ''|*[!0-9]*) count=0 ;; esac
+    [ "$k" = "$2" ] || count=0  # another event, or one that changed, starts over; lines appended to the document do not
+    count=$(( 10#$count + 1 )); [ "$count" -le 999 ] || count=999
+    if [ "$count" -ge 5 ] && [ "${w:--}" != "$2" ]; then
+        printf 'WAKE worker-event ESCALATE cleanup-still-refused worker=%s event=%s tries=%s next-try-in=%ss refusal=%s out=%s\n' \
+            "$1" "$3" "$count" "$(awk -v b="${CHIEF_WAIT_SERVICE_RETRY_SEC:-5}" 'BEGIN { printf "%g", b * 60 }')" \
+            "$(printf '%s\n' "$4" | grep -m 1 '[^[:space:]]')" "$inbox.wait.le-$1"
+        w="$2"; top=1
+    fi
+    printf '%s %s %s\n' "$count" "$2" "${w:--}" | atomic_write "$f"
+    [ -n "$top" ]
+}
+r0_log_attempt() { # <label> <marker> <event line> <call start ns> <call end ns> <rc>: one relaylog line per worker-event call
+    local first pend wall size
+    # past 1 MiB (the cap of the kit's denial log) the log is renamed to <log>.1, replacing the older copy; one line is one append
+    size="$(wc -c 2>/dev/null < "$inbox.wait.relaylog" | tr -d '[:space:]')"  # swallow-ok: a missing log reads size 0 and only skips the rotation
+    case "$size" in ''|*[!0-9]*) size=0 ;; esac
+    [ "$size" -le 1048576 ] || mv -f "$inbox.wait.relaylog" "$inbox.wait.relaylog.1" 2>/dev/null || true  # swallow-ok: a failed rename keeps appending to the old log
+    first="$(printf '%s' "$r0_seen" | awk -v k="$1 $2 $3 " 'index($0, k) == 1 { print $NF; exit }')"
+    pend=$(( ($4 - ${first:-$4}) / 1000000 )); wall=$(( ($5 - $4) / 10000000 ))
+    printf 'start=%s label=%s marker=%s pending=%d.%02d handler=%d.%02d rc=%s\n' "$(( $4 / 1000000000 ))" "$1" "$2" \
+        "$(( pend / 1000 ))" "$(( pend % 1000 / 10 ))" "$(( wall / 100 ))" "$(( wall % 100 ))" "$6" >> "$inbox.wait.relaylog" 2>/dev/null || true  # swallow-ok: a log that cannot be written loses its line, never the relay
+    [ "$6" -ne 0 ] || r0_seen="$(printf '%s' "$r0_seen" | awk -v k="$1 $2 $3 " 'index($0, k) != 1')"
+}
+
 r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
-    local cands label marker ldoc bullet sum line stem out rc outf what pr
+    local cands label marker ldoc bullet sum line stem out rc outf what pr wake_line pending_slow pending_to pending_rc h0 h1
     r0_handled=""
     [ -n "$console_doc" ] && [ -n "$legs_from" ] || return 1
     # Prefer WRAPPED once per label, then start after the last retryable worker.
@@ -1988,13 +2037,67 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
             $1 == last { past = 1 }
             END { printf "%s", before }
         ' )"
-    # a READY past its cursor comes after any WRAPPED or MERGED worker
-    if ready_pick; then cands="${cands:+$cands$'\n'}$ready_label READY"; fi
-    while read -r label marker; do
+    if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ]; then
+        # Read local pending markers, never an expensive tick, for the stream
+        # service pass. The existing relay remains the only action route.
+        pending_to="${CHIEF_WAIT_PENDING_TIMEOUT:-20}"
+        # Output goes to a file, not a command substitution: the substitution's forked shell would
+        # hold the one-waiter lock (fd 9) for as long as the helper runs.
+        timeout -k 2 "$pending_to" python3 -I "$HERE/pending-events.py" "$legs_from" "$inbox" "$r0_retry" \
+            > "$inbox.wait.pending-out" 2> "$inbox.wait.pending-diagnostic" 9>&-; pending_rc=$?  # gnu-ok: Linux-only kit
+        cands=""
+        IFS= read -r -d '' cands < "$inbox.wait.pending-out" || true  # swallow-ok: read reports the missing NUL at end of file; the text is already in cands
+        case "$pending_rc" in
+            0) rm -f "$inbox.wait.pending-error" "$inbox.wait.pending-timeouts" ;;
+            124|137)
+                # A read that never returns is no answer: no events this pass, try again. The
+                # helper writes its cursors only after it has read every document, so nothing
+                # moved and no worker was read as having nothing pending.
+                printf 'pending-events: no answer within %ss; no events this pass, retrying\n' "$pending_to" >> "$inbox.wait.pending-diagnostic"
+                # The streak is counted in a file, so a re-arm over the same hang does not start it
+                # again: the third timeout in a row wakes the chief once, and only a pass that
+                # answers (above) ends the streak.
+                pending_slow="$(sed -n 1p "$inbox.wait.pending-timeouts" 2>/dev/null)"  # swallow-ok: no file or a torn count reads as no streak yet
+                case "$pending_slow" in ''|*[!0-9]*) pending_slow=0 ;; esac
+                pending_slow=$((10#$pending_slow + 1))
+                printf '%s\npending-events: no answer within %ss; %s passes in a row timed out\n' "$pending_slow" "$pending_to" "$pending_slow" > "$inbox.wait.pending-timeouts"
+                if [ "$pending_slow" -eq 3 ]; then
+                    printf 'WAKE waiter-error pending-events timed-out passes=%s limit=%ss diagnostic=%s\n' "$pending_slow" "$pending_to" "$inbox.wait.pending-timeouts"
+                    return 0
+                fi
+                return 1 ;;
+            *)
+                if [ ! -e "$inbox.wait.pending-error" ]; then
+                    touch "$inbox.wait.pending-error"
+                    printf 'WAKE waiter-error pending-events reconcile manifest/cursors diagnostic=%s\n' "$inbox.wait.pending-diagnostic"
+                    return 0
+                fi
+                return 1 ;;
+        esac
+    else
+        # a READY past its cursor comes after any WRAPPED or MERGED worker
+        if ready_pick; then cands="${cands:+$cands$'\n'}$ready_label READY"; fi
+    fi
+    r0_stamp_seen "$cands"
+    [ -z "$cands" ] || r0_offered=1
+    local r0_warned="" r0_warning_lines=""
+    r0_attempted=""
+    while read -r label marker event_line; do
         [ -n "$label" ] || continue
+        if [ "$label" = WARN ]; then
+            r0_warning_lines+="$(printf 'WAKE waiter-error worker-doc-unread worker=%s reconcile=%s diagnostic=%s' "$marker" "$event_line" "$inbox.wait.pending-diagnostic")"$'\n'
+            r0_warned=1
+            continue
+        fi
         ldoc="$(jq -r --arg l "$label" "$JQ_W"'W[]? | select(.label == $l) | .doc' "$legs_from" 2>/dev/null | head -n 1)"
         [ -n "$ldoc" ] && [ -f "$ldoc" ] || continue
         if [ "$marker" = READY ]; then
+            if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ]; then
+                ready_line="$event_line"; ready_bullet="$(sed -n "${event_line}p" "$ldoc")"
+                # the document may have moved since the collector numbered it: only a READY is relayed
+                [[ $ready_bullet =~ $ready_re ]] || continue
+                ready_off=""; auto_go_on || ready_off=1
+            fi
             bullet="$ready_bullet"
         else
             bullet="$(grep -E "^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?$marker([^A-Za-z]|$)" "$ldoc" | tail -n 1)"
@@ -2010,10 +2113,18 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
             stem="${ldoc##*/}"; line="$line ${stem%.md}"
         fi
         outf="$inbox.wait.le-$label"
+        if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ]; then
+            r0_retry="$label"
+            printf '%s\n' "$label" | atomic_write "$inbox.wait.r0-next"
+        fi
+        r0_attempted=1
         heartbeat sampling
         # Allow a slow close and refresh, but stay below heartbeat consumers' 300s
         # floor. Capture the rc: an empty result alone does not prove a timeout.
+        h0="$(date +%s%N)"  # gnu-ok: Linux-only kit (%N)
         out="$(printf '%s\n' "$line" | timeout -k 5 240 bash "$leg_event_cmd" --doc "$console_doc" --fleet "$legs_from" - 2>&1 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
+        h1="$(date +%s%N)"  # gnu-ok: Linux-only kit (%N)
+        r0_log_attempt "$label" "$marker" "$event_line" "$h0" "$h1" "$rc"
         out="$(printf '%s\n' "$out" | r0_scrub)"
         if [ "$rc" -ne 0 ] && ! [[ $out =~ [^[:space:]] ]]; then
             case "$rc" in
@@ -2023,10 +2134,13 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
         fi
         printf '%s\n' "$out" > "$outf" 2>/dev/null
         if [ "$marker" = READY ] && [ -n "$ready_off" ] && dry_run_ready_answer "$rc" "$out"; then
+            rm -f "$outf.tries"
+            printf '%s\n' "$sum" >> "$r0_file"
             ready_advance "$label" "$ready_line"
             break
         fi
         if [ "$rc" -eq 0 ]; then
+            rm -f "$outf.tries"
             printf '%s\n' "$sum" >> "$r0_file"
             [ "$marker" != READY ] || ready_advance "$label" "$ready_line"
             r0_handled=1
@@ -2044,18 +2158,30 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
         fi
         case "$rc:$out" in
             *"step pr-state"*) ;;
+            *"wrap-merged: step log failed"*|*"wrap-merged: step board failed"*) ;;
             10:*-failed\ rc=[3467]\ *)
                 r0_retry="$label"
                 printf '%s\n' "$label" | atomic_write "$inbox.wait.r0-next"
+                if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ] && r0_ladder "$label" "${sum##* }" "$marker" "$out"; then
+                    printf '%s' "$r0_warning_lines"
+                    return 0
+                fi
                 break ;;
         esac
+        rm -f "$outf.tries"
+        # Print the wake before recording it: a kill between the two leaves the READY or
+        # bullet unrecorded, so it is relayed once more (idempotent) and woken again,
+        # never recorded and lost.
+        wake_line="$(printf 'WAKE worker-event %s rc=%s out=%s' "$(printf '%s\n' "$out" | grep -m 1 '[^[:space:]]')" "$rc" "$outf")"
+        printf '%s\n' "$wake_line"
+        printf '%s' "$r0_warning_lines"
         printf '%s\n' "$sum" >> "$r0_file"
         [ "$marker" != READY ] || ready_advance "$label" "$ready_line"
-        printf 'WAKE worker-event %s rc=%s out=%s\n' "$(printf '%s\n' "$out" | grep -m 1 '[^[:space:]]')" "$rc" "$outf"
         return 0
     done <<EOF
 $cands
 EOF
+    if [ -n "$r0_warned" ]; then printf '%s' "$r0_warning_lines"; return 0; fi
     return 1
 }
 
@@ -2541,6 +2667,12 @@ r0_fold=""; r0_refold=""
 fail_streak=0
 fail_wake="${CHIEF_WAIT_FAIL_WAKE:-3}"
 next_tick=0
+stream_tick_turn=""
+if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ]; then
+    next_tick="$(cat "$inbox.wait.next-tick" 2>/dev/null)" || next_tick=0  # swallow-ok: no persisted deadline schedules an immediate full sample
+    case "$next_tick" in ''|*[!0-9]*) next_tick=0 ;; esac
+fi
+tick_line=""; key=""; owed_notifications=""
 heartbeat sampling
 # Announce once per inbox identity, not per waiter process (each wake re-arms).
 # The CLI only queues into this inbox's bridge root; it never sends Telegram.
@@ -2629,8 +2761,36 @@ while :; do
     # a launch that failed or never ran must not leave this chief unmonitored.
     handover_live=""
     [ -e "$inbox.handover" ] && handover_live="$(find "$inbox.handover" -mmin "-${CHIEF_WAIT_HANDOVER_MIN:-60}" 2>/dev/null)"
+    if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ] && [ -z "$handover_live" ]; then
+        if [ -n "$console_doc" ] && [ -e "${console_doc%/*}/owed.jsonl" ] && [ "$(date +%s)" -ge "${next_owed_service:-0}" ]; then
+            next_owed_service=$(( $(date +%s) + 1 ))
+            heartbeat sampling
+            service_chief="${inbox##*/}"; service_chief="${service_chief%.md}"
+            if owed_service_out="$(python3 -I "$HERE/owed-service.py" --inbox "$inbox" --doc "$console_doc" --chief "$service_chief" 9>&-)"; then
+                printf '%s\n' "$owed_service_out"
+                exit_reason='wake-owed-actions'; exit 0
+            fi
+        fi
+        r0_attempted=""; r0_offered=""
+        if [ -z "$stream_tick_turn" ] && r0_relay; then exit_reason='wake-worker-event'; exit 0; fi
+        # A completed or retryable action yields through inbox/control before
+        # the next local event; it does not incur the full tick interval.
+        if [ -n "${r0_attempted:-}" ]; then
+            [ "$(date +%s)" -lt "$next_tick" ] || stream_tick_turn=1
+            idle_passes=0
+            heartbeat waiting
+            stream_stop_point
+            sleep "$poll" 9>&-
+            continue
+        fi
+    fi
     if [ -z "$handover_live" ] && [ "$(date +%s)" -ge "$next_tick" ]; then
+        stream_tick_turn=""
+        idle_passes=0
         next_tick=$(( $(date +%s) + interval ))
+        if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ]; then
+            printf '%s\n' "$next_tick" | atomic_write "$inbox.wait.next-tick"
+        fi
         # The Telegram path is blocked while a tick runs (up to twice
         # CHIEF_WAIT_TICK_TIMEOUT with the bank read); say so in the heartbeat.
         heartbeat sampling
@@ -2651,7 +2811,7 @@ while :; do
             # the worker-event wake carries the tick line and saves its key, so a re-arm
             # does not wake again on the same tails=/acts= move
             intake_clock "$(field INTAKE "$tick_line")" || true  # swallow-ok: rc 1 only says INTAKE is zero (the clock was cleared)
-            if r0_relay; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-worker-event'; exit 0; fi
+            if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" != 1 ] && r0_relay; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-worker-event'; exit 0; fi
             # a denied thread resolve is the chief's job; its acts= move is folded like the worker-event wake's
             if resolve_wake; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-resolve'; exit 0; fi
             # a READY is checked before it wakes; a repeat of a woken head folds into the baseline
@@ -2743,6 +2903,17 @@ while :; do
             if owed_new="$(owed_wake)"; then
                 printf 'WAKE owed-undelivered %s\n%s\n' "$owed_new" "$tick_line"
                 exit_reason='wake-owed-undelivered'; exit 0
+            fi
+            if table_wake="$(table_wake_read)"; then
+                printf '%s\n%s\n' "$table_wake" "$tick_line"
+                exit_reason='wake-table'; exit 0
+            fi
+            if [ -n "$console_doc" ] && [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" != 1 ] && notification_wake; then
+                printf 'WAKE owed-actions %s\n%s\n' "$owed_notifications" "$tick_line"
+                # A printed wake is not a delivery receipt. Stream mode closes
+                # only these notification actions through its explicit ack route;
+                # proof and source step obligations remain open for the chief.
+                exit_reason='wake-owed-actions'; exit 0
             fi
             if rmlease_new="$(rmlease_wake)"; then
                 printf '%s\n%s\n' "$rmlease_new" "$tick_line"
@@ -2883,5 +3054,15 @@ while :; do
         exit_reason='wake-housekeeping'; exit 0
     fi
     heartbeat waiting
-    sleep "$poll" 9>&-
+    stream_stop_point
+    # an offer is work of the pass that saw it only: read and cleared here, so a pass that skips the service block
+    # (handover mode) never counts an earlier pass's offer as its own
+    [ -z "${r0_offered:-}" ] || idle_passes=0
+    r0_offered=""
+    idle_passes=$(( idle_passes + 1 ))
+    if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ] && [ "$idle_passes" -gt "$idle_runs" ]; then
+        sleep "$idle_poll" 9>&-
+    else
+        sleep "$poll" 9>&-
+    fi
 done

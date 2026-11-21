@@ -861,6 +861,18 @@ ow_out="$(OWED_STALE_SECS=0090 ow_tick)"
 contains '(10006) a zero-padded OWED_STALE_SECS reads as decimal, not octal' "$ow_out" 'ACTION owed-stale=1:o1: a ticket you owe has no key after 0h'
 for ow_id in o1 o2 o3; do bash "$HERE/owe.sh" close --bucket "$W/ow-dir" --id "$ow_id" --key 0123abc > /dev/null; done
 not_contains '(10006) every row closed hides owed=' "$(ow_tick)" ' owed='
+ow_yesterday="$(date -u -d yesterday +%F)"
+ow_tomorrow="$(date -u -d tomorrow +%F)"
+bash "$HERE/owe.sh" add --bucket "$W/ow-dir" --chief OW --kind step --key HIMMEL-10210 --text "run the live proof by $ow_tomorrow" >/dev/null
+not_contains '(10210) a future keyed step has no due event' "$(ow_tick)" 'ACTION owed-notify='
+bash "$HERE/owe.sh" add --bucket "$W/ow-dir" --chief OW --kind step --key HIMMEL-10210 --text "sign the spec by $ow_yesterday" >/dev/null
+ow_out="$(ow_tick)"
+contains '(10210) a past-due keyed step raises owed-stale' "$ow_out" 'ACTION owed-stale=1:o6:'
+contains '(10210) the accepted due action is a durable notification input' "$ow_out" 'ACTION owed-notify=o7'
+bash "$HERE/owe.sh" close --bucket "$W/ow-dir" --id o7 --key wake-delivered >/dev/null
+not_contains '(10210) acknowledged due action does not notify on every tick' "$(ow_tick)" 'ACTION owed-notify='
+bash "$HERE/owe.sh" add --bucket "$W/ow-dir" --chief OW --kind step --key HIMMEL-10210 --text 'date evidence missing' >/dev/null
+contains '(10210) missing due evidence is explicit reconciliation' "$(ow_tick)" 'ACTION owed-invalid=o8'
 printf '%s\n' 'not json' >> "$W/ow-dir/owed.jsonl"
 contains '(10006) an unreadable ledger prints owed=?' "$(ow_tick)" ' owed=?'
 rm -rf "$W/ow-tmp" "$W/ow-mirror" "$W/ow-dir"

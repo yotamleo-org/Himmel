@@ -17,10 +17,11 @@ import { defaultRoot } from './mirror.js';
 import { sectorField, sectorOf } from './sector.js';
 import { fetchVersions, setFixVersion } from './versions.js';
 import { chiefOverrideOf } from './intake-gate.js';
+import { attemptLaunch, repairStateOf } from '../release/repair-state.js';
 import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
-  ack, apply, bucketCheck, claim, clearProposedLabels, coreBypass, coreSnapshot, declare, decisionWords, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, outOfVersionApproval, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, readMirrorFilesUnverified, readOperatorRecords, reopen, request as releaseRequest, requestWithWords, rmRun, rmRunSummary, rule, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
+  ack, apply, bucketCheck, chainFault, claim, clearProposedLabels, coreBypass, coreSnapshot, coveringRecord, declare, decisionWords, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, readMirrorFilesUnverified, readOperatorRecords, reopen, request as releaseRequest, requestOnRecord, requestWithWords, rmRun, rmRunSummary, rule, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
   type ApprovalAlert, type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type RunRecord, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
@@ -118,10 +119,16 @@ function gateRefusal(ctx: Ctx, o: { verb: Verb; key: string; from_v: string | nu
     ? `  add ${words} to this command`
     : `  jira release request ${ctx.release} --verb ${o.verb} --key ${o.key} --from ${o.from_v ?? 'backlog'} --to ${o.to_v} --why "<why>" ${words}`;
   const where = '  (<n>: specs/decisions/verbatim-decision-<n>-*.txt)';
+  // The CLI request cites a words record already on file; the create path does not, so only the request names that way.
+  // A chain that does not verify to its end is read by no citation, and the refusal says so instead of offering one.
+  const fault = o.origin === 'cli' ? chainFault(ctx) : undefined;
+  const cite = o.origin !== 'cli' ? null : fault !== undefined
+    ? `${fault}, so no record on file is cited (run \`jira release state ${ctx.release}\`)`
+    : `cite one on file that already names ${o.key} and exactly this placement (a words record newer than the key's last ruling is cited with no --decision), or record them`;
   if (o.ticket === null) {
-    return `release request: ${o.key} could not be read (not in the mirror, and the live read failed), so it may be operator work; run \`jira mirror\` and ask again, or name the operator's words:\n${fix}\n${where}`;
+    return `release request: ${o.key} could not be read (not in the mirror, and the live read failed), so it may be operator work; run \`jira mirror\` and ask again, or name the operator's words${cite === null ? '' : `: ${cite}`}:\n${fix}\n${where}`;
   }
-  return `release request: ${o.key} is ${operatorWorkOf(o.ticket)}; a request that places it needs a record of the operator's words.\n${fix}\n${where}`;
+  return `release request: ${o.key} is ${operatorWorkOf(o.ticket)}; a request that places it needs a record of the operator's words${cite === null ? '' : `: ${cite}`}.\n${fix}\n${where}`;
 }
 
 export async function ticketFacts(ctx: Ctx, key: string): Promise<TicketFacts | null> {
@@ -204,11 +211,22 @@ export function renderState(s: StateOut, budgets: Record<string, number> = {}): 
   if (today.length) out.push(`operator admissions today: ${today.join(', ')}`);
   out.push(`leaks: unauthorized ${s.leaks.unauthorized.join(', ') || 'none'}; ruled-in non-member ${s.leaks.ruled_in_non_member.join(', ') || 'none'}`);
   out.push(`requests: open ${s.requests.open.join(', ') || 'none'}; claimed ${s.requests.claimed.join(', ') || 'none'}`);
+  for (const c of s.remainder_conflicts ?? []) out.push(`remainder: ${c.parent} cannot close without ${c.child} (${c.phase} ${c.req}); ${c.owner}: ${c.next}`);
+  for (const u of s.unfinished_rulings ?? []) out.push(u.status === 'blocked'
+    ? `unfinished: ${u.ruling} ${u.phase} ${u.key} ${u.op}; blocked: ${u.observed ?? 'membership unknown'}; ${u.owner}: ${u.next}`
+    : `unfinished: ${u.ruling} ${u.phase} ${u.key} ${u.op}; ${u.owner} runs \`${u.next}\``);
   for (const i of s.integrity) out.push(`integrity: ${i}`);
   return out.join('\n');
 }
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+
+// The owner/name of this checkout's origin remote, or null: the slug the repair's gh lookups name.
+function originSlug(): string | null {
+  const r = spawnSync('git', ['-C', repoRoot, 'remote', 'get-url', 'origin'], { encoding: 'utf8', timeout: 10_000 });
+  const slug = r.status === 0 ? r.stdout.trim().replace(/(\.git)?\/?$/, '').replace(/^.*[:/]([^:/]+\/[^:/]+)$/, '$1') : '';
+  return /^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/.test(slug) ? slug : null;
+}
 
 export function sendApprovalAlert(a: ApprovalAlert): number {
   const dir = mkdtempSync(join(tmpdir(), 'version-approval-'));
@@ -777,6 +795,21 @@ export function registerRelease(program: Command): void {
       else if (report.status === 'error') process.exitCode = 2;
     });
 
+  rel.command('repair-state <release>')
+    .description('Print the version repair\'s one state record (off|idle|running|held|lost, reason, signature, held keys, the operator command, the launch-attempt clock); a crashed run reads lost')
+    .option('--json', 'Print the record as JSON')
+    .option('--repo <owner/name>', 'The GitHub repo the operator command names (default: this checkout\'s origin)')
+    .option('--attempt', 'Record a launch attempt before the detached repair start (the tick\'s one prepare step); exits 3 while a run is alive, 2 under a worker fence')
+    .action((release: string, o: { json?: boolean; repo?: string; attempt?: boolean }) => {
+      const repo = o.repo ?? originSlug();
+      const out = o.attempt ? attemptLaunch(ctxFor(release), { repo }) : { ok: true as const, record: repairStateOf(ctxFor(release), { repo }) };
+      const got = out.record;
+      const tail = o.attempt ? `; attempt ${out.ok ? 'recorded' : `refused (${out.why})`}, ${got.attempts} so far` : '';
+      if (o.json) console.log(JSON.stringify(got));
+      else console.log(`repair-state ${release}: ${got.state}${got.reason ? ` (${got.reason})` : ''}; held ${got.held_keys.length}, unfiled ${got.unfiled}${got.operator_command ? `; run: ${got.operator_command}` : ''}${tail}`);
+      if (!out.ok) process.exitCode = out.why === 'busy' ? 3 : 2;
+    });
+
   rel.command('request <release>')
     .description('Queue a placement request for the release manager (the chief writes these)')
     .requiredOption('--verb <verb>', 'INTAKE | REVERSION | DISCHARGE')
@@ -785,30 +818,40 @@ export function registerRelease(program: Command): void {
     .option('--to <version>', 'Target version, or backlog', 'backlog')
     .requiredOption('--why <text>', 'One line: why the request exists')
     .option('--evidence <json>', 'Evidence object as JSON', '{}')
-    .option('--decision <n>', 'The operator decision whose words place an operator-directed or High ticket (its specs/decisions verbatim file)')
+    .option('--decision <n>', 'The operator decision whose words place an operator-directed or High ticket (its specs/decisions verbatim file); omit it when a words record already on file names the key and exactly this placement, which is then cited')
     .option('--words <text>', 'The operator\'s exact words in that file; with --decision, recorded as an O- record the request cites')
+    .option('--required-by <key>', 'The open current-version ticket that cannot close without this one: records the remainder in the evidence (follow_up_of, remainder)')
     .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
-    .action(async (release: string, o: { verb: string; key: string; from: string; to: string; why: string; evidence: string; decision?: string; words?: string; mirrorRoot?: string }) => {
+    .action(async (release: string, o: { verb: string; key: string; from: string; to: string; why: string; evidence: string; decision?: string; words?: string; requiredBy?: string; mirrorRoot?: string }) => {
       if (!['INTAKE', 'REVERSION', 'DISCHARGE'].includes(o.verb)) throw new Error('release request: --verb is INTAKE, REVERSION or DISCHARGE');
       const evidence: unknown = JSON.parse(o.evidence);
       if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) throw new Error('release request: --evidence is a JSON object');
-      const ctx = ctxFor(release, o.mirrorRoot);
-      const approval = o.verb === 'INTAKE' ? outOfVersionApproval(process.env, o.key, new Date()) : null;
-      if (approval) {
-        console.log(`REQ approved:${approval.id}`);
-        try {
-          await clearProposedLabels(ctx.jira, o.key);
-        } catch (e) {
-          console.error(`release request: WARN ${(e as Error).message}`);
-        }
-        return;
+      if (o.requiredBy !== undefined) {
+        const have = (evidence as Record<string, unknown>)['follow_up_of'];
+        if (!/^[A-Z][A-Z0-9]*-\d+$/.test(o.requiredBy) || o.requiredBy === o.key) throw new RequestRefused(`release request: --required-by names another ticket key, not "${o.requiredBy}"`);
+        if (have !== undefined && have !== o.requiredBy) throw new RequestRefused(`release request: --evidence follow_up_of ${String(have)} contradicts --required-by ${o.requiredBy}`);
+        Object.assign(evidence, { follow_up_of: o.requiredBy, remainder: true });
       }
-      const row = { verb: o.verb as Verb, key: o.key, from_v: ver(o.from), to_v: ver(o.to), why: o.why };
+      const ctx = ctxFor(release, o.mirrorRoot);
+      // An out-of-version approval is work permission only (the repair's work check reads it); it files no placement and is no authority for one.
+      // A placement is queued, or refused, by the same checks with or without it.
       if (o.decision !== undefined && o.words === undefined) throw new RequestRefused('release request: --decision needs --words "<the operator\'s exact words>"');
       if (o.words !== undefined && o.decision === undefined) throw new RequestRefused('release request: --words needs --decision <n>, the decision whose file holds them');
+      const row = { verb: o.verb as Verb, key: o.key, from_v: ver(o.from), to_v: ver(o.to), why: o.why };
       const scoped = isGated({ ...row, origin: 'cli', ticket: null, env: ctx.env });
       const ticket = scoped && o.decision === undefined ? await ticketFacts(ctx, o.key) : null;
-      refuseRequest(ctx, { ...row, evidence: evidence as Record<string, unknown>, origin: 'cli', ticket, decision: o.decision });
+      // A gated ask with no --decision is placed by a words record already on file that names this key and exactly this placement.
+      const cited = scoped && o.decision === undefined && isGated({ ...row, origin: 'cli', ticket, env: ctx.env }) ? coveringRecord(ctx, row) : undefined;
+      refuseRequest(ctx, { ...row, evidence: evidence as Record<string, unknown>, origin: 'cli', ticket, decision: o.decision ?? cited?.decision ?? undefined });
+      if (cited) {
+        const got = requestOnRecord(ctx, { ...row, evidence: evidence as Record<string, unknown>, from: 'console' });
+        if (!got) throw new RequestRefused(`release request: ${cited.id} no longer covers ${o.key}; ask again`);
+        if ((got.request.evidence as { operator?: unknown } | null)?.operator === got.operator.id) {
+          console.log(`OPERATOR ${got.operator.id} (decision ${got.operator.decision}, the operator's words already on file; no new record)`);
+        }
+        console.log(`REQ ${got.request.req}`);
+        return;
+      }
       if (o.decision !== undefined && o.words !== undefined) {
         const got = requestWithWords(ctx, { ...row, evidence: evidence as Record<string, unknown>, from: 'console' }, { decision: o.decision, words: o.words });
         console.log(`OPERATOR ${got.operator.id} (decision ${o.decision}, the operator's words)`);
@@ -818,6 +861,9 @@ export function registerRelease(program: Command): void {
       }
       const r = releaseRequest(ctx, { ...row, evidence: evidence as Record<string, unknown>, from: 'console' });
       console.log(`REQ ${r.req}`);
+      if (r.state !== 'open' && !r.state.startsWith('claimed:')) {
+        console.error(`release request: ${r.req} is already ${r.state} and nothing in this ask is new, so none was queued; \`jira release state ${release} --json\` lists its refused_asks remedy (new facts or evidence, the operator's words, or an ack)`);
+      }
     });
 
   rel.command('pull <release>')
@@ -1044,13 +1090,14 @@ export function registerRelease(program: Command): void {
     .requiredOption('--keys <list>', 'Comma-separated keys the spec covers')
     .requiredOption('--spec <path>', 'The spec file (by convention under the state repo specs/designs/ bucket; any path signs)')
     .option('--plan <path>', 'The spec\'s plan file (the trace lint reads the invariants\' tests from it); default: the spec')
+    .option('--source-root <path>', 'Citation root: primary or a registered live linked worktree of this repository (default: primary)')
     .requiredOption('--verdict <path>', 'A critic verdict file; give the spec critic\'s and the plan critic\'s', (v: string, all: string[]) => [...all, v], [] as string[])
     .requiredOption('--decision <n>', 'Operator decision number')
     .requiredOption('--verbatim-file <path>', 'The operator\'s words, verbatim')
     .option('--supersedes <O-id>', 'The spec record this re-sign replaces')
-    .action((release: string, o: { keys: string; spec: string; plan?: string; verdict: string[]; decision: string; verbatimFile: string; supersedes?: string }) => {
+    .action((release: string, o: { keys: string; spec: string; plan?: string; sourceRoot?: string; verdict: string[]; decision: string; verbatimFile: string; supersedes?: string }) => {
       const r = signSpec(ctxFor(release), {
-        keys: list(o.keys), spec: o.spec, plan: o.plan, verdicts: o.verdict, decision: o.decision,
+        keys: list(o.keys), spec: o.spec, plan: o.plan, sourceRoot: o.sourceRoot, verdicts: o.verdict, decision: o.decision,
         verbatim: readBodyFile(o.verbatimFile, '--verbatim-file').trim(), supersedes: o.supersedes,
       });
       console.log(`${r.id} spec ${r.spec_path} signed for ${(r.keys ?? []).join(', ')}`);

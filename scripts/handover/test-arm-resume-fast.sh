@@ -26,7 +26,11 @@
 # back out of per-PR coverage.
 set -uo pipefail
 cd "$(dirname "$0")" || exit 1
-exec bash test-arm-resume.sh \
+# The runner keeps only the last lines of a suite's output, and this run is long: the rows that fail scroll out of that window. They are
+# printed again after the run, so a red names its rows.
+out="$(mktemp "${TMPDIR:-/tmp}/arm-resume-fast.XXXXXX")" || exit 1
+trap 'rm -f "$out"' EXIT
+bash test-arm-resume.sh \
     --only "T1" \
     --only "T2" \
     --only "T3" \
@@ -100,4 +104,10 @@ exec bash test-arm-resume.sh \
     --only "2545" \
     --only "3118" \
     --only "2973" \
-    --only "9525"
+    --only "9525" 2>&1 | tee "$out"
+rc="${PIPESTATUS[0]}"
+if [ "$rc" -ne 0 ]; then
+    echo "=== failing rows of this run ==="
+    grep -n -A3 '^FAIL' "$out" # read-sink-ok: the file this script created above
+fi
+exit "$rc"

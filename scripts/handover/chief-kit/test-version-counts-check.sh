@@ -93,6 +93,35 @@ run_vc
 check "closed statuses: exit 0" "$RC" "0"
 contains "closed statuses: one open ticket per side" "$OUT" "v1.1.4 open live=1 mirror=1 residual-regex live=0 mirror=0 SAME"
 
+new_case parity5505
+python3 - "$HERE/fixtures/t1-views.json" "$M" "$LIVE_DIR" <<'PYTEST'
+import json, pathlib, sys
+f, mirror, live = sys.argv[1:]
+rows = json.loads(pathlib.Path(f).read_text())['statuses']
+for i, r in enumerate(rows, 1):
+    fields = {'key': 'HIMMEL-%d' % i, 'status': r['status'], 'statusCategory': r['category'], 'labels': ['residual'], 'fixVersions': ['v1.1.4']}
+    pathlib.Path(mirror, fields['key'] + '.md').write_text('---\n' + ''.join(k + ': ' + json.dumps(v) + '\n' for k, v in fields.items()) + '---\n')
+# Jira applies the category predicate; retain name-terminal rows to test the local filter too.
+pathlib.Path(live, 'v1.1.4.tsv').write_text(''.join('HIMMEL-%d\tTask\t%s\ttitle\tresidual\n' % (i, r['status']) for i, r in enumerate(rows, 1) if r['category'] == 'To Do' or r['open']))
+PYTEST
+run_vc
+check "5505 shared status fixture: exit 0" "$RC" "0"
+contains "5505 shared status fixture: unknown stays open, all terminal variants excluded" "$OUT" "open live=4 mirror=4 residual-regex live=4 mirror=4 SAME"
+contains "5505 live query applies the category rule" "$(cat "$LIVE_DIR/calls.log")" "statusCategory"
+contains "5505 live query excludes Fix statuses" "$(cat "$LIVE_DIR/calls.log")" '"Wont Fix"'
+contains "5505 live query excludes curly-apostrophe Fix" "$(cat "$LIVE_DIR/calls.log")" "\"Won’t Fix\""
+contains "live query excludes In Public" "$(cat "$LIVE_DIR/calls.log")" '"In Public"'
+
+new_case four_residuals
+mirror_issue HIMMEL-1 "To Do" '["residual"]' '["v1.1.4"]'
+mirror_issue HIMMEL-2 "Wont Fix" '["residual"]' '["v1.1.4"]'
+mirror_issue HIMMEL-3 "Won't Fix" '["residual"]' '["v1.1.4"]'
+mirror_issue HIMMEL-4 "Resolved" '["residual"]' '["v1.1.4"]'
+live_row v1.1.4 HIMMEL-1 "To Do" residual
+run_vc
+check "four reported residuals: exit 0" "$RC" "0"
+contains "four reported residuals: only To Do is open" "$OUT" "open live=1 mirror=1 residual-regex live=1 mirror=1 SAME"
+
 new_case multi
 printf 'v1.0.0\ttrue\t2026-09-01\tfalse\nv1.1.4\tfalse\nv1.1.5\tfalse\n' > "$CASE/HIMMEL.versions.tsv"
 mirror_issue HIMMEL-1 "To Do" '[]' '["v1.1.4","v1.1.5","v1.0.0"]'
@@ -135,6 +164,18 @@ new_case nofixversions
 printf -- '---\nkey: "HIMMEL-1"\nstatus: "To Do"\n---\n' > "$M/HIMMEL-1.md"
 run_vc
 check "mirror file without fixVersions: exit 2" "$RC" "2"
+
+new_case emptystatus
+mirror_issue HIMMEL-1 "" '[]' '["v1.1.4"]'
+run_vc
+check "empty mirror status stays unread, not zero: exit 2" "$RC" "2"
+
+new_case emptylivestatus
+mirror_issue HIMMEL-1 "To Do" '[]' '["v1.1.4"]'
+live_row v1.1.4 HIMMEL-1 "" residual
+run_vc
+check "empty live status stays unread, not zero: exit 2" "$RC" "2"
+if grep -q 'VERDICT' <<< "$OUT"; then bad "empty live status: no verdict" "$OUT"; else ok "empty live status: no verdict"; fi
 
 new_case longfront
 labels_json="[$(seq -s, 1 400 | sed 's/\([0-9][0-9]*\)/"label-number-\1"/g')]"

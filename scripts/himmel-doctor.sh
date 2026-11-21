@@ -4145,9 +4145,17 @@ check_c94_graph_config() {
         "${fix:-run node scripts/himmelctl/lib/graph-choices.js check}${rest:+; $rest}"
 }
 
+# a register whose repo path is gone is skipped. Whether it is gone is holds.py's answer (repo-gone: a real ENOENT and nothing
+# else), the same question the doctor cadence asks before it prunes a register; no answer, a slow one or an older holds.py without
+# the verb reads the register as before.
+c95_repo_gone() { # <holds.py> <repo>
+    ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 1 10} python3 -I "$1" repo-gone --repo "$2" </dev/null >/dev/null 2>&1
+}
+
 check_c95_barrier_off() {
     local holds="${HOME:-/tmp}/.himmel/state/holds" py="$REPO_ROOT/scripts/handover/chief-kit/holds.py"
-    local name repo rows rc err marker age live bad offline off_sentinel_rx started left warned=0 off="$holds/OFF"
+    local name repo rows rc err marker age live bad offline off_sentinel_rx started left warned=0 off="$holds/OFF" main main_name gone=0
+    local -a regs
     if [ -e "$off" ] || [ -L "$off" ]; then
         warned=1
         # a FIFO or device named OFF would block the read: only a regular file (or a link to one) is read
@@ -4173,21 +4181,34 @@ check_c95_barrier_off() {
     command -v python3 >/dev/null 2>&1 || { emit WARN C95-barrier-off "python3 not on PATH -- the holds register was not read, so a barrier-off repo would not show"; return 0; }
     [ -f "$py" ] || { emit WARN C95-barrier-off "$py not found -- the holds register was not read"; return 0; }
     started=$SECONDS
-    for name in "$holds"/%2F*; do
+    main="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || main=""
+    main="${main%/.git}"; [ -n "$main" ] || main="$REPO_ROOT"
+    main_name="$holds/$(printf '%s' "$main" | sed -e 's/%/%25/g' -e 's/\//%2F/g')"
+    regs=()
+    { [ -e "$main_name" ] || [ -L "$main_name" ]; } && regs+=("$main_name")
+    for name in "$holds"/%2F*; do [ "$name" = "$main_name" ] || regs+=("$name"); done
+    for name in "${regs[@]}"; do
         [ -e "$name" ] || [ -L "$name" ] || continue
         repo="$(printf '%s' "${name##*/}" | sed -e 's/%2F/\//g' -e 's/%25/%/g')"
+        if c95_repo_gone "$py" "$repo"; then gone=$((gone + 1)); continue; fi
         left=$(( ${HIMMEL_DOCTOR_HOLDS_T:-33} - (SECONDS - started) ))
         if [ -n "$_TIMEOUT_BIN" ] && [ "$left" -lt 1 ]; then
             warned=1
-            emit WARN C95-barrier-off "the holds read budget (${HIMMEL_DOCTOR_HOLDS_T:-33} s for all repos) was spent before $repo -- its register was not read, so a barrier-off repo there would not show" \
-                "raise HIMMEL_DOCTOR_HOLDS_T, or run python3 -I $py read --repo $repo by hand"
+            emit WARN C95-barrier-off "holds read NOT ATTEMPTED for $repo: the ${HIMMEL_DOCTOR_HOLDS_T:-33} s budget for all repos was spent first -- its barrier state is UNKNOWN, this is not a barrier-off finding" \
+                "run python3 -I $py gc --repo $repo (it prunes dead rows), then python3 -I $py read --repo $repo by hand"
             continue
         fi
         err="$(mktemp "${TMPDIR:-/tmp}/c95.XXXXXX" 2>/dev/null)" || { emit WARN C95-barrier-off "mktemp failed -- the holds register was not read"; return 0; }
         rows="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$left"} python3 -I "$py" read --repo "$repo" 2>"$err")"; rc=$?
+        if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+            warned=1
+            emit WARN C95-barrier-off "holds read TIMED OUT after ${left}s for $repo -- its barrier state is UNKNOWN, this is not a barrier-off finding" \
+                "run python3 -I $py gc --repo $repo (it prunes dead rows), then python3 -I $py read --repo $repo by hand"
+            rm -f "$err"; continue
+        fi
         if [ "$rc" -ne 0 ]; then
             warned=1
-            emit WARN C95-barrier-off "cannot read the holds register of $repo (holds.py read exit $rc: $(head -c 200 "$err" | tr '\n\t' '  ')) -- a barrier-off repo there would not show" \
+            emit WARN C95-barrier-off "cannot read the holds register of $repo (holds.py read exit $rc: $(head -c 200 "$err" | tr '\n\t' '  ')) -- its barrier state is UNKNOWN, this is not a barrier-off finding" \
                 "check the permissions of $name"
             rm -f "$err"; continue
         fi
@@ -4208,7 +4229,7 @@ check_c95_barrier_off() {
                 "remove $marker once the workers there are done (a marker in a linked worktree never disables the barrier)"
         fi
     done
-    [ "$warned" = 1 ] || emit OK C95-barrier-off "no repo has its single-writer barrier off with a live worker row, and the register reads clean"
+    [ "$warned" = 1 ] || emit OK C95-barrier-off "no repo has its single-writer barrier off with a live worker row, and the register reads clean$([ "$gone" -eq 0 ] || printf ' (%d register%s of a removed repo not read)' "$gone" "$([ "$gone" -eq 1 ] || echo s)")"
 }
 
 check_c96_jira_test_project() {

@@ -82,6 +82,8 @@
       "ruling": "R-R1-0001",
       "req": "Q-R1-0001",
       "reason": "name the operator's words for ABC-2",
+      "ground": "no operator words",
+      "remedy": "jira release request R1 --verb INTAKE --key ABC-2 --from backlog --to v1 --why \"<why>\" --decision <n> --words \"<the operator's exact words>\"",
       "asks_operator": true
     },
     {
@@ -89,6 +91,8 @@
       "ruling": "R-R1-0002",
       "req": "Q-R1-0002",
       "reason": "name the operator's words for ABC-3",
+      "ground": "no operator words",
+      "remedy": "new facts: jira release request R1 --verb INTAKE --key ABC-3 --from backlog --to v1 --why \"<what changed>\" --evidence '{\"<changed requirement>\":\"<value>\"}'; or if the refusal is right: jira release ack R1 --ruling R-R1-0002 --reason \"<why>\"",
       "asks_operator": false
     },
     {
@@ -96,6 +100,8 @@
       "ruling": "R-R1-0003",
       "req": "Q-R1-0003",
       "reason": "name the operator's words for ABC-4",
+      "ground": "no operator words",
+      "remedy": "new facts: jira release request R1 --verb INTAKE --key ABC-4 --from backlog --to v1 --why \"<what changed>\" --evidence '{\"<changed requirement>\":\"<value>\"}'; or if the refusal is right: jira release ack R1 --ruling R-R1-0003 --reason \"<why>\"",
       "asks_operator": false
     }
   ],
@@ -112,5 +118,7 @@
   ],
   "asks_operator_keys": [
     "ABC-2"
-  ]
+  ],
+  "unfinished_rulings": [],
+  "remainder_conflicts": []
 }

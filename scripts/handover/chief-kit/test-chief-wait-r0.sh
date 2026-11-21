@@ -406,6 +406,26 @@ wait_exit "$WPID"
 check "(r0s4) a READY written after the reset is relayed" "N1 READY 2567 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb GREEN" "$(cat "$STUB/le.stdin" 2>/dev/null)"
 stop_waiter
 
+# on: a label that leaves the manifest and returns with a shorter document starts over as a new worker does:
+# the one-shot relay never relays a READY it meets first, and relays the next one written
+reset_stub
+fleet r0s8
+printf 'ESCALATE auto-go 3 not-ready\n' > "$STUB/le.out"; echo 10 > "$STUB/le.rc"
+printf 'N1\t40\n' > "$I.wait.ready"
+printf '{"schema":1,"workers":[]}\n' > "$M"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r0s8.out" --doc "$D" --workers-from "$M"
+wait_hb "$I" || fail "(r0s8) no baseline heartbeat"
+sleep 1.5
+printf '# worker\n- 10:30 LIVE — restarted\n%s\n' "$READY_A" > "$L"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"}]}\n' "$L" > "$M.new" && mv "$M.new" "$M"
+sleep 2.5
+check "(r0s8) a returning label's stale cursor does not replay its READY" "" "$(cat "$STUB/le.calls" 2>/dev/null)"
+check "(r0s8) its cursor starts over at the document's last READY" "3" "$(awk -F'\t' '$1 == "N1" { c = $2 } END { print c }' "$I.wait.ready" 2>/dev/null)"
+printf -- '%s\n' "$READY_B" >> "$L"
+wait_exit "$WPID"
+check "(r0s8) a READY written after the restart is relayed" "N1 READY 2567 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb GREEN" "$(cat "$STUB/le.stdin" 2>/dev/null)"
+stop_waiter
+
 # on: a pending READY of N1 must not leave N2's cursor unset, or N2's later READY would count as history
 reset_stub
 fleet r0s5
@@ -540,6 +560,22 @@ tick_line "N1:WRAPPED"
 wait_exit "$WPID"
 check "(r0h) rc 124 is a worker-event wake, not a retry" "WAKE worker-event ESCALATE wrap-merged-failed rc=3 close-wrapped-worker: refusing - queue lock held rc=124 out=$I.wait.le-N1" "$(head -n 1 "$WORK/r0h.out")"
 stop_waiter
+
+# --- (r0w) a log or board failure after the close is reported, never retried --
+# wrap-merged.sh exits 6 or 7 for them too, but only after the worker's entry was retired: the
+# waiter would ask again for a worker the manifest no longer lists, and the failure would be lost.
+for r0w in "6:log failed: append-results.sh" "7:board failed: board.mjs --doc x --changed"; do
+    reset_stub
+    fleet "r0w${r0w%%:*}"
+    printf 'ESCALATE wrap-merged-failed rc=%s wrap-merged: step %s\n' "${r0w%%:*}" "${r0w#*:}" > "$STUB/le.out"; echo 10 > "$STUB/le.rc"
+    start "$I" "$WORK/r0w.out" --doc "$D" --workers-from "$M"
+    wait_hb "$I" || fail "(r0w) no baseline heartbeat"
+    printf -- '- 11:00 MERGED #2566 → abcdef01 done\n' >> "$L"
+    tick_line "N1:LIVE" "N1:MERGED#2566"
+    wait_exit "$WPID"
+    check "(r0w) rc ${r0w%%:*} step ${r0w#*:} wakes at once" "WAKE worker-event ESCALATE wrap-merged-failed rc=${r0w%%:*} wrap-merged: step ${r0w#*:} rc=10 out=$I.wait.le-N1" "$(head -n 1 "$WORK/r0w.out")"
+    stop_waiter
+done
 
 # --- (r0d) no RETASK token reaches worker-event, the wake or the out file -------
 reset_stub

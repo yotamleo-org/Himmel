@@ -181,6 +181,13 @@ if [ -n "$labels" ]; then
         fi
         worker="$succ"
     fi
+    # A lost response may arrive after manifest removal. Reconcile proof data
+    # against the same owed identity before acknowledging that replay.
+    if [ -z "$worker" ] && [ "$marker" = WRAPPED ] && [[ $body =~ proof[[:space:]]+[A-Z]+-[0-9]+ ]]; then
+        proof_out=$(printf '%s\n' "$body" | python3 "$HERE/proof-validate.py" --bucket "$(dirname "$FLEET")" --label "$label" --message-stdin 2>&1); proof_rc=$?
+        [ "$proof_rc" -eq 0 ] || escalate "proof-handoff-failed $proof_out"
+        if [ -n "$proof_out" ]; then echo "HANDLED proof-handoff $label"; exit 0; fi
+    fi
     # a worker already wrapped has left the manifest; wrap-merged's chief-doc bullet
     # (`<label> WRAPPED, window closed.`) says so, and a re-run is then a noop.
     if [ -z "$worker" ] && grep -qE "(^|[^A-Za-z0-9_])$label WRAPPED, window closed\." "$DOC" 2>/dev/null; then
@@ -203,6 +210,13 @@ EOF
     stem="${worker##*/}"; stem="${stem%.md}"
     label="$stem"
     [[ $stem =~ -(N[0-9]+)- ]] && label="${BASH_REMATCH[1]}"
+fi
+
+# Record before any cleanup implementation (including an injected close). The
+# direct close/sweep repeats this gate with the same idempotent writer.
+if [ "$marker" = WRAPPED ] && { [ -r "$worker" ] || [[ $body =~ proof[[:space:]]+[A-Z]+-[0-9]+ ]]; }; then
+    proof_out=$(printf '%s\n' "$body" | python3 "$HERE/proof-validate.py" --bucket "$(dirname "$FLEET")" --doc "$worker" --label "$(worker_label "$worker")" --message-stdin 2>&1); proof_rc=$?
+    [ "$proof_rc" -eq 0 ] || escalate "proof-handoff-failed $proof_out"
 fi
 
 # stacked_series only: the ledger says whether this worker's doc is a series' writer or passed it on, and who the

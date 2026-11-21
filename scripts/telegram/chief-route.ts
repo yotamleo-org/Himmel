@@ -1,3 +1,7 @@
+import { selectDecisionNames, pinnedRead, boundedDirectoryNames, reviewedSpecHashes, optionalReturnAgreement, validateCappedFoldProofShape, PINNED_READ_VERSION, returnSha,
+  SIGNATURE_DIRS, KEY_FOLDER, CRITIC_FILE, CRITIC_NAME, specsRootOf, keyOf, canonicalDirectoryNames, returnDirectories, checkLatestReturns,
+  ledgerDirOf, ledgerEntryNames, ledgerKeyOfFile, parseManifest, memberLedgerState, declaredTickets, validateCappedLedgerProofShape, LEDGER_READ_VERSION,
+  type CappedFoldProof, type CappedLedgerProof, type EvidencePin, type EvidenceFilePin, type HistoryPin, type MemberAbsencePin, type ReturnPin } from "../jira/src/release/pinned.ts";
 import { join, dirname, basename, resolve, isAbsolute } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { hostname, homedir } from "node:os";
@@ -378,11 +382,16 @@ function replyPath(root: string, chat: number, message: number): string | null {
 
 // Only the bridge's send receipt writes these mappings; reply text and quoted
 // Telegram message bodies never supply a chief identity.
-export async function rememberConsoleReply(root: string, chat: number, message: number, name: string): Promise<void> {
+export async function rememberConsoleReply(root: string, chat: number, message: number, name: string, requestId?: string, requestHash?: string): Promise<void> {
   const file = replyPath(root, chat, message);
   if (!file || typeof name !== "string" || !consoleInboxPath(root, name)) return;
   await mkdir(dirname(file), { recursive: true });
-  await atomicWrite(file, JSON.stringify({ name }));
+  await atomicWrite(file, JSON.stringify({ name, ...(requestId ? { request_id: requestId, request_hash: requestHash } : {}) }));
+  if (requestId && /^[a-f0-9]{64}-[0-9]+$/.test(requestId)) {
+    const index = join(root, 'consoles', 'owed-receipts');
+    await mkdir(index, { recursive: true });
+    await atomicWrite(join(index, `${chat}_${requestId}.json`), JSON.stringify({ name, message, request_id: requestId, request_hash: requestHash }));
+  }
 }
 
 export async function consoleReplyTarget(root: string, chat: number, message: number): Promise<string | null> {
@@ -527,10 +536,23 @@ const FINDINGS = { spec: /^SPEC FINDINGS \d+$/, plan: /^PLAN FINDINGS \d+$/ } as
 export const CRITIC_ROUND_CAP = 3;
 type Kind = "spec" | "plan";
 const verdictKind = (line: string): Kind | undefined => /^(SPEC|PLAN) (CLEAN|FINDINGS \d+)$/.exec(line)?.[1].toLowerCase() as Kind | undefined;
-const SIGNATURE_DIRS = new Set(["design", "designs", "spec", "plan", "plans"]);
 const sha256 = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 const lastLine = (text: string) => text.split("\n").map(l => l.trim()).filter(Boolean).at(-1) ?? "";
 const sealsOf = (text: string) => [...text.matchAll(/^CONTENT-SHA256 ([0-9a-f]{64}) (\S.*)$/gm)].map(m => ({ sha: m[1], rel: m[2] }));
+// The two READ quote shapes, each a whole line at column zero: the sha, one or two spaces, then a path (relative or absolute); or an
+// absolute path, one space, then the sha. Any other line that opens with READ refuses, and nothing is trimmed or normalized. The shapes
+// cannot overlap: the first token is a sha in one and an absolute path in the other. A line is read when READ or READ-<ALGORITHM> is followed by a space or the line end, so READ-SHA512 refuses while READY, README and READ: are prose.
+const READ_SHA_FIRST = /^READ(?:-SHA256)? ([0-9a-f]{64}) {1,2}(\S.*)$/;
+const READ_PATH_FIRST = /^READ(?:-SHA256)? (\S(?:.*\S)?) ([0-9a-f]{64})$/;
+export function readQuotesOf(text: string): { sha: string; path: string }[] {
+  return text.split("\n").filter(line => /^READ(?:-[A-Z0-9]+)?(?:\s|$)/.test(line)).map(line => {
+    const shaFirst = READ_SHA_FIRST.exec(line);
+    if (shaFirst) return { sha: shaFirst[1], path: shaFirst[2] };
+    const pathFirst = READ_PATH_FIRST.exec(line);
+    if (pathFirst && isAbsolute(pathFirst[1])) return { sha: pathFirst[2], path: pathFirst[1] };
+    throw new Error("capped-fold: malformed seal or READ quote");
+  });
+}
 
 const underSignaturePath = (p: string) => {
   const parts = p.split("/");
@@ -611,22 +633,8 @@ type SeededReturn = { return_sha: string; verdict_path: string; seals: { read_pa
 type LedgerRow = { row: string; [field: string]: any };
 
 const FINDING_LINE = /^[-*] \*\*([A-Za-z][\w.-]*)\*\* \(([^)]*)\)/;
-const KEY_FOLDER = /^[A-Z][A-Z0-9]+-[0-9]+$/;
-const ledgerDir = (specs: string) => join(specs, "ledgers", "spec-rounds");
-const specsRootOf = (p: string) => { const parts = p.split("/"); const i = parts.lastIndexOf("specs"); return i < 0 ? null : parts.slice(0, i + 1).join("/"); };
 
-export function returnSha(text: string): string {
-  const lines = text.split("\n").filter(l => !l.startsWith("CONTENT-SHA256 ")).map(l => l.trimEnd());
-  while (lines.length && lines.at(-1) === "") lines.pop();
-  return sha256(Buffer.from(lines.length ? `${lines.join("\n")}\n` : ""));
-}
-
-export function keyOf(specPath: string): string | null {
-  const parts = specPath.split("/");
-  const folder = parts.at(-2);
-  if (folder && KEY_FOLDER.test(folder) && parts.at(-3) === "specs") return folder;
-  return /^([A-Z][A-Z0-9]+-[0-9]+)(?=[-.])/.exec(parts.at(-1) ?? "")?.[1] ?? null;
-}
+export { returnSha, keyOf } from "../jira/src/release/pinned.ts";
 
 export function parseFindings(returnText: string, kind: Kind, round: number): { findings: Finding[]; unrated_ids: string[] } {
   const findings: Finding[] = [];
@@ -663,8 +671,14 @@ function wellFormed(r: Record<string, unknown>): boolean {
   return isText(r.row);
 }
 
-async function readLedger(specs: string, key: string): Promise<LedgerRow[] | null> {
-  const text = await readFile(join(ledgerDir(specs), `${key}.jsonl`), "utf8").catch((e: NodeJS.ErrnoException) => {
+type RoundReader = {
+  read(path: string): Promise<{ bytes: Buffer; mtime_ms: number }>;
+  names(directory: string): Promise<string[]>;
+};
+const readBytes = (path: string, reader?: RoundReader): Promise<Buffer> => reader ? reader.read(path).then(r => r.bytes) : readFile(path);
+
+async function readLedger(specs: string, key: string, reader?: RoundReader): Promise<LedgerRow[] | null> {
+  const text = await readBytes(join(ledgerDirOf(specs), ledgerEntryNames(key).file), reader).then(b => b.toString("utf8")).catch((e: NodeJS.ErrnoException) => {
     if (e.code === "ENOENT") return null;
     throw new Error(`${key} ledger cannot be read (${e.message}); restore it from the state repo history`);
   });
@@ -678,28 +692,27 @@ async function readLedger(specs: string, key: string): Promise<LedgerRow[] | nul
   });
 }
 
-const manifestFile = (specs: string) => join(ledgerDir(specs), "manifest.json");
-async function readManifest(specs: string): Promise<{ keys: Record<string, unknown> }> {
-  const text = await readFile(manifestFile(specs), "utf8").catch((e: NodeJS.ErrnoException) => {
+const manifestFile = (specs: string) => join(ledgerDirOf(specs), "manifest.json");
+async function readManifest(specs: string, reader?: RoundReader): Promise<{ keys: Record<string, unknown> }> {
+  const text = await readBytes(manifestFile(specs), reader).then(b => b.toString("utf8")).catch((e: NodeJS.ErrnoException) => {
     if (e.code === "ENOENT") throw new Error(`no round manifest under ${specs}; run round-seed --all once`);
     throw new Error(`${manifestFile(specs)}: cannot read the round manifest (${e.message}); restore it from the state repo history`);
   });
-  let m: { keys?: unknown } | null = null;
-  try { m = JSON.parse(text); } catch {}
-  if (!m || typeof m.keys !== "object" || m.keys === null || Array.isArray(m.keys)) throw new Error(`${manifestFile(specs)}: the round manifest does not parse; restore it from the state repo history`);
-  return m as { keys: Record<string, unknown> };
+  const m = parseManifest(text);
+  if (!m) throw new Error(`${manifestFile(specs)}: the round manifest does not parse; restore it from the state repo history`);
+  return m;
 }
 
-async function loadLedger(specs: string, key: string): Promise<Rows> {
-  const manifest = await readManifest(specs);
-  const rows = await readLedger(specs, key) ?? [];
-  const snapshots = await stat(join(ledgerDir(specs), key)).then(() => true, (e: NodeJS.ErrnoException) => {
+async function loadLedger(specs: string, key: string, reader?: RoundReader): Promise<Rows> {
+  const manifest = await readManifest(specs, reader);
+  const rows = await readLedger(specs, key, reader) ?? [];
+  const snapshots = await stat(join(ledgerDirOf(specs), ledgerEntryNames(key).folder)).then(() => true, (e: NodeJS.ErrnoException) => {
     if (e.code === "ENOENT") return false;
     throw new Error(`${key}: cannot read its snapshot folder (${e.message}); restore it from the state repo history`);
   });
   const seeded = rows.some(r => r.row === "seed");
   if ((Object.hasOwn(manifest.keys, key) && !seeded) || (snapshots && !seeded && !rows.some(r => r.row === "round"))) throw new Error(`${key} is in the round manifest but has no ledger; restore it from the state repo history`);
-  return Object.assign(rows, { checked: await checkRecords(specs, key, rows) });
+  return Object.assign(rows, { checked: await checkRecords(specs, key, rows, reader) });
 }
 
 // One writer at a time per ticket: flock(2) on a persistent lock file beside the ledger, released when the file closes.
@@ -712,10 +725,10 @@ function withLedgerLock<T>(specs: string, key: string, fn: () => Promise<T>): Pr
   return run;
 }
 async function flockedLedger<T>(specs: string, key: string, fn: () => Promise<T>): Promise<T> {
-  await mkdir(ledgerDir(specs), { recursive: true });
+  await mkdir(ledgerDirOf(specs), { recursive: true });
   const { dlopen } = await import("bun:ffi");
   const libc = dlopen(process.platform === "darwin" ? "libSystem.B.dylib" : "libc.so.6", { flock: { args: ["i32", "i32"], returns: "i32" } });
-  const lock = await open(join(ledgerDir(specs), `${key}.jsonl.lock`), "a");
+  const lock = await open(join(ledgerDirOf(specs), ledgerEntryNames(key).lock), "a");
   try {
     if (libc.symbols.flock(lock.fd, 2) !== 0) throw new Error(`${key}: cannot lock its round ledger`);
     return await fn();
@@ -731,7 +744,7 @@ async function createNew(path: string, data: string | Uint8Array, made: string[]
 }
 
 async function snapshotBytes(specs: string, key: string, bytes: Uint8Array, sum: string, made: string[] = []): Promise<void> {
-  const path = join(ledgerDir(specs), key, sum);
+  const path = join(ledgerDirOf(specs), ledgerEntryNames(key).folder, sum);
   await mkdir(dirname(path), { recursive: true });
   await createNew(path, bytes, made);
 }
@@ -747,7 +760,7 @@ export type RoundState = {
   critical_open: { id: string; class: string; kind: Kind; round: number; verdict_path: string }[];
 };
 const KINDS = ["spec", "plan"] as const;
-type Checked = { epoch: number; override: LedgerRow | null; criticals: LedgerRow[]; invalid: string[] };
+type Checked = { epoch: number; override: LedgerRow | null; criticals: LedgerRow[]; extensions: LedgerRow[]; invalid: string[] };
 type Rows = LedgerRow[] & { checked: Checked };
 const epochNow = (rows: LedgerRow[]) => (rows as Partial<Rows>).checked?.epoch ?? 0;
 const seedOf = (rows: LedgerRow[]) => rows.find(r => r.row === "seed");
@@ -772,6 +785,31 @@ function latestReturns(rows: LedgerRow[], kind: Kind): Latest[] {
 }
 const openBlocking = (rows: LedgerRow[]) => KINDS.flatMap(kind => latestReturns(rows, kind).flatMap(l => blockingOf(l).map(b => ({ ...b, kind, round: l.round, return_sha: l.return_sha, verdict_path: l.verdict_path }))));
 const writerRound = (rows: LedgerRow[]) => Math.max(kindRound(rows, "spec"), kindRound(rows, "plan"));
+// What an operator round-extension binds: every open blocking finding with its kind and return digest, and each kind's latest return digests.
+type LatestReturns = Record<Kind, Returned[]>;
+const openFindingsOf = (latest: LatestReturns) => KINDS.flatMap(kind => latest[kind].flatMap(l => blockingOf(l).map(b => ({ id: b.id, severity: b.severity, critic: kind, return_sha: String(l.return_sha) }))));
+const returnsOf = (latest: LatestReturns) => Object.fromEntries(KINDS.map(kind => [kind, latest[kind].map(l => String(l.return_sha)).sort()]));
+const findingsKey = (x: any) => Array.isArray(x) ? JSON.stringify(x.map(f => [f?.critic, f?.id, f?.return_sha, f?.severity].map(String)).sort()) : null;
+const returnsKey = (x: any) => x && typeof x === "object" ? JSON.stringify(KINDS.map(kind => Array.isArray(x[kind]) ? x[kind].map(String).sort() : null)) : null;
+// The round an operator extension opens: the next round of the kinds whose latest returns hold the open blocking findings. A kind at the
+// writer round gives writer + 1; a kind that lags it gives its own next round, never a later one. Kinds at different next rounds have no
+// single round, and one grant never opens two. The CLI and the chronological reader both choose through this.
+type ExtensionAim = { round: number; kinds: Kind[]; lags: boolean };
+function extensionAim(rounds: Record<Kind, number>, latest: LatestReturns): ExtensionAim | { split: string } | null {
+  const kinds = KINDS.filter(kind => latest[kind].some(l => blockingOf(l).length > 0));
+  if (!kinds.length) return null;
+  if (new Set(kinds.map(kind => rounds[kind])).size > 1) return { split: kinds.map(kind => `${kind} round ${rounds[kind] + 1}`).join(", ") };
+  return { round: rounds[kinds[0]] + 1, kinds, lags: rounds[kinds[0]] < Math.max(rounds.spec, rounds.plan) };
+}
+const opensKinds = (row: LedgerRow, kinds: Kind[]) => (row.findings as { critic?: string }[]).some(f => kinds.includes(f.critic as Kind));
+// Whether an extension row opens a round it may: writer + 1 as it always did, or a lagging kind's own next refused round, once per kind.
+function extensionLands(opened: unknown, writer: number, aim: ReturnType<typeof extensionAim>, opens: (round: number, kinds?: Kind[]) => boolean): boolean {
+  if (Number(opened) === writer + 1) return !opens(writer + 1);
+  return !!aim && "round" in aim && aim.round > CRITIC_ROUND_CAP + 1 && Number(opened) === aim.round && !opens(aim.round, aim.kinds);
+}
+const spendsDecision = (r: LedgerRow) => r.row === "reset" || r.row === "critical" || r.row === "extension";
+const approvalSpentByExtension = (rows: LedgerRow[], decision: string, pin?: { path: string; sha: string }) => rows.some(r => r.row === "extension"
+  && (String(r.decision) === decision || (pin && (r.decision_path === pin.path || r.decision_sha === pin.sha))));
 const latestRoundTs = (rows: LedgerRow[]) => Number(rows.filter(r => r.row === "round").at(-1)?.ts) || 0;
 
 const findingKey = (id: unknown, returnSha: unknown) => `${id}|${returnSha}`;
@@ -796,36 +834,44 @@ function findingOf(rows: Rows, id: string): { f: Finding; return_sha: string; ve
 }
 
 const normText = (s: string) => s.replace(/\s+/g, " ").trim();
-async function quoteRule(specs: string, key: string, d: string, quote: string, used: boolean, sinceTs: number): Promise<{ error: string } | { path: string; sha: string }> {
-  if (!/^[0-9]+$/.test(d)) return { error: `'${d}' is not a decision number` };
-  const names = (await listDir(join(specs, "decisions"))).filter(n => new RegExp(`^verbatim-decision-${d}-.*\\.txt$`).test(n));
+async function quoteRule(specs: string, key: string, d: string, quote: string, used: boolean, sinceTs: number, reader?: RoundReader): Promise<{ error: string } | { path: string; sha: string }> {
+  try { selectDecisionNames([], d); } catch (e) { return { error: (e as Error).message }; }
+  const directory = join(specs, "decisions");
+  const names = selectDecisionNames(await (reader ? reader.names(directory) : listDir(directory)), d);
   if (names.length !== 1) return { error: `${names.length} files match specs/decisions/verbatim-decision-${d}-*.txt, expected exactly one` };
-  const path = join(specs, "decisions", names[0]); const bytes = await readFile(path); const text = normText(bytes.toString("utf8"));
+  const path = join(directory, names[0]);
+  const pinned = reader ? await reader.read(path) : undefined;
+  const bytes = pinned?.bytes ?? await readFile(path); const text = normText(bytes.toString("utf8"));
   if (!new RegExp(`(?<![A-Za-z0-9])${key}(?![A-Za-z0-9])`).test(text)) return { error: `decision ${d} does not name ${key}` };
   if (used) return { error: `decision ${d} was already used for ${key}` };
   if (normText(quote).length < 20 || !text.includes(normText(quote))) return { error: `decision ${d} does not hold the quote (20 characters or more, whitespace-normalised)` };
-  if ((await stat(path)).mtimeMs <= sinceTs) return { error: `decision ${d} is not newer than the latest round of ${key}` };
+  if ((pinned?.mtime_ms ?? (await stat(path)).mtimeMs) <= sinceTs) return { error: `decision ${d} is not newer than the latest round of ${key}` };
   return { path, sha: sha256(bytes) };
 }
 
-async function checkRecords(specs: string, key: string, rows: LedgerRow[]): Promise<Checked> {
+async function checkRecords(specs: string, key: string, rows: LedgerRow[], reader?: RoundReader): Promise<Checked> {
   let epoch = 0; let roundTs = 0; let sawReset = false; let sawOverride = false;
   const blocking: Record<Kind, string[]> = { spec: [], plan: [] }; const maxRound: Record<Kind, number> = { spec: 0, plan: 0 }; const classOf = new Map<string, string>();
   const usedCritical = new Set<string>(); const usedReset = new Set<string>(); const ruled = new Set<string>();
   const criticals: { row: LedgerRow; epoch: number }[] = []; let override: { row: LedgerRow; epoch: number } | null = null; const invalid: string[] = [];
-  const take = (kind: Kind, round: number, r: Returned[]) => { maxRound[kind] = round; blocking[kind] = r.flatMap(x => blockingOf(x).map(b => b.id)); for (const x of r) for (const f of x.findings ?? []) if (f.critical) classOf.set(findingKey(f.id, x.return_sha), f.critical); };
+  const latest: LatestReturns = { spec: [], plan: [] }; const extensions: { row: LedgerRow; epoch: number }[] = [];
+  const spent = { numbers: new Set<string>(), paths: new Set<string>(), shas: new Set<string>() };
+  const earlierExtensions: LedgerRow[] = [];
+  const spend = (r: LedgerRow) => { spent.numbers.add(String(r.decision)); if (isText(r.decision_path)) spent.paths.add(r.decision_path); if (isText(r.decision_sha)) spent.shas.add(r.decision_sha); };
+  const opensRound = (round: number, kinds?: Kind[]) => criticals.some(c => c.epoch === epoch && Number(c.row.opens) === round) || (override?.epoch === epoch && Number(override.row.round_opened) === round) || extensions.some(e => e.epoch === epoch && Number(e.row.round_opened) === round && (!kinds || opensKinds(e.row, kinds)));
+  const take = (kind: Kind, round: number, r: Returned[]) => { maxRound[kind] = round; latest[kind] = r; blocking[kind] = r.flatMap(x => blockingOf(x).map(b => b.id)); for (const x of r) for (const f of x.findings ?? []) if (f.critical) classOf.set(findingKey(f.id, x.return_sha), f.critical); };
   const label = (r: LedgerRow) => r.decision === undefined ? r.row : `${r.row} ${r.decision}`;
   for (const r of rows) {
     if (r.row === "seed") for (const k of KINDS) take(k, Number(r[k]) || 0, (r.latest?.[k] as Returned[] | undefined) ?? []);
     else if (r.row === "round" && (Number(r.epoch) || 0) === epoch) { roundTs = Number(r.ts) || 0; take(r.critic as Kind, Number(r.round) || 0, [r]); }
     else if (r.row === "reset") {
-      const d = String(r.decision); const q = sawReset ? null : await quoteRule(specs, key, d, String(r.quote), usedReset.has(d), roundTs);
-      sawReset = true; usedReset.add(d);
-      if (q && !("error" in q) && q.path === r.decision_path && q.sha === r.decision_sha) { epoch++; blocking.spec = []; blocking.plan = []; maxRound.spec = 0; maxRound.plan = 0; classOf.clear(); ruled.clear(); }
+      const d = String(r.decision); const q = sawReset ? null : await quoteRule(specs, key, d, String(r.quote), usedReset.has(d), roundTs, reader);
+      sawReset = true; usedReset.add(d); spend(r);
+      if (q && !("error" in q) && !approvalSpentByExtension(earlierExtensions, d, q) && q.path === r.decision_path && q.sha === r.decision_sha) { epoch++; blocking.spec = []; blocking.plan = []; latest.spec = []; latest.plan = []; maxRound.spec = 0; maxRound.plan = 0; classOf.clear(); ruled.clear(); }
       else invalid.push(label(r));
     } else if (r.row === "critical") {
-      const d = String(r.decision); const q = await quoteRule(specs, key, d, String(r.quote), usedCritical.has(d), roundTs); usedCritical.add(d);
-      if (!("error" in q) && q.path === r.decision_path && q.sha === r.decision_sha && classOf.get(findingKey(r.id, r.return_sha)) === r.class && !ruled.has(findingKey(r.id, r.return_sha)) && (r.epoch === undefined || Number(r.epoch) === epoch) && [0, Math.max(maxRound.spec, maxRound.plan) + 1].includes(Number(r.opens))) { criticals.push({ row: r, epoch }); ruled.add(findingKey(r.id, r.return_sha)); }
+      const d = String(r.decision); const q = await quoteRule(specs, key, d, String(r.quote), usedCritical.has(d), roundTs, reader); usedCritical.add(d); spend(r);
+      if (!("error" in q) && !approvalSpentByExtension(earlierExtensions, d, q) && q.path === r.decision_path && q.sha === r.decision_sha && classOf.get(findingKey(r.id, r.return_sha)) === r.class && !ruled.has(findingKey(r.id, r.return_sha)) && (r.epoch === undefined || Number(r.epoch) === epoch) && [0, Math.max(maxRound.spec, maxRound.plan) + 1].includes(Number(r.opens))) { criticals.push({ row: r, epoch }); ruled.add(findingKey(r.id, r.return_sha)); }
       else invalid.push(label(r));
     } else if (r.row === "override") {
       const ids = Array.isArray(r.findings) ? r.findings.map((f: { id?: unknown }) => String(f?.id)) : [];
@@ -833,9 +879,20 @@ async function checkRecords(specs: string, key: string, rows: LedgerRow[]): Prom
       const ok = !sawOverride && ids.length > 0 && ids.every(id => open.has(id)) && isText(r.why) && isText(r.chief) && Math.max(maxRound.spec, maxRound.plan) >= CRITIC_ROUND_CAP + 1 && Number(r.round_opened) === Math.max(maxRound.spec, maxRound.plan) + 1;
       sawOverride = true;
       if (ok) override = { row: r, epoch }; else invalid.push(label(r));
+    } else if (r.row === "extension") {
+      // Replayed at its own append point: the state it binds is the state of the rows before it, so a later seal never unseats it.
+      const d = String(r.decision); const writer = Math.max(maxRound.spec, maxRound.plan);
+      const q = await quoteRule(specs, key, d, String(r.quote), spent.numbers.has(d), roundTs, reader);
+      const lands = extensionLands(r.round_opened, writer, extensionAim(maxRound, latest), opensRound);
+      const ok = !("error" in q) && q.path === r.decision_path && q.sha === r.decision_sha && !spent.paths.has(q.path) && !spent.shas.has(q.sha)
+        && r.epoch === epoch && isText(r.why) && r.why.trim() !== "" && isText(r.chief) && r.chief.trim() !== "" && writer >= CRITIC_ROUND_CAP + 1 && lands
+        && openFindingsOf(latest).length > 0 && findingsKey(r.findings) === findingsKey(openFindingsOf(latest)) && returnsKey(r.returns) === returnsKey(returnsOf(latest));
+      spend(r);
+      earlierExtensions.push(r);
+      if (ok) extensions.push({ row: r, epoch }); else invalid.push(label(r));
     }
   }
-  return { epoch, override: override && override.epoch === epoch ? override.row : null, criticals: criticals.filter(c => c.epoch === epoch).map(c => c.row), invalid };
+  return { epoch, override: override && override.epoch === epoch ? override.row : null, criticals: criticals.filter(c => c.epoch === epoch).map(c => c.row), extensions: extensions.filter(e => e.epoch === epoch).map(e => e.row), invalid };
 }
 
 function capRefusal(key: string, rows: LedgerRow[], kind: Kind, round: number): string | null {
@@ -844,7 +901,8 @@ function capRefusal(key: string, rows: LedgerRow[], kind: Kind, round: number): 
   const critical = c.criticals.some(r => Number(r.opens) === round);
   if (round === CRITIC_ROUND_CAP + 1) return critical || KINDS.some(k => blockedAt(rows, k, CRITIC_ROUND_CAP)) ? null : `${key} ${kind} round ${round} needs a blocking finding in round ${CRITIC_ROUND_CAP} of either kind; sign it under 848, its minors go to the build`;
   const override = !!c.override && Number(c.override.round_opened) === round && openBlocking(rows).length > 0;
-  return critical || override ? null : `${key} writer round ${round} needs a round-override or round-critical record`;
+  const extension = c.extensions.some(r => Number(r.round_opened) === round && (r.findings as { critic?: string }[]).some(f => f.critic === kind)) && openBlocking(rows).length > 0;
+  return critical || override || extension ? null : `${key} writer round ${round} needs a round-override or round-critical record`;
 }
 
 function stateOf(key: string, rows: Rows): RoundState {
@@ -867,7 +925,6 @@ export async function roundState(specsRoot: string, key: string): Promise<RoundS
   return stateOf(key, await loadLedger(specsRoot, key));
 }
 
-const CRITIC_FILE = /^(.+?)\.critic-(?:(spec|plan)-r(\d+)|r(\d+)-(spec|plan))\.md$/;
 export type UnsealedRound = { file: string; kind: Kind; round: number; command: string };
 export async function unsealedRounds(specsRoot: string, key: string): Promise<{ unsealed: UnsealedRound[]; unread: string[] }> {
   const rows = await loadLedger(specsRoot, key);
@@ -938,12 +995,12 @@ function roundBefore(rows: LedgerRow[], kind: Kind, r: number): { returns: { ret
   const later = rows.filter(x => x.row === "seal" && returns.some(y => y.return_sha === x.return_sha)).map(x => sealedFileOf(x, false));
   return { returns, sealed: distinctFiles([...own, ...later]) };
 }
-const closureMarker = (key: string, kind: Kind, r: number, returnSha: string) => `CLOSURE-CHECK ${key} ${kind} r${r - 1} ${returnSha.slice(0, 12)}`;
+export const closureMarker = (key: string, kind: Kind, r: number, returnSha: string) => `CLOSURE-CHECK ${key} ${kind} r${r - 1} ${returnSha.slice(0, 12)}`;
 
 async function snapshotsOf(specs: string, key: string, sealed: SealedFile[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   for (const s of sealed) {
-    const path = join(ledgerDir(specs), key, s.read_sha);
+    const path = join(ledgerDirOf(specs), ledgerEntryNames(key).folder, s.read_sha);
     const bytes = await readFile(path).catch((e: NodeJS.ErrnoException) => { if (e.code === "ENOENT") return null; throw e; });
     if (bytes === null) { if (s.seeded) continue; throw new Error(`snapshot ${s.read_sha} was edited`); }
     if (sha256(bytes) !== s.read_sha) throw new Error(`snapshot ${s.read_sha} was edited`);
@@ -1018,7 +1075,7 @@ export async function sealRound(verdict: string, readPath: string): Promise<void
   await withLedgerLock(t.specs, t.key, async () => {
     const rows = await loadLedger(t.specs, t.key);
     const admitted = await admit(t, rows);
-    const file = join(ledgerDir(t.specs), `${t.key}.jsonl`);
+    const file = join(ledgerDirOf(t.specs), ledgerEntryNames(t.key).file);
     if (admitted === null) {
       await snapshotBytes(t.specs, t.key, bytes, readSha);
       await appendFile(file, `${JSON.stringify({ v: 1, ts: Date.now(), key: t.key, row: "seal", return_sha: sum, read_path: t.page, read_sha: readSha })}\n`);
@@ -1037,6 +1094,325 @@ export type LedgerVerdict = { key: string; kind: Kind; round: number; mode: stri
 export async function ledgerVerify(file: string, opts: { spec?: string; sign?: boolean } = {}): Promise<LedgerVerdict> {
   const abs = await realpath(file).catch(() => { throw new Error(`${file}: not found`); });
   return verifyReturn(abs, await readCritic(abs), opts);
+}
+
+export function cappedReader(specs: string, key: string) {
+  const files = new Map<string, { bytes: Buffer; sha256: string; mtime_ms: number }>();
+  const aliases = new Map<string, string>();
+  const directories = new Map<string, { canonical: string | null; names: string[] }>();
+  const pins = new Map<string, EvidenceFilePin | HistoryPin>();
+  const selections: Extract<EvidencePin, { role: "decision-selection" }>[] = [];
+  const fail = (path: string) => { throw new Error(`capped-fold: evidence changed or is unreadable: ${path}`); };
+  const canonical = async (path: string) => {
+    if (!isAbsolute(path)) throw new Error(`capped-fold: expected an absolute path: ${path}`);
+    const abs = await realpath(path);
+    if (path !== abs) throw new Error(`capped-fold: evidence lookup must be canonical: ${path}`);
+    if (aliases.has(path) && aliases.get(path) !== abs) fail(path);
+    aliases.set(path, abs); aliases.set(abs, abs);
+    return abs;
+  };
+  const roleOf = (path: string): EvidenceFilePin["role"] => path === manifestFile(specs) ? "manifest"
+    : path === join(ledgerDirOf(specs), ledgerEntryNames(key).file) ? "ledger"
+    : dirname(path) === join(ledgerDirOf(specs), ledgerEntryNames(key).folder) ? "snapshot"
+    : dirname(path) === join(specs, "decisions") ? "decision" : "artifact";
+  const read = async (path: string, role: EvidenceFilePin["role"] | "history" = roleOf(path)) => {
+    const abs = await canonical(path);
+    if (!files.has(abs)) {
+      const got = pinnedRead(abs);
+      if (!("bytes" in got)) return fail(abs);
+      files.set(abs, got);
+    }
+    const got = files.get(abs)!;
+    if (pins.has(abs) && pins.get(abs)!.role !== role) throw new Error(`capped-fold: conflicting evidence roles: ${abs}`);
+    pins.set(abs, { role, path: abs, sha256: got.sha256, ...(role === "decision" ? { mtime_ms: got.mtime_ms } : {}) });
+    return got;
+  };
+  const names = async (directory: string) => {
+    if (!directories.has(directory)) directories.set(directory, canonicalDirectoryNames(directory));
+    return directories.get(directory)!.names;
+  };
+  const decision = async (number: string) => {
+    const directory = join(specs, "decisions"); const selected = selectDecisionNames(await names(directory), number);
+    if (selected.length !== 1 || directories.get(directory)!.canonical !== directory) fail(directory);
+    if (!selections.some(s => s.decision === number)) selections.push({ role: "decision-selection", directory, decision: number, names: selected });
+  };
+  const recheck = async () => {
+    for (const [path, pin] of pins) {
+      const got = pinnedRead(path);
+      if (!("bytes" in got) || got.sha256 !== pin.sha256 || (pin.role === "decision" && got.mtime_ms !== pin.mtime_ms)) fail(path);
+    }
+    for (const [path, abs] of aliases) if (await realpath(path).catch(() => null) !== abs) fail(path);
+    for (const [directory, initial] of directories) {
+      if (await realpath(directory).catch(() => null) !== initial.canonical) fail(directory);
+      const now = boundedDirectoryNames(directory);
+      const selected = selections.filter(s => s.directory === directory);
+      if (selected.length) {
+        if (selected.some(s => JSON.stringify(selectDecisionNames(now, s.decision)) !== JSON.stringify(s.names))) fail(directory);
+      } else if (JSON.stringify(now) !== JSON.stringify(initial.names)) fail(directory);
+    }
+  };
+  return { read, names, canonical, decision, recheck, pins: () => [...pins.values(), ...selections] };
+}
+
+function cappedDeclaredKey(text: string, key: string, frontmatter: boolean): void {
+  const single = (lines: RegExpMatchArray[]) => lines.length === 1 && new RegExp(`^(?:${key}|\\[\\s*${key}\\s*\\])$`).test(lines[0][1].trim());
+  const head = frontmatter ? text.split(/^## /m)[0] : text;
+  const declaration = frontmatter ? /^(?:Keys?|- Tickets?):[ \t]*(.+)$/gm : /^Keys?:\s*(.+)$/gm;
+  if (!single([...head.matchAll(declaration)])) throw new Error(`capped-fold: header must declare only ${key}`);
+  if (frontmatter) {
+    const front = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(text)?.[1] ?? "";
+    if (!single([...front.matchAll(/^tickets:[ \t]*(.+)$/gm)])) throw new Error(`capped-fold: tickets must declare only ${key}`);
+  }
+}
+
+// The v2 counterpart of cappedDeclaredKey for the spec head and the plan, where both declarations are optional: no line passes, one line naming exactly
+// the keys passes, and two lines, a subset, a superset, one key of many or an empty line refuse. With front matter the head is the text before the first
+// `## ` and the front matter's own tickets line is read too; without it the whole text is read for a Keys line.
+export function cappedHeadDeclared(text: string, keys: readonly string[], frontmatter: boolean): void {
+  const wanted = [...keys].sort().join(", ");
+  const head = frontmatter ? text.split(/^## /m)[0] : text;
+  const lines = [...head.matchAll(frontmatter ? /^(?:Keys?|- Tickets?):[ \t]*(.*)$/gm : /^Keys?:[ \t]*(.*)$/gm)];
+  const names = (value: string) => { try { optionalReturnAgreement(`Keys: ${value}`, { keys }); return true; } catch { return false; } };
+  if (lines.length > 1 || (lines.length === 1 && !names(lines[0][1]))) throw new Error(`capped-fold: header must declare only ${wanted}`);
+  if (!frontmatter || !/^tickets:/m.test(/^---\n([\s\S]*?)\n---(?:\n|$)/.exec(text)?.[1] ?? "")) return;
+  const declared = declaredTickets(text);
+  if (!declared || declared.length !== keys.length || !keys.every(key => declared.includes(key))) throw new Error(`capped-fold: tickets must declare only ${wanted}`);
+}
+
+const cappedPathKeys = (path: string) => [KEY_FOLDER.test(basename(dirname(path))) ? basename(dirname(path)) : null,
+  /^([A-Z][A-Z0-9]+-[0-9]+)(?=[-.])/.exec(basename(path))?.[1]].filter((key): key is string => !!key);
+
+function cappedFindings(text: string, kind: Kind, round: number, row: LedgerRow, headingOk: (parenthetical: string) => boolean): Finding[] {
+  const count = lastLine(text) === CLEAN[kind] ? 0 : Number(new RegExp(`^${kind.toUpperCase()} FINDINGS ([0-9]+)$`).exec(lastLine(text))?.[1]);
+  if (!Number.isSafeInteger(count) || count < 0 || count > 4096) throw new Error("capped-fold: invalid finding count");
+  const candidates = text.split("\n").filter(l => /^[ \t]*[-*][ \t]+\*\*[A-Za-z][\w.-]*\*\*[ \t]*\(/.test(l));
+  for (const line of candidates) {
+    const match = FINDING_LINE.exec(line);
+    if (!match || !headingOk(match[2])) throw new Error(`capped-fold: ineligible finding heading: ${line}`);
+  }
+  const parsed = parseFindings(text, kind, round);
+  const findings = parsed.findings;
+  if (!Number.isSafeInteger(count) || count !== findings.length || count !== candidates.length || count !== row.findings.length
+    || parsed.unrated_ids.length || row.unrated_ids.length || new Set(findings.map(f => f.id)).size !== count) throw new Error("capped-fold: finding count/IDs do not agree");
+  const ordered = (fs: Finding[]) => JSON.stringify(fs.map(f => [f.id, f.severity]).sort((a, b) => a[0].localeCompare(b[0])));
+  const ledgerFindings = row.findings as Finding[];
+  if (ledgerFindings.some(f => Object.keys(f).some(k => !["id", "severity", "class"].includes(k)) || (f.class && (row.mode !== "closure" || f.class !== "out-of-closure")))
+    || ordered(findings) !== ordered(ledgerFindings.map(({ class: _class, ...f }) => f))) throw new Error("capped-fold: ledger findings do not agree or are blocking");
+  return findings;
+}
+
+export async function cappedLatest(spec: string, plan: string, reader: RoundReader, expected: [ReturnPin, ReturnPin], history?: ReadonlySet<string>): Promise<void> {
+  const key = keyOf(spec)!;
+  for (const directory of returnDirectories(key, spec, plan, expected)) checkLatestReturns(directory, await reader.names(directory), key, expected, history);
+}
+
+async function cappedLedgerEvidence(rows: Rows, key: string, reader: ReturnType<typeof cappedReader>): Promise<void> {
+  let epoch = 0; const rounds = { spec: 0, plan: 0 };
+  for (const [index, row] of rows.entries()) {
+    if (row.key !== key || !["seed", "round", "seal", "reset", "critical", "override", "extension"].includes(row.row)) throw new Error("capped-fold: invalid ledger key/record");
+    if (row.row !== "reset" && row.epoch !== undefined && row.epoch !== epoch) throw new Error("capped-fold: invalid ledger epoch");
+    if (row.row === "seed") {
+      if (index !== 0) throw new Error("capped-fold: seed must be the first ledger record");
+      rounds.spec = Number(row.spec); rounds.plan = Number(row.plan);
+    }
+    if (row.row === "reset") { epoch++; rounds.spec = rounds.plan = 0; if (row.epoch !== epoch) throw new Error("capped-fold: invalid reset epoch"); }
+    if (row.row === "round") {
+      if ((row.epoch ?? 0) !== epoch || row.round !== rounds[row.critic as Kind] + 1 || row.mode !== (row.round <= CRITIC_ROUND_CAP ? "full" : "closure")) throw new Error("capped-fold: invalid round epoch/order/mode");
+      rounds[row.critic as Kind] = row.round;
+    }
+    if (spendsDecision(row)) await reader.decision(String(row.decision));
+  }
+}
+
+type CappedReader = ReturnType<typeof cappedReader>;
+type Carried = CappedFoldProof["carried"][number];
+// The four decisions the per-return evidence takes from its mode. Everything else in a return's check is shared and ordered once.
+// `expectedKey` and `kind` are existing CappedReturnInput fields the strict checks and their messages need, passed explicitly (no ambient context).
+type CappedPolicy = {
+  declaration(text: string, expectedKey: string): void;
+  reviewed(text: string, specSha: string, kind: Kind): void;
+  headingOk(parenthetical: string): boolean;
+  quotes(text: string): { sha: string; path: string }[];
+};
+// `path` is the return path as supplied: the evidence canonicalizes and reads it itself, in the order the verifier always did.
+type CappedReturnInput = { key: string; kind: Kind; path: string; spec: string; plan: string; specSha: string; planSha: string; rows: Rows; reader: CappedReader };
+
+export const v1Policy: CappedPolicy = {
+  declaration: (text, expectedKey) => cappedDeclaredKey(text, expectedKey, false),
+  reviewed: (text, specSha, kind) => {
+    const reviewed = reviewedSpecHashes(text);
+    if (reviewed.length !== 1 || reviewed[0] !== specSha) throw new Error(`capped-fold: ${kind} must review the current spec exactly once`);
+  },
+  headingOk: parenthetical => /^(minor|medium)$/.test(parenthetical),
+  quotes: text => {
+    const quotes = [...text.matchAll(/^READ(?:-SHA256)? ([0-9a-f]{64}) (\S.*)$/gm)];
+    if (text.split("\n").filter(l => /^READ(?:-SHA256)?(?:\s|$)/.test(l)).length !== quotes.length) throw new Error("capped-fold: malformed seal or READ quote");
+    return quotes.map(quote => ({ sha: quote[1], path: quote[2] }));
+  },
+};
+
+// The return policy of the ledger-bound carry. The declarations are optional and never contradict, the finding heading is read as the
+// ledger reads it (first token minor or medium; any operator-critical tag, reopen, regression or major refuses), and the quotes are the
+// two shapes of readQuotesOf. Every other check of a return stays in cappedReturnEvidence.
+export const v2Policy = (keys: readonly string[]): CappedPolicy => ({
+  declaration: text => optionalReturnAgreement(text, { keys }),
+  reviewed: (text, specSha) => optionalReturnAgreement(text, { specSha }),
+  headingOk: parenthetical => {
+    const heading = parseFindings(`- **x** (${parenthetical})`, "spec", 1).findings[0];
+    return !!heading && (heading.severity === "minor" || heading.severity === "medium")
+      && heading.critical === undefined && heading.critical_refused === undefined && !heading.reopens && !heading.regression;
+  },
+  quotes: readQuotesOf,
+});
+
+export async function cappedLedger(specs: string, key: string, reader: CappedReader): Promise<Rows> {
+  const rows = await loadLedger(specs, key, reader);
+  if (rows.checked.invalid.length) throw new Error(`capped-fold: invalid ledger records: ${rows.checked.invalid.join(", ")}`);
+  await cappedLedgerEvidence(rows, key, reader);
+  if (criticalOpenOf(rows).length) throw new Error("capped-fold: open historical operator-critical findings");
+  return rows;
+}
+
+function requireCarried(carried: readonly Carried[]): void {
+  if (!carried.length) throw new Error("capped-fold: requires at least one carried finding");
+}
+
+// Precondition for a direct caller: `input.spec` is the canonical path of a spec under a specs root, and `input.reader` was built for
+// that same root (the helper derives the root from the spec and reads the content-addressed snapshots through the reader).
+export async function cappedReturnEvidence(input: CappedReturnInput, policy: CappedPolicy): Promise<{ pin: ReturnPin; carried: Carried[] }> {
+  const { key, kind, spec, plan, specSha, planSha, rows, reader } = input; const specs = specsRootOf(spec)!;
+  const path = await reader.canonical(input.path); const got = await reader.read(path, "return"); const text = got.bytes.toString("utf8");
+  if (cappedPathKeys(path).some(pathKey => pathKey !== key)) throw new Error("capped-fold: return filename/folder key disagrees");
+  policy.declaration(text, key);
+  const row = latestRow(rows, kind); const sum = returnSha(text);
+  if (!row || row.verdict_path !== path || row.return_sha !== sum || row.verdict !== lastLine(text)
+    || basename(path) !== `${basename(spec)}.critic-${kind}-r${row.round}.md`
+    || roundRows(rows, kind).filter(r => r.round === row.round).length !== 1) throw new Error(`capped-fold: not the actual latest real ${kind} round`);
+  policy.reviewed(text, specSha, kind);
+  const findings = cappedFindings(text, kind, row.round, row, policy.headingOk);
+  if (findings.length && (row.round < CRITIC_ROUND_CAP || !capRefusal(key, rows, kind, row.round + 1))) throw new Error("capped-fold: findings have not reached the refused round cap");
+  const recorded = distinctFiles([sealedFileOf(row, false), ...rows.filter(r => r.row === "seal" && r.return_sha === sum).map(r => sealedFileOf(r, false))]);
+  const seals = sealsOf(text); const quotes = policy.quotes(text);
+  if (text.split("\n").filter(l => /^CONTENT-SHA256(?:\s|$)/.test(l)).length !== seals.length) throw new Error("capped-fold: malformed seal or READ quote");
+  const quoted = new Map<string, string>();
+  for (const quote of quotes) {
+    const artifact = await reader.canonical(resolve(dirname(path), quote.path));
+    if (quoted.has(artifact)) throw new Error("capped-fold: duplicate critic READ quotes");
+    quoted.set(artifact, quote.sha);
+  }
+  const declared = new Map<string, string>();
+  for (const seal of seals) {
+    const raw = resolve(dirname(path), seal.rel); const artifact = await reader.canonical(raw);
+    if (declared.has(artifact)) {
+      if (declared.get(artifact) !== seal.sha) throw new Error("capped-fold: conflicting seals");
+      continue;
+    }
+    declared.set(artifact, seal.sha);
+    const read = await reader.read(raw, "artifact");
+    if (read.sha256 !== seal.sha || !recorded.some(s => s.read_path === artifact && s.read_sha === seal.sha)) throw new Error(`capped-fold: seal provenance disagrees: ${artifact}`);
+    if (quoted.get(artifact) !== seal.sha) throw new Error(`capped-fold: missing/conflicting critic READ quote: ${artifact}`);
+    const snapshot = await reader.read(join(ledgerDirOf(specs), ledgerEntryNames(key).folder, seal.sha));
+    if (snapshot.sha256 !== seal.sha) throw new Error("capped-fold: content-addressed snapshot changed");
+  }
+  if (recorded.length !== declared.size || quoted.size !== declared.size || recorded.some(s => declared.get(s.read_path) !== s.read_sha)
+    || declared.get(spec) !== specSha || (kind === "plan" && declared.get(plan) !== planSha)) throw new Error("capped-fold: missing/extra ledger seals or review coverage");
+  return { pin: { kind, path, sha256: got.sha256, round: row.round, return_sha: sum, residuals: findings.length },
+    carried: findings.map(finding => ({ key, epoch: rows.checked.epoch, kind, round: row.round, return_path: path, return_sha: sum,
+      finding_id: finding.id, severity: finding.severity as "minor" | "medium", status: "open-carried" as const })) };
+}
+
+// A group's non-anchor keys hold no ledger file, snapshot folder or manifest entry under the anchor's specs root. The shared ledger folder is
+// listed and the manifest read through the reader, so both are pinned and rechecked like every other read; any presence, listing fault or
+// manifest fault refuses and none is read as absence. The pin is null when the group has no non-anchor key.
+// Preconditions for a direct caller: the reader is built for the same specs root as `specs`, and the listing is read once and cached, so a
+// member that appears later is caught only by `reader.recheck()`, which the caller must run last.
+export async function cappedMemberState(specs: string, anchor: string, members: readonly string[], reader: CappedReader): Promise<MemberAbsencePin | null> {
+  const others = members.filter(key => key !== anchor).sort();
+  if (!others.length) return null;
+  const directory = ledgerDirOf(specs);
+  const listing = await reader.names(directory);
+  const manifest = await readManifest(specs, reader);
+  const { present } = memberLedgerState(listing, Object.keys(manifest.keys), others);
+  if (present.length) throw new Error(`capped-fold: group member holds ledger state: ${present.join(", ")}`);
+  return { role: "member-absence", directory, keys: others };
+}
+
+// The earlier-epoch returns the ledger itself accounts for: the verdict_path of each earlier-epoch round row, and of a seed row's latest returns
+// when the epoch is above zero. A candidate is proven history when its bytes still hash (returnSha) to the digest the ledger recorded and neither a
+// current-epoch round row nor any path in `current` uses it. A drifted file, a lost row, a current path or a path the reader would not take (a link,
+// a spelling that is not canonical) is simply not history, so the namespace check treats it like any other unaccounted file. Only proven files are
+// pinned, through the reader, with role history.
+export async function cappedHistory(rows: Rows, current: readonly string[], reader: CappedReader): Promise<{ set: ReadonlySet<string>; pins: HistoryPin[] }> {
+  const epoch = rows.checked.epoch;
+  const taken = new Set([...current, ...KINDS.flatMap(kind => roundRows(rows, kind).map(row => String(row.verdict_path)))]);
+  const recorded = new Map<string, Set<string>>();
+  const record = (path: unknown, digest: unknown) => { if (typeof path === "string" && typeof digest === "string") recorded.set(path, (recorded.get(path) ?? new Set<string>()).add(digest)); };
+  for (const row of rows) if (row.row === "round" && (Number(row.epoch) || 0) < epoch) record(row.verdict_path, row.return_sha);
+  if (epoch > 0) for (const kind of KINDS) for (const seeded of (seedOf(rows)?.latest?.[kind] ?? []) as SeededReturn[]) record(seeded.verdict_path, seeded.return_sha);
+  const pins: HistoryPin[] = [];
+  for (const [path, digests] of recorded) {
+    if (taken.has(path) || await realpath(path).catch(() => null) !== path) continue;
+    const peek = pinnedRead(path);
+    if (!("bytes" in peek) || !digests.has(returnSha(peek.bytes.toString("utf8")))) continue;
+    const got = await reader.read(path, "history");
+    if (got.sha256 !== peek.sha256) throw new Error(`capped-fold: evidence changed or is unreadable: ${path}`);
+    pins.push({ role: "history", path, sha256: got.sha256 });
+  }
+  return { set: new Set(pins.map(pin => pin.path)), pins };
+}
+
+export async function cappedFold(o: { key: string; spec: string; plan: string; specReturn: string; planReturn: string }): Promise<CappedFoldProof> {
+  if (!KEY_FOLDER.test(o.key)) throw new Error("capped-fold: expected one ticket key");
+  for (const path of [o.spec, o.plan, o.specReturn, o.planReturn]) if (!isAbsolute(path)) throw new Error("capped-fold: paths must be absolute");
+  const spec = await realpath(o.spec); const specs = specsRootOf(spec);
+  if (!specs || !cappedPathKeys(spec).length || cappedPathKeys(spec).some(key => key !== o.key)) throw new Error("capped-fold: spec filename/folder key disagrees");
+  const reader = cappedReader(specs, o.key);
+  const specRead = await reader.read(o.spec); const plan = await reader.canonical(o.plan); const planRead = await reader.read(o.plan);
+  if (spec === plan || cappedPathKeys(plan).some(key => key !== o.key)) throw new Error("capped-fold: expected a distinct plan for this key");
+  cappedDeclaredKey(specRead.bytes.toString("utf8"), o.key, true); cappedDeclaredKey(planRead.bytes.toString("utf8"), o.key, true);
+  const rows = await cappedLedger(specs, o.key, reader);
+  const returns: ReturnPin[] = []; const carried: Carried[] = [];
+  for (const kind of KINDS) {
+    const evidence = await cappedReturnEvidence({ key: o.key, kind, path: kind === "spec" ? o.specReturn : o.planReturn, spec, plan, specSha: specRead.sha256, planSha: planRead.sha256, rows, reader }, v1Policy);
+    returns.push(evidence.pin); carried.push(...evidence.carried);
+  }
+  requireCarried(carried);
+  const tuple = returns as [ReturnPin, ReturnPin]; await cappedLatest(spec, plan, reader, tuple);
+  const proof = validateCappedFoldProofShape({ schema: 1, reader_version: PINNED_READ_VERSION, mode: "capped-carry", key: o.key, epoch: rows.checked.epoch,
+    spec: { path: spec, sha256: specRead.sha256 }, plan: { path: plan, sha256: planRead.sha256 }, returns: tuple, pins: reader.pins(), carried });
+  await reader.recheck();
+  return proof;
+}
+
+// The ledger-bound capped carry for one or more keys, read only. The steps run in a fixed order and the reader's recheck is the last: it re-reads every
+// pin and every listing the fold took (the return folders, the member listing, the manifest and the history files), so anything that changed in between refuses.
+export async function cappedFoldLedger(o: { keys: string[]; spec: string; plan: string; specReturn: string; planReturn: string }): Promise<CappedLedgerProof> {
+  const keys = [...o.keys].sort();
+  if (!keys.length || keys.some((key, i) => !KEY_FOLDER.test(key) || key === keys[i - 1])) throw new Error("capped-fold: expected one or more distinct ticket keys");
+  for (const path of [o.spec, o.plan, o.specReturn, o.planReturn]) if (!isAbsolute(path)) throw new Error("capped-fold: paths must be absolute");
+  const spec = await realpath(o.spec); const specs = specsRootOf(spec); const anchor = keyOf(spec);
+  if (!specs || !anchor || cappedPathKeys(spec).some(key => key !== anchor)) throw new Error("capped-fold: spec filename/folder key disagrees");
+  if (!keys.includes(anchor)) throw new Error(`capped-fold: the anchor ${anchor} is not one of the keys`);
+  const reader = cappedReader(specs, anchor);
+  const specRead = await reader.read(o.spec); const plan = await reader.canonical(o.plan); const planRead = await reader.read(o.plan);
+  if (spec === plan || cappedPathKeys(plan).some(key => key !== anchor)) throw new Error("capped-fold: expected a distinct plan for this key");
+  const specText = specRead.bytes.toString("utf8"); const planText = planRead.bytes.toString("utf8"); const declared = declaredTickets(specText);
+  if (!declared || declared.length !== keys.length || !keys.every(key => declared.includes(key))) throw new Error(`capped-fold: tickets must declare only ${keys.join(", ")}`);
+  cappedHeadDeclared(specText, keys, true); cappedHeadDeclared(planText, keys, true);
+  const rows = await cappedLedger(specs, anchor, reader);
+  const policy = v2Policy(keys); const returns: ReturnPin[] = []; const carried: Carried[] = [];
+  for (const kind of KINDS) {
+    const evidence = await cappedReturnEvidence({ key: anchor, kind, path: kind === "spec" ? o.specReturn : o.planReturn, spec, plan, specSha: specRead.sha256, planSha: planRead.sha256, rows, reader }, policy);
+    returns.push(evidence.pin); carried.push(...evidence.carried);
+  }
+  requireCarried(carried);
+  const members = await cappedMemberState(specs, anchor, keys, reader);
+  const history = await cappedHistory(rows, returns.map(pin => pin.path), reader);
+  const tuple = returns as [ReturnPin, ReturnPin]; await cappedLatest(spec, plan, reader, tuple, history.set);
+  const proof = validateCappedLedgerProofShape({ schema: 2, reader_version: LEDGER_READ_VERSION, mode: "capped-carry-ledger", anchor, keys, epoch: rows.checked.epoch,
+    spec: { path: spec, sha256: specRead.sha256 }, plan: { path: plan, sha256: planRead.sha256 }, returns: tuple, pins: [...reader.pins(), ...(members ? [members] : [])], carried });
+  await reader.recheck();
+  return proof;
 }
 async function verifyReturn(abs: string, text: string, opts: { spec?: string; sign?: boolean }): Promise<LedgerVerdict> {
   const spec = opts.spec === undefined ? undefined : await realpath(opts.spec).catch(() => resolve(opts.spec!));
@@ -1071,7 +1447,7 @@ async function verifyReturn(abs: string, text: string, opts: { spec?: string; si
   return { key, kind, round, mode };
 }
 
-const appendRow = (specs: string, key: string, row: Record<string, unknown>) => appendFile(join(ledgerDir(specs), `${key}.jsonl`), `${JSON.stringify({ v: 1, ts: Date.now(), key, ...row })}\n`);
+const appendRow = (specs: string, key: string, row: Record<string, unknown>) => appendFile(join(ledgerDirOf(specs), ledgerEntryNames(key).file), `${JSON.stringify({ v: 1, ts: Date.now(), key, ...row })}\n`);
 const needConsole = (verb: string) => { if (process.env.HIMMEL_CONSOLE !== "1") throw new Error(`${verb}: needs HIMMEL_CONSOLE=1, the chief's marker; a worker never writes a record`); };
 
 export async function roundOverride(specs: string, key: string, o: { findings: string[]; why: string; chief: string }): Promise<void> {
@@ -1083,7 +1459,12 @@ export async function roundOverride(specs: string, key: string, o: { findings: s
     const open = openBlocking(rows);
     const named = o.findings.map(id => {
       const f = open.find(x => x.id === id);
-      if (!f) throw new Error(`round-override: ${id} is not an open blocking finding of ${key}'s latest round`);
+      if (!f) {
+        const critical = criticalOpenOf(rows);
+        const hint = critical.length ? `; ${key} has open operator-critical findings: ${critical.map(c => `${c.id} (${c.class})`).join(", ")}; the operator rules on them first (round-critical)`
+          : !open.length ? "; for eligible capped nonblocking findings, use normal signing with --spec <canonical spec>, --plan <distinct canonical plan> and both actual latest paired --verdict returns; verified carry is automatic only if accepted; keep frozen bytes unchanged, with no reset or fabricated CLEAN; otherwise stop for the owner" : "";
+        throw new Error(`round-override: ${id} is not an open blocking finding of ${key}'s latest round${hint}`);
+      }
       return { id, severity: f.severity, critic: f.kind, return_sha: f.return_sha };
     });
     const writer = writerRound(rows);
@@ -1101,6 +1482,7 @@ export async function roundCritical(specs: string, key: string, o: { finding: st
     if (!hit.f.critical) throw new Error(hit.f.critical_refused !== undefined ? `round-critical: '${hit.f.critical_refused}' is not an operator-critical class (${OPERATOR_CRITICAL_CLASSES.join(", ")})` : `round-critical: ${o.finding} carries no operator-critical class`);
     const q = await quoteRule(specs, key, o.decision, o.quote, rows.some(r => r.row === "critical" && String(r.decision) === o.decision), latestRoundTs(rows));
     if ("error" in q) throw new Error(`round-critical: ${q.error}`);
+    if (approvalSpentByExtension(rows, o.decision, q)) throw new Error(`round-critical: decision ${o.decision} was already used by a round-extension`);
     if (rows.checked.criticals.some(r => r.id === o.finding && r.return_sha === hit.return_sha)) throw new Error(`round-critical: ${o.finding} was already ruled on`);
     await appendRow(specs, key, { row: "critical", epoch: rows.checked.epoch, opens: o.noRound ? 0 : writerRound(rows) + 1, id: o.finding, class: hit.f.critical, decision: o.decision, quote: o.quote, decision_path: q.path, decision_sha: q.sha, return_sha: hit.return_sha });
   });
@@ -1113,11 +1495,65 @@ export async function roundReset(specs: string, key: string, o: { decision: stri
     if (rows.some(r => r.row === "reset")) throw new Error(`round-reset: ${key} already used its one reset`);
     const q = await quoteRule(specs, key, o.decision, o.quote, false, latestRoundTs(rows));
     if ("error" in q) throw new Error(`round-reset: ${q.error}`);
+    if (approvalSpentByExtension(rows, o.decision, q)) throw new Error(`round-reset: decision ${o.decision} was already used by a round-extension`);
     await appendRow(specs, key, { row: "reset", epoch: rows.checked.epoch + 1, decision: o.decision, quote: o.quote, decision_path: q.path, decision_sha: q.sha });
   });
 }
 
-const headingOf = async (verdictPath: string, id: string) => (await readFile(verdictPath, "utf8").catch(() => "")).split("\n").find(l => FINDING_LINE.exec(l)?.[1] === id);
+// A chief-only operator extension: one fresh operator decision opens exactly the next refused round, as a closure check, for the
+// kinds that carry its named findings: writer + 1, or a lagging kind's own next round (never a later one). It binds the epoch, each
+// kind's latest sealed return digests, every open blocking finding with its return digest, and the decision file's digest; the reader
+// replays it at its own append point. Open findings in kinds at different next rounds are refused: one grant opens one round.
+export async function roundExtension(specs: string, key: string, o: { findings: string[]; decision: string; quote: string; why: string; chief: string }): Promise<string> {
+  needConsole("round-extension");
+  return withLedgerLock(specs, key, async () => {
+    const rows = await loadLedger(specs, key);
+    if (!o.findings.length || !o.why.trim() || !o.chief.trim()) throw new Error("round-extension: --findings, --why and --chief are all required");
+    const writer = writerRound(rows);
+    if (writer < CRITIC_ROUND_CAP + 1) throw new Error(`round-extension: ${key} is at writer round ${writer}; rounds 1 to ${CRITIC_ROUND_CAP + 1} need no extension`);
+    const latest = { spec: latestReturns(rows, "spec"), plan: latestReturns(rows, "plan") }; const open = openFindingsOf(latest);
+    if (!open.length) throw new Error(`round-extension: ${key} has no open blocking finding in its latest returns; there is nothing to close`);
+    const unknown = o.findings.find(id => !open.some(f => f.id === id));
+    if (unknown !== undefined) throw new Error(`round-extension: ${unknown} is not an open blocking finding of ${key}'s latest round`);
+    const missing = [...new Set(open.map(f => f.id))].filter(id => !o.findings.includes(id));
+    if (missing.length) throw new Error(`round-extension: name every open blocking finding of ${key}; also open: ${missing.join(", ")}`);
+    const aim = extensionAim({ spec: kindRound(rows, "spec"), plan: kindRound(rows, "plan") }, latest)!;
+    if ("split" in aim) throw new Error(`round-extension: ${key}'s open blocking findings sit in kinds at different next rounds (${aim.split}); a grant opens one round, so nothing was written`);
+    const round = aim.round; const where = aim.lags ? `${aim.kinds.join("/")} round ${round}` : `writer round ${round}`;
+    if (aim.lags && round <= CRITIC_ROUND_CAP + 1) throw new Error(`round-extension: ${key} ${where} needs no extension; a grant is for a refused round only`);
+    const c = rows.checked;
+    if (c.criticals.some(r => Number(r.opens) === round) || (c.override && Number(c.override.round_opened) === round) || c.extensions.some(r => Number(r.round_opened) === round && (!aim.lags || opensKinds(r, aim.kinds)))) throw new Error(`round-extension: ${key} ${where} is already open; a grant is for a refused round only`);
+    const q = await quoteRule(specs, key, o.decision, o.quote, rows.some(r => spendsDecision(r) && String(r.decision) === o.decision), latestRoundTs(rows));
+    if ("error" in q) throw new Error(`round-extension: ${q.error}`);
+    if (rows.some(r => spendsDecision(r) && (r.decision_path === q.path || r.decision_sha === q.sha))) throw new Error(`round-extension: decision ${o.decision} repeats an approval file already used for ${key}`);
+    const row = { v: 1, ts: Date.now(), key, row: "extension", epoch: c.epoch, round_opened: round, findings: open, returns: returnsOf(latest), why: o.why, chief: o.chief, decision: o.decision, quote: o.quote, decision_path: q.path, decision_sha: q.sha };
+    const probe = await checkRecords(specs, key, [...rows, row]);
+    if (probe.extensions.length !== c.extensions.length + 1) throw new Error(`round-extension: the record would not validate on read (${probe.invalid.at(-1) ?? "unknown"}); nothing was written`);
+    await appendFile(join(ledgerDirOf(specs), ledgerEntryNames(key).file), `${JSON.stringify(row)}\n`);
+    return `round-extension: ${key} epoch ${c.epoch}: ${where} opens as a closure check of ${[...new Set(open.map(f => f.id))].join(", ")} (decision ${o.decision})`;
+  });
+}
+
+const protocolFinding = (line: string): string | null => { const m = FINDING_LINE.exec(line); return m && ["major", "medium", "minor"].includes(m[2].split(";")[0].trim()) ? m[1] : null; };
+// The complete block of finding `id` in a sealed return: its heading line through the line before the next protocol finding,
+// a CONTENT-SHA256 or READ line, or the final verdict line. Finite Markdown protocol, nothing is shell-parsed.
+function findingBlock(text: string, id: string): string | null {
+  const lines = text.split("\n"); const start = lines.findIndex(l => protocolFinding(l) === id);
+  if (start < 0) return null;
+  const last = lines.findLastIndex(l => l.trim() !== "");
+  let end = start + 1;
+  while (end < lines.length && protocolFinding(lines[end]) === null && !/^(?:CONTENT-SHA256|READ(?:-SHA256)?)\s+[0-9a-f]{64}\s+\S/.test(lines[end]) && !(end === last && /^(?:SPEC|PLAN) (?:CLEAN|FINDINGS \d+)$/.test(lines[end].trim()))) end++;
+  while (end > start + 1 && lines[end - 1].trim() === "") end--;
+  return lines.slice(start, end).join("\n");
+}
+async function sealedBlock(b: { id: string; severity: string; verdict_path: string; return_sha: string }): Promise<string> {
+  if (b.severity === "unrated") return `- **${b.id}** (unrated) [no protocol finding block: ${b.verdict_path} has no finding line for it, so the pack claims no text for it]`;
+  const text = await readFile(b.verdict_path, "utf8").catch((e: Error) => { throw new Error(`closure-pack: cannot read ${b.verdict_path} (${e.message}); the block of ${b.id} is unavailable, so no pack is built`); });
+  if (returnSha(text) !== b.return_sha) throw new Error(`closure-pack: ${b.verdict_path} changed since it was sealed; the block of ${b.id} is not the sealed one, so no pack is built`);
+  const block = findingBlock(text, b.id);
+  if (block === null) throw new Error(`closure-pack: ${b.id} has no finding block in ${b.verdict_path}; no pack is built`);
+  return block;
+}
 
 export async function closurePack(specs: string, key: string, kind: Kind): Promise<string> {
   const rows = await loadLedger(specs, key);
@@ -1129,10 +1565,10 @@ export async function closurePack(specs: string, key: string, kind: Kind): Promi
   const snaps = await snapshotsOf(specs, key, prev.sealed);
   const out = [closureMarker(key, kind, r, prev.returns[0].return_sha), "", "## open blocking findings"];
   const named = new Set<string>();
-  for (const b of openBlocking(rows)) { named.add(b.id); out.push((await headingOf(b.verdict_path, b.id)) ?? `- **${b.id}** (${b.severity})`); }
+  for (const b of openBlocking(rows)) { named.add(b.id); out.push(await sealedBlock(b)); }
   for (const c of rows.checked.criticals.filter(x => Number(x.opens) === r)) {
     const f = findingOf(rows, String(c.id));
-    if (!named.has(String(c.id)) && f) out.push((await headingOf(f.verdict_path, String(c.id))) ?? `- **${c.id}** (${f.f.severity}; operator-critical: ${f.f.critical})`);
+    if (!named.has(String(c.id)) && f) out.push(await sealedBlock({ id: String(c.id), severity: String(f.f.severity), verdict_path: f.verdict_path, return_sha: f.return_sha }));
   }
   out.push("", `## files round ${r - 1} read (sha256)`, ...prev.sealed.map(s => `${s.read_sha}  ${s.read_path}`), "", `## diff against the round ${r - 1} snapshots`);
   for (const s of prev.sealed) {
@@ -1151,8 +1587,9 @@ export async function foldList(specArg: string, specsArg?: string): Promise<stri
   const rows = await loadLedger(specs, key);
   const out: string[] = []; const seen = new Set<string>();
   const add = (f: { id: string; severity: string; tag?: string }, kind: Kind, round: number, path: string) => {
-    if (seen.has(f.id)) return;
-    seen.add(f.id); out.push(`- ${f.id} (${f.severity}${f.tag ? `; ${f.tag}` : ""}) ${kind} r${round} ${path}`);
+    const key = `${kind}:${f.id}`;
+    if (seen.has(key)) return;
+    seen.add(key); out.push(`- ${f.id} (${f.severity}${f.tag ? `; ${f.tag}` : ""}) ${kind} r${round} ${path}`);
   };
   const tagOf = (f: Finding) => [f.class === "out-of-closure" ? "out-of-closure" : "", f.reopens ? `reopens ${f.reopens}` : "", f.regression ? "regression" : "", f.critical ? `operator-critical: ${f.critical}` : ""].filter(Boolean).join("; ");
   for (const kind of KINDS) {
@@ -1170,7 +1607,6 @@ export async function foldList(specArg: string, specsArg?: string): Promise<stri
   return out;
 }
 
-const CRITIC_NAME = /^(.+?)\.critic-(?:(spec|plan)-)?r(\d+)[a-z]?\.md$/;
 type SeedResult = { keys: Record<string, { spec: number; plan: number }>; skipped: string[] };
 export async function roundSeed(rootArg: string): Promise<SeedResult> {
   const given = resolve(rootArg);
@@ -1180,8 +1616,8 @@ export async function roundSeed(rootArg: string): Promise<SeedResult> {
   return withLedgerLock(specs, "round-seed", () => seedRoot(specs));
 }
 async function seedRoot(specs: string): Promise<SeedResult> {
-  const dir = ledgerDir(specs);
-  for (const n of await listDir(dir)) if (n === "manifest.json" || n.endsWith(".jsonl") || await stat(join(dir, n)).then(s => s.isDirectory(), () => false)) throw new Error(`round-seed: ${dir} already holds a ledger, snapshot or manifest`);
+  const dir = ledgerDirOf(specs);
+  for (const n of await listDir(dir)) if (join(dir, n) === manifestFile(specs) || ledgerKeyOfFile(n) !== null || await stat(join(dir, n)).then(s => s.isDirectory(), () => false)) throw new Error(`round-seed: ${dir} already holds a ledger, snapshot or manifest`);
   const folders = [...SIGNATURE_DIRS].map(d => join(specs, d));
   for (const n of await listDir(specs)) if (KEY_FOLDER.test(n) && await stat(join(specs, n)).then(s => s.isDirectory(), () => false)) folders.push(join(specs, n));
   const found = new Map<string, Record<Kind, { round: number; path: string; text: string }[]>>();
@@ -1226,11 +1662,11 @@ async function seedRoot(specs: string): Promise<SeedResult> {
   try {
     await mkdir(dir, { recursive: true });
     for (const s of snapshots) await snapshotBytes(specs, s.key, s.bytes, s.sum, made);
-    for (const [key, row] of seeds) await write(join(dir, `${key}.jsonl`), `${JSON.stringify(row)}\n`);
-    await write(join(dir, "manifest.json"), `${JSON.stringify({ v: 1, ts: Date.now(), keys })}\n`);
+    for (const [key, row] of seeds) await write(join(dir, ledgerEntryNames(key).file), `${JSON.stringify(row)}\n`);
+    await write(manifestFile(specs), `${JSON.stringify({ v: 1, ts: Date.now(), keys })}\n`);
   } catch (e) {
     for (const path of made.reverse()) await rm(path, { force: true });
-    for (const key of found.keys()) await rmdir(join(dir, key)).catch(() => {});
+    for (const key of found.keys()) await rmdir(join(dir, ledgerEntryNames(key).folder)).catch(() => {});
     throw e;
   }
   return { keys, skipped };
@@ -1527,7 +1963,12 @@ function splitParts(text: string, limit = TELEGRAM_PART_LIMIT): string[] {
   }
 }
 
-export async function routeReply(root: string, chatId: number, text: string, o: { kind?: string; consoleName?: string; dest: string }): Promise<{ cls: MsgClass; parts: number }> {
+export async function routeReply(root: string, chatId: number, text: string, o: { kind?: string; consoleName?: string; dest: string; owedIdentity?: string; receiptOnly?: boolean }): Promise<{ cls: MsgClass; parts: number; requests: string[] }> {
+  if (o.receiptOnly && o.owedIdentity && o.consoleName) {
+    const base = sha256(Buffer.from(`${chatId}\0${o.consoleName}\0${o.owedIdentity}`));
+    const parts = await queueOwedRequest(root, chatId, o.consoleName, base, text, [], true);
+    return { cls: 'escalate', parts: parts.length, requests: parts.map((_, i) => `${base}-${i}`) };
+  }
   const { replyViaOutbox } = await import("./poller");
   const kind = o.kind !== undefined && KIND_RE.test(o.kind) ? o.kind : undefined;
   let cls: MsgClass = "escalate"; let logClass: string = "escalate"; let sent = text; let capState = "ok"; let keys = 0; let queued = 0;
@@ -1550,18 +1991,107 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
     console.error(`[chief-route] routing failed, sending the raw text to the operator: ${e instanceof Error ? e.message : e}`);
     cls = "escalate"; logClass = "escalate-fallback"; sent = text; capState = "ok";
   }
+  const requests: string[] = [];
   if (cls === "escalate") {
-    const parts = splitParts(sent);
+    let parts = splitParts(sent);
+    if (o.owedIdentity && o.consoleName) {
+      const base = sha256(Buffer.from(`${chatId}\0${o.consoleName}\0${o.owedIdentity}`));
+      parts = await queueOwedRequest(root, chatId, o.consoleName, base, text, parts, o.receiptOnly ?? false);
+      requests.push(...parts.map((_, i) => `${base}-${i}`));
+    }
     if (parts.length > 1) capState = "split";
-    for (const part of parts) await replyViaOutbox(root, chatId, part, o.consoleName);
+    if (!(o.owedIdentity && o.consoleName)) {
+      for (const part of parts) await replyViaOutbox(root, chatId, part, o.consoleName);
+    }
     queued = parts.length;
   }
+  if (o.receiptOnly) return { cls, parts: queued, requests };
   const dest = cls === "escalate" ? o.dest : cls === "monitor" ? "monitor" : "none";
   try {
     await mkdir(root, { recursive: true });
     await appendFile(join(root, "route.log"), `${new Date().toISOString()} ${kind ?? "unclassified"} ${logClass} ${dest} ${sent.length} ${keys} ${capState}\n`);
   } catch (e) { console.error(`[chief-route] route log not written: ${e instanceof Error ? e.message : e}`); }
-  return { cls, parts: queued };
+  return { cls, parts: queued, requests };
+}
+
+export type OwedReceipt = { name: string; message: number; request_id: string; request_hash?: string };
+export async function owedReceiptSnapshot(root: string, chat: number): Promise<Map<string, OwedReceipt>> {
+  const receipts = new Map<string, OwedReceipt>();
+  for (const f of await readdir(join(root, "consoles", "replies")).catch(() => [] as string[])) {
+    const m = /^(-?\d+)_(\d+)\.json$/.exec(f);
+    if (!m || Number(m[1]) !== chat) continue;
+    try {
+      const receipt = JSON.parse(await readFile(join(root, "consoles", "replies", f), "utf8"));
+      if (typeof receipt?.name === 'string' && typeof receipt.request_id === 'string' && Number(m[2]) > 0) {
+        receipts.set(receipt.request_id, { ...receipt, message: Number(m[2]) });
+      }
+    } catch (e) { console.error(`[chief-route] unread receipt ${f}: ${e}`); }
+  }
+  return receipts;
+}
+
+export async function owedSendReceipt(root: string, chat: number, name: string, requestId: string, requestHash?: string, snapshot?: () => Promise<Map<string, OwedReceipt>>): Promise<number | null> {
+  if (!/^[a-f0-9]{64}-[0-9]+$/.test(requestId)) throw new Error('invalid owed request id');
+  const index = join(root, 'consoles', 'owed-receipts', `${chat}_${requestId}.json`);
+  let receipt: OwedReceipt | undefined;
+  try {
+    receipt = JSON.parse(await readFile(index, 'utf8'));
+    if (receipt?.request_id !== requestId || !Number.isSafeInteger(receipt.message) || receipt.message <= 0) {
+      throw new Error('invalid owed receipt index; reconcile ' + index);
+    }
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+    receipt = (await (snapshot ? snapshot() : owedReceiptSnapshot(root, chat))).get(requestId);
+  }
+  if (receipt?.name === name) {
+    if (requestHash && receipt.request_hash !== requestHash) throw new Error("owed content changed; reconcile its original request");
+    return receipt.message;
+  }
+  return null;
+}
+
+let owedTurn: Promise<unknown> = Promise.resolve();
+function queueOwedRequest(root: string, chat: number, name: string, base: string, raw: string, proposed: string[], receiptOnly: boolean): Promise<string[]> {
+  const run = owedTurn.then(async () => {
+    const { replyViaOutbox } = await import("./poller");
+    await mkdir(root, { recursive: true });
+    const { dlopen } = await import("bun:ffi");
+    const libc = dlopen(process.platform === "darwin" ? "libSystem.B.dylib" : "libc.so.6", { flock: { args: ["i32", "i32"], returns: "i32" } });
+    const lock = await open(join(root, "owed-outbox.lock"), "a");
+    try {
+      if (libc.symbols.flock(lock.fd, 2) !== 0) throw new Error("cannot lock owed outbox");
+      const plans = join(root, 'consoles', 'owed-requests');
+      const planPath = join(plans, base + '.json');
+      const requestHash = sha256(Buffer.from(raw));
+      let plan: { raw_hash: string; parts: string[] };
+      try { plan = JSON.parse(await readFile(planPath, 'utf8')); }
+      catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+        if (receiptOnly) return [];
+        plan = { raw_hash: requestHash, parts: proposed };
+        await mkdir(plans, { recursive: true });
+        await atomicWrite(planPath, JSON.stringify(plan));
+      }
+      if (plan.raw_hash !== requestHash) throw new Error('owed content changed; reconcile its original request');
+      if (!Array.isArray(plan.parts) || !plan.parts.length || !plan.parts.every(p => typeof p === 'string')) throw new Error('invalid owed parts plan; reconcile ' + planPath);
+      if (receiptOnly) return plan.parts;
+      const file = join(root, "sessions", chat < 0 ? `group_${chat}` : "__chat__", "outbox.jsonl");
+      const queued = (await readFile(file, "utf8").catch((e: NodeJS.ErrnoException) => { if (e.code === "ENOENT") return ""; throw e; })).split("\n")
+        .map(line => { try { return JSON.parse(line); } catch { return null; } });
+      let snapshot: Promise<Map<string, OwedReceipt>> | undefined;
+      for (const [i, text] of plan.parts.entries()) {
+        const requestId = `${base}-${i}`;
+        const row = queued.find(row => row?.request_id === requestId);
+        if (row && row.request_hash !== requestHash) throw new Error("owed content changed; reconcile its original request");
+        if (!row && await owedSendReceipt(root, chat, name, requestId, undefined, () => (snapshot ??= owedReceiptSnapshot(root, chat))) === null) {
+          await replyViaOutbox(root, chat, text, name, undefined, undefined, requestId, requestHash);
+        }
+      }
+      return plan.parts;
+    } finally { await lock.close(); libc.close(); }
+  });
+  owedTurn = run.catch(() => {});
+  return run;
 }
 
 export async function latestReceiptId(root: string, chat: number, name: string): Promise<number> {
@@ -1591,6 +2121,16 @@ export async function awaitSendReceipts(root: string, chat: number, name: string
   }
 }
 
+async function awaitOwedReceipts(root: string, chat: number, name: string, requests: string[], waitSec: number): Promise<number[]> {
+  const deadline = Date.now() + waitSec * 1000;
+  for (;;) {
+    let snapshot: Promise<Map<string, OwedReceipt>> | undefined;
+    const ids = (await Promise.all(requests.map(id => owedSendReceipt(root, chat, name, id, undefined, () => (snapshot ??= owedReceiptSnapshot(root, chat)))))).filter((id): id is number => id !== null);
+    if (ids.length === requests.length || Date.now() >= deadline) return ids;
+    await new Promise(r => setTimeout(r, 200));
+  }
+}
+
 export async function writeOwedReceipt(doc: string, key: string, messageId: number, chat: number): Promise<void> {
   const cur = await readFile(doc, "utf8");
   await appendFile(doc, `${cur === "" || cur.endsWith("\n") ? "" : "\n"}- ${hhmm()} DELIVERED ${key} msg=${messageId} chat=${chat}\n`);
@@ -1601,6 +2141,7 @@ const VERB_FLAGS: Record<string, { valued: string[]; bare: string[] }> = {
   "round-override": { valued: ["--findings", "--why", "--chief", "--specs"], bare: [] },
   "round-critical": { valued: ["--finding", "--decision", "--quote", "--specs"], bare: ["--no-round"] },
   "round-reset": { valued: ["--decision", "--quote", "--specs"], bare: [] },
+  "round-extension": { valued: ["--findings", "--decision", "--quote", "--why", "--chief", "--specs"], bare: [] },
   "fold-list": { valued: ["--spec", "--specs"], bare: [] },
 };
 function verbArgs(args: string[], valued: string[], bare: string[], positionals: number): { opts: Record<string, string>; on: Set<string>; pos: string[] } | null {
@@ -1637,7 +2178,24 @@ function roundStatusArgs(args: string[]): { key: string | null; specs: string; j
 if (import.meta.main) {
   const [verb, ...args] = process.argv.slice(2);
   const byRequest = verb === "send-file" && args[0] === "--by-request" && args.length >= 4 ? args.splice(0, 2)[1] : undefined;
-  if (verb === "register" && args.length === 3) {
+  if (verb === "capped-fold" && args.includes("--keys")) {
+    try {
+      if (args.includes("--key")) throw new Error("capped-fold: use exactly one of --key and --keys");
+      const flags = ["--keys", "--spec", "--plan", "--spec-return", "--plan-return"];
+      const parsed = verbArgs(args, flags, [], 0);
+      if (!parsed || args.length !== 10 || flags.some(f => !parsed.opts[f] || parsed.opts[f].startsWith("--"))) throw new Error("capped-fold: requires exactly --keys, --spec, --plan, --spec-return and --plan-return, each once");
+      console.log(JSON.stringify(await cappedFoldLedger({ keys: parsed.opts["--keys"].split(","), spec: parsed.opts["--spec"], plan: parsed.opts["--plan"],
+        specReturn: parsed.opts["--spec-return"], planReturn: parsed.opts["--plan-return"] })));
+    } catch (e) { console.error(`capped-fold: ${e instanceof Error ? e.message : e}`); process.exit(1); }
+  } else if (verb === "capped-fold") {
+    try {
+      const flags = ["--key", "--spec", "--plan", "--spec-return", "--plan-return"];
+      const parsed = verbArgs(args, flags, [], 0);
+      if (!parsed || args.length !== 10 || flags.some(f => !parsed.opts[f] || parsed.opts[f].startsWith("--"))) throw new Error("capped-fold: requires exactly --key, --spec, --plan, --spec-return and --plan-return, each once");
+      console.log(JSON.stringify(await cappedFold({ key: parsed.opts["--key"], spec: parsed.opts["--spec"], plan: parsed.opts["--plan"],
+        specReturn: parsed.opts["--spec-return"], planReturn: parsed.opts["--plan-return"] })));
+    } catch (e) { console.error(`capped-fold: ${e instanceof Error ? e.message : e}`); process.exit(1); }
+  } else if (verb === "register" && args.length === 3) {
     await registerConsole(args[0], args[1], args[2]);
   } else if (verb === "announce" && args.length === 1) {
     await announceConsole(args[0]);
@@ -1651,7 +2209,7 @@ if (import.meta.main) {
     const a = verbArgs(args, ["--spec"], ["--sign"], 1)!;
     try { const r = await ledgerVerify(a.pos[0], { spec: a.opts["--spec"], sign: a.on.has("--sign") }); console.log(`${r.key} ${r.kind} round ${r.round} ${r.mode}`); }
     catch (e) { console.error(e instanceof Error ? e.message : e); process.exit(1); }
-  } else if (["closure-pack", "round-override", "round-critical", "round-reset", "fold-list"].includes(verb ?? "") && verbArgs(args, VERB_FLAGS[verb!].valued, VERB_FLAGS[verb!].bare, verb === "fold-list" ? 0 : verb === "closure-pack" ? 2 : 1)) {
+  } else if (["closure-pack", "round-override", "round-critical", "round-reset", "round-extension", "fold-list"].includes(verb ?? "") && verbArgs(args, VERB_FLAGS[verb!].valued, VERB_FLAGS[verb!].bare, verb === "fold-list" ? 0 : verb === "closure-pack" ? 2 : 1)) {
     const f = VERB_FLAGS[verb!]; const a = verbArgs(args, f.valued, f.bare, verb === "fold-list" ? 0 : verb === "closure-pack" ? 2 : 1)!;
     const need = (flag: string) => { const v = a.opts[flag]; if (v === undefined) throw new Error(`${verb}: ${flag} is required`); return v; };
     try {
@@ -1662,6 +2220,7 @@ if (import.meta.main) {
         const specs = await realpath(given);
         if (verb === "closure-pack") { if (a.pos[1] !== "spec" && a.pos[1] !== "plan") throw new Error("closure-pack: the kind is spec or plan"); process.stdout.write(await closurePack(specs, key, a.pos[1])); }
         else if (verb === "round-override") await roundOverride(specs, key, { findings: need("--findings").split(",").map(s => s.trim()).filter(Boolean), why: need("--why"), chief: need("--chief") });
+        else if (verb === "round-extension") console.log(await roundExtension(specs, key, { findings: need("--findings").split(",").map(s => s.trim()).filter(Boolean), decision: need("--decision"), quote: need("--quote"), why: need("--why"), chief: need("--chief") }));
         else if (verb === "round-critical") await roundCritical(specs, key, { finding: need("--finding"), decision: need("--decision"), quote: need("--quote"), noRound: a.on.has("--no-round") });
         else await roundReset(specs, key, { decision: need("--decision"), quote: need("--quote") });
       }
@@ -1672,7 +2231,7 @@ if (import.meta.main) {
       const specs = await realpath(a.specs);
       if (a.key === null) {
         const manifest = await readManifest(specs);
-        const keys = new Set([...Object.keys(manifest.keys), ...(await listDir(ledgerDir(specs))).filter(n => n.endsWith(".jsonl")).map(n => n.slice(0, -".jsonl".length))]);
+        const keys = new Set([...Object.keys(manifest.keys), ...(await listDir(ledgerDirOf(specs))).flatMap(n => { const key = ledgerKeyOfFile(n); return key !== null ? [key] : []; })]);
         const out: Record<string, RoundState | { key: string; error: string }> = {};
         for (const key of [...keys].sort()) out[key] = await roundState(specs, key).catch((e: Error) => ({ key, error: e.message }));
         console.log(JSON.stringify({ cap: CRITIC_ROUND_CAP, classes: OPERATOR_CRITICAL_CLASSES, keys: out }));
@@ -1690,20 +2249,19 @@ if (import.meta.main) {
     } catch (e) { console.error(e instanceof Error ? e.message : e); process.exit(1); }
   } else {
     const flags: { chief?: string; satellite?: string; kind?: string; owed?: string; doc?: string } = {};
-    if (verb === "reply") while (args.length >= 2 && (args[0] === "--chief" || args[0] === "--satellite" || args[0] === "--kind" || args[0] === "--owed" || args[0] === "--doc")) flags[args.shift()!.slice(2) as keyof typeof flags] = args.shift()!;
+    if (verb === "reply" || verb === "receipt") while (args.length >= 2 && (args[0] === "--chief" || args[0] === "--satellite" || args[0] === "--kind" || args[0] === "--owed" || args[0] === "--doc")) flags[args.shift()!.slice(2) as keyof typeof flags] = args.shift()!;
     const owedOk = (flags.owed === undefined && flags.doc === undefined) || (/^[A-Za-z0-9_.-]+$/.test(flags.owed ?? "") && isAbsolute(flags.doc ?? "") && await stat(flags.doc!).then(s => s.isFile(), () => false));
     const name = flags.chief ?? (verb === "reply" ? await currentConsoleName(defaultRoot()) : undefined);
     const satellite = flags.satellite;
     const [chat, ...rest] = args;
     const chatId = chat === "operator" ? (operatorChatId(await loadAccess()) ?? NaN) : Number(chat);
-    if (verb === "reply" && Number.isSafeInteger(chatId) && chatId !== 0 && rest.length && owedOk && (flags.owed === undefined || name) && (!name || consoleInboxPath(defaultRoot(), name)) && (satellite === undefined || SATELLITE_ID.test(satellite))) {
-      const seenBefore = flags.owed !== undefined && name ? await latestReceiptId(defaultRoot(), chatId, name) : 0;
-      const { cls, parts } = await routeReply(defaultRoot(), chatId, rest.join(" "), { kind: flags.kind, consoleName: name, dest: chat === "operator" ? "operator" : `chat:${chatId}` });
+    if ((verb === "reply" || (verb === "receipt" && flags.owed !== undefined && satellite === undefined)) && Number.isSafeInteger(chatId) && chatId !== 0 && rest.length && owedOk && (flags.owed === undefined || name) && (!name || consoleInboxPath(defaultRoot(), name)) && (satellite === undefined || SATELLITE_ID.test(satellite))) {
+      const { cls, parts, requests } = await routeReply(defaultRoot(), chatId, rest.join(" "), { kind: flags.kind, consoleName: name, dest: chat === "operator" ? "operator" : `chat:${chatId}`, owedIdentity: flags.owed === undefined ? undefined : `${flags.doc}\0${flags.owed}`, receiptOnly: verb === 'receipt' });
       console.log(cls);
       if (flags.owed !== undefined) {
         if (cls !== "escalate") { console.error(`[chief-route] owed item ${flags.owed}: the text was class ${cls}, not sent to Telegram, so there is no receipt`); process.exit(1); }
-        const ids = await awaitSendReceipts(defaultRoot(), chatId, name!, seenBefore, parts, Number(process.env.CHIEF_ROUTE_RECEIPT_WAIT_SEC) || 30);
-        if (ids.length < parts) { console.error(`[chief-route] owed item ${flags.owed}: queued, but ${ids.length} of ${parts} parts got a send receipt in time and the poller recorded no send receipt for the rest (poller down or Telegram refused); nothing marked delivered`); process.exit(1); }
+        const ids = await awaitOwedReceipts(defaultRoot(), chatId, name!, requests, Math.max(0, Number(process.env.CHIEF_ROUTE_RECEIPT_WAIT_SEC ?? "30")));
+        if (!parts || ids.length < parts) { console.error(`[chief-route] owed item ${flags.owed}: pending; ${ids.length} of ${parts} frozen parts got a send receipt, no send receipt for the rest; nothing marked delivered`); process.exit(1); }
         const id = ids[ids.length - 1];
         await writeOwedReceipt(flags.doc!, flags.owed, id, chatId);
         console.log(`delivered msg=${id}`);
@@ -1713,7 +2271,7 @@ if (import.meta.main) {
         catch (e) { console.error(`[chief-route] queued the Telegram reply but could not speak on ${satellite}: ${e instanceof Error ? e.message : e}`); process.exit(1); }
       }
     } else {
-      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] [--kind <kind>] [--owed <key> --doc <absolute chief doc>] <chat_id | operator> <text> | send-file [--by-request <the operator's request>] <chat_id> <path> [caption] | critic-round-check <verdict-file> <file-the-critic-read> | round-seed --all <specs root> | ledger-verify <verdict-file> [--spec <spec>] [--sign] | closure-pack <KEY> <spec|plan> [--specs <root>] | round-override <KEY> --findings <id,...> --why <line> --chief <session> [--specs <root>] | round-critical <KEY> --finding <id> --decision <d> --quote <words> [--no-round] [--specs <root>] | round-reset <KEY> --decision <d> --quote <words> [--specs <root>] | fold-list --spec <spec> [--specs <root>] | round-status <KEY> [--specs <root>] [--json] | round-status --all --specs <root> --json | register <inbox> <bucket> <project> | announce <inbox>");
+      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] [--kind <kind>] [--owed <key> --doc <absolute chief doc>] <chat_id | operator> <text> | send-file [--by-request <the operator's request>] <chat_id> <path> [caption] | critic-round-check <verdict-file> <file-the-critic-read> | round-seed --all <specs root> | ledger-verify <verdict-file> [--spec <spec>] [--sign] | closure-pack <KEY> <spec|plan> [--specs <root>] | round-override <KEY> --findings <id,...> --why <line> --chief <session> [--specs <root>] | round-critical <KEY> --finding <id> --decision <d> --quote <words> [--no-round] [--specs <root>] | round-reset <KEY> --decision <d> --quote <words> [--specs <root>] | round-extension <KEY> --findings <id,...> --decision <d> --quote <words> --why <line> --chief <session> [--specs <root>] | fold-list --spec <spec> [--specs <root>] | round-status <KEY> [--specs <root>] [--json] | round-status --all --specs <root> --json | register <inbox> <bucket> <project> | announce <inbox>");
       process.exit(1);
     }
   }

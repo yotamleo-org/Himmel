@@ -84,7 +84,7 @@ bash "$OWE" add --bucket "$B" --chief Z --kind ticket --text $'a\037b' >/dev/nul
 check "a unit separator in --text exits 2" "$rc" "2"
 
 NF="$WORK/noflock-bin"; mkdir -p "$NF"
-for _t in jq date sh rm sleep mktemp dirname bash; do ln -s "$(command -v "$_t")" "$NF/$_t"; done
+for _t in jq date sh rm sleep mktemp dirname bash python3; do ln -s "$(command -v "$_t")" "$NF/$_t"; done
 NB="$WORK/noflock"; mkdir -p "$NB"
 PATH="$NF" "$(command -v bash)" "$OWE" add --bucket "$NB" --chief Z --kind ticket --text x >/dev/null 2>&1; rc=$?
 check "an add on a host with no flock locks through with_lock and exits 0" "$rc" "0"
@@ -104,6 +104,74 @@ bash "$OWE" close --bucket "$C" --id o3 --key HIMMEL-1 >/dev/null 2>&1; rc=$?
 check "a row added concurrently can be closed" "$rc" "0"
 
 check "an empty bucket lists nothing" "$(mkdir -p "$WORK/empty" && bash "$OWE" list --bucket "$WORK/empty"; echo "rc=$?")" "rc=0"
+
+# Durable typed proof actions share the existing writer and lock.
+I="$WORK/identity"; mkdir -p "$I"
+identity=$(printf proof | sha256sum | cut -d' ' -f1)
+meta='{"actor":"chief","action":"validate-proof","validation":"pending","recommendation":"CLOSE"}'
+for _n in 1 2 3 4 5 6 7 8; do
+    bash "$OWE" add --bucket "$I" --chief Z --kind proof --key HIMMEL-9848 --text validate --identity "$identity" --metadata "$meta" > "$WORK/id.$_n" 2>&1 &
+done
+wait
+check "9848 concurrent identical adds create one action" "$(wc -l < "$I/owed.jsonl" 2>/dev/null | tr -d ' ')" 1
+check "9848 all responses return same id" "$(sort -u "$WORK"/id.*)" o1
+bash "$OWE" close --bucket "$I" --id o1 --key HIMMEL-9848 >/dev/null 2>&1
+OWE_NOW_EPOCH=1800000900 bash "$OWE" add --bucket "$I" --chief successor --kind proof --key HIMMEL-9848 --text replay --identity "$identity" --metadata "$meta" >/dev/null 2>&1
+check "9848 replay never reopens closed action" "$(bash "$OWE" list --bucket "$I")" ""
+check "9848 replay appends nothing" "$(wc -l < "$I/owed.jsonl" | tr -d ' ')" 2
+out=$(bash "$OWE" list --bucket "$I" --all --json 2>/dev/null)
+check "9848 JSON retains actor and closure" "$(printf '%s' "$out" | jq -r '.[0] | [.actor,.action,.closed] | @tsv' 2>/dev/null)" $'chief\tvalidate-proof\ttrue'
+bash "$OWE" add --bucket "$I" --chief Z --kind proof --text no --metadata '{"unknown":1}' >/dev/null 2>&1
+check "9848 unknown metadata field refuses" "$?" 2
+for meta in '{"op":"close"}' '{"actor":"operator"}' '{"validation":"passed"}' '{"issues":"hidden"}'; do
+    bash "$OWE" add --bucket "$I" --chief Z --kind proof --text no --metadata "$meta" >/dev/null 2>&1
+    check "9848 reserved or malformed metadata refuses: $meta" "$?" 2
+done
+bash "$OWE" add --bucket "$I" --chief Z --kind proof --text no --identity 0123456789ab >/dev/null 2>&1
+check "9848 truncated identity refuses" "$?" 2
+check "9848 legacy list stays six columns" "$(bash "$OWE" list --bucket "$I" --all | awk -F '\t' '{print NF}')" 6
+
+# Simulate a sync failure after a successful append: no success response, and
+# the next writer must sync/reuse the existing action rather than append again.
+S="$WORK/sync-fail"; mkdir -p "$S/bin" "$S/bucket"
+printf '#!/bin/sh\nexit 1\n' > "$S/bin/python3"; chmod +x "$S/bin/python3"
+out=$(PATH="$S/bin:$PATH" bash "$OWE" add --bucket "$S/bucket" --chief Z --kind proof --text pending --identity "$identity" 2>/dev/null); rc=$?
+check "9848 fsync failure returns persistence error" "$rc" 4
+check "9848 fsync failure acknowledges no id" "$out" ""
+out=$(bash "$OWE" add --bucket "$S/bucket" --chief successor --kind proof --text replay --identity "$identity")
+check "9848 retry after sync failure returns existing id" "$out" o1
+check "9848 retry after sync failure appends nothing" "$(wc -l < "$S/bucket/owed.jsonl" | tr -d ' ')" 1
+
+L="$WORK/bad-ledger"; mkdir -p "$L"
+ln -s "$L/absent" "$L/owed.jsonl"
+bash "$OWE" list --bucket "$L" --json >/dev/null 2>&1
+check "9848 dangling ledger is unreadable, not empty" "$?" 4
+
+M="$WORK/metadata-stdin"; mkdir -p "$M"
+python3 - "$M/large.json" <<'PY'
+import json,sys
+with open(sys.argv[1], 'w') as stream:
+    json.dump({'proof_rows': ['x' * 200000]}, stream)
+PY
+out=$(bash "$OWE" add --bucket "$M" --chief Z --kind proof --text observations --metadata-stdin < "$M/large.json" 2>/dev/null); rc=$?
+check "metadata stdin avoids the per-argument byte limit" "$rc|$out" "0|o1"
+check "metadata stdin retains every supplied observation byte" "$(jq -r '.proof_rows[0] | length' "$M/owed.jsonl" 2>/dev/null)" 200000
+for meta in '{"op":"close"}' '{"actor":"operator"}' '{"validation":"passed"}' '{"observation_counts":{"issues":{"total":1,"omitted":2,"truncated_chars":0}}}' '{"observation_counts":{"unknown":{"total":1,"omitted":0,"truncated_chars":0}}}'; do
+    printf '%s' "$meta" | bash "$OWE" add --bucket "$M" --chief Z --kind proof --text invalid --metadata-stdin >/dev/null 2>&1
+    check "stdin retains reserved-key and count-shape protection: $meta" "$?" 2
+done
+printf '{}' | bash "$OWE" add --bucket "$M" --chief Z --kind proof --text invalid --metadata '{}' --metadata-stdin >/dev/null 2>&1
+check "metadata arguments and stdin are mutually exclusive" "$?" 2
+python3 - "$M/oversize.json" <<'PY'
+import json,sys
+with open(sys.argv[1], 'w') as stream:
+    json.dump({'proof_rows': ['x' * 1048576]}, stream)
+PY
+bash "$OWE" add --bucket "$M" --chief Z --kind proof --text oversize --metadata-stdin < "$M/oversize.json" >/dev/null 2>&1
+check "stdin metadata has a fixed byte bound" "$?" 2
+bash "$OWE" add --bucket "$M" --chief Z --kind proof --text multivalue --metadata '{}{}' >/dev/null 2>&1
+check "legacy metadata still refuses multiple top-level values" "$?" 2
+check "refused metadata never appends an action" "$(wc -l < "$M/owed.jsonl" 2>/dev/null | tr -d ' ')" 1
 
 [ "$fails" -eq 0 ] || { echo "$fails check(s) failed"; exit 1; }
 echo "test-owe: all checks passed"

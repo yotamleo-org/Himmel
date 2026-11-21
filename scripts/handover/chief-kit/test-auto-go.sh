@@ -142,6 +142,7 @@ cat > "$tmp/bus" <<'STUB'
 [ "$1" = send ] || exit 2
 printf '%s\n' "$2" > "$STUB_BUS_DIR/to"
 cp "$3" "$STUB_BUS_DIR/body"
+echo send >> "$STUB_BUS_DIR/sends"
 echo "sent #7 to $2"
 STUB
 cat > "$tmp/census" <<'STUB'
@@ -523,6 +524,10 @@ check    "A1b ordinary: GO-SENT <pr> <head> to <label> bus=<#n> qid=none" "$OUT"
 check    "A1b ordinary: the GO file exists" "$(gofile)" "yes"
 contains "A1b ordinary: the GO file binds the head" "$(cat "$GOF" 2>/dev/null)" "head=$SHA"
 contains "A1b ordinary: the GO file is signed" "$(cat "$GOF" 2>/dev/null)" "mac="
+duplicate_sends=$(wc -l < "$tmp/busdir/sends")
+run 77 "$SHA"
+check "duplicate exact-head READY: exit 0 from recorded GO" "$RC" "0"
+check "duplicate exact-head READY: no second bus send" "$(wc -l < "$tmp/busdir/sends")" "$duplicate_sends"
 lacks    "A1b ordinary: a plain GO carries no trust-reviewed line" "$(cat "$GOF" 2>/dev/null)" "trust-reviewed="
 check    "A1b ordinary: bus message goes to the worker's live session" "$(bust)" "HIMMEL-1-N1-feature-2026-10-31"
 BODY=$(cat "$tmp/busdir/body" 2>/dev/null)

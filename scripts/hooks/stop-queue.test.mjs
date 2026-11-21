@@ -2008,7 +2008,7 @@ test('every interpreter the queued end-side hooks name still runs under the allo
 // End to end through the real queue with a REAL end-side hook — the one with a
 // hermetic seam (its suite's shape: stub refresh, temp state dir, no network).
 // If the allowlist starved a job's environment, this is where it shows.
-test('a real end-side hook still runs to completion under the allowlist base', async () => {
+for (const exitCode of [0, 7]) test(`a real end-side hook still runs to completion under the allowlist base (exit ${exitCode})`, async () => {
   const dir = scratch();
   const REPO = join(HERE, '..', '..');
   const saved = { ...process.env };
@@ -2019,7 +2019,7 @@ test('a real end-side hook still runs to completion under the allowlist base', a
     process.env.HIMMEL_REPO = REPO;
     process.env.WHERE_ARE_WE_STATE_DIR = state;
     process.env.HIMMEL_WHERE_ARE_WE = '1';
-    process.env.HIMMEL_WHERE_ARE_WE_COLLECT_CMD = `touch '${sentinel.split(sep).join('/')}'`;
+    process.env.HIMMEL_WHERE_ARE_WE_COLLECT_CMD = `touch '${sentinel.split(sep).join('/')}'${exitCode === 0 ? ` '${join(state, '.refreshed-at').split(sep).join('/')}'` : ''}; exit ${exitCode}`;
     enqueue(dir, {
       name: 'where-are-we-on-end',
       argv: ['bash', join(HERE, 'refresh-where-are-we-on-end.sh'), '__himmel_detached'],
@@ -2028,9 +2028,11 @@ test('a real end-side hook still runs to completion under the allowlist base', a
     await work(dir);
     const row = logRows(dir).find((r) => r.ev === 'ran');
     assert.ok(row, 'the job never ran');
-    assert.equal(row.rc, 0, `the hook failed under the allowlist base: ${row.stderr || ''}`);
+    assert.equal(row.rc, exitCode, `the hook hid its collector result: ${row.stderr || ''}`);
     assert.ok(existsSync(sentinel), 'the hook did no work under the allowlist base');
-    assert.ok(existsSync(join(state, '.refreshed-at')), 'the hook stamped no freshness marker');
+    assert.equal(existsSync(join(state, '.refreshed-at')), exitCode === 0);
+    await work(dir);
+    assert.equal(logRows(dir).filter((r) => r.ev === 'ran').length, 1, 'completed nonzero collector must not be retried');
   } finally {
     for (const k of ['HIMMEL_REPO', 'WHERE_ARE_WE_STATE_DIR', 'HIMMEL_WHERE_ARE_WE', 'HIMMEL_WHERE_ARE_WE_COLLECT_CMD']) {
       if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];

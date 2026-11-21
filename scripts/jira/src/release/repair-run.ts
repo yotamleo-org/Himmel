@@ -8,6 +8,7 @@ import {
 import { terminalOf } from './reducer.js';
 import type { Verb } from './types.js';
 import { journalPath, newestFixVersionEntry, readVersionWrites, type Getter } from './version-writes.js';
+import { beginRun, endRun, runSignature, writeAtomic } from './repair-state.js';
 
 // The version repair. Without --apply it is a dry run: everything classify() must not do (read the ledgers, the mirror,
 // Jira and gh), and it writes nothing. With --apply it also files requests, folds, writes the held file and keeps its
@@ -141,12 +142,6 @@ function readPrCache(ctx: Ctx): PrCache {
 
 // A PR is settled; a "no PR" is settled while it is fresh. An expired one is looked up again.
 const settled = (e: PrCache[string], now: number): boolean => e.pr !== null || now - Date.parse(e.at) < NO_PR_TTL_MS;
-
-function writeAtomic(path: string, text: string): void {
-  const tmp = `${path}.tmp-${process.pid}`;
-  writeFileSync(tmp, text);
-  renameSync(tmp, path);
-}
 
 // --- the plan: the part both the dry run and --apply share -----------------------------------
 
@@ -472,6 +467,7 @@ export async function repairRun(ctx: Ctx, o: RepairRunOptions): Promise<RepairRe
   const unlock = takeLock(ctx.dir); // a busy lock is no error: nothing below ran, nothing was touched
   if (unlock === null) return { status: 'busy' };
   try {
+    beginRun(ctx, { repo: o.repo, signature: runSignature(ctx, jf) });
     let result: RepairReport;
     try {
       result = await applyRun(ctx, o);
@@ -482,11 +478,15 @@ export async function repairRun(ctx: Ctx, o: RepairRunOptions): Promise<RepairRe
     const signature = join(ctx.dir, 'repair-signature');
     if (result.status === 'ok') {
       rm(statusFile);
-      if (result.capped && (result.progress ?? 0) > 0) rm(signature);
+      const capped = !!result.capped && (result.progress ?? 0) > 0;
+      if (capped) rm(signature);
       writeFileSync(join(ctx.dir, 'repair-reviewed'), `${ctx.now().toISOString()}\n`); // last, and only on a clean exit
+      endRun(ctx, { repo: o.repo, exit: 0, reason: null, clearSignature: capped, reviewed: true });
     } else {
+      const why = result.status === 'stopped' ? (result.why ?? 'error') : 'error';
       writeFileSync(statusFile, `${result.status === 'stopped' ? result.why : 'error'}\n${result.error ?? ''}\n`);
       if (result.status === 'error') rm(signature);
+      endRun(ctx, { repo: o.repo, exit: result.status === 'stopped' ? 3 : 2, reason: why, clearSignature: result.status === 'error', reviewed: false });
     }
     return result;
   } finally {

@@ -87,6 +87,7 @@ fixture_profiles() {
   cp "$HERE/../lib/env-alias.mjs" "$HERE/../lib/is-main.mjs" "$1/lib/" || exit 1
   # Every lib headed-arm.sh sources by its own path: bash on macOS stops at a missing one.
   cp "$HERE/../lib/env-alias.sh" "$HERE/../lib/legacy-names.sh" "$HERE/../lib/dedupe-path.sh" "$1/lib/" || exit 1
+  cp "$HERE/../lib/fleet-launch.sh" "$HERE/../lib/fleet_runtime.py" "$1/lib/" || exit 1
   if [ -d "$1/bare" ]; then cp "$HERE/argv-has-n-name.sh" "$1/bare/" || exit 1; fi
   return 0
 }
@@ -1715,6 +1716,28 @@ check "36d LAUNCHER_ENV: exit 0" "$rc36d" "0"
 contains "36d LAUNCHER_ENV: the tokens still reach the konsole argv" "$(cat "$d36d/record" 2>/dev/null || true)" "WORKER_SESSION_PROFILE_SETTINGS=/parent/settings.json"
 check "36d LAUNCHER_ENV: konsole (and so the worker) does not inherit HEADED_ARM_LAUNCHER_ENV" "$(cat "$d36d/launcher-env" 2>/dev/null || echo MISSING)" "UNSET"
 
+# 36d3 (control, passes before and after the chief-arm HEADED_ARM_REPO strip):
+# the headless, launch-record and waker flags are read once and cleared, so the
+# session the launcher starts sees none of them. A chief arm that inherited a
+# worker's flags therefore cannot act as a worker through them.
+d36d3="$tmp/c36d3"; mk_stub "$d36d3" 1 alive "HIMMEL-flags36d3"
+cat > "$d36d3/konsole" <<'KONSOLE_EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$(dirname "$0")/record"
+printf '%s|%s|%s' "${HEADED_ARM_HEADLESS-UNSET}" "${HEADED_ARM_LAUNCH_RECORD-UNSET}" "${HEADED_ARM_WAKER-UNSET}" > "$(dirname "$0")/flags-env"
+: > "$(dirname "$0")/confirmable"
+sleep 5
+KONSOLE_EOF
+chmod 755 "$d36d3/konsole"
+rc36d3=0
+HEADED_ARM_HEADLESS=0 HEADED_ARM_LAUNCH_RECORD="$d36d3/launch-record" HEADED_ARM_WAKER="$d36d3/no-such-waker.sh" \
+  KONSOLE_CMD="$d36d3/konsole" PGREP_CMD="$d36d3/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36d3/proc" \
+  HEADED_ARM_LOCK_DIR="$d36d3/locks" \
+  bash "$SCRIPT" "HIMMEL-flags36d3" "doc36d3.md" "$d36d3/signal-never" "$PAST" "$d36d3/log" >/dev/null 2>&1 || rc36d3=$?
+wait_record "$d36d3" || true
+check "36d3 flags: exit 0" "$rc36d3" "0"
+check "36d3 flags: the session sees none of HEADED_ARM_HEADLESS, _LAUNCH_RECORD, _WAKER" "$(cat "$d36d3/flags-env" 2>/dev/null || echo MISSING)" "UNSET|UNSET|UNSET"
+
 d36b="$tmp/c36b"; mk_stub "$d36b" 1 alive "HIMMEL-launcher2"
 rc36b=0
 KONSOLE_CMD="$d36b/konsole" PGREP_CMD="$d36b/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36b/proc" \
@@ -1759,6 +1782,7 @@ KONSOLE_EOF
 }
 LINE36='HIMMEL_HOLD_DOC=/x/a b/PROJ-1-N1-x.md'
 # 36f (I1): var unset and var '' give byte-identical terminal argv (no '' element).
+# The launch-context scrub contributes six -u pairs to the terminal argv, the NO_COLOR scrub one.
 d36f="$tmp/c36f"; mk_lines_stub "$d36f" "HIMMEL-lines36f"
 KONSOLE_CMD="$d36f/konsole" PGREP_CMD="$d36f/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36f/proc" HEADED_ARM_LOCK_DIR="$d36f/locks" \
   bash "$SCRIPT" "HIMMEL-lines36f" "doc36f.md" "$d36f/signal-never" "$PAST" "$d36f/log" >/dev/null 2>&1
@@ -1770,7 +1794,7 @@ wait_record "$d36f" || true
 if cmp -s "$d36f/record.unset" "$d36f/record" && [ -s "$d36f/record" ]; then echo "ok - 36f LINES unset vs '': terminal argv byte-identical"
 else echo "FAIL - 36f LINES unset vs '': terminal argv differs"; fails=$((fails+1)); fi
 not_contains "36f LINES '': no empty argv element" "$(grep -Fx "''" "$d36f/record" 2>/dev/null || true)" "''"
-check "36f LINES '': argv element count unchanged (N36F=33)" "$(wc -l < "$d36f/record" | tr -d ' ')" "33"
+check "36f LINES '': argv element count includes launch-context scrub" "$(wc -l < "$d36f/record" | tr -d ' ')" "45"
 
 # 36e: the spaced value reaches the terminal argv as ONE element.
 d36e="$tmp/c36e"; mk_lines_stub "$d36e" "HIMMEL-lines36e"

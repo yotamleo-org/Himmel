@@ -252,6 +252,14 @@
     ],
     "contextBudget": 35000
   },
+  "readiness": {
+    "enabled": [
+      "handover@himmel",
+      "himmel-ops@himmel",
+      "qmd@himmel"
+    ],
+    "contextBudget": 35000
+  },
   "code": {
     "enabled": [
       "code-simplifier@claude-plugins-official",

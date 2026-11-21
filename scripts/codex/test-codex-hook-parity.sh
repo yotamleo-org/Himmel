@@ -180,6 +180,14 @@ CLAUDE_END_ONLY=(
                              # enforce is itself Claude-only (chief-kit/tick.sh's
                              # own header: "Linux-only... Bash 3.2-compatible" with
                              # no Codex wiring). Not ported.
+  readiness-session.sh     # deliberate: the readiness role is a native-lane (Claude Code)
+                             # launch only -- headed-arm-worker.sh refuses --profile readiness
+                             # on every other lane and the startup config it writes must say
+                             # lane "native" -- and the lease this hook releases belongs to the
+                             # session id that launch minted, so a Codex session never has an
+                             # attempt directory for it to act on. The Codex wrapper forwards
+                             # only the script name (no verb operand such as `cleanup`) to the
+                             # adapter, so a mirror would also need a wrapper change. Not ported.
 )
 
 echo "== codex hook inventory parity =="

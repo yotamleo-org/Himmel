@@ -485,6 +485,22 @@ if [ "$DRY" -eq 1 ]; then
 fi
 
 # --- the GO act ---------------------------------------------------------------------------------------------------
+# Serialize the exact-head act, including delivery reconciliation. Existing GO
+# authority survives a lost relay cursor or a duplicate READY; never write or
+# send it again on the assumption that an absent response means no delivery.
+mkdir -p "$ROOT/$SCOPE" || fail 9 'cannot open exact-head GO lock'
+exec 8>>"$ROOT/$SCOPE/.auto-go-$PR.$SHA.lock" || fail 9 'cannot open exact-head GO lock'
+flock 8 || fail 9 'cannot take exact-head GO lock'  # prim-ok: lifetime serialization of the GO act and its audit receipt
+if [ -e "$ROOT/.locks/go/$PR.$SHA" ]; then
+    prior=$(jq -cs --argjson pr "$PR" --arg head "$SHA" --arg worker "$WORKER" --arg file "$ROOT/.locks/go/$PR.$SHA" \
+        '[.[] | select(.outcome == "go" and .pr == $pr and .head == $head and .worker == $worker and .go_file == $file)] | last // {}' "$AUDIT") || fail 9 'cannot reconcile existing GO audit'
+    prior_bus=$(printf '%s' "$prior" | jq -r '.bus // empty')
+    if [ -n "$prior_bus" ]; then
+        printf 'GO-SENT %s %s to %s bus=%s qid=%s\n' "$PR" "$SHA" "$WORKER" "$prior_bus" "$(printf '%s' "$prior" | jq -r '.qid // "none"')"
+        exit 0
+    fi
+    fail 9 "GO already exists at $ROOT/.locks/go/$PR.$SHA; reconcile its worker delivery receipt before any resend"
+fi
 first_line() { printf '%s\n' "$1" | awk 'NF { print; exit }'; }
 # a. a GO carried from an earlier head is recorded for this head before go.sh reads it
 if [ -n "$CARRY_FROM" ]; then

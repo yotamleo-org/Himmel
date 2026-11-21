@@ -21,6 +21,9 @@ has() { # <name> <haystack> <needle>
 lacks() { # <name> <haystack> <needle>
     case "$2" in *"$3"*) fail "$1 (found '$3' in: $2)" ;; *) pass "$1" ;; esac
 }
+check() { # <name> <expected> <actual>, the helper the other chief-kit suites share
+    if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$2' got '$3')"; fi
+}
 
 REAL_HOME="$HOME"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/next-dispatch-test.XXXXXX")" || exit 1
@@ -457,7 +460,7 @@ lacks "no skipped line when nothing matched" "$pw0" "# skipped"
 
 # Fail closed: with the pattern file gone the script exits 2 rather than dispatching unfiltered.
 NF="$WORK/nopat"; mkdir -p "$NF/scripts/handover/chief-kit" "$NF/scripts/lib"
-for nf_lib in env_alias.py gh-quota.sh gh-graphql-budget.sh prim.sh timeout-bin.sh canon-path.sh pr_remainder.py; do
+for nf_lib in env_alias.py fleet_runtime.py gh-quota.sh gh-graphql-budget.sh prim.sh timeout-bin.sh canon-path.sh pr_remainder.py; do
     cp "$(dirname "$SUT")/../../lib/$nf_lib" "$NF/scripts/lib/$nf_lib"
 done
 cp "$SUT" "$NF/scripts/handover/chief-kit/next-dispatchable.sh"
@@ -1619,7 +1622,7 @@ has "(8436) a worker of a different chain does not hold its ticket here" "$b8o" 
 # a stale worker doc of the other chief (no write for a day) holds nothing
 ago "$W53" 48
 b8s="$(run8 "$C8/HIMMEL-nextleg-2026-10-31MB-roadmap-chief.fleet.json" --top 20 --resume-only)"
-has "(8436) a worker doc untouched for over a day no longer holds its ticket" "$b8s" "RESUME${TAB}HIMMEL-53${TAB}"
+lacks "(8436) inactivity alone cannot clear unknown sibling ownership" "$b8s" "RESUME${TAB}HIMMEL-53${TAB}"
 # malformed sibling manifests never break the read: a list, entries that are not objects, a null or numeric doc, a doc-less entry
 touch "$W53"
 printf '[]\n' > "$C8/HIMMEL-nextleg-2026-10-31MC-roadmap-chief.fleet.json"
@@ -2646,11 +2649,11 @@ printf '{"handover":"%s","heartbeat":"2026-01-01T00:00:00Z"}\n' "$B91/HIMMEL-963
 mkfleet "$B91/HIMMEL-nextleg-2026-11-06TA-roadmap-chief.fleet.json" "N965:$B91/N965-ops-2026-11-06.md" "N961:$B91/HIMMEL-9631-N961-case-2026-11-06.md" "N962:$B91/HIMMEL-9632-N962-case-2026-11-06.md" "N963:$B91/HIMMEL-9633-N963-case-2026-11-06.md" "N964:$B91/HIMMEL-9634-N964-case-2026-11-06.md"
 mkfleet "$B91/HIMMEL-nextleg-2026-11-07TB-roadmap-chief.fleet.json"
 s91="$(NEXT_DISPATCH_MIRROR="$M91S" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --top 20 --dispositions --workers-dir "$WORK/s91s/workers" --workers-from "$B91/HIMMEL-nextleg-2026-11-07TB-roadmap-chief.fleet.json" 2>/dev/null)"
-has "a sibling worker with no lock and a doc hours old owns nothing" "$s91" "RESUME	HIMMEL-9631	"
-lacks "and is not called live" "$s91" "live worker N961"
+lacks "an old sibling with no affirmative terminal evidence stays protected" "$s91" "RESUME	HIMMEL-9631	"
+has "the unknown sibling remains a visible owner" "$s91" "live worker N961"
 lacks "a sibling worker with a fresh queue lock keeps its ticket" "$s91" "RESUME	HIMMEL-9632	"
 has "and is named as the owner" "$s91" "# disposition HIMMEL-9632 in-flight owned by live worker N962 of the chief on HIMMEL-nextleg-2026-11-06TA-roadmap-chief"
-has "a sibling worker whose lock heartbeat is past the TTL owns nothing" "$s91" "RESUME	HIMMEL-9633	"
+lacks "a stale heartbeat cannot retire a sibling worker" "$s91" "RESUME	HIMMEL-9633	"
 lacks "a fresh lock on a doc whose name carries no ticket keeps the ticket its title names" "$s91" "RESUME	HIMMEL-9635	"
 lacks "a sibling doc armed within the hour, its lock not yet taken, keeps its ticket" "$s91" "RESUME	HIMMEL-9634	"
 
@@ -2827,7 +2830,7 @@ has "S1: an unreadable worker doc prints overlap unknown for that worker" "$sf2"
 sf3="$(runs "$SM" 1 --workers-from "$WORK/fleet-s11.json" --why)"
 has "S1: control: an unreadable worker doc still owns the key in its name" "$sf3" "# drop HIMMEL-851 owned by live worker N11"
 sf4="$(runs "$S1FAM" 1 --workers-from "$WORK/no-such-fleet.json" --why)"
-lacks "S1: control: a missing manifest (owners unknown) still withholds SERIES FAMILY" "$sf4" "SERIES FAMILY"
+lacks "S1: control: a missing manifest (owners unknown) still withholds SERIES FAMILY" "$sf4" "SERIES FAMILY docs/handover"
 S1Q="$WORK/s1q"; mkdir -p "$S1Q"
 S1NOW=1794000000
 q8_at() { python3 -I -c 'import datetime, sys
@@ -3075,6 +3078,856 @@ has "a himmel.conf key and no override reads jira-mirror/<that key>" "$out" "CON
 out="$(rkrun NEXT_DISPATCH_MIRROR="$RK/ovr/OVR")"
 lacks "NEXT_DISPATCH_MIRROR still wins over the resolver" "$out" "CONFKEY-1	"
 has "NEXT_DISPATCH_MIRROR still wins: its own rows list" "$out" "OVR-1	"
+
+# Predicate fixtures are separate from the listing's historical fixtures and header defaults.
+P="$WORK/predicate"; mkdir -p "$P/mirror" "$P/state/workers" "$P/bucket" "$P/bin"
+P_MAIN_KEY="HIMMEL-$((11000 + 1))"
+M="$P/mirror"
+printf 'v1.0.1\tfalse\t\nv1.0.2\tfalse\t\nv1.0.0\ttrue\t2026-01-01\n' > "$P/mirror.versions.tsv"
+printf '# chief\n\n## Live state\npriority: HIMMEL-11001\n' > "$P/bucket/chief.md"
+cat > "$P/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$P_GH_LOG"
+case "$1 $2" in
+    'pr list') exit 0 ;;
+    'pr view') cat "$P_BODIES/$3" 2>/dev/null; exit $? ;;
+esac
+exit 1
+EOF
+chmod +x "$P/bin/gh"
+export P_GH_LOG="$P/gh.log" P_BODIES="$P/bodies"
+mkdir -p "$P_BODIES"; : > "$P_GH_LOG"
+P_CLI="$WORK/notcore-stub/index.js"
+p_reset() {
+    rm -f "$M"/*.md "$P/state/workers"/*.json "$P/bucket/owed.jsonl" "$P/bucket/owed.jsonl.lock" "$P/cache.json"
+    : > "$P/state/status-events.jsonl"
+    : > "$P_GH_LOG"
+    P_CLI="$WORK/notcore-stub/index.js"
+    P_SUT="$SUT"; P_JIRA=""; P_LIMIT=400; P_PATH="$PATH"; P_LIVE=0; P_GH="$P/bin/gh"; P_READER=""
+}
+p_mk() { mk "$1" "${2:-To Do}" Medium '[]' '["v1.0.1"]' '[]' 'predicate fixture' "${3:-Writes: scripts/lib/alpha.sh}"; }
+p_part() { # key pr kind actor
+    printf '{"event":"merge","result":"moved","key":"%s","pr":"%s","contract":"no","remainder":"%s","owed":"%s","owed_due":"2026-11-30"}\n' "$1" "$2" "$3" "${4:-}" >> "$P/state/status-events.jsonl"
+    case "$3" in
+        remaining) printf 'Remaining: edit scripts/lib/rem.sh\n' > "$P_BODIES/$2" ;;
+        owed) printf '## Ticket coverage\n- check: owed -> %s by 2026-11-30\n' "${4:-chief}" > "$P_BODIES/$2" ;;
+    esac
+}
+p_run() {
+    local offline=--no-classify
+    [ "$P_LIVE" = 0 ] || offline=""
+    P_OUT="$(PATH="$P_PATH" NEXT_DISPATCH_DEADLINE="$P_LIMIT" NEXT_DISPATCH_JIRA_CLI="$P_CLI" NEXT_DISPATCH_MIRROR="$M" NEXT_DISPATCH_BODY_CACHE="$P/cache.json" NEXT_DISPATCH_READER="$P_READER" NEXT_DISPATCH_GH_CMD="$P_GH" NEXT_DISPATCH_JIRA_CMD="$P_JIRA" \
+        bash "$P_SUT" $offline --workers-dir "$P/state/workers" "$@" 2> "$P/stderr")"; P_RC=$?
+}
+p_list() { p_run --why --dispositions --top 100 --doc "$P/bucket/chief.md"; }
+p_owed() { bash "$HERE/owe.sh" "$@" --bucket "$P/bucket"; }
+p_validation() { p_owed add --chief fixture --kind proof --key "$1" --text validate --metadata '{"actor":"chief","action":"validate-proof"}'; }
+p_step() {
+    p_owed add --chief fixture --kind step --key "$1" --text "${4:-Fix scripts/lib/next.sh}" \
+        --metadata "{\"actor\":\"$3\",\"action\":\"next-step\",\"source_id\":\"$2\",\"due\":\"2026-11-30\",\"wake\":\"fixture\",\"capability\":\"fixture\"}" >/dev/null
+}
+p_reset
+p_mk HIMMEL-11001
+p_mk HIMMEL-11002 'To Do' 'No readable scope'
+printf '{"state":"wrapped","resume_brief":"fixture-brief.md"}\n' > "$P/state/workers/HIMMEL-11002.json"
+p_mk HIMMEL-11003; p_part HIMMEL-11003 7001 remaining
+p_mk HIMMEL-11004 'In Progress'; p_mk HIMMEL-11005 'In Review'
+p_mk HIMMEL-11006 'IN CI'; p_mk HIMMEL-11007 Done
+p_mk HIMMEL-11008; retype "$M/HIMMEL-11008.md" Epic; p_part HIMMEL-11008 7002 remaining
+p_mk HIMMEL-11009; p_part HIMMEL-11009 7003 owed proof
+p_mk HIMMEL-11010; p_mk HIMMEL-11011
+for pair in HIMMEL-11010:chief HIMMEL-11011:operator; do
+    pv="$(p_validation "${pair%%:*}")"; p_step "${pair%%:*}" "$pv" "${pair##*:}"
+    p_owed close --id "$pv" --key KEEP >/dev/null
+done
+p_list
+[ "$P_RC" = 0 ] && pass 'P21(a) listing exits successfully' || fail "P21(a) listing rc=$P_RC"
+has 'P21(a) ordinary To Do is executable' "$P_OUT" $'LOCAL?\tHIMMEL-11001'
+for pk in 11002 11003 11004 11005 11006 11009; do has "P21(a) role $pk is RESUME" "$P_OUT" "$(printf 'RESUME\tHIMMEL-%s' "$pk")"; done
+lacks 'P21(a) terminal is absent' "$P_OUT" $'RESUME\tHIMMEL-11007'
+has 'P21(a) Epic live partial retains type refusal' "$P_OUT" '# drop HIMMEL-11008 type Epic'
+has 'P21(a) proof-only scope writes nothing' "$(printf '%s\n' "$P_OUT" | grep $'^RESUME\tHIMMEL-11009')" 'files=-'
+for pk in 11010 11011; do has "P21(a) next-step owner $pk is OWED" "$P_OUT" "OWED HIMMEL-$pk:"; lacks "P21(a) next-step owner $pk is not executable" "$P_OUT" "$(printf 'LOCAL?\tHIMMEL-%s' "$pk")"; done
+P_PROOF_KEY="HIMMEL-$((11000 + 9))"
+pv="$(p_validation "$P_PROOF_KEY")"
+p_list
+lacks 'P21(a) pending validation suppresses proof-only executable membership' "$P_OUT" $'RESUME\tHIMMEL-11009'
+has 'P21(a) pending proof validation names chief' "$P_OUT" "OWED HIMMEL-11009: owed action $pv owes chief"
+
+p_unknown() {
+    [ "$P_RC" = 3 ] && pass "$1 rc3" || fail "$1 rc=$P_RC: $P_OUT"
+    [ "$(printf '%s\n' "$P_OUT" | grep -c "^UNKNOWN $P_MAIN_KEY:")" = 1 ] && pass "$1 one UNKNOWN" || fail "$1 UNKNOWN: $P_OUT"
+    if printf '%s\n' "$P_OUT" | grep -Eq '^(READY|GATE) '; then fail "$1 partial verdict: $P_OUT"; else pass "$1 no partial verdict"; fi
+    lacks "$1 no traceback" "$(cat "$P/stderr")" Traceback
+}
+p_tree() {
+    PT="$P/tree-$1"; mkdir -p "$PT/scripts/handover" "$PT/marketplace/plugins/himmel-ops"
+    cp -R "$HERE" "$PT/scripts/handover/chief-kit"
+    cp -R "$HERE/../../lib" "$PT/scripts/lib"
+    cp -R "$HERE/../../../marketplace/plugins/himmel-ops/scripts" "$PT/marketplace/plugins/himmel-ops/scripts"
+    P_SUT="$PT/scripts/handover/chief-kit/next-dispatchable.sh"
+}
+p_reset; p_mk HIMMEL-11001
+p_run --why-ticket HIMMEL-11099
+[ "$P_RC" = 3 ] && has 'P8(b) absent key reason' "$P_OUT" 'not in the mirror or the body file' || fail "P8(b) rc=$P_RC: $P_OUT"
+p_run --why-ticket HIMMEL-11001 --body-file "$P/missing-body"; p_unknown 'P8(c) unreadable body'
+printf -- '---\nkey: HIMMEL-11002\n---\nWrites: scripts/lib/alpha.sh\n' > "$P/body"
+p_run --why-ticket HIMMEL-11001 --body-file "$P/body"; p_unknown 'P8(d) body key mismatch'
+has 'P8(d) named key mismatch' "$P_OUT" 'body file key HIMMEL-11002 differs'
+p_run --why-ticket HIMMEL-11001 --mirror "$P/missing-mirror"; p_unknown 'P8(e) missing mirror'
+if [ "$(id -u)" = 0 ]; then pass 'P8(f) unreadable directory SKIP root'; else
+    mkdir "$P/unreadable"; chmod 000 "$P/unreadable"
+    p_run --why-ticket HIMMEL-11001 --mirror "$P/unreadable"; chmod 700 "$P/unreadable"; p_unknown 'P8(f) unreadable mirror'
+fi
+printf -- '---\nkey: HIMMEL-11001\n' > "$M/HIMMEL-11001.md"
+p_run --why-ticket HIMMEL-11001; p_unknown 'P8(g) malformed mirror'
+has 'P8(g) absent key reason' "$P_OUT" 'not in the mirror or the body file'
+for missing in platform-dropped.re pr_remainder.py proof_staging.py; do
+    p_reset; p_mk HIMMEL-11001; p_tree "$missing"
+    case "$missing" in pr_remainder.py) rm "$PT/scripts/lib/$missing" ;; *) rm "$PT/scripts/handover/chief-kit/$missing" ;; esac
+    p_run --why-ticket HIMMEL-11001; p_unknown "P8(h/i/m) missing $missing"
+done
+p_reset; p_mk HIMMEL-11001
+P_REAL_PY="$(command -v python3)"; export P_REAL_PY
+mkdir -p "$P/python-bin"
+cat > "$P/python-bin/python3" <<'EOF'
+#!/usr/bin/env bash
+if [ "$*" = '-I -' ]; then cat >/dev/null; exit "$P_STUB_RC"; fi
+exec "$P_REAL_PY" "$@"
+EOF
+chmod +x "$P/python-bin/python3"
+for P_STUB_RC in 0 1 3 5; do
+    export P_STUB_RC; P_PATH="$P/python-bin:$PATH"
+    p_run --why-ticket HIMMEL-11001; p_unknown "P8(j/k) empty body exit $P_STUB_RC"
+    has "P8(j/k) unexpected exit $P_STUB_RC" "$P_OUT" "unexpected exit $P_STUB_RC"
+done
+p_reset
+mk HIMMEL-11001 'To Do' Medium '[]' '["v1.0.1"]' '["HIMMEL-11002"]' fixture 'Writes: scripts/lib/alpha.sh'
+p_mk HIMMEL-11002
+cat > "$P/slow-jira" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$P_JIRA_LOG"
+sleep 20
+EOF
+chmod +x "$P/slow-jira"; export P_JIRA_LOG="$P/jira.log"; : > "$P_JIRA_LOG"
+P_JIRA="$P/slow-jira"; P_LIMIT=3; P_LIVE=1
+p_run --why-ticket HIMMEL-11001; p_unknown 'P8(a) deadline'
+has 'P8(a) reached real blocker stub' "$(cat "$P_JIRA_LOG")" 'get HIMMEL-11002'  # read-sink-ok: P_JIRA_LOG is this suite's own stub log under its scratch dir
+has 'P8(a) deadline reason' "$P_OUT" 'timed out after 3s'
+for flag in top why dispositions priority-pool-only resume-only owners workers-from held; do
+    p_reset; p_mk HIMMEL-11001
+    case "$flag" in top) set -- --top 3 ;; owners) set -- --owners HIMMEL-11002 ;; workers-from|held) set -- "--$flag" "$P/missing" ;; *) set -- "--$flag" ;; esac
+    p_run --why-ticket HIMMEL-11001 "$@"
+    [ "$P_RC" = 2 ] && pass "P12 refuses --$flag" || fail "P12 accepts --$flag rc=$P_RC"
+done
+for key in bad-key AB2-5; do p_run --why-ticket "$key"; [ "$P_RC" = 2 ] && pass "P12 bad key $key" || fail "P12 key $key rc=$P_RC"; done
+p_run --body-file "$P/body"; [ "$P_RC" = 2 ] && pass 'P12 body-file requires predicate' || fail "P12 body alone rc=$P_RC"
+
+p_verdict() {
+    [ "$P_RC" = "$2" ] && pass "$1 rc$2" || fail "$1 rc=$P_RC expected $2: $P_OUT"
+    if [ "$2" = 0 ]; then has "$1 READY" "$P_OUT" 'READY HIMMEL-11001'; else lacks "$1 no READY" "$P_OUT" 'READY '; fi
+    lacks "$1 no UNKNOWN" "$P_OUT" 'UNKNOWN '
+}
+p_reset; MK_BARE=1 p_mk HIMMEL-11001 'To Do' 'Nothing is scoped'
+p_run --why-ticket HIMMEL-11001; p_verdict P1 1
+has 'P1 all gates no-scope' "$P_OUT" 'GATE HIMMEL-11001 no-scope:'
+has 'P1 all gates no-proof' "$P_OUT" 'GATE HIMMEL-11001 no-proof: missing DoD, Proof'
+p_reset; p_mk HIMMEL-11001
+cat > "$P/fail-gh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$P_GH_LOG"
+exit 1
+EOF
+mkdir -p "$P/no-gh"
+cat > "$P/no-gh/gh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$P_PATH_GH_LOG"
+exit 1
+EOF
+chmod +x "$P/fail-gh" "$P/no-gh/gh"
+export P_PATH_GH_LOG="$P/path-gh.log"; : > "$P_PATH_GH_LOG"
+P_GH="$P/fail-gh"; P_PATH="$P/no-gh:$PATH"
+printf '{"event":"merge","stage":"pre-merge","result":"pending","key":"HIMMEL-11002","pr":"7101","head":"other","repo":"other/repo","contract":"no"}\n' > "$P/state/status-events.jsonl"
+p_run --why-ticket HIMMEL-11001; p_verdict P2 0
+[ ! -s "$P_GH_LOG" ] && [ ! -s "$P_PATH_GH_LOG" ] && pass 'P2 both gh logs empty' || fail 'P2 reached GitHub'
+cat >> "$P/state/status-events.jsonl" <<'EOF'
+{"event":"merge","stage":"pre-merge","result":"pending","key":"HIMMEL-11001","pr":"7102","head":"dangling","contract":"no"}
+{"event":"merge","stage":"pre-merge","result":"pending","key":"HIMMEL-11001","pr":"7101","head":"settled","contract":"no"}
+{"event":"merge","result":"not-merged","key":"HIMMEL-11001","pr":"7101","head":"settled"}
+EOF
+p_run --why-ticket HIMMEL-11001; p_verdict P2b 1
+has 'P2b own dangling row refused' "$P_OUT" 'drop: merge of PR #7102 unconfirmed'
+lacks 'P2b other-key warning never pairs with settled own PR' "$P_OUT" 'PR #7101'
+[ ! -s "$P_GH_LOG" ] && [ ! -s "$P_PATH_GH_LOG" ] && pass 'P2b both gh logs empty' || fail 'P2b reached GitHub'
+mkdir -p "$P/core"
+cat > "$P/core/index.js" <<'EOF'
+const fs = require('fs'), a = process.argv.slice(2);
+fs.appendFileSync(process.env.P_CORE_LOG, a.join(' ') + '\n');
+if (a[1] === 'core-check') {
+  if (process.env.P_CORE_VERB === 'FAIL') { console.error('fixture refused'); process.exit(5); }
+  for (const k of a.slice(a.indexOf('--key') + 1)) console.log((process.env.P_CORE_VERB || 'CORE') + ' ' + k + ' fixture');
+} else for (const k of a.filter(x => /^HIMMEL-\d+$/.test(x))) console.log((process.env.P_SPEC_VERB || 'NO-SPEC') + ' ' + k + ' fixture');
+EOF
+export P_CORE_LOG="$P/core.log" P_CORE_VERB=CORE P_SPEC_VERB=NO-SPEC
+for status in 'To Do' 'In Progress'; do
+    p_reset; MK_BARE=1 p_mk HIMMEL-11001 "$status"; p_mk HIMMEL-11002
+    P_CLI="$P/core/index.js"; : > "$P_CORE_LOG"
+    p_run --why-ticket HIMMEL-11001
+    if [ "$status" = 'To Do' ]; then
+        p_verdict 'P6(a)' 1; has 'P6(a) core spec gate' "$P_OUT" 'core-no-spec: NO-SPEC'; has 'P6(a) proof gate' "$P_OUT" 'no-proof:'
+    else p_verdict 'P6(b)' 0; lacks 'P6(b) no To Do gates' "$P_OUT" 'core-no-spec:'; lacks 'P6(b) no proof gate' "$P_OUT" 'no-proof:'; fi
+    [ "$(grep -c '^release core-check ' "$P_CORE_LOG")" = 1 ] && pass "P6 $status one core read" || fail "P6 $status core count"
+    lacks "P6 $status no other key" "$(cat "$P_CORE_LOG")" HIMMEL-11002
+    has "P6 $status key-only core argv" "$(cat "$P_CORE_LOG")" '--key HIMMEL-11001'
+done
+for verb in UNKNOWN FAIL BYPASS-NEEDS-SPEC; do
+    p_reset; p_mk HIMMEL-11001; P_CLI="$P/core/index.js"; P_CORE_VERB="$verb"
+    p_run --why-ticket HIMMEL-11001; p_verdict "Q3 core $verb" 1
+    has "Q3 $verb fail closed" "$P_OUT" 'core-no-spec:'
+done
+P_CORE_VERB=CORE; P_SPEC_VERB=SPEC-STALE
+p_run --why-ticket HIMMEL-11001; p_verdict 'Q3 stale spec' 1; has 'Q3 SPEC-STALE' "$P_OUT" 'core-no-spec: SPEC-STALE'
+P_SPEC_VERB=NO-SPEC
+p_reset; p_mk HIMMEL-11001
+printf '\377' >> "$M/HIMMEL-11001.md"
+p_run --why-ticket HIMMEL-11001; p_verdict 'P8(l) mirror replacement UTF8' 0
+cp "$M/HIMMEL-11001.md" "$P/utf8-body"
+p_run --why-ticket HIMMEL-11001 --body-file "$P/utf8-body"; p_verdict 'P8(l) body replacement UTF8' 0
+mkdir -p "$P/body-core"
+cat > "$P/body-core/index.js" <<'EOF'
+const fs = require('fs'), path = require('path'), a = process.argv.slice(2), m = a[a.indexOf('--mirror')+1];
+fs.writeFileSync(process.env.P_TEMP_LOG, m);
+if (!fs.readFileSync(path.join(m, 'HIMMEL-11001.md'), 'utf8').includes('Writes: scripts/lib/alpha.sh')) process.exit(4);
+console.log('NOT-CORE HIMMEL-11001');
+EOF
+export P_TEMP_LOG="$P/temp.log"
+p_reset; p_mk HIMMEL-11001; cp "$M/HIMMEL-11001.md" "$P/body"; rm "$M/HIMMEL-11001.md"
+P_CLI="$P/body-core/index.js"
+p_run --why-ticket HIMMEL-11001 --body-file "$P/body"; p_verdict 'P15(a) unmirrored body' 0
+[ ! -d "$(cat "$P_TEMP_LOG")" ] && pass 'P15(a) temporary mirror removed' || fail 'P15(a) temporary mirror leaked'
+printf 'Writes: scripts/lib/alpha.sh\n\nProof\n- check\n' > "$P/body"
+P_CLI="$WORK/notcore-stub/index.js"
+p_run --why-ticket HIMMEL-11001 --body-file "$P/body"; p_verdict 'P15(b) description-only body' 1
+has 'P15(b) actual body proof checker' "$P_OUT" 'no-proof: missing DoD'
+for status in 'IN CI' Done; do
+    p_reset; p_mk HIMMEL-11001 "$status"; p_run --why-ticket HIMMEL-11001; p_verdict "P16 $status" 1
+    case "$status" in 'IN CI') has 'P16 IN CI needs GitHub' "$P_OUT" 'drop: IN CI (whether a merged PR already closes it needs a GitHub read)' ;; *) has 'P16 terminal status' "$P_OUT" 'drop: status Done' ;; esac
+done
+for role in ordinary wrapped partial progress review epic subtask; do
+    p_reset
+    case "$role" in progress) status='In Progress' ;; review) status='In Review' ;; *) status='To Do' ;; esac
+    p_mk HIMMEL-11001 "$status"
+    case "$role" in
+        wrapped) MK_BARE=1 p_mk HIMMEL-11001 'To Do' 'No readable scope'; printf '{"state":"wrapped","resume_brief":"fixture.md"}\n' > "$P/state/workers/HIMMEL-11001.json" ;;
+        partial|epic)
+            p_part HIMMEL-11001 7001 remaining
+            printf '\n## Comments\n\n### chief — 2026-11-17T00:00:00Z\nPR #7001 (fixture/repo) merged @ abc as a partial merge; the ticket is not complete. Remaining: edit scripts/lib/rem.sh\n' >> "$M/HIMMEL-11001.md"
+            [ "$role" != epic ] || retype "$M/HIMMEL-11001.md" Epic ;;
+        subtask) retype "$M/HIMMEL-11001.md" Sub-task ;;
+    esac
+    p_run --why-ticket HIMMEL-11001
+    case "$role" in epic|subtask) p_verdict "P21(b)/P19 $role" 1; has "P19 $role type" "$P_OUT" 'drop: type ' ;; *) p_verdict "P21(b) $role" 0 ;; esac
+done
+for variant in done-pending parked-title parked-label platform cloud residual; do
+    p_reset; p_mk HIMMEL-11001
+    case "$variant" in
+        done-pending) printf '{"event":"merge","result":"moved","key":"HIMMEL-11001","pr":"7001","contract":"yes"}\n' > "$P/state/status-events.jsonl"; want='drop: done-pending' ;;
+        parked-title) mk HIMMEL-11001 'To Do' Medium '[]' '[]' '[]' 'parked: later' 'Writes: scripts/lib/alpha.sh'; want='held-label: title parked:' ;;
+        parked-label) mk HIMMEL-11001 'In Progress' Medium '["parked-later"]' '[]' '[]' fixture 'Writes: scripts/lib/alpha.sh'; want='held-label: labels parked-later' ;;
+        platform) mk HIMMEL-11001 'To Do' Medium '[]' '[]' '[]' 'fix the wsl path' 'Writes: scripts/lib/alpha.sh'; want='drop: platform (dropped-platform title)' ;;
+        cloud) printf '# chief\n\n## Live state\npriority: HIMMEL-11001(CLOUD)\n' > "$P/bucket/cloud.md"; want='drop: cloud-only on the priority line' ;;
+        residual) mk HIMMEL-11001 'To Do' Medium '["residual-depth-2"]' '[]' '[]' fixture 'Writes: scripts/lib/alpha.sh'; want='drop: residual-depth 2' ;;
+    esac
+    if [ "$variant" = cloud ]; then p_run --why-ticket HIMMEL-11001 --doc "$P/bucket/cloud.md"; else p_run --why-ticket HIMMEL-11001; fi
+    p_verdict "P19 $variant" 1; has "P19 $variant reason" "$P_OUT" "$want"
+done
+p_reset
+for status in 'To Do' 'In Progress'; do
+    mk HIMMEL-11001 "$status" Medium '[]' '[]' '["HIMMEL-11002","HIMMEL-11003"]' fixture 'Writes: scripts/lib/alpha.sh'
+    p_mk HIMMEL-11002; p_mk HIMMEL-11003
+    cat > "$P/live-jira" <<'EOF'
+#!/usr/bin/env bash
+[ "$2" != HIMMEL-11003 ] || exit 1
+printf '%s\tTask\tTo Do\tfixture\n' "$2"
+EOF
+    chmod +x "$P/live-jira"; P_JIRA="$P/live-jira"; P_LIVE=1
+    p_run --why-ticket HIMMEL-11001; p_verdict "P13d/e $status blocker" 1
+    has "P13d/e $status blocker detail" "$P_OUT" 'open-blocker: HIMMEL-11002 (To Do, live), HIMMEL-11003 (unreadable)'
+done
+
+p_reset; p_mk HIMMEL-11001
+mkdir -p "$P/status-unreadable/workers" "$P/merged-git"
+mkdir -p "$P/status-unreadable/status-events.jsonl"
+git -C "$P/merged-git" init -q -b main
+git -C "$P/merged-git" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m 'fixture [HIMMEL-11001]'
+P_OUT="$(NEXT_DISPATCH_GIT_DIR="$P/merged-git" NEXT_DISPATCH_MAIN_REF=main NEXT_DISPATCH_JIRA_CLI="$P_CLI" NEXT_DISPATCH_MIRROR="$M" NEXT_DISPATCH_GH_CMD="$P/fail-gh" bash "$SUT" --no-classify --why-ticket "$P_MAIN_KEY" --workers-dir "$P/status-unreadable/workers" 2> "$P/stderr")"; P_RC=$?
+p_verdict 'P19 status-unreadable merged local key' 1
+has 'P19 status-unreadable exact refusal' "$P_OUT" 'drop: status-events.jsonl unreadable and the key has a merge on main'
+p_reset
+mk HIMMEL-11001 'To Do' Medium '[]' '[]' '["HIMMEL-11002"]' fixture 'Writes: scripts/lib/alpha.sh'
+p_mk HIMMEL-11002; cp "$M/HIMMEL-11001.md" "$P/deadline-body"
+mkdir -p "$P/temp"
+P_JIRA="$P/slow-jira"; P_LIMIT=3; P_LIVE=1
+TMPDIR="$P/temp" p_run --why-ticket HIMMEL-11001 --body-file "$P/deadline-body"
+p_unknown 'P8/P15 body deadline cleanup'
+if find "$P/temp" -name 'prim.*' | grep -q .; then fail 'P8/P15 deadline leaked temp mirror'; else pass 'P8/P15 deadline removes temp mirror'; fi
+p_reset
+mk HIMMEL-11001 'To Do' Medium '[]' '[]' '["HIMMEL-11002"]' fixture 'Writes: scripts/lib/alpha.sh'
+p_mk HIMMEL-11002 Done; P_JIRA="$P/live-jira"
+p_run --why-ticket HIMMEL-11001; p_verdict 'P13e no-classify uses mirror despite configured Jira reader' 0
+
+p_comment() { printf '\n## Comments\n\n### chief — 2026-11-17T00:00:00Z\n%s\n' "$1" >> "$M/HIMMEL-11001.md"; }
+p_breadcrumb() { p_comment "PR #$1 (yotamleo-org/Himmel) merged @ abc as a partial merge; the ticket is not complete. Remaining: $2"; }
+p_reset; p_mk HIMMEL-11001 'To Do' 'Scope needs a ruling'
+p_comment $'readiness: scoped by chief\nWrites: scripts/lib/rd.sh'
+p_run --why-ticket HIMMEL-11001; p_verdict P3 0; has 'P3 predicate readiness scope' "$P_OUT" 'readiness comment'; has 'P3 predicate path' "$P_OUT" 'scripts/lib/rd.sh'
+p_list; has 'P3 listing readiness scope' "$P_OUT" 'files=scripts/lib/rd.sh'
+for marker in $'Readiness ruling: scoped\nWrites: scripts/lib/rd.sh' $'ordinary note\nWrites: scripts/lib/rd.sh' 'readiness: scoped Writes: scripts/lib/rd.sh'; do
+    p_reset; p_mk HIMMEL-11001 'To Do' 'Scope needs a ruling'; p_comment "$marker"
+    p_run --why-ticket HIMMEL-11001; p_verdict "P4(a/b/d) predicate $marker" 1; has 'P4(a/b/d) predicate no scope' "$P_OUT" 'no-scope:'
+    p_list; has 'P4(a/b/d) listing guard' "$P_OUT" 'NEEDS-CHIEF-NOTE HIMMEL-11001'
+done
+p_reset; p_mk HIMMEL-11001 'To Do' 'Scope needs a ruling'
+p_comment $'readiness: old\nWrites: scripts/lib/old.sh'
+printf '\n### chief — 2026-11-17T01:00:00Z\nreadiness: new\nWrites: scripts/lib/new.sh\n' >> "$M/HIMMEL-11001.md"
+p_run --why-ticket HIMMEL-11001; p_verdict 'P4(c) predicate' 0; has 'P4(c) predicate newest' "$P_OUT" 'scripts/lib/new.sh'; lacks 'P4(c) predicate ignores older' "$P_OUT" 'scripts/lib/old.sh'
+p_list; has 'P4(c) listing newest' "$P_OUT" 'files=scripts/lib/new.sh'
+for mode in breadcrumb cache; do
+    p_reset; p_mk HIMMEL-11001 'In Progress' 'Writes: scripts/lib/desc.sh'; p_part HIMMEL-11001 7001 remaining
+    p_comment $'readiness: scoped\nWrites: scripts/lib/rd.sh'; p_breadcrumb 7001 'edit scripts/lib/rem.sh'
+    if [ "$mode" = cache ]; then p_list; has 'P7c listing remainder wins' "$P_OUT" 'files=scripts/lib/rem.sh'; fi
+    p_run --why-ticket HIMMEL-11001; p_verdict "P7/P7c $mode" 0
+    has "P7/P7c $mode source" "$P_OUT" '# scope HIMMEL-11001 remainder of PR #7001: scripts/lib/rem.sh'
+done
+for variant in owed missing not-recorded; do
+    p_reset; p_mk HIMMEL-11001 'In Progress'; p_part HIMMEL-11001 7002 remaining
+    case "$variant" in
+        owed) printf '{"event":"merge","result":"moved","key":"HIMMEL-11001","pr":"7002","contract":"no"}\n' > "$P/state/status-events.jsonl"; p_breadcrumb 7002 'the live check: owed → chief by 2026-11-30'; want='remainder kind of PR #7002 unknown without GitHub' ;;
+        missing) want='remainder of PR #7002 not yet in the mirror' ;;
+        not-recorded) printf '{"event":"merge","result":"moved","key":"HIMMEL-11001","pr":"7002","contract":"no"}\n' > "$P/state/status-events.jsonl"; p_breadcrumb 7002 'not recorded in the PR body, see PR #7002.'; want='remainder of PR #7002 not recorded (no GitHub read)' ;;
+    esac
+    p_run --why-ticket HIMMEL-11001; p_verdict "P7b $variant" 1; has "P7b $variant reason" "$P_OUT" "$want"
+done
+p_reset; p_mk HIMMEL-11001 'In Progress'; p_part HIMMEL-11001 7001 remaining; p_breadcrumb 7001 'edit scripts/lib/rem.sh'
+P_GH="$P/fail-gh"; P_PATH="$P/no-gh:$PATH"; : > "$P_PATH_GH_LOG"
+p_run --why-ticket HIMMEL-11001; p_verdict 'P17(a) real reader no gh' 0
+[ ! -s "$P_GH_LOG" ] && [ ! -s "$P_PATH_GH_LOG" ] && pass 'P17(a) both gh logs empty' || fail 'P17(a) reached GitHub'
+P_READER="$P/missing-reader.py"
+p_run --why-ticket HIMMEL-11001; p_unknown 'P17(b) missing reader'; has 'P17(b) reader reason' "$P_OUT" 'pr_remainder.py'
+P_READER=''; p_tree raising
+printf '\ndef live_answers(answers):\n    raise RuntimeError("fixture")\n' >> "$PT/scripts/lib/pr_remainder.py"
+p_run --why-ticket HIMMEL-11001; p_unknown 'P17(c) actual internal error'; has 'P17(c) framed RuntimeError' "$P_OUT" 'internal error RuntimeError'
+p_reset; p_mk HIMMEL-11001 'In Progress'; p_part HIMMEL-11001 7003 owed chief
+p_run --why-ticket HIMMEL-11001; p_verdict 'P19(h) owed chief' 1; has 'P19(h) named debt' "$P_OUT" 'drop: merged PR #7003 owes chief by 2026-11-30'
+p_reset; p_mk HIMMEL-11001 'In Progress'; p_part HIMMEL-11001 7004 remaining
+printf '## Ticket coverage\n- first: deferred -> HIMMEL-1\n- second: deferred -> HIMMEL-2\n' > "$P_BODIES/7004"
+p_list
+p_run --why-ticket HIMMEL-11001; p_verdict 'P19(i) handed-off cached' 1; has 'P19(i) hand-off owner' "$P_OUT" 'drop: remainder on HIMMEL-1, HIMMEL-2'
+P_KEY="HIMMEL-$((11000 + 1))"
+for actor in worker chief operator; do
+    p_reset; p_mk HIMMEL-11001 'In Progress' 'Writes: scripts/lib/desc.sh'; p_part HIMMEL-11001 7001 remaining
+    p_comment $'readiness: scoped\nWrites: scripts/lib/rd.sh'; p_breadcrumb 7001 'edit scripts/lib/rem.sh'
+    pv="$(p_validation "$P_KEY")"; p_owed close --id "$pv" --key KEEP >/dev/null; p_step "$P_KEY" "$pv" "$actor"
+    p_list
+    if [ "$actor" = worker ]; then has 'P20 listing KEEP worker scope wins' "$P_OUT" 'files=scripts/lib/next.sh'; else has "P20 listing $actor holds" "$P_OUT" "owes $actor by 2026-11-30"; lacks "P20 listing $actor not executable" "$P_OUT" $'RESUME\tHIMMEL-11001'; fi
+    p_run --why-ticket HIMMEL-11001 --doc "$P/bucket/chief.md"
+    if [ "$actor" = worker ]; then p_verdict 'P20 predicate KEEP worker' 0; has 'P20 predicate KEEP scope wins' "$P_OUT" 'owed next step'; has 'P20 predicate actual worker scope' "$P_OUT" 'scripts/lib/next.sh'; else p_verdict "P20/P21(c) predicate $actor holds" 1; has "P20 predicate $actor refusal" "$P_OUT" "drop: owned next step: $actor"; fi
+done
+for variant in proof pending discharged code older wrong; do
+    p_reset; p_mk HIMMEL-11001 'To Do'; p_part HIMMEL-11001 7001 owed proof
+    case "$variant" in
+        pending|discharged|code) pv="$(p_validation "$P_KEY")" ;;
+        older) pv="$(p_validation "$P_KEY")"; p_owed close --id "$pv" --key KEEP >/dev/null; p_step "$P_KEY" "$pv" worker; p_validation "$P_KEY" >/dev/null ;;
+        wrong) other="HIMMEL-$((11000 + 2))"; pv="$(p_validation "$other")"; p_owed close --id "$pv" --key KEEP >/dev/null; p_step "$P_KEY" "$pv" worker ;;
+    esac
+    case "$variant" in
+        discharged) p_owed close --id "$pv" --key MET >/dev/null ;;
+        code) p_part HIMMEL-11001 7002 remaining; p_breadcrumb 7002 'edit scripts/lib/rem.sh' ;;
+    esac
+    p_list
+    case "$variant" in pending|older) lacks "P20 listing $variant proof withheld" "$P_OUT" $'RESUME\tHIMMEL-11001'; has "P20 listing $variant names chief" "$P_OUT" 'owes chief' ;; *) has "P20 listing $variant executable" "$P_OUT" $'RESUME\tHIMMEL-11001' ;; esac
+    p_run --why-ticket HIMMEL-11001 --doc "$P/bucket/chief.md"
+    case "$variant" in
+        pending|older) p_verdict "P20/P21(c) predicate $variant" 1; has "P20 predicate $variant named owner" "$P_OUT" 'drop: owned next step: chief' ;;
+        *) p_verdict "P20/P21(c) predicate $variant" 0 ;;
+    esac
+    case "$variant" in code) has 'P20 unrelated code scope preserved' "$P_OUT" 'scripts/lib/rem.sh' ;; wrong|older) lacks "P20 $variant source never supplies scope" "$P_OUT" 'scripts/lib/next.sh' ;; esac
+done
+p_reset; p_mk HIMMEL-11001
+p_run --why-ticket HIMMEL-11001; p_verdict 'P20 no-doc legacy' 0; has 'P20 explicit missing context' "$P_OUT" '# owed-ledger not read (no --doc)'
+p_run --why-ticket HIMMEL-11001 --doc "$P/bucket/chief.md"; p_verdict 'P20 resolved missing ledger legacy' 0
+printf '{not json}\n' > "$P/bucket/owed.jsonl"
+p_run --why-ticket HIMMEL-11001 --doc "$P/bucket/chief.md"; p_unknown 'P20 corrupt existing ledger'
+
+for variant in 'done' open released no-label bad-on unmoved; do
+    p_reset
+    labels='["held"]'; [ "$variant" != no-label ] || labels='[]'
+    mk HIMMEL-11001 'To Do' Medium "$labels" '[]' '[]' fixture 'Writes: scripts/lib/alpha.sh'
+    p_mk HIMMEL-11002 Done
+    [ "$variant" != open ] || p_mk HIMMEL-11002 'To Do'
+    on=HIMMEL-11002; [ "$variant" != bad-on ] || on=bad
+    result=moved; [ "$variant" != unmoved ] || result=refused
+    printf '{"event":"hold","result":"%s","key":"HIMMEL-11001","on":"%s"}\n' "$result" "$on" > "$P/state/status-events.jsonl"
+    [ "$variant" != released ] || printf '{"event":"hold-release","result":"moved","key":"HIMMEL-11001"}\n' >> "$P/state/status-events.jsonl"
+    p_run --why-ticket HIMMEL-11001
+    if [ "$variant" = 'done' ]; then has 'P5(a) stale hold' "$P_OUT" 'stale-hold: held on HIMMEL-11002 (Done); release:'; has 'P5(a) held label detail' "$P_OUT" 'held-label: labels held'; else lacks "P5 $variant negative" "$P_OUT" 'stale-hold:'; fi
+done
+for prose in "Depends on P4-02 (HIMMEL-$((8524)))." "- Depends on T-1.2 (HIMMEL-$((8524)))" "Depends on HIMMEL-$((8524)) and HIMMEL-$((1)) (the seam)." "BLOCKED-BY: HIMMEL-$((8524)). Now unblocked by HIMMEL-$((9))." "Depends on HIMMEL-$((8524)), HIMMEL-$((1)), and HIMMEL-$((2))." "Depends  on HIMMEL-$((8524))" "BLOCKED-BY:HIMMEL-$((8524))" "Blocked by: HIMMEL-$((8524))" "Links: relates to HIMMEL-$((9)), blocked by HIMMEL-$((8524))" "**Blocked by:** HIMMEL-$((8524))" "- Depends on P4-02 (HIMMEL-$((8524)), HIMMEL-$((1)))"; do
+    p_reset; p_mk HIMMEL-11001 'To Do' "$(printf 'Writes: scripts/lib/alpha.sh\n%s' "$prose")"; p_mk HIMMEL-8524
+    p_run --why-ticket HIMMEL-11001; p_verdict "P9/P9b $prose" 1
+    has "P9/P9b actual tracker superset $prose" "$P_OUT" 'prose-dependency: HIMMEL-8524'
+    lacks 'P9 no plan label as key' "$P_OUT" 'prose-dependency: P4-02'
+done
+for prose in "This does not depend on HIMMEL-$((8524))." "- after HIMMEL-$((8524))" "run it after HIMMEL-$((8524)) merges" "Blocked by: none (HIMMEL-$((8524)))" "Blocked by: nothing (HIMMEL-$((8524)))" "Blocked by: n/a (HIMMEL-$((8524)))"; do
+    p_reset; p_mk HIMMEL-11001 'To Do' "$(printf 'Writes: scripts/lib/alpha.sh\n%s' "$prose")"; p_mk HIMMEL-8524
+    p_run --why-ticket HIMMEL-11001; p_verdict "P9 negative $prose" 0; lacks 'P9 negative no advisory' "$P_OUT" 'prose-dependency:'
+done
+for variant in blocks blocked-by edges wrong-side 'done' self missing relates; do
+    p_reset; p_mk HIMMEL-11001 'To Do' $'Writes: scripts/lib/alpha.sh\nDepends on P4-02 (HIMMEL-8524).'; p_mk HIMMEL-8524
+    case "$variant" in
+        blocks) sed 's/blocks: \[\]/blocks: ["HIMMEL-8524"]/' "$M/HIMMEL-11001.md" > "$P/linked"; mv "$P/linked" "$M/HIMMEL-11001.md" ;;
+        blocked-by) sed 's/blocked_by: \[\]/blocked_by: ["HIMMEL-8524"]/' "$M/HIMMEL-11001.md" > "$P/linked"; mv "$P/linked" "$M/HIMMEL-11001.md" ;;
+        relates) sed 's/relates: \[\]/relates: ["HIMMEL-8524"]/' "$M/HIMMEL-11001.md" > "$P/linked"; mv "$P/linked" "$M/HIMMEL-11001.md" ;;
+        edges) printf 'Edges: HIMMEL-8524 blocks HIMMEL-11001 (soft)\n' >> "$M/HIMMEL-11001.md" ;;
+        wrong-side) printf 'Edges: HIMMEL-11001 blocks HIMMEL-8524 (soft)\n' >> "$M/HIMMEL-11001.md" ;;
+        done) p_mk HIMMEL-8524 Done ;;
+        self) p_mk HIMMEL-11001 'To Do' $'Writes: scripts/lib/alpha.sh\nDepends on HIMMEL-11001' ;;
+        missing) rm "$M/HIMMEL-8524.md" ;;
+    esac
+    p_run --why-ticket HIMMEL-11001
+    case "$variant" in missing|relates) has "P9 $variant still diagnosed" "$P_OUT" 'prose-dependency: HIMMEL-8524' ;; *) lacks "P9 $variant declared/done/self suppression (wrong-side A12 ceiling)" "$P_OUT" 'prose-dependency:' ;; esac
+    [ "$variant" != missing ] || has 'P9 missing target named' "$P_OUT" '(not in mirror)'
+done
+for variant in shared type backlog parent-later released later live-done; do
+    p_reset
+    parent='["v1.0.1"]'; blocker='[]'; labels='[]'
+    [ "$variant" != parent-later ] || parent='["v1.0.2"]'
+    [ "$variant" != released ] || blocker='["v1.0.0"]'
+    [ "$variant" != later ] || blocker='["v1.0.2"]'
+    [ "$variant" != backlog ] || labels='["backlog"]'
+    mk HIMMEL-11001 'To Do' Medium '[]' "$parent" '["HIMMEL-11002"]' fixture 'Writes: scripts/lib/alpha.sh'
+    mk HIMMEL-11002 'To Do' Medium "$labels" "$blocker" '[]' fixture 'Writes: scripts/lib/other.sh'
+    [ "$variant" != type ] || retype "$M/HIMMEL-11002.md" Epic
+    if [ "$variant" = live-done ]; then
+        # shellcheck disable=SC2016  # the generated fixture script expands its own positional argument
+        printf '#!/usr/bin/env bash\nprintf "%%s\\tTask\\tDone\\tfixture\\n" "$2"\n' > "$P/live-done"; chmod +x "$P/live-done"
+        P_JIRA="$P/live-done"; P_LIVE=1
+    fi
+    p_run --why-ticket HIMMEL-11001
+    case "$variant" in
+        live-done) p_verdict 'P13e-v live Done mirror open' 0; lacks 'P13e-v live Done no standalone diagnostic' "$P_OUT" 'blocker-no-version:' ;;
+        later) p_verdict 'P13c later unreleased blocker' 1; lacks 'P13c later unreleased no diagnostic' "$P_OUT" 'blocker-no-version:' ;;
+        *) p_verdict "P13/P13b/P13e-v $variant" 1; has "P13e-v diagnostic $variant" "$P_OUT" 'blocker-no-version: HIMMEL-11002 (no fixVersion)' ;;
+    esac
+    if [ "$variant" != live-done ]; then
+        printf '{"workers":[]}\n' > "$P/empty-fleet.json"
+        va="$(VSA_GH_CMD="$P/bin/gh" bash "$HERE/version-status-audit.sh" --mirror "$M" --workers-from "$P/empty-fleet.json" 2> "$P/audit-stderr")"
+        if [ "$variant" = shared ]; then has 'P13e-v shared actual audit positive' "$va" $'BLOCKER-NO-VERSION\tHIMMEL-11002'; else lacks "P13e-v named audit divergence/control $variant" "$va" $'BLOCKER-NO-VERSION\tHIMMEL-11002'; fi
+    fi
+done
+p_reset; p_mk HIMMEL-11001; p_tree tracker; rm "$PT/scripts/handover/chief-kit/tracker.py"
+p_run --why-ticket HIMMEL-11001; p_unknown P18; has 'P18 tracker load reason' "$P_OUT" 'tracker.py'
+mkdir -p "$P/drift-bin" "$P/drift-docs" "$P/emptyroot" "$P/snapshot"
+cat > "$P/drift-bin/gh" <<'EOF'
+#!/usr/bin/env bash
+case "$1 $2" in
+    'api rate_limit') printf '5000\t9999999999\t5000\n' ;;
+    'pr list') printf '[]\n' ;;
+    *) printf '[]\n' ;;
+esac
+EOF
+cat > "$P/drift-jira" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+    list) printf 'HIMMEL-11001\tTask\t%s\tfixture\n' "$P_DRIFT_STATUS" ;;
+    get) printf '{"fields":{"status":{"name":"%s"},"issuetype":{"name":"Task"},"labels":["held"]}}\n' "$P_DRIFT_STATUS" ;;
+    versions) exit 0 ;;
+    comments) printf '[]\n' ;;
+    *) exit 1 ;;
+esac
+EOF
+chmod +x "$P/drift-bin/gh" "$P/drift-jira"
+printf '[]\n' > "$P/snapshot/prs.json"; : > "$P/snapshot/threads.tsv"
+export P_DRIFT_STATUS
+for variant in 'done' open todo closed; do
+    p_reset; P_DRIFT_STATUS='In Progress'; target=Done
+    [ "$variant" != todo ] || P_DRIFT_STATUS='To Do'
+    [ "$variant" != open ] || target='To Do'
+    [ "$variant" != closed ] || target=Closed
+    mk HIMMEL-11001 "$P_DRIFT_STATUS" Medium '["held"]' '[]' '[]' fixture 'Writes: scripts/lib/alpha.sh'; p_mk HIMMEL-11002 "$target"
+    python3 -I -c 'import datetime,json,sys; now=datetime.datetime.now(datetime.timezone.utc); row=dict(ts=now.strftime("%Y-%m-%dT%H:%M:%SZ"),event="hold",result="moved",key="HIMMEL-11001",owner="operator",until=(now+datetime.timedelta(days=1)).strftime("%Y-%m-%d"),on="HIMMEL-11002",reason="fixture"); open(sys.argv[1],"w").write(json.dumps(row)+"\n")' "$P/state/status-events.jsonl"
+    printf 'HIMMEL-11001\tTask\t%s\tfixture\n' "$P_DRIFT_STATUS" > "$P/snapshot/jira.tsv"
+    drift="$(PATH="$P/drift-bin:$PATH" GH_READ_ENV_ROOT="$P/emptyroot" TICKET_STATUS_STATE_DIR="$P/state" TICK_TRACKER_MIRROR_DIR="$M" WORKER_SESSION_JIRA_CLI="$P/drift-jira" HIMMEL_RELEASE_STATE_DIR="$P/release" bash "$HERE/status-drift.sh" --docs-dir "$P/drift-docs" --snapshot "$P/snapshot" 2> "$P/drift-stderr")"
+    p_run --why-ticket HIMMEL-11001
+    case "$variant" in
+        done) has 'P11 actual drift positive nonvacuous' "$drift" 'HOLD-STALE HIMMEL-11001 on HIMMEL-11002 (Done)'; has 'P11 one-way predicate parity' "$P_OUT" 'stale-hold:' ;;
+        open) lacks 'P11 actual drift open control' "$drift" 'HOLD-STALE '; lacks 'P11 predicate open control' "$P_OUT" 'stale-hold:' ;;
+        todo) lacks 'P11b actual drift ranks To Do zero (known divergence)' "$drift" 'HOLD-STALE '; has 'P11b predicate To Do stale hold' "$P_OUT" 'stale-hold:' ;;
+        closed) lacks 'P11c actual drift matches Done only (known divergence)' "$drift" 'HOLD-STALE '; has 'P11c predicate Done-category Closed' "$P_OUT" 'stale-hold:' ;;
+    esac
+done
+
+p_reset
+printf -- '---\nkey: HIMMEL-11001\n---\nWrites: scripts/lib/alpha.sh\n\nDoD\n- ready\n\nProof\n- control\n' > "$P/front-matter-draft"
+p_run --why-ticket HIMMEL-11001 --body-file "$P/front-matter-draft"; p_verdict 'P15(c) partial front matter with direct description' 0
+p_reset; p_mk HIMMEL-11001
+cat > "$P/python-bin/python3" <<'EOF'
+#!/usr/bin/env bash
+if [ "$*" = '-I -' ]; then cat >/dev/null; cat "$P_STUB_OUTPUT"; exit "$P_STUB_RC"; fi  # read-sink-ok: the stub replays the output file this suite wrote under its scratch dir
+exec "$P_REAL_PY" "$@"
+EOF
+chmod +x "$P/python-bin/python3"; export P_STUB_OUTPUT="$P/stub-output"
+for variant in foreign-ready bad-gate mixed empty-unknown; do
+    P_PATH="$P/python-bin:$PATH"
+    case "$variant" in
+        foreign-ready) P_STUB_RC=0; printf 'READY HIMMEL-11002\n' > "$P_STUB_OUTPUT" ;;
+        bad-gate) P_STUB_RC=1; printf 'GATE HIMMEL-11001 invented: wrong grammar\n' > "$P_STUB_OUTPUT" ;;
+        mixed) P_STUB_RC=0; printf 'READY HIMMEL-11001\nGATE HIMMEL-11001 no-proof: missing\n' > "$P_STUB_OUTPUT" ;;
+        empty-unknown) P_STUB_RC=3; printf 'UNKNOWN HIMMEL-11001: \n' > "$P_STUB_OUTPUT" ;;
+    esac
+    p_run --why-ticket HIMMEL-11001; p_unknown "P8 malformed $variant"; has "P8 malformed $variant wrapper refusal" "$P_OUT" "unexpected exit $P_STUB_RC"
+done
+p_reset; p_mk HIMMEL-11001 'In Progress'; p_part HIMMEL-11001 7001 remaining; p_breadcrumb 7001 'edit scripts/lib/rem.sh'
+printf 'print("malformed reader answer")\n' > "$P/malformed-reader.py"; P_READER="$P/malformed-reader.py"
+p_run --why-ticket HIMMEL-11001; p_unknown 'P17 malformed reader'
+printf '' > "$P/empty-reader.py"; P_READER="$P/empty-reader.py"
+p_run --why-ticket HIMMEL-11001; p_unknown 'P17 empty reader'
+
+# Resource failures retain the public UNKNOWN contract and leave no scratch.
+p_reset; p_mk HIMMEL-11001
+TMPDIR="$P/missing-temp-root" p_run --why-ticket HIMMEL-11001
+p_unknown 'review F1 unavailable TMPDIR'
+P_REAL_MKTEMP="$(command -v mktemp)"; export P_REAL_MKTEMP
+for P_TMP_PHASE in quota out flags predicate; do
+    p_reset; p_mk HIMMEL-11001
+    mkdir -p "$P/failing-temp-bin" "$P/temp-$P_TMP_PHASE"
+    export P_TMP_PHASE P_TMP_COUNT="$P/temp-count"
+    printf '0\n' > "$P_TMP_COUNT"
+    cat > "$P/failing-temp-bin/mktemp" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+    *next-dispatch-out*) [ "$P_TMP_PHASE" != out ] || exit 1 ;;
+    *next-dispatch-flags*) [ "$P_TMP_PHASE" != flags ] || exit 1 ;;
+esac
+if [ "$1" = -d ]; then
+    read -r n < "$P_TMP_COUNT"  # read-sink-ok: the stub's own counter file, created by this suite under its scratch dir
+    n=$((n + 1)); printf '%s\n' "$n" > "$P_TMP_COUNT"
+    [ "$P_TMP_PHASE" != quota ] || exit 1
+    if [ "$P_TMP_PHASE" = predicate ] && [ "$n" -ge 2 ]; then exit 1; fi
+fi
+exec "$P_REAL_MKTEMP" "$@"
+EOF
+    chmod +x "$P/failing-temp-bin/mktemp"
+    P_PATH="$P/failing-temp-bin:$PATH"
+    TMPDIR="$P/temp-$P_TMP_PHASE" HIMMEL_QUOTA_DIR='' p_run --why-ticket HIMMEL-11001
+    p_unknown "review F1 $P_TMP_PHASE allocation"
+    if find "$P/temp-$P_TMP_PHASE" -mindepth 1 | grep -q .; then
+        fail "review F1 $P_TMP_PHASE leaked scratch"
+    else pass "review F1 $P_TMP_PHASE removed scratch"; fi
+done
+
+p_reset; p_mk HIMMEL-11001
+printf '\n{truncated\nnull\n[]\n{"event":"merge","stage":"pre-merge","result":"pending","key":"HIMMEL-11001","pr":"7119","head":"unconfirmed","contract":"no"}\n' > "$P/state/status-events.jsonl"
+p_run --why-ticket HIMMEL-11001; p_verdict 'review F2 valid rows survive non-records' 1
+has 'review F2 real target event remains a gate' "$P_OUT" 'merge of PR #7119 unconfirmed'
+
+for order in no-code-first path-first; do
+    p_reset; p_mk HIMMEL-11001 'To Do' 'No description scope'
+    if [ "$order" = no-code-first ]; then
+        p_comment $'readiness: scoped\nWrites: no code\nWrites: scripts/lib/alpha.sh'
+    else p_comment $'readiness: scoped\nWrites: scripts/lib/alpha.sh\nWrites: no code'; fi
+    p_run --why-ticket HIMMEL-11001; p_verdict "review F4 $order" 0
+    has "review F4 $order retains the written path" "$P_OUT" 'readiness comment 2026-11-17T00:00:00Z: scripts/lib/alpha.sh'
+done
+
+p_reset; p_mk HIMMEL-11001; p_tree proof-scratch
+export P_PROOF_DRAFT="$P/proof-draft-seen"
+cat > "$PT/marketplace/plugins/himmel-ops/scripts/ticket-standard-check.sh" <<'EOF'
+#!/usr/bin/env bash
+previous=''
+for argument in "$@"; do
+    [ "$previous" != --draft ] || printf '%s\n' "$argument" > "$P_PROOF_DRAFT"
+    previous="$argument"
+done
+sleep 20
+EOF
+mkdir -p "$P/proof-temp"; P_LIMIT=4
+TMPDIR="$P/proof-temp" p_run --why-ticket HIMMEL-11001
+p_unknown 'review F3 proof-check deadline'
+if [ -s "$P_PROOF_DRAFT" ]; then
+    read -r draft < "$P_PROOF_DRAFT"
+    [ ! -e "${draft%/*}" ] && pass 'review F3 proof draft removed on timeout' || fail 'review F3 leaked proof draft directory'
+else fail 'review F3 proof checker never reached'; fi
+
+# The dispatcher's worker-state reads: the same output in every mode, one read of a directory's manifests per run,
+# one worker_state evaluation per unique doc. The tree below is a copy of the code under test whose fleet_runtime.py is
+# the real module's own source run under a counting wrapper: the answers are the real ones, only the calls are logged.
+U8="$WORK/u8"; mkdir -p "$U8"
+u8_root="$(cd "$(dirname "$SUT")/../../.." && pwd)"
+U8T="$U8/tree"; mkdir -p "$U8T/scripts/handover"
+cp -R "$u8_root/scripts/handover/chief-kit" "$U8T/scripts/handover/chief-kit"
+cp -R "$u8_root/scripts/lib" "$U8T/scripts/lib"
+mkdir -p "$U8T/marketplace/plugins/himmel-ops"
+cp -R "$u8_root/marketplace/plugins/himmel-ops/scripts" "$U8T/marketplace/plugins/himmel-ops/scripts"
+cat > "$U8T/scripts/lib/fleet_runtime.py" <<'PYEOF'
+"""Fixture stand-in for fleet_runtime.py: the real module's source, run as this file, with every worker_state call, every
+disposition subprocess and every open of a *.fleet.json file logged to $FR_COUNT_LOG. FR_NO_BATCH=1 turns the batch off."""
+import os, sys
+_source = open(os.environ['FR_REAL_SOURCE'], encoding='utf-8').read()
+_guard = "if __name__ == '__main__':"
+assert _source.count(_guard) == 1
+exec(compile(_source.replace(_guard, 'if False:'), __file__, 'exec'))
+_log = os.environ.get('FR_COUNT_LOG')
+
+
+def _note(*fields):
+    if _log:
+        with open(_log, 'a') as stream:
+            stream.write('\t'.join(str(f) for f in fields) + '\n')
+
+
+def _hook(event, args):
+    if event == 'open' and isinstance(args[0], (str, bytes, os.PathLike)) and os.fsdecode(args[0]).endswith('.fleet.json'):
+        frames, frame = [], sys._getframe(1)
+        while frame and len(frames) < 14:
+            frames.append(frame.f_code.co_name)
+            frame = frame.f_back
+        _note('open', os.fsdecode(args[0]), ','.join(frames))
+
+
+sys.addaudithook(_hook)
+_worker_state = worker_state
+
+
+def worker_state(doc, *args, **kwargs):
+    disposition = kwargs.get('disposition', args[1] if len(args) > 1 else None)
+    _note('worker_state', doc, 'single' if disposition is None else 'batch')
+    return _worker_state(doc, *args, **kwargs)
+
+
+if os.environ.get('FR_NO_BATCH') and 'WorkerStates' in globals():
+    WorkerStates.batched = lambda self, doc: None
+if __name__ == '__main__':
+    _note('main', *sys.argv[1:])
+    sys.exit(main())
+PYEOF
+cat > "$U8/lock.sh" <<'EOF'
+#!/usr/bin/env bash
+# queue-lock.sh status, by the doc's name: -live a fresh lock, -stale a held lock whose owner is gone, anything else free
+case "$2" in
+    *-live.md) printf '{\n  "heartbeat": "%s"\n}\nstatus: FRESH\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"; exit 11 ;;
+    *-stale.md) printf 'status: STALE-DEAD (owner pid gone)\n'; exit 12 ;;
+    *) echo free; exit 0 ;;
+esac
+EOF
+chmod +x "$U8/lock.sh"
+# The first fixture, whose tickets are asserted as offered: every doc a row names exists and opens, the own manifest and every sibling read
+# as JSON of the shape the dispatcher accepts. A doc nobody can open is a case of its own, below.
+U8B="$U8/bucket"; U8H="$U8/home"; mkdir -p "$U8B" "$U8H/.himmel"
+python3 -I - "$U8B" "$U8H" <<'PYEOF'
+import json, os, sys
+bucket, home = sys.argv[1:3]
+anchor = os.path.join(bucket, 'fleet-control.json')
+
+
+def doc(name, *lines):
+    path = os.path.join(bucket, name)
+    with open(path, 'w') as stream:
+        stream.write('# worker\n' + ''.join(line + '\n' for line in lines))
+    return path
+
+
+D = dict(
+    wrapped=doc('HIMMEL-101-N1-wrapped.md', '- 10:00 WRAPPED - done'),
+    halted=doc('HIMMEL-102-N1-halted.md', '- 10:00 HALTED - stopped'),
+    live=doc('HIMMEL-103-N1-live.md', '- 10:00 LIVE - working'),
+    stale=doc('HIMMEL-104-N1-stale.md', '- 10:00 LIVE - working'),
+    unknown=doc('HIMMEL-105-N1-unknown.md'),
+    pending=doc('HIMMEL-107-N1-pending.md'),
+    committed=doc('HIMMEL-108-N1-committed.md'),
+    attempt_unknown=doc('HIMMEL-109-N1-attempt-unknown.md'),
+    refused=doc('HIMMEL-110-N1-refused.md'),
+    resumed=doc('HIMMEL-111-N1-resumed.md', '- 10:00 WRAPPED - done', '- 12:30 RESUMED - by hand'),
+    rereg=doc('HIMMEL-112-N1-rereg.md'),
+    legs_live=doc('HIMMEL-113-N1-legs-live.md', '- 10:00 LIVE - working'),
+    legs_wrapped=doc('HIMMEL-114-N1-legs-wrapped.md', '- 10:00 WRAPPED - done'),
+)
+control = {'family': 'fam', 'anchor': anchor}
+
+
+def rows(*names, pending=(), added='2026-11-18T08:00:00Z'):
+    out = [dict(doc=D[n], label='N%d' % (i + 1), added=added, lane='native') for i, n in enumerate(names)]
+    out += [dict(doc=D[n], label='P%d' % (i + 1), added=added, lane='native', registration='pending') for i, n in enumerate(pending)]
+    return out
+
+
+def manifest(name, workers):
+    with open(os.path.join(bucket, name), 'w') as stream:
+        json.dump({'schema': 1, 'workers': workers, 'control': control}, stream)
+
+
+chain = 'HIMMEL-nextleg-2026-11-%s-roadmap-chief.fleet.json'
+manifest(chain % '18A', rows('wrapped', 'live', 'unknown'))
+manifest(chain % '17B', rows('wrapped', 'halted', 'stale', 'live', pending=('pending', 'committed', 'attempt_unknown', 'refused', 'resumed')))
+manifest(chain % '17A', rows('wrapped', 'halted', 'stale', 'unknown', 'live'))
+manifest(chain % '16C', rows('wrapped', 'halted', 'live', 'stale', 'unknown'))
+manifest(chain % '16A', rows('wrapped', 'halted', 'live', 'stale', 'unknown', pending=('pending',)))
+manifest(chain % '15A', rows('wrapped', 'halted', 'live', 'stale', 'unknown', pending=('rereg', 'refused')))
+manifest('HIMMEL-nextleg-2026-11-17A-other-chief.fleet.json', rows('wrapped', 'live'))
+# a manifest still written with the pre-rename array: the docs only it names are answered the same way
+with open(os.path.join(bucket, chain % '15B'), 'w') as stream:
+    json.dump({'schema': 1, 'legs': rows('legs_live', 'legs_wrapped'), 'control': control}, stream)
+attempts = {}
+for key, phase in (('pending', 'pending'), ('committed', 'committed'), ('attempt_unknown', 'unknown')):
+    attempts['a-' + key] = dict(attempt_id='a-' + key, phase=phase, doc=D[key], name=os.path.basename(D[key])[:-3])
+with open(anchor, 'w') as stream:
+    json.dump({'family': 'fam', 'mode': 'active', 'generation': 1, 'target': 4, 'attempts': attempts}, stream)
+
+
+def receipt(attempt, key, outcome, ts):
+    return dict(v=2, kind='launch-attempt', ts=ts, attempt_id=attempt, name=os.path.basename(D[key])[:-3], doc=D[key], family='fam', outcome=outcome)
+
+
+with open(os.path.join(home, '.himmel', 'launch-refusals.jsonl'), 'w') as stream:
+    for row in (receipt('r1', 'refused', 'refused', '2026-11-18T09:00:00Z'), receipt('r2', 'resumed', 'complete', '2026-11-18T09:00:00Z'),
+                receipt('r3', 'rereg', 'refused', '2026-11-18T07:00:00Z')):
+        stream.write(json.dumps(row) + '\n')
+PYEOF
+U8M="$U8/mirror/HIMMEL"; mkdir -p "$U8M"
+M_SAVE="$M"; M="$U8M"
+for n in 101 102 103 104 105 107 108 109 110 111 112 113 114 120; do
+    mk "HIMMEL-$n" "To Do" Medium '[]' '["v1.0.1"]' '[]' "u8 fixture $n" "Edit scripts/lib/u8-$n.sh only."
+done
+M="$M_SAVE"
+printf 'v1.0.1\tfalse\t\n' > "$U8/mirror/HIMMEL.versions.tsv"
+U8OWN="$U8B/HIMMEL-nextleg-2026-11-18A-roadmap-chief.fleet.json"
+u8_nd() { # <label> <env prefix var=value or ""> mode args...: the tree's dispatcher, the counting wrapper on; output in $U8/out.<label>, rc in $U8/rc.<label>
+    local label="$1" nobatch="$2"; shift 2
+    : > "$U8/count.$label"
+    env HOME="$U8H" TICKET_STATUS_QUEUE_LOCK="$U8/lock.sh" TICKET_STATUS_STATE_DIR="$U8/state" FR_REAL_SOURCE="$u8_root/scripts/lib/fleet_runtime.py" \
+        FR_COUNT_LOG="$U8/count.$label" ${nobatch:+FR_NO_BATCH=1} NEXT_DISPATCH_MIRROR="$U8M" NEXT_DISPATCH_GH_CMD="$WORK/gh" \
+        bash "$U8T/scripts/handover/chief-kit/next-dispatchable.sh" --no-classify --workers-from "$U8OWN" "$@" > "$U8/out.$label" 2> "$U8/err.$label"
+    printf '%s\n' "$?" > "$U8/rc.$label"
+}
+u8_modes=("list|--top 40" "resume|--resume-only --top 40" "why|--why --top 40" "dispositions|--dispositions --top 40")
+for mode in "${u8_modes[@]}"; do
+    name="${mode%%|*}"; args="${mode#*|}"
+    # shellcheck disable=SC2086  # the mode's arguments are word-split on purpose
+    u8_nd "$name" "" $args
+    # shellcheck disable=SC2086
+    u8_nd "$name.single" 1 $args
+    [ "$(cat "$U8/rc.$name")" = 0 ] && pass "(U8) $name: the dispatcher exits 0" || fail "(U8) $name: rc $(cat "$U8/rc.$name"): $(head -c 300 "$U8/err.$name")"
+    cmp -s "$U8/out.$name" "$U8/out.$name.single" && pass "(U8) $name: the batched read prints the same bytes as one read per doc" \
+        || fail "(U8) $name: the batched read differs from one read per doc: $(diff "$U8/out.$name" "$U8/out.$name.single" | head -5)"
+    [ -s "$U8/out.$name" ] && pass "(U8) $name: the dispatcher printed something" || fail "(U8) $name: the dispatcher printed nothing"
+    [ -z "${ND_U8_EVIDENCE:-}" ] || { mkdir -p "$ND_U8_EVIDENCE"; cp "$U8/out.$name" "$ND_U8_EVIDENCE/out.$name"; }
+done
+u8_list="$(cat "$U8/out.list")"
+for key in 101 102 110 114 120; do has "(U8) a ticket no live worker holds is offered: HIMMEL-$key" "$u8_list" "${TAB}HIMMEL-$key${TAB}"; done
+for key in 103 104 105 107 108 109 112 113; do lacks "(U8) a ticket a worker in doubt or alive holds is withheld: HIMMEL-$key" "$u8_list" "${TAB}HIMMEL-$key${TAB}"; done
+# the counts: the first mode's log is one run
+cl="$U8/count.list"
+u8_max_per_doc="$(awk -F'\t' '$1 == "worker_state" { c[$2]++ } END { m = 0; for (d in c) if (c[d] > m) m = c[d]; print m + 0 }' "$cl")"
+u8_docs="$(awk -F'\t' '$1 == "worker_state" { c[$2]++ } END { n = 0; for (d in c) n++; print n }' "$cl")"
+u8_single="$(awk -F'\t' '$1 == "worker_state" && $3 == "single" { n++ } END { print n + 0 }' "$cl")"
+u8_subproc="$(awk -F'\t' '$1 == "main" { n++ } END { print n + 0 }' "$cl")"
+u8_scan_max="$(awk -F'\t' '$1 == "open" && $3 ~ /read_directory/ { c[$2]++ } END { m = 0; for (p in c) if (c[p] > m) m = c[p]; print m + 0 }' "$cl")"
+u8_scan_paths="$(awk -F'\t' '$1 == "open" && $3 ~ /read_directory/ { c[$2] = 1 } END { n = 0; for (p in c) n++; print n }' "$cl")"
+u8_single_reads="$(awk -F'\t' '$1 == "open" && $3 ~ /(disposition|protected)/ { n++ } END { print n + 0 }' "$cl")"
+[ "$u8_docs" -ge 10 ] && pass "(U8) the run asked about the fixture's docs ($u8_docs unique)" || fail "(U8) the run asked about $u8_docs docs only"
+u8_eq() { [ "$2" = "$3" ] && pass "$1" || fail "$1 (want '$3', got '$2')"; }
+u8_eq "(U8) count: worker_state is evaluated once per unique doc, never twice" "$u8_max_per_doc" 1
+u8_eq "(U8) count: every evaluation took its disposition from the one batch read" "$u8_single" 0
+u8_eq "(U8) count: no disposition subprocess started" "$u8_subproc" 0
+u8_eq "(U8) count: no manifest was opened by the one-doc disposition" "$u8_single_reads" 0
+u8_eq "(U8) count: each manifest of the directory was read once by the batch" "$u8_scan_max" 1
+u8_eq "(U8) count: the batch read every manifest of the directory" "$u8_scan_paths" "$(find "$U8B" -maxdepth 1 -name '*.fleet.json' | grep -c .)"
+# fail closed: a manifest the batch cannot read leaves every doc of the directory to the one-doc read, which reports what it reports
+printf '{not json' > "$U8B/zz-broken.fleet.json"
+u8_nd broken ""  --top 40
+u8_nd broken.single 1 --top 40
+cmp -s "$U8/out.broken" "$U8/out.broken.single" && pass "(U8) a manifest the batch cannot read: the output is the one-doc output" \
+    || fail "(U8) a manifest the batch cannot read changed the output: $(diff "$U8/out.broken" "$U8/out.broken.single" | head -5)"
+u8_eq "(U8) a manifest the batch cannot read: no doc is answered from the batch" "$(awk -F'\t' '$1 == "worker_state" && $3 == "batch" { n++ } END { print n + 0 }' "$U8/count.broken")" 0
+u8_eq "(U8) a manifest the batch cannot read: each doc is still evaluated once" \
+    "$(awk -F'\t' '$1 == "worker_state" { c[$2]++ } END { m = 0; for (d in c) if (c[d] > m) m = c[d]; print m + 0 }' "$U8/count.broken")" 1
+rm -f "$U8B/zz-broken.fleet.json"
+# the bucket as the stations have it today: no anchor and no receipts
+U8B2="$U8/bucket2"; U8H2="$U8/home2"; mkdir -p "$U8H2"; cp -R "$U8B" "$U8B2"; rm -f "$U8B2/fleet-control.json"
+for f in "$U8B2"/*.fleet.json; do sed "s#$U8B#$U8B2#g" "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
+U8B_SAVE="$U8B"; U8OWN_SAVE="$U8OWN"; U8H_SAVE="$U8H"
+U8B="$U8B2"; U8OWN="$U8B2/HIMMEL-nextleg-2026-11-18A-roadmap-chief.fleet.json"; U8H="$U8H2"
+for mode in "${u8_modes[@]}"; do
+    name="${mode%%|*}"; args="${mode#*|}"
+    # shellcheck disable=SC2086
+    u8_nd "plain-$name" "" $args
+    # shellcheck disable=SC2086
+    u8_nd "plain-$name.single" 1 $args
+    cmp -s "$U8/out.plain-$name" "$U8/out.plain-$name.single" && pass "(U8) no anchor, $name: the batched read prints the same bytes as one read per doc" \
+        || fail "(U8) no anchor, $name: the batched read differs from one read per doc: $(diff "$U8/out.plain-$name" "$U8/out.plain-$name.single" | head -5)"
+    [ -s "$U8/out.plain-$name" ] && pass "(U8) no anchor, $name: the dispatcher printed something" || fail "(U8) no anchor, $name: the dispatcher printed nothing"
+    [ -z "${ND_U8_EVIDENCE:-}" ] || cp "$U8/out.plain-$name" "$ND_U8_EVIDENCE/out.plain-$name"
+done
+cl="$U8/count.plain-list"
+u8_eq "(U8) no anchor, count: worker_state is evaluated once per unique doc" "$(awk -F'\t' '$1 == "worker_state" { c[$2]++ } END { m = 0; for (d in c) if (c[d] > m) m = c[d]; print m + 0 }' "$cl")" 1
+u8_eq "(U8) no anchor, count: every evaluation took its disposition from the one batch read" "$(awk -F'\t' '$1 == "worker_state" && $3 == "single" { n++ } END { print n + 0 }' "$cl")" 0
+u8_eq "(U8) no anchor, count: no disposition subprocess started" "$(awk -F'\t' '$1 == "main" { n++ } END { print n + 0 }' "$cl")" 0
+u8_eq "(U8) no anchor, count: each manifest was read once by the batch" "$(awk -F'\t' '$1 == "open" && $3 ~ /read_directory/ { c[$2]++ } END { m = 0; for (p in c) if (c[p] > m) m = c[p]; print m + 0 }' "$cl")" 1
+U8B="$U8B_SAVE"; U8OWN="$U8OWN_SAVE"; U8H="$U8H_SAVE"
+
+# A doc that the worker rows name and nobody can open, on a fixture of its own: its own bucket, its own chain and a one-ticket mirror, so
+# it shares nothing with the fixtures above, whose docs all exist and whose manifests all read. What is asserted here holds whether or not
+# the dispatcher lists other tickets beside an unreadable doc: it exits 0, the doc's own key is not offered, the batched read prints the
+# same bytes as one read per doc, and the doc gets one worker-state answer however many rows name it.
+U8B4="$U8/bucket4"; mkdir -p "$U8B4"
+U8MISS="$U8B4/HIMMEL-106-N1-missing.md"  # never created
+for stamp in 18A 17A 16C 16A 15A; do
+    printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"}]}\n' "$U8MISS" > "$U8B4/HIMMEL-nextleg-2026-11-$stamp-recovery-chief.fleet.json"
+done
+U8M4="$U8/mirror4/HIMMEL"; mkdir -p "$U8M4"
+M_SAVE="$M"; M="$U8M4"; mk HIMMEL-106 "To Do" Medium '[]' '["v1.0.1"]' '[]' "u8 a doc nobody can open" "Edit scripts/lib/u8-106.sh only."; M="$M_SAVE"
+printf 'v1.0.1\tfalse\t\n' > "$U8/mirror4/HIMMEL.versions.tsv"
+U8M_SAVE="$U8M"; U8OWN_SAVE="$U8OWN"
+U8M="$U8M4"; U8OWN="$U8B4/HIMMEL-nextleg-2026-11-18A-recovery-chief.fleet.json"
+for mode in "${u8_modes[@]}"; do
+    name="${mode%%|*}"; args="${mode#*|}"
+    # shellcheck disable=SC2086
+    u8_nd "missing-$name" "" $args
+    # shellcheck disable=SC2086
+    u8_nd "missing-$name.single" 1 $args
+    [ "$(cat "$U8/rc.missing-$name")" = 0 ] && pass "(U8) a doc nobody can open, $name: the dispatcher exits 0" || fail "(U8) a doc nobody can open, $name: rc $(cat "$U8/rc.missing-$name"): $(head -c 300 "$U8/err.missing-$name")"
+    cmp -s "$U8/out.missing-$name" "$U8/out.missing-$name.single" && pass "(U8) a doc nobody can open, $name: the batched read prints the same bytes as one read per doc" \
+        || fail "(U8) a doc nobody can open, $name: the batched read differs from one read per doc: $(diff "$U8/out.missing-$name" "$U8/out.missing-$name.single" | head -5)"
+    [ -z "${ND_U8_EVIDENCE:-}" ] || cp "$U8/out.missing-$name" "$ND_U8_EVIDENCE/out.missing-$name"
+done
+lacks "(U8) a doc nobody can open: its own ticket is not offered" "$(cat "$U8/out.missing-list")" "${TAB}HIMMEL-106${TAB}"
+u8_eq "(U8) a doc nobody can open: it gets one worker-state answer though five manifests name it" "$(awk -F'\t' '$1 == "worker_state" { c[$2]++ } END { m = 0; for (d in c) if (c[d] > m) m = c[d]; print m + 0 }' "$U8/count.missing-list")" 1
+u8_eq "(U8) a doc nobody can open: it is the one doc asked about" "$(awk -F'\t' '$1 == "worker_state" { c[$2]++ } END { n = 0; for (d in c) n++; print n }' "$U8/count.missing-list")" 1
+U8M="$U8M_SAVE"; U8OWN="$U8OWN_SAVE"
+
+# Follow-ups on the same tree. A worker_state helper that fails reads unknown through the batch path (never wrapped, so no
+# ticket of a doc whose state cannot be read is offered), and two docs with one basename in two directories keep their own states.
+cp "$U8T/scripts/lib/ticket-status.sh" "$U8/ticket-status.good"
+printf 'exit 1\n' > "$U8T/scripts/lib/ticket-status.sh"
+u8_nd failing "" --top 40
+cp "$U8/ticket-status.good" "$U8T/scripts/lib/ticket-status.sh"
+u8_failing="$(cat "$U8/out.failing")"
+[ "$(cat "$U8/rc.failing")" = 0 ] && pass "(U8) a helper that fails: the dispatcher still exits 0" || fail "(U8) a helper that fails: rc $(cat "$U8/rc.failing")"
+for key in 101 102 114; do lacks "(U8) a helper that fails reads unknown, so a ticket whose doc is not proven wrapped is withheld: HIMMEL-$key" "$u8_failing" "${TAB}HIMMEL-$key${TAB}"; done
+for key in 110 120; do has "(U8) a helper that fails does not hide a ticket no worker row names: HIMMEL-$key" "$u8_failing" "${TAB}HIMMEL-$key${TAB}"; done
+U8B3="$U8/bucket3"; mkdir -p "$U8B3/sub1" "$U8B3/sub2"
+printf '# worker\n- 10:00 WRAPPED - done\n' > "$U8B3/sub1/HIMMEL-115-N1-live.md"
+printf '# worker\n- 10:00 LIVE - working\n' > "$U8B3/sub2/HIMMEL-115-N1-live.md"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"}]}\n' "$U8B3/sub1/HIMMEL-115-N1-live.md" > "$U8B3/HIMMEL-nextleg-2026-11-18A-roadmap-chief.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N2"}]}\n' "$U8B3/sub2/HIMMEL-115-N1-live.md" > "$U8B3/HIMMEL-nextleg-2026-11-17A-roadmap-chief.fleet.json"
+M_SAVE="$M"; M="$U8M"; mk HIMMEL-115 "To Do" Medium '[]' '["v1.0.1"]' '[]' "u8 one basename in two directories" "Edit scripts/lib/u8-115.sh only."; M="$M_SAVE"
+U8OWN_SAVE="$U8OWN"; U8OWN="$U8B3/HIMMEL-nextleg-2026-11-18A-roadmap-chief.fleet.json"
+u8_nd samebase "" --top 40
+U8OWN="$U8OWN_SAVE"
+u8_same="$(cat "$U8/out.samebase")"
+lacks "(U8) two docs with one basename keep their own states: the live one holds its ticket although the wrapped one was asked first" "$u8_same" "${TAB}HIMMEL-115${TAB}"
+has "(U8) two docs with one basename: a ticket no worker holds is still offered" "$u8_same" "${TAB}HIMMEL-120${TAB}"
+u8_eq "(U8) two docs with one basename are each evaluated once" "$(awk -F'\t' '$1 == "worker_state" { c[$2]++ } END { n = 0; for (d in c) n++; print n }' "$U8/count.samebase")" 2
 
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.

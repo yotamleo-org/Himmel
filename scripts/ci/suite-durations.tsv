@@ -43,6 +43,10 @@ scripts/security/test-security-audit-cadence.sh	6
 #   f1938a23a81e98e701a5d38f3412861301ea8f0d) and 43542480152 (head
 #   68e21adf5b2412cba0e3055e8889470fd7aa3b51), 1301 unique suites in those logs.
 #   Replay on those three runs: slowest/floor 1.348 before, 1.197 after.
+#   Estimated rows, no CI timing yet: scripts/handover/chief-kit/test-headed-arm-worker-{b,c,d}.sh, the three parts the
+#   headed-arm-worker suite is split into beside test-headed-arm-worker.sh. Each is its part's sandbox seconds (94, 87, 153)
+#   times 1.8, the CI-to-sandbox ratio read off where run 44635436012's two cap-killed attempts stopped. The next refresh
+#   replaces them with CI seconds.
 # The quarantined suites (SKIP_LIST) have no measured row.
 #
 # Read by scripts/ci/run-shell-tests.sh to assign --shard <i>/<n> by a greedy
@@ -457,6 +461,9 @@ scripts/handover/chief-kit/test-grant-round.sh	14
 scripts/handover/chief-kit/test-handoff-facts.sh	0
 scripts/handover/chief-kit/test-headed-arm-worker-env.sh	17
 scripts/handover/chief-kit/test-headed-arm-worker.sh	290
+scripts/handover/chief-kit/test-headed-arm-worker-b.sh	169
+scripts/handover/chief-kit/test-headed-arm-worker-c.sh	157
+scripts/handover/chief-kit/test-headed-arm-worker-d.sh	275
 scripts/handover/chief-kit/test-himmel-gate.sh	1
 scripts/handover/chief-kit/test-hook-copy-reaper.sh	0
 scripts/handover/chief-kit/test-inbox-audit.sh	0

@@ -40,6 +40,7 @@ fi
 chokepoint_seam_guard scripts/lib/usage-preflight.sh || exit 96
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+PREFLIGHT_LIB="$(cd "$(dirname "$0")" && pwd)"
 PRODUCER="${CADENCE_USAGE_PRODUCER:-$REPO/scripts/statusline/usage-cache-producer.sh}"
 MAX_PCT="${CADENCE_USAGE_MAX_PCT:-85}"
 MAX_AGE="${CADENCE_USAGE_MAX_AGE:-600}"
@@ -98,6 +99,16 @@ emit() {
 }
 fh=""; sd=""; age=""; usable=0
 
+# The family gate precedes all cap overrides and applies equally to API lanes.
+_managed_scope=''
+if [ "$LAUNCH_INTENT" = 1 ]; then
+  if ! _managed_scope=$(python3 -I "$PREFLIGHT_LIB/fleet_runtime.py" check \
+      --doc "${FLEET_LAUNCH_DOC:-${WORKER_SESSION_DOC:-}}" --manifest "${FLEET_LAUNCH_MANIFEST:-}"); then
+    echo 'bank-preflight: fleet-paused (managed control unavailable or paused)' >&2
+    emit SKIPPED-FLEET
+  fi
+fi
+
 # fleet-size cap. Concurrency, not bank exhaustion, burned the
 # fleet on 2026-09-07 (9-11 workers exhausted a week's bucket in
 # under 48h) — this refuses a new arm when the fleet is already at CAP,
@@ -124,6 +135,11 @@ else
   FLEET_CAP=4
 fi
 is_int "$FLEET_CAP" || FLEET_CAP=4
+if [ -n "$_managed_scope" ] && [ "$(printf '%s\n' "$_managed_scope" | jq -r .managed)" = true ]; then
+  _managed_target=$(printf '%s\n' "$_managed_scope" | jq -r .target)
+  [ "$FLEET_CAP" -le "$_managed_target" ] || FLEET_CAP="$_managed_target"
+  FLEET_CAP_OK=''
+fi
 
 # FLEET_PS_CMD (test seam, default: ps -eo pid=,args=) — headerless PID +
 # full argv per process, so each CANDIDATE pid's own comm can be confirmed
@@ -662,7 +678,7 @@ $_fleet_name"
       # shellcheck source=scripts/lib/fleet-wrapped.sh
       . "$(dirname "${BASH_SOURCE[0]}")/fleet-wrapped.sh" 2>/dev/null && _fleet_wrapped_ok=1 || _fleet_wrapped_ok=0
     fi
-    if [ "${_fleet_wrapped_ok:-0}" -eq 1 ] && [ -n "$_fleet_name" ] \
+    if [ -z "${_managed_target:-}" ] && [ "${_fleet_wrapped_ok:-0}" -eq 1 ] && [ -n "$_fleet_name" ] \
       && fleet_process_is_wrapped_and_free "$_fleet_pid" "$_fleet_name"; then
       continue
     fi
@@ -749,12 +765,16 @@ fi
 # handover root — reservations must not survive a reboot or leak into
 # anything git-tracked.
 SLOTS="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}"
+if [ -n "${_managed_target:-}" ]; then
+  SLOTS=$(printf '%s\n' "$_managed_scope" | jq -er .slots) || emit SKIPPED-FLEET
+fi
 mkdir -p "$SLOTS" 2>/dev/null
 
 fleet_reserved=0
 # api-lane reservations (lane file = api) are counted apart from
 # the subscription FLEET and held to their own cap.
 fleet_api_reserved=0
+fleet_legacy_api_reserved=0
 API_CAP="${HIMMEL_API_MAX_CONCURRENT:-10}"
 is_int "$API_CAP" || API_CAP=10
 _fleet_admitted=0
@@ -838,6 +858,15 @@ if [ "$_fleet_admitted" -eq 1 ]; then
       _fleet_resv_name="${_fleet_resv%/}"
       _fleet_resv_name="${_fleet_resv_name##*/}"
       [ "$_fleet_resv_name" = .admit ] && continue
+      if [ -e "${_fleet_resv}managed.json" ]; then
+        # Current typed ownership has no TTL. A lost launcher is unknown;
+        # only its exact definite terminal receipt releases the reservation.
+        _managed_name=$(cat "${_fleet_resv}name" 2>/dev/null) || _managed_name=''
+        if [ -n "$_managed_name" ] && printf '%s\n' "$_fleet_live_names" | grep -qxF "$_managed_name"; then continue; fi
+        fleet_reserved=$((fleet_reserved + 1))
+        if [ "$(cat "${_fleet_resv}lane" 2>/dev/null)" = api ]; then fleet_api_reserved=$((fleet_api_reserved + 1)); fi
+        continue
+      fi
       _fleet_resv_expires="$(cat "${_fleet_resv}expires" 2>/dev/null)"
       case "$_fleet_resv_expires" in
         # Unreadable/corrupt metadata is not a valid reservation — prune it
@@ -901,11 +930,12 @@ if [ "$_fleet_admitted" -eq 1 ]; then
       fi
       _fleet_resv_lane="$(cat "${_fleet_resv}lane" 2>/dev/null)" || _fleet_resv_lane=""
       case "$_fleet_resv_lane" in
-        api) fleet_api_reserved=$((fleet_api_reserved + 1)) ;;
+        api) fleet_api_reserved=$((fleet_api_reserved + 1)); fleet_legacy_api_reserved=$((fleet_legacy_api_reserved + 1)) ;;
         *) fleet_reserved=$((fleet_reserved + 1)) ;;
       esac
     done
     fleet_n=$((fleet_n + fleet_reserved))
+    if [ -n "${_managed_target:-}" ]; then fleet_n=$((fleet_n + fleet_legacy_api_reserved)); fi
   fi
 fi
 
@@ -919,6 +949,16 @@ if [ "$_fleet_admitted" -eq 1 ] && [ "$(cat "$SLOTS/.admit/pid" 2>/dev/null)" !=
 fi
 
 echo "bank-preflight: FLEET native=$fleet_native claudex=$fleet_claudex openrouter=$fleet_openrouter reserved=$fleet_reserved total=$fleet_n/$FLEET_CAP" >&2
+_fleet_own_recheck=false
+if [ -n "${CADENCE_USAGE_RECHECK_ATTEMPT:-}" ]; then
+  _fleet_own_recheck=$(python3 -I "$PREFLIGHT_LIB/fleet_runtime.py" reservation \
+    --doc "${FLEET_LAUNCH_DOC:-}" --manifest "${FLEET_LAUNCH_MANIFEST:-}" \
+    --attempt-id "$CADENCE_USAGE_RECHECK_ATTEMPT" --pid "${CADENCE_USAGE_CALLER_PID:-$$}") || _fleet_own_recheck=false
+  if [ "$_fleet_own_recheck" = true ]; then
+    fleet_n=$((fleet_n - 1))
+    if [ "$LANE" = api ] && [ "$fleet_api_reserved" -gt 0 ]; then fleet_api_reserved=$((fleet_api_reserved - 1)); fi
+  fi
+fi
 
 # api dispatch is OFF unless the reviewed one-shot launcher
 # (scripts/api-lane/claude-api.sh) opts in with HIMMEL_API_LANE=on. The opt-in
@@ -958,7 +998,7 @@ elif [ "$LANE" = api ] && [ "$fleet_api_reserved" -ge "$API_CAP" ]; then
   else
     echo "bank-preflight: api lane at/over its own cap ($fleet_api_reserved/$API_CAP) — not a declared launch (CADENCE_USAGE_LAUNCH unset), reporting only" >&2
   fi
-elif [ "$LANE" != api ] && [ "$fleet_n" -ge "$FLEET_CAP" ]; then
+elif { [ "$LANE" != api ] || [ -n "${_managed_target:-}" ]; } && [ "$fleet_n" -ge "$FLEET_CAP" ]; then
   # codex-3 (CR review, 2nd panel round, Suggestion): the documented
   # contract is FLEET_CAP_OK=1 specifically; a bare `-n` (non-empty) test
   # would also treat FLEET_CAP_OK=0 or FLEET_CAP_OK=false as an enabled
@@ -972,7 +1012,7 @@ elif [ "$LANE" != api ] && [ "$fleet_n" -ge "$FLEET_CAP" ]; then
   else
     echo "bank-preflight: fleet at/over cap ($fleet_n/$FLEET_CAP) — not a declared launch (CADENCE_USAGE_LAUNCH unset), reporting only" >&2
   fi
-elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$WORKER" ] && [ "$WORKER" != unknown ]; then
+elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$WORKER" ] && [ "$WORKER" != unknown ] && [ "$_fleet_own_recheck" != true ]; then
   # '/', a leading '.', and
   # ENAMETOOLONG used to all "proceed without a reservation" — restoring,
   # for exactly those names, the concurrent over-admission race this whole
@@ -1014,6 +1054,14 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$WORKER" ] && [ "$WORKER" != unknown ];
         # only WIDENS what consumes the reservation, so a failed write falls
         # back to today's dir-name match rather than refusing the launch.
         printf '%s\n' "$WORKER" > "$dir/name" 2>/dev/null || true
+        if [ -n "${FLEET_LAUNCH_ATTEMPT:-}" ] && [ -n "${_managed_target:-}" ]; then
+          if ! python3 -I "$PREFLIGHT_LIB/fleet_runtime.py" stamp --slot "$dir" \
+              --doc "${FLEET_LAUNCH_DOC:-${WORKER_SESSION_DOC:-}}" --manifest "${FLEET_LAUNCH_MANIFEST:-}" --name "$WORKER" \
+              --attempt-id "$FLEET_LAUNCH_ATTEMPT" --pid "${CADENCE_USAGE_CALLER_PID:-$$}" >/dev/null; then
+            rm -rf "$dir"
+            return 3
+          fi
+        fi
         # `lane` (written above, refusing admission on failure) keys the
         # api-vs-fleet split, never the worker name: an inherited CADENCE_USAGE_WORKER could
         # escape both caps, and a lost lane file would under-count the api cap.
@@ -1121,6 +1169,7 @@ fi
 if [ "$_fleet_admitted" -eq 1 ]; then
   _fleet_release_admit "$SLOTS/.admit"
 fi
+_fleet_admit_hook admission-complete "$SLOTS"
 
 # a cache-only, secret-free API credit row, never subscription
 # usage or provider authentication. This reader does not reserve paid work.

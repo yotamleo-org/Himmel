@@ -1491,14 +1491,15 @@ esac
 # (c) a bare --workers name resolves against the handover ROOT and reads
 # NOTFOUND; (d) an unquoted --model {{MODEL}} is a zsh glob (claude-opus-5[1m]).
 tick3287="$(grep -F '| tick |' "$tpl3287")"
-step3287="$(awk '/^10\. \*\*Start the event waiter now/ { keep = 1 } /^## Live state$/ { keep = 0 } keep' "$tpl3287")"
+step3287="$(awk '/^10\. / { keep = 1 } /^11\. / { keep = 0 } keep' "$tpl3287")"
 contains 'the tick row runs inside the step-10 waiter' "$tick3287" 'Runs inside the step-10 waiter'
 case "$tick3287" in
     *'re-arms on each expiry notice'*) fail 'the tick row no longer arms a Monitor re-arm loop' ;;
     *) pass 'the tick row no longer arms a Monitor re-arm loop' ;;
 esac
 contains 'ACTION ZERO step 10 starts chief-wait.sh' "$step3287" 'chief-wait.sh'
-contains 'ACTION ZERO step 10 uses run_in_background, not a Monitor' "$step3287" 'run_in_background: true'
+contains 'ACTION ZERO step 10 retains the default one-shot arm' "$step3287" 'run_in_background: true'
+contains 'ACTION ZERO step 10 documents the gated Monitor stream arm' "$step3287" '--stream --since prev-arm'
 contains 'ACTION ZERO step 10 says how to verify the waiter is live' "$step3287" '<inbox>.wait'
 case "$tick3287$step3287" in
     *'60 min'*) fail 'neither the tick row nor step 10 may still say 60 min' ;;

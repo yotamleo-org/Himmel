@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # smoke-consult-sandbox.sh - OPT-IN live check of the --consult Bash sandbox.
 #
-# The suite (test-headed-arm-worker.sh) asserts the GENERATED settings JSON; it cannot
+# The suite (test-headed-arm-worker-b.sh) asserts the GENERATED settings JSON; it cannot
 # prove Claude Code honours the sandbox block. This runs headless `claude -p` from the
 # primary checkout (whose committed settings grant additionalDirectories on the luna
 # vault) through the REAL shim (worker-claude-launcher.sh) with the settings and

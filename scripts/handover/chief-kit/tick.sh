@@ -175,11 +175,16 @@ was unknown or older than 3 h; stale=unknown when no drift file could be read). 
 sdrift=0:* and stale=0:* are elided (partial and unknown never are); --verbose prints all three.
 Read from the state file, no gh or Jira call. Advisory: not in chief-wait's action key.
 
-rm-queue=<n>,<oldest age>m[,claimed=<n>][,run] follows leaks=. Empty open-and-claimed queues, no declaration,
-explicit none or unreadable docs elide it; off = unusable wiring or non-OK/read failure; ? = the tick's
-deadline cut the state read (unknown, read again next tick). An oldest open
-request past TICK_RMRUN_MIN minutes (default 30) with the lease free launches one detached `jira release
-rm-run <R>` (at most one per TICK_RMRUN_MIN_SECS, default 600) and appends `,run`; its output goes to
+rm-queue=<n>,<oldest age>m[,claimed=<n>][,replay=<n>][,run] follows leaks=. Empty open-and-claimed queues with no ruling
+to replay, no declaration, explicit none or unreadable docs elide it; off = unusable wiring or non-OK/read failure; ? = the tick's
+deadline cut the state read (unknown, read again next tick). replay=<n> counts the state's unfinished_rulings with status
+replay (a ruling interrupted after its Jira write, which no open request shows); a blocked move is the chief's repair and is
+not counted. An oldest open
+request past TICK_RMRUN_MIN minutes (default 30), or any ruling to replay, with the lease free launches one detached `jira release
+rm-run <R>` (at most one per TICK_RMRUN_MIN_SECS, default 600, so an unchanged ruling is retried at that pace, never every tick) and appends `,run`.
+A held lease reads as free only when the state says lease.owner_gone is true: the CLI proved the owner pid absent on this host (a
+hard-killed rm-run), the same proof rm-run's own reclaim uses; the tick judges no pid itself, and a pid that answers (a live owner, or
+a reused pid) keeps the lease held. Output goes to
 $TICK_STATE_DIR/tick-rm-run.log. Env seams: TICK_RMQ_PROBE, TICK_RMRUN_PROBE, TICK_RMRUN_LAUNCHER,
 TICK_RMQ_TIMEOUT. Not in chief-wait's action key.
 
@@ -190,15 +195,24 @@ mirror does not hold) and release-state-<doc stem>.json ({ts, status, words_reco
 $TICK_STATE_DIR; any other read deletes both. An OK read whose mirror input is UNKNOWN prints no field, keeps the
 tsv and deletes the json. Not in chief-wait's action key: chief-wait reads the tsv (WAKE rm-refused, rm-refused-digest).
 
+rm-blocked=<n>:<KEY>@<ruling>,... follows rm-refused= and is ABSENT unless the same OK state read lists unfinished_rulings
+with status blocked (a move no rm-run repairs; each row's observed and next say what to do: `jira release state <R> --json`).
+Sorted, so an unchanged set prints the same text on every tick; rm-blocked=? whenever the tick cannot tell (unknown, never an
+empty set): the state read is not OK, the state's mirror input is UNKNOWN (the engine then lists every ruling as replay), or
+unfinished_rulings is not a list of rows that each carry a key and a ruling id. It is in chief-wait's action key (wake-rules.tsv):
+one wake for a set, another only when the set changes, and a ? keeps the last known set.
+
 held=<n>:<sig8> unfiled=<n> repair=off:<why> follow rm-queue= and are ABSENT unless set: held= is
-the version repair's held key count and the first 8 hex of its held signature (repair-held.json in the
-release dir), unfiled= the signed records no request carries yet, each elided at zero; repair=off:<why> shows
-while the repair cannot run (the first line of repair-status, `unreviewed` with no repair-reviewed marker,
-`bad-input` with no origin slug, `lost` when the last launch left no end record). With the marker, an OK state,
-no HIMMEL_CONSOLE_LEG / HIMMEL_RELEASE_MANAGER=1 and no live repair.lock owner, a changed run signature
-(repair-signature), or a lost last launch (repair-launch stamp, backoff capped at 6 h), launches one detached `jira
-release repair <R> --apply --repo <slug>`, no sooner than TICK_RMRUN_MIN_SECS after repair-run.log was last written.
-Seam: TICK_REPAIR_PROBE. Never in chief-wait's action key; no alert, no wake.
+the version repair's held key count and the first 8 hex of its held signature, unfiled= the signed records no
+request carries yet, each elided at zero, all read from release/<R>/repair-state.json, the one record the jira CLI
+writes (`jira release repair-state <R> --json`; the tick writes no repair file); repair=off:<why> shows while the
+repair cannot run (the record's reason when off: `unreviewed` with no review marker, mirror-unknown, error;
+`bad-input` with no origin slug; `lost` when its state is lost or a running record's owner is gone). With the
+review marker, an OK state, no HIMMEL_CONSOLE_LEG / HIMMEL_RELEASE_MANAGER=1 and no live owner, a run signature that
+differs from the record's, or a lost run (launched/lost_count from the record, backoff capped at 6 h), launches one
+detached `jira release repair <R> --apply --repo <slug>`, no sooner than TICK_RMRUN_MIN_SECS after repair-run.log was
+last written; the run records its own launch and signature. Seams: TICK_REPAIR_PROBE, TICK_REPAIR_STATE_PROBE. Never in
+chief-wait's action key; no alert, no wake.
 
 residual-cap=<version>:<n>[,<version>:<n>] follows vmismatch= and is ABSENT unless an unreleased version
 holds more than 15 open residual tickets (labelled residual, open by the rule below, by fixVersion; the count
@@ -208,7 +222,8 @@ open=<version>:<n>[,<version>:<n>] follows residual-cap= and, from the same mirr
 version holding at least one open ticket, labelled residual or not, in version order. ABSENT with no mirror,
 on a failed read or when no unreleased version has an open ticket; open=? means the deadline cut the read.
 One open rule counts both fields: a ticket is NOT open when its status or statusCategory is Done, Resolved,
-Closed, Wont Do, Won't Do, Wont Fix or Won't Fix. A ticket on several fixVersions counts in each.
+Closed, In Public, Wont Do, Won't Do, Wont Fix or Won't Fix (straight or curly apostrophe).
+A ticket on several fixVersions counts in each.
 
 slotage=<worker>:<range>:<n>suites:<age>m[,...] sits just before tmp= and is ABSENT unless a
 live holder has kept a shared suite slot past HIMMEL_SUITE_SLOT_CAP seconds (default 1200); a part the
@@ -844,9 +859,11 @@ if sys.argv[1]:
             elif dec == "d":
                 new_ruled[key] = r
                 in_progress = r["cat"] == "In Progress"
+                held_l.append("# readiness-held d %s blocker=%s age=%s%s" % (key, r["blocker"] or "-", age_text(age), " why=in-progress" if in_progress else ""))
+                # only a d row the chief-sign count includes is an owed chief act, so only it has a reminder clock
                 if not in_progress:
                     sign_ages.append(age)
-                held_l.append("# readiness-held d %s blocker=%s age=%s%s" % (key, r["blocker"] or "-", age_text(age), " why=in-progress" if in_progress else ""))
+                    held_l.append("# readiness-clock " + json.dumps(dict(version=ver[1], key=key, stamp=r['stamp'], since=r['since'], age_s=age)))
         sign = "%d" % len(sign_ages) + (":" + age_text(max(sign_ages)) if sign_ages else "")
         readiness_lines = ["# readiness %s blocked=%d chief-sign=%s rows-stale=%d" % (ver[1], blocked, sign, rows_stale)] + stale_l + held_l
         ruled = new_ruled
@@ -3225,7 +3242,7 @@ try:
             released.add(f[0])
 except OSError:
     raise SystemExit
-gone = re.compile(r"^(done|resolved|closed|wont do|won\x27t do|wont fix|won\x27t fix)$", re.I)
+gone = re.compile(r"^(done|resolved|closed|in public|won[\x27\u2019]?t do|won[\x27\u2019]?t fix)$", re.I)
 slots = {}
 opened = {}
 for name in os.listdir(d):
@@ -3243,7 +3260,7 @@ for name in os.listdir(d):
             return json.loads(m.group(1))
         except ValueError:
             return m.group(1)
-    if gone.match(str(val("status") or "")) or gone.match(str(val("statusCategory") or "")):
+    if gone.fullmatch(str(val("status") or "").strip()) or gone.fullmatch(str(val("statusCategory") or "").strip()):
         continue
     labels = val("labels") or []
     res = any(re.search(r"(^|-)residual(-|$)", str(x)) for x in labels)
@@ -3296,6 +3313,38 @@ if [ -n "$console_doc" ] && [ -r "$console_doc" ] && [ -f "$console_doc" ]; then
             ;;
     esac
 fi
+# rm_launch_run: the one launch gate an aged open request and an interrupted ruling share. With the lease free (or held by an owner the
+# state proves gone) and the state OK it
+# starts ONE detached rm-run, never inside TICK_RMRUN_MIN_SECS of the last launch (the stamp), so an unchanged request or ruling is
+# retried at the pace of the existing backoff and never on every tick. It appends ,run to rm_queue when it starts one.
+rm_launch_run() {
+    { [ "$rm_lease" = free ] || [ "$rm_lease" = gone ]; } && [ "$rm_status" = OK ] || return 0
+    local rm_gap rm_dir rm_stamp rm_stamp_age rm_stamp_m rm_have rm_w
+    local -a rm_launcher
+    rm_gap="${TICK_RMRUN_MIN_SECS:-600}"
+    case "$rm_gap" in '' | *[!0-9]*) rm_gap=600 ;; esac
+    rm_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
+    rm_stamp="$rm_dir/tick-rm-run-$(printf '%s' "$rm_rel $REPO" | cksum | cut -d' ' -f1)"
+    rm_stamp_age=999999999
+    if [ -e "$rm_stamp" ]; then
+        rm_stamp_m="$(stat -c %Y "$rm_stamp" 2>/dev/null)" || rm_stamp_m=""  # gnu-ok: console kit is Linux-only; swallow-ok: an unreadable stamp reads old
+        case "$rm_stamp_m" in '' | *[!0-9]*) ;; *) rm_stamp_age=$(( $(date +%s) - rm_stamp_m )) ;; esac
+    fi
+    if [ "$rm_stamp_age" -ge "$rm_gap" ] && mkdir -p "$rm_dir" 2>/dev/null && touch "$rm_stamp" 2>/dev/null; then
+        read -r -a rm_launcher <<<"${TICK_RMRUN_LAUNCHER:-setsid nohup}"
+        rm_have=1; [ "${#rm_launcher[@]}" -gt 0 ] || rm_have=0
+        for rm_w in "${rm_launcher[@]}"; do command -v "$rm_w" >/dev/null 2>&1 || rm_have=0; done  # command -v with several operands passes if ANY exists
+        if [ "$rm_have" = 1 ]; then
+            if [ -n "${TICK_RMRUN_PROBE:-}" ]; then
+                "${rm_launcher[@]}" bash "$TICK_RMRUN_PROBE" release rm-run "$rm_rel" </dev/null >>"$rm_dir/tick-rm-run.log" 2>&1 &
+                rm_queue="$rm_queue,run"
+            elif [ -n "$rm_anchor" ] && [ -f "$rm_cli" ]; then
+                ( export JIRA_PROJECT_KEY="$rm_pk"; "${rm_launcher[@]}" node "$rm_cli" release rm-run "$rm_rel" </dev/null >>"$rm_dir/tick-rm-run.log" 2>&1 & )
+                rm_queue="$rm_queue,run"
+            fi
+        fi
+    fi
+}
 if [[ "$rm_rel" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
     rm_cli="${rm_anchor%/.git}/scripts/jira/dist/index.js"
     rm_pk="$tick_project_key"
@@ -3307,11 +3356,11 @@ if [[ "$rm_rel" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
     else
         rm_rc=-1
     fi
-    rm_n="" rm_age="" rm_lease="" rm_status="" rm_claimed=""
+    rm_n="" rm_age="" rm_lease="" rm_status="" rm_claimed="" rm_replay=""
     # exit 3 is the CLI's not-OK status and still prints the state
     if [ "$rm_rc" -eq 0 ] || [ "$rm_rc" -eq 3 ]; then
         # shellcheck disable=SC2016  # the python program is single-quoted on purpose
-        read -r rm_n rm_age rm_lease rm_status rm_claimed < <(printf '%s' "$rm_json" | python3 -I -c '
+        read -r rm_n rm_age rm_lease rm_status rm_claimed rm_replay < <(printf '%s' "$rm_json" | python3 -I -c '
 import datetime, json, sys
 d = json.load(sys.stdin)
 r = d["requests"]
@@ -3321,50 +3370,60 @@ if n and r.get("oldest_open"):
     t = datetime.datetime.fromisoformat(r["oldest_open"].replace("Z", "+00:00"))
     age = max(0, int((datetime.datetime.now(datetime.timezone.utc) - t).total_seconds() // 60))
 ls = d.get("lease")
-print(n, age, "held" if ls and not ls.get("released") else "free", d.get("status") or "UNKNOWN", len(r.get("claimed", [])))
+# an interrupted ruling a normal rm-run finishes (a blocked move is the chief repair, never a launch)
+replay = sum(1 for u in d.get("unfinished_rulings") or [] if isinstance(u, dict) and u.get("status") == "replay")
+# gone: the CLI proved the held lease owner process is absent on this host (owner_gone is literally true); the tick judges no pid itself
+lease = "free" if not ls or ls.get("released") else ("gone" if ls.get("owner_gone") is True else "held")
+print(n, age, lease, d.get("status") or "UNKNOWN", len(r.get("claimed", [])), replay)
 ' 2>/dev/null) || true  # swallow-ok: an unparseable state leaves the fields empty and the summary reads off
     fi
     [ "$rm_status" = OK ] || rm_n=""
+    case "$rm_replay" in '' | *[!0-9]*) rm_replay=0 ;; esac
     case "$rm_n" in
         '' | *[!0-9]*)
             case "$rm_rc" in 124 | 137) rm_queue='?' ;; *) rm_queue=off ;; esac
             ;;
         0)
             rm_queue=0
-            [ "$rm_claimed" -eq 0 ] || rm_queue="0,0m,claimed=$rm_claimed"
+            if [ "$rm_claimed" -ne 0 ] || [ "$rm_replay" -ne 0 ]; then
+                rm_queue="0,0m"
+                [ "$rm_claimed" -eq 0 ] || rm_queue="$rm_queue,claimed=$rm_claimed"
+                [ "$rm_replay" -eq 0 ] || rm_queue="$rm_queue,replay=$rm_replay"
+            fi
+            [ "$rm_replay" -eq 0 ] || rm_launch_run
             ;;
         *)
             rm_queue="$rm_n,${rm_age}m"
             [ "$rm_claimed" -eq 0 ] || rm_queue="$rm_queue,claimed=$rm_claimed"
+            [ "$rm_replay" -eq 0 ] || rm_queue="$rm_queue,replay=$rm_replay"
             rm_min="${TICK_RMRUN_MIN:-30}"
             case "$rm_min" in '' | *[!0-9]*) rm_min=30 ;; esac
-            rm_gap="${TICK_RMRUN_MIN_SECS:-600}"
-            case "$rm_gap" in '' | *[!0-9]*) rm_gap=600 ;; esac
-            if [ "$rm_age" -ge "$rm_min" ] && [ "$rm_lease" = free ] && [ "$rm_status" = OK ]; then
-                rm_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
-                rm_stamp="$rm_dir/tick-rm-run-$(printf '%s' "$rm_rel $REPO" | cksum | cut -d' ' -f1)"
-                rm_stamp_age=999999999
-                if [ -e "$rm_stamp" ]; then
-                    rm_stamp_m="$(stat -c %Y "$rm_stamp" 2>/dev/null)" || rm_stamp_m=""  # gnu-ok: console kit is Linux-only; swallow-ok: an unreadable stamp reads old
-                    case "$rm_stamp_m" in '' | *[!0-9]*) ;; *) rm_stamp_age=$(( $(date +%s) - rm_stamp_m )) ;; esac
-                fi
-                if [ "$rm_stamp_age" -ge "$rm_gap" ] && mkdir -p "$rm_dir" 2>/dev/null && touch "$rm_stamp" 2>/dev/null; then
-                    read -r -a rm_launcher <<<"${TICK_RMRUN_LAUNCHER:-setsid nohup}"
-                    rm_have=1; [ "${#rm_launcher[@]}" -gt 0 ] || rm_have=0
-                    for rm_w in "${rm_launcher[@]}"; do command -v "$rm_w" >/dev/null 2>&1 || rm_have=0; done  # command -v with several operands passes if ANY exists
-                    if [ "$rm_have" = 1 ]; then
-                        if [ -n "${TICK_RMRUN_PROBE:-}" ]; then
-                            "${rm_launcher[@]}" bash "$TICK_RMRUN_PROBE" release rm-run "$rm_rel" </dev/null >>"$rm_dir/tick-rm-run.log" 2>&1 &
-                            rm_queue="$rm_queue,run"
-                        elif [ -n "$rm_anchor" ] && [ -f "$rm_cli" ]; then
-                            ( export JIRA_PROJECT_KEY="$rm_pk"; "${rm_launcher[@]}" node "$rm_cli" release rm-run "$rm_rel" </dev/null >>"$rm_dir/tick-rm-run.log" 2>&1 & )
-                            rm_queue="$rm_queue,run"
-                        fi
-                    fi
-                fi
-            fi
+            if [ "$rm_age" -ge "$rm_min" ] || [ "$rm_replay" -gt 0 ]; then rm_launch_run; fi
             ;;
     esac
+fi
+
+# rm-blocked=<n>:<KEY>@<ruling>,...: the unfinished rulings with status blocked, a move only a person repairs (no rm-run does). Sorted, so an
+# unchanged set prints the same text on every tick; absent when none; ? when the tick cannot tell: the state read is not OK, the mirror input is
+# UNKNOWN (the engine then lists every ruling as replay) or unfinished_rulings is not a list of rows with a key and a ruling id. A key row of wake-rules.tsv.
+rm_blocked=""
+if [ -n "$rm_rel" ]; then
+    rm_blocked='?'
+    if [ "${rm_status:-}" = OK ]; then
+        # shellcheck disable=SC2016  # the python program is single-quoted on purpose
+        rm_blocked="$(printf '%s' "$rm_json" | python3 -I -c '
+import json, re, sys
+d = json.load(sys.stdin)
+u = d.get("unfinished_rulings", [])
+if (d.get("inputs") or {}).get("mirror") == "UNKNOWN" or not isinstance(u, list) or not all(isinstance(r, dict) and isinstance(r.get("key"), str) and r["key"] and isinstance(r.get("ruling"), str) and r["ruling"] for r in u):
+    print("?")
+    sys.exit(0)
+clean = lambda s: re.sub(r"[^A-Za-z0-9._@-]", "_", s)
+rows = sorted({"%s@%s" % (clean(r["key"]), clean(r["ruling"])) for r in u if r.get("status") == "blocked"})
+if rows:
+    print("%d:%s" % (len(rows), ",".join(rows)))
+' 2>/dev/null)" || rm_blocked='?'  # swallow-ok: an unparseable state is unknown, never an empty set
+    fi
 fi
 
 rm_refused=""
@@ -3375,11 +3434,12 @@ if [ -n "$rf_stem" ]; then
     if [ "${rm_status:-}" = OK ]; then
         # shellcheck disable=SC2016  # the python program is single-quoted on purpose
         rm_refused="$(printf '%s' "$rm_json" | python3 -I -c '
-import datetime, json, os, sys, tempfile
+import datetime, json, os, re, sys, tempfile
 d = json.load(sys.stdin)
 out, stem = sys.argv[1], sys.argv[2]
 asks = [a for a in d.get("refused_asks") or [] if isinstance(a, dict)]
-clean = lambda s: " ".join(str(s).split())
+# one line per field: tabs, newlines and every other control character flatten to a space
+clean = lambda s: " ".join(re.sub(r"[\x00-\x1f\x7f]", " ", str(s)).split())
 if (d.get("inputs") or {}).get("mirror") == "UNKNOWN":
     try:
         os.remove(os.path.join(out, "release-state-%s.json" % stem))
@@ -3393,7 +3453,8 @@ def put(name, text):
         f.write(text)
     os.replace(tmp, os.path.join(out, name))
 flag = lambda a: {True: "1", False: "0"}.get(a.get("asks_operator"), "?")
-put("rm-refused-%s.tsv" % stem, "".join("%s\t%s\t%s\t%s\n" % (clean(a.get("key")), clean(a.get("ruling")), clean(a.get("reason")), flag(a)) for a in asks))
+# key, ruling, reason, asks_operator, then the ground and the exact remedy (bounded); chief-wait reads these six columns and the four of an older tsv
+put("rm-refused-%s.tsv" % stem, "".join("%s\t%s\t%s\t%s\t%s\t%s\n" % (clean(a.get("key")), clean(a.get("ruling")), clean(a.get("reason"))[:400], flag(a), clean(a.get("ground", ""))[:80], clean(a.get("remedy", ""))[:600]) for a in asks))
 ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 put("release-state-%s.json" % stem, json.dumps({"ts": ts, "status": d.get("status"), "release": d.get("release"), "words_records": d.get("words_records") or [], "asks_operator_keys": d.get("asks_operator_keys") or []}) + "\n")
 if asks:
@@ -3404,94 +3465,133 @@ if asks:
     fi
 fi
 
-# held=<n>:<sig8> unfiled=<n> repair=off:<why>: the version repair's state, read from the
-# release dir of the chief doc's `release:` release. held= and unfiled= come from repair-held.json (the held key
-# count with the first 8 hex of its held_signature; the signed records no request carries yet), each elided at
-# zero. repair=off:<why> shows while the repair cannot run: the first line of repair-status (mirror-unknown,
-# bad-input, error), else `unreviewed` with no repair-reviewed marker, else bad-input with no origin slug.
-# With the marker present, the OK state read above, no fence variable and no live repair.lock owner, the tick
-# launches ONE detached `jira release repair <R> --apply --repo <slug>` (output to repair-run.log) when the run
-# signature (sha256 of the sorted leak set and the operator, requests, journal and mirror heads) differs from
-# repair-signature, and no sooner than TICK_RMRUN_MIN_SECS after the log was last written. The tick writes the
-# signature on launch; repair-run.ts clears it after an error or a capped run with progress. The lock is read,
-# never taken. The repair writes no Fix Version and raises no alert. None of the three is in chief-wait's key.
-# A launch that left no end record is retried: before the signature the tick writes release/<R>/repair-launch
-# (`<epoch> <lost-count>`, the tick its only writer), and a stamp with no repair-status or repair-reviewed mtime at
-# or after it, no live lock and max(TICK_RMRUN_MIN_SECS, 60) elapsed reads as `lost` (repair=off:lost). A lost
-# launch relaunches even on an unchanged signature, on a doubling backoff from that base capped at 6 h; the count
-# resets at the first launch after an observed end. A live lock is proc_tree_process_alive rc 0 or 2 on a lock
-# written since boot (the launch gate and the field share it). A malformed stamp reads as none.
-# Seams: TICK_REPAIR_PROBE (a script run in place of the CLI), TICK_RMRUN_LAUNCHER.
+# held=<n>:<sig8> unfiled=<n> repair=off:<why>: the version repair's state, READ from release/<R>/repair-state.json, the one
+# record `jira release repair --apply` (and `release repair-state`) writes; the tick writes no repair file. held= and
+# unfiled= come from its held_keys (the held key count with the first 8 hex of held_signature) and unfiled, each elided
+# at zero. repair=off:<why> shows while the repair cannot run: the record's reason when its state is off (unreviewed,
+# mirror-unknown, bad-input, error), `lost` when its state is lost or a running record's owner is gone, else bad-input with
+# no origin slug. A missing or unreadable record is first asked of the CLI (`release repair-state`, which publishes it).
+# With the review marker (the record's reviewed_at), the OK state read above, no fence variable and no live owner, the tick
+# launches ONE detached `jira release repair <R> --apply --repo <slug>` (output to repair-run.log) when the run signature
+# (sha256 of the sorted leak set and the operator, requests, journal and mirror heads) differs from the record's signature,
+# and no sooner than TICK_RMRUN_MIN_SECS after the log was last written. The run records its own launch and signature; the
+# CLI clears the signature after an error or a capped run with progress. A run that died (state running, owner gone, or
+# state lost) relaunches even on an unchanged signature, on a doubling backoff from max(TICK_RMRUN_MIN_SECS, 60) capped at
+# 6 h, from the record's launched epoch and lost_count. Before each detached start the tick asks the CLI to record the attempt
+# (`release repair-state <R> --attempt`, the one prepare step; the CLI stamps the record, the tick stamps nothing): the record's
+# attempted epoch and attempts count time the next try on the same doubling backoff, so a launcher that never starts the CLI is
+# retried at the gap, then at twice the gap, and an old append-only log mtime never re-launches it every tick; the start is skipped
+# (repair=off:unavailable) when no attempt can be recorded, and repair=off:unread shows while no record can be read at all. The
+# owner of a running record is live only when its pid still shows the recorded process identity (proc_tree_process_identity; a pid
+# with no recorded identity, or one ps cannot read, is not live), checked before and apart from the review marker, so a first run
+# that died before any review reads off:lost (the record's operator_command names the review-needed first apply; no launch without
+# the marker). None of the fields is in chief-wait's key. Seams: TICK_REPAIR_PROBE (a script run in place of the CLI),
+# TICK_REPAIR_STATE_PROBE (the read and the attempt), TICK_RMRUN_LAUNCHER.
 held_summary="" unfiled_summary="" repair_summary=""
 . "$HERE/../../lib/proc-tree.sh"
 if [[ "$rm_rel" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && [ -n "${rm_root:-}" ] && [ -d "$rm_root/$rm_rel" ]; then
     rp_dir="$rm_root/$rm_rel"
-    # shellcheck disable=SC2016  # the python program is single-quoted on purpose
-    read -r rp_held rp_sig8 rp_unf < <(python3 -I -c '
+    rp_cli="${rm_anchor%/.git}/scripts/jira/dist/index.js"
+    rp_read() { # one TAB-separated line: state reason reviewed signature launched lost_count pid held sig8 unfiled attempted attempts identity ('-' for none); nothing when the record is unreadable
+        # shellcheck disable=SC2016  # the python program is single-quoted on purpose
+        python3 -I -c '
 import json, re, sys
 try:
     d = json.load(open(sys.argv[1]))
-    h, u, s = d["held"], d["unfiled"], d["held_signature"]
-    assert type(h) is int and type(u) is int and h >= 0 and u >= 0 and re.fullmatch(r"[0-9a-f]{64}", s)
-    print(h, s[:8], u)
+    assert d["state"] in ("off", "idle", "running", "held", "lost")
+    keys, hs, un, k = d["held_keys"], d["held_signature"], d["unfiled"], d["lost_count"]
+    assert isinstance(keys, list) and type(un) is int and un >= 0 and type(k) is int and k >= 0
+    sig = d["signature"]; assert isinstance(sig, str)
+    why = re.sub(r"[^a-z-]", "", d["reason"] or "") or "-"
+    held_ok = isinstance(hs, str) and re.fullmatch(r"[0-9a-f]{64}", hs) is not None
+    num = lambda v: str(v) if type(v) is int and v >= 0 else "-"
+    ident = d.get("pid_identity")
+    ident = ident if isinstance(ident, str) and ident and not re.search(r"[\t\r\n]", ident) else "-"
+    att = d.get("attempts", 0)
+    att = att if type(att) is int and 0 <= att <= 64 else 0
+    print("\t".join(str(v) for v in (d["state"], why, 1 if d["reviewed_at"] else 0, sig or "-", num(d["launched"]), k, num(d["pid"]),
+          len(set(keys)) if held_ok else 0, hs[:8] if held_ok else "-", un if held_ok else 0, num(d.get("attempted")), att, ident)))
 except Exception:
     pass
-' "$rp_dir/repair-held.json" 2>/dev/null) || true  # swallow-ok: an unreadable held file shows no held= or unfiled=
-    case "${rp_held:-}" in '' | *[!0-9]* | 0) ;; *) held_summary="$rp_held:$rp_sig8" ;; esac
-    case "${rp_unf:-}" in '' | *[!0-9]* | 0) ;; *) unfiled_summary="$rp_unf" ;; esac
-    rp_marker=0 rp_why=""
-    [ ! -f "$rp_dir/repair-reviewed" ] || rp_marker=1
-    if [ -s "$rp_dir/repair-status" ]; then
-        rp_why="$(head -n 1 "$rp_dir/repair-status" 2>/dev/null | tr -cd 'a-z-')"  # swallow-ok: an unreadable status line reads as error below
-        [ -n "$rp_why" ] || rp_why=error
-    elif [ "$rp_marker" = 0 ]; then
-        rp_why=unreviewed
+' "$rp_dir/repair-state.json" 2>/dev/null
+    }
+    rp_line="$(rp_read)" || rp_line=""  # swallow-ok: an unreadable record is asked of the CLI below
+    if [ -z "$rp_line" ]; then
+        if [ -n "${TICK_REPAIR_STATE_PROBE:-}" ]; then
+            JIRA_PROJECT_KEY="$rm_pk" timeout -k 2 "$(tick_bound "${TICK_RMQ_TIMEOUT:-30}")" bash "$TICK_REPAIR_STATE_PROBE" release repair-state "$rm_rel" --json >/dev/null 2>&1 || true  # swallow-ok: no record reads as no field
+        elif [ -n "${rm_anchor:-}" ] && [ -f "$rp_cli" ]; then
+            JIRA_PROJECT_KEY="$rm_pk" timeout -k 2 "$(tick_bound "${TICK_RMQ_TIMEOUT:-30}")" node "$rp_cli" release repair-state "$rm_rel" --json >/dev/null 2>&1 || true  # swallow-ok: no record reads as no field
+        fi
+        rp_line="$(rp_read)" || rp_line=""  # swallow-ok: still unreadable shows no repair field
     fi
-    # The lock owner, the gap and the lost-launch rule are reads of files only, so a fenced tick shows the field too.
-    rp_busy=0 rp_E="" rp_k=0 rp_lost=0 rp_k2=0 rp_wait=0 rp_now=0 rp_gap=600
-    if [ "$rp_marker" = 1 ]; then
+    rp_state="" rp_reason="" rp_marker=0 rp_rsig="" rp_E="" rp_k=0 rp_pid="" rp_held="" rp_sig8="" rp_unf="" rp_att="" rp_attn=0 rp_ident="" rp_unread=0
+    if [ -n "$rp_line" ]; then
+        IFS=$'\t' read -r rp_state rp_reason rp_marker rp_rsig rp_E rp_k rp_pid rp_held rp_sig8 rp_unf rp_att rp_attn rp_ident <<<"$rp_line"
+        [ "$rp_reason" != - ] || rp_reason=""
+        [ "$rp_rsig" != - ] || rp_rsig=""
+        [ "$rp_E" != - ] || rp_E=""
+        [ "$rp_pid" != - ] || rp_pid=""
+        [ "$rp_att" != - ] || rp_att=""
+        [ "$rp_ident" != - ] || rp_ident=""
+        case "${rp_held:-}" in '' | *[!0-9]* | 0) ;; *) held_summary="$rp_held:$rp_sig8" ;; esac
+        case "${rp_unf:-}" in '' | *[!0-9]* | 0) ;; *) unfiled_summary="$rp_unf" ;; esac
+    fi
+    rp_why=""
+    case "$rp_state" in
+        off) rp_why="${rp_reason:-error}" ;;
+        lost) rp_why=lost ;;
+        '') rp_unread=1 ;;
+    esac
+    [ "$rp_unread" = 0 ] || rp_why=unread
+    # The owner and the lost-launch rule are reads of the record and the process table, so a fenced tick shows the field too, and they
+    # do not wait for the review marker: a first run that died before any review is a failure to show, not a quiet pre-review state.
+    rp_busy=0 rp_lost=0 rp_k2=0 rp_wait=0 rp_now=0 rp_gap=600 rp_att_ok=1
+    rp_owner() { # <pid> <recorded identity>: live only when the pid still shows that identity; dead when absent or another process; else unknown
+        local pid="$1" ident="$2" arc=0 cur=""
+        proc_tree_process_alive "$pid" || arc=$?
+        if [ "$arc" = 1 ]; then echo dead; return; fi
+        if [ -z "$ident" ]; then echo unknown; return; fi
+        cur="$(proc_tree_process_identity "$pid" 2>/dev/null)" || cur=""  # swallow-ok: an unreadable identity is unknown below
+        if [ -z "$cur" ]; then echo unknown; return; fi
+        if [ "$cur" = "$ident" ]; then echo live; else echo dead; fi
+    }
+    if [ -n "$rp_state" ]; then
         rp_now="$(date +%s)"
-        rp_pid="$(head -n 1 "$rp_dir/repair.lock" 2>/dev/null)" || rp_pid=""  # swallow-ok: no lock file means no owner
-        # live(pid): proc_tree_process_alive rc 0 or 2 (an EPERM pid counts as live, as in takeLock), and a lock written since boot
-        case "$rp_pid" in
-            '' | *[!0-9]*) ;;
-            *)
-                rp_rc=0; proc_tree_process_alive "$rp_pid" || rp_rc=$?
-                if [ "$rp_rc" = 0 ] || [ "$rp_rc" = 2 ]; then
-                    rp_busy=1
-                    rp_btime="$(awk '$1 == "btime" { print $2 }' /proc/stat 2>/dev/null)" || rp_btime=""  # swallow-ok: an unreadable btime passes the boot half
-                    rp_lock_m="$(stat -c %Y "$rp_dir/repair.lock" 2>/dev/null)" || rp_lock_m=""  # gnu-ok: console kit is Linux-only; swallow-ok: an unreadable mtime passes the boot half
-                    if [[ "$rp_btime" =~ ^[0-9]+$ ]] && [[ "$rp_lock_m" =~ ^[0-9]+$ ]] && [ "$rp_lock_m" -lt "$rp_btime" ]; then rp_busy=0; fi
-                fi
-                ;;
-        esac
         rp_gap="${TICK_RMRUN_MIN_SECS:-600}"
         case "$rp_gap" in '' | *[!0-9]*) rp_gap=600 ;; esac
         rp_gap=$((10#$rp_gap))
         rp_base=$rp_gap; [ "$rp_base" -ge 60 ] || rp_base=60
         rp_cap=21600; [ "$rp_cap" -ge "$rp_base" ] || rp_cap=$rp_base
-        rp_stamp=""
-        if [ -f "$rp_dir/repair-launch" ]; then
-            IFS= read -r rp_stamp < "$rp_dir/repair-launch" 2>/dev/null || true  # swallow-ok: an unreadable stamp reads as no stamp
+        if [ "$rp_state" = running ]; then
+            # live(pid): the recorded process identity, and a launch since boot
+            rp_live=0
+            case "$rp_pid" in
+                '' | *[!0-9]*) ;;
+                *)
+                    if [ "$(rp_owner "$rp_pid" "$rp_ident")" = live ]; then
+                        rp_live=1
+                        rp_btime="$(awk '$1 == "btime" { print $2 }' /proc/stat 2>/dev/null)" || rp_btime=""  # swallow-ok: an unreadable btime passes the boot half
+                        if [[ "$rp_btime" =~ ^[0-9]+$ ]] && [[ "$rp_E" =~ ^[0-9]+$ ]] && [ "$rp_E" -lt "$rp_btime" ]; then rp_live=0; fi
+                    fi
+                    ;;
+            esac
+            if [ "$rp_live" = 1 ]; then rp_busy=1; else rp_lost=1; rp_why=lost; fi
+        elif [ "$rp_state" = lost ]; then
+            rp_lost=1
         fi
-        if [[ "$rp_stamp" =~ ^(0|[1-9][0-9]{0,17})\ (0|[1-9][0-9]{0,8})$ ]] && [ "${BASH_REMATCH[1]}" -le "$rp_now" ]; then
-            rp_E="${BASH_REMATCH[1]}" rp_k="${BASH_REMATCH[2]}"
+        if [ "$rp_lost" = 1 ] && [[ "$rp_E" =~ ^[0-9]+$ ]] && [ "$rp_E" -le "$rp_now" ]; then
+            rp_k2=$((rp_k + 1))
+            rp_wait=$rp_base rp_i=1
+            while [ "$rp_i" -lt "$rp_k2" ] && [ "$rp_wait" -lt "$rp_cap" ]; do rp_wait=$((rp_wait * 2)); rp_i=$((rp_i + 1)); done
+            [ "$rp_wait" -le "$rp_cap" ] || rp_wait=$rp_cap
         fi
-        if [ -n "$rp_E" ]; then
-            rp_ended=0
-            for rp_f in repair-status repair-reviewed; do
-                [ -e "$rp_dir/$rp_f" ] || continue
-                rp_m="$(stat -c %Y "$rp_dir/$rp_f" 2>/dev/null)" || rp_m=""  # gnu-ok: console kit is Linux-only; swallow-ok: an unreadable end file reads as no end
-                case "$rp_m" in '' | *[!0-9]*) ;; *) [ "$rp_m" -lt "$rp_E" ] || rp_ended=1 ;; esac
-            done
-            if [ "$rp_ended" = 0 ]; then
-                rp_k2=$rp_k
-                if [ "$rp_busy" = 0 ] && [ $((rp_now - rp_E)) -ge "$rp_base" ]; then rp_lost=1; rp_k2=$((rp_k + 1)); fi
-                if [ "$rp_busy" = 0 ] && { [ "$rp_lost" = 1 ] || [ "$rp_k" -ge 1 ]; }; then rp_why=lost; fi
-                rp_wait=$rp_base rp_i=1
-                while [ "$rp_i" -lt "$rp_k2" ] && [ "$rp_wait" -lt "$rp_cap" ]; do rp_wait=$((rp_wait * 2)); rp_i=$((rp_i + 1)); done
-                [ "$rp_wait" -le "$rp_cap" ] || rp_wait=$rp_cap
-            fi
+        # The attempt clock: attempts the CLI recorded since a run began double the wait from the gap, capped as the lost backoff is; an
+        # attempt time in the future (a bad clock) never stalls.
+        if [ "${rp_attn:-0}" -ge 1 ] && [[ "$rp_att" =~ ^[0-9]+$ ]] && [ "$rp_att" -le "$rp_now" ]; then
+            rp_aw=$rp_base rp_i=1
+            while [ "$rp_i" -lt "$rp_attn" ] && [ "$rp_aw" -lt "$rp_cap" ]; do rp_aw=$((rp_aw * 2)); rp_i=$((rp_i + 1)); done
+            [ "$rp_aw" -le "$rp_cap" ] || rp_aw=$rp_cap
+            [ $((rp_now - rp_att)) -ge "$rp_aw" ] || rp_att_ok=0
         fi
     fi
     if [ "$rp_marker" = 1 ] && [ "${rm_status:-}" = OK ]; then
@@ -3519,22 +3619,32 @@ except OSError:
 rows = ["leak=" + k for k in leaks] + ["operator=" + str(h["operator"]), "requests=" + str(h["requests"]), "journal=" + j, "mirror=" + str(h["mirror"])]
 print(hashlib.sha256("\n".join(rows).encode()).hexdigest())
 ' "${HIMMEL_VERSION_WRITES:-$rm_root/version-writes.jsonl}" 2>/dev/null)" || rp_sig=""  # swallow-ok: an unreadable state computes no signature, so nothing launches
-            rp_old="$(head -n 1 "$rp_dir/repair-signature" 2>/dev/null)" || rp_old=""  # swallow-ok: no signature file is the launch trigger
-            if [ "$rp_busy" = 0 ] && [ -n "$rp_sig" ] && [ "$rp_log_age" -ge "$rp_gap" ] \
-                && { [ "$rp_sig" != "$rp_old" ] || [ "$rp_lost" = 1 ]; } \
+            if [ "$rp_busy" = 0 ] && [ -n "$rp_sig" ] && [ "$rp_log_age" -ge "$rp_gap" ] && [ "$rp_att_ok" = 1 ] \
+                && { [ "$rp_sig" != "$rp_rsig" ] || [ "$rp_lost" = 1 ]; } \
                 && { [ "$rp_k2" = 0 ] || [ $((rp_now - rp_E)) -ge "$rp_wait" ]; }; then
                 read -r -a rp_launcher <<<"${TICK_RMRUN_LAUNCHER:-setsid nohup}"
                 rp_have=1; [ "${#rp_launcher[@]}" -gt 0 ] || rp_have=0
                 for rp_w in "${rp_launcher[@]}"; do command -v "$rp_w" >/dev/null 2>&1 || rp_have=0; done  # command -v with several operands passes if ANY exists
-                rp_cli="${rm_anchor%/.git}/scripts/jira/dist/index.js"
-                if [ "$rp_have" = 1 ] && { [ -n "${TICK_REPAIR_PROBE:-}" ] || { [ -n "$rm_anchor" ] && [ -f "$rp_cli" ]; }; } \
-                    && printf '%s %s\n' "$rp_now" "$rp_k2" > "$rp_dir/repair-launch.tick-$$" && mv -fT "$rp_dir/repair-launch.tick-$$" "$rp_dir/repair-launch" \
-                    && printf '%s\n' "$rp_sig" > "$rp_dir/repair-signature.tick-$$" && mv -f "$rp_dir/repair-signature.tick-$$" "$rp_dir/repair-signature"; then  # gnu-ok: console kit is Linux-only; the stamp precedes the signature
+                rp_prep=0
+                if [ "$rp_have" = 1 ] && { [ -n "${TICK_REPAIR_PROBE:-}" ] || { [ -n "$rm_anchor" ] && [ -f "$rp_cli" ]; }; }; then
+                    # The CLI records the attempt (time and count) before the detached start, and the run writes its own launch stamp and
+                    # signature (repair-state.json); the tick writes no repair file. No recorded attempt, no start.
+                    if [ -n "${TICK_REPAIR_STATE_PROBE:-}" ]; then
+                        JIRA_PROJECT_KEY="$rm_pk" timeout -k 2 "$(tick_bound "${TICK_RMQ_TIMEOUT:-30}")" bash "$TICK_REPAIR_STATE_PROBE" release repair-state "$rm_rel" --attempt --repo "$rp_slug" --json >/dev/null 2>&1 && rp_prep=1
+                    elif [ -n "${TICK_REPAIR_PROBE:-}" ]; then
+                        :  # a stand-in repair with no state probe has no CLI to record the attempt: nothing starts
+                    elif JIRA_PROJECT_KEY="$rm_pk" timeout -k 2 "$(tick_bound "${TICK_RMQ_TIMEOUT:-30}")" node "$rp_cli" release repair-state "$rm_rel" --attempt --repo "$rp_slug" --json >/dev/null 2>&1; then  # swallow-ok: a refused attempt starts nothing and reads unavailable
+                        rp_prep=1
+                    fi
+                fi
+                if [ "$rp_prep" = 1 ]; then
                     if [ -n "${TICK_REPAIR_PROBE:-}" ]; then
                         ( JIRA_PROJECT_KEY="$rm_pk" "${rp_launcher[@]}" bash "$TICK_REPAIR_PROBE" release repair "$rm_rel" --apply --repo "$rp_slug" </dev/null >>"$rp_dir/repair-run.log" 2>&1 & )
                     else
                         ( JIRA_PROJECT_KEY="$rm_pk" "${rp_launcher[@]}" node "$rp_cli" release repair "$rm_rel" --apply --repo "$rp_slug" </dev/null >>"$rp_dir/repair-run.log" 2>&1 & )
                     fi
+                elif [ -z "$rp_why" ]; then
+                    rp_why=unavailable
                 fi
             fi
         fi
@@ -3786,6 +3896,7 @@ fi
 owed_summary=""
 owed_stale_n=0
 owed_stale_ids=""
+owed_event_actions=""
 if [ -n "$console_doc" ] && [ -s "${console_doc%/*}/owed.jsonl" ]; then
     if owed_rows="$(bash "$HERE/owe.sh" list --bucket "${console_doc%/*}" 2>/dev/null)"; then  # swallow-ok: the else branch prints owed=?
         owed_stale_secs="${OWED_STALE_SECS:-14400}"
@@ -3800,6 +3911,26 @@ if [ -n "$console_doc" ] && [ -s "${console_doc%/*}/owed.jsonl" ]; then
         [ -n "$owed_stale_n" ] || owed_stale_n=0
     else
         owed_summary='?'
+    fi
+fi
+
+# Both clocks use the existing owed identity/ack contract. A reminder grants no
+# hold and is independent of the pool's dispatchability calculation above.
+if [ -n "$console_doc" ] && { [ -s "${console_doc%/*}/owed.jsonl" ] || [[ "${pd_summary:-}" == *'# readiness-clock '* ]]; }; then
+    tick_now_s
+    if owed_events=$(printf '%s\n' "${pd_summary:-}" | sed -n 's/^# readiness-clock //p' | jq -s . | \
+        python3 -I "$HERE/owed-events.py" --bucket "${console_doc%/*}" --now "$tick_now" --stale-seconds "${owed_stale_secs:-14400}"); then
+        owed_summary=$(printf '%s' "$owed_events" | jq -r '.summary')
+        owed_stale_n=$(printf '%s' "$owed_events" | jq '.stale_ids | length')
+        owed_stale_ids=$(printf '%s' "$owed_events" | jq -r '.stale_ids | join(",")')
+        owed_event_actions=$(printf '%s' "$owed_events" | jq -r '
+            (if (.pending | length) > 0 then "ACTION owed-notify=" + (.pending | join(",")) else empty end),
+            (if (.invalid_ids | length) > 0 then "ACTION owed-invalid=" + (.invalid_ids | join(",")) else empty end),
+            (if (.reminders | length) > 0 then "ACTION readiness-d24h=" + (.reminders | join(",")) else empty end),
+            (if (.operator_digest | length) > 0 then "ACTION operator-digest=" + (.operator_digest | join(",")) else empty end)')
+    else
+        owed_summary='?'
+        owed_event_actions='ACTION owed-events=unknown: reconcile unreadable owed/readiness inputs'
     fi
 fi
 
@@ -4106,6 +4237,16 @@ fi
 # alert-fail=<cadence>:<age>: cadence-alert.sh could not deliver a failure alert to
 # Telegram; the marker line is `<UTC iso-ts> <cadence> <reason>`. ABSENT when no marker
 # exists (the next delivered alert removes it). A file read only.
+mon_tail=""
+mon_state="${TICK_MONITOR_STATE:-${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/monitor/state}"
+if [ -e "$mon_state" ]; then
+    mon_line="$(head -n 1 "$mon_state" 2>/dev/null)" || mon_line=""  # swallow-ok: an unreadable monitor state prints mon-down=?, never recovery
+    if [[ "$mon_line" =~ ^down[[:space:]]+([0-9]+)([[:space:]]|$) ]]; then
+        mon_tail=" mon-down=${BASH_REMATCH[1]}"
+    elif [ "$mon_line" != ok ]; then
+        mon_tail=' mon-down=?'
+    fi
+fi
 alertfail_tail=""
 alertfail_mark="${CADENCE_ALERT_SEND_FAILED_MARK:-${HOME:-}/.himmel/state/cadence-alert-send-failed}"
 if [ -s "$alertfail_mark" ]; then
@@ -4845,6 +4986,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'version leaks: %s\n' "$leaks_summary"
     printf 'rm-queue: %s\n' "$rm_queue"
     [ -z "$rm_refused" ] || printf 'rm-refused: %s\n' "$rm_refused"
+    [ -z "$rm_blocked" ] || printf 'rm-blocked: %s\n' "$rm_blocked"
     [ -z "$held_summary" ] || printf 'repair held: %s\n' "$held_summary"
     [ -z "$unfiled_summary" ] || printf 'repair unfiled: %s\n' "$unfiled_summary"
     [ -z "$repair_summary" ] || printf 'repair: %s\n' "$repair_summary"
@@ -4877,6 +5019,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$doctor_tail" ] || printf 'doctor: %s\n' "${doctor_tail# doctor=}"
     [ -z "$crfirst_tail" ] || printf 'crfirst: %s\n' "${crfirst_tail# crfirst=}"
     [ -z "$station_tail" ] || printf 'station: %s\n' "${station_tail# station=}"
+    [ -z "$mon_tail" ] || printf 'mon-down: %s\n' "${mon_tail# mon-down=}"
     [ -z "$alertfail_tail" ] || printf 'alert-fail: %s\n' "${alertfail_tail# alert-fail=}"
     [ -z "$slotage_tail" ] || printf 'slot age: %s\n' "${slotage_tail# slotage=}"
     [ -z "$tmp_tail" ] || printf 'tmp: %s\n' "${tmp_tail# tmp=}"
@@ -4972,6 +5115,7 @@ else
     compact_field leaks "$leaks_summary"
     compact_field rm-queue "$rm_queue"
     compact_field rm-refused "$rm_refused"
+    compact_field rm-blocked "$rm_blocked"
     compact_field held "$held_summary"
     compact_field unfiled "$unfiled_summary"
     compact_field repair "$repair_summary"
@@ -4981,7 +5125,7 @@ else
     compact_field focus "$focus_summary"
     compact_field sdrift "$sdrift_summary"
     compact_field stale "$stale_summary"
-    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$unclosed_tail$holdout_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$alertfail_tail$slotage_tail$tmp_tail$spare_tail"
+    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$unclosed_tail$holdout_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$mon_tail$alertfail_tail$slotage_tail$tmp_tail$spare_tail"
     if [ -n "$holdout_summary" ]; then
         printf 'ACTION holdout=%s: an idle worker holds on an outside event; have it WRAP with what it owes written down, then bash %q watch %q add <pr> --head <sha> --comments <n> --reviews <n> and close-wrapped-worker.sh --fleet %q <doc> (chief-wait wakes you as WAKE pr-watch)\n' \
             "$holdout_summary" "$HERE/fleet-manifest.sh" "${WORKERS_FROM:-<manifest>}" "${WORKERS_FROM:-<manifest>}"
@@ -5014,6 +5158,7 @@ else
         printf 'ACTION owed-stale=%s:%s: a ticket you owe has no key after %sh: file it, then bash %q close --bucket %q --id <id> --key <KEY> (chief-sections/owed.md)\n' \
             "$owed_stale_n" "$owed_stale_ids" "$((owed_stale_secs / 3600))" "$HERE/owe.sh" "${console_doc%/*}"
     fi
+    [ -z "$owed_event_actions" ] || printf '%s\n' "$owed_event_actions"
     decisions_file="${console_doc%/*}/specs/decisions/chief-decisions-$(date +%F).md"
     if [ "$handoff_bytes" -gt "$handoff_budget" ]; then
         printf 'ACTION handoff-over-budget=%s/%s: trim %q: move superseded rulings verbatim to %q, then tighten the Live state (chief-sections/live-state.md)\n' "$handoff_bytes" "$handoff_budget" "$handoff_file" "$decisions_file"

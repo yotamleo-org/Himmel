@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import { isMain } from '../lib/is-main.mjs';
 import { readRecords } from './lib/ledger.mjs';
 import { isStale, renderDock } from './lib/dock.mjs';
+import { validateRecord } from './lib/schema.mjs';
 
 export function parseArgs(argv) {
   const a = { ledger: null, marker: null, branch: '', staleHours: 6, staleFlagFile: null, now: null };
@@ -31,17 +32,18 @@ export function parseArgs(argv) {
   return a;
 }
 
-// Returns { text, stale }. Fail-open: a malformed/unreadable ledger yields
-// {text:'', stale:true} so the hook re-collects and HEALS the ledger rather
-// than freezing on it. (readRecords returns [] on ENOENT but THROWS on
-// malformed JSON — e.g. a half-written record from a killed background collect.)
+// Returns { text, stale }. Unreadable or malformed state reports unknown
+// freshness. Advisory rendering never repairs the ledger or certifies emptiness.
 export function main(argv, deps = { statMtime: defaultStatMtime, readRecords, now: Date.now() }) {
   const a = parseArgs(argv);
   const nowMs = a.now ?? deps.now;
   const markerMtime = deps.statMtime(a.marker);
   let records;
-  try { records = deps.readRecords(a.ledger); }
-  catch { return { text: '', stale: true }; }
+  try {
+    records = deps.readRecords(a.ledger);
+    if (records.some((record) => !validateRecord(record).ok)) throw new Error('invalid ledger record');
+  }
+  catch { return { text: '_where-are-we · ledger unread or malformed; freshness unknown_\n\nRefresh cannot certify an unread ledger; repair its source before retrying.', stale: true }; }
   const scope = a.branch ? { mode: 'branch', name: a.branch } : { mode: 'global' };
   return {
     text: renderDock(records, scope, nowMs, markerMtime),

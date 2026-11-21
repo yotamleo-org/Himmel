@@ -1,11 +1,15 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { closeSync, constants, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { releaseKeyPath, releaseRoot } from './paths.js';
-import type { Getter } from './version-writes.js';
+import { pinnedSha, pinnedRead, boundedDirectoryNames, selectDecisionNames, reviewedSpecHashes, returnSha,
+  canonicalDirectoryNames, returnDirectories, checkLatestReturns, declaredTickets, keyOf, memberLedgerState, optionalReturnAgreement, parseManifest,
+  validateCappedFoldProofShape, validateCappedProofShape, type AnyCappedProof, type CappedFoldProof, type CappedLedgerProof, type FilePin, type MemberAbsencePin } from './pinned.js';
+export { pinnedSha, type Pinned } from './pinned.js';
+import { journalPath, readVersionWrites, type Getter, type VersionWriteRow } from './version-writes.js';
 import {
   appendChain, contentSha, loadKey, mintKey, readChain, readSigned, withLock, withLockAsync, writeSigned, type Chain,
 } from './ledger.js';
@@ -441,34 +445,6 @@ export function readOperatorRecords(kind: OperatorKind | OperatorKind[], env: Re
 
 const fileSha = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
 
-const PINNED_MAX = 16 * 1024 * 1024;
-export type Pinned = { bytes: Buffer; sha256: string } | { missing: true } | { unreadable: true };
-
-// A pinned file is read once from one non-blocking fd: a FIFO, a device, a directory or a file over 16 MiB
-// is unreadable, so a planted path never blocks the reader nor costs it more than 16 MiB.
-export function pinnedSha(path: string): Pinned {
-  let fd: number;
-  try {
-    fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK);
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === 'ENOENT' ? { missing: true } : { unreadable: true };
-  }
-  try {
-    const st = fstatSync(fd);
-    if (!st.isFile() || st.size > PINNED_MAX) return { unreadable: true };
-    const buf = Buffer.alloc(st.size + 1);
-    let n = 0;
-    for (let r = 1; r > 0 && n < buf.length; n += r) r = readSync(fd, buf, n, buf.length - n, null);
-    if (n > st.size) return { unreadable: true };
-    const bytes = buf.subarray(0, n);
-    return { bytes, sha256: createHash('sha256').update(bytes).digest('hex') };
-  } catch {
-    return { unreadable: true };
-  } finally {
-    closeSync(fd);
-  }
-}
-
 function pinRead(path: string, role: string, verb: string): { bytes: Buffer; sha256: string } {
   const got = pinnedSha(path);
   if ('missing' in got) throw new Error(`${verb}: ${role} not found: ${path}`);
@@ -481,6 +457,49 @@ function checkoutRoot(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   const common = execFileSync('git', ['-C', here, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim();
   return dirname(common);
+}
+
+// Explicit roots bind a physical checkout, its registered Git identity and the validated HEAD.
+// The validator scripts themselves always come from checkoutRoot().
+function sourceIdentity(raw: string): { root: string; head: string; identity: string } {
+  const verb = 'release operator spec: source-root';
+  try {
+    const root = realpathSync(raw);
+    const stamp = (path: string) => {
+      const st = lstatSync(path, { bigint: true });
+      return `${st.dev}:${st.ino}`;
+    };
+    const before = [stamp(root), stamp(join(root, '.git'))];
+    if (!statSync(root).isDirectory()) throw new Error('not a directory');
+    const git = (...args: string[]) => execFileSync('git', ['-C', root, ...args], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+    const common = realpathSync(git('rev-parse', '--path-format=absolute', '--git-common-dir'));
+    const primary = realpathSync(checkoutRoot());
+    const primaryCommon = realpathSync(execFileSync('git', ['-C', primary, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim());
+    if (common !== primaryCommon || realpathSync(git('rev-parse', '--show-toplevel')) !== root) {
+      throw new Error('must be a root of the same repository as primary');
+    }
+    const gitDir = realpathSync(git('rev-parse', '--absolute-git-dir'));
+    const head = git('rev-parse', '--verify', 'HEAD^{commit}');
+    const registered = git('worktree', 'list', '--porcelain', '-z').split('\0\0').some((record) => {
+      const fields = record.split('\0');
+      if (!fields[0].startsWith('worktree ') || fields.some((v) => v === 'bare' || v.startsWith('prunable'))) return false;
+      try { return realpathSync(fields[0].slice(9)) === root && fields.includes(`HEAD ${head}`); } catch { return false; }
+    });
+    if (!registered) throw new Error('not a registered live worktree');
+    if (root === primary ? gitDir !== common
+      : dirname(gitDir) !== realpathSync(join(common, 'worktrees'))
+        || realpathSync(readFileSync(join(gitDir, 'gitdir'), 'utf8').trim()) !== realpathSync(join(root, '.git'))) {
+      throw new Error('worktree Git identity does not match its registration');
+    }
+    const identity = JSON.stringify([root, common, gitDir, ...before, stamp(common), stamp(gitDir)]);
+    if (realpathSync(raw) !== root || before[0] !== stamp(root) || before[1] !== stamp(join(root, '.git'))
+      || git('rev-parse', '--verify', 'HEAD^{commit}') !== head) throw new Error('identity or HEAD changed while it was checked');
+    return { root, head, identity };
+  } catch (e) {
+    throw new Error(`${verb} ${raw} refused: ${(e as Error).message}`);
+  }
 }
 
 const minervaScript = (name: string): string => join(checkoutRoot(), 'marketplace', 'plugins', 'himmel-ops', 'scripts', name);
@@ -497,13 +516,13 @@ function runMinerva(name: string, args: string[], cwd: string, verb = 'release o
 // The spec gate on the spec, then the trace lint on the spec and plan. The lint resolves cited paths against its
 // cwd's repo, so it runs from the checkout, whichever repo holds the spec; the spec's own repo (the state repo) is
 // the second place a cited path may exist.
-function lintSpec(spec: string, plan: string, verb?: string): void {
+function lintSpec(spec: string, plan: string, verb?: string, sourceRoot = checkoutRoot()): void {
   runMinerva('minerva-spec-gate.sh', [spec], dirname(spec), verb);
   let own: string[] = [];
   try {
     own = [execFileSync('git', ['-C', dirname(spec), 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()];
   } catch { /* a spec outside any repo has no second root */ }
-  runMinerva('minerva-trace-lint.sh', [spec, plan, ...own], checkoutRoot(), verb);
+  runMinerva('minerva-trace-lint.sh', [spec, plan, ...own], sourceRoot, verb);
 }
 
 const VERDICT = /^(SPEC|PLAN) (CLEAN|FINDINGS (\d+))$/;
@@ -573,8 +592,149 @@ function checkRoundResiduals(specText: string, names: string[], residuals: numbe
   }
 }
 
+interface CappedInputs {
+  keys: string[]; spec: FilePin; plan?: FilePin; files: VerdictFile[]; residuals: number;
+}
+
+function cappedVerifier(): string {
+  return fileURLToPath(new URL('../../../telegram/chief-route.ts', import.meta.url));
+}
+
+function canonical(path: string): boolean {
+  try { return realpathSync(path) === path; } catch { return false; }
+}
+
+// The one predicate over a fresh listing of the pinned ledger folder and the manifest bytes the record pins: a listing that cannot be read, a folder that is not
+// canonical, a manifest that does not parse and any member with a ledger file, a snapshot folder or a manifest entry all mean the absence no longer holds.
+function memberAbsent(pin: MemberAbsencePin, manifest: Buffer | undefined): boolean {
+  try {
+    const parsed = manifest && parseManifest(manifest.toString('utf8'));
+    return !!parsed && canonical(pin.directory) && statSync(pin.directory).isDirectory() && memberLedgerState(boundedDirectoryNames(pin.directory), Object.keys(parsed.keys), pin.keys).present.length === 0;
+  } catch { return false; }
+}
+
+function checkCappedPins(proof: AnyCappedProof): void {
+  const key = proof.schema === 2 ? proof.anchor : proof.key;
+  const history = proof.schema === 2 ? new Set(proof.pins.flatMap(pin => pin.role === 'history' ? [pin.path] : [])) : undefined;
+  for (const directory of returnDirectories(key, proof.spec.path, proof.plan.path, proof.returns)) {
+    checkLatestReturns(directory, canonicalDirectoryNames(directory).names, key, proof.returns, history);
+  }
+  let members: MemberAbsencePin | undefined;
+  let manifest: Buffer | undefined;
+  for (const pin of proof.pins) {
+    if (pin.role === 'decision-selection') {
+      if (!canonical(pin.directory) || JSON.stringify(selectDecisionNames(boundedDirectoryNames(pin.directory), pin.decision)) !== JSON.stringify(pin.names)) {
+        throw new Error(`capped evidence selection changed: ${pin.directory}`);
+      }
+    } else if (pin.role === 'member-absence') {
+      members = pin;
+    } else {
+      const got = pinnedRead(pin.path);
+      if (!canonical(pin.path) || !('bytes' in got) || got.sha256 !== pin.sha256
+        || (pin.role === 'decision' && got.mtime_ms !== pin.mtime_ms)) throw new Error(`capped evidence changed or unreadable: ${pin.path}`);
+      if (pin.role === 'manifest') manifest = got.bytes;
+    }
+  }
+  if (members && !memberAbsent(members, manifest)) throw new Error(`capped evidence selection changed: ${members.directory}`);
+}
+
+function bindCappedProof(proof: CappedFoldProof, input: CappedInputs): void {
+  if (proof.key !== input.keys[0] || proof.spec.path !== input.spec.path || proof.spec.sha256 !== input.spec.sha256
+    || proof.plan.path !== input.plan?.path || proof.plan.sha256 !== input.plan.sha256
+    || proof.carried.length !== input.residuals) throw new Error('capped proof input binding disagrees');
+  for (const r of proof.returns) {
+    const file = input.files.find(f => f.kind.toLowerCase() === r.kind);
+    if (!file || file.path !== r.path || file.sha256 !== r.sha256 || file.residuals !== r.residuals
+      || returnSha(file.text) !== r.return_sha) throw new Error(`capped proof ${r.kind} return binding disagrees`);
+    const reviewed = reviewedSpecHashes(file.text);
+    if (reviewed.length !== 1 || reviewed[0] !== input.spec.sha256) throw new Error(`capped ${r.kind} Reviewed binding disagrees`);
+  }
+}
+
+function bindCappedLedgerProof(proof: CappedLedgerProof, input: CappedInputs): void {
+  const keys = [...input.keys].sort();
+  if (keys.length !== proof.keys.length || keys.some((k, i) => k !== proof.keys[i]) || proof.spec.path !== input.spec.path || proof.spec.sha256 !== input.spec.sha256
+    || proof.plan.path !== input.plan?.path || proof.plan.sha256 !== input.plan.sha256) throw new Error('capped proof input binding disagrees');
+  for (const r of proof.returns) {
+    const file = input.files.find(f => f.kind.toLowerCase() === r.kind);
+    if (!file || file.path !== r.path || file.sha256 !== r.sha256 || file.residuals !== r.residuals
+      || returnSha(file.text) !== r.return_sha) throw new Error(`capped proof ${r.kind} return binding disagrees`);
+    optionalReturnAgreement(file.text, { keys: proof.keys, specSha: input.spec.sha256 });
+  }
+  if (proof.carried.length !== input.residuals) throw new Error('capped proof input binding disagrees');
+  const spec = pinnedRead(input.spec.path);
+  if (!('bytes' in spec) || spec.sha256 !== input.spec.sha256) throw new Error('capped proof input binding disagrees');
+  const declared = declaredTickets(spec.bytes.toString('utf8'));
+  if (!declared || JSON.stringify([...declared].sort()) !== JSON.stringify(proof.keys)) throw new Error('capped proof declared tickets disagree');
+  if (proof.anchor !== keyOf(proof.spec.path)) throw new Error('capped proof anchor disagrees');
+}
+
+const CAPPED_GUARD = 'capped carry requires one key, an explicit distinct plan and paired SPEC/PLAN returns';
+
+function cappedReason(e: unknown): string {
+  const detail = e as { stderr?: string | Buffer; message?: string };
+  return String(detail.stderr || detail.message || e).trim().slice(0, 500);
+}
+
+// One verifier spawn: the proof it printed, or the failure with its reason; `refused` is a non-zero exit of a verifier that ran.
+function spawnCappedFold(input: CappedInputs, flag: '--key' | '--keys', value: string): { output: string } | { reason: string; refused: boolean } {
+  const args = [cappedVerifier(), 'capped-fold', flag, value, '--spec', input.spec.path, '--plan', input.plan!.path,
+    '--spec-return', input.files.find(f => f.kind === 'SPEC')!.path, '--plan-return', input.files.find(f => f.kind === 'PLAN')!.path];
+  try {
+    return { output: execFileSync('bun', args, { encoding: 'utf8', timeout: 30000, maxBuffer: 4 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }) };
+  } catch (e) {
+    const detail = e as { status?: number | null; code?: string };
+    return { reason: cappedReason(e), refused: typeof detail.status === 'number' && detail.status !== 0 && detail.code === undefined };
+  }
+}
+
+function cappedFallback(check: () => void, input: CappedInputs, ledgerBound = false): AnyCappedProof | undefined {
+  let refusal: unknown;
+  try { check(); return undefined; } catch (e) { refusal = e; }
+  const refuse = (reason: string) => new Error(`${refusal instanceof Error ? refusal.message : refusal}; capped verifier unavailable/refused: ${reason}`);
+  if ((input.keys.length !== 1 && !ledgerBound) || !input.plan || input.plan.path === input.spec.path || input.files.length !== 2) throw refuse(CAPPED_GUARD);
+  let first: string;
+  if (input.keys.length === 1) {
+    const ran = spawnCappedFold(input, '--key', input.keys[0]);
+    if ('output' in ran) {
+      try {
+        const proof = validateCappedFoldProofShape(JSON.parse(ran.output));
+        bindCappedProof(proof, input);
+        checkCappedPins(proof);
+        return proof;
+      } catch (e) { throw refuse(cappedReason(e)); }
+    }
+    if (!ledgerBound || !ran.refused) throw refuse(ran.reason);
+    first = ran.reason;
+  } else first = `v1 route: ${CAPPED_GUARD}`;
+  const ran = spawnCappedFold(input, '--keys', [...input.keys].sort().join(','));
+  if (!('output' in ran)) throw refuse(`${first}; v2: ${ran.reason}`);
+  try {
+    const proof = validateCappedProofShape(JSON.parse(ran.output));
+    if (proof.schema !== 2) throw new Error(`capped proof schema disagrees: a --keys call was answered with schema ${proof.schema}`);
+    bindCappedLedgerProof(proof, input);
+    checkCappedPins(proof);
+    return proof;
+  } catch (e) { throw refuse(`${first}; v2: ${cappedReason(e)}`); }
+}
+
+function appendSpec(ctx: Ctx, k: Buffer, row: Omit<OperatorRow, 'id' | 'ts'>): OperatorRow {
+  if (!row.capped_carry) return appendOperator(ctx, k, row);
+  checkCappedPins(row.capped_carry);
+  const persisted = appendOperator(ctx, k, row);
+  try {
+    const chain = readChain<OperatorRow>(f(ctx, 'operator.jsonl'), k);
+    const verified = chain.verified.find(r => r.id === persisted.id);
+    if (chain.bad.length || !verified || contentSha(verified) !== contentSha(persisted)) throw new Error('signed row did not verify on readback');
+    checkCappedPins(row.capped_carry);
+    return verified;
+  } catch (e) {
+    throw new Error(`persisted-but-stale ${persisted.id}: ${e instanceof Error ? e.message : e}; inspect this record before retrying`);
+  }
+}
+
 export function signSpec(ctx: Ctx, o: {
-  keys: string[]; spec: string; verdicts: string[]; decision: string; verbatim: string; supersedes?: string; plan?: string;
+  keys: string[]; spec: string; verdicts: string[]; decision: string; verbatim: string; supersedes?: string; plan?: string; sourceRoot?: string;
 }): OperatorRow {
   operatorFence(ctx);
   if (!o.keys.length) throw new Error('release operator spec: --keys names the keys the spec covers');
@@ -583,17 +743,31 @@ export function signSpec(ctx: Ctx, o: {
   // The plan carries the invariants' acceptance tests; with no --plan the spec stands in for it.
   const plan = o.plan ? resolve(o.plan) : spec;
   if (!existsSync(plan)) throw new Error(`release operator spec: plan not found: ${plan}`);
-  const { verdicts, residuals } = readVerdicts(o.verdicts, 'release operator spec', { required: ['SPEC', 'PLAN'], allowed: [] },
+  const { verdicts, residuals, files } = readVerdicts(o.verdicts, 'release operator spec', { required: ['SPEC', 'PLAN'], allowed: [] },
     'release operator spec: give exactly two --verdict files, the spec critic\'s and the plan critic\'s');
   const bytes = readFileSync(spec);
   const specSha = createHash('sha256').update(bytes).digest('hex');
   const planSha = o.plan ? fileSha(plan) : null;
-  checkResiduals(bytes.toString('utf8'), residuals);
-  lintSpec(spec, plan);
-  if (fileSha(spec) !== specSha || verdicts.some((v) => fileSha(v.path) !== v.sha256)
-    || (o.plan && (!existsSync(plan) || fileSha(plan) !== planSha))) {
-    throw new Error('release operator spec: the spec, plan or a verdict file changed while it was checked; sign again');
-  }
+  const capped = cappedFallback(() => checkResiduals(bytes.toString('utf8'), residuals), {
+    keys: [...new Set(o.keys)], spec: { path: spec, sha256: specSha }, plan: o.plan ? { path: plan, sha256: planSha! } : undefined, files, residuals,
+  }, true);
+  const source = o.sourceRoot === undefined ? undefined : sourceIdentity(o.sourceRoot);
+  const checkSource = () => {
+    if (!source) return;
+    const current = sourceIdentity(o.sourceRoot as string);
+    if (current.identity !== source.identity || current.head !== source.head) {
+      throw new Error('release operator spec: source-root identity or HEAD changed while it was checked; sign again');
+    }
+  };
+  lintSpec(spec, plan, undefined, source?.root);
+  checkSource();
+  const checkInputs = () => {
+    if (fileSha(spec) !== specSha || verdicts.some((v) => fileSha(v.path) !== v.sha256)
+      || (o.plan && (!existsSync(plan) || fileSha(plan) !== planSha))) {
+      throw new Error('release operator spec: the spec, plan or a verdict file changed while it was checked; sign again');
+    }
+  };
+  checkInputs();
   return lockedAcross(ctx, (l) => {
     const records = readOperatorRecords('spec', ctx.env);
     if (o.supersedes) {
@@ -609,15 +783,17 @@ export function signSpec(ctx: Ctx, o: {
       const k = held.keys?.find((x) => o.keys.includes(x));
       throw new Error(`release operator spec: ${k} is already signed in ${held.id}; re-sign with --supersedes ${held.id}`);
     }
-    return appendOperator(ctx, l.k, {
+    checkInputs();
+    checkSource();
+    return appendSpec(ctx, l.k, {
       kind: 'spec', decision: o.decision, keys: [...new Set(o.keys)], spec_path: spec, spec_sha256: specSha,
       plan_path: o.plan ? plan : null, plan_sha256: planSha, verdicts,
-      supersedes: o.supersedes ?? null, residuals, verbatim: o.verbatim,
+      ...(source ? { source_root: source.root, source_head: source.head } : {}),
+      supersedes: o.supersedes ?? null, residuals, verbatim: o.verbatim, ...(capped ? { capped_carry: capped } : {}),
     });
   });
 }
 
-const REVIEWED = /^Reviewed: spec ([0-9a-f]{64})\b/gm;
 const KEY_LINE = /^Keys?:\s*(.+)$/gm;
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -636,9 +812,9 @@ export function specReview(ctx: Ctx, o: { keys: string[]; spec: string; plan?: s
   const { verdicts, residuals, files } = readVerdicts(o.verdicts, verb, { required: ['SPEC'], allowed: ['PLAN'] },
     `${verb}: give exactly one SPEC verdict and at most one PLAN verdict`);
   const specVerdict = files.find((x) => x.kind === 'SPEC') as VerdictFile;
-  const reviewed = [...specVerdict.text.matchAll(REVIEWED)];
+  const reviewed = reviewedSpecHashes(specVerdict.text);
   if (reviewed.length !== 1) throw new Error(`${verb}: ${specVerdict.path} needs exactly one 'Reviewed: spec <sha256>' line`);
-  const reviewedSha = reviewed[0][1];
+  const reviewedSha = reviewed[0];
   for (const x of files) {
     const lines = [...x.text.matchAll(KEY_LINE)];
     const named = lines.length === 1 ? [...new Set(lines[0][1].match(KEY_IN) ?? [])] : [];
@@ -660,7 +836,9 @@ export function specReview(ctx: Ctx, o: { keys: string[]; spec: string; plan?: s
   if ((clean || specVerdict.residuals === 0) && reviewedSha !== specPin.sha256) {
     throw new Error(`${verb}: ${specVerdict.last} reviewed ${reviewedSha}, not the spec's bytes ${specPin.sha256}; run the spec critic on the final spec`);
   }
-  checkRoundResiduals(specText, files.map((x) => basename(x.path)), residuals, verb);
+  const capped = cappedFallback(() => checkRoundResiduals(specText, files.map((x) => basename(x.path)), residuals, verb), {
+    keys, spec: { path: spec, sha256: specPin.sha256 }, plan: { path: plan, sha256: planPin.sha256 }, files, residuals,
+  });
   lintSpec(spec, plan, verb);
   const same = (p: string, sha256: string) => {
     const got = pinnedSha(p);
@@ -677,10 +855,10 @@ export function specReview(ctx: Ctx, o: { keys: string[]; spec: string; plan?: s
         throw new Error(`${verb}: ${o.supersedes} is no live spec-review record in a declared release`);
       }
     }
-    return appendOperator(ctx, l.k, {
+    return appendSpec(ctx, l.k, {
       kind: 'spec-review', decision: null, keys, spec_path: spec, spec_sha256: specPin.sha256,
       plan_path: plan, plan_sha256: planPin.sha256, ...(clean ? {} : { reviewed_sha256: reviewedSha }), verdicts,
-      supersedes: o.supersedes ?? null, residuals,
+      supersedes: o.supersedes ?? null, residuals, ...(capped ? { capped_carry: capped } : {}),
     });
   });
 }
@@ -698,6 +876,20 @@ function staleReason(r: ReleaseRecord): string | null {
     if ('missing' in got) return `${p.path} is missing (${r.id})`;
     if ('unreadable' in got) return `${p.path} is unreadable (${r.id})`;
     if (got.sha256 !== p.sha256) return `${p.role} ${p.path} changed since ${r.id}`;
+  }
+  if (Object.hasOwn(r, 'capped_carry')) {
+    try {
+      const proof = validateCappedProofShape(r.capped_carry);
+      if ((proof.schema === 1 && r.keys?.length !== 1) || !r.keys?.length || !r.plan_path || r.plan_path === r.spec_path) throw new Error('capped proof record binding disagrees');
+      const { files } = readVerdicts((r.verdicts ?? []).map(v => v.path), 'capped proof', { required: ['SPEC', 'PLAN'], allowed: [] }, 'capped proof needs paired returns');
+      const input = { keys: r.keys, spec: { path: r.spec_path ?? '', sha256: r.spec_sha256 ?? '' },
+        plan: { path: r.plan_path, sha256: r.plan_sha256 ?? '' }, files, residuals: r.residuals ?? -1 };
+      if (proof.schema === 1) bindCappedProof(proof, input);
+      else bindCappedLedgerProof(proof, input);
+      checkCappedPins(proof);
+    } catch (e) {
+      return `capped proof stale since ${r.id}: ${e instanceof Error ? e.message : e}`;
+    }
   }
   return null;
 }
@@ -1032,22 +1224,49 @@ export function reopen(ctx: Ctx, o: { key: string; from: string }): EventRow {
 
 export function request(ctx: Ctx, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): RequestRow {
   if (ctx.env.HIMMEL_RELEASE_MANAGER === '1') throw new Error('release request: the chief writes requests; the RM claims them');
-  return locked(ctx, (l) => {
-    const latest = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k));
-    // A blocker pull is asked for once, in any state, so two racing pull runs cannot file it twice.
-    const pullAgain = (r: RequestRow) => isPullRequest(r) && isPullRequest(o as RequestRow);
-    const dup = [...latest.values()].find((r) => (pending(r) || pullAgain(r)) && r.key === o.key && r.verb === o.verb
-      && r.from_v === o.from_v && r.to_v === o.to_v);
-    if (dup) return dup;
-    const req = seq(`Q-${ctx.release}`, latest.keys());
-    return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...o, req, ts: ts(ctx), state: 'open' });
-  });
+  return locked(ctx, (l) => fileRequest(ctx, l, o));
 }
+
+// The filing, on state a caller loaded under the release lock and still holds: it takes no lock, because the lock is not re-entrant.
+function fileRequest(ctx: Ctx, l: Loaded, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): RequestRow {
+  const latest = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k));
+  // A blocker pull is asked for once, in any state, so two racing pull runs cannot file it twice.
+  const pullAgain = (r: RequestRow) => isPullRequest(r) && isPullRequest(o as RequestRow);
+  const dup = [...latest.values()].find((r) => (pending(r) || pullAgain(r)) && r.key === o.key && r.verb === o.verb
+    && r.from_v === o.from_v && r.to_v === o.to_v);
+  // A pending ask that lacks the required-parent relation this ask carries takes it by a signed row of the same request
+  // (same state, so a claim and its epoch stand): returning the older request would drop the relation the chief just stated.
+  if (dup) return pending(dup) ? withRelation(ctx, l.k, dup, o) : dup;
+  // An ask the RM already refused, repeated word for word with nothing new, files nothing: the refusal and its remedy stand.
+  const same = unchangedRefusal(l, o);
+  if (same) return same;
+  const req = seq(`Q-${ctx.release}`, latest.keys());
+  return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...o, req, ts: ts(ctx), state: 'open' });
+}
+
+const RELATION = ['follow_up_of', 'remainder'] as const;
+const relationOf = (r: { evidence?: unknown }): string => canon(Object.fromEntries(RELATION.flatMap((k) => {
+  const v = ((r.evidence ?? {}) as Record<string, unknown>)[k];
+  return v === undefined ? [] : [[k, v]];
+})));
+
+function withRelation(ctx: Ctx, k: Buffer, dup: RequestRow, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): RequestRow {
+  const want = relationOf(o);
+  if (want === '{}' || want === relationOf(dup)) return dup;
+  const { prev: _p, mac: _m, ...rest } = dup;
+  const evidence = { ...((dup.evidence ?? {}) as Record<string, unknown>) };
+  for (const key of RELATION) delete evidence[key];
+  Object.assign(evidence, JSON.parse(want));
+  return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), k, { ...rest, evidence });
+}
+
+// The op a request into a version asks for, as a record of the operator's words names it: an INTAKE from backlog adds, anything else moves.
+const askOp = (verb: Verb, from_v: string | null): 'add' | 'move' => (verb === 'INTAKE' && from_v === null ? 'add' : 'move');
 
 export function recordRequestDecision(ctx: Ctx, o: { decision: string; words: string; key: string; verb: Verb; from_v: string | null; to_v: string | null }): OperatorRow {
   operatorFence(ctx);
   if (o.to_v === null) throw new Error('release request: --decision records the operator\'s words for a request into a version');
-  const op = o.verb === 'INTAKE' && o.from_v === null ? 'add' : 'move';
+  const op = askOp(o.verb, o.from_v);
   return operatorDecision(ctx, {
     decision: o.decision, keys: [o.key], op, from_v: o.from_v, to_v: o.to_v, verbatim: o.words, ...decisionWords(ctx, o.decision, o.words),
   });
@@ -1064,8 +1283,65 @@ export function requestWithWords(ctx: Ctx, row: Omit<RequestRow, 'req' | 'ts' | 
   const withdrawn = dup && citedOperator(dup) === undefined
     ? withdraw(ctx, { req: dup.req, reason: `refiled citing the operator's words (${operator.id})`, by: operator.id })
     : null;
-  const evidence = { ...((row.evidence ?? {}) as Record<string, unknown>), operator: operator.id };
+  // The refiled ask keeps the required-parent relation of the request it replaces unless it states its own (an explicit remainder:false included).
+  const carried = withdrawn && dup && relationOf(row) === '{}' ? JSON.parse(relationOf(dup)) as Record<string, unknown> : {};
+  const evidence = { ...carried, ...((row.evidence ?? {}) as Record<string, unknown>), operator: operator.id };
   return { operator, withdrawn, request: request(ctx, { ...row, why: `${row.why} (operator words: ${operator.id})`, evidence }) };
+}
+
+// A row after the verified prefix of the operator or rulings chain hides whatever it says (a newer reversal, a newer refusal),
+// so a record on such a chain is not cited: what is named here is the first row that stopped the chain.
+function chainFaultOf(l: Loaded): string | undefined {
+  const [which, why] = l.operator.bad.length ? ['operator', l.operator.bad[0]] : l.rulings.bad.length ? ['rulings', l.rulings.bad[0]] : [];
+  return which === undefined ? undefined : `the ${which} chain of ${l.decl.release} could not be verified to its end (${why})`;
+}
+
+export function chainFault(ctx: Ctx): string | undefined {
+  const l = load(ctx);
+  return 'unknown' in l ? undefined : chainFaultOf(l);
+}
+
+// The operator's words record that already places a gated ask, or undefined. It is the newest decision naming the key on the
+// versions the ask touches, on no version, or a keep in the backlog whatever --to it names (each retracts an older add;
+// rule()'s own selection leaves such rows out, so this reading is stricter); two at the newest instant are a tie and refuse. It holds checked words (words: 1, never a legacy row),
+// covers exactly this placement under the reducer's scopeOk, and is newer than every ruling on the key. Only the verified
+// chain is read, and a chain with a row after its verified prefix is not read at all: a row that does not verify places nothing.
+function coveringDecision(l: Loaded, ask: Pick<RequestRow, 'verb' | 'key' | 'from_v' | 'to_v'>): OperatorRow | undefined {
+  if ((ask.verb !== 'INTAKE' && ask.verb !== 'REVERSION') || ask.to_v === null) return undefined;
+  if (chainFaultOf(l) !== undefined) return undefined;
+  const touched = [ask.from_v, ask.to_v].filter((v) => v !== null);
+  const named = l.operator.verified.filter((x) => x.kind === 'decision' && (x.keys ?? []).includes(ask.key)
+    && ([x.from_v, x.to_v].some((v) => v != null && touched.includes(v)) || (x.from_v == null && x.to_v == null) || (x.op === 'keep' && x.from_v == null)));
+  const newest = Math.max(...named.map((x) => Date.parse(x.ts)));
+  const top = named.filter((x) => Date.parse(x.ts) === newest);
+  if (top.length !== 1 || top[0].words !== 1) return undefined;
+  const [rec] = top;
+  const op: Op = { kind: askOp(ask.verb, ask.from_v), from_v: ask.from_v, to_v: ask.to_v };
+  if (!scopeOk({ authority: { kind: 'operator', ref: rec.id }, key: ask.key, op }, new Map([[rec.id, rec]]), l.decl.current)) return undefined;
+  const ruled = Math.max(-Infinity, ...l.rulings.verified.filter((r) => r.key === ask.key).map((r) => Date.parse(r.ts)));
+  return newest > ruled ? rec : undefined;
+}
+
+// Read-only: the record requestOnRecord would cite. A release that is not declared, or does not verify, has none.
+export function coveringRecord(ctx: Ctx, ask: Pick<RequestRow, 'verb' | 'key' | 'from_v' | 'to_v'>): OperatorRow | undefined {
+  if ('unknown' in load(ctx)) return undefined;
+  return locked(ctx, (l) => coveringDecision(l, ask));
+}
+
+// A gated ask that a record already places is filed citing that record: no operator row and no words. The fence is the
+// words path's own, so the release manager, a bridge session and a worker still cannot file it. The match and the filing run
+// under ONE hold of the release lock, so the record cited is the one that governs when the request is written: a decision, a
+// ruling or a row that does not verify cannot land between them. Citing writes no row, so unlike a new record it withdraws no
+// pending request for another placement.
+export function requestOnRecord(ctx: Ctx, row: Omit<RequestRow, 'req' | 'ts' | 'state'>): { operator: OperatorRow; request: RequestRow } | undefined {
+  operatorFence(ctx);
+  if ('unknown' in load(ctx)) return undefined;
+  return locked(ctx, (l) => {
+    const operator = coveringDecision(l, row);
+    if (!operator) return undefined;
+    const evidence = { ...((row.evidence ?? {}) as Record<string, unknown>), operator: operator.id };
+    return { operator, request: fileRequest(ctx, l, { ...row, evidence }) };
+  });
 }
 
 // --- the blocker pull ------------------------------------------------------------
@@ -1426,6 +1702,56 @@ function untouched(op: Op, cur: string[]): boolean {
   return op.kind !== 'move' || ((op.from_v === null || has(op.from_v)) && !has(op.to_v));
 }
 
+const sameSet = (a: string[], b: string[]): boolean => [...a].sort().join('\n') === [...b].sort().join('\n');
+
+// The journalled RM removal of this move's source that produced exactly the set the key shows now, written after the intent.
+function boundRemoval(env: Record<string, string | undefined>, r: RulingRow, cur: string[]): VersionWriteRow | null {
+  const from = r.op.from_v;
+  const to = r.op.to_v;
+  if (r.op.kind !== 'move' || !from || !to) return null;
+  try {
+    const path = journalPath(env);
+    if (!path) return null;
+    return readVersionWrites(path).filter((w) => w.key === r.key && w.mechanism === 'rm-apply' && w.from.includes(from) && !w.to.includes(from)
+      && !w.to.includes(to) && w.ts >= r.ts && sameSet(w.to, cur)).sort((a, b) => a.ts.localeCompare(b.ts)).at(-1) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Attribution: the source removal is this ruling's own write, and nobody has changed the key's Fix Versions since.
+async function ownedRemoval(ctx: Ctx, r: RulingRow, cur: string[]): Promise<boolean> {
+  const row = boundRemoval(ctx.env, r, cur);
+  if (!row || typeof ctx.jira.newestFixVersionEntry !== 'function') return false;
+  try {
+    return (await ctx.jira.newestFixVersionEntry(r.key)).id === row.entry;
+  } catch {
+    return false;
+  }
+}
+
+// The operator's latest placing decision on the key, when it is newer than the ruling and puts the key anywhere but this move's destination:
+// the destination add would write against it.
+function newerElsewhere(operator: OperatorRow[], r: RulingRow): OperatorRow | undefined {
+  const latest = keyNewestDecision(operator.filter((x) => placementOf(x) !== undefined), r.key);
+  return latest && Date.parse(latest.ts) > Date.parse(r.ts) && placementOf(latest) !== r.op.to_v ? latest : undefined;
+}
+
+const againstOf = (g: OperatorRow, r: RulingRow): string =>
+  `${g.id} (newer than ${r.id}) ${g.op} ${vName(g.from_v ?? null)}→${vName(g.to_v ?? null)} places ${r.key} outside ${vName(r.op.to_v)}`;
+
+const observedOf = (r: RulingRow, cur: string[], source: 'Jira' | 'mirror'): string =>
+  `${r.key} is in ${cur.length ? cur.join(', ') : 'no version'} (${source}); the ${r.op.kind} wants ${vName(r.op.from_v)} -> ${vName(r.op.to_v)}`;
+
+// The chief's two safe ends for a move that sits in neither state, each followed by the replay that writes the row and receipt once.
+function repairOf(release: string, r: RulingRow, live: boolean, cur: string[]): string {
+  const both = r.op.from_v !== null && r.op.to_v !== null && cur.includes(r.op.from_v) && cur.includes(r.op.to_v);
+  const finish = `jira fix-version ${r.key} ${both ? '--remove ' + r.op.from_v : '--add ' + vName(r.op.to_v)}`;
+  const restore = `jira fix-version ${r.key} ${both ? '--remove ' + r.op.to_v : '--add ' + vName(r.op.from_v)}`;
+  const gate = both ? '' : ` (add --gate <reason> when ${vName(r.op.to_v)} is frozen)`;
+  return `${live ? '' : 'run `jira mirror` and read this again; if it still holds, '}the chief completes it with \`${finish}\`${gate} or restores the source with \`${restore}\`, then \`jira release rm-run ${release}\` replays the row and receipt once`;
+}
+
 function phaseRow(ctx: Ctx, r: RulingRow, phase: RulingRow['phase'], extra: Partial<RulingRow>): Omit<RulingRow, 'prev' | 'mac'> {
   const { prev: _p, mac: _m, ...rest } = r;
   return { ...rest, ...extra, phase, ts: ts(ctx) };
@@ -1447,9 +1773,10 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
     const membership = ['add', 'remove', 'move'].includes(last.op.kind);
     const event = (readback: 'ok' | 'mismatch') => {
       if (!membership) return;
-      // The applied row lands before its event, so a retry re-creates a missing one.
+      // The applied row lands before its event, so a retry re-creates a missing one. A run that finds the same ruling refused again
+      // appends nothing: the recorded mismatch already says so, and the same row every run only grows the ledger.
       const eventsPath = f(ctx, 'events.jsonl');
-      if (readback === 'ok' && readChain<EventRow>(eventsPath, l.k).verified.some((e) => e.kind === 'ruled' && e.ruling === id && e.readback === 'ok')) return;
+      if (readChain<EventRow>(eventsPath, l.k).verified.some((e) => e.kind === 'ruled' && e.ruling === id && e.readback === readback)) return;
       appendChain<EventRow>(eventsPath, l.k, {
         ts: ts(ctx), kind: 'ruled', key: last.key, from: last.op.from_v, to: last.op.to_v, ruling: id, readback,
       });
@@ -1458,11 +1785,26 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
     if (last.phase === 'intent' && last.epoch !== lease.epoch) {
       // An older epoch's intent: resolve by readback, never by re-writing Jira.
       const cur = await ctx.jira.fixVersions(last.key);
-      if (!landed(last.op, cur)) {
-        if (!untouched(last.op, cur)) {
+      if (!landed(last.op, cur) && !untouched(last.op, cur)) {
+        // The key sits in neither end state. Only a journalled RM removal that is still the key's newest Fix Version entry proves it
+        // is this ruling's own interrupted write; then the one write left is the destination add. Anything else is a hand fix.
+        if (!(await ownedRemoval(ctx, last, cur))) {
           event('mismatch');
-          throw new Error(`release apply: ${id} is partly applied in Jira; ${last.key} needs a hand fix before it is re-ruled`);
+          throw new Error(`release apply: ${id} is partly applied in Jira and nothing proves the removal was this ruling's own, so nothing was written: ${observedOf(last, cur, 'Jira')}; ${repairOf(ctx.release, last, true, cur)}`);
         }
+        const newer = newerElsewhere(l.operator.verified, last);
+        if (newer) {
+          event('mismatch');
+          throw new Error(`release apply: ${id} is partly applied in Jira and ${againstOf(newer, last)}, so nothing was written: ${observedOf(last, cur, 'Jira')}; ${repairOf(ctx.release, last, true, cur)}`);
+        }
+        assertAdmissionsWritable();
+        await ctx.jira.setFixVersion(last.key, 'add', last.op.to_v as string);
+        if (!landed(last.op, await ctx.jira.fixVersions(last.key))) {
+          event('mismatch');
+          throw new Error(`release apply: ${id} readback does not match ${last.op.kind} ${vName(last.op.from_v)}→${vName(last.op.to_v)}`);
+        }
+        last = appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'applied', { epoch: lease.epoch, readback: 'ok' }));
+      } else if (!landed(last.op, cur)) {
         const req = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k)).get(last.req);
         appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'void', { epoch: lease.epoch }));
         if (req && isRepair(req)) {
@@ -1474,8 +1816,9 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
           appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...rest, ts: ts(ctx), state: 'open' });
         }
         return { phase: 'void', line: `VOID ${id} (epoch ${last.epoch} intent never reached Jira; ${last.req} reopened)` };
+      } else {
+        last = appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'applied', { epoch: lease.epoch, readback: 'ok' }));
       }
-      last = appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'applied', { epoch: lease.epoch, readback: 'ok' }));
     } else if (last.phase === 'intent') {
       const { op, key: k } = last;
       if ((last.verb === 'INTAKE' && last.outcome === 'ADMIT') || (last.verb === 'REVERSION' && op.kind === 'add')
@@ -1545,7 +1888,8 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
 export interface StateOut extends ReleaseState {
   /** Per version: the keys of today's (UTC) operator decisions that add or move into it. */
   admissions_today: Record<string, number>;
-  lease: Omit<Lease, 'mac'> | null;
+  /** owner_gone is present (true) only for a held lease whose recorded owner pid is absent on this host: the proof rm-run's own reclaim uses. */
+  lease: (Omit<Lease, 'mac'> & { owner_pid?: number; owner_host?: string; owner_gone?: true }) | null;
   requests: { open: string[]; claimed: string[]; /** ts of the oldest open request, null with none. */ oldest_open: string | null };
   heads: { rulings: string; operator: string; events: string; requests: string; mirror: string | null };
   refused_asks: RefusedAsk[];
@@ -1553,10 +1897,56 @@ export interface StateOut extends ReleaseState {
   words_records: WordsRecord[];
   /** Open mirror keys labelled operator-directed or of priority High or Highest. */
   asks_operator_keys: string[];
+  /** Rulings whose newest phase is intent or applied: the Jira write, the admissions row or the receipt may still be owed. A normal rm-run replays each. */
+  unfinished_rulings: UnfinishedRuling[];
+  /** Required-remainder children (request evidence `remainder: true`) of an open current-version parent that are open outside the version. A read of existing evidence: it admits nothing. */
+  remainder_conflicts: RemainderConflict[];
+}
+
+export interface UnfinishedRuling {
+  ruling: string; req: string; key: string; phase: 'intent' | 'applied'; op: string;
+  /** replay: a normal rm-run finishes it. blocked: a move the key's mirror shows in neither end state with no journalled proof it is this ruling's own, or with an operator record newer than the ruling that puts the key elsewhere; the chief repairs it by hand. */
+  status: 'replay' | 'blocked'; owner: 'release-manager' | 'chief'; next: string;
+  /** What the mirror shows of a blocked move; null otherwise. */
+  observed: string | null;
 }
 
 /** asks_operator is null when the mirror cannot say: it is unreadable, or does not hold the key. */
-export interface RefusedAsk { key: string; ruling: string; req: string; reason: string; asks_operator: boolean | null }
+export interface RefusedAsk { key: string; ruling: string; req: string; reason: string; ground: string; remedy: string; asks_operator: boolean | null }
+
+/** A current-version parent whose recorded remainder sits outside the version: the contradiction, who owns it and the next command. */
+export interface RemainderConflict {
+  parent: string; child: string; req: string; ruling: string | null;
+  phase: 'open' | 'claimed' | 'held' | 'refused' | 'ruled'; owner: 'chief' | 'release-manager'; next: string;
+  /** What the mirror cannot say (the parent's or the child's state, or anything when it is unreadable); null when both are read. */
+  unknown: 'parent' | 'child' | 'mirror' | null;
+}
+
+// The exact next command for a refused ask: operator words for an operator-asked (or unknown) key; changed facts or an ack otherwise.
+// The parent a request records as requiring it (follow_up_of with remainder: true), the same test the remainder conflicts apply.
+function requiredParent(q: RequestRow | undefined): string | null {
+  const ev = (q?.evidence ?? {}) as { follow_up_of?: unknown; remainder?: unknown };
+  return ev.remainder === true && typeof ev.follow_up_of === 'string' ? ev.follow_up_of : null;
+}
+
+// A refused ask that recorded a required parent keeps it in the command, as the conflict's remedy does.
+function remedyOf(release: string, q: RequestRow, ruling: string, asksOperator: boolean | null, parent: string | null): string {
+  const base = `jira release request ${release} --verb ${q.verb} --key ${q.key} --from ${vName(q.from_v)} --to ${vName(q.to_v)}${parent === null ? '' : ` --required-by ${parent}`}`;
+  if (asksOperator !== false) return `${base} --why "<why>" --decision <n> --words "<the operator's exact words>"`;
+  return `new facts: ${base} --why "<what changed>" --evidence '{"<changed requirement>":"<value>"}'; or if the refusal is right: jira release ack ${release} --ruling ${ruling} --reason "<why>"`;
+}
+
+const canon = (v: unknown): string => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x)
+  ? Object.fromEntries(Object.entries(x as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : x));
+
+// The open refused ask this request repeats unchanged: same key, verb, versions, why and evidence, with no ack, newer operator row, newer different ask or Done since.
+function unchangedRefusal(l: Loaded, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): RequestRow | undefined {
+  const a = refusedAsks(l, null).find((x) => x.key === o.key);
+  const first = a ? l.requests.verified.find((x) => x.req === a.req) : undefined;
+  const now = first ? latestRequests(l.requests).get(first.req) : undefined;
+  if (!first || !now || first.verb !== o.verb || first.from_v !== o.from_v || first.to_v !== o.to_v || first.why !== o.why || canon(now.evidence ?? {}) !== canon(o.evidence ?? {})) return undefined;
+  return now;
+}
 export interface WordsRecord { id: string; decision: string | null; keys: string[]; op: string | null; verbatim: string }
 
 const factsOf = (i: IssueSnap | undefined): TicketFacts | null =>
@@ -1565,6 +1955,8 @@ const factsOf = (i: IssueSnap | undefined): TicketFacts | null =>
 function refusedAsks(l: Loaded, issues: Map<string, IssueSnap> | null): RefusedAsk[] {
   const firstOf = new Map<string, RequestRow>();
   for (const q of l.requests.verified) if (!firstOf.has(q.req)) firstOf.set(q.req, q);
+  // The relation may have been added after the first row (a signed update of the same request), so the remedy reads the newest row.
+  const now = latestOrEmpty(l.requests);
   const ruledAt = new Map<string, string>();
   const latest = new Map<string, RulingRow>();
   for (const r of l.rulings.verified) {
@@ -1583,11 +1975,13 @@ function refusedAsks(l: Loaded, issues: Map<string, IssueSnap> | null): RefusedA
     if (!q || q.from_v !== null || q.to_v === null) continue;
     if (r.outcome !== 'BACKLOG' && !(r.verb === 'REVERSION' && r.outcome === 'KEEP')) continue;
     const since = Date.parse(ruledAt.get(r.id) ?? r.ts);
-    const askedAgain = (asksOf.get(key) ?? []).some((x) => x.req !== r.req && Date.parse(x.ts) > since);
+    // A later ask that was withdrawn no longer stands, so it does not hide the refusal.
+    const askedAgain = (asksOf.get(key) ?? []).some((x) => x.req !== r.req && Date.parse(x.ts) > since && !now.get(x.req)?.state.startsWith('withdrawn:'));
     if (acked.has(r.id) || askedAgain || (named.get(key) ?? -Infinity) > since) continue;
     const issue = issues?.get(key);
     if (issue && terminalOf(issue) !== null) continue;
-    out.push({ key, ruling: r.id, req: r.req, reason: r.reason, asks_operator: issue ? asksOperator(factsOf(issue)) : null });
+    const asks = issue ? asksOperator(factsOf(issue)) : null;
+    out.push({ key, ruling: r.id, req: r.req, reason: r.reason, ground: r.ground, remedy: remedyOf(l.decl.release, q, r.id, asks, requiredParent(now.get(r.req))), asks_operator: asks });
   }
   return out.sort((a, b) => a.key.localeCompare(b.key, 'en', { numeric: true }));
 }
@@ -1631,7 +2025,7 @@ export function state(ctx: Ctx): StateOut {
   const l = load(ctx);
   const empty = {
     admissions_today: {}, lease: null, requests: { open: [], claimed: [], oldest_open: null }, heads: { rulings: '', operator: '', events: '', requests: '', mirror: null },
-    refused_asks: [], words_records: [], asks_operator_keys: [],
+    refused_asks: [], words_records: [], asks_operator_keys: [], unfinished_rulings: [], remainder_conflicts: [],
   };
   if ('unknown' in l) return { ...unknownState(ctx.release, l.unknown), ...empty };
   const mirror = readMirror(ctx.mirrorRoot);
@@ -1653,17 +2047,93 @@ export function state(ctx: Ctx): StateOut {
     } else if (r.state.startsWith('claimed:')) claimed.push(r.req);
   }
   const { mac: _m, ...leaseOut } = lease ?? ({} as Lease);
+  const unfinished = unfinishedOf(l.rulings, l.events.verified, l.operator.verified, ctx, mirror.issues, lease);
   return {
     ...s,
     status: lease ? s.status : 'UNKNOWN',
     admissions_today: admissionsToday(ctx, l),
-    lease: lease ? leaseOut : null,
+    lease: lease ? { ...leaseOut, ...(!lease.released && ownerGone(lease) ? { owner_gone: true as const } : {}) } : null,
     requests: { open, claimed, oldest_open: oldestOpen },
     heads: { rulings: l.rulings.head, operator: l.operator.head, events: l.events.head, requests: l.requests.head, mirror: mirror.sync },
     refused_asks: refusedAsks(l, mirror.issues),
     words_records: wordsRecords(l),
     asks_operator_keys: asksOperatorKeys(mirror.issues),
+    unfinished_rulings: unfinished,
+    remainder_conflicts: remainderConflicts(l, mirror.issues, ctx.release, unfinished),
   };
+}
+
+// A required remainder is recorded as request evidence `{follow_up_of: <parent>, remainder: true}` (create --follow-up-of --remainder,
+// or request --required-by). The relation is the child's NEWEST live INTAKE-to-current request: a later request that drops the flag or
+// names another parent replaces it before anything is filtered, and a withdrawn request states none. A parent that is done or outside
+// the current version, or a child that is closed or already in it, is no contradiction; what the mirror cannot say stays listed as unknown.
+// The refusal ack ends a notice, not the contradiction: a child with no request or ruling left to process is the chief's.
+function remainderConflicts(l: Loaded, issues: Map<string, IssueSnap> | null, release: string, unfinished: UnfinishedRuling[]): RemainderConflict[] {
+  const current = l.decl.current;
+  const pending = new Map(unfinished.map((r) => [r.ruling, r]));
+  const rulingOf = new Map<string, RulingRow>();
+  for (const r of l.rulings.verified) rulingOf.set(r.req, r);
+  const newest = new Map<string, RequestRow>();
+  for (const q of [...latestOrEmpty(l.requests).values()].sort((a, b) => a.ts.localeCompare(b.ts))) {
+    if (q.verb === 'INTAKE' && q.to_v === current && !q.state.startsWith('withdrawn:')) newest.set(q.key, q);
+  }
+  const out: RemainderConflict[] = [];
+  for (const q of newest.values()) {
+    const ev = (q.evidence ?? {}) as { follow_up_of?: unknown; remainder?: unknown };
+    if (ev.remainder !== true || typeof ev.follow_up_of !== 'string') continue;
+    const parentKey = ev.follow_up_of;
+    const parent = issues?.get(parentKey);
+    const child = issues?.get(q.key);
+    if (issues && parent && (terminalOf(parent) !== null || !parent.fixVersions.includes(current))) continue;
+    if (issues && child && (terminalOf(child) !== null || child.fixVersions.includes(current))) continue;
+    const ruling = rulingOf.get(q.req) ?? null;
+    const base = { parent: parentKey, child: q.key, req: q.req, ruling: ruling?.id ?? null };
+    const remedy = conflictRemedy(release, q, parentKey, child ? asksOperator(factsOf(child)) : null);
+    const unknown = !issues ? 'mirror' : !parent ? 'parent' : !child ? 'child' : null;
+    const rm = (phase: 'open' | 'claimed' | 'ruled'): RemainderConflict => ({ ...base, phase, owner: 'release-manager', next: 'jira release rm-run ' + release, unknown });
+    const chief = (phase: RemainderConflict['phase'], next: string): RemainderConflict => ({ ...base, phase, owner: 'chief', next, unknown });
+    const unread = unknown === null ? '' : (unknown === 'mirror' ? 'both tickets' : unknown === 'parent' ? parentKey : q.key);
+    const refresh = 'the Jira mirror cannot say ' + unread + ': run `jira mirror`, then read `jira release state ' + release + ' --json` again';
+    const closed = q.state === 'held' ? 'held' : q.state.startsWith('ruled:') && ruling?.outcome === 'ADMIT' ? 'ruled' : 'refused';
+    if (q.state === 'open') out.push(rm('open'));
+    else if (q.state.startsWith('claimed:')) out.push(rm('claimed'));
+    else if (q.state.startsWith('ruled:') && ruling && (ruling.phase === 'intent' || ruling.phase === 'applied')) {
+      const action = pending.get(ruling.id);
+      out.push(action?.status === 'blocked' ? chief('ruled', action.next) : rm('ruled'));
+    }
+    else if (unknown !== null) out.push(chief(closed, refresh));
+    else if (q.state.startsWith('ruled:') && ruling?.outcome === 'ADMIT') {
+      out.push(chief('ruled', 'the ruling admitted ' + q.key + ' but the mirror still shows it outside ' + current + ': run `jira mirror`; if it still sits outside, ' + remedy));
+    } else out.push(chief(q.state === 'held' ? 'held' : 'refused', remedy));
+  }
+  return out.sort((a, b) => a.child.localeCompare(b.child, 'en', { numeric: true }));
+}
+
+// The next command for a required child that stays outside: new facts or the operator's words, keeping the relation, or the ask without it.
+// The refusal ack is not offered: it ends the notice and leaves the requirement unmet.
+function conflictRemedy(release: string, q: RequestRow, parent: string, asksOperator: boolean | null): string {
+  const base = `jira release request ${release} --verb ${q.verb} --key ${q.key} --from ${vName(q.from_v)} --to ${vName(q.to_v)} --required-by ${parent}`;
+  if (asksOperator !== false) return `${base} --why "<why>" --decision <n> --words "<the operator's exact words>"`;
+  return `new facts: ${base} --why "<what changed>" --evidence '{"<changed requirement>":"<value>"}'; or, if ${parent} can close without ${q.key}, file the ask again without --required-by`;
+}
+
+function unfinishedOf(rulings: Chain<RulingRow>, events: EventRow[], operator: OperatorRow[], ctx: Ctx, issues: Map<string, IssueSnap> | null, lease: Lease | null): UnfinishedRuling[] {
+  const last = new Map<string, RulingRow>();
+  for (const r of rulings.verified) last.set(r.id, r);
+  return [...last.values()].filter((r) => r.phase === 'intent' || r.phase === 'applied').map((r) => {
+    const base = { ruling: r.id, req: r.req, key: r.key, phase: r.phase as 'intent' | 'applied', op: `${r.op.kind} ${vName(r.op.from_v)}→${vName(r.op.to_v)}` };
+    const replay: UnfinishedRuling = { ...base, status: 'replay', owner: 'release-manager', next: `jira release rm-run ${ctx.release}`, observed: null };
+    const snap = issues?.get(r.key);
+    // The writing run still holds its lease: it is between its two writes, not interrupted.
+    if (r.phase !== 'intent' || !snap || (lease && !lease.released && lease.epoch === r.epoch)) return replay;
+    if (landed(r.op, snap.fixVersions) || untouched(r.op, snap.fixVersions)) return replay;
+    // A replay that already refused this ruling left a `ruled` mismatch event: the journal binding it has was checked live and failed.
+    const refused = events.some((e) => e.kind === 'ruled' && e.ruling === r.id && e.readback === 'mismatch');
+    const newer = newerElsewhere(operator, r);
+    if (!refused && !newer && boundRemoval(ctx.env, r, snap.fixVersions)) return replay;
+    const repair = repairOf(ctx.release, r, false, snap.fixVersions);
+    return { ...base, status: 'blocked', owner: 'chief', next: newer ? `${againstOf(newer, r)}, so the replay writes nothing; ${repair}` : repair, observed: observedOf(r, snap.fixVersions, 'mirror') };
+  });
 }
 
 function latestOrEmpty(requests: Chain<RequestRow>): Map<string, RequestRow> {

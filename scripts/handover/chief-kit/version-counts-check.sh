@@ -8,7 +8,7 @@
 #   then `VERDICT SAME` or `VERDICT DIFF`. A line's verdict compares OPEN only: open is the version
 #   size. residual-regex is the board/tick rule, a label matching (^|-)residual(-|$) on an open
 #   ticket; it is shown beside, never reported as a version size, and does not move the verdict.
-#   open = status not Done, Resolved, Closed, Wont Do or Won't Do.
+#   open excludes terminal status/category: Done, Resolved, Closed, In Public, and wont do/fix.
 # Exit: 0 SAME, 1 DIFF, 2 bad input or an unreadable source.
 # Seams: VERSION_COUNTS_JIRA (the jira CLI command; default: node dist/index.js of the primary
 #   checkout), VERSION_COUNTS_MIRROR (mirror root; default ~/.himmel/state/jira-mirror/<KEY>).
@@ -56,7 +56,7 @@ fi
 mirror_counts="$(VC_MIRROR="$mirror" python3 -I -c '
 import json, os, re, sys
 d = os.environ["VC_MIRROR"]
-gone = re.compile(r"^(done|resolved|closed|wont do|won\x27t do)$", re.I)
+gone = re.compile(r"^(done|resolved|closed|in public|won[\x27\u2019]?t do|won[\x27\u2019]?t fix)$", re.I)
 res = re.compile(r"(^|-)residual(-|$)")
 open_n, res_n = {}, {}
 for name in os.listdir(d):
@@ -81,12 +81,16 @@ for name in os.listdir(d):
             return json.loads(m.group(1))
         except ValueError:
             sys.exit(1)
-    status, fixv, labels = val("status"), val("fixVersions"), val("labels")
+    status, category, fixv, labels = val("status"), val("statusCategory"), val("fixVersions"), val("labels")
     if not isinstance(status, str) or not isinstance(fixv, list) or not isinstance(labels, list):
         sys.exit(1)
     if not all(isinstance(x, str) for x in fixv + labels):
         sys.exit(1)
-    if gone.match(status):
+    if category is not None and not isinstance(category, str):
+        sys.exit(1)
+    if not status.strip():
+        sys.exit(1)
+    if gone.fullmatch(status.strip()) or gone.fullmatch((category or "").strip()):
         continue
     isres = any(res.search(x) for x in labels)
     for v in fixv:
@@ -99,22 +103,22 @@ for v in open_n:
 verdict=SAME
 for v in "${versions[@]}"; do
     case "$v" in *\"*|*$'\n'*|*$'\t'*) fail2 "bad version name: $v" ;; esac
-    jql="project = $project AND fixVersion = \"$v\" AND status NOT IN (Done, Resolved, Closed, \"Wont Do\", \"Won't Do\") ORDER BY key ASC"
+    jql="project = $project AND fixVersion = \"$v\" AND (statusCategory != Done OR statusCategory IS EMPTY) AND status NOT IN (Done, Resolved, Closed, \"In Public\", \"Wont Do\", \"Won't Do\", \"Won’t Do\", \"Wont Fix\", \"Won't Fix\", \"Won’t Fix\") ORDER BY key ASC"
     live_out="$(JIRA_PROJECT_KEY="$project" "${jira_cmd[@]}" list --labels --limit 5000 --jql "$jql")" || fail2 "jira list failed for $v"
     live_rows="$(printf '%s\n' "$live_out" | grep -c .)"
     [ "$live_rows" -lt 5000 ] || fail2 "live list for $v reached the 5000 row limit, so its count may be truncated"
     live="$(printf '%s\n' "$live_out" | python3 -I -c '
 import re, sys
-gone = re.compile(r"^(done|resolved|closed|wont do|won\x27t do)$", re.I)
+gone = re.compile(r"^(done|resolved|closed|in public|won[\x27\u2019]?t do|won[\x27\u2019]?t fix)$", re.I)
 res = re.compile(r"(^|-)residual(-|$)")
 o = r = 0
 for line in sys.stdin:
     if not line.strip():
         continue
     f = line.rstrip("\n").split("\t")
-    if len(f) < 3 or not re.match(r"^[A-Z][A-Z0-9_]*-[0-9]+$", f[0]):
+    if len(f) < 3 or not re.match(r"^[A-Z][A-Z0-9_]*-[0-9]+$", f[0]) or not f[2].strip():
         sys.exit(1)
-    if gone.match(f[2]):
+    if gone.fullmatch(f[2].strip()):
         continue
     o += 1
     if len(f) >= 5 and any(res.search(x) for x in f[-1].split(",")):

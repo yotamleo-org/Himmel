@@ -6,7 +6,7 @@ REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 W="$(mktemp -d "${TMPDIR:-/tmp}/bank-dead-owner.XXXXXX")" || exit 1
 trap 'rm -rf "$W"' EXIT
 mkdir -p "$W/repo/scripts/lib" "$W/repo/scripts/lanes" "$W/home" "$W/proc"
-cp "$REPO/scripts/lib/"*.sh "$W/repo/scripts/lib/"
+cp "$REPO/scripts/lib/"*.sh "$REPO/scripts/lib/fleet_runtime.py" "$W/repo/scripts/lib/"
 printf '%s\n' '#!/usr/bin/env bash' 'echo "balance=10.00:credit spend=?"' > "$W/repo/scripts/lanes/openrouter-cost.sh"
 # The fleet cap is gate policy, read from ~/.himmel/config.json, never the env.
 mkdir -p "$W/home/.himmel"

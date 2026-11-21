@@ -77,5 +77,24 @@ reset
 printf '%s\n' '- 10:00 OWED sig-9615 sign it' '- 10:01 DELIVERED sig-9615 msg=559garbage chat=1' >> "$chief"
 if CHIEF_WAIT_OWED_SEC=0 run_waiter "$WORK/o11.out" 60; then pass 'a receipt whose message id is not a whole number does not clear the item'; else fail 'msg=559garbage cleared sig-9615'; fi
 
+reset
+notification="$(bash "$HERE/owe.sh" add --bucket "$WORK" --chief old-chief --kind ruling --text 'due step wake' --metadata '{"actor":"chief","action":"notify","event":"step-due"}')"
+printf 'ACTION owed-notify=%s\n' "$notification" >> "$STUB/tick.line"
+if run_waiter "$WORK/notification.out" 60; then pass 'a persisted keyed due event wakes the waiter'; else fail 'keyed due event did not wake'; fi
+contains 'the wake names the durable event' "$(cat "$WORK/notification.out")" "WAKE owed-actions $notification"
+contains 'printing a one-shot wake is not a delivery acknowledgement' "$(bash "$HERE/owe.sh" list --bucket "$WORK" --all --json)" '"closed": false'
+if run_waiter "$WORK/notification-repeat.out" 30; then fail 'observing pending chief debt caused an immediate re-arm loop'; else pass 'pending chief debt stays quiet across immediate one-shot re-arm'; fi
+touch -d '2 hours ago' "$inbox.wait.notify" # gnu-ok: the chief waiter is Linux-only
+if run_waiter "$WORK/notification-reminder.out" 60; then pass 'pending chief debt reminds after its bounded interval'; else fail 'pending chief debt never reminded'; fi
+second="$(bash "$HERE/owe.sh" add --bucket "$WORK" --chief old-chief --kind ruling --text 'new due step' --metadata '{"actor":"chief","action":"notify","event":"step-due"}')"
+sed -i "s/^ACTION owed-notify=.*/ACTION owed-notify=$notification,$second/" "$STUB/tick.line" # gnu-ok: the chief waiter is Linux-only
+if run_waiter "$WORK/notification-new.out" 60; then pass 'new chief debt wakes before the reminder'; else fail 'new chief debt did not wake'; fi
+bash "$HERE/owe.sh" close --bucket "$WORK" --id "$second" --key fixture-received
+bash "$HERE/owe.sh" close --bucket "$WORK" --id "$notification" --key fixture-received
+contains 'explicit delivery acknowledgement persists in the existing ledger' "$(bash "$HERE/owe.sh" list --bucket "$WORK" --all --json)" '"closed": true'
+sed -i '/^ACTION owed-notify=/d' "$STUB/tick.line" # gnu-ok: the chief waiter is Linux-only
+reset
+if run_waiter "$WORK/restart.out" 30; then fail 'acknowledged event woke after restart'; else pass 'acknowledged event stays quiet after restart'; fi
+
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed"; exit 1
