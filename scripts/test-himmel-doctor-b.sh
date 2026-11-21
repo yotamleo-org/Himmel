@@ -970,8 +970,9 @@ mkdir -p "$t/claude"; write_settings "$t/claude" "$WRAPPER"
 # A HANDOVER_DIR pointed at a non-existent path fails handover_root() closed
 # (rc=2) — graph-cadence.sh refuses the same state, so C33 must not call it OK.
 out="$(CLAUDE_DIR="$t/claude" HOME="$t/home" HANDOVER_DIR="$t/does-not-exist" bash "$DOC" --no-color 2>&1)"
-c33_line="$(printf '%s' "$out" | grep 'C33-graph-stale')"
-if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F 'handover root is broken' && grepq "$c33_line" -F 'NOT the same as healthy'; then
+c33_line="$(printf '%s' "$out" | grep -A1 'C33-graph-stale')"
+if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F 'handover root is broken' && grepq "$c33_line" -F 'NOT the same as healthy' \
+    && ! grepq "$c33_line" -F 'bash scripts/graphify/graph-cadence.sh'; then
     pass "C33 -> WARN (handover root unresolvable)"
 else
     fail "C33 no-root -> $c33_line"
@@ -1078,8 +1079,8 @@ mkdir -p "$t/claude" "$t/handover/.graph-cadence"; write_settings "$t/claude" "$
 printf '{"ts":"%s","head":"aaa","graph_head":"bbb","merges_behind":40,"action":"failed","pr":null,"duration_s":5,"error":"boom"}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$t/handover/.graph-cadence/ledger.jsonl"
 out="$(CLAUDE_DIR="$t/claude" HOME="$t/home" HANDOVER_DIR="$t/handover" bash "$DOC" --no-color 2>&1)"
-c33_line="$(printf '%s' "$out" | grep 'C33-graph-stale')"
-if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F 'FAILED'; then
+c33_line="$(printf '%s' "$out" | grep -A1 'C33-graph-stale')"
+if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F 'FAILED (boom)' && ! grepq "$c33_line" -F 'graph-cadence.sh'; then
     pass "C33 -> WARN (last recorded action=failed)"
 else
     fail "C33 failed-action -> $c33_line"
