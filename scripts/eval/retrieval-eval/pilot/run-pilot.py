@@ -385,9 +385,40 @@ def render_prompt(question, arm, arms):
     return text.replace("{{RETRIEVAL_NOTE}}", note).replace("{{QUESTION}}", question)
 
 
+def start_broker_killed_when_runner_pipe_closes(argv):
+    import select, signal
+    runner = os.getpid()
+    tie = os.pipe()
+
+    def watch_runner():
+        if os.getppid() != runner:
+            os._exit(1)
+        if os.fork() != 0:
+            return
+        broker = os.getppid()
+        null = os.open(os.devnull, os.O_RDWR)
+        for fd in (0, 1, 2):
+            os.dup2(null, fd)
+        for fd in [int(n) for n in os.listdir("/dev/fd")]:
+            if fd > 2 and fd != tie[0]:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+        while not select.select([tie[0]], [], [], 0.2)[0] and os.getppid() == broker:
+            pass
+        if os.getppid() == broker:
+            os.kill(broker, signal.SIGKILL)
+        os._exit(0)
+    broker = subprocess.Popen(argv, preexec_fn=watch_runner)
+    os.close(tie[0])
+    broker.runner_tie = os.fdopen(tie[1], "wb")
+    return broker
+
+
 def start_broker_bound_to_runner(argv):
     if not sys.platform.startswith("linux"):
-        return subprocess.Popen(argv)
+        return start_broker_killed_when_runner_pipe_closes(argv)
 
     runner = os.getpid()
 
