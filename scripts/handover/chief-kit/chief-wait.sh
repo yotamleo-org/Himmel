@@ -276,6 +276,9 @@
 #                               new-classes-5+=<n>, and STALE (no review for 26 h). Once per
 #                               review day (and once per last-review date for STALE): <inbox>.wait.review holds
 #                               `<date>` and `stale-<date>`. A 1-count class never wakes; review=none or ? wakes nothing.
+#   WAKE tick-usage rc=2 <line>  the first sample whose tick exited 2 (tick.sh's usage error: the
+#                               arm forwarded a flag it refuses). <line> is tick's first stderr line.
+#                               Never batched into the digest; every re-arm on a broken arm wakes again.
 #   WAKE tick-fail samples=<n> step=<step>  CHIEF_WAIT_FAIL_WAKE consecutive samples
 #                               failed (tick or bank read): the monitor is
 #                               broken. step= names the last sample's failure:
@@ -683,23 +686,22 @@ stream_stop_point() {
 legs_from="${WORKERS_FROM:-}"
 console_doc=""
 prev_arg=""
-# --succession / --silent-min belong to this waiter, not to tick.sh: take them out of
-# the tick args before anything hashes or forwards them.
 succession=""; silent_min=20
 rest_args=()
 for a in "$@"; do
     case "$prev_arg" in
         --succession) succession="$a"; prev_arg="$a"; continue ;;
         --silent-min) silent_min="$a"; prev_arg="$a"; continue ;;
+        --since|--receipt) prev_arg="$a"; continue ;;
     esac
-    case "$a" in --succession|--silent-min) prev_arg="$a"; continue ;; esac
+    case "$a" in --succession|--silent-min|--since|--receipt) prev_arg="$a"; continue ;; esac
     [ "$prev_arg" = --workers-from ] && legs_from="$a"
     [ "$prev_arg" = --doc ] && console_doc="$a"
     prev_arg="$a"
     rest_args+=("$a")
 done
 set -- ${rest_args[@]+"${rest_args[@]}"}
-case "$prev_arg" in --succession|--silent-min) echo "chief-wait: $prev_arg needs a value" >&2; exit 2 ;; esac
+case "$prev_arg" in --succession|--silent-min|--since|--receipt) echo "chief-wait: $prev_arg needs a value" >&2; exit 2 ;; esac
 case "$succession" in -*) echo "chief-wait: --succession needs a session name, got a flag" >&2; exit 2 ;; esac
 if [ -n "$succession" ]; then
     case "$succession" in *[!A-Za-z0-9_.-]*) echo "chief-wait: --succession must be a session name" >&2; exit 2 ;; esac
@@ -784,12 +786,13 @@ sample() {
     local f v raw bank rc owed_n t0 t1 extract
     key=""; cap_val=""; fail_step=""
     tick_stamp; t0="$ts"
-    raw="$(timeout -k 5 "$tick_timeout" bash "$tick_cmd" "$@" 2>/dev/null)"; rc=$?  # gnu-ok: Linux-only kit
+    raw="$(timeout -k 5 "$tick_timeout" bash "$tick_cmd" "$@" 2>"$hb_file.tickerr")"; rc=$?  # gnu-ok: Linux-only kit
     tick_stamp; t1="$ts"
     tick_log_add "$rc" "$t0" "$t1"
     # A tick that exits non-zero failed, whatever it printed first.
     if [ "$rc" -ne 0 ]; then
         case "$rc" in 124|137) fail_step="tick-timeout:${tick_timeout}s" ;; *) fail_step="tick-exit:$rc" ;; esac
+        tick_err="$(head -n 1 "$hb_file.tickerr" 2>/dev/null | cut -c1-200)"  # swallow-ok: an unreadable stderr file reads empty, the wake still fires
         tick_state=fail; return
     fi
     tick_line="$(printf '%s\n' "$raw" | grep '^TICK ' | head -n 1)"
@@ -2949,6 +2952,10 @@ while :; do
         marker_pre=""
         [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ] || marker_pre="$(worker_marker_events)"
         sample "$@" 9>&-
+        if [ -z "$key" ] && [ "$fail_step" = "tick-exit:2" ]; then
+            printf 'WAKE tick-usage rc=2%s\n' "${tick_err:+ $tick_err}"
+            exit_reason='wake-tick-usage'; exit 0
+        fi
         focus_rebuild
         if quota_step; then exit_reason='wake-quota-back'; exit 0; fi
         if [ -n "$key" ]; then
