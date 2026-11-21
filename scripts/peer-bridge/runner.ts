@@ -71,7 +71,7 @@ function vmExec(deps: RunnerDeps, id: string, backstop: number, live: () => bool
     const b = String(backstop);
     const child = procHooks.spawn("python3", [vmsdkJob(deps), "vm-exec", id, "--timeout", b, "--", "bash", "/tmp/job/job-entry.sh", "/tmp/job/suites.txt", b], { env: vmEnv(deps), stdio: ["ignore", "ignore", "ignore"] });
     let stopped = false, finished = false;
-    const watch = setInterval(() => { if (!live()) { stopped = true; child.kill("SIGKILL"); } }, deps.watchMs);
+    const watch = setInterval(() => { if (!live()) { stopped = true; child.kill("SIGKILL"); } }, deps.watchMs); // t13b-ok: a per-job watchdog, cleared by finish when the job's vm-exec exits
     const hard = setTimeout(() => { stopped = true; child.kill("SIGKILL"); }, (backstop + ALLOWANCE_S) * 1000);
     const finish = (code: number | null) => { if (finished) return; finished = true; clearInterval(watch); clearTimeout(hard); resolve({ code, stopped }); };
     child.once("error", () => finish(null));

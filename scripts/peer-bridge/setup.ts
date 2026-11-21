@@ -89,7 +89,7 @@ function runnerUnitPath(): string | null {
 function runnerCtlDefault(verb: "start" | "stop", path: string): boolean {
   const opts = { stdio: "ignore" as const, timeout: 15_000 };
   if (process.platform === "linux") {
-    if (spawnSync("systemctl", ["--user", "daemon-reload"], opts).status !== 0) return false;
+    if (spawnSync("systemctl", ["--user", "daemon-reload"], opts).status !== 0) return false; // t13b-ok: systemctl daemon-reload re-reads unit files and starts nothing
     return spawnSync("systemctl", ["--user", verb === "start" ? "enable" : "disable", "--now", RUNNER_UNIT], opts).status === 0;
   }
   const st = spawnSync("launchctl", [verb === "start" ? "bootstrap" : "bootout", `gui/${process.getuid!()}`, path], opts).status;
