@@ -11,18 +11,20 @@ document that asks it in both:
       (every old word to its new one, every new word to its old one) and, for query, a
       "vec: <question>" line. The lex lines drop filler words (shape_lex). A question that
       names no registry word passes through unchanged, so qmd keeps its own expansion, limits
-      and scores. It also prints the question unchanged when it is already a query document,
-      or holds what a lex/vec line rejects (an odd number of double quotes, a -negation for
-      query).
+      and scores. Either way a bare dash word ("-p", "--bg") is quoted first (quote_dash): qmd's
+      lex parser reads a bare leading dash as a NOT, so a search for a flag would exclude the
+      docs about it; quoted, it is the literal term. A deliberate NOT is written -"term".
+      It prints the question unchanged when it is already a query document, or holds what a
+      lex/vec line rejects (an odd number of double quotes, a -"negation" for query).
       A caller that sends typed legs itself (retrieval-eval) uses shape_lex(quote_flags=True)
-      and shape_vec: qmd rejects a vec query holding a dash word, and reads a bare dash word
-      in a lex query as a NOT.
+      and shape_vec: qmd rejects a vec query holding a dash word.
 
   argv <verb> <arg>...
       Prints the qmd argv, NUL-separated: the question (every positional) replaced by the
       document. search is lex-only and qmd search reads no document, so an expanded search
-      runs as query with --no-rerank appended: lex lines only, no model call. A verb other
-      than query or search, or a question that does not expand, prints the argv unchanged.
+      runs as query with --no-rerank appended: lex lines only, no model call. A question that
+      only gains quotes keeps its verb. A verb other than query or search, or a question that
+      does not change, prints the argv unchanged.
 
 Fails open: an unreadable registry expands nothing.
 """
@@ -47,19 +49,22 @@ STOPWORDS = frozenset(
 )
 
 
+TOKEN = re.compile(r'[^\s"]*"[^"]*"[^\s"]*|\S+')
+
+
+def quote_dash(question):
+    """question with every bare dash word ("-p", "--bg") quoted: qmd's lex parser reads a bare
+    leading dash as a NOT, and a quoted one as the literal term. -"term" and phrases stay."""
+    return " ".join('"%s"' % t if t.startswith("-") and len(t) > 1 and '"' not in t else t
+                    for t in TOKEN.findall(question))
+
+
 def shape_lex(question, quote_flags=False):
     """question for a lex leg: filler words dropped, "quoted phrases" and every other token kept.
-    A question of only filler words stays whole. quote_flags quotes a dash word ("-p"), which
-    qmd's lex parser would otherwise read as a NOT; the default keeps a typed -negation."""
-    toks = re.findall(r'[^\s"]*"[^"]*"[^\s"]*|\S+', question)
-    keep = []
-    for t in toks:
-        if '"' in t:
-            keep.append(t)
-        elif quote_flags and t.startswith("-") and len(t) > 1:
-            keep.append('"%s"' % t)
-        elif t.strip("?,.;:!()").lower() not in STOPWORDS:
-            keep.append(t)
+    A question of only filler words stays whole. quote_flags quotes a dash word (quote_dash)."""
+    if quote_flags:
+        question = quote_dash(question)
+    keep = [t for t in TOKEN.findall(question) if '"' in t or t.strip("?,.;:!()").lower() not in STOPWORDS]
     return " ".join(keep) if keep else question
 
 
@@ -140,7 +145,10 @@ def document(verb, question, prs=None):
     """The query document for question, or question itself when it does not expand."""
     if "\n" in question or question.lstrip().lower().startswith(PREFIXES):
         return question
-    if question.count('"') % 2 or (verb == "query" and NEGATION.search(question)):
+    if question.count('"') % 2:
+        return question
+    question = quote_dash(question)
+    if verb == "query" and NEGATION.search(question):
         return question
     alts = [swap(question, d, prs) for d in ("to-new", "to-old")]
     swapped = any(a != question for a in alts)
@@ -188,6 +196,8 @@ def argv(verb, args, prs=None):
     doc = document(verb, question, prs)
     if doc == question:
         return [verb, *args]
+    if not doc.startswith("lex: "):
+        return [verb, *flags, "--", doc]
     if verb == "search":
         return ["query", *flags, "--no-rerank", "--", doc]
     return ["query", *flags, "--", doc]
