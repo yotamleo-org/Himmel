@@ -325,7 +325,7 @@ contract_row() {
             set_group
             set_good_updates
             all_green
-            feed "$(mk_token "$OUR")"
+            feed "$(mk_token "$OUR")" 1
             run_sut "$T/in" peer
             check "peer success ends in DONE" starts "$LAST" "DONE:"
             ;;
@@ -1230,7 +1230,7 @@ case_peer_fresh_fresh_discovers_via_hello() {
     set_group
     set_good_updates
     all_green
-    feed "$tok"
+    feed "$tok" 1
     run_sut "$T/in" peer
     check "exit 0" eq "$RC" 0
     check "the DONE line names the peer" eq "$LAST" "DONE: peer goomal — group confirmed, poller running"
@@ -1268,7 +1268,7 @@ case_peer_unconfirmed_pages_101_backlog() {
     all_green
     printf '{"ok":true,"result":%s}' "$(noise_updates 1 100)" > "$T/tg/getUpdates.1.json"
     set_updates getUpdates.2.json "$(upd_hello 101 "$CHAT" "$FAR")" "$(upd_peer_hello 102 "$CHAT" "$THEIR" goomal_bot)"
-    feed "$(mk_token "$OUR")"
+    feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     check "the hello behind 100 other messages is found" eq "$RC" 0
     check "the second read acknowledged the first 100" file_has "$T/curl.stdin" '\"offset\":101'
@@ -1295,7 +1295,7 @@ case_peer_no_offset_ack_on_confirmed_side() {
     # a full batch of exactly 100 whose last two updates are the hellos: a side that paged would ask again
     # with an offset; the confirmed side reads once and acknowledges nothing
     printf '{"ok":true,"result":%s}' "$(jq -nc --argjson n "$(noise_updates 1 98)" --argjson a "$(upd_hello 99 "$CHAT" "$FAR")" --argjson b "$(upd_peer_hello 100 "$CHAT" "$THEIR" goomal_bot)" '$n + [$a, $b]')" > "$T/tg/getUpdates.json"
-    feed "" ""
+    feed "" "" 1
     run_sut "$T/in" peer --replace
     check "exit 0" eq "$RC" 0
     check "it read the updates" test "$(method_count getUpdates)" -ge 1
@@ -1308,7 +1308,7 @@ case_peer_no_offset_ack_on_confirmed_side() {
     all_green
     printf '{"ok":true,"result":%s}' "$(noise_updates 1 100)" > "$T/tg/getUpdates.1.json"
     set_updates getUpdates.2.json "$(upd_hello 101 "$CHAT" "$FAR")" "$(upd_peer_hello 102 "$CHAT" "$THEIR" goomal_bot)"
-    feed "$(mk_token "$OUR")"
+    feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     check "control: the unconfirmed side pages with an offset" file_has "$T/curl.stdin" 'offset'
 }
@@ -1344,14 +1344,14 @@ case_peer_check_group_unknown_right_names_raw_field() {
     set_member "$THEIR" administrator '{"can_manage_tags":true}'
     set_good_updates
     all_green
-    feed "$(mk_token "$OUR")"
+    feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     check "exit 3" eq "$RC" 3
     check "the FIX names the raw field" has "$LAST" "can_manage_tags"
     check "and where to switch it off" has "$LAST" "Edit → Administrators"
     check "nothing was added" eq "$(setup_calls)" ""
     set_member "$THEIR" administrator '{"can_pin_messages":true}'
-    feed ""
+    feed "" 1
     run_sut "$T/in" peer
     check "a known right is named by its button" has "$LAST" "Pin messages"
 }
@@ -1364,7 +1364,7 @@ case_peer_chatid_two_groups_newest_hello_after_start_or_pick() {
     all_green
     # a hello from before the helper started is a stale group; the one after the start wins
     set_updates getUpdates.json "$(upd_hello 101 "$CHAT" 100 supergroup 'old group')" "$(upd_hello 102 "$other" "$FAR" supergroup 'new group')" "$(upd_peer_hello 103 "$other" "$THEIR" goomal_bot)"
-    feed "$(mk_token "$OUR")"
+    feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     check "exit 0" eq "$RC" 0
     check "the hello went to the newer group" eq "$(sent_chat)" "$other"
@@ -1374,13 +1374,13 @@ case_peer_chatid_two_groups_newest_hello_after_start_or_pick() {
     set_group "$other"
     all_green
     set_updates getUpdates.json "$(upd_hello 101 "$CHAT" "$FAR" supergroup 'group A')" "$(upd_hello 102 "$other" "$FAR" supergroup 'group B')" "$(upd_peer_hello 103 "$other" "$THEIR" goomal_bot)"
-    feed "$(mk_token "$OUR")" 2
+    feed "$(mk_token "$OUR")" 2 1
     run_sut "$T/in" peer
     check "exit 0" eq "$RC" 0
     check "the list is numbered and shows titles" has "$(cat "$T/out")" "1) group A"
     check "second entry listed" has "$(cat "$T/out")" "2) group B"
     check "the pick chose group B" eq "$(sent_chat)" "$other"
-    check "one pick prompt" eq "$(grep -c 'Type the number' "$T/out")" 1
+    check "two pick prompts: the group, then the sole bot" eq "$(grep -c 'Type the number' "$T/out")" 2
 }
 
 case_peer_check_group_basic_group_fix() {
@@ -1390,7 +1390,7 @@ case_peer_check_group_basic_group_fix() {
     printf '{"ok":true,"result":{"id":%s,"type":"group","title":"bridge"}}' "$CHAT" > "$T/tg/getChat.json"
     set_good_updates
     all_green
-    feed "$(mk_token "$OUR")"
+    feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     check "exit 3" eq "$RC" 3
     check "says it must be a supergroup" has "$LAST" "supergroup"
@@ -1407,7 +1407,7 @@ case_peer_check_group_basic_group_fix() {
     printf '{"ok":true,"result":{"id":-1008888888888,"type":"supergroup","title":"bridge","permissions":{"can_change_info":false,"can_pin_messages":false}}}' > "$T/tg/getChat.2.json"
     set_updates getUpdates.json "$(upd_hello 101 "$CHAT" "$FAR" group)" "$(upd_peer_hello 102 "$CHAT" "$THEIR" goomal_bot)"
     all_green
-    feed "$(mk_token "$OUR")"
+    feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     check "exit 0" eq "$RC" 0
     check "confirm used the new id" has "$(setup_calls)" "confirm goomal -1008888888888"
@@ -1420,7 +1420,7 @@ case_peer_check_group_member_change_info_fix() {
     printf '{"ok":true,"result":{"id":%s,"type":"supergroup","title":"bridge","permissions":{"can_change_info":true,"can_pin_messages":true}}}' "$CHAT" > "$T/tg/getChat.json"
     set_good_updates
     all_green
-    feed "$(mk_token "$OUR")"
+    feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     check "exit 3" eq "$RC" 3
     check "names Change group info" has "$LAST" "Change group info"
@@ -1437,7 +1437,7 @@ case_peer_non_owner_fix_says_ask_owner() {
     printf '{"ok":true,"result":{"id":%s,"type":"group","title":"bridge"}}' "$CHAT" > "$T/tg/getChat.json"
     set_good_updates
     all_green
-    feed "$(mk_token "$OUR")"
+    feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     check "exit 3" eq "$RC" 3
     check "tells the human to ask the owner" has "$LAST" "ask the group owner to"
@@ -1450,7 +1450,7 @@ case_peer_checkpoint_written_after_confirm_before_status() {
     set_group
     set_good_updates
     all_green
-    feed "$(mk_token "$OUR")"
+    feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     check "exit 0" eq "$RC" 0
     check "the final status read found the checkpoint already written" eq "$(tail -n 1 "$T/himmelctl.checkpoint")" present
@@ -1462,7 +1462,7 @@ case_peer_checkpoint_written_after_confirm_before_status() {
     set_good_updates
     all_green
     echo 3 > "$T/setup.confirm.rc"
-    feed "$(mk_token "$OUR")"
+    feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     check "exit 3" eq "$RC" 3
     check "the FIX carries setup.ts's reason" has "$LAST" "every right off"
@@ -1478,7 +1478,7 @@ case_peer_unit_start_failure_keeps_checkpoint() {
     set_good_updates
     all_green
     : > "$T/units/$UNIT_NAME.startfail"
-    feed "$(mk_token "$OUR")"
+    feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     check "exit 3" eq "$RC" 3
     check "the FIX names the poller log" has "$LAST" "journalctl --user -u himmel-peer-bridge.service"
@@ -1538,7 +1538,7 @@ case_peer_repoint_runs_remove_then_add_confirm() {
     seed_confirmed_station
     set_updates getUpdates.json "$(upd_hello 101 "$CHAT" "$FAR")" "$(upd_peer_hello 102 "$CHAT" 666 new_bot)"
     set_member 666 administrator
-    feed "" "" yes
+    feed "" "" 1 yes
     run_sut "$T/in" peer --replace
     check "exit 0" eq "$RC" 0
     check "says the other bot changed" has "$(cat "$T/out")" "a different bot"
@@ -1573,7 +1573,7 @@ console.log(c ? c.conflictsWith : "none");
 ' "$REPO/scripts/himmelctl/lib/bot-roles.js" "$ROOT" "$OUR")
     check "a pending bridge id counts as taken for another role" eq "$conflict" bridge
     chmod 700 "$(PEER_CFG)"
-    feed "$tok"
+    feed "$tok" 1
     run_sut "$T/in" peer
     check "the next run resolves it and reaches DONE" eq "$RC" 0
     check "pending is cleared" eq "$(jq -r '.bridge.pending // false' "$(BOTS_FILE)")" false
@@ -1588,7 +1588,7 @@ case_peer_allowfrom_written_by_setup_ts_only_digit_strings() {
     all_green
     : > "$T/setup.real"
     RUN_ENV="RST_REAL_SETUP=$REPO/scripts/peer-bridge/setup.ts"
-    feed "$(mk_token "$OUR")"
+    feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     RUN_ENV=""
     check "the real setup.ts add ran and the helper reached DONE (last: $LAST)" eq "$RC" 0
@@ -1612,7 +1612,7 @@ case_peer_canary_token_absent_everywhere() {
     run_sut "$T/in" peer
     check "a revoked token is a FIX" eq "$RC" 3
     set_getme "$OUR" bridge_bot
-    feed "$tok"
+    feed "$tok" 1
     run_sut "$T/in" peer
     check "the full path is DONE" eq "$RC" 0
     feed ""
@@ -1650,7 +1650,7 @@ case_renamed_peer_bot_keeps_name() {
     # the other bot changed its username: the same bot id keeps the same name, and nothing is added
     seed_confirmed_station
     set_updates getUpdates.json "$(upd_hello 101 "$CHAT" "$FAR")" "$(upd_peer_hello 102 "$CHAT" "$THEIR" renamed_bot)"
-    feed "" ""
+    feed "" "" 1
     run_sut "$T/in" peer --replace
     check "exit 0" eq "$RC" 0
     check "the name is kept" eq "$LAST" "DONE: peer goomal — group confirmed, poller running"
@@ -1665,7 +1665,7 @@ case_renamed_peer_bot_keeps_name() {
     set_group
     all_green
     set_updates getUpdates.json "$(upd_hello 101 "$CHAT" "$FAR")" "$(upd_peer_hello 102 "$CHAT" "$THEIR" renamed_bot)"
-    feed ""
+    feed "" 1
     run_sut "$T/in" peer
     check "exit 0" eq "$RC" 0
     check "the old name stays" has "$LAST" "peer goomal"
@@ -1679,7 +1679,7 @@ case_peer_done_rerun_changes_no_config_artifact() {
     set_group
     set_good_updates
     all_green
-    feed "$(mk_token "$OUR")"
+    feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     check "first run: DONE" eq "$RC" 0
     snapshot_stores
@@ -1701,11 +1701,12 @@ case_peer_inputs_are_only_the_g2_set() {
     set_group
     set_good_updates
     all_green
-    feed "$(mk_token "$OUR")" "EXTRA-LINE-NOBODY-ASKED-FOR"
+    feed "$(mk_token "$OUR")" 1 "EXTRA-LINE-NOBODY-ASKED-FOR"
     run_sut "$T/in" peer
     check "exit 0" eq "$RC" 0
     check "exactly one prompt in the whole run" eq "$(grep -c 'Paste the bridge bot token' "$T/out")" 1
-    check "no enter or digit prompt on the simple path" eq "$(grep -cE 'Press Enter|Type the number' "$T/out")" 0
+    check "no enter prompt on the simple path" eq "$(grep -c 'Press Enter' "$T/out")" 0
+    check "one digit prompt: the confirmation of the sole bot" eq "$(grep -c 'Type the number' "$T/out")" 1
     sec=$(sed -n '/^# ── part 4:/,/^# ── status:/p' "$HERE/remote-setup.sh")
     check "part 4 has a body to read" test -n "$sec"
     check "part 4 reads input only through the lib's rs_secret, rs_enter and rs_pick" eq "$(printf '%s\n' "$sec" | grep -cE '(^|[[:space:];|&(])read -')" 0
@@ -1765,7 +1766,7 @@ case_peer_wait_pages_when_the_group_is_busy() {
     set_updates getUpdates.1.json "$(upd_hello 1 "$CHAT" "$FAR")"
     printf '{"ok":true,"result":%s}' "$(noise_updates 2 101)" > "$T/tg/getUpdates.2.json"
     set_updates getUpdates.3.json "$(upd_peer_hello 102 "$CHAT" "$THEIR" goomal_bot)"
-    feed "$(mk_token "$OUR")"
+    feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     check "the hello behind the chatter is found" eq "$RC" 0
     check "the wait acknowledged the full batch before asking again" file_has "$T/curl.stdin" '\"offset\":102'
@@ -1859,7 +1860,7 @@ case_peer_mac_bootout_then_bootstrap_order() {
     echo Darwin > "$T/uname"
     seed_confirmed_station mac
     set_good_updates
-    feed "" ""
+    feed "" "" 1
     run_sut "$T/in" peer --replace
     local out boot
     out=$(line_of 'launchctl bootout')
@@ -1921,6 +1922,61 @@ case_peer_hello_timeout_fixes() {
     check "our hello was posted" eq "$(sent_count)" 1
     check "nothing was added" eq "$(setup_calls)" ""
     check "the token is kept for the re-run" test -s "$(PEER_ENV)"
+}
+
+case_peer_sole_candidate_needs_a_yes() {
+    local before
+    seed_main
+    set_getme "$OUR" bridge_bot
+    set_group
+    set_good_updates
+    all_green
+    feed "$(mk_token "$OUR")" 2
+    run_sut "$T/in" peer
+    check "no: exit 3" eq "$RC" 3
+    check "no: one FIX says what to do next" has "$LAST" "ask the other operator for the name of their bridge bot"
+    check "the prompt shows the name and masks the id" has "$(cat "$T/out")" "@goomal_bot (id masked)"
+    check "the bot id is not printed" lacks "$(cat "$T/out")" "bot id $THEIR"
+    check "no: setup.ts was not run" eq "$(setup_calls)" ""
+    check "no: no peers.json, so nothing in allowFrom" test ! -e "$(PEERS_FILE)"
+    check "no: no checkpoint" test ! -e "$(CONFIRMED_FILE)"
+    check "no: no unit" test ! -e "$(UNIT_FILE)"
+    sub_case peer_sole_candidate_no_answer
+    seed_main
+    set_getme "$OUR" bridge_bot
+    set_group
+    set_good_updates
+    all_green
+    feed "$(mk_token "$OUR")"
+    run_sut "$T/in" peer
+    check "no answer: exit 3" eq "$RC" 3
+    check "no answer: the FIX says no answer was given" has "$LAST" "no answer was given about @goomal_bot"
+    check "no answer: setup.ts was not run" eq "$(setup_calls)" ""
+    check "no answer: no peers.json" test ! -e "$(PEERS_FILE)"
+    sub_case peer_sole_candidate_not_a_terminal
+    seed_main
+    set_getme "$OUR" bridge_bot
+    set_group
+    set_good_updates
+    all_green
+    feed "$(mk_token "$OUR")" 1
+    snapshot_stores
+    run_sut --no-tty "$T/in" peer
+    check "no terminal: exit 3" eq "$RC" 3
+    check "no terminal: the FIX asks for a plain Terminal" has "$LAST" "plain Terminal"
+    check "no terminal: setup.ts was not run" eq "$(setup_calls)" ""
+    assert_stores_unchanged
+    sub_case peer_sole_candidate_yes
+    seed_main
+    set_getme "$OUR" bridge_bot
+    set_group
+    set_good_updates
+    all_green
+    feed "$(mk_token "$OUR")" 1
+    run_sut "$T/in" peer
+    check "control, yes: exit 0" eq "$RC" 0
+    check "control, yes: the peer was added" has "$(setup_calls)" "add goomal --peer-bot-id $THEIR"
+    check "control, yes: allowFrom is the bot only" eq "$(jq -c '.peers.goomal.allowFrom' "$(PEERS_FILE)")" "[\"$THEIR\"]"
 }
 
 case_peer_hostile_username_refused() {
@@ -1986,7 +2042,7 @@ peer_sigint_during_discovery_restarts_poller renamed_peer_bot_keeps_name
 peer_done_rerun_changes_no_config_artifact peer_inputs_are_only_the_g2_set
 peer_remove_deletes_checkpoint_and_status_na peer_remove_interrupted_resumes peer_remove_with_nothing_set_up_is_done peer_remove_teardown_failure_is_a_fix peer_wait_pages_when_the_group_is_busy peer_remove_unit_delete_failure_is_a_fix peer_remove_reload_failure_is_a_fix peer_remove_one_of_two_restarts_poller
 peer_mac_bootout_then_bootstrap_order peer_without_part1_fixes peer_bridge_equals_main_refuses
-peer_different_bridge_id_without_replace_refuses peer_hello_timeout_fixes peer_hostile_username_refused
+peer_different_bridge_id_without_replace_refuses peer_hello_timeout_fixes peer_sole_candidate_needs_a_yes peer_hostile_username_refused
 peer_name_second_collision_gets_3 peer_name_32_char_base_with_suffix_fits"
 
 # ── run ─────────────────────────────────────────────────────────────────

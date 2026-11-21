@@ -467,6 +467,19 @@ peer_discover() {
     [[ $PEER_BOT_USER =~ ^[A-Za-z][A-Za-z0-9_]{2,31}$ ]] || rs_fix "the other station's bot name is not a usable Telegram username: ask the other operator to check their bridge bot, then run the same command again"
     [ "$PEER_BOT_ID" != "$PEER_MAIN_ID" ] || rs_fix "your main bot is in the group, and it must not be: remove it from the group (Edit → Administrators, then Members), and add only the bridge bots, then run the same command again"
     rs_step "found the other station's bridge bot (@$PEER_BOT_USER)"
+    if [ "$(printf '%s\n' "$PEER_BOTS" | grep -c .)" -eq 1 ]; then peer_confirm_sole; fi
+}
+
+# peer_confirm_sole: a lone hello is not proof of whose bot it is. The operator confirms the name before
+# anything is paired (setup.ts add writes it into allowFrom).
+peer_confirm_sole() {
+    rs_say "  Only one bot said hello in the group: @$PEER_BOT_USER (id masked)."
+    rs_say "  Check with the other operator that this is the name of their bridge bot."
+    rs_say "  1) yes, that is their bridge bot"
+    rs_say "  2) no"
+    rs_pick 2 || rs_fix "no answer was given about @$PEER_BOT_USER, so nothing was paired: ask the other operator for the name of their bridge bot, then run the same command again and type 1 only if it matches"
+    [ "$RS_PICK" = 1 ] || rs_fix "you said @$PEER_BOT_USER is not their bridge bot, so nothing was paired: ask the other operator for the name of their bridge bot and have them leave only that bot in the group, then run the same command again"
+    rs_step "you confirmed @$PEER_BOT_USER is the other station's bridge bot"
 }
 
 

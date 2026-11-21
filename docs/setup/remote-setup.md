@@ -235,7 +235,10 @@ What it does, in order:
 1. It checks the token and that this bot is not one of your other bots, and saves the token.
 2. It finds your group. If it asks you to send the word `hello` in the group, do that.
 3. It posts one short line, `himmel peer hello`, in the group, then waits up to 10 minutes for the
-   other station's bridge bot to do the same. This is how it learns the other bot.
+   other station's bridge bot to do the same. This is how it learns the other bot. When only one
+   bot says hello, it shows that bot's `@username` and asks one question: type `1` if that is the
+   other station's bridge bot (check the name with the other operator), `2` if it is not. Nothing is
+   paired unless you type `1`.
 4. It checks the group (a supergroup, members cannot change info or pin, both bridge bots are
    administrators with every right off), then adds and confirms the peer and starts a small
    program, the poller, that keeps the connection going.
@@ -272,6 +275,7 @@ The name after `peer` is the other station's name, taken from its bridge bot's u
 | `a different bridge bot is already set up` | If you do want to switch your bridge bot, run the command with `--replace` (below). |
 | `no hello arrived from the group` | In the group, send the word `hello`, then run the command again. |
 | `no hello came from the other station` | Ask the other operator to run the same command once, then run it here again. |
+| `so nothing was paired` | You said the bot that said hello is not the other station's bridge bot, or gave no answer. Ask the other operator for the name of their bridge bot, make sure only that bot is in the group, then run the command again and type `1` only if the name matches. |
 | `too many queued messages` | Wait a minute, ask the other operator to run the same command once more, then run it here again. |
 | `and bridge bots need a supergroup` | Edit → Group type → Public → set any link → Save, then Private → Save (group step 2). |
 | `group members are allowed to use` | Edit → Permissions → turn off Change group info and Pin messages (group step 3). |
