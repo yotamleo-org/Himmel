@@ -1153,8 +1153,9 @@ else
     printf '{"ts":"%s","head":"aaa","graph_head":"bbb","merges_behind":40,"action":"merged","pr":null,"duration_s":5,"error":null}\n' \
         "$OLD_TS" > "$t/handover/.graph-cadence/ledger.jsonl"
     out="$(CLAUDE_DIR="$t/claude" HOME="$t/home" HANDOVER_DIR="$t/handover" bash "$DOC" --no-color 2>&1)"
-    c33_line="$(printf '%s' "$out" | grep 'C33-graph-stale')"
-    if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F '3x the armed interval'; then
+    c33_line="$(printf '%s' "$out" | grep -A1 'C33-graph-stale')"
+    if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F '3x the armed interval' \
+        && ! grepq "$c33_line" -F 'graph-cadence.sh'; then
         pass "C33 -> WARN (last run older than 3x the armed cadence interval)"
     else
         fail "C33 stale-age -> $c33_line"

@@ -2871,7 +2871,7 @@ check_c33_graph_stale() {
         emit WARN C33-graph-stale "graph-cadence: jq not on PATH -- cannot read the ledger's last row, so staleness cannot be determined (this is NOT the same as healthy)" "install jq"
         return
     fi
-    local behind action ts age_s age_human remedy
+    local behind action ts age_s age_human
     behind="$(printf '%s' "$last_line" | jq -r '.merges_behind // "?"' 2>/dev/null)"
     action="$(printf '%s' "$last_line" | jq -r '.action // "?"' 2>/dev/null)"
     ts="$(printf '%s' "$last_line" | jq -r '.ts // empty' 2>/dev/null)"
@@ -2891,7 +2891,6 @@ check_c33_graph_stale() {
         age_human="$(_c33_age_human "$age_s")"
         [ "$age_s" -gt $((3 * DOCTOR_C33_CADENCE_INTERVAL_S)) ] && stale_on_age=1
     fi
-    remedy="bash scripts/graphify/graph-cadence.sh   # or check scripts/luna/graphmap-cadence.sh status for the armed task"
     if [ "$action" = "failed" ]; then
         local err why head_txt fail_remedy
         err="$(printf '%s' "$last_line" | jq -r '.error // empty' 2>/dev/null)"
@@ -2916,7 +2915,7 @@ check_c33_graph_stale() {
         return
     fi
     if [ "$stale_on_age" -eq 1 ]; then
-        emit WARN C33-graph-stale "graph stale: $behind commits behind main / last cadence run $age_human ago (no run in over 3x the armed interval)" "$remedy"
+        emit WARN C33-graph-stale "graph stale: $behind commits behind main / last cadence run $age_human ago (no run in over 3x the armed interval)" "check that the publish task is still armed and firing (bash scripts/luna/graphmap-cadence.sh status shows its next run and run log); a run without --semantic only records a skipped row and hides this"
         return
     fi
     # codex-8 (cont.): an unreadable/malformed ledger row (jq failed to parse
