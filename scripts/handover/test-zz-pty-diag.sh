@@ -19,4 +19,5 @@ run "script -q file-arg real-file" script -q "$T/typescript" sh -c 'echo hi' <&3
 run "script -q stdin-from-pipe" sh -c 'sleep 1 | script -q /dev/null sh -c "echo hi"'
 command -v python3 >/dev/null && run "python pty.spawn fifo stdin" python3 -c 'import pty,sys; sys.exit(pty.spawn(["sh","-c","echo hi; test -t 0 && echo tty0"])>>8)' <&3
 rm -rf "$T"
-echo "PASS diag done"
+echo "FAIL diag finished on purpose to surface the output"
+exit 1
