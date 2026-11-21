@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "dependencies": {
+    "@babel/parser": "8.0.4",
+    "@interfere/landmines": "0.1.0",
+    "oxlint": "1.93.0"
+  }
+}

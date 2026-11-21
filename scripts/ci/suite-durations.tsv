@@ -995,6 +995,7 @@ scripts/lint/test-check-mcp-sdk-v1.sh	1
 scripts/lint/test-check-platform-dropped.sh	3
 scripts/lint/test-check-rule-tags.sh	0
 scripts/lint/test-check-swallowed-errors.sh	2
+scripts/lint/test-check-test-honesty.sh	21
 scripts/lint/test-flag-parity.sh	1
 scripts/lint/test-list-enforced-rules.sh	0
 scripts/lint/test-shell-lint.sh	23

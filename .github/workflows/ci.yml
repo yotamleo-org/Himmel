@@ -1410,7 +1410,8 @@ jobs:
           git ls-files -z -- 'requirements*.txt' '*/requirements*.txt' | xargs -0 -r bash "$gates/scripts/hooks/check-pip-hashes.sh" || rc=1
           exit "$rc"
       # The skill/command size cap (skill-lint) and the oxlint
-      # complexity ratchet + bug-class hardening gates ran only on a committer's
+      # complexity ratchet + bug-class hardening gates (and the test-honesty
+      # ratchet over the tests) ran only on a committer's
       # machine, so a commit with hooks skipped landed unchecked. A PR runs them
       # on its CHANGED files only; each script exits 0 with "nothing to lint" when
       # none of those files is in its scope, so a docs-only PR passes without
@@ -1453,6 +1454,20 @@ jobs:
             bash scripts/hooks/check-oxlint-complexity.sh || rc=1
             bash scripts/hooks/check-oxlint-hardening.sh || rc=1
           fi
+          # test-honesty gate
+          g=2
+          norenames="$RUNNER_TEMP/lint-changed-norenames.txt"
+          if [ "$scope" = files ] && trig=$(node scripts/lint/honesty-surface.mjs --triggers) && [ -n "$trig" ] \
+            && git diff --no-renames --name-only -z "$BASE_SHA" HEAD > "$norenames"; then
+            g=0
+            grep -qzxE "$trig" "$norenames" || g=$?
+          fi
+          if [ "$g" = 1 ]; then
+            bash scripts/lint/check-test-honesty.sh --files "$@" || rc=1
+          else
+            bash scripts/lint/check-test-honesty.sh || rc=1
+          fi
+          # end test-honesty gate
           exit "$rc"
       # shell-lint (mktemp template, GNU flags, errexit leak, POSIX ERE,
       # bash 3.2) ran only on a committer's machine. A PR lints the shell files it

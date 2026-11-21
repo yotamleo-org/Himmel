@@ -53,11 +53,14 @@ updates:
       - "/scripts/config-ui/agui-web"
       - "/scripts/config-ui/tests/e2e"
       - "/site"
+      - "/scripts/lint/landmines"
     schedule:
       interval: "weekly"
     cooldown:
       default-days: 3
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "oxlint"
     groups:
       # Batch minor/patch bumps into one PR per directory to cut review churn;
       # majors still come as individual PRs.

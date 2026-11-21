@@ -148,3 +148,4 @@ scripts/bitbucket/bun.lock
 site/dist/
 site/node_modules/
 site/.astro/
+scripts/lint/landmines/.oxlintrc.seed.*.json
