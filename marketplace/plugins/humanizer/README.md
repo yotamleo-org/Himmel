@@ -1,7 +1,7 @@
 # humanizer@himmel
 
 One opt-in skill vendored from [`blader/humanizer`](https://github.com/blader/humanizer)
-at `b48c832f0f809c1b5658edbb838c2521b72f2413` (MIT, (c) 2025 Siqi Chen).
+at `a32f24407364c74c812b43c15926d638bee1e072` (MIT, (c) 2025 Siqi Chen).
 Inventory and deviation: [`VENDORED.md`](VENDORED.md). Eval:
 `docs/tool-adoption/humanizer.md`.
 

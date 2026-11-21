@@ -47,7 +47,7 @@
       "kind": "commit_head",
       "mode": "pin",
       "tracked_repo": "blader/humanizer",
-      "pinned_commit": "b48c832f0f809c1b5658edbb838c2521b72f2413",
+      "pinned_commit": "a32f24407364c74c812b43c15926d638bee1e072",
       "tier": "B",
       "note": "Vendored at marketplace/plugins/humanizer (VENDORED.md records the same commit). Repair is a reviewed re-copy at the new commit."
     },
@@ -204,7 +204,7 @@
       "kind": "tag_release",
       "mode": "base",
       "tracked_repo": "router-for-me/CLIProxyAPI",
-      "synced_base": "8.0.76",
+      "synced_base": "8.0.80",
       "version_pin": { "file": "scripts/setup/cli-proxy-lane.sh", "template": "VERSION=\"{version}\"" },
       "companion_pins": [
         { "file": "scripts/setup/cli-proxy-lane.sh", "template": "ASSET_SHA256=\"{sha256}\"" }
@@ -268,7 +268,7 @@
       "kind": "tag_release",
       "mode": "base",
       "tracked_repo": "anthropics/claude-code",
-      "synced_base": "2.1.325",
+      "synced_base": "2.1.330",
       "latest_source": "release",
       "version_pin": {
         "file": "scripts/machine-setup/installer-pins.sh",

@@ -12,7 +12,7 @@ Audited 2026-10-16. Method: [`rubric.md`](rubric.md). Verdict: **ADOPT, opt-in**
 
 | Item | Finding |
 |---|---|
-| Source | `https://github.com/blader/humanizer`, pinned `b48c832f0f809c1b5658edbb838c2521b72f2413` (2026-11-10, merge of PR 333, the upstream 4.0.0 release) |
+| Source | `https://github.com/blader/humanizer`, pinned `a32f24407364c74c812b43c15926d638bee1e072` (2026-11-19, merge of PR 344; skill version still 4.0.0) |
 | License | MIT, (c) 2025 Siqi Chen. Permissive for vendoring |
 | Activity | 97 commits, 54 in the last 60 days. Skill version 4.0.0 |
 | What runs | Nothing. One prompt file (`SKILL.md`, 32 KB). Upstream also carries a validator script and CI files; none are vendored |

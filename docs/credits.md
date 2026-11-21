@@ -17,18 +17,18 @@ How used: installed from the pin, or vendored in-tree where the pin links a vend
 
 | Name | Source | Author | Licence | Pin / tracking |
 |---|---|---|---|---|
-| ai-image-prompts | https://github.com/youmind-openlab/ai-image-prompts-skill | youmind-openlab | MIT | 413d41591ffdfbfa025fe943ffa6f731a3839fcd |
+| ai-image-prompts | https://github.com/youmind-openlab/ai-image-prompts-skill | youmind-openlab | MIT | 986f2154cafe3dc086d188340a7354c1e5e2dbfc |
 | animejs-skills | https://github.com/BowTiedSwan/animejs-skills | BowTiedSwan | Unknown (not declared upstream) | cf2bed8d6654a6cfd02d3ff11b74ff3a7a7631e2 |
 | anthropic-design-skills | https://github.com/anthropics/skills | anthropics | Mixed: Apache-2.0 design skills; source-available docx/pdf/pptx/xlsx (per-skill LICENSE.txt) | e4bb5d960d87126ff3b3a8af1a104b7db67560ba |
 | anydesign | https://github.com/uxKero/anydesign | uxKero | MIT | v0.6.0 |
-| builder-visual | https://github.com/BuilderIO/skills | BuilderIO | MIT | 5af301099beda993735bc3dc88ceb75a7a8ab361 |
+| builder-visual | https://github.com/BuilderIO/skills | BuilderIO | MIT | 551e97e687444f8f627e4099475a92527bbd5b03 |
 | claude-obsidian | https://github.com/AgriciDaniel/claude-obsidian | AgriciDaniel | MIT | v3.0.1 |
 | design-dna | https://github.com/zanwei/design-dna | zanwei | MIT | 593e39bc9e3652734653bd75544a333d7d43615e |
 | design-md | https://github.com/NousResearch/hermes-agent | Nous Research | MIT | v2026.9.24 |
-| diagram-design | https://github.com/cathrynlavery/diagram-design | cathrynlavery | MIT | f6db0decea96de66b901331a0f79a8d4b147ebae |
+| diagram-design | https://github.com/cathrynlavery/diagram-design | cathrynlavery | MIT | d74d8c2d0c78a9e1efd43137f6a9a51182a8b5f0 |
 | domain-modeling | https://github.com/mattpocock/skills | Matt Pocock (upstream) / yotamleo (vendor) | MIT | [Vendoring pin](../marketplace/plugins/domain-modeling/VENDORED.md) |
 | emilkowalski-skills | https://github.com/emilkowalski/skills | Emil Kowalski | MIT | 64eb3deb9a5fbfa041faf783e0bc3fd635872e9c |
-| find-docs | https://github.com/upstash/context7 | Upstash | MIT | c36522f3d4446288a272aedd727d665f7b8175f2 |
+| find-docs | https://github.com/upstash/context7 | Upstash | MIT | b1e3611e32a8b1369ae526cacdf335ddfd6e5fbb |
 | frontend-slides | https://github.com/zarazhangrui/frontend-slides | zarazhangrui | MIT | v2.1.0 |
 | graphify | https://github.com/Graphify-Labs/graphify | Graphify-Labs / yotamleo (wrapper) | Apache-2.0 | [Package pin](../scripts/lib/graphify-bin.sh) |
 | gsap-skills | https://github.com/greensock/gsap-skills | greensock | MIT | aed9cfd3277740755f6bfc1155c7aa645403b760 |
@@ -41,9 +41,9 @@ How used: installed from the pin, or vendored in-tree where the pin links a vend
 | himmel-ops | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/himmel-ops | yotamleo | MIT | In-tree |
 | humanizer | https://github.com/blader/humanizer | Siqi Chen (upstream) / yotamleo (vendor) | MIT | [Vendoring pin](../marketplace/plugins/humanizer/VENDORED.md) |
 | i-have-adhd | https://github.com/ayghri/i-have-adhd | Ayoub G. (upstream) / yotamleo (vendor) | MIT | [Vendoring pin](../marketplace/plugins/i-have-adhd/VENDORED.md) |
-| impeccable | https://github.com/pbakaus/impeccable | Paul Bakaus | Apache-2.0 | skill-v4.9.1 |
+| impeccable | https://github.com/pbakaus/impeccable | Paul Bakaus | Apache-2.0 | skill-v4.10.0 |
 | lean-skills | https://github.com/obra/superpowers , https://github.com/mattpocock/skills | Jesse Vincent / Matt Pocock (upstream) / yotamleo (vendor) | MIT | [Per-family pins](../marketplace/plugins/lean-skills/VENDORED.md) |
-| lottie-motion-design | https://github.com/lottiefiles/motion-design-skill | lottiefiles | MIT | 4cc6b0d87afc618914317f3fcf5a0fb9f12ae039 |
+| lottie-motion-design | https://github.com/lottiefiles/motion-design-skill | lottiefiles | MIT | d77a9fc8cb371cab1ba5420df5bfd232cd14c9bb |
 | luna-correlate | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/luna-correlate | yotamleo | MIT | In-tree |
 | motion-lexicon | https://github.com/Ryan-yang125/motion-lexicon | Ryan-yang125 | MIT | v6.0.0 |
 | obsidian-triage | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/obsidian-triage | yotamleo | MIT | In-tree |
