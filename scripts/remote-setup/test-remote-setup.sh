@@ -3,7 +3,7 @@
 #
 # The SUT runs from a FIXTURE checkout (copies of lib.sh and remote-setup.sh, a stub
 # himmelctl, the real himmelctl lib dir by symlink), with a fixture HOME and PATH shims for
-# curl, systemctl, launchctl, sudo, sleep, uname, id and bun (scripts/remote-setup/tests/).
+# curl, systemctl, launchctl, sudo, sleep, date, uname, id and bun (scripts/remote-setup/tests/).
 # Nothing here touches the network, the real HOME, a real unit or a real token: tokens are
 # random canaries. The seam is this harness, never a flag in the SUT.
 #
@@ -57,6 +57,9 @@ new_case() {
     T=$WORK/$1
     mkdir -p "$T/home" "$T/tmp dir" "$T/bin" "$T/tg" "$T/units" "$T/root"
     cp "$HERE"/tests/shims/* "$T/bin/"
+    # a clock the sleep shim moves: a ten-minute wait ends in a few reads (see the date shim)
+    date +%s > "$T/clock"
+    echo 60 > "$T/clock.step"
     ROOT=$T/root
     HOME_FIX=$T/home
     mk_root
@@ -2067,6 +2070,22 @@ case_peer_sole_candidate_needs_a_yes() {
     check "control, yes: allowFrom is the bot only" eq "$(jq -c '.peers.goomal.allowFrom' "$(PEERS_FILE)")" "[\"$THEIR\"]"
 }
 
+case_peer_wait_is_bounded_by_the_clock_not_by_the_loop_count() {
+    local n
+    seed_main
+    set_getme "$OUR" bridge_bot
+    set_group
+    # the answer is never empty, so a read returns at once and a loop count alone would end the wait in about a minute
+    set_updates getUpdates.json "$(upd_hello 101 "$CHAT" "$FAR")"
+    all_green
+    feed "$(mk_token "$OUR")"
+    run_sut "$T/in" peer
+    n=$(method_count getUpdates)
+    check "no hello from the other station: exit 3" eq "$RC" 3
+    check "the FIX says no hello came" has "$LAST" "no hello came from the other station"
+    check "the wait ended when the ten minutes were up ($n reads), not after a fixed number of reads" test "$n" -ge 8 -a "$n" -le 16
+}
+
 case_peer_hostile_username_refused() {
     seed_main
     set_getme "$OUR" bridge_bot
@@ -2130,7 +2149,7 @@ peer_sigint_during_discovery_restarts_poller renamed_peer_bot_keeps_name
 peer_done_rerun_changes_no_config_artifact peer_inputs_are_only_the_g2_set
 peer_remove_deletes_checkpoint_and_status_na peer_remove_interrupted_resumes peer_remove_with_nothing_set_up_is_done peer_remove_unreadable_peer_list_stops_before_any_change peer_remove_teardown_failure_is_a_fix peer_wait_pages_when_the_group_is_busy peer_remove_unit_delete_failure_is_a_fix peer_remove_reload_failure_is_a_fix peer_remove_one_of_two_restarts_poller peer_remove_one_of_two_interrupted_before_restart_finishes_that_removal
 peer_mac_bootout_then_bootstrap_order peer_mac_old_agent_is_not_accepted_as_the_updated_poller peer_changed_token_restarts_the_running_poller peer_without_part1_fixes peer_bridge_equals_main_refuses
-peer_different_bridge_id_without_replace_refuses peer_hello_timeout_fixes peer_sole_candidate_needs_a_yes peer_hostile_username_refused
+peer_different_bridge_id_without_replace_refuses peer_hello_timeout_fixes peer_wait_is_bounded_by_the_clock_not_by_the_loop_count peer_sole_candidate_needs_a_yes peer_hostile_username_refused
 peer_name_second_collision_gets_3 peer_name_32_char_base_with_suffix_fits"
 
 # ── run ─────────────────────────────────────────────────────────────────

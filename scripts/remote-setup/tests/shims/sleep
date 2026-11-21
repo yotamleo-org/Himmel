@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
 # Test shim for sleep: records the request, then waits at most a twentieth of a second.
 # With $RST/sleep.int present it first sends its caller a SIGINT (a Ctrl-C), once.
+# With $RST/clock present (see the date shim) it moves that clock forward by the requested seconds
+# times $RST/clock.step (default 1), so a wait that is bounded by the clock ends without real waiting.
 RST=${RST:?RST must point at the test dir}
 printf 'sleep %s\n' "$*" >> "$RST/sleep.log"
 if [ -f "$RST/sleep.int" ]; then
     rm -f "$RST/sleep.int"
     kill -INT "$PPID"
+fi
+if [ -f "$RST/clock" ]; then
+    step=1
+    [ -f "$RST/clock.step" ] && step=$(cat "$RST/clock.step")
+    secs=${1%%.*}
+    case "$secs" in '' | *[!0-9]*) secs=0 ;; esac
+    printf '%s' $(($(cat "$RST/clock") + secs * step)) > "$RST/clock"
 fi
 /bin/sleep 0.05
 exit 0

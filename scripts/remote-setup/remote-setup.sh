@@ -405,9 +405,9 @@ peer_find_peer() {
 }
 
 peer_wait() {
-    local what=$1 i=0
-    while [ "$i" -lt 60 ]; do
-        i=$((i + 1))
+    local what=$1 deadline
+    deadline=$(($(date +%s) + 600))
+    while [ "$(date +%s)" -lt "$deadline" ]; do
         sleep 1
         peer_fetch "" 8
         if [ "$PEER_PAGE" = 1 ]; then peer_page_on; fi
