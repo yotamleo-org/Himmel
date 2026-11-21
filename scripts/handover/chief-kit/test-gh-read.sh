@@ -322,6 +322,11 @@ check "G4 an unwritable count file never fails the read and never prints" "0|" "
 rm -f "$W/gone"
 GH_READ_USED_FILE="$W/gone" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" pr view 12 >/dev/null 2>&1
 check "G4b a removed count file is not recreated by a late read" "no" "$([ -e "$W/gone" ] && echo yes || echo no)"
+if [ -n "$_TIMEOUT_BIN" ]; then
+    : > "$W/used"
+    GH_STUB_HANG=20 GH_READ_TIMEOUT=10 GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" "$_TIMEOUT_BIN" -k 1 2 bash "$HELPER" pr view 12 >/dev/null 2>&1
+    check "G5 a read killed by the caller's outer timeout still leaves its row" "read graphql" "$(cat "$W/used")"
+fi
 
 AMBTOK=ghp_AMBIENTDUMMY0123456789
 KEYTOK=ghp_KEYRINGDUMMY0123456789

@@ -169,9 +169,9 @@ gh_read() {
     if [ -z "$_GHR_TOK" ]; then
         _ghr_warn "$_GHR_WHY"
         errf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || { _ghr_used main "$@"; _ghr_run "$@"; return $?; }
+        _ghr_used main "$@"
         _ghr_run "$@" 2>"$errf"
         rc=$?
-        _ghr_used main "$@"
         cat "$errf" >&2  # read-sink-ok: our own mktemp buffer
         _ghr_note main "$rc" "$errf" "$@"
         rm -f "$errf"
@@ -181,18 +181,18 @@ gh_read() {
     # a refused call can already have printed pages or an error body: hold stdout so
     # a refused attempt is discarded instead of doubled by the retry
     outf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || { rm -f "$errf"; _ghr_used main "$@"; _ghr_run "$@"; return $?; }
+    _ghr_used read "$@"
     GH_TOKEN="$_GHR_TOK" _ghr_run "$@" >"$outf" 2>"$errf"
     rc=$?
-    _ghr_used read "$@"
     # a timeout (124, 137 after -k) is not retried: a hung GitHub would cost twice
     if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ] && [ "$rc" -ne 137 ] \
         && { _ghr_rl "$errf" || grep -qiE 'bad credentials|requires authentication|not accessible by (personal access )?token|HTTP (401|403|404)|Could not resolve to a (Repository|PullRequest)' "$errf"; } \
         && ! { [ "${GH_READ_NO_MAIN_FALLBACK:-}" = 1 ] && _ghr_rl "$errf"; }; then
         rm -f "$outf"
         _ghr_warn "read token refused"
+        _ghr_used main "$@"
         _ghr_run "$@" 2>"$errf"
         rc=$?
-        _ghr_used main "$@"
         cat "$errf" >&2  # read-sink-ok: our own mktemp buffer
         _ghr_note main "$rc" "$errf" "$@"
         rm -f "$errf"
