@@ -93,8 +93,12 @@ supergroup with a new chat id, and `confirm` refuses the old id.
      It runs `run.sh`, which loads the env file and maps exit 78 to 0 so
      `KeepAlive` with `SuccessfulExit=false` does not respawn it.
 
-`setup.ts remove <peer>` deletes one peer and its chain files. `setup.ts
-uninstall` stops the unit, deletes the unit file, `S` and `C`, and removes the
+`setup.ts runner` installs and starts the runner unit
+(`units/himmel-peer-runner.service` or `units/com.himmel.peer-runner.plist`)
+while some peer's `serves` holds `run-suite`, and stops and deletes it
+otherwise. Run it after you edit `serves`. `setup.ts remove <peer>` deletes one
+peer and its chain files, then does the same check. `setup.ts
+uninstall` stops both units, deletes the unit files, `S` and `C`, and removes the
 parent dirs it created if they are empty. Both ask for a typed `yes`. Every
 subcommand refuses when `CLAUDECODE` or `CLAUDE_CODE_SESSION_ID` is set and when
 there is no terminal. No message, template or wake can trigger any of them, and
@@ -154,9 +158,9 @@ a chief may read this path, unlike the desk's digests.
 | LLM | the tool-less reader | none, on either side |
 
 This path is inert while `serves` is empty, which is the default and what our own
-station keeps. Until the runner ships (the next change), a station that serves
-takes a request and resolves it but starts nothing: a job still unresolved after
-10 minutes is refused `no-vm`.
+station keeps. A station that serves runs the runner (see "The runner" below);
+while the runner is down, a job still unresolved after 10 minutes is refused
+`no-vm`.
 
 ### Names, keys and trust (at a terminal)
 
@@ -283,6 +287,41 @@ On start the poller drains the Telegram backlog and applies every admitted
 envelope before its first deadline tick, so a `res` waiting there is not beaten by
 an overdue SENT deadline. The poller's 30 s tick then fires each overdue deadline
 once, oldest first.
+
+### The runner
+
+`runner.ts` runs a job; it never decides one. It reads `jobs.jsonl`, submits each
+transition (`resolve-ok`, `resolve-fail`, `vm-start`, `vm-done`) through the
+spool, and the poller applies it. It runs only from its own unit, which reads no
+env file, so it holds no bot token and no signing key. It exits 0 on a refusal
+(no peer serves, no VM backend) so the unit does not restart it, and 1 on an
+error.
+
+On start it runs `vm-sweep`, which destroys every VM left from a crash, and
+deletes job logs older than 14 days. Every 30 s it then:
+
+1. **Resolves** each RECEIVED job in a bare cache of the peer's `origin` under
+   `S/<peer>/`. The SHA must be a commit on a branch of `origin` (a SHA reachable
+   only from `refs/pull/*` is `unknown-sha`) and must descend from `MIN_SHA`
+   (`min-sha.txt`, the first commit holding `job-entry.sh`), else `too-old`.
+2. **Runs** the oldest APPROVED job, one at a time. It reads the backstop from
+   the RUNNING record, fetches the one commit into an empty repo and packs only
+   its `.git` into a tar, so no file of the tree runs on the host. It then
+   clones the golden VM, pushes the tar, `job-entry.sh` and the suite list, and
+   runs `job-entry.sh` in the guest under `backstop + ALLOWANCE_S`. A job that
+   leaves RUNNING (cancel, halt, deadline) kills the exec within one watch tick.
+3. **Reports** the guest's `.job-result.json` (16 KB cap), parsed against the
+   job's own suite list: a suite the guest did not finish is `error`. The log
+   (5 MB cap) stays on the host, mode 0600, under `S/<peer>/logs/`; only its
+   SHA-256 and byte count go into `vm-done`, with the golden image's digest and
+   the VM minutes. The VM is destroyed and the work dir deleted on every path.
+
+Every `git` call runs with `core.hooksPath=/dev/null`, `GIT_CONFIG_GLOBAL=/dev/null`
+and `GIT_CONFIG_NOSYSTEM=1`, so no hook, filter (LFS included) or user config
+runs. The runner's closed list of git verbs is `init --bare`, `fetch --prune` of
+`origin`'s branches, `cat-file -e`, `branch -r --contains`,
+`merge-base --is-ancestor`, `init` and `fetch --depth 1` of one SHA from the
+cache. `policy.test.ts` pins the list.
 
 ### What a chief sees
 
@@ -424,7 +463,9 @@ claim.
   its signature verifies, only in `envelope.ts`. The poller starts only the reader,
   the `redact_check` shell function, `usage-preflight.sh` and, on macOS, `ps`
   (`policy.test.ts` pins the list over the poller's module graph). On the typed path
-  only `jobs.ts` runs `git`, two fixed verbs on our own checkout. The reader's
+  `jobs.ts` runs `git`, two fixed verbs on our own checkout, and the runner runs
+  only `git` (its closed list, above) and `vmsdk-job.py`; it reaches no `claude`
+  and no reader. The reader's
   environment holds no `PEER_BOT_TOKEN` and no `TELEGRAM_*`.
 - **One egress gate.** Every outbound message, from `send.ts`, a template or a
   resend, passes the same checks in the poller: a secret-shape scan through

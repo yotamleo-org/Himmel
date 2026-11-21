@@ -6,6 +6,7 @@
 //   setup.ts confirm <peer> <chatId>
 //   setup.ts remove <peer>
 //   setup.ts uninstall
+//   setup.ts runner          install the runner unit while a peer serves run-suite, remove it otherwise
 //   setup.ts station-name <name>
 //   setup.ts keygen [--rotate | --activate]
 //   setup.ts trust <peer> <station-name> <pubkey-b64>
@@ -17,7 +18,7 @@
 import { randomBytes } from "node:crypto";
 import fs, { constants } from "node:fs";
 import { homedir, hostname as osHostname } from "node:os";
-import { dirname, isAbsolute, join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createInterface } from "node:readline";
 import { defaultRoot } from "../telegram/bus";
@@ -45,6 +46,7 @@ export type Deps = {
   loadToken?: () => string;
   makeTg?: (token: string) => Pick<PeerTelegram, "getChat" | "getChatMember">;
   stopUnit?: () => void;
+  runnerCtl?: (verb: "start" | "stop", path: string) => void;
   hostname?: string;
 };
 
@@ -52,6 +54,9 @@ const USERNAME_RE = /^[A-Za-z][A-Za-z0-9_]{2,31}$/;
 const CHAIN_FILES = ["inbox.jsonl", "outbox.jsonl", "threads.jsonl", "digests.jsonl"];
 const UNIT_NAME = "himmel-peer-bridge.service";
 const PLIST_NAME = "com.himmel.peer-bridge.plist";
+const RUNNER_UNIT = "himmel-peer-runner.service";
+const RUNNER_PLIST = "com.himmel.peer-runner.plist";
+const UNIT_PATH_RE = /^\/[A-Za-z0-9._\/-]+$/;
 
 function refuse(message: string): never { throw new SetupError(message); }
 
@@ -68,7 +73,59 @@ function homeDir(): string {
 
 function unitPaths(): string[] {
   const h = homeDir();
-  return [join(h, ".config", "systemd", "user", UNIT_NAME), join(h, "Library", "LaunchAgents", PLIST_NAME)];
+  return [
+    join(h, ".config", "systemd", "user", UNIT_NAME), join(h, "Library", "LaunchAgents", PLIST_NAME),
+    join(h, ".config", "systemd", "user", RUNNER_UNIT), join(h, "Library", "LaunchAgents", RUNNER_PLIST),
+  ];
+}
+
+function runnerUnitPath(): string | null {
+  const h = homeDir();
+  if (process.platform === "linux") return join(h, ".config", "systemd", "user", RUNNER_UNIT);
+  if (process.platform === "darwin") return join(h, "Library", "LaunchAgents", RUNNER_PLIST);
+  return null;
+}
+
+function runnerCtlDefault(verb: "start" | "stop", path: string): void {
+  const opts = { stdio: "ignore" as const, timeout: 15_000 };
+  if (process.platform === "linux") {
+    spawnSync("systemctl", ["--user", "daemon-reload"], opts);
+    spawnSync("systemctl", ["--user", verb === "start" ? "enable" : "disable", "--now", RUNNER_UNIT], opts);
+  } else if (process.platform === "darwin") {
+    spawnSync("launchctl", [verb === "start" ? "bootstrap" : "bootout", `gui/${process.getuid!()}`, path], opts);
+  }
+}
+
+function syncRunner(raw: any, deps: Deps): void {
+  const serving = Object.values(raw.peers ?? {}).some((p: any) => Array.isArray(p?.serves) && p.serves.includes("run-suite"));
+  const path = runnerUnitPath();
+  if (path === null) {
+    if (serving) refuse(`no runner unit for ${process.platform}`);
+    return;
+  }
+  const ctl = deps.runnerCtl ?? runnerCtlDefault;
+  if (serving && !fs.existsSync(path)) {
+    const h = homeDir();
+    if (!UNIT_PATH_RE.test(raw.himmelRoot) || !UNIT_PATH_RE.test(h)) refuse("himmelRoot and HOME must be plain absolute paths to go into a unit file");
+    const text = fs.readFileSync(join(import.meta.dir, "units", basename(path)), "utf8").replaceAll("@HIMMEL_ROOT@", raw.himmelRoot).replaceAll("@HOME@", h);
+    fs.mkdirSync(dirname(path), { recursive: true });
+    writeNew(path, text, 0o644);
+    ctl("start", path);
+    deps.out(`installed and started the runner unit ${path}`);
+  } else if (!serving && fs.existsSync(path)) {
+    ctl("stop", path);
+    fs.rmSync(path, { force: true });
+    deps.out(`no peer serves run-suite; stopped and removed the runner unit ${path}`);
+  }
+}
+
+export async function runner(deps: Deps): Promise<void> {
+  guard(deps);
+  const raw = loadRaw();
+  const path = runnerUnitPath();
+  const before = path !== null && fs.existsSync(path);
+  syncRunner(raw, deps);
+  if (path !== null && fs.existsSync(path) === before) deps.out(`the runner unit is ${before ? "installed" : "not installed"}, as serves asks`);
 }
 
 function writeNew(path: string, data: string | Buffer, mode: number): void {
@@ -235,6 +292,7 @@ export async function remove(peer: string, deps: Deps): Promise<void> {
   fs.rmSync(join(stateDir(), "desk", peer), { recursive: true, force: true });
   fs.rmSync(suitesFile(peer), { force: true });
   fs.rmSync(killedFile(peer), { force: true });
+  syncRunner(raw, deps);
   deps.out(`removed ${peer}; restart the poller to drop it`);
 }
 
@@ -374,8 +432,10 @@ export async function unkill(peer: string, deps: Deps): Promise<void> {
 }
 
 function stopUnitDefault(): void {
-  if (process.platform === "linux") spawnSync("systemctl", ["--user", "disable", "--now", UNIT_NAME], { stdio: "ignore", timeout: 15_000 });
-  else if (process.platform === "darwin") spawnSync("launchctl", ["bootout", `gui/${process.getuid!()}`, join(homeDir(), "Library", "LaunchAgents", PLIST_NAME)], { stdio: "ignore", timeout: 15_000 });
+  if (process.platform === "linux") spawnSync("systemctl", ["--user", "disable", "--now", UNIT_NAME, RUNNER_UNIT], { stdio: "ignore", timeout: 15_000 });
+  else if (process.platform === "darwin") {
+    for (const p of [PLIST_NAME, RUNNER_PLIST]) spawnSync("launchctl", ["bootout", `gui/${process.getuid!()}`, join(homeDir(), "Library", "LaunchAgents", p)], { stdio: "ignore", timeout: 15_000 });
+  }
 }
 
 export async function uninstall(deps: Deps): Promise<void> {
@@ -410,6 +470,7 @@ async function main(): Promise<void> {
     else if (cmd === "confirm" && args.length === 2) await confirm(args[0], args[1], deps);
     else if (cmd === "remove" && args.length === 1) await remove(args[0], deps);
     else if (cmd === "uninstall" && args.length === 0) await uninstall(deps);
+    else if (cmd === "runner" && args.length === 0) await runner(deps);
     else if (cmd === "station-name" && args.length === 1) await stationName(args[0], deps);
     else if (cmd === "keygen" && args.length === 0) await keygenCmd("new", deps);
     else if (cmd === "keygen" && args.length === 1 && args[0] === "--rotate") await keygenCmd("rotate", deps);
@@ -421,7 +482,7 @@ async function main(): Promise<void> {
     else if (cmd === "deny-suite" && args.length === 2) await denySuite(args[0], args[1], deps);
     else if (cmd === "kill" && args.length === 1) await kill(args[0], deps);
     else if (cmd === "unkill" && args.length === 1) await unkill(args[0], deps);
-    else { console.error("usage: setup.ts add <peer> --peer-bot-id N [--operator-bot-id N] [--peer-username U] | confirm <peer> <chatId> | remove <peer> | uninstall | station-name <name> | keygen [--rotate|--activate] | trust <peer> <station-name> <pubkey-b64> | untrust <peer> [--key <id>] | allow-suite <peer> <alias> <path> | deny-suite <peer> <alias> | kill <peer> | unkill <peer>"); process.exit(2); }
+    else { console.error("usage: setup.ts add <peer> --peer-bot-id N [--operator-bot-id N] [--peer-username U] | confirm <peer> <chatId> | remove <peer> | uninstall | runner | station-name <name> | keygen [--rotate|--activate] | trust <peer> <station-name> <pubkey-b64> | untrust <peer> [--key <id>] | allow-suite <peer> <alias> <path> | deny-suite <peer> <alias> | kill <peer> | unkill <peer>"); process.exit(2); }
   } catch (e) {
     if (e instanceof SetupError) { console.error(`setup: ${e.message}`); process.exit(3); }
     throw e;

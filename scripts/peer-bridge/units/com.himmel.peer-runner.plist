@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- launchd agent for the peer bridge runner (serving side). setup.ts runner
+     installs it, with @HIMMEL_ROOT@ and @HOME@ replaced, only while some peer
+     serves run-suite. It reads no env file: the runner holds no token or key. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.himmel.peer-runner</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/env</string>
+        <string>bun</string>
+        <string>@HIMMEL_ROOT@/scripts/peer-bridge/runner.ts</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>@HOME@/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>PEER_JOB_BACKEND</key>
+        <string>tart</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+    <key>StandardErrorPath</key>
+    <string>@HOME@/.himmel/peer-bridge/runner.log</string>
+</dict>
+</plist>
