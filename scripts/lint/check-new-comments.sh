@@ -59,14 +59,15 @@ keys() {
     local p i=0
     mkdir -p "$W/k" || die "mkdir failed"
     : > "$W/k.list"
+    cp "$1" "$W/k.in" || die "cp failed"
     while IFS= read -r p; do
         i=$((i + 1))
         printf '%s' "$p" > "$W/k/$i" || die "cannot write under $W"
         printf '%s\n' "$W/k/$i" >> "$W/k.list"
-    done < "$1"
+    done < "$W/k.in"
     git hash-object --no-filters --stdin-paths < "$W/k.list" > "$W/k.out" || die "cannot hash the paths"
     [ "$(awk 'END { print NR }' "$W/k.out")" -eq "$i" ] || die "cannot hash the paths"
-    paste "$W/k.out" "$1" > "$2" || die "paste failed"
+    paste "$W/k.out" "$W/k.in" > "$2" || die "paste failed"
 }
 unkey() {
     awk -F'\t' 'FILENAME == ARGV[1] { path[$1] = $2; next } ($1 in path) { print path[$1] "\t" $2 }' "$W/map" "$1" > "$2" || die "awk failed"
