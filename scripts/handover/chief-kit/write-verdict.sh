@@ -515,7 +515,7 @@ if [ "$PRBIND" -eq 1 ]; then
     # shellcheck source=scripts/lib/timeout-bin.sh
     # shellcheck disable=SC1091
     bb_tb=""; . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null && bb_tb=${_TIMEOUT_BIN:-}
-    bb_rc=0; BIND_PRHEAD=$(in_reviewed ${bb_tb:+"$bb_tb" -k 5 30} gh pr view "$PR" ${WV_REPO:+--repo "$WV_REPO"} --json headRefOid --jq .headRefOid 2>/dev/null </dev/null) || bb_rc=$? # swallow-ok: rc captured, a failed or empty read exits 7 below
+    bb_rc=0; BIND_PRHEAD=$(in_reviewed ${bb_tb:+"$bb_tb" -k 5 30} gh pr view "$PR" ${WV_REPO:+--repo "$WV_REPO"} --json headRefOid --jq .headRefOid 2>/dev/null </dev/null) || bb_rc=$? # swallow-ok: rc captured, a failed or empty read exits 7 below; gh-main-ok: the --bind head check is a verdict-write read that stays on the main token (test-gh-read A3)
     if [ "$bb_rc" -ne 0 ] || [ -z "$BIND_PRHEAD" ]; then
         echo "write-verdict: --bind refused - could not read PR #$PR's head from gh (rc $bb_rc); nothing written" >&2
         exit 7
