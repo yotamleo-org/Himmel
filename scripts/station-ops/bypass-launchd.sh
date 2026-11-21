@@ -141,13 +141,14 @@ while :; do
         api_account=$(field api_account "$req")
         [ -n "$flags" ] || flags=HIMMEL_HOOK_INTEGRITY_BYPASS_OK
         base=$(basename "$brief" .md)
-        if ! [[ "$brief" == "$BUCKET/$base.md" && ! -L "$brief" && -f "$brief" ]] ||
-           ! [[ "$base" =~ ^[A-Z][A-Z0-9]+-[0-9]+-N[0-9]+[a-z]?-[A-Za-z0-9.-]+$ ]] ||
-           ! [[ "$model" =~ ^claude-(opus|sonnet|haiku)-5-5$ ]] || ! [[ "$chief" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{2,119}$ ]] ||
-           ! [[ -z "$effort" || "$effort" =~ ^(low|medium|high|xhigh)$ ]] ||
-           ! [[ -z "$api_account" || "$api_account" =~ ^([ABCD]|auto)$ ]]; then
-            refuse "$req" malformed; continue
-        fi
+        why=""
+        [[ "$brief" == "$BUCKET/$base.md" && ! -L "$brief" && -f "$brief" ]] || why+="${why:+, }brief-path"
+        [[ "$base" =~ ^[A-Z][A-Z0-9]+-[0-9]+-[A-Z][0-9]+[a-z]?-[A-Za-z0-9.-]+$ ]] || why+="${why:+, }brief-name"
+        [[ "$model" =~ ^claude-(opus|sonnet|haiku)-5-5$ ]] || why+="${why:+, }model"
+        [[ "$chief" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{2,119}$ ]] || why+="${why:+, }chief"
+        [[ -z "$effort" || "$effort" =~ ^(low|medium|high|xhigh)$ ]] || why+="${why:+, }effort"
+        [[ -z "$api_account" || "$api_account" =~ ^([ABCD]|auto)$ ]] || why+="${why:+, }api_account"
+        if [ -n "$why" ]; then refuse "$req" "malformed: $why"; continue; fi
         envs=(); bad=""; grant_text=""; paid=""; others=""; undecided=""
         IFS=, read -ra fl <<<"$flags"
         [ "${#fl[@]}" -le 5 ] || bad="more than 5 flags"
