@@ -1399,7 +1399,7 @@
     {
       "id": "tick-sh-intended-behavior",
       "kind": "rebuttal",
-      "rung": "advisory",
+      "rung": "prompt",
       "title": "tick.sh behaviors the chief accepted as intended (U+2019 status names, partial GraphQL reads, standalone --pool-holds mirror)",
       "source": "coderabbit-learning",
       "globs": [
