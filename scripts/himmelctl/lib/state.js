@@ -73,7 +73,6 @@ function writeState(state) {
   fs.renameSync(tmp, p);
 }
 
-const LOCK_STALE_MS = 30000;
 const LOCK_WAIT_MS = 15000;
 
 function withStateLock(fn) {
@@ -87,10 +86,7 @@ function withStateLock(fn) {
       break;
     } catch (e) {
       if (e.code !== 'EEXIST') throw e;
-      let age = 0;
-      try { age = Date.now() - fs.statSync(lock).mtimeMs; } catch (_e) { continue; }
-      if (age > LOCK_STALE_MS) { fs.rmSync(lock, { recursive: true, force: true }); continue; }
-      if (Date.now() > deadline) throw new Error(`state.json is locked by another himmelctl (${lock}); retry, or remove it if none is running`);
+      if (Date.now() > deadline) throw new Error(`state.json is locked (${lock}); if no himmelctl or adopt is running, a crashed one left it: remove that directory and retry`);
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
     }
   }

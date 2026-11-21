@@ -202,4 +202,15 @@ s.save(stale);
 jq -e --arg k "$s6" '.given | has($k)' "$state_file" >/dev/null || fail "k: a save from a state loaded before add-target dropped $s6"
 ok "k: a writer holding an older state does not drop a listed project"
 
+mkdir "$HIMMELCTL_CACHE_DIR/state.json.lock" || fail "l: cannot plant a lock"
+node -e 'const t = Date.now() / 1000 - 600; require("fs").utimesSync(process.argv[1], t, t);' "$HIMMELCTL_CACHE_DIR/state.json.lock" \
+  || fail "l: cannot age the lock"
+before=$(sha "$state_file")
+s7="$work/s7"; new_repo "$s7"
+node "$statejs" add-target "$s7" > "$work/l.log" 2>&1 && fail "l: add-target ran through a held lock"
+[ "$(sha "$state_file")" = "$before" ] || fail "l: add-target wrote state.json through a held lock"
+[ -d "$HIMMELCTL_CACHE_DIR/state.json.lock" ] || fail "l: add-target removed a lock it did not take"
+grep -q 'state.json.lock' "$work/l.log" || fail "l: the refusal does not name the lock: $(cat "$work/l.log")"
+ok "l: a held lock is never taken over; add-target refuses and names it"
+
 echo "PASS: test-himmelctl-projects.sh"
