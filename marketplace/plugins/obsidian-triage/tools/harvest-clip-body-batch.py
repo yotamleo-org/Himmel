@@ -1592,9 +1592,6 @@ def stamped_youtube_partial(fm: dict) -> bool:
 
 
 def flagged_thin_article(fm: dict) -> bool:
-    """A thin-body partial the harvest marked on an article host still waits
-    for its page text, even when a later triage summary makes the body read
-    rich: the mark decides, not the body."""
     return (fm.get("harvest_status") == "partial" and fm.get("harvest_flag") == "thin-body"
             and firecrawl_eligible(canonicalize((fm.get("source") or "").strip().strip('"')) or ""))
 
@@ -1605,7 +1602,6 @@ def reharvest_due(fm_raw: str, fm: dict, body: str) -> bool:
 
 
 def last_tried(path: Path) -> str:
-    """The clip's harvest_defer_last, empty when it was never tried."""
     try:
         fm = parse_frontmatter(path.read_text(encoding="utf-8"))[0]
     except Exception:

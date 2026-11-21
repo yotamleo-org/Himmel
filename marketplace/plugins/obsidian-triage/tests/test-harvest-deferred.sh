@@ -185,10 +185,7 @@ check("dry-run writes no pending report", not (v2 / ".harvest-pending.md").exist
 check("dry-run writes no .harvest.done", not (v2 / ".harvest.done").exists())
 check("dry-run writes no provisional marker", not (v2 / ".harvest.done.provisional").exists())
 
-# A thin partial article clip with no try time is retried even when triage
-# wrote a metadata summary that makes the body read rich, and the attempt
-# records a try time instead of stamping the summary ok.
-v3 = tmp / "vault3"
+v3 =tmp / "vault3"
 ev = v3 / "Clippings" / "_evidence"
 ev.mkdir(parents=True)
 summarised = ev / "summarised.md"
@@ -205,8 +202,6 @@ check("its failed retry records a try time and stays partial", g == "~" and f.ge
       and f.get("harvest_defer_last") == mod.TODAY, msg + "\n" + summarised.read_text())
 
 
-# The fetch budget goes to the least recently tried clip first, so a clip
-# never tried is not starved by one that keeps failing ahead of it.
 class RecordingChain(Chain):
     def __init__(self, remaining):
         super().__init__(remaining, RuntimeError("offline"))
