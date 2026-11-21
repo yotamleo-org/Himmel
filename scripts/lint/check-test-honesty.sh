@@ -100,8 +100,10 @@ if [ "${#files[@]}" -eq 0 ]; then
 fi
 
 # ---- 5. install, versions, resolved plugin ------------------------------------
-tracked=$(git ls-files -- "$PKG_REL/node_modules/") || refuse "cannot list tracked files under $PKG_REL/node_modules/"
+# Both spellings: the slash form misses a tracked symlink named node_modules.
+tracked=$(git ls-files -- "$PKG_REL/node_modules" "$PKG_REL/node_modules/") || refuse "cannot list tracked files under $PKG_REL/node_modules/"
 [ -z "$tracked" ] || refuse "tracked files under $PKG_REL/node_modules/ - the install must never be committed"
+[ ! -L "$PKG_REL/node_modules" ] || refuse "$PKG_REL/node_modules is a symlink - the install must be a real directory"
 
 lock="$PKG_REL/bun.lock"
 [ -f "$lock" ] || refuse "$lock is missing"
@@ -124,16 +126,34 @@ if [ "$marker_sha" != "$lock_sha" ]; then
     printf '%s\n' "$lock_sha" > "$marker" || refuse "cannot write $marker"
 fi
 
-# The installed versions of the three direct dependencies equal the pins, and
-# the plugin specifier resolves to the installed plugin, not a local redirect.
+# The lint package.json has exactly the expected shape, the installed versions
+# of the three direct dependencies equal its pins, and the plugin specifier
+# resolves to the installed plugin under both CommonJS and ESM conditions, not
+# to a local redirect. Run as an ES module from the package dir so that
+# import.meta.resolve is anchored there.
 read -r -d '' check_install_js <<'EOF'
-const fs = require("node:fs");
-const path = require("node:path");
-const { createRequire } = require("node:module");
+import fs from "node:fs";
+import path from "node:path";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 const pkgDir = path.join(process.argv[1], "scripts/lint/landmines");
 const say = (m) => console.error("check-test-honesty: " + m);
+const names = ["@babel/parser", "@interfere/landmines", "oxlint"];
+const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 try {
-  const deps = JSON.parse(fs.readFileSync(path.join(pkgDir, "package.json"), "utf8")).dependencies;
+  const pkg = JSON.parse(fs.readFileSync(path.join(pkgDir, "package.json"), "utf8"));
+  const shapeOk = isObject(pkg)
+    && isDeepStrictEqual(Object.keys(pkg).sort(), ["dependencies", "private"])
+    && pkg.private === true
+    && isObject(pkg.dependencies)
+    && isDeepStrictEqual(Object.keys(pkg.dependencies).sort(), names)
+    && names.every((n) => /^[0-9]+\.[0-9]+\.[0-9]+$/.test(pkg.dependencies[n]));
+  if (!shapeOk) {
+    say('lint package.json shape: expected exactly {"private":true,"dependencies":{"@babel/parser","@interfere/landmines","oxlint": exact versions}} and no other key');
+    process.exit(1);
+  }
+  const deps = pkg.dependencies;
   let bad = false;
   for (const name of ["oxlint", "@interfere/landmines", "@babel/parser"]) {
     const pin = deps && deps[name];
@@ -150,17 +170,21 @@ try {
     }
   }
   if (bad) process.exit(1);
-  const resolved = fs.realpathSync(createRequire(path.join(pkgDir, "package.json")).resolve("@interfere/landmines/testing"));
+  const specifier = "@interfere/landmines/testing";
   const want = fs.realpathSync(path.join(pkgDir, "node_modules/@interfere/landmines/dist/testing.mjs"));
-  if (resolved !== want) {
-    say(`@interfere/landmines/testing resolves to ${resolved}, not the installed plugin ${want}`);
-    process.exit(1);
+  const viaRequire = fs.realpathSync(createRequire(path.join(pkgDir, "package.json")).resolve(specifier));
+  const viaImport = fs.realpathSync(fileURLToPath(import.meta.resolve(specifier)));
+  for (const [how, got] of [["require", viaRequire], ["import", viaImport]]) {
+    if (got !== want) {
+      say(`${specifier} resolves to ${got} (${how}), not the installed plugin ${want}`);
+      process.exit(1);
+    }
   }
 } catch (err) {
   say(`install check failed: ${err.message}`);
   process.exit(1);
 }
 EOF
-node -e "$check_install_js" "$repo_root" </dev/null || refuse "install not verified - refusing to pass an unevaluated run"
+(cd "$PKG_REL" && node --input-type=module -e "$check_install_js" "$repo_root" </dev/null) || refuse "install not verified - refusing to pass an unevaluated run"
 
 exit 0

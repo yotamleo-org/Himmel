@@ -628,7 +628,7 @@ case_i3_node() {
     mk_tools "$REPO" "${BASE_TOOLS[@]}" bun
     run_gate "$REPO" 0 "$REPO/tools"
     assert_eq "i3-no-node exits 0 locally" 0 "$GATE_RC"
-    assert_has "i3-no-node warns" "WARN" "$GATE_OUT"
+    assert_has "i3-no-node warns" "node not found on PATH" "$GATE_OUT"
     run_gate "$REPO" 1 "$REPO/tools"
     assert_eq "i3-no-node exits 1 under OXLINT_FAIL_CLOSED" 1 "$GATE_RC"
 
@@ -703,7 +703,7 @@ case_i3_install() {
     mk_tools "$REPO" "${BASE_TOOLS[@]}" node
     run_gate "$REPO" 0 "$REPO/tools"
     assert_eq "i3-no-bun-needs-install exits 0 locally" 0 "$GATE_RC"
-    assert_has "i3-no-bun-needs-install warns" "WARN" "$GATE_OUT"
+    assert_has "i3-no-bun-needs-install warns" "bun not found on PATH" "$GATE_OUT"
     run_gate "$REPO" 1 "$REPO/tools"
     assert_eq "i3-no-bun-needs-install exits 1 under OXLINT_FAIL_CLOSED" 1 "$GATE_RC"
 
@@ -768,8 +768,48 @@ case_f1_resolved() {
     run_gate "$REPO" 1 "$PATH"
     assert_eq "f1-resolved-control exits 0" 0 "$GATE_RC"
 
+    # The lint package.json itself is held to its exact shape, so a self-reference
+    # redirect (name + exports) is refused at the shape line.
     printf '%s\n' 'export default {};' > "$REPO/scripts/lint/landmines/noop.mjs"
     edit_pkg 'p.name = "@interfere/landmines"; p.exports = { "./testing": "./noop.mjs" };'
+    run_gate "$REPO" 0 "$PATH"
+    assert_eq "f1-package-shape-gate self-reference exits 1" 1 "$GATE_RC"
+    assert_has "f1-package-shape-gate self-reference is refused at the shape line" "lint package.json shape" "$GATE_OUT"
+    edit_pkg 'delete p.name; delete p.exports; p.dependencies.extra = "1.0.0";'
+    run_gate "$REPO" 0 "$PATH"
+    assert_eq "f1-package-shape-gate extra dependency exits 1" 1 "$GATE_RC"
+    assert_has "f1-package-shape-gate extra dependency is refused at the shape line" "lint package.json shape" "$GATE_OUT"
+    edit_pkg 'delete p.dependencies.extra; p.dependencies.oxlint = "^1.93.0";'
+    run_gate "$REPO" 0 "$PATH"
+    assert_eq "f1-package-shape-gate inexact pin exits 1" 1 "$GATE_RC"
+    assert_has "f1-package-shape-gate inexact pin is refused at the shape line" "lint package.json shape" "$GATE_OUT"
+    git -C "$REPO" checkout -q -- scripts/lint/landmines/package.json
+    edit_pkg 'p.name = "x";'
+    run_gate "$REPO" 0 "$PATH"
+    assert_eq "f1-package-shape-gate extra key exits 1" 1 "$GATE_RC"
+    assert_has "f1-package-shape-gate extra key is refused at the shape line" "lint package.json shape" "$GATE_OUT"
+}
+
+# fake_plugin <exports value for ./testing>: replaces the temp install's plugin
+# with a real directory whose dist/testing.mjs is the real plugin, and whose
+# dist/noop.mjs is a decoy the exports map may point at.
+fake_plugin() {
+    local d="$REPO/scripts/lint/landmines/node_modules/@interfere/landmines"
+    rm -f -- "$REPO/scripts/lint/landmines/node_modules/@interfere"
+    mkdir -p "$d/dist"
+    ln -s "$PKG/node_modules/@interfere/landmines/dist/testing.mjs" "$d/dist/testing.mjs"
+    printf '%s\n' 'export default {};' > "$d/dist/noop.mjs"
+    printf '{"name":"@interfere/landmines","version":"0.1.0","type":"module","exports":{"./testing":%s}}\n' "$1" > "$d/package.json"
+}
+
+case_f1_resolved_installed_plugin() {
+    mk_repo || { fail "f1-installed-plugin (no temp repo)"; return; }
+    link_install "$REPO"
+    fake_plugin '"./dist/testing.mjs"'
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "f1-resolved-fake-plugin-control exits 0" 0 "$GATE_RC"
+
+    fake_plugin '"./dist/noop.mjs"'
     run_gate "$REPO" 0 "$PATH"
     assert_eq "f1-resolved-specifier exits 1" 1 "$GATE_RC"
     assert_has "f1-resolved-specifier is refused by the resolve check" "resolves to" "$GATE_OUT"
@@ -777,6 +817,16 @@ case_f1_resolved() {
         *"version mismatch"*) fail "f1-resolved-specifier is not a version mismatch" ;;
         *) pass "f1-resolved-specifier is not a version mismatch" ;;
     esac
+
+    fake_plugin '{"import":"./dist/noop.mjs","default":"./dist/testing.mjs"}'
+    run_gate "$REPO" 0 "$PATH"
+    assert_eq "f1-esm-conditional-exports exits 1" 1 "$GATE_RC"
+    assert_has "f1-esm-conditional-exports names the import resolution" "(import)" "$GATE_OUT"
+
+    fake_plugin '{"require":"./dist/noop.mjs","default":"./dist/testing.mjs"}'
+    run_gate "$REPO" 0 "$PATH"
+    assert_eq "f1-cjs-conditional-exports exits 1" 1 "$GATE_RC"
+    assert_has "f1-cjs-conditional-exports names the require resolution" "(require)" "$GATE_OUT"
 }
 
 case_f2_tracked_node_modules() {
@@ -789,6 +839,33 @@ case_f2_tracked_node_modules() {
     assert_eq "f2-tracked-node-modules exits 1" 1 "$GATE_RC"
     assert_has "f2-tracked-node-modules names the cause" "tracked files under scripts/lint/landmines/node_modules/" "$GATE_OUT"
     assert_eq "f2-tracked-node-modules refuses before any install" 0 "$(calls_count)"
+}
+
+case_f2_tracked_node_modules_symlink() {
+    local nm
+    mk_repo || { fail "f2-symlink (no temp repo)"; return; }
+    nm="$REPO/scripts/lint/landmines/node_modules"
+    link_install "$REPO"
+    stand_in "$REPO" bun 'exit 0' record
+
+    # Tracked symlink in the index, real directory on disk: only the index check sees it.
+    mv "$nm" "$REPO/fake-nm"
+    ln -s ../../../fake-nm "$nm"
+    git -C "$REPO" add -f scripts/lint/landmines/node_modules
+    rm -f -- "$nm"
+    cp -R "$REPO/fake-nm" "$nm"
+    run_gate "$REPO" 0 "$REPO/bin:$PATH"
+    assert_eq "f2-tracked-node-modules-symlink (index only) exits 1" 1 "$GATE_RC"
+    assert_has "f2-tracked-node-modules-symlink (index only) names the cause" "tracked files under scripts/lint/landmines/node_modules/" "$GATE_OUT"
+
+    # Untracked symlink on disk.
+    git -C "$REPO" rm -q --cached scripts/lint/landmines/node_modules
+    rm -rf -- "$nm"
+    ln -s ../../../fake-nm "$nm"
+    run_gate "$REPO" 0 "$REPO/bin:$PATH"
+    assert_eq "f2-node-modules-symlink (on disk) exits 1" 1 "$GATE_RC"
+    assert_has "f2-node-modules-symlink (on disk) names the cause" "is a symlink" "$GATE_OUT"
+    assert_eq "f2-tracked-node-modules-symlink refuses before any install" 0 "$(calls_count)"
 }
 
 case_gate_early_exits() {
@@ -840,7 +917,9 @@ case_gate_matches_literal
 case_i3_install
 case_i3_version_mismatch
 case_f1_resolved
+case_f1_resolved_installed_plugin
 case_f2_tracked_node_modules
+case_f2_tracked_node_modules_symlink
 case_gate_early_exits
 case_i3_real_marker_untouched
 
