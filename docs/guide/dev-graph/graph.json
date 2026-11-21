@@ -3615,7 +3615,8 @@
         "size": "a SIZE-ESCALATE row for a refused or bulk brief: the chief splits it, signs a size override or escalates to the operator, operational triage",
         "pr-watch": "a watched outside PR whose head, comments, reviews or state moved: the chief reads it and relaunches the closed worker or acts, operational triage",
         "owed-actions": "chief notification rows of the owed ledger (a step past its due date, a step whose due date is missing or invalid, a readiness 24-hour reminder): after receipt the chief acknowledges them with owe.sh close (stream mode: chief-wait.sh --ack with --receipt), and proof and source step debt stays open for the chief, operational triage",
-        "waiter-error": "a fault of the waiter itself (an acknowledgement stuck, a supervisor failure, a hung child, an unread worker document, a pending-events timeout or manifest/cursor failure): the chief inspects the named diagnostic without arming a second waiter while its supervisor is live, repairs the named document or state, and never closes proof or source debt to silence it, operational triage"
+        "waiter-error": "a fault of the waiter itself (an acknowledgement stuck, a supervisor failure, a hung child, an unread worker document, a pending-events timeout or manifest/cursor failure): the chief inspects the named diagnostic without arming a second waiter while its supervisor is live, repairs the named document or state, and never closes proof or source debt to silence it, operational triage",
+        "ready-mismatch": "a READY whose judge or trust-path claim the diff contradicts went ALERT: the chief reads the tick.sh --ready-mismatch rows and re-rules the PR, operational triage"
       }
     },
     "docs/handover/worker-preface.md": {

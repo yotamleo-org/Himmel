@@ -526,6 +526,26 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     carry a 40-hex head, still wakes as `WAKE tick changed=tails,acts`. Workers
     write READY as a bullet only, never a message.
 
+    **A READY, BLOCKED or FINDING no wake named yet wakes you once.** With
+    `--workers-from`, a worker whose newest marker bullet is a `READY <pr> <head40>`
+    (auto_go on; off, `WAKE ready` above owns it), a `BLOCKED` (not `BLOCKED resolve`)
+    or a `FINDING`, and that no wake of this inbox has named, wakes you with one line
+    each, `WAKE worker-ready <label> pr=<pr> head=<head40>`, `WAKE worker-blocked <label>`
+    or `WAKE worker-finding <label>`, plus the tick line. It catches what the other
+    wakes miss: a READY carried across a succession (the relay starts a worker it meets
+    first after its existing READYs), one already in the doc at the first sample (a
+    silent baseline), and one another wake folded into its saved key; the tick's tails=
+    must already show it in the saved key, so a fresh move still wakes as `WAKE tick`. A `WAKE tick` on
+    that worker's tails= or acts=, a READY the relay handed to worker-event, and the
+    earlier wake itself count as named (`<inbox>.wait.markerwoke`): the same head or
+    bullet never wakes twice, and a successor's new inbox wakes once more. Read the
+    worker's doc and act as on its message.
+
+    **A ready-mismatch ALERT wakes you.** The tick's `ready-mismatch=<flagged>/<ready>,nogo=<k>/<judged>,ALERT`
+    wakes `WAKE ready-mismatch <value>` plus the tick line when ALERT appears and again
+    when the flagged or NO-GO count rises (`<inbox>.wait.readymismatch`; cleared when
+    ALERT leaves). `tick.sh --ready-mismatch --ready-dir <doc dir>` lists the rows.
+
     **A GO'd PR whose worker went silent merges without it**: with `--doc` and `--workers-from`, a READY worker that has had a GO file and no doc write for `CHIEF_WAIT_WORKER_SILENT_MIN` minutes (default 45), and no live process unless its last bullet names its resume brief (`RESUME written: <…-RESUME.md>`) with no FINDING, HALTED, BLOCKED, PARKED-*, WRAPPED or MERGED newer than its READY, is merged by `silent-go-merge.sh` through ready-check at the GO head and `merge-on-green.sh --go`; you wake as `WAKE silent-go` with one `SILENT-WORKER-MERGE`, `-MERGE-FAILED` or `-HELD reason=<why>` line; the operator was already paged with it and your doc carries it as a bullet.
 
     **A watched outside PR that moved wakes you once.** A worker waiting on an outside event
