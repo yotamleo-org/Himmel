@@ -7,6 +7,7 @@ built by `vmsdk-job.py golden-build-linux`.
 """
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -165,14 +166,13 @@ printf '%s\n' "$*" >>"$FAKE_VBOX_LOG"
 case "$1 $2" in
   "list vms") printf '"himmel-peerjob-a-j1" {1}\n"ubuntu_new" {2}\n"himmel-peerjob-b-j2" {3}\n'; exit 0 ;;
   "showvminfo himmel-peer-golden") printf '"SATA-0-0"="%s"\n' "$FAKE_VBOX_DISK"; exit 0 ;;
-  showvminfo*) printf 'nic1="none"\nnic2="none"\nVMState="running"\n'; exit 0 ;;
+  showvminfo*) printf 'nic1="none"\nnic2="none"\nVMState="running"\n'; [ -n "${FAKE_VBOX_SHARED:-}" ] && printf 'SharedFolderNameMachineMapping1="host"\n'; exit 0 ;;
 esac
 if [ "$1" = guestcontrol ]; then
   case "$*" in
     *" run "*"--wait /bin/bash"*) [ -n "${FAKE_VBOX_HANG:-}" ] && exec sleep 30; printf 'ran\n'; exit "${FAKE_VBOX_RC:-0}" ;;
     *" run "*"pkill"*) exit 0 ;;
-    *" run "*"stat -c"*) printf '12\n'; exit 0 ;;
-    *" copyfrom "*) for a; do last="$a"; done; printf 'hello world\n' >"$last"; exit 0 ;;
+    *" run "*"--exe /usr/bin/head"*) [ -n "${FAKE_VBOX_FLOOD:-}" ] && exec yes; printf 'hello world\n'; exit 0 ;;
   esac
 fi
 exit 0
@@ -236,16 +236,32 @@ class TestVBoxArgv(unittest.TestCase):
         kill = [l for l in self.lines() if "pkill" in l]
         self.assertEqual(len(kill), 1)
         self.assertIn("pkill -KILL -s", kill[0])
+        self.assertNotIn("|| exit 0", kill[0])
+
+    def test_clone_refuses_a_golden_with_a_shared_folder(self):
+        r = self.cli("vm-clone", "goomal-j1", extra={"FAKE_VBOX_SHARED": "1"})
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertFalse(any(l.startswith("startvm") for l in self.lines()))
 
     def test_exec_rc_passes_through(self):
         self.assertEqual(self.cli("vm-exec", "goomal-j1", "--timeout", "5", "--", "true", extra={"FAKE_VBOX_RC": "3"}).returncode, 3)
 
-    def test_pull_checks_size_in_guest_first(self):
+    def test_pull_reads_at_most_max_bytes_plus_one(self):
         out = self.tmp / "out.json"
         self.assertEqual(self.cli("vm-pull", "goomal-j1", "/tmp/job/.job-result.json", str(out), "--max-bytes", "11").returncode, 2)
-        self.assertFalse(any(" copyfrom " in l for l in self.lines()))
+        self.assertFalse(out.exists())
         self.assertEqual(self.cli("vm-pull", "goomal-j1", "/tmp/job/.job-result.json", str(out), "--max-bytes", "16384").returncode, 0)
         self.assertEqual(out.read_text(), "hello world\n")
+        self.assertEqual(stat.S_IMODE(out.stat().st_mode), 0o600)
+        self.assertIn("--exe /usr/bin/head -- -c 16385 -- /tmp/job/.job-result.json", "\n".join(self.lines()))
+        self.assertFalse(any(" copyfrom " in l for l in self.lines()))
+
+    def test_pull_of_a_file_that_keeps_growing_stops_at_the_bound(self):
+        out = self.tmp / "out.log"
+        r = self.cli("vm-pull", "goomal-j1", "/tmp/job/job.log", str(out), "--max-bytes", "4096", extra={"FAKE_VBOX_FLOOD": "1"})
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertFalse(out.exists())
+        self.assertEqual([p.name for p in self.tmp.iterdir() if p.name.endswith(".part")], [])
 
     def test_sweep_destroys_only_our_clones(self):
         self.assertEqual(self.cli("vm-sweep").returncode, 0)
@@ -282,7 +298,7 @@ class TestRealVBox(unittest.TestCase):
 
     def test_guest_has_no_nic(self):
         info = subprocess.run(["VBoxManage", "showvminfo", f"himmel-peerjob-{self.JOB}", "--machinereadable"], capture_output=True, text=True).stdout
-        nics = [l for l in info.splitlines() if l.startswith("nic") and "=" in l]
+        nics = [l for l in info.splitlines() if re.match(r"^nic\d+=", l)]
         self.assertTrue(nics)
         self.assertTrue(all(l.split("=", 1)[1] == '"none"' for l in nics), nics)
 

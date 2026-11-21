@@ -16,7 +16,9 @@ PEER_JOB_BACKEND picks the backend: `vbox` (Linux test bed), `stub` (tests),
 `tart` (slice C; not built here). A job's files live in the
 guest under /tmp/job. A vm-exec timeout kills every process in the command's
 guest session (setsid, then pkill -s) and leaves the guest up for vm-pull.
-This file is a separate entry point; it never uses vmsdk.py.
+The session id is kept in the job-writable /tmp/job, so that kill stops a hung
+suite, not a hostile one: vm-destroy is the containment. vm-pull reads at most
+--max-bytes + 1 bytes from the guest. This file is a separate entry point; it never uses vmsdk.py.
 """
 import hashlib
 import json
@@ -27,6 +29,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -109,15 +112,13 @@ class StubBackend:
         self._log("vm-exec", job, argv=argv)
         return int(spec.get("rc", 0))
 
-    def size(self, job, path):
+    def pull(self, job, path, tmp, max_bytes):
+        self._log("vm-pull", job, path=path)
         f = self._guest(job) / os.path.basename(path)
         if not f.exists():
             raise BackendError(f"no such guest file: {path}")
-        return f.stat().st_size
-
-    def pull(self, job, path, tmp):
-        self._log("vm-pull", job, path=path)
-        shutil.copyfile(self._guest(job) / os.path.basename(path), tmp)
+        with open(f, "rb") as src:
+            write_private(Path(tmp), src.read(max_bytes + 1))
 
     def destroy(self, job):
         self._log("vm-destroy", job)
@@ -186,9 +187,11 @@ class VBoxJobBackend:
             time.sleep(5)
         raise BackendError("guest additions did not answer before the boot timeout")
 
-    def _nics_none(self, vm):
-        info = self._ok("showvminfo", vm, "--machinereadable")
-        nics = [l for l in info.splitlines() if re.match(r"^nic\d+=", l)]
+    def _isolated(self, vm):
+        lines = self._ok("showvminfo", vm, "--machinereadable").splitlines()
+        nics = [l for l in lines if re.match(r"^nic\d+=", l)]
+        if any(l.startswith("SharedFolderName") for l in lines):
+            return False
         return bool(nics) and all(l.split("=", 1)[1] == '"none"' for l in nics)
 
     def clone(self, job):
@@ -198,8 +201,8 @@ class VBoxJobBackend:
         try:
             nic_args = [a for n in range(1, self.NICS + 1) for a in (f"--nic{n}", "none")]
             self._ok("modifyvm", vm, *nic_args, "--clipboard-mode", "disabled", "--drag-and-drop", "disabled")
-            if not self._nics_none(vm):
-                raise BackendError("a NIC is still attached after modifyvm")
+            if not self._isolated(vm):
+                raise BackendError("a NIC or a shared folder is still attached after modifyvm")
             self._ok("startvm", vm, "--type", "headless")
             self._wait_ready(vm)
             rc, _, err = self._guest_run(vm, "/bin/mkdir", ["-p", "-m", "700", GUEST_DIR], 60)
@@ -222,20 +225,34 @@ class VBoxJobBackend:
         except subprocess.TimeoutExpired:
             p.kill()
             p.wait()
-        kill = f'sid=$(cat {SID_FILE}) || exit 0; pkill -KILL -s "$sid"; sleep 1; ! pgrep -s "$sid" >/dev/null'
+        kill = f'sid=$(cat {SID_FILE}) && [[ $sid =~ ^[0-9]+$ ]] || exit 3; pkill -KILL -s "$sid"; sleep 1; ! pgrep -s "$sid" >/dev/null'
         rc, _, err = self._guest_run(self._vm(job), "/bin/bash", ["-c", kill], 120)
         if rc != 0:
             raise BackendError(f"timeout: the guest session was not confirmed dead (rc {rc}): {err.strip()[-200:]}")
         return EXIT_TIMEOUT
 
-    def size(self, job, path):
-        rc, out, err = self._guest_run(self._vm(job), "/bin/bash", ["-c", 'stat -c %s -- "$1"', "size", path], 60)
-        if rc != 0 or not out.strip().isdigit():
-            raise BackendError(f"cannot stat {path} in the guest (rc {rc}): {err.strip()[-200:]}")
-        return int(out.strip())
-
-    def pull(self, job, path, tmp):
-        self._ok(*self._gc(self._vm(job), "copyfrom", path, tmp))
+    def pull(self, job, path, tmp, max_bytes):
+        cmd = [self.vbm, *self._gc(self._vm(job), "run", "--wait-stdout", "--exe", "/usr/bin/head", "--", "-c", str(max_bytes + 1), "--", path)]
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        timer = threading.Timer(600, p.kill)
+        timer.start()
+        left = max_bytes + 1
+        try:
+            with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as f:
+                while left > 0:
+                    chunk = p.stdout.read(min(1 << 16, left))
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    left -= len(chunk)
+            if left == 0:
+                p.kill()
+            rc = p.wait()
+        finally:
+            timer.cancel()
+            p.stdout.close()
+        if left > 0 and rc != 0:
+            raise BackendError(f"cannot read {path} in the guest (rc {rc})")
 
     def destroy(self, job):
         vm = self._vm(job)
@@ -364,11 +381,9 @@ def host_file(s):
 
 
 def cmd_pull(b, job, gpath, hpath, max_bytes):
-    if b.size(job, gpath) > max_bytes:
-        raise Refused(f"{gpath} is over --max-bytes {max_bytes}")
     tmp = f"{hpath}.{secrets.token_hex(4)}.part"
     try:
-        b.pull(job, gpath, tmp)
+        b.pull(job, gpath, tmp, max_bytes)
         if os.path.getsize(tmp) > max_bytes:
             raise Refused(f"{gpath} is over --max-bytes {max_bytes}")
         os.chmod(tmp, 0o600)

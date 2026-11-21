@@ -38,7 +38,8 @@ SB="$B/.himmel/peer-bridge"
 chat="$(tr -d '[:space:]' < "$E2E_CHAT_FILE")"
 case "$chat" in -[0-9]*) ;; *) die "E2E_CHAT_FILE holds no negative chat id" ;; esac
 [ -s "$CB/golden.guest" ] && [ -s "$CB/golden.digest" ] || die "no Task 11 fixture: run vmsdk-job.py golden-build-linux first"
-[ ! -e "$SB" ] && [ ! -e "$CB/peers.json" ] || die "B already has a peer bridge under $B; this run would mix with it"
+extra="$(find "$CB" -mindepth 1 -maxdepth 1 ! -name golden.guest ! -name golden.digest)"
+[ ! -e "$SB" ] && [ -z "$extra" ] || die "B already has a peer bridge under $B; this run would mix with it"
 
 tok_a="$(sed -n 's/^TELEGRAM_TEST_A_BOT=["'\'']\{0,1\}\([^"'\'']*\)["'\'']\{0,1\}$/\1/p' "$E2E_BOTS_FILE" | head -n 1)"
 tok_b="$(sed -n 's/^TELEGRAM_TEST_B_BOT=["'\'']\{0,1\}\([^"'\'']*\)["'\'']\{0,1\}$/\1/p' "$E2E_BOTS_FILE" | head -n 1)"

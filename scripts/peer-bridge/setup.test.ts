@@ -480,7 +480,7 @@ const setServes = (peer: string, serves: string[]) => {
 };
 t("runner: serves [] installs no unit; serves run-suite installs the OS unit; removing the peer removes it", async () => {
   const calls: string[] = [];
-  const ctl = { runnerCtl: (verb: "start" | "stop", p: string) => { calls.push(`${verb} ${p}`); } };
+  const ctl = { runnerCtl: (verb: "start" | "stop", p: string) => { calls.push(`${verb} ${p}`); return true; } };
   await addGoomal();
   await runner(mk(ctl).deps);
   expect(fs.existsSync(RUNNER_PATH())).toBe(false);
@@ -504,7 +504,7 @@ t("runner: serves [] installs no unit; serves run-suite installs the OS unit; re
 });
 t("runner: dropping run-suite from serves stops and removes the unit", async () => {
   const calls: string[] = [];
-  const ctl = { runnerCtl: (verb: "start" | "stop", p: string) => { calls.push(`${verb} ${p}`); } };
+  const ctl = { runnerCtl: (verb: "start" | "stop", p: string) => { calls.push(`${verb} ${p}`); return true; } };
   await addGoomal();
   setServes("goomal", ["run-suite"]);
   await runner(mk(ctl).deps);
@@ -512,6 +512,21 @@ t("runner: dropping run-suite from serves stops and removes the unit", async () 
   await runner(mk(ctl).deps);
   expect(fs.existsSync(RUNNER_PATH())).toBe(false);
   expect(calls).toEqual([`start ${RUNNER_PATH()}`, `stop ${RUNNER_PATH()}`]);
+});
+t("runner: a failed start removes the unit and refuses; a failed stop keeps it and refuses", async () => {
+  let ok = false;
+  const ctl = { runnerCtl: () => ok };
+  await addGoomal();
+  setServes("goomal", ["run-suite"]);
+  expect(await refused(runner(mk(ctl).deps))).toContain("could not start the runner unit");
+  expect(fs.existsSync(RUNNER_PATH())).toBe(false);
+  ok = true;
+  await runner(mk(ctl).deps);
+  expect(fs.existsSync(RUNNER_PATH())).toBe(true);
+  ok = false;
+  setServes("goomal", []);
+  expect(await refused(runner(mk(ctl).deps))).toContain("could not stop the runner unit");
+  expect(fs.existsSync(RUNNER_PATH())).toBe(true);
 });
 t("remove and uninstall need a typed yes", async () => {
   await addGoomal();

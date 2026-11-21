@@ -12,7 +12,7 @@ import type { Config } from "./config";
 import { step, type JobEvent } from "./jobstate";
 import { procHooks } from "./proc";
 import type { JobRecord } from "./resolve";
-import { MIN_SHA, RunnerRefused, start, tick, type RunnerDeps } from "./runner";
+import { MIN_SHA, RunnerFatal, RunnerRefused, start, tick, type RunnerDeps } from "./runner";
 import { writeSpoolEvent, type SpoolJobEvent } from "./spool-events";
 import { NOW_S, inJob } from "./testlib-jobs";
 
@@ -256,6 +256,22 @@ test("a full run submits vm-done with the outcomes, the golden digest and intege
   expect(Number.isSafeInteger(d.runner_minutes)).toBe(true);
   expect(w.jobs().find(j => j.jobNo === 2)!.state).toBe("DONE");
   expect(w.stubCalls().at(-1).verb).toBe("vm-destroy");
+});
+
+test("serves is re-read every tick: a peer dropped from serves runs nothing", async () => {
+  const w = mkWorld({ exec: RESULT });
+  const cfg = w.deps.cfg;
+  w.deps.reload = () => ({ ...cfg, peers: { [PEER]: { ...cfg.peers[PEER], serves: [] } } }) as Config;
+  await run(w);
+  expect(w.stubCalls().map(c => c.verb)).toEqual(["vm-sweep"]);
+  expect(done(w)).toEqual([]);
+});
+
+test("a failed vm-destroy still submits vm-done, then stops the runner with RunnerFatal", async () => {
+  const w = mkWorld({ exec: RESULT, fail: { "vm-destroy": 1 } });
+  await start(w.deps);
+  await expect(tick(w.deps)).rejects.toBeInstanceOf(RunnerFatal);
+  expect(done(w).length).toBe(1);
 });
 
 test("the log is kept 0600 under S/<peer>/logs and only its sha256 and size are submitted", async () => {

@@ -44,8 +44,13 @@ export class RunnerRefused extends Error {
   constructor(message: string) { super(message); this.name = "RunnerRefused"; }
 }
 
+export class RunnerFatal extends Error {
+  constructor(message: string) { super(message); this.name = "RunnerFatal"; }
+}
+
 export type RunnerDeps = {
   cfg: Config;
+  reload?: () => Config;
   stateDir: string;
   configDir: string;
   minSha: string;
@@ -204,7 +209,7 @@ async function runJob(deps: RunnerDeps, peer: string, j: JobRecord): Promise<voi
   const logs = join(peerDir(deps, peer), "logs");
   let results: Outcome[] = Array(n).fill("error");
   let log: { log_sha256: string; log_bytes: number } | undefined;
-  let stopped = false, t0 = deps.now();
+  let stopped = false, destroyed = false, t0 = deps.now();
   try {
     const src = join(work, "src"), from = `file://${cacheDir(deps, peer)}`;
     fs.rmSync(work, { recursive: true, force: true });
@@ -219,27 +224,31 @@ async function runJob(deps: RunnerDeps, peer: string, j: JobRecord): Promise<voi
       if ((await vm(deps, "vm-push", id, f)) !== 0) throw new Error("vm-push failed");
     }
     const exec = await vmExec(deps, id, rec.backstop_s, live);
-    if (exec.stopped || !live()) { stopped = true; return; }
-    if (exec.code !== 0 && exec.code !== 124) deps.log(`runner: vm-exec for job ${j.jobNo} exited ${exec.code}`);
-    const resultFile = join(work, "result.json");
-    if ((await vm(deps, "vm-pull", id, "/tmp/job/.job-result.json", resultFile, "--max-bytes", String(RESULT_MAX))) !== 0) throw new Error("vm-pull of the result failed");
-    results = parseResult(readIf(resultFile), n);
-    fs.mkdirSync(logs, { recursive: true, mode: 0o700 });
-    const logFile = join(logs, `${j.jobNo}.log`);
-    if ((await vm(deps, "vm-pull", id, "/tmp/job/job.log", logFile, "--max-bytes", String(LOG_MAX))) === 0) {
-      const bytes = fs.readFileSync(logFile);
-      log = { log_sha256: createHash("sha256").update(bytes).digest("hex"), log_bytes: bytes.length };
+    stopped = exec.stopped || !live();
+    if (!stopped) {
+      if (exec.code !== 0 && exec.code !== 124) deps.log(`runner: vm-exec for job ${j.jobNo} exited ${exec.code}`);
+      const resultFile = join(work, "result.json");
+      if ((await vm(deps, "vm-pull", id, "/tmp/job/.job-result.json", resultFile, "--max-bytes", String(RESULT_MAX))) !== 0) throw new Error("vm-pull of the result failed");
+      results = parseResult(readIf(resultFile), n);
+      fs.mkdirSync(logs, { recursive: true, mode: 0o700 });
+      const logFile = join(logs, `${j.jobNo}.log`);
+      if ((await vm(deps, "vm-pull", id, "/tmp/job/job.log", logFile, "--max-bytes", String(LOG_MAX))) === 0) {
+        const bytes = fs.readFileSync(logFile);
+        log = { log_sha256: createHash("sha256").update(bytes).digest("hex"), log_bytes: bytes.length };
+      }
     }
   } catch (e) {
     results = Array(n).fill("error");
     deps.log(`runner: job ${j.jobNo}: ${(e as Error).message}`);
   } finally {
-    await vm(deps, "vm-destroy", id);
+    destroyed = (await vm(deps, "vm-destroy", id)) === 0;
     fs.rmSync(work, { recursive: true, force: true });
   }
-  if (stopped || !live()) return;
-  const runner_minutes = Math.max(0, Math.ceil((deps.now() - t0) / 60_000));
-  await deps.submit(peer, j.jobNo, { type: "vm-done", results, golden: golden(deps), ...log, runner_minutes });
+  if (!stopped && live()) {
+    const runner_minutes = Math.max(0, Math.ceil((deps.now() - t0) / 60_000));
+    await deps.submit(peer, j.jobNo, { type: "vm-done", results, golden: golden(deps), ...log, runner_minutes });
+  }
+  if (!destroyed) throw new RunnerFatal(`vm-destroy ${id} failed; exiting so the restart sweeps it`);
 }
 
 function sweepLogs(deps: RunnerDeps): void {
@@ -261,6 +270,7 @@ export async function start(deps: RunnerDeps): Promise<void> {
 }
 
 export async function tick(deps: RunnerDeps): Promise<void> {
+  if (deps.reload) deps.cfg = deps.reload();
   const peers = servingPeers(deps);
   for (const peer of peers) for (const j of jobsOf(deps, peer)) if (j.state === "RECEIVED") await resolveJob(deps, peer, j);
   const all = peers.flatMap(p => jobsOf(deps, p));
@@ -283,7 +293,7 @@ async function submitAndWait(peer: string, job: number, event: SpoolJobEvent): P
 async function main(): Promise<number> {
   const cfg = readPeersFile(peersFile());
   const deps: RunnerDeps = {
-    cfg, stateDir: stateDir(), configDir: configDir(), minSha: MIN_SHA, env: process.env, now: Date.now, watchMs: 5000,
+    cfg, reload: () => readPeersFile(peersFile()), stateDir: stateDir(), configDir: configDir(), minSha: MIN_SHA, env: process.env, now: Date.now, watchMs: 5000,
     submit: submitAndWait, log: line => process.stderr.write(`${line}\n`),
   };
   if (servingPeers(deps).length === 0) throw new RunnerRefused("no peer lists run-suite in serves");
@@ -291,7 +301,7 @@ async function main(): Promise<number> {
   try {
     await start(deps);
     for (;;) {
-      try { await tick(deps); } catch (e) { deps.log(`runner: tick failed: ${(e as Error).message}`); }
+      try { await tick(deps); } catch (e) { if (e instanceof RunnerFatal) throw e; deps.log(`runner: tick failed: ${(e as Error).message}`); }
       await Bun.sleep(TICK_MS);
     }
   } finally { release(); }

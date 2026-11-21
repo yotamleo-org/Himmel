@@ -46,7 +46,7 @@ export type Deps = {
   loadToken?: () => string;
   makeTg?: (token: string) => Pick<PeerTelegram, "getChat" | "getChatMember">;
   stopUnit?: () => void;
-  runnerCtl?: (verb: "start" | "stop", path: string) => void;
+  runnerCtl?: (verb: "start" | "stop", path: string) => boolean;
   hostname?: string;
 };
 
@@ -86,14 +86,14 @@ function runnerUnitPath(): string | null {
   return null;
 }
 
-function runnerCtlDefault(verb: "start" | "stop", path: string): void {
+function runnerCtlDefault(verb: "start" | "stop", path: string): boolean {
   const opts = { stdio: "ignore" as const, timeout: 15_000 };
   if (process.platform === "linux") {
-    spawnSync("systemctl", ["--user", "daemon-reload"], opts);
-    spawnSync("systemctl", ["--user", verb === "start" ? "enable" : "disable", "--now", RUNNER_UNIT], opts);
-  } else if (process.platform === "darwin") {
-    spawnSync("launchctl", [verb === "start" ? "bootstrap" : "bootout", `gui/${process.getuid!()}`, path], opts);
+    if (spawnSync("systemctl", ["--user", "daemon-reload"], opts).status !== 0) return false;
+    return spawnSync("systemctl", ["--user", verb === "start" ? "enable" : "disable", "--now", RUNNER_UNIT], opts).status === 0;
   }
+  const st = spawnSync("launchctl", [verb === "start" ? "bootstrap" : "bootout", `gui/${process.getuid!()}`, path], opts).status;
+  return st === 0 || (verb === "stop" && st === 3);
 }
 
 function syncRunner(raw: any, deps: Deps): void {
@@ -110,10 +110,13 @@ function syncRunner(raw: any, deps: Deps): void {
     const text = fs.readFileSync(join(import.meta.dir, "units", basename(path)), "utf8").replaceAll("@HIMMEL_ROOT@", raw.himmelRoot).replaceAll("@HOME@", h);
     fs.mkdirSync(dirname(path), { recursive: true });
     writeNew(path, text, 0o644);
-    ctl("start", path);
+    if (!ctl("start", path)) {
+      fs.rmSync(path, { force: true });
+      refuse(`could not start the runner unit ${path}; it was removed, run setup.ts runner again`);
+    }
     deps.out(`installed and started the runner unit ${path}`);
   } else if (!serving && fs.existsSync(path)) {
-    ctl("stop", path);
+    if (!ctl("stop", path)) refuse(`could not stop the runner unit ${path}; it stays installed, run setup.ts runner again`);
     fs.rmSync(path, { force: true });
     deps.out(`no peer serves run-suite; stopped and removed the runner unit ${path}`);
   }
