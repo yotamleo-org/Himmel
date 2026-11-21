@@ -32,9 +32,10 @@
 #                           <signal-file> <deadline-epoch> <log> [model]
 # Run detached, stderr kept in a file beside the log:
 #   setsid nohup bash headed-arm-worker.sh --fleet <manifest> ... <log> <model> >>"<log>.launcher.out" 2>&1 &
-# Every non-zero exit of a real launch appends one `LAUNCH-REFUSED <session> <reason>` line to <log> (created as
-# this launcher's first action) and to the owning chief's console inbox (--chief, else HIMMEL_CONSOLE_NAME) when
-# that inbox exists. chief-kit/launch-confirm.sh then confirms the session started.
+# A real launch first appends `LAUNCH-START <session> epoch=<s>` to <log>. Exit 0 appends `LAUNCH-OK <session>
+# <outcome>`; every non-zero exit appends one `LAUNCH-REFUSED <session> <reason>` line there and in the owning chief's
+# console inbox (--chief, else HIMMEL_CONSOLE_NAME) when that inbox exists. chief-kit/launch-confirm.sh reads the
+# lines after the newest LAUNCH-START to confirm this attempt started a session.
 #
 # --dry-run: prints the argv this would hand to headed-arm.sh (name, doc,
 # signal, deadline, log, model, resolved context) plus the worker env this
@@ -264,7 +265,9 @@ _lr_scan() {
     done
 }
 _lr_scan "$@"
-if [ "$_LAUNCH_REFUSAL_SKIP" -ne 1 ] && [ -n "$_LR_LOG" ]; then : >> "$_LR_LOG"; fi 2>/dev/null
+if [ "$_LAUNCH_REFUSAL_SKIP" -ne 1 ] && [ -n "$_LR_LOG" ]; then
+    printf '%s LAUNCH-START %s epoch=%s\n' "$(date +%F_%T)" "${_LR_NAME:-<unnamed>}" "$(date +%s)" >> "$_LR_LOG"
+fi 2>/dev/null
 # shellcheck disable=SC2329  # called from _launch_refusal_exit, which only the EXIT trap invokes
 _launch_refused_notify() {
     local name="${NAME:-${_LR_NAME:-}}" log="${LOG:-$_LR_LOG}" chief="${CHIEF_NAME:-$_LR_CHIEF}" reason root inbox guard_rc=0
@@ -335,7 +338,12 @@ _launch_attempt_start() {
 # shellcheck disable=SC2329  # invoked by the EXIT trap
 _launch_refusal_exit() {
     local rc=$?
-    if [ "$rc" -ne 0 ] && [ "${DRY_RUN:-0}" != 1 ] && [ "$_LAUNCH_REFUSAL_SKIP" -ne 1 ]; then _launch_refused_notify "$rc"; fi
+    if [ "${DRY_RUN:-0}" != 1 ] && [ "$_LAUNCH_REFUSAL_SKIP" -ne 1 ]; then
+        if [ "$rc" -ne 0 ]; then _launch_refused_notify "$rc"
+        elif [ -n "${LOG:-$_LR_LOG}" ]; then
+            printf '%s LAUNCH-OK %s %s\n' "$(date +%F_%T)" "${NAME:-${_LR_NAME:-<unnamed>}}" "${_LAUNCH_OUTCOME:-indeterminate}" >> "${LOG:-$_LR_LOG}"
+        fi
+    fi
     # the readiness role holds a lease the launcher acquired for a session that has not been started yet: any exit between
     # that acquire and the child's start (a refusal, the managed fleet hand-off refusal, a fatal signal) releases the
     # launcher's OWN captured token. The existing receipt and fleet handling below is unchanged.

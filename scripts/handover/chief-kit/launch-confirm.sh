@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/launch-confirm.sh - confirm a detached worker launch started a claude session.
 #
-# usage: launch-confirm.sh [--chief <name>] [--secs <n>] <session-name> <log>
+# usage: launch-confirm.sh [--chief <name>] [--secs <n>] [--since <epoch>] <session-name> <log>
 #
 # Run by the chief right after it launches a worker (headed-arm-worker.sh, detached) and touches its signal file.
-# Polls once a second, up to --secs (default 60, or LAUNCH_CONFIRM_SECS), for a claude process carrying
-# `-n <session-name>`, the same pattern headed-arm.sh confirms a session with.
-#   seen                      -> prints `LAUNCH-CONFIRMED <session> pid=<pid>`, exit 0
-#   the log ends on the launcher's own LAUNCH-REFUSED line, or the window ends with no session
+# Polls once a second, up to --secs (default 60, or LAUNCH_CONFIRM_SECS), on this launch attempt only: the lines
+# <log> holds after its newest `LAUNCH-START <session> epoch=<s>` line with <s> at or after --since (default: 120 s
+# before this run), so an older attempt's lines and an older session never decide it. An attempt whose START predates
+# this run decides nothing for the first 3 s: a launch made just before this run gets that long to log its own START.
+#   the attempt wrote LAUNCH-OK and a claude process carries `-n <session-name>` (headed-arm.sh's pattern)
+#                             -> prints `LAUNCH-CONFIRMED <session> pid=<pid>`, exit 0
+#   the attempt wrote LAUNCH-REFUSED, or the window ends first
 #                             -> `LAUNCH-UNCONFIRMED <session> <reason>` on stderr, appended to <log> and, when the
 #                                chief's console inbox exists, to that inbox (the one the waiter drains); exit 1
 # The chief is --chief, else HIMMEL_CONSOLE_NAME. Exit 2: usage.
@@ -15,12 +18,13 @@
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-usage() { echo "usage: launch-confirm.sh [--chief <name>] [--secs <n>] <session-name> <log>" >&2; exit 2; }
-chief="${HIMMEL_CONSOLE_NAME:-}" secs="${LAUNCH_CONFIRM_SECS:-60}"
+usage() { echo "usage: launch-confirm.sh [--chief <name>] [--secs <n>] [--since <epoch>] <session-name> <log>" >&2; exit 2; }
+chief="${HIMMEL_CONSOLE_NAME:-}" secs="${LAUNCH_CONFIRM_SECS:-60}" since=$(( $(date +%s) - 120 ))
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --chief) [ "$#" -ge 2 ] || usage; chief="$2"; shift 2 ;;
         --secs) [ "$#" -ge 2 ] || usage; secs="$2"; shift 2 ;;
+        --since) [ "$#" -ge 2 ] || usage; since="$2"; shift 2 ;;
         --*) usage ;;
         *) break ;;
     esac
@@ -29,6 +33,7 @@ done
 name="$1" log="$2"
 case "$name" in ''|.|..|*[!A-Za-z0-9._-]*) echo "launch-confirm: session name must be letters, digits, '.', '_' or '-' (got: $name)" >&2; exit 2 ;; esac
 case "$secs" in ''|*[!0-9]*) usage ;; esac
+case "$since" in ''|*[!0-9]*) usage ;; esac
 pgrep_bin="${PGREP_CMD:-pgrep}"
 pat="[c]laude .*-n ${name//./\\.}( |\$)"
 
@@ -45,18 +50,39 @@ unconfirmed() {
     exit 1
 }
 
+attempt_state() {
+    [ -r "$log" ] || { echo none; return 0; }
+    awk -v n="$name" -v since="$since" '
+        $2 == "LAUNCH-START" && $3 == n { e = $4; sub(/^epoch=/, "", e); if (e + 0 >= since) { s = 1; at = e + 0; r = ""; ok = 0 } else { s = 0 }; next }
+        s && $2 == "LAUNCH-REFUSED" && $3 == n { r = $0; sub(/^[^ ]+ [^ ]+ [^ ]+ /, "", r); if (r == "") r = "no reason given" }
+        s && $2 == "LAUNCH-OK" && $3 == n { ok = 1 }
+        END { if (!s) print "none 0"; else if (r != "") print "refused " at " " r; else if (ok) print "ok " at; else print "running " at }
+    ' "$log"
+}
+
+began=$(date +%s)
 n=0
 while :; do
-    pid="$("$pgrep_bin" -f "$pat" 2>/dev/null | head -n 1)"  # swallow-ok: a failed scan reads as no session yet; the window still ends in LAUNCH-UNCONFIRMED
-    if [ -n "$pid" ]; then
-        echo "LAUNCH-CONFIRMED $name pid=$pid"
-        exit 0
+    state="$(attempt_state)"
+    kind="${state%% *}" rest="${state#* }" at="${state#* }"; at="${at%% *}"
+    if [ "$n" -ge 3 ] || [ "$n" -ge "$secs" ] || [ "$at" -ge "$began" ]; then
+        case "$kind" in
+            refused) unconfirmed "the launcher refused: ${rest#* }" ;;
+            ok)
+                pid="$("$pgrep_bin" -f "$pat" 2>/dev/null | head -n 1)"  # swallow-ok: a failed scan reads as no session yet; the window still ends in LAUNCH-UNCONFIRMED
+                if [ -n "$pid" ]; then
+                    echo "LAUNCH-CONFIRMED $name pid=$pid"
+                    exit 0
+                fi ;;
+        esac
     fi
-    last="$(grep -v '^[[:space:]]*$' "$log" 2>/dev/null | tail -n 1)"  # swallow-ok: an unreadable log reads as no refusal yet; the window still ends in LAUNCH-UNCONFIRMED
-    case "$last" in
-        *" LAUNCH-REFUSED $name "*) unconfirmed "the launcher refused: ${last#* LAUNCH-REFUSED "$name" }" ;;
-    esac
-    [ "$n" -lt "$secs" ] || unconfirmed "no claude session within ${secs}s"
+    if [ "$n" -ge "$secs" ]; then
+        case "$kind" in
+            none) unconfirmed "no launch attempt started in $log within ${secs}s" ;;
+            running) unconfirmed "the launcher had not finished within ${secs}s" ;;
+            *) unconfirmed "the launcher exited 0 but no claude session within ${secs}s" ;;
+        esac
+    fi
     sleep 1
     n=$((n + 1))
 done
