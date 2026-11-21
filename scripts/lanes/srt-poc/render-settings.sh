@@ -20,7 +20,6 @@ case "$profile" in
     *) echo "render-settings: unknown profile: $profile" >&2; exit 2 ;;
 esac
 home="${HOME:?}"
-# the JSON is printf-built, so refuse any argument that would need escaping
 scratch_home="${SRT_SCRATCH_HOME:-}"
 for v in "$worktree" "$scratch" "$handover" "$home" "$scratch_home" "$@"; do
     case "$v" in

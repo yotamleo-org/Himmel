@@ -45,7 +45,6 @@ done
 [ -f "$DOC" ] || { echo "ready-go-latency: doc not found: $DOC" >&2; exit 2; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-# handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
 if . "$HERE/../../../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
 # shellcheck source=../../../lib/handover-path.sh
@@ -88,8 +87,6 @@ esac
 BASE_DATE=$(basename "$DOC" | grep -o '[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}' | head -1)
 [ -n "$BASE_DATE" ] || { echo "ready-go-latency: no YYYY-MM-DD in the doc filename: $DOC" >&2; exit 2; }
 
-# One line per surviving READY: <pr> <sha> <HH:MM> <day-offset> <held 0|1>.
-# Every `- HH:MM` bullet feeds the midnight-crossing check, not only READY/HOLD.
 PARSED=$(awk '
     /^[ \t]*-[ \t]+[0-9][0-9]:[0-9][0-9]([ \t]|$)/ {
         line = $0
@@ -134,9 +131,6 @@ while read -r pr sha stamp day held; do
     if [ -n "$SINCE_EPOCH" ] && [ "$ready_epoch" -lt "$SINCE_EPOCH" ]; then sc_cov out-of-window; continue; fi
     if [ -n "$UNTIL_EPOCH" ] && [ "$ready_epoch" -ge "$UNTIL_EPOCH" ]; then sc_cov out-of-window; continue; fi
 
-    # The bullet's sha is a prefix: two GO files behind one prefix are
-    # ambiguous (refuse to guess), and a GO older than the READY stamp is a
-    # stale file from an earlier round, not the answer to this READY.
     go_mtime=""; nmatch=0
     for f in "$GO_DIR/$pr.$sha"*; do
         [ -e "$f" ] || continue

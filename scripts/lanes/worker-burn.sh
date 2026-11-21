@@ -125,8 +125,6 @@ else
         echo "worker-burn: no transcript root to search: $PROJECTS (set WORKER_SESSION_BURN_PROJECTS_DIR)" >&2
         exit 2
     fi
-    # Newest match wins: a resumed worker leaves several transcripts under one
-    # name and the last one is the session the caller means.
     TRANSCRIPT=""
     NEWEST=0
     while IFS= read -r f; do
@@ -145,8 +143,6 @@ EOF
     fi
 fi
 
-# One streaming pass. `inputs` reads row by row, so a multi-hundred-MB
-# transcript never lands in memory whole.
 SUMMARY=$(jq -nr '
   def num(x): (x // 0);
   reduce inputs as $r (
@@ -205,14 +201,8 @@ AVG=$((CTX / CALLS))
 
 k() { awk -v n="$1" 'BEGIN { printf (n >= 1000 ? "%.1fk" : "%d"), (n >= 1000 ? n / 1000 : n) }'; }
 kf() { awk -v n="$1" 'BEGIN { printf (n >= 1000 ? "%.1fk" : "%.0f"), (n >= 1000 ? n / 1000 : n) }'; }
-# The four cost-eq inputs go through kr() instead of k()/kf()
-# directly, so --raw/WORKER_SESSION_BURN_RAW=1 can swap in the exact integer while the
-# default path (RAW=0) delegates to the same formatter as before.
 kr() { if [ "$RAW" -eq 1 ]; then awk -v n="$1" 'BEGIN { printf "%.0f", n }'; else "$2" "$1"; fi; }
 
-# Cache reads are priced per model (cache-read-weights.tsv): CR_PRICED is the weighted read total,
-# PRICE_MODEL the model with the most reads, UNKNOWN_CALLS the calls whose model has no table row
-# (priced at the 0.1 default).
 CR_PRICED=0; UNKNOWN_CALLS=0; PRICE_MODEL=unknown; TOP_CR=-1
 OLD_IFS="$IFS"; IFS=,
 for ent in $PER_MODEL; do

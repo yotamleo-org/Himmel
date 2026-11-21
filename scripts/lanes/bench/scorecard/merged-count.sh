@@ -37,12 +37,8 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$SINCE" ] || { usage; exit 2; }
 
-# Private->public repo cutover. SCORECARD_CUTOVER overrides it
-# for hermetic tests; production callers use the default.
 CUTOVER="${SCORECARD_CUTOVER:-2026-09-09T09:30:00Z}"
 BUNDLE="${BUNDLE_ARG:-${HIMMEL_PRIVATE_BUNDLE:-$HOME/.himmel/private-archive.bundle}}"
-# The private bundle only ever holds yotamleo/Himmel's pre-cutover history; a
-# straddling --since against any OTHER --repo must not pull it in.
 ARCHIVE_REPO="yotamleo/Himmel"
 
 # GNU `date -d` first; BSD/macOS `date -j -f` fallback (same convention as
@@ -61,7 +57,6 @@ fi
 RUN=$(tmpdir) || { echo "merged-count: mktemp failed" >&2; exit 1; }
 trap 'rm -rf "$RUN"' EXIT
 
-# $1=since_epoch $2=until_epoch $3=exclude propagate/dependabot (0/1)
 fetch_public() {
     gh pr list -R "$REPO" --state merged --limit 1000 --json number,title,mergedAt,author \
         --jq '.' > "$RUN/public.json" || { echo "merged-count: gh pr list failed" >&2; exit 1; }
@@ -69,8 +64,6 @@ fetch_public() {
     if [ "${pr_total:-0}" -ge 1000 ]; then
         echo "merged-count: WARNING: gh pr list returned $pr_total merged PRs (== --limit 1000); older history may be truncated" >&2
     fi
-    # stdout is the bare count (callers capture it), so the coverage
-    # of the PR list behind it goes to stderr.
     pr_win=$(jq --argjson s "$1" --argjson u "$2" '
       [.[] | select((.mergedAt | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) >= $s and (.mergedAt | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) < $u)] | length' "$RUN/public.json") || return 1
     pr_count="$pr_win"

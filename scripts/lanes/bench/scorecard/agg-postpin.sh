@@ -111,17 +111,13 @@ fi
 kn() { case "$1" in *k) awk -v n="${1%k}" 'BEGIN{printf "%.3f", n}';; *) awk -v n="$1" 'BEGIN{printf "%.3f", n/1000}';; esac; }
 ts_of() { grep -o '"timestamp":"[0-9TZ:.-]*"' "$1" 2>/dev/null | "$2" -1 | cut -d'"' -f4; }
 
-# cohort_ok <session-title>: the join key is the session NAME (customTitle), not
-# the transcript's UUID basename. Sets COHORT_WHY to the skip reason on failure.
 COHORT_WHY=""
 cohort_ok() {
     COHORT_WHY=""
     [ -z "$COHORT" ] && return 0
-    # a title is a filename component: never let one walk out of the log dir
     case "$1" in ""|*/*) COHORT_WHY=no-launch-record; return 1 ;; esac
     log="$LAUNCH_LOG_DIR/$1.log"
     [ -f "$log" ] || { COHORT_WHY=no-launch-record; return 1; }
-    # whole fields only: `other-profile=worker-impl` must not read as profile=worker-impl
     profiles=$(awk '/^headed-arm-(worker|leg):/ {for(i=1;i<=NF;i++) if($i ~ /^profile=/) print $i}' "$log" | sort -u)
     [ -n "$profiles" ] || { COHORT_WHY=no-launch-record; return 1; }
     if [ "$(printf '%s\n' "$profiles" | wc -l | tr -d ' ')" -gt 1 ]; then
@@ -130,8 +126,6 @@ cohort_ok() {
     [ "$profiles" = "profile=$COHORT" ] || { COHORT_WHY=other-cohort; return 1; }
 }
 
-# context_ok <session-title>: --context selects by the durable launch record.
-# Sets CONTEXT_WHY to the skip reason on failure.
 CONTEXT_WHY=""
 context_ok() {
     CONTEXT_WHY=""
@@ -143,7 +137,6 @@ context_ok() {
 }
 
 ROWS=""; FAILS=""; FILES=""; DISC_ERR=""
-# trap first: a later mktemp failing must not leak the files already created
 trap 'rm -f "$ROWS" "$FAILS" "$FILES" "$DISC_ERR" "$SC_COV"' EXIT
 ROWS=$(mktemp "${TMPDIR:-/tmp}/agg-postpin-rows.XXXXXX") || { echo "agg-postpin: mktemp failed" >&2; exit 1; }
 FAILS=$(mktemp "${TMPDIR:-/tmp}/agg-postpin-fails.XXXXXX") || { echo "agg-postpin: mktemp failed" >&2; exit 1; }
@@ -151,9 +144,6 @@ FILES=$(mktemp "${TMPDIR:-/tmp}/agg-postpin-files.XXXXXX") || { echo "agg-postpi
 DISC_ERR=$(mktemp "${TMPDIR:-/tmp}/agg-postpin-discerr.XXXXXX") || { echo "agg-postpin: mktemp failed" >&2; exit 1; }
 sc_cov_init || exit 1
 
-# A discovery error must not vanish (the agg-burn.sh rule): `find
-# 2>/dev/null | while` lost both find's errors and its status, so the coverage
-# line's `discovered=` would have counted a silently truncated file list.
 if ! sc_discover "$FILES" "$DISC_ERR"; then
     echo "agg-postpin: transcript discovery failed under the transcript root(s) - refusing to print a partial table:" >&2
     cat "$DISC_ERR" >&2
@@ -161,12 +151,9 @@ if ! sc_discover "$FILES" "$DISC_ERR"; then
 fi
 
 while IFS= read -r f; do
-    # title_of silences read errors: without this an unreadable file reads as an
-    # empty title and is misfiled as an intentional other-role exclusion
     [ -r "$f" ] || { sc_cov unreadable; continue; }
     case "$f" in */subagents/*) sc_cov subagent; continue ;; esac
     name=$(title_of "$f"); role=$(role_of "$name")
-    # an untitled session is counted by name, never folded into other-role
     [ "$role" != unattributed ] || { sc_cov unattributed; continue; }
     case "$role" in worker|chief|leg|console) ;; *) sc_cov other-role; continue ;; esac
     if [ -n "$ROLE_FILTER" ] && [ "$role" != "$ROLE_FILTER" ]; then sc_cov role-filter; continue; fi

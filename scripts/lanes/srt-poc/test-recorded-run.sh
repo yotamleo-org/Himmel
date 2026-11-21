@@ -20,8 +20,6 @@ hasnt() {
     if [ "$rc" -eq 1 ]; then ok "$3"; else bad "$3"; fi
 }
 
-# positive control: the negative matcher must see a planted FAIL row and must
-# not treat an unreadable file as "absent"
 ctl="$(mktemp)" || exit 1
 th="$(mktemp -d)" || exit 1
 trap 'rm -rf "$ctl" "$th"' EXIT
@@ -56,8 +54,7 @@ has "$REC/vm-run-failure-modes.txt" 'is empty\. Delete it' "failure: zero-byte s
 has "$REC/vm-run-failure-modes.txt" 'does not exist' "failure: missing settings refused"
 has "$REC/vm-run-failure-modes.txt" 'Sandbox dependencies not available' "failure: missing bwrap refused"
 
-# driver controls: run the real run-poc.sh against stub srt binaries in a throwaway HOME
-poc() { # <srt> <mode> <home> -> rc of the driver, output in $th/poc.out
+poc() {
     HOME="$3" SRT="$1" bash "$HERE/run-poc.sh" "$2" >"$th/poc.out" 2>&1
 }
 mkdir -p "$th/h1/.ssh"

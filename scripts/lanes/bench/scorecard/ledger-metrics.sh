@@ -77,11 +77,6 @@ END {
 }' "$RUN/merged-branches.txt" "$RUN/ledger-rows.tsv" | sort > "$RUN/ledger-per-branch.tsv"
 
 echo "merged_branches=$(wc -l < "$RUN/merged-branches.txt" | tr -d ' ') with_ledger_rows=$(wc -l < "$RUN/ledger-per-branch.tsv" | tr -d ' ')"
-# coverage: the two inputs behind the stats below. PRs: every fetched
-# PR is in the window or out of it (a bad mergedAt fails the jq above); the
-# --limit cut is the one silent way that input is incomplete. Branches: a merged
-# branch with no ledger rows contributes nothing to crit/imp/sug/rounds, so the
-# stats describe only the branches the ledger knows.
 win_count=$(jq 'length' "$RUN/merged.json")
 pr_truncated=no; [ "${merged_count:-0}" -ge 1000 ] && pr_truncated=yes
 echo "coverage: prs discovered=$merged_count parsed=$win_count skipped=$((merged_count - win_count)) (out-of-window=$((merged_count - win_count)) limit=1000 truncated=$pr_truncated)"
@@ -98,11 +93,6 @@ printf 'sug:  '; stat 4
 printf 'rounds: '; stat 5
 awk -F'\t' '{print $2+$3}' "$RUN/ledger-per-branch.tsv" | sort -n | awk '{a[NR]=$1; s+=$1} END{if(NR==0){print "crit+imp: n=0"; exit} med=(NR%2)?a[(NR+1)/2]:(a[NR/2]+a[NR/2+1])/2; printf "crit+imp: n=%d mean=%.2f median=%.1f\n", NR, s/NR, med}'
 
-# The plain public gh pr list count above undercounts any window
-# straddling the 2026-09-09 private->public cutover (pre-cutover work PRs live
-# only in the private archive bundle); merged-count.sh unions the two. The
-# per-branch ledger stats above stay on the public-only merged.json join —
-# only the C7 denominator (this final count) is corrected.
 if [ -n "$UNTIL" ]; then
     TOTAL_COUNT=$("$HERE/merged-count.sh" --since "$SINCE" --until "$UNTIL" --repo "$REPO")
 else

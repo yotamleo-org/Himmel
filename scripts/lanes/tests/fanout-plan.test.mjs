@@ -4,8 +4,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { buildFanoutPlan } from '../fanout-plan.mjs';
 
-// The claudex row comes from the real registry, so the roster carries
-// exactly the dormancy (none) that lanes.json declares for it.
 const REG = JSON.parse(readFileSync(new URL('../lanes.json', import.meta.url), 'utf8'));
 const CLAUDEX = REG.lanes.find((l) => l.id === 'claudex');
 
@@ -17,10 +15,6 @@ const LIVE = [
   { id: CLAUDEX.id, label: CLAUDEX.label, class: CLAUDEX.class, ...(CLAUDEX.dormant ? { dormant: CLAUDEX.dormant } : {}) },
   { id: 'hermes-oneshot', label: 'hermes one-shot', class: 'impl', dormant: { reason: 'impl routes to native Claude subagents only (operator ruling 2026-08-19, HIMMEL-1967); opt in per-dispatch', optInEnv: 'HERMES_ONESHOT_LANE_OK' } },
   { id: 'hermes-critics', label: 'hermes critics', class: 'critic' },
-  // An ACTIVE (non-dormant) impl lane: the class check must refuse this
-  // independently of dormancy: an impl-class lane id is
-  // not a value the Agent tool's model param accepts, so /fanout must never
-  // route implementation work there regardless of availability.
   { id: 'hypothetical-impl', label: 'hypothetical impl lane', class: 'impl' },
 ];
 
@@ -34,14 +28,9 @@ test('happy path — one item per type resolves to the invariant tier with an ex
   ];
   const { plan, errors } = buildFanoutPlan(items, LIVE);
   assert.deepEqual(errors, []);
-  // implementation defaults to Sonnet — /fanout routes implementation to
-  // native Claude subagents only, never to a class:"impl" lane.
   assert.deepEqual(plan.map((p) => p.lane), ['fable', 'opus', 'sonnet', 'haiku', 'sonnet']);
   for (const p of plan) {
     assert.ok(p.model, `${p.id} must name an explicit model`);
-    // `model` must be the dispatchable lane id (what the Agent tool's model
-    // param accepts), not the human-readable label — a prior draft emitted
-    // the label here, which the Agent tool would reject verbatim.
     assert.equal(p.model, p.lane, `${p.id}: model must equal the dispatchable lane id, not the label`);
     assert.ok(p.label, `${p.id} must also carry a human-readable label`);
   }
@@ -72,7 +61,7 @@ test('unknown type is refused, not silently inherited', () => {
 test('lane not in the live roster is refused (never a hardcoded lane list)', () => {
   const { plan, errors } = buildFanoutPlan(
     [{ id: 'x', type: 'implementation', lane: 'codex-exec' }],
-    LIVE, // codex-exec deliberately absent — simulates it being unavailable on this machine
+    LIVE,
   );
   assert.deepEqual(plan, []);
   assert.match(errors[0], /not in the LIVE roster/);

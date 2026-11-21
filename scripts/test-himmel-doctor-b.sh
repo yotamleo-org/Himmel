@@ -970,8 +970,9 @@ mkdir -p "$t/claude"; write_settings "$t/claude" "$WRAPPER"
 # A HANDOVER_DIR pointed at a non-existent path fails handover_root() closed
 # (rc=2) — graph-cadence.sh refuses the same state, so C33 must not call it OK.
 out="$(CLAUDE_DIR="$t/claude" HOME="$t/home" HANDOVER_DIR="$t/does-not-exist" bash "$DOC" --no-color 2>&1)"
-c33_line="$(printf '%s' "$out" | grep 'C33-graph-stale')"
-if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F 'handover root is broken' && grepq "$c33_line" -F 'NOT the same as healthy'; then
+c33_line="$(printf '%s' "$out" | grep -A1 'C33-graph-stale')"
+if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F 'handover root is broken' && grepq "$c33_line" -F 'NOT the same as healthy' \
+    && ! grepq "$c33_line" -F 'bash scripts/graphify/graph-cadence.sh'; then
     pass "C33 -> WARN (handover root unresolvable)"
 else
     fail "C33 no-root -> $c33_line"
@@ -1078,8 +1079,8 @@ mkdir -p "$t/claude" "$t/handover/.graph-cadence"; write_settings "$t/claude" "$
 printf '{"ts":"%s","head":"aaa","graph_head":"bbb","merges_behind":40,"action":"failed","pr":null,"duration_s":5,"error":"boom"}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$t/handover/.graph-cadence/ledger.jsonl"
 out="$(CLAUDE_DIR="$t/claude" HOME="$t/home" HANDOVER_DIR="$t/handover" bash "$DOC" --no-color 2>&1)"
-c33_line="$(printf '%s' "$out" | grep 'C33-graph-stale')"
-if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F 'FAILED'; then
+c33_line="$(printf '%s' "$out" | grep -A1 'C33-graph-stale')"
+if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F 'FAILED (boom)' && ! grepq "$c33_line" -F 'graph-cadence.sh'; then
     pass "C33 -> WARN (last recorded action=failed)"
 else
     fail "C33 failed-action -> $c33_line"
@@ -1093,6 +1094,26 @@ if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F 'refused: st
     pass "C33 -> WARN names the ledger's refusal reason"
 else
     fail "C33 refusal reason -> $c33_line"
+fi
+printf '{"ts":"%s","head":"aaa","graph_head":null,"merges_behind":null,"action":"failed","pr":null,"duration_s":88,"error":"semantic-update.sh exited 2: semantic-update: account A credit exhausted; retrying the batch on the other account semantic-batch: credit exhausted (HTTP 400) semantic-update: submitting the batch failed (rc 5) -- nothing submitted, graph and manifest untouched"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$t/handover/.graph-cadence/ledger.jsonl"
+out="$(CLAUDE_DIR="$t/claude" HOME="$t/home" HANDOVER_DIR="$t/handover" bash "$DOC" --no-color 2>&1)"
+c33_line="$(printf '%s' "$out" | grep -A1 'C33-graph-stale')"
+if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F 'FAILED (API credit exhausted)' \
+    && ! grepq "$c33_line" -F '? commits' && ! grepq "$c33_line" -F 'graph-cadence.sh'; then
+    pass "C33 -> WARN names the credit refusal, no '?' count, no bare-cadence remedy"
+else
+    fail "C33 credit refusal -> $c33_line"
+fi
+printf '{"ts":"%s","head":"aaa","graph_head":null,"merges_behind":null,"action":"failed","pr":null,"duration_s":97,"error":"semantic-update.sh exited 2: [graphify extract] wrote /x/graph.json — 0 nodes, 0 edges (no clustering) semantic-update: refusing the batch: auto routing: no account has room ({\\"verdict\\":\\"SKIPPED-BANK\\",\\"reason\\":\\"no-account-with-headroom\\"}) semantic-update: submitting the batch failed (rc 2) -- nothing submitted, graph and manifest untouched"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$t/handover/.graph-cadence/ledger.jsonl"
+out="$(CLAUDE_DIR="$t/claude" HOME="$t/home" HANDOVER_DIR="$t/handover" bash "$DOC" --no-color 2>&1)"
+c33_line="$(printf '%s' "$out" | grep -A1 'C33-graph-stale')"
+if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F 'FAILED (no API account has credit room)' \
+    && ! grepq "$c33_line" -F 'graph-cadence.sh'; then
+    pass "C33 -> WARN names the auto-routing credit refusal"
+else
+    fail "C33 no-room refusal -> $c33_line"
 fi
 # a cadence alert whose Telegram send failed is its own WARN.
 mkdir -p "$t/home/.himmel/state"
@@ -1132,8 +1153,9 @@ else
     printf '{"ts":"%s","head":"aaa","graph_head":"bbb","merges_behind":40,"action":"merged","pr":null,"duration_s":5,"error":null}\n' \
         "$OLD_TS" > "$t/handover/.graph-cadence/ledger.jsonl"
     out="$(CLAUDE_DIR="$t/claude" HOME="$t/home" HANDOVER_DIR="$t/handover" bash "$DOC" --no-color 2>&1)"
-    c33_line="$(printf '%s' "$out" | grep 'C33-graph-stale')"
-    if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F '3x the armed interval'; then
+    c33_line="$(printf '%s' "$out" | grep -A1 'C33-graph-stale')"
+    if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F '3x the armed interval' \
+        && ! grepq "$c33_line" -F 'graph-cadence.sh'; then
         pass "C33 -> WARN (last run older than 3x the armed cadence interval)"
     else
         fail "C33 stale-age -> $c33_line"
