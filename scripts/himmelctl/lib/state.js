@@ -32,11 +32,17 @@
 // seam hermetic tests use to redirect ~/.claude/himmel/.
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
-const { cacheDir, profileForVault } = require('./helpers.js');
+const { spawnSync } = require('child_process');
+const { cacheDir, profileForVault, primaryCheckoutRoot, inClaudeSession } = require('./helpers.js');
 
 function statePath() {
   return path.join(cacheDir(), 'state.json');
+}
+
+function stationStatePath() {
+  return path.join(os.homedir(), '.claude', 'himmel', 'state.json');
 }
 
 function emptyState() {
@@ -48,8 +54,7 @@ function emptyState() {
 // error to the caller rather than silently resetting to empty. state.json
 // is himmelctl's own artifact, and a corrupt copy should be investigated,
 // not discarded.
-function load() {
-  const p = statePath();
+function load(p = statePath()) {
   if (!fs.existsSync(p)) return emptyState();
   return JSON.parse(fs.readFileSync(p, 'utf8'));
 }
@@ -396,7 +401,148 @@ function dropRetiredItems(state) {
   return dropped;
 }
 
+function givenKey(dir) {
+  const abs = path.resolve(dir);
+  if (!fs.existsSync(abs)) return abs;
+  return fs.realpathSync(primaryCheckoutRoot(abs));
+}
+
+function stateRepoVerdict(dir) {
+  const script = path.join(__dirname, '..', '..', 'lib', 'launch-guard-check.sh');
+  const r = spawnSync(process.env.HIMMELCTL_BASH || 'bash', [script, '--state-repo', dir], { encoding: 'utf8' });
+  if (r.status === 1) return { stateRepo: false };
+  if (r.status === 0) return { stateRepo: true };
+  return { stateRepo: true, error: (r.stderr || '').trim() || `launch-guard-check.sh --state-repo exited ${r.status}` };
+}
+
+function addTarget(dir, { items = [], nwo, stateRepoOk = false } = {}) {
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return { ok: false, error: `not a directory: ${dir}` };
+  if (nwo !== undefined && !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(nwo)) return { ok: false, error: `--nwo must be <owner>/<repo>, got: ${nwo}` };
+  const key = givenKey(dir);
+  if (!stateRepoOk) {
+    const v = stateRepoVerdict(key);
+    if (v.stateRepo) {
+      return { ok: false, error: v.error || `${key} is a state repo; pass --state-repo-ok to list it anyway` };
+    }
+  }
+  const state = load();
+  if (!state.given || typeof state.given !== 'object' || Array.isArray(state.given)) state.given = {};
+  const prior = state.given[key];
+  const priorItems = prior && Array.isArray(prior.items) ? prior.items : [];
+  const entry = { items: [...new Set([...priorItems, ...items])] };
+  const keptNwo = nwo !== undefined ? nwo : prior && prior.nwo;
+  if (keptNwo) entry.nwo = keptNwo;
+  entry.adoptedAt = (prior && typeof prior.adoptedAt === 'string') ? prior.adoptedAt : new Date().toISOString();
+  state.given[key] = entry;
+  save(state);
+  return { ok: true, key };
+}
+
+function removeTarget(dir) {
+  if (inClaudeSession()) {
+    return { ok: false, error: 'remove-target is operator-only; refused inside a Claude session (CLAUDECODE / CLAUDE_CODE_* is set). Run it from your own terminal.' };
+  }
+  const key = givenKey(dir);
+  const state = load();
+  if (!state.given || !Object.prototype.hasOwnProperty.call(state.given, key)) {
+    return { ok: false, error: `not a given project: ${key}` };
+  }
+  delete state.given[key];
+  save(state);
+  return { ok: true, key };
+}
+
+function listTargets({ station = false, forDir } = {}) {
+  const state = load(station ? stationStatePath() : statePath());
+  const given = (state.given && typeof state.given === 'object' && !Array.isArray(state.given)) ? state.given : {};
+  const want = forDir === undefined ? null : givenKey(forDir);
+  const rows = [];
+  for (const key of Object.keys(given).sort()) {
+    if (want !== null && key !== want) continue;
+    const e = given[key] || {};
+    const row = { path: key };
+    if (e.nwo) row.nwo = e.nwo;
+    if (e.adoptedAt) row.adoptedAt = e.adoptedAt;
+    row.items = Array.isArray(e.items) ? e.items : [];
+    rows.push(row);
+  }
+  return rows;
+}
+
+const CLI_USAGE = `usage:
+  node state.js add-target <path> [--items <id>,...] [--nwo <owner>/<repo>] [--state-repo-ok]
+  node state.js remove-target <path>     (operator-only: refused inside a Claude session)
+  node state.js list-targets [--json] [--station] [--for <dir>]`;
+
+function cli(argv) {
+  const [verb, ...rest] = argv;
+  const opts = { items: [], json: false, station: false, stateRepoOk: false };
+  const positional = [];
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    const value = () => {
+      const v = rest[++i];
+      if (v === undefined) throw new Error(`${a} requires a value`);
+      return v;
+    };
+    try {
+      if (a === '--items') opts.items = value().split(',').map((s) => s.trim()).filter(Boolean);
+      else if (a === '--nwo') opts.nwo = value();
+      else if (a === '--for') opts.forDir = value();
+      else if (a === '--state-repo-ok') opts.stateRepoOk = true;
+      else if (a === '--json') opts.json = true;
+      else if (a === '--station') opts.station = true;
+      else if (a.startsWith('--')) throw new Error(`unknown option: ${a}`);
+      else positional.push(a);
+    } catch (e) {
+      console.error(`state.js: ${e.message}\n${CLI_USAGE}`);
+      return 2;
+    }
+  }
+  const allowed = {
+    'add-target': ['items', 'nwo', 'stateRepoOk'],
+    'remove-target': [],
+    'list-targets': ['json', 'station', 'forDir'],
+  };
+  if (!allowed[verb]) {
+    console.error(CLI_USAGE);
+    return 2;
+  }
+  const given = Object.keys(opts).filter((k) => (k === 'items' ? opts.items.length > 0 : Boolean(opts[k])));
+  const stray = given.filter((k) => !allowed[verb].includes(k));
+  const wantsPath = verb !== 'list-targets';
+  if (stray.length > 0 || positional.length !== (wantsPath ? 1 : 0)) {
+    console.error(CLI_USAGE);
+    return 2;
+  }
+  if (verb === 'list-targets') {
+    const rows = listTargets({ station: opts.station, forDir: opts.forDir });
+    if (opts.json) {
+      process.stdout.write(JSON.stringify(rows) + '\n');
+    } else if (rows.length === 0) {
+      console.log('no given projects');
+    } else {
+      for (const r of rows) console.log(`${r.path}  items=${r.items.join(',') || '-'}${r.nwo ? `  nwo=${r.nwo}` : ''}`);
+    }
+    return 0;
+  }
+  const r = verb === 'add-target'
+    ? addTarget(positional[0], { items: opts.items, nwo: opts.nwo, stateRepoOk: opts.stateRepoOk })
+    : removeTarget(positional[0]);
+  if (!r.ok) {
+    console.error(`state.js: ${verb}: ${r.error}`);
+    return 1;
+  }
+  console.log(`state.js: ${verb === 'add-target' ? 'listed' : 'removed'} ${r.key}`);
+  return 0;
+}
+
 module.exports = {
   load, save, deriveTarget, ensureTarget, reconcileTarget, migrateTargetItems,
   itemMembership, hasDeliberateOverride, recordedDesired, additiveReconcile, dropRetiredItems,
+  addTarget, removeTarget, listTargets,
 };
+
+if (require.main === module) {
+  process.exitCode = cli(process.argv.slice(2));
+}

@@ -7,6 +7,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 // Resolve <tool> on PATH like `command -v` would, checking the bare name.
 // Uses path.delimiter, which is the separator Node actually sees in
@@ -111,4 +112,21 @@ function himmelIdentity(root) {
   return { version, describe: git('describe', '--tags', '--always'), commit: git('rev-parse', 'HEAD'), checkout: root };
 }
 
-module.exports = { himmelIdentity, cacheDir, profileForVault, which, displayPath, shellQuote, nodeScriptCmd };
+function resolveBash() {
+  return process.env.HIMMELCTL_BASH || 'bash';
+}
+
+function primaryCheckoutRoot(dir) {
+  const r = spawnSync(resolveBash(),
+    ['-c', 'd=$(git rev-parse --git-common-dir 2>/dev/null) && cd "$d/.." && pwd'],
+    { cwd: dir, encoding: 'utf8' });
+  if (r.error || r.status !== 0 || !r.stdout) return dir;
+  const resolved = r.stdout.trim();
+  return resolved ? path.resolve(resolved) : dir;
+}
+
+function inClaudeSession(env = process.env) {
+  return Object.keys(env).some((k) => (k === 'CLAUDECODE' || k.startsWith('CLAUDE_CODE_')) && env[k]);
+}
+
+module.exports = { himmelIdentity, cacheDir, profileForVault, which, displayPath, shellQuote, nodeScriptCmd, resolveBash, primaryCheckoutRoot, inClaudeSession };
