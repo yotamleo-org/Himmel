@@ -26,6 +26,7 @@ trap cleanup EXIT
 cat > "$tmp/send" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$1" >> "$BYPASSD_TEST_DIR/sent"
+printf '%s|%s\n' "$2" "$1" >> "$BYPASSD_TEST_DIR/kinds"
 STUB
 cat > "$tmp/launcher" <<'STUB'
 #!/usr/bin/env bash
@@ -225,6 +226,7 @@ refuse_row() {
     assert_eq "$label: the request is refused" "$n.req.refused" "$(cd "$Q" && ls "$n".req.* 2>/dev/null)"
     assert_contains "$label: the log names the field" "REFUSED $want $Q/$n.req" "$(cat "$Q/daemon.log" 2>/dev/null)"
     assert_contains "$label: the Telegram line names the field" "refused $n.req: $want" "$(cat "$D/sent" 2>/dev/null)"
+    assert_contains "RED 10558 $label: the refusal is bypass-result" "bypass-result|bypass-launchd refused $n.req: $want" "$(cat "$D/kinds" 2>/dev/null)"
 }
 refuse_row m1 "a lowercase series" "malformed: brief-name" "brief=$B/HIMMEL-3-n3-slug.md" model=claude-sonnet-5-5 "chief=$CH"
 refuse_row m2 "a two-letter series" "malformed: brief-name" "brief=$B/HIMMEL-3-NN3-slug.md" model=claude-sonnet-5-5 "chief=$CH"
@@ -296,6 +298,26 @@ CODE=$(ask_code r)
 reply "$OPERATOR" "$OPERATOR" "go $CODE"
 wait_for "$Q/daemon.log" "LAUNCH-FAILED"
 assert_contains "LAUNCH-FAILED names the launcher's rc" "LAUNCH-FAILED HIMMEL-1-N1-sweep-pr1 rc=3" "$(cat "$Q/daemon.log")"
+wait_for "$D/sent" "FAILED (rc 3)"
+assert_contains "RED 10558: the ask goes out as bypass-ask" "bypass-ask|Bypass worker launch asked by" "$(cat "$D/kinds" 2>/dev/null)"
+assert_contains "RED 10558: the failed launch goes out as bypass-failed" "bypass-failed|bypass launch HIMMEL-1-N1-sweep-pr1: FAILED (rc 3)" "$(cat "$D/kinds" 2>/dev/null)"
+stop
+
+echo "== verdict lines go out as bypass-result =="
+setup kinds-go
+start
+CODE=$(ask_code r)
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+wait_for "$D/sent" "launched with"
+assert_contains "RED 10558: launched is bypass-result" "bypass-result|bypass launch HIMMEL-1-N1-sweep-pr1: launched with" "$(cat "$D/kinds" 2>/dev/null)"
+stop
+setup kinds-no
+start
+CODE=$(ask_code r)
+reply "$OPERATOR" "$OPERATOR" "no $CODE"
+wait_for "$D/sent" "no, nothing ran"
+assert_contains "RED 10558: a no is bypass-result" "bypass-result|bypass launch HIMMEL-1-N1-sweep-pr1: no, nothing ran." "$(cat "$D/kinds" 2>/dev/null)"
 stop
 
 echo "== start refusals =="
