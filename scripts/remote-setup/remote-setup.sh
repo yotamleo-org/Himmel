@@ -184,6 +184,8 @@ cmd_bot() {
 PEER_UNIT=himmel-peer-bridge.service
 PEER_LABEL=com.himmel.peer-bridge
 PEER_HELLO="himmel peer hello"
+# 1 once this run has stored a new bridge token: the poller reads it at start, so a running one is restarted.
+PEER_TOKEN_CHANGED=0
 
 # What a getUpdates answer is reduced to: only these facts are kept, never message text.
 PEER_NORM='[.result[]? | . as $u | (
@@ -623,7 +625,7 @@ peer_register() {
 }
 
 peer_unit_ensure() {
-    local tpl dest content cur changed=0 uid
+    local tpl dest content cur changed=0 redo uid
     uid=$(id -u)
     if [ "$(uname)" = Darwin ]; then tpl="$RS_ROOT/scripts/peer-bridge/units/$PEER_LABEL.plist"; else tpl="$RS_ROOT/scripts/peer-bridge/units/$PEER_UNIT"; fi
     [ -f "$tpl" ] || rs_fix "the poller unit template is missing from your himmel folder: run /himmel-update, then run the same command again"
@@ -636,14 +638,16 @@ peer_unit_ensure() {
     content=${content//@HOME@/$HOME}
     cur=""
     [ -f "$dest" ] && cur=$(cat "$dest")
-    if [ "$cur" != "$content" ]; then
-        changed=1
-        if [ "$(uname)" = Darwin ] && peer_unit_active; then
-            launchctl bootout "gui/$uid/$PEER_LABEL" > /dev/null 2>&1
-            if peer_unit_active; then
-                rs_fix "the old poller could not be stopped, so the updated one was not applied (nothing was changed): stop it yourself with launchctl bootout gui/$uid/$PEER_LABEL, then run the same command again"
-            fi
+    [ "$cur" != "$content" ] && changed=1
+    redo=$changed
+    [ "$PEER_TOKEN_CHANGED" = 1 ] && redo=1
+    if [ "$redo" = 1 ] && [ "$(uname)" = Darwin ] && peer_unit_active; then
+        launchctl bootout "gui/$uid/$PEER_LABEL" > /dev/null 2>&1
+        if peer_unit_active; then
+            rs_fix "the old poller could not be stopped, so the updated one was not applied (nothing was changed): stop it yourself with launchctl bootout gui/$uid/$PEER_LABEL, then run the same command again"
         fi
+    fi
+    if [ "$changed" = 1 ]; then
         (umask 022; mkdir -p "$(dirname "$dest")") || rs_fix "the poller unit folder could not be made: check that you own your home folder, then run the same command again"
         printf '%s\n' "$content" | rs_atomic_write "$dest" \
             || rs_fix "the poller unit could not be written: check that you own your home folder, then run the same command again"
@@ -653,7 +657,7 @@ peer_unit_ensure() {
         if ! systemctl --user is-enabled --quiet "$PEER_UNIT" > /dev/null 2>&1; then
             systemctl --user enable "$PEER_UNIT" > /dev/null 2>&1 || rs_fix "the poller unit could not be enabled: run systemctl --user enable $PEER_UNIT yourself and read its error, then run the same command again" # t13b-ok: enables the peer poller unit that this operator-run peer setup just installed (Part 4 opt-in), nothing else
         fi
-        if [ "$changed" = 1 ] && peer_unit_active; then
+        if [ "$redo" = 1 ] && peer_unit_active; then
             systemctl --user restart "$PEER_UNIT" > /dev/null 2>&1 || rs_fix "the poller did not restart: look at why with: journalctl --user -u $PEER_UNIT -n 30, then run the same command again"
         fi
     fi
@@ -817,6 +821,7 @@ cmd_peer() {
         peer_publish_bridge "$RS_BOT_ID" 1
         peer_store_token \
             || rs_fix "the bridge token could not be saved in $(rs_tilde "$(peer_cfg)"): check that you own that folder and it is writable, then run the same command again"
+        PEER_TOKEN_CHANGED=1
         peer_publish_bridge "$RS_BOT_ID" 0
         rs_step "the bridge token is saved"
     fi

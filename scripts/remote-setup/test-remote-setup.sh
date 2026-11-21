@@ -1896,6 +1896,32 @@ case_peer_mac_old_agent_is_not_accepted_as_the_updated_poller() {
     check "the agent is loaded" test -f "$T/units/$UNIT_LABEL.loaded"
 }
 
+case_peer_changed_token_restarts_the_running_poller() {
+    local tok
+    seed_confirmed_station
+    tok=$(mk_token "$OUR")
+    feed "$tok"
+    run_sut "$T/in" peer
+    check "a rotated token for the same bot: exit 0" eq "$RC" 0
+    check "the new token is stored" eq "$(cat "$(PEER_ENV)")" "PEER_BOT_TOKEN=$tok"
+    check "the running poller was restarted to load it" test -n "$(line_of 'systemctl --user restart himmel-peer-bridge.service')"
+    check "and is running" test -f "$T/units/$UNIT_NAME.active"
+    sub_case peer_same_token_no_restart
+    seed_confirmed_station
+    feed "$BTOK"
+    run_sut "$T/in" peer
+    check "control, the same token pasted: exit 0" eq "$RC" 0
+    check "control: the poller is not bounced" lacks "$(cat "$T/units.log")" "restart"
+    sub_case peer_changed_token_mac
+    echo Darwin > "$T/uname"
+    seed_confirmed_station mac
+    feed "$(mk_token "$OUR")"
+    run_sut "$T/in" peer
+    check "mac, a rotated token: exit 0" eq "$RC" 0
+    check "mac: the agent was booted out" test -n "$(line_of 'launchctl bootout')"
+    check "mac: and bootstrapped again after" test "$(last_line_of 'launchctl bootstrap')" -gt "$(line_of 'launchctl bootout')"
+}
+
 case_peer_without_part1_fixes() {
     feed "$(mk_token "$OUR")"
     snapshot_stores
@@ -2063,7 +2089,7 @@ peer_allowfrom_written_by_setup_ts_only_digit_strings peer_canary_token_absent_e
 peer_sigint_during_discovery_restarts_poller renamed_peer_bot_keeps_name
 peer_done_rerun_changes_no_config_artifact peer_inputs_are_only_the_g2_set
 peer_remove_deletes_checkpoint_and_status_na peer_remove_interrupted_resumes peer_remove_with_nothing_set_up_is_done peer_remove_teardown_failure_is_a_fix peer_wait_pages_when_the_group_is_busy peer_remove_unit_delete_failure_is_a_fix peer_remove_reload_failure_is_a_fix peer_remove_one_of_two_restarts_poller
-peer_mac_bootout_then_bootstrap_order peer_mac_old_agent_is_not_accepted_as_the_updated_poller peer_without_part1_fixes peer_bridge_equals_main_refuses
+peer_mac_bootout_then_bootstrap_order peer_mac_old_agent_is_not_accepted_as_the_updated_poller peer_changed_token_restarts_the_running_poller peer_without_part1_fixes peer_bridge_equals_main_refuses
 peer_different_bridge_id_without_replace_refuses peer_hello_timeout_fixes peer_sole_candidate_needs_a_yes peer_hostile_username_refused
 peer_name_second_collision_gets_3 peer_name_32_char_base_with_suffix_fits"
 
