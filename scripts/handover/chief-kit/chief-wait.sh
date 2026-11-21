@@ -2811,6 +2811,10 @@ while :; do
             fi
         fi
         sample "$@" 9>&-
+        if [ -z "$key" ] && [ "$fail_step" = "tick-exit:2" ]; then
+            printf 'WAKE tick-usage rc=2%s\n' "${tick_err:+ $tick_err}"
+            exit_reason='wake-tick-usage'; exit 0
+        fi
         focus_rebuild
         if quota_step; then exit_reason='wake-quota-back'; exit 0; fi
         if [ -n "$key" ]; then
@@ -3042,10 +3046,6 @@ while :; do
             # A failed sample never masks the pool: the wake line reads
             # capacity=? and the failure in place of a tick line.
             cap_val='?'; tick_line="tick-fail samples=$fail_streak step=$fail_step"
-            if [ "$fail_step" = "tick-exit:2" ]; then
-                printf 'WAKE tick-usage rc=2%s\n' "${tick_err:+ $tick_err}"
-                exit_reason='wake-tick-usage'; exit 0
-            fi
             if pool_watch_wake; then exit_reason='wake-pool-unresolved'; exit 0; fi
             # A monitor that stays broken is an event too, but only once per
             # streak: the re-arm stays quiet until a sample succeeds.

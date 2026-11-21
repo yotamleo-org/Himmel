@@ -1297,6 +1297,11 @@ check "(ws2) a tick exit 2 ends the wait at once, rc 0" "0" "$rc"
 [ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
 check "(ws2) the wake names tick-usage and tick's first stderr line" "WAKE tick-usage rc=2 tick.sh: unknown flag --bogus" "$(head -n1 "$WORK/ws2.out")"
 check "(ws2) only the first stderr line is carried" "" "$(grep 'second stderr line' "$WORK/ws2.out")"
+printf '#!/usr/bin/env bash\nsleep 25\n' > "$STUB/focus-stall.sh"
+I="$(new_inbox ws2b)"
+WAIT_FOCUS_CMD="$STUB/focus-stall.sh" CHIEF_WAIT_TICK="$STUB/tick-usage.sh" timeout 10 bash "$WAIT" "$I" --doc "$SUCD" --workers "N1.md" > "$WORK/ws2b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+check "(ws2b) the usage wake is not held behind a stalled focus status check (rc 0, not 124)" "0" "$rc"
+check "(ws2b) and carries the tick's first stderr line" "WAKE tick-usage rc=2 tick.sh: unknown flag --bogus" "$(head -n1 "$WORK/ws2b.out")"
 
 printf '#!/usr/bin/env bash\necho "boom" >&2\nexit 1\n' > "$STUB/tick-exit1.sh"
 I="$(new_inbox ws3)"
@@ -1314,7 +1319,19 @@ CHIEF_WAIT_TRACKER="$STUB/su-tracker.sh" CHIEF_WAIT_SUCCESSION_SEC=1 start "$I" 
 wait_exit "$WPID"
 check "(ws4) --succession still wakes with --since beside it" "WAKE succession partial 1/2 silent 0 min" "$(head -n1 "$WORK/ws4.out")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
-check "(ws4) tick got none of --succession, --silent-min, --since" "" "$(grep -e '--succession' -e '--silent-min' -e '--since' "$STUB/tick.args")"
+
+ws5_run() {
+    local label="$1"; shift
+    rm -f "$STUB/tick.args"
+    I="$(new_inbox "ws5-$label")"
+    CHIEF_WAIT_TRACKER="$STUB/su-tracker.sh" CHIEF_WAIT_SUCCESSION_SEC=1 start "$I" "$WORK/ws5-$label.out" "$@" --doc "$SUCD" --succession S2 --silent-min 5 --workers "N1.md"
+    wait_hb "$I" || fail "(ws5 $label) no baseline heartbeat"
+    kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+    check "(ws5 $label) a tick sample ran with the other flags" "yes" "$(grep -q -e '--workers N1.md' "$STUB/tick.args" 2>/dev/null && echo yes)"
+    check "(ws5 $label) and got none of --succession, --silent-min, --since" "" "$(grep -e '--succession' -e '--silent-min' -e '--since' "$STUB/tick.args")"
+}
+ws5_run with-since --since prev-arm
+ws5_run no-since
 
 case "$DISPATCH_SEAM_AT_START" in "$STUB"/*) seam_at_start=stub ;; *) seam_at_start="$DISPATCH_SEAM_AT_START" ;; esac
 check "(hermetic) the dispatch seam named a stub from the first case" "stub" "$seam_at_start"
