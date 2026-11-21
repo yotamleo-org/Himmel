@@ -173,6 +173,8 @@ its steps.
 
 ## Part 4: bot-to-bot
 
+Prefer one page with copy buttons? [The bot-to-bot guide](../guide/remote-setup-bot-to-bot.html) walks this part step by step.
+
 ### What it is
 
 Two himmel stations talk to each other through one Telegram group. The two stations can be yours
