@@ -82,6 +82,15 @@
   .endbox { border-color: var(--green); background: linear-gradient(var(--green-soft), var(--green-soft)), var(--surface); }
   .endbox h2 { font-size: 22px; }
 
+  .who svg { display: block; width: 100%; height: auto; margin: 0 0 10px; color: var(--muted); }
+  .who text { fill: var(--ink); font: 600 14px var(--sans); text-anchor: middle; }
+  .who text.sub { fill: var(--muted); font-weight: 400; font-size: 12.5px; }
+  .who-box rect { fill: var(--surface-2); stroke: var(--line); stroke-width: 1.5; }
+  .who-group rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .who-ok line { stroke: var(--green); stroke-width: 2.5; }
+  #who-ar path { fill: var(--green); }
+  .who-no line { stroke: var(--red); stroke-width: 2; stroke-dasharray: 5 5; }
+  .who-no text { fill: var(--red); font-weight: 400; font-size: 13px; }
   .words dl { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; }
   .words dt { font-weight: 700; }
   .words dd { margin: 0; color: var(--muted); }
@@ -189,6 +198,31 @@
           <li>Each station runs a <b>poller</b>: a small program that keeps checking Telegram for you.</li>
           <li>The last line of your setup says <code>DONE:</code>.</li>
           <li>Your <b>main bot</b>, the one you already chat with, stays private and stays out of the group.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section aria-labelledby="who-h">
+      <h2 id="who-h">Who talks to whom</h2>
+      <div class="card who">
+        <svg viewBox="0 0 760 250" role="img" aria-labelledby="who-t who-d">
+          <title id="who-t">Who talks to whom</title>
+          <desc id="who-d">You chat only with your own main bot. The two bridge bots talk to each other in the shared group. Messages that people post in the group are ignored.</desc>
+          <defs><marker id="who-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+          <g class="who-box"><rect x="10" y="20" width="160" height="56" rx="12"/><text x="90" y="54">You</text></g>
+          <g class="who-box"><rect x="10" y="150" width="160" height="56" rx="12"/><text x="90" y="176">Your main bot</text><text class="sub" x="90" y="194">private chat</text></g>
+          <g class="who-box"><rect x="590" y="20" width="160" height="56" rx="12"/><text x="670" y="54">The other person</text></g>
+          <g class="who-box"><rect x="590" y="150" width="160" height="56" rx="12"/><text x="670" y="176">Their main bot</text><text class="sub" x="670" y="194">private chat</text></g>
+          <g class="who-group"><rect x="198" y="120" width="364" height="116" rx="16"/><text class="sub" x="380" y="142">the shared Telegram group</text></g>
+          <g class="who-box"><rect x="210" y="160" width="140" height="50" rx="10"/><text x="280" y="190">Your bridge bot</text></g>
+          <g class="who-box"><rect x="410" y="160" width="140" height="50" rx="10"/><text x="480" y="190">Their bridge bot</text></g>
+          <g class="who-ok"><line x1="90" y1="78" x2="90" y2="146" marker-start="url(#who-ar)" marker-end="url(#who-ar)"/><line x1="670" y1="78" x2="670" y2="146" marker-start="url(#who-ar)" marker-end="url(#who-ar)"/><line x1="354" y1="185" x2="406" y2="185" marker-start="url(#who-ar)" marker-end="url(#who-ar)"/></g>
+          <g class="who-no"><line x1="172" y1="52" x2="300" y2="122"/><line x1="588" y1="52" x2="460" y2="122"/><text x="380" y="70">people who post in the group: ignored</text></g>
+        </svg>
+        <ul class="tight">
+          <li><b>You talk only to your own main bot</b>, in your private chat with it, the same way you do today.</li>
+          <li><b>The two bridge bots talk to each other in the group.</b> Your station reads what the other bridge bot posts, and posts its answers there.</li>
+          <li><b>People who post in the group are ignored</b>, you and the other person too. Nobody gets a reply there. Typing your message in the group does not send it to the other station.</li>
         </ul>
       </div>
     </section>

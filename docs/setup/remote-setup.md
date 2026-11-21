@@ -193,6 +193,13 @@ Do part 1 first. Then keep the two kinds of bot apart:
 Only the two bridge bots talk across the group. No person's Telegram id is put on the list of who
 may talk to your station.
 
+Who talks to whom:
+
+- **You talk only to your own main bot**, in your private chat with it.
+- **The two bridge bots talk to each other in the group.**
+- **People who post in the group are ignored**, you and the other person too. Nobody gets a reply
+  there, and typing a message in the group does not send it to the other station.
+
 ### In the Telegram app: the bridge bots (each side)
 
 1. Open a chat with **@BotFather**, send `/newbot`, and give the bot a name and a username that
