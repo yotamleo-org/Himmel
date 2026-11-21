@@ -234,9 +234,22 @@ ts_required_set() {
 
 # _ts_snap_required_set <base> — ts_required_set, read once per base per snapshot.
 _ts_snap_required_set() {
-    local f="$TS_SNAPSHOT_DIR/req-${1//\//_}"
+    local f="$TS_SNAPSHOT_DIR/req-${1//\//_}" ttl="${TICKET_STATUS_REQSET_TTL:-300}" kept at now
+    case "$ttl" in ''|*[!0-9]*) ttl=300 ;; esac
+    kept="$(ts_state_dir)/required-set/${1//\//_}"
+    now=$(date +%s)
     if [ ! -e "$f" ] && [ ! -e "$f.fail" ]; then
-        if ts_required_set "$1" >"$f.t" 2>/dev/null; then mv "$f.t" "$f"; else rm -f "$f.t"; : >"$f.fail"; fi
+        at=""
+        [ "$ttl" -le 0 ] || [ ! -s "$kept" ] || { IFS= read -r at <"$kept"; }  # read-sink-ok: our own state file, a bare epoch
+        case "$at" in ''|*[!0-9]*) at="" ;; esac
+        if [ -n "$at" ] && [ $((now - at)) -ge 0 ] && [ $((now - at)) -lt "$ttl" ]; then
+            tail -n +2 "$kept" >"$f"
+        elif ts_required_set "$1" >"$f.t" 2>/dev/null; then
+            mv "$f.t" "$f"
+            if [ "$ttl" -gt 0 ] && mkdir -p "${kept%/*}" 2>/dev/null; then
+                { printf '%s\n' "$now"; cat "$f"; } >"$kept.$$" && mv "$kept.$$" "$kept"  # read-sink-ok: our own snapshot file
+            fi
+        else rm -f "$f.t"; : >"$f.fail"; fi
     fi
     [ -e "$f" ] || return 1
     # read-sink-ok: $f is under the sweep's own snapshot dir, built from a base ref name, never from argv or a record

@@ -935,6 +935,25 @@ else
 fi
 chmod 755 "$tmp/u8-locked"
 
+reqcount() { grep -c . "$tmp/req-calls" 2>/dev/null || echo 0; }
+ts_required_set() { echo "$1" >> "$tmp/req-calls"; [ -z "${REQ_FAIL:-}" ] || return 1; printf 'ci-quick\t\n'; }
+export TICKET_STATUS_STATE_DIR="$tmp/state-req"
+fresh_snapshot() { rm -rf "$tmp/snap-req"; mkdir -p "$tmp/snap-req"; TS_SNAPSHOT_DIR="$tmp/snap-req"; }
+: > "$tmp/req-calls"
+fresh_snapshot; TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main >/dev/null
+fresh_snapshot; out=$(TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main)
+check "required set: a second snapshot inside the TTL reads the kept answer, not GitHub" "$(reqcount)" 1
+check "required set: the kept answer is the one returned" "$out" "$(printf 'ci-quick\t')"
+fresh_snapshot; TICKET_STATUS_REQSET_TTL=0 _ts_snap_required_set main >/dev/null
+check "required set: TTL 0 reads GitHub again" "$(reqcount)" 2
+: > "$tmp/req-calls"; rm -rf "$tmp/state-req"
+fresh_snapshot; REQ_FAIL=1 TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main >/dev/null
+fresh_snapshot; TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main >/dev/null
+check "required set: an unreadable answer is never kept" "$(reqcount)" 2
+printf '1\nstale\n' > "$tmp/state-req/required-set/main"
+fresh_snapshot; out=$(TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main)
+check "required set: an entry older than the TTL is read again" "$out" "$(printf 'ci-quick\t')"
+
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-ticket-status.sh"
 else
