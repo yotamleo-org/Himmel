@@ -272,8 +272,6 @@ check "7b-2 runCommand fails: the launch is unconfirmed (exit 7), never retried"
 contains "7b-3 runCommand fails: the ambiguity is logged" "$(cat "$d7b/log")" "ambiguous"
 check "7b-4 runCommand fails: no worker started under the name" "$([ -e "$d7b/pid.PROJ-7B-N2-b" ] && echo started || echo none)" none
 
-# --- 7c. runCommand tells the caller NoReply but delivers the line late: the tab still types the runner,
-# so the runner must still exist when it does. The launch is confirmed, in the one window.
 d7c="$tmp/c7c"; mk_env "$d7c"
 arm "$d7c" PROJ-7C-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A
 : > "$d7c/runcommand-late"

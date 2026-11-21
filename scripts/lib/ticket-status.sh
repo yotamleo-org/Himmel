@@ -320,9 +320,7 @@ ts_record_write() {
     printf '%s\n' "$2" | atomic_write "$p" 2>/dev/null
 }
 
-# ts_marker_newest <doc> — the newest Results marker in a worker doc (an empty line for a doc with none, rc 0);
-# rc 1 and nothing printed when the doc cannot be read (missing, unreadable, not a regular file, holding a NUL byte,
-# or a read that fails), which is not the same as having no marker.
+# ts_marker_newest <doc> — the newest Results marker in a worker doc.
 ts_marker_newest() {
     local line newest="" bullets rc
     local succession_re='^- [0-9]{1,2}:[0-9]{2} SUCCESSION([^A-Za-z0-9-]|$)'
@@ -422,9 +420,7 @@ ts_worker_state() {
 
 # _ts_worker_state <doc> [<disposition>] — ts_worker_state without the subshell: sets
 # TS_WORKER_STATE and TS_LOCK_HELD (yes | no | "" when the lock was not read) and TS_LOCK_DEAD
-# (yes: the lock answered rc 12 with status STALE-DEAD; no: rc 12 with any other status; "" otherwise) and
-# TS_OPEN_EVIDENCE (yes: apart from the lock, the doc may still be worked: a launched attempt, whose worker may not
-# hold the lock yet, a marker that is not an end marker, or a doc that could not be read).
+# (yes: the lock answered rc 12 with status STALE-DEAD; no: rc 12 with any other status; "" otherwise).
 # A caller that has already read the doc's disposition (fleet_runtime.py WorkerStates, one read for a whole run)
 # passes it as the JSON word `disposition` prints; only such a word is taken, anything else is read here.
 _ts_worker_state() {
@@ -459,7 +455,6 @@ _ts_worker_state() {
     fi
     # A terminal receipt with a free lock and no marker at all is the failed or finished launch with nothing after it.
     # A held lock, or any marker that is not an end marker (it is later than the receipt or was never wrapped), decides below.
-    # A doc that could not be read has no marker to be absent: it is unknown, never the finished launch.
     if [ -n "$terminal" ] && [ "$TS_LOCK_HELD" = no ] && [ -z "$marker" ] && [ -z "$marker_unread" ]; then TS_WORKER_STATE=wrapped; return 0; fi
     if status_marker_is_parked "$marker"; then TS_WORKER_STATE=parked; return 0; fi
     if [ "$TS_LOCK_HELD" = no ]; then TS_WORKER_STATE=unknown; return 0; fi
@@ -825,9 +820,7 @@ ts_derive() {
         fi
     fi
     # A second worker on the key keeps the ticket owned unless it reads wrapped, or its lock was read free and nothing
-    # else says its doc may be worked. A held lock, a lock that could not be read, a managed attempt that is pending,
-    # committed or unknown, and a free lock beside a launched attempt, a marker that is not an end marker or a doc
-    # that could not be read all keep it, so one worker's wrap never demotes a ticket another worker is working.
+    # else says its doc may be worked.
     if [ "$TS_WORKER_STATE" = wrapped ]; then
         while IFS= read -r other; do
             [ -n "$other" ] && [ "$other" != "$doc" ] || continue

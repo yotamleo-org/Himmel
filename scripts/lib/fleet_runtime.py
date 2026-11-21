@@ -277,7 +277,7 @@ def receipt(record, outcome, **extra):
         if stream.seek(0, os.SEEK_END):
             stream.seek(-1, os.SEEK_END)
             if stream.read(1) != b'\n':
-                line = b'\n' + line  # an unterminated tail is a torn line: the receipt starts its own
+                line = b'\n' + line
         stream.write(line)
         stream.flush()
         os.fsync(stream.fileno())
@@ -505,8 +505,7 @@ def marker(doc):
         return ''
 
 
-# A copy of next-dispatchable.sh TITLE_KEY_RE and title_keys; test-fleet-runtime.py pins the two equal.
-TITLE_KEY_RE = re.compile(r'([A-Z]+)-(\d+)((?:\s*\(?\s*(?:[/+,&]\s*)+\(?\s*\d+\b)*)')  # KEY-1 / 2, KEY-1 + 2, KEY-1 (+2, +3)
+TITLE_KEY_RE = re.compile(r'([A-Z]+)-(\d+)((?:\s*\(?\s*(?:[/+,&]\s*)+\(?\s*\d+\b)*)')
 
 
 def title_keys(line):
@@ -945,7 +944,7 @@ def main():
     parser.add_argument('--lane', choices=['native', 'claudex', 'openrouter', 'deepseek', 'api'], default='native')
     parser.add_argument('--reason', default='')
     parser.add_argument('--confirm-no-session', action='store_true')
-    parser.set_defaults(spawn_failed=False)  # set only by the supervisor in run, never by an option
+    parser.set_defaults(spawn_failed=False)
     argv = sys.argv[1:]
     command = argv[argv.index('--') + 1:] if '--' in argv else []
     args = parser.parse_args(argv[:argv.index('--')] if '--' in argv else argv)
@@ -985,7 +984,6 @@ def main():
             try:
                 proc = subprocess.Popen(command, env=child_env)
             except OSError:
-                # the program was never exec'd: the committed attempt provably did not launch
                 args.op, args.phase, args.spawn_failed = 'outcome', 'refused', True
                 run(args)
                 args.op = 'release'

@@ -251,7 +251,6 @@ cp "$SCRIPT_DIR"/../lib/*.mjs "$ENVROOT/scripts/lib/"
 cp "$LIB" "$ENVROOT/scripts/lib/headroom-proxy.sh"
 # arm-resume resolves its plugin profile through ../lanes (fail-closed).
 cp -R "$SCRIPT_DIR/../lanes" "$ENVROOT/scripts/lanes"
-# a managed launch's body reads the seams it clears from scripts/chokepoints.json.
 cp "$SCRIPT_DIR/../chokepoints.json" "$ENVROOT/scripts/chokepoints.json"
 
 # T3b: process env UNSET, repo-root .env carries HIMMEL_HEADROOM_PROXY=1 ->

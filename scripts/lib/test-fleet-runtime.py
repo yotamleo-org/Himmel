@@ -1748,7 +1748,6 @@ exit 1''')
             self.assertEqual(runtime.launch_candidates(record, time.monotonic() + 30)[1], [])
         self.stop(opaque)
 
-    # A bundle worker owns every ticket its H1 names, shorthand included, as the dispatcher reads it.
     def bundle_docs(self, title):
         first, second = self.bucket / 'HIMMEL-101-N1-worker.md', self.bucket / 'HIMMEL-102-N2-worker.md'
         first.write_text(title + '\n')
@@ -1792,7 +1791,7 @@ exit 1''')
         runtime = self.runtime_module()
         titles = ['HIMMEL-101 / 102 — bundle', 'HIMMEL-101 + 102', 'HIMMEL-101 (+102, +103)', 'HIMMEL-101, 102 & 103',
                   'HIMMEL-101 / HIMMEL-102', 'HIMMEL-101 — worker', 'HIMMEL-101 worker 7', 'worker 7 — HIMMEL-101 / 2']
-        self.assertIn('HIMMEL-103', dispatcher['title_keys'](['# ' + titles[2]]))  # the fixtures reach the shorthand branch
+        self.assertIn('HIMMEL-103', dispatcher['title_keys'](['# ' + titles[2]]))
         for number, title in enumerate(titles):
             doc = self.bucket / ('HIMMEL-900-N%d-parity.md' % number)
             doc.write_text('# ' + title + '\n')
@@ -1800,7 +1799,6 @@ exit 1''')
             self.assertEqual(runtime.worker_keys(doc), expected, title)
         self.assertEqual(runtime.TITLE_KEY_RE.pattern, dispatcher['TITLE_KEY_RE'].pattern)
 
-    # A legacy sibling that lists its rows under `legs` holds them as one that lists them under `workers` does.
     def begin_beside_old_sibling(self, key, empty=None):
         self.active()
         old, new = self.bucket / 'HIMMEL-101-N1-old.md', self.bucket / 'HIMMEL-101-N2-new.md'
@@ -1808,7 +1806,7 @@ exit 1''')
         new.write_text('# HIMMEL-101 new worker\n')
         sibling = {'schema': 1, key: [dict(doc=str(old), label='N1', added='2026-11-01T00:00:00Z', lane='native')]}
         if empty:
-            sibling[empty] = []  # the other key present and empty, as run leaves a manifest it has written
+            sibling[empty] = []
         (self.bucket / 'old.fleet.json').write_text(json.dumps(sibling))
         self.call('add', self.m, new, '--lane', 'native', '--pending')
         p = self.rt('begin', aid='n1', doc=new, ok=False)
@@ -1827,12 +1825,11 @@ exit 1''')
     def test_begin_is_refused_beside_a_live_workers_row_when_the_sibling_also_has_an_empty_legs(self):
         self.begin_beside_old_sibling('workers', empty='legs')
 
-    # An owner identity that is not exactly the four recorded fields is unknown, never dead.
     def test_a_damaged_owner_reads_unknown_and_only_an_exact_identity_reads_dead(self):
         runtime = self.runtime_module()
         owner = runtime.identity(os.getpid())
         self.assertEqual(runtime.process_state(owner), 'live')
-        self.assertEqual(runtime.process_state(dict(owner, start='0')), 'dead')  # the exact fields of another process: proof of absence
+        self.assertEqual(runtime.process_state(dict(owner, start='0')), 'dead')
         damaged = {'no start': {k: v for k, v in owner.items() if k != 'start'},
                    'no pid': {k: v for k, v in owner.items() if k != 'pid'},
                    'an extra field': dict(owner, extra='x'),
@@ -1847,7 +1844,7 @@ exit 1''')
         self.active()
         self.rt('begin')
         env = dict(self.launch_env(), FLEET_LAUNCH_ATTEMPT='one')
-        self.entry('scripts/lib/usage-preflight.sh', env=env)  # stamps the reservation; the attempt stays pending
+        self.entry('scripts/lib/usage-preflight.sh', env=env)
         slot = self.bucket / 'slots' / self.doc.stem
         self.assertTrue((slot / 'managed.json').is_file())
         return slot
@@ -1874,14 +1871,13 @@ exit 1''')
         self.assertEqual(self.anchor_attempts()['one']['phase'], 'pending')
         self.assertTrue((slot / 'managed.json').is_file())
 
-    # A history line that cannot be read could be the attempt's own launched receipt; a receipt never joins a torn line.
     def launched_line(self):
         return json.dumps(dict(v=2, kind='launch-attempt', attempt_id='one', name=self.doc.stem, doc=str(self.doc), outcome='launched'))
 
     def settle_after_history_tail(self, tail):
         self.active()
         self.stuck()
-        self.forge(start='0')  # owner and committer proven dead
+        self.forge(start='0')
         history = self.bucket / '.himmel/launch-refusals.jsonl'
         intact = history.read_text()
         history.write_text(intact + tail)
@@ -1898,7 +1894,7 @@ exit 1''')
             hint = self.settle_hint_of()
             self.assertFalse(hint['settleable'])
             self.assertIn('history has a line that cannot be read', hint['text'])
-            history.write_text(intact)  # the line is repaired by hand: the existing proof stands
+            history.write_text(intact)
             self.settle()
             self.assertEqual(self.anchor_attempts(), {})
 
@@ -1945,13 +1941,12 @@ exit 1''')
         history = self.bucket / '.himmel/launch-refusals.jsonl'
         with history.open('a') as stream:
             stream.write(self.launched_line()[:60])
-        self.rt('outcome', extra=('--phase', 'unknown'))  # the receipt starts its own line: the torn line is now mid-file
+        self.rt('outcome', extra=('--phase', 'unknown'))
         self.assertEqual(json.loads(history.read_text().splitlines()[-1])['outcome'], 'indeterminate')
         self.forge(start='0')
         self.refused_settle('history has a line that cannot be read')
         self.assertEqual(list(self.anchor_attempts()), ['one'])
 
-    # A supervised program that cannot be spawned never started: its attempt is refused and released, not left unknown.
     def run_supervised(self, *command):
         argv = ['python3', '-I', str(self.anchorless_tree() / 'scripts/lib/fleet_runtime.py'), 'run', '--doc', str(self.doc), '--manifest', str(self.m),
                 '--name', self.doc.stem, '--', *command]
@@ -1971,7 +1966,7 @@ exit 1''')
         self.assertEqual(rows[-1]['cause'], 'spawn-failed')
         self.assertEqual(json.loads(self.m.read_text())['workers'], [])
         self.call('add', self.m, self.doc, '--lane', 'native', '--pending')
-        self.assertEqual(self.run_supervised('/bin/true').returncode, 0)  # the family is not stranded
+        self.assertEqual(self.run_supervised('/bin/true').returncode, 0)
 
     def test_a_program_that_starts_and_fails_is_complete_never_refused(self):
         self.active()
@@ -1991,12 +1986,11 @@ exit 1''')
         self.assertEqual((anchor.read_text(), self.m.read_text(), history.read_text()), before)
         self.assertEqual(self.anchor_attempts()['one']['phase'], 'committed')
         self.assertTrue((slot / 'managed.json').is_file())
-        for flag in ('--spawn-failed', '--spawn_failed'):  # the supervisor's flag is not an option
+        for flag in ('--spawn-failed', '--spawn_failed'):
             p = self.rt('outcome', extra=('--phase', 'refused', flag), ok=False)
             self.assertIn('unrecognized arguments', p.stderr)
         self.assertEqual((anchor.read_text(), self.m.read_text(), history.read_text()), before)
 
-    # A terminal receipt releases a pending row only when the doc's newest marker is absent or an end marker.
     def sibling_owners(self, outcome, *lines, pending=True):
         doc = self.bucket / 'HIMMEL-111-N1-resumed.md'
         doc.write_text('# worker\n' + ''.join(line + '\n' for line in lines))
@@ -2029,7 +2023,6 @@ exit 1''')
                                ('refused', []), ('refused', ['- 12:00 WRAPPED - done'])):
             self.assertEqual(self.sibling_owners(outcome, *lines), [], outcome + ' ' + str(lines))
 
-    # An outcome removes the row of its own attempt only; reconcile drops a stale copied row and keeps the live replacement and its reservation.
     def test_a_stale_copied_row_goes_while_the_live_replacement_and_its_reservation_stay(self):
         self.active()
         self.rt('begin')
@@ -2038,7 +2031,7 @@ exit 1''')
         self.rt('outcome', extra=('--phase', 'refused'))
         self.call('add', self.m, self.doc, '--lane', 'native', '--pending')
         self.rt('begin', aid='two')
-        self.entry('scripts/lib/usage-preflight.sh', env=dict(self.launch_env(), FLEET_LAUNCH_ATTEMPT='two'))  # stamps the replacement's reservation
+        self.entry('scripts/lib/usage-preflight.sh', env=dict(self.launch_env(), FLEET_LAUNCH_ATTEMPT='two'))
         slot = self.bucket / 'slots' / self.doc.stem
 
         def copy_stale_row():
@@ -2056,7 +2049,7 @@ exit 1''')
         self.assertEqual(json.loads((slot / 'managed.json').read_text())['attempt_id'], 'two')
         copy_stale_row()
         self.rt('outcome', aid='two', extra=('--phase', 'refused'))
-        self.assertEqual(row_attempts(), ['one'])  # the replacement's own row is gone and the other attempt's row is not touched
+        self.assertEqual(row_attempts(), ['one'])
         self.assertFalse(slot.exists())
         self.rt('ack', aid='two')
         self.assertEqual(row_attempts(), [])

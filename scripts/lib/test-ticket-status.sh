@@ -95,10 +95,6 @@ check "9323 unreadable owner doc, the resume_brief says completes yes: D6 (contr
 rbrief no "$tmp/missing-brief.md"
 check "9323 unreadable owner doc, the resume_brief names an unreadable file: D6 (control)" "$TS_RULE/$TS_DERIVED" 'D6/To Do'
 
-# A sibling doc whose managed launch attempt is pending, committed, unknown or launched (the worker may not hold its
-# lock yet), whose lock cannot be read, or whose doc says it may be worked (a marker that is not an end marker, or a doc
-# that cannot be read), keeps the ticket owned, so the wrapped primary does not demote it. A sibling that wrapped itself,
-# or has no attempt and no marker, with a free lock, leaves the primary's wrap as it is.
 mkdir -p "$tmp/sdbin"
 cat > "$tmp/sdbin/python3" <<'EOF'
 #!/usr/bin/env bash
@@ -114,7 +110,7 @@ SD_REAL_PYTHON=$(command -v python3)
 export SD_REAL_PYTHON
 printf '#!/usr/bin/env bash\nexit 3\n' > "$tmp/lock-err.sh"
 chmod +x "$tmp/lock-err.sh"
-sib() { # <sibling disposition word, or empty for the real read> <a line for the sibling doc, or empty> [<queue lock, default a free one>] [<unreadable | dir>] [<any: a second sibling with no attempt and no marker>] - the wrapped primary, the sibling; then the derive
+sib() {
     local b="$tmp/sb.md"
     printf -- '- 10:00 WRAPPED — primary ended\n' > "$tmp/sa.md"
     printf -- '\n' > "$tmp/sc.md"
@@ -179,7 +175,7 @@ sib '"complete"' '- 10:00 HALTED — out of budget'
 check "X07-3 control: a sibling with a complete attempt and a HALTED marker leaves the primary's wrap" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" 'wrapped/D6/To Do/'
 sib '"launched"' '- 10:00 WRAPPED — sibling ended' '' '' any
 check "X07-3 control: a launched sibling that wrapped itself leaves no sign behind for the next sibling (none, no marker, free lock)" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" 'wrapped/D6/To Do/'
-rt_sib() { # <pending|launched> - the wrapped primary and a sibling with a real managed attempt in that phase (fleet-manifest.sh runtime begin, and for launched the preflight's reservation, commit and outcome); prints the derive
+rt_sib() {
     local a="$tmp/rtb-$1/HIMMEL-9001-N1-a.md" b="$tmp/rtb-$1/HIMMEL-9001-N2-b.md" m="$tmp/rtb-$1/chief.fleet.json" fm="$HERE/../handover/chief-kit/fleet-manifest.sh"
     mkdir -p "$tmp/rtb-$1" "$tmp/rth-$1"
     printf -- '---\ndescription: a\n---\n> **Prior art:** none found (offline fixture)\n\n# a\n## Results\n- 10:00 WRAPPED — primary ended\n' > "$a"
@@ -818,8 +814,6 @@ for junk in '"bogus"' 'legacy' '' '"legacy" '; do
     check "U8: a second argument that is not a recognised word ($junk) is not used" "$(ucall "$tmp/u8-wrapped.md" "$junk")" unknown
 done
 
-# A doc that cannot be read is not a doc with no marker: a terminal receipt, a free lock and no marker end ownership
-# only for a doc that was read.
 printf -- '- 10:00 LIVE — working\n' > "$tmp/u8-unread.md"
 for word in refused complete; do
     check "X07-6 control: a readable doc with a LIVE marker, a $word receipt and a free lock reads unknown" "$(ucall "$tmp/u8-unread.md" "\"$word\"")" unknown
@@ -838,8 +832,6 @@ for word in refused complete; do
 done
 ts_marker_newest "$tmp/u8-missing.md" >/dev/null; check "X07-6 ts_marker_newest: a doc it cannot read is rc 1" "$?" 1
 ts_marker_newest "$tmp/u8-empty.md" >/dev/null; check "X07-6 ts_marker_newest control: a readable doc with no marker is rc 0" "$?" 0
-# A doc path that is a directory, and a doc that opens but fails when read, are unknown too. The grep stand-in reads nothing
-# and exits GREP_STANDIN_RC: 1 is "no line matched", 2 is "the read failed".
 mkdir -p "$tmp/gbin" "$tmp/u8-dir.md"
 cat > "$tmp/gbin/grep" <<'EOF'
 #!/bin/sh
@@ -851,14 +843,13 @@ check "X07-6 a doc that is a directory, with a refused receipt and a free lock, 
 check "X07-6 a directory that grep reads as empty, with a refused receipt and a free lock, reads unknown, not wrapped" "$(PATH="$tmp/gbin:$PATH" GREP_STANDIN_RC=1 ucall "$tmp/u8-dir.md" '"refused"')" unknown
 check "X07-6 a doc that opens but fails when read, with a refused receipt and a free lock, reads unknown, not wrapped" "$(PATH="$tmp/gbin:$PATH" GREP_STANDIN_RC=2 ucall "$tmp/u8-empty.md" '"refused"')" unknown
 check "X07-6 control: a readable doc that grep finds no marker in (exit 1), with a refused receipt and a free lock, reads wrapped" "$(PATH="$tmp/gbin:$PATH" GREP_STANDIN_RC=1 ucall "$tmp/u8-empty.md" '"refused"')" wrapped
-# A doc that is not a regular file, or holds a NUL byte, is unknown too; a byte that is not valid text is read as text.
 mkfifo "$tmp/u8-fifo.md"
 python3 -I -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$tmp/u8-sock.md"
 printf -- '- 10:00 LIVE — working\n\000\n' > "$tmp/u8-nul-live.md"
 printf -- '- a note\n\000\n' > "$tmp/u8-nul-plain.md"
 printf -- '- 10:00 LIVE — work\377ing\n' > "$tmp/u8-badutf.md"
 ln -s "$tmp/u8-wrapped.md" "$tmp/u8-link.md"
-fifo_state() { # the state of the FIFO doc under a refused receipt and a free lock, or HUNG when the call does not return within 3 s; a writer that opens the FIFO whenever a reader waits keeps every read of it from blocking for ever
+fifo_state() {
     local fid pid i=0 hung=""
     ( while :; do : > "$tmp/u8-fifo.md"; done ) &
     fid=$!

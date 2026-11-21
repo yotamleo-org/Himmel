@@ -4466,16 +4466,6 @@ fi
 # The crontab and `at` bodies both export HIMMEL_ARMED_RELAUNCH=1 so a
 # top-level armed session can self-exit with SIGTERM once its successor is
 # armed (documented in afk-mode.md).
-# The body text for the scheduled launch $1, for both the at job and the crontab runner.
-# A doc in no fleet family at arm time can join one before the job fires, so its body asks
-# fleet_runtime.py resolve again when it runs: it launches only while the answer is "not
-# managed", and exits 24 with a message when the doc is managed or the answer cannot be read.
-# A managed doc's body hands the launch to the fleet runtime, which runs usage-preflight.sh
-# in the job's own environment: the job has no claude ancestor, an at job carries the arming
-# session's Claude Code markers, and the seam guard refuses a registered seam there. The body
-# therefore clears every seam the registry names for usage-preflight.sh before it starts the
-# runtime, so the job never carries a seam of the arming session. A registry that cannot be
-# read leaves those names unknown, and the arm refuses.
 _arm_runtime_body() {
     local scope q_runtime q_doc seams seam names="" line
     if py_armor_capture -I "$SCRIPT_DIR/../lib/fleet_runtime.py" resolve --doc "$HANDOVER_PATH"; then scope=$PY_ARMOR_OUT; else scope='{"managed":true}'; fi

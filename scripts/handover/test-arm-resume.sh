@@ -2085,9 +2085,6 @@ if grep -q 'stdin=tty' "$T32_REC" 2>/dev/null; then
 
     T32_BUCKET="$TMP/t32-fleet"
     mkdir -p "$T32_BUCKET"
-    # The worker name (the doc stem) is the name the runtime's session scan matches against every claude process on the host and
-    # the name of its slot, so a name shared with another run's stub claude, or a live session, keeps the attempt open and the
-    # next shell's row finds the family owned. A name no other process carries keeps the rows independent of the station.
     T32_DOC="$T32_BUCKET/TEST-1-N1-worker-$$.md"
     printf -- '---\nsession_kind: test\nresume_cwd: %s\n---\n> **Prior art:** none found (offline fixture)\n\n# worker\n' "$WORK_REPO" > "$T32_DOC"
     HOME="$POLICY_EMPTY_HOME" bash "$T32_FM" control init "$T32_BUCKET/x.fleet.json" --target 1 >/dev/null 2>&1
@@ -2099,11 +2096,6 @@ if grep -q 'stdin=tty' "$T32_REC" 2>/dev/null; then
     assert_contains "T32 managed fixture: the body hands the launch to the fleet runtime" "fleet_runtime.py run" "$T32_MANAGED"
     assert_not_contains "T32 unmanaged control: the body carries no fleet runtime" "fleet_runtime.py run" "$T32_PLAIN"
     t32_expect_tty_all "T32 unmanaged at body: claude's stdin is a tty" "$T32_PLAIN"
-    # A managed body clears every registered seam of usage-preflight.sh before it starts the runtime (T32 seams, below), including the
-    # two this suite sets for its fixtures: HIMMEL_POLICY_FOLLOWS_HOME, which moves the runtime's slot directory to HIMMEL_FLEET_SLOTS,
-    # and FLEET_PS_CMD, the empty process table. Without them the runtime would look for slots in the live directory of this
-    # station, which is the clearing working as intended. This python3 belongs to the test: it sets both again for the runtime
-    # process alone, so the end-to-end row keeps running on the suite's own slot directory; no product path can find it.
     T32_SHIM="$TMP/t32-shim"
     mkdir -p "$T32_SHIM"
     cat > "$T32_SHIM/python3" <<EOF
@@ -2113,10 +2105,6 @@ EOF
     chmod +x "$T32_SHIM/python3"
     t32_expect_tty_all "T32 managed at body: claude's stdin is a tty (the pty is set up inside the runtime's bash -c)" "$T32_MANAGED" "$T32_SHIM"
 
-    # T32 (pause): a body armed while its doc was outside every fleet family reads the doc's
-    # registration again when it fires. It refuses (exit 24, nothing started) once the doc is managed
-    # or the read fails, and still launches claude while the doc is unmanaged. t32_fire runs a body
-    # through sh with stdin=/dev/null, as atd does; t32_launched reads the stub claude's record.
     t32_fire() {
         rm -f "$T32_REC"
         env PATH="$T32_BIN:$PATH" T32_REC="$T32_REC" HOME="$POLICY_EMPTY_HOME" CADENCE_USAGE_LEDGER="$TMP/t32-cadence.jsonl" \
@@ -2146,7 +2134,6 @@ EOF
     t32_fire "$T32P_BODY"
     assert_rc "T32 pause control: a doc unmanaged at arm and at fire time exits 0" 0 "$T32_RC"
     t32_launched "T32 pause control: a doc unmanaged at arm and at fire time still launches claude" yes
-    # The doc joins a family after the arm; control init leaves the family paused.
     HOME="$POLICY_EMPTY_HOME" bash "$T32_FM" control init "$T32P_BUCKET/x.fleet.json" --target 1 >/dev/null 2>&1
     HOME="$POLICY_EMPTY_HOME" bash "$T32_FM" add "$T32P_BUCKET/x.fleet.json" "$T32P_DOC" --lane native --pending >/dev/null 2>&1
     t32_fire "$T32P_BODY"
@@ -2158,7 +2145,6 @@ EOF
         0) echo "PASS T32 pause: that body leaves no attempt in the family" ;;
         *) echo "FAIL T32 pause: that body leaves no attempt in the family — it holds '${T32P_ATTEMPTS}'"; FAILED=$((FAILED + 1)) ;;
     esac
-    # Control: a doc registered before the arm gets the runtime wrapper, which the paused family refuses.
     T32P_DOC2="$T32P_BUCKET/TEST-2-N2-worker.md"
     t32_doc "$T32P_DOC2"
     HOME="$POLICY_EMPTY_HOME" bash "$T32_FM" add "$T32P_BUCKET/x.fleet.json" "$T32P_DOC2" --lane native --pending >/dev/null 2>&1
@@ -2167,7 +2153,6 @@ EOF
     t32_fire "$T32P_BODY2"
     assert_rc "T32 pause control: a doc managed at arm time in a paused family exits 10" 10 "$T32_RC"
     t32_launched "T32 pause control: a doc managed at arm time in a paused family does not launch claude" no
-    # A read that fails at fire time refuses too: a manifest the runtime cannot parse.
     T32P_BAD="$TMP/t32p-bad"
     mkdir -p "$T32P_BAD"
     T32P_DOC3="$T32P_BAD/TEST-3-N1-worker.md"
@@ -2377,12 +2362,6 @@ else
     echo "SKIP T32 resolve-hang rows (no GNU coreutils timeout on this runner)"
 fi
 
-# T32 (seams): the fleet runtime runs usage-preflight.sh, a registered chokepoint, in the job's own
-# environment. An at job carries the arming session's environment and has no claude ancestor, so the
-# seam guard refuses any registered seam there. A managed body therefore clears every registered seam
-# of usage-preflight.sh before it starts the runtime; the names come from scripts/chokepoints.json
-# through the guard's own reader. The python3 stub records, for each name, whether the runtime process
-# sees it; T32S_KEEP is no registered seam and must stay.
 T32S_GUARD="$(dirname "$ARM")/../lib/chokepoint-seam-guard.sh"
 T32S_REGISTRY="$(dirname "$ARM")/../chokepoints.json"
 # shellcheck source=../lib/chokepoint-seam-guard.sh
@@ -2404,11 +2383,9 @@ cat > "$T32S_CBIN/crontab" <<'EOF'
 case "${1:-}" in -l) exit 0 ;; *) cat > /dev/null; exit 0 ;; esac
 EOF
 chmod +x "$T32S_CBIN/crontab"
-# t32s_check <title> <body>: fires the body with every registered seam set, no claude ancestor.
 t32s_check() {
     local seen bad got
     : > "$T32R_SEAM_LOG"
-    # a crontab runner appends its output to the arm log of the arm that wrote it
     mkdir -p "$ARM_RESUME_LOG_DIR"
     # shellcheck disable=SC2086
     env PATH="$T32R_PY:$T32S_CBIN:$T32R_BIN:$PATH" T32R_REAL_PY="$T32R_REAL_PY" T32R_MODE=seams T32R_SEAM_NAMES="$T32S_NAMES" \
@@ -2435,21 +2412,16 @@ T32S_RUNNER=$(printf '%s\n' "$out" | awk '/^DRY arm-resume: runner/ { on = 1; ne
 assert_contains "T32 seams: the crontab runner carries the runtime line" "fleet_runtime.py run" "$T32S_RUNNER"
 t32s_check "T32 seams: a managed crontab runner" "$T32S_RUNNER"
 
-# A registry that cannot be read leaves the seams of the scheduled job unknown, never empty: a managed
-# arm refuses (rc 22) and schedules nothing. A copy of the scripts without a registry stands in for the
-# tree; the python3 stub answers the doc as managed. A healthy registry schedules as before.
 T32S_TREE="$TMP/t32s-tree"
 mkdir -p "$T32S_TREE/handover" "$T32S_TREE/lib" "$T32S_TREE/lanes"
 cp "$(dirname "$ARM")"/*.sh "$T32S_TREE/handover/" 2>/dev/null || true
 cp "$(dirname "$ARM")/../lib"/*.sh "$(dirname "$ARM")/../lib"/*.mjs "$(dirname "$ARM")/../lib"/*.py "$T32S_TREE/lib/" 2>/dev/null || true
 cp "$(dirname "$ARM")/../lanes"/* "$T32S_TREE/lanes/" 2>/dev/null || true
 T32S_REG="$T32S_TREE/chokepoints.json"
-# t32s_arm <mode> <doc>: a real arm in that tree through the stubs; prints its output
 t32s_arm() {
     : > "$T32R_AT_LOG"
     t32r_arm T32R_MODE="$1" bash "$T32S_TREE/handover/arm-resume.sh" --time "$(future_time)" --handover "$2" 2>&1
 }
-# t32s_refused <title>: the managed arm refuses and the scheduler stub was never asked to schedule
 t32s_refused() {
     local out rc scheduled
     out=$(t32s_arm managed-slots "$(make_handover "$WORK_REPO")")
@@ -2498,9 +2470,6 @@ case "$T32S_SCHEDULED" in
 esac
 assert_contains "T32 seams (control): the scheduled job clears the registry's seams" "{ unset ${T32S_NAMES%% *} " "$T32S_JOB"
 
-# T32 (pause, crontab): the crontab runner is built by the same function as the at body, so it carries
-# the same fire-time registration check; a runner armed while its doc was unmanaged refuses once the
-# doc is in a paused family. The runner's output goes to the arm log.
 T32P_CBIN="$TMP/t32p-cbin"
 T32P_CREC="$TMP/t32p-cron-launches"
 mkdir -p "$T32P_CBIN"
