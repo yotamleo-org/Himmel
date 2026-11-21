@@ -60,6 +60,13 @@ fleet_launch_runtime_line() {
         "$(fleet_launch_sh_quote "$4")" "$(fleet_launch_sh_quote "$5")"
 }
 
+fleet_launch_fire_check_open() {
+    local q_runtime q_doc
+    q_runtime=$(printf '%q' "$1")
+    q_doc=$(printf '%q' "$2")
+    printf '%s\n' "if _arm_fire_scope=\$(python3 -I $q_runtime resolve --doc $q_doc) && printf '%s\\n' \"\$_arm_fire_scope\" | jq -e '.managed == false' >/dev/null 2>&1; then"
+}
+
 # fleet_launch_sh_quote <text>
 # prints <text> as one shell word that a plain POSIX sh reads back byte for byte. printf %q
 # is used while it stays in the backslash form; for text with a newline or another control

@@ -4467,13 +4467,16 @@ fi
 # top-level armed session can self-exit with SIGTERM once its successor is
 # armed (documented in afk-mode.md).
 _arm_runtime_body() {
-    local scope q_runtime q_doc seams seam names="" line
+    local scope seams seam names="" line
     if py_armor_capture -I "$SCRIPT_DIR/../lib/fleet_runtime.py" resolve --doc "$HANDOVER_PATH"; then scope=$PY_ARMOR_OUT; else scope='{"managed":true}'; fi
     if [ "$(printf '%s\n' "$scope" | jq -r .managed)" != true ]; then
-        q_runtime=$(printf '%q' "$SCRIPT_DIR/../lib/fleet_runtime.py")
-        q_doc=$(printf '%q' "$HANDOVER_PATH")
+        # shellcheck source=../lib/fleet-launch.sh
+        . "$SCRIPT_DIR/../lib/fleet-launch.sh" || {
+            echo "ERR arm-resume: cannot source $SCRIPT_DIR/../lib/fleet-launch.sh -- refusing to arm a launch without its fire-time registration check." >&2
+            exit 22
+        }
         printf '%s\n' \
-            "if _arm_fire_scope=\$(python3 -I $q_runtime resolve --doc $q_doc) && printf '%s\\n' \"\$_arm_fire_scope\" | jq -e '.managed == false' >/dev/null 2>&1; then" \
+            "$(fleet_launch_fire_check_open "$SCRIPT_DIR/../lib/fleet_runtime.py" "$HANDOVER_PATH")" \
             "$1" \
             "else" \
             "echo 'ERR arm-resume: this launch was armed while its doc was in no fleet family, and the doc is now managed or its fleet registration cannot be read; the pause and admission rules of the family apply, so nothing was started. Re-arm it through the managed path.' >&2" \
