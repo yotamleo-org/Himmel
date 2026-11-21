@@ -100,6 +100,10 @@ if [ "${#files[@]}" -eq 0 ]; then
 fi
 
 # ---- 5. install, versions, resolved plugin ------------------------------------
+# The package directory itself must be a real path inside the repo: a tracked
+# symlink at it, or at a directory above it, would run an unreviewed package.
+pkg_real=$(cd "$PKG_REL" 2>/dev/null && pwd -P) || pkg_real=""
+[ "$pkg_real" = "$repo_root/$PKG_REL" ] || refuse "$PKG_REL is reached through a symlink (it resolves to '${pkg_real:-nothing}') - the lint package must be a real directory in this repo"
 # Both spellings: the slash form misses a tracked symlink named node_modules.
 tracked=$(git ls-files -- "$PKG_REL/node_modules" "$PKG_REL/node_modules/") || refuse "cannot list tracked files under $PKG_REL/node_modules/"
 [ -z "$tracked" ] || refuse "tracked files under $PKG_REL/node_modules/ - the install must never be committed"

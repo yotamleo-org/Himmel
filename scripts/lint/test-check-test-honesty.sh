@@ -868,6 +868,40 @@ case_f2_tracked_node_modules_symlink() {
     assert_eq "f2-tracked-node-modules-symlink refuses before any install" 0 "$(calls_count)"
 }
 
+case_f2_package_dir_symlink() {
+    mk_repo || { fail "f2-package-dir-symlink (no temp repo)"; return; }
+    link_install "$REPO"
+    stand_in "$REPO" bun 'exit 0' record
+    run_gate "$REPO" 1 "$REPO/bin:$PATH"
+    assert_eq "f2-package-dir-symlink control exits 0" 0 "$GATE_RC"
+
+    # scripts/lint/landmines itself a committed symlink to a committed package.
+    mk_repo || { fail "f2-package-dir-symlink (no temp repo)"; return; }
+    git -C "$REPO" mv scripts/lint/landmines scripts/lint/lm-real
+    ln -s lm-real "$REPO/scripts/lint/landmines"
+    git -C "$REPO" add scripts/lint/landmines
+    git -C "$REPO" commit -q -m "symlinked package dir"
+    link_install "$REPO"
+    stand_in "$REPO" bun 'exit 0' record
+    run_gate "$REPO" 0 "$REPO/bin:$PATH"
+    assert_eq "f2-package-dir-symlink exits 1" 1 "$GATE_RC"
+    assert_has "f2-package-dir-symlink names the cause" "reached through a symlink" "$GATE_OUT"
+    assert_eq "f2-package-dir-symlink refuses before any install" 0 "$(calls_count)"
+
+    # A symlink higher up the path is refused the same way.
+    mk_repo || { fail "f2-package-dir-symlink-parent (no temp repo)"; return; }
+    git -C "$REPO" mv scripts/lint scripts/lint-real
+    ln -s lint-real "$REPO/scripts/lint"
+    git -C "$REPO" add scripts/lint
+    git -C "$REPO" commit -q -m "symlinked lint dir"
+    link_install "$REPO"
+    stand_in "$REPO" bun 'exit 0' record
+    run_gate "$REPO" 0 "$REPO/bin:$PATH"
+    assert_eq "f2-package-dir-symlink-parent exits 1" 1 "$GATE_RC"
+    assert_has "f2-package-dir-symlink-parent names the cause" "reached through a symlink" "$GATE_OUT"
+    assert_eq "f2-package-dir-symlink-parent refuses before any install" 0 "$(calls_count)"
+}
+
 case_gate_early_exits() {
     mk_repo || { fail "gate-early-exits (no temp repo)"; return; }
     stand_in "$REPO" bun 'exit 0' record
@@ -920,6 +954,7 @@ case_f1_resolved
 case_f1_resolved_installed_plugin
 case_f2_tracked_node_modules
 case_f2_tracked_node_modules_symlink
+case_f2_package_dir_symlink
 case_gate_early_exits
 case_i3_real_marker_untouched
 
