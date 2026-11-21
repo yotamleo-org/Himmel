@@ -1121,11 +1121,12 @@ export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDo
       const curFile = file + ".cursor";
       let start = 0; try { start = Number(await readFile(curFile, "utf8")) || 0; } catch {}
       let buf = ""; try { buf = await readFile(file, "utf8"); } catch { continue; }
-      for (const n of await readdir(sessionDir(root, s)).catch(() => [] as string[])) {
+      const listed = await readdir(sessionDir(root, s)).catch((e: unknown) => { logRedacted("[poller] outbox markers unreadable, reclaim skipped for " + s + ": " + e); return null; });
+      for (const n of listed ?? []) {
         const marker = /^outbox\.jsonl\.sent-(\d+)$/.exec(n);
         if (marker && Number(marker[1]) < start) await unlink(join(sessionDir(root, s), n)).catch((e: NodeJS.ErrnoException) => { if (e.code !== "ENOENT") throw e; });
       }
-      if (start >= Buffer.byteLength(buf, "utf8")) { await withOwedOutboxLock(root, () => truncateFullyConsumed(file, curFile)); continue; }   // fully sent → reclaim
+      if (start >= Buffer.byteLength(buf, "utf8")) { if (listed) await withOwedOutboxLock(root, () => truncateFullyConsumed(file, curFile)); continue; }   // fully sent → reclaim
       const slice = Buffer.from(buf, "utf8").subarray(start).toString("utf8");
       const lastNl = slice.lastIndexOf("\n");
       if (lastNl < 0) continue;

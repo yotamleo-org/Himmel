@@ -259,6 +259,48 @@ test('X02-3b: a receipt index with no string name is refused, not overwritten by
   await flushOutboxes(f.root, send);
   expect(sent).toEqual([]);
   expect(readFileSync(indexOf(f, row.request_id), 'utf8')).toBe(body);
+  const r = await reply(f, 'k3', 'please sign HIMMEL-78 today', {}, 'receipt');
+  expect(r.code).not.toBe(0);
+  expect(readFileSync(f.doc, 'utf8')).not.toContain('DELIVERED');
+});
+
+test('a spent completion marker left by a failed unlink never swallows an identical row appended after the reclaim', async () => {
+  const f = fixture();
+  await reply(f, 'k7', 'owed text k7');
+  await replyViaOutbox(f.root, 1, 'ordinary reply', NAME);
+  const original = readFileSync(outbox(f));
+  const sent: string[] = [];
+  let failOwed = true;
+  const send = async (_c: number, t: string) => { if (t.startsWith('owed text') && failOwed) return undefined; sent.push(t); return 7300 + sent.length; };
+  await flushOutboxes(f.root, send);
+  failOwed = false;
+  writeFileSync(join(dirOf(f), readdirSync(dirOf(f)).find(n => n.includes('.retry-'))!), '{"attempts":1,"next":0}');
+  const real = { ...fsp };
+  let armed = true;
+  mock.module('node:fs/promises', () => ({ ...real, default: real, unlink: (...a: any[]) => {
+    if (armed && String(a[0]).includes('.sent-')) { armed = false; return Promise.reject(new Error('injected: marker unlink failed')); }
+    return (real.unlink as any)(...a);
+  } }));
+  try { await flushOutboxes(f.root, send); } finally { mock.module('node:fs/promises', () => ({ ...real, default: real })); }
+  expect(readdirSync(dirOf(f)).some(n => n.includes('.sent-'))).toBe(true);
+  await flushOutboxes(f.root, send);
+  expect(statSync(outbox(f)).size).toBe(0);
+  writeFileSync(outbox(f), original);
+  await flushOutboxes(f.root, send);
+  expect(sent.filter(t => t === 'ordinary reply')).toHaveLength(2);
+});
+
+test('an unreadable session folder skips the reclaim instead of reading the sweep as empty', async () => {
+  if (process.getuid?.() === 0) return;
+  const f = fixture();
+  await reply(f, 'k1', 'first owed');
+  const { send } = collector();
+  await flushOutboxes(f.root, send);
+  const before = statSync(outbox(f)).size;
+  expect(before).toBeGreaterThan(0);
+  chmodSync(dirOf(f), 0o300);
+  try { await flushOutboxes(f.root, send); } finally { chmodSync(dirOf(f), 0o700); }
+  expect(statSync(outbox(f)).size).toBe(before);
 });
 
 test('X01-5: an unreadable replies folder is held for reconciliation, not read as no receipt', async () => {
