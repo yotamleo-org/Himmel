@@ -574,7 +574,7 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     the git facts; name it per `worker-brief-template.md`, and keep the `description:` line
     double-quoted, on one line), end its stale session (one pid per call), release its lock with the worker's token, launch `chief-kit/headed-arm-worker.sh --fleet <your manifest>`
     on the RESUME doc (same branch, worktree and PR; the launcher adds the manifest row), then confirm it with
-    `chief-kit/launch-confirm.sh <session> <log>`; or
+    `chief-kit/launch-confirm.sh --since <epoch taken just before the launch> <session> <log>`; or
     **take over** its one blocked step yourself (a merge after your GO runs as a claudex PR's
     does, `merges.md`). Then send the operator one message saying which you did, for which worker.
 

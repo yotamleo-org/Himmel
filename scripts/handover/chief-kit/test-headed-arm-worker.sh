@@ -3034,13 +3034,13 @@ mkdir -p "$tmp/repo29"
 lr_doc="$lr_bucket/PROJ-29-N1-nomanifest.md"
 fx_brief '# PROJ-29 — fixture — worker N1 (claude-sonnet-5)' > "$lr_doc"
 d29a="$tmp/c29a"; mk_launch_stubs "$d29a" "PROJ-29-N1-nomanifest"
-lr_run "$d29a" PROJ-29-N1-nomanifest "$lr_doc"
+lr_since=$(date +%s); lr_run "$d29a" PROJ-29-N1-nomanifest "$lr_doc"
 check "29a a managed worker with no manifest reference is refused (exit 10)" "$lr_rc" "10"
 contains "29a ... the launch log carries the LAUNCH-REFUSED line with the cause" "$(cat "$d29a/log" 2>/dev/null)" "LAUNCH-REFUSED PROJ-29-N1-nomanifest fleet-paused: managed worker has no manifest reference"
 contains "29a ... and the chief inbox carries it" "$(cat "$lr_inbox")" "LAUNCH-REFUSED PROJ-29-N1-nomanifest fleet-paused: managed worker has no manifest reference"
 check "29a ... and konsole was never reached" "$([ -s "$d29a/record" ] && echo launched || echo none)" "none"
 contains "29a ... and the log opens on the attempt's LAUNCH-START line" "$(head -n 1 "$d29a/log" 2>/dev/null)" "LAUNCH-START PROJ-29-N1-nomanifest epoch="
-lr_rc=0; lr_out="$(PGREP_CMD="$d29a/pgrep" bash "$HERE/launch-confirm.sh" --chief lr-chief --secs 1 PROJ-29-N1-nomanifest "$d29a/log" 2>&1)" || lr_rc=$?
+lr_rc=0; lr_out="$(PGREP_CMD="$d29a/pgrep" bash "$HERE/launch-confirm.sh" --since "$lr_since" --chief lr-chief --secs 1 PROJ-29-N1-nomanifest "$d29a/log" 2>&1)" || lr_rc=$?
 check "29a ... and launch-confirm reports the refused attempt (exit 1)" "$lr_rc" "1"
 contains "29a ... naming the launcher's reason" "$lr_out" "LAUNCH-UNCONFIRMED PROJ-29-N1-nomanifest the launcher refused: fleet-paused: managed worker has no manifest reference"
 lr_wt_doc="$tmp/lr-wt-doc.md"
@@ -3067,10 +3067,10 @@ contains "29e the documented launch form passes --fleet" "$lr_form" "--fleet"
 not_contains "29e the documented launch form no longer sends stderr to /dev/null" "$lr_form" ">/dev/null 2>&1"
 contains "29e the documented launch form logs stderr" "$lr_form" "2>&1 &"
 d29f="$tmp/c29f"; mk_launch_stubs "$d29f" "PROJ-29-N6-ok"; mkdir -p "$tmp/repo29f"
-lr_rc=0; run_worker "$d29f" "$tmp/repo29f" "PROJ-29-N6-ok" "claude-sonnet-5" >/dev/null 2>&1 || lr_rc=$?
+lr_since=$(date +%s); lr_rc=0; run_worker "$d29f" "$tmp/repo29f" "PROJ-29-N6-ok" "claude-sonnet-5" >/dev/null 2>&1 || lr_rc=$?
 check "29f a launch that starts its session exits 0" "$lr_rc" "0"
 contains "29f ... and closes its attempt with LAUNCH-OK" "$(cat "$d29f/log" 2>/dev/null)" "LAUNCH-OK PROJ-29-N6-ok launched"
-lr_rc=0; lr_out="$(PGREP_CMD="$d29f/pgrep" bash "$HERE/launch-confirm.sh" --secs 2 PROJ-29-N6-ok "$d29f/log" 2>&1)" || lr_rc=$?
+lr_rc=0; lr_out="$(PGREP_CMD="$d29f/pgrep" bash "$HERE/launch-confirm.sh" --since "$lr_since" --secs 2 PROJ-29-N6-ok "$d29f/log" 2>&1)" || lr_rc=$?
 check "29f ... and launch-confirm confirms it" "$lr_out" "LAUNCH-CONFIRMED PROJ-29-N6-ok pid=9001"
 
 

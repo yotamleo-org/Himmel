@@ -290,11 +290,12 @@ The chief writes a brief from
 [`worker-brief-template.md`](worker-brief-template.md) and launches it headed:
 
 ```bash
+since=$(date +%s)
 setsid nohup bash scripts/handover/chief-kit/headed-arm-worker.sh --profile worker-impl \
   --fleet <chief doc stem>.fleet.json <session-name> <brief> <signal-file> <deadline-epoch> <log> <model> \
   >>"<log>.launcher.out" 2>&1 &
 touch <signal-file>
-bash scripts/handover/chief-kit/launch-confirm.sh <session-name> <log>
+bash scripts/handover/chief-kit/launch-confirm.sh --since "$since" <session-name> <log>
 ```
 
 `--fleet` names the chief's own manifest. Without it, a managed worker is
@@ -306,11 +307,11 @@ console inbox, which wakes the waiter. The full stderr is in
 `<log>.launcher.out`. `--dry-run` makes the same fleet admission and worktree
 checks without writing anything, so when a dry run passes, the real launch
 starts. The launcher opens each attempt with a `LAUNCH-START` line in `<log>`
-and closes an exit-0 attempt with `LAUNCH-OK`. Run the three lines above as
-one call. `launch-confirm.sh` then reads only the attempt that started in the
-last 30 s. It waits up to 60 s for that attempt to end `LAUNCH-OK` with a
-claude session named `<session-name>` running. To check later, pass
-`--since <epoch taken before the launch>`. It prints `LAUNCH-CONFIRMED <session> pid=<pid>`, or exits 1
+and closes an exit-0 attempt with `LAUNCH-OK`. `launch-confirm.sh` reads only
+the attempt that started at or after `--since`, the epoch taken just before
+the launch, so an earlier attempt or session never decides it. It waits up to
+60 s for that attempt to end `LAUNCH-OK` with a claude session named
+`<session-name>` running. It prints `LAUNCH-CONFIRMED <session> pid=<pid>`, or exits 1
 with a `LAUNCH-UNCONFIRMED` line on stderr, in the log and in your inbox. Never
 report a worker as running until it confirms.
 

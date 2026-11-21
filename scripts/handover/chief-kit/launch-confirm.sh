@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/launch-confirm.sh - confirm a detached worker launch started a claude session.
 #
-# usage: launch-confirm.sh [--chief <name>] [--secs <n>] [--since <epoch>] <session-name> <log>
+# usage: launch-confirm.sh --since <epoch> [--chief <name>] [--secs <n>] <session-name> <log>
 #
-# Run by the chief in the same call that launches a worker (headed-arm-worker.sh, detached) and touches its signal
-# file. Polls once a second, up to --secs (default 60, or LAUNCH_CONFIRM_SECS), on one launch attempt only: the lines
-# <log> holds after its newest `LAUNCH-START <session> epoch=<s>` line with <s> at or after --since (default: 30 s
-# before this run), so an older attempt's lines and an older session never decide it. A check run later than that
-# passes --since <epoch taken before the launch>.
+# Run by the chief after it launches a worker (headed-arm-worker.sh, detached) and touches its signal file, with
+# --since the epoch it took just before that launch. Polls once a second, up to --secs (default 60, or
+# LAUNCH_CONFIRM_SECS), on that launch attempt only: the lines <log> holds after its newest
+# `LAUNCH-START <session> epoch=<s>` line with <s> at or after --since, so an earlier attempt's lines and an earlier
+# session never decide it, and an attempt whose START has not been written yet is waited for.
 #   the attempt wrote LAUNCH-OK and a claude process carries `-n <session-name>` (headed-arm.sh's pattern)
 #                             -> prints `LAUNCH-CONFIRMED <session> pid=<pid>`, exit 0
 #   the attempt wrote LAUNCH-REFUSED, or the window ends first
@@ -18,8 +18,8 @@
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-usage() { echo "usage: launch-confirm.sh [--chief <name>] [--secs <n>] [--since <epoch>] <session-name> <log>" >&2; exit 2; }
-chief="${HIMMEL_CONSOLE_NAME:-}" secs="${LAUNCH_CONFIRM_SECS:-60}" since=$(( $(date +%s) - 30 ))
+usage() { echo "usage: launch-confirm.sh --since <epoch> [--chief <name>] [--secs <n>] <session-name> <log>" >&2; exit 2; }
+chief="${HIMMEL_CONSOLE_NAME:-}" secs="${LAUNCH_CONFIRM_SECS:-60}" since=''
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --chief) [ "$#" -ge 2 ] || usage; chief="$2"; shift 2 ;;
