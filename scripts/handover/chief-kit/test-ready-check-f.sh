@@ -341,10 +341,12 @@ check "19 T16 a later label run with no aggregator: exit 0" "$rc" "0"
 contains "19 T16: the go run stands" "$out" "2 from CI run 555"
 
 # T17 / T17b / T18: every read is bounded; no timeout binary FAILs
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
+s17_t0=$SECONDS; s17_at "$S17_H1"; s17_base=$((SECONDS - s17_t0))
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_DL_SLEEP=10; READY_CHECK_ITEM19_BOUND=2
 s17_t0=$SECONDS; s17_at "$S17_H1"; s17_dt=$((SECONDS - s17_t0))
 contains "19 T17 a stalled download: names the read" "$(line17 "$out")" "[FAIL] 19. suite evidence: gh run download 555 timed out after 2s"
-check "19 T17: bounded (${s17_dt}s)" "$((s17_dt < 9))" "1"
+check "19 T17: bounded (${s17_dt}s, an unstalled run took ${s17_base}s)" "$((s17_dt < s17_base + 6))" "1"
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_RUN_SLEEP=10; READY_CHECK_ITEM19_BOUND=2
 s17_at "$S17_H1"
 contains "19 T17b a stalled run read: names the read" "$(line17 "$out")" "[FAIL] 19. suite evidence: gh api actions/runs/555 timed out after 2s"
@@ -578,7 +580,7 @@ rc=0; out="$(RUN_MODE=none run 2>&1)" || rc=$?
 check    "9479 I4: a usage error is exit 2" "$rc" "2"
 check    "9479 I4: a usage error leaves no marker" "$(find "$tmp/quota/blocked" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
 mkdir -p "$tmp/nojq"
-for f_nj in /usr/bin/*; do [ "${f_nj##*/}" = jq ] || ln -sf "$f_nj" "$tmp/nojq/${f_nj##*/}"; done
+for f_nj in /bin/* /usr/bin/*; do [ "${f_nj##*/}" = jq ] || ln -sf "$f_nj" "$tmp/nojq/${f_nj##*/}"; done
 rc=0; out="$(PATH="$tmp/bin:$tmp/nojq" run 2>&1)" || rc=$?
 check    "9479 I4: a missing jq is exit 2" "$rc" "2"
 contains "9479 I4: a missing jq names jq" "$out" "jq not found"

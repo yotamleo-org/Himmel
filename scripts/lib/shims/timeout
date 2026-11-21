@@ -105,6 +105,7 @@ watcher=$!
 got_sig=0
 trap 'got_sig=1; kill -s TERM -- "-$pid" 2>/dev/null || kill -s TERM "$pid" 2>/dev/null' TERM
 trap 'got_sig=1; kill -s INT -- "-$pid" 2>/dev/null || kill -s INT "$pid" 2>/dev/null' INT
+trap 'got_sig=1; echo term > "$flag"; kill -s "$sig" -- "-$pid" 2>/dev/null || kill -s "$sig" "$pid" 2>/dev/null' ALRM
 rc=0
 wait "$pid" 2>/dev/null || rc=$?
 if [ "$got_sig" = 1 ]; then
