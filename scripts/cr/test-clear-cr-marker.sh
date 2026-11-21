@@ -4641,7 +4641,8 @@ rm -rf "$tmp"
 mf_case 'echo b\n'
 write_ledger "$tmp" "$(avail_ok "$sha")" "$(_cm_row feat/x "$sha" ok 1)"
 run_clear "$tmp" 14 "14d a branch-authored change beside a merge-forward is not carried -> exit 14"
-if grep -qF "\"head\":\"$B\"" "$tmp/.git/cr-critic-scores.jsonl"; then fail "14d: a refused tip must get no ledger row"; else pass; fi
+_14d_rc=0; grep -qF "\"head\":\"$B\"" "$tmp/.git/cr-critic-scores.jsonl" || _14d_rc=$?
+if [ "$_14d_rc" -eq 1 ]; then pass; else fail "14d: a refused tip must get no ledger row (grep rc=$_14d_rc)"; fi
 rm -rf "$tmp"
 CM_ANCHOR_SELF=
 
