@@ -25,10 +25,6 @@ _LCR_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/worker-identity.sh
 . "$_LCR_HERE/../../lib/worker-identity.sh"
 
-# _lcr_doc_root <doc | stem> - the deepest known handover root holding the doc,
-# resolved the way queue-lock.sh keys a lock (HANDOVER_DIR + registry). Prints
-# nothing when no known root holds it. A subshell: queue-lock.sh sets shell
-# options and defines many helpers.
 _lcr_doc_root() {
     (
         # shellcheck source=scripts/handover/queue-lock.sh
@@ -47,13 +43,8 @@ EOF
     ) 2>/dev/null
 }
 
-# worker_cost_ledger_path [doc | stem] - the ledger lives under the handover root
-# that holds the worker doc, so a chief run from another repo (or with
-# HANDOVER_DIR unset) never writes into that repo's handovers/ stub
-# handovers/ stub. No doc, or one no known root holds: handover_root.
 worker_cost_ledger_path() {
     if [ -n "${WORKER_SESSION_COST_LEDGER:-}" ]; then printf '%s\n' "${WORKER_SESSION_COST_LEDGER}"; return 0; fi
-    # handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
     # shellcheck disable=SC1091
     if . "$_LCR_HERE/../../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
     # shellcheck source=scripts/lib/handover-path.sh
@@ -64,7 +55,6 @@ worker_cost_ledger_path() {
     printf '%s/.ledger/leg-cost.jsonl\n' "$root"
 }
 
-# _lcr_front <doc> <key> - a front-matter value (first --- block only).
 _lcr_front() {
     awk -v k="$2" '
         NR == 1 && $0 != "---" { exit }
@@ -81,7 +71,7 @@ worker_cost_row() {
     _lcr_field() { printf '%s' "$raw" | sed -nE "s/.* $1=([0-9]+).*/\\1/p"; }
     calls=$(_lcr_field calls); comp=$(_lcr_field compactions); out=$(_lcr_field out)
     cr=$(_lcr_field cache-read); cc=$(_lcr_field cache-create); inp=$(_lcr_field input)
-    unk=$(_lcr_field unknown-model-calls); [ -n "$unk" ] || unk=0 # a worker-burn without the counter priced nothing as unknown
+    unk=$(_lcr_field unknown-model-calls); [ -n "$unk" ] || unk=0
     local v
     for v in "$calls" "$comp" "$out" "$cr" "$cc" "$inp"; do
         case "$v" in ''|*[!0-9]*) echo "worker-burn output unparseable: $raw" >&2; return 1 ;; esac

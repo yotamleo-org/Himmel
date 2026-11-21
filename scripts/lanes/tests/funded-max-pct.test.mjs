@@ -38,7 +38,7 @@ test('non-numeric / empty / undefined fall back to 90 (the documented default)',
 test('partially numeric values fall back to 90 (CR round 2: parseFloat accepted them)', () => {
   assert.equal(parseFundedMaxPct('50%'), 90);
   assert.equal(parseFundedMaxPct('0invalid'), 90);
-  assert.equal(parseFundedMaxPct(' 50 '), 50); // trimmed whole-string numeric is fine
+  assert.equal(parseFundedMaxPct(' 50 '), 50);
 });
 
 test('resolveFundedMaxPct: default 90; LANE_FUNDED_MAX_PCT wins; CLAUDEX_USAGE_REFUSE_PCT is an alias', () => {
@@ -47,7 +47,6 @@ test('resolveFundedMaxPct: default 90; LANE_FUNDED_MAX_PCT wins; CLAUDEX_USAGE_R
   assert.equal(resolveFundedMaxPct({ CLAUDEX_USAGE_REFUSE_PCT: '70' }), 70);
   assert.equal(resolveFundedMaxPct({ LANE_FUNDED_MAX_PCT: '60' }), 60);
   assert.equal(resolveFundedMaxPct({ LANE_FUNDED_MAX_PCT: '60', CLAUDEX_USAGE_REFUSE_PCT: '70' }), 60);
-  // an invalid primary falls through to the alias, an invalid alias to the default
   assert.equal(resolveFundedMaxPct({ LANE_FUNDED_MAX_PCT: 'abc', CLAUDEX_USAGE_REFUSE_PCT: '70' }), 70);
   assert.equal(resolveFundedMaxPct({ LANE_FUNDED_MAX_PCT: '', CLAUDEX_USAGE_REFUSE_PCT: '-3' }), 90);
 });
@@ -71,8 +70,8 @@ test('HIMMEL-1700 scope: only codex takes the shared 90; claude keeps 99 and a 9
   assert.equal(fundedMaxPctForBank('codex', { CLAUDEX_USAGE_REFUSE_PCT: '70' }), 70);
   for (const bank of ['claude']) {
     assert.equal(fundedMaxPctForBank(bank, {}), 99);
-    assert.equal(fundedMaxPctForBank(bank, { CLAUDEX_USAGE_REFUSE_PCT: '70' }), 99); // alias is codex-only
-    assert.equal(fundedMaxPctForBank(bank, { LANE_FUNDED_MAX_PCT: '60' }), 60); // override still honored
+    assert.equal(fundedMaxPctForBank(bank, { CLAUDEX_USAGE_REFUSE_PCT: '70' }), 99);
+    assert.equal(fundedMaxPctForBank(bank, { LANE_FUNDED_MAX_PCT: '60' }), 60);
     const active = { ok: true, path: { kind: 'subscription', windows: ['weekly'] } };
     const at95 = { kind: 'measured', readings: [{ window: 'weekly', usedPct: 95 }] };
     assert.equal(guardState(at95, active, fundedMaxPctForBank(bank, {})), 'funded');

@@ -43,13 +43,11 @@ has() { case "$2" in *"$3"*) pass "$1";; *) fail "$1: '$3' not in '$2'";; esac; 
 
 unset HIMMEL_WORKER_SESSION_PROFILE 2>/dev/null || true
 
-# --- the whole line, pinned -------------------------------------------------
 out=$(bash "$BURN" "$FIXTURE"); rc=$?
 eq "fixture exits 0" "$rc" "0"
 eq "one line, every field, hand-computed" "$out" \
    "worker-burn leg-burn-sample.jsonl: calls=4 avg-ctx=963 first-turn=1.2k out=185 compactions=2 text-only=2 cache-read=3.6k cache-create=250 input=4 cache-health=99.9% cost-eq=1.6k floor-share=133.7% compaction-rewarm=650 price-model=unknown cr-weight=0.1 unknown-model-calls=4"
 
-# --- price-weighted fields ---------------------------------------------------
 has "cache-read sum" "$out" "cache-read=3.6k"
 has "cache-create sum" "$out" "cache-create=250"
 has "input sum" "$out" "input=4"
@@ -58,16 +56,9 @@ has "cost-eq weighted sum" "$out" "cost-eq=1.6k"
 has "floor-share pct" "$out" "floor-share=133.7%"
 has "compaction-rewarm" "$out" "compaction-rewarm=650"
 
-# env override: cache-read weight 0.1 -> 1 moves cost-eq from 1.6k to 4.8k
-# (4 + 3600*1 + 312.5 + 925 = 4841.5 -> 4.8k) - pins that the weight is
-# actually read from env, not hardcoded.
 out_override=$(WORKER_SESSION_BURN_W_CACHE_READ=1 bash "$BURN" "$FIXTURE")
 has "cache-read weight override changes cost-eq" "$out_override" "cost-eq=4.8k"
 
-# --- --raw prints exact integers, default line untouched ---------------------
-# Only cache-read is >=1000 in this fixture (3600), so it's the one field
-# where --raw visibly differs from the default (3.6k -> 3600); out/cache-create/
-# input are already <1000 and print the same integer either way.
 out_raw=$(bash "$BURN" --raw "$FIXTURE")
 eq "--raw: same line except the four counters are exact integers" "$out_raw" \
    "worker-burn leg-burn-sample.jsonl: calls=4 avg-ctx=963 first-turn=1.2k out=185 compactions=2 text-only=2 cache-read=3600 cache-create=250 input=4 cache-health=99.9% cost-eq=1601.5 floor-share=133.7% compaction-rewarm=650 price-model=unknown cr-weight=0.1 unknown-model-calls=4"
@@ -77,7 +68,6 @@ eq "default output matches --raw except the four k-rounded counters" "$out" \
 out_raw_env=$(WORKER_SESSION_BURN_RAW=1 bash "$BURN" "$FIXTURE")
 eq "WORKER_SESSION_BURN_RAW=1 env is equivalent to --raw" "$out_raw_env" "$out_raw"
 
-# --- profile is optional, validated, and always the last field ---------------
 profile_out=$(HIMMEL_WORKER_SESSION_PROFILE=worker-impl bash "$BURN" "$FIXTURE")
 eq "env profile appends only the last field" "$profile_out" "$out profile=worker-impl"
 profile_out=$(HIMMEL_WORKER_SESSION_PROFILE=worker-impl bash "$BURN" --profile design,design-motion "$FIXTURE")
@@ -99,18 +89,12 @@ eq "missing profile value exits 2" "$profile_rc" "2"
 profile_out=$(HIMMEL_WORKER_SESSION_PROFILE='' bash "$BURN" "$FIXTURE")
 eq "empty env profile leaves output byte-identical" "$profile_out" "$out"
 
-# --- the dedupe is the point ------------------------------------------------
-# 6 assistant ROWS, 4 message IDS. Counting rows would report calls=6 and
-# overstate the worker's cost; that is the error worker-burn exists to prevent.
 rows=$(grep -c '"type":"assistant"' "$FIXTURE")
 eq "the fixture really does have more rows than calls" "$rows" "6"
 has "calls counts message ids, not rows" "$out" "calls=4"
 
-# --- first-turn is the FIRST call, not the smallest or the last -------------
-# msg_A (1203) is first; msg_D (100) is smaller and msg_C (550) is later.
 has "first-turn is the first call's context" "$out" "first-turn=1.2k"
 
-# --- session-name resolution ------------------------------------------------
 mkdir -p "$TMP/projects/-some-repo"
 cp "$FIXTURE" "$TMP/projects/-some-repo/fixture-0000.jsonl"
 out2=$(WORKER_SESSION_BURN_PROJECTS_DIR="$TMP/projects" bash "$BURN" leg-burn-fixture-legN000); rc2=$?
@@ -121,7 +105,6 @@ out3=$(WORKER_SESSION_BURN_PROJECTS_DIR="$TMP/projects" bash "$BURN" no-such-wor
 eq "an unknown session name exits 2" "$rc3" "2"
 has "and says what it searched" "$out3" "no transcript found for session name"
 
-# --- refusals ---------------------------------------------------------------
 out4=$(bash "$BURN" "$TMP/nope.jsonl" 2>&1); rc4=$?
 eq "a missing transcript path exits 2" "$rc4" "2"
 has "and names the path" "$out4" "no such transcript"
@@ -130,7 +113,6 @@ out5=$(bash "$BURN" 2>&1); rc5=$?
 eq "no argument exits 2" "$rc5" "2"
 has "and prints usage" "$out5" "usage: worker-burn.sh"
 
-# An arm that never ran is a real outcome and must not read as a free worker.
 printf '%s\n' '{"type":"custom-title","customTitle":"empty-worker","sessionId":"x"}' \
               '{"type":"user","message":{"role":"user","content":"load the brief and continue"}}' \
               > "$TMP/empty.jsonl"

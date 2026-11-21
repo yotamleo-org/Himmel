@@ -9,8 +9,6 @@
 #
 # Prints the ROW lines of worker-battery.sh plus the launcher-side assertions.
 set -u
-# the full repository-redirecting set, as scripts/lib/git-clean.sh git_env_scrub
-# (inline: this script runs where the lib may not be reachable)
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE \
     GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX \
     GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE \
@@ -21,7 +19,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 SRT="${SRT:-srt}"
 mode="${1:-impl}"
 run_rc=0
-# cleanup removes only files this run created: record what already exists
 outside_pre=0
 [ -e "$HOME/outside-write.txt" ] && outside_pre=1
 dummy_made=0
@@ -50,7 +47,6 @@ fresh() {
         git push -q origin main
         git checkout -q -b feat/poc
     )
-    # dummy credential, removed at the end (never a real key)
     mkdir -p "$HOME/.ssh"
     if [ ! -e "$HOME/.ssh/poc_dummy" ]; then
         echo "not-a-real-key" >"$HOME/.ssh/poc_dummy"
@@ -60,14 +56,12 @@ fresh() {
     chmod +x "$base/bin/claude"
 }
 
-launch() { # <profile> -> runs the battery under srt claude
+launch() {
     profile="$1"
-    # one argument per line, so a path with spaces or globs stays one word
     printf '%s\n' "$profile" "$base/wt" "$base/scratch" "$base/handover" >"$base/render.args"
     rargs=()
     while IFS= read -r a; do rargs+=("$a"); done <"$base/render.args"
     bash "$HERE/render-settings.sh" "${rargs[@]}" >"$base/settings.json"
-    # launch-time assertion: srt starts on defaults when settings are absent
     if [ ! -s "$base/settings.json" ] || ! grep -q allowedDomains "$base/settings.json"; then
         echo "ASSERT settings-not-loaded: refusing to launch"
         return 3
@@ -89,7 +83,6 @@ launch() { # <profile> -> runs the battery under srt claude
     echo "srt exit rc=$srt_rc"
     [ "$srt_rc" -eq 0 ] || run_rc=1
     if grep -q '^ROW .* FAIL' "$base/run.out"; then run_rc=1; fi
-    # every profile row must be present and PASS, not just one row and no FAIL
     want=(B0-worker-commit B1-benign-python B2-rm-rf-outside B3-write-outside B4-direct-force-push-outside
         B5-force-push-inside-root-passes B6-wrapper-own-branch B7-wrapper-refuses-force B8-wrapper-refuses-main
         B8b-wrapper-refuses-plus B9-credential-read B10-allowed-host B11-proxy-bypass B12-profile-domain B15-worktree-commit)
@@ -119,8 +112,7 @@ case "$mode" in
         fresh
         bash "$HERE/render-settings.sh" impl "$base/wt" "$base/scratch" "$base/handover" >"$base/empty.json"
         : >"$base/zero.json"
-        # F1-F3 must REFUSE: a zero exit or a RAN line means srt ran unsandboxed
-        refused() { # <label> <rc> <output file>
+        refused() {
             if [ "$2" -eq 0 ] || grep -q RAN "$3"; then echo "ASSERT FAIL $1 did not refuse"; run_rc=1; fi
         }
         echo "F1 invalid settings (zero bytes):"
@@ -134,7 +126,6 @@ case "$mode" in
         echo "F3 bwrap absent from PATH:"
         mkdir -p "$base/nobwrap"
         for t in bash env sh socat rg node; do ln -sf "$(command -v "$t")" "$base/nobwrap/$t"; done
-        # resolve srt BEFORE restricting PATH: command-not-found must not pass as a refusal
         if srt_bin="$(command -v "$SRT")"; then
             env PATH="$base/nobwrap" "$srt_bin" --settings "$base/empty.json" -c 'echo RAN' >"$base/f.out" 2>&1; f_rc=$?
             cat "$base/f.out"; echo "  rc=$f_rc (nonzero + no RAN = refuses, not unsandboxed)"

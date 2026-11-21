@@ -62,7 +62,6 @@ kn() { case "$1" in *k) awk -v n="${1%k}" 'BEGIN{printf "%.3f", n}';; *) awk -v 
 ts_of() { grep -o '"timestamp":"[0-9TZ:.-]*"' "$1" 2>/dev/null | "$2" -1 | cut -d'"' -f4; }
 
 ROWS=""; FAILS=""; FILES=""; DISC_ERR=""; UNREADABLE=""
-# trap first: a later mktemp failing must not leak the files already created
 trap 'rm -f "$ROWS" "$FAILS" "$FILES" "$DISC_ERR" "$UNREADABLE" "$SC_COV"' EXIT
 ROWS=$(mktemp "${TMPDIR:-/tmp}/agg-burn-rows.XXXXXX") || { echo "agg-burn: mktemp failed" >&2; exit 1; }
 FAILS=$(mktemp "${TMPDIR:-/tmp}/agg-burn-fails.XXXXXX") || { echo "agg-burn: mktemp failed" >&2; exit 1; }
@@ -71,11 +70,6 @@ DISC_ERR=$(mktemp "${TMPDIR:-/tmp}/agg-burn-discerr.XXXXXX") || { echo "agg-burn
 UNREADABLE=$(mktemp "${TMPDIR:-/tmp}/agg-burn-unreadable.XXXXXX") || { echo "agg-burn: mktemp failed" >&2; exit 1; }
 sc_cov_init || exit 1
 
-# Discovery errors must not vanish. `find ... 2>/dev/null | while`
-# lost both find's permission errors and its exit status, so an unreadable
-# subtree gave exit 0 and a TOTAL that silently omitted it - a number that
-# looks complete and is not. Capture find's stderr + status and fail loudly
-# (exit 1, no table) rather than emit a partial total.
 if ! sc_discover "$FILES" "$DISC_ERR"; then
     echo "agg-burn: transcript discovery failed under the transcript root(s) - refusing to print a partial total:" >&2
     cat "$DISC_ERR" >&2
@@ -83,8 +77,6 @@ if ! sc_discover "$FILES" "$DISC_ERR"; then
 fi
 
 while IFS= read -r f; do
-    # a listed-but-unreadable file would otherwise fall out at the empty-timestamp
-    # `continue` below (grep's error is silenced) and vanish from the total
     if [ ! -r "$f" ]; then echo "$f" >> "$UNREADABLE"; sc_cov unreadable; continue; fi
     first_ts=$(ts_of "$f" head)
     [ -n "$first_ts" ] || { sc_cov no-timestamp; continue; }
@@ -135,11 +127,6 @@ END{
   for(k in n) printf "%s\t%d\t%d\t%.1f\t%.1f\t%.1f\t%d\t%d\t%.3f\t%.1f\n", k, n[k], c[k], (c[k]?ctx[k]/c[k]:0), pk[k], fsum[k]/n[k], cp[k], tx[k], (c[k]?tx[k]/c[k]:0), ctx[k]/1000
 }' "$ROWS" | sort
 
-# Price-weighted TOTAL, over every row regardless of role/model.
-# Columns 9-13 are the exact counters and the exact per-model cost-eq worker-burn.sh
-# --raw prints (no per-session 0.1k rounding to compound); this awk sums the
-# raw counts and divides by 1000 ONCE for display, rather than summing
-# per-session kn() roundings.
 awk -F'\t' '
 { out+=$9; cr+=$10; cc+=$11; inp+=$12; costeq+=$13 }
 END{

@@ -46,7 +46,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/lib/scorecard-lib.sh"
 sc_roots_check extra-metrics || exit 2
 RUN=""
-# trap first: a later mktemp failing must not leak what is already created
 trap 'rm -rf "$RUN" "$SC_COV"' EXIT
 RUN=$(tmpdir) || { echo "extra-metrics: mktemp failed" >&2; exit 1; }
 sc_cov_init || exit 1
@@ -64,8 +63,6 @@ if [ -n "$UNTIL" ]; then
 fi
 UNTIL_EPOCH_ARG="${UNTIL_EPOCH:-9999999999}"
 
-# (g) fix-forward/revert within 48h, over the whole merged history so an
-# in-window PR B can still be matched against an out-of-window earlier PR A.
 gh pr list -R "$REPO" --state merged --limit 1000 --json number,title,mergedAt \
     --jq '.' > "$RUN/merged-titles.json" || { echo "extra-metrics: gh pr list failed" >&2; exit 1; }
 merged_count=$(jq 'length' "$RUN/merged-titles.json" 2>/dev/null) || { echo "extra-metrics: could not parse gh pr list output" >&2; exit 1; }
@@ -87,9 +84,6 @@ jq -r --argjson since_epoch "$SINCE_EPOCH" --argjson until_epoch "$UNTIL_EPOCH_A
       | "#\($b.number) <- \($hits|map("#"+tostring)|join(",")) \($b.title[0:90])" ]
   | ("followups_48h=\(length) of window=\($win|length)"), .[]' "$RUN/merged-titles.json" \
     || { echo "extra-metrics: fix-forward/revert analysis failed" >&2; exit 1; }
-# the PR input's coverage: every fetched PR is parsed (a bad mergedAt fails the
-# jq above and exits 1), so the one way this input is silently incomplete is the
-# --limit cut - name it beside the number
 pr_truncated=no; [ "${merged_count:-0}" -ge 1000 ] && pr_truncated=yes
 echo "coverage: prs discovered=${merged_count:-0} parsed=${merged_count:-0} skipped=0 (limit=1000 truncated=$pr_truncated)"
 
@@ -103,9 +97,6 @@ OP_COUNTS="$RUN/op-counts.txt"
 FILES="$RUN/files.txt"
 DISC_ERR="$RUN/disc-err.txt"
 
-# A discovery error must not vanish (the agg-burn.sh rule): the old
-# `find 2>/dev/null | while` lost find's errors and status, so a partial input
-# set printed as a complete one.
 if ! sc_discover "$FILES" "$DISC_ERR"; then
     echo "extra-metrics: transcript discovery failed under the transcript root(s) - refusing to print a partial count:" >&2
     cat "$DISC_ERR" >&2
@@ -113,8 +104,6 @@ if ! sc_discover "$FILES" "$DISC_ERR"; then
 fi
 
 while IFS= read -r f; do
-    # title_of silences read errors: an unreadable file would read as an empty
-    # title and be misfiled as an intentional not-chief exclusion
     [ -r "$f" ] || { sc_cov unreadable; continue; }
     case "$f" in */subagents/*) sc_cov subagent; continue ;; esac
     name=$(title_of "$f")
