@@ -1042,7 +1042,6 @@ metadata = {}
 excluded = set()
 
 def gh(*args):
-    # DRIFT_GH_READ: the read helper, so the GET reads ride the read token (a non-read shape still runs on main)
     prefix = ['bash', os.environ['DRIFT_GH_READ']] if os.environ.get('DRIFT_GH_READ') else ['gh']
     result = subprocess.run([*prefix, *args], check=True, stdout=subprocess.PIPE,
                             stderr=subprocess.DEVNULL, text=True, timeout=60)
