@@ -122,7 +122,7 @@ It is lean-invoke, not a hook, and changes nothing but that file. Tests:
   is proposed again, `EXPIRED [id]` when it is not, and `BUILT [id]` when the class was promoted
   or removed since the proposal.
 
-## Classes (2026-10-29 snapshot — regenerate with `--list`)
+## Classes (2026-11-21 snapshot — regenerate with `--list`)
 
 | id | kind | rung | source | detector | title |
 |---|---|---|---|---|---|
@@ -159,6 +159,7 @@ It is lean-invoke, not a hook, and changes nothing but that file. Tests:
 | `vendored-file-local-edit` | fix | prompt | cr-app-comments | — | a vendored upstream file edited in place instead of through the upstream-fix-and-revendor process |
 | `docs-component-local-carveout` | rebuttal | prompt | cr-app-comments | — | component-local operational docs flagged for not living under docs/luna/ |
 | `base-history-gate-miss` | fix | advisory | ci-failure | base-history-gate | ticket key on a path the BASE branch's allow list does not cover (CI lint red after a green local run) |
+| `tick-sh-intended-behavior` | rebuttal | advisory | coderabbit-learning | — | tick.sh behaviors the chief accepted as intended (U+2019 status names, partial GraphQL reads, standalone --pool-holds mirror) |
 
 ## What the 2026-08-23 measurement said (why these classes)
 
