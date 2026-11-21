@@ -1400,15 +1400,15 @@
       "id": "tick-sh-intended-behavior",
       "kind": "rebuttal",
       "rung": "prompt",
-      "title": "tick.sh behaviors the chief accepted as intended (U+2019 status names, partial GraphQL reads, standalone --pool-holds mirror)",
+      "title": "tick.sh behaviors the chief accepted as intended (partial GraphQL reads, standalone --pool-holds mirror)",
       "source": "coderabbit-learning",
       "globs": [
         "scripts/handover/chief-kit/tick.sh"
       ],
       "learning_match": "chief-kit/tick\\.sh",
-      "match": "U\\+2019|pool_holds|pool-holds|OUT_STATUS",
-      "canonical": "In scripts/handover/chief-kit/tick.sh three behaviors are intended, do not flag them: (1) the open= and residual-cap= counts exclude Won't Do and Won't Fix per board.mjs OUT_STATUS, which accepts ASCII apostrophes or none, not U+2019; (2) pool_holds accepts a GraphQL response that has a repository object even when gh exits nonzero (a NOT_FOUND alias gives exit 1 while other aliases return data); a response without a repository object stays unchecked; (3) standalone --pool-holds needs no default Jira mirror: without --mirror or NEXT_DISPATCH_MIRROR a done:KEY event is unchecked, and a separate valid authority can still classify the hold row.",
-      "coverage": "Rebuttal only: no deterministic detector. Rows 32, 40 and 90 of the 2026-11-21 export state these rules.",
+      "match": "pool_holds|pool-holds",
+      "canonical": "In scripts/handover/chief-kit/tick.sh two behaviors are intended, do not flag them: (1) pool_holds accepts a GraphQL response that has a repository object even when gh exits nonzero (a NOT_FOUND alias gives exit 1 while other aliases return data); a response without a repository object stays unchecked; (2) standalone --pool-holds needs no default Jira mirror: without --mirror or NEXT_DISPATCH_MIRROR a done:KEY event is unchecked, and a separate valid authority can still classify the hold row.",
+      "coverage": "Rebuttal only: no deterministic detector. Two rows of the 2026-11-21 export state these rules.",
       "prompt": true,
       "evidence": {
         "ledger": {
