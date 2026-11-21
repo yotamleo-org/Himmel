@@ -729,6 +729,22 @@ exit 1''')
         self.rt('begin', aid='explicit', doc=generated)
         self.rt('outcome', aid='explicit', doc=generated, extra=('--phase', 'refused'))
 
+    def test_admit_predicts_check_and_writes_nothing(self):
+        generated = self.bucket / 'unregistered.md'
+        generated.write_text('# worker\n> **Leg kind:** build\n')
+        files = lambda: {p.name: p.read_bytes() for p in self.bucket.glob('*.json')}
+        before = files()
+        p = self.call('runtime', 'admit', '--doc', generated, ok=False, env=dict(self.env, FLEET_LAUNCH_WORKER_INTENT='1'))
+        self.assertIn('managed worker has no manifest reference', p.stderr)
+        p = self.call('runtime', 'admit', '--doc', self.doc, '--manifest', self.m, ok=False)
+        self.assertIn('fleet-paused', p.stderr)
+        self.assertEqual(files(), before)
+        self.active()
+        before = files()
+        self.assertTrue(json.loads(self.call('runtime', 'admit', '--doc', self.doc, '--manifest', self.m).stdout)['managed'])
+        self.assertEqual(files(), before)
+        self.rt('check')
+
     def test_administrative_docs_still_obey_native_hard_cap(self):
         for number in range(4):
             doc = self.bucket / ('HIMMEL-%d-N%d-worker.md' % (number + 10, number + 10))

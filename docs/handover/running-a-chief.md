@@ -291,16 +291,30 @@ The chief writes a brief from
 
 ```bash
 setsid nohup bash scripts/handover/chief-kit/headed-arm-worker.sh --profile worker-impl \
-  <session-name> <brief> <signal-file> <deadline-epoch> <log> <model> \
-  >/dev/null 2>&1 &
+  --fleet <chief doc stem>.fleet.json <session-name> <brief> <signal-file> <deadline-epoch> <log> <model> \
+  >>"<log>.launcher.out" 2>&1 &
+touch <signal-file>
+bash scripts/handover/chief-kit/launch-confirm.sh <session-name> <log>
 ```
+
+`--fleet` names the chief's own manifest. Without it, a managed worker is
+refused as `managed worker has no manifest reference`. A relaunched doc that
+earlier chiefs' manifests also list is refused as `multiple manifest
+references`. Every refused or failed launch leaves one
+`LAUNCH-REFUSED <session> <reason>` line in `<log>`. The line also goes to your
+console inbox, which wakes the waiter. The full stderr is in
+`<log>.launcher.out`. `--dry-run` makes the same fleet admission and worktree
+checks without writing anything, so when a dry run passes, the real launch
+starts. `launch-confirm.sh` waits up to 60 s for a claude session named
+`<session-name>`. It prints `LAUNCH-CONFIRMED <session> pid=<pid>`, or exits 1
+with a `LAUNCH-UNCONFIRMED` line on stderr, in the log and in your inbox. Never
+report a worker as running until it confirms.
 
 A launch whose brief's `Writes:` paths overlap a live hold is refused before
 anything is armed: `headed-arm.sh` exits 2, writes the holder line and the grant
 text to the worker log, and appends a `BLOCKED launch ... refused, not armed`
-bullet to the brief, which `tick.sh` surfaces. The hand form above discards
-stderr, so read the log or the brief; the generated launcher keeps stderr in
-`<stem>.launch.out`.
+bullet to the brief, which `tick.sh` surfaces. The generated launcher keeps
+stderr in `<stem>.launch.out`.
 
 Three rules govern the fan-out. **A shared file is shown, not held:**
 `next-dispatchable.sh` lists the ticket and prints `# overlap <KEY> <file> with
@@ -487,8 +501,8 @@ Four pre-launch checks that each cost a chief a dead worker when skipped:
   "fixed" claim yourself before you close the ticket.
 - **The Tier line needs a literal em-dash.** An Opus or Fable worker launches only
   if its brief carries `> **Tier:** opus — <category>: <reason>`. With an ASCII
-  hyphen in place of the em-dash, `headed-arm-worker.sh` refuses: no launch log,
-  nothing in `pgrep`. `--dry-run` an Opus or Fable launch first and look for
+  hyphen in place of the em-dash, `headed-arm-worker.sh` refuses: the launch log
+  holds only its `LAUNCH-REFUSED` line, and nothing is in `pgrep`. `--dry-run` an Opus or Fable launch first and look for
   `refusing` in its output. Never probe with a real launch under `timeout`
   instead: the launch reserves a fleet slot under the session name for the
   deadline plus 60 s, and a killed probe does not release it, so the real

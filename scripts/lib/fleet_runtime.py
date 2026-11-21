@@ -764,8 +764,11 @@ def run(args):
             raise Refused('settle refused: the doc is not a managed worker')
         return {'managed': False, 'administrative': bool(args.doc and (Path(args.doc).resolve().parent / 'fleet-control.json').exists())}
     anchor = manifest.parent / 'fleet-control.json'
-    if args.op == 'resolve':
+    if args.op in ('resolve', 'admit'):
         value = snapshot(manifest)
+        # admit: the admission a real launch's check makes, read only (no lock, no reconcile), so a dry run predicts it.
+        if args.op == 'admit' and value['mode'] != 'active':
+            raise Refused('fleet-paused')
         return dict(value, managed=True, manifest=str(manifest), slots=str(slots_root()))
     with lock(manifest), lock(anchor):
         value = snapshot(manifest)
@@ -933,7 +936,7 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('op', choices=['resolve', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'disposition', 'owners', 'reservation', 'settle'])
+    parser.add_argument('op', choices=['resolve', 'admit', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'disposition', 'owners', 'reservation', 'settle'])
     parser.add_argument('--doc', default='')
     parser.add_argument('--manifest', default='')
     parser.add_argument('--name', default='')

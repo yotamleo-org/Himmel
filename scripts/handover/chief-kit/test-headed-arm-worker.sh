@@ -133,7 +133,7 @@ check 'fleet: failed target status is preserved' 7 "$rc"
 check 'fleet: unconfirmed target retains exact unknown ownership' unknown "$(jq -r '.workers[0].attempt.phase' "$fleet_manifest")"
 rm -f "$fleet_manifest" "$tmp/fleet-fixture/fleet-control.json"
 rc=0; out="$(fleet_launch --dry-run 2>&1)" || rc=$?
-check 'fleet: dry run succeeds without adding' 0 "$rc"
+check 'fleet: dry run refuses an absent manifest as the real launch does' 10 "$rc"
 check 'fleet: dry run leaves manifest absent' no "$([ -e "$fleet_manifest" ] && echo yes || echo no)"
 
 # A managed launch with the autocompact A/B variable set records the arm on the worker's row, whether the chief or the runtime
@@ -3017,6 +3017,51 @@ HOME='' HIMMELCTL_CACHE_DIR='' run_worker "$d28g" "$tmp/repo28g" "PROJ-3270-N7-n
 wait_record "$d28g" || true
 check "28i no resolvable cache dir: launch still exits 0" "$rc" "0"
 check "28i no resolvable cache dir: nothing written under /tmp/.claude" "$([ -e /tmp/.claude/himmel/launch-logs/PROJ-3270-N7-nohome.log ] && echo wrote || echo none)" "none"
+
+lr_bucket="$tmp/lr-bucket"; mkdir -p "$lr_bucket"
+printf '{"family":"lr"}\n' > "$lr_bucket/fleet-control.json"
+lr_inbox="$HOME/.claude/handover/bridge/consoles/lr-chief.md"
+mkdir -p "${lr_inbox%/*}"; : > "$lr_inbox"
+lr_run() {
+  local d="$1" n="$2" doc="$3"; shift 3
+  lr_rc=0
+  lr_out="$(HIMMEL_CONSOLE_NAME=lr-chief IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+    HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" KONSOLE_CMD="$d/konsole" PGREP_CMD="$d/pgrep" \
+    WORKER_SESSION_REPO="$tmp/repo29" HEADED_ARM_LOCK_DIR="$d/locks" HEADED_ARM_PROC="$d/proc" \
+    bash "$SCRIPT" --profile worker-impl "$@" "$n" "$doc" "$d/signal-never" "$PAST" "$d/log" claude-sonnet-5 2>&1)" || lr_rc=$?
+}
+mkdir -p "$tmp/repo29"
+lr_doc="$lr_bucket/PROJ-29-N1-nomanifest.md"
+fx_brief '# PROJ-29 — fixture — worker N1 (claude-sonnet-5)' > "$lr_doc"
+d29a="$tmp/c29a"; mk_launch_stubs "$d29a" "PROJ-29-N1-nomanifest"
+lr_run "$d29a" PROJ-29-N1-nomanifest "$lr_doc"
+check "29a a managed worker with no manifest reference is refused (exit 10)" "$lr_rc" "10"
+contains "29a ... the launch log carries the LAUNCH-REFUSED line with the cause" "$(cat "$d29a/log" 2>/dev/null)" "LAUNCH-REFUSED PROJ-29-N1-nomanifest fleet-paused: managed worker has no manifest reference"
+contains "29a ... and the chief inbox carries it" "$(cat "$lr_inbox")" "LAUNCH-REFUSED PROJ-29-N1-nomanifest fleet-paused: managed worker has no manifest reference"
+check "29a ... and konsole was never reached" "$([ -s "$d29a/record" ] && echo launched || echo none)" "none"
+lr_wt_doc="$tmp/lr-wt-doc.md"
+{ printf -- '---\nresume_cwd: %s\ndescription: x\n---\n' "$tmp/repo29/.claude/worktrees/feat+missing-29"; printf '%s\n' '> **Prior art:** none found (qmd -c jira-himmel "fixture")'; } > "$lr_wt_doc"
+d29b="$tmp/c29b"; mk_launch_stubs "$d29b" "PROJ-29-N2-noworktree"
+lr_run "$d29b" PROJ-29-N2-noworktree "$lr_wt_doc"
+check "29b a brief whose resume_cwd worktree is missing is refused (exit 2)" "$lr_rc" "2"
+contains "29b ... the launch log carries the LAUNCH-REFUSED line with the cause" "$(cat "$d29b/log" 2>/dev/null)" "LAUNCH-REFUSED PROJ-29-N2-noworktree the doc's resume_cwd ($tmp/repo29/.claude/worktrees/feat+missing-29) is not an existing git worktree"
+contains "29b ... and the chief inbox carries it" "$(cat "$lr_inbox")" "LAUNCH-REFUSED PROJ-29-N2-noworktree the doc's resume_cwd"
+d29c="$tmp/c29c"; mk_launch_stubs "$d29c" "PROJ-29-N1-nomanifest"
+lr_before="$(wc -l < "$lr_inbox")"
+lr_run "$d29c" PROJ-29-N1-nomanifest "$lr_doc" --dry-run
+check "29c --dry-run refuses the no-manifest launch the real launch refuses (exit 10)" "$lr_rc" "10"
+contains "29c ... with the same cause" "$lr_out" "managed worker has no manifest reference"
+lr_run "$d29c" PROJ-29-N2-noworktree "$lr_wt_doc" --dry-run
+check "29c --dry-run refuses the missing-worktree launch (exit 2)" "$lr_rc" "2"
+check "29c ... and a dry run writes no launch log" "$([ -e "$d29c/log" ] && echo wrote || echo none)" "none"
+check "29c ... and no inbox line" "$(wc -l < "$lr_inbox")" "$lr_before"
+lr_rc=0; HIMMEL_CONSOLE_NAME=lr-chief bash "$SCRIPT" --profile worker-impl PROJ-29-N3-short "$lr_doc" >/dev/null 2>&1 || lr_rc=$?
+check "29d a usage refusal exits 2" "$lr_rc" "2"
+contains "29d ... and the chief inbox names the session" "$(cat "$lr_inbox")" "LAUNCH-REFUSED PROJ-29-N3-short"
+lr_form="$(sed -n '/^setsid nohup bash scripts\/handover\/chief-kit\/headed-arm-worker.sh/,/&$/p' "$HERE/../../../docs/handover/running-a-chief.md")"
+contains "29e the documented launch form passes --fleet" "$lr_form" "--fleet"
+not_contains "29e the documented launch form no longer sends stderr to /dev/null" "$lr_form" ">/dev/null 2>&1"
+contains "29e the documented launch form logs stderr" "$lr_form" "2>&1 &"
 
 
 echo "---"
