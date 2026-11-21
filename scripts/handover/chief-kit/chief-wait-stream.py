@@ -93,6 +93,14 @@ def bound(name):
     return value
 
 
+def watchdog_life():
+    """The longest a watchdog lives, from the maxima: its supervisor's HARD, then the longer of the adoption and reap
+    windows, then one kill grace. Past it the watchdog has outlasted every wait it was started for."""
+    return (LIMITS['CHIEF_WAIT_STREAM_HARD_SEC'][1]
+            + max(LIMITS['CHIEF_WAIT_STREAM_ADOPT_SEC'][1], LIMITS['CHIEF_WAIT_STREAM_REAP_MAX_SEC'][1])
+            + LIMITS['CHIEF_WAIT_STREAM_KILL_GRACE_SEC'][1])
+
+
 def check_limits():
     """Raises BadSetting unless every duration setting is acceptable and SOFT is below HARD."""
     for name in LIMITS:
@@ -182,19 +190,22 @@ def watchdog(inbox, sup, start):
     busy = bound('CHIEF_WAIT_STREAM_BUSY_MAX_SEC')
     reap_max = bound('CHIEF_WAIT_STREAM_REAP_MAX_SEC')
     bound('CHIEF_WAIT_STREAM_KILL_GRACE_SEC')
+    life = watchdog_life()
+    born = time.monotonic()
     side = inbox + '.wait.stream'
     reap = inbox + '.wait.reap'
     requested = ''
     dead_since = None
     last_sleep = ''
     last_safe = None
-    while True:  # t13b-ok: only waits while its supervisor process exists, even a stopped or hung one, so it has no bound of its own then; once that process is gone it ends when a successor supervisor is alive, when its child is gone, or when the child honours its reap request at a safe point (requested at once, or CHIEF_WAIT_STREAM_ADOPT_SEC, 300 s default, after a hand-off), and it ends the child after CHIEF_WAIT_STREAM_BUSY_MAX_SEC (7200 s default) without a safe point or CHIEF_WAIT_STREAM_REAP_MAX_SEC (1800 s default) after the supervisor went, then up to CHIEF_WAIT_STREAM_KILL_GRACE_SEC (10 s default) more; not bounded for nan, inf or huge settings; the settings are read from the environment with no clamp
+    while True:  # t13b-ok: ends the child and itself at its own age (the longest HARD, then the longer of the longest adoption and reap windows, then the longest kill grace: 3660 s, monotonic clock), whatever its supervisor does; earlier, once its supervisor process is gone, when a successor supervisor is alive, when its child is gone, or when the child honours its reap request at a safe point (requested at once, or CHIEF_WAIT_STREAM_ADOPT_SEC, 300 s default, after a hand-off), and it ends the child after CHIEF_WAIT_STREAM_BUSY_MAX_SEC (7200 s default) without a safe point or CHIEF_WAIT_STREAM_REAP_MAX_SEC (1800 s default) after the supervisor went, then up to CHIEF_WAIT_STREAM_KILL_GRACE_SEC (10 s default) more; a setting outside its range refuses the start
         data = load(side)
-        if alive(sup, start):
+        expired = time.monotonic() - born >= life
+        if alive(sup, start) and not expired:
             time.sleep(.2)
             continue
         if alive(data.get('sup', 0), data.get('sup_start', ''),
-                 data.get('host', ''), data.get('boot', '')):
+                 data.get('host', ''), data.get('boot', '')) and str(data.get('sup')) != str(sup):
             release(reap, requested)
             return 0
         if not child_alive(data, inbox):
@@ -210,14 +221,14 @@ def watchdog(inbox, sup, start):
         handoff = data.get('handoff', '-')
         deadline = (float(handoff) + adopt
                     if handoff != '-' else dead_since)
-        if now >= deadline and not requested:
+        if now >= deadline and not requested and not expired:
             with ownership(inbox):
                 current = load(side)
                 if current.get('sup') != data.get('sup'):
                     continue
                 requested = f"pid={data['child']}"
                 atomic(reap, requested + '\n')
-        if age >= busy or now - dead_since >= reap_max:
+        if expired or age >= busy or now - dead_since >= reap_max:
             with ownership(inbox):
                 current = load(side)
                 if current.get('sup') != data.get('sup'):

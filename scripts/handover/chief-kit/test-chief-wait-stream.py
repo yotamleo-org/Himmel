@@ -1244,7 +1244,12 @@ if mode == 'step':
     threading.Thread(target=step, daemon=True).start()
 began = time.monotonic()
 rc = m.watchdog(inbox, str(sup), str(start))
-print(json.dumps(dict(rc=rc, took=round(time.monotonic() - began, 1), child_running=child.poll() is None,
+took = round(time.monotonic() - began, 1)
+try:
+    child.wait(timeout=5)
+except subprocess.TimeoutExpired:
+    pass
+print(json.dumps(dict(rc=rc, took=took, child_running=child.poll() is None,
                       hung=Path(inbox + '.wait.stream.hung').exists())))
 '''
 
