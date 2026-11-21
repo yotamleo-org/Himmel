@@ -28,7 +28,7 @@
 #                             appends "<main|read> <graphql|core> rate-limit|stall"
 #   GH_READ_USED_FILE         an EXISTING file: every read attempt that ran appends
 #                             "<main|read> <graphql|core>" (a retry on main is a second
-#                             row); an absent file is never created
+#                             row, appended by perl); an absent file is never created
 #   GH_READ_NO_MAIN_FALLBACK  1 = a rate-limited read is not retried on main (scans);
 #                             a bad, missing or 404 token still falls back
 #   GH_READ_OFF               1 = every read fails at once (124) with a stall row;

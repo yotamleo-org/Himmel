@@ -276,7 +276,7 @@ read token is configured; the verbose view prints them as "rest main:" and
 
 reads=main:core<n>+gql<n>,read:core<n>+gql<n>, right after rest-read: this tick's own
 read attempts through gh-read.sh (its scripts' reads included), per token and bucket; a read
-retried on main counts on both. Absent when the count file cannot be made. Advisory: not in
+retried on main counts on both. Absent when perl is missing or the count file cannot be made. Advisory: not in
 chief-wait's action key.
 
 orphans=<owner>:<count>/<oldest>m is the last field: shell-tool
@@ -1944,7 +1944,8 @@ if [ "$ready_mode" -eq 1 ]; then
     ready_mismatch_scan "$ready_dir" || { echo "tick: no READY data under '$ready_dir'" >&2; exit 1; }
     exit 0
 fi
-tick_reads_file="$(mktemp "${TICK_TMPDIR:-${TMPDIR:-/tmp}}/tick-reads.XXXXXX" 2>/dev/null)" || tick_reads_file=""  # swallow-ok: no file leaves reads= absent
+tick_reads_file=""
+command -v perl >/dev/null 2>&1 && { tick_reads_file="$(mktemp "${TICK_TMPDIR:-${TMPDIR:-/tmp}}/tick-reads.XXXXXX" 2>/dev/null)" || tick_reads_file=""; }  # swallow-ok: no file leaves reads= absent
 if [ -n "$tick_reads_file" ]; then export GH_READ_USED_FILE="$tick_reads_file"; else unset GH_READ_USED_FILE; fi
 hb=skip
 if [ -n "$console_doc" ] && [ -n "$TOKEN" ]; then
