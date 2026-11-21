@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+# test-himmel-update-t3-providers.sh — `himmel-update.sh --only t3_providers`
+# makes every launch profile a T3 Code provider instance in T3's settings file.
+#
+# Hermetic: a mock clone carries the real himmel-update.sh and the real
+# scripts/t3/provider-instances.sh; the generator's own seams (T3_PI_RESOLVER,
+# T3_PI_PROFILES) replace the profile registry, and HOME / T3CODE_HOME point at
+# fixture settings files under this suite's tmp dir. No live T3 file is read.
+#
+# Bash 3.2 compatible.
+
+set -uo pipefail
+
+SCRIPT="$(cd "$(dirname "$0")" && pwd)/himmel-update.sh"
+[ -f "$SCRIPT" ] || { echo "FAIL: $SCRIPT not found" >&2; exit 1; }
+src_scripts="$(dirname "$SCRIPT")"
+
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-himmel-update-t3.XXXXXX")" || exit 1
+trap 'rm -rf "$TMP"' EXIT
+
+export USERPROFILE=''
+export HOME="$TMP/home"
+export CLAUDE_CONFIG_DIR="$TMP/no-claude-config"
+export HERMES_HOME="$TMP/no-hermes"
+export HIMMELCTL_CACHE_DIR="$TMP/himmelctl-cache"
+mkdir -p "$HOME" "$HIMMELCTL_CACHE_DIR" || exit 1
+unset HIMMEL_UPDATE_CHANNEL T3CODE_HOME
+
+pass=0
+fail=0
+assert_pass() { pass=$((pass + 1)); echo "  PASS: $1"; }
+assert_fail() { fail=$((fail + 1)); echo "  FAIL: $1"; }
+has() { grep -q -- "$1" <<< "$2"; }
+check_has() { if has "$2" "$3"; then assert_pass "$1"; else assert_fail "$1 — expected '$2', got: $3"; fi; }
+check_eq() { if [ "$2" = "$3" ]; then assert_pass "$1"; else assert_fail "$1 — expected '$2', got '$3'"; fi; }
+
+CLONE="$TMP/clone"
+mkdir -p "$CLONE/scripts/guardrails" "$CLONE/scripts/lib" "$CLONE/scripts/t3" || exit 1
+if ! { cp "$SCRIPT" "$CLONE/scripts/himmel-update.sh" \
+    && cp "$src_scripts/guardrails/lib.sh"        "$CLONE/scripts/guardrails/lib.sh" \
+    && cp "$src_scripts/lib/cadence-format.sh"    "$CLONE/scripts/lib/cadence-format.sh" \
+    && cp "$src_scripts/lib/resolve-hermes-py.sh" "$CLONE/scripts/lib/resolve-hermes-py.sh" \
+    && cp "$src_scripts/lib/load-dotenv.sh"       "$CLONE/scripts/lib/load-dotenv.sh" \
+    && cp "$src_scripts/lib/resolve-bun.sh"       "$CLONE/scripts/lib/resolve-bun.sh" \
+    && cp "$src_scripts/lib/claude-version.sh"    "$CLONE/scripts/lib/claude-version.sh" \
+    && cp "$src_scripts/lib/update-channel.sh"    "$CLONE/scripts/lib/update-channel.sh" \
+    && cp "$src_scripts/t3/provider-instances.sh" "$CLONE/scripts/t3/provider-instances.sh" \
+    && git init --quiet "$CLONE"; }; then
+    echo "FAIL: mock clone setup" >&2
+    exit 1
+fi
+
+RESOLVER="$TMP/resolver.sh"
+cat > "$RESOLVER" <<EOF
+#!/bin/sh
+[ "\${2:-}" = --mcp-config ] && exit 0
+echo "$TMP/profiles/\$1.json"
+EOF
+chmod +x "$RESOLVER"
+
+T3S="$HOME/.t3/userdata/settings.json"
+seed() {
+    mkdir -p "$(dirname "$1")"
+    printf '%s\n' '{"providerInstances":{"claudeAgent":{"driver":"claudeAgent","enabled":true}}}' > "$1"
+}
+
+run() {
+    RC=0
+    OUT="$(cd "$CLONE" && T3_PI_RESOLVER="$RESOLVER" T3_PI_PROFILES="alpha,beta" \
+        bash scripts/himmel-update.sh "$@" 2>&1)" || RC=$?
+}
+ids() { jq -r '.providerInstances | keys | join(",")' "$1"; }
+baks() { find "$(dirname "$1")" -name 'settings.json.bak.*' | wc -l | tr -d ' '; }
+
+echo "--only t3_providers: adds one claudeAgent_<profile> per profile"
+seed "$T3S"
+run --only t3_providers
+check_eq  "exit 0" 0 "$RC"
+check_eq  "one instance per profile, the hand-made one kept" "claudeAgent,claudeAgent_alpha,claudeAgent_beta" "$(ids "$T3S")"
+check_eq  "launchArgs names the profile's settings file" "--settings $TMP/profiles/alpha.json" \
+    "$(jq -r '.providerInstances.claudeAgent_alpha.config.launchArgs' "$T3S")"
+check_has "status row reads updated" "t3_providers *updated" "$OUT"
+check_eq  "a backup was written" 1 "$(baks "$T3S")"
+
+echo "--only t3_providers: a second run changes nothing and says so"
+before="$(cksum < "$T3S")"
+run --only t3_providers
+check_eq  "exit 0" 0 "$RC"
+check_eq  "settings file bytes unchanged" "$before" "$(cksum < "$T3S")"
+check_has "says no change" "no change" "$OUT"
+check_has "status row reads up-to-date" "t3_providers *up-to-date" "$OUT"
+check_eq  "no second backup" 1 "$(baks "$T3S")"
+
+echo "--only t3_providers: T3CODE_HOME names the settings file"
+seed "$TMP/t3alt/userdata/settings.json"
+RC=0
+OUT="$(cd "$CLONE" && T3CODE_HOME="$TMP/t3alt" T3_PI_RESOLVER="$RESOLVER" T3_PI_PROFILES="alpha,beta" \
+    bash scripts/himmel-update.sh --only t3_providers 2>&1)" || RC=$?
+check_eq  "exit 0" 0 "$RC"
+check_eq  "the T3CODE_HOME file got the instances" "claudeAgent,claudeAgent_alpha,claudeAgent_beta" \
+    "$(ids "$TMP/t3alt/userdata/settings.json")"
+
+echo "--only t3_providers: no T3 settings file skips with one line"
+rm -rf "$HOME/.t3"
+run --only t3_providers
+check_eq  "exit 0" 0 "$RC"
+check_eq  "exactly one skip line" 1 "$(grep -c 'T3 provider instances: skipped' <<< "$OUT")"
+check_has "status row reads skipped" "t3_providers *skipped" "$OUT"
+check_eq  "no settings file created" no "$([ -e "$T3S" ] && echo yes || echo no)"
+
+echo "--only t3_providers: jq missing skips with one line"
+seed "$T3S"
+NOJQ="$TMP/nojq-bin"
+mkdir -p "$NOJQ"
+for d in /usr/bin /bin; do
+    for f in "$d"/*; do
+        n="${f##*/}"
+        [ "$n" = jq ] || [ -e "$NOJQ/$n" ] || ln -s "$f" "$NOJQ/$n" 2>/dev/null
+    done
+done
+before="$(cksum < "$T3S")"
+RC=0
+OUT="$(cd "$CLONE" && PATH="$NOJQ" T3_PI_RESOLVER="$RESOLVER" T3_PI_PROFILES="alpha,beta" \
+    bash scripts/himmel-update.sh --only t3_providers 2>&1)" || RC=$?
+check_eq  "exit 0" 0 "$RC"
+check_has "names jq in the skip line" "skipped (jq" "$OUT"
+check_eq  "settings file untouched" "$before" "$(cksum < "$T3S")"
+
+echo "--only t3_providers: a bypass-flag instance is refused, nothing written"
+mkdir -p "$(dirname "$T3S")"
+printf '%s\n' '{"providerInstances":{"x":{"driver":"claudeAgent","environment":{"EDIT_LIVE_SETTINGS_OK":"1"}}}}' > "$T3S"
+before="$(cksum < "$T3S")"
+run --only t3_providers
+check_eq  "exit 1" 1 "$RC"
+check_has "status row reads failed" "t3_providers *failed" "$OUT"
+check_eq  "settings file untouched" "$before" "$(cksum < "$T3S")"
+
+echo "usage and unknown-item texts name t3_providers"
+run --help
+check_has "usage lists the item" "t3_providers" "$OUT"
+run --only no_such_item
+check_eq  "unknown item exits 2" 2 "$RC"
+check_has "unknown-item list names t3_providers" "env_migration t3_providers" "$OUT"
+
+echo
+echo "RESULTS: $pass passed, $fail failed"
+[ "$fail" -eq 0 ] || exit 1
+exit 0

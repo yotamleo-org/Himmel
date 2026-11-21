@@ -863,7 +863,10 @@ unconditional rather than drift-driven:
 
 `--only <item>` re-runs any single step (`pull`, `marketplace`, `jira_cli`,
 `qmd_fork`, `hermes`, `luna_template`, `graphify`, `cli_proxy`, `marketplaces`,
-`toolchain`) without walking the chain, for the one thing that did not land.
+`toolchain`, `t3_providers`) without walking the chain, for the one thing that
+did not land. `t3_providers` makes every launch profile a T3 Code provider
+instance (`docs/internals/t3-provider-instances.md`); it also runs as the last
+advisory step of a full update, and skips with one line when T3 is not installed.
 
 The nightly `/drift-fix` cadence runs this whole engine as its step 1A, so a
 machine that is on all day catches up without anyone asking.
