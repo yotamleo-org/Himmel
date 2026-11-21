@@ -487,8 +487,9 @@ class FetchHealthTests(unittest.TestCase):
             self.assertIn("never", fetch_health.probe_harvest_article_fetch(env, today).reason)
             tool = fetch_health._harvest_tool()
             with patch.object(tool, "TODAY", "2026-11-20"):
-                tool.process_clip(path, dry_run=False, chain=OfflineChain(), url_rules=tool.UrlRules())
-            tried = fetch_health.probe_harvest_article_fetch(env, today)
+                _, msg, _ = tool.process_clip(path, dry_run=False, chain=OfflineChain(), url_rules=tool.UrlRules())
+            self.assertIn("fetch failed", msg)
+            tried =fetch_health.probe_harvest_article_fetch(env, today)
             self.assertEqual(tried.status, "ok", tried.reason)
 
     def test_redirect_handler_strips_auth_off_scope(self):

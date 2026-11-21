@@ -198,7 +198,8 @@ retry, _partials = mod.evidence_clips(v3 / "Clippings")
 check("a summarised thin partial with no try time is selected for retry", summarised in retry, str(retry))
 g, msg, _ = mod.process_clip(summarised, dry_run=False, chain=Chain(3, RuntimeError("offline")), url_rules=mod.UrlRules())
 f = fm(summarised)
-check("its failed retry records a try time and stays partial", g == "~" and f.get("harvest_status") == "partial"
+check("its failed retry records a try time and stays partial", g == "~" and "fetch failed" in msg
+      and f.get("harvest_status") == "partial"
       and f.get("harvest_defer_last") == mod.TODAY, msg + "\n" + summarised.read_text())
 
 
