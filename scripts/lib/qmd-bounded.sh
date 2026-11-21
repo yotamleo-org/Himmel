@@ -12,7 +12,6 @@
 #   step quotes each bare dash word ("-p", "--bg"), which qmd then matches as
 #   the literal term, expanded or not. A leading dash is therefore never a NOT
 #   here; a deliberate one is written -"term", which is passed on as typed.
-#   QMD_VOCAB_EXPAND=0 leaves dash words bare too.
 # Source it, then: qmd_bounded <secs> <cmd> [args...]
 #   rc      the command's own rc, or 124 when the deadline fired (as timeout(1))
 #   <secs>  whole seconds; 0 runs the command unbounded

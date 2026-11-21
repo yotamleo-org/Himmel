@@ -53,8 +53,6 @@ TOKEN = re.compile(r'[^\s"]*"[^"]*"[^\s"]*|\S+')
 
 
 def quote_dash(question):
-    """question with every bare dash word ("-p", "--bg") quoted: qmd's lex parser reads a bare
-    leading dash as a NOT, and a quoted one as the literal term. -"term" and phrases stay."""
     return " ".join('"%s"' % t if t.startswith("-") and len(t) > 1 and '"' not in t else t
                     for t in TOKEN.findall(question))
 
