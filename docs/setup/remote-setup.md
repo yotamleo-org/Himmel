@@ -273,7 +273,7 @@ The name after `peer` is the other station's name, taken from its bridge bot's u
 | `do part 1 first` | Finish part 1, then run the command again. |
 | `this bot is already your ... bot` | Each role needs its own bot. Make a new one with @BotFather (`/newbot`) for the bridge bot. |
 | `a different bridge bot is already set up` | If you do want to switch your bridge bot, run the command with `--replace` (below). |
-| `no hello arrived from the group` | In the group, send the word `hello`, then run the command again. |
+| `no hello arrived from the group` | Run the command again, wait until it asks you to send the word `hello` in the group ("Waiting up to 10 minutes..."), then send `hello`. A `hello` sent before the command started is not seen. |
 | `no hello came from the other station` | Ask the other operator to run the same command once, then run it here again. |
 | `so nothing was paired` | You said the bot that said hello is not the other station's bridge bot, or gave no answer. Ask the other operator for the name of their bridge bot, make sure only that bot is in the group, then run the command again and type `1` only if the name matches. |
 | `too many queued messages` | Wait a minute, ask the other operator to run the same command once more, then run it here again. |

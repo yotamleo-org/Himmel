@@ -470,7 +470,7 @@ peer_discover() {
     if [ -z "$PEER_CANDS" ]; then
         if [ "$PEER_PAGE" = 0 ] && [ "$PEER_LAST_COUNT" -ge 100 ]; then peer_backlog_fix; fi
         rs_say "  In Telegram, open the group and send the word hello in it. Waiting up to 10 minutes..."
-        peer_wait chat || rs_fix "no hello arrived from the group: send the word hello in the group, then run the same command again"
+        peer_wait chat || rs_fix "no hello arrived from the group: run the same command again, wait until it asks you to send the word hello in the group (a hello sent earlier is not seen), then send it"
     fi
     lines=$(printf '%s\n' "$PEER_CANDS" | sed -E 's/^([^|]*)\|([^|]*)\|(.*)$/\1|\3 (\2)/')
     peer_choose "$lines"
