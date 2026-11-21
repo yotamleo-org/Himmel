@@ -33,15 +33,16 @@
 # Run detached, stderr kept in a file beside the log:
 #   setsid nohup bash headed-arm-worker.sh --fleet <manifest> ... <log> <model> >>"<log>.launcher.out" 2>&1 &
 # A real launch first appends `LAUNCH-START <session> epoch=<s>` to <log>. Exit 0 appends `LAUNCH-OK <session>
-# <outcome>`; every non-zero exit appends one `LAUNCH-REFUSED <session> <reason>` line there and in the owning chief's
-# console inbox (--chief, else HIMMEL_CONSOLE_NAME) when that inbox exists. chief-kit/launch-confirm.sh reads the
-# lines after the newest LAUNCH-START to confirm this attempt started a session.
+# <outcome>`; every non-zero exit, the seam guard's exit 96 included, appends one `LAUNCH-REFUSED <session> <reason>`
+# line there and in the owning chief's console inbox (--chief, else HIMMEL_CONSOLE_NAME) when that inbox exists.
+# chief-kit/launch-confirm.sh --since <epoch> reads the lines after that attempt's LAUNCH-START to confirm it started.
 #
 # --dry-run: prints the argv this would hand to headed-arm.sh (name, doc,
 # signal, deadline, log, model, resolved context) plus the worker env this
 # wrapper adds, and exits 0 without touching the signal/deadline wait loop,
-# the claim lock, or konsole. It runs the real launch's fleet admission read
-# only, so a fleet refusal exits 10 under --dry-run too. The test seam - but not the ONLY proof: the
+# the claim lock, or konsole. It runs, read only, the fleet admission a real launch makes
+# before it claims a slot (the manifest reference, a paused fleet, a family that already owns
+# the worker or ticket), so those refusals exit 10 under --dry-run too. The test seam - but not the ONLY proof: the
 # suite also drives the real (non-dry) path with KONSOLE_CMD/PGREP_CMD stubs
 # (the same seams headed-arm.sh's own suite uses) to confirm the launched
 # argv matches what --dry-run predicted.
@@ -234,15 +235,6 @@ set -u
 # Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
 # what is sourced before the seam guard.
 case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
-_csg_lib="$_csg_dir/../../lib/chokepoint-seam-guard.sh"
-# shellcheck source=scripts/lib/chokepoint-seam-guard.sh
-# shellcheck disable=SC1091
-if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
-    echo "headed-arm-worker.sh: cannot load $_csg_lib - refusing" >&2
-    exit 96
-fi
-chokepoint_seam_guard scripts/handover/chief-kit/headed-arm-worker.sh || exit 96
-
 _LAUNCH_REFUSAL_SKIP=0 _LAUNCH_REFUSAL_FWD=0 _LAUNCH_REFUSAL_CAUSE='' _LAUNCH_REFUSAL_LINE=''
 _LAUNCH_ATTEMPT_ID='' _LAUNCH_OUTCOME='' _LAUNCH_OUTCOME_FILE=''
 for _lr_a in "$@"; do [ "$_lr_a" != --dry-run ] || _LAUNCH_REFUSAL_SKIP=1; done
@@ -288,6 +280,21 @@ _launch_refused_notify() {
     return 0
 }
 _launch_refusal_note() { _LAUNCH_REFUSAL_CAUSE="$1"; _LAUNCH_REFUSAL_LINE="${2:-}"; return 0; }
+_csg_lib="$_csg_dir/../../lib/chokepoint-seam-guard.sh"
+# shellcheck source=scripts/lib/chokepoint-seam-guard.sh
+# shellcheck disable=SC1091
+if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
+    echo "headed-arm-worker.sh: cannot load $_csg_lib - refusing" >&2
+    _launch_refusal_note seam-guard "cannot load $_csg_lib"
+    [ "$_LAUNCH_REFUSAL_SKIP" -eq 1 ] || _launch_refused_notify 96
+    exit 96
+fi
+if ! chokepoint_seam_guard scripts/handover/chief-kit/headed-arm-worker.sh; then
+    _launch_refusal_note seam-guard "the chokepoint seam guard refused this launch environment"
+    [ "$_LAUNCH_REFUSAL_SKIP" -eq 1 ] || _launch_refused_notify 96
+    exit 96
+fi
+
 # shellcheck disable=SC2329  # called from _launch_refusal_exit, which only the EXIT trap invokes
 _lr_json() {
     local s="${2%%$'\n'*}"
@@ -907,7 +914,7 @@ if [ "$DRY_RUN" -ne 1 ]; then
         exit 10
     fi
     unset -v _fl_err _fl_rc _fl_line
-elif ! FLEET_LAUNCH_WORKER_INTENT=1 python3 -I "$_csg_dir/../../lib/fleet_runtime.py" admit --doc "$DOC" --manifest "$FLEET_MANIFEST" >/dev/null; then
+elif ! FLEET_LAUNCH_WORKER_INTENT=1 python3 -I "$_csg_dir/../../lib/fleet_runtime.py" admit --doc "$DOC" --manifest "$FLEET_MANIFEST" --name "$NAME" >/dev/null; then
     exit 10
 fi
 if [ "$DRY_RUN" -ne 1 ]; then _lr_row attempt-started null; fi

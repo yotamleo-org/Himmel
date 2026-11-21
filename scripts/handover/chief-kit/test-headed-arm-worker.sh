@@ -3020,7 +3020,8 @@ check "28i no resolvable cache dir: nothing written under /tmp/.claude" "$([ -e 
 
 lr_bucket="$tmp/lr-bucket"; mkdir -p "$lr_bucket"
 printf '{"family":"lr"}\n' > "$lr_bucket/fleet-control.json"
-lr_inbox="$HOME/.claude/handover/bridge/consoles/lr-chief.md"
+export BRIDGE_ROOT="$HOME/.claude/handover/bridge"
+lr_inbox="$BRIDGE_ROOT/consoles/lr-chief.md"
 mkdir -p "${lr_inbox%/*}"; : > "$lr_inbox"
 lr_run() {
   local d="$1" n="$2" doc="$3"; shift 3
@@ -3072,6 +3073,12 @@ check "29f a launch that starts its session exits 0" "$lr_rc" "0"
 contains "29f ... and closes its attempt with LAUNCH-OK" "$(cat "$d29f/log" 2>/dev/null)" "LAUNCH-OK PROJ-29-N6-ok launched"
 lr_rc=0; lr_out="$(PGREP_CMD="$d29f/pgrep" bash "$HERE/launch-confirm.sh" --since "$lr_since" --secs 2 PROJ-29-N6-ok "$d29f/log" 2>&1)" || lr_rc=$?
 check "29f ... and launch-confirm confirms it" "$lr_out" "LAUNCH-CONFIRMED PROJ-29-N6-ok pid=9001"
+mk_anchorless_tree "$tmp/tree29g"; rm "$tmp/tree29g/scripts/lib/chokepoint-seam-guard.sh"; mkdir -p "$tmp/c29g"
+lr_rc=0; HIMMEL_CONSOLE_NAME=lr-chief bash "$tmp/tree29g/scripts/handover/chief-kit/headed-arm-worker.sh" --profile worker-impl PROJ-29-N7-noguard "$lr_doc" "$tmp/c29g/sig" 1 "$tmp/c29g/log" claude-sonnet-5 >/dev/null 2>&1 || lr_rc=$?
+check "29g a launch the seam guard refuses exits 96" "$lr_rc" "96"
+contains "29g ... and its log opens the attempt" "$(cat "$tmp/c29g/log" 2>/dev/null)" "LAUNCH-START PROJ-29-N7-noguard epoch="
+contains "29g ... and closes it with LAUNCH-REFUSED" "$(cat "$tmp/c29g/log" 2>/dev/null)" "LAUNCH-REFUSED PROJ-29-N7-noguard cannot load"
+contains "29g ... and the chief inbox carries it" "$(cat "$lr_inbox")" "LAUNCH-REFUSED PROJ-29-N7-noguard cannot load"
 
 
 echo "---"

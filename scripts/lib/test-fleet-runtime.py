@@ -745,6 +745,26 @@ exit 1''')
         self.assertEqual(files(), before)
         self.rt('check')
 
+    def test_admit_predicts_begin_ownership_refusals_and_writes_nothing(self):
+        self.active()
+        self.rt('begin', aid='first')
+        files = lambda: {p.name: p.read_bytes() for p in self.bucket.glob('*.json')}
+        before = files()
+        p = self.call('runtime', 'admit', '--doc', self.doc, '--manifest', self.m, '--name', self.doc.stem, ok=False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.assertEqual(files(), before)
+        self.rt('begin', aid='second', ok=False)
+        self.rt('outcome', aid='first', extra=('--phase', 'refused'))
+        self.call('runtime', 'admit', '--doc', self.doc, '--manifest', self.m, '--name', self.doc.stem)
+        sibling = self.bucket / 'earlier-chief.fleet.json'
+        sibling.write_text(json.dumps({'control': json.loads(self.m.read_text())['control'], 'workers': [{'doc': str(self.doc.resolve())}]}))
+        before = files()
+        p = self.call('runtime', 'admit', '--doc', self.doc, '--manifest', self.m, '--name', self.doc.stem, ok=False)
+        self.assertIn('unknown legacy family ownership', p.stderr)
+        self.assertEqual(files(), before)
+        p = self.rt('begin', aid='third', ok=False)
+        self.assertIn('unknown legacy family ownership', p.stderr)
+
     def test_administrative_docs_still_obey_native_hard_cap(self):
         for number in range(4):
             doc = self.bucket / ('HIMMEL-%d-N%d-worker.md' % (number + 10, number + 10))

@@ -299,14 +299,18 @@ bash scripts/handover/chief-kit/launch-confirm.sh --since "$since" <session-name
 ```
 
 `--fleet` names the chief's own manifest. Without it, a managed worker is
-refused as `managed worker has no manifest reference`. A relaunched doc that
-earlier chiefs' manifests also list is refused as `multiple manifest
-references`. Every refused or failed launch leaves one
+refused as `managed worker has no manifest reference`, or, when several
+chiefs' manifests list the doc, as `worker has multiple manifest references;
+explicit locator required`. With `--fleet`, a doc that another chief's
+manifest still lists for a worker that has not wrapped is refused as
+`unknown legacy family ownership`. Every refused or failed launch leaves one
 `LAUNCH-REFUSED <session> <reason>` line in `<log>`. The line also goes to your
 console inbox, which wakes the waiter. The full stderr is in
-`<log>.launcher.out`. `--dry-run` makes the same fleet admission and worktree
-checks without writing anything, so when a dry run passes, the real launch
-starts. The launcher opens each attempt with a `LAUNCH-START` line in `<log>`
+`<log>.launcher.out`. `--dry-run` runs the same worktree check and, without
+writing anything, the same fleet admission a real launch makes before it
+claims a slot: the manifest reference, a paused fleet, and a family that
+already owns the worker or ticket. A dry run that passes these checks means
+the real launch passes them too. The launcher opens each attempt with a `LAUNCH-START` line in `<log>`
 and closes an exit-0 attempt with `LAUNCH-OK`. `launch-confirm.sh` reads only
 the attempt that started at or after `--since`, the epoch taken just before
 the launch, so an earlier attempt or session never decides it. It waits up to
