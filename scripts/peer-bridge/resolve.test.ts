@@ -8,7 +8,7 @@ import { bucket5, render, renderCapacity, renderLine, resolveCapacity, resolveRe
 import { failedTests, makeRedCopy } from "./testlib-red-copy";
 import { NOW_S, OUT_SUITES, SHA, WIRE, inJob, outJob } from "./testlib-jobs";
 
-const CTX = { from: "goomal", to: "yotam", chat: -1001234567890, now: NOW_S };
+const CTX = { from: "example", to: "yotam", chat: -1001234567890, now: NOW_S };
 const res = (body: Record<string, unknown>) => buildEnvelope("res", { job: WIRE, ...body }, CTX);
 const apply = (job: JobRecord, patch: Partial<JobRecord> | null): JobRecord => ({ ...job, ...(patch ?? {}) });
 
@@ -162,9 +162,9 @@ test("capacity is ok, low or none, and the queue is free or full", () => {
 });
 
 test("a capacity line shows our words only, never the numbers the peer sent", () => {
-  const out = renderCapacity("goomal", resolveCapacity(cap({ jobs_left: 777, vm_minutes_left: 888, queue: 2 })));
+  const out = renderCapacity("example", resolveCapacity(cap({ jobs_left: 777, vm_minutes_left: 888, queue: 2 })));
   expect(out).not.toMatch(/777|888/);
-  expect(out).toBe("goomal capacity: ok, queue: free, station: idle");
+  expect(out).toBe("example capacity: ok, queue: free, station: idle");
 });
 
 

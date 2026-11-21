@@ -18,7 +18,7 @@ const HIMMEL_ROOT = join(import.meta.dir, "..", "..");
 const peer = (over: Partial<Peer> = {}): Peer => ({
   peerBotId: "555000111", chatId: -1001234567890, allowFrom: ["555000111"], opens: ["question", "status", "info"],
   maxOpenThreads: 5, maxPerMinute: 10, maxReaderRunsPerDay: 50, maxReaderRunsPerKindPerDay: { question: 30, status: 10, info: 10 }, maxWakesPerDay: 30,
-  theirs: { username: "goomal_bot", opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07" },
+  theirs: { username: "example_bot", opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07" },
   ...over,
 });
 const ctx = (over: Partial<OutCtx> = {}): OutCtx => ({ peer: peer(), kind: "answer", isRoot: false, isTemplate: false, tainted: true, tty: false, himmelRoot: HIMMEL_ROOT, claudecode: false, ...over });
@@ -86,7 +86,7 @@ test("the spec's pass list passes", async () => {
 });
 
 test("an answer passes when every root kind is disabled", async () => {
-  const closed = peer({ theirs: { username: "goomal_bot", opens: [], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07" } });
+  const closed = peer({ theirs: { username: "example_bot", opens: [], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07" } });
   await passes("here you go", { peer: closed, kind: "answer", isRoot: false });
 });
 
@@ -103,7 +103,7 @@ test("empty text is refused", async () => {
 test("policy: unknown or not-live peer, root kind outside theirs.opens, answer as root, unknown kind", async () => {
   expect(await refused("hi", { peer: undefined })).toMatchObject({ rule: "unknown-peer" });
   expect(await refused("hi", { peer: peer({ chatId: null }) })).toMatchObject({ rule: "peer-not-live" });
-  const narrow = peer({ theirs: { username: "goomal_bot", opens: ["info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07" } });
+  const narrow = peer({ theirs: { username: "example_bot", opens: ["info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07" } });
   expect(await refused("hi", { peer: narrow, kind: "status", isRoot: true })).toMatchObject({ rule: "kind-not-open" });
   await passes("hi", { peer: narrow, kind: "info", isRoot: true });
   expect(await refused("hi", { kind: "answer", isRoot: true })).toMatchObject({ rule: "answer-needs-thread" });
@@ -129,7 +129,7 @@ test("the real matrix allows a peer-desk message", async () => {
 });
 
 test("templates skip the opens check but not the content rules", async () => {
-  const closed = peer({ theirs: { username: "goomal_bot", opens: [], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07" } });
+  const closed = peer({ theirs: { username: "example_bot", opens: [], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07" } });
   await passes("#tpl:receipt #12 id=deadbeef", { peer: closed, kind: "receipt", isRoot: false, isTemplate: true });
   expect(await refused("see /home/x", { kind: "receipt", isTemplate: true })).toMatchObject({ rule: "path" });
 });
@@ -176,9 +176,9 @@ const otherStation = TE.mkStation("someone");
 afterAll(() => { TE.dropStation(ourStation); TE.dropStation(otherStation); });
 
 const ours = (kind: Kind, body: Record<string, unknown>, over: Record<string, unknown> = {}) =>
-  ({ ...buildEnvelope(kind, body, { from: "yotam", to: "goomal", chat: -1001234567890, now: TE.NOW_S }), ...over }) as Envelope;
-const outLines = (env: Envelope, st = ourStation, to = "goomal_bot"): string[] => TE.envLines(env, st, { to });
-const envPeer = () => peer({ theirs: { username: "goomal_bot", opens: [], maxOpenThreads: 1, maxPerMinute: 1, copiedAt: "2026-11-20", stationName: "goomal", keys: [] } });
+  ({ ...buildEnvelope(kind, body, { from: "yotam", to: "example", chat: -1001234567890, now: TE.NOW_S }), ...over }) as Envelope;
+const outLines = (env: Envelope, st = ourStation, to = "example_bot"): string[] => TE.envLines(env, st, { to });
+const envPeer = () => peer({ theirs: { username: "example_bot", opens: [], maxOpenThreads: 1, maxPerMinute: 1, copiedAt: "2026-11-20", stationName: "example", keys: [] } });
 const ectx = (over: Partial<EnvOutCtx> = {}): EnvOutCtx => ({ peer: envPeer(), self: "yotam", keyDir: ourStation.dir, himmelRoot: HIMMEL_ROOT, hostname: "testbox", ...over });
 async function envRefused(lines: string[], rule: string, over: Partial<EnvOutCtx> = {}) {
   expect(await checkEnvelopeOutbound(lines, ectx(over))).toMatchObject({ ok: false, rule });
@@ -195,7 +195,7 @@ test("a signed envelope of every kind passes the envelope policy", async () => {
 test("a field the schema refuses is refused, even when the line is validly signed", async () => {
   const bad = ours("req", TE.REQ_BODY);
   const line2 = `#env:v1 k=${ourStation.key.id} id=${bad.msg}`;
-  const signed = (line3: string) => ["/peer@goomal_bot", line2, line3, `sig=${sign(line2, line3, ourStation.keyPath)}`];
+  const signed = (line3: string) => ["/peer@example_bot", line2, line3, `sig=${sign(line2, line3, ourStation.keyPath)}`];
   const line3 = encodeCanonical(bad);
   await envRefused(signed(line3.replace("scripts/hooks/test-a.sh", "scripts/../x.sh")), "schema");
   await envRefused(signed(line3.replace("run-suite", "run-prompt")), "schema");
@@ -232,7 +232,7 @@ test("no thread or opens check runs: a peer that opens nothing and allows one th
 test("the address line, line 2, the key id and the binding are checked against our config", async () => {
   const env = ours("halt", {});
   const [a, b, c, d] = outLines(env);
-  await envRefused([a.replace("goomal_bot", "other_bot"), b, c, d], "address");
+  await envRefused([a.replace("example_bot", "other_bot"), b, c, d], "address");
   await envRefused([a, b.replace(/k=[0-9a-f]{8}/, "k=00000000"), c, d], "key-id");
   await envRefused([a, b.toUpperCase(), c, d], "line-shape");
   await envRefused([a, b, c], "line-shape");

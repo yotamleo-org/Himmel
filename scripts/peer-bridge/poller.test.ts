@@ -56,12 +56,12 @@ async function setup(over: { readerRun?: PollerDeps["readerRun"]; matrix?: Polle
   const stateDir = tmp("peer-poller-state-");
   const configDir = tmp("peer-poller-conf-");
   writeFileSync(join(configDir, "hmac.key"), "k".repeat(32), { mode: 0o600 });
-  const peerDir = join(stateDir, "goomal");
+  const peerDir = join(stateDir, "example");
   mkdirSync(join(peerDir, "spool"), { recursive: true, mode: 0o700 });
   const cfg: Config = {
     operatorBotId: "999000999", operatorChatId: 4242, bridgeRoot: tmp("peer-poller-bridge-"), himmelRoot: himmelRoot(), maxTextChars: 4000, addressing: "command",
-    peers: { goomal: { peerBotId: PEER_ID, chatId: CHAT, allowFrom: [PEER_ID, "42"], opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, maxReaderRunsPerDay: 50, maxReaderRunsPerKindPerDay: { question: 30, status: 10, info: 10 }, maxWakesPerDay: 30,
-      theirs: { username: "goomal_bot", opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07" }, ...(over.peerOver ?? {}) } as any },
+    peers: { example: { peerBotId: PEER_ID, chatId: CHAT, allowFrom: [PEER_ID, "42"], opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, maxReaderRunsPerDay: 50, maxReaderRunsPerKindPerDay: { question: 30, status: 10, info: 10 }, maxWakesPerDay: 30,
+      theirs: { username: "example_bot", opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07" }, ...(over.peerOver ?? {}) } as any },
   };
   const c = { t: T0, now: () => c.t };
   const t = makeTg();
@@ -162,20 +162,20 @@ test("a 5xx keeps the intent and backs off; a permanent 400 ends it", async () =
 
 test("two peers' pending intents with the same chain number are both sent", async () => {
   const e = await setup();
-  const other = { ...e.cfg.peers.goomal, peerBotId: "555000222", chatId: CHAT - 1, theirs: { ...e.cfg.peers.goomal.theirs, username: "other_bot" } };
+  const other = { ...e.cfg.peers.example, peerBotId: "555000222", chatId: CHAT - 1, theirs: { ...e.cfg.peers.example.theirs, username: "other_bot" } };
   e.cfg.peers.other = other;
   mkdirSync(join(e.stateDir, "other", "spool"), { recursive: true, mode: 0o700 });
-  for (const peer of ["goomal", "other"]) {
-    await new Chain().append(join(e.stateDir, peer, "outbox.jsonl"), { kind: "intent", peer, chat: e.cfg.peers[peer].chatId, id: `${peer === "goomal" ? "aaaa" : "bbbb"}0001`, root: null, msgKind: "info", text: `fyi from ${peer}`, isRoot: true });
+  for (const peer of ["example", "other"]) {
+    await new Chain().append(join(e.stateDir, peer, "outbox.jsonl"), { kind: "intent", peer, chat: e.cfg.peers[peer].chatId, id: `${peer === "example" ? "aaaa" : "bbbb"}0001`, root: null, msgKind: "info", text: `fyi from ${peer}`, isRoot: true });
   }
   const p = await Poller.create(e.deps);
   await p.recover();
-  expect(e.sent.map(s => [s.chat, s.text.split("\n")[2]]).sort()).toEqual([[CHAT - 1, "fyi from other"], [CHAT, "fyi from goomal"]].sort());
+  expect(e.sent.map(s => [s.chat, s.text.split("\n")[2]]).sort()).toEqual([[CHAT - 1, "fyi from other"], [CHAT, "fyi from example"]].sort());
   expect(readChain(join(e.stateDir, "other", "outbox.jsonl")).map(r => r.kind)).toEqual(["intent", "sent"]);
 });
 
 function receiver() {
-  const state = createGateState({ ourBotId: PEER_ID, ourUsername: "goomal_bot", committed: 0, now: T0 });
+  const state = createGateState({ ourBotId: PEER_ID, ourUsername: "example_bot", committed: 0, now: T0 });
   const cfg = { maxTextChars: 4000, peers: { ours: { peerBotId: OUR_ID, chatId: CHAT, allowFrom: [OUR_ID], maxPerMinute: 100 } as any } };
   const threads = Threads.load([], { peers: { ours: { opens: ["question", "status", "info"], maxOpenThreads: 5 } }, clock: () => T0 });
   const inbox: any[] = [];
@@ -237,7 +237,7 @@ test("each spool type writes its result file, and a send result carries the mess
   const root = askRoot("0b0b0b0b");
   await e.poller.processBatch([root]);
   const sendName = submitSpool(e.peerDir, { type: "send", kind: "answer", replyTo: root.message.message_id, text: "an answer" });
-  const ackTok = ackToken(e.key, "sess-1", "goomal", 3);
+  const ackTok = ackToken(e.key, "sess-1", "example", 3);
   const ackName = submitSpool(e.peerDir, { type: "ack", sid: "sess-1", token: ackTok });
   const badAck = submitSpool(e.peerDir, { type: "ack", sid: "sess-2", token: ackTok });
   const confirmName = submitSpool(e.peerDir, { type: "confirm", chatId: CHAT });
@@ -261,8 +261,8 @@ test("each spool type writes its result file, and a send result carries the mess
 test("an answer to an unknown thread is refused, and a cursor only moves forward", async () => {
   const e = await setup();
   const name = submitSpool(e.peerDir, { type: "send", kind: "answer", replyTo: 4242, text: "to nowhere" });
-  const hi = submitSpool(e.peerDir, { type: "ack", sid: "s1", token: ackToken(e.key, "s1", "goomal", 9) });
-  const lo = submitSpool(e.peerDir, { type: "ack", sid: "s1", token: ackToken(e.key, "s1", "goomal", 4) });
+  const hi = submitSpool(e.peerDir, { type: "ack", sid: "s1", token: ackToken(e.key, "s1", "example", 9) });
+  const lo = submitSpool(e.peerDir, { type: "ack", sid: "s1", token: ackToken(e.key, "s1", "example", 4) });
   await e.poller.drainSpool();
   expect(readResult(e, name)).toEqual({ ok: false, rule: "unknown-thread" });
   expect(readResult(e, hi)).toEqual({ ok: true });
@@ -282,7 +282,7 @@ const names = {
 };
 
 test(names.openCap, async () => {
-  const e = await setup({ peerOver: { theirs: { username: "goomal_bot", opens: ["question", "status", "info"], maxOpenThreads: 2, maxPerMinute: 10, copiedAt: "2026-11-07" } } });
+  const e = await setup({ peerOver: { theirs: { username: "example_bot", opens: ["question", "status", "info"], maxOpenThreads: 2, maxPerMinute: 10, copiedAt: "2026-11-07" } } });
   const files = [1, 2, 3, 4].map(i => submitSpool(e.peerDir, { type: "send", kind: "info", text: `fyi ${i}` }));
   await e.poller.drainSpool();
   expect(e.sent).toHaveLength(2);
@@ -290,7 +290,7 @@ test(names.openCap, async () => {
 });
 
 test(names.rateCap, async () => {
-  const e = await setup({ peerOver: { theirs: { username: "goomal_bot", opens: ["question", "status", "info"], maxOpenThreads: 9, maxPerMinute: 2, copiedAt: "2026-11-07" } } });
+  const e = await setup({ peerOver: { theirs: { username: "example_bot", opens: ["question", "status", "info"], maxOpenThreads: 9, maxPerMinute: 2, copiedAt: "2026-11-07" } } });
   const files = [1, 2, 3, 4].map(i => submitSpool(e.peerDir, { type: "send", kind: "info", text: `fyi ${i}` }));
   await e.poller.drainSpool();
   expect(e.sent).toHaveLength(2);
@@ -319,7 +319,7 @@ test(names.template, async () => {
 test(names.recover, async () => {
   const e = await setup();
   const outFile = join(e.peerDir, "outbox.jsonl");
-  await new Chain().append(outFile, { kind: "intent", peer: "goomal", chat: CHAT, id: "dead0001", root: null, msgKind: "info", text: `old ${GH} text`, isRoot: true });
+  await new Chain().append(outFile, { kind: "intent", peer: "example", chat: CHAT, id: "dead0001", root: null, msgKind: "info", text: `old ${GH} text`, isRoot: true });
   const p = await Poller.create(e.deps);
   await p.recover();
   expect(e.sent).toHaveLength(0);
@@ -436,7 +436,7 @@ function processEnv(over: { mode?: number; operatorBotId?: string; peerName?: st
   const conf = join(home, ".config/himmel/peer-bridge");
   mkdirSync(conf, { recursive: true });
   const peer = { peerBotId: "555000111", chatId: null, allowFrom: ["555000111"], opens: ["question"], maxOpenThreads: 5, maxPerMinute: 10, maxReaderRunsPerDay: 50, maxReaderRunsPerKindPerDay: { question: 30, status: 10, info: 10 }, maxWakesPerDay: 30, theirs: { username: "g", opens: ["question"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07" } };
-  writeFileSync(join(conf, "peers.json"), JSON.stringify({ operatorBotId: over.operatorBotId ?? "999000999", operatorChatId: 4242, bridgeRoot: "/tmp/b", himmelRoot: "/tmp/h", peers: { [over.peerName ?? "goomal"]: peer }, maxTextChars: 4000, addressing: "command" }), { mode: over.mode ?? 0o600 });
+  writeFileSync(join(conf, "peers.json"), JSON.stringify({ operatorBotId: over.operatorBotId ?? "999000999", operatorChatId: 4242, bridgeRoot: "/tmp/b", himmelRoot: "/tmp/h", peers: { [over.peerName ?? "example"]: peer }, maxTextChars: 4000, addressing: "command" }), { mode: over.mode ?? 0o600 });
   chmodSync(join(conf, "peers.json"), over.mode ?? 0o600);
   mkdirSync(join(home, ".himmel/peer-bridge"), { recursive: true });
   return home;
@@ -446,13 +446,13 @@ const runPoller = (home: string) => spawnSync("bun", [join(REPO, "scripts/peer-b
 test("the poller process exits 78 on a loose peers.json, a token equal to operatorBotId, and a bad peer name", () => {
   expect(runPoller(processEnv({ mode: 0o644 })).status).toBe(78);
   expect(runPoller(processEnv({ operatorBotId: "1234567890" })).status).toBe(78);
-  expect(runPoller(processEnv({ peerName: "Goomal!" })).status).toBe(78);
+  expect(runPoller(processEnv({ peerName: "Example!" })).status).toBe(78);
 });
 
 
 async function envSetup(over: { logs?: string[] } = {}) {
-  const st = TE.mkStation("goomal");
-  const e = await setup({ peerOver: { theirs: { username: "goomal_bot", opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07", stationName: "goomal", keys: [{ id: st.key.id, pub: st.key.pub, addedAt: "2026-11-08T00:00:00Z" }] } } });
+  const st = TE.mkStation("example");
+  const e = await setup({ peerOver: { theirs: { username: "example_bot", opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07", stationName: "example", keys: [{ id: st.key.id, pub: st.key.pub, addedAt: "2026-11-08T00:00:00Z" }] } } });
   (e.cfg as any).self = { stationName: "yotam" };
   const ours = keygen(e.configDir);
   const logs = over.logs ?? [];
@@ -469,7 +469,7 @@ test("an admitted envelope is chained under its own kind, its id is persisted, a
   const u = envMsg(e, e.st);
   await e.poller.processBatch([u]);
   expect(chainOf(e, "inbox.jsonl")).toHaveLength(1);
-  expect(chainOf(e, "inbox.jsonl")[0]).toMatchObject({ kind: "peer-env", untrusted: true, peer: "goomal", text: u.message.text });
+  expect(chainOf(e, "inbox.jsonl")[0]).toMatchObject({ kind: "peer-env", untrusted: true, peer: "example", text: u.message.text });
   expect(chainOf(e, "envelope-ids.jsonl")).toMatchObject([{ kind: "env-id", chat: CHAT, from: PEER_ID, exp: nowS(e) + 86400 }]);
   expect(e.reads).toEqual([]);
   expect(e.sent).toEqual([]);
@@ -491,7 +491,7 @@ test("a refusal at steps 2-7 logs the step, the msg and a sha256 only, and write
   e.logs.length = 0;
   await e.poller.processBatch([bad]);
   expect(e.logs).toHaveLength(1);
-  expect(e.logs[0]).toMatch(/^env-drop step=3 peer=goomal msg=[0-9a-f]{8} sha256=[0-9a-f]{64}$/);
+  expect(e.logs[0]).toMatch(/^env-drop step=3 peer=example msg=[0-9a-f]{8} sha256=[0-9a-f]{64}$/);
   expect(chainOf(e, "inbox.jsonl")).toEqual([]);
   expect(chainOf(e, "envelope-ids.jsonl")).toEqual([]);
   expect(e.sent).toEqual([]);
@@ -522,7 +522,7 @@ test("a line-2 #env message that is not a valid envelope never reaches the text 
 
 test("a killed peer's envelope is dropped at step 4, and admitted again once the kill file is gone", async () => {
   const e = await envSetup();
-  const kill = join(e.configDir, "goomal.killed");
+  const kill = join(e.configDir, "example.killed");
   writeFileSync(kill, "", { mode: 0o600 });
   await e.poller.processBatch([envMsg(e, e.st)]);
   expect(e.logs.some(l => l.startsWith("env-drop step=4"))).toBe(true);
@@ -549,11 +549,11 @@ const latestJobs = (e: { peerDir: string }) => {
   return m;
 };
 const outJobAt = (e: { c: { t: number } }, over: Partial<JobRecord> = {}): JobRecord => ({
-  kind: "job", jobNo: 1, peer: "goomal", dir: "out", state: "SENT", created: nowS(e) - 3600, req_exp: nowS(e) + 82800, by: nowS(e) + 82800 + TIMEOUT_S_MAX + 7200,
+  kind: "job", jobNo: 1, peer: "example", dir: "out", state: "SENT", created: nowS(e) - 3600, req_exp: nowS(e) + 82800, by: nowS(e) + 82800 + TIMEOUT_S_MAX + 7200,
   sha: "a".repeat(40), suites: ["scripts/hooks/test-a.sh"], wire_job: WIRE, ...over,
 });
 const inJobAt = (e: { c: { t: number } }, over: Partial<JobRecord> = {}): JobRecord => ({
-  kind: "job", jobNo: 2, peer: "goomal", dir: "in", state: "RESOLVED", created: nowS(e) - 600, req_exp: nowS(e) + 80000, by: nowS(e) + 80000,
+  kind: "job", jobNo: 2, peer: "example", dir: "in", state: "RESOLVED", created: nowS(e) - 600, req_exp: nowS(e) + 80000, by: nowS(e) + 80000,
   sha: "a".repeat(40), suites: ["alias-a"], paths: ["scripts/hooks/test-a.sh"], peer_job: WIRE, resolved_at: nowS(e) - 500, ...over,
 });
 const sentEnvelopes = (e: { sent: { text: string }[] }) => e.sent.map(s => s.text.split("\n")).filter(l => l.length === 4);
@@ -607,9 +607,9 @@ test("the tick fires each overdue deadline once, oldest first, and signs and sen
   const envs = sentEnvelopes(e);
   expect(envs).toHaveLength(1);
   const [addr, line2, line3, line4] = envs[0];
-  expect(addr).toBe("/peer@goomal_bot");
+  expect(addr).toBe("/peer@example_bot");
   const parsed = parseEnvelopeLine(line3);
-  expect(parsed.ok && parsed.env).toMatchObject({ kind: "cancel", job: WIRE, from: "yotam", to: "goomal", chat: String(CHAT) });
+  expect(parsed.ok && parsed.env).toMatchObject({ kind: "cancel", job: WIRE, from: "yotam", to: "example", chat: String(CHAT) });
   expect(line2).toBe(`#env:v1 k=${e.ours.id} id=${(parsed as any).env.msg}`);
   expect(verify(line2, line3, line4.slice(4), e.ours.pub)).toBe(true);
   expect(chainOf(e, "threads.jsonl")).toEqual([]);
@@ -708,7 +708,7 @@ const jobEvent = (e: { peerDir: string }, job: number, event: Record<string, unk
 
 test("a vm-start event writes a RUNNING record whose backstop is min(maxJobMinutes, minutes left) in seconds", async () => {
   const e = await envSetup();
-  (e.cfg.peers.goomal as any).budgets = { jobsPerDay: 10, vmMinutesPerDay: 120, queueMax: 3, maxJobMinutes: 130 };
+  (e.cfg.peers.example as any).budgets = { jobsPerDay: 10, vmMinutesPerDay: 120, queueMax: 3, maxJobMinutes: 130 };
   await seedJob(e, inJobAt(e, { jobNo: 2, state: "APPROVED" }));
   await seedJob(e, inJobAt(e, { jobNo: 3, state: "DONE", by: null, peer_job: "a".repeat(16), resolved_at: nowS(e) - 100, running_at: nowS(e) - 100 - 1800, ended_at: nowS(e) - 100 }));
   const p = await Poller.create({ ...e.deps, log: l => e.logs.push(l) });
@@ -722,7 +722,7 @@ test("a vm-start event writes a RUNNING record whose backstop is min(maxJobMinut
 
 test("the backstop is capped by maxJobMinutes when the day has more left", async () => {
   const e = await envSetup();
-  (e.cfg.peers.goomal as any).budgets = { jobsPerDay: 10, vmMinutesPerDay: 1000, queueMax: 3, maxJobMinutes: 45 };
+  (e.cfg.peers.example as any).budgets = { jobsPerDay: 10, vmMinutesPerDay: 1000, queueMax: 3, maxJobMinutes: 45 };
   await seedJob(e, inJobAt(e, { jobNo: 2, state: "APPROVED" }));
   const p = await Poller.create({ ...e.deps, log: l => e.logs.push(l) });
   await p.recover();
@@ -733,7 +733,7 @@ test("the backstop is capped by maxJobMinutes when the day has more left", async
 
 test("a day with under the allowance left refuses the start with budget", async () => {
   const e = await envSetup();
-  (e.cfg.peers.goomal as any).budgets = { jobsPerDay: 10, vmMinutesPerDay: 120, queueMax: 3, maxJobMinutes: 130 };
+  (e.cfg.peers.example as any).budgets = { jobsPerDay: 10, vmMinutesPerDay: 120, queueMax: 3, maxJobMinutes: 130 };
   await seedJob(e, inJobAt(e, { jobNo: 2, state: "APPROVED" }));
   await seedJob(e, inJobAt(e, { jobNo: 3, state: "DONE", by: null, peer_job: "a".repeat(16), resolved_at: nowS(e) - 100, running_at: nowS(e) - 110 * 60, ended_at: nowS(e) - 100 }));
   const p = await Poller.create({ ...e.deps, log: l => e.logs.push(l) });
