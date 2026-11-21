@@ -2833,7 +2833,7 @@ check_c33_graph_stale() {
     # diagnostic pass.
     load_dotenv --root "$REPO_ROOT" HANDOVER_DIR >/dev/null 2>&1 || true
     if ! root="$(doctor_handover_root)" || [ -z "$root" ]; then
-        emit WARN C33-graph-stale "graph-cadence: handover root is broken (HANDOVER_DIR unresolvable) — graph-cadence.sh refuses to run against it, so no ledger can be written and staleness cannot be determined (this is NOT the same as healthy, nor the same as not yet armed)" "fix HANDOVER_DIR (see /handover-setup), then: bash scripts/graphify/graph-cadence.sh"
+        emit WARN C33-graph-stale "graph-cadence: handover root is broken (HANDOVER_DIR unresolvable) — graph-cadence.sh refuses to run against it, so no ledger can be written and staleness cannot be determined (this is NOT the same as healthy, nor the same as not yet armed)" "fix HANDOVER_DIR (see /handover-setup); the armed cadence's next fire then writes the ledger (bash scripts/luna/graphmap-cadence.sh status shows the armed task)"
         return
     fi
     ledger="$root/.graph-cadence/ledger.jsonl"
@@ -2893,10 +2893,26 @@ check_c33_graph_stale() {
     fi
     remedy="bash scripts/graphify/graph-cadence.sh   # or check scripts/luna/graphmap-cadence.sh status for the armed task"
     if [ "$action" = "failed" ]; then
-        local why
-        why="$(printf '%s' "$last_line" | jq -r '.error // empty' 2>/dev/null | sed -n 's/.*(refused: \([^)]*\)).*/\1/p' | head -n 1)"
-        [ -n "$why" ] && why=" (refused: $why)"
-        emit WARN C33-graph-stale "graph stale: $behind commits behind main / last cadence run $age_human ago FAILED$why" "$remedy"
+        local err why head_txt fail_remedy
+        err="$(printf '%s' "$last_line" | jq -r '.error // empty' 2>/dev/null)"
+        why="$(printf '%s' "$err" | sed -n 's/.*(refused: \([^)]*\)).*/\1/p' | head -n 1)"
+        fail_remedy="read the failing fire in the publish task's run log (bash scripts/luna/graphmap-cadence.sh status names it); once its cause is fixed, the armed cadence's next --semantic fire retries"
+        if [ -n "$why" ]; then
+            why=" (refused: $why)"
+        elif [ -n "$err" ]; then
+            case "$err" in
+                *"no account has room"*) why=" (no API account has credit room)" ;;
+                *"credit exhausted"*) why=" (API credit exhausted)" ;;
+                *) why="${err%%:*}"; why=" (${why:0:120})" ;;
+            esac
+            case "$err" in
+                *"no account has room"*|*"credit exhausted"*)
+                    fail_remedy="no single command fixes a credit refusal: an API account needs credit room again (top it up or wait for its grant to reset, see docs/internals/api-lane.md); the armed cadence's next --semantic fire then submits the batch -- a run without --semantic only records a skipped row and hides this failure" ;;
+            esac
+        fi
+        head_txt="graph stale: $behind commits behind main"
+        [ "$behind" = "?" ] && head_txt="graph publish failed (commits behind main not recorded)"
+        emit WARN C33-graph-stale "$head_txt / last cadence run $age_human ago FAILED$why" "$fail_remedy"
         return
     fi
     if [ "$stale_on_age" -eq 1 ]; then

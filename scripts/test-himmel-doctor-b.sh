@@ -1094,6 +1094,30 @@ if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F 'refused: st
 else
     fail "C33 refusal reason -> $c33_line"
 fi
+# a credit refusal (a real 2026-11-06 ledger row) leaves merges_behind null: the line
+# names the credit reason, never a '?' count, and its remedy is not the bare cadence,
+# whose skipped row would turn C33 green with nothing fixed.
+printf '{"ts":"%s","head":"aaa","graph_head":null,"merges_behind":null,"action":"failed","pr":null,"duration_s":88,"error":"semantic-update.sh exited 2: semantic-update: account A credit exhausted; retrying the batch on the other account semantic-batch: credit exhausted (HTTP 400) semantic-update: submitting the batch failed (rc 5) -- nothing submitted, graph and manifest untouched"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$t/handover/.graph-cadence/ledger.jsonl"
+out="$(CLAUDE_DIR="$t/claude" HOME="$t/home" HANDOVER_DIR="$t/handover" bash "$DOC" --no-color 2>&1)"
+c33_line="$(printf '%s' "$out" | grep -A1 'C33-graph-stale')"
+if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F 'FAILED (API credit exhausted)' \
+    && ! grepq "$c33_line" -F '? commits' && ! grepq "$c33_line" -F 'graph-cadence.sh'; then
+    pass "C33 -> WARN names the credit refusal, no '?' count, no bare-cadence remedy"
+else
+    fail "C33 credit refusal -> $c33_line"
+fi
+# the auto-routing refusal (a real 2026-11-20 ledger row) is a credit refusal too.
+printf '{"ts":"%s","head":"aaa","graph_head":null,"merges_behind":null,"action":"failed","pr":null,"duration_s":97,"error":"semantic-update.sh exited 2: [graphify extract] wrote /x/graph.json — 0 nodes, 0 edges (no clustering) semantic-update: refusing the batch: auto routing: no account has room ({\\"verdict\\":\\"SKIPPED-BANK\\",\\"reason\\":\\"no-account-with-headroom\\"}) semantic-update: submitting the batch failed (rc 2) -- nothing submitted, graph and manifest untouched"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$t/handover/.graph-cadence/ledger.jsonl"
+out="$(CLAUDE_DIR="$t/claude" HOME="$t/home" HANDOVER_DIR="$t/handover" bash "$DOC" --no-color 2>&1)"
+c33_line="$(printf '%s' "$out" | grep -A1 'C33-graph-stale')"
+if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F 'FAILED (no API account has credit room)' \
+    && ! grepq "$c33_line" -F 'graph-cadence.sh'; then
+    pass "C33 -> WARN names the auto-routing credit refusal"
+else
+    fail "C33 no-room refusal -> $c33_line"
+fi
 # a cadence alert whose Telegram send failed is its own WARN.
 mkdir -p "$t/home/.himmel/state"
 printf '2026-10-23T14:35:00Z graph-cadence semantic-failed\n' > "$t/home/.himmel/state/cadence-alert-send-failed"
