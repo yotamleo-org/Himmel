@@ -29,7 +29,8 @@ Usage:
         _evidence/ is retried there too (article and YouTube hosts), up to the
         defer count of 5, when the run would reprocess it; a YouTube clip whose
         transcript was unavailable is listed in the pending report only.
-        HARVEST_SCRAPE_DENY=all turns the fetch off.
+        Clips run least recently tried first (harvest_defer_last), so the
+        budget rotates. HARVEST_SCRAPE_DENY=all turns the fetch off.
     python harvest-clip-body-batch.py <vault-path> --firecrawl-thin [--firecrawl-budget N] [--dry-run]
         Opt-in escalation: the same, plus the paid firecrawl rung after the
         free ones, via firecrawl's /v2/scrape API. Needs FIRECRAWL_API_KEY (and
@@ -1590,9 +1591,26 @@ def stamped_youtube_partial(fm: dict) -> bool:
     return fm.get("harvest_skill") == "youtube-scrapling" and fm.get("harvest_status") == "partial"
 
 
+def flagged_thin_article(fm: dict) -> bool:
+    """A thin-body partial the harvest marked on an article host still waits
+    for its page text, even when a later triage summary makes the body read
+    rich: the mark decides, not the body."""
+    return (fm.get("harvest_status") == "partial" and fm.get("harvest_flag") == "thin-body"
+            and firecrawl_eligible(canonicalize((fm.get("source") or "").strip().strip('"')) or ""))
+
+
 def reharvest_due(fm_raw: str, fm: dict, body: str) -> bool:
-    return (not already_harvested(fm_raw) or stamped_thin(fm, body)
+    return (not already_harvested(fm_raw) or stamped_thin(fm, body) or flagged_thin_article(fm)
             or junk_fetch_section(fm, body) is not None or stamped_youtube_partial(fm))
+
+
+def last_tried(path: Path) -> str:
+    """The clip's harvest_defer_last, empty when it was never tried."""
+    try:
+        fm = parse_frontmatter(path.read_text(encoding="utf-8"))[0]
+    except Exception:
+        return ""
+    return (fm or {}).get("harvest_defer_last", "")
 
 
 def insert_fm_lines(fm_raw: str, new_lines: list) -> str:
@@ -1893,7 +1911,7 @@ def process_clip(path: Path, dry_run: bool, chain=None, url_rules=None, park=Non
             return ("~", f"{msg}{flag_suffix}", injection_hits)
         return ("x", f"failed (G-3): thin-body frontmatter mark altered body; reverted{flag_suffix}", injection_hits)
 
-    if chain is not None and firecrawl_eligible(canonical) and (junk or is_thin_body(body)):
+    if chain is not None and firecrawl_eligible(canonical) and (junk or is_thin_body(body) or flagged_thin_article(fm)):
         denied = url_gate(canonical, url_rules)
         if denied:
             return flagged_early("o", f"skipped (sensitivity): {denied}{_stamp_refused(path, text, fm_raw, body, canonical, dry_run)}")
@@ -2001,7 +2019,7 @@ def process_clip(path: Path, dry_run: bool, chain=None, url_rules=None, park=Non
             reason = f"transcript unavailable ({out.get('transcript_error') or 'transcript_empty'})"
         yt_miss = f"; youtube-scrapling: {reason}"
 
-    if junk or yt_partial or is_thin_clip(canonical, body):
+    if junk or yt_partial or is_thin_clip(canonical, body) or flagged_thin_article(fm):
         return thin_partial(yt_miss)
 
     # clip-body path
@@ -2347,6 +2365,7 @@ def main():
     ev_retry, ev_partials = evidence_clips(clippings)
     in_scan = set(clips)
     clips = clips + [p for p in ev_retry if p not in in_scan]
+    clips = sorted(clips, key=last_tried)
     scanned = set(clips)
     report_extra = [p for p in ev_partials if p not in scanned]
 
