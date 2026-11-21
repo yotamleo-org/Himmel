@@ -8,6 +8,11 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.114] — 2026-11-20
+
+### Changed
+- `.gitleaks.toml` allows the digits-only decision id `decision-<n>` that the `key` field of an `owed.jsonl` close row carries. The entry was already in some vaults as a local edit, which `/luna-upgrade` withheld on every template change; the template now carries it, so those vaults match.
+
 ## [0.4.113] — 2026-11-20
 
 ### Changed

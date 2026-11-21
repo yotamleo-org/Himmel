@@ -297,6 +297,7 @@ assert_eq "luna rc 3 exits 0 (not a failed chain item)" "0" "$RC"
 assert_contains "luna rc 3 row is needs-reconcile with the engine's marker line as detail" 'luna_template  *needs-reconcile  *upgrade: NEEDS-RECONCILE — 1 local edit' "$OUT"
 assert_not_contains "luna rc 3 is not labelled failed" 'luna_template  *failed' "$OUT"
 assert_not_contains "luna rc 3 is not labelled updated" 'luna_template  *updated' "$OUT"
+assert_contains "luna rc 3 prints the keep command naming the withheld file" 'vault-dir .* --keep .obsidian/app.json --yes' "$OUT"
 
 echo ""
 echo "Test 2d: luna vault found via install profile / settings when env is unset"
