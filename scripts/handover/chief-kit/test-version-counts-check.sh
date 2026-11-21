@@ -178,7 +178,7 @@ check "empty live status stays unread, not zero: exit 2" "$RC" "2"
 if grep -q 'VERDICT' <<< "$OUT"; then bad "empty live status: no verdict" "$OUT"; else ok "empty live status: no verdict"; fi
 
 new_case longfront
-labels_json="[$(seq -s, 1 400 | sed 's/\([0-9][0-9]*\)/"label-number-\1"/g')]"
+labels_json="[$(seq 1 400 | sed 's/.*/"label-number-&"/' | paste -sd, -)]"
 mirror_issue HIMMEL-1 "To Do" "$labels_json" '["v1.1.4"]'
 live_row v1.1.4 HIMMEL-1 "To Do" ""
 run_vc
