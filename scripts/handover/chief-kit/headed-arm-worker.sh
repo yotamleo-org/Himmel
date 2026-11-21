@@ -280,20 +280,23 @@ _launch_refused_notify() {
     return 0
 }
 _launch_refusal_note() { _LAUNCH_REFUSAL_CAUSE="$1"; _LAUNCH_REFUSAL_LINE="${2:-}"; return 0; }
+# shellcheck disable=SC2329  # invoked by the EXIT trap below, which the full handler replaces once the seam guard passes
+_lr_guard_exit() {
+    local rc=$?
+    [ "$rc" -ne 0 ] && [ "$_LAUNCH_REFUSAL_SKIP" -ne 1 ] || return 0
+    [ -n "$_LAUNCH_REFUSAL_LINE" ] || _launch_refusal_note seam-guard "the chokepoint seam guard refused this launch environment"
+    _launch_refused_notify "$rc"
+}
+trap '_lr_guard_exit 2>/dev/null' EXIT
 _csg_lib="$_csg_dir/../../lib/chokepoint-seam-guard.sh"
 # shellcheck source=scripts/lib/chokepoint-seam-guard.sh
 # shellcheck disable=SC1091
 if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
     echo "headed-arm-worker.sh: cannot load $_csg_lib - refusing" >&2
     _launch_refusal_note seam-guard "cannot load $_csg_lib"
-    [ "$_LAUNCH_REFUSAL_SKIP" -eq 1 ] || _launch_refused_notify 96
     exit 96
 fi
-if ! chokepoint_seam_guard scripts/handover/chief-kit/headed-arm-worker.sh; then
-    _launch_refusal_note seam-guard "the chokepoint seam guard refused this launch environment"
-    [ "$_LAUNCH_REFUSAL_SKIP" -eq 1 ] || _launch_refused_notify 96
-    exit 96
-fi
+chokepoint_seam_guard scripts/handover/chief-kit/headed-arm-worker.sh || exit 96
 
 # shellcheck disable=SC2329  # called from _launch_refusal_exit, which only the EXIT trap invokes
 _lr_json() {
