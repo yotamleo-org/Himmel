@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# selector: tree-scan
 set -uo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
