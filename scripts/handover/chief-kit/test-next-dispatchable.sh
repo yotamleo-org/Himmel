@@ -3125,7 +3125,7 @@ p_part() { # key pr kind actor
 p_run() {
     local offline=--no-classify
     [ "$P_LIVE" = 0 ] || offline=""
-    P_OUT="$(PATH="$P_PATH" NEXT_DISPATCH_DEADLINE="$P_LIMIT" NEXT_DISPATCH_JIRA_CLI="$P_CLI" NEXT_DISPATCH_MIRROR="$M" NEXT_DISPATCH_BODY_CACHE="$P/cache.json" NEXT_DISPATCH_READER="$P_READER" NEXT_DISPATCH_GH_CMD="$P_GH" NEXT_DISPATCH_JIRA_CMD="$P_JIRA" \
+    P_OUT="$(PATH="$P_PATH" NEXT_DISPATCH_DEADLINE="$P_LIMIT" NEXT_DISPATCH_JIRA_CLI="$P_CLI" NEXT_DISPATCH_MIRROR="$M" NEXT_DISPATCH_BODY_CACHE="${P_CACHE:-$P/cache.json}" NEXT_DISPATCH_READER="$P_READER" NEXT_DISPATCH_GH_CMD="$P_GH" NEXT_DISPATCH_JIRA_CMD="$P_JIRA" \
         bash "$P_SUT" $offline --workers-dir "$P/state/workers" "$@" 2> "$P/stderr")"; P_RC=$?
 }
 p_list() { p_run --why --dispositions --top 100 --doc "$P/bucket/chief.md"; }
@@ -4540,6 +4540,239 @@ for ow_body in '"workers":[],"legs":"x"' '"workers":[],"legs":{}' '"workers":[],
     printf '{"schema":1,%s}\n' "$ow_body" > "$OW_SIB"; ow_sbn2 SB8 malformed
 done
 ow_sbdir sb8x; printf '{"schema":1,"workers":[],"legs":[]}\n' > "$OW_SIB"; ow_sbnone SB8.ctl
+
+FU_KEY="HIMMEL-$((11000 + 1))"
+FU_READER="$HERE/../../lib/pr_remainder.py"
+fu_cache() { python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); e=d.get(sys.argv[2]); print("absent" if e is None else "%s %s" % (e.get("schema", "legacy"), ",".join(sorted(e["ans"])) if isinstance(e.get("ans"), dict) else "array"))' "$P/cache.json" "7001:$FU_KEY" 2>/dev/null || echo unreadable; }
+fu_legacy() {
+    python3 -I -c 'import json,sys,time; json.dump({"7001:" + sys.argv[2]: {"at": time.time() - float(sys.argv[4]), "ans": json.loads(sys.argv[3])}}, open(sys.argv[1], "w"))' "$P/cache.json" "$FU_KEY" "$1" "${2:-0}"
+}
+FU_FIELDS='chief_invalid,chief_owed,handed,kind,nowrite,owed_lines,text'
+fu_views() { grep -c -e "pr view $1 " "$P_GH_LOG"; }
+
+test_full_units_cache_and_legacy_refetch() {
+    local id=test_full_units_cache_and_legacy_refetch
+    p_reset; P_CACHE=""; p_mk "$FU_KEY" 'In Progress'; p_part "$FU_KEY" 7001 remaining
+    p_list
+    has "$id fresh: the remainder lists" "$P_OUT" 'files=scripts/lib/rem.sh'
+    [ "$(fu_views 7001)" = 1 ] && pass "$id fresh: the body is read once" || fail "$id fresh views=$(fu_views 7001)"
+    [ "$(fu_cache)" = "1 $FU_FIELDS" ] && pass "$id the listing writes a complete schema-1 entry" || fail "$id cache entry: $(fu_cache)"
+    : > "$P_GH_LOG"; p_list
+    has "$id complete hit: the remainder lists" "$P_OUT" 'files=scripts/lib/rem.sh'
+    [ "$(fu_views 7001)" = 0 ] && pass "$id complete hit: no body read" || fail "$id complete hit views=$(fu_views 7001)"
+    fu_legacy '["remaining", [], "edit scripts/lib/rem.sh", false, []]'
+    : > "$P_GH_LOG"; p_list
+    [ "$(fu_views 7001)" = 1 ] && pass "$id a legacy entry is a listing miss: the body is read again" || fail "$id legacy views=$(fu_views 7001)"
+    [ "$(fu_cache)" = "1 $FU_FIELDS" ] && pass "$id and the refetch upgrades it to schema 1" || fail "$id after refetch: $(fu_cache)"
+    : > "$P_GH_LOG"; NEXT_DISPATCH_BODY_TTL=0 p_list
+    [ "$(fu_views 7001)" = 1 ] && pass "$id TTL=0 reads the body again" || fail "$id TTL=0 views=$(fu_views 7001)"
+    : > "$P_GH_LOG"; P_CACHE=off; p_list; p_list; P_CACHE=""
+    [ "$(fu_views 7001)" = 2 ] && pass "$id cache off reads each run" || fail "$id off views=$(fu_views 7001)"
+    rm -f "$P/cache.json"; P_READER="$P/missing-reader.py"; p_list; P_READER=""
+    has "$id a reader that cannot run leaves the PR unread" "$P_OUT" "NEEDS-CHIEF-NOTE $FU_KEY: merged PR #7001 body could not be read"
+    [ "$(fu_cache)" != "1 $FU_FIELDS" ] && pass "$id and caches nothing" || fail "$id a failed read was cached"
+    : > "$P/not-a-dir"; P_CACHE="$P/not-a-dir/cache.json"; p_list; P_CACHE=""
+    has "$id an unwritable cache still lists the fresh answer" "$P_OUT" 'files=scripts/lib/rem.sh'
+}
+
+test_incomplete_metadata_not_empty() {
+    local id=test_incomplete_metadata_not_empty
+    p_reset; P_CACHE=""; p_mk "$FU_KEY" 'In Progress'; p_part "$FU_KEY" 7001 owed proof
+    printf 'import json, sys\nsys.stdout.write(json.dumps({"schema": 1, "answer": {"kind": "owed", "handed": ["proof", "2026-11-30"], "text": "check", "nowrite": True, "chief_owed": [], "chief_invalid": []}}) + "\\n")\n' > "$P/no-units-reader.py"
+    P_READER="$P/no-units-reader.py"; p_list; P_READER=""
+    has "$id an answer without owed_lines leaves the PR unread" "$P_OUT" "NEEDS-CHIEF-NOTE $FU_KEY: merged PR #7001 body could not be read"
+    lacks "$id and lists no proof row" "$P_OUT" "$(printf 'RESUME\t%s' "$FU_KEY")"
+    rm -f "$P_BODIES/7001"
+    fu_legacy '["owed", ["proof", "2026-11-30"], "check: owed -> proof by 2026-11-30", true, []]'
+    p_list
+    has "$id an old five-value proof entry with an unreadable body withholds" "$P_OUT" "NEEDS-CHIEF-NOTE $FU_KEY: merged PR #7001 body could not be read"
+    lacks "$id and never lists a bare proof row from it" "$P_OUT" "$(printf 'RESUME\t%s' "$FU_KEY")"
+    python3 -I -c 'import json,sys,time; json.dump({"7001:" + sys.argv[2]: {"schema": 1, "at": time.time(), "ans": {"kind": "owed", "handed": ["proof", "2026-11-30"], "text": "check", "nowrite": True, "chief_owed": [], "chief_invalid": []}}}, open(sys.argv[1], "w"))' "$P/cache.json" "$FU_KEY"
+    p_list
+    has "$id a schema-1 entry without owed_lines is a miss" "$P_OUT" "NEEDS-CHIEF-NOTE $FU_KEY: merged PR #7001 body could not be read"
+    lacks "$id and lists no proof row" "$P_OUT" "$(printf 'RESUME\t%s' "$FU_KEY")"
+}
+
+cat > "$WORK/fu-matrix.py" <<'EOF'
+import copy, json, subprocess, sys, time
+reader, body, key, pr, out = sys.argv[1:6]
+base = json.loads(subprocess.run([sys.executable, '-I', reader, '--full-units', key], stdin=open(body, 'rb'), capture_output=True, check=True).stdout)['answer']
+now = time.time()
+ck = '%s:%s' % (pr, key)
+
+def mut(f):
+    a = copy.deepcopy(base)
+    f(a)
+    return a
+
+def env(a):
+    return json.dumps({'schema': 1, 'answer': a}).encode()
+
+def entry(ans_text, schema='1', at=None):
+    return ('{"%s": {"schema": %s, "at": %s, "ans": %s}}' % (ck, schema, repr(now) if at is None else at, ans_text)).encode('utf-8')
+
+valid = json.dumps(base)
+rows = [
+    ('V01-empty', b'', entry('""')),
+    ('V02-utf8', b'\xff' + env(base), entry(valid.replace('"owed"', '"o\\u00ff"', 1)).replace(b'\\u00ff', b'\xff')),
+    ('V03-duplicate', ('{"schema": 1, "answer": {"kind": "owed", %s' % valid[1:]).encode(), entry('{"kind": "owed", ' + valid[1:])),
+    ('V04-nan', env(base).replace(b'"nowrite": false', b'"nowrite": NaN'), entry(valid.replace('"nowrite": false', '"nowrite": NaN'))),
+    ('V05-version', json.dumps({'schema': 2, 'answer': base}).encode(), entry(valid, schema='2')),
+    ('V06-bool-schema', json.dumps({'schema': True, 'answer': base}).encode(), entry(valid, schema='true')),
+    ('V07-missing', env(mut(lambda a: a.pop('owed_lines'))), None),
+    ('V07-extra', env(mut(lambda a: a.update(extra=1))), None),
+    ('V08-row-type', env(mut(lambda a: a['owed_lines'][0].update(due=7))), None),
+    ('V08-list-type', env(mut(lambda a: a.update(chief_owed=[1]))), None),
+    ('V09-kind', env(mut(lambda a: a.update(kind='later'))), None),
+    ('V09-owner', env(mut(lambda a: a['owed_lines'][0].update(who='nobody'))), None),
+    ('V10-shape', env(mut(lambda a: a.update(handed=['chief']))), None),
+    ('V11-impossible', env(mut(lambda a: (a.update(handed=['chief', '2026-13-40']), a['owed_lines'][0].update(due='2026-13-40')))), None),
+    ('V11-noncanonical', env(mut(lambda a: (a.update(handed=['chief', '20261130']), a['owed_lines'][0].update(due='20261130')))), None),
+    ('V12-empty-handoff', env(mut(lambda a: a.update(kind='handed-off', handed=[]))), None),
+    ('V13-remaining-handed', env(mut(lambda a: a.update(kind='remaining', handed=['HIMMEL-1']))), None),
+    ('V14-owner', env(mut(lambda a: a.update(handed=['operator', a['handed'][1]]))), None),
+    ('V15-due', env(mut(lambda a: a.update(handed=['chief', '2026-12-01']))), None),
+    ('V16-oversize', env(mut(lambda a: a.update(text='x' * (1 << 20)))), None),
+]
+for name, fresh, cache in rows:
+    if cache is None:
+        cache = entry(json.dumps(json.loads(fresh)['answer']))
+    open('%s/%s.fresh' % (out, name), 'wb').write(fresh)
+    open('%s/%s.cache' % (out, name), 'wb').write(cache)
+    print(name, 'both')
+for name, at in (('V17-no-at', None), ('V17-text-at', '"x"'), ('V17-nan-at', 'NaN'), ('V17-future', repr(now + 1000)), ('V17-expired', repr(now - 7200))):
+    text = entry(valid, at=at) if at else ('{"%s": {"schema": 1, "ans": %s}}' % (ck, valid)).encode()
+    open('%s/%s.cache' % (out, name), 'wb').write(text)
+    print(name, 'cache')
+EOF
+
+test_full_units_rejection_matrix() {
+    local id=test_full_units_rejection_matrix MX="$P/matrix" row kinds
+    fu_fixture() { p_reset; P_CACHE=""; p_mk "$FU_KEY" 'In Progress'; p_part "$FU_KEY" 7001 owed chief; }
+    fu_fixture; rm -rf "$MX"; mkdir -p "$MX"
+    python3 -I "$WORK/fu-matrix.py" "$FU_READER" "$P_BODIES/7001" "$FU_KEY" 7001 "$MX" > "$MX/rows" || fail "$id the matrix fixture could not be built"
+    printf 'import sys\nsys.stdout.buffer.write(open(sys.argv[0].rsplit("/", 1)[0] + "/current.fresh", "rb").read())\n' > "$MX/reader.py"
+    while read -r row kinds; do
+        if [ "$kinds" = both ]; then
+            fu_fixture; cp "$MX/$row.fresh" "$MX/current.fresh"; P_READER="$MX/reader.py"; p_list; P_READER=""
+            has "$id $row fresh: the PR is unread" "$P_OUT" "NEEDS-CHIEF-NOTE $FU_KEY: merged PR #7001 body could not be read"
+            lacks "$id $row fresh: no OWED line from it" "$P_OUT" "OWED $FU_KEY:"
+            [ ! -e "$P/cache.json" ] || [ "$(fu_cache)" = absent ] && pass "$id $row fresh: nothing cached" || fail "$id $row fresh cached: $(fu_cache)"
+        fi
+        fu_fixture; cp "$MX/$row.cache" "$P/cache.json"; p_list
+        [ "$(fu_views 7001)" = 1 ] && pass "$id $row cache: a rejected entry is a miss, the body is read" || fail "$id $row cache views=$(fu_views 7001)"
+        has "$id $row cache: the real body's answer lists" "$P_OUT" "OWED $FU_KEY: merged PR #7001 owes chief by 2026-11-30"
+    done < "$MX/rows"
+    [ "$(grep -c . "$MX/rows")" = 25 ] && pass "$id all 25 matrix rows ran" || fail "$id matrix rows: $(cat "$MX/rows")"
+    fu_fixture; printf '## Ticket coverage\n- a\tb: owed -> chief by 2026-11-30\n' > "$P_BODIES/7001"
+    p_list
+    has "POS1 $id fresh: a TAB unit is accepted by owner and date" "$P_OUT" "OWED $FU_KEY: merged PR #7001 owes chief by 2026-11-30"
+    [ "$(python3 -I -c 'import json,sys; a=json.load(open(sys.argv[1]))[sys.argv[2]]["ans"]; print("\t" in a["owed_lines"][0]["text"], "\t" in a["text"])' "$P/cache.json" "7001:$FU_KEY")" = "True False" ] \
+        && pass "POS1 $id the cached row keeps the raw TAB, the answer text is normalized" || fail "POS1 $id cache: $(cat "$P/cache.json")"
+    : > "$P_GH_LOG"; p_list
+    has "POS1 $id cache: the TAB entry is a hit" "$P_OUT" "OWED $FU_KEY: merged PR #7001 owes chief by 2026-11-30"
+    [ "$(fu_views 7001)" = 0 ] && pass "POS1 $id cache: no body read" || fail "POS1 $id cache views=$(fu_views 7001)"
+    p_reset; P_CACHE=""; p_mk "$FU_KEY" 'In Progress'; p_part "$FU_KEY" 7001 remaining; p_list
+    has "POS2 $id fresh: an ordinary answer with no owed rows lists" "$P_OUT" 'files=scripts/lib/rem.sh'
+    : > "$P_GH_LOG"; p_list
+    has "POS2 $id cache: it lists from the cache" "$P_OUT" 'files=scripts/lib/rem.sh'
+    [ "$(fu_views 7001)" = 0 ] && pass "POS2 $id cache: no body read" || fail "POS2 $id cache views=$(fu_views 7001)"
+}
+
+test_cache_upgrade_preserves_other_legacy_entry() {
+    local id=test_cache_upgrade_preserves_other_legacy_entry before after
+    p_reset; P_CACHE=""; p_mk "$FU_KEY" 'In Progress'; p_part "$FU_KEY" 7001 remaining
+    python3 -I -c 'import json,sys,time; n=time.time(); json.dump({"7001:" + sys.argv[2]: {"at": n, "ans": ["remaining", [], "edit scripts/lib/rem.sh", False, []]}, "7002:HIMMEL-11050": {"at": n - 5, "ans": ["handed-off", ["HIMMEL-9"], "rest", False, ["x"]]}}, open(sys.argv[1], "w"))' "$P/cache.json" "$FU_KEY"
+    fu_b() { python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); print(len(d), json.dumps(d.get("7002:HIMMEL-11050"), sort_keys=True, separators=(",", ":")))' "$P/cache.json"; }
+    before="$(fu_b)"; p_list; after="$(fu_b)"
+    [ "$after" = "$before" ] && pass "$id the other live legacy entry is byte-identical after the upgrade" || fail "$id other entry: before '$before' after '$after'"
+    [ "$(fu_cache)" = "1 $FU_FIELDS" ] && pass "$id only the fetched entry is upgraded" || fail "$id fetched entry: $(fu_cache)"
+}
+
+test_predicate_contract_unchanged_no_network() {
+    local id=test_predicate_contract_unchanged_no_network arm
+    fu_pred() { p_reset; P_CACHE=""; p_mk "$FU_KEY" 'In Progress' 'Writes: scripts/lib/desc.sh'; p_part "$FU_KEY" 7001 remaining; p_breadcrumb 7001 'edit scripts/lib/rem.sh'; }
+    for arm in cold off expired copied; do
+        fu_pred
+        case "$arm" in
+            off) P_CACHE=off ;;
+            expired) python3 -I -c 'import json,sys,time; json.dump({"7001:" + sys.argv[2]: {"schema": 1, "at": time.time() - 7200, "ans": {"kind": "remaining", "handed": [], "text": "edit scripts/lib/stale.sh", "nowrite": False, "chief_owed": [], "chief_invalid": [], "owed_lines": []}}}, open(sys.argv[1], "w"))' "$P/cache.json" "$FU_KEY" ;;
+            copied) p_tree "fu-copied" ;;
+        esac
+        p_run --why-ticket "$FU_KEY"; p_verdict "$id $arm" 0
+        has "$id $arm source is the breadcrumb remainder" "$P_OUT" "# scope $FU_KEY remainder of PR #7001: scripts/lib/rem.sh"
+        lacks "$id $arm an expired entry is not read" "$P_OUT" 'stale.sh'
+        [ ! -s "$P_GH_LOG" ] && pass "$id $arm zero GitHub calls" || fail "$id $arm reached GitHub: $(cat "$P_GH_LOG")"
+        P_CACHE=""
+    done
+    p_reset; p_mk "$FU_KEY" 'In Progress'; p_part "$FU_KEY" 7003 owed chief
+    p_run --why-ticket "$FU_KEY"; p_verdict "$id owed chief" 1; has "$id owed chief named debt" "$P_OUT" 'drop: merged PR #7003 owes chief by 2026-11-30'
+    [ ! -s "$P_GH_LOG" ] && pass "$id owed chief zero GitHub calls" || fail "$id owed chief reached GitHub"
+    p_reset; p_mk "$FU_KEY" 'In Progress'; p_part "$FU_KEY" 7004 remaining
+    printf '## Ticket coverage\n- first: deferred -> HIMMEL-1\n- second: deferred -> HIMMEL-2\n' > "$P_BODIES/7004"
+    p_list; : > "$P_GH_LOG"
+    p_run --why-ticket "$FU_KEY"; p_verdict "$id handed-off from a listing-written cache" 1; has "$id hand-off owner" "$P_OUT" 'drop: remainder on HIMMEL-1, HIMMEL-2'
+    [ ! -s "$P_GH_LOG" ] && pass "$id handed-off zero GitHub calls" || fail "$id handed-off reached GitHub"
+    p_reset; p_mk "$FU_KEY" 'In Progress' 'Writes: scripts/lib/desc.sh'; p_part "$FU_KEY" 7005 none; p_part "$FU_KEY" 7001 remaining; p_breadcrumb 7001 'edit scripts/lib/rem.sh'
+    p_run --why-ticket "$FU_KEY"; p_verdict "$id an older none beside a newer answer" 0
+    [ ! -s "$P_GH_LOG" ] && pass "$id none arm zero GitHub calls" || fail "$id none arm reached GitHub"
+    p_reset; p_mk "$FU_KEY" 'In Progress'; printf '{"event":"merge","result":"moved","key":"%s","pr":"7002","contract":"no"}\n' "$FU_KEY" > "$P/state/status-events.jsonl"
+    p_breadcrumb 7002 'not recorded in the PR body, see PR #7002.'
+    p_run --why-ticket "$FU_KEY"; p_verdict "$id not recorded" 1; has "$id not recorded reason" "$P_OUT" 'remainder of PR #7002 not recorded (no GitHub read)'
+}
+
+test_predicate_reads_new_and_legacy_cache_without_fallback() {
+    local id=test_predicate_reads_new_and_legacy_cache_without_fallback
+    fu_nr() {
+        p_reset; P_CACHE=""; p_mk "$FU_KEY" 'In Progress' 'Writes: scripts/lib/desc.sh'
+        printf '{"event":"merge","result":"moved","key":"%s","pr":"7001","contract":"no"}\n' "$FU_KEY" > "$P/state/status-events.jsonl"
+        printf 'Remaining: edit scripts/lib/rem.sh\n' > "$P_BODIES/7001"
+        p_breadcrumb 7001 'not recorded in the PR body, see PR #7001.'
+    }
+    fu_nr; p_list
+    [ "$(fu_cache)" = "1 $FU_FIELDS" ] && pass "$id the listing wrote a schema-1 entry" || fail "$id listing entry: $(fu_cache)"
+    : > "$P_GH_LOG"; p_run --why-ticket "$FU_KEY"; p_verdict "$id listing-written schema-1 hit" 0
+    has "$id the schema-1 hit is the source" "$P_OUT" "# scope $FU_KEY remainder of PR #7001: scripts/lib/rem.sh"
+    [ ! -s "$P_GH_LOG" ] && pass "$id schema-1 hit zero GitHub calls" || fail "$id schema-1 hit reached GitHub"
+    fu_nr; python3 -I -c 'import json,sys,time; json.dump({"7001:" + sys.argv[2]: {"schema": 1, "at": time.time(), "ans": {"kind": "remaining", "handed": [], "text": "edit scripts/lib/rem.sh", "nowrite": False, "chief_owed": [], "chief_invalid": [], "owed_lines": []}}}, open(sys.argv[1], "w"))' "$P/cache.json" "$FU_KEY"
+    p_run --why-ticket "$FU_KEY"; p_verdict "$id a schema-1 entry" 0
+    has "$id a schema-1 entry is the source" "$P_OUT" "# scope $FU_KEY remainder of PR #7001: scripts/lib/rem.sh"
+    fu_nr; fu_legacy '["remaining", [], "edit scripts/lib/rem.sh", false, []]'
+    p_run --why-ticket "$FU_KEY"; p_verdict "$id a legacy five-value entry" 0
+    has "$id the legacy entry is the source" "$P_OUT" "# scope $FU_KEY remainder of PR #7001: scripts/lib/rem.sh"
+    fu_nr; p_run --why-ticket "$FU_KEY"; p_verdict "$id cache miss control" 1
+    has "$id the miss takes the breadcrumb gate" "$P_OUT" 'remainder of PR #7001 not recorded (no GitHub read)'
+    [ ! -s "$P_GH_LOG" ] && pass "$id predicate arms zero GitHub calls" || fail "$id a predicate arm reached GitHub"
+}
+
+test_owed_next_preserves_pr_staging() {
+    local id=test_owed_next_preserves_pr_staging pv body tag
+    for tag in credential mixed; do
+        p_reset; P_CACHE=""; p_mk "$FU_KEY" 'In Progress'; p_part "$FU_KEY" 7001 owed proof
+        body='- run proof with a guest credential: owed -> proof by 2026-11-30'
+        [ "$tag" = mixed ] && body="- sign the spec: owed -> chief by 2026-11-30
+$body"
+        printf '## Ticket coverage\n%s\n' "$body" > "$P_BODIES/7001"
+        if [ "$tag" = credential ]; then
+            p_list
+            [ "$(printf '%s\n' "$P_OUT" | grep "^RESUME	$FU_KEY" | awk -F'\t' '{print $NF}')" = proof-staging=guest-credential ] \
+                && pass "$id credential without a next step holds" || fail "$id credential without next: $P_OUT"
+        fi
+        pv="$(p_validation "$FU_KEY")"; p_step "$FU_KEY" "$pv" proof 'rerun the proof'; p_owed close --id "$pv" --key KEEP >/dev/null
+        p_list
+        [ "$(printf '%s\n' "$P_OUT" | grep "^RESUME	$FU_KEY" | awk -F'\t' '{print $NF}')" = proof-staging=guest-credential ] \
+            && pass "$id $tag with a proof next step keeps the PR's staging need" || fail "$id $tag with next: $(printf '%s\n' "$P_OUT" | grep "$FU_KEY")"
+    done
+}
+
+test_full_units_cache_and_legacy_refetch
+test_incomplete_metadata_not_empty
+test_full_units_rejection_matrix
+test_cache_upgrade_preserves_other_legacy_entry
+test_predicate_contract_unchanged_no_network
+test_predicate_reads_new_and_legacy_cache_without_fallback
+test_owed_next_preserves_pr_staging
+P_CACHE=""
 
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
