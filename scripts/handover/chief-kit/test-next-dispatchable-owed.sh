@@ -55,7 +55,23 @@ case "$1 $2" in
 esac
 echo "gh stub: unsupported request: $*" >&2; exit 64
 EOF
-printf 'import sys\nsys.stdout.write(sys.stdin.read().rstrip("\\n") + ("\\tnowrite=0\\tchief-owed=" if "--units" in sys.argv else "") + "\\n")\n' > "$WORK/reader.py"
+cat > "$WORK/reader.py" <<'EOF'
+import json, sys
+line = sys.stdin.read().rstrip("\n")
+if "--full-units" in sys.argv:
+    p = line.split("\t")
+    a = {"kind": p[0], "handed": [], "text": "", "nowrite": False, "chief_owed": [], "chief_invalid": [], "owed_lines": []}
+    if p[0] == "owed":
+        a["handed"], a["text"] = p[1:3], p[3]
+        a["owed_lines"] = [{"who": p[1], "due": p[2], "text": p[3], "ask": p[3]}]
+    elif p[0] == "handed-off":
+        a["handed"], a["text"] = p[1].split(", "), p[2]
+    elif p[0] == "remaining":
+        a["text"] = p[1]
+    sys.stdout.write(json.dumps({"schema": 1, "answer": a}) + "\n")
+else:
+    sys.stdout.write(line + ("\tnowrite=0\tchief-owed=" if "--units" in sys.argv else "") + "\n")
+EOF
 cat > "$WORK/classify" <<'EOF'
 #!/usr/bin/env bash
 for k in "$@"; do printf '%s\tLOCAL-NATIVE\tstub\n' "$k"; done
