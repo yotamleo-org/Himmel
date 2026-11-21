@@ -23,6 +23,9 @@ class Runtime(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.bucket = Path(self.tmp.name)
+        self.real_ps = shutil.which('ps')
+        self.preexisting_pids = self.bucket / 'preexisting-pids'
+        self.preexisting_pids.write_text(subprocess.run([self.real_ps, '-eo', 'pid='], capture_output=True, text=True).stdout)
         if os.environ.get('FLEET_RUNTIME_EVIDENCE'):
             self.addCleanup(self.save_evidence)
         self.env = dict(os.environ, HOME=str(self.bucket), HIMMEL_FLEET_SLOTS=str(self.bucket / 'slots'),
@@ -219,9 +222,12 @@ class Runtime(unittest.TestCase):
 
     def anchorless_tree(self):
         """Symlinks to every entry of ENTRYPOINTS, except that scripts/, scripts/handover/, scripts/handover/chief-kit/ and scripts/lib/ are real
-        directories and the seam guard is a copy. The guard resolves its root from its own directory, so a launch run from this tree is not on a
-        primary checkout, which is what a CI checkout is: there it refuses a Claude Code marker beside a seam, and the worker exports a marker."""
+        directories and the seam guard, the preflight and the runtime are copies. The guard resolves its root from its own directory, so a launch
+        run from this tree is not on a primary checkout, which is what a CI checkout is: there it refuses a Claude Code marker beside a seam,
+        and the worker exports a marker. The runtime accepts a stamp only from the preflight beside it, so the two are copied together."""
         tree = self.bucket / 'tree'
+        if tree.exists():
+            return tree
         tree.mkdir()
         real = {Path('scripts'), Path('scripts/handover'), Path('scripts/handover/chief-kit'), Path('scripts/lib')}
         for entry in ENTRYPOINTS.glob('*'):
@@ -232,13 +238,14 @@ class Runtime(unittest.TestCase):
             for entry in (ENTRYPOINTS / directory).iterdir():
                 if directory / entry.name not in real:
                     (tree / directory / entry.name).symlink_to(entry)
-        guard = tree / 'scripts/lib/chokepoint-seam-guard.sh'
-        guard.unlink()
-        shutil.copy2(ENTRYPOINTS / 'scripts/lib/chokepoint-seam-guard.sh', guard)
+        for name in ('chokepoint-seam-guard.sh', 'fleet_runtime.py', 'usage-preflight.sh'):
+            copy = tree / 'scripts/lib' / name
+            copy.unlink()
+            shutil.copy2(ENTRYPOINTS / 'scripts/lib' / name, copy)
         return tree
 
-    def entry(self, path, args=(), env=None, root=ENTRYPOINTS):
-        command = ['bash', str(root / path), *map(str, args)]
+    def entry(self, path, args=(), env=None, root=None):
+        command = ['bash', str((root or self.anchorless_tree()) / path), *map(str, args)]
         result = subprocess.run(command, env=env or self.launch_env(), capture_output=True, text=True, timeout=20)
         self.record(command, result)
         return result
@@ -350,7 +357,7 @@ class Runtime(unittest.TestCase):
                    HEADED_ARM_WORKER_PREFLIGHT=self.stub('preflight', 'echo PROCEED'))
         p = self.entry('scripts/handover/chief-kit/headed-arm-worker.sh',
                        ('--fleet', self.m, '--no-profile', self.doc.stem, self.doc,
-                        self.bucket / 'sig', '1', self.bucket / 'log', 'claude-sonnet-5-5'), env, root=self.anchorless_tree())
+                        self.bucket / 'sig', '1', self.bucket / 'log', 'claude-sonnet-5-5'), env)
         log = self.bucket / 'log'
         self.assertEqual(p.returncode, 0, p.stderr + p.stdout + (log.read_text() if log.exists() else ''))
         self.assertTrue((self.bucket / 'spawned').exists())
@@ -438,7 +445,7 @@ class Runtime(unittest.TestCase):
         self.fail('launcher barrier timed out')
 
     def start_headed(self, env):
-        p = subprocess.Popen(['bash', str(ENTRYPOINTS / 'scripts/handover/headed-arm.sh'), self.doc.stem,
+        p = subprocess.Popen(['bash', str(self.anchorless_tree() / 'scripts/handover/headed-arm.sh'), self.doc.stem,
                               str(self.doc), str(self.bucket / 'sig'), '1', str(self.bucket / 'log')],
                              env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.addCleanup(lambda: p.poll() is None and p.kill())
@@ -507,7 +514,7 @@ touch "$HOME/reserved"
 for i in {1..400}; do [ -e "$HOME/continue" ] && exit 0; sleep .02; done
 exit 1''')
         env = dict(self.launch_env(), FLEET_ADMIT_TEST_HOOK=hook)
-        command = ['python3', '-I', str(ROOT / 'scripts/lib/fleet_runtime.py'), 'run', '--doc', str(self.doc),
+        command = ['python3', '-I', str(self.anchorless_tree() / 'scripts/lib/fleet_runtime.py'), 'run', '--doc', str(self.doc),
                    '--name', self.doc.stem, '--', 'bash', '-c', 'touch "$HOME/scheduled-spawn"']
         p = subprocess.Popen(command, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         try:
@@ -576,6 +583,9 @@ exit 1''')
         env = self.launch_env()
         env.pop('FLEET_PS_CMD', None)
         env.pop('FLEET_PROC', None)
+        (self.bucket / 'census-bin').mkdir(exist_ok=True)
+        shim = self.stub('census-bin/ps', '"%s" "$@" | awk \'NR==FNR{skip[$1]=1;next} !($1 in skip)\' "%s" -' % (self.real_ps, self.preexisting_pids))
+        env['PATH'] = os.path.dirname(shim) + os.pathsep + env['PATH']
         return env
 
     def real_worker(self, aid='one', doc=None):
@@ -659,7 +669,8 @@ exit 1''')
             doc = self.bucket / ('HIMMEL-' + str(910 + len(boundary)) + '-' + boundary + '.md')
             doc.write_text('# worker\n')
             self.call('add', self.m, doc, '--lane', 'native', '--pending')
-            p = subprocess.Popen([sys.executable, '-c', code, str(WRITER), str(doc), str(self.m), boundary],
+            p = subprocess.Popen([sys.executable, '-c', code, str(self.anchorless_tree() / 'scripts/handover/chief-kit/fleet-manifest.sh'),
+                                  str(doc), str(self.m), boundary],
                                  env=self.real_census_env(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             self.addCleanup(lambda p=p: p.poll() is None and (p.kill(), p.wait(timeout=5)))
             self.wait_file(self.bucket / ('kill-' + boundary), p)
@@ -897,7 +908,7 @@ exit 1''')
     def test_active_scheduled_worker_repeats_with_explicit_manifest(self):
         self.call('control', 'set', self.m, '--mode', 'active', '--target', '1', '--expect-gen', '1')
         env = self.real_census_env()
-        command = ['python3', '-I', str(ROOT / 'scripts/lib/fleet_runtime.py'), 'run', '--doc', str(self.doc),
+        command = ['python3', '-I', str(self.anchorless_tree() / 'scripts/lib/fleet_runtime.py'), 'run', '--doc', str(self.doc),
                    '--name', self.doc.stem, '--manifest', str(self.m), '--', 'bash', '-c',
                    'test -z "${FLEET_LAUNCH_ATTEMPT:-}" && test -n "$WORKER_SESSION_ATTEMPT_ID" && touch "$HOME/scheduled-ended"']
         for _ in range(2):
@@ -1942,7 +1953,7 @@ exit 1''')
 
     # A supervised program that cannot be spawned never started: its attempt is refused and released, not left unknown.
     def run_supervised(self, *command):
-        argv = ['python3', '-I', str(ROOT / 'scripts/lib/fleet_runtime.py'), 'run', '--doc', str(self.doc), '--manifest', str(self.m),
+        argv = ['python3', '-I', str(self.anchorless_tree() / 'scripts/lib/fleet_runtime.py'), 'run', '--doc', str(self.doc), '--manifest', str(self.m),
                 '--name', self.doc.stem, '--', *command]
         return subprocess.run(argv, env=self.launch_env(), capture_output=True, text=True, timeout=60)
 
