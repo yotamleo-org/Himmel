@@ -108,8 +108,10 @@ aren't trusted/loaded. Re-check §3/§4.
   degrades to a plain conversational prose question (harness-compat §9).
 - **statusLine** (where-are-we bar) is Claude-only; Codex status context is a
   separate follow-up.
-- **SessionEnd→`Stop`** hooks fire, but `end-session-wiki` capture
-  works on Linux/macOS Codex.
+- **Session-end hooks run on Codex's `Stop` event.** The where-are-we
+  refresh, the Jira nudge and `end-session-wiki` capture are wired under
+  `Stop` in `.codex/hooks.json`; Codex's own `SessionEnd` key carries only
+  the Telegram session-end notice.
 - **Live runtime probes** for some lifecycle events (auto-arm PostToolUse,
   `Stop` on `codex exec`) remain follow-ups; the security guards in §6 *are*
   live-verified.

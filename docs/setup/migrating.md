@@ -90,11 +90,12 @@ at project scope is not fighting this.
 
 ## State 3 — `origin` still points at the pre-cutover remote
 
-**The cutover has landed.** `yotamleo/Himmel` is now the
+**The cutover has landed.** `yotamleo-org/Himmel` is now the
 source of truth, and a release channel has tags to follow.
 
 Detect this state with `git remote -v`. If `origin` still names the
-pre-cutover host, migrate with a single `git remote set-url origin <new-url>`
+pre-cutover host, migrate with a single
+`git remote set-url origin https://github.com/yotamleo-org/Himmel.git`
 followed by `git fetch --tags`. Nothing about your hook wiring, your install
 record or your scope changes; this state is about where the code comes from,
 not what is installed.

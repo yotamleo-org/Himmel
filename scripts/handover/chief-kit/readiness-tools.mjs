@@ -34,7 +34,6 @@ export class ReadinessError extends Error {
 
 export const READINESS_LABEL = 'needs-readiness';
 
-// ---- private credential channel -------------------------------------------------------------------
 const CRED_KEYS = ['api_token', 'base_url', 'email', 'project'];
 const CRED_MAX_BYTES = 4096;
 const PROJECT_RE = /^[A-Z][A-Z0-9]+$/;
@@ -171,7 +170,6 @@ export async function initCredentials(primaryCli, outPath, deps = {}) {
   }
 }
 
-// ---- redaction ------------------------------------------------------------------------------------
 function secretForms(s) {
   const b64 = Buffer.from(s).toString('base64');
   const b64u = Buffer.from(s).toString('base64url');

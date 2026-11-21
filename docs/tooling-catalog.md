@@ -47,7 +47,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | `lean-skills` | himmel's vendored subset of `superpowers` + `mattpocock-skills` workflow skills — 12 of superpowers' 15 (the reference closure of the 4 himmel invokes: brainstorming, writing-plans, systematic-debugging, verification-before-completion) plus `grilling` from mattpocock/skills. Replaces both fat upstream plugins in the base profiles; their dormant installs remain available, off by default — see `marketplace/plugins/lean-skills/README.md` | ALWAYS |
 | `i-have-adhd` | Vendored (`ayghri/i-have-adhd` MIT, pinned commit) output-shaping skill for an ADHD reader: action first, numbered steps, one next action. `disable-model-invocation`, so 0 listing tokens; one SessionStart hook injects it (~1.75k tokens once per session) only when `~/.claude/.i-have-adhd-always` exists, which the installer and updater create unless `HIMMEL_NO_ADHD_ALWAYS=1` — see `marketplace/plugins/i-have-adhd/README.md`. Off in the settings template and in every plugin profile but `telegram`: himmel's own 1 KB chief brief replaced it | ON-DEMAND |
 | `pstack` | Seven vendored opt-in skills from `cursor/plugins` pstack (pinned `99743e9c`, MIT): `/correct`, `/blast-radius`, `/create-verification-skill`, `/maintain-verification-skill`, `/benchmark-checklist`, `principle-explain-the-number`, `/in-your-own-words`. All `disable-model-invocation`, no hooks or agents. Off in every worker profile; remove with `claude plugin disable pstack@himmel` — see `marketplace/plugins/pstack/README.md` | ON in the interactive `user` profile only |
-| `humanizer` | One vendored opt-in skill from `blader/humanizer` (pinned `b48c832f`, MIT): `/humanizer` rewrites AI-sounding prose. `disable-model-invocation`, no hooks, agents or scripts. In no profile; on-demand tier (installed, disabled): enable with `/profile enable humanizer@himmel`, remove with `claude plugin disable humanizer@himmel` — see `marketplace/plugins/humanizer/README.md` | OFF everywhere until the operator enables it |
+| `humanizer` | One vendored opt-in skill from `blader/humanizer` (pinned `a32f2440`, MIT): `/humanizer` rewrites AI-sounding prose. `disable-model-invocation`, no hooks, agents or scripts. In no profile; on-demand tier (installed, disabled): enable with `/profile enable humanizer@himmel`, remove with `claude plugin disable humanizer@himmel` — see `marketplace/plugins/humanizer/README.md` | OFF everywhere until the operator enables it |
 | `domain-modeling` | One vendored skill from `mattpocock/skills` (pinned `49dd158d`, MIT): keeps `docs/glossary.md` to one definition per term, aliases pointing at the canonical term. No hooks, agents or scripts; listing about 40 tokens. ON-DEMAND, `design` profile only (the profile that does design and docs work); remove with `claude plugin disable domain-modeling@himmel` — see `marketplace/plugins/domain-modeling/README.md` | ON-DEMAND — `design` profile only |
 | `context7` | Fetches current library/framework docs on demand (MCP server) | ON-DEMAND |
 | `code-review` | Code review agent with severity-tagged findings | ON-DEMAND — cached, off by default |
@@ -67,8 +67,8 @@ truth for presence; named profiles can still opt in. Full detail:
 | `plannotator-effective-html` | HTML design/UI artifact kit (design-artifact, html, html-diagram/-plan/-prototype/-wireframe) | ON-DEMAND — `design` profile only: measured 1 invocation in 1628 transcripts against ~630 tok/session cost, so it opts in per-dispatch instead of riding the ALWAYS tier |
 | `frontend-design` | Anthropic's frontend-design skill (official marketplace, local-path entry) | ON-DEMAND — `design` profile only; already cached; activation remains per profile |
 | `ui-ux-pro-max` | UI/UX design intelligence (7 skills), himmel entry pinned to upstream tag `v2.15.0` over HTTPS (replaces the old `ui-ux-pro-max@ui-ux-pro-max-skill` install; the operator script removes it) | ON-DEMAND, `design` core; catalog id `ui-ux-pro-max@himmel` |
-| `impeccable` | Design fluency skill (23 commands, 4 agents), himmel marketplace entry pinned to upstream tag `skill-v4.9.1` over HTTPS as a `git-subdir` source on `plugin/` (same pattern as the earlier plugin entries; a `url`+`path` source caches the whole repo and loses the agents/hooks) | ON-DEMAND — `design` profile only; replaces the user-scope `~/.claude/skills/impeccable` copy |
-| `find-docs` | `/find-docs`: current library, framework and API documentation lookup through the Context7 CLI (MIT, upstash/context7 `skills/find-docs`). himmel marketplace git-subdir entry pinned to upstream commit `c36522f3d4446288a272aedd727d665f7b8175f2` over HTTPS (replaces the user-scope `~/.claude/skills/find-docs` copy, which ignored `enabledPlugins` and loaded in every session). Install: `claude plugin install find-docs@himmel` | ON-DEMAND — `user` profile (plus the operator profile); off in every other profile; catalog id `find-docs@himmel` |
+| `impeccable` | Design fluency skill (23 commands, 4 agents), himmel marketplace entry pinned to upstream tag `skill-v4.10.0` over HTTPS as a `git-subdir` source on `plugin/` (same pattern as the earlier plugin entries; a `url`+`path` source caches the whole repo and loses the agents/hooks) | ON-DEMAND — `design` profile only; replaces the user-scope `~/.claude/skills/impeccable` copy |
+| `find-docs` | `/find-docs`: current library, framework and API documentation lookup through the Context7 CLI (MIT, upstash/context7 `skills/find-docs`). himmel marketplace git-subdir entry pinned to upstream commit `b1e3611e32a8b1369ae526cacdf335ddfd6e5fbb` over HTTPS (replaces the user-scope `~/.claude/skills/find-docs` copy, which ignored `enabledPlugins` and loaded in every session). Install: `claude plugin install find-docs@himmel` | ON-DEMAND — `user` profile (plus the operator profile); off in every other profile; catalog id `find-docs@himmel` |
 | `emilkowalski-skills` | Emil Kowalski's design-engineering/animation skills: all 15 upstream skills load, including animation-performance (a marketplace `skills` list never restricts anything, so animate-expo, mobile-native and write-swift cannot be excluded without a fork). MIT, sha-pinned, `strict:false`, no skills list | ON-DEMAND, `design-motion` profile; catalog id `@himmel` |
 | `taste-skill-core` | Leonxlnx/taste-skill, all 13 upstream skills in ONE plugin (sha-pinned, `strict:true`; the former imagegen and styles split never restricted anything) | ON-DEMAND, `design` core |
 | `shadcn-mcp` | himmel wrapper plugin for the shadcn/ui registry MCP (`npx shadcn@4.21.0 mcp`, no API key; upstream ships no plugin) | ON-DEMAND, `design` core |
@@ -84,6 +84,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | `builder-visual` | Builder.io skills: all upstream skills load, incl. visual-plan and visual-recap; `strict:true` (upstream plugin.json) (sha-pinned) | ON-DEMAND, `design` core + `design-diagram` profile; its `.mcp.json` registers the hosted OAuth MCP `agent-native-dispatch` (`https://dispatch.agent-native.com/mcp`, egress to Builder.io, one-time operator login); catalog id `@himmel` |
 | `frontend-slides` | HTML presentation generator, `git-subdir` path plugins/frontend-slides in the upstream repo, tag `v2.1.0` | ON-DEMAND, `design-slides` profile; catalog id `@himmel` |
 | `design-dna` | Design DNA skill (root-skill repo, UNPROVEN shape, add-on only) | ON-DEMAND, `design-reference` profile; catalog id `@himmel` |
+| `unslop-ui` | Turns AI-looking UI into a designed interface (heydamir/unslop, CC-BY-4.0, one skill, upstream plugin manifest, sha-pinned; distinct from pstack's prose `unslop` skill) | ON-DEMAND, `design` core; catalog id `@himmel` |
 | `anydesign` | Capture a site into a design system, tag `v0.6.0` (root-skill repo, UNPROVEN shape, add-on only) | ON-DEMAND, `design-reference` profile; catalog id `@himmel` |
 | `popular-web-designs` | Hermes-bundled skill: 54 brand design systems (Stripe, Linear, Vercel, ...) as HTML/CSS, from VoltAgent/awesome-design-md (MIT); `git-subdir` path skills/creative/popular-web-designs of NousResearch/hermes-agent, tag `v2026.9.24` (root-skill shape, add-on only) | ON-DEMAND, `design-reference` profile; catalog id `@himmel` |
 | `design-md` | Hermes-bundled skill: author/lint/export Google's DESIGN.md token spec (spec Apache-2.0); `git-subdir` path skills/creative/design-md of NousResearch/hermes-agent, tag `v2026.9.24` (root-skill shape, add-on only) | ON-DEMAND, `design-reference` profile; catalog id `@himmel` |
@@ -124,8 +125,8 @@ drift report; no marketplace install source or live setting is changed.
 | Plugin ID | Availability / default | Candidate profile | Refreshed target pin |
 |-----------|------------------------|-------------------|----------------------|
 | `superpowers@claude-plugins-official` | Available, off by default | `workflow-full` — upstream workflow kit, alternative to lean-skills | `obra/superpowers` `v7.0.2` (`22f0b463e7a5e579904dd6211a520321035526f7`) |
-| `mattpocock-skills@claude-plugins-official` | Available, off by default | `typescript-coach` — TypeScript/workflow coaching | `mattpocock/skills` HEAD `5863806dd4e15c63174bee4e7515a4256792ecfa` |
-| `coderabbit@claude-plugins-official` | Available, off by default | `review-coderabbit` — optional keyed review skills; credential decision remains open | `coderabbitai/skills` HEAD `45bd1ae2c471cd861b8b6903f7dcab7c57aa0e59` |
+| `mattpocock-skills@claude-plugins-official` | Available, off by default | `typescript-coach` — TypeScript/workflow coaching | `mattpocock/skills` HEAD `abeeaf95660ba9e8b7c753eb38f441ca707a8823` |
+| `coderabbit@claude-plugins-official` | Available, off by default | `review-coderabbit` — optional keyed review skills; credential decision remains open | `coderabbitai/skills` HEAD `13c46c8f30948feb4e4f48dbdc5c7b0ae5ff8408` |
 
 `scroll-world@scroll-world` also remains installed and off by default.
 
@@ -451,8 +452,8 @@ Astra surfaces (`~/.codex/config.toml`, `scripts/cr/critics.json`) are already a
 
 **Tier:** ALWAYS — installed + enabled on every himmel machine; one of the three harness-operational plugins `plugin-profile.sh disable` refuses.
 **What:** Harness-meta operational skills for himmel.
-**Skills:** `himmel-ops:stuck-playbook` (load-on-trigger guardrail-recovery playbook), `himmel-ops:minerva` (grill→brainstorm→critic→spec→critic→plan pipeline with adversarial critic loops; the one front door for grill / stress-test / brainstorm), `himmel-ops:vm` (lean-invoke VM lifecycle + e2e runbook), `himmel-ops:memory-compound` (lean-invoke auto-memory→vault compaction with a qmd findability gate), `himmel-ops:effort-assess` (PILOT reference-class effort record with a DoD refusal and a version tail check), `himmel-ops:ticket-standard` (lean-invoke draft checker: refuses a Task, Story or Bug without Plan, DoD and named Proof and parks it in an intake queue), `himmel-ops:release-manager` (the release manager's verbs over `jira release`: rule INTAKE/REVERSION/DISCHARGE requests, STATUS, BURN-DOWN, READY).
-**Commands:** `/minerva` — runs the minerva pipeline; `/memory-compound` — runs the auto-memory compaction pass; `/fanout` — validates + confirms + dispatches N work items to the invariant-policy lane by type, refusing destructive/irreversible items below the judgement tier and any dormant lane; `/cloud-route` — classifies tickets for the cloud credit lane, writes the cloud brief and prints the operator launch line without launching.
+**Skills:** `himmel-ops:stuck-playbook` (load-on-trigger guardrail-recovery playbook), `himmel-ops:minerva` (grill→brainstorm→critic→spec→critic→plan pipeline with adversarial critic loops; the one front door for grill / stress-test / brainstorm), `himmel-ops:vm` (lean-invoke VM lifecycle + e2e runbook), `himmel-ops:memory-compound` (lean-invoke auto-memory→vault compaction with a qmd findability gate), `himmel-ops:effort-assess` (PILOT reference-class effort record with a DoD refusal and a version tail check), `himmel-ops:ticket-standard` (lean-invoke draft checker: refuses a Task, Story or Bug without Plan, DoD and named Proof and parks it in an intake queue), `himmel-ops:release-manager` (the release manager's verbs over `jira release`: rule INTAKE/REVERSION/DISCHARGE requests, STATUS, BURN-DOWN, READY), `himmel-ops:docs-reviewer` (reviews a docs PR against operator remarks), `himmel-ops:pr-check` (local code review of a non-himmel repo's branch).
+**Commands:** `/minerva` — runs the minerva pipeline; `/memory-compound` — runs the auto-memory compaction pass; `/fanout` — validates + confirms + dispatches N work items to the invariant-policy lane by type, refusing destructive/irreversible items below the judgement tier and any dormant lane; `/cloud-route` — classifies tickets for the cloud credit lane, writes the cloud brief and prints the operator launch line without launching; `/chief`, `/himmel-doctor`, `/himmel-report`, `/himmel-update` and `/himmel-update-all` (see [commands-catalog.md](commands-catalog.md)).
 **Hook:** `marketplace/plugins/himmel-ops/hooks/hooks.json` wires a PreToolUse(`matcher: "Skill"`) hook `inject-minerva-critic.sh` — injects the minerva critic loop when `lean-skills:brainstorming`/`lean-skills:writing-plans` fires without `/minerva`, and routes `lean-skills:grilling` into minerva Stage 1a. The match is namespace-agnostic (substring on `brainstorming`/`writing-plans`), so retained `superpowers:` aliases still trigger it. Warn-only, fail-open; kill switch `MINERVA_HOOK_DISABLE=1`.
 **Plugin path:** `marketplace/plugins/himmel-ops/`
 
@@ -461,7 +462,8 @@ Astra surfaces (`~/.codex/config.toml`, `scripts/cr/critics.json`) are already a
 ## Project skills and agents (`.claude/skills/`, `.claude/agents/`)
 
 `unslop`, `no-comments`, `technical-writing`, `test-audit` and `writing-for-agents`
-(skills) and `comment-sicko` (agent) are project-scoped by design: they load
+(skills) and `brief-drafter`, `comment-sicko`, `edit-runner`, `judge`,
+`judge-ro`, `page-reviewer` and `ticket-auditor` (agents) are project-scoped by design: they load
 only in a session opened in this repo and are not entries in
 `marketplace/.claude-plugin/marketplace.json`. A profile can only select a
 plugin, so a skill that a profile must enable moves into a plugin instead
@@ -721,7 +723,10 @@ changing which config dir loads, so hooks are unaffected).
   `lean-skills`), `lane-review` (automated review-only, same lean set),
   `lane-content` (impl + `obsidian-triage`), `telegram`
   (the Telegram bridge's lean set + `mcpServers: ["qmd"]`
-  allowlist — see [lane-calibration.md](internals/lane-calibration.md#plugin-profiles-lane-impl-is-not-the-chief-profile)).
+  allowlist — see [lane-calibration.md](internals/lane-calibration.md#plugin-profiles-lane-impl-is-not-the-chief-profile)),
+  plus the worker, chief, judge and kit profiles (`worker-*`, `chief`,
+  `chief-relay`, `console-judge`, `release-manager`, `readiness`, `bare`,
+  `code`, `code-ui`, `design*`); `--list` prints them all.
 
 **Resolver (`plugin-profiles.mjs`):** `resolveProfile(registry, name, {addPlugins,
 installed})` → `null` for `operator`, else `{enabledPlugins:{…}}`; the floor is
@@ -1266,25 +1271,25 @@ extra field is a lint error, same as a missing one — one shape per
 `luna-sources` types PR-B added); an install/unwire `wire` pair must target
 the SAME thing; and a `config`-type install descriptor's `key`/`keys` must
 cover exactly what its own probe checks. Run by hand after editing the
-manifest: `node scripts/install/manifest-lint.mjs` — currently `OK (46
-items)`, not wired into CI or a pre-commit hook.
+manifest: `node scripts/install/manifest-lint.mjs` — prints `OK (<n>
+items)` (60 at this writing), not wired into CI or a pre-commit hook.
 
 `scripts/himmelctl/lib/secrets-manifest.json` (design
 A14/A15) is the single source for both `himmelctl install`'s secrets walk and
-`.env.example`'s generated secrets block (12 entries as of PR-B/PR-C) —
+`.env.example`'s generated secrets block (13 entries in its `secrets` list) —
 descriptive metadata only, per A8.2 — never a value, never a real credential.
 Per entry: `name`/`storage`/`obtain`/`probe`/`required`/`feature`, plus two
-optional fields PR-C added so a verdict lands on the right credential —
+optional fields so a verdict lands on the right credential —
 `sources` (the `fetch-health` source ids this credential feeds, so a
 *configured* source is genuinely probed rather than assumed) and `pairedWith`
 (so a half-configured pair reports `unconfigured` naming its sibling instead
-of blaming the wrong one). 9 of the 12 entries carry `sources`, 4 carry
+of blaming the wrong one). 3 of the 13 entries carry `sources`, 3 carry
 `pairedWith`. `feature` is a closed enum —
 `core|vault|cadence|bridge|whisper|lane:codex|lane:hermes`
 (`scripts/himmelctl/lib/adopter-profile.js`'s `FEATURE_IDS`, mirrored in
 `scripts/lib/gen-secrets-doc.mjs`) — naming which recorded wizard selection
-the secret belongs to: 10 entries are `vault`, `TELEGRAM_BOT_TOKEN` is
-`bridge`, `WHISPER_MODEL` is `whisper`. The wizard's secrets walk scopes
+the secret belongs to: 7 entries are `vault`, the four Jira entries are
+`core`, `TELEGRAM_BOT_TOKEN` is `bridge`, `WHISPER_MODEL` is `whisper`. The wizard's secrets walk scopes
 itself to the recorded profile's active features (an unselected feature's
 secrets are skipped, with one honest line naming how many and why); the
 TRACKED `.env.example` block stays the full union for every adopter, only
@@ -1364,9 +1369,10 @@ on demand; nothing here runs automatically.
   the seam `himmelctl install`'s secrets walk and the `luna-sources` manifest
   probe (above) call to verify one configured source without waiting for the
   next scheduled run. Note the two source sets are **not** identical: the
-  manifest's `luna-sources` list carries nine of this registry's ten ids —
-  `github` is absent, so `himmelctl status` never probes it even though
-  `--probe github` works.
+  manifest's `luna-sources` list carries five of this registry's eleven ids
+  (`reddit`, `x-fxtwitter`, `instagram-embed`, `firecrawl`, `bitbucket`), so
+  `himmelctl status` never probes the other six even though `--probe <id>`
+  works for each.
 
 ---
 
@@ -1605,9 +1611,8 @@ signalled it. Same runner/scheduler split as the graphify pair above.
 ## Upstream drift-fix cadence (`scripts/upstreams/`)
 
 The REPAIR half of the nightly `fork-drift` drift-detection Action
-(`check-plugin-drift.sh`), which only detects and files a tracking issue. Runs
-LOCALLY on purpose rather than in CI — the
-private repo has Actions off by design.
+(`check-plugin-drift.sh`), which only detects and files a tracking issue. The
+repair runs locally, not in CI.
 
 - `scripts/upstreams/apply-drift-bump.sh <name> <new-version> [--dry-run]` —
   deterministic pin bumper for one `tag_release`/`mode: base` entry in
@@ -1680,8 +1685,8 @@ private repo has Actions off by design.
   `HIMMEL-ForkResync` at 05:30 on `/fork-resync`. Two jobs rather than one
   because a fork re-sync can legitimately end "conflicted, a human must decide",
   and a stuck re-sync must not block routine pin bumps; ONE script rather than
-  two because the arm/status/disarm machinery (locale-independent query
-  classification, `StartWhenAvailable` XML, fail-closed crontab reads) is the
+  two because the arm/status/disarm machinery (dedup, fail-closed crontab
+  reads and runner restoration) is the
   part that is hard to get right and must not be copy-pasted. Flags (arm only):
   `--time HH:MM` (drift job, default 05:00), `--resync-time HH:MM` (default
   05:30), `--model` (default sonnet), `--force`, `--dry-run`. Dedup-guarded;
@@ -1850,7 +1855,7 @@ Shell scripts that implement `/pr-check` sub-steps. Called by the `/pr-check` co
 
 - `scripts/cr/file-deferred-issues.sh` — reads `/pr-review-toolkit:review-pr` output, dedupes low-severity findings by content hash, and files them on the repo's tracker, tagged `cr-deferred`: one Jira ticket per run when Jira is configured, forge issues otherwise, nothing remote with no tracker (prints `tracker=jira|forge|none`). Called by `/pr-check` step 7. Idempotent; `--dry-run` mode for inspection.
 - `scripts/cr/critic-first-pass.sh` — generic model-parametrized automated reviewer (supersedes retired `gemini-first-pass.sh`): diff on stdin → findings with stable `[<slug>-N]` IDs; routes through `scripts/hermes/invoke.sh`; `--model`/`--slug` flags select the model. **Senior-reviewer routing:** the gpt/codex-family critic runs under the `himmel_agent` hermes profile (main-tier SOUL) instead of the user-default junior SOUL — the junior framing produced shallow/discarded codex output. Only the gpt family by default because `himmel_agent` is Codex-provider-bound (a non-OpenAI model like the free qwen3coder anchor 400s under it); open/claude critics stay on the hermes default profile and take their senior framing from the role-prompt. Override with `CR_CRITIC_PROFILE` (applies to every family when set; `none`/empty → hermes default). `invoke.sh --profile` is fail-open (missing profile warns + falls back). Tests: `scripts/cr/test-critic-first-pass.sh` (deterministic, PATH-stubbed fake hermes).
-- `scripts/cr/critic-panel.sh` + `scripts/cr/critics.json` — NIM critic panel (roster defined in `critics.json`). **`critics.json` holds three rows — `codex`/`gpt-6.1-sol` (tier `paid`, mode `hard`, required), `claude`/`claude-opus-5-5` (tier `paid`, mode `advisory`) and `coderabbit` (the GitHub app, `best-effort`, never dispatched by the panel) — and NO free critics.** The free lane was **removed deliberately** — it made more trouble than it was worth: gptoss + kimi dropped 2026-07-03 (their 12%/13% ledger agreed-rate was noise), and the surviving qwen3coder anchor kept erroring rc=1. Paid-by-default is the intended posture, not drift. So `/pr-check` **auto-runs the PAID codex anchor by default** (~2min, bounded by the 240 s per-member timeout): an unset `CR_PROFILE` **AND** unset `CRITIC_PANEL_TIERS` resolve to tier filter `free` (`CRITIC_PANEL_TIERS` is the low-level override, honored ONLY when `CR_PROFILE` is unset), which matches zero rows, so the panel falls back to the paid anchor — **spending the OpenAI subscription usage budget on any default run that actually runs the panel** — skipped, and therefore free, on an empty diff or `CR_PROFILE=none` (an accepted cost). Note this fallback also bypasses the triviality gate, which only fires when `paid` is already IN the tier filter. `CR_PROFILE=none` = instant claude-only (skip panel). `CR_PROFILE=thorough` = adds the `thorough` tier (currently EMPTY — kept for future heavier critics). `CR_PROFILE=paid` / `free,paid` = the paid codex critic. Any other value is the tier filter verbatim. **`CR_PROFILE` is authoritative:** `/pr-check` loads it from `.env` and the panel derives its tiers from it directly — it wins over the low-level `CRITIC_PANEL_TIERS` override (honored only when `CR_PROFILE` is unset). This closed a drift where a run hand-scoped the panel to free-only and silently dropped the paid critic. Retired the gemini-only CR lane. Per-member hang protection via `CRITIC_TIMEOUT_SECS` — default **240 s**, which is ALSO the fallback when the supplied value is non-numeric or ≤0 (the panel warns and uses 240 rather than failing). It was raised from 150 s after codex + qwen3coder were seen clipping at 150 s. It needs the `timeout` binary, but does not *require* it: when `timeout` is absent the panel prints "per-member hang protection disabled" and runs each member **unbounded**.
+- `scripts/cr/critic-panel.sh` + `scripts/cr/critics.json` — NIM critic panel (roster defined in `critics.json`). **`critics.json`'s `panel` holds two rows — `codex`/`gpt-6.1-sol` (tier `paid`, mode `hard`, required) and `coderabbit` (the GitHub app, `best-effort`, never dispatched by the panel) — and NO free critics; a separate `claude_floor` entry (`claude`/`claude-opus-5-5`, effort `medium`) runs only when codex is exhausted.** The free lane was **removed deliberately** — it made more trouble than it was worth: gptoss + kimi dropped 2026-07-03 (their 12%/13% ledger agreed-rate was noise), and the surviving qwen3coder anchor kept erroring rc=1. Paid-by-default is the intended posture, not drift. So `/pr-check` **auto-runs the PAID codex anchor by default** (~2min, bounded by the 240 s per-member timeout): an unset `CR_PROFILE` **AND** unset `CRITIC_PANEL_TIERS` resolve to tier filter `free` (`CRITIC_PANEL_TIERS` is the low-level override, honored ONLY when `CR_PROFILE` is unset), which matches zero rows, so the panel falls back to the paid anchor — **spending the OpenAI subscription usage budget on any default run that actually runs the panel** — skipped, and therefore free, on an empty diff or `CR_PROFILE=none` (an accepted cost). Note this fallback also bypasses the triviality gate, which only fires when `paid` is already IN the tier filter. `CR_PROFILE=none` = instant claude-only (skip panel). `CR_PROFILE=thorough` = adds the `thorough` tier (currently EMPTY — kept for future heavier critics). `CR_PROFILE=paid` / `free,paid` = the paid codex critic. Any other value is the tier filter verbatim. **`CR_PROFILE` is authoritative:** `/pr-check` loads it from `.env` and the panel derives its tiers from it directly — it wins over the low-level `CRITIC_PANEL_TIERS` override (honored only when `CR_PROFILE` is unset). This closed a drift where a run hand-scoped the panel to free-only and silently dropped the paid critic. Retired the gemini-only CR lane. Per-member hang protection via `CRITIC_TIMEOUT_SECS` — default **240 s**, which is ALSO the fallback when the supplied value is non-numeric or ≤0 (the panel warns and uses 240 rather than failing). It was raised from 150 s after codex + qwen3coder were seen clipping at 150 s. It needs the `timeout` binary, but does not *require* it: when `timeout` is absent the panel prints "per-member hang protection disabled" and runs each member **unbounded**.
 - `scripts/cr/ledger-append.sh` — appends `finding` / `avail` / `usage` records to the CR ledger (`cr-critic-scores.jsonl`); called by `/pr-check` adjudication step. The `usage` kind records a chars/4 **estimated** token count for a critic (hermes does not expose real usage through the one-shot sanctioned script); written best-effort by `critic-first-pass.sh` when `CR_USAGE_LOG=1`. The `score` kind is one row per COMPLETED critic run (rc 0 or the all-dropped rc 4; a failed run writes none): `critical`/`important`/`suggestions` counts (+ `dropped`), `model`, `head`, and `raw_path` — so a clean 0/0/0 verdict is distinguishable from a non-run. `critic-first-pass.sh` writes it, and keeps the raw critic response at `raw_path` under `cr-panel-raw/` beside the ledger (`<head12>.<slug>.<diff|artifact>.<UTC ts>.<pid>.raw`, mode 0600); files older than `CR_RAW_RETAIN_DAYS` (default 30) are pruned on each write — no separate sweeper process. Fail-open: a raw/ledger write failure warns and never changes the critic's stdout or exit code. Every ledger reader filters on `kind`, so a `score` row changes no gate verdict.
 - `scripts/cr/cr-scores.sh` — generates a per-critic correctness scorecard from the ledger; surfaced via `/cr-scores`. Adds an estimated-token Usage section (per-model + cumulative) when the ledger holds `usage` records.
 

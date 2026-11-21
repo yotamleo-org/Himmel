@@ -17,7 +17,7 @@ import { SECTOR_OPT_OUT, sectorField } from '../commands/sector.js';
 import { appendAdmission, assertAdmissionsWritable, readAdmissions, readAdmissionsTolerant, type Admission } from '../commands/admissions-ledger.js';
 import { checkConsoleOverride } from '../commands/intake-gate.js';
 import { baselineId, effectOn, reduce, recordOf, scopeOk, terminalOf, unknownState, type ReleaseState } from './reducer.js';
-import { checkWords, decisionsDirFor, resolveDecision } from './verbatim.js';
+import { checkWords, decisionsDirFor, namesKey, resolveDecision } from './verbatim.js';
 import { asksOperator, type TicketFacts } from './operator-work.js';
 import { FENCE_MARKERS, walk } from './fence-ancestry.js';
 import { KEY_IN, judgeOperatorRows } from './judge-input.js';
@@ -795,7 +795,6 @@ export function signSpec(ctx: Ctx, o: {
 }
 
 const KEY_LINE = /^Keys?:\s*(.+)$/gm;
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export function specReview(ctx: Ctx, o: { keys: string[]; spec: string; plan?: string; verdicts: string[]; supersedes?: string }): OperatorRow {
   const verb = 'release operator spec-review';
@@ -828,7 +827,7 @@ export function specReview(ctx: Ctx, o: { keys: string[]; spec: string; plan?: s
   const headEnd = lines.findIndex((l) => /^## /.test(l));
   const header = (headEnd < 0 ? lines : lines.slice(0, headEnd)).filter((l) => /^(- Tickets?:|Keys?:)/.test(l));
   for (const k of keys) {
-    if (!header.some((l) => new RegExp(`\\b${escapeRe(k)}(?!\\d)`).test(l))) {
+    if (!header.some((l) => namesKey(l, k, { bare: false }))) {
       throw new Error(`${verb}: the spec's header does not name ${k} (a '- Ticket:' or 'Key:' line before the first ## heading)`);
     }
   }

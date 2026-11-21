@@ -206,6 +206,8 @@ check "list: pipe-title is one row with 7 unescaped separators" "$(tr -cd '|' <<
 # schema error (exit 2), never a silent miss.
 rungs="$(node -e 'const j=require(process.argv[1]);const ok=["design","gate","advisory","prompt","human"];console.log(j.classes.filter(c=>!ok.includes(c.rung)).length)' "$HERE/known-findings.json" 2>&1)"
 check "rung: every shipped class has a valid rung" "$rungs" "0"
+nolm="$(node -e 'const j=require(process.argv[1]);console.log(j.classes.filter(c=>c.kind==="rebuttal"&&!(typeof c.learning_match==="string"&&c.learning_match.length)).map(c=>c.id).join(","))' "${KF_CATALOG_UNDER_TEST:-$HERE/known-findings.json}" 2>&1)"
+check "learning_match: every shipped rebuttal class carries one" "$nolm" ""
 lad="$(bash "$SCRIPT" --ladder 2>&1)"; ladrc=$?
 check "ladder: exit 0" "$ladrc" "0"
 contains "ladder: rung counts header" "$lad" "rung counts:"

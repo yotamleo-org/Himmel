@@ -42,7 +42,14 @@ The default `--dry-run` prints a diff and the ids to add to
 file; `guard-t3-thread-tools.sh` refuses an instance id not listed there).
 `--apply` first copies the file to `<file>.bak.<UTC stamp>`, then replaces it
 atomically. The live T3 settings file is fenced by `block-edit-live-settings`, so
-the operator runs `--apply` at their own prompt, after the VM proof.
+an agent applies it only through the update step:
+
+```bash
+bash scripts/himmel-update.sh --only t3_providers
+```
+
+That step runs `--apply` on `${T3CODE_HOME:-$HOME/.t3}/userdata/settings.json`, is
+idempotent, and also runs at the end of every full `himmel-update.sh`.
 
 ## Test
 

@@ -26,6 +26,12 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/gen-briefs-test.XXXXXX")" || exit 1
 # Physical path: gen-briefs.py resolves a relative --repo through getcwd, which names /private/var/... on macOS, not the logical TMPDIR.
 WORK="$(cd "$WORK" && pwd -P)" || exit 1
 trap 'rm -rf "$WORK"' EXIT
+arm_manifest() {
+    local m="$1/chief.fleet.json"
+    [ -f "$m" ] || { bash "$HERE/fleet-manifest.sh" control init "$m" --target 4 && bash "$HERE/fleet-manifest.sh" control set "$m" --mode active --expect-gen 1; } >/dev/null 2>&1
+    bash "$HERE/fleet-manifest.sh" add "$m" "$2" --lane native --pending >/dev/null 2>&1
+    printf '%s' "$m"
+}
 BUCKET="$WORK/bucket"; REPO="$WORK/repo"; mkdir -p "$REPO"
 # No bus identity, so relay-batch never reaches the real himmel-bus store.
 unset HIMMEL_BUS_NAME
@@ -220,7 +226,7 @@ has "the worker preface's HALT/WRAP step passes --queue-doc" "$(tr '\n' ' ' < "$
 # (a copy whose resume_cwd is a plain directory: the worktree check is a later gate and the copy leaves D1 alone; the lint needs an absolute one)
 printf '%s\n' '#!/usr/bin/env bash' 'echo PROCEED' > "$WORK/preflight.sh"
 mkdir -p "$WORK/arm"; sed "s|^resume_cwd:.*|resume_cwd: $WORK|" "$D1" > "$WORK/arm/HIMMEL-9001-N901-copy.md"
-rc=0; arm_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --profile worker-impl $KP-9001-N901 "$WORK/arm/$KP-9001-N901-copy.md" "$WORK/arm/signal" 9999999999 "$WORK/arm/log" claude-sonnet-5-5 2>&1)" || rc=$?
+rc=0; arm_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --fleet "$(arm_manifest "$WORK/arm" "$WORK/arm/$KP-9001-N901-copy.md")" --profile worker-impl $KP-9001-N901 "$WORK/arm/$KP-9001-N901-copy.md" "$WORK/arm/signal" 9999999999 "$WORK/arm/log" claude-sonnet-5-5 2>&1)" || rc=$?
 [ "$rc" = 0 ] && pass "a generated brief arms through headed-arm-worker.sh (brief-lint gate)" || fail "generated brief refused by headed-arm-worker.sh rc=$rc: $arm_out"
 
 b1="$(cat "$D1" 2>/dev/null)"; b2="$(cat "$D2" 2>/dev/null)"
@@ -426,7 +432,7 @@ TD="$(find "$WORK/b12" -name "$KP-9001-N901-plain-fix-*.md" 2>/dev/null | head -
 has "the opus brief carries the Tier line" "$(cat "$TD" 2>/dev/null)" "> **Tier:** opus — design: multi-step design: the gate shape is open"
 # the launcher's own gate is the check: a copy without resume_cwd (as in the arming row above) arms, not refused.
 mkdir -p "$WORK/tier-arm"; sed "s|^resume_cwd:.*|resume_cwd: $WORK|" "$TD" > "$WORK/tier-arm/HIMMEL-9001-N901-copy.md"
-rc=0; tier_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --profile worker-impl $KP-9001-N901 "$WORK/tier-arm/$KP-9001-N901-copy.md" "$WORK/tier-arm/signal" 9999999999 "$WORK/tier-arm/log" claude-opus-5-5 2>&1)" || rc=$?
+rc=0; tier_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --fleet "$(arm_manifest "$WORK/tier-arm" "$WORK/tier-arm/$KP-9001-N901-copy.md")" --profile worker-impl $KP-9001-N901 "$WORK/tier-arm/$KP-9001-N901-copy.md" "$WORK/tier-arm/signal" 9999999999 "$WORK/tier-arm/log" claude-opus-5-5 2>&1)" || rc=$?
 [ "$rc" = 0 ] && pass "headed-arm-worker.sh's Tier gate accepts the generated opus brief" || fail "opus brief refused by headed-arm-worker.sh rc=$rc: $tier_out"
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["model"]="claude-opus-5-5"; l[0]["tier"]={"category":"cheap","reason":"x"}; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/tier-badcat.json"
 python3 "$SUT" "$WORK/tier-badcat.json" --base 4ccb59d --chief BZ --bucket "$WORK/b13" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/tier-badcat.err"; rc=$?
@@ -475,7 +481,7 @@ python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="cl
 python3 "$SUT" "$WORK/lane-astra.json" --base 4ccb59d --chief BZ --bucket "$WORK/b20a" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>&1
 has "a claudex worker with a model key passes it as the launcher's model argument" "$(grep -F headed-arm-worker.sh "$WORK/b20a/launch-N901.sh")" '.log" gpt-6-astra >'
 mkdir -p "$WORK/astra-arm"; sed "s|^resume_cwd:.*|resume_cwd: $WORK|" "$(find "$WORK/b20a" -name "$KP-9001-N901-*.md" | head -n 1)" > "$WORK/astra-arm/$KP-9001-N901-copy.md"
-rc=0; astra_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --lane claudex --profile worker-impl $KP-9001-N901 "$WORK/astra-arm/$KP-9001-N901-copy.md" "$WORK/astra-arm/signal" 9999999999 "$WORK/astra-arm/log" gpt-6-astra 2>&1)" || rc=$?
+rc=0; astra_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --fleet "$(arm_manifest "$WORK/astra-arm" "$WORK/astra-arm/$KP-9001-N901-copy.md")" --lane claudex --profile worker-impl $KP-9001-N901 "$WORK/astra-arm/$KP-9001-N901-copy.md" "$WORK/astra-arm/signal" 9999999999 "$WORK/astra-arm/log" gpt-6-astra 2>&1)" || rc=$?
 [ "$rc" = 0 ] && pass "the generated claudex brief arms with the named model" || fail "claudex brief refused by headed-arm-worker.sh rc=$rc: $astra_out"
 has "and the named model reaches the worker as CODEX_MODEL" "$astra_out" "CODEX_MODEL=gpt-6-astra"
 lacks "and the claudex launch prints no dormant warning" "$(printf '%s' "$astra_out" | tr '[:upper:]' '[:lower:]')" "dormant"
@@ -1162,7 +1168,7 @@ json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ui.json" "$1" "$
 }
 ui_mcp() { # the mcp= field a dry-run launch with <profile> reports for the generated brief
     mkdir -p "$WORK/uiarm"; sed "s|^resume_cwd:.*|resume_cwd: $WORK|" "$WORK/ui"/HIMMEL-9001-N901-plain-fix-*.md > "$WORK/uiarm/HIMMEL-9001-N901-copy.md"
-    HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --profile "$1" HIMMEL-9001-N901 "$WORK/uiarm/HIMMEL-9001-N901-copy.md" "$WORK/uiarm/signal" 9999999999 "$WORK/uiarm/log" claude-sonnet-5-5 2>&1 | grep -o ' mcp=[^ ]*'
+    HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --fleet "$(arm_manifest "$WORK/uiarm" "$WORK/uiarm/$KP-9001-N901-copy.md")" --profile "$1" $KP-9001-N901 "$WORK/uiarm/$KP-9001-N901-copy.md" "$WORK/uiarm/signal" 9999999999 "$WORK/uiarm/log" claude-sonnet-5-5 2>&1 | grep -o ' mcp=[^ ]*'
 }
 ui_gen "Writes scripts/config-ui/page.ts." -
 [ "$ui_rc" = 0 ] && pass "a config-ui worker generates (rc 0)" || fail "config-ui worker rc=$ui_rc: $(cat "$WORK/ui.err")"
@@ -2079,7 +2085,7 @@ D98="$WORK/bd98/HIMMEL-9801-N901-plain-fix-2026-10-08.md"
 has "9598 d: the brief carries the Context line headed-arm-worker.sh greps" "$(cat "$D98" 2>/dev/null)" "> **Context:** 1m — operator-ruling: decision 844: the operator wants the 1M window on this ticket"
 has "9598 d: the launcher exports WORKER_SESSION_CONTEXT=1m" "$(cat "$WORK/bd98/launch-N901.sh" 2>/dev/null)" "export WORKER_SESSION_CONTEXT=1m"
 mkdir -p "$WORK/d98arm"; sed "s|^resume_cwd:.*|resume_cwd: $WORK|" "$D98" > "$WORK/d98arm/d98-copy.md"
-rc=0; d98_out="$(WORKER_SESSION_CONTEXT=1m HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --profile worker-impl d98-N901 "$WORK/d98arm/d98-copy.md" "$WORK/d98arm/signal" 9999999999 "$WORK/d98arm/log" claude-opus-5-5 2>&1)" || rc=$?
+rc=0; d98_out="$(WORKER_SESSION_CONTEXT=1m HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --fleet "$(arm_manifest "$WORK/d98arm" "$WORK/d98arm/d98-copy.md")" --profile worker-impl d98-N901 "$WORK/d98arm/d98-copy.md" "$WORK/d98arm/signal" 9999999999 "$WORK/d98arm/log" claude-opus-5-5 2>&1)" || rc=$?
 [ "$rc" = 0 ] && pass "9598 d: headed-arm-worker.sh accepts the generated 1m brief under WORKER_SESSION_CONTEXT=1m" || fail "9598 d: launcher refused rc=$rc: $d98_out"
 mk98 "$OPUS98" "$WORK/d98n.json"
 gen98 "$WORK/d98n.json" "$WORK/bd98n"

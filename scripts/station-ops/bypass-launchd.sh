@@ -141,13 +141,14 @@ while :; do
         api_account=$(field api_account "$req")
         [ -n "$flags" ] || flags=HIMMEL_HOOK_INTEGRITY_BYPASS_OK
         base=$(basename "$brief" .md)
-        if ! [[ "$brief" == "$BUCKET/$base.md" && ! -L "$brief" && -f "$brief" ]] ||
-           ! [[ "$base" =~ ^[A-Z][A-Z0-9]+-[0-9]+-N[0-9]+[a-z]?-[A-Za-z0-9.-]+$ ]] ||
-           ! [[ "$model" =~ ^claude-(opus|sonnet|haiku)-5-5$ ]] || ! [[ "$chief" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{2,119}$ ]] ||
-           ! [[ -z "$effort" || "$effort" =~ ^(low|medium|high|xhigh)$ ]] ||
-           ! [[ -z "$api_account" || "$api_account" =~ ^([ABCD]|auto)$ ]]; then
-            refuse "$req" malformed; continue
-        fi
+        why=""
+        [[ "$brief" == "$BUCKET/$base.md" && ! -L "$brief" && -f "$brief" ]] || why+="${why:+, }brief-path"
+        [[ "$base" =~ ^[A-Z][A-Z0-9]+-[0-9]+-[A-Z][0-9]+[a-z]?-[A-Za-z0-9.-]+$ ]] || why+="${why:+, }brief-name"
+        [[ "$model" =~ ^claude-(opus|sonnet|haiku)-5-5$ ]] || why+="${why:+, }model"
+        [[ "$chief" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{2,119}$ ]] || why+="${why:+, }chief"
+        [[ -z "$effort" || "$effort" =~ ^(low|medium|high|xhigh)$ ]] || why+="${why:+, }effort"
+        [[ -z "$api_account" || "$api_account" =~ ^([ABCD]|auto)$ ]] || why+="${why:+, }api_account"
+        if [ -n "$why" ]; then refuse "$req" "malformed: $why"; continue; fi
         envs=(); bad=""; grant_text=""; paid=""; others=""; undecided=""
         IFS=, read -ra fl <<<"$flags"
         [ "${#fl[@]}" -le 5 ] || bad="more than 5 flags"
@@ -206,10 +207,12 @@ while :; do
         printf 'granted_at=%s\ngo=%s\nsha=%s\n' "$(date -u +%FT%TZ)" "$code" "$sha" >>"$req.pending"
         log "GRANT $base env=${envs[*]} decision=${decision:-none} go=$code"
         mkdir -p "$W"
-        [ -f "$BUCKET/$chief.fleet.json" ] && bash "$KIT/fleet-manifest.sh" add "$BUCKET/$chief.fleet.json" "$brief" --lane native >>"$LOG" 2>&1
+        fleet=()
+        [ -f "$BUCKET/$chief.fleet.json" ] && bash "$KIT/fleet-manifest.sh" add "$BUCKET/$chief.fleet.json" "$brief" --lane native >>"$LOG" 2>&1 \
+            && fleet=(--fleet "$BUCKET/$chief.fleet.json")
         env "${strip[@]}" -u WORKER_SESSION_EFFORT -u CLAUDE_CODE_EFFORT_LEVEL -u WORKER_SESSION_API_LANE -u WORKER_SESSION_API_ACCOUNT \
             -u HEADED_ARM_LAUNCHER_ENV -u HEADED_ARM_LAUNCHER_ENV_LINES "${envs[@]}" "${DETACH[@]}" bash "$LAUNCHER" \
-            --profile worker-impl --chief "$chief" "$base" "$brief" "$W/sig-$base" "$EXPIRES" "$W/$base.log" "$model" \
+            --profile worker-impl ${fleet[@]+"${fleet[@]}"} --chief "$chief" "$base" "$brief" "$W/sig-$base" "$EXPIRES" "$W/$base.log" "$model" \
             >"$W/$base.launch.out" 2>&1 &
         lp=$!; sleep "${BYPASSD_SETTLE:-12}"; touch "$W/sig-$base"
         if ! kill -0 "$lp" 2>/dev/null; then

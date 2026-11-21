@@ -476,7 +476,6 @@ describe('release engine', () => {
       expect(state(ctx()).unfinished_rulings[0]).toMatchObject({ status: 'blocked', owner: 'chief' });
     });
 
-    // 10231 U5 (review F3): each rm-run took a lease and appended another identical mismatch row for the same unchanged blocked move.
     it('U5: repeated rm-runs on an unchanged blocked move record the mismatch once; the lease still advances and the later replay is not suppressed', async () => {
       const { r } = await interrupted();
       const events = () => readChain<EventRow>(join(ctx().dir, 'events.jsonl'), loadKey(ctx().keyPath)).verified.filter((e) => e.kind === 'ruled' && e.ruling === r.id);
@@ -538,7 +537,6 @@ describe('release engine', () => {
       expect(lines.join('\n')).toMatch(new RegExp(`PENDING ${r.id}: .*${newer.id}`));
       expect(rows().filter((x) => x.key === 'K-2')).toEqual([]);
       expect(jira.posted).toBe(0);
-      // The refusal is recorded as one mismatch event, and later refused runs append no second.
       const mismatches = () => readChain<EventRow>(join(ctx().dir, 'events.jsonl'), loadKey(ctx().keyPath)).verified.filter((e) => e.kind === 'ruled' && e.ruling === r.id && e.readback === 'mismatch');
       expect(mismatches()).toHaveLength(1);
       for (let i = 0; i < 3; i += 1) expect(await rmRun(withJournal(ctx()), noJudge)).toEqual(expect.arrayContaining([expect.stringContaining(`PENDING ${r.id}`)]));
@@ -3927,7 +3925,6 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
   const spawnReset = () => { cappedSpawn.fn = null; cappedSpawn.options.length = 0; cappedSpawn.attempts.length = 0; };
   const attemptFlags = () => cappedSpawn.attempts.map(a => a[2]);
   const releaseRows = () => existsSync(join(sctx().dir, 'operator.jsonl')) ? readFileSync(join(sctx().dir, 'operator.jsonl'), 'utf8').trim().split('\n').filter(Boolean).length : 0;
-  // R1 and R2: every file under the fixture's specs root by sha256, every decision file's mtime, and the anchor ledger's row kinds.
   const v2Tree = (f: V2Fixture) => {
     const decisions: Record<string, number> = {};
     const dir = join(f.specsRoot, 'decisions');
@@ -3935,7 +3932,6 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
     return { files: fixtureHashes(f.specsRoot), decisions, rows: readFileSync(f.ledgerPath, 'utf8').trim().split('\n').map(l => (JSON.parse(l) as { row: string }).row) };
   };
   const within = (path: string, dir: string) => path === dir || path.startsWith(`${dir}/`);
-  // E19: the release root, the key and HOME are inside temporary roots, the release root and the artifact tree share no path, and nothing under HOME changed.
   function v2Hermetic(f: V2Fixture): () => void {
     const home = process.env.HOME as string;
     const before = readdirSync(home, { recursive: true }).sort();
@@ -5305,7 +5301,6 @@ describe('a gated ask cites the operator record that already covers it', () => {
   };
   const flip = (hex: unknown) => `${String(hex).startsWith('0') ? '1' : '0'}${String(hex).slice(1)}`;
   const mirrorOf = (...keys: Array<{ key: string; labels?: string[] }>) => mirror([{ key: 'K-1', fixVersions: ['v1'] }, ...keys.map((k) => ({ fixVersions: [] as string[], ...k }))]);
-  // The RM refuses the ask (BACKLOG, nothing placed): the key's standing refusal.
   const refuse = async (key: string) => {
     const q = request(at(), ask({ key }));
     claim(at(rmEnv));
@@ -5400,7 +5395,6 @@ describe('a gated ask cites the operator record that already covers it', () => {
     expect(queue()).toEqual([]);
   });
 
-  // way 1: a work permission (and every other non-decision kind) becomes a placement
   const KINDS = ['declare', 'takeover', 'emergency', 'blocker-pull', 'delivered-follows-merge', 'spec', 'spec-review', 'core-bypass', 'core-snapshot', 'out-of-version'];
   it.each(KINDS)('way 1: a signed %s row that names the key and the placement never places it', async (kind) => {
     await setup();
@@ -5419,7 +5413,6 @@ describe('a gated ask cites the operator record that already covers it', () => {
     expect(requestOnRecord(at(), ask())?.operator.id).toBe(rec.id);
   });
 
-  // way 2: the record does not name the key
   it.each([
     ['another key', ['K-6']],
     ['a longer key that starts with it', ['K-50']],
@@ -5432,7 +5425,6 @@ describe('a gated ask cites the operator record that already covers it', () => {
     expect(queue()).toEqual([]);
   });
 
-  // way 3: right key, wrong placement
   it.each([
     ['a move from backlog does not place an INTAKE (an add)', ['move', null, 'v1'], {}],
     ['an add from backlog does not place a REVERSION from backlog (a move)', ['add', null, 'v1'], { verb: 'REVERSION' }],
@@ -5452,7 +5444,6 @@ describe('a gated ask cites the operator record that already covers it', () => {
     expect(queue()).toEqual([]);
   });
 
-  // way 4: legacy rows
   it('way 4: a legacy decision row (no words:1) for exactly this placement never places the key', async () => {
     await setup();
     legacy(at(), ['K-5'], ADD_V1);
@@ -5468,7 +5459,6 @@ describe('a gated ask cites the operator record that already covers it', () => {
     expect(requestOnRecord(at(), ask())).toBeUndefined();
   });
 
-  // way 5: "newer" is fixed, to the millisecond
   it('way 5: a record older than the key\'s standing refusal is not cited, and the refused ask stays listed with its remedy', async () => {
     await setup();
     decisionFile();
@@ -5524,7 +5514,6 @@ describe('a gated ask cites the operator record that already covers it', () => {
     expect(requestOnRecord(at(), ask())).toBeUndefined();
   });
 
-  // way 6: superseded or contradicted by a newer decision
   it('way 6: an add followed by a later remove: only the governing remove counts, so the add is not cited', async () => {
     await setup();
     decisionFile();
@@ -5575,7 +5564,6 @@ describe('a gated ask cites the operator record that already covers it', () => {
     expect(requestOnRecord(at(), ask())?.operator.id).toBe(add.id);
   });
 
-  // way 6, review F2: the source side of a move governs too
   const SOURCE_SIDE = [
     ['legacy keep of the source', 'legacy', ['keep', 'v2', 'v2']],
     ['words keep of the source', 'words', ['keep', 'v2', 'v2']],
@@ -5713,7 +5701,6 @@ describe('a gated ask cites the operator record that already covers it', () => {
     expect(opensOf(() => requestOnRecord(at(), ask({ key: 'K-9' }))).opens).toBe(1);
   });
 
-  // review 2 F2: request() files under the lock, pinned by what a second writer's row does as the lock is taken
   it('way 10 (one lock section): request() files under the release lock: an identical ask a second writer lands as the lock is taken is returned, not duplicated', async () => {
     await setup();
     const rival = { req: 'Q-R1-9001', from: 'console', verb: 'INTAKE', key: 'K-5', from_v: null, to_v: 'v1', why: 'the same ask, filed by a second writer', evidence: {}, state: 'open' };
@@ -5792,7 +5779,6 @@ describe('a gated ask cites the operator record that already covers it', () => {
     expect(chainFault(ctx())).toMatch(/^the operator chain of R1 could not be verified to its end/);
   });
 
-  // way 7: unverified or forged rows
   it('way 7: a words row whose signature does not verify is never cited', async () => {
     await setup();
     decisionFile();
@@ -5863,7 +5849,6 @@ describe('a gated ask cites the operator record that already covers it', () => {
     expect(chainFault({ ...ctx(), release: 'R9', dir: join(root, 'release', 'R9'), keyPath: join(root, 'keys', 'R9.key') })).toBeUndefined();
   });
 
-  // way 8: multi-key rows
   it('way 8: a row that covers several keys is cited for each of them and for no other', async () => {
     await setup();
     decisionFile();
@@ -5927,7 +5912,6 @@ describe('a gated ask cites the operator record that already covers it', () => {
     expect(queue()).toEqual([]);
   });
 
-  // way 9: the fence and the origin rules are not widened
   it.each([
     ['the release manager', { HIMMEL_RELEASE_MANAGER: '1' }, /chief-spawned worker/],
     ['a console leg or worker', { HIMMEL_CONSOLE_LEG: '1' }, /chief-spawned worker/],
@@ -5954,7 +5938,6 @@ describe('a gated ask cites the operator record that already covers it', () => {
     expect(() => request(ctx(rmEnv), ask())).toThrow(/the chief writes requests/);
   });
 
-  // way 10: citing an existing row is not recording a new one
   it('way 10: citing an existing record does not run the withdrawal a NEW record runs: a pending ask for another placement stays open', async () => {
     await setup();
     decisionFile();
@@ -5977,7 +5960,6 @@ describe('a gated ask cites the operator record that already covers it', () => {
     expect(queue()).toHaveLength(1);
   });
 
-  // way 11: the printed remedy and the accepted path agree
   it('way 11: a refused ask the state lists is never covered by a record, so its remedy (record the words) is the only accepted path', async () => {
     await setup();
     decisionFile();
@@ -6006,7 +5988,6 @@ describe('a gated ask cites the operator record that already covers it', () => {
     expect(coveringRecord(at(), ask())?.id).toBe(rec.id);
   });
 
-  // way 12: another release, a closed epoch
   it('way 12: a record of another release is never cited', async () => {
     await setup();
     decisionFile();
@@ -6158,7 +6139,6 @@ describe('a ruled-away operator ask wakes the chief', () => {
     expect(state(ctx())).toMatchObject({ status: 'UNKNOWN', refused_asks: [], words_records: [], asks_operator_keys: [] });
   });
 
-  // 8674: the refusal reaches the chief with its ground and the exact remedy, and an unchanged identical ask does not requeue.
   describe('8674 refused asks name their remedy and an unchanged ask is not requeued', () => {
     const ask = (key: string, o: { why?: string; evidence?: Record<string, unknown>; to?: string } = {}) =>
       request(at(), { verb: 'INTAKE', key, from_v: null, to_v: o.to ?? 'v1', why: o.why ?? 'w', evidence: o.evidence ?? {}, from: 'console' });
@@ -6344,7 +6324,6 @@ describe('a ruled-away operator ask wakes the chief', () => {
       expect(conflictsOf()).toEqual(['P-2>C-1:ruled']);
       await apply(at(rmEnv), r2.id);
       expect(conflictsOf()).toEqual(['P-2>C-1:refused']);
-      // The chief files the ask again with the relation removed (optional hardening): nothing is required of the parent any more.
       request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'optional hardening only', evidence: {}, from: 'console' });
       expect(conflictsOf()).toEqual([]);
     });
@@ -6419,7 +6398,6 @@ describe('a ruled-away operator ask wakes the chief', () => {
       expect(conflictsOf()).toEqual(['HIMMEL-9915>HIMMEL-9932:claimed']);
     });
 
-    // 8674 U1 (review F1): the words path withdraws the pending duplicate and refiles it; the refiled ask keeps the relation the withdrawn one held.
     describe('U1: a words re-ask keeps the required-remainder relation', () => {
       const REL = { follow_up_of: 'P-1', remainder: true };
       const row = (evidence: Record<string, unknown>) => ({ verb: 'INTAKE' as const, key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence, from: 'console' });
@@ -6462,7 +6440,6 @@ describe('a ruled-away operator ask wakes the chief', () => {
         const got = words();
         expect(got.request.evidence).toEqual({ operator: got.operator.id });
         expect(conflictsOf()).toEqual([]);
-        // and a first ask with words, no earlier request at all
         const fresh = requestWithWords(at(), { ...row({}), key: 'C-2' }, { decision: '9', words: WORDS });
         expect(fresh.request.evidence).toEqual({ operator: fresh.operator.id });
       });
@@ -6489,7 +6466,6 @@ describe('a ruled-away operator ask wakes the chief', () => {
         request(at(), row(REL));
         expect(words({ follow_up_of: 'P-2', remainder: true }).request.evidence).toMatchObject({ follow_up_of: 'P-2', remainder: true });
         expect(conflictsOf()).toEqual(['P-2>C-1:open']);
-        // withdraw that one, file the first again with the relation, then remove it explicitly through the words path
         withdraw(at(), { req: openRows()[0], reason: 'again' });
         request(at(), row(REL));
         expect(words({ remainder: false }).request.evidence).toMatchObject({ remainder: false });
@@ -6497,7 +6473,6 @@ describe('a ruled-away operator ask wakes the chief', () => {
       });
     });
 
-    // 8674 U1: the refused-ask remedy prints the same --required-by form as the conflict for the same child.
     describe('U1: the refused-ask remedy keeps --required-by', () => {
       it('an operator-asked child: refused_asks[].remedy equals remainder_conflicts[].next and names --required-by', async () => {
         await setup();
@@ -6823,7 +6798,6 @@ describe('T8 U7: seed from the 2026-11-16 correction audit', () => {
     expect(queued.remainder_conflicts.map((c) => `${c.parent}>${c.child}:${c.phase}:${c.owner}`).sort())
       .toEqual(Object.entries(seed.required_by).map(([child, parent]) => `${parent}>${child}:open:release-manager`).sort());
 
-    // 3. One normal RM run under each key's own operator record.
     const judge: Judge = async (input) => input.requests.map((q) => {
       const ref = (q.evidence as { operator?: string } | null)?.operator ?? null;
       return q.verb === 'REVERSION'

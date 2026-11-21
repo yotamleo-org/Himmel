@@ -4504,7 +4504,6 @@ test("capped fold still verifies a ledger whose latest closure round was opened 
   await expect(runCapped(f.args)).rejects.toThrow("invalid ledger records: extension 990");
 }, S1B);
 
-// ---- typed fixture builders, the real closure marker and the JSON selector (rows B1, G0a and G0b v1 controls) ----
 const B1_LIB = join(import.meta.dir, "testlib-capped-fold.ts");
 const B1_MINERVA = join(import.meta.dir, "..", "..", "marketplace", "plugins", "himmel-ops", "scripts");
 const b1Lib = async (): Promise<any> => import("./testlib-capped-fold.ts");
@@ -5717,7 +5716,6 @@ test("P2 twelve two-fault pairs O1 to O12: the refusal is exactly the earlier st
   expect(c.ids).toHaveLength(12); expect(c.bad).toEqual([]);
 }, S1B);
 
-// ---- P3: the old `--key` argv grammar: exactly five valued flags, each once, any order; the default no-flag usage; the output bytes ----
 const P3_USAGE = "capped-fold: capped-fold: requires exactly --key, --spec, --plan, --spec-return and --plan-return, each once\n";
 test("P3 capped-fold argv grammar: any other shape than five valued flags each once prints the one usage line and exits 1", async () => {
   const f = await cappedFixture(); const flags = p1Flags(f.args);
@@ -5905,7 +5903,6 @@ test("W2 critic-round-check: the round and seal rows, the snapshots and the lock
   expect(readFileSync(join(dir, ROUND_KEY, sha(mdText)), "utf8")).toBe(mdText); expect(readFileSync(join(dir, ROUND_KEY, sha(htmlText)), "utf8")).toBe(htmlText);
   expect(statSync(join(dir, `${ROUND_KEY}.jsonl.lock`)).size).toBe(0);
   expect(readFileSync(v, "utf8")).toContain(`CONTENT-SHA256 ${sha(mdText)} ${basename(md)}\n`);
-  // sealing a file the return already seals is refused by the seal script before any ledger write
   const before = wTree(dir); const again = await seal(v, md, sha(mdText));
   expect(again.code).toBe(1); expect(again.err).toBe(`critic-seal: ${v} already seals ${basename(md)}\n`); expect(wTree(dir)).toEqual(before);
 });
@@ -5927,7 +5924,6 @@ test("W2 seal faults: each refusal keeps its words, its order and what it leaves
   { const t = specsTree(); mkdirSync(wDir(t.specs), { recursive: true }); writeFileSync(join(wDir(t.specs), "manifest.json"), "{");
     const r = await sealed(t, "plain.md", front(ROUND_KEY, "# w\n"));
     expect(r.run.err).toContain(`${join(wDir(t.specs), "manifest.json")}: the round manifest does not parse; restore it from the state repo history`); }
-  // 3. a verdict named for one ticket whose read file belongs to another, 4. a spec with no ticket key
   { const t = specsTree(); expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
     const text = front(ROUND_KEY, "# w\n"); const other = join(t.dir, "HIMMEL-9702-y.md"); writeFileSync(other, front("HIMMEL-9702", "# y\n"));
     const named = join(t.dir, `${ROUND_KEY}-w.md`); const v = `${named}.critic-spec-r1.md`; writeFileSync(named, text);
@@ -5943,7 +5939,6 @@ test("W2 seal faults: each refusal keeps its words, its order and what it leaves
     expect(r.run.err).toContain(`${r.spec}: front matter has no tickets: line naming ${ROUND_KEY}`);
     expect(readdirSync(wDir(t.specs)).sort()).toEqual([`${ROUND_KEY}.jsonl.lock`, "manifest.json", "round-seed.jsonl.lock"]);
     expect(readFileSync(r.v, "utf8")).not.toContain("CONTENT-SHA256"); }
-  // 6. the ledger is read before the front matter is judged, 7. a manifested key with no ledger is refused at the same read
   for (const [name, setup, message] of [
     ["a ledger line that does not parse", (dir: string) => writeFileSync(join(dir, `${ROUND_KEY}.jsonl`), "garbage\n"), `${ROUND_KEY} ledger line 1 does not parse; restore it from the state repo history`],
     ["a manifested key with no ledger", (dir: string) => writeFileSync(join(dir, "manifest.json"), `${JSON.stringify({ v: 1, ts: 1, keys: { [ROUND_KEY]: { spec: 1, plan: 0 } } })}\n`), `${ROUND_KEY} is in the round manifest but has no ledger; restore it from the state repo history`],
@@ -6036,7 +6031,6 @@ test("W5 the lock: its name and path, and what a refused or a successful writer 
   expect(refused).toEqual({ code: 1, out: "", err: `no round manifest under ${bare.specs}; run round-seed --all once\n` });
   expect(readdirSync(join(bare.specs, "ledgers"))).toEqual(["spec-rounds"]);
   expect(wTree(wDir(bare.specs))).toEqual({ [`${CAP_KEY}.jsonl.lock`]: EMPTY_FILE });
-  // a seal and an append leave one empty lock per key, beside the ledger, and no other file
   const t = await roundTree(MAJOR, []); const dir = wDir(t.specs);
   expect(readdirSync(dir).sort()).toEqual([CAP_KEY, `${CAP_KEY}.jsonl`, `${CAP_KEY}.jsonl.lock`, "manifest.json", "round-seed.jsonl.lock"]);
   const before = wTree(dir); expect((await verb(true, "round-override", CAP_KEY, "--findings", "M2", "--why", "w", "--chief", "chief-x", "--specs", t.specs)).code).toBe(1);
@@ -6067,7 +6061,6 @@ test("W6 snapshots: the sealed bytes at their literal path, and the role the cap
   expect(snapshots.map((p: { path: string }) => p.path).sort()).toEqual(readdirSync(join(cdir, cappedKey)).map((n) => join(cdir, cappedKey, n)).sort());
   expect(byRole("artifact").map((p: { path: string }) => p.path).sort()).toEqual([join(f.specsRoot, "designs", "estimate.json"), join(f.specsRoot, "designs", "page.html"), f.plan, f.spec].sort());
   expect(proof.pins.filter((p: { role: string }) => ["ledger", "manifest", "snapshot"].includes(p.role))).toHaveLength(6);
-  // a ledger-shaped name that is not this key's ledger is read as an artifact, not as the ledger
   const lookalike = await cappedFixture({ pageName: `${cappedKey}.jsonl` }); const lookProof = await runCapped(lookalike.args);
   expect(lookProof.pins.find((p: { path: string }) => p.path === join(lookalike.specsRoot, "designs", `${cappedKey}.jsonl`)).role).toBe("artifact");
   expect(lookProof.pins.filter((p: { role: string }) => p.role === "ledger")).toHaveLength(1);
@@ -6088,9 +6081,7 @@ test("W7 readManifest: a missing, unreadable, malformed or wrong-shaped manifest
     writeFileSync(manifestFile, text); expect(await status(t.specs), JSON.stringify(text)).toEqual({ code: 1, out: "", err: parse });
     expect(await routeCli("round-status", "--all", "--json", "--specs", t.specs), `no key ${JSON.stringify(text)}`).toEqual({ code: 1, out: "", err: parse });
   }
-  // a manifest with only the keys object, or with extra fields, is a manifest
   for (const text of ['{"keys":{}}', JSON.stringify({ v: 1, ts: 1, keys: { [ROUND_KEY]: 3 }, extra: true })]) { writeFileSync(manifestFile, text); expect((await status(t.specs, "HIMMEL-9799")).code, text).toBe(0); }
-  // the order of the three reads: with all three faulted the manifest speaks first, then the ledger, then the snapshot folder
   const u = specsTree(); mkdirSync(wDir(u.specs), { recursive: true }); const udir = wDir(u.specs); const umanifest = join(udir, "manifest.json"); const KEY = "HIMMEL-9798";
   writeFileSync(umanifest, "{"); writeFileSync(join(udir, `${KEY}.jsonl`), "garbage\n"); symlinkSync(join(udir, KEY), join(udir, KEY));
   expect((await status(u.specs, KEY)).err).toBe(`${umanifest}: the round manifest does not parse; restore it from the state repo history\n`);
@@ -6177,7 +6168,6 @@ test("X3 migration tripwire: every ledger-path construction in chief-route.ts an
   }
 });
 
-// ---- the v2 return policy at the in-process evidence helper (rows Q1 to Q4, C1 to C3, F1 to F3, F9 and D6) ----
 type C3Fixture = { specsRoot: string; spec: string; plan: string; verdicts: string[]; ledgerPath: string };
 type C3Shape = { verb: "READ" | "READ-SHA256"; order: "sha" | "sha2" | "legacy" };
 const c3Shape = (verb: C3Shape["verb"], order: C3Shape["order"]): C3Shape => ({ verb, order });
@@ -6219,12 +6209,10 @@ const c3Expect = async (f: C3Fixture, kind: "spec" | "plan", got: any, round: nu
   expect(got.pin, `${kind} pin`).toEqual({ kind, path, sha256: sha(text), round, return_sha: route.returnSha(text), residuals: carried.length });
   expect(got.carried, `${kind} carried`).toEqual(carried.map(([id, severity]) => ({ key, epoch, kind, round, return_path: path, return_sha: route.returnSha(text), finding_id: id, severity, status: "open-carried" })));
 };
-// Rewrites every standard quote line of a return into one of the accepted shapes.
 const c3Requote = (text: string, shape: C3Shape) => text.replace(/^READ(?:-SHA256)? ([0-9a-f]{64}) (\S.*)$/gm, (_line, digest: string, path: string) =>
   shape.order === "legacy" ? `${shape.verb} ${path} ${digest}` : `${shape.verb} ${digest}${shape.order === "sha2" ? "  " : " "}${path}`);
 const c3Quotes = (text: string) => [...text.matchAll(/^READ-SHA256 ([0-9a-f]{64}) (\S.*)$/gm)];
 const c3BeforeSeals = (text: string, line: string) => text.replace(/^CONTENT-SHA256 /m, `${line}\nCONTENT-SHA256 `);
-// A real ledger with its own rounds per kind, through the shared round fixture exactly as cappedFixture builds one.
 const c3Build = async (rounds: { kind: "spec" | "plan"; round: number; findings?: string; closure?: boolean }[]) => {
   const { buildRoundFixture } = await import("./testlib-capped-fold.ts");
   const reads = (kind: "spec" | "plan") => ["spec", ...(kind === "plan" ? ["plan"] : []), { path: "specs/designs/page.html", text: "<h1>Review page</h1>\n" },
@@ -6584,7 +6572,6 @@ test("F1 v2Policy.headingOk follows parseFindings exactly: the near-misses the l
   }
 }, S1B);
 
-// ---- member state at the in-process seam (rows M1 to M5) ----
 const M3D_PRESENT = (keys: string[]) => `capped-fold: group member holds ledger state: ${keys.join(", ")}`;
 const m3Route = async (): Promise<any> => {
   const route: any = await import("./chief-route");
@@ -6744,7 +6731,6 @@ test("3d member state: the listing and the manifest are read through the reader,
   await expect(again.recheck(), "a manifest entry written after the check").rejects.toThrow(`capped-fold: evidence changed or is unreadable: ${join(second.dir, "manifest.json")}`);
 }, S1B);
 
-// ---- history and namespace at the in-process seam (rows N1 to N10 and N13) ----
 const N3_UNACCOUNTED = (path: string) => `capped-fold: ambiguous or unaccounted latest return: ${path}`;
 const n3Route = async (): Promise<any> => {
   const route: any = await import("./chief-route");

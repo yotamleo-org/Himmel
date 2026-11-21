@@ -5,7 +5,7 @@ import type { Config } from "./config";
 import { buildEnvelope, encodeCanonical, type Envelope, type Kind } from "./envelope";
 import { keygen, sign, STATION_KEY, type KeyInfo } from "./sign";
 
-export const BOT_US = "ours_bot", BOT_THEM = "goomal_bot";
+export const BOT_US = "ours_bot", BOT_THEM = "example_bot";
 export const OUR_BOT_ID = "111000111", PEER_BOT_ID = "555000111";
 export const ENV_CHAT = -1001234567890;
 export const NOW_S = 1_730_973_600;
@@ -27,12 +27,12 @@ export function envConfig(keys: { id: string; pub: string; addedAt?: string }[],
     maxTextChars: 4000,
     self: { stationName: "yotam" },
     peers: {
-      goomal: {
+      example: {
         peerBotId: PEER_BOT_ID, chatId: ENV_CHAT, allowFrom: [PEER_BOT_ID], opens: ["question", "status", "info"],
         maxOpenThreads: 5, maxPerMinute: 10, maxReaderRunsPerDay: 50, maxReaderRunsPerKindPerDay: { question: 30, status: 10, info: 10 }, maxWakesPerDay: 30,
         theirs: {
           username: BOT_THEM, opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07",
-          stationName: "goomal", keys: keys.map(k => ({ addedAt: iso(NOW_S - 86400), ...k })),
+          stationName: "example", keys: keys.map(k => ({ addedAt: iso(NOW_S - 86400), ...k })),
         },
         ...over,
       } as any,
@@ -41,7 +41,7 @@ export function envConfig(keys: { id: string; pub: string; addedAt?: string }[],
 }
 
 export const fromPeer = (kind: Kind, body: Record<string, unknown>, now = NOW_S): Envelope =>
-  buildEnvelope(kind, body, { from: "goomal", to: "yotam", chat: ENV_CHAT, now });
+  buildEnvelope(kind, body, { from: "example", to: "yotam", chat: ENV_CHAT, now });
 
 export const REQ_BODY = { job: HEX16, op: "run-suite", sha: SHA40, suites: ["scripts/hooks/test-a.sh"] };
 export const KIND_SAMPLES: [string, Kind, Record<string, unknown>][] = [

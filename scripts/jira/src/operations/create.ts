@@ -25,7 +25,6 @@ import {
   checkExistingBlocker,
   checkPlacementFlags,
   createWriterOf,
-  displaceResidual,
   followUpIntake,
   intakeOwed,
   markCore,
@@ -67,7 +66,6 @@ export interface CreateOptions {
   residualOf?: string;
   followUpOf?: string;
   remainder?: boolean;
-  overCap?: string;
   fuClass?: string;
   fuWhy?: string;
   fuOverride?: string;
@@ -142,7 +140,6 @@ function checkFlagCombinations(options: CreateOptions): void {
   if (options.remainder && options.followUpOf === undefined) {
     throw new Error('--remainder needs --follow-up-of <key>, the parent whose remainder this ticket holds');
   }
-  if (options.overCap !== undefined && !options.overCap.trim()) throw new Error('--over-cap needs a reason');
 }
 
 async function placement(
@@ -190,7 +187,7 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
   let labels = given;
   let residual: ResidualPlan | undefined;
   if (options.residualOf !== undefined) {
-    residual = await planResidual(project, { ...options, sector, residualOf: options.residualOf });
+    residual = await planResidual(project, { ...options, residualOf: options.residualOf });
     labels = [...new Set([...(labels ?? []), ...residual.labels])];
   }
   if (options.followUpOf !== undefined) labels = [...new Set([...(labels ?? []), 'residual'])];
@@ -222,11 +219,7 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
     console.error(`jira: residual routed to ${inherited ?? residual.fixVersion ?? 'the backlog'}`);
   }
   const versionOptions = { ...options, fixVersion: inherited ?? options.fixVersion };
-  const overCapReason = await applyVersions(project, versionOptions, fields, {
-    labels,
-    residual: residual !== undefined && inherited === undefined,
-    bugDefault,
-  });
+  await applyVersions(project, versionOptions, fields, { bugDefault });
   const admission = testProject ? undefined : await checkIntakeGate(project, fields['fixVersions'], { gate: options.gate, override: overrideReason !== undefined });
   await checkExistingBlocker(project, fields['fixVersions'], options);
   const intake = intakeOwed(options.type, fields, testProject) ? await followUpIntake(versionOptions) : options;
@@ -243,7 +236,7 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
   printCore(coreVerdict);
   queueIntakeIfUnversioned(key, fields, title, intake, testProject);
 
-  const steps = afterCreateSteps(options, key, title, { overrideReason: testProject ? undefined : overrideReason, admission, residual, overCapReason });
+  const steps = afterCreateSteps(options, key, title, { overrideReason: testProject ? undefined : overrideReason, admission });
   for (let i = 0; i < steps.length; i += 1) {
     const [name, step] = steps[i]!;
     try {
@@ -261,17 +254,15 @@ function afterCreateSteps(
   options: CreateOptions,
   key: string,
   title: string,
-  o: { overrideReason?: string; admission?: Awaited<ReturnType<typeof checkIntakeGate>>; residual?: ResidualPlan; overCapReason?: string },
+  o: { overrideReason?: string; admission?: Awaited<ReturnType<typeof checkIntakeGate>> },
 ): Step[] {
-  const { overrideReason, admission, residual, overCapReason } = o;
+  const { overrideReason, admission } = o;
   const parentKey = options.residualOf ?? options.followUpOf;
   const steps: Step[] = [];
   if (overrideReason !== undefined) {
     steps.push(['writing the admissions ledger row', () => appendAdmission({ version: options.fixVersion!, kind: 'override', reason: overrideReason, key })]);
   }
   if (admission) steps.push(['writing the admissions ledger row', () => appendAdmission({ ...admission, key })]);
-  if (residual?.displaced) steps.push([`displacing ${residual.displaced.key}`, () => displaceResidual(residual, key, { type: options.type, title })]);
-  if (overCapReason) steps.push(['recording the over-cap reason', () => request('POST', `/issue/${key}/comment`, { body: markdownToAdf(overCapReason) })]);
   if (parentKey) steps.push([`linking to ${parentKey}`, () => createIssueLink(key, parentKey, { name: 'Relates', inward: 'relates to' })]);
   for (const other of options.blocks) {
     steps.push([`linking ${key} to ${other}`, () => createIssueLink(key, other, { name: 'Blocks', outward: 'blocks' })]);

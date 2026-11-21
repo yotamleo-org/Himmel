@@ -6,7 +6,7 @@ import { homedir, tmpdir } from "node:os";
 import { currentNs, hostNsFile } from "../jira/src/release/fence-ancestry";
 import { appendLine, appendOutboxLine, atomicWrite, bridgeRoot, ensureSession, readMeta, writeMeta, sessionDir, readNewLines, peekNewLines, commitCursorPos, repairCursorBeyondEof, truncateFullyConsumed, rotateConsumedLedger, type Meta, type OnCursorReset } from "./bus";
 import { classify, isTicketKey, type Route } from "./router";
-import { routeToConsole, routeFleetCommand, routeApprove, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, owedSendReceipt, owedReceiptSnapshot, makeChiefTap, type OwedReceipt, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
+import { routeToConsole, routeFleetCommand, routeApprove, staleConsoleCommand, consoleReplyTarget, consoleInboxPath, rememberConsoleReply, owedSendReceipt, owedReceiptSnapshot, withOwedOutboxLock, makeChiefTap, type OwedReceipt, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
 import { dispatchAutoAction, describeEnabledOps, KNOWN_OPS, CONFIRM_OPS, BREAK_GLASS_OPS, appendAuditLine, type RunScriptFn, type AuditFields } from "./auto-action";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getUpdates, getMe, sendMessage, sendDocument, sendChatAction, answerCallbackQuery, getFile, downloadFile, redactChatId } from "./telegram-api";
@@ -1075,15 +1075,15 @@ const untaggedPageRefusal = (path: string): string | null => PAGE_TYPE.test(path
   ? `⚠️ ${basename(path)} was not sent: a spec or plan page reaches the operator only through the chief's send-file, which checks its critics first. A bridge report goes as .txt, .pdf, .png, .csv or .json, or as plain text.`
   : null;
 
-type OwedOut = { console: string; request_id: string; text: string; request_hash?: string; reply_to_message_id?: number; markup?: object };
+type OwedOut = { console: string; request_id: string; text: string; request_hash: string; reply_to_message_id?: number; markup?: object };
 async function sendOwedPart(root: string, chat: number, out: OwedOut, retryPath: string,
-  receipt: (name: string, id: string) => Promise<number | null>, receivedThisPass: Set<string>, send: SendFn): Promise<boolean> {
+  receipt: (id: string, hash: string) => Promise<number | null>, receivedThisPass: Set<string>, send: SendFn): Promise<boolean> {
   try {
-    let received = await receipt(out.console, out.request_id);
+    let received = await receipt(out.request_id, out.request_hash);
     if (received === null) {
       const part = Number(out.request_id.split('-')[1]);
       const prior = out.request_id.replace(/-[0-9]+$/, `-${part - 1}`);
-      if (part > 0 && !receivedThisPass.has(prior) && await receipt(out.console, prior) === null) return false;
+      if (part > 0 && !receivedThisPass.has(prior) && await receipt(prior, out.request_hash) === null) return false;
       const retry = JSON.parse(await readFile(retryPath, "utf8").catch((e: NodeJS.ErrnoException) => { if (e.code === "ENOENT") return "{}"; throw e; }));
       if (!retry || typeof retry !== 'object' || Array.isArray(retry) ||
           !Number.isInteger(retry.attempts ?? 0) || (retry.attempts ?? 0) < 0 || (retry.attempts ?? 0) > 7 ||
@@ -1121,7 +1121,12 @@ export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDo
       const curFile = file + ".cursor";
       let start = 0; try { start = Number(await readFile(curFile, "utf8")) || 0; } catch {}
       let buf = ""; try { buf = await readFile(file, "utf8"); } catch { continue; }
-      if (start >= Buffer.byteLength(buf, "utf8")) { await truncateFullyConsumed(file, curFile); continue; }   // fully sent → reclaim
+      const listed = await readdir(sessionDir(root, s)).catch((e: unknown) => { logRedacted("[poller] outbox markers unreadable, reclaim skipped for " + s + ": " + e); return null; });
+      for (const n of listed ?? []) {
+        const marker = /^outbox\.jsonl\.sent-(\d+)$/.exec(n);
+        if (marker && Number(marker[1]) < start) await unlink(join(sessionDir(root, s), n)).catch((e: NodeJS.ErrnoException) => { if (e.code !== "ENOENT") throw e; });
+      }
+      if (start >= Buffer.byteLength(buf, "utf8")) { if (listed) await withOwedOutboxLock(root, () => truncateFullyConsumed(file, curFile)); continue; }   // fully sent → reclaim
       const slice = Buffer.from(buf, "utf8").subarray(start).toString("utf8");
       const lastNl = slice.lastIndexOf("\n");
       if (lastNl < 0) continue;
@@ -1129,15 +1134,23 @@ export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDo
       let pos = start;
       let blocked = false;
       let snapshot: Promise<Map<string, OwedReceipt>> | undefined;
-      const receipt = (name: string, id: string) => owedSendReceipt(root, meta.chat_id, name, id, undefined,
+      const receipt = (id: string, hash: string) => owedSendReceipt(root, meta.chat_id, id, hash,
         () => (snapshot ??= owedReceiptSnapshot(root, meta.chat_id)));
       const receivedThisPass = new Set<string>();
       for (const ln of complete.split("\n")) {
         const bytes = Buffer.byteLength(ln + "\n", "utf8");
+        const rowStart = pos;
         if (ln.trim()) {
           let out: { text?: string; console?: string; request_id?: string; request_hash?: string; reply_to_message_id?: number; markup?: object; document_path?: string; caption?: string; via?: unknown; sha256?: unknown } | null = null;
           try { out = JSON.parse(ln); } catch {}
-          if (out?.console && typeof out.request_id === "string" && /^[a-f0-9]{64}-[0-9]+$/.test(out.request_id) && typeof out.text === "string") {
+          if (out && (out.request_id !== undefined || out.request_hash !== undefined)) {
+            if (!(typeof out.console === "string" && consoleInboxPath(root, out.console) && typeof out.request_id === "string" && /^[a-f0-9]{64}-[0-9]+$/.test(out.request_id)
+                && typeof out.request_hash === "string" && /^[a-f0-9]{64}$/.test(out.request_hash) && typeof out.text === "string")) {
+              blocked = true;
+              logRedacted("[poller] owed row needs reconciliation at byte " + pos + " of " + file);
+              pos += bytes;
+              continue;
+            }
             const retryPath = file + ".retry-" + out.request_id;
             if (!await sendOwedPart(root, meta.chat_id, out as OwedOut, retryPath, receipt, receivedThisPass, send)) blocked = true;
             pos += bytes;
@@ -1172,10 +1185,12 @@ export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDo
           }
           if (blocked) await atomicWrite(sentPath, sentHash);
           }
-          if (!blocked) await unlink(sentPath).catch((e: NodeJS.ErrnoException) => { if (e.code !== 'ENOENT') throw e; });
         }
         pos += bytes;
-        if (!blocked) await atomicWrite(curFile, String(pos));       // commit only the settled prefix
+        if (!blocked) {
+          await atomicWrite(curFile, String(pos));       // commit only the settled prefix
+          if (ln.trim()) await unlink(file + '.sent-' + rowStart).catch((e: NodeJS.ErrnoException) => { if (e.code !== 'ENOENT') throw e; });
+        }
       }
     } catch (e) { logRedacted("[poller] flush failed for " + s + ": " + e); continue; }
   }

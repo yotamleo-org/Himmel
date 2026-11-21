@@ -263,5 +263,16 @@ eq "T7 _secs keeps a day fraction finer than a microsecond (0.0000009d)" "$(_sec
 eq "T7 _secs 1.5m is 90" "$(_secs 1.5m)" "90"
 eq "T7 _secs .5 is 0.500000" "$(_secs .5)" "0.500000"
 
+if command -v perl >/dev/null 2>&1; then
+    got=$( ( trap '' INT; "$BASH_BIN" "$SCRIPT_DIR/shims/timeout" 10 "$BASH_BIN" -c 'kill -INT $$; echo survived' ) 2>/dev/null; echo "rc=$?" )
+    eq "T8 a command run by the shim while it ignores SIGINT gets the default (dies on INT, rc 130)" "$got" "rc=130"
+    rc=0; t0=$SECONDS
+    ( trap '' INT; "$BASH_BIN" "$SCRIPT_DIR/shims/timeout" -s INT 1 sleep 8 ) >/dev/null 2>&1 || rc=$?
+    eq "T8 -s INT ends a sleeper although the shim inherited SIGINT ignored (rc 124)" "$rc" "124"
+    if [ $((SECONDS - t0)) -lt 5 ]; then ok "T8 the INT reached the sleeper in time"; else bad "T8 the INT took $((SECONDS - t0))s"; fi
+else
+    echo "  skip: T8 needs perl to reset an inherited SIGINT"
+fi
+
 echo "[test-timeout-bin] $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

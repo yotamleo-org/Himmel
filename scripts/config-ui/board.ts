@@ -190,7 +190,7 @@ const specId = (p: string) => {
   return r.replace(/\.md$/, "");
 };
 // `skipped` takes the critic files of single specs that could not be read: the rest of the list still stands.
-function specItems(bucket: string, version: string, open: Map<string, string>, skipped: string[], unread: string[], env: Env): OwedItem[] {
+function specItems(bucket: string, version: string, open: Map<string, string>, unknown: Set<string>, skipped: string[], unread: string[], env: Env): OwedItem[] {
   const signed = new Set<string>();
   let ledger = "";
   try { ledger = readText(join(bucket, "release", version, "operator.jsonl")); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; } // a release with no record yet has signed nothing
@@ -220,12 +220,14 @@ function specItems(bucket: string, version: string, open: Map<string, string>, s
         if ((e as NodeJS.ErrnoException).code !== "ENOENT") { skipped.push(basename(path)); if (actor !== "operator") actor = "unknown"; }
       }
     }
-    items.push({ actor, source: "unsigned spec", key, title: open.get(key)!, act: actor === "unknown" ? "reconcile the unread spec evidence" : "sign the spec, or rule on its findings",
+    if (unknown.has(key)) actor = "unknown";
+    items.push({ actor, source: "unsigned spec", key, title: open.get(key)!, act: actor === "unknown" ? "reconcile the ticket status and the unread spec evidence" : "sign the spec, or rule on its findings",
       ctx: `${spec}: latest critic round ${n} reads ${/^SPEC (?:CLEAN|FINDINGS \d+)$/.test(last) ? last : "no verdict line"}, no spec row in operator.jsonl` });
   }
   for (const [key, st] of Object.entries(status?.keys ?? {}).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))) {
     if (!open.has(key) || !Array.isArray(st.critical_open) || !st.critical_open.length) continue;
-    items.push({ actor: "operator", source: "operator-critical finding", key, title: open.get(key)!, act: "rule on each finding; the chief records the ruling with chief-route.ts round-critical",
+    const unreadStatus = unknown.has(key);
+    items.push({ actor: unreadStatus ? "unknown" : "operator", source: "operator-critical finding", key, title: open.get(key)!, act: unreadStatus ? "reconcile the ticket status and responsible actor" : "rule on each finding; the chief records the ruling with chief-route.ts round-critical",
       ctx: st.critical_open.map((c) => `${c.id} (${c.class}) in ${c.kind} round ${c.round}, ${basename(String(c.verdict_path))}`).join("; ") });
   }
   return items;
@@ -233,7 +235,7 @@ function specItems(bucket: string, version: string, open: Map<string, string>, s
 function handoffAnswered(bucket: string, handoff: string, line: string): boolean {
   const keys = [...line.matchAll(/HIMMEL-\d+/g)].map((m) => m[0]);
   const asks = [...line.matchAll(/"([^"]{6,})"/g)].map((m) => m[1].toLowerCase().split(/\s+/).join(" "));
-  if (!keys.length && !asks.length) return false;
+  if (!asks.length) return false;
   const dir = join(bucket, "specs", "decisions");
   let files: string[];
   try { files = readdirSync(dir); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return false; throw e; }
@@ -421,7 +423,7 @@ export function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Owed
   if (!bucket) { miss("unsigned specs", "no bucket: no chief doc under the handover root, and HIMMEL_BUCKET_DIR is not set"); miss("handoff items", "no bucket"); }
   else {
     if (!running) miss("unsigned specs", "no running version");
-    else tryRead("unsigned specs", () => specItems(bucket, running!, open, skipped, unread, env), "none");
+    else tryRead("unsigned specs", () => specItems(bucket, running!, open, unknownKeys, skipped, unread, env), "none");
     tryRead("handoff items", () => handoffItems(bucket), `no Open operator items section in the newest HANDOFF under ${bucket}`);
   }
   if (!doc) miss("chief doc lines", "no chief doc: none found under the handover root, and HIMMEL_CHIEF_DOC is not set");

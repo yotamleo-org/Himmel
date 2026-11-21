@@ -175,8 +175,13 @@ fill_template "$DOCS/judge-brief-template.md" "$tmp/filled_judge.md"
 grep -Eq '^> \*\*(Contract|Completion condition):\*\*' "$tmp/filled_worker.md" \
     && grep -Eq '^> \*\*(Contract|Completion condition):\*\*' "$tmp/filled_judge.md" \
     && ok "6a both filled templates are template-shaped (gated)" || bad "6a a filled template is not gate-shaped"
-rc=0; out="$(run_worker "$tmp/filled_worker.md" --profile worker-impl)" || rc=$?
-[ "$rc" -eq 0 ] && ok "6b a filled worker-brief-template launches" || bad "6b filled worker-brief-template refused (rc=$rc): $out"
+mkdir -p "$tmp/b6"; cp "$tmp/filled_worker.md" "$tmp/b6/filled_worker.md"
+{ bash "$HERE/fleet-manifest.sh" control init "$tmp/b6/chief.fleet.json" --target 4 \
+    && bash "$HERE/fleet-manifest.sh" control set "$tmp/b6/chief.fleet.json" --mode active --expect-gen 1 \
+    && bash "$HERE/fleet-manifest.sh" add "$tmp/b6/chief.fleet.json" "$tmp/b6/filled_worker.md" --lane native --pending; } >/dev/null \
+    || bad "6b fixture: the chief manifest for the filled worker brief could not be built"
+rc=0; out="$(run_worker "$tmp/b6/filled_worker.md" --profile worker-impl --fleet "$tmp/b6/chief.fleet.json")" || rc=$?
+[ "$rc" -eq 0 ] && ok "6b a filled worker-brief-template launches from the chief's manifest" || bad "6b filled worker-brief-template refused (rc=$rc): $out"
 rc=0; out="$(run_worker "$tmp/filled_judge.md" --judge)" || rc=$?
 [ "$rc" -eq 0 ] && ok "6c a filled judge-brief-template launches" || bad "6c filled judge-brief-template refused (rc=$rc): $out"
 # 6b and 6c pass whether or not the placeholder is quoted: put `a: b` inside its quotes and parse the line.

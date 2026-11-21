@@ -1017,7 +1017,6 @@ class StackedWorker(StreamFixture):
         self.assertGreaterEqual(gaps[4], 2.5, 'the top step holds')
 
     def test_a_changed_event_starts_the_ladder_over(self):
-        # The ladder is about one cleanup event: a newer cleanup bullet is another event, so the climb starts over.
         self.env['CHIEF_WAIT_SERVICE_RETRY_SEC'] = '0.2'
         (self.root / 'refuse-cleanup').touch()
         self.worker('N1', self.ready('N1', 1))

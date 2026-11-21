@@ -3202,7 +3202,11 @@ The two files these rules protect have their own fence in
 allowed). T3's settings file, `${T3CODE_HOME:-$HOME/.t3}/userdata/settings.json`,
 holds the instances and their variables: a file-tool or Bash write to it is
 refused from any cwd, and so is a write verb whose destination is T3's home or
-`userdata` directory itself. Claude Code's session registry,
+`userdata` directory itself. The one agent-run writer of that file is
+`bash scripts/himmel-update.sh --only t3_providers` (also the last advisory step
+of a full update): the hook sees only that line, which names no T3 path, so it
+needs no allow; the generator it starts (`scripts/t3/provider-instances.sh`) run
+directly on the file stays refused. Claude Code's session registry,
 `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions/`, holds the T3 thread title
 `session-name.sh` trusts as a chief name: a file-tool or Bash write into it, or
 onto the directory itself, is refused too. Only the registry under the Claude

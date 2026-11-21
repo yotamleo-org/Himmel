@@ -1461,6 +1461,37 @@ run_env_migration() {
     return 0
 }
 
+sync_t3_providers() {
+    local file="${T3CODE_HOME:-$HOME/.t3}/userdata/settings.json" out rc=0
+    if [ ! -f "$file" ]; then
+        echo "==> T3 provider instances: skipped (T3 Code not installed: no settings file)"
+        STATUS_t3_providers="skipped"; DETAIL_t3_providers="T3 Code not installed"
+        return 0
+    fi
+    if ! command -v jq >/dev/null 2>&1; then
+        echo "==> T3 provider instances: skipped (jq is not on PATH)"
+        STATUS_t3_providers="skipped"; DETAIL_t3_providers="jq missing"
+        return 0
+    fi
+    echo ""
+    echo "==> T3 provider instances"
+    out=$(bash "$ROOT/scripts/t3/provider-instances.sh" --apply --settings-file "$file" 2>&1) || rc=$?
+    printf '%s\n' "$out" | sed 's/^/    /'
+    case "$rc:$out" in
+        0:*"(no change)"*)
+            STATUS_t3_providers="up-to-date"; DETAIL_t3_providers="every profile already has an instance" ;;
+        0:*)
+            STATUS_t3_providers="updated"; DETAIL_t3_providers="backup beside the settings file; add the new ids to .t3.instance_allowlist" ;;
+        3:*)
+            STATUS_t3_providers="failed"; DETAIL_t3_providers="refused: an instance names a bypass flag; nothing written"
+            return 1 ;;
+        *)
+            STATUS_t3_providers="failed"; DETAIL_t3_providers="settings file unchanged; see the report above"
+            return 1 ;;
+    esac
+    return 0
+}
+
 # run_cron_runner_migration check|apply — the installed failure-review runner bakes the path of the
 # script it calls; the leg-to-worker rename moved that script (scripts/lib/rename-aliases.tsv, kind
 # directory), so a runner armed before it fails every night with "No such file or directory".
@@ -1568,6 +1599,7 @@ STATUS_graph="";                      DETAIL_graph=""
 # step ran and found a .env.
 STATUS_env_migration="";              DETAIL_env_migration=""
 STATUS_cron_runner_migration="";      DETAIL_cron_runner_migration=""
+STATUS_t3_providers="";               DETAIL_t3_providers=""
 # The config UI rebuild + service restart is advisory too: its row prints only when the pulled range touched scripts/config-ui.
 STATUS_config_ui="";                  DETAIL_config_ui=""
 # probe-mode station tools (rtk, ...) are advisory too.
@@ -2279,6 +2311,9 @@ EOF
     fi
     if [ -n "$STATUS_config_ui" ]; then
         printf '    %-14s %-14s %s\n' "config_ui" "$STATUS_config_ui" "$DETAIL_config_ui"
+    fi
+    if [ -n "$STATUS_t3_providers" ]; then
+        printf '    %-14s %-14s %s\n' "t3_providers" "$STATUS_t3_providers" "$DETAIL_t3_providers"
     fi
     local pt_name pt_status pt_detail
     while IFS='|' read -r pt_name pt_status pt_detail; do
@@ -3691,6 +3726,8 @@ Modes:
                       drift drift-check (installer-drift pass; -check is read-only)
                       plugin-refresh (reinstall a same-version plugin cache that
                       differs from the checkout; exit 1 if a reinstall fails)
+                      t3_providers (one T3 Code provider instance per launch
+                      profile in T3's settings file; skipped without T3)
   --graphify-only     alias for --only graphify: clear a graphify pin-sync skip
                       from a slot with no live Claude session
   --plugins-check     just the plugin install-state report; no git, no network
@@ -3816,7 +3853,7 @@ fi
 if [ "${1:-}" = "--only" ]; then
     only_item="${2:-}"
     if [ -z "$only_item" ]; then
-        echo "update --only: needs an item — one of: pull marketplace jira_cli config_ui qmd_fork hermes luna_template graphify graph cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration" >&2
+        echo "update --only: needs an item — one of: pull marketplace jira_cli config_ui qmd_fork hermes luna_template graphify graph cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration t3_providers" >&2
         exit 2
     fi
     branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
@@ -3861,8 +3898,9 @@ if [ "${1:-}" = "--only" ]; then
         drift)         report_drift apply ;;
         drift-check)   report_drift check ;;
         env_migration) run_env_migration apply || only_rc=1 ;;
+        t3_providers)  sync_t3_providers || only_rc=1 ;;
         *)
-            echo "update --only: unknown item '$only_item' — one of: pull marketplace jira_cli config_ui qmd_fork hermes luna_template graphify graph cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration" >&2
+            echo "update --only: unknown item '$only_item' — one of: pull marketplace jira_cli config_ui qmd_fork hermes luna_template graphify graph cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration t3_providers" >&2
             exit 2 ;;
     esac
     report_qmd_daemon_restart
@@ -4178,6 +4216,7 @@ backfill_user_claude_md
 ensure_bus_state_dirs
 report_qmd_daemon_restart
 report_drift apply
+sync_t3_providers || true
 
 print_status_table
 

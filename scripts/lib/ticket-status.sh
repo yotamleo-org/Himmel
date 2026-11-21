@@ -62,14 +62,15 @@
 #       YYYY-MM-DD` step, read from the merge row or the PR body): To Do, the owner in TS_D5D_OWNER
 #       (`chief by 2026-11-22` for an owed step)
 #   D5c no PR, the latest merge row contract=no  In Progress (a partial: work remains)
-#       or, a wrapped owner and no merge row at all, a merged PR whose first [KEY] is the
-#       ticket (TS_STAGE=merged-no-row, TS_MERGED_PR); an unreadable merged list or merge-row
-#       filter is no-write + miss
+#       or, no merge row at all, a merged PR whose first [KEY] is the ticket
+#       (TS_STAGE=merged-no-row, TS_MERGED_PR); an unreadable merged list or merge-row
+#       filter is no-write + miss. D5c and D5d need a wrapped owner or no worker doc at all;
+#       with no doc they apply only to a ticket at IN CI (any other status is D7, never moved)
 #   D6  no PR, the owner WRAPPED or HALTED       To Do (the resume state)
 #       and no other recorded worker holds its lock
 #   D6n as D6, but the ticket is In Progress and the owner's brief says Completes ticket: no
 #       above ## Results: derived equals current, so no move
-#   D7  no PR, never owned                       no-write
+#   D7  no PR, no worker doc, not at IN CI or no D5d/D5c   no-write
 #
 # Env: TICKET_STATUS_STATE_DIR (default ~/.himmel/state), WORKER_SESSION_JIRA_CLI (the Jira
 # CLI; an executable or a .js run under node), TICKET_STATUS_QUEUE_LOCK (an
@@ -233,9 +234,22 @@ ts_required_set() {
 
 # _ts_snap_required_set <base> — ts_required_set, read once per base per snapshot.
 _ts_snap_required_set() {
-    local f="$TS_SNAPSHOT_DIR/req-${1//\//_}"
+    local f="$TS_SNAPSHOT_DIR/req-${1//\//_}" ttl="${TICKET_STATUS_REQSET_TTL:-300}" kept at now
+    case "$ttl" in ''|*[!0-9]*) ttl=300 ;; esac
+    kept="$(ts_state_dir)/required-set/${1//\//_}"
+    now=$(date +%s)
     if [ ! -e "$f" ] && [ ! -e "$f.fail" ]; then
-        if ts_required_set "$1" >"$f.t" 2>/dev/null; then mv "$f.t" "$f"; else rm -f "$f.t"; : >"$f.fail"; fi
+        at=""
+        [ "$ttl" -le 0 ] || [ ! -s "$kept" ] || { IFS= read -r at <"$kept"; }  # read-sink-ok: our own state file, a bare epoch
+        case "$at" in ''|*[!0-9]*) at="" ;; esac
+        if [ -n "$at" ] && [ $((now - at)) -ge 0 ] && [ $((now - at)) -lt "$ttl" ]; then
+            tail -n +2 "$kept" >"$f"
+        elif ts_required_set "$1" >"$f.t" 2>/dev/null; then
+            mv "$f.t" "$f"
+            if [ "$ttl" -gt 0 ] && mkdir -p "${kept%/*}" 2>/dev/null; then
+                { printf '%s\n' "$now"; cat "$f"; } >"$kept.$$" && mv "$kept.$$" "$kept"  # read-sink-ok: our own snapshot file
+            fi
+        else rm -f "$f.t"; : >"$f.fail"; fi
     fi
     [ -e "$f" ] || return 1
     # read-sink-ok: $f is under the sweep's own snapshot dir, built from a base ref name, never from argv or a record
@@ -861,33 +875,36 @@ ts_derive() {
     [ "$rc" -ne 0 ] || { _ts_no_write miss D4b done-pending; return 0; }
     [ "$rc" -ne 2 ] || { _ts_no_write miss "" log; return 0; }
     if [ -z "$doc" ]; then
-        _ts_no_write skip D7
+        if [ "$TS_J_STATUS" != "IN CI" ] || ! _ts_derive_merged "$key"; then
+            TS_MERGED_PR=""
+            _ts_no_write skip D7
+        fi
         return 0
     fi
     if [ "$TS_WORKER_STATE" != wrapped ]; then TS_DERIVED="In Progress"; TS_RULE=D5
+    else _ts_derive_merged "$key" || _ts_derive_d6 "$doc"
+    fi
+}
+
+# _ts_derive_merged <KEY> — rules D5d and D5c of a key with no open PR (an unreadable log or merged list is
+# no-write + miss). rc 1 = neither matched, nothing set.
+_ts_derive_merged() {
+    local rc=0
+    ts_partial_merge "$1" || rc=$?
+    if [ "$rc" -eq 2 ]; then _ts_no_write miss "" log
+    elif [ "$rc" -eq 0 ]; then
+        if _ts_d5d "$1" "$TS_ML_PR" "$TS_ML_REPO" "$TS_ML_OWED" "$TS_ML_OWED_DUE"; then TS_DERIVED="To Do"; TS_RULE=D5d
+        else TS_DERIVED="In Progress"; TS_RULE=D5c
+        fi
     else
-        rc=0; ts_partial_merge "$key" || rc=$?
-        if [ "$rc" -eq 2 ]; then _ts_no_write miss "" log
-        elif [ "$rc" -eq 0 ]; then
-            if _ts_d5d "$key" "$TS_ML_PR" "$TS_ML_REPO" "$TS_ML_OWED" "$TS_ML_OWED_DUE"; then TS_DERIVED="To Do"; TS_RULE=D5d
-            else TS_DERIVED="In Progress"; TS_RULE=D5c
-            fi
-        else
-            # No partial row: a ticket with no merge row at all may still have shipped a PR merged
-            # outside merge-on-green; that is a partial too.
-            rc=0; ts_has_merge_row "$key" || rc=$?
-            if [ "$rc" -eq 1 ]; then
-                rc=0; ts_merged_no_row "$key" || rc=$?
-                if [ "$rc" -eq 0 ]; then
-                    if _ts_d5d "$key" "$TS_MERGED_PR"; then TS_DERIVED="To Do"; TS_RULE=D5d; TS_STAGE=merged-no-row
-                    else TS_DERIVED="In Progress"; TS_RULE=D5c; TS_STAGE=merged-no-row
-                    fi
-                elif [ "$rc" -eq 2 ]; then _ts_no_write miss "" gh
-                else _ts_derive_d6 "$doc"
-                fi
-            elif [ "$rc" -eq 2 ]; then _ts_no_write miss "" log
-            else _ts_derive_d6 "$doc"
-            fi
+        rc=0; ts_has_merge_row "$1" || rc=$?
+        [ "$rc" -ne 2 ] || { _ts_no_write miss "" log; return 0; }
+        [ "$rc" -eq 1 ] || return 1
+        rc=0; ts_merged_no_row "$1" || rc=$?
+        [ "$rc" -ne 2 ] || { _ts_no_write miss "" gh; return 0; }
+        [ "$rc" -eq 0 ] || return 1
+        if _ts_d5d "$1" "$TS_MERGED_PR"; then TS_DERIVED="To Do"; TS_RULE=D5d; TS_STAGE=merged-no-row
+        else TS_DERIVED="In Progress"; TS_RULE=D5c; TS_STAGE=merged-no-row
         fi
     fi
 }
