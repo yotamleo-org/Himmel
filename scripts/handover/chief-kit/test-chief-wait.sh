@@ -40,7 +40,6 @@ if [ -f "$STUB/tick.burn" ]; then i=0; while [ "$i" -lt 300000 ]; do i=$((i + 1)
 if [ -f "$STUB/tick.ignoreterm" ]; then trap '' TERM; sleep 20; exit 0; fi
 # tick.failafter: prints its line, then fails (a tick that dies mid-run).
 if [ -f "$STUB/tick.failafter" ]; then cat "$STUB/tick.line"; exit 1; fi
-# tick.hook: one script the tick runs once mid-sample, as a worker writing its doc while a real tick runs.
 if [ -f "$STUB/tick.hook" ]; then bash "$STUB/tick.hook"; rm -f "$STUB/tick.hook"; fi
 # tick.blip: served for exactly one sample, then gone.
 if [ -f "$STUB/tick.blip" ]; then cat "$STUB/tick.blip"; rm -f "$STUB/tick.blip"; exit 0; fi

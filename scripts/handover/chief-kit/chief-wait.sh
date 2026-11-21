@@ -2689,7 +2689,7 @@ ready_mismatch_wake() {
     f="${v%%/*}"; k="${v#*nogo=}"; k="${k%%/*}"
     case "$f" in ''|*[!0-9]*) return 1 ;; esac
     case "$k" in ''|*[!0-9]*) return 1 ;; esac
-    [ ! -r "$readymm_file" ] || read -r mf mk < "$readymm_file" || true  # swallow-ok: a torn marker reads as a first ALERT
+    if [ -r "$readymm_file" ] && read -r mf mk < "$readymm_file"; then :; else mf=""; mk=0; fi
     case "$mf" in ''|*[!0-9]*) mf="" ;; esac
     case "$mk" in ''|*[!0-9]*) mk=0 ;; esac
     if [ -z "$mf" ] || [ "$f" -gt "$mf" ] || [ "$k" -gt "$mk" ]; then
