@@ -160,9 +160,17 @@ function guardedRule(rule) {
   return rule.includes('landmines') || RULES.some((r) => rule.endsWith(r));
 }
 
-export function checkDirectives(absPath) {
-  const root = repoRoot();
-  const { parse } = createRequire(join(root, 'scripts/lint/landmines/package.json'))('@babel/parser');
+const parsers = new Map();
+
+function babelParse(root) {
+  if (!parsers.has(root)) {
+    parsers.set(root, createRequire(join(root, 'scripts/lint/landmines/package.json'))('@babel/parser').parse);
+  }
+  return parsers.get(root);
+}
+
+export function checkDirectives(absPath, root = repoRoot()) {
+  const parse = babelParse(root);
   const shown = relative(root, absPath).split(sep).join('/');
   const src = readFileSync(absPath, 'utf8');
   let ast;
@@ -226,7 +234,7 @@ function run(argv) {
       return [lines, lines.length ? 1 : 0];
     case '--check-directives': {
       const root = repoRoot();
-      for (const f of selected(root, paths)) lines.push(...checkDirectives(join(root, f)));
+      for (const f of selected(root, paths)) lines.push(...checkDirectives(join(root, f), root));
       return [lines, lines.length ? 1 : 0];
     }
     default:

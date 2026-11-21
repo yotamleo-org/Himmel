@@ -75,6 +75,18 @@ case "$cwd/" in
     "$repo_root/"*) ;;
     *) refuse "cwd $cwd is outside the resolved root $repo_root - refusing to lint an unrelated tree" ;;
 esac
+# A relative --files path names a file from the caller's directory; the lists
+# below run from the root. A path need not exist: a deletion matches nothing.
+cwd_rel=${cwd#"$repo_root"}
+cwd_rel=${cwd_rel#/}
+if [ -n "$cwd_rel" ] && [ "${#paths[@]}" -gt 0 ]; then
+    for i in "${!paths[@]}"; do
+        case "${paths[$i]}" in
+            /*) ;;
+            *) paths[i]="$cwd_rel/${paths[$i]}" ;;
+        esac
+    done
+fi
 cd "$repo_root" || refuse "cannot enter the resolved root $repo_root"
 
 # ---- 10. triggers -------------------------------------------------------------
@@ -276,6 +288,7 @@ child=""
 # The run counts only when stdout is the expected JSON for exactly this file
 # list, the exit code agrees with the diagnostics, and each diagnostic names a
 # file, a line and a rule code. Exit 0 clean, 10 findings (printed), 2 unevaluated.
+# The exit code is set, never forced, so a long stdout through a pipe is not cut.
 read -r -d '' eval_js <<'EOF'
 const fs = require("node:fs");
 const [mode, rcArg, wantArg, file] = process.argv.slice(1);
@@ -285,10 +298,9 @@ const RETRY = "Do not retry tests";
 const HINT = "the entry above is in scripts/lint/landmines/.oxlintrc.json, not .oxlintrc.jsonc";
 const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 const unevaluated = (m) => {
-  console.error("check-test-honesty: oxlint run unevaluated: " + m);
-  process.exit(2);
+  throw new Error(m);
 };
-try {
+const main = () => {
   const rc = Number(rcArg);
   const want = Number(wantArg);
   let out;
@@ -320,16 +332,20 @@ try {
     }
     for (const r of RULES) maps[r] = Object.fromEntries(Object.entries(maps[r]).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
     console.log(JSON.stringify(maps, null, 2));
-    process.exit(0);
+    return 0;
   }
   for (const f of found) {
     console.log(`${f.file}:${f.line}:${f.col} ${f.code} ${f.message}`);
     const rule = f.code.replace(/^(.*)\((.*)\)$/, "$1/$2");
     if (RULES.includes(rule) && f.message.startsWith(STALE)) console.log(HINT);
   }
-  process.exit(found.length === 0 ? 0 : 10);
+  return found.length === 0 ? 0 : 10;
+};
+try {
+  process.exitCode = main();
 } catch (err) {
-  unevaluated(err.message);
+  console.error("check-test-honesty: oxlint run unevaluated: " + err.message);
+  process.exitCode = 2;
 }
 EOF
 eval_mode=run

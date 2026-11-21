@@ -186,7 +186,7 @@ process.stdout.write(ok ? "ok" : "bad: " + JSON.stringify(d));
     fi
 }
 
-case_f1_package_shape() {
+case_package_shape() {
     local out
     out=$(node -e '
 const assert = require("node:assert");
@@ -199,7 +199,7 @@ try {
   process.stdout.write("ok");
 } catch (e) { process.stdout.write("bad: " + e.message); }
 ' "$PKG/package.json" 2>&1)
-    assert_eq "f1-package-shape" "ok" "$out"
+    assert_eq "package-shape" "ok" "$out"
 }
 
 case_config_shape() {
@@ -483,6 +483,11 @@ case_i7_directives() {
     hs "$REPO" --check-directives a/dir-01.test.ts
     assert_has "i7-directive-table refusal names path, line and text" \
         'a/dir-01.test.ts:3: refused directive: "oxlint-disable-next-line landmines-testing/no-fixed-sleep' "$HS_OUT"
+    HS_OUT=$(cd "$REPO" && node --input-type=module -e '
+import { checkDirectives } from "./scripts/lint/honesty-surface.mjs";
+console.log(checkDirectives(process.argv[1]).join("\n"));
+' "$REPO/a/dir-01.test.ts" 2>&1 </dev/null)
+    assert_has "i7 checkDirectives(absPath) alone finds its own root" 'a/dir-01.test.ts:3: refused directive' "$HS_OUT"
 
     put a/k1-require.test.js $'const fs = require("node:fs");\nlet a = 0;\na <!-- oxlint-disable\nfs.readFileSync;'
     put a/k1-globals.test.js $'globalThis.x = 1;\nlet a = 0;\na <!-- oxlint-disable'
@@ -762,32 +767,32 @@ oxlint 1.93.0 1.93.1
 EOF
 }
 
-case_f1_resolved() {
-    mk_repo || { fail "f1-resolved (no temp repo)"; return; }
+case_package_shape_gate() {
+    mk_repo || { fail "package-shape-gate (no temp repo)"; return; }
     link_install "$REPO"
     run_gate "$REPO" 1 "$PATH"
-    assert_eq "f1-resolved-control exits 0" 0 "$GATE_RC"
+    assert_eq "package-shape-gate control exits 0" 0 "$GATE_RC"
 
     # The lint package.json itself is held to its exact shape, so a self-reference
     # redirect (name + exports) is refused at the shape line.
     printf '%s\n' 'export default {};' > "$REPO/scripts/lint/landmines/noop.mjs"
     edit_pkg 'p.name = "@interfere/landmines"; p.exports = { "./testing": "./noop.mjs" };'
     run_gate "$REPO" 0 "$PATH"
-    assert_eq "f1-package-shape-gate self-reference exits 1" 1 "$GATE_RC"
-    assert_has "f1-package-shape-gate self-reference is refused at the shape line" "lint package.json shape" "$GATE_OUT"
+    assert_eq "package-shape-gate self-reference exits 1" 1 "$GATE_RC"
+    assert_has "package-shape-gate self-reference is refused at the shape line" "lint package.json shape" "$GATE_OUT"
     edit_pkg 'delete p.name; delete p.exports; p.dependencies.extra = "1.0.0";'
     run_gate "$REPO" 0 "$PATH"
-    assert_eq "f1-package-shape-gate extra dependency exits 1" 1 "$GATE_RC"
-    assert_has "f1-package-shape-gate extra dependency is refused at the shape line" "lint package.json shape" "$GATE_OUT"
+    assert_eq "package-shape-gate extra dependency exits 1" 1 "$GATE_RC"
+    assert_has "package-shape-gate extra dependency is refused at the shape line" "lint package.json shape" "$GATE_OUT"
     edit_pkg 'delete p.dependencies.extra; p.dependencies.oxlint = "^1.93.0";'
     run_gate "$REPO" 0 "$PATH"
-    assert_eq "f1-package-shape-gate inexact pin exits 1" 1 "$GATE_RC"
-    assert_has "f1-package-shape-gate inexact pin is refused at the shape line" "lint package.json shape" "$GATE_OUT"
+    assert_eq "package-shape-gate inexact pin exits 1" 1 "$GATE_RC"
+    assert_has "package-shape-gate inexact pin is refused at the shape line" "lint package.json shape" "$GATE_OUT"
     git -C "$REPO" checkout -q -- scripts/lint/landmines/package.json
     edit_pkg 'p.name = "x";'
     run_gate "$REPO" 0 "$PATH"
-    assert_eq "f1-package-shape-gate extra key exits 1" 1 "$GATE_RC"
-    assert_has "f1-package-shape-gate extra key is refused at the shape line" "lint package.json shape" "$GATE_OUT"
+    assert_eq "package-shape-gate extra key exits 1" 1 "$GATE_RC"
+    assert_has "package-shape-gate extra key is refused at the shape line" "lint package.json shape" "$GATE_OUT"
 }
 
 # fake_plugin <exports value for ./testing>: replaces the temp install's plugin
@@ -802,48 +807,48 @@ fake_plugin() {
     printf '{"name":"@interfere/landmines","version":"0.1.0","type":"module","exports":{"./testing":%s}}\n' "$1" > "$d/package.json"
 }
 
-case_f1_resolved_installed_plugin() {
-    mk_repo || { fail "f1-installed-plugin (no temp repo)"; return; }
+case_resolved_specifier() {
+    mk_repo || { fail "resolved-specifier (no temp repo)"; return; }
     link_install "$REPO"
     fake_plugin '"./dist/testing.mjs"'
     run_gate "$REPO" 1 "$PATH"
-    assert_eq "f1-resolved-fake-plugin-control exits 0" 0 "$GATE_RC"
+    assert_eq "resolved-specifier fake-plugin control exits 0" 0 "$GATE_RC"
 
     fake_plugin '"./dist/noop.mjs"'
     run_gate "$REPO" 0 "$PATH"
-    assert_eq "f1-resolved-specifier exits 1" 1 "$GATE_RC"
-    assert_has "f1-resolved-specifier is refused by the resolve check" "resolves to" "$GATE_OUT"
+    assert_eq "resolved-specifier exits 1" 1 "$GATE_RC"
+    assert_has "resolved-specifier is refused by the resolve check" "resolves to" "$GATE_OUT"
     case "$GATE_OUT" in
-        *"version mismatch"*) fail "f1-resolved-specifier is not a version mismatch" ;;
-        *) pass "f1-resolved-specifier is not a version mismatch" ;;
+        *"version mismatch"*) fail "resolved-specifier is not a version mismatch" ;;
+        *) pass "resolved-specifier is not a version mismatch" ;;
     esac
 
     fake_plugin '{"import":"./dist/noop.mjs","default":"./dist/testing.mjs"}'
     run_gate "$REPO" 0 "$PATH"
-    assert_eq "f1-esm-conditional-exports exits 1" 1 "$GATE_RC"
-    assert_has "f1-esm-conditional-exports names the import resolution" "(import)" "$GATE_OUT"
+    assert_eq "esm-conditional-exports exits 1" 1 "$GATE_RC"
+    assert_has "esm-conditional-exports names the import resolution" "(import)" "$GATE_OUT"
 
     fake_plugin '{"require":"./dist/noop.mjs","default":"./dist/testing.mjs"}'
     run_gate "$REPO" 0 "$PATH"
-    assert_eq "f1-cjs-conditional-exports exits 1" 1 "$GATE_RC"
-    assert_has "f1-cjs-conditional-exports names the require resolution" "(require)" "$GATE_OUT"
+    assert_eq "cjs-conditional-exports exits 1" 1 "$GATE_RC"
+    assert_has "cjs-conditional-exports names the require resolution" "(require)" "$GATE_OUT"
 }
 
-case_f2_tracked_node_modules() {
-    mk_repo || { fail "f2 (no temp repo)"; return; }
+case_tracked_node_modules() {
+    mk_repo || { fail "tracked-node-modules (no temp repo)"; return; }
     link_install "$REPO"
     printf '%s\n' 'x' > "$REPO/scripts/lint/landmines/node_modules/tracked.mjs"
     git -C "$REPO" add -f scripts/lint/landmines/node_modules/tracked.mjs
     stand_in "$REPO" bun 'exit 0' record
     run_gate "$REPO" 0 "$REPO/bin:$PATH"
-    assert_eq "f2-tracked-node-modules exits 1" 1 "$GATE_RC"
-    assert_has "f2-tracked-node-modules names the cause" "tracked files under scripts/lint/landmines/node_modules/" "$GATE_OUT"
-    assert_eq "f2-tracked-node-modules refuses before any install" 0 "$(calls_count)"
+    assert_eq "tracked-node-modules exits 1" 1 "$GATE_RC"
+    assert_has "tracked-node-modules names the cause" "tracked files under scripts/lint/landmines/node_modules/" "$GATE_OUT"
+    assert_eq "tracked-node-modules refuses before any install" 0 "$(calls_count)"
 }
 
-case_f2_tracked_node_modules_symlink() {
+case_node_modules_symlink() {
     local nm
-    mk_repo || { fail "f2-symlink (no temp repo)"; return; }
+    mk_repo || { fail "node-modules-symlink (no temp repo)"; return; }
     nm="$REPO/scripts/lint/landmines/node_modules"
     link_install "$REPO"
     stand_in "$REPO" bun 'exit 0' record
@@ -855,28 +860,28 @@ case_f2_tracked_node_modules_symlink() {
     rm -f -- "$nm"
     cp -R "$REPO/fake-nm" "$nm"
     run_gate "$REPO" 0 "$REPO/bin:$PATH"
-    assert_eq "f2-tracked-node-modules-symlink (index only) exits 1" 1 "$GATE_RC"
-    assert_has "f2-tracked-node-modules-symlink (index only) names the cause" "tracked files under scripts/lint/landmines/node_modules/" "$GATE_OUT"
+    assert_eq "tracked-node-modules-symlink (index only) exits 1" 1 "$GATE_RC"
+    assert_has "tracked-node-modules-symlink (index only) names the cause" "tracked files under scripts/lint/landmines/node_modules/" "$GATE_OUT"
 
     # Untracked symlink on disk.
     git -C "$REPO" rm -q --cached scripts/lint/landmines/node_modules
     rm -rf -- "$nm"
     ln -s ../../../fake-nm "$nm"
     run_gate "$REPO" 0 "$REPO/bin:$PATH"
-    assert_eq "f2-node-modules-symlink (on disk) exits 1" 1 "$GATE_RC"
-    assert_has "f2-node-modules-symlink (on disk) names the cause" "is a symlink" "$GATE_OUT"
-    assert_eq "f2-tracked-node-modules-symlink refuses before any install" 0 "$(calls_count)"
+    assert_eq "node-modules-symlink (on disk) exits 1" 1 "$GATE_RC"
+    assert_has "node-modules-symlink (on disk) names the cause" "is a symlink" "$GATE_OUT"
+    assert_eq "tracked-node-modules-symlink refuses before any install" 0 "$(calls_count)"
 }
 
-case_f2_package_dir_symlink() {
-    mk_repo || { fail "f2-package-dir-symlink (no temp repo)"; return; }
+case_package_dir_symlink() {
+    mk_repo || { fail "package-dir-symlink (no temp repo)"; return; }
     link_install "$REPO"
     stand_in "$REPO" bun 'exit 0' record
     run_gate "$REPO" 1 "$REPO/bin:$PATH"
-    assert_eq "f2-package-dir-symlink control exits 0" 0 "$GATE_RC"
+    assert_eq "package-dir-symlink control exits 0" 0 "$GATE_RC"
 
     # scripts/lint/landmines itself a committed symlink to a committed package.
-    mk_repo || { fail "f2-package-dir-symlink (no temp repo)"; return; }
+    mk_repo || { fail "package-dir-symlink (no temp repo)"; return; }
     git -C "$REPO" mv scripts/lint/landmines scripts/lint/lm-real
     ln -s lm-real "$REPO/scripts/lint/landmines"
     git -C "$REPO" add scripts/lint/landmines
@@ -884,12 +889,12 @@ case_f2_package_dir_symlink() {
     link_install "$REPO"
     stand_in "$REPO" bun 'exit 0' record
     run_gate "$REPO" 0 "$REPO/bin:$PATH"
-    assert_eq "f2-package-dir-symlink exits 1" 1 "$GATE_RC"
-    assert_has "f2-package-dir-symlink names the cause" "reached through a symlink" "$GATE_OUT"
-    assert_eq "f2-package-dir-symlink refuses before any install" 0 "$(calls_count)"
+    assert_eq "package-dir-symlink exits 1" 1 "$GATE_RC"
+    assert_has "package-dir-symlink names the cause" "reached through a symlink" "$GATE_OUT"
+    assert_eq "package-dir-symlink refuses before any install" 0 "$(calls_count)"
 
     # A symlink higher up the path is refused the same way.
-    mk_repo || { fail "f2-package-dir-symlink-parent (no temp repo)"; return; }
+    mk_repo || { fail "package-dir-symlink-parent (no temp repo)"; return; }
     git -C "$REPO" mv scripts/lint scripts/lint-real
     ln -s lint-real "$REPO/scripts/lint"
     git -C "$REPO" add scripts/lint
@@ -897,9 +902,9 @@ case_f2_package_dir_symlink() {
     link_install "$REPO"
     stand_in "$REPO" bun 'exit 0' record
     run_gate "$REPO" 0 "$REPO/bin:$PATH"
-    assert_eq "f2-package-dir-symlink-parent exits 1" 1 "$GATE_RC"
-    assert_has "f2-package-dir-symlink-parent names the cause" "reached through a symlink" "$GATE_OUT"
-    assert_eq "f2-package-dir-symlink-parent refuses before any install" 0 "$(calls_count)"
+    assert_eq "package-dir-symlink-parent exits 1" 1 "$GATE_RC"
+    assert_has "package-dir-symlink-parent names the cause" "reached through a symlink" "$GATE_OUT"
+    assert_eq "package-dir-symlink-parent refuses before any install" 0 "$(calls_count)"
 }
 
 case_gate_early_exits() {
@@ -1100,6 +1105,26 @@ EOF
     assert_has "i3-runner-missing says unevaluated" "unevaluated" "$GATE_OUT"
 }
 
+# A findings list far past a pipe buffer reaches the reader whole.
+case_large_findings_whole() {
+    local n
+    gate_repo $'import { it } from "vitest";\nit("ok", () => {});' || { fail "large-findings-whole (no temp repo)"; return; }
+    node -e '
+const n = 3000;
+const diagnostics = Array.from({ length: n }, (_, i) => ({
+  message: "m".repeat(80), code: "landmines-testing(no-fixed-sleep)", severity: "error",
+  filename: "a/x.test.mjs", labels: [{ span: { offset: 0, length: 1, line: i + 1, column: 1 } }],
+}));
+process.stdout.write(JSON.stringify({ diagnostics, number_of_files: 1 }));
+' > "$REPO/canned.out" </dev/null
+    stand_in "$REPO" oxlint "cat '$REPO/canned.out'; exit 1"
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "large-findings-whole exits 1" 1 "$GATE_RC"
+    n=$(printf '%s\n' "$GATE_OUT" | grep -c '^a/x\.test\.mjs:[0-9]*:1 landmines-testing(no-fixed-sleep) m')
+    assert_eq "large-findings-whole prints every finding" 3000 "$n"
+    assert_has "large-findings-whole prints the last finding" "a/x.test.mjs:3000:1 " "$GATE_OUT"
+}
+
 case_clean_success_line() {
     gate_repo $'import { it } from "vitest";\nit("a", () => {});' || { fail "clean-success-line (no temp repo)"; return; }
     put a/y.test.mjs 'import { it } from "vitest"; it("b", () => {});'
@@ -1113,6 +1138,15 @@ case_clean_success_line() {
     assert_eq "clean-success-line --files counts the narrowed list" "${CLEAN_PREFIX}2 files)" "$GATE_OUT"
     run_gate "$REPO" 1 "$PATH" --files README.md
     assert_eq "clean-success-line empty list keeps its own line" "check-test-honesty: nothing to lint" "$GATE_OUT"
+
+    # --files paths are relative to the caller's directory, and a path that no
+    # longer exists (a deletion in a PR's changed list) is accepted, matching nothing.
+    GATE_OUT=$(cd "$REPO/a" && OXLINT_FAIL_CLOSED=1 "$BASH_ABS" ../scripts/lint/check-test-honesty.sh --files y.test.mjs ./z.test.mjs gone.test.mjs ../README.md 2>&1 </dev/null)
+    GATE_RC=$?
+    assert_eq "subdir-relative --files exits 0" 0 "$GATE_RC"
+    assert_eq "subdir-relative --files counts the files under the subdirectory" "${CLEAN_PREFIX}2 files)" "$GATE_OUT"
+    GATE_OUT=$(cd "$REPO/a" && OXLINT_FAIL_CLOSED=1 "$BASH_ABS" ../scripts/lint/check-test-honesty.sh --files "$REPO/a/y.test.mjs" ../a/x.test.mjs 2>&1 </dev/null)
+    assert_eq "subdir --files takes absolute and parent-relative paths" "${CLEAN_PREFIX}2 files)" "$GATE_OUT"
 
     printf '%s\n' 'import { it } from "vitest"; it("s", async () => { await Bun.sleep(5); });' > "$REPO/a/y.test.mjs"
     run_gate "$REPO" 1 "$PATH"
@@ -1387,13 +1421,51 @@ EOS
     CI_CALLS=$(cat "$REPO/calls.log" 2>/dev/null)
 }
 
+# ci_block_placed <workflow file>: "ok" when the start marker comes after a
+# `done < "$changed"` line inside the lint step, with no step boundary between
+# them, so the block sees the files branch's "$@". Otherwise a reason.
+ci_block_placed() {
+    awk '
+/^ *- name: skill size \+ oxlint complexity\/hardening$/ { step = NR; done_at = 0; next }
+step && /^ *- [a-z-]+:/ { step = 0; done_at = 0 }
+step && /^ *done < "\$changed"$/ { done_at = NR }
+/^ *# test-honesty gate$/ {
+    if (!step) print "start marker outside the lint step"
+    else if (!done_at) print "start marker before the files loop"
+    else print "ok"
+    found = 1
+    exit
+}
+END { if (!found) print "no start marker" }
+' "$1"
+}
+
 case_ci_scope_branches() {
-    local n_start n_end
+    local n_start n_end fx
     n_start=$(grep -c '^ *# test-honesty gate$' "$REPO_ROOT/.github/workflows/ci.yml")
     n_end=$(grep -c '^ *# end test-honesty gate$' "$REPO_ROOT/.github/workflows/ci.yml")
     assert_eq "ci-scope-branches has one start marker" 1 "$n_start"
     assert_eq "ci-scope-branches has one end marker" 1 "$n_end"
+    assert_eq "ci-scope-branches block sits after the files loop in the lint step" ok "$(ci_block_placed "$REPO_ROOT/.github/workflows/ci.yml")"
     mk_repo || { fail "ci-scope-branches (no temp repo)"; return; }
+    fx="$REPO/placement.yml"
+    cat > "$fx" <<'EOS'
+      - name: skill size + oxlint complexity/hardening
+        run: |
+          # test-honesty gate
+          set --
+            done < "$changed"
+EOS
+    assert_eq "ci-scope-branches placement check refuses a block above the files loop" "start marker before the files loop" "$(ci_block_placed "$fx")"
+    cat > "$fx" <<'EOS'
+      - name: skill size + oxlint complexity/hardening
+        run: |
+            done < "$changed"
+      - name: another step
+        run: |
+          # test-honesty gate
+EOS
+    assert_eq "ci-scope-branches placement check refuses a block in a later step" "start marker outside the lint step" "$(ci_block_placed "$fx")"
     run_gate "$REPO" 1 "$PATH" --files README.md
     assert_eq "ci-scope-branches real gate on README.md exits 0" 0 "$GATE_RC"
     assert_has "ci-scope-branches real gate on README.md says nothing to lint" "nothing to lint" "$GATE_OUT"
@@ -1449,7 +1521,7 @@ case_i3_real_marker_untouched() {
 
 case_i4_oxlint_pin_equals_hardening
 case_i5_exact_pins
-case_f1_package_shape
+case_package_shape
 case_config_shape
 case_harness_smoke
 case_i6_surface
@@ -1462,15 +1534,16 @@ case_node_range_within_engines
 case_gate_matches_literal
 case_i3_install
 case_i3_version_mismatch
-case_f1_resolved
-case_f1_resolved_installed_plugin
-case_f2_tracked_node_modules
-case_f2_tracked_node_modules_symlink
-case_f2_package_dir_symlink
+case_package_shape_gate
+case_resolved_specifier
+case_tracked_node_modules
+case_node_modules_symlink
+case_package_dir_symlink
 case_gate_early_exits
 case_i1_rules
 case_i2_stale_and_count
 case_i3_unevaluated
+case_large_findings_whole
 case_clean_success_line
 case_i3_step_order
 case_i7_through_gate
