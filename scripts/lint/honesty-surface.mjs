@@ -24,6 +24,7 @@ const TRIGGERS = [
   'scripts/lint/landmines/(\\.oxlintrc\\.json|package\\.json|bun\\.lock|bunfig\\.toml)',
   '\\.github/workflows/ci\\.yml',
   '\\.pre-commit-config\\.yaml',
+  '(.*/)?oxlint-suppressions\\.json',
 ];
 
 function repoRoot() {

@@ -1456,9 +1456,11 @@ jobs:
           fi
           # test-honesty gate
           g=2
-          if [ "$scope" = files ] && trig=$(node scripts/lint/honesty-surface.mjs --triggers) && [ -n "$trig" ]; then
+          norenames="$RUNNER_TEMP/lint-changed-norenames.txt"
+          if [ "$scope" = files ] && trig=$(node scripts/lint/honesty-surface.mjs --triggers) && [ -n "$trig" ] \
+            && git diff --no-renames --name-only -z "$BASE_SHA" HEAD > "$norenames"; then
             g=0
-            grep -qzxE "$trig" "$changed" || g=$?
+            grep -qzxE "$trig" "$norenames" || g=$?
           fi
           if [ "$g" = 1 ]; then
             bash scripts/lint/check-test-honesty.sh --files "$@" || rc=1

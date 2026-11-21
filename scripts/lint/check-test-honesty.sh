@@ -130,6 +130,11 @@ pkg_real=$(cd "$PKG_REL" 2>/dev/null && pwd -P) || pkg_real=""
 tracked=$(git ls-files -- "$PKG_REL/node_modules" "$PKG_REL/node_modules/") || refuse "cannot list tracked files under $PKG_REL/node_modules/"
 [ -z "$tracked" ] || refuse "tracked files under $PKG_REL/node_modules/ - the install must never be committed"
 [ ! -L "$PKG_REL/node_modules" ] || refuse "$PKG_REL/node_modules is a symlink - the install must be a real directory"
+if [ -e oxlint-suppressions.json ] || [ -L oxlint-suppressions.json ]; then
+    refuse "oxlint-suppressions.json at the repo root - oxlint would load it and hide findings; delete it"
+fi
+suppressions=$(git ls-files -- oxlint-suppressions.json '*/oxlint-suppressions.json') || refuse "cannot list tracked oxlint-suppressions.json files"
+[ -z "$suppressions" ] || refuse "tracked oxlint-suppressions.json ($(printf '%s' "$suppressions" | tr '\n' ' ')) - a suppressions file would hide findings; delete it"
 
 lock="$PKG_REL/bun.lock"
 [ -f "$lock" ] || refuse "$lock is missing"

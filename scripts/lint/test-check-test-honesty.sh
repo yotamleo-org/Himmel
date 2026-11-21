@@ -516,7 +516,7 @@ case_i8_triggers() {
         scripts/lint/landmines/.oxlintrc.json scripts/lint/landmines/package.json \
         scripts/lint/landmines/bunfig.toml scripts/lint/check-test-honesty.sh \
         scripts/lint/test-check-test-honesty.sh scripts/lint/honesty-surface.mjs \
-        .github/workflows/ci.yml .pre-commit-config.yaml; do
+        .github/workflows/ci.yml .pre-commit-config.yaml oxlint-suppressions.json a/oxlint-suppressions.json; do
         if printf '%s\n' "$p" | grep -qxE "$trig"; then pass "i8-triggers match: $p"; else fail "i8-triggers match: $p"; fi
     done
     for p in scripts/foo.test.ts xscripts/lanes/skill-cost.mjs.bak scripts/lanes/skill-cost.mjs.bak \
@@ -810,6 +810,33 @@ case_tracked_node_modules() {
     assert_eq "tracked-node-modules exits 1" 1 "$GATE_RC"
     assert_has "tracked-node-modules names the cause" "tracked files under scripts/lint/landmines/node_modules/" "$GATE_OUT"
     assert_eq "tracked-node-modules refuses before any install" 0 "$(calls_count)"
+}
+
+case_suppressions_file() {
+    gate_repo $'import { it } from "vitest";\nit("x", async () => {\n  await new Promise((r) => setTimeout(r, 50));\n});' || { fail "suppressions-file (no temp repo)"; return; }
+    (cd "$REPO" && scripts/lint/landmines/node_modules/.bin/oxlint -c scripts/lint/landmines/.oxlintrc.json --suppress-all a/x.test.mjs >/dev/null 2>&1 </dev/null)
+    if [ -f "$REPO/oxlint-suppressions.json" ]; then
+        pass "suppressions-file real oxlint --suppress-all wrote the file"
+    else
+        fail "suppressions-file real oxlint --suppress-all wrote the file"
+    fi
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "suppressions-file at the root exits 1" 1 "$GATE_RC"
+    assert_has "suppressions-file at the root names the file" "oxlint-suppressions.json at the repo root" "$GATE_OUT"
+    assert_lacks "suppressions-file at the root has no success line" "$CLEAN_PREFIX" "$GATE_OUT"
+    run_gate_split "$REPO" "$PATH" --seed
+    assert_eq "suppressions-file at the root refuses --seed" 1 "$GATE_RC"
+    assert_eq "suppressions-file at the root --seed prints no maps" "" "$GATE_STDOUT"
+
+    gate_repo $'import { it } from "vitest";\nit("ok", () => {});' || { fail "suppressions-file (no temp repo)"; return; }
+    put sub/oxlint-suppressions.json '{}'
+    git -C "$REPO" add sub/oxlint-suppressions.json
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "suppressions-file tracked in a subdirectory exits 1" 1 "$GATE_RC"
+    assert_has "suppressions-file tracked in a subdirectory names the path" "sub/oxlint-suppressions.json" "$GATE_OUT"
+    git -C "$REPO" rm -q --cached sub/oxlint-suppressions.json
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "suppressions-file control: the same subdirectory file untracked passes" 0 "$GATE_RC"
 }
 
 case_node_modules_symlink() {
@@ -1351,24 +1378,42 @@ rc=0
 echo "rc=$rc"
 EOS
     rm -f "$REPO/calls.log"
-    (cd "$REPO" && PATH="${CI_PATH:-$PATH}" "$BASH_ABS" -eo pipefail driver.sh "$scope" "$changed" "$@" >driver.out 2>&1 </dev/null)
+    mkdir -p "$REPO/runner-temp"
+    (cd "$REPO" && BASE_SHA="${CI_BASE:-}" RUNNER_TEMP="$REPO/runner-temp" PATH="${CI_PATH:-$PATH}" \
+        "$BASH_ABS" -eo pipefail driver.sh "$scope" "$changed" "$@" >driver.out 2>&1 </dev/null)
     CI_RC=$?
     CI_CALLS=$(cat "$REPO/calls.log" 2>/dev/null)
 }
 
+ci_commit() {
+    local p
+    CI_BASE=$(git -C "$REPO" rev-parse HEAD)
+    for p in "$@"; do
+        mkdir -p "$REPO/$(dirname "$p")"
+        printf '%s\n' "change after $CI_BASE" >> "$REPO/$p"
+    done
+    git -C "$REPO" add -- "$@"
+    git -C "$REPO" commit -q -m "ci change"
+    git -C "$REPO" diff --name-only -z "$CI_BASE" HEAD > "$REPO/changed.lst"
+}
+
 ci_block_placed() {
     awk '
-/^ *- name: skill size \+ oxlint complexity\/hardening$/ { step = NR; done_at = 0; next }
-step && /^ *- [a-z-]+:/ { step = 0; done_at = 0 }
-step && /^ *done < "\$changed"( *# .*)?$/ { done_at = NR }
-/^ *# test-honesty gate$/ {
-    if (!step) print "start marker outside the lint step"
-    else if (!done_at) print "start marker before the files loop"
+/^ *- name: skill size \+ oxlint complexity\/hardening$/ { step = 1; next }
+step && /^ *- [a-z-]+:/ { step = 0 }
+step && !done_at && /^ *done < "\$changed"( *# .*)?$/ { done_at = NR }
+step && /^ *exit "\$rc"$/ { exit_at = NR }
+!start_at && /^ *# test-honesty gate$/ { start_at = NR; start_in = step }
+!end_at && /^ *# end test-honesty gate$/ { end_at = NR; end_in = step }
+END {
+    if (!start_at) print "no start marker"
+    else if (!start_in) print "start marker outside the lint step"
+    else if (!done_at || done_at > start_at) print "start marker before the files loop"
+    else if (!end_in) print "end marker outside the lint step"
+    else if (!exit_at) print "no exit in the lint step"
+    else if (exit_at < end_at) print "end marker after the step'"'"'s exit"
     else print "ok"
-    found = 1
-    exit
 }
-END { if (!found) print "no start marker" }
 ' "$1"
 }
 
@@ -1398,6 +1443,26 @@ EOS
           # test-honesty gate
 EOS
     assert_eq "ci-scope-branches placement check refuses a block in a later step" "start marker outside the lint step" "$(ci_block_placed "$fx")"
+    cat > "$fx" <<'EOS'
+      - name: skill size + oxlint complexity/hardening
+        run: |
+            done < "$changed" # read-sink-ok: fixture text for the placement check, never executed
+          exit "$rc"
+          # test-honesty gate
+          # end test-honesty gate
+EOS
+    assert_eq "ci-scope-branches placement check refuses a block after the step's exit" "end marker after the step's exit" "$(ci_block_placed "$fx")"
+    cat > "$fx" <<'EOS'
+      - name: skill size + oxlint complexity/hardening
+        run: |
+            done < "$changed" # read-sink-ok: fixture text for the placement check, never executed
+          # test-honesty gate
+          # end test-honesty gate
+      - name: another step
+        run: |
+          exit "$rc"
+EOS
+    assert_eq "ci-scope-branches placement check refuses a lint step with no exit" "no exit in the lint step" "$(ci_block_placed "$fx")"
     run_gate "$REPO" 1 "$PATH" --files README.md
     assert_eq "ci-scope-branches real gate on README.md exits 0" 0 "$GATE_RC"
     assert_has "ci-scope-branches real gate on README.md says nothing to lint" "nothing to lint" "$GATE_OUT"
@@ -1406,16 +1471,13 @@ EOS
 printf 'argc=%s argv=%s\n' "$#" "$*" >> calls.log
 exit "${GATE_EXIT:-0}"
 EOS
-    printf 'scripts/lint/ticket-ref-allow.tsv\0' > "$REPO/changed.lst"
+    ci_commit scripts/lint/ticket-ref-allow.tsv
     ci_run files changed.lst scripts/lint/ticket-ref-allow.tsv
     assert_eq "ci-scope-branches ticket-ref-allow.tsv runs the full surface" "argc=0 argv=" "$CI_CALLS"
-    printf 'scripts/lint/landmines/bun.lock\0scripts/foo.test.ts\0' > "$REPO/changed.lst"
+    ci_commit scripts/lint/landmines/bun.lock scripts/foo.test.ts
     ci_run files changed.lst scripts/lint/landmines/bun.lock scripts/foo.test.ts
     assert_eq "ci-scope-branches a trigger among others runs the full surface" "argc=0 argv=" "$CI_CALLS"
-    printf 'scripts/foo.test.ts\0' > "$REPO/changed.lst"
-    ci_run files changed.lst scripts/foo.test.ts
-    assert_eq "ci-scope-branches a test file runs --files" "argc=2 argv=--files scripts/foo.test.ts" "$CI_CALLS"
-    printf 'README.md\0' > "$REPO/changed.lst"
+    ci_commit README.md
     ci_run files changed.lst README.md
     assert_eq "ci-scope-branches README.md runs --files" "argc=2 argv=--files README.md" "$CI_CALLS"
     assert_eq "ci-scope-branches README.md block exits 0" 0 "$CI_RC"
@@ -1423,7 +1485,22 @@ EOS
     assert_eq "ci-scope-branches scope=all runs the full surface" "argc=0 argv=" "$CI_CALLS"
     assert_has "ci-scope-branches scope=all does not read the list" "rc=0" "$(cat "$REPO/driver.out")"
 
-    printf 'scripts/foo.test.ts\0' > "$REPO/changed.lst"
+    git -C "$REPO" config diff.renames true
+    ci_commit x/VENDORED.md
+    CI_BASE=$(git -C "$REPO" rev-parse HEAD)
+    git -C "$REPO" mv x/VENDORED.md x/VENDORED.txt
+    git -C "$REPO" commit -q -m "rename"
+    git -C "$REPO" diff --name-only -z "$CI_BASE" HEAD > "$REPO/changed.lst"
+    assert_eq "ci-scope-branches rename precondition: the changed list holds only the new path" "x/VENDORED.txt" "$(tr '\0' '\n' < "$REPO/changed.lst")"
+    ci_run files changed.lst x/VENDORED.txt
+    assert_eq "ci-scope-branches a renamed VENDORED.md runs the full surface" "argc=0 argv=" "$CI_CALLS"
+    ci_commit scripts/foo.test.ts
+    CI_BASE=0000000000000000000000000000000000000000 ci_run files changed.lst scripts/foo.test.ts
+    assert_eq "ci-scope-branches a rename-free diff that fails runs the full surface" "argc=0 argv=" "$CI_CALLS"
+
+    ci_commit scripts/foo.test.ts
+    ci_run files changed.lst scripts/foo.test.ts
+    assert_eq "ci-scope-branches a test file runs --files" "argc=2 argv=--files scripts/foo.test.ts" "$CI_CALLS"
     GATE_EXIT=1 ci_run files changed.lst scripts/foo.test.ts
     assert_has "ci-scope-branches a failing gate sets rc=1" "rc=1" "$(cat "$REPO/driver.out")"
     GATE_EXIT=1 ci_run all x
@@ -1468,6 +1545,7 @@ case_i3_version_mismatch
 case_package_shape_gate
 case_resolved_specifier
 case_tracked_node_modules
+case_suppressions_file
 case_node_modules_symlink
 case_package_dir_symlink
 case_gate_early_exits

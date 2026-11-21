@@ -638,7 +638,7 @@ repos:
         language: system
         # The files: value is the surface script's --precommit-files output; a
         # suite case holds the two equal. Lints the working tree, not the index.
-        files: ^(((.*/)?VENDORED\.md|scripts/lint/(test-)?check-test-honesty\.sh|scripts/lint/honesty-surface\.mjs|scripts/lanes/skill-cost\.mjs|scripts/lint/ticket-ref-allow\.tsv|scripts/lint/landmines/(\.oxlintrc\.json|package\.json|bun\.lock|bunfig\.toml)|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml)|.*\.(js|mjs|cjs|jsx|ts|mts|cts|tsx))$
+        files: ^(((.*/)?VENDORED\.md|scripts/lint/(test-)?check-test-honesty\.sh|scripts/lint/honesty-surface\.mjs|scripts/lanes/skill-cost\.mjs|scripts/lint/ticket-ref-allow\.tsv|scripts/lint/landmines/(\.oxlintrc\.json|package\.json|bun\.lock|bunfig\.toml)|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml|(.*/)?oxlint-suppressions\.json)|.*\.(js|mjs|cjs|jsx|ts|mts|cts|tsx))$
         pass_filenames: false
         stages: [pre-commit]
 

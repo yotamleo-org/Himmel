@@ -129,9 +129,13 @@ Stages wired (a selection; `.pre-commit-config.yaml` holds the full set):
   test-honesty-ratchet (`scripts/lint/check-test-honesty.sh` — refuses a
   NEW inline fixed sleep, raised test timeout or unsignaled poll in a JS/TS
   test file, a disable directive aimed at those rules, and a config change
-  that switches them off; the per-file allow maps in
-  `scripts/lint/landmines/.oxlintrc.json` only shrink; findings and an
-  unevaluated run block, while only a missing `node` or `bun` fails open,
+  that switches them off; in the per-file allow maps in
+  `scripts/lint/landmines/.oxlintrc.json` a count above the file's current
+  hits is refused (so entries are forced down as files improve) and an
+  entry for a missing file is refused, while raising an entry is a visible
+  edit of that config that runs the full surface in CI and is reviewed like
+  any trust change; an `oxlint-suppressions.json` at the repo root or
+  tracked anywhere is refused; findings and an unevaluated run block, while only a missing `node` or `bun` fails open,
   and only outside CI; a fresh worktree's first commit touching a JS/TS file
   or a trigger path needs a one-time `bun install` from the registry, which
   the gate runs itself).

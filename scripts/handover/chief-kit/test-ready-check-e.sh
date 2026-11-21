@@ -213,6 +213,7 @@ while IFS= read -r p; do
     contains "T1.61 a path under the surface line '$p' FAILs 16d" "$out" "[FAIL] 16d."
 done < "$HERE/../../ci/outside-lint-surface.txt"
 check "T1.61 the lint surface lists eleven prefixes" "$surf_n" "11"
+out="$(STUB_FILES=scripts/lanes/skill-cost.mjs run_out)"; contains "T1.61b a scripts/lanes/skill-cost.mjs change FAILs 16d" "$out" "[FAIL] 16d."
 out="$(STUB_FILES=.shellcheckrc run_out)"; contains "T1.20 a .shellcheckrc change FAILs 16d" "$out" "[FAIL] 16d."
 out="$(STUB_FILES=.coderabbit.yaml run_out)"; contains "T1.20 a .coderabbit.yaml change FAILs 16d" "$out" "[FAIL] 16d."
 out="$(STUB_FILES=.github/ci-image/Dockerfile run_out)"; contains "T1.21 a .github/ci-image/ change FAILs 16d" "$out" "[FAIL] 16d."
