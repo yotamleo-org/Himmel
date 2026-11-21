@@ -150,11 +150,12 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
     sleep 15
 done
 echo "$shown"
-printf '%s\n' "$shown" | head -n 1 | grep -q " sent DONE$" || { tail -n 30 "$tmp"/*.log >&2; die "$job did not end DONE"; }
-printf '%s\n' "$shown" | grep -qx "  $suite1: pass" || die "$suite1 did not pass"
-printf '%s\n' "$shown" | grep -qx "  $suite2: pass" || die "$suite2 did not pass"
-printf '%s\n' "$shown" | grep -qx "image: pinned" || die "the image is not pinned"
-VBoxManage list vms | grep -q '"himmel-peerjob-' && die "a job VM outlived its job"
+case "${shown%%$'\n'*}" in *" sent DONE") ;; *) tail -n 30 "$tmp"/*.log >&2; die "$job did not end DONE" ;; esac
+grep -qx "  $suite1: pass" <<< "$shown" || die "$suite1 did not pass"
+grep -qx "  $suite2: pass" <<< "$shown" || die "$suite2 did not pass"
+grep -qx "image: pinned" <<< "$shown" || die "the image is not pinned"
+vms="$(VBoxManage list vms)" || die "VBoxManage list vms"
+grep -q '"himmel-peerjob-' <<< "$vms" && die "a job VM outlived its job"
 
 echo "== network probe from a job guest"
 gw="$(ip route show default | sed -n 's/^default via \([0-9.]*\).*/\1/p' | head -n 1)"
