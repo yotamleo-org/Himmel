@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2015,SC2034,SC2153,SC2154
+# shellcheck disable=SC2034,SC2015,SC2012,SC2329,SC2016,SC2153,SC2154
 set -uo pipefail
 # shellcheck source=tests/testlib-ready-check.sh
 . "$(cd "$(dirname "$0")" && pwd)/tests/testlib-ready-check.sh"
@@ -129,4 +129,4 @@ rc=0
 bash "$tmp/alrm-wrap2.sh" > /dev/null 2>&1 || rc=$?
 wait
 echo "wrapper2 ALRM rc=$rc"
-echo "PASS - diag2"
+echo "FAIL - diag2 (intentional, to keep the log)"; exit 1

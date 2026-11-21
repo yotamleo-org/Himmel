@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2034,SC2015,SC2012
+# shellcheck disable=SC2034,SC2015,SC2012,SC2329,SC2016,SC2153,SC2154
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -114,20 +114,22 @@ snap() {
 }
 
 dg_run() {
-    local label="$1" sig="$2" ign="$3" rc=0
+    local label="$1" sig="$2" ign="$3" tr="${4:-}" rc=0 xt=""
+    [ -z "$tr" ] || xt="SHELLOPTS=xtrace"
     fresh31
     echo "=== $label sig=$sig ign=$ign"
     dg_t0=$SECONDS
-    ( sleep 1; snap "$label before"; sleep 3; snap "$label +after-signal"; sleep 2; snap "$label +5s-after" ) &
+    ( sleep 1; snap "$label before"; sleep 1; snap "$label t2"; sleep 2; snap "$label +after-signal"; sleep 2; snap "$label +5s-after" ) &
     dg_w=$!
-    (cd "$S31" && { [ "$ign" = 0 ] || trap '' INT; } && PATH="$S31/bin:$PATH" HANDOVER_DIR="$ROOT31" HIMMEL_QUOTA_DIR="$Q31" STUB_RC_SLEEP=10 GO_DEADLINE=30 timeout -s "$sig" -k 5 3 bash "$S31/scripts/handover/chief-kit/go.sh" 77 "$SHA" > "$tmp/dg.out" 2> "$tmp/dg.err") || rc=$?
+    (cd "$S31" && { [ "$ign" = 0 ] || trap '' INT; } && PATH="$S31/bin:$PATH" HANDOVER_DIR="$ROOT31" HIMMEL_QUOTA_DIR="$Q31" STUB_RC_SLEEP=10 GO_DEADLINE=30 env ${xt:+"$xt"} PS4='+ $SECONDS ${BASH_SOURCE##*/}:$LINENO: ' timeout -s "$sig" -k 5 3 bash "$S31/scripts/handover/chief-kit/go.sh" 77 "$SHA" > "$tmp/dg.out" 2> "$tmp/dg.err") || rc=$?
     echo "$label rc=$rc took=$((SECONDS - dg_t0))s"
     wait "$dg_w"
-    cat "$tmp/dg.err" | head -5
+    if [ -n "$tr" ]; then grep -n -E "_go_term|wait |kill |pgrep|exit|timeout" "$tmp/dg.err" | head -60; else head -5 "$tmp/dg.err"; fi
 }
 dg_run A-INT INT 0
 dg_run B-INT-ign INT 1
 dg_run C-TERM TERM 0
+dg_run D-INT-trace INT 0 trace
 
 echo "=== mimic"
 cat > "$tmp/mimic.sh" <<'EOF'
@@ -152,4 +154,4 @@ for sig in INT TERM; do
     timeout -s "$sig" -k 5 3 bash "$tmp/mimic.sh" > /dev/null 2>&1 || rc=$?
     echo "mimic $sig rc=$rc took=$((SECONDS - t0))s"
 done
-echo "PASS - diag"
+echo "FAIL - diag (intentional, to keep the log)"; exit 1
