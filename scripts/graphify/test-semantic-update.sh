@@ -842,7 +842,7 @@ real_lane_off
 echo "T68d: through the real launcher, a rejection replayed on the subscription adds nothing to the API spend, and the breaker stays open"
 real_lane_on
 C68D="$WS/c68d"; new_corpus "$C68D"
-out=$(RL_STUB_REJECT=1 GRAPHIFY_STUB_CALL_N=3 run_real_lane --name t68d --corpus-root "$C68D" --corpus-class himmel-code --backend claude-api --max-run-usd 1.50); rc=$?
+out=$(HIMMEL_API_FALLBACK=on RL_STUB_REJECT=1 GRAPHIFY_STUB_CALL_N=3 run_real_lane --name t68d --corpus-root "$C68D" --corpus-class himmel-code --backend claude-api --max-run-usd 1.50); rc=$?
 grep -q 'run spend cap' "$WS/claude.out" && fail "T68d a rejected (unbilled) attempt reserved against the run cap: $(cat "$WS/claude.out")" || pass "T68d a rejected attempt reserves nothing"
 [ "$(grep -c '^sub$' "$WS/rl-calls.log")" -eq 3 ] && pass "T68d all three chunks ran on the subscription" || fail "T68d lane calls: $(tr '\n' ' ' < "$WS/rl-calls.log") (rc=$rc): $out"
 [ "$(grep -c '^claude-shim-rc=' "$WS/calls.log")" -eq 0 ] && pass "T68d no chunk failed: the fallback's exit replaced the rejection" || fail "T68d shim rcs: $(grep claude-shim-rc "$WS/calls.log" | tr '\n' ' ')"
@@ -852,7 +852,7 @@ real_lane_off
 echo "T68f: through the real launcher, a failed API attempt replayed on the subscription still reserves its per-call budget"
 real_lane_on
 C68F="$WS/c68f"; new_corpus "$C68F"
-out=$(RL_STUB_FAIL=1 GRAPHIFY_STUB_CALL_N=3 run_real_lane --name t68f --corpus-root "$C68F" --corpus-class himmel-code --backend claude-api --max-run-usd 1.50); rc=$?
+out=$(HIMMEL_API_FALLBACK=on RL_STUB_FAIL=1 GRAPHIFY_STUB_CALL_N=3 run_real_lane --name t68f --corpus-root "$C68F" --corpus-class himmel-code --backend claude-api --max-run-usd 1.50); rc=$?
 [ "$(grep -c '^sub$' "$WS/rl-calls.log")" -eq 1 ] && pass "T68f the first chunk ran on the subscription, the cap refused the other two" || fail "T68f lane calls: $(tr "\n" " " < "$WS/rl-calls.log") (rc=$rc): $(head -c 900 "$WS/claude.out")"
 [ "$(lastrun "$C68F" cost_usd)" = "0.0" ] && pass "T68f the API spend stays 0" || fail "T68f row: $(tail -1 "$C68F/graphify-out/semantic-runs.jsonl" 2>&1)"
 grep -q "spend 0.00 + reserved 1.00 + this call's budget 1.00 would pass the cap" "$WS/claude.out" && pass "T68f the failed attempt's reserve (1.00) counts against the 1.50 cap" || fail "T68f no cap refusal: $(head -c 900 "$WS/claude.out")"
