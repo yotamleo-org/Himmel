@@ -2085,7 +2085,10 @@ if grep -q 'stdin=tty' "$T32_REC" 2>/dev/null; then
 
     T32_BUCKET="$TMP/t32-fleet"
     mkdir -p "$T32_BUCKET"
-    T32_DOC="$T32_BUCKET/TEST-1-N1-worker.md"
+    # The worker name (the doc stem) is the name the runtime's session scan matches against every claude process on the host and
+    # the name of its slot, so a name shared with another run's stub claude, or a live session, keeps the attempt open and the
+    # next shell's row finds the family owned. A name no other process carries keeps the rows independent of the station.
+    T32_DOC="$T32_BUCKET/TEST-1-N1-worker-$$.md"
     printf -- '---\nsession_kind: test\nresume_cwd: %s\n---\n> **Prior art:** none found (offline fixture)\n\n# worker\n' "$WORK_REPO" > "$T32_DOC"
     HOME="$POLICY_EMPTY_HOME" bash "$T32_FM" control init "$T32_BUCKET/x.fleet.json" --target 1 >/dev/null 2>&1
     HOME="$POLICY_EMPTY_HOME" bash "$T32_FM" add "$T32_BUCKET/x.fleet.json" "$T32_DOC" --lane native --pending >/dev/null 2>&1
