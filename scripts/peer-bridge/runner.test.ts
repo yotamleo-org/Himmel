@@ -15,7 +15,7 @@ import { writeSpoolEvent, type SpoolJobEvent } from "./spool-events";
 import { NOW_S, inJob } from "./testlib-jobs";
 
 const REPO = join(import.meta.dir, "..", "..");
-const PEER = "goomal";
+const PEER = "example";
 const GIT_ENV = { PATH: process.env.PATH, HOME: "/nonexistent", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
 
 let fx: string, origin: string, home: string, sentinel: string, listener: net.Server, connections = 0;

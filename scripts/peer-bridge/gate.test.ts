@@ -16,10 +16,10 @@ function cfg(over: Record<string, unknown> = {}): Pick<Config, "peers" | "maxTex
   return {
     maxTextChars: 4000,
     peers: {
-      goomal: {
+      example: {
         peerBotId: PEER_ID, chatId: CHAT, allowFrom: [PEER_ID, HUMAN], opens: ["question", "status", "info"],
         maxOpenThreads: 5, maxPerMinute: 10, maxReaderRunsPerDay: 50, maxReaderRunsPerKindPerDay: { question: 30, status: 10, info: 10 }, maxWakesPerDay: 30,
-        theirs: { username: "goomal_bot", opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07" },
+        theirs: { username: "example_bot", opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07" },
         ...over,
       } as any,
     },
@@ -30,7 +30,7 @@ const fresh = (): GateState => createGateState({ ourBotId: OUR_ID, ourUsername: 
 let uid = 100;
 let mid = 1000;
 function msg(over: Record<string, unknown> = {}, text = `/peer@${OUR_NAME}\n#ask:question id=a1b2c3d4\nhow do I x?`) {
-  return { message_id: ++mid, from: { id: Number(PEER_ID), is_bot: true, username: "goomal_bot" }, chat: { id: CHAT, type: "supergroup", title: "bridge" }, date: NOW / 1000, text, ...over };
+  return { message_id: ++mid, from: { id: Number(PEER_ID), is_bot: true, username: "example_bot" }, chat: { id: CHAT, type: "supergroup", title: "bridge" }, date: NOW / 1000, text, ...over };
 }
 const upd = (message: Record<string, unknown>, over: Record<string, unknown> = {}) => ({ update_id: ++uid, message, ...over });
 const rootUpd = (over: Record<string, unknown> = {}, text?: string) => upd(msg(over, text));
@@ -53,9 +53,9 @@ test("the happy path admits a root, strips the address line and keeps the body",
   const r = admit(rootUpd(), cfg(), fresh());
   expect(r.ok).toBe(true);
   if (!r.ok) return;
-  expect(r.peer).toBe("goomal");
+  expect(r.peer).toBe("example");
   expect(r.truncated).toBe(false);
-  expect(r.rec).toMatchObject({ kind: "peer-msg", untrusted: true, peer: "goomal", from_id: PEER_ID, from_is_bot: true, chat_id: CHAT, id: "a1b2c3d4", tag: "ask:question", text: "how do I x?", ts: NOW / 1000 });
+  expect(r.rec).toMatchObject({ kind: "peer-msg", untrusted: true, peer: "example", from_id: PEER_ID, from_is_bot: true, chat_id: CHAT, id: "a1b2c3d4", tag: "ask:question", text: "how do I x?", ts: NOW / 1000 });
   expect(r.rec.root_id).toBe(r.rec.message_id);
   expect(r.rec.text).not.toContain("/peer@");
 });
@@ -212,7 +212,7 @@ test("rule 7: the 11th message in a minute is dropped, templates counted", () =>
 
 test("rule 7: the rate window survives a rebuild from the inbox", () => {
   const s = fresh();
-  const inbox = Array.from({ length: 10 }, (_, i) => ({ peer: "goomal", chat_id: CHAT, from_id: PEER_ID, id: `0000000${i}`, ts: NOW / 1000 - 5 }));
+  const inbox = Array.from({ length: 10 }, (_, i) => ({ peer: "example", chat_id: CHAT, from_id: PEER_ID, id: `0000000${i}`, ts: NOW / 1000 - 5 }));
   rebuildFromInbox(s, inbox);
   dropped(admit(rootUpd(), cfg(), s), 7);
   const old = fresh();

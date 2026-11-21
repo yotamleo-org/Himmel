@@ -41,7 +41,7 @@ supergroup with a new chat id, and `confirm` refuses the old id.
 3. **Add the peer.** From a terminal of your own, not from a Claude session:
 
    ```bash
-   bun scripts/peer-bridge/setup.ts add goomal --peer-bot-id <peer bot id> --peer-username <peer bot username>
+   bun scripts/peer-bridge/setup.ts add example --peer-bot-id <peer bot id> --peer-username <peer bot username>
    ```
 
    Pass `--operator-bot-id <id>` to skip the operator-bot-id prompt; a helper that already knows the id uses it.
@@ -66,7 +66,7 @@ supergroup with a new chat id, and `confirm` refuses the old id.
 6. **Confirm the chat.** Use the supergroup's id:
 
    ```bash
-   bun scripts/peer-bridge/setup.ts confirm goomal <chatId>
+   bun scripts/peer-bridge/setup.ts confirm example <chatId>
    ```
 
    It calls `getChat` and `getChatMember` and refuses, writing nothing, unless:
@@ -399,7 +399,7 @@ sends it with no model run.
 Start the desk from a terminal:
 
 ```bash
-bash scripts/peer-bridge/desk.sh goomal
+bash scripts/peer-bridge/desk.sh example
 ```
 
 It starts a fresh interactive `claude` session in an empty 0700 dir

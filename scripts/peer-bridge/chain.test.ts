@@ -152,11 +152,11 @@ test("spool: each record type round-trips through drainSpool oldest first, 0600"
 test("spool: the typed path's records round-trip through writeSpoolEvent, and an unknown kind, event or shape is malformed", () => {
   const dir = peerDirWithSpool();
   const good = [
-    { t: "env-out", peer: "goomal", kind: "req", body: { sha: "a".repeat(40), suites: ["scripts/x.sh"] } },
-    { t: "env-out", peer: "goomal", kind: "capacity-ask", body: {} },
-    { t: "env-out", peer: "goomal", kind: "cancel", body: { jobNo: 3 } },
-    { t: "env-out", peer: "goomal", kind: "halt", body: {} },
-    ...["resolve-ok", "resolve-fail", "approve", "vm-start", "vm-done"].map(type => ({ t: "job-event", peer: "goomal", job: 4, event: { type } })),
+    { t: "env-out", peer: "example", kind: "req", body: { sha: "a".repeat(40), suites: ["scripts/x.sh"] } },
+    { t: "env-out", peer: "example", kind: "capacity-ask", body: {} },
+    { t: "env-out", peer: "example", kind: "cancel", body: { jobNo: 3 } },
+    { t: "env-out", peer: "example", kind: "halt", body: {} },
+    ...["resolve-ok", "resolve-fail", "approve", "vm-start", "vm-done"].map(type => ({ t: "job-event", peer: "example", job: 4, event: { type } })),
   ] as const;
   const names = good.map(e => writeSpoolEvent(e as any, dir));
   for (const n of names) expect(mode(join(dir, "spool", n))).toBe(0o600);

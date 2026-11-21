@@ -204,9 +204,9 @@ test('a claude error result keeps its cost but is ERROR with no sites', () => {
   assert.deepEqual(r.art.sites, []);
 });
 
-test('an invalid account is refused, alerts once, then the same call runs once on the subscription with no key', () => {
+test('with HIMMEL_API_FALLBACK=on, an invalid account is refused, alerts once, then the same call runs once on the subscription with no key', () => {
   const f = fixture();
-  const r = f.run(f.args, { HIMMEL_API_ACCOUNT: 'E' });
+  const r = f.run(f.args, { HIMMEL_API_ACCOUNT: 'E', HIMMEL_API_FALLBACK: 'on' });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.art.status, 'OK');
   assert.equal(readFileSync(f.p.log, 'utf8'), 'called\n');
@@ -218,6 +218,15 @@ test('an invalid account is refused, alerts once, then the same call runs once o
   assert.equal(alerts.length, 1);
   assert.match(alerts[0], /^type=api-lane refused msg=kind bulk, .*HIMMEL_API_ACCOUNT must be.*fallback: running on the subscription/);
   assert.ok(!alerts[0].includes(DUMMY));
+});
+
+test('a refused launch with HIMMEL_API_FALLBACK unset alerts once and never runs on the subscription', () => {
+  const f = fixture();
+  f.run(f.args, { HIMMEL_API_ACCOUNT: 'E' });
+  assert.ok(!existsSync(f.p.log), 'the subscription ran');
+  const alerts = readFileSync(f.p.alertLog, 'utf8').trim().split('\n');
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0], /^type=api-lane refused msg=kind bulk, .*fallback: off \(HIMMEL_API_FALLBACK unset: default off\)/);
 });
 
 test('a timed-out call is TIMEOUT and its reservation is settled in the ledger', () => {

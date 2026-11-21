@@ -13,8 +13,8 @@
 # Out:   stdout = the artifact path (JSON, mode 600, under /tmp/claude-<uid>/bulk-<ID>).
 #        status OK (exit 0) | DENIED | ERROR | INVALID | REFUSED | TIMEOUT | CANCELLED (exit 3);
 #        exit 2 = a usage refusal before any call; exit 4 = not a trusted dispatch. A refused or failed API call
-#        alerts and re-runs once on the subscription inside claude-api.sh (gated by the usage
-#        preflight); the artifact reflects that run. HIMMEL_API_FALLBACK=off switches it off.
+#        alerts inside claude-api.sh and never runs on the subscription: the fallback is off by default, and only
+#        HIMMEL_API_FALLBACK=on opts in.
 # Trusted dispatch: refused from a chief-spawned worker (HIMMEL_CONSOLE_LEG) and a chief relay
 # (HIMMEL_CONSOLE_RELAY), as write-verdict.sh and go.sh refuse them: a worker cannot spend the API credit on its own
 # authority, its chief launches the call.
