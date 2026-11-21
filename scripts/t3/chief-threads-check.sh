@@ -9,8 +9,9 @@
 # (default 24) ago. Prints "SETTLED <id> <title> <settledAt>" per remaining one; a suffix-only
 # match is marked "(report only: ...)". With --wake, only threads listed in
 # HIMMEL_T3_CHIEF_TITLES are sent a wake message through t3-send.sh (send rc printed).
-# Also prints "LINKED-PR <id> <title> open=<n>" for each unsettled chief-role thread with
-# openPullRequestCount > 0, whatever the window; report only, never woken.
+# Also prints "LINKED-PR <id> <title> linked=<n> open=<m>" for each unsettled chief-role thread
+# with pullRequestCount > 0 (any linked PR, open or merged: T3 re-settles a thread that holds a
+# merged linked PR at every idle), whatever the window; report only, never woken.
 # rc 0 nothing to report; rc 1 something reported (SETTLED or LINKED-PR); rc 2 usage / list or filter failure.
 # Env seams: T3_SEND_BIN, T3_SEND_PROJECT (as t3-send.sh), HIMMEL_T3_CHIEF_TITLES,
 # T3_CHIEF_CHECK_WINDOW_HOURS.
@@ -51,10 +52,10 @@ PRROWS="$(printf '%s' "$LIST" | jq -r --arg extra "$TITLES" '
     ($extra | split("\n") | map(gsub("^\\s+|\\s+$"; "")) | map(select(. != ""))) as $names
     | .[] | select(.settled != true)
     | select((.threadId | startswith("import:")) | not)
-    | select((.openPullRequestCount // 0) > 0)
+    | select((.pullRequestCount // 0) > 0)
     | (.title // "") as $t | ($t | gsub("^\\s+|\\s+$"; "")) as $tt
     | select(($names | index($tt) != null) or ($tt | ascii_downcase | test("-(chief|console)$")))
-    | [.threadId, $t, (.openPullRequestCount | tostring)] | @tsv')" || die 2 "could not filter the thread list (bad thread entry)"
+    | [.threadId, $t, (.pullRequestCount | tostring), ((.openPullRequestCount // 0) | tostring)] | @tsv')" || die 2 "could not filter the thread list (bad thread entry)"
 
 [ -n "$ROWS" ] || [ -n "$PRROWS" ] || exit 0
 MSG="A chief-role thread was settled (T3 closed its process). You are woken by chief-threads-check; resume your role and tell your chief you are back."
@@ -72,8 +73,8 @@ while IFS="$(printf '\t')" read -r id title at listed; do
 done <<EOF2
 $ROWS
 EOF2
-while IFS="$(printf '\t')" read -r id title n; do
-    [ -n "$id" ] && echo "LINKED-PR $id $title open=$n"
+while IFS="$(printf '\t')" read -r id title n open; do
+    [ -n "$id" ] && echo "LINKED-PR $id $title linked=$n open=$open"
 done <<EOF3
 $PRROWS
 EOF3
