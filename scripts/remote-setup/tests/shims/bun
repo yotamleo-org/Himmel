@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016  # the jq programs are single-quoted on purpose: $n there is jq's, not the shell's
 # Test shim for bun. An onboard.ts call is recorded to $RST/onboard.calls and units.log and
 # answered from $RST/onboard.out (rc from $RST/onboard.rc). With $RST/onboard.hang it prints
 # the nonce line, signals its parent with SIGINT (a Ctrl-C), then waits to be killed; its pid
@@ -41,6 +42,16 @@ case "$*" in
         fi
         peers=$HOME/.config/himmel/peer-bridge/peers.json
         name=${2:-}
+        write_failed() {
+            echo "setup: peers.json could not be written" >&2
+            exit 1
+        }
+        # edit_peers <jq args...> <filter>: rewrites peers.json through a temp file; any failed step exits 1.
+        edit_peers() {
+            jq "$@" "$peers" > "$peers.new" || { rm -f "$peers.new"; write_failed; }
+            mv "$peers.new" "$peers" || write_failed
+            chmod 600 "$peers" || write_failed
+        }
         case "$sub" in
             add)
                 shift 2
@@ -52,10 +63,9 @@ case "$*" in
                     esac
                     shift 2
                 done
-                mkdir -p "$(dirname "$peers")"
-                [ -f "$peers" ] || echo '{"operatorBotId":"0","operatorChatId":1,"bridgeRoot":"/x","himmelRoot":"/y","peers":{},"maxTextChars":4000,"addressing":"command"}' > "$peers"
-                jq --arg n "$name" --arg b "$pid" --arg u "$user" '.peers[$n] = {peerBotId: $b, chatId: null, allowFrom: [$b], theirs: {username: $u}}' "$peers" > "$peers.new" && mv "$peers.new" "$peers"
-                chmod 600 "$peers"
+                mkdir -p "$(dirname "$peers")" || write_failed
+                [ -f "$peers" ] || echo '{"operatorBotId":"0","operatorChatId":1,"bridgeRoot":"/x","himmelRoot":"/y","peers":{},"maxTextChars":4000,"addressing":"command"}' > "$peers" || write_failed
+                edit_peers --arg n "$name" --arg b "$pid" --arg u "$user" '.peers[$n] = {peerBotId: $b, chatId: null, allowFrom: [$b], theirs: {username: $u}}'
                 echo "added $name"
                 ;;
             confirm)
@@ -63,13 +73,13 @@ case "$*" in
                     echo "setup: our bot (222) has the right can_delete_messages; promote it to administrator with every right off first" >&2
                     exit "$(cat "$RST/setup.confirm.rc")"
                 fi
-                jq --arg n "$name" --argjson c "$3" '.peers[$n].chatId = $c' "$peers" > "$peers.new" && mv "$peers.new" "$peers"
+                edit_peers --arg n "$name" --argjson c "$3" '.peers[$n].chatId = $c'
                 echo "confirmed $name"
                 ;;
             remove)
                 read -r ans
                 if [ "$ans" != yes ]; then echo "setup: not removed" >&2; exit 3; fi
-                jq --arg n "$name" 'del(.peers[$n])' "$peers" > "$peers.new" && mv "$peers.new" "$peers"
+                edit_peers --arg n "$name" 'del(.peers[$n])'
                 echo "removed $name; restart the poller to drop it"
                 if [ -f "$RST/setup.remove.sigint" ]; then kill -INT "$PPID"; fi
                 ;;

@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
 # Test shim for systemctl. Unit state lives in $RST/units/<unit>.active|.enabled, every call
 # is logged to $RST/units.log. A unit with $RST/units/<unit>.startfail refuses to start.
-# enable/disable/restart/daemon-reload are understood; disable also stops the unit.
+# enable/disable/restart/daemon-reload are understood; enable --now also starts the unit and disable --now
+# also stops it (without --now the running state is left alone, as the real systemctl does).
 # A unit with $RST/units/<unit>.stopfail refuses to stop or disable; $RST/units/daemon-reload.fail makes daemon-reload fail.
 RST=${RST:?RST must point at the test dir}
 printf 'systemctl %s\n' "$*" >> "$RST/units.log"
 mkdir -p "$RST/units"
 args=()
+now=0
 for a in "$@"; do
-    case "$a" in --user | --quiet | --now) ;; *) args[${#args[@]}]=$a ;; esac
+    case "$a" in
+        --now) now=1 ;;
+        --user | --quiet) ;;
+        *) args[${#args[@]}]=$a ;;
+    esac
 done
 verb=${args[0]:-}
 unit=${args[1]:-}
@@ -33,11 +39,16 @@ case "$verb" in
         ;;
     enable)
         : > "$RST/units/$unit.enabled"
+        if [ "$now" = 1 ]; then
+            [ -f "$RST/units/$unit.startfail" ] && exit 1
+            : > "$RST/units/$unit.active"
+        fi
         exit 0
         ;;
     disable)
         [ -f "$RST/units/$unit.stopfail" ] && exit 1
-        rm -f "$RST/units/$unit.enabled" "$RST/units/$unit.active"
+        rm -f "$RST/units/$unit.enabled"
+        if [ "$now" = 1 ]; then rm -f "$RST/units/$unit.active"; fi
         exit 0
         ;;
     daemon-reload) # t13b-ok: test shim case pattern for systemctl daemon-reload, runs nothing

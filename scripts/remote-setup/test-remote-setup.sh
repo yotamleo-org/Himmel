@@ -2213,6 +2213,41 @@ case_peer_hostile_username_refused() {
     check "nothing was added" eq "$(setup_calls)" ""
 }
 
+# The bun shim stands in for setup.ts, so it must not report a write it did not make.
+case_bun_shim_fails_when_it_cannot_write_peers_json() {
+    local before verb rc
+    if [ "$(id -u)" = 0 ]; then SKIPN=$((SKIPN + 1)); return 0; fi
+    seed_peers_json goomal "$THEIR" "$CHAT"
+    before=$(cksum < "$(PEERS_FILE)")
+    chmod 500 "$(PEER_CFG)"
+    for verb in "add other --peer-bot-id 666 --peer-username other_bot --operator-bot-id 111" "confirm goomal -1002" "remove goomal"; do
+        # shellcheck disable=SC2086
+        printf 'yes\n' | env RST="$T" HOME="$HOME_FIX" RST_REAL_BUN="$REAL_BUN" PATH="$T/bin:$PATH_BASE" "$T/bin/bun" "$ROOT/scripts/peer-bridge/setup.ts" $verb > "$T/shim.out" 2> "$T/shim.err"
+        rc=$?
+        check "${verb%% *}: a read-only folder is a non-zero exit" test "$rc" -ne 0
+        check "${verb%% *}: it does not say the write happened" eq "$(grep -cE '^(added|confirmed|removed) ' "$T/shim.out")" 0
+        check "${verb%% *}: peers.json is unchanged" eq "$(cksum < "$(PEERS_FILE)")" "$before"
+    done
+    chmod 700 "$(PEER_CFG)"
+}
+
+# The systemctl shim stands in for the real one: disable and enable change the running state only with --now.
+case_systemctl_shim_changes_the_running_state_only_with_now() {
+    local u=x.service
+    : > "$T/units/$u.active"
+    : > "$T/units/$u.enabled"
+    env RST="$T" "$T/bin/systemctl" --user disable "$u"
+    check "disable without --now leaves the unit running" test -f "$T/units/$u.active"
+    check "and takes the enabled mark away" test ! -e "$T/units/$u.enabled"
+    env RST="$T" "$T/bin/systemctl" --user disable --now "$u"
+    check "disable --now stops it" test ! -e "$T/units/$u.active"
+    env RST="$T" "$T/bin/systemctl" --user enable "$u"
+    check "enable without --now does not start it" test ! -e "$T/units/$u.active"
+    check "and marks it enabled" test -f "$T/units/$u.enabled"
+    env RST="$T" "$T/bin/systemctl" --user enable --now "$u"
+    check "enable --now starts it" test -f "$T/units/$u.active"
+}
+
 case_peer_name_second_collision_gets_3() {
     run_drive --no-tty --no-contract "$T/in" rs_peer_name_for Goomal_bot goomal goomal-2
     check "the third name is -3" eq "$(sed -n 2p "$T/out")" goomal-3
@@ -2263,6 +2298,7 @@ peer_done_rerun_changes_no_config_artifact peer_inputs_are_only_the_g2_set
 peer_remove_deletes_checkpoint_and_status_na peer_remove_interrupted_resumes peer_remove_with_nothing_set_up_is_done peer_remove_unreadable_peer_list_stops_before_any_change peer_remove_teardown_failure_is_a_fix peer_wait_pages_when_the_group_is_busy peer_remove_unit_delete_failure_is_a_fix peer_remove_reload_failure_is_a_fix peer_remove_one_of_two_restarts_poller peer_remove_one_of_two_interrupted_before_restart_finishes_that_removal
 peer_mac_bootout_then_bootstrap_order peer_mac_old_agent_is_not_accepted_as_the_updated_poller peer_changed_token_restarts_the_running_poller peer_without_part1_fixes peer_bridge_equals_main_refuses
 peer_different_bridge_id_without_replace_refuses peer_hello_timeout_fixes peer_wait_is_bounded_by_the_clock_not_by_the_loop_count peer_a_failed_merge_of_updates_leaves_no_temp_file peer_no_group_hello_fix_puts_the_rerun_before_the_hello peer_409_names_a_webhook_or_a_competing_poller peer_sole_candidate_needs_a_yes peer_hostile_username_refused
+bun_shim_fails_when_it_cannot_write_peers_json systemctl_shim_changes_the_running_state_only_with_now
 peer_name_second_collision_gets_3 peer_name_32_char_base_with_suffix_fits"
 
 # ── run ─────────────────────────────────────────────────────────────────
