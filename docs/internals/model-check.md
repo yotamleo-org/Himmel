@@ -39,8 +39,8 @@ The chief supplies these paths in the launching shell:
   skip without the pinned jar, and a missing-Java test matched loosely on
   ENOENT), a later change in `test/render.test.ts` (`608952484`,
   the render test uses a temp cache dir and a temp HOME for npm), and the
-  re-vendor to `bf0c7cd8` (pstack 0.15.42), instead requires
-  `403817bea2639d991d2cc23b4e2907646b85f3425c234736bb34abb29d918c26`.
+  re-vendors to `bf0c7cd8` (pstack 0.15.42) and `0b46ec39` (pstack 0.15.46), instead requires
+  `101703b74b084c2bbc497ca54900cf91da85507abff3d16c50c36cd31e5cb3c2`.
   `test-model-check-report.sh` fails if the vendored tree in the checkout stops
   hashing to this pin.
   That variant changes `run.ts` to forbid automatic installation and includes

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# scripts/t3/chief-threads-check.sh - find settled chief-role T3 Code threads.
+# scripts/t3/chief-threads-check.sh - find settled chief-role T3 Code threads, and unsettled
+# ones that hold an open linked PR (T3 settles a thread when its linked PR merges).
 #
 # Usage: chief-threads-check.sh [--wake]
 # Chief-role thread: title ends in -chief or -console (case-insensitive, as the T3 title
@@ -8,7 +9,10 @@
 # (default 24) ago. Prints "SETTLED <id> <title> <settledAt>" per remaining one; a suffix-only
 # match is marked "(report only: ...)". With --wake, only threads listed in
 # HIMMEL_T3_CHIEF_TITLES are sent a wake message through t3-send.sh (send rc printed).
-# rc 0 nothing to report; rc 1 something reported; rc 2 usage / list or filter failure.
+# Also prints "LINKED-PR <id> <title> linked=<n> open=<m>" for each unsettled chief-role thread
+# with pullRequestCount > 0 (any linked PR, open or merged: T3 re-settles a thread that holds a
+# merged linked PR at every idle), whatever the window; report only, never woken.
+# rc 0 nothing to report; rc 1 something reported (SETTLED or LINKED-PR); rc 2 usage / list or filter failure.
 # Env seams: T3_SEND_BIN, T3_SEND_PROJECT (as t3-send.sh), HIMMEL_T3_CHIEF_TITLES,
 # T3_CHIEF_CHECK_WINDOW_HOURS.
 # Platform: POSIX bash 3.2+, jq.
@@ -44,9 +48,19 @@ ROWS="$(printf '%s' "$LIST" | jq -r --arg extra "$TITLES" --argjson hours "$HOUR
     | select($listed or ($tt | ascii_downcase | test("-(chief|console)$")))
     | [.threadId, $t, .settledAt, (if $listed then "1" else "0" end)] | @tsv')" || die 2 "could not filter the thread list (bad settledAt or thread entry)"
 
-[ -n "$ROWS" ] || exit 0
+PRROWS="$(printf '%s' "$LIST" | jq -r --arg extra "$TITLES" '
+    ($extra | split("\n") | map(gsub("^\\s+|\\s+$"; "")) | map(select(. != ""))) as $names
+    | .[] | select(.settled != true)
+    | select((.threadId | startswith("import:")) | not)
+    | select((.pullRequestCount // 0) > 0)
+    | (.title // "") as $t | ($t | gsub("^\\s+|\\s+$"; "")) as $tt
+    | select(($names | index($tt) != null) or ($tt | ascii_downcase | test("-(chief|console)$")))
+    | [.threadId, $t, (.pullRequestCount | tostring), ((.openPullRequestCount // 0) | tostring)] | @tsv')" || die 2 "could not filter the thread list (bad thread entry)"
+
+[ -n "$ROWS" ] || [ -n "$PRROWS" ] || exit 0
 MSG="A chief-role thread was settled (T3 closed its process). You are woken by chief-threads-check; resume your role and tell your chief you are back."
 while IFS="$(printf '\t')" read -r id title at listed; do
+    [ -n "$id" ] || continue
     if [ "$listed" = 1 ]; then
         echo "SETTLED $id $title $at"
         if [ "$WAKE" = 1 ]; then
@@ -59,4 +73,9 @@ while IFS="$(printf '\t')" read -r id title at listed; do
 done <<EOF2
 $ROWS
 EOF2
+while IFS="$(printf '\t')" read -r id title n open; do
+    [ -n "$id" ] && echo "LINKED-PR $id $title linked=$n open=$open"
+done <<EOF3
+$PRROWS
+EOF3
 exit 1

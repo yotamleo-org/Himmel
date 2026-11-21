@@ -1559,6 +1559,319 @@ run asw "$GW" $K2 "$gcdoc_b" beta "${TTW[@]}" HOLDS_QUEUE_LOCK="$QL" GH_STUB_DEL
 same "S7 no helper beside holds.py: the base read falls back to gh on main and the push passes" "$RC" 0
 same "S7 no helper: the base read logs tok=main" "$(ttlog '^tok=main argv=pr view --json baseRefName')" 1
 
+# ---- a gc pass resumes where the last one stopped, so a slow alive prefix cannot starve a later dead row
+# Each pass is a fresh process (a restart) with the BOX shrunk, so a register bigger than one box takes several passes.
+GCSLOW="$W/bin/gh-gcslow"
+# shellcheck disable=SC2016  # the stub's $3 and ${GC_GH_SLEEP} stay literal
+printf '#!/usr/bin/env bash\nsleep "${GC_GH_SLEEP:-0}"\ncase "$3" in 7*) echo OPEN ;; *) echo MERGED ;; esac\n' > "$GCSLOW"
+chmod +x "$GCSLOW"
+cat > "$W/gcbox.py" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("holds", sys.argv[1]); h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
+h.BOX = float(sys.argv[2]); sys.exit(h.main(["gc", "--repo", sys.argv[3]]))
+PY
+# shellcheck disable=SC2329  # run through `run gcbox`
+gcbox() { # <BOX seconds> <repo>: one gc pass in a new process
+    python3 -I "$W/gcbox.py" "$SUT" "$1" "$2"
+}
+gone_or_row() { if [ -e "$1" ]; then echo row; else echo none; fi; }
+GCCUR() { printf '%s/gc-cursor.%s' "$REG" "$(esc "$1")"; }
+GCLOCK() { printf '%s/gc-lock.%s' "$REG" "$(esc "$1")"; }
+
+RG="$W/repo-gc"; mkdir -p "$RG"; git -C "$RG" init -q -b main
+for i in 1 2 3 4 5 6; do put_row "scripts/a$i.sh" "PROJ-970$i" lab "" pr "700$i" "$RG"; done
+put_row scripts/z1.sh PROJ-9791 lab "" pr 8001 "$RG"
+put_row scripts/z2.sh PROJ-9792 lab "" pr 8002 "$RG"
+for _ in 1 2 3 4 5 6 7 8; do HOLDS_GH="$GCSLOW" GC_GH_SLEEP=0.4 run gcbox 1.0 "$RG"; done
+same "9885 gc: a restarted boxed pass reaches the dead rows behind a slow alive prefix" \
+    "$(gone_or_row "$(rowf scripts/z1.sh "$RG")")/$(gone_or_row "$(rowf scripts/z2.sh "$RG")")" none/none
+same "9885 gc: ... and every alive row of the prefix is still there" \
+    "$(for i in 1 2 3 4 5 6; do gone_or_row "$(rowf "scripts/a$i.sh" "$RG")"; done | sort -u | tr '\n' ' ')" "row "
+contains "9885 gc: a pass says whether it covered the whole register" "$OUT" "cycle="
+same "9885 gc: the last pass of a swept register exits 0" "$RC" 0
+
+# a dead row added behind the cursor is reached on the next sweep; a corrupt or foreign cursor costs progress, never a crash or a removal
+put_row scripts/z3.sh PROJ-9793 lab "" pr 8003 "$RG"
+printf 'not json at all' > "$(GCCUR "$RG")"
+HOLDS_GH="$GCSLOW" run gcbox 10 "$RG"
+same "9885 gc: a corrupt cursor is read as no progress: exit 0 and the dead row goes" "$RC/$(gone_or_row "$(rowf scripts/z3.sh "$RG")")" "0/none"
+same "9885 gc: ... and the corrupt cursor is rewritten as one JSON object with a position and a cycle origin" "$(python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["v"], isinstance(d["dir"], int), isinstance(d["name"], str), isinstance(d["odir"], int), isinstance(d["oname"], str))' "$(GCCUR "$RG")" 2>&1)" "2 True True True True"
+put_row scripts/z4.sh PROJ-9794 lab "" pr 8004 "$RG"
+printf '{"v":9,"dir":0,"name":"scripts%%2Fz9.sh"}\n' > "$(GCCUR "$RG")"
+HOLDS_GH="$GCSLOW" run gcbox 10 "$RG"
+same "9885 gc: a cursor of a format it does not know is ignored, not obeyed" "$RC/$(gone_or_row "$(rowf scripts/z4.sh "$RG")")" "0/none"
+put_row scripts/z5.sh PROJ-9795 lab "" pr 8005 "$RG"
+printf '{"v":1,"dir":1,"name":"zzzz"}\n' > "$(GCCUR "$RG")"
+HOLDS_GH="$GCSLOW" run gcbox 10 "$RG"
+same "9885 gc: a cursor past the last row wraps to the first" "$RC/$(gone_or_row "$(rowf scripts/z5.sh "$RG")")" "0/none"
+put_row scripts/z6.sh PROJ-9796 lab "" pr 8006 "$RG"
+printf '{"v":1,"dir":0,"name":"scripts%%2Fa3-gone.sh"}\n' > "$(GCCUR "$RG")"
+HOLDS_GH="$GCSLOW" run gcbox 10 "$RG"
+same "9885 gc: a cursor naming a row that is gone resumes at the next name" "$RC/$(gone_or_row "$(rowf scripts/z6.sh "$RG")")" "0/none"
+
+# one gc pass at a time per repo: a second one exits 0 at once, judges nothing and moves nothing
+put_row scripts/z7.sh PROJ-9797 lab "" pr 8007 "$RG"
+python3 -I -c 'import fcntl, os, sys, time
+fd = os.open(sys.argv[1], os.O_RDWR | os.O_CREAT, 0o644); fcntl.flock(fd, fcntl.LOCK_EX); print("held", flush=True); time.sleep(float(sys.argv[2]))' "$(GCLOCK "$RG")" 4 > "$W/gcheld" &
+GCHOLD=$!
+n=0; while [ ! -s "$W/gcheld" ] && [ "$n" -lt 100 ]; do sleep 0.05; n=$((n + 1)); done
+t0=$(date +%s)
+HOLDS_GH="$GCSLOW" run gcbox 10 "$RG"
+t1=$(date +%s)
+same "9885 gc: a second pass while one is running exits 0 inside 3 s" "$RC/$([ "$((t1 - t0))" -lt 3 ] && echo fast || echo slow)" "0/fast"
+contains "9885 gc: ... and says it was busy, not that the cycle completed" "$OUT" "busy"
+not_contains "9885 gc: ... without claiming a swept cycle" "$OUT" "cycle=complete"
+same "9885 gc: ... and removes nothing while the other pass holds the register" "$(gone_or_row "$(rowf scripts/z7.sh "$RG")")" row
+wait "$GCHOLD"
+HOLDS_GH="$GCSLOW" run gcbox 10 "$RG"
+same "9885 gc: once the other pass is done the next one removes the row" "$RC/$(gone_or_row "$(rowf scripts/z7.sh "$RG")")" "0/none"
+
+# the _abs directory is part of the same sweep: a slow main directory cannot starve a dead bucket-file row
+RH="$W/repo-gc-abs"; mkdir -p "$RH"; git -C "$RH" init -q -b main
+rm -rf "$REG/_abs"; mkdir -p "$REG/_abs"
+for i in 1 2 3 4 5 6; do put_row "scripts/h$i.sh" "PROJ-971$i" lab "" pr "700$i" "$RH"; done
+ABSROW="$REG/_abs/$(esc /abs/bucket/h-dead.md)"
+printf 'PROJ-9719\tlab\t\tpr\t8009\n' > "$ABSROW"; touch -d '2 hours ago' "$ABSROW"
+for _ in 1 2 3 4 5 6 7 8; do HOLDS_GH="$GCSLOW" GC_GH_SLEEP=0.4 run gcbox 1.0 "$RH"; done
+same "9885 gc: a dead _abs row is reached behind a slow main directory" "$(gone_or_row "$ABSROW")" none
+
+# a row is never removed for its age or for a judge that timed out or faulted
+RU="$W/repo-gc-keep"; mkdir -p "$RU"; git -C "$RU" init -q -b main
+put_row scripts/u1.sh PROJ-9731 lab "" pr 7031 "$RU"; touch -d '30 days ago' "$(rowf scripts/u1.sh "$RU")"
+put_row scripts/u2.sh PROJ-9732 lab "$(mkdoc PROJ-9732-case.md)" brief "" "$RU"; touch -d '30 days ago' "$(rowf scripts/u2.sh "$RU")"
+printf '#!/usr/bin/env bash\nexit 2\n' > "$W/bin/ql-fault9885"; chmod +x "$W/bin/ql-fault9885"
+for _ in 1 2 3; do HOLDS_QUEUE_LOCK="$W/bin/ql-fault9885" HOLDS_GH="$GCSLOW" run gcbox 10 "$RU"; done
+same "9885 gc: a 30-day-old alive row (its PR is open) survives full sweeps" "$(gone_or_row "$(rowf scripts/u1.sh "$RU")")" row
+same "9885 gc: a 30-day-old row whose lock answer faults is unknown and survives full sweeps" "$(gone_or_row "$(rowf scripts/u2.sh "$RU")")" row
+for _ in 1 2 3; do HOLDS_GH="$GCSLOW" GC_GH_SLEEP=3 run gcbox 1.0 "$RU"; done
+same "9885 gc: ... and so does a row whose gh call outlasts the box" "$(gone_or_row "$(rowf scripts/u1.sh "$RU")")" row
+
+# the scheduled pass (gc --keep-aged-resume) keeps a row whose only sign of death is an unwrapped RESUME doc past 24 hours and counts it;
+# every other removal stands, and a hand-run gc, which is a person's decision, still releases such a row
+RAGE="$W/repo-gc-aged"; mkdir -p "$RAGE"; git -C "$RAGE" init -q -b main
+cat > "$W/bin/gh-gcaged" <<'STUB'
+#!/usr/bin/env bash
+case "$3" in 9871) echo MERGED ;; 9872) echo CLOSED ;; *) echo OPEN ;; esac
+STUB
+chmod +x "$W/bin/gh-gcaged"
+mkdir -p "$W/mirror-gcaged"
+printf -- '---\nkey: "PROJ-9867"\nstatus: "Done"\nstatusCategory: "Done"\n---\n' > "$W/mirror-gcaged/PROJ-9867.md"
+agedoc() { local f; f="$(mkdoc "$1" "$2")"; touch_ago "$3" "$f"; printf '%s' "$f"; }  # <name> <text> <age in seconds>
+PARKED=$'# resume doc\n- 10:00 PARKED-BANK stopped for takeover'
+WRAPPED=$'# resume doc\n- 09:00 WRAPPED — done'
+AG1="$(agedoc PROJ-9861-N1-RESUME.md "$PARKED" 108000)"
+put_row scripts/ag1.sh PROJ-9861 lab "$AG1" brief "" "$RAGE"
+put_row scripts/ag1b.sh PROJ-9861 lab "$AG1" brief "" "$RAGE"
+put_row scripts/ag2.sh PROJ-9862 lab "$(agedoc PROJ-9862-N1-RESUME.md "$WRAPPED" 3600)" brief "" "$RAGE"
+put_row scripts/ag2b.sh PROJ-9872 lab "$(agedoc PROJ-9872-N1-RESUME.md "$WRAPPED" 108000)" brief "" "$RAGE"
+agedoc PROJ-9863-N1b-RESUME.md '# resume doc' 108000 > /dev/null
+put_row scripts/ag3.sh PROJ-9863 lab "$(mkdoc PROJ-9863-N2-case.md $'> **Prior art:** PROJ-9863-N1b-RESUME.md\n- 10:00 WRAPPED — PR merged')" brief "" "$RAGE"
+put_row scripts/ag4.sh PROJ-9864 lab "$(agedoc PROJ-9864-N1-RESUME.md "$PARKED" 3600)" brief "" "$RAGE"
+put_row scripts/ag5.sh PROJ-9865 lab "$(agedoc PROJ-9865-N1-RESUME.md "$PARKED" 108000)" pr 9871 "$RAGE"
+put_row scripts/ag6.sh PROJ-9866 lab "$(agedoc PROJ-9866-N1-RESUME.md "$PARKED" 108000)" pr 9872 "$RAGE"
+put_row scripts/ag7.sh PROJ-9867 lab "$(agedoc PROJ-9867-N1-RESUME.md "$PARKED" 108000)" brief "" "$RAGE"
+put_row scripts/ag8.sh PROJ-9868 lab "$(mkdoc PROJ-9868-case.md)" brief "" "$RAGE"
+AG9="$(agedoc PROJ-9869-N1-RESUME.md "$PARKED" 108000)"; lock_hold "$AG9"
+put_row scripts/ag9.sh PROJ-9869 lab "$AG9" brief "" "$RAGE"
+put_row scripts/ag10.sh PROJ-9870 lab "$(agedoc PROJ-9870-N1-RESUME.md "$PARKED" 108000)" pr 9873 "$RAGE"
+: > "$(rowf scripts/ag4.sh "$RAGE").grant.PROJ-9861"
+: > "$(rowf scripts/ag4.sh "$RAGE").grant.PROJ-9862"
+agrow() { gone_or_row "$(rowf "scripts/$1.sh" "$RAGE")"; }
+run env HOLDS_GH="$W/bin/gh-gcaged" HOLDS_MIRROR="$W/mirror-gcaged" python3 -I "$SUT" gc --repo "$RAGE" --keep-aged-resume
+same "gc keep-aged: a scheduled pass exits 0" "$RC" 0
+same "gc keep-aged: ... and says how many rows it kept for a decision, and how many it removed" "$OUT" "gc visited=12 removed=7 cut=0 rows=12 cycle=complete waiting=2"
+same "gc keep-aged: a row whose unwrapped RESUME doc is past 24 hours, with no lock and no PR, stays (every row of the key)" "$(agrow ag1)/$(agrow ag1b)" row/row
+same "gc keep-aged: a fresh unwrapped RESUME doc keeps its row as before" "$(agrow ag4)" row
+same "gc keep-aged: a held lock keeps a row whose RESUME doc is past 24 hours, an open PR too" "$(agrow ag9)/$(agrow ag10)" row/row
+same "gc keep-aged: a WRAPPED RESUME doc, fresh or past 24 hours, still releases its row" "$(agrow ag2)/$(agrow ag2b)" none/none
+same "gc keep-aged: a RESUME doc a WRAPPED doc names is consumed, so its row is still removed" "$(agrow ag3)" none
+same "gc keep-aged: a merged or a closed PR still removes its row, whatever RESUME doc of the key is past 24 hours" "$(agrow ag5)/$(agrow ag6)" none/none
+same "gc keep-aged: a key the mirror reads Done still has its row removed" "$(agrow ag7)" none
+same "gc keep-aged: a row with no lock, no PR and no RESUME doc is still removed" "$(agrow ag8)" none
+same "gc keep-aged: the grant of a key whose rows wait stays, the grant of a removed key goes" "$(gone_or_row "$(rowf scripts/ag4.sh "$RAGE").grant.PROJ-9861")/$(gone_or_row "$(rowf scripts/ag4.sh "$RAGE").grant.PROJ-9862")" row/none
+run hp alive --repo "$RAGE" scripts/ag1.sh
+same "gc keep-aged: alive and read still call such a row dead (the barrier is unchanged)" "$OUT" dead
+run env HOLDS_GH="$W/bin/gh-gcaged" HOLDS_MIRROR="$W/mirror-gcaged" python3 -I "$SUT" gc --repo "$RAGE"
+same "gc keep-aged: a hand-run gc exits 0 and prints no count" "$RC/$OUT" "0/gc visited=5 removed=2 cut=0 rows=5 cycle=complete"
+same "gc keep-aged: ... it releases the rows that waited" "$(agrow ag1)/$(agrow ag1b)" none/none
+same "gc keep-aged: ... and leaves the rows that are alive" "$(agrow ag4)/$(agrow ag9)/$(agrow ag10)" row/row/row
+
+# the cursor and the lock sit in the holds root beside sync-denied, never among a register's rows: no verb sees them as a row
+GCNAMES="$(find "$REG" -maxdepth 1 -type f \( -name 'gc-cursor.*' -o -name 'gc-lock.*' \) -printf '%f\n' | sed 's/%2F.*//' | sort -u | tr '\n' ' ')"
+same "9885 gc: its state is two files per repo in the holds root, named like sync-denied" "$GCNAMES" "gc-cursor. gc-lock. "
+same "9885 gc: ... and no register directory holds a file the pass added" "$(find "$REG" -mindepth 2 -type f \( -name 'gc-*' -o -name '%00gc-*' \) | grep -c . || true)" 0
+READ_BEFORE="$(HOLDS_GH="$GCSLOW" python3 -I "$SUT" read --repo "$RG"; python3 -I "$SUT" summary --repo "$RG")"
+rm -f "$(GCCUR "$RG")" "$(GCLOCK "$RG")"
+READ_AFTER="$(HOLDS_GH="$GCSLOW" python3 -I "$SUT" read --repo "$RG"; python3 -I "$SUT" summary --repo "$RG")"
+same "9885 gc: read and summary answer the same with or without its cursor and lock files" "$READ_BEFORE" "$READ_AFTER"
+
+# ---- a cycle spans boxed passes, progress survives a death, a row the deadline cut is not called judged
+cat > "$W/bin/gh-gckeyed" <<'STUB'
+#!/usr/bin/env bash
+echo "$3" >> "$GC_GH_LOG"
+sleep "${GC_GH_SLEEP:-0}"
+[ "$3" != 7002 ] || sleep "${GC_GH_SLOW:-0}"
+case "$3" in 7*) echo OPEN ;; *) echo MERGED ;; esac
+STUB
+chmod +x "$W/bin/gh-gckeyed"
+GCKEYED="$W/bin/gh-gckeyed"; GCLOG="$W/gc-gh.log"
+gccur() { python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["name"])' "$(GCCUR "$1")" 2>/dev/null; }
+cat > "$W/gcpoison.py" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("holds", sys.argv[1]); h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
+orig = h.Judge.row_state
+def row_state(self, f, mt):
+    if f[0] == sys.argv[4]:
+        raise RuntimeError("synthetic poison row")
+    return orig(self, f, mt)
+h.Judge.row_state = row_state
+h.BOX = float(sys.argv[2]); sys.exit(h.main(["gc", "--repo", sys.argv[3]]))
+PY
+
+# a register bigger than one box: the cycle ends after one revolution across passes, each row judged once, orphan grants go at once
+RC1="$W/repo-cyc"; mkdir -p "$RC1"; git -C "$RC1" init -q -b main
+for i in $(seq 1 60); do put_row "scripts/c$(printf '%03d' "$i").sh" "PROJ-96$(printf '%02d' "$i")" lab "" pr "$((7200 + i))" "$RC1"; done
+ORPH="$(slugdir "$RC1")/$(esc scripts/gone.sh).grant.PROJ-9501"
+: > "$ORPH"; : > "$GCLOG"; done_at=""
+for p in 1 2 3 4 5 6 7 8; do
+    HOLDS_GH="$GCKEYED" GC_GH_LOG="$GCLOG" GC_GH_SLEEP=0.05 run gcbox 1.0 "$RC1"
+    [ "$p" != 1 ] || same "9885 cycle: an orphan grant goes on the first pass although the cycle is not over" "$(gone_or_row "$ORPH")" none
+    case "$OUT" in *cycle=complete*) done_at="$p"; break ;; esac
+done
+same "9885 cycle: a register bigger than one box completes its cycle across boxed passes" "$([ -n "$done_at" ] && [ "$done_at" -gt 1 ] && echo spans || echo "no:$done_at")" spans
+same "9885 cycle: ... and the only rows asked twice are the one the box cut at the end of a pass (at most one per pass), none a finished row" "$([ "$(sort "$GCLOG" | uniq -d | grep -c . || true)" -le "$((done_at - 1))" ] && echo ok || echo many)/$(sort -u "$GCLOG" | grep -c .)" "ok/60"
+
+# rows that come and go during a cycle: a row ahead of the cursor is judged in this cycle, one behind it in the next
+RD="$W/repo-cyc2"; mkdir -p "$RD"; git -C "$RD" init -q -b main
+for i in $(seq 1 40); do put_row "scripts/d$(printf '%03d' "$i").sh" "PROJ-95$(printf '%02d' "$i")" lab "" pr "$((7300 + i))" "$RD"; done
+: > "$GCLOG"
+HOLDS_GH="$GCKEYED" GC_GH_LOG="$GCLOG" GC_GH_SLEEP=0.05 run gcbox 1.0 "$RD"
+contains "9885 cycle: the first pass of a big register is partial" "$OUT" "cycle=partial"
+rm -f "$(rowf scripts/d001.sh "$RD")" "$(rowf scripts/d002.sh "$RD")" "$(rowf scripts/d003.sh "$RD")"
+put_row scripts/0000-behind.sh PROJ-9591 lab "" pr 8301 "$RD"
+put_row scripts/zzzz-ahead.sh PROJ-9592 lab "" pr 8302 "$RD"
+done_at=""
+for p in 1 2 3 4 5 6 7 8; do
+    HOLDS_GH="$GCKEYED" GC_GH_LOG="$GCLOG" GC_GH_SLEEP=0.05 run gcbox 1.0 "$RD"
+    case "$OUT" in *cycle=complete*) done_at="$p"; break ;; esac
+done
+same "9885 cycle: the cycle still completes after rows were removed and added behind and ahead of the cursor" "$([ -n "$done_at" ] && echo yes || echo no)" yes
+same "9885 cycle: a dead row added ahead of the cursor is judged in the same cycle" "$(gone_or_row "$(rowf scripts/zzzz-ahead.sh "$RD")")" none
+same "9885 cycle: a dead row added behind it waits for the next cycle" "$(gone_or_row "$(rowf scripts/0000-behind.sh "$RD")")" row
+done_at=""
+for p in 1 2 3 4 5 6 7 8; do
+    HOLDS_GH="$GCKEYED" GC_GH_LOG="$GCLOG" GC_GH_SLEEP=0.05 run gcbox 1.0 "$RD"
+    case "$OUT" in *cycle=complete*) done_at="$p"; break ;; esac
+done
+same "9885 cycle: ... and is judged when the next cycle comes round" "$([ -n "$done_at" ] && echo yes || echo no)/$(gone_or_row "$(rowf scripts/0000-behind.sh "$RD")")" "yes/none"
+
+# a cursor of the first format (a position only) is accepted and starts a cycle there; the next write is the new format
+RV="$W/repo-cyc3"; mkdir -p "$RV"; git -C "$RV" init -q -b main
+put_row scripts/v1.sh PROJ-9611 lab "" pr 8611 "$RV"; put_row scripts/v2.sh PROJ-9612 lab "" pr 8612 "$RV"
+put_row scripts/v3.sh PROJ-9613 lab "" pr 8613 "$RV"; put_row scripts/v4.sh PROJ-9614 lab "" pr 7614 "$RV"
+printf '{"v":1,"dir":0,"name":"scripts%%2Fv2.sh"}\n' > "$(GCCUR "$RV")"
+HOLDS_GH="$GCKEYED" GC_GH_LOG="$GCLOG" run gcbox 10 "$RV"
+same "9885 cycle: a cursor of the first format is read as a cycle started at its position (every row judged)" "$(gone_or_row "$(rowf scripts/v1.sh "$RV")")/$(gone_or_row "$(rowf scripts/v3.sh "$RV")")/$(gone_or_row "$(rowf scripts/v4.sh "$RV")")" "none/none/row"
+contains "9885 cycle: ... and that pass completes the cycle" "$OUT" "cycle=complete"
+same "9885 cycle: ... and rewrites the cursor in the new format" "$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["v"])' "$(GCCUR "$RV")" 2>&1)" 2
+
+# a row that raises stops that pass, but the next one starts behind it: the tail is never starved by a crash
+RP="$W/repo-poison"; mkdir -p "$RP"; git -C "$RP" init -q -b main
+put_row scripts/p1.sh PROJ-9411 lab "" pr 8401 "$RP"; put_row scripts/p2.sh PROJ-9412 lab "" pr 8402 "$RP"; put_row scripts/p3.sh PROJ-9413 lab "" pr 8403 "$RP"
+put_row scripts/px.sh PROJ-9419 lab "" pr 7401 "$RP"
+put_row scripts/z1.sh PROJ-9421 lab "" pr 8404 "$RP"; put_row scripts/z2.sh PROJ-9422 lab "" pr 8405 "$RP"; put_row scripts/z3.sh PROJ-9423 lab "" pr 8406 "$RP"
+HOLDS_GH="$GCKEYED" GC_GH_LOG="$W/gc-gh-poison.log" run python3 -I "$W/gcpoison.py" "$SUT" 30 "$RP" PROJ-9419
+same "9885 progress: a pass that hits a raising row exits 2 and has removed the dead rows before it" "$RC/$(gone_or_row "$(rowf scripts/p1.sh "$RP")")/$(gone_or_row "$(rowf scripts/p3.sh "$RP")")" "2/none/none"
+HOLDS_GH="$GCKEYED" GC_GH_LOG="$W/gc-gh-poison.log" run python3 -I "$W/gcpoison.py" "$SUT" 30 "$RP" PROJ-9419
+same "9885 progress: the next pass gets past the raising row to the dead rows behind it" "$(gone_or_row "$(rowf scripts/z1.sh "$RP")")/$(gone_or_row "$(rowf scripts/z3.sh "$RP")")" "none/none"
+same "9885 progress: ... and the raising row itself is kept, never read as dead" "$(gone_or_row "$(rowf scripts/px.sh "$RP")")" row
+
+# a pass killed mid-sweep leaves its place; the next pass starts behind it, not at the first row
+RK="$W/repo-kill"; mkdir -p "$RK"; git -C "$RK" init -q -b main
+for i in 1 2 3 4 5 6 7 8; do put_row "scripts/k$i.sh" "PROJ-948$i" lab "" pr "710$i" "$RK"; done
+: > "$GCLOG"
+HOLDS_GH="$GCKEYED" GC_GH_LOG="$GCLOG" GC_GH_SLEEP=0.3 timeout -s KILL 1.5 python3 -I "$W/gcbox.py" "$SUT" 30 "$RK" > /dev/null 2>&1
+same "9885 progress: the test's pass was killed mid-sweep" "$?" 137
+same "9885 progress: a pass killed mid-sweep leaves a cursor" "$([ -s "$(GCCUR "$RK")" ] && echo cursor || echo none)" cursor
+KN="$(gccur "$RK")"; KN="${KN#scripts%2Fk}"; KN="${KN%.sh}"
+: > "$GCLOG"
+HOLDS_GH="$GCKEYED" GC_GH_LOG="$GCLOG" run gcbox 30 "$RK"
+same "9885 progress: the next pass starts behind the killed pass's place" "$(head -n 1 "$GCLOG")" "$((7100 + KN + 1))"  # read-sink-ok: GCLOG is this suite's own stub log under its scratch dir
+
+# a row the deadline cut is not called judged: it is retried first next pass, unless it was already the first of a pass
+RF="$W/repo-cut"; mkdir -p "$RF"; git -C "$RF" init -q -b main
+put_row scripts/f1.sh PROJ-9441 lab "" pr 7001 "$RF"; put_row scripts/f2.sh PROJ-9442 lab "" pr 7002 "$RF"
+put_row scripts/f3.sh PROJ-9443 lab "" pr 7003 "$RF"; put_row scripts/f4.sh PROJ-9444 lab "" pr 7004 "$RF"
+put_row scripts/f9.sh PROJ-9449 lab "" pr 8449 "$RF"
+: > "$GCLOG"
+HOLDS_GH="$GCKEYED" GC_GH_LOG="$GCLOG" GC_GH_SLOW=3 run gcbox 1.0 "$RF"
+same "9885 cut: a row the box cut after another row is not passed over (the cursor stays on the row before it)" "$(gccur "$RF")" "scripts%2Ff1.sh"
+contains "9885 cut: ... and the pass counts it as cut, not judged" "$OUT" "cut=1"
+contains "9885 cut: ... and is partial" "$OUT" "cycle=partial"
+HOLDS_GH="$GCKEYED" GC_GH_LOG="$GCLOG" GC_GH_SLOW=3 run gcbox 1.0 "$RF"
+same "9885 cut: a row cut as the first of a pass is passed over, so it cannot starve the rows behind it" "$(gccur "$RF")" "scripts%2Ff2.sh"
+contains "9885 cut: ... and is still reported as cut" "$OUT" "cut=1"
+HOLDS_GH="$GCKEYED" GC_GH_LOG="$GCLOG" GC_GH_SLOW=3 run gcbox 1.0 "$RF"
+contains "9885 cut: the pass behind the slow row completes the cycle" "$OUT" "cycle=complete"
+same "9885 cut: ... removed the dead tail and kept every alive row (the cut one included)" "$(gone_or_row "$(rowf scripts/f9.sh "$RF")")/$(gone_or_row "$(rowf scripts/f2.sh "$RF")")/$(gone_or_row "$(rowf scripts/f4.sh "$RF")")" "none/row/row"
+
+# one predicate says whether a repo is gone, for the doctor and the cadence alike: only a real ENOENT is gone
+mkdir -p "$W/gone-parent"
+run hp repo-gone --repo "$W/gone-parent/no-such-repo"
+same "9885 gone: a missing path under a searchable directory is gone (exit 0)" "$RC" 0
+run hp repo-gone --repo "$R"
+same "9885 gone: an existing repo is not gone (exit 1)" "$RC" 1
+run hp repo-gone --repo relative/path
+same "9885 gone: a relative path is not proven gone (exit 1)" "$RC" 1
+ln -s "$W/gone-parent/nowhere" "$W/gone-dangling"
+run hp repo-gone --repo "$W/gone-dangling"
+same "9885 gone: a dangling symlink still exists (exit 1)" "$RC" 1
+: > "$W/gone-file"
+run hp repo-gone --repo "$W/gone-file"
+same "9885 gone: a path that exists as a file is not gone (exit 1)" "$RC" 1
+if [ "$(id -u)" -ne 0 ]; then
+    mkdir -p "$W/gone-locked/under"; chmod 000 "$W/gone-locked"
+    run hp repo-gone --repo "$W/gone-locked/under"
+    chmod 700 "$W/gone-locked"
+    same "9885 gone: a path behind a directory this user cannot search is unknown, not gone (exit 1)" "$RC" 1
+else
+    printf 'SKIP - 9885 gone: unsearchable parent (root searches any directory)\n'
+fi
+
+# A failed cursor write gives one diagnostic for the sweep, with unknown rows kept.
+cat > "$W/gcwritefail.py" <<'PY'
+import errno, importlib.util, sys
+spec = importlib.util.spec_from_file_location("holds", sys.argv[1])
+h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
+replace = h.os.replace
+cursor = h.gc_state_path("gc-cursor", h.primary_of(sys.argv[2]))
+def fail_cursor(src, dst):
+    if dst == cursor:
+        raise OSError(errno.ENOSPC, "fixture cursor storage full")
+    return replace(src, dst)
+h.os.replace = fail_cursor
+sys.exit(h.main(["gc", "--repo", sys.argv[2]]))
+PY
+cat > "$W/bin/gh-gcwritefail" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+chmod +x "$W/bin/gh-gcwritefail"
+RW="$W/repo-cursor-write-failure"; mkdir -p "$RW"; git -C "$RW" init -q -b main
+for i in $(seq 1 30); do put_row "scripts/w$i.sh" "PROJ-97$i" lab "" pr "$((7500 + i))" "$RW"; done
+HOLDS_GH="$W/bin/gh-gcwritefail" run python3 -I "$W/gcwritefail.py" "$SUT" "$RW"
+same "gc cursor write failure keeps the sweep usable" "$RC" 0
+same "gc cursor write failure emits one diagnostic per sweep, not one per row" "$(printf '%s\n' "$ERR" | grep -c '^holds: cannot write the gc cursor:' || true)" 1
+same "gc cursor write failure preserves unknown claims at both ends of the sweep" "$(gone_or_row "$(rowf scripts/w1.sh "$RW")")/$(gone_or_row "$(rowf scripts/w30.sh "$RW")")" "row/row"
+
+# a crash residue of a cursor write is only a stray file in the holds root: gc and read ignore it
+: > "$REG/%00999.gc-cursor"
+HOLDS_GH="$GCKEYED" GC_GH_LOG="$GCLOG" run gcbox 10 "$RV"
+same "9885 residue: a leftover %00<pid>.gc-cursor in the holds root does not disturb gc" "$RC" 0
+run hp read --repo "$RV"
+same "9885 residue: ... or read" "$RC" 0
+rm -f "$REG/%00999.gc-cursor"
+
 # ---- the real register was never touched
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $W, a path unique to this run: none may appear in the real register.

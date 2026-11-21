@@ -122,12 +122,14 @@ assert_declared_within_clamp() {
     # present-but-invalid entry — `.timeout // "unset"` treated `false` as
     # empty and reported it as "unset", hiding the real invalid value even
     # though the entry was still correctly rejected. Reserve "unset" for a
-    # genuinely absent key.
+    # genuinely absent key. The entry is named by its hook script: the last
+    # token that ends in .sh (a trailing verb such as `cleanup` is an argument),
+    # else its last token.
     offenders="$(jq -r --argjson clamp "$CODEX_SESSION_END_CLAMP" '
         .hooks.SessionEnd // [] | .[] | .hooks[]
         | select(.type == "command")
         | select((.timeout | type) != "number" or (.timeout | floor) != .timeout or .timeout < 1 or .timeout > $clamp)
-        | "\(.command | split(" ") | .[-1] | split("/") | .[-1] | gsub("\"";""))=\(if has("timeout") then (.timeout | tostring) else "unset" end)s"' "$config" 2>/dev/null)"
+        | "\(.command | split(" ") as $t | (($t | map(select(test("\\.sh\"?$"))) | .[-1]) // $t[-1]) | split("/") | .[-1] | gsub("\"";""))=\(if has("timeout") then (.timeout | tostring) else "unset" end)s"' "$config" 2>/dev/null)"
     offenders_rc=$?
     if [ "$offenders_rc" -ne 0 ]; then
         fail "$label: $config failed to parse while scanning for offending timeouts (jq exit $offenders_rc)"
@@ -212,9 +214,11 @@ else
             while IFS= read -r command; do
                 [ -n "$command" ] || continue
                 tested_commands=$((tested_commands + 1))
-                # Last whitespace-separated token is the hook script path; its basename
-                # is the label.
-                label="$(printf '%s' "$command" | awk '{print $NF}' | tr -d '"' | awk -F/ '{print $NF}')"
+                # The last whitespace-separated token that names a .sh file is the hook
+                # script (a trailing verb such as `cleanup` is its argument); its basename
+                # is the label. A command with no .sh token is labelled by its last token.
+                label="$(printf '%s' "$command" | tr -d '"' | tr ' ' '\n' | grep -E '\.sh$' | tail -n 1 | awk -F/ '{print $NF}')"
+                [ -n "$label" ] || label="$(printf '%s' "$command" | awk '{print $NF}' | tr -d '"' | awk -F/ '{print $NF}')"
                 if [ "$ns_supported" -eq 1 ]; then
                     t0=$(date +%s%N)
                 else
@@ -318,7 +322,7 @@ while IFS= read -r script_path; do
     else
         fail "SessionEnd $label runs synchronously — it cannot fit the codex ${CODEX_SESSION_END_CLAMP}s clamp"
     fi
-done < <(jq -r '.hooks.SessionEnd // [] | .[] | .hooks[] | select(.type == "command") | .command | split(" ") | .[-1] | gsub("\"";"")' "$PLUGIN_HOOKS")
+done < <(jq -r '.hooks.SessionEnd // [] | .[] | .hooks[] | select(.type == "command") | .command | split(" ") as $t | (($t | map(select(test("\\.sh\"?$"))) | .[-1]) // $t[-1]) | gsub("\"";"")' "$PLUGIN_HOOKS")
 
 if [ "$tested_scripts" -lt 1 ]; then
     fail "session-end-detach-guard: enumerated zero SessionEnd hook scripts from $PLUGIN_HOOKS (an emptied/truncated/malformed config must not read as green)"

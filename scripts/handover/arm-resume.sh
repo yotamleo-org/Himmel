@@ -247,6 +247,9 @@
 #      exhaustion, burned the fleet on 2026-09-07). Checked at
 #      ARM time (before the scheduler entry is created), --dry-run exempt.
 #      Set FLEET_CAP_OK=1 in the LAUNCHING shell to arm anyway.
+#      Also 22: managed fleet control refused — the scope `resolve` failed,
+#      the fleet slots could not be read, or scripts/lib/fleet-launch.sh could
+#      not be loaded to build the managed runtime line.
 #   23 restart cap refused — a --limit-reset arm found three `armed-resume`
 #      start rows for this handover's task in the flow-run ledger inside the
 #      last 5 minutes (a crash loop). --force overrides. A --limit-reset
@@ -1301,9 +1304,9 @@ if [ "$DRY_RUN" -eq 0 ]; then
             smart) [ -n "${RESUME_SLOT_CACHE:-}" ] || _arm_skip_refresh="" ;;
             auto) _arm_skip_refresh="" ;;
         esac
-        _arm_fleet_token="$(CADENCE_USAGE_WORKER="$_arm_fleet_worker" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_CALLER_PID="$$" CADENCE_USAGE_SKIP_REFRESH="${_arm_skip_refresh:-${CADENCE_USAGE_SKIP_REFRESH:-}}" bash "$_ARM_BANK_PREFLIGHT" </dev/null)"
+        _arm_fleet_token="$(FLEET_LAUNCH_ATTEMPT='' FLEET_LAUNCH_MANIFEST='' FLEET_LAUNCH_DOC="$HANDOVER_PATH" CADENCE_USAGE_WORKER="$_arm_fleet_worker" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_CALLER_PID="$$" CADENCE_USAGE_SKIP_REFRESH="${_arm_skip_refresh:-${CADENCE_USAGE_SKIP_REFRESH:-}}" bash "$_ARM_BANK_PREFLIGHT" </dev/null)"
         if [ "$_arm_fleet_token" = SKIPPED-FLEET ]; then
-            echo "ERR arm-resume: fleet-size cap reached (bank-preflight: SKIPPED-FLEET) — refusing to arm another worker. Override with FLEET_CAP_OK=1 in the LAUNCHING shell." >&2
+            echo "ERR arm-resume: fleet-size cap reached or managed control refused (bank-preflight: SKIPPED-FLEET) — refusing to arm another worker; see the cause above." >&2
             exit 22
         fi
         # Not SKIPPED-FLEET: usage-preflight.sh either created a reservation
@@ -1312,6 +1315,11 @@ if [ "$DRY_RUN" -eq 0 ]; then
         # was never created is a safe no-op, so track it unconditionally
         # rather than trying to distinguish the two from the token alone.
         _ARM_FLEET_SLOTS="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}"
+        FLEET_LAUNCH_ATTEMPT='' FLEET_LAUNCH_MANIFEST='' py_armor_capture -I "$SCRIPT_DIR/../lib/fleet_runtime.py" resolve --doc "$HANDOVER_PATH" || exit 22
+        _arm_fleet_scope="$PY_ARMOR_OUT"
+        if [ "$(printf '%s\n' "$_arm_fleet_scope" | jq -r .managed)" = true ]; then
+            _ARM_FLEET_SLOTS=$(printf '%s\n' "$_arm_fleet_scope" | jq -er .slots) || exit 22
+        fi
         _ARM_FLEET_RESERVED_LEG="$_arm_fleet_worker"
     fi
     _arm_phase_done "fleet-preflight"
@@ -4458,6 +4466,20 @@ fi
 # The crontab and `at` bodies both export HIMMEL_ARMED_RELAUNCH=1 so a
 # top-level armed session can self-exit with SIGTERM once its successor is
 # armed (documented in afk-mode.md).
+_arm_runtime_body() {
+    local scope
+    if py_armor_capture -I "$SCRIPT_DIR/../lib/fleet_runtime.py" resolve --doc "$HANDOVER_PATH"; then scope=$PY_ARMOR_OUT; else scope='{"managed":true}'; fi
+    if [ "$(printf '%s\n' "$scope" | jq -r .managed)" != true ]; then printf '%s' "$1"; return 0; fi
+    # shellcheck source=../lib/fleet-launch.sh
+    . "$SCRIPT_DIR/../lib/fleet-launch.sh" || {
+        echo "ERR arm-resume: cannot source $SCRIPT_DIR/../lib/fleet-launch.sh -- refusing to arm a managed launch without its runtime line." >&2
+        exit 22
+    }
+    # $2, when given, is shell text that runs first inside the bash -c: a function
+    # defined in the shell that runs this line is not visible in that new bash.
+    fleet_launch_runtime_line "$SCRIPT_DIR/../lib/fleet_runtime.py" "$HANDOVER_PATH" "${SESSION_NAME:-$TASK_NAME}" "$(printf '%s\n' "$scope" | jq -r '.manifest // ""')" "${2-}$1"
+}
+
 _crontab_schedule() {
     # crontab fallback — crontab entries are RECURRING, so the
     # entry SELF-REMOVES as its first action: the RUNNER FILE (not the
@@ -4628,6 +4650,8 @@ fi"
         tail="{ unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN NO_COLOR UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED; export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1; $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1 || { $q_hb proxy --port $HEADROOM_PROXY_PORT >> $q_log 2>&1 & sleep 3; }; if $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1; then echo \"\$(date) arm=$TASK_NAME mode=proxied\" >> $q_log; ANTHROPIC_BASE_URL=http://127.0.0.1:$HEADROOM_PROXY_PORT HEADROOM_OFFLINE=1 ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact; else echo \"\$(date) arm=$TASK_NAME mode=bare-fallback\" >> $q_log; ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact; fi; }"
     fi
     _arm_require_worker_autocompact_argv "$tail"
+    # Scheduled bodies re-enter persisted admission when fired, including after restart.
+    tail=$(_arm_runtime_body "$tail")
     local q_flow_lib q_task q_note
     q_flow_lib=$(printf '%q' "$SCRIPT_DIR/../lib/flow-run-ledger.sh")
     q_task=$(printf '%q' "$TASK_NAME")
@@ -5106,6 +5130,9 @@ else
     echo \"WARN arm-resume: $q_pty_lib missing -- claude launches WITHOUT a pty\" >&2
 fi
 "
+                # A managed launch calls claude inside the runtime's own bash -c, which
+                # does not inherit the function above, so the prelude goes first inside it.
+                launch_lines=$(_arm_runtime_body "$launch_lines" "$at_pty_prelude")
                 # bus rebind of the resumed pid (opt-in, own line).
                 local at_bus_line
                 at_bus_line=$(_bus_rebind_line "${ARM_RESUME_LOG_DIR:-$HOME/.himmel/arm-resume}/$TASK_NAME.log")

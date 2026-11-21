@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { chmodSync, closeSync as closeFd, existsSync, mkdtempSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, truncateSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, cpSync, closeSync as closeFd, existsSync, mkdtempSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
@@ -12,13 +12,42 @@ import {
 import { judgeOperatorRows } from './judge-input.js';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { Command } from 'commander';
+import * as pinned from './pinned.js';
+import * as ledger from './ledger.js';
 
 // A hook that runs after a minerva script returns, to edit the spec mid-sign.
 const afterMinerva = vi.hoisted(() => ({ fn: null as null | (() => void) }));
+// Relocate only the module's anchor lookup into a disposable primary. Every Git identity/registration
+// query still executes Git, and both validator files are copied byte-for-byte from the real primary.
+const sourceFixture = vi.hoisted(() => ({ primary: null as string | null }));
+const signingLock = vi.hoisted(() => ({ fn: null as null | (() => void) }));
+vi.mock('node:fs', async (orig) => {
+  const m = await orig<typeof import('node:fs')>();
+  return { ...m, openSync: ((...a: Parameters<typeof m.openSync>) => {
+    const fd = m.openSync(...a);
+    if (String(a[0]).endsWith('/release/R1/.lock')) {
+      const fn = signingLock.fn;
+      signingLock.fn = null;
+      fn?.();
+    }
+    return fd;
+  }) as typeof m.openSync };
+});
+const cappedCalls = vi.hoisted(() => [] as string[][]);
+// The capped carry v2 hook: every capped-fold spawn attempt is recorded before the real call; armed, a `--keys` spawn is answered by `fn` instead of a child.
+const cappedSpawn = vi.hoisted(() => ({ fn: null as null | ((args: string[], options: unknown) => string), options: [] as unknown[], attempts: [] as string[][] }));
 vi.mock('node:child_process', async (orig) => {
   const m = await orig<typeof import('node:child_process')>();
   const execFileSync = ((...a: Parameters<typeof m.execFileSync>) => {
+    const args = a[1] as string[] | undefined;
+    if (sourceFixture.primary && a[0] === 'git' && args?.[0] === '-C'
+      && args[1] === dirname(fileURLToPath(import.meta.url)) && args.at(-1) === '--git-common-dir') {
+      return m.execFileSync('git', ['-C', sourceFixture.primary, ...args.slice(2)], a[2]);
+    }
+    if (args?.[1] === 'capped-fold') cappedSpawn.attempts.push([...args]);
+    if (cappedSpawn.fn && args?.[1] === 'capped-fold' && args.includes('--keys')) { cappedSpawn.options.push(a[2]); cappedCalls.push([...args]); return cappedSpawn.fn([...args], a[2]) as never; }
     const r = m.execFileSync(...a);
+    if ((a[1] as string[] | undefined)?.[1] === 'capped-fold') cappedCalls.push([...(a[1] as string[])]);
     if (String((a[1] as string[] | undefined)?.[0] ?? '').endsWith('minerva-trace-lint.sh')) afterMinerva.fn?.();
     return r;
   }) as typeof m.execFileSync;
@@ -263,6 +292,379 @@ describe('release engine', () => {
     expect((await applyThenReplay(r.id)).phase).toBe('receipted');
     const rows = readFileSync(process.env.HIMMEL_ADMISSIONS_LEDGER!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
     expect(rows.map((x) => [x.kind, x.key, x.version, x.ruling])).toEqual([['rm-admit', 'K-2', 'v1', r.id]]);
+  });
+
+  // 8731: the Jira write lands, then the admissions ledger refuses the row. The ruling stays `applied`, state names the
+  // unfinished action and its owner, and the next normal run writes the missing row and receipt exactly once.
+  describe('8731 interruption between the Jira write and the admissions row', () => {
+    const ledger = () => process.env.HIMMEL_ADMISSIONS_LEDGER!;
+    const rows = () => (existsSync(ledger()) ? readFileSync(ledger(), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
+    const lockLedgerAfterJiraWrite = () => {
+      const write = jira.setFixVersion.bind(jira);
+      jira.setFixVersion = async (k, op, v) => {
+        await write(k, op, v);
+        chmodSync(ledger(), 0o444);
+      };
+    };
+    const noJudge: Judge = async () => { throw new Error('no request is claimed, so the judge is never asked'); };
+
+    it('INTAKE: partial state is visible with an empty queue and a fresh mirror, and the next run converges once', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: ['v1'] }]);
+      const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+      claim(ctx(rmEnv));
+      const r = admit(q.req);
+      lockLedgerAfterJiraWrite();
+      await expect(apply(ctx(rmEnv), r.id)).rejects.toThrow(/EACCES/);
+      leaseRelease(ctx(rmEnv));
+      expect(jira.fv.get('K-2')).toEqual(['v1']);
+      expect(rows().filter((x) => x.kind === 'rm-admit' && x.key === 'K-2')).toEqual([]);
+      const s = state(ctx());
+      expect(s.requests.open).toEqual([]);
+      expect(s.unfinished_rulings).toEqual([{
+        ruling: r.id, req: q.req, key: 'K-2', phase: 'applied', op: 'add backlog→v1', status: 'replay', owner: 'release-manager', next: 'jira release rm-run R1', observed: null,
+      }]);
+      chmodSync(ledger(), 0o644);
+      const lines = await rmRun(ctx(), noJudge);
+      expect(lines.join('\n')).toContain(`RULING ${r.id}`);
+      expect(rows().filter((x) => x.kind === 'rm-admit' && x.key === 'K-2')).toHaveLength(1);
+      expect(state(ctx()).unfinished_rulings).toEqual([]);
+      expect(jira.posted).toBe(1);
+      expect(await rmRun(ctx(), noJudge)).toEqual(['RM-RUN R1: nothing pending']);
+      expect(rows().filter((x) => x.kind === 'rm-admit' && x.key === 'K-2')).toHaveLength(1);
+      expect(jira.posted).toBe(1);
+    });
+
+    it('MOVE across versions: either half of the two rows may be missing and each is written once', async () => {
+      await setup();
+      jira.fv.set('K-2', ['v1']);
+      const q = request(ctx(), { verb: 'REVERSION', key: 'K-2', from_v: 'v1', to_v: 'v2', why: 'w', evidence: {}, from: 'console' });
+      claim(ctx(rmEnv));
+      const r = admit(q.req, { outcome: 'MOVE', op: { kind: 'move', from_v: 'v1', to_v: 'v2' } });
+      lockLedgerAfterJiraWrite();
+      await expect(apply(ctx(rmEnv), r.id)).rejects.toThrow(/EACCES/);
+      leaseRelease(ctx(rmEnv));
+      expect(jira.fv.get('K-2')).toEqual(['v2']);
+      expect(state(ctx()).unfinished_rulings).toMatchObject([{ ruling: r.id, phase: 'applied', op: 'move v1→v2' }]);
+      chmodSync(ledger(), 0o644);
+      // The destination row landed before the interruption; only the source row is missing.
+      appendAdmission({ version: 'v2', key: 'K-2', kind: 'rm-admit', reason: 'regression: breaks the console', by: 'rm-1', ruling: r.id });
+      await rmRun(ctx(), noJudge);
+      const mine = rows().filter((x) => x.key === 'K-2').map((x) => [x.kind, x.version, x.ruling]);
+      expect(mine).toEqual([['rm-admit', 'v2', r.id], ['rm-remove', 'v1', r.id]]);
+      await rmRun(ctx(), noJudge);
+      expect(rows().filter((x) => x.key === 'K-2')).toHaveLength(2);
+      expect(state(ctx()).unfinished_rulings).toEqual([]);
+    });
+
+    it('an already-member no-op write still gets its row and receipt on replay, with no further Jira write', async () => {
+      await setup();
+      jira.fv.set('K-2', ['v1']);
+      const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+      claim(ctx(rmEnv));
+      const r = admit(q.req);
+      const read = jira.fixVersions.bind(jira);
+      let reads = 0;
+      jira.fixVersions = async (k) => { const got = await read(k); if (++reads === 2) chmodSync(ledger(), 0o444); return got; };
+      await expect(apply(ctx(rmEnv), r.id)).rejects.toThrow(/EACCES/);
+      leaseRelease(ctx(rmEnv));
+      chmodSync(ledger(), 0o644);
+      expect(state(ctx()).unfinished_rulings).toMatchObject([{ ruling: r.id, phase: 'applied' }]);
+      await rmRun(ctx(), noJudge);
+      expect(jira.writes).toBe(0);
+      expect(rows().filter((x) => x.kind === 'rm-admit' && x.key === 'K-2')).toHaveLength(1);
+      expect(state(ctx()).unfinished_rulings).toEqual([]);
+    });
+
+    it('an intent whose Jira write never landed is listed too, and a half-applied move stays a hand fix', async () => {
+      await setup();
+      const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+      claim(ctx(rmEnv));
+      const r = admit(q.req);
+      expect(state(ctx()).unfinished_rulings).toMatchObject([{ ruling: r.id, phase: 'intent', op: 'add backlog→v1' }]);
+    });
+  });
+
+  // B (8731): the cross-version move writes the source removal and then the destination add; a crash between them leaves the key in neither.
+  describe('8731 B: a move interrupted after the source removal', () => {
+    const ledger = () => process.env.HIMMEL_ADMISSIONS_LEDGER!;
+    const rows = () => (existsSync(ledger()) ? readFileSync(ledger(), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
+    const noJudge: Judge = async () => { throw new Error('no request is claimed, so the judge is never asked'); };
+    const journalFile = () => join(root, 'version-writes.jsonl');
+    const withJournal = (c: Ctx): Ctx => ({ ...c, env: { ...c.env, HIMMEL_VERSION_WRITES: journalFile() } });
+    const journal = (row: Record<string, unknown>) => writeFileSync(journalFile(), `${JSON.stringify(row)}\n`, { flag: 'a' });
+    const rmWrite = (extra: Record<string, unknown> = {}) => ({ ts: '2026-10-21T10:00:01.000Z', key: 'K-2', from: ['v1'], to: [], mechanism: 'rm-apply', entry: '5001', ...extra });
+
+    const decide = (at: string, keys: string[], op: string, from_v: string | null, to_v: string | null) =>
+      operatorDecision({ ...ctx(), now: () => new Date(at) }, { decision: '151', keys, op, from_v, to_v, verbatim: 'x' });
+
+    async function interrupted(opts: { release?: boolean; required?: boolean; operator?: boolean } = {}) {
+      await setup();
+      const source = opts.required ? 'v2' : 'v1';
+      const destination = opts.required ? 'v1' : 'v2';
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: [source] }]);
+      jira.fv.set('K-2', [source]);
+      const cited = opts.operator ? decide('2026-10-21T09:00:00.000Z', ['K-2'], 'move', source, destination) : undefined;
+      const q = request(ctx(), { verb: opts.required ? 'INTAKE' : 'REVERSION', key: 'K-2', from_v: source, to_v: destination,
+        why: 'w', evidence: opts.required ? { follow_up_of: 'K-1', remainder: true } : {}, from: 'console' });
+      claim(ctx(rmEnv));
+      const r = admit(q.req, { outcome: opts.required ? 'ADMIT' : 'MOVE', op: { kind: 'move', from_v: source, to_v: destination },
+        ...(cited ? { authority: { kind: 'operator' as const, ref: cited.id } } : {}) });
+      const write = jira.setFixVersion.bind(jira);
+      jira.setFixVersion = async (k, op, v) => {
+        if (op === 'add') throw new Error('crash before the destination add');
+        await write(k, op, v);
+      };
+      await expect(apply(ctx(rmEnv), r.id)).rejects.toThrow('crash before the destination add');
+      jira.setFixVersion = write;
+      if (opts.release !== false) leaseRelease(ctx(rmEnv));
+      expect(jira.fv.get('K-2')).toEqual([]);
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: [] }]);
+      return { q, r };
+    }
+
+    it('keeps required-parent and unfinished blocked-move actions consistent', async () => {
+      const { r } = await interrupted({ required: true });
+      const result = state(ctx());
+      const unfinished = result.unfinished_rulings[0];
+      expect(unfinished).toMatchObject({ ruling: r.id, status: 'blocked', owner: 'chief' });
+      expect(result.remainder_conflicts).toMatchObject([{ parent: 'K-1', child: 'K-2', ruling: r.id,
+        owner: 'chief', next: unfinished.next }]);
+    });
+
+    it('suggests removing the other membership when an interrupted move holds both versions', async () => {
+      const { r } = await interrupted();
+      jira.fv.set('K-2', ['v1', 'v2']);
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: ['v1', 'v2'] }]);
+      const unfinished = state(ctx()).unfinished_rulings[0];
+      expect(unfinished).toMatchObject({ ruling: r.id, status: 'blocked', owner: 'chief' });
+      expect(unfinished.next).toContain('jira fix-version K-2 --remove v1');
+      expect(unfinished.next).toContain('jira fix-version K-2 --remove v2');
+      expect(unfinished.next).not.toMatch(/--add v[12]/);
+    });
+
+    it('checks admissions writability before completing an attributable new-epoch move', async () => {
+      const { r } = await interrupted();
+      jira.entries.set('K-2', '5001');
+      journal(rmWrite());
+      chmodSync(ledger(), 0o444);
+      const writes = jira.writes;
+      const result = await rmRun(withJournal(ctx()), noJudge);
+      expect(result.join('\n')).toContain(`PENDING ${r.id}`);
+      expect(jira.writes).toBe(writes);
+      expect(jira.fv.get('K-2')).toEqual([]);
+      chmodSync(ledger(), 0o644);
+      await rmRun(withJournal(ctx()), noJudge);
+      expect(jira.fv.get('K-2')).toEqual(['v2']);
+    });
+
+    it('RED: with no proof the removal was this ruling\'s own, state is BLOCKED with the observed state, the owner and a concrete repair, and rm-run writes nothing', async () => {
+      const { r } = await interrupted();
+      const [u] = state(ctx()).unfinished_rulings;
+      expect(u).toMatchObject({ ruling: r.id, key: 'K-2', phase: 'intent', status: 'blocked', owner: 'chief' });
+      expect(u.observed).toBe('K-2 is in no version (mirror); the move wants v1 -> v2');
+      expect(u.next).toContain('jira fix-version K-2 --add v2');
+      expect(u.next).toContain('jira fix-version K-2 --add v1');
+      expect(u.next).toContain('jira release rm-run R1');
+      const writes = jira.writes;
+      const lines = await rmRun(withJournal(ctx()), noJudge);
+      expect(lines.join('\n')).toMatch(new RegExp(`PENDING ${r.id}: .*partly applied.*K-2 is in no version.*jira fix-version K-2 --add v2`));
+      expect(jira.writes).toBe(writes);
+      expect(jira.fv.get('K-2')).toEqual([]);
+      expect(rows().filter((x) => x.key === 'K-2')).toEqual([]);
+      // The same state reads the same on the next run: a recorded failure, never a rollback and never an endless rm-run.
+      expect(state(ctx()).unfinished_rulings[0]).toMatchObject({ status: 'blocked', owner: 'chief' });
+    });
+
+    // 10231 U5 (review F3): each rm-run took a lease and appended another identical mismatch row for the same unchanged blocked move.
+    it('U5: repeated rm-runs on an unchanged blocked move record the mismatch once; the lease still advances and the later replay is not suppressed', async () => {
+      const { r } = await interrupted();
+      const events = () => readChain<EventRow>(join(ctx().dir, 'events.jsonl'), loadKey(ctx().keyPath)).verified.filter((e) => e.kind === 'ruled' && e.ruling === r.id);
+      const mismatches = () => events().filter((e) => e.readback === 'mismatch').length;
+      expect(await rmRun(withJournal(ctx()), noJudge)).toEqual(expect.arrayContaining([expect.stringContaining(`PENDING ${r.id}`)]));
+      expect(mismatches()).toBe(1);
+      const epoch = state(ctx()).lease?.epoch ?? 0;
+      const total = events().length;
+      for (let i = 0; i < 3; i += 1) expect(await rmRun(withJournal(ctx()), noJudge)).toEqual(expect.arrayContaining([expect.stringContaining(`PENDING ${r.id}`)]));
+      expect(mismatches()).toBe(1);
+      expect(events()).toHaveLength(total);
+      expect(state(ctx()).lease?.epoch).toBeGreaterThan(epoch);
+      expect(state(ctx()).unfinished_rulings[0]).toMatchObject({ ruling: r.id, status: 'blocked', owner: 'chief' });
+      // the chief's hand repair is a change: the replay then writes its own ok event once, whatever the earlier mismatch
+      await jira.setFixVersion('K-2', 'add', 'v2');
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: ['v2'] }]);
+      await rmRun(withJournal(ctx()), noJudge);
+      expect(events().filter((e) => e.readback === 'ok')).toHaveLength(1);
+      expect(mismatches()).toBe(1);
+    });
+
+    it('RED: when the journal binds the removal to this ruling and it is still the newest entry, the new epoch finishes the add once', async () => {
+      const { r } = await interrupted();
+      jira.entries.set('K-2', '5001');
+      journal(rmWrite());
+      expect(state(withJournal(ctx())).unfinished_rulings).toMatchObject([{ ruling: r.id, status: 'replay', owner: 'release-manager', next: 'jira release rm-run R1' }]);
+      const epoch = state(ctx()).lease?.epoch ?? 0;
+      const lines = await rmRun(withJournal(ctx()), noJudge);
+      expect(lines.join('\n')).toContain(`RULING ${r.id}`);
+      expect(state(ctx()).lease?.epoch).toBeGreaterThan(epoch);
+      expect(jira.fv.get('K-2')).toEqual(['v2']);
+      expect(rows().filter((x) => x.key === 'K-2').map((x) => [x.kind, x.version, x.ruling])).toEqual([['rm-admit', 'v2', r.id], ['rm-remove', 'v1', r.id]]);
+      expect(jira.posted).toBe(1);
+      expect(state(ctx()).unfinished_rulings).toEqual([]);
+      expect(await rmRun(withJournal(ctx()), noJudge)).toEqual(['RM-RUN R1: nothing pending']);
+      expect(rows().filter((x) => x.key === 'K-2')).toHaveLength(2);
+      expect(jira.posted).toBe(1);
+    });
+
+    // The replay's destination add is a write against the operator's latest placing record when that record is newer than the ruling and puts the key elsewhere.
+    const finishes = async (id: string) => {
+      expect(state(withJournal(ctx())).unfinished_rulings).toMatchObject([{ ruling: id, status: 'replay', owner: 'release-manager' }]);
+      expect((await rmRun(withJournal(ctx()), noJudge)).join('\n')).toContain(`RULING ${id}`);
+      expect(jira.fv.get('K-2')).toEqual(['v2']);
+      expect(rows().filter((x) => x.key === 'K-2').map((x) => [x.kind, x.version, x.ruling])).toEqual([['rm-admit', 'v2', id], ['rm-remove', 'v1', id]]);
+      expect(jira.posted).toBe(1);
+      expect(state(ctx()).unfinished_rulings).toEqual([]);
+    };
+
+    it('an operator record newer than the ruling that takes the key out of the destination stops the new-epoch replay: nothing is written and the record is named', async () => {
+      const { r } = await interrupted({ operator: true });
+      const newer = decide('2026-10-21T10:00:05.000Z', ['K-2'], 'remove', 'v2', null);
+      jira.entries.set('K-2', '5001');
+      journal(rmWrite());
+      const writes = jira.writes;
+      const lines = await rmRun(withJournal(ctx()), noJudge);
+      expect(jira.writes).toBe(writes);
+      expect(jira.fv.get('K-2')).toEqual([]);
+      expect(lines.join('\n')).toMatch(new RegExp(`PENDING ${r.id}: .*${newer.id}`));
+      expect(rows().filter((x) => x.key === 'K-2')).toEqual([]);
+      expect(jira.posted).toBe(0);
+      // The refusal is recorded as one mismatch event, and later refused runs append no second.
+      const mismatches = () => readChain<EventRow>(join(ctx().dir, 'events.jsonl'), loadKey(ctx().keyPath)).verified.filter((e) => e.kind === 'ruled' && e.ruling === r.id && e.readback === 'mismatch');
+      expect(mismatches()).toHaveLength(1);
+      for (let i = 0; i < 3; i += 1) expect(await rmRun(withJournal(ctx()), noJudge)).toEqual(expect.arrayContaining([expect.stringContaining(`PENDING ${r.id}`)]));
+      expect(mismatches()).toHaveLength(1);
+      expect(jira.writes).toBe(writes);
+      expect(jira.fv.get('K-2')).toEqual([]);
+    });
+
+    it('state reads that replay as blocked to the chief with the newer record named, before a run refuses it and after', async () => {
+      const { r } = await interrupted({ operator: true });
+      const newer = decide('2026-10-21T10:00:05.000Z', ['K-2'], 'remove', 'v2', null);
+      jira.entries.set('K-2', '5001');
+      journal(rmWrite());
+      const unfinished = () => state(withJournal(ctx())).unfinished_rulings;
+      expect(unfinished()).toMatchObject([{ ruling: r.id, key: 'K-2', phase: 'intent', status: 'blocked', owner: 'chief', observed: 'K-2 is in no version (mirror); the move wants v1 -> v2' }]);
+      expect(unfinished()[0].next).toContain(newer.id);
+      expect(unfinished()[0].next).toContain('jira fix-version K-2 --add v1');
+      expect(unfinished()[0].next).toContain('jira release rm-run R1');
+      await rmRun(withJournal(ctx()), noJudge);
+      expect(unfinished()).toMatchObject([{ ruling: r.id, status: 'blocked', owner: 'chief' }]);
+      expect(unfinished()[0].next).toContain(newer.id);
+    });
+
+    it.each([
+      ['puts it in a third version', 'add', null, 'v3'],
+      ['moves it out of the destination into a third version', 'move', 'v2', 'v3'],
+      ['keeps it in the source', 'keep', 'v1', 'v1'],
+      ['takes it out of the source', 'remove', 'v1', null],
+    ] as Array<[string, string, string | null, string | null]>)('an operator record newer than the ruling that %s also stops the replay and writes nothing', async (_name, op, from, to) => {
+      const { r } = await interrupted({ operator: true });
+      const newer = decide('2026-10-21T10:00:05.000Z', ['K-2'], op, from, to);
+      jira.entries.set('K-2', '5001');
+      journal(rmWrite());
+      const writes = jira.writes;
+      const lines = await rmRun(withJournal(ctx()), noJudge);
+      expect(jira.writes).toBe(writes);
+      expect(jira.fv.get('K-2')).toEqual([]);
+      expect(lines.join('\n')).toMatch(new RegExp(`PENDING ${r.id}: .*${newer.id}`));
+      expect(rows().filter((x) => x.key === 'K-2')).toEqual([]);
+      expect(jira.posted).toBe(0);
+      expect(state(withJournal(ctx())).unfinished_rulings[0]).toMatchObject({ ruling: r.id, status: 'blocked', owner: 'chief' });
+    });
+
+    it.each([
+      ['no operator record newer than the ruling', () => undefined],
+      ['a newer operator record about another key', () => decide('2026-10-21T10:00:05.000Z', ['K-1'], 'remove', 'v2', null)],
+      ['a newer operator record that puts the key in the destination', () => decide('2026-10-21T10:00:05.000Z', ['K-2'], 'add', null, 'v2')],
+      ['a newer operator record that places nothing', () => decide('2026-10-21T10:00:05.000Z', ['K-2'], 'none', null, null)],
+      ['an operator record at the ruling\'s own instant that takes the key out of the destination', () => decide('2026-10-21T10:00:00.000Z', ['K-2'], 'remove', 'v2', null)],
+      ['a last operator word that puts the key back in the destination after one that took it out', () => {
+        decide('2026-10-21T10:00:05.000Z', ['K-2'], 'remove', 'v2', null);
+        return decide('2026-10-21T10:00:06.000Z', ['K-2'], 'add', null, 'v2');
+      }],
+    ] as Array<[string, () => unknown]>)('an operator-decided move still finishes its add once with %s', async (_name, record) => {
+      const { r } = await interrupted({ operator: true });
+      record();
+      jira.entries.set('K-2', '5001');
+      journal(rmWrite());
+      await finishes(r.id);
+    });
+
+    it('an operator record older than the ruling that places the key elsewhere does not stop the replay', async () => {
+      const { r } = await interrupted();
+      decide('2026-10-21T09:00:00.000Z', ['K-2'], 'remove', 'v2', null);
+      jira.entries.set('K-2', '5001');
+      journal(rmWrite());
+      await finishes(r.id);
+    });
+
+    it.each([
+      ['a later Fix Version entry by someone else (known only live: state reads replay until a run refuses it)', () => { jira.entries.set('K-2', '5002'); journal(rmWrite()); }, 'replay'],
+      ['a journal row from before the ruling', () => { jira.entries.set('K-2', '5001'); journal(rmWrite({ ts: '2026-10-21T09:00:00.000Z' })); }],
+      ['a hand write in the journal, not the RM\'s', () => { jira.entries.set('K-2', '5001'); journal(rmWrite({ mechanism: 'hand' })); }],
+      ['a journal row for another key', () => { jira.entries.set('K-2', '5001'); journal(rmWrite({ key: 'K-9' })); }],
+      ['a journal row whose resulting set is not the one Jira shows', () => { jira.entries.set('K-2', '5001'); journal(rmWrite({ to: ['v3'] })); }],
+      ['no journal at all (a lost response never reached the hook)', () => { jira.entries.set('K-2', '5001'); }],
+    ] as Array<[string, () => void, ('replay' | undefined)?]>)('conflicting or missing evidence stays BLOCKED and writes nothing: %s', async (_name, evidence, before) => {
+      const { r } = await interrupted();
+      evidence();
+      expect(state(withJournal(ctx())).unfinished_rulings[0]).toMatchObject({ ruling: r.id, status: before ?? 'blocked' });
+      const writes = jira.writes;
+      const lines = await rmRun(withJournal(ctx()), noJudge);
+      expect(lines.join('\n')).toMatch(/PENDING .*partly applied/);
+      // The refusal is recorded (a mismatch event), so the next read is blocked and names the chief, never rm-run alone.
+      expect(state(withJournal(ctx())).unfinished_rulings[0]).toMatchObject({ ruling: r.id, status: 'blocked', owner: 'chief' });
+      expect(jira.writes).toBe(writes);
+      expect(jira.fv.get('K-2')).toEqual([]);
+      expect(rows().filter((x) => x.key === 'K-2')).toEqual([]);
+      expect(jira.posted).toBe(0);
+    });
+
+    it('external membership in the destination or a third version is never completed over: Jira shows a set the ruling did not write', async () => {
+      const { r } = await interrupted();
+      jira.entries.set('K-2', '5001');
+      journal(rmWrite());
+      jira.fv.set('K-2', ['v3']);
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: ['v3'] }]);
+      expect(state(withJournal(ctx())).unfinished_rulings[0]).toMatchObject({ ruling: r.id, status: 'blocked', observed: 'K-2 is in v3 (mirror); the move wants v1 -> v2' });
+      const writes = jira.writes;
+      await rmRun(withJournal(ctx()), noJudge);
+      expect(jira.writes).toBe(writes);
+      expect(jira.fv.get('K-2')).toEqual(['v3']);
+    });
+
+    it('while the writing run still holds its lease the gap is in flight, not blocked', async () => {
+      const { r } = await interrupted({ release: false });
+      expect(state(ctx()).unfinished_rulings).toMatchObject([{ ruling: r.id, status: 'replay', owner: 'release-manager' }]);
+    });
+
+    it('characterization (a disproven assumption): the SAME epoch\'s replay already completes the add, each write guarded by the version it names', async () => {
+      const { r } = await interrupted({ release: false });
+      expect((await apply(ctx(rmEnv), r.id)).phase).toBe('receipted');
+      expect(jira.fv.get('K-2')).toEqual(['v2']);
+      expect(rows().filter((x) => x.key === 'K-2').map((x) => x.kind)).toEqual(['rm-admit', 'rm-remove']);
+    });
+
+    it('a hand repair the blocked next command names ends it: the replay finds the move landed and writes the row and receipt once', async () => {
+      const { r } = await interrupted();
+      await jira.setFixVersion('K-2', 'add', 'v2');
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: ['v2'] }]);
+      expect(state(ctx()).unfinished_rulings).toMatchObject([{ ruling: r.id, status: 'replay', owner: 'release-manager' }]);
+      await rmRun(ctx(), noJudge);
+      expect(rows().filter((x) => x.key === 'K-2').map((x) => [x.kind, x.version])).toEqual([['rm-admit', 'v2'], ['rm-remove', 'v1']]);
+      expect(jira.posted).toBe(1);
+      expect(state(ctx()).unfinished_rulings).toEqual([]);
+    });
   });
 
   describe('proposed-* labels close with their ruling', () => {
@@ -1999,6 +2401,292 @@ describe('signed minerva specs', () => {
     return { spec: p, plan };
   }
 
+  describe('explicit source-root normal signing', () => {
+    let primary: string;
+    let linked: string;
+    const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd,
+      '-c', 'user.name=test', '-c', 'user.email=test@example.invalid', '-c', 'commit.gpgsign=false',
+      '-c', 'core.hooksPath=/dev/null', ...args], { encoding: 'utf8' }).trim();
+    beforeEach(() => {
+      const common = git(dirname(fileURLToPath(import.meta.url)), 'rev-parse', '--path-format=absolute', '--git-common-dir');
+      primary = join(root, 'primary');
+      linked = join(root, 'linked');
+      mkdirSync(primary);
+      git(primary, 'init', '-q');
+      git(primary, 'commit', '-q', '--allow-empty', '-m', 'fixture');
+      const scripts = 'marketplace/plugins/himmel-ops/scripts';
+      mkdirSync(join(primary, scripts), { recursive: true });
+      for (const name of ['minerva-spec-gate.sh', 'minerva-trace-lint.sh']) {
+        copyFileSync(join(dirname(common), scripts, name), join(primary, scripts, name));
+      }
+      git(primary, 'worktree', 'add', '-q', '--detach', linked);
+      mkdirSync(join(linked, 'branch-only'));
+      writeFileSync(join(linked, 'branch-only', 'source.ts'), 'export const source = true;\n');
+      git(linked, 'add', '.');
+      git(linked, 'commit', '-q', '-m', 'branch-only source');
+      sourceFixture.primary = primary;
+      declared();
+      for (const [k, v] of Object.entries(specEnv())) vi.stubEnv(k, v);
+      vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+      vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
+      writeFileSync(join(root, 'verbatim.txt'), 'fixture approval');
+    });
+    afterEach(() => { sourceFixture.primary = null; afterMinerva.fn = null; signingLock.fn = null; });
+
+    async function normalSign(sourceRoot?: string, citation = 'branch-only/source.ts') {
+      const { spec: p, plan } = bucketSpec(citation);
+      await cli('operator', 'spec', 'R1', '--keys', 'K-1', '--spec', p, '--plan', plan,
+        '--verdict', verdict(p, 'spec', 'SPEC CLEAN'), '--verdict', verdict(p, 'plan', 'PLAN CLEAN'),
+        '--decision', '387', '--verbatim-file', join(root, 'verbatim.txt'),
+        ...(sourceRoot === undefined ? [] : ['--source-root', sourceRoot]));
+      return readOperatorRecords('spec', specEnv())[0];
+    }
+
+    async function normalCappedSign(f: CappedFixture, sourceRoot: string) {
+      await cli('operator', 'spec', 'R1', '--keys', 'HIMMEL-10205', '--spec', f.spec, '--plan', f.plan,
+        '--verdict', f.verdicts[0], '--verdict', f.verdicts[1], '--source-root', sourceRoot,
+        '--decision', '387', '--verbatim-file', join(root, 'verbatim.txt'));
+      return readOperatorRecords('spec', specEnv())[0];
+    }
+
+    it('combines capped carry and source provenance through normal signing and spec-check', async () => {
+      const f = cappedFixture(undefined, false, 3, 'branch-only/source.ts');
+      const frozen = fixtureHashes(f.specsRoot);
+      const row = await normalCappedSign(f, linked);
+      expect(row).toMatchObject({ source_root: realpathSync(linked), source_head: git(linked, 'rev-parse', 'HEAD'),
+        residuals: 2, capped_carry: { mode: 'capped-carry', key: 'HIMMEL-10205', carried: [
+          expect.objectContaining({ kind: 'spec', finding_id: 'F1' }),
+          expect.objectContaining({ kind: 'plan', finding_id: 'F1' }),
+        ] } });
+      expect(fixtureHashes(f.specsRoot)).toEqual(frozen);
+      const out = vi.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        await cli('spec-check', 'HIMMEL-10205');
+        expect(out).toHaveBeenCalledWith(`SPEC ok HIMMEL-10205 ${f.spec} ${row.id}`);
+      } finally { out.mockRestore(); }
+      writeFileSync(f.ledgerPath, `${readFileSync(f.ledgerPath, 'utf8')}\n`);
+      expect(specCheck(specEnv(), ['HIMMEL-10205'], null).lines).toEqual([`SPEC-STALE HIMMEL-10205 ${f.spec} ${row.id}`]);
+    });
+
+    it('refuses capped signing when the verified source root lacks the branch citation', async () => {
+      const f = cappedFixture(undefined, false, 3, 'branch-only/source.ts');
+      await expect(normalCappedSign(f, primary)).rejects.toThrow(/cites branch-only\/source.ts, which does not exist/);
+      expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+    });
+
+    it('rechecks capped proof before append with a verified source root', async () => {
+      const f = cappedFixture(undefined, false, 3, 'branch-only/source.ts');
+      signingLock.fn = () => writeFileSync(f.ledgerPath, `${readFileSync(f.ledgerPath, 'utf8')}\n`);
+      await expect(normalCappedSign(f, linked)).rejects.toThrow(/capped evidence changed/);
+      expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+    });
+
+    it('signs branch-only citations in a live same-repo linked root with canonical root/head provenance', async () => {
+      const alias = join(root, 'alias');
+      symlinkSync(linked, alias);
+      // Untrusted worktree validators cannot replace the unchanged primary validators.
+      const scripts = join(linked, 'marketplace/plugins/himmel-ops/scripts');
+      mkdirSync(scripts, { recursive: true });
+      writeFileSync(join(scripts, 'minerva-spec-gate.sh'), 'exit 99\n');
+      writeFileSync(join(scripts, 'minerva-trace-lint.sh'), 'exit 99\n');
+      const row = await normalSign(alias);
+      expect(row).toMatchObject({ source_root: realpathSync(linked), source_head: git(linked, 'rev-parse', 'HEAD') });
+      expect(check(['K-1'])).toEqual([expect.stringMatching(/^SPEC ok K-1 /)]);
+      // Provenance is historical; later HEAD changes do not confer or revoke spec authority.
+      git(linked, 'commit', '-q', '--allow-empty', '-m', 'later source');
+      expect(check(['K-1'])).toEqual([expect.stringMatching(/^SPEC ok K-1 /)]);
+    });
+
+    it('keeps default primary citation behavior and old records without provenance', async () => {
+      await expect(normalSign()).rejects.toThrow(/cites branch-only\/source.ts, which does not exist/);
+      expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+      const row = await normalSign(undefined, 'marketplace/plugins/himmel-ops/scripts/minerva-trace-lint.sh');
+      expect(row).not.toHaveProperty('source_root');
+      expect(row).not.toHaveProperty('source_head');
+      expect(check(['K-1'])).toEqual([expect.stringMatching(/^SPEC ok K-1 /)]);
+    });
+
+    it('accepts explicit primary and preserves the state repository as alternate citation root', async () => {
+      const stateRepo = join(root, 'bucket');
+      mkdirSync(stateRepo);
+      git(stateRepo, 'init', '-q');
+      mkdirSync(join(stateRepo, 'notes'));
+      writeFileSync(join(stateRepo, 'notes', 'state.md'), 'state');
+      const row = await normalSign(primary, 'notes/state.md');
+      expect(row).toMatchObject({ source_root: realpathSync(primary), source_head: git(primary, 'rev-parse', 'HEAD') });
+    });
+
+    it.each(['missing', 'foreign', 'unregistered', 'subdir'])('refuses %s roots before appending any spec record', async (kind) => {
+      let candidate = join(root, kind);
+      if (kind === 'foreign') {
+        mkdirSync(candidate);
+        git(candidate, 'init', '-q');
+        git(candidate, 'commit', '-q', '--allow-empty', '-m', 'foreign');
+      } else if (kind === 'unregistered') {
+        mkdirSync(candidate);
+        copyFileSync(join(linked, '.git'), join(candidate, '.git'));
+      } else if (kind === 'subdir') candidate = join(linked, 'branch-only');
+      await expect(normalSign(candidate, 'marketplace/plugins/himmel-ops/scripts/minerva-trace-lint.sh')).rejects.toThrow(/source.root/i);
+      expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+    });
+
+    it.each(['HEAD', 'symlink', 'directory', 'registration'])('refuses a %s swap during validation before appending', async (kind) => {
+      const alias = join(root, 'alias');
+      symlinkSync(linked, alias);
+      afterMinerva.fn = () => {
+        if (kind === 'HEAD') git(linked, 'commit', '-q', '--allow-empty', '-m', 'changed');
+        if (kind === 'symlink') { unlinkSync(alias); symlinkSync(primary, alias); }
+        if (kind === 'directory') {
+          renameSync(linked, `${linked}-old`);
+          mkdirSync(linked);
+          copyFileSync(join(`${linked}-old`, '.git'), join(linked, '.git'));
+        }
+        if (kind === 'registration') rmSync(git(linked, 'rev-parse', '--absolute-git-dir'), { recursive: true });
+      };
+      await expect(normalSign(alias)).rejects.toThrow(/source.root/i);
+      expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+    });
+
+    it.each(['spec', 'plan', 'verdict'])('keeps the %s hash-race refusal with an explicit root', async (kind) => {
+      afterMinerva.fn = () => {
+        const p = join(root, 'bucket/designs/K-1-bucket-2026-11-02.md');
+        const target = kind === 'spec' ? p : kind === 'plan'
+          ? join(root, 'bucket/plans/K-1-bucket-plan-2026-11-02.md') : `${p}.critic-spec-r1.md`;
+        writeFileSync(target, `${readFileSync(target, 'utf8')}\nchanged\n`);
+      };
+      await expect(normalSign(linked)).rejects.toThrow(/changed while it was checked/);
+      expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+    });
+
+    it.each(['source', 'document'])('rechecks %s after acquiring the append lock', async (kind) => {
+      signingLock.fn = () => {
+        if (kind === 'source') git(linked, 'commit', '-q', '--allow-empty', '-m', 'changed before append');
+        else writeFileSync(join(root, 'bucket/designs/K-1-bucket-2026-11-02.md'), 'changed before append');
+      };
+      await expect(normalSign(linked)).rejects.toThrow(/changed while it was checked/);
+      expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+    });
+
+    it('keeps normal operator fencing with an explicit root', async () => {
+      vi.stubEnv('HIMMEL_CONSOLE_LEG', '1');
+      await expect(normalSign(linked)).rejects.toThrow(/chief-spawned worker/);
+      expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+    });
+
+    async function normalGroupSign(f: V2Fixture, sourceRoot?: string) {
+      await cli('operator', 'spec', 'R1', '--keys', f.keys!.join(','), '--spec', f.spec, '--plan', f.plan,
+        '--verdict', f.verdicts[0], '--verdict', f.verdicts[1], '--decision', '387', '--verbatim-file', join(root, 'verbatim.txt'),
+        ...(sourceRoot === undefined ? [] : ['--source-root', sourceRoot]));
+      return readOperatorRecords('spec', specEnv())[0];
+    }
+
+    it('capped carry v2 group signing takes a citation only from the root it names: a candidate-only citation signs with --source-root and not by default, and the candidate scripts never run (E23)', async () => {
+      spawnReset();
+      const scripts = join(linked, 'marketplace/plugins/himmel-ops/scripts');
+      mkdirSync(scripts, { recursive: true });
+      writeFileSync(join(scripts, 'minerva-spec-gate.sh'), 'exit 99\n');
+      writeFileSync(join(scripts, 'minerva-trace-lint.sh'), 'exit 99\n');
+      const f = v2Build({ builder: 'group', citation: 'branch-only/source.ts' });
+      const before = fixtureHashes(f.specsRoot);
+      await expect(normalGroupSign(f)).rejects.toThrow(/cites branch-only\/source.ts, which does not exist/);
+      expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+      const row = await normalGroupSign(f, linked);
+      expect(row).toMatchObject({ source_root: realpathSync(linked), source_head: git(linked, 'rev-parse', 'HEAD'), capped_carry: { schema: 2, mode: 'capped-carry-ledger' } });
+      expect(check(f.keys!)).toEqual(f.keys!.map(k => `SPEC ok ${k} ${f.spec} ${row.id}`));
+      expect(fixtureHashes(f.specsRoot)).toEqual(before);
+      expect(cappedSpawn.attempts.map(a => a[2])).toEqual(['--keys', '--keys']);
+      spawnReset();
+    });
+
+    it('capped carry v2 group signing: a primary-only citation signs by default and is refused through --source-root (E23)', async () => {
+      spawnReset();
+      mkdirSync(join(primary, 'primary-only'));
+      writeFileSync(join(primary, 'primary-only', 'source.ts'), 'export const only = true;\n');
+      const f = v2Build({ builder: 'group', citation: 'primary-only/source.ts' });
+      await expect(normalGroupSign(f, linked)).rejects.toThrow(/cites primary-only\/source.ts, which does not exist/);
+      expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+      const row = await normalGroupSign(f);
+      expect(row).not.toHaveProperty('source_root');
+      expect(row.capped_carry).toMatchObject({ schema: 2, mode: 'capped-carry-ledger' });
+      expect(check(f.keys!)).toEqual(f.keys!.map(k => `SPEC ok ${k} ${f.spec} ${row.id}`));
+      spawnReset();
+    });
+
+    it('capped carry v2 docs: each chief doc holds exactly one signing-hash-check marker and the same fenced command after it; the command is silent on equal lint scripts and stops on a changed candidate copy (X1)', () => {
+      const blocks = CHIEF_DOCS.map(rel => {
+        const text = chiefDoc(rel);
+        expect(occurrences(text, SIGNING_MARKER), `${rel}: exactly one marker`).toBe(1);
+        const block = markedBlock(text);
+        expect(block, `${rel}: a fenced block follows the marker`).not.toBeNull();
+        return block as string;
+      });
+      expect(blocks[1], 'the two blocks are byte-equal').toBe(blocks[0]);
+      const scripts = 'marketplace/plugins/himmel-ops/scripts'; const names = ['minerva-spec-gate.sh', 'minerva-trace-lint.sh'];
+      mkdirSync(join(linked, scripts), { recursive: true });
+      for (const name of names) copyFileSync(join(primary, scripts, name), join(linked, scripts, name));
+      const run = (block: string, sentinel: string) => spawnSync('bash', ['-c', `${block}\n: > "$SENTINEL"`], {
+        cwd: root, encoding: 'utf8', env: { PATH: process.env.PATH, HOME: process.env.HOME, CAND: linked, SENTINEL: sentinel } });
+      blocks.forEach((block, i) => {
+        const equal = join(root, `sentinel-equal-${i}`); const changed = join(root, `sentinel-changed-${i}`);
+        const ok = run(block, equal);
+        expect([ok.status, ok.stdout, ok.stderr], 'equal copies: silent, exit 0').toEqual([0, '', '']);
+        expect(existsSync(equal), 'equal copies: the sentinel step ran').toBe(true);
+        writeFileSync(join(linked, scripts, names[1]), 'exit 99\n');
+        const stop = run(block, changed);
+        expect(stop.status, 'a changed candidate copy: non-zero exit').not.toBe(0);
+        expect(stop.stderr, 'a changed candidate copy: STOP on stderr').toContain('STOP');
+        expect(existsSync(changed), 'a changed candidate copy: the abort is proved, no sentinel').toBe(false);
+        copyFileSync(join(primary, scripts, names[1]), join(linked, scripts, names[1]));
+      });
+    });
+
+    it('capped carry v2 docs: both chief docs hold every finite token, each marker or sentence exactly once, and no other display-only or per-family filter text (X2)', () => {
+      const tokens = ['--keys', '--source-root', 'tickets:', 'spec-review', 'jira release spec-check', 'jira roadmap get', 'next-dispatchable.sh', 'gen-briefs.py', 'brief-lint.sh',
+        'roadmap.ts', 'tracker.py', 'board.ts', 'full pause', 'snapshot folder', 'manifest entry'];
+      for (const rel of CHIEF_DOCS) {
+        const text = chiefDoc(rel);
+        for (const token of tokens) expect(occurrences(text, token), `${rel}: ${token}`).toBeGreaterThanOrEqual(1);
+        expect(/--key\b/.test(text), `${rel}: the flag --key by itself`).toBe(true);
+        for (const once of [SIGNING_MARKER, 'none is accepted as display-only', 'not a per-family filter']) expect(occurrences(text, once), `${rel}: ${once}`).toBe(1);
+        expect(occurrences(text, 'display-only'), `${rel}: no other display-only`).toBe(1);
+        expect(occurrences(text, 'per-family filter'), `${rel}: no other per-family filter`).toBe(1);
+      }
+    });
+
+    it('capped carry v2 docs: a changed spec-gate copy on the candidate stops the marked command as well (X1, the spec-gate copy)', () => {
+      const scripts = 'marketplace/plugins/himmel-ops/scripts'; const names = ['minerva-spec-gate.sh', 'minerva-trace-lint.sh'];
+      mkdirSync(join(linked, scripts), { recursive: true });
+      for (const name of names) copyFileSync(join(primary, scripts, name), join(linked, scripts, name));
+      CHIEF_DOCS.forEach((rel, i) => {
+        const block = markedBlock(chiefDoc(rel)) as string; const sentinel = join(root, `sentinel-spec-gate-${i}`);
+        writeFileSync(join(linked, scripts, names[0]), 'exit 99\n');
+        const stop = spawnSync('bash', ['-c', `${block}\n: > "$SENTINEL"`], { cwd: root, encoding: 'utf8', env: { PATH: process.env.PATH, HOME: process.env.HOME, CAND: linked, SENTINEL: sentinel } });
+        expect(stop.status, `${rel}: a changed spec-gate copy: non-zero exit`).not.toBe(0);
+        expect(stop.stderr, `${rel}: a changed spec-gate copy: STOP on stderr`).toContain('STOP');
+        expect(existsSync(sentinel), `${rel}: a changed spec-gate copy: no sentinel`).toBe(false);
+        copyFileSync(join(primary, scripts, names[0]), join(linked, scripts, names[0]));
+      });
+    });
+
+    it('capped carry v2 docs: the section of each chief doc exists once and the two sections are byte-equal (a driver-ruled row beyond the frozen matrix)', () => {
+      const sections = CHIEF_DOCS.map(rel => {
+        const text = chiefDoc(rel);
+        expect(text.split('\n').filter(l => l === SECTION_HEADING), `${rel}: one section heading`).toHaveLength(1);
+        return docSection(text) as string;
+      });
+      expect(sections[1], 'the two sections are byte-equal').toBe(sections[0]);
+    });
+
+    it('capped carry v2 docs: each chief doc section opens with the imperative not-yet sentence, in its first paragraph (a driver-ruled row beyond the frozen matrix)', () => {
+      const notYet = '**Do not use this route for any real signing until the operator has approved live issuance (item 6); until then every command below is for fixtures only.**';
+      for (const rel of CHIEF_DOCS) {
+        const lines = (docSection(chiefDoc(rel)) as string).split('\n');
+        const first = lines.slice(2, lines.findIndex((l, i) => i > 2 && l === '')).join(' ');
+        expect(first.startsWith(notYet), `${rel}: the first paragraph of the section opens with the sentence`).toBe(true);
+      }
+    });
+  });
+
   it('signs a bucket spec with invariants: the lint reads its paths from the checkout and its invariants from the plan', () => {
     declared();
     const { spec: p, plan } = bucketSpec('docs/handover/running-a-chief.md');
@@ -2239,11 +2927,724 @@ describe('signed minerva specs', () => {
   const review = (c: Ctx, f: { spec: string; plan?: string }, verdicts: string[], extra: Partial<Parameters<typeof specReview>[1]> = {}) => specReview(c, {
     keys: ['K-2'], spec: f.spec, plan: f.plan, verdicts, ...extra,
   });
+  const candidateRoot = fileURLToPath(new URL('../../../../', import.meta.url));
+  const expectedVerifier = join(candidateRoot, 'scripts/telegram/chief-route.ts');
+  const bunLookup = spawnSync('which', ['bun'], { encoding: 'utf8' });
+  const realBun = bunLookup.status === 0 ? bunLookup.stdout.trim() : '';
+  type CappedFixture = { spec: string; plan: string; verdicts: string[]; ledgerPath: string; specsRoot: string };
+  function cappedFixture(cleanKind?: 'spec' | 'plan', invalidLint = false, rounds = 3, citation?: string): CappedFixture {
+    if (!realBun) throw new Error('capped fixture requires Bun on PATH; install the pinned .bun-version');
+    const scratchRoot = mkdtempSync(join(root, 'capped-'));
+    const specText = '---\ntickets: HIMMEL-10205\n---\n# HIMMEL-10205 fixture\n\nKey: HIMMEL-10205\n\nEstimate record: estimate.json\n\n## Alternatives considered\n\n- None better.\n\n## Definition of done\n\n- Fixture verifies.\n\n## Invariants\n\nnone\n'
+      + (citation ? `\n## Fact ownership\n\n| Fact | Existing surfaces | Owner after | Non-owners |\n|---|---|---|---|\n| source | \`${citation}\` | source | n/a |\n` : '');
+    const request = { scratchRoot, key: 'HIMMEL-10205', specText: invalidLint ? specText.replace('Estimate record: estimate.json', '') : specText,
+      planText: '---\ntickets: HIMMEL-10205\n---\n# HIMMEL-10205 plan\n\n- Ticket: HIMMEL-10205\n\n- Task 1: build the fixture.\n',
+      returns: [1, 2, 3].slice(0, rounds).flatMap(round => (['spec', 'plan'] as const).map(kind => ({ kind, round,
+        text: kind === cleanKind ? `${kind.toUpperCase()} CLEAN\n` : `- **F1** (${kind === 'spec' ? 'minor' : 'medium'}) residual\n${kind.toUpperCase()} FINDINGS 1\n`,
+        reads: ['spec', 'plan', { path: 'specs/designs/estimate.json', text: '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n' },
+          { path: 'specs/designs/page.html', text: '<p>fixture</p>\n' }],
+      }))),
+    };
+    const f = JSON.parse(execFileSync(realBun, [join(candidateRoot, 'scripts/telegram/testlib-capped-fold.ts')], {
+      input: JSON.stringify(request), encoding: 'utf8', timeout: 15000,
+    })) as CappedFixture;
+    f.verdicts = f.verdicts.slice(-2);
+    return f;
+  }
+  const cappedSign = (api: 'spec' | 'spec-review', f: CappedFixture, extra: Record<string, unknown> = {}) => {
+    const o = { keys: ['HIMMEL-10205'], spec: f.spec, plan: f.plan, verdicts: f.verdicts, ...extra };
+    return api === 'spec' ? signSpec(sctx(), { ...o, decision: '387', verbatim: 'approve' }) : specReview(sctx(), o);
+  };
+  const fixtureHashes = (dir: string): Record<string, string> => Object.fromEntries(readdirSync(dir, { withFileTypes: true }).flatMap(e => {
+    const p = join(dir, e.name);
+    return e.isDirectory() ? Object.entries(fixtureHashes(p)) : [[p, sha(p)]];
+  }));
+
+  const cappedCheck = (api: 'spec' | 'spec-review', keys = ['HIMMEL-10205'], issues?: Map<string, IssueSnap>) =>
+    specCheck(specEnv(), keys, null, { kinds: [api], ...(issues ? { issues } : {}) });
+
+  function externalCappedFixture(location: string): CappedFixture {
+    if (!['spec-return', 'plan-return', 'plan-document'].includes(location)) return cappedFixture();
+    const f = cappedFixture(undefined, false, 2);
+    const runner = join(dirname(f.specsRoot), 'external-fixture.ts');
+    writeFileSync(runner, `
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
+import { ledgerVerify, sealRound } from ${JSON.stringify(expectedVerifier)};
+const f = ${JSON.stringify(f)}, location = ${JSON.stringify(location)};
+const external = join(dirname(f.specsRoot), 'external'); mkdirSync(external);
+const oldPlan = f.plan;
+if (location === 'plan-document') { f.plan = join(external, basename(f.plan)); copyFileSync(oldPlan, f.plan); }
+for (const [i, kind] of ['spec', 'plan'].entries()) {
+  const previous = f.verdicts[i];
+  const next = join(location === kind+'-return' ? external : dirname(previous), basename(previous).replace('r2.md', 'r3.md'));
+  const text = readFileSync(previous, 'utf8').replace('Fixture: '+kind+' round 2', 'Fixture: '+kind+' round 3')
+    .replace(/^((?:READ(?:-SHA256)?|CONTENT-SHA256) [0-9a-f]{64}) (.+)$/gm, (_line, prefix, rel) => {
+      const path = resolve(dirname(previous), rel); return prefix+' '+(path === oldPlan ? f.plan : path);
+    });
+  writeFileSync(next, text);
+  for (const m of text.matchAll(/^CONTENT-SHA256 [0-9a-f]{64} (.+)$/gm)) await sealRound(next, m[1]);
+  await ledgerVerify(next, { spec: f.spec }); f.verdicts[i] = next;
+}
+console.log(JSON.stringify(f));
+`);
+    return JSON.parse(execFileSync(realBun, [runner], { encoding: 'utf8', timeout: 15000 })) as CappedFixture;
+  }
+
+  function returnDirectory(f: CappedFixture, location: string): string {
+    if (location === 'spec-return') return dirname(f.verdicts[0]);
+    if (location === 'plan-return') return dirname(f.verdicts[1]);
+    if (location === 'plan-document') return dirname(f.plan);
+    return join(f.specsRoot, location === 'key' ? 'HIMMEL-10205' : location);
+  }
+
+  function addUnaccountedReturn(f: CappedFixture, directory: string, round: number): void {
+    mkdirSync(directory, { recursive: true });
+    cpSync(f.verdicts[0], join(directory, basename(f.verdicts[0]).replace('r3.md', `r${round}a.md`)));
+  }
+
+  function unchangedProofFiles(proof: pinned.CappedFoldProof): void {
+    for (const pin of proof.pins) if (pin.role !== 'decision-selection') expect(sha(pin.path)).toBe(pin.sha256);
+  }
+
+  it.each(['spec', 'spec-review'] as const)('capped carry return selection irrelevant files remain fresh: %s', api => {
+    declared();
+    const f = cappedFixture();
+    const row = cappedSign(api, f);
+    expect(existsSync(join(f.specsRoot, 'design'))).toBe(false);
+    expect(cappedCheck(api).ok).toBe(true);
+    writeFileSync(join(f.specsRoot, 'design'), 'optional non-directory lookup');
+    expect(cappedCheck(api).ok).toBe(true);
+    unlinkSync(join(f.specsRoot, 'design'));
+    for (const directory of ['design', 'spec', 'plan', 'HIMMEL-10205']) {
+      const path = join(f.specsRoot, directory); mkdirSync(path);
+      for (const name of ['HIMMEL-10205-other.md.critic-spec-r2.md', 'HIMMEL-10205-other.md.critic-r1-plan.md', 'HIMMEL-10205-other.md.critic-r2a.md',
+        'unrelated.txt', ...(directory === 'HIMMEL-10205' ? [] : ['HIMMEL-99999-other.md.critic-plan-r99.md'])]) cpSync(f.verdicts[0], join(path, name));
+    }
+    unchangedProofFiles(row.capped_carry!);
+    expect(cappedCheck(api).lines).toEqual([`SPEC ok HIMMEL-10205 ${f.spec} ${row.id}`]);
+    const proof = JSON.parse(execFileSync(realBun, [expectedVerifier, 'capped-fold', '--key', 'HIMMEL-10205', '--spec', f.spec, '--plan', f.plan,
+      '--spec-return', f.verdicts[0], '--plan-return', f.verdicts[1]], { encoding: 'utf8', timeout: 15000 })) as pinned.CappedFoldProof;
+    expect(proof.returns.map(r => r.round)).toEqual([3, 3]);
+  });
+
+  it.each((['spec', 'spec-review'] as const).flatMap(api =>
+    ['alias', 'overflow', 'unreadable'].map(fault => [api, fault] as const)))('capped carry return selection directory stale: %s %s', (api, fault) => {
+    declared();
+    const f = cappedFixture();
+    const row = cappedSign(api, f);
+    expect(cappedCheck(api).ok).toBe(true);
+    const directory = join(f.specsRoot, 'design');
+    if (fault === 'alias') {
+      const elsewhere = join(dirname(f.specsRoot), 'alias-target'); mkdirSync(elsewhere); symlinkSync(elsewhere, directory);
+    }
+    if (fault === 'overflow') { mkdirSync(directory); for (let i = 0; i < 4097; i++) writeFileSync(join(directory, `irrelevant-${i}`), ''); }
+    if (fault === 'unreadable') { mkdirSync(directory); chmodSync(directory, 0); }
+    try {
+      unchangedProofFiles(row.capped_carry!);
+      expect(cappedCheck(api).lines).toEqual([`SPEC-STALE HIMMEL-10205 ${f.spec} ${row.id}`]);
+    } finally { if (fault === 'unreadable') chmodSync(directory, 0o700); }
+  });
+
+  it.each((['spec', 'spec-review'] as const).flatMap(api =>
+    ['spec-return', 'plan-return', 'plan-document', 'design', 'designs', 'spec', 'plan', 'plans', 'key'].flatMap(location =>
+      [3, 4].map(round => [api, location, round] as const))))('capped carry return selection later stale: %s %s r%s', (api, location, round) => {
+    declared();
+    const f = externalCappedFixture(location);
+    const row = cappedSign(api, f);
+    expect(readOperatorRecords(api, specEnv()).map(r => r.id)).toEqual([row.id]);
+    expect(cappedCheck(api).lines).toEqual([`SPEC ok HIMMEL-10205 ${f.spec} ${row.id}`]);
+    addUnaccountedReturn(f, returnDirectory(f, location), round);
+    unchangedProofFiles(row.capped_carry!);
+    expect(cappedCheck(api).lines).toEqual([`SPEC-STALE HIMMEL-10205 ${f.spec} ${row.id}`]);
+  });
+
+  it.each((['spec', 'spec-review'] as const).flatMap(api =>
+    [3, 4].map(round => [api, round] as const)))('capped carry return selection preappend: %s r%s', (api, round) => {
+    declared();
+    const f = cappedFixture();
+    const before = fixtureHashes(f.specsRoot);
+    const actual = ledger.withLock;
+    let changed = false;
+    cappedCalls.length = 0;
+    const spy = vi.spyOn(ledger, 'withLock').mockImplementation((dir, fn, ...rest) => actual(dir, () => {
+      if (dir === sctx().dir && !changed) {
+        expect(cappedCalls).toHaveLength(1);
+        expect(existsSync(join(sctx().dir, '.lock')) && existsSync(join(root, 'release', '.lock'))).toBe(true);
+        changed = true;
+        addUnaccountedReturn(f, join(f.specsRoot, 'spec'), round);
+        for (const [path, hash] of Object.entries(before)) expect(sha(path)).toBe(hash);
+      }
+      return fn();
+    }, ...rest));
+    try {
+      expect(() => cappedSign(api, f)).toThrow(/unaccounted latest return/);
+      expect(changed).toBe(true);
+      noCappedRows();
+    } finally { spy.mockRestore(); }
+  });
+
+  it.each((['spec', 'spec-review'] as const).flatMap(api =>
+    [3, 4].map(round => [api, round] as const)))('capped carry return selection persisted stale: %s r%s', (api, round) => {
+    declared();
+    const f = cappedFixture();
+    const actual = ledger.appendChain;
+    let changed = false;
+    const spy = vi.spyOn(ledger, 'appendChain').mockImplementation((path, key, fields) => {
+      const persisted = actual(path, key, fields);
+      if (!changed && path === join(sctx().dir, 'operator.jsonl') && (fields as OperatorRow).kind === api) {
+        changed = true;
+        addUnaccountedReturn(f, join(f.specsRoot, 'HIMMEL-10205'), round);
+      }
+      return persisted;
+    });
+    let error = '';
+    try { cappedSign(api, f); } catch (e) { error = (e as Error).message; }
+    finally { spy.mockRestore(); }
+    const rows = readOperatorRecords(api, specEnv());
+    expect(rows).toHaveLength(1);
+    expect(changed).toBe(true);
+    unchangedProofFiles(rows[0].capped_carry!);
+    expect(error).toBe(`persisted-but-stale ${rows[0].id}: capped-fold: ambiguous or unaccounted latest return: ${join(f.specsRoot, 'HIMMEL-10205', basename(f.verdicts[0]).replace('r3.md', `r${round}a.md`))}; inspect this record before retrying`);
+    expect(cappedCheck(api).lines).toEqual([`SPEC-STALE HIMMEL-10205 ${f.spec} ${rows[0].id}`]);
+  });
+
+  function resetFixture(f: CappedFixture, reseal = true): CappedFixture & { decision: string } {
+    const runner = join(dirname(f.specsRoot), 'reset-fixture.ts');
+    writeFileSync(runner, `
+import { mkdirSync, readFileSync, readdirSync, utimesSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { roundReset, sealRound } from ${JSON.stringify(expectedVerifier)};
+const f = ${JSON.stringify(f)};
+const decision = join(f.specsRoot, 'decisions', 'verbatim-decision-990-fixture.txt');
+mkdirSync(dirname(decision));
+const quote = 'start this ticket over from scratch';
+writeFileSync(decision, 'HIMMEL-10205 '+quote+'\\n');
+const seconds = Math.floor(Date.now()/1000)+2.123456;
+utimesSync(decision, seconds, seconds);
+process.env.HIMMEL_CONSOLE='1';
+await roundReset(f.specsRoot, 'HIMMEL-10205', { decision:'990', quote });
+for (const name of ${reseal} ? readdirSync(dirname(f.spec)).filter(n => /critic-(spec|plan)-r[123]\\.md$/.test(n)).sort() : []) {
+  const p=join(dirname(f.spec), name);
+  writeFileSync(p, readFileSync(p,'utf8').replace('Fixture:', 'New epoch Fixture:'));
+  for (const m of readFileSync(p,'utf8').matchAll(/^CONTENT-SHA256 [0-9a-f]{64} (.+)$/gm)) await sealRound(p, join(dirname(p),m[1]));
+}
+`);
+    execFileSync(realBun, [runner], { timeout: 15000, stdio: ['ignore', 'pipe', 'pipe'] });
+    return { ...f, decision: join(f.specsRoot, 'decisions', 'verbatim-decision-990-fixture.txt') };
+  }
+  const decisionFixture = () => resetFixture(cappedFixture());
+
+  function evidencePath(f: CappedFixture, role: string): string {
+    const paths: Record<string, string> = { spec: f.spec, plan: f.plan, page: join(dirname(f.spec), 'page.html'),
+      estimate: join(dirname(f.spec), 'estimate.json'), return: f.verdicts[0], ledger: f.ledgerPath,
+      manifest: join(dirname(f.ledgerPath), 'manifest.json'), snapshot: join(dirname(f.ledgerPath), 'HIMMEL-10205', sha(f.spec)),
+      decision: join(f.specsRoot, 'decisions', 'verbatim-decision-990-fixture.txt') };
+    return paths[role];
+  }
+
+  it('capped fixture requires bun', () => {
+    const bin = join(root, 'ordinary-tools');
+    mkdirSync(bin);
+    for (const name of ['which', 'git', 'bash', 'dirname', 'cat', 'sed', 'awk', 'rg', 'head', 'tr', 'grep', 'sort', 'tail', 'wc', 'date']) {
+      const found = spawnSync('which', [name], { encoding: 'utf8' });
+      if (found.status === 0) symlinkSync(found.stdout.trim(), join(bin, name));
+    }
+    symlinkSync(process.execPath, join(bin, 'node'));
+    const result = spawnSync(process.execPath, [join(candidateRoot, 'scripts/jira/node_modules/vitest/vitest.mjs'), 'run',
+      'src/release/engine.test.ts', '-t', '^signed minerva specs > capped carry signs frozen findings:'], {
+      cwd: join(candidateRoot, 'scripts/jira'), env: { ...process.env, PATH: bin }, timeout: 15000, encoding: 'utf8',
+    });
+    expect(result.signal).toBeNull();
+    expect(result.status).not.toBe(0);
+    expect(`${result.stdout}${result.stderr}`).toContain('capped fixture requires Bun on PATH');
+    expect(`${result.stdout}${result.stderr}`).toMatch(/2 failed/);
+  }, 20000);
+
+  it.each((['spec', 'spec-review'] as const).flatMap(api =>
+    ['spec', 'plan', 'page', 'estimate', 'snapshot', 'return', 'ledger', 'manifest'].map(role => [api, role] as const)))('capped carry extra pins stale: %s %s', (api, role) => {
+    declared();
+    const f = cappedFixture();
+    const row = cappedSign(api, f);
+    expect(cappedCheck(api).lines).toEqual([`SPEC ok HIMMEL-10205 ${f.spec} ${row.id}`]);
+    const path = evidencePath(f, role);
+    writeFileSync(path, `${readFileSync(path, 'utf8')}\n`);
+    expect(cappedCheck(api).lines, role).toEqual([`SPEC-STALE HIMMEL-10205 ${f.spec} ${row.id}`]);
+  });
+
+  it.each(['spec', 'spec-review'] as const)('capped carry later ledger append stale: %s', api => {
+    declared();
+    const f = cappedFixture();
+    const row = cappedSign(api, f);
+    const paths = [f.spec, f.plan, ...f.verdicts];
+    const hashes = paths.map(sha);
+    const ledgerBefore = readFileSync(f.ledgerPath, 'utf8');
+    expect(cappedCheck(api).ok).toBe(true);
+    resetFixture(f, false);
+    expect(readFileSync(f.ledgerPath, 'utf8').startsWith(ledgerBefore)).toBe(true);
+    expect(JSON.parse(readFileSync(f.ledgerPath, 'utf8').trim().split('\n').at(-1)!)).toMatchObject({ row: 'reset', epoch: 1 });
+    expect(paths.map(sha)).toEqual(hashes);
+    expect(cappedCheck(api).lines).toEqual([`SPEC-STALE HIMMEL-10205 ${f.spec} ${row.id}`]);
+  });
+
+  it.each((['spec', 'spec-review'] as const).flatMap(api =>
+    ['bytes', 'selection', 'mtime', 'file-alias', 'directory-alias'].map(fault => [api, fault] as const)))('capped carry decision selection/mtime/alias stale: %s %s', (api, fault) => {
+    declared();
+    const f = decisionFixture();
+    const row = cappedSign(api, f);
+    const proof = row.capped_carry!;
+    expect(proof.epoch).toBe(1);
+    const mtime = statSync(f.decision).mtimeMs;
+    expect(mtime % 1).not.toBe(0);
+    expect(proof.pins.find(p => p.role === 'decision')).toMatchObject({ path: f.decision, mtime_ms: mtime });
+    expect(cappedCheck(api).lines).toEqual([`SPEC ok HIMMEL-10205 ${f.spec} ${row.id}`]);
+    const bytes = readFileSync(f.decision);
+    if (fault === 'bytes') writeFileSync(f.decision, `${bytes.toString()}changed\n`);
+    if (fault === 'selection') writeFileSync(join(dirname(f.decision), 'verbatim-decision-990-second.txt'), bytes);
+    if (fault === 'mtime') { utimesSync(f.decision, mtime / 1000 + 10, mtime / 1000 + 10); expect(readFileSync(f.decision)).toEqual(bytes); }
+    if (fault === 'file-alias') { const moved = join(dirname(f.specsRoot), 'same-decision'); renameSync(f.decision, moved); symlinkSync(moved, f.decision); }
+    if (fault === 'directory-alias') { const moved = join(dirname(f.specsRoot), 'same-decisions'); renameSync(dirname(f.decision), moved); symlinkSync(moved, dirname(f.decision)); }
+    expect(cappedCheck(api).lines).toEqual([`SPEC-STALE HIMMEL-10205 ${f.spec} ${row.id}`]);
+  });
+
+  it.each(['spec', 'spec-review'] as const)('capped carry recording checkout removed: %s', api => {
+    declared();
+    const f = cappedFixture();
+    const row = cappedSign(api, f);
+    expect(cappedCheck(api).ok).toBe(true);
+    const elsewhere = join(root, 'retained-copy');
+    cpSync(f.specsRoot, elsewhere, { recursive: true });
+    expect(sha(join(elsewhere, 'designs', basename(f.spec)))).toBe(sha(f.spec));
+    rmSync(dirname(f.specsRoot), { recursive: true });
+    expect(cappedCheck(api).lines).toEqual([`SPEC-STALE HIMMEL-10205 ${f.spec} ${row.id}`]);
+  });
+
+  it.each((['spec', 'spec-review'] as const).flatMap(api =>
+    ['null', 'unknown-field', 'schema', 'reader-version', 'missing-pin', 'key', 'proof-key', 'spec', 'plan', 'returns', 'count'].map(fault => [api, fault] as const)))('capped carry persisted malformed or unbound proof stale: %s %s', (api, fault) => {
+    declared();
+    const f = cappedFixture();
+    const row = cappedSign(api, f);
+    expect(cappedCheck(api).ok).toBe(true);
+    const proof = JSON.parse(JSON.stringify(row.capped_carry));
+    const copy = { ...row, id: 'O-R1-9000', supersedes: row.id, capped_carry: proof };
+    if (fault === 'null') copy.capped_carry = null;
+    if (fault === 'unknown-field') proof.unknown = true;
+    if (fault === 'schema') proof.schema = 2;
+    if (fault === 'reader-version') proof.reader_version = 2;
+    if (fault === 'missing-pin') proof.pins = proof.pins.filter((p: { role: string }) => p.role !== 'ledger');
+    if (fault === 'key') copy.keys = ['HIMMEL-10205', 'HIMMEL-8888'];
+    if (fault === 'proof-key') { proof.key = 'HIMMEL-8888'; for (const c of proof.carried) c.key = proof.key; }
+    if (fault === 'spec') { copy.spec_path = join(root, 'same-spec.md'); cpSync(f.spec, copy.spec_path); }
+    if (fault === 'plan') { copy.plan_path = join(root, 'same-plan.md'); cpSync(f.plan, copy.plan_path); }
+    if (fault === 'returns') { const path = join(root, 'same-return.md'); cpSync(f.verdicts[0], path); copy.verdicts = [{ path, sha256: sha(path) }, row.verdicts![1]]; }
+    if (fault === 'count') copy.residuals = 0;
+    appendChain(join(sctx().dir, 'operator.jsonl'), loadKey(sctx().keyPath), copy);
+    expect(readOperatorRecords(api, specEnv()).at(-1)?.id).toBe(copy.id);
+    expect(cappedCheck(api).lines).toEqual([`SPEC-STALE HIMMEL-10205 ${copy.spec_path} ${copy.id}`]);
+  });
+
+  it.each(['spec', 'spec-review'] as const)('capped carry parent proof remains fresh for an inheriting child: %s', api => {
+    declared();
+    const f = cappedFixture();
+    const row = cappedSign(api, f);
+    const issues = new Map([['HIMMEL-8888', { type: 'Sub-task', parent: 'HIMMEL-10205' } as IssueSnap]]);
+    expect(cappedCheck(api, ['HIMMEL-8888'], issues).lines).toEqual([`SPEC ok HIMMEL-8888 ${f.spec} ${row.id}`]);
+    writeFileSync(f.ledgerPath, `${readFileSync(f.ledgerPath, 'utf8')}\n`);
+    expect(cappedCheck(api, ['HIMMEL-8888'], issues).lines).toEqual([`SPEC-STALE HIMMEL-8888 ${f.spec} ${row.id}`]);
+  });
+
+  it.each(['spec', 'spec-review'] as const)('capped carry signs frozen findings: %s', api => {
+    declared();
+    const f = cappedFixture();
+    const before = fixtureHashes(f.specsRoot);
+    const row = cappedSign(api, f);
+    expect(row.residuals).toBe(2);
+    expect(row.capped_carry).toMatchObject({ schema: 1, mode: 'capped-carry', key: 'HIMMEL-10205' });
+    expect(row.capped_carry?.carried.map(c => [c.kind, c.finding_id, c.status])).toEqual([
+      ['spec', 'F1', 'open-carried'], ['plan', 'F1', 'open-carried'],
+    ]);
+    expect(readOperatorRecords(api, specEnv()).find(r => r.id === row.id)?.capped_carry).toEqual(row.capped_carry);
+    expect(fixtureHashes(f.specsRoot)).toEqual(before);
+  });
+
+  it.each([['spec', 'plan'], ['spec-review', 'plan'], ['spec', 'spec'], ['spec-review', 'spec']] as const)('capped carry preserves scoped IDs and CLEAN companion: %s %s', (api, cleanKind) => {
+    declared();
+    const f = cappedFixture(cleanKind);
+    const before = fixtureHashes(f.specsRoot);
+    const row = cappedSign(api, f);
+    expect(row.residuals).toBe(1);
+    expect(row.capped_carry?.returns.map(r => [r.kind, r.residuals])).toEqual(cleanKind === 'plan' ? [['spec', 1], ['plan', 0]] : [['spec', 0], ['plan', 1]]);
+    expect(row.capped_carry?.carried.map(c => [c.kind, c.finding_id])).toEqual([[cleanKind === 'plan' ? 'spec' : 'plan', 'F1']]);
+    expect(fixtureHashes(f.specsRoot)).toEqual(before);
+  });
+
+  function rejectingBun(mode: string, run: (log: string) => void): void {
+    const bin = mkdtempSync(join(root, 'bun-bin-'));
+    const log = join(bin, 'real-success.jsonl');
+    const path = join(bin, 'bun');
+    writeFileSync(path, `#!${process.execPath}
+const {execFileSync} = require('node:child_process');
+const fs = require('node:fs');
+const {createHash} = require('node:crypto');
+const args = process.argv.slice(2), mode = ${JSON.stringify(mode)};
+if(args[0] !== ${JSON.stringify(expectedVerifier)} || args[1] !== 'capped-fold') throw Error('unexpected verifier argv');
+if(mode === 'missing-verifier') args[0] += '.missing';
+if(mode === 'unknown-verb') args[1] = 'unknown-capped-fold';
+let output;
+try { output = execFileSync(${JSON.stringify(realBun)}, args, {encoding:'utf8', stdio:['ignore','pipe','pipe']}); }
+catch(e) { process.stderr.write(String(e.stderr || e.message)); process.exit(e.status || 1); }
+const p = JSON.parse(output);
+fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({args, digest:createHash('sha256').update(output).digest('hex')})+'\\n');
+const h = 'f'.repeat(64);
+function changeHash(pin) { const old=pin.sha256; pin.sha256=h; for(const x of p.pins) if(x.path===pin.path && x.sha256===old) x.sha256=h; }
+if(mode==='key') { p.key='HIMMEL-99999'; for(const c of p.carried)c.key=p.key; }
+if(mode==='spec-hash') changeHash(p.spec);
+if(mode==='plan-hash') changeHash(p.plan);
+if(mode==='return-full') changeHash(p.returns[1]);
+if(mode==='return-normalized') { p.returns[1].return_sha=h; for(const c of p.carried)if(c.kind==='plan')c.return_sha=h; }
+if(mode==='count') { p.returns[1].residuals++; p.carried.push({...p.carried.find(c=>c.kind==='plan'), finding_id:'F2'}); }
+if(mode==='reader-version')p.reader_version=2;
+if(mode==='schema')p.schema=2;
+if(mode==='malformed') { process.stdout.write('not JSON'); process.exit(0); }
+if(mode==='nonzero') { process.stderr.write('rejecting verifier exit'); process.exit(7); }
+if(mode==='returned-drift') { const path=p.returns[1].path; fs.writeFileSync(path,fs.readFileSync(path,'utf8').replace(/Reviewed: spec [0-9a-f]{64}/,'Reviewed: spec '+h)); }
+if(mode.startsWith('latest-return-')) {
+  const path=p.returns[0].path; fs.copyFileSync(path,path.replace('r3.md','r'+mode.slice('latest-return-'.length)+'a.md'));
+  for(const pin of p.pins) if(pin.role!=='decision-selection' && createHash('sha256').update(fs.readFileSync(pin.path)).digest('hex')!==pin.sha256) throw Error('original pin changed');
+}
+if(mode==='timeout') Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,32000);
+process.stdout.write(JSON.stringify(p));
+if(mode==='output')process.stdout.write(' '.repeat(4*1024*1024+1));
+`);
+    chmodSync(path, 0o755);
+    const old = process.env.PATH;
+    process.env.PATH = `${bin}:${old}`;
+    try { run(log); } finally { process.env.PATH = old; rmSync(bin, { recursive: true, force: true }); }
+  }
+
+  function noCappedRows(): void {
+    expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+    expect(readOperatorRecords('spec-review', specEnv())).toEqual([]);
+  }
+
+  it.each((['spec', 'spec-review'] as const).flatMap(api =>
+    [3, 4].map(round => [api, round] as const)))('capped carry return selection initial consumption: %s r%s', (api, round) => {
+    declared();
+    const f = cappedFixture();
+    rejectingBun(`latest-return-${round}`, log => {
+      expect(() => cappedSign(api, f)).toThrow(/residual findings.*capped verifier unavailable\/refused:.*unaccounted latest return/);
+      expect(readFileSync(log, 'utf8').trim().split('\n')).toHaveLength(1);
+      noCappedRows();
+    });
+  });
+
+  it.each(['key', 'spec-hash', 'plan-hash', 'return-full', 'return-normalized', 'count'])('capped carry rejects mismatched proof binding: %s', mode => {
+    declared();
+    const f = cappedFixture();
+    rejectingBun(mode, log => {
+      for (const api of ['spec', 'spec-review'] as const) {
+        expect(() => cappedSign(api, f)).toThrow(/residual findings.*capped verifier unavailable\/refused: capped proof .*binding disagrees/);
+        noCappedRows();
+      }
+      expect(readFileSync(log, 'utf8').trim().split('\n')).toHaveLength(2);
+    });
+  });
+
+  it('capped carry rejects returned-byte drift', () => {
+    declared();
+    const f = cappedFixture();
+    rejectingBun('returned-drift', log => {
+      expect(() => cappedSign('spec-review', f)).toThrow(/residual findings.*capped evidence changed/);
+      expect(readFileSync(log, 'utf8')).toContain('digest');
+      noCappedRows();
+    });
+  });
+
+  it.each(['reader-version', 'schema', 'malformed', 'nonzero', 'missing-verifier', 'unknown-verb'])('capped carry verifier refuses unavailable or incompatible evidence: %s', mode => {
+    declared();
+    const f = cappedFixture();
+    rejectingBun(mode, log => {
+      expect(() => cappedSign('spec', f)).toThrow(/residual findings.*capped verifier unavailable\/refused:/);
+      if (!['missing-verifier', 'unknown-verb'].includes(mode)) expect(readFileSync(log, 'utf8')).toContain('digest');
+      noCappedRows();
+    });
+  });
+
+  it('capped carry refuses absent Bun', () => {
+    declared();
+    const f = cappedFixture();
+    const old = process.env.PATH;
+    process.env.PATH = join(root, 'absent-bun');
+    try { expect(() => cappedSign('spec', f)).toThrow(/residual findings.*capped verifier unavailable\/refused:.*ENOENT/); }
+    finally { process.env.PATH = old; }
+    noCappedRows();
+  });
+
+  it('capped carry bounds verifier output', () => {
+    declared();
+    const f = cappedFixture();
+    rejectingBun('output', log => {
+      expect(() => cappedSign('spec', f)).toThrow(/residual findings.*capped verifier unavailable\/refused:.*ENOBUFS/);
+      expect(readFileSync(log, 'utf8')).toContain('digest');
+      noCappedRows();
+    });
+  });
+
+  it('capped carry bounds verifier time', () => {
+    declared();
+    const f = cappedFixture();
+    rejectingBun('timeout', log => {
+      const start = Date.now();
+      expect(() => cappedSign('spec-review', f)).toThrow(/residual findings.*capped verifier unavailable\/refused:.*ETIMEDOUT/);
+      expect(Date.now() - start).toBeGreaterThanOrEqual(29000);
+      expect(Date.now() - start).toBeLessThan(40000);
+      expect(readFileSync(log, 'utf8')).toContain('digest');
+      noCappedRows();
+    });
+  }, 45000);
+
+  it('capped carry Node Reviewed crosscheck', () => {
+    declared();
+    const f = cappedFixture();
+    const actual = pinned.reviewedSpecHashes;
+    let planAfterVerifier = false;
+    cappedCalls.length = 0;
+    const spy = vi.spyOn(pinned, 'reviewedSpecHashes').mockImplementation(text => {
+      const hashes = actual(text);
+      if (text.includes('Fixture: plan round 3')) {
+        planAfterVerifier = cappedCalls.length > 0;
+        return ['a'.repeat(64)];
+      }
+      return hashes;
+    });
+    try {
+      expect(() => cappedSign('spec-review', f)).toThrow(/residual findings.*capped plan Reviewed binding disagrees/);
+      expect(planAfterVerifier).toBe(true);
+      noCappedRows();
+    } finally { spy.mockRestore(); }
+    expect(cappedSign('spec-review', f).capped_carry?.carried).toHaveLength(2);
+  });
+
+  it.each(['spec', 'spec-review'] as const)('capped carry uses candidate verifier source: %s', api => {
+    declared();
+    const f = cappedFixture();
+    cappedCalls.length = 0;
+    const old = process.cwd();
+    process.chdir(root);
+    try { expect(cappedSign(api, f).capped_carry?.carried).toHaveLength(2); }
+    finally { process.chdir(old); }
+    expect(cappedCalls).toEqual([[expectedVerifier, 'capped-fold', '--key', 'HIMMEL-10205', '--spec', f.spec, '--plan', f.plan,
+      '--spec-return', f.verdicts[0], '--plan-return', f.verdicts[1]]]);
+  });
+
+  it.each(['spec', 'spec-review'] as const)('capped carry uses candidate verifier built-dist: %s', api => {
+    declared();
+    const f = cappedFixture();
+    const preload = join(root, 'observe-child.mjs');
+    const log = join(root, 'child-calls.jsonl');
+    writeFileSync(preload, `import cp from 'node:child_process'; import {syncBuiltinESMExports} from 'node:module'; import {appendFileSync} from 'node:fs';
+const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(a[1]?.[1]==='capped-fold')appendFileSync(${JSON.stringify(log)},JSON.stringify(a[1])+'\\n');return r;}; syncBuiltinESMExports();`);
+    const engine = new URL('../../dist/release/engine.js', import.meta.url).href;
+    const c = sctx();
+    Object.assign(c, fakeProc());
+    const input = { engine, api, ctx: { release: c.release, dir: c.dir, keyPath: c.keyPath, env: c.env, procRoot: c.procRoot, hostNsPath: c.hostNsPath },
+      args: { keys: ['HIMMEL-10205'], spec: f.spec, plan: f.plan, verdicts: f.verdicts, decision: '387', verbatim: 'approve' } };
+    const script = `const i=JSON.parse(process.argv[1]); const m=await import(i.engine); const row=m[i.api==='spec'?'signSpec':'specReview']({...i.ctx,now:()=>new Date('2026-10-21T10:00:00.000Z'),jira:{},mirrorRoot:null},i.args); console.log(JSON.stringify({engine:i.engine,row}));`;
+    const child = spawnSync(process.execPath, ['--import', preload, '--input-type=module', '-e', script, JSON.stringify(input)], { cwd: root, encoding: 'utf8', timeout: 15000 });
+    expect(child.status, child.stderr).toBe(0);
+    const result = JSON.parse(child.stdout);
+    expect(result.engine).toBe(engine);
+    expect(result.row.capped_carry.carried).toHaveLength(2);
+    expect(JSON.parse(readFileSync(log, 'utf8').trim())).toEqual([expectedVerifier, 'capped-fold', '--key', 'HIMMEL-10205', '--spec', f.spec, '--plan', f.plan,
+      '--spec-return', f.verdicts[0], '--plan-return', f.verdicts[1]]);
+    const beforeRows = readFileSync(join(c.dir, 'operator.jsonl'), 'utf8');
+    const beforeCalls = readFileSync(log, 'utf8');
+    const wrongNs = fakeProc();
+    writeFileSync(wrongNs.hostNsPath, 'pid:[999] user:[999]\n');
+    for (const [ancestry, reason] of [
+      [fakeProc({ HIMMEL_BRIDGE_SESSION: '1' }), /HIMMEL_BRIDGE_SESSION=1/],
+      [wrongNs, /other namespaces/],
+    ] as const) {
+      const deniedInput = { ...input, ctx: { ...input.ctx, ...ancestry } };
+      const denied = spawnSync(process.execPath, ['--import', preload, '--input-type=module', '-e', script, JSON.stringify(deniedInput)], { cwd: root, encoding: 'utf8', timeout: 15000 });
+      expect(denied.status).toBe(1);
+      expect(denied.stderr).toMatch(reason);
+      expect(readFileSync(join(c.dir, 'operator.jsonl'), 'utf8')).toBe(beforeRows);
+      expect(readFileSync(log, 'utf8')).toBe(beforeCalls);
+    }
+  });
+
+  it('shared return hash preserves normalization compatibility', () => {
+    const hash = (text: string) => createHash('sha256').update(text).digest('hex');
+    expect(pinned.returnSha('line  \nCONTENT-SHA256 dead ignored\nnext\t\n\n')).toBe(hash('line\nnext\n'));
+    expect(pinned.returnSha('\n\t\n')).toBe(hash(''));
+    expect(pinned.returnSha(' CONTENT-SHA256 retained\r\n\n')).toBe(hash(' CONTENT-SHA256 retained\n'));
+  });
+
+  it.each(['spec', 'spec-review'] as const)('capped carry does not bypass gates: %s', api => {
+    declared();
+    const f = cappedFixture();
+    expect(() => cappedSign(api, f, { plan: undefined })).toThrow(api === 'spec' ? /residual findings.*explicit distinct plan/ : /--plan names the plan/);
+    expect(() => cappedSign(api, f, { plan: f.spec })).toThrow(api === 'spec' ? /residual findings.*explicit distinct plan/ : /--plan is the spec/);
+    const alias = join(root, 'plan-alias.md');
+    symlinkSync(f.spec, alias);
+    expect(() => cappedSign(api, f, { plan: alias })).toThrow(api === 'spec' ? /residual findings.*capped verifier unavailable\/refused/ : /--plan is the spec/);
+    expect(() => cappedSign(api, f, { keys: ['HIMMEL-10205', 'HIMMEL-10206'] })).toThrow(api === 'spec' ? /residual findings.*one key/ : /names HIMMEL-10205, not --keys/);
+    expect(() => cappedSign(api, f, { verdicts: [f.verdicts[0]] })).toThrow(api === 'spec' ? /exactly two --verdict/ : /residual findings.*paired SPEC\/PLAN/);
+    expect(() => cappedSign(api, f, { supersedes: 'O-R1-9999' })).toThrow(api === 'spec' ? /no verified spec record/ : /no live spec-review record/);
+    noCappedRows();
+    const gated = cappedFixture(undefined, true);
+    cappedCalls.length = 0;
+    expect(() => cappedSign(api, gated)).toThrow(/minerva-spec-gate.sh refused/);
+    expect(cappedCalls).toHaveLength(1);
+    noCappedRows();
+    const o = { keys: ['HIMMEL-10205'], spec: f.spec, plan: f.plan, verdicts: f.verdicts };
+    const fenced = sctx({ ...specEnv(), HIMMEL_CONSOLE_LEG: '1' });
+    cappedCalls.length = 0;
+    expect(() => api === 'spec' ? signSpec(fenced, { ...o, decision: '387', verbatim: 'approve' }) : specReview(fenced, o)).toThrow(/chief-spawned worker/);
+    expect(cappedCalls).toEqual([]);
+    noCappedRows();
+  });
+
+  it.each(['spec', 'spec-review'] as const)('capped carry requires normal declared authority: %s', api => {
+    const f = cappedFixture();
+    expect(() => cappedSign(api, f)).toThrow(/release R1 is UNKNOWN/);
+    expect(existsSync(join(sctx().dir, 'operator.jsonl'))).toBe(false);
+  });
+
+  it.each(['spec', 'spec-review'] as const)('capped carry does not bypass key or Reviewed bindings: %s', api => {
+    declared();
+    const f = cappedFixture();
+    for (const path of f.verdicts) {
+      const original = readFileSync(path, 'utf8');
+      for (const changed of [original.replace(/^Reviewed:.*\n/m, ''), original.replace(/Reviewed: spec [0-9a-f]{64}/, `Reviewed: spec ${'a'.repeat(64)}`),
+        original.replace('Key: HIMMEL-10205', 'Key: HIMMEL-10206')]) {
+        writeFileSync(path, changed);
+        expect(() => cappedSign(api, f)).toThrow(/Reviewed|review|latest|Key:|names|header/);
+        noCappedRows();
+      }
+      writeFileSync(path, original);
+    }
+    expect(cappedSign(api, f).capped_carry?.carried).toHaveLength(2);
+  });
+
+  it('legacy inline and CLEAN success never requests capped fallback', () => {
+    declared();
+    cappedCalls.length = 0;
+    const clean = spec();
+    expect(sign(sctx(), ['K-1'], clean).capped_carry).toBeUndefined();
+    const inline = spec('K-3.md', join(root, 'inline'), ['# K-3: inline', '## Critic rounds', '- R1: fixed in the spec']);
+    expect(sign(sctx(), ['K-3'], inline, { verdicts: [verdict(inline, 'spec', 'SPEC FINDINGS 1'), verdict(inline, 'plan', 'PLAN CLEAN')] }).capped_carry).toBeUndefined();
+    const f = rspec();
+    expect(review(sctx(), f, [critic(f.spec, 'SPEC CLEAN')]).capped_carry).toBeUndefined();
+    const v = critic(f.spec, 'SPEC FINDINGS 1', { reviewed: [`Reviewed: spec ${'a'.repeat(64)}`] });
+    writeFileSync(f.spec, `${readFileSync(f.spec, 'utf8')}\n## Critic rounds\n\n- Round 1: file ${basename(v)}\n  - R1: fixed in §1\n`);
+    expect(review(sctx(), f, [v]).capped_carry).toBeUndefined();
+    expect(cappedCalls).toEqual([]);
+  });
+
+  it.each((['spec', 'spec-review'] as const).flatMap(api =>
+    ['spec', 'plan', 'page', 'estimate', 'return', 'ledger', 'manifest', 'snapshot', 'decision', 'selection', 'mtime'].map(role => [api, role] as const)))('capped carry preappend drift: %s %s', (api, role) => {
+    declared();
+    const f = ['decision', 'selection', 'mtime'].includes(role) ? decisionFixture() : cappedFixture();
+    const actual = ledger.withLock;
+    let changedUnderLocks = 0;
+    cappedCalls.length = 0;
+    const spy = vi.spyOn(ledger, 'withLock').mockImplementation((dir, fn, ...rest) => {
+      return actual(dir, () => {
+        if (dir === sctx().dir && !changedUnderLocks) {
+          expect(cappedCalls).toHaveLength(1);
+          expect(existsSync(join(sctx().dir, '.lock')) && existsSync(join(root, 'release', '.lock'))).toBe(true);
+          changedUnderLocks++;
+          const path = evidencePath(f, ['selection', 'mtime'].includes(role) ? 'decision' : role);
+          if (role === 'selection') writeFileSync(join(dirname(path), 'verbatim-decision-990-second.txt'), readFileSync(path));
+          else if (role === 'mtime') { const seconds = statSync(path).mtimeMs / 1000 + 10; utimesSync(path, seconds, seconds); }
+          else writeFileSync(path, `${readFileSync(path, 'utf8')}\n`);
+        }
+        return fn();
+      }, ...rest);
+    });
+    try {
+      const refusal = api === 'spec' && ['spec', 'plan', 'return'].includes(role)
+        ? /the spec, plan or a verdict file changed while it was checked/
+        : /capped evidence (changed|selection changed)/;
+      expect(() => cappedSign(api, f)).toThrow(refusal);
+      expect(changedUnderLocks).toBe(1);
+      noCappedRows();
+    } finally { spy.mockRestore(); }
+  });
+
+  it.each(['spec', 'spec-review'] as const)('capped carry persisted stale on postappend drift: %s', api => {
+    declared();
+    const f = cappedFixture();
+    const actual = ledger.appendChain;
+    const authorityPath = join(sctx().dir, 'operator.jsonl');
+    let changedAfterPersistence = false;
+    const spy = vi.spyOn(ledger, 'appendChain').mockImplementation((path, key, fields) => {
+      const persisted = actual(path, key, fields);
+      if (!changedAfterPersistence && path === authorityPath && (fields as OperatorRow).kind === api) {
+        changedAfterPersistence = true;
+        writeFileSync(f.ledgerPath, `${readFileSync(f.ledgerPath, 'utf8')}\n`);
+      }
+      return persisted;
+    });
+    let error = '';
+    try { cappedSign(api, f); } catch (e) { error = (e as Error).message; }
+    finally { spy.mockRestore(); }
+    const rows = readOperatorRecords(api, specEnv());
+    expect(rows).toHaveLength(1);
+    expect(changedAfterPersistence).toBe(true);
+    expect(error).toMatch(new RegExp(`persisted-but-stale ${rows[0].id}:.*inspect this record before retrying`));
+  });
+
+  it.each(['spec', 'spec-review'] as const)('capped carry reports exact persisted row when verified readback fails: %s', api => {
+    declared();
+    const f = cappedFixture();
+    const actual = ledger.appendChain;
+    const path = join(sctx().dir, 'operator.jsonl');
+    const saved = `${path}.saved`;
+    let refusedReadback = false;
+    const spy = vi.spyOn(ledger, 'appendChain').mockImplementation((target, key, fields) => {
+      const persisted = actual(target, key, fields);
+      if (!refusedReadback && target === path && (fields as OperatorRow).kind === api) {
+        refusedReadback = true;
+        renameSync(path, saved);
+      }
+      return persisted;
+    });
+    let error = '';
+    try { cappedSign(api, f); } catch (e) { error = (e as Error).message; }
+    finally { spy.mockRestore(); if (existsSync(saved)) renameSync(saved, path); }
+    const rows = readOperatorRecords(api, specEnv());
+    expect(rows).toHaveLength(1);
+    expect(refusedReadback).toBe(true);
+    expect(error).toBe(`persisted-but-stale ${rows[0].id}: signed row did not verify on readback; inspect this record before retrying`);
+  });
+
   const CHILD = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'pinned-read-child.mjs');
   const child = (mode: 'check' | 'review', input: Record<string, unknown>) => {
     const r = spawnSync(process.execPath, [CHILD, JSON.stringify({ env: specEnv(), ...input }), mode], { timeout: 5000, encoding: 'utf8' });
     return { status: r.status, signal: r.signal, out: r.stdout ? JSON.parse(r.stdout) as Record<string, unknown> : null };
   };
+
+  it.each((['spec', 'spec-review'] as const).flatMap(api =>
+    ['spec', 'plan', 'page', 'estimate', 'return', 'ledger', 'manifest', 'snapshot', 'decision'].flatMap(role =>
+      ['fifo', 'directory', 'oversized', 'missing', 'device'].map(fault => [api, role, fault] as const))))('capped carry stale unreadable pin: %s %s %s', (api, role, fault) => {
+    declared();
+    const f = role === 'decision' ? decisionFixture() : cappedFixture();
+    const row = cappedSign(api, f);
+    expect(cappedCheck(api).ok).toBe(true);
+    const path = evidencePath(f, role);
+    unlinkSync(path);
+    if (fault === 'fifo') execFileSync('mkfifo', [path]);
+    if (fault === 'directory') mkdirSync(path);
+    if (fault === 'oversized') { writeFileSync(path, ''); truncateSync(path, 16 * 1024 * 1024 + 1); }
+    if (fault === 'device') symlinkSync('/dev/null', path);
+    const out = child('check', { keys: ['HIMMEL-10205'], kinds: [api] });
+    expect(out.signal).toBeNull();
+    expect(out.status).toBe(0);
+    expect(out.out?.lines).toEqual([`SPEC-STALE HIMMEL-10205 ${f.spec} ${row.id}`]);
+  });
   function signedPair(): { p: string; id: string; good: string; goodId: string } {
     declared();
     const p = spec();
@@ -2420,7 +3821,7 @@ describe('signed minerva specs', () => {
     expect(r.out).toEqual({ error: `release operator spec-review: spec ${f.spec} is unreadable` });
   });
 
-  it('spec-review refuses a Reviewed: line that is missing, doubled, of another word or of other bytes', () => {
+  it('shared Reviewed extractor preserves legacy specReview', () => {
     declared();
     const f = rspec();
     const s = sha(f.spec);
@@ -2434,6 +3835,14 @@ describe('signed minerva specs', () => {
     expect(() => review(sctx(), f, [critic(f.spec, 'SPEC FINDINGS 0', { reviewed: [`Reviewed: spec ${other}`] })]))
       .toThrow(new RegExp(`SPEC FINDINGS 0 reviewed ${other}, not the spec's bytes ${s}`));
     expect(readOperatorRecords('spec-review', specEnv())).toEqual([]);
+
+    const v = critic(f.spec, 'SPEC FINDINGS 1', { reviewed: [`Reviewed: spec ${other}`] });
+    writeFileSync(f.spec, `${readFileSync(f.spec, 'utf8')}\n## Critic rounds\n\n- Round 1: one finding, file ${basename(v)}\n  - R1: fixed in §1\n`);
+    const r = review(sctx(), f, [v]);
+    expect(r.reviewed_sha256).toBe(other);
+    expect(r.spec_sha256).toBe(sha(f.spec));
+    expect(r.spec_sha256).not.toBe(other);
+    expect(r.residuals).toBe(1);
   });
 
   it('spec-review refuses a Key: line that is missing, empty of keys, another key set or only in the body, and an unnamed spec', () => {
@@ -2497,6 +3906,731 @@ describe('signed minerva specs', () => {
     expect(r.spec_sha256).toBe(sha(f.spec));
     expect(r.spec_sha256).not.toBe(reviewedSha);
     expect(r.residuals).toBe(3);
+  });
+
+  // ---- capped carry v2: the producer route and the readback by schema (step 4a). Every signing below is in the temporary release root with the synthetic key and a scratch HOME;
+  // each fixture is built by the real builders in its own scratch root inside it, and the artifact tree is never the release root.
+  type V2Fixture = CappedFixture & { keys?: string[]; anchor?: string; members?: string[]; earlier?: string[]; decision?: string | null; all: string[] };
+  const v2Build = (request: Record<string, unknown>): V2Fixture => {
+    if (!realBun) throw new Error('capped fixture requires Bun on PATH; install the pinned .bun-version');
+    const f = JSON.parse(execFileSync(realBun, [join(candidateRoot, 'scripts/telegram/testlib-capped-fold.ts')], {
+      input: JSON.stringify({ scratchRoot: mkdtempSync(join(root, 'v2-')), ...request }), encoding: 'utf8', timeout: 15000,
+    })) as V2Fixture;
+    f.all = f.verdicts;
+    f.verdicts = (['spec', 'plan'] as const).map(kind => f.all.filter(p => p.includes(`.critic-${kind}-r`)).at(-1) as string);
+    return f;
+  };
+  const v2Keys = (f: V2Fixture) => f.keys ?? [/(HIMMEL-\d+)/.exec(basename(f.spec))![1]];
+  const v2Sign = (f: V2Fixture, extra: Record<string, unknown> = {}, c: Ctx = sctx()) => signSpec(c, {
+    keys: v2Keys(f), spec: f.spec, plan: f.plan, verdicts: f.verdicts, decision: '387', verbatim: 'approve', ...extra,
+  });
+  const spawnReset = () => { cappedSpawn.fn = null; cappedSpawn.options.length = 0; cappedSpawn.attempts.length = 0; };
+  const attemptFlags = () => cappedSpawn.attempts.map(a => a[2]);
+  const releaseRows = () => existsSync(join(sctx().dir, 'operator.jsonl')) ? readFileSync(join(sctx().dir, 'operator.jsonl'), 'utf8').trim().split('\n').filter(Boolean).length : 0;
+  // R1 and R2: every file under the fixture's specs root by sha256, every decision file's mtime, and the anchor ledger's row kinds.
+  const v2Tree = (f: V2Fixture) => {
+    const decisions: Record<string, number> = {};
+    const dir = join(f.specsRoot, 'decisions');
+    if (existsSync(dir)) for (const name of readdirSync(dir)) decisions[name] = statSync(join(dir, name)).mtimeMs;
+    return { files: fixtureHashes(f.specsRoot), decisions, rows: readFileSync(f.ledgerPath, 'utf8').trim().split('\n').map(l => (JSON.parse(l) as { row: string }).row) };
+  };
+  const within = (path: string, dir: string) => path === dir || path.startsWith(`${dir}/`);
+  // E19: the release root, the key and HOME are inside temporary roots, the release root and the artifact tree share no path, and nothing under HOME changed.
+  function v2Hermetic(f: V2Fixture): () => void {
+    const home = process.env.HOME as string;
+    const before = readdirSync(home, { recursive: true }).sort();
+    return () => {
+      const env = specEnv();
+      expect(within(env.HIMMEL_RELEASE_STATE_DIR, root) && within(env.HIMMEL_RELEASE_KEY_DIR, root), 'the release root and the key are inside the temporary root').toBe(true);
+      expect(within(home, root) && within(f.specsRoot, root), 'HOME and the fixture are scratch directories inside the temporary root').toBe(true);
+      expect(within(f.specsRoot, env.HIMMEL_RELEASE_STATE_DIR) || within(env.HIMMEL_RELEASE_STATE_DIR, f.specsRoot), 'the release root and the artifact tree share no path').toBe(false);
+      expect(readdirSync(home, { recursive: true }).sort(), 'nothing under HOME changed').toEqual(before);
+    };
+  }
+  // The same fixture the v1 route refuses and the v2 route accepts, with every declaration spec-review reads: a finding heading with a context tag after its severity.
+  function v2OnlyFixture(): V2Fixture {
+    return v2Build({ key: 'HIMMEL-10205',
+      specText: '---\ntickets: HIMMEL-10205\n---\n# HIMMEL-10205 fixture\n\nKey: HIMMEL-10205\n\nEstimate record: estimate.json\n\n## Alternatives considered\n\n- None better.\n\n## Definition of done\n\n- Fixture verifies.\n\n## Invariants\n\nnone\n',
+      planText: '---\ntickets: HIMMEL-10205\n---\n# HIMMEL-10205 plan\n\n- Ticket: HIMMEL-10205\n\n- Task 1: build the fixture.\n',
+      returns: [1, 2, 3].flatMap(round => (['spec', 'plan'] as const).map(kind => ({ kind, round,
+        text: `- **F1** (${kind === 'spec' ? 'medium; Fact overlap' : 'minor'}) residual\n${kind.toUpperCase()} FINDINGS 1\n`,
+        reads: ['spec', 'plan', { path: 'specs/designs/estimate.json', text: '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n' }, { path: 'specs/designs/page.html', text: '<p>fixture</p>\n' }] }))) });
+  }
+  // The armed `--keys` spawn answers with the real verifier's proof, rewritten by `mutate` (the verifier is never edited); a refusal of the real verifier is thrown as the child would.
+  const armProof = (mutate: (proof: any, args: string[]) => void, argv: (args: string[]) => string[] = args => args) => {
+    cappedSpawn.fn = args => {
+      const run = spawnSync(realBun, argv(args), { encoding: 'utf8', timeout: 15000 });
+      if (run.status !== 0) throw Object.assign(new Error(run.stderr), { status: run.status, stderr: run.stderr });
+      const proof = JSON.parse(run.stdout);
+      mutate(proof, args);
+      return JSON.stringify(proof);
+    };
+  };
+  const OTHER = 'f'.repeat(64);
+
+  // ---- the two chief docs of the v2 route, read in the finite format the plan defines (a marker line, the next fenced block, the lines between); no shell is parsed.
+  const CHIEF_DOCS = ['docs/handover/chief-sections/telegram-files.md', 'docs/handover/running-a-chief.md'] as const;
+  const SIGNING_MARKER = '<!-- signing-hash-check -->';
+  const chiefDoc = (rel: string) => readFileSync(join(candidateRoot, rel), 'utf8');
+  const occurrences = (text: string, needle: string) => text.split(needle).length - 1;
+  // The lines between the fence that follows the marker line and the next fence, verbatim; null when no marker line is followed by a closed fence.
+  function markedBlock(text: string): string | null {
+    const lines = text.split('\n'); const marker = lines.indexOf(SIGNING_MARKER);
+    const open = marker < 0 ? -1 : lines.findIndex((l, i) => i > marker && l.startsWith('```'));
+    const close = open < 0 ? -1 : lines.findIndex((l, i) => i > open && l.startsWith('```'));
+    return close < 0 ? null : lines.slice(open + 1, close).join('\n');
+  }
+  // The section of a chief doc: its heading line up to the line before the next heading of the same level (or the end of the file), without trailing blank lines.
+  const SECTION_HEADING = '## Ledger-bound capped carry (proof v2)';
+  function docSection(text: string): string | null {
+    const lines = text.split('\n'); const start = lines.indexOf(SECTION_HEADING);
+    if (start < 0) return null;
+    const next = lines.findIndex((l, i) => i > start && /^## /.test(l));
+    return lines.slice(start, next < 0 ? lines.length : next).join('\n').trimEnd();
+  }
+
+  describe('capped carry v2 producer route', () => {
+    beforeEach(() => {
+      spawnReset();
+      for (const [k, v] of Object.entries(specEnv())) vi.stubEnv(k, v);
+      vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+      vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
+      vi.stubEnv('HOME', mkdtempSync(join(root, 'home-')));
+      declared();
+    });
+    afterEach(() => spawnReset());
+
+    async function cliSign(f: V2Fixture, keys = v2Keys(f)) {
+      writeFileSync(join(root, 'verbatim.txt'), 'approve 1-5\n');
+      const out: string[] = [];
+      const log = vi.spyOn(console, 'log').mockImplementation((s: string) => { out.push(s); });
+      try {
+        await cli('operator', 'spec', 'R1', '--keys', keys.join(','), '--spec', f.spec, '--plan', f.plan, '--verdict', f.verdicts[0], '--verdict', f.verdicts[1],
+          '--decision', '387', '--verbatim-file', join(root, 'verbatim.txt'));
+      } finally { log.mockRestore(); }
+      return out;
+    }
+    const okLines = (keys: string[], f: V2Fixture, id: string) => keys.map(k => `SPEC ok ${k} ${f.spec} ${id}`);
+    const staleLines = (keys: string[], f: V2Fixture, id: string) => keys.map(k => `SPEC-STALE ${k} ${f.spec} ${id}`);
+    const GROUP_REFUSAL = /residual findings.*capped verifier unavailable\/refused: v1 route: capped carry requires one key, an explicit distinct plan and paired SPEC\/PLAN returns; v2: /;
+
+    it('capped carry v2 signs a seven-key group through the real release operator spec: one schema-2 record, seven SPEC ok, the artifact tree unchanged (E1, R1, R2, E19)', async () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!;
+      const done = v2Hermetic(f); const before = v2Tree(f); const rowsBefore = releaseRows();
+      await cliSign(f);
+      const rows = readOperatorRecords('spec', specEnv());
+      expect(rows).toHaveLength(1);
+      const row = rows[0];
+      expect(row.capped_carry).toMatchObject({ schema: 2, reader_version: 2, mode: 'capped-carry-ledger', anchor: f.anchor, keys: [...keys].sort(), epoch: 1 });
+      expect([...(row.keys ?? [])].sort()).toEqual([...keys].sort());
+      expect(row.residuals).toBe(2);
+      expect(row.capped_carry!.carried.map(c => [c.kind, c.finding_id, c.status]), 'R2: every carried entry is open-carried').toEqual([['spec', 'F1', 'open-carried'], ['plan', 'P1', 'open-carried']]);
+      expect(pinned.validateCappedProofShape(row.capped_carry)).toEqual(row.capped_carry);
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+      expect(v2Tree(f), 'R1: the artifact tree, every decision mtime and the ledger rows are unchanged').toEqual(before);
+      expect(releaseRows(), 'the release root gains exactly one signed row').toBe(rowsBefore + 1);
+      expect(cappedSpawn.attempts).toEqual([[expectedVerifier, 'capped-fold', '--keys', [...keys].sort().join(','), '--spec', f.spec, '--plan', f.plan, '--spec-return', f.verdicts[0], '--plan-return', f.verdicts[1]]]);
+      done();
+    }, 60000);
+
+    it('capped carry v2 refuses six of the seven keys and eight keys: no record (E2)', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const done = v2Hermetic(f);
+      expect(() => v2Sign(f, { keys: keys.slice(0, 6) })).toThrow(new RegExp(`${GROUP_REFUSAL.source}capped-fold: capped-fold: tickets must declare only ${keys.slice(0, 6).join(', ')}`));
+      expect(() => v2Sign(f, { keys: [...keys, 'HIMMEL-9808'] })).toThrow(new RegExp(`${GROUP_REFUSAL.source}capped-fold: capped-fold: tickets must declare only ${[...keys, 'HIMMEL-9808'].join(', ')}`));
+      noCappedRows();
+      expect(attemptFlags(), 'a group goes to the v2 route only').toEqual(['--keys', '--keys']);
+      done();
+    });
+
+    it('capped carry v2 group record is stale after each pinned file edit, a ledger append, a history file edited or removed and an unsealed or foreign file (E3)', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f);
+      const ok = okLines(keys, f, row.id); const stale = staleLines(keys, f, row.id);
+      expect(check(keys)).toEqual(ok);
+      const files = row.capped_carry!.pins.filter((p): p is pinned.EvidenceFilePin | pinned.HistoryPin => 'path' in p);
+      expect(new Set(files.map(p => p.role))).toEqual(new Set(['ledger', 'manifest', 'return', 'artifact', 'snapshot', 'decision', 'history']));
+      expect(files.filter(p => p.role === 'history').map(p => p.path).sort()).toEqual([...f.earlier!].sort());
+      for (const pin of files.filter(p => p.role !== 'decision')) {
+        const kept = readFileSync(pin.path);
+        writeFileSync(pin.path, `${kept.toString()}\n`);
+        expect(check(keys), `${pin.role} ${pin.path} edited`).toEqual(stale);
+        writeFileSync(pin.path, kept);
+        expect(check(keys), `${pin.role} ${pin.path} restored`).toEqual(ok);
+      }
+      const ledger = readFileSync(f.ledgerPath, 'utf8');
+      writeFileSync(f.ledgerPath, `${ledger}${ledger.trim().split('\n').at(-1)}\n`);
+      expect(check(keys), 'a ledger row appended').toEqual(stale);
+      writeFileSync(f.ledgerPath, ledger);
+      const history = f.earlier![0]; const kept = readFileSync(history);
+      unlinkSync(history);
+      expect(check(keys), 'a history file removed').toEqual(stale);
+      writeFileSync(history, kept);
+      expect(check(keys)).toEqual(ok);
+      const unsealed = f.verdicts[0].replace('r3.md', 'r4.md');
+      cpSync(f.verdicts[0], unsealed);
+      expect(check(keys), 'a new unsealed return').toEqual(stale);
+      unlinkSync(unsealed);
+      const foreign = join(dirname(f.spec), 'HIMMEL-9801-foreign.md.critic-spec-r3.md');
+      writeFileSync(foreign, 'a foreign return of the same key');
+      expect(check(keys), 'a foreign file of the key at the signed round').toEqual(stale);
+      unlinkSync(foreign);
+      expect(check(keys)).toEqual(ok);
+    }, 60000);
+
+    it.each(['bytes', 'selection', 'mtime', 'file-alias', 'directory-alias'])('capped carry v2 group decision selection, mtime and alias fault is the only cause of the stale read: %s (E3)', fault => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f);
+      const proof = row.capped_carry!; const mtime = statSync(f.decision!).mtimeMs;
+      expect(proof.pins.find(p => p.role === 'decision')).toMatchObject({ path: f.decision, mtime_ms: mtime });
+      expect(proof.pins.some(p => p.role === 'decision-selection')).toBe(true);
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+      const ledger = readFileSync(f.ledgerPath, 'utf8'); const bytes = readFileSync(f.decision!);
+      if (fault === 'bytes') writeFileSync(f.decision!, `${bytes.toString()}changed\n`);
+      if (fault === 'selection') writeFileSync(join(dirname(f.decision!), 'verbatim-decision-990-second.txt'), bytes);
+      if (fault === 'mtime') { utimesSync(f.decision!, mtime / 1000 + 10, mtime / 1000 + 10); expect(readFileSync(f.decision!)).toEqual(bytes); }
+      if (fault === 'file-alias') { const moved = join(dirname(f.specsRoot), 'same-decision'); renameSync(f.decision!, moved); symlinkSync(moved, f.decision!); }
+      if (fault === 'directory-alias') { const moved = join(dirname(f.specsRoot), 'same-decisions'); renameSync(dirname(f.decision!), moved); symlinkSync(moved, dirname(f.decision!)); }
+      for (const pin of proof.pins) if ('path' in pin && pin.role !== 'decision') expect(sha(pin.path), `${pin.role} unchanged`).toBe(pin.sha256);
+      expect(readFileSync(f.ledgerPath, 'utf8')).toBe(ledger);
+      expect(check(keys)).toEqual(staleLines(keys, f, row.id));
+    });
+
+    it('capped carry v2 re-signs a schema-2 group record only by superseding it and keeping every key (E4)', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const first = v2Sign(f);
+      expect(() => v2Sign(f)).toThrow(new RegExp(`${keys[0]} is already signed in ${first.id}; re-sign with --supersedes ${first.id}`));
+      expect(() => v2Sign(f, { keys: keys.slice(0, 6), supersedes: first.id }), 'the verifier refuses six of the seven before the engine reaches its own check').toThrow(GROUP_REFUSAL);
+      expect(() => sign(sctx(), keys.slice(0, 6), spec('HIMMEL-9801-clean.md'), { supersedes: first.id }), 'an ordinary signing that drops a key').toThrow(new RegExp(`--keys must keep every key of ${first.id}; missing ${keys[6]}`));
+      expect(check(keys)).toEqual(okLines(keys, f, first.id));
+      const later = v2Sign(f, { supersedes: first.id }, { ...sctx(), now: () => new Date('2026-10-22T10:00:00.000Z') });
+      expect(later.capped_carry).toMatchObject({ schema: 2 });
+      expect(check(keys)).toEqual(okLines(keys, f, later.id));
+    });
+
+    it('capped carry v2 refuses a group-shaped spec without its Estimate record line through the real release operator spec: no record (E5)', async () => {
+      const keys = ['HIMMEL-9801', 'HIMMEL-9802'];
+      const f = v2Build({ key: keys[0], declarations: false,
+        specText: `---\ntickets: [${keys.join(', ')}]\n---\n# HIMMEL-9801 group\n\nThe contract names every member.\n\n## Alternatives considered\n\n- None better.\n\n## Definition of done\n\n- Fixture verifies.\n\n## Invariants\n\nnone\n`,
+        planText: '# HIMMEL-9801 plan\n\n- Task 1: build the fixture.\n',
+        returns: [1, 2, 3].flatMap(round => (['spec', 'plan'] as const).map(kind => ({ kind, round,
+          text: `- **F1** (${kind === 'spec' ? 'medium; Fact overlap' : 'minor'}) residual\n${kind.toUpperCase()} FINDINGS 1\n`, reads: ['spec', 'plan'] }))) });
+      await expect(cliSign(f, keys)).rejects.toThrow(/release operator spec: minerva-spec-gate.sh refused the spec:/);
+      expect(attemptFlags(), 'the artifact reached the verifier and the lint refused after it').toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    it('capped carry v2 proof is invalid for the unchanged v1 validator, so a v1-aware reader reads it stale (E8)', () => {
+      const f = v2Build({ builder: 'group' }); const row = v2Sign(f);
+      expect(() => pinned.validateCappedFoldProofShape(row.capped_carry)).toThrow('invalid capped-fold proof');
+      expect(pinned.validateCappedProofShape(row.capped_carry)).toEqual(row.capped_carry);
+      expect(pinned.PINNED_READ_VERSION).toBe(1);
+    });
+
+    it('capped carry v2 group refusal names the v1 route before the v2 reason: the verifier refuses a member that holds a ledger, and a spawn times out (E9)', () => {
+      const f = v2Build({ builder: 'group', reset: 'none' }); const keys = f.keys!;
+      writeFileSync(join(pinned.ledgerDirOf(f.specsRoot), `${f.members![0]}.jsonl`), '');
+      expect(() => v2Sign(f)).toThrow(new RegExp(`${GROUP_REFUSAL.source}capped-fold: capped-fold: group member holds ledger state: ${f.members![0]}`));
+      expect(() => v2Sign(f)).toThrow(/residual findings.*one key/);
+      noCappedRows();
+      expect(attemptFlags()).toEqual(['--keys', '--keys']);
+      spawnReset();
+      cappedSpawn.fn = () => { throw Object.assign(new Error('spawnSync bun ETIMEDOUT'), { code: 'ETIMEDOUT' }); };
+      expect(() => v2Sign(f)).toThrow(new RegExp(`${GROUP_REFUSAL.source}spawnSync bun ETIMEDOUT$`));
+      expect(cappedSpawn.options).toEqual([expect.objectContaining({ timeout: 30000, maxBuffer: 4194304 })]);
+      expect(cappedSpawn.attempts).toEqual([[expectedVerifier, 'capped-fold', '--keys', [...keys].sort().join(','), '--spec', f.spec, '--plan', f.plan, '--spec-return', f.verdicts[0], '--plan-return', f.verdicts[1]]]);
+      noCappedRows();
+    });
+
+    it('capped carry v2 one key a v1 verifier accepts is stored as schema 1, byte for byte what the verifier printed, with one --key attempt and no --keys (E11, E15)', () => {
+      const f = cappedFixture(); const done = v2Hermetic(f as V2Fixture);
+      const row = cappedSign('spec', f);
+      expect(row.capped_carry).toMatchObject({ schema: 1, mode: 'capped-carry', key: 'HIMMEL-10205' });
+      const printed = execFileSync(realBun, [expectedVerifier, 'capped-fold', '--key', 'HIMMEL-10205', '--spec', f.spec, '--plan', f.plan, '--spec-return', f.verdicts[0], '--plan-return', f.verdicts[1]], { encoding: 'utf8', timeout: 15000 });
+      expect(JSON.stringify(row.capped_carry)).toBe(printed.trim());
+      expect(cappedSpawn.attempts.slice(0, 1)).toEqual([[expectedVerifier, 'capped-fold', '--key', 'HIMMEL-10205', '--spec', f.spec, '--plan', f.plan, '--spec-return', f.verdicts[0], '--plan-return', f.verdicts[1]]]);
+      expect(attemptFlags().slice(0, 1)).toEqual(['--key']);
+      expect(attemptFlags().includes('--keys')).toBe(false);
+      expect(check(['HIMMEL-10205'])).toEqual([`SPEC ok HIMMEL-10205 ${f.spec} ${row.id}`]);
+      done();
+    });
+
+    it('capped carry v2 known-single refusedCap: v1 refuses, v2 accepts, one schema-2 record, SPEC ok, the artifact tree unchanged (E12, R1, R2)', () => {
+      const f = v2Build({ builder: 'known-single', variant: 'refusedCap' }); const key = v2Keys(f)[0];
+      const done = v2Hermetic(f); const before = v2Tree(f); const rowsBefore = releaseRows();
+      const row = v2Sign(f);
+      expect(row.capped_carry).toMatchObject({ schema: 2, mode: 'capped-carry-ledger', anchor: key, keys: [key], epoch: 0 });
+      expect(attemptFlags(), 'the shipped route first, then v2 with the one key').toEqual(['--key', '--keys']);
+      expect(cappedSpawn.attempts[1].slice(2, 4)).toEqual(['--keys', key]);
+      expect(row.capped_carry!.carried.map(c => [c.kind, c.finding_id, c.status]), 'R2').toEqual([['plan', 'P4', 'open-carried'], ['plan', 'P5', 'open-carried']]);
+      expect(readOperatorRecords('spec', specEnv()).find(r => r.id === row.id)?.capped_carry).toEqual(row.capped_carry);
+      expect(check([key])).toEqual([`SPEC ok ${key} ${f.spec} ${row.id}`]);
+      expect(v2Tree(f), 'R1').toEqual(before);
+      expect(releaseRows()).toBe(rowsBefore + 1);
+      done();
+    });
+
+    it('capped carry v2 admittedNextRound: both routes refuse and the message holds the first route reason, then the v2 reason (E13)', () => {
+      const f = v2Build({ builder: 'known-single', variant: 'admittedNextRound' }); const key = v2Keys(f)[0];
+      expect(() => v2Sign(f)).toThrow(new RegExp(`residual findings.*capped verifier unavailable/refused: capped-fold: capped-fold: header must declare only ${key}; v2: capped-fold: capped-fold: findings have not reached the refused round cap$`));
+      expect(attemptFlags()).toEqual(['--key', '--keys']);
+      noCappedRows();
+    });
+
+    it('capped carry v2 never runs for spec-review: a v2-only artifact is refused by the v1 route alone and signs through release operator spec (E14)', () => {
+      const f = v2OnlyFixture();
+      let refusal = '';
+      try { cappedSign('spec-review', f); } catch (e) { refusal = (e as Error).message; }
+      expect(refusal).toMatch(/residual findings.*capped verifier unavailable\/refused: capped-fold: capped-fold: ineligible finding heading/);
+      expect(refusal, 'the shipped refusal alone, no v2 reason').not.toContain('; v2:');
+      expect(attemptFlags(), 'no --keys spawn from spec-review').toEqual(['--key']);
+      noCappedRows();
+      spawnReset();
+      const row = cappedSign('spec', f);
+      expect(row.capped_carry).toMatchObject({ schema: 2, anchor: 'HIMMEL-10205' });
+      expect(attemptFlags()).toEqual(['--key', '--keys']);
+    });
+
+    it.each(['malformed', 'output', 'reader-version', 'schema', 'key', 'returned-drift', 'latest-return-3'])('capped carry v2 never retries a final failure of the v1 route on v2: %s (P3-2)', mode => {
+      const f = cappedFixture();
+      rejectingBun(mode, () => {
+        expect(() => cappedSign('spec', f)).toThrow(/residual findings.*capped verifier unavailable\/refused:/);
+        expect(attemptFlags(), 'exactly one --key attempt and no --keys').toEqual(['--key']);
+        noCappedRows();
+      });
+    }, 60000);
+
+    it('capped carry v2 never retries after an absent Bun, and goes to v2 only after a non-zero exit of the v1 verifier (P3-2)', () => {
+      const f = cappedFixture();
+      const old = process.env.PATH;
+      process.env.PATH = join(root, 'absent-bun');
+      try { expect(() => cappedSign('spec', f)).toThrow(/residual findings.*capped verifier unavailable\/refused:.*ENOENT/); } finally { process.env.PATH = old; }
+      expect(attemptFlags()).toEqual(['--key']);
+      spawnReset();
+      rejectingBun('nonzero', () => {
+        expect(() => cappedSign('spec', f)).toThrow(/residual findings.*capped verifier unavailable\/refused: rejecting verifier exit; v2: rejecting verifier exit$/);
+        expect(attemptFlags()).toEqual(['--key', '--keys']);
+        spawnReset();
+        expect(() => cappedSign('spec-review', f)).toThrow(/capped verifier unavailable\/refused: rejecting verifier exit$/);
+        expect(attemptFlags(), 'spec-review stops after the one --key attempt').toEqual(['--key']);
+      });
+      noCappedRows();
+    });
+
+    // A forged answer to the v2 spawn is the engine's to refuse, and a refusal on the v2 leg is final: the spawn is made once.
+    const FORGED = ['anchor', 'keys', 'spec-hash', 'plan-hash', 'return-full', 'return-normalized', 'residuals', 'declared-tickets'] as const;
+    it.each(FORGED)('capped carry v2 binds the proof to the signing input: %s', fault => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!;
+      const message = {
+        anchor: /capped proof anchor disagrees$/, keys: /capped proof input binding disagrees$/, 'spec-hash': /capped proof input binding disagrees$/, 'plan-hash': /capped proof input binding disagrees$/,
+        'return-full': /capped proof plan return binding disagrees$/, 'return-normalized': /capped proof plan return binding disagrees$/, residuals: /capped proof plan return binding disagrees$/,
+        'declared-tickets': /capped proof declared tickets disagree$/,
+      }[fault];
+      const requested = fault === 'declared-tickets' ? keys.slice(0, 6) : keys;
+      armProof(p => {
+        const absence = (members: string[]) => { for (const pin of p.pins) if (pin.role === 'member-absence') pin.keys = members; };
+        const rehash = (artifact: { path: string; sha256: string }) => { artifact.sha256 = OTHER; for (const pin of p.pins) if (pin.path === artifact.path) pin.sha256 = OTHER; };
+        if (fault === 'anchor') { p.anchor = p.keys[1]; for (const c of p.carried) c.key = p.keys[1]; absence(p.keys.filter((k: string) => k !== p.keys[1])); }
+        if (fault === 'keys') { p.keys = p.keys.slice(0, 6); absence(p.keys.slice(1)); }
+        if (fault === 'declared-tickets') { p.keys = p.keys.slice(0, 6); absence(p.keys.slice(1)); }
+        if (fault === 'spec-hash') rehash(p.spec);
+        if (fault === 'plan-hash') rehash(p.plan);
+        if (fault === 'return-full') rehash(p.returns[1]);
+        if (fault === 'return-normalized') { p.returns[1].return_sha = OTHER; for (const c of p.carried) if (c.kind === 'plan') c.return_sha = OTHER; }
+        if (fault === 'residuals') { p.returns[1].residuals++; p.carried.push({ ...p.carried.find((c: any) => c.kind === 'plan'), finding_id: 'P2' }); }
+      }, args => args.map((a, i) => i === 3 ? keys.join(',') : a));
+      expect(() => v2Sign(f, { keys: requested })).toThrow(message);
+      expect(attemptFlags(), 'the v2 spawn is made once').toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    it('capped carry v2 refuses an answer that is not a schema-2 proof, and never asks again: schema 1, unparseable, an invalid shape (P3-2)', () => {
+      const f = v2Build({ builder: 'known-single', variant: 'refusedCap' }); const other = cappedFixture();
+      const v1 = execFileSync(realBun, [expectedVerifier, 'capped-fold', '--key', 'HIMMEL-10205', '--spec', other.spec, '--plan', other.plan, '--spec-return', other.verdicts[0], '--plan-return', other.verdicts[1]], { encoding: 'utf8', timeout: 15000 });
+      spawnReset();
+      cappedSpawn.fn = () => v1;
+      expect(() => v2Sign(f)).toThrow(/; v2: capped proof schema disagrees: a --keys call was answered with schema 1$/);
+      expect(attemptFlags()).toEqual(['--key', '--keys']);
+      spawnReset();
+      cappedSpawn.fn = () => 'not JSON';
+      expect(() => v2Sign(f)).toThrow(/; v2: Unexpected token/);
+      expect(attemptFlags()).toEqual(['--key', '--keys']);
+      spawnReset();
+      armProof(p => { p.reader_version = 1; });
+      expect(() => v2Sign(f)).toThrow(/; v2: invalid capped-fold proof$/);
+      expect(attemptFlags()).toEqual(['--key', '--keys']);
+      noCappedRows();
+    });
+
+    it.each(['history-edit', 'history-removed', 'return-edit', 'unaccounted-return'])('capped carry v2 checks every pin of the proof before it is stored: %s', fault => {
+      const f = v2Build({ builder: 'group' });
+      armProof(p => {
+        const history = p.pins.find((pin: any) => pin.role === 'history').path;
+        if (fault === 'history-edit') writeFileSync(history, `${readFileSync(history, 'utf8')}\n`);
+        if (fault === 'history-removed') unlinkSync(history);
+        if (fault === 'return-edit') writeFileSync(p.returns[0].path, `${readFileSync(p.returns[0].path, 'utf8')}\n`);
+        if (fault === 'unaccounted-return') cpSync(p.returns[0].path, p.returns[0].path.replace('r3.md', 'r4.md'));
+      });
+      const expected = fault === 'unaccounted-return' ? /; v2: capped-fold: ambiguous or unaccounted latest return: .*r4\.md$/ : /; v2: capped evidence changed or unreadable: /;
+      expect(() => v2Sign(f)).toThrow(expected);
+      expect(attemptFlags()).toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    it('capped carry v2 reads schema-1 and schema-2 records by their own code, and an unknown schema reads stale (E16)', () => {
+      const single = cappedFixture(); const v1Row = cappedSign('spec', single);
+      const g = v2Build({ builder: 'group' }); const keys = g.keys!; const v2Row = v2Sign(g);
+      expect([v1Row.capped_carry!.schema, v2Row.capped_carry!.schema]).toEqual([1, 2]);
+      const lines = () => check(['HIMMEL-10205', ...keys]);
+      expect(lines()).toEqual([`SPEC ok HIMMEL-10205 ${single.spec} ${v1Row.id}`, ...okLines(keys, g, v2Row.id)]);
+      const copy = (row: typeof v2Row, id: string, schema: number) => ({ ...row, id, supersedes: row.id, capped_carry: { ...JSON.parse(JSON.stringify(row.capped_carry)), schema } });
+      appendChain(join(sctx().dir, 'operator.jsonl'), loadKey(sctx().keyPath), copy(v2Row, 'O-R1-9001', 3));
+      expect(lines()).toEqual([`SPEC ok HIMMEL-10205 ${single.spec} ${v1Row.id}`, ...staleLines(keys, g, 'O-R1-9001')]);
+      appendChain(join(sctx().dir, 'operator.jsonl'), loadKey(sctx().keyPath), copy(v1Row, 'O-R1-9002', 3));
+      expect(lines()).toEqual([`SPEC-STALE HIMMEL-10205 ${single.spec} O-R1-9002`, ...staleLines(keys, g, 'O-R1-9001')]);
+    });
+
+    it('capped carry v2 CLEAN spec and CLEAN plan sign ordinarily: no verifier is spawned and no capped proof is stored (E18)', () => {
+      const p = spec();
+      const row = sign(sctx(), ['K-1'], p);
+      expect(row).not.toHaveProperty('capped_carry');
+      expect(cappedSpawn.attempts).toEqual([]);
+      expect(check(['K-1'])).toEqual([`SPEC ok K-1 ${p} ${row.id}`]);
+    });
+
+    it.each(['null', 'unknown-field', 'schema-1', 'reader-version', 'missing-pin', 'keys', 'anchor', 'spec', 'plan', 'returns', 'count', 'declared-tickets'])('capped carry v2 persisted malformed or unbound proof stale: %s', fault => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f);
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+      const proof = JSON.parse(JSON.stringify(row.capped_carry));
+      const copy: any = { ...row, id: 'O-R1-9000', supersedes: row.id, capped_carry: proof };
+      if (fault === 'null') copy.capped_carry = null;
+      if (fault === 'unknown-field') proof.unknown = true;
+      if (fault === 'schema-1') proof.schema = 1;
+      if (fault === 'reader-version') proof.reader_version = 1;
+      if (fault === 'missing-pin') proof.pins = proof.pins.filter((p: { role: string }) => p.role !== 'ledger');
+      if (fault === 'keys') copy.keys = [...keys, 'HIMMEL-8888'];
+      if (fault === 'anchor') { proof.anchor = keys[1]; for (const c of proof.carried) c.key = keys[1]; for (const pin of proof.pins) if (pin.role === 'member-absence') pin.keys = keys.filter(k => k !== keys[1]); }
+      if (fault === 'spec') { copy.spec_path = join(root, 'same-spec.md'); cpSync(f.spec, copy.spec_path); }
+      if (fault === 'plan') { copy.plan_path = join(root, 'same-plan.md'); cpSync(f.plan, copy.plan_path); }
+      if (fault === 'returns') { const path = join(root, 'same-return.md'); cpSync(f.verdicts[0], path); copy.verdicts = [{ path, sha256: sha(path) }, row.verdicts![1]]; }
+      if (fault === 'count') copy.residuals = 0;
+      if (fault === 'declared-tickets') { copy.keys = keys.slice(0, 6); proof.keys = keys.slice(0, 6); for (const pin of proof.pins) if (pin.role === 'member-absence') pin.keys = keys.slice(1, 6); }
+      appendChain(join(sctx().dir, 'operator.jsonl'), loadKey(sctx().keyPath), copy);
+      expect(readOperatorRecords('spec', specEnv()).at(-1)?.id).toBe(copy.id);
+      expect(check([keys[0]])).toEqual([`SPEC-STALE ${keys[0]} ${copy.spec_path} ${copy.id}`]);
+    });
+
+    it('capped carry v2 stored member-absence pin on another folder reads stale: a scratch folder, another specs root, other keys (E26)', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f);
+      const withAbsence = (id: string, supersedes: string, change: (pin: any) => void) => {
+        const proof = JSON.parse(JSON.stringify(row.capped_carry));
+        for (const pin of proof.pins) if (pin.role === 'member-absence') change(pin);
+        appendChain(join(sctx().dir, 'operator.jsonl'), loadKey(sctx().keyPath), { ...row, id, supersedes, capped_carry: proof });
+      };
+      withAbsence('O-R1-9001', row.id, () => {});
+      expect(check(keys), 'control: an unchanged copy reads fresh').toEqual(okLines(keys, f, 'O-R1-9001'));
+      withAbsence('O-R1-9002', 'O-R1-9001', pin => { pin.directory = join(root, 'scratch-ledgers'); });
+      expect(check(keys)).toEqual(staleLines(keys, f, 'O-R1-9002'));
+      withAbsence('O-R1-9003', 'O-R1-9002', pin => { pin.directory = join(mkdtempSync(join(root, 'other-specs-')), 'specs', 'ledgers', 'spec-rounds'); });
+      expect(check(keys)).toEqual(staleLines(keys, f, 'O-R1-9003'));
+      withAbsence('O-R1-9004', 'O-R1-9003', pin => { pin.keys = pin.keys.slice(1); });
+      expect(check(keys)).toEqual(staleLines(keys, f, 'O-R1-9004'));
+    });
+
+    it('capped carry v2 a guard that refuses before any spawn refuses once with its shipped words, for a group too (P3-2)', () => {
+      const f = v2Build({ builder: 'group' });
+      const guard = /residual findings.*capped verifier unavailable\/refused: capped carry requires one key, an explicit distinct plan and paired SPEC\/PLAN returns$/;
+      expect(() => v2Sign(f, { plan: undefined })).toThrow(guard);
+      expect(() => v2Sign(f, { plan: f.spec })).toThrow(guard);
+      expect(cappedSpawn.attempts, 'no spawn and no v2 reason').toEqual([]);
+      noCappedRows();
+    });
+
+    it('capped carry v2 refuses a spec edited after the verifier answered, at the bind, before any pin is read', () => {
+      const f = v2Build({ builder: 'group' });
+      armProof(() => { writeFileSync(f.spec, `${readFileSync(f.spec, 'utf8')}\n`); });
+      expect(() => v2Sign(f)).toThrow(/; v2: capped proof input binding disagrees$/);
+      expect(attemptFlags()).toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    it('capped carry v2 spawns with the keys sorted whatever order they were requested in, and keeps the requested order on the record (E1)', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const reversed = [...keys].reverse();
+      const row = v2Sign(f, { keys: reversed });
+      expect(cappedSpawn.attempts[0].slice(2, 4)).toEqual(['--keys', [...keys].sort().join(',')]);
+      expect(row.keys).toEqual(reversed);
+      expect(row.capped_carry).toMatchObject({ keys: [...keys].sort() });
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+    });
+
+    // A group whose anchor does not sort first, the shape of the real family (its anchor sorts last). The group builder fixes its anchor as the first key,
+    // so the fixture is built by the real round builder with the group's declarations, as the verifier's own anchor-last row is.
+    const ANCHORS = [['last', 'HIMMEL-9899', ['HIMMEL-9801', 'HIMMEL-9802', 'HIMMEL-9803', 'HIMMEL-9899']], ['in the middle', 'HIMMEL-9830', ['HIMMEL-9801', 'HIMMEL-9830', 'HIMMEL-9899']]] as const;
+    function v2AnchorFixture(anchor: string, keys: readonly string[]): V2Fixture {
+      const estimate = { path: 'specs/designs/estimate.json', text: '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n' };
+      const f = v2Build({ key: anchor, declarations: false,
+        specText: `---\ntickets: [${keys.join(', ')}]\n---\n# ${anchor} group\n\nEstimate record: estimate.json\n\nThe contract names every member.\n\n## Alternatives considered\n\n- None better.\n\n## Definition of done\n\n- Fixture verifies.\n\n## Invariants\n\nnone\n`,
+        planText: `# ${anchor} plan\n\n- Task 1: build the fixture.\n`,
+        returns: [1, 2, 3].flatMap(round => (['spec', 'plan'] as const).map(kind => ({ kind, round,
+          text: `- **${kind === 'spec' ? 'F1' : 'P1'}** (${kind === 'spec' ? 'medium; Fact overlap' : 'minor'}) residual\n${kind.toUpperCase()} FINDINGS 1\n`,
+          reads: kind === 'spec' ? ['spec', estimate] : ['spec', 'plan', estimate] }))) });
+      f.keys = [...keys];
+      f.anchor = anchor;
+      return f;
+    }
+
+    it.each(ANCHORS)('capped carry v2 uses the anchor and not the first key in a group whose anchor sorts %s: signing, the stored record and the readback', (_where, anchor, keys) => {
+      const f = v2AnchorFixture(anchor, keys); const sorted = [...keys].sort(); const done = v2Hermetic(f);
+      expect(sorted[0], 'the anchor is not the first key').not.toBe(anchor);
+      const unsealed = f.verdicts[0].replace('r3.md', 'r4.md');
+      armProof(p => { cpSync(p.returns[0].path, unsealed); });
+      expect(() => v2Sign(f, { keys }), 'signing: an unaccounted return of the anchor that appears after the verifier answered').toThrow(/; v2: capped-fold: ambiguous or unaccounted latest return: .*r4\.md$/);
+      noCappedRows();
+      unlinkSync(unsealed);
+      spawnReset();
+      const row = v2Sign(f, { keys });
+      expect(row.capped_carry).toMatchObject({ schema: 2, anchor, keys: sorted });
+      expect(row.capped_carry!.carried.every(c => c.key === anchor), 'every carried finding belongs to the anchor').toBe(true);
+      expect(readOperatorRecords('spec', specEnv()).find(r => r.id === row.id)?.capped_carry, 'the stored record').toEqual(row.capped_carry);
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+      cpSync(f.verdicts[0], unsealed);
+      expect(check(keys), 'the readback: a return of the anchor above the signed round copied in later').toEqual(staleLines(keys, f, row.id));
+      unlinkSync(unsealed);
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+      done();
+    });
+
+    // The key-set check of the bind has two halves; the verifier is always asked for the real keys and the signing input differs from them.
+    const realKeys = (keys: string[]) => (args: string[]) => args.map((a, i) => i === 3 ? keys.join(',') : a);
+    it('capped carry v2 refuses a proof whose keys are a strict superset of the signing input, the input being a prefix of them', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!;
+      armProof(() => {}, realKeys(keys));
+      expect(() => v2Sign(f, { keys: keys.slice(0, 6) })).toThrow(/; v2: capped proof input binding disagrees$/);
+      expect(attemptFlags()).toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    it('capped carry v2 refuses a proof whose keys have the signing input\'s count and one different key', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!;
+      armProof(() => {}, realKeys(keys));
+      expect(() => v2Sign(f, { keys: [...keys.slice(0, 6), 'HIMMEL-9808'] })).toThrow(/; v2: capped proof input binding disagrees$/);
+      expect(attemptFlags()).toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    // A bun that kills itself with a signal: its parent sees no exit status and no error code, the case that is final and never retried on v2.
+    function signalBun(signal: string, run: () => void): void {
+      const bin = mkdtempSync(join(root, 'bun-bin-'));
+      writeFileSync(join(bin, 'bun'), `#!${process.execPath}\nprocess.kill(process.pid, ${JSON.stringify(signal)});\nsetTimeout(() => {}, 5000);\n`);
+      chmodSync(join(bin, 'bun'), 0o755);
+      const old = process.env.PATH;
+      process.env.PATH = `${bin}:${old}`;
+      try { run(); } finally { process.env.PATH = old; rmSync(bin, { recursive: true, force: true }); }
+    }
+    it.each(['SIGKILL', 'SIGTERM'])('capped carry v2 a v1 child killed by %s is final: one --key attempt, no --keys, the shipped refusal words', signal => {
+      const f = cappedFixture();
+      signalBun(signal, () => {
+        let refusal = '';
+        try { cappedSign('spec', f); } catch (e) { refusal = (e as Error).message; }
+        expect(refusal).toMatch(/residual findings.*capped verifier unavailable\/refused: Command failed: bun /);
+        expect(refusal, 'no v2 reason').not.toContain('; v2:');
+      });
+      expect(attemptFlags()).toEqual(['--key']);
+      noCappedRows();
+    });
+
+    // ---- step 4b: member state at signing and on every read. One predicate over a fresh listing of the pinned ledger folder and the manifest bytes the record pins.
+    const signedOnly = (row: { id: string }) => expect(readOperatorRecords('spec', specEnv()).map(r => r.id)).toEqual([row.id]);
+
+    it.each(['ledger-file', 'snapshot-folder', 'manifest-entry'])('capped carry v2 group record is stale for every key once a member gains a %s after signing, and a fresh signing of the same group then refuses (E17)', kind => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const member = f.members![1]; const row = v2Sign(f);
+      const dir = pinned.ledgerDirOf(f.specsRoot); const manifest = join(dir, 'manifest.json'); const kept = readFileSync(manifest);
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+      if (kind === 'ledger-file') writeFileSync(join(dir, `${member}.jsonl`), '');
+      if (kind === 'snapshot-folder') mkdirSync(join(dir, member));
+      if (kind === 'manifest-entry') { const m = JSON.parse(kept.toString()); m.keys[member] = { spec: 1, plan: 1 }; writeFileSync(manifest, JSON.stringify(m)); }
+      expect(check(keys), 'every key, the anchor included').toEqual(staleLines(keys, f, row.id));
+      expect(specCheck(specEnv(), keys, null).answer.get(f.anchor!), 'the reason').toEqual({ missing: expect.stringContaining(kind === 'manifest-entry'
+        ? 'capped evidence changed or unreadable' : `capped evidence selection changed: ${dir}`) });
+      spawnReset();
+      expect(() => v2Sign(f, { supersedes: row.id })).toThrow(new RegExp(`${GROUP_REFUSAL.source}capped-fold: capped-fold: group member holds ledger state: ${member}`));
+      expect(attemptFlags()).toEqual(['--keys']);
+      signedOnly(row);
+      if (kind === 'ledger-file') unlinkSync(join(dir, `${member}.jsonl`));
+      if (kind === 'snapshot-folder') rmSync(join(dir, member), { recursive: true });
+      if (kind === 'manifest-entry') writeFileSync(manifest, kept);
+      expect(check(keys), 'the fault was the only cause').toEqual(okLines(keys, f, row.id));
+    });
+
+    it.each(['ledger-file', 'snapshot-folder'])('capped carry v2 a member %s created after the verifier answered and before the append refuses at the signing recheck under the lock, naming the shared ledger folder, and writes no record (E25)', kind => {
+      const f = v2Build({ builder: 'group' }); const dir = pinned.ledgerDirOf(f.specsRoot);
+      const made = join(dir, kind === 'ledger-file' ? `${f.members![0]}.jsonl` : f.members![0]);
+      signingLock.fn = () => { if (kind === 'ledger-file') writeFileSync(made, ''); else mkdirSync(made); };
+      try { expect(() => v2Sign(f)).toThrow(new Error(`capped evidence selection changed: ${dir}`)); } finally { signingLock.fn = null; }
+      expect(existsSync(made), 'the lock seam ran').toBe(true);
+      expect(attemptFlags(), 'the verifier answered once, before the member existed').toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    it('capped carry v2 a listing over the bound is stale for the group and is never read as absence (E17)', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f); const dir = pinned.ledgerDirOf(f.specsRoot);
+      for (let i = 0; i < 4097; i++) writeFileSync(join(dir, `junk-${i}`), '');
+      expect(check(keys)).toEqual(staleLines(keys, f, row.id));
+      expect(specCheck(specEnv(), keys, null).answer.get(keys[0])).toEqual({ missing: expect.stringContaining(`capped evidence selection changed: ${dir}`) });
+      for (let i = 0; i < 4097; i++) unlinkSync(join(dir, `junk-${i}`));
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+    }, 60000);
+
+    it('capped carry v2 a member lock file and an unrelated name are no ledger state, a dangling link under a member name is (E17)', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const member = f.members![0]; const row = v2Sign(f); const dir = pinned.ledgerDirOf(f.specsRoot);
+      writeFileSync(join(dir, `${member}.jsonl.lock`), '');
+      writeFileSync(join(dir, 'notes.txt'), '');
+      expect(check(keys), 'a lock file and an unrelated name').toEqual(okLines(keys, f, row.id));
+      symlinkSync(join(dir, 'gone'), join(dir, `${member}.jsonl`));
+      expect(check(keys), 'a dangling link is present, never absent').toEqual(staleLines(keys, f, row.id));
+    });
+
+    it.each(['names-a-member', 'is-malformed'])('capped carry v2 the member check reads the manifest bytes the record pins: a manifest that %s is stale by the member words, not by a hash (E17)', fault => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f); const dir = pinned.ledgerDirOf(f.specsRoot); const manifest = join(dir, 'manifest.json');
+      const original = JSON.parse(readFileSync(manifest, 'utf8'));
+      const record = (bytes: string | null) => {
+        const proof = JSON.parse(JSON.stringify(row.capped_carry));
+        if (bytes !== null) { writeFileSync(manifest, bytes); for (const pin of proof.pins) if (pin.role === 'manifest') pin.sha256 = sha(manifest); }
+        return { ...row, release: 'R1', capped_carry: proof };
+      };
+      expect(specCheck(specEnv(), keys, null, { records: [record(null)] }).lines, 'control: the record as signed').toEqual(okLines(keys, f, row.id));
+      const out = specCheck(specEnv(), keys, null, { records: [record(fault === 'is-malformed' ? '{ not json' : JSON.stringify({ ...original, keys: { ...original.keys, [f.members![2]]: { spec: 1, plan: 1 } } }))] });
+      expect(out.lines).toEqual(staleLines(keys, f, row.id));
+      expect(out.answer.get(keys[0])).toEqual({ missing: expect.stringContaining(`capped evidence selection changed: ${dir}`) });
+    });
+
+    it('capped carry v2 the member check needs the pinned ledger folder itself: an alias of it is stale although every pinned file still reads (E17)', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f); const dir = pinned.ledgerDirOf(f.specsRoot); const moved = join(dirname(f.specsRoot), 'moved-ledgers');
+      const proof = JSON.parse(JSON.stringify(row.capped_carry));
+      for (const pin of proof.pins) if (typeof pin.path === 'string' && pin.path.startsWith(`${dir}/`)) pin.path = join(moved, pin.path.slice(dir.length + 1));
+      renameSync(dir, moved);
+      symlinkSync(moved, dir);
+      const out = specCheck(specEnv(), keys, null, { records: [{ ...row, release: 'R1', capped_carry: proof }] });
+      expect(out.lines).toEqual(staleLines(keys, f, row.id));
+      expect(out.answer.get(keys[0])).toEqual({ missing: expect.stringContaining(`capped evidence selection changed: ${dir}`) });
+    });
+
+    // ---- step 4c: the `Keys?:` and `Reviewed:` agreement of a return is one call, shared by the signing bind and the readback.
+    const REVIEWED_WORDS = 'capped return Reviewed declaration disagrees with the current spec';
+    const KEYS_WORDS = 'capped return Keys? declaration disagrees with the declared keys';
+    const AGREEMENT = [['reviewed-wrong', REVIEWED_WORDS], ['keys-other', KEYS_WORDS], ['reviewed-doubled', REVIEWED_WORDS], ['keys-doubled', KEYS_WORDS]] as const;
+    const AGREEMENT_CASES = (['spec', 'plan'] as const).flatMap(which => AGREEMENT.map(([fault, words]) => [which, fault, words] as const));
+    const agreementLines = (fault: string, keys: string[], specSha: string): string[] => {
+      const list = [...keys].sort().join(', ');
+      return ({ 'reviewed-wrong': [`Reviewed: spec ${'e'.repeat(64)}`], 'keys-other': [`Keys: ${keys[0]}, HIMMEL-9999`], 'reviewed-doubled': [`Reviewed: spec ${specSha}`, `Reviewed: spec ${specSha}`],
+        'keys-doubled': [`Keys: ${list}`, `Keys: ${list}`], control: [`Keys: ${list}`, `Reviewed: spec ${specSha}`] } as Record<string, string[]>)[fault];
+    };
+    const realProof = (f: V2Fixture) => JSON.parse(spawnSync(realBun, [expectedVerifier, 'capped-fold', '--keys', [...f.keys!].sort().join(','), '--spec', f.spec, '--plan', f.plan,
+      '--spec-return', f.verdicts[0], '--plan-return', f.verdicts[1]], { encoding: 'utf8', timeout: 15000 }).stdout);
+    // The return file gains the lines, and the proof is rewritten consistently to the edited bytes (the return hash, its normalized hash, its pin and its carried entries),
+    // so that every provenance check other than the agreement passes.
+    function editReturn(f: V2Fixture, which: 'spec' | 'plan', lines: string[], proof: any): string {
+      const i = which === 'spec' ? 0 : 1; const path = f.verdicts[i];
+      writeFileSync(path, `${lines.join('\n')}\n${readFileSync(path, 'utf8')}`);
+      proof.returns[i].sha256 = sha(path);
+      proof.returns[i].return_sha = pinned.returnSha(readFileSync(path, 'utf8'));
+      for (const pin of proof.pins) if (pin.path === path) pin.sha256 = sha(path);
+      for (const c of proof.carried) if (c.kind === which) c.return_sha = proof.returns[i].return_sha;
+      return path;
+    }
+    const refusalMessage = (run: () => unknown) => { try { run(); } catch (e) { return (e as Error).message; } return ''; };
+
+    it.each(AGREEMENT_CASES)('capped carry v2 the bind refuses a %s return that disagrees with the declared keys or the spec at signing, with the agreement reason: %s (E10)', (which, fault, words) => {
+      const f = v2Build({ builder: 'group' }); const proof = realProof(f);
+      editReturn(f, which, agreementLines(fault, f.keys!, sha(f.spec)), proof);
+      cappedSpawn.fn = () => JSON.stringify(proof);
+      const message = refusalMessage(() => v2Sign(f));
+      expect(message.endsWith(`; v2: ${words}`), message).toBe(true);
+      expect(message, 'not a hash reason').not.toMatch(/binding disagrees|changed or unreadable/);
+      expect(attemptFlags()).toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    it.each(['spec', 'plan'] as const)('capped carry v2 the bind signs a %s return whose Keys? and Reviewed lines agree, the control of E10', which => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const proof = realProof(f);
+      editReturn(f, which, agreementLines('control', keys, sha(f.spec)), proof);
+      cappedSpawn.fn = () => JSON.stringify(proof);
+      const row = v2Sign(f);
+      expect(row.capped_carry).toMatchObject({ schema: 2, anchor: f.anchor });
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+    });
+
+    it.each(AGREEMENT_CASES)('capped carry v2 the readback reads a %s return that disagrees with the declared keys or the spec stale, with the agreement reason: %s (E22)', (which, fault, words) => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f); const proof = JSON.parse(JSON.stringify(row.capped_carry));
+      const path = editReturn(f, which, agreementLines(fault, keys, sha(f.spec)), proof);
+      const record = { ...row, release: 'R1', verdicts: row.verdicts!.map(v => v.path === path ? { path, sha256: sha(path) } : v), capped_carry: proof };
+      const out = specCheck(specEnv(), keys, null, { records: [record] });
+      expect(out.lines).toEqual(staleLines(keys, f, row.id));
+      const why = (out.answer.get(keys[0]) as { missing: string }).missing;
+      expect(why.endsWith(words), why).toBe(true);
+      expect(why, 'not a hash reason').not.toMatch(/binding disagrees|changed or unreadable/);
+    });
+
+    it.each(['spec', 'plan'] as const)('capped carry v2 the readback reads a %s return whose Keys? and Reviewed lines agree as fresh, the control of E22', which => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f); const proof = JSON.parse(JSON.stringify(row.capped_carry));
+      const path = editReturn(f, which, agreementLines('control', keys, sha(f.spec)), proof);
+      const record = { ...row, release: 'R1', verdicts: row.verdicts!.map(v => v.path === path ? { path, sha256: sha(path) } : v), capped_carry: proof };
+      expect(specCheck(specEnv(), keys, null, { records: [record] }).lines).toEqual(okLines(keys, f, row.id));
+    });
+
+    // ---- follow-ups of the 4b and 4c review: the member check must not depend on another check having run before it.
+    // The shapes of the pinned ledger folder: every pinned file is moved with the real folder, so the file pins read, and a member ledger sits in the moved copy; only the member check stands in the way.
+    it.each(['a plain file', 'a symlink to a file', 'a dangling symlink', 'a directory that cannot be listed'])('capped carry v2 the member check refuses a pinned ledger folder that is %s, although every pinned file lives elsewhere and reads (E17)', shape => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f); const dir = pinned.ledgerDirOf(f.specsRoot); const moved = join(dirname(f.specsRoot), 'moved-ledgers');
+      if (shape === 'a directory that cannot be listed' && process.getuid?.() === 0) return;
+      const proof = JSON.parse(JSON.stringify(row.capped_carry));
+      for (const pin of proof.pins) if (typeof pin.path === 'string' && pin.path.startsWith(`${dir}/`)) pin.path = join(moved, pin.path.slice(dir.length + 1));
+      renameSync(dir, moved);
+      writeFileSync(join(moved, `${f.members![0]}.jsonl`), '');
+      if (shape === 'a plain file') writeFileSync(dir, '');
+      if (shape === 'a symlink to a file') { const target = join(dirname(f.specsRoot), 'a-file'); writeFileSync(target, ''); symlinkSync(target, dir); }
+      if (shape === 'a dangling symlink') symlinkSync(join(dirname(f.specsRoot), 'nowhere'), dir);
+      if (shape === 'a directory that cannot be listed') { mkdirSync(dir); chmodSync(dir, 0o311); }
+      try {
+        const out = specCheck(specEnv(), keys, null, { records: [{ ...row, release: 'R1', capped_carry: proof }] });
+        expect(out.lines).toEqual(staleLines(keys, f, row.id));
+        expect(out.answer.get(keys[0])).toEqual({ missing: expect.stringContaining(`capped evidence selection changed: ${dir}`) });
+      } finally { if (shape === 'a directory that cannot be listed') chmodSync(dir, 0o755); }
+    });
+
+    it('capped carry v2 a doctored verifier answer whose pinned files moved with the ledger folder, now a plain file, is refused when the answer is checked, naming the folder (E17, the signing side)', () => {
+      const f = v2Build({ builder: 'group' }); const dir = pinned.ledgerDirOf(f.specsRoot); const moved = join(dirname(f.specsRoot), 'moved-ledgers');
+      armProof(p => {
+        cpSync(dir, moved, { recursive: true });
+        for (const pin of p.pins) if (typeof pin.path === 'string' && pin.path.startsWith(`${dir}/`)) pin.path = join(moved, pin.path.slice(dir.length + 1));
+        rmSync(dir, { recursive: true });
+        writeFileSync(dir, '');
+        writeFileSync(join(moved, `${f.members![0]}.jsonl`), '');
+      });
+      expect(() => v2Sign(f)).toThrow(new RegExp(`; v2: capped evidence selection changed: ${dir}$`));
+      expect(attemptFlags()).toEqual(['--keys']);
+      noCappedRows();
+    });
+
+    // The last key of the group sorts last among the members: the engine must hand the predicate the whole pinned key list.
+    it('capped carry v2 a member ledger for the last key of the group makes the record stale and refuses at the signing recheck under the lock (E17, E25)', () => {
+      const lock = v2Build({ builder: 'group' }); const last = lock.members!.at(-1) as string; const dir = pinned.ledgerDirOf(lock.specsRoot);
+      expect(last, 'the last member sorts last').toBe([...lock.keys!].sort().at(-1));
+      signingLock.fn = () => writeFileSync(join(dir, `${last}.jsonl`), '');
+      try { expect(() => v2Sign(lock)).toThrow(new Error(`capped evidence selection changed: ${dir}`)); } finally { signingLock.fn = null; }
+      noCappedRows();
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f); const ledgers = pinned.ledgerDirOf(f.specsRoot);
+      writeFileSync(join(ledgers, `${last}.jsonl`), '');
+      expect(check(keys)).toEqual(staleLines(keys, f, row.id));
+      expect(specCheck(specEnv(), keys, null).answer.get(keys[0])).toEqual({ missing: expect.stringContaining(`capped evidence selection changed: ${ledgers}`) });
+    });
+
+    // The verifier answer is one of the places the plan names: a member that exists then is refused there, so the signing lock is never taken.
+    it('capped carry v2 a member that exists when the verifier answer is checked is refused there, before the signing lock is taken (E17)', () => {
+      const f = v2Build({ builder: 'group' }); const dir = pinned.ledgerDirOf(f.specsRoot); let locked = false;
+      armProof(() => { writeFileSync(join(dir, `${f.members![0]}.jsonl`), ''); });
+      signingLock.fn = () => { locked = true; };
+      try { expect(() => v2Sign(f)).toThrow(new RegExp(`; v2: capped evidence selection changed: ${dir}$`)); } finally { signingLock.fn = null; }
+      expect(locked, 'the signing lock was never taken').toBe(false);
+      expect(attemptFlags()).toEqual(['--keys']);
+      noCappedRows();
+    });
   });
 });
 
@@ -3125,6 +5259,779 @@ describe('a request names the operator\'s words', () => {
   });
 });
 
+import { requestOnRecord, coveringRecord } from './engine.js';
+import { chainFault } from './engine.js';
+import { withLock } from './ledger.js';
+
+// Decision 2026-11-19, item 8: a gated ask is filed citing an operator record that already names the key and the exact
+// placement, with no words typed again and no new operator row. Each way the analysis says it could go wrong has its own rows.
+describe('a gated ask cites the operator record that already covers it', () => {
+  const FILE = 'Operator, verbatim:\n\n"Approved one more round of the spike"\n\nAnswering the ask on K-5: stop and park.\n';
+  const WORDS = 'Approved one more round';
+  const OTHER_WORDS = 'Approved one more round of the spike';
+  let clock = 0;
+  // Each write lands a minute after the last, so "newer" is a real order.
+  const at = (env: Record<string, string> = consoleEnv): Ctx => {
+    clock += 60_000;
+    const d = new Date(Date.parse('2026-10-21T10:00:00.000Z') + clock);
+    return { ...ctx(env), now: () => d };
+  };
+  const atTs = (t: number): Ctx => ({ ...ctx(), now: () => new Date(t) });
+  beforeEach(() => { clock = 0; });
+  type Placement = [op: string, from_v: string | null, to_v: string | null];
+  type Ask = Omit<RequestRow, 'req' | 'ts' | 'state'>;
+  const ADD_V1: Placement = ['add', null, 'v1'];
+  const decisionFile = () => {
+    const dir = join(root, 'specs', 'decisions');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'verbatim-decision-9-op.txt'), FILE);
+  };
+  const words = (c: Ctx, keys: string[], [op, from_v, to_v]: Placement, text = WORDS) =>
+    operatorDecision(c, { decision: '9', keys, op, from_v, to_v, verbatim: text, ...decisionWords(c, '9', text) });
+  const legacy = (c: Ctx, keys: string[], [op, from_v, to_v]: Placement) =>
+    operatorDecision(c, { decision: '120', keys, op, from_v, to_v, verbatim: 'legacy, no words' });
+  const ask = (o?: Partial<Ask>): Ask => ({ verb: 'INTAKE', key: 'K-5', from_v: null, to_v: 'v1', why: 'the operator asked for one more round', evidence: {}, from: 'console', ...o });
+  const lines = (file: string) => (existsSync(file) ? readFileSync(file, 'utf8').trim().split('\n') : []);
+  const operatorFile = () => join(root, 'release', 'R1', 'operator.jsonl');
+  const queue = () => lines(join(root, 'release', 'R1', 'requests.jsonl')).map((l) => JSON.parse(l) as RequestRow);
+  const forge = (fields: Record<string, unknown>, c: Ctx) =>
+    appendChain<OperatorRow>(operatorFile(), loadKey(join(root, 'keys', 'R1.key')), { ts: c.now().toISOString(), ...fields });
+  const tamper = (nth: number, edit: (row: Record<string, unknown>) => void) => {
+    const rows = lines(operatorFile());
+    const row = JSON.parse(rows[nth < 0 ? rows.length + nth : nth]) as Record<string, unknown>;
+    edit(row);
+    rows[nth < 0 ? rows.length + nth : nth] = JSON.stringify(row);
+    writeFileSync(operatorFile(), `${rows.join('\n')}\n`);
+  };
+  const flip = (hex: unknown) => `${String(hex).startsWith('0') ? '1' : '0'}${String(hex).slice(1)}`;
+  const mirrorOf = (...keys: Array<{ key: string; labels?: string[] }>) => mirror([{ key: 'K-1', fixVersions: ['v1'] }, ...keys.map((k) => ({ fixVersions: [] as string[], ...k }))]);
+  // The RM refuses the ask (BACKLOG, nothing placed): the key's standing refusal.
+  const refuse = async (key: string) => {
+    const q = request(at(), ask({ key }));
+    claim(at(rmEnv));
+    const r = rule(at(rmEnv), {
+      req: q.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'no operator words',
+      reason: `name the operator's words for ${key}`, supersedes: [], authority: { kind: 'rm', ref: null },
+    });
+    await apply(at(rmEnv), r.id);
+    return r;
+  };
+
+  it('files a gated ask with a covering words record and no --decision, cites that record, and writes no operator row', async () => {
+    await setup();
+    decisionFile();
+    const rec = words(at(), ['K-5'], ADD_V1);
+    const before = lines(operatorFile());
+    const got = requestOnRecord(at(), ask());
+    expect(got?.operator.id).toBe(rec.id);
+    expect(got?.request).toMatchObject({ key: 'K-5', verb: 'INTAKE', from_v: null, to_v: 'v1', state: 'open', why: 'the operator asked for one more round', evidence: { operator: rec.id } });
+    expect(lines(operatorFile())).toEqual(before);
+    expect(queue()).toHaveLength(1);
+  });
+
+  it.each([
+    ['an INTAKE from backlog (an add)', ['add', null, 'v1'], {}],
+    ['a REVERSION from backlog (a move)', ['move', null, 'v1'], { verb: 'REVERSION' }],
+    ['a REVERSION out of v2 (a move)', ['move', 'v2', 'v1'], { verb: 'REVERSION', from_v: 'v2' }],
+    ['an INTAKE from v2 (a move)', ['move', 'v2', 'v1'], { from_v: 'v2' }],
+  ] as Array<[string, Placement, Partial<Ask>]>)('%s is placed by exactly its own record', async (_name, placement, change) => {
+    await setup();
+    decisionFile();
+    const rec = words(at(), ['K-5'], placement);
+    expect(requestOnRecord(at(), ask(change))?.request.evidence).toEqual({ operator: rec.id });
+  });
+
+  it('keeps the chief\'s other evidence, and the record it cites always overrides an operator claim in the evidence', async () => {
+    await setup();
+    decisionFile();
+    const rec = words(at(), ['K-5'], ADD_V1);
+    expect(requestOnRecord(at(), ask({ evidence: { pr: 7, operator: 'O-R1-9999' } }))?.request.evidence).toEqual({ pr: 7, operator: rec.id });
+  });
+
+  it('a repeat of the ask returns the same open request, still citing the record, and files and records nothing more', async () => {
+    await setup();
+    decisionFile();
+    const rec = words(at(), ['K-5'], ADD_V1);
+    const first = requestOnRecord(at(), ask());
+    const again = requestOnRecord(at(), ask());
+    expect(again?.request.req).toBe(first?.request.req);
+    expect(again?.request.evidence).toEqual({ operator: rec.id });
+    expect(queue()).toHaveLength(1);
+    expect(lines(operatorFile()).filter((l) => (JSON.parse(l) as OperatorRow).kind === 'decision')).toHaveLength(1);
+  });
+
+  it('with two words records for the same placement it cites the newer, the one the RM reads as governing', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    const newer = words(at(), ['K-5'], ADD_V1, OTHER_WORDS);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(newer.id);
+  });
+
+  it('a newer record for another version, and an older legacy row, do not hide the record that governs this one', async () => {
+    await setup();
+    decisionFile();
+    legacy(at(), ['K-5'], ['keep', 'v1', 'v1']);
+    const rec = words(at(), ['K-5'], ADD_V1);
+    words(at(), ['K-5'], ['add', null, 'v2'], OTHER_WORDS);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(rec.id);
+  });
+
+  it('a release with no record of the key, the standing declare records only, files nothing and answers no record', async () => {
+    await setup();
+    expect(coveringRecord(at(), ask())).toBeUndefined();
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  it('a release that is not declared answers no record and creates no state', () => {
+    const c9: Ctx = { ...ctx(), release: 'R9', dir: join(root, 'release', 'R9'), keyPath: join(root, 'keys', 'R9.key') };
+    expect(requestOnRecord(c9, ask())).toBeUndefined();
+    expect(existsSync(c9.dir)).toBe(false);
+  });
+
+  it('only INTAKE and REVERSION into a version are placed by a record: a DISCHARGE, or a move to backlog, never', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ['discharge', 'v1', null]);
+    words(at(), ['K-5'], ['move', 'v1', null], OTHER_WORDS);
+    expect(requestOnRecord(at(), ask({ verb: 'DISCHARGE', from_v: 'v1', to_v: null }))).toBeUndefined();
+    expect(requestOnRecord(at(), ask({ verb: 'REVERSION', from_v: 'v1', to_v: null }))).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  // way 1: a work permission (and every other non-decision kind) becomes a placement
+  const KINDS = ['declare', 'takeover', 'emergency', 'blocker-pull', 'delivered-follows-merge', 'spec', 'spec-review', 'core-bypass', 'core-snapshot', 'out-of-version'];
+  it.each(KINDS)('way 1: a signed %s row that names the key and the placement never places it', async (kind) => {
+    await setup();
+    decisionFile();
+    forge({ id: `O-R1-forged-${kind}`, kind, decision: '9', keys: ['K-5'], op: 'add', from_v: null, to_v: 'v1', verbatim: WORDS, words: 1, version: 'v1', reason: 'forged' }, at());
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  it('way 1: a live 14-day out-of-version approval alone never places the key, and does not hide a decision newer than it', async () => {
+    await setup();
+    decisionFile();
+    forge({ id: 'O-R1-ov-K-5', kind: 'out-of-version', decision: '518', keys: ['K-5'], version: 'v1', reason: 'work permission' }, at());
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    const rec = words(at(), ['K-5'], ADD_V1);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(rec.id);
+  });
+
+  // way 2: the record does not name the key
+  it.each([
+    ['another key', ['K-6']],
+    ['a longer key that starts with it', ['K-50']],
+    ['a multi-key row without it', ['K-6', 'K-7']],
+  ])('way 2: a words record naming %s does not place the key', async (_name, keys) => {
+    await setup();
+    decisionFile();
+    words(at(), keys, ADD_V1);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  // way 3: right key, wrong placement
+  it.each([
+    ['a move from backlog does not place an INTAKE (an add)', ['move', null, 'v1'], {}],
+    ['an add from backlog does not place a REVERSION from backlog (a move)', ['add', null, 'v1'], { verb: 'REVERSION' }],
+    ['a move from v2 does not place an INTAKE from backlog (a version versus backlog)', ['move', 'v2', 'v1'], {}],
+    ['an add from backlog does not place a move out of v2 (backlog versus a version)', ['add', null, 'v1'], { verb: 'REVERSION', from_v: 'v2' }],
+    ['a move from v3 does not place a move from v2 (the wrong from)', ['move', 'v3', 'v1'], { verb: 'REVERSION', from_v: 'v2' }],
+    ['a move to v3 does not place a move to v1 (the wrong to)', ['move', 'v2', 'v3'], { verb: 'REVERSION', from_v: 'v2' }],
+    ['an add to v2 does not place an INTAKE into v1', ['add', null, 'v2'], {}],
+    ['a keep in v1 places nothing', ['keep', 'v1', 'v1'], {}],
+    ['a remove from v1 places nothing', ['remove', 'v1', null], {}],
+    ['a discharge in v1 places nothing', ['discharge', 'v1', null], {}],
+  ] as Array<[string, Placement, Partial<Ask>]>)('way 3: %s', async (_name, placement, change) => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], placement);
+    expect(requestOnRecord(at(), ask(change))).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  // way 4: legacy rows
+  it('way 4: a legacy decision row (no words:1) for exactly this placement never places the key', async () => {
+    await setup();
+    legacy(at(), ['K-5'], ADD_V1);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  it('way 4: a legacy row newer than the words record governs the key and refuses; an older one does not', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    legacy(at(), ['K-5'], ADD_V1);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+  });
+
+  // way 5: "newer" is fixed, to the millisecond
+  it('way 5: a record older than the key\'s standing refusal is not cited, and the refused ask stays listed with its remedy', async () => {
+    await setup();
+    decisionFile();
+    mirrorOf({ key: 'K-5', labels: ['operator-directed'] });
+    words(at(), ['K-5'], ADD_V1);
+    const r = await refuse('K-5');
+    const before = queue().length;
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toHaveLength(before);
+    expect(state(ctx()).refused_asks).toMatchObject([{ key: 'K-5', ruling: r.id, remedy: expect.stringContaining('--decision <n> --words') }]);
+  });
+
+  it('way 5: a record newer than the standing refusal is cited, and the refusal leaves refused_asks', async () => {
+    await setup();
+    decisionFile();
+    mirrorOf({ key: 'K-5', labels: ['operator-directed'] });
+    await refuse('K-5');
+    const rec = words(at(), ['K-5'], ADD_V1);
+    expect(state(ctx()).refused_asks).toEqual([]);
+    const got = requestOnRecord(at(), ask());
+    expect(got?.operator.id).toBe(rec.id);
+    expect(got?.request.state).toBe('open');
+  });
+
+  it('way 5: a record in the same millisecond as the key\'s last ruling row is a tie and is not cited; one millisecond later it is', async () => {
+    await setup();
+    decisionFile();
+    mirrorOf({ key: 'K-5', labels: ['operator-directed'] });
+    await refuse('K-5');
+    const last = Math.max(...lines(join(root, 'release', 'R1', 'rulings.jsonl')).map((l) => Date.parse((JSON.parse(l) as RulingRow).ts)));
+    words(atTs(last), ['K-5'], ADD_V1);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    const later = words(atTs(last + 1), ['K-5'], ADD_V1, OTHER_WORDS);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(later.id);
+  });
+
+  it('way 5: two records for the same placement in the same millisecond are a tie and neither is cited', async () => {
+    await setup();
+    decisionFile();
+    const t = Date.parse('2026-10-21T12:00:00.000Z');
+    words(atTs(t), ['K-5'], ADD_V1);
+    words(atTs(t), ['K-5'], ADD_V1, OTHER_WORDS);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  it('way 5: of two records at one instant that disagree, none is cited', async () => {
+    await setup();
+    decisionFile();
+    const t = Date.parse('2026-10-21T12:00:00.000Z');
+    words(atTs(t), ['K-5'], ADD_V1);
+    words(atTs(t), ['K-5'], ['remove', 'v1', null], OTHER_WORDS);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+  });
+
+  // way 6: superseded or contradicted by a newer decision
+  it('way 6: an add followed by a later remove: only the governing remove counts, so the add is not cited', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    words(at(), ['K-5'], ['remove', 'v1', null], OTHER_WORDS);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  it('way 6: an add followed by a later legacy keep: the governing legacy row refuses the add', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    legacy(at(), ['K-5'], ['keep', 'v1', 'v1']);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+  });
+
+  it('way 6: a later words record that places it again governs again, and is the one cited', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    words(at(), ['K-5'], ['remove', 'v1', null], OTHER_WORDS);
+    const again = words(at(), ['K-5'], ADD_V1, 'Approved one more round of');
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(again.id);
+  });
+
+  // way 6, review F1: a newer decision that names no version still retracts an older placement
+  const NO_VERSION = [
+    ['legacy keep in backlog', 'legacy', ['keep', null, null]],
+    ['words keep in backlog', 'words', ['keep', null, null]],
+    ['legacy none', 'legacy', ['none', null, null]],
+  ] as Array<[string, 'legacy' | 'words', Placement]>;
+  const recordOf = (kind: 'legacy' | 'words', placement: Placement) => (kind === 'legacy' ? legacy(at(), ['K-5'], placement) : words(at(), ['K-5'], placement, OTHER_WORDS));
+  it.each(NO_VERSION)('way 6: a newer %s, naming no version, supersedes the older add: the add is not cited', async (_name, kind, placement) => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    recordOf(kind, placement);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  it.each(NO_VERSION)('way 6: an OLDER %s, naming no version, does not hide the add that follows it', async (_name, kind, placement) => {
+    await setup();
+    decisionFile();
+    recordOf(kind, placement);
+    const add = words(at(), ['K-5'], ADD_V1);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(add.id);
+  });
+
+  // way 6, review F2: the source side of a move governs too
+  const SOURCE_SIDE = [
+    ['legacy keep of the source', 'legacy', ['keep', 'v2', 'v2']],
+    ['words keep of the source', 'words', ['keep', 'v2', 'v2']],
+    ['legacy remove from the source', 'legacy', ['remove', 'v2', null]],
+    ['words remove from the source', 'words', ['remove', 'v2', null]],
+  ] as Array<[string, 'legacy' | 'words', Placement]>;
+  it.each(SOURCE_SIDE)('way 6: a newer %s supersedes the older move v2 to v1: the move is not cited', async (_name, kind, placement) => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ['move', 'v2', 'v1']);
+    recordOf(kind, placement);
+    expect(requestOnRecord(at(), ask({ verb: 'REVERSION', from_v: 'v2' }))).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  it('way 6: an older keep of the source does not hide the newer move that follows it', async () => {
+    await setup();
+    decisionFile();
+    legacy(at(), ['K-5'], ['keep', 'v2', 'v2']);
+    const move = words(at(), ['K-5'], ['move', 'v2', 'v1']);
+    expect(requestOnRecord(at(), ask({ verb: 'REVERSION', from_v: 'v2' }))?.operator.id).toBe(move.id);
+  });
+
+  // way 6, review 2 F3: a newer keep that names no source version retracts the older add whatever its --to says
+  const KEEP_ELSEWHERE = [
+    ['legacy keep in backlog naming v2', 'legacy', ['keep', null, 'v2']],
+    ['words keep in backlog naming v2', 'words', ['keep', null, 'v2']],
+  ] as Array<[string, 'legacy' | 'words', Placement]>;
+  it.each(KEEP_ELSEWHERE)('way 6: a newer %s supersedes the older add: the add is not cited', async (_name, kind, placement) => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    recordOf(kind, placement);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  it.each(KEEP_ELSEWHERE)('way 6: an OLDER %s does not hide the add that follows it', async (_name, kind, placement) => {
+    await setup();
+    decisionFile();
+    recordOf(kind, placement);
+    const add = words(at(), ['K-5'], ADD_V1);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(add.id);
+  });
+
+  it('way 6: a newer keep naming v2 for ANOTHER key never governs this key', async () => {
+    await setup();
+    decisionFile();
+    const add = words(at(), ['K-5'], ADD_V1);
+    legacy(at(), ['K-6'], ['keep', null, 'v2']);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(add.id);
+  });
+
+  it.each(['out-of-version', 'core-bypass', 'emergency'])('way 6: a newer signed %s row naming the key and a keep in backlog is no decision and never governs', async (kind) => {
+    await setup();
+    decisionFile();
+    const add = words(at(), ['K-5'], ADD_V1);
+    forge({ id: `O-R1-forged-keep-${kind}`, kind, decision: '9', keys: ['K-5'], op: 'keep', from_v: null, to_v: 'v2', verbatim: WORDS, words: 1, version: 'v2', reason: 'forged' }, at());
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(add.id);
+  });
+
+  it.each([
+    ['keep in v2', ['keep', 'v2', 'v2']],
+    ['remove from v2', ['remove', 'v2', null]],
+  ] as Array<[string, Placement]>)('way 6: a newer %s, a version the ask does not touch, does not retract the add: a key may hold two versions', async (_name, placement) => {
+    await setup();
+    decisionFile();
+    const add = words(at(), ['K-5'], ADD_V1);
+    legacy(at(), ['K-5'], placement);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(add.id);
+  });
+
+  it('the ordinary case: one covering add and nothing newer is cited', async () => {
+    await setup();
+    decisionFile();
+    const add = words(at(), ['K-5'], ADD_V1);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(add.id);
+  });
+
+  // way 10, one lock section: the match and the filing are one hold of the release lock, so whatever lands as the filing takes
+  // its lock is seen by the match. The rows land a row through the signing-lock hook, which runs as a lock is taken.
+  const opensOf = <T>(call: () => T, landOn?: number, land?: () => void): { got: T; opens: number; landed: boolean } => {
+    let opens = 0;
+    let landed = false;
+    const hook = () => {
+      opens += 1;
+      signingLock.fn = hook;
+      if (opens === landOn) {
+        landed = true;
+        land?.();
+      }
+    };
+    signingLock.fn = hook;
+    try {
+      return { got: call(), opens, landed };
+    } finally {
+      signingLock.fn = null;
+    }
+  };
+  // K-5 and K-7 each hold a covering record; K-7 is asked first, only to learn how many holds one covered ask takes, so a row lands
+  // as the LAST of them takes the lock (the filing's) whatever that number is.
+  const twoCovered = async () => {
+    await setup();
+    decisionFile();
+    const rec = words(at(), ['K-5'], ADD_V1);
+    words(at(), ['K-7'], ADD_V1);
+    return rec;
+  };
+  const filingOpen = () => opensOf(() => requestOnRecord(at(), ask({ key: 'K-7' }))).opens;
+  const SHA9 = () => createHash('sha256').update(FILE).digest('hex');
+  const REVERSAL = { id: 'O-R1-landed', kind: 'decision', decision: '120', keys: ['K-5'], op: 'remove', from_v: 'v1', to_v: null, verbatim: 'legacy, no words' };
+  const landed = (fields: Record<string, unknown>) => () => { forge(fields, at()); };
+  const k5 = () => queue().filter((q) => q.key === 'K-5');
+
+  it('way 10 (one lock section): a decision that reverses the covering record lands as the filing takes its lock: nothing is filed on the reversed record', async () => {
+    await twoCovered();
+    const { got, landed: fired } = opensOf(() => requestOnRecord(at(), ask()), filingOpen(), landed(REVERSAL));
+    expect(fired).toBe(true);
+    expect(lines(operatorFile()).map((l) => (JSON.parse(l) as OperatorRow).id)).toContain('O-R1-landed');
+    expect(got).toBeUndefined();
+    expect(k5()).toEqual([]);
+  });
+
+  it('way 10 (one lock section): with no decision in between, the request is filed citing the record, as before', async () => {
+    const rec = await twoCovered();
+    const { got } = opensOf(() => requestOnRecord(at(), ask()));
+    expect(got?.operator.id).toBe(rec.id);
+    expect(got?.request.evidence).toEqual({ operator: rec.id });
+    expect(k5()).toHaveLength(1);
+  });
+
+  it('way 10 (one lock section): a covered ask takes the release lock once, and so does an ask no record covers', async () => {
+    await twoCovered();
+    expect(opensOf(() => requestOnRecord(at(), ask())).opens).toBe(1);
+    expect(opensOf(() => requestOnRecord(at(), ask({ key: 'K-9' }))).opens).toBe(1);
+  });
+
+  // review 2 F2: request() files under the lock, pinned by what a second writer's row does as the lock is taken
+  it('way 10 (one lock section): request() files under the release lock: an identical ask a second writer lands as the lock is taken is returned, not duplicated', async () => {
+    await setup();
+    const rival = { req: 'Q-R1-9001', from: 'console', verb: 'INTAKE', key: 'K-5', from_v: null, to_v: 'v1', why: 'the same ask, filed by a second writer', evidence: {}, state: 'open' };
+    const land = () => { appendChain(join(root, 'release', 'R1', 'requests.jsonl'), loadKey(join(root, 'keys', 'R1.key')), { ts: at().now().toISOString(), ...rival }); };
+    const { got, landed: fired } = opensOf(() => request(at(), ask()), 1, land);
+    expect(fired).toBe(true);
+    expect(got.req).toBe('Q-R1-9001');
+    expect(queue().filter((q) => q.key === 'K-5')).toHaveLength(1);
+  });
+
+  // review 2 F2: the filing's own unchanged-refusal check reads the state under the lock. The refused ask below carries the evidence the
+  // new request will carry (operator: the id of the record that lands), so a stale reading would hand back the refused request.
+  it('way 10 (one lock section): a record that lands as the lock is taken ends the standing refusal for the filing too: a new request is filed, not the refused one returned', async () => {
+    await setup();
+    decisionFile();
+    mirrorOf({ key: 'K-5', labels: ['operator-directed'] });
+    const refusedAsk = request(at(), ask({ evidence: { operator: 'O-R1-landed' } }));
+    claim(at(rmEnv));
+    const r = rule(at(rmEnv), {
+      req: refusedAsk.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'no operator words',
+      reason: 'name the words', supersedes: [], authority: { kind: 'rm', ref: null },
+    });
+    await apply(at(rmEnv), r.id);
+    expect(state(ctx()).refused_asks.map((a) => a.key)).toEqual(['K-5']);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    const record = { id: 'O-R1-landed', kind: 'decision', decision: '9', keys: ['K-5'], op: 'add', from_v: null, to_v: 'v1', verbatim: OTHER_WORDS, decision_file: 'specs/decisions/verbatim-decision-9-op.txt', decision_sha256: SHA9(), words: 1 };
+    const { got, landed: fired } = opensOf(() => requestOnRecord(at(), ask()), 1, landed(record));
+    expect(fired).toBe(true);
+    expect(got?.operator.id).toBe('O-R1-landed');
+    expect(got?.request.req).not.toBe(refusedAsk.req);
+    expect(got?.request.state).toBe('open');
+  });
+
+  it('way 10 (one lock section): the release lock is not re-entrant, so the filing must run under the hold the match has', async () => {
+    await setup();
+    expect(() => withLock(ctx().dir, () => withLock(ctx().dir, () => 1, 100, 60_000), 100, 60_000)).toThrow(/is held; retry/);
+  });
+
+  it('way 5 (one lock section): a ruling on the key that lands as the filing takes its lock floors the record: nothing is filed', async () => {
+    await twoCovered();
+    const ruling = {
+      id: 'R-R1-landed', epoch: 1, req: 'Q-R1-landed', verb: 'INTAKE', key: 'K-5', op: { kind: 'none', from_v: null, to_v: null }, outcome: 'BACKLOG',
+      class: 'none', sector: 'Planning & tracking', ground: 'no operator words', reason: 'landed', supersedes: [], authority: { kind: 'rm', ref: null }, phase: 'intent',
+    };
+    const land = () => { appendChain(join(root, 'release', 'R1', 'rulings.jsonl'), loadKey(join(root, 'keys', 'R1.key')), { ts: at().now().toISOString(), ...ruling }); };
+    const { got, landed: fired } = opensOf(() => requestOnRecord(at(), ask()), filingOpen(), land);
+    expect(fired).toBe(true);
+    expect(lines(join(root, 'release', 'R1', 'rulings.jsonl')).map((l) => (JSON.parse(l) as RulingRow).id)).toContain('R-R1-landed');
+    expect(got).toBeUndefined();
+    expect(k5()).toEqual([]);
+  });
+
+  it('way 6 (one lock section): a newer covering decision that lands as the filing takes its lock is the record cited, not the older one', async () => {
+    const older = await twoCovered();
+    const newer = {
+      id: 'O-R1-landed2', kind: 'decision', decision: '9', keys: ['K-5'], op: 'add', from_v: null, to_v: 'v1', verbatim: OTHER_WORDS,
+      decision_file: 'specs/decisions/verbatim-decision-9-op.txt', decision_sha256: SHA9(), words: 1,
+    };
+    const { got, landed: fired } = opensOf(() => requestOnRecord(at(), ask()), filingOpen(), landed(newer));
+    expect(fired).toBe(true);
+    expect(got?.operator.id).toBe('O-R1-landed2');
+    expect(got?.operator.id).not.toBe(older.id);
+    expect(got?.request.evidence).toEqual({ operator: 'O-R1-landed2' });
+  });
+
+  it('way 7 (one lock section): a row that does not verify landing as the filing takes its lock makes the chain unreadable: nothing is filed', async () => {
+    await twoCovered();
+    const land = () => {
+      forge(REVERSAL, at());
+      tamper(-1, (row) => { row.mac = flip(row.mac); });
+    };
+    const { got, landed: fired } = opensOf(() => requestOnRecord(at(), ask()), filingOpen(), land);
+    expect(fired).toBe(true);
+    expect(got).toBeUndefined();
+    expect(k5()).toEqual([]);
+    expect(chainFault(ctx())).toMatch(/^the operator chain of R1 could not be verified to its end/);
+  });
+
+  // way 7: unverified or forged rows
+  it('way 7: a words row whose signature does not verify is never cited', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    tamper(-1, (row) => { row.mac = flip(row.mac); });
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  it('way 7: a row edited after signing to name the key is never cited', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-6'], ADD_V1);
+    tamper(-1, (row) => { row.keys = ['K-5']; });
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+  });
+
+  it('way 7: a valid record that follows a row that does not verify is unverified with it', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-6'], ADD_V1);
+    words(at(), ['K-5'], ADD_V1, OTHER_WORDS);
+    tamper(-2, (row) => { row.mac = flip(row.mac); });
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+  });
+
+  // way 7, review F4: a row after the verified prefix is invisible, so the new path fails closed and names the fault
+  it('way 7: a newer remove whose signature does not verify hides itself, so the older add is not cited and the chain fault is named', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    words(at(), ['K-5'], ['remove', 'v1', null], OTHER_WORDS);
+    tamper(-1, (row) => { row.mac = flip(row.mac); });
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+    expect(chainFault(ctx())).toMatch(/^the operator chain of R1 could not be verified to its end \(line \d+ \(O-R1-\d{4}\): bad signature\)$/);
+  });
+
+  it('way 7: a ruling row that does not verify hides a newer refusal, so the older record is not cited and the fault names the rulings chain', async () => {
+    await setup();
+    decisionFile();
+    mirrorOf({ key: 'K-5', labels: ['operator-directed'] });
+    await refuse('K-5');
+    words(at(), ['K-5'], ADD_V1);
+    const again = request(at(), ask({ why: 'asked again after the operator\'s words' }));
+    claim(at(rmEnv));
+    rule(at(rmEnv), {
+      req: again.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'no operator words',
+      reason: 'refused again', supersedes: [], authority: { kind: 'rm', ref: null },
+    });
+    const rulings = join(root, 'release', 'R1', 'rulings.jsonl');
+    const rows = lines(rulings);
+    const last = JSON.parse(rows.at(-1) as string) as Record<string, unknown>;
+    last.mac = flip(last.mac);
+    rows[rows.length - 1] = JSON.stringify(last);
+    writeFileSync(rulings, `${rows.join('\n')}\n`);
+    const before = queue().length;
+    expect(requestOnRecord(at(), ask({ why: 'a third ask' }))).toBeUndefined();
+    expect(queue()).toHaveLength(before);
+    expect(chainFault(ctx())).toMatch(/^the rulings chain of R1 could not be verified to its end \(line \d+/);
+  });
+
+  it('way 7: a chain that verifies to its end, and a release that is not declared, have no fault', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    expect(chainFault(ctx())).toBeUndefined();
+    expect(chainFault({ ...ctx(), release: 'R9', dir: join(root, 'release', 'R9'), keyPath: join(root, 'keys', 'R9.key') })).toBeUndefined();
+  });
+
+  // way 8: multi-key rows
+  it('way 8: a row that covers several keys is cited for each of them and for no other', async () => {
+    await setup();
+    decisionFile();
+    const rec = words(at(), ['K-5', 'K-6', 'K-7'], ADD_V1);
+    expect(requestOnRecord(at(), ask({ key: 'K-5' }))?.request.evidence).toEqual({ operator: rec.id });
+    expect(requestOnRecord(at(), ask({ key: 'K-7' }))?.request.evidence).toEqual({ operator: rec.id });
+    expect(requestOnRecord(at(), ask({ key: 'K-8' }))).toBeUndefined();
+    expect(queue().map((q) => q.key)).toEqual(['K-5', 'K-7']);
+  });
+
+  // review F3: behaviours the first rows left unpinned
+  it('way 2: a newer words record of ANOTHER key on the same version does not hide this key\'s record', async () => {
+    await setup();
+    decisionFile();
+    const mine = words(at(), ['K-5'], ADD_V1);
+    words(at(), ['K-6'], ADD_V1, OTHER_WORDS);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(mine.id);
+  });
+
+  it('way 5: a refusal ruled but not yet applied (intent only) floors the older record', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    const q = request(at(), ask({ to_v: 'v2', why: 'an earlier ask of the same key' }));
+    claim(at(rmEnv));
+    rule(at(rmEnv), {
+      req: q.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'no operator words',
+      reason: 'name the words', supersedes: [], authority: { kind: 'rm', ref: null },
+    });
+    expect(lines(join(root, 'release', 'R1', 'rulings.jsonl')).map((l) => (JSON.parse(l) as RulingRow).phase)).toEqual(['intent']);
+    const before = queue().length;
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toHaveLength(before);
+  });
+
+  it('way 5: a refusal applied but not yet receipted floors the older record', async () => {
+    await setup();
+    decisionFile();
+    mirrorOf({ key: 'K-5', labels: ['operator-directed'] });
+    words(at(), ['K-5'], ADD_V1);
+    const q = request(at(), ask({ to_v: 'v2', why: 'an earlier ask of the same key' }));
+    claim(at(rmEnv));
+    const r = rule(at(rmEnv), {
+      req: q.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'no operator words',
+      reason: 'name the words', supersedes: [], authority: { kind: 'rm', ref: null },
+    });
+    const post = jira.addComment.bind(jira);
+    jira.addComment = async () => { throw new Error('jira down before the receipt'); };
+    await expect(apply(at(rmEnv), r.id)).rejects.toThrow('jira down');
+    jira.addComment = post;
+    expect(lines(join(root, 'release', 'R1', 'rulings.jsonl')).map((l) => (JSON.parse(l) as RulingRow).phase).at(-1)).toBe('applied');
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+  });
+
+  it('only INTAKE and REVERSION are placed by a record: a DISCHARGE that carries a target version and a move record is not', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ['move', 'v2', 'v1']);
+    expect(coveringRecord(at(), ask({ verb: 'DISCHARGE', from_v: 'v2', to_v: 'v1' }))).toBeUndefined();
+    expect(requestOnRecord(at(), ask({ verb: 'DISCHARGE', from_v: 'v2', to_v: 'v1' }))).toBeUndefined();
+    expect(queue()).toEqual([]);
+  });
+
+  // way 9: the fence and the origin rules are not widened
+  it.each([
+    ['the release manager', { HIMMEL_RELEASE_MANAGER: '1' }, /chief-spawned worker/],
+    ['a console leg or worker', { HIMMEL_CONSOLE_LEG: '1' }, /chief-spawned worker/],
+    ['a bridge session', { HIMMEL_BRIDGE_SESSION: '1' }, /Telegram bridge session/],
+  ])('way 9: %s cannot file a request on a record', async (_name, env, message) => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    expect(() => requestOnRecord(at(env), ask())).toThrow(message);
+    expect(queue()).toEqual([]);
+  });
+
+  it('way 9: a process with a bridge session in its ancestry cannot file a request on a record', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    expect(() => requestOnRecord({ ...ctx(), ...fakeProc({ HIMMEL_BRIDGE_SESSION: '1' }) }, ask())).toThrow(/Telegram bridge session.*ancestor 200/);
+    expect(queue()).toEqual([]);
+    expect(requestOnRecord({ ...ctx(), ...fakeProc() }, ask())).toBeDefined();
+  });
+
+  it('way 9: the release manager still cannot file even a plain request', async () => {
+    await setup();
+    expect(() => request(ctx(rmEnv), ask())).toThrow(/the chief writes requests/);
+  });
+
+  // way 10: citing an existing row is not recording a new one
+  it('way 10: citing an existing record does not run the withdrawal a NEW record runs: a pending ask for another placement stays open', async () => {
+    await setup();
+    decisionFile();
+    const rec = words(at(), ['K-5'], ADD_V1);
+    const other = request(at(), ask({ verb: 'REVERSION', from_v: 'v1', to_v: 'v2', why: 'the chief moved it by mistake' }));
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(rec.id);
+    expect(queue().filter((q) => q.req === other.req).map((q) => q.state)).toEqual(['open']);
+    words(at(), ['K-5'], ADD_V1, OTHER_WORDS);
+    expect(queue().filter((q) => q.req === other.req).map((q) => q.state)).toEqual(['open', expect.stringMatching(/^withdrawn:/)]);
+  });
+
+  it('way 10: a pending ask that cites nothing is returned as it stands by the plain dedupe: no second request, no citation added', async () => {
+    await setup();
+    decisionFile();
+    words(at(), ['K-5'], ADD_V1);
+    const plain = request(at(), ask());
+    const got = requestOnRecord(at(), ask());
+    expect(got?.request.req).toBe(plain.req);
+    expect(got?.request.evidence).toEqual({});
+    expect(queue()).toHaveLength(1);
+  });
+
+  // way 11: the printed remedy and the accepted path agree
+  it('way 11: a refused ask the state lists is never covered by a record, so its remedy (record the words) is the only accepted path', async () => {
+    await setup();
+    decisionFile();
+    mirrorOf({ key: 'K-5', labels: ['operator-directed'] }, { key: 'K-6', labels: ['operator-directed'] });
+    words(at(), ['K-5'], ADD_V1);
+    await refuse('K-5');
+    await refuse('K-6');
+    words(at(), ['K-6'], ['add', null, 'v2'], OTHER_WORDS);
+    const listed = state(ctx()).refused_asks;
+    expect(listed.map((a) => a.key)).toEqual(['K-5']);
+    for (const a of listed) {
+      expect(a.remedy).toContain('--decision <n> --words');
+      expect(coveringRecord(at(), ask({ key: a.key }))).toBeUndefined();
+    }
+  });
+
+  it('way 11: a key leaves refused_asks only when a record names it, and the record it needs is the one this path cites', async () => {
+    await setup();
+    decisionFile();
+    mirrorOf({ key: 'K-5', labels: ['operator-directed'] });
+    await refuse('K-5');
+    expect(state(ctx()).refused_asks.map((a) => a.key)).toEqual(['K-5']);
+    expect(coveringRecord(at(), ask())).toBeUndefined();
+    const rec = words(at(), ['K-5'], ADD_V1);
+    expect(state(ctx()).refused_asks).toEqual([]);
+    expect(coveringRecord(at(), ask())?.id).toBe(rec.id);
+  });
+
+  // way 12: another release, a closed epoch
+  it('way 12: a record of another release is never cited', async () => {
+    await setup();
+    decisionFile();
+    const c2: Ctx = { ...ctx(), release: 'R2', dir: join(root, 'release', 'R2'), keyPath: join(root, 'keys', 'R2.key') };
+    declare(c2, { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
+    const rec = words({ ...c2, now: () => new Date('2026-10-21T10:30:00.000Z') }, ['K-5'], ADD_V1);
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    expect(queue()).toEqual([]);
+    expect(coveringRecord(c2, ask())?.id).toBe(rec.id);
+  });
+
+  it('way 12: a record from before a ruling of a closed lease epoch is not cited in the next epoch either', async () => {
+    await setup();
+    decisionFile();
+    mirrorOf({ key: 'K-5', labels: ['operator-directed'] });
+    words(at(), ['K-5'], ADD_V1);
+    await refuse('K-5');
+    leaseRelease(at(rmEnv));
+    leaseAcquire(at(rmEnv), { expectEpoch: 1, doc: DOC, session: 'rm-2' });
+    expect(requestOnRecord(at(), ask())).toBeUndefined();
+    const fresh = words(at(), ['K-5'], ADD_V1, OTHER_WORDS);
+    expect(requestOnRecord(at(), ask())?.operator.id).toBe(fresh.id);
+  });
+});
+
 describe('a ruled-away operator ask wakes the chief', () => {
   const GOLDEN = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'handover', 'chief-kit', 'fixtures', 'state-golden.json');
   const WORDS = 'Approved one more round';
@@ -3160,8 +6067,8 @@ describe('a ruled-away operator ask wakes the chief', () => {
     const r5 = await refuseIntake('K-5');
     const r6 = await refuseIntake('K-6');
     expect(state(ctx()).refused_asks).toEqual([
-      { key: 'K-5', ruling: r5.id, req: r5.req, reason: "name the operator's words for K-5", asks_operator: true },
-      { key: 'K-6', ruling: r6.id, req: r6.req, reason: "name the operator's words for K-6", asks_operator: false },
+      { key: 'K-5', ruling: r5.id, req: r5.req, reason: "name the operator's words for K-5", ground: 'no operator words', remedy: expect.stringContaining('--decision <n> --words'), asks_operator: true },
+      { key: 'K-6', ruling: r6.id, req: r6.req, reason: "name the operator's words for K-6", ground: 'no operator words', remedy: expect.stringContaining('jira release ack R1 --ruling '), asks_operator: false },
     ]);
   });
 
@@ -3206,7 +6113,7 @@ describe('a ruled-away operator ask wakes the chief', () => {
     writeFileSync(join(root, 'mirror', '.cursor.json'), JSON.stringify({ lastSync: '2026-10-21T09:00:00.000Z', complete: false }));
     const s = state(ctx());
     expect(s.inputs.mirror).toBe('UNKNOWN');
-    expect(s.refused_asks).toEqual([{ key: 'K-5', ruling: r.id, req: r.req, reason: "name the operator's words for K-5", asks_operator: null }]);
+    expect(s.refused_asks).toEqual([{ key: 'K-5', ruling: r.id, req: r.req, reason: "name the operator's words for K-5", ground: 'no operator words', remedy: expect.stringContaining('--decision <n> --words'), asks_operator: null }]);
   });
 
   it('a key the mirror does not hold is unknown, not a non-operator ask', async () => {
@@ -3251,6 +6158,407 @@ describe('a ruled-away operator ask wakes the chief', () => {
     expect(state(ctx())).toMatchObject({ status: 'UNKNOWN', refused_asks: [], words_records: [], asks_operator_keys: [] });
   });
 
+  // 8674: the refusal reaches the chief with its ground and the exact remedy, and an unchanged identical ask does not requeue.
+  describe('8674 refused asks name their remedy and an unchanged ask is not requeued', () => {
+    const ask = (key: string, o: { why?: string; evidence?: Record<string, unknown>; to?: string } = {}) =>
+      request(at(), { verb: 'INTAKE', key, from_v: null, to_v: o.to ?? 'v1', why: o.why ?? 'w', evidence: o.evidence ?? {}, from: 'console' });
+    const refuseAsk = async (key: string, o: Parameters<typeof ask>[1] = {}) => {
+      const q = ask(key, o);
+      claim(at(rmEnv));
+      const r = rule(at(rmEnv), {
+        req: q.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'defer',
+        reason: `no operator record names ${key}`, supersedes: [], authority: { kind: 'rm', ref: null },
+      });
+      await apply(at(rmEnv), r.id);
+      return { q, r };
+    };
+    const reqCount = () => readChain<RequestRow>(join(ctx().dir, 'requests.jsonl'), loadKey(ctx().keyPath)).verified.length;
+
+    it('names the ground and the exact remedy for an operator-asked key, an ordinary key and an unknown key', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-5', fixVersions: [], priority: 'High' }, { key: 'K-6', fixVersions: [] }]);
+      const a = await refuseAsk('K-5');
+      const b = await refuseAsk('K-6');
+      const c = await refuseAsk('K-7');
+      const got = Object.fromEntries(state(ctx()).refused_asks.map((x) => [x.key, x]));
+      expect(got['K-5']).toMatchObject({ ground: 'defer', ruling: a.r.id });
+      expect(got['K-5'].remedy).toBe('jira release request R1 --verb INTAKE --key K-5 --from backlog --to v1 --why "<why>" --decision <n> --words "<the operator\'s exact words>"');
+      expect(got['K-6'].remedy).toBe(`new facts: jira release request R1 --verb INTAKE --key K-6 --from backlog --to v1 --why "<what changed>" --evidence '{"<changed requirement>":"<value>"}'; or if the refusal is right: jira release ack R1 --ruling ${b.r.id} --reason "<why>"`);
+      expect(got['K-7'].remedy).toBe(got['K-5'].remedy.replace('K-5', 'K-7'));
+      expect(c.r.id).toBeDefined();
+    });
+
+    it('an identical re-request of an open refused ask returns the refused request and files no new Q', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-6', fixVersions: [] }]);
+      const { q } = await refuseAsk('K-6', { evidence: { follow_up_of: 'K-1' } });
+      const before = reqCount();
+      expect(request(at(), { verb: 'INTAKE', key: 'K-6', from_v: null, to_v: 'v1', why: 'w', evidence: { follow_up_of: 'K-1' }, from: 'console' }).req).toBe(q.req);
+      expect(reqCount()).toBe(before);
+      expect(state(ctx()).requests.open).toEqual([]);
+    });
+
+    it.each([
+      ['changed evidence', (r: { why: string; evidence: Record<string, unknown> }) => ({ ...r, evidence: { ...r.evidence, remainder: true } })],
+      ['a different why', (r: { why: string; evidence: Record<string, unknown> }) => ({ ...r, why: 'new facts: it blocks K-1' })],
+    ])('%s reopens reconsideration with a new Q', async (_n, change) => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-6', fixVersions: [] }]);
+      const { q } = await refuseAsk('K-6', { evidence: { follow_up_of: 'K-1' } });
+      const next = request(at(), { verb: 'INTAKE', key: 'K-6', from_v: null, to_v: 'v1', ...change({ why: 'w', evidence: { follow_up_of: 'K-1' } }), from: 'console' });
+      expect(next.req).not.toBe(q.req);
+    });
+
+    it('a newer operator row, an ack, or Done reopens it too', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-6', fixVersions: [] }, { key: 'K-8', fixVersions: [] }]);
+      const six = await refuseAsk('K-6');
+      const eight = await refuseAsk('K-8');
+      operatorDecision(at(), { decision: '120', keys: ['K-6'], op: 'add', from_v: null, to_v: 'v1', verbatim: 'x' });
+      expect(ask('K-6').req).not.toBe(six.q.req);
+      ack(at(), { ruling: eight.r.id, reason: 'the refusal is right: a duplicate' });
+      expect(ask('K-8').req).not.toBe(eight.q.req);
+    });
+
+    // 8674 U3 (review F4): a later ask that was withdrawn is not an ask that stands, so it must not hide the refusal.
+    it('U3: a later ask that was withdrawn leaves the standing refusal listed; a live later ask still ends it', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-6', fixVersions: [] }, { key: 'K-8', fixVersions: [] }, { key: 'K-9', fixVersions: [] }]);
+      const six = await refuseAsk('K-6');
+      await refuseAsk('K-8');
+      await refuseAsk('K-9');
+      const mistaken = ask('K-6', { to: 'v2' });
+      expect(state(ctx()).refused_asks.map((a) => a.key)).toEqual(['K-8', 'K-9']);
+      withdraw(at(), { req: mistaken.req, reason: 'filed by mistake' });
+      // a later ask the RM has claimed still stands, so it still hides the refusal; so does one still open
+      ask('K-9', { to: 'v2' });
+      claim(at(rmEnv));
+      ask('K-8', { to: 'v2' });
+      const got = state(ctx()).refused_asks;
+      expect(got.map((a) => a.key)).toEqual(['K-6']);
+      expect(got[0]).toMatchObject({ ruling: six.r.id, req: six.q.req });
+      // the identical ask still files nothing while the refusal stands
+      const before = reqCount();
+      expect(ask('K-6').req).toBe(six.q.req);
+      expect(reqCount()).toBe(before);
+    });
+
+    it('the first ask of a key and an ask for another version are never blocked', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-6', fixVersions: [] }]);
+      const { q } = await refuseAsk('K-6');
+      expect(ask('K-6', { to: 'v2' }).req).not.toBe(q.req);
+      expect(ask('K-9').req).toMatch(/^Q-R1-/);
+    });
+  });
+
+  // The required-parent remainder: evidence recorded at intake is read back, never promoted to a placement.
+  describe('required parent remainder conflicts', () => {
+    const REQ_EVIDENCE = { follow_up_of: 'P-1', parent_status: 'In Progress', parent_version: 'v1', remainder: true };
+    const refuseWith = async (key: string, evidence: Record<string, unknown>) => {
+      const q = request(at(), { verb: 'INTAKE', key, from_v: null, to_v: 'v1', why: 'follow-up of P-1 (In Progress), which is in v1', evidence, from: 'console' });
+      claim(at(rmEnv));
+      const r = rule(at(rmEnv), {
+        req: q.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'defer',
+        reason: `no operator record names ${key}`, supersedes: [], authority: { kind: 'rm', ref: null },
+      });
+      await apply(at(rmEnv), r.id);
+      return { q, r };
+    };
+
+    it('lists a required out-of-version child of an open current parent with its owner and next action, and writes nothing', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+      const { q, r } = await refuseWith('C-1', REQ_EVIDENCE);
+      const writes = jira.writes;
+      const s = state(ctx());
+      expect(s.remainder_conflicts).toEqual([{
+        parent: 'P-1', child: 'C-1', req: q.req, ruling: r.id, phase: 'refused', owner: 'chief', unknown: null,
+        next: `new facts: jira release request R1 --verb INTAKE --key C-1 --from backlog --to v1 --required-by P-1 --why "<what changed>" --evidence '{"<changed requirement>":"<value>"}'; or, if P-1 can close without C-1, file the ask again without --required-by`,
+      }]);
+      expect(s.refused_asks.map((a) => a.key)).toEqual(['C-1']);
+      expect(jira.writes).toBe(writes);
+      expect(s.requests.open).toEqual([]);
+    });
+
+    it('optional hardening (no remainder flag), a Done parent, and an already-placed child are not conflicts', async () => {
+      await setup();
+      mirror([
+        { key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'P-2', fixVersions: ['v1'], status: 'Done', category: 'Done' },
+        { key: 'C-1', fixVersions: [] }, { key: 'C-2', fixVersions: [] }, { key: 'C-3', fixVersions: ['v1'] },
+      ]);
+      await refuseWith('C-1', { follow_up_of: 'P-1', remainder: false });
+      await refuseWith('C-2', { follow_up_of: 'P-2', remainder: true });
+      await refuseWith('C-3', REQ_EVIDENCE);
+      expect(state(ctx()).remainder_conflicts).toEqual([]);
+    });
+
+    it('an open request awaiting the RM names rm-run as the next action', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+      const q = request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: REQ_EVIDENCE, from: 'console' });
+      expect(state(ctx()).remainder_conflicts).toEqual([{ parent: 'P-1', child: 'C-1', req: q.req, ruling: null, phase: 'open', owner: 'release-manager', next: 'jira release rm-run R1', unknown: null }]);
+    });
+
+    // The effective relation is the child's newest live INTAKE evidence, never an older request's.
+    const conflictsOf = () => state(ctx()).remainder_conflicts.map((c) => `${c.parent}>${c.child}:${c.phase}`);
+
+    it('A2: --required-by on an already-open request updates its evidence by a signed append of the same request, once', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+      const first = request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+      expect(conflictsOf()).toEqual([]);
+      const rel = { follow_up_of: 'P-1', remainder: true };
+      const second = request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: rel, from: 'console' });
+      expect(second.req).toBe(first.req);
+      expect(second.evidence).toEqual(rel);
+      expect(conflictsOf()).toEqual(['P-1>C-1:open']);
+      const rows = () => readChain<RequestRow>(join(ctx().dir, 'requests.jsonl'), loadKey(ctx().keyPath)).verified.length;
+      const n = rows();
+      expect(request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: rel, from: 'console' }).req).toBe(first.req);
+      expect(rows()).toBe(n);
+    });
+
+    it('A2: a claimed request keeps its claim and epoch when the relation is added or the parent changes', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'P-2', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+      const q = request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+      const [claimed] = claim(at(rmEnv));
+      const got = request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: { follow_up_of: 'P-1', remainder: true }, from: 'console' });
+      expect(got.req).toBe(q.req);
+      expect(got.state).toBe(claimed.state);
+      expect(conflictsOf()).toEqual(['P-1>C-1:claimed']);
+      request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: { follow_up_of: 'P-2', remainder: true }, from: 'console' });
+      expect(conflictsOf()).toEqual(['P-2>C-1:claimed']);
+    });
+
+    it('A3: a later request that drops the relation, or names another parent, leaves no obsolete conflict', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'P-2', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+      await refuseWith('C-1', REQ_EVIDENCE);
+      expect(conflictsOf()).toEqual(['P-1>C-1:refused']);
+      const q2 = request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'the remainder moved to P-2', evidence: { follow_up_of: 'P-2', remainder: true }, from: 'console' });
+      expect(conflictsOf()).toEqual(['P-2>C-1:open']);
+      claim(at(rmEnv));
+      const r2 = rule(at(rmEnv), { req: q2.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'defer', reason: 'still no record', supersedes: [], authority: { kind: 'rm', ref: null } });
+      expect(conflictsOf()).toEqual(['P-2>C-1:ruled']);
+      await apply(at(rmEnv), r2.id);
+      expect(conflictsOf()).toEqual(['P-2>C-1:refused']);
+      // The chief files the ask again with the relation removed (optional hardening): nothing is required of the parent any more.
+      request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'optional hardening only', evidence: {}, from: 'console' });
+      expect(conflictsOf()).toEqual([]);
+    });
+
+    it('A3: a withdrawn newest request does not erase the relation of the one before it; Done and terminal parents still end it', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+      await refuseWith('C-1', REQ_EVIDENCE);
+      const q2 = request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'a plain re-ask', evidence: {}, from: 'console' });
+      expect(conflictsOf()).toEqual([]);
+      withdraw(at(), { req: q2.req, reason: 'filed by mistake' });
+      expect(conflictsOf()).toEqual(['P-1>C-1:refused']);
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'], status: 'Done', category: 'Done' }, { key: 'C-1', fixVersions: [] }]);
+      expect(conflictsOf()).toEqual([]);
+    });
+
+    it('A4: an ack of the refusal ends the notice, not the contradiction: the child stays chief-owned with a refile remedy, never rm-run', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+      const { r } = await refuseWith('C-1', REQ_EVIDENCE);
+      ack(at(), { ruling: r.id, reason: 'the refusal is right for now' });
+      const s = state(ctx());
+      expect(s.refused_asks).toEqual([]);
+      expect(s.requests.open).toEqual([]);
+      const [c] = s.remainder_conflicts;
+      expect(c).toMatchObject({ parent: 'P-1', child: 'C-1', phase: 'refused', owner: 'chief', ruling: r.id });
+      expect(c.next).not.toContain('rm-run');
+      expect(c.next).toContain('jira release request R1 --verb INTAKE --key C-1 --from backlog --to v1 --required-by P-1 --why "<what changed>"');
+    });
+
+    it('A4: a refused move from another version (not a backlog ask) is chief-owned too, and a receipted ADMIT whose child the mirror still shows outside is chief-owned with a mirror remedy', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-2', fixVersions: ['v2'] }, { key: 'C-3', fixVersions: [] }]);
+      const q = request(at(), { verb: 'INTAKE', key: 'C-2', from_v: 'v2', to_v: 'v1', why: 'w', evidence: REQ_EVIDENCE, from: 'console' });
+      claim(at(rmEnv));
+      const r2 = rule(at(rmEnv), { req: q.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'defer', reason: 'no record', supersedes: [], authority: { kind: 'rm', ref: null } });
+      await apply(at(rmEnv), r2.id);
+      const q3 = request(at(), { verb: 'INTAKE', key: 'C-3', from_v: null, to_v: 'v1', why: 'w', evidence: REQ_EVIDENCE, from: 'console' });
+      claim(at(rmEnv));
+      const r3 = admit(q3.req, {});
+      await apply(at(rmEnv), r3.id);
+      const byChild = Object.fromEntries(state(ctx()).remainder_conflicts.map((c) => [c.child, c]));
+      expect(byChild['C-2']).toMatchObject({ phase: 'refused', owner: 'chief' });
+      expect(byChild['C-2'].next).not.toContain('rm-run');
+      expect(byChild['C-3']).toMatchObject({ phase: 'ruled', owner: 'chief' });
+      expect(byChild['C-3'].next).toContain('jira mirror');
+      expect(byChild['C-3'].next).not.toContain('rm-run');
+    });
+
+    // Offline seed from the recorded relations of the 2026-11-16 RM placement audit (9953 required by 9914, 9932 by 9915). The raw ledger and
+    // mirror of that day are not retained, so the membership snapshot is the audit's stated one, not a replay of the live ledgers.
+    it('seed 9953>9914 and 9932>9915: requests filed without the relation take it once, surface as conflicts, and clear only when the children are placed', async () => {
+      await setup();
+      mirror([
+        { key: 'K-1', fixVersions: ['v1'] }, { key: 'HIMMEL-9914', fixVersions: ['v1'] }, { key: 'HIMMEL-9915', fixVersions: ['v1'] },
+        { key: 'HIMMEL-9953', fixVersions: [] }, { key: 'HIMMEL-9932', fixVersions: [] },
+      ]);
+      const ask = (key: string, evidence: Record<string, unknown>) => request(at(), { verb: 'INTAKE', key, from_v: null, to_v: 'v1', why: 'required remainder of the parent', evidence, from: 'console' });
+      const q53 = ask('HIMMEL-9953', {});
+      const q32 = ask('HIMMEL-9932', {});
+      expect(conflictsOf()).toEqual([]);
+      expect(ask('HIMMEL-9953', { follow_up_of: 'HIMMEL-9914', remainder: true }).req).toBe(q53.req);
+      expect(ask('HIMMEL-9932', { follow_up_of: 'HIMMEL-9915', remainder: true }).req).toBe(q32.req);
+      expect(conflictsOf()).toEqual(['HIMMEL-9915>HIMMEL-9932:open', 'HIMMEL-9914>HIMMEL-9953:open']);
+      claim(at(rmEnv));
+      const r = rule(at(rmEnv), { req: q53.req, outcome: 'ADMIT', op: { kind: 'add', from_v: null, to_v: 'v1' }, sector: 'Planning & tracking', ground: 'required remainder', reason: 'parent 9914 cannot close without it', supersedes: [], authority: { kind: 'rm', ref: null } });
+      await apply(at(rmEnv), r.id);
+      mirror([
+        { key: 'K-1', fixVersions: ['v1'] }, { key: 'HIMMEL-9914', fixVersions: ['v1'] }, { key: 'HIMMEL-9915', fixVersions: ['v1'] },
+        { key: 'HIMMEL-9953', fixVersions: ['v1'] }, { key: 'HIMMEL-9932', fixVersions: [] },
+      ]);
+      expect(conflictsOf()).toEqual(['HIMMEL-9915>HIMMEL-9932:claimed']);
+    });
+
+    // 8674 U1 (review F1): the words path withdraws the pending duplicate and refiles it; the refiled ask keeps the relation the withdrawn one held.
+    describe('U1: a words re-ask keeps the required-remainder relation', () => {
+      const REL = { follow_up_of: 'P-1', remainder: true };
+      const row = (evidence: Record<string, unknown>) => ({ verb: 'INTAKE' as const, key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence, from: 'console' });
+      const words = (evidence: Record<string, unknown> = {}) => requestWithWords(at(), row(evidence), { decision: '9', words: WORDS });
+      const mirrorOf = (child: Record<string, unknown> = {}) => mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [], ...child }]);
+      const openRows = () => state(ctx()).requests.open;
+
+      it('a pending request that carries the relation is withdrawn and refiled carrying it, and the contradiction stays listed', async () => {
+        await setup();
+        decisionFile();
+        mirrorOf();
+        const first = request(at(), row(REL));
+        expect(conflictsOf()).toEqual(['P-1>C-1:open']);
+        const got = words();
+        expect(got.withdrawn?.req).toBe(first.req);
+        expect(got.request.evidence).toEqual({ ...REL, operator: got.operator.id });
+        expect(conflictsOf()).toEqual(['P-1>C-1:open']);
+        expect(openRows()).toEqual([got.request.req]);
+      });
+
+      it('the relation survives a second re-ask and a plain repeat', async () => {
+        await setup();
+        decisionFile();
+        mirrorOf();
+        request(at(), row(REL));
+        const first = words();
+        const second = words();
+        expect(second.request.req).toBe(first.request.req);
+        expect(second.request.evidence).toEqual({ ...REL, operator: first.operator.id });
+        expect(request(at(), row({})).req).toBe(first.request.req);
+        expect(conflictsOf()).toEqual(['P-1>C-1:open']);
+        expect(openRows()).toEqual([first.request.req]);
+      });
+
+      it('a relation is never invented for an ask that never had one', async () => {
+        await setup();
+        decisionFile();
+        mirrorOf();
+        request(at(), row({}));
+        const got = words();
+        expect(got.request.evidence).toEqual({ operator: got.operator.id });
+        expect(conflictsOf()).toEqual([]);
+        // and a first ask with words, no earlier request at all
+        const fresh = requestWithWords(at(), { ...row({}), key: 'C-2' }, { decision: '9', words: WORDS });
+        expect(fresh.request.evidence).toEqual({ operator: fresh.operator.id });
+      });
+
+      // A re-ask that states any part of a relation states the relation: the old one is not carried onto it (no invented requirement).
+      it.each([
+        [{ follow_up_of: 'P-2' }],
+        [{ remainder: true }],
+      ])('a partial relation %j on the re-ask is used as stated; the old relation is not carried onto it', async (stated) => {
+        await setup();
+        decisionFile();
+        mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'P-2', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+        request(at(), row(REL));
+        const got = words(stated);
+        expect(got.withdrawn).not.toBeNull();
+        expect(got.request.evidence).toEqual({ ...stated, operator: got.operator.id });
+        expect(conflictsOf()).toEqual([]);
+      });
+
+      it('a relation the re-ask states wins, and an explicit remainder:false removes it', async () => {
+        await setup();
+        decisionFile();
+        mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'P-2', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+        request(at(), row(REL));
+        expect(words({ follow_up_of: 'P-2', remainder: true }).request.evidence).toMatchObject({ follow_up_of: 'P-2', remainder: true });
+        expect(conflictsOf()).toEqual(['P-2>C-1:open']);
+        // withdraw that one, file the first again with the relation, then remove it explicitly through the words path
+        withdraw(at(), { req: openRows()[0], reason: 'again' });
+        request(at(), row(REL));
+        expect(words({ remainder: false }).request.evidence).toMatchObject({ remainder: false });
+        expect(conflictsOf()).toEqual([]);
+      });
+    });
+
+    // 8674 U1: the refused-ask remedy prints the same --required-by form as the conflict for the same child.
+    describe('U1: the refused-ask remedy keeps --required-by', () => {
+      it('an operator-asked child: refused_asks[].remedy equals remainder_conflicts[].next and names --required-by', async () => {
+        await setup();
+        mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [], labels: ['operator-directed'] }]);
+        await refuseWith('C-1', REQ_EVIDENCE);
+        const s = state(ctx());
+        expect(s.refused_asks[0].remedy).toBe('jira release request R1 --verb INTAKE --key C-1 --from backlog --to v1 --required-by P-1 --why "<why>" --decision <n> --words "<the operator\'s exact words>"');
+        expect(s.refused_asks[0].remedy).toBe(s.remainder_conflicts[0].next);
+      });
+
+      it('an ordinary child keeps the ack branch and gains --required-by in the new-facts command', async () => {
+        await setup();
+        mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+        const { r } = await refuseWith('C-1', REQ_EVIDENCE);
+        expect(state(ctx()).refused_asks[0].remedy).toBe(`new facts: jira release request R1 --verb INTAKE --key C-1 --from backlog --to v1 --required-by P-1 --why "<what changed>" --evidence '{"<changed requirement>":"<value>"}'; or if the refusal is right: jira release ack R1 --ruling ${r.id} --reason "<why>"`);
+      });
+
+      it('the relation a later signed update gave the request counts, not only its first row', async () => {
+        await setup();
+        mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [], labels: ['operator-directed'] }]);
+        const q = request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+        request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: { follow_up_of: 'P-1', remainder: true }, from: 'console' });
+        claim(at(rmEnv));
+        const r = rule(at(rmEnv), { req: q.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'defer', reason: 'no record', supersedes: [], authority: { kind: 'rm', ref: null } });
+        await apply(at(rmEnv), r.id);
+        expect(state(ctx()).refused_asks[0].remedy).toContain('--to v1 --required-by P-1 --why "<why>" --decision <n>');
+      });
+
+      it('a refused ask that never had the relation prints none (a remainder:false or a plain ask)', async () => {
+        await setup();
+        mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [], labels: ['operator-directed'] }, { key: 'C-2', fixVersions: [], labels: ['operator-directed'] }]);
+        await refuseWith('C-1', { follow_up_of: 'P-1', remainder: false });
+        await refuseWith('C-2', {});
+        for (const a of state(ctx()).refused_asks) expect(a.remedy).not.toContain('--required-by');
+      });
+    });
+
+    it('A4 negative: a child that really is in the version, or closed, is no conflict whatever its history says', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+      const { r } = await refuseWith('C-1', REQ_EVIDENCE);
+      ack(at(), { ruling: r.id, reason: 'fine' });
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: ['v1'] }]);
+      expect(conflictsOf()).toEqual([]);
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [], status: 'Done', category: 'Done' }]);
+      expect(conflictsOf()).toEqual([]);
+    });
+
+    it('unknowns stay visible: a parent or child the mirror does not hold is listed as unknown with the mirror remedy, and an unreadable mirror too', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+      await refuseWith('C-1', REQ_EVIDENCE);
+      const [c] = state(ctx()).remainder_conflicts;
+      expect(c).toMatchObject({ parent: 'P-1', child: 'C-1', unknown: 'parent', owner: 'chief', phase: 'refused' });
+      expect(c.next).toContain('jira mirror');
+      expect(c.next).not.toContain('rm-run');
+      rmSync(join(root, 'mirror'), { recursive: true, force: true });
+      expect(state(ctx()).remainder_conflicts).toMatchObject([{ parent: 'P-1', child: 'C-1', unknown: 'mirror', owner: 'chief' }]);
+    });
+  });
+
   it('state-golden.json matches the producer', async () => {
     await setup();
     decisionFile();
@@ -3264,5 +6572,279 @@ describe('a ruled-away operator ask wakes the chief', () => {
     const got = `${JSON.stringify({ ...state(ctx()), heads: { rulings: '', operator: '', events: '', requests: '', mirror: null } }, null, 2)}\n`;
     if (process.env.UPDATE_GOLDEN === '1') writeFileSync(GOLDEN, got);
     expect(got).toBe(readFileSync(GOLDEN, 'utf8'));
+  });
+});
+
+// 8731 (trace T8-de73eed2 clause 5): the whole request -> ruling -> apply -> readback path, with the process failing at each seam. After the
+// failure the state reports the partial work and its owner, and one normal replay (a new lease epoch) finishes it exactly once: one Jira
+// write at most, one admissions row, one ok event, one receipt comment, one receipted ruling, nothing left owed, and a further run does nothing.
+describe('T8 U7: request, ruling, apply and readback converge once from every failure window', () => {
+  const ledger = () => process.env.HIMMEL_ADMISSIONS_LEDGER!;
+  const rows = () => (existsSync(ledger()) ? readFileSync(ledger(), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as { kind: string; key: string; version: string }) : []);
+  const eventsFile = () => join(ctx().dir, 'events.jsonl');
+  const chain = <T>(file: string) => readChain<T>(join(ctx().dir, file), loadKey(ctx().keyPath)).verified;
+  const okEvents = () => chain<EventRow>('events.jsonl').filter((e) => e.kind === 'ruled' && e.key === 'K-2' && e.readback === 'ok').length;
+  const receipted = () => chain<RulingRow>('rulings.jsonl').filter((r) => r.key === 'K-2' && r.phase === 'receipted').length;
+  const admitAll: Judge = async (input) => input.requests.map((q) => ({
+    req: q.req, outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 'Ship loop', ground: 'regression', reason: 'breaks the console',
+  }));
+  const noJudge: Judge = async () => { throw new Error('the judge is never asked with nothing claimed'); };
+  const declared = (member: boolean) => {
+    declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }]);
+    if (member) jira.fv.set('K-2', ['v1']);
+    return request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'found work', evidence: {}, from: 'console' });
+  };
+
+  type Window = 'write refused' | 'readback fails after the write' | 'event append refused' | 'ledger refused after the write' | 'receipt refused' | 'receipt posted, response lost';
+  // Installs one fault; returns whether it fired and how to lift it.
+  function inject(w: Window, member: boolean) {
+    let fired = false;
+    let armed = true;
+    let wrote = false;
+    let reads = 0;
+    const set = jira.setFixVersion.bind(jira);
+    const read = jira.fixVersions.bind(jira);
+    const add = jira.addComment.bind(jira);
+    jira.setFixVersion = async (k, op, v) => {
+      if (armed && w === 'write refused') { fired = true; throw new Error('jira refused the write'); }
+      await set(k, op, v);
+      wrote = true;
+    };
+    jira.fixVersions = async (k) => {
+      // the readback is the read after the write; an already-member key is not written, so its readback is the second read
+      const readback = member ? ++reads === 2 : wrote;
+      if (armed && !fired && readback && w === 'readback fails after the write') { fired = true; throw new Error('jira readback down'); }
+      const got = await read(k);
+      if (armed && !fired && readback && w === 'ledger refused after the write') { chmodSync(ledger(), 0o444); fired = true; }
+      return got;
+    };
+    jira.addComment = async (k, body) => {
+      if (armed && w === 'receipt refused') { fired = true; throw new Error('jira down before the receipt'); }
+      const id = await add(k, body);
+      if (armed && w === 'receipt posted, response lost') { fired = true; throw new Error('the response was lost'); }
+      return id;
+    };
+    if (w === 'event append refused') {
+      writeFileSync(eventsFile(), '', { flag: 'a' });
+      chmodSync(eventsFile(), 0o444);
+      fired = true;
+    }
+    return {
+      fired: () => fired,
+      lift: () => {
+        armed = false;
+        for (const f of [ledger(), eventsFile()]) if (existsSync(f)) chmodSync(f, 0o644);
+      },
+    };
+  }
+
+  const converged = async (member: boolean) => {
+    expect(jira.fv.get('K-2')).toEqual(['v1']);
+    expect(jira.writes).toBe(member ? 0 : 1);
+    expect(rows().filter((x) => x.key === 'K-2')).toMatchObject([{ kind: 'rm-admit', version: 'v1' }]);
+    expect(okEvents()).toBe(1);
+    expect(chain<EventRow>('events.jsonl').filter((e) => e.readback === 'mismatch')).toEqual([]);
+    expect(receipted()).toBe(1);
+    expect(jira.posted).toBe(1);
+    const s = state(ctx());
+    expect(s.unfinished_rulings).toEqual([]);
+    expect(s.requests).toEqual({ open: [], claimed: [], oldest_open: null });
+    const before = { writes: jira.writes, posted: jira.posted, rows: rows().length, events: chain<EventRow>('events.jsonl').length, rulings: chain<RulingRow>('rulings.jsonl').length };
+    expect(await rmRun(ctx(), noJudge)).toEqual(['RM-RUN R1: nothing pending']);
+    expect({ writes: jira.writes, posted: jira.posted, rows: rows().length, events: chain<EventRow>('events.jsonl').length, rulings: chain<RulingRow>('rulings.jsonl').length }).toEqual(before);
+  };
+
+  it('a request filed and never claimed is not lost: the next run rules it', async () => {
+    declared(false);
+    expect(state(ctx()).requests.open).toEqual(['Q-R1-0001']);
+    await rmRun(ctx(), admitAll);
+    await converged(false);
+  });
+
+  it('a claim whose judge dies returns to open and the next run rules it', async () => {
+    declared(false);
+    await expect(rmRun(ctx(), async () => { throw new Error('judge down'); })).rejects.toThrow(/judge down/);
+    expect(state(ctx()).requests).toMatchObject({ open: ['Q-R1-0001'], claimed: [] });
+    await rmRun(ctx(), admitAll);
+    await converged(false);
+  });
+
+  it('a crash inside rule (the ruling row written, the request row not) is reopened by the replay and ruled once', async () => {
+    const q = declared(false);
+    leaseAcquire(ctx(rmEnv), { expectEpoch: 0, doc: DOC, session: 'rm-1' });
+    claim(ctx(rmEnv));
+    const r = admit(q.req);
+    const file = join(ctx().dir, 'requests.jsonl');
+    writeFileSync(file, `${readFileSync(file, 'utf8').trimEnd().split('\n').slice(0, -1).join('\n')}\n`);
+    expect(state(ctx()).requests.claimed).toEqual([q.req]);
+    expect(state(ctx()).unfinished_rulings).toMatchObject([{ ruling: r.id, phase: 'intent', status: 'replay', owner: 'release-manager' }]);
+    leaseRelease(ctx(rmEnv));
+    await rmRun(ctx(), admitAll);
+    await converged(false);
+  });
+
+  const windows: Array<[Window, boolean, 'intent' | 'applied']> = [
+    ['write refused', false, 'intent'],
+    ['readback fails after the write', false, 'intent'],
+    ['event append refused', false, 'applied'],
+    ['ledger refused after the write', false, 'applied'],
+    ['receipt refused', false, 'applied'],
+    ['receipt posted, response lost', false, 'applied'],
+    ['readback fails after the write', true, 'intent'],
+    ['event append refused', true, 'applied'],
+    ['ledger refused after the write', true, 'applied'],
+    ['receipt refused', true, 'applied'],
+    ['receipt posted, response lost', true, 'applied'],
+  ];
+  // Two windows are made by a read-only file (chmod), which a superuser ignores: those rows skip as the older chmod row of this file does.
+  const usesChmod = ([w]: [Window, boolean, string]) => w === 'event append refused' || w === 'ledger refused after the write';
+  const asRoot = process.getuid?.() === 0;
+  const windowRow = async (w: Window, member: boolean, phase: 'intent' | 'applied') => {
+    declared(member);
+    if (w === 'ledger refused after the write') writeFileSync(ledger(), '', { flag: 'a' });
+    const fault = inject(w, member);
+    const lines = await rmRun(ctx(), admitAll).catch((e: Error) => [`THREW ${e.message}`]);
+    expect(fault.fired()).toBe(true);
+    expect(lines.join('\n')).toMatch(/PENDING R-R1-0001|THREW/);
+    const s = state(ctx());
+    expect(s.unfinished_rulings).toMatchObject([{ ruling: 'R-R1-0001', key: 'K-2', phase, status: 'replay', owner: 'release-manager', next: 'jira release rm-run R1' }]);
+    expect(s.lease).toMatchObject({ released: true });
+    fault.lift();
+    await rmRun(ctx(), admitAll);
+    await converged(member);
+  };
+  const rowName = '%s (already a member: %s): the state reports the partial work, then one replay finishes it once';
+  it.each(windows.filter((r) => !usesChmod(r)))(rowName, windowRow);
+  it.skipIf(asRoot).each(windows.filter(usesChmod))(rowName, windowRow);
+});
+
+// 8731 (fix review F1): a hard-killed rm-run leaves its lease held. The state reports when the lease's owner process is provably gone, through
+// the helper rm-run's own reclaim uses (the pid on this host answers ESRCH), so the tick can start the replay exactly when rm-run would reclaim.
+describe('T8 V3: state says when the lease owner is provably gone', () => {
+  const leaseOf = () => state(ctx()).lease as Record<string, unknown> | null;
+  const hold = (pid?: number) => {
+    declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
+    return leaseAcquire(ctx(rmEnv), { expectEpoch: 0, doc: DOC, session: 'rm-1', ...(pid === undefined ? {} : { pid }) });
+  };
+  // a pid that was real and is gone: a child that has been waited for
+  const deadPid = () => {
+    const r = spawnSync(process.execPath, ['-e', '0']);
+    return r.pid;
+  };
+
+  it('a held lease whose recorded owner pid is gone on this host says owner_gone', () => {
+    hold(deadPid());
+    expect(leaseOf()).toMatchObject({ released: false, owner_gone: true });
+  });
+
+  it.each([
+    ['a live owner (this process)', () => hold(process.pid)],
+    ['a pid that answers to another process, as a reused pid does (cannot be told from the owner, so the lease stays held)', () => hold(process.ppid)],
+    ['no recorded pid (a standing session)', () => hold()],
+  ])('never says owner_gone for %s', (_name, make) => {
+    make();
+    expect(leaseOf()).toMatchObject({ released: false });
+    expect(leaseOf()).not.toHaveProperty('owner_gone');
+  });
+
+  it('never says owner_gone for a pid recorded on another host, nor for a released lease', () => {
+    const held = hold(deadPid());
+    const k = loadKey(ctx().keyPath);
+    writeSigned(join(ctx().dir, 'lease.json'), k, { ...held, owner_host: 'another-host.invalid' });
+    expect(leaseOf()).not.toHaveProperty('owner_gone');
+    writeSigned(join(ctx().dir, 'lease.json'), k, { ...held, released: true });
+    expect(leaseOf()).toMatchObject({ released: true });
+    expect(leaseOf()).not.toHaveProperty('owner_gone');
+  });
+
+  it('rm-run reclaims exactly that lease and rules the request (so a tick that launches it is never refused by the lease)', async () => {
+    hold(deadPid());
+    request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'found work', evidence: {}, from: 'console' });
+    const lines = await rmRun(ctx(), async (input) => input.requests.map((q) => ({
+      req: q.req, outcome: 'ADMIT', op: 'add' as const, from: null, to: 'v1', sector: 'Ship loop', ground: 'regression', reason: 'breaks the console',
+    })));
+    expect(lines.join('\n')).toMatch(/^RECLAIMED lease epoch 1: rm-run pid \d+ on .* is gone$/m);
+    expect(lines.join('\n')).toContain('RULING R-R1-0001');
+    expect(state(ctx()).lease).toMatchObject({ epoch: 2, released: true });
+  });
+});
+
+// 8674 / 9818 / 8731 (trace T8-de73eed2 clause 6): the 2026-11-16 correction audit as an offline seed. The fixture holds its ticket keys and
+// record numbers; the operator words are synthetic text in a scratch decision file. 20 actual members had no matching signed placement
+// while the mirror was fresh and the queue empty; one request per key with the operator's words, one normal RM run, then Jira = signed.
+describe('T8 U7: seed from the 2026-11-16 correction audit', () => {
+  type Seed = {
+    decision: string; mismatch_before_correction: string[]; later_version_move: string; recovery_keys: string[]; required_by: Record<string, string>;
+  };
+  const seed = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'correction-audit-2026-11-16.json'), 'utf8')) as Seed;
+  const WORDS = 'Correct the identified placement discrepancies into the release.';
+  const ledgerRows = () => (existsSync(process.env.HIMMEL_ADMISSIONS_LEDGER!)
+    ? readFileSync(process.env.HIMMEL_ADMISSIONS_LEDGER!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as { kind: string; key: string; version: string })
+    : []);
+  const parents = Object.values(seed.required_by);
+  const originals = seed.mismatch_before_correction;
+  const plain = originals.filter((k) => k !== seed.later_version_move);
+  const refreshMirror = () => mirror([
+    ...parents.map((key) => ({ key, fixVersions: ['v1'] })),
+    ...[...originals, ...seed.recovery_keys].map((key) => ({ key, fixVersions: jira.fv.get(key) ?? [] })),
+  ]);
+  const byKey = (list: string[]) => [...list].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+
+  it('the divergence is visible with a fresh mirror and an empty queue, and one normal path per key makes Jira equal the signed placement', async () => {
+    declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
+    mkdirSync(join(root, 'specs', 'decisions'), { recursive: true });
+    writeFileSync(join(root, 'specs', 'decisions', `verbatim-decision-${seed.decision}-synthetic.txt`), `Synthetic words for this scratch fixture, not the operator's:\n\n"${WORDS}"\n`);
+    for (const k of originals) jira.fv.set(k, ['v1']);
+    // the later-version placement the audit names for 8474: signed in v2, while Jira shows it in v1
+    appendAdmission({ version: 'v2', key: seed.later_version_move, kind: 'rm-admit', reason: 'an earlier ruling', by: 'rm-0', ruling: 'R-R1-9000' });
+    // the current parents are already admitted members, as in the audit's 68 admitted open tickets
+    for (const parent of parents) appendAdmission({ version: 'v1', key: parent, kind: 'rm-admit', reason: 'an earlier ruling', by: 'rm-0', ruling: 'R-R1-9001' });
+    refreshMirror();
+
+    // 1. Before correction: 20 actual members with no matching effective placement; nothing queued, nothing stale.
+    const before = state(ctx());
+    expect(byKey(before.leaks.unauthorized)).toEqual(byKey(originals.map((k) => `${k}@v1`)));
+    expect(before.requests).toEqual({ open: [], claimed: [], oldest_open: null });
+    expect(before.inputs.mirror).not.toBe('UNKNOWN');
+    expect(before.unfinished_rulings).toEqual([]);
+
+    // 2. One request per key, each with its own words record; 9953 and 9932 carry their parents (never promoted to a placement).
+    const ask = (key: string, verb: 'INTAKE' | 'REVERSION', from_v: string | null) => requestWithWords(ctx(), {
+      verb, key, from_v, to_v: 'v1', why: 'the operator asked for this correction', from: 'console',
+      evidence: seed.required_by[key] === undefined ? {} : { follow_up_of: seed.required_by[key], remainder: true },
+    }, { decision: seed.decision, words: WORDS });
+    for (const k of [...plain, ...seed.recovery_keys]) ask(k, 'INTAKE', null);
+    ask(seed.later_version_move, 'REVERSION', 'v2');
+    const queued = state(ctx());
+    expect(queued.requests.open).toHaveLength(originals.length + seed.recovery_keys.length);
+    expect(queued.words_records).toHaveLength(originals.length + seed.recovery_keys.length);
+    expect(queued.words_records.every((w) => w.keys.length === 1 && w.verbatim === WORDS)).toBe(true);
+    expect(queued.remainder_conflicts.map((c) => `${c.parent}>${c.child}:${c.phase}:${c.owner}`).sort())
+      .toEqual(Object.entries(seed.required_by).map(([child, parent]) => `${parent}>${child}:open:release-manager`).sort());
+
+    // 3. One normal RM run under each key's own operator record.
+    const judge: Judge = async (input) => input.requests.map((q) => {
+      const ref = (q.evidence as { operator?: string } | null)?.operator ?? null;
+      return q.verb === 'REVERSION'
+        ? { req: q.req, outcome: 'MOVE', op: 'move' as const, from: q.from_v, to: q.to_v, sector: 'Ship loop', ground: 'operator record', reason: 'the superseding move', authority: 'operator' as const, ref }
+        : { req: q.req, outcome: 'ADMIT', op: 'add' as const, from: null, to: 'v1', sector: 'Ship loop', ground: 'operator record', reason: 'the correction', authority: 'operator' as const, ref };
+    });
+    await rmRun(ctx(), judge);
+
+    // 4. Verify both destinations: Jira, the admissions ledger and the signed state agree, and nothing is owed.
+    refreshMirror();
+    const after = state(ctx());
+    expect(after.leaks).toEqual({ unauthorized: [], ruled_in_non_member: [] });
+    expect(after.unfinished_rulings).toEqual([]);
+    expect(after.requests).toEqual({ open: [], claimed: [], oldest_open: null });
+    expect(after.remainder_conflicts).toEqual([]);
+    expect(after.refused_asks).toEqual([]);
+    for (const k of [...originals, ...seed.recovery_keys]) expect(jira.fv.get(k)).toEqual(['v1']);
+    expect(jira.writes).toBe(seed.recovery_keys.length);
+    const inV1 = byKey(ledgerRows().filter((r) => r.kind === 'rm-admit' && r.version === 'v1').map((r) => r.key));
+    expect(inV1).toEqual(byKey([...parents, ...originals, ...seed.recovery_keys]));
+    expect(ledgerRows().filter((r) => r.key === seed.later_version_move).map((r) => `${r.kind}@${r.version}`)).toEqual(['rm-admit@v2', 'rm-admit@v1', 'rm-remove@v2']);
+    expect(await rmRun(ctx(), judge)).toEqual(['RM-RUN R1: nothing pending']);
   });
 });

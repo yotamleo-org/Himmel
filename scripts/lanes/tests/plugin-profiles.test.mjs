@@ -2391,3 +2391,84 @@ test('chiefAllow is restricted to the chief profile', () => {
   registry.profiles['worker-impl'].chiefAllow = 'yes';
   assert.ok(validateRegistry(registry).some((e) => e.includes('chiefAllow')));
 });
+
+// ── readiness (C0s cycle 1) ───────────────────────────────────
+// The readiness role's settings: floor plugins only, exactly the two named MCP tool grants, and a
+// deny of every native shell/file/web tool. The strict MCP config is launcher-generated per attempt
+// (it binds a private adapter configuration), so the registry's own allowlist is the empty list.
+// Nothing here launches a model; it pins what the resolver emits and refuses.
+const READINESS_GRANTS = ['mcp__readiness__inspect', 'mcp__readiness__act'];
+const READINESS_NATIVE_DENY = ['Agent', 'Artifact', 'Bash', 'Edit', 'Glob', 'Grep', 'NotebookEdit', 'Read', 'WebFetch', 'WebSearch', 'Write'];
+
+test('readiness resolves to the floor only, with exactly the two role tools and every native tool denied', () => {
+  const settings = resolveProfile(REG, 'readiness', { installed: [] });
+  const enabled = Object.entries(settings.enabledPlugins).filter(([, v]) => v).map(([id]) => id);
+  assert.deepEqual(enabled.sort(), [...REG.floor].sort());
+  assert.deepEqual(settings.permissions.allow, READINESS_GRANTS, 'exactly the two grants, in this order, nothing else');
+  assert.deepEqual([...settings.permissions.deny].sort(), READINESS_NATIVE_DENY);
+  assert.ok(!settings.permissions.allow.some((r) => r.startsWith('Bash(') || r.startsWith('mcp__plugin_')), 'no Bash rule and no plugin-prefixed MCP grant');
+  assert.equal(settings.autoMode, undefined, 'no fork or tooling trust for a role with no shell');
+  assert.equal(settings.disableWorkflows, undefined);
+});
+
+test('readiness declares an empty MCP allowlist and the strict adapter config is launcher-generated', () => {
+  assert.deepEqual(mcpServersForProfile(REG, 'readiness'), []);
+  assert.equal(REG.mcpCatalog.readiness, undefined, 'no static readiness server definition: the adapter binds a per-attempt private configuration');
+  assert.equal(REG.mcpAllow?.readiness, undefined);
+});
+
+test('no other profile carries a readiness grant, and readiness is not additive', () => {
+  for (const [name, spec] of Object.entries(REG.profiles)) {
+    if (spec === null || name === 'readiness') continue;
+    const allow = resolveProfile(REG, name, { installed: [] }).permissions?.allow ?? [];
+    assert.ok(!allow.some((r) => r.includes('mcp__readiness__')), `${name} must not carry a readiness grant`);
+  }
+  assert.ok(PP.NON_ADDITIVE_PROFILES.includes('readiness'));
+});
+
+for (const list of ['readiness,design', 'worker-impl,readiness', 'readiness,release-manager', 'chief,readiness', 'readiness,readiness']) {
+  test(`readiness refuses to compose in a profile list (${list})`, () => {
+    assert.throws(() => resolveProfile(REG, list, { installed: [] }), /cannot be composed|malformed profile list/);
+    assert.throws(() => mcpServersForProfile(REG, list), /cannot be composed|malformed profile list/);
+  });
+}
+
+test('readiness takes no --add-plugins overlay (a one-off plugin must not widen the role)', () => {
+  assert.throws(() => resolveProfile(REG, 'readiness', { installed: [], addPlugins: ['code-simplifier@claude-plugins-official'] }), /readiness/);
+  assert.doesNotThrow(() => resolveProfile(REG, 'readiness', { installed: [], addPlugins: [] }), 'positive control: an empty overlay is fine');
+});
+
+test('the shipped registry validates with the readiness profile, and every widening of it is refused', () => {
+  assert.deepEqual(validateRegistry(REG), []);
+  const widen = [
+    ['gateAllow', (p) => { p.gateAllow = true; }],
+    ['chiefAllow', (p) => { p.chiefAllow = true; }],
+    ['vmLaunch', (p) => { p.vmLaunch = true; }],
+    ['denyTools', (p) => { p.denyTools = ['SendFeedback']; }],
+    ['disableWorkflows', (p) => { p.disableWorkflows = true; }],
+    ['nativeDrop', (p) => { p.nativeDrop = ['lean-skills@himmel']; }],
+    ['disallowedTools', (p) => { p.disallowedTools = ['Bash']; }],
+    ['artifact', (p) => { p.artifact = true; }],
+    ['a non-empty enable', (p) => { p.enable = ['code-simplifier@claude-plugins-official']; }],
+    ['a named MCP server', (p) => { p.mcpServers = ['qmd']; }],
+    ['an absent MCP allowlist', (p) => { delete p.mcpServers; }],
+    ['a false readiness flag', (p) => { p.readiness = false; }],
+    ['a missing readiness flag', (p) => { delete p.readiness; }],
+  ];
+  for (const [what, mutate] of widen) {
+    const registry = structuredClone(REG);
+    mutate(registry.profiles.readiness);
+    const errors = validateRegistry(registry);
+    assert.ok(errors.some((e) => e.includes('readiness')), `${what}: ${JSON.stringify(errors)}`);
+  }
+  const elsewhere = structuredClone(REG);
+  elsewhere.profiles['worker-impl'].readiness = true;
+  assert.ok(validateRegistry(elsewhere).some((e) => e.includes('readiness')), 'the flag is restricted to the profile named readiness');
+});
+
+test('readiness leaves the existing role resolutions untouched', () => {
+  for (const name of ['release-manager', 'console-judge', 'chief-relay', 'lane-impl']) {
+    assert.deepEqual(resolveProfile(REG, name, { installed: [] }).permissions?.deny, ['Artifact'], `${name} still emits only the default Artifact deny`);
+  }
+  assert.ok(resolveProfile(REG, 'worker-impl', { installed: [] }).permissions.allow.length > 0, 'worker-impl keeps its gate rules');
+});

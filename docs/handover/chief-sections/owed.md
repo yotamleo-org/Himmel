@@ -23,3 +23,121 @@ at a handover; the ledger is carried by the tick, the HANDOFF and the queue fold
   every open row: the successor starts with all of them.
 - **The fold never moves it.** An older `queue:` segment that contains `owed`, `HOLD` or
   `to file` stays on the live `queue:` line; only plain segments go to the chief-history file.
+
+Wrapped proof workers record a `kind: proof`, `action: validate-proof`, `actor: chief`
+obligation before worker-event cleanup or direct/sweep close. A writer failure refuses
+cleanup (direct close exit 9); `--check` and recorder `--dry-run` write nothing. The
+shared `proof-validate.py --bucket <dir> --doc <worker doc>` only records observations.
+`CLOSE` and `KEEP` are worker recommendations; `validation: pending` never authorizes
+a Jira transition or discharges the action. Coverage, positive controls and candidate
+ancestry remain chief work, even when every observed row says MET.
+
+`owe.sh add` accepts `--identity <64 lowercase hex sha256>` and `--metadata <JSON>`.
+Alternatively, `--metadata-stdin` reads one JSON value of at most 1 MiB (including
+its compact ASCII encoding); it is mutually exclusive with `--metadata`. Metadata
+passes to jq through stdin, so a large observation never occupies one OS argument.
+The existing flock serializes lookup/append; file and directory fsync precede the
+response. An identical identity returns its original id, even after closure. Existing
+six-column `list` output stays unchanged; `list --json [--all]` returns an array with
+additive metadata and a `closed` boolean. Allowed metadata fields are `actor`, `action`,
+`validation`, `source_doc`, `source_label`, `evidence_path`, `evidence_hash`,
+`requirements_digest`, `original_requirements_digest`, `binding`, `recommendation`,
+`issues`, `proof_rows`, `executed_shas`, `required_shas`, `next_action`, `wake`, and
+`evidence_records` (multiple artifact paths with their full sha256 when readable),
+and `observation_counts` (per observation field: nonnegative integer `total`,
+`omitted`, `truncated_chars`, with omitted no greater than total).
+Each proof result records one action per covered ticket, including multiple artifacts;
+conflicting artifact recommendations remain unknown with explicit reconciliation.
+Unknown fields or invalid types refuse. None of these fields grants authority.
+
+The recorder recognizes the explicit `> **Proof leg:**` header or an actual
+WRAPPED proof-key tail, including the event's optional worker/ticket prefix.
+Ordinary prose mentioning a proof leg does not create debt. The artifacts are the
+`evidence=<path>` values of that tail or message, which name them exactly; with none
+declared, every `specs/audits/....md` path the worker document names is read as evidence
+by the rule below, so a file that is not the ticket's is judged as its evidence and a
+missing or unreadable one refuses the CLOSE.
+
+A covered ticket reads every declared artifact whose file name contains its key and
+every one whose name contains none of the declared keys (with one declared ticket,
+every declared path); an artifact named only for another declared ticket is read by
+that ticket. `artifact-attribution-unvalidated` is set when a covered key has neither
+a named nor an unnamed artifact among the declared paths (all of them are then
+retained for it; with no path at all, none declared and none named in the worker
+document, the flag is not set and `evidence-unreadable` is recorded), and when several
+tickets are declared and a ticket reads an unnamed artifact beside one named for it.
+It refuses a CLOSE; chief attribution remains pending.
+
+Proof inputs are opened nonblocking and without following a final symlink. The
+descriptor must be a regular file no larger than 8 MiB; bounded reads and matching
+descriptor/path identity, size and modification/change times must establish one
+complete snapshot before hashing. Refused, changed, unreadable or oversize evidence
+records stable reconciliation debt without an evidence hash. The same text-input
+bound applies to the source brief and mirrored requirements. A real writer failure
+still prevents cleanup.
+
+Artifact paths and full accepted hashes are retained. Observation previews retain
+at most 64 proof rows, 32 issues, 64 executed and 64 required SHA entries; row/issue
+strings retain at most 512 characters, and next-action/wake text 1024 characters.
+`observation_counts` exposes the original item count and omitted item count, plus
+characters removed from retained strings. For scalar text these counts are in
+characters. These previews are observations, not semantic coverage; the chief
+reads the full hashed artifact. Reconciliation flags precede malformed-row previews.
+
+The recorder hashes actual artifact bytes and each key's mirrored Description DoD
+and Proof sections. Requirement identity hashes compact UTF-8 JSON pairs in DoD,
+Proof order, retaining body lines, indentation, fences and blank lines; only CRLF
+becomes LF. Comments are excluded. It uses the local project mirror (test seam:
+`PROOF_MIRROR_DIR`), never refreshes it, and cannot certify live requirement freshness.
+An optional exact `requirements-sha256 <KEY>=<full hash>` line in the generated brief
+above `## Results` records the original binding; absent/unreadable binding, or a stamp
+only the worker wrote (artifact or Results), stays unknown. Matching
+stamps mean matching observed bytes, not semantic validation. Optional `required-sha
+main=<sha>` or `required-sha station=<sha>` records a candidate basis; main and station
+may differ. `next-action: <text>` and `wake: <text>` are carried when supplied.
+Missing/unreadable artifacts keep stable reconciliation identities from the originating
+doc (label when unavailable), ticket, path and recommendation, without inventing an
+evidence hash. Changed real evidence or requirement identity creates separate review work.
+
+Chief decisions use the normal Jira `transition` with `--proof <id>`,
+`--proof-bucket <dir>` and `--proof-decision <JSON file>`; see
+[proof rows](proof-rows.md). The existing close row and `list --all --json` carry `outcome` with the
+bound `identity`, `decision_hash`, `verdict`, actual `status`, `version_pending`
+and chief `rationale`, plus exact data-only `decision_json` bytes for later review.
+This records a decision, never grants permission. The CLI
+reads live requirements before and after the transition; the proof helper checks
+hashes and quoted citations but leaves semantic coverage to the chief. KEEP
+first appends an idempotent next step with `actor`, `capability`, `due` and `wake`.
+The dispatcher reads settled KEEP `source_id` references to the newest validation,
+routes code to workers and read-only actions to proof, and retains operator staging.
+Pending validation never activates a replacement. The recorder binds exact open
+proof-step IDs in `owed_refs`; later steps, including those in the same clock second,
+are excluded. Those `actor=proof` steps are discharged only after the chief's
+outcome; chief/operator exceptions and later steps remain owned. A confirmed Done
+with unstamped version preserves a chief `action=version-reconciliation` step; a confirmed Done
+whose DoD/Proof changed before settlement preserves a chief `action=requirements-reconciliation`
+step (`actual_status`, old and new digests) and leaves the validation open.
+
+Partial merge `owed → proof by YYYY-MM-DD` steps preserve the actual proof actor
+and due date, list as executable proof rows, and leave the ticket To Do. Chief
+steps use the closed list `sign the spec`, `sign the GO`, `sign the release`,
+`signature`, `chief signature`, `release operator step`, or `station step a worker
+is refused`. Code remains `Remaining:` work. Operator staging stays operator-owned.
+
+Tick projects keyed step dates and readiness reminders into the same owed ledger.
+A step expires after its accepted UTC by-date; missing/invalid evidence emits
+`ACTION owed-invalid=<source ids>` and never means Done. Keyless ticket filing debt
+keeps its existing four-hour clock. A live readiness decision `d` emits
+`# readiness-clock <JSON {version,key,stamp,since,age_s}>`; each elapsed 24-hour
+interval creates a distinct chief reminder, with one operator digest item per
+unchanged ruling. These reminders have no dispatch or hold effect.
+
+Notification rows are `kind=ruling`, `action=notify`, with `actor`, `event`
+(`step-due`, `step-due-invalid`, `readiness-d24h`, `operator-digest`), `source_id`,
+`capability` and `wake`; their normal identity prevents reopening after acknowledgement.
+Tick emits `ACTION owed-notify=<chief notification ids>`, `ACTION readiness-d24h=<ids>`
+and one `ACTION operator-digest=<ids>` input. The waiter prints `WAKE owed-actions`
+then acknowledges chief delivery through `owe.sh close --key wake-delivered`.
+The operator delivery service closes digest ids only after delivery; this unit
+does not send messages. Pending/acknowledged state survives chief succession in
+`owed.jsonl`; no parallel queue or attempt history is introduced.

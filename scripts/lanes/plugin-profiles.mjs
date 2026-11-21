@@ -77,6 +77,29 @@ const GATE_ANCHOR_LITERAL_PR_CHECK_STEP0 = 'Bash(bash "$HIMMEL_REPO/scripts/cr/p
 const GATE_ANCHOR_LITERALS = new Set([GATE_ANCHOR_LITERAL, GATE_ANCHOR_LITERAL_PR_CHECK_CONTEXT, GATE_ANCHOR_LITERAL_PR_CHECK_STEP0]);
 const WORKER_SESSION_PROFILES = new Set(['lane-impl', 'worker-impl', 'worker-bus', 'worker-eval', 'worker-docs', 'worker-e2e', 'worker-vm', 'lane-review', 'lane-content', 'chief-relay']);
 
+// The readiness role. Its whole model-facing capability is these two MCP tools, served by
+// the adapter in scripts/handover/chief-kit/readiness-tools.mjs; every native tool is denied as well
+// (the launcher also passes `--tools ""`). worker-claude-launcher.sh holds the same two lists and
+// refuses a settings file that differs, so a change here must change both and the suites pin each.
+export const READINESS_PROFILE = 'readiness';
+export const READINESS_GRANTS = ['mcp__readiness__inspect', 'mcp__readiness__act'];
+export const READINESS_DENY = ['Bash', 'Read', 'Write', 'Edit', 'NotebookEdit', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'Agent', 'Artifact'];
+// Everything that could widen the role is refused by name, not trimmed afterwards.
+const READINESS_FORBIDDEN_KEYS = ['gateAllow', 'chiefAllow', 'vmLaunch', 'denyTools', 'disableWorkflows', 'nativeDrop', 'disallowedTools', 'artifact'];
+function validateReadinessSpec(errors, name, spec) {
+  if (spec.readiness !== undefined && typeof spec.readiness !== 'boolean') errors.push(`profile "${name}" readiness must be a boolean`);
+  if (spec.readiness === true && name !== READINESS_PROFILE) errors.push(`profile "${name}" readiness is restricted to the profile named ${READINESS_PROFILE}`);
+  if (name !== READINESS_PROFILE) return;
+  if (spec.readiness !== true) errors.push(`profile "${name}" must declare readiness: true (the role marker the resolver keys on)`);
+  for (const key of READINESS_FORBIDDEN_KEYS) {
+    if (spec[key] !== undefined) errors.push(`profile "${name}" must not declare ${key}: the role's whole tool surface is the two readiness grants`);
+  }
+  if (spec.enable.length !== 0) errors.push(`profile "${name}" enable must be empty: the role takes the floor plugins only`);
+  if (!Array.isArray(spec.mcpServers) || spec.mcpServers.length !== 0) {
+    errors.push(`profile "${name}" mcpServers must be the empty list: the strict adapter config is generated per launch attempt, never copied from a user, plugin or catalog source`);
+  }
+}
+
 // A bare tool name in permissions.deny removes the tool's definition from the
 // request payload; a scoped rule (Bash(rm *)) only blocks calls. denyTools is
 // therefore bare names only, and never a tool a worker works through.
@@ -323,6 +346,7 @@ function validateProfileSpec(errors, name, spec, catalogSet, floorSet) {
     if (spec.denyTools !== undefined) errors.push('profile "bare" must not declare denyTools — bare has no base capability to restrict');
     if (spec.disableWorkflows !== undefined) errors.push('profile "bare" must not declare disableWorkflows — bare has no base capability to restrict');
   }
+  validateReadinessSpec(errors, name, spec);
   validateToolTrim(errors, name, spec);
   if (spec.artifact !== undefined && typeof spec.artifact !== 'boolean') errors.push(`profile "${name}" artifact must be a boolean`);
   if (spec.gateAllow !== undefined && typeof spec.gateAllow !== 'boolean') {
@@ -601,6 +625,10 @@ export function resolveProfile(registry, name, opts = {}) {
     return null;
   }
   const spec = profiles[name];
+  // The readiness role never takes a one-off plugin: its surface is the two named MCP tools.
+  if (spec?.readiness === true && addPlugins.length) {
+    throw new Error(`plugin-profiles: --profile ${READINESS_PROFILE} is incompatible with --add-plugins (the readiness role's surface is exactly its two MCP tools; an overlay would widen it)`);
+  }
 
   // 0. deny-by-default baseline = the checked-in catalog UNION the caller's live
   //    plugin universe (opts.installed). The static catalog alone cannot enforce
@@ -626,6 +654,11 @@ export function resolveProfile(registry, name, opts = {}) {
   for (const id of (Array.isArray(spec?.enable) ? spec.enable : [])) enabledPlugins[id] = true; // 3. profile.enable on
   for (const id of addPlugins) enabledPlugins[id] = true;                 // 4. per-dispatch overlay on
   for (const id of (registry.floor ?? [])) enabledPlugins[id] = true;     // 5. floor forced on, LAST (inviolable)
+  // The readiness role is exactly two named MCP grants (the standalone form only, never the
+  // plugin-prefixed twin) with every native tool denied, and nothing else.
+  if (spec?.readiness === true) {
+    return { enabledPlugins, permissions: { allow: [...READINESS_GRANTS], deny: [...READINESS_DENY] }, ...listingSettings(registry, [name], enabledPlugins, opts) };
+  }
   // A profile that lists a server with an mcpAllow entry gets both tool-name forms
   // (standalone --mcp-config and plugin-prefixed) allowed; an opted-out profile gets none.
   const mcpAllow = [];
@@ -686,7 +719,7 @@ export function contextForProfile(registry, name) {
 // Profiles that cannot be members of a `--profile a,b` list: operator
 // injects nothing, bare skips base, and the role profiles carry guard semantics, so
 // none of them is additive. Shared with the launcher's --consult refusal.
-export const NON_ADDITIVE_PROFILES = ['operator', 'bare', 'chief', 'chief-relay', 'console-judge', 'release-manager'];
+export const NON_ADDITIVE_PROFILES = ['operator', 'bare', 'chief', 'chief-relay', 'console-judge', 'release-manager', READINESS_PROFILE];
 
 // A comma list resolves to the UNION of its members. enabledPlugins is
 // an OR (a member's drop never switches off another member's enable), the floor

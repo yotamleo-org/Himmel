@@ -24,6 +24,11 @@ let base = "";
 let local = "";
 let stop: (() => void) | null = null;
 const sha = (p: string) => createHash("sha256").update(readFileSync(p)).digest("hex");
+const realBaseWithAdvisoryClaude = () => {
+  const reg = JSON.parse(readFileSync(REAL_BASE, "utf8"));
+  reg.panel.splice(1, 0, { slug: "claude", model: "claude-opus-5-5", provider: "claude-api", tier: "paid", mode: "advisory", precision: 0.482, required: false });
+  return JSON.stringify(reg, null, 2) + "\n";
+};
 const realBaseSha = sha(REAL_BASE);
 
 beforeEach(() => {
@@ -88,7 +93,7 @@ test("POST writes the overlay only, and a read back equals what was written", as
 });
 
 test("an advisory reviewer returned by GET can be saved without changing the shared base", async () => {
-  writeFileSync(base, readFileSync(REAL_BASE));
+  writeFileSync(base, realBaseWithAdvisoryClaude());
   const before = sha(base);
   const port = boot();
   const first = await (await get(port)).json();
@@ -102,7 +107,7 @@ test("an advisory reviewer returned by GET can be saved without changing the sha
 });
 
 test("saving a precision-promoted reviewer preserves its configured advisory mode", async () => {
-  writeFileSync(base, readFileSync(REAL_BASE));
+  writeFileSync(base, realBaseWithAdvisoryClaude());
   writeFileSync(local, JSON.stringify({ advisory_precision_floor: 0.40, panel: [] }));
   const port = boot();
   const first = await (await get(port)).json();
@@ -146,13 +151,13 @@ test("a reviewer left as the base has it is not copied into the overlay, so base
 test("with the base read from main (CRITICS_BASE_JSON unset), a turned-off reviewer comes back with the base settings and writes nothing extra", async () => {
   const port = boot({ CRITICS_BASE_JSON: "" });
   const first = await (await get(port)).json();
-  const shared = first.reviewers.find((x: { slug: string }) => x.slug === "claude");
+  const shared = first.reviewers.find((x: { slug: string }) => x.slug === "coderabbit");
   expect(shared).toMatchObject({ required: false });
-  await post(port, { reviewers: [{ slug: "claude", mode: "best-effort", required: false, enabled: false }] });
+  await post(port, { reviewers: [{ slug: "coderabbit", mode: "hard", required: false, enabled: false }] });
   const j = await (await get(port)).json();
-  expect(j.droppedBase.claude).toEqual({ mode: shared.mode, required: false });
-  const back = reviewGateDraft(j).find((x: { slug: string }) => x.slug === "claude");
-  expect(back).toEqual({ slug: "claude", mode: shared.mode, required: false, enabled: false });
+  expect(j.droppedBase.coderabbit).toEqual({ mode: shared.mode, required: false });
+  const back = reviewGateDraft(j).find((x: { slug: string }) => x.slug === "coderabbit");
+  expect(back).toEqual({ slug: "coderabbit", mode: shared.mode, required: false, enabled: false });
   expect((await post(port, { reviewers: [{ ...back, enabled: true }] })).status).toBe(200);
   expect(JSON.parse(readFileSync(local, "utf8")).panel).toEqual([]);
 });

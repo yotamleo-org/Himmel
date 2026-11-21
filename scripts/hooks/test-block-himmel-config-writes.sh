@@ -60,7 +60,101 @@ patch_case "apply_patch symlink alias of the config -> block" block "*** Begin P
 patch_case "apply_patch .. segment resolving to the config -> block" block "*** Begin Patch${NL}*** Add File: $HOME/.himmel/x/../config.json${NL}+{}${NL}*** End Patch"
 patch_case "apply_patch CRLF header on the config -> block" block "$(printf '*** Begin Patch\r\n*** Add File: %s\r\n+{}\r\n*** End Patch' "$CFG")"
 patch_case "apply_patch benign file -> allow" allow "*** Begin Patch${NL}*** Add File: $T/notes.txt${NL}+hi${NL}*** End Patch"
-patch_case "apply_patch benign file mentioning the config in its body -> block (whole-patch rule, over-deny accepted)" block "*** Begin Patch${NL}*** Add File: $T/notes.txt${NL}+see $CFG${NL}*** End Patch"
+# A canonical Add File report whose + BODY merely names a guarded
+# file cannot mutate that file (every body line is prefixed with +, and only the
+# target headers name a path), so it is allowed; every other shape keeps the
+# whole-patch rule. The target is a fresh physical scratch path - checked here,
+# not assumed - and the paired denials below use real protected targets.
+REPORT_DIR="$(cd "$T" && pwd -P)"
+REPORT="$REPORT_DIR/report.txt"
+mkdir -p "$REPORT_DIR/sub"
+ln -s "$HOME/.himmel" "$T/rptlink"
+if [ ! -e "$REPORT" ] && [ ! -L "$REPORT" ] && [ ! -e "$REPORT_DIR/sub/rel.txt" ] \
+    && [ "$REPORT_DIR" != "$(cd "$HOME/.himmel" && pwd -P)" ] && [ ! -L "$REPORT_DIR" ]; then
+    ok "report targets are fresh physical scratch paths outside the config directory"
+else
+    bad "report target ground truth failed"
+    exit 1
+fi
+BODY="+see $CFG"
+cwd_case() { run "$1" "$2" "$(jq -nc --arg c "$4" --argjson d "$3" '{tool_name:"apply_patch",cwd:$d,tool_input:{command:$c}}')"; }
+echo "-- 8139 allow: canonical Add File report, protected name only in the + body --"
+patch_case "8139 canonical scratch report mentioning the config in its body -> allow" allow "*** Begin Patch${NL}*** Add File: $REPORT${NL}$BODY${NL}*** End Patch"
+patch_case "8139 + prefixed header text is report content -> allow" allow "*** Begin Patch${NL}*** Add File: $REPORT${NL}+*** Update File: $CFG${NL}*** End Patch"
+patch_case "8139 two canonical scratch reports, one body mention -> allow" allow "*** Begin Patch${NL}*** Add File: $REPORT${NL}$BODY${NL}*** Add File: $REPORT_DIR/second.txt${NL}+data${NL}*** End Patch"
+patch_case "8139 uppercase protected name in the body only -> allow" allow "*** Begin Patch${NL}*** Add File: $REPORT${NL}+see $HOME/.HIMMEL/CONFIG.JSON and PROJECT.CONF${NL}*** End Patch"
+cwd_case "8139 absolute scratch target with a string cwd -> allow" allow "$(jq -nc --arg d "$REPORT_DIR" '$d')" "*** Begin Patch${NL}*** Add File: $REPORT${NL}$BODY${NL}*** End Patch"
+cwd_case "8139 relative scratch target with an absolute string cwd -> allow" allow "$(jq -nc --arg d "$REPORT_DIR/sub" '$d')" "*** Begin Patch${NL}*** Add File: rel.txt${NL}$BODY${NL}*** End Patch"
+cwd_case "8139 null cwd with an absolute scratch target -> allow" allow null "*** Begin Patch${NL}*** Add File: $REPORT${NL}$BODY${NL}*** End Patch"
+echo "-- 8139 deny controls: the exception never reaches a protected or unsupported shape --"
+patch_case "8139 config target after a scratch report -> block" block "*** Begin Patch${NL}*** Add File: $REPORT${NL}$BODY${NL}*** Add File: $CFG${NL}+{}${NL}*** End Patch"
+patch_case "8139 symlink alias target after a scratch report -> block" block "*** Begin Patch${NL}*** Add File: $REPORT${NL}$BODY${NL}*** Add File: $T/alias.json${NL}+{}${NL}*** End Patch"
+patch_case "8139 symlinked directory target (no .himmel in the header) with a body mention -> block" block "*** Begin Patch${NL}*** Add File: $T/rptlink/config.json${NL}$BODY${NL}*** End Patch"
+patch_case "8139 .. segment target with a body mention -> block" block "*** Begin Patch${NL}*** Add File: $HOME/x/../.himmel/config.json${NL}$BODY${NL}*** End Patch"
+patch_case "8139 move destination after a scratch report -> block" block "*** Begin Patch${NL}*** Add File: $REPORT${NL}$BODY${NL}*** Update File: $T/x.json${NL}*** Move to: $CFG${NL}@@${NL}-a${NL}+b${NL}*** End Patch"
+patch_case "8139 protected move source -> block" block "*** Begin Patch${NL}*** Update File: $CFG${NL}*** Move to: $REPORT${NL}@@${NL}-a${NL}+b${NL}*** End Patch"
+patch_case "8139 Update File report with a body mention (unsupported form) -> block" block "*** Begin Patch${NL}*** Update File: $REPORT${NL}@@${NL}-old${NL}+see $CFG${NL}*** End Patch"
+patch_case "8139 Delete File report with a body mention (unsupported form) -> block" block "*** Begin Patch${NL}*** Delete File: $REPORT${NL}$BODY${NL}*** End Patch"
+patch_case "8139 unprefixed body mention -> block" block "*** Begin Patch${NL}*** Add File: $REPORT${NL}see $CFG${NL}*** End Patch"
+patch_case "8139 missing End Patch -> block" block "*** Begin Patch${NL}*** Add File: $REPORT${NL}$BODY"
+patch_case "8139 missing Begin Patch -> block" block "*** Add File: $REPORT${NL}$BODY${NL}*** End Patch"
+patch_case "8139 payload after End Patch -> block" block "*** Begin Patch${NL}*** Add File: $REPORT${NL}$BODY${NL}*** End Patch${NL}*** Add File: $CFG${NL}+{}"
+patch_case "8139 padded deceptive header after a report -> block" block "*** Begin Patch${NL}*** Add File: $REPORT${NL}$BODY${NL}   *** Add File: $CFG${NL}+{}${NL}*** End Patch"
+patch_case "8139 trailing-space report header with a body mention -> block" block "*** Begin Patch${NL}*** Add File: $REPORT   ${NL}$BODY${NL}*** End Patch"
+patch_case "8139 NBSP-trailing report header with a body mention -> block" block "$(printf '*** Begin Patch\n*** Add File: %s\xc2\xa0\n+see %s\n*** End Patch' "$REPORT" "$CFG")"
+patch_case "8139 CRLF report with a body mention -> block" block "$(printf '*** Begin Patch\r\n*** Add File: %s\r\n+see %s\r\n*** End Patch' "$REPORT" "$CFG")"
+patch_case "8139 empty Add File path with a body mention -> block" block "*** Begin Patch${NL}*** Add File: ${NL}$BODY${NL}*** End Patch"
+patch_case "8139 empty patch followed by a stray body mention -> block" block "*** Begin Patch${NL}*** End Patch${NL}$BODY"
+run "8139 array payload with a harmless target and a body mention -> block" block "$(jq -nc --arg c "*** Begin Patch${NL}*** Add File: $REPORT${NL}$BODY${NL}*** End Patch" '{tool_name:"apply_patch",tool_input:{command:["apply_patch",$c]}}')"
+run "8139 competing payload field naming the config -> block" block "$(jq -nc --arg c "*** Begin Patch${NL}*** Add File: $REPORT${NL}$BODY${NL}*** End Patch" --arg p "$CFG" '{tool_name:"apply_patch",tool_input:{command:$c,patch:$p}}')"
+run "8139 non-string command with a body mention -> block" block "$(jq -nc --arg p "$CFG" '{tool_name:"apply_patch",tool_input:{command:{x:$p}}}')"
+run "8139 guarded name in payload metadata -> block" block "$(jq -nc --arg c "*** Begin Patch${NL}*** Add File: $REPORT${NL}+hi${NL}*** End Patch" --arg s "$CFG" '{tool_name:"apply_patch",session_id:$s,tool_input:{command:$c}}')"
+echo "-- 8139 boundary: case-folded guarded spellings keep the textual refusal --"
+patch_case "8139 uppercase config name in the report header -> block" block "*** Begin Patch${NL}*** Add File: $HOME/.himmel/CONFIG.JSON${NL}$BODY${NL}*** End Patch"
+patch_case "8139 uppercase directory and project name in the header -> block" block "*** Begin Patch${NL}*** Add File: $HOME/.HIMMEL/Project.Conf${NL}$BODY${NL}*** End Patch"
+patch_case "8139 uppercase station config name in the header -> block" block "*** Begin Patch${NL}*** Add File: $HOME/.himmel/Himmel.Conf${NL}$BODY${NL}*** End Patch"
+patch_case "8139 uppercase outside-review store name in the header -> block" block "*** Begin Patch${NL}*** Add File: $HOME/.himmel/Outside-Contributors.JSON${NL}$BODY${NL}*** End Patch"
+cwd_case "8139 relative uppercase target resolved through a .himmel cwd -> block" block "$(jq -nc --arg d "$HOME/.himmel" '$d')" "*** Begin Patch${NL}*** Add File: CONFIG.JSON${NL}$BODY${NL}*** End Patch"
+echo "-- 8139 boundary: unknown or non-string cwd is never trusted --"
+patch_case "8139 relative target with no cwd -> block" block "*** Begin Patch${NL}*** Add File: rel.txt${NL}$BODY${NL}*** End Patch"
+cwd_case "8139 relative target with an empty cwd -> block" block '""' "*** Begin Patch${NL}*** Add File: rel.txt${NL}$BODY${NL}*** End Patch"
+cwd_case "8139 relative target with a relative cwd -> block" block '"sub"' "*** Begin Patch${NL}*** Add File: rel.txt${NL}$BODY${NL}*** End Patch"
+cwd_case "8139 absolute target with a numeric cwd -> block" block 5 "*** Begin Patch${NL}*** Add File: $REPORT${NL}$BODY${NL}*** End Patch"
+cwd_case "8139 absolute target with an array cwd -> block" block "$(jq -nc --arg d "$REPORT_DIR" '[$d]')" "*** Begin Patch${NL}*** Add File: $REPORT${NL}$BODY${NL}*** End Patch"
+cwd_case "8139 absolute target with an object cwd -> block" block "$(jq -nc --arg d "$REPORT_DIR" '{d:$d}')" "*** Begin Patch${NL}*** Add File: $REPORT${NL}$BODY${NL}*** End Patch"
+cwd_case "8139 absolute target with a boolean cwd -> block" block true "*** Begin Patch${NL}*** Add File: $REPORT${NL}$BODY${NL}*** End Patch"
+cwd_case "8139 relative target with a newline-bearing cwd -> block" block "$(jq -nc --arg d "$REPORT_DIR/sub
+x" '$d')" "*** Begin Patch${NL}*** Add File: rel.txt${NL}$BODY${NL}*** End Patch"
+echo "-- 8139 bounds: the existing caps still deny the exception path --"
+many="*** Begin Patch"
+i=0
+while [ "$i" -lt 1001 ]; do many="$many${NL}*** Add File: $REPORT_DIR/m$i.txt${NL}+x"; i=$((i + 1)); done
+patch_case "8139 1001 report headers with a body mention -> block (header cap)" block "$many${NL}$BODY${NL}*** End Patch"
+longname="$(printf 'a%.0s' $(seq 1 4100))"
+patch_case "8139 over-long report header with a body mention -> block (line cap)" block "*** Begin Patch${NL}*** Add File: $REPORT_DIR/$longname${NL}$BODY${NL}*** End Patch"
+big="$(printf 'b%.0s' $(seq 1 1000))"
+bigpatch="*** Begin Patch${NL}*** Add File: $REPORT${NL}$BODY"
+i=0
+while [ "$i" -lt 540 ]; do bigpatch="$bigpatch${NL}+$big"; i=$((i + 1)); done
+bigjson="$(printf '%s' "$bigpatch${NL}*** End Patch" | jq -Rsc '{tool_name:"apply_patch",tool_input:{command:.}}')"
+if [ "${#bigjson}" -gt 524288 ]; then
+    run "8139 patch over the byte cap with a body mention -> block (size cap)" block "$bigjson"
+else
+    bad "8139 over-cap payload was not built (${#bigjson} bytes)"
+fi
+pad="$(printf 'c%.0s' $(seq 1 380))"
+near="*** Begin Patch"
+i=0
+while [ "$i" -lt 999 ]; do near="$near${NL}*** Add File: $REPORT_DIR/n$i.txt${NL}+$pad"; i=$((i + 1)); done
+neardoc="$(printf '%s' "$near${NL}$BODY${NL}*** End Patch" | jq -Rsc '{tool_name:"apply_patch",tool_input:{command:.}}')"
+if [ "${#neardoc}" -gt 400000 ] && [ "${#neardoc}" -lt 524288 ]; then
+    nearstart=$SECONDS
+    run "8139 near-cap canonical patch (999 reports + body mention) -> allow inside the hook budget" allow "$neardoc"
+    printf '  note near-cap canonical row took ~%ss (budget 10s row timeout)\n' "$((SECONDS - nearstart))"
+else
+    bad "8139 near-cap payload was not built (${#neardoc} bytes)"
+fi
+if [ ! -e "$REPORT" ] && [ ! -e "$REPORT_DIR/sub/rel.txt" ]; then ok "8139 no row created a report target (the hook only classifies)"; else bad "8139 a report target exists after the rows"; fi
 patch_case "apply_patch no parseable header naming the config -> block (fail closed)" block "bogus patch for $CFG"
 patch_case "apply_patch no header, unrelated text -> allow" allow "bogus patch for $T/notes.txt"
 run "apply_patch command as an array naming the config -> block" block "$(jq -nc --arg p "$CFG" '{tool_name:"apply_patch",tool_input:{command:["apply_patch", ("*** Begin Patch\n*** Add File: " + $p + "\n+{}\n*** End Patch")]}}')"

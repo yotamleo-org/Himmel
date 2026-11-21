@@ -4,7 +4,7 @@ description: "Find the mistakes agents keep repeating in this repo and make each
 disable-model-invocation: true
 ---
 
-<!-- Vendored from cursor/plugins pstack/skills/correct/SKILL.md at bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7 (MIT, (c) 2026 Lauren Tan; ../../LICENSE). HIMMEL-5803. Deviations: none. -->
+<!-- Vendored from cursor/plugins pstack/skills/correct/SKILL.md at 0b46ec399d55f2829e88822998f53b84944837d3 (MIT, (c) 2026 Lauren Tan; ../../LICENSE). HIMMEL-5803. Deviations: none. -->
 
 # Correct
 

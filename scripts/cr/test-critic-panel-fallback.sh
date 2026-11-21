@@ -934,6 +934,148 @@ check_contains "23: a policy-refused critic's panel reason names the policy refu
 check_not_contains "23: the reason is not the empty raw tail" "$(cat "$tmp/err23")" \
     "reason=critic-broke: critic-first-pass.sh: raw tail:"
 
+JSON_FLOOR="$tmp/critics-floor.json"
+cat > "$JSON_FLOOR" <<'EOF'
+{"claude_floor":{"slug":"claude","model":"claude-opus-5-5","provider":"claude-subscription","effort":"medium","when":"codex-exhausted"},
+ "panel":[{"slug":"codex","model":"gpt-6.1-sol","provider":"openai-codex","route_provider":"openai-codex","tier":"paid","mode":"hard","required":true},
+          {"slug":"coderabbit","provider":"github-app","mode":"best-effort"}]}
+EOF
+STUB_FLOOR="$tmp/stub-floor.sh"
+cat > "$STUB_FLOOR" <<'EOS'
+#!/usr/bin/env bash
+slug=""; provider=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --slug) slug="$2"; shift 2 ;;
+        --provider) provider="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+cat >/dev/null
+printf '%s provider=%s\n' "$slug" "$provider" >> "$FLOOR_CAPTURE"
+if [ "$slug" = codex ]; then
+    case "${CX_MODE:-ok}" in
+        exhaust) cat "$CX_FIXTURE" >&2; exit 1 ;;
+        timeout) exit 124 ;;
+        missing) echo "critic-first-pass.sh: line 1: codex: command not found" >&2; exit 127 ;;
+        auth) echo "Error: 401 Unauthorized: not logged in, run codex login" >&2; exit 1 ;;
+        ratelimit) echo "Error: HTTP 429 Too Many Requests" >&2; exit 1 ;;
+    esac
+fi
+printf '# %s First-Pass Review\n\n## Critical Issues (0 found)\n\n## Important Issues (0 found)\n\n## Suggestions (0 found)\n' "$slug"
+exit 0
+EOS
+chmod +x "$STUB_FLOOR"
+cat > "$tmp/alert-rec.sh" <<'EOS'
+#!/usr/bin/env bash
+printf '%s|%s\n' "$TG_NOTIFICATION_TYPE" "$TG_MESSAGE" >> "$FLOOR_ALERTS"
+EOS
+chmod +x "$tmp/alert-rec.sh"
+mkdir -p "$tmp/bridge/consoles"
+CHIEF24="$tmp/bridge/consoles/test-chief.md"
+floor_run() {
+    _ft="$1"; shift
+    : > "$tmp/cap24$_ft"; : > "$tmp/alerts24$_ft"; : > "$CHIEF24"
+    printf '%s' "$DIFF" | env -u HIMMEL_API_LANE CRITIC_PANEL_TIERS=paid CR_TRIVIALITY_OVERRIDE=full CRITIC_FIRST_PASS="$STUB_FLOOR" \
+        FLOOR_CAPTURE="$tmp/cap24$_ft" FLOOR_ALERTS="$tmp/alerts24$_ft" CX_FIXTURE="$HERE/testdata/codex-usage-limit-2026-09-16.txt" \
+        CR_CRITIC_ALERT_CMD="$tmp/alert-rec.sh" BRIDGE_ROOT="$tmp/bridge" HIMMEL_CONSOLE_NAME=test-chief \
+        "$@" bash "$PANEL" >"$tmp/out24$_ft" 2>"$tmp/err24$_ft"
+}
+n_lines() { if [ -s "$1" ]; then grep -c . "$1"; else echo 0; fi; }
+
+floor_run a CRITICS_JSON="$JSON_FLOOR" CX_MODE=ok
+check "24a: codex available: codex ran" "$(grep -c '^codex ' "$tmp/cap24a")" "1"
+check "24a: codex available: no Claude critic launched" "$(grep -c '^claude ' "$tmp/cap24a")" "0"
+check "24a: codex available: no alert" "$(n_lines "$tmp/alerts24a")" "0"
+check "24a: codex available: nothing to the chief" "$(grep -c 'CRITIC-ALERT' "$CHIEF24")" "0"
+
+floor_run b CRITICS_JSON="$JSON_FLOOR" CX_MODE=exhaust
+check "24b: codex exhausted: the Claude floor ran once" "$(grep -c '^claude ' "$tmp/cap24b")" "1"
+check "24b: the floor ran on the subscription provider" "$(grep -c '^claude provider=claude-subscription$' "$tmp/cap24b")" "1"
+check "24b: exactly one loud Telegram alert" "$(n_lines "$tmp/alerts24b")" "1"
+check_contains "24b: the alert is the codex-exhausted class" "$(cat "$tmp/alerts24b")" "critic codex-exhausted|CRITIC-ALERT: codex ran out on"
+check_contains "24b: the alert names why codex was judged exhausted" "$(cat "$tmp/alerts24b")" "codex reason=quota-long"
+check "24b: exactly one line to the chief's inbox" "$(grep -c 'CRITIC-ALERT' "$CHIEF24")" "1"
+check_contains "24b: the floor's review counts" "$(cat "$tmp/err24b")" "panel-availability: claude ok"
+
+floor_run c CRITICS_JSON="$JSON_FLOOR" CX_MODE=exhaust CRITIC_PARALLEL=1
+check "24c: parallel: the Claude floor ran once" "$(grep -c '^claude provider=claude-subscription$' "$tmp/cap24c")" "1"
+check "24c: parallel: exactly one alert" "$(n_lines "$tmp/alerts24c")" "1"
+
+floor_run d CRITICS_JSON="$JSON_FLOOR" CX_MODE=timeout
+check "24d: codex timeout: no Claude floor" "$(grep -c '^claude ' "$tmp/cap24d")" "0"
+check "24d: codex timeout: no alert" "$(n_lines "$tmp/alerts24d")" "0"
+floor_run o CRITICS_JSON="$JSON_FLOOR" CX_MODE=ratelimit
+check_contains "24o: codex hit a 429" "$(cat "$tmp/err24o")" "reason=rate-limit"
+check "24o: codex rate-limited: no Claude floor" "$(grep -c '^claude ' "$tmp/cap24o")" "0"
+check "24o: codex rate-limited: no alert" "$(n_lines "$tmp/alerts24o")" "0"
+
+floor_run p CRITICS_JSON="$JSON_FLOOR" CX_MODE=ok CRITIC_PANEL_TOTAL_TIMEOUT_SECS=1 CRITIC_PANEL_STARTED_AT=1000
+check_contains "24p: the panel deadline skipped codex" "$(cat "$tmp/err24p")" "codex unavailable (panel-deadline)"
+check "24p: panel deadline: no Claude floor" "$(grep -c '^claude ' "$tmp/cap24p")" "0"
+check "24p: panel deadline: no alert" "$(n_lines "$tmp/alerts24p")" "0"
+
+floor_run j CRITICS_JSON="$JSON_FLOOR" CX_MODE=missing
+check "24j: codex not installed: the Claude floor ran once" "$(grep -c '^claude provider=claude-subscription$' "$tmp/cap24j")" "1"
+check "24j: codex not installed: exactly one alert" "$(n_lines "$tmp/alerts24j")" "1"
+check_contains "24j: the alert says no non-Claude critic answered" "$(cat "$tmp/alerts24j")" "CRITIC-ALERT: no non-Claude critic answered on"
+check_contains "24j: the alert names codex's reason" "$(cat "$tmp/alerts24j")" "codex reason=generic-rc-127"
+check_contains "24j: the floor's review counts" "$(cat "$tmp/err24j")" "panel-availability: claude ok"
+
+floor_run k CRITICS_JSON="$JSON_FLOOR" CX_MODE=auth
+check "24k: codex not logged in: the Claude floor ran once" "$(grep -c '^claude provider=claude-subscription$' "$tmp/cap24k")" "1"
+check "24k: codex not logged in: exactly one alert" "$(n_lines "$tmp/alerts24k")" "1"
+check_contains "24k: the alert names the auth failure" "$(cat "$tmp/alerts24k")" "codex reason=auth"
+check "24k: exactly one line to the chief's inbox" "$(grep -c 'CRITIC-ALERT' "$CHIEF24")" "1"
+
+JSON_FLOOR2="$tmp/critics-floor2.json"
+cat > "$JSON_FLOOR2" <<'EOF'
+{"claude_floor":{"slug":"claude","model":"claude-opus-5-5","provider":"claude-subscription","effort":"medium","when":"codex-exhausted"},
+ "panel":[{"slug":"codex","model":"gpt-6.1-sol","provider":"openai-codex","route_provider":"openai-codex","tier":"paid","mode":"hard","required":true},
+          {"slug":"glm","model":"glm-5","provider":"zai","tier":"paid","mode":"advisory"}]}
+EOF
+floor_run l CRITICS_JSON="$JSON_FLOOR2" CX_MODE=timeout
+check "24l: codex timeout, another non-Claude critic answered: no Claude floor" "$(grep -c '^claude ' "$tmp/cap24l")" "0"
+check "24l: codex timeout, another answered: no alert" "$(n_lines "$tmp/alerts24l")" "0"
+check "24l: the other critic ran" "$(grep -c '^glm ' "$tmp/cap24l")" "1"
+floor_run m CRITICS_JSON="$JSON_FLOOR2" CX_MODE=auth
+check "24m: codex not logged in, another non-Claude critic answered: no Claude floor" "$(grep -c '^claude ' "$tmp/cap24m")" "0"
+check "24m: no alert" "$(n_lines "$tmp/alerts24m")" "0"
+
+printf '%s\n' '{"panel":[{"slug":"claude","model":"claude-opus-5-5","provider":"claude-subscription","route_provider":"claude-subscription","tier":"paid","mode":"advisory"}]}' > "$tmp/local-readd24.json"
+floor_run e CRITICS_BASE_JSON="$JSON_FLOOR" CRITICS_LOCAL_JSON="$tmp/local-readd24.json" CX_MODE=ok
+check "24e: overlay claude row runs as a panel member" "$(grep -c '^claude provider=claude-subscription$' "$tmp/cap24e")" "1"
+check "24e: overlay claude row: no alert" "$(n_lines "$tmp/alerts24e")" "0"
+floor_run e2 CRITICS_BASE_JSON="$JSON_FLOOR" CRITICS_LOCAL_JSON="$tmp/local-readd24.json" CX_MODE=exhaust
+check "24e: overlay claude row, codex exhausted: claude runs once, no floor" "$(grep -c '^claude ' "$tmp/cap24e2")" "1"
+check "24e: overlay claude row, codex exhausted: no floor alert" "$(n_lines "$tmp/alerts24e2")" "0"
+floor_run e3 CRITICS_BASE_JSON="$JSON_FLOOR" CRITICS_LOCAL_JSON="$tmp/none24.json" CX_MODE=ok
+check "24e: no overlay: no Claude critic" "$(grep -c '^claude ' "$tmp/cap24e3")" "0"
+
+printf '%s\n' '{"panel":[{"slug":"claude","model":"claude-opus-5-5","provider":"claude-api","route_provider":"claude-api","tier":"paid","mode":"advisory"}]}' > "$tmp/local-api24.json"
+floor_run f CRITICS_BASE_JSON="$JSON_FLOOR" CRITICS_LOCAL_JSON="$tmp/local-api24.json" CX_MODE=ok
+check "24f: lane off: the claude-api row is not launched" "$(grep -c '^claude ' "$tmp/cap24f")" "0"
+check_contains "24f: lane off: its availability says not launched" "$(cat "$tmp/err24f")" "panel-availability: claude unavailable (not launched) reason=critic-skipped: claude critic SKIPPED (api lane is OFF"
+check_contains "24f: lane off: the absent row leaves the count" "$(cat "$tmp/out24f")" "(1/1 critics responded)"
+floor_run f2 CRITICS_BASE_JSON="$JSON_FLOOR" CRITICS_LOCAL_JSON="$tmp/local-api24.json" CX_MODE=ok HIMMEL_API_LANE=on
+check "24f: lane on (control): the claude-api row is launched" "$(grep -c '^claude provider=claude-api$' "$tmp/cap24f2")" "1"
+
+printf '%s\n' '{"panel":[{"slug":"claude","model":"claude-opus-5-5","provider":"api","route_provider":"api","tier":"paid","mode":"advisory"}]}' > "$tmp/local-apialias24.json"
+floor_run f3 CRITICS_BASE_JSON="$JSON_FLOOR" CRITICS_LOCAL_JSON="$tmp/local-apialias24.json" CX_MODE=ok
+check "24f: lane off: a provider-api alias row is not launched" "$(grep -c '^claude ' "$tmp/cap24f3")" "0"
+
+printf '%s\n' '{"claude_floor":null}' > "$tmp/local-floor-off24.json"
+floor_run g CRITICS_BASE_JSON="$JSON_FLOOR" CRITICS_LOCAL_JSON="$tmp/local-floor-off24.json" CX_MODE=exhaust
+check "24g: overlay floor null: no Claude critic" "$(grep -c '^claude ' "$tmp/cap24g")" "0"
+check "24g: overlay floor null: no alert" "$(n_lines "$tmp/alerts24g")" "0"
+printf '%s\n' '{"panel":[{"slug":"claude","drop":true}]}' > "$tmp/local-drop24.json"
+floor_run h CRITICS_BASE_JSON="$JSON_FLOOR" CRITICS_LOCAL_JSON="$tmp/local-drop24.json" CX_MODE=exhaust
+check "24h: a claude drop row: the floor still runs when codex ran out" "$(grep -c '^claude provider=claude-subscription$' "$tmp/cap24h")" "1"
+check "24h: a claude drop row: one alert" "$(n_lines "$tmp/alerts24h")" "1"
+printf '%s\n' '{"claude_floor":{"slug":"claude","model":"claude-opus-5-5","provider":"claude-api","when":"codex-exhausted"}}' > "$tmp/local-floor-api24.json"
+floor_run i CRITICS_BASE_JSON="$JSON_FLOOR" CRITICS_LOCAL_JSON="$tmp/local-floor-api24.json" CX_MODE=exhaust
+check "24i: an overlay floor replaces the base floor's provider" "$(grep -c '^claude provider=claude-api$' "$tmp/cap24i")" "1"
+
 if [ "$fails" -eq 0 ]; then
     if [ "$_skips" -gt 0 ]; then
         echo "ALL PASS ($_skips skipped)"

@@ -67,6 +67,7 @@ if [ -z "$line" ]; then
   bad "chief-template.md has no step-10 chief-wait.sh command"
   exit 1
 fi
+case "$line" in *--stream*--workers-from*) ok "the stream arm uses the live manifest" ;; *) bad "step 10 lacks --stream --workers-from" ;; esac
 kit="/srv/tester/himmel/scripts/handover/chief-kit"
 cmd=$(printf '%s' "$line" | sed -e 's#{{INBOX}}#/tmp/consoles/x-chief.md#g' \
   -e 's#{{SESSION_NAME}}#x-chief#g' -e 's# \[--succession [^]]*\]##')

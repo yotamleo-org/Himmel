@@ -2216,6 +2216,26 @@ check "68d the doc records the project (not just the dry-run line)" \
     "$(grep -c "The project this console is FOR is \*\*\`$proj68\`\*\*" "$doc68" 2>/dev/null)" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc68" "$(token_of "$out68d")" >/dev/null 2>&1
 
+# 68i: a HEADED_ARM_REPO inherited from a worker's launch (the caller's own
+# environment) must not reach the chief's launcher: headed-arm.sh would take it
+# as the session's working directory and open the chief in the worker's worktree.
+cat > "$tmp/stub-arm-68i.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "stub-arm-68i: HEADED_ARM_REPO=${HEADED_ARM_REPO:-<unset>}"
+echo "stub-arm-68i: PWD=$PWD"
+STUB
+mkdir -p "$tmp/worker-wt-68i"
+out68i="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+    HANDOVER_REGISTRY="$tmp/no-such-registry-68i.json" HEADED_ARM_REPO="$tmp/worker-wt-68i" \
+    CHIEF_HEADED_ARM="$tmp/stub-arm-68i.sh" CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$tmp/work68i" \
+    bash "$C" new --project "$proj68" --arm --deadline-min 0 ) 2>&1 )"
+check "68i a HEADED_ARM_REPO inherited by the chief arm is NOT passed on to the launcher" \
+    "$(printf '%s\n' "$out68i" | grep -c "^stub-arm-68i: HEADED_ARM_REPO=<unset>\$")" "1"
+check "68i the launcher still starts in the himmel checkout, not the inherited directory" \
+    "$(printf '%s\n' "$out68i" | grep -c "^stub-arm-68i: PWD=$fixture_repo\$")" "1"
+doc68i="$(printf '%s\n' "$out68i" | sed -n 's/^armed: name=[^ ]* doc=\([^ ]*\) .*/\1/p')"
+HANDOVER_DIR="$root" bash "$QL" release "${doc68i:-/nonexistent}" "$(token_of "$out68i")" >/dev/null 2>&1
+
 # --- 68e/68f (change 4): project -> bucket/prefix through the handover
 # registry, via a SCRATCH registry file only -- never ~/.claude/handover/registry.json.
 reg68="$tmp/registry-68.json"
@@ -2568,13 +2588,21 @@ man77B="${doc77B%.md}.fleet.json"
 man77C="${doc77C%.md}.fleet.json"
 chief next --bucket fleet77dst2 --doc "$doc77A" >/dev/null 2>&1
 check "77 no predecessor manifest: successor gets none (no-op)" "$([ -e "$man77C" ] && echo yes || echo no)" "no"
-check "77 no predecessor manifest: step 10 names the successor's own manifest path" \
-    "$(grep -Fc "$man77C" "$doc77C" 2>/dev/null)" "1"
+# step 10 names the manifest on exactly two lines: the --workers-from arm command and the "Your manifest:" line.
+# manifest_lines77 prints <--workers-from lines>/<Your manifest lines>/<every line naming the path>.
+manifest_lines77() {
+    printf '%s/%s/%s' \
+        "$(grep -Fc -- "--workers-from \"$1\"" "$2" 2>/dev/null)" \
+        "$(grep -Fc -- "**Your manifest:** \`$1\`" "$2" 2>/dev/null)" \
+        "$(grep -Fc -- "$1" "$2" 2>/dev/null)"
+}
+check "77 no predecessor manifest: step 10 names the successor's own manifest path (arm command and Your manifest line)" \
+    "$(manifest_lines77 "$man77C" "$doc77C")" "1/1/2"
 printf '{"schema":1,"workers":["/x/worker.md"]}\n' > "$man77A"
 chief next --bucket fleet77dst --doc "$doc77A" >/dev/null 2>&1
 check "77 manifest is copied to the successor's stem" "$(cat "$man77B" 2>/dev/null)" '{"schema":1,"workers":["/x/worker.md"]}'
 check "77 the predecessor's manifest is left in place (copy, not rename)" "$([ -f "$man77A" ] && echo yes)" "yes"
-check "77 successor step 10 names the carried manifest path" "$(grep -Fc "$man77B" "$doc77B" 2>/dev/null)" "1"
+check "77 successor step 10 names the carried manifest path (arm command and Your manifest line)" "$(manifest_lines77 "$man77B" "$doc77B")" "1/1/2"
 check "77 no unrendered {{FLEET_MANIFEST}} left in the successor doc" "$(grep -Fc '{{FLEET_MANIFEST' "$doc77B" 2>/dev/null)" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc77A" "$token77" >/dev/null 2>&1
 

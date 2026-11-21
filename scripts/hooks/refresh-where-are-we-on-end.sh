@@ -9,7 +9,7 @@
 #     next session's SessionStart render is already current and its stale-spawn is
 #     redundant. It runs collect.mjs DETACHED (setsid/double-fork via lib/detach.sh)
 #     so session exit is not blocked; such a child survives the
-#     hook's process-group teardown. The detached child stamps the freshness marker
+#     hook's process-group teardown. The collector stamps the freshness marker
 #     (mtime) the SessionStart render reads ONLY on success, so "refreshed Nh ago"
 #     reflects this end-of-session refresh.
 #
@@ -34,7 +34,7 @@
 
 set -euo pipefail
 
-# Always exit clean; never block session teardown on our own bug.
+# Setup fails open; the queued child explicitly reports its collector result.
 trap 'exit 0' ERR
 
 # --- Full-body detach ------------------------------------------
@@ -100,22 +100,13 @@ _wa_ledger="$_wa_dir/ledger.jsonl"
 _wa_marker="$_wa_dir/.refreshed-at"
 mkdir -p "$_wa_dir" 2>/dev/null || exit 0
 
-# --- Refresh DETACHED; the child stamps the marker only on success ----------
-# Previously this blocked session exit (synchronous) because a detached job was
-# assumed to risk being reaped. A setsid/double-fork child
-# survives the hook's process-group teardown, so we detach here too (consistent
-# with the SessionStart hook, which already spawns its refresh detached) and exit
-# immediately. The detached child runs `<collect> && touch marker`, so a failed
-# collect (jira/gh/git unreachable) still leaves the marker untouched -> the
-# ledger reads stale and SessionStart retries next time.
+# The queued child runs the collector to completion. Only the collector can
+# certify freshness; exit zero from an advisory wrapper is not that evidence.
+_wa_rc=0
 if [ -n "${HIMMEL_WHERE_ARE_WE_COLLECT_CMD:-}" ]; then
-    _wa_refresh="$HIMMEL_WHERE_ARE_WE_COLLECT_CMD"
+    bash -c "$HIMMEL_WHERE_ARE_WE_COLLECT_CMD" || _wa_rc=$?
 else
-    _wa_refresh="$(printf '%q %q --ledger %q >/dev/null 2>&1' \
-        "$_wa_node" "$_wa_root/scripts/where-are-we/collect.mjs" "$_wa_ledger")"
+    "$_wa_node" "$_wa_root/scripts/where-are-we/collect.mjs" --ledger "$_wa_ledger" --marker "$_wa_marker" || _wa_rc=$?
 fi
-# shellcheck source=/dev/null
-. "$(dirname "${BASH_SOURCE[0]}")/../lib/detach.sh"
-detach_run sh -c "$_wa_refresh && touch $(printf '%q' "$_wa_marker")"
 
-exit 0
+exit "$_wa_rc"

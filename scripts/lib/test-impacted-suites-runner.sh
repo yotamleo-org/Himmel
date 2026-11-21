@@ -20,12 +20,24 @@ pass() { printf '  PASS  %s\n' "$1"; }
 fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures + 1)); }
 
 retired="fleet""-control"
-references=$(git -C "$REPO_ROOT" grep -l "$retired" -- .github scripts); rc=$?
+# retired_ref matches the retired Mission Control page's name when it stands on its own: a path, an import, a command line,
+# an entry in a gate alternation, a sentence that ends with it. It lets pass the name when it continues with a dot and a
+# letter or with a hyphen: the fleet anchor's <name>.json and <name>.sh files and a <name>-test mktemp prefix.
+retired_ref="$retired([^.a-z-]|\$|[.]([^a-z]|\$))"
+references=$(git -C "$REPO_ROOT" grep -l -E "$retired_ref" -- .github scripts); rc=$?
 if [ "$rc" -eq 1 ] && [ ! -e "$REPO_ROOT/scripts/$retired" ]; then
     pass "the retired fleet page has no source directory or source/CI references"
 else
     fail "the retired fleet page still exists or has source/CI references (grep rc=$rc): $references"
 fi
+retired_match() { printf '%s\n' "$1" | grep -qE "$retired_ref"; }
+for shape in "scripts/$retired/server.ts" "import { scrub } from \"../$retired/server\";" \
+    "run: bun test scripts/$retired --coverage" "benign ^scripts/(luna-vitals|$retired|observability)/" "never parses it in $retired."; do
+    if retired_match "$shape"; then pass "the retired-page pattern matches the old shape: $shape"; else fail "the retired-page pattern misses the old shape: $shape"; fi
+done
+for name in "$retired.json" "$retired.sh" "lib/$retired.sh" "$retired-test.XXXXXX"; do
+    if retired_match "$name"; then fail "the retired-page pattern matches the fleet anchor's name: $name"; else pass "the retired-page pattern lets the fleet anchor's name pass: $name"; fi
+done
 
 assert_runner() {
     local label="$1" path="$2" expect="$3" out rc

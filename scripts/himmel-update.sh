@@ -807,34 +807,143 @@ sync_agent_clis() {
     return "$rc"
 }
 
-# ─── stale cadence runner nudge ──────────────────────
-# Cadence runners (.bat/.sh) are GENERATED at arm time and NOT regenerated on a
-# code pull — so a `git pull` that changes the runner format leaves an
-# already-armed cadence firing the OLD format until a manual `arm --force`.
-# This surfaces that right after the pull. Advisory; never fails the update.
-# *_BAT_DIR env seams mirror each emitter's runner home; defaults resolve via
-# cadence_user_home (emitter parity).
-# The graphmap hint below is `arm --rewrite-armed`, which rewrites only runner files that already
-# exist and registers nothing, so an update can never re-arm a Luna graph task the operator left
-# off (test-graphmap-cadence.sh C17 holds that); only `arm --luna-only` arms Luna.
+
+_steering_cull_rearm_args() {
+    local runner="$1/steering-cull-cadence.sh" line pdir="" chief="" backend="" acct="" ent day time m h
+    [ -f "$runner" ] || return 1
+    line=$(grep -F -- ' run --repo ' "$runner" | tail -1) || return 1
+    [ -n "$line" ] || return 1
+    line="${line#* run }"; line="${line%% >> *}"
+    eval "set -- $line" 2>/dev/null || return 1
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --proposal-dir) pdir="${2:-}"; shift ;;
+            --chief) chief="${2:-}"; shift ;;
+        esac
+        shift
+    done
+    [ -n "$pdir" ] || return 1
+    if grep -q 'STEERING_CULL_BACKEND=claude-api' "$runner"; then
+        backend=claude-api
+        acct=$(sed -n 's/.*HIMMEL_API_ACCOUNT=\([^ ]*\).*/\1/p' "$runner" | head -1)
+        [ -n "$acct" ] || return 1
+    elif grep -q 'STEERING_CULL_BACKEND=claude-cli' "$runner"; then
+        backend=claude-cli
+    fi
+    ent=$("${STEERING_CULL_CRONTAB:-crontab}" -l 2>/dev/null | grep -F '# HIMMEL-SteeringCull' | head -1) || return 1
+    [ -n "$ent" ] || return 1
+    m=$(printf '%s' "$ent" | awk '{print $1}'); h=$(printf '%s' "$ent" | awk '{print $2}'); day=$(printf '%s' "$ent" | awk '{print $5}')
+    case "$m$h$day" in ''|*[!0-9]*) return 1 ;; esac
+    time=$(printf '%02d:%02d' "$((10#$h))" "$((10#$m))")
+    printf '%s\n' --force --proposal-dir "$pdir" --day "$day" --time "$time"
+    [ -z "$chief" ] || printf '%s\n' --chief "$chief"
+    [ -z "$backend" ] || printf '%s\n' --backend "$backend"
+    [ -z "$acct" ] || printf '%s\n' --api-account "$acct"
+    return 0
+}
+
+_cron_entry_time() {
+    local bin="$1" tag="$2" ent m h dom mon dow rest
+    ent=$("$bin" -l 2>/dev/null | grep -F -- "# $tag" | head -1) || return 1
+    [ -n "$ent" ] || return 1
+    read -r m h dom mon dow rest <<<"$ent"
+    case "$m$h" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$dom$mon" = "**" ] || return 1
+    printf '%02d:%02d %s\n' "$((10#$h))" "$((10#$m))" "$dow"
+}
+
+_runner_flag_value() {
+    local runner="$1" pattern="$2" v
+    [ -f "$runner" ] || return 1
+    v=$(sed -n "$pattern" "$runner" | head -1)
+    case "$v" in ''|*[!A-Za-z0-9._/-]*) return 1 ;; esac
+    printf '%s\n' "$v"
+}
+
+_pipeline_rearm_args() {
+    local dir="$1" bin="${PIPELINE_CRONTAB:-crontab}" d fh hv sy he hdow
+    local hm sm lm vault feed prom act ig
+    fh=$(_cron_entry_time "$bin" HIMMEL-Pipeline-FetchHealth) || return 1
+    hv=$(_cron_entry_time "$bin" HIMMEL-Pipeline-Harvest) || return 1
+    sy=$(_cron_entry_time "$bin" HIMMEL-Pipeline-Synthesize) || return 1
+    he=$(_cron_entry_time "$bin" HIMMEL-Pipeline-Health) || return 1
+    [ "${fh#* }" = "*" ] && [ "${hv#* }" = "*" ] && [ "${sy#* }" = "*" ] || return 1
+    hdow="${he#* }"
+    case "$hdow" in
+        '*') d=DAILY ;; 0|7) d=SUN ;; 1) d=MON ;; 2) d=TUE ;; 3) d=WED ;; 4) d=THU ;; 5) d=FRI ;; 6) d=SAT ;;
+        *) return 1 ;;
+    esac
+    hm=$(_runner_flag_value "$dir/pipeline-harvest.sh" 's/.* --model \([^ ]*\) .*/\1/p') || return 1
+    sm=$(_runner_flag_value "$dir/pipeline-synthesize.sh" 's/.* --model \([^ ]*\) .*/\1/p') || return 1
+    lm=$(_runner_flag_value "$dir/pipeline-health.sh" 's/.* --model \([^ ]*\) .*/\1/p') || return 1
+    feed=$(_runner_flag_value "$dir/pipeline-harvest.sh" 's/.*nightly-feeds .* --cap \([0-9]*\).*/\1/p') || return 1
+    prom=$(_runner_flag_value "$dir/pipeline-synthesize.sh" 's/.*nightly-promote .* --limit \([0-9]*\).*/\1/p') || return 1
+    act=$(_runner_flag_value "$dir/pipeline-synthesize.sh" 's/.*nightly-actions .* --limit \([0-9]*\).*/\1/p') || return 1
+    ig=$(_runner_flag_value "$dir/pipeline-harvest.sh" 's/.*ig-media-enrich\\ --limit\\ \([0-9]*\)\\ .*/\1/p') || return 1
+    vault=$(_runner_flag_value "$dir/pipeline-harvest.sh" 's/^[[:space:]]*cd \([^ ]*\) || .*/\1/p') || return 1
+    printf '%s\n' --force --fetch-health-time "${fh% *}" --harvest-time "${hv% *}" --synth-time "${sy% *}" \
+        --health-day "$d" --health-time "${he% *}" --harvest-model "$hm" --synth-model "$sm" --health-model "$lm" \
+        --feed-cap "$feed" --promote-limit "$prom" --actions-limit "$act" --ig-limit "$ig" --vault "$vault"
+}
+
+_time_only_rearm_args() {
+    local e
+    e=$(_cron_entry_time "$1" "$2") || return 1
+    [ "${e#* }" = "*" ] || return 1
+    printf '%s\n' --force --time "${e% *}"
+}
+
+_cadence_rearm_args() {
+    local label="$1" bat_dir="$2" flags="$3" f
+    case "$label" in
+        steering-cull-cadence) _steering_cull_rearm_args "$bat_dir" ;;
+        pipeline-cadence) _pipeline_rearm_args "$bat_dir" ;;
+        qmd-cadence) _time_only_rearm_args "${QMD_CADENCE_CRONTAB:-crontab}" HIMMEL-Qmd-Reindex ;;
+        upstream-watch-cadence) _time_only_rearm_args "${UPSTREAMWATCH_CRONTAB:-crontab}" HIMMEL-UpstreamWatch ;;
+        graph-choices-cadence) _time_only_rearm_args "${GRAPH_CHOICES_CRONTAB:-crontab}" HIMMEL-GraphChoices ;;
+        *) for f in $flags; do printf '%s\n' "$f"; done ;;
+    esac
+}
+
 report_cadence_stale() {
-    local label bat_dir rearm ver uh
+    local mode="${1:-check}" label bat_dir script flags rearm ver uh arm_root out arm_rc steer a
+    local -a args
     uh="$(cadence_user_home)"
-    while IFS='|' read -r label bat_dir rearm; do
+    arm_root="${HIMMEL_REARM_ROOT:-$ROOT}"
+    while IFS='|' read -r label bat_dir script flags; do
         [ -n "$label" ] || continue
         ver="$(CADENCE_RUNNER_BASENAMES="$CADENCE_RUNNER_BASENAMES graph-choices" cadence_runner_stamp "$bat_dir")" || continue
         [ "$ver" -lt "$CADENCE_RUNNER_FORMAT_VERSION" ] || continue
+        rearm="bash $script arm $flags"
+        if [ "$mode" = "apply" ]; then
+            args=()
+            steer=$(_cadence_rearm_args "$label" "$bat_dir" "$flags") || steer=""
+            while IFS= read -r a; do [ -z "$a" ] || args+=("$a"); done <<<"$steer"
+            if [ "${#args[@]}" -gt 0 ]; then
+                if out=$(bash "$arm_root/$script" arm "${args[@]}" 2>&1); then arm_rc=0; else arm_rc=$?; fi
+                echo ""
+                if [ "$arm_rc" -eq 0 ]; then
+                    echo "==> $label runners were STALE (format v$ver < v$CADENCE_RUNNER_FORMAT_VERSION) — re-armed"
+                    echo "    $(_last_line_trimmed "$(printf '%s\n' "$out" | grep -v '^[=-]*$' || true)")"
+                    continue
+                fi
+                echo "==> $label runners are STALE (format v$ver < v$CADENCE_RUNNER_FORMAT_VERSION) — re-arm failed (rc $arm_rc): $(_last_line_trimmed "$out")"
+                echo "    re-arm by hand:"
+                echo "        $rearm"
+                continue
+            fi
+        fi
         echo ""
         echo "==> $label runners are STALE (format v$ver < v$CADENCE_RUNNER_FORMAT_VERSION)"
         echo "    Armed before a runner-format change — re-arm to pick up the new format:"
         echo "        $rearm"
     done <<EOF
-pipeline-cadence|${PIPELINE_BAT_DIR:-$uh/.claude/pipeline-cadence}|bash scripts/luna/pipeline-cadence.sh arm --force
-graphmap-cadence|${GRAPHMAP_BAT_DIR:-$uh/.claude/graphmap-cadence}|bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed
-qmd-cadence|${QMD_CADENCE_BAT_DIR:-$uh/.claude/qmd-cadence}|bash scripts/luna/qmd-cadence.sh arm --force
-upstream-watch-cadence|${UPSTREAMWATCH_BAT_DIR:-$uh/.claude/upstream-watch-cadence}|bash scripts/upstreams/upstream-watch-cadence.sh arm --force
-graph-choices-cadence|${GRAPH_CHOICES_BAT_DIR:-$uh/.claude/graph-choices-cadence}|bash scripts/graphify/graph-choices-cadence.sh arm --force
-steering-cull-cadence|${STEERING_CULL_RUNNER_DIR:-$uh/.claude/steering-cull-cadence}|bash scripts/cleanup/steering-cull-cadence.sh arm --force --proposal-dir <dir> [--chief <name>] [--backend <b>]
+pipeline-cadence|${PIPELINE_BAT_DIR:-$uh/.claude/pipeline-cadence}|scripts/luna/pipeline-cadence.sh|--force
+graphmap-cadence|${GRAPHMAP_BAT_DIR:-$uh/.claude/graphmap-cadence}|scripts/luna/graphmap-cadence.sh|--rewrite-armed
+qmd-cadence|${QMD_CADENCE_BAT_DIR:-$uh/.claude/qmd-cadence}|scripts/luna/qmd-cadence.sh|--force
+upstream-watch-cadence|${UPSTREAMWATCH_BAT_DIR:-$uh/.claude/upstream-watch-cadence}|scripts/upstreams/upstream-watch-cadence.sh|--force
+graph-choices-cadence|${GRAPH_CHOICES_BAT_DIR:-$uh/.claude/graph-choices-cadence}|scripts/graphify/graph-choices-cadence.sh|--force
+steering-cull-cadence|${STEERING_CULL_RUNNER_DIR:-$uh/.claude/steering-cull-cadence}|scripts/cleanup/steering-cull-cadence.sh|--force --proposal-dir <dir> [--chief <name>] [--backend <b>]
 EOF
     return 0
 }
@@ -2110,6 +2219,18 @@ update_luna_template() {
     # offering the upgrade until the operator reconciles the withheld files.
     if [ "$rc" -eq 3 ]; then
         STATUS_luna_template="needs-reconcile"; DETAIL_luna_template="$(_last_line_trimmed "$out")$note"
+        local held keeps="" rel
+        held=$(printf '%s\n' "$out" | sed -n 's/^ *local edits withheld (not overwritten): \(.*\) (backup:.*/\1/p; t; s/^ *local edits withheld (not overwritten): \(.*\)$/\1/p')
+        while IFS= read -r rel; do
+            [ -n "$rel" ] || continue
+            keeps="$keeps --keep $(printf %q "$rel")"
+        done <<EOF
+$held
+EOF
+        if [ -n "$keeps" ]; then
+            echo "    reconcile: keep your edit(s), or delete the vault copy to take the template's, then re-run:"
+            printf '        bash %q --template-dir %q --vault-dir %q%s --yes\n' "$upgrade" "$template" "$vault" "$keeps"
+        fi
         return 0
     fi
     STATUS_luna_template="failed"
@@ -4045,7 +4166,7 @@ report_plugin_gap
 reconcile_plugins apply
 enable_adhd_always apply
 offer_retired_plugin_removal apply
-report_cadence_stale
+report_cadence_stale apply
 report_qmd_bun_missing
 report_afk_helper_stale
 report_toolchain apply

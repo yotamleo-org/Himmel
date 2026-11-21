@@ -242,6 +242,27 @@ check '7e. the refused re-add leaves the arm alone' 400k "$(jq -r '.workers[0].a
 bash "$SCRIPT" add "$m9" --lane native --arm 400k "$l1" >/dev/null 2>&1; rc=$?
 check '7e. re-adding with the same arm stays a no-op (rc 0)' 0 "$rc"
 
+# a listed row with no arm takes the arm the launcher reports; a different lane, lockless or arm is still refused and writes nothing.
+m7f="$tmp/m7f.json"
+bash "$SCRIPT" add "$m7f" --lane native --pending "$l1" >/dev/null 2>&1
+bash "$SCRIPT" add "$m7f" --lane native --arm 200k "$l1" >/dev/null 2>&1; rc=$?
+check '7f. --arm on a listed row with no arm is accepted (rc 0)' 0 "$rc"
+check '7f. the arm is stored on that row' 200k "$(jq -r '.workers[0].arm' "$m7f")"
+check '7f. the row keeps its lane, label and pending registration, and stays one row' "native N70 pending 1" "$(jq -r '"\(.workers[0].lane) \(.workers[0].label) \(.workers[0].registration) \(.workers | length)"' "$m7f")"
+bash "$SCRIPT" add "$m7f" --lane native --arm 400k "$l1" >/dev/null 2>&1; rc=$?
+check '7f. a different arm on that row is then refused (rc 1)' 1 "$rc"
+check '7f. the refused re-add leaves the stored arm alone' 200k "$(jq -r '.workers[0].arm' "$m7f")"
+m7g="$tmp/m7g.json"
+bash "$SCRIPT" add "$m7g" --lane native "$l1" >/dev/null 2>&1
+bash "$SCRIPT" add "$m7g" --lane claudex --arm 200k "$l1" >/dev/null 2>&1; rc=$?
+check '7f. a different lane with an arm on a row with no arm is refused (rc 1)' 1 "$rc"
+check '7f. the refused re-add stores no arm' false "$(jq '.workers[0] | has("arm")' "$m7g")"
+bash "$SCRIPT" add "$m7g" --lane native --lockless --arm 200k "$l1" >/dev/null 2>&1; rc=$?
+check '7f. --lockless with an arm on a locked row with no arm is refused (rc 1)' 1 "$rc"
+check '7f. that refused re-add stores no arm either' false "$(jq '.workers[0] | has("arm")' "$m7g")"
+bash "$SCRIPT" add "$m7g" --lane native "$l1" >/dev/null 2>&1; rc=$?
+check '7f. a re-add with no --arm leaves a row with no arm alone (rc 0)' "0 false" "$rc $(jq '.workers[0] | has("arm")' "$m7g")"
+
 m10="$tmp/m10.json"
 h1=1111111111111111111111111111111111111111
 h2=2222222222222222222222222222222222222222
@@ -298,6 +319,96 @@ bash "$SCRIPT" >/dev/null 2>&1; rc=$?
 check '8. no verb is a usage error (rc 2)' 2 "$rc"
 bash "$SCRIPT" frob "$m" >/dev/null 2>&1; rc=$?
 check '8. an unknown verb is a usage error (rc 2)' 2 "$rc"
+
+# Attempt metadata changes only an existing exact worker registration. Readers
+# still see pending/unknown/launched rows through the public legacy list API.
+mkdir "$tmp/attempts"
+am="$tmp/attempts/chief.json"
+ad="$tmp/HIMMEL-8-N81-attempt.md"
+bd="$tmp/HIMMEL-8-N82-peer.md"
+bash "$SCRIPT" add "$am" --lane api "$ad" "$bd"
+jq '.foreign = {keep:true} | .workers[0].foreign = ["keep"]' "$am" > "$tmp/edit.json"
+cp "$tmp/edit.json" "$am"
+bash "$SCRIPT" control init "$am" --target 1
+bash "$SCRIPT" attempt bind "$am" "$ad" --attempt-id A1; rc=$?
+check 'attempt bind attaches to registered worker' 0 "$rc"
+check 'pending records exact id and observed generation' 'A1 pending 1' "$(jq -r '.workers[0].attempt | "\(.attempt_id) \(.phase) \(.control_generation)"' "$am")"
+bash "$SCRIPT" control set "$am" --mode shadow --expect-gen 1
+bash "$SCRIPT" attempt bind "$am" "$ad" --attempt-id A1; rc=$?
+check 'same pending bind is idempotent' 0 "$rc"
+check 'pending replay retains original control generation' 1 "$(jq '.workers[0].attempt.control_generation' "$am")"
+bash "$SCRIPT" attempt bind "$am" "$ad" --attempt-id A2 >/dev/null 2>&1; rc=$?
+check 'another pending attempt cannot replace owner' 1 "$rc"
+bash "$SCRIPT" attempt bind "$am" "$tmp/unregistered.md" --attempt-id A2 >/dev/null 2>&1; rc=$?
+check 'bind cannot invent worker' 1 "$rc"
+bash "$SCRIPT" attempt settle "$am" "$ad" --attempt-id A2 --phase refused >/dev/null 2>&1; rc=$?
+check 'stale refusal cannot remove current owner' 1 "$rc"
+check 'pending worker remains visible to old readers' "$ad
+$bd" "$(bash "$SCRIPT" list "$am")"
+bash "$SCRIPT" attempt settle "$am" "$ad" --attempt-id A1 --phase unknown
+bash "$SCRIPT" attempt bind "$am" "$ad" --attempt-id A2 >/dev/null 2>&1; rc=$?
+check 'unknown stays protected from retry' 1 "$rc"
+check 'unknown preserves registration and truth' unknown "$(jq -r '.workers[0].attempt.phase' "$am")"
+bash "$SCRIPT" attempt settle "$am" "$ad" --attempt-id A1 --phase launched
+bash "$SCRIPT" attempt settle "$am" "$ad" --attempt-id A1 --phase launched; rc=$?
+check 'launched replay is idempotent' 0 "$rc"
+bash "$SCRIPT" attempt settle "$am" "$ad" --attempt-id A1 --phase refused >/dev/null 2>&1; rc=$?
+check 'launched cannot be downgraded to refusal' 1 "$rc"
+bash "$SCRIPT" attempt settle "$am" "$ad" --attempt-id A1 --phase unknown >/dev/null 2>&1; rc=$?
+check 'launched cannot be downgraded to unknown' 1 "$rc"
+check 'attempt mutation preserves foreign metadata' '["keep"] true' "$(jq -r '"\(.workers[0].foreign | tojson) \(.foreign.keep)"' "$am")"
+bash "$SCRIPT" attempt bind "$am" "$bd" --attempt-id B1
+bash "$SCRIPT" attempt settle "$am" "$bd" --attempt-id B1 --phase refused; rc=$?
+check 'definite refusal settles' 0 "$rc"
+check 'refusal releases only exact active worker ownership' "$ad" "$(bash "$SCRIPT" list "$am")"
+check 'refusal retains minimal typed receipt reference' 'B1 launch-attempt 2' "$(jq -r '.last_refused_attempt.receipt | "\(.attempt_id) \(.kind) \(.v)"' "$am")"
+bash "$SCRIPT" attempt settle "$am" "$bd" --attempt-id B1 --phase refused; rc=$?
+check 'refused replay is idempotent' 0 "$rc"
+bash "$SCRIPT" add "$am" --lane api "$bd"
+bash "$SCRIPT" attempt bind "$am" "$bd" --attempt-id B2
+bash "$SCRIPT" attempt settle "$am" "$bd" --attempt-id B1 --phase refused >/dev/null 2>&1; rc=$?
+check 'old refusal replay cannot remove retry' 1 "$rc"
+check 'retry retains identity' B2 "$(jq -r '.workers[1].attempt.attempt_id' "$am")"
+# Foreign/legacy attempt metadata is never silently adopted as verified intent.
+jq '.workers[1].attempt = {custom:"unknown"}' "$am" > "$tmp/edit.json"
+cp "$tmp/edit.json" "$am"
+bash "$SCRIPT" attempt bind "$am" "$bd" --attempt-id B3 >/dev/null 2>&1; rc=$?
+check 'unrecognized attempt metadata is protected' 1 "$rc"
+before="$(jq -Sc . "$am")"
+bash "$SCRIPT" attempt bind "$am" "$bd" --attempt-id 'bad/id' >/dev/null 2>&1; rc=$?
+check 'malformed attempt identity refused' 2 "$rc"
+check 'refused mutation leaves metadata unchanged' "$before" "$(jq -Sc . "$am")"
+jq '.workers[1] |= (del(.attempt) | .attempt_id="legacy-unverified")' "$am" > "$tmp/edit.json"
+cp "$tmp/edit.json" "$am"
+bash "$SCRIPT" attempt bind "$am" "$bd" --attempt-id B5 >/dev/null 2>&1; rc=$?
+check 'legacy attempt identity cannot be silently adopted' 1 "$rc"
+jq '.workers[1] |= (del(.attempt_id) | .label="N999")' "$am" > "$tmp/edit.json"
+cp "$tmp/edit.json" "$am"
+bash "$SCRIPT" attempt bind "$am" "$bd" --attempt-id B5 >/dev/null 2>&1; rc=$?
+check 'mismatched registered worker label refuses bind' 1 "$rc"
+# Two binders must not replace one another, even when both saw a bare row.
+bash "$SCRIPT" add "$am" --lane native "$tmp/HIMMEL-8-N83-race.md"
+cdoc="$tmp/HIMMEL-8-N83-race.md"
+bash "$SCRIPT" attempt bind "$am" "$cdoc" --attempt-id C1 > "$tmp/bind1" 2>&1 & p1=$!
+bash "$SCRIPT" attempt bind "$am" "$cdoc" --attempt-id C2 > "$tmp/bind2" 2>&1 & p2=$!
+wait "$p1"; r1=$?; wait "$p2"; r2=$?
+check 'competing binders leave exactly one pending identity' 1 "$((r1+r2))"
+winner="$(jq -r --arg d "$cdoc" '.workers[] | select(.doc==$d) | .attempt.attempt_id' "$am")"
+check 'pending race keeps one intact worker row' 1 "$(jq --arg d "$cdoc" '[.workers[] | select(.doc==$d and .attempt.phase=="pending")] | length' "$am")"
+# Failed publication cannot drop ownership or certify refusal.
+mkdir "$tmp/fail-bin"
+printf '#!/usr/bin/env bash\nexit 73\n' > "$tmp/fail-bin/mv"
+chmod +x "$tmp/fail-bin/mv"
+before="$(jq -Sc . "$am")"
+PATH="$tmp/fail-bin:$PATH" bash "$SCRIPT" attempt settle "$am" "$cdoc" --attempt-id "$winner" --phase refused >/dev/null 2>&1; rc=$?
+check 'failed settle is visible' 1 "$rc"
+check 'failed settle retains previous owner and receipt pointer' "$before" "$(jq -Sc . "$am")"
+# Settlement is bookkeeping and must remain possible after control disappears.
+rm "$tmp/attempts/fleet-control.json"
+bash "$SCRIPT" attempt settle "$am" "$cdoc" --attempt-id "$winner" --phase unknown; rc=$?
+check 'lost control still permits identity-matched unknown settlement' 0 "$rc"
+bash "$SCRIPT" attempt bind "$am" "$bd" --attempt-id B4 >/dev/null 2>&1; rc=$?
+check 'lost control refuses new bind' 1 "$rc"
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-fleet-manifest.sh"

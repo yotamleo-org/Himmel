@@ -3,10 +3,14 @@ export const REQUIRED = ['ts', 'source', 'key', 'kind'];
 export const LIST_FIELDS = ['blockers', 'awaiting_operator'];
 
 export function validateRecord(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { ok: false, error: 'invalid record object' };
   for (const f of REQUIRED) {
     if (!hasField(obj, f) || obj[f] === null || obj[f] === '') {
       return { ok: false, error: `missing required field: ${f}` };
     }
+  }
+  if (obj.kind === 'collection' && obj.errors !== undefined && (!Array.isArray(obj.errors) || obj.errors.some((error) => typeof error !== 'string'))) {
+    return { ok: false, error: 'invalid collection diagnostics' };
   }
   return { ok: true };
 }
