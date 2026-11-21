@@ -21,7 +21,7 @@ There is no environment override for these paths.
 
 ## Setup, per side
 
-For a guided setup that finds every id by itself and keeps `allowFrom` to the peer bot only, see [Part 4 of the remote setup guide](../setup/remote-setup.md#part-4); the steps below are the same steps by hand.
+For a guided setup that finds every id by itself and keeps `allowFrom` to the peer bot only, see [Part 4 of the remote setup guide](../setup/remote-setup.md#part-4). The steps below are the alternative for an operator who needs to customize the allowlist (for example to add a human id) or the peer caps, which the guided command does not do.
 
 Both sides run the same steps, each with the other's bot. The adopter runs them
 with our bot id and username. Do them in this order. Promotion comes before

@@ -291,6 +291,18 @@ t_guide_part_4_is_written() {
     if [ -z "$missing" ] && [ "$order_ok" = 1 ]; then ok guide_part_4_is_written_in_order; else bad "guide_part_4_is_written_in_order: missing:$missing in order: $order_ok"; fi
 }
 
+# The pointer in peer-bridge.md names the manual steps as the way to customize the allowlist and caps,
+# not as the same procedure: the guided command authorizes the peer bot only.
+t_peer_bridge_pointer_does_not_call_the_manual_steps_equivalent() {
+    local line
+    line=$(grep -F 'Part 4 of the remote setup guide' "$REPO/docs/internals/peer-bridge.md" | head -n 1)
+    case "$line" in
+        *'same steps by hand'*) bad "peer_bridge_pointer: calls the manual steps the same as the guided command" ;;
+        *'alternative'*'customize'*) ok peer_bridge_pointer_names_the_manual_steps_as_the_alternative ;;
+        *) bad "peer_bridge_pointer: does not name the manual steps as the alternative to customize the allowlist or caps: $line" ;;
+    esac
+}
+
 if [ "${1:-}" = --lint ]; then
     if [ -z "${2:-}" ] || [ ! -f "$2" ]; then
         echo "usage: test-remote-setup-guide.sh [--lint FILE]" >&2
@@ -311,5 +323,6 @@ t_guide_done_lines_match_helper
 t_guide_lint_catches_placeholder_outside_terminal_sections
 t_guide_fix_rows_exist_in_helper
 t_guide_part_4_is_written
+t_peer_bridge_pointer_does_not_call_the_manual_steps_equivalent
 printf '%s passed, %s failed\n' "$PASS" "$FAILN"
 [ "$FAILN" -eq 0 ]
