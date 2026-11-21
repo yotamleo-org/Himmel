@@ -8,9 +8,9 @@
 # way exits at the first idle cross-session message (five fleet workers lost
 # 2026-09-05). `script` alone is not enough: measured, `script -qefc CMD
 # /dev/null </dev/null` hands CMD a tty but forwards the EOF at once, so
-# CMD reads EOF immediately. Holding the fifo below open read-write (nothing
-# ever writes to it) gives script a stdin that never EOFs, so the session is
-# genuinely interactive and idles until a message arrives.
+# CMD reads EOF immediately. A stdin that never EOFs keeps the session interactive
+# until a message arrives: a fifo held open read-write (util-linux), or on BSD an
+# anonymous pipe whose writer is a long sleep (BSD script fails tcgetattr on a fifo).
 #
 #   _himmel_pty_run <cmd> [args...]     rc = <cmd>'s exit status, except on a
 #                                       BSD script(1) that rejects -e: there rc
