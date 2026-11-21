@@ -963,6 +963,31 @@ describe('create --residual-of in a version holding many open residuals', () => 
     rmSync(dir, { recursive: true, force: true });
   });
 
+  const writerOf = (method: string, path: string) => mockRequest.mock.calls.find((c) => c[0] === method && c[1] === path)?.[3];
+
+  it('a residual filed into a version with no residents names create-residual', async () => {
+    residents = [];
+    await file('--fu-class', 'escape');
+    expect(created().fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(writerOf('POST', '/issue')).toBe('create-residual');
+  });
+
+  it.each(['--blocks', '--split-from'])('refuses, writing nothing, when %s names a target in another version than the blocker', async (relation) => {
+    const other = residual('OTHER-1');
+    other.fields.project.key = 'OTHER';
+    other.fields.fixVersions = [{ name: 'v2.0.0' }];
+    const play = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.startsWith('/issue/OTHER-1?')) return other;
+      if (method === 'GET' && path === '/project/OTHER/versions') return [{ name: 'v2.0.0', released: false }];
+      return play(method, path);
+    });
+    await expect(file('--fu-class', 'escape', '--blocks', 'HIMMEL-50', relation, 'OTHER-1'))
+      .rejects.toThrow(/blocker must carry fixVersion v2\.0\.0/);
+    expect(created()).toBeUndefined();
+    expect(writes()).toEqual([]);
+  });
+
   it.each([15, 16, 40])('RED a: a higher-ranked escape stays in v1.1.3 beside %i To Do residents and displaces none', async (n) => {
     residents = residents.slice(0, n);
     await file('--fu-class', 'escape', '--priority', 'Highest');

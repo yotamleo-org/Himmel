@@ -12,7 +12,7 @@ import { readBodyFile } from './body-file.js';
 import { parseLabels } from './labels.js';
 import { titleSector, PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
 import { CreatePartial, CreateRefused, runCreate, type CreateOptions } from '../operations/create.js';
-import { resolveSector, sectorField, sectorOptions } from './sector.js';
+import { resolveSector } from './sector.js';
 import { searchAllIssues } from './list.js';
 import { createIssueLink, requireBlockerVersion, targetFixVersion } from './link.js';
 import { appendAdmission, type AdmissionInput } from './admissions-ledger.js';

@@ -117,7 +117,7 @@ anything is sent. Himmel's own agents use the CLI directly.
 **Write outcomes.** Every CLI write ends in one of four classes:
 
 - **Refused before writes.** A check failed and nothing was written: no issue,
-  comment, link, ledger row or displacement. `create` and `move` run every
+  comment, link or ledger row. `create` and `move` run every
   check (body against the final labels, title, sector, home, placement,
   version gates, INTAKE preflight) before the first write; `edit` checks the
   edited result before its PUT.
