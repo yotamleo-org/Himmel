@@ -13,7 +13,7 @@ import { failedTests, makeRedCopy } from "./testlib-red-copy";
 const WIRE16 = "0123456789abcdef";
 
 const NOW = 1_731_000_000;
-const CTX = { from: "yotam", to: "goomal", chat: -1001234567890, now: NOW };
+const CTX = { from: "yotam", to: "example", chat: -1001234567890, now: NOW };
 const HEX16 = "0123456789abcdef", SHA = "a".repeat(40), H64 = "b".repeat(64);
 const SUITES = ["scripts/hooks/test-a.sh", "scripts/ci/test-b.sh"];
 
@@ -60,12 +60,12 @@ test("buildEnvelope mints a fresh 8-hex msg and carries the common fields in ord
   const a = make("halt"), b = make("halt");
   expect(a.msg).toMatch(/^[0-9a-f]{8}$/);
   expect(a.msg).not.toBe(b.msg);
-  expect(encodeCanonical(a)).toBe(`{"v":1,"msg":"${a.msg}","from":"yotam","to":"goomal","chat":"-1001234567890","iat":${NOW},"exp":${NOW + 86400},"kind":"halt"}`);
+  expect(encodeCanonical(a)).toBe(`{"v":1,"msg":"${a.msg}","from":"yotam","to":"example","chat":"-1001234567890","iat":${NOW},"exp":${NOW + 86400},"kind":"halt"}`);
 });
 
 test("the canonical line is compact, in table order and plain ASCII", () => {
   const l = line("res done");
-  expect(l).toMatch(/^\{"v":1,"msg":"[0-9a-f]{8}","from":"yotam","to":"goomal","chat":"-1001234567890","iat":\d+,"exp":\d+,"kind":"res","job":"0123456789abcdef","state":"done","results":\["pass","fail"\],"minutes":15,"image":"b{64}","log":\{"sha256":"b{64}","bytes":1234\}\}$/);
+  expect(l).toMatch(/^\{"v":1,"msg":"[0-9a-f]{8}","from":"yotam","to":"example","chat":"-1001234567890","iat":\d+,"exp":\d+,"kind":"res","job":"0123456789abcdef","state":"done","results":\["pass","fail"\],"minutes":15,"image":"b{64}","log":\{"sha256":"b{64}","bytes":1234\}\}$/);
   expect(/^[\x20-\x7e]+$/.test(l)).toBe(true);
 });
 
@@ -205,7 +205,7 @@ test("encodeCanonical refuses an envelope the schema would refuse", () => {
 
 test("a body cannot choose the common fields: msg, from, to, chat, the times and the kind are the builder's", () => {
   const e = buildEnvelope("halt", { v: 2, msg: "00000000", from: "intruder", to: "someone", chat: "-1009", iat: 1, exp: 2, kind: "req" }, CTX);
-  expect(e).toMatchObject({ v: 1, from: "yotam", to: "goomal", chat: "-1001234567890", iat: NOW, exp: NOW + 86400, kind: "halt" });
+  expect(e).toMatchObject({ v: 1, from: "yotam", to: "example", chat: "-1001234567890", iat: NOW, exp: NOW + 86400, kind: "halt" });
   expect(e.msg).not.toBe("00000000");
   expect(parseEnvelopeLine(encodeCanonical(e)).ok).toBe(true);
 });
@@ -223,7 +223,7 @@ test("the suite-path regex has the spec shape", () => {
 });
 
 
-const peerSt = T.mkStation("goomal");
+const peerSt = T.mkStation("example");
 afterAll(() => T.dropStation(peerSt));
 
 function world(over: { keys?: { id: string; pub: string; addedAt?: string }[]; peerOver?: Record<string, unknown> } = {}) {
@@ -244,8 +244,8 @@ test("the happy path admits each kind and returns the parsed envelope and the ra
     expect([name, r.ok]).toEqual([name, true]);
     if (!r.ok) continue;
     expect(r.env).toEqual(env);
-    expect(r.peer).toBe("goomal");
-    expect(r.rec).toMatchObject({ kind: "peer-env", untrusted: true, peer: "goomal", id: env.msg, chat_id: T.ENV_CHAT, text: u.message.text });
+    expect(r.peer).toBe("example");
+    expect(r.rec).toMatchObject({ kind: "peer-env", untrusted: true, peer: "example", id: env.msg, chat_id: T.ENV_CHAT, text: u.message.text });
   }
 });
 
@@ -309,7 +309,7 @@ test("step 4: an unknown k, no trusted key, or a killed peer is dropped before a
   const none = world({ keys: [] });
   expect(stepOf(admitEnvelope(T.envUpdate(good(), peerSt), none.cfg, none.state))).toBe(4);
   const killed = world();
-  killed.state.killed.add("goomal");
+  killed.state.killed.add("example");
   const r = admitEnvelope(T.envUpdate(good(), peerSt), killed.cfg, killed.state);
   expect(stepOf(r)).toBe(4);
   if (!r.ok) expect(r.reason).toContain("killed");
@@ -398,7 +398,7 @@ test("step 7: a wrong msg, from, to or chat, an iat too far ahead, or an expired
   const w = world();
   expect(stepOf(admitEnvelope(T.tgUpdate([`/peer@${T.BOT_US}`, line2, line3, `sig=${sign(line2, line3, peerSt.keyPath)}`].join("\n")), w.cfg, w.state))).toBe(7);
   const bare = world();
-  (bare.cfg.peers.goomal.theirs as any).stationName = undefined;
+  (bare.cfg.peers.example.theirs as any).stationName = undefined;
   expect(stepOf(admitEnvelope(T.envUpdate(good(), peerSt), bare.cfg, bare.state))).toBe(7);
   const noSelf = world(); (noSelf.cfg as any).self = {};
   expect(stepOf(admitEnvelope(T.envUpdate(good(), peerSt), noSelf.cfg, noSelf.state))).toBe(7);
@@ -441,7 +441,7 @@ test("1001 admitted text messages do not flush a replayable req", () => {
 });
 
 test("rotation admission: envelopes under the old and the new key are both admitted", () => {
-  const next = T.mkStation("goomal-next");
+  const next = T.mkStation("example-next");
   try {
     const keys = [{ id: peerSt.key.id, pub: peerSt.key.pub, addedAt: T.iso(T.NOW_S - 5 * 86400) }, { id: next.key.id, pub: next.key.pub, addedAt: T.iso(T.NOW_S - 86400) }];
     const w = world({ keys });
@@ -462,7 +462,7 @@ test("steps 8 and 9 come from the caller's match, after step 7, and the id is al
   const r = admitEnvelope(T.envUpdate(good(), peerSt), w.cfg, w.state, match);
   expect(r.ok).toBe(false);
   if (!r.ok) { expect(r.step).toBe(8); expect(r.env?.kind).toBe("req"); expect(r.rec?.kind).toBe("peer-env"); }
-  expect(calls).toEqual([`req:goomal:${T.NOW_S}`]);
+  expect(calls).toEqual([`req:example:${T.NOW_S}`]);
   expect(w.state.envIds.size).toBe(1);
   expect(admitEnvelope(T.envUpdate(good("halt", {}), peerSt), w.cfg, w.state, match).ok).toBe(true);
   expect(stepOf(admitEnvelope(T.envUpdate(good(), peerSt, { kid: "00000000" }), w.cfg, w.state, match))).toBe(4);
@@ -477,7 +477,7 @@ function matched(kind: Kind, body: Record<string, unknown>, jobs: JobRecord[] = 
   const r = admitEnvelope(T.envUpdate(good(kind, body), peerSt), w.cfg, w.state, match);
   return r;
 }
-const inJobs = (n: number, over: Partial<JobRecord> = {}): JobRecord[] => Array.from({ length: n }, (_, i) => inJob({ jobNo: 10 + i, peer: "goomal", state: "RESOLVED", resolved_at: T.NOW_S - 60, ...over }));
+const inJobs = (n: number, over: Partial<JobRecord> = {}): JobRecord[] => Array.from({ length: n }, (_, i) => inJob({ jobNo: 10 + i, peer: "example", state: "RESOLVED", resolved_at: T.NOW_S - 60, ...over }));
 const stepRefusal = (r: ReturnType<typeof admitEnvelope>) => (r.ok ? null : { step: r.step, refused: (r as any).refused });
 
 test("step 8: a req for an op we do not serve is refused, and the refusal says not-served", () => {
@@ -497,8 +497,8 @@ test("step 8: a cancel needs a job the peer sent us, a res a job we sent it, a c
 
   const cap = { re: "89abcdef", state: "idle", queue: 0, jobs_left: 3, vm_minutes_left: 60 };
   expect(stepRefusal(matched("capacity", cap))?.step).toBe(8);
-  expect(stepRefusal(matched("capacity", cap, [], [["goomal:89abcdef", true]]))?.step).toBe(8);
-  expect(matched("capacity", cap, [], [["goomal:89abcdef", false]]).ok).toBe(true);
+  expect(stepRefusal(matched("capacity", cap, [], [["example:89abcdef", true]]))?.step).toBe(8);
+  expect(matched("capacity", cap, [], [["example:89abcdef", false]]).ok).toBe(true);
 });
 
 test("halt and capacity-ask always pass, even for a station that serves nothing", () => {
@@ -530,7 +530,7 @@ test("a refusal at steps 2-7 logs the step, the msg id and a sha256, never the t
   const r = admitEnvelope(T.tgUpdate([a, b, c.replace("yotam", "yotaé"), d].join("\n")), w.cfg, w.state);
   expect(r.ok).toBe(false);
   if (r.ok) return;
-  expect(r.log).toMatch(/^env-drop step=3 peer=goomal msg=[0-9a-f]{8} sha256=[0-9a-f]{64}$/);
+  expect(r.log).toMatch(/^env-drop step=3 peer=example msg=[0-9a-f]{8} sha256=[0-9a-f]{64}$/);
   expect(r.log).not.toContain("yota");
   expect(r.log).not.toContain(d.slice(4));
 });

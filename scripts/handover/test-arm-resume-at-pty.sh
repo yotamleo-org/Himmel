@@ -83,8 +83,8 @@ cat > "$STUB_BIN/claude" <<'EOF'
     echo "armauto=${ARMAUTOMERGE-unset}"
     echo "argc=$#"
     for a in "$@"; do printf 'arg=%s\n' "$a"; done
-    IFS= read -r -t 2 _line; rc=$?
-    if [ "$rc" -gt 128 ]; then echo stdin=idle; else echo stdin=eof; fi
+    SECONDS=0; IFS= read -r -t 3 _line; rc=$?
+    if [ "$rc" -gt 128 ] || [ "$SECONDS" -ge 2 ]; then echo stdin=idle; else echo stdin=eof; fi
 } > "$CLAUDE_REC"
 exit 3
 EOF
@@ -201,6 +201,37 @@ EOF
         PATH="$BSD_DIR:$PATH" BSD_NO_E=1 HIMMEL_PTY_SCRIPT_CMD="$BSD_DIR/script" _himmel_pty_run claude one </dev/null; rc=$?
         assert_eq "Q7 BSD script without -e still launches (falls back to -q)" "0" "$rc"
         assert_contains "Q7 fallback invocation is plain -q" "flags=-q" "$(cat "$BSD_LOG")"
+
+        Q8_TMP="$TMP/q8-tmp"; mkdir -p "$Q8_TMP"
+        Q8_REC="$TMP/q8-holder.pid"; : > "$Q8_REC"
+        cat > "$BSD_DIR/script-q8" <<'EOF'
+#!/bin/sh
+case $1 in --version) echo "script: illegal option -- -" >&2; exit 1 ;; esac
+shift 2
+[ "$1" = true ] && exit 0
+i=0
+while [ ! -s "$Q8_REC" ] && [ "$i" -lt 100 ]; do
+    cat "$TMPDIR"/himmel-pty.*/holder > "$Q8_REC" 2>/dev/null
+    [ -s "$Q8_REC" ] || sleep 0.05
+    i=$((i + 1))
+done
+"$@"
+EOF
+        chmod +x "$BSD_DIR/script-q8"
+        export Q8_REC
+        TMPDIR="$Q8_TMP" PATH="$BSD_DIR:$PATH" HIMMEL_PTY_SCRIPT_CMD="$BSD_DIR/script-q8" _himmel_pty_run claude one </dev/null; rc=$?
+        assert_eq "Q8 the BSD branch returns the stub's status" "7" "$rc"
+        Q8_HOLDER=$(cat "$Q8_REC")
+        assert_eq "Q8 the stub saw the holder pid" "yes" "$([ -n "$Q8_HOLDER" ] && echo yes || echo no)"
+        Q8_ALIVE=yes
+        for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do
+            kill -0 "$Q8_HOLDER" 2>/dev/null || { Q8_ALIVE=no; break; }
+            sleep 0.05
+        done
+        [ "$Q8_ALIVE" = no ] || kill "$Q8_HOLDER" 2>/dev/null
+        assert_eq "Q8 no holder sleep outlives the launch" "no" "$Q8_ALIVE"
+        Q8_LEFT=0; for _d in "$Q8_TMP"/himmel-pty.*; do [ -e "$_d" ] && Q8_LEFT=$((Q8_LEFT + 1)); done
+        assert_eq "Q8 no private dir is left behind" "0" "$Q8_LEFT"
     fi
     : > "$ARGS_REC"
     HIMMEL_PTY_SCRIPT_CMD="$TMP/no-such-script" _himmel_pty_run claude one 'two words' </dev/null 2>"$TMP/fb.err"; rc=$?

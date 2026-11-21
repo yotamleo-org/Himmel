@@ -69,17 +69,22 @@ shift
 case "$sig" in [0-9]*) ;; *) sig="${sig#SIG}" ;; esac
 kill -l "$sig" >/dev/null 2>&1 || usage "'$sig': invalid signal"
 
-if [ "$secs" = "0" ]; then exec "$@"; fi
+dfl=()
+if command -v perl >/dev/null 2>&1; then
+    dfl=(perl -e "\$SIG{INT} = 'DEFAULT'; \$SIG{QUIT} = 'DEFAULT'; exec {\$ARGV[0]} @ARGV; exit 127")
+fi
+
+if [ "$secs" = "0" ]; then exec ${dfl[@]+"${dfl[@]}"} "$@"; fi
 
 flag="$(mktemp "${TMPDIR:-/tmp}/portable-timeout.XXXXXX")" || usage "cannot create a state file"
 trap 'rm -f "$flag" "$flag.done"' EXIT
 
 if [ "$foreground" = 1 ]; then
     # the explicit <&0 stops bash redirecting an async command's stdin from /dev/null
-    "$@" <&0 &
+    ${dfl[@]+"${dfl[@]}"} "$@" <&0 &
 else
     set -m
-    "$@" &
+    ${dfl[@]+"${dfl[@]}"} "$@" &
 fi
 pid=$!
 set +m
@@ -105,6 +110,7 @@ watcher=$!
 got_sig=0
 trap 'got_sig=1; kill -s TERM -- "-$pid" 2>/dev/null || kill -s TERM "$pid" 2>/dev/null' TERM
 trap 'got_sig=1; kill -s INT -- "-$pid" 2>/dev/null || kill -s INT "$pid" 2>/dev/null' INT
+trap 'got_sig=1; echo term > "$flag"; kill -s "$sig" -- "-$pid" 2>/dev/null || kill -s "$sig" "$pid" 2>/dev/null' ALRM
 rc=0
 wait "$pid" 2>/dev/null || rc=$?
 if [ "$got_sig" = 1 ]; then

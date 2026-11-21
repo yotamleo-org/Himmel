@@ -24,27 +24,42 @@ else
     bad "launchd agent lacks KeepAlive SuccessfulExit"
 fi
 
+if grep -q 'EnvironmentFile' "$here/units/himmel-peer-runner.service"; then
+    bad "the runner unit reads an env file (it must hold no token)"
+else
+    ok "the runner unit reads no env file"
+fi
+if grep -q 'run\.sh' "$here/units/com.himmel.peer-runner.plist"; then
+    bad "the runner agent goes through run.sh, which loads the bot token"
+else
+    ok "the runner agent does not load the bot token"
+fi
+
 if command -v systemd-analyze >/dev/null 2>&1; then
-    sed "s|@HIMMEL_ROOT@|$root|g" "$here/units/himmel-peer-bridge.service" > "$tmp/himmel-peer-bridge.service"
     # systemd-analyze --user needs a user runtime dir; a CI runner has no login session, so lend it one
     if [ -z "${XDG_RUNTIME_DIR:-}" ] || [ ! -d "$XDG_RUNTIME_DIR" ]; then
         mkdir -m 700 "$tmp/run" && export XDG_RUNTIME_DIR="$tmp/run"
     fi
-    if out="$(systemd-analyze --user verify "$tmp/himmel-peer-bridge.service" 2>&1)"; then
-        ok "systemd-analyze verify"
-    else
-        bad "systemd-analyze verify: $out"
-    fi
+    for unit in himmel-peer-bridge.service himmel-peer-runner.service; do
+        sed "s|@HIMMEL_ROOT@|$root|g" "$here/units/$unit" > "$tmp/$unit"
+        if out="$(systemd-analyze --user verify "$tmp/$unit" 2>&1)"; then
+            ok "systemd-analyze verify $unit"
+        else
+            bad "systemd-analyze verify $unit: $out"
+        fi
+    done
 else
     echo "SKIP systemd-analyze: not found (Linux check)"
 fi
 
 if command -v plutil >/dev/null 2>&1; then
-    if out="$(plutil -lint "$here/units/com.himmel.peer-bridge.plist" 2>&1)"; then
-        ok "plutil -lint"
-    else
-        bad "plutil -lint: $out"
-    fi
+    for agent in com.himmel.peer-bridge.plist com.himmel.peer-runner.plist; do
+        if out="$(plutil -lint "$here/units/$agent" 2>&1)"; then
+            ok "plutil -lint $agent"
+        else
+            bad "plutil -lint $agent: $out"
+        fi
+    done
 else
     echo "SKIP plutil: not found (macOS check)"
 fi

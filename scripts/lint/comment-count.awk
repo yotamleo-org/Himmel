@@ -63,7 +63,7 @@ function kept(c,   l) {
     if (l ~ /https?:\/\//) return 1
     if (l ~ /copyright|spdx-license-identifier|licensed under|license:/) return 1
     if (l ~ /shellcheck (disable|source|shell|enable)=|eslint-(disable|enable)|prettier-ignore|biome-ignore|@ts-(ignore|expect-error|nocheck)|noqa|type: ignore|pylint: (disable|enable)|pragma: no cover/) return 1
-    if (l ~ /(^|[^a-z0-9-])[a-z][a-z-]*-ok:/) return 1
+    if (l ~ /(^|[^a-z0-9-])[a-z][a-z0-9-]*-ok:/) return 1
     return 0
 }
 
