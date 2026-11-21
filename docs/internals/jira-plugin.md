@@ -429,8 +429,7 @@ status, version) and its evidence carries them; it does not claim a remainder. `
 close without this ticket and that it holds the parent's remainder. A Done or closed parent: no version, the
 request is the backlog one and the why says the parent is closed. A parent in a frozen current version: the
 request still asks for that version and the why says it is frozen; the release manager rules on the frozen intake,
-and the filing never routes around it (operator decisions 383, 489 and 512). The residual cap is NOT checked: the request never writes
-the fixVersion and the release manager is not shown the cap. The ticket's own fixVersion is not written. An open
+and the filing never routes around it (operator decisions 383, 489 and 512). The ticket's own fixVersion is not written. An open
 parent with no current version, or a parent that cannot be read (a warning on stderr), leaves the request as before:
 no version, filed to the backlog. A caller's own `--fix-version`, `--backlog`, `--proposed-version` or `--why` wins
 and skips the read, and `--blocks`/`--split-from` place the ticket in the target's version, so no request is queued.
@@ -438,10 +437,8 @@ An unversioned create, a residual or follow-up included, is refused before the P
 declared, the state unreadable, or a placeholder why); an INTAKE that fails after the POST leaves the key on stdout,
 says `PARTIAL: Created <KEY> but INTAKE not queued` and exits 1. The release root comes from the CLI's own
 checkout, never the caller's cwd. `edit`'s depth-2 drop only warns, and says so when no release is declared.
-A residual that wins a full version's slot displaces the lowest-ranked To Do resident, never a ruled one: a key whose latest
-admissions-ledger row admits it (an `rm-admit` or an override) or whose latest signed operator decision places it there. When the
-rulings cannot be read (no ledger file, a malformed ledger, or a declared release whose signing key cannot be loaded) nobody is displaced and the newcomer steps down; a
-newcomer left with no version, including by a ruling that lands after it was filed, queues its INTAKE.
+No count of what a version holds refuses, labels, redirects or displaces a filing: a residual goes to the version its class, gate and chain name,
+and no resident is moved out to make room for it.
 `next-dispatchable.sh` counts the open versionless operator-directed, High+ Bug, `scope-<version>`, `proposed-<earliest version>`
 and worker-held tickets and prints `# pool=<n>/<top>,INTAKE:<m>` (never a bare LOW) with a
 `# intake <m> for <version>: <keys>` line; the waiter's WAKE text names them and the INTAKE command.
