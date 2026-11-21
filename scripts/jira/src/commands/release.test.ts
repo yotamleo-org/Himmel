@@ -1606,7 +1606,6 @@ describe('a request for operator work carries the operator\'s words', () => {
       expect(id).toBeDefined();
       expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
       expect(queued()).toMatchObject([{ key: c.key, verb: 'INTAKE', to_v: 'v1.1.3', state: 'open', evidence: { operator: id } }]);
-      // the old record stays what it was: work permission, no placement
       expect(operatorRows().find((o) => o.id === c.approval_record)).toMatchObject({ kind: 'out-of-version', keys: [c.key] });
     });
 
@@ -1833,7 +1832,6 @@ describe('a request for operator work carries the operator\'s words', () => {
       expect(msg).not.toContain('cite one on file');
     });
 
-    // review 2 F1: the seam between the command's own match (coveringRecord) and the engine's match-and-filing (requestOnRecord)
     it('a record reversed after the command\'s match and before the filing: nothing is filed and the chief is told to ask again', async () => {
       await declared();
       decisionFile();
@@ -1858,7 +1856,6 @@ describe('a request for operator work carries the operator\'s words', () => {
       }
     });
 
-    // review F3: a covering record on file never excuses wrong words on the words path
     it('--decision with WRONG words is refused as before even when a covering record is on file for the same key', async () => {
       await declared();
       decisionFile();
@@ -1972,7 +1969,6 @@ describe('a request for operator work carries the operator\'s words', () => {
       expect(queuedRows()).toHaveLength(n);
     });
 
-    // 8674 U1 (review F1): the words path withdraws the pending duplicate and refiles it; the refiled request keeps the relation.
     it('U1: --decision --words on a pending request that carries --required-by refiles it carrying the relation, and never invents one', async () => {
       await declared();
       decisionFile();
@@ -2005,7 +2001,6 @@ describe('a request for operator work carries the operator\'s words', () => {
       await declared();
       const m = gateMirror({ key: 'HIMMEL-9953' });
       await ask(m, ...intake('HIMMEL-9953'));
-      // The RM refuses it: the request is ruled with a BACKLOG outcome.
       const k = loadKey(join(root, 'keys', 'v1.1.3.key'));
       const path = requestsFile();
       const first = readChain<Record<string, unknown>>(path, k).verified[0];

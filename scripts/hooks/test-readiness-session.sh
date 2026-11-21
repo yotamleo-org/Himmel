@@ -123,7 +123,6 @@ no_leak() { # no_leak <label> : the token is in no captured output
   check "$1: the token reaches neither stdout nor stderr" "$hit" "no"
 }
 
-# --- a. a good adoption
 mk_attempt
 check "a. the on-behalf lease is held by the transported token before the session starts" "$(ql_owner "$A_DOC")" "$A_TOK"
 check "a. nothing is registered for any scope before the session adopts" "$(scope_files)" "0"
@@ -178,7 +177,6 @@ for junk in '' 'not json' '{"session_id":"not-a-uuid"}' '{"session_id":["x"]}' '
 done
 refused "junk hook payloads"
 
-# the attempt directory, startup file and transport must be exactly the private shapes
 mk_attempt; chmod 755 "$A_DIR"; hook startup "$A_SID"; chmod 700 "$A_DIR"
 check "b. a loose attempt directory: reason" "$H_ERR" "readiness-session: attempt-dir"; refused "a loose (0755) attempt directory"
 mk_attempt; chmod 644 "$A_DIR/startup.json"; hook startup "$A_SID"; chmod 600 "$A_DIR/startup.json"
@@ -198,7 +196,6 @@ for mut in '.lane = "claudex"' '.schema = "other"' '.doc = "relative.md"' '.doc 
   mk_attempt; jq "$mut" "$A_DIR/startup.json" > "$tmp/t.json" && cat "$tmp/t.json" > "$A_DIR/startup.json"; hook startup "$A_SID"
   refused "a startup file with the mutation $mut"
 done
-# a token that is not the holder's: adopt itself refuses
 mk_attempt; printf '%s\n' "somebody-elses-token" > "$A_DIR/lease-token"; hook startup "$A_SID"
 check "b. a transport token that is not the holder's: reason" "$H_ERR" "readiness-session: adopt-refused"; refused "a transport token that is not the holder's"
 # the lease changed hands between the launch and the session start (a successor holds it now)
@@ -210,7 +207,6 @@ check "b. ... and no confirmation is published" "$(confirmed)" "no"
 adapter finish "$A_DIR"
 check "b. ... finish refuses and the successor still holds it" "$H_RC:$(ql_owner "$A_DOC")" "1:succ-token-b1"
 
-# --- c. verify refuses every drift after a good adoption
 good_attempt() { mk_attempt; hook startup "$A_SID" CLAUDE_CODE_SESSION_ID="$A_SID"; check "c. setup: a good adoption" "$(confirmed)" "yes"; }
 verify_refuses() { adapter verify "$A_DIR"; check "c. $1: verify refuses" "$H_RC" "1"; check "c. $1: verify prints only a reason code" "$([ -z "$H_OUT" ] && echo quiet)" "quiet"; no_leak "c. $1"; }
 good_attempt; rm -f "$A_DIR/confirmation.json"; verify_refuses "a missing confirmation"
@@ -230,13 +226,11 @@ good_attempt; chmod 755 "$A_DIR"; verify_refuses "a loose attempt directory"; ch
 adapter verify "relative/dir"; check "c. a relative attempt directory refuses" "$H_RC" "1"
 adapter verify "$tmp/no-such-dir"; check "c. a missing attempt directory refuses" "$H_RC" "1"
 adapter verify; check "c. a missing operand is a usage error" "$H_RC" "2"
-# a second session's registration never satisfies another attempt: verify reads the attempt's OWN scope
 good_attempt; first_dir="$A_DIR"; first_doc="$A_DOC"; good_attempt
 drop_registration "$first_doc" both
 adapter verify "$first_dir"; check "c. an attempt whose own registration is gone refuses even though another attempt is adopted" "$H_RC" "1"
 adapter verify "$A_DIR"; check "c. ... while the other adopted attempt still verifies" "$H_RC" "0"
 
-# --- d. finish / cleanup
 good_attempt
 adapter finish "$A_DIR"
 check "d. finish releases the adopted lease: exit 0 and quiet" "$H_RC:$H_OUT:$H_ERR" "0::"
@@ -246,28 +240,22 @@ check "d. ... and the registration is forgotten" "$(grep -rlF -- "$A_DOC" "$XDG/
 good_attempt; touch "$A_DIR/credentials.json"; chmod 600 "$A_DIR/credentials.json"; adapter finish "$A_DIR"
 check "d. finish also removes a credential file" "$([ -e "$A_DIR" ] && echo present || echo gone)" "gone"
 adapter finish "$A_DIR"; check "d. finish after finish refuses (no confirmation any more)" "$H_RC" "1"
-# a successor holds the lock: finish never releases it
 good_attempt; qenv bash "$QL" release "$A_DOC" "$A_TOK" >/dev/null 2>&1; qenv bash "$QL" acquire "$A_DOC" succ-token-d1 >/dev/null 2>&1
 adapter finish "$A_DIR"
 check "d. finish refuses when the lock changed hands and the successor keeps it" "$H_RC:$(ql_owner "$A_DOC")" "1:succ-token-d1"
 check "d. ... and the attempt directory is kept (nothing was released)" "$([ -e "$A_DIR" ] && echo present || echo gone)" "present"
-# finish on an unadopted attempt: nothing is released
 mk_attempt; adapter finish "$A_DIR"
 check "d. finish before adoption refuses and leaves the lease and transport" "$H_RC:$(ql_owner "$A_DOC"):$([ -e "$A_DIR/lease-token" ] && echo kept)" "1:$A_TOK:kept"
-# cleanup (SessionEnd): adopted
 good_attempt; hook cleanup "$A_SID"; poll "$CLEAN_WAIT" path_gone "$A_DIR"
 check "d. cleanup of an adopted session releases its lease and removes its directory" "$H_RC:$H_OUT:$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "0::free:gone"
-# cleanup: unadopted (the session ended before it adopted): the transport token releases it
 mk_attempt; hook cleanup "$A_SID"; poll "$CLEAN_WAIT" path_gone "$A_DIR"
 check "d. cleanup of an unadopted session releases the transported token and removes the directory" "$H_RC:$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "0:free:gone"
-# cleanup never releases a successor
 mk_attempt; qenv bash "$QL" release "$A_DOC" "$A_TOK" >/dev/null 2>&1; qenv bash "$QL" acquire "$A_DOC" succ-token-d2 >/dev/null 2>&1; hook cleanup "$A_SID"; poll "$CLEAN_WAIT" path_there "$A_DIR/cleanup-failed"
 check "d. cleanup never releases a successor's lock" "$H_RC:$(ql_owner "$A_DOC")" "0:succ-token-d2"
 check "d. ... the refused cleanup leaves the attempt directory and one line saying why" "$([ -e "$A_DIR" ] && echo present || echo gone):$(wc -l < "$A_DIR/cleanup-failed" 2>/dev/null | tr -d ' '):$(grep -c 'refused: readiness-session: release refused' "$A_DIR/cleanup-failed" 2>/dev/null)" "present:1:1"
 hook cleanup "$(uuid)"; check "d. cleanup of a session with no attempt directory is a silent no-op" "$H_RC:$H_OUT:$H_ERR" "0::"
 hook bogus "$(uuid)"; check "d. an unknown verb is a usage error" "$H_RC" "2"
 
-# --- f. liveness comes from the ACTUAL SessionStart payload (session_id + transcript_path), never from an ambient environment
 lv_field() { sed -n "s/^$2=//p" "$(lockdir_of "$1")/liveness" 2>/dev/null | head -n 1; }
 # shellcheck disable=SC2016  # the literal $1 belongs to the inner bash, which sources the real queue-lock.sh and asks it for its own host name
 lv_hostname() { qenv bash -c '. "$1" >/dev/null 2>&1; _ql_hostname' x "$QL"; }
@@ -311,7 +299,6 @@ check "f. another session's transcript (a valid-looking uuid name): reason" "$H_
 mk_attempt; before="$(scope_files)"
 printf '{"session_id":"%s","hook_event_name":"SessionStart","transcript_path":["x"]}' "$A_SID" | henv bash "$HOOK" startup > "$tmp/out" 2> "$tmp/err"; H_RC=$?; H_OUT="$(cat "$tmp/out")"; H_ERR="$(cat "$tmp/err")"
 check "f. a non-string transcript_path: silent exit 0, one reason" "$H_RC:$H_OUT:$H_ERR" "0::readiness-session: no-transcript"; not_adopted "a non-string transcript_path" "$before"
-# after a good adoption the marker is part of every fresh check: verify refuses when it is gone, wrong or its transcript vanished
 f_good() { mk_attempt; hook startup "$A_SID"; check "f. setup: a good adoption" "$(confirmed)" "yes"; }
 f_verify_refuses() { adapter verify "$A_DIR"; check "f. $1: verify refuses" "$H_RC" "1"; check "f. $1: verify prints only a reason code" "$([ -z "$H_OUT" ] && echo quiet)" "quiet"; no_leak "f. $1"; }
 f_good; rm -f "$FAKEHOME/.claude/projects/p/$A_SID.jsonl"; f_verify_refuses "the session's transcript removed"
@@ -412,11 +399,9 @@ if g_project; then
   check "g. ... and the adapter's verify (from the same project) succeeds" "$H_RC:$H_OUT:$H_ERR" "0::"
   g_run "$END_CMD" "$A_SID" SessionEnd; poll "$CLEAN_WAIT" path_gone "$A_DIR"
   check "g. the registered cleanup command releases the adopted lease and removes the attempt through the real runner" "$H_RC:$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "0:free:gone"
-  # a generic session (no attempt directory): both registered commands are silent no-ops with no queue or runtime effect
   before_tree="$(find "$XDG" "$HD" 2>/dev/null | sort | md5sum)"; generic="$(uuid)"
   g_record "$generic"; g_run "$START_CMD" "$generic" SessionStart; gs="$H_RC:$H_OUT:$H_ERR"; g_run "$END_CMD" "$generic" SessionEnd
   check "g. a generic session: startup and cleanup are silent exit-0 no-ops and touch neither the queue nor the runtime directory" "$gs:$H_RC:$H_OUT:$H_ERR:$([ "$before_tree" = "$(find "$XDG" "$HD" 2>/dev/null | sort | md5sum)" ] && echo unchanged || echo changed)" "0:::0:::unchanged"
-  # tamper: the sourced library edited after the session's pins were recorded is denied, nothing is adopted
   g_attempt; printf '\n# tampered after the session pin\n' >> "$GP/scripts/handover/queue-lock.sh"
   g_run "$START_CMD" "$A_SID" SessionStart
   check "g. tamper: an edited queue-lock.sh is denied by the runner (exit 2) and names the library" "$H_RC:$(printf '%s' "$H_ERR" | grep -c 'queue-lock.sh')" "2:1"
@@ -433,7 +418,6 @@ if g_project 's/\. "\$RS_QL_LIB"/. "$RS_QL"/'; then
 else
   check "g. setup: the unresolvable-source fixture could not be built" "unavailable" "available"
 fi
-# refusal: through the real runner a startup config naming another queue-lock.sh is refused and that library is never sourced
 if g_project; then
   g_attempt; jq --arg q "$tmp/decoy/queue-lock.sh" '.queue_lock = $q' "$A_DIR/startup.json" > "$tmp/t.json" && cat "$tmp/t.json" > "$A_DIR/startup.json"
   g_run "$START_CMD" "$A_SID" SessionStart
@@ -464,11 +448,9 @@ for tool_label in project plugin; do
   check "h. $tool_label layout: cleanup of an adopted session releases its lease and removes its directory" "$H_RC:$H_OUT:$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "0::free:gone"
   mk_attempt; with_hook "$tool" hook cleanup "$A_SID"; poll "$CLEAN_WAIT" path_gone "$A_DIR"
   check "h. $tool_label layout: cleanup of an unadopted session releases the transported token and removes the directory" "$H_RC:$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "0:free:gone"
-  # a project root that is a symlink to the same checkout names the same physical directory: it adopts
   mk_attempt; PROJ_ENV="$tmp/projlink" with_hook "$tool" hook startup "$A_SID"
   check "h. $tool_label layout: a symlinked spelling of the same project root adopts (equal physical directory)" "$H_RC:$(confirmed)" "0:yes"
   adapter finish "$A_DIR"
-  # a missing, empty, relative, decoy or library-less project root refuses before anything is sourced
   for mode in __unset__ __empty__ relative decoy nolib; do
     pe="$mode"; cwd="$tmp"
     case "$mode" in relative) pe="."; cwd="$REPO_ROOT" ;; decoy) pe="$tmp/dproj" ;; nolib) pe="$tmp/emptyproj" ;; esac
@@ -478,7 +460,6 @@ for tool_label in project plugin; do
     check "h. $tool_label layout, $mode project root: nothing is adopted: no confirmation, the transport kept, the lease still the transported token's" "$(confirmed):$([ -e "$A_DIR/lease-token" ] && echo kept):$(ql_owner "$A_DOC")" "no:kept:$A_TOK"
     check "h. $tool_label layout, $mode project root: nothing is registered and the decoy library is never sourced" "$(scope_files):$(decoy_untouched)" "$before:untouched"
   done
-  # an adopted attempt: the same wrong spellings refuse verify and finish, the lease and the attempt stay, and the right root still verifies
   for mode in __unset__ relative decoy; do
     pe="$mode"; cwd="$tmp"
     case "$mode" in relative) pe="."; cwd="$REPO_ROOT" ;; decoy) pe="$tmp/dproj" ;; esac
@@ -520,11 +501,9 @@ check "i. ... and it released nothing: the lease and the directory are still the
 hook cleanup "$A_SID"; poll "$CLEAN_WAIT" path_gone "$A_DIR"
 check "i. ... control: the same attempt is released once the project root is present" "$(ql_status "$A_DOC")" "free"
 
-# --- e. the plugin copy
 check "e. the himmel-ops plugin copy is byte-identical" "$(cmp -s "$HOOK" "$PLUGIN_COPY" && echo same || echo differs)" "same"
 check "e. the plugin copy is executable like its source" "$([ -x "$PLUGIN_COPY" ] && echo yes || echo no)" "yes"
 
-# the first adopted attempt of section a still verifies after everything above (sessions never interfere)
 adapter verify "$GOOD_DIR"; check "a. the first attempt is still adopted and verifies after every other case" "$H_RC" "0"
 adapter finish "$GOOD_DIR"; check "a. ... and its finish releases only its own lease" "$H_RC:$(ql_status "$GOOD_DOC")" "0:free"
 

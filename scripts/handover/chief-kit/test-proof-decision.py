@@ -990,7 +990,6 @@ class ChiefDecision(unittest.TestCase):
                     any(row.startswith('RESUME') and not row.endswith('\tproof') for row in rows)
                 self.assertEqual(close.returncode != 0, dispatcher_blocks, close.stderr + '\n' + out)
 
-    # Review follow-ups to the close guard.
     def close_command(self, step_id, key='HIMMEL-9848'):
         return 'bash ' + str(HERE / 'owe.sh') + ' close --bucket ' + str(self.b) + ' --id ' + step_id + ' --key ' + key
 
@@ -1261,7 +1260,6 @@ class ChiefDecision(unittest.TestCase):
         for name in (step, 'Implement the missing accepted case', 'PR #77', 'implement X'):
             self.assertIn(name, steps[0]['text'])
 
-    # Review follow-ups 2.
     def test_the_path_rule_is_the_dispatchers_own_pattern(self):
         holds = importlib.util.spec_from_file_location('holds', HERE / 'holds.py')
         module = importlib.util.module_from_spec(holds)
@@ -1561,7 +1559,6 @@ class ChiefDecision(unittest.TestCase):
         self.assertFalse(self.unmet('row | Result | Sha | Evidence\n--- | --- | --- | ---\nobs | MET | ' + sha + ' | pending: none\n'))
         self.assertFalse(self.unmet('a horizontal rule follows\n\n---\n\nand then text with a pipe | in it\n'))
 
-    # Re-check follow-ups.
     def reconciliation_steps(self):
         return [row for row in self.rows() if row.get('capability') == 'remainder reconciliation']
 

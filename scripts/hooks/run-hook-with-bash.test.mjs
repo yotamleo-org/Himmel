@@ -3374,7 +3374,6 @@ test('run rows never land in the project log from a test-shaped call', () => {
   });
 });
 
-// ---- readiness residuals ------------------------------------------------------
 //
 // guard-readiness-tools.sh speaks one protocol: exit 0 with NO stdout (allow) or exit 2 (deny). The runner must turn
 // everything else into a refusal for that basename, in a chain and as a lone `--optional --fail-closed-when
