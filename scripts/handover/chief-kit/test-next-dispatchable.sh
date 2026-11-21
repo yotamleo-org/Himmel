@@ -2035,6 +2035,7 @@ cat > "$WORK/odd-reader.py" <<'EOF'
 import json, sys
 answers = {140: "garbage", 141: "remaining", 142: "remaining\ta\tb", 143: "handed-off\tHIMMEL-9", 144: "handed-off\tHIMMEL-9\ttext\textra"}
 n = int(sys.argv[-1].rsplit("-", 1)[1])
+answer = answers[n]
 if "--full-units" in sys.argv:
     a = {"kind": "remaining", "handed": [], "text": "x", "nowrite": False, "chief_owed": [], "chief_invalid": [], "owed_lines": []}
     if n == 140: a["kind"] = "garbage"
@@ -2045,7 +2046,7 @@ if "--full-units" in sys.argv:
     sys.stdout.write(json.dumps({"schema": 1, "answer": a}) + "\n")
 else:
     units = "\tnowrite=0\tchief-owed=" if "--units" in sys.argv else ""
-    sys.stdout.write(answers[n] + units + "\n")
+    sys.stdout.write(answer + units + "\n")
 EOF
 PME_STATE="$WORK/pme"; mkdir -p "$PME_STATE/workers"
 MPME="$WORK/mpme/HIMMEL"; mkdir -p "$MPME"
