@@ -26,7 +26,8 @@
       "qmd@himmel",
       "shadcn-mcp@himmel",
       "taste-skill-core@himmel",
-      "ui-ux-pro-max@himmel"
+      "ui-ux-pro-max@himmel",
+      "unslop-ui@himmel"
     ],
     "contextBudget": 50000
   },

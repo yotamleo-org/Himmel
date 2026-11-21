@@ -57,6 +57,7 @@ How used: installed from the pin, or vendored in-tree where the pin links a vend
 | telegram-himmel | https://github.com/anthropics/claude-plugins-official/tree/main/external_plugins/telegram | Anthropic (upstream) / yotamleo (fork) | Apache-2.0 | [Fork record](../marketplace/plugins/telegram-himmel/README.md) |
 | threejs-skills | https://github.com/CloudAI-X/threejs-skills | CloudAI-X | MIT | 0e181866f095b5f06d005133876e926515390d95 |
 | ui-ux-pro-max | https://github.com/nextlevelbuilder/ui-ux-pro-max-skill | nextlevelbuilder | MIT | v2.15.0 |
+| unslop-ui | https://github.com/heydamir/unslop | heydamir | CC-BY-4.0 | 620163eedb3529d9cd23a3994ed8d287d06f760d |
 
 ## Standalone skill families
 
