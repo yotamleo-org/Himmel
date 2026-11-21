@@ -800,9 +800,9 @@ case_package_shape_gate() {
 # dist/noop.mjs is a decoy the exports map may point at.
 fake_plugin() {
     local d="$REPO/scripts/lint/landmines/node_modules/@interfere/landmines"
-    rm -f -- "$REPO/scripts/lint/landmines/node_modules/@interfere"
+    if [ -L "$REPO/scripts/lint/landmines/node_modules/@interfere" ]; then rm -f -- "$REPO/scripts/lint/landmines/node_modules/@interfere"; fi
     mkdir -p "$d/dist"
-    ln -s "$PKG/node_modules/@interfere/landmines/dist/testing.mjs" "$d/dist/testing.mjs"
+    ln -sfn "$PKG/node_modules/@interfere/landmines/dist/testing.mjs" "$d/dist/testing.mjs"
     printf '%s\n' 'export default {};' > "$d/dist/noop.mjs"
     printf '{"name":"@interfere/landmines","version":"0.1.0","type":"module","exports":{"./testing":%s}}\n' "$1" > "$d/package.json"
 }
