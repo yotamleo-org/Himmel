@@ -79,9 +79,12 @@ BUS_N=2 run 3 60
 
 BUS_N=2 run 8 0.5
 n=$(grep -c sendText "$QLOG")
-[ "$RUN_RC" -eq 0 ] && [ "$n" -eq 1 ] && pass "unread past grace: exactly one prompt (rewake holds the next)" || fail "wanted 1 sendText, got $n"
-grep -qF "org.kde.konsole-1 /Sessions/3 org.kde.konsole.Session.sendText ${FIXED}"$'\r' "$QLOG" \
-  && pass "the injected text is the fixed sentence plus Enter" || fail "text differs: $(cat -A "$QLOG")"
+[ "$RUN_RC" -eq 0 ] && [ "$n" -eq 2 ] && pass "unread past grace: one wake is two sendText calls (rewake holds the next)" || fail "wanted 2 sendText (sentence, Enter), got $n"
+SEND="org.kde.konsole-1 /Sessions/3 org.kde.konsole.Session.sendText"
+[ "$(sed -n 1p "$QLOG")" = "$SEND $FIXED" ] \
+  && pass "the first sendText is the fixed sentence with no Enter" || fail "first call differs: $(cat -A "$QLOG")"
+[ "$(sed -n 2p "$QLOG")" = "$SEND "$'\r' ] \
+  && pass "the Enter is its own second sendText" || fail "second call differs: $(cat -A "$QLOG")"
 
 BUS_N=abc run 6 0
 [ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a non-numeric count sends nothing" || fail "non-numeric count sent"
