@@ -80,7 +80,7 @@ For every other failure the launcher:
 
    | Condition | Decision |
    |---|---|
-   | `HIMMEL_API_FALLBACK=off` | no fallback |
+   | `HIMMEL_API_FALLBACK` is not exactly `on` (unset, empty, `off` or any other value) | no fallback |
    | the call is kind `critic` (any refusal or failure) | no fallback; the critic is skipped |
    | the lane is off (`HIMMEL_API_LANE` not `on`), any kind | no fallback: the caller chose the API, not the subscription |
    | the request itself was refused (bad argument, run kind, cache TTL, job id or tool grant) | no fallback |
@@ -96,7 +96,7 @@ For every other failure the launcher:
    `api-lane <class>`:
 
    ```text
-   kind judge, account A, call-failed (exit 1): error_during_execution; fallback: running on the subscription (preflight PROCEED)
+   kind judge, account A, call-failed (exit 1): error_during_execution; fallback: off (HIMMEL_API_FALLBACK unset: default off)
    ```
 
    - The class is `refused`, `rejected` (exit 6) or `call-failed`.
@@ -107,9 +107,15 @@ For every other failure the launcher:
      after the sender exits 0, so a failed send does not mute the next failure.
      The stamp files live in `~/.himmel/state/api-lane-alerts/`.
    - The sender runs with every `ANTHROPIC_*`, `LQ_API_*` and
-     `CLAUDE_CODE_OAUTH_TOKEN` variable removed. An explicitly empty
-     `TELEGRAM_GROUP_CHAT_ID` suppresses it. Without a chat id or `bun`, nothing
-     is sent and the fallback still runs.
+     `CLAUDE_CODE_OAUTH_TOKEN` variable removed. It goes to
+     `TELEGRAM_GROUP_CHAT_ID`, or to the operator chat `TELEGRAM_CHAT_ID` when no
+     group id is set (both read from the environment, `himmel.conf` or `.env`).
+   - An alert is never dropped silently. With no chat id, with an explicitly empty
+     `TELEGRAM_GROUP_CHAT_ID` (a deliberate suppression of the send), without
+     `bun`, or when the sender fails (a timeout included), the launcher prints `claude-api: alert NOT delivered (<why>)` on stderr
+     and appends one row to `undelivered.jsonl` in the alert directory (kind,
+     class, exit code, the redacted reason and why; never a key or a chat id). It
+     writes no stamp, so the next failure alerts again.
 
 3. **Runs the fallback**: the same prompt, once, as a subscription `claude -p`.
    - Same model, permission mode, tool grant, budget cap and effort, with
@@ -131,11 +137,14 @@ For every other failure the launcher:
 
 ## The per-caller switch
 
-`HIMMEL_API_FALLBACK` is **on by default**. A caller that must never spend
-the subscription sets `HIMMEL_API_FALLBACK=off`: the failure still alerts (the
-alert says `fallback: off (HIMMEL_API_FALLBACK=off)`) and the original exit code
-stands. `judge-call.sh`, `bulk-call.sh` and `critic-first-pass.sh` leave it on.
-The usage preflight remains the gate on the subscription bank.
+`HIMMEL_API_FALLBACK` is **off by default** (operator decision 1140, which
+supersedes the earlier default-on contract). Only the exact value `on`
+opts a caller in; unset, empty, `off` and any other value are off. The failure
+still alerts and the original exit code stands; the alert says which off it was:
+`fallback: off (HIMMEL_API_FALLBACK unset: default off)`,
+`fallback: off (HIMMEL_API_FALLBACK=off)` or
+`fallback: off (HIMMEL_API_FALLBACK=<value> is not on)`. No caller sets `on`.
+When a caller does, the usage preflight remains the gate on the subscription bank.
 
 ## Records
 
@@ -436,6 +445,9 @@ record row. A caller names one account, and a failure shows only as the exit cod
 - `HIMMEL_API_ALERT_CMD=<path>` replaces the Telegram sender. Every test that
   can reach the failure path sets a stub, so no test sends a real message.
 - `HIMMEL_API_ALERT_DIR=<dir>` moves the rate-limit stamps.
+- `HIMMEL_API_ALERT_ENV_ROOT=<dir>` reads the alert's chat ids from `<dir>/.env`
+  instead of the primary checkout's, so a test of the real route never reads the
+  station's ids.
 - `HIMMEL_API_CLAUDE_BIN` already stubs `claude`, and the fallback runs the same binary.
 
 ## Known limits
@@ -443,6 +455,6 @@ record row. A caller names one account, and a failure shows only as the exit cod
 - A SIGKILL or an OOM kill of the launcher leaves the mode-600 stdin prompt file in `TMPDIR`, because the EXIT trap cannot run, upgrade path: sweep `claude-api-prompt.*` files older than the call timeout at launch.
 - Two failures of the same kind and class at the same moment can both send an alert (the stamp is checked, then written after the send, up to 30 seconds later), upgrade path: an atomic `mkdir` lock if duplicate alerts show up.
 - The fallback has no watchdog of its own; it is bounded by the caller's timeout (judge-call's `--timeout`) and its budget cap, upgrade path: reuse the launcher's watchdog for the fallback.
-- A looping caller (bulk, graphify) continues item by item on the subscription after the API account is marked, one alert per hour, upgrade path: a per-run circuit breaker if the subscription draw becomes a problem. graphify's own breaker trips only when the fallback does not run (`HIMMEL_API_FALLBACK=off` or a skipped usage preflight, the lane's exit 6), and it books a replayed chunk's cost to neither its API spend nor its reserve file.
+- With `HIMMEL_API_FALLBACK=on`, a looping caller (bulk, graphify) continues item by item on the subscription after the API account is marked, one alert per hour, upgrade path: a per-run circuit breaker if the subscription draw becomes a problem. graphify's own breaker trips only when the fallback does not run (`HIMMEL_API_FALLBACK` not `on`, the default, or a skipped usage preflight, the lane's exit 6), and it books a replayed chunk's cost to neither its API spend nor its reserve file.
 - Fallback rows carry no API cost, so the shift-spend report does not price them, upgrade path: price `sub_cost_usd` in the subscription spend view.
 - A call stopped by the API watchdog (`HIMMEL_API_CALL_TIMEOUT_S`) counts as a failed call, so its prompt reruns on the subscription, upgrade path: skip the fallback for a timeout if reruns of long calls cost too much.
