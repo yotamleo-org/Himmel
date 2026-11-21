@@ -47,9 +47,9 @@ Use the caller's files or diff. Otherwise use the current diff against the base 
 
 ## Sweep and the gate
 
-`scripts/lint/check-new-comments.sh` refuses a new comment outside the keep list at pre-commit and in CI. Each code file's count of such comments is a row of `scripts/lint/comment-baseline.tsv`, and a row only goes down (`docs/internals/code-comments.md`). The sweep lowers the rows:
+`scripts/lint/check-new-comments.sh` refuses a new comment outside the keep list at pre-commit and in CI. Each code file's count of such comments is a row of `scripts/lint/comment-baseline.tsv`, keyed by a hash of the path, and a row only goes down (`docs/internals/code-comments.md`, which also gives the command that lists the counts by path). The sweep lowers the rows:
 
-1. Pick a slice of at most 40 files from the baseline, none of them changed by an open PR (`gh pr diff <n> --name-only` for each open PR).
+1. Pick a slice of at most 40 files from that list, none of them changed by an open PR (`gh pr diff <n> --name-only` for each open PR).
 2. Run the steps above with the slice as the scope.
 3. Sort what Comment Sicko kills. A comment that restates the code or names code that is gone is deleted. A comment that excuses a workaround is deleted and one ticket is filed to fix the code. A decision worth keeping becomes a short record in the state repo bucket `specs/decisions/`. A known limitation becomes a ceilings row (`scripts/ledger/ceiling-add.sh add`).
 4. Run `bash scripts/lint/check-new-comments.sh --write-baseline` and commit the lowered baseline with the slice. The diff of the baseline is the proof of the slice.

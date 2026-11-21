@@ -3,7 +3,8 @@
 #
 # check-new-comments.sh — refuse a NEW code comment outside the keep list.
 # The rule is in docs/internals/code-comments.md. The comments already in the tree are
-# counted per file in scripts/lint/comment-baseline.tsv (path<TAB>count); a file with no
+# counted per file in scripts/lint/comment-baseline.tsv (key<TAB>count, the key being the git blob hash of
+# the path, so the baseline carries no file name); a file with no
 # row is allowed none. Only the code files a change touches are judged, so a change that
 # touches no commented file can never fail:
 #   a touched file's count of comment lines outside the keep list may not exceed its row
@@ -54,6 +55,22 @@ listed() {
     [ "$r" -le 1 ] || die "grep failed on $2"
     return "$r"
 }
+keys() {
+    local p i=0
+    mkdir -p "$W/k" || die "mkdir failed"
+    : > "$W/k.list"
+    while IFS= read -r p; do
+        i=$((i + 1))
+        printf '%s' "$p" > "$W/k/$i" || die "cannot write under $W"
+        printf '%s\n' "$W/k/$i" >> "$W/k.list"
+    done < "$1"
+    git hash-object --no-filters --stdin-paths < "$W/k.list" > "$W/k.out" || die "cannot hash the paths"
+    [ "$(awk 'END { print NR }' "$W/k.out")" -eq "$i" ] || die "cannot hash the paths"
+    paste "$W/k.out" "$1" > "$2" || die "paste failed"
+}
+unkey() {
+    awk -F'\t' 'FILENAME == ARGV[1] { path[$1] = $2; next } ($1 in path) { print path[$1] "\t" $2 }' "$W/map" "$1" > "$2" || die "awk failed"
+}
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 classifier="$here/comment-count.awk"
@@ -102,7 +119,10 @@ if [ "$mode" = "write" ]; then
     if [ -s "$W/paths0" ]; then
         xargs -0 awk -f "$classifier" -v mode=tree < "$W/paths0" > "$W/rows" || die "the classifier failed"
     fi
-    sort "$W/rows" > "$BL" || die "cannot write $BL"
+    awk -F'\t' '{ print $1 }' "$W/rows" > "$W/named" || die "awk failed"
+    keys "$W/named" "$W/map"
+    awk -F'\t' 'FILENAME == ARGV[1] { key[$2] = $1; next } { print key[$1] "\t" $2 }' "$W/map" "$W/rows" > "$W/keyed" || die "awk failed"
+    sort "$W/keyed" > "$BL" || die "cannot write $BL"
     echo "check-new-comments: wrote $BL ($(awk -F'\t' '{ n += $2 } END { print NR " files, " n + 0 " comment lines" }' "$BL"))"
     exit 0
 fi
@@ -146,8 +166,37 @@ fi
 for f in tip base; do
     awk -F'\t' '$2 !~ /^[0-9]+$/ || length($2) > 9 { bad = 1 } END { exit bad }' "$W/$f.tsv" || die "a row of $BL at the $f carries no count of at most 9 digits"
 done
+awk -F'\t' '{ print $2 }' "$W/renames" > "$W/named" || die "awk failed"
+sort -u "$W/named" "$W/touched" > "$W/named.u" || die "sort failed"
+keys "$W/named.u" "$W/map"
+: > "$W/loose"
 if [ "$has_base" -eq 1 ]; then
-    awk -F'\t' 'FILENAME == ARGV[1] { b[$1] = $2; next } !($1 in b) || b[$1] != $2 { print $1 }' "$W/base.tsv" "$W/tip.tsv" >> "$W/touched" || die "awk failed"
+    raised() {
+        awk -F'\t' '
+            FILENAME == ARGV[1] { b[$1] = $2; next }
+            FILENAME == ARGV[2] { m[$1] = 1; next }
+            !($1 in m) && $2 + 0 > b[$1] + 0 { print $1 "\t" $2 "\t" b[$1] + 0 }
+        ' "$W/base.tsv" "$W/map" "$W/tip.tsv" > "$W/loose" || die "awk failed"
+    }
+    raised
+    if [ -s "$W/loose" ]; then
+        if [ -z "$tiprev" ]; then
+            git -c core.quotePath=false ls-files --cached > "$W/tree" || die "cannot list the index"
+        else
+            git -c core.quotePath=false ls-tree -r --name-only "$tiprev" > "$W/tree" || die "cannot list $tiprev"
+        fi
+        git -c core.quotePath=false ls-tree -r --name-only "$base" >> "$W/tree" || die "cannot list $base"
+        sort -u "$W/tree" > "$W/tree.u" || die "sort failed"
+        judged "$W/tree.u" "$W/tree.j"
+        keys "$W/tree.j" "$W/map.all"
+        cat "$W/map.all" >> "$W/map" || die "cat failed"
+        raised
+    fi
+fi
+unkey "$W/tip.tsv" "$W/tip.p"
+unkey "$W/base.tsv" "$W/base.p"
+if [ "$has_base" -eq 1 ]; then
+    awk -F'\t' 'FILENAME == ARGV[1] { b[$1] = $2; next } !($1 in b) || b[$1] != $2 { print $1 }' "$W/base.p" "$W/tip.p" >> "$W/touched" || die "awk failed"
 fi
 sort -u "$W/touched" > "$W/touched.u" || die "sort failed"
 judged "$W/touched.u" "$W/paths"
@@ -172,7 +221,8 @@ awk -F'\t' -v has_base="$has_base" '
         next
     }
     { if ($2 + 0 > tip[$1] + 0) printf "A\t%s\t%d\t%d\n", $1, $2, tip[$1] + 0 }
-' "$W/renames" "$W/base.tsv" "$W/tip.tsv" "$W/counts" > "$W/raw" || die "awk failed"
+' "$W/renames" "$W/base.p" "$W/tip.p" "$W/counts" > "$W/raw" || die "awk failed"
+awk -F'\t' '{ printf "B\trow %s, which names no file at the tip or the base,\t%d\t%d\n", $1, $2, $3 }' "$W/loose" >> "$W/raw" || die "awk failed"
 
 : > "$W/findings"
 while IFS="$(printf '\t')" read -r kind p n lim; do

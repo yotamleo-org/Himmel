@@ -37,9 +37,16 @@ mkrepo() {
     git -C "$R" config user.email t@example.invalid
     git -C "$R" config user.name t
     printf '%s!/usr/bin/env bash\n%s a.sh: prints ok\nset -u\n%s first old note\necho ok  %s second old note\n' "$HASH" "$HASH" "$HASH" "$HASH" > "$R/src/a.sh"
-    printf 'src/a.sh\t2\n' > "$R/$BL"
+    rows src/a.sh 2 > "$R/$BL"
     git -C "$R" add -A
     git -C "$R" commit -q -m base
+}
+rows() {
+    : "${1-}"
+    while [ $# -gt 1 ]; do
+        printf '%s\t%s\n' "$(printf '%s' "$1" | git hash-object --stdin)" "$2"
+        shift 2
+    done
 }
 gate() { OUT="$(cd "$R" && bash scripts/lint/check-new-comments.sh "$@" 2>&1)"; RC=$?; }
 has() { case "$OUT" in *"$1"*) return 0 ;; *) return 1 ;; esac; }
@@ -84,17 +91,26 @@ stage; want "a reworded comment at the same count" 0
 echo "== 4. the baseline only goes down =="
 mkrepo
 printf '%s third\necho t\n' "$HASH" >> "$R/src/a.sh"
-printf 'src/a.sh\t3\n' > "$R/$BL"
+rows src/a.sh 3 > "$R/$BL"
 stage
 if [ "$RC" -eq 1 ] && has "$BL: src/a.sh raised to 3, the base allows 2"; then pass "raised row refused"; else fail "raised row -> rc=$RC: $OUT"; fi
 mkrepo
 printf 'echo n  %s note\n' "$HASH" > "$R/src/n.sh"
-printf 'src/a.sh\t2\nsrc/n.sh\t1\n' > "$R/$BL"
+rows src/a.sh 2 src/n.sh 1 > "$R/$BL"
 stage
 if [ "$RC" -eq 1 ] && has "src/n.sh raised to 1, the base allows 0"; then pass "new non-zero row refused"; else fail "new row -> rc=$RC: $OUT"; fi
 mkrepo
-printf 'src/a.sh\t1\n' > "$R/$BL"
+rows src/a.sh 1 > "$R/$BL"
 stage; want "a row lowered below the count adds no comment" 0
+mkrepo
+rows src/a.sh 2 src/later.sh 5 > "$R/$BL"
+stage
+if [ "$RC" -eq 1 ] && has "which names no file at the tip or the base, raised to 5, the base allows 0"; then pass "a row for a file that does not exist is refused"; else fail "row for no file -> rc=$RC: $OUT"; fi
+mkrepo
+printf 'src/a.sh\t2\n' > "$R/$BL"
+printf '%s third\necho t\n' "$HASH" >> "$R/src/a.sh"
+stage
+if [ "$RC" -eq 1 ] && has "src/a.sh: 3 comment lines outside the keep list, baseline 0"; then pass "a row keyed by the path itself allows nothing"; else fail "path-keyed row -> rc=$RC: $OUT"; fi
 
 echo "== 5. a new file =="
 mkrepo
@@ -109,7 +125,7 @@ if [ "$RC" -eq 1 ] && has "src/n.ts:1: // one"; then pass "trailing // comment i
 echo "== 6. a rename =="
 mkrepo
 git -C "$R" mv src/a.sh src/b.sh
-printf 'src/b.sh\t2\n' > "$R/$BL"
+rows src/b.sh 2 > "$R/$BL"
 stage; want "renamed file, row moved" 0
 mkrepo
 git -C "$R" mv src/a.sh src/b.sh
@@ -162,14 +178,14 @@ printf '%s third\necho t\n' "$HASH" >> "$R/src/a.sh"
 printf 'echo n\n%s a note\n' "$HASH" > "$R/src/n.sh"
 git -C "$R" add -A
 gate --write-baseline
-if [ "$RC" -eq 0 ] && [ "$(cat "$R/$BL")" = "$(printf 'src/a.sh\t3\nsrc/n.sh\t1')" ]; then pass "baseline rows are the counts"; else fail "write-baseline -> rc=$RC: $OUT; $(cat "$R/$BL")"; fi
+if [ "$RC" -eq 0 ] && [ "$(cat "$R/$BL")" = "$(rows src/a.sh 3 src/n.sh 1 | LC_ALL=C sort)" ] && ! grep -q src/ "$R/$BL"; then pass "baseline rows are the counts"; else fail "write-baseline -> rc=$RC: $OUT; $(cat "$R/$BL")"; fi
 stage; want "the gate still refuses the rows --write-baseline raised" 1
 
 echo "== 12. a base without a baseline =="
 mkrepo
 git -C "$R" rm -q "$BL"
 git -C "$R" commit -q -m "no baseline"
-printf 'src/a.sh\t2\n' > "$R/$BL"
+rows src/a.sh 2 > "$R/$BL"
 stage; want "the first baseline is taken as it is" 0
 printf '%s third\necho t\n' "$HASH" >> "$R/src/a.sh"
 stage; want "and it already judges the files of that change" 1
@@ -246,43 +262,39 @@ printf '%s!/usr/bin/env node\n// n.mjs: a new tool\n// Usage: n.mjs\n\nconsole.l
 echo "== 15. a classifier change recounts untouched files only =="
 mkrepo
 echo >> "$R/scripts/lint/comment-count.awk"
-printf 'src/a.sh\t3\n' > "$R/$BL"
+rows src/a.sh 3 > "$R/$BL"
 stage
 if [ "$RC" -eq 1 ] && has "$BL: src/a.sh raised to 3, the base allows 2"; then pass "a row raised past the changed classifier's count is refused"; else fail "inflated row -> rc=$RC: $OUT"; fi
 mkrepo
 printf 'echo u\n%s https://example.invalid/x\n' "$HASH" > "$R/src/u.sh"
 git -C "$R" add -A; git -C "$R" commit -q -m link
 grep -v 'https?:' "$R/scripts/lint/comment-count.awk" > "$R/cc.awk"; mv "$R/cc.awk" "$R/scripts/lint/comment-count.awk"
-printf 'src/a.sh\t2\nsrc/u.sh\t1\n' > "$R/$BL"
+rows src/a.sh 2 src/u.sh 1 > "$R/$BL"
 stage; want "an untouched file's row may rise to the changed classifier's count" 0
 mkrepo
 echo >> "$R/scripts/lint/comment-count.awk"
 printf '%s third\necho t\n' "$HASH" >> "$R/src/a.sh"
-printf 'src/a.sh\t3\n' > "$R/$BL"
+rows src/a.sh 3 > "$R/$BL"
 stage
 if [ "$RC" -eq 1 ] && has "$BL: src/a.sh raised to 3, the base allows 2"; then pass "a touched file's row may not rise with the classifier"; else fail "touched file with classifier change -> rc=$RC: $OUT"; fi
 
 echo "== 16. a row below the base's own count bills nobody =="
 stale() {
     mkrepo
-    printf '%s' "$1" > "$R/$BL"
+    rows "$@" > "$R/$BL"
     git -C "$R" add -A; git -C "$R" commit -q -m "a stale baseline"
 }
-stale 'src/a.sh	1
-'
+stale src/a.sh 1
 echo 'echo more' >> "$R/src/a.sh"; stage; want "a change that adds no comment passes a stale row" 0
-stale ''
+stale
 echo 'echo more' >> "$R/src/a.sh"; stage; want "a change that adds no comment passes a missing row" 0
-stale 'src/a.sh	1
-'
+stale src/a.sh 1
 printf '%s third\n' "$HASH" >> "$R/src/a.sh"; stage
 if [ "$RC" -eq 1 ] && has "src/a.sh: 3 comment lines outside the keep list, baseline 1"; then pass "a comment added over a stale row is refused"; else fail "added over a stale row -> rc=$RC: $OUT"; fi
-stale 'src/a.sh	1
-'
-printf 'src/a.sh\t2\n' > "$R/$BL"; stage; want "a stale row may rise to the base file's count" 0
-stale 'src/a.sh	1
-'
-printf 'src/a.sh\t3\n' > "$R/$BL"; stage
+stale src/a.sh 1
+rows src/a.sh 2 > "$R/$BL"; stage; want "a stale row may rise to the base file's count" 0
+stale src/a.sh 1
+rows src/a.sh 3 > "$R/$BL"; stage
 if [ "$RC" -eq 1 ] && has "$BL: src/a.sh raised to 3, the base allows 2"; then pass "a stale row may not rise past the base file's count"; else fail "row past the base count -> rc=$RC: $OUT"; fi
 
 echo "== 17. one classifier per file, quoted paths, a silent classifier =="
@@ -291,7 +303,7 @@ base="$(git -C "$R" rev-parse HEAD)"
 mkdir -p "$T/basegate"
 cp "$R/scripts/lint/"* "$T/basegate/"
 printf 'END { print 1 }\n' > "$R/scripts/lint/comment-count.awk"
-printf 'src/a.sh\t1\n' > "$R/$BL"
+rows src/a.sh 1 > "$R/$BL"
 git -C "$R" commit -q -am "the classifier counts fewer lines"
 OUT="$(cd "$R" && bash "$T/basegate/check-new-comments.sh" --range "$base" 2>&1)"; RC=$?
 want "a classifier that counts fewer, with the row lowered on an untouched file" 0
@@ -308,14 +320,14 @@ gate --range "$base"; want "a comment in a file named like an option" 1
 for bad in +nan +inf 99999999999999999999 9223372036854775808; do
     mkrepo
     printf '%s third\necho t\n' "$HASH" >> "$R/src/a.sh"
-    printf 'src/a.sh\t%s\n' "$bad" > "$R/$BL"
+    rows src/a.sh "$bad" > "$R/$BL"
     stage; want "a comment added under a $bad baseline row" 2
 done
 mkrepo
-printf 'src/a.sh\t+nan\n' > "$R/$BL"
+rows src/a.sh +nan > "$R/$BL"
 git -C "$R" commit -q -am "a base row that is no count"
 echo 'echo more' >> "$R/src/a.sh"
-printf 'src/a.sh\t2\n' > "$R/$BL"
+rows src/a.sh 2 > "$R/$BL"
 stage; want "a base baseline row that is no count" 2
 mkrepo
 base="$(git -C "$R" rev-parse HEAD)"

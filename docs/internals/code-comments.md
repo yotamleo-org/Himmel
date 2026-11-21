@@ -24,7 +24,9 @@ decision worth keeping is a short record in the state repo bucket `specs/decisio
 pre-commit (`--staged`) and in CI (`--range <base>`, run from the BASE copies). It
 counts, per code file, the comment lines its classifier `scripts/lint/comment-count.awk`
 does not keep, and compares the count with the file's row in
-`scripts/lint/comment-baseline.tsv` (`path<TAB>count`):
+`scripts/lint/comment-baseline.tsv` (`key<TAB>count`). The key is the git blob hash of
+the path, `printf '%s' <path> | git hash-object --stdin`, so the baseline carries no
+file name for a tree-wide name scan to count:
 
 - Only the code files a change touches are judged, so a change that touches no
   commented file can never fail. A touched file's count may not exceed its row; a file
@@ -39,8 +41,9 @@ does not keep, and compares the count with the file's row in
   the tree, so for a file that change does not touch the changed classifier takes that
   count; a file it does touch is counted by the classifier the gate runs.
 - Rewording a comment in place, or editing a code line that carries one, leaves the
-  count unchanged and passes. The refusal names the file, its count and its row, then
-  the added comment lines as `path:line: text`.
+  count unchanged and passes. The refusal names the file by its path, its count and its
+  row, then the added comment lines as `path:line: text`. A raised row whose key matches
+  no file at the tip or the base is refused by its key.
 
 What the classifier keeps, because a line-based check can recognise it: the leading
 comment block of a file before its first code line (purpose, usage, exit codes); a
@@ -62,6 +65,18 @@ and vendored trees).
 the working tree. Run it after a sweep deletes comments, and after a rename so the row
 moves with the file. The sweep itself is the `/no-comments` skill
 (`.claude/skills/no-comments/SKILL.md`).
+
+To read a baseline diff, hash the paths the change touches and match the keys:
+
+```bash
+git diff --name-only origin/main... | while IFS= read -r p; do printf '%s\t%s\n' "$(printf '%s' "$p" | git hash-object --stdin)" "$p"; done
+```
+
+The counts by path, highest first:
+
+```bash
+git ls-files -z '*.sh' '*.py' '*.mjs' '*.js' '*.ts' | xargs -0 awk -f scripts/lint/comment-count.awk -v mode=tree | sort -t "$(printf '\t')" -k2,2nr
+```
 
 ### The history-comment gate
 
