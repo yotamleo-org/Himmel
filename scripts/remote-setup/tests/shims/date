@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Test shim for date: with $RST/clock present, `date +%s` answers that number (the sleep shim moves it
+# forward); every other call is the real date.
+if [ -n "${RST:-}" ] && [ -f "$RST/clock" ] && [ "${1:-}" = "+%s" ]; then
+    cat "$RST/clock"
+    exit 0
+fi
+exec /bin/date "$@"

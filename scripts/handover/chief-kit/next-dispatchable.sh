@@ -1218,12 +1218,46 @@ manifest_docs = set()  # the resolved path of every worker doc the manifest list
 workers_from = os.environ.get('ND_WORKERS_FROM', '')
 workers_unknown = False
 owners_unknown = False  # only a fleet whose OWNERS are unreadable hides the orphans; a worker whose FILES are unknown still owns the key in its doc name
+named_unknown = False  # a named worker source could not be fully read: nothing it may own is listed
+WITHHELD = 'RESUME, IN CI, STACKABLE, SERIES FAMILY, To Do, DESIGN, NEXT-TIER'
+REMEDY_DOC = "restore the doc, record the worker's end, or fleet-manifest.sh remove <manifest> <label>"
+REMEDY_MANIFEST = 'repair or delete the manifest file (fleet-manifest.sh refuses an invalid one)'
+REMEDY_FLEET = 'restore or pass a readable --workers-from manifest'
+OWNER_UNKNOWN_DROP = 'owner unknown: a named worker source could not be fully read (see the # owner unknown line)'
+owner_unknown_lines = set()
+
+def printable(text):
+    if text.isascii() and text.isprintable():
+        return text
+    enc = sys.stdout.encoding or 'utf-8'
+    shown = []
+    for ch in text:
+        o = ord(ch)
+        if o < 32 or 127 <= o < 160 or o in (0x2028, 0x2029) or 0xD800 <= o <= 0xDFFF:
+            shown.append(ch.encode('unicode_escape').decode('ascii'))
+            continue
+        try:
+            ch.encode(enc)
+            shown.append(ch)
+        except UnicodeEncodeError:
+            shown.append(ch.encode('unicode_escape').decode('ascii'))
+    return ''.join(shown)
+
+def owner_unknown(owner, why, remedy, keys=()):
+    global named_unknown, owners_unknown, workers_unknown
+    named_unknown = owners_unknown = workers_unknown = True
+    held = ','.join(sorted({printable(k) for k in keys}))
+    tail = '; keys held: %s' % held if held else ''
+    line = '# owner unknown: %s (%s%s); withheld: %s; reconcile: %s' % (printable(owner), printable(why), tail, WITHHELD, remedy)
+    if line not in owner_unknown_lines:
+        owner_unknown_lines.add(line)
+        unknown_notes.append(line)
 live_workers = []
 worker_keys = set(os.environ.get('ND_OWNERS', '').split())
 owner = {k: 'the --owners list' for k in worker_keys}
 resume_only = os.environ.get('ND_RESUME_ONLY') == '1'
 if workers_from and not os.path.isfile(workers_from):
-    workers_unknown = owners_unknown = True
+    owner_unknown('the fleet', 'manifest %s missing' % os.path.basename(workers_from), REMEDY_FLEET)
 if workers_from and os.path.isfile(workers_from):
     try:
         manifest_workers(json.load(open(workers_from)))  # validate legacy-array policy before shared ownership
@@ -1234,10 +1268,12 @@ if workers_from and os.path.isfile(workers_from):
             try:
                 lines = open(doc, encoding='utf-8', errors='replace').read().splitlines()
             except OSError:
-                for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)):
-                    worker_keys.add(k); owner.setdefault(k, 'live worker %s' % worker.get('label', '?'))
-                workers_unknown = True
-                note_unknown('live worker %s' % worker.get('label', '?'))
+                who = 'live worker %s' % printable('%s' % worker.get('label', '?'))
+                dkeys = re.findall(r'[A-Z]+-\d+', os.path.basename(doc))
+                for k in dkeys:
+                    worker_keys.add(k); owner.setdefault(k, who)
+                note_unknown(who)
+                owner_unknown(who, 'doc %s unreadable' % (os.path.basename(doc) or '(none)'), REMEDY_DOC, keys=dkeys)
                 continue
             marks = [m.group(1) for m in (MARKER_RE.match(l) for l in lines) if m]
             state = worker_state(doc)
@@ -1260,11 +1296,16 @@ if workers_from and os.path.isfile(workers_from):
                 series_workers[worker.get('label', '?')] = {'doc': doc, 'sid': sid_m.group(1) if sid_m else None,
                                                             'ledger': os.path.realpath(sid_m.group(2)) if sid_m else None, 'count': len(items) or None}
     except (OSError, ValueError):
-        workers_unknown = owners_unknown = True
+        owner_unknown('the fleet', 'manifest %s unreadable' % os.path.basename(workers_from), REMEDY_FLEET)
 # `chief.sh next` copies the manifest once, so a worker the other chief of this chain arms later is
 # in no manifest but its own. Read the chain's other manifests (same bucket, same prefix and chief name, any
-# letter) for ownership of a ticket only: shared terminal evidence releases it, and
-# an unreadable sibling never marks the fleet unknown (it is not this chief's fleet).
+# letter) for ownership of a ticket only: shared terminal evidence releases it, and a sibling manifest that
+# cannot be read, is refused by its shape or holds a doc that cannot be opened is an owner unknown.
+def sibling_shape_refused(parsed):
+    if not isinstance(parsed, dict):
+        return True
+    return any(k in parsed and not isinstance(parsed[k], list) for k in ('workers', 'legs'))
+
 chain_m = re.match(r'^(.+)-nextleg-\d{4}-\d{2}-\d{2}[A-Z]+-(.+)\.fleet\.json$', os.path.basename(workers_from)) if workers_from else None
 if chain_m:
     sib_dir = os.path.dirname(os.path.abspath(workers_from))
@@ -1276,25 +1317,44 @@ if chain_m:
         sm = re.match(r'^(.+)-nextleg-\d{4}-\d{2}-\d{2}[A-Z]+-(.+)\.fleet\.json$', sib)
         if not sm or sm.groups() != chain_m.groups() or os.path.join(sib_dir, sib) == os.path.abspath(workers_from):
             continue
+        spath = os.path.join(sib_dir, sib)
+        sib_chief = 'the chief on %s' % sib[:-len('.fleet.json')]
         try:
-            sib_manifest = json.load(open(os.path.join(sib_dir, sib)))
-            sib_workers = owned_rows(os.path.join(sib_dir, sib)) if isinstance(sib_manifest, dict) else []
-            for worker in sib_workers if isinstance(sib_workers, list) else []:
-                sdoc = worker.get('doc') if isinstance(worker, dict) else None
-                if not isinstance(sdoc, str) or not sdoc:
-                    continue  # an entry that names no doc owns nothing
-                try:
-                    slines = open(sdoc, encoding='utf-8', errors='replace').read().splitlines()
-                except OSError:
-                    slines = []
-                smarks = [m.group(1) for m in (MARKER_RE.match(l) for l in slines) if m]
-                if worker_state(sdoc) == 'wrapped':
-                    continue
-                skeys = re.findall(r'[A-Z]+-\d+', os.path.basename(sdoc)) + owned_keys(sdoc, slines)
-                for k in skeys:
-                    worker_keys.add(k); owner.setdefault(k, 'live worker %s of the chief on %s' % (worker.get('label', '?'), sib[:-len('.fleet.json')]))
-        except (OSError, ValueError, TypeError, AttributeError):
-            continue  # swallow-ok: a sibling chief's unreadable or malformed manifest names no worker; this chief's own fleet is still known
+            sib_manifest = json.load(open(spath))
+        except Exception:
+            owner_unknown(sib_chief, 'manifest %s unreadable' % sib, REMEDY_MANIFEST)
+            continue
+        if sibling_shape_refused(sib_manifest):
+            owner_unknown(sib_chief, 'manifest %s malformed' % sib, REMEDY_MANIFEST)
+            continue
+        try:
+            sib_workers = owned_rows(spath)
+        except Exception:
+            owner_unknown(sib_chief, 'manifest %s malformed' % sib, REMEDY_MANIFEST)
+            continue
+        for worker in sib_workers if isinstance(sib_workers, list) else []:
+            sdoc = worker.get('doc') if isinstance(worker, dict) else None
+            if not isinstance(sdoc, str) or not sdoc:
+                continue  # an entry that names no doc owns nothing
+            sfiles = re.findall(r'[A-Z]+-\d+', os.path.basename(sdoc))
+            sdoc_unreadable = False
+            try:
+                slines = open(sdoc, encoding='utf-8', errors='replace').read().splitlines()
+            except Exception:  # swallow-ok: an unreadable sibling doc is reported as an owner unknown below, never skipped
+                slines = []
+                sdoc_unreadable = True
+            smarks = [m.group(1) for m in (MARKER_RE.match(l) for l in slines) if m]
+            try:
+                sstate = worker_state(sdoc)
+            except Exception:  # swallow-ok: a state that cannot be asked is unknown, which still owns the doc's keys
+                sstate = 'unknown'
+            if sstate == 'wrapped':
+                continue
+            swho = 'live worker %s of the chief on %s' % (printable('%s' % worker.get('label', '?')), printable(sib[:-len('.fleet.json')]))
+            for k in sfiles + owned_keys(sdoc, slines):
+                worker_keys.add(k); owner.setdefault(k, swho)
+            if sdoc_unreadable:
+                owner_unknown(swho, 'doc %s unreadable' % os.path.basename(sdoc), REMEDY_DOC, keys=sfiles)
 if pool_only and not workers_from and not worker_keys:
     workers_unknown = owners_unknown = True
     print('next-dispatchable: no RESUME rows: --priority-pool-only has no worker source (--owners or --workers-from)', file=sys.stderr)
@@ -1889,12 +1949,17 @@ for i in cands:
     if i['key'] in design:  # a design leg writes only its spec in the state repo: it holds no files against the rest of the list
         if pr_unknown:  # an unread PR list could hide an open PR that owns the ticket
             drop(i, 'open PRs unknown (gh failed): ownership cannot be checked')
+        elif named_unknown:
+            drop(i, OWNER_UNKNOWN_DROP)
         else:
             free.append(i)
         continue
     if i['no_scope']:
         scope_questions.append(i['key'])
         drop(i, 'no-scope (nothing says what it writes: a chief question)')
+        continue
+    if named_unknown and not pr_unknown:
+        drop(i, OWNER_UNKNOWN_DROP)
         continue
     if stacked and held_hits(i):
         stack = stackable_on(i)
@@ -2275,7 +2340,7 @@ if pool_only:
     if n == 0 and not resume_only:  # nothing in the pool, or every pool ticket was classified BLOCKED or collided
         print('POOL-EMPTY')
         # the next tier, in rank order and unclassified: for the chief to read, never to dispatch
-        for i in [i for i in next_tier if i['key'] not in worker_keys and i['key'] not in pr_keys][:top]:
+        for i in [i for i in next_tier if i['key'] not in worker_keys and i['key'] not in pr_keys and not named_unknown][:top]:
             print('\t'.join(['NEXT-TIER', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')]))
     warn_missing()
     if not resume_only:

@@ -209,7 +209,10 @@ while :; do
             named_target
             # a dialog can open between the first read and the keystroke: read the screen again right before sending
             if at_prompt; then
-                konsole sendText "You have unread himmel messages: call mcp__himmel-bus__read now."$'\r'
+                # the TUI treats a \r glued to pasted text as part of the paste, so the Enter is its own call
+                konsole sendText "You have unread himmel messages: call mcp__himmel-bus__read now."
+                sleep 0.3
+                konsole sendText $'\r'
                 last="$now"
                 wakes=$((wakes + 1))
                 if [ "$wakes" -ge "$MAX_WAKES" ]; then

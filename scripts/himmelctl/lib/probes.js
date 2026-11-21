@@ -4136,6 +4136,75 @@ function probeBridgePersistence(item, ctx) {
   };
 }
 
+// ── remote-peer (status item) ────────────────────────────────────────
+
+// Sessions run this probe and may not open the peer-bridge state or key dirs, so it reads only the record
+// `remote-setup.sh peer` keeps (peers-confirmed.json) and the poller unit's state. The one value it shows from
+// the record is a peer name that passes setup.ts's PEER_NAME_RE; any other field, or a bad entry, is never echoed.
+const REMOTE_PEER_NAME_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
+const REMOTE_PEER_UNIT = 'himmel-peer-bridge.service';
+const REMOTE_PEER_LABEL = 'com.himmel.peer-bridge';
+
+function remotePeerRead(home) {
+  const file = path.join(home, '.himmel', 'remote-setup', 'peers-confirmed.json');
+  let raw;
+  try {
+    raw = fs.readFileSync(file, 'utf8');
+  } catch (e) {
+    return e && e.code === 'ENOENT' ? { state: 'none' } : { state: 'bad' };
+  }
+  let doc;
+  try { doc = JSON.parse(raw); } catch (_e) { return { state: 'bad' }; }
+  if (!doc || typeof doc !== 'object' || !Array.isArray(doc.peers)) return { state: 'bad' };
+  const names = [];
+  for (const e of doc.peers) {
+    const okEntry = e && typeof e === 'object'
+      && typeof e.name === 'string' && REMOTE_PEER_NAME_RE.test(e.name)
+      && /^[0-9]{1,15}$/.test(String(e.peerBotId))
+      && /^-[0-9]{1,15}$/.test(String(e.chatId));
+    if (!okEntry) return { state: 'bad' };
+    names.push(e.name);
+  }
+  return { state: 'ok', names };
+}
+
+function probeRemotePeer(item, ctx) {
+  const env = ctx.env || process.env;
+  const home = env.HOME || os.homedir();
+  const platform = ctx.platform || process.platform;
+  if (platform !== 'linux' && platform !== 'darwin') {
+    return { actual: 'degraded', detail: `remote-peer check not implemented on '${platform}' — Linux/macOS only today` };
+  }
+  const unitFile = platform === 'darwin'
+    ? path.join(home, 'Library', 'LaunchAgents', `${REMOTE_PEER_LABEL}.plist`)
+    : path.join(home, '.config', 'systemd', 'user', REMOTE_PEER_UNIT);
+  const unitInstalled = fs.existsSync(unitFile);
+  const rec = remotePeerRead(home);
+  if (rec.state === 'bad') {
+    return { actual: 'degraded', detail: 'the list of set-up peers could not be read — run: bash scripts/remote-setup/remote-setup.sh peer' };
+  }
+  const names = rec.state === 'ok' ? rec.names : [];
+  if (names.length === 0 && !unitInstalled) {
+    return { actual: 'absent', detail: 'no peer bridge has been set up with remote-setup', cleanAbsence: true };
+  }
+  if (names.length === 0) {
+    return { actual: 'degraded', detail: 'the peer poller is installed, but no peer is recorded as set up — run: bash scripts/remote-setup/remote-setup.sh peer' };
+  }
+  const probeArgs = platform === 'darwin'
+    ? ['launchctl', ['print', `gui/${process.getuid()}/${REMOTE_PEER_LABEL}`]]
+    : ['systemctl', ['--user', 'is-active', REMOTE_PEER_UNIT]];
+  const r = spawnProbeSync(probeArgs[0], probeArgs[1], { env, encoding: 'utf8', timeout: 5000, stdio: ['ignore', platform === 'darwin' ? 'pipe' : 'ignore', 'ignore'] });
+  if (r.error || r.status === null) {
+    return { actual: 'degraded', detail: 'the peer poller state could not be read (systemctl or launchctl did not answer)' };
+  }
+  // launchctl print exits 0 for a job that is loaded, running or not; only a running one lists a pid.
+  const running = platform === 'darwin' ? /^\s*pid = [0-9]+\s*$/m.test(String(r.stdout || '')) : true;
+  if (r.status === 0 && running) {
+    return { actual: 'present', detail: names.map((n) => `${n}: set up, poller running`).join('; ') };
+  }
+  return { actual: 'degraded', detail: names.map((n) => `${n}: poller stopped`).join('; ') };
+}
+
 // ── observability-stack ───────────────────────────────────
 //
 // No descriptor fields: a fixed convention (same posture as
@@ -4222,6 +4291,7 @@ const PROBES = {
   'engine-allowlist': probeEngineAllowlist,
   'bridge-health': probeBridgeHealth,
   'bridge-persistence': probeBridgePersistence,
+  'remote-peer': probeRemotePeer,
   'observability-stack': probeObservabilityStack,
   'observability-grafana': (item, ctx) => require('./probes-observability.js').probeObservabilityGrafana(item, ctx, { scopeConfigPathToCtx, spawnBashProbe, probeTimeoutSecs }),
 };

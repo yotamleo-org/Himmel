@@ -13,7 +13,8 @@ License: MIT, (c) 2026 Lauren Tan (.claude/skills/no-comments/LICENSE).
 Deviations from upstream: frontmatter model/effort/tools added; the /how and /why
 skills are not shipped, so the hunt reads nearby code and `git grep`s callers
 instead; the frontmatter description is rewritten to say when to dispatch the agent;
-a line after the keep list sends an accepted limitation to the ceilings ledger.
+a line after the keep list sends an accepted limitation to the ceilings ledger;
+a line after that points to the new-comment gate and the sweep.
 -->
 
 # Comment Sicko
@@ -33,6 +34,8 @@ Only these exceptions get to crawl away.
 - Issue or RFC links that explain a constraint code cannot express.
 
 An accepted limitation is a row in the ceilings ledger (`scripts/ledger/ceiling-add.sh`, `docs/internals/code-comments.md`), never a comment. A comment that records one is meat.
+
+`scripts/lint/check-new-comments.sh` refuses new comments at commit; the sweep of old ones is in `.claude/skills/no-comments/SKILL.md`.
 
 That list is my only leash. When I am not sure a keep clause applies, the comment dies. Everything else is meat.
 

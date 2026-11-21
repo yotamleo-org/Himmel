@@ -12,7 +12,7 @@
 RS_LIB_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 RS_ROOT_GUESS=$(cd "$RS_LIB_DIR/../.." && pwd -P)
 
-RS_ITEMS_SHIPPED="bridge-health bridge-persistence distinct-tokens"
+RS_ITEMS_SHIPPED="bridge-health bridge-persistence distinct-tokens remote-peer"
 
 RS_PART=""
 RS_N=0
@@ -105,6 +105,8 @@ rs_cleanup_children() {
     fi
     if [ -n "$RS_TMP_FILE" ]; then rm -f "$RS_TMP_FILE"; fi
     RS_TMP_FILE=""
+    if [ -n "${RS_UPD_FILE:-}" ]; then rm -f "$RS_UPD_FILE" "$RS_UPD_FILE.new"; fi
+    RS_UPD_FILE=""
 }
 
 # ── guards (invariant I2) ───────────────────────────────────────────────
@@ -189,6 +191,28 @@ rs_secret() {
     return 0
 }
 
+rs_enter() {
+    local _x=""
+    printf '%s\n' "$1"
+    IFS= read -r _x || return 1
+    return 0
+}
+
+# rs_pick <max>: asks for one digit from 1 to <max> (the caller printed the numbered list) and sets
+# RS_PICK. Three tries, then returns 1.
+rs_pick() {
+    local max=$1 ans="" tries=0
+    while [ "$tries" -lt 3 ]; do
+        printf 'Type the number and press Enter:\n'
+        IFS= read -r ans || return 1
+        case "$ans" in
+            [1-9]) if [ "$ans" -le "$max" ]; then RS_PICK=$ans; return 0; fi ;;
+        esac
+        tries=$((tries + 1))
+    done
+    return 1
+}
+
 # A Telegram bot token has the shape <digits>:<35 url-safe chars>.
 rs_token_shape_ok() {
     [[ $1 =~ ^[0-9]+:[A-Za-z0-9_-]{35}$ ]]
@@ -255,6 +279,15 @@ rs_tg_fail() {
         429)
             retry=$(printf '%s' "$1" | jq -r '.parameters.retry_after // 30' 2>/dev/null)
             rs_fix "Telegram asked to wait $retry s: wait that long, then run the same command again"
+            ;;
+        409)
+            desc=$(rs_clean "$desc")
+            case "$desc" in
+                *[Ww]ebhook*)
+                    rs_fix "this bot has a webhook set, so Telegram will not hand out its messages by polling (${desc:0:100}): remove the webhook (Telegram's deleteWebhook method), then run the same command again"
+                    ;;
+            esac
+            rs_fix "another program is already reading this bot's messages (${desc:0:100}): stop that program (is its poller running?), then run the same command again"
             ;;
         *)
             desc=$(rs_clean "$desc")
@@ -347,6 +380,66 @@ EOF
     else
         systemctl --user start "$unit" >/dev/null 2>&1
     fi
+}
+
+
+rs_atomic_write() {
+    if ! command -v atomic_write > /dev/null 2>&1; then
+        # shellcheck source=../lib/prim.sh
+        . "$RS_LIB_DIR/../lib/prim.sh" || return 1
+    fi
+    atomic_write "$1"
+}
+
+# rs_json_edit <file> <default-json> <jq-filter> [jq args...]: rewrites a record this helper owns. The file
+# (or the default when it is absent) goes through the filter into a 0600 temp file in the same folder, which
+# is then renamed over the original. Returns 2 and leaves a file that is not valid JSON alone, 1 on any other
+# failure.
+rs_json_edit() {
+    local f=$1 def=$2 flt=$3 out
+    shift 3
+    if [ -e "$f" ]; then
+        jq -e . "$f" > /dev/null 2>&1 || return 2
+        out=$(jq "$@" "$flt" "$f") || return 1
+    else
+        out=$(printf '%s' "$def" | jq "$@" "$flt") || return 1
+    fi
+    (umask 077; mkdir -p "$(dirname "$f")") || return 1
+    printf '%s\n' "$out" | rs_atomic_write "$f"
+}
+
+# rs_peer_name_for <username> [taken-name...]: the local name of a new peer, from its bot username.
+# Lowercase, a trailing "_bot" or "bot" cut, every other character outside a-z 0-9 - turned into -, cut to 32.
+# A taken name gets -2, -3, ... (the base is shortened so the suffix still fits in 32). The search ends
+# because the taken names are a finite list. Prints the name; returns 1 if it cannot pass the name pattern.
+rs_peer_name_for() {
+    local user=$1 base cand n=2 sfx room t taken
+    shift
+    base=$(printf '%s' "$user" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+    case "$base" in
+        *_bot) base=${base%_bot} ;;
+        *bot) base=${base%bot} ;;
+    esac
+    base=$(printf '%s' "$base" | LC_ALL=C sed 's/[^a-z0-9-]/-/g')
+    base=${base:0:32}
+    while [ "${base%-}" != "$base" ]; do base=${base%-}; done
+    [ -n "$base" ] || base=peer
+    cand=$base
+    while :; do
+        taken=0
+        for t in "$@"; do
+            [ "$t" = "$cand" ] && taken=1
+        done
+        [ "$taken" = 0 ] && break
+        sfx="-$n"
+        room=$((32 - ${#sfx}))
+        cand=${base:0:$room}
+        while [ "${cand%-}" != "$cand" ]; do cand=${cand%-}; done
+        cand="$cand$sfx"
+        n=$((n + 1))
+    done
+    [[ $cand =~ ^[a-z0-9][a-z0-9-]{0,31}$ ]] || return 1
+    printf '%s\n' "$cand"
 }
 
 # ── the main bot: token store, role check, access.json, pairing ─────────

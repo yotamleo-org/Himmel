@@ -21,6 +21,8 @@ disable-model-invocation: true
 >    ceilings-ledger row (`scripts/ledger/ceiling-add.sh`,
 >    `docs/internals/code-comments.md`), never a comment. The agent file says
 >    the same.
+> 5. The "Sweep and the gate" section at the end is himmel's: the new-comment
+>    gate and the repeatable sweep of the comments already in the tree.
 >
 > No other wording differs from the pinned commit.
 
@@ -42,3 +44,12 @@ Use the caller's files or diff. Otherwise use the current diff against the base 
 4. Implement the smallest root-cause fix in scope. Remove every named workaround. If the root cause is out of scope, land the smallest in-scope fix and report the rest open. Fix root causes and redesign from first principles, but never widen the fence nor fix instances outside it. Never bolt on symptom guards.
 5. Constraint comments say `do not remove`, `do not change wording`, or `talk to X before changing`. Leave keeps about things we cannot change. Offer the cheapest in-scope type, runtime, test, or CI lint. Wait for interactive approval. Unattended and eval require caller pre-approval. If approved, encode then delete. Otherwise delete, report the constraint open, and sketch out-of-scope work.
 6. Report the deletion count, restored comments, reruns, sketch, fixes, encoding offers, encodings, unenforced constraints, and other open work.
+
+## Sweep and the gate
+
+`scripts/lint/check-new-comments.sh` refuses a new comment outside the keep list at pre-commit and in CI. Each code file's count of such comments is a row of `scripts/lint/comment-baseline.tsv`, keyed by a hash of the path, and a row only goes down (`docs/internals/code-comments.md`, which also gives the command that lists the counts by path). The sweep lowers the rows:
+
+1. Pick a slice of at most 40 files from that list, none of them changed by an open PR (`gh pr diff <n> --name-only` for each open PR).
+2. Run the steps above with the slice as the scope.
+3. Sort what Comment Sicko kills. A comment that restates the code or names code that is gone is deleted. A comment that excuses a workaround is deleted and one ticket is filed to fix the code. A decision worth keeping becomes a short record in the state repo bucket `specs/decisions/`. A known limitation becomes a ceilings row (`scripts/ledger/ceiling-add.sh add`).
+4. Run `bash scripts/lint/check-new-comments.sh --write-baseline` and commit the lowered baseline with the slice. The diff of the baseline is the proof of the slice.
