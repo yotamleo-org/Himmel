@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { briefText, briefTextCounted, findDo } from "./key-brief";
@@ -119,8 +119,22 @@ test("a title the tracker cannot give is never replaced by a filler: the key sta
   expect(t.unresolved).toEqual(["HIMMEL-7002"]);
 });
 
-test("a key the mirror does hold is never sent to the tracker", () => {
-  const r = withCli(DEAD, () => briefTextCounted("HIMMEL-9503 needs you", MIRROR, "PR"));
-  expect(r.text).toBe(`HIMMEL-9503 (${S9503}) needs you`);
-  expect(r.unresolved).toEqual([]);
+const CALLS = join(scratch, "calls.log");
+const RECORDING = stub("recording.js", `require("node:fs").appendFileSync(${JSON.stringify(CALLS)}, process.argv[3] + "\\n"); process.exit(1);`);
+const callsMade = () => (existsSync(CALLS) ? readFileSync(CALLS, "utf8").split("\n").filter(Boolean) : []);
+
+test("a key the mirror does hold is never sent to the tracker; one it lacks is, once", () => {
+  rmSync(CALLS, { force: true });
+  const r = withCli(RECORDING, () => briefTextCounted("HIMMEL-9503 needs you, HIMMEL-7003 too", MIRROR, "PR"));
+  expect(r.text).toBe(`HIMMEL-9503 (${S9503}) needs you, HIMMEL-7003 too`);
+  expect(r.unresolved).toEqual(["HIMMEL-7003"]);
+  expect(callsMade()).toEqual(["HIMMEL-7003"]);
+});
+
+test("a spent tracker budget stops the lookups: the remaining keys stay bare and no call is made", () => {
+  rmSync(CALLS, { force: true });
+  const r = withCli(RECORDING, () => briefTextCounted("HIMMEL-7004 and HIMMEL-7005", MIRROR, "PR", 0));
+  expect(r.text).toBe("HIMMEL-7004 and HIMMEL-7005");
+  expect(r.unresolved).toEqual(["HIMMEL-7004", "HIMMEL-7005"]);
+  expect(callsMade()).toEqual([]);
 });

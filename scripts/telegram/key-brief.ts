@@ -7,6 +7,7 @@ const REF = /(?:[A-Za-z0-9_.-]+\/)?[A-Za-z0-9_.-]+#[0-9]+/g;
 const WORKER = /N[0-9]+[a-z]*/g;
 const SUMMARY_MAX = 80;
 const TRACKER_TIMEOUT_MS = 5000;
+const TRACKER_BUDGET_MS = 8000;
 
 export type Range = [number, number];
 
@@ -39,18 +40,19 @@ function standalone(text: string, a: number, b: number): boolean {
 
 const clip = (s: string) => (s.length > SUMMARY_MAX ? `${s.slice(0, SUMMARY_MAX - 1)}…` : s);
 
-function trackerTitle(key: string): string | null {
+function trackerTitle(key: string, deadline: number): string | null {
+  const left = deadline - Date.now();
   const cli = process.env.HIMMEL_JIRA_CLI || join(import.meta.dir, "..", "jira", "dist", "index.js");
-  if ((process.env.HIMMEL_TEST_FIXTURE === "1" && !process.env.HIMMEL_JIRA_CLI) || !existsSync(cli)) return null;
+  if (left <= 0 || (process.env.HIMMEL_TEST_FIXTURE === "1" && !process.env.HIMMEL_JIRA_CLI) || !existsSync(cli)) return null;
   const r = spawnSync("node", [cli, "get", key], {
-    encoding: "utf8", timeout: TRACKER_TIMEOUT_MS, maxBuffer: 1 << 20, stdio: ["ignore", "pipe", "ignore"],
+    encoding: "utf8", timeout: Math.min(TRACKER_TIMEOUT_MS, left), maxBuffer: 1 << 20, stdio: ["ignore", "pipe", "ignore"],
     env: { ...process.env, JIRA_PROJECT_KEY: key.slice(0, key.lastIndexOf("-")) },
   });
   if (r.status !== 0) return null;
   return /^[^\t\n]+\t[^\t\n]*\t[^\t\n]*\t([^\n]+)/.exec(r.stdout)?.[1].trim() || null;
 }
 
-function summaryOf(mirrorRoot: string, key: string): string | null {
+function summaryOf(mirrorRoot: string, key: string, deadline: number): string | null {
   const project = key.slice(0, key.lastIndexOf("-"));
   const file = join(mirrorRoot, project, `${key}.md`);
   if (existsSync(file)) {
@@ -58,7 +60,7 @@ function summaryOf(mirrorRoot: string, key: string): string | null {
     const s = h1?.slice(`# ${key}: `.length).trim();
     if (s) return clip(s);
   }
-  const t = trackerTitle(key);
+  const t = trackerTitle(key, deadline);
   return t ? clip(t) : null;
 }
 
@@ -68,7 +70,7 @@ export function briefText(text: string, mirrorRoot: string, refWord: string): st
   return briefTextCounted(text, mirrorRoot, refWord).text;
 }
 
-export function briefTextCounted(text: string, mirrorRoot: string, refWord: string): { text: string; keys: number; unresolved: string[] } {
+export function briefTextCounted(text: string, mirrorRoot: string, refWord: string, trackerBudgetMs = TRACKER_BUDGET_MS): { text: string; keys: number; unresolved: string[] } {
   const doAt = findDo(text);
   const body = doAt < 0 ? text : text.slice(0, doAt);
   const doStep = doAt < 0 ? "" : text.slice(doAt + 1);
@@ -77,13 +79,14 @@ export function briefTextCounted(text: string, mirrorRoot: string, refWord: stri
   const trailers: string[] = [];
   const seen = new Set<string>();
   const unresolved: string[] = [];
+  const deadline = Date.now() + trackerBudgetMs;
 
   for (const m of text.matchAll(KEY)) {
     const key = m[0];
     if (seen.has(key)) continue;
     if (!knownProject(mirrorRoot, key.slice(0, key.lastIndexOf("-")))) continue;
     seen.add(key);
-    const summary = summaryOf(mirrorRoot, key);
+    const summary = summaryOf(mirrorRoot, key, deadline);
     if (summary === null) { unresolved.push(key); continue; }
     const spot = [...body.matchAll(new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"))].find((k) => {
       const a = k.index!; const b = a + key.length;
