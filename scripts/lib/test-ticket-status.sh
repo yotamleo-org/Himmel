@@ -235,6 +235,51 @@ for jstatus in "To Do" "In Progress"; do
     ts_derive HIMMEL-9001
     check "never had a worker, closed PRs only, Jira $jstatus: D7 no-write, not D5" "$TS_RULE/$TS_DERIVED" 'D7/no-write'
 done
+
+nodoc() {
+    printf 'HIMMEL-9001\tTask\t%s\n' "$1" > "$TS_SNAPSHOT_DIR/jira.tsv"
+    printf '%s' "$2" > "$TICKET_STATUS_STATE_DIR/status-events.jsonl"
+    jq -nc '{prs:{}}' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9001.json"
+    ts_derive HIMMEL-9001
+}
+nd_partial='{"ts":"2026-11-19T21:18:00Z","event":"merge","key":"HIMMEL-9001","pr":"21","repo":"octo/repo","contract":"no","result":"noop"}'
+nodoc "IN CI" "$nd_partial"$'\n'
+check "10538 no worker doc, a contract=no merge row, Jira IN CI: D5c In Progress, not D7" "$TS_RULE/$TS_DERIVED" 'D5c/In Progress'
+nodoc "IN CI" '{"ts":"2026-11-19T21:18:00Z","event":"merge","key":"HIMMEL-9001","pr":"21","repo":"octo/repo","contract":"no","result":"noop","remainder":"owed","owed":"chief","owed_due":"2026-11-22"}'$'\n'
+check "10538 no worker doc, a contract=no merge row whose remainder names its owner, Jira IN CI: D5d To Do" "$TS_RULE/$TS_DERIVED/$TS_D5D_OWNER" 'D5d/To Do/chief by 2026-11-22'
+for jstatus in "To Do" "In Progress" "In Review"; do
+    nodoc "$jstatus" "$nd_partial"$'\n'
+    check "10538 no worker doc, a contract=no merge row, Jira $jstatus: skip D7, a hand-set status is never moved" "$TS_RESULT/$TS_RULE/$TS_DERIVED" 'skip/D7/no-write'
+done
+nodoc "In Progress" '{"ts":"2026-11-19T21:18:00Z","event":"merge","key":"HIMMEL-9001","pr":"21","repo":"octo/repo","contract":"no","result":"noop","remainder":"owed","owed":"chief","owed_due":"2026-11-22"}'$'\n'
+check "10538 no worker doc, a contract=no merge row whose remainder names its owner, Jira In Progress: skip D7, not D5d To Do" "$TS_RESULT/$TS_RULE/$TS_DERIVED" 'skip/D7/no-write'
+nodoc "IN CI" '{"ts":"t","event":"sweep","key":"HIMMEL-9001","result":"moved","rule":"D5c","stage":"merged-no-row","merged_pr":"31"}'$'\n'
+check "10538 no worker doc, no merge row, a logged merged-no-row PR, Jira IN CI: D5c with stage merged-no-row" "$TS_RULE/$TS_DERIVED/$TS_STAGE/$TS_MERGED_PR" 'D5c/In Progress/merged-no-row/31'
+nodoc "IN CI" '{"ts":"t","event":"sweep","key":"HIMMEL-9001","result":"moved","rule":"D5d","stage":"merged-no-row","merged_pr":"31","owner":"HIMMEL-9002"}'$'\n'
+check "10538 no worker doc, no merge row, a logged merged-no-row PR whose owner is logged, Jira IN CI: D5d with stage merged-no-row" "$TS_RULE/$TS_DERIVED/$TS_STAGE/$TS_D5D_OWNER" 'D5d/To Do/merged-no-row/HIMMEL-9002'
+for jstatus in "To Do" "In Progress" "IN CI"; do
+    nodoc "$jstatus" ''
+    check "10538 control: no PR, no worker doc, no merge row, Jira $jstatus: skip D7" "$TS_RESULT/$TS_RULE/$TS_DERIVED" 'skip/D7/no-write'
+done
+# shellcheck disable=SC2329  # the stubs below stand in for the lib's readers that ts_derive calls
+live_nodoc() { (
+    unset TS_SNAPSHOT_DIR
+    : > "$TICKET_STATUS_STATE_DIR/status-events.jsonl"
+    jq -nc '{prs:{}}' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9001.json"
+    ts_read_jira() { TS_J_STATUS="IN CI"; TS_J_TYPE=Task; }
+    ts_scan_gate() { return 0; }
+    ts_read_prs() { TS_PRS=""; }
+    _ts_gh() { [ "$1 $2" = "pr list" ] && [ -n "${LIVE_GH+x}" ] || return 1; printf '%s\n' "$LIVE_GH"; }
+    ts_derive HIMMEL-9001
+    printf '%s/%s/%s/%s/%s' "$TS_RESULT" "$TS_RULE" "$TS_DERIVED" "$TS_STAGE" "$TS_MERGED_PR"
+) }
+check "10538 no worker doc, no merge row, a merged PR found by the title search, Jira IN CI: D5c with stage merged-no-row" \
+    "$(LIVE_GH='[{"number":31,"title":"fix(x): [HIMMEL-9001] y"}]' live_nodoc)" '/D5c/In Progress/merged-no-row/31'
+check "10538 no worker doc, the merged-PR list unreadable: a miss, not D7" "$(live_nodoc)" 'miss//no-write/gh/'
+check "10538 control: no worker doc, no merged PR in the title search: skip D7" "$(LIVE_GH='[]' live_nodoc)" 'skip/D7/no-write//'
+check "10538 control: no worker doc, a merged PR whose first key is another ticket: skip D7" \
+    "$(LIVE_GH='[{"number":32,"title":"fix(x): [HIMMEL-9002] [HIMMEL-9001] y"}]' live_nodoc)" 'skip/D7/no-write//'
+rm -f "$TICKET_STATUS_STATE_DIR/status-events.jsonl"
 printf 'HIMMEL-9001\tTask\tIn Progress\n' > "$TS_SNAPSHOT_DIR/jira.tsv"
 
 owed_merge() {

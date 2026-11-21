@@ -150,8 +150,8 @@ echo "== a malformed api_account= is refused =="
 setup api-account-bad
 start
 printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief 'api_account=not-a-name' > "$Q/r.req"
-wait_for "$Q/daemon.log" "REFUSED malformed $Q/r.req"
-assert_contains "a non-name api_account is refused as malformed" "REFUSED malformed" "$(cat "$Q/daemon.log" 2>/dev/null)"
+wait_for "$Q/daemon.log" "REFUSED malformed: api_account $Q/r.req"
+assert_contains "a non-name api_account is refused and named" "REFUSED malformed: api_account $Q/r.req" "$(cat "$Q/daemon.log" 2>/dev/null)"
 assert_absent "and launches nothing" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
 stop
 
@@ -188,13 +188,55 @@ printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-1
 wait_for "$Q/daemon.log" "REFUSED HIMMEL_BILLED_OK needs decision"
 assert_eq "a billed request with no decision is refused" "b.req.refused" "$(cd "$Q" && ls b.req.* 2>/dev/null)"
 printf '%s\n' "brief=/etc/passwd" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief > "$Q/c.req"
-wait_for "$Q/daemon.log" "REFUSED malformed"
+wait_for "$Q/daemon.log" "REFUSED malformed: brief-path"
 assert_eq "a brief outside the bucket is refused" "c.req.refused" "$(cd "$Q" && ls c.req.* 2>/dev/null)"
 ln -s "$BRIEF" "$B/HIMMEL-1-N2-link.md"
 printf '%s\n' "brief=$B/HIMMEL-1-N2-link.md" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief > "$Q/d.req"
-wait_for "$Q/daemon.log" "REFUSED malformed $Q/d.req"
+wait_for "$Q/daemon.log" "REFUSED malformed: brief-path $Q/d.req"
 assert_eq "RED 9922: a symlinked brief inside the bucket is refused" "d.req.refused" "$(cd "$Q" && ls d.req.* 2>/dev/null)"
 assert_absent "no refusal sends an ask" "Reply: go" "$(cat "$D/sent" 2>/dev/null)"
+stop
+
+echo "== current-style worker names are accepted, N-series stays accepted =="
+for name in HIMMEL-10310-F10310h-macos-hook-ports-2026-11-21 HIMMEL-2-U2-slug-2026-11-21 HIMMEL-1-N1-sweep-pr1; do
+    setup "name-$name"
+    BRIEF="$B/$name.md"
+    printf -- '---\ndescription: "a stub brief"\n---\n# brief\n' > "$BRIEF"
+    start
+    CODE=$(ask_code r)
+    assert_contains "RED 10542: $name is asked to the operator" "Reply: go " "$(cat "$D/sent" 2>/dev/null)"
+    assert_eq "$name: the request is pending, not refused" "r.req.pending" "$(cd "$Q" && ls r.req.* 2>/dev/null)"
+    stop
+done
+
+echo "== every refusal names the failed field and no value =="
+setup field-names
+start
+CH=HIMMEL-nextleg-2026-11-13A-roadmap-chief
+for n in n3 NN3; do
+    printf -- '---\n---\n' > "$B/HIMMEL-3-$n-slug.md"
+done
+ln -s "$BRIEF" "$B/HIMMEL-1-N2-link.md"
+refuse_row() {
+    local n=$1 label=$2 want=$3; shift 3
+    printf '%s\n' "$@" > "$Q/$n.req"
+    wait_for "$Q/daemon.log" "REFUSED $want $Q/$n.req"
+    wait_for "$D/sent" "refused $n.req: $want"
+    assert_eq "$label: the request is refused" "$n.req.refused" "$(cd "$Q" && ls "$n".req.* 2>/dev/null)"
+    assert_contains "$label: the log names the field" "REFUSED $want $Q/$n.req" "$(cat "$Q/daemon.log" 2>/dev/null)"
+    assert_contains "$label: the Telegram line names the field" "refused $n.req: $want" "$(cat "$D/sent" 2>/dev/null)"
+}
+refuse_row m1 "a lowercase series" "malformed: brief-name" "brief=$B/HIMMEL-3-n3-slug.md" model=claude-sonnet-5-5 "chief=$CH"
+refuse_row m2 "a two-letter series" "malformed: brief-name" "brief=$B/HIMMEL-3-NN3-slug.md" model=claude-sonnet-5-5 "chief=$CH"
+refuse_row m3 "a bad model" "malformed: model" "brief=$BRIEF" model=claude-opus-4-1 "chief=$CH"
+refuse_row m4 "a bad chief" "malformed: chief" "brief=$BRIEF" model=claude-sonnet-5-5 "chief=a b"
+refuse_row m5 "a bad effort" "malformed: effort" "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" effort=ultra
+refuse_row m6 "a bad api_account" "malformed: api_account" "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" api_account=not-a-name
+refuse_row m7 "a brief outside the bucket" "malformed: brief-path, brief-name" "brief=/etc/passwd" model=claude-sonnet-5-5 "chief=$CH"
+refuse_row m8 "a symlinked brief" "malformed: brief-path" "brief=$B/HIMMEL-1-N2-link.md" model=claude-sonnet-5-5 "chief=$CH"
+refuse_row m9 "a bad model and a bad effort" "malformed: model, effort" "brief=$BRIEF" model=claude-opus-4-1 "chief=$CH" effort=ultra
+assert_absent "no refusal sends an ask" "Reply: go" "$(cat "$D/sent" 2>/dev/null)"
+assert_absent "no reason carries a field value" "claude-opus-4-1" "$(cat "$D/sent" "$Q/daemon.log" 2>/dev/null)"
 stop
 
 echo "== nothing else sets the flag =="
