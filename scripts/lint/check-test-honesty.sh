@@ -3,10 +3,14 @@
 # test surface (scripts/lint/honesty-surface.mjs), against the per-file allow
 # maps in scripts/lint/landmines/.oxlintrc.json.
 #
-# Usage: check-test-honesty.sh [--files PATH...]
-#   exit 0  clean, or nothing to lint
+# Usage: check-test-honesty.sh [--files PATH...] | --seed | --triggers
+#   exit 0  clean (the one line "test-honesty: clean (<n> files)"), or nothing to lint
 #   exit 1  a finding, a refusal, or a run the gate could not evaluate
 #   exit 2  usage error
+#   --seed      print the three allow maps for the whole surface, counted against
+#               a copy of the config with the maps emptied; never writes the
+#               tracked config
+#   --triggers  print the regex of paths whose change forces a full-surface run
 #
 # Only a missing `node`, or a missing `bun` when an install is needed, fails
 # open, and only outside CI: OXLINT_FAIL_CLOSED=1 turns both into exit 1. Every
@@ -32,7 +36,13 @@ fail_open() {
 
 # ---- arguments ----------------------------------------------------------------
 files_mode=0
+seed_mode=0
+triggers_mode=0
 paths=()
+usage() {
+    echo "usage: $(basename "$0") [--files PATH...] | --seed | --triggers" >&2
+    exit 2
+}
 case "${1:-}" in
     "") ;;
     --files)
@@ -40,10 +50,15 @@ case "${1:-}" in
         shift
         paths=("$@")
         ;;
-    *)
-        echo "usage: $(basename "$0") [--files PATH...]" >&2
-        exit 2
+    --seed)
+        [ "$#" -eq 1 ] || usage
+        seed_mode=1
         ;;
+    --triggers)
+        [ "$#" -eq 1 ] || usage
+        triggers_mode=1
+        ;;
+    *) usage ;;
 esac
 
 # ---- 1. repo root -------------------------------------------------------------
@@ -61,6 +76,13 @@ case "$cwd/" in
     *) refuse "cwd $cwd is outside the resolved root $repo_root - refusing to lint an unrelated tree" ;;
 esac
 cd "$repo_root" || refuse "cannot enter the resolved root $repo_root"
+
+# ---- 10. triggers -------------------------------------------------------------
+# The surface script owns the regex; it needs no install and no node range.
+if [ "$triggers_mode" = 1 ]; then
+    command -v node >/dev/null 2>&1 || refuse "node not found on PATH - cannot print the trigger regex"
+    exec node "$SURFACE" --triggers
+fi
 
 # ---- 2. node ------------------------------------------------------------------
 command -v node >/dev/null 2>&1 || fail_open "node not found on PATH - skipping the test-honesty gate"
@@ -95,6 +117,10 @@ done <<EOF
 $list_out
 EOF
 if [ "${#files[@]}" -eq 0 ]; then
+    if [ "$seed_mode" = 1 ]; then
+        printf '%s\n' '{"landmines-testing/no-fixed-sleep":{},"landmines-testing/no-flake-masking":{},"landmines-testing/no-unsignaled-poll":{}}'
+        exit 0
+    fi
     echo "check-test-honesty: nothing to lint"
     exit 0
 fi
@@ -191,4 +217,133 @@ try {
 EOF
 (cd "$PKG_REL" && node --input-type=module -e "$check_install_js" "$repo_root" </dev/null) || refuse "install not verified - refusing to pass an unevaluated run"
 
+# ---- 6. disable directives ----------------------------------------------------
+# Needs the installed parser from step 5, so it runs only after it.
+if ! dir_out=$(node "$SURFACE" --check-directives "${files[@]}" 2>&1 </dev/null); then
+    printf '%s\n' "$dir_out" >&2
+    refuse "refused disable directive, or a file that did not parse"
+fi
+
+# ---- 7. oxlint, evaluated -----------------------------------------------------
+tmp_dir=""
+seed_cfg=""
+child=""
+# shellcheck disable=SC2317,SC2329 # invoked by the traps below
+cleanup() {
+    if [ -n "$child" ]; then
+        kill "$child" 2>/dev/null
+        wait "$child" 2>/dev/null
+        child=""
+    fi
+    if [ -n "$seed_cfg" ]; then rm -f -- "$seed_cfg"; fi
+    if [ -n "$tmp_dir" ]; then rm -rf -- "$tmp_dir"; fi
+}
+# shellcheck disable=SC2317,SC2329 # invoked by the traps below
+on_signal() {
+    trap - EXIT INT TERM HUP
+    cleanup
+    exit "$1"
+}
+trap cleanup EXIT
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
+trap 'on_signal 129' HUP
+
+tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/test-honesty.XXXXXX") || refuse "cannot create a temp directory" # prim-ok: the suite runs a lone copy of this gate in temp repos that carry no scripts/lib
+
+config="$PKG_REL/.oxlintrc.json"
+if [ "$seed_mode" = 1 ]; then
+    # The same config with every allow map emptied, beside the original so the
+    # plugin specifier resolves. Removed by the trap on every way out.
+    config="$PKG_REL/.oxlintrc.seed.$$.json"
+    seed_cfg="$repo_root/$config"
+    node -e '
+const fs = require("node:fs");
+const cfg = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+for (const entry of Object.values(cfg.rules)) entry[1].allow = {};
+fs.writeFileSync(process.argv[2], JSON.stringify(cfg, null, 2) + "\n");
+' "$PKG_REL/.oxlintrc.json" "$seed_cfg" </dev/null || refuse "cannot write the seed config"
+fi
+
+# Background plus wait, so a signal reaches the trap while oxlint runs.
+"$PKG_REL/node_modules/.bin/oxlint" -c "$config" --format json -- "${files[@]}" \
+    >"$tmp_dir/oxlint.out" 2>"$tmp_dir/oxlint.err" </dev/null &
+child=$!
+wait "$child"
+ox_rc=$?
+child=""
+
+# The run counts only when stdout is the expected JSON for exactly this file
+# list, the exit code agrees with the diagnostics, and each diagnostic names a
+# file, a line and a rule code. Exit 0 clean, 10 findings (printed), 2 unevaluated.
+read -r -d '' eval_js <<'EOF'
+const fs = require("node:fs");
+const [mode, rcArg, wantArg, file] = process.argv.slice(1);
+const RULES = ["no-fixed-sleep", "no-flake-masking", "no-unsignaled-poll"].map((r) => "landmines-testing/" + r);
+const STALE = "This file now has";
+const RETRY = "Do not retry tests";
+const HINT = "the entry above is in scripts/lint/landmines/.oxlintrc.json, not .oxlintrc.jsonc";
+const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+const unevaluated = (m) => {
+  console.error("check-test-honesty: oxlint run unevaluated: " + m);
+  process.exit(2);
+};
+try {
+  const rc = Number(rcArg);
+  const want = Number(wantArg);
+  let out;
+  try {
+    out = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (err) {
+    unevaluated("stdout is not JSON (" + err.message + ")");
+  }
+  if (!isObject(out) || !Array.isArray(out.diagnostics)) unevaluated("no diagnostics array in the output");
+  if (out.number_of_files !== want) unevaluated("number_of_files is " + JSON.stringify(out.number_of_files) + ", expected " + want);
+  if (rc !== 0 && rc !== 1) unevaluated("exit code " + rc);
+  if ((rc === 0) !== (out.diagnostics.length === 0)) unevaluated("exit code " + rc + " disagrees with " + out.diagnostics.length + " diagnostics");
+  const found = out.diagnostics.map((d) => {
+    const span = isObject(d) && Array.isArray(d.labels) && isObject(d.labels[0]) ? d.labels[0].span : null;
+    const ok = isObject(d)
+      && typeof d.filename === "string" && d.filename !== ""
+      && typeof d.code === "string" && d.code !== ""
+      && typeof d.message === "string"
+      && isObject(span) && Number.isInteger(span.line) && span.line >= 1;
+    if (!ok) unevaluated("a diagnostic lacks a file, a line or a rule code: " + JSON.stringify(d).slice(0, 200));
+    return { file: d.filename, line: span.line, col: Number.isInteger(span.column) ? span.column : 0, code: d.code, message: d.message };
+  });
+  if (mode === "seed") {
+    const maps = Object.fromEntries(RULES.map((r) => [r, {}]));
+    for (const f of found) {
+      const rule = f.code.replace(/^(.*)\((.*)\)$/, "$1/$2");
+      if (!RULES.includes(rule) || f.message.startsWith(STALE) || f.message.startsWith(RETRY)) continue;
+      maps[rule][f.file] = (maps[rule][f.file] || 0) + 1;
+    }
+    for (const r of RULES) maps[r] = Object.fromEntries(Object.entries(maps[r]).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+    console.log(JSON.stringify(maps, null, 2));
+    process.exit(0);
+  }
+  for (const f of found) {
+    console.log(`${f.file}:${f.line}:${f.col} ${f.code} ${f.message}`);
+    const rule = f.code.replace(/^(.*)\((.*)\)$/, "$1/$2");
+    if (RULES.includes(rule) && f.message.startsWith(STALE)) console.log(HINT);
+  }
+  process.exit(found.length === 0 ? 0 : 10);
+} catch (err) {
+  unevaluated(err.message);
+}
+EOF
+eval_mode=run
+if [ "$seed_mode" = 1 ]; then eval_mode=seed; fi
+node -e "$eval_js" "$eval_mode" "$ox_rc" "${#files[@]}" "$tmp_dir/oxlint.out" </dev/null
+eval_rc=$?
+if [ "$eval_rc" -ne 0 ] && [ "$eval_rc" -ne 10 ]; then
+    if [ -s "$tmp_dir/oxlint.err" ]; then cat "$tmp_dir/oxlint.err" >&2; fi
+    refuse "the oxlint run could not be evaluated - refusing to pass an unevaluated run"
+fi
+
+# ---- 8. findings --------------------------------------------------------------
+# Printed by the evaluation above, with the stale hint after a stale finding.
+if [ "$seed_mode" = 1 ]; then exit 0; fi
+[ "$eval_rc" -eq 0 ] || exit 1
+echo "test-honesty: clean (${#files[@]} files)"
 exit 0

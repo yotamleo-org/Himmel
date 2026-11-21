@@ -925,6 +925,418 @@ case_gate_early_exits() {
     assert_eq "usage error exits 2" 2 "$GATE_RC"
 }
 
+# --- check-test-honesty.sh: steps 6 to 10 ------------------------------------
+
+CLEAN_PREFIX='test-honesty: clean ('
+HINT_LINE='the entry above is in scripts/lint/landmines/.oxlintrc.json, not .oxlintrc.jsonc'
+
+assert_lacks() {
+    local label="$1" needle="$2" hay="$3"
+    case "$hay" in
+        *"$needle"*) fail "$label"; echo "     unexpected: $needle"; echo "     in: $hay" ;;
+        *) pass "$label" ;;
+    esac
+}
+
+# gate_repo <content of a/x.test.mjs>: a fresh committed temp repo with a linked
+# install, whose one default surface file holds <content>.
+gate_repo() {
+    mk_repo || return 1
+    link_install "$REPO"
+    printf '%s\n' "$1" > "$REPO/a/x.test.mjs"
+}
+
+# run_gate_split <dir> <path> ARGS...: like run_gate, with stdout and stderr kept
+# apart in GATE_STDOUT and GATE_STDERR.
+run_gate_split() {
+    local dir="$1" path="$2"
+    shift 2
+    GATE_STDOUT=$(
+        cd "$dir" || exit 99
+        unset OXLINT_FAIL_CLOSED
+        PATH="$path" "$BASH_ABS" scripts/lint/check-test-honesty.sh "$@" 2>"$dir/gate.stderr" </dev/null
+    )
+    GATE_RC=$?
+    GATE_STDERR=$(cat "$dir/gate.stderr")
+}
+
+# oxlint_stub <stdout text> <exit code>: a stand-in oxlint printing canned output.
+oxlint_stub() {
+    printf '%s\n' "$1" > "$REPO/canned.out"
+    stand_in "$REPO" oxlint "cat '$REPO/canned.out'; exit $2"
+}
+
+# node_recorder: a stand-in node that logs its argv, then runs the real node.
+node_recorder() {
+    stand_in "$REPO" node "exec '$REAL_NODE' \"\$@\"" record
+}
+
+json_equal() {
+    node -e '
+const assert = require("node:assert");
+try { assert.deepStrictEqual(JSON.parse(process.argv[1]), JSON.parse(process.argv[2])); process.stdout.write("ok"); }
+catch (e) { process.stdout.write("bad: " + e.message); }
+' "$1" "$2" </dev/null
+}
+
+# line_of <regex>: the first calls.log line number matching, or empty.
+line_of() {
+    grep -n -- "$1" "$REPO/calls.log" 2>/dev/null | head -n 1 | cut -d: -f1
+}
+
+directive_calls() {
+    grep -c '^scripts/lint/honesty-surface.mjs --check-directives' "$REPO/calls.log" 2>/dev/null || true
+}
+
+seed_files_left() {
+    local f n=0
+    for f in "$REPO"/scripts/lint/landmines/.oxlintrc.seed.*.json; do
+        if [ -e "$f" ]; then n=$((n + 1)); fi
+    done
+    echo "$n"
+}
+
+case_i1_rules() {
+    gate_repo $'import { it } from "vitest";\nit("x", async () => {\n  await new Promise((r) => setTimeout(r, 50));\n});' || { fail "i1 (no temp repo)"; return; }
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "i1-inline-sleep exits 1" 1 "$GATE_RC"
+    assert_has "i1-inline-sleep prints the finding" "a/x.test.mjs:3:3 landmines-testing(no-fixed-sleep) " "$GATE_OUT"
+    assert_lacks "i1-inline-sleep has no stale hint" "$HINT_LINE" "$GATE_OUT"
+    assert_lacks "i1-inline-sleep has no success line" "$CLEAN_PREFIX" "$GATE_OUT"
+
+    gate_repo $'import { test } from "bun:test";\ntest("x", async () => {\n  await Bun.sleep(5);\n});' || { fail "i1 (no temp repo)"; return; }
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "i1-bun-sleep exits 1" 1 "$GATE_RC"
+    assert_has "i1-bun-sleep prints the finding" "landmines-testing(no-fixed-sleep)" "$GATE_OUT"
+
+    gate_repo $'import { it } from "vitest";\nit("x", async () => {}, 5000);' || { fail "i1 (no temp repo)"; return; }
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "i1-numeric-timeout exits 1" 1 "$GATE_RC"
+    assert_has "i1-numeric-timeout prints the finding" "landmines-testing(no-flake-masking)" "$GATE_OUT"
+
+    gate_repo $'import { it, expect, vi } from "vitest";\nit("x", async () => {\n  const fn = vi.fn();\n  await expect.poll(() => fn.mock.calls.length).toBe(1);\n});' || { fail "i1 (no temp repo)"; return; }
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "i1-poll-spy exits 1" 1 "$GATE_RC"
+    assert_has "i1-poll-spy prints the finding" "landmines-testing(no-unsignaled-poll)" "$GATE_OUT"
+
+    gate_repo $'import { it } from "vitest";\nit("x", async () => {\n  await new Promise((r) => setTimeout(r, 50));\n});' || { fail "i1 (no temp repo)"; return; }
+    edit_cfg 'c.rules["landmines-testing/no-fixed-sleep"][1].allow = { "a/x.test.mjs": 1 };'
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "i1-at-allowance exits 0" 0 "$GATE_RC"
+    assert_eq "i1-at-allowance prints only the success line" "${CLEAN_PREFIX}1 files)" "$GATE_OUT"
+}
+
+case_i2_stale_and_count() {
+    local after
+    gate_repo $'import { it } from "vitest";\nit("x", async () => {\n  await new Promise((r) => setTimeout(r, 50));\n});' || { fail "i2 (no temp repo)"; return; }
+    edit_cfg 'c.rules["landmines-testing/no-fixed-sleep"][1].allow = { "a/x.test.mjs": 2 };'
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "i2-stale exits 1" 1 "$GATE_RC"
+    assert_has "i2-stale prints the plugin's line" "This file now has 1 fixed sleeps" "$GATE_OUT"
+    after=$(printf '%s\n' "$GATE_OUT" | grep -A1 'This file now has' | sed -n '2p')
+    assert_eq "i2-stale prints the config-path line right after" "$HINT_LINE" "$after"
+    assert_lacks "i2-stale has no success line" "$CLEAN_PREFIX" "$GATE_OUT"
+
+    gate_repo $'import { it } from "vitest";\nit("ok", () => {});' || { fail "i2-file-count (no temp repo)"; return; }
+    oxlint_stub '{"diagnostics":[],"number_of_files":1}' 0
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "i2-file-count control exits 0" 0 "$GATE_RC"
+    oxlint_stub '{"diagnostics":[],"number_of_files":0}' 0
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "i2-file-count exits 1" 1 "$GATE_RC"
+    assert_has "i2-file-count says unevaluated" "unevaluated" "$GATE_OUT"
+    assert_lacks "i2-file-count has no success line" "$CLEAN_PREFIX" "$GATE_OUT"
+
+    gate_repo $'import { it } from "vitest";\nit("ok", () => {});' || { fail "i3-config-shape-through-gate (no temp repo)"; return; }
+    stand_in "$REPO" oxlint 'exit 0' record
+    edit_cfg 'c.overrides = [{ files: ["**/*"], rules: { "landmines-testing/no-fixed-sleep": "off" } }];'
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "i3-config-shape-through-gate exits 1" 1 "$GATE_RC"
+    assert_has "i3-config-shape-through-gate names the config" "config shape or allow keys refused" "$GATE_OUT"
+    assert_eq "i3-config-shape-through-gate never runs oxlint" 0 "$(calls_count)"
+}
+
+case_i3_unevaluated() {
+    local diag label json rc
+    diag='{"message":"m","code":"landmines-testing(no-fixed-sleep)","severity":"error","filename":"a/x.test.mjs","labels":[{"span":{"offset":0,"length":1,"line":1,"column":1}}]}'
+
+    gate_repo $'import { it } from "vitest";\nit("ok", () => {});' || { fail "i3-unevaluated (no temp repo)"; return; }
+    oxlint_stub '{"diagnostics":[],"number_of_files":1}' 0
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "i3-unevaluated control (clean stand-in) exits 0" 0 "$GATE_RC"
+    assert_eq "i3-unevaluated control prints the success line" "${CLEAN_PREFIX}1 files)" "$GATE_OUT"
+    oxlint_stub "{\"diagnostics\":[$diag],\"number_of_files\":1}" 1
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "i3-unevaluated control (findings stand-in) exits 1" 1 "$GATE_RC"
+    assert_has "i3-unevaluated control prints the finding" "a/x.test.mjs:1:1 landmines-testing(no-fixed-sleep) m" "$GATE_OUT"
+    assert_lacks "i3-unevaluated control is not unevaluated" "unevaluated" "$GATE_OUT"
+
+    while IFS='|' read -r label json rc; do
+        [ -n "$label" ] || continue
+        oxlint_stub "$json" "$rc"
+        run_gate "$REPO" 1 "$PATH"
+        assert_eq "$label exits 1" 1 "$GATE_RC"
+        assert_has "$label says unevaluated" "unevaluated" "$GATE_OUT"
+        assert_lacks "$label has no success line" "$CLEAN_PREFIX" "$GATE_OUT"
+    done <<EOF
+i3-runner-exit2|{"diagnostics":[],"number_of_files":1}|2
+i3-runner-exit3-with-diagnostics|{"diagnostics":[$diag],"number_of_files":1}|3
+i3-non-json|oxlint: something went wrong|0
+i3-empty-object|{}|0
+i3-exit1-empty-diagnostics|{"diagnostics":[],"number_of_files":1}|1
+i3-exit0-with-diagnostics|{"diagnostics":[$diag],"number_of_files":1}|0
+i3-json-array|[]|0
+i3-diagnostics-not-array|{"diagnostics":{},"number_of_files":1}|0
+i3-file-count-string|{"diagnostics":[],"number_of_files":"1"}|0
+i3-file-count-too-many|{"diagnostics":[],"number_of_files":2}|0
+i3-diagnostic-without-line|{"diagnostics":[{"message":"m","code":"landmines-testing(no-fixed-sleep)","filename":"a/x.test.mjs","labels":[]}],"number_of_files":1}|1
+i3-diagnostic-without-code|{"diagnostics":[{"message":"m","filename":"a/x.test.mjs","labels":[{"span":{"line":1,"column":1}}]}],"number_of_files":1}|1
+i3-diagnostic-without-file|{"diagnostics":[{"message":"m","code":"landmines-testing(no-fixed-sleep)","labels":[{"span":{"line":1,"column":1}}]}],"number_of_files":1}|1
+EOF
+
+    rm -f -- "$REPO/scripts/lint/landmines/node_modules/.bin/oxlint"
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "i3-runner-missing exits 1" 1 "$GATE_RC"
+    assert_has "i3-runner-missing says unevaluated" "unevaluated" "$GATE_OUT"
+}
+
+case_clean_success_line() {
+    gate_repo $'import { it } from "vitest";\nit("a", () => {});' || { fail "clean-success-line (no temp repo)"; return; }
+    put a/y.test.mjs 'import { it } from "vitest"; it("b", () => {});'
+    put a/z.test.mjs 'import { it } from "vitest"; it("c", () => {});'
+    git -C "$REPO" add a/y.test.mjs a/z.test.mjs
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "clean-success-line full surface exits 0" 0 "$GATE_RC"
+    assert_eq "clean-success-line is the one fixed line with the evaluated count" "${CLEAN_PREFIX}3 files)" "$GATE_OUT"
+    run_gate "$REPO" 1 "$PATH" --files a/y.test.mjs a/z.test.mjs README.md
+    assert_eq "clean-success-line --files exits 0" 0 "$GATE_RC"
+    assert_eq "clean-success-line --files counts the narrowed list" "${CLEAN_PREFIX}2 files)" "$GATE_OUT"
+    run_gate "$REPO" 1 "$PATH" --files README.md
+    assert_eq "clean-success-line empty list keeps its own line" "check-test-honesty: nothing to lint" "$GATE_OUT"
+
+    printf '%s\n' 'import { it } from "vitest"; it("s", async () => { await Bun.sleep(5); });' > "$REPO/a/y.test.mjs"
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "clean-success-line absent on findings: exits 1" 1 "$GATE_RC"
+    assert_lacks "clean-success-line absent on findings" "$CLEAN_PREFIX" "$GATE_OUT"
+
+    stand_in "$REPO" oxlint 'exit 2'
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "clean-success-line absent on unevaluated: exits 1" 1 "$GATE_RC"
+    assert_lacks "clean-success-line absent on unevaluated" "$CLEAN_PREFIX" "$GATE_OUT"
+}
+
+case_i3_step_order() {
+    local inst dir
+    mk_repo || { fail "i3-install-before-directives (no temp repo)"; return; }
+    node_recorder
+    stand_in "$REPO" bun "$(install_body)" record
+    run_gate "$REPO" 1 "$REPO/bin:$PATH"
+    assert_eq "i3-install-before-directives exits 0" 0 "$GATE_RC"
+    inst=$(line_of '^install --frozen-lockfile$')
+    dir=$(line_of '^scripts/lint/honesty-surface.mjs --check-directives')
+    if [ -n "$inst" ] && [ -n "$dir" ] && [ "$inst" -lt "$dir" ]; then
+        pass "i3-install-before-directives bun install is logged before the directive check"
+    else
+        fail "i3-install-before-directives (install line '$inst', directive line '$dir')"
+    fi
+
+    mk_repo || { fail "directives-run-on-clean (no temp repo)"; return; }
+    link_install "$REPO"
+    node_recorder
+    run_gate "$REPO" 1 "$REPO/bin:$PATH"
+    assert_eq "directives-run-on-clean exits 0" 0 "$GATE_RC"
+    assert_eq "directives-run-on-clean logs exactly one directive check" 1 "$(directive_calls)"
+
+    mk_repo || { fail "i3-version-mismatch-no-directives (no temp repo)"; return; }
+    link_install "$REPO"
+    node_recorder
+    sed 's/"1.93.0"/"1.93.1"/' "$REPO/scripts/lint/landmines/package.json" > "$REPO/pkg.tmp"
+    mv "$REPO/pkg.tmp" "$REPO/scripts/lint/landmines/package.json"
+    run_gate "$REPO" 0 "$REPO/bin:$PATH"
+    assert_eq "i3-version-mismatch-no-directives exits 1" 1 "$GATE_RC"
+    assert_eq "i3-version-mismatch-no-directives logs no directive check" 0 "$(directive_calls)"
+    assert_eq "i3-version-mismatch-no-directives recorder is live (the key check was logged)" 1 \
+        "$(grep -c '^scripts/lint/honesty-surface.mjs --check-keys' "$REPO/calls.log")"
+}
+
+# i7_form <id>: sets FORM_KIND and FORM_TEXT for one suppressing form.
+i7_form() {
+    case "$1" in
+        01) FORM_KIND=inner; FORM_TEXT='// oxlint-disable-next-line landmines-testing/no-fixed-sleep' ;;
+        04) FORM_KIND=inner; FORM_TEXT='// oxlint-disable-next-line ,' ;;
+        05) FORM_KIND=inner; FORM_TEXT=$'// oxlint-disable-next-line\t-- the child needs a moment' ;;
+        06) FORM_KIND=inner; FORM_TEXT='// oxlint-disable-next-line -- the child needs a moment' ;;
+        07) FORM_KIND=top; FORM_TEXT=$'const base = "http://localhost"; /* oxlint-disable no-console,\n   landmines-testing/no-fixed-sleep */' ;;
+        08) FORM_KIND=top; FORM_TEXT=$'/* oxlint-disable no-console,\n   landmines-testing/no-fixed-sleep */' ;;
+        12) FORM_KIND=inner; FORM_TEXT='//oxlint-disable-next-line' ;;
+        16) FORM_KIND=top; FORM_TEXT='/* oxlint-disable */' ;;
+        22) FORM_KIND='tail'; FORM_TEXT='// oxlint-disable-line' ;;
+    esac
+}
+
+case_i7_through_gate() {
+    local id f
+    mk_repo || { fail "i7-through-gate (no temp repo)"; return; }
+    link_install "$REPO"
+    write_inner a/dir-00.test.ts ''
+    git -C "$REPO" add a/dir-00.test.ts
+    run_gate "$REPO" 1 "$PATH" --files a/dir-00.test.ts
+    assert_eq "i7-through-gate control (no directive) exits 1" 1 "$GATE_RC"
+    assert_has "i7-through-gate control reaches oxlint and finds the sleep" "landmines-testing(no-fixed-sleep)" "$GATE_OUT"
+    assert_lacks "i7-through-gate control is not a directive refusal" "refused directive" "$GATE_OUT"
+    for id in 01 04 05 06 07 08 12 16 22; do
+        i7_form "$id"
+        f="a/dir-$id.test.ts"
+        case "$FORM_KIND" in
+            inner) write_inner "$f" "$FORM_TEXT" ;;
+            top) write_top "$f" "$FORM_TEXT" ;;
+            tail) write_tail "$f" "$FORM_TEXT" ;;
+        esac
+        git -C "$REPO" add "$f"
+        run_gate "$REPO" 1 "$PATH" --files "$f"
+        assert_eq "i7-through-gate $id exits 1" 1 "$GATE_RC"
+        assert_has "i7-through-gate $id prints a refused directive line" "$f:" "$GATE_OUT"
+        assert_has "i7-through-gate $id is a directive refusal" "refused directive" "$GATE_OUT"
+        assert_lacks "i7-through-gate $id has no success line" "$CLEAN_PREFIX" "$GATE_OUT"
+    done
+}
+
+case_seed() {
+    local before maps expect
+    gate_repo $'import { it } from "vitest";\nit("a", async () => {\n  await new Promise((r) => setTimeout(r, 50));\n  await Bun.sleep(5);\n});' || { fail "seed (no temp repo)"; return; }
+    put a/t.test.mjs $'import { it } from "vitest";\nit("t", async () => {}, 5000);\nit("r", { retry: 2 }, () => {});'
+    put a/p.test.mjs $'import { it, expect, vi } from "vitest";\nit("p", async () => {\n  const fn = vi.fn();\n  await expect.poll(() => fn.mock.calls.length).toBe(1);\n});'
+    put a/r.test.mjs $'import { it } from "vitest";\nit("r", { retry: 3 }, () => {});'
+    git -C "$REPO" add a/t.test.mjs a/p.test.mjs a/r.test.mjs
+    before=$(sha256_of "$REPO/scripts/lint/landmines/.oxlintrc.json")
+    run_gate_split "$REPO" "$PATH" --seed
+    assert_eq "seed-maps exits 0" 0 "$GATE_RC"
+    expect='{"landmines-testing/no-fixed-sleep":{"a/x.test.mjs":2},"landmines-testing/no-flake-masking":{"a/t.test.mjs":1},"landmines-testing/no-unsignaled-poll":{"a/p.test.mjs":1}}'
+    assert_eq "seed-maps prints exactly the sleep, timeout and poll counts" "ok" "$(json_equal "$GATE_STDOUT" "$expect")"
+    assert_eq "seed-maps leaves no stderr noise on a clean seed" "" "$GATE_STDERR"
+    assert_eq "seed-no-residue tracked config is byte-identical" "$before" "$(sha256_of "$REPO/scripts/lint/landmines/.oxlintrc.json")"
+    assert_eq "seed-no-residue no seed config is left" 0 "$(seed_files_left)"
+    assert_eq "seed-no-residue git sees no change to the config" "" "$(git -C "$REPO" status --porcelain -- scripts/lint/landmines/.oxlintrc.json)"
+
+    # The printed maps, pasted into the config, make the next gate run clean.
+    printf '%s\n' "$GATE_STDOUT" > "$REPO/seed.json"
+    maps="$REPO/seed.json"
+    edit_cfg 'const m = JSON.parse(require("node:fs").readFileSync("'"$maps"'", "utf8")); for (const [k, v] of Object.entries(m)) c.rules[k][1].allow = v;'
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "seed-roundtrip gate run with the seeded config exits 1 only for the retry findings" 1 "$GATE_RC"
+    assert_has "seed-roundtrip still reports a retry (never counted)" "Do not retry tests" "$GATE_OUT"
+    assert_lacks "seed-roundtrip reports no sleep, timeout or poll" "This file now has" "$GATE_OUT"
+    assert_lacks "seed-roundtrip reports no unallowed sleep" "Replace this fixed sleep" "$GATE_OUT"
+
+    # A seed run that cannot be evaluated prints no maps and leaves nothing behind.
+    stand_in "$REPO" oxlint 'exit 2'
+    run_gate_split "$REPO" "$PATH" --seed
+    assert_eq "seed-unevaluated exits 1" 1 "$GATE_RC"
+    assert_eq "seed-unevaluated prints no maps" "" "$GATE_STDOUT"
+    assert_eq "seed-unevaluated leaves no seed config" 0 "$(seed_files_left)"
+
+    # Only the sleep, timeout and poll diagnostics are counted, never a retry or a stale one.
+    mk_repo || { fail "seed-excludes (no temp repo)"; return; }
+    link_install "$REPO"
+    cat > "$REPO/canned.out" <<'EOF'
+{"diagnostics":[
+{"message":"Replace this fixed sleep with a signal: await the operation.","code":"landmines-testing(no-fixed-sleep)","filename":"a/x.test.mjs","labels":[{"span":{"line":3,"column":3}}]},
+{"message":"This file now has 1 fixed sleeps; lower its no-fixed-sleep allowlist entry for a/x.test.mjs in .oxlintrc.jsonc to 1, or remove the entry at 0.","code":"landmines-testing(no-fixed-sleep)","filename":"a/x.test.mjs","labels":[{"span":{"line":1,"column":1}}]},
+{"message":"Do not retry tests. A test that passes on rerun is a flake.","code":"landmines-testing(no-flake-masking)","filename":"a/x.test.mjs","labels":[{"span":{"line":4,"column":3}}]},
+{"message":"Do not raise a test's timeout. Wait on the event.","code":"landmines-testing(no-flake-masking)","filename":"a/x.test.mjs","labels":[{"span":{"line":5,"column":3}}]},
+{"message":"This file now has 0 test timeout bumps; lower it.","code":"landmines-testing(no-flake-masking)","filename":"a/x.test.mjs","labels":[{"span":{"line":1,"column":1}}]},
+{"message":"Await a signal instead of polling a request recorder or spy.","code":"landmines-testing(no-unsignaled-poll)","filename":"a/x.test.mjs","labels":[{"span":{"line":6,"column":3}}]},
+{"message":"This file now has 0 unsignaled polls; lower it.","code":"landmines-testing(no-unsignaled-poll)","filename":"a/x.test.mjs","labels":[{"span":{"line":1,"column":1}}]}
+],"number_of_files":1}
+EOF
+    stand_in "$REPO" oxlint "cat '$REPO/canned.out'; exit 1"
+    run_gate_split "$REPO" "$PATH" --seed
+    assert_eq "seed-excludes exits 0" 0 "$GATE_RC"
+    expect='{"landmines-testing/no-fixed-sleep":{"a/x.test.mjs":1},"landmines-testing/no-flake-masking":{"a/x.test.mjs":1},"landmines-testing/no-unsignaled-poll":{"a/x.test.mjs":1}}'
+    assert_eq "seed-excludes counts one per rule, never a retry or a stale line" "ok" "$(json_equal "$GATE_STDOUT" "$expect")"
+
+    # An empty surface seeds three empty maps and installs nothing.
+    mk_repo || { fail "seed-empty (no temp repo)"; return; }
+    git -C "$REPO" rm -q a/x.test.mjs
+    stand_in "$REPO" bun 'exit 0' record
+    run_gate_split "$REPO" "$REPO/bin:$PATH" --seed
+    assert_eq "seed-empty-surface exits 0" 0 "$GATE_RC"
+    assert_eq "seed-empty-surface prints three empty maps" "ok" \
+        "$(json_equal "$GATE_STDOUT" '{"landmines-testing/no-fixed-sleep":{},"landmines-testing/no-flake-masking":{},"landmines-testing/no-unsignaled-poll":{}}')"
+    assert_eq "seed-empty-surface runs no install" 0 "$(calls_count)"
+}
+
+# seed_signal <INT|TERM> <expected exit>: the gate is signalled while oxlint runs
+# under --seed. A stand-in oxlint announces itself on a FIFO the suite holds open,
+# then blocks on a second FIFO that nothing ever writes to.
+seed_signal() {
+    local sig="$1" want="$2" runner gate_pid msg before tmp
+    mk_repo || { fail "seed-signal-$sig (no temp repo)"; return; }
+    link_install "$REPO"
+    mkfifo "$REPO/started.fifo" "$REPO/block.fifo" || { fail "seed-signal-$sig (mkfifo)"; return; }
+    mkdir -p "$REPO/tmp"
+    stand_in "$REPO" oxlint "echo \$PPID > '$REPO/gate.pid'; echo \$\$ > '$REPO/oxlint.pid'; echo started > '$REPO/started.fifo'; read -r _ < '$REPO/block.fifo'"
+    before=$(sha256_of "$REPO/scripts/lint/landmines/.oxlintrc.json")
+    exec 4<> "$REPO/started.fifo"
+    set -m
+    (
+        cd "$REPO" || exit 99
+        unset OXLINT_FAIL_CLOSED
+        TMPDIR="$REPO/tmp" "$BASH_ABS" scripts/lint/check-test-honesty.sh --seed >"$REPO/seed.out" 2>"$REPO/seed.err" </dev/null
+        echo "gate-exited $?" >&4
+    ) &
+    runner=$!
+    set +m
+    if ! read -r -t 60 -u 4 msg; then msg="timeout"; fi
+    if [ "$msg" != started ]; then
+        fail "seed-signal-$sig (oxlint stand-in never started: $msg)"
+        kill -- "-$runner" 2>/dev/null
+        exec 4>&-
+        return
+    fi
+    gate_pid=$(cat "$REPO/gate.pid")
+    assert_eq "seed-signal-$sig seed config exists while oxlint runs" 1 "$(seed_files_left)"
+    kill "-$sig" "$gate_pid"
+    if ! read -r -t 60 -u 4 msg; then msg="timeout"; fi
+    assert_eq "seed-signal-$sig gate exits through its trap" "gate-exited $want" "$msg"
+    # Judged before the teardown below, which would hide a stray process.
+    if kill -0 "$(cat "$REPO/oxlint.pid")" 2>/dev/null; then
+        fail "seed-signal-$sig leaves no oxlint process behind"
+    else
+        pass "seed-signal-$sig leaves no oxlint process behind"
+    fi
+    assert_eq "seed-signal-$sig leaves no seed config" 0 "$(seed_files_left)"
+    assert_eq "seed-signal-$sig tracked config is byte-identical" "$before" "$(sha256_of "$REPO/scripts/lint/landmines/.oxlintrc.json")"
+    tmp=$(find "$REPO/tmp" -mindepth 1 | head -n 1)
+    assert_eq "seed-signal-$sig leaves no temp directory" "" "$tmp"
+    kill -- "-$runner" 2>/dev/null
+    wait "$runner" 2>/dev/null
+    exec 4>&-
+    assert_eq "seed-signal-$sig prints no maps" "" "$(cat "$REPO/seed.out")"
+}
+
+case_seed_signals() {
+    seed_signal INT 130
+    seed_signal TERM 143
+}
+
+case_triggers_and_usage() {
+    mk_repo || { fail "gate-triggers (no temp repo)"; return; }
+    stand_in "$REPO" bun 'exit 0' record
+    hs "$REPO" --triggers
+    run_gate "$REPO" 1 "$REPO/bin:$PATH" --triggers
+    assert_eq "gate-triggers exits 0 with no node_modules" 0 "$GATE_RC"
+    assert_eq "gate-triggers prints the surface script's regex" "$HS_OUT" "$GATE_OUT"
+    assert_eq "gate-triggers runs no install" 0 "$(calls_count)"
+    run_gate "$REPO" 0 "$PATH" --triggers extra
+    assert_eq "gate-triggers with an argument is a usage error" 2 "$GATE_RC"
+    run_gate "$REPO" 0 "$PATH" --seed --files
+    assert_eq "gate-seed with an argument is a usage error" 2 "$GATE_RC"
+    mk_tools "$REPO" "${BASE_TOOLS[@]}"
+    run_gate "$REPO" 0 "$REPO/tools" --triggers
+    assert_eq "gate-triggers without node exits 1" 1 "$GATE_RC"
+}
+
 case_i3_real_marker_untouched() {
     local now
     if [ -f "$REAL_MARKER" ]; then
@@ -956,6 +1368,15 @@ case_f2_tracked_node_modules
 case_f2_tracked_node_modules_symlink
 case_f2_package_dir_symlink
 case_gate_early_exits
+case_i1_rules
+case_i2_stale_and_count
+case_i3_unevaluated
+case_clean_success_line
+case_i3_step_order
+case_i7_through_gate
+case_seed
+case_seed_signals
+case_triggers_and_usage
 case_i3_real_marker_untouched
 
 echo ""
