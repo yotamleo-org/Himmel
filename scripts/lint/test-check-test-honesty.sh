@@ -1359,7 +1359,7 @@ ci_block_placed() {
     awk '
 /^ *- name: skill size \+ oxlint complexity\/hardening$/ { step = NR; done_at = 0; next }
 step && /^ *- [a-z-]+:/ { step = 0; done_at = 0 }
-step && /^ *done < "\$changed"$/ { done_at = NR }
+step && /^ *done < "\$changed"( *# .*)?$/ { done_at = NR }
 /^ *# test-honesty gate$/ {
     if (!step) print "start marker outside the lint step"
     else if (!done_at) print "start marker before the files loop"
@@ -1385,13 +1385,13 @@ case_ci_scope_branches() {
         run: |
           # test-honesty gate
           set --
-            done < "$changed"
+            done < "$changed" # read-sink-ok: fixture text for the placement check, never executed
 EOS
     assert_eq "ci-scope-branches placement check refuses a block above the files loop" "start marker before the files loop" "$(ci_block_placed "$fx")"
     cat > "$fx" <<'EOS'
       - name: skill size + oxlint complexity/hardening
         run: |
-            done < "$changed"
+            done < "$changed" # read-sink-ok: fixture text for the placement check, never executed
       - name: another step
         run: |
           # test-honesty gate
