@@ -31,28 +31,13 @@ function walk(dir) {
   return out;
 }
 
-// LINT, not a behavioural proof: this can only catch
-// a literal (case/separator-insensitive) mention of the spawner name, never a
-// composed/aliased reference (e.g. string concatenation, an indirect require
-// path, or a differently-named wrapper around spawn-claudex.ts) — those stay
-// green under this check by construction, same as under the original
-// single-substring version. The behavioural proof that the bench's actual
-// dispatch path never invokes the real spawner is bench-dispatch-luna.test.mjs's
-// dry-run ARGV assertion; this file's only job is the broader, cheap net across
-// every OTHER file in the kit a dry-run never executes.
 test('LINT: no file under scripts/lanes/bench/ mentions the telegram claudex-worker-spawner name, in any case/separator spelling', () => {
   const files = walk(BENCH_DIR);
   assert.ok(files.length > 0, 'expected at least one file under scripts/lanes/bench/');
-  // Normalize away case and separators (-, _, ., whitespace) so
-  // "spawn_claudex", "Spawn.Claudex", "spawn claudex" etc. also trip the
-  // guard, not only the exact "spawn-claudex" spelling the original check
-  // matched byte for byte.
   const normalize = (s) => s.toLowerCase().replace(/[-_.\s]+/g, '');
   const forbiddenNormalized = normalize(FORBIDDEN);
   const offenders = [];
   for (const f of files) {
-    // fixtures/ (P3, task content) may legitimately be unrelated text; scope
-    // the guard to the kit's own scripts, matching the P2.3 invariant it enforces.
     if (f.includes(`${join('bench', 'fixtures')}`)) continue;
     let text;
     try { text = readFileSync(f, 'utf8'); } catch { continue; }

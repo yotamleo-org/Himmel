@@ -24,17 +24,11 @@ export function parseFundedMaxPct(raw, fallback = DEFAULT_FUNDED_MAX_PCT) {
   return Number.isFinite(n) && n >= 0 && n <= 100 ? n : fallback;
 }
 
-// LANE_FUNDED_MAX_PCT wins; CLAUDEX_USAGE_REFUSE_PCT (documented in .env.example
-// and docs/configuration.md) moves both consumers together; an invalid value
-// falls through to the next.
 export function resolveFundedMaxPct(env) {
   const alias = parseFundedMaxPct(env.CLAUDEX_USAGE_REFUSE_PCT, DEFAULT_FUNDED_MAX_PCT);
   return parseFundedMaxPct(env.LANE_FUNDED_MAX_PCT, alias);
 }
 
-// Only the codex bank shares spawn-claudex's refuse point. Every other bank
-// keeps its historical default of 99 (LANE_FUNDED_MAX_PCT still overrides)
-// because no other dispatcher refuses at 90.
 export const OTHER_BANK_FUNDED_MAX_PCT = 99;
 
 export function fundedMaxPctForBank(bank, env) {

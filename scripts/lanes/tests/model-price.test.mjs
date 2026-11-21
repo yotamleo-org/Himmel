@@ -18,7 +18,6 @@ const rows = loadPrices();
 const sol = priceFor('gpt-6.1-sol', rows);
 const opus = priceFor('claude-opus-5-5', rows);
 
-// The fixture call of the ticket Proof: 1,000,000 input and 100,000 output tokens.
 const FIXTURE_USAGE = { input_tokens: M, output_tokens: 100_000 };
 
 test('(a) the table has a gpt-6.1-sol row with input, output and cache read rates', () => {
@@ -47,7 +46,6 @@ test('(c) a codex-lane sol call is not costed at the Opus figure; an unknown mod
 });
 
 test('(d) control: an Opus call still costs the Opus rate to the cent', () => {
-  // Opus 5.5 is $4 in / $20 out per MTok (docs/internals/prompt-cache.md pricing): 1M in + 100k out = $6.00.
   const r = priceCall({ model: 'claude-opus-5-5', usage: FIXTURE_USAGE }, rows);
   assert.equal(r.usd.toFixed(2), '6.00');
   assert.equal(opus.input, 4);
@@ -76,7 +74,6 @@ test('first prefix match wins and cache reads and writes are priced from their o
     cache_creation: { ephemeral_5m_input_tokens: M, ephemeral_1h_input_tokens: M },
   };
   assert.equal(priceCall({ model: 'm-abc', usage }, t).usd, 1 + 2 + 0.5 + 3 + 4);
-  // no per-TTL split: the whole cache write is a 5-minute write
   assert.equal(priceCall({ model: 'm-abc', usage: { cache_creation_input_tokens: M } }, t).usd, 3);
 });
 
@@ -92,10 +89,10 @@ test('transcripts mode sums per model, counts a repeated message once and report
   try {
     writeTranscript(join(root, 'proj'), 's1.jsonl', [
       rec(1, 'gpt-6.1-sol', FIXTURE_USAGE),
-      rec(1, 'gpt-6.1-sol', FIXTURE_USAGE), // streamed repeat of the same message
+      rec(1, 'gpt-6.1-sol', FIXTURE_USAGE),
       rec(2, 'gpt-6.1-terra', FIXTURE_USAGE),
       rec(3, 'claude-opus-5-5', FIXTURE_USAGE),
-      rec(4, 'gpt-6.1-sol', FIXTURE_USAGE, '2026-10-01T10:00:00.000Z'), // before --since
+      rec(4, 'gpt-6.1-sol', FIXTURE_USAGE, '2026-10-01T10:00:00.000Z'),
       { type: 'user', message: { content: 'hi' } },
     ]);
     const res = priceTranscripts(root, rows, { since: '2026-11-01' });

@@ -45,7 +45,7 @@ test('buildRunRecord defaults probe to false and round-trips probe: true (pipeli
     run_id: 'T7-luna-probe', task: 'T7', cell: 'luna', rep: 1, model: 'gpt-6-luna',
     effort: 'high', prompt_sha256: 'abc123', fixture_path: '/tmp/x',
   };
-  assert.equal(buildRunRecord(base).probe, false); // a measurement unless explicitly marked
+  assert.equal(buildRunRecord(base).probe, false);
   assert.equal(buildRunRecord({ ...base, probe: true }).probe, true);
 });
 
@@ -92,9 +92,9 @@ test('checkPromptHashParity passes when both cells share the same hash per task'
 test('checkPromptHashParity FAILS loudly on a deliberate cross-cell mismatch (spec §2.3)', () => {
   const records = [
     { task: 'T7', cell: 'haiku', prompt_sha256: 'hash-a' },
-    { task: 'T7', cell: 'luna', prompt_sha256: 'hash-b' }, // deliberately different
+    { task: 'T7', cell: 'luna', prompt_sha256: 'hash-b' },
     { task: 'T9', cell: 'haiku', prompt_sha256: 'hash-c' },
-    { task: 'T9', cell: 'luna', prompt_sha256: 'hash-c' }, // this task is fine
+    { task: 'T9', cell: 'luna', prompt_sha256: 'hash-c' },
   ];
   const result = checkPromptHashParity(records);
   assert.equal(result.ok, false);
@@ -103,10 +103,6 @@ test('checkPromptHashParity FAILS loudly on a deliberate cross-cell mismatch (sp
 });
 
 test('checkPromptHashParity catches a rep-to-rep drift the per-cell index used to mask (codex CR)', () => {
-  // Regression: the old byTask[task][cell] = hash indexing kept only the LAST
-  // record per cell. Here rep 2 agrees across cells, so the old code compared
-  // hash-a vs hash-a and reported CLEAN — while rep 1's luna dispatch had in
-  // fact run against a different prompt. Every record must be compared.
   const records = [
     { task: 'T7', cell: 'haiku', rep: 1, prompt_sha256: 'hash-a' },
     { task: 'T7', cell: 'luna', rep: 1, prompt_sha256: 'hash-DRIFTED' },

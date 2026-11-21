@@ -65,15 +65,6 @@ if [ -n "$UNTIL" ]; then
     UNTIL_EPOCH=$(to_epoch "$(printf '%s' "$UNTIL" | cut -c1-10)") || { echo "worker-relaunch: bad --until: $UNTIL" >&2; exit 2; }
 fi
 
-# Coverage: "discovered" is every dated doc in the handover dir, not
-# just the ones the metric reads - so a doc that is not a worker doc (a chief
-# mission, a status note) is counted as skipped with its reason instead of being
-# silently absent from the discovered set.
-# Which docs ARE worker docs is scripts/lib/worker-identity.sh's call (the
-# one derivation, shared with tick.sh), not a local regex: a doc whose worker_label
-# is not N<k> fell back to its whole stem and is skipped as no-worker-token. A
-# successor (legN38b) is the SAME worker relaunched: the metric groups by worker_base,
-# while the parser keeps N38b and N38 apart as the distinct sessions they are.
 # shellcheck source=lib/scorecard-lib.sh
 . "$SCRIPT_DIR/lib/scorecard-lib.sh"
 # shellcheck source=../../../lib/worker-identity.sh
@@ -97,8 +88,6 @@ while IFS= read -r path; do
     doc_epoch=$(to_epoch "$doc_date") || { sc_cov bad-date; continue; }
     [ "$doc_epoch" -ge "$SINCE_EPOCH" ] || { sc_cov out-of-window; continue; }
     if [ -n "$UNTIL_EPOCH" ] && [ "$doc_epoch" -ge "$UNTIL_EPOCH" ]; then sc_cov out-of-window; continue; fi
-    # the greps below silence read errors: an unreadable doc would be counted
-    # parsed with a default run count instead of being named as a loss
     [ -r "$H/$f" ] || { sc_cov unreadable; continue; }
     sc_cov parsed
 

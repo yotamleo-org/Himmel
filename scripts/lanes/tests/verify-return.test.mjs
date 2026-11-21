@@ -5,8 +5,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { verifyReturn, deriveTicket, ledgerRow, ledgerPath } from '../verify-return.mjs';
 
-// Build an exec stub from per-command canned outputs. A missing key throws,
-// mimicking a real execFileSync failure — used by the cannot-evaluate cases.
 function stubExec(responses) {
   return (cmd, args) => {
     const key = `${cmd} ${args.join(' ')}`;
@@ -62,10 +60,6 @@ test('a Tests: trailer also satisfies the receipt check', () => {
   });
   assert.equal(r.verdict, 'PASS');
 });
-
-// A no-upstream failure whose branch has local commits ahead of
-// origin/main gets a push-block hint — the GLM lane cannot push by design, so
-// this is often "the parent hasn't pushed yet", not "the work is missing".
 
 test('no-upstream + branch exists with commits ahead of origin/main: push-block hint', () => {
   const r = verifyReturn('glm/himmel-1640-x', {

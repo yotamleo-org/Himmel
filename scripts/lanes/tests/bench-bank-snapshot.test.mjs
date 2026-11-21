@@ -53,9 +53,6 @@ test('evaluatePreflight REFUSES when a bank reading is null or unreadable', () =
 });
 
 test('evaluatePreflight REFUSES at the codex weekly threshold (spec §7.2: >= 80%), proceeds one point under', () => {
-  // Literal contractual boundary, not the implementation constant — testing
-  // CODEX_WEEKLY_REFUSE_PCT against itself can never catch the threshold
-  // silently drifting to a different value (both sides move together).
   const atThreshold = evaluatePreflight({ codexWeeklyPct: 80, claudeSevenDayPct: 10 });
   assert.equal(atThreshold.proceed, false);
   assert.match(atThreshold.reasons[0], /codex weekly/);
@@ -98,9 +95,6 @@ test('evaluateDelta reports UNMEASURED when a reading is missing (never fabricat
 test('CLI: preflight proceeds (exit 0) when both banks are under threshold', () => {
   const output = [
     bankStatusLine('claudex', 'funded', 'measured weekly used=10% free=90%'),
-    // readClaudeBank labels the seven_day cache field's reading "weekly"
-    // (same string codex's own weekly reading uses, in a different lane's
-    // line) — see CLAUDE_SEVEN_DAY_WINDOW_LABEL in bank-snapshot-core.mjs.
     bankStatusLine('sonnet', 'funded', 'measured 5h used=5% free=95%; weekly used=20% free=80%'),
   ].join('\n');
   const out = execFileSync('node', [CORE, 'preflight'], { input: output, encoding: 'utf8' });
@@ -110,9 +104,6 @@ test('CLI: preflight proceeds (exit 0) when both banks are under threshold', () 
 test('CLI: preflight REFUSES (nonzero exit) when codex weekly breaches', () => {
   const output = [
     bankStatusLine('claudex', 'funded', 'measured weekly used=85% free=15%'),
-    // readClaudeBank labels the seven_day cache field's reading "weekly"
-    // (same string codex's own weekly reading uses, in a different lane's
-    // line) — see CLAUDE_SEVEN_DAY_WINDOW_LABEL in bank-snapshot-core.mjs.
     bankStatusLine('sonnet', 'funded', 'measured 5h used=5% free=95%; weekly used=20% free=80%'),
   ].join('\n');
   assert.throws(() => execFileSync('node', [CORE, 'preflight'], { input: output, encoding: 'utf8' }));
@@ -126,7 +117,7 @@ test('CLI: snapshot writes a {codex,claude} JSON reading and delta applies the s
   const pre = JSON.parse(readFileSync(preFile, 'utf8'));
   assert.equal(pre.codex.usedPct, 10);
 
-  const postOut = bankStatusLine('claudex', 'funded', 'measured weekly used=8% free=92%'); // stale (dropped)
+  const postOut = bankStatusLine('claudex', 'funded', 'measured weekly used=8% free=92%');
   const postFile = join(dir, 'post.json');
   execFileSync('node', [CORE, 'snapshot', '--out', postFile], { input: postOut, encoding: 'utf8' });
 

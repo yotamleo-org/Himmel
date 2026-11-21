@@ -32,14 +32,11 @@ check_contains() {
     esac
 }
 
-# --- operator-window: pre-window and in-window user messages in one
-# chief session; only the in-window message's own timestamp should count.
 export SCORECARD_PROJECTS_DIR="$HERE/fixtures/operator-window"
 
 OUT=$("$SCRIPT" --since 2026-01-15T00:00:00Z --repo yotamleo/Himmel 2>/dev/null)
 check_contains "operator-window: pre-window message excluded from operator_msgs" \
     "$OUT" "chief_sessions=1 operator_msgs=1 per_session=1.0"
-# each metric is followed by the coverage of the input it read
 check_contains "operator-window: transcript coverage triple beside the operator count" \
     "$OUT" "coverage: roots=1 discovered=1 parsed=1 skipped=0"
 check_contains "operator-window: PR coverage beside the followups metric" \
@@ -54,11 +51,6 @@ OUT=$("$SCRIPT" --since 2026-01-15T00:00:00Z --repo yotamleo/Himmel 2>/dev/null)
 check_contains "operator-window-fractional: fractional-second timestamp still counted" \
     "$OUT" "chief_sessions=1 operator_msgs=1 per_session=1.0"
 
-# --- operator-window-malformed: a transcript whose operator-intervention jq
-# filter hits a parse error must be excluded and WARNED about, not silently
-# mismeasured (the old
-# `jq ... 2>/dev/null | wc -l` pipeline reported wc -l's own exit status,
-# masking a jq failure).
 export SCORECARD_PROJECTS_DIR="$HERE/fixtures/operator-window-malformed"
 ERR_OUT=$(mktemp "${TMPDIR:-/tmp}/test-extra-metrics-stderr.XXXXXX")
 OUT=$("$SCRIPT" --since 2026-01-15T00:00:00Z --repo yotamleo/Himmel 2>"$ERR_OUT")
