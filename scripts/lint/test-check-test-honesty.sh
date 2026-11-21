@@ -553,6 +553,277 @@ case_i8_triggers() {
     assert_eq "i8 --check-keys exits 0 with no node_modules" 0 "$HS_RC"
 }
 
+# --- check-test-honesty.sh: steps 1 to 5 -------------------------------------
+
+REAL_NODE=$(command -v node)
+GATE_OUT=""
+GATE_RC=0
+
+# run_gate <dir> <closed:0|1> <path> [ARGS...]: the temp repo's gate copy, cwd at
+# its root, with PATH set to <path>. Sets GATE_OUT (stdout + stderr) and GATE_RC.
+run_gate() {
+    local dir="$1" closed="$2" path="$3"
+    shift 3
+    GATE_OUT=$(
+        cd "$dir" || exit 99
+        unset OXLINT_FAIL_CLOSED
+        if [ "$closed" = 1 ]; then export OXLINT_FAIL_CLOSED=1; fi
+        PATH="$path" "$BASH_ABS" scripts/lint/check-test-honesty.sh "$@" 2>&1 </dev/null
+    )
+    GATE_RC=$?
+}
+
+# mk_tools <dir> <name>...: <dir>/tools holds only the named commands, so a case
+# can leave node or bun off PATH.
+mk_tools() {
+    local dir="$1" name src
+    shift
+    mkdir -p "$dir/tools"
+    for name in "$@"; do
+        src=$(command -v "$name") || continue
+        case "$src" in /*) ln -sf "$src" "$dir/tools/$name" ;; esac
+    done
+}
+
+BASE_TOOLS=(git sha256sum shasum cat cut mkdir rm mktemp dirname basename sed grep tr head sort uname env)
+
+# install_body: stand-in bun body that fills ./node_modules like link_install.
+install_body() {
+    printf "PKG='%s'\n" "$PKG"
+    cat <<'EOS'
+mkdir -p node_modules/.bin
+for e in "$PKG"/node_modules/* "$PKG"/node_modules/.[!.]*; do
+  [ -e "$e" ] || [ -L "$e" ] || continue
+  n=${e##*/}
+  case "$n" in .bin|.lock-sha256) continue ;; esac
+  ln -s "$e" "node_modules/$n"
+done
+ln -s "$PKG/node_modules/.bin/oxlint" node_modules/.bin/oxlint
+EOS
+}
+
+# node_version_stand_in <dir> <version>: reports <version>, runs the real node otherwise.
+node_version_stand_in() {
+    stand_in "$1" node "if [ \"\${1:-}\" = --version ]; then echo v$2; exit 0; fi; exec '$REAL_NODE' \"\$@\""
+}
+
+# edit_pkg <js body over p>: mutate the temp repo's lint package.json.
+edit_pkg() {
+    node -e '
+const fs = require("node:fs");
+const f = process.argv[1];
+const p = JSON.parse(fs.readFileSync(f, "utf8"));
+'"$1"'
+fs.writeFileSync(f, JSON.stringify(p, null, 2) + "\n");
+' "$REPO/scripts/lint/landmines/package.json" </dev/null
+}
+
+calls_count() {
+    if [ -f "$REPO/calls.log" ]; then wc -l < "$REPO/calls.log" | tr -d ' '; else echo 0; fi
+}
+
+case_i3_node() {
+    mk_repo || { fail "i3-node (no temp repo)"; return; }
+    link_install "$REPO"
+    mk_tools "$REPO" "${BASE_TOOLS[@]}" bun
+    run_gate "$REPO" 0 "$REPO/tools"
+    assert_eq "i3-no-node exits 0 locally" 0 "$GATE_RC"
+    assert_has "i3-no-node warns" "WARN" "$GATE_OUT"
+    run_gate "$REPO" 1 "$REPO/tools"
+    assert_eq "i3-no-node exits 1 under OXLINT_FAIL_CLOSED" 1 "$GATE_RC"
+
+    node_version_stand_in "$REPO" 20.0.0
+    run_gate "$REPO" 0 "$REPO/bin:$PATH"
+    assert_eq "i3-node-v20 exits 1" 1 "$GATE_RC"
+    assert_has "i3-node-v20 names the range" "^22.18.0 || >=24.11.0" "$GATE_OUT"
+    node_version_stand_in "$REPO" 24.5.0
+    run_gate "$REPO" 0 "$REPO/bin:$PATH"
+    assert_eq "i3-node-v24.5 exits 1" 1 "$GATE_RC"
+}
+
+case_node_range_within_engines() {
+    local literal out
+    literal=$(sed -n "s/^NODE_RANGE='\\(.*\\)'\$/\\1/p" "$SCRIPT_DIR/check-test-honesty.sh" 2>/dev/null | head -n 1)
+    if [ "$literal" != '^22.18.0 || >=24.11.0' ]; then
+        fail "node-range-within-engines (range literal is '$literal')"
+        return
+    fi
+    out=$(node -e '
+const fs = require("node:fs");
+const [literal, ...files] = process.argv.slice(1);
+const ver = (v) => v.split(".").map(Number);
+const cmp = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+function parts(range) {
+  return range.split("||").map((raw) => {
+    const t = raw.trim();
+    const caret = /^\^([1-9][0-9]*\.[0-9]+\.[0-9]+)$/.exec(t);
+    if (caret) return { caret: true, lo: ver(caret[1]) };
+    const ge = /^>=([0-9]+\.[0-9]+\.[0-9]+)$/.exec(t);
+    if (ge) return { caret: false, lo: ver(ge[1]) };
+    throw new Error("unsupported range form: " + t);
+  });
+}
+const admits = (ps, v) => ps.some((p) => cmp(v, p.lo) >= 0 && (!p.caret || v[0] === p.lo[0]));
+try {
+  const mine = parts(literal);
+  const theirs = files.map((f) => {
+    const n = JSON.parse(fs.readFileSync(f, "utf8")).engines;
+    if (!n || typeof n.node !== "string") throw new Error("no engines.node in " + f);
+    return { f, ps: parts(n.node) };
+  });
+  const tested = ["22.17.0", "22.18.0", "24.10.0", "24.11.0", "26.0.0"];
+  const got = tested.filter((v) => admits(mine, ver(v))).join(",");
+  if (got !== "22.18.0,24.11.0,26.0.0") throw new Error("literal admits " + got);
+  for (const v of tested) {
+    if (!admits(mine, ver(v))) continue;
+    for (const t of theirs) if (!admits(t.ps, ver(v))) throw new Error(v + " admitted by the literal, refused by " + t.f);
+  }
+  process.stdout.write("ok");
+} catch (e) { process.stdout.write("bad: " + e.message); }
+' "$literal" "$PKG/node_modules/oxlint/package.json" "$PKG/node_modules/@interfere/landmines/package.json" \
+        "$PKG/node_modules/@babel/parser/package.json" 2>&1 </dev/null)
+    assert_eq "node-range-within-engines" "ok" "$out"
+}
+
+case_gate_matches_literal() {
+    local v want
+    mk_repo || { fail "gate-matches-literal (no temp repo)"; return; }
+    link_install "$REPO"
+    for v in 22.17.0 22.18.0 24.10.0 24.11.0 26.0.0; do
+        case "$v" in 22.18.0|24.11.0|26.0.0) want=0 ;; *) want=1 ;; esac
+        node_version_stand_in "$REPO" "$v"
+        run_gate "$REPO" 0 "$REPO/bin:$PATH"
+        assert_eq "i3-node-gate-matches-literal $v" "$want" "$GATE_RC"
+    done
+}
+
+case_i3_install() {
+    local want
+    mk_repo || { fail "i3-install (no temp repo)"; return; }
+    mk_tools "$REPO" "${BASE_TOOLS[@]}" node
+    run_gate "$REPO" 0 "$REPO/tools"
+    assert_eq "i3-no-bun-needs-install exits 0 locally" 0 "$GATE_RC"
+    assert_has "i3-no-bun-needs-install warns" "WARN" "$GATE_OUT"
+    run_gate "$REPO" 1 "$REPO/tools"
+    assert_eq "i3-no-bun-needs-install exits 1 under OXLINT_FAIL_CLOSED" 1 "$GATE_RC"
+
+    mk_repo || { fail "i3-no-bun-installed (no temp repo)"; return; }
+    link_install "$REPO"
+    mk_tools "$REPO" "${BASE_TOOLS[@]}" node
+    run_gate "$REPO" 1 "$REPO/tools"
+    assert_eq "i3-no-bun-installed passes under OXLINT_FAIL_CLOSED" 0 "$GATE_RC"
+
+    mk_repo || { fail "i3-marker-written (no temp repo)"; return; }
+    stand_in "$REPO" bun "$(install_body)" record
+    run_gate "$REPO" 1 "$REPO/bin:$PATH"
+    assert_eq "i3-marker-written first run exits 0" 0 "$GATE_RC"
+    assert_eq "i3-marker-written bun called once with the frozen install" "install --frozen-lockfile" "$(cat "$REPO/calls.log" 2>/dev/null)"
+    want=$(sha256_of "$REPO/scripts/lint/landmines/bun.lock")
+    assert_eq "i3-marker-written marker is the lock sha" "$want" "$(cat "$REPO/scripts/lint/landmines/node_modules/.lock-sha256" 2>/dev/null)"
+    run_gate "$REPO" 1 "$REPO/bin:$PATH"
+    assert_eq "i3-marker-written second run exits 0" 0 "$GATE_RC"
+    assert_eq "i3-marker-written second run does not call bun" 1 "$(calls_count)"
+
+    mk_repo || { fail "i3-reinstall (no temp repo)"; return; }
+    link_install "$REPO"
+    printf '\n' >> "$REPO/scripts/lint/landmines/bun.lock"
+    stand_in "$REPO" bun 'exit 0' record
+    run_gate "$REPO" 1 "$REPO/bin:$PATH"
+    assert_eq "i3-reinstall exits 0" 0 "$GATE_RC"
+    assert_eq "i3-reinstall calls bun" "install --frozen-lockfile" "$(cat "$REPO/calls.log" 2>/dev/null)"
+    want=$(sha256_of "$REPO/scripts/lint/landmines/bun.lock")
+    assert_eq "i3-reinstall marker follows the lock" "$want" "$(cat "$REPO/scripts/lint/landmines/node_modules/.lock-sha256" 2>/dev/null)"
+
+    mk_repo || { fail "i3-install-fails (no temp repo)"; return; }
+    stand_in "$REPO" bun 'exit 1' record
+    run_gate "$REPO" 0 "$REPO/bin:$PATH"
+    assert_eq "i3-install-fails exits 1" 1 "$GATE_RC"
+    if [ -e "$REPO/scripts/lint/landmines/node_modules/.lock-sha256" ]; then
+        fail "i3-install-fails writes no marker"
+    else
+        pass "i3-install-fails writes no marker"
+    fi
+}
+
+case_i3_version_mismatch() {
+    local dep from to
+    while read -r dep from to; do
+        mk_repo || { fail "i3-version-mismatch-$dep (no temp repo)"; return; }
+        link_install "$REPO"
+        sed "s/\"$from\"/\"$to\"/" "$REPO/scripts/lint/landmines/package.json" > "$REPO/pkg.tmp"
+        mv "$REPO/pkg.tmp" "$REPO/scripts/lint/landmines/package.json"
+        run_gate "$REPO" 0 "$PATH"
+        assert_eq "i3-version-mismatch-$dep exits 1" 1 "$GATE_RC"
+        assert_has "i3-version-mismatch-$dep prints a version-mismatch line" "version mismatch: $dep" "$GATE_OUT"
+    done <<'EOF'
+oxlint 1.93.0 1.93.1
+@interfere/landmines 0.1.0 0.1.1
+@babel/parser 8.0.4 8.0.5
+EOF
+}
+
+case_f1_resolved() {
+    mk_repo || { fail "f1-resolved (no temp repo)"; return; }
+    link_install "$REPO"
+    run_gate "$REPO" 1 "$PATH"
+    assert_eq "f1-resolved-control exits 0" 0 "$GATE_RC"
+
+    printf '%s\n' 'export default {};' > "$REPO/scripts/lint/landmines/noop.mjs"
+    edit_pkg 'p.name = "@interfere/landmines"; p.exports = { "./testing": "./noop.mjs" };'
+    run_gate "$REPO" 0 "$PATH"
+    assert_eq "f1-resolved-specifier exits 1" 1 "$GATE_RC"
+    assert_has "f1-resolved-specifier is refused by the resolve check" "resolves to" "$GATE_OUT"
+    case "$GATE_OUT" in
+        *"version mismatch"*) fail "f1-resolved-specifier is not a version mismatch" ;;
+        *) pass "f1-resolved-specifier is not a version mismatch" ;;
+    esac
+}
+
+case_f2_tracked_node_modules() {
+    mk_repo || { fail "f2 (no temp repo)"; return; }
+    link_install "$REPO"
+    printf '%s\n' 'x' > "$REPO/scripts/lint/landmines/node_modules/tracked.mjs"
+    git -C "$REPO" add -f scripts/lint/landmines/node_modules/tracked.mjs
+    stand_in "$REPO" bun 'exit 0' record
+    run_gate "$REPO" 0 "$REPO/bin:$PATH"
+    assert_eq "f2-tracked-node-modules exits 1" 1 "$GATE_RC"
+    assert_has "f2-tracked-node-modules names the cause" "tracked files under scripts/lint/landmines/node_modules/" "$GATE_OUT"
+    assert_eq "f2-tracked-node-modules refuses before any install" 0 "$(calls_count)"
+}
+
+case_gate_early_exits() {
+    mk_repo || { fail "gate-early-exits (no temp repo)"; return; }
+    stand_in "$REPO" bun 'exit 0' record
+    run_gate "$REPO" 1 "$REPO/bin:$PATH" --files README.md
+    assert_eq "empty-list-no-install exits 0" 0 "$GATE_RC"
+    assert_has "empty-list-no-install says so" "nothing to lint" "$GATE_OUT"
+    assert_eq "empty-list-no-install leaves calls.log empty" 0 "$(calls_count)"
+    run_gate "$REPO" 1 "$REPO/bin:$PATH" --files
+    assert_eq "empty-list bare --files exits 0" 0 "$GATE_RC"
+    assert_has "empty-list bare --files says so" "nothing to lint" "$GATE_OUT"
+    assert_eq "empty-list bare --files calls no bun" 0 "$(calls_count)"
+
+    edit_cfg 'c.rules["landmines-testing/no-fixed-sleep"][1].allow = { "a/gone.test.ts": 1 };'
+    run_gate "$REPO" 0 "$REPO/bin:$PATH"
+    assert_eq "keys-refused exits 1" 1 "$GATE_RC"
+    assert_has "keys-refused names the key" "orphan allow key" "$GATE_OUT"
+    assert_eq "keys-refused calls no bun" 0 "$(calls_count)"
+    reset_cfg
+
+    run_gate "$REPO" 0 "$REPO/bin:$PATH" --bogus
+    assert_eq "usage error exits 2" 2 "$GATE_RC"
+}
+
+case_i3_real_marker_untouched() {
+    local now
+    if [ -f "$REAL_MARKER" ]; then
+        now="present $(sha256_of "$REAL_MARKER")"
+    else
+        now="absent"
+    fi
+    assert_eq "i3-real-marker-untouched" "$REAL_MARKER_BEFORE" "$now"
+}
+
 case_i4_oxlint_pin_equals_hardening
 case_i5_exact_pins
 case_f1_package_shape
@@ -563,6 +834,15 @@ case_surface_row_missing
 case_i2_keys
 case_i7_directives
 case_i8_triggers
+case_i3_node
+case_node_range_within_engines
+case_gate_matches_literal
+case_i3_install
+case_i3_version_mismatch
+case_f1_resolved
+case_f2_tracked_node_modules
+case_gate_early_exits
+case_i3_real_marker_untouched
 
 echo ""
 echo "$PASSED passed, $FAILED failed"
