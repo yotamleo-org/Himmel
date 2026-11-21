@@ -264,7 +264,7 @@ exists, the code word last.
 | **Admission** | The ledger record that a ticket entered a frozen version, with its gate and who admitted it (`kind: rm-admit`; a chief override is recorded as such). |
 | **Backlog** / **icebox** | Backlog: no version, waiting for planning. Icebox: parked indefinitely in the ICE project and out of every count (`ice-followups.sh`). |
 | **Ad hoc** / **station ad hoc** | Ad hoc: a quick fix for our own setup, filed with no version. Station ad hoc: a reversible change made on the station before its repo fix, recorded under the label `station-adhoc` so the repo fix is never dropped. |
-| **Operator-directed** | Filed on the operator's explicit instruction. Exempt from the follow-up budget. Label `operator-directed`. |
+| **Operator-directed** | Filed on the operator's explicit instruction. Label `operator-directed`. |
 
 ## Industry terms
 
