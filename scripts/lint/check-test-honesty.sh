@@ -27,14 +27,12 @@ refuse() {
     exit 1
 }
 
-# A missing tool that may be skipped locally: WARN and exit 0, or exit 1 in CI.
 fail_open() {
     echo "WARN check-test-honesty: $* (fail-open)" >&2
     [ "${OXLINT_FAIL_CLOSED:-}" = 1 ] && exit 1
     exit 0
 }
 
-# ---- arguments ----------------------------------------------------------------
 files_mode=0
 seed_mode=0
 triggers_mode=0
@@ -61,7 +59,6 @@ case "${1:-}" in
     *) usage ;;
 esac
 
-# ---- 1. repo root -------------------------------------------------------------
 cwd=$(pwd -P)
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null || printf '%s\n' "$cwd")
 if [ -d "$repo_root" ]; then
@@ -69,14 +66,10 @@ if [ -d "$repo_root" ]; then
         repo_root="$canonical_root"
     fi
 fi
-# A resolver may be stubbed or otherwise return a non-ancestor. Refuse before
-# changing directory: linting a different tree is not a successful gate.
 case "$cwd/" in
     "$repo_root/"*) ;;
     *) refuse "cwd $cwd is outside the resolved root $repo_root - refusing to lint an unrelated tree" ;;
 esac
-# A relative --files path names a file from the caller's directory; the lists
-# below run from the root. A path need not exist: a deletion matches nothing.
 cwd_rel=${cwd#"$repo_root"}
 cwd_rel=${cwd_rel#/}
 if [ -n "$cwd_rel" ] && [ "${#paths[@]}" -gt 0 ]; then
@@ -89,14 +82,11 @@ if [ -n "$cwd_rel" ] && [ "${#paths[@]}" -gt 0 ]; then
 fi
 cd "$repo_root" || refuse "cannot enter the resolved root $repo_root"
 
-# ---- 10. triggers -------------------------------------------------------------
-# The surface script owns the regex; it needs no install and no node range.
 if [ "$triggers_mode" = 1 ]; then
     command -v node >/dev/null 2>&1 || refuse "node not found on PATH - cannot print the trigger regex"
     exec node "$SURFACE" --triggers
 fi
 
-# ---- 2. node ------------------------------------------------------------------
 command -v node >/dev/null 2>&1 || fail_open "node not found on PATH - skipping the test-honesty gate"
 node_v=$(node --version 2>/dev/null) || node_v=""
 node_ok=0
@@ -109,13 +99,11 @@ if [[ "$node_v" =~ ^v([0-9]+)\.([0-9]+)\.[0-9]+$ ]]; then
 fi
 [ "$node_ok" = 1 ] || refuse "node '${node_v:-unknown}' is outside $NODE_RANGE"
 
-# ---- 3. config shape and allow keys -------------------------------------------
 if ! keys_out=$(node "$SURFACE" --check-keys 2>&1); then
     printf '%s\n' "$keys_out" >&2
     refuse "config shape or allow keys refused"
 fi
 
-# ---- 4. file list -------------------------------------------------------------
 list_out=""
 if [ "$files_mode" = 0 ]; then
     list_out=$(node "$SURFACE" --list) || refuse "cannot list the test surface"
@@ -137,9 +125,6 @@ if [ "${#files[@]}" -eq 0 ]; then
     exit 0
 fi
 
-# ---- 5. install, versions, resolved plugin ------------------------------------
-# The package directory itself must be a real path inside the repo: a tracked
-# symlink at it, or at a directory above it, would run an unreviewed package.
 pkg_real=$(cd "$PKG_REL" 2>/dev/null && pwd -P) || pkg_real=""
 [ "$pkg_real" = "$repo_root/$PKG_REL" ] || refuse "$PKG_REL is reached through a symlink (it resolves to '${pkg_real:-nothing}') - the lint package must be a real directory in this repo"
 # Both spellings: the slash form misses a tracked symlink named node_modules.
@@ -229,14 +214,11 @@ try {
 EOF
 (cd "$PKG_REL" && node --input-type=module -e "$check_install_js" "$repo_root" </dev/null) || refuse "install not verified - refusing to pass an unevaluated run"
 
-# ---- 6. disable directives ----------------------------------------------------
-# Needs the installed parser from step 5, so it runs only after it.
 if ! dir_out=$(node "$SURFACE" --check-directives "${files[@]}" 2>&1 </dev/null); then
     printf '%s\n' "$dir_out" >&2
     refuse "refused disable directive, or a file that did not parse"
 fi
 
-# ---- 7. oxlint, evaluated -----------------------------------------------------
 tmp_dir=""
 seed_cfg=""
 child=""
@@ -265,8 +247,6 @@ tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/test-honesty.XXXXXX") || refuse "cannot cre
 
 config="$PKG_REL/.oxlintrc.json"
 if [ "$seed_mode" = 1 ]; then
-    # The same config with every allow map emptied, beside the original so the
-    # plugin specifier resolves. Removed by the trap on every way out.
     config="$PKG_REL/.oxlintrc.seed.$$.json"
     seed_cfg="$repo_root/$config"
     node -e '
@@ -285,9 +265,6 @@ wait "$child"
 ox_rc=$?
 child=""
 
-# The run counts only when stdout is the expected JSON for exactly this file
-# list, the exit code agrees with the diagnostics, and each diagnostic names a
-# file, a line and a rule code. Exit 0 clean, 10 findings (printed), 2 unevaluated.
 # The exit code is set, never forced, so a long stdout through a pipe is not cut.
 read -r -d '' eval_js <<'EOF'
 const fs = require("node:fs");
@@ -357,8 +334,6 @@ if [ "$eval_rc" -ne 0 ] && [ "$eval_rc" -ne 10 ]; then
     refuse "the oxlint run could not be evaluated - refusing to pass an unevaluated run"
 fi
 
-# ---- 8. findings --------------------------------------------------------------
-# Printed by the evaluation above, with the stale hint after a stale finding.
 if [ "$seed_mode" = 1 ]; then exit 0; fi
 [ "$eval_rc" -eq 0 ] || exit 1
 echo "test-honesty: clean (${#files[@]} files)"

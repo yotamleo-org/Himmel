@@ -1429,9 +1429,6 @@ jobs:
             bash scripts/hooks/check-oxlint-hardening.sh || rc=1
           fi
           # test-honesty gate
-          # A PR checks its changed files; a change to anything that moves the
-          # gate's verdict, or a trigger list that cannot be read, checks the
-          # whole surface, as does every non-PR event.
           g=2
           if [ "$scope" = files ] && trig=$(node scripts/lint/honesty-surface.mjs --triggers) && [ -n "$trig" ]; then
             g=0

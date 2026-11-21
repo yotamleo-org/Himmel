@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Suite for the test-honesty gate: scripts/lint/check-test-honesty.sh and its
-# pinned lint package. Temp repos get their own node_modules of symlinks into
-# the one real install, so no case writes the shared install or its marker.
 set -uo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
@@ -49,7 +46,6 @@ sha256_of() {
     fi
 }
 
-# Once per suite run, before any case.
 ensure_shared_install() {
     if [ -d "$PKG/node_modules" ]; then
         return 0
@@ -68,8 +64,6 @@ ensure_shared_install() {
     fi
 }
 
-# Makes <dir>/scripts/lint/landmines/node_modules a real directory of symlinks
-# into the real install, with its own marker for the temp bun.lock.
 link_install() {
     local dir="$1" nm entry name
     nm="$dir/scripts/lint/landmines/node_modules"
@@ -85,9 +79,6 @@ link_install() {
     sha256_of "$dir/scripts/lint/landmines/bun.lock" > "$nm/.lock-sha256"
 }
 
-# stand_in <dir> <name> <script> [record]: an executable stand-in. oxlint goes in
-# the temp install's .bin; any other name goes in <dir>/bin for PATH. With a
-# fourth argument the stand-in first appends its argv to <dir>/calls.log.
 stand_in() {
     local dir="$1" name="$2" body="$3" record="${4:-}" target
     if [ "$name" = oxlint ]; then
@@ -108,8 +99,6 @@ stand_in() {
     chmod +x "$target"
 }
 
-# A committed temp repo shaped like the gate's inputs, with the canonical
-# empty-allow config a case may edit.
 new_temp_repo() {
     local dir="$1" src
     git init -q "$dir" || return 1
@@ -148,7 +137,6 @@ EOF
 
 ensure_shared_install
 
-# The real install's marker, as it stood before any case.
 REAL_MARKER="$PKG/node_modules/.lock-sha256"
 if [ -f "$REAL_MARKER" ]; then
     REAL_MARKER_BEFORE="present $(sha256_of "$REAL_MARKER")"
@@ -156,8 +144,6 @@ else
     REAL_MARKER_BEFORE="absent"
 fi
 export REAL_MARKER_BEFORE
-
-# --- cases -------------------------------------------------------------------
 
 case_i4_oxlint_pin_equals_hardening() {
     local want got
@@ -265,9 +251,6 @@ case_harness_smoke() {
     fi
 }
 
-# --- honesty-surface.mjs -----------------------------------------------------
-
-# hs <dir> ARGS...: the surface script with cwd inside the temp repo. Sets HS_OUT, HS_RC.
 hs() {
     local dir="$1"
     shift
@@ -275,20 +258,17 @@ hs() {
     HS_RC=$?
 }
 
-# mk_repo: a fresh committed temp repo in REPO.
 mk_repo() {
     REPO=$(fixture_mktemp_dir) || return 1
     CLEANUP_PATHS+=("$REPO")
     new_temp_repo "$REPO"
 }
 
-# put <relpath> [content]: write a file into REPO.
 put() {
     mkdir -p "$REPO/$(dirname "$1")"
     printf '%s\n' "${2:-x}" > "$REPO/$1"
 }
 
-# edit_cfg <js body over c>: mutate the temp repo's config.
 edit_cfg() {
     node -e '
 const fs = require("node:fs");
@@ -435,7 +415,6 @@ write_tail() {
     printf 'import { it } from "vitest";\nit("x", async () => {\n  %s %s\n});\n' "$SLEEP_LINE" "$2" > "$REPO/$1"
 }
 
-# dir_row <id> <inner|top|tail> <directive> <refuse|pass>
 dir_row() {
     local id="$1" kind="$2" text="$3" want="$4" f="a/dir-$1.test.ts" rc=0
     case "$kind" in
@@ -558,14 +537,10 @@ case_i8_triggers() {
     assert_eq "i8 --check-keys exits 0 with no node_modules" 0 "$HS_RC"
 }
 
-# --- check-test-honesty.sh: steps 1 to 5 -------------------------------------
-
 REAL_NODE=$(command -v node)
 GATE_OUT=""
 GATE_RC=0
 
-# run_gate <dir> <closed:0|1> <path> [ARGS...]: the temp repo's gate copy, cwd at
-# its root, with PATH set to <path>. Sets GATE_OUT (stdout + stderr) and GATE_RC.
 run_gate() {
     local dir="$1" closed="$2" path="$3"
     shift 3
@@ -578,8 +553,6 @@ run_gate() {
     GATE_RC=$?
 }
 
-# mk_tools <dir> <name>...: <dir>/tools holds only the named commands, so a case
-# can leave node or bun off PATH.
 mk_tools() {
     local dir="$1" name src
     shift
@@ -592,7 +565,6 @@ mk_tools() {
 
 BASE_TOOLS=(git sha256sum shasum cat cut mkdir rm mktemp dirname basename sed grep tr head sort uname env)
 
-# install_body: stand-in bun body that fills ./node_modules like link_install.
 install_body() {
     printf "PKG='%s'\n" "$PKG"
     cat <<'EOS'
@@ -607,12 +579,10 @@ ln -s "$PKG/node_modules/.bin/oxlint" node_modules/.bin/oxlint
 EOS
 }
 
-# node_version_stand_in <dir> <version>: reports <version>, runs the real node otherwise.
 node_version_stand_in() {
     stand_in "$1" node "if [ \"\${1:-}\" = --version ]; then echo v$2; exit 0; fi; exec '$REAL_NODE' \"\$@\""
 }
 
-# edit_pkg <js body over p>: mutate the temp repo's lint package.json.
 edit_pkg() {
     node -e '
 const fs = require("node:fs");
@@ -773,8 +743,6 @@ case_package_shape_gate() {
     run_gate "$REPO" 1 "$PATH"
     assert_eq "package-shape-gate control exits 0" 0 "$GATE_RC"
 
-    # The lint package.json itself is held to its exact shape, so a self-reference
-    # redirect (name + exports) is refused at the shape line.
     printf '%s\n' 'export default {};' > "$REPO/scripts/lint/landmines/noop.mjs"
     edit_pkg 'p.name = "@interfere/landmines"; p.exports = { "./testing": "./noop.mjs" };'
     run_gate "$REPO" 0 "$PATH"
@@ -795,9 +763,6 @@ case_package_shape_gate() {
     assert_has "package-shape-gate extra key is refused at the shape line" "lint package.json shape" "$GATE_OUT"
 }
 
-# fake_plugin <exports value for ./testing>: replaces the temp install's plugin
-# with a real directory whose dist/testing.mjs is the real plugin, and whose
-# dist/noop.mjs is a decoy the exports map may point at.
 fake_plugin() {
     local d="$REPO/scripts/lint/landmines/node_modules/@interfere/landmines"
     if [ -L "$REPO/scripts/lint/landmines/node_modules/@interfere" ]; then rm -f -- "$REPO/scripts/lint/landmines/node_modules/@interfere"; fi
@@ -853,7 +818,6 @@ case_node_modules_symlink() {
     link_install "$REPO"
     stand_in "$REPO" bun 'exit 0' record
 
-    # Tracked symlink in the index, real directory on disk: only the index check sees it.
     mv "$nm" "$REPO/fake-nm"
     ln -s ../../../fake-nm "$nm"
     git -C "$REPO" add -f scripts/lint/landmines/node_modules
@@ -863,7 +827,6 @@ case_node_modules_symlink() {
     assert_eq "tracked-node-modules-symlink (index only) exits 1" 1 "$GATE_RC"
     assert_has "tracked-node-modules-symlink (index only) names the cause" "tracked files under scripts/lint/landmines/node_modules/" "$GATE_OUT"
 
-    # Untracked symlink on disk.
     git -C "$REPO" rm -q --cached scripts/lint/landmines/node_modules
     rm -rf -- "$nm"
     ln -s ../../../fake-nm "$nm"
@@ -880,7 +843,6 @@ case_package_dir_symlink() {
     run_gate "$REPO" 1 "$REPO/bin:$PATH"
     assert_eq "package-dir-symlink control exits 0" 0 "$GATE_RC"
 
-    # scripts/lint/landmines itself a committed symlink to a committed package.
     mk_repo || { fail "package-dir-symlink (no temp repo)"; return; }
     git -C "$REPO" mv scripts/lint/landmines scripts/lint/lm-real
     ln -s lm-real "$REPO/scripts/lint/landmines"
@@ -893,7 +855,6 @@ case_package_dir_symlink() {
     assert_has "package-dir-symlink names the cause" "reached through a symlink" "$GATE_OUT"
     assert_eq "package-dir-symlink refuses before any install" 0 "$(calls_count)"
 
-    # A symlink higher up the path is refused the same way.
     mk_repo || { fail "package-dir-symlink-parent (no temp repo)"; return; }
     git -C "$REPO" mv scripts/lint scripts/lint-real
     ln -s lint-real "$REPO/scripts/lint"
@@ -930,8 +891,6 @@ case_gate_early_exits() {
     assert_eq "usage error exits 2" 2 "$GATE_RC"
 }
 
-# --- check-test-honesty.sh: steps 6 to 10 ------------------------------------
-
 CLEAN_PREFIX='test-honesty: clean ('
 HINT_LINE='the entry above is in scripts/lint/landmines/.oxlintrc.json, not .oxlintrc.jsonc'
 
@@ -943,16 +902,12 @@ assert_lacks() {
     esac
 }
 
-# gate_repo <content of a/x.test.mjs>: a fresh committed temp repo with a linked
-# install, whose one default surface file holds <content>.
 gate_repo() {
     mk_repo || return 1
     link_install "$REPO"
     printf '%s\n' "$1" > "$REPO/a/x.test.mjs"
 }
 
-# run_gate_split <dir> <path> ARGS...: like run_gate, with stdout and stderr kept
-# apart in GATE_STDOUT and GATE_STDERR.
 run_gate_split() {
     local dir="$1" path="$2"
     shift 2
@@ -965,13 +920,11 @@ run_gate_split() {
     GATE_STDERR=$(cat "$dir/gate.stderr")
 }
 
-# oxlint_stub <stdout text> <exit code>: a stand-in oxlint printing canned output.
 oxlint_stub() {
     printf '%s\n' "$1" > "$REPO/canned.out"
     stand_in "$REPO" oxlint "cat '$REPO/canned.out'; exit $2"
 }
 
-# node_recorder: a stand-in node that logs its argv, then runs the real node.
 node_recorder() {
     stand_in "$REPO" node "exec '$REAL_NODE' \"\$@\"" record
 }
@@ -984,7 +937,6 @@ catch (e) { process.stdout.write("bad: " + e.message); }
 ' "$1" "$2" </dev/null
 }
 
-# line_of <regex>: the first calls.log line number matching, or empty.
 line_of() {
     grep -n -- "$1" "$REPO/calls.log" 2>/dev/null | head -n 1 | cut -d: -f1
 }
@@ -1105,7 +1057,6 @@ EOF
     assert_has "i3-runner-missing says unevaluated" "unevaluated" "$GATE_OUT"
 }
 
-# A findings list far past a pipe buffer reaches the reader whole.
 case_large_findings_whole() {
     local n
     gate_repo $'import { it } from "vitest";\nit("ok", () => {});' || { fail "large-findings-whole (no temp repo)"; return; }
@@ -1139,8 +1090,6 @@ case_clean_success_line() {
     run_gate "$REPO" 1 "$PATH" --files README.md
     assert_eq "clean-success-line empty list keeps its own line" "check-test-honesty: nothing to lint" "$GATE_OUT"
 
-    # --files paths are relative to the caller's directory, and a path that no
-    # longer exists (a deletion in a PR's changed list) is accepted, matching nothing.
     GATE_OUT=$(cd "$REPO/a" && OXLINT_FAIL_CLOSED=1 "$BASH_ABS" ../scripts/lint/check-test-honesty.sh --files y.test.mjs ./z.test.mjs gone.test.mjs ../README.md 2>&1 </dev/null)
     GATE_RC=$?
     assert_eq "subdir-relative --files exits 0" 0 "$GATE_RC"
@@ -1193,7 +1142,6 @@ case_i3_step_order() {
         "$(grep -c '^scripts/lint/honesty-surface.mjs --check-keys' "$REPO/calls.log")"
 }
 
-# i7_form <id>: sets FORM_KIND and FORM_TEXT for one suppressing form.
 i7_form() {
     case "$1" in
         01) FORM_KIND=inner; FORM_TEXT='// oxlint-disable-next-line landmines-testing/no-fixed-sleep' ;;
@@ -1252,7 +1200,6 @@ case_seed() {
     assert_eq "seed-no-residue no seed config is left" 0 "$(seed_files_left)"
     assert_eq "seed-no-residue git sees no change to the config" "" "$(git -C "$REPO" status --porcelain -- scripts/lint/landmines/.oxlintrc.json)"
 
-    # The printed maps, pasted into the config, make the next gate run clean.
     printf '%s\n' "$GATE_STDOUT" > "$REPO/seed.json"
     maps="$REPO/seed.json"
     edit_cfg 'const m = JSON.parse(require("node:fs").readFileSync("'"$maps"'", "utf8")); for (const [k, v] of Object.entries(m)) c.rules[k][1].allow = v;'
@@ -1262,14 +1209,12 @@ case_seed() {
     assert_lacks "seed-roundtrip reports no sleep, timeout or poll" "This file now has" "$GATE_OUT"
     assert_lacks "seed-roundtrip reports no unallowed sleep" "Replace this fixed sleep" "$GATE_OUT"
 
-    # A seed run that cannot be evaluated prints no maps and leaves nothing behind.
     stand_in "$REPO" oxlint 'exit 2'
     run_gate_split "$REPO" "$PATH" --seed
     assert_eq "seed-unevaluated exits 1" 1 "$GATE_RC"
     assert_eq "seed-unevaluated prints no maps" "" "$GATE_STDOUT"
     assert_eq "seed-unevaluated leaves no seed config" 0 "$(seed_files_left)"
 
-    # Only the sleep, timeout and poll diagnostics are counted, never a retry or a stale one.
     mk_repo || { fail "seed-excludes (no temp repo)"; return; }
     link_install "$REPO"
     cat > "$REPO/canned.out" <<'EOF'
@@ -1289,7 +1234,6 @@ EOF
     expect='{"landmines-testing/no-fixed-sleep":{"a/x.test.mjs":1},"landmines-testing/no-flake-masking":{"a/x.test.mjs":1},"landmines-testing/no-unsignaled-poll":{"a/x.test.mjs":1}}'
     assert_eq "seed-excludes counts one per rule, never a retry or a stale line" "ok" "$(json_equal "$GATE_STDOUT" "$expect")"
 
-    # An empty surface seeds three empty maps and installs nothing.
     mk_repo || { fail "seed-empty (no temp repo)"; return; }
     git -C "$REPO" rm -q a/x.test.mjs
     stand_in "$REPO" bun 'exit 0' record
@@ -1300,9 +1244,6 @@ EOF
     assert_eq "seed-empty-surface runs no install" 0 "$(calls_count)"
 }
 
-# seed_signal <INT|TERM> <expected exit>: the gate is signalled while oxlint runs
-# under --seed. A stand-in oxlint announces itself on a FIFO the suite holds open,
-# then blocks on a second FIFO that nothing ever writes to.
 seed_signal() {
     local sig="$1" want="$2" runner gate_pid msg before tmp
     mk_repo || { fail "seed-signal-$sig (no temp repo)"; return; }
@@ -1333,7 +1274,6 @@ seed_signal() {
     kill "-$sig" "$gate_pid"
     if ! read -r -t 60 -u 4 msg; then msg="timeout"; fi
     assert_eq "seed-signal-$sig gate exits through its trap" "gate-exited $want" "$msg"
-    # Judged before the teardown below, which would hide a stray process.
     if kill -0 "$(cat "$REPO/oxlint.pid")" 2>/dev/null; then
         fail "seed-signal-$sig leaves no oxlint process behind"
     else
@@ -1385,7 +1325,6 @@ inhook && /^[[:space:]]+files:[[:space:]]/ { sub(/^[[:space:]]+files:[[:space:]]
     assert_eq "i8-precommit-equals-triggers" "$want" "$got"
 }
 
-# The seeded maps in the real config: the only case that reads them.
 case_seeded_config_keys_live() {
     local out rc
     out=$(cd "$REPO_ROOT" && node scripts/lint/honesty-surface.mjs --check-keys 2>&1 </dev/null)
@@ -1394,15 +1333,10 @@ case_seeded_config_keys_live() {
     if [ "$rc" -ne 0 ]; then echo "     $out"; fi
 }
 
-# ci_block: the test-honesty block of the lint step in the CI workflow, markers included.
 ci_block() {
     sed -n '/^ *# test-honesty gate$/,/^ *# end test-honesty gate$/p' "$REPO_ROOT/.github/workflows/ci.yml"
 }
 
-# ci_run <scope> <changed-file> [path...]: runs the extracted block in REPO the way
-# the step's shell does (errexit, pipefail), with the step's variables defined
-# first. The gate in REPO is a stand-in that records its argv. Sets CI_RC (the
-# driver's exit) and CI_CALLS (the recorded gate calls).
 ci_run() {
     local scope="$1" changed="$2"
     shift 2
@@ -1421,9 +1355,6 @@ EOS
     CI_CALLS=$(cat "$REPO/calls.log" 2>/dev/null)
 }
 
-# ci_block_placed <workflow file>: "ok" when the start marker comes after a
-# `done < "$changed"` line inside the lint step, with no step boundary between
-# them, so the block sees the files branch's "$@". Otherwise a reason.
 ci_block_placed() {
     awk '
 /^ *- name: skill size \+ oxlint complexity\/hardening$/ { step = NR; done_at = 0; next }
@@ -1497,7 +1428,6 @@ EOS
     GATE_EXIT=1 ci_run all x
     assert_has "ci-scope-branches a failing full gate sets rc=1" "rc=1" "$(cat "$REPO/driver.out")"
 
-    # A trigger list that cannot be computed or matched must widen to the full surface.
     stand_in "$REPO" node 'exit 1'
     CI_PATH="$REPO/bin:$PATH" ci_run files changed.lst scripts/foo.test.ts
     assert_eq "ci-scope-branches a failing --triggers runs the full surface" "argc=0 argv=" "$CI_CALLS"

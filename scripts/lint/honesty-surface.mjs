@@ -1,7 +1,3 @@
-// The test surface of the test-honesty gate, its config-shape and allow-key
-// check, the directive check and the trigger regexes. `--list`, `--check-keys`,
-// `--triggers` and `--precommit-files` need no install; `--check-directives`
-// loads @babel/parser from the lint package.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -211,7 +207,6 @@ function precommitFiles() {
   return `^(${triggers()}|.*\\.(${exts}))$`;
 }
 
-// Surface paths narrowed to the given ones, or the whole surface when none are given.
 function selected(root, paths) {
   const files = surfaceFiles(root);
   if (!paths.length) return files;
