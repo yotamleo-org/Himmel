@@ -274,6 +274,11 @@ Under 10 % remaining a field ends !LOW. Absent when a budget cannot be read or n
 read token is configured; the verbose view prints them as "rest main:" and
 "rest read:" lines. Advisory: not in chief-wait's action key.
 
+reads=main:core<n>+gql<n>,read:core<n>+gql<n>, right after rest-read: this tick's own
+read attempts through gh-read.sh (its scripts' reads included), per token and bucket; a read
+retried on main counts on both. Absent when the count file cannot be made. Advisory: not in
+chief-wait's action key.
+
 orphans=<owner>:<count>/<oldest>m is the last field: shell-tool
 wrappers older than TICK_ORPHAN_MIN minutes (default 30), per owning session
 name (`orphan` = no live claude session above it), read-only via
@@ -1939,6 +1944,8 @@ if [ "$ready_mode" -eq 1 ]; then
     ready_mismatch_scan "$ready_dir" || { echo "tick: no READY data under '$ready_dir'" >&2; exit 1; }
     exit 0
 fi
+tick_reads_file="$(mktemp "${TICK_TMPDIR:-${TMPDIR:-/tmp}}/tick-reads.XXXXXX" 2>/dev/null)" || tick_reads_file=""  # swallow-ok: no file leaves reads= absent
+if [ -n "$tick_reads_file" ]; then export GH_READ_USED_FILE="$tick_reads_file"; else unset GH_READ_USED_FILE; fi
 hb=skip
 if [ -n "$console_doc" ] && [ -n "$TOKEN" ]; then
     if bash "$REPO/scripts/handover/queue-lock.sh" heartbeat "$console_doc" "$TOKEN" >/dev/null 2>&1; then
@@ -4922,6 +4929,12 @@ fi
 deadline_over=""
 [ "$SECONDS" -lt "$tick_deadline" ] || deadline_over="$((SECONDS - tick_deadline))s"
 
+reads_summary=""
+if [ -n "$tick_reads_file" ]; then
+    reads_summary="$(awk '{ n[$1 "." $2]++ } END { printf "main:core%d+gql%d,read:core%d+gql%d", n["main.core"], n["main.graphql"], n["read.core"], n["read.graphql"] }' "$tick_reads_file" 2>/dev/null)" || reads_summary=""  # swallow-ok: an unreadable count file leaves reads= absent
+    rm -f "$tick_reads_file"
+fi
+
 if [ "$verbose" -eq 1 ]; then
     printf 'TICK %s\n' "$clock"
     printf 'heartbeat: %s\n' "$hb"
@@ -5070,6 +5083,7 @@ else
     compact_field gql "$gql"
     compact_field rest-main "$(rest_compact "$rest_main_line")"
     compact_field rest-read "$(rest_compact "$rest_read_line")"
+    compact_field reads "$reads_summary"
     compact_field quota "$quota_items"
     compact_field orphans "$orphans"
     compact_field nonces "$nonces_summary"

@@ -870,6 +870,14 @@ case "$(grep -c -E '(^| )graphql( |$)|rateLimit|api -i user|api rate_limit' "$W/
     0) pass 'a fresh quota.tsv costs the tick no graphql or budget call of its own' ;;
     *) fail "the tick spent a budget call with a fresh quota.tsv (log: $(tr '\n' '|' < "$W/qstub.log"))" ;;
 esac
+reads_of() { printf '%s' "$1" | sed -n -E 's/.* reads=([^ ]*).*/\1/p'; }
+contains 'reads= sits right after the rest budget fields' "$q_seed" " rest-main=4444/5000@$q_hm reads="
+q_reads="$(reads_of "$q_ok")"
+if printf '%s' "$q_reads" | grep -qE '^main:core[0-9]+\+gql[1-9][0-9]*,read:core0\+gql0$'; then pass 'the tick prints its own per-token read count (no read token: on main)'; else fail "reads= with no read token (got '$q_reads')"; fi
+mkdir -p "$W/qenv" && printf 'himmel_github_token_vm2=readfixture0123\n' > "$W/qenv/.env" && : > "$W/outer-used"
+q_reads="$(reads_of "$(q_tick "$W/q-rd" GH_READ_ENV_ROOT="$W/qenv" GH_READ_USED_FILE="$W/outer-used")")"
+if printf '%s' "$q_reads" | grep -qE '^main:core0\+gql0,read:core[0-9]+\+gql[1-9][0-9]*$'; then pass 'the tick prints its own per-token read count (read token: on read)'; else fail "reads= with a read token (got '$q_reads')"; fi
+same "a caller's own GH_READ_USED_FILE gets none of the tick's rows" "$(cat "$W/outer-used" 2>/dev/null)" ''
 : > "$W/qstub.log"
 q_t0=$SECONDS
 q_hung="$(q_tick "$W/q-hung" QSTUB_MODE=hung GHQ_PROBE_TIMEOUT=2)"

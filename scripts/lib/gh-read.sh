@@ -26,6 +26,9 @@
 #                             A timed-out read exits 124 and is not retried
 #   GH_READ_REFUSED_FILE      a read that finally fails on a rate limit or a timeout
 #                             appends "<main|read> <graphql|core> rate-limit|stall"
+#   GH_READ_USED_FILE         an EXISTING file: every read attempt that ran appends
+#                             "<main|read> <graphql|core>" (a retry on main is a second
+#                             row); an absent file is never created
 #   GH_READ_NO_MAIN_FALLBACK  1 = a rate-limited read is not retried on main (scans);
 #                             a bad, missing or 404 token still falls back
 #   GH_READ_OFF               1 = every read fails at once (124) with a stall row;
@@ -139,6 +142,15 @@ _ghr_note() {
     return 0
 }
 
+_ghr_used() {
+    local tok="$1" bucket
+    shift
+    [ -n "${GH_READ_USED_FILE:-}" ] && [ -f "$GH_READ_USED_FILE" ] || return 0
+    bucket=$( . "$_GHR_HERE/gh-quota.sh" 2>/dev/null && ghq_bucket_of "$@") || bucket=""
+    { printf '%s %s\n' "$tok" "${bucket:-graphql}" >> "$GH_READ_USED_FILE"; } 2>/dev/null
+    return 0
+}
+
 gh_read() {
     if ! _ghr_is_read "$@"; then
         gh "$@"
@@ -155,20 +167,22 @@ gh_read() {
     fi
     if [ -z "$_GHR_TOK" ]; then
         _ghr_warn "$_GHR_WHY"
-        errf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || { _ghr_run "$@"; return $?; }
+        errf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || { _ghr_used main "$@"; _ghr_run "$@"; return $?; }
         _ghr_run "$@" 2>"$errf"
         rc=$?
+        _ghr_used main "$@"
         cat "$errf" >&2  # read-sink-ok: our own mktemp buffer
         _ghr_note main "$rc" "$errf" "$@"
         rm -f "$errf"
         return "$rc"
     fi
-    errf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || { _ghr_run "$@"; return $?; }
+    errf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || { _ghr_used main "$@"; _ghr_run "$@"; return $?; }
     # a refused call can already have printed pages or an error body: hold stdout so
     # a refused attempt is discarded instead of doubled by the retry
-    outf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || { rm -f "$errf"; _ghr_run "$@"; return $?; }
+    outf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || { rm -f "$errf"; _ghr_used main "$@"; _ghr_run "$@"; return $?; }
     GH_TOKEN="$_GHR_TOK" _ghr_run "$@" >"$outf" 2>"$errf"
     rc=$?
+    _ghr_used read "$@"
     # a timeout (124, 137 after -k) is not retried: a hung GitHub would cost twice
     if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ] && [ "$rc" -ne 137 ] \
         && { _ghr_rl "$errf" || grep -qiE 'bad credentials|requires authentication|not accessible by (personal access )?token|HTTP (401|403|404)|Could not resolve to a (Repository|PullRequest)' "$errf"; } \
@@ -177,6 +191,7 @@ gh_read() {
         _ghr_warn "read token refused"
         _ghr_run "$@" 2>"$errf"
         rc=$?
+        _ghr_used main "$@"
         cat "$errf" >&2  # read-sink-ok: our own mktemp buffer
         _ghr_note main "$rc" "$errf" "$@"
         rm -f "$errf"
