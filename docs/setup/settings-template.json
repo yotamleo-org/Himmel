@@ -76,6 +76,7 @@
     "hermes-artifact-design@himmel": false,
     "anthropic-design-skills@himmel": false,
     "hallmark@himmel": false,
+    "unslop-ui@himmel": false,
     "shadcn-mcp@himmel": false,
     "emilkowalski-skills@himmel": false,
     "context7@claude-plugins-official": false,
@@ -198,6 +199,9 @@
     },
     "design-dna@himmel": {
       "neededBy": "Design kit via the `design-reference` lane profile (scripts/lanes/plugin-profiles.json). Installed but disabled by default - reachable via `/profile enable design-dna@himmel`."
+    },
+    "unslop-ui@himmel": {
+      "neededBy": "Design kit via the `design` lane profile (scripts/lanes/plugin-profiles.json). Installed but disabled by default - reachable via `/profile enable unslop-ui@himmel`."
     },
     "anydesign@himmel": {
       "neededBy": "Design kit via the `design-reference` lane profile (scripts/lanes/plugin-profiles.json). Installed but disabled by default - reachable via `/profile enable anydesign@himmel`."

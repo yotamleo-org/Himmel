@@ -245,6 +245,7 @@
     "hermes-artifact-design@himmel",
     "anthropic-design-skills@himmel",
     "hallmark@himmel",
+    "unslop-ui@himmel",
     "shadcn-mcp@himmel",
     "emilkowalski-skills@himmel",
     "pstack@himmel",
@@ -282,6 +283,7 @@
         "taste-skill-core@himmel",
         "shadcn-mcp@himmel",
         "builder-visual@himmel",
+        "unslop-ui@himmel",
         "context7@claude-plugins-official"
       ],
       "contextBudget": 50000,

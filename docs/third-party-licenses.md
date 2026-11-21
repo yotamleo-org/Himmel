@@ -465,6 +465,7 @@ Regenerate and check with `node scripts/docs/generate-credits.mjs` and
 | plugin:hermes-artifact-design | — | — | MIT | — |
 | plugin:anthropic-design-skills | — | — | Mixed: Apache-2.0 design skills; source-available docx/pdf/pptx/xlsx (per-skill LICENSE.txt) | — |
 | plugin:hallmark | — | — | MIT | — |
+| plugin:unslop-ui | — | — | CC-BY-4.0 | — |
 | plugin:shadcn-mcp | https://github.com/shadcn-ui/ui | shadcn / yotamleo (wrapper) | — | [Runtime pin](../marketplace/plugins/shadcn-mcp/.mcp.json) |
 | plugin:graphify | https://github.com/Graphify-Labs/graphify | Graphify-Labs / yotamleo (wrapper) | — | [Package pin](../scripts/lib/graphify-bin.sh) |
 | skill:unslop | https://github.com/cursor/plugins/tree/main/pstack | Lauren Tan | MIT | 99743e9c151c8537cbbf1f98bb38f34ef3368453 |

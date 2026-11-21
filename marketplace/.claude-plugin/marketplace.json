@@ -449,6 +449,21 @@
       "homepage": "https://github.com/zanwei/design-dna"
     },
     {
+      "name": "unslop-ui",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/heydamir/unslop.git",
+        "sha": "620163eedb3529d9cd23a3994ed8d287d06f760d"
+      },
+      "description": "[heydamir/unslop, CC-BY-4.0, vendor + attribution only, no carried delta] Turns vibecoded, AI-looking UI into a designed interface with its own character (one skill, upstream plugin manifest). Explicit HTTPS git url, pinned to a full sha 620163eedb35 per himmel supply-chain policy. Design kit, design profile.",
+      "strict": true,
+      "author": {
+        "name": "heydamir",
+        "url": "https://github.com/heydamir"
+      },
+      "homepage": "https://github.com/heydamir/unslop"
+    },
+    {
       "name": "anydesign",
       "source": {
         "source": "url",

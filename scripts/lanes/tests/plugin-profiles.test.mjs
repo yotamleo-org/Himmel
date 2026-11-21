@@ -712,7 +712,7 @@ test('find-docs@himmel is enabled only in the user profile', () => {
 // `--profile design`.
 const DESIGN_CORE = ['plannotator-effective-html@himmel', 'frontend-design@claude-plugins-official',
   'ui-ux-pro-max@himmel', 'impeccable@himmel', 'taste-skill-core@himmel', 'shadcn-mcp@himmel', 'builder-visual@himmel',
-  'context7@claude-plugins-official', 'domain-modeling@himmel'];
+  'context7@claude-plugins-official', 'domain-modeling@himmel', 'unslop-ui@himmel'];
 const DESIGN_ADDONS = {
   'design-motion': ['emilkowalski-skills@himmel', 'animejs-skills@himmel', 'gsap-skills@himmel',
     'lottie-motion-design@himmel', 'motion-lexicon@himmel', 'playground@claude-plugins-official'],
@@ -726,7 +726,7 @@ const DESIGN_ADDONS = {
   'design-trial': ['hallmark@himmel'],
 };
 
-test('design profile enables exactly the 9-member core on top of base (PR2b)', () => {
+test('design profile enables exactly the 10-member core on top of base (PR2b)', () => {
   assert.deepEqual([...REG.profiles.design.enable].sort(), [...DESIGN_CORE].sort());
 });
 
