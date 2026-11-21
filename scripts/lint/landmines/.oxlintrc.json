@@ -3,8 +3,79 @@
   "categories": { "correctness": "off", "suspicious": "off", "pedantic": "off", "perf": "off", "style": "off", "restriction": "off", "nursery": "off" },
   "options": { "respectEslintDisableDirectives": false },
   "rules": {
-    "landmines-testing/no-fixed-sleep": ["error", { "allow": {} }],
-    "landmines-testing/no-flake-masking": ["error", { "allow": {} }],
-    "landmines-testing/no-unsignaled-poll": ["error", { "allow": {} }]
+    "landmines-testing/no-fixed-sleep": [
+      "error",
+      {
+        "allow": {
+          "scripts/api-lane/bulk-call.test.mjs": 8,
+          "scripts/api-lane/claude-api.test.mjs": 5,
+          "scripts/config-ui/tests/actions.test.ts": 4,
+          "scripts/config-ui/tests/agui-fleet-graph.test.ts": 1,
+          "scripts/config-ui/tests/agui-fleet-load.test.ts": 4,
+          "scripts/config-ui/tests/agui-fleet.test.ts": 1,
+          "scripts/config-ui/tests/bank-route.test.ts": 1,
+          "scripts/config-ui/tests/board.test.ts": 1,
+          "scripts/config-ui/tests/lock.test.ts": 1,
+          "scripts/config-ui/tests/read-only.test.ts": 1,
+          "scripts/config-ui/tests/ui-verb.test.ts": 1,
+          "scripts/himmel-run/tests/index-store.test.ts": 2,
+          "scripts/hooks/stop-queue.test.mjs": 2,
+          "scripts/lanes/tests/kill-tree.test.mjs": 3,
+          "scripts/lib/settings-lock.test.mjs": 1,
+          "scripts/peer-bridge/reader.test.ts": 1,
+          "scripts/telegram/bus.test.ts": 1,
+          "scripts/telegram/poller.test.ts": 7,
+          "scripts/telegram/triage.test.ts": 1
+        }
+      }
+    ],
+    "landmines-testing/no-flake-masking": [
+      "error",
+      {
+        "allow": {
+          "marketplace/plugins/luna-correlate/tests/stdio.test.ts": 1,
+          "marketplace/plugins/telegram-himmel/tests/poller-gate-shape.test.ts": 2,
+          "marketplace/plugins/telegram-himmel/tests/stdio.test.ts": 1,
+          "plugins/himmel-gh/tests/init-flow.test.mjs": 1,
+          "scripts/config-ui/tests/agui-fleet-load.test.ts": 7,
+          "scripts/config-ui/tests/feed-background.test.ts": 7,
+          "scripts/config-ui/tests/health-route.test.ts": 1,
+          "scripts/config-ui/tests/lock.test.ts": 1,
+          "scripts/config-ui/tests/server-idle-callback.test.ts": 2,
+          "scripts/config-ui/tests/slow.test.ts": 4,
+          "scripts/config-ui/tests/toggles.test.ts": 4,
+          "scripts/handover/chief-kit/critic-policy.test.ts": 16,
+          "scripts/himmel-run/tests/lock.test.ts": 1,
+          "scripts/jira/live/jira-live.test.ts": 1,
+          "scripts/jira/src/client.test.ts": 16,
+          "scripts/jira/src/commands/release.test.ts": 4,
+          "scripts/jira/src/release/engine.test.ts": 5,
+          "scripts/luna-vitals/connectors/pull-cadence.test.ts": 3,
+          "scripts/peer-bridge/envelope.test.ts": 1,
+          "scripts/peer-bridge/gate.test.ts": 1,
+          "scripts/peer-bridge/poller.test.ts": 2,
+          "scripts/peer-bridge/resolve.test.ts": 3,
+          "scripts/telegram/bus.test.ts": 1,
+          "scripts/telegram/chief-route.test.ts": 32,
+          "scripts/telegram/compose-brief.test.ts": 1,
+          "scripts/telegram/config-restore-route.test.ts": 1,
+          "scripts/telegram/fixture-repo.test.ts": 3,
+          "scripts/telegram/huge-diff-guard.test.ts": 24,
+          "scripts/telegram/spawn-claudex.test.ts": 23,
+          "scripts/telegram/spawn-dispatch-state.test.ts": 11,
+          "scripts/telegram/transcribe.test.ts": 1,
+          "scripts/where-are-we/tests/append.concurrency.test.mjs": 1
+        }
+      }
+    ],
+    "landmines-testing/no-unsignaled-poll": [
+      "error",
+      {
+        "allow": {
+          "scripts/config-ui/tests/e2e/agui.e2e.ts": 2,
+          "scripts/config-ui/tests/e2e/board.e2e.ts": 8
+        }
+      }
+    ]
   }
 }

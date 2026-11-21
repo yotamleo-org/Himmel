@@ -1337,6 +1337,106 @@ case_triggers_and_usage() {
     assert_eq "gate-triggers without node exits 1" 1 "$GATE_RC"
 }
 
+case_i8_precommit_equals_triggers() {
+    local want got
+    want=$(cd "$REPO_ROOT" && node scripts/lint/honesty-surface.mjs --precommit-files 2>&1 </dev/null)
+    got=$(awk '
+/^[[:space:]]*-[[:space:]]+id:/ { inhook = ($0 ~ /id:[[:space:]]*test-honesty-ratchet[[:space:]]*$/); next }
+inhook && /^[[:space:]]+files:[[:space:]]/ { sub(/^[[:space:]]+files:[[:space:]]+/, ""); print; exit }
+' "$REPO_ROOT/.pre-commit-config.yaml")
+    if [ -z "$got" ]; then
+        fail "i8-precommit-equals-triggers (hook test-honesty-ratchet or its files: is missing)"
+        return
+    fi
+    assert_eq "i8-precommit-equals-triggers" "$want" "$got"
+}
+
+# The seeded maps in the real config: the only case that reads them.
+case_seeded_config_keys_live() {
+    local out rc
+    out=$(cd "$REPO_ROOT" && node scripts/lint/honesty-surface.mjs --check-keys 2>&1 </dev/null)
+    rc=$?
+    assert_eq "seeded-config-keys-live" 0 "$rc"
+    if [ "$rc" -ne 0 ]; then echo "     $out"; fi
+}
+
+# ci_block: the test-honesty block of the lint step in the CI workflow, markers included.
+ci_block() {
+    sed -n '/^ *# test-honesty gate$/,/^ *# end test-honesty gate$/p' "$REPO_ROOT/.github/workflows/ci.yml"
+}
+
+# ci_run <scope> <changed-file> [path...]: runs the extracted block in REPO the way
+# the step's shell does (errexit, pipefail), with the step's variables defined
+# first. The gate in REPO is a stand-in that records its argv. Sets CI_RC (the
+# driver's exit) and CI_CALLS (the recorded gate calls).
+ci_run() {
+    local scope="$1" changed="$2"
+    shift 2
+    ci_block > "$REPO/block.sh"
+    cat > "$REPO/driver.sh" <<'EOS'
+scope=$1
+changed=$2
+shift 2
+rc=0
+. ./block.sh
+echo "rc=$rc"
+EOS
+    rm -f "$REPO/calls.log"
+    (cd "$REPO" && PATH="${CI_PATH:-$PATH}" "$BASH_ABS" -eo pipefail driver.sh "$scope" "$changed" "$@" >driver.out 2>&1 </dev/null)
+    CI_RC=$?
+    CI_CALLS=$(cat "$REPO/calls.log" 2>/dev/null)
+}
+
+case_ci_scope_branches() {
+    local n_start n_end
+    n_start=$(grep -c '^ *# test-honesty gate$' "$REPO_ROOT/.github/workflows/ci.yml")
+    n_end=$(grep -c '^ *# end test-honesty gate$' "$REPO_ROOT/.github/workflows/ci.yml")
+    assert_eq "ci-scope-branches has one start marker" 1 "$n_start"
+    assert_eq "ci-scope-branches has one end marker" 1 "$n_end"
+    mk_repo || { fail "ci-scope-branches (no temp repo)"; return; }
+    run_gate "$REPO" 1 "$PATH" --files README.md
+    assert_eq "ci-scope-branches real gate on README.md exits 0" 0 "$GATE_RC"
+    assert_has "ci-scope-branches real gate on README.md says nothing to lint" "nothing to lint" "$GATE_OUT"
+
+    cat > "$REPO/scripts/lint/check-test-honesty.sh" <<'EOS'
+printf 'argc=%s argv=%s\n' "$#" "$*" >> calls.log
+exit "${GATE_EXIT:-0}"
+EOS
+    printf 'scripts/lint/ticket-ref-allow.tsv\0' > "$REPO/changed.lst"
+    ci_run files changed.lst scripts/lint/ticket-ref-allow.tsv
+    assert_eq "ci-scope-branches ticket-ref-allow.tsv runs the full surface" "argc=0 argv=" "$CI_CALLS"
+    printf 'scripts/lint/landmines/bun.lock\0scripts/foo.test.ts\0' > "$REPO/changed.lst"
+    ci_run files changed.lst scripts/lint/landmines/bun.lock scripts/foo.test.ts
+    assert_eq "ci-scope-branches a trigger among others runs the full surface" "argc=0 argv=" "$CI_CALLS"
+    printf 'scripts/foo.test.ts\0' > "$REPO/changed.lst"
+    ci_run files changed.lst scripts/foo.test.ts
+    assert_eq "ci-scope-branches a test file runs --files" "argc=2 argv=--files scripts/foo.test.ts" "$CI_CALLS"
+    printf 'README.md\0' > "$REPO/changed.lst"
+    ci_run files changed.lst README.md
+    assert_eq "ci-scope-branches README.md runs --files" "argc=2 argv=--files README.md" "$CI_CALLS"
+    assert_eq "ci-scope-branches README.md block exits 0" 0 "$CI_RC"
+    ci_run all "$REPO/no-such-changed-list" README.md
+    assert_eq "ci-scope-branches scope=all runs the full surface" "argc=0 argv=" "$CI_CALLS"
+    assert_has "ci-scope-branches scope=all does not read the list" "rc=0" "$(cat "$REPO/driver.out")"
+
+    printf 'scripts/foo.test.ts\0' > "$REPO/changed.lst"
+    GATE_EXIT=1 ci_run files changed.lst scripts/foo.test.ts
+    assert_has "ci-scope-branches a failing gate sets rc=1" "rc=1" "$(cat "$REPO/driver.out")"
+    GATE_EXIT=1 ci_run all x
+    assert_has "ci-scope-branches a failing full gate sets rc=1" "rc=1" "$(cat "$REPO/driver.out")"
+
+    # A trigger list that cannot be computed or matched must widen to the full surface.
+    stand_in "$REPO" node 'exit 1'
+    CI_PATH="$REPO/bin:$PATH" ci_run files changed.lst scripts/foo.test.ts
+    assert_eq "ci-scope-branches a failing --triggers runs the full surface" "argc=0 argv=" "$CI_CALLS"
+    stand_in "$REPO" node 'echo "("'
+    CI_PATH="$REPO/bin:$PATH" ci_run files changed.lst scripts/foo.test.ts
+    assert_eq "ci-scope-branches an invalid trigger regex runs the full surface" "argc=0 argv=" "$CI_CALLS"
+    stand_in "$REPO" node 'exit 0'
+    CI_PATH="$REPO/bin:$PATH" ci_run files changed.lst scripts/foo.test.ts
+    assert_eq "ci-scope-branches an empty trigger list runs the full surface" "argc=0 argv=" "$CI_CALLS"
+}
+
 case_i3_real_marker_untouched() {
     local now
     if [ -f "$REAL_MARKER" ]; then
@@ -1377,6 +1477,9 @@ case_i7_through_gate
 case_seed
 case_seed_signals
 case_triggers_and_usage
+case_i8_precommit_equals_triggers
+case_seeded_config_keys_live
+case_ci_scope_branches
 case_i3_real_marker_untouched
 
 echo ""
