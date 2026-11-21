@@ -69,6 +69,10 @@ printf '%s https://example.invalid/issues/7 caps the page at 100\necho u\n' "$HA
 mkrepo
 printf '%s shellcheck disable=SC2086\necho x\n' "$HASH" >> "$R/src/a.sh"; stage; want "suppression directive" 0
 mkrepo
+printf 'export const id = setInterval(tick, 50); // t13b-ok: cleared by stop()\n' > "$R/src/n.ts"; stage; want "a lint marker whose name has a digit" 0
+mkrepo
+printf 'export const id = setInterval(tick, 50); // cleared by stop()\n' > "$R/src/n.ts"; stage; want "the same line without the marker is refused" 1
+mkrepo
 printf '/** Returns the sum. */\nexport const f = (a, b) => a + b;\n' > "$R/src/n.mjs"; stage; want "doc block in a new file" 0
 mkrepo
 printf '%s!/usr/bin/env bash\n%s n.sh: a new tool\n%s Usage: n.sh\n\necho n\n' "$HASH" "$HASH" "$HASH" > "$R/src/n.sh"; stage; want "file header in a new file" 0
