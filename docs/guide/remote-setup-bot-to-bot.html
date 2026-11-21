@@ -477,7 +477,7 @@
     ta.style.opacity = '0';
     document.body.appendChild(ta);
     ta.select();
-    try { document.execCommand('copy'); done(); } catch (e) { /* the text stays selectable by hand */ }
+    try { if (document.execCommand('copy')) done(); } catch (e) { /* the text stays selectable by hand */ }
     document.body.removeChild(ta);
   }
   var blocks = document.querySelectorAll('.cmd:not(.out)');
