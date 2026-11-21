@@ -157,4 +157,5 @@ function main() {
   console.error('usage: api-roles.mjs accounts <kind> | walk graphify | check | write');
   process.exitCode = 2;
 }
-if (process.argv[1] && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])) main();
+const isEntry = () => { try { return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]); } catch { return false; } };
+if (process.argv[1] && isEntry()) main();
