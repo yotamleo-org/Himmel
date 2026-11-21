@@ -1838,7 +1838,6 @@ else
     printf 'SKIP - 9885 gone: unsearchable parent (root searches any directory)\n'
 fi
 
-# A failed cursor write gives one diagnostic for the sweep, with unknown rows kept.
 cat > "$W/gcwritefail.py" <<'PY'
 import errno, importlib.util, sys
 spec = importlib.util.spec_from_file_location("holds", sys.argv[1])
