@@ -3,9 +3,9 @@
 // decision 525 exactly; a broken map only takes away widening, it never refuses more and never touches
 // config.json. This module is the one owner of reading, validating and writing the file; it caches
 // nothing, so a fixed file takes effect on the next call.
-import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ACCOUNTS, configPathFor, configuredLetters } from './api-credit-state.mjs';
 
 // The only kinds with an auto caller. probe and other are never roles (a probe names its account; other
@@ -157,4 +157,4 @@ function main() {
   console.error('usage: api-roles.mjs accounts <kind> | walk graphify | check | write');
   process.exitCode = 2;
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main();
+if (process.argv[1] && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])) main();
