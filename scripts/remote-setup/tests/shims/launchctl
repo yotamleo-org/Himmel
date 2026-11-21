@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Test shim for launchctl. A loaded job is $RST/units/<label>.loaded; calls go to $RST/units.log.
+# A job with $RST/units/<label>.bootoutfail refuses to boot out; one with .startfail refuses to bootstrap.
 RST=${RST:?RST must point at the test dir}
 printf 'launchctl %s\n' "$*" >> "$RST/units.log"
 mkdir -p "$RST/units"
@@ -12,6 +13,7 @@ case "$verb" in
         ;;
     bootout)
         label=${2##*/}
+        [ -f "$RST/units/$label.bootoutfail" ] && exit 5
         rm -f "$RST/units/$label.loaded"
         exit 0
         ;;

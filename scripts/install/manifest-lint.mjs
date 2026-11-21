@@ -226,7 +226,7 @@ const KINDS = ['hook', 'plugin', 'dep', 'wiring', 'vault', 'scheduler', 'lane', 
 // added to INSTALL_TYPES/INSTALL_TARGETS so its install descriptor can
 // dispatch to install-stack.sh (install-engine.js's buildEntry()
 // 'observability' case).
-const PROBE_TYPES = ['file-exists', 'git-hooks', 'settings-key', 'settings-hooks', 'cmd:has_qmd', 'qmd-index', 'qmd-daemon', 'mcp-registered', 'handover-dir', 'dep', 'cmd:has_hermes', 'cmd:is_himmel_dev', 'telegram-access', 'cmd:codex_provisioned', 'cmd:cadence_armed', 'cmd:guardrail_block_status', 'cmd:hermes_checkout', 'cmd:telegram_getme', 'cmd:whisper_ready', 'cmd:statechart_ready', 'cmd:python_interpreter', 'distinct-tokens', 'luna-sources', 'cadence-coherence', 'cadence-runs', 'phi-coherence', 'engine-allowlist', 'bridge-health', 'bridge-persistence', 'observability-stack', 'observability-grafana']; // t13b-ok: probe type names only, qmd-daemon is a manifest probe id
+const PROBE_TYPES = ['file-exists', 'git-hooks', 'settings-key', 'settings-hooks', 'cmd:has_qmd', 'qmd-index', 'qmd-daemon', 'mcp-registered', 'handover-dir', 'dep', 'cmd:has_hermes', 'cmd:is_himmel_dev', 'telegram-access', 'cmd:codex_provisioned', 'cmd:cadence_armed', 'cmd:guardrail_block_status', 'cmd:hermes_checkout', 'cmd:telegram_getme', 'cmd:whisper_ready', 'cmd:statechart_ready', 'cmd:python_interpreter', 'distinct-tokens', 'luna-sources', 'cadence-coherence', 'cadence-runs', 'phi-coherence', 'engine-allowlist', 'bridge-health', 'bridge-persistence', 'remote-peer', 'observability-stack', 'observability-grafana']; // t13b-ok: probe type names only, qmd-daemon is a manifest probe id
 const ITEM_KEYS = ['id', 'kind', 'scopes', 'profiles', 'deps', 'probe'];
 // Optional schema-v2 consumer keys. Permitted by the
 // exact-key check but not required — items authored under schemaVersion:1
@@ -577,6 +577,10 @@ function checkProbeShape(probe, label, errors) {
       // names/helpers from scripts/himmelctl/lib/bridge-persistence.js
       // directly, fixed conventions, not per-item configuration (same shape
       // as phi-coherence above).
+      reportExtra([]);
+      break;
+    }
+    case 'remote-peer': {
       reportExtra([]);
       break;
     }

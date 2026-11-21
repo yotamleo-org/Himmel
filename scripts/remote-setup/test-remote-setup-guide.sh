@@ -109,7 +109,7 @@ done_lines() {
 helper_done_regexes() {
     local tpl
     grep -o 'rs_done "[^"]*"' "$HERE/remote-setup.sh" | sed 's/^rs_done "//; s/"$//' | while IFS= read -r tpl; do
-        printf '^DONE: %s$\n' "$(printf '%s' "$tpl" | sed -e 's#[][\.*^$()+?{}|/]#\\&#g' -e 's#\\\$RS_BOT_USER#[A-Za-z0-9_]+#g' -e 's#\\\$RS_BOT_ID#[0-9]+#g')"
+        printf '^DONE: %s$\n' "$(printf '%s' "$tpl" | sed -e 's#[][\.*^$()+?{}|/]#\\&#g' -e 's#\\\$RS_BOT_USER#[A-Za-z0-9_]+#g' -e 's#\\\$RS_BOT_ID#[0-9]+#g' -e 's#\\\$names#[a-z0-9][a-z0-9, -]*#g' -e 's#\\\$name#[a-z0-9][a-z0-9-]*#g')"
     done
 }
 
@@ -246,6 +246,73 @@ t_guide_lint_catches_placeholder_outside_terminal_sections() {
     lint_fails guide_lint_catches_an_unclosed_fence "$p" "never closed"
 }
 
+# fix_phrases <page>: the first-column phrase of each row of a FIX table, cut where a placeholder starts.
+fix_phrases() {
+    sed -n 's/^| `\([^`]*\)` |.*/\1/p' "$1" | sed -e 's/ *\.\.\..*$//' -e 's/ N .*$//' | grep -v '^$'
+}
+
+# fix_missing <page> [source...]: the FIX-table phrases that no line of the helper can print (the helper's
+# own sources unless some are given).
+fix_missing() {
+    local page=$1 phrase missing="" code
+    shift
+    [ $# -gt 0 ] || set -- "$HERE/remote-setup.sh" "$HERE/lib.sh"
+    # code only: a whole-line comment and a trailing "  # note" are not something the helper prints
+    code=$(cat "$@" | sed -e '/^[[:space:]]*#/d' -e 's/[[:space:]]#[[:space:]].*$//') # read-sink-ok: reads only the helper's own sources, which the suite passes in itself
+    while IFS= read -r phrase; do
+        [ -n "$phrase" ] || continue
+        printf '%s\n' "$code" | grep -qF -- "$phrase" || missing="$missing [$phrase]"
+    done <<EOF
+$(fix_phrases "$page")
+EOF
+    printf '%s' "$missing"
+}
+
+t_guide_fix_rows_exist_in_helper() {
+    local missing n p
+    n=$(fix_phrases "$PAGE" | grep -c .)
+    missing=$(fix_missing "$PAGE")
+    if [ "$n" -gt 0 ] && [ -z "$missing" ]; then
+        ok "guide_fix_rows_exist_in_helper ($n rows)"
+    else
+        bad "guide_fix_rows_exist_in_helper: $n rows on the page, not in the helper:$missing"
+    fi
+    p=$(fixture fix-drift '| The line says | What to do |' '|---|---|' '| `no helper prints this phrase` | Do something. |')
+    if [ -n "$(fix_missing "$p")" ]; then ok guide_fix_rows_control_catches_a_drifted_row; else bad "guide_fix_rows_control: a phrase nothing prints passed"; fi
+    # a phrase that survives only in a comment is not printed by anything
+    printf '%s\n' '# no helper prints this phrase' 'rs_fix "something else"' > "$WORK/src-comment-only.sh"
+    printf '%s\n' 'rs_fix "no helper prints this phrase: do it" # a trailing note' > "$WORK/src-code.sh"
+    if [ -n "$(fix_missing "$p" "$WORK/src-comment-only.sh")" ]; then ok guide_fix_rows_control_rejects_a_comment_only_phrase; else bad "guide_fix_rows_control: a phrase found only in a comment passed"; fi
+    if [ -z "$(fix_missing "$p" "$WORK/src-code.sh")" ]; then ok guide_fix_rows_control_accepts_a_phrase_in_code; else bad "guide_fix_rows_control: a phrase in an rs_fix line was not found"; fi
+}
+
+t_guide_part_4_is_written() {
+    local sec missing="" w prev=0 ln order_ok=1
+    sec=$(awk '/<a id="part-4">/ {on = 1; next} /^## Check everything/ {on = 0} on' "$PAGE")
+    for w in 'Bot-to-Bot mode' 'Group Privacy' 'Group type' 'Permissions' 'Add Members' 'Administrators' '`hello`' 'peer --remove' 'peer --replace' 'run the same command once' 'chief-to-chief' 'never post' 'DONE: peer'; do
+        case "$sec" in *"$w"*) ;; *) if [ "$w" != 'never post' ]; then missing="$missing [$w]"; fi ;; esac
+    done
+    case "$sec" in *'arrives in a later update'*) missing="$missing [still a stub]" ;; esac
+    for w in 'Group type' 'Permissions' 'Add Members' 'Administrators' 'send the word'; do
+        ln=$(printf '%s\n' "$sec" | grep -n -- "$w" | head -n 1 | cut -d: -f1)
+        if [ -z "$ln" ] || [ "$ln" -le "$prev" ]; then order_ok=0; fi
+        prev=${ln:-0}
+    done
+    if [ -z "$missing" ] && [ "$order_ok" = 1 ]; then ok guide_part_4_is_written_in_order; else bad "guide_part_4_is_written_in_order: missing:$missing in order: $order_ok"; fi
+}
+
+# The pointer in peer-bridge.md names the manual steps as the way to customize the allowlist and caps,
+# not as the same procedure: the guided command authorizes the peer bot only.
+t_peer_bridge_pointer_does_not_call_the_manual_steps_equivalent() {
+    local line
+    line=$(grep -F 'Part 4 of the remote setup guide' "$REPO/docs/internals/peer-bridge.md" | head -n 1)
+    case "$line" in
+        *'same steps by hand'*) bad "peer_bridge_pointer: calls the manual steps the same as the guided command" ;;
+        *'alternative'*'customize'*) ok peer_bridge_pointer_names_the_manual_steps_as_the_alternative ;;
+        *) bad "peer_bridge_pointer: does not name the manual steps as the alternative to customize the allowlist or caps: $line" ;;
+    esac
+}
+
 if [ "${1:-}" = --lint ]; then
     if [ -z "${2:-}" ] || [ ! -f "$2" ]; then
         echo "usage: test-remote-setup-guide.sh [--lint FILE]" >&2
@@ -264,5 +331,8 @@ t_guide_commands_parse_in_bash_zsh_fish
 t_guide_lint_fails_without_fish_in_ci
 t_guide_done_lines_match_helper
 t_guide_lint_catches_placeholder_outside_terminal_sections
+t_guide_fix_rows_exist_in_helper
+t_guide_part_4_is_written
+t_peer_bridge_pointer_does_not_call_the_manual_steps_equivalent
 printf '%s passed, %s failed\n' "$PASS" "$FAILN"
 [ "$FAILN" -eq 0 ]

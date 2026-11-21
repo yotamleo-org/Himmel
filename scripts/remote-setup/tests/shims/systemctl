@@ -1,15 +1,23 @@
 #!/usr/bin/env bash
 # Test shim for systemctl. Unit state lives in $RST/units/<unit>.active|.enabled, every call
 # is logged to $RST/units.log. A unit with $RST/units/<unit>.startfail refuses to start.
+# enable/disable/restart/daemon-reload are understood; enable --now also starts the unit and disable --now
+# also stops it (without --now the running state is left alone, as the real systemctl does).
+# A unit with $RST/units/<unit>.stopfail refuses to stop or disable; $RST/units/daemon-reload.fail makes daemon-reload fail.
 RST=${RST:?RST must point at the test dir}
 printf 'systemctl %s\n' "$*" >> "$RST/units.log"
 mkdir -p "$RST/units"
-args=("$@")
-[ "${args[0]:-}" = "--user" ] && args=("${args[@]:1}")
+args=()
+now=0
+for a in "$@"; do
+    case "$a" in
+        --now) now=1 ;;
+        --user | --quiet) ;;
+        *) args[${#args[@]}]=$a ;;
+    esac
+done
 verb=${args[0]:-}
 unit=${args[1]:-}
-# --quiet may sit between the verb and the unit
-[ "$unit" = "--quiet" ] && unit=${args[2]:-}
 case "$verb" in
     is-active)
         [ -f "$RST/units/$unit.active" ] && exit 0
@@ -20,12 +28,31 @@ case "$verb" in
         exit 1
         ;;
     stop)
+        [ -f "$RST/units/$unit.stopfail" ] && exit 1
         rm -f "$RST/units/$unit.active"
         exit 0
         ;;
-    start)
+    start | restart)
         [ -f "$RST/units/$unit.startfail" ] && exit 1
         : > "$RST/units/$unit.active"
+        exit 0
+        ;;
+    enable)
+        : > "$RST/units/$unit.enabled"
+        if [ "$now" = 1 ]; then
+            [ -f "$RST/units/$unit.startfail" ] && exit 1
+            : > "$RST/units/$unit.active"
+        fi
+        exit 0
+        ;;
+    disable)
+        [ -f "$RST/units/$unit.stopfail" ] && exit 1
+        rm -f "$RST/units/$unit.enabled"
+        if [ "$now" = 1 ]; then rm -f "$RST/units/$unit.active"; fi
+        exit 0
+        ;;
+    daemon-reload) # t13b-ok: test shim case pattern for systemctl daemon-reload, runs nothing
+        [ -f "$RST/units/daemon-reload.fail" ] && exit 1 # t13b-ok: test shim fails a faked daemon-reload on request, runs nothing
         exit 0
         ;;
     *)
