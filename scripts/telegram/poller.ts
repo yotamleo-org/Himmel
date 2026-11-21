@@ -6,7 +6,7 @@ import { homedir, tmpdir } from "node:os";
 import { currentNs, hostNsFile } from "../jira/src/release/fence-ancestry";
 import { appendLine, appendOutboxLine, atomicWrite, bridgeRoot, ensureSession, readMeta, writeMeta, sessionDir, readNewLines, peekNewLines, commitCursorPos, repairCursorBeyondEof, truncateFullyConsumed, rotateConsumedLedger, type Meta, type OnCursorReset } from "./bus";
 import { classify, isTicketKey, type Route } from "./router";
-import { routeToConsole, routeFleetCommand, routeApprove, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, owedSendReceipt, owedReceiptSnapshot, withOwedOutboxLock, makeChiefTap, type OwedReceipt, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
+import { routeToConsole, routeFleetCommand, routeApprove, staleConsoleCommand, consoleReplyTarget, consoleInboxPath, rememberConsoleReply, owedSendReceipt, owedReceiptSnapshot, withOwedOutboxLock, makeChiefTap, type OwedReceipt, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
 import { dispatchAutoAction, describeEnabledOps, KNOWN_OPS, CONFIRM_OPS, BREAK_GLASS_OPS, appendAuditLine, type RunScriptFn, type AuditFields } from "./auto-action";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getUpdates, getMe, sendMessage, sendDocument, sendChatAction, answerCallbackQuery, getFile, downloadFile, redactChatId } from "./telegram-api";
@@ -1144,7 +1144,7 @@ export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDo
           let out: { text?: string; console?: string; request_id?: string; request_hash?: string; reply_to_message_id?: number; markup?: object; document_path?: string; caption?: string; via?: unknown; sha256?: unknown } | null = null;
           try { out = JSON.parse(ln); } catch {}
           if (out && (out.request_id !== undefined || out.request_hash !== undefined)) {
-            if (!(typeof out.console === "string" && out.console && typeof out.request_id === "string" && /^[a-f0-9]{64}-[0-9]+$/.test(out.request_id)
+            if (!(typeof out.console === "string" && consoleInboxPath(root, out.console) && typeof out.request_id === "string" && /^[a-f0-9]{64}-[0-9]+$/.test(out.request_id)
                 && typeof out.request_hash === "string" && /^[a-f0-9]{64}$/.test(out.request_hash) && typeof out.text === "string")) {
               blocked = true;
               logRedacted("[poller] owed row needs reconciliation at byte " + pos + " of " + file);

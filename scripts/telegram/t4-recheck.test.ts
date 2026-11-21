@@ -320,7 +320,7 @@ test('X01-5: an unreadable replies folder is held for reconciliation, not read a
 });
 
 test('X01-8: an owed row with a damaged id or no frozen hash is held, not sent as an ordinary reply', async () => {
-  for (const damage of [{ request_id: 'damaged' }, { request_hash: undefined }]) {
+  for (const damage of [{ request_id: 'damaged' }, { request_hash: undefined }, { console: '../bad' }]) {
     const f = fixture();
     await reply(f, 'k8', 'please sign HIMMEL-80 today');
     const line = JSON.stringify({ ...rows(f)[0], ...damage }) + '\n';
