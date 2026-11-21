@@ -4193,11 +4193,13 @@ function probeRemotePeer(item, ctx) {
   const probeArgs = platform === 'darwin'
     ? ['launchctl', ['print', `gui/${process.getuid()}/${REMOTE_PEER_LABEL}`]]
     : ['systemctl', ['--user', 'is-active', REMOTE_PEER_UNIT]];
-  const r = spawnProbeSync(probeArgs[0], probeArgs[1], { env, encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'ignore', 'ignore'] });
+  const r = spawnProbeSync(probeArgs[0], probeArgs[1], { env, encoding: 'utf8', timeout: 5000, stdio: ['ignore', platform === 'darwin' ? 'pipe' : 'ignore', 'ignore'] });
   if (r.error || r.status === null) {
     return { actual: 'degraded', detail: 'the peer poller state could not be read (systemctl or launchctl did not answer)' };
   }
-  if (r.status === 0) {
+  // launchctl print exits 0 for a job that is loaded, running or not; only a running one lists a pid.
+  const running = platform === 'darwin' ? /^\s*pid = [0-9]+\s*$/m.test(String(r.stdout || '')) : true;
+  if (r.status === 0 && running) {
     return { actual: 'present', detail: names.map((n) => `${n}: set up, poller running`).join('; ') };
   }
   return { actual: 'degraded', detail: names.map((n) => `${n}: poller stopped`).join('; ') };

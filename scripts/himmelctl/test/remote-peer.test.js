@@ -22,12 +22,13 @@ const LABEL = 'com.himmel.peer-bridge';
 
 function fixture() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'remote-peer-'));
-  const f = { dir, home: path.join(dir, 'home'), bin: path.join(dir, 'bin'), active: path.join(dir, 'active') };
+  const f = { dir, home: path.join(dir, 'home'), bin: path.join(dir, 'bin'), active: path.join(dir, 'active'), loaded: path.join(dir, 'loaded') };
   fs.mkdirSync(path.join(f.home, '.himmel', 'remote-setup'), { recursive: true });
   fs.mkdirSync(f.bin, { recursive: true });
   const stub = (name, body) => fs.writeFileSync(path.join(f.bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
   stub('systemctl', `[ "$1 $2 $3" = "--user is-active ${UNIT}" ] || exit 1\n[ -f "${f.active}" ] && { echo active; exit 0; }\necho inactive\nexit 3`);
-  stub('launchctl', `[ "$1" = print ] || exit 1\n[ -f "${f.active}" ] && exit 0\nexit 113`);
+  // launchctl print exits 0 for a loaded job; only a running one prints a pid
+  stub('launchctl', `[ "$1" = print ] || exit 1\n[ -f "${f.active}" ] && { printf 'job = {\\n\\tstate = running\\n\\tpid = 4242\\n}\\n'; exit 0; }\n[ -f "${f.loaded}" ] && { printf 'job = {\\n\\tstate = not running\\n}\\n'; exit 0; }\nexit 113`);
   f.env = Object.assign({}, process.env, { HOME: f.home, PATH: `${f.bin}${path.delimiter}${process.env.PATH}` });
   delete f.env.CLAUDECODE;
   f.setPeers = (peers) => fs.writeFileSync(path.join(f.home, '.himmel', 'remote-setup', 'peers-confirmed.json'), JSON.stringify({ peers }));
@@ -39,6 +40,7 @@ function fixture() {
     fs.writeFileSync(p, 'unit\n');
   };
   f.setActive = (on) => { if (on) fs.writeFileSync(f.active, ''); else fs.rmSync(f.active, { force: true }); };
+  f.setLoaded = (on) => { if (on) fs.writeFileSync(f.loaded, ''); else fs.rmSync(f.loaded, { force: true }); };
   return f;
 }
 
@@ -107,6 +109,20 @@ test('remote_peer_darwin_reads_launchctl', () => {
   const r = run(f, 'darwin');
   assert.equal(r.actual, 'degraded');
   assert.equal(r.detail, 'goomal: poller stopped');
+});
+
+test('remote_peer_darwin_a_loaded_job_without_a_process_is_stopped', () => {
+  const f = fixture();
+  f.setPeers([peer('goomal')]);
+  f.setUnitFile('darwin');
+  f.setActive(false);
+  f.setLoaded(true);
+  const r = run(f, 'darwin');
+  assert.equal(r.actual, 'degraded', 'launchctl print exits 0 for a loaded job, running or not');
+  assert.equal(r.detail, 'goomal: poller stopped');
+  // control: a job with a running process is present
+  f.setActive(true);
+  assert.equal(run(f, 'darwin').actual, 'present');
 });
 
 test('remote_peer_several_peers_list_each_and_the_worst_state_wins', () => {
