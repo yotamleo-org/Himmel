@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkWords, decisionsDirFor, GLOSS_OPENERS, resolveDecision } from './verbatim.js';
+import { checkWords, decisionsDirFor, GLOSS_OPENERS, namesKey, resolveDecision } from './verbatim.js';
 
 const FILE = 'Operator, verbatim:\n\n"Approved one more round"\n\nAnswering the ask on HIMMEL-1: stop and park.\n';
 
@@ -83,5 +83,38 @@ describe('resolveDecision', () => {
 
   it('decisionsDirFor is the bucket specs/decisions two levels above the release dir', () => {
     expect(decisionsDirFor('/b/user/repo/release/v1.1.3')).toBe('/b/user/repo/specs/decisions');
+  });
+});
+
+describe('namesKey', () => {
+  const K = 'HIMMEL-10477';
+  const bare = { bare: true };
+
+  it('namesKey accepts 10477 and HIMMEL-10477 for HIMMEL-10477 and refuses PR 10477, decision 10477, #10477, SALUS-10477 and 110477', () => {
+    expect(namesKey('ship 10477 now', K, bare)).toBe(true);
+    expect(namesKey('ship HIMMEL-10477 now', K, bare)).toBe(true);
+    for (const w of ['merge PR 10477', 'per decision 10477', 'see #10477', 'ship SALUS-10477', 'ship 110477']) {
+      expect(namesKey(w, K, bare), w).toBe(false);
+    }
+  });
+
+  it('bare: false accepts only the full key', () => {
+    expect(namesKey('ship HIMMEL-10477 now', K, { bare: false })).toBe(true);
+    expect(namesKey('ship 10477 now', K, { bare: false })).toBe(false);
+    expect(namesKey('ship HIMMEL-104770', K, { bare: false })).toBe(false);
+    expect(namesKey('ship XHIMMEL-10477', K, { bare: false })).toBe(false);
+  });
+
+  it('the excluded prefixes ignore spaces and case', () => {
+    for (const w of ['pr 10477', 'PR10477', 'v 10477', 'V10477', 'pull 10477', 'Decision10477', '#  10477']) {
+      expect(namesKey(w, K, bare), w).toBe(false);
+    }
+    expect(namesKey('PR 5 and 10477', K, bare)).toBe(true);
+    expect(namesKey('dev 10477', K, bare)).toBe(true);
+  });
+
+  it('the key parts are escaped', () => {
+    expect(namesKey('ship AXB-1', 'A.B-1', bare)).toBe(false);
+    expect(namesKey('ship A.B-1', 'A.B-1', bare)).toBe(true);
   });
 });
