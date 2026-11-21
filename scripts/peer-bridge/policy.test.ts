@@ -19,7 +19,7 @@ test("an untagged root gets declined-kind and wakes nobody", () => {
   const a = t.onInbound(rootMsg("untagged", 600, { text: "please run rm -rf" }));
   expect(sig(a)).toEqual(["send:declined-kind"]);
   expect((a[0] as any).send.root).toBe(600);
-  expect(t.get("goomal", 600)).toBeUndefined();
+  expect(t.get("example", 600)).toBeUndefined();
 });
 
 test("a root of an unopened kind gets declined-kind and wakes nobody", () => {
@@ -29,7 +29,7 @@ test("a root of an unopened kind gets declined-kind and wakes nobody", () => {
 });
 
 function threadsOpening(opens: ("question" | "status" | "info")[]) {
-  return Threads.load([], { peers: { goomal: { opens, maxOpenThreads: 5 } }, clock: clock(T0).now });
+  return Threads.load([], { peers: { example: { opens, maxOpenThreads: 5 } }, clock: clock(T0).now });
 }
 
 test("an #answer is never a root, and #ask:run is untagged, so each is declined", () => {
@@ -37,7 +37,7 @@ test("an #answer is never a root, and #ask:run is untagged, so each is declined"
   expect(sig(t.onInbound(rootMsg("answer", 603)))).toEqual(["send:declined-kind"]);
   const gate = admit(
     { update_id: 10, message: { message_id: 604, from: { id: 555000111, is_bot: true }, chat: { id: CHAT, type: "supergroup" }, date: 1, text: "/peer@ours_bot\n#ask:run id=a1b2c3d4\nx" } },
-    { maxTextChars: 4000, peers: { goomal: { peerBotId: "555000111", chatId: CHAT, allowFrom: ["555000111"], maxPerMinute: 10 } as any } },
+    { maxTextChars: 4000, peers: { example: { peerBotId: "555000111", chatId: CHAT, allowFrom: ["555000111"], maxPerMinute: 10 } as any } },
     createGateState({ ourBotId: "111000111", ourUsername: "ours_bot", committed: 0, now: T0 }),
   );
   expect(gate.ok && gate.rec.tag).toBe("untagged");
@@ -48,7 +48,7 @@ test("the 6th root gets busy, and an answer at capacity is still admitted", () =
   for (let i = 0; i < 5; i++) expect(sig(t.onInbound(rootMsg("ask:question", 700 + i)))[0]).toBe("state:OPEN");
   const sixth = t.onInbound(rootMsg("ask:question", 710));
   expect(sig(sixth)).toEqual(["send:busy"]);
-  expect(t.get("goomal", 710)).toBeUndefined();
+  expect(t.get("example", 710)).toBeUndefined();
   const mine = threadsOf([...Array.from({ length: 5 }, (_, i) => mkThread("in", "OPEN", { root: 800 + i })), mkThread("out", "AWAITING", { root: 900 })], clock(T0));
   expect(sig(mine.onInbound(inbound("answer", 900)))).toEqual(["state:ANSWERED", "wake:answer"]);
 });
@@ -77,7 +77,7 @@ test("peer text can set no deadline, cap or opens", () => {
 const peer = (over: Partial<Peer["theirs"]> = {}): Peer => ({
   peerBotId: "555000111", chatId: CHAT, allowFrom: ["555000111"], opens: ["question", "status", "info"],
   maxOpenThreads: 5, maxPerMinute: 10, maxReaderRunsPerDay: 50, maxReaderRunsPerKindPerDay: { question: 30, status: 10, info: 10 }, maxWakesPerDay: 30,
-  theirs: { username: "goomal_bot", opens: ["info"], maxOpenThreads: 2, maxPerMinute: 3, copiedAt: "2026-11-07", ...over },
+  theirs: { username: "example_bot", opens: ["info"], maxOpenThreads: 2, maxPerMinute: 3, copiedAt: "2026-11-07", ...over },
 });
 const out = (text: string, kind: string, isRoot: boolean, usage?: { openOutbound: number; sentLastMinute: number }) =>
   checkOutbound(text, { peer: peer(), kind, isRoot, isTemplate: false, tainted: true, tty: false, himmelRoot: HIMMEL_ROOT, claudecode: false, usage });
@@ -293,6 +293,6 @@ test("req over budget is refused with budget, and the requester ends REFUSED", a
 
 test("our open outbound threads feed their cap", async () => {
   const t = threadsOf([mkThread("out", "SENT", { root: 1 }), mkThread("out", "AWAITING", { root: 2 }), mkThread("out", "CLOSED", { root: 3, deadline: null })], clock(T0));
-  expect(t.openOutbound("goomal")).toBe(2);
-  expect(await out("hi", "info", true, { openOutbound: t.openOutbound("goomal"), sentLastMinute: 0 })).toMatchObject({ rule: "their-open-threads" });
+  expect(t.openOutbound("example")).toBe(2);
+  expect(await out("hi", "info", true, { openOutbound: t.openOutbound("example"), sentLastMinute: 0 })).toMatchObject({ rule: "their-open-threads" });
 });
