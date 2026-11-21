@@ -40,6 +40,8 @@ if [ -f "$STUB/tick.burn" ]; then i=0; while [ "$i" -lt 300000 ]; do i=$((i + 1)
 if [ -f "$STUB/tick.ignoreterm" ]; then trap '' TERM; sleep 20; exit 0; fi
 # tick.failafter: prints its line, then fails (a tick that dies mid-run).
 if [ -f "$STUB/tick.failafter" ]; then cat "$STUB/tick.line"; exit 1; fi
+# tick.hook: one script the tick runs once mid-sample, as a worker writing its doc while a real tick runs.
+if [ -f "$STUB/tick.hook" ]; then bash "$STUB/tick.hook"; rm -f "$STUB/tick.hook"; fi
 # tick.blip: served for exactly one sample, then gone.
 if [ -f "$STUB/tick.blip" ]; then cat "$STUB/tick.blip"; rm -f "$STUB/tick.blip"; exit 0; fi
 # tick.churn: every sample serves a new prs= value (a busy repo's PR set).
@@ -1707,6 +1709,32 @@ start "$I" "$WORK/wr10.out" --doc "$WD" --workers-from "$WM"
 wait_exit "$WPID"
 check "(wr10) and a re-arm does not wake for it again" "running|" "$rc|$(cat "$WORK/wr10.out")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+cat > "$STUB/we-refuse.sh" <<'EOF'
+#!/usr/bin/env bash
+cat >> "$STUB/we.calls"
+echo 'auto-go: step lock-failed rc=3 held'; exit 10
+EOF
+export CHIEF_WAIT_WORKER_EVENT="$STUB/we-refuse.sh"
+WH3=dddddddddddddddddddddddddddddddddddddddd
+mkdir -p "$WORK/wrr"
+WD="$WORK/wrr/chief.md"; printf '# chief\n\n## Results\n' > "$WD"
+WR="$WORK/wrr/HIMMEL-8-N8-a.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$WR"
+WM="$WORK/wrr/chief.fleet.json"; printf '{"schema":1,"workers":[{"doc":"%s","label":"N8"}]}\n' "$WR" > "$WM"
+wr_tick "N8:LIVE" "N8:LIVE#1"
+I="$(new_inbox wrr)"
+start "$I" "$WORK/wr11.out" --doc "$WD" --workers-from "$WM"
+wait_hb "$I" || fail "(wr11) no baseline heartbeat"
+wr_tick "N8:FINDING" "N8:FINDING#1"; mv "$STUB/tick.line" "$STUB/tick.next"; wr_tick "N8:LIVE" "N8:LIVE#1"
+printf -- '- 09:10 FINDING — a question\n' >> "$WR"
+printf 'printf -- "- 09:11 READY 2599 %s GREEN\\n" >> "%s"\nmv "%s" "%s"\n' "$WH3" "$WR" "$STUB/tick.next" "$STUB/tick.line" > "$STUB/tick.hook.new"
+mv "$STUB/tick.hook.new" "$STUB/tick.hook"
+wait_exit "$WPID"
+check "(wr11) the FINDING wakes as a tick change" "WAKE tick changed=tails,acts usage=PROCEED" "$(head -n 1 "$WORK/wr11.out")"
+wr_tick "N8:READY" "N8:READY#1"
+start "$I" "$WORK/wr12.out" --doc "$WD" --workers-from "$WM"
+wait_exit "$WPID"
+check "(wr12) a READY written while that tick ran is not taken as named: its tails move still wakes" "WAKE tick changed=tails,acts usage=PROCEED" "$(head -n 1 "$WORK/wr12.out")"
+wr_stop
 export HIMMEL_FLAGS_TSV="$WORK/flags.tsv"
 unset CHIEF_WAIT_WORKER_EVENT
 
