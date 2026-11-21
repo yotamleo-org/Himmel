@@ -75,7 +75,9 @@
 #      (reason=missing-blast-radius).
 #   4g. A lane=full marker whose diff adds a code comment needs a `comments`
 #      row (/pr-check step 3.7) stamped with this branch at the clearing head,
-#      or at an earlier head with no comment added since; an `off` row audits as
+#      or at an earlier head with no comment added since (counted from that head
+#      merged with the base point the tip merged, so a merge-forward's lines from
+#      the base are not the branch's); an `off` row audits as
 #      comments=off. The comments are counted by the HIMMEL_REPO anchor's
 #      scripts/lint/check-history-comments.sh, never the copy beside this script
 #      (an absolute-path run is the branch's own copy), so a branch cannot edit
@@ -616,7 +618,10 @@ ledger="$git_dir/cr-critic-scores.jsonl"
 # --tests-only mode (every changed path is a test path; the comment-only branch
 # of the tip check is NOT used here, because this clears with no critic review of the
 # delta and a comment-prefixed line in a non-test script still executes), every
-# ledger gate below is evaluated at that reviewed head instead. A tip a panel ran
+# ledger gate below is evaluated at that reviewed head instead. So is a tip that
+# is a clean merge-forward of that head (review-round.sh clean-merge-forward: it
+# only merges the marker's base, conflict-free, and the PR's own diff is
+# unchanged). A tip a panel ran
 # on is judged on its own rows, and any other unreviewed delta keeps the
 # no-responders refusal.
 review_head="$tip"
@@ -631,11 +636,18 @@ if [ -f "$_rr_head_file" ] && [ ! -L "$_rr_head_file" ]; then
     esac
     if { [ "${#_rr_head}" -eq 40 ] || [ "${#_rr_head}" -eq 64 ]; } && [ "$_rr_head" != "$tip" ] \
         && git cat-file -e "$_rr_head^{commit}" 2>/dev/null \
-        && ! grep -qE "\"(target_)?head\"[[:space:]]*:[[:space:]]*\"${tip:0:7}" <(grep -vF '"kind":"evidence"' "$ledger" 2>/dev/null) 2>/dev/null \
-        && bash "$SCRIPT_DIR/review-round.sh" trivial-descendant --tests-only "$_rr_head" "$tip" >/dev/null 2>&1; then
-        review_head="$_rr_head"
-        echo "clear-cr-marker: ${tip:0:8} has no review round of its own and only changes test paths since the reviewed head ${review_head:0:8} - gating on the reviewed head." >&2
-        audit "TRIVIAL-DESCENDANT branch=$branch sha=$tip reviewed_head=$review_head"
+        && ! grep -qE "\"(target_)?head\"[[:space:]]*:[[:space:]]*\"${tip:0:7}" <(grep -vF '"kind":"evidence"' "$ledger" 2>/dev/null) 2>/dev/null; then
+        if bash "$SCRIPT_DIR/review-round.sh" trivial-descendant --tests-only "$_rr_head" "$tip" >/dev/null 2>&1; then
+            review_head="$_rr_head"
+            echo "clear-cr-marker: ${tip:0:8} has no review round of its own and only changes test paths since the reviewed head ${review_head:0:8} - gating on the reviewed head." >&2
+            audit "TRIVIAL-DESCENDANT branch=$branch sha=$tip reviewed_head=$review_head"
+        # A clean merge-forward of the marker's base brings in only commits
+        # reviewed in their own PRs and leaves the PR's own diff as it was.
+        elif [ -n "${marker_base:-}" ] && bash "$SCRIPT_DIR/review-round.sh" clean-merge-forward "$marker_base" "$_rr_head" "$tip" >/dev/null 2>&1; then
+            review_head="$_rr_head"
+            echo "clear-cr-marker: ${tip:0:8} has no review round of its own and only merges ${marker_base:0:8} cleanly into the reviewed head ${review_head:0:8} - gating on the reviewed head." >&2
+            audit "TRIVIAL-DESCENDANT branch=$branch sha=$tip reviewed_head=$review_head via=clean-merge-forward"
+        fi
     fi
     # A signed judge GO at the tip stands in for the panel on a post-cap delta
     # review-round.sh judge-go re-verifies the record, the cap and
@@ -1753,6 +1765,19 @@ cmt_count() {
     case "$_n" in ''|*[!0-9]*) return 1 ;; esac
     printf '%s' "$_n"
 }
+# cmt_since <reviewed-head> <base-point>: the comment lines the branch added
+# after <reviewed-head>, counted from the conflict-free merge of that head with
+# the base point the tip merged, so lines a merge-forward brought in from the
+# base are not counted as the branch's. A merge that conflicts counts from
+# <reviewed-head> itself.
+cmt_since() {
+    local _t
+    if _t=$(git merge-tree --write-tree "$1" "$2") && [ -n "$_t" ]; then
+        cmt_count "$_t"
+    else
+        cmt_count "$1"
+    fi
+}
 if [ "$marker_lane" = "full" ]; then
     comments_verdict="error"
     cmt_rows=$(LEDGER="$ledger" BRANCH="$branch" MARKER_TS="$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$1); print $1; exit}' "$marker")" COMMENTS_GATE_SINCE="2026-11-07T00:00:00Z" node -e '
@@ -1802,7 +1827,7 @@ if [ "$marker_lane" = "full" ]; then
                         comments_verdict="error"
                         _cm_full=$(git rev-parse --verify --quiet "$_ch^{commit}") || continue
                         git merge-base --is-ancestor "$_cm_full" "$tip" 2>/dev/null || continue
-                        if _cm_n=$(cmt_count "$_cm_full"); then
+                        if _cm_n=$(cmt_since "$_cm_full" "$_cm_mb"); then
                             if [ "$_cm_n" -eq 0 ]; then
                                 comments_verdict="ok"
                                 case "$_cs" in

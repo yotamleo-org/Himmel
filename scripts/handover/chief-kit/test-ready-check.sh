@@ -452,6 +452,24 @@ printf '{"kind":"judge-go","ts":"2026-01-01T00:00:00Z","branch":"b","head":"dead
 rc=0; out="$(run)" || rc=$?
 check "judge-go-other-head: exit 1" "$rc" "1"
 contains "judge-go-other-head: check 4 fails" "$out" "[FAIL] 4."
+
+# --- 4c2. the carry row clear-review-marker.sh writes at a tip it gated on the
+# reviewed head passes when a critic's ok row sits at that reviewed head; a
+# carry row naming a head no critic reviewed, or of another branch, fails.
+rc_reviewed=1111111111111111111111111111111111111111
+carry_row() { printf '{"kind":"avail","branch":"%s","head":"%s","model":"claude","status":"ok","detail":"trivial-descendant of reviewed head %s (carried by clear-cr-marker)"}\n' "$1" "$SHA" "$rc_reviewed"; }
+{ printf '{"kind":"avail","head":"%s","model":"codex","status":"ok"}\n' "$rc_reviewed"; carry_row feat/himmel-100-thing; } > "$LEDGER"
+rc=0; out="$(run)" || rc=$?
+check "carry-row: exit 0" "$rc" "0"
+contains "carry-row: check 4 passes" "$out" "[PASS] 4."
+carry_row feat/himmel-100-thing > "$LEDGER"
+rc=0; out="$(run)" || rc=$?
+check "carry-row-unreviewed: exit 1" "$rc" "1"
+contains "carry-row-unreviewed: check 4 fails" "$out" "[FAIL] 4."
+{ printf '{"kind":"avail","head":"%s","model":"codex","status":"ok"}\n' "$rc_reviewed"; carry_row other-branch; } > "$LEDGER"
+rc=0; out="$(run)" || rc=$?
+check "carry-row-other-branch: exit 1" "$rc" "1"
+contains "carry-row-other-branch: check 4 fails" "$out" "[FAIL] 4."
 seed_ledger_ok
 
 # --- 4d. Guards for the rows the docs-audit lane leaves: its critic's row passes,

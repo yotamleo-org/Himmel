@@ -685,6 +685,16 @@ else
                 or ((.kind == "evidence" or .kind == "judge-go" or .kind == "dependabot-go") and $b != "" and .branch == $b
                     and (.kind != "dependabot-go" or ((.pr | type) == "number" and (.pr | tostring) == $p)))) |
             .head' "$ledger" 2>/dev/null | wc -l | tr -d ' ')
+        # The row clear-review-marker.sh writes at a tip it gated on the reviewed
+        # head (model claude) counts when a critic's ok row sits at the head it names.
+        if [ "${n:-0}" -lt 1 ] && [ -n "$ledger_branch" ]; then
+            n=$(jq -R -n -r --arg h "$SHA" --arg b "$ledger_branch" '
+                [inputs | fromjson? | select(type == "object")] as $rows
+                | [$rows[] | select(.kind == "avail" and .head == $h and .status == "ok" and .branch == $b and .model == "claude")
+                    | ((.detail // "") | tostring | capture("^trivial-descendant of reviewed head (?<r>[0-9a-f]{40}) ").r? // empty)] as $revs
+                | [$rows[] | select(.kind == "avail" and .status == "ok" and (.head | type) == "string" and (.head as $x | any($revs[]; . == $x))
+                    and (.model | type) == "string" and .model != "" and (.model | IN("claude", "claude-floor", "codex-adv") | not))] | length' "$ledger" 2>/dev/null) || n=0
+        fi
         if [ "${n:-0}" -ge 1 ]; then
             echo "[PASS] 4. CR ledger: $n row(s) for $SHA with status=ok"
         else

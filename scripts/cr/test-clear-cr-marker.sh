@@ -4596,6 +4596,62 @@ run_clear "$tmp" 0 "13i5 and under the assumed GO -> exit 0" --check-findings --
 if [ "$(cksum < "$tmp/.git/cr-critic-scores.jsonl")" = "$before" ]; then pass; else fail "13i4: the check must leave the ledger byte-identical"; fi
 rm -rf "$tmp"
 
+# 14a-14d. A clean merge-forward of main after the reviewed head A keeps A's
+# review records: main's comment lines are not the PR's, and a tip with no rows
+# of its own is gated at A. Any branch-authored change in A..B is still judged.
+# mf_case [branch-content] -- main holds the scaffold, A adds a commented src/a.sh, main gains a
+# commented src/m.sh, feat/x merges main (B); a branch-content argument adds
+# src/b.sh on feat/x after the merge.
+mf_case() {
+    make_repo || exit 1
+    # The staged fixture scaffold goes on main too, so A..B holds only the delta under test.
+    git -C "$tmp" commit -qm "scaffold" >/dev/null 2>&1
+    git -C "$tmp" branch -f main feat/x
+    mkdir -p "$tmp/src" && printf '# keep the lock order stable\necho a\n' > "$tmp/src/a.sh"
+    git -C "$tmp" add src/a.sh && git -C "$tmp" commit -qm "A: reviewed head" -- src/a.sh
+    sha=$(git -C "$tmp" rev-parse --verify refs/heads/feat/x)
+    git -C "$tmp" checkout -q main
+    mkdir -p "$tmp/src" && printf '# main keeps its own reason\necho m\n' > "$tmp/src/m.sh"
+    git -C "$tmp" add src/m.sh && git -C "$tmp" commit -qm "main: m" -- src/m.sh
+    git -C "$tmp" checkout -q feat/x
+    git -C "$tmp" merge -q --no-ff --no-edit main >/dev/null 2>&1 || fail "mf_case: merge-forward"
+    if [ -n "${1:-}" ]; then
+        printf '%b' "$1" > "$tmp/src/b.sh"
+        git -C "$tmp" add src/b.sh && git -C "$tmp" commit -qm "branch: b" -- src/b.sh
+    fi
+    git -C "$tmp" push -q origin feat/x >/dev/null 2>&1
+    B=$(git -C "$tmp" rev-parse --verify refs/heads/feat/x)
+    write_marker "$tmp" "$B" full "" "" "$_cm_ts"
+    mkdir -p "$tmp/.git/cr-review-rounds/feat"
+    printf '%s\n' "$sha" > "$tmp/.git/cr-review-rounds/feat/x.head"
+    stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+}
+CM_ANCHOR_SELF=1
+
+mf_case
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(avail_ok "$B")" "$(_cm_row feat/x "$sha" ok 1)"
+run_clear "$tmp" 0 "14a a comments row at A covers B when A..B only merges main's commented lines -> exit 0"
+rm -rf "$tmp"
+
+mf_case
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(_cm_row feat/x "$sha" ok 1)"
+run_clear "$tmp" 0 "14b a clean merge-forward tip with no rows of its own is gated at the reviewed head -> exit 0"
+if grep -F "\"head\":\"$B\"" "$tmp/.git/cr-critic-scores.jsonl" | grep -qF "trivial-descendant of reviewed head $sha"; then pass; else fail "14b: the cleared tip must carry a row naming the reviewed head"; fi
+rm -rf "$tmp"
+
+mf_case '# a branch reason\necho b\n'
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(avail_ok "$B")" "$(_cm_row feat/x "$sha" ok 1)"
+run_clear "$tmp" 14 "14c a branch-authored comment beside a merge-forward still needs its review -> exit 14"
+cm_reason missing-comment-review "branch comment after a merge-forward"
+rm -rf "$tmp"
+
+mf_case 'echo b\n'
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(_cm_row feat/x "$sha" ok 1)"
+run_clear "$tmp" 14 "14d a branch-authored change beside a merge-forward is not carried -> exit 14"
+if grep -qF "\"head\":\"$B\"" "$tmp/.git/cr-critic-scores.jsonl"; then fail "14d: a refused tip must get no ledger row"; else pass; fi
+rm -rf "$tmp"
+CM_ANCHOR_SELF=
+
 echo
 echo "clear-cr-marker: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
