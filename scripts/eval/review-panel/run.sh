@@ -103,8 +103,9 @@ fi
 registry="$(mktemp -t review-panel-registry.XXXXXX)" || exit 2
 trap 'rm -f "$registry"' EXIT
 # shellcheck source=../../lib/critics-config.sh
+base_json="${CRITICS_BASE_JSON:-$HERE/../../cr/critics.json}"
 if ! { . "$HERE/../../lib/critics-config.sh" &&
-       CRITICS_BASE_JSON="${CRITICS_BASE_JSON:-$HERE/../../cr/critics.json}" critics_config_resolve "$HERE/../../cr" > "$registry"; }; then
+       CRITICS_BASE_JSON="$base_json" critics_config_resolve "$HERE/../../cr" > "$registry"; }; then
     echo "run.sh: the critics registry does not resolve - no panel call made" >&2
     exit 2
 fi
@@ -156,14 +157,25 @@ fi
 # overlay drops never runs. A claude-api critic left in it needs --allow-claude-api (decision 525).
 roster="$out/critics.run.json"
 python3 -c 'import json,sys
-src,dst,critics,tiers,allow=sys.argv[1:6]
+src,dst,critics,tiers,allow,base=sys.argv[1:7]
 reg=json.load(open(src)); keep=set(critics.split(","))
+base=json.load(open(base)); floor=base.get("claude_floor")
+local=(reg.get("files") or {}).get("local")
+if local:
+    over=json.load(open(local))
+    if isinstance(over, dict) and "claude_floor" in over: floor=over["claude_floor"]
+slug=(floor.get("slug") or "claude") if isinstance(floor, dict) else None
+if slug in keep and floor.get("model") and not any(r.get("slug") == slug for r in reg["panel"] + base.get("panel", [])):
+    row={"slug": slug, "model": floor["model"], "provider": "claude-api", "route_provider": "claude-api",
+         "tier": "paid", "mode": "advisory"}
+    row.update({k: floor[k] for k in ("effort", "perspective") if floor.get(k)})
+    reg["panel"].append(row)
 reg["panel"]=[r for r in reg["panel"] if r["slug"] in keep]
 claude_like=lambda p: str(p or "").startswith("claude") or p in ("api", "subscription")
 bill=[r["slug"] for r in reg["panel"] if r.get("tier") in set(tiers.split(",")) and (claude_like(r.get("provider")) or claude_like(r.get("route_provider")))]
 if bill and allow != "1":
     sys.exit("run.sh: the roster holds a billed claude-api critic (%s) - pass --allow-claude-api or drop it from --critics - no panel call made" % ",".join(bill))
-json.dump(reg, open(dst, "w"))' "$registry" "$roster" "$critics" "$tiers" "$allow_claude" || exit 2
+json.dump(reg, open(dst, "w"))' "$registry" "$roster" "$critics" "$tiers" "$allow_claude" "$base_json" || exit 2
 
 python3 "$HERE/score.py" stamp "$out" --fixtures "$fixtures" --key "$key" --panel "$PANEL" --tiers "$tiers" --only "$only" \
     --critics "$critics" ${model:+--model "$model"} || exit 2
