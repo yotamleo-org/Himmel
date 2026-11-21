@@ -258,7 +258,7 @@ fix_missing() {
     shift
     [ $# -gt 0 ] || set -- "$HERE/remote-setup.sh" "$HERE/lib.sh"
     # code only: a whole-line comment and a trailing "  # note" are not something the helper prints
-    code=$(cat "$@" | sed -e '/^[[:space:]]*#/d' -e 's/[[:space:]]#[[:space:]].*$//')
+    code=$(cat "$@" | sed -e '/^[[:space:]]*#/d' -e 's/[[:space:]]#[[:space:]].*$//') # read-sink-ok: reads only the helper's own sources, which the suite passes in itself
     while IFS= read -r phrase; do
         [ -n "$phrase" ] || continue
         printf '%s\n' "$code" | grep -qF -- "$phrase" || missing="$missing [$phrase]"
