@@ -105,7 +105,7 @@ rs_cleanup_children() {
     fi
     if [ -n "$RS_TMP_FILE" ]; then rm -f "$RS_TMP_FILE"; fi
     RS_TMP_FILE=""
-    if [ -n "${RS_UPD_FILE:-}" ]; then rm -f "$RS_UPD_FILE"; fi
+    if [ -n "${RS_UPD_FILE:-}" ]; then rm -f "$RS_UPD_FILE" "$RS_UPD_FILE.new"; fi
     RS_UPD_FILE=""
 }
 

@@ -2101,6 +2101,24 @@ case_peer_wait_is_bounded_by_the_clock_not_by_the_loop_count() {
     check "the wait ended when the ten minutes were up ($n reads), not after a fixed number of reads" test "$n" -ge 8 -a "$n" -le 16
 }
 
+case_peer_a_failed_merge_of_updates_leaves_no_temp_file() {
+    local real_jq
+    real_jq=$(command -v jq)
+    seed_main
+    set_getme "$OUR" bridge_bot
+    set_group
+    set_good_updates
+    all_green
+    # jq fails only for the merge of the new updates into the kept ones; the shell has opened the .new file by then
+    printf '#!/usr/bin/env bash\ncase "$*" in *"unique_by([.u, .k])"*) exit 5 ;; esac\nexec %s "$@"\n' "$real_jq" > "$T/bin/jq"
+    chmod +x "$T/bin/jq"
+    feed "$(mk_token "$OUR")" 1
+    run_sut "$T/in" peer
+    check "the merge failed: exit 3" eq "$RC" 3
+    check "the FIX says the messages could not be kept" has "$LAST" "could not be kept"
+    check "no updates file is left in the temp folder" eq "$(find "$T/tmp dir" -name 'remote-setup-updates*' | wc -l | tr -d ' ')" 0
+}
+
 case_peer_hostile_username_refused() {
     seed_main
     set_getme "$OUR" bridge_bot
@@ -2164,7 +2182,7 @@ peer_sigint_during_discovery_restarts_poller renamed_peer_bot_keeps_name
 peer_done_rerun_changes_no_config_artifact peer_inputs_are_only_the_g2_set
 peer_remove_deletes_checkpoint_and_status_na peer_remove_interrupted_resumes peer_remove_with_nothing_set_up_is_done peer_remove_unreadable_peer_list_stops_before_any_change peer_remove_teardown_failure_is_a_fix peer_wait_pages_when_the_group_is_busy peer_remove_unit_delete_failure_is_a_fix peer_remove_reload_failure_is_a_fix peer_remove_one_of_two_restarts_poller peer_remove_one_of_two_interrupted_before_restart_finishes_that_removal
 peer_mac_bootout_then_bootstrap_order peer_mac_old_agent_is_not_accepted_as_the_updated_poller peer_changed_token_restarts_the_running_poller peer_without_part1_fixes peer_bridge_equals_main_refuses
-peer_different_bridge_id_without_replace_refuses peer_hello_timeout_fixes peer_wait_is_bounded_by_the_clock_not_by_the_loop_count peer_sole_candidate_needs_a_yes peer_hostile_username_refused
+peer_different_bridge_id_without_replace_refuses peer_hello_timeout_fixes peer_wait_is_bounded_by_the_clock_not_by_the_loop_count peer_a_failed_merge_of_updates_leaves_no_temp_file peer_sole_candidate_needs_a_yes peer_hostile_username_refused
 peer_name_second_collision_gets_3 peer_name_32_char_base_with_suffix_fits"
 
 # ── run ─────────────────────────────────────────────────────────────────
