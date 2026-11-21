@@ -32,7 +32,8 @@
 //                fixed on main, so a local worker verifies it first (a cloud session
 //                cannot tell, and spends credit on a no-op)
 //   CLOUD-OK     everything else
-import { readFileSync, appendFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, appendFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { gitClean } from './git-clean.mjs';
 import { dirname, join, resolve, posix } from 'node:path';
@@ -329,8 +330,32 @@ function citedOnMain(key) {
 // merge of the last STALE_DAYS, and the shared window list above reads exactly those from GitHub, so only the key search
 // is skipped, never the window.
 // A key whose search fills the page is `truncated`: that ticket alone is BLOCKED, the other tickets of the run still classify.
+const searchTtlMs = () => {
+  const s = process.env.CLOUD_ROUTE_SEARCH_TTL;
+  return /^\d+$/.test(s ?? '') ? Number(s) * 1000 : 3600e3;
+};
+const searchCacheFile = (key) => join(process.env.CLOUD_ROUTE_CACHE_DIR || join(homedir(), '.himmel', 'state', 'cloud-route-search'), `${REPO_SLUG.replace('/', '_')}__${key}.json`);
+function readSearchCache(key) {
+  const ttl = searchTtlMs();
+  if (ttl <= 0) return null;
+  try {
+    const e = JSON.parse(readFileSync(searchCacheFile(key), 'utf8'));
+    return Array.isArray(e.hits) && Number.isFinite(e.at) && Date.now() - e.at >= 0 && Date.now() - e.at < ttl ? e.hits : null;
+  } catch { return null; }
+}
+function writeSearchCache(key, hits) {
+  if (searchTtlMs() <= 0) return;
+  try {
+    const f = searchCacheFile(key);
+    mkdirSync(dirname(f), { recursive: true });
+    const tmp = `${f}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify({ at: Date.now(), hits }));
+    renameSync(tmp, f);
+  } catch { return; }
+}
 function mergedPrs(keys) {
-  const gh = process.env.CLOUD_ROUTE_GH_CMD || 'gh';
+  const readHelper = join(REPO, 'scripts', 'lib', 'gh-read.sh');
+  const gh = process.env.CLOUD_ROUTE_GH_CMD || (existsSync(readHelper) ? readHelper : 'gh');
   const run = (extra) => JSON.parse(execFileSync(gh, ['pr', 'list', '--repo', REPO_SLUG, '--state', 'merged', '--json', 'number,title,body,mergedAt,files', ...extra], { encoding: 'utf8', timeout: 60000, maxBuffer: 64 * 1024 * 1024 }) || '[]');
   const since = new Date(Date.now() - STALE_DAYS * 86400e3).toISOString().slice(0, 10);
   const all = new Map();
@@ -338,7 +363,11 @@ function mergedPrs(keys) {
   for (const pr of run(['--limit', '200', '--search', `merged:>=${since}`])) all.set(pr.number, pr);
   for (const k of keys) {
     if (citedOnMain(k) === false) continue;
-    const hits = run(['--limit', String(MERGED_PAGE), '--search', `${k} in:title,body`]);
+    let hits = readSearchCache(k);
+    if (hits === null) {
+      hits = run(['--limit', String(MERGED_PAGE), '--search', `${k} in:title,body`]);
+      writeSearchCache(k, hits);
+    }
     if (hits.length >= MERGED_PAGE) truncated.add(k);
     for (const pr of hits) all.set(pr.number, pr);
   }

@@ -2,15 +2,16 @@
 // Fixture tickets + stubbed Jira/gh: no live calls, no real bucket.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, chmodSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, chmodSync, mkdirSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { classifyTicket, buildBrief, launchLine, parseJiraGet } from '../cloud-route.mjs';
 
+process.env.CLOUD_ROUTE_SEARCH_TTL = '0';
 const HERE = dirname(fileURLToPath(import.meta.url));
-const CLI = join(HERE, '..', 'cloud-route.mjs');
+const CLI =join(HERE, '..', 'cloud-route.mjs');
 const TRUST = [/^scripts\/ci\//, /^scripts\/lib\//, /^scripts\/hooks\/lib\//, /^\.github\//];
 
 const tk = (over = {}) => ({
@@ -697,4 +698,55 @@ test('a directory that only an open PR creates still overlaps, with or without t
       assert.match(v.reason, /overlaps scripts\/lanes\/newdir\/? \(contains held scripts\/lanes\/newdir\/a\.sh, open PR 77\)/, d);
     }
   }
+});
+
+test('CLI: a key search is cached per key for CLOUD_ROUTE_SEARCH_TTL seconds; TTL 0 and an expired entry search again', () => {
+  const { dir, bucket, jira } = setup();
+  const log = join(dir, 'gh-cache.log');
+  const gh = stub(dir, 'gh-cache', `
+printf '%s\\n' "$*" >> '${log}'
+if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; then echo '[]'; exit 0; fi
+if [ "$1 $2" = "pr list" ]; then exit 0; fi
+exit 1`);
+  const g = mainRepo(dir, 'fix(x): [HIMMEL-9001] an earlier slice (#1)');
+  const cache = join(dir, 'search-cache');
+  const run = (ttl) => spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9001'], {
+    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh, CLOUD_ROUTE_GIT_DIR: g, CLOUD_ROUTE_MAIN_REF: 'main', CLOUD_ROUTE_CACHE_DIR: cache, CLOUD_ROUTE_SEARCH_TTL: ttl },
+  });
+  const searched = () => readFileSync(log, 'utf8').split('\n').filter((l) => l.includes('in:title,body')).length;
+  const windowReads = () => readFileSync(log, 'utf8').split('\n').filter((l) => l.includes('merged:>=')).length;
+  assert.equal(run('600').status, 0);
+  assert.equal(searched(), 1, 'the first run searches');
+  assert.equal(run('600').status, 0);
+  assert.equal(searched(), 1, 'the second run inside the TTL reads the cached search');
+  assert.equal(windowReads(), 2, 'the merged-window list is read fresh on every run');
+  assert.equal(run('0').status, 0);
+  assert.equal(searched(), 2, 'TTL 0 searches again');
+  assert.equal(run('600').status, 0);
+  assert.equal(searched(), 2, 'the entry written by the first run is still inside the TTL');
+  const f = join(cache, readdirSync(cache)[0]);
+  const entry = JSON.parse(readFileSync(f, 'utf8'));
+  writeFileSync(f, JSON.stringify({ ...entry, at: entry.at - 7200e3 }));
+  assert.equal(run('600').status, 0);
+  assert.equal(searched(), 3, 'an entry older than the TTL is searched again');
+});
+
+test('CLI: with no CLOUD_ROUTE_GH_CMD the merged-PR reads go through gh-read.sh (the read token)', () => {
+  const { dir, bucket, jira } = setup();
+  const bin = join(dir, 'ghbin');
+  mkdirSync(bin);
+  stub(bin, 'gh', `
+if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; then echo '[]'; exit 0; fi
+if [ "$1 $2" = "pr list" ]; then exit 0; fi
+exit 1`);
+  const empty = join(dir, 'no-env');
+  mkdirSync(empty);
+  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_SEARCH_TTL: '0', GH_READ_ENV_ROOT: empty };
+  delete env.CLOUD_ROUTE_GH_CMD;
+  const g = mainRepo(dir, 'fix(x): an unrelated change (#1)');
+  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9001'], {
+    encoding: 'utf8', env: { ...env, CLOUD_ROUTE_GIT_DIR: g, CLOUD_ROUTE_MAIN_REF: 'main' },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /gh-read: read token missing or unreadable/, 'the read helper ran: it names the missing read token');
 });

@@ -103,6 +103,13 @@ PLUGINS_DIR="${DRIFT_PLUGINS_DIR:-$ROOT/marketplace/plugins}"
 # route to that proof is the adopter's vm.mode, resolved once here.
 # shellcheck source=lib/vm-mode.sh
 . "$ROOT/scripts/lib/vm-mode.sh"
+if [ -f "$ROOT/scripts/lib/gh-read.sh" ]; then
+  # shellcheck source=lib/gh-read.sh
+  . "$ROOT/scripts/lib/gh-read.sh"
+  export GH_READ_QUIET=1 DRIFT_GH_READ="$ROOT/scripts/lib/gh-read.sh"
+else
+  gh_read() { gh "$@"; }
+fi
 # A resolver error (rc 2) is not a configured none: it offers only "fix the
 # config", never the operator-ack route.
 vm_mode_load
@@ -538,7 +545,7 @@ PY
         fi
         # Capture raw tags first and gate on gh's EXIT STATUS (a pipe would mask
         # it behind sort/tail). per_page=100 so the newest tag is in the page.
-        tags_raw="$(gh api "repos/$up_repo/tags?per_page=100" --jq '.[].name' 2>/dev/null)"; api_rc=$?
+        tags_raw="$(gh_read api "repos/$up_repo/tags?per_page=100" --jq '.[].name' 2>/dev/null)"; api_rc=$?
         if [ "$api_rc" -ne 0 ] || [ -z "$tags_raw" ]; then
           echo "  $name: ? true upstream unreachable ($up_repo tags) — UNCHECKED"
           incomplete=1
@@ -586,7 +593,7 @@ PY
         incomplete=1
         continue
       fi
-      head="$(gh api "repos/$repo/commits/HEAD" --jq '.sha' 2>/dev/null)"; api_rc=$?
+      head="$(gh_read api "repos/$repo/commits/HEAD" --jq '.sha' 2>/dev/null)"; api_rc=$?
       # Gate on gh's EXIT STATUS, not stdout emptiness: gh api prints a non-empty
       # error body to stdout on HTTP 4xx/5xx. Also require a 40-hex sha so any
       # error/`null` payload is UNCHECKED, never compared.
@@ -602,7 +609,7 @@ PY
         if [ -n "$hold_reason" ]; then
           echo "  $name: HELD     ($repo @ ${head:0:7} reviewed and held back: $hold_reason)"
         else
-          delta="$(gh api "repos/$repo/compare/$ref...$head" --jq '.ahead_by' 2>/dev/null)"
+          delta="$(gh_read api "repos/$repo/compare/$ref...$head" --jq '.ahead_by' 2>/dev/null)"
           echo "  $name: BEHIND   ($repo upstream is ${delta:-?} commit(s) ahead — pin ${ref:0:7} -> ${head:0:7})"
           drift=1
         fi
@@ -627,7 +634,7 @@ for pin in "$ROOT"/marketplace/plugins/*/UPSTREAM_PIN; do
   # Capture the raw upstream content FIRST and guard it: an empty/failed fetch
   # must be UNCHECKED, not hashed — sha256sum of empty input is a real digest
   # (e3b0c442…), which would otherwise be mis-reported as DRIFT.
-  content="$(gh api "repos/$urepo/contents/$upath" --jq '.content' 2>/dev/null)"; api_rc=$?
+  content="$(gh_read api "repos/$urepo/contents/$upath" --jq '.content' 2>/dev/null)"; api_rc=$?
   # Gate on gh's exit status (HTTP errors print a non-empty body to stdout) AND
   # on a non-empty payload (directory / >1MB file return content="").
   if [ "$api_rc" -ne 0 ] || [ -z "$content" ]; then
@@ -826,13 +833,13 @@ PY
           if printf '%s' "$local_ref" | grep -qE '^[0-9a-f]{40}$'; then
             local_sha="$local_ref"
           else
-            local_sha="$(gh api "repos/$repo/commits/$local_ref" --jq '.sha' 2>/dev/null)"; api_rc=$?
+            local_sha="$(gh_read api "repos/$repo/commits/$local_ref" --jq '.sha' 2>/dev/null)"; api_rc=$?
             if [ "$api_rc" -ne 0 ] || ! printf '%s' "$local_sha" | grep -qE '^[0-9a-f]{40}$'; then
               echo "  $name: ? cannot resolve local ref '$local_ref' on $repo — UNCHECKED"
               incomplete=1; continue
             fi
           fi
-          head="$(gh api "repos/$repo/commits/HEAD" --jq '.sha' 2>/dev/null)"; api_rc=$?
+          head="$(gh_read api "repos/$repo/commits/HEAD" --jq '.sha' 2>/dev/null)"; api_rc=$?
           if [ "$api_rc" -ne 0 ] || ! printf '%s' "$head" | grep -qE '^[0-9a-f]{40}$'; then
             echo "  $name: ? upstream unreachable ($repo) — UNCHECKED"
             incomplete=1; continue
@@ -844,7 +851,7 @@ PY
             if [ -n "$hold_reason" ]; then
               echo "  $name: HELD     ($repo @ ${head:0:7} reviewed and held back: $hold_reason)${tier_note}"
             else
-              delta="$(gh api "repos/$repo/compare/$local_sha...$head" --jq '.ahead_by' 2>/dev/null)"
+              delta="$(gh_read api "repos/$repo/compare/$local_sha...$head" --jq '.ahead_by' 2>/dev/null)"
               echo "  $name: BEHIND   ($repo upstream is ${delta:-?} commit(s) ahead — ${local_sha:0:7} -> ${head:0:7})${tier_note}"
               drift=1
             fi
@@ -953,7 +960,7 @@ PY
             # `sort -V` pick a phantom "latest" and report a permanent false
             # BEHIND. Opt into the maintainer's own latest-non-prerelease
             # designation (the Releases API), which reflects real recency.
-            latest="$(gh api "repos/$repo/releases/latest" --jq '.tag_name' 2>/dev/null)"; api_rc=$?
+            latest="$(gh_read api "repos/$repo/releases/latest" --jq '.tag_name' 2>/dev/null)"; api_rc=$?
             # tag_prefix: bun tags its releases `bun-v1.4.4`; strip the
             # stream prefix so synced_base and the BEHIND line stay bare versions.
             [ -z "$tag_pfx" ] || latest="${latest#"$tag_pfx"}"
@@ -969,7 +976,7 @@ PY
             echo "  $name: ? unknown latest_source '$latest_src' — UNCHECKED (use 'release' or omit; fix scripts/upstreams.json)"
             incomplete=1; continue
           else
-            tags_raw="$(gh api "repos/$repo/tags?per_page=100" --jq '.[].name' 2>/dev/null)"; api_rc=$?
+            tags_raw="$(gh_read api "repos/$repo/tags?per_page=100" --jq '.[].name' 2>/dev/null)"; api_rc=$?
             if [ "$api_rc" -ne 0 ] || [ -z "$tags_raw" ]; then
               echo "  $name: ? true upstream unreachable ($repo tags) — UNCHECKED"
               incomplete=1; continue
@@ -1035,7 +1042,9 @@ metadata = {}
 excluded = set()
 
 def gh(*args):
-    result = subprocess.run(['gh', *args], check=True, stdout=subprocess.PIPE,
+    # DRIFT_GH_READ: the read helper, so the GET reads ride the read token (a non-read shape still runs on main)
+    prefix = ['bash', os.environ['DRIFT_GH_READ']] if os.environ.get('DRIFT_GH_READ') else ['gh']
+    result = subprocess.run([*prefix, *args], check=True, stdout=subprocess.PIPE,
                             stderr=subprocess.DEVNULL, text=True, timeout=60)
     return json.loads(result.stdout)
 

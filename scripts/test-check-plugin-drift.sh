@@ -2004,6 +2004,32 @@ GHSTATE="$W18/state" PATH="$W18/bin:$PATH" DRIFT_PIN_HOLDS="$W18/holds.json" DRI
 if { [ "$rc18" -eq 0 ] || [ "$rc18" -eq 3 ]; } && ! grep -q 'DRIFT DETECTED' "$W18/held.txt"; then ok "hold: held rows alone raise no drift"; else bad "all-held run rc=$rc18 (expected 0 or 3, no drift); $(grep BEHIND "$W18/held.txt")"; fi
 rm -rf "$W18"
 
+W19="$(mktemp -d "${TMPDIR:-/tmp}/pdrift-w19.XXXXXX")" || { bad "read-token fixtures: mktemp -d failed"; exit 1; }; mkdir -p "$W19/bin" "$W19/root"
+printf 'himmel_github_token_vm2=ghp_DRIFTREAD0123456789\n' >"$W19/root/.env"
+cat >"$W19/bin/gh" <<'GH'
+#!/usr/bin/env bash
+a="$*"
+[ "$1" = auth ] && [ "$2" = status ] && exit 0
+case "$1" in api) printf 'tok=%s argv=%s\n' "${GH_TOKEN:-main}" "$a" >>"$GH19LOG" ;; esac
+case "$a" in
+  *"commits/HEAD"*) printf 'ffffeeeeddddcccc999988887777666655554444\n'; exit 0 ;;
+  *"/compare/"*) printf '3\n'; exit 0 ;;
+esac
+exit 0
+GH
+chmod +x "$W19/bin/gh"
+cat >"$W19/m.json" <<'JSON'
+{"plugins":[
+ {"name":"pin-moved","source":{"source":"url","url":"https://github.com/o/pin-moved.git","sha":"aaaabbbbccccdddd000011112222333344445555"}}
+]}
+JSON
+printf '{}' >"$W19/u.json"; printf '{"entries":[]}' >"$W19/reg.json"
+: >"$W19/calls"
+GH19LOG="$W19/calls" GH_READ_ENV_ROOT="$W19/root" PATH="$W19/bin:$PATH" DRIFT_MJSON="$W19/m.json" DRIFT_UPSTREAMS="$W19/u.json" DRIFT_REGISTRY="$W19/reg.json" DRIFT_KNOWN_MARKETPLACES=/dev/null bash "$SCRIPT" >"$W19/out.txt" 2>&1
+api_n=$(grep -c '^tok=' "$W19/calls"); read_n=$(grep -c '^tok=ghp_DRIFTREAD0123456789 ' "$W19/calls")
+if [ "$api_n" -gt 0 ] && [ "$api_n" -eq "$read_n" ]; then ok "read token: all $api_n sweep api calls carried the read token"; else bad "read token: $read_n of $api_n sweep api calls carried the read token; on main: $(grep -v '^tok=ghp_DRIFTREAD0123456789 ' "$W19/calls" | sort -u | head -5 | cut -c1-110 | tr '\n' '|')"; fi
+rm -rf "$W19"
+
 echo ""
 if [ "$fails" -ne 0 ]; then echo "$fails check(s) failed."; exit 1; fi
 echo "all checks passed."

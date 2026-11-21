@@ -28,6 +28,7 @@ cat > "$TMP/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 S="${GH_STUB_STATE:?}"
 echo "$*" >> "$S/calls.log"
+printf '%s\t%s\n' "${GH_TOKEN:+read}${GH_TOKEN:-main}" "$*" | sed -E 's/^read[A-Za-z0-9_]*/read/' >> "$S/tok.log"
 J="$*"; A="${J//--paginate /}"
 f() { [ -f "$S/$1" ] && cat "$S/$1" || echo "${2:-[]}"; }
 case "$A" in
@@ -69,6 +70,10 @@ echo '{}'
 EOF
 chmod +x "$TMP/bin/gh"
 export PATH="$TMP/bin:$PATH"
+mkdir -p "$TMP/envroot"
+printf 'himmel_github_token_vm2=ghp_CRFREAD0123456789\n' > "$TMP/envroot/.env"
+export GH_READ_ENV_ROOT="$TMP/envroot" GH_READ_QUIET=1
+export CR_FIRST_SWITCH_TTL=0
 
 # ── the repo the gate runs IN, and the reviewer set ──────────────────────────
 mkdir -p "$TMP/repo"
@@ -133,6 +138,7 @@ runs() { jq -nc --arg e "$1" --argjson id "$2" '{workflow_runs: [{id: 1, event: 
 # no heavy job, no release event, CodeRabbit completed, no threads, both critics ok.
 reset() {
   rm -rf "$S"; mkdir -p "$S"; : > "$S/calls.log"; rm -f "$CR_FIRST_LEDGER" "$CR_FIRST_ALERTS"
+  _CRF_SW_REPO=""
   rm -f "$TMP/repo/.git"/cr-first-release.*.lock
   echo on > "$S/var"
   jq -nc --arg h "$HEAD1" '{state:"open",head:{sha:$h,repo:{fork:false}},labels:[]}' > "$S/pull.json"
@@ -559,6 +565,23 @@ eq "$(bash "$LCLI" alert-once 'codex|down' 2>/dev/null; echo rc=$?)" "rc=0" "led
 eq "$(bash "$LCLI" alert-once 'codex|down' >/dev/null 2>&1; echo rc=$?)" "rc=1" "ledger: alert-once second time is a repeat"
 bash "$LCLI" alert-clear codex >/dev/null 2>&1
 eq "$(bash "$LCLI" alert-once 'codex|down' >/dev/null 2>&1; echo rc=$?)" "rc=0" "ledger: alert-clear <slug> reopens the slug's alerts"
+
+reset; : > "$S/tok.log"; run T10580-token
+writes=$(grep -c -E -- '-X (POST|DELETE)' "$S/tok.log" 2>/dev/null || true)
+main_reads=$(grep -E '^main' "$S/tok.log" | grep -v -E -- '-X (POST|DELETE)|variable get|graphql' | cut -c1-90 | tr '\n' '|')
+reads_on_read=$(grep -c '^read' "$S/tok.log" 2>/dev/null || true)
+eq "$main_reads" "" "T10580 every GET api read this file issues rides the read token (none left on main)"
+[ "${reads_on_read:-0}" -ge 4 ] && ok "T10580 the release reads ($reads_on_read) carried the read token" || bad "T10580 only ${reads_on_read:-0} reads carried the read token"
+[ "$(grep -E -- '-X (POST|DELETE)' "$S/tok.log" | grep -c '^read' || true)" = 0 ] && ok "T10580 the label writes ($writes) stay on the main token" || bad "T10580 a label write rode the read token"
+reset; CR_FIRST_SWITCH_TTL=0 run T10580-sw0a; CR_FIRST_SWITCH_TTL=0 run T10580-sw0b
+eq "$(grep -c '^variable get' "$S/calls.log")" 2 "T10580 TTL 0: the switch variable is read on every call"
+reset; CR_FIRST_SWITCH_TTL=600 run T10580-sw1a; CR_FIRST_SWITCH_TTL=600 run T10580-sw1b
+eq "$(grep -c '^variable get' "$S/calls.log")" 1 "T10580 TTL 600: the second call in the same process reads the cached switch"
+reset; rm -f "$S/var"; CR_FIRST_SWITCH_TTL=600 run T10580-sw2a; echo on > "$S/var"; CR_FIRST_SWITCH_TTL=600 run T10580-sw2b
+eq "$(grep -c '^variable get' "$S/calls.log")" 2 "T10580 an unreadable switch is never cached: the next call reads it again"
+reset; echo off > "$S/var"; CR_FIRST_SWITCH_TTL=600 run T10580-sw3
+CR_FIRST_SWITCH_TTL=600 HEAD=deadbeef$HEAD1 run T10580-sw3b; unset HEAD
+eq "$(grep -c '^variable get' "$S/calls.log")" 1 "T10580 a readable off switch is cached for the TTL too"
 
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
