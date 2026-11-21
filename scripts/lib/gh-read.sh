@@ -147,7 +147,8 @@ _ghr_used() {
     shift
     [ -n "${GH_READ_USED_FILE:-}" ] && [ -f "$GH_READ_USED_FILE" ] || return 0
     bucket=$( . "$_GHR_HERE/gh-quota.sh" 2>/dev/null && ghq_bucket_of "$@") || bucket=""
-    { printf '%s %s\n' "$tok" "${bucket:-graphql}" >> "$GH_READ_USED_FILE"; } 2>/dev/null
+    perl -MFcntl -e 'sysopen(my $f, $ARGV[0], O_WRONLY | O_APPEND) or exit 0; syswrite($f, "$ARGV[1]\n")' \
+        "$GH_READ_USED_FILE" "$tok ${bucket:-graphql}" 2>/dev/null
     return 0
 }
 
