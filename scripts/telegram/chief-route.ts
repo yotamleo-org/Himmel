@@ -1963,9 +1963,14 @@ function splitParts(text: string, limit = TELEGRAM_PART_LIMIT): string[] {
   }
 }
 
-export async function routeReply(root: string, chatId: number, text: string, o: { kind?: string; consoleName?: string; dest: string; owedIdentity?: string; receiptOnly?: boolean }): Promise<{ cls: MsgClass; parts: number; requests: string[] }> {
+export async function routeReply(root: string, chatId: number, text: string, o: { kind?: string; consoleName?: string; dest: string; owedIdentity?: string; legacyIdentity?: string; receiptOnly?: boolean }): Promise<{ cls: MsgClass; parts: number; requests: string[] }> {
+  const owedBase = async (): Promise<string> => {
+    const legacy = sha256(Buffer.from(`${chatId}\0${o.consoleName}\0${o.legacyIdentity}`));
+    const queuedBefore = o.legacyIdentity !== undefined && await stat(join(root, "consoles", "owed-requests", legacy + ".json")).then(() => true, () => false);
+    return queuedBefore ? legacy : sha256(Buffer.from(`${chatId}\0${o.owedIdentity}`));
+  };
   if (o.receiptOnly && o.owedIdentity && o.consoleName) {
-    const base = sha256(Buffer.from(`${chatId}\0${o.owedIdentity}`));
+    const base = await owedBase();
     const parts = await queueOwedRequest(root, chatId, o.consoleName, base, text, [], true);
     return { cls: 'escalate', parts: parts.length, requests: parts.map((_, i) => `${base}-${i}`) };
   }
@@ -1995,7 +2000,7 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
   if (cls === "escalate") {
     let parts = splitParts(sent);
     if (o.owedIdentity && o.consoleName) {
-      const base = sha256(Buffer.from(`${chatId}\0${o.owedIdentity}`));
+      const base = await owedBase();
       parts = await queueOwedRequest(root, chatId, o.consoleName, base, text, parts, o.receiptOnly ?? false);
       requests.push(...parts.map((_, i) => `${base}-${i}`));
     }
@@ -2266,7 +2271,7 @@ if (import.meta.main) {
     const chatId = chat === "operator" ? (operatorChatId(await loadAccess()) ?? NaN) : Number(chat);
     if ((verb === "reply" || (verb === "receipt" && flags.owed !== undefined && satellite === undefined)) && Number.isSafeInteger(chatId) && chatId !== 0 && rest.length && owedOk && (flags.owed === undefined || name) && (!name || consoleInboxPath(defaultRoot(), name)) && (satellite === undefined || SATELLITE_ID.test(satellite))) {
       const owedIdentity = flags.owed === undefined ? undefined : `${await realpath(dirname(flags.doc!))}\0${flags.owed}`;
-      const { cls, parts, requests } = await routeReply(defaultRoot(), chatId, rest.join(" "), { kind: flags.kind, consoleName: name, dest: chat === "operator" ? "operator" : `chat:${chatId}`, owedIdentity, receiptOnly: verb === 'receipt' });
+      const { cls, parts, requests } = await routeReply(defaultRoot(), chatId, rest.join(" "), { kind: flags.kind, consoleName: name, dest: chat === "operator" ? "operator" : `chat:${chatId}`, owedIdentity, legacyIdentity: flags.owed === undefined ? undefined : `${flags.doc}\0${flags.owed}`, receiptOnly: verb === 'receipt' });
       console.log(cls);
       if (flags.owed !== undefined) {
         if (cls !== "escalate") { console.error(`[chief-route] owed item ${flags.owed}: the text was class ${cls}, not sent to Telegram, so there is no receipt`); process.exit(1); }

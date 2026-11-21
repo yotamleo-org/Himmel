@@ -7,6 +7,7 @@ import { replyViaOutbox, flushOutboxes } from './poller';
 import * as bus from './bus';
 import { owedSendReceipt, owedReceiptSnapshot, rememberConsoleReply, awaitOwedReceipts, routeReply } from './chief-route';
 import * as fsp from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { dirname } from 'node:path';
 
@@ -198,6 +199,22 @@ async function replyAs(f: ReturnType<typeof fixture>, name: string, doc: string,
   return { code: await proc.exited, out: await stdout, err: await stderr };
 }
 const collector = () => { const sent: string[] = []; return { sent, send: async (_c: number, t: string) => { sent.push(t); return 7000 + sent.length; } }; };
+
+test('an owed request queued under the old identity keeps that identity after the upgrade', async () => {
+  const f = fixture();
+  const text = 'please sign the old request';
+  const legacy = createHash('sha256').update(`1\0${NAME}\0${f.doc}\0k9`).digest('hex');
+  const hash = createHash('sha256').update(text).digest('hex');
+  mkdirSync(join(f.root, 'consoles', 'owed-requests'), { recursive: true });
+  writeFileSync(join(f.root, 'consoles', 'owed-requests', legacy + '.json'), JSON.stringify({ raw_hash: hash, parts: [text] }));
+  await replyViaOutbox(f.root, 1, text, NAME, undefined, undefined, `${legacy}-0`, hash);
+  const { sent, send } = collector();
+  await flushOutboxes(f.root, send);
+  expect((await reply(f, 'k9', text)).code).toBe(0);
+  await flushOutboxes(f.root, send);
+  expect(sent).toEqual([text]);
+  expect(readFileSync(f.doc, 'utf8')).toContain('DELIVERED k9 msg=7001');
+});
 
 test('X13-6: a successor chief finds the predecessor receipt and sends nothing again', async () => {
   const f = fixture();
