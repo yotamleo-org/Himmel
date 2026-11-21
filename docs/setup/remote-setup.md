@@ -262,11 +262,11 @@ off".
 ### You should see
 
 ```text
-DONE: peer goomal — group confirmed, poller running
+DONE: peer example — group confirmed, poller running
 ```
 
 The name after `peer` is the other station's name, taken from its bridge bot's username (here
-`goomal_bot`). Running the command again is safe: it changes no setting, and posts the hello once.
+`example_bot`). Running the command again is safe: it changes no setting, and posts the hello once.
 
 ### If you see FIX
 
