@@ -1875,6 +1875,27 @@ case_peer_remove_one_of_two_restarts_poller() {
     check "DONE says the poller was not running" has "$LAST" "was not running"
 }
 
+case_peer_remove_one_of_two_interrupted_before_restart_finishes_that_removal() {
+    seed_confirmed_station
+    seed_second_peer
+    : > "$T/units/$UNIT_NAME.startfail"
+    feed 1 yes
+    run_sut "$T/in" peer --remove
+    check "the first run stops at the restart: FIX" eq "$RC" 3
+    check "the FIX says to run it again with --remove" has "$LAST" "peer --remove"
+    check "goomal is already removed" eq "$(jq -r '.peers | has("goomal")' "$(PEERS_FILE)")" false
+    rm -f "$T/units/$UNIT_NAME.startfail"
+    feed ""
+    run_sut "$T/in" peer --remove
+    check "the re-run reaches DONE" eq "$RC" 0
+    check "it finishes the restart for goomal" has "$LAST" "removed goomal; the poller was restarted"
+    check "the remaining peer is never offered for removal" lacks "$(setup_calls)" "remove yotam"
+    check "and stays set up" eq "$(jq -r '.peers | has("yotam")' "$(PEERS_FILE)")" true
+    check "setup.ts removed only goomal, once" eq "$(setup_calls)" "remove goomal"
+    check "no pick prompt on the re-run" eq "$(grep -c 'Type the number' "$T/out")" 0
+    check "the pending removal record is cleared" test ! -e "$HOME_FIX/.himmel/remote-setup/peer-removing.json"
+}
+
 case_peer_mac_bootout_then_bootstrap_order() {
     echo Darwin > "$T/uname"
     seed_confirmed_station mac
@@ -2107,7 +2128,7 @@ peer_repoint_runs_remove_then_add_confirm peer_pending_publication_survives_inte
 peer_allowfrom_written_by_setup_ts_only_digit_strings peer_canary_token_absent_everywhere
 peer_sigint_during_discovery_restarts_poller renamed_peer_bot_keeps_name
 peer_done_rerun_changes_no_config_artifact peer_inputs_are_only_the_g2_set
-peer_remove_deletes_checkpoint_and_status_na peer_remove_interrupted_resumes peer_remove_with_nothing_set_up_is_done peer_remove_unreadable_peer_list_stops_before_any_change peer_remove_teardown_failure_is_a_fix peer_wait_pages_when_the_group_is_busy peer_remove_unit_delete_failure_is_a_fix peer_remove_reload_failure_is_a_fix peer_remove_one_of_two_restarts_poller
+peer_remove_deletes_checkpoint_and_status_na peer_remove_interrupted_resumes peer_remove_with_nothing_set_up_is_done peer_remove_unreadable_peer_list_stops_before_any_change peer_remove_teardown_failure_is_a_fix peer_wait_pages_when_the_group_is_busy peer_remove_unit_delete_failure_is_a_fix peer_remove_reload_failure_is_a_fix peer_remove_one_of_two_restarts_poller peer_remove_one_of_two_interrupted_before_restart_finishes_that_removal
 peer_mac_bootout_then_bootstrap_order peer_mac_old_agent_is_not_accepted_as_the_updated_poller peer_changed_token_restarts_the_running_poller peer_without_part1_fixes peer_bridge_equals_main_refuses
 peer_different_bridge_id_without_replace_refuses peer_hello_timeout_fixes peer_sole_candidate_needs_a_yes peer_hostile_username_refused
 peer_name_second_collision_gets_3 peer_name_32_char_base_with_suffix_fits"

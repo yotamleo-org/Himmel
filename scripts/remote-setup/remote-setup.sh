@@ -718,27 +718,49 @@ peer_finish() {
 }
 
 peer_restart_fix() {
-    rs_fix "the peer poller did not restart (the peer you removed stays removed): look at why with: $(peer_log_hint), then run: bash scripts/remote-setup/remote-setup.sh peer"
+    rs_fix "the peer poller did not restart (the peer you removed stays removed): look at why with: $(peer_log_hint), then run: bash scripts/remote-setup/remote-setup.sh peer --remove"
+}
+
+# The removal of one peer while others stay is recorded here until the poller has restarted, so an
+# interrupted run finishes that removal and never offers a remaining peer in its place.
+peer_removing_file() { printf '%s' "$HOME/.himmel/remote-setup/peer-removing.json"; }
+
+peer_removing_read() {
+    local f n
+    f=$(peer_removing_file)
+    [ -f "$f" ] || return 0
+    n=$(jq -r '.name // empty' "$f" 2> /dev/null)
+    if [[ $n =~ ^[a-z0-9][a-z0-9-]{0,31}$ ]]; then printf '%s' "$n"; fi
+    return 0
 }
 
 peer_remove() {
     local names listed name lines known
     peer_peers_check
-    names=$(peer_peers_all | cut -d'|' -f1)
-    if [ -f "$(peer_confirmed_file)" ]; then
-        listed=$(jq -r '(.peers // [])[]?.name | select(type == "string" and test("^[a-z0-9][a-z0-9-]{0,31}$"))' "$(peer_confirmed_file)" 2> /dev/null)
-        names=$(printf '%s\n%s\n' "$names" "$listed" | grep . | sort -u)
-    fi
-    if [ -z "$names" ]; then
-        if [ -z "$(peer_peers_all)" ] && [ -f "$(peer_unit_file)" ]; then
-            peer_unit_teardown || peer_teardown_fix
-            rs_done "peer — nothing to remove; the leftover poller was stopped and its unit deleted"
+    name=$(peer_removing_read)
+    if [ -n "$name" ]; then
+        rs_step "finishing the removal of $name, which was started before"
+    else
+        names=$(peer_peers_all | cut -d'|' -f1)
+        if [ -f "$(peer_confirmed_file)" ]; then
+            listed=$(jq -r '(.peers // [])[]?.name | select(type == "string" and test("^[a-z0-9][a-z0-9-]{0,31}$"))' "$(peer_confirmed_file)" 2> /dev/null)
+            names=$(printf '%s\n%s\n' "$names" "$listed" | grep . | sort -u)
         fi
-        rs_done "peer — nothing to remove"
+        if [ -z "$names" ]; then
+            if [ -z "$(peer_peers_all)" ] && [ -f "$(peer_unit_file)" ]; then
+                peer_unit_teardown || peer_teardown_fix
+                rs_done "peer — nothing to remove; the leftover poller was stopped and its unit deleted"
+            fi
+            rs_done "peer — nothing to remove"
+        fi
+        lines=$(printf '%s\n' "$names" | awk '{print $0 "|" $0}')
+        peer_choose "$lines"
+        name=${PEER_CHOSEN%%|*}
+        if [ "$(printf '%s\n' "$names" | grep -c .)" -gt 1 ]; then
+            rs_json_edit "$(peer_removing_file)" '{}' '.name = $n' --arg n "$name" \
+                || rs_fix "the removal of $name could not be recorded ($(rs_tilde "$(peer_removing_file)")): check that you own your home folder, then run the same command again"
+        fi
     fi
-    lines=$(printf '%s\n' "$names" | awk '{print $0 "|" $0}')
-    peer_choose "$lines"
-    name=${PEER_CHOSEN%%|*}
     known=$(peer_peers_all | cut -d'|' -f1)
     case "
 $known
@@ -755,6 +777,7 @@ $name
     rs_step "the record of set-up peers no longer lists $name"
     if [ -z "$(peer_peers_all)" ]; then
         peer_unit_teardown || peer_teardown_fix
+        rm -f "$(peer_removing_file)"
         rs_done "peer — removed $name; the poller is stopped and its unit deleted"
     fi
     if peer_unit_active; then
@@ -764,8 +787,10 @@ $name
         else
             systemctl --user restart "$PEER_UNIT" > /dev/null 2>&1 || peer_restart_fix
         fi
+        rm -f "$(peer_removing_file)"
         rs_done "peer — removed $name; the poller was restarted"
     fi
+    rm -f "$(peer_removing_file)"
     rs_done "peer — removed $name; the poller was not running, so there was nothing to restart"
 }
 
