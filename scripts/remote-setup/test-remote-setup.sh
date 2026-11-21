@@ -1248,7 +1248,8 @@ case_peer_fresh_fresh_discovers_via_hello() {
     check "the hello is the fixed plain line" file_has "$T/curl.stdin" 'himmel peer hello'
     check "it went to the discovered group" eq "$(sent_chat)" "$CHAT"
     check "the unit file is installed" test -f "$(UNIT_FILE)"
-    check "the unit is enabled and started" test -f "$T/units/$UNIT_NAME.active"
+    check "the unit is started" test -f "$T/units/$UNIT_NAME.active"
+    check "and enabled, so it survives a reboot" test -f "$T/units/$UNIT_NAME.enabled"
 }
 
 case_peer_confirmed_side_posts_hello_without_waiting() {
