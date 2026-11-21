@@ -178,6 +178,8 @@ Every message the harness sends to Telegram carries a kind, and `scripts/telegra
 | `denial-stuck` | escalate | `scripts/handover/chief-kit/chief-wait.sh` | A worker N4992b has been parked 30 min by a classifier denial (PAUSE-RISK). Blocks: its ticket. Do: open the session in Remote Control, or run ack-denial.sh with the label |
 | `monitor-chat-down` | escalate | `scripts/telegram/poller.ts` | The monitoring group is getting no messages (unset); 3 are kept on the station. Blocks: routine monitoring only. Do: check the two monitoring lines in the bridge env file and that the monitoring bot is in its group, then restart the bridge |
 | `recover-failed` | escalate | `scripts/station-ops/recover.sh` | Reboot recovery failed: the bridge did not come back. Blocks: every Telegram message. Do: run systemctl --user restart telegram-bridge.service |
+| `bypass-ask` | escalate | `scripts/station-ops/bypass-launchd.sh` | A chief asked to launch a worker with a bypass: it wants settings access for one ticket. Blocks: that launch. Do: reply go 4821 to launch it, or no 4821 to refuse; the ask expires in 6 h |
+| `bypass-failed` | escalate | `scripts/station-ops/bypass-launchd.sh` | A bypass launch you approved failed (rc 1): the worker did not start. Blocks: that worker. Do: read the launch log in the bypass queue, then ask the chief to relaunch it |
 | `chief-reply` | escalate | `docs/handover/running-a-chief.md` | A chief's reply to the operator, sent through chief-route.ts; ticket keys and PR numbers carry their plain words. |
 | `hold-ask-chief` | silent | `scripts/handover/chief-kit/chief-wait.sh` | A worker wants scripts/cr/critic-panel.sh, held by another ticket. Blocks: that worker. Do: in a real terminal, run: bash scripts/handover/chief-kit/go.sh grant the-ticket |
 | `denial-page` | monitor | `scripts/handover/chief-kit/chief-wait.sh` | Session 81843b5d of the himmel chief has 3 classifier denials (PAUSE-RISK). Blocks: that session. Do: open it in Remote Control and answer the prompt |
@@ -185,6 +187,8 @@ Every message the harness sends to Telegram carries a kind, and `scripts/telegra
 | `denied-launch` | monitor | `scripts/handover/chief-kit/denied-launch-alert.sh` | A worker launch was denied by the classifier; details stay on the station log. |
 | `silent-go-merge` | monitor | `scripts/handover/chief-kit/silent-go-merge.sh` | A GO'd PR whose worker went silent was merged by the chief's script. |
 | `claude-only-clear` | monitor | `scripts/cr/clear-review-marker.sh` | The review marker was cleared on the Claude-only fallback after every other review lane was out. |
+| `bypass-result` | monitor | `scripts/station-ops/bypass-launchd.sh` | A bypass worker launch you answered with go or no ran, was refused, or did not run; the outcome is logged on the station. |
+| `version-approval` | monitor | `scripts/handover/chief-kit/version-approval-alert.sh` | Your out-of-version approval was recorded for a ticket, for 14 days; this repeats your own words back. |
 | `cache-health` | monitor | `scripts/eval/cache-health-cadence.sh` | The hourly prompt-cache health check crossed a threshold. |
 | `failure-review` | monitor | `scripts/eval/worker-digest/failure_review.py` | The daily failure review found something in the last 24 hours. |
 | `upstream-watch` | monitor | `scripts/upstreams/upstream-watch.sh` | An upstream project the harness tracks has news to review. |
@@ -223,6 +227,7 @@ Every message the harness sends to Telegram carries a kind, and `scripts/telegra
 | `cadence:upstream-watch` | monitor | `scripts/upstreams/upstream-watch-cadence.sh` | The upstream-watch scheduled worker reported a failure. |
 | `cadence:security-audit` | escalate | `scripts/security/security-audit-cadence.sh` | security-audit: 2 new high or critical findings. Cause: new-high-critical findings in the dependency audit. Blocks: nothing yet. Do: read the audit log and decide which finding to fix |
 | `cadence:snyk-scan` | escalate | `scripts/security/snyk-scan-cadence.sh` | snyk-scan: the scan found high findings. Cause: high-findings. Blocks: nothing yet. Do: read the scan log and decide which finding to fix |
+| `cadence:graph-key-*` | escalate | `scripts/graphify/semantic-update.sh` | graph-key-A: account A API key rejected. Cause: HTTP 401 or 403 from the provider. Blocks: the semantic graph update for that account. Do: rotate that account's key file, or remove the account from the route |
 | `cadence:graph-semantic-*` | monitor | `scripts/graphify/graph-cadence.sh` | Any `cadence:graph-semantic-*` kind: a scheduled worker of that family reported a failure. |
 | `cadence:vm-maintain-login-*` | monitor | `scripts/vm/vm-maintain.sh` | Any `cadence:vm-maintain-login-*` kind: a scheduled worker of that family reported a failure. |
 | `cadence:grafana-Flow_run_truncated` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: Flow run truncated. |
@@ -242,6 +247,8 @@ Every message the harness sends to Telegram carries a kind, and `scripts/telegra
 | `cadence:grafana-Scheduled_eval_has_not_run_in_14_days` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: Scheduled eval has not run in 14 days. |
 | `cadence:grafana-Scheduled_eval_has_no_ledger_series` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: Scheduled eval has no ledger series. |
 | `cadence:grafana-DatasourceNoData` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: DatasourceNoData. |
+
+A message with no kind is an `unclassified` escalate and goes to the operator chat. That is deliberate in one place: `chief-wait.sh` sends a denial page with no kind when it could not write the page record, so a page that could not be remembered is never made quiet. `bypass-ask`, `bypass-failed` and `bypass-result` are in the table, but `bypass-launchd.sh` does not pass them yet; until it does, its messages still arrive unclassified.
 
 
 ## Ops runbook

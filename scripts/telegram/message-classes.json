@@ -89,7 +89,8 @@
     {
       "kind": "claude-only-clear",
       "class": "monitor",
-      "sender": "scripts/cr/clear-review-marker.sh"
+      "sender": "scripts/cr/clear-review-marker.sh",
+      "pin": "_mba_send \"$_fca_chat\" \"$_fca_msg\" claude-only-clear"
     },
     {
       "kind": "cache-health",
@@ -285,6 +286,36 @@
       "sender": "scripts/security/snyk-scan-cadence.sh",
       "pin": "fail snyk-scan",
       "sample": "snyk-scan: the scan found high findings. Cause: high-findings. Blocks: nothing yet. Do: read the scan log and decide which finding to fix"
+    },
+    {
+      "kind": "cadence:graph-key-*",
+      "class": "escalate",
+      "sender": "scripts/graphify/semantic-update.sh",
+      "pin": "fail \"graph-key-$1\"",
+      "sample": "graph-key-A: account A API key rejected. Cause: HTTP 401 or 403 from the provider. Blocks: the semantic graph update for that account. Do: rotate that account's key file, or remove the account from the route"
+    },
+    {
+      "kind": "bypass-ask",
+      "class": "escalate",
+      "sender": "scripts/station-ops/bypass-launchd.sh",
+      "sample": "A chief asked to launch a worker with a bypass: it wants settings access for one ticket. Blocks: that launch. Do: reply go 4821 to launch it, or no 4821 to refuse; the ask expires in 6 h"
+    },
+    {
+      "kind": "bypass-failed",
+      "class": "escalate",
+      "sender": "scripts/station-ops/bypass-launchd.sh",
+      "sample": "A bypass launch you approved failed (rc 1): the worker did not start. Blocks: that worker. Do: read the launch log in the bypass queue, then ask the chief to relaunch it"
+    },
+    {
+      "kind": "bypass-result",
+      "class": "monitor",
+      "sender": "scripts/station-ops/bypass-launchd.sh"
+    },
+    {
+      "kind": "version-approval",
+      "class": "monitor",
+      "sender": "scripts/handover/chief-kit/version-approval-alert.sh",
+      "pin": "_mba_send \"$chat\" \"$text\" version-approval"
     },
     {
       "kind": "cadence:graph-semantic-*",

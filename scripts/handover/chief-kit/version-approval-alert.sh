@@ -32,6 +32,6 @@ chat="$(_mba_operator_chat)" || chat=""
 [ -n "$chat" ] || { echo "version-approval-alert: no operator chat id in ${TELEGRAM_ACCESS_PATH:-$HOME/.claude/channels/telegram/access.json}; nothing sent" >&2; exit 1; }
 
 text="\"$words\" — out-of-version approval for $key (in $version), decision $decision, for 14 days; $open approvals open."
-_mba_send "$chat" "$text" </dev/null || { echo "version-approval-alert: the sender failed; nothing sent" >&2; exit 1; }
+_mba_send "$chat" "$text" version-approval </dev/null || { echo "version-approval-alert: the sender failed; nothing sent" >&2; exit 1; }
 [ "${_MBA_REFUSED:-0}" != 1 ] || { echo "version-approval-alert: the send was refused; nothing sent" >&2; exit 77; }
 exit 0
