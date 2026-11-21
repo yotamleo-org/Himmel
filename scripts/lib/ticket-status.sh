@@ -65,12 +65,12 @@
 #       or, no merge row at all, a merged PR whose first [KEY] is the ticket
 #       (TS_STAGE=merged-no-row, TS_MERGED_PR); an unreadable merged list or merge-row
 #       filter is no-write + miss. D5c and D5d need a wrapped owner or no worker doc at all;
-#       with no doc, a D5c on a To Do ticket is D7 instead (never pulled to In Progress)
+#       with no doc they apply only to a ticket at IN CI (any other status is D7, never moved)
 #   D6  no PR, the owner WRAPPED or HALTED       To Do (the resume state)
 #       and no other recorded worker holds its lock
 #   D6n as D6, but the ticket is In Progress and the owner's brief says Completes ticket: no
 #       above ## Results: derived equals current, so no move
-#   D7  no PR, no worker doc, no D5d or D5c      no-write
+#   D7  no PR, no worker doc, not at IN CI or no D5d/D5c   no-write
 #
 # Env: TICKET_STATUS_STATE_DIR (default ~/.himmel/state), WORKER_SESSION_JIRA_CLI (the Jira
 # CLI; an executable or a .js run under node), TICKET_STATUS_QUEUE_LOCK (an
@@ -862,7 +862,7 @@ ts_derive() {
     [ "$rc" -ne 0 ] || { _ts_no_write miss D4b done-pending; return 0; }
     [ "$rc" -ne 2 ] || { _ts_no_write miss "" log; return 0; }
     if [ -z "$doc" ]; then
-        if ! _ts_derive_merged "$key" || { [ "$TS_RULE" = D5c ] && [ "$TS_J_STATUS" = "To Do" ]; }; then
+        if [ "$TS_J_STATUS" != "IN CI" ] || ! _ts_derive_merged "$key"; then
             TS_MERGED_PR=""
             _ts_no_write skip D7
         fi
