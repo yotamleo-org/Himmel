@@ -23,6 +23,9 @@ class Runtime(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.bucket = Path(self.tmp.name)
+        self.real_ps = shutil.which('ps')
+        self.preexisting_pids = self.bucket / 'preexisting-pids'
+        self.preexisting_pids.write_text(subprocess.run([self.real_ps, '-eo', 'pid='], capture_output=True, text=True).stdout)
         if os.environ.get('FLEET_RUNTIME_EVIDENCE'):
             self.addCleanup(self.save_evidence)
         self.env = dict(os.environ, HOME=str(self.bucket), HIMMEL_FLEET_SLOTS=str(self.bucket / 'slots'),
@@ -219,9 +222,12 @@ class Runtime(unittest.TestCase):
 
     def anchorless_tree(self):
         """Symlinks to every entry of ENTRYPOINTS, except that scripts/, scripts/handover/, scripts/handover/chief-kit/ and scripts/lib/ are real
-        directories and the seam guard is a copy. The guard resolves its root from its own directory, so a launch run from this tree is not on a
-        primary checkout, which is what a CI checkout is: there it refuses a Claude Code marker beside a seam, and the worker exports a marker."""
+        directories and the seam guard, the preflight and the runtime are copies. The guard resolves its root from its own directory, so a launch
+        run from this tree is not on a primary checkout, which is what a CI checkout is: there it refuses a Claude Code marker beside a seam,
+        and the worker exports a marker. The runtime accepts a stamp only from the preflight beside it, so the two are copied together."""
         tree = self.bucket / 'tree'
+        if tree.exists():
+            return tree
         tree.mkdir()
         real = {Path('scripts'), Path('scripts/handover'), Path('scripts/handover/chief-kit'), Path('scripts/lib')}
         for entry in ENTRYPOINTS.glob('*'):
@@ -232,13 +238,14 @@ class Runtime(unittest.TestCase):
             for entry in (ENTRYPOINTS / directory).iterdir():
                 if directory / entry.name not in real:
                     (tree / directory / entry.name).symlink_to(entry)
-        guard = tree / 'scripts/lib/chokepoint-seam-guard.sh'
-        guard.unlink()
-        shutil.copy2(ENTRYPOINTS / 'scripts/lib/chokepoint-seam-guard.sh', guard)
+        for name in ('chokepoint-seam-guard.sh', 'fleet_runtime.py', 'usage-preflight.sh'):
+            copy = tree / 'scripts/lib' / name
+            copy.unlink()
+            shutil.copy2(ENTRYPOINTS / 'scripts/lib' / name, copy)
         return tree
 
-    def entry(self, path, args=(), env=None, root=ENTRYPOINTS):
-        command = ['bash', str(root / path), *map(str, args)]
+    def entry(self, path, args=(), env=None, root=None):
+        command = ['bash', str((root or self.anchorless_tree()) / path), *map(str, args)]
         result = subprocess.run(command, env=env or self.launch_env(), capture_output=True, text=True, timeout=20)
         self.record(command, result)
         return result
@@ -350,7 +357,7 @@ class Runtime(unittest.TestCase):
                    HEADED_ARM_WORKER_PREFLIGHT=self.stub('preflight', 'echo PROCEED'))
         p = self.entry('scripts/handover/chief-kit/headed-arm-worker.sh',
                        ('--fleet', self.m, '--no-profile', self.doc.stem, self.doc,
-                        self.bucket / 'sig', '1', self.bucket / 'log', 'claude-sonnet-5-5'), env, root=self.anchorless_tree())
+                        self.bucket / 'sig', '1', self.bucket / 'log', 'claude-sonnet-5-5'), env)
         log = self.bucket / 'log'
         self.assertEqual(p.returncode, 0, p.stderr + p.stdout + (log.read_text() if log.exists() else ''))
         self.assertTrue((self.bucket / 'spawned').exists())
@@ -438,7 +445,7 @@ class Runtime(unittest.TestCase):
         self.fail('launcher barrier timed out')
 
     def start_headed(self, env):
-        p = subprocess.Popen(['bash', str(ENTRYPOINTS / 'scripts/handover/headed-arm.sh'), self.doc.stem,
+        p = subprocess.Popen(['bash', str(self.anchorless_tree() / 'scripts/handover/headed-arm.sh'), self.doc.stem,
                               str(self.doc), str(self.bucket / 'sig'), '1', str(self.bucket / 'log')],
                              env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.addCleanup(lambda: p.poll() is None and p.kill())
@@ -507,7 +514,7 @@ touch "$HOME/reserved"
 for i in {1..400}; do [ -e "$HOME/continue" ] && exit 0; sleep .02; done
 exit 1''')
         env = dict(self.launch_env(), FLEET_ADMIT_TEST_HOOK=hook)
-        command = ['python3', '-I', str(ROOT / 'scripts/lib/fleet_runtime.py'), 'run', '--doc', str(self.doc),
+        command = ['python3', '-I', str(self.anchorless_tree() / 'scripts/lib/fleet_runtime.py'), 'run', '--doc', str(self.doc),
                    '--name', self.doc.stem, '--', 'bash', '-c', 'touch "$HOME/scheduled-spawn"']
         p = subprocess.Popen(command, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         try:
@@ -576,6 +583,9 @@ exit 1''')
         env = self.launch_env()
         env.pop('FLEET_PS_CMD', None)
         env.pop('FLEET_PROC', None)
+        (self.bucket / 'census-bin').mkdir(exist_ok=True)
+        shim = self.stub('census-bin/ps', '"%s" "$@" | awk \'NR==FNR{skip[$1]=1;next} !($1 in skip)\' "%s" -' % (self.real_ps, self.preexisting_pids))
+        env['PATH'] = os.path.dirname(shim) + os.pathsep + env['PATH']
         return env
 
     def real_worker(self, aid='one', doc=None):
@@ -659,7 +669,8 @@ exit 1''')
             doc = self.bucket / ('HIMMEL-' + str(910 + len(boundary)) + '-' + boundary + '.md')
             doc.write_text('# worker\n')
             self.call('add', self.m, doc, '--lane', 'native', '--pending')
-            p = subprocess.Popen([sys.executable, '-c', code, str(WRITER), str(doc), str(self.m), boundary],
+            p = subprocess.Popen([sys.executable, '-c', code, str(self.anchorless_tree() / 'scripts/handover/chief-kit/fleet-manifest.sh'),
+                                  str(doc), str(self.m), boundary],
                                  env=self.real_census_env(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             self.addCleanup(lambda p=p: p.poll() is None and (p.kill(), p.wait(timeout=5)))
             self.wait_file(self.bucket / ('kill-' + boundary), p)
@@ -897,7 +908,7 @@ exit 1''')
     def test_active_scheduled_worker_repeats_with_explicit_manifest(self):
         self.call('control', 'set', self.m, '--mode', 'active', '--target', '1', '--expect-gen', '1')
         env = self.real_census_env()
-        command = ['python3', '-I', str(ROOT / 'scripts/lib/fleet_runtime.py'), 'run', '--doc', str(self.doc),
+        command = ['python3', '-I', str(self.anchorless_tree() / 'scripts/lib/fleet_runtime.py'), 'run', '--doc', str(self.doc),
                    '--name', self.doc.stem, '--manifest', str(self.m), '--', 'bash', '-c',
                    'test -z "${FLEET_LAUNCH_ATTEMPT:-}" && test -n "$WORKER_SESSION_ATTEMPT_ID" && touch "$HOME/scheduled-ended"']
         for _ in range(2):
@@ -1736,6 +1747,312 @@ exit 1''')
         with mock.patch.object(runtime.os, 'getuid', return_value=os.getuid() + 1):  # as if the unreadable process belonged to someone else
             self.assertEqual(runtime.launch_candidates(record, time.monotonic() + 30)[1], [])
         self.stop(opaque)
+
+    def bundle_docs(self, title):
+        first, second = self.bucket / 'HIMMEL-101-N1-worker.md', self.bucket / 'HIMMEL-102-N2-worker.md'
+        first.write_text(title + '\n')
+        second.write_text('# HIMMEL-102 worker\n')
+        for doc in (first, second):
+            self.call('add', self.m, doc, '--lane', 'native', '--pending')
+        return first, second
+
+    def test_a_second_doc_for_a_ticket_a_bundle_h1_names_by_shorthand_is_refused(self):
+        self.active()
+        first, second = self.bundle_docs('# HIMMEL-101 / 102 — bundle')
+        self.assertEqual(json.loads(self.rt('begin', aid='first', doc=first).stdout)['keys'], ['HIMMEL-101', 'HIMMEL-102'])
+        p = self.rt('begin', aid='second', doc=second, ok=False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.assertEqual(list(self.anchor_attempts()), ['first'])
+
+    def test_a_second_doc_for_a_ticket_a_bundle_h1_writes_out_in_full_is_refused(self):
+        self.active()
+        first, second = self.bundle_docs('# HIMMEL-101 / HIMMEL-102 — bundle')
+        self.rt('begin', aid='first', doc=first)
+        p = self.rt('begin', aid='second', doc=second, ok=False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.assertEqual(list(self.anchor_attempts()), ['first'])
+
+    def dispatcher_title_expression(self):
+        """The dispatcher's own TITLE_KEY_RE and title_keys, executed from its source text."""
+        import re
+        lines = (ENTRYPOINTS / 'scripts/handover/chief-kit/next-dispatchable.sh').read_text().splitlines()
+        start = next(number for number, line in enumerate(lines) if line.startswith('TITLE_KEY_RE = re.compile('))
+        block = [lines[start]]
+        for line in lines[start + 1:]:
+            if line and not line[0].isspace() and not line.startswith('def title_keys('):
+                break
+            block.append(line)
+        namespace = {'re': re}
+        exec('\n'.join(block), namespace)
+        return namespace
+
+    def test_the_runtime_reads_a_doc_title_as_the_dispatcher_does(self):
+        dispatcher = self.dispatcher_title_expression()
+        runtime = self.runtime_module()
+        titles = ['HIMMEL-101 / 102 — bundle', 'HIMMEL-101 + 102', 'HIMMEL-101 (+102, +103)', 'HIMMEL-101, 102 & 103',
+                  'HIMMEL-101 / HIMMEL-102', 'HIMMEL-101 — worker', 'HIMMEL-101 worker 7', 'worker 7 — HIMMEL-101 / 2']
+        self.assertIn('HIMMEL-103', dispatcher['title_keys'](['# ' + titles[2]]))
+        for number, title in enumerate(titles):
+            doc = self.bucket / ('HIMMEL-900-N%d-parity.md' % number)
+            doc.write_text('# ' + title + '\n')
+            expected = sorted({'HIMMEL-900', *dispatcher['title_keys'](['# ' + title])})
+            self.assertEqual(runtime.worker_keys(doc), expected, title)
+        self.assertEqual(runtime.TITLE_KEY_RE.pattern, dispatcher['TITLE_KEY_RE'].pattern)
+
+    def begin_beside_old_sibling(self, key, empty=None):
+        self.active()
+        old, new = self.bucket / 'HIMMEL-101-N1-old.md', self.bucket / 'HIMMEL-101-N2-new.md'
+        old.write_text('# HIMMEL-101 old worker\n- 09:00 LIVE\n')
+        new.write_text('# HIMMEL-101 new worker\n')
+        sibling = {'schema': 1, key: [dict(doc=str(old), label='N1', added='2026-11-01T00:00:00Z', lane='native')]}
+        if empty:
+            sibling[empty] = []
+        (self.bucket / 'old.fleet.json').write_text(json.dumps(sibling))
+        self.call('add', self.m, new, '--lane', 'native', '--pending')
+        p = self.rt('begin', aid='n1', doc=new, ok=False)
+        self.assertIn('unknown legacy family ownership', p.stderr)
+        self.assertEqual(self.anchor_attempts(), {})
+
+    def test_begin_is_refused_beside_a_live_row_a_workers_sibling_holds(self):
+        self.begin_beside_old_sibling('workers')
+
+    def test_begin_is_refused_beside_a_live_row_a_legs_sibling_holds(self):
+        self.begin_beside_old_sibling('legs')
+
+    def test_begin_is_refused_beside_a_live_legs_row_when_the_sibling_also_has_an_empty_workers(self):
+        self.begin_beside_old_sibling('legs', empty='workers')
+
+    def test_begin_is_refused_beside_a_live_workers_row_when_the_sibling_also_has_an_empty_legs(self):
+        self.begin_beside_old_sibling('workers', empty='legs')
+
+    def test_a_damaged_owner_reads_unknown_and_only_an_exact_identity_reads_dead(self):
+        runtime = self.runtime_module()
+        owner = runtime.identity(os.getpid())
+        self.assertEqual(runtime.process_state(owner), 'live')
+        self.assertEqual(runtime.process_state(dict(owner, start='0')), 'dead')
+        damaged = {'no start': {k: v for k, v in owner.items() if k != 'start'},
+                   'no pid': {k: v for k, v in owner.items() if k != 'pid'},
+                   'an extra field': dict(owner, extra='x'),
+                   'a pid that is a string': dict(owner, pid=str(owner['pid'])),
+                   'a pid that is a bool': dict(owner, pid=True),
+                   'a start that is a number': dict(owner, start=int(owner['start'])),
+                   'not a mapping': None}
+        for name, value in damaged.items():
+            self.assertEqual(runtime.process_state(value), 'unknown', name)
+
+    def pending_attempt_with_a_reservation(self):
+        self.active()
+        self.rt('begin')
+        env = dict(self.launch_env(), FLEET_LAUNCH_ATTEMPT='one')
+        self.entry('scripts/lib/usage-preflight.sh', env=env)
+        slot = self.bucket / 'slots' / self.doc.stem
+        self.assertTrue((slot / 'managed.json').is_file())
+        return slot
+
+    def test_a_pending_attempt_whose_owner_lost_a_field_is_neither_refused_nor_released(self):
+        slot = self.pending_attempt_with_a_reservation()
+        anchor = self.bucket / 'fleet-control.json'
+        data = json.loads(anchor.read_text())
+        data['attempts']['one']['owner'].pop('start')
+        anchor.write_text(json.dumps(data))
+        ack = json.loads(self.rt('ack').stdout)
+        self.assertEqual([r['attempt_id'] for r in ack['unknown']], ['one'])
+        self.assertFalse(ack['quiescent'])
+        self.assertEqual(list(self.anchor_attempts()), ['one'])
+        self.assertTrue((slot / 'managed.json').is_file())
+        self.assertEqual([row['outcome'] for row in self.history_rows('one')], ['attempt-started'])
+        self.rt('begin', aid='second', ok=False)
+
+    def test_a_pending_attempt_whose_launcher_lives_stays_pending(self):
+        slot = self.pending_attempt_with_a_reservation()
+        ack = json.loads(self.rt('ack').stdout)
+        self.assertEqual([r['attempt_id'] for r in ack['in_flight']], ['one'])
+        self.assertEqual(ack['unknown'], [])
+        self.assertEqual(self.anchor_attempts()['one']['phase'], 'pending')
+        self.assertTrue((slot / 'managed.json').is_file())
+
+    def launched_line(self):
+        return json.dumps(dict(v=2, kind='launch-attempt', attempt_id='one', name=self.doc.stem, doc=str(self.doc), outcome='launched'))
+
+    def settle_after_history_tail(self, tail):
+        self.active()
+        self.stuck()
+        self.forge(start='0')
+        history = self.bucket / '.himmel/launch-refusals.jsonl'
+        intact = history.read_text()
+        history.write_text(intact + tail)
+        return history, intact
+
+    def test_settle_refuses_while_the_launched_receipt_line_is_torn(self):
+        for tail in (self.launched_line()[:60], self.launched_line()[:60] + '\n'):
+            self.setUp()
+            history, intact = self.settle_after_history_tail(tail)
+            self.refused_settle('history has a line that cannot be read')
+            self.assertEqual(history.read_text(), intact + tail)
+            self.assertEqual(list(self.anchor_attempts()), ['one'])
+            self.assertTrue((self.bucket / 'slots' / self.doc.stem).is_dir())
+            hint = self.settle_hint_of()
+            self.assertFalse(hint['settleable'])
+            self.assertIn('history has a line that cannot be read', hint['text'])
+            history.write_text(intact)
+            self.settle()
+            self.assertEqual(self.anchor_attempts(), {})
+
+    def test_an_intact_launched_line_refuses_settle_as_a_launched_receipt(self):
+        self.settle_after_history_tail(self.launched_line() + '\n')
+        self.refused_settle('a launched receipt exists')
+
+    def test_a_blank_history_line_is_not_a_torn_receipt(self):
+        self.settle_after_history_tail('\n')
+        self.settle()
+        self.assertEqual(self.anchor_attempts(), {})
+
+    def test_a_receipt_after_a_torn_tail_starts_its_own_line(self):
+        self.active()
+        self.stuck()
+        history = self.bucket / '.himmel/launch-refusals.jsonl'
+        torn = self.launched_line()[:60]
+        with history.open('a') as stream:
+            stream.write(torn)
+        self.rt('outcome', extra=('--phase', 'unknown'))
+        lines = history.read_text().splitlines()
+        self.assertEqual(json.loads(lines[0])['outcome'], 'attempt-started')
+        self.assertEqual(lines[-2], torn)
+        self.assertEqual(json.loads(lines[-1])['outcome'], 'indeterminate')
+
+    def test_a_receipt_after_a_complete_tail_adds_no_blank_line(self):
+        self.active()
+        self.stuck()
+        self.rt('outcome', extra=('--phase', 'unknown'))
+        lines = (self.bucket / '.himmel/launch-refusals.jsonl').read_text().split('\n')
+        self.assertEqual([json.loads(line)['outcome'] for line in lines[:-1]], ['attempt-started', 'indeterminate'])
+        self.assertEqual(lines[-1], '')
+
+    def test_settle_refuses_when_a_torn_line_sits_in_the_middle_of_the_history(self):
+        other = json.dumps(dict(v=2, kind='launch-attempt', attempt_id='other', name='other', doc='/nowhere', outcome='attempt-started'))
+        history, intact = self.settle_after_history_tail(self.launched_line()[:60] + '\n' + other + '\n')
+        self.assertEqual(history.read_text().splitlines()[-1], other)
+        self.refused_settle('history has a line that cannot be read')
+        self.assertEqual(list(self.anchor_attempts()), ['one'])
+
+    def test_settle_refuses_when_a_later_receipt_leaves_the_torn_line_in_the_middle(self):
+        self.active()
+        self.stuck()
+        history = self.bucket / '.himmel/launch-refusals.jsonl'
+        with history.open('a') as stream:
+            stream.write(self.launched_line()[:60])
+        self.rt('outcome', extra=('--phase', 'unknown'))
+        self.assertEqual(json.loads(history.read_text().splitlines()[-1])['outcome'], 'indeterminate')
+        self.forge(start='0')
+        self.refused_settle('history has a line that cannot be read')
+        self.assertEqual(list(self.anchor_attempts()), ['one'])
+
+    def run_supervised(self, *command):
+        argv = ['python3', '-I', str(self.anchorless_tree() / 'scripts/lib/fleet_runtime.py'), 'run', '--doc', str(self.doc), '--manifest', str(self.m),
+                '--name', self.doc.stem, '--', *command]
+        return subprocess.run(argv, env=self.launch_env(), capture_output=True, text=True, timeout=60)
+
+    def history_all(self):
+        return [json.loads(line) for line in (self.bucket / '.himmel/launch-refusals.jsonl').read_text().splitlines()]
+
+    def test_a_program_that_cannot_be_spawned_is_refused_and_released(self):
+        self.active()
+        p = self.run_supervised(str(self.bucket / 'no-such-program'))
+        self.assertEqual(p.returncode, 10, p.stderr)
+        self.assertEqual(self.anchor_attempts(), {})
+        self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
+        rows = self.history_all()
+        self.assertEqual([row['outcome'] for row in rows], ['attempt-started', 'refused'])
+        self.assertEqual(rows[-1]['cause'], 'spawn-failed')
+        self.assertEqual(json.loads(self.m.read_text())['workers'], [])
+        self.call('add', self.m, self.doc, '--lane', 'native', '--pending')
+        self.assertEqual(self.run_supervised('/bin/true').returncode, 0)
+
+    def test_a_program_that_starts_and_fails_is_complete_never_refused(self):
+        self.active()
+        p = self.run_supervised('bash', '-c', 'exit 3')
+        self.assertEqual(p.returncode, 3, p.stderr)
+        self.assertEqual([row['outcome'] for row in self.history_all()], ['attempt-started', 'complete'])
+        self.assertEqual(self.anchor_attempts(), {})
+        self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
+
+    def test_a_plain_refused_outcome_cannot_free_a_committed_attempt(self):
+        self.active()
+        self.stuck()
+        anchor, history, slot = self.bucket / 'fleet-control.json', self.bucket / '.himmel/launch-refusals.jsonl', self.bucket / 'slots' / self.doc.stem
+        before = (anchor.read_text(), self.m.read_text(), history.read_text())
+        p = self.rt('outcome', extra=('--phase', 'refused'), ok=False)
+        self.assertIn('committed attempt needs affirmative terminal evidence', p.stderr)
+        self.assertEqual((anchor.read_text(), self.m.read_text(), history.read_text()), before)
+        self.assertEqual(self.anchor_attempts()['one']['phase'], 'committed')
+        self.assertTrue((slot / 'managed.json').is_file())
+        for flag in ('--spawn-failed', '--spawn_failed'):
+            p = self.rt('outcome', extra=('--phase', 'refused', flag), ok=False)
+            self.assertIn('unrecognized arguments', p.stderr)
+        self.assertEqual((anchor.read_text(), self.m.read_text(), history.read_text()), before)
+
+    def sibling_owners(self, outcome, *lines, pending=True):
+        doc = self.bucket / 'HIMMEL-111-N1-resumed.md'
+        doc.write_text('# worker\n' + ''.join(line + '\n' for line in lines))
+        row = dict(doc=str(doc), label='P1', added='2026-11-18T08:00:00Z', lane='native')
+        if pending:
+            row['registration'] = 'pending'
+        sibling = self.bucket / 'sibling.fleet.json'
+        data = json.loads(self.m.read_text())
+        data['workers'] = [row]
+        sibling.write_text(json.dumps(data))
+        if outcome:
+            history = self.bucket / '.himmel/launch-refusals.jsonl'
+            history.parent.mkdir(exist_ok=True)
+            history.write_text(json.dumps(dict(v=2, kind='launch-attempt', ts='2026-11-18T09:00:00Z', attempt_id='r2', name=doc.stem,
+                                               doc=str(doc), family=data['control']['family'], outcome=outcome)) + '\n')
+        return [Path(owner['doc']).name for owner in json.loads(self.call('runtime', 'owners', '--manifest', sibling).stdout)]
+
+    def test_a_complete_receipt_does_not_hide_a_pending_row_whose_doc_was_resumed(self):
+        self.assertEqual(self.sibling_owners('complete', '- 10:00 WRAPPED - done', '- 12:30 RESUMED - by hand'), ['HIMMEL-111-N1-resumed.md'])
+
+    def test_a_row_that_is_not_pending_stays_owned_when_its_doc_was_resumed(self):
+        self.assertEqual(self.sibling_owners('', '- 10:00 WRAPPED - done', '- 12:30 RESUMED - by hand', pending=False), ['HIMMEL-111-N1-resumed.md'])
+
+    def test_a_terminal_receipt_does_not_hide_a_pending_row_whose_newest_marker_is_not_an_end_marker(self):
+        for outcome, lines in (('refused', ['- 11:00 LIVE - worker started']), ('complete', ['- 10:00 WRAPPED - done', '- 11:30 PARKED-USAGE - usage limit'])):
+            self.assertEqual(self.sibling_owners(outcome, *lines), ['HIMMEL-111-N1-resumed.md'], outcome + ' ' + lines[-1])
+
+    def test_a_terminal_receipt_releases_a_pending_row_whose_newest_marker_is_absent_or_an_end_marker(self):
+        for outcome, lines in (('complete', ['- 10:00 LIVE - working', '- 12:00 WRAPPED - done']), ('complete', ['- 10:00 HALTED - stopped']),
+                               ('refused', []), ('refused', ['- 12:00 WRAPPED - done'])):
+            self.assertEqual(self.sibling_owners(outcome, *lines), [], outcome + ' ' + str(lines))
+
+    def test_a_stale_copied_row_goes_while_the_live_replacement_and_its_reservation_stay(self):
+        self.active()
+        self.rt('begin')
+        stale = json.loads(self.m.read_text())['workers'][0]
+        self.assertEqual(stale['attempt']['attempt_id'], 'one')
+        self.rt('outcome', extra=('--phase', 'refused'))
+        self.call('add', self.m, self.doc, '--lane', 'native', '--pending')
+        self.rt('begin', aid='two')
+        self.entry('scripts/lib/usage-preflight.sh', env=dict(self.launch_env(), FLEET_LAUNCH_ATTEMPT='two'))
+        slot = self.bucket / 'slots' / self.doc.stem
+
+        def copy_stale_row():
+            data = json.loads(self.m.read_text())
+            data['workers'].insert(0, stale)
+            self.m.write_text(json.dumps(data))
+
+        def row_attempts():
+            return [row.get('attempt', {}).get('attempt_id') for row in json.loads(self.m.read_text())['workers']]
+        copy_stale_row()
+        self.assertEqual(row_attempts(), ['one', 'two'])
+        self.rt('ack', aid='two')
+        self.assertEqual(row_attempts(), ['two'])
+        self.assertEqual(list(self.anchor_attempts()), ['two'])
+        self.assertEqual(json.loads((slot / 'managed.json').read_text())['attempt_id'], 'two')
+        copy_stale_row()
+        self.rt('outcome', aid='two', extra=('--phase', 'refused'))
+        self.assertEqual(row_attempts(), ['one'])
+        self.assertFalse(slot.exists())
+        self.rt('ack', aid='two')
+        self.assertEqual(row_attempts(), [])
 
 
 if __name__ == '__main__':

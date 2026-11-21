@@ -2054,15 +2054,15 @@ if grep -q 'stdin=tty' "$T32_REC" 2>/dev/null; then
         PATH="$SCHED_STUB_T17:$PATH" bash "$ARM" --time "$(future_time)" --handover "$1" --dry-run 2>&1 \
             | awk '/^DRY arm-resume: would at -t/ { on = 1; next } /^    CMD$/ { on = 0 } on { sub(/^    /, ""); print }'
     }
-    # t32_expect_tty <row title> <body> [<shell>]: runs the body through <shell> (default sh;
-    # "blind" is sh reading $' as t32_blind does), stdin=/dev/null.
+    # t32_expect_tty <row title> <body> [<shell>] [<path prefix>]: runs the body through <shell> (default sh;
+    # "blind" is sh reading $' as t32_blind does), stdin=/dev/null, with <path prefix> ahead of PATH when given.
     t32_expect_tty() {
         local rec shell="${3:-sh}" body="$2"
         [ "$shell" = blind ] && body=$(t32_blind "$body")
         [ "$shell" = sh ] || shell=$(t32_shell_cmd "$shell")
         rm -f "$T32_REC"
         # shellcheck disable=SC2086
-        env PATH="$T32_BIN:$PATH" T32_REC="$T32_REC" HOME="$POLICY_EMPTY_HOME" CADENCE_USAGE_LEDGER="$TMP/t32-cadence.jsonl" \
+        env PATH="${4:+$4:}$T32_BIN:$PATH" T32_REC="$T32_REC" HOME="$POLICY_EMPTY_HOME" CADENCE_USAGE_LEDGER="$TMP/t32-cadence.jsonl" \
             $shell -c "$body" </dev/null >"$TMP/t32-run.out" 2>&1
         rec=$(cat "$T32_REC" 2>/dev/null)
         assert_contains "$1" "stdin=tty" "$rec"
@@ -2071,21 +2071,21 @@ if grep -q 'stdin=tty' "$T32_REC" 2>/dev/null; then
             *) echo "     claude recorded: ${rec:-nothing}"; head -n 8 "$TMP/t32-run.out" | sed 's/^/     run output: /' ;;
         esac
     }
-    # t32_expect_tty_all <row title> <body>: the row under sh, then under each other shell of
+    # t32_expect_tty_all <row title> <body> [<path prefix>]: the row under sh, then under each other shell of
     # T32_SHELLS that this host has.
     t32_expect_tty_all() {
         local s cmd
-        t32_expect_tty "$1" "$2"
+        t32_expect_tty "$1" "$2" sh "${3:-}"
         for s in $T32_SHELLS; do
             cmd=$(t32_shell_cmd "$s")
             if [ -z "$cmd" ]; then echo "SKIP $1 under $s: not on this host"; continue; fi
-            t32_expect_tty "$1 [$s]" "$2" "$s"
+            t32_expect_tty "$1 [$s]" "$2" "$s" "${3:-}"
         done
     }
 
     T32_BUCKET="$TMP/t32-fleet"
     mkdir -p "$T32_BUCKET"
-    T32_DOC="$T32_BUCKET/TEST-1-N1-worker.md"
+    T32_DOC="$T32_BUCKET/TEST-1-N1-worker-$$.md"
     printf -- '---\nsession_kind: test\nresume_cwd: %s\n---\n> **Prior art:** none found (offline fixture)\n\n# worker\n' "$WORK_REPO" > "$T32_DOC"
     HOME="$POLICY_EMPTY_HOME" bash "$T32_FM" control init "$T32_BUCKET/x.fleet.json" --target 1 >/dev/null 2>&1
     HOME="$POLICY_EMPTY_HOME" bash "$T32_FM" add "$T32_BUCKET/x.fleet.json" "$T32_DOC" --lane native --pending >/dev/null 2>&1
@@ -2096,7 +2096,74 @@ if grep -q 'stdin=tty' "$T32_REC" 2>/dev/null; then
     assert_contains "T32 managed fixture: the body hands the launch to the fleet runtime" "fleet_runtime.py run" "$T32_MANAGED"
     assert_not_contains "T32 unmanaged control: the body carries no fleet runtime" "fleet_runtime.py run" "$T32_PLAIN"
     t32_expect_tty_all "T32 unmanaged at body: claude's stdin is a tty" "$T32_PLAIN"
-    t32_expect_tty_all "T32 managed at body: claude's stdin is a tty (the pty is set up inside the runtime's bash -c)" "$T32_MANAGED"
+    T32_SHIM="$TMP/t32-shim"
+    mkdir -p "$T32_SHIM"
+    cat > "$T32_SHIM/python3" <<EOF
+#!/bin/sh
+HIMMEL_POLICY_FOLLOWS_HOME=1 FLEET_PS_CMD=$FLEET_PS_STUB exec $(command -v python3) "\$@"
+EOF
+    chmod +x "$T32_SHIM/python3"
+    t32_expect_tty_all "T32 managed at body: claude's stdin is a tty (the pty is set up inside the runtime's bash -c)" "$T32_MANAGED" "$T32_SHIM"
+
+    t32_fire() {
+        rm -f "$T32_REC"
+        env PATH="$T32_BIN:$PATH" T32_REC="$T32_REC" HOME="$POLICY_EMPTY_HOME" CADENCE_USAGE_LEDGER="$TMP/t32-cadence.jsonl" \
+            sh -c "$1" </dev/null >"$TMP/t32-run.out" 2>&1
+        T32_RC=$?
+    }
+    t32_launched() {
+        local got=no
+        [ -e "$T32_REC" ] && got=yes
+        if [ "$got" = "$2" ]; then
+            echo "PASS $1"
+        else
+            echo "FAIL $1 — claude launched: $got, expected: $2"
+            FAILED=$((FAILED + 1))
+            head -n 8 "$TMP/t32-run.out" | sed 's/^/     run output: /'
+        fi
+    }
+    t32_doc() {
+        printf -- '---\nsession_kind: test\nresume_cwd: %s\n---\n> **Prior art:** none found (offline fixture)\n\n# worker\n' "$WORK_REPO" > "$1"
+    }
+    T32P_BUCKET="$TMP/t32p-fleet"
+    mkdir -p "$T32P_BUCKET"
+    T32P_DOC="$T32P_BUCKET/TEST-2-N1-worker.md"
+    t32_doc "$T32P_DOC"
+    T32P_BODY=$(t32_body "$T32P_DOC")
+    assert_not_contains "T32 pause: a doc outside every family is armed with the bare launch" "fleet_runtime.py run" "$T32P_BODY"
+    t32_fire "$T32P_BODY"
+    assert_rc "T32 pause control: a doc unmanaged at arm and at fire time exits 0" 0 "$T32_RC"
+    t32_launched "T32 pause control: a doc unmanaged at arm and at fire time still launches claude" yes
+    HOME="$POLICY_EMPTY_HOME" bash "$T32_FM" control init "$T32P_BUCKET/x.fleet.json" --target 1 >/dev/null 2>&1
+    HOME="$POLICY_EMPTY_HOME" bash "$T32_FM" add "$T32P_BUCKET/x.fleet.json" "$T32P_DOC" --lane native --pending >/dev/null 2>&1
+    t32_fire "$T32P_BODY"
+    assert_rc "T32 pause: a body armed unmanaged and fired after its doc joined a paused family exits 24" 24 "$T32_RC"
+    t32_launched "T32 pause: that body does not launch claude" no
+    assert_contains "T32 pause: that body's refusal names the pause" "pause" "$(cat "$TMP/t32-run.out")"
+    T32P_ATTEMPTS=$(jq -r '(.attempts // {}) | length' "$T32P_BUCKET/fleet-control.json" 2>/dev/null)
+    case "$T32P_ATTEMPTS" in
+        0) echo "PASS T32 pause: that body leaves no attempt in the family" ;;
+        *) echo "FAIL T32 pause: that body leaves no attempt in the family — it holds '${T32P_ATTEMPTS}'"; FAILED=$((FAILED + 1)) ;;
+    esac
+    T32P_DOC2="$T32P_BUCKET/TEST-2-N2-worker.md"
+    t32_doc "$T32P_DOC2"
+    HOME="$POLICY_EMPTY_HOME" bash "$T32_FM" add "$T32P_BUCKET/x.fleet.json" "$T32P_DOC2" --lane native --pending >/dev/null 2>&1
+    T32P_BODY2=$(t32_body "$T32P_DOC2")
+    assert_contains "T32 pause control: a doc registered before the arm gets the runtime wrapper" "fleet_runtime.py run" "$T32P_BODY2"
+    t32_fire "$T32P_BODY2"
+    assert_rc "T32 pause control: a doc managed at arm time in a paused family exits 10" 10 "$T32_RC"
+    t32_launched "T32 pause control: a doc managed at arm time in a paused family does not launch claude" no
+    T32P_BAD="$TMP/t32p-bad"
+    mkdir -p "$T32P_BAD"
+    T32P_DOC3="$T32P_BAD/TEST-3-N1-worker.md"
+    t32_doc "$T32P_DOC3"
+    T32P_BODY3=$(t32_body "$T32P_DOC3")
+    t32_fire "$T32P_BODY3"
+    assert_rc "T32 pause control: a doc in an empty bucket exits 0" 0 "$T32_RC"
+    printf '{' > "$T32P_BAD/broken.fleet.json"
+    t32_fire "$T32P_BODY3"
+    assert_rc "T32 pause: a body whose fire-time registration read fails exits 24" 24 "$T32_RC"
+    t32_launched "T32 pause: a body whose fire-time registration read fails does not launch claude" no
 else
     echo "SKIP T32 pty rows: this host cannot hand a command a pty"
 fi
@@ -2129,8 +2196,13 @@ case " $* " in
     *fleet_runtime.py*" resolve "*)
         case "${T32R_MODE:-}" in
             managed) printf '{"managed":true,"manifest":"%s"}\n' "$T32R_MANIFEST"; exit 0 ;;
+            managed-slots) printf '{"managed":true,"manifest":"%s","slots":"%s"}\n' "$T32R_MANIFEST" "${HIMMEL_FLEET_SLOTS:-/nonexistent}"; exit 0 ;;
             hang) trap '' TERM; sleep 30; exit 0 ;;
             record) printf 'attempt=[%s] manifest=[%s]\n' "${FLEET_LAUNCH_ATTEMPT-unset}" "${FLEET_LAUNCH_MANIFEST-unset}" >> "$T32R_ENV_LOG" ;;
+        esac ;;
+    *fleet_runtime.py*" run "*)
+        case "${T32R_MODE:-}" in
+            seams) for n in $T32R_SEAM_NAMES T32S_KEEP; do if [ -n "${!n+x}" ]; then echo "$n=set"; else echo "$n=unset"; fi; done > "$T32R_SEAM_LOG"; exit 0 ;;
         esac ;;
 esac
 exec "$T32R_REAL_PY" "$@"
@@ -2289,6 +2361,180 @@ if timeout --version 2>/dev/null | grep -qi coreutils; then
 else
     echo "SKIP T32 resolve-hang rows (no GNU coreutils timeout on this runner)"
 fi
+
+T32S_GUARD="$(dirname "$ARM")/../lib/chokepoint-seam-guard.sh"
+T32S_REGISTRY="$(dirname "$ARM")/../chokepoints.json"
+# shellcheck source=../lib/chokepoint-seam-guard.sh
+T32S_NAMES=$(. "$T32S_GUARD" && _csg_registry_seams "$T32S_REGISTRY" scripts/lib/usage-preflight.sh) || T32S_NAMES=""
+T32S_COUNT=0
+T32S_ASSIGN=""
+for n in $T32S_NAMES; do T32S_COUNT=$((T32S_COUNT + 1)); T32S_ASSIGN="$T32S_ASSIGN $n=1"; done
+if [ "$T32S_COUNT" -gt 0 ]; then
+    echo "PASS T32 seams: the registry names $T32S_COUNT seams for usage-preflight.sh"
+else
+    echo "FAIL T32 seams: the registry names no seam for usage-preflight.sh — the rows below would be vacuous"
+    FAILED=$((FAILED + 1))
+fi
+T32R_SEAM_LOG="$TMP/t32r-seams.log"
+T32S_CBIN="$TMP/t32s-cbin"
+mkdir -p "$T32S_CBIN"
+cat > "$T32S_CBIN/crontab" <<'EOF'
+#!/bin/sh
+case "${1:-}" in -l) exit 0 ;; *) cat > /dev/null; exit 0 ;; esac
+EOF
+chmod +x "$T32S_CBIN/crontab"
+t32s_check() {
+    local seen bad got
+    : > "$T32R_SEAM_LOG"
+    mkdir -p "$ARM_RESUME_LOG_DIR"
+    # shellcheck disable=SC2086
+    env PATH="$T32R_PY:$T32S_CBIN:$T32R_BIN:$PATH" T32R_REAL_PY="$T32R_REAL_PY" T32R_MODE=seams T32R_SEAM_NAMES="$T32S_NAMES" \
+        T32R_SEAM_LOG="$T32R_SEAM_LOG" HOME="$POLICY_EMPTY_HOME" CADENCE_USAGE_LEDGER="$TMP/t32s-cadence.jsonl" \
+        CLAUDECODE=1 T32S_KEEP=1 $T32S_ASSIGN sh -c "$2" </dev/null >"$TMP/t32s-run.out" 2>&1
+    seen=$(grep -v '^T32S_KEEP=' "$T32R_SEAM_LOG")
+    bad=$(printf '%s\n' "$seen" | grep '=set$' | tr '\n' ' ')
+    got=$(printf '%s\n' "$seen" | grep -c '=unset$')
+    if [ -z "$bad" ] && [ "$got" -eq "$T32S_COUNT" ]; then
+        echo "PASS $1: the runtime process sees none of the $T32S_COUNT registered seams"
+    else
+        echo "FAIL $1: seams still set for the runtime: ${bad:-none}; cleared: $got of $T32S_COUNT"
+        FAILED=$((FAILED + 1))
+    fi
+    assert_contains "$1 (control): a variable that is no registered seam stays" "T32S_KEEP=set" "$(cat "$T32R_SEAM_LOG")"
+}
+T32S_DOC=$(make_handover "$WORK_REPO")
+out=$(t32r_arm T32R_MODE=managed bash "$ARM" --time "$(future_time)" --handover "$T32S_DOC" --dry-run 2>&1)
+T32S_BODY=$(printf '%s\n' "$out" | t32r_body)
+assert_contains "T32 seams: the at body carries the runtime line" "fleet_runtime.py run" "$T32S_BODY"
+t32s_check "T32 seams: a managed at body" "$T32S_BODY"
+out=$(t32r_arm PATH="$T32R_PY:$T32S_CBIN:$PATH" T32R_MODE=managed OSTYPE=darwin23 ARM_TERMINAL_APP=none bash "$ARM" --time "$(future_time)" --handover "$T32S_DOC" --dry-run 2>&1)
+T32S_RUNNER=$(printf '%s\n' "$out" | awk '/^DRY arm-resume: runner/ { on = 1; next } /^DRY arm-resume: NOTE/ { on = 0 } on { sub(/^    /, ""); print }')
+assert_contains "T32 seams: the crontab runner carries the runtime line" "fleet_runtime.py run" "$T32S_RUNNER"
+t32s_check "T32 seams: a managed crontab runner" "$T32S_RUNNER"
+
+T32S_TREE="$TMP/t32s-tree"
+mkdir -p "$T32S_TREE/handover" "$T32S_TREE/lib" "$T32S_TREE/lanes"
+cp "$(dirname "$ARM")"/*.sh "$T32S_TREE/handover/" 2>/dev/null || true
+cp "$(dirname "$ARM")/../lib"/*.sh "$(dirname "$ARM")/../lib"/*.mjs "$(dirname "$ARM")/../lib"/*.py "$T32S_TREE/lib/" 2>/dev/null || true
+cp "$(dirname "$ARM")/../lanes"/* "$T32S_TREE/lanes/" 2>/dev/null || true
+T32S_REG="$T32S_TREE/chokepoints.json"
+t32s_arm() {
+    : > "$T32R_AT_LOG"
+    t32r_arm T32R_MODE="$1" bash "$T32S_TREE/handover/arm-resume.sh" --time "$(future_time)" --handover "$2" 2>&1
+}
+t32s_refused() {
+    local out rc scheduled
+    out=$(t32s_arm managed-slots "$(make_handover "$WORK_REPO")")
+    rc=$?
+    scheduled=$(grep -c '^at -t' "$T32R_AT_LOG")
+    assert_rc "$1: the arm refuses" 22 "$rc"
+    assert_contains "$1: the refusal names the registry" "chokepoints.json" "$out"
+    assert_contains "$1: the refusal says the job's seams could not be determined" "seams of the scheduled job could not be determined" "$out"
+    assert_contains "$1: the refusal says nothing was scheduled" "nothing was scheduled" "$out"
+    case "$scheduled" in
+        0) echo "PASS $1: the scheduler stub was not asked to schedule" ;;
+        *) echo "FAIL $1: the scheduler stub was asked to schedule $scheduled time(s)"; FAILED=$((FAILED + 1)) ;;
+    esac
+}
+rm -f "$T32S_REG"
+t32s_refused "T32 seams: a registry that is missing"
+printf 'not json at all\n' > "$T32S_REG"
+t32s_refused "T32 seams: a registry that is not JSON"
+printf '{}\n' > "$T32S_REG"
+t32s_refused "T32 seams: a registry without an entry for usage-preflight.sh"
+printf '[]\n' > "$T32S_REG"
+t32s_refused "T32 seams: a registry that is not an object"
+printf '{"scripts/lib/usage-preflight.sh": {"seam_env_vars": "FLEET_CAP_OK"}}\n' > "$T32S_REG"
+t32s_refused "T32 seams: a registry whose seam list is not a list"
+printf '{}\n' > "$T32S_REG"
+chmod 000 "$T32S_REG"
+if [ -r "$T32S_REG" ]; then
+    echo "SKIP T32 seams: unreadable registry (this user reads a mode 000 file)"
+else
+    t32s_refused "T32 seams: a registry that cannot be read"
+fi
+chmod 644 "$T32S_REG"
+rm -f "$T32S_REG"
+out=$(t32s_arm record "$(make_handover "$WORK_REPO")")
+rc=$?
+assert_rc "T32 seams (control): an unmanaged doc arms with no registry" 0 "$rc"
+cp "$T32S_REGISTRY" "$T32S_REG"
+out=$(t32s_arm managed-slots "$(make_handover "$WORK_REPO")")
+rc=$?
+assert_rc "T32 seams (control): a healthy registry schedules the managed arm" 0 "$rc"
+T32S_SCHEDULED=$(grep -c '^at -t' "$T32R_AT_LOG")
+T32S_JOB=$(cat "$T32R_AT_DIR/job-$(cat "$T32R_AT_DIR/.counter" 2>/dev/null)" 2>/dev/null)
+case "$T32S_SCHEDULED" in
+    1) echo "PASS T32 seams (control): a healthy registry asks the scheduler once" ;;
+    *) echo "FAIL T32 seams (control): a healthy registry asked the scheduler $T32S_SCHEDULED time(s)"; FAILED=$((FAILED + 1)) ;;
+esac
+assert_contains "T32 seams (control): the scheduled job clears the registry's seams" "{ unset ${T32S_NAMES%% *} " "$T32S_JOB"
+
+T32P_CBIN="$TMP/t32p-cbin"
+T32P_CREC="$TMP/t32p-cron-launches"
+mkdir -p "$T32P_CBIN"
+cat > "$T32P_CBIN/claude" <<'EOF'
+#!/bin/sh
+echo "claude $*" >> "$T32P_CREC"
+exit 0
+EOF
+cat > "$T32P_CBIN/crontab" <<'EOF'
+#!/bin/sh
+case "${1:-}" in -l) exit 0 ;; *) cat > /dev/null; exit 0 ;; esac
+EOF
+chmod +x "$T32P_CBIN/claude" "$T32P_CBIN/crontab"
+t32p_runner() {
+    env PATH="$T32P_CBIN:$PATH" OSTYPE=darwin23 ARM_TERMINAL_APP=none bash "$ARM" --time "$(future_time)" --handover "$1" --dry-run 2>&1 \
+        | awk '/^DRY arm-resume: runner/ { on = 1; next } /^DRY arm-resume: NOTE/ { on = 0 } on { sub(/^    /, ""); print }'
+}
+t32p_cfire() {
+    mkdir -p "$ARM_RESUME_LOG_DIR"
+    rm -f "$T32P_CREC" "$ARM_RESUME_LOG_DIR"/*.log
+    env PATH="$T32P_CBIN:$PATH" T32P_CREC="$T32P_CREC" HOME="$POLICY_EMPTY_HOME" CADENCE_USAGE_LEDGER="$TMP/t32p-cadence.jsonl" \
+        sh -c "$1" </dev/null >"$TMP/t32p-cron.out" 2>&1
+    T32P_CRC=$?
+    T32P_CLOG=$(cat "$ARM_RESUME_LOG_DIR"/*.log 2>/dev/null)
+}
+t32p_cl() {
+    local got=no
+    [ -e "$T32P_CREC" ] && got=yes
+    if [ "$got" = "$2" ]; then
+        echo "PASS $1"
+    else
+        echo "FAIL $1 — claude launched: $got, expected: $2"
+        FAILED=$((FAILED + 1))
+        printf '%s\n' "$T32P_CLOG" | head -n 8 | sed 's/^/     arm log: /'
+    fi
+}
+T32P_CBUCKET="$TMP/t32p-cron-fleet"
+mkdir -p "$T32P_CBUCKET"
+T32P_CDOC="$T32P_CBUCKET/TEST-4-N1-worker.md"
+printf -- '---\nsession_kind: test\nresume_cwd: %s\n---\n> **Prior art:** none found (offline fixture)\n\n# worker\n' "$WORK_REPO" > "$T32P_CDOC"
+T32P_RUNNER=$(t32p_runner "$T32P_CDOC")
+assert_not_contains "T32 pause (crontab): a doc outside every family gets the bare launch" "fleet_runtime.py run" "$T32P_RUNNER"
+t32p_cfire "$T32P_RUNNER"
+assert_rc "T32 pause (crontab) control: a doc unmanaged at arm and at fire time exits 0" 0 "$T32P_CRC"
+t32p_cl "T32 pause (crontab) control: a doc unmanaged at arm and at fire time still launches claude" yes
+HOME="$POLICY_EMPTY_HOME" bash "$(dirname "$ARM")/chief-kit/fleet-manifest.sh" control init "$T32P_CBUCKET/x.fleet.json" --target 1 >/dev/null 2>&1
+HOME="$POLICY_EMPTY_HOME" bash "$(dirname "$ARM")/chief-kit/fleet-manifest.sh" add "$T32P_CBUCKET/x.fleet.json" "$T32P_CDOC" --lane native --pending >/dev/null 2>&1
+t32p_cfire "$T32P_RUNNER"
+assert_rc "T32 pause (crontab): a runner armed unmanaged and fired after its doc joined a paused family exits 24" 24 "$T32P_CRC"
+t32p_cl "T32 pause (crontab): that runner does not launch claude" no
+assert_contains "T32 pause (crontab): that runner's refusal names the pause" "pause" "$T32P_CLOG"
+T32P_ATCHECK=$(printf '%s\n' "$T32P_BODY" | sed -n 's/.*\(if _arm_fire_scope=[^;]*; then\).*/\1/p' | head -n 1)
+T32P_CRCHECK=$(printf '%s\n' "$T32P_RUNNER" | sed -n 's/.*\(if _arm_fire_scope=[^;]*; then\).*/\1/p' | head -n 1)
+case "$T32P_ATCHECK" in
+    '') echo "SKIP T32 pause: no at-body check line to compare (the pty rows did not run on this host)" ;;
+    *) T32P_ATCHECK=${T32P_ATCHECK//$T32P_DOC/DOC}; T32P_CRCHECK=${T32P_CRCHECK//$T32P_CDOC/DOC}
+       if [ "$T32P_ATCHECK" = "$T32P_CRCHECK" ]; then
+           echo "PASS T32 pause: the at body and the crontab runner carry the same check line"
+       else
+           echo "FAIL T32 pause: the check line differs between the at body and the crontab runner"
+           FAILED=$((FAILED + 1))
+           echo "     at:   $T32P_ATCHECK"
+           echo "     cron: $T32P_CRCHECK"
+       fi ;;
+esac
 fi
 
 # ---------------------------------------------------------------------------

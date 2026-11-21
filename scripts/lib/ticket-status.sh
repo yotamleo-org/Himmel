@@ -322,9 +322,14 @@ ts_record_write() {
 
 # ts_marker_newest <doc> — the newest Results marker in a worker doc.
 ts_marker_newest() {
-    local line newest=""
+    local line newest="" bullets rc dir=.
     local succession_re='^- [0-9]{1,2}:[0-9]{2} SUCCESSION([^A-Za-z0-9-]|$)'
-    [ -r "$1" ] || return 0
+    case "$1" in */*) dir=${1%/*}; [ -n "$dir" ] || dir=/ ;; esac
+    if [ ! -e "$1" ] && [ ! -L "$1" ] && [ -d "$dir" ] && [ -x "$dir" ]; then return 2; fi
+    [ -f "$1" ] && [ -r "$1" ] || return 1
+    [ "$(tr -d '\000' < "$1" | wc -c)" -eq "$(wc -c < "$1")" ] 2>/dev/null || return 1 # read-sink-ok: $1 is a worker handover doc path (the worker record, --doc, or status-drift's <key>-N*.md scan under --docs-dir or the handover root), only byte counts come out
+    bullets=$(grep -a '^-' -- "$1" 2>/dev/null) && rc=0 || rc=$? # read-sink-ok: $1 is a worker handover doc path (the worker record, --doc, or status-drift's <key>-N*.md scan under --docs-dir or the handover root), bullet lines only, only a marker word comes out
+    [ "$rc" -le 1 ] || return 1
     while IFS= read -r line || [ -n "$line" ]; do
         if status_marker_parse "$line" >/dev/null; then
             newest=${BASH_REMATCH[3]}
@@ -332,7 +337,7 @@ ts_marker_newest() {
         elif [[ "$line" =~ $succession_re ]]; then
             newest=SUCCESSION
         fi
-    done < <(grep '^-' 2>/dev/null < "$1") # read-sink-ok: $1 is a worker handover doc path (the worker record, --doc, or status-drift's <key>-N*.md scan under --docs-dir or the handover root), read exactly as main's grep read it, bullet lines only, only a marker word comes out
+    done <<<"$bullets"
     printf '%s\n' "$newest"
 }
 
@@ -422,19 +427,22 @@ ts_worker_state() {
 # passes it as the JSON word `disposition` prints; only such a word is taken, anything else is read here.
 _ts_worker_state() {
     local marker out rc hb hb_epoch age=0 warn
-    TS_LOCK_HELD="" TS_LOCK_DEAD=""
+    TS_LOCK_HELD="" TS_LOCK_DEAD="" TS_OPEN_EVIDENCE=""
     [ -n "$1" ] || { TS_WORKER_STATE=unknown; return 0; }
-    local attempt_protected terminal=""
+    local attempt_protected terminal="" marker_unread="" doc_absent=""
     case "${2-}" in
         '"pending"'|'"committed"'|'"unknown"'|'"launched"'|'"refused"'|'"complete"'|'"legacy"') attempt_protected=$2 ;;
         *) attempt_protected=$(python3 -I "$_TS_LIB_DIR/fleet_runtime.py" disposition --doc="$1") || attempt_protected='"unknown"' ;;
     esac
     case "$attempt_protected" in
         '"pending"'|'"committed"'|'"unknown"') TS_WORKER_STATE=unknown; return 0 ;;
+        '"launched"') TS_OPEN_EVIDENCE=yes ;;
         '"refused"'|'"complete"') terminal=yes ;; # an ended attempt's receipt: it ends ownership only when the lock and the markers agree
     esac
-    marker=$(ts_marker_newest "$1")
+    marker=$(ts_marker_newest "$1") && rc=0 || rc=$?
+    case "$rc" in 0) ;; 2) doc_absent=yes ;; *) marker_unread=yes ;; esac
     case "$marker" in WRAPPED|HALTED) TS_WORKER_STATE=wrapped; return 0 ;; esac
+    [ -z "$marker$marker_unread$doc_absent" ] || TS_OPEN_EVIDENCE=yes
     if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then
         out=$("$TICKET_STATUS_QUEUE_LOCK" status "$1" 2>/dev/null); rc=$?
     else
@@ -450,7 +458,7 @@ _ts_worker_state() {
     fi
     # A terminal receipt with a free lock and no marker at all is the failed or finished launch with nothing after it.
     # A held lock, or any marker that is not an end marker (it is later than the receipt or was never wrapped), decides below.
-    if [ -n "$terminal" ] && [ "$TS_LOCK_HELD" = no ] && [ -z "$marker" ]; then TS_WORKER_STATE=wrapped; return 0; fi
+    if [ -n "$terminal" ] && [ "$TS_LOCK_HELD" = no ] && [ -z "$marker" ] && [ -z "$marker_unread" ]; then TS_WORKER_STATE=wrapped; return 0; fi
     if status_marker_is_parked "$marker"; then TS_WORKER_STATE=parked; return 0; fi
     if [ "$TS_LOCK_HELD" = no ]; then TS_WORKER_STATE=unknown; return 0; fi
     hb=$(printf '%s\n' "$out" | sed -n 's/.*"heartbeat"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
@@ -814,13 +822,15 @@ ts_derive() {
             [ "$TS_GONE" -lt 2 ] || TS_WORKER_STATE=wrapped
         fi
     fi
-    # A second worker on the key that still holds its lock keeps the ticket owned, so
-    # one worker's wrap never demotes a ticket another worker is working.
+    # A second worker on the key keeps the ticket owned unless it reads wrapped, or its lock was read free and nothing
+    # else says its doc may be worked.
     if [ "$TS_WORKER_STATE" = wrapped ]; then
         while IFS= read -r other; do
             [ -n "$other" ] && [ "$other" != "$doc" ] || continue
             _ts_worker_state "$other"
-            [ "$TS_LOCK_HELD" != yes ] || { owner=$TS_WORKER_STATE; TS_OWNER_DOC=$other; break; }
+            [ "$TS_WORKER_STATE" != wrapped ] || continue
+            [ "$TS_LOCK_HELD" != no ] || [ "$TS_OPEN_EVIDENCE" = yes ] || continue
+            owner=$TS_WORKER_STATE; TS_OWNER_DOC=$other; break
         done <<<"$(jq -r '(.docs // [])[]' <<<"$TS_REC")"
         TS_WORKER_STATE=${owner:-wrapped}
     fi

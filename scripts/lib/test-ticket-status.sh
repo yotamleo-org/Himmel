@@ -95,6 +95,114 @@ check "9323 unreadable owner doc, the resume_brief says completes yes: D6 (contr
 rbrief no "$tmp/missing-brief.md"
 check "9323 unreadable owner doc, the resume_brief names an unreadable file: D6 (control)" "$TS_RULE/$TS_DERIVED" 'D6/To Do'
 
+mkdir -p "$tmp/sdbin"
+cat > "$tmp/sdbin/python3" <<'EOF'
+#!/usr/bin/env bash
+# the disposition read of the doc in SD_DOC answers the JSON word in SD_WORD; every other call is the real python3
+if [ -n "${SD_DOC:-}" ] && [ "${2##*/}" = fleet_runtime.py ] && [ "${3-}" = disposition ] && [ "${4-}" = "--doc=$SD_DOC" ]; then
+    printf '%s\n' "$SD_WORD"
+    exit 0
+fi
+exec "$SD_REAL_PYTHON" "$@"
+EOF
+chmod +x "$tmp/sdbin/python3"
+SD_REAL_PYTHON=$(command -v python3)
+export SD_REAL_PYTHON
+printf '#!/usr/bin/env bash\nexit 3\n' > "$tmp/lock-err.sh"
+chmod +x "$tmp/lock-err.sh"
+sib() {
+    local b="$tmp/sb.md"
+    printf -- '- 10:00 WRAPPED — primary ended\n' > "$tmp/sa.md"
+    printf -- '\n' > "$tmp/sc.md"
+    if [ "${4:-}" = dir ]; then b="$tmp/sbdir.md"; mkdir -p "$b"; else printf -- '%s\n' "$2" > "$b"; fi
+    [ "${4:-}" != unreadable ] || chmod 000 "$b"
+    jq -nc --arg a "$tmp/sa.md" --arg b "$b" --arg c "${5:+$tmp/sc.md}" '{doc:$a,docs:([$a,$b] + (if $c == "" then [] else [$c] end)),prs:{}}' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9001.json"
+    PATH="$tmp/sdbin:$PATH" SD_DOC="${1:+$b}" SD_WORD="$1" TICKET_STATUS_QUEUE_LOCK="${3:-$tmp/lock-free.sh}" ts_derive HIMMEL-9001
+    [ "${4:-}" != unreadable ] || chmod 644 "$b"
+}
+for word in pending committed unknown; do
+    sib "\"$word\"" ''
+    check "X07-3 a sibling whose attempt is $word keeps the ticket owned" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'unknown/D5/In Progress'
+    check "X07-3 a sibling whose attempt is $word is the owner doc" "$TS_OWNER_DOC" "$tmp/sb.md"
+done
+sib '"pending"' '- 10:00 WRAPPED — sibling ended'
+check "X07-3 a sibling with a pending attempt after its own wrap is not provably ended" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'unknown/D5/In Progress'
+sib '' ''
+check "X07-3 control: a sibling with no attempt, no marker and a free lock leaves the primary's wrap" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6/To Do'
+check "X07-3 control: and names no owner doc" "$TS_OWNER_DOC" ''
+for word in legacy refused complete; do
+    sib "\"$word\"" ''
+    check "X07-3 control: a sibling with a $word disposition, no marker and a free lock leaves the primary's wrap" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6/To Do'
+done
+sib '' '- 10:00 WRAPPED — sibling ended'
+check "X07-3 control: a sibling that wrapped itself leaves the primary's wrap" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6/To Do'
+check "X07-3 control: a sibling that wrapped itself is no owner doc" "$TS_OWNER_DOC" ''
+sib '"launched"' ''
+check "X07-3 a sibling whose attempt is launched, with no marker and a free lock, keeps the ticket owned" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'unknown/D5/In Progress'
+check "X07-3 a sibling whose attempt is launched, with no marker and a free lock, is the owner doc" "$TS_OWNER_DOC" "$tmp/sb.md"
+sib '"launched"' '- 10:00 WRAPPED — sibling ended'
+check "X07-3 control: a sibling whose attempt is launched and that wrapped itself leaves the primary's wrap" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6/To Do'
+check "X07-3 control: a sibling whose attempt is launched and that wrapped itself is no owner doc" "$TS_OWNER_DOC" ''
+sib '' '' "$tmp/lock-err.sh"
+check "X07-3 a sibling whose lock read fails keeps the ticket owned" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'unknown/D5/In Progress'
+check "X07-3 a sibling whose lock read fails is the owner doc" "$TS_OWNER_DOC" "$tmp/sb.md"
+sib '' '- 10:00 WRAPPED — sibling ended' "$tmp/lock-err.sh"
+check "X07-3 control: a sibling that wrapped itself leaves the primary's wrap whatever its lock read says" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6/To Do'
+check "X07-3 control: a sibling that wrapped itself is no owner doc whatever its lock read says" "$TS_OWNER_DOC" ''
+printf x > "$tmp/probe-un.md"
+chmod 000 "$tmp/probe-un.md"
+if [ -r "$tmp/probe-un.md" ]; then un_ok=no; else un_ok=yes; fi
+chmod 644 "$tmp/probe-un.md"
+for word in legacy refused complete; do
+    for marker in LIVE READY BLOCKED PARKED-USAGE; do
+        want='unknown/D5/In Progress/sb.md'
+        [ "$marker" != PARKED-USAGE ] || want='parked/D5/In Progress/sb.md'
+        sib "\"$word\"" "- 10:00 $marker — sibling working"
+        check "X07-3 a sibling with a $word attempt, a free lock and a $marker marker keeps the ticket owned" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" "$want"
+    done
+    sib "\"$word\"" '' '' dir
+    check "X07-3 a sibling with a $word attempt, a free lock and a doc that is a directory keeps the ticket owned" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" 'unknown/D5/In Progress/sbdir.md'
+    if [ "$un_ok" = yes ]; then
+        sib "\"$word\"" 'x' '' unreadable
+        check "X07-3 a sibling with a $word attempt, a free lock and an unreadable doc keeps the ticket owned" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" 'unknown/D5/In Progress/sb.md'
+    else
+        echo "SKIP - X07-3 a sibling with a $word attempt, a free lock and an unreadable doc keeps the ticket owned: this user reads a mode 000 file"
+    fi
+done
+sib '"refused"' '- 10:00 WRAPPED — sibling ended'
+check "X07-3 control: a sibling with a refused attempt and a WRAPPED marker leaves the primary's wrap" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" 'wrapped/D6/To Do/'
+sib '"complete"' '- 10:00 HALTED — out of budget'
+check "X07-3 control: a sibling with a complete attempt and a HALTED marker leaves the primary's wrap" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" 'wrapped/D6/To Do/'
+sib '"launched"' '- 10:00 WRAPPED — sibling ended' '' '' any
+check "X07-3 control: a launched sibling that wrapped itself leaves no sign behind for the next sibling (none, no marker, free lock)" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" 'wrapped/D6/To Do/'
+rt_sib() {
+    local a="$tmp/rtb-$1/HIMMEL-9001-N1-a.md" b="$tmp/rtb-$1/HIMMEL-9001-N2-b.md" m="$tmp/rtb-$1/chief.fleet.json" fm="$HERE/../handover/chief-kit/fleet-manifest.sh"
+    mkdir -p "$tmp/rtb-$1" "$tmp/rth-$1"
+    printf -- '---\ndescription: a\n---\n> **Prior art:** none found (offline fixture)\n\n# a\n## Results\n- 10:00 WRAPPED — primary ended\n' > "$a"
+    printf -- '---\ndescription: b\n---\n> **Prior art:** none found (offline fixture)\n\n# b\n## Results\n' > "$b"
+    export HOME="$tmp/rth-$1" HIMMEL_FLEET_SLOTS="$tmp/rth-$1/slots" HIMMEL_POLICY_FOLLOWS_HOME=1
+    bash "$fm" control init "$m" --target 2 >/dev/null 2>&1 || { printf 'fixture failed: control init'; return 0; }
+    bash "$fm" add "$m" "$b" --lane native --pending >/dev/null 2>&1 || { printf 'fixture failed: add'; return 0; }
+    bash "$fm" control set "$m" --mode active --expect-gen 1 >/dev/null 2>&1 || { printf 'fixture failed: control set'; return 0; }
+    bash "$fm" runtime begin --doc "$b" --manifest "$m" --name b --attempt-id one --pid $$ >/dev/null 2>&1 || { printf 'fixture failed: begin'; return 0; }
+    if [ "$1" = launched ]; then
+        printf '#!/bin/bash\nexit 0\n' > "$tmp/rth-$1/ps"
+        chmod +x "$tmp/rth-$1/ps"
+        FLEET_LAUNCH_DOC="$b" FLEET_LAUNCH_MANIFEST="$m" FLEET_LAUNCH_ATTEMPT=one CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=b \
+            CADENCE_USAGE_CALLER_PID=$$ CADENCE_USAGE_LANE=native CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_CACHE="$tmp/rth-$1/missing-cache" \
+            CADENCE_USAGE_LEDGER="$tmp/rth-$1/cadence.jsonl" FLEET_PS_CMD="$tmp/rth-$1/ps" FLEET_CAP_OK=1 HIMMEL_API_LANE=on \
+            bash "$HERE/usage-preflight.sh" >/dev/null 2>&1 || { printf 'fixture failed: preflight'; return 0; }
+        bash "$fm" runtime commit --doc "$b" --manifest "$m" --name b --attempt-id one --pid $$ >/dev/null 2>&1 || { printf 'fixture failed: commit'; return 0; }
+        bash "$fm" runtime outcome --doc "$b" --manifest "$m" --name b --attempt-id one --pid $$ --phase launched >/dev/null 2>&1 || { printf 'fixture failed: outcome'; return 0; }
+    fi
+    [ "$(python3 -I "$HERE/fleet_runtime.py" disposition --doc="$b")" = "\"$1\"" ] || { printf 'fixture failed: phase'; return 0; }
+    jq -nc --arg a "$a" --arg b "$b" '{doc:$a,docs:[$a,$b],prs:{}}' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9001.json"
+    TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" ts_derive HIMMEL-9001
+    printf '%s/%s/%s' "$TS_WORKER_STATE" "$TS_RULE" "$TS_DERIVED"
+}
+check "X07-3 a sibling with a real pending managed attempt keeps the ticket owned" "$(rt_sib pending)" 'unknown/D5/In Progress'
+check "X07-3 a sibling with a real launched managed attempt, a free lock and no marker keeps the ticket owned" "$(rt_sib launched)" 'unknown/D5/In Progress'
+
 tm() { printf -- '%s\n' "$@" > "$tmp/tm.md"; ts_marker_newest "$tmp/tm.md"; }
 check "9323 a clean WRAPPED line is WRAPPED (control)" "$(tm '- 10:00 LIVE — x' '- 10:10 WRAPPED')" WRAPPED
 check "9323 WRAPPED with trailing text is WRAPPED" "$(tm '- 10:00 LIVE — x' '- 10:10 WRAPPED all done, PR 12 merged')" WRAPPED
@@ -705,6 +813,82 @@ check "U8: a supplied refused disposition does not hide a live-class marker over
 for junk in '"bogus"' 'legacy' '' '"legacy" '; do
     check "U8: a second argument that is not a recognised word ($junk) is not used" "$(ucall "$tmp/u8-wrapped.md" "$junk")" unknown
 done
+
+printf -- '- 10:00 LIVE — working\n' > "$tmp/u8-unread.md"
+for word in refused complete; do
+    check "X07-6 control: a readable doc with a LIVE marker, a $word receipt and a free lock reads unknown" "$(ucall "$tmp/u8-unread.md" "\"$word\"")" unknown
+done
+chmod 000 "$tmp/u8-unread.md"
+if [ -r "$tmp/u8-unread.md" ]; then
+    echo "SKIP - X07-6 an unreadable doc with a refused receipt and a free lock reads unknown, not wrapped: this user reads a mode 000 file"
+else
+    for word in refused complete; do
+        check "X07-6 an unreadable doc with a $word receipt and a free lock reads unknown, not wrapped" "$(ucall "$tmp/u8-unread.md" "\"$word\"")" unknown
+    done
+fi
+chmod 644 "$tmp/u8-unread.md"
+for word in refused complete; do
+    check "X07-6 a missing doc with a $word receipt and a free lock reads wrapped" "$(ucall "$tmp/u8-missing.md" "\"$word\"")" wrapped
+done
+ts_marker_newest "$tmp/u8-empty.md" >/dev/null; check "X07-6 ts_marker_newest control: a readable doc with no marker is rc 0" "$?" 0
+mkdir -p "$tmp/gbin" "$tmp/u8-dir.md"
+ts_marker_newest "$tmp/u8-dir.md" >/dev/null; check "X07-6 ts_marker_newest: a doc it cannot read is rc 1" "$?" 1
+ts_marker_newest "$tmp/u8-missing.md" >/dev/null; check "X07-6 ts_marker_newest: a missing doc is rc 2" "$?" 2
+(cd "$tmp" && ts_marker_newest u8-no-such-here.md >/dev/null); check "X07-6 ts_marker_newest: a missing doc named without a slash is rc 2" "$?" 2
+cat > "$tmp/gbin/grep" <<'EOF'
+#!/bin/sh
+[ "${GREP_STANDIN_RC:-1}" -ne 2 ] || echo "grep: (standard input): Input/output error" >&2
+exit "${GREP_STANDIN_RC:-1}"
+EOF
+chmod +x "$tmp/gbin/grep"
+check "X07-6 a doc that is a directory, with a refused receipt and a free lock, reads unknown, not wrapped" "$(ucall "$tmp/u8-dir.md" '"refused"')" unknown
+check "X07-6 a directory that grep reads as empty, with a refused receipt and a free lock, reads unknown, not wrapped" "$(PATH="$tmp/gbin:$PATH" GREP_STANDIN_RC=1 ucall "$tmp/u8-dir.md" '"refused"')" unknown
+check "X07-6 a doc that opens but fails when read, with a refused receipt and a free lock, reads unknown, not wrapped" "$(PATH="$tmp/gbin:$PATH" GREP_STANDIN_RC=2 ucall "$tmp/u8-empty.md" '"refused"')" unknown
+check "X07-6 control: a readable doc that grep finds no marker in (exit 1), with a refused receipt and a free lock, reads wrapped" "$(PATH="$tmp/gbin:$PATH" GREP_STANDIN_RC=1 ucall "$tmp/u8-empty.md" '"refused"')" wrapped
+mkfifo "$tmp/u8-fifo.md"
+python3 -I -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$tmp/u8-sock.md"
+printf -- '- 10:00 LIVE — working\n\000\n' > "$tmp/u8-nul-live.md"
+printf -- '- a note\n\000\n' > "$tmp/u8-nul-plain.md"
+printf -- '- 10:00 LIVE — work\377ing\n' > "$tmp/u8-badutf.md"
+ln -s "$tmp/u8-wrapped.md" "$tmp/u8-link.md"
+fifo_state() {
+    local fid pid i=0 hung=""
+    ( while :; do : > "$tmp/u8-fifo.md"; done ) &
+    fid=$!
+    ( ucall "$tmp/u8-fifo.md" '"refused"' > "$tmp/fifo.out" 2>/dev/null ) &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        [ "$i" -lt 30 ] || { hung=yes; break; }
+        sleep 0.1 2>/dev/null || sleep 1
+        i=$((i + 1))
+    done
+    kill "$fid" 2>/dev/null
+    wait "$fid" 2>/dev/null
+    [ -z "$hung" ] || kill "$pid" 2>/dev/null
+    wait "$pid" 2>/dev/null
+    if [ -n "$hung" ]; then echo HUNG; else cat "$tmp/fifo.out"; fi
+}
+check "X07-6 a doc with a NUL byte and a LIVE marker, with a refused receipt and a free lock, reads unknown, not wrapped" "$(ucall "$tmp/u8-nul-live.md" '"refused"')" unknown
+check "X07-6 a doc with a NUL byte and no marker, with a refused receipt and a free lock, reads unknown, not wrapped" "$(ucall "$tmp/u8-nul-plain.md" '"refused"')" unknown
+check "X07-6 a doc with a byte that is not valid UTF-8 and a LIVE marker is read as text and reads unknown, not wrapped" "$(LC_ALL=C.UTF-8 ucall "$tmp/u8-badutf.md" '"refused"')" unknown
+check "X07-6 a UNIX socket as the doc, with a refused receipt and a free lock, reads unknown, not wrapped" "$(ucall "$tmp/u8-sock.md" '"refused"')" unknown
+check "X07-6 a FIFO as the doc, with a refused receipt and a free lock, returns and reads unknown, not wrapped" "$(fifo_state)" unknown
+check "X07-6 control: a symlink to a readable doc with an end marker is read as that doc" "$(ucall "$tmp/u8-link.md" '"refused"')" wrapped
+ln -s "$tmp/u8-no-target.md" "$tmp/u8-dangling.md"
+for word in refused complete; do
+    check "X07-6 a dangling symlink as the doc, with a $word receipt and a free lock, reads unknown, not wrapped" "$(ucall "$tmp/u8-dangling.md" "\"$word\"")" unknown
+done
+mkdir -p "$tmp/u8-locked"
+chmod 000 "$tmp/u8-locked"
+if [ -x "$tmp/u8-locked" ]; then
+    echo "SKIP - X07-6 a missing doc inside a directory that cannot be searched reads unknown, not wrapped: this user searches a mode 000 directory"
+else
+    for word in refused complete; do
+        check "X07-6 a missing doc inside a directory that cannot be searched, with a $word receipt and a free lock, reads unknown, not wrapped" "$(ucall "$tmp/u8-locked/gone.md" "\"$word\"")" unknown
+    done
+    ts_marker_newest "$tmp/u8-locked/gone.md" >/dev/null; check "X07-6 ts_marker_newest: a doc whose directory cannot be searched is rc 1" "$?" 1
+fi
+chmod 755 "$tmp/u8-locked"
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-ticket-status.sh"

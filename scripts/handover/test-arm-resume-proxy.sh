@@ -251,6 +251,7 @@ cp "$SCRIPT_DIR"/../lib/*.mjs "$ENVROOT/scripts/lib/"
 cp "$LIB" "$ENVROOT/scripts/lib/headroom-proxy.sh"
 # arm-resume resolves its plugin profile through ../lanes (fail-closed).
 cp -R "$SCRIPT_DIR/../lanes" "$ENVROOT/scripts/lanes"
+cp "$SCRIPT_DIR/../chokepoints.json" "$ENVROOT/scripts/chokepoints.json"
 
 # T3b: process env UNSET, repo-root .env carries HIMMEL_HEADROOM_PROXY=1 ->
 #      falls back to the file -> proxy lines present.
@@ -448,6 +449,7 @@ cp "$ARM" "$LIBFAIL/scripts/handover/arm-resume.sh"
 cp "$SCRIPT_DIR"/../lib/*.sh "$LIBFAIL/scripts/lib/"
 cp "$SCRIPT_DIR"/../lib/*.mjs "$LIBFAIL/scripts/lib/"
 cp -R "$SCRIPT_DIR/../lanes" "$LIBFAIL/scripts/lanes"
+cp "$SCRIPT_DIR/../chokepoints.json" "$LIBFAIL/scripts/chokepoints.json"
 rm -f "$LIBFAIL/scripts/lib/headroom-proxy.sh"
 printf 'HIMMEL_HEADROOM_PROXY=1\n' > "$LIBFAIL/.env"
 # (a) lib ABSENT: arm works (rc 0), WARNs, and the truthy .env is IGNORED

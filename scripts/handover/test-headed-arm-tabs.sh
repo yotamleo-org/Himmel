@@ -84,6 +84,7 @@ mk_env() {
 d="$(dirname "$0")"
 printf '%s\n' "$*" >> "$d/konsole-record"
 echo "$$" >> "$d/pids"
+ls "$d"/locks/*/tab.sh >> "$d/tabsh-at-konsole" 2>/dev/null
 export -p > "$d/window-env.$$"
 while [ "$#" -gt 0 ] && [ "$1" != "-e" ]; do shift; done
 shift
@@ -99,6 +100,13 @@ printf '%s\n' "$*" >> "$d/qdbus-record"
 [ -e "$d/qdbus-fail" ] && { echo "Error: org.freedesktop.DBus.Error.ServiceUnknown" ; exit 2; }
 svc="$1"; obj="$2"; method="$3"; shift 3
 [ -e "$d/runcommand-fail" ] && [ "$method" = runCommand ] && { echo "Error: org.freedesktop.DBus.Error.NoReply"; exit 2; }
+# runcommand-late: the typed line IS delivered, 0.6 s after the call, but the caller is told NoReply.
+if [ -e "$d/runcommand-late" ] && [ "$method" = runCommand ]; then
+  lpid="${svc#org.kde.konsole-}"
+  ( sleep 0.6; env -i bash -c '. "$1"; eval "$2"' tabshell "$d/window-env.$lpid" "$1" < /dev/null > /dev/null 2>&1 ) &
+  echo "$!" >> "$d/pids"
+  echo "Error: org.freedesktop.DBus.Error.NoReply"; exit 2
+fi
 kpid="${svc#org.kde.konsole-}"
 kill -0 "$kpid" 2>/dev/null || { echo "Error: org.freedesktop.DBus.Error.ServiceUnknown"; exit 2; }
 case "$obj $method" in
@@ -252,6 +260,7 @@ arm "$d7" PROJ-7-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A; 
 check "7a qdbus fails: launch exit 0" "$rc7" 0
 check "7b qdbus fails: falls back to a new window" "$(konsole_count "$d7")" 2
 contains "7c qdbus fails: the fallback is logged" "$(cat "$d7/log")" "WARN: tab launch for PROJ-7-N2-b failed"
+check "7d qdbus fails: the tab runner is gone before the fallback window opens" "$(cat "$d7/tabsh-at-konsole" 2>/dev/null | grep -c .)" 0
 
 # --- 7b. newSession succeeds, runCommand fails: the tab exists, so the launch must not open a second window.
 d7b="$tmp/c7b"; mk_env "$d7b"
@@ -262,6 +271,15 @@ check "7b-1 runCommand fails: no second window is opened" "$(konsole_count "$d7b
 check "7b-2 runCommand fails: the launch is unconfirmed (exit 7), never retried" "$rc7b" 7
 contains "7b-3 runCommand fails: the ambiguity is logged" "$(cat "$d7b/log")" "ambiguous"
 check "7b-4 runCommand fails: no worker started under the name" "$([ -e "$d7b/pid.PROJ-7B-N2-b" ] && echo started || echo none)" none
+
+d7c="$tmp/c7c"; mk_env "$d7c"
+arm "$d7c" PROJ-7C-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A
+: > "$d7c/runcommand-late"
+arm "$d7c" PROJ-7C-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A; rc7c=$?
+check "7c-1 runCommand delivered late: the launch is confirmed (exit 0)" "$rc7c" 0
+check "7c-2 runCommand delivered late: a worker started under the name" "$([ -e "$d7c/pid.PROJ-7C-N2-b" ] && echo started || echo none)" started
+check "7c-3 runCommand delivered late: no second window is opened" "$(konsole_count "$d7c")" 1
+contains "7c-4 runCommand delivered late: the ambiguity is logged" "$(cat "$d7c/log")" "ambiguous"
 
 # --- 8. a chief arm and a launch with no chief name never tab.
 d8="$tmp/c8"; mk_env "$d8"

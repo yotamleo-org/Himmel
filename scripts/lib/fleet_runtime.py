@@ -96,8 +96,13 @@ def live(owner):
     return process_state(owner) == 'live'
 
 
+OWNER_FIELDS = {'host': str, 'boot': str, 'pid': int, 'start': str}
+
+
 def process_state(owner):
-    """Absence is proof only for an exact local host/boot/start identity."""
+    """Absence is proof only for an exact local host/boot/start identity; an owner that is not exactly those fields is unknown."""
+    if not isinstance(owner, dict) or set(owner) != set(OWNER_FIELDS) or any(type(owner[key]) is not kind for key, kind in OWNER_FIELDS.items()):
+        return 'unknown'
     try:
         local = identity(os.getpid())
         if any(owner[key] != local[key] for key in ('host', 'boot')):
@@ -233,7 +238,8 @@ def receipts(wanted, docs=()):
 
 
 def attempt_outcomes(attempt_ids):
-    """{attempt_id: every outcome the history holds for it}, from one bounded read; the merged row receipts() builds keeps only the last."""
+    """{attempt_id: every outcome the history holds for it}, from one bounded read; the merged row receipts() builds keeps only the last.
+    A non-blank line that cannot be parsed could be any attempt's receipt, so it adds 'unknown-history' to every attempt."""
     found = {aid: set() for aid in attempt_ids}
     path = Path.home() / '.himmel/launch-refusals.jsonl'
     if not path.exists():
@@ -249,6 +255,9 @@ def attempt_outcomes(attempt_ids):
             try:
                 row = json.loads(line)
             except ValueError:
+                if line.strip():
+                    for outcomes in found.values():
+                        outcomes.add('unknown-history')
                 continue
             if row.get('v') == 2 and row.get('kind') == 'launch-attempt' and row.get('attempt_id') in found:
                 found[row['attempt_id']].add(row.get('outcome'))
@@ -263,8 +272,13 @@ def receipt(record, outcome, **extra):
                family=record['family'], owner=record['owner'], session=record.get('session'), outcome=outcome,
                cause=record.get('cause', 'runtime'), phase='runtime',
                committer=record.get('committer'), reservation=record.get('reservation'), manifest=record.get('manifest'), **extra)
-    with path.open('a') as stream:
-        stream.write(json.dumps(row) + '\n')
+    line = (json.dumps(row) + '\n').encode()
+    with path.open('ab+') as stream:
+        if stream.seek(0, os.SEEK_END):
+            stream.seek(-1, os.SEEK_END)
+            if stream.read(1) != b'\n':
+                line = b'\n' + line
+        stream.write(line)
         stream.flush()
         os.fsync(stream.fileno())
 
@@ -295,8 +309,14 @@ def owned_rows(manifest):
             if row.get('doc'):
                 terminal_docs[row['doc']] = row
         rows = [row for row in rows if row['doc'] in current or row.get('registration') != 'pending'
-                or not settles(terminal_docs.get(row['doc'], {}), row)]
+                or not settles(terminal_docs.get(row['doc'], {}), row) or not reads_ended(row['doc'])]
     return rows
+
+
+def reads_ended(doc):
+    """True when the doc's newest marker is absent or an end marker, the only doc a terminal receipt releases."""
+    newest = marker(doc)
+    return not newest or re.match(r'- \d{1,2}:\d{2} (?:WRAPPED|HALTED)\b', newest) is not None
 
 
 def settles(receipt, row):
@@ -485,13 +505,23 @@ def marker(doc):
         return ''
 
 
+TITLE_KEY_RE = re.compile(r'([A-Z]+)-(\d+)((?:\s*\(?\s*(?:[/+,&]\s*)+\(?\s*\d+\b)*)')
+
+
+def title_keys(line):
+    return [('%s-%s' % (p, n)) for p, n, _ in TITLE_KEY_RE.findall(line)] + \
+           [('%s-%s' % (p, x)) for p, _, rest in TITLE_KEY_RE.findall(line) for x in re.findall(r'\d+', rest)]
+
+
 def worker_keys(doc):
     keys = re.findall(r'[A-Z]+-[0-9]+', Path(doc).name)
     try:
         for line in Path(doc).read_text().splitlines():
             if line.startswith('## Results'):
                 break
-            if line.startswith('# ') or re.match(r'^> \*\*(?:Ticket|Owns)(?: tickets)?:\*\*', line):
+            if line.startswith('# '):
+                keys.extend(title_keys(line))
+            elif re.match(r'^> \*\*(?:Ticket|Owns)(?: tickets)?:\*\*', line):
                 keys.extend(re.findall(r'[A-Z]+-[0-9]+', line))
     except OSError:
         pass  # missing remote docs retain the keys in their registered names
@@ -595,6 +625,8 @@ def settle_blockers(record, outcomes, deadline):
     seen = sorted(outcomes & {'launched', 'refused', 'complete'})
     if seen:
         blockers.append('a %s receipt exists (reconcile settles it)' % '/'.join(seen))
+    if 'unknown-history' in outcomes:
+        blockers.append('the receipt history has a line that cannot be read, so a launched receipt cannot be ruled out')
     if not session_ended(record, deadline):
         blockers.append('a session may exist (the scan did not prove absence)')
     carrying, unreadable, complete = launch_candidates(record, deadline)
@@ -798,7 +830,8 @@ def run(args):
                 raise Refused('family already owns worker or ticket')
             legacy_deadline = time.monotonic() + 5
             for sibling in manifest.parent.glob('*.fleet.json'):
-                for row in read(sibling).get('workers', []):
+                listed = read(sibling)
+                for row in listed.get('workers', []) + listed.get('legs', []):
                     if row.get('registration') != 'pending' and (row.get('doc') == doc or set(worker_keys(row['doc'])) & set(keys)):
                         if time.monotonic() >= legacy_deadline or worker_state(row['doc'], max(.01, legacy_deadline - time.monotonic())) != 'wrapped':
                             raise Refused('unknown legacy family ownership')
@@ -873,10 +906,10 @@ def run(args):
                 raise Refused('complete outcome still has possible session')
             if args.phase == 'launched' and record['phase'] == 'pending':
                 raise Refused('launched receipt has no spawn commitment')
-            if args.phase == 'refused' and record['phase'] != 'pending':
+            if args.phase == 'refused' and record['phase'] != 'pending' and not args.spawn_failed:
                 raise Refused('committed attempt needs affirmative terminal evidence')
             if args.phase == 'refused':
-                record['cause'] = 'fleet-paused' if value['mode'] != 'active' or value['generation'] != record['control_generation'] else 'prelaunch-refused'
+                record['cause'] = 'spawn-failed' if args.spawn_failed else 'fleet-paused' if value['mode'] != 'active' or value['generation'] != record['control_generation'] else 'prelaunch-refused'
             outcome = {'unknown': 'indeterminate', 'launched': 'launched', 'refused': 'refused', 'complete': 'complete'}[args.phase]
             receipt(record, outcome)
             if args.phase in ('refused', 'complete'):
@@ -911,6 +944,7 @@ def main():
     parser.add_argument('--lane', choices=['native', 'claudex', 'openrouter', 'deepseek', 'api'], default='native')
     parser.add_argument('--reason', default='')
     parser.add_argument('--confirm-no-session', action='store_true')
+    parser.set_defaults(spawn_failed=False)
     argv = sys.argv[1:]
     command = argv[argv.index('--') + 1:] if '--' in argv else []
     args = parser.parse_args(argv[:argv.index('--')] if '--' in argv else argv)
@@ -947,7 +981,14 @@ def main():
                 raise
             child_env = {key: value for key, value in os.environ.items() if not key.startswith('FLEET_LAUNCH_')}
             child_env.update(WORKER_SESSION_DOC=args.doc, WORKER_SESSION_ATTEMPT_ID=args.attempt_id)
-            proc = subprocess.Popen(command, env=child_env)
+            try:
+                proc = subprocess.Popen(command, env=child_env)
+            except OSError:
+                args.op, args.phase, args.spawn_failed = 'outcome', 'refused', True
+                run(args)
+                args.op = 'release'
+                run(args)
+                raise
             rc = proc.wait()
             args.op, args.phase = 'outcome', 'complete'
             run(args)
