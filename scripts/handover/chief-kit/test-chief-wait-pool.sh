@@ -474,7 +474,6 @@ w1_wait w1-norecord
 check '(W1) with the record file removed the key is named again' 1 "$(w1_n w1-norecord listed 8001)"
 rm -f "$STUB/dispositions"
 
-# --- (W2, W3) slice 3: the wake block lists the readiness-held rows; the record adds no wake ---
 printf -- '---\nkey: "HIMMEL-8002"\ntype: "Task"\nstatus: "To Do"\nstatusCategory: "To Do"\npriority: "High"\nlabels: ["standalone"]\nfixVersions: ["v1"]\nparent: null\ncreated: "x"\nupdated: "x"\nresolution: null\nresolved: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-8002: fixture\n\n## Description\n\nbody\n\n## Comments\n\n_(none)_\n' > "$W1/mirror/HIMMEL/HIMMEL-8002.md"
 HK=HIMMEL
 w2_record() {
@@ -494,13 +493,11 @@ check '(W2) the underfilled wake carries the block heading' 1 "$(grep -c '^# rea
 check '(W2) the c row is listed with its blocker and age' 1 "$(grep -c "^# readiness-held c $HK-8001 blocker=$HK-8102 age=2h\$" "$WORK/w2-under.out")"
 check '(W2) the d row is listed with no blocker' 1 "$(grep -c "^# readiness-held d $HK-8002 blocker=- age=2h\$" "$WORK/w2-under.out")"
 check '(W2) it is the underfilled wake' 1 "$(grep -c '^WAKE underfilled ' "$WORK/w2-under.out")"
-# the pool-unresolved form: an unruled key keeps the wake pool-unresolved, and the block is printed there too
 printf '# dropped from v1: 3 of 3 To Do (listed 3)\n# disposition HIMMEL-8001 listed LOCAL\n# disposition HIMMEL-8002 listed LOCAL\n# disposition HIMMEL-8005 listed LOCAL\n' > "$STUB/dispositions"
 w2_wait w2-unres 8
 check '(W2) the pool-unresolved wake carries the block heading' 1 "$(grep -c '^# readiness rows in v1' "$WORK/w2-unres.out")"
 check '(W2) the pool-unresolved wake lists the c and d rows' 2 "$(grep -c "^# readiness-held [cd] $HK-800[12] " "$WORK/w2-unres.out")"
 check '(W2) it is the pool-unresolved wake' 1 "$(grep -c '^WAKE pool-unresolved ' "$WORK/w2-unres.out")"
-# W3 (control): the record adds no wake. The same pool sampled twice wakes once, with the record and without it
 printf '# dropped from v1: 3 of 3 To Do (listed 3)\n# disposition HIMMEL-8001 listed LOCAL\n# disposition HIMMEL-8002 listed LOCAL\n# disposition HIMMEL-9001 listed LOCAL\n' > "$STUB/dispositions"
 I="$(new_inbox w3-record)"
 w3_arm() { NEXT_DISPATCH_MIRROR="$W1/mirror/HIMMEL" HIMMEL_RELEASE_STATE_DIR="$W1/rel" READINESS_NOW_EPOCH=1800007200 timeout "$2" bash "$WAIT" "$I" --doc "$W1/chief-u.md" --workers N1.md > "$WORK/$1.out" 2> /dev/null; rc=$?; }  # gnu-ok: Linux-only kit; pipefail-ok: none set

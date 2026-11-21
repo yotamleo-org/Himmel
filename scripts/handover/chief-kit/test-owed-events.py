@@ -118,7 +118,6 @@ class DueEvents(unittest.TestCase):
         self.assertEqual(len(self.step_due()), 2)
         self.owe('close', '--id', notes[1]['id'], '--key', 'delivered')
         self.settle_notification(owner, [])
-        # a changed action is a new row too
         self.owe('close', '--id', owner, '--key', 'HIMMEL-10210')
         action = self.owed_step('run the replacement action', 'proof')
         result = self.run_events()

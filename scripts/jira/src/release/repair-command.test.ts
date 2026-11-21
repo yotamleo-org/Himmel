@@ -1017,7 +1017,6 @@ describe('test-version-repair apply through the release manager', () => {
   });
 });
 
-// --- 10231: the one CLI-owned repair-state record --------------------------------------------------
 
 describe('10231 repair-state.json is the one record the CLI writes', () => {
   const recPath = () => join(releaseDir(), 'repair-state.json');
@@ -1216,7 +1215,6 @@ describe('T8 C: one serialized repair-state writer and the retry clock', () => {
     expect(rec()).toMatchObject({ attempts: 0, pid: null, pid_identity: null });
   });
 
-  // 7: migration keeps the old launch / end / owner meaning
   describe('7 migration of the files an old tick and run left', () => {
     const E = now() - 4000;
     const sig = 'e'.repeat(64);
@@ -1295,7 +1293,6 @@ describe('T8 C: one serialized repair-state writer and the retry clock', () => {
     expect(rec()['operator_command']).toBeNull();
   });
 
-  // 9: read / derive / publish serialize with the writers and re-read under the lock
   it('9: a read waits for the state lock and re-reads under it, so a stale migration cannot overwrite a newer running record', async () => {
     setup();
     mkdirSync(releaseDir(), { recursive: true });

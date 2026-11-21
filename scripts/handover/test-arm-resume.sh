@@ -2234,7 +2234,6 @@ chmod +x "$T32R_PY/python3" "$T32R_BIN/atq" "$T32R_BIN/crontab" "$T32R_BIN/at"
 t32r_arm() {
     env PATH="$T32R_PY:$T32R_BIN:$PATH" T32R_REAL_PY="$T32R_REAL_PY" T32R_AT_LOG="$T32R_AT_LOG" T32R_AT_DIR="$T32R_AT_DIR" T32R_ENV_LOG="$T32R_ENV_LOG" T32R_MANIFEST="$T32R_MANIFEST" "$@"
 }
-# t32r_body: the at job body a --dry-run arm prints.
 t32r_body() {
     awk '/^DRY arm-resume: would at -t/ { on = 1; next } /^    CMD$/ { on = 0 } on { sub(/^    /, ""); print }'
 }
