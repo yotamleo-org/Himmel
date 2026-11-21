@@ -127,7 +127,6 @@ fi
 
 pkg_real=$(cd "$PKG_REL" 2>/dev/null && pwd -P) || pkg_real=""
 [ "$pkg_real" = "$repo_root/$PKG_REL" ] || refuse "$PKG_REL is reached through a symlink (it resolves to '${pkg_real:-nothing}') - the lint package must be a real directory in this repo"
-# Both spellings: the slash form misses a tracked symlink named node_modules.
 tracked=$(git ls-files -- "$PKG_REL/node_modules" "$PKG_REL/node_modules/") || refuse "cannot list tracked files under $PKG_REL/node_modules/"
 [ -z "$tracked" ] || refuse "tracked files under $PKG_REL/node_modules/ - the install must never be committed"
 [ ! -L "$PKG_REL/node_modules" ] || refuse "$PKG_REL/node_modules is a symlink - the install must be a real directory"
@@ -153,11 +152,7 @@ if [ "$marker_sha" != "$lock_sha" ]; then
     printf '%s\n' "$lock_sha" > "$marker" || refuse "cannot write $marker"
 fi
 
-# The lint package.json has exactly the expected shape, the installed versions
-# of the three direct dependencies equal its pins, and the plugin specifier
-# resolves to the installed plugin under both CommonJS and ESM conditions, not
-# to a local redirect. Run as an ES module from the package dir so that
-# import.meta.resolve is anchored there.
+# import.meta.resolve in an ESM -e script is anchored at the cwd: https://nodejs.org/api/esm.html#importmetaresolvespecifier
 read -r -d '' check_install_js <<'EOF'
 import fs from "node:fs";
 import path from "node:path";
@@ -257,7 +252,7 @@ fs.writeFileSync(process.argv[2], JSON.stringify(cfg, null, 2) + "\n");
 ' "$PKG_REL/.oxlintrc.json" "$seed_cfg" </dev/null || refuse "cannot write the seed config"
 fi
 
-# Background plus wait, so a signal reaches the trap while oxlint runs.
+# bash runs a trap only after the foreground child exits, so oxlint runs in the background: https://www.gnu.org/software/bash/manual/bash.html#Signals
 "$PKG_REL/node_modules/.bin/oxlint" -c "$config" --format json -- "${files[@]}" \
     >"$tmp_dir/oxlint.out" 2>"$tmp_dir/oxlint.err" </dev/null &
 child=$!
@@ -265,7 +260,7 @@ wait "$child"
 ox_rc=$?
 child=""
 
-# The exit code is set, never forced, so a long stdout through a pipe is not cut.
+# process.exit() can drop pending stdout writes to a pipe, so the exit code is set instead: https://nodejs.org/api/process.html#processexitcode
 read -r -d '' eval_js <<'EOF'
 const fs = require("node:fs");
 const [mode, rcArg, wantArg, file] = process.argv.slice(1);
