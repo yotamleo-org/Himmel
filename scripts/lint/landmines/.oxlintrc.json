@@ -8,7 +8,7 @@
       {
         "allow": {
           "scripts/api-lane/bulk-call.test.mjs": 8,
-          "scripts/api-lane/claude-api.test.mjs": 5,
+          "scripts/api-lane/claude-api.test.mjs": 7,
           "scripts/config-ui/tests/actions.test.ts": 4,
           "scripts/config-ui/tests/agui-fleet-graph.test.ts": 1,
           "scripts/config-ui/tests/agui-fleet-load.test.ts": 4,
@@ -25,7 +25,8 @@
           "scripts/peer-bridge/reader.test.ts": 1,
           "scripts/telegram/bus.test.ts": 1,
           "scripts/telegram/poller.test.ts": 7,
-          "scripts/telegram/triage.test.ts": 1
+          "scripts/telegram/triage.test.ts": 1,
+          "scripts/where-are-we/tests/collect.review.test.mjs": 1
         }
       }
     ],
@@ -49,14 +50,15 @@
           "scripts/jira/live/jira-live.test.ts": 1,
           "scripts/jira/src/client.test.ts": 16,
           "scripts/jira/src/commands/release.test.ts": 4,
-          "scripts/jira/src/release/engine.test.ts": 5,
+          "scripts/jira/src/release/engine.test.ts": 11,
+          "scripts/jira/src/release/repair-command.test.ts": 3,
           "scripts/luna-vitals/connectors/pull-cadence.test.ts": 3,
           "scripts/peer-bridge/envelope.test.ts": 1,
           "scripts/peer-bridge/gate.test.ts": 1,
           "scripts/peer-bridge/poller.test.ts": 2,
           "scripts/peer-bridge/resolve.test.ts": 3,
           "scripts/telegram/bus.test.ts": 1,
-          "scripts/telegram/chief-route.test.ts": 32,
+          "scripts/telegram/chief-route.test.ts": 159,
           "scripts/telegram/compose-brief.test.ts": 1,
           "scripts/telegram/config-restore-route.test.ts": 1,
           "scripts/telegram/fixture-repo.test.ts": 3,
