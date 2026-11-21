@@ -251,14 +251,19 @@ fix_phrases() {
     sed -n 's/^| `\([^`]*\)` |.*/\1/p' "$1" | sed -e 's/ *\.\.\..*$//' -e 's/ N .*$//' | grep -v '^$'
 }
 
-# fix_missing <page>: the FIX-table phrases that no line of the helper can print.
+# fix_missing <page> [source...]: the FIX-table phrases that no line of the helper can print (the helper's
+# own sources unless some are given).
 fix_missing() {
-    local phrase missing=""
+    local page=$1 phrase missing="" code
+    shift
+    [ $# -gt 0 ] || set -- "$HERE/remote-setup.sh" "$HERE/lib.sh"
+    # code only: a whole-line comment and a trailing "  # note" are not something the helper prints
+    code=$(cat "$@" | sed -e '/^[[:space:]]*#/d' -e 's/[[:space:]]#[[:space:]].*$//')
     while IFS= read -r phrase; do
         [ -n "$phrase" ] || continue
-        grep -qF -- "$phrase" "$HERE/remote-setup.sh" "$HERE/lib.sh" || missing="$missing [$phrase]"
+        printf '%s\n' "$code" | grep -qF -- "$phrase" || missing="$missing [$phrase]"
     done <<EOF
-$(fix_phrases "$1")
+$(fix_phrases "$page")
 EOF
     printf '%s' "$missing"
 }
@@ -274,6 +279,11 @@ t_guide_fix_rows_exist_in_helper() {
     fi
     p=$(fixture fix-drift '| The line says | What to do |' '|---|---|' '| `no helper prints this phrase` | Do something. |')
     if [ -n "$(fix_missing "$p")" ]; then ok guide_fix_rows_control_catches_a_drifted_row; else bad "guide_fix_rows_control: a phrase nothing prints passed"; fi
+    # a phrase that survives only in a comment is not printed by anything
+    printf '%s\n' '# no helper prints this phrase' 'rs_fix "something else"' > "$WORK/src-comment-only.sh"
+    printf '%s\n' 'rs_fix "no helper prints this phrase: do it" # a trailing note' > "$WORK/src-code.sh"
+    if [ -n "$(fix_missing "$p" "$WORK/src-comment-only.sh")" ]; then ok guide_fix_rows_control_rejects_a_comment_only_phrase; else bad "guide_fix_rows_control: a phrase found only in a comment passed"; fi
+    if [ -z "$(fix_missing "$p" "$WORK/src-code.sh")" ]; then ok guide_fix_rows_control_accepts_a_phrase_in_code; else bad "guide_fix_rows_control: a phrase in an rs_fix line was not found"; fi
 }
 
 t_guide_part_4_is_written() {
