@@ -4596,15 +4596,8 @@ run_clear "$tmp" 0 "13i5 and under the assumed GO -> exit 0" --check-findings --
 if [ "$(cksum < "$tmp/.git/cr-critic-scores.jsonl")" = "$before" ]; then pass; else fail "13i4: the check must leave the ledger byte-identical"; fi
 rm -rf "$tmp"
 
-# 14a-14d. A clean merge-forward of main after the reviewed head A keeps A's
-# review records: main's comment lines are not the PR's, and a tip with no rows
-# of its own is gated at A. Any branch-authored change in A..B is still judged.
-# mf_case [branch-content] -- main holds the scaffold, A adds a commented src/a.sh, main gains a
-# commented src/m.sh, feat/x merges main (B); a branch-content argument adds
-# src/b.sh on feat/x after the merge.
 mf_case() {
     make_repo || exit 1
-    # The staged fixture scaffold goes on main too, so A..B holds only the delta under test.
     git -C "$tmp" commit -qm "scaffold" >/dev/null 2>&1
     git -C "$tmp" branch -f main feat/x
     mkdir -p "$tmp/src" && printf '# keep the lock order stable\necho a\n' > "$tmp/src/a.sh"

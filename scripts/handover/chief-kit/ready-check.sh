@@ -685,8 +685,6 @@ else
                 or ((.kind == "evidence" or .kind == "judge-go" or .kind == "dependabot-go") and $b != "" and .branch == $b
                     and (.kind != "dependabot-go" or ((.pr | type) == "number" and (.pr | tostring) == $p)))) |
             .head' "$ledger" 2>/dev/null | wc -l | tr -d ' ')
-        # The row clear-review-marker.sh writes at a tip it gated on the reviewed
-        # head (model claude) counts when a critic's ok row sits at the head it names.
         if [ "${n:-0}" -lt 1 ] && [ -n "$ledger_branch" ]; then
             n=$(jq -R -n -r --arg h "$SHA" --arg b "$ledger_branch" '
                 [inputs | fromjson? | select(type == "object")] as $rows

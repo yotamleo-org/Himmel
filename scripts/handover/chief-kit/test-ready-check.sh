@@ -453,9 +453,6 @@ rc=0; out="$(run)" || rc=$?
 check "judge-go-other-head: exit 1" "$rc" "1"
 contains "judge-go-other-head: check 4 fails" "$out" "[FAIL] 4."
 
-# --- 4c2. the carry row clear-review-marker.sh writes at a tip it gated on the
-# reviewed head passes when a critic's ok row sits at that reviewed head; a
-# carry row naming a head no critic reviewed, or of another branch, fails.
 rc_reviewed=1111111111111111111111111111111111111111
 carry_row() { printf '{"kind":"avail","branch":"%s","head":"%s","model":"claude","status":"ok","detail":"trivial-descendant of reviewed head %s (carried by clear-cr-marker)"}\n' "$1" "$SHA" "$rc_reviewed"; }
 { printf '{"kind":"avail","head":"%s","model":"codex","status":"ok"}\n' "$rc_reviewed"; carry_row feat/himmel-100-thing; } > "$LEDGER"

@@ -291,8 +291,6 @@ if [ "$verb" = "trivial-descendant" ]; then
     trivial_descendant "$1" "$2"
     exit $?
 fi
-# Read-only too: the base is the caller's full sha of the default branch point
-# <to> merged, and the answer is clean_merge_forward's.
 if [ "$verb" = "clean-merge-forward" ]; then
     [ $# -eq 3 ] && [[ "$1" =~ ^[0-9a-f]{40}$ ]] || usage
     git cat-file -e "$1^{commit}" 2>/dev/null || exit 1

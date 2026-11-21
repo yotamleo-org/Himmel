@@ -618,10 +618,7 @@ ledger="$git_dir/cr-critic-scores.jsonl"
 # --tests-only mode (every changed path is a test path; the comment-only branch
 # of the tip check is NOT used here, because this clears with no critic review of the
 # delta and a comment-prefixed line in a non-test script still executes), every
-# ledger gate below is evaluated at that reviewed head instead. So is a tip that
-# is a clean merge-forward of that head (review-round.sh clean-merge-forward: it
-# only merges the marker's base, conflict-free, and the PR's own diff is
-# unchanged). A tip a panel ran
+# ledger gate below is evaluated at that reviewed head instead. A tip a panel ran
 # on is judged on its own rows, and any other unreviewed delta keeps the
 # no-responders refusal.
 review_head="$tip"
@@ -641,8 +638,6 @@ if [ -f "$_rr_head_file" ] && [ ! -L "$_rr_head_file" ]; then
             review_head="$_rr_head"
             echo "clear-cr-marker: ${tip:0:8} has no review round of its own and only changes test paths since the reviewed head ${review_head:0:8} - gating on the reviewed head." >&2
             audit "TRIVIAL-DESCENDANT branch=$branch sha=$tip reviewed_head=$review_head"
-        # A clean merge-forward of the marker's base brings in only commits
-        # reviewed in their own PRs and leaves the PR's own diff as it was.
         elif [ -n "${marker_base:-}" ] && bash "$SCRIPT_DIR/review-round.sh" clean-merge-forward "$marker_base" "$_rr_head" "$tip" >/dev/null 2>&1; then
             review_head="$_rr_head"
             echo "clear-cr-marker: ${tip:0:8} has no review round of its own and only merges ${marker_base:0:8} cleanly into the reviewed head ${review_head:0:8} - gating on the reviewed head." >&2
@@ -1765,18 +1760,10 @@ cmt_count() {
     case "$_n" in ''|*[!0-9]*) return 1 ;; esac
     printf '%s' "$_n"
 }
-# cmt_since <reviewed-head> <base-point>: the comment lines the branch added
-# after <reviewed-head>, counted from the conflict-free merge of that head with
-# the base point the tip merged, so lines a merge-forward brought in from the
-# base are not counted as the branch's. A merge that conflicts counts from
-# <reviewed-head> itself.
-cmt_since() {
-    local _t
-    if _t=$(git merge-tree --write-tree "$1" "$2") && [ -n "$_t" ]; then
-        cmt_count "$_t"
-    else
-        cmt_count "$1"
-    fi
+cmt_count_past_base() {
+    local _from
+    _from=$(git merge-tree --write-tree "$1" "$2") || _from="$1"
+    cmt_count "${_from:-$1}"
 }
 if [ "$marker_lane" = "full" ]; then
     comments_verdict="error"
@@ -1827,7 +1814,7 @@ if [ "$marker_lane" = "full" ]; then
                         comments_verdict="error"
                         _cm_full=$(git rev-parse --verify --quiet "$_ch^{commit}") || continue
                         git merge-base --is-ancestor "$_cm_full" "$tip" 2>/dev/null || continue
-                        if _cm_n=$(cmt_since "$_cm_full" "$_cm_mb"); then
+                        if _cm_n=$(cmt_count_past_base "$_cm_full" "$_cm_mb"); then
                             if [ "$_cm_n" -eq 0 ]; then
                                 comments_verdict="ok"
                                 case "$_cs" in
