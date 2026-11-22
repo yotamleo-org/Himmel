@@ -813,10 +813,10 @@ fi  # ONLY7 == 0: checks 1-6
 # cited ticket, each marked `done` or `deferred → <KEY>` (`->` also accepted).
 # Whether a line's "done" is TRUE stays the chief's diff read; this check
 # makes an unaccounted ask structurally visible and a deferral real: every
-# deferred key must exist and still be open, and the deferral keys must equal
-# the CR ledger's deferred_to rows for the PR head, or for the reviewed head a
-# same-branch trivial-descendant row names. A Jira error reads UNKNOWN and
-# fails — never a PASS. JIRA_CMD overrides the CLI (tests), like GH_CMD.
+# deferred key must exist and still be open, the deferral keys must cover the CR
+# ledger's deferred_to rows for the PR head (or for the reviewed head a same-branch
+# trivial-descendant row names), and a body key with no such row must be linked from
+# the PR's ticket. A Jira error reads UNKNOWN and fails — never a PASS. JIRA_CMD overrides the CLI (tests), like GH_CMD.
 jira_run() {
     if [ -n "${JIRA_CMD:-}" ]; then
         "$JIRA_CMD" "$@" 2>&1
@@ -968,7 +968,7 @@ elif [ -z "$cov_lines" ]; then
     cov_shape_help
     mark_fail
 else
-    cov_bad=""; cov_shape=0; cov_body_keys=""; cov_wdues=""
+    cov_bad=""; cov_shape=0; cov_body_keys=""; cov_wdues=""; cov_adm=""
     # A deferral must land on a residual-verb ticket or one that predates this PR's own.
     cov_own=""
     # an owed line is decided by the anchor's reader alone (the one grammar owner, as item 17 reads it): item 7 checks only its window
@@ -1002,6 +1002,7 @@ else
         cov_def=$(printf '%s\n' "$cov_line" | grep -ioE 'deferred[[:space:]]*(→|->)[^[:alnum:]]*[A-Za-z][A-Za-z0-9]*-[0-9]+[^[:alnum:]]*$' || true)
         if [ -n "$cov_def" ]; then
             cov_key=$(printf '%s\n' "$cov_def" | grep -oE '[A-Za-z][A-Za-z0-9]*-[0-9]+' | tr '[:lower:]' '[:upper:]')
+            cov_adm_k=failed; cov_rc=""
             if cov_out=$(jira_get "$cov_key"); then
                 cov_status=$(printf '%s\n' "$cov_out" | jq -r '.fields.status.name // empty' 2>/dev/null || true) # swallow-ok: unparseable output leaves the status empty, which reads UNKNOWN below
                 cov_canon=$(printf '%s\n' "$cov_out" | jq -r '(.key // empty) | ascii_upcase' 2>/dev/null || true) # swallow-ok: unparseable output leaves the key empty, which reads UNKNOWN below
@@ -1022,6 +1023,10 @@ else
                     else
                         cov_bad="$cov_bad; $cov_key was made by a raw jira create (no 'residual' label, not older than ${cov_own:-the PR ticket}, not linked from it) - file it with: jira create --residual-of <parent> --fu-class escape|hardening --class <id>, or link a plain ticket: jira link ${cov_own:-<PR ticket>} $cov_key"
                     fi
+                elif [ "$cov_rc" = 0 ]; then
+                    cov_adm_k=linked
+                else
+                    cov_adm_k=residual-or-older
                 fi
                 cov_body_keys="$cov_body_keys $cov_key"
             elif printf '%s\n' "$cov_out" | grep -qiE '404|does not exist'; then
@@ -1029,6 +1034,7 @@ else
             else
                 cov_bad="$cov_bad; $cov_key UNKNOWN (jira get failed)"
             fi
+            cov_adm="$cov_adm $cov_key=$cov_adm_k"
         elif printf '%s\n' "$cov_line" | grep -qiE "$cov_owed_re"; then
             cov_oans=""; cov_orc=0
             if [ -f "$cov_reader" ]; then
@@ -1100,10 +1106,17 @@ EOF
                     *) cov_bad="$cov_bad; $cov_k is deferred in the CR ledger for $cov_h12 but no coverage line defers to it" ;;
                 esac
             done
-            for cov_k in $cov_body_keys; do
-                case " $cov_led_keys " in
-                    *" $cov_k "*) ;;
-                    *) cov_bad="$cov_bad; $cov_k is deferred in the body but has no deferred_to row in the CR ledger for $cov_h12" ;;
+            for cov_k in $(printf '%s' "$cov_body_keys" | tr ' ' '\n' | sort -u); do
+                case " $cov_led_keys " in *" $cov_k "*) continue ;; esac
+                case " $cov_adm " in
+                    *" $cov_k=failed "*|*" $cov_k=linked "*) ;;
+                    *" $cov_k=residual-or-older "*)
+                        cov_linked "$cov_own" "$cov_k" && cov_rc=0 || cov_rc=$?
+                        if [ "$cov_rc" -eq 2 ]; then
+                            cov_bad="$cov_bad; $cov_k UNKNOWN (jira links failed for $cov_own)"
+                        elif [ "$cov_rc" -ne 0 ]; then
+                            cov_bad="$cov_bad; $cov_k is deferred in the body but has no deferred_to row in the CR ledger for $cov_h12 - link it from the PR's ticket (jira link ${cov_own:-<PR ticket>} $cov_k) or record the review finding's deferral"
+                        fi ;;
                 esac
             done
         else

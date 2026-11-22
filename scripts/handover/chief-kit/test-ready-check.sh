@@ -1057,6 +1057,63 @@ rc=0; out="$(run)" || rc=$?
 check "links: a linked but Done target is still refused: exit 1" "$rc" "1"
 contains "links: linked Done target: names the status" "$out" "HIMMEL-51 already Done"
 
+s2() {
+    reset_stubs
+    STUB_BODY="$3"
+    if [ "$4" != - ]; then printf '%b' "$4" > "$tmp/links.db"; STUB_LINKS_DB="$tmp/links.db"; fi
+    [ "$5" = - ] || seed_deferral "$5"
+    STUB_LINKS_FAIL="${6:-}"
+    rc=0; out="$(run)" || rc=$?
+    check "$1: exit $2" "$rc" "$2"
+}
+s2 "10657 G1: an open unlabelled key linked from the PR's ticket needs no ledger row" 0 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-200\n' 'HIMMEL-100\tHIMMEL-200\n' -
+contains "10657 G1: check 7 passes" "$out" "[PASS] 7."
+s2 "10657 G2: an open residual key linked from the PR's ticket needs no ledger row" 0 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-201\n' 'HIMMEL-100\tHIMMEL-201\n' -
+contains "10657 G2: check 7 passes" "$out" "[PASS] 7."
+s2 "10657 G3: an open older key linked from the PR's ticket needs no ledger row" 0 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-50\n' 'HIMMEL-100\tHIMMEL-50\n' -
+contains "10657 G3: check 7 passes" "$out" "[PASS] 7."
+s2 "10657 C1: a linked Done key fails" 1 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-51\n' 'HIMMEL-100\tHIMMEL-51\n' -
+contains "10657 C1: names the status" "$out" "HIMMEL-51 already Done"
+notcontains "10657 C1: no second message" "$out" "has no deferred_to row"
+s2 "10657 C2: an unlinked unlabelled newer key fails" 1 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-200\n' - -
+contains "10657 C2: names the raw-create refusal" "$out" "HIMMEL-200 was made by a raw jira create"
+notcontains "10657 C2: no second message" "$out" "has no deferred_to row"
+s2 "10657 C3: the PR's own key fails" 1 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-100\n' 'HIMMEL-100\tHIMMEL-100\n' -
+contains "10657 C3: names the own ticket" "$out" "HIMMEL-100 is the PR's own ticket"
+notcontains "10657 C3: no second message" "$out" "has no deferred_to row"
+s2 "10657 C4: an unlinked older key with no ledger row fails" 1 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-50\n' - -
+contains "10657 C4: names the missing row" "$out" "HIMMEL-50 is deferred in the body but has no deferred_to row"
+s2 "10657 C5: a links failure for an older key with no ledger row fails closed" 1 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-50\n' - - 1
+contains "10657 C5: says UNKNOWN" "$out" "HIMMEL-50 UNKNOWN (jira links failed for HIMMEL-100"
+check "10657 C5: the UNKNOWN is printed once" "$(o_cnt "HIMMEL-50 UNKNOWN (jira links failed")" "1"
+notcontains "10657 C5: no missing-row message" "$out" "HIMMEL-50 is deferred in the body"
+s2 "10657 C6: a non-strict deferral to a linked key fails as unmarked" 1 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-200 (later)\n' 'HIMMEL-100\tHIMMEL-200\n' -
+contains "10657 C6: names the unmarked line" "$out" "unmarked line: - b: deferred -> HIMMEL-200 (later)"
+s2 "10657 C7: an unlinked residual key with no ledger row fails" 1 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-201\n' - -
+contains "10657 C7: names the missing row" "$out" "HIMMEL-201 is deferred in the body but has no deferred_to row"
+contains "10657 C7: names the link to make" "$out" "jira link HIMMEL-100 HIMMEL-201"
+s2 "10657 C8: a links failure for a newer key with no ledger row fails" 1 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-200\n' - - 1
+check "10657 C8: the UNKNOWN is printed once" "$(o_cnt "HIMMEL-200 UNKNOWN (jira links failed")" "1"
+s2_n=$(o_cnt "HIMMEL-200 is deferred in the body")
+check "10657 C8: no missing-row message" "$s2_n" "0"
+s2 "10657 O1: a ledger-backed older key passes with links failing" 0 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-50\n' - HIMMEL-50 1
+contains "10657 O1: check 7 passes" "$out" "[PASS] 7."
+s2 "10657 O2: an older key on two lines with no ledger row fails" 1 '## Ticket coverage\n- a: deferred -> HIMMEL-50\n- b: deferred -> HIMMEL-50\n' - -
+s2_n=$(o_cnt "HIMMEL-50 is deferred in the body")
+check "10657 O2: the missing row is reported once" "$s2_n" "1"
+cat > "$tmp/jira-count" <<EOS
+#!/usr/bin/env bash
+printf '%s %s\n' "\$1" "\${2:-}" >> "$tmp/jira-calls.log"
+exec "$tmp/bin/jira-stub" "\$@"
+EOS
+chmod +x "$tmp/jira-count"
+: > "$tmp/jira-calls.log"
+RUN_JIRA_CMD="$tmp/jira-count" s2 "10657 L1: a linked newer key on two lines passes" 0 '## Ticket coverage\n- a: deferred -> HIMMEL-200\n- b: deferred -> HIMMEL-200\n' 'HIMMEL-100\tHIMMEL-200\n' -
+check "10657 L1: one links call per line and none more" "$(grep -c '^links ' "$tmp/jira-calls.log")" "2"
+: > "$tmp/jira-calls.log"
+RUN_JIRA_CMD="$tmp/jira-count" s2 "10657 L2: a linked older key on two lines passes" 0 '## Ticket coverage\n- a: deferred -> HIMMEL-50\n- b: deferred -> HIMMEL-50\n' 'HIMMEL-100\tHIMMEL-50\n' -
+check "10657 L2: one links call for the key" "$(grep -c '^links ' "$tmp/jira-calls.log")" "1"
+
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: done\n'
 seed_deferral HIMMEL-50
