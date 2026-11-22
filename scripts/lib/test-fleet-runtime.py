@@ -1975,7 +1975,7 @@ exit 1''')
         self.assertEqual(self.anchor_attempts(), {})
 
     def test_begin_is_refused_beside_a_live_row_a_workers_sibling_holds(self):
-        self.begin_beside_old_sibling('workers')
+        self.refused_beside_old_sibling('workers')
 
     def test_begin_is_refused_beside_a_live_row_a_legs_sibling_holds(self):
         self.refused_beside_old_sibling('legs')
