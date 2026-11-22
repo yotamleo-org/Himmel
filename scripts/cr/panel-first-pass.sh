@@ -297,8 +297,8 @@ diff_rc=0
 # Diff from the CAPTURED base SHA, not the live $db name: $db
 # stays the operator-visible name in messages.
 diff_range="$db_sha...$HEAD_SHA"
-scoped_from=""   # L, the left side of the increment review-round.sh named, once a round reviews only that
-scope_kind=""    # increment or delta, from that answer
+scoped_from=""
+scope_kind=""
 diff_out=$(git diff "$diff_range") || diff_rc=$?
 # Bytes the critics count in a diff: they measure the diff text plus one trailing newline.
 pr_over_cap() { # diff text: sets pr_diff_bytes and pr_cap; true when over the cap
@@ -433,9 +433,6 @@ else
         fi
         exit "$1"
     }
-    # increment_context: the whole PR as the critic's context file, one
-    # {"range": [path, start, end]} line per new-side hunk (no quoted or control
-    # path), a blank line, then the whole PR diff. A caller's own file stays.
     increment_context() {
         [ -z "$CONTEXT_FILE" ] || return 0
         ic_fail=""
@@ -467,8 +464,6 @@ else
     pr_diff="$diff_out"
     case "$review_round" in
         *" carried "*)
-            # Nothing to review: the head is the reviewed head with the base
-            # merged in cleanly. No panel runs and nothing is recorded.
             echo "panel-first-pass: $HEAD_SHA only merges $db ($db_sha) cleanly into the reviewed head ${review_round##* carried } - carried, no panel; the marker carries the head" >&2
             printf 'pr-check: round %s carried on %s (a clean merge of the base; no panel)\n' "${review_round%% *}" "$BRANCH"
             exit 0
@@ -478,8 +473,6 @@ else
                 echo "$full_takeover" >&2
                 give_back 8
             fi
-            # Review only the increment review-round.sh named, never a range
-            # derived here; the whole PR rides as context.
             case "$review_round" in
                 *" delta "*) scoped_from="${review_round##* delta }"; scope_kind="delta" ;;
                 *) scoped_from="${review_round##* increment }"; scope_kind="increment" ;;
@@ -598,8 +591,6 @@ PINABORTRETRY
             else
                 echo "critic panel unavailable (all critics failed) - claude-only review" >&2
             fi
-            # The session's claude-only review is this round's outcome: the round
-            # stays counted, and its snapshot is dropped so no later start waits.
             if [ -z "$PR" ] && ! bash "$HIMMEL_ROOT/scripts/cr/review-round.sh" settle --branch "$BRANCH" --head "$HEAD_SHA"; then
                 echo "panel-first-pass: review-round.sh settle failed (reason above); a start at another head may wait two hours for this round" >&2
             fi
@@ -630,12 +621,6 @@ write_round_scope() {
 }
 if [ -n "$PR" ]; then write_round_scope pr-diff "$PR"; else write_round_scope panel-first-pass ""; fi
 
-# Every round below the cap after the first (an increment, or a full second or third)
-# tags an Important finding on code older than the PR (critic-pre-existing-tag.py
-# --increment): git blame decides, and the ledger field review-round.sh defer
-# reads is set by that script, never by a finding's text. A delta round and
-# the first round are not tagged. On any failure the findings stay as the panel gave
-# them, and an untagged Important keeps blocking.
 tag_round=0
 case "${scope_kind:-}" in
     increment) tag_round=1 ;;

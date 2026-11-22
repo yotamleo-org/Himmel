@@ -205,8 +205,6 @@ trivial_descendant() {
     comment_only_diff "$1" "$2"
 }
 
-# tests_only_paths <a> <b>: every path <a>..<b> changes is a test path, beside
-# at most a version-only plugin.json bump, and at least one is a test path.
 tests_only_paths() {
     _td_paths="$(git -c core.quotepath=off diff --no-renames --name-only "$1" "$2" 2>/dev/null)" || return 1
     [ -n "$_td_paths" ] || return 1
@@ -228,8 +226,6 @@ EOF
     [ "$_td_ok" -eq 1 ] && [ "$_td_tests" -eq 1 ]
 }
 
-# comment_only_diff <a> <b>: every changed line of <a>..<b> is a comment or blank,
-# with no binary, mode, create or delete change and no directive comment.
 comment_only_diff() {
     # Binary edits and mode/create/delete changes carry no +/- text line, so a
     # text-only scan would miss them: refuse any of them outright.
@@ -309,8 +305,6 @@ increment_of() {
     inc_size="$(printf '%s\n' "$_io_num" | awk '$1 == "-" || $2 == "-" { bad = 1 } NF { n += $1 + $2 } END { if (!bad) print n + 0 }')"
 }
 
-# inc_no_markers: no path T lists as conflicted holds a marker line; a listed path
-# T does not hold, or a failed read, counts as one.
 inc_no_markers() {
     [ "$inc_mt_rc" -eq 0 ] && return 0
     while IFS= read -r _nm_p; do
@@ -325,8 +319,6 @@ EOF
     return 0
 }
 
-# inc_resolution_only <H>: every -U0 hunk of L..H lies inside a conflict span of T;
-# a marketplace plugin.json never passes (version_only_merge decides it).
 inc_resolution_only() {
     _ro_paths="$(git -c core.quotepath=off diff --numstat --no-renames "$inc_l" "$1" 2>/dev/null)" || return 1
     [ -n "$_ro_paths" ] || return 1
@@ -386,8 +378,6 @@ increment_class() {
     return 0
 }
 
-# clean_merge_forward <from> <to>: the carried class, the predicate the marker's
-# carry shares.
 clean_merge_forward() {
     increment_of "$1" "$2" || return 1
     [ "$inc_merge" -eq 1 ] && [ "$inc_empty" -eq 1 ] && inc_no_markers
@@ -540,10 +530,7 @@ cired_state="$git_dir/cr-review-rounds/$branch.cired"
 # One line: the key of the branch's batch residual, filed by the first early
 # close and reused by every later one. It lives as long as the round count.
 deferred_to_state="$git_dir/cr-review-rounds/$branch.deferred-to"
-# "<R> <H> <class>", one line per free round.
 free_state="$git_dir/cr-review-rounds/$branch.free"
-# "<head> <class> <postcap 0|1>" of the last round start ran; defer reads it,
-# and with no line for the head keeps its .delta and .round tests.
 scope_state="$git_dir/cr-review-rounds/$branch.scope"
 snap_state="$git_dir/cr-review-rounds/$branch.start.bak"
 snap_wait=7200
@@ -812,7 +799,7 @@ restore_snapshot() {
 # marketplace/plugins/<p>/.claude-plugin/plugin.json whose "version" in <new>
 # is strictly above the version in both <ours> and <theirs>, and whose other
 # bytes are exactly the clean three-way merge once the version values are set
-# aside. Anything else fails. <mt-out> and <mt-rc> are increment_of's merge-tree.
+# aside. Anything else fails, so the caller keeps refusing it.
 version_only_merge() {
     _vo_out="$4" _vo_rc="$5"
     [ "$_vo_rc" -eq 0 ] || [ "$_vo_rc" -eq 1 ] || return 1
@@ -1502,7 +1489,6 @@ EOF
         delta_refuse "review-round: $delta_to does not descend from the last reviewed head $delta_from - $full_note"
         return 8
     fi
-    # The repeated-class veto applies to every class: no trigger evades it.
     delta_verdict="$(judge_nogo_record "$delta_from" "$delta_to")"
     judge_rc=$?
     [ "$judge_rc" -ne 8 ] || return 8
@@ -1515,7 +1501,6 @@ EOF
     case "$delta_class" in
         carried|tests|merge-resolution) delta_verdict=""; return 0 ;;
     esac
-    # An empty increment that is not carried has nothing to review.
     if [ "$inc_empty" -eq 1 ]; then
         delta_refuse "review-round: the increment $delta_from..$delta_to changes nothing - no delta round to run"
         return 8
@@ -1970,7 +1955,6 @@ if [ "$verb" = "start" ]; then
     fi
     delta_from=""
     delta_reuse=0
-    # The free count bounds the free classes, so an unreadable .free refuses.
     free_count=0
     if [ -e "$free_state" ] || [ -L "$free_state" ]; then
         if [ ! -f "$free_state" ] || [ -L "$free_state" ] \
@@ -1980,7 +1964,6 @@ if [ "$verb" = "start" ]; then
             exit 5
         fi
     fi
-    # Below the cap R is the reviewed head; past it delta_check decides.
     postcap=0
     [ "$round" -lt 3 ] || postcap=1
     start_class=full
@@ -2002,7 +1985,6 @@ if [ "$verb" = "start" ]; then
         start_class="$delta_class"
         start_r="$delta_from"
     fi
-    # A carried head brings nothing to review: no panel, no count, nothing written.
     if [ "$start_class" = carried ]; then
         start_unlock
         printf '%s carried %s\n' "$round" "$start_r"
@@ -2097,7 +2079,6 @@ if [ "$verb" = "start" ]; then
     current_owner=$(SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
         bash "$lock_lib" status "." "$branch" 2>/dev/null || true)
     if [ "$counted" -eq 0 ]; then
-        # A free round leaves .round and .delta; its .free line never fails open.
         tmp_free="$free_state.tmp.$$"
         if [ "$current_owner" != "$lock_owner" ] \
             || ! { cat "$free_state" 2>/dev/null || [ ! -e "$free_state" ]; } > "$tmp_free" \
@@ -2142,7 +2123,6 @@ if [ "$verb" = "start" ]; then
         || ! mv "$tmp_head" "$head_state"; then  # prim-ok: tmp-then-mv under the counter lock; fixture copies of this script have no scripts/lib
         rm -f "$tmp_head" "$head_state" "$prev_state"
     fi
-    # A failed .scope write leaves none, so defer keeps its .delta and .round tests.
     tmp_scope="$scope_state.tmp.$$"
     if [ -z "$round_head" ] \
         || ! printf '%s %s %s\n' "$round_head" "$start_class" "$postcap" > "$tmp_scope" \
@@ -2150,9 +2130,8 @@ if [ "$verb" = "start" ]; then
         rm -f "$tmp_scope" "$scope_state"
     fi
     # Written under the counter lock, so the pid checks in delta_check and
-    # abort and this claim cannot interleave between two starts; the snapshot's
-    # pid wins when one names the head. Best effort - a failed write only loses
-    # the guard.
+    # abort and this claim cannot interleave between two starts.
+    # Best effort - a failed write only loses the guard.
     printf '%s\n' "$PPID" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
     if [ "$postcap" -eq 1 ]; then
         start_answer="$round delta $inc_l"
@@ -2512,7 +2491,6 @@ if [ ! -f "$ledger" ]; then
     echo "review-round: CR ledger is missing at $ledger" >&2
     exit 5
 fi
-# A .scope line for --head with postcap 1 is a round past the cap: no early close.
 scope_head="" scope_class="" scope_post=""
 if [ -f "$scope_state" ] && [ ! -L "$scope_state" ]; then
     # swallow-ok: an unreadable .scope names no head, so the .delta and .round tests decide
@@ -2527,7 +2505,6 @@ elif [ "$round" -ge 4 ] && [ -f "$delta_state" ]; then
     delta_reviewed="$(awk '{print $2; exit}' "$delta_state" 2>/dev/null)" || delta_reviewed=""
     [ "$delta_reviewed" = "$full_head" ] && delta_mode=1
 fi
-# An early close is a round below the cap that is not a delta round.
 early_close=0
 if [ "$round" -lt 4 ] && [ "$delta_mode" -eq 0 ]; then early_close=1; fi
 # Rounds 1 to 3 close early only when the change at --head matches no pattern
@@ -2606,8 +2583,6 @@ else
     round_label="round $round"
 fi
 
-# The pre_existing field counts only where the tagger runs: below the cap after
-# the first round, never past it, where an Important is classified by an amend.
 pre_ok=0
 if [ "$scope_known" -eq 1 ]; then
     if [ "$scope_post" = 0 ] && { [ "$scope_class" != full ] || [ "$round" -ge 2 ]; }; then pre_ok=1; fi

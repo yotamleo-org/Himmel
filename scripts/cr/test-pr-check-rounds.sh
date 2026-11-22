@@ -4500,7 +4500,7 @@ knb_out="$(start_round "$(git -C "$repo" rev-parse knb)" clean knb)"
 assert_has "$knb_out" "pr-check: round 2 of 3 on knb" "10578 k1-negative: below the cap it is a counted round 2"
 assert_lacks "$knb_out" "increment from" "10578 k1-negative: below the cap it reviews the whole PR"
 
-mr_setup() { # mr_setup <branch>: three rounds, delta used, a conflict on s2 resolved inside the span
+mr_setup() {
     inc_shared "$1.shared" 10
     inc_three "$1" "$1.shared"
     printf '%s %s fix\n' "$cap_r3_head" "$cap_r3_head" > "$git_dir/cr-review-rounds/$1.delta"
