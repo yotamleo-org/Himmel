@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -u
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+. "$REPO/scripts/himmelctl/test/_hermetic-home.sh"
 NODE="$(command -v node)"
 FAILS=0; ROWFAIL=0
 fail() { echo "FAIL: $*" >&2; FAILS=$((FAILS + 1)); ROWFAIL=1; }
