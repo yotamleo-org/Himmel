@@ -1,17 +1,5 @@
 #!/usr/bin/env bash
 # test-check-operator-voice.sh — tests for scripts/lint/check-operator-voice.sh.
-#
-# Cases:
-#   1. the chief reply style asking for "about 15 min"            -> exit 1, file:line named
-#   2. a bridge reply "back in a moment"                         -> exit 1
-#   2b. a send call split over lines carries the string           -> exit 1
-#   3. ETA, "will take", "shortly", "in 15 minutes"               -> exit 1 each
-#   4. a measured past duration or a deadline ("expires in 6 h")  -> exit 0 (positive control)
-#   5. a .ts comment carrying "~16h" is not a send line           -> exit 0
-#   6. a line stating the rule ("no time estimate: ...")          -> exit 0
-#   7. a missing file                                             -> exit 2
-#   8. the real operator-bound set passes
-#
 # Exit: 0 all passed, 1 any failed. bash 3.2-safe.
 
 set -uo pipefail
