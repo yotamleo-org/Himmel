@@ -380,7 +380,7 @@ const OUT_STATUS = /^(closed|won['’]?t do|won['’]?t fix)$/i;
 const RESIDUAL_LABEL = /(^|-)residual(-|$)/;
 const RELEASE_LIMIT = 5000;
 const releaseOf = (version) => {
-    const a = ['list', '--jql', `project = HIMMEL AND fixVersion = "${version}"`, '--labels', '--limit', String(RELEASE_LIMIT)]; // env-literal-ok: the board's own project key, as before
+    const a = ['list', '--jql', `project = HIMMEL AND fixVersion = "${version}"`, '--labels', '--limit', String(RELEASE_LIMIT)]; // env-literal-ok: the board's own project key
     let out;
     try {
         out = execFileSync(...(JIRA_CLI.endsWith('.js') ? ['node', [JIRA_CLI, ...a]] : [JIRA_CLI, a]),
