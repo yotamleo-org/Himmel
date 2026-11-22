@@ -26,11 +26,12 @@ http.createServer((req, res) => {
   const mode = fs.readFileSync(dir + '/mode', 'utf8').trim();
   fs.appendFileSync(dir + '/hits', req.method + ' ' + req.url + '\n');
   if (mode === 'hang') return;
-  res.statusCode = Number(mode);
+  const want = 'Basic ' + Buffer.from(process.argv[3]).toString('base64');
+  res.statusCode = req.headers.authorization === want ? Number(mode) : 401;
   res.end('{}');
 }).listen(0, '127.0.0.1', function () { fs.writeFileSync(dir + '/port', String(this.address().port)); });
 JS
-"$NODE" "$TMP/srv.js" "$TMP" &
+"$NODE" "$TMP/srv.js" "$TMP" "me@example.com:$TOKEN" &
 SRV_PID=$!
 for _ in $(seq 1 50); do [ -s "$TMP/port" ] && break; sleep 0.1; done
 [ -s "$TMP/port" ] || { echo "FAIL: stub server did not start" >&2; exit 1; }
