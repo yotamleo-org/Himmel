@@ -1105,7 +1105,7 @@ stuck_now() {
 holdask_file="$inbox.wait.holdasks"
 holdstuck_file="$inbox.wait.holdstuck"
 holdwoke_file="$inbox.wait.holdwoke"
-page_hold_asks() {  # pages each new operator ask, prints one WAKE hold-ask line per chief ask not yet woken; succeeds when it printed one
+page_hold_asks() {
     local asks key path holder cmd kind end now ptime first woke=1
     asks="$(timeout -k 2 20 python3 -I "$HERE/holds.py" asks --repo "$REPO" --open-prs "$(field prs "$tick_line")" 2>/dev/null </dev/null 9>&-)" || return 1  # gnu-ok: Linux-only kit; swallow-ok: an unreadable register wakes and pages nothing this sample, the next one asks again
     end=$(( $(date +%s) + page_timeout ))

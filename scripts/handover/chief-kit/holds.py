@@ -1703,15 +1703,12 @@ ASK_LIVE_SWEEP_SECS = 10
 
 
 def parse_open_prs(v):
-    """The open PR numbers of a --open-prs list (#12,#34 or none) as a set; None when absent or ?, which skips the PR test."""
     if not v or v == '?':
         return None
     return {x.strip().lstrip('#') for x in v.split(',') if x.strip()} - {'none'}
 
 
 def asker_gone(repo, keys, open_prs):
-    """The asker keys with no live worker and no open PR: no lock the queue-lock sweep reads held names the key, and no row of
-    the key here carries a PR in open_prs. A faulted sweep, or open_prs None, proves nothing gone. Local reads only."""
     if open_prs is None or not keys:
         return set()
     rows = Judge(repo, time.time() + ASK_LIVE_SWEEP_SECS).sweep()
