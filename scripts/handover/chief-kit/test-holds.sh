@@ -1149,6 +1149,20 @@ same "R3.3 an ask on a CI workflow prints hold-ask-operator as field 5" "$(print
 same "R3.3 ... in a five-field line" "$(printf '%s' "$OUT" | awk -F'\t' '{print NF}')" 5
 OUT=$(printf '%s\n' "$L1" | env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" summary --repo "$R10" --live-docs - --open-prs none 2>/dev/null)
 same "9186 summary: with no open PR the pr row is stale too (2), no other count moves" "$OUT" "1/2/1"
+D9626="$(mkdoc PROJ-9626-case.md)"
+run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10" --open-prs '#4702'
+same "10632 an ask whose asker has no lock and no row on an open PR is dropped" "$RC:$OUT" "0:"
+put_row scripts/s9626.sh PROJ-9626 lab "$D9626" pr 4702 "$R10"
+run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10" --open-prs '#4702'
+same "10632 the asker's row on an open PR keeps the ask" "$RC:$(printf '%s' "$OUT" | cut -f1,5)" "$(printf '0:PROJ-9626\thold-ask-chief')"
+run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10" --open-prs none
+same "10632 the same row once its PR is no longer open drops the ask" "$RC:$OUT" "0:"
+run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10" --open-prs '?'
+same "10632 an unread open-PR list (?) keeps the ask" "$RC:$(printf '%s' "$OUT" | cut -f1)" "0:PROJ-9626"
+lock_hold "$D9626"
+run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10" --open-prs none
+same "10632 a live worker (its lock held) keeps the ask with no open PR" "$RC:$(printf '%s' "$OUT" | cut -f1)" "0:PROJ-9626"
+rm -f "$(rowf scripts/s9626.sh "$R10")"
 : > "$(rowf scripts/check-ci.sh "$R10").grant.PROJ-9626"
 run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10"
 same "9186 a granted ask is no longer pending" "$OUT" ""

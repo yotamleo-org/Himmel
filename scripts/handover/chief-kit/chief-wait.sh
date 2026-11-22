@@ -213,6 +213,12 @@
 #                               bounded by CHIEF_SILENT_GO_TIMEOUT (default 900 s) and
 #                               ready-check by 90 s; the heartbeat says sampling meanwhile.
 #                               Seam: CHIEF_WAIT_SILENT_GO.
+#   WAKE hold-ask <KEY> wants <path> (held by <holder>). Grant: <command>   one line per trust-path
+#                               ask the chief may grant (holds.py asks kind hold-ask-chief), on its first
+#                               sight (record <inbox>.wait.holdasks); the tick line follows. It pages
+#                               nobody. A hold-ask-operator ask is paged to the operator instead, and
+#                               again as hold-ask-stuck once after 30 min ungranted. holds.py drops an
+#                               ask whose key has no live worker and no open PR in the tick's prs=.
 #   WAKE size rows=<n>          gen-briefs.py refused an oversized brief or took a bulk: mechanical one
 #                               : the new SIZE-ESCALATE rows of size-override.sh's ledger
 #                               follow, once per row (marker <inbox>.wait.size). Seam: CHIEF_WAIT_SIZE.
@@ -1098,9 +1104,9 @@ stuck_now() {
 
 holdask_file="$inbox.wait.holdasks"
 holdstuck_file="$inbox.wait.holdstuck"
-page_hold_asks() {
-    local asks key path holder cmd kind end now ptime
-    asks="$(timeout -k 2 20 python3 -I "$HERE/holds.py" asks --repo "$REPO" 2>/dev/null </dev/null 9>&-)" || return 0  # gnu-ok: Linux-only kit; swallow-ok: an unreadable register pages nothing this sample, the next one asks again
+page_hold_asks() {  # pages each new operator ask, prints one WAKE hold-ask line per new chief ask; succeeds when it printed one
+    local asks key path holder cmd kind end now ptime woke=1
+    asks="$(timeout -k 2 20 python3 -I "$HERE/holds.py" asks --repo "$REPO" --open-prs "$(field prs "$tick_line")" 2>/dev/null </dev/null 9>&-)" || return 1  # gnu-ok: Linux-only kit; swallow-ok: an unreadable register wakes and pages nothing this sample, the next one asks again
     end=$(( $(date +%s) + page_timeout ))
     now="$(stuck_now)"
     while IFS=$'\t' read -r key path holder cmd kind; do
@@ -1110,16 +1116,21 @@ page_hold_asks() {
         [ ! -f "$holdask_file" ] || ptime="$(awk -F'\t' -v k="$key" -v p="$path" '$1 == k && $2 == p { print ($3 ~ /^[0-9]+$/ ? $3 : 0); exit }' "$holdask_file")"
         if [ -z "$ptime" ]; then
             printf '%s\t%s\t%s\n' "$key" "$path" "$(date +%s)" >> "$holdask_file"
+            if [ "$kind" = hold-ask-chief ]; then
+                printf 'WAKE hold-ask %s wants %s (held by %s). Grant: %s\n' "$key" "$path" "$holder" "$cmd"
+                woke=0
+                continue
+            fi
             page_send "HOLD-ASK $key wants $path (held by $holder). Paste in a real terminal, not a Claude window, and type the path back: $cmd" "$end" "$kind"
             continue
         fi
-        [ "$kind" = hold-ask-chief ] || continue
+        [ "$kind" = hold-ask-operator ] || continue
         [ $(( now - ptime )) -ge "$stuck_secs" ] || continue
         ! grep -qxF -- "$key"$'\t'"$path" "$holdstuck_file" 2>/dev/null || continue
         printf '%s\t%s\n' "$key" "$path" >> "$holdstuck_file"
         page_send "A file ask waited 30 min: $key wants $path, held by $holder. Blocks: that worker. Do: in a real terminal, run: $cmd" "$end" hold-ask-stuck
     done <<< "$asks"
-    return 0
+    return "$woke"
 }
 
 doc_written_since() {
@@ -2995,7 +3006,9 @@ while :; do
                 saved="$(r0_fold_key "$saved" "$key" "$r0_fold")"; save_key "$saved"
             fi
             r0_refold=""
-            case "$(field hreg "$tick_line")" in ''|'?'|*/*/0) ;; *) page_hold_asks ;; esac
+            hold_out=""
+            case "$(field hreg "$tick_line")" in ''|'?'|*/*/0) ;; *) hold_out="$(page_hold_asks)" || hold_out="" ;; esac
+            if [ -n "$hold_out" ]; then printf '%s\n%s\n' "$hold_out" "$tick_line"; exit_reason='wake-hold-ask'; exit 0; fi
             page_denials_stuck
             # a capped waker on a doc quiet past the bound: wake the chief, alert the operator
             if silent_out="$(silent_wake)"; then
