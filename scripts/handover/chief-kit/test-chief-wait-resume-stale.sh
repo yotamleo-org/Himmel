@@ -159,7 +159,7 @@ chmod 000 "$LOG"
 arm "$WORK/r8.out" 6
 check '8 an unreadable status log wakes nothing and leaves the resume-stale marker as it was' '124:0:FIXT-7' "$rc:$(stale_wakes "$WORK/r8.out"):$(cat "$INBOX.wait.resume-stale" 2>/dev/null)"
 
-cp"$STUB/tick.line" "$STUB/tick.line.orig"
+cp "$STUB/tick.line" "$STUB/tick.line.orig"
 relaunch_line() { sed "s/ capacity=[^ ]*/ capacity=FULL/; s/\$/ relaunch=$1/" "$STUB/tick.line.orig" > "$STUB/tick.line"; }
 relaunch_wakes() { grep -c '^WAKE relaunch-owed ' "$1" 2>/dev/null; }
 case_new rl
