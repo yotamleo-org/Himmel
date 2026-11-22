@@ -2,9 +2,11 @@
 # Branch-scoped /pr-check review-round state and round-4 cap.
 # The first round and a start --full review the whole PR; every later one reviews the
 # increment from the reviewed head R (increment_of) and its class decides the
-# spend: carried, a free class (<branch>.free) or work. Past three spent rounds a
-# work increment runs only as ONE delta round, when R raised a finding, or through
-# the triggers below. Every start writes <branch>.scope, which defer reads.
+# spend: carried, a free class (<branch>.free) or work.
+# After three full rounds the only round left is ONE delta round for a work
+# increment, when R raised a finding, or through the triggers below.
+# A 4th full round and a second delta are refused. Every start writes
+# <branch>.scope, which defer reads.
 # State lives under the repository's shared git common directory, so head
 # commits and merge-forwards do not reset it and linked worktrees agree.
 # A third trigger - a judge NO-GO on the last reviewed head, as
