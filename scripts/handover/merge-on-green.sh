@@ -123,6 +123,12 @@
 # `LEAK ... Not stopped.` line on stderr, write one `bucket-leak` row to status-events.jsonl and send one line to the owning
 # chief's inbox (HIMMEL_CONSOLE_NAME); unread (no usable answer) writes a row with verdict=unread and sends no inbox line.
 #
+# After a confirmed merge that does not complete its ticket, the PR body's owed lines go to the station spool
+# (<state dir>/owe-spool.jsonl, owed-events.py spool), which the chief's tick drains into its own owed ledger. The
+# outcome rides the MERGED audit line as `owe=<none|spooled:N|unread|miss:N:write>` (unread = the lines could not be
+# read, so one row asks the chief to read the body; miss:?:write when even that failed) and NEVER changes the exit code.
+# A miss prints the lines on stderr and writes one `owe-miss` row to status-events.jsonl.
+#
 # Exit codes:
 #   0   merged (including a confirmed remote merge where gh itself exited
 #       non-zero afterwards, and regardless of the post-merge prune outcome),
@@ -2756,6 +2762,7 @@ _jira_intake_to_current() {
 }
 
 BUCKET_RESULT="not-asked"
+OWE_RESULT="none"
 _bucket_line() {
     local repo_root="$1" key="$2" title="$3" pr="$4" sha="$5"
     local bk_to="" bk_out="" bk_line="" bk_rc=0 bk_verdict="" bk_version="?" bk_cur="?" bk_open="?" bk_text="" bk_re bk_timed_out bk_why
@@ -3018,25 +3025,39 @@ _merge_pre_row() {
     status_event event=merge key="$key" pr="$2" head="$3" contract="$MERGE_ROW_CONTRACT" result=pending stage=pre-jira ${MERGE_ROW_REMAINDER:+remainder="$MERGE_ROW_REMAINDER"} ${MERGE_ROW_OWED:+owed="$MERGE_ROW_OWED" owed_due="$MERGE_ROW_OWED_DUE"}
 }
 
-_merge_owe_rows() {
-    local bucket chief owe who due text metadata identity n=0 total=0
-    case "${HIMMEL_CONSOLE_DOC:-}" in /*) [ -f "$HIMMEL_CONSOLE_DOC" ] || return 0 ;; *) return 0 ;; esac
-    declare -F ts_owed_lines >/dev/null || return 0
-    bucket=${HIMMEL_CONSOLE_DOC%/*}
-    chief=${HIMMEL_CONSOLE_NAME:-}
-    if [ -z "$chief" ]; then chief=${HIMMEL_CONSOLE_DOC##*/}; chief=${chief%.md}; fi
-    owe="$himmel_repo/scripts/handover/chief-kit/owe.sh"
-    while IFS=$'\t' read -r who due _ text; do
-        [ -n "$who" ] || continue
-        total=$((total + 1))
-        metadata=$(jq -cn --arg actor "$who" --arg due "$due" --arg wake "complete the accepted PR #$2 remainder" \
-            '{actor:$actor,due:$due,wake:$wake,action:"next-step",capability:(if $actor == "proof" then "read-only proof worker" else $actor end)}') || return 1
-        identity=$(printf '%s\n' "$1" "$2" "$who" "$due" "$text" | sha256sum | cut -d' ' -f1) || return 1
-        bash "$owe" add --bucket "$bucket" --chief "$chief" --kind step --key "$1" --text "$1 PR #$2: $text" \
-            --identity "$identity" --metadata "$metadata" >/dev/null 2>&1 && n=$((n + 1))
-    done <<<"$(printf '%s' "${partial_body//$'\r'/}" | ts_owed_lines)"
-    [ "$total" -eq 0 ] || echo "merge-on-green: owed ledger: $n of $total owed line(s) of $1 recorded in $bucket/owed.jsonl" >&2
-    [ "$n" -eq "$total" ]
+_merge_owe_spool() {
+    local lines="" rc=0 n=0 who text spool err=""
+    local tool="$himmel_repo/scripts/handover/chief-kit/owed-events.py"
+    if declare -F ts_owed_lines >/dev/null; then
+        lines=$(printf '%s' "${partial_body//$'\r'/}" | ts_owed_lines) || rc=$?
+    else
+        rc=127
+    fi
+    if [ "$rc" -eq 0 ]; then
+        while IFS=$'\t' read -r who _; do [ -z "$who" ] || n=$((n + 1)); done <<<"$lines"
+        [ "$n" -gt 0 ] || { OWE_RESULT=none; return 0; }
+    fi
+    if ! declare -F ts_state_dir >/dev/null; then
+        OWE_RESULT="miss:?:write"
+        echo "merge-on-green: owed spool: no state dir, so the owed lines of $1 PR #$2 were not spooled: read the PR body and add a row per owed line" >&2
+        declare -F status_event >/dev/null && status_event event=owe-miss key="$1" pr="$2"
+        return 0
+    fi
+    spool="$(ts_state_dir)/owe-spool.jsonl"
+    if [ "$rc" -ne 0 ]; then
+        err=$(python3 -I "$tool" spool --unread --spool "$spool" --key "$1" --pr "$2" --repo "$3" 2>&1 </dev/null) && { OWE_RESULT=unread; return 0; }
+        OWE_RESULT="miss:?:write"
+    else
+        err=$(printf '%s\n' "$lines" | python3 -I "$tool" spool --spool "$spool" --key "$1" --pr "$2" --repo "$3" 2>&1) && { OWE_RESULT="spooled:$n"; return 0; }
+        OWE_RESULT="miss:$n:write"
+    fi
+    [ -z "$err" ] || printf '%s\n' "$err" >&2
+    echo "merge-on-green: owed spool: the owed lines of $1 PR #$2 were not spooled to $spool ($OWE_RESULT): add a row per owed line from the PR body" >&2
+    if [ "$rc" -eq 0 ]; then
+        while IFS=$'\t' read -r who _ _ text; do [ -z "$who" ] || echo "merge-on-green: owed line not spooled: $1 PR #$2: $text" >&2; done <<<"$lines"
+    fi
+    declare -F status_event >/dev/null && status_event event=owe-miss key="$1" pr="$2"
+    return 0
 }
 
 # jira_auto_transition_on_merge <nwo> <pr> <sha> — the merge's Jira step, then
@@ -3072,7 +3093,7 @@ jira_auto_transition_on_merge() {
     fi
     exec 8>&-
     if [ "${MERGE_ROW_CONTRACT:-}" = no ] && [ -n "${partial_key:-}" ] && [ -n "${partial_body:-}" ]; then
-        _merge_owe_rows "$partial_key" "$2"
+        _merge_owe_spool "$partial_key" "$2" "$1"
     fi
     if [ "$_MERGE_CONTRACT" != yes ] && [ -n "$_MERGE_KEY" ]; then
         _status_event "$_MERGE_KEY" merge "$2" "$3"
@@ -3184,7 +3205,7 @@ if [ "$merge_rc" -ne 0 ]; then
         record_cr_threads "$pr_num"
         record_bug_origin "$pr_num"
         record_conflicts "$pr_num"
-        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 gh-exit=$merge_rc prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT bug-origin=$BUG_ORIGIN_RESULT conflicts=$CONFLICTS_RESULT bucket=$BUCKET_RESULT$SOLO_TAG"
+        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 gh-exit=$merge_rc prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT bug-origin=$BUG_ORIGIN_RESULT conflicts=$CONFLICTS_RESULT bucket=$BUCKET_RESULT owe=$OWE_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash); MERGED at the certified sha/base although gh exited $merge_rc: ${merge_out:-<no output>}"
         [ "$mr_fix" -eq 0 ] || main_recheck_dispatch "$nwo" "$default_branch"
         [ -z "$PRUNE_KEEP_HINT" ] || echo "$PRUNE_KEEP_HINT" >&2
@@ -3264,7 +3285,7 @@ if [ "$merge_rc" -eq 0 ]; then
         record_cr_threads "$pr_num"
         record_bug_origin "$pr_num"
         record_conflicts "$pr_num"
-        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT bug-origin=$BUG_ORIGIN_RESULT conflicts=$CONFLICTS_RESULT bucket=$BUCKET_RESULT$SOLO_TAG"
+        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT bug-origin=$BUG_ORIGIN_RESULT conflicts=$CONFLICTS_RESULT bucket=$BUCKET_RESULT owe=$OWE_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash). ${merge_out:-}"
         [ "$mr_fix" -eq 0 ] || main_recheck_dispatch "$nwo" "$default_branch"
         [ -z "$PRUNE_KEEP_HINT" ] || echo "$PRUNE_KEEP_HINT" >&2

@@ -128,6 +128,28 @@ steps use the closed list `sign the spec`, `sign the GO`, `sign the release`,
 `signature`, `chief signature`, `release operator step`, or `station step a worker
 is refused`. Code remains `Remaining:` work. Operator staging stays operator-owned.
 
+A partial merge never writes those steps into a chief's ledger itself. `merge-on-green.sh`
+appends one row per owed line to the station spool, `<state dir>/owe-spool.jsonl`
+(`TICKET_STATUS_STATE_DIR`, default `~/.himmel/state`), with
+`owed-events.py spool --key <KEY> --pr <n> --repo <owner/name> --spool <spool>`, and records
+the outcome on its MERGED audit line as `owe=`: `none` (no owed line), `spooled:<n>`,
+`unread` (the PR body's owed lines could not be read: one `unread` row stands in for them,
+due the day before the merge), or `miss:<n|?>:write` (the spool could not be written: the
+lines go to stderr and the status log gets an `owe-miss` row for that key and PR). The
+next tick of a chief whose doc sits inside the handover root drains the spool: for each row
+of its own project it appends a `claim` row naming its bucket, then adds the step to its
+ledger under the row's identity, with the draining chief's name on the row. A row
+another live bucket has claimed is that chief's; a row already in the ledger only gets its
+claim, so re-spooling a PR is safe. Rows never leave the spool on their own.
+
+A spool line the drain cannot read or add prints
+`ACTION owed-spool-bad=<line numbers>` (`=file` when the spool itself cannot be read or
+locked). `owed-events.py spool --check --spool <spool>` lists the bad lines. Rebuild a lost
+row from the PR body: `gh pr view <n> --repo <owner/name> --json body -q .body` piped
+through `scripts/lib/pr_remainder.py --owed-lines` into the `spool` call above. Then remove
+the bad line with `owed-events.py spool --drop <line> --spool <spool>`, which takes the
+spool lock; it is the only way a line leaves the spool.
+
 Tick projects keyed step dates and readiness reminders into the same owed ledger.
 A step expires after its accepted UTC by-date; missing/invalid evidence emits
 `ACTION owed-invalid=<source ids>` and never means Done. Keyless ticket filing debt

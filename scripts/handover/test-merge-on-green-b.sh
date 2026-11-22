@@ -315,29 +315,43 @@ STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BO
     run_mog 0 "10194 control: a Remaining: line naming a repo path merges"
 s10194_dir=$(mktemp -d "${TMPDIR:-/tmp}/mog-10194.XXXXXX")
 if [ -z "$s10194_dir" ] || [ ! -d "$s10194_dir" ]; then
-    fail "10194 setup: mktemp -d produced no chief bucket"
+    fail "10194b setup: mktemp -d produced no chief bucket"
 else
     printf '# chief\n\n## Results\n' > "$s10194_dir/chief.md"
     HIMMEL_CONSOLE_DOC="$s10194_dir/chief.md" HIMMEL_CONSOLE_NAME=AJ-chief STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
         STUB_PR_BODY=$'## Ticket coverage\n- a: done\n- the live proof: owed '"$s4_arrow"' proof by '"$s4_d2"$'\n- rotate the key: owed -> operator by '"$s4_d3"$'\n' \
-        run_mog 0 "10194: a partial merge with two owed lines merges"
-    if jq -e -s --arg k "$(printf '%s-%s' HIMMEL 374)" 'length == 2 and all(.op == "add" and .kind == "step" and .key == $k and .chief == "AJ-chief")' "$s10194_dir/owed.jsonl" >/dev/null 2>&1; then pass
-    else fail "10194: two open step rows keyed to the ticket, chief from HIMMEL_CONSOLE_NAME (ledger: $(cat "$s10194_dir/owed.jsonl" 2>/dev/null))"; fi
-    if jq -e -s 'any(.actor == "proof" and .due == "'"$s4_d2"'" and (.text | test("PR #[0-9]+: the live proof: owed → proof by '"$s4_d2"'$"))) and any(.actor == "operator" and (.text | test("rotate the key: owed -> operator by '"$s4_d3"'$")))' "$s10194_dir/owed.jsonl" >/dev/null 2>&1; then pass
-    else fail "10194: each row's text names the PR, the ask, who and the due date (ledger: $(cat "$s10194_dir/owed.jsonl" 2>/dev/null))"; fi
+        run_mog 0 "10194b: a partial merge with two owed lines and a chief doc set merges"
+    if jq -e -s --arg k "$(printf '%s-%s' HIMMEL 374)" 'length == 2 and all(.kind == "owed" and .key == $k and .pr == 77)
+        and (.[0] | .who == "proof" and .due == "'"$s4_d2"'" and .text == "the live proof: owed → proof by '"$s4_d2"'")
+        and (.[1] | .who == "operator" and .due == "'"$s4_d3"'" and .text == "rotate the key: owed -> operator by '"$s4_d3"'")' \
+        "$LAST_TMP/ts/owe-spool.jsonl" >/dev/null 2>&1; then pass
+    else fail "10194b: with a chief doc set, the lines still go to the spool (spool: $(cat "$LAST_TMP/ts/owe-spool.jsonl" 2>/dev/null))"; fi
+    if [ -e "$s10194_dir/owed.jsonl" ]; then fail "10194b: with a chief doc set, no ledger row is written ($(cat "$s10194_dir/owed.jsonl"))"; else pass; fi
+    assert_audit_has "10194b: the chief-doc merge is owe=spooled:2" "owe=spooled:2"
     rm -f "$s10194_dir/owed.jsonl"
     HIMMEL_CONSOLE_DOC="$s10194_dir/chief.md" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'Remaining: slice 2\n' \
-        run_mog 0 "10194 control: a Remaining: merge"
-    if [ -e "$s10194_dir/owed.jsonl" ]; then fail "10194 control: a Remaining: merge writes no owe row ($(cat "$s10194_dir/owed.jsonl"))"; else pass; fi
+        run_mog 0 "10194b control: a Remaining: merge"
+    if [ -e "$s10194_dir/owed.jsonl" ] || [ -e "$LAST_TMP/ts/owe-spool.jsonl" ]; then fail "10194b control: a Remaining: merge writes no owe row"; else pass; fi
     HIMMEL_CONSOLE_DOC="$s10194_dir/chief.md" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
         STUB_PR_BODY=$'## Ticket coverage\n- a: done\n- the live proof: owed '"$s4_arrow"' proof by '"$s4_d2"$'\n' \
-        run_mog 0 "10194 control: a completing merge with an owed line" -- --jira-transition
-    if [ -e "$s10194_dir/owed.jsonl" ]; then fail "10194 control: a completing merge writes no owe row ($(cat "$s10194_dir/owed.jsonl"))"; else pass; fi
-    HIMMEL_CONSOLE_DOC="$s10194_dir/chief.md" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
-        STUB_PR_BODY=$'## Ticket coverage\n- a: done\n- the live proof: owed '"$s4_arrow"' proof by '"$s4_d2"$'\n' \
-        run_mog 0 "10194: with no HIMMEL_CONSOLE_NAME"
-    if jq -e -s 'length == 1 and .[0].chief == "chief"' "$s10194_dir/owed.jsonl" >/dev/null 2>&1; then pass
-    else fail "10194: with no HIMMEL_CONSOLE_NAME the chief is the chief doc's stem (ledger: $(cat "$s10194_dir/owed.jsonl" 2>/dev/null))"; fi
+        run_mog 0 "10194b control: a completing merge with an owed line" -- --jira-transition
+    if [ -e "$s10194_dir/owed.jsonl" ] || [ -e "$LAST_TMP/ts/owe-spool.jsonl" ]; then fail "10194b control: a completing merge writes no owe row"; else pass; fi
+    printf 'import os, sys\nif "--owed-lines" in sys.argv:\n    sys.exit(3)\nos.execv(sys.executable, [sys.executable, "-I", %s] + sys.argv[1:])\n' \
+        "'$(cd "$SCRIPT_DIR/../lib" && pwd)/pr_remainder.py'" > "$s10194_dir/owed-lines-fail.py"
+    s10194_owed=$'## Ticket coverage\n- a: done\n- the live proof: owed '"$s4_arrow"' proof by '"$s4_d2"$'\n'
+    MOG_ANCHOR_READER="$s10194_dir/owed-lines-fail.py" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="$s10194_owed" \
+        run_mog 0 "10194b: a failing reader: exit 0"
+    assert_audit_has "10194b: a failing reader is owe=unread" "owe=unread"
+    if jq -e -s --arg k "$(printf '%s-%s' HIMMEL 374)" 'length == 1 and .[0].kind == "unread" and .[0].key == $k and .[0].pr == 77 and .[0].repo == "owner/repo"' \
+        "$LAST_TMP/ts/owe-spool.jsonl" >/dev/null 2>&1; then pass
+    else fail "10194b: a failing reader spools one unread row (spool: $(cat "$LAST_TMP/ts/owe-spool.jsonl" 2>/dev/null))"; fi
+    mkdir -p "$s10194_dir/ts-bad/owe-spool.jsonl"
+    MOG_TS_DIR="$s10194_dir/ts-bad" MOG_ANCHOR_READER="$s10194_dir/owed-lines-fail.py" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+        STUB_PR_BODY="$s10194_owed" run_mog 0 "10194b: a failing reader and an unwritable spool: exit 0"
+    assert_audit_has "10194b: a failing reader and an unwritable spool is owe=miss:?:write" "owe=miss:?:write"
+    assert_err_has "10194b: the unwritten unread row names the PR on stderr" "the owed lines of HIMMEL-374 PR #77 were not spooled"
+    MOG_TS_DIR="$s10194_dir/ts-bad" assert_status_row "10194b: the unwritten unread row writes one owe-miss status row" \
+        '.event == "owe-miss" and .key == "'"$(printf '%s-%s' HIMMEL 374)"'" and .pr == "77"'
     rm -rf "$s10194_dir"
 fi
 # the reader's precedence: remaining > owed > handed-off > none; several owed lines answer the earliest date

@@ -902,6 +902,64 @@ printf '%s\n' 'not json' >> "$W/ow-dir/owed.jsonl"
 contains '(10006) an unreadable ledger prints owed=?' "$(ow_tick)" ' owed=?'
 rm -rf "$W/ow-tmp" "$W/ow-mirror" "$W/ow-dir"
 
+sp_root="$W/sp root"; sp_hd="$sp_root/handover"; sp_state="$sp_root/state"
+mkdir -p "$sp_hd/sp bucket" "$sp_state" "$sp_root/bin" "$sp_root/mirror/HIMMEL" "$sp_root/tmp"
+sp_doc="$sp_hd/sp bucket/sp-chief.md"; printf '# chief\n' > "$sp_doc"
+sp_body="## Ticket coverage
+- a: done
+- the live proof: owed $(printf '\342\206\222') proof by $(date -u -d '+3 days' +%F)"  # gnu-ok: chief kit is Linux-only
+printf '%s\n' "$sp_body" > "$sp_root/body.md"
+# shellcheck disable=SC2016  # the stub body is single-quoted on purpose: "$*" and "$@" expand when it runs
+printf '#!/usr/bin/env bash\nif [ "$*" = "pr view 91 --repo acme/repo --json body -q .body" ]; then cat %q; exit 0; fi\nexec %q "$@"\n' \
+    "$sp_root/body.md" "$W/bin/gh" > "$sp_root/bin/gh"
+chmod +x "$sp_root/bin/gh"
+sp_owed() {
+    printf '%s\n' "$sp_body" | python3 -I "$HERE/../../lib/pr_remainder.py" --owed-lines | \
+        python3 -I "$HERE/owed-events.py" spool --key "$2" --pr 91 --repo acme/repo --spool "$1"
+}
+sp_tick() { PATH="$sp_root/bin:$PATH" HANDOVER_DIR="$sp_hd" TICKET_STATUS_STATE_DIR="$sp_state" NEXT_DISPATCH_MIRROR="$sp_root/mirror/HIMMEL" TMPDIR="$sp_root/tmp" TOKEN='' bash "$SUT" --doc "$sp_doc" 2>/dev/null; }
+sp_spool="$(TICKET_STATUS_STATE_DIR="$sp_state" bash -c '. "$1" && ts_state_dir' _ "$HERE/../../lib/ticket-status.sh")/owe-spool.jsonl"
+sp_key="$(printf '%s-%s' HIMMEL 374)"
+sp_owed "$sp_spool" "$sp_key"
+sp_id="$(jq -r .identity "$sp_spool")"
+sp_tick > /dev/null
+if bash "$HERE/owe.sh" list --bucket "$sp_hd/sp bucket" --json 2>/dev/null | jq -e --arg i "$sp_id" --arg k "$sp_key" \
+    'length == 1 and (.[0] | .kind == "step" and .key == $k and .identity == $i and .chief == "sp-chief")' >/dev/null 2>&1; then
+    pass '(10194) one tick drains a spooled owed line into the chief'"'"'s ledger'
+else
+    fail "(10194) one tick drains a spooled owed line into the chief's ledger: $(cat "$sp_hd/sp bucket/owed.jsonl" 2>&1)"
+fi
+sp_state="$sp_root/state two"; sp_spool="$sp_state/owe-spool.jsonl"
+sp_owed "$sp_spool" ACME-5
+sp_line1="$(cat "$sp_spool")"
+printf '%s' '{"kind":"owed","schema":1,"ts":"2026-' >> "$sp_spool"
+sp_sum="$(cksum < "$sp_spool")"
+sp_act="$(sp_tick | grep '^ACTION owed-spool-bad=')"
+case "$sp_act" in
+    'ACTION owed-spool-bad=2: '*) pass '(10194) a torn spool line prints ACTION owed-spool-bad=2' ;;
+    *) fail "(10194) a torn spool line prints ACTION owed-spool-bad=2: $sp_act" ;;
+esac
+sp_check="$(sed -n 's/^ACTION owed-spool-bad=[^:]*: \(.*\) lists them; rebuild a lost row with .*/\1/p' <<<"$sp_act")"
+sp_rebuild="$(sed -n 's/.* rebuild a lost row with \(.*\), then drop the bad line with .*/\1/p' <<<"$sp_act")"
+sp_drop="$(sed -n 's/.*, then drop the bad line with \(.*\) (chief-sections\/owed\.md)$/\1/p' <<<"$sp_act")"
+[ "$(bash -c "$sp_check" 2>&1)" = 2 ] && [ "$(cksum < "$sp_spool")" = "$sp_sum" ] \
+    && pass '(10194) the printed --check runs verbatim, lists the torn line and leaves the spool unchanged' \
+    || fail "(10194) the printed --check runs verbatim, lists the torn line and leaves the spool unchanged: $sp_check"
+bash -c "${sp_drop//<line>/2}" 2>/dev/null
+printf '%s\n' "$sp_line1" | cmp -s - "$sp_spool" \
+    && pass '(10194) the printed --drop removes only the torn line, byte for byte' \
+    || fail "(10194) the printed --drop removes only the torn line, byte for byte: $sp_drop: $(cat "$sp_spool")"
+sp_rebuild="${sp_rebuild//<n>/91}"; sp_rebuild="${sp_rebuild//<owner\/name>/acme/repo}"
+PATH="$sp_root/bin:$PATH" bash -c "${sp_rebuild//<KEY>/$sp_key}" 2>/dev/null
+sp_owed "$sp_root/expect.jsonl" "$sp_key"
+if [ "$(head -n 1 "$sp_spool")" = "$sp_line1" ] && [ "$(wc -l < "$sp_spool")" -eq 2 ] \
+    && [ "$(sed -n 2p "$sp_spool" | jq -c 'del(.ts)')" = "$(jq -c 'del(.ts)' "$sp_root/expect.jsonl")" ]; then
+    pass '(10194) the printed rebuild pipeline appends the row the spool verb computes for that PR body'
+else
+    fail "(10194) the printed rebuild pipeline appends the row the spool verb computes for that PR body: $sp_rebuild: $(cat "$sp_spool")"
+fi
+rm -rf "$sp_root"
+
 if [ -n "$_TIMEOUT_BIN" ]; then
     cut_m="$W/cut/HIMMEL"; mkdir -p "$cut_m" "$W/cut-bin" "$W/cut/releases"
     printf 'v1.1.3\tfalse\t\tfalse\n' > "$W/cut/HIMMEL.versions.tsv"

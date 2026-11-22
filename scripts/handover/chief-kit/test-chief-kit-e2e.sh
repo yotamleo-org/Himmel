@@ -53,7 +53,7 @@ check() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1: [$2] != [$3]"; fi; 
 contains() { case "$2" in *"$3"*) pass "$1" ;; *) fail "$1: missing [$3] in [$2]" ;; esac; }
 lacks() { case "$2" in *"$3"*) fail "$1: unexpected [$3] in [$2]" ;; *) pass "$1" ;; esac; }
 
-export HANDOVER_DIR="$W/root"
+export HANDOVER_DIR="$W/root" TICKET_STATUS_STATE_DIR="$W/ts-state"
 B="$W/root/u/himmel"
 mkdir -p "$B" "$W/bin" "$W/fifo" "$W/projects/proj" "$W/sessions" "$W/launch" "$W/state" "$W/digest"
 
