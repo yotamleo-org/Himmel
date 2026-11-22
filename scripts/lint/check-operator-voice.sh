@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Platform guard: any POSIX bash 3.2+.
+#
+# check-operator-voice.sh — no operator-bound template or prompt produces or asks for
+# a time estimate (docs/internals/operator-voice.md, rule 6). A time estimate is a
+# future duration or arrival: "in about 15 min", "about 2 min", "ETA", "will take",
+# "shortly", "in a moment". A measured past duration ("took 50 min", "waited 30 min")
+# is a fact and passes. A line naming "time estimate" states the rule and is skipped.
+#
+# Usage:
+#   check-operator-voice.sh [<file>...]
+#     no files   the operator-bound set: the chief reply style, the voice-line section,
+#                the ticket standard and the Telegram reply kinds (whole files), and the
+#                Telegram bridge sources (only lines that send: reply(, notifyChat(,
+#                replyViaOutbox(, sendMessage(). A doc that tells agents how long a
+#                system step takes is not a message and is not scanned.
+# Exit: 0 clean · 1 findings (file:line: text) · 2 cannot evaluate (fail-closed)
+
+set -uo pipefail
+
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
+FILES=()
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -*) echo "usage: check-operator-voice.sh [<file>...]" >&2; exit 2 ;;
+        *) FILES+=("$1"); shift ;;
+    esac
+done
+
+if [ "${#FILES[@]}" -eq 0 ]; then
+    FILES=("$REPO_ROOT/docs/handover/chief-adhd-brief.md"
+        "$REPO_ROOT/docs/handover/chief-sections/voice-lines.md"
+        "$REPO_ROOT/marketplace/plugins/himmel-ops/skills/ticket-standard/SKILL.md"
+        "$REPO_ROOT/scripts/telegram/message-classes.json")
+    for f in "$REPO_ROOT"/scripts/telegram/*.ts; do
+        case "$f" in *.test.ts) ;; *) FILES+=("$f") ;; esac
+    done
+fi
+for f in "${FILES[@]}"; do
+    [ -f "$f" ] || { echo "check-operator-voice: no such file: $f" >&2; exit 2; }
+done
+
+fail=0
+for f in "${FILES[@]}"; do
+    sendonly=0
+    case "$f" in *.ts) sendonly=1 ;; esac
+    out="$(LC_ALL=C awk -v file="$f" -v sendonly="$sendonly" '
+        sendonly == 1 && $0 !~ /(reply|notifyChat|replyViaOutbox|sendMessage)\(/ { next }
+        tolower($0) ~ /time estimate/ { next }
+        {
+            raw = $0
+            l = tolower($0)
+            n = "[0-9]+([.,-][0-9]+)?"
+            u = "(s|secs?|seconds?|m|mins?|minutes?|h|hrs?|hours?|days?)([^a-z0-9_]|$)"
+            gsub("(took|waited|lasted|spent|ran for|ran|after|for the last|been|over) (about |around |roughly |~ ?)?" n " ?" u, " ", l)
+            hit = ""
+            if (raw ~ /(^|[^A-Za-z])ETAs?([^A-Za-z]|$)/) hit = "ETA"
+            else if (l ~ ("(^|[^a-z0-9_])(about|around|roughly|approx\\.?|approximately|~) ?" n " ?" u)) hit = "about N"
+            else if (l ~ /(^|[^a-z])about (half an|an|a few|a couple of) (hour|minute|second|day)/) hit = "about N"
+            else if (l ~ /(^|[^a-z])(will|should|would|might|may|could) take([^a-z]|$)/) hit = "will take"
+            else if (l ~ /(^|[^a-z])takes? about([^a-z]|$)/) hit = "takes about"
+            else if (l ~ /(^|[^a-z])shortly([^a-z]|$)/) hit = "shortly"
+            else if (l ~ /in a (few|couple of) (seconds|minutes|hours|days)/) hit = "in a few"
+            else if (l ~ /(^|[^a-z])(in a moment|back in a)([^a-z]|$)/) hit = "in a moment"
+            if (hit != "") {
+                t = raw; sub(/^[[:space:]]+/, "", t)
+                printf "%s:%d: time estimate (%s): %s\n", file, NR, hit, substr(t, 1, 160)
+            }
+        }' "$f")" || { echo "check-operator-voice: awk failed on $f" >&2; exit 2; }
+    if [ -n "$out" ]; then
+        printf '%s\n' "$out"
+        fail=1
+    fi
+done
+exit "$fail"
