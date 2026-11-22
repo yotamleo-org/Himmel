@@ -1963,6 +1963,11 @@ function splitParts(text: string, limit = TELEGRAM_PART_LIMIT): string[] {
   }
 }
 
+async function spoolMonitor(root: string, text: string, kind: string | undefined): Promise<void> {
+  await mkdir(join(root, "monitor"), { recursive: true });
+  await appendFile(join(root, "monitor", "outbox.jsonl"), `${JSON.stringify({ text, kind, at: new Date().toISOString() })}\n`, { mode: 0o600 });
+}
+
 export async function routeReply(root: string, chatId: number, text: string, o: { kind?: string; consoleName?: string; dest: string; owedIdentity?: string; legacyIdentity?: string; receiptOnly?: boolean }): Promise<{ cls: MsgClass; parts: number; requests: string[] }> {
   const owedBase = async (): Promise<string> => {
     const legacy = sha256(Buffer.from(`${chatId}\0${o.consoleName}\0${o.legacyIdentity}`));
@@ -1977,20 +1982,18 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
   const { replyViaOutbox } = await import("./poller");
   const kind = o.kind !== undefined && KIND_RE.test(o.kind) ? o.kind : undefined;
   let cls: MsgClass = "escalate"; let logClass: string = "escalate"; let sent = text; let capState = "ok"; let keys = 0; let queued = 0;
+  let unresolved: string[] = [];
   try {
     const table = await loadClassTable();
     const row = resolveKind(table, kind);
     cls = row?.class ?? "escalate";
     if (cls !== "silent") {
       const b = briefTextCounted(text, mirrorRoot(), row?.["ref-word"] ?? "PR");
-      sent = b.text; keys = b.keys;
+      sent = b.text; keys = b.keys; unresolved = b.unresolved;
     }
     if (cls === "monitor" && /salus/i.test(sent)) cls = "escalate";
     if (cls === "escalate" && row && row.cap !== "none" && sent.length > table!.cap) capState = "over-cap-uncut";
-    if (cls === "monitor") {
-      await mkdir(join(root, "monitor"), { recursive: true });
-      await appendFile(join(root, "monitor", "outbox.jsonl"), `${JSON.stringify({ text: sent, kind, at: new Date().toISOString() })}\n`, { mode: 0o600 });
-    }
+    if (cls === "monitor") await spoolMonitor(root, sent, kind);
     logClass = cls;
   } catch (e) {
     console.error(`[chief-route] routing failed, sending the raw text to the operator: ${e instanceof Error ? e.message : e}`);
@@ -2010,6 +2013,7 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
     }
     queued = parts.length;
   }
+  if (unresolved.length) await reportUnresolved(root, chatId, unresolved, o.consoleName, replyViaOutbox);
   if (o.receiptOnly) return { cls, parts: queued, requests };
   const dest = cls === "escalate" ? o.dest : cls === "monitor" ? "monitor" : "none";
   try {
@@ -2017,6 +2021,20 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
     await appendFile(join(root, "route.log"), `${new Date().toISOString()} ${kind ?? "unclassified"} ${logClass} ${dest} ${sent.length} ${keys} ${capState}\n`);
   } catch (e) { console.error(`[chief-route] route log not written: ${e instanceof Error ? e.message : e}`); }
   return { cls, parts: queued, requests };
+}
+
+async function reportUnresolved(root: string, chatId: number, unresolved: string[], consoleName: string | undefined, replyViaOutbox: (root: string, chat: number, text: string, consoleName?: string) => Promise<unknown>): Promise<void> {
+  const named = unresolved.slice(0, 10).join(", ") + (unresolved.length > 10 ? ` and ${unresolved.length - 10} more` : "");
+  const text = `A Telegram line went out with ticket ${unresolved.length > 1 ? "keys" : "key"} ${named} and no title: the title could not be read from the Jira mirror or the Jira CLI on the station, so the line was sent with the bare ${unresolved.length > 1 ? "keys" : "key"}. Blocks: nothing. Do: check the Jira mirror sync and the Jira CLI login on the station`;
+  try {
+    if (/salus/i.test(text)) { await replyViaOutbox(root, chatId, text, consoleName); return; }
+    await spoolMonitor(root, text, "title-unresolved");
+  } catch (e) {
+    console.error(`[chief-route] title-unresolved report not sent: ${e instanceof Error ? e.message : e}`);
+    try {
+      await appendFile(join(root, "route.log"), `${new Date().toISOString()} title-unresolved report-failed none ${text.length} ${unresolved.length} ok\n`);
+    } catch (e2) { console.error(`[chief-route] route log not written: ${e2 instanceof Error ? e2.message : e2}`); }
+  }
 }
 
 export type OwedReceipt = { name: string; message: number; request_id: string; request_hash?: string };
