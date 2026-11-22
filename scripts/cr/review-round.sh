@@ -278,7 +278,7 @@ EOF
 # inc_t, inc_merge, inc_mt_out, inc_mt_rc, inc_empty and inc_size (empty when
 # unknown); fails when there is no increment. .delta and .free record R, not L.
 increment_of() {
-    inc_l="" inc_b="" inc_t="" inc_merge=0 inc_mt_out="" inc_mt_rc=0 inc_empty=0 inc_size="" inc_attr_pinned=1
+    inc_l="" inc_b="" inc_t="" inc_merge=0 inc_mt_out="" inc_mt_rc=0 inc_empty=0 inc_size=""
     git merge-base --is-ancestor "$1" "$2" 2>/dev/null || return 1
     if [ -n "$base_sha" ]; then
         _io_m="$(git rev-list --merges "$1..$2" "^$base_sha" 2>/dev/null)" || return 1
@@ -288,12 +288,15 @@ increment_of() {
         inc_b="$(git merge-base "$2" "$base_sha" 2>/dev/null)" && [ -n "$inc_b" ] || return 1
         # The merge reads no gitattributes (merge drivers, marker sizes): an
         # empty attribute tree, no global or system file. info/attributes has no
-        # off switch, so a non-empty one leaves T untrusted for carried and
-        # merge-resolution.
+        # off switch, so with a non-empty one there is no trusted increment base
+        # and no increment: the caller reviews the whole PR or refuses.
         _io_empty="$(git hash-object -t tree /dev/null 2>&1)" || { printf 'review-round: empty tree hash failed: %s\n' "$_io_empty" >&2; return 1; }
         case "$_io_empty" in ''|*[!0-9a-f]*) printf 'review-round: empty tree hash unreadable: %s\n' "$_io_empty" >&2; return 1 ;; esac
         _io_info="$(git rev-parse --git-path info/attributes 2>&1)" || { printf 'review-round: info/attributes path failed: %s\n' "$_io_info" >&2; return 1; }
-        if [ -e "$_io_info" ] && { [ ! -f "$_io_info" ] || grep -qv '^[[:space:]]*\(#.*\)\{0,1\}$' "$_io_info"; }; then inc_attr_pinned=0; fi
+        if [ -e "$_io_info" ] && { [ ! -f "$_io_info" ] || LC_ALL=C grep -qv '^[[:space:]]*\(#.*\)\{0,1\}$' "$_io_info"; }; then
+            printf 'review-round: %s sets attributes, so no trusted increment base exists\n' "$_io_info" >&2
+            return 1
+        fi
         inc_mt_out="$(GIT_ATTR_NOSYSTEM=1 git -c core.attributesFile=/dev/null -c merge.conflictStyle=merge --attr-source="$_io_empty" \
             merge-tree --write-tree --name-only --no-messages "$1" "$inc_b" 2>/dev/null)"
         inc_mt_rc=$?
@@ -371,7 +374,7 @@ free_size_cap=80
 # work; a free class needs a non-empty increment of known size at most
 # free_size_cap and fewer than free_cap free rounds (free_count).
 increment_class() {
-    if [ "$inc_merge" -eq 1 ] && [ "$inc_empty" -eq 1 ] && [ "$inc_attr_pinned" -eq 1 ] && inc_no_markers; then
+    if [ "$inc_merge" -eq 1 ] && [ "$inc_empty" -eq 1 ] && inc_no_markers; then
         inc_class=carried
         return 0
     fi
@@ -380,7 +383,7 @@ increment_class() {
         && [ "${free_count:-$free_cap}" -lt "$free_cap" ] || return 0
     if tests_only_paths "$inc_l" "$2"; then
         inc_class=tests
-    elif [ "$inc_merge" -eq 1 ] && [ "$inc_attr_pinned" -eq 1 ] && merge_forward_shape "$1" "$2" \
+    elif [ "$inc_merge" -eq 1 ] && merge_forward_shape "$1" "$2" \
         && { inc_resolution_only "$2" || version_only_merge "$1" "$inc_b" "$2" "$inc_mt_out" "$inc_mt_rc"; }; then
         inc_class=merge-resolution
     fi
@@ -389,7 +392,7 @@ increment_class() {
 
 clean_merge_forward() {
     increment_of "$1" "$2" || return 1
-    [ "$inc_merge" -eq 1 ] && [ "$inc_empty" -eq 1 ] && [ "$inc_attr_pinned" -eq 1 ] && inc_no_markers
+    [ "$inc_merge" -eq 1 ] && [ "$inc_empty" -eq 1 ] && inc_no_markers
 }
 
 verb="${1:-}"

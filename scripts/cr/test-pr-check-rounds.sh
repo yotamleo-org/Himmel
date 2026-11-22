@@ -4718,6 +4718,36 @@ assert_lacks "$atm_out" "carried on atm" "10578 attr-marker-size: nine-character
 assert_eq "$atm_rc" "0" "10578 attr-marker-size: the committed markers are reviewed as a merge-resolution round"
 assert_eq "$(( $(panel_calls) - atm_calls ))" "1" "10578 attr-marker-size: the panel runs on it"
 
+attr_conflict atx
+mkdir -p "$git_dir/info"; printf '*.shared merge=union\n' > "$git_dir/info/attributes"
+git -C "$repo" merge -q --no-edit main >/dev/null 2>&1
+printf 'echo t\n' > "$repo/test-atx.sh"; git -C "$repo" add test-atx.sh; git -C "$repo" commit -q -m "atx test"
+atx_calls="$(panel_calls)"
+atx_out="$(start_round "$(git -C "$repo" rev-parse atx)" clean atx)"; atx_rc=$?
+rm -f "$git_dir/info/attributes"
+assert_eq "$atx_rc" "8" "10578 attr-info-tests: a union-resolved merge plus a test edit is never a free tests round past the cap ($atx_out)"
+assert_eq "$(rr_file atx free)" "absent" "10578 attr-info-tests: no free round is recorded"
+assert_eq "$(panel_calls)" "$atx_calls" "10578 attr-info-tests: no panel runs on an increment base it cannot trust"
+
+sn_branch atw
+start_round "$sn_h2" clean atw >/dev/null || fail "atw round 2"
+main_commit atw-main.txt "newer main"
+mkdir -p "$git_dir/info"; printf '*.shared merge=union\n' > "$git_dir/info/attributes"
+git -C "$repo" merge -q --no-edit main >/dev/null 2>&1
+printf 'echo t\n' > "$repo/test-atw.sh"; git -C "$repo" add test-atw.sh; git -C "$repo" commit -q -m "atw test"
+atw_h="$(git -C "$repo" rev-parse atw)"
+atw_calls="$(panel_calls)"
+atw_out="$(start_round "$atw_h" clean atw)"; atw_rc=$?
+atw_cmf=0; (cd "$repo" && bash "$RR" clean-merge-forward "$(git rev-parse main)" "$sn_h2" "$(git rev-parse HEAD~1)") >/dev/null 2>&1 || atw_cmf=$?
+rm -f "$git_dir/info/attributes"
+assert_eq "$atw_rc" "0" "10578 attr-info-below-cap: below the cap the round runs ($atw_out)"
+assert_has "$atw_out" "pr-check: round 3 of 3 on atw" "10578 attr-info-below-cap: it is a counted full round"
+assert_lacks "$atw_out" "increment from" "10578 attr-info-below-cap: it reviews the whole PR, with no increment base"
+assert_eq "$(( $(panel_calls) - atw_calls ))" "1" "10578 attr-info-below-cap: the panel runs once"
+assert_eq "$atw_cmf" "1" "10578 attr-info-carry: clean-merge-forward refuses a clean merge while info/attributes is set"
+atw_cmf=0; (cd "$repo" && bash "$RR" clean-merge-forward "$(git rev-parse main)" "$sn_h2" "$(git rev-parse HEAD~1)") >/dev/null 2>&1 || atw_cmf=$?
+assert_eq "$atw_cmf" "0" "10578 attr-info-carry: the same merge is carried once info/attributes is empty"
+
 if [ "$fails" -gt 0 ]; then
     printf 'FAIL test-pr-check-rounds (%s failures)\n' "$fails" >&2
     exit 1
