@@ -4231,7 +4231,7 @@ EOF
 fi
 rm -f "$RC67_TRUNC_GOGATE"
 
-ob_root=$(mktemp -d "${TMPDIR:-/tmp}/mog-owe spool.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
+ob_tmp=$(mktemp -d "${TMPDIR:-/tmp}/mog-owe spool.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 ob_day() { python3 -I -c 'import datetime, sys; print(datetime.datetime.now(datetime.timezone.utc).date() + datetime.timedelta(days=int(sys.argv[1])))' "$1"; }
 ob_d2=$(ob_day 2); ob_d3=$(ob_day 3)
 ob_arrow=$'\xe2\x86\x92'
@@ -4240,12 +4240,12 @@ ob_operator="rotate the key: owed -> operator by $ob_d3"
 ob_body=$'## Ticket coverage\n- a: done\n- '"$ob_proof"$'\n- '"$ob_operator"$'\n'
 ob_key=$(printf '%s-%s' HIMMEL 374)
 ob_id() { printf '%s\n' "$ob_key" 91 "$1" "$2" "$3" | sha256sum | cut -d' ' -f1; }
-ob_spool() { printf '%s' "$ob_root/$1/ts/owe-spool.jsonl"; }
+ob_spool() { printf '%s' "$ob_tmp/$1/ts/owe-spool.jsonl"; }
 ob_merge() {
     local case="$1"; shift
-    mkdir -p "$ob_root/$case/ts" "$ob_root/$case/handover"
-    HIMMEL_CONSOLE_DOC='' HIMMEL_CONSOLE_NAME='' MOG_TS_DIR="$ob_root/$case/ts" HANDOVER_DIR="$ob_root/$case/handover" USER_SLUG=zed \
-        HANDOVER_REGISTRY="$ob_root/none.json" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_NUM=91 \
+    mkdir -p "$ob_tmp/$case/ts" "$ob_tmp/$case/handover"
+    HIMMEL_CONSOLE_DOC='' HIMMEL_CONSOLE_NAME='' MOG_TS_DIR="$ob_tmp/$case/ts" HANDOVER_DIR="$ob_tmp/$case/handover" USER_SLUG=zed \
+        HANDOVER_REGISTRY="$ob_tmp/none.json" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_NUM=91 \
         run_mog "$@"
 }
 ob_spooled() {
@@ -4261,15 +4261,15 @@ ob_spooled() {
 }
 ob_owe_miss() {
     if jq -e -s --arg k "$ob_key" 'map(select(.event == "owe-miss" and .key == $k and .pr == "91")) | length == 1' \
-        "$ob_root/$1/ts/status-events.jsonl" >/dev/null 2>&1; then pass
-    else fail "$2 (status rows: $(cat "$ob_root/$1/ts/status-events.jsonl" 2>/dev/null))"; fi
+        "$ob_tmp/$1/ts/status-events.jsonl" >/dev/null 2>&1; then pass
+    else fail "$2 (status rows: $(cat "$ob_tmp/$1/ts/status-events.jsonl" 2>/dev/null))"; fi
 }
 
 STUB_PR_BODY="$ob_body" ob_merge a 0 "10194b: an owed partial merge with no chief doc spools its two lines"
 ob_spooled a "10194b: the spool holds both owed lines with key, PR, who, due, text, identity and metadata"
 assert_audit_has "10194b: the MERGED line says the two lines were spooled" "owe=spooled:2"
-if [ -z "$(find "$ob_root/a" "$LAST_TMP" -name owed.jsonl 2>/dev/null)" ]; then pass
-else fail "10194b: the merge wrote an owed ledger: $(find "$ob_root/a" "$LAST_TMP" -name owed.jsonl)"; fi
+if [ -z "$(find "$ob_tmp/a" "$LAST_TMP" -name owed.jsonl 2>/dev/null)" ]; then pass
+else fail "10194b: the merge wrote an owed ledger: $(find "$ob_tmp/a" "$LAST_TMP" -name owed.jsonl)"; fi
 
 STUB_PR_BODY=$'Remaining: slice 2\n## Ticket coverage\n- a: done\n- '"$ob_proof"$'\n- '"$ob_operator"$'\n' \
     ob_merge b 0 "10194b: a body with one Remaining: line and two owed lines merges"
@@ -4283,7 +4283,7 @@ ob_owe_miss c "10194b: an unwritable spool writes one owe-miss status row"
 assert_err_has "10194b: an unwritable spool's stderr names the proof line" "$ob_proof"
 assert_err_has "10194b: an unwritable spool's stderr names the operator line" "$ob_operator"
 
-mkdir -p "$ob_root/d/ts"
+mkdir -p "$ob_tmp/d/ts"
 printf '{"kind":"claim","schema":1}\n' > "$(ob_spool d)"
 ob_sum=$(cksum < "$(ob_spool d)")
 python3 -I -c 'import fcntl, os, sys, time
@@ -4292,11 +4292,11 @@ fcntl.flock(held, fcntl.LOCK_EX)
 open(sys.argv[2], "w").close()
 end = time.time() + 120
 while not os.path.exists(sys.argv[3]) and time.time() < end:
-    time.sleep(0.05)' "$(ob_spool d)" "$ob_root/d/held" "$ob_root/d/release" &
+    time.sleep(0.05)' "$(ob_spool d)" "$ob_tmp/d/held" "$ob_tmp/d/release" &
 ob_holder=$!
 ob_wait=0
-while [ ! -e "$ob_root/d/held" ] && [ "$ob_wait" -lt 200 ]; do sleep 0.05; ob_wait=$((ob_wait + 1)); done
-if [ -e "$ob_root/d/held" ]; then
+while [ ! -e "$ob_tmp/d/held" ] && [ "$ob_wait" -lt 200 ]; do sleep 0.05; ob_wait=$((ob_wait + 1)); done
+if [ -e "$ob_tmp/d/held" ]; then
     OWE_SPOOL_LOCK_WAIT=1 STUB_PR_BODY="$ob_body" ob_merge d 0 "10194b: a spool lock held past OWE_SPOOL_LOCK_WAIT=1: the merge still exits 0"
     assert_audit_has "10194b: a held lock is owe=miss:2:write" "owe=miss:2:write"
     if [ "$(cksum < "$(ob_spool d)")" = "$ob_sum" ]; then pass; else fail "10194b: a held lock changed the spool: $(cat "$(ob_spool d)")"; fi
@@ -4304,7 +4304,7 @@ if [ -e "$ob_root/d/held" ]; then
 else
     fail "10194b setup: the lock holder never took the spool lock"
 fi
-: > "$ob_root/d/release"
+: > "$ob_tmp/d/release"
 wait "$ob_holder" 2>/dev/null
 
 STUB_MERGE_FAIL=1 STUB_PR_BODY="$ob_body" ob_merge e 0 "10194b: a merge gh reported as failed but found MERGED"
@@ -4318,7 +4318,7 @@ if [ -e "$(ob_spool f)" ]; then fail "10194b control: a contract-yes merge wrote
 STUB_PR_BODY=$'Remaining: slice 2\n' ob_merge g 0 "10194b control: a partial merge with only a Remaining: line"
 assert_audit_has "10194b control: a Remaining:-only merge is owe=none" "owe=none"
 if [ -e "$(ob_spool g)" ]; then fail "10194b control: a Remaining:-only merge wrote the spool ($(cat "$(ob_spool g)"))"; else pass; fi
-rm -rf "$ob_root"
+rm -rf "$ob_tmp"
 
 echo
 echo "merge-on-green: $PASS passed, $FAIL failed"
