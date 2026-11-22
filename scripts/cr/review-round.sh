@@ -87,6 +87,7 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 . "$_ah_d/anchor-handoff.sh" || exit 2
 # Classify the real commit trees, never refs/replace substitutes.
 export GIT_NO_REPLACE_OBJECTS=1
+unset GIT_CONFIG
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"

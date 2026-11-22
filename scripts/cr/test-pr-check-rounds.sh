@@ -4751,6 +4751,18 @@ assert_lacks "$atr_out" "carried on atr" "10578 attr-merge-driver: a merge.text.
 assert_eq "$atr_rc" "8" "10578 attr-merge-driver: with a merge driver configured no increment base exists, so it is refused past the cap"
 assert_eq "$(panel_calls)" "$atr_calls" "10578 attr-merge-driver: no panel runs on an increment base it cannot trust"
 
+attr_conflict atg
+git -C "$repo" config merge.default union
+git -C "$repo" merge -q --no-edit main >/dev/null 2>&1
+git -C "$repo" config --unset merge.default
+git -C "$repo" config merge.text.driver 'git merge-file --union %A %O %B'
+atg_calls="$(panel_calls)"
+atg_out="$(export GIT_CONFIG=/dev/null; start_round "$(git -C "$repo" rev-parse atg)" clean atg)"; atg_rc=$?
+git -C "$repo" config --unset merge.text.driver
+assert_lacks "$atg_out" "carried on atg" "10578 attr-git-config-env: GIT_CONFIG=/dev/null never hides a configured merge driver ($atg_out)"
+assert_eq "$atg_rc" "8" "10578 attr-git-config-env: the driver is still seen, so it is refused past the cap"
+assert_eq "$(panel_calls)" "$atg_calls" "10578 attr-git-config-env: no panel runs on an increment base it cannot trust"
+
 sn_branch atw
 start_round "$sn_h2" clean atw >/dev/null || fail "atw round 2"
 main_commit atw-main.txt "newer main"
