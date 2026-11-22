@@ -330,6 +330,18 @@ STUB="$runstub" sstart 24 "4 5" 0.5; swait 24 "finished"; out24="$(sstatus 24)"
 contains "24: a runner-shaped pass that exits 5 ends failed rc=5" "$out24" "finished failed rc=5"
 STUB="$runstub" sstart 25 "2" 0.5; swait 25 "finished"; out25="$(sstatus 25)"
 contains "25: a runner-shaped pass that exits 2 ends failed rc=2" "$out25" "finished failed rc=2"
+v28stub="$tmp/stub-runner-v28.sh"
+cat > "$v28stub" <<EOF
+#!/bin/sh
+{
+    _rc=0; "$seqstub" || _rc=\$?
+    echo "[exit rc=\$_rc]"
+} >> "\$SEQ_DIR/pass.log" 2>&1
+EOF
+chmod +x "$v28stub"
+STUB="$v28stub" sstart 26 "4 0"; swait 26 "finished"; out26="$(sstatus 26)"
+contains "26: a v28-shaped runner hides the cap exit, so the series reads promoted after one pass" "$out26" "finished promoted"
+check "26: the v28-shaped series ran one pass" "$(cat "$tmp/s-26/n")" 1
 
 echo
 [ "$fails" -eq 0 ] && { echo "PASS: all rows ok"; exit 0; } || { echo "FAIL: $fails row(s)"; exit 1; }

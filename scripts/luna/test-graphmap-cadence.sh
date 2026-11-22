@@ -670,6 +670,9 @@ for want_rc in 0 4 5; do
     cadence_exec_runner "$scr/runner-src.sh" "$HIMMEL_ROOT_EXP/scripts/graphify/refresh-graph-map.sh" "$want_rc" "$scr" || got=$?
     assert_rc "himmel runner exits $want_rc when the payload exits $want_rc" "$want_rc" "$got"
 done
+# shellcheck disable=SC2016  # the runner text is literal; $_rc is not expanded here
+assert_contains "himmel runner ends with the payload's exit line" 'exit "$_rc"' "$himmel_sh"
+if [ "$FMT" -ge 29 ]; then pass "the exit-code runner shape is stamped v29 or later, so himmel-update re-arms a v28 runner"; else fail "runner format is $FMT but the runner exits with its payload: want >= 29"; fi
 echo "TEST: AST runner .sh fires ast-update.sh by absolute path (free, no bank, no claude)"
 ast_luna_sh=$(cat "$CRON_DIR/graphmap-ast-luna.sh" 2>/dev/null || echo MISSING)
 ast_himmel_sh=$(cat "$CRON_DIR/graphmap-ast-himmel.sh" 2>/dev/null || echo MISSING)
