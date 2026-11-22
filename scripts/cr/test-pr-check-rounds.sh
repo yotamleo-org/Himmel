@@ -986,7 +986,11 @@ assert_eq "$rl1_rc" 0 "10578 defer-pre-ok-scope: a free increment round at .roun
 assert_has "$rl1_ledger" 'the cited code is older than this PR (tagged pre-existing)' "10578 defer-pre-ok-scope: the deferral is the pre-existing one"
 rm -f "$rl1_git/cr-review-rounds/feat/rl1.deferred-to"
 printf '%s work 1\n' "$(git -C "$rl1_repo" rev-parse HEAD)" > "$rl1_git/cr-review-rounds/feat/rl1.scope"
+rl1_flags=(--fu-override decision-762 --defer-to "${_TK}9000")
 rl1_run feat/rl1 3 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 hardening no-check)"
+rl1_flags=(--fu-override decision-762)
+assert_eq "$rl1_rc" 0 "10578 defer-pre-ok-scope: a round past the cap at .round 3 defers through the delta path ($rl1_out)"
+assert_has "$rl1_ledger" 'Finding deferred in the one delta round' "10578 defer-pre-ok-scope: the deferral carries the delta-round reason"
 assert_lacks "$rl1_ledger" 'the cited code is older than this PR (tagged pre-existing)' "10578 defer-pre-ok-scope: a round past the cap at .round 3 never takes the pre-existing path ($rl1_out)"
 rm -f "$rl1_git/cr-review-rounds/feat/rl1.scope" "$rl1_git/cr-review-rounds/feat/rl1.deferred-to"
 
@@ -3360,12 +3364,17 @@ for mfs_case in swap stale fork; do
         # a stale second parent adds nothing, so only a resolution can carry it
         if [ "$mfs_case" = stale ]; then mfs_content=resolved; else mfs_content=clean; fi
         mfs_build "mfs-$mfs_case-$mfs_delta" "$mfs_delta" "$mfs_case" "$mfs_content"
-        mfs_rc=0; start_round "$mfs_head" clean "mfs-$mfs_case-$mfs_delta" >/dev/null || mfs_rc=$?
+        mfs_calls="$(wc -l < "$PANEL_CALLS" | tr -d ' ')"
+        mfs_round0="$(cat "$git_dir/cr-review-rounds/mfs-$mfs_case-$mfs_delta.round")"
+        mfs_out="$(start_round "$mfs_head" clean "mfs-$mfs_case-$mfs_delta")"; mfs_rc=$?
         if [ "$mfs_case" = stale ]; then
             # a clean merge cannot be stale; a resolution without a record is refused as before
             assert_eq "$mfs_rc" "8" "$mfs_case/$mfs_delta: a resolving merge without a record gets no round"
         elif [ "$mfs_case" = swap ]; then
             assert_eq "$mfs_rc" "0" "$mfs_case/$mfs_delta: a merge with a swapped second parent whose tree is the clean merge is carried"
+            assert_has "$mfs_out" "carried on mfs-$mfs_case-$mfs_delta" "$mfs_case/$mfs_delta: the swapped merge is classed carried"
+            assert_eq "$(wc -l < "$PANEL_CALLS" | tr -d ' ')" "$mfs_calls" "$mfs_case/$mfs_delta: the swapped merge runs no panel"
+            assert_eq "$(cat "$git_dir/cr-review-rounds/mfs-$mfs_case-$mfs_delta.round")" "$mfs_round0" "$mfs_case/$mfs_delta: .round is unchanged"
         else
             assert_eq "$mfs_rc" "8" "$mfs_case/$mfs_delta: a merge with a $mfs_case second parent gets no round"
         fi
@@ -4679,6 +4688,35 @@ dpf_out="$(cd "$repo" && bash "$RR" defer --branch dpf --head "$dpf_h" --defer-t
 assert_eq "$dpf_rc" "4" "10578 defer-postcap-free: an unclassified Important asks for its class ($dpf_out)"
 assert_has "$dpf_out" "in the delta round need an explicit fu_class amend" "10578 defer-postcap-free: the delta round's blocking set applies at .round 3"
 assert_lacks "$dpf_out" "an early close needs" "10578 defer-postcap-free: no early-close trust check"
+
+attr_conflict() { inc_shared "$1.shared" 10; inc_three "$1" "$1.shared"; on_main sed_file "$1.shared" 's/^s2$/M2/'; }
+attr_conflict atb
+printf '*.shared merge=binary\n' > "$repo/.gitattributes"
+git -C "$repo" merge -q --no-edit main >/dev/null 2>&1
+{ git -C "$repo" add atb.shared && git -C "$repo" commit -q --no-edit; } || fail "atb merge"
+atb_calls="$(panel_calls)"
+atb_out="$(start_round "$(git -C "$repo" rev-parse atb)" clean atb)"; atb_rc=$?
+rm -f "$repo/.gitattributes"
+assert_lacks "$atb_out" "carried on atb" "10578 attr-merge-binary: an untracked .gitattributes merge=binary never makes a conflicting merge carried ($atb_out)"
+assert_eq "$atb_rc" "0" "10578 attr-merge-binary: the kept side is reviewed as a merge-resolution round"
+assert_eq "$(( $(panel_calls) - atb_calls ))" "1" "10578 attr-merge-binary: the panel runs on it"
+attr_conflict atu
+mkdir -p "$git_dir/info"; printf '*.shared merge=union\n' > "$git_dir/info/attributes"
+git -C "$repo" merge -q --no-edit main >/dev/null 2>&1
+atu_out="$(start_round "$(git -C "$repo" rev-parse atu)" clean atu)"; atu_rc=$?
+rm -f "$git_dir/info/attributes"
+assert_lacks "$atu_out" "carried on atu" "10578 attr-info-union: info/attributes merge=union never makes a merge carried ($atu_out)"
+assert_eq "$atu_rc" "8" "10578 attr-info-union: with info/attributes set no free merge class applies, so it is refused past the cap"
+attr_conflict atm
+printf '*.shared conflict-marker-size=9\n' > "$tmp/atm-attributes"; git -C "$repo" config core.attributesFile "$tmp/atm-attributes"
+git -C "$repo" merge -q --no-edit main >/dev/null 2>&1
+{ git -C "$repo" add atm.shared && git -C "$repo" commit -q --no-edit; } || fail "atm merge"
+atm_calls="$(panel_calls)"
+atm_out="$(start_round "$(git -C "$repo" rev-parse atm)" clean atm)"; atm_rc=$?
+git -C "$repo" config --unset core.attributesFile
+assert_lacks "$atm_out" "carried on atm" "10578 attr-marker-size: nine-character markers from core.attributesFile never make a merge carried ($atm_out)"
+assert_eq "$atm_rc" "0" "10578 attr-marker-size: the committed markers are reviewed as a merge-resolution round"
+assert_eq "$(( $(panel_calls) - atm_calls ))" "1" "10578 attr-marker-size: the panel runs on it"
 
 if [ "$fails" -gt 0 ]; then
     printf 'FAIL test-pr-check-rounds (%s failures)\n' "$fails" >&2

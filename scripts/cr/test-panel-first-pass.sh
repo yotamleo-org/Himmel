@@ -912,6 +912,7 @@ fxl="$tmp/fx-incl"
 cp -R "$fx" "$fxl"
 cat > "$fxl/scripts/cr/review-round.sh" <<'RRSTUB'
 #!/usr/bin/env bash
+printf '%s\n' "$*" >> "${RR_ARGV_LOG:-/dev/null}"
 case "${1:-}" in
     start) printf '2 increment %s\n' "$RR_STUB_L" ;;
     *) exit 0 ;;
@@ -926,12 +927,13 @@ rl_out="$( (cd "$rl" && RR_STUB_L="$rl_l" STDIN_LOG="$tmp/stdin-log" FAKE_RC=0 \
 if [ "$rl_rc" -eq 0 ]; then ok "10578 pfp-diffs-start-L: the run exits 0"; else bad "10578 pfp-diffs-start-L exit (got $rl_rc; err: $(cat "$tmp/err"))"; fi
 if [ "$(cat "$tmp/stdin-log" 2>/dev/null)" = "$(git -C "$rl" diff "$rl_l" "$rl_h2")" ]; then ok "10578 pfp-diffs-start-L: the panel's stdin is git diff L H"; else bad "10578 pfp-diffs-start-L: the panel's stdin is not git diff L H (got: $(cat "$tmp/stdin-log" 2>/dev/null))"; fi
 assert_has "$rl_out" "increment from $rl_l" "10578 pfp-diffs-start-L: the round line names L"
-rm -f "$CALL_LOG" "$tmp/stdin-log" "$tmp/err"
-(cd "$rl" && RR_STUB_L="$rl_l" STDIN_LOG="$tmp/stdin-log" FAKE_RC=0 TMPDIR="$tmp/no-such-tmpdir" \
+rm -f "$CALL_LOG" "$tmp/stdin-log" "$tmp/err" "$tmp/rr-argv"
+(cd "$rl" && RR_STUB_L="$rl_l" RR_ARGV_LOG="$tmp/rr-argv" STDIN_LOG="$tmp/stdin-log" FAKE_RC=0 TMPDIR="$tmp/no-such-tmpdir" \
     bash "$fxl/scripts/cr/panel-first-pass.sh" --head "$rl_h2" --branch feature >/dev/null 2>"$tmp/err"); rl_rc=$?
 if [ "$rl_rc" -eq 5 ]; then ok "10578 increment-context-aborts: no whole-PR context file aborts at 5"; else bad "10578 increment-context-aborts exit (got $rl_rc; err: $(cat "$tmp/err"))"; fi
 assert_has "$(cat "$tmp/err")" "whole-PR context for the increment cannot be built" "10578 increment-context-aborts: the abort names the missing context"
 if [ -f "$CALL_LOG" ]; then bad "10578 increment-context-aborts: the panel ran without its context"; else ok "10578 increment-context-aborts: the panel never runs"; fi
+assert_has "$(cat "$tmp/rr-argv" 2>/dev/null)" "abort --branch feature --head $rl_h2" "10578 increment-context-aborts: the aborted round is given back"
 
 cat > "$fxl/scripts/cr/critic-pre-existing-tag.py" <<'TAGSTUB'
 import os, sys
@@ -953,7 +955,8 @@ assert_has "$(cat "$tmp/tag-log" 2>/dev/null)" "--increment --head $rl_h2" "1057
 assert_has "$(cat "$tmp/tag-log" 2>/dev/null)" "--from $rl_l" "10578 tagger-on-increment: the tagger reads the increment from L"
 rm -f "$tmp/tag-log"
 (cd "$rl" && RR_STUB_ANSWER="3 delta $rl_l" TAG_LOG="$tmp/tag-log" FAKE_RC=0 FAKE_OUT='## Important Issues (1 found)
-- [codex-1]: a finding [f.txt:1]' bash "$fxl/scripts/cr/panel-first-pass.sh" --head "$rl_h2" --branch feature >/dev/null 2>"$tmp/err")
+- [codex-1]: a finding [f.txt:1]' bash "$fxl/scripts/cr/panel-first-pass.sh" --head "$rl_h2" --branch feature >/dev/null 2>"$tmp/err"); rl_rc=$?
+if [ "$rl_rc" -eq 0 ]; then ok "10578 tagger-on-increment: the delta answer run exits 0"; else bad "10578 tagger-on-increment: the delta answer run exit (got $rl_rc; err: $(cat "$tmp/err"))"; fi
 if [ -e "$tmp/tag-log" ]; then bad "10578 tagger-on-increment: a delta answer ran the tagger ($(cat "$tmp/tag-log"))"; else ok "10578 tagger-on-increment: a delta answer never runs the tagger"; fi
 
 rfs="$tmp/repo-fs"; r5_new "$rfs"
