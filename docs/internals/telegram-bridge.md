@@ -183,6 +183,7 @@ Every message the harness sends to Telegram carries a kind, and `scripts/telegra
 | `chief-reply` | escalate | `docs/handover/running-a-chief.md` | A chief's reply to the operator, sent through chief-route.ts; ticket keys and PR numbers carry their plain words. |
 | `hold-ask-chief` | silent | `scripts/handover/chief-kit/chief-wait.sh` | A worker wants scripts/cr/critic-panel.sh, held by another ticket. Blocks: that worker. Do: in a real terminal, run: bash scripts/handover/chief-kit/go.sh grant the-ticket |
 | `denial-page` | monitor | `scripts/handover/chief-kit/chief-wait.sh` | Session 81843b5d of the himmel chief has 3 classifier denials (PAUSE-RISK). Blocks: that session. Do: open it in Remote Control and answer the prompt |
+| `title-unresolved` | monitor | `scripts/telegram/chief-route.ts` | A Telegram line went out with a ticket key whose title could not be read on the station; the line keeps the bare key, and this one report per line names the keys. |
 | `worker-silent` | silent | `scripts/handover/chief-kit/chief-wait.sh` | A worker went silent; the chief handles it, so nothing is sent to any chat. |
 | `denied-launch` | monitor | `scripts/handover/chief-kit/denied-launch-alert.sh` | A worker launch was denied by the classifier; details stay on the station log. |
 | `silent-go-merge` | monitor | `scripts/handover/chief-kit/silent-go-merge.sh` | A GO'd PR whose worker went silent was merged by the chief's script. |
