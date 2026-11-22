@@ -248,7 +248,7 @@ Every message the harness sends to Telegram carries a kind, and `scripts/telegra
 | `cadence:grafana-Scheduled_eval_has_no_ledger_series` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: Scheduled eval has no ledger series. |
 | `cadence:grafana-DatasourceNoData` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: DatasourceNoData. |
 
-A message with no kind is an `unclassified` escalate and goes to the operator chat. That is deliberate in one place: `chief-wait.sh` sends a denial page with no kind when it could not write the page record, so a page that could not be remembered is never made quiet. `bypass-ask`, `bypass-failed` and `bypass-result` are in the table, but `bypass-launchd.sh` does not pass them yet; until it does, its messages still arrive unclassified.
+A message with no kind is an `unclassified` escalate and goes to the operator chat. That is deliberate in one place: `chief-wait.sh` sends a denial page with no kind when it could not write the page record, so a page that could not be remembered is never made quiet. `bypass-launchd.sh` names a kind on every line it sends: `bypass-ask` for the go-or-no ask, `bypass-failed` for a failed launch, and `bypass-result` for every verdict and refusal.
 
 
 ## Ops runbook
