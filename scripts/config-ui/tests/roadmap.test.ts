@@ -1926,6 +1926,42 @@ test("readOwed: the round, the classes and the open operator-critical findings c
   expect(gone.state === "ok" && gone.items.filter((i) => i.source === "unsigned spec" || i.source === "operator-critical finding")).toEqual([]);
 });
 
+test("readOwed: a finding whose restore check is owed puts no operator-critical row on the board; after RESTORE-BREAKS the row is back", async () => {
+  const { readOwed } = await import("../board");
+  const SEAL = resolve(import.meta.dir, "../../handover/chief-kit/critic-seal.sh");
+  const hex = (text: string) => new Bun.CryptoHasher("sha256").update(text).digest("hex");
+  const quote = "the park rm keeps its simple placement under the park root";
+  const finding = "- **r1** (major; operator-critical: reverses-ruling) the spec moves the park rm. That reverses decision 1096 rule 1.";
+  const s = station();
+  const tree = (name: string, key: string) => {
+    const bucket = join(s.d, name), specs = join(bucket, "specs"), spec = join(specs, "designs", `${key}-rev.md`);
+    mkdirSync(join(specs, "designs"), { recursive: true }); mkdirSync(join(specs, "decisions")); mkdirSync(join(bucket, "release", "v1.1.2"), { recursive: true });
+    seedSpecs(specs);
+    writeFileSync(spec, `---\ntickets: ${key}\n---\n# rev\n`);
+    writeFileSync(join(specs, "decisions", "verbatim-decision-1096-park.txt"), `Operator, on ${key}: ${quote}, rule 1.\n`);
+    const sealRound = (n: number, verdict: string, ...lines: string[]) => {
+      const sum = hex(readFileSync(spec, "utf8")); const v = `${spec}.critic-spec-r${n}.md`;
+      writeFileSync(v, `critic return r${n} read ${sum}\n${lines.map((l) => `${l}\n`).join("")}${verdict}\n`);
+      execFileSync("bash", [SEAL, v, spec, sum], { stdio: "pipe" });
+    };
+    sealRound(1, "SPEC CLEAN"); sealRound(2, "SPEC FINDINGS 1", finding);
+    const env = { PATH: process.env.PATH, HOME: s.d, HIMMEL_JIRA_MIRROR: s.mirror, HANDOVER_DIR: join(s.d, "ho"), HIMMEL_BUCKET_DIR: bucket, JIRA_PROJECT_KEY: "HIMMEL" };
+    const rows = () => { const o = readOwed(env); if (o.state !== "ok") throw new Error(o.reason); return o.items.filter((i) => i.source === "operator-critical finding").map((i) => [i.key, i.actor, i.ctx.includes("r1 (reverses-ruling)")]); };
+    return { specs, spec, sealRound, rows };
+  };
+  const control = tree("bk-control", K(2));
+  const r2 = readFileSync(`${control.spec}.critic-spec-r2.md`, "utf8");
+  writeFileSync(join(control.specs, "ledgers", "spec-rounds", `${K(2)}.jsonl`), `${JSON.stringify({ v: 1, ts: 1, key: K(2), row: "critical", restore: true, critic: "spec", epoch: 0, opens: 3, id: "r1", class: "reverses-ruling", decision: "1096", quote, decision_path: join(control.specs, "decisions", "verbatim-decision-1096-park.txt"), decision_sha: "0".repeat(64), return_sha: hex(r2) })}\n`, { flag: "a" });
+  expect(control.rows()).toEqual([[K(2), "operator", true]]);
+  const t = tree("bk-restore", K(1));
+  expect(t.rows()).toEqual([[K(1), "operator", true]]);
+  route(["round-critical", K(1), "--finding", "r1", "--decision", "1096", "--quote", quote, "--restores", "--specs", t.specs], { HIMMEL_CONSOLE: "1" });
+  expect(t.rows()).toEqual([]);
+  const token = /^RESTORE-CHECK .* token ([0-9a-f]{12})$/m.exec(route(["round-status", K(1), "--specs", t.specs]))![1];
+  t.sealRound(3, "SPEC CLEAN", `RESTORE-BREAKS r1 decision 1096 ${token}`);
+  expect(t.rows()).toEqual([[K(1), "operator", true]]);
+});
+
 const sx = () => withNoVersion(station());
 const shell = (tab: string, ui: Record<string, unknown> = {}, extras: Record<string, unknown> = {}) => {
   const s = sx();

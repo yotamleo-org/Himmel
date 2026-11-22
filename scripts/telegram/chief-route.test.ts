@@ -3124,10 +3124,10 @@ const T5 = (r: number) => `${CAP_KEY} writer round ${r} needs a round-override o
 const T7 = (cls: string) => `round-critical: '${cls}' is not an operator-critical class (spend-grant, account-or-terms, public-policy, reverses-ruling)`;
 const closeOn = (t: { a: string; specs: string }, kind: "spec" | "plan", r: number, reads: string[], verdict: string, ...lines: string[]) =>
   sealOn(`${t.a}.critic-${kind}-r${r}.md`, reads, verdict, markerFor(t.specs, CAP_KEY, kind, r), ...lines);
-const decide = (specs: string, d: number, text: string) => {
+const decide = (specs: string, d: number, text: string, older = false) => {
   mkdirSync(join(specs, "decisions"), { recursive: true });
   const f = join(specs, "decisions", `verbatim-decision-${d}-operator.txt`); writeFileSync(f, text);
-  const later = new Date(Date.now() + 5000); utimesSync(f, later, later);
+  const later = new Date(Date.now() + (older ? -600_000 : 5000)); utimesSync(f, later, later);
   return f;
 };
 const critical = (console: boolean, specs: string, id: string, d: number, quote: string, ...more: string[]) =>
@@ -7491,3 +7491,313 @@ test("3f anchor last: a group whose anchor sorts last among its keys, the shape 
   expect(JSON.stringify(await f3Fold(f, [...keys].reverse())), "the requested order does not matter").toBe(JSON.stringify(proof));
   expect(await f3Refusal(f, ["HIMMEL-9801", "HIMMEL-9802", "HIMMEL-9898", anchor]), "a member swapped for another of the same count").toBe(`capped-fold: tickets must declare only HIMMEL-9801, HIMMEL-9802, HIMMEL-9898, ${anchor}`);
 }, S1B);
+
+// ---- A fix that restores a ruling on record closes its reverses-ruling finding, checked by its kind's next round ----
+const RULING = "the park rm keeps its simple placement under the park root";
+const RULING_FILE = `operator, on the park rm: ${RULING}, rule 1.\nIt stays a plain rm.\n`;
+const SPLIT_QUOTE = "rule 1. It stays a plain rm";
+const REV = (id: string, d = 1096) => `- **${id}** (major; operator-critical: reverses-ruling) the spec moves the park rm off its simple placement. That reverses decision ${d} rule 1.`;
+const MENTION = (id: string) => `- **${id}** (major; operator-critical: reverses-ruling) the spec rests on decision 1096 rule 1 for its placement`;
+const decisionOf = (specs: string, d = 1096) => join(specs, "decisions", `verbatim-decision-${d}-operator.txt`);
+const tokenOf = (specs: string, returnSha: string, d = 1096, quote = RULING) => sha(`${sha(readFileSync(decisionOf(specs, d), "utf8"))}\n${returnSha}\n${quote}`).slice(0, 12);
+const restore = (specs: string, id = "R1", d = 1096, quote = RULING, ...more: string[]) => critical(true, specs, id, d, quote, "--restores", ...more);
+const roundAt = (specs: string, kind: string, round: number) => rowsOf(specs, "round").filter((x) => x.critic === kind && x.round === round).at(-1);
+const ledgerFile = (specs: string) => join(roundsDir(specs), `${CAP_KEY}.jsonl`);
+const statusText = async (specs: string) => (await routeCli("round-status", CAP_KEY, "--specs", specs)).out;
+const CHECK = (m: number, n: number, tok: string, id = "R1", kind = "spec") => `RESTORE-CHECK ${id} (${kind} round ${m}) decision 1096 check ${kind} round ${n} token ${tok}`;
+const BLOCK = (m: number, n: number, tok: string, id = "R1", kind = "spec") => `${CHECK(m, n, tok, id, kind)}\n${RULING}\nAnswer on one line directly above your READ-SHA256 lines, exactly \`RESTORE-HOLDS ${id} decision 1096 ${tok}\` if the quote is the operator's own words in \`specs/decisions/verbatim-decision-1096-*.txt\` (not a chief reading), it is the ruling finding ${id} says the spec reversed, no later decision in \`specs/decisions/\` changes that ruling, and the files under review now match it; otherwise exactly \`RESTORE-BREAKS ${id} decision 1096 ${tok}\`. Write one of the two, never both. A return without one is refused at the seal. RESTORE-BREAKS sends ${id} to the operator.`;
+const T_CHECK = (n: number, id = "R1", kind = "spec") => `${CAP_KEY} ${kind} round ${n} is the restore check of ${id}: its return needs one RESTORE-HOLDS or RESTORE-BREAKS line for ${id} decision 1096 with the block's token; give the critic the RESTORE-CHECK block`;
+const restoreTree = async (spec: string[][] = [[], [REV("R1")]], plan: string[][] = []) => {
+  const t = specsTree(); expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
+  const a = join(t.dir, `${CAP_KEY}-a.md`); const p = join(t.plans, `${CAP_KEY}-a.md`);
+  writeFileSync(a, front(CAP_KEY, "# A\n")); writeFileSync(p, "# A plan\n");
+  decide(t.specs, 1096, RULING_FILE, true);
+  for (const [i, s] of spec.entries()) expect((await sealOn(`${a}.critic-spec-r${i + 1}.md`, [a], verdictFor("SPEC", s), ...s)).err).toBe("");
+  for (const [i, s] of plan.entries()) expect((await sealOn(`${a}.critic-plan-r${i + 1}.md`, [p], verdictFor("PLAN", s), ...s)).err).toBe("");
+  return { ...t, a, plan: p };
+};
+const restoreRow = (specs: string, from: any, o: Record<string, unknown> = {}) => {
+  const d = String(o.decision ?? "1096"); const path = decisionOf(specs, Number(d));
+  return `${JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, row: "critical", restore: true, critic: from.critic, epoch: 0, opens: from.round + 1, id: "R1", class: "reverses-ruling", decision: d, quote: RULING, decision_path: path, decision_sha: sha(readFileSync(path, "utf8")), return_sha: from.return_sha, ...o })}\n`;
+};
+
+const GOLDEN = join(import.meta.dir, "fixtures", "round-status-golden.json");
+test("I5 golden: a ledger with no restore row reads byte for byte as it did before the restore route", async () => {
+  const t = await roundTree(["- **M2** (major) the quota rule is stated twice", "- **O1** (major; operator-critical: spend-grant) the spec grants a spend"], ["- **P1** (major) the plan skips a step"]);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 2", F3_R4, F4_R4)).err).toBe("");
+  expect((await closeOn(t, "plan", 4, [t.plan], "PLAN CLEAN")).err).toBe("");
+  decide(t.specs, 901, `${CAP_KEY} operator: ${SPEND}\n`);
+  expect((await critical(true, t.specs, "O1", 901, SPEND)).err).toBe("");
+  expect((await closeOn(t, "spec", 5, [t.a], "SPEC FINDINGS 2", F3_R5, F4_R5)).err).toBe("");
+  decide(t.specs, 986, `${CAP_KEY} operator: ${APPROVE}\n`);
+  expect((await extend(true, t)).err).toBe("");
+  const st = JSON.parse((await routeCli("round-status", CAP_KEY, "--specs", t.specs, "--json")).out); delete st.restore_owed;
+  const verify: { code: number; out: string; err: string }[] = [];
+  for (const v of [`${t.a}.critic-spec-r5.md`, `${t.a}.critic-plan-r4.md`]) for (const sign of [[], ["--sign"]]) { const x = await routeCli("ledger-verify", v, "--spec", t.a, ...sign); verify.push({ code: x.code, out: x.out, err: x.err }); }
+  const got = `${JSON.stringify({ status: st, verify }, null, 1).replaceAll(t.r, "<root>").replace(/"ts": \d+/g, '"ts": 0')}\n`;
+  if (!existsSync(GOLDEN)) { writeFileSync(GOLDEN, got); throw new Error(`wrote ${GOLDEN} from this run; review it and run again`); }
+  expect(got).toBe(readFileSync(GOLDEN, "utf8"));
+});
+
+test("I5 key set: a plain round, and one whose reverses-ruling finding names no ruling, keep today's round-row and finding keys", async () => {
+  const t = await restoreTree([["- **M1** (major) a plain finding"], [MENTION("M2")]]);
+  const keys = ["critic", "epoch", "findings", "key", "mode", "read_path", "read_sha", "return_sha", "round", "row", "ts", "unrated_ids", "v", "verdict", "verdict_path"];
+  for (const r of [1, 2]) expect(Object.keys(roundAt(t.specs, "spec", r)).sort()).toEqual(keys);
+  expect(roundAt(t.specs, "spec", 1).findings).toEqual([{ id: "M1", severity: "major" }]);
+  expect(roundAt(t.specs, "spec", 2).findings).toEqual([{ id: "M2", severity: "major", critical: "reverses-ruling" }]);
+});
+
+test("R3, R8 parse: rulings come from the finding's own block; an answer line at column zero ends the block above it and is read into restore_holds or restore_breaks", async () => {
+  const { parseFindings, findingBlock } = await import("./chief-route");
+  const tok = "0123456789ab";
+  const D1 = "- **D1** (major; operator-critical: reverses-ruling) that reverses Decision-1096 and reverses decision 1101, not decision 1102";
+  const body = ["critic return", REV("R1"), "  second line of R1", MENTION("M1"), D1];
+  const holds = [...body, `RESTORE-HOLDS R1 decision 1096 ${tok}`, "SPEC FINDINGS 3"].join("\n");
+  expect(parseFindings(holds, "spec", 3)).toEqual({ findings: [{ id: "R1", severity: "major", critical: "reverses-ruling", rulings: ["1096"] }, { id: "M1", severity: "major", critical: "reverses-ruling" }, { id: "D1", severity: "major", critical: "reverses-ruling", rulings: ["1096", "1101"] }], unrated_ids: [], restore_holds: [`R1@1096@${tok}`] });
+  expect(findingBlock(holds, "D1")).toBe(D1);
+  expect(findingBlock(holds, "R1")).toBe(`${REV("R1")}\n  second line of R1`);
+  const breaks = parseFindings(holds.replace("RESTORE-HOLDS", "RESTORE-BREAKS"), "spec", 3);
+  expect(breaks.restore_breaks).toEqual([`R1@1096@${tok}`]); expect("restore_holds" in breaks).toBe(false);
+  const neither = parseFindings([...body, "SPEC FINDINGS 3"].join("\n"), "spec", 3);
+  expect("restore_holds" in neither).toBe(false); expect("restore_breaks" in neither).toBe(false);
+  expect("restore_holds" in parseFindings([...body, ` RESTORE-HOLDS R1 decision 1096 ${tok}`, "SPEC FINDINGS 3"].join("\n"), "spec", 3)).toBe(false);
+  expect(parseFindings(REV("R1").replace("reverses-ruling", "spend-grant"), "spec", 1).findings[0].rulings).toBeUndefined();
+});
+
+test("R13 characterization: round-status and the seal give the same cap answers before and after roundNeedsRecord", async () => {
+  const c = await roundTree([], []);
+  expect(await status(c.specs)).toMatchObject({ next: "none", why: `spec round 4: ${T1("spec")}; plan round 4: ${T1("plan")}` });
+  expect((await closeOn(c, "plan", 4, [c.plan], "PLAN CLEAN")).err).toContain(T1("plan"));
+  const t = await roundTree(MAJOR, []);
+  expect(await status(t.specs)).toMatchObject({ next: "closure", why: "spec round 4: closure; plan round 4: closure" });
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **M2** (major; reopens M1) still open")).err).toBe("");
+  expect(await status(t.specs)).toMatchObject({ next: "closure", why: `spec round 5: ${T5(5)}; plan round 4: closure` });
+  expect((await closeOn(t, "spec", 5, [t.a], "SPEC CLEAN")).err).toContain(T5(5));
+  const e = await extTree();
+  expect(await status(e.specs)).toMatchObject({ next: "closure", why: `spec round 6: ${T5(6)}; plan round 4: closure` });
+  decide(e.specs, 986, `${CAP_KEY} operator: ${APPROVE}\n`);
+  expect((await extend(true, e)).err).toBe("");
+  expect(await status(e.specs)).toMatchObject({ next: "closure", why: `spec round 6: closure; plan round 4: closure` });
+});
+
+test("DoD 1 (1a to 1e): a restore of a reverses-ruling finding is recorded, owed until its kind's next round answers the block, and then closes it", async () => {
+  const t = await restoreTree();
+  const r2 = roundAt(t.specs, "spec", 2);
+  expect(r2.findings).toEqual([{ id: "R1", severity: "major", critical: "reverses-ruling", rulings: ["1096"] }]);
+  expect((await status(t.specs)).critical_open).toMatchObject([{ id: "R1", class: "reverses-ruling", kind: "spec", round: 2 }]);
+  const ok = await restore(t.specs); expect(ok.err).toBe(""); expect(ok.code).toBe(0);
+  const row = rowsOf(t.specs, "critical").at(-1);
+  expect(row).toMatchObject({ restore: true, critic: "spec", opens: 3, id: "R1", class: "reverses-ruling", decision: "1096", quote: RULING, return_sha: r2.return_sha });
+  expect("token" in row).toBe(false);
+  const s = await status(t.specs);
+  expect(s.critical_open).toEqual([]); expect(s.invalid).toEqual([]);
+  expect(s.restore_owed).toEqual([{ id: "R1", class: "reverses-ruling", kind: "spec", round: 2, decision: "1096", quote: RULING, opens: 3 }]);
+  const tok = tokenOf(t.specs, r2.return_sha);
+  expect(await statusText(t.specs)).toContain(BLOCK(2, 3, tok));
+  const sign = await routeCli("ledger-verify", `${t.a}.critic-spec-r2.md`, "--spec", t.a, "--sign");
+  expect(sign.err).toContain(`${CAP_KEY} has a restore check owed: R1 (decision 1096) in spec round 3`); expect(sign.code).not.toBe(0);
+  const v3 = `${t.a}.critic-spec-r3.md`;
+  expect((await sealOn(v3, [t.a], "SPEC FINDINGS 1", "- **n1** (minor) a wording note", "  - fix: reword it", `RESTORE-HOLDS R1 decision 1096 ${tok}`)).err).toBe("");
+  const r3 = roundAt(t.specs, "spec", 3);
+  expect(r3.restore_holds).toEqual([`R1@1096@${tok}`]); expect("restore_breaks" in r3).toBe(false);
+  expect(r3.findings).toEqual([{ id: "n1", severity: "minor" }]);
+  const { findingBlock } = await import("./chief-route");
+  expect(findingBlock(readFileSync(v3, "utf8"), "n1")).toBe("- **n1** (minor) a wording note\n  - fix: reword it");
+  const after = await status(t.specs); expect(after.restore_owed).toEqual([]); expect(after.critical_open).toEqual([]); expect(after.invalid).toEqual([]);
+  expect((await routeCli("ledger-verify", v3, "--spec", t.a, "--sign")).code).toBe(0);
+});
+
+test("DoD 2: --restores refuses the other three classes, a finding that only mentions the decision and a list; a verbatim-decision name counts; a plain record of a spend grant is as today", async () => {
+  const t = await restoreTree([[], ["- **F1** (major; operator-critical: spend-grant) grants a spend. That reverses decision 1096 rule 1.", "- **F2** (major; operator-critical: account-or-terms) signs new terms", "- **F3** (major; operator-critical: public-policy) sets a policy", MENTION("M1"), "- **V1** (major; operator-critical: reverses-ruling) moves it again; that reverses verbatim-decision-1096-park-rm-simple-placement.txt"]]);
+  const found = (id: string) => roundAt(t.specs, "spec", 2).findings.find((f: { id: string }) => f.id === id);
+  expect(found("M1")).toEqual({ id: "M1", severity: "major", critical: "reverses-ruling" });
+  expect(found("V1").rulings).toEqual(["1096"]); expect("rulings" in found("F1")).toBe(false);
+  for (const [id, cls] of [["F1", "spend-grant"], ["F2", "account-or-terms"], ["F3", "public-policy"]]) {
+    const x = await restore(t.specs, id); expect(x.err).toContain(`round-critical: --restores closes only a reverses-ruling finding; ${id} is ${cls}`); expect(x.code).not.toBe(0);
+  }
+  const m = await restore(t.specs, "M1"); expect(m.err).toContain("round-critical: M1 does not say it reverses decision 1096; the operator rules on it"); expect(m.code).not.toBe(0);
+  const list = await restore(t.specs, "V1,M1"); expect(list.err).toContain("round-critical: --restores closes one finding"); expect(list.code).not.toBe(0);
+  expect(rowsOf(t.specs, "critical")).toEqual([]);
+  decide(t.specs, 1101, `${CAP_KEY} operator: ${SPEND}\n`);
+  const plain = await critical(true, t.specs, "F1", 1101, SPEND); expect(plain.err).toBe(""); expect(plain.code).toBe(0);
+  expect(rowsOf(t.specs, "critical")).toMatchObject([{ id: "F1", class: "spend-grant", decision: "1101", opens: 3 }]);
+  expect("restore" in rowsOf(t.specs, "critical")[0]).toBe(false);
+});
+
+test("DoD 3: a quote the decision holds only after whitespace is normalised, or a short one, is refused and writes no row", async () => {
+  const t = await restoreTree();
+  const x = await restore(t.specs, "R1", 1096, SPLIT_QUOTE);
+  expect(x.err).toContain("round-critical: decision 1096 does not hold the quote byte for byte (20 characters or more)"); expect(x.code).not.toBe(0);
+  const short = await restore(t.specs, "R1", 1096, "simple placement"); expect(short.err).toContain("does not hold the quote byte for byte (20 characters or more)"); expect(short.code).not.toBe(0);
+  expect(rowsOf(t.specs, "critical")).toEqual([]);
+});
+
+test("DoD 4, DoD 9: a broken restore goes back to the operator, once; a plain record closes a broken or an owed restore and replays valid", async () => {
+  const t = await restoreTree();
+  const tok = tokenOf(t.specs, roundAt(t.specs, "spec", 2).return_sha);
+  expect((await restore(t.specs)).err).toBe("");
+  expect((await sealOn(`${t.a}.critic-spec-r3.md`, [t.a], "SPEC FINDINGS 1", REV("R2"), `RESTORE-BREAKS R1 decision 1096 ${tok}`)).err).toBe("");
+  expect(roundAt(t.specs, "spec", 3).restore_breaks).toEqual([`R1@1096@${tok}`]);
+  const s = await status(t.specs);
+  expect(s.critical_open).toEqual([{ id: "R1", class: "reverses-ruling", kind: "spec", round: 2, verdict_path: `${t.a}.critic-spec-r2.md`, restore: "broken" }, { id: "R2", class: "reverses-ruling", kind: "spec", round: 3, verdict_path: `${t.a}.critic-spec-r3.md` }]);
+  expect(s.restore_owed).toEqual([]);
+  const again = await restore(t.specs); expect(again.err).toContain("round-critical: R1 already had a restore"); expect(again.code).not.toBe(0);
+  const second = await restore(t.specs, "R2"); expect(second.err).toBe(""); expect(second.code).toBe(0);
+  expect(rowsOf(t.specs, "critical").at(-1)).toMatchObject({ id: "R2", restore: true, critic: "spec", opens: 4 });
+  decide(t.specs, 1101, `${CAP_KEY} operator: ${SPEND}\n`);
+  const plain = await critical(true, t.specs, "R1", 1101, SPEND); expect(plain.err).toBe(""); expect(plain.code).toBe(0);
+  const after = await status(t.specs);
+  expect(after.critical_open).toEqual([]); expect(after.invalid).toEqual([]); expect(after.restore_owed).toMatchObject([{ id: "R2", opens: 4 }]);
+  decide(t.specs, 1102, `${CAP_KEY} operator: ${SPEND} once more\n`);
+  const owed = await critical(true, t.specs, "R2", 1102, `${SPEND} once more`); expect(owed.err).toBe(""); expect(owed.code).toBe(0);
+  const fin = await status(t.specs); expect(fin.restore_owed).toEqual([]); expect(fin.critical_open).toEqual([]); expect(fin.invalid).toEqual([]);
+});
+
+test("DoD 5: the seal refuses a check round with no answer, both answers, a wrong token or an answer no restore owes, writes no round row and leaves the restore owed", async () => {
+  const t = await restoreTree(); const tok = tokenOf(t.specs, roundAt(t.specs, "spec", 2).return_sha);
+  expect((await restore(t.specs)).err).toBe("");
+  const v3 = `${t.a}.critic-spec-r3.md`;
+  for (const lines of [[], [`RESTORE-HOLDS R1 decision 1096 ${tok}`, `RESTORE-BREAKS R1 decision 1096 ${tok}`], [`RESTORE-HOLDS R1 decision 1096 ${"0".repeat(12)}`], [`RESTORE-HOLDS R1 decision 1096 ${tok}`, `RESTORE-HOLDS R9 decision 1096 ${tok}`]]) {
+    const x = await sealOn(v3, [t.a], "SPEC CLEAN", ...lines);
+    expect(x.err, lines.join(" / ")).toContain(T_CHECK(3)); expect(x.code).not.toBe(0);
+    expect(readFileSync(v3, "utf8")).not.toContain("CONTENT-SHA256");
+    expect(roundAt(t.specs, "spec", 3)).toBeUndefined();
+    expect((await status(t.specs)).restore_owed).toMatchObject([{ id: "R1" }]);
+  }
+});
+
+const twoRestores = async () => {
+  const t = await restoreTree([[REV("F1")], [REV("F1")]]);
+  const bare = await restore(t.specs, "F1"); expect(bare.err).toContain("round-critical: F1 names findings in spec round 1 and spec round 2; add --round spec:2"); expect(bare.code).not.toBe(0);
+  expect((await restore(t.specs, "F1", 1096, RULING, "--round", "spec:1")).err).toBe("");
+  expect((await restore(t.specs, "F1", 1096, RULING, "--round", "spec:2")).err).toBe("");
+  return { t, t1: tokenOf(t.specs, roundAt(t.specs, "spec", 1).return_sha), t2: tokenOf(t.specs, roundAt(t.specs, "spec", 2).return_sha) };
+};
+test("DoD 5, two restores of one id: two blocks with their own tokens; one answer is refused; each answer lands on its own token's restore, and the swapped return gives the reverse", async () => {
+  const { t, t1, t2 } = await twoRestores();
+  expect(rowsOf(t.specs, "critical").map((x) => [x.id, x.opens])).toEqual([["F1", 3], ["F1", 3]]);
+  expect(t1).not.toBe(t2);
+  const text = await statusText(t.specs);
+  expect(text).toContain(BLOCK(1, 3, t1, "F1")); expect(text).toContain(BLOCK(2, 3, t2, "F1"));
+  const v3 = `${t.a}.critic-spec-r3.md`;
+  const single = await sealOn(v3, [t.a], "SPEC CLEAN", `RESTORE-HOLDS F1 decision 1096 ${t1}`); expect(single.err).toContain(T_CHECK(3, "F1")); expect(single.code).not.toBe(0);
+  expect((await sealOn(v3, [t.a], "SPEC CLEAN", `RESTORE-HOLDS F1 decision 1096 ${t1}`, `RESTORE-BREAKS F1 decision 1096 ${t2}`)).err).toBe("");
+  expect((await status(t.specs)).critical_open).toEqual([{ id: "F1", class: "reverses-ruling", kind: "spec", round: 2, verdict_path: `${t.a}.critic-spec-r2.md`, restore: "broken" }]);
+  const u = await twoRestores();
+  expect((await sealOn(`${u.t.a}.critic-spec-r3.md`, [u.t.a], "SPEC CLEAN", `RESTORE-BREAKS F1 decision 1096 ${u.t1}`, `RESTORE-HOLDS F1 decision 1096 ${u.t2}`)).err).toBe("");
+  const s = await status(u.t.specs);
+  expect(s.critical_open).toEqual([{ id: "F1", class: "reverses-ruling", kind: "spec", round: 1, verdict_path: `${u.t.a}.critic-spec-r1.md`, restore: "broken" }]); expect(s.restore_owed).toEqual([]);
+});
+
+test("DoD 6, order: a plan round after the restore row does not close a spec finding, and a spec round before the row does not count", async () => {
+  const t = await restoreTree(); const r2 = roundAt(t.specs, "spec", 2); const tok = tokenOf(t.specs, r2.return_sha);
+  const file = ledgerFile(t.specs); const base = readFileSync(file, "utf8");
+  expect((await restore(t.specs)).err).toBe("");
+  const withRow = readFileSync(file, "utf8"); const restoreLine = withRow.slice(base.length);
+  const fake = (critic: string) => `${JSON.stringify({ ...r2, ts: Date.now(), critic, round: 3, return_sha: sha(`a ${critic} round 3`), findings: [], unrated_ids: [], verdict: `${critic.toUpperCase()} CLEAN`, restore_holds: [`R1@1096@${tok}`] })}\n`;
+  writeFileSync(file, withRow + fake("plan"));
+  const plan = await status(t.specs); expect(plan.restore_owed).toMatchObject([{ id: "R1", opens: 3 }]); expect(plan.critical_open).toEqual([]);
+  writeFileSync(file, base + fake("spec") + restoreLine);
+  const before = await status(t.specs); expect(before.restore_owed).toEqual([]); expect(before.critical_open).toMatchObject([{ id: "R1" }]); expect(before.invalid).toEqual(["critical 1096"]);
+});
+
+test("DoD 6, kinds: a plan finding's restore names the plan and is checked by the plan round of that number, never the spec round", async () => {
+  const t = await restoreTree([[], []], [[], [REV("P1")]]);
+  const p2 = roundAt(t.specs, "plan", 2); const tok = tokenOf(t.specs, p2.return_sha);
+  expect((await restore(t.specs, "P1")).err).toBe("");
+  expect(rowsOf(t.specs, "critical").at(-1)).toMatchObject({ restore: true, critic: "plan", opens: 3, id: "P1", return_sha: p2.return_sha });
+  const s2 = roundAt(t.specs, "spec", 2);
+  appendFileSync(ledgerFile(t.specs), `${JSON.stringify({ ...s2, ts: Date.now(), round: 3, return_sha: sha("a spec round 3"), restore_holds: [`P1@1096@${tok}`] })}\n`);
+  expect((await status(t.specs)).restore_owed).toMatchObject([{ id: "P1", kind: "plan", round: 2, opens: 3 }]);
+  expect((await sealOn(`${t.a}.critic-plan-r3.md`, [t.plan], "PLAN CLEAN", `RESTORE-HOLDS P1 decision 1096 ${tok}`)).err).toBe("");
+  const s = await status(t.specs); expect(s.restore_owed).toEqual([]); expect(s.critical_open).toEqual([]);
+});
+
+test("DoD 6, openers: a restore opens no round; the spec-only extension's round stays refused to the plan, and the lagging plan's own grant of that round is not already open", async () => {
+  const t = await roundTree(["- **M2** (major) the quota rule is stated twice"], []);
+  decide(t.specs, 1096, RULING_FILE, true);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 2", F3_R4, F4_R4)).err).toBe("");
+  expect((await verb(true, "round-override", CAP_KEY, "--findings", "F3,F4", "--why", "a second closure", "--chief", "chief-x", "--specs", t.specs)).err).toBe("");
+  expect((await closeOn(t, "spec", 5, [t.a], "SPEC FINDINGS 3", F3_R5, F4_R5, REV("X1"))).err).toBe("");
+  expect((await closeOn(t, "plan", 4, [t.plan], "PLAN CLEAN")).err).toBe("");
+  decide(t.specs, 986, `${CAP_KEY} operator: ${APPROVE}\n`);
+  expect((await extend(true, t)).err).toBe("");
+  const ok = await restore(t.specs, "X1"); expect(ok.err).toBe(""); expect(ok.code).toBe(0);
+  expect(rowsOf(t.specs, "critical").at(-1)).toMatchObject({ restore: true, critic: "spec", opens: 6, id: "X1" });
+  const one = "the first changed plan line"; const two = "the second changed plan line";
+  writeFileSync(t.plan, `# A plan\n\n${one}\n${two}\n`);
+  expect((await closeOn(t, "plan", 5, [t.plan], "PLAN FINDINGS 2", REG("R1", one), REG("R2", two))).err).toBe("");
+  const tok = tokenOf(t.specs, latestOf(t.specs, "spec", 5).return_sha);
+  expect((await closeOn(t, "spec", 6, [t.a], "SPEC CLEAN", `RESTORE-HOLDS X1 decision 1096 ${tok}`)).err).toBe("");
+  expect((await status(t.specs)).restore_owed).toEqual([]);
+  expect((await closeOn(t, "plan", 6, [t.plan], "PLAN CLEAN")).err).toContain(T5(6));
+  decide(t.specs, 987, `${CAP_KEY} operator: ${LAG_APPROVE}\n`);
+  const lag = await lagExtend(t); expect(lag.err).toBe(""); expect(lag.code).toBe(0);
+  expect((await closeOn(t, "plan", 6, [t.plan], "PLAN FINDINGS 1", "- **R3** (major; reopens R1) still broken")).err).toBe("");
+  expect((await status(t.specs)).invalid).toEqual([]);
+});
+
+test("DoD 6, DoD 7 cap: a restore whose round needs a record to open is refused, and the same row appended by hand replays invalid", async () => {
+  const t = await roundTree(MAJOR, []); decide(t.specs, 1096, RULING_FILE, true);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", REV("R1"))).err).toBe("");
+  const x = await restore(t.specs); expect(x.err).toContain("round-critical: spec round 5 needs a record to open and a restore opens none; the operator rules on R1"); expect(x.code).not.toBe(0);
+  expect(rowsOf(t.specs, "critical")).toEqual([]);
+  appendFileSync(ledgerFile(t.specs), restoreRow(t.specs, latestOf(t.specs, "spec", 4)));
+  const s = await status(t.specs); expect(s.invalid).toEqual(["critical 1096"]); expect(s.critical_open).toMatchObject([{ id: "R1" }]); expect(s.restore_owed).toEqual([]);
+});
+
+test("DoD 6, ids: an id raised in two rounds needs --round, and --round picks that round's finding", async () => {
+  const t = await restoreTree([[], [REV("F1")], [REV("F1")]]);
+  const x = await restore(t.specs, "F1"); expect(x.err).toContain("round-critical: F1 names findings in spec round 2 and spec round 3; add --round spec:3"); expect(x.code).not.toBe(0);
+  const ok = await restore(t.specs, "F1", 1096, RULING, "--round", "spec:3"); expect(ok.err).toBe(""); expect(ok.code).toBe(0);
+  expect(rowsOf(t.specs, "critical").at(-1)).toMatchObject({ id: "F1", opens: 4, return_sha: roundAt(t.specs, "spec", 3).return_sha });
+});
+
+test("DoD 7, replay: a hand-appended restore row replays valid, each one-fault copy of it is invalid, and --no-round is refused", async () => {
+  const t = await restoreTree([[], [REV("R1"), "- **S1** (major; operator-critical: spend-grant) grants a spend", MENTION("M1")]]);
+  decide(t.specs, 1097, `operator, another ruling: ${RULING}\n`, true);
+  const r2 = roundAt(t.specs, "spec", 2); const file = ledgerFile(t.specs); const base = readFileSync(file, "utf8");
+  const replay = async (o: Record<string, unknown>) => { writeFileSync(file, base + restoreRow(t.specs, r2, o)); return status(t.specs); };
+  const good = await replay({});
+  expect(good.invalid).toEqual([]); expect(good.critical_open.map((c: { id: string }) => c.id)).toEqual(["S1", "M1"]); expect(good.restore_owed).toMatchObject([{ id: "R1", opens: 3 }]);
+  for (const [o, d] of [[{ id: "S1", class: "spend-grant" }, "1096"], [{ quote: SPLIT_QUOTE }, "1096"], [{ opens: 4 }, "1096"], [{ decision: "1097" }, "1097"], [{ id: "M1" }, "1096"]] as [Record<string, unknown>, string][]) {
+    const s = await replay(o);
+    expect(s.invalid, JSON.stringify(o)).toEqual([`critical ${d}`]); expect(s.restore_owed, JSON.stringify(o)).toEqual([]);
+    expect(s.critical_open.map((c: { id: string }) => c.id), JSON.stringify(o)).toContain(String(o.id ?? "R1"));
+  }
+  writeFileSync(file, base);
+  const noRound = await restore(t.specs, "R1", 1096, RULING, "--no-round"); expect(noRound.err).toContain("round-critical: --restores needs a critic round to check it; drop --no-round"); expect(noRound.code).not.toBe(0);
+  expect(rowsOf(t.specs, "critical")).toEqual([]);
+});
+
+test("DoD 8: closure-pack for the check round prints the finding's sealed block and under it the RESTORE-CHECK block round-status prints", async () => {
+  const t = await roundTree([REV("R1")], []); decide(t.specs, 1096, RULING_FILE, true);
+  expect((await restore(t.specs)).err).toBe("");
+  const tok = tokenOf(t.specs, latestOf(t.specs, "spec", 3).return_sha);
+  expect(await statusText(t.specs)).toContain(BLOCK(3, 4, tok));
+  const pack = await verb(false, "closure-pack", CAP_KEY, "spec", "--specs", t.specs); expect(pack.err).toBe(""); expect(pack.code).toBe(0);
+  expect(pack.out).toContain(`${REV("R1")}\n${BLOCK(3, 4, tok)}\n`);
+});
+
+test("DoD 10: a restore spends no decision: plain records and restores share a decision both ways, and a held restore's decision restores another finding", async () => {
+  const t = await restoreTree([[], [REV("R1"), REV("R3", 1101), REV("R4", 1102), "- **S1** (major; operator-critical: spend-grant) grants a spend", "- **S2** (major; operator-critical: spend-grant) grants another"]]);
+  decide(t.specs, 1101, `${CAP_KEY} operator: ${SPEND}; on the park rm: ${RULING}\n`);
+  decide(t.specs, 1102, `${CAP_KEY} operator: approve the second spend; on the park rm: ${RULING}\n`);
+  expect((await critical(true, t.specs, "S1", 1101, SPEND)).err).toBe("");
+  expect((await restore(t.specs, "R3", 1101)).err).toBe("");
+  expect((await restore(t.specs, "R4", 1102)).err).toBe("");
+  const plain = await critical(true, t.specs, "S2", 1102, "approve the second spend"); expect(plain.err).toBe(""); expect(plain.code).toBe(0);
+  expect((await restore(t.specs)).err).toBe("");
+  expect((await status(t.specs)).invalid).toEqual([]);
+  const r2 = roundAt(t.specs, "spec", 2).return_sha;
+  expect((await sealOn(`${t.a}.critic-spec-r3.md`, [t.a], "SPEC FINDINGS 1", REV("R2"), `RESTORE-HOLDS R3 decision 1101 ${tokenOf(t.specs, r2, 1101)}`, `RESTORE-HOLDS R4 decision 1102 ${tokenOf(t.specs, r2, 1102)}`, `RESTORE-HOLDS R1 decision 1096 ${tokenOf(t.specs, r2)}`)).err).toBe("");
+  const again = await restore(t.specs, "R2"); expect(again.err).toBe(""); expect(again.code).toBe(0);
+  const s = await status(t.specs); expect(s.invalid).toEqual([]); expect(s.critical_open).toEqual([]); expect(s.restore_owed).toMatchObject([{ id: "R2", decision: "1096", opens: 4 }]);
+});
+
+test("DoD 11: the capped fold refuses while a restore check is owed", async () => {
+  const t = await roundTree([REV("R1")], []); decide(t.specs, 1096, RULING_FILE, true);
+  expect((await restore(t.specs)).err).toBe("");
+  const route = await import("./chief-route");
+  await expect(route.cappedLedger(t.specs, CAP_KEY, route.cappedReader(t.specs, CAP_KEY))).rejects.toThrow("capped-fold: a restore check is owed: R1 (decision 1096) in spec round 4");
+});

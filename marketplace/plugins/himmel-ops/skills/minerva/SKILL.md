@@ -289,6 +289,15 @@ stands with `bun <himmel>/scripts/telegram/chief-route.ts round-status <KEY> --s
   Add `--no-round` when the ruling needs no revision (for example "sign it as it
   stands"); without it the record opens one further writer round. While any such
   finding is open the signature is refused, naming it.
+  A `reverses-ruling` finding that says it reverses a ruling on record, and whose
+  fix restores that ruling, is closed instead with
+  `round-critical <KEY> --finding <id> --decision <d> --quote "<the ruling's words>" --restores --specs <bucket>/specs`;
+  the finding's kind's next round then opens by itself (within the cap). Paste the
+  `RESTORE-CHECK` block `round-status` prints into that round's critic brief (a
+  closure pack carries it already); the critic answers `RESTORE-HOLDS` or
+  `RESTORE-BREAKS` with the block's token, and on `RESTORE-BREAKS` the finding is
+  the operator's again. Ask each spec critic to write a reverses-ruling finding as
+  "reverses decision <n>".
 - **A rethink.** Only the operator's ruling to start over lowers the count:
   `round-reset <KEY> --decision <d> --quote "<operator words>" --specs <bucket>/specs`, once per ticket.
 - The three record verbs run only from the chief's console, and every record is
