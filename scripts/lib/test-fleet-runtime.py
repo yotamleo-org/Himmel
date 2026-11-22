@@ -1943,31 +1943,77 @@ exit 1''')
             self.assertEqual(runtime.worker_keys(doc), expected, title)
         self.assertEqual(runtime.TITLE_KEY_RE.pattern, dispatcher['TITLE_KEY_RE'].pattern)
 
-    def begin_beside_old_sibling(self, key, empty=None):
+    def begin_beside_old_sibling(self, key, empty=None, results='- 09:00 LIVE\n', session=True, lock=None, ok=False):
         self.active()
         old, new = self.bucket / 'HIMMEL-101-N1-old.md', self.bucket / 'HIMMEL-101-N2-new.md'
-        old.write_text('# HIMMEL-101 old worker\n- 09:00 LIVE\n')
+        old.write_text('# HIMMEL-101 old worker\n' + results)
         new.write_text('# HIMMEL-101 new worker\n')
         sibling = {'schema': 1, key: [dict(doc=str(old), label='N1', added='2026-11-01T00:00:00Z', lane='native')]}
         if empty:
             sibling[empty] = []
         (self.bucket / 'old.fleet.json').write_text(json.dumps(sibling))
         self.call('add', self.m, new, '--lane', 'native', '--pending')
-        p = self.rt('begin', aid='n1', doc=new, ok=False)
+        saved = self.env
+        if lock:
+            self.env = dict(self.env, TICKET_STATUS_QUEUE_LOCK=self.stub('queue-lock-' + lock, 'exit %d' % {'held': 11, 'free': 0}[lock]))
+        live = None
+        if session:
+            code = 'import ctypes,time; ctypes.CDLL(None).prctl(15,b"claude",0,0,0); time.sleep(30)'
+            live = subprocess.Popen(['claude', '-c', code], executable=sys.executable, env=dict(self.env, WORKER_SESSION_DOC=str(old)))
+            time.sleep(.2)
+        try:
+            return self.rt('begin', aid='n1', doc=new, ok=ok)
+        finally:
+            self.env = saved
+            if live:
+                live.terminate()
+                live.wait(timeout=5)
+
+    def refused_beside_old_sibling(self, key, empty=None, **kwargs):
+        p = self.begin_beside_old_sibling(key, empty, **kwargs)
         self.assertIn('unknown legacy family ownership', p.stderr)
         self.assertEqual(self.anchor_attempts(), {})
 
     def test_begin_is_refused_beside_a_live_row_a_workers_sibling_holds(self):
-        self.begin_beside_old_sibling('workers')
+        self.refused_beside_old_sibling('workers')
 
     def test_begin_is_refused_beside_a_live_row_a_legs_sibling_holds(self):
-        self.begin_beside_old_sibling('legs')
+        self.refused_beside_old_sibling('legs')
 
     def test_begin_is_refused_beside_a_live_legs_row_when_the_sibling_also_has_an_empty_workers(self):
-        self.begin_beside_old_sibling('legs', empty='workers')
+        self.refused_beside_old_sibling('legs', empty='workers')
 
     def test_begin_is_refused_beside_a_live_workers_row_when_the_sibling_also_has_an_empty_legs(self):
-        self.begin_beside_old_sibling('workers', empty='legs')
+        self.refused_beside_old_sibling('workers', empty='legs')
+
+    def test_begin_is_admitted_beside_an_abandoned_row(self):
+        self.begin_beside_old_sibling('workers', results='- 09:00 LIVE\n- 11:40 FINDING — a question\n- 12:30 LIVE\n',
+                                      session=False, ok=True)
+        self.assertEqual(list(self.anchor_attempts()), ['n1'])
+
+    def test_begin_is_refused_beside_an_unwrapped_row_whose_lock_is_held(self):
+        self.refused_beside_old_sibling('workers', session=False, lock='held')
+
+    def test_begin_is_refused_beside_an_unwrapped_row_with_no_marker(self):
+        self.refused_beside_old_sibling('workers', results='', session=False, lock='free')
+
+    def test_begin_is_admitted_beside_a_row_that_wrapped_before_a_succession_note(self):
+        self.begin_beside_old_sibling('workers', results='- 09:00 LIVE\n- 22:30 WRAPPED — merged\n'
+                                      '- 09:00 bus-adopt: adopted: d console AP → AQ [via anchor]\n'
+                                      '- 09:00 SUCCESSION accepted: AQ replaces AP\n', session=False, lock='free', ok=True)
+        self.assertEqual(list(self.anchor_attempts()), ['n1'])
+
+    def test_a_succession_note_after_an_end_marker_still_reads_ended(self):
+        runtime = self.runtime_module()
+        doc = self.bucket / 'ended.md'
+        for lines, ended in ((['- 22:30 WRAPPED', '- 09:00 SUCCESSION accepted: AQ replaces AP'], True),
+                             (['- 22:30 HALTED', '- 09:00 bus-adopt: adopted: d', '- 09:00 SUCCESSION accepted: AQ replaces AP'], True),
+                             (['- 22:30 LIVE', '- 09:00 SUCCESSION accepted: AQ replaces AP'], False),
+                             (['- 09:00 SUCCESSION accepted: AQ replaces AP'], False),
+                             (['- 22:30 WRAPPED', '- 09:00 SUCCESSION accepted: AQ replaces AP', '- 09:10 LIVE'], False),
+                             ([], True)):
+            doc.write_text('\n'.join(['# d'] + lines) + '\n')
+            self.assertEqual(runtime.reads_ended(doc), ended, lines)
 
     def test_a_damaged_owner_reads_unknown_and_only_an_exact_identity_reads_dead(self):
         runtime = self.runtime_module()
