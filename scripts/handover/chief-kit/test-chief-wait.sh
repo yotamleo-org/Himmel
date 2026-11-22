@@ -1699,8 +1699,10 @@ wr_stop
 start "$I" "$WORK/wr8.out" --doc "$WD" --workers-from "$WM"
 wait_exit "$WPID"
 check "(wr8) and only once" "running|" "$rc|$(cat "$WORK/wr8.out")"
-printf -- '- 20:00 RESOLVED — ruling received\n- 20:10 FINDING — a question\n' >> "$WB"
-wr_tick "N7:FINDING" "N7:FINDING#1"
+wr_tick "N7:FINDING" "N7:FINDING#1"; mv "$STUB/tick.line" "$STUB/tick.next"; wr_tick "N7:BLOCKED" "N7:BLOCKED#1"
+printf -- '- 20:00 RESOLVED — ruling received\n- 20:10 FINDING — a question\n' > "$STUB/tick.add"
+printf 'cat "%s" >> "%s"\nmv "%s" "%s"\n' "$STUB/tick.add" "$WB" "$STUB/tick.next" "$STUB/tick.line" > "$STUB/tick.hook.new"
+mv "$STUB/tick.hook.new" "$STUB/tick.hook"
 wait_exit "$WPID"
 check "(wr9) a new FINDING wakes as a tick change" "WAKE tick changed=tails,acts usage=PROCEED" "$(head -n 1 "$WORK/wr8.out")"
 wr_stop

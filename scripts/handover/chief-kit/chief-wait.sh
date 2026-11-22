@@ -141,8 +141,9 @@
 #                               stays the tick change's wake. A READY past the relay's <inbox>.wait.ready
 #                               cursor is the relay's: it wakes nothing here until the relay hands it on.
 #                               Named = in <inbox>.wait.markerwoke: this wake, a WAKE tick
-#                               whose tails=/acts= move is that worker's (only an event its doc already held
-#                               before that tick ran, so one written mid-tick is not taken), and a READY the relay handed
+#                               whose tails=/acts= move is that worker's (only an event whose marker that
+#                               tick's tails= token shows, so a READY written mid-tick under a FINDING token
+#                               is not taken), and a READY the relay handed
 #                               to worker-event all record it. Once per READY head or other bullet;
 #                               a repeat READY of a named head folds like ready_fold. Checked after
 #                               the tick key, so a tick change wakes first. The payload carries no
@@ -2623,6 +2624,11 @@ worker_marker_events() {
 $(jq -r "$JQ_W"'W[]? | [.label, .doc] | @tsv' "$legs_from")
 EOF
 }
+marker_tok() {
+    local m
+    m="$(printf '%s' "${2#WAKE worker-}" | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')"
+    printf '%s\n' "$3" | tr ',' '\n' | awk -v p="$1:$m" 'index($0, p) == 1 && substr($0, length(p) + 1, 1) !~ /[A-Za-z0-9_]/ { print; exit }'
+}
 worker_marker_wake() {
     local ev label k w m tok keys="" out="" st ct ldoc cur last
     ev="$(worker_marker_events)"
@@ -2631,7 +2637,7 @@ worker_marker_wake() {
         [ -n "$k" ] || continue
         grep -qxF -- "$k" "$marker_woke_file" 2>/dev/null && continue
         m="$(printf '%s' "${w#WAKE worker-}" | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')"
-        tok="$(printf '%s\n' "$ct" | tr ',' '\n' | awk -v p="$label:$m" 'index($0, p) == 1 && substr($0, length(p) + 1, 1) !~ /[A-Za-z0-9_]/ { print; exit }')"
+        tok="$(marker_tok "$label" "$w" "$ct")"
         [ -n "$tok" ] || continue
         case "$st" in *",$tok,"*) ;; *) continue ;; esac
         if [ "$m" = READY ]; then
@@ -2650,13 +2656,14 @@ EOF
     printf '%s' "$keys" >> "$marker_woke_file"
 }
 marker_note() {
-    local ev label k w
+    local ev label k w ct
     [ -n "$1" ] || return 0
     ev="$(worker_marker_events)"
+    ct=",$(key_field tails "$key"),"
     while IFS=$'\t' read -r label k w; do
         [ -n "$k" ] || continue
         case " $1 " in *" $label "*) ;; *) continue ;; esac
-        case $'\n'"$marker_pre"$'\n' in *$'\n'"$label"$'\t'"$k"$'\t'*) ;; *) continue ;; esac
+        [ -n "$(marker_tok "$label" "$w" "$ct")" ] || continue
         grep -qxF -- "$k" "$marker_woke_file" 2>/dev/null || printf '%s\n' "$k" >> "$marker_woke_file"
     done <<EOF
 $ev
@@ -2958,8 +2965,6 @@ while :; do
                 if [ -n "$r0_fold" ]; then r0_refold=1; else saved=""; pending=""; fi
             fi
         fi
-        marker_pre=""
-        [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ] || marker_pre="$(worker_marker_events)"
         sample "$@" 9>&-
         if [ -z "$key" ] && [ "$fail_step" = "tick-exit:2" ]; then
             printf 'WAKE tick-usage rc=2%s\n' "${tick_err:+ $tick_err}"
