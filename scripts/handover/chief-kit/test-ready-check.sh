@@ -967,6 +967,37 @@ o7raw "9561 S4a 7c: an owed line behind a form feed is window-checked (2099 fail
 o7raw "9561 S4a 7c: a second coverage section's owed line inside the window passes" 0 "## Ticket coverage\\n- ask one: done\\n## Notes\\nx\\n## Ticket coverage\\n- b: owed $o_ar chief by $(o_day 2)\\n"
 o7raw "9561 S4a 7c: a second-section deferral to the branch's own key does not hide a 2000 owed line" 1 "## Ticket coverage\\n- ask one: owed $o_ar chief by $(o_day 2)\\n## Notes\\n## Ticket coverage\\n- y: deferred $o_ar HIMMEL-100\\n- z: owed $o_ar chief by 2000-01-01\\n"
 
+o_cnt() { printf '%s' "$out" | grep -oF -e "$1" | wc -l | tr -d ' '; }
+o_d2=$(o_day 2); o_d30=$(o_day 30); o_d31=$(o_day 31); o_past=$(o_day -3)
+o_judge="## Ticket coverage\\n- a: done\\n- sign the spec: owed $o_ar chief by $o_d2\\n"
+o7raw "10656 R1: a + proof line 30 days out beside an in-window chief line fails" 1 "${o_judge}+ run the live proof: owed $o_ar proof by $o_d30\\n"
+contains "10656 R1: names the 30-day date" "$out" "owed date $o_d30 is outside the window"
+contains "10656 R1: names the 30-day line" "$out" "run the live proof"
+o7raw "10656 R2: a second section's proof line 30 days out beside an in-window chief line fails" 1 "${o_judge}## Notes\\nx\\n## Ticket coverage\\n- run the live proof: owed $o_ar proof by $o_d30\\n"
+contains "10656 R2: names the 30-day line" "$out" "owed date $o_d30 is outside the window"
+o7raw "10656 R3: the judge's body, a past-dated + proof line, fails" 1 "${o_judge}+ run the live proof: owed $o_ar proof by $o_past\\n"
+contains "10656 R3: names the past date" "$out" "owed date $o_past is outside the window"
+o7raw "10656 R4: an owed line after an indented heading is window-checked" 1 "## Ticket coverage\\n- a: done\\n  ## Notes\\n- x: owed $o_ar proof by $o_d30\\n"
+contains "10656 R4: names the 30-day line" "$out" "owed date $o_d30 is outside the window"
+o7raw "10656 R5: the judge's body with its chief line 30 days out fails" 1 "## Ticket coverage\\n- a: done\\n- sign the spec: owed $o_ar chief by $o_d30\\n+ run the live proof: owed $o_ar proof by $o_past\\n"
+check "10656 R5: the 30-day line is reported once" "$(o_cnt "owed date $o_d30 is outside")" "1"
+check "10656 R5: the past line is reported once" "$(o_cnt "owed date $o_past is outside")" "1"
+o7raw "10656 R6: two owed lines with tabs in their asks fail" 1 "## Ticket coverage\\n- a: done\\n- a\\tb: owed $o_ar proof by $o_d30\\n- c\\t\\td: owed $o_ar proof by $o_d31\\n"
+check "10656 R6: the 30-day line is reported once" "$(o_cnt "owed date $o_d30 is outside")" "1"
+check "10656 R6: the 31-day line is reported once" "$(o_cnt "owed date $o_d31 is outside")" "1"
+o_long=$(printf 'l%.0s' $(seq 1 170))
+o7raw "10656 R7: an owed line over 160 characters with a tab in its ask fails" 1 "## Ticket coverage\\n- a: done\\n- long\\t$o_long: owed $o_ar proof by $o_d30\\n"
+check "10656 R7: the long line is reported once" "$(o_cnt "owed date $o_d30 is outside")" "1"
+o7raw "10656 E1: a + done line passes" 0 "## Ticket coverage\\n- a: done\\n+ x: done\\n"
+o7raw "10656 E2: a + not done line fails as unmarked" 1 "## Ticket coverage\\n- a: done\\n+ x: not done\\n"
+contains "10656 E2: names the unmarked line" "$out" "unmarked line: + x: not done"
+o7raw "10656 E3: a + deferral to a Done key fails" 1 "## Ticket coverage\\n- a: done\\n+ x: deferred $o_ar HIMMEL-51\\n"
+contains "10656 E3: names the Done key" "$out" "HIMMEL-51 already Done"
+o7raw "10656 F1a: a body whose only owed line is invalid fails on that line alone" 1 "## Ticket coverage\\n- a: done\\n- x: owed $o_ar bob by $o_d2\\n"
+contains "10656 F1a: says the owed line is not accepted" "$out" "owed line is not accepted"
+notcontains "10656 F1a: no whole-body read failure" "$out" "cannot read the body's owed line"
+o7raw "10656 F1b: owed prose outside the coverage section passes" 0 "## Summary\\nowed $o_ar chief by 2000-01-01\\n\\n## Ticket coverage\\n- a: done\\n"
+
 # the full run prints the same shape message on the same failure
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done pending verification\n'

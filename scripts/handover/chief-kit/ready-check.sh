@@ -945,7 +945,7 @@ cov_section=$(printf '%s\n' "$cov_body" | awk '
     /^##[ \t]+[Tt]icket [Cc]overage[ \t]*$/ { f = 1; next }
     f && /^#/ { exit }
     f')
-cov_lines=$(printf '%s\n' "$cov_section" | grep -E '^[[:space:]]*([-*]|[0-9]+[.)])[[:space:]]' || true)
+cov_lines=$(printf '%s\n' "$cov_section" | grep -E '^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]' || true)
 # A dependency-only Dependabot PR (author app/dependabot, every changed file a
 # manifest or lockfile by name) has no asks to cover; its coverage is generated.
 dep_pr_generated() {
@@ -968,7 +968,7 @@ elif [ -z "$cov_lines" ]; then
     cov_shape_help
     mark_fail
 else
-    cov_bad=""; cov_shape=0; cov_body_keys=""
+    cov_bad=""; cov_shape=0; cov_body_keys=""; cov_wdues=""
     # A deferral must land on a residual-verb ticket or one that predates this PR's own.
     cov_own=""
     # an owed line is decided by the anchor's reader alone (the one grammar owner, as item 17 reads it): item 7 checks only its window
@@ -1044,7 +1044,9 @@ else
                 cov_bad="$cov_bad; owed line is not accepted (who chief, operator or proof, then by YYYY-MM-DD, a real date): $cov_oline"
                 cov_shape=1
             else
-                cov_window_check "$(printf '%s' "$cov_oans" | cut -f3)" "$cov_oline"
+                cov_odue=$(printf '%s' "$cov_oans" | cut -f3)
+                cov_window_check "$cov_odue" "$(printf '%s' "$cov_oans" | cut -f4- | tr '\t' ' ' | cut -c1-160)"
+                cov_wdues="$cov_wdues $cov_odue"
             fi
         elif ! printf '%s\n' "$cov_line" | grep -qiE '(^|[^[:alnum:]])done[^[:alnum:]]*$' \
             || printf '%s\n' "$cov_line" | grep -qiE '(not|n.t)[[:space:]]+done'; then
@@ -1057,15 +1059,22 @@ EOF
     if printf '%s\n' "$cov_body" | grep -qiE "$cov_owed_re"; then
         cov_wans=""; cov_wrc=0
         if [ -f "$cov_reader" ]; then
-            cov_wans=$(printf '%s\n' "$cov_body" | python3 -I "$cov_reader" none 2>/dev/null) || cov_wrc=$?  # swallow-ok: a non-zero rc or empty answer fails the line below
+            cov_wans=$(printf '%s\n' "$cov_body" | python3 -I "$cov_reader" --owed-lines none 2>/dev/null) || cov_wrc=$?  # swallow-ok: a non-zero rc fails the body below
         else
             cov_wrc=3
         fi
-        if [ "$cov_wrc" -ne 0 ] || [ -z "$cov_wans" ]; then
+        if [ "$cov_wrc" -ne 0 ]; then
             cov_bad="$cov_bad; cannot read the body's owed line (the anchor's scripts/lib/pr_remainder.py is missing or gave no answer)"
             cov_shape=1
-        elif [ "${cov_wans%%$'\t'*}" = owed ]; then
-            cov_window_check "$(printf '%s' "$cov_wans" | cut -f3)" "$(printf '%s' "$cov_wans" | cut -f4 | cut -c1-160)"
+        else
+            while IFS= read -r cov_wrow; do
+                [ -n "$cov_wrow" ] || continue
+                cov_wdue=$(printf '%s' "$cov_wrow" | cut -f2)
+                case " $cov_wdues " in *" $cov_wdue "*) continue ;; esac
+                cov_window_check "$cov_wdue" "$(printf '%s' "$cov_wrow" | cut -f4- | tr '\t' ' ' | cut -c1-160)"
+            done <<EOF
+$cov_wans
+EOF
         fi
     fi
     # The ledger's deferrals at the PR head and the body's deferral lines must name the same tickets.
