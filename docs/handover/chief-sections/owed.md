@@ -148,7 +148,8 @@ locked). `owed-events.py spool --check --spool <spool>` lists the bad lines. Reb
 row from the PR body: `gh pr view <n> --repo <owner/name> --json body -q .body` piped
 through `scripts/lib/pr_remainder.py --owed-lines` into the `spool` call above. Then remove
 the bad line with `owed-events.py spool --drop <line> --spool <spool>`, which takes the
-spool lock; it is the only way a line leaves the spool.
+spool lock and renames a rewritten copy over the spool, so an interrupted drop leaves it
+whole; it is the only way a line leaves the spool.
 
 Tick projects keyed step dates and readiness reminders into the same owed ledger.
 A step expires after its accepted UTC by-date; missing/invalid evidence emits

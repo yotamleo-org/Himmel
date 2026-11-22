@@ -25,6 +25,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 import time
 
 HERE = Path(__file__).resolve().parent
@@ -51,6 +52,25 @@ def spool_lock(fd):
             if time.monotonic() >= deadline:
                 raise TimeoutError('the spool lock was not free within OWE_SPOOL_LOCK_WAIT') from None
             time.sleep(0.05)
+
+
+def spool_open(path, flags):
+    """An fd holding the spool lock on the file the path names now; a --drop may replace it while we wait."""
+    while True:
+        fd = os.open(path, flags, 0o600)
+        try:
+            spool_lock(fd)
+            held = os.fstat(fd)
+            try:
+                now = os.stat(path)
+            except FileNotFoundError:
+                now = None
+            if now is not None and (now.st_dev, now.st_ino) == (held.st_dev, held.st_ino):
+                return fd
+        except BaseException:
+            os.close(fd)
+            raise
+        os.close(fd)
 
 
 def spool_read(fd):
@@ -97,9 +117,10 @@ def spool_lines(data):
 def spool_row(line):
     try:
         row = json.loads(line)
-    except ValueError:
+    except (ValueError, RecursionError):
         return None
-    if not isinstance(row, dict) or row.get('schema') != 1 or row.get('kind') not in SPOOL_FIELDS:
+    if not isinstance(row, dict) or row.get('schema') != 1 or not isinstance(row.get('kind'), str) \
+            or row['kind'] not in SPOOL_FIELDS:
         return None
     if any(f not in row for f in SPOOL_FIELDS[row['kind']]):
         return None
@@ -121,7 +142,7 @@ def spool_row(line):
 def spool_edit(opt, drop):
     """--check (drop empty) or --drop under the lock; line numbers count from the file before any removal."""
     try:
-        fd = os.open(opt.spool, os.O_RDWR if drop else os.O_RDONLY)
+        fd = spool_open(opt.spool, os.O_RDONLY)
     except FileNotFoundError:
         if drop:
             print('owed-events spool: ' + opt.spool + ' does not exist', file=sys.stderr)
@@ -131,7 +152,6 @@ def spool_edit(opt, drop):
         print('owed-events spool: ' + opt.spool + ': ' + str(exc), file=sys.stderr)
         return 4
     try:
-        spool_lock(fd)
         data = spool_read(fd)
         lines = spool_lines(data)
         if not drop:
@@ -144,13 +164,16 @@ def spool_edit(opt, drop):
             print('owed-events spool: no line ' + ','.join(map(str, missing)) + ' in ' + opt.spool, file=sys.stderr)
             return 2
         kept = b''.join(line + b'\n' for n, line in lines if n not in drop)
+        tmp_fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(opt.spool)), prefix='.owe-spool.')
         try:
-            os.ftruncate(fd, 0)
-            spool_write(fd, kept, 0)
-        except OSError:
-            os.ftruncate(fd, 0)
-            spool_write(fd, data, 0)
+            spool_write(tmp_fd, kept, 0)
+            os.fsync(tmp_fd)
+            os.replace(tmp, opt.spool)
+        except BaseException:
+            os.unlink(tmp)
             raise
+        finally:
+            os.close(tmp_fd)
         return 0
     except OSError as exc:
         print('owed-events spool: ' + opt.spool + ': ' + str(exc), file=sys.stderr)
@@ -199,12 +222,11 @@ def spool_main(argv):
         return 0
     try:
         os.makedirs(os.path.dirname(os.path.abspath(opt.spool)), exist_ok=True)
-        fd = os.open(opt.spool, os.O_RDWR | os.O_CREAT, 0o600)
+        fd = spool_open(opt.spool, os.O_RDWR | os.O_CREAT)
     except OSError as exc:
         print('owed-events spool: ' + opt.spool + ': ' + str(exc), file=sys.stderr)
         return 4
     try:
-        spool_lock(fd)
         spool_append(fd, b''.join(spool_line(r) for r in rows))
     except OSError as exc:
         print('owed-events spool: ' + opt.spool + ': ' + str(exc), file=sys.stderr)
@@ -222,7 +244,7 @@ def drain(owe, bucket, spool, project, chief, handover_root):
     if os.path.commonpath([real_bucket, real_root]) != real_root:
         return []
     try:
-        fd = os.open(spool, os.O_RDWR)
+        fd = spool_open(spool, os.O_RDWR)
     except FileNotFoundError:
         return []
     except OSError:
@@ -230,7 +252,6 @@ def drain(owe, bucket, spool, project, chief, handover_root):
     bad = []
     try:
         try:
-            spool_lock(fd)
             lines = [(n, spool_row(line)) for n, line in spool_lines(spool_read(fd)) if line.strip()]
         except OSError:
             return ['file']

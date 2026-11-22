@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest import mock
@@ -424,6 +425,53 @@ class SpoolDrain(unittest.TestCase):
         self.drain()
         self.assertEqual(len(self.steps(self.a)), rows)
         self.assertEqual(len(self.claims(self.a)), 2)
+
+    def test_a_row_with_an_unhashable_kind_or_deep_nesting_is_a_bad_line_and_the_rest_drains(self):
+        self.put(self.two_lines())
+        good = self.spool.read_text().splitlines(keepends=True)
+        self.spool.write_text(good[0] + '{"schema":1,"kind":[]}\n' + '[' * 100000 + '\n' + good[1])
+        check = subprocess.run(['python3', '-I', str(self.tool), 'spool', '--check', '--spool', str(self.spool)],
+                               text=True, capture_output=True)
+        self.assertEqual((check.returncode, check.stdout), (0, '2\n3\n'), check.stderr)
+        self.assertEqual(self.drain()['spool_bad'], [2, 3])
+        self.assertEqual(len(self.steps(self.a)), 2)
+
+    def test_drop_replaces_the_spool_and_never_rewrites_the_file_in_place(self):
+        self.put(self.two_lines())
+        self.spool.write_text(self.spool.read_text() + 'not json\n')
+        before = self.spool.read_bytes()
+        with open(self.spool, 'rb') as old:
+            drop = subprocess.run(['python3', '-I', str(self.tool), 'spool', '--drop', '3', '--spool', str(self.spool)],
+                                  text=True, capture_output=True)
+            self.assertEqual(drop.returncode, 0, drop.stderr)
+            self.assertEqual(old.read(), before)
+        self.assertEqual(self.spool.read_bytes(), before[:before.index(b'not json')])
+        self.assertEqual(oct(self.spool.stat().st_mode & 0o777), '0o600')
+
+    def test_an_append_that_waited_on_a_replaced_spool_lands_in_the_new_file(self):
+        self.put(self.two_lines()[:1])
+        spec = importlib.util.spec_from_file_location('owed_events', self.tool)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        real_lock, waiting, result = mod.spool_lock, threading.Event(), {}
+
+        def lock(fd):
+            waiting.set()
+            real_lock(fd)
+        argv = ['spool', '--spool', str(self.spool), '--key', 'HIMMEL-10441', '--pr', '5615', '--repo', 'owner/repo']
+        replacement = self.spool.with_name('replacement')
+        replacement.write_bytes(self.spool.read_bytes())
+        with open(self.spool, 'rb') as held, mock.patch.object(mod, 'spool_lock', lock), \
+                mock.patch.object(sys, 'stdin', io.StringIO(self.two_lines()[1] + '\n')):
+            fcntl.flock(held, fcntl.LOCK_EX)
+            worker = threading.Thread(target=lambda: result.update(rc=mod.main(argv)))
+            worker.start()
+            self.assertTrue(waiting.wait(10))
+            os.replace(replacement, self.spool)
+            fcntl.flock(held, fcntl.LOCK_UN)
+            worker.join(20)
+        self.assertEqual(result.get('rc'), 0)
+        self.assertEqual([r['pr'] for r in self.spooled()], [5614, 5615])
 
     def test_a_ledger_already_holding_a_backfilled_identity_takes_only_the_claim(self):
         self.owe(self.a, 'add', '--chief', 'chief', '--kind', 'step', '--key', 'HIMMEL-10441', '--identity', C1_IDENTITY,
