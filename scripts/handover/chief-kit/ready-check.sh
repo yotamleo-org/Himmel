@@ -1083,7 +1083,7 @@ $cov_wans
 EOF
         fi
     fi
-    # The ledger's deferrals at the PR head and the body's deferral lines must name the same tickets.
+    # Every ledger deferral at the PR head needs a body deferral line; a body key with no ledger row must be linked from the PR's ticket.
     cov_head="$SHA"
     if [ "$ONLY7" -eq 1 ]; then
         cov_head=$("$GH" pr view "$PR" --repo "$nwo" --json headRefOid --jq '.headRefOid' 2>/dev/null | tr -d '\r') || cov_head="" # swallow-ok: an unreadable head is reported below
