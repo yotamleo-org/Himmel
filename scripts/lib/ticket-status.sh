@@ -444,9 +444,9 @@ _ts_no_live_session_on() {
     [ -d /proc/self ] || return 1
     dir=$(cd -P -- "$(dirname -- "$1")" 2>/dev/null && pwd -P) && resolved="$dir/${1##*/}" || resolved=$1
     for p in /proc/[0-9]*; do
-        IFS= read -r comm < "$p/comm" 2>/dev/null || { [ ! -d "$p" ] || return 1; continue; }
+        IFS= read -r comm 2>/dev/null < "$p/comm" || { [ ! -d "$p" ] || return 1; continue; }
         [ "$comm" = claude ] || continue
-        IFS= read -r st < "$p/stat" 2>/dev/null || { [ ! -d "$p" ] || return 1; continue; }
+        IFS= read -r st 2>/dev/null < "$p/stat" || { [ ! -d "$p" ] || return 1; continue; }
         st=${st##*) }
         case "${st%% *}" in Z|X) continue ;; esac
         { while IFS= read -r -d '' kv; do
