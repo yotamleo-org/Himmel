@@ -1,7 +1,7 @@
 # Whole-doc rows read by the shell, JS and Python tests. TAB-separated: doc, newest, actionable; `-` is none.
 # The doc column encodes LF as \n, CR as \r, TAB as \t, form feed as \f, a backslash as \\; any other
 # backslash sequence is a test failure. A line `# D01` names the row below it.
-# rows: 40
+# rows: 41
 # D01
 ## Results\n- 10:00 LIVE\n- 10:15 Released lock, appended the WRAPPED bullet, ending turn\n	LIVE	-
 # D02
@@ -76,9 +76,11 @@
 - 10:00 READY\n```\n## Results\n- 10:05 LIVE\n```\n	-	-
 # D34
 ## Results\n- 10:00 LIVE\n```\n## Notes\n```\n- 10:05 READY\n	READY	READY#1
-# D35
+# D38
 ## Results\n- 10:00 LIVE\n````\n- 10:05 READY\n```\n- 10:10 WRAPPED\n````\n	LIVE	-
-# D36
+# D39
 ## Results\n- 10:00 LIVE\n```\n- 10:05 READY\n```js\n- 10:10 WRAPPED\n```\n	LIVE	-
-# D37
+# D40
 ## Results\n- 10:00 LIVE\n```\n- 10:05 WRAPPED\n```\n- 10:10 READY\n	READY	READY#1
+# D41
+## Results\r\n- 10:00 LIVE\r\n```\r\n- 10:05 WRAPPED\r\n```\r\n	LIVE	-
