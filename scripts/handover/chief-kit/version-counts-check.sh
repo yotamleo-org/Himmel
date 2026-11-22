@@ -9,6 +9,14 @@
 #   size. residual-regex is the board/tick rule, a label matching (^|-)residual(-|$) on an open
 #   ticket; it is shown beside, never reported as a version size, and does not move the verdict.
 #   open excludes terminal status/category: Done, Resolved, Closed, In Public, and wont do/fix.
+#
+# Surfaces mode: JIRA_PROJECT_KEY=<KEY> version-counts-check.sh --board-json <board.json> [--tracker-html <tracker.html>] [<version>...]
+#   Compares the board's (`--json` milestones: open, residual) and the tracker's (a version row's data-open,
+#   data-residual) per-version counts with the tick's, which the mirror gives by the one open rule above. One line:
+#     <version> surfaces tick open=<n> residual=<n> board open=<n> residual=<n> tracker open=<n> residual=<n> SAME|DIFF
+#   (a surface not given or not showing the version prints `-`), then `VERDICT SAME` or `VERDICT DIFF`. It never
+#   calls Jira. A version no named surface shows is skipped; a surface file that shows none of them, or an
+#   unavailable board milestone, is exit 2.
 # Exit: 0 SAME, 1 DIFF, 2 bad input or an unreadable source.
 # Seams: VERSION_COUNTS_JIRA (the jira CLI command; default: node dist/index.js of the primary
 #   checkout), VERSION_COUNTS_MIRROR (mirror root; default ~/.himmel/state/jira-mirror/<KEY>).
@@ -19,8 +27,12 @@ set -uo pipefail
 fail2() { echo "version-counts-check: $*" >&2; exit 2; }
 
 versions=()
+board_json=""
+tracker_html=""
 while [ $# -gt 0 ]; do
     case "$1" in
+        --board-json) [ $# -ge 2 ] || fail2 "--board-json needs a file"; board_json="$2"; shift ;;
+        --tracker-html) [ $# -ge 2 ] || fail2 "--tracker-html needs a file"; tracker_html="$2"; shift ;;
         -*) fail2 "unknown option: $1" ;;
         *) versions+=("$1") ;;
     esac
@@ -34,7 +46,11 @@ mirror="${VERSION_COUNTS_MIRROR:-$HOME/.himmel/state/jira-mirror/$project}"
 vfile="$mirror.versions.tsv"
 [ -r "$vfile" ] || fail2 "versions file not readable: $vfile"
 
-if [ -n "${VERSION_COUNTS_JIRA:-}" ]; then
+surfaces=0
+{ [ -n "$board_json" ] || [ -n "$tracker_html" ]; } && surfaces=1
+if [ "$surfaces" = 1 ]; then
+    jira_cmd=()
+elif [ -n "${VERSION_COUNTS_JIRA:-}" ]; then
     jira_cmd=("$VERSION_COUNTS_JIRA")
 else
     HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -99,6 +115,60 @@ for name in os.listdir(d):
 for v in open_n:
     print(v + "\t" + str(open_n[v]) + "\t" + str(res_n[v]))
 ')" || fail2 "mirror not readable: $mirror"
+
+if [ "$surfaces" = 1 ]; then
+    printf '%s\n' "${versions[@]}" | VC_COUNTS="$mirror_counts" VC_BOARD="$board_json" VC_TRACKER="$tracker_html" python3 -I -c '
+import json, os, re, sys
+names = [l for l in sys.stdin.read().split("\n") if l]
+tick = {}
+for row in os.environ["VC_COUNTS"].splitlines():
+    f = row.split("\t")
+    tick[f[0]] = (int(f[1]), int(f[2]))
+
+
+def die(msg):
+    sys.stderr.write("version-counts-check: " + msg + "\n")
+    sys.exit(2)
+
+
+board, tracker = None, None
+if os.environ["VC_BOARD"]:
+    try:
+        ms = json.load(open(os.environ["VC_BOARD"], encoding="utf-8"))["milestones"]
+        board = {}
+        for m in ms:
+            if m.get("unavailable"):
+                die("board milestone " + str(m.get("version")) + " is unavailable")
+            board[m["version"]] = (int(m["open"]), int(m["residual"]))
+    except (OSError, ValueError, KeyError, TypeError):
+        die("board json not readable: " + os.environ["VC_BOARD"])
+if os.environ["VC_TRACKER"]:
+    try:
+        html = open(os.environ["VC_TRACKER"], encoding="utf-8").read()
+    except OSError:
+        die("tracker html not readable: " + os.environ["VC_TRACKER"])
+    tracker = {m.group(1): (int(m.group(2)), int(m.group(3)))
+               for m in re.finditer(r"data-v=\"([^\"]*)\" data-open=\"(\d+)\" data-residual=\"(\d+)\"", html)}
+for label, src in (("board", board), ("tracker", tracker)):
+    if src is not None and not any(v in src for v in names):
+        die(label + " shows none of the versions checked")
+verdict = "SAME"
+fmt = lambda c: "-" if c is None else "open=%d residual=%d" % c
+for v in names:
+    b = board.get(v) if board is not None else None
+    t = tracker.get(v) if tracker is not None else None
+    if b is None and t is None:
+        continue
+    k = tick.get(v, (0, 0))
+    s = "SAME" if all(x == k for x in (b, t) if x is not None) else "DIFF"
+    if s == "DIFF":
+        verdict = "DIFF"
+    print("%s surfaces tick %s board %s tracker %s %s" % (v, fmt(k), fmt(b), fmt(t), s))
+print("VERDICT " + verdict)
+sys.exit(0 if verdict == "SAME" else 1)
+'
+    exit $?
+fi
 
 verdict=SAME
 for v in "${versions[@]}"; do
