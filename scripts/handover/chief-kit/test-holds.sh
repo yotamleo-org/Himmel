@@ -1166,6 +1166,8 @@ run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10" --open
 same "10632 the same row once its PR is no longer open drops the ask" "$RC:$OUT" "0:"
 run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10" --open-prs '?'
 same "10632 an unread open-PR list (?) keeps the ask" "$RC:$(printf '%s' "$OUT" | cut -f1)" "0:PROJ-9626"
+run env HOLDS_QUEUE_LOCK="$W/bin/ql-rc1" HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10" --open-prs none
+same "10632 a queue-lock sweep that fails keeps the ask" "$RC:$(printf '%s' "$OUT" | cut -f1)" "0:PROJ-9626"
 lock_hold "$D9626"
 run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10" --open-prs none
 same "10632 a live worker (its lock held) keeps the ask with no open PR" "$RC:$(printf '%s' "$OUT" | cut -f1)" "0:PROJ-9626"
