@@ -853,6 +853,22 @@ test("codex-1: a crash after the id record and before the handling finishes does
   expect(inJobs(e)).toHaveLength(1);
 });
 
+test("codex-1: an env-id record written before the done record existed still blocks a replay after upgrade", async () => {
+  const e = await envSetup();
+  serveRun(e);
+  const u = reqMsg(e, e.st);
+  await e.poller.processBatch([u]);
+  expect(inJobs(e)).toHaveLength(1);
+  const idFile = join(e.peerDir, "envelope-ids.jsonl");
+  const legacy = readFileSync(idFile, "utf8").split("\n").filter(Boolean).slice(0, 1).map(l => { const r = JSON.parse(l); delete r.open; return JSON.stringify(r); });
+  writeFileSync(idFile, legacy.join("\n") + "\n");
+  const logs: string[] = [];
+  const again = await Poller.create({ ...e.deps, log: l => logs.push(l) });
+  await again.recover();
+  await again.processBatch([TE.tgUpdate(u.message.text)]);
+  expect(logs.join("\n")).toContain("duplicate envelope id");
+});
+
 test("m5: an egress-refused request leaves no out-job record and no cancel is sent later", async () => {
   const e = await envSetup();
   let calls = 0;

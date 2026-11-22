@@ -103,7 +103,7 @@ export class Poller {
         else if (r.kind === "peer-env") inbox.push({ peer: r.peer, chat_id: r.chat_id, from_id: r.from_id, ts: r.ts });
       }
       for (const r of readChain(this.file(peer, "envelope-ids.jsonl"))) {
-        if (r.kind === "env-id-done") envIds.push(r as any);
+        if (r.kind === "env-id-done" || (r.kind === "env-id" && !r.open)) envIds.push(r as any);
         else if (r.kind === "env-id-void") envIds.push({ ...(r as any), void: true });
       }
       const hourAgo = this.now() - 3_600_000;
@@ -292,7 +292,7 @@ export class Poller {
   }
 
   private async recordId(rec: PeerEnvRec, exp: number): Promise<void> {
-    await this.chain.append(this.file(rec.peer, "envelope-ids.jsonl"), { kind: "env-id", chat: rec.chat_id, from: rec.from_id, id: rec.id, exp });
+    await this.chain.append(this.file(rec.peer, "envelope-ids.jsonl"), { kind: "env-id", chat: rec.chat_id, from: rec.from_id, id: rec.id, exp, open: true });
   }
 
   private async handleEnvelope(peer: string, env: Envelope): Promise<void> {
