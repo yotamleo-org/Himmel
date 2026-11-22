@@ -1950,8 +1950,9 @@ test("readOwed: a finding whose restore check is owed puts no operator-critical 
     return { specs, spec, sealRound, rows };
   };
   const control = tree("bk-control", K(2));
-  const r2 = readFileSync(`${control.spec}.critic-spec-r2.md`, "utf8");
-  writeFileSync(join(control.specs, "ledgers", "spec-rounds", `${K(2)}.jsonl`), `${JSON.stringify({ v: 1, ts: 1, key: K(2), row: "critical", restore: true, critic: "spec", epoch: 0, opens: 3, id: "r1", class: "reverses-ruling", decision: "1096", quote, decision_path: join(control.specs, "decisions", "verbatim-decision-1096-park.txt"), decision_sha: "0".repeat(64), return_sha: hex(r2) })}\n`, { flag: "a" });
+  const controlLedger = join(control.specs, "ledgers", "spec-rounds", `${K(2)}.jsonl`);
+  const r2 = readFileSync(controlLedger, "utf8").trim().split("\n").map((l) => JSON.parse(l)).find((x) => x.row === "round" && x.round === 2).return_sha;
+  writeFileSync(controlLedger, `${JSON.stringify({ v: 1, ts: 1, key: K(2), row: "critical", restore: true, critic: "spec", epoch: 0, opens: 3, id: "r1", class: "reverses-ruling", decision: "1096", quote, decision_path: join(control.specs, "decisions", "verbatim-decision-1096-park.txt"), decision_sha: "0".repeat(64), return_sha: r2 })}\n`, { flag: "a" });
   expect(control.rows()).toEqual([[K(2), "operator", true]]);
   const t = tree("bk-restore", K(1));
   expect(t.rows()).toEqual([[K(1), "operator", true]]);

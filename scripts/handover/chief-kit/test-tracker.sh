@@ -1651,7 +1651,8 @@ bkc="$W/bk10628c"
 r10628tree "$bkc" "$kc"
 r10628seal "$bkc" "$kc" 1 'SPEC CLEAN'
 r10628seal "$bkc" "$kc" 2 'SPEC FINDINGS 1' "$r10628finding"
-r2sha="$(sha256sum "$bkc/specs/designs/HIMMEL-$kc-rev.md.critic-spec-r2.md" | cut -d' ' -f1)"
+r2sha="$(jq -r 'select(.row == "round" and .round == 2) | .return_sha' "$bkc/specs/ledgers/spec-rounds/HIMMEL-$kc.jsonl")"
+[ -n "$r2sha" ] || fail "R10628-tracker: control: spec round 2 of HIMMEL-$kc has no sealed return_sha"
 printf '{"v":1,"ts":1,"key":"HIMMEL-%s","row":"critical","restore":true,"critic":"spec","epoch":0,"opens":3,"id":"r1","class":"reverses-ruling","decision":"1096","quote":"%s","decision_path":"%s","decision_sha":"%s","return_sha":"%s"}\n' \
     "$kc" "$r10628quote" "$bkc/specs/decisions/verbatim-decision-1096-park.txt" "0000000000000000000000000000000000000000000000000000000000000000" "$r2sha" >> "$bkc/specs/ledgers/spec-rounds/HIMMEL-$kc.jsonl"
 v9611render --owed-dir "$bkc"

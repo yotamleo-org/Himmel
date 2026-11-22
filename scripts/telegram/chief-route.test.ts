@@ -7749,6 +7749,21 @@ test("DoD 6, openers: a restore opens no round; the spec-only extension's round 
   expect((await status(t.specs)).invalid).toEqual([]);
 });
 
+test("DoD 6, openers: a restore whose round loses its opener goes back to the operator", async () => {
+  const t = await roundTree(["- **M2** (major) the quota rule is stated twice"], []);
+  decide(t.specs, 1096, RULING_FILE, true);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 2", F3_R4, F4_R4)).err).toBe("");
+  const p1 = "- **P1** (minor; operator-critical: reverses-ruling) the plan moves the park rm off its simple placement. That reverses decision 1096 rule 1.";
+  expect((await closeOn(t, "plan", 4, [t.plan], "PLAN FINDINGS 1", p1)).err).toBe("");
+  expect((await verb(true, "round-override", CAP_KEY, "--findings", "F3,F4", "--why", "a second closure", "--chief", "chief-x", "--specs", t.specs)).err).toBe("");
+  const ok = await restore(t.specs, "P1"); expect(ok.err).toBe(""); expect(ok.code).toBe(0);
+  expect((await status(t.specs)).restore_owed).toMatchObject([{ id: "P1", opens: 5 }]);
+  expect((await closeOn(t, "spec", 5, [t.a], "SPEC CLEAN")).err).toBe("");
+  const s = await status(t.specs);
+  expect(s.restore_owed).toEqual([]); expect(s.critical_open).toMatchObject([{ id: "P1", kind: "plan" }]);
+  expect((await closeOn(t, "plan", 5, [t.plan], "PLAN CLEAN")).err).toContain(T5(5));
+});
+
 test("DoD 6, DoD 7 cap: a restore whose round needs a record to open is refused, and the same row appended by hand replays invalid", async () => {
   const t = await roundTree(MAJOR, []); decide(t.specs, 1096, RULING_FILE, true);
   expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", REV("R1"))).err).toBe("");

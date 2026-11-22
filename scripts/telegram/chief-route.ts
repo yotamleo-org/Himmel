@@ -829,7 +829,9 @@ const findingKey = (id: unknown, returnSha: unknown) => `${id}|${returnSha}`;
 function closureOf(rows: Rows, id: unknown, returnSha: unknown): "operator" | Restore["state"] | "open" {
   const k = findingKey(id, returnSha);
   if (rows.checked.criticals.some(r => findingKey(r.id, r.return_sha) === k)) return "operator";
-  return rows.checked.restores.find(x => findingKey(x.row.id, x.row.return_sha) === k)?.state ?? "open";
+  const x = rows.checked.restores.find(x => findingKey(x.row.id, x.row.return_sha) === k);
+  if (x?.state === "owed" && roundNeedsRecord(replayStateOf(rows), x.kind, Number(x.row.opens))) return "open";
+  return x?.state ?? "open";
 }
 function criticalOpenOf(rows: Rows): RoundState["critical_open"] {
   const out: RoundState["critical_open"] = [];
