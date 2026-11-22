@@ -240,7 +240,7 @@ sweep_lint() {
   local i k r
   for i in "$sd"/bin.*; do
     k=${i##*/bin.}
-    ( set -o pipefail; { cat "$i"; [ ! -f "$sd/fill.$k" ] || cat "$sd/fill.$k"; } | tr '\n' '\0' | xargs -0 pre-commit run shellcheck --show-diff-on-failure --files > "$i.out" 2>&1; echo $? > "$i.rc" ) &
+    ( set -o pipefail; tb=$SECONDS; { cat "$i"; [ ! -f "$sd/fill.$k" ] || cat "$sd/fill.$k"; } | tr '\n' '\0' | xargs -0 pre-commit run shellcheck --show-diff-on-failure --files > "$i.out" 2>&1; echo $? > "$i.rc"; echo "shellcheck-pr-range: bin $k took $((SECONDS - tb))s over $(wc -l < "$i" | tr -d " ") inputs" >&2 ) &
   done
   wait
   # iterate the bins, not their outputs: a bin with no rc (its subshell died) is a failure
