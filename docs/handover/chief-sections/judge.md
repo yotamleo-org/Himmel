@@ -113,9 +113,21 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   regex) prints `trust`, never `none`. The judge names its findings in the verdict file as `finding: <path>[:<n>[-<m>]]` lines
   (no line numbers means the whole file; the line holds nothing else, and any other line starting
   `finding:` reads `trust`); a NO-GO that names none classifies `finding`.
-  `trust` and `finding` get a judge as before. On `none` skip the judge and record
-  `bash scripts/handover/chief-kit/write-verdict.sh <qid> GO <new head> --pr <n> --evidence-file <path>
-  --delta-noop <judged head>` (run in the repo under review): it re-runs the classifier, refuses
+  `trust` and `finding` get a judge as before. On `none` skip the judge. First write the
+  evidence file with the Write tool under `/tmp/claude-<uid>/` (a heredoc, `printf` or redirect
+  is refused): plain lines, for example the `delta-class.sh` output, and none of the lines the
+  writer refuses (`model:`, `effort:`, `delta:`, `prior:`, `flipped:` and the rest). Copy `<m>`
+  and `<e>` from the `model:` and `effort:` lines of the judged head's verdict record (the flags
+  rule above). Then record the no-op with one plain command at the main checkout's root (no `cd`,
+  `&&`, `;`, pipe or redirect):
+  `bash scripts/handover/chief-kit/write-verdict.sh <qid> GO <new head> --pr <n> --evidence-file <path> --delta-noop <judged head> --model <m> --effort <e>`.
+  There the relative path names the main checkout's own copy, which `guard-pr-check-literal.sh`
+  requires (the writer itself ignores the cwd), and it matches the project allow rule, which
+  resolves before the classifier. The fallback is
+  `bash <primary checkout>/scripts/handover/chief-kit/write-verdict.sh` with the same arguments;
+  it matches no allow rule, so in auto mode the classifier decides it. If both spellings are
+  refused, dispatch an ordinary judge (no `delta_class` key, the default model), never a
+  `finding` brief: the class is `none`. The writer re-runs the classifier, refuses
   (exit 2) unless it prints `none`, and signs `delta: no-op`, `delta-judged: <sha>` and
   `delta-class: none` into `verdicts/<qid>/delta-noop-<head>.md`. The judged head must carry the
   qid's signed GO; a no-op is never itself a judged head, so each later push is classified against

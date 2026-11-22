@@ -1219,6 +1219,7 @@ emit_runner() {
     fi
     printf '    echo "[exit rc=$_rc]"\n'
     printf '} >> "$log" 2>&1\n'
+    [ -z "$flow" ] || printf 'exit "$_rc"\n'
 }
 
 cmd_status() {
