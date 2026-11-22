@@ -113,10 +113,12 @@ $cands
 EOF
   return 1
 }
-sweep_all() {
-  local n sd i k r rc=0 plan
-  [ $# -eq 0 ] || subset=$1
-  t_lint=$SECONDS
+stage_t() {
+  echo "shellcheck-pr-range: stage $1 took $((SECONDS - t_stage))s" >&2
+  t_stage=$SECONDS
+}
+sweep_plan() {
+  local plan
   # macOS has no nproc; sysctl hw.ncpu is its CPU count
   n=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null) || n=1 # swallow-ok: no CPU count means no parallelism, the serial sweep runs
   [ "${n:-1}" -gt 1 ] 2>/dev/null || serial_sweep
@@ -133,6 +135,9 @@ sweep_all() {
   # only widen a bin (and the size guard below then falls back to the serial sweep)
   { shell_typed "$sd/files" > "$sd/shell" && [ -s "$sd/shell" ]; } || cp "$sd/files" "$sd/shell" || { rm -rf "$sd"; serial_sweep; }
   git grep -n -I -E -e "$src_re" -e "$dir_re" -- . > "$sd/grep" 2>/dev/null || [ "$?" -eq 1 ] || { rm -rf "$sd"; serial_sweep; }
+  stage_t sweep_plan
+}
+sweep_pack() {
   # stage 1: one line per file, "<closure weight> <root> <member> <weight> ...", the root first, weight -1 for a
   # file identify does not type shell. Stage 2 packs the roots; it writes bin.K (the shell inputs, a root's lib
   # before the roots), fill.K (non-shell roots) and roots.K (every root of the bin).
@@ -199,8 +204,13 @@ sweep_all() {
         close(sd "/bin." b); close(sd "/roots." b); close(sd "/fill." b)
       }
     }' || { rm -rf "$sd"; serial_sweep; }
+  stage_t sweep_pack
+}
+sweep_verify() {
+  local i k nb
   set -- "$sd"/bin.*
   [ -f "$1" ] || { rm -rf "$sd"; serial_sweep; }
+  nb=$#
   # every selected file must be the root of exactly one bin, and sit in that bin, else a pass would be vacuous
   sort "$sd/files" > "$sd/files.s"
   cat "$sd"/roots.* | sort > "$sd/rootsall.s"
@@ -211,7 +221,7 @@ sweep_all() {
     sort "$sd/roots.$k" > "$sd/root.s"
     [ -z "$(comm -13 "$sd/held.s" "$sd/root.s")" ] || { rm -rf "$sd"; serial_sweep; }
   done
-  echo "shellcheck-pr-range: parallel full sweep over $# bins ($(cat "$sd"/bin.* | wc -l | tr -d ' ') shell inputs for $(wc -l < "$sd/files" | tr -d ' ') files)" >&2
+  echo "shellcheck-pr-range: parallel full sweep over $nb bins ($(cat "$sd"/bin.* | wc -l | tr -d ' ') shell inputs for $(wc -l < "$sd/files" | tr -d ' ') files)" >&2
   # SHELLCHECK_RANGE_KEEP_PLAN=<dir> keeps the bin, fill and root lists for a test to read
   if [ -n "${SHELLCHECK_RANGE_KEEP_PLAN:-}" ]; then
     mkdir -p "$SHELLCHECK_RANGE_KEEP_PLAN" || exit 1
@@ -224,22 +234,30 @@ sweep_all() {
   for i in "$sd"/bin.*; do
     [ "$(wc -c < "$i")" -le 100000 ] || { rm -rf "$sd"; serial_sweep; }
   done
+  stage_t sweep_verify
+}
+sweep_lint() {
+  local i k r
   for i in "$sd"/bin.*; do
     k=${i##*/bin.}
     ( set -o pipefail; { cat "$i"; [ ! -f "$sd/fill.$k" ] || cat "$sd/fill.$k"; } | tr '\n' '\0' | xargs -0 pre-commit run shellcheck --show-diff-on-failure --files > "$i.out" 2>&1; echo $? > "$i.rc" ) &
   done
   wait
   # iterate the bins, not their outputs: a bin with no rc (its subshell died) is a failure
-  set --
   for i in "$sd"/bin.[0-9]*; do
     case "$i" in *.out | *.rc) continue ;; esac
-    if [ -f "$i.out" ]; then set -- "$@" "$i.out"; elif [ "$rc" -eq 0 ]; then rc=1; fi
+    [ -f "$i.out" ] || [ "$rc" -ne 0 ] || rc=1
     r=$(cat "$i.rc" 2>/dev/null) || r=1 # swallow-ok: a missing rc is a failed bin
     case "$r" in '' | *[!0-9]*) r=1 ;; esac
     [ "$rc" -ne 0 ] || rc=$r
   done
+  stage_t sweep_lint
+}
+sweep_dedup() {
+  set -- "$sd"/bin.*.out
+  [ -f "$1" ] || return 0
   # a lib in several bins is linted in each, so the same finding can print more than once: print each once
-  [ $# -eq 0 ] || awk '
+  awk '
     function flush() { if (blk != "") { sub(/\n+$/, "", blk); if (!(blk in seen)) { seen[blk] = 1; print blk; print "" } } blk = "" }
     FNR == 1 { flush(); mode = 0 }
     /^shellcheck\.\.\.+(Passed|Failed|Skipped)/ { flush(); mode = 0; print; next }
@@ -249,6 +267,18 @@ sweep_all() {
     mode == 2 { if ($0 ~ /^  https?:/) { if (!($0 in url)) { url[$0] = 1; if (pend) { print "For more information:"; pend = 0 } print } next } if ($0 == "") next; mode = 0 }
     { print }
     END { flush() }' "$@" || rc=1 # swallow-ok: a failed dedup is an unclean sweep, never a quiet pass
+  stage_t sweep_dedup
+}
+sweep_all() {
+  local rc=0 sd n
+  [ $# -eq 0 ] || subset=$1
+  t_lint=$SECONDS
+  t_stage=$SECONDS
+  sweep_plan
+  sweep_pack
+  sweep_verify
+  sweep_lint
+  sweep_dedup
   rm -rf "$sd"
   echo "shellcheck-pr-range: lint took $((SECONDS - t_lint))s" >&2
   exit "$rc"
