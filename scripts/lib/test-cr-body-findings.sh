@@ -100,6 +100,13 @@ sed 's/Minor comments: 1/Minor comments: 2/' "$SEV_BODY" > "$TMP/sev-header-high
 mk_json_from_file "$RESP_DIR/sev-header-high.json"    "$UID_OK"    "$HEAD"  "$TMP/sev-header-high.body.txt"
 sed 's/Minor comments: 1/Major comments: 1/' "$SEV_BODY" > "$TMP/sev-header-word.body.txt"
 mk_json_from_file "$RESP_DIR/sev-header-word.json"    "$UID_OK"    "$HEAD"  "$TMP/sev-header-word.body.txt"
+for SEV_WORD in Major Critical; do
+    sed -e "s/Minor comments: 1/$SEV_WORD comments: 1/" -e "s/<\/picture> Minor\*\*/<\/picture> $SEV_WORD**/" "$SEV_BODY" > "$TMP/sev-$SEV_WORD.body.txt"
+    mk_json_from_file "$RESP_DIR/sev-$SEV_WORD.json"  "$UID_OK"    "$HEAD"  "$TMP/sev-$SEV_WORD.body.txt"
+done
+{ cat "$SEV_BODY"; printf '%s\n' '<details>' '<summary><picture><img src="x" alt=""></picture> Blocker comments: 1</summary>' "\`5-5\`: **<picture><img src=\"x\" alt=\"\"></picture> Blocker**" '' '<!-- cr-comment:v1:feedbeef0001 -->' '</details>'; } > "$TMP/sev-unknown-section.body.txt"
+mk_json_from_file "$RESP_DIR/sev-unknown-section.json" "$UID_OK"   "$HEAD"  "$TMP/sev-unknown-section.body.txt"
+mk_json_from_file "$RESP_DIR/sev-prior.json"          "$UID_OK"    "oldsha1" "$SEV_BODY"
 mk_json_from_str  "$RESP_DIR/colon-malformed.json"    "$UID_OK"    "$HEAD"  "<summary>Nitpick comments: one</summary> <!-- cr-comment:v1:abc123 -->"
 mk_json_from_str  "$RESP_DIR/colon-suffix-1.json"     "$UID_OK"    "$HEAD"  "<summary>Nitpick comments: 1.5</summary> <!-- cr-comment:v1:abc123 -->"
 mk_json_from_str  "$RESP_DIR/colon-suffix-2.json"     "$UID_OK"    "$HEAD"  "<summary>Nitpick comments: 1foo</summary> <!-- cr-comment:v1:abc123 -->"
@@ -178,7 +185,11 @@ t nitpick-pr466-parses-at-head                nitpick-466         0 "outside=0 n
 # colon-count headers (real PR #2549 body); the old paren form is unchanged above.
 t nitpick-colon-form-counts-1                 nitpick-colon       0 "outside=0 nitpick=1 additional=0 prior_outside=0 markers=1 head_reviews=1 substantive=1"
 t outside-colon-form-counts-2                 outside-colon       0 "outside=2 nitpick=0 additional=0 prior_outside=0 markers=2 head_reviews=1 substantive=1"
-t severity-minor-section-counts-1             sev-minor           0 "outside=0 nitpick=0 additional=1 prior_outside=0 markers=1 head_reviews=1 substantive=1"
+t severity-minor-section-counts-1             sev-minor           0 "outside=1 nitpick=0 additional=0 prior_outside=0 markers=1 head_reviews=1 substantive=1"
+t severity-major-section-counts-1             sev-Major           0 "outside=1 nitpick=0 additional=0 prior_outside=0 markers=1 head_reviews=1 substantive=1"
+t severity-critical-section-counts-1          sev-Critical        0 "outside=1 nitpick=0 additional=0 prior_outside=0 markers=1 head_reviews=1 substantive=1"
+t severity-unknown-section-beside-known-blocks sev-unknown-section 2
+t severity-prior-head-counted                 sev-prior           0 "outside=0 nitpick=0 additional=0 prior_outside=1 markers=0 head_reviews=0 substantive=0"
 t severity-header-n-above-entries-blocks      sev-header-high     2
 t severity-header-word-differs-from-entry-blocks sev-header-word  2
 t colon-malformed-count-blocks                colon-malformed     2
@@ -415,6 +426,10 @@ to od-clean-body-no-rows       od-clean          0 ""
 to od-shared-selector-later-clean-wins od-two-head-clean-latest 0 ""
 to od-wrong-user-id-no-rows    od-wrong-id       0 ""
 OD_FOLLOWUP_ROW="cr-od-4bf4bd0d34fe${TAB}sug${TAB}scripts/guardrails/test-guardrail-posix-paths.sh${TAB}18-35${TAB}Make the expected-deny graphify checks fail on the fence's abnormal-exit deny."
+OD_SEV_ROW="cr-od-5ce5dda0e5d7${TAB}sug${TAB}scripts/ci/check-flags.sh${TAB}101-101${TAB}Do not drop Git-quoted filenames in the scan list."
+to od-severity-minor-section-row            sev-minor                  0 "$OD_SEV_ROW"
+to od-severity-header-n-above-entries       sev-header-high            2 ""
+to od-severity-unknown-section-drifts       sev-unknown-section        2 ""
 to od-followup-comments-layout              od-followup                0 "$OD_FOLLOWUP_ROW"
 to od-followup-header-without-finding       od-followup-header-only    2 ""
 to od-followup-badge-without-fields         od-followup-badge-only     2 ""

@@ -187,16 +187,21 @@ def fu_drift:
   );
 def sev_w: "Critical|Major|Minor|Trivial";
 def sev_hdr_re: "</picture> (" + sev_w + ") comments? [(]([0-9]+)[)]</summary>";
-def sev_ent_re: "(?m)^`[0-9]+(?:-[0-9]+)?`: [*][*]<picture>(?:(?!</picture>)[^\n])*</picture> (" + sev_w + ")[*][*]";
+def sev_ent_re: "(?m)^`(?<l>[0-9]+(?:-[0-9]+)?)`: [*][*]<picture>(?:(?!</picture>)[^\n])*</picture> (?<s>" + sev_w + ")[*][*]";
 def sev_hdrs: reduce ( [ scan(sev_hdr_re) ] | .[] ) as $p ({}; .[$p[0]] += ($p[1] | tonumber));
-def sev_ents: reduce ( [ scan(sev_ent_re) ] | .[] ) as $p ({}; .[$p[0]] += 1);
+def sev_ents: reduce ( [ scan(sev_ent_re) ] | .[] ) as $p ({}; .[$p[1]] += 1);
 def sev_n: sev_hdrs | add // 0;
-def sev_drift: (sev_hdrs | length) > 0 and sev_hdrs != sev_ents;
 def outside_n: sum_matches(outside_re) + count_matches(fu_od_re);
 def nitpick_n: sum_matches(nitpick_re) + ( if test(fu_hdr_re) then count_matches(fu_nit_re) else 0 end );
+def outside_all: outside_n + sev_n;
+def sev_drift:
+  (sev_hdrs | length) > 0 and (
+    sev_hdrs != sev_ents
+    or count_matches(marker_re) != (outside_all + nitpick_n + sum_matches(additional_re))
+  );
 # A prior review that reads as drift counts as one finding, so its head stays in
 # the prior-head gate and the per-head reader returns rc 2.
-def prior_n: outside_n as $n | if $n == 0 and fu_drift then 1 else $n end;
+def prior_n: outside_all as $n | if $n == 0 and (fu_drift or sev_drift) then 1 else $n end;
 def has_content: test("\\S");
 # CodeRabbit now writes counts as "comments: N" and
 # "<summary>path: N</summary>" beside the old "(N)". Rewrite the colon form to
@@ -226,14 +231,14 @@ _CBF_JQ_SELECT='
 _CBF_JQ_COUNTS='
 | ( [ $priorr[] | (.body // "" | norm) ] ) as $pb
 | {
-    outside:       ( $chosen | outside_n ),
+    outside:       ( $chosen | outside_all ),
     nitpick:       ( $chosen | nitpick_n ),
-    additional:    ( $chosen | sum_matches(additional_re) + sev_n ),
+    additional:    ( $chosen | sum_matches(additional_re) ),
     prior_outside: ( [ $pb[] | prior_n ]      | add // 0 ),
     markers:       ( $chosen | count_matches(marker_re) ),
-    outside_drift:    ( $chosen | fu_drift or ((test(loose_outside_re) and (test(outside_re)|not)) and (count_matches(fu_od_re) == 0)) ),
+    outside_drift:    ( $chosen | fu_drift or ((test(loose_outside_re) and (test(outside_re)|not)) and (count_matches(fu_od_re) == 0)) or sev_drift ),
     nitpick_drift:    ( $chosen | (test(loose_nitpick_re)    and (test(nitpick_re)|not)) ),
-    additional_drift: ( $chosen | (test(loose_additional_re) and (test(additional_re)|not)) or sev_drift ),
+    additional_drift: ( $chosen | (test(loose_additional_re) and (test(additional_re)|not)) ),
     head_count:  ($headr | length),
     substantive: ($sub | length)
   }
@@ -296,9 +301,23 @@ def sev_of($t): if ($t|test("Critical")) then "crit" elif ($t|test("Major")) the
     elif (.cur != null and ($l | test("cr-comment:v1:[A-Za-z0-9]+|^---+[ ]*$"))) then
         .cur = null
     else . end ) ) as $fu
-| { hdr: ($old.hdr + $fu.hdr),
-    items: ($old.items + [ $fu.items[] | {file, line, sev: sev_of(.sev // ""), title} ]),
-    drift: ($chosen | fu_drift) }
+| ( reduce $L[] as $l ({on:false, hdr:0, file:null, cur:null, items:[]};
+    if ($l | test(sev_hdr_re)) then
+        .on = true | .hdr += ($l | [ scan(sev_hdr_re) ] | .[0][1] | tonumber) | .file = null | .cur = null
+    elif (.on and ($l | test("^---+[ ]*$"))) then
+        .on = false | .cur = null
+    elif (.on | not) then .
+    elif ($l | test("^<summary>[^<]+ [(][0-9]+[)]</summary>")) then
+        .file = ($l | capture("^<summary>(?<f>[^<]+) [(][0-9]+[)]</summary>").f)
+    elif ($l | test(sev_ent_re)) then
+        ($l | capture(sev_ent_re)) as $m
+        | .cur = {file: .file, line: $m.l, sev: $m.s}
+    elif (.cur != null and ($l | test("^\\*\\*[^*<].*\\*\\*[ ]*$"))) then
+        .items += [ .cur + {title: ($l | capture("^\\*\\*(?<t>.+)\\*\\*[ ]*$").t | gsub("\\s+"; " ") | sub("^ "; "") | sub(" $"; ""))} ] | .cur = null
+    else . end ) ) as $sv
+| { hdr: ($old.hdr + $fu.hdr + $sv.hdr),
+    items: ($old.items + [ ($fu.items + $sv.items)[] | {file, line, sev: sev_of(.sev // ""), title} ]),
+    drift: ($chosen | fu_drift or sev_drift) }
 '
 
 # the prior heads that still carry outside-diff findings. Groups the
