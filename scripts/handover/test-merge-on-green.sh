@@ -4308,7 +4308,7 @@ fi
 wait "$ob_holder" 2>/dev/null
 
 STUB_MERGE_FAIL=1 STUB_PR_BODY="$ob_body" ob_merge e 0 "10194b: a merge gh reported as failed but found MERGED"
-if grep -F 'MERGED ' "$LAST_AUDIT" 2>/dev/null | grep -F 'gh-exit=' | grep -qF 'owe=spooled:2'; then pass
+if grepq "$(grep -F 'MERGED ' "$LAST_AUDIT" 2>/dev/null | grep -F 'gh-exit=')" -F 'owe=spooled:2'; then pass
 else fail "10194b: the confirmed merge with a non-zero gh exit carries owe= on its MERGED line ($(cat "$LAST_AUDIT" 2>/dev/null))"; fi
 ob_spooled e "10194b: the non-zero gh exit merge still spools both lines"
 
