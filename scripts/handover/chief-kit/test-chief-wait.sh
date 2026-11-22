@@ -1190,6 +1190,7 @@ check "(v) the wake names only prs, not board" "WAKE tick changed=prs usage=PROC
 # --- (p) a denials rise to SHIP-STEP / PAUSE-RISK pages ---------
 # One page per rise (a new worker or a higher class), never per tick. The page
 # text carries the worker label, count and class ONLY.
+P_NOPROC="$WORK/p-noproc"; mkdir -p "$P_NOPROC"; export CHIEF_WAIT_PROC="$P_NOPROC"
 denials_rise() { # <case> <from> <to>  -> runs the waiter to its wake (or 8 s)
     reset_stub; rm -f "$STUB/pages"; rm -rf "$HIMMEL_DENIAL_ACK_DIR"
     sed -i "s/denials=none/denials=$2/" "$STUB/tick.line"  # gnu-ok: Linux-only kit
@@ -1244,7 +1245,7 @@ denials_rise p5e none 'N1:1:SHIP-STEP'
 check "(p5e) a native worker with Remote Control: the page names its session" "DENIAL-PAGE N1 SHIP-STEP x1 - a classifier denial parked this worker. Open the Remote Control session HIMMEL-8320-n1-session in the Claude app and answer there, or review it and: ack-denial.sh N1" "$(head -n1 "$STUB/pages" 2>/dev/null)"
 denials_rise p5f none 'N2:1:SHIP-STEP'
 check "(p5f) a worker without Remote Control keeps the plain page" "DENIAL-PAGE N2 SHIP-STEP x1 - a classifier denial parked this worker. Review it, then: ack-denial.sh N2" "$(head -n1 "$STUB/pages" 2>/dev/null)"
-unset CHIEF_WAIT_PROC
+export CHIEF_WAIT_PROC="$P_NOPROC"
 
 rm -f "$STUB/pagek"; SAVE_PAGE_CMD="$CHIEF_WAIT_PAGE_CMD"; export CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh"
 denials_rise k5 none 'N1:1:SHIP-STEP'
@@ -1304,6 +1305,7 @@ mkdir -p "$WORK/ro" && chmod 500 "$WORK/ro"
 HIMMEL_DENIAL_ACK_DIR="$WORK/ro/sub" denials_rise p6c none 'N1:1:SHIP-STEP'
 check "(p6) an unwritable record dir still wakes with rc 0" "0" "$rc"
 chmod 700 "$WORK/ro"
+unset CHIEF_WAIT_PROC
 
 # --- (w) tracker= wakes on a class change exactly as board= does:
 # ok to STALE wakes naming tracker, a move to ok alone does not, and a tick
