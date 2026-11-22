@@ -13,7 +13,7 @@ stop_stubs() {
     [ -f "$tmp/starts.ever" ] || return 0
     while IFS= read -r p; do
         case "$(ps -p "$p" -o args= 2>/dev/null)" in  # swallow-ok: ps failing means the pid is gone
-            *"$tmp/stub-pass.sh"*) kill -- "-$p" 2>/dev/null || kill "$p" 2>/dev/null ;;
+            *"$tmp/stub-pass"*) kill -- "-$p" 2>/dev/null || kill "$p" 2>/dev/null ;;
         esac
     done < "$tmp/starts.ever"
     return 0
@@ -254,6 +254,94 @@ STUB_MAX=2 bash "$SCRIPT" start >/dev/null 2>&1
 pid15="$(state_val "$STATE" pid)"
 [ -n "$pid15" ] && { n=0; while alive "$pid15" && [ "$n" -lt 60 ]; do sleep 0.1; n=$((n+1)); done; }
 [ -n "$pid15" ] && ! alive "$pid15" && echo "ok - 15: a stub exits by itself once its lifetime cap passes" || { echo "FAIL - 15: stub [$pid15] outlived its cap"; fails=$((fails+1)); }
+
+seqstub="$tmp/stub-pass-seq.sh"
+cat > "$seqstub" <<'EOF'
+#!/bin/sh
+n=$(cat "$SEQ_DIR/n" 2>/dev/null || echo 0)
+n=$((n+1))
+echo "$n" > "$SEQ_DIR/n"
+echo "$$" >> "$STUB_EVER"
+code=$(sed -n "${n}p" "$SEQ_DIR/codes")
+[ -n "$code" ] || code=$(tail -n 1 "$SEQ_DIR/codes")
+if [ "$code" = hold ]; then
+    i=0
+    while [ -d "$SEQ_DIR" ] && [ "$i" -lt 60 ]; do sleep 1; i=$((i+1)); done
+    exit 0
+fi
+[ ! -f "$SEQ_DIR/delay" ] || sleep "$(cat "$SEQ_DIR/delay")"
+exit "$code"
+EOF
+chmod +x "$seqstub"
+sstart() {
+    sd="$tmp/s-$1"; mkdir -p "$sd"; printf '%s\n' "$2" | tr ' ' '\n' > "$sd/codes"; rm -f "$sd/n"; [ -z "${3:-}" ] || echo "$3" > "$sd/delay"
+    SEQ_DIR="$sd" GRAPH_PASS_STATE_DIR="$sd/state" GRAPH_PASS_SCRIPT="${STUB:-$seqstub}" bash "$SCRIPT" start >/dev/null 2>&1
+}
+sstatus() { GRAPH_PASS_STATE_DIR="$tmp/s-$1/state" bash "$SCRIPT" status 2>&1; }
+swait() {
+    n=0; while [ "$n" -lt 100 ]; do case "$(sstatus "$1")" in *"$2"*) return 0 ;; esac; sleep 0.1; n=$((n+1)); done
+}
+
+sstart 17 "4 4 0"; check "17: series start rc 0" "$?" 0
+swait 17 "finished"; out17="$(sstatus 17)"
+contains "17: a series that ends 0 reports finished promoted" "$out17" "finished promoted"
+contains "17: status names pass 3" "$out17" "pass=3"
+contains "17: status names last_exit 0" "$out17" "last_exit=0"
+check "17: three passes ran" "$(cat "$tmp/s-17/n")" 3
+check "17: the series file records pass 3" "$(state_val "$tmp/s-17/state/graph-pass.series" pass)" 3
+check "17: the series file records last_exit 0" "$(state_val "$tmp/s-17/state/graph-pass.series" last_exit)" 0
+check "17: the series file records promoted" "$(state_val "$tmp/s-17/state/graph-pass.series" series)" promoted
+contains "17: the launcher log records each pass" "$(cat "$tmp/s-17/state"/graph-pass-*.log)" "pass 3 exit rc=0"
+
+sstart 18 "4 5" 0.5; swait 18 "finished"; out18="$(sstatus 18)"
+contains "18: a non-4 exit stops the series as finished failed rc=5" "$out18" "finished failed rc=5"
+check "18: the series stopped after two passes" "$(cat "$tmp/s-18/n")" 2
+
+sstart 19 "4"; swait 19 "finished"; out19="$(sstatus 19)"
+contains "19: a pass that always exits 4 ends exhausted" "$out19" "finished exhausted"
+check "19: the series stopped at the bound" "$(cat "$tmp/s-19/n")" 5
+
+sstart 20 "4 hold"; swait 20 "pass=2"; out20="$(sstatus 20)"
+contains "20: mid-series status says running" "$out20" "running"
+contains "20: mid-series status says resumable, continuing" "$out20" "resumable, continuing"
+contains "20: mid-series status names last_exit 4" "$out20" "last_exit=4"
+case "$out20" in *failed*) echo "FAIL - 20: mid-series status says failed"; fails=$((fails+1)) ;; *) echo "ok - 20: mid-series status never says failed" ;; esac
+GRAPH_PASS_STATE_DIR="$tmp/s-20/state" bash "$SCRIPT" start >/dev/null 2>&1; rc=$?
+check "21: a second start mid-series is refused rc 3" "$rc" 3
+pid20="$(state_val "$tmp/s-20/state/graph-pass.state" pid)"
+[ -n "$pid20" ] && { kill "$pid20" 2>/dev/null; wait_dead "$pid20"; }
+
+sstart 22 "5"; check "22: a pass that fails at once makes start exit 1" "$?" 1
+
+runstub="$tmp/stub-runner.sh"
+cat > "$runstub" <<EOF
+#!/bin/sh
+{
+    _rc=0; "$seqstub" || _rc=\$?
+    echo "[exit rc=\$_rc]"
+} >> "\$SEQ_DIR/pass.log" 2>&1
+exit "\$_rc"
+EOF
+chmod +x "$runstub"
+STUB="$runstub" sstart 23 "4 4 0"; swait 23 "finished"; out23="$(sstatus 23)"
+contains "23: a runner-shaped pass resumes on exit 4 and promotes" "$out23" "finished promoted"
+check "23: the runner-shaped series ran three passes" "$(cat "$tmp/s-23/n")" 3
+STUB="$runstub" sstart 24 "4 5" 0.5; swait 24 "finished"; out24="$(sstatus 24)"
+contains "24: a runner-shaped pass that exits 5 ends failed rc=5" "$out24" "finished failed rc=5"
+STUB="$runstub" sstart 25 "2" 0.5; swait 25 "finished"; out25="$(sstatus 25)"
+contains "25: a runner-shaped pass that exits 2 ends failed rc=2" "$out25" "finished failed rc=2"
+v28stub="$tmp/stub-runner-v28.sh"
+cat > "$v28stub" <<EOF
+#!/bin/sh
+{
+    _rc=0; "$seqstub" || _rc=\$?
+    echo "[exit rc=\$_rc]"
+} >> "\$SEQ_DIR/pass.log" 2>&1
+EOF
+chmod +x "$v28stub"
+STUB="$v28stub" sstart 26 "4 0"; swait 26 "finished"; out26="$(sstatus 26)"
+contains "26: a v28-shaped runner hides the cap exit, so the series reads promoted after one pass" "$out26" "finished promoted"
+check "26: the v28-shaped series ran one pass" "$(cat "$tmp/s-26/n")" 1
 
 echo
 [ "$fails" -eq 0 ] && { echo "PASS: all rows ok"; exit 0; } || { echo "FAIL: $fails row(s)"; exit 1; }

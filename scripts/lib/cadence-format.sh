@@ -146,8 +146,15 @@
 # time. An armed v26 harvest or synthesize runner has none of the three steps, so
 # the subject pages and the daily actions stay as they are; re-arm with
 # `pipeline-cadence.sh arm --force`.
+# v28 -> v29: the graphmap flow-worker runner (graphmap-himmel, graphmap-luna and
+# the AST/semantic workers) now ends with `exit "$_rc"` after its log group, so it
+# exits with its payload's code. A v28 runner always exits 0, so a detached graph
+# pass series (`graph-pass-detached.sh`) reads a capped pass (exit 4) as promoted
+# and never resumes. Re-arm with `graphmap-cadence.sh arm --rewrite-armed`, which
+# rewrites the runner files already on disk and touches no crontab row;
+# himmel-update does this when it sees a runner below v29.
 # shellcheck disable=SC2034  # consumed by sourcing scripts (pipeline-cadence/doctor/update)
-CADENCE_RUNNER_FORMAT_VERSION=28
+CADENCE_RUNNER_FORMAT_VERSION=29
 
 # Marker line stamped into each generated runner: `# <marker> N`.
 CADENCE_FORMAT_MARKER="himmel-cadence-runner-format:"
