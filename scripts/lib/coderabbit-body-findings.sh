@@ -185,6 +185,13 @@ def fu_drift:
     or test(outside_re) or test(nitpick_re) or test(additional_re)
     or ( count_matches(fu_od_re) == 0 and test(loose_outside_re) )
   );
+def sev_w: "Critical|Major|Minor|Trivial";
+def sev_hdr_re: "</picture> (" + sev_w + ") comments? [(]([0-9]+)[)]</summary>";
+def sev_ent_re: "(?m)^`[0-9]+(?:-[0-9]+)?`: [*][*]<picture>(?:(?!</picture>)[^\n])*</picture> (" + sev_w + ")[*][*]";
+def sev_hdrs: reduce ( [ scan(sev_hdr_re) ] | .[] ) as $p ({}; .[$p[0]] += ($p[1] | tonumber));
+def sev_ents: reduce ( [ scan(sev_ent_re) ] | .[] ) as $p ({}; .[$p[0]] += 1);
+def sev_n: sev_hdrs | add // 0;
+def sev_drift: (sev_hdrs | length) > 0 and sev_hdrs != sev_ents;
 def outside_n: sum_matches(outside_re) + count_matches(fu_od_re);
 def nitpick_n: sum_matches(nitpick_re) + ( if test(fu_hdr_re) then count_matches(fu_nit_re) else 0 end );
 # A prior review that reads as drift counts as one finding, so its head stays in
@@ -221,12 +228,12 @@ _CBF_JQ_COUNTS='
 | {
     outside:       ( $chosen | outside_n ),
     nitpick:       ( $chosen | nitpick_n ),
-    additional:    ( $chosen | sum_matches(additional_re) ),
+    additional:    ( $chosen | sum_matches(additional_re) + sev_n ),
     prior_outside: ( [ $pb[] | prior_n ]      | add // 0 ),
     markers:       ( $chosen | count_matches(marker_re) ),
     outside_drift:    ( $chosen | fu_drift or ((test(loose_outside_re) and (test(outside_re)|not)) and (count_matches(fu_od_re) == 0)) ),
     nitpick_drift:    ( $chosen | (test(loose_nitpick_re)    and (test(nitpick_re)|not)) ),
-    additional_drift: ( $chosen | (test(loose_additional_re) and (test(additional_re)|not)) ),
+    additional_drift: ( $chosen | (test(loose_additional_re) and (test(additional_re)|not)) or sev_drift ),
     head_count:  ($headr | length),
     substantive: ($sub | length)
   }

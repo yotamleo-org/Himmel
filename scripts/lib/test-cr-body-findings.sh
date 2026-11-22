@@ -94,6 +94,12 @@ OUTSIDE_COLON_BODY="$TMP/outside-colon.body.txt"
 sed -e 's/Outside diff range comments (2)/Outside diff range comments: 2/' \
     -e 's/^\(> <summary>.*\) (1)<\/summary>/\1: 1<\/summary>/' "$OUTSIDE_BODY" > "$OUTSIDE_COLON_BODY"
 mk_json_from_file "$RESP_DIR/outside-colon.json"      "$UID_OK"    "$HEAD"  "$OUTSIDE_COLON_BODY"
+SEV_BODY="$FIXDIR/pr-5700-minor-comments.body.txt"
+mk_json_from_file "$RESP_DIR/sev-minor.json"          "$UID_OK"    "$HEAD"  "$SEV_BODY"
+sed 's/Minor comments: 1/Minor comments: 2/' "$SEV_BODY" > "$TMP/sev-header-high.body.txt"
+mk_json_from_file "$RESP_DIR/sev-header-high.json"    "$UID_OK"    "$HEAD"  "$TMP/sev-header-high.body.txt"
+sed 's/Minor comments: 1/Major comments: 1/' "$SEV_BODY" > "$TMP/sev-header-word.body.txt"
+mk_json_from_file "$RESP_DIR/sev-header-word.json"    "$UID_OK"    "$HEAD"  "$TMP/sev-header-word.body.txt"
 mk_json_from_str  "$RESP_DIR/colon-malformed.json"    "$UID_OK"    "$HEAD"  "<summary>Nitpick comments: one</summary> <!-- cr-comment:v1:abc123 -->"
 mk_json_from_str  "$RESP_DIR/colon-suffix-1.json"     "$UID_OK"    "$HEAD"  "<summary>Nitpick comments: 1.5</summary> <!-- cr-comment:v1:abc123 -->"
 mk_json_from_str  "$RESP_DIR/colon-suffix-2.json"     "$UID_OK"    "$HEAD"  "<summary>Nitpick comments: 1foo</summary> <!-- cr-comment:v1:abc123 -->"
@@ -172,6 +178,9 @@ t nitpick-pr466-parses-at-head                nitpick-466         0 "outside=0 n
 # colon-count headers (real PR #2549 body); the old paren form is unchanged above.
 t nitpick-colon-form-counts-1                 nitpick-colon       0 "outside=0 nitpick=1 additional=0 prior_outside=0 markers=1 head_reviews=1 substantive=1"
 t outside-colon-form-counts-2                 outside-colon       0 "outside=2 nitpick=0 additional=0 prior_outside=0 markers=2 head_reviews=1 substantive=1"
+t severity-minor-section-counts-1             sev-minor           0 "outside=0 nitpick=0 additional=1 prior_outside=0 markers=1 head_reviews=1 substantive=1"
+t severity-header-n-above-entries-blocks      sev-header-high     2
+t severity-header-word-differs-from-entry-blocks sev-header-word  2
 t colon-malformed-count-blocks                colon-malformed     2
 t colon-decimal-count-blocks                  colon-suffix-1      2
 t colon-alnum-suffix-count-blocks             colon-suffix-2      2
