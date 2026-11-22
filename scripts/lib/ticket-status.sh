@@ -242,7 +242,7 @@ _ts_repo_key() {
     printf '%s@%s' "$o" "$r"
 }
 
-# _ts_snap_required_set <base> — ts_required_set, read once per base per snapshot, kept per repository and base.
+# _ts_snap_required_set <base> — ts_required_set, read once per base per snapshot.
 _ts_snap_required_set() {
     local f="$TS_SNAPSHOT_DIR/req-${1//\//_}" ttl="${TICKET_STATUS_REQSET_TTL:-300}" kept at now repo
     case "$ttl" in ''|*[!0-9]*) ttl=300 ;; esac
