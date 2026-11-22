@@ -98,7 +98,6 @@ check "9323 unreadable owner doc, the resume_brief names an unreadable file: D6 
 mkdir -p "$tmp/sdbin"
 cat > "$tmp/sdbin/python3" <<'EOF'
 #!/usr/bin/env bash
-# the disposition read of the doc in SD_DOC answers the JSON word in SD_WORD; every other call is the real python3
 if [ -n "${SD_DOC:-}" ] && [ "${2##*/}" = fleet_runtime.py ] && [ "${3-}" = disposition ] && [ "${4-}" = "--doc=$SD_DOC" ]; then
     printf '%s\n' "$SD_WORD"
     exit 0
