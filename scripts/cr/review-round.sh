@@ -424,7 +424,7 @@ $_fx_paths
 EOF
     [ "$_fx_cited" -eq 1 ]
 }
-# increment_class <R> <H>: sets inc_class to carried, tests, merge-resolution or
+# increment_class <R> <H>: sets inc_class to carried, tests, comments, merge-resolution, fix or
 # work; a free class needs a non-empty increment of known size at most
 # free_size_cap and fewer than free_cap free rounds (free_count).
 increment_class() {
@@ -624,7 +624,7 @@ read_round() {
     return 0
 }
 
-# ledger_query <avail|finding|row> <full sha> reads only critic-panel
+# ledger_query <avail|finding|findfiles|allfixed|row|seen> <full sha> reads only critic-panel
 # rows on this branch at that sha (full or >=7-char prefix); claude,
 # claude-floor and codex-adv rows are the session's own and never count (the
 # clear-cr-marker gate 3b exclusion). "avail" prints "ok" when a critic
