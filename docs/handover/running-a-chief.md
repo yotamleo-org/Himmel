@@ -850,8 +850,9 @@ A grant lets one key write one file; it widens no scope and no tool permission. 
 | `operator` | settings and `.github/` | the operator only, in a real terminal, typing the path back |
 
 A worker sends no `HOLD-ASK` on the last two routes. The deny itself is the ask: it is
-logged, shows as the third count of `hreg=` on your tick, and pages the operator once
-with the command, under the same `HOLD-ASK` name (`chief-sections/monitors.md`). Every route has two other exits: wait for the holder's
+logged, shows as the third count of `hreg=` on your tick, and either wakes you once as
+`WAKE hold-ask` with the command (route `chief`) or pages the operator with it under the same
+`HOLD-ASK` name (route `operator`) (`chief-sections/monitors.md`). Every route has two other exits: wait for the holder's
 release, or an operator launch with `WRITE_HOLD_OK=1`. A trust-path PR still needs its
 trust judge, whoever granted the write.
 

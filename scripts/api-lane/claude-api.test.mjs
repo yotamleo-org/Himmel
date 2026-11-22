@@ -228,6 +228,28 @@ test('managed API commitment is visible to pause until its terminal call is reap
   }
 });
 
+test('an API call from inside a live managed worker joins its attempt and leaves it live', () => {
+  const f = fixture();
+  const managed = managedFixture(f, true);
+  const writer = join(HIMMEL_REPO, 'scripts/handover/chief-kit/fleet-manifest.sh');
+  const runtime = (op) => spawnSync('bash', [writer, 'runtime', op, '--doc', managed.WORKER_SESSION_DOC, '--manifest', managed.FLEET_LAUNCH_MANIFEST,
+    '--name', 'TEST-1-N1-api', '--attempt-id', 'worker', '--pid', String(process.pid)], { env: f.env, encoding: 'utf8' });
+  assert.equal(runtime('begin').status, 0);
+  const stamp = spawnSync('bash', [join(HIMMEL_REPO, 'scripts/lib/usage-preflight.sh')], { env: { ...f.env,
+    FLEET_LAUNCH_DOC: managed.WORKER_SESSION_DOC, FLEET_LAUNCH_MANIFEST: managed.FLEET_LAUNCH_MANIFEST, FLEET_LAUNCH_ATTEMPT: 'worker',
+    CADENCE_USAGE_LAUNCH: '1', CADENCE_USAGE_WORKER: 'TEST-1-N1-api', CADENCE_USAGE_CALLER_PID: String(process.pid),
+    CADENCE_USAGE_LANE: 'native', CADENCE_USAGE_CACHE: join(f.dir, 'missing-cache') }, encoding: 'utf8' });
+  assert.match(stamp.stdout, /PROCEED|BANK-STALE|BANK-UNKNOWN/, stamp.stderr);
+  const commit = runtime('commit');
+  assert.equal(commit.status, 0, commit.stderr);
+  const before = JSON.parse(readFileSync(join(f.dir, 'fleet-control.json'))).attempts;
+  const r = f.run(f.good, { ...managed, WORKER_SESSION_ATTEMPT_ID: 'worker' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(f.called(), true);
+  assert.deepEqual(JSON.parse(readFileSync(join(f.dir, 'fleet-control.json'))).attempts, before);
+  assert.equal(before.worker.phase, 'committed');
+});
+
 // A managed call held open by the stub, then a TERM to its launcher. The hold file stays: only the launcher can end the call.
 // Resolves once the launcher is gone, with its exit code and the pids of the stub and (STUB_CHILD) its subprocess.
 async function termMidCall(f, managed, extra = {}) {

@@ -78,9 +78,7 @@
 #      set). FAIL on a missing/empty section, an unmarked line, a
 #      deferred key that does not exist or is already Done/Closed/Resolved/
 #      Won't Do, or is neither residual-labelled, older than the PR's own
-#      ticket, nor linked (either direction, any type) from it. The deferral
-#      keys must also equal the CR ledger's deferred_to rows for the PR head
-#      (or for the reviewed head a same-branch trivial-descendant row names).
+#      ticket, nor linked (either direction, any type) from it.
 #      A Jira error reads UNKNOWN and fails — never a PASS.
 #   9. A PR that changes a plugin bumps that plugin's version (same
 #      rule as check-plugin-drift.sh --bump-required): the manifest version must
@@ -813,10 +811,7 @@ fi  # ONLY7 == 0: checks 1-6
 # cited ticket, each marked `done` or `deferred → <KEY>` (`->` also accepted).
 # Whether a line's "done" is TRUE stays the chief's diff read; this check
 # makes an unaccounted ask structurally visible and a deferral real: every
-# deferred key must exist and still be open, and the deferral keys must equal
-# the CR ledger's deferred_to rows for the PR head, or for the reviewed head a
-# same-branch trivial-descendant row names. A Jira error reads UNKNOWN and
-# fails — never a PASS. JIRA_CMD overrides the CLI (tests), like GH_CMD.
+# deferred key must exist and still be open.
 jira_run() {
     if [ -n "${JIRA_CMD:-}" ]; then
         "$JIRA_CMD" "$@" 2>&1
@@ -945,7 +940,7 @@ cov_section=$(printf '%s\n' "$cov_body" | awk '
     /^##[ \t]+[Tt]icket [Cc]overage[ \t]*$/ { f = 1; next }
     f && /^#/ { exit }
     f')
-cov_lines=$(printf '%s\n' "$cov_section" | grep -E '^[[:space:]]*([-*]|[0-9]+[.)])[[:space:]]' || true)
+cov_lines=$(printf '%s\n' "$cov_section" | grep -E '^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]' || true)
 # A dependency-only Dependabot PR (author app/dependabot, every changed file a
 # manifest or lockfile by name) has no asks to cover; its coverage is generated.
 dep_pr_generated() {
@@ -968,7 +963,7 @@ elif [ -z "$cov_lines" ]; then
     cov_shape_help
     mark_fail
 else
-    cov_bad=""; cov_shape=0; cov_body_keys=""
+    cov_bad=""; cov_shape=0; cov_body_keys=""; cov_wdues=""; cov_adm=""
     # A deferral must land on a residual-verb ticket or one that predates this PR's own.
     cov_own=""
     # an owed line is decided by the anchor's reader alone (the one grammar owner, as item 17 reads it): item 7 checks only its window
@@ -1002,6 +997,7 @@ else
         cov_def=$(printf '%s\n' "$cov_line" | grep -ioE 'deferred[[:space:]]*(→|->)[^[:alnum:]]*[A-Za-z][A-Za-z0-9]*-[0-9]+[^[:alnum:]]*$' || true)
         if [ -n "$cov_def" ]; then
             cov_key=$(printf '%s\n' "$cov_def" | grep -oE '[A-Za-z][A-Za-z0-9]*-[0-9]+' | tr '[:lower:]' '[:upper:]')
+            cov_adm_k=failed; cov_rc=""
             if cov_out=$(jira_get "$cov_key"); then
                 cov_status=$(printf '%s\n' "$cov_out" | jq -r '.fields.status.name // empty' 2>/dev/null || true) # swallow-ok: unparseable output leaves the status empty, which reads UNKNOWN below
                 cov_canon=$(printf '%s\n' "$cov_out" | jq -r '(.key // empty) | ascii_upcase' 2>/dev/null || true) # swallow-ok: unparseable output leaves the key empty, which reads UNKNOWN below
@@ -1022,6 +1018,10 @@ else
                     else
                         cov_bad="$cov_bad; $cov_key was made by a raw jira create (no 'residual' label, not older than ${cov_own:-the PR ticket}, not linked from it) - file it with: jira create --residual-of <parent> --fu-class escape|hardening --class <id>, or link a plain ticket: jira link ${cov_own:-<PR ticket>} $cov_key"
                     fi
+                elif [ "$cov_rc" = 0 ]; then
+                    cov_adm_k=linked
+                else
+                    cov_adm_k=residual-or-older
                 fi
                 cov_body_keys="$cov_body_keys $cov_key"
             elif printf '%s\n' "$cov_out" | grep -qiE '404|does not exist'; then
@@ -1029,6 +1029,7 @@ else
             else
                 cov_bad="$cov_bad; $cov_key UNKNOWN (jira get failed)"
             fi
+            cov_adm="$cov_adm $cov_key=$cov_adm_k"
         elif printf '%s\n' "$cov_line" | grep -qiE "$cov_owed_re"; then
             cov_oans=""; cov_orc=0
             if [ -f "$cov_reader" ]; then
@@ -1044,7 +1045,9 @@ else
                 cov_bad="$cov_bad; owed line is not accepted (who chief, operator or proof, then by YYYY-MM-DD, a real date): $cov_oline"
                 cov_shape=1
             else
-                cov_window_check "$(printf '%s' "$cov_oans" | cut -f3)" "$cov_oline"
+                cov_odue=$(printf '%s' "$cov_oans" | cut -f3)
+                cov_window_check "$cov_odue" "$(printf '%s' "$cov_oans" | cut -f4- | tr '\t' ' ' | cut -c1-160)"
+                cov_wdues="$cov_wdues $cov_odue"
             fi
         elif ! printf '%s\n' "$cov_line" | grep -qiE '(^|[^[:alnum:]])done[^[:alnum:]]*$' \
             || printf '%s\n' "$cov_line" | grep -qiE '(not|n.t)[[:space:]]+done'; then
@@ -1057,18 +1060,24 @@ EOF
     if printf '%s\n' "$cov_body" | grep -qiE "$cov_owed_re"; then
         cov_wans=""; cov_wrc=0
         if [ -f "$cov_reader" ]; then
-            cov_wans=$(printf '%s\n' "$cov_body" | python3 -I "$cov_reader" none 2>/dev/null) || cov_wrc=$?  # swallow-ok: a non-zero rc or empty answer fails the line below
+            cov_wans=$(printf '%s\n' "$cov_body" | python3 -I "$cov_reader" --owed-lines none 2>/dev/null) || cov_wrc=$?  # swallow-ok: a non-zero rc fails the body below
         else
             cov_wrc=3
         fi
-        if [ "$cov_wrc" -ne 0 ] || [ -z "$cov_wans" ]; then
+        if [ "$cov_wrc" -ne 0 ]; then
             cov_bad="$cov_bad; cannot read the body's owed line (the anchor's scripts/lib/pr_remainder.py is missing or gave no answer)"
             cov_shape=1
-        elif [ "${cov_wans%%$'\t'*}" = owed ]; then
-            cov_window_check "$(printf '%s' "$cov_wans" | cut -f3)" "$(printf '%s' "$cov_wans" | cut -f4 | cut -c1-160)"
+        else
+            while IFS= read -r cov_wrow; do
+                [ -n "$cov_wrow" ] || continue
+                cov_wdue=$(printf '%s' "$cov_wrow" | cut -f2)
+                case " $cov_wdues " in *" $cov_wdue "*) continue ;; esac
+                cov_window_check "$cov_wdue" "$(printf '%s' "$cov_wrow" | cut -f4- | tr '\t' ' ' | cut -c1-160)"
+            done <<EOF
+$cov_wans
+EOF
         fi
     fi
-    # The ledger's deferrals at the PR head and the body's deferral lines must name the same tickets.
     cov_head="$SHA"
     if [ "$ONLY7" -eq 1 ]; then
         cov_head=$("$GH" pr view "$PR" --repo "$nwo" --json headRefOid --jq '.headRefOid' 2>/dev/null | tr -d '\r') || cov_head="" # swallow-ok: an unreadable head is reported below
@@ -1091,10 +1100,17 @@ EOF
                     *) cov_bad="$cov_bad; $cov_k is deferred in the CR ledger for $cov_h12 but no coverage line defers to it" ;;
                 esac
             done
-            for cov_k in $cov_body_keys; do
-                case " $cov_led_keys " in
-                    *" $cov_k "*) ;;
-                    *) cov_bad="$cov_bad; $cov_k is deferred in the body but has no deferred_to row in the CR ledger for $cov_h12" ;;
+            for cov_k in $(printf '%s' "$cov_body_keys" | tr ' ' '\n' | sort -u); do
+                case " $cov_led_keys " in *" $cov_k "*) continue ;; esac
+                case " $cov_adm " in
+                    *" $cov_k=failed "*|*" $cov_k=linked "*) ;;
+                    *" $cov_k=residual-or-older "*)
+                        cov_linked "$cov_own" "$cov_k" && cov_rc=0 || cov_rc=$?
+                        if [ "$cov_rc" -eq 2 ]; then
+                            cov_bad="$cov_bad; $cov_k UNKNOWN (jira links failed for $cov_own)"
+                        elif [ "$cov_rc" -ne 0 ]; then
+                            cov_bad="$cov_bad; $cov_k is deferred in the body but has no deferred_to row in the CR ledger for $cov_h12 - link it from the PR's ticket (jira link ${cov_own:-<PR ticket>} $cov_k) or record the review finding's deferral"
+                        fi ;;
                 esac
             done
         else

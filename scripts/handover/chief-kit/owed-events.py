@@ -27,7 +27,7 @@ def run(bucket, now, readiness, stale_seconds=14400):
 
     rows = json.loads(owe('list', '--all', '--json'))
     by_identity = {r.get('identity'): r for r in rows if r.get('identity')}
-    out = dict(stale_ids=[], invalid_ids=[], reminders=[], operator_digest=[], pending=[], summary='')
+    out = dict(stale_ids=[], stale_ticket_ids=[], stale_step_ids=[], invalid_ids=[], reminders=[], operator_digest=[], pending=[], summary='')
     opened = [r for r in rows if not r['closed']]
     if opened:
         age = max(0, now - min(r['epoch'] for r in opened)) // 60
@@ -47,6 +47,7 @@ def run(bucket, now, readiness, stale_seconds=14400):
     for row in opened:
         if row['kind'] == 'ticket' and not row.get('key') and now - row['epoch'] > stale_seconds:
             out['stale_ids'].append(row['id'])
+            out['stale_ticket_ids'].append(row['id'])
         if row['kind'] != 'step' or not row.get('key'):
             continue
         dates = re.findall(r'\bby (\d{4}-\d{2}-\d{2})\b', row['text'])
@@ -66,6 +67,7 @@ def run(bucket, now, readiness, stale_seconds=14400):
             out['pending'].append(pending)
             if event == 'step-due':
                 out['stale_ids'].append(row['id'])
+                out['stale_step_ids'].append(row['id'])
         if row.get('actor') == 'operator':
             item = notify('operator-digest', row['id'], 'operator', row['key'] + ': ' + row['text'], [row['id'], due])
             if item:

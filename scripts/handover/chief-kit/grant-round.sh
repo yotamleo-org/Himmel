@@ -36,8 +36,10 @@
 #       reviewed head (.head) has a standing Critical or Important critic finding
 #       in cr-critic-scores.jsonl (a non-deferred, non-disproved row
 #       from a critic model). A judge GO record on a clean, suggestions-only or
-#       unknown head refuses (16). The clean-merge-forward admission past the cap
-#       (D3c) is review-round.sh's, not this script's. The same-uid ceiling below
+#       unknown head refuses (16). A carried clean merge and the free rounds
+#       (.free) are review-round.sh's, not this script's; a grant leaves .free
+#       as it was. A free round moves .head to its own head, so (e) then reads
+#       the findings there. The same-uid ceiling below
 #       also means the chief, or any write-verdict caller, can name a record
 #       `operator`: the name is a recorded claim, not an authenticated one.
 #

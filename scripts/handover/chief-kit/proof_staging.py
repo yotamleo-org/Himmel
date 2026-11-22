@@ -2,7 +2,8 @@
 
 needs(mirror_text, answers=(), unread=(), cli=None) -> [(name, who, words)], in NEEDS order, one entry per name.
 Inputs: the DoD and Proof sections of the ticket's description (cut by `ticket-policy-cli.mjs --sections`), the
-description's `Staging:` line, the next-step texts of the ticket's live partial-PR answers, and `unread` reasons the
+description's `Staging:` line, the next-step texts of the ticket's live partial-PR answers (every proof row of each answer's
+owed_lines, whichever owner the answer selected; an answer whose owed_lines is missing or malformed is an unknown need), and `unread` reasons the
 caller could not read an input (each is the need ('unknown', 'chief', <reason>), so a refusal is never skipped by a
 failed read). `Staging: none` drops the needs found in the DoD and Proof text, and only those.
 """
@@ -97,6 +98,13 @@ def needs(mirror_text, answers=(), unread=(), cli=None):
         steps.extend(a.get('chief_owed') or [])
         if a.get('kind') == 'owed' and a.get('handed', [])[:1] == ['proof']:
             steps.append(a['text'])
+        rows = a.get('owed_lines')
+        if not isinstance(rows, list) or not all(isinstance(r, dict) and isinstance(r.get('who'), str) and isinstance(r.get('text'), str) for r in rows):
+            why = 'owed units of %s unreadable' % ('PR #%s' % a['pr'] if a.get('pr') else 'a partial-PR answer')
+            if why not in unread:
+                unread.append(why)
+            continue
+        steps.extend(r['text'] for r in rows if r['who'] == 'proof')
     for s in steps:
         _scan(s, found)
     free = [t for t in staging if t.lower() != 'none' and t not in _WHO]
