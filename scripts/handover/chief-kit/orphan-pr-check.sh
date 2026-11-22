@@ -94,7 +94,7 @@ held_entries() {
                 k = split(rest, w, /[^A-Za-z0-9#-]+/)
                 for (j = 1; j <= k; j++) {
                     x = w[j]
-                    if (tolower(x) == "held" || tolower(x) == "hold") break
+                    if (tolower(x) ~ /(^|-)(held|hold)(-|$)/) break
                     if (x ~ /^#?[0-9]+$/) {
                         if (substr(x, 1, 1) == "#") { x = substr(x, 2); if (hashed == "") hashed = x }
                         if (num == "") num = x

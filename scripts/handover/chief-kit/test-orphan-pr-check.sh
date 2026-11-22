@@ -133,6 +133,9 @@ check "10716 a PR named only as another entry's trigger is not held by it" "1:UN
 write_doc "#103 HELD waits on 102 wake=pr:102 resume=$RESUME_DOC"
 run
 check "10716 a blocker PR named in an armed entry's prose stays unowned" "1:UNMAPPED 102 feat/himmel-222-beta" "$rc:$out"
+write_doc "#103 HELD-until 102 wake=pr:102 resume=$RESUME_DOC"
+run
+check "10716 a hyphen-joined hold word still ends the held names" "1:UNMAPPED 102 feat/himmel-222-beta" "$rc:$out"
 write_doc "#4400 HELD wake=pr:4951 resume=$RESUME_DOC | #102 HELD wake=pr:4951 resume=$RESUME_DOC | #4401 HELD waits"
 gone="$(ORPHAN_PR_CHECK_PRS="$PRS" bash "$OPC" --gone-held --doc "$DOC" 2>/dev/null)"
 check "10716 --gone-held names only the armed entry whose PR is no longer open" "1:1" "$(printf '%s\n' "$gone" | grep -c .):$(printf '%s\n' "$gone" | grep -c '^#4400 HELD')"
