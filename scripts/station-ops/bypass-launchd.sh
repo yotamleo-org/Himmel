@@ -29,10 +29,6 @@
 # The operator id is allowFrom[0] of the bridge access.json (TELEGRAM_ACCESS_PATH); the inbound journal is
 # BRIDGE_ROOT/inbound.jsonl. Test seams: BYPASSD_SEND (a program given the message), BYPASSD_LAUNCHER (run in
 # place of headed-arm-worker.sh with its arguments), BYPASSD_POLL, BYPASSD_SETTLE.
-# It loads its own script, the tier file and the registry from one commit. Before it reads a request and again after a
-# go it compares their blob ids at HEAD with the ones it loaded; when they differ, or HEAD cannot be read, it holds until
-# the operator restarts it: it reads no request, launches nothing, writes bypass-queue/.hold and tells the operator once,
-# plus once per waiting request. A go given before the hold is not used and its request goes back to <name>.req.
 # --check runs the start checks (not the Claude-session refusal, the lock, --until or the operator id) and, with
 # --request, the request check the loop runs. It prints accepted or refused: <reason>, then daemon: none, daemon: live
 # pid=<p> or daemon: live pid=<p>, holding (<cause>). It takes no lock and sends nothing. Exit 0 accepted, 1 refused,
