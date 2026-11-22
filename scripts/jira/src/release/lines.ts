@@ -74,7 +74,7 @@ function rulingReason(r: RulingRow): string {
 }
 
 function unknownReason(i: LinesInput): string | null {
-  if (i.issues === null || i.mirrorSync === null) return 'the Jira mirror is unknown';
+  if (i.issues === null || validDay(i.mirrorSync) === null) return 'the Jira mirror is unknown';
   const bad = i.rulingsBad[0] ?? i.events.bad[0] ?? i.operatorBad[0];
   return bad === undefined ? null : `a ledger chain has a bad line: ${bad}`;
 }

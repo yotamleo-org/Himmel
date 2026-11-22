@@ -355,6 +355,7 @@ describe('version lines: unknown input (X1)', () => {
   it.each([
     ['no issues', { issues: null }],
     ['no mirror sync', { mirrorSync: null }],
+    ['an unreadable mirror sync', { mirrorSync: 'not a date' }],
     ['a bad rulings line', { rulings: bad() }],
   ] as Array<[string, Partial<ReduceInput>]>)('every version reads UNKNOWN with a reason and no number: %s', (_n, over) => {
     const s = run(input(over));
