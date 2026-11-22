@@ -335,6 +335,10 @@ peer_setup_run() {
         rc=$?
     fi
     if [ "$rc" -ne 0 ]; then
+        if [ "$verb" = remove ] && [ -n "${2:-}" ] && peer_peers_all | cut -d'|' -f1 | grep -qxF -- "$2"; then
+            rm -f "$(peer_removing_file)"
+            rs_fix "nothing was removed: $2 is still set up. Run the same command again to pick a peer to remove"
+        fi
         msg=$(sed -n 's/^setup: //p' "$err" | head -n 1)
         msg=$(rs_clean "$msg")
         if [ -n "$msg" ]; then rs_fix "setup.ts did not $verb the peer: ${msg:0:200}. Fix that, then run the same command again"; fi
@@ -764,6 +768,15 @@ peer_remove() {
     local names listed name lines known
     peer_peers_check
     name=$(peer_removing_read)
+    if [ -n "$name" ] && peer_peers_all | cut -d'|' -f1 | grep -qxF -- "$name"; then
+        peer_choose "finish|Finish removing $name, which was started before
+cancel|Cancel that removal and pick again"
+        if [ "${PEER_CHOSEN%%|*}" = cancel ]; then
+            rm -f "$(peer_removing_file)"
+            rs_step "the earlier removal of $name was cancelled"
+            name=""
+        fi
+    fi
     if [ -n "$name" ]; then
         rs_step "finishing the removal of $name, which was started before"
     else

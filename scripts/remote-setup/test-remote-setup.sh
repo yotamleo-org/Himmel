@@ -1952,6 +1952,42 @@ case_peer_remove_one_of_two_interrupted_before_restart_finishes_that_removal() {
     check "the pending removal record is cleared" test ! -e "$HOME_FIX/.himmel/remote-setup/peer-removing.json"
 }
 
+case_peer_remove_declined_clears_its_note() {
+    seed_confirmed_station
+    seed_second_peer
+    feed 1 no
+    run_sut "$T/in" peer --remove
+    check "a declined removal is a FIX" eq "$RC" 3
+    check "the FIX says nothing was removed" has "$LAST" "nothing was removed"
+    check "example is still set up" eq "$(jq -r '.peers | has("example")' "$(PEERS_FILE)")" true
+    check "the in-progress note is gone" test ! -e "$HOME_FIX/.himmel/remote-setup/peer-removing.json"
+    feed 2 yes
+    run_sut "$T/in" peer --remove
+    check "the next run offers the normal pick" has "$(cat "$T/out")" "2) yotam"
+    check "and removes the machine picked" has "$LAST" "removed yotam"
+    check "example stays" eq "$(jq -r '.peers | has("example")' "$(PEERS_FILE)")" true
+    sub_case peer_remove_stale_note_pick_finish
+    seed_confirmed_station
+    seed_second_peer
+    mkdir -p "$HOME_FIX/.himmel/remote-setup"
+    printf '{"name":"example"}' > "$HOME_FIX/.himmel/remote-setup/peer-removing.json"
+    feed 1 yes
+    run_sut "$T/in" peer --remove
+    check "finish: exit 0" eq "$RC" 0
+    check "the pick offers finishing or cancelling" has "$(cat "$T/out")" "2) Cancel"
+    check "finish removes example" has "$LAST" "removed example"
+    sub_case peer_remove_stale_note_pick_cancel
+    seed_confirmed_station
+    seed_second_peer
+    mkdir -p "$HOME_FIX/.himmel/remote-setup"
+    printf '{"name":"example"}' > "$HOME_FIX/.himmel/remote-setup/peer-removing.json"
+    feed 2 2 yes
+    run_sut "$T/in" peer --remove
+    check "cancel: exit 0" eq "$RC" 0
+    check "cancel then pick removes yotam" has "$LAST" "removed yotam"
+    check "example stays" eq "$(jq -r '.peers | has("example")' "$(PEERS_FILE)")" true
+}
+
 case_peer_mac_bootout_then_bootstrap_order() {
     echo Darwin > "$T/uname"
     seed_confirmed_station mac
@@ -2331,7 +2367,7 @@ peer_repoint_runs_remove_then_add_confirm peer_pending_publication_survives_inte
 peer_allowfrom_written_by_setup_ts_only_digit_strings peer_canary_token_absent_everywhere
 peer_sigint_during_discovery_restarts_poller renamed_peer_bot_keeps_name
 peer_done_rerun_changes_no_config_artifact peer_inputs_are_only_the_g2_set
-peer_remove_deletes_checkpoint_and_status_na peer_remove_interrupted_resumes peer_remove_with_nothing_set_up_is_done peer_remove_unreadable_peer_list_stops_before_any_change peer_remove_teardown_failure_is_a_fix peer_wait_pages_when_the_group_is_busy peer_remove_unit_delete_failure_is_a_fix peer_remove_reload_failure_is_a_fix peer_remove_one_of_two_restarts_poller peer_remove_one_of_two_interrupted_before_restart_finishes_that_removal
+peer_remove_deletes_checkpoint_and_status_na peer_remove_interrupted_resumes peer_remove_with_nothing_set_up_is_done peer_remove_unreadable_peer_list_stops_before_any_change peer_remove_teardown_failure_is_a_fix peer_wait_pages_when_the_group_is_busy peer_remove_unit_delete_failure_is_a_fix peer_remove_reload_failure_is_a_fix peer_remove_one_of_two_restarts_poller peer_remove_one_of_two_interrupted_before_restart_finishes_that_removal peer_remove_declined_clears_its_note
 peer_mac_bootout_then_bootstrap_order peer_mac_old_agent_is_not_accepted_as_the_updated_poller peer_changed_token_restarts_the_running_poller peer_mac_start_failure_names_the_poller_log peer_without_part1_fixes peer_bridge_equals_main_refuses
 peer_different_bridge_id_without_replace_refuses peer_hello_timeout_fixes peer_wait_is_bounded_by_the_clock_not_by_the_loop_count peer_a_failed_merge_of_updates_leaves_no_temp_file peer_retry_after_a_timed_out_discovery_asks_for_a_fresh_hello peer_no_group_hello_fix_puts_the_rerun_before_the_hello peer_409_names_a_webhook_or_a_competing_poller peer_sole_candidate_needs_a_yes peer_hostile_username_refused
 bun_shim_fails_when_it_cannot_write_peers_json systemctl_shim_changes_the_running_state_only_with_now
