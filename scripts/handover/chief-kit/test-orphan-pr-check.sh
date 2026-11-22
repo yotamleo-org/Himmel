@@ -104,35 +104,54 @@ run
 check "a fork PR is not an orphan" "0" "$rc"
 
 # --- a PR held on the queue: line, by ticket key and by PR number
-write_doc "HIMMEL-222, hold"
+RESUME_DOC=/h/N1-beta-RESUME.md
+write_doc "HIMMEL-222, hold wake=pr:4951 resume=$RESUME_DOC"
 prs "$(pr 102 feat/himmel-222-beta)"
 run
 check "queue-held by ticket key: exits 0" "0" "$rc"
-write_doc "#102 held (adapter merge)"
+write_doc "#102 held (adapter merge) wake=done:HIMMEL-9032 resume=$RESUME_DOC"
 run
 check "queue-held by PR number: exits 0" "0" "$rc"
+write_doc "#102 HELD wake=file:/h/specs/decisions/d-1216.txt resume=$RESUME_DOC"
+run
+check "10716 a HELD entry with a file trigger and a resume doc holds the PR" "0" "$rc"
+write_doc "#102 HELD waits on 4951"
+run
+check "10716 a HELD entry with no trigger reads as unowned" "1:UNMAPPED 102 feat/himmel-222-beta" "$rc:$out"
+write_doc "#102 HELD wake=pr:4951"
+run
+check "10716 a HELD entry with a trigger and no resume doc reads as unowned" "1:UNMAPPED 102 feat/himmel-222-beta" "$rc:$out"
+write_doc "#102 HELD resume=$RESUME_DOC"
+run
+check "10716 a HELD entry with a resume doc and no trigger reads as unowned" "1:UNMAPPED 102 feat/himmel-222-beta" "$rc:$out"
+write_doc "#102 HELD wake=pr:soon resume=relative/doc.md"
+run
+check "10716 a malformed trigger or a relative resume path reads as unowned" "1:UNMAPPED 102 feat/himmel-222-beta" "$rc:$out"
+write_doc "#103 HELD wake=pr:102 resume=$RESUME_DOC"
+run
+check "10716 a PR named only as another entry's trigger is not held by it" "1:UNMAPPED 102 feat/himmel-222-beta" "$rc:$out"
 write_doc "#102 (adapter merge)"
 run
 check "9599 a PR named on the queue: line with no hold word is unowned" "1:UNMAPPED 102 feat/himmel-222-beta" "$rc:$out"
 write_doc "4951 merging | 102 222 N5162 handed off, relaunch after 4951 merges | 4660 8992 HELD until 9032"
 run
 check "9599 a narrative segment that names the PR and no hold is unowned" "1:UNMAPPED 102 feat/himmel-222-beta" "$rc:$out"
-write_doc "4951 merging | 102 222 HELD until 9032 Task 2 | 4660 8992 relaunch"
+write_doc "4951 merging | 102 222 HELD until 9032 Task 2 wake=pr:9032 resume=$RESUME_DOC | 4660 8992 relaunch"
 run
 check "9599 a HELD segment names the PR: exits 0" "0" "$rc"
-write_doc "102 222 threshold tuning, withheld relaunch"
+write_doc "102 222 threshold tuning, withheld relaunch wake=pr:9032 resume=$RESUME_DOC"
 run
 check "9599 hold inside another word does not hold the PR" "1:UNMAPPED 102 feat/himmel-222-beta" "$rc:$out"
-write_doc "102 222 hold2, held_x"
+write_doc "102 222 hold2, held_x wake=pr:9032 resume=$RESUME_DOC"
 run
 check "9599 hold followed by a digit or an underscore does not hold the PR" "1:UNMAPPED 102 feat/himmel-222-beta" "$rc:$out"
-write_doc "4951 merging || prior US queue: 102 222 HELD until 9032"
+write_doc "4951 merging || prior US queue: 102 222 HELD until 9032 wake=pr:9032 resume=$RESUME_DOC"
 run
 check "9599 a hold in a prior-queue segment after || does not hold the PR" "1:UNMAPPED 102 feat/himmel-222-beta" "$rc:$out"
 write_doc "none"
 run
 check "the same PR with the hold gone is unowned" "UNMAPPED 102 feat/himmel-222-beta" "$out"
-write_doc "#1020, HIMMEL-2222"
+write_doc "#1020, HIMMEL-2222 HELD wake=pr:9032 resume=$RESUME_DOC"
 run
 check "a longer number or key does not hold the PR" "1" "$rc"
 write_doc "none"

@@ -42,6 +42,17 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > (`nonces=RELAYED:<worker>` needs the worker's own `SUCCESSION accepted` bullet,
 > else `UNCONFIRMED:<worker>`).
 >
+> **A held PR names a trigger and a resume doc.** A HELD entry is a `|` segment of the `queue:`
+> line, before any `||`, that holds the word `HELD` or `HOLD`, its PR (`#<n>`) or ticket key, one
+> trigger and the resume doc: `#5699 HELD wake=pr:5700 resume=/abs/N1-RESUME.md`. The trigger is
+> `wake=pr:<n>` (PR `<n>` merged or closed), `wake=done:<KEY>` (the ticket Done in the Jira mirror) or
+> `wake=file:<absolute path>` (a decision file present). Only such an entry owns its PR:
+> `orphan-pr-check.sh` and the tick's `unowned-prs=` read a HELD entry with no trigger or no
+> resume doc as unowned, and the `wake=`/`resume=` tokens never count as names. Until the trigger fires the
+> entry is quiet; once it fires the tick lists it in `relaunch=` and the waiter wakes
+> `WAKE relaunch-owed <PR> <resume doc>`. `chief.sh next` drops such an entry once its PR is merged or
+> closed. A HELD entry without a trigger and a resume doc, and any segment with no hold word, is seeded as before.
+>
 > **Every nonce and lock token is a single backtick span, one per worker, with no
 > trailing punctuation inside or directly after the span** — bare
 > token-shaped text stalls the vault's gitleaks pre-commit scanners. Format:
