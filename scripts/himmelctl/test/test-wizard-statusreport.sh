@@ -1010,15 +1010,16 @@ repoM2=$(new_repoM 2)
 printf 'JIRA_BASE_URL=https://example.atlassian.net\nJIRA_EMAIL=me@example.com\nJIRA_PROJECT_KEY=HIMMEL\n' > "$repoM2/.env"
 outM2=$(run_m "$repoM2" "$answersM_inline")
 [ "$(sev_m "$outM2" jira-env-keys)" = red ] || fail "case m2: a partly-filled .env (missing JIRA_API_TOKEN) must stay red (got: $outM2)"
-printf 'JIRA_BASE_URL=https://example.atlassian.net\nJIRA_EMAIL=me@example.com\nJIRA_API_TOKEN=tok\nJIRA_PROJECT_KEY=HIMMEL\n' > "$repoM2/.env"
+printf 'JIRA_BASE_URL=http://127.0.0.1:1\nJIRA_EMAIL=me@example.com\nJIRA_API_TOKEN=tok\nJIRA_PROJECT_KEY=HIMMEL\n' > "$repoM2/.env"
 outM2g=$(run_m "$repoM2" "$answersM_inline")
-[ "$(sev_m "$outM2g" jira-env-keys)" = green ] || fail "case m2: a complete .env must read green (got: $outM2g)"
+[ "$(sev_m "$outM2g" jira-env-keys)" = degraded ] || fail "case m2: a complete .env whose Jira cannot be reached must read degraded (got: $outM2g)"
+echo "$outM2g" | jq -e '.items[] | select(.id=="jira-env-keys") | .detail | contains("could not verify")' >/dev/null || fail "case m2: the degraded detail must say could not verify (got: $outM2g)"
 repoM2d=$(new_repoM 2d); mkdir -p "$repoM2d/.env"
 outM2d=$(run_m "$repoM2d" "$answersM_inline")
 [ "$(sev_m "$outM2d" jira-env-keys)" = red ] || fail "case m2: an .env that exists but cannot be read (a directory) must stay red, not read as never-configured (got: $outM2d)"
 [ "$(doctor_bad_m "$outM2")" = "red/jira-env-keys" ] \
   || fail "case m2 --json: the doctor's C16 selector must still surface a half-filled .env (got: $(doctor_bad_m "$outM2"))"
-echo "ok: case m2 — half-filled and unreadable .env stay red (and stay visible to the doctor's C16); a complete .env is green"
+echo "ok: case m2 — half-filled and unreadable .env stay red (and stay visible to the doctor's C16); a complete .env that cannot be verified is degraded"
 
 # m3: a built bitbucket CLI reads green (the downgrade never masks a real green).
 repoM3=$(new_repoM 3); mkdir -p "$repoM3/scripts/bitbucket/dist"; : > "$repoM3/scripts/bitbucket/dist/index.js"
