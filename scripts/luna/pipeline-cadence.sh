@@ -796,7 +796,7 @@ SH
 SH
 }
 
-# shellcheck disable=SC2016  # single-quoted _tl_rc/$(date) are emitted literally for the runner's own /bin/sh to expand at fire time
+# shellcheck disable=SC2016
 emit_day_note_refresh() {
     local q_timeline="$1" q_vault="$2" indent="$3"
     [ -n "$q_timeline" ] || return 0
