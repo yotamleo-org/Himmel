@@ -223,6 +223,13 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     `<inbox>.wait.refused.day` holds the digest's UTC day. A line without the field reads nothing.
     Act on it as release-manager.md says: ask again with the operator's words, or ack a right refusal.
 
+    **`WAKE relaunch-owed <PR> <resume doc>`** (one line per entry, then the tick line): a HELD `queue:`
+    entry's trigger fired (`live-state.md`: `wake=pr:<n>` merged or closed, `wake=done:<KEY>` Done,
+    `wake=file:<path>` present), read from the tick's `relaunch=`. Relaunch the worker from the resume doc,
+    then take the entry off the `queue:` line. It wakes once per entry under `<inbox>.wait.relaunch`
+    (again after `CHIEF_WAIT_RELAUNCH_REWAKE_MIN`, default 60, while the entry stays); `relaunch=?`
+    (a failed read) keeps the marker, and `relaunch=none` or no field clears it.
+
     **`WAKE pool-stale <KEYS>`**: the tick re-checks every Live-state
     `pool-disposition: KEY slice|close|question|hold|park <target>` line whose target names a
     ticket key of the mirror's project or `PR <n>` and reports `pool-stale=<n>:<KEY>,...` when every named

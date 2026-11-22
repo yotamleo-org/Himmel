@@ -3056,8 +3056,15 @@ check "9599 a PR named in a queue: segment with no hold refuses next (exit 8)" "
 check "9599 the narrative refusal names the PR" "1" "$(grep -cF 'UNMAPPED 4325 fix/demo-88-orphan' "$tmp/outo9599")"
 sed 's/^queue:.*/queue: #4325 (held for the adapter merge)/' "$doco" > "$doco.new" && mv "$doco.new" "$doco" || { echo "FAIL: orph8501 fixture rewrite"; exit 1; }
 rco=0
+ORPHAN_PR_CHECK_PRS="$tmp/orphan-prs-one.json" chief next --bucket orph8501dst --doc "$doco" >"$tmp/outo10716" 2>&1 || rco=$?
+check "10716 a HELD entry with no trigger refuses next (exit 8)" "8" "$rco"
+sed 's|^queue:.*|queue: #4325 HELD for the adapter merge wake=pr:4951 resume=/h/r.md \| #4400 HELD wake=pr:4951 resume=/h/s.md \| 4951 merging|' "$doco" > "$doco.new" && mv "$doco.new" "$doco" || { echo "FAIL: orph8501 fixture rewrite"; exit 1; }
+rco=0
 ORPHAN_PR_CHECK_PRS="$tmp/orphan-prs-one.json" chief next --bucket orph8501dst --doc "$doco" >/dev/null 2>&1 || rco=$?
 check "orph8501 a PR held on the queue: line passes" "0" "$rco"
+check "10716 next drops the HELD entry of a merged or closed PR and keeps the open one's" \
+    "#4325 HELD for the adapter merge wake=pr:4951 resume=/h/r.md | 4951 merging" \
+    "$(sed -n 's/^queue: //p' "$root/tester/orph8501dst/DEMO-nextleg-${today}B-chief.md")"
 HANDOVER_DIR="$root" bash "$QL" release "$doco" "$tokeno" >/dev/null 2>&1
 # an unreadable PR list is neither an orphan nor a refusal
 outu="$(chief new --bucket orph8501u)"

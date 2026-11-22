@@ -1923,7 +1923,7 @@ check_no_orphan_pr() {
     [ "$rc" -eq 1 ] || return 0
     err "refusing to hand over: an open PR is unowned (its ticket's worker record reads wrapped or none, or is absent) and no queue: segment holds it:"
     printf '%s\n' "$orphans" | while IFS= read -r line; do err "  $line"; done
-    err "  relaunch a worker on it, or give it a | segment holding its PR number or ticket key and the word HELD (before any ||) on the queue: line of $1, then retry"
+    err "  relaunch a worker on it, or give it a | segment holding its PR number or ticket key, the word HELD, a trigger (wake=pr:<n>, wake=done:<KEY> or wake=file:<absolute path>) and resume=<absolute resume doc> (before any ||) on the queue: line of $1, then retry"
     return 1
 }
 
@@ -2337,7 +2337,7 @@ latest_go_only() {
     printf '%s\n' "${v%%"; \`"*}"
 }
 
-# seed_live_fields <doc> <predecessor live state> <predecessor stem>: replace each
+# seed_live_fields <doc> <predecessor live state> <predecessor stem> [<predecessor doc>]: replace each
 # `<field>: <...>` placeholder line in the doc's `## Live state` with the
 # predecessor's value, verbatim; a field the predecessor lacks keeps its
 # placeholder. Two exceptions: `workers:` seeds only the open workers
@@ -2386,6 +2386,19 @@ seed_live_fields() {
         else
             err "warning: could not write the older queue segments to the history file; seeded the queue: line whole"
         fi
+    fi
+    local gone
+    if [ -n "${4:-}" ] && gone="$(bash "$HERE/../chief-kit/orphan-pr-check.sh" --gone-held --doc "$4" --repo "${project_dir:-$repo}" 2>/dev/null)" && [ -n "$gone" ]; then  # swallow-ok: an unreadable PR list or doc drops nothing, the queue: line seeds as read
+        queue="$(SL_gone="$gone" awk '
+            BEGIN { n = split(ENVIRON["SL_gone"], g, "\n"); for (i = 1; i <= n; i++) drop[g[i]] = 1 }
+            {
+                t = index($0, "||"); head = t ? substr($0, 1, t - 1) : $0; tail = t ? substr($0, t) : ""
+                m = split(head, seg, "|"); out = ""; sep = ""
+                for (i = 1; i <= m; i++) if (!(seg[i] in drop)) { out = out sep seg[i]; sep = "|" }
+                sub(/^[ \t]+/, "", out); sub(/[ \t]+$/, "", out)
+                if (tail != "") out = (out == "" ? "" : out " ") tail
+                print (out == "" ? "none" : out)
+            }' <<< "$queue")"
     fi
     SL_workers="$new_legs" SL_queue="$queue" \
     SL_last_GO="$new_go" SL_acked="$(seeded_live_field "$live" acked)" awk '
@@ -2710,7 +2723,7 @@ cmd_next() {
         CARRIED_DIRECTION "$predecessor_direction" \
         MODEL "$model" \
         PROJECT "$project_doc_value"
-    seed_live_fields "$doc" "$predecessor_live_state" "$predecessor_stem"
+    seed_live_fields "$doc" "$predecessor_live_state" "$predecessor_stem" "$predecessor_doc"
     precompute_action_zero "$doc"
 
     echo "doc: $doc"

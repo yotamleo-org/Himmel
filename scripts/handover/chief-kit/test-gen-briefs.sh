@@ -2510,5 +2510,44 @@ o="$(TICKET_STATUS_STATE_DIR="$WORK/g-state" GEN_BRIEFS_GH_CMD="$WORK/g-gh.sh" c
 G10_NEEDS="$(cat "$HERE/fixtures/proof-staging-expected.txt")"
 [ "$rc" = 1 ] && has "G10 the refusal names exactly the needs next-dispatchable lists for the same inputs (shared expected list)" "$o" "needs staging before a proof leg: HIMMEL-9815 $G10_NEEDS (operator, \"throwaway PR\"); stage each" || fail "G10 rc=$rc: $o"
 
+test_generator_mixed_proof_staging_and_selected_text() {
+    local id=test_generator_mixed_proof_staging_and_selected_text k o rc t
+    mkdir -p "$WORK/gm-state"; : > "$WORK/gm-state/status-events.jsonl"
+    for k in 9821 9822 9823 9824; do gmk "HIMMEL-$k" "- the row is green" "A RED row that fails before the change."; done
+    for pair in 9821:7011 9821:7012 9823:7012 9823:7013 9822:7011 9824:7011 9824:7019; do
+        printf '{"ts":"t","event":"merge","key":"HIMMEL-%s","pr":"%s","head":"h%s","contract":"no","result":"noop"}\n' "${pair%%:*}" "${pair##*:}" "${pair##*:}" >> "$WORK/gm-state/status-events.jsonl"
+    done
+    cat > "$WORK/gm-gh.sh" <<'EOF'
+#!/usr/bin/env bash
+case "$3" in
+    7011) printf '## Ticket coverage\n- sign the spec: owed -> chief by 2026-11-20\n- run proof with a guest credential: owed -> proof by 2026-11-18\n' ;;
+    7012) printf '## Ticket coverage\n- run sibling proof: owed -> proof by 2026-11-25\n' ;;
+    7013) printf '## Ticket coverage\n- run proof with a guest credential: owed -> proof by 2026-11-18\n- sign the spec: owed -> chief by 2026-11-20\n' ;;
+    *) exit 1 ;;
+esac
+EOF
+    chmod +x "$WORK/gm-gh.sh"
+    for k in 9821 9822 9823; do
+        pfmk "gm$k" "w['keys']=['HIMMEL-$k']"
+        o="$(TICKET_STATUS_STATE_DIR="$WORK/gm-state" GEN_BRIEFS_GH_CMD="$WORK/gm-gh.sh" cgrun "gm$k")"; rc=$?
+        [ "$rc" = 1 ] && pass "$id HIMMEL-$k unstaged proof worker is refused" || fail "$id HIMMEL-$k unstaged rc=$rc: $o"
+        has "$id HIMMEL-$k the refusal names guest-credential" "$o" "HIMMEL-$k guest-credential (operator,"
+        gnone "gm$k" && pass "$id HIMMEL-$k no brief is written" || fail "$id HIMMEL-$k a brief was written"
+    done
+    pfmk gm9822s "w['keys']=['HIMMEL-9822']; w['staged']=True"
+    o="$(TICKET_STATUS_STATE_DIR="$WORK/gm-state" GEN_BRIEFS_GH_CMD="$WORK/gm-gh.sh" cgrun gm9822s)"; rc=$?
+    [ "$rc" = 0 ] && pass "$id staged mixed-only proof worker generates" || fail "$id staged rc=$rc: $o"
+    t="$(cat "$(cg_brief gm9822s)" 2>/dev/null)"
+    has "$id the staged brief carries the staging block" "$t" "> **Staging needed before launch:**"
+    has "$id naming guest-credential" "$t" "HIMMEL-9822 guest-credential (operator,"
+    has "$id Already merged quotes the selected chief line" "$t" "PR \`#7011\`: Remaining: sign the spec: owed -> chief by 2026-11-20"
+    lacks "$id Already merged does not quote the proof line as the remainder" "$t" "PR \`#7011\`: Remaining: run proof"
+    pfmk gm9824 "w['keys']=['HIMMEL-9824']"
+    o="$(TICKET_STATUS_STATE_DIR="$WORK/gm-state" GEN_BRIEFS_GH_CMD="$WORK/gm-gh.sh" cgrun gm9824)"; rc=$?
+    [ "$rc" = 1 ] && has "$id an unread PR beside the mixed one stays unknown" "$o" "unknown (PR #7019 body unread)" || fail "$id read error rc=$rc: $o"
+    has "$id and the mixed PR's need is still named" "$o" "HIMMEL-9824 guest-credential (operator,"
+}
+test_generator_mixed_proof_staging_and_selected_text
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
