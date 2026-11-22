@@ -132,7 +132,7 @@ function ctxForItem(item, answers, targetPath, scope, deadline) {
   const resolvedTargetPath = item.id === 'luna-vault-scaffold'
     ? expandHome(answers.vault && answers.vault.path)
     : targetPath;
-  const ctx = { repoRoot: repoRoot(), targetPath: resolvedTargetPath, scope, env: process.env, jiraChain: item.id === 'jira-env-keys' };
+  const ctx = { repoRoot: repoRoot(), targetPath: resolvedTargetPath, scope, env: process.env, jiraChain: item.id === 'jira-env-keys' && !trackerIsExplicitlyNotJira(targetPath) };
   if (deadline !== null) ctx.deadline = deadline;
   return ctx;
 }

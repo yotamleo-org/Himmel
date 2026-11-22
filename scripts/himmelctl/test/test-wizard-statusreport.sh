@@ -972,7 +972,7 @@ new_repoM() {
 }
 run_m() {  # run_m <fixture repo> <answers json | null> [extra env assignments...]
   local repo="$1" answers="$2"; shift 2
-  (cd "$targetM" && env -u HANDOVER_DIR -u FORGE "$@" HOME="$homeM" USERPROFILE="$(winpath "$homeM")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheM")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheM")-luna-config.json" HIMMELCTL_REPO_ROOT="$(winpath "$repo")" M_ANSWERS="$answers" HIMMELCTL_PROBE_TIMEOUT_SECS=180 "$node_bin" -e "
+  (cd "$targetM" && env -u HANDOVER_DIR -u FORGE -u JIRA_API_TOKEN -u JIRA_EMAIL -u JIRA_BASE_URL -u CREDENTIALS_DIRECTORY HIMMEL_SECRETS_KEYRING=off "$@" HOME="$homeM" USERPROFILE="$(winpath "$homeM")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheM")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheM")-luna-config.json" HIMMELCTL_REPO_ROOT="$(winpath "$repo")" M_ANSWERS="$answers" HIMMELCTL_PROBE_TIMEOUT_SECS=180 "$node_bin" -e "
 const { statusReport } = require(process.env.STATUS_REPORT_LIB);
 const manifest = JSON.parse(require('fs').readFileSync(process.env.MANIFEST_M_PATH, 'utf8'));
 const answers = JSON.parse(process.env.M_ANSWERS) || undefined;
@@ -1007,7 +1007,7 @@ echo "ok: case m1 --json — desired:true + n/a for all three; the doctor's C16 
 # m2: a half-filled .env is a REAL problem -> jira-env-keys stays red; a full
 # one reads green. An unreadable .env (a directory) is not "never configured".
 repoM2=$(new_repoM 2)
-printf 'JIRA_BASE_URL=https://example.atlassian.net\nJIRA_EMAIL=me@example.com\nJIRA_PROJECT_KEY=HIMMEL\n' > "$repoM2/.env"
+printf 'JIRA_BASE_URL=http://127.0.0.1:1\nJIRA_EMAIL=me@example.com\nJIRA_PROJECT_KEY=HIMMEL\n' > "$repoM2/.env"
 outM2=$(run_m "$repoM2" "$answersM_inline")
 [ "$(sev_m "$outM2" jira-env-keys)" = red ] || fail "case m2: a partly-filled .env (missing JIRA_API_TOKEN) must stay red (got: $outM2)"
 printf 'JIRA_BASE_URL=http://127.0.0.1:1\nJIRA_EMAIL=me@example.com\nJIRA_API_TOKEN=tok\nJIRA_PROJECT_KEY=HIMMEL\n' > "$repoM2/.env"
@@ -1082,7 +1082,7 @@ outM3d=$(run_m "$repoM3b" "$answersM_inline")
 git -C "$targetM" config --unset himmel.forge
 [ "$(sev_m "$outM3d" bitbucket-cli-build)" = red ] || fail "case m3d: git config himmel.forge=bitbucket with an unbuilt CLI must stay red (got: $outM3d)"
 repoM3t=$(new_repoM 3t)
-printf 'JIRA_BASE_URL=https://example.atlassian.net\nJIRA_PROJECT_KEY=HIMMEL\n' > "$repoM3t/.env"
+printf 'JIRA_BASE_URL=http://127.0.0.1:1\nJIRA_PROJECT_KEY=HIMMEL\n' > "$repoM3t/.env"
 outM3t=$(run_m "$repoM3t" "$answersM_inline" TRACKER=none)
 [ "$(sev_m "$outM3t" jira-env-keys)" = n/a ] || fail "case m3d: TRACKER=none must make jira-env-keys opt-in (got: $outM3t)"
 git -C "$targetM" config himmel.tracker local

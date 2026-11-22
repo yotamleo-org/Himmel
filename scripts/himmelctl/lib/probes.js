@@ -760,9 +760,14 @@ process.stdin.on('end', async () => {
   try {
     const r = await fetch(url, {
       headers: { Authorization: 'Basic ' + Buffer.from(email + ':' + token).toString('base64'), Accept: 'application/json' },
+      redirect: 'manual',
       signal: AbortSignal.timeout(${JIRA_VERIFY_TIMEOUT_MS}),
     });
-    process.stdout.write(String(r.status));
+    let who = true;
+    if (r.status === 200) {
+      try { who = Boolean((await r.json()).accountId); } catch (_e) { who = false; }
+    }
+    process.stdout.write(r.status === 200 && !who ? 'nobody' : String(r.status));
   } catch (_e) {
     process.stdout.write('error');
   }
@@ -792,6 +797,7 @@ function jiraWhoAmI(baseUrl, email, token, ctx) {
     timeout: JIRA_VERIFY_TIMEOUT_MS + 2000, stdio: ['pipe', 'pipe', 'ignore'],
   });
   const out = String((r && r.stdout) || '').trim();
+  if (out === 'nobody') return -1;
   return /^\d{3}$/.test(out) ? Number(out) : 0;
 }
 
@@ -931,12 +937,16 @@ function probeSettingsKey(item, ctx) {
 function verifyJiraToken(getVal, layerFor, ctx) {
   const tokenLayer = layerFor('JIRA_API_TOKEN');
   const source = tokenLayer.chain ? JIRA_CHAIN_SOURCE : tokenLayer.path;
-  const status = jiraWhoAmI(getVal('JIRA_BASE_URL'), getVal('JIRA_EMAIL'), getVal('JIRA_API_TOKEN'), ctx);
+  const confEmail = {};
+  overlayHimmelConf(confEmail, ctx);
+  const envEmail = ((ctx.env && ctx.env.JIRA_EMAIL) || '').trim();
+  const email = nonEmpty(envEmail) ? envEmail : (nonEmpty(confEmail.JIRA_EMAIL) ? confEmail.JIRA_EMAIL : getVal('JIRA_EMAIL'));
+  const status = jiraWhoAmI(getVal('JIRA_BASE_URL'), email, getVal('JIRA_API_TOKEN'), ctx);
   if (status === 200) return { actual: 'present', detail: `JIRA_API_TOKEN from ${source} verified: Jira answered 200` };
   if (status === 401 || status === 403) {
     return { actual: 'absent', detail: `Jira rejected JIRA_API_TOKEN from ${source} (HTTP ${status}): replace it, in the keyring if that is where it lives` };
   }
-  const why = status === 0 ? 'no answer within 10s or a network error' : `unexpected HTTP ${status}`;
+  const why = status === 0 ? 'no answer within 10s or a network error' : (status === -1 ? 'Jira answered 200 without an account' : `unexpected HTTP ${status}`);
   return { actual: 'degraded', unverified: true, detail: `could not verify JIRA_API_TOKEN from ${source}: ${why}` };
 }
 
