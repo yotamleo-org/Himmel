@@ -16,7 +16,7 @@ fork_repo:            https://github.com/yotamleo/claude-hud   # public fork (HI
 upstream_repo:        https://github.com/jarrodwatts/claude-hud
 pinned_commit:        83e98cf0806d137ea94133ea4945821ede9ee420  # v0.14.1, 6 commits past cf95a32 (HIMMEL-8388)
 pinned_upstream_tree: e5d6f038055d8a3fe05bbdc2ac3c3a4de0321907  # git tree of pinned_commit (provenance)
-vendored_tree_hash:   1b3f45830be71f8afd6c20bdba9d5af2fe97c291f9facbd96be54e3bd514b26e  # sha256 over VENDORED.manifest
+vendored_tree_hash:   2480cf735aa7441909c441696c57b30683664cc6cf56959b5da0f1dc7c510503  # sha256 over VENDORED.manifest
 vendored_at:          2026-10-31
 ```
 

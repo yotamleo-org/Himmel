@@ -91,11 +91,11 @@ else DETACH=(nohup); fi
 
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" >>"$LOG"; }
 send() {
-    if [ -n "${BYPASSD_SEND:-}" ]; then "$BYPASSD_SEND" "$1" || log "send failed"; return 0; fi
-    bun "$REPO/scripts/telegram/chief-route.ts" reply operator "$1" >/dev/null 2>&1 || log "send failed"
+    if [ -n "${BYPASSD_SEND:-}" ]; then "$BYPASSD_SEND" "$2" "$1" || log "send failed"; return 0; fi
+    bun "$REPO/scripts/telegram/chief-route.ts" reply --kind "$1" operator "$2" >/dev/null 2>&1 || log "send failed"
 }
 field() { sed -n "s/^$1=//p" "$2" | head -n 1; }
-refuse() { log "REFUSED $2 $1"; mv "$1" "$1.refused"; send "bypass-launchd refused $(basename "$1"): $2"; }
+refuse() { log "REFUSED $2 $1"; mv "$1" "$1.refused"; send bypass-result "bypass-launchd refused $(basename "$1"): $2"; }
 live() { [ ! -e "$Q/stop" ] && [ "$(date +%s)" -lt "$EXPIRES" ]; }
 
 LOCK="$Q/.lock.pid"
@@ -188,7 +188,7 @@ while :; do
         sha=$(sha256_of "$brief"); [ ${#sha} -eq 64 ] || { refuse "$req" "brief unreadable"; continue; }
         mv "$req" "$req.pending"
         log "ASK $base model=$model chief=$chief flags=$flags effort=${effort:-default} decision=${decision:-none} sha=${sha:0:12}"
-        send "Bypass worker launch asked by $chief: $base on $model, effort ${effort:-default}, grants $grant_text.$billed What it does: $desc (brief sha ${sha:0:12}). Reply: go $code to launch, or no $code to refuse. Expires in 6 h."
+        send bypass-ask "Bypass worker launch asked by $chief: $base on $model, effort ${effort:-default}, grants $grant_text.$billed What it does: $desc (brief sha ${sha:0:12}). Reply: go $code to launch, or no $code to refuse. Expires in 6 h."
         t0=$(date +%s); verdict=expired
         while [ $(( $(date +%s) - t0 )) -lt "$TTL" ] && live; do
             hit=$(tail -c +"$((off + 1))" "$INBOUND" 2>/dev/null | jq -r --argjson op "$OP" --arg c "$code" \
@@ -198,11 +198,11 @@ while :; do
             sleep "$POLL"
         done
         if [ "$verdict" != go ]; then
-            log "$verdict $base"; mv "$req.pending" "$req.$verdict"; send "bypass launch $base: $verdict, nothing ran."; continue
+            log "$verdict $base"; mv "$req.pending" "$req.$verdict"; send bypass-result "bypass launch $base: $verdict, nothing ran."; continue
         fi
         if ! live || [ -L "$brief" ] || [ "$(sha256_of "$brief")" != "$sha" ]; then
             log "REFUSED after go $base (stop, expiry, or brief changed since the ask)"; mv "$req.pending" "$req.refused"
-            send "bypass launch $base: refused after your go, the brief changed or the queue stopped. Nothing ran."; continue
+            send bypass-result "bypass launch $base: refused after your go, the brief changed or the queue stopped. Nothing ran."; continue
         fi
         printf 'granted_at=%s\ngo=%s\nsha=%s\n' "$(date -u +%FT%TZ)" "$code" "$sha" >>"$req.pending"
         log "GRANT $base env=${envs[*]} decision=${decision:-none} go=$code"
@@ -219,11 +219,11 @@ while :; do
             wait "$lp"; lrc=$?
             if [ "$lrc" -ne 0 ]; then
                 log "LAUNCH-FAILED $base rc=$lrc"; mv "$req.pending" "$req.failed"
-                send "bypass launch $base: FAILED (rc $lrc), see $W/$base.launch.out"; continue
+                send bypass-failed "bypass launch $base: FAILED (rc $lrc), see $W/$base.launch.out"; continue
             fi
         fi
         log "LAUNCHED $base"; mv "$req.pending" "$req.done"
-        send "bypass launch $base: launched with ${envs[*]} (approved by your go code). Launch log $W/$base.launch.out"
+        send bypass-result "bypass launch $base: launched with ${envs[*]} (approved by your go code). Launch log $W/$base.launch.out"
     done
     sleep "$POLL"
 done

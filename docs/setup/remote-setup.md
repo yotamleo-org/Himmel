@@ -32,6 +32,14 @@ If you cloned himmel somewhere else, type `cd` and a space, drag that folder fro
 manager into the Terminal window, and press Enter. Every command on this page runs from that
 folder, and every command works unchanged in bash, zsh and fish.
 
+Step 1, once per machine: install himmel, if you have not done so here yet. The helpers read
+your station through the installed himmel, so without the install parts 1 and 4 show `could
+not read this part's status`. The install asks nothing. More in [install.md](install.md).
+
+```bash
+node scripts/himmelctl/bin.js install --scope user
+```
+
 <a id="part-1"></a>
 
 ## Part 1: your main bot

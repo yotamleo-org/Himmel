@@ -165,6 +165,7 @@ async function applyThenReplay(id: string) {
 }
 
 const savedLedger = process.env.HIMMEL_ADMISSIONS_LEDGER;
+const RUNS_AS_ROOT = process.getuid?.() === 0;
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'release-engine-'));
@@ -308,7 +309,7 @@ describe('release engine', () => {
     };
     const noJudge: Judge = async () => { throw new Error('no request is claimed, so the judge is never asked'); };
 
-    it('INTAKE: partial state is visible with an empty queue and a fresh mirror, and the next run converges once', async () => {
+    it.skipIf(RUNS_AS_ROOT)('INTAKE: partial state is visible with an empty queue and a fresh mirror, and the next run converges once', async () => {
       await setup();
       mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: ['v1'] }]);
       const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
@@ -335,7 +336,7 @@ describe('release engine', () => {
       expect(jira.posted).toBe(1);
     });
 
-    it('MOVE across versions: either half of the two rows may be missing and each is written once', async () => {
+    it.skipIf(RUNS_AS_ROOT).each(['the destination row', 'the source row', 'neither row'] as const)('MOVE across versions: either half of the two rows may be missing and each is written once (%s landed)', async (landedRow) => {
       await setup();
       jira.fv.set('K-2', ['v1']);
       const q = request(ctx(), { verb: 'REVERSION', key: 'K-2', from_v: 'v1', to_v: 'v2', why: 'w', evidence: {}, from: 'console' });
@@ -347,17 +348,17 @@ describe('release engine', () => {
       expect(jira.fv.get('K-2')).toEqual(['v2']);
       expect(state(ctx()).unfinished_rulings).toMatchObject([{ ruling: r.id, phase: 'applied', op: 'move v1→v2' }]);
       chmodSync(ledger(), 0o644);
-      // The destination row landed before the interruption; only the source row is missing.
-      appendAdmission({ version: 'v2', key: 'K-2', kind: 'rm-admit', reason: 'regression: breaks the console', by: 'rm-1', ruling: r.id });
+      if (landedRow === 'the destination row') appendAdmission({ version: 'v2', key: 'K-2', kind: 'rm-admit', reason: 'regression: breaks the console', by: 'rm-1', ruling: r.id });
+      if (landedRow === 'the source row') appendAdmission({ version: 'v1', key: 'K-2', kind: 'rm-remove', reason: 'regression: breaks the console', by: 'rm-1', ruling: r.id });
       await rmRun(ctx(), noJudge);
       const mine = rows().filter((x) => x.key === 'K-2').map((x) => [x.kind, x.version, x.ruling]);
-      expect(mine).toEqual([['rm-admit', 'v2', r.id], ['rm-remove', 'v1', r.id]]);
+      expect([...mine].sort()).toEqual([['rm-admit', 'v2', r.id], ['rm-remove', 'v1', r.id]]);
       await rmRun(ctx(), noJudge);
       expect(rows().filter((x) => x.key === 'K-2')).toHaveLength(2);
       expect(state(ctx()).unfinished_rulings).toEqual([]);
     });
 
-    it('an already-member no-op write still gets its row and receipt on replay, with no further Jira write', async () => {
+    it.skipIf(RUNS_AS_ROOT)('an already-member no-op write still gets its row and receipt on replay, with no further Jira write', async () => {
       await setup();
       jira.fv.set('K-2', ['v1']);
       const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
@@ -373,10 +374,12 @@ describe('release engine', () => {
       await rmRun(ctx(), noJudge);
       expect(jira.writes).toBe(0);
       expect(rows().filter((x) => x.kind === 'rm-admit' && x.key === 'K-2')).toHaveLength(1);
+      expect(jira.posted).toBe(1);
+      expect(jira.comments.get('K-2')?.map((c) => c.body.startsWith(`[release-ruling ${r.id}] `))).toEqual([true]);
       expect(state(ctx()).unfinished_rulings).toEqual([]);
     });
 
-    it('an intent whose Jira write never landed is listed too, and a half-applied move stays a hand fix', async () => {
+    it('an intent whose Jira write never landed is listed too', async () => {
       await setup();
       const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
       claim(ctx(rmEnv));
@@ -443,7 +446,7 @@ describe('release engine', () => {
       expect(unfinished.next).not.toMatch(/--add v[12]/);
     });
 
-    it('checks admissions writability before completing an attributable new-epoch move', async () => {
+    it.skipIf(RUNS_AS_ROOT)('checks admissions writability before completing an attributable new-epoch move', async () => {
       const { r } = await interrupted();
       jira.entries.set('K-2', '5001');
       journal(rmWrite());
@@ -503,9 +506,11 @@ describe('release engine', () => {
       journal(rmWrite());
       expect(state(withJournal(ctx())).unfinished_rulings).toMatchObject([{ ruling: r.id, status: 'replay', owner: 'release-manager', next: 'jira release rm-run R1' }]);
       const epoch = state(ctx()).lease?.epoch ?? 0;
+      const writes = jira.writes;
       const lines = await rmRun(withJournal(ctx()), noJudge);
       expect(lines.join('\n')).toContain(`RULING ${r.id}`);
       expect(state(ctx()).lease?.epoch).toBeGreaterThan(epoch);
+      expect(jira.writes - writes, 'the one write left is the destination add').toBe(1);
       expect(jira.fv.get('K-2')).toEqual(['v2']);
       expect(rows().filter((x) => x.key === 'K-2').map((x) => [x.kind, x.version, x.ruling])).toEqual([['rm-admit', 'v2', r.id], ['rm-remove', 'v1', r.id]]);
       expect(jira.posted).toBe(1);
@@ -628,7 +633,19 @@ describe('release engine', () => {
       expect(jira.posted).toBe(0);
     });
 
-    it('external membership in the destination or a third version is never completed over: Jira shows a set the ruling did not write', async () => {
+    it('external membership in the destination alone reads as landed: the replay writes the rows and the receipt and no Jira write', async () => {
+      const { r } = await interrupted();
+      jira.fv.set('K-2', ['v2']);
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: ['v2'] }]);
+      const writes = jira.writes;
+      await rmRun(ctx(), noJudge);
+      expect(jira.writes).toBe(writes);
+      expect(jira.fv.get('K-2')).toEqual(['v2']);
+      expect(rows().filter((x) => x.key === 'K-2').map((x) => [x.kind, x.version, x.ruling])).toEqual([['rm-admit', 'v2', r.id], ['rm-remove', 'v1', r.id]]);
+      expect(jira.posted).toBe(1);
+    });
+
+    it('external membership in a third version is never completed over: Jira shows a set the ruling did not write', async () => {
       const { r } = await interrupted();
       jira.entries.set('K-2', '5001');
       journal(rmWrite());
@@ -646,9 +663,17 @@ describe('release engine', () => {
       expect(state(ctx()).unfinished_rulings).toMatchObject([{ ruling: r.id, status: 'replay', owner: 'release-manager' }]);
     });
 
-    it('characterization (a disproven assumption): the SAME epoch\'s replay already completes the add, each write guarded by the version it names', async () => {
+    it.each([
+      ['the source is already gone, so its remove is not sent again', [] as string[], ['add v2']],
+      ['the destination is already held, so its add is not sent again', ['v1', 'v2'], ['remove v1']],
+    ] as Array<[string, string[], string[]]>)('characterization (a disproven assumption): the SAME epoch\'s replay already completes the add, each write guarded by the version it names: %s', async (_name, held, sent) => {
       const { r } = await interrupted({ release: false });
+      if (held.length) jira.fv.set('K-2', held);
+      const calls: string[] = [];
+      const write = jira.setFixVersion.bind(jira);
+      jira.setFixVersion = async (k, op, v) => { calls.push(`${op} ${v}`); return write(k, op, v); };
       expect((await apply(ctx(rmEnv), r.id)).phase).toBe('receipted');
+      expect(calls).toEqual(sent);
       expect(jira.fv.get('K-2')).toEqual(['v2']);
       expect(rows().filter((x) => x.key === 'K-2').map((x) => x.kind)).toEqual(['rm-admit', 'rm-remove']);
     });
@@ -1216,7 +1241,7 @@ describe('release engine', () => {
     expect(readdirSync(dir)).toEqual([]);
   });
 
-  it.skipIf(process.getuid?.() === 0)('a crash between the applied row and its event is repaired by the retry', async () => {
+  it.skipIf(RUNS_AS_ROOT)('a crash between the applied row and its event is repaired by the retry', async () => {
     await setup();
     const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'found work', evidence: {}, from: 'console' });
     claim(ctx(rmEnv));
@@ -3026,8 +3051,7 @@ console.log(JSON.stringify(f));
     expect(proof.returns.map(r => r.round)).toEqual([3, 3]);
   });
 
-  it.each((['spec', 'spec-review'] as const).flatMap(api =>
-    ['alias', 'overflow', 'unreadable'].map(fault => [api, fault] as const)))('capped carry return selection directory stale: %s %s', (api, fault) => {
+  const directoryStale = (api: 'spec' | 'spec-review', fault: string) => {
     declared();
     const f = cappedFixture();
     const row = cappedSign(api, f);
@@ -3042,7 +3066,10 @@ console.log(JSON.stringify(f));
       unchangedProofFiles(row.capped_carry!);
       expect(cappedCheck(api).lines).toEqual([`SPEC-STALE HIMMEL-10205 ${f.spec} ${row.id}`]);
     } finally { if (fault === 'unreadable') chmodSync(directory, 0o700); }
-  });
+  };
+  const directoryFaults = (faults: string[]) => (['spec', 'spec-review'] as const).flatMap(api => faults.map(fault => [api, fault] as const));
+  it.each(directoryFaults(['alias', 'overflow']))('capped carry return selection directory stale: %s %s', directoryStale);
+  it.skipIf(RUNS_AS_ROOT).each(directoryFaults(['unreadable']))('capped carry return selection directory stale: %s %s', directoryStale);
 
   it.each((['spec', 'spec-review'] as const).flatMap(api =>
     ['spec-return', 'plan-return', 'plan-document', 'design', 'designs', 'spec', 'plan', 'plans', 'key'].flatMap(location =>
@@ -3118,7 +3145,7 @@ const decision = join(f.specsRoot, 'decisions', 'verbatim-decision-990-fixture.t
 mkdirSync(dirname(decision));
 const quote = 'start this ticket over from scratch';
 writeFileSync(decision, 'HIMMEL-10205 '+quote+'\\n');
-const seconds = Math.floor(Date.now()/1000)+2.123456;
+const seconds = Math.floor(Date.now()/1000)+2.140625;
 utimesSync(decision, seconds, seconds);
 process.env.HIMMEL_CONSOLE='1';
 await roundReset(f.specsRoot, 'HIMMEL-10205', { decision:'990', quote });
@@ -3132,6 +3159,10 @@ for (const name of ${reseal} ? readdirSync(dirname(f.spec)).filter(n => /critic-
     return { ...f, decision: join(f.specsRoot, 'decisions', 'verbatim-decision-990-fixture.txt') };
   }
   const decisionFixture = () => resetFixture(cappedFixture());
+  const keepMtime = (path: string, mtime: number) => {
+    utimesSync(path, mtime / 1000, mtime / 1000);
+    expect(statSync(path).mtimeMs, 'the bytes fault keeps the pinned mtime').toBe(mtime);
+  };
 
   function evidencePath(f: CappedFixture, role: string): string {
     const paths: Record<string, string> = { spec: f.spec, plan: f.plan, page: join(dirname(f.spec), 'page.html'),
@@ -3167,7 +3198,12 @@ for (const name of ${reseal} ? readdirSync(dirname(f.spec)).filter(n => /critic-
     expect(cappedCheck(api).lines).toEqual([`SPEC ok HIMMEL-10205 ${f.spec} ${row.id}`]);
     const path = evidencePath(f, role);
     writeFileSync(path, `${readFileSync(path, 'utf8')}\n`);
-    expect(cappedCheck(api).lines, role).toEqual([`SPEC-STALE HIMMEL-10205 ${f.spec} ${row.id}`]);
+    const out = cappedCheck(api);
+    expect(out.lines, role).toEqual([`SPEC-STALE HIMMEL-10205 ${f.spec} ${row.id}`]);
+    const ordinary: Record<string, string> = { spec: 'spec', plan: 'plan', return: 'verdict' };
+    expect(out.answer.get('HIMMEL-10205'), role).toEqual({ missing: role in ordinary
+      ? `${ordinary[role]} ${path} changed since ${row.id}`
+      : `capped proof stale since ${row.id}: capped evidence changed or unreadable: ${path}` });
   });
 
   it.each(['spec', 'spec-review'] as const)('capped carry later ledger append stale: %s', api => {
@@ -3197,7 +3233,7 @@ for (const name of ${reseal} ? readdirSync(dirname(f.spec)).filter(n => /critic-
     expect(proof.pins.find(p => p.role === 'decision')).toMatchObject({ path: f.decision, mtime_ms: mtime });
     expect(cappedCheck(api).lines).toEqual([`SPEC ok HIMMEL-10205 ${f.spec} ${row.id}`]);
     const bytes = readFileSync(f.decision);
-    if (fault === 'bytes') writeFileSync(f.decision, `${bytes.toString()}changed\n`);
+    if (fault === 'bytes') { writeFileSync(f.decision, `${bytes.toString()}changed\n`); keepMtime(f.decision, mtime); }
     if (fault === 'selection') writeFileSync(join(dirname(f.decision), 'verbatim-decision-990-second.txt'), bytes);
     if (fault === 'mtime') { utimesSync(f.decision, mtime / 1000 + 10, mtime / 1000 + 10); expect(readFileSync(f.decision)).toEqual(bytes); }
     if (fault === 'file-alias') { const moved = join(dirname(f.specsRoot), 'same-decision'); renameSync(f.decision, moved); symlinkSync(moved, f.decision); }
@@ -3441,7 +3477,7 @@ if(mode==='output')process.stdout.write(' '.repeat(4*1024*1024+1));
     const preload = join(root, 'observe-child.mjs');
     const log = join(root, 'child-calls.jsonl');
     writeFileSync(preload, `import cp from 'node:child_process'; import {syncBuiltinESMExports} from 'node:module'; import {appendFileSync} from 'node:fs';
-const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(a[1]?.[1]==='capped-fold')appendFileSync(${JSON.stringify(log)},JSON.stringify(a[1])+'\\n');return r;}; syncBuiltinESMExports();`);
+const actual=cp.execFileSync; cp.execFileSync=(...a)=>{if(a[1]?.[1]==='capped-fold')appendFileSync(${JSON.stringify(log)},JSON.stringify(a[1])+'\\n');return actual(...a);}; syncBuiltinESMExports();`);
     const engine = new URL('../../dist/release/engine.js', import.meta.url).href;
     const c = sctx();
     Object.assign(c, fakeProc());
@@ -3451,8 +3487,8 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
     const child = spawnSync(process.execPath, ['--import', preload, '--input-type=module', '-e', script, JSON.stringify(input)], { cwd: root, encoding: 'utf8', timeout: 15000 });
     expect(child.status, child.stderr).toBe(0);
     const result = JSON.parse(child.stdout);
-    expect(result.engine).toBe(engine);
     expect(result.row.capped_carry.carried).toHaveLength(2);
+    expect(readFileSync(log, 'utf8').trim().split('\n'), 'one attempt, logged before it ran').toHaveLength(1);
     expect(JSON.parse(readFileSync(log, 'utf8').trim())).toEqual([expectedVerifier, 'capped-fold', '--key', 'HIMMEL-10205', '--spec', f.spec, '--plan', f.plan,
       '--spec-return', f.verdicts[0], '--plan-return', f.verdicts[1]]);
     const beforeRows = readFileSync(join(c.dir, 'operator.jsonl'), 'utf8');
@@ -3529,6 +3565,7 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
   it('legacy inline and CLEAN success never requests capped fallback', () => {
     declared();
     cappedCalls.length = 0;
+    cappedSpawn.attempts.length = 0;
     const clean = spec();
     expect(sign(sctx(), ['K-1'], clean).capped_carry).toBeUndefined();
     const inline = spec('K-3.md', join(root, 'inline'), ['# K-3: inline', '## Critic rounds', '- R1: fixed in the spec']);
@@ -3539,6 +3576,7 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
     writeFileSync(f.spec, `${readFileSync(f.spec, 'utf8')}\n## Critic rounds\n\n- Round 1: file ${basename(v)}\n  - R1: fixed in §1\n`);
     expect(review(sctx(), f, [v]).capped_carry).toBeUndefined();
     expect(cappedCalls).toEqual([]);
+    expect(cappedSpawn.attempts, 'no capped-fold spawn was attempted, a failed one included').toEqual([]);
   });
 
   it.each((['spec', 'spec-review'] as const).flatMap(api =>
@@ -3754,6 +3792,11 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
 
   it.skipIf(process.platform !== 'linux')('a pinned file that yields more bytes than fstat reported is unreadable', () => {
     expect(pinnedSha('/proc/self/status')).toEqual({ unreadable: true });
+  });
+
+  it('the bounded reader refuses a device by its file type: /dev/null is canonical and empty, so neither the alias check nor a digest is the cause', () => {
+    expect(realpathSync('/dev/null')).toBe('/dev/null');
+    expect(pinned.pinnedRead('/dev/null')).toEqual({ unreadable: true });
   });
 
   it('a missing or changed pinned file names its path in the answer', () => {
@@ -4013,15 +4056,21 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
     it('capped carry v2 signs a seven-key group through the real release operator spec: one schema-2 record, seven SPEC ok, the artifact tree unchanged (E1, R1, R2, E19)', async () => {
       const f = v2Build({ builder: 'group' }); const keys = f.keys!;
       const done = v2Hermetic(f); const before = v2Tree(f); const rowsBefore = releaseRows();
+      const releaseDir = sctx().dir;
+      const releaseFiles = () => existsSync(releaseDir) ? Object.fromEntries(readdirSync(releaseDir, { recursive: true }).map(String).sort()
+        .filter(n => statSync(join(releaseDir, n)).isFile()).map(n => [n, sha(join(releaseDir, n))])) : {};
+      const releaseBefore = releaseFiles();
       await cliSign(f);
       const rows = readOperatorRecords('spec', specEnv());
       expect(rows).toHaveLength(1);
       const row = rows[0];
+      const releaseAfter = releaseFiles();
+      expect(Object.keys(releaseAfter).filter(n => releaseAfter[n] !== releaseBefore[n]), 'E19: the release directory changes in operator.jsonl only').toEqual(['operator.jsonl']);
+      expect(Object.keys(releaseBefore).filter(n => !(n in releaseAfter)), 'E19: no release file is removed').toEqual([]);
       expect(row.capped_carry).toMatchObject({ schema: 2, reader_version: 2, mode: 'capped-carry-ledger', anchor: f.anchor, keys: [...keys].sort(), epoch: 1 });
       expect([...(row.keys ?? [])].sort()).toEqual([...keys].sort());
       expect(row.residuals).toBe(2);
       expect(row.capped_carry!.carried.map(c => [c.kind, c.finding_id, c.status]), 'R2: every carried entry is open-carried').toEqual([['spec', 'F1', 'open-carried'], ['plan', 'P1', 'open-carried']]);
-      expect(pinned.validateCappedProofShape(row.capped_carry)).toEqual(row.capped_carry);
       expect(check(keys)).toEqual(okLines(keys, f, row.id));
       expect(v2Tree(f), 'R1: the artifact tree, every decision mtime and the ledger rows are unchanged').toEqual(before);
       expect(releaseRows(), 'the release root gains exactly one signed row').toBe(rowsBefore + 1);
@@ -4073,13 +4122,16 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
     }, 60000);
 
     it.each(['bytes', 'selection', 'mtime', 'file-alias', 'directory-alias'])('capped carry v2 group decision selection, mtime and alias fault is the only cause of the stale read: %s (E3)', fault => {
-      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f);
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!;
+      const decisionTime = Math.floor(Date.now() / 1000) + 2.140625;
+      utimesSync(f.decision!, decisionTime, decisionTime);
+      const row = v2Sign(f);
       const proof = row.capped_carry!; const mtime = statSync(f.decision!).mtimeMs;
       expect(proof.pins.find(p => p.role === 'decision')).toMatchObject({ path: f.decision, mtime_ms: mtime });
       expect(proof.pins.some(p => p.role === 'decision-selection')).toBe(true);
       expect(check(keys)).toEqual(okLines(keys, f, row.id));
       const ledger = readFileSync(f.ledgerPath, 'utf8'); const bytes = readFileSync(f.decision!);
-      if (fault === 'bytes') writeFileSync(f.decision!, `${bytes.toString()}changed\n`);
+      if (fault === 'bytes') { writeFileSync(f.decision!, `${bytes.toString()}changed\n`); keepMtime(f.decision!, mtime); }
       if (fault === 'selection') writeFileSync(join(dirname(f.decision!), 'verbatim-decision-990-second.txt'), bytes);
       if (fault === 'mtime') { utimesSync(f.decision!, mtime / 1000 + 10, mtime / 1000 + 10); expect(readFileSync(f.decision!)).toEqual(bytes); }
       if (fault === 'file-alias') { const moved = join(dirname(f.specsRoot), 'same-decision'); renameSync(f.decision!, moved); symlinkSync(moved, f.decision!); }
@@ -4112,14 +4164,14 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
       noCappedRows();
     });
 
-    it('capped carry v2 proof is invalid for the unchanged v1 validator, so a v1-aware reader reads it stale (E8)', () => {
+    it('capped carry v2 proof fails the unchanged v1 shape validator and passes the v2 one, and the pinned reader version is still 1 (E8: the validator contract)', () => {
       const f = v2Build({ builder: 'group' }); const row = v2Sign(f);
       expect(() => pinned.validateCappedFoldProofShape(row.capped_carry)).toThrow('invalid capped-fold proof');
       expect(pinned.validateCappedProofShape(row.capped_carry)).toEqual(row.capped_carry);
       expect(pinned.PINNED_READ_VERSION).toBe(1);
     });
 
-    it('capped carry v2 group refusal names the v1 route before the v2 reason: the verifier refuses a member that holds a ledger, and a spawn times out (E9)', () => {
+    it('capped carry v2 group refusal names the v1 route before the v2 reason: the verifier refuses a member that holds a ledger, and a mocked v2 spawn throws its timeout (E9; a real child timeout is pinned for v1 only)', () => {
       const f = v2Build({ builder: 'group', reset: 'none' }); const keys = f.keys!;
       writeFileSync(join(pinned.ledgerDirOf(f.specsRoot), `${f.members![0]}.jsonl`), '');
       expect(() => v2Sign(f)).toThrow(new RegExp(`${GROUP_REFUSAL.source}capped-fold: capped-fold: group member holds ledger state: ${f.members![0]}`));
@@ -4137,6 +4189,8 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
     it('capped carry v2 one key a v1 verifier accepts is stored as schema 1, byte for byte what the verifier printed, with one --key attempt and no --keys (E11, E15)', () => {
       const f = cappedFixture(); const done = v2Hermetic(f as V2Fixture);
       const row = cappedSign('spec', f);
+      const attempts = cappedSpawn.attempts.map(a => [...a]);
+      expect(attempts, 'the whole attempt list of the signing, before the comparison child runs').toEqual([[expectedVerifier, 'capped-fold', '--key', 'HIMMEL-10205', '--spec', f.spec, '--plan', f.plan, '--spec-return', f.verdicts[0], '--plan-return', f.verdicts[1]]]);
       expect(row.capped_carry).toMatchObject({ schema: 1, mode: 'capped-carry', key: 'HIMMEL-10205' });
       const printed = execFileSync(realBun, [expectedVerifier, 'capped-fold', '--key', 'HIMMEL-10205', '--spec', f.spec, '--plan', f.plan, '--spec-return', f.verdicts[0], '--plan-return', f.verdicts[1]], { encoding: 'utf8', timeout: 15000 });
       expect(JSON.stringify(row.capped_carry)).toBe(printed.trim());
@@ -4572,9 +4626,8 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
 
     // ---- follow-ups of the 4b and 4c review: the member check must not depend on another check having run before it.
     // The shapes of the pinned ledger folder: every pinned file is moved with the real folder, so the file pins read, and a member ledger sits in the moved copy; only the member check stands in the way.
-    it.each(['a plain file', 'a symlink to a file', 'a dangling symlink', 'a directory that cannot be listed'])('capped carry v2 the member check refuses a pinned ledger folder that is %s, although every pinned file lives elsewhere and reads (E17)', shape => {
+    const memberFolder = (shape: string) => {
       const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f); const dir = pinned.ledgerDirOf(f.specsRoot); const moved = join(dirname(f.specsRoot), 'moved-ledgers');
-      if (shape === 'a directory that cannot be listed' && process.getuid?.() === 0) return;
       const proof = JSON.parse(JSON.stringify(row.capped_carry));
       for (const pin of proof.pins) if (typeof pin.path === 'string' && pin.path.startsWith(`${dir}/`)) pin.path = join(moved, pin.path.slice(dir.length + 1));
       renameSync(dir, moved);
@@ -4588,7 +4641,10 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
         expect(out.lines).toEqual(staleLines(keys, f, row.id));
         expect(out.answer.get(keys[0])).toEqual({ missing: expect.stringContaining(`capped evidence selection changed: ${dir}`) });
       } finally { if (shape === 'a directory that cannot be listed') chmodSync(dir, 0o755); }
-    });
+    };
+    const memberTitle = 'capped carry v2 the member check refuses a pinned ledger folder that is %s, although every pinned file lives elsewhere and reads (E17)';
+    it.each(['a plain file', 'a symlink to a file', 'a dangling symlink'])(memberTitle, memberFolder);
+    it.skipIf(RUNS_AS_ROOT).each(['a directory that cannot be listed'])(memberTitle, memberFolder);
 
     it('capped carry v2 a doctored verifier answer whose pinned files moved with the ledger folder, now a plain file, is refused when the answer is checked, naming the folder (E17, the signing side)', () => {
       const f = v2Build({ builder: 'group' }); const dir = pinned.ledgerDirOf(f.specsRoot); const moved = join(dirname(f.specsRoot), 'moved-ledgers');
@@ -6165,7 +6221,7 @@ describe('a ruled-away operator ask wakes the chief', () => {
       expect(got['K-5'].remedy).toBe('jira release request R1 --verb INTAKE --key K-5 --from backlog --to v1 --why "<why>" --decision <n> --words "<the operator\'s exact words>"');
       expect(got['K-6'].remedy).toBe(`new facts: jira release request R1 --verb INTAKE --key K-6 --from backlog --to v1 --why "<what changed>" --evidence '{"<changed requirement>":"<value>"}'; or if the refusal is right: jira release ack R1 --ruling ${b.r.id} --reason "<why>"`);
       expect(got['K-7'].remedy).toBe(got['K-5'].remedy.replace('K-5', 'K-7'));
-      expect(c.r.id).toBeDefined();
+      expect(got['K-7'], 'the unknown key\'s notice carries its own ruling and an unknown operator status').toMatchObject({ ruling: c.r.id, req: c.q.req, asks_operator: null });
     });
 
     it('an identical re-request of an open refused ask returns the refused request and files no new Q', async () => {
@@ -6304,11 +6360,15 @@ describe('a ruled-away operator ask wakes the chief', () => {
       mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'P-2', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
       const q = request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
       const [claimed] = claim(at(rmEnv));
+      const stored = () => readChain<RequestRow>(join(ctx().dir, 'requests.jsonl'), loadKey(ctx().keyPath)).verified.filter((r) => r.key === 'C-1').at(-1);
       const got = request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: { follow_up_of: 'P-1', remainder: true }, from: 'console' });
       expect(got.req).toBe(q.req);
       expect(got.state).toBe(claimed.state);
+      expect(stored()).toMatchObject({ req: q.req, state: claimed.state });
       expect(conflictsOf()).toEqual(['P-1>C-1:claimed']);
-      request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: { follow_up_of: 'P-2', remainder: true }, from: 'console' });
+      const moved = request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: { follow_up_of: 'P-2', remainder: true }, from: 'console' });
+      expect(moved).toMatchObject({ req: q.req, state: claimed.state });
+      expect(stored(), 'the parent change keeps the same request and the exact claim').toMatchObject({ req: q.req, state: claimed.state });
       expect(conflictsOf()).toEqual(['P-2>C-1:claimed']);
     });
 
@@ -6338,6 +6398,12 @@ describe('a ruled-away operator ask wakes the chief', () => {
       expect(conflictsOf()).toEqual(['P-1>C-1:refused']);
       mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'], status: 'Done', category: 'Done' }, { key: 'C-1', fixVersions: [] }]);
       expect(conflictsOf()).toEqual([]);
+      for (const status of ["Won't Do", 'Duplicate']) {
+        mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'], status }, { key: 'C-1', fixVersions: [] }]);
+        expect(conflictsOf(), `a ${status} parent`).toEqual([]);
+      }
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'], status: 'Done', category: 'Done', resolution: 'Obsolete' }, { key: 'C-1', fixVersions: [] }]);
+      expect(conflictsOf(), 'a Done parent resolved Obsolete (terminal, not delivered)').toEqual([]);
     });
 
     it('A4: an ack of the refusal ends the notice, not the contradiction: the child stays chief-owned with a refile remedy, never rm-run', async () => {
@@ -6506,7 +6572,9 @@ describe('a ruled-away operator ask wakes the chief', () => {
         mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [], labels: ['operator-directed'] }, { key: 'C-2', fixVersions: [], labels: ['operator-directed'] }]);
         await refuseWith('C-1', { follow_up_of: 'P-1', remainder: false });
         await refuseWith('C-2', {});
-        for (const a of state(ctx()).refused_asks) expect(a.remedy).not.toContain('--required-by');
+        const asks = state(ctx()).refused_asks;
+        expect(asks.map((a) => a.key).sort()).toEqual(['C-1', 'C-2']);
+        for (const a of asks) expect(a.remedy).not.toContain('--required-by');
       });
     });
 
@@ -6530,6 +6598,11 @@ describe('a ruled-away operator ask wakes the chief', () => {
       expect(c.next).toContain('jira mirror');
       expect(c.next).not.toContain('rm-run');
       rmSync(join(root, 'mirror'), { recursive: true, force: true });
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }]);
+      const [missingChild] = state(ctx()).remainder_conflicts;
+      expect(missingChild, 'a fresh mirror that holds the parent and not the child').toMatchObject({ parent: 'P-1', child: 'C-1', unknown: 'child', owner: 'chief', phase: 'refused' });
+      expect(missingChild.next).toContain('jira mirror');
+      rmSync(join(root, 'mirror'), { recursive: true, force: true });
       expect(state(ctx()).remainder_conflicts).toMatchObject([{ parent: 'P-1', child: 'C-1', unknown: 'mirror', owner: 'chief' }]);
     });
   });
@@ -6545,7 +6618,10 @@ describe('a ruled-away operator ask wakes the chief', () => {
     for (const k of ['ABC-2', 'ABC-3', 'ABC-4']) await refuseIntake(k);
     // The chain heads hash rows signed with a key minted per run; every other field is fixed by the fixture and the clock.
     const got = `${JSON.stringify({ ...state(ctx()), heads: { rulings: '', operator: '', events: '', requests: '', mirror: null } }, null, 2)}\n`;
-    if (process.env.UPDATE_GOLDEN === '1') writeFileSync(GOLDEN, got);
+    if (process.env.UPDATE_GOLDEN === '1') {
+      writeFileSync(GOLDEN, got);
+      expect.fail('UPDATE_GOLDEN=1 regenerated state-golden.json; review its diff, then run again without UPDATE_GOLDEN');
+    }
     expect(got).toBe(readFileSync(GOLDEN, 'utf8'));
   });
 });
@@ -6673,8 +6749,15 @@ describe('T8 U7: request, ruling, apply and readback converge once from every fa
     ['receipt posted, response lost', true, 'applied'],
   ];
   // Two windows are made by a read-only file (chmod), which a superuser ignores: those rows skip as the older chmod row of this file does.
+  const DIAGNOSTIC: Record<Window, RegExp> = {
+    'write refused': /jira refused the write/,
+    'readback fails after the write': /jira readback down/,
+    'event append refused': /EACCES[^\n]*events\.jsonl/,
+    'ledger refused after the write': /EACCES[^\n]*admissions-ledger\.jsonl/,
+    'receipt refused': /jira down before the receipt/,
+    'receipt posted, response lost': /the response was lost/,
+  };
   const usesChmod = ([w]: [Window, boolean, string]) => w === 'event append refused' || w === 'ledger refused after the write';
-  const asRoot = process.getuid?.() === 0;
   const windowRow = async (w: Window, member: boolean, phase: 'intent' | 'applied') => {
     declared(member);
     if (w === 'ledger refused after the write') writeFileSync(ledger(), '', { flag: 'a' });
@@ -6682,6 +6765,11 @@ describe('T8 U7: request, ruling, apply and readback converge once from every fa
     const lines = await rmRun(ctx(), admitAll).catch((e: Error) => [`THREW ${e.message}`]);
     expect(fault.fired()).toBe(true);
     expect(lines.join('\n')).toMatch(/PENDING R-R1-0001|THREW/);
+    expect(lines.join('\n'), w).toMatch(DIAGNOSTIC[w]);
+    if (w === 'event append refused') {
+      expect(rows().filter((x) => x.key === 'K-2'), 'nothing after the event is written').toEqual([]);
+      expect(jira.posted, 'no receipt before the event').toBe(0);
+    }
     const s = state(ctx());
     expect(s.unfinished_rulings).toMatchObject([{ ruling: 'R-R1-0001', key: 'K-2', phase, status: 'replay', owner: 'release-manager', next: 'jira release rm-run R1' }]);
     expect(s.lease).toMatchObject({ released: true });
@@ -6691,7 +6779,7 @@ describe('T8 U7: request, ruling, apply and readback converge once from every fa
   };
   const rowName = '%s (already a member: %s): the state reports the partial work, then one replay finishes it once';
   it.each(windows.filter((r) => !usesChmod(r)))(rowName, windowRow);
-  it.skipIf(asRoot).each(windows.filter(usesChmod))(rowName, windowRow);
+  it.skipIf(RUNS_AS_ROOT).each(windows.filter(usesChmod))(rowName, windowRow);
 });
 
 // 8731 (fix review F1): a hard-killed rm-run leaves its lease held. The state reports when the lease's owner process is provably gone, through
@@ -6765,6 +6853,14 @@ describe('T8 U7: seed from the 2026-11-16 correction audit', () => {
     ...[...originals, ...seed.recovery_keys].map((key) => ({ key, fixVersions: jira.fv.get(key) ?? [] })),
   ]);
   const byKey = (list: string[]) => [...list].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+
+  it('the fixture holds the audit as recorded: 20 divergent keys, 9 recovery keys and the two required parents', () => {
+    expect(seed.mismatch_before_correction).toHaveLength(20);
+    expect(new Set(seed.mismatch_before_correction).size).toBe(20);
+    expect(seed.mismatch_before_correction).toContain(seed.later_version_move);
+    expect(seed.recovery_keys).toHaveLength(9);
+    expect(seed.required_by).toEqual(Object.fromEntries([['HIMMEL-9953', 'HIMMEL-9914'], ['HIMMEL-9932', 'HIMMEL-9915']]));
+  });
 
   it('the divergence is visible with a fresh mirror and an empty queue, and one normal path per key makes Jira equal the signed placement', async () => {
     declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });

@@ -765,6 +765,114 @@ exit 1''')
         p = self.rt('begin', aid='third', ok=False)
         self.assertIn('unknown legacy family ownership', p.stderr)
 
+    def live_worker(self):
+        self.active()
+        self.rt('begin', aid='first')
+        self.rt('commit', aid='first')
+
+    def api_call(self, join, doc=None, env=None):
+        script = ('. "$1/scripts/lib/fleet-launch.sh"; fleet_launch_prepare "$2" api-managed "$3" "" "" "$4" || exit $?; '
+                  'echo "managed=$FLEET_LAUNCH_MANAGED"; echo "child_attempt=$(printenv FLEET_LAUNCH_ATTEMPT)"; '
+                  'fleet_launch_finish; fleet_launch_outcome complete; fleet_launch_release')
+        command = ['bash', '-c', script, 'api-call', str(ENTRYPOINTS), str(doc or self.doc), str(self.m), join]
+        result = subprocess.run(command, env=env or self.env, capture_output=True, text=True, timeout=35)
+        self.record(command, result)
+        return result
+
+    def attempts(self):
+        return json.loads((self.bucket / 'fleet-control.json').read_text()).get('attempts', {})
+
+    def test_api_call_inside_live_worker_joins_its_own_attempt(self):
+        self.live_worker()
+        p = self.api_call('first', env=dict(self.env, FLEET_LAUNCH_ATTEMPT='first'))
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn('managed=false', p.stdout)
+        self.assertIn('child_attempt=\n', p.stdout)
+        self.assertEqual(list(self.attempts()), ['first'])
+        files = lambda: {p.name: p.read_bytes() for p in self.bucket.glob('*.json')}
+        before = files()
+        p = self.call('runtime', 'admit', '--doc', self.doc, '--manifest', self.m, '--name', 'api-managed', '--join-attempt', 'first')
+        self.assertEqual(json.loads(p.stdout)['joined'], 'first')
+        self.assertEqual(files(), before)
+
+    def test_joined_api_call_exit_leaves_the_worker_attempt_live(self):
+        self.live_worker()
+        before = self.attempts()['first']
+        p = self.api_call('first')
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(self.attempts()['first'], before)
+        self.assertEqual(before['phase'], 'committed')
+        self.assertTrue((Path(before['reservation']['path']) / 'managed.json').is_file())
+        outcomes = [json.loads(line).get('outcome') for line in (self.bucket / '.himmel/launch-refusals.jsonl').read_text().splitlines()]
+        self.assertNotIn('complete', outcomes)
+        self.assertNotIn('refused', outcomes)
+
+    def test_api_call_naming_another_docs_attempt_or_outside_its_tree_is_refused(self):
+        self.live_worker()
+        doc2 = self.bucket / 'TEST-2-N2-worker.md'
+        doc2.write_text('# second\n')
+        self.call('add', self.m, doc2, '--lane', 'native', '--pending')
+        self.rt('begin', aid='two', doc=doc2)
+        self.rt('commit', aid='two', doc=doc2)
+        p = self.api_call('first', doc=doc2)
+        self.assertEqual(p.returncode, 10, p.stdout)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        stranger = subprocess.Popen(['sleep', '30'])
+        self.addCleanup(stranger.wait)
+        self.addCleanup(stranger.kill)
+        control = json.loads((self.bucket / 'fleet-control.json').read_text())
+        stat = Path('/proc', str(stranger.pid), 'stat').read_text().rsplit(')', 1)[1].split()
+        control['attempts']['first']['owner'] = dict(control['attempts']['first']['owner'], pid=stranger.pid, start=stat[19])
+        (self.bucket / 'fleet-control.json').write_text(json.dumps(control))
+        p = self.call('runtime', 'admit', '--doc', self.doc, '--manifest', self.m, '--name', 'api-managed', '--join-attempt', 'first', ok=False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+
+    def set_attempt(self, aid, **fields):
+        control = json.loads((self.bucket / 'fleet-control.json').read_text())
+        control['attempts'][aid].update(fields)
+        (self.bucket / 'fleet-control.json').write_text(json.dumps(control))
+
+    def test_api_call_naming_a_pending_or_unknown_attempt_of_a_live_owner_is_refused(self):
+        self.active()
+        self.rt('begin', aid='first')
+        p = self.api_call('first')
+        self.assertEqual(p.returncode, 10, p.stdout)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.set_attempt('first', phase='unknown')
+        p = self.api_call('first')
+        self.assertEqual(p.returncode, 10, p.stdout)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+
+    def test_api_call_naming_a_launched_attempt_whose_ancestor_pid_was_reused_is_refused(self):
+        self.live_worker()
+        owner = self.attempts()['first']['owner']
+        self.set_attempt('first', phase='launched', owner=dict(owner, start=str(int(owner['start']) + 1)))
+        p = self.api_call('first')
+        self.assertEqual(p.returncode, 10, p.stdout)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.assertEqual(self.attempts()['first']['phase'], 'launched')
+
+    def test_api_call_with_no_inherited_attempt_is_refused_as_today(self):
+        self.live_worker()
+        p = self.api_call('')
+        self.assertEqual(p.returncode, 10, p.stdout)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.assertEqual(list(self.attempts()), ['first'])
+
+    def test_api_call_from_a_worker_whose_attempt_is_no_longer_live_is_refused(self):
+        self.live_worker()
+        gone = subprocess.Popen(['sleep', '30'])
+        stat = Path('/proc', str(gone.pid), 'stat').read_text().rsplit(')', 1)[1].split()
+        gone.kill()
+        gone.wait()
+        control = json.loads((self.bucket / 'fleet-control.json').read_text())
+        control['attempts']['first']['owner'] = dict(control['attempts']['first']['owner'], pid=gone.pid, start=stat[19])
+        (self.bucket / 'fleet-control.json').write_text(json.dumps(control))
+        p = self.api_call('first')
+        self.assertEqual(p.returncode, 10, p.stdout)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.assertEqual(self.attempts()['first']['phase'], 'unknown')
+
     def test_administrative_docs_still_obey_native_hard_cap(self):
         for number in range(4):
             doc = self.bucket / ('HIMMEL-%d-N%d-worker.md' % (number + 10, number + 10))
@@ -1835,31 +1943,77 @@ exit 1''')
             self.assertEqual(runtime.worker_keys(doc), expected, title)
         self.assertEqual(runtime.TITLE_KEY_RE.pattern, dispatcher['TITLE_KEY_RE'].pattern)
 
-    def begin_beside_old_sibling(self, key, empty=None):
+    def begin_beside_old_sibling(self, key, empty=None, results='- 09:00 LIVE\n', session=True, lock=None, ok=False):
         self.active()
         old, new = self.bucket / 'HIMMEL-101-N1-old.md', self.bucket / 'HIMMEL-101-N2-new.md'
-        old.write_text('# HIMMEL-101 old worker\n- 09:00 LIVE\n')
+        old.write_text('# HIMMEL-101 old worker\n' + results)
         new.write_text('# HIMMEL-101 new worker\n')
         sibling = {'schema': 1, key: [dict(doc=str(old), label='N1', added='2026-11-01T00:00:00Z', lane='native')]}
         if empty:
             sibling[empty] = []
         (self.bucket / 'old.fleet.json').write_text(json.dumps(sibling))
         self.call('add', self.m, new, '--lane', 'native', '--pending')
-        p = self.rt('begin', aid='n1', doc=new, ok=False)
+        saved = self.env
+        if lock:
+            self.env = dict(self.env, TICKET_STATUS_QUEUE_LOCK=self.stub('queue-lock-' + lock, 'exit %d' % {'held': 11, 'free': 0}[lock]))
+        live = None
+        if session:
+            code = 'import ctypes,time; ctypes.CDLL(None).prctl(15,b"claude",0,0,0); time.sleep(30)'
+            live = subprocess.Popen(['claude', '-c', code], executable=sys.executable, env=dict(self.env, WORKER_SESSION_DOC=str(old)))
+            time.sleep(.2)
+        try:
+            return self.rt('begin', aid='n1', doc=new, ok=ok)
+        finally:
+            self.env = saved
+            if live:
+                live.terminate()
+                live.wait(timeout=5)
+
+    def refused_beside_old_sibling(self, key, empty=None, **kwargs):
+        p = self.begin_beside_old_sibling(key, empty, **kwargs)
         self.assertIn('unknown legacy family ownership', p.stderr)
         self.assertEqual(self.anchor_attempts(), {})
 
     def test_begin_is_refused_beside_a_live_row_a_workers_sibling_holds(self):
-        self.begin_beside_old_sibling('workers')
+        self.refused_beside_old_sibling('workers')
 
     def test_begin_is_refused_beside_a_live_row_a_legs_sibling_holds(self):
-        self.begin_beside_old_sibling('legs')
+        self.refused_beside_old_sibling('legs')
 
     def test_begin_is_refused_beside_a_live_legs_row_when_the_sibling_also_has_an_empty_workers(self):
-        self.begin_beside_old_sibling('legs', empty='workers')
+        self.refused_beside_old_sibling('legs', empty='workers')
 
     def test_begin_is_refused_beside_a_live_workers_row_when_the_sibling_also_has_an_empty_legs(self):
-        self.begin_beside_old_sibling('workers', empty='legs')
+        self.refused_beside_old_sibling('workers', empty='legs')
+
+    def test_begin_is_admitted_beside_an_abandoned_row(self):
+        self.begin_beside_old_sibling('workers', results='- 09:00 LIVE\n- 11:40 FINDING — a question\n- 12:30 LIVE\n',
+                                      session=False, ok=True)
+        self.assertEqual(list(self.anchor_attempts()), ['n1'])
+
+    def test_begin_is_refused_beside_an_unwrapped_row_whose_lock_is_held(self):
+        self.refused_beside_old_sibling('workers', session=False, lock='held')
+
+    def test_begin_is_refused_beside_an_unwrapped_row_with_no_marker(self):
+        self.refused_beside_old_sibling('workers', results='', session=False, lock='free')
+
+    def test_begin_is_admitted_beside_a_row_that_wrapped_before_a_succession_note(self):
+        self.begin_beside_old_sibling('workers', results='- 09:00 LIVE\n- 22:30 WRAPPED — merged\n'
+                                      '- 09:00 bus-adopt: adopted: d console AP → AQ [via anchor]\n'
+                                      '- 09:00 SUCCESSION accepted: AQ replaces AP\n', session=False, lock='free', ok=True)
+        self.assertEqual(list(self.anchor_attempts()), ['n1'])
+
+    def test_a_succession_note_after_an_end_marker_still_reads_ended(self):
+        runtime = self.runtime_module()
+        doc = self.bucket / 'ended.md'
+        for lines, ended in ((['- 22:30 WRAPPED', '- 09:00 SUCCESSION accepted: AQ replaces AP'], True),
+                             (['- 22:30 HALTED', '- 09:00 bus-adopt: adopted: d', '- 09:00 SUCCESSION accepted: AQ replaces AP'], True),
+                             (['- 22:30 LIVE', '- 09:00 SUCCESSION accepted: AQ replaces AP'], False),
+                             (['- 09:00 SUCCESSION accepted: AQ replaces AP'], False),
+                             (['- 22:30 WRAPPED', '- 09:00 SUCCESSION accepted: AQ replaces AP', '- 09:10 LIVE'], False),
+                             ([], True)):
+            doc.write_text('\n'.join(['# d'] + lines) + '\n')
+            self.assertEqual(runtime.reads_ended(doc), ended, lines)
 
     def test_a_damaged_owner_reads_unknown_and_only_an_exact_identity_reads_dead(self):
         runtime = self.runtime_module()

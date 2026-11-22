@@ -528,6 +528,27 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     carry a 40-hex head, still wakes as `WAKE tick changed=tails,acts`. Workers
     write READY as a bullet only, never a message.
 
+    **A READY, BLOCKED or FINDING no wake named yet wakes you once.** With
+    `--workers-from`, a worker whose newest marker bullet is a `READY <pr> <head40>`
+    (auto_go on; off, `WAKE ready` above owns it), a `BLOCKED` (not `BLOCKED resolve`)
+    or a `FINDING`, and that no wake of this inbox has named, wakes you with one line
+    each, `WAKE worker-ready <label> pr=<pr> head=<head40>`, `WAKE worker-blocked <label>`
+    or `WAKE worker-finding <label>`, plus the tick line. It catches what the other
+    wakes miss: a READY carried across a succession (the relay starts a worker it meets
+    first after its existing READYs), one already in the doc at the first sample (a
+    silent baseline), and one another wake folded into its saved key; the tick's tails=
+    must already show it in the saved key, so a fresh move still wakes as `WAKE tick`, and a READY
+    the relay has not yet handed on (past its `.wait.ready` cursor) is left to the relay. A `WAKE tick` on
+    that worker's tails= or acts=, a READY the relay handed to worker-event, and the
+    earlier wake itself count as named (`<inbox>.wait.markerwoke`): the same head or
+    bullet never wakes twice, and a successor's new inbox wakes once more. Read the
+    worker's doc and act as on its message.
+
+    **A ready-mismatch ALERT wakes you.** The tick's `ready-mismatch=<flagged>/<ready>,nogo=<k>/<judged>,ALERT`
+    wakes `WAKE ready-mismatch <value>` plus the tick line when ALERT appears and again
+    when the flagged or NO-GO count rises (`<inbox>.wait.readymismatch`; cleared when
+    ALERT leaves). `tick.sh --ready-mismatch --ready-dir <doc dir>` lists the rows.
+
     **A GO'd PR whose worker went silent merges without it**: with `--doc` and `--workers-from`, a READY worker that has had a GO file and no doc write for `CHIEF_WAIT_WORKER_SILENT_MIN` minutes (default 45), and no live process unless its last bullet names its resume brief (`RESUME written: <…-RESUME.md>`) with no FINDING, HALTED, BLOCKED, PARKED-*, WRAPPED or MERGED newer than its READY, is merged by `silent-go-merge.sh` through ready-check at the GO head and `merge-on-green.sh --go`; you wake as `WAKE silent-go` with one `SILENT-WORKER-MERGE`, `-MERGE-FAILED` or `-HELD reason=<why>` line; the operator was already paged with it and your doc carries it as a bullet.
 
     **A watched outside PR that moved wakes you once.** A worker waiting on an outside event
@@ -555,6 +576,19 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     `bulk: mechanical` one; each new row shows once (`<inbox>.wait.size` holds the total shown, and a
     waiter's first sample on a new inbox is a silent baseline). Rule per the size paragraph of
     `running-a-chief.md#rulings`: split, sign `size-override.sh record`, or escalate to the operator.
+
+    **A file ask you can grant wakes you once.**
+    `WAKE hold-ask <key> wants <path> (held by <holder>). Grant: <command>`, then the tick line,
+    means a worker's write on a `ci-trust-paths.txt` path was denied and no grant answers it
+    (`holds.py asks`, kind `hold-ask-chief`). The operator is not paged for it, at first sight or
+    later. Grant it in that turn: run `<command>` plus `--chief-doc <your doc>` with your own
+    queue lock held. Or rule it out: tell the worker to wait for the holder's release or to drop
+    the path. Each ask wakes once (`<inbox>.wait.holdwoke`), an ask an older waiter already
+recorded included. An ask on settings or `.github/`
+    (`hold-ask-operator`) wakes nothing. It pages the operator at first sight, and again once
+    (`hold-ask-stuck`) if it is still ungranted 30 minutes later. An ask whose key has no live
+    worker (no held queue lock names it) and no open PR (no register row of the key on a PR in
+    the tick's `prs=`) is dropped before any wake or page. A `prs=?` keeps every ask.
 
     **A hold wakes you once.** `WAKE tick changed=holds` means a worker entered the
     `holds=` set (`BLOCKED`, or a `FINDING` awaiting a ruling, untouched for

@@ -731,6 +731,35 @@ exit 1`);
   assert.equal(searched(), 3, 'an entry older than the TTL is searched again');
 });
 
+test('CLI: a key that is not a plain key is searched live but never cached, and writes nothing outside the cache folder; a plain key is still cached', () => {
+  const { dir, bucket } = setup();
+  const odd = 'x/../../escape';
+  const jira = stub(dir, 'jira-any', `printf '%s\\tTask\\tTo Do\\tt\\n\\nEdit scripts/lanes/example.sh.\\n' "$2"`);
+  const log = join(dir, 'gh-odd.log');
+  const gh = stub(dir, 'gh-odd', `
+printf '%s\\n' "$*" >> '${log}'
+if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; then echo '[]'; exit 0; fi
+if [ "$1 $2" = "pr list" ]; then exit 0; fi
+exit 1`);
+  const g = mainRepo(dir, `fix(x): [${odd}] odd (#1)`, 'fix(x): [HIMMEL-123] plain (#2)');
+  const cache = join(dir, 'search-cache');
+  const run = (key) => spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--chief', 'AD', key], {
+    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh, CLOUD_ROUTE_GIT_DIR: g, CLOUD_ROUTE_MAIN_REF: 'main', CLOUD_ROUTE_CACHE_DIR: cache, CLOUD_ROUTE_SEARCH_TTL: '600' },
+  });
+  const searched = () => readFileSync(log, 'utf8').split('\n').filter((l) => l.includes('in:title,body')).length;
+  assert.equal(run(odd).status, 0);
+  assert.equal(searched(), 1, 'the odd key is still searched live');
+  assert.equal(existsSync(join(dir, 'escape.json')), false, 'nothing lands outside the cache folder');
+  assert.equal(existsSync(cache) ? readdirSync(cache).length : 0, 0, 'the odd key is not cached at all');
+  assert.equal(run(odd).status, 0);
+  assert.equal(searched(), 2, 'the odd key is searched again, never read from a cache');
+  assert.equal(run('HIMMEL-123').status, 0);
+  assert.equal(searched(), 3);
+  assert.equal(run('HIMMEL-123').status, 0);
+  assert.equal(searched(), 3, 'a plain key is still cached and read back');
+  assert.equal(readdirSync(cache).length, 1);
+});
+
 test('CLI: with no CLOUD_ROUTE_GH_CMD the merged-PR reads go through gh-read.sh (the read token)', () => {
   const { dir, bucket, jira } = setup();
   const bin = join(dir, 'ghbin');

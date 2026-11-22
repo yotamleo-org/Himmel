@@ -1442,7 +1442,7 @@ class OwedRow(tuple):
 def handoff_answered(handover_dir, handoff, line):
     keys = set(re.findall(r'HIMMEL-\d+', line))
     asks = {' '.join(q.lower().split()) for q in re.findall(r'"([^"]{6,})"', line)}
-    if not keys and not asks:
+    if not asks:
         return False
     try:
         since = os.path.getmtime(handoff)

@@ -928,6 +928,58 @@ test("R1.12 a CLI reply with a sandbox BRIDGE_ROOT and HOME writes route.log und
   expect(walk(x.home).filter((p) => p.endsWith("route.log"))).toEqual([]);
 });
 
+const cliStub = (name: string, body: string): string => { const f = join(mkdtempSync(join(tmpdir(), "chief-route-cli-")), name); writeFileSync(f, body); return f; };
+const DEAD_CLI = cliStub("dead.js", `process.stderr.write("jira: 401\\n"); process.exit(1);`);
+const HANG_CLI = cliStub("hang.js", `setInterval(() => {}, 1000);`);
+const reports = (r: string) => spool(r).filter((m) => m.kind === "title-unresolved");
+
+test("HIMMEL-10583 a line whose ticket title cannot be read goes out with the bare key and one title-unresolved report names the key", async () => {
+  for (const cli of [DEAD_CLI, HANG_CLI]) {
+    const x = await route(["operator", "HIMMEL-7002 is stuck"], { env: { HIMMEL_JIRA_CLI: cli } });
+    expect(x.code).toBe(0);
+    expect(operatorOutbox(x.r).map((m) => m.text)).toEqual(["HIMMEL-7002 is stuck"]);
+    const rep = reports(x.r);
+    expect(rep).toHaveLength(1);
+    expect(rep[0].text).toContain("HIMMEL-7002");
+    expect(rep[0].text).not.toMatch(/not readable on the station/);
+  }
+});
+
+test("HIMMEL-10583 controls: resolved keys report nothing, two unresolved keys make one report, a failed report send never blocks the line", async () => {
+  const ok = await route(["operator", "HIMMEL-9503 is stuck"], { env: { HIMMEL_JIRA_CLI: DEAD_CLI } });
+  expect(operatorOutbox(ok.r)).toHaveLength(1);
+  expect(reports(ok.r)).toEqual([]);
+
+  const two = await route(["operator", "HIMMEL-7002 and HIMMEL-7003 are stuck"], { env: { HIMMEL_JIRA_CLI: DEAD_CLI } });
+  expect(operatorOutbox(two.r).map((m) => m.text)).toEqual(["HIMMEL-7002 and HIMMEL-7003 are stuck"]);
+  const rep = reports(two.r);
+  expect(rep).toHaveLength(1);
+  expect(rep[0].text).toContain("HIMMEL-7002, HIMMEL-7003");
+
+  const many = Array.from({ length: 300 }, (_, i) => `HIMMEL-${7100 + i}`);
+  const big = await route(["operator", `${many.join(" ")} are stuck`], { env: { HIMMEL_JIRA_CLI: DEAD_CLI } });
+  const bigRep = reports(big.r);
+  expect(bigRep).toHaveLength(1);
+  expect(bigRep[0].text).toContain(`${many.slice(0, 10).join(", ")} and 290 more`);
+  expect(bigRep[0].text.length).toBeLessThan(1000);
+
+  const r = root(); writeFileSync(join(r, "monitor"), "a file, so mkdir fails");
+  const bad = await route(["operator", "HIMMEL-7002 is stuck"], { r, env: { HIMMEL_JIRA_CLI: DEAD_CLI } });
+  expect(bad.code).toBe(0); expect(bad.out.trim()).toBe("escalate");
+  expect(operatorOutbox(r).map((m) => m.text)).toEqual(["HIMMEL-7002 is stuck"]);
+  expect(routeLog(r).some((l) => / title-unresolved report-failed /.test(l))).toBe(true);
+});
+
+test("HIMMEL-10583 a report that names a salus key goes to the operator chat, never the monitoring group", async () => {
+  const x = await route(["operator", "SALUS-1 is stuck"], { env: { HIMMEL_JIRA_CLI: DEAD_CLI, JIRA_PROJECT_KEY: "SALUS" } });
+  expect(x.code).toBe(0);
+  expect(spool(x.r)).toEqual([]);
+  const sent = operatorOutbox(x.r).map((m) => m.text);
+  expect(sent[0]).toBe("SALUS-1 is stuck");
+  expect(sent).toHaveLength(2);
+  expect(sent[1]).toContain("SALUS-1");
+});
+
 // Every malformed reserved fleet shape is a terminal refusal.
 const malformed = ["/go foo..bar", "/go ../escape", "/push a..b", "/halt a/b", "/go a\\b", `/go ${"a".repeat(65)}`, "/push a\u0000b", "/halt a\nb", "/go", "/push", "/go a b", "/halt a b", "/fleet now", "/workers x", "/go  foo", "/push foo‮"];
 
@@ -3140,6 +3192,42 @@ test("round override nonblocking hint preserves refusal and names the normal ver
   expect(held.err).toContain("operator rules on them first (round-critical)");
   expect(held.err).not.toContain("verified carry");
 }, S1B);
+
+const QUOTE_OLD = "# A\n\nthe realpath of the primary checkout is read by cd and pwd\n";
+const QUOTE_NEW = "# A\n\nthe realpath of the primary checkout, resolved by realpath -e\n";
+const QUOTED = "the realpath of the primary checkout, resolved by";
+const closureTree = async (plan3: string[] = []) => {
+  const t = await roundTree(MAJOR, plan3, false, [], QUOTE_OLD);
+  writeFileSync(t.a, front(CAP_KEY, QUOTE_NEW));
+  return t;
+};
+const overrideOf = (specs: string, ids: string) => verb(true, "round-override", CAP_KEY, "--findings", ids, "--why", "a regression the fix made", "--chief", "chief-x", "--specs", specs);
+
+test("a closure return whose regression heading holds its quote inside the parenthesis is a blocking regression the override can name; a minor finding in it is still refused", async () => {
+  const t = await closureTree();
+  const lines = [`- **P1** (major; regression \`${QUOTED}\`) the fix did not resolve the path`, "- **n1** (minor) a note"];
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 2", ...lines)).err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1).findings).toMatchObject([{ id: "P1", severity: "major", regression: true, class: "regression" }, { id: "n1", class: "out-of-closure" }]);
+  const minor = await overrideOf(t.specs, "n1");
+  expect(minor.err).toContain(`round-override: n1 is not an open blocking finding of ${CAP_KEY}'s latest round`); expect(minor.code).not.toBe(0);
+  const ok = await overrideOf(t.specs, "P1");
+  expect(ok.err).toBe(""); expect(ok.code).toBe(0);
+  expect(rowsOf(t.specs, "override")).toMatchObject([{ round_opened: 5, findings: [{ id: "P1", severity: "major", critic: "spec" }] }]);
+});
+
+test("a quote with a semicolon inside the parenthesis, and a reopens heading with a quote, still read as their tags", async () => {
+  const { parseFindings } = await import("./chief-route");
+  const got = parseFindings(["- **P1** (major; regression `a; b; c`) x", "- **P2** (major; reopens M1 `the quoted line`) y", "- **P3** (major; regression) z", "- **P4** (minor; operator-critical: spend-grant `q`) w", "SPEC FINDINGS 4"].join("\n"), "spec", 4);
+  expect(got.findings).toEqual([{ id: "P1", severity: "major", regression: true }, { id: "P2", severity: "major", reopens: "M1" }, { id: "P3", severity: "major", regression: true }, { id: "P4", severity: "minor", critical: "spend-grant" }]);
+});
+
+test("an ordinary full-mode major finding of the lagging kind is still an open blocking finding next to a closure return", async () => {
+  const t = await closureTree(["- **P1** (major) a plan finding still open"]);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", `- **R1** (major; regression \`${QUOTED}\`) a fault`)).err).toBe("");
+  const ok = await overrideOf(t.specs, "P1,R1");
+  expect(ok.err).toBe(""); expect(ok.code).toBe(0);
+  expect(rowsOf(t.specs, "override")).toMatchObject([{ findings: [{ id: "P1", critic: "plan" }, { id: "R1", critic: "spec" }] }]);
+});
 
 test("R5b: a round whose findings carry no format line holds synthetic ids the override can name", async () => {
   const t = await roundTree(MAJOR, []);
@@ -6127,7 +6215,7 @@ const x3Verdict = (text: string, keep: readonly string[]) => ({
 const X3_ROUTE_KEEP = [
   "const APPROVALS_FILE = \"outside-pr-approvals.jsonl\";",
   "const manifestFile = (specs: string) => join(ledgerDirOf(specs), \"manifest.json\");",
-  "      await appendFile(join(root, \"monitor\", \"outbox.jsonl\"), `${JSON.stringify({ text: sent, kind, at: new Date().toISOString() })}\\n`, { mode: 0o600 });",
+  "  await appendFile(join(root, \"monitor\", \"outbox.jsonl\"), `${JSON.stringify({ text, kind, at: new Date().toISOString() })}\\n`, { mode: 0o600 });",
   "      const file = join(root, \"sessions\", chat < 0 ? `group_${chat}` : \"__chat__\", \"outbox.jsonl\");",
 ] as const;
 const X3_LIB_KEEP = ["  if (await stat(join(ledgerDirOf(specsRoot), 'manifest.json')).then(() => true, () => false)) await roundSeed(specsRoot);"] as const;

@@ -32,7 +32,7 @@ const path = require('path');
 const readline = require('readline');
 const { spawnSync } = require('child_process');
 const { withProfileLock } = require('./lib/profile-lock.js');
-const { himmelIdentity, cacheDir, profileForVault, which, displayPath, shellQuote, nodeScriptCmd } = require('./lib/helpers.js');
+const { himmelIdentity, cacheDir, profileForVault, which, displayPath, shellQuote, nodeScriptCmd, resolveBash, primaryCheckoutRoot, inClaudeSession } = require('./lib/helpers.js');
 const launcherLib = require('./lib/launcher.js');
 const uninstallWrapperLib = require('./lib/uninstall-wrapper.js');
 const standaloneBundleLib = require('./lib/standalone-bundle.js');
@@ -184,6 +184,8 @@ commands:
   status                  read-only severity diff of installed vs desired items;
                           run from the adopted project's root for project scope,
                           or from the himmel checkout for user scope
+  projects [--json]       list the projects himmel was given (adopted at project
+                          scope): path, items wired, adoption time
   ensure                  converge this target toward its desired manifest state:
                           installs/wires whatever status reports red/degraded.
                           By default this is CONVERGE-ONLY —
@@ -367,6 +369,7 @@ const ALLOWED_OPTIONS = {
   report: ['items', 'json', 'deep'],
   // the config UI server.
   ui: ['port', 'allowAgentSession', 'readOnly', 'agui', 'service', 'dryRun'],
+  projects: ['json'],
   ensure: ['items', 'profile', 'yes', 'dryRun', 'prune', 'noNetwork', 'writeTracked'],
   // `scope` takes its OWN positional verbs/targets (set|get|status, then
   // project|user for set), parsed in parseArgs's scope cases, not as --flags.
@@ -540,6 +543,9 @@ function parseArgs(argv) {
         break;
       case 'ui':
         if (!setSubcommand('ui')) return args;
+        break;
+      case 'projects':
+        if (!setSubcommand('projects')) return args;
         break;
       case '--port': {
         const raw = argv[++i];
@@ -3162,7 +3168,7 @@ function printUninstallFooter() {
     bundleOk = meta && meta.marker === standaloneBundleLib.BUNDLE_MARKER;
   } catch (_e) { /* no bundle, or not ours */ }
   if (bundleOk) {
-    console.log(`To uninstall later: ${nodeScriptCmd(path.join(himmelRoot(), 'scripts', 'himmelctl', 'bin.js'))} uninstall (if you delete ${primaryCheckoutRoot()} first, the fallback still works: ${nodeScriptCmd(path.join(bundleDir, 'standalone.js'))} uninstall)`);
+    console.log(`To uninstall later: ${nodeScriptCmd(path.join(himmelRoot(), 'scripts', 'himmelctl', 'bin.js'))} uninstall (if you delete ${primaryCheckoutRoot(repoRoot())} first, the fallback still works: ${nodeScriptCmd(path.join(bundleDir, 'standalone.js'))} uninstall)`);
     // ^ nodeScriptCmd already prefixes "node " and quotes the path when needed.
   } else {
     console.log(`To uninstall later: ${nodeScriptCmd(path.join(himmelRoot(), 'scripts', 'himmelctl', 'bin.js'))} uninstall`);
@@ -3563,7 +3569,7 @@ function gitCheckIgnore(file) {
 // keep/set/skip, take a masked value, write it with the secret store. Returns
 // { NAME: set|kept|skipped|card } (status only), or null when refused.
 async function collectSecrets(ask, answers) {
-  if (process.env.CLAUDECODE || Object.keys(process.env).some((k) => k.indexOf('CLAUDE_CODE_') === 0)) {
+  if (inClaudeSession()) {
     console.error('himmelctl: secrets step refused: running inside Claude Code, where a typed secret would pass through the model session; run himmelctl from a plain terminal');
     return null;
   }
@@ -5165,6 +5171,7 @@ async function runPlan(answers, args, graph) {
     if (!installed) undoLaneProfile();
     signals.release();
   }
+  if ((answers.scope || 'project') === 'project' && !args.dryRun) recordGivenProject(projectTargetDir());
 
   // T4.5: pluginSet=full → the documented per-plugin enable step. lean → no-op
   // (adopt.sh's/setup.sh's settings-template default).
@@ -5217,8 +5224,7 @@ function browserReachable() {
 // No reachable browser (or no bun) types the secrets in the terminal instead, unless the wizard's own walk already did.
 async function installUiHandoff(answers) {
   const label = 'Finish setup in the UI';
-  const inClaude = Object.keys(process.env).some((k) => (k === 'CLAUDECODE' || k.startsWith('CLAUDE_CODE_')) && process.env[k]);
-  if (inClaude) {
+  if (inClaudeSession()) {
     console.log(`${label}: run \`himmelctl ui\` from your own terminal; it prints the Setup link.`);
     return;
   }
@@ -5793,30 +5799,6 @@ function printHimmelctlPathInstruction(binDir) {
 // SHIM_MARKER, fileCarriesMarker, writeMarkedLauncher, removeMarkedLauncher and
 // removeHimmelctlLaunchers now live in lib/launcher.js.
 
-// Resolve the PRIMARY checkout root, the parent of `git rev-parse
-// --git-common-dir`, so a launcher written from a linked feature worktree
-// targets the stable primary checkout, not the disposable worktree (which after
-// pruning leaves a MODULE_NOT_FOUND launcher `himmelctl update` can't
-// self-repair). Same primary-checkout convention scripts/lib/load-dotenv.sh
-// uses. When repoRoot() is already the primary, or git is absent (tarball
-// install), behavior is unchanged: returns repoRoot(). (codex-adv-2.)
-//
-// The parent resolution runs INSIDE bash (`cd "$d/.." && pwd`).
-//
-// <dir> defaults to repoRoot() (all pre-existing call sites); an explicit
-// <dir> (as checkUninstallCompleteness passes) resolves a DIFFERENT
-// directory's primary checkout the same way, so two directories' identity
-// can be compared regardless of which linked worktree either one is.
-function primaryCheckoutRoot(dir) {
-  const root = dir || repoRoot();
-  const r = spawnSync(resolveBash(),
-    ['-c', 'd=$(git rev-parse --git-common-dir 2>/dev/null) && cd "$d/.." && pwd'],
-    { cwd: root, encoding: 'utf8' });
-  if (r.error || r.status !== 0 || !r.stdout) return root;
-  const resolved = r.stdout.trim();
-  return resolved ? path.resolve(resolved) : root;
-}
-
 // True iff <a> and <b> are the SAME filesystem entry, dev+ino identity, the
 // Node equivalent of shell `test -ef`. Trailing-separator- and
 // slash-style-insensitive (fs.statSync resolves the real on-disk file, unlike
@@ -5867,7 +5849,7 @@ function ensureBusStateDirs() {
 
 function applyHimmelctlPathShim(args) {
   const binDir = launcherLib.himmelctlBinDir();
-  const repoRootPath = primaryCheckoutRoot();
+  const repoRootPath = primaryCheckoutRoot(repoRoot());
   const target = path.join(repoRootPath, 'scripts', 'himmelctl', 'bin.js');
   const fallback = path.join(standaloneBundleLib.bundleDir(), 'standalone.js');
   if (args.dryRun) {
@@ -6122,11 +6104,62 @@ function latestSessionId(projects) {
   return best;
 }
 
+const GIVEN_ITEM_IDS = ['wiring-pretooluse', 'wiring-statusline', 'claude-plugins-pluginSet', 'himmel-ops-plugin', 'graphify-mcp', 'pre-commit-hooks'];
+
+function recordGivenProject(dir) {
+  let manifest;
+  try {
+    manifest = loadManifest();
+  } catch (e) {
+    console.error(`himmelctl: WARN: not listed as a given project: cannot read the manifest (${e.message})`);
+    return;
+  }
+  const items = [];
+  for (const id of GIVEN_ITEM_IDS) {
+    const item = manifest.items.find((i) => i.id === id);
+    if (!item) continue;
+    try {
+      const probe = probesLib.runProbe(item, { repoRoot: repoRoot(), targetPath: dir, scope: 'project', env: process.env, scopeFileOnly: true });
+      if (probe.actual !== 'absent') items.push(id);
+    } catch (e) {
+      console.error(`himmelctl: WARN: given-list probe for ${id} errored (${e.message}); not recorded`);
+    }
+  }
+  let r;
+  try {
+    r = stateLib.addTarget(dir, { items });
+  } catch (e) {
+    r = { ok: false, error: e.message };
+  }
+  if (r.ok) {
+    console.log(`himmelctl: listed ${r.key} as a given project (${items.join(', ') || 'no items'})`);
+  } else {
+    console.error(`himmelctl: WARN: not listed as a given project: ${r.error}`);
+  }
+}
+
+function cmdProjects(args) {
+  const rows = stateLib.listTargets();
+  if (args.json) {
+    process.stdout.write(JSON.stringify({ projects: rows }, null, 2) + '\n');
+    return 0;
+  }
+  if (rows.length === 0) {
+    console.log('no given projects (adopt one at project scope: himmelctl install --scope project)');
+    return 0;
+  }
+  for (const r of rows) {
+    console.log(`${r.path}${r.nwo ? `  (${r.nwo})` : ''}`);
+    console.log(`  items: ${r.items.join(', ') || '-'}${r.adoptedAt ? `  adopted ${r.adoptedAt}` : ''}`);
+  }
+  return 0;
+}
+
 // `ui` runs scripts/config-ui/server.ts under bun in the
 // foreground. The server prints the tokened URL itself; this verb only locates
 // it, refuses a missing bun, and forwards the exit code.
 function cmdUi(args) {
-  if (!args.allowAgentSession && Object.keys(process.env).some((k) => (k === 'CLAUDECODE' || k.startsWith('CLAUDE_CODE_')) && process.env[k])) {
+  if (!args.allowAgentSession && inClaudeSession()) {
     console.error('himmelctl: ui: operator-only; refused inside a Claude session (CLAUDECODE / CLAUDE_CODE_* is set). Run it from your own terminal, or pass --allow-agent-session to override.');
     return 2;
   }
@@ -7981,14 +8014,6 @@ function envFilePath() {
   return path.join(repoRoot(), '.env');
 }
 
-// The bash executable EVERY himmelctl bash spawn must use: HIMMELCTL_BASH when
-// set (nonstandard install OR a hermetic test pinning a specific bash, same
-// env-seam class as HIMMELCTL_REPO_ROOT), else bare 'bash' from PATH (himmel
-// hard-gates bash).
-function resolveBash() {
-  return process.env.HIMMELCTL_BASH || 'bash';
-}
-
 // Read one KEY's raw value from the repo .env FILE ONLY, never process.env.
 // config get/set manage the PERSISTED value; a session's launching-shell env
 // is a different, unrelated thing (same distinction writeHandoverDir's own
@@ -8894,6 +8919,9 @@ async function main() {
   }
   if (args.subcommand === 'ui') {
     return await cmdUi(args);
+  }
+  if (args.subcommand === 'projects') {
+    return cmdProjects(args);
   }
   if (args.subcommand === 'scope') {
     return await cmdScope(args);

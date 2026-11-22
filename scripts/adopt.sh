@@ -1556,6 +1556,24 @@ if (bundleOk) {
 ' "$HIMMEL_ROOT/scripts/himmelctl/lib/standalone-bundle.js" "$HIMMEL_ROOT/scripts/himmelctl/lib/helpers.js" "$HIMMEL_ROOT" "$TARGET"
 }
 
+GIVEN_ITEMS=()
+
+record_given_project() {
+  if [[ "${NODE_AVAILABLE:-1}" -eq 0 ]]; then
+    echo "  given projects: skipping the list (node not found); list it later with: node $HIMMEL_ROOT/scripts/himmelctl/lib/state.js add-target $TARGET"
+    return 0
+  fi
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "DRY: list $TARGET as a given project (items: ${GIVEN_ITEMS[*]})"
+    return 0
+  fi
+  local items
+  items=$(IFS=,; printf '%s' "${GIVEN_ITEMS[*]}")
+  if ! node "$HIMMEL_ROOT/scripts/himmelctl/lib/state.js" add-target "$TARGET" --items "$items"; then
+    echo "  WARNING: $TARGET was not listed as a given project (see above)" >&2
+  fi
+}
+
 do_core() {
   print_machine_footprint
   require_tools
@@ -1570,6 +1588,7 @@ do_core() {
     # Literal $CLAUDE_PROJECT_DIR — Claude Code expands it at hook-fire time.
     # shellcheck disable=SC2016
     wire_pretooluse_hooks "$TARGET/.claude/settings.json" '$CLAUDE_PROJECT_DIR' "$DRY_RUN"
+    GIVEN_ITEMS+=(wiring-pretooluse)
     wire_merge_gate "$merge_container_created"
     # The initiative SessionStart hook is not a portable file: it reads THIS
     # clone's .env, which is where `himmelctl config set initiative.*` writes, so
@@ -1606,18 +1625,35 @@ do_core() {
   fi
   # Place git gates first: a fatal plugin install must not leave the repo ungated.
   install_precommit_hooks || exit $?
+  [[ $SKIP_HOOKS -eq 0 && -e "$TARGET/.git" ]] && GIVEN_ITEMS+=(pre-commit-hooks)
   install_plugins
   build_jira_cli
   wire_qmd_core
   [[ $WITH_GRAPHIFY -eq 1 ]] && wire_graphify_core
   wire_statusline_core
+  GIVEN_ITEMS+=(wiring-statusline)
   wire_himmel_repo_core
   write_standalone_bundle_core
   if [[ $FILL_ENV -eq 1 ]]; then fill_env_core; fi
   if [[ "$SCOPE" == "project" ]]; then
     ensure_worktrees_ignored
     commit_install
+    given_items_from_files
+    record_given_project
   fi
+}
+
+given_items_from_files() {
+  local settings="$TARGET/.claude/settings.json"
+  [[ $DRY_RUN -eq 1 ]] && return 0
+  if [[ "${CLAUDE_AVAILABLE:-1}" -ne 0 && -s "$settings" ]]; then
+    jq -e '(.enabledPlugins // {}) | length > 0' "$settings" >/dev/null 2>&1 && GIVEN_ITEMS+=(claude-plugins-pluginSet)
+    jq -e '.enabledPlugins["himmel-ops@himmel"] == true' "$settings" >/dev/null 2>&1 && GIVEN_ITEMS+=(himmel-ops-plugin)
+  fi
+  if [[ $WITH_GRAPHIFY -eq 1 && -s "$TARGET/.mcp.json" ]]; then
+    jq -e '.mcpServers.graphify' "$TARGET/.mcp.json" >/dev/null 2>&1 && GIVEN_ITEMS+=(graphify-mcp)
+  fi
+  return 0
 }
 
 do_luna() {

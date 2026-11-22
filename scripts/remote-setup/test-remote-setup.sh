@@ -20,7 +20,36 @@
 HERE=$(cd "$(dirname "$0")" && pwd -P)
 REPO=$(cd "$HERE/../.." && pwd -P)
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/rs-test.XXXXXX") || exit 1
-trap 'rm -rf "$WORK"' EXIT
+WATCHDOG_SECS=${RS_WATCHDOG_SECS:-1100}
+WATCHDOG=""
+trap 'exit 1' TERM
+trap '[ -n "$WATCHDOG" ] && kill "$WATCHDOG" 2> /dev/null; rm -rf "$WORK"' EXIT
+WORK=$(cd "$WORK" && pwd -P) || exit 1
+
+watchdog() {
+    local me sp tree
+    me=$(exec sh -c 'echo $PPID')
+    trap 'kill "$sp" 2> /dev/null; exit 0' TERM
+    /bin/sleep "$WATCHDOG_SECS" &
+    sp=$!
+    wait "$sp"
+    tree=$(ps -A -o pid= -o ppid= -o stat= -o etime= -o command= | awk -v root="$SUITE_PID" -v me="$me" '
+        { line[$1] = $0; kids[$2] = kids[$2] " " $1 }
+        function walk(p, d,   n, a, i) {
+            if (p == me) return
+            printf "%" (2 * d) "s%s\n", "", line[p]
+            n = split(kids[p], a, " ")
+            for (i = 1; i <= n; i++) walk(a[i], d + 1)
+        }
+        END { walk(root, 0) }')
+    printf 'FAIL: watchdog: the suite ran %ss, stopping it in case %s. Process tree:\n%s\n' "$WATCHDOG_SECS" "$(cat "$WORK/current-case" 2> /dev/null)" "$tree" >&2
+    printf '%s\n' "$tree" | awk -v root="$SUITE_PID" '$1 != root { print $1 }' | while read -r p; do kill -KILL "$p" 2> /dev/null; done
+    kill -TERM "$SUITE_PID" 2> /dev/null
+    exit 0
+}
+SUITE_PID=$$
+watchdog &
+WATCHDOG=$!
 PATH_BASE=$PATH
 REAL_BUN=$(command -v bun || echo /nonexistent-bun)
 
@@ -42,6 +71,7 @@ check() { # check <description> <command...>
     fi
 }
 eq() { [ "$1" = "$2" ]; }
+ended() { ! kill -0 "$1" 2> /dev/null; }
 has() { case "$1" in *"$2"*) return 0 ;; esac; return 1; }
 lacks() { case "$1" in *"$2"*) return 1 ;; esac; return 0; }
 starts() { case "$1" in "$2"*) return 0 ;; esac; return 1; }
@@ -57,6 +87,7 @@ new_case() {
     T=$WORK/$1
     mkdir -p "$T/home" "$T/tmp dir" "$T/bin" "$T/tg" "$T/units" "$T/root"
     cp "$HERE"/tests/shims/* "$T/bin/"
+    echo Linux > "$T/uname"
     # a clock the sleep shim moves: a ten-minute wait ends in a few reads (see the date shim)
     date +%s > "$T/clock"
     echo 60 > "$T/clock.step"
@@ -86,7 +117,7 @@ mk_root() {
 
 # A canary token: <id>:<35 url-safe chars>. Never a real credential.
 mk_token() {
-    printf '%s:CNRY%s' "$1" "$(LC_ALL=C tr -dc 'A-Za-z0-9_-' < /dev/urandom | head -c 31)"
+    printf '%s:CNRY%s' "$1" "$(head -c 1024 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9_-' | head -c 31)"
 }
 
 set_getme() { # set_getme <id> <username>
@@ -141,6 +172,9 @@ expect_json_contract() {
 
 RUN_SCRIPT=remote-setup.sh
 RUN_ENV=""
+RUN_CAP=20
+STALL_MAX=3
+STALLS=0
 
 run_sut() {
     local inj="" tty=1 root=0 contract=1 json=0 cwd=$ROOT without="" pbase=$PATH_BASE
@@ -185,9 +219,11 @@ run_sut() {
     : > "$T/err"
     if [ "$tty" = 1 ]; then
         if [ "$(uname)" = Darwin ]; then
-            (cd "$cwd" && script -q /dev/null "${envs[@]}" < "$stdin" > "$T/out.raw" 2> "$T/err") # read-sink-ok: the suite's own stdin file
+            rm -f "$T/noecho"
+            (cd "$cwd" && { i=0; while [ ! -e "$T/noecho" ] && [ "$i" -lt $((RUN_CAP * 100)) ]; do /bin/sleep 0.01; i=$((i + 1)); done; cat "$stdin"; } \
+                | perl -e 'alarm shift; exec @ARGV or exit 127' "$RUN_CAP" script -q /dev/null /bin/sh -c 'stty -echo && : > "$0" && exec "$@"' "$T/noecho" "${envs[@]}" > "$T/out.raw" 2> "$T/err") # read-sink-ok: the suite's own stdin file
         else
-            (cd "$cwd" && script -qec "$(printf '%q ' "${envs[@]}")" /dev/null -E never < "$stdin" > "$T/out.raw" 2> "$T/err") # read-sink-ok: the suite's own stdin file
+            (cd "$cwd" && perl -e 'alarm shift; exec @ARGV or exit 127' "$RUN_CAP" script -qec "$(printf '%q ' "${envs[@]}")" /dev/null -E never < "$stdin" > "$T/out.raw" 2> "$T/err") # read-sink-ok: the suite's own stdin file
         fi
     else
         (cd "$cwd" && "${envs[@]}" < "$stdin" > "$T/out.raw" 2> "$T/err") # read-sink-ok: the suite's own stdin file
@@ -198,6 +234,14 @@ run_sut() {
     cat "$T/out" "$T/err" >> "$T/allout.log"
     LAST=$(last_line "$T/out")
     ERR=$(cat "$T/err")
+    if [ "$tty" = 1 ] && [ "$RC" = 142 ]; then
+        STALLS=$((STALLS + 1))
+        check "the tty run ($*) ended within ${RUN_CAP}s" false
+        if [ "$STALLS" -ge "$STALL_MAX" ]; then
+            printf 'FAIL: %s tty runs did not end within %ss: stopping the suite\n' "$STALLS" "$RUN_CAP" >&2
+            exit 1
+        fi
+    fi
     if [ "$contract" = 1 ]; then
         if [ "$json" = 1 ]; then expect_json_contract; else expect_contract; fi
     fi
@@ -234,6 +278,32 @@ case_guard_matrix_every_writer() {
     # positive control: with nothing tripped the guard stays quiet and the run goes on
     run_sut "$T/in" away
     check "control: the guard lets a clean terminal through" has "$LAST" "later update"
+}
+
+case_mk_token_ends_when_tr_ignores_sigpipe() {
+    local stub=$T/bsd-tr pid i
+    mkdir -p "$stub"
+    cat > "$stub/tr" << 'EOF'
+#!/bin/sh
+echo $$ > "$0.pid"
+while IFS= read -r _l; do :; done
+printf %s abcdefghijklmnopqrstuvwxyz0123456789
+EOF
+    chmod +x "$stub/tr"
+    (
+        trap '' PIPE
+        PATH=$stub:$PATH
+        mk_token 7 > "$T/tok"
+    ) &
+    pid=$!
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+        kill -0 "$pid" 2> /dev/null || break
+        /bin/sleep 0.5
+    done
+    check "mk_token ends within 10s when tr reads to EOF" ended "$pid"
+    kill -KILL "$(cat "$stub/tr.pid" 2> /dev/null)" 2> /dev/null
+    wait "$pid"
+    check "mk_token keeps 31 chars of tr's output" eq "$(cat "$T/tok")" "7:CNRYabcdefghijklmnopqrstuvwxyz01234"
 }
 
 case_usage_exits_2() {
@@ -1952,6 +2022,42 @@ case_peer_remove_one_of_two_interrupted_before_restart_finishes_that_removal() {
     check "the pending removal record is cleared" test ! -e "$HOME_FIX/.himmel/remote-setup/peer-removing.json"
 }
 
+case_peer_remove_declined_clears_its_note() {
+    seed_confirmed_station
+    seed_second_peer
+    feed 1 no
+    run_sut "$T/in" peer --remove
+    check "a declined removal is a FIX" eq "$RC" 3
+    check "the FIX says nothing was removed" has "$LAST" "nothing was removed"
+    check "example is still set up" eq "$(jq -r '.peers | has("example")' "$(PEERS_FILE)")" true
+    check "the in-progress note is gone" test ! -e "$HOME_FIX/.himmel/remote-setup/peer-removing.json"
+    feed 2 yes
+    run_sut "$T/in" peer --remove
+    check "the next run offers the normal pick" has "$(cat "$T/out")" "2) yotam"
+    check "and removes the machine picked" has "$LAST" "removed yotam"
+    check "example stays" eq "$(jq -r '.peers | has("example")' "$(PEERS_FILE)")" true
+    sub_case peer_remove_stale_note_pick_finish
+    seed_confirmed_station
+    seed_second_peer
+    mkdir -p "$HOME_FIX/.himmel/remote-setup"
+    printf '{"name":"example"}' > "$HOME_FIX/.himmel/remote-setup/peer-removing.json"
+    feed 1 yes
+    run_sut "$T/in" peer --remove
+    check "finish: exit 0" eq "$RC" 0
+    check "the pick offers finishing or cancelling" has "$(cat "$T/out")" "2) Cancel"
+    check "finish removes example" has "$LAST" "removed example"
+    sub_case peer_remove_stale_note_pick_cancel
+    seed_confirmed_station
+    seed_second_peer
+    mkdir -p "$HOME_FIX/.himmel/remote-setup"
+    printf '{"name":"example"}' > "$HOME_FIX/.himmel/remote-setup/peer-removing.json"
+    feed 2 2 yes
+    run_sut "$T/in" peer --remove
+    check "cancel: exit 0" eq "$RC" 0
+    check "cancel then pick removes yotam" has "$LAST" "removed yotam"
+    check "example stays" eq "$(jq -r '.peers | has("example")' "$(PEERS_FILE)")" true
+}
+
 case_peer_mac_bootout_then_bootstrap_order() {
     echo Darwin > "$T/uname"
     seed_confirmed_station mac
@@ -2302,7 +2408,7 @@ case_peer_name_32_char_base_with_suffix_fits() {
     check "the next free suffix" eq "$(sed -n 2p "$T/out")" "abcdefghijklmnopqrstuvwxyzabcd-3"
 }
 
-CASES="guard_matrix_every_writer usage_exits_2 usage_rows_every_subcommand contract_rows_every_subcommand
+CASES="mk_token_ends_when_tr_ignores_sigpipe guard_matrix_every_writer usage_exits_2 usage_rows_every_subcommand contract_rows_every_subcommand
 curl_argv_is_exact getme_401_gives_revoked_fix tg_429_waits_retry_after_once outside_checkout_gives_cd_fix
 status_skips_unshipped_parts status_na_counts_not_ok status_part_prereq_message status_runs_under_claudecode
 status_json_is_single_object_on_success status_json_on_item_failure status_json_never_appends_done_line
@@ -2331,7 +2437,7 @@ peer_repoint_runs_remove_then_add_confirm peer_pending_publication_survives_inte
 peer_allowfrom_written_by_setup_ts_only_digit_strings peer_canary_token_absent_everywhere
 peer_sigint_during_discovery_restarts_poller renamed_peer_bot_keeps_name
 peer_done_rerun_changes_no_config_artifact peer_inputs_are_only_the_g2_set
-peer_remove_deletes_checkpoint_and_status_na peer_remove_interrupted_resumes peer_remove_with_nothing_set_up_is_done peer_remove_unreadable_peer_list_stops_before_any_change peer_remove_teardown_failure_is_a_fix peer_wait_pages_when_the_group_is_busy peer_remove_unit_delete_failure_is_a_fix peer_remove_reload_failure_is_a_fix peer_remove_one_of_two_restarts_poller peer_remove_one_of_two_interrupted_before_restart_finishes_that_removal
+peer_remove_deletes_checkpoint_and_status_na peer_remove_interrupted_resumes peer_remove_with_nothing_set_up_is_done peer_remove_unreadable_peer_list_stops_before_any_change peer_remove_teardown_failure_is_a_fix peer_wait_pages_when_the_group_is_busy peer_remove_unit_delete_failure_is_a_fix peer_remove_reload_failure_is_a_fix peer_remove_one_of_two_restarts_poller peer_remove_one_of_two_interrupted_before_restart_finishes_that_removal peer_remove_declined_clears_its_note
 peer_mac_bootout_then_bootstrap_order peer_mac_old_agent_is_not_accepted_as_the_updated_poller peer_changed_token_restarts_the_running_poller peer_mac_start_failure_names_the_poller_log peer_without_part1_fixes peer_bridge_equals_main_refuses
 peer_different_bridge_id_without_replace_refuses peer_hello_timeout_fixes peer_wait_is_bounded_by_the_clock_not_by_the_loop_count peer_a_failed_merge_of_updates_leaves_no_temp_file peer_retry_after_a_timed_out_discovery_asks_for_a_fresh_hello peer_no_group_hello_fix_puts_the_rerun_before_the_hello peer_409_names_a_webhook_or_a_competing_poller peer_sole_candidate_needs_a_yes peer_hostile_username_refused
 bun_shim_fails_when_it_cannot_write_peers_json systemctl_shim_changes_the_running_state_only_with_now
@@ -2343,6 +2449,7 @@ main() {
     local c wanted=${1:-}
     for c in $CASES; do
         if [ -n "$wanted" ] && [ "$wanted" != "$c" ]; then continue; fi
+        printf '%s\n' "$c" > "$WORK/current-case"
         new_case "$c"
         "case_$c"
         if [ "$CASE_FAILS" = 0 ]; then

@@ -3608,6 +3608,7 @@
         "status-sweep": "Jira status sweep moved or missed tickets: operational",
         "resolve": "a worker's BLOCKED resolve marker: the chief resolves the thread itself, not a workflow decision",
         "worker-silent": "a worker gone quiet: the chief relaunches it or takes over its one blocked step, operational triage",
+        "hold-ask": "a worker's denied trust-path write the chief may grant: the chief runs the printed grant or rules the ask out, operational triage",
         "silent-go": "a GO'd PR whose worker went silent: the waiter merged it through merge-on-green.sh --go, or held it and paged, operational triage",
         "unclosed": "a worker window left open on two ticks with no disposition bullet: the chief closes it, parks it with a named wake or gives it up with a reason, operational triage",
         "owed-undelivered": "an operator-owed item with no Telegram delivery receipt after 5 minutes: the chief sends it with the receipt command or tells the operator another way, operational triage",
@@ -3616,7 +3617,8 @@
         "size": "a SIZE-ESCALATE row for a refused or bulk brief: the chief splits it, signs a size override or escalates to the operator, operational triage",
         "pr-watch": "a watched outside PR whose head, comments, reviews or state moved: the chief reads it and relaunches the closed worker or acts, operational triage",
         "owed-actions": "chief notification rows of the owed ledger (a step past its due date, a step whose due date is missing or invalid, a readiness 24-hour reminder): after receipt the chief acknowledges them with owe.sh close (stream mode: chief-wait.sh --ack with --receipt), and proof and source step debt stays open for the chief, operational triage",
-        "waiter-error": "a fault of the waiter itself (an acknowledgement stuck, a supervisor failure, a hung child, an unread worker document, a pending-events timeout or manifest/cursor failure): the chief inspects the named diagnostic without arming a second waiter while its supervisor is live, repairs the named document or state, and never closes proof or source debt to silence it, operational triage"
+        "waiter-error": "a fault of the waiter itself (an acknowledgement stuck, a supervisor failure, a hung child, an unread worker document, a pending-events timeout or manifest/cursor failure): the chief inspects the named diagnostic without arming a second waiter while its supervisor is live, repairs the named document or state, and never closes proof or source debt to silence it, operational triage",
+        "ready-mismatch": "a READY whose judge or trust-path claim the diff contradicts went ALERT: the chief reads the tick.sh --ready-mismatch rows and re-rules the PR, operational triage"
       }
     },
     "docs/handover/worker-preface.md": {

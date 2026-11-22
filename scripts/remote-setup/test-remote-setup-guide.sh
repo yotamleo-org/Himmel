@@ -134,7 +134,7 @@ bad() { FAILN=$((FAILN + 1)); printf 'FAIL: %s\n' "$1" >&2; }
 
 # lint_fails <name> <page> <text the findings must hold>
 lint_fails() {
-    if lint_page "$2" > "$WORK/f.out" 2>&1; then
+    if (unset CI; lint_page "$2") > "$WORK/f.out" 2>&1; then
         bad "$1: the lint passed"
     elif grep -q "$3" "$WORK/f.out"; then
         ok "$1"
@@ -144,7 +144,7 @@ lint_fails() {
 }
 
 lint_passes() { # lint_passes <name> <page>
-    if lint_page "$2" > "$WORK/f.out" 2>&1; then ok "$1"; else bad "$1: the lint failed: $(cat "$WORK/f.out")"; fi
+    if (unset CI; lint_page "$2") > "$WORK/f.out" 2>&1; then ok "$1"; else bad "$1: the lint failed: $(cat "$WORK/f.out")"; fi
 }
 
 # A PATH holding everything on the current PATH except one tool.
@@ -175,9 +175,14 @@ t_guide_commands_have_no_placeholders() {
 }
 
 t_guide_commands_parse_in_bash_zsh_fish() {
-    local out p
+    local out p s missing=""
     out=$(lint_page "$PAGE" 2>&1 | grep 'does not parse')
-    if [ -z "$out" ]; then ok guide_commands_parse_in_bash_zsh_fish; else bad "guide_commands_parse_in_bash_zsh_fish: $out"; fi
+    if [ "${CI:-}" = true ]; then
+        for s in zsh fish; do command -v "$s" > /dev/null 2>&1 || missing="$missing $s"; done
+    fi
+    if [ -n "$missing" ]; then
+        bad "guide_commands_parse_in_bash_zsh_fish: CI=true and not installed:$missing, so the page was not parsed in it"
+    elif [ -z "$out" ]; then ok guide_commands_parse_in_bash_zsh_fish; else bad "guide_commands_parse_in_bash_zsh_fish: $out"; fi
     # the lint really runs each shell: a command only fish rejects is caught
     if command -v fish > /dev/null 2>&1; then
         p=$(fixture fish-only '```bash' 'echo ${HOME}' '```')
