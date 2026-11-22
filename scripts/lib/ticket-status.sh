@@ -855,6 +855,11 @@ _ts_derive_d6() {
     fi
 }
 
+_ts_other_worker_keeps_ownership() {
+    [ "$TS_WORKER_STATE" != wrapped ] || return 1
+    [ "$TS_LOCK_HELD" != no ] || [ "$TS_OPEN_EVIDENCE" = yes ]
+}
+
 ts_derive() {
     local key="$1" num head base rd class latch threads s rule best=9 r doc rc other owner=""
     TS_DERIVED=""; TS_RULE=""; TS_RESULT=""; TS_STAGE=""; TS_PR_STATE=""; TS_HEADS=""; TS_WORKER_STATE=none; TS_MERGED_PR=""; TS_D5D_OWNER=""
@@ -878,14 +883,11 @@ ts_derive() {
             [ "$TS_GONE" -lt 2 ] || TS_WORKER_STATE=wrapped
         fi
     fi
-    # A second worker on the key keeps the ticket owned unless it reads wrapped, or its lock was read free and nothing
-    # else says its doc may be worked.
     if [ "$TS_WORKER_STATE" = wrapped ]; then
         while IFS= read -r other; do
             [ -n "$other" ] && [ "$other" != "$doc" ] || continue
             _ts_worker_state "$other"
-            [ "$TS_WORKER_STATE" != wrapped ] || continue
-            [ "$TS_LOCK_HELD" != no ] || [ "$TS_OPEN_EVIDENCE" = yes ] || continue
+            _ts_other_worker_keeps_ownership || continue
             owner=$TS_WORKER_STATE; TS_OWNER_DOC=$other; break
         done <<<"$(jq -r '(.docs // [])[]' <<<"$TS_REC")"
         TS_WORKER_STATE=${owner:-wrapped}
