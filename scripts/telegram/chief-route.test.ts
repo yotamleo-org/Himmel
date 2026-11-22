@@ -3193,6 +3193,42 @@ test("round override nonblocking hint preserves refusal and names the normal ver
   expect(held.err).not.toContain("verified carry");
 }, S1B);
 
+const QUOTE_OLD = "# A\n\nthe realpath of the primary checkout is read by cd and pwd\n";
+const QUOTE_NEW = "# A\n\nthe realpath of the primary checkout, resolved by realpath -e\n";
+const QUOTED = "the realpath of the primary checkout, resolved by";
+const closureTree = async (plan3: string[] = []) => {
+  const t = await roundTree(MAJOR, plan3, false, [], QUOTE_OLD);
+  writeFileSync(t.a, front(CAP_KEY, QUOTE_NEW));
+  return t;
+};
+const overrideOf = (specs: string, ids: string) => verb(true, "round-override", CAP_KEY, "--findings", ids, "--why", "a regression the fix made", "--chief", "chief-x", "--specs", specs);
+
+test("a closure return whose regression heading holds its quote inside the parenthesis is a blocking regression the override can name; a minor finding in it is still refused", async () => {
+  const t = await closureTree();
+  const lines = [`- **P1** (major; regression \`${QUOTED}\`) the fix did not resolve the path`, "- **n1** (minor) a note"];
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 2", ...lines)).err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1).findings).toMatchObject([{ id: "P1", severity: "major", regression: true, class: "regression" }, { id: "n1", class: "out-of-closure" }]);
+  const minor = await overrideOf(t.specs, "n1");
+  expect(minor.err).toContain(`round-override: n1 is not an open blocking finding of ${CAP_KEY}'s latest round`); expect(minor.code).not.toBe(0);
+  const ok = await overrideOf(t.specs, "P1");
+  expect(ok.err).toBe(""); expect(ok.code).toBe(0);
+  expect(rowsOf(t.specs, "override")).toMatchObject([{ round_opened: 5, findings: [{ id: "P1", severity: "major", critic: "spec" }] }]);
+});
+
+test("a quote with a semicolon inside the parenthesis, and a reopens heading with a quote, still read as their tags", async () => {
+  const { parseFindings } = await import("./chief-route");
+  const got = parseFindings(["- **P1** (major; regression `a; b; c`) x", "- **P2** (major; reopens M1 `the quoted line`) y", "- **P3** (major; regression) z", "- **P4** (minor; operator-critical: spend-grant `q`) w", "SPEC FINDINGS 4"].join("\n"), "spec", 4);
+  expect(got.findings).toEqual([{ id: "P1", severity: "major", regression: true }, { id: "P2", severity: "major", reopens: "M1" }, { id: "P3", severity: "major", regression: true }, { id: "P4", severity: "minor", critical: "spend-grant" }]);
+});
+
+test("an ordinary full-mode major finding of the lagging kind is still an open blocking finding next to a closure return", async () => {
+  const t = await closureTree(["- **P1** (major) a plan finding still open"]);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", `- **R1** (major; regression \`${QUOTED}\`) a fault`)).err).toBe("");
+  const ok = await overrideOf(t.specs, "P1,R1");
+  expect(ok.err).toBe(""); expect(ok.code).toBe(0);
+  expect(rowsOf(t.specs, "override")).toMatchObject([{ findings: [{ id: "P1", critic: "plan" }, { id: "R1", critic: "spec" }] }]);
+});
+
 test("R5b: a round whose findings carry no format line holds synthetic ids the override can name", async () => {
   const t = await roundTree(MAJOR, []);
   expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "prose, no finding line")).err).toBe("");
