@@ -815,9 +815,6 @@ if [ -f "$CALL_LOG" ]; then bad "T25 panel invoked with a directory context file
 if [ -e "$repo4/.git/cr-review-rounds/feature.round" ]; then bad "T25 a directory context file spent a round"; else ok "T25 a directory context file spends no round"; fi
 rm -rf "$repo4/.git/cr-review-rounds"
 
-# T26: rounds 2 and 3 review only what changed since the last round
-# with the whole PR as context; any doubt about the start point
-# reviews the full diff, as before. r5_new makes main + feature (H1 = one
 # change to f.txt); r5_round runs one first pass and keeps what the panel got.
 r5_new() {
     mkdir -p "$1"
@@ -837,7 +834,6 @@ r5_new() {
 }
 r5_commit() { ( cd "$1" && echo "$3" >> "$2" && git add "$2" && git commit -q -m "edit $2" && git rev-parse HEAD ); }
 r5_avail() { ( cd "$1" && CR_LEDGER="$1/.git/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" avail --branch feature --head "$2" --model codex --status ok >/dev/null ); }
-r5_from() { ( cd "$1" && bash "$fx/scripts/cr/review-round.sh" from --branch feature ); }
 r5_round() {
     rm -f "$CALL_LOG" "$ARGS_LOG" "$tmp/stdin-log" "$tmp/ctx-copy" "$tmp/err"
     r5_out="$( (cd "$1" && STDIN_LOG="$tmp/stdin-log" CTX_COPY="$tmp/ctx-copy" FAKE_RC=0 FAKE_OUT="${R5_FAKE_OUT:-}" \
@@ -861,7 +857,7 @@ r5a_h2="$(r5_commit "$r5a" g.txt second)"
 r5_round "$r5a" "$r5a_h2"
 if [ "$r5_rc" -eq 0 ]; then ok "T26 round 2 exits 0"; else bad "T26 round 2 exit (got $r5_rc; err: $r5_err)"; fi
 assert_has "$r5_out" "round 2 of 3" "T26 round 2 is round 2"
-if [ "$(r5_from "$r5a")" = "$r5a_h1" ]; then ok "T26 round 2 'from' prints the last reviewed head"; else bad "T26 round 2 'from' (got '$(r5_from "$r5a")', want $r5a_h1)"; fi
+assert_has "$r5_out" "round 2 of 3 on feature (increment from $r5a_h1)" "T26 round 2 reviews the increment start names, from the last reviewed head"
 assert_has "$r5_stdin" "+second" "T26 round 2 reviews the change since the last round"
 assert_lacks "$r5_stdin" "+change" "T26 round 2 does not re-review the earlier round's diff"
 assert_has "$r5_args" "--context-file /" "T26 round 2 passes the whole PR as context"
@@ -881,33 +877,6 @@ assert_has "$r5_out" "round 2 of 3" "T26 fallback B: round 2 ran"
 assert_has "$r5_stdin" "+change" "T26 fallback B: an empty start point reviews the full diff"
 assert_lacks "$r5_args" "--context-file /" "T26 fallback B: no context file with the full diff"
 
-# C: the start point equals HEAD (an empty delta is never reviewed as clean).
-r5c="$tmp/repo5c"; r5_new "$r5c"
-r5c_h1="$(git -C "$r5c" rev-parse HEAD)"
-r5_round "$r5c" "$r5c_h1"
-r5_avail "$r5c" "$r5c_h1"
-r5c_h2="$(r5_commit "$r5c" g.txt second)"
-r5_round "$r5c" "$r5c_h2"
-printf '%s\n' "$r5c_h2" > "$r5c/.git/cr-review-rounds/feature.from"
-r5_round "$r5c" "$r5c_h2"
-assert_has "$r5_out" "round 2 of 3" "T26 fallback C: round 2 re-entered"
-assert_has "$r5_stdin" "+change" "T26 fallback C: a start point equal to HEAD reviews the full diff"
-assert_lacks "$r5_args" "--context-file /" "T26 fallback C: no context file with the full diff"
-
-# D: HEAD does not descend from the start point.
-r5d="$tmp/repo5d"; r5_new "$r5d"
-r5d_h1="$(git -C "$r5d" rev-parse HEAD)"
-r5_round "$r5d" "$r5d_h1"
-r5_avail "$r5d" "$r5d_h1"
-r5d_h2="$(r5_commit "$r5d" g.txt second)"
-r5_round "$r5d" "$r5d_h2"
-r5d_side="$(cd "$r5d" && git checkout -q -b side main && echo side > s.txt && git add s.txt && git commit -q -m side && git rev-parse HEAD && git checkout -q feature)"
-printf '%s\n' "$r5d_side" > "$r5d/.git/cr-review-rounds/feature.from"
-r5_round "$r5d" "$r5d_h2"
-assert_has "$r5_stdin" "+change" "T26 fallback D: a start point HEAD does not descend from reviews the full diff"
-assert_lacks "$r5_args" "--context-file /" "T26 fallback D: no context file with the full diff"
-
-# E: a merge of the default branch sits in the range.
 r5e="$tmp/repo5e"; r5_new "$r5e"
 r5e_h1="$(git -C "$r5e" rev-parse HEAD)"
 r5_round "$r5e" "$r5e_h1"
@@ -919,9 +888,10 @@ r5_avail "$r5e" "$r5e_h2"
     || { echo "FAIL: T26 merge fixture failed" >&2; exit 1; }
 r5e_h3="$(git -C "$r5e" rev-parse HEAD)"
 r5_round "$r5e" "$r5e_h3"
-assert_has "$r5_out" "round 3 of 3" "T26 fallback E: round 3 ran"
-assert_has "$r5_stdin" "+change" "T26 fallback E: a merge of the default branch in range reviews the full diff"
-assert_lacks "$r5_args" "--context-file /" "T26 fallback E: no context file with the full diff"
+if [ "$r5_rc" -eq 0 ]; then ok "T26 E: a carried head exits 0"; else bad "T26 E: carried exit (got $r5_rc; err: $r5_err)"; fi
+assert_has "$r5_out" "round 2 carried on feature" "T26 E: a clean merge of the base is carried at round 2"
+if [ -f "$CALL_LOG" ]; then bad "T26 E: a carried head ran the panel"; else ok "T26 E: a carried head runs no panel"; fi
+if [ "$(cat "$r5e/.git/cr-review-rounds/feature.round")" = 2 ]; then ok "T26 E: a carried head spends no round"; else bad "T26 E: .round (got $(cat "$r5e/.git/cr-review-rounds/feature.round"), want 2)"; fi
 
 rg="$tmp/repo10578"; r5_new "$rg"
 rg_h1="$(git -C "$rg" rev-parse HEAD)"
@@ -937,6 +907,61 @@ assert_has "$(cat "$tmp/out")" "delta round 4" "10578 give-back-in-process: the 
 assert_has "$(cat "$tmp/err")" "the aborted round was given back" "10578 give-back-in-process: give_back says so"
 if [ "$(cat "$rg/.git/cr-review-rounds/feature.round" 2>/dev/null)" = 3 ]; then ok "10578 give-back-in-process: .round is 3 again"; else bad "10578 give-back-in-process: .round (got $(cat "$rg/.git/cr-review-rounds/feature.round" 2>/dev/null), want 3)"; fi
 if [ ! -e "$rg/.git/cr-review-rounds/feature.cired" ]; then ok "10578 give-back-in-process: the CI-red unlock is given back"; else bad "10578 give-back-in-process: .cired is still present"; fi
+
+fxl="$tmp/fx-incl"
+cp -R "$fx" "$fxl"
+cat > "$fxl/scripts/cr/review-round.sh" <<'RRSTUB'
+#!/usr/bin/env bash
+case "${1:-}" in
+    start) printf '2 increment %s\n' "$RR_STUB_L" ;;
+    *) exit 0 ;;
+esac
+RRSTUB
+rl="$tmp/repo-incl"; r5_new "$rl"
+rl_h2="$(r5_commit "$rl" g.txt second)"
+rl_l="$(cd "$rl" && git checkout -q -b lside main && echo lmarker > l.txt && git add l.txt && git commit -q -m lside && git rev-parse HEAD && git checkout -q feature)"
+rm -f "$CALL_LOG" "$ARGS_LOG" "$tmp/stdin-log" "$tmp/err"
+rl_out="$( (cd "$rl" && RR_STUB_L="$rl_l" STDIN_LOG="$tmp/stdin-log" FAKE_RC=0 \
+    bash "$fxl/scripts/cr/panel-first-pass.sh" --head "$rl_h2" --branch feature) 2>"$tmp/err" )"; rl_rc=$?
+if [ "$rl_rc" -eq 0 ]; then ok "10578 pfp-diffs-start-L: the run exits 0"; else bad "10578 pfp-diffs-start-L exit (got $rl_rc; err: $(cat "$tmp/err"))"; fi
+if [ "$(cat "$tmp/stdin-log" 2>/dev/null)" = "$(git -C "$rl" diff "$rl_l" "$rl_h2")" ]; then ok "10578 pfp-diffs-start-L: the panel's stdin is git diff L H"; else bad "10578 pfp-diffs-start-L: the panel's stdin is not git diff L H (got: $(cat "$tmp/stdin-log" 2>/dev/null))"; fi
+assert_has "$rl_out" "increment from $rl_l" "10578 pfp-diffs-start-L: the round line names L"
+
+cat > "$fxl/scripts/cr/critic-pre-existing-tag.py" <<'TAGSTUB'
+import os, sys
+with open(os.environ["TAG_LOG"], "a") as f:
+    f.write(" ".join(sys.argv[1:]) + "\n")
+sys.stdout.write(sys.stdin.read())
+TAGSTUB
+cat > "$fxl/scripts/cr/review-round.sh" <<'RRSTUB'
+#!/usr/bin/env bash
+case "${1:-}" in
+    start) printf '%s\n' "$RR_STUB_ANSWER" ;;
+    *) exit 0 ;;
+esac
+RRSTUB
+rm -f "$tmp/tag-log"
+(cd "$rl" && RR_STUB_ANSWER="1 increment $rl_l" TAG_LOG="$tmp/tag-log" FAKE_RC=0 FAKE_OUT='## Important Issues (1 found)
+- [codex-1]: a finding [f.txt:1]' bash "$fxl/scripts/cr/panel-first-pass.sh" --head "$rl_h2" --branch feature >/dev/null 2>"$tmp/err")
+assert_has "$(cat "$tmp/tag-log" 2>/dev/null)" "--increment --head $rl_h2" "10578 tagger-on-increment: an increment answer at round 1 runs the tagger with --increment"
+assert_has "$(cat "$tmp/tag-log" 2>/dev/null)" "--from $rl_l" "10578 tagger-on-increment: the tagger reads the increment from L"
+rm -f "$tmp/tag-log"
+(cd "$rl" && RR_STUB_ANSWER="3 delta $rl_l" TAG_LOG="$tmp/tag-log" FAKE_RC=0 FAKE_OUT='## Important Issues (1 found)
+- [codex-1]: a finding [f.txt:1]' bash "$fxl/scripts/cr/panel-first-pass.sh" --head "$rl_h2" --branch feature >/dev/null 2>"$tmp/err")
+if [ -e "$tmp/tag-log" ]; then bad "10578 tagger-on-increment: a delta answer ran the tagger ($(cat "$tmp/tag-log"))"; else ok "10578 tagger-on-increment: a delta answer never runs the tagger"; fi
+
+rfs="$tmp/repo-fs"; r5_new "$rfs"
+rfs_h1="$(git -C "$rfs" rev-parse HEAD)"
+r5_round "$rfs" "$rfs_h1"
+r5_avail "$rfs" "$rfs_h1"
+rfs_h2="$(r5_commit "$rfs" g.txt second)"
+(cd "$rfs" && FAKE_RC=1 bash "$SCRIPT" --head "$rfs_h2" --branch feature >/dev/null 2>"$tmp/err"); rfs_rc=$?
+if [ "$rfs_rc" -eq 0 ]; then ok "10578 fallback-settles: the claude-only fallback exits 0"; else bad "10578 fallback-settles exit (got $rfs_rc; err: $(cat "$tmp/err"))"; fi
+if [ ! -e "$rfs/.git/cr-review-rounds/feature.start.bak" ]; then ok "10578 fallback-settles: no snapshot is left after the fallback"; else bad "10578 fallback-settles: the fallback left a snapshot"; fi
+if [ "$(cat "$rfs/.git/cr-review-rounds/feature.round")" = 2 ]; then ok "10578 fallback-settles: the fallback round stays counted"; else bad "10578 fallback-settles: .round (got $(cat "$rfs/.git/cr-review-rounds/feature.round"), want 2)"; fi
+rfs_h3="$(r5_commit "$rfs" g.txt third)"
+rfs_out="$(cd "$rfs" && bash "$fx/scripts/cr/review-round.sh" start --branch feature --head "$rfs_h3" 2>&1)"; rfs_rc=$?
+if [ "$rfs_rc" -eq 0 ]; then ok "10578 fallback-settles: a start at a new head is admitted at once"; else bad "10578 fallback-settles: the next start (rc $rfs_rc: $rfs_out)"; fi
 
 # T27: rounds 2 and 3 tag an Important finding on code older than the PR and
 # set the ledger field `review-round.sh defer` reads; the first round tags nothing.
@@ -989,11 +1014,8 @@ assert_has "$row" '"scope":"delta"' "T1.31 a scoped round 2 writes delta"
 assert_has "$row" "\"from\":\"$rs1_h1\"" "T1.31 from is the range's left side"
 assert_has "$row" '"round":2' "T1.31 the row carries round 2"
 
-# T1.33: the doubt fallbacks write full (B: empty from, C: from = HEAD, D: non-ancestor from).
-assert_has "$(rs_last "$r5b")" '"scope":"full"' "T1.33 an empty start point writes full"
-assert_has "$(rs_last "$r5c")" '"scope":"full"' "T1.33 a start point equal to HEAD writes full"
-assert_has "$(rs_last "$r5d")" '"scope":"full"' "T1.33 a non-ancestor start point writes full"
-assert_has "$(rs_last "$r5d")" '"round":2' "T1.33 the fallback row keeps its round"
+assert_has "$(rs_last "$r5b")" '"scope":"full"' "T1.33 a round with no reviewed head writes full"
+assert_has "$(rs_last "$r5b")" '"round":2' "T1.33 the full row keeps its round"
 
 # T1.34: --full on the second run writes full and reviews the whole branch.
 rs2="$tmp/repo-rs2"; r5_new "$rs2"
