@@ -69,7 +69,7 @@
 #   5 - (--pr only) review-round.sh check or start --pr refused: the PR's author is not
 #       authorized for a no-checkout review, or the round state could not be written. The
 #       check runs before the known-findings preflight, so a refused author leaves no
-#       preflight row. Nothing was reviewed or recorded.
+#       preflight row. Nothing was reviewed or recorded. Also: the increment diff or its whole-PR context cannot be read (the round is given back).
 #   3 -the branch has no preflight row (--pr: none at --head) and the step 2.8 known-findings pass
 #       it ran first has open hits: no round was started. Close the hits and
 #       record the pass (the message names both commands), then re-run.
@@ -438,29 +438,29 @@ else
     # path), a blank line, then the whole PR diff. A caller's own file stays.
     increment_context() {
         [ -z "$CONTEXT_FILE" ] || return 0
-        ic_why=""
+        ic_fail=""
         ctx_tmp="$(mktemp -t cr-pfp-ctx.XXXXXX)" || ctx_tmp=""
         if [ -z "$ctx_tmp" ]; then
-            ic_why="the context file could not be created"
-        else
-            ic_ranges="$(git diff -U0 --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ "$db_sha...$HEAD_SHA" 2>/dev/null | awk '
+            ic_fail="the context file could not be created"
+        elif ! ic_ranges="$(git diff -U0 --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ "$db_sha...$HEAD_SHA" 2>/dev/null | awk '
                 /^\+\+\+ / { f = ""; p = substr($0, 5); if (substr(p, 1, 2) == "b/") { p = substr(p, 3); if (p !~ /["\\[:cntrl:]]/) f = p } next }
                 /^@@ / && f != "" && match($0, /[+][0-9]+(,[0-9]+)?/) {
                     s = substr($0, RSTART + 1, RLENGTH - 1); n = split(s, a, ",")
                     ln = (n > 1) ? a[2] + 0 : 1
                     if (ln > 0) printf "{\"range\":[\"%s\",%d,%d]}\n", f, a[1] + 0, a[1] + ln - 1
-                }')" || ic_ranges=""
-            # pr_diff is the whole PR (db_sha...HEAD_SHA, read above).
-            if [ -z "$ic_ranges" ] || [ -z "$pr_diff" ]; then
-                ic_why="the whole PR has no citable lines to give as context"
-            elif ! printf '%s\n\n%s\n' "$ic_ranges" "$pr_diff" > "$ctx_tmp"; then
-                ic_why="the context file could not be written"
-            fi
-        fi
-        if [ -n "$ic_why" ]; then
-            [ -z "$ctx_tmp" ] || { rm -f "$ctx_tmp"; ctx_tmp=""; }
-            echo "panel-first-pass: round $review_round passes no whole-PR context ($ic_why)" >&2
+                }')"; then
+            ic_fail="the whole PR's hunks could not be read"
+        elif [ -z "$ic_ranges" ]; then
+            rm -f "$ctx_tmp"; ctx_tmp=""
+            echo "panel-first-pass: round $review_round passes no whole-PR context (the whole PR has no citable lines)" >&2
             return 0
+        elif ! printf '%s\n\n%s\n' "$ic_ranges" "$pr_diff" > "$ctx_tmp"; then
+            ic_fail="the context file could not be written"
+        fi
+        if [ -n "$ic_fail" ]; then
+            [ -z "$ctx_tmp" ] || { rm -f "$ctx_tmp"; ctx_tmp=""; }
+            echo "panel-first-pass ABORT - the whole-PR context for the increment cannot be built ($ic_fail). Nothing was reviewed." >&2
+            give_back 5
         fi
         CONTEXT_FILE="$ctx_tmp"
     }
