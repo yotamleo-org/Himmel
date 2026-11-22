@@ -378,9 +378,6 @@ EOF
 
 free_cap=5
 free_size_cap=80
-# finding_heads <R>: R, then every head a chain of .free lines (<from> <to> <class>,
-# <from> being the reviewed head R, never the printed L) leads back to from R,
-# one per line, so a free round between a finding and its fix hides nothing.
 finding_heads() {
     printf '%s\n' "$1"
     { [ -f "$free_state" ] && [ ! -L "$free_state" ]; } || return 0
@@ -393,14 +390,11 @@ finding_heads() {
         _fh_n=$((_fh_n + 1))
     done
 }
-# free_reaches <R> <D> succeeds when D is R or is reached from R through .free lines only.
 free_reaches() {
     _fr_hit="$(finding_heads "$1" | awk -v d="$2" '$0 == d { print "y"; exit }')" || return 1
     [ "$_fr_hit" = y ]
 }
-# fix_increment <R> <H> succeeds when a critic finding still asking for a fix sits at a
-# finding head and every non-test path of the increment is the file of one of them.
-fix_increment() {
+increment_touches_only_open_finding_files() {
     _fx_files=""
     while IFS= read -r _fx_h; do
         [ -n "$_fx_h" ] || continue
@@ -430,7 +424,7 @@ $_fx_paths
 EOF
     [ "$_fx_cited" -eq 1 ]
 }
-# increment_class <R> <H>: sets inc_class to carried, tests, comments, merge-resolution, fix or
+# increment_class <R> <H>: sets inc_class to carried, tests, merge-resolution or
 # work; a free class needs a non-empty increment of known size at most
 # free_size_cap and fewer than free_cap free rounds (free_count).
 increment_class() {
@@ -448,7 +442,7 @@ increment_class() {
     elif [ "$inc_merge" -eq 1 ] && merge_forward_shape "$1" "$2" \
         && { inc_resolution_only "$2" || version_only_merge "$1" "$inc_b" "$2" "$inc_mt_out" "$inc_mt_rc"; }; then
         inc_class=merge-resolution
-    elif fix_increment "$1" "$2"; then
+    elif increment_touches_only_open_finding_files "$1" "$2"; then
         inc_class=fix
     fi
     return 0
@@ -630,7 +624,7 @@ read_round() {
     return 0
 }
 
-# ledger_query <avail|finding|findfiles|row> <full sha> reads only critic-panel
+# ledger_query <avail|finding|row> <full sha> reads only critic-panel
 # rows on this branch at that sha (full or >=7-char prefix); claude,
 # claude-floor and codex-adv rows are the session's own and never count (the
 # clear-cr-marker gate 3b exclusion). "avail" prints "ok" when a critic

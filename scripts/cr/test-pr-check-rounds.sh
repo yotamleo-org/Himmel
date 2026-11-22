@@ -4787,7 +4787,6 @@ assert_eq "$atw_cmf" "1" "10578 attr-info-carry: clean-merge-forward refuses a c
 atw_cmf=0; (cd "$repo" && bash "$RR" clean-merge-forward "$(git rev-parse main)" "$sn_h2" "$(git rev-parse HEAD~1)") >/dev/null 2>&1 || atw_cmf=$?
 assert_eq "$atw_cmf" "0" "10578 attr-info-carry: the same merge is carried once info/attributes is empty"
 
-# Incremental review rounds, S3: the comments and fix free classes, the finding heads, the rethink text.
 s3_seed() { printf '%s %s postcap-fixed\n' "$cap_r3_head" "$cap_r3_head" > "$git_dir/cr-review-rounds/$1.delta"; }
 s3_f20() { for s3_i in $(seq 1 20); do printf 'fixline %s\n' "$s3_i"; done >> "$repo/f.txt"; git -C "$repo" commit -q -am "s3 fix f.txt $1"; git -C "$repo" rev-parse "$1"; }
 
