@@ -147,7 +147,7 @@
 # the subject pages and the daily actions stay as they are; re-arm with
 # `pipeline-cadence.sh arm --force`.
 # shellcheck disable=SC2034  # consumed by sourcing scripts (pipeline-cadence/doctor/update)
-CADENCE_RUNNER_FORMAT_VERSION=27
+CADENCE_RUNNER_FORMAT_VERSION=28
 
 # Marker line stamped into each generated runner: `# <marker> N`.
 CADENCE_FORMAT_MARKER="himmel-cadence-runner-format:"

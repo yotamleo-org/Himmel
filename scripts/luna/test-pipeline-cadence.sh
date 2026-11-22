@@ -1729,7 +1729,7 @@ REAL_NODE="$REAL_NODE"
 STUB
 cat >>"$TMP_ROOT/bin-rec/node" <<'STUB'
 case "$1" in
-    *daily-timeline.mjs) echo "timeline-stub-ran"; exit 0 ;;
+    *daily-timeline.mjs) echo "timeline-stub-ran"; exit "${NT_RC_TIMELINE:-0}" ;;
     *feed-clip.mjs) kind=feeds; rc=${NT_RC_FEEDS:-0} ;;
     *synthesize-stubs.mjs) kind=promote; rc=${NT_RC_PROMOTE:-0} ;;
     *apply-clip-actions.mjs) kind=actions; rc=${NT_RC_ACTIONS:-0} ;;
@@ -1858,12 +1858,34 @@ assert_rc "no new input: exits 0" 0 "$rc"
 assert_not_contains "no new input: the worker did not run" "claude-stub-ran" "$NT_LOG"
 assert_contains "no new input: the promotion still ran" "[nightly-promote] promote-summary: 3 done" "$NT_LOG"
 assert_contains "no new input: the action apply still ran" "[nightly-actions] actions-summary: 3 done" "$NT_LOG"
+assert_contains "no new input: the day note is refreshed" "timeline-stub-ran" "$NT_LOG"
+l_act=$(nt_line "$NT_DIR/pipeline-synthesize.log" '[nightly-actions]'); l_tl=$(nt_line "$NT_DIR/pipeline-synthesize.log" 'timeline-stub-ran')
+if [ "${l_act:-0}" -lt "${l_tl:-0}" ] 2>/dev/null; then
+    pass "no new input: the day-note refresh comes after the nightly writers"
+else
+    fail "no new input: the day-note refresh comes after the nightly writers" "actions=$l_act timeline=$l_tl"
+fi
+: > "$NT_REC"; rc=0; NT_RC_TIMELINE=1 sh "$NT_DIR/pipeline-synthesize-none.sh" || rc=$?
+NT_LOG=$(cat "$NT_DIR/pipeline-synthesize.log")
+assert_rc "no new input: a failing day-note refresh still exits 0" 0 "$rc"
+assert_contains "no new input: the failing refresh is logged" "[daily-timeline failed rc=1 - continuing]" "$NT_LOG"
 sed "s#[^ ]*usage-preflight\\.sh#$TMP_ROOT/bank-skip-stub2.sh#" "$NT_DIR/pipeline-synthesize.sh" > "$NT_DIR/pipeline-synthesize-bank.sh"
 : > "$NT_REC"; rc=0; sh "$NT_DIR/pipeline-synthesize-bank.sh" || rc=$?
 NT_LOG=$(cat "$NT_DIR/pipeline-synthesize.log")
 assert_rc "bank at threshold: exits 0" 0 "$rc"
 assert_not_contains "bank at threshold: the worker did not run" "claude-stub-ran" "$NT_LOG"
 assert_contains "bank at threshold: the promotion still ran" "[nightly-promote] promote-summary: 3 done" "$NT_LOG"
+assert_contains "bank at threshold: the day note is refreshed" "timeline-stub-ran" "$NT_LOG"
+l_act=$(nt_line "$NT_DIR/pipeline-synthesize.log" '[nightly-actions]'); l_tl=$(nt_line "$NT_DIR/pipeline-synthesize.log" 'timeline-stub-ran')
+if [ "${l_act:-0}" -lt "${l_tl:-0}" ] 2>/dev/null; then
+    pass "bank at threshold: the day-note refresh comes after the nightly writers"
+else
+    fail "bank at threshold: the day-note refresh comes after the nightly writers" "actions=$l_act timeline=$l_tl"
+fi
+: > "$NT_REC"; rc=0; NT_RC_TIMELINE=1 sh "$NT_DIR/pipeline-synthesize-bank.sh" || rc=$?
+NT_LOG=$(cat "$NT_DIR/pipeline-synthesize.log")
+assert_rc "bank at threshold: a failing day-note refresh still exits 0" 0 "$rc"
+assert_contains "bank at threshold: the failing refresh is logged" "[daily-timeline failed rc=1 - continuing]" "$NT_LOG"
 sed "s#[^ ]*usage-preflight\\.sh#$TMP_ROOT/bank-skip-stub2.sh#" "$NT_DIR/pipeline-harvest.sh" > "$NT_DIR/pipeline-harvest-bank.sh"
 : > "$NT_REC"; rc=0; sh "$NT_DIR/pipeline-harvest-bank.sh" || rc=$?
 assert_contains "bank at threshold: the feed pull still ran" "[nightly-feeds] feeds-summary: 3 done" "$(cat "$NT_DIR/pipeline-harvest.log")"
