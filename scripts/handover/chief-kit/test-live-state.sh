@@ -170,10 +170,18 @@ e2e="$HANDOVER_DIR/b/HIMMEL-nextleg-T-chief.md"
 printf '# c\n\n## Live state\n\nlegs: none\nqueue: none\nlast GO: none\nacked: none\n' > "$e2e"
 bash "$FM" add "${e2e%.md}.fleet.json" --lane native "$d1" >/dev/null 2>&1
 bash "$SCRIPT" "$e2e" --nonce N61=n13 --pid N61=13 >/dev/null 2>&1
-mkdir -p "$tmp/tickstate"
+mkdir -p "$tmp/tickstate" "$TICKET_STATUS_STATE_DIR"
+spool_key="$(bash -c '. "$1" && jira_project_key' _ "$HERE/../../lib/jira-project.sh" 2>/dev/null)-374"
+printf '## Ticket coverage\n- the live proof: owed \342\206\222 proof by 2099-01-01\n' \
+    | python3 -I "$HERE/../../lib/pr_remainder.py" --owed-lines \
+    | python3 -I "$HERE/owed-events.py" spool --key "$spool_key" --pr 91 --repo acme/repo --spool "$TICKET_STATUS_STATE_DIR/owe-spool.jsonl"
+spool_id="$(jq -r .identity "$TICKET_STATUS_STATE_DIR/owe-spool.jsonl" 2>/dev/null)"
 tick_out="$(TICK_DOCTOR_TTL_MIN=0 TICK_WORKTREE_ORPHANS_PROBE="$tmp/no-wt-orphans-probe" TICK_STATE_DIR="$tmp/tickstate" TICK_TMPDIR="$tmp" TICK_LAUNCH_DIR="$tmp" bash "$HERE/tick.sh" --doc "$e2e" --token test-token --workers "$d1" 2>/dev/null)"
 case "$tick_out" in *'livestate=ok'*) r=ok ;; *) r="[$tick_out]" ;; esac
 check '13. tick.sh reads the rendered Live state as livestate=ok' ok "$r"
+r="$(jq -r --arg i "$spool_id" 'select(.identity == $i) | .key' "$HANDOVER_DIR/b/owed.jsonl" 2>/dev/null | head -n 1)"
+check '13. the tick drains the row planted in its temp TICKET_STATUS_STATE_DIR spool into its bucket' "$spool_key" "$r"
+rm -f "$HANDOVER_DIR/b/owed.jsonl" "$TICKET_STATUS_STATE_DIR/owe-spool.jsonl"
 
 # 15. a lockless manifest row gets its own `lockless:` line, not a
 # "holds no lock" omission, and a rerun replaces the line instead of stacking it.

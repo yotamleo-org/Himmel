@@ -159,8 +159,18 @@ render_board() {
     cat "$W/board.html" 2>/dev/null
 }
 
+mkdir -p "$TICKET_STATUS_STATE_DIR"
+spool_key="$(bash -c '. "$1" && jira_project_key' _ "$REPO/scripts/lib/jira-project.sh" 2>/dev/null)-374"
+printf '## Ticket coverage\n- the live proof: owed \342\206\222 proof by 2099-01-01\n' \
+    | python3 -I "$REPO/scripts/lib/pr_remainder.py" --owed-lines \
+    | python3 -I "$CK/owed-events.py" spool --key "$spool_key" --pr 91 --repo acme/repo --spool "$TICKET_STATUS_STATE_DIR/owe-spool.jsonl"
+spool_id="$(jq -r .identity "$TICKET_STATUS_STATE_DIR/owe-spool.jsonl" 2>/dev/null)"
+
 # ---- 1. FINDING stays visible until RESOLVED --------------------------------
 check "tails: FINDING is N2's status" "$(tick_field tails)" "N1:LIVE,N2:FINDING,N3:LIVE"
+check "the tick drains the row planted in its temp TICKET_STATUS_STATE_DIR spool into its bucket" \
+    "$(jq -r --arg i "$spool_id" 'select(.identity == $i) | .key' "$B/owed.jsonl" 2>/dev/null | head -n 1)" "$spool_key"
+rm -f "$B/owed.jsonl" "$TICKET_STATUS_STATE_DIR/owe-spool.jsonl"
 check "tails: FINDING persists across a second tick" "$(tick_field tails)" "N1:LIVE,N2:FINDING,N3:LIVE"
 check "workers: every held worker is FRESH" "$(tick_field workers)" "N1:FRESH,N2:FRESH,N3:FRESH"
 contains "board: FINDING asks for a ruling" "$(render_board)" "FINDING — needs a ruling"
