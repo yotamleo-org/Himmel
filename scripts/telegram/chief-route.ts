@@ -1139,8 +1139,10 @@ async function admit(t: SealTarget, rows: Rows): Promise<Admission | null> {
   const refusal = capRefusal(t.key, rows, t.kind, round);
   if (refusal) throw new Error(refusal);
   const owed = owedOf(rows).filter(x => x.kind === t.kind && Number(x.row.opens) === round);
+  const parsed = parseFindings(t.text, t.kind, round); const answers = [...(parsed.restore_holds ?? []), ...(parsed.restore_breaks ?? [])];
+  if (!owed.length && answers.length) throw new Error(`${t.key} ${t.kind} round ${round} owes no restore check: its return carries a RESTORE-HOLDS or RESTORE-BREAKS line; give that block to the round it names`);
   if (owed.length) {
-    const parsed = parseFindings(t.text, t.kind, round); const answers = [...(parsed.restore_holds ?? []), ...(parsed.restore_breaks ?? [])]; const tags = owed.map(restoreTag);
+    const tags = owed.map(restoreTag);
     if (tags.some(tag => answers.filter(a => a === tag).length !== 1) || answers.some(a => !tags.includes(a))) {
       const x = owed[0];
       throw new Error(`${t.key} ${t.kind} round ${round} is the restore check of ${x.row.id}: its return needs one RESTORE-HOLDS or RESTORE-BREAKS line for ${x.row.id} decision ${x.row.decision} with the block's token; give the critic the RESTORE-CHECK block`);

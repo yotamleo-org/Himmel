@@ -7665,6 +7665,19 @@ test("DoD 5: the seal refuses a check round with no answer, both answers, a wron
   }
 });
 
+test("R8: the seal refuses an answer line in a round that owes no restore check, writes no round row and leaves the restore owed", async () => {
+  const t = await restoreTree(); const tok = tokenOf(t.specs, roundAt(t.specs, "spec", 2).return_sha);
+  expect((await restore(t.specs)).err).toBe("");
+  for (const line of [`RESTORE-HOLDS R1 decision 1096 ${tok}`, `RESTORE-BREAKS R1 decision 1096 ${tok}`]) {
+    const v1 = `${t.a}.critic-plan-r1.md`;
+    const x = await sealOn(v1, [t.plan], "PLAN CLEAN", line);
+    expect(x.err, line).toContain(`${CAP_KEY} plan round 1 owes no restore check: its return carries a RESTORE-HOLDS or RESTORE-BREAKS line; give that block to the round it names`); expect(x.code).not.toBe(0);
+    expect(readFileSync(v1, "utf8")).not.toContain("CONTENT-SHA256");
+    expect(roundAt(t.specs, "plan", 1)).toBeUndefined();
+    expect((await status(t.specs)).restore_owed).toMatchObject([{ id: "R1", kind: "spec" }]);
+  }
+});
+
 const twoRestores = async () => {
   const t = await restoreTree([[REV("F1")], [REV("F1")]]);
   const bare = await restore(t.specs, "F1"); expect(bare.err).toContain("round-critical: F1 names findings in spec round 1 and spec round 2; add --round spec:2"); expect(bare.code).not.toBe(0);
