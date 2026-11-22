@@ -48,7 +48,8 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > `wake=pr:<n>` (PR `<n>` merged or closed), `wake=done:<KEY>` (the ticket Done in the Jira mirror) or
 > `wake=file:<absolute path>` (a decision file present). Only such an entry owns its PR:
 > `orphan-pr-check.sh` and the tick's `unowned-prs=` read a HELD entry with no trigger or no
-> resume doc as unowned, and the `wake=`/`resume=` tokens never count as names. Until the trigger fires the
+> resume doc as unowned. An entry holds only the PRs and keys written before its hold word: a blocker
+> named after it (`#5699 HELD waits on 5700 ...`) or in a `wake=`/`resume=` token stays unowned. Until the trigger fires the
 > entry is quiet; once it fires the tick lists it in `relaunch=` and the waiter wakes
 > `WAKE relaunch-owed <PR> <resume doc>`. `chief.sh next` drops such an entry once its PR is merged or
 > closed. A HELD entry without a trigger and a resume doc, and any segment with no hold word, is seeded as before.

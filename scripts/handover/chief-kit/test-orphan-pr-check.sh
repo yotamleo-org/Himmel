@@ -130,10 +130,13 @@ check "10716 a malformed trigger or a relative resume path reads as unowned" "1:
 write_doc "#103 HELD wake=pr:102 resume=$RESUME_DOC"
 run
 check "10716 a PR named only as another entry's trigger is not held by it" "1:UNMAPPED 102 feat/himmel-222-beta" "$rc:$out"
+write_doc "#103 HELD waits on 102 wake=pr:102 resume=$RESUME_DOC"
+run
+check "10716 a blocker PR named in an armed entry's prose stays unowned" "1:UNMAPPED 102 feat/himmel-222-beta" "$rc:$out"
 write_doc "#4400 HELD wake=pr:4951 resume=$RESUME_DOC | #102 HELD wake=pr:4951 resume=$RESUME_DOC | #4401 HELD waits"
 gone="$(ORPHAN_PR_CHECK_PRS="$PRS" bash "$OPC" --gone-held --doc "$DOC" 2>/dev/null)"
 check "10716 --gone-held names only the armed entry whose PR is no longer open" "1:1" "$(printf '%s\n' "$gone" | grep -c .):$(printf '%s\n' "$gone" | grep -c '^#4400 HELD')"
-write_doc "#4400 HELD with #102 wake=pr:4951 resume=$RESUME_DOC"
+write_doc "#4400 #102 HELD wake=pr:4951 resume=$RESUME_DOC"
 check "10716 --gone-held keeps an entry that still names an open PR" "" "$(ORPHAN_PR_CHECK_PRS="$PRS" bash "$OPC" --gone-held --doc "$DOC" 2>/dev/null)"
 write_doc "#102 (adapter merge)"
 run

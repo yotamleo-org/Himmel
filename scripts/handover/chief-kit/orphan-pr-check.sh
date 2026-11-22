@@ -7,7 +7,7 @@
 # Prints `UNMAPPED <n> <head branch>` per unowned open PR, and exits 1.
 # --held prints the doc's HELD queue: entries and reads no PR list: one tab-separated line each,
 # `<subject> <trigger|-> <resume doc|-> <names> <segment>` (subject `#<n>`, else `<n>`, else the first key,
-# else -; names = the numbers and upper-cased keys the entry names, comma-joined). tick.sh reads this.
+# else -; names = the numbers and upper-cased keys before the hold word, comma-joined). tick.sh reads this.
 # --gone-held prints, verbatim, each HELD segment with a trigger and a resume doc whose subject is a PR
 # number and none of whose named numbers is an open PR (merged or closed); chief.sh next drops those.
 # A HELD segment without both, or naming any open PR, is kept. Both exit 3 on an unreadable doc, --gone-held on an unreadable list.
@@ -19,11 +19,11 @@
 # A PR is unowned when its record state is wrapped or none, or the ticket has no record; every
 # other state (live, idle, IDLE-HELD, parked, unknown) still owns it. A PR also counts as held
 # when a HELD entry of the doc's Live state `queue:` line names its number (`#<n>` or `<n>`) or its
-# ticket key AND carries a trigger and a resume doc. A HELD entry is a `|` segment before any `||`
-# holding the word HELD or HOLD; its trigger is `wake=pr:<n>`, `wake=done:<KEY>` or
-# `wake=file:<absolute path>`, its resume doc `resume=<absolute path>`. The wake= and resume= tokens
-# are not names, so a trigger PR is never held by the entry that waits on it. A HELD entry without
-# both is unowned.
+# ticket key before the hold word AND carries a trigger and a resume doc. A HELD entry is a `|`
+# segment before any `||` holding the word HELD or HOLD; its trigger is `wake=pr:<n>`,
+# `wake=done:<KEY>` or `wake=file:<absolute path>`, its resume doc `resume=<absolute path>`. Only the
+# names before the hold word are held: a blocker named after it, or in a wake= or resume= token, stays
+# unowned. A HELD entry without both is unowned.
 #
 # The PR set is `gh pr list --state open --json number,headRefName,isCrossRepository,author` run in
 # <repo> (default: this checkout). Seams (tests): ORPHAN_PR_CHECK_PRS = a file holding that JSON,
@@ -80,7 +80,7 @@ held_entries() {
                 for (j = 1; j <= m; j++) {
                     t = tok[j]
                     if (t ~ /^wake=/) {
-                        if (trig == "-" && t ~ /^wake=(pr:[0-9]+|done:[A-Za-z][A-Za-z0-9]*-[0-9]+|file:\/[^,|]*)$/) trig = substr(t, 6)
+                        if (trig == "-" && t ~ /^wake=(pr:[0-9]+|done:[A-Za-z][A-Za-z0-9]*-[0-9]+|file:\/[^,|]+)$/) trig = substr(t, 6)
                         if (trig ~ /^done:/) trig = "done:" toupper(substr(trig, 6))
                         continue
                     }
@@ -94,6 +94,7 @@ held_entries() {
                 k = split(rest, w, /[^A-Za-z0-9#-]+/)
                 for (j = 1; j <= k; j++) {
                     x = w[j]
+                    if (tolower(x) == "held" || tolower(x) == "hold") break
                     if (x ~ /^#?[0-9]+$/) {
                         if (substr(x, 1, 1) == "#") { x = substr(x, 2); if (hashed == "") hashed = x }
                         if (num == "") num = x

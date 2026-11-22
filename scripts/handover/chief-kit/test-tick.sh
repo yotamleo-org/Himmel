@@ -513,6 +513,11 @@ held_doc "#3002 HELD waits on 3001"
 held_out="$(STUB_PR_ROWS="$rows_5542" held_tick)"
 contains '10716 a HELD entry with no trigger reads as unowned in tick.sh' "$held_out" 'unowned-prs=#3002:125m'
 not_contains '10716 a HELD entry with no trigger prints no relaunch=' "$held_out" ' relaunch='
+held_doc "#3002 HELD wake=pr:3001"
+held_out="$(STUB_PR_ROWS="$rows_5542" held_tick)"
+contains '10716 a HELD entry with a trigger and no resume doc reads as unowned in tick.sh' "$held_out" 'unowned-prs=#3002:125m'
+held_doc "#3001 HELD waits on 3002 wake=pr:3002 resume=/h/r.md"
+contains '10716 a blocker PR named in an armed entry prose stays unowned in tick.sh' "$(STUB_PR_ROWS="$rows_5542" held_tick)" 'unowned-prs=#3002:125m'
 held_doc "#3002 HELD wake=pr:3001 resume=/h/HIMMEL-999-N1-RESUME.md"
 held_out="$(STUB_PR_ROWS="$rows_5542" held_tick)"
 not_contains '10716 a HELD entry with a trigger and a resume doc is not unowned' "$held_out" '#3002:125m'
