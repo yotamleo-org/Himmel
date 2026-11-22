@@ -41,13 +41,17 @@ the flag in a worker's launch script. Both shapes are now refused. Instead:
    effort=high
    decision=<operator decision number>
    api_account=<A, B, C, D or auto>   # optional; launches with the API lane on for that account
+   blocks=#5700 #5699                 # optional; the pull requests the work blocks, "#<n>" tokens, single spaces
    ```
 
 3. The daemon sends the operator an ask on Telegram. It names every granted
    flag with its registry description (`DESTRUCTIVE_OK=1 (Lets destructive
    shell commands (rm -rf and similar) through.)`), the decision (`PAID RUN
    (decision N)` for the billed flag, `OPERATOR DECISION N` for the other
-   decision flags), the brief's description and sha, and a one-time code.
+   decision flags), the brief's description and sha, `Blocks PRs: <blocks>.`
+   when the request carries `blocks=`, and a one-time code. A `blocks=` that
+   is not `#<n>` tokens separated by single spaces is refused
+   `malformed: blocks`.
 4. The operator replies `go <code>` and the daemon launches the worker with
    `headed-arm-worker.sh`. A reply of `no <code>` launches nothing, and so do
    6 h with no reply.
@@ -153,6 +157,23 @@ does, the command waits for the operator.
   do not pass through either) and any inherited effort, then sets only the
   granted flags. A station opt-in such as `HIMMEL_DEEPSEEK_INFERENCE_OK`
   therefore does not reach a worker launched this way.
+- **It never reads or launches a request on code older than its checkout; it
+  holds and tells the operator instead.** At start it records the blob ids of
+  its own script, the tier file and the flag registry from the commit it read
+  (the `start` line prints them as `self=`, `tiers=` and `registry=`). Before
+  it reads a request, and again after the operator's go, it compares them with
+  HEAD. When one differs, or HEAD cannot be read, it logs
+  `STALE hold loaded=<ids> checkout=<ids> (<cause>)`, writes
+  `bypass-queue/.hold`, reads no request and launches nothing until it is
+  restarted, even if HEAD later returns to the loaded ids. It sends one
+  `bypass-failed` card naming the cause and the restart steps, and one more for
+  each waiting request (`bypass request <name> waits: the daemon needs a
+  restart`), once per request. A go given while the code moved is not used:
+  the log says `STALE after go <brief>: go not used, re-queued`, a
+  `bypass-result` card says so, and the request goes back to `<name>.req`, to
+  be asked again after the restart. The daemon does one thing at a time, so a
+  change that lands while it waits on a go is found when that wait ends: the
+  hold and its cards can come up to one ask wait (6 h) after the change.
 - **Failures are reported.** A launcher that exits non-zero within the settle
   window logs `LAUNCH-FAILED <brief> rc=<n>`, and the request ends `.failed`.
 - **It is bounded.** `--until <YYYY-MM-DD>` is required and may be at most 7
@@ -176,6 +197,24 @@ To replace a running instance, `touch <bucket>/bypass-queue/stop`, wait for
 `stop file` in `daemon.log`, remove the stop file, then start it again. bash
 holds the loop it parsed, and the daemon holds the registry and tiers it read at
 start, so a new flag or tier reaches a running instance only after a restart.
+
+A merged change to the daemon script, the tier file or the flag registry puts a
+running daemon on hold. Telegram tells you at once with a `bypass-failed` card:
+"bypass-launchd runs older code than its checkout (<cause>). It reads no request
+until you restart it: touch <queue>/stop, wait for `stop file` in daemon.log,
+remove stop, start it again." Each waiting request gets one more card. Until you
+restart it, no queued request is read or launched; the new instance removes
+`.hold` at start and asks each waiting request. A hold that begins while the
+daemon waits on a go is written and told when that wait ends, at most 6 h later.
+
+`bypass-launchd.sh --check --bucket <bucket> [--request <file>]` reports without
+starting anything. It runs the start checks (not the Claude-session refusal, the
+lock, `--until` or the operator id) and, with `--request`, the same request check
+the loop runs. It prints `accepted` or `refused: <reason>`, then `daemon: none`,
+`daemon: live pid=<p>` or `daemon: live pid=<p>, holding (<cause>)`, and exits 0
+(accepted), 1 (refused) or 2 (a start check failed). It takes no lock, reads no
+operator id, sends nothing and exits before the loop, so it may run inside a
+Claude session: it cannot start, stop or steer the daemon.
 
 ## Limits
 
