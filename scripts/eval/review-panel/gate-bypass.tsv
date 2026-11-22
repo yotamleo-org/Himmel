@@ -16,3 +16,4 @@
 5537	4f30c304381edb52cf27fade7103f73b93b8e2bb	decision-992	the cleanup only drops a ticket key from two critic prompt lines, operator-approved with no paid sweep
 5610	3fb186b734653f6d4f53390c5018edff4876ee59	decision-1093	the critic panel reviews without Claude, operator-approved with no paid sweep
 5610	1d4aa1d65d24d8eb4f1ed599e2379462fe454be9	decision-1093	the critic panel reviews without Claude, operator-approved with no paid sweep
+5645	c8dbeecaa115069209e2cabf1ecb400470029eaa	decision-1245	operator waived the eval check; its four sweep rows hold at the swept base cbs 19156c55c7ccf9bf, but main then changed two unexecuted-tagged cbs paths (scripts/cr/panel-first-pass.sh, scripts/cr/critic-pre-existing-tag.py) so the gate baseline moved to cbs 240b609277be63fa
