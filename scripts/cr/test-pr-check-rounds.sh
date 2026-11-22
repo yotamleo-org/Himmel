@@ -4690,6 +4690,11 @@ assert_has "$dpf_out" "in the delta round need an explicit fu_class amend" "1057
 assert_lacks "$dpf_out" "an early close needs" "10578 defer-postcap-free: no early-close trust check"
 
 attr_conflict() { inc_shared "$1.shared" 10; inc_three "$1" "$1.shared"; on_main sed_file "$1.shared" 's/^s2$/M2/'; }
+attr_merged() {
+    am_before="$(git -C "$repo" rev-parse HEAD)"
+    git -C "$repo" merge -q --no-edit main >/dev/null 2>&1 || fail "$1 merge failed"
+    [ "$(git -C "$repo" rev-parse HEAD)" != "$am_before" ] || fail "$1 merge made no new head"
+}
 attr_conflict atb
 printf '*.shared merge=binary\n' > "$repo/.gitattributes"
 git -C "$repo" merge -q --no-edit main >/dev/null 2>&1
@@ -4702,7 +4707,7 @@ assert_eq "$atb_rc" "0" "10578 attr-merge-binary: the kept side is reviewed as a
 assert_eq "$(( $(panel_calls) - atb_calls ))" "1" "10578 attr-merge-binary: the panel runs on it"
 attr_conflict atu
 mkdir -p "$git_dir/info"; printf '*.shared merge=union\n' > "$git_dir/info/attributes"
-git -C "$repo" merge -q --no-edit main >/dev/null 2>&1
+attr_merged atu
 atu_out="$(start_round "$(git -C "$repo" rev-parse atu)" clean atu)"; atu_rc=$?
 rm -f "$git_dir/info/attributes"
 assert_lacks "$atu_out" "carried on atu" "10578 attr-info-union: info/attributes merge=union never makes a merge carried ($atu_out)"
@@ -4720,7 +4725,7 @@ assert_eq "$(( $(panel_calls) - atm_calls ))" "1" "10578 attr-marker-size: the p
 
 attr_conflict atx
 mkdir -p "$git_dir/info"; printf '*.shared merge=union\n' > "$git_dir/info/attributes"
-git -C "$repo" merge -q --no-edit main >/dev/null 2>&1
+attr_merged atx
 printf 'echo t\n' > "$repo/test-atx.sh"; git -C "$repo" add test-atx.sh; git -C "$repo" commit -q -m "atx test"
 atx_calls="$(panel_calls)"
 atx_out="$(start_round "$(git -C "$repo" rev-parse atx)" clean atx)"; atx_rc=$?
@@ -4731,7 +4736,7 @@ assert_eq "$(panel_calls)" "$atx_calls" "10578 attr-info-tests: no panel runs on
 
 attr_conflict atd
 git -C "$repo" config merge.default union
-git -C "$repo" merge -q --no-edit main >/dev/null 2>&1
+attr_merged atd
 atd_calls="$(panel_calls)"
 atd_out="$(start_round "$(git -C "$repo" rev-parse atd)" clean atd)"; atd_rc=$?
 git -C "$repo" config --unset merge.default
@@ -4741,7 +4746,7 @@ assert_eq "$(( $(panel_calls) - atd_calls ))" "1" "10578 attr-merge-default: the
 
 attr_conflict atr
 git -C "$repo" config merge.default union
-git -C "$repo" merge -q --no-edit main >/dev/null 2>&1
+attr_merged atr
 git -C "$repo" config --unset merge.default
 git -C "$repo" config merge.text.driver 'git merge-file --union %A %O %B'
 atr_calls="$(panel_calls)"
@@ -4753,7 +4758,7 @@ assert_eq "$(panel_calls)" "$atr_calls" "10578 attr-merge-driver: no panel runs 
 
 attr_conflict atg
 git -C "$repo" config merge.default union
-git -C "$repo" merge -q --no-edit main >/dev/null 2>&1
+attr_merged atg
 git -C "$repo" config --unset merge.default
 git -C "$repo" config merge.text.driver 'git merge-file --union %A %O %B'
 atg_calls="$(panel_calls)"
@@ -4767,7 +4772,7 @@ sn_branch atw
 start_round "$sn_h2" clean atw >/dev/null || fail "atw round 2"
 main_commit atw-main.txt "newer main"
 mkdir -p "$git_dir/info"; printf '*.shared merge=union\n' > "$git_dir/info/attributes"
-git -C "$repo" merge -q --no-edit main >/dev/null 2>&1
+attr_merged atw
 printf 'echo t\n' > "$repo/test-atw.sh"; git -C "$repo" add test-atw.sh; git -C "$repo" commit -q -m "atw test"
 atw_h="$(git -C "$repo" rev-parse atw)"
 atw_calls="$(panel_calls)"
