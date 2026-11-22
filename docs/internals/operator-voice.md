@@ -30,11 +30,13 @@ The chief carries these rules as its reply style (`docs/handover/chief-adhd-brie
 7. **A mistake names its cause and its follow-up,** the fix or a ticket in the current
    version at High priority. Operator: "we need mistakes to be diagnosed and always
    have a followup so we do self evolve" and "always to current version as high".
-8. **No time estimates.** No "in about 15 min", no ETA, no "shortly", no expiry time,
-   no "I send it when done". A measured past duration ("took 50 min") is a fact.
-   Operator: "stop the giving time estimations [...] they are wasting tokens are are
-   99% wrong". `scripts/lint/check-operator-voice.sh` fails when an operator-bound
-   prompt, reply kind or bridge reply carries one.
+8. **No time estimates.** No "in about 15 min", no ETA, no "shortly", no "I send it
+   when done". A measured past duration ("took 50 min") is a fact. A deadline the
+   system enforces (a code or request that expires) stays, stated plainly: "expires
+   in 6 h". Operator: "stop the giving time estimations [...] they are wasting tokens
+   are are 99% wrong", and on deadlines, "keep deadlines" (decision 1238).
+   `scripts/lint/check-operator-voice.sh` fails when an operator-bound prompt, reply
+   kind or bridge reply carries an estimate.
 9. **Never write "nothing needed from you".** Operator: "tell me when it is needed and
    never in ticket".
 10. **A ticket opens with one plain line for him; the rest stays agent-facing in

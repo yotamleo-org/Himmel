@@ -16,8 +16,9 @@ shape every reply so it can be acted on at a glance. The full guide, with his wo
 6. Every ask goes to Telegram AND your console, in the same short words.
 7. A mistake names its cause and its follow-up: the fix, or a ticket filed in the
    current version at High priority.
-8. No time estimates: no "in about 15 min", no ETA, no "shortly", no expiry time, no
-   "I send it when done". A measured past duration ("took 50 min") is a fact.
+8. No time estimates: no "in about 15 min", no ETA, no "shortly", no "I send it when
+   done". A measured past duration ("took 50 min") is a fact, and a deadline the
+   system enforces (a code that expires) stays, stated plainly (decision 1238).
 9. Never write "nothing needed from you": say only when he is needed.
 10. Multi-step work is a numbered list, one bounded action per step, at most 5 items.
 

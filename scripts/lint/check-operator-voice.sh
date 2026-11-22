@@ -5,7 +5,8 @@
 # a time estimate (docs/internals/operator-voice.md, rule 8). A time estimate is a
 # future duration or arrival: "in about 15 min", "about 2 min", "ETA", "will take",
 # "shortly", "in a moment". A measured past duration ("took 50 min", "waited 30 min")
-# is a fact and passes. A line naming "time estimate" states the rule and is skipped.
+# is a fact and passes, and so does a deadline the system enforces ("expires in 6 h",
+# decision 1238). A line naming "time estimate" states the rule and is skipped.
 #
 # Usage:
 #   check-operator-voice.sh [<file>...]

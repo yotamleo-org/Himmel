@@ -55,10 +55,17 @@ done
 
 put measured.md 'The run took 50 min.
 A file ask waited 30 min: a worker wants a file.
-The suite ran for about 6 min on the station.
-The ask expires in 6 h; send the code within 5 minutes.'
+The suite ran for about 6 min on the station.'
 run "$T/measured.md"
 if [ "$RC" -eq 0 ]; then pass "measured past duration -> 0"; else fail "measured exit $RC: $OUT"; fi
+
+put deadline.md 'The ask expires in 6 h; send the code within 5 minutes.'
+run "$T/deadline.md"
+if [ "$RC" -eq 0 ]; then pass "enforced deadline, decision 1238 -> 0"; else fail "enforced deadline exit $RC: $OUT"; fi
+
+put bare.md 'done in about 10 minutes'
+run "$T/bare.md"
+if [ "$RC" -eq 1 ] && has "bare.md:1"; then pass "bare estimate beside the carve-out -> 1"; else fail "bare estimate exit $RC: $OUT"; fi
 
 put comment.ts '// ~16h wedge seen once; the watchdog restarts it
 const GAP_MS = 3000;'
