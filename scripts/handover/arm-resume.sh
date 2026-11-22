@@ -250,6 +250,9 @@
 #      Also 22: managed fleet control refused — the scope `resolve` failed,
 #      the fleet slots could not be read, or scripts/lib/fleet-launch.sh could
 #      not be loaded to build the managed runtime line.
+#      Also 22: the seams of the scheduled job could not be determined —
+#      chokepoints.json is missing, unreadable or has no usable entry for
+#      scripts/lib/usage-preflight.sh; nothing is scheduled.
 #   23 restart cap refused — a --limit-reset arm found three `armed-resume`
 #      start rows for this handover's task in the flow-run ledger inside the
 #      last 5 minutes (a crash loop). --force overrides. A --limit-reset
