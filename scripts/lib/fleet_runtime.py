@@ -740,8 +740,6 @@ def ownership_check(attempts, manifest, doc, name, keys):
 
 
 def joined_attempt(attempts, doc, attempt_id):
-    """The live attempt of this doc that the caller runs inside: its launcher or its session is a live ancestor.
-    A call from inside a managed worker joins that attempt instead of owning the doc again; an id alone never joins."""
     record = attempts.get(attempt_id) if attempt_id else None
     if not record or record['doc'] != doc or record['phase'] not in ('committed', 'launched'):
         return None

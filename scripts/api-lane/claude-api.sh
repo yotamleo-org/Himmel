@@ -50,8 +50,7 @@ CLAUDE_BIN="${HIMMEL_API_CLAUDE_BIN:-claude}"
 # shellcheck source=scripts/lib/llm-backend.sh
 . "$REPO/scripts/lib/llm-backend.sh" || { echo "claude-api: cannot load scripts/lib/llm-backend.sh -- refusing" >&2; exit 2; }
 
-# Resolve managed API scope before any fallback or alert can start a call. A call from inside a managed
-# worker passes the attempt id it inherited: the runtime joins it only to that doc's live attempt it runs inside.
+# Resolve managed API scope before any fallback or alert can start a call.
 # shellcheck source=scripts/lib/fleet-launch.sh
 . "$REPO/scripts/lib/fleet-launch.sh" || exit 10
 if ! fleet_launch_prepare "${FLEET_LAUNCH_DOC:-${WORKER_SESSION_DOC:-}}" \

@@ -771,7 +771,6 @@ exit 1''')
         self.rt('commit', aid='first')
 
     def api_call(self, join, doc=None, env=None):
-        """fleet-launch.sh's prepare as claude-api.sh calls it, then the exit-path steps that call runs."""
         script = ('. "$1/scripts/lib/fleet-launch.sh"; fleet_launch_prepare "$2" api-managed "$3" "" "" "$4" || exit $?; '
                   'echo "managed=$FLEET_LAUNCH_MANAGED"; echo "child_attempt=$(printenv FLEET_LAUNCH_ATTEMPT)"; '
                   'fleet_launch_finish; fleet_launch_outcome complete; fleet_launch_release')
