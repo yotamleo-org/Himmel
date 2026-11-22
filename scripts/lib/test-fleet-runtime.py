@@ -827,6 +827,31 @@ exit 1''')
         p = self.call('runtime', 'admit', '--doc', self.doc, '--manifest', self.m, '--name', 'api-managed', '--join-attempt', 'first', ok=False)
         self.assertIn('family already owns worker or ticket', p.stderr)
 
+    def set_attempt(self, aid, **fields):
+        control = json.loads((self.bucket / 'fleet-control.json').read_text())
+        control['attempts'][aid].update(fields)
+        (self.bucket / 'fleet-control.json').write_text(json.dumps(control))
+
+    def test_api_call_naming_a_pending_or_unknown_attempt_of_a_live_owner_is_refused(self):
+        self.active()
+        self.rt('begin', aid='first')
+        p = self.api_call('first')
+        self.assertEqual(p.returncode, 10, p.stdout)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.set_attempt('first', phase='unknown')
+        p = self.api_call('first')
+        self.assertEqual(p.returncode, 10, p.stdout)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+
+    def test_api_call_naming_a_launched_attempt_whose_ancestor_pid_was_reused_is_refused(self):
+        self.live_worker()
+        owner = self.attempts()['first']['owner']
+        self.set_attempt('first', phase='launched', owner=dict(owner, start=str(int(owner['start']) + 1)))
+        p = self.api_call('first')
+        self.assertEqual(p.returncode, 10, p.stdout)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.assertEqual(self.attempts()['first']['phase'], 'launched')
+
     def test_api_call_with_no_inherited_attempt_is_refused_as_today(self):
         self.live_worker()
         p = self.api_call('')
