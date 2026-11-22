@@ -307,6 +307,21 @@ describe('version lines: done, left and open', () => {
     expect(l.left).toEqual([]);
     expect(at(l, d(3))).toMatchObject({ came_in: 4, left: 0, open: 4 });
   });
+
+  it('a key a re-freeze dropped is not left while the reducer reads it pending or unknown', () => {
+    const g2: Baseline = { ...base, gen: 2, keys: ['K-2'], ts: day(4) };
+    const issueList = [issue('K-1', ['v1']), issue('K-2', ['v1'])];
+    const add = rule('R-1', 'K-2', 'add', null, 'v1');
+    const pending = rule('R-2', 'K-1', 'remove', 'v1', null, { ts: day(3), phase: 'intent', verb: 'REVERSION', outcome: 'REMOVE' });
+    const refused = rule('R-2', 'K-1', 'remove', 'v1', null, { ts: day(3), authority: { kind: 'operator', ref: 'O-R1-0009' } });
+    for (const r of [pending, refused]) {
+      const s = run(input({ rulingRows: [add, r], issueList, mirrorSync: day(4), baselines: [g2], base_history: [base, g2] }));
+      expect(['pending', 'unknown']).toContain(s.records.find((x) => x.key === 'K-1' && x.version === 'v1')?.placement);
+      const l = ok(s);
+      expect(l.left).toEqual([]);
+      expect(at(l, d(4))).toMatchObject({ came_in: 2, left: 0, open: 2 });
+    }
+  });
 });
 
 describe('version lines: the readings beside them', () => {

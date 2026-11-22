@@ -109,6 +109,7 @@ function leftOf(i: LinesInput, v: string, a: Arrivals, cameDay: Map<string, stri
       leftAt.set(key, { day: later(came, utcDay(r.ts)), authority: r.authority.kind });
       continue;
     }
+    if (rec && (rec.placement === 'pending' || rec.placement === 'unknown')) continue;
     if (!newest || newest.keys.includes(key) || a.ruledIn.has(key) || a.folds.has(key)) continue;
     const lastListed = a.bases.reduce((n, b, idx) => (b.keys.includes(key) ? idx : n), -1);
     const drop = a.bases[lastListed + 1];
