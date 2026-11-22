@@ -82,7 +82,7 @@ ts="$(date +%Y%m%dT%H%M%S)-$$"
 rc=0
 moved=""
 for f in head round delta deferred-to free scope start.bak; do
-    [ -f "$dir/$branch.$f" ] || continue
+    [ -f "$dir/$branch.$f" ] || [ -L "$dir/$branch.$f" ] || continue
     if mv "$dir/$branch.$f" "$dir/$branch.$f.bak-$ts"; then
         moved="$moved .$f"
     else

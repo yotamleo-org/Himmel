@@ -299,6 +299,7 @@ diff_rc=0
 diff_range="$db_sha...$HEAD_SHA"
 scoped_from=""
 scope_kind=""
+round_note=""
 diff_out=$(git diff "$diff_range") || diff_rc=$?
 # Bytes the critics count in a diff: they measure the diff text plus one trailing newline.
 pr_over_cap() { # diff text: sets pr_diff_bytes and pr_cap; true when over the cap
@@ -489,14 +490,12 @@ else
                 printf 'pr-check: delta round %s on %s (from %s)\n' "$review_round" "$BRANCH" "$scoped_from"
                 echo "delta round blocking set: Critical or escape-class only - every other finding is deferred at step 4.9."
             else
-                printf 'pr-check: round %s of 3 on %s (increment from %s)\n' "$review_round" "$BRANCH" "$scoped_from"
+                round_note=" (increment from $scoped_from)"
             fi
             echo "panel-first-pass: round $review_round reviews $diff_range, the increment review-round.sh named; the whole PR rides as context" >&2
             ;;
-        *)
-            printf 'pr-check: round %s of 3 on %s\n' "$review_round" "$BRANCH"
-            ;;
     esac
+    [ "$scope_kind" = delta ] || printf 'pr-check: round %s of 3 on %s%s\n' "$review_round" "$BRANCH" "$round_note"
     [ -z "${CR_PROFILE:-}" ] && echo "Default cross-model CR - no free critics registered, using the PAID codex anchor (~2min; set CR_PROFILE=none for instant claude-only)."
     ceilings_header
     panel_ran=1
