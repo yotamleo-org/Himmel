@@ -183,7 +183,7 @@ hold() {
     HOLDING=1
     printf 'cause=%s\nsince=%s\nloaded=%s\ncheckout=%s\n' "$STALE_CAUSE" "$(date -u +%FT%TZ)" "$LOADED" "$CURRENT" >"$Q/.hold"
     log "STALE hold loaded=$LOADED checkout=$CURRENT ($STALE_CAUSE)"
-    send bypass-failed "bypass-launchd runs older code than its checkout ($STALE_CAUSE). It reads no request until you restart it: touch $Q/stop, wait for \`stop file\` in daemon.log, remove stop, start it again."
+    send bypass-failed "bypass-launchd runs older code than its checkout ($STALE_CAUSE). It reads no request until you restart it: touch $Q/stop, wait for \`stop file\` in daemon.log, remove stop, start it again." # t13b-ok: operator-facing text naming the existing bypass daemon, no process is started
 }
 tell_held() {
     local req n
@@ -192,7 +192,7 @@ tell_held() {
         n=$(basename "$req")
         ! grep -qxF -- "$n" <<<"$TOLD" || continue
         TOLD+="$n"$'\n'
-        send bypass-failed "bypass request $n waits: the daemon needs a restart"
+        send bypass-failed "bypass request $n waits: the daemon needs a restart" # t13b-ok: operator-facing text naming the existing bypass daemon, no process is started
     done
 }
 
@@ -233,9 +233,9 @@ if [ -n "$CHECK" ]; then
     owner=$(readlink "$LOCK" 2>/dev/null)
     if lock_owner_alive "$owner"; then
         cause=""; [ -f "$Q/.hold" ] && cause=$(sed -n 's/^cause=//p' "$Q/.hold" | head -n 1)
-        echo "daemon: live pid=$owner${cause:+, holding ($cause)}"
+        echo "daemon: live pid=$owner${cause:+, holding ($cause)}" # t13b-ok: operator-facing text naming the existing bypass daemon, no process is started
     else
-        echo "daemon: none"
+        echo "daemon: none" # t13b-ok: operator-facing text naming the existing bypass daemon, no process is started
     fi
     exit "$rc"
 fi
@@ -280,7 +280,7 @@ while :; do
         fi
         if stale_now; then
             log "STALE after go $base: go not used, re-queued"; mv "$req.pending" "$req"
-            send bypass-result "bypass launch $base: your go was not used, the daemon runs older code than its checkout ($STALE_CAUSE). Nothing ran; the request waits for a restart and will be asked again."
+            send bypass-result "bypass launch $base: your go was not used, the daemon runs older code than its checkout ($STALE_CAUSE). Nothing ran; the request waits for a restart and will be asked again." # t13b-ok: operator-facing text naming the existing bypass daemon, no process is started
             hold; break
         fi
         printf 'granted_at=%s\ngo=%s\nsha=%s\n' "$(date -u +%FT%TZ)" "$code" "$sha" >>"$req.pending"
