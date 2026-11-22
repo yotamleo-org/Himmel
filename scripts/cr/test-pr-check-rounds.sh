@@ -4729,6 +4729,16 @@ assert_eq "$atx_rc" "8" "10578 attr-info-tests: a union-resolved merge plus a te
 assert_eq "$(rr_file atx free)" "absent" "10578 attr-info-tests: no free round is recorded"
 assert_eq "$(panel_calls)" "$atx_calls" "10578 attr-info-tests: no panel runs on an increment base it cannot trust"
 
+attr_conflict atd
+git -C "$repo" config merge.default union
+git -C "$repo" merge -q --no-edit main >/dev/null 2>&1
+atd_calls="$(panel_calls)"
+atd_out="$(start_round "$(git -C "$repo" rev-parse atd)" clean atd)"; atd_rc=$?
+git -C "$repo" config --unset merge.default
+assert_lacks "$atd_out" "carried on atd" "10578 attr-merge-default: merge.default=union never makes a conflicting merge carried ($atd_out)"
+assert_eq "$atd_rc" "0" "10578 attr-merge-default: the union-resolved merge is reviewed as a merge-resolution round"
+assert_eq "$(( $(panel_calls) - atd_calls ))" "1" "10578 attr-merge-default: the panel runs on it"
+
 sn_branch atw
 start_round "$sn_h2" clean atw >/dev/null || fail "atw round 2"
 main_commit atw-main.txt "newer main"

@@ -293,11 +293,12 @@ increment_of() {
         _io_empty="$(git hash-object -t tree /dev/null 2>&1)" || { printf 'review-round: empty tree hash failed: %s\n' "$_io_empty" >&2; return 1; }
         case "$_io_empty" in ''|*[!0-9a-f]*) printf 'review-round: empty tree hash unreadable: %s\n' "$_io_empty" >&2; return 1 ;; esac
         _io_info="$(git rev-parse --git-path info/attributes 2>&1)" || { printf 'review-round: info/attributes path failed: %s\n' "$_io_info" >&2; return 1; }
-        if [ -e "$_io_info" ] && { [ ! -f "$_io_info" ] || LC_ALL=C grep -qv '^[[:space:]]*\(#.*\)\{0,1\}$' "$_io_info"; }; then
+        _io_tab="$(printf '\t')"
+        if [ -e "$_io_info" ] && { [ ! -f "$_io_info" ] || LC_ALL=C grep -qv "^[ $_io_tab]*\(#.*\)\{0,1\}\$" "$_io_info"; }; then
             printf 'review-round: %s sets attributes, so no trusted increment base exists\n' "$_io_info" >&2
             return 1
         fi
-        inc_mt_out="$(GIT_ATTR_NOSYSTEM=1 git -c core.attributesFile=/dev/null -c merge.conflictStyle=merge --attr-source="$_io_empty" \
+        inc_mt_out="$(GIT_ATTR_NOSYSTEM=1 git -c core.attributesFile=/dev/null -c merge.conflictStyle=merge -c merge.default=text --attr-source="$_io_empty" \
             merge-tree --write-tree --name-only --no-messages "$1" "$inc_b" 2>/dev/null)"
         inc_mt_rc=$?
         [ "$inc_mt_rc" -eq 0 ] || [ "$inc_mt_rc" -eq 1 ] || return 1
