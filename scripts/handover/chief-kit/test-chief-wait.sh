@@ -445,8 +445,14 @@ wait_exit "$WPID"
 check "(hreg) a moved value wakes as hreg" "WAKE tick changed=hreg usage=PROCEED" "$(head -n1 "$WORK/hreg-move.out")"
 if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
 
-# a pending trust-path HOLD-ASK is paged to the operator ONCE, with the paste-ready grant command. The suite owns
-# HOME (the register and events.log are fixtures under $WORK) and the sender stub; the record is <inbox>.wait.holdasks.
+cat > "$STUB/ql.sh" <<'EOF'
+#!/usr/bin/env bash
+if [ -s "$STUB/ql.out" ]; then cat "$STUB/ql.out"; else echo 'sweep: no held locks'; fi
+EOF
+export HOLDS_QUEUE_LOCK="$STUB/ql.sh"
+ql_live() { local k; : > "$STUB/ql.out"; for k in "$@"; do printf 'slug=u__himmel__%s-F1-case-2026-11-22 session=s host=h age=5s status=OK\n' "$k" >> "$STUB/ql.out"; done; }
+ql_live HIMMEL-9942 PROJ-9942 PROJ-9012
+ha_pages() { if [ -f "$STUB/pages" ]; then wc -l < "$STUB/pages" | tr -d ' '; else echo 0; fi; }
 HA_HOME="$WORK/hreg-home"; HA_PRIMARY="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)"; HA_PRIMARY="${HA_PRIMARY%/.git}"
 HA_ESC="${HA_PRIMARY//%/%25}"; HA_ESC="${HA_ESC//\//%2F}"
 HA_DIR="$HA_HOME/.himmel/state/holds/$HA_ESC"; mkdir -p "$HA_DIR"
@@ -457,16 +463,17 @@ sed -i 's/ denials=none/ hreg=0\/0\/1 denials=none/' "$STUB/tick.line"  # gnu-ok
 rm -f "$STUB/pages"
 I="$(new_inbox hask)"
 HOME="$HA_HOME" start "$I" "$WORK/hask.out" --workers "N1.md"
-wait_hb "$I" || fail "(hask) no baseline heartbeat"
-n=0; while [ ! -s "$STUB/pages" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
-sleep 1
-check "(hask) one trust-path ask records exactly one page line" "1" "$(grep -c . "$STUB/pages" 2>/dev/null)"
-check "(hask) the line carries the full paste-ready grant command" "1" "$(grep -cF -- "python3 -I $HA_PRIMARY/scripts/handover/chief-kit/holds.py grant --key $KP-9942 --repo $HA_PRIMARY scripts/check-ci.sh" "$STUB/pages")"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+wait_exit "$WPID"
+check "(hask) a chief-grantable ask wakes the chief" "0" "$rc"
+check "(hask) one WAKE hold-ask line with the key, path, holder and the full paste-ready grant command" "WAKE hold-ask $KP-9942 wants scripts/check-ci.sh (held by $KP-9941). Grant: python3 -I $HA_PRIMARY/scripts/handover/chief-kit/holds.py grant --key $KP-9942 --repo $HA_PRIMARY scripts/check-ci.sh" "$(grep '^WAKE ' "$WORK/hask.out")"
+check "(hask) the tick line follows" "1" "$(grep -c '^TICK ' "$WORK/hask.out")"
+check "(hask) the wake pages nobody" "0" "$(ha_pages)"
+check "(hask) the exit reason is logged" "yes" "$(grep -q 'exit=wake-hold-ask' "$I.wait" && echo yes)"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
 HOME="$HA_HOME" start "$I" "$WORK/hask2.out" --workers "N1.md"
 wait_hb "$I" || fail "(hask) no re-armed heartbeat"
 sleep 3
-check "(hask) a repeat of the same ask (a re-armed waiter) records nothing" "1" "$(grep -c . "$STUB/pages" 2>/dev/null)"
+check "(hask) a re-armed waiter neither wakes nor pages again for the same ask" "running|0" "$(kill -0 "$WPID" 2>/dev/null && echo running)|$(ha_pages)"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 rm -f "$STUB/pages"
 
@@ -484,30 +491,34 @@ stuck_run() {
     I="${I_SEED:-$(new_inbox "$c")}"
     bash "$WAIT" "$I" "$@" > "$WORK/$c.out" 2>"$WORK/$c.err" &
     WPID=$!
-    wait_hb "$I" || fail "($c) no baseline heartbeat"
+    if ! wait_hb "$I" && kill -0 "$WPID" 2>/dev/null; then fail "($c) no baseline heartbeat"; fi
     n=0; while [ ! -s "$STUB/pagek" ] && [ "$n" -lt 40 ]; do sleep 0.1; n=$((n + 1)); done
     sleep 1.5
     kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 }
+hask_wake() { grep '^WAKE ' "$WORK/$1.out" 2>/dev/null | cut -d' ' -f1-3 | paste -sd, -; }
 hask_home() {
     local h="$WORK/home-$1" esc d
     esc="${HA_PRIMARY//%/%25}"; esc="${esc//\//%2F}"
     d="$h/.himmel/state/holds/$esc"; mkdir -p "$d"
     local p="${3//\//%2F}"
     printf '%s\tlab\t/nowhere/%s-x.md\tbrief\t\n' "$4" "$4" > "$d/$p"
-    printf '%s\tdeny\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$3" "$2" "$4" > "$h/.himmel/state/holds/events.log"
+    printf '%s\tdeny\t%s\t%s\t%s\n' "${5:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" "$3" "$2" "$4" > "$h/.himmel/state/holds/events.log"
     printf '%s' "$h"
 }
+hask_pr_row() { printf '%s\tlab\t/nowhere/%s-x.md\tpr\t%s\n' "$2" "$2" "$3" > "$1/.himmel/state/holds/$HA_ESC/scripts%2Fown-$3.sh"; }
 hask_tick() { reset_stub; sed -i 's/ denials=none/ hreg=0\/0\/1 denials=none/' "$STUB/tick.line"; }  # gnu-ok: Linux-only kit
 
 H_CHIEF="$(hask_home chief PROJ-9942 scripts/check-ci.sh PROJ-9941)"
 H_OPER="$(hask_home oper PROJ-9942 .github/workflows/ci.yml PROJ-9941)"
 hask_tick; I_SEED=""
 HOME="$H_CHIEF" CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run k1 --workers "N1.md"
-check "(R3.2) a trust-path ask pages as hold-ask-chief" "hold-ask-chief" "$(pk_kinds)"
+check "(10632a) a chief-grantable ask pages nobody" "" "$(pk_kinds)"
+check "(10632a) ... and wakes the chief as WAKE hold-ask" "WAKE hold-ask PROJ-9942" "$(hask_wake k1)"
 hask_tick
 HOME="$H_OPER" CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run k2 --workers "N1.md"
-check "(R3.2) a CI-workflow ask still pages as hold-ask-operator (escalates)" "hold-ask-operator" "$(pk_kinds)"
+check "(10632c) control: a CI-workflow ask still pages the operator as hold-ask-operator" "hold-ask-operator" "$(pk_kinds)"
+check "(10632c) ... and wakes no chief" "" "$(hask_wake k2)"
 PY_REAL_PATH="$PATH"; PY4_PATH="$WORK/py4:$PATH"
 mkdir -p "$WORK/py4"
 cat > "$WORK/py4/python3" <<'EOF'
@@ -526,10 +537,11 @@ check "(R3.2) an unknown field 5 pages as hold-ask-operator" "hold-ask-operator"
 NOW_R="$(date +%s)"
 hask_tick
 HOME="$H_CHIEF" HIMMEL_TEST_FIXTURE=1 CHIEF_WAIT_NOW=$((NOW_R + 31 * 60)) CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run s1 --workers "N1.md"
-check "(R4.1) an ask pending 31 minutes pages hold-ask-chief then hold-ask-stuck, once each" "hold-ask-chief,hold-ask-stuck" "$(pk_kinds)"
-check "(R4.1) the stuck page carries the paste-ready grant command" "1" "$(grep '^hold-ask-stuck|' "$STUB/pagek" | grep -cF -- "python3 -I $HA_PRIMARY/scripts/handover/chief-kit/holds.py grant --key PROJ-9942 --repo $HA_PRIMARY scripts/check-ci.sh")"
+check "(10632a) a chief-grantable ask pending 31 minutes pages no hold-ask-stuck" "" "$(pk_kinds)"
+check "(10632a) ... it wakes the chief once" "WAKE hold-ask PROJ-9942" "$(hask_wake s1)"
 HOME="$H_CHIEF" HIMMEL_TEST_FIXTURE=1 CHIEF_WAIT_NOW=$((NOW_R + 40 * 60)) CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" I_SEED="$I" stuck_run s1b --workers "N1.md"
 check "(R4.1) a re-armed waiter pages nothing more for the same ask" "" "$(pk_kinds)"
+check "(R4.1) ... and wakes nothing more" "" "$(hask_wake s1b)"
 H_GR="$(hask_home granted PROJ-9942 scripts/check-ci.sh PROJ-9941)"
 : > "$H_GR/.himmel/state/holds/${HA_ESC}/scripts%2Fcheck-ci.sh.grant.PROJ-9942"
 hask_tick
@@ -541,25 +553,54 @@ H_T="$(hask_home t0354 PROJ-9012 scripts/check-ci.sh PROJ-8992)"
 hask_tick
 I_SEED="$(new_inbox s3)"; printf 'PROJ-9012\tscripts/check-ci.sh\t%s\n' "$NOW_R" > "$I_SEED.wait.holdasks"
 HOME="$H_T" HIMMEL_TEST_FIXTURE=1 CHIEF_WAIT_NOW=$((NOW_R + 30 * 60)) CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run s3 --workers "N1.md"
-check "(R4.3) the 03:54 ask, ungranted at 04:24, pages exactly one hold-ask-stuck" "hold-ask-stuck" "$(pk_kinds)"
-cp "$STUB/pagek" "$WORK/s3.pagek"
-H_T2="$(hask_home t0354g PROJ-9012 scripts/check-ci.sh PROJ-8992)"
-: > "$H_T2/.himmel/state/holds/${HA_ESC}/scripts%2Fcheck-ci.sh.grant.PROJ-9012"
+check "(10632a) the 03:54 chief-grantable ask, ungranted at 04:24, pages the operator nothing" "0" "$(pk_n)"
+check "(10632a) ... an ask an older waiter recorded still wakes the chief once" "WAKE hold-ask PROJ-9012" "$(hask_wake s3)"
+H_TO="$(hask_home t0354o PROJ-9012 .github/workflows/ci.yml PROJ-8992)"
 hask_tick
-I_SEED="$(new_inbox s3g)"; printf 'PROJ-9012\tscripts/check-ci.sh\t%s\n' "$NOW_R" > "$I_SEED.wait.holdasks"
+I_SEED="$(new_inbox s3o)"; printf 'PROJ-9012\t.github/workflows/ci.yml\t%s\n' "$NOW_R" > "$I_SEED.wait.holdasks"
+HOME="$H_TO" HIMMEL_TEST_FIXTURE=1 CHIEF_WAIT_NOW=$((NOW_R + 30 * 60)) CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run s3o --workers "N1.md"
+check "(R4.3) an operator ask ungranted at 30 minutes pages exactly one hold-ask-stuck" "hold-ask-stuck" "$(pk_kinds)"
+cp "$STUB/pagek" "$WORK/s3.pagek"
+H_T2="$(hask_home t0354g PROJ-9012 .github/workflows/ci.yml PROJ-8992)"
+: > "$H_T2/.himmel/state/holds/${HA_ESC}/.github%2Fworkflows%2Fci.yml.grant.PROJ-9012"
+hask_tick
+I_SEED="$(new_inbox s3g)"; printf 'PROJ-9012\t.github/workflows/ci.yml\t%s\n' "$NOW_R" > "$I_SEED.wait.holdasks"
 HOME="$H_T2" HIMMEL_TEST_FIXTURE=1 CHIEF_WAIT_NOW=$((NOW_R + 30 * 60)) CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run s3g --workers "N1.md"
-check "(R4.3) the same ask granted at 04:10 pages none" "0" "$(pk_n)"
+check "(R4.3) the same ask granted before then pages none" "0" "$(pk_n)"
 
-check "(R4.4) the hold-ask-stuck text" "hold-ask-stuck|A file ask waited 30 min: PROJ-9012 wants scripts/check-ci.sh, held by PROJ-8992. Blocks: that worker. Do: in a real terminal, run: python3 -I $HA_PRIMARY/scripts/handover/chief-kit/holds.py grant --key PROJ-9012 --repo $HA_PRIMARY scripts/check-ci.sh" "$(grep '^hold-ask-stuck|' "$WORK/s3.pagek" 2>/dev/null || true)"
+check "(R4.4) the hold-ask-stuck text" "hold-ask-stuck|A file ask waited 30 min: PROJ-9012 wants .github/workflows/ci.yml, held by PROJ-8992. Blocks: that worker. Do: in a real terminal, run: python3 -I $HA_PRIMARY/scripts/handover/chief-kit/holds.py grant --key PROJ-9012 --repo $HA_PRIMARY .github/workflows/ci.yml" "$(grep '^hold-ask-stuck|' "$WORK/s3.pagek" 2>/dev/null || true)"
+
+I_SEED=""
+H_GONE="$(hask_home gone PROJ-9950 scripts/check-ci.sh PROJ-9941)"; hask_pr_row "$H_GONE" PROJ-9950 4701
+hask_tick
+HOME="$H_GONE" CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run g1 --workers "N1.md"
+check "(10632b) an ask with no worker and a merged PR pages nothing" "0" "$(pk_n)"
+check "(10632b) ... and wakes nothing" "" "$(hask_wake g1)"
+H_GOP="$(hask_home gonepr PROJ-9950 scripts/check-ci.sh PROJ-9941)"; hask_pr_row "$H_GOP" PROJ-9950 10
+hask_tick
+HOME="$H_GOP" CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run g2 --workers "N1.md"
+check "(10632b) control: the same ask with its PR open (in prs=) wakes the chief" "WAKE hold-ask PROJ-9950" "$(hask_wake g2)"
+hask_tick; sed -i 's/ prs=[^ ]*/ prs=?/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+HOME="$H_GONE" CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run g3 --workers "N1.md"
+check "(10632b) control: with prs=? (an unread PR list) the ask is kept and wakes the chief" "WAKE hold-ask PROJ-9950" "$(hask_wake g3)"
+
+R_AT=$(( $(date +%s) - 40 * 60 ))
+H_R="$(hask_home r10536 HIMMEL-10536 scripts/eval/review-panel/test-review-panel.sh HIMMEL-10342 "$(date -u -d "@$R_AT" +%Y-%m-%dT%H:%M:%SZ)")"  # gnu-ok: Linux-only kit
+hask_tick
+I_SEED="$(new_inbox r10536)"; printf 'HIMMEL-10536\tscripts/eval/review-panel/test-review-panel.sh\t%s\n' "$R_AT" > "$I_SEED.wait.holdasks"
+HOME="$H_R" CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run r10536 --workers "N1.md"
+check "(10632d) the HIMMEL-10536 replay pages the operator nothing" "0" "$(pk_n)"
+check "(10632d) ... and wakes nothing" "" "$(hask_wake r10536)"
+I_SEED=""
 
 T31=$(( $(date +%s) - 31 * 60 ))
 hask_tick
-I_SEED="$(new_inbox s6)"; printf 'PROJ-9942\tscripts/check-ci.sh\t%s\n' "$T31" > "$I_SEED.wait.holdasks"
-HOME="$H_CHIEF" HIMMEL_TEST_FIXTURE=0 CHIEF_WAIT_NOW="$T31" CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run s6 --workers "N1.md"
+I_SEED="$(new_inbox s6)"; printf 'PROJ-9942\t.github/workflows/ci.yml\t%s\n' "$T31" > "$I_SEED.wait.holdasks"
+HOME="$H_OPER" HIMMEL_TEST_FIXTURE=0 CHIEF_WAIT_NOW="$T31" CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run s6 --workers "N1.md"
 check "(R4.6) CHIEF_WAIT_NOW without HIMMEL_TEST_FIXTURE=1 is ignored: the 31-minute ask still pages hold-ask-stuck" "hold-ask-stuck" "$(pk_kinds)"
 hask_tick
-I_SEED="$(new_inbox s6c)"; printf 'PROJ-9942\tscripts/check-ci.sh\t%s\n' "$T31" > "$I_SEED.wait.holdasks"
-HOME="$H_CHIEF" HIMMEL_TEST_FIXTURE=1 CHIEF_WAIT_NOW="$T31" CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run s6c --workers "N1.md"
+I_SEED="$(new_inbox s6c)"; printf 'PROJ-9942\t.github/workflows/ci.yml\t%s\n' "$T31" > "$I_SEED.wait.holdasks"
+HOME="$H_OPER" HIMMEL_TEST_FIXTURE=1 CHIEF_WAIT_NOW="$T31" CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run s6c --workers "N1.md"
 check "(R4.6) control: with HIMMEL_TEST_FIXTURE=1 the same value is honoured and the ask pages nothing" "0" "$(pk_n)"
 unset I_SEED
 
@@ -1149,6 +1190,7 @@ check "(v) the wake names only prs, not board" "WAKE tick changed=prs usage=PROC
 # --- (p) a denials rise to SHIP-STEP / PAUSE-RISK pages ---------
 # One page per rise (a new worker or a higher class), never per tick. The page
 # text carries the worker label, count and class ONLY.
+P_NOPROC="$WORK/p-noproc"; mkdir -p "$P_NOPROC"; export CHIEF_WAIT_PROC="$P_NOPROC"
 denials_rise() { # <case> <from> <to>  -> runs the waiter to its wake (or 8 s)
     reset_stub; rm -f "$STUB/pages"; rm -rf "$HIMMEL_DENIAL_ACK_DIR"
     sed -i "s/denials=none/denials=$2/" "$STUB/tick.line"  # gnu-ok: Linux-only kit
@@ -1203,7 +1245,7 @@ denials_rise p5e none 'N1:1:SHIP-STEP'
 check "(p5e) a native worker with Remote Control: the page names its session" "DENIAL-PAGE N1 SHIP-STEP x1 - a classifier denial parked this worker. Open the Remote Control session HIMMEL-8320-n1-session in the Claude app and answer there, or review it and: ack-denial.sh N1" "$(head -n1 "$STUB/pages" 2>/dev/null)"
 denials_rise p5f none 'N2:1:SHIP-STEP'
 check "(p5f) a worker without Remote Control keeps the plain page" "DENIAL-PAGE N2 SHIP-STEP x1 - a classifier denial parked this worker. Review it, then: ack-denial.sh N2" "$(head -n1 "$STUB/pages" 2>/dev/null)"
-unset CHIEF_WAIT_PROC
+export CHIEF_WAIT_PROC="$P_NOPROC"
 
 rm -f "$STUB/pagek"; SAVE_PAGE_CMD="$CHIEF_WAIT_PAGE_CMD"; export CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh"
 denials_rise k5 none 'N1:1:SHIP-STEP'
@@ -1263,6 +1305,7 @@ mkdir -p "$WORK/ro" && chmod 500 "$WORK/ro"
 HIMMEL_DENIAL_ACK_DIR="$WORK/ro/sub" denials_rise p6c none 'N1:1:SHIP-STEP'
 check "(p6) an unwritable record dir still wakes with rc 0" "0" "$rc"
 chmod 700 "$WORK/ro"
+unset CHIEF_WAIT_PROC
 
 # --- (w) tracker= wakes on a class change exactly as board= does:
 # ok to STALE wakes naming tracker, a move to ok alone does not, and a tick
