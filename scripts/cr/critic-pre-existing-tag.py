@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Tag an Important finding on code older than the PR.
 
-Reads the panel's merged findings on stdin, writes them on stdout, and runs at
-rounds 2 and 3 only: at any other round the text passes through unchanged and
-nothing is written to the ledger.
+Reads the panel's merged findings on stdin, writes them on stdout, and tags
+only with --increment, which panel-first-pass.sh passes on a round below the
+cap after round 1: without it the text passes through unchanged and nothing is
+written to the ledger.
 
 For each Important bullet cited as [file:line], git blame places that line at
 HEAD. If the blamed commit is an ancestor of the diff base, the line predates
@@ -16,8 +17,8 @@ Anything else is left as it is.
 
 A line's age says when it was written, not whether this round's change broke
 it. So a line the critic was shown is never tagged: it is never tagged when it
-sits inside any hunk of the reviewed diff (--from..HEAD, else the base...HEAD
-diff), its context lines (the repository's own diff context, as the critic's
+sits inside any hunk of the reviewed diff (--from..HEAD, the increment, else
+the base...HEAD diff), its context lines (the repository's own diff context, as the critic's
 plain git diff reads it) and the neighbours of a deletion-only hunk included. When git cannot say what the diff showed, nothing is tagged.
 
 Never tagged: a Critical (it always blocks), a Suggestion, a [context] finding
@@ -30,7 +31,7 @@ git does the parsing: `git blame --porcelain -L n,n` has a fixed shape for one
 requested line and only the `@@` header lines of `git diff` are read, so no
 diff text and no shell text is interpreted.
 
-Usage: critic-pre-existing-tag.py --round N --head SHA --db-sha SHA --branch B
+Usage: critic-pre-existing-tag.py [--increment] --head SHA --db-sha SHA --branch B
            [--from SHA] [--ledger-append PATH] < findings > tagged
 """
 import argparse
@@ -108,7 +109,7 @@ def outside_shown_diff(args, path, line):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    ap.add_argument("--round", required=True, type=int)
+    ap.add_argument("--increment", action="store_true")
     ap.add_argument("--head", required=True)
     ap.add_argument("--db-sha", required=True)
     ap.add_argument("--branch", required=True)
@@ -117,7 +118,7 @@ def main():
     args = ap.parse_args()
 
     text = sys.stdin.buffer.read().decode("utf-8", "surrogateescape")
-    if args.round not in (2, 3):
+    if not args.increment:
         sys.stdout.buffer.write(text.encode("utf-8", "surrogateescape"))
         return 0
 

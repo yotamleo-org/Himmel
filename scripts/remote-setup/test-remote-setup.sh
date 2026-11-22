@@ -20,8 +20,36 @@
 HERE=$(cd "$(dirname "$0")" && pwd -P)
 REPO=$(cd "$HERE/../.." && pwd -P)
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/rs-test.XXXXXX") || exit 1
-trap 'rm -rf "$WORK"' EXIT
+WATCHDOG_SECS=${RS_WATCHDOG_SECS:-1100}
+WATCHDOG=""
+trap 'exit 1' TERM
+trap '[ -n "$WATCHDOG" ] && kill "$WATCHDOG" 2> /dev/null; rm -rf "$WORK"' EXIT
 WORK=$(cd "$WORK" && pwd -P) || exit 1
+
+watchdog() {
+    local me sp tree
+    me=$(exec sh -c 'echo $PPID')
+    trap 'kill "$sp" 2> /dev/null; exit 0' TERM
+    /bin/sleep "$WATCHDOG_SECS" &
+    sp=$!
+    wait "$sp"
+    tree=$(ps -A -o pid= -o ppid= -o stat= -o etime= -o command= | awk -v root="$SUITE_PID" -v me="$me" '
+        { line[$1] = $0; kids[$2] = kids[$2] " " $1 }
+        function walk(p, d,   n, a, i) {
+            if (p == me) return
+            printf "%" (2 * d) "s%s\n", "", line[p]
+            n = split(kids[p], a, " ")
+            for (i = 1; i <= n; i++) walk(a[i], d + 1)
+        }
+        END { walk(root, 0) }')
+    printf 'FAIL: watchdog: the suite ran %ss, stopping it in case %s. Process tree:\n%s\n' "$WATCHDOG_SECS" "$(cat "$WORK/current-case" 2> /dev/null)" "$tree" >&2
+    printf '%s\n' "$tree" | awk -v root="$SUITE_PID" '$1 != root { print $1 }' | while read -r p; do kill -KILL "$p" 2> /dev/null; done
+    kill -TERM "$SUITE_PID" 2> /dev/null
+    exit 0
+}
+SUITE_PID=$$
+watchdog &
+WATCHDOG=$!
 PATH_BASE=$PATH
 REAL_BUN=$(command -v bun || echo /nonexistent-bun)
 
@@ -43,6 +71,7 @@ check() { # check <description> <command...>
     fi
 }
 eq() { [ "$1" = "$2" ]; }
+ended() { ! kill -0 "$1" 2> /dev/null; }
 has() { case "$1" in *"$2"*) return 0 ;; esac; return 1; }
 lacks() { case "$1" in *"$2"*) return 1 ;; esac; return 0; }
 starts() { case "$1" in "$2"*) return 0 ;; esac; return 1; }
@@ -88,7 +117,7 @@ mk_root() {
 
 # A canary token: <id>:<35 url-safe chars>. Never a real credential.
 mk_token() {
-    printf '%s:CNRY%s' "$1" "$(LC_ALL=C tr -dc 'A-Za-z0-9_-' < /dev/urandom | head -c 31)"
+    printf '%s:CNRY%s' "$1" "$(head -c 1024 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9_-' | head -c 31)"
 }
 
 set_getme() { # set_getme <id> <username>
@@ -249,6 +278,32 @@ case_guard_matrix_every_writer() {
     # positive control: with nothing tripped the guard stays quiet and the run goes on
     run_sut "$T/in" away
     check "control: the guard lets a clean terminal through" has "$LAST" "later update"
+}
+
+case_mk_token_ends_when_tr_ignores_sigpipe() {
+    local stub=$T/bsd-tr pid i
+    mkdir -p "$stub"
+    cat > "$stub/tr" << 'EOF'
+#!/bin/sh
+echo $$ > "$0.pid"
+while IFS= read -r _l; do :; done
+printf %s abcdefghijklmnopqrstuvwxyz0123456789
+EOF
+    chmod +x "$stub/tr"
+    (
+        trap '' PIPE
+        PATH=$stub:$PATH
+        mk_token 7 > "$T/tok"
+    ) &
+    pid=$!
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+        kill -0 "$pid" 2> /dev/null || break
+        /bin/sleep 0.5
+    done
+    check "mk_token ends within 10s when tr reads to EOF" ended "$pid"
+    kill -KILL "$(cat "$stub/tr.pid" 2> /dev/null)" 2> /dev/null
+    wait "$pid"
+    check "mk_token keeps 31 chars of tr's output" eq "$(cat "$T/tok")" "7:CNRYabcdefghijklmnopqrstuvwxyz01234"
 }
 
 case_usage_exits_2() {
@@ -2353,7 +2408,7 @@ case_peer_name_32_char_base_with_suffix_fits() {
     check "the next free suffix" eq "$(sed -n 2p "$T/out")" "abcdefghijklmnopqrstuvwxyzabcd-3"
 }
 
-CASES="guard_matrix_every_writer usage_exits_2 usage_rows_every_subcommand contract_rows_every_subcommand
+CASES="mk_token_ends_when_tr_ignores_sigpipe guard_matrix_every_writer usage_exits_2 usage_rows_every_subcommand contract_rows_every_subcommand
 curl_argv_is_exact getme_401_gives_revoked_fix tg_429_waits_retry_after_once outside_checkout_gives_cd_fix
 status_skips_unshipped_parts status_na_counts_not_ok status_part_prereq_message status_runs_under_claudecode
 status_json_is_single_object_on_success status_json_on_item_failure status_json_never_appends_done_line
@@ -2394,6 +2449,7 @@ main() {
     local c wanted=${1:-}
     for c in $CASES; do
         if [ -n "$wanted" ] && [ "$wanted" != "$c" ]; then continue; fi
+        printf '%s\n' "$c" > "$WORK/current-case"
         new_case "$c"
         "case_$c"
         if [ "$CASE_FAILS" = 0 ]; then

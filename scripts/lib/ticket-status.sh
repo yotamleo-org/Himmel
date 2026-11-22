@@ -232,11 +232,26 @@ ts_required_set() {
     printf '%s\n%s\n' "$rules" "$classic" | sed '/^$/d' | sort -u | _required_normalize
 }
 
+_ts_repo_key() {
+    local u="${GH_REPO:-}" r o h rest scp=1
+    [ -n "$u" ] || u=$(git remote get-url origin 2>/dev/null) || return 1
+    u="${u%/}"; u="${u%.git}"
+    case "$u" in *://*) u="${u#*://}"; scp=0 ;; esac
+    case "${u%%/*}" in *@*) u="${u#*@}" ;; esac
+    [ "$scp" -eq 0 ] || u="${u/:/\/}"
+    r="${u##*/}"; rest="${u%/*}"
+    [ "$rest" != "$u" ] || return 1
+    o="${rest##*/}"
+    if [ "$o" != "$rest" ]; then h="${rest%/*}"; h="${h##*/}"; h="${h%%:*}"; else h="${GH_HOST:-github.com}"; fi
+    [ -n "$h" ] && [ -n "$o" ] && [ -n "$r" ] || return 1
+    printf '%s@%s@%s' "$h" "$o" "$r"
+}
+
 # _ts_snap_required_set <base> — ts_required_set, read once per base per snapshot.
 _ts_snap_required_set() {
-    local f="$TS_SNAPSHOT_DIR/req-${1//\//_}" ttl="${TICKET_STATUS_REQSET_TTL:-300}" kept at now
+    local f="$TS_SNAPSHOT_DIR/req-${1//\//_}" ttl="${TICKET_STATUS_REQSET_TTL:-300}" kept at now repo
     case "$ttl" in ''|*[!0-9]*) ttl=300 ;; esac
-    kept="$(ts_state_dir)/required-set/${1//\//_}"
+    if repo=$(_ts_repo_key); then kept="$(ts_state_dir)/required-set/$repo@${1//\//_}"; else kept=""; ttl=0; fi
     now=$(date +%s)
     if [ ! -e "$f" ] && [ ! -e "$f.fail" ]; then
         at=""
@@ -349,7 +364,7 @@ ts_marker_newest() {
             newest=${BASH_REMATCH[3]}
             if status_marker_is_parked "$newest"; then newest=PARKED-USAGE; fi
         elif [[ "$line" =~ $succession_re ]]; then
-            newest=SUCCESSION
+            case "$newest" in WRAPPED|HALTED) ;; *) newest=SUCCESSION ;; esac
         fi
     done <<<"$bullets"
     printf '%s\n' "$newest"
@@ -434,6 +449,28 @@ ts_worker_state() {
     echo "$TS_WORKER_STATE"
 }
 
+ts_worker_ownership() {
+    _ts_worker_state "$1" ${2+"$2"}
+    if [ "$TS_ABANDONED" = yes ]; then echo abandoned; else echo "$TS_WORKER_STATE"; fi
+}
+
+_ts_no_live_session_on() {
+    local dir resolved p comm st kv
+    [ -d /proc/self ] || return 1
+    dir=$(cd -P -- "$(dirname -- "$1")" 2>/dev/null && pwd -P) && resolved="$dir/${1##*/}" || resolved=$1
+    for p in /proc/[0-9]*; do
+        IFS= read -r comm 2>/dev/null < "$p/comm" || { [ ! -d "$p" ] || return 1; continue; }
+        [ "$comm" = claude ] || continue
+        IFS= read -r st 2>/dev/null < "$p/stat" || { [ ! -d "$p" ] || return 1; continue; }
+        st=${st##*) }
+        case "${st%% *}" in Z|X) continue ;; esac
+        { while IFS= read -r -d '' kv; do
+            case "$kv" in "WORKER_SESSION_DOC=$1"|"WORKER_SESSION_DOC=$resolved") return 1 ;; esac
+        done; } 2>/dev/null < "$p/environ" || { [ ! -d "$p" ] || return 1; }
+    done
+    return 0
+}
+
 # _ts_worker_state <doc> [<disposition>] — ts_worker_state without the subshell: sets
 # TS_WORKER_STATE and TS_LOCK_HELD (yes | no | "" when the lock was not read) and TS_LOCK_DEAD
 # (yes: the lock answered rc 12 with status STALE-DEAD; no: rc 12 with any other status; "" otherwise).
@@ -441,7 +478,7 @@ ts_worker_state() {
 # passes it as the JSON word `disposition` prints; only such a word is taken, anything else is read here.
 _ts_worker_state() {
     local marker out rc hb hb_epoch age=0 warn
-    TS_LOCK_HELD="" TS_LOCK_DEAD="" TS_OPEN_EVIDENCE=""
+    TS_LOCK_HELD="" TS_LOCK_DEAD="" TS_OPEN_EVIDENCE="" TS_ABANDONED=""
     [ -n "$1" ] || { TS_WORKER_STATE=unknown; return 0; }
     local attempt_protected terminal="" marker_unread="" doc_absent=""
     case "${2-}" in
@@ -474,7 +511,12 @@ _ts_worker_state() {
     # A held lock, or any marker that is not an end marker (it is later than the receipt or was never wrapped), decides below.
     if [ -n "$terminal" ] && [ "$TS_LOCK_HELD" = no ] && [ -z "$marker" ] && [ -z "$marker_unread" ]; then TS_WORKER_STATE=wrapped; return 0; fi
     if status_marker_is_parked "$marker"; then TS_WORKER_STATE=parked; return 0; fi
-    if [ "$TS_LOCK_HELD" = no ]; then TS_WORKER_STATE=unknown; return 0; fi
+    if [ "$TS_LOCK_HELD" = no ]; then
+        if [ -n "$marker" ] && [ "$attempt_protected" != '"launched"' ] && _ts_no_live_session_on "$1"; then
+            TS_OPEN_EVIDENCE="" TS_ABANDONED=yes
+        fi
+        TS_WORKER_STATE=unknown; return 0
+    fi
     hb=$(printf '%s\n' "$out" | sed -n 's/.*"heartbeat"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
     if [ -n "$hb" ] && hb_epoch=$(_ts_epoch_of_iso "$hb"); then
         age=$(( $(date -u +%s) - hb_epoch ))
@@ -813,6 +855,11 @@ _ts_derive_d6() {
     fi
 }
 
+_ts_other_worker_keeps_ownership() {
+    [ "$TS_WORKER_STATE" != wrapped ] || return 1
+    [ "$TS_LOCK_HELD" != no ] || [ "$TS_OPEN_EVIDENCE" = yes ]
+}
+
 ts_derive() {
     local key="$1" num head base rd class latch threads s rule best=9 r doc rc other owner=""
     TS_DERIVED=""; TS_RULE=""; TS_RESULT=""; TS_STAGE=""; TS_PR_STATE=""; TS_HEADS=""; TS_WORKER_STATE=none; TS_MERGED_PR=""; TS_D5D_OWNER=""
@@ -836,14 +883,11 @@ ts_derive() {
             [ "$TS_GONE" -lt 2 ] || TS_WORKER_STATE=wrapped
         fi
     fi
-    # A second worker on the key keeps the ticket owned unless it reads wrapped, or its lock was read free and nothing
-    # else says its doc may be worked.
     if [ "$TS_WORKER_STATE" = wrapped ]; then
         while IFS= read -r other; do
             [ -n "$other" ] && [ "$other" != "$doc" ] || continue
             _ts_worker_state "$other"
-            [ "$TS_WORKER_STATE" != wrapped ] || continue
-            [ "$TS_LOCK_HELD" != no ] || [ "$TS_OPEN_EVIDENCE" = yes ] || continue
+            _ts_other_worker_keeps_ownership || continue
             owner=$TS_WORKER_STATE; TS_OWNER_DOC=$other; break
         done <<<"$(jq -r '(.docs // [])[]' <<<"$TS_REC")"
         TS_WORKER_STATE=${owner:-wrapped}

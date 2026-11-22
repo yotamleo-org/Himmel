@@ -47,13 +47,18 @@ answers). The tick reads local files only: no `gh` or Jira call. `chief-wait.sh`
 the whole value, so a moved count wakes you once (`WAKE tick changed=hreg`); `hreg=?` is a
 failed read and keeps the saved value. Act on it: `a` → `holds.py on --workers-from
 <fleet.json> --repo <repo>` seeds the rows (`holds.py on` runs the backfill itself); `b` →
-`holds.py gc --repo <repo>` drops them; `c` → the operator is already paged.
+`holds.py gc --repo <repo>` drops them; `c` → an ask you can grant has already woken you as
+`WAKE hold-ask` (`waiter.md`), and an operator-only ask has already paged the operator.
 
-A pending HOLD-ASK reaches the operator on Telegram once, through the same sender as
-`DENIAL-PAGE`: `HOLD-ASK <key> wants <path> (held by <holder>). Paste in a real terminal,
-not a Claude window, and type the path back: python3 -I <primary>/scripts/handover/chief-kit/holds.py
-grant --key <key> --repo <primary> <path>`. The page record is `<inbox>.wait.holdasks`
-(one `<key>\t<path>` line per page, written before the send); delete the line to page again.
+A pending HOLD-ASK on a `ci-trust-paths.txt` path wakes you once as `WAKE hold-ask <key> wants
+<path> (held by <holder>). Grant: <command>` and pages nobody. One on settings or `.github/`
+reaches the operator on Telegram, through the same sender as `DENIAL-PAGE`: `HOLD-ASK <key> wants
+<path> (held by <holder>). Paste in a real terminal, not a Claude window, and type the path back:
+python3 -I <primary>/scripts/handover/chief-kit/holds.py grant --key <key> --repo <primary> <path>`,
+and once more as `hold-ask-stuck` if still ungranted after 30 minutes. An ask whose key has no live
+worker and no open PR does neither. The records are `<inbox>.wait.holdwoke` for a wake and
+`<inbox>.wait.holdasks` for a page (one `<key>\t<path>` line per ask, written before the wake or
+send); delete the line to wake or page again.
 You can stamp a trust path yourself with the same command plus `--chief-doc <your doc>`.
 
 `workers=<label>:IDLE-HELD` means a held lock with no session transcript activity

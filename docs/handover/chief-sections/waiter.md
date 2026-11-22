@@ -577,6 +577,19 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     waiter's first sample on a new inbox is a silent baseline). Rule per the size paragraph of
     `running-a-chief.md#rulings`: split, sign `size-override.sh record`, or escalate to the operator.
 
+    **A file ask you can grant wakes you once.**
+    `WAKE hold-ask <key> wants <path> (held by <holder>). Grant: <command>`, then the tick line,
+    means a worker's write on a `ci-trust-paths.txt` path was denied and no grant answers it
+    (`holds.py asks`, kind `hold-ask-chief`). The operator is not paged for it, at first sight or
+    later. Grant it in that turn: run `<command>` plus `--chief-doc <your doc>` with your own
+    queue lock held. Or rule it out: tell the worker to wait for the holder's release or to drop
+    the path. Each ask wakes once (`<inbox>.wait.holdwoke`), an ask an older waiter already
+recorded included. An ask on settings or `.github/`
+    (`hold-ask-operator`) wakes nothing. It pages the operator at first sight, and again once
+    (`hold-ask-stuck`) if it is still ungranted 30 minutes later. An ask whose key has no live
+    worker (no held queue lock names it) and no open PR (no register row of the key on a PR in
+    the tick's `prs=`) is dropped before any wake or page. A `prs=?` keeps every ask.
+
     **A hold wakes you once.** `WAKE tick changed=holds` means a worker entered the
     `holds=` set (`BLOCKED`, or a `FINDING` awaiting a ruling, untouched for
     `TICK_HOLD_MIN` minutes, default 20): read its newest bullet and answer it. It

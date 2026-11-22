@@ -379,7 +379,7 @@ reset_state 2
 printf '%s\n' "$dr_r" > "$state/$BRANCH.head"
 printf '{"kind":"avail","branch":"%s","head":"%s","model":"codex","status":"ok"}\n' "$BRANCH" "$dr_r" > "$scores_f"
 out="$(rr start --branch "$BRANCH" --head "$dr_h")"
-check "9 the round-3 start at the dead head counts" "$out" 3
+check "9 the round-3 start at the dead head counts" "$out" "3 increment $dr_r"
 sh -c 'exit 0' & dr_pid=$!; wait "$dr_pid"
 { sed "s/^pid .*/pid $dr_pid/" "$snap" > "$tmp/snap.tmp" 2>/dev/null && mv "$tmp/snap.tmp" "$snap"; } || { echo "FAIL - 9 the dead round leaves a snapshot"; fails=$((fails+1)); }
 wv qdead NO-GO "$dr_h2" --pr 501 --branch "$BRANCH" --evidence-file "$evd/ev.md" >/dev/null 2>&1 || { echo "FAIL: cannot write qdead"; fails=$((fails+1)); }
@@ -388,11 +388,22 @@ GR_ARGS=(501 "$dr_h2" qdead)
 rc=0; out=$(run 2>&1) || rc=$?
 check "9 the grant after the dead round exits 0" "$rc" 0
 out="$(rr start --branch "$BRANCH" --head "$dr_h2")"
-check "9 the next start counts the granted round" "$out" 3
+check "9 the next start counts the granted round" "$out" "3 increment $dr_r"
 contains "9 the start says the dead round stays counted" "$(cat "$tmp/rr.err")" "stays counted and its snapshot is dropped"
 contains "9 the grant's consumed record stands" "$(cat "$state/$BRANCH.verdicts" 2>/dev/null)" " qdead/judge"
 check "9 the dead round's snapshot is gone: the new one names the new head" "$(sed -n 's/^head //p' "$snap" 2>/dev/null)" "$dr_h2"
 rm -f "$scores_f"
+
+reset_state 3
+printf '%s %s tests\n%s %s merge-resolution\n' "$SHA_A" "$SHA_B" "$SHA_B" "$SHA_A" > "$state/$BRANCH.free"
+free_before="$(cat "$state/$BRANCH.free")"
+wv qfree NO-GO "$SHA_A" --pr 501 --branch "$BRANCH" --evidence-file "$evd/ev.md" >/dev/null 2>&1 || { echo "FAIL: cannot write qfree"; fails=$((fails+1)); }
+gh_json "$SHA_A"
+GR_ARGS=(501 "$SHA_A" qfree)
+rc=0; out=$(run 2>&1) || rc=$?
+check "10578 grant-keeps-free: the grant exits 0" "$rc" 0
+check "10578 grant-keeps-free: the grant lowers .round to 2" "$(cat "$state/$BRANCH.round")" 2
+check "10578 grant-keeps-free: .free is as it was" "$(cat "$state/$BRANCH.free")" "$free_before"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS"; exit 0; fi

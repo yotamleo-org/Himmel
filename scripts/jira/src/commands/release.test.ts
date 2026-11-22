@@ -163,6 +163,26 @@ describe('jira release', () => {
     expect(out.join('\n')).toMatch(/^inputs: .*\bmirror=UNKNOWN\b/m);
   });
 
+  it('state prints every unfinished ruling and the remainder line from the ledger it reads, not only the first', async () => {
+    const vf = join(root, 'verbatim.txt');
+    await run('operator', 'declare', 'R1', '--versions', 'v1,v2', '--decision', '106', '--verbatim-file', vf);
+    const doc = '/abs/rm-doc.md';
+    const rm = { ...ctxFor('R1', join(root, 'no-mirror')), env: { ...process.env, HIMMEL_RELEASE_MANAGER: '1', HIMMEL_CONSOLE_LEG: '1', HIMMEL_RM_DOC: doc, HIMMEL_RM_RELEASE: 'R1' } };
+    const asks = ['K-2', 'K-3'].map((key) => engineMod.request(ctxFor('R1'), { verb: 'INTAKE', key, from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' }));
+    engineMod.leaseAcquire(rm, { expectEpoch: 0, doc, session: 'rm-1' });
+    engineMod.claim(rm);
+    const rulings = asks.map((q) => engineMod.rule(rm, { req: q.req, outcome: 'ADMIT', op: { kind: 'add', from_v: null, to_v: 'v1' }, sector: 'Planning & tracking',
+      ground: 'regression', reason: 'breaks the console', supersedes: [], authority: { kind: 'rm', ref: null } }));
+    engineMod.leaseRelease(rm);
+    await run('request', 'R1', '--verb', 'INTAKE', '--key', 'C-1', '--to', 'v1', '--why', 'the rest of P-1', '--required-by', 'P-1');
+    const child = out.at(-1)?.replace(/^REQ /, '');
+    out.length = 0;
+    await run('state', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    const lines = out.join('\n').split('\n');
+    expect(lines.filter((l) => l.startsWith('remainder: '))).toEqual([`remainder: P-1 cannot close without C-1 (open ${child}); release-manager: jira release rm-run R1`]);
+    expect(lines.filter((l) => l.startsWith('unfinished: '))).toEqual(rulings.map((r, i) => `unfinished: ${r.id} intent K-${i + 2} add backlog→v1; release-manager runs \`jira release rm-run R1\``));
+  });
+
   it('refuses request evidence that is not a JSON object', async () => {
     const vf = join(root, 'verbatim.txt');
     await run('operator', 'declare', 'R1', '--versions', 'v1,v2', '--decision', '106', '--verbatim-file', vf);
@@ -1719,9 +1739,11 @@ describe('a request for operator work carries the operator\'s words', () => {
       await declared();
       decisionFile();
       await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
+      const id = lastId();
       await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'));
+      out = [];
       await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'));
-      expect(out.slice(-1)).toEqual(['REQ Q-v1.1.3-0001']);
+      expect(out, 'the repeat prints its own two lines').toEqual([expect.stringMatching(new RegExp(`^OPERATOR ${id} `)), 'REQ Q-v1.1.3-0001']);
       expect(queued()).toHaveLength(1);
     });
 

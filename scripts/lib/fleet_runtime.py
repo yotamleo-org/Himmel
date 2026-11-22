@@ -316,6 +316,8 @@ def owned_rows(manifest):
 def reads_ended(doc):
     """True when the doc's newest marker is absent or an end marker, the only doc a terminal receipt releases."""
     newest = marker(doc)
+    if re.match(r'- \d{1,2}:\d{2} SUCCESSION\b', newest):
+        newest = marker(doc, skip=r'- \d{1,2}:\d{2} SUCCESSION\b') or newest
     return not newest or re.match(r'- \d{1,2}:\d{2} (?:WRAPPED|HALTED)\b', newest) is not None
 
 
@@ -386,10 +388,11 @@ def disposition(doc):
     return 'unknown' if protected(doc) else 'legacy'
 
 
-def worker_state(doc, timeout=10, disposition=None):
+def worker_state(doc, timeout=10, disposition=None, ownership=False):
     """The one ownership reading of a doc (ticket-status.sh ts_worker_state). A caller that already holds the doc's
     disposition, as WorkerStates does, passes it so the shell does not read every manifest again for it."""
-    script, argv = '. "$1/ticket-status.sh"; ts_worker_state "$2"', ['fleet-runtime', str(LIB), doc]
+    reading = 'ts_worker_ownership' if ownership else 'ts_worker_state'
+    script, argv = '. "$1/ticket-status.sh"; %s "$2"' % reading, ['fleet-runtime', str(LIB), doc]
     if disposition is not None:
         script, argv = script + ' "$3"', argv + [json.dumps(disposition)]
     try:
@@ -497,10 +500,10 @@ class WorkerStates:
         return 'unknown' if any(r.get('doc') == doc and r.get('phase') in ('pending', 'committed', 'unknown') for r in attempts) else 'legacy'
 
 
-def marker(doc):
+def marker(doc, skip=None):
     try:
         lines = Path(doc).read_text().splitlines()
-        return next((line for line in reversed(lines) if re.match(r'^- \d{1,2}:\d{2} [A-Z]', line)), '')
+        return next((line for line in reversed(lines) if re.match(r'^- \d{1,2}:\d{2} [A-Z]', line) and not (skip and re.match(skip, line))), '')
     except OSError:
         return ''
 
@@ -514,7 +517,7 @@ def title_keys(line):
 
 
 def worker_keys(doc):
-    keys = re.findall(r'[A-Z]+-[0-9]+', Path(doc).name)
+    keys = re.findall(r'[A-Z]+-[0-9]+(?!\d|-\d{2}-\d{2})', Path(doc).name)
     try:
         for line in Path(doc).read_text().splitlines():
             if line.startswith('## Results'):
@@ -735,7 +738,8 @@ def ownership_check(attempts, manifest, doc, name, keys):
         listed = read(sibling)
         for row in listed.get('workers', []) + listed.get('legs', []):
             if row.get('registration') != 'pending' and (row.get('doc') == doc or set(worker_keys(row['doc'])) & set(keys)):
-                if time.monotonic() >= legacy_deadline or worker_state(row['doc'], max(.01, legacy_deadline - time.monotonic())) != 'wrapped':
+                if time.monotonic() >= legacy_deadline or worker_state(row['doc'], max(.01, legacy_deadline - time.monotonic()),
+                                                                       ownership=True) not in ('wrapped', 'abandoned'):
                     raise Refused('unknown legacy family ownership')
 
 
