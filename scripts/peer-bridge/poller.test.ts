@@ -471,7 +471,7 @@ test("an admitted envelope is chained under its own kind, its id is persisted, a
   await e.poller.processBatch([u]);
   expect(chainOf(e, "inbox.jsonl")).toHaveLength(1);
   expect(chainOf(e, "inbox.jsonl")[0]).toMatchObject({ kind: "peer-env", untrusted: true, peer: "example", text: u.message.text });
-  expect(chainOf(e, "envelope-ids.jsonl")).toMatchObject([{ kind: "env-id", chat: CHAT, from: PEER_ID, exp: nowS(e) + 86400 }]);
+  expect(chainOf(e, "envelope-ids.jsonl")).toMatchObject([{ kind: "env-id", chat: CHAT, from: PEER_ID, exp: nowS(e) + 86400 }, { kind: "env-id-done", chat: CHAT, from: PEER_ID, exp: nowS(e) + 86400 }]);
   expect(e.reads).toEqual([]);
   expect(e.sent).toEqual([]);
   expect(chainOf(e, "threads.jsonl")).toEqual([]);
@@ -508,7 +508,7 @@ test("the envelope window survives a restart: a replay of an admitted envelope i
   await again.recover();
   await again.processBatch([TE.tgUpdate(u.message.text)]);
   expect(chainOf(e, "inbox.jsonl")).toHaveLength(1);
-  expect(chainOf(e, "envelope-ids.jsonl")).toHaveLength(1);
+  expect(chainOf(e, "envelope-ids.jsonl")).toHaveLength(2);
   expect(logs.join("\n")).toContain("duplicate envelope id");
 });
 
@@ -832,6 +832,25 @@ test("m2: after an append failure in handling, a restart still handles the redel
   expect(inJobs(e)).toHaveLength(1);
   const handled = chainOf(e, "envelope-ids.jsonl").filter(r => r.kind === "env-id");
   expect(handled.length).toBeGreaterThan(0);
+});
+
+test("codex-1: a crash after the id record and before the handling finishes does not drop the envelope on restart", async () => {
+  const e = await envSetup();
+  serveRun(e);
+  const u = reqMsg(e, e.st);
+  mkdirSync(join(e.peerDir, "jobs.jsonl"));
+  await expect(e.poller.processBatch([u])).rejects.toThrow();
+  rmSync(join(e.peerDir, "jobs.jsonl"), { recursive: true });
+  const idFile = join(e.peerDir, "envelope-ids.jsonl");
+  const lines = readFileSync(idFile, "utf8").split("\n").filter(Boolean);
+  expect(JSON.parse(lines[0]).kind).toBe("env-id");
+  writeFileSync(idFile, lines[0] + "\n");
+  const again = await Poller.create({ ...e.deps, log: l => e.logs.push(l) });
+  await again.recover();
+  await again.processBatch([u]);
+  expect(inJobs(e)).toHaveLength(1);
+  await again.processBatch([u]);
+  expect(inJobs(e)).toHaveLength(1);
 });
 
 test("m5: an egress-refused request leaves no out-job record and no cancel is sent later", async () => {
