@@ -138,7 +138,9 @@
 #                               doc at the silent first sample, or one another wake folded into its
 #                               saved key: only an event whose tails= token (<label>:<marker>) is in
 #                               both the sample's key and the saved one, so a move the saved key lacks
-#                               stays the tick change's wake. Named = in <inbox>.wait.markerwoke: this wake, a WAKE tick
+#                               stays the tick change's wake. A READY past the relay's <inbox>.wait.ready
+#                               cursor is the relay's: it wakes nothing here until the relay hands it on.
+#                               Named = in <inbox>.wait.markerwoke: this wake, a WAKE tick
 #                               whose tails=/acts= move is that worker's (only an event its doc already held
 #                               before that tick ran, so one written mid-tick is not taken), and a READY the relay handed
 #                               to worker-event all record it. Once per READY head or other bullet;
@@ -2622,7 +2624,7 @@ $(jq -r "$JQ_W"'W[]? | [.label, .doc] | @tsv' "$legs_from")
 EOF
 }
 worker_marker_wake() {
-    local ev label k w m tok keys="" out="" st ct
+    local ev label k w m tok keys="" out="" st ct ldoc cur last
     ev="$(worker_marker_events)"
     st=",$(key_field tails "$saved"),"; ct=",$(key_field tails "$key"),"
     while IFS=$'\t' read -r label k w; do
@@ -2632,6 +2634,13 @@ worker_marker_wake() {
         tok="$(printf '%s\n' "$ct" | tr ',' '\n' | awk -v p="$label:$m" 'index($0, p) == 1 && substr($0, length(p) + 1, 1) !~ /[A-Za-z0-9_]/ { print; exit }')"
         [ -n "$tok" ] || continue
         case "$st" in *",$tok,"*) ;; *) continue ;; esac
+        if [ "$m" = READY ]; then
+            cur=""; last=""
+            [ ! -f "$ready_file" ] || cur="$(awk -F'\t' -v l="$label" '$1 == l { c = $2 } END { print c }' "$ready_file")"
+            ldoc="$(jq -r --arg l "$label" "$JQ_W"'W[]? | select(.label == $l) | .doc' "$legs_from" | head -n 1)"
+            [ ! -f "$ldoc" ] || last="$(grep -nE "$ready_re" "$ldoc" | tail -n 1 | cut -d: -f1)"
+            case "$cur:$last" in *[!0-9:]*|:*|*:) ;; *) [ "$last" -le "$cur" ] || continue ;; esac
+        fi
         out="$out$w"$'\n'; keys="$keys$k"$'\n'
     done <<EOF
 $ev

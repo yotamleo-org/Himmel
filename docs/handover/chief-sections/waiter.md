@@ -537,7 +537,8 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     wakes miss: a READY carried across a succession (the relay starts a worker it meets
     first after its existing READYs), one already in the doc at the first sample (a
     silent baseline), and one another wake folded into its saved key; the tick's tails=
-    must already show it in the saved key, so a fresh move still wakes as `WAKE tick`. A `WAKE tick` on
+    must already show it in the saved key, so a fresh move still wakes as `WAKE tick`, and a READY
+    the relay has not yet handed on (past its `.wait.ready` cursor) is left to the relay. A `WAKE tick` on
     that worker's tails= or acts=, a READY the relay handed to worker-event, and the
     earlier wake itself count as named (`<inbox>.wait.markerwoke`): the same head or
     bullet never wakes twice, and a successor's new inbox wakes once more. Read the

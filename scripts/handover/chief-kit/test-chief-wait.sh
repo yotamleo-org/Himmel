@@ -1734,6 +1734,43 @@ start "$I" "$WORK/wr12.out" --doc "$WD" --workers-from "$WM"
 wait_exit "$WPID"
 check "(wr12) a READY written while that tick ran is not taken as named: its tails move still wakes" "WAKE tick changed=tails,acts usage=PROCEED" "$(head -n 1 "$WORK/wr12.out")"
 wr_stop
+export CHIEF_WAIT_WORKER_EVENT="$STUB/we-handled.sh"
+wr_ready_fleet() {
+    mkdir -p "$WORK/$1"
+    WD="$WORK/$1/chief.md"; printf '# chief\n\n## Results\n' > "$WD"
+    WR="$WORK/$1/HIMMEL-9-$2-a.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$WR"
+    WM="$WORK/$1/chief.fleet.json"; printf '{"schema":1,"workers":[{"doc":"%s","label":"%s"}]}\n' "$WR" "$2" > "$WM"
+    wr_tick "$2:LIVE" "$2:LIVE#1"
+    I="$(new_inbox "$1")"
+    rm -f "$STUB/we.calls"
+}
+wr_ready_hook() {
+    wr_tick "$1:READY" "$1:READY#1"; mv "$STUB/tick.line" "$STUB/tick.next"; wr_tick "$1:LIVE" "$1:LIVE#1"
+    printf '%s' "$2" > "$STUB/tick.add"
+    printf 'cat "%s" >> "%s"\nmv "%s" "%s"\n' "$STUB/tick.add" "$WR" "$STUB/tick.next" "$STUB/tick.line" > "$STUB/tick.hook.new"
+    mv "$STUB/tick.hook.new" "$STUB/tick.hook"
+}
+WH4=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee; WH5=ffffffffffffffffffffffffffffffffffffffff; WH6=abababababababababababababababababababab
+wr_ready_fleet wrh N9
+start "$I" "$WORK/wr13.out" --doc "$WD" --workers-from "$WM"
+wait_hb "$I" || fail "(wr13) no baseline heartbeat"
+wr_ready_hook N9 "$(printf -- '- 09:10 READY 2600 %s GREEN' "$WH4")"$'\n'
+wait_exit "$WPID"
+check "(wr13) a READY auto-go handled is handed to worker-event" "N9 READY 2600 $WH4 GREEN" "$(cat "$STUB/we.calls" 2>/dev/null)"
+check "(wr13) and wakes no worker-ready" "0" "$(grep -c '^WAKE worker-ready' "$WORK/wr13.out")"
+wr_stop
+start "$I" "$WORK/wr14.out" --doc "$WD" --workers-from "$WM"
+wait_exit "$WPID"
+check "(wr14) nor on a re-arm" "0" "$(grep -c '^WAKE worker-ready' "$WORK/wr14.out")"
+wr_stop
+wr_ready_fleet wrab N10
+start "$I" "$WORK/wr15.out" --doc "$WD" --workers-from "$WM"
+wait_hb "$I" || fail "(wr15) no baseline heartbeat"
+wr_ready_hook N10 "$(printf -- '- 09:10 READY 2601 %s GREEN\n- 09:11 READY 2601 %s GREEN' "$WH5" "$WH6")"$'\n'
+wait_exit "$WPID"
+check "(wr15) two READYs in one sample are each handed to worker-event, oldest first" "N10 READY 2601 $WH5 GREEN|N10 READY 2601 $WH6 GREEN" "$(paste -sd'|' "$STUB/we.calls" 2>/dev/null)"
+check "(wr15) and the one the relay still holds wakes no worker-ready" "0" "$(grep -c '^WAKE worker-ready' "$WORK/wr15.out")"
+wr_stop
 export HIMMEL_FLAGS_TSV="$WORK/flags.tsv"
 unset CHIEF_WAIT_WORKER_EVENT
 
