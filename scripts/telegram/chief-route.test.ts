@@ -3258,6 +3258,66 @@ test("R6, R6c, R6d: round-critical needs the console, a decision naming the tick
   expect(reused.err).toContain(`round-critical: decision 901 was already used for ${CAP_KEY}`); expect(reused.code).not.toBe(0);
 }, S1B);
 
+const threeCriticals = async () => {
+  const t = await roundTree(["- **F5** (major; operator-critical: spend-grant) grants a spend", "- **C6** (major; operator-critical: public-policy) sets a policy", "- **H3** (major; operator-critical: reverses-ruling) reverses a ruling"], []);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **X1** (major) still open")).err).toBe("");
+  return t;
+};
+const critRows = (specs: string) => rowsOf(specs, "critical");
+
+test("multi-finding round-critical: one decision rules F5, C6 and H3 in one call, opens round 5 once, and the ledger reads three valid rows", async () => {
+  const t = await threeCriticals(); decide(t.specs, 1205, `${CAP_KEY} operator: ${SPEND}\n`);
+  const r = await critical(true, t.specs, "F5,C6,H3", 1205, SPEND);
+  expect(r.err).toBe(""); expect(r.code).toBe(0);
+  expect(critRows(t.specs).map((x) => [x.id, x.decision, x.opens])).toEqual([["F5", "1205", 5], ["C6", "1205", 0], ["H3", "1205", 0]]);
+  const s = await status(t.specs); expect(s.critical_open).toEqual([]);
+  expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out).not.toContain("invalid");
+  expect((await closeOn(t, "spec", 5, [t.a], "SPEC CLEAN")).err).toBe("");
+  const again = await critical(true, t.specs, "F5", 1205, SPEND);
+  expect(again.err).toContain(`round-critical: decision 1205 was already used for ${CAP_KEY}`); expect(again.code).not.toBe(0);
+  expect(critRows(t.specs).length).toBe(3);
+});
+
+test("multi-finding round-critical: a list is refused whole when the decision does not name the ticket or one id is bad, and a duplicate id", async () => {
+  const t = await threeCriticals(); decide(t.specs, 1205, `${CAP_KEY} operator: ${SPEND}\n`); decide(t.specs, 1206, `no ticket here: ${SPEND}\n`);
+  const named = await critical(true, t.specs, "F5,C6,H3", 1206, SPEND);
+  expect(named.err).toContain(`round-critical: decision 1206 does not name ${CAP_KEY}`); expect(named.code).not.toBe(0);
+  const unknown = await critical(true, t.specs, "F5,ZZ9", 1205, SPEND);
+  expect(unknown.err).toContain("ZZ9 is not a finding"); expect(unknown.code).not.toBe(0);
+  const dup = await critical(true, t.specs, "F5,F5", 1205, SPEND);
+  expect(dup.err).toContain("F5 is named twice"); expect(dup.code).not.toBe(0);
+  expect(critRows(t.specs)).toEqual([]);
+  expect((await critical(true, t.specs, "F5", 1205, SPEND, "--no-round")).err).toBe("");
+  const ruled = await critical(true, t.specs, "C6,F5", 1205, SPEND);
+  expect(ruled.code).not.toBe(0); expect(critRows(t.specs).length).toBe(1);
+  const minor = await roundTree(["- **S1** (minor; operator-critical: security) a note", "- **C1** (minor; operator-critical: spend-grant) a spend"], []);
+  decide(minor.specs, 1205, `${CAP_KEY} operator: ${SPEND}\n`);
+  const cls = await critical(true, minor.specs, "C1,S1", 1205, SPEND);
+  expect(cls.err).toContain(T7("security")); expect(cls.code).not.toBe(0); expect(critRows(minor.specs)).toEqual([]);
+});
+
+test("multi-finding round-critical: a decision used for another finding may open the round once, and a second record opening the same round is refused", async () => {
+  const t = await threeCriticals(); decide(t.specs, 1205, `${CAP_KEY} operator: ${SPEND}\n`);
+  expect((await critical(true, t.specs, "F5", 1205, SPEND, "--no-round")).err).toBe("");
+  const open = await critical(true, t.specs, "C6", 1205, SPEND);
+  expect(open.err).toBe(""); expect(open.code).toBe(0);
+  expect(critRows(t.specs).map((x) => [x.id, x.opens])).toEqual([["F5", 0], ["C6", 5]]);
+  const twice = await critical(true, t.specs, "H3", 1205, SPEND);
+  expect(twice.err).toContain(`round-critical: decision 1205 was already used for ${CAP_KEY}`); expect(twice.code).not.toBe(0);
+  expect((await critical(true, t.specs, "H3", 1205, SPEND, "--no-round")).err).toBe("");
+  expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out).not.toContain("invalid");
+});
+
+test("multi-finding round-critical: read side agrees: three hand-built rows of one decision are valid, a repeated (decision, finding) is invalid", async () => {
+  const t = await threeCriticals(); const d = decide(t.specs, 1205, `${CAP_KEY} operator: ${SPEND}\n`);
+  expect((await critical(true, t.specs, "F5,C6,H3", 1205, SPEND)).err).toBe("");
+  const rows = critRows(t.specs); expect(rows.length).toBe(3);
+  expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out).not.toContain("invalid");
+  appendFileSync(join(roundsDir(t.specs), `${CAP_KEY}.jsonl`), `${JSON.stringify({ ...rows[1], ts: Date.now(), opens: 0 })}\n`);
+  expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out).toContain("invalid: critical 1205");
+  expect(d).toContain("verbatim-decision-1205");
+});
+
 test("R7 (control), R6b: a tag outside the four classes opens nothing (T7); a minor spend-grant finding opens round 4 by itself, where the same fixture without the record gives T1", async () => {
   const t = await roundTree(["- **S1** (minor; operator-critical: security) a note"], []);
   decide(t.specs, 901, `${CAP_KEY} operator: ${SPEND}\n`);

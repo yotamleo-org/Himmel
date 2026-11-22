@@ -1943,6 +1943,21 @@ exit 1''')
             self.assertEqual(runtime.worker_keys(doc), expected, title)
         self.assertEqual(runtime.TITLE_KEY_RE.pattern, dispatcher['TITLE_KEY_RE'].pattern)
 
+    def test_a_brief_file_name_year_tail_is_not_a_ticket_key(self):
+        runtime = self.runtime_module()
+        for name, expected in (('HIMMEL-10441-part1-vm-proof-RESUME-2026-11-22.md', ['HIMMEL-10441']),
+                               ('HIMMEL-6497-N2809b-s1-relay-fast-path-RESUME-2026-10-19.md', ['HIMMEL-6497'])):
+            self.assertEqual(runtime.worker_keys(self.bucket / 'absent' / name), expected, name)
+
+    def test_a_sibling_row_named_resume_year_does_not_refuse_an_unrelated_brief(self):
+        self.active()
+        old = self.bucket / 'HIMMEL-6497-N2809b-s1-relay-fast-path-RESUME-2026-10-19.md'
+        old.write_text('# worker\n')
+        (self.bucket / 'old.fleet.json').write_text(json.dumps({'schema': 1, 'workers': [{'doc': str(old), 'label': 'N1'}]}))
+        doc = self.bucket / 'HIMMEL-10441-part1-vm-proof-RESUME-2026-11-22.md'
+        doc.write_text('# worker\n')
+        self.call('runtime', 'admit', '--doc', doc, '--manifest', self.m, '--name', doc.stem)
+
     def begin_beside_old_sibling(self, key, empty=None, results='- 09:00 LIVE\n', session=True, lock=None, ok=False):
         self.active()
         old, new = self.bucket / 'HIMMEL-101-N1-old.md', self.bucket / 'HIMMEL-101-N2-new.md'

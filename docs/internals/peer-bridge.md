@@ -250,16 +250,20 @@ or a peer message changes neither.
 - The server resolves every requester value against its own state. A suite must
   equal a path in the allowlist and is stored by the alias its operator typed; the
   SHA is the requester's string until the runner resolves it in its own clone of
-  `origin`.
+  `origin`. The envelope policy does not re-establish that the SHA is on `origin`
+  or that the suites exist there; that is no wider than the spool send path of
+  slice A.
 - **Backstop.** At `vm-start` the poller writes `min(maxJobMinutes, VM minutes
   left today)` into the RUNNING record, and the runner reads it there. A backstop
   under `ALLOWANCE_S` refuses the job `budget`. The requester is told
   `timeout_s = backstop + ALLOWANCE_S` once, in `res running`.
 - VM minutes are charged from RUNNING entry to the terminal timestamp. `jobsPerDay`
-  counts every job that reached RESOLVED.
+  counts every job that reached RESOLVED and every job received today that is
+  still waiting to resolve, so a burst cannot run past the day's budget.
 - **Tripwire.** Three bad signatures from one peer in an hour send one wake line
   naming the peer and the count. It is an alert, never a kill, so a key rotation
-  or a junk sender cannot cut the link.
+  or a junk sender cannot cut the link. The count and the hourly cap on answers
+  are kept on disk, so a poller restart does not reset either.
 - **Kill switch.** While `C/<peer>.killed` exists the peer is dropped at step 4 and
   answered nothing, its live jobs are cancelled with nothing sent, and nothing it
   asked for starts. The peer sees silence and its own deadlines end its jobs.
@@ -577,7 +581,7 @@ sequence number and a hash over the previous record, and `verifyChain` in
 | `outbox.jsonl` | intents, `sent` records, refusals (fingerprint only), failures, `confirmed` |
 | `threads.jsonl` | every thread state change with its absolute deadline |
 | `digests.jsonl` | one record per reader run |
-| `envelope-ids.jsonl` | the id and `exp` of each admitted envelope; the replay window reloads from it |
+| `envelope-ids.jsonl` | the id and `exp` of each envelope, written when it is admitted and again (`env-id-done`) once its handling completes; the replay window reloads only the done ids, so an envelope cut short by a crash is handled again on redelivery |
 | `jobs.jsonl` | the typed path's jobs (one snapshot per state change), capacity asks and answers; `peer_*` fields are never printed |
 
 Beside them: `S/unknown-chats.jsonl` lists supergroups our bot was added to that

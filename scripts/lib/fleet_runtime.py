@@ -517,7 +517,7 @@ def title_keys(line):
 
 
 def worker_keys(doc):
-    keys = re.findall(r'[A-Z]+-[0-9]+', Path(doc).name)
+    keys = re.findall(r'[A-Z]+-[0-9]+(?!\d|-\d{2}-\d{2})', Path(doc).name)
     try:
         for line in Path(doc).read_text().splitlines():
             if line.startswith('## Results'):
