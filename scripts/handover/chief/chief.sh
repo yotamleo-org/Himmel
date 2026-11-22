@@ -2387,8 +2387,6 @@ seed_live_fields() {
             err "warning: could not write the older queue segments to the history file; seeded the queue: line whole"
         fi
     fi
-    # a HELD entry whose PR is merged or closed is dropped (orphan-pr-check.sh --gone-held); an unreadable
-    # PR list drops nothing
     local gone
     if [ -n "${4:-}" ] && gone="$(bash "$HERE/../chief-kit/orphan-pr-check.sh" --gone-held --doc "$4" --repo "${project_dir:-$repo}" 2>/dev/null)" && [ -n "$gone" ]; then  # swallow-ok: an unreadable PR list or doc drops nothing, the queue: line seeds as read
         queue="$(SL_gone="$gone" awk '
