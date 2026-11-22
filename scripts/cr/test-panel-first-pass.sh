@@ -144,7 +144,6 @@ SCRIPT="$fx/scripts/cr/panel-first-pass.sh"
 mkdir -p "$tmp/ghbin"
 cat > "$tmp/ghbin/gh" <<'GHEOF'
 #!/usr/bin/env bash
-# The CI-red unlock reads the reviewed head's check-runs; GH_CHECKRUNS_FILE holds them.
 if [ "${1:-}" = api ] && [ "${2:-}" = --paginate ]; then
     case "${3:-}" in
         repos/*/commits/*/check-runs) [ -z "${GH_CHECKRUNS_FILE:-}" ] || cat "$GH_CHECKRUNS_FILE"; exit 0 ;;
