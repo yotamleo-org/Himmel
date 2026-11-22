@@ -98,7 +98,7 @@ if git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
 else
   (cd "$ROOT" && find . -type f -not -path './.git/*' | sed 's|^\./||')
 fi | grep -Ev '^scripts/lib/flags\.(sh|py|mjs|tsv)$|^scripts/ci/(check-flags|test-check-flags)\.sh$|^scripts/lib/test-flags\.sh$|\.md$|(^|/)test-[^/]*$|\.test\.[a-z]+$|(^|/)(fixtures|tests|test|node_modules)/' \
-  | while IFS= read -r f; do [ -f "$ROOT/$f" ] && printf '%s\n' "$f"; done > "$FILES"
+  | while IFS= read -r f; do [ -d "$ROOT/$f" ] || printf '%s\n' "$f"; done > "$FILES"
 
 READS="$SCRATCH/reads"; : > "$READS"   # <name>\t<file>
 if [ -s "$FILES" ]; then

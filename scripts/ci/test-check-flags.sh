@@ -49,6 +49,14 @@ else
     fail "an untracked nested git repo does not fail the scan (fixture git setup failed)"
 fi
 
+t="$(tree quoted)"
+printf '#!/usr/bin/env bash\nhimmel_flag alpha\nhimmel_flag beta\n' > "$t/scripts/handover/chief-kit/ü.sh"
+if git -C "$t" init -q && git -C "$t" add scripts/handover/chief-kit/ü.sh; then
+    expect_rc "a tracked non-ASCII file name does not slip past the scan" "$t" 2 "fail-closed"
+else
+    fail "a tracked non-ASCII file name does not slip past the scan (fixture git setup failed)"
+fi
+
 t="$(tree expired)"
 printf 'alpha\toff\tfeature\tT-1\tT-2\t2026-10-25\ta flag\n' > "$t/scripts/lib/flags.tsv"
 expect_rc "an expired row fails" "$t" 1 "expired: alpha"
