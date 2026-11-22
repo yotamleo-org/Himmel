@@ -51,7 +51,7 @@ fi
 
 t="$(tree quoted)"
 printf '#!/usr/bin/env bash\nhimmel_flag alpha\nhimmel_flag beta\n' > "$t/scripts/handover/chief-kit/ü.sh"
-if git -C "$t" init -q && git -C "$t" add scripts/handover/chief-kit/ü.sh; then
+if git -C "$t" init -q && git -C "$t" config core.quotePath true && git -C "$t" add scripts/handover/chief-kit/ü.sh; then
     expect_rc "a tracked non-ASCII file name does not slip past the scan" "$t" 2 "fail-closed"
 else
     fail "a tracked non-ASCII file name does not slip past the scan (fixture git setup failed)"
