@@ -661,6 +661,18 @@ for k_file in luna himmel; do
     assert_not_contains "$k_file chunk-cap exit 4 does not page" "fail " "$alerts"
     assert_not_contains "$k_file chunk-cap exit 4 does not clear an open alert" "clear " "$alerts"
 done
+echo "TEST: a refresh runner exits with the payload's own code, so a supervisor can read it"
+for want_rc in 0 4 5; do
+    scr="$TMP_ROOT/emit-himmel-exit-$want_rc"
+    mkdir -p "$scr"
+    sed "s@$TMP_ROOT/bin/bash@$REAL_BASH@" "$CRON_DIR/graphmap-himmel.sh" > "$scr/runner-src.sh"
+    got=0
+    cadence_exec_runner "$scr/runner-src.sh" "$HIMMEL_ROOT_EXP/scripts/graphify/refresh-graph-map.sh" "$want_rc" "$scr" || got=$?
+    assert_rc "himmel runner exits $want_rc when the payload exits $want_rc" "$want_rc" "$got"
+done
+# shellcheck disable=SC2016  # the runner text is literal; $_rc is not expanded here
+assert_contains "himmel runner ends with the payload's exit line" 'exit "$_rc"' "$himmel_sh"
+if [ "$FMT" -ge 29 ]; then pass "the exit-code runner shape is stamped v29 or later, so himmel-update re-arms a v28 runner"; else fail "runner format is $FMT but the runner exits with its payload: want >= 29"; fi
 echo "TEST: AST runner .sh fires ast-update.sh by absolute path (free, no bank, no claude)"
 ast_luna_sh=$(cat "$CRON_DIR/graphmap-ast-luna.sh" 2>/dev/null || echo MISSING)
 ast_himmel_sh=$(cat "$CRON_DIR/graphmap-ast-himmel.sh" 2>/dev/null || echo MISSING)
@@ -2563,7 +2575,8 @@ else
     if [ -z "$g1_tree" ]; then
         fail "G1 could not add a detached worktree of the merge base $g1_base"
     else
-        g1_head="$(g1_render "$SCRIPT" head | sed -e "s#$g1_tree#ROOT#g" -e "s#$g1_repo#ROOT#g" -e "s#$TMP_ROOT/g1run-head#DIR#g" -e "s#graph-publish-[A-Za-z0-9._-]*#graph-publish-SLUG#g" -e '/^# himmel-cadence-runner-format:/d')"
+        # shellcheck disable=SC2016  # the sed scripts are literal; the $ is a regex anchor
+        g1_head="$(g1_render "$SCRIPT" head | sed -e "s#$g1_tree#ROOT#g" -e "s#$g1_repo#ROOT#g" -e "s#$TMP_ROOT/g1run-head#DIR#g" -e "s#graph-publish-[A-Za-z0-9._-]*#graph-publish-SLUG#g" -e '/^# himmel-cadence-runner-format:/d' -e '/^exit "$_rc"$/d')"
         # shellcheck disable=SC2016  # the sed scripts are literal; the $ is a regex anchor
         g1_base_out="$(g1_render "$g1_tree/scripts/luna/graphmap-cadence.sh" base | sed -e "s#$g1_tree#ROOT#g" -e "s#$g1_repo#ROOT#g" -e "s#$TMP_ROOT/g1run-base#DIR#g" -e "s#graph-publish-[A-Za-z0-9._-]*#graph-publish-SLUG#g" -e '/claude-bin:\$PATH$/d' -e '/^# cron cannot read the macOS/,/^fi$/d' -e '/^# himmel-cadence-runner-format:/d')"
         if [ -n "$g1_head" ] && grepq "$g1_head" -F 'graphmap-publish-himmel.sh' && [ "$g1_head" = "$g1_base_out" ]; then

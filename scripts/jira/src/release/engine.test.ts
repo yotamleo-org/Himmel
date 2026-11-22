@@ -4502,3 +4502,30 @@ describe('T8 U7: seed from the 2026-11-16 correction audit', () => {
     expect(await rmRun(ctx(), judge)).toEqual(['RM-RUN R1: nothing pending']);
   });
 });
+
+describe('the release state carries the version lines', () => {
+  it('a re-freeze on disk keeps came in from falling and lists the dropped key as left by the operator', async () => {
+    await setup();
+    freeze({ ...ctx(), now: () => new Date('2026-10-22T10:00:00.000Z') }, { version: 'v1', keys: ['K-2'], decision: '105', verbatim: 'frozen at 2' });
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: ['v1'] }], '2026-10-22T09:00:00.000Z');
+    const l = state(ctx()).version_lines.v1;
+    if (l?.status !== 'OK') throw new Error(JSON.stringify(l));
+    expect(l.days.map((x) => [x.day, x.came_in, x.left, x.open])).toEqual([['2026-10-21', 1, 0, 1], ['2026-10-22', 2, 1, 1]]);
+    expect(l.days[0].arrived).toEqual({ baseline: 1 });
+    expect(l.left).toEqual([{ key: 'K-1', day: '2026-10-22', authority: 'operator' }]);
+  });
+
+  it('reads a mirror file\'s resolved date into the snapshot', () => {
+    const dir = join(root, 'mirror-resolved');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'K-9.md'), '---\nkey: "K-9"\ntype: "Task"\nstatus: "Done"\npriority: "Medium"\nfixVersions: []\nresolution: "Done"\nresolved: "2026-10-20T08:00:00.000+0000"\n---\n');
+    writeFileSync(join(dir, 'K-8.md'), '---\nkey: "K-8"\ntype: "Task"\nstatus: "To Do"\npriority: "Medium"\nfixVersions: []\nresolution: null\n---\n');
+    const issues = readMirrorFilesUnverified(dir).issues;
+    expect(issues?.get('K-9')?.resolved).toBe('2026-10-20T08:00:00.000+0000');
+    expect(issues?.get('K-8')?.resolved).toBeNull();
+  });
+
+  it('a release that does not verify carries no lines', () => {
+    expect(state(ctx()).version_lines).toEqual({});
+  });
+});
