@@ -20,6 +20,7 @@ fleet_launch_prepare() {
     begun=$(fleet_launch_op begin --join-attempt "${6:-}") || return 10
     if [ -n "$(printf '%s\n' "$begun" | jq -r '.joined // empty')" ]; then
         FLEET_LAUNCH_MANAGED=false
+        unset FLEET_LAUNCH_ATTEMPT
         return 0
     fi
     export FLEET_LAUNCH_DOC FLEET_LAUNCH_NAME FLEET_LAUNCH_MANIFEST FLEET_LAUNCH_ATTEMPT

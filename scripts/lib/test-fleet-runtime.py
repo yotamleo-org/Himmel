@@ -770,12 +770,13 @@ exit 1''')
         self.rt('begin', aid='first')
         self.rt('commit', aid='first')
 
-    def api_call(self, join, doc=None):
+    def api_call(self, join, doc=None, env=None):
         """fleet-launch.sh's prepare as claude-api.sh calls it, then the exit-path steps that call runs."""
         script = ('. "$1/scripts/lib/fleet-launch.sh"; fleet_launch_prepare "$2" api-managed "$3" "" "" "$4" || exit $?; '
-                  'echo "managed=$FLEET_LAUNCH_MANAGED"; fleet_launch_finish; fleet_launch_outcome complete; fleet_launch_release')
+                  'echo "managed=$FLEET_LAUNCH_MANAGED"; echo "child_attempt=$(printenv FLEET_LAUNCH_ATTEMPT)"; '
+                  'fleet_launch_finish; fleet_launch_outcome complete; fleet_launch_release')
         command = ['bash', '-c', script, 'api-call', str(ENTRYPOINTS), str(doc or self.doc), str(self.m), join]
-        result = subprocess.run(command, env=self.env, capture_output=True, text=True, timeout=35)
+        result = subprocess.run(command, env=env or self.env, capture_output=True, text=True, timeout=35)
         self.record(command, result)
         return result
 
@@ -784,9 +785,10 @@ exit 1''')
 
     def test_api_call_inside_live_worker_joins_its_own_attempt(self):
         self.live_worker()
-        p = self.api_call('first')
+        p = self.api_call('first', env=dict(self.env, FLEET_LAUNCH_ATTEMPT='first'))
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertIn('managed=false', p.stdout)
+        self.assertIn('child_attempt=\n', p.stdout)
         self.assertEqual(list(self.attempts()), ['first'])
         files = lambda: {p.name: p.read_bytes() for p in self.bucket.glob('*.json')}
         before = files()
