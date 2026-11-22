@@ -182,6 +182,11 @@ describe('release reducer', () => {
     expect(reduce(input({ rulings: parseChain<RulingRow>(text, KEY) })).status).toBe('UNKNOWN');
   });
 
+  it('an UNKNOWN state carries empty version lines', () => {
+    const text = `${chainText([rule('R-1', 'K-2', 'add', null, 'v1')])}{truncated\n`;
+    expect(reduce(input({ rulings: parseChain<RulingRow>(text, KEY) })).version_lines).toEqual({});
+  });
+
   it('a Jira membership with no ledger row is a leak, whatever a comment claims', () => {
     const s = reduce(input({ issueList: [issue('K-1', ['v1']), issue('K-7', ['v1'])] }));
     expect(s.leaks.unauthorized).toEqual(['K-7@v1']);

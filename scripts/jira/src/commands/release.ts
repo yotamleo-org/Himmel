@@ -28,6 +28,7 @@ import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/le
 import { coreMatch, expandPaths, loadCorePatterns, sizeGuard } from '../release/core.js';
 import { releaseDir, releaseKeyPath, releaseRoot } from '../release/paths.js';
 import { terminalOf } from '../release/reducer.js';
+import type { VersionLines } from '../release/lines.js';
 import { mergedPrOf } from '../release/close-placement.js';
 import { asksOperator, operatorWorkOf, type TicketFacts } from '../release/operator-work.js';
 import type { Authority, Op, OperatorKind, Verb } from '../release/types.js';
@@ -197,6 +198,41 @@ export function parseFoldFile(text: string): FoldItem[] {
   });
 }
 
+const PRIORITY_ORDER = ['Highest', 'High', 'Medium', 'Low', 'Lowest'];
+
+function linesText(v: string, l: VersionLines): string[] {
+  if (l.status !== 'OK') return [`${v} lines: UNKNOWN (${l.reason})`];
+  const last = l.days.at(-1);
+  const out: string[] = [];
+  if (last) {
+    const n = Math.min(7, l.days.length);
+    const from = l.days.length > 7 ? l.days[l.days.length - 8] : null;
+    const rise = (f: 'came_in' | 'done') => last[f] - (from ? from[f] : 0);
+    const notOperator = l.left.filter((x) => x.authority !== 'operator').length;
+    out.push(`${v} as of ${l.as_of}: came in ${last.came_in} (+${rise('came_in')} in ${n} days), done ${last.done} (+${rise('done')}; ${last.closed_undelivered} closed without delivery), left ${last.left} (${notOperator} not by the operator), open ${last.open} (came in, not done, not left)`);
+    const arrived: Record<string, number> = {};
+    let serious = 0;
+    for (const d of l.days.slice(-n)) {
+      for (const [why, k] of Object.entries(d.arrived)) arrived[why] = (arrived[why] ?? 0) + k;
+      serious += d.arrived_serious;
+    }
+    const reasons = Object.entries(arrived).sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0])).map(([why, k]) => `${why} ${k}`);
+    out.push(`${v} arrived in ${n} days: ${reasons.join(', ') || 'none'}`, `${v} arrived serious in ${n} days: ${serious}`);
+  } else {
+    out.push(`${v} as of ${l.as_of}: came in 0, done 0, left 0, open 0 (came in, not done, not left)`);
+  }
+  const named = [...PRIORITY_ORDER, ...Object.keys(l.open_by_priority).filter((p) => !PRIORITY_ORDER.includes(p) && p !== 'none').sort(), 'none'];
+  const byPriority = named.filter((p) => l.open_by_priority[p]).map((p) => `${p} ${l.open_by_priority[p]}`);
+  out.push(`${v} open by priority: ${byPriority.join(', ') || 'none'}`);
+  const o = l.oldest_untouched;
+  out.push(o ? `${v} oldest untouched: ${o.key}, waiting ${o.days} days since ${o.since}` : `${v} oldest untouched: none`);
+  if (l.unrecorded.open.length || l.unrecorded.closed.length) {
+    out.push(`${v} in Jira with no ledger record: ${l.unrecorded.open.length} open, ${l.unrecorded.closed.length} closed (keys in --json)`);
+  }
+  if (l.done_undated) out.push(`${v} done with no date: ${l.done_undated}`);
+  return out;
+}
+
 export function renderState(s: StateOut, budgets: Record<string, number> = {}): string {
   const out = [`release ${s.release}: ${s.status}${s.mode ? ` (${s.mode})` : ''}`];
   out.push(`inputs: ${Object.entries(s.inputs).map(([k, v]) => `${k}=${v}`).join(' ')}`);
@@ -204,6 +240,7 @@ export function renderState(s: StateOut, budgets: Record<string, number> = {}): 
   for (const [v, b] of Object.entries(s.burndown)) {
     out.push(`${v}: baseline ${b.baseline} (open ${b.baseline_open}), admitted open ${b.admitted_open}, emergency open ${b.emergency_open}, deferred out ${b.deferred_out}`);
   }
+  for (const [v, l] of Object.entries(s.version_lines ?? {})) out.push(...linesText(v, l));
   const today = Object.entries(s.admissions_today).map(([v, n]) => {
     const budget = budgets[v];
     return `${v} ${n}${budget === undefined ? '' : ` of ${budget}${n > budget ? ' OVER BUDGET' : ''}`}`;
