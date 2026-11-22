@@ -232,11 +232,21 @@ ts_required_set() {
     printf '%s\n%s\n' "$rules" "$classic" | sed '/^$/d' | sort -u | _required_normalize
 }
 
-# _ts_snap_required_set <base> — ts_required_set, read once per base per snapshot.
+_ts_repo_key() {
+    local u="${GH_REPO:-}" r o
+    [ -n "$u" ] || u=$(git remote get-url origin 2>/dev/null) || return 1
+    u="${u%/}"; u="${u%.git}"
+    case "$u" in */*) ;; *) return 1 ;; esac
+    r="${u##*/}"; o="${u%/*}"; o="${o##*[/:]}"
+    [ -n "$o" ] && [ -n "$r" ] || return 1
+    printf '%s@%s' "$o" "$r"
+}
+
+# _ts_snap_required_set <base> — ts_required_set, read once per base per snapshot, kept per repository and base.
 _ts_snap_required_set() {
-    local f="$TS_SNAPSHOT_DIR/req-${1//\//_}" ttl="${TICKET_STATUS_REQSET_TTL:-300}" kept at now
+    local f="$TS_SNAPSHOT_DIR/req-${1//\//_}" ttl="${TICKET_STATUS_REQSET_TTL:-300}" kept at now repo
     case "$ttl" in ''|*[!0-9]*) ttl=300 ;; esac
-    kept="$(ts_state_dir)/required-set/${1//\//_}"
+    if repo=$(_ts_repo_key); then kept="$(ts_state_dir)/required-set/$repo@${1//\//_}"; else kept=""; ttl=0; fi
     now=$(date +%s)
     if [ ! -e "$f" ] && [ ! -e "$f.fail" ]; then
         at=""
