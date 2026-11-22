@@ -27,6 +27,7 @@ export class EnvelopeWindow {
   private key = (chat: number | string, from: number | string, id: string) => `${chat}:${from}:${id}`;
   has(chat: number | string, from: number | string, id: string): boolean { return this.exp.has(this.key(chat, from, id)); }
   add(chat: number | string, from: number | string, id: string, exp: number): void { this.exp.set(this.key(chat, from, id), exp); }
+  delete(chat: number | string, from: number | string, id: string): void { this.exp.delete(this.key(chat, from, id)); }
   prune(nowS: number): void { for (const [k, e] of this.exp) if (e <= nowS) this.exp.delete(k); }
   get size(): number { return this.exp.size; }
 }

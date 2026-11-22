@@ -7,6 +7,7 @@ import { Chain, readChain, submitSpool } from "./chain";
 import type { Config } from "./config";
 import { ackToken, digestFile } from "./digests";
 import { admit, createGateState, noteAdmitted } from "./gate";
+import { checkEnvelopeOutbound } from "./egress";
 import { procHooks } from "./proc";
 import { Poller, type PollerDeps, type TgLike } from "./poller";
 import { TIMEOUT_S_MAX, parseEnvelopeLine, type Kind } from "./envelope";
@@ -771,4 +772,127 @@ test("a second poller exits non-zero but not 78, and never reads the operator en
   expect(r.status).not.toBe(0);
   expect(r.status).not.toBe(78);
   expect(r.stderr).toContain("another peer-bridge poller");
+});
+
+
+const SUITE_A = "scripts/hooks/test-a.sh";
+const serveRun = (e: { cfg: Config; configDir: string }, budgets?: Record<string, number>, allow = true) => {
+  const p = e.cfg.peers.example as any;
+  p.serves = ["run-suite"]; p.maxPerMinute = 10_000;
+  if (budgets) p.budgets = { jobsPerDay: 10, vmMinutesPerDay: 120, queueMax: 3, maxJobMinutes: 130, ...budgets };
+  if (allow) writeFileSync(join(e.configDir, "example.suites"), `alias-a ${SUITE_A}\n`, { mode: 0o600 });
+};
+let reqSeq = 0;
+const reqMsg = (e: { c: { t: number } }, st: TE.Station) => envMsg(e, st, "req", { job: (++reqSeq).toString(16).padStart(16, "0"), op: "run-suite", sha: "a".repeat(40), suites: [SUITE_A] });
+const resBodies = (e: { sent: { text: string }[] }) => sentEnvelopes(e).map(l => parseEnvelopeLine(l[2])).flatMap(r => (r.ok ? [r.env as any] : []));
+const inJobs = (e: { peerDir: string }) => [...latestJobs(e).values()].filter(j => j.dir === "in");
+
+test("m1: a burst of queueMax requests with one job left today admits exactly one and refuses the rest with budget", async () => {
+  const e = await envSetup();
+  serveRun(e, { jobsPerDay: 1, queueMax: 3 });
+  await e.poller.processBatch([reqMsg(e, e.st), reqMsg(e, e.st), reqMsg(e, e.st)]);
+  expect(inJobs(e)).toHaveLength(1);
+  expect(resBodies(e).map(b => [b.kind, b.state, b.refused])).toEqual([["res", "refused", "budget"], ["res", "refused", "budget"]]);
+});
+
+test("m2: a crash between handling and the id record shows the envelope handled once after restart", async () => {
+  const e = await envSetup();
+  serveRun(e);
+  const u = reqMsg(e, e.st);
+  mkdirSync(join(e.peerDir, "envelope-ids.jsonl"));
+  await expect(e.poller.processBatch([u])).rejects.toThrow();
+  rmSync(join(e.peerDir, "envelope-ids.jsonl"), { recursive: true });
+  const again = await Poller.create({ ...e.deps, log: l => e.logs.push(l) });
+  await again.recover();
+  await again.processBatch([u]);
+  expect(inJobs(e)).toHaveLength(1);
+});
+
+test("m2: an append failure in handling does not make the redelivery a duplicate", async () => {
+  const e = await envSetup();
+  serveRun(e);
+  const u = reqMsg(e, e.st);
+  mkdirSync(join(e.peerDir, "jobs.jsonl"));
+  await expect(e.poller.processBatch([u])).rejects.toThrow();
+  rmSync(join(e.peerDir, "jobs.jsonl"), { recursive: true });
+  await e.poller.processBatch([u]);
+  expect(inJobs(e)).toHaveLength(1);
+});
+
+test("m2: after an append failure in handling, a restart still handles the redelivery", async () => {
+  const e = await envSetup();
+  serveRun(e);
+  const u = reqMsg(e, e.st);
+  mkdirSync(join(e.peerDir, "jobs.jsonl"));
+  await expect(e.poller.processBatch([u])).rejects.toThrow();
+  rmSync(join(e.peerDir, "jobs.jsonl"), { recursive: true });
+  const again = await Poller.create({ ...e.deps, log: l => e.logs.push(l) });
+  await again.recover();
+  await again.processBatch([u]);
+  expect(inJobs(e)).toHaveLength(1);
+  const handled = chainOf(e, "envelope-ids.jsonl").filter(r => r.kind === "env-id");
+  expect(handled.length).toBeGreaterThan(0);
+});
+
+test("m5: an egress-refused request leaves no out-job record and no cancel is sent later", async () => {
+  const e = await envSetup();
+  let calls = 0;
+  const checkEnvelope = (async (...a: Parameters<typeof checkEnvelopeOutbound>) => (calls++ === 0 ? { ok: false as const, rule: "schema" } : checkEnvelopeOutbound(...a))) as PollerDeps["checkEnvelope"];
+  const p = await Poller.create({ ...e.deps, checkEnvelope, log: l => e.logs.push(l) });
+  await p.recover();
+  const name = submitSpool(e.peerDir, { type: "env-out", kind: "req", body: { sha: "a".repeat(40), suites: [SUITE_A] } });
+  await p.drainSpool();
+  expect(readResult(e, name)).toEqual({ ok: false, rule: "egress" });
+  expect(chainOf(e, "jobs.jsonl")).toEqual([]);
+  e.c.t += 10 * 86_400_000;
+  await p.tick();
+  await p.flushIntents();
+  expect(e.sent).toEqual([]);
+});
+
+test("m5: an accepted request records the out-job before its envelope can be sent", async () => {
+  const e = await envSetup();
+  const name = submitSpool(e.peerDir, { type: "env-out", kind: "req", body: { sha: "a".repeat(40), suites: [SUITE_A] } });
+  await e.poller.drainSpool();
+  expect(readResult(e, name)).toMatchObject({ ok: true, job: 1 });
+  expect(latestJobs(e).get(1)).toMatchObject({ dir: "out", state: "SENT" });
+  expect(sentEnvelopes(e)).toHaveLength(1);
+});
+
+test("m7: the answer hourly cap survives a restart", async () => {
+  const e = await envSetup();
+  serveRun(e);
+  await e.poller.processBatch(Array.from({ length: 20 }, () => envMsg(e, e.st, "capacity-ask", {})));
+  expect(sentEnvelopes(e)).toHaveLength(20);
+  const logs: string[] = [];
+  const again = await Poller.create({ ...e.deps, log: l => logs.push(l) });
+  await again.recover();
+  await again.processBatch([envMsg(e, e.st, "capacity-ask", {})]);
+  expect(sentEnvelopes(e)).toHaveLength(20);
+  expect(logs.some(l => l.includes("hourly cap on answers"))).toBe(true);
+  e.c.t += 61 * 60_000;
+  await again.processBatch([envMsg(e, e.st, "capacity-ask", {})]);
+  expect(sentEnvelopes(e)).toHaveLength(21);
+});
+
+test("m7: the res refused from resolve-fail counts toward the answer cap", async () => {
+  const e = await envSetup();
+  serveRun(e, undefined, false);
+  await e.poller.processBatch(Array.from({ length: 25 }, () => reqMsg(e, e.st)));
+  expect(inJobs(e)).toHaveLength(25);
+  expect(resBodies(e).filter(b => b.refused === "not-allowed")).toHaveLength(20);
+  expect(e.logs.filter(l => l.includes("hourly cap on answers"))).toHaveLength(5);
+});
+
+test("m7: the bad-signature tripwire survives a restart", async () => {
+  const e = await envSetup();
+  const other = TE.mkStation("other");
+  const bad = () => TE.envUpdate(TE.fromPeer("halt", {}, nowS(e)), other, { kid: e.st.key.id });
+  await e.poller.processBatch([bad(), bad()]);
+  expect(wakeLines(e)).toEqual([]);
+  const again = await Poller.create({ ...e.deps, log: l => e.logs.push(l) });
+  await again.recover();
+  await again.processBatch([bad()]);
+  expect(wakeLines(e)).toEqual(["peer example: 3 bad signatures in 1 h"]);
+  TE.dropStation(other);
 });

@@ -95,14 +95,21 @@ export class Poller {
   }
 
   private load() {
-    const threadRecs: ThreadRec[] = [], inbox: Pick<PeerMsgRec, "peer" | "chat_id" | "from_id" | "id" | "ts">[] = [], envIds: { chat: number; from: string; id: string; exp: number }[] = [];
+    const threadRecs: ThreadRec[] = [], inbox: Pick<PeerMsgRec, "peer" | "chat_id" | "from_id" | "id" | "ts">[] = [], envIds: { chat: number; from: string; id: string; exp: number; void?: true }[] = [];
     for (const peer of Object.keys(this.cfg.peers)) {
       for (const r of readChain(this.file(peer, "threads.jsonl"))) if (r.kind === "thread") threadRecs.push(r as unknown as ThreadRec);
       for (const r of readChain(this.file(peer, "inbox.jsonl"))) {
         if (r.kind === "peer-msg") inbox.push(r as unknown as PeerMsgRec);
         else if (r.kind === "peer-env") inbox.push({ peer: r.peer, chat_id: r.chat_id, from_id: r.from_id, ts: r.ts });
       }
-      for (const r of readChain(this.file(peer, "envelope-ids.jsonl"))) if (r.kind === "env-id") envIds.push(r as any);
+      for (const r of readChain(this.file(peer, "envelope-ids.jsonl"))) {
+        if (r.kind === "env-id") envIds.push(r as any);
+        else if (r.kind === "env-id-void") envIds.push({ ...(r as any), void: true });
+      }
+      const hourAgo = this.now() - 3_600_000;
+      const answered = readChain(this.file(peer, "answers.jsonl")).filter(r => r.kind === "answered" && typeof r.at === "number" && r.at > hourAgo).map(r => r.at as number);
+      if (answered.length) this.answers.set(peer, answered);
+      for (const r of readChain(this.file(peer, "sig-fails.jsonl"))) if (r.kind === "sig-fail" && typeof r.at === "number" && r.at > hourAgo) this.tripwire.note(peer, r.at);
       for (const r of readChain(this.file(peer, "jobs.jsonl"))) {
         if (r.kind === "cap-ask") this.capAsks.set(`${peer}:${r.msg}`, this.capAsks.get(`${peer}:${r.msg}`) ?? false);
         else if (r.kind === "capacity") this.capAsks.set(`${peer}:${r.re}`, true);
@@ -117,7 +124,7 @@ export class Poller {
     this.gate = createGateState({ ourBotId: this.deps.ourBotId, ourUsername: "", committed: this.offset - 1, now: this.now() });
     for (const r of this.threads.roots()) this.gate.roots.add(r);
     rebuildFromInbox(this.gate, inbox);
-    for (const r of envIds) this.gate.envIds.add(r.chat, r.from, r.id, r.exp);
+    for (const r of envIds) { if (r.void) this.gate.envIds.delete(r.chat, r.from, r.id); else this.gate.envIds.add(r.chat, r.from, r.id, r.exp); }
     this.gate.envIds.prune(this.ts());
     this.refreshKilled();
   }
@@ -255,17 +262,32 @@ export class Poller {
       if (r.unknownChat) appendUnknownChat(join(this.deps.stateDir, "unknown-chats.jsonl"), r.unknownChat);
       if (r.step === 1 || !r.peer) return;
       noteRate(this.gate, r.peer, this.ts());
-      if (r.step === 5 && this.tripwire.note(r.peer, this.now())) await this.waker.alert(r.peer, TRIPWIRE_COUNT);
+      if (r.step === 5) {
+        await this.chain.append(this.file(r.peer, "sig-fails.jsonl"), { kind: "sig-fail", at: this.now() });
+        if (this.tripwire.note(r.peer, this.now())) await this.waker.alert(r.peer, TRIPWIRE_COUNT);
+      }
       if (!r.rec || !r.env) return;
-      await this.chain.append(this.file(r.peer, "inbox.jsonl"), r.rec);
-      if (r.env.kind === "req" && r.refused) await this.answer(r.peer, { kind: "res", body: { job: r.env.job, state: "refused", refused: r.refused } });
-      await this.recordId(r.rec, r.env.exp);
+      const { peer, env } = r;
+      await this.chain.append(this.file(peer, "inbox.jsonl"), r.rec);
+      await this.withEnvId(r.rec, env.exp, async () => {
+        if (env.kind === "req" && r.refused) await this.answer(peer, { kind: "res", body: { job: env.job, state: "refused", refused: r.refused } });
+      });
       return;
     }
     noteRate(this.gate, r.peer, this.ts());
     await this.chain.append(this.file(r.peer, "inbox.jsonl"), r.rec);
-    await this.handleEnvelope(r.peer, r.env);
-    await this.recordId(r.rec, r.env.exp);
+    await this.withEnvId(r.rec, r.env.exp, () => this.handleEnvelope(r.peer, r.env));
+  }
+
+  private async withEnvId(rec: PeerEnvRec, exp: number, handle: () => Promise<void>): Promise<void> {
+    try {
+      await this.recordId(rec, exp);
+      await handle();
+    } catch (e) {
+      this.gate.envIds.delete(rec.chat_id, rec.from_id, rec.id);
+      await this.chain.append(this.file(rec.peer, "envelope-ids.jsonl"), { kind: "env-id-void", chat: rec.chat_id, from: rec.from_id, id: rec.id }).catch(() => {});
+      throw e;
+    }
   }
 
   private async recordId(rec: PeerEnvRec, exp: number): Promise<void> {
@@ -299,7 +321,7 @@ export class Poller {
       const resolved = resolveReq(env, allow);
       const job = newInJob({ jobNo: this.nextJobNo(), peer, now: this.ts(), fields: resolved.record });
       await this.putJob(job);
-      if (!resolved.ok) await this.applyJobEvent(job, { type: "resolve-fail", refused: resolved.refused });
+      if (!resolved.ok) await this.applyJobEvent(job, { type: "resolve-fail", refused: resolved.refused }, true);
     }
   }
 
@@ -321,8 +343,7 @@ export class Poller {
     if (rec.kind === "req") {
       const b = made.env as Extract<Envelope, { kind: "req" }>;
       const job = newOutJob({ jobNo: this.nextJobNo(), peer, wireJob: b.job, sha: b.sha, suites: b.suites, reqExp: b.exp, now: this.ts() });
-      await this.putJob(job);
-      if (!(await this.queueEnvelope(peer, made))) return refuse("egress");
+      if (!(await this.queueEnvelope(peer, made, () => this.putJob(job)))) return refuse("egress");
       writeResult(dir, name, { ok: true, job: job.jobNo });
       return;
     }
@@ -374,10 +395,10 @@ export class Poller {
     writeResult(dir, name, { ok: true });
   }
 
-  private async applyJobEvent(job: JobRecord, event: JobEvent): Promise<void> {
+  private async applyJobEvent(job: JobRecord, event: JobEvent, capped = false): Promise<void> {
     const r = step(job, event, this.ts());
     if (r.record !== job) await this.putJob(r.record);
-    if (r.send) await this.sendEnvelope(job.peer, r.send);
+    if (r.send) await (capped ? this.answer(job.peer, r.send) : this.sendEnvelope(job.peer, r.send));
   }
 
   private async fireDeadlines(): Promise<void> {
@@ -407,13 +428,14 @@ export class Poller {
     return { env, lines: [`/peer@${p.theirs.username}`, line2, line3, `sig=${sign(line2, line3, key.path)}`] };
   }
 
-  private async queueEnvelope(peer: string, made: { env: Envelope; lines: string[] }): Promise<boolean> {
+  private async queueEnvelope(peer: string, made: { env: Envelope; lines: string[] }, afterEgress?: () => Promise<void>): Promise<boolean> {
     const ok = await this.checkEnv(peer, made.lines);
     if (!ok.ok) {
       await this.chain.append(this.file(peer, "outbox.jsonl"), refusalRecord(made.lines[2], ok, this.ts()));
       this.log(`env-send peer=${peer} refused: ${ok.rule}`);
       return false;
     }
+    await afterEgress?.();
     const rec = await this.chain.append(this.file(peer, "outbox.jsonl"), { kind: "intent", peer, chat: this.cfg.peers[peer].chatId, id: made.env.msg, root: null, msgKind: "env", text: made.lines.join("\n"), isRoot: false, env: true });
     this.pending.set(`${peer}:${rec.n}`, rec as unknown as Pending);
     return true;
@@ -423,6 +445,7 @@ export class Poller {
     const now = this.now();
     const recent = (this.answers.get(peer) ?? []).filter(t => now - t < 3_600_000);
     if (recent.length >= MAX_AUTO_PER_HOUR) { this.log(`env-drop peer=${peer} not answered: the hourly cap on answers is reached`); return; }
+    await this.chain.append(this.file(peer, "answers.jsonl"), { kind: "answered", at: now });
     recent.push(now);
     this.answers.set(peer, recent);
     await this.sendEnvelope(peer, spec);
