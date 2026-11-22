@@ -289,6 +289,8 @@ reply "$OPERATOR" "$OPERATOR" "go $CODE"
 wait_for "$Q/daemon.log" "REFUSED after go"
 assert_eq "the changed brief launches nothing" "no-launch r.req.refused" \
     "$([ -e "$D/launch.env" ] && echo launched || echo no-launch) $(cd "$Q" && ls r.req.*)"
+wait_for "$D/kinds" "refused after your go"
+assert_contains "RED 10558: a refusal after the go is bypass-result" "bypass-result|bypass launch HIMMEL-1-N1-sweep-pr1: refused after your go" "$(cat "$D/kinds" 2>/dev/null)"
 stop
 
 echo "== a launcher that fails is reported as failed =="
