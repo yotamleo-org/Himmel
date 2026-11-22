@@ -1,5 +1,5 @@
 2baa6d1a07ca561e0ac8d0d6a3e3dcbd75085cbd  .claude-plugin/marketplace.json
-35dbc388528301c516a64122408d268018f0c110  .claude-plugin/plugin.json
+01df81790b323d38e21ef3f46918ef5d706d174c  .claude-plugin/plugin.json
 1014ba78880c899e842b397cb89a878be4671f7d  .editorconfig
 0f84e752fb58bca72b25d5a1075cf598912c5c1c  .github/CODEOWNERS
 7f05038234ebcf35b4bffcf4fb2ea9e84e442b2b  .github/ISSUE_TEMPLATE/bug_report.md
@@ -42,15 +42,15 @@ a8c5dd0acf580d5b0a21c26c350755208522004d  dist/config.js
 1bc3cc1503663560aa321638224d6cace684d58a  dist/context-cache.d.ts
 4483a432808c7e0ff6294c727ea6e1ed8c6e9e3b  dist/context-cache.d.ts.map
 fbf051aa7433f2f352381a7bc2ba4552c68a3e84  dist/context-cache.js
-3ef89c41bd862fa4a23e9f7f23da80c06354f152  dist/context-cache.js.map
+5bf3ed8fd931af26517b7f562e067541b0e50320  dist/context-cache.js.map
 fab39be8ceefc04cbcd528b3bfbdebf618155b31  dist/cost.d.ts
 6f91a368db98e962cca011342a3b465f9fe5f59c  dist/cost.d.ts.map
 49e77cfcb9ee2206d85861690ad9791a25c6dafd  dist/cost.js
-778bba7a5746d9c2ee82856b29fd7fc04a4f5d27  dist/cost.js.map
+9ae7b70dabef5fa55178de90e05189c5847265ea  dist/cost.js.map
 1dc28648a13116d1fb4610bfff9d9617c110c326  dist/custom-line-cmd.d.ts
 248d52aa75b8d11ef194612b8bc802840d821c72  dist/custom-line-cmd.d.ts.map
 369cf7c016a83d93cd32ee829f0c2d6d8455d31b  dist/custom-line-cmd.js
-ac29095b8fc14a3928a8063471074ada292745ac  dist/custom-line-cmd.js.map
+78553d6311d1c50ab18d639369c56ff7c90bb6a4  dist/custom-line-cmd.js.map
 813dbcd2eda1149f595a4ca4e64a65587a680bda  dist/daily-cost.d.ts
 2ad82e62a02741755b9037eb5a68d6b40dec81a2  dist/daily-cost.d.ts.map
 226805dac1ab5a96c95e72f7361c0a1599d8a7d2  dist/daily-cost.js
@@ -134,7 +134,7 @@ ea1493eedb6db56320d64ef53d6ac8ef6b17331d  dist/render/compact.js.map
 ebb15734f0a06d949ba3d6a5187ffa4307b91bb7  dist/render/context.d.ts
 cffba692670423ccee43c846c4e45c51988f6a19  dist/render/context.d.ts.map
 b3c3255480510a567afcad875254ef784641fe61  dist/render/context.js
-c27c7bcfa0ffd9e75cacf0f49908bb2d21cbc8ef  dist/render/context.js.map
+d6573ef021716a47666adb341ed29175da5c92fd  dist/render/context.js.map
 01c99045a9549b06392e5f9227df39d734fb2692  dist/render/derive.d.ts
 0cc7adba97abce3e82cba9f984cb9019eef2acfb  dist/render/derive.d.ts.map
 0dd145a446ac7a351a5d7a90138da3bab405cf14  dist/render/derive.js
@@ -166,7 +166,7 @@ f9109ec2772a1cbf2b7d854d4b31f5c24e728f01  dist/render/order.js.map
 33cb7d625f674b5f24bf35dd115c287765f5ab25  dist/render/parts.d.ts
 2d4c2b33beaf9297d5670e7fae953dbc1b642325  dist/render/parts.d.ts.map
 37fb09ced25e17276ba2c1591b3a99f655bcaf30  dist/render/parts.js
-f10ff1d6b88dd31ed2fcaec371bc5d7cb762243c  dist/render/parts.js.map
+62e4d145b722a8398b444d72b62edd40bed302d6  dist/render/parts.js.map
 41900d4b24edde356359a0a3a34fc61d3bd6f012  dist/render/time.d.ts
 061f3ab3244d79ed8304525efaafa15ecbadf9a9  dist/render/time.d.ts.map
 e563e6642bdea47f375b389991e955074e6e1104  dist/render/time.js
@@ -186,7 +186,7 @@ a8a7185a9789c9ce5f1b81d387f0d6871022ea57  dist/speed.js
 4e647ad80515f5d9f7ac4ab4764e0b4a32d7f150  dist/stdin.d.ts
 00e7e5161b64ac3fff26ba9de5e6a25d82deb04c  dist/stdin.d.ts.map
 3d626206c1c0448f0fd0cb6020646ca3d17a5da1  dist/stdin.js
-4400491e7f875d96ff5a2a4436988ab65ddc5e6b  dist/stdin.js.map
+3f873885e315e6f546897fd7320e0f73026a7db7  dist/stdin.js.map
 e30119b8433f4c8cec3fcdf91a7d7b26074fbd29  dist/transcript.d.ts
 68eb216abd8e26b43b6781878179350a8ff35954  dist/transcript.d.ts.map
 1f33762bbab28f4b6855b993bd5cd67f5b9a7de9  dist/transcript.js
