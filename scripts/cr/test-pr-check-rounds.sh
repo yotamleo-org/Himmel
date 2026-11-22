@@ -1342,6 +1342,16 @@ fix_commit() {
 # Start is idempotent per head: a second start at the head the counted round
 # ran on reuses that round and spends nothing; a new head counts as before.
 RR="$fx/scripts/cr/review-round.sh"
+reaped_pid() { sh -c 'exit 0' & sn_reaped=$!; wait "$sn_reaped"; }
+snap_f() { printf '%s\n' "$git_dir/cr-review-rounds/$1.start.bak"; }
+snap_has() { if [ -f "$(snap_f "$1")" ]; then printf present; else printf absent; fi; }
+snap_field() { sed -n "s/^$2 //p" "$(snap_f "$1")" 2>/dev/null; }
+snap_set() {
+    { sed "s/^$2 .*/$2 $3/" "$(snap_f "$1")" > "$tmp/snap.tmp" 2>/dev/null && mv "$tmp/snap.tmp" "$(snap_f "$1")"; } || fail "snap_set $1 $2"
+}
+snap_dead() { reaped_pid; snap_set "$1" pid "$sn_reaped"; }
+snap_age() { snap_set "$1" time "$(( $(date +%s) - $2 ))"; }
+rr_settle() { (cd "$repo" && bash "$RR" settle --branch "$1" --head "$2" >/dev/null 2>&1) || fail "settle $1 at $2"; }
 git -C "$repo" checkout -q -b idem main
 printf 'idem\n' > "$repo/idem.txt"
 git -C "$repo" add idem.txt
@@ -1354,6 +1364,8 @@ assert_eq "$idem_rc2" "0" "5233 a repeat start at the same head succeeds"
 assert_eq "$idem_out2" "1" "5233 a repeat start at the same head reuses round 1"
 assert_eq "$(cat "$git_dir/cr-review-rounds/idem.round")" "1" "5233 a repeat start spends no round"
 git -C "$repo" commit -q --allow-empty -m "idem 2"
+CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" avail \
+    --branch idem --head "$idem_head" --model stub --status ok >/dev/null || fail "idem avail row"
 idem_out3="$(cd "$repo" && bash "$RR" start --branch idem --head "$(git -C "$repo" rev-parse idem)" 2>&1)"
 assert_eq "$idem_out3" "2" "5233 a new head still counts the next round"
 
@@ -2058,10 +2070,15 @@ assert_has "$pd3_out" "delta round was already used" "used-up delta refusal name
 three_rounds pendingother suggestion
 fix_commit pendingother
 (cd "$repo" && PANEL_MODE=fail bash "$SCRIPT" --head "$cap_fix_head" --branch pendingother >/dev/null 2>&1) || fail "pendingother failed delta setup"
+pdo_fix="$cap_fix_head"
 printf 'more\n' >> "$repo/pendingother.txt"
 git -C "$repo" commit -q -am "more pendingother"
 pdo_out="$(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$(git -C "$repo" rev-parse pendingother)" --branch pendingother 2>&1)"; pdo_rc=$?
 assert_eq "$pdo_rc" "8" "a pending delta round is never reused for a different head"
+assert_has "$pdo_out" "a dead round at $pdo_fix is younger than two hours" "10578 a different head waits on the young round with no row"
+rr_settle pendingother "$pdo_fix"
+pdo_out="$(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$(git -C "$repo" rev-parse pendingother)" --branch pendingother 2>&1)"; pdo_rc=$?
+assert_eq "$pdo_rc" "8" "a settled pending delta round is never reused for a different head"
 assert_has "$pdo_out" "delta round was already used" "different-pair refusal names the reason"
 
 # Round-3 findings are keyed by id + artifact + perspective, so
@@ -2557,6 +2574,7 @@ fix_commit pcunrev
 (cd "$repo" && PANEL_MODE=fail bash "$SCRIPT" --head "$cap_fix_head" --branch pcunrev >/dev/null 2>&1) \
     || fail "pcunrev panel-less delta round setup exited non-zero"
 assert_has "$(cat "$git_dir/cr-review-rounds/pcunrev.delta" 2>/dev/null)" "$cap_r3_head $cap_fix_head fix" "pcunrev fixture: the pair ends on the unreviewed fix head"
+rr_settle pcunrev "$cap_fix_head"
 postcap_fix pcunrev
 postcap_out="$(postcap_start pcunrev)"; postcap_rc=$?
 assert_eq "$postcap_rc" "8" "a used pair ending on another head buys no post-cap round"
@@ -2810,6 +2828,7 @@ jo_r3="$cap_r3_head"
 fix_commit judgeonce
 judge jo-1 NO-GO "$jo_r3"
 (start_round "$cap_fix_head" fail judgeonce >/dev/null) || fail "judgeonce pending delta setup"
+rr_settle judgeonce "$cap_fix_head"
 printf 'another\n' >> "$repo/judgeonce.txt"
 git -C "$repo" commit -q -am "judgeonce another"
 jo_out="$(start_round "$(git -C "$repo" rev-parse judgeonce)" clean judgeonce)"; jo_rc=$?
@@ -3433,6 +3452,7 @@ assert_has "$t2_out" "delta round was already used" "finding-row refusal names t
 three_rounds t3conc suggestion
 fix_commit t3conc
 (start_round "$cap_fix_head" fail t3conc >/dev/null) || fail "t3conc pending delta setup"
+rr_settle t3conc "$cap_fix_head"
 t3_claim="$(grep -Ec '^[0-9]+$' "$git_dir/cr-review-rounds/t3conc.delta.run" 2>/dev/null)"
 assert_eq "$t3_claim" "1" "a real delta start records its caller pid"
 sleep 60 &
@@ -3523,6 +3543,7 @@ sd_r3="$cap_r3_head"
 fix_commit stranded
 sd_fix1="$cap_fix_head"
 (start_round "$sd_fix1" fail stranded >/dev/null) || fail "stranded delta setup"
+rr_settle stranded "$sd_fix1"
 printf 'fix again\n' >> "$repo/stranded.txt"
 git -C "$repo" commit -q -am "stranded second fix"
 sd_fix2="$(git -C "$repo" rev-parse stranded)"
@@ -4076,7 +4097,7 @@ ab_y="$(git -C "$repo" rev-parse ab77)"
 (cd "$repo" && bash "$RR" start --branch ab77 --head "$ab_y" >/dev/null 2>&1) || fail "ab77 fixture start at the live head"
 sleep 60 &
 ab_live=$!
-printf '%s\n' "$ab_live" > "$git_dir/cr-review-rounds/ab77.delta.run"
+snap_set ab77 pid "$ab_live"
 ab_out="$(cd "$repo" && bash "$RR" abort --branch ab77 --head "$ab_y" 2>&1)"; ab_rc=$?
 kill "$ab_live" 2>/dev/null; wait "$ab_live" 2>/dev/null
 assert_eq "$ab_rc" "8" "7753 (f) abort refuses while the round's start caller is running ($ab_out)"
@@ -4084,9 +4105,10 @@ assert_eq "$(cat "$git_dir/cr-review-rounds/ab77.round")" "3" "7753 (f) a refuse
 assert_eq "$(cat "$git_dir/cr-review-rounds/ab77.head")" "$ab_y" "7753 (f) a refused abort leaves .head on the running round"
 for ab_run in missing '' x12; do
     if [ "$ab_run" = missing ]; then
-        rm -f "$git_dir/cr-review-rounds/ab77.delta.run"
+        { sed '/^pid /d' "$(snap_f ab77)" > "$tmp/snap.tmp" && mv "$tmp/snap.tmp" "$(snap_f ab77)"; } || fail "7753 (g) fixture drops the snapshot pid"
     else
-        printf '%s\n' "$ab_run" > "$git_dir/cr-review-rounds/ab77.delta.run"
+        printf 'pid 0\n' >> "$(snap_f ab77)"
+        snap_set ab77 pid "$ab_run"
     fi
     ab_out="$(cd "$repo" && bash "$RR" abort --branch ab77 --head "$ab_y" 2>&1)"; ab_rc=$?
     assert_eq "$ab_rc" "8" "7753 (g) abort refuses with no start caller on record (delta.run ${ab_run:-empty}: $ab_out)"
@@ -4150,10 +4172,15 @@ judge jg77-1 GO "$jg77_fix"
 jgo_out="$(jgo_verb jg77 "$jg77_fix")"; jgo_vrc=$?
 assert_eq "$jgo_vrc" "0" "7753 (b) judge-go accepts a signed GO after an aborted delta round ($jgo_out)"
 # clear-review-marker gates on .head itself, so abort is the sanctioned repair.
+snap_dead jg77
+jg77_out="$(cd "$repo" && bash "$RR" abort --branch jg77 --head "$jg77_fix" 2>&1)"; jg77_rc=$?
+assert_eq "$jg77_rc" "8" "10578 7753 (b) a by-hand abort of a young dead round is refused ($jg77_out)"
+assert_has "$jg77_out" "younger than two hours" "10578 7753 (b) the refusal names the two-hour wait"
+snap_age jg77 7300
 jg77_out="$(cd "$repo" && bash "$RR" abort --branch jg77 --head "$jg77_fix" 2>&1)"; jg77_rc=$?
 assert_eq "$jg77_rc" "0" "7753 (b) abort repairs a stranded .head by hand ($jg77_out)"
 assert_eq "$(cat "$git_dir/cr-review-rounds/jg77.head")" "$jg77_r3" "7753 (b) .head is back on the reviewed round-3 head"
-assert_eq "$(cat "$git_dir/cr-review-rounds/jg77.round")" "4" "7753 (b) the pending delta round keeps its count"
+assert_eq "$(cat "$git_dir/cr-review-rounds/jg77.round")" "3" "10578 7753 (b) the restore gives the delta round's count back"
 jgo_clear jg77; jgo_rc=$?
 assert_eq "$jgo_rc" "0" "7753 (b) the judge GO then clears the marker ($(cat "$tmp/jg77-clear.out"))"
 
@@ -4163,6 +4190,7 @@ git -C "$repo" checkout -q -b jg77n main
 printf 'jg77n\n' > "$repo/jg77n.txt"; git -C "$repo" add jg77n.txt; git -C "$repo" commit -q -m jg77n
 for n in 1 2 3; do
     (cd "$repo" && PANEL_MODE=fail bash "$SCRIPT" --head "$(git -C "$repo" rev-parse jg77n)" --branch jg77n >/dev/null 2>"$tmp/jg77n-$n.err") || fail "jg77n fixture round $n"
+    rr_settle jg77n "$(git -C "$repo" rev-parse jg77n)"
     git -C "$repo" commit -q --allow-empty -m "jg77n round $n"
 done
 jg77n_head="$(git -C "$repo" rev-parse jg77n)"
@@ -4211,7 +4239,7 @@ assert_eq "$fr_rc" "7" "8428 a round-3 start at H3 that aborts exits 7"
 assert_eq "$(cat "$fr_state.round")" "2" "8428 the aborted round 3 is given back ($fr_out)"
 assert_eq "$(cat "$fr_state.head")" "$fr_h2" "8428 the give-back restores .head to H2"
 (cd "$repo" && bash "$RR" start --branch "$fr_b" --head "$fr_h2" >/dev/null 2>&1) || fail "8428 same-head re-entry at H2"
-assert_eq "$(fr_from)" "" "8428 round-3 abort then a same-head start at H2: from prints nothing, never H2"
+assert_eq "$(fr_from)" "$fr_h1" "8428 round-3 abort then a same-head start at H2: from prints the restored H1, never H2"
 start_round "$fr_h3" clean "$fr_b" >/dev/null || fail "8428 fixture round 3"
 assert_eq "$(fr_from)" "$fr_h2" "8428 a new round 3 writes .from = H2"
 printf '4\n' > "$fr_state.round"
@@ -4222,8 +4250,11 @@ cat > "$tmp/bin/fr84-reset-gh" <<'STUB'
 printf '%s\n' '{"headRefName":"feat/fr84","isCrossRepository":false,"state":"OPEN"}'
 STUB
 chmod +x "$tmp/bin/fr84-reset-gh"
+[ -e "$fr_state.start.bak" ] || printf 'start-snapshot 1\n' > "$fr_state.start.bak"
 fr_reset_out="$(env -u CLAUDECODE CR_RESET_PRIMARY="$repo" CR_RESET_GH="$tmp/bin/fr84-reset-gh" \
     CR_RESET_LOCK_LIB="$HERE/../lib/shared-branch-lock.sh" bash "$HERE/cr-reset.sh" 8 2>&1)" || fail "8428 cr-reset runs ($fr_reset_out)"
+assert_has "$fr_reset_out" '.start.bak' "10578 reset-moves-snapshot: cr-reset moves .start.bak aside"
+assert_eq "$([ -e "$fr_state.start.bak" ] && echo present || echo absent)" "absent" "10578 reset-moves-snapshot: after cr-reset no snapshot is left"
 assert_has "$fr_reset_out" '.from' "8428 cr-reset moves .from aside"
 assert_eq "$([ -e "$fr_state.from" ] && echo present || echo absent)" "absent" "8428 after cr-reset no .from is left"
 assert_eq "$(fr_from)" "" "8428 after cr-reset from prints nothing"
@@ -4231,6 +4262,172 @@ printf '%s\n' "$fr_h1" > "$fr_state.from"
 start_round "$fr_h3" clean "$fr_b" >/dev/null || fail "8428 fixture round 1 after reset"
 assert_eq "$(cat "$fr_state.round")" "1" "8428 the first start after a reset is round 1"
 assert_eq "$([ -e "$fr_state.from" ] && echo present || echo absent)" "absent" "8428 a round-1 start removes a stale .from"
+
+cired_rows 'completed\tsuccess\tlint\n'
+rr_start() { (cd "$repo" && bash "$RR" start --branch "$1" --head "$2" 2>&1); }
+rr_abort() { (cd "$repo" && bash "$RR" abort --branch "$1" --head "$2" 2>&1); }
+rr_file() { if [ -e "$git_dir/cr-review-rounds/$1.$2" ]; then cat "$git_dir/cr-review-rounds/$1.$2"; else printf absent; fi; }
+sn_branch() {
+    git -C "$repo" checkout -q -b "$1" main
+    printf '%s\n' "$1" > "$repo/$1.txt"; git -C "$repo" add "$1.txt"; git -C "$repo" commit -q -m "$1"
+    sn_h1="$(git -C "$repo" rev-parse "$1")"
+    start_round "$sn_h1" clean "$1" >/dev/null || fail "$1 fixture round 1"
+    printf 'two\n' >> "$repo/$1.txt"; git -C "$repo" commit -q -am "$1 two"
+    sn_h2="$(git -C "$repo" rev-parse "$1")"
+}
+sn_next() { printf 'next\n' >> "$repo/$1.txt"; git -C "$repo" commit -q -am "$1 next"; git -C "$repo" rev-parse "$1"; }
+
+three_rounds snabc clean
+git -C "$repo" push -q -u origin snabc
+cired_rows "$RED"
+fix_commit snabc
+sn_y="$cap_fix_head"
+sn_out="$(start_round "$sn_y" pin-abort snabc)"; sn_rc=$?
+assert_eq "$sn_rc" "7" "10578 abort-delta-cired: the CI-red round's panel aborts at exit 7"
+assert_has "$sn_out" "the aborted round was given back" "10578 abort-delta-cired: panel-first-pass gives the round back"
+assert_eq "$(rr_file snabc round)" "3" "10578 abort-delta-cired: the aborted CI-red round is uncounted"
+assert_eq "$(rr_file snabc cired)" "absent" "10578 abort-delta-cired: the CI-red unlock is given back"
+assert_eq "$(rr_file snabc delta)" "absent" "10578 abort-delta-cired: .delta is as before the round"
+assert_eq "$(snap_has snabc)" "absent" "10578 abort-delta-cired: the restore deletes the snapshot"
+main_commit snabc-main.txt "newer main"
+git -C "$repo" merge -q --no-edit main
+sn_y2="$(git -C "$repo" rev-parse snabc)"
+cired_rows "$RED"
+sn_out="$(start_round "$sn_y2" clean snabc)"; sn_rc=$?
+assert_eq "$sn_rc" "0" "10578 abort-then-merge: the merge of newer main after the aborted round is admitted ($sn_out)"
+assert_has "$(rr_file snabc delta)" "$cap_r3_head $sn_y2 postcap-ci-red" "10578 abort-then-merge: it takes the CI-red unlock again"
+cired_rows 'completed\tsuccess\tlint\n'
+
+three_rounds snabv clean
+fix_commit snabv
+sn_r3="$cap_r3_head"
+printf 'class: reader-allowlist\n\nthe fix does not hold\n' > "$jev/judge-evidence.md"
+judge snabv-1 NO-GO "$sn_r3"
+sn_out="$(start_round "$cap_fix_head" pin-abort snabv)"; sn_rc=$?
+assert_eq "$sn_rc" "7" "10578 abort-delta-verdict: the judge-bought round's panel aborts at exit 7"
+assert_eq "$(rr_file snabv verdicts)" "absent" "10578 abort-delta-verdict: .verdicts is byte-equal to before (absent)"
+assert_eq "$(rr_file snabv round)" "3" "10578 abort-delta-verdict: the aborted round is uncounted"
+sn_y2="$(sn_next snabv)"
+sn_out="$(start_round "$sn_y2" clean snabv)"; sn_rc=$?
+assert_eq "$sn_rc" "0" "10578 abort-delta-verdict: a start at a new head is admitted on the same record ($sn_out)"
+assert_has "$(rr_file snabv delta)" "verdict:snabv-1" "10578 abort-delta-verdict: the record buys the round again"
+
+three_rounds snabk suggestion
+fix_commit snabk
+rr_start snabk "$cap_fix_head" >/dev/null || fail "snabk fixture delta start"
+printf '{"kind":"round-scope","branch":"snabk","head":"%s","scope":"delta"}\n' "$cap_fix_head" >> "$git_dir/cr-critic-scores.jsonl"
+snap_dead snabk; snap_age snabk 7300
+sn_out="$(rr_abort snabk "$cap_fix_head")"; sn_rc=$?
+assert_eq "$sn_rc" "0" "10578 abort-bookkeeping-only: a head with only a round-scope row is given back ($sn_out)"
+assert_eq "$(rr_file snabk round)" "3" "10578 abort-bookkeeping-only: the delta round's count is given back"
+assert_eq "$(rr_file snabk delta)" "absent" "10578 abort-bookkeeping-only: .delta is restored"
+
+sn_branch snarv
+rr_start snarv "$sn_h2" >/dev/null || fail "snarv fixture start"
+CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" avail --branch snarv --head "$sn_h2" --model stub --status ok >/dev/null || fail "snarv avail row"
+sn_out="$(rr_abort snarv "$sn_h2")"; sn_rc=$?
+assert_eq "$sn_rc" "8" "10578 abort-reviewed: abort refuses a reviewed round ($sn_out)"
+assert_eq "$(rr_file snarv round)" "2" "10578 abort-reviewed: the count is unchanged"
+
+sn_branch snheal
+rr_start snheal "$sn_h2" >/dev/null || fail "snheal fixture start"
+snap_dead snheal; snap_age snheal 7300
+sn_h3="$(sn_next snheal)"
+sn_out="$(rr_start snheal "$sn_h3")"; sn_rc=$?
+assert_eq "$sn_out" "2" "10578 start-heals-dead-round: the dead round 2 is given back, the new head is round 2"
+assert_eq "$(snap_field snheal head)" "$sn_h3" "10578 start-heals-dead-round: the snapshot now names the new round's head"
+
+sn_branch snyoung
+rr_start snyoung "$sn_h2" >/dev/null || fail "snyoung fixture start"
+snap_dead snyoung; snap_age snyoung 3600
+sn_h3="$(sn_next snyoung)"
+sn_out="$(rr_start snyoung "$sn_h3")"; sn_rc=$?
+assert_eq "$sn_rc" "8" "10578 start-waits-young-dead-round: a start at another head is refused ($sn_out)"
+assert_has "$sn_out" "a dead round at $sn_h2 is younger than two hours (60 min left)" "10578 start-waits-young-dead-round: the refusal names the time left"
+assert_eq "$(rr_file snyoung round)" "2" "10578 start-waits-young-dead-round: nothing is restored or counted"
+
+sn_branch sncont
+rr_start sncont "$sn_h2" >/dev/null || fail "sncont fixture start"
+[ "$(snap_has sncont)" = absent ] || snap_dead sncont
+sn_out="$(rr_start sncont "$sn_h2")"; sn_rc=$?
+assert_eq "$sn_out" "2" "10578 restart-same-head-continues: the restart prints the same round"
+assert_eq "$(rr_file sncont round)" "2" "10578 restart-same-head-continues: no new count"
+
+sn_branch sncaw
+rr_start sncaw "$sn_h2" >/dev/null || fail "sncaw fixture start"
+snap_dead sncaw
+sn_out="$(start_round "$sn_h2" pin-abort sncaw)"; sn_rc=$?
+assert_eq "$sn_rc" "7" "10578 continued-abort-waits: the continued round's panel aborts at exit 7"
+assert_has "$sn_out" "younger than two hours" "10578 continued-abort-waits: its give-back is refused with the time left"
+assert_eq "$(rr_file sncaw round)" "2" "10578 continued-abort-waits: the continued round stays counted"
+assert_eq "$(snap_field sncaw continued)" "1" "10578 continued-abort-waits: the snapshot is marked continued"
+snap_age sncaw 7300
+sn_out="$(rr_abort sncaw "$sn_h2")"; sn_rc=$?
+assert_eq "$sn_rc" "0" "10578 continued-abort-waits: two hours after the original start the same abort restores ($sn_out)"
+assert_eq "$(rr_file sncaw round)" "1" "10578 continued-abort-waits: the restore uncounts the round"
+
+sn_branch snlive
+rr_start snlive "$sn_h2" >/dev/null || fail "snlive fixture start"
+sleep 60 &
+sn_live=$!
+snap_set snlive pid "$sn_live"
+sn_out="$(rr_abort snlive "$sn_h2")"; sn_rc=$?
+assert_eq "$sn_rc" "8" "10578 abort-live-starter: abort from another process refuses ($sn_out)"
+assert_eq "$(snap_has snlive)" "present" "10578 abort-live-starter: the snapshot stays"
+sn_out="$(rr_start snlive "$sn_h2")"; sn_rc=$?
+assert_eq "$sn_rc" "8" "10578 start-live-starter: start refuses while the starter runs ($sn_out)"
+assert_has "$sn_out" "already running (start by pid $sn_live)" "10578 start-live-starter: today's already-running message"
+kill "$sn_live" 2>/dev/null; wait "$sn_live" 2>/dev/null
+assert_eq "$(rr_file snlive round)" "2" "10578 live starter: the count is unchanged"
+
+three_rounds snint suggestion
+fix_commit snint
+rr_start snint "$cap_fix_head" >/dev/null || fail "snint fixture delta start"
+printf '3\n' > "$git_dir/cr-review-rounds/snint.round"
+snap_dead snint; snap_age snint 7300
+sn_out="$(rr_abort snint "$cap_fix_head")"; sn_rc=$?
+assert_eq "$sn_rc" "0" "10578 restore-interrupted: the next abort finishes the restore ($sn_out)"
+assert_eq "$(rr_file snint round)" "3" "10578 restore-interrupted: .round holds its before bytes"
+assert_eq "$(rr_file snint delta)" "absent" "10578 restore-interrupted: .delta holds its before bytes"
+assert_eq "$(rr_file snint head)" "$cap_r3_head" "10578 restore-interrupted: .head holds its before bytes"
+assert_eq "$(snap_has snint)" "absent" "10578 restore-interrupted: the snapshot is deleted last"
+
+sn_branch sndrop
+rr_start sndrop "$sn_h2" >/dev/null || fail "sndrop fixture start"
+CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" avail --branch sndrop --head "$sn_h2" --model stub --status ok >/dev/null || fail "sndrop avail row"
+snap_dead sndrop; snap_age sndrop 7300
+sn_h3="$(sn_next sndrop)"
+sn_out="$(rr_start sndrop "$sn_h3")"; sn_rc=$?
+assert_eq "$sn_out" "3" "10578 snapshot-dropped-after-row: the reviewed round stays counted"
+assert_eq "$(snap_field sndrop head)" "$sn_h3" "10578 snapshot-dropped-after-row: the old snapshot is gone, the new round has its own"
+
+sn_branch snsettle
+rr_start snsettle "$sn_h2" >/dev/null || fail "snsettle fixture start"
+sn_out="$(cd "$repo" && bash "$RR" settle --branch snsettle --head "$sn_h2" 2>&1)"; sn_rc=$?
+assert_eq "$sn_rc" "0" "10578 settle: settle exits 0 ($sn_out)"
+assert_eq "$(snap_has snsettle)" "absent" "10578 settle: the snapshot naming the head is deleted"
+assert_eq "$(rr_file snsettle round)" "2" "10578 settle: the round stays counted"
+sn_h3="$(sn_next snsettle)"
+sn_out="$(rr_start snsettle "$sn_h3")"; sn_rc=$?
+assert_eq "$sn_out" "3" "10578 settle: a start at a new head is admitted at once"
+
+if [ "$(id -u)" -eq 0 ]; then
+    echo "SKIP 10578 failed-start-leaves-no-snapshot: root writes a mode-444 ledger"
+else
+    three_rounds snfail clean
+    git -C "$repo" push -q -u origin snfail
+    cired_rows "$RED"
+    fix_commit snfail
+    chmod 444 "$git_dir/cr-critic-scores.jsonl" || fail "snfail chmod 444"
+    sn_out="$(rr_start snfail "$cap_fix_head")"; sn_rc=$?
+    chmod 644 "$git_dir/cr-critic-scores.jsonl" || fail "snfail chmod 644"
+    assert_eq "$sn_rc" "5" "10578 failed-start-leaves-no-snapshot: the start fails at the CI-red record ($sn_out)"
+    assert_eq "$(snap_has snfail)" "absent" "10578 failed-start-leaves-no-snapshot: no snapshot is left"
+    sn_y2="$(sn_next snfail)"
+    sn_out="$(rr_start snfail "$sn_y2")"; sn_rc=$?
+    assert_eq "$sn_rc" "0" "10578 failed-start-leaves-no-snapshot: a start at another head is not held ($sn_out)"
+    cired_rows 'completed\tsuccess\tlint\n'
+fi
 
 if [ "$fails" -gt 0 ]; then
     printf 'FAIL test-pr-check-rounds (%s failures)\n' "$fails" >&2

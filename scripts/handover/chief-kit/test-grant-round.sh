@@ -360,6 +360,40 @@ GR_ARGS=(501 "$SHA_A" qadopt)
 rc=0; out=$(run GH_ARGS_LOG="$ghlog" 2>&1) || rc=$?
 check "no --repo: the gh lookup carries no repo flag" "$(grep -c -e '--repo' "$ghlog")" 0
 
+rrfx="$tmp/rrfx"
+mkdir -p "$rrfx/scripts/cr" "$rrfx/scripts/lib" || exit 1
+cp "$REPO/scripts/cr/review-round.sh" "$REPO/scripts/cr/anchor-handoff.sh" "$REPO/scripts/cr/ledger-amend-auth.js" "$rrfx/scripts/cr/" || exit 1
+cp "$REPO/scripts/lib/shared-branch-lock.sh" "$rrfx/scripts/lib/" || exit 1
+(
+    cd "$prim" || exit 1
+    git config user.email t@t.test && git config user.name tester && git config commit.gpgsign false || exit 1
+    git checkout -q -b "$BRANCH" || exit 1
+    echo reviewed > f.txt && git add f.txt && git commit -q -m reviewed || exit 1
+    echo dead >> f.txt && git commit -q -am dead || exit 1
+    echo next >> f.txt && git commit -q -am next || exit 1
+) || { echo "FAIL: section 9 fixture commits"; exit 1; }
+dr_r="$(git -C "$prim" rev-parse HEAD~2)"; dr_h="$(git -C "$prim" rev-parse HEAD~1)"; dr_h2="$(git -C "$prim" rev-parse HEAD)"
+rr() { (cd "$prim" && bash "$rrfx/scripts/cr/review-round.sh" "$@" 2>"$tmp/rr.err"); }
+snap="$state/$BRANCH.start.bak"
+reset_state 2
+printf '%s\n' "$dr_r" > "$state/$BRANCH.head"
+printf '{"kind":"avail","branch":"%s","head":"%s","model":"codex","status":"ok"}\n' "$BRANCH" "$dr_r" > "$scores_f"
+out="$(rr start --branch "$BRANCH" --head "$dr_h")"
+check "9 the round-3 start at the dead head counts" "$out" 3
+sh -c 'exit 0' & dr_pid=$!; wait "$dr_pid"
+{ sed "s/^pid .*/pid $dr_pid/" "$snap" > "$tmp/snap.tmp" 2>/dev/null && mv "$tmp/snap.tmp" "$snap"; } || { echo "FAIL - 9 the dead round leaves a snapshot"; fails=$((fails+1)); }
+wv qdead NO-GO "$dr_h2" --pr 501 --branch "$BRANCH" --evidence-file "$evd/ev.md" >/dev/null 2>&1 || { echo "FAIL: cannot write qdead"; fails=$((fails+1)); }
+gh_json "$dr_h2"
+GR_ARGS=(501 "$dr_h2" qdead)
+rc=0; out=$(run 2>&1) || rc=$?
+check "9 the grant after the dead round exits 0" "$rc" 0
+out="$(rr start --branch "$BRANCH" --head "$dr_h2")"
+check "9 the next start counts the granted round" "$out" 3
+contains "9 the start says the dead round stays counted" "$(cat "$tmp/rr.err")" "stays counted and its snapshot is dropped"
+contains "9 the grant's consumed record stands" "$(cat "$state/$BRANCH.verdicts" 2>/dev/null)" " qdead/judge"
+check "9 the dead round's snapshot is gone: the new one names the new head" "$(sed -n 's/^head //p' "$snap" 2>/dev/null)" "$dr_h2"
+rm -f "$scores_f"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS"; exit 0; fi
 echo "FAILED: $fails"
