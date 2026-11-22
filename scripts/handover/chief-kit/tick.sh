@@ -2960,7 +2960,7 @@ if [ -n "$held_tsv" ]; then
             done:*)
                 h_mirror="$tick_mirror_default/${h_trig#done:}.md"
                 if [ ! -r "$h_mirror" ]; then relaunch_unknown=1
-                elif awk 'NR == 1 { next } $0 == "---" { exit } { print }' "$h_mirror" | grep -qx 'statusCategory: "Done"'; then h_fired=1
+                elif grep -qx 'statusCategory: "Done"' <<< "$(awk 'NR == 1 { next } $0 == "---" { exit } { print }' "$h_mirror")"; then h_fired=1
                 fi ;;
             file:*) [ ! -e "${h_trig#file:}" ] || h_fired=1 ;;
         esac
