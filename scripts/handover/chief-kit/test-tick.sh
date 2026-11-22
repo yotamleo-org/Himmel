@@ -529,6 +529,8 @@ printf -- '---\nstatusCategory: "Done"\n---\n' > "$W/held-mirror/HIMMEL-50.md"
 contains '10716 a trigger ticket Done in the mirror fires' "$(STUB_PR_ROWS="$rows_5542" held_tick)" ' relaunch=#3002:/h/r.md '
 rm -f "$W/held-mirror/HIMMEL-50.md"
 contains '10716 a trigger ticket the mirror cannot read is relaunch=?' "$(STUB_PR_ROWS="$rows_5542" held_tick)" ' relaunch=? '
+held_doc "#3002 HELD wake=pr:2999 resume=/h/r.md | #3006 HELD wake=done:HIMMEL-51 resume=/h/s.md"
+contains '10716 an unreadable trigger keeps the fired entries and adds ?' "$(STUB_PR_ROWS="$rows_5542" held_tick)" ' relaunch=#3002:/h/r.md,? '
 held_doc "#3002 HELD wake=file:$W/heldbucket/decision.txt resume=/h/r.md"
 contains '10716 a decision file not yet present has not fired' "$(STUB_PR_ROWS="$rows_5542" held_tick)" ' relaunch=none '
 : > "$W/heldbucket/decision.txt"

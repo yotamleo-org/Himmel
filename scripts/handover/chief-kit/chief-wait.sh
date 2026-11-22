@@ -1449,14 +1449,16 @@ unowned_wake() {
 }
 relaunch_file="$inbox.wait.relaunch"
 relaunch_wake() {
-    local items
+    local fired items
     case "$1" in
         ''|none) rm -f "$relaunch_file"; return 1 ;;
-        '?') return 1 ;;
     esac
-    items="$(printf '%s\n' "$1" | tr ',' '\n' | sed 's/^#//')"
+    fired="$(printf '%s\n' "$1" | tr ',' '\n' | sed 's/^#//' | grep -vx '?')"
+    [ -n "$fired" ] || return 1
+    items="$fired"
+    case ",$1," in *',?,'*) items="$(printf '%s\n' "$fired" "$(cat "$relaunch_file" 2>/dev/null)" | awk 'NF && !seen[$0]++')" ;; esac  # swallow-ok: no marker yet adds nothing to keep
     set_wake "$items" "$relaunch_file" "${CHIEF_WAIT_RELAUNCH_REWAKE_MIN:-60}" || return 1
-    printf '%s\n' "$items" | awk 'NF { i = index($0, ":"); print "WAKE relaunch-owed " substr($0, 1, i - 1) " " substr($0, i + 1) }'
+    printf '%s\n' "$fired" | awk 'NF { i = index($0, ":"); print "WAKE relaunch-owed " substr($0, 1, i - 1) " " substr($0, i + 1) }'
 }
 unowned_aged_file="$inbox.wait.unowned-aged"
 unowned_aged_wake() {

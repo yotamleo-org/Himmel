@@ -169,8 +169,8 @@ chief-wait pages each new ask once with its paste-ready grant command (monitors.
 relaunch=<none|?|<PR>:<resume doc>[,...]> follows ext-prs= and is ABSENT unless the --doc queue: line holds a HELD
 entry with a trigger and a resume doc (orphan-pr-check.sh --held, the reader orphan-pr-check.sh itself uses).
 Such an entry keeps its PRs out of unowned-prs=; it is listed here once its trigger fired: wake=pr:<n> no longer
-in the open-PR list, wake=done:<KEY> Done in the Jira mirror, wake=file:<path> present. ? = a failed PR list
-or mirror read, never a fired trigger. chief-wait.sh wakes `WAKE relaunch-owed <PR> <resume doc>` on it.
+in the open-PR list, wake=done:<KEY> Done in the Jira mirror, wake=file:<path> present. A trailing ? item = a failed PR
+list or mirror read for some entry, never a fired trigger; the fired entries before it still stand. chief-wait.sh wakes `WAKE relaunch-owed <PR> <resume doc>` on it.
 
 focus=<state> sdrift=<n>:<sig8> stale=<n>:<KEY>,... follow wt-ceiling= and are ABSENT unless a
 focus-state file sits beside the console doc and --status does not read skip: focus= is
@@ -2966,7 +2966,7 @@ if [ -n "$held_tsv" ]; then
         esac
         [ -z "$h_fired" ] || relaunch="$(csv_add "$relaunch" "$h_subj:$h_res")"
     done <<< "$held_tsv"
-    if [ -n "$relaunch_unknown" ]; then relaunch='?'; elif [ -z "$relaunch" ]; then relaunch=none; fi
+    if [ -n "$relaunch_unknown" ]; then relaunch="$(csv_add "$relaunch" '?')"; elif [ -z "$relaunch" ]; then relaunch=none; fi
 fi
 
 # hreg=<live workers with no rows>/<stale rows>/<pending trust-path asks>: the holds register's own

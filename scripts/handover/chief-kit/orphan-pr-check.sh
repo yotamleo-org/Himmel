@@ -8,8 +8,9 @@
 # --held prints the doc's HELD queue: entries and reads no PR list: one tab-separated line each,
 # `<subject> <trigger|-> <resume doc|-> <names> <segment>` (subject `#<n>`, else `<n>`, else the first key,
 # else -; names = the numbers and upper-cased keys the entry names, comma-joined). tick.sh reads this.
-# --gone-held prints, verbatim, each HELD segment with a trigger and a resume doc whose subject PR number
-# is not an open PR (merged or closed); chief.sh next drops those. A HELD segment without both is kept. Both exit 3 on an unreadable doc, --gone-held on an unreadable list.
+# --gone-held prints, verbatim, each HELD segment with a trigger and a resume doc whose subject is a PR
+# number and none of whose named numbers is an open PR (merged or closed); chief.sh next drops those.
+# A HELD segment without both, or naming any open PR, is kept. Both exit 3 on an unreadable doc, --gone-held on an unreadable list.
 # The open PRs come from `gh pr list` (drafts included), never from a record's open flags:
 # nothing clears those after a merge. Left out: fork PRs, and Dependabot's (an author
 # containing "dependabot", or a dependabot/ branch), which the Dependabot sweep owns.
@@ -127,11 +128,15 @@ printf '%s\n' "$prs_json" | jq -e 'type == "array" and all(.[]; type == "object"
 if [ "$mode" = gone ]; then
     open_nums="$(printf '%s\n' "$prs_json" | jq -r '[.[].number | tostring] | join(" ")' 2>/dev/null)" || unavailable "the open-PR list could not be filtered"  # swallow-ok: a filter failure exits as unavailable, never as a drop
     held="$(held_entries)" || exit 3
-    while IFS="$(printf '\t')" read -r subj trig res _ seg; do
+    while IFS="$(printf '\t')" read -r subj trig res names seg; do
         [ "$trig" != - ] && [ "$res" != - ] || continue
         n="${subj#\#}"
         case "$n" in ''|*[!0-9]*) continue ;; esac
-        case " $open_nums " in *" $n "*) continue ;; esac
+        still_open=""
+        for n in $(printf '%s\n' "$names" | tr ',' ' '); do
+            case " $open_nums " in *" $n "*) still_open=1 ;; esac
+        done
+        [ -z "$still_open" ] || continue
         printf '%s\n' "$seg"
     done <<EOF_HELD
 $held
