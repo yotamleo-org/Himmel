@@ -349,7 +349,7 @@ if [ -z "$NEED" ]; then
     printf '%s\n' "$FILES" | tr '\t' '\n' | awk 'NF' | grep -qvE '^(docs/|.*\.md$)' || NONDOCS_RC=$?
     case "$NONDOCS_RC" in
         0) ;;
-        1) NEED="docs PR (decision 286)" ;;
+        1) NEED="docs PR (every changed file is under docs/ or is a .md file)" ;;
         *) fail 5 "cannot classify PR $PR's changed files (grep exit $NONDOCS_RC)" ;;
     esac
 fi
