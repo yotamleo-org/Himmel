@@ -42,11 +42,12 @@ t="$(tree clean)"
 expect_rc "a clean tree passes" "$t" 0
 
 t="$(tree nested)"
-git -C "$t" init -q
 mkdir -p "$t/scratch/inner"
-git -C "$t/scratch/inner" init -q
-git -C "$t/scratch/inner" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
-expect_rc "an untracked nested git repo does not fail the scan" "$t" 0
+if git -C "$t" init -q && git -C "$t/scratch/inner" init -q && git -C "$t/scratch/inner" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init; then
+    expect_rc "an untracked nested git repo does not fail the scan" "$t" 0
+else
+    fail "an untracked nested git repo does not fail the scan (fixture git setup failed)"
+fi
 
 t="$(tree expired)"
 printf 'alpha\toff\tfeature\tT-1\tT-2\t2026-10-25\ta flag\n' > "$t/scripts/lib/flags.tsv"
