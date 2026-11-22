@@ -2464,7 +2464,7 @@ the command.
 ### `operatorFence` — the operator writer's process-tree fence
 
 Every `jira release operator …` writer, and `jira create --decision`, calls
-`operatorFence` (`scripts/jira/src/release/engine.ts`) first. It refuses when
+`operatorFence` (`scripts/jira/src/release/engine-core.ts`) first. It refuses when
 `HIMMEL_CONSOLE_LEG`, `HIMMEL_RELEASE_MANAGER` or `HIMMEL_BRIDGE_SESSION` is `1`
 in its own environment, or in the start-up environment (`/proc/<pid>/environ`)
 of any ancestor (`scripts/jira/src/release/fence-ancestry.ts`). The Telegram

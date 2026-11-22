@@ -41,6 +41,44 @@ expect_rc() { # <label> <tree> <rc> [needle]
 t="$(tree clean)"
 expect_rc "a clean tree passes" "$t" 0
 
+t="$(tree nested)"
+mkdir -p "$t/scratch/inner"
+if git -C "$t" init -q && git -C "$t/scratch/inner" init -q && git -C "$t/scratch/inner" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init; then
+    expect_rc "an untracked nested git repo does not fail the scan" "$t" 0
+else
+    fail "an untracked nested git repo does not fail the scan (fixture git setup failed)"
+fi
+
+t="$(tree quoted)"
+printf '#!/usr/bin/env bash\nhimmel_flag alpha\nhimmel_flag beta\n' > "$t/scripts/handover/chief-kit/ü.sh"
+if git -C "$t" init -q && git -C "$t" add scripts/handover/chief-kit/ü.sh; then
+    expect_rc "a tracked non-ASCII file name is scanned under its real name" "$t" 1 "unregistered: beta"
+    git -C "$t" config core.quotePath true
+    mkdir -p "$t/\"scripts/handover/chief-kit/\\303\\274.sh\""
+    expect_rc "a directory named like the git-quoted file name does not hide the file" "$t" 1 "unregistered: beta"
+else
+    fail "a tracked non-ASCII file name is scanned under its real name (fixture git setup failed)"
+fi
+
+t="$(tree latin1)"
+latin1="scripts/handover/chief-kit/$(printf '\374').sh"
+printf '#!/usr/bin/env bash\nhimmel_flag alpha\nhimmel_flag beta\n' > "$t/$latin1"
+if git -C "$t" init -q && git -C "$t" add "$latin1"; then
+    LC_ALL=C.UTF-8 expect_rc "a tracked name that is not valid UTF-8 is scanned under a UTF-8 locale" "$t" 1 "unregistered: beta"
+else
+    fail "a tracked name that is not valid UTF-8 is scanned under a UTF-8 locale (fixture git setup failed)"
+fi
+
+t="$(tree newline)"
+printf '#!/usr/bin/env bash\nhimmel_flag alpha\n' > "$t/scripts/handover/chief-kit/a
+b.sh"
+if git -C "$t" init -q && git -C "$t" add "scripts/handover/chief-kit/a
+b.sh"; then
+    expect_rc "a tracked file name with a newline fails the scan closed" "$t" 2 "holds a newline"
+else
+    fail "a tracked file name with a newline fails the scan closed (fixture git setup failed)"
+fi
+
 t="$(tree expired)"
 printf 'alpha\toff\tfeature\tT-1\tT-2\t2026-10-25\ta flag\n' > "$t/scripts/lib/flags.tsv"
 expect_rc "an expired row fails" "$t" 1 "expired: alpha"

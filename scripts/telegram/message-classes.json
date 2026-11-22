@@ -72,6 +72,11 @@
       "sample": "Session 81843b5d of the himmel chief has 3 classifier denials (PAUSE-RISK). Blocks: that session. Do: open it in Remote Control and answer the prompt"
     },
     {
+      "kind": "title-unresolved",
+      "class": "monitor",
+      "sender": "scripts/telegram/chief-route.ts"
+    },
+    {
       "kind": "worker-silent",
       "class": "silent",
       "sender": "scripts/handover/chief-kit/chief-wait.sh"

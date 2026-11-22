@@ -54,7 +54,8 @@ CLAUDE_BIN="${HIMMEL_API_CLAUDE_BIN:-claude}"
 # shellcheck source=scripts/lib/fleet-launch.sh
 . "$REPO/scripts/lib/fleet-launch.sh" || exit 10
 if ! fleet_launch_prepare "${FLEET_LAUNCH_DOC:-${WORKER_SESSION_DOC:-}}" \
-    "${FLEET_LAUNCH_NAME:-${CADENCE_USAGE_WORKER:-api-managed}}" "${FLEET_LAUNCH_MANIFEST:-}"; then
+    "${FLEET_LAUNCH_NAME:-${CADENCE_USAGE_WORKER:-api-managed}}" "${FLEET_LAUNCH_MANIFEST:-}" "" "" \
+    "${FLEET_LAUNCH_ATTEMPT:-${WORKER_SESSION_ATTEMPT_ID:-}}"; then
   if [ "${FLEET_LAUNCH_MANAGED:-false}" = true ]; then
     fleet_launch_op finish >/dev/null || echo 'claude-api: managed attempt remains protected' >&2
   fi

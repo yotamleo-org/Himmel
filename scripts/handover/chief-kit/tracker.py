@@ -851,7 +851,10 @@ KCOLS = (('todo', 'To Do'), ('prog', 'In Progress'), ('rev', 'In Review'), ('ci'
 KCOL_OF = {'todo': 'todo', 'prog': 'prog', 'rev': 'rev', 'ci': 'ci', 'done': 'done'}
 
 
-def kanban(tk, vers, cur, base, wont=(), flight=()):
+RESIDUAL_RE = re.compile(r'(^|-)residual(-|$)')
+
+
+def kanban(tk, vers, cur, base, wont=(), flight=(), mir=None):
     """One <details> per release with tickets, holding a 5-column board (To Do, In Progress, In Review, IN CI, Done).
 
     A card links to <base>/browse/<key> (plain text when no base URL is configured) with the summary and the ticket's
@@ -869,9 +872,11 @@ def kanban(tk, vers, cur, base, wont=(), flight=()):
         for t in a:
             cols[KCOL_OF['prog' if t['live'] else t['b']]].append(t)
         n_open = len(a) - len(cols['done'])
-        parts = ['<details class="krel"%s data-v="%s"><summary><span class="vn">%s</span> '
-                 '<span class="kmeta">%d open of %d%s%s</span></summary><div class="kboard">'
-                 % (' open' if i == cur else '', esc(v['n']), esc(v['n']), n_open, len(a),
+        n_res = sum(1 for c in ('todo', 'prog', 'rev', 'ci') for t in cols[c]
+                    if any(RESIDUAL_RE.search(x) for x in (mir or {}).get('HIMMEL-%d' % t['k'], {}).get('labels', [])))
+        parts = ['<details class="krel"%s data-v="%s" data-open="%d" data-residual="%d"><summary><span class="vn">%s</span> '
+                 '<span class="kmeta">%d open · %d residual%s%s</span></summary><div class="kboard">'
+                 % (' open' if i == cur else '', esc(v['n']), n_open, n_res, esc(v['n']), n_open, n_res,
                     ' · released ' + esc(v['date']) if v['rel'] else '',
                     ' · %d closed without shipping' % wn[i] if wn.get(i) else '')]
         for c, title in KCOLS:
@@ -1442,7 +1447,7 @@ class OwedRow(tuple):
 def handoff_answered(handover_dir, handoff, line):
     keys = set(re.findall(r'HIMMEL-\d+', line))
     asks = {' '.join(q.lower().split()) for q in re.findall(r'"([^"]{6,})"', line)}
-    if not keys and not asks:
+    if not asks:
         return False
     try:
         since = os.path.getmtime(handoff)
@@ -2205,7 +2210,7 @@ def main():
         urls = {'focus': a.focus_url, 'done': a.done_url, 'future': a.future_url}
         pages = split_pages(rows, notes, dirs, jt, jc, ja, jw, jf, unpl, vers, tname, paths, urls)
     for p in pages:
-        p['kb'] = kanban(p['JT'], jv, p['JC'], a.jira_base_url, p['JW'], p['JF'])
+        p['kb'] = kanban(p['JT'], jv, p['JC'], a.jira_base_url, p['JW'], p['JF'], mir)
     for t in jt:
         del t['ln']  # the card line is static HTML above; keep it out of the page data
     p90 = meta.get('version_p90_fw') if isinstance(meta.get('version_p90_fw'), dict) else {}

@@ -2,6 +2,8 @@ export type TicketFacts = { labels: string[]; priority: string; open: boolean };
 
 const HIGH = new Set(['High', 'Highest']);
 
+export const isSerious = (priority: string): boolean => HIGH.has(priority);
+
 export function asksOperator(t: TicketFacts | null): boolean {
   return !!t && (t.labels.includes('operator-directed') || HIGH.has(t.priority));
 }

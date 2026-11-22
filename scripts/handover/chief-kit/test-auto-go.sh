@@ -580,10 +580,18 @@ check    "A1b judge brief + judge GO: exit 0" "$RC" "0"
 contains "A1b judge brief + judge GO: the GO is trust-reviewed" "$(cat "$GOF" 2>/dev/null)" "trust-reviewed=q1"
 
 # 8e. a docs PR (decision 286): the docs judge's GO at the head
+DOCS_NEED="every changed file is under docs/ or is a .md file"
 gofresh; STUB_FILE=docs/x.md run 77 "$SHA";  esc "A1b docs PR with no verdict" 5
+contains "A1b docs PR with no verdict: says what it needs" "$OUT" "$DOCS_NEED"
+lacks    "A1b docs PR with no verdict: no decision number" "$OUT" "decision 286"
 gofresh; STUB_FILE=README.md run 77 "$SHA";  esc "A1b a *.md file anywhere is a docs PR" 5
+contains "A1b a *.md file anywhere: says what it needs" "$OUT" "$DOCS_NEED"
+lacks    "A1b a *.md file anywhere: no decision number" "$OUT" "decision 286"
 gofresh; verdict q1 "**GO** for head \`$SHA\`."; STUB_FILE=docs/x.md run 77 "$SHA"
 check    "A1b docs PR + docs judge GO: exit 0" "$RC" "0"
+C5WHY=$(last_row | jq -r '.checks[] | select(.n == 5) | .reason')
+contains "A1b docs PR + docs judge GO: says what it needs" "$C5WHY" "$DOCS_NEED"
+lacks    "A1b docs PR + docs judge GO: no decision number" "$C5WHY" "decision 286"
 gofresh; run 77 "$SHA"
 check    "A1b a non-docs PR needs no verdict (ordinary GO)" "$RC" "0"
 

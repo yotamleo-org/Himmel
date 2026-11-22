@@ -417,6 +417,7 @@ mk 43 'Done' '["v1.0.1","v1.0.3"]' 'released and future one' 'Done' 'Done'
 mk 44 'Done' '["v1.0.4"]' 'only closed one' 'Closed'
 mk 41 'In Progress' '[]' 'flight one' 'In Progress'
 mk 42 'To Do' '[]' 'idle unversioned one' 'To Do'
+for n in 33 36 40; do sed -i 's/^type: "Bug"$/labels: ["residual"]\n&/' "$jm/HIMMEL-$n.md"; done  # gnu-ok: console kit is Linux-only
 mdir="$mir"
 printf 'v1.0.0\ttrue\t2026-09-30\nv1.0.1\ttrue\t2026-10-04\nv1.0.2\tfalse\t\nv1.0.3\tfalse\t\nv1.0.4\tfalse\t\n' > "$W/jm.versions.tsv"
 render --mirror-dir "$jm" >/dev/null
@@ -446,7 +447,10 @@ not_contains 'a Done ticket naming a released and a later unreleased version is 
 contains 'a Done ticket naming a released and a later unreleased version stays in the released one' "$jhtml" \
     '"k":43,"t":"released and future one","s":"Done","b":"done","v":0,'
 contains 'a version holding only closed-without-shipping work gets a kanban row' "$jhtml" \
-    'data-v="v1.0.4"><summary><span class="vn">v1.0.4</span> <span class="kmeta">0 open of 0 · 1 closed without shipping</span>'
+    'data-v="v1.0.4" data-open="0" data-residual="0"><summary><span class="vn">v1.0.4</span> <span class="kmeta">0 open · 0 residual · 1 closed without shipping</span>'
+contains 'a version row shows its open count as the size and its residual count by name (the tick open= and residual for v1.0.2)' "$jhtml" \
+    'data-v="v1.0.2" data-open="3" data-residual="2">'
+contains 'the version row text says open N and residual M' "$jhtml" '3 open · 2 residual'
 contains 'the client version table renders a row for a closed-only version' "$jhtml" \
     '[1];if(!t.n&&!wn)return;if(HIDE&&!t.open&&t.n){hid++;return}'
 contains 'the footnote says closed without shipping' "$jhtml" 'closed without shipping'
@@ -1753,6 +1757,9 @@ hbfx 'Asked on Telegram: "an ask no decision repeats"' '' ''
 contains '10189 control: a HANDOFF item no newer decision answers stays under Waiting on you' "$hbw" 'an ask no decision repeats'
 hbfx 'move the obsidian key out of the codex config' 'Decision 951. move the obsidian key out of the codex config.' '2026-11-15 10:30:00'
 contains '10189 control: a HANDOFF item with no key and no quoted ask is never answered' "$hbw" 'obsidian key'
+hbfx 'Waiting on the operator for HIMMEL-8002 sign-off' 'The operator ruled on HIMMEL-8002.' '2026-11-15 10:30:00'
+contains '10357 a HANDOFF item with a key and no quoted ask stays under Waiting on you when a newer decision names the key' "$hbw" 'HIMMEL-8002 sign-off'
+not_contains '10357 that key-only item is not under Chief owes' "$hbc" 'HIMMEL-8002 sign-off'
 
 printf '%s\n' '# chief' '## Live state' 'queue: HIMMEL-21 operator-owed lines remain | HIMMEL-25 operator words: the sudo root reinstall' 'pool-disposition: HIMMEL-24 close decision 847 operator-owed: proof verdict' > "$cod/chief.md"
 codrender --owed-dir "$cod/bucket" --chief-doc "$cod/chief.md" >/dev/null || fail '10189 the Live-state render exited non-zero'

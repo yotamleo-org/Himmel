@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 # Branch-scoped /pr-check review-round state and round-4 cap.
-# After three full rounds the only round left is ONE delta round,
-# scoped to the last critic-reviewed head..the new head and allowed only when
-# that head raised a finding (the new head answers it) or the new head only
-# merges the base into it. A 4th full round and a second delta are refused.
+# The first round and a start --full review the whole PR; every later one reviews the
+# increment from the reviewed head R (increment_of) and its class decides the
+# spend: carried, a free class (<branch>.free) or work.
+# After three full rounds the only round left is ONE delta round for a work
+# increment, when R raised a finding, or through the triggers below.
+# A 4th full round and a second delta are refused. Every start writes
+# <branch>.scope, which defer reads.
 # State lives under the repository's shared git common directory, so head
 # commits and merge-forwards do not reset it and linked worktrees agree.
 # A third trigger - a judge NO-GO on the last reviewed head, as
 # chief-kit/write-verdict.sh records it in this repo's verdict scope - buys
-# one more delta round per reviewed head, even after the fix/merge-forward
-# delta was used. Consumed records are kept in <branch>.verdicts.
-# A CLEAN merge of the base (conflict-free, the PR's own diff
-# unchanged), or one whose only resolution is a plugin.json version bump above
-# both parents, is admitted past the cap without spending the one delta round,
-# only while the round count is below free_round_cap, and only when each merge
-# has the reviewed head as first parent and a newer point on the base second.
-# Any other conflict-resolving merge needs a judge GO carrying `delta-scope:
-# merge-resolution` and `delta-from:`, bound like the scope records.
+# one more delta round per reviewed head, even after the fix delta was used.
+# Consumed records are kept in <branch>.verdicts; their repeated-class veto
+# runs for every class past the cap.
+# A conflict-resolving merge whose lines are not all inside conflict spans needs
+# a judge GO carrying `delta-scope: merge-resolution` and `delta-from:`, bound
+# like the scope records.
 # Every verdict record read here (NO-GO delta, layer-decision,
 # scope) must carry write-verdict.sh's mac under the GO key; a hand-written or
 # edited record disqualifies its qid. Scope records also bind to this branch's
@@ -29,7 +29,7 @@
 # carries trigger postcap-fixed and a post-cap round never chains into another.
 # A CI-red reviewed head (delta round spent or not) buys ONE bounded delta
 # round with no judge record: the last reviewed head has a COMPLETED check-run with conclusion failure (read through
-# gh api, none still running), the delta since it is at most 40 diff lines, and
+# gh api, none still running), the increment since it is at most 40 diff lines, and
 # the PR has not had this unlock before (.cired). Recorded in the ledger.
 # A non-empty --base-sha is verified once at intake against the
 # REMOTE only (gh api: default branch name, then compare <sha>...<default> must
@@ -37,8 +37,15 @@
 # or an unreadable answer therefore refuses every --base-sha round (exit 8).
 # A start at the head the last counted round ran on, below the cap, reuses that
 # round; bookkeeping-only heads get their ledger row from the `evidence` verb.
-# A round whose panel aborted after start reviewed nothing and spends nothing:
-# `abort` puts .head back on the last critic-reviewed head and uncounts it.
+# A panel whose critics were all unavailable falls back to the session's
+# claude-only floor review, the outcome that counts: that round is settled.
+# A start with --head first writes <branch>.start.bak, a snapshot of every round
+# file before and after it. A round whose panel aborted after start reviewed
+# nothing and spends nothing: `abort` restores the snapshot, so the count, the
+# delta slot, the CI-red unlock and a consumed judge record all come back. A
+# round a dead session left with no panel row is continued by a start at its
+# head, or given back by a start at another head two hours after it began;
+# `settle` keeps such a round counted and drops its snapshot.
 # defer exits 6 when automatic residual filing cannot resolve the parent from
 # the open PR title (or, before round four, the branch's commit subjects) or
 # cannot create a ticket; supply --defer-to to recover
@@ -80,6 +87,7 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 . "$_ah_d/anchor-handoff.sh" || exit 2
 # Classify the real commit trees, never refs/replace substitutes.
 export GIT_NO_REPLACE_OBJECTS=1
+unset GIT_CONFIG
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -92,15 +100,15 @@ HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 if [ -f "$HIMMEL_ROOT/scripts/lib/gh-read.sh" ]; then _RR_GH=(bash "$HIMMEL_ROOT/scripts/lib/gh-read.sh"); else _RR_GH=(gh); fi
 
 usage() {
-    echo "usage: review-round.sh start --branch <name> [--head <sha> [--base-sha <sha>]]" >&2
+    echo "usage: review-round.sh start --branch <name> [--head <sha> [--base-sha <sha>]] [--full]   (prints <round>, <round> increment <L>, <round> delta <L> or <round> carried <R>; --full reviews the whole PR and is never classified)" >&2
     echo "       review-round.sh defer --branch <name> --head <sha> [--defer-to <ticket>] [--fu-why <code>] [--fu-override <id>]" >&2
     echo "       review-round.sh promote [--check] --branch <name> --head <sha>   (--check: the same verdict, read only, nothing written)" >&2
     echo "       review-round.sh judge-go --branch <name> --head <sha> [--open-threads-ok <reason>]   (after the cap: a signed judge GO at <sha> stands in for the review; refused while the PR has an unresolved review thread unless the chief names the override)" >&2
     echo "       review-round.sh evidence --branch <name> --head <sha>   (ledger ok row for a tests-only head after a reviewed head; spends no round)" >&2
     echo "       review-round.sh abort --branch <name> --head <sha>   (give back the round started at <sha> when its panel reviewed nothing)" >&2
-    echo "       review-round.sh from --branch <name>   (the reviewed head this round 2 or 3 started from; nothing at other rounds)" >&2
+    echo "       review-round.sh settle --branch <name> --head <sha>   (the round started at <sha> stays counted; its snapshot is dropped, so no later start waits on it)" >&2
     echo "       review-round.sh trivial-descendant [--tests-only] <from-sha> <to-sha>   (exit 0 yes, 1 no)" >&2
-    echo "       review-round.sh clean-merge-forward <base-sha> <from-sha> <to-sha>   (exit 0 when <to> only merges the base into <from>, conflict-free; 1 no)" >&2
+    echo "       review-round.sh clean-merge-forward <base-sha> <from-sha> <to-sha>   (exit 0 when <to>'s tree is the merge of the base into <from> with no conflict marker left; 1 no)" >&2
     echo "       review-round.sh start|check --pr <n> --head <40-hex sha>   (an outside PR reviewed from its diff, its branch not checked out; check reads only)" >&2
     echo "       review-round.sh abort --pr <n> --head <40-hex sha>   (give back that PR's round when its panel reviewed nothing)" >&2
     exit 2
@@ -191,6 +199,14 @@ version_bump_only() {
 trivial_descendant() {
     [ "$1" != "$2" ] || return 1
     git merge-base --is-ancestor "$1" "$2" 2>/dev/null || return 1
+    tests_only_paths "$1" "$2" && return 0
+    # --tests-only drops the comment branch for the clear-cr-marker
+    # fallback, which clears with no critic review of from..to.
+    [ "${_td_tests_only:-0}" -eq 0 ] || return 1
+    comment_only_diff "$1" "$2"
+}
+
+tests_only_paths() {
     _td_paths="$(git -c core.quotepath=off diff --no-renames --name-only "$1" "$2" 2>/dev/null)" || return 1
     [ -n "$_td_paths" ] || return 1
     _td_ok=1
@@ -208,10 +224,10 @@ trivial_descendant() {
 $_td_paths
 EOF
     # A hook-forced plugin version bump rides along with tests, never alone.
-    [ "$_td_ok" -eq 0 ] || [ "$_td_tests" -eq 0 ] || return 0
-    # --tests-only drops the comment branch for the clear-cr-marker
-    # fallback, which clears with no critic review of from..to.
-    [ "${_td_tests_only:-0}" -eq 0 ] || return 1
+    [ "$_td_ok" -eq 1 ] && [ "$_td_tests" -eq 1 ]
+}
+
+comment_only_diff() {
     # Binary edits and mode/create/delete changes carry no +/- text line, so a
     # text-only scan would miss them: refuse any of them outright.
     _td_bin="$(git diff --no-renames --numstat "$1" "$2" 2>/dev/null | grep -E '^-' || true)"
@@ -236,7 +252,7 @@ EOF
 # non-merge commit it brought already on the base, and every merge a plain
 # two-parent merge whose first parent descends from <from> (not on the base)
 # and whose second parent is a point on the base newer than the base point
-# <from> had. Sets mf_merged_base.
+# <from> had.
 merge_forward_shape() {
     [ -n "$base_sha" ] || return 1
     [ -n "$(git rev-list --merges "$1..$2" "^$base_sha" 2>/dev/null)" ] || return 1
@@ -255,28 +271,136 @@ EOF
         [ "$_mf_p2" != "$_mf_old" ] || return 1
         git merge-base --is-ancestor "$_mf_old" "$_mf_p2" 2>/dev/null || return 1
     done
-    mf_merged_base="$(git merge-base "$2" "$base_sha" 2>/dev/null)" || return 1
-    [ -n "$mf_merged_base" ]
+    [ -n "$(git merge-base "$2" "$base_sha" 2>/dev/null)" ]
 }
-# own_diff <base> <head>: the PR's own diff as text, minus the index and
-# hunk-header lines a moved base shifts.
-own_diff() {
-    _od_raw="$(git diff --no-ext-diff --no-textconv --no-color --no-renames "$1" "$2" 2>/dev/null)" || return 1
-    printf '%s\n' "$_od_raw" | sed -e '/^index /d' -e 's/^@@ [^@]* @@.*$/@@/'
+# increment_of <R> <H>: L is R, or with a merge of the base in R..H a fixed-identity
+# commit wrapping T, the pinned merge-tree of R with B (the base point H holds),
+# so git diff L H never holds the base's merged content. Sets inc_l, inc_b,
+# inc_t, inc_merge, inc_mt_out, inc_mt_rc, inc_empty and inc_size (empty when
+# unknown); fails when there is no increment. .delta and .free record R, not L.
+increment_of() {
+    inc_l="" inc_b="" inc_t="" inc_merge=0 inc_mt_out="" inc_mt_rc=0 inc_empty=0 inc_size=""
+    git merge-base --is-ancestor "$1" "$2" 2>/dev/null || return 1
+    if [ -n "$base_sha" ]; then
+        _io_m="$(git rev-list --merges "$1..$2" "^$base_sha" 2>/dev/null)" || return 1
+        [ -z "$_io_m" ] || inc_merge=1
+    fi
+    if [ "$inc_merge" -eq 1 ]; then
+        inc_b="$(git merge-base "$2" "$base_sha" 2>/dev/null)" && [ -n "$inc_b" ] || return 1
+        # The merge reads no gitattributes (merge drivers, marker sizes): an
+        # empty attribute tree, no global or system file. info/attributes has no
+        # off switch, so with a non-empty one there is no trusted increment base
+        # and no increment: the caller reviews the whole PR or refuses.
+        _io_empty="$(git hash-object -t tree /dev/null 2>&1)" || { printf 'review-round: empty tree hash failed: %s\n' "$_io_empty" >&2; return 1; }
+        case "$_io_empty" in ''|*[!0-9a-f]*) printf 'review-round: empty tree hash unreadable: %s\n' "$_io_empty" >&2; return 1 ;; esac
+        _io_info="$(git rev-parse --git-path info/attributes 2>&1)" || { printf 'review-round: info/attributes path failed: %s\n' "$_io_info" >&2; return 1; }
+        _io_tab="$(printf '\t')"
+        if [ -e "$_io_info" ] && { [ ! -f "$_io_info" ] || LC_ALL=C grep -qv "^[ $_io_tab]*\(#.*\)\{0,1\}\$" "$_io_info"; }; then
+            printf 'review-round: %s sets attributes, so no trusted increment base exists\n' "$_io_info" >&2
+            return 1
+        fi
+        _io_drv="$(git config --get-regexp '^merge\..*\.driver$' 2>&1)"
+        case "$?" in
+            1) ;;
+            0) printf 'review-round: a merge driver is configured, so no trusted increment base exists\n' >&2; return 1 ;;
+            *) printf 'review-round: reading merge drivers failed: %s\n' "$_io_drv" >&2; return 1 ;;
+        esac
+        inc_mt_out="$(GIT_ATTR_NOSYSTEM=1 git -c core.attributesFile=/dev/null -c merge.conflictStyle=merge -c merge.default=text --attr-source="$_io_empty" \
+            merge-tree --write-tree --name-only --no-messages "$1" "$inc_b" 2>/dev/null)"
+        inc_mt_rc=$?
+        [ "$inc_mt_rc" -eq 0 ] || [ "$inc_mt_rc" -eq 1 ] || return 1
+        inc_t="$(printf '%s\n' "$inc_mt_out" | sed -n '1p')"
+        [ -n "$inc_t" ] || return 1
+        inc_l="$(GIT_AUTHOR_NAME=review-round GIT_AUTHOR_EMAIL=review-round@invalid GIT_AUTHOR_DATE=2000-01-01T00:00:00Z \
+            GIT_COMMITTER_NAME=review-round GIT_COMMITTER_EMAIL=review-round@invalid GIT_COMMITTER_DATE=2000-01-01T00:00:00Z \
+            git -c i18n.commitEncoding=UTF-8 commit-tree --no-gpg-sign "$inc_t" -p "$1" -p "$inc_b" -m 'review-round increment base' 2>/dev/null)" \
+            && [ -n "$inc_l" ] || return 1
+    else
+        inc_l="$(git rev-parse --verify --quiet "$1^{commit}" 2>/dev/null)" && [ -n "$inc_l" ] || return 1
+    fi
+    _io_rc=0
+    git diff --quiet "$inc_l" "$2" 2>/dev/null || _io_rc=$?
+    case "$_io_rc" in 0) inc_empty=1 ;; 1) ;; *) return 1 ;; esac
+    _io_num="$(git diff --numstat --no-renames "$inc_l" "$2" 2>/dev/null)" || return 1
+    inc_size="$(printf '%s\n' "$_io_num" | awk '$1 == "-" || $2 == "-" { bad = 1 } NF { n += $1 + $2 } END { if (!bad) print n + 0 }')"
 }
-# clean_merge_forward <from> <to> succeeds only for a CLEAN merge-forward:
-# <to>'s tree is exactly the conflict-free merge of <from> with the base point
-# it merged, and the PR's own diff is the same text at <to> as at <from>. A
-# merge that edits or resolves anything fails.
+
+inc_no_markers() {
+    [ "$inc_mt_rc" -eq 0 ] && return 0
+    while IFS= read -r _nm_p; do
+        [ -n "$_nm_p" ] || continue
+        git cat-file -e "$inc_t:$_nm_p" 2>/dev/null || return 1
+        _nm_rc=0
+        git --literal-pathspecs grep -qE '^(<{7,}( |$)|={7,}$|>{7,}( |$)|[|]{7,}( |$))' "$inc_t" -- "$_nm_p" >/dev/null 2>&1 || _nm_rc=$?
+        [ "$_nm_rc" -eq 1 ] || return 1
+    done <<EOF
+$(printf '%s\n' "$inc_mt_out" | sed '1d')
+EOF
+    return 0
+}
+
+inc_resolution_only() {
+    _ro_paths="$(git -c core.quotepath=off diff --numstat --no-renames "$inc_l" "$1" 2>/dev/null)" || return 1
+    [ -n "$_ro_paths" ] || return 1
+    _ro_conf="$(printf '%s\n' "$inc_mt_out" | sed '1d')"
+    _ro_tab="$(printf '\t')"
+    while IFS="$_ro_tab" read -r _ro_a _ro_d _ro_p; do
+        [ -n "$_ro_p" ] || return 1
+        case "$_ro_a$_ro_d" in *[!0-9]*) return 1 ;; esac
+        ! plugin_json_path "$_ro_p" || return 1
+        case "
+$_ro_conf
+" in *"
+$_ro_p
+"*) ;; *) return 1 ;; esac
+        _ro_sum="$(git diff --no-renames --summary "$inc_l" "$1" -- "$_ro_p" 2>/dev/null)" || return 1
+        [ -z "$_ro_sum" ] || return 1
+        _ro_spans="$(git cat-file blob "$inc_t:$_ro_p" 2>/dev/null | awk '/^<<<<<<< / { s = NR } /^>>>>>>> / { if (s) print s, NR; s = 0 }')" || return 1
+        [ -n "$_ro_spans" ] || return 1
+        _ro_hunks="$(git diff -U0 --no-color --no-ext-diff --no-textconv --no-renames "$inc_l" "$1" -- "$_ro_p" 2>/dev/null | sed -n 's/^@@ -\([0-9][0-9]*\)\(,\([0-9][0-9]*\)\)\{0,1\} .*/\1 \3/p')" || return 1
+        [ -n "$_ro_hunks" ] || return 1
+        SPANS="$_ro_spans" awk '
+            BEGIN { n = split(ENVIRON["SPANS"], v, /[ \n]/); for (i = 1; i + 1 <= n; i += 2) { s[++k] = v[i] + 0; e[k] = v[i + 1] + 0 } }
+            { a = $1 + 0; c = ($2 == "") ? 1 : $2 + 0; ok = 0
+              for (j = 1; j <= k; j++) {
+                  if (c == 0 && s[j] <= a && a < e[j]) ok = 1
+                  if (c > 0 && s[j] <= a && a + c - 1 <= e[j]) ok = 1
+              }
+              if (!ok) bad = 1 }
+            END { exit bad ? 1 : 0 }' <<EOF_HUNKS || return 1
+$_ro_hunks
+EOF_HUNKS
+    done <<EOF
+$_ro_paths
+EOF
+    return 0
+}
+
+free_cap=5
+free_size_cap=80
+# increment_class <R> <H>: sets inc_class to carried, tests, merge-resolution or
+# work; a free class needs a non-empty increment of known size at most
+# free_size_cap and fewer than free_cap free rounds (free_count).
+increment_class() {
+    if [ "$inc_merge" -eq 1 ] && [ "$inc_empty" -eq 1 ] && inc_no_markers; then
+        inc_class=carried
+        return 0
+    fi
+    inc_class=work
+    [ "$inc_empty" -eq 0 ] && [ -n "$inc_size" ] && [ "$inc_size" -le "$free_size_cap" ] \
+        && [ "${free_count:-$free_cap}" -lt "$free_cap" ] || return 0
+    if tests_only_paths "$inc_l" "$2"; then
+        inc_class=tests
+    elif [ "$inc_merge" -eq 1 ] && merge_forward_shape "$1" "$2" \
+        && { inc_resolution_only "$2" || version_only_merge "$1" "$inc_b" "$2" "$inc_mt_out" "$inc_mt_rc"; }; then
+        inc_class=merge-resolution
+    fi
+    return 0
+}
+
 clean_merge_forward() {
-    merge_forward_shape "$1" "$2" || return 1
-    _cm_tree="$(git merge-tree --write-tree "$1" "$mf_merged_base" 2>/dev/null)" || return 1
-    [ "$_cm_tree" = "$(git rev-parse "$2^{tree}" 2>/dev/null)" ] || return 1
-    _cm_old="$(git merge-base "$1" "$base_sha" 2>/dev/null)" || return 1
-    [ -n "$_cm_old" ] || return 1
-    _cm_a="$(own_diff "$_cm_old" "$1")" || return 1
-    _cm_b="$(own_diff "$mf_merged_base" "$2")" || return 1
-    [ "$_cm_a" = "$_cm_b" ]
+    increment_of "$1" "$2" || return 1
+    [ "$inc_merge" -eq 1 ] && [ "$inc_empty" -eq 1 ] && inc_no_markers
 }
 
 verb="${1:-}"
@@ -307,9 +431,11 @@ fu_why_arg=""
 fu_override_arg=""
 threads_ok=""
 check_only=0
+full_arg=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --check) check_only=1; shift ;;
+        --full) full_arg=1; shift ;;
         --open-threads-ok) [ $# -ge 2 ] && [ -n "$2" ] || usage; threads_ok="$2"; shift 2 ;;
         --branch) [ $# -ge 2 ] || usage; branch="$2"; shift 2 ;;
         --pr) [ $# -ge 2 ] || usage; pr="$2"; shift 2 ;;
@@ -332,6 +458,7 @@ fi
 [ -n "$branch" ] || usage
 [ "$check_only" -eq 0 ] || [ "$verb" = "promote" ] || usage
 [ -z "$threads_ok" ] || [ "$verb" = "judge-go" ] || usage
+[ "$full_arg" -eq 0 ] || { [ "$verb" = "start" ] && [ -z "$pr" ]; } || usage
 case "$verb" in
     check) [ -n "$pr" ] || usage ;;
     start) [ -n "$head_sha" ] || [ -z "$base_sha" ] || usage ;;
@@ -340,7 +467,7 @@ case "$verb" in
     judge-go) [ -n "$head_sha" ] || usage ;;
     evidence) [ -n "$head_sha" ] || usage ;;
     abort) [ -n "$head_sha" ] || usage ;;
-    from) [ -z "$head_sha" ] && [ -z "$base_sha" ] || usage ;;
+    settle) [ -n "$head_sha" ] && [ -z "$base_sha" ] || usage ;;
     *) usage ;;
 esac
 
@@ -423,12 +550,10 @@ cired_state="$git_dir/cr-review-rounds/$branch.cired"
 # One line: the key of the branch's batch residual, filed by the first early
 # close and reused by every later one. It lives as long as the round count.
 deferred_to_state="$git_dir/cr-review-rounds/$branch.deferred-to"
-# The reviewed head a new second or third round starts from (.head.prev as
-# start left it, or empty), read by `from` in those two rounds only.
-from_state="$git_dir/cr-review-rounds/$branch.from"
-# Clean and version-only merge-forwards are admitted free of the delta round
-# only below this round count.
-free_round_cap=8
+free_state="$git_dir/cr-review-rounds/$branch.free"
+scope_state="$git_dir/cr-review-rounds/$branch.scope"
+snap_state="$git_dir/cr-review-rounds/$branch.start.bak"
+snap_wait=7200
 state_dir="$(dirname "$state")"
 mkdir -p "$state_dir" || {
     echo "review-round: cannot create state directory $state_dir" >&2
@@ -558,9 +683,138 @@ counter_lock() {
     return 0
 }
 
+snap_list=(round "$state" free "$free_state" scope "$scope_state" head "$head_state" prev "$prev_state" delta "$delta_state" cired "$cired_state" verdicts "$verdict_state")
+snap_node() {
+    node -e '
+const fs = require("fs");
+const [mode, ...a] = process.argv.slice(1);
+const enc = (p) => { try { return "=" + fs.readFileSync(p).toString("base64"); } catch (err) { if (err.code === "ENOENT") return "absent"; throw err; } };
+const parse = (p) => {
+  const lines = fs.readFileSync(p, "utf8").split("\n");
+  if (lines[0] !== "start-snapshot 1") throw new Error("not a snapshot");
+  const s = { head: "", pid: "", time: "", continued: "0", answer: null, files: [] };
+  for (const l of lines.slice(1)) {
+    if (!l) continue;
+    const sp = l.indexOf(" ");
+    const k = sp < 0 ? l : l.slice(0, sp), v = sp < 0 ? "" : l.slice(sp + 1);
+    if (k === "file") {
+      const [n, b, af] = v.split(" ");
+      if (!n || !b || !af) throw new Error("bad file line");
+      s.files.push({ n, b, af });
+    } else if (k in s && k !== "files") s[k] = v;
+    else throw new Error("bad key");
+  }
+  if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(s.head) || !/^[0-9]+$/.test(s.time) || !/^[01]$/.test(s.continued) || !s.files.length) throw new Error("bad snapshot");
+  return s;
+};
+const dump = (s) => ["start-snapshot 1", "head " + s.head, "pid " + s.pid, "time " + s.time, "continued " + s.continued]
+  .concat(s.answer === null ? [] : ["answer " + s.answer])
+  .concat(s.files.map((f) => ["file", f.n, f.b, f.af].join(" "))).join("\n") + "\n";
+const list = (rest) => { const m = new Map(); for (let i = 0; i + 1 < rest.length; i += 2) m.set(rest[i], rest[i + 1]); return m; };
+const at = (m, n) => { if (!m.has(n)) throw new Error("unknown file " + n); return m.get(n); };
+const live = (fs_) => fs_.filter((f) => f.n !== "from");
+try {
+  if (mode === "before") {
+    const [out, head, pid, time, ...rest] = a;
+    const s = { head, pid, time, continued: "0", answer: null, files: [] };
+    for (const [n, p] of list(rest)) s.files.push({ n, b: enc(p), af: "-" });
+    fs.writeFileSync(out, dump(s), { flag: "wx" });
+  } else if (mode === "after") {
+    const [snap, out, answer, ...rest] = a;
+    const s = parse(snap), m = list(rest);
+    for (const f of s.files) f.af = enc(at(m, f.n));
+    s.answer = answer;
+    fs.writeFileSync(out, dump(s), { flag: "wx" });
+  } else if (mode === "continue") {
+    const [snap, out, pid] = a;
+    const s = parse(snap);
+    s.pid = pid; s.continued = "1";
+    fs.writeFileSync(out, dump(s), { flag: "wx" });
+  } else if (mode === "read") {
+    const s = parse(a[0]);
+    process.stdout.write([s.head, s.pid, s.time, s.continued, s.answer === null ? "0" : "1", s.answer || ""].join("\n") + "\n");
+  } else if (mode === "check") {
+    const [snap, ...rest] = a;
+    const s = parse(snap), m = list(rest);
+    let after = true, allowed = true;
+    for (const f of live(s.files)) {
+      const c = enc(at(m, f.n));
+      if (c !== f.af) after = false;
+      if (c !== f.af && c !== f.b) allowed = false;
+    }
+    process.stdout.write(after ? "after" : allowed ? "allowed" : "moved");
+  } else if (mode === "restore") {
+    const [snap, ...rest] = a;
+    const s = parse(snap), m = list(rest);
+    for (const f of live(s.files)) {
+      const p = at(m, f.n);
+      if (enc(p) === f.b) continue;
+      if (f.b === "absent") { fs.rmSync(p, { force: true }); continue; }
+      const tmp = p + ".tmp." + process.pid;
+      fs.writeFileSync(tmp, Buffer.from(f.b.slice(1), "base64"));
+      fs.renameSync(tmp, p);
+    }
+  } else process.exit(2);
+} catch (err) { process.exit(3); }
+' "$@"
+}
+
+snap_load() {
+    { [ -e "$snap_state" ] || [ -L "$snap_state" ]; } || return 1
+    { [ -f "$snap_state" ] && [ ! -L "$snap_state" ]; } || return 5
+    _sl="$(snap_node read "$snap_state")" || return 5
+    { read -r snap_head; read -r snap_pid; read -r snap_time; read -r snap_continued; read -r snap_complete; read -r snap_answer; } <<EOF
+$_sl
+EOF
+    case "$snap_pid" in *[!0-9]*) snap_pid="" ;; esac
+    return 0
+}
+
+snap_starter() {
+    if [ -z "$snap_pid" ]; then echo unknown
+    elif [ "$snap_pid" = "$PPID" ]; then echo caller
+    elif kill -0 "$snap_pid" 2>/dev/null; then echo alive
+    else echo ended
+    fi
+}
+
+snap_young() {
+    _sy_age=$(( $(date +%s) - snap_time ))
+    [ "$_sy_age" -lt "$snap_wait" ] || return 1
+    snap_left=$(( (snap_wait - _sy_age + 59) / 60 ))
+}
+
+snap_write() {
+    _sw_tmp="$snap_state.tmp.$$"
+    rm -f "$_sw_tmp"
+    _sw_mode="$1"
+    shift
+    case "$_sw_mode" in
+        before) snap_node before "$_sw_tmp" "$@" ;;
+        *) snap_node "$_sw_mode" "$snap_state" "$_sw_tmp" "$@" ;;
+    esac && mv "$_sw_tmp" "$snap_state" && return 0  # prim-ok: tmp-then-mv under the counter lock; fixture copies of this script have no scripts/lib
+    rm -f "$_sw_tmp"
+    return 5
+}
+
+restore_snapshot() {
+    _rs="$(snap_node check "$snap_state" "${snap_list[@]}")" || return 5
+    case "$_rs" in
+        after|allowed)
+            snap_node restore "$snap_state" "${snap_list[@]}" || return 5
+            rm -f "$snap_state" || return 5
+            return 0 ;;
+        moved)
+            echo "review-round: a round file on $branch changed after the round at $snap_head started (a grant), so that round stays counted and its snapshot is dropped" >&2
+            rm -f "$snap_state" || return 5
+            return 1 ;;
+    esac
+    return 5
+}
+
 # plugin-version-bump-required makes a plugin PR bump its
 # plugin.json version inside its merge of the base, so that merge never equals
-# a clean merge tree. version_only_merge <ours> <theirs> <new> succeeds only
+# a clean merge tree. version_only_merge <ours> <theirs> <new> <mt-out> <mt-rc> succeeds only
 # when every path where <new>'s tree differs from the merge of <ours> and
 # <theirs>, and every path that merge conflicts on, is a
 # marketplace/plugins/<p>/.claude-plugin/plugin.json whose "version" in <new>
@@ -568,8 +822,7 @@ counter_lock() {
 # bytes are exactly the clean three-way merge once the version values are set
 # aside. Anything else fails, so the caller keeps refusing it.
 version_only_merge() {
-    _vo_out="$(git merge-tree --write-tree --name-only --no-messages "$1" "$2" 2>/dev/null)"
-    _vo_rc=$?
+    _vo_out="$4" _vo_rc="$5"
     [ "$_vo_rc" -eq 0 ] || [ "$_vo_rc" -eq 1 ] || return 1
     _vo_tree="$(printf '%s\n' "$_vo_out" | sed -n '1p')"
     _vo_new_tree="$(git rev-parse --verify --quiet "$3^{tree}" 2>/dev/null)" || return 1
@@ -1107,39 +1360,6 @@ judge_go_threads() {
     open_review_threads '{owner}' '{repo}' "$jt_pr" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} "${_RR_GH[@]}"
 }
 
-# ci_red_delta_lines <from> <to> prints how many diff lines the PR's
-# own diff changed from <from> to <to>; the base side of a merge-forward is not
-# counted (own_diff compares each head with its own base point). A changed line
-# counts twice (old and new). Without a captured base every line counts.
-# Fails (rc 1) when it cannot be measured or when either own diff has a binary
-# change.
-ci_red_delta_lines() {
-    if [ -z "$base_sha" ]; then
-        _cl_num="$(git diff --numstat --no-renames "$1" "$2" 2>/dev/null)" || return 1
-        printf '%s\n' "$_cl_num" | awk '
-            $1 == "-" || $2 == "-" { bad = 1 }
-            NF { n += $1 + $2 }
-            END { if (bad) n = 999999; print n + 0 }'
-        return 0
-    fi
-    # base_sha was verified at argument intake (top of this file).
-    _cl_ob="$(git merge-base "$1" "$base_sha" 2>/dev/null)" || return 1
-    _cl_nb="$(git merge-base "$2" "$base_sha" 2>/dev/null)" || return 1
-    _cl_tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-round.XXXXXX")" || return 1  # prim-ok: test-pr-check-rounds and test-panel-first-pass run fixture copies of this script with no scripts/lib
-    if own_diff "$_cl_ob" "$1" > "$_cl_tmp/a" && own_diff "$_cl_nb" "$2" > "$_cl_tmp/b" \
-        && ! grep -qE '^(Binary files |GIT binary patch)' "$_cl_tmp/a" "$_cl_tmp/b"; then
-        _cl_rc=0
-        diff "$_cl_tmp/a" "$_cl_tmp/b" > "$_cl_tmp/d" 2>/dev/null || _cl_rc=$?
-        if [ "$_cl_rc" -le 1 ]; then
-            grep -c '^[<>]' "$_cl_tmp/d" || true
-            rm -rf "$_cl_tmp"
-            return 0
-        fi
-    fi
-    rm -rf "$_cl_tmp"
-    return 1
-}
-
 # ci_red_unlock <from> <to> succeeds when <from>, the last reviewed
 # head, is CI-red and <from>..<to> is within the line cap. Red means a COMPLETED
 # check-run with conclusion failure read from the API for <from>, and no
@@ -1173,13 +1393,12 @@ EOF
         echo "review-round: $1 has no completed failing check-run - no CI-red unlock" >&2
         return 1
     fi
-    _cr_lines="$(ci_red_delta_lines "$1" "$2")" || _cr_lines=""
-    case "$_cr_lines" in ''|*[!0-9]*)
-        echo "review-round: cannot measure $1..$2 - no CI-red unlock" >&2
+    case "$inc_size" in ''|*[!0-9]*)
+        echo "review-round: the increment $1..$2 has no known size (a binary change) - no CI-red unlock" >&2
         return 1 ;;
     esac
-    if [ "$_cr_lines" -gt "$ci_red_cap" ]; then
-        echo "review-round: $1..$2 changes $_cr_lines diff lines, over the $ci_red_cap-line CI-red cap - no CI-red unlock" >&2
+    if [ "$inc_size" -gt "$ci_red_cap" ]; then
+        echo "review-round: the increment $1..$2 changes $inc_size diff lines, over the $ci_red_cap-line CI-red cap - no CI-red unlock" >&2
         return 1
     fi
     return 0
@@ -1197,17 +1416,20 @@ ci_red_record() {
     printf '%s %s %s\n' "$delta_from" "$delta_to" "$ci_red_names" > "$cired_tmp" || return 1
 }
 
-# Decide whether the round after the third may run, as the one
-# delta round. Sets delta_from/delta_to/delta_trigger, or says why not and
-# returns 8 (2 for an unresolvable --head). A judge NO-GO on the
-# last reviewed head is a third trigger, checked even once the delta was used;
-# it sets delta_verdict.
+# Decide whether a round past the cap may run. Sets delta_from (R), delta_to,
+# delta_class and the increment descriptor; a work round also sets
+# delta_trigger. Says why not and returns 8 (2 for an unresolvable --head). A
+# judge NO-GO on the last reviewed head is a trigger; it sets delta_verdict.
 delta_check() {
     full_note="a 4th full round is refused"
     delta_reuse=0
-    delta_free=0
+    delta_class=""
     delta_used=""
     delta_verdict=""
+    if [ "$full_arg" -eq 1 ]; then
+        echo "review-round: $branch already ran 3 full rounds - a --full round past the cap is refused; a round past the cap reviews the increment" >&2
+        return 8
+    fi
     if [ -f "$delta_state" ]; then
         # A delta round whose panel produced no critic rows is
         # still pending, so the SAME <from> <to> pair may start again. Any
@@ -1233,6 +1455,9 @@ delta_check() {
             delta_to="$pend_to"
             delta_trigger="${pend_trigger:-fix}"
             delta_reuse=1
+            delta_class=work
+            # swallow-ok: a pending pair whose increment cannot be read reviews from R, as before
+            increment_of "$delta_from" "$delta_to" || inc_l="$delta_from"
             return 0
         fi
         delta_used="$(cat "$delta_state" 2>/dev/null)"
@@ -1285,56 +1510,26 @@ EOF
         delta_refuse "review-round: $delta_to does not descend from the last reviewed head $delta_from - $full_note"
         return 8
     fi
-    if git diff --quiet "$delta_from" "$delta_to" 2>/dev/null; then
-        delta_refuse "review-round: $delta_from..$delta_to changes nothing - no delta round to run"
-        return 8
-    fi
-    # A repeated-class veto also applies when a finding or merge-forward
-    # could otherwise buy the delta: changing the trigger must not evade it.
     delta_verdict="$(judge_nogo_record "$delta_from" "$delta_to")"
     judge_rc=$?
     [ "$judge_rc" -ne 8 ] || return 8
-    # Clean and version-only merge-forwards are admitted without spending the
-    # one delta round, whether or not it was already used. Check before the
-    # fix trigger: neither carries a fix, so neither must spend the round.
-    # The round count still grows by one per free round, so the free
-    # admissions stop at free_round_cap; a merge past it needs the delta round
-    # or a judge record.
-    if [ "$round" -ge "$free_round_cap" ]; then
-        if merge_forward_shape "$delta_from" "$delta_to"; then
-            echo "review-round: $branch is at round $round, the free merge-forward cap ($free_round_cap) - a clean or version-only merge no longer buys a free round" >&2
-        fi
-    else
-        if clean_merge_forward "$delta_from" "$delta_to"; then
-            delta_trigger="clean-merge"
-            delta_free=1
-            return 0
-        fi
-        if merge_forward_shape "$delta_from" "$delta_to" \
-            && version_only_merge "$delta_from" "$mf_merged_base" "$delta_to"; then
-            delta_trigger="version-merge"
-            delta_free=1
-            return 0
-        fi
+    if ! increment_of "$delta_from" "$delta_to"; then
+        delta_refuse "review-round: no increment from $delta_from to $delta_to can be computed (git could not answer or merge-tree failed) - $full_note"
+        return 8
+    fi
+    increment_class "$delta_from" "$delta_to"
+    delta_class="$inc_class"
+    case "$delta_class" in
+        carried|tests|merge-resolution) delta_verdict=""; return 0 ;;
+    esac
+    if [ "$inc_empty" -eq 1 ]; then
+        delta_refuse "review-round: the increment $delta_from..$delta_to changes nothing - no delta round to run"
+        return 8
     fi
     if [ -z "$delta_used" ]; then
         if [ "$(ledger_query finding "$delta_from")" = "finding" ]; then
             delta_trigger="fix"
             return 0
-        fi
-    fi
-    if [ -z "$delta_used" ]; then
-        # Merge-forward: at least one merge since the reviewed head, every
-        # non-merge commit it brought is already on the captured base, and the
-        # new head's tree is exactly a clean merge of the reviewed head with the
-        # base point it merged - so a merge carrying its own edits or conflict
-        # resolutions is new work, not a merge-forward.
-        if merge_forward_shape "$delta_from" "$delta_to"; then
-            if clean_tree="$(git merge-tree --write-tree "$delta_from" "$mf_merged_base" 2>/dev/null)" \
-                && [ "$clean_tree" = "$(git rev-parse "$delta_to^{tree}" 2>/dev/null)" ]; then
-                delta_trigger="merge-forward"
-                return 0
-            fi
         fi
     fi
     # One judge-triggered round per last reviewed head.
@@ -1504,35 +1699,35 @@ if [ "$verb" = "evidence" ]; then
     exit 0
 fi
 
-# from: print the reviewed head the current round started from (.from), only
-# when .round holds 2 or 3 at call time; in the first round and the delta
-# round (which has its own .delta) it prints nothing. Read-only, but it reads the
-# round and .from under the counter lock start and abort write under, so it
-# never sees a round start has half written. Exit 0, or 5 on an unreadable
-# counter or a counter lock it cannot take.
-if [ "$verb" = "from" ]; then
-    counter_lock || exit 5
-    from_rc=0
-    read_round || from_rc=5
-    if [ "$from_rc" -eq 0 ] && { [ "$round" -eq 2 ] || [ "$round" -eq 3 ]; }; then
-        # swallow-ok: an empty, missing or invalid .from prints nothing
-        state_sha "$from_state" || true
+if [ "$verb" = "settle" ]; then
+    # swallow-ok: an unresolvable head is refused on the next line (exit 2)
+    if ! st_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$st_head" ]; then
+        echo "review-round: --head $head_sha does not resolve to a commit" >&2
+        exit 2
     fi
+    counter_lock || exit 5
+    st_rc=0
+    snap_load || st_rc=$?
+    case "$st_rc" in
+        0) if [ "$snap_head" = "$st_head" ] && ! rm -f "$snap_state"; then st_rc=5; fi ;;
+        1) st_rc=0 ;;
+        *) echo "review-round: cannot read the round snapshot $snap_state" >&2; st_rc=5 ;;
+    esac
     SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
         bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
-    exit "$from_rc"
+    exit "$st_rc"
 fi
 
-# abort: a round whose panel aborted after start (panel-first-pass exit 7, or
-# a delta diff it could not read) reviewed nothing, so it spends nothing. When
-# --head is the head on .head and no avail or finding row of any model sits
-# there, .head goes back to the last critic-reviewed head (reviewed_head), or
-# is removed when there is none, and the round is uncounted - unless it is the
-# pending delta round, which restarts at the same head on the count it took.
-# Exit 0 = given back (prints "<round> <head .head names, or none>");
-# 1 = --head is not on .head; 8 = refused (rows at --head or an unreadable
-# ledger, or the start's caller is still running or unrecorded); 5 = state or
-# lock error.
+# abort: a round whose panel aborted after start reviewed nothing, so it spends
+# nothing. With no avail or finding row at --head (on .head) and a starter that
+# is the caller or has ended, the start's snapshot is restored: every round file,
+# so a delta round also gets back its slot, CI-red unlock and judge record. A
+# starter not the caller, or a continued round, waits two hours from the start.
+# No snapshot: .head goes back to the last reviewed head, the round is uncounted
+# (a pending delta round keeps its count).
+# Exit 0 = given back (prints "<round> <head .head names, or none>"); 1 = --head
+# is not on .head; 8 = refused (rows, unreadable ledger or snapshot, a running or
+# unrecorded starter, under two hours, a file another writer changed); 5 = error.
 if [ "$verb" = "abort" ]; then
     # swallow-ok: an unresolvable head is refused on the next line (exit 2)
     if ! ab_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$ab_head" ]; then
@@ -1544,8 +1739,16 @@ if [ "$verb" = "abort" ]; then
     read_round || ab_rc=5
     # swallow-ok: a missing or unreadable .head is "not --head" (exit 1)
     ab_cur="$(state_sha "$head_state")" || ab_cur=""
+    ab_snap=0
+    snap_rc=0
+    snap_load || snap_rc=$?
+    [ "$snap_rc" -ne 0 ] || [ "$snap_head" != "$ab_head" ] || ab_snap=1
     run_pid=""
-    [ ! -f "$delta_run" ] || read -r run_pid < "$delta_run" || run_pid=""
+    if [ "$ab_snap" -eq 1 ]; then
+        run_pid="$snap_pid"
+    else
+        [ ! -f "$delta_run" ] || read -r run_pid < "$delta_run" || run_pid=""
+    fi
     case "$run_pid" in ''|*[!0-9]*) run_pid="" ;; esac
     run_alive=""
     if [ -n "$pr" ] && [ -f "$delta_run" ]; then
@@ -1565,12 +1768,31 @@ if [ "$verb" = "abort" ]; then
     elif [ "$ab_seen" = "seen" ]; then
         echo "review-round: the round on $ab_head has panel rows, so it reviewed something - it is not given back" >&2
         ab_rc=8
+    elif [ "$snap_rc" -eq 5 ]; then
+        echo "review-round: cannot read the round snapshot $snap_state, so the round's starter and bytes are unknown - it is not given back" >&2
+        ab_rc=8
     elif [ -z "$run_pid" ]; then
         echo "review-round: no start caller is recorded for the round on $ab_head, so it cannot be shown to have ended - it is not given back" >&2
         ab_rc=8
     elif [ -n "$run_alive" ] || { [ "$run_pid" != "$PPID" ] && kill -0 "$run_pid" 2>/dev/null; }; then
         echo "review-round: the round on $ab_head is still running (start by pid ${run_alive:-$run_pid}) - it is not given back" >&2
         ab_rc=8
+    elif [ "$ab_snap" -eq 1 ] && [ "$snap_complete" = 1 ] \
+        && { [ "$run_pid" != "$PPID" ] || [ "$snap_continued" = 1 ]; } && snap_young; then
+        echo "review-round: a dead round at $ab_head is younger than two hours ($snap_left min left) - it is not given back" >&2
+        ab_rc=8
+    elif [ "$ab_snap" -eq 1 ]; then
+        restore_snapshot
+        case $? in
+            0) ;;
+            1) ab_rc=8 ;;
+            *) echo "review-round: cannot give back the round on $ab_head for $branch from its snapshot" >&2; ab_rc=5 ;;
+        esac
+        # swallow-ok: a missing counter file after the restore reads as zero
+        ab_round="$(cat "$state" 2>/dev/null)" || ab_round=""
+        ab_round="${ab_round:-0}"
+        # swallow-ok: no .head after the restore prints none
+        ab_back="$(state_sha "$head_state")" || ab_back=""
     else
         # swallow-ok: no critic-reviewed head in the start records removes .head below
         ab_back="$(reviewed_head)" || ab_back=""
@@ -1580,15 +1802,11 @@ if [ "$verb" = "abort" ]; then
         fi
         ab_round="$round"
         [ "$ab_to" = "$ab_head" ] || [ "$round" -eq 0 ] || ab_round=$((round - 1))
-        # .from first (S4): a round given back must not keep a start point, or
-        # a same-head re-entry would read .from = the head itself.
-        # .head next: a failed counter write after it leaves the round spent,
+        # .head first: a failed counter write after it leaves the round spent,
         # never a free one.
         tmp_head="$head_state.tmp.$$"
         tmp_state="$state.tmp.$$"
-        if ! rm -f "$from_state"; then
-            ab_rc=5
-        elif [ -n "$ab_back" ]; then
+        if [ -n "$ab_back" ]; then
             { printf '%s\n' "$ab_back" > "$tmp_head" && mv "$tmp_head" "$head_state"; } || ab_rc=5  # prim-ok: start's tmp-then-mv idiom under the counter lock; this script does not source prim.sh
         else
             rm -f "$head_state" || ab_rc=5
@@ -1677,10 +1895,70 @@ fi
 
 if [ "$verb" = "start" ]; then
     counter_lock || exit 5
-    if ! read_round; then
+    start_unlock() {
         SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
             bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
+    }
+    if ! read_round; then
+        start_unlock
         exit 5
+    fi
+    start_head=""
+    if [ -n "$head_sha" ]; then
+        # swallow-ok: an unresolvable head takes today's path and writes no snapshot
+        start_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || start_head=""
+    fi
+    snap_wrote=0
+    snap_rc=1
+    [ -z "$start_head" ] || { snap_rc=0; snap_load || snap_rc=$?; }
+    if [ "$snap_rc" -eq 5 ]; then
+        start_unlock
+        echo "review-round: cannot read the round snapshot $snap_state - refusing (cr-reset.sh moves it aside)" >&2
+        exit 5
+    fi
+    if [ "$snap_rc" -eq 0 ]; then
+        if ! snap_seen="$(ledger_query seen "$snap_head")"; then
+            start_unlock
+            echo "review-round: cannot read the panel ledger for $snap_head, the head of the last round's snapshot - refusing" >&2
+            exit 8
+        fi
+        snap_who="$(snap_starter)"
+        # swallow-ok: an unreadable round file reads as moved, which never restores
+        snap_files="$(snap_node check "$snap_state" "${snap_list[@]}")" || snap_files=moved
+        snap_rc=0
+        if [ "$snap_seen" = "seen" ]; then
+            rm -f "$snap_state" || snap_rc=5
+        elif [ "$snap_who" = alive ]; then
+            start_unlock
+            echo "review-round: the round on $branch at $snap_head is already running (start by pid $snap_pid) - wait for it" >&2
+            exit 8
+        elif [ "$snap_files" = moved ]; then
+            restore_snapshot || [ $? -eq 1 ] || snap_rc=5
+        elif [ "$snap_files" = allowed ]; then
+            restore_snapshot || snap_rc=5
+        elif [ "$snap_head" = "$start_head" ] && [ "$snap_complete" = 1 ] \
+            && { [ "$snap_who" = caller ] || [ "$snap_who" = ended ]; }; then
+            if ! snap_write continue "$PPID"; then
+                start_unlock
+                echo "review-round: cannot record the restart in the round snapshot $snap_state" >&2
+                exit 5
+            fi
+            printf '%s\n' "$PPID" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
+            start_unlock
+            printf '%s\n' "$snap_answer"
+            exit 0
+        elif [ "$snap_complete" = 1 ] && snap_young; then
+            start_unlock
+            echo "review-round: a dead round at $snap_head is younger than two hours ($snap_left min left) - a start at another head waits, a restart at $snap_head continues it" >&2
+            exit 8
+        else
+            restore_snapshot || snap_rc=5
+        fi
+        if [ "$snap_rc" -ne 0 ] || ! read_round; then
+            start_unlock
+            echo "review-round: cannot give back the round in the snapshot $snap_state" >&2
+            exit 5
+        fi
     fi
     # A start at the head the counted round already ran on is bookkeeping, not
     # a new round: reuse it. From the cap on, the same head stays refused below.
@@ -1698,11 +1976,57 @@ if [ "$verb" = "start" ]; then
     fi
     delta_from=""
     delta_reuse=0
-    delta_free=0
-    if [ "$round" -ge 3 ]; then
+    free_count=0
+    if [ -e "$free_state" ] || [ -L "$free_state" ]; then
+        if [ ! -f "$free_state" ] || [ -L "$free_state" ] \
+            || ! free_count="$(awk 'NF { n++ } END { print n + 0 }' "$free_state" 2>/dev/null)"; then
+            start_unlock
+            echo "review-round: cannot read the free-round record $free_state - refusing (cr-reset.sh moves it aside)" >&2
+            exit 5
+        fi
+    fi
+    postcap=0
+    [ "$round" -lt 3 ] || postcap=1
+    start_class=full
+    start_r=""
+    inc_l=""
+    if [ "$postcap" -eq 0 ]; then
+        if [ "$full_arg" -eq 0 ] && [ "$round" -ge 1 ] && [ -n "$start_head" ] \
+            && start_r="$(reviewed_head)" && increment_of "$start_r" "$start_head"; then
+            increment_class "$start_r" "$start_head"
+            start_class="$inc_class"
+        fi
+    else
         delta_check
         delta_rc=$?
-        if [ "$delta_rc" -eq 0 ] && [ "${delta_reuse:-0}" -eq 0 ] && [ "${delta_free:-0}" -eq 0 ]; then
+        if [ "$delta_rc" -ne 0 ]; then
+            start_unlock
+            exit "$delta_rc"
+        fi
+        start_class="$delta_class"
+        start_r="$delta_from"
+    fi
+    if [ "$start_class" = carried ]; then
+        start_unlock
+        printf '%s carried %s\n' "$round" "$start_r"
+        exit 0
+    fi
+    snap_start() {
+        [ -n "$start_head" ] || return 0
+        if ! snap_write before "$start_head" "$PPID" "$(date +%s)" "${snap_list[@]}"; then
+            echo "review-round: cannot write the round snapshot $snap_state - no round is started" >&2
+            return 5
+        fi
+        snap_wrote=1
+    }
+    snap_drop() { [ "$snap_wrote" -eq 0 ] || rm -f "$snap_state"; }
+    if ! snap_start; then
+        start_unlock
+        exit 5
+    fi
+    if [ "$postcap" -eq 1 ]; then
+        delta_rc=0
+        if [ "$start_class" = work ] && [ "${delta_reuse:-0}" -eq 0 ]; then
             # The delta round is recorded first and the judge
             # record consumed after it; a failed consume restores the prior
             # .delta, so a record is never spent on a round that never started.
@@ -1756,36 +2080,52 @@ if [ "$verb" = "start" ]; then
             rm -f "$bak_delta" "$cired_tmp"
         fi
         if [ "$delta_rc" -ne 0 ]; then
-            SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
-                bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
+            snap_drop
+            start_unlock
             exit "$delta_rc"
         fi
     fi
+    counted=1
+    case "$start_class" in tests|merge-resolution) counted=0 ;; esac
     # A reused pending delta round keeps the counter it already took.
-    [ "${delta_reuse:-0}" -eq 1 ] || round=$((round + 1))
+    [ "${delta_reuse:-0}" -eq 1 ] || [ "$counted" -eq 0 ] || round=$((round + 1))
     # The first round opens a new loop, which never reuses the last loop's
     # batch residual.
-    if [ "$round" -eq 1 ] && ! rm -f "$deferred_to_state" "$from_state"; then
-        SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
-            bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
-        echo "review-round: cannot remove $deferred_to_state or $from_state for a new round 1" >&2
+    if [ "$round" -eq 1 ] && [ "$counted" -eq 1 ] && ! rm -f "$deferred_to_state"; then
+        snap_drop
+        start_unlock
+        echo "review-round: cannot remove $deferred_to_state for a new round 1" >&2
         exit 5
     fi
-    tmp_state="$state.tmp.$$"
     current_owner=$(SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
         bash "$lock_lib" status "." "$branch" 2>/dev/null || true)
-    if [ "$current_owner" != "$lock_owner" ] \
-        || ! printf '%s\n' "$round" > "$tmp_state" \
-        || ! mv "$tmp_state" "$state"; then  # prim-ok: tmp-then-mv under the counter lock; fixture copies of this script have no scripts/lib
-        rm -f "$tmp_state"
-        SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
-            bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
-        echo "review-round: cannot persist round $round for $branch under the counter lock" >&2
-        exit 5
+    if [ "$counted" -eq 0 ]; then
+        tmp_free="$free_state.tmp.$$"
+        if [ "$current_owner" != "$lock_owner" ] \
+            || ! { cat "$free_state" 2>/dev/null || [ ! -e "$free_state" ]; } > "$tmp_free" \
+            || ! printf '%s %s %s\n' "$start_r" "$start_head" "$start_class" >> "$tmp_free" \
+            || ! mv "$tmp_free" "$free_state"; then  # prim-ok: tmp-then-mv under the counter lock; fixture copies of this script have no scripts/lib
+            rm -f "$tmp_free"
+            snap_drop
+            start_unlock
+            echo "review-round: cannot record the free $start_class round for $branch under the counter lock" >&2
+            exit 5
+        fi
+    else
+        tmp_state="$state.tmp.$$"
+        if [ "$current_owner" != "$lock_owner" ] \
+            || ! printf '%s\n' "$round" > "$tmp_state" \
+            || ! mv "$tmp_state" "$state"; then  # prim-ok: tmp-then-mv under the counter lock; fixture copies of this script have no scripts/lib
+            rm -f "$tmp_state"
+            snap_drop
+            start_unlock
+            echo "review-round: cannot persist round $round for $branch under the counter lock" >&2
+            exit 5
+        fi
     fi
-    # Record the head this counted round runs on, the next delta scope's
-    # start. Without --head, or on a failed write, no head is kept, so a later
-    # delta round fails closed instead of scoping from an older round.
+    # Record the head this round runs on, the next increment's start. Without
+    # --head, or on a failed write, no head is kept, so a later round fails
+    # closed instead of scoping from an older round.
     round_head=""
     if [ -n "$head_sha" ]; then
         round_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || round_head=""
@@ -1793,7 +2133,7 @@ if [ "$verb" = "start" ]; then
     # A reviewed head this round replaces is kept in .head.prev, so a round
     # that reviews nothing can fall back to it; a first round has none.
     tmp_prev="$prev_state.tmp.$$"
-    if [ "$round" -eq 1 ]; then
+    if [ "$round" -eq 1 ] && [ "$counted" -eq 1 ]; then
         rm -f "$prev_state"
     elif old_head="$(state_sha "$head_state")" && [ "$(ledger_query avail "$old_head")" = "ok" ]; then
         { printf '%s\n' "$old_head" > "$tmp_prev" && mv "$tmp_prev" "$prev_state"; } || rm -f "$tmp_prev" "$prev_state"  # prim-ok: start's tmp-then-mv idiom under the counter lock; this script does not source prim.sh
@@ -1804,28 +2144,36 @@ if [ "$verb" = "start" ]; then
         || ! mv "$tmp_head" "$head_state"; then  # prim-ok: tmp-then-mv under the counter lock; fixture copies of this script have no scripts/lib
         rm -f "$tmp_head" "$head_state" "$prev_state"
     fi
-    # A new second or third round records its start point: what .head.prev now holds
-    # (empty when no reviewed head precedes it). A failed write leaves no
-    # .from, which reads as empty: the round falls back to the full diff.
-    if [ "$round" -eq 2 ] || [ "$round" -eq 3 ]; then
-        from_sha="$(state_sha "$prev_state")" || from_sha=""
-        tmp_from="$from_state.tmp.$$"
-        { printf '%s\n' "$from_sha" > "$tmp_from" && mv "$tmp_from" "$from_state"; } || rm -f "$tmp_from" "$from_state"  # prim-ok: start's tmp-then-mv idiom under the counter lock; this script does not source prim.sh
+    tmp_scope="$scope_state.tmp.$$"
+    if [ -z "$round_head" ] \
+        || ! printf '%s %s %s\n' "$round_head" "$start_class" "$postcap" > "$tmp_scope" \
+        || ! mv "$tmp_scope" "$scope_state"; then  # prim-ok: start's tmp-then-mv idiom under the counter lock; this script does not source prim.sh
+        rm -f "$tmp_scope" "$scope_state"
     fi
     # Written under the counter lock, so the pid checks in delta_check and
     # abort and this claim cannot interleave between two starts.
     # Best effort - a failed write only loses the guard.
     printf '%s\n' "$PPID" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
+    if [ "$postcap" -eq 1 ]; then
+        start_answer="$round delta $inc_l"
+    elif [ "$start_class" != full ] && [ "$inc_empty" -eq 0 ]; then
+        start_answer="$round increment $inc_l"
+    else
+        start_answer="$round"
+    fi
+    if [ "$snap_wrote" -eq 1 ] && ! snap_write after "$start_answer" "${snap_list[@]}"; then
+        snap_drop
+        start_unlock
+        echo "review-round: persisted round $round for $branch but could not complete its snapshot - the round stays counted" >&2
+        exit 5
+    fi
     if ! SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
         bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1; then
+        snap_drop
         echo "review-round: persisted round $round for $branch but could not release its counter lock" >&2
         exit 5
     fi
-    if [ -n "$delta_from" ]; then
-        printf '%s delta %s\n' "$round" "$delta_from"
-    else
-        printf '%s\n' "$round"
-    fi
+    printf '%s\n' "$start_answer"
     exit 0
 fi
 
@@ -2164,6 +2512,22 @@ if [ ! -f "$ledger" ]; then
     echo "review-round: CR ledger is missing at $ledger" >&2
     exit 5
 fi
+scope_head="" scope_class="" scope_post=""
+if [ -f "$scope_state" ] && [ ! -L "$scope_state" ]; then
+    # swallow-ok: an unreadable .scope names no head, so the .delta and .round tests decide
+    read -r scope_head scope_class scope_post _ < "$scope_state" 2>/dev/null || scope_head=""
+fi
+scope_known=0
+if [ "$scope_head" = "$full_head" ] && { [ "$scope_post" = 0 ] || [ "$scope_post" = 1 ]; }; then scope_known=1; fi
+delta_mode=0
+if [ "$scope_known" -eq 1 ]; then
+    [ "$scope_post" != 1 ] || delta_mode=1
+elif [ "$round" -ge 4 ] && [ -f "$delta_state" ]; then
+    delta_reviewed="$(awk '{print $2; exit}' "$delta_state" 2>/dev/null)" || delta_reviewed=""
+    [ "$delta_reviewed" = "$full_head" ] && delta_mode=1
+fi
+early_close=0
+if [ "$round" -lt 4 ] && [ "$delta_mode" -eq 0 ]; then early_close=1; fi
 # Rounds 1 to 3 close early only when the change at --head matches no pattern
 # in the default branch's ci-trust-paths.txt (trust_path_check, the question
 # merge-on-green asks). The change is the branch's one open PR, headed at
@@ -2171,7 +2535,7 @@ fi
 # local-git mode about br-<branch> instead, whose <default>...<head> diff holds
 # every file a PR diff would. Any answer but none, a refusal included, leaves
 # the round-4 cap in force.
-if [ "$round" -lt 4 ]; then
+if [ "$early_close" -eq 1 ]; then
     early_refuse() {
         echo "review-round: $branch is at round $round; an early close needs $1 - automatic deferral starts at round 4" >&2
         exit 2
@@ -2227,12 +2591,6 @@ pre_reason='Important finding deferred: the cited code is older than this PR (ta
 # A polish Suggestion/nit files no ticket: its row is amended
 # verdict=deferred, fu_class=polish with no deferred_to, and this reason.
 note_reason='Polish finding noted in the PR body: no ticket filed (decisions 746, 762).'
-# --head is the head the one delta round reviewed.
-delta_mode=0
-if [ "$round" -ge 4 ] && [ -f "$delta_state" ]; then
-    delta_reviewed="$(awk '{print $2; exit}' "$delta_state" 2>/dev/null)" || delta_reviewed=""
-    [ "$delta_reviewed" = "$full_head" ] && delta_mode=1
-fi
 amend_why='deferred by review-round.sh after the three-round cap'
 if [ "$delta_mode" -eq 1 ]; then
     defer_reason="$delta_reason"
@@ -2246,10 +2604,10 @@ else
     round_label="round $round"
 fi
 
-# The pre_existing field counts only at the rounds the tagger runs in (2 and 3),
-# and never in the delta round, where an Important is classified by an amend.
 pre_ok=0
-if [ "$delta_mode" -eq 0 ] && { [ "$round" -eq 2 ] || [ "$round" -eq 3 ]; }; then pre_ok=1; fi
+if [ "$scope_known" -eq 1 ]; then
+    if [ "$scope_post" = 0 ] && { [ "$scope_class" != full ] || [ "$round" -ge 2 ]; }; then pre_ok=1; fi
+elif [ "$delta_mode" -eq 0 ] && { [ "$round" -eq 2 ] || [ "$round" -eq 3 ]; }; then pre_ok=1; fi
 # shellcheck source=scripts/lib/load-dotenv.sh
 # shellcheck disable=SC1091
 if ! . "$HIMMEL_ROOT/scripts/lib/load-dotenv.sh" 2>/dev/null \
@@ -2473,7 +2831,7 @@ fi
 # An early close with no --defer-to reuses the branch's batch residual. An
 # unreadable or malformed key is not reused: a new batch replaces it.
 batch_reused=0
-if [ "$round" -lt 4 ] && ! [[ $defer_to =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
+if [ "$early_close" -eq 1 ] && ! [[ $defer_to =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
     # swallow-ok: an unreadable key is not reused; a new batch residual is filed instead
     batch_key="$(sed -n '1p' "$deferred_to_state" 2>/dev/null)" || batch_key=""
     if [[ $batch_key =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
@@ -2544,7 +2902,7 @@ if [ "$ticketed_count" -gt 0 ] && ! printf '%s' "$defer_to" | grep -qE '^[A-Z][A
     residual_parent="$(printf '%s\n' "$pr_title" | grep -oE '[A-Z][A-Z0-9]*-[0-9]+' | sed -n '1p')" || residual_parent=""
     # An early close usually has no PR yet: the conventional-commit hook puts
     # a [KEY-n] in every subject, and the oldest one names the parent.
-    if [ -z "$residual_parent" ] && [ "$round" -lt 4 ]; then
+    if [ -z "$residual_parent" ] && [ "$early_close" -eq 1 ]; then
         residual_parent="$(git log --reverse --format=%s "refs/heads/$early_default..$full_head" 2>/dev/null \
             | grep -oE '\[[A-Z][A-Z0-9]*-[0-9]+\]' | sed -n '1{s/^\[//;s/\]$//;p;}')" || residual_parent=""
     fi
@@ -2555,7 +2913,7 @@ if [ "$ticketed_count" -gt 0 ] && ! printf '%s' "$defer_to" | grep -qE '^[A-Z][A
 fi
 # An early close files ONE batch residual for the whole round and remembers
 # its key, so the loop below amends every finding to it and files nothing more.
-if [ "$auto_defer" -eq 1 ] && [ "$round" -lt 4 ]; then
+if [ "$auto_defer" -eq 1 ] && [ "$early_close" -eq 1 ]; then
     batch_body="$(mktemp -t cr-batch-body.XXXXXX)" || exit 5
     if ! { cat "$HIMMEL_ROOT/scripts/cr/deferred-ticket-body.md" \
             && printf '\nFindings deferred on %s at %s:\n' "$branch" "$full_head" \

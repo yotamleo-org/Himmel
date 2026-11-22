@@ -641,7 +641,7 @@ export function parseFindings(returnText: string, kind: Kind, round: number): { 
   for (const line of returnText.split("\n")) {
     const m = FINDING_LINE.exec(line);
     if (!m) continue;
-    const [severity, ...tags] = m[2].split(";").map(s => s.trim());
+    const [severity, ...tags] = m[2].replace(/`[^`]*(`|$)/g, "").split(";").map(s => s.trim());
     if (severity !== "major" && severity !== "medium" && severity !== "minor") continue;
     const f: Finding = { id: m[1], severity };
     for (const tag of tags) {
@@ -849,6 +849,14 @@ async function quoteRule(specs: string, key: string, d: string, quote: string, u
   return { path, sha: sha256(bytes) };
 }
 
+function spendCriticalUse(spent: Set<string>, r: LedgerRow): boolean {
+  const d = String(r.decision); const useKey = `${d}|finding|${String(r.id)}`; const openKey = `${d}|opens|${Number(r.opens)}`;
+  const opens = Number(r.opens) !== 0;
+  const was = spent.has(useKey) || (opens && spent.has(openKey));
+  spent.add(useKey); if (opens) spent.add(openKey);
+  return was;
+}
+
 async function checkRecords(specs: string, key: string, rows: LedgerRow[], reader?: RoundReader): Promise<Checked> {
   let epoch = 0; let roundTs = 0; let sawReset = false; let sawOverride = false;
   const blocking: Record<Kind, string[]> = { spec: [], plan: [] }; const maxRound: Record<Kind, number> = { spec: 0, plan: 0 }; const classOf = new Map<string, string>();
@@ -870,7 +878,7 @@ async function checkRecords(specs: string, key: string, rows: LedgerRow[], reade
       if (q && !("error" in q) && !approvalSpentByExtension(earlierExtensions, d, q) && q.path === r.decision_path && q.sha === r.decision_sha) { epoch++; blocking.spec = []; blocking.plan = []; latest.spec = []; latest.plan = []; maxRound.spec = 0; maxRound.plan = 0; classOf.clear(); ruled.clear(); }
       else invalid.push(label(r));
     } else if (r.row === "critical") {
-      const d = String(r.decision); const q = await quoteRule(specs, key, d, String(r.quote), usedCritical.has(d), roundTs, reader); usedCritical.add(d); spend(r);
+      const d = String(r.decision); const q = await quoteRule(specs, key, d, String(r.quote), spendCriticalUse(usedCritical, r), roundTs, reader); spend(r);
       if (!("error" in q) && !approvalSpentByExtension(earlierExtensions, d, q) && q.path === r.decision_path && q.sha === r.decision_sha && classOf.get(findingKey(r.id, r.return_sha)) === r.class && !ruled.has(findingKey(r.id, r.return_sha)) && (r.epoch === undefined || Number(r.epoch) === epoch) && [0, Math.max(maxRound.spec, maxRound.plan) + 1].includes(Number(r.opens))) { criticals.push({ row: r, epoch }); ruled.add(findingKey(r.id, r.return_sha)); }
       else invalid.push(label(r));
     } else if (r.row === "override") {
@@ -1475,16 +1483,26 @@ export async function roundOverride(specs: string, key: string, o: { findings: s
 
 export async function roundCritical(specs: string, key: string, o: { finding: string; decision: string; quote: string; noRound: boolean }): Promise<void> {
   needConsole("round-critical");
+  const ids = o.finding.split(",").map(s => s.trim()).filter(Boolean);
+  if (!ids.length) throw new Error("round-critical: --finding is required");
+  const dup = ids.find((id, i) => ids.indexOf(id) !== i);
+  if (dup !== undefined) throw new Error(`round-critical: ${dup} is named twice`);
   await withLedgerLock(specs, key, async () => {
     const rows = await loadLedger(specs, key);
-    const hit = findingOf(rows, o.finding);
-    if (!hit) throw new Error(`round-critical: ${o.finding} is not a finding of ${key}'s rounds`);
-    if (!hit.f.critical) throw new Error(hit.f.critical_refused !== undefined ? `round-critical: '${hit.f.critical_refused}' is not an operator-critical class (${OPERATOR_CRITICAL_CLASSES.join(", ")})` : `round-critical: ${o.finding} carries no operator-critical class`);
-    const q = await quoteRule(specs, key, o.decision, o.quote, rows.some(r => r.row === "critical" && String(r.decision) === o.decision), latestRoundTs(rows));
-    if ("error" in q) throw new Error(`round-critical: ${q.error}`);
-    if (approvalSpentByExtension(rows, o.decision, q)) throw new Error(`round-critical: decision ${o.decision} was already used by a round-extension`);
-    if (rows.checked.criticals.some(r => r.id === o.finding && r.return_sha === hit.return_sha)) throw new Error(`round-critical: ${o.finding} was already ruled on`);
-    await appendRow(specs, key, { row: "critical", epoch: rows.checked.epoch, opens: o.noRound ? 0 : writerRound(rows) + 1, id: o.finding, class: hit.f.critical, decision: o.decision, quote: o.quote, decision_path: q.path, decision_sha: q.sha, return_sha: hit.return_sha });
+    const opens = o.noRound ? 0 : writerRound(rows) + 1;
+    const out: Record<string, unknown>[] = [];
+    for (const [i, id] of ids.entries()) {
+      const hit = findingOf(rows, id);
+      if (!hit) throw new Error(`round-critical: ${id} is not a finding of ${key}'s rounds`);
+      if (!hit.f.critical) throw new Error(hit.f.critical_refused !== undefined ? `round-critical: '${hit.f.critical_refused}' is not an operator-critical class (${OPERATOR_CRITICAL_CLASSES.join(", ")})` : `round-critical: ${id} carries no operator-critical class`);
+      const used = rows.some(r => r.row === "critical" && String(r.decision) === o.decision && (String(r.id) === id || (opens !== 0 && i === 0 && Number(r.opens) === opens)));
+      const q = await quoteRule(specs, key, o.decision, o.quote, used, latestRoundTs(rows));
+      if ("error" in q) throw new Error(`round-critical: ${q.error}`);
+      if (approvalSpentByExtension(rows, o.decision, q)) throw new Error(`round-critical: decision ${o.decision} was already used by a round-extension`);
+      if (rows.checked.criticals.some(r => r.id === id && r.return_sha === hit.return_sha)) throw new Error(`round-critical: ${id} was already ruled on`);
+      out.push({ row: "critical", epoch: rows.checked.epoch, opens: i === 0 ? opens : 0, id, class: hit.f.critical, decision: o.decision, quote: o.quote, decision_path: q.path, decision_sha: q.sha, return_sha: hit.return_sha });
+    }
+    for (const row of out) await appendRow(specs, key, row);
   });
 }
 
@@ -1963,6 +1981,11 @@ function splitParts(text: string, limit = TELEGRAM_PART_LIMIT): string[] {
   }
 }
 
+async function spoolMonitor(root: string, text: string, kind: string | undefined): Promise<void> {
+  await mkdir(join(root, "monitor"), { recursive: true });
+  await appendFile(join(root, "monitor", "outbox.jsonl"), `${JSON.stringify({ text, kind, at: new Date().toISOString() })}\n`, { mode: 0o600 });
+}
+
 export async function routeReply(root: string, chatId: number, text: string, o: { kind?: string; consoleName?: string; dest: string; owedIdentity?: string; legacyIdentity?: string; receiptOnly?: boolean }): Promise<{ cls: MsgClass; parts: number; requests: string[] }> {
   const owedBase = async (): Promise<string> => {
     const legacy = sha256(Buffer.from(`${chatId}\0${o.consoleName}\0${o.legacyIdentity}`));
@@ -1977,20 +2000,18 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
   const { replyViaOutbox } = await import("./poller");
   const kind = o.kind !== undefined && KIND_RE.test(o.kind) ? o.kind : undefined;
   let cls: MsgClass = "escalate"; let logClass: string = "escalate"; let sent = text; let capState = "ok"; let keys = 0; let queued = 0;
+  let unresolved: string[] = [];
   try {
     const table = await loadClassTable();
     const row = resolveKind(table, kind);
     cls = row?.class ?? "escalate";
     if (cls !== "silent") {
       const b = briefTextCounted(text, mirrorRoot(), row?.["ref-word"] ?? "PR");
-      sent = b.text; keys = b.keys;
+      sent = b.text; keys = b.keys; unresolved = b.unresolved;
     }
     if (cls === "monitor" && /salus/i.test(sent)) cls = "escalate";
     if (cls === "escalate" && row && row.cap !== "none" && sent.length > table!.cap) capState = "over-cap-uncut";
-    if (cls === "monitor") {
-      await mkdir(join(root, "monitor"), { recursive: true });
-      await appendFile(join(root, "monitor", "outbox.jsonl"), `${JSON.stringify({ text: sent, kind, at: new Date().toISOString() })}\n`, { mode: 0o600 });
-    }
+    if (cls === "monitor") await spoolMonitor(root, sent, kind);
     logClass = cls;
   } catch (e) {
     console.error(`[chief-route] routing failed, sending the raw text to the operator: ${e instanceof Error ? e.message : e}`);
@@ -2010,6 +2031,7 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
     }
     queued = parts.length;
   }
+  if (unresolved.length) await reportUnresolved(root, chatId, unresolved, o.consoleName, replyViaOutbox);
   if (o.receiptOnly) return { cls, parts: queued, requests };
   const dest = cls === "escalate" ? o.dest : cls === "monitor" ? "monitor" : "none";
   try {
@@ -2017,6 +2039,20 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
     await appendFile(join(root, "route.log"), `${new Date().toISOString()} ${kind ?? "unclassified"} ${logClass} ${dest} ${sent.length} ${keys} ${capState}\n`);
   } catch (e) { console.error(`[chief-route] route log not written: ${e instanceof Error ? e.message : e}`); }
   return { cls, parts: queued, requests };
+}
+
+async function reportUnresolved(root: string, chatId: number, unresolved: string[], consoleName: string | undefined, replyViaOutbox: (root: string, chat: number, text: string, consoleName?: string) => Promise<unknown>): Promise<void> {
+  const named = unresolved.slice(0, 10).join(", ") + (unresolved.length > 10 ? ` and ${unresolved.length - 10} more` : "");
+  const text = `A Telegram line went out with ticket ${unresolved.length > 1 ? "keys" : "key"} ${named} and no title: the title could not be read from the Jira mirror or the Jira CLI on the station, so the line was sent with the bare ${unresolved.length > 1 ? "keys" : "key"}. Blocks: nothing. Do: check the Jira mirror sync and the Jira CLI login on the station`;
+  try {
+    if (/salus/i.test(text)) { await replyViaOutbox(root, chatId, text, consoleName); return; }
+    await spoolMonitor(root, text, "title-unresolved");
+  } catch (e) {
+    console.error(`[chief-route] title-unresolved report not sent: ${e instanceof Error ? e.message : e}`);
+    try {
+      await appendFile(join(root, "route.log"), `${new Date().toISOString()} title-unresolved report-failed none ${text.length} ${unresolved.length} ok\n`);
+    } catch (e2) { console.error(`[chief-route] route log not written: ${e2 instanceof Error ? e2.message : e2}`); }
+  }
 }
 
 export type OwedReceipt = { name: string; message: number; request_id: string; request_hash?: string };
@@ -2286,7 +2322,7 @@ if (import.meta.main) {
         catch (e) { console.error(`[chief-route] queued the Telegram reply but could not speak on ${satellite}: ${e instanceof Error ? e.message : e}`); process.exit(1); }
       }
     } else {
-      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] [--kind <kind>] [--owed <key> --doc <absolute chief doc>] <chat_id | operator> <text> | send-file [--by-request <the operator's request>] <chat_id> <path> [caption] | critic-round-check <verdict-file> <file-the-critic-read> | round-seed --all <specs root> | ledger-verify <verdict-file> [--spec <spec>] [--sign] | closure-pack <KEY> <spec|plan> [--specs <root>] | round-override <KEY> --findings <id,...> --why <line> --chief <session> [--specs <root>] | round-critical <KEY> --finding <id> --decision <d> --quote <words> [--no-round] [--specs <root>] | round-reset <KEY> --decision <d> --quote <words> [--specs <root>] | round-extension <KEY> --findings <id,...> --decision <d> --quote <words> --why <line> --chief <session> [--specs <root>] | fold-list --spec <spec> [--specs <root>] | round-status <KEY> [--specs <root>] [--json] | round-status --all --specs <root> --json | register <inbox> <bucket> <project> | announce <inbox>");
+      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] [--kind <kind>] [--owed <key> --doc <absolute chief doc>] <chat_id | operator> <text> | send-file [--by-request <the operator's request>] <chat_id> <path> [caption] | critic-round-check <verdict-file> <file-the-critic-read> | round-seed --all <specs root> | ledger-verify <verdict-file> [--spec <spec>] [--sign] | closure-pack <KEY> <spec|plan> [--specs <root>] | round-override <KEY> --findings <id,...> --why <line> --chief <session> [--specs <root>] | round-critical <KEY> --finding <id[,id...]> --decision <d> --quote <words> [--no-round] [--specs <root>] | round-reset <KEY> --decision <d> --quote <words> [--specs <root>] | round-extension <KEY> --findings <id,...> --decision <d> --quote <words> --why <line> --chief <session> [--specs <root>] | fold-list --spec <spec> [--specs <root>] | round-status <KEY> [--specs <root>] [--json] | round-status --all --specs <root> --json | register <inbox> <bucket> <project> | announce <inbox>");
       process.exit(1);
     }
   }
