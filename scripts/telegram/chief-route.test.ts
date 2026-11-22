@@ -956,6 +956,13 @@ test("HIMMEL-10583 controls: resolved keys report nothing, two unresolved keys m
   expect(rep).toHaveLength(1);
   expect(rep[0].text).toContain("HIMMEL-7002, HIMMEL-7003");
 
+  const many = Array.from({ length: 300 }, (_, i) => `HIMMEL-${7100 + i}`);
+  const big = await route(["operator", `${many.join(" ")} are stuck`], { env: { HIMMEL_JIRA_CLI: DEAD_CLI } });
+  const bigRep = reports(big.r);
+  expect(bigRep).toHaveLength(1);
+  expect(bigRep[0].text).toContain(`${many.slice(0, 10).join(", ")} and 290 more`);
+  expect(bigRep[0].text.length).toBeLessThan(1000);
+
   const r = root(); writeFileSync(join(r, "monitor"), "a file, so mkdir fails");
   const bad = await route(["operator", "HIMMEL-7002 is stuck"], { r, env: { HIMMEL_JIRA_CLI: DEAD_CLI } });
   expect(bad.code).toBe(0); expect(bad.out.trim()).toBe("escalate");

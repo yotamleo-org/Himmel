@@ -2024,7 +2024,8 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
 }
 
 async function reportUnresolved(root: string, chatId: number, unresolved: string[], consoleName: string | undefined, replyViaOutbox: (root: string, chat: number, text: string, consoleName?: string) => Promise<unknown>): Promise<void> {
-  const text = `A Telegram line went out with ticket ${unresolved.length > 1 ? "keys" : "key"} ${unresolved.join(", ")} and no title: the title could not be read from the Jira mirror or the Jira CLI on the station, so the line was sent with the bare ${unresolved.length > 1 ? "keys" : "key"}. Blocks: nothing. Do: check the Jira mirror sync and the Jira CLI login on the station`;
+  const named = unresolved.slice(0, 10).join(", ") + (unresolved.length > 10 ? ` and ${unresolved.length - 10} more` : "");
+  const text = `A Telegram line went out with ticket ${unresolved.length > 1 ? "keys" : "key"} ${named} and no title: the title could not be read from the Jira mirror or the Jira CLI on the station, so the line was sent with the bare ${unresolved.length > 1 ? "keys" : "key"}. Blocks: nothing. Do: check the Jira mirror sync and the Jira CLI login on the station`;
   try {
     if (/salus/i.test(text)) { await replyViaOutbox(root, chatId, text, consoleName); return; }
     await spoolMonitor(root, text, "title-unresolved");
