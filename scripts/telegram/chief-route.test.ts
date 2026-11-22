@@ -7492,7 +7492,6 @@ test("3f anchor last: a group whose anchor sorts last among its keys, the shape 
   expect(await f3Refusal(f, ["HIMMEL-9801", "HIMMEL-9802", "HIMMEL-9898", anchor]), "a member swapped for another of the same count").toBe(`capped-fold: tickets must declare only HIMMEL-9801, HIMMEL-9802, HIMMEL-9898, ${anchor}`);
 }, S1B);
 
-// ---- A fix that restores a ruling on record closes its reverses-ruling finding, checked by its kind's next round ----
 const RULING = "the park rm keeps its simple placement under the park root";
 const RULING_FILE = `operator, on the park rm: ${RULING}, rule 1.\nIt stays a plain rm.\n`;
 const SPLIT_QUOTE = "rule 1. It stays a plain rm";

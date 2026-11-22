@@ -1638,11 +1638,11 @@ r10628tree() {
     printf '%s\n' "Operator, on HIMMEL-$2: $r10628quote, rule 1." > "$1/specs/decisions/verbatim-decision-1096-park.txt"
 }
 r10628seal() {
-    local sp="$1/specs/designs/HIMMEL-$2-rev.md" n="$3" verdict="$4" sum o
+    local sp="$1/specs/designs/HIMMEL-$2-rev.md" k="$2" n="$3" verdict="$4" sum o
     shift 4
     sum="$(sha256sum "$sp" | cut -d' ' -f1)"
     { printf 'critic return r%s read %s\n' "$n" "$sum"; for l in "$@"; do printf '%s\n' "$l"; done; printf '%s\n' "$verdict"; } > "$sp.critic-spec-r$n.md"
-    o="$(bash "$SEAL" "$sp.critic-spec-r$n.md" "$sp" "$sum" 2>&1)" || fail "R10628-tracker: spec round $n of HIMMEL-$2 did not seal: $o"
+    o="$(bash "$SEAL" "$sp.critic-spec-r$n.md" "$sp" "$sum" 2>&1)" || fail "R10628-tracker: spec round $n of HIMMEL-$k did not seal: $o"
 }
 r10628waiting() { grep -F 'data-section="waiting"' "$v9611out"; }
 kc=456
