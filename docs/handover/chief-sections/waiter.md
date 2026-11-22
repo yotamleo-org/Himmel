@@ -583,7 +583,8 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     (`holds.py asks`, kind `hold-ask-chief`). The operator is not paged for it, at first sight or
     later. Grant it in that turn: run `<command>` plus `--chief-doc <your doc>` with your own
     queue lock held. Or rule it out: tell the worker to wait for the holder's release or to drop
-    the path. Each ask wakes once (`<inbox>.wait.holdasks`). An ask on settings or `.github/`
+    the path. Each ask wakes once (`<inbox>.wait.holdwoke`), an ask an older waiter already
+recorded included. An ask on settings or `.github/`
     (`hold-ask-operator`) wakes nothing. It pages the operator at first sight, and again once
     (`hold-ask-stuck`) if it is still ungranted 30 minutes later. An ask whose key has no live
     worker (no held queue lock names it) and no open PR (no register row of the key on a PR in

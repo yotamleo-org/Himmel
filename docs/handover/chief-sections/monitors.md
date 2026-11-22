@@ -56,8 +56,9 @@ reaches the operator on Telegram, through the same sender as `DENIAL-PAGE`: `HOL
 <path> (held by <holder>). Paste in a real terminal, not a Claude window, and type the path back:
 python3 -I <primary>/scripts/handover/chief-kit/holds.py grant --key <key> --repo <primary> <path>`,
 and once more as `hold-ask-stuck` if still ungranted after 30 minutes. An ask whose key has no live
-worker and no open PR does neither. The record is `<inbox>.wait.holdasks` (one `<key>\t<path>` line
-per ask, written before the wake or send); delete the line to wake or page again.
+worker and no open PR does neither. The records are `<inbox>.wait.holdwoke` for a wake and
+`<inbox>.wait.holdasks` for a page (one `<key>\t<path>` line per ask, written before the wake or
+send); delete the line to wake or page again.
 You can stamp a trust path yourself with the same command plus `--chief-doc <your doc>`.
 
 `workers=<label>:IDLE-HELD` means a held lock with no session transcript activity

@@ -215,7 +215,7 @@
 #                               Seam: CHIEF_WAIT_SILENT_GO.
 #   WAKE hold-ask <KEY> wants <path> (held by <holder>). Grant: <command>   one line per trust-path
 #                               ask the chief may grant (holds.py asks kind hold-ask-chief), on its first
-#                               sight (record <inbox>.wait.holdasks); the tick line follows. It pages
+#                               sight (record <inbox>.wait.holdwoke); the tick line follows. It pages
 #                               nobody. A hold-ask-operator ask is paged to the operator instead, and
 #                               again as hold-ask-stuck once after 30 min ungranted. holds.py drops an
 #                               ask whose key has no live worker and no open PR in the tick's prs=.
@@ -1104,8 +1104,9 @@ stuck_now() {
 
 holdask_file="$inbox.wait.holdasks"
 holdstuck_file="$inbox.wait.holdstuck"
-page_hold_asks() {  # pages each new operator ask, prints one WAKE hold-ask line per new chief ask; succeeds when it printed one
-    local asks key path holder cmd kind end now ptime woke=1
+holdwoke_file="$inbox.wait.holdwoke"
+page_hold_asks() {  # pages each new operator ask, prints one WAKE hold-ask line per chief ask not yet woken; succeeds when it printed one
+    local asks key path holder cmd kind end now ptime first woke=1
     asks="$(timeout -k 2 20 python3 -I "$HERE/holds.py" asks --repo "$REPO" --open-prs "$(field prs "$tick_line")" 2>/dev/null </dev/null 9>&-)" || return 1  # gnu-ok: Linux-only kit; swallow-ok: an unreadable register wakes and pages nothing this sample, the next one asks again
     end=$(( $(date +%s) + page_timeout ))
     now="$(stuck_now)"
@@ -1114,17 +1115,22 @@ page_hold_asks() {  # pages each new operator ask, prints one WAKE hold-ask line
         case "$kind" in hold-ask-chief) ;; *) kind=hold-ask-operator ;; esac
         ptime=""
         [ ! -f "$holdask_file" ] || ptime="$(awk -F'\t' -v k="$key" -v p="$path" '$1 == k && $2 == p { print ($3 ~ /^[0-9]+$/ ? $3 : 0); exit }' "$holdask_file")"
+        first=""
         if [ -z "$ptime" ]; then
             printf '%s\t%s\t%s\n' "$key" "$path" "$(date +%s)" >> "$holdask_file"
-            if [ "$kind" = hold-ask-chief ]; then
-                printf 'WAKE hold-ask %s wants %s (held by %s). Grant: %s\n' "$key" "$path" "$holder" "$cmd"
-                woke=0
-                continue
-            fi
+            first=1
+        fi
+        if [ "$kind" = hold-ask-chief ]; then
+            ! grep -qxF -- "$key"$'\t'"$path" "$holdwoke_file" 2>/dev/null || continue
+            printf '%s\t%s\n' "$key" "$path" >> "$holdwoke_file"
+            printf 'WAKE hold-ask %s wants %s (held by %s). Grant: %s\n' "$key" "$path" "$holder" "$cmd"
+            woke=0
+            continue
+        fi
+        if [ -n "$first" ]; then
             page_send "HOLD-ASK $key wants $path (held by $holder). Paste in a real terminal, not a Claude window, and type the path back: $cmd" "$end" "$kind"
             continue
         fi
-        [ "$kind" = hold-ask-operator ] || continue
         [ $(( now - ptime )) -ge "$stuck_secs" ] || continue
         ! grep -qxF -- "$key"$'\t'"$path" "$holdstuck_file" 2>/dev/null || continue
         printf '%s\t%s\n' "$key" "$path" >> "$holdstuck_file"

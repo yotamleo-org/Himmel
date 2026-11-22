@@ -554,6 +554,7 @@ hask_tick
 I_SEED="$(new_inbox s3)"; printf 'PROJ-9012\tscripts/check-ci.sh\t%s\n' "$NOW_R" > "$I_SEED.wait.holdasks"
 HOME="$H_T" HIMMEL_TEST_FIXTURE=1 CHIEF_WAIT_NOW=$((NOW_R + 30 * 60)) CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run s3 --workers "N1.md"
 check "(10632a) the 03:54 chief-grantable ask, ungranted at 04:24, pages the operator nothing" "0" "$(pk_n)"
+check "(10632a) ... an ask an older waiter recorded still wakes the chief once" "WAKE hold-ask PROJ-9012" "$(hask_wake s3)"
 H_TO="$(hask_home t0354o PROJ-9012 .github/workflows/ci.yml PROJ-8992)"
 hask_tick
 I_SEED="$(new_inbox s3o)"; printf 'PROJ-9012\t.github/workflows/ci.yml\t%s\n' "$NOW_R" > "$I_SEED.wait.holdasks"

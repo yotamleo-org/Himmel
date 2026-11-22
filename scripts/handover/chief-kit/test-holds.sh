@@ -1152,6 +1152,13 @@ same "9186 summary: with no open PR the pr row is stale too (2), no other count 
 D9626="$(mkdoc PROJ-9626-case.md)"
 run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10" --open-prs '#4702'
 same "10632 an ask whose asker has no lock and no row on an open PR is dropped" "$RC:$OUT" "0:"
+printf 'PROJ-9626\tlab\n' > "$(rowf scripts/s9626b.sh "$R10")"
+run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10" --open-prs '#4702'
+same "10632 an unparseable row of the asker's key keeps the ask" "$RC:$(printf '%s' "$OUT" | cut -f1)" "0:PROJ-9626"
+printf 'junk\n' > "$(rowf scripts/s9626b.sh "$R10")"
+run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10" --open-prs '#4702'
+same "10632 an unparseable row whose key cannot be read keeps every ask" "$RC:$(printf '%s' "$OUT" | cut -f1)" "0:PROJ-9626"
+rm -f "$(rowf scripts/s9626b.sh "$R10")"
 put_row scripts/s9626.sh PROJ-9626 lab "$D9626" pr 4702 "$R10"
 run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10" --open-prs '#4702'
 same "10632 the asker's row on an open PR keeps the ask" "$RC:$(printf '%s' "$OUT" | cut -f1,5)" "$(printf '0:PROJ-9626\thold-ask-chief')"

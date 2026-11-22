@@ -1733,8 +1733,14 @@ def asker_gone(repo, keys, open_prs):
             if n.startswith(TMP_PREFIX) or GRANT_RE.search(n):
                 continue
             st, f = read_row(os.path.join(d, n))
-            if st == 'ok' and f[0] in gone and f[4] and f[4] in open_prs:
-                gone.discard(f[0])
+            if st == 'ok':
+                if f[0] in gone and f[4] and f[4] in open_prs:
+                    gone.discard(f[0])
+            elif st in ('bad', 'err'):
+                k = row_key(os.path.join(d, n))
+                if k == '?':
+                    return set()
+                gone.discard(k)
     return gone
 
 
