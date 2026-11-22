@@ -54,8 +54,7 @@ def spool_lock(fd):
             time.sleep(0.05)
 
 
-def spool_open(path, flags):
-    """An fd holding the spool lock on the file the path names now; a --drop may replace it while we wait."""
+def spool_lock_current(path, flags):
     while True:
         fd = os.open(path, flags, 0o600)
         try:
@@ -91,7 +90,6 @@ def spool_write(fd, data, at):
 
 
 def spool_append(fd, data):
-    """Append whole rows on a fresh line; on any error the file is cut back to its size before the call."""
     size = os.fstat(fd).st_size
     if size and os.pread(fd, 1, size - 1) != b'\n':
         data = b'\n' + data
@@ -107,7 +105,6 @@ def spool_line(row):
 
 
 def spool_lines(data):
-    """(line number, bytes) for every line, a torn last line included."""
     parts = data.split(b'\n')
     if parts[-1] == b'':
         parts.pop()
@@ -140,9 +137,8 @@ def spool_row(line):
 
 
 def spool_edit(opt, drop):
-    """--check (drop empty) or --drop under the lock; line numbers count from the file before any removal."""
     try:
-        fd = spool_open(opt.spool, os.O_RDONLY)
+        fd = spool_lock_current(opt.spool, os.O_RDONLY)
     except FileNotFoundError:
         if drop:
             print('owed-events spool: ' + opt.spool + ' does not exist', file=sys.stderr)
@@ -222,7 +218,7 @@ def spool_main(argv):
         return 0
     try:
         os.makedirs(os.path.dirname(os.path.abspath(opt.spool)), exist_ok=True)
-        fd = spool_open(opt.spool, os.O_RDWR | os.O_CREAT)
+        fd = spool_lock_current(opt.spool, os.O_RDWR | os.O_CREAT)
     except OSError as exc:
         print('owed-events spool: ' + opt.spool + ': ' + str(exc), file=sys.stderr)
         return 4
@@ -237,14 +233,13 @@ def spool_main(argv):
 
 
 def drain(owe, bucket, spool, project, chief, handover_root):
-    """Move this project's spooled rows into the bucket's ledger; returns the spool_bad list."""
     if not (spool and project and handover_root):
         return []
     real_bucket, real_root = os.path.realpath(bucket), os.path.realpath(handover_root)
     if os.path.commonpath([real_bucket, real_root]) != real_root:
         return []
     try:
-        fd = spool_open(spool, os.O_RDWR)
+        fd = spool_lock_current(spool, os.O_RDWR)
     except FileNotFoundError:
         return []
     except OSError:

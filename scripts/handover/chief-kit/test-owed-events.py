@@ -168,8 +168,6 @@ C1_IDENTITY = '3f3f4ec150b23a8663fcf2697a4bc338be1d1388a434b4e144c3e27bcb616cd7'
 
 
 class SpoolDrain(unittest.TestCase):
-    """The station spool a merge writes and the tick drains into its own ledger, scratch only."""
-
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
