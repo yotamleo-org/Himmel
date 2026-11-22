@@ -3608,6 +3608,7 @@
         "status-sweep": "Jira status sweep moved or missed tickets: operational",
         "resolve": "a worker's BLOCKED resolve marker: the chief resolves the thread itself, not a workflow decision",
         "worker-silent": "a worker gone quiet: the chief relaunches it or takes over its one blocked step, operational triage",
+        "hold-ask": "a worker's denied trust-path write the chief may grant: the chief runs the printed grant or rules the ask out, operational triage",
         "silent-go": "a GO'd PR whose worker went silent: the waiter merged it through merge-on-green.sh --go, or held it and paged, operational triage",
         "unclosed": "a worker window left open on two ticks with no disposition bullet: the chief closes it, parks it with a named wake or gives it up with a reason, operational triage",
         "owed-undelivered": "an operator-owed item with no Telegram delivery receipt after 5 minutes: the chief sends it with the receipt command or tells the operator another way, operational triage",

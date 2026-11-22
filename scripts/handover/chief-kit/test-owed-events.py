@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Distinct accepted due clocks and durable acknowledgements, scratch only."""
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -141,6 +142,16 @@ class DueEvents(unittest.TestCase):
         self.assertEqual(result['pending'], [notes[1]['id']])
         self.assertEqual(result['stale_ids'], [new])  # the acknowledged old row is silent, though it stays open and overdue
         self.settle_notification(new, [notes[1]['id']])
+
+    def test_stale_ids_split_by_kind_and_their_union_keeps_the_order(self):
+        step = self.step('2026-11-16')
+        ticket = subprocess.check_output(
+            ['bash', str(HERE / 'owe.sh'), 'add', '--chief', 'old-chief', '--kind', 'ticket', '--text', 'file the lost bug',
+             '--bucket', str(self.b)], text=True, env={**os.environ, 'OWE_NOW_EPOCH': str(self.now - 5 * 3600)}).strip()
+        event = self.run_events()
+        self.assertEqual(event['stale_step_ids'], [step])
+        self.assertEqual(event['stale_ticket_ids'], [ticket])
+        self.assertEqual(event['stale_ids'], [step, ticket])
 
 
 if __name__ == '__main__':

@@ -928,6 +928,58 @@ test("R1.12 a CLI reply with a sandbox BRIDGE_ROOT and HOME writes route.log und
   expect(walk(x.home).filter((p) => p.endsWith("route.log"))).toEqual([]);
 });
 
+const cliStub = (name: string, body: string): string => { const f = join(mkdtempSync(join(tmpdir(), "chief-route-cli-")), name); writeFileSync(f, body); return f; };
+const DEAD_CLI = cliStub("dead.js", `process.stderr.write("jira: 401\\n"); process.exit(1);`);
+const HANG_CLI = cliStub("hang.js", `setInterval(() => {}, 1000);`);
+const reports = (r: string) => spool(r).filter((m) => m.kind === "title-unresolved");
+
+test("HIMMEL-10583 a line whose ticket title cannot be read goes out with the bare key and one title-unresolved report names the key", async () => {
+  for (const cli of [DEAD_CLI, HANG_CLI]) {
+    const x = await route(["operator", "HIMMEL-7002 is stuck"], { env: { HIMMEL_JIRA_CLI: cli } });
+    expect(x.code).toBe(0);
+    expect(operatorOutbox(x.r).map((m) => m.text)).toEqual(["HIMMEL-7002 is stuck"]);
+    const rep = reports(x.r);
+    expect(rep).toHaveLength(1);
+    expect(rep[0].text).toContain("HIMMEL-7002");
+    expect(rep[0].text).not.toMatch(/not readable on the station/);
+  }
+});
+
+test("HIMMEL-10583 controls: resolved keys report nothing, two unresolved keys make one report, a failed report send never blocks the line", async () => {
+  const ok = await route(["operator", "HIMMEL-9503 is stuck"], { env: { HIMMEL_JIRA_CLI: DEAD_CLI } });
+  expect(operatorOutbox(ok.r)).toHaveLength(1);
+  expect(reports(ok.r)).toEqual([]);
+
+  const two = await route(["operator", "HIMMEL-7002 and HIMMEL-7003 are stuck"], { env: { HIMMEL_JIRA_CLI: DEAD_CLI } });
+  expect(operatorOutbox(two.r).map((m) => m.text)).toEqual(["HIMMEL-7002 and HIMMEL-7003 are stuck"]);
+  const rep = reports(two.r);
+  expect(rep).toHaveLength(1);
+  expect(rep[0].text).toContain("HIMMEL-7002, HIMMEL-7003");
+
+  const many = Array.from({ length: 300 }, (_, i) => `HIMMEL-${7100 + i}`);
+  const big = await route(["operator", `${many.join(" ")} are stuck`], { env: { HIMMEL_JIRA_CLI: DEAD_CLI } });
+  const bigRep = reports(big.r);
+  expect(bigRep).toHaveLength(1);
+  expect(bigRep[0].text).toContain(`${many.slice(0, 10).join(", ")} and 290 more`);
+  expect(bigRep[0].text.length).toBeLessThan(1000);
+
+  const r = root(); writeFileSync(join(r, "monitor"), "a file, so mkdir fails");
+  const bad = await route(["operator", "HIMMEL-7002 is stuck"], { r, env: { HIMMEL_JIRA_CLI: DEAD_CLI } });
+  expect(bad.code).toBe(0); expect(bad.out.trim()).toBe("escalate");
+  expect(operatorOutbox(r).map((m) => m.text)).toEqual(["HIMMEL-7002 is stuck"]);
+  expect(routeLog(r).some((l) => / title-unresolved report-failed /.test(l))).toBe(true);
+});
+
+test("HIMMEL-10583 a report that names a salus key goes to the operator chat, never the monitoring group", async () => {
+  const x = await route(["operator", "SALUS-1 is stuck"], { env: { HIMMEL_JIRA_CLI: DEAD_CLI, JIRA_PROJECT_KEY: "SALUS" } });
+  expect(x.code).toBe(0);
+  expect(spool(x.r)).toEqual([]);
+  const sent = operatorOutbox(x.r).map((m) => m.text);
+  expect(sent[0]).toBe("SALUS-1 is stuck");
+  expect(sent).toHaveLength(2);
+  expect(sent[1]).toContain("SALUS-1");
+});
+
 // Every malformed reserved fleet shape is a terminal refusal.
 const malformed = ["/go foo..bar", "/go ../escape", "/push a..b", "/halt a/b", "/go a\\b", `/go ${"a".repeat(65)}`, "/push a\u0000b", "/halt a\nb", "/go", "/push", "/go a b", "/halt a b", "/fleet now", "/workers x", "/go  foo", "/push foo‮"];
 
@@ -3141,6 +3193,42 @@ test("round override nonblocking hint preserves refusal and names the normal ver
   expect(held.err).not.toContain("verified carry");
 }, S1B);
 
+const QUOTE_OLD = "# A\n\nthe realpath of the primary checkout is read by cd and pwd\n";
+const QUOTE_NEW = "# A\n\nthe realpath of the primary checkout, resolved by realpath -e\n";
+const QUOTED = "the realpath of the primary checkout, resolved by";
+const closureTree = async (plan3: string[] = []) => {
+  const t = await roundTree(MAJOR, plan3, false, [], QUOTE_OLD);
+  writeFileSync(t.a, front(CAP_KEY, QUOTE_NEW));
+  return t;
+};
+const overrideOf = (specs: string, ids: string) => verb(true, "round-override", CAP_KEY, "--findings", ids, "--why", "a regression the fix made", "--chief", "chief-x", "--specs", specs);
+
+test("a closure return whose regression heading holds its quote inside the parenthesis is a blocking regression the override can name; a minor finding in it is still refused", async () => {
+  const t = await closureTree();
+  const lines = [`- **P1** (major; regression \`${QUOTED}\`) the fix did not resolve the path`, "- **n1** (minor) a note"];
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 2", ...lines)).err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1).findings).toMatchObject([{ id: "P1", severity: "major", regression: true, class: "regression" }, { id: "n1", class: "out-of-closure" }]);
+  const minor = await overrideOf(t.specs, "n1");
+  expect(minor.err).toContain(`round-override: n1 is not an open blocking finding of ${CAP_KEY}'s latest round`); expect(minor.code).not.toBe(0);
+  const ok = await overrideOf(t.specs, "P1");
+  expect(ok.err).toBe(""); expect(ok.code).toBe(0);
+  expect(rowsOf(t.specs, "override")).toMatchObject([{ round_opened: 5, findings: [{ id: "P1", severity: "major", critic: "spec" }] }]);
+});
+
+test("a quote with a semicolon inside the parenthesis, and a reopens heading with a quote, still read as their tags", async () => {
+  const { parseFindings } = await import("./chief-route");
+  const got = parseFindings(["- **P1** (major; regression `a; b; c`) x", "- **P2** (major; reopens M1 `the quoted line`) y", "- **P3** (major; regression) z", "- **P4** (minor; operator-critical: spend-grant `q`) w", "SPEC FINDINGS 4"].join("\n"), "spec", 4);
+  expect(got.findings).toEqual([{ id: "P1", severity: "major", regression: true }, { id: "P2", severity: "major", reopens: "M1" }, { id: "P3", severity: "major", regression: true }, { id: "P4", severity: "minor", critical: "spend-grant" }]);
+});
+
+test("an ordinary full-mode major finding of the lagging kind is still an open blocking finding next to a closure return", async () => {
+  const t = await closureTree(["- **P1** (major) a plan finding still open"]);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", `- **R1** (major; regression \`${QUOTED}\`) a fault`)).err).toBe("");
+  const ok = await overrideOf(t.specs, "P1,R1");
+  expect(ok.err).toBe(""); expect(ok.code).toBe(0);
+  expect(rowsOf(t.specs, "override")).toMatchObject([{ findings: [{ id: "P1", critic: "plan" }, { id: "R1", critic: "spec" }] }]);
+});
+
 test("R5b: a round whose findings carry no format line holds synthetic ids the override can name", async () => {
   const t = await roundTree(MAJOR, []);
   expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "prose, no finding line")).err).toBe("");
@@ -3169,6 +3257,66 @@ test("R6, R6c, R6d: round-critical needs the console, a decision naming the tick
   const reused = await critical(true, t.specs, "C1", 901, SPEND);
   expect(reused.err).toContain(`round-critical: decision 901 was already used for ${CAP_KEY}`); expect(reused.code).not.toBe(0);
 }, S1B);
+
+const threeCriticals = async () => {
+  const t = await roundTree(["- **F5** (major; operator-critical: spend-grant) grants a spend", "- **C6** (major; operator-critical: public-policy) sets a policy", "- **H3** (major; operator-critical: reverses-ruling) reverses a ruling"], []);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **X1** (major) still open")).err).toBe("");
+  return t;
+};
+const critRows = (specs: string) => rowsOf(specs, "critical");
+
+test("multi-finding round-critical: one decision rules F5, C6 and H3 in one call, opens round 5 once, and the ledger reads three valid rows", async () => {
+  const t = await threeCriticals(); decide(t.specs, 1205, `${CAP_KEY} operator: ${SPEND}\n`);
+  const r = await critical(true, t.specs, "F5,C6,H3", 1205, SPEND);
+  expect(r.err).toBe(""); expect(r.code).toBe(0);
+  expect(critRows(t.specs).map((x) => [x.id, x.decision, x.opens])).toEqual([["F5", "1205", 5], ["C6", "1205", 0], ["H3", "1205", 0]]);
+  const s = await status(t.specs); expect(s.critical_open).toEqual([]);
+  expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out).not.toContain("invalid");
+  expect((await closeOn(t, "spec", 5, [t.a], "SPEC CLEAN")).err).toBe("");
+  const again = await critical(true, t.specs, "F5", 1205, SPEND);
+  expect(again.err).toContain(`round-critical: decision 1205 was already used for ${CAP_KEY}`); expect(again.code).not.toBe(0);
+  expect(critRows(t.specs).length).toBe(3);
+});
+
+test("multi-finding round-critical: a list is refused whole when the decision does not name the ticket or one id is bad, and a duplicate id", async () => {
+  const t = await threeCriticals(); decide(t.specs, 1205, `${CAP_KEY} operator: ${SPEND}\n`); decide(t.specs, 1206, `no ticket here: ${SPEND}\n`);
+  const named = await critical(true, t.specs, "F5,C6,H3", 1206, SPEND);
+  expect(named.err).toContain(`round-critical: decision 1206 does not name ${CAP_KEY}`); expect(named.code).not.toBe(0);
+  const unknown = await critical(true, t.specs, "F5,ZZ9", 1205, SPEND);
+  expect(unknown.err).toContain("ZZ9 is not a finding"); expect(unknown.code).not.toBe(0);
+  const dup = await critical(true, t.specs, "F5,F5", 1205, SPEND);
+  expect(dup.err).toContain("F5 is named twice"); expect(dup.code).not.toBe(0);
+  expect(critRows(t.specs)).toEqual([]);
+  expect((await critical(true, t.specs, "F5", 1205, SPEND, "--no-round")).err).toBe("");
+  const ruled = await critical(true, t.specs, "C6,F5", 1205, SPEND);
+  expect(ruled.code).not.toBe(0); expect(critRows(t.specs).length).toBe(1);
+  const minor = await roundTree(["- **S1** (minor; operator-critical: security) a note", "- **C1** (minor; operator-critical: spend-grant) a spend"], []);
+  decide(minor.specs, 1205, `${CAP_KEY} operator: ${SPEND}\n`);
+  const cls = await critical(true, minor.specs, "C1,S1", 1205, SPEND);
+  expect(cls.err).toContain(T7("security")); expect(cls.code).not.toBe(0); expect(critRows(minor.specs)).toEqual([]);
+});
+
+test("multi-finding round-critical: a decision used for another finding may open the round once, and a second record opening the same round is refused", async () => {
+  const t = await threeCriticals(); decide(t.specs, 1205, `${CAP_KEY} operator: ${SPEND}\n`);
+  expect((await critical(true, t.specs, "F5", 1205, SPEND, "--no-round")).err).toBe("");
+  const open = await critical(true, t.specs, "C6", 1205, SPEND);
+  expect(open.err).toBe(""); expect(open.code).toBe(0);
+  expect(critRows(t.specs).map((x) => [x.id, x.opens])).toEqual([["F5", 0], ["C6", 5]]);
+  const twice = await critical(true, t.specs, "H3", 1205, SPEND);
+  expect(twice.err).toContain(`round-critical: decision 1205 was already used for ${CAP_KEY}`); expect(twice.code).not.toBe(0);
+  expect((await critical(true, t.specs, "H3", 1205, SPEND, "--no-round")).err).toBe("");
+  expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out).not.toContain("invalid");
+});
+
+test("multi-finding round-critical: read side agrees: three hand-built rows of one decision are valid, a repeated (decision, finding) is invalid", async () => {
+  const t = await threeCriticals(); const d = decide(t.specs, 1205, `${CAP_KEY} operator: ${SPEND}\n`);
+  expect((await critical(true, t.specs, "F5,C6,H3", 1205, SPEND)).err).toBe("");
+  const rows = critRows(t.specs); expect(rows.length).toBe(3);
+  expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out).not.toContain("invalid");
+  appendFileSync(join(roundsDir(t.specs), `${CAP_KEY}.jsonl`), `${JSON.stringify({ ...rows[1], ts: Date.now(), opens: 0 })}\n`);
+  expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out).toContain("invalid: critical 1205");
+  expect(d).toContain("verbatim-decision-1205");
+});
 
 test("R7 (control), R6b: a tag outside the four classes opens nothing (T7); a minor spend-grant finding opens round 4 by itself, where the same fixture without the record gives T1", async () => {
   const t = await roundTree(["- **S1** (minor; operator-critical: security) a note"], []);
@@ -6127,7 +6275,7 @@ const x3Verdict = (text: string, keep: readonly string[]) => ({
 const X3_ROUTE_KEEP = [
   "const APPROVALS_FILE = \"outside-pr-approvals.jsonl\";",
   "const manifestFile = (specs: string) => join(ledgerDirOf(specs), \"manifest.json\");",
-  "      await appendFile(join(root, \"monitor\", \"outbox.jsonl\"), `${JSON.stringify({ text: sent, kind, at: new Date().toISOString() })}\\n`, { mode: 0o600 });",
+  "  await appendFile(join(root, \"monitor\", \"outbox.jsonl\"), `${JSON.stringify({ text, kind, at: new Date().toISOString() })}\\n`, { mode: 0o600 });",
   "      const file = join(root, \"sessions\", chat < 0 ? `group_${chat}` : \"__chat__\", \"outbox.jsonl\");",
 ] as const;
 const X3_LIB_KEEP = ["  if (await stat(join(ledgerDirOf(specsRoot), 'manifest.json')).then(() => true, () => false)) await roundSeed(specsRoot);"] as const;

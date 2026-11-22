@@ -3,8 +3,6 @@
 # Bash 3.2 safe. Hermetic: a throwaway git repo and a
 # recording stub in place of ledger-append.sh; one row runs the real writer.
 #
-# Statechart rows: S2 (no tag on a [context] finding), S3 (rounds 2 and 3
-# only). Invariant I1 (a Critical is never tagged, so never deferred).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -86,19 +84,16 @@ findings='## Critical Issues (1 found)
 ## Suggestions (1 found)
 - [codex-9]: sug on base code [a.txt:8]'
 
-# run_tag <round> [extra args...]: findings on stdin, tagged text in $out.
 run_tag() {
     rm -f "$AMEND_LOG"
-    _round="$1"; shift
-    out="$( (cd "$repo" && printf '%s\n' "$findings" | python3 -I "$TAG" --round "$_round" --head "$p2" --db-sha "$db_sha" \
+    out="$( (cd "$repo" && printf '%s\n' "$findings" | python3 -I "$TAG" --head "$p2" --db-sha "$db_sha" \
         --branch feature --ledger-append "$stub" "$@") 2>"$tmp/err" )"; rc=$?
     err="$(cat "$tmp/err")"
     amends="$(cat "$AMEND_LOG" 2>/dev/null)"
 }
 
-# --- the second round with a delta start point ------------------------------
-run_tag 2 --from "$p1"
-assert_eq "$rc" "0" "T1 round 2 exits 0 ($err)"
+run_tag --increment --from "$p1"
+assert_eq "$rc" "0" "T1 an increment round exits 0 ($err)"
 assert_has "$out" "- [codex-2]: imp on base code far from the change [pre-existing] [a.txt:8]" "T1 an Important on base code outside every hunk gets [pre-existing]"
 assert_has "$amends" "amend --branch feature --head $p2 --id codex-2 --set pre_existing=true" "T1 the tag is recorded as an amend with the pre_existing field"
 assert_has "$out" "- [codex-12]: imp on base code far from the deletion [pre-existing] [b.txt:9]" "T1 base code outside a deletion hunk's window is [pre-existing]"
@@ -122,9 +117,8 @@ assert_has "$out" "- [codex-8]: imp with a symbol citation [a.txt#base2]" "T1 a 
 assert_has "$out" "- [codex-9]: sug on base code [a.txt:8]" "T1 a Suggestion is untouched"
 assert_has "$out" "## Important Issues (10 found)" "T1 headings pass through"
 
-# --- the third round without a start point: [pre-existing] still works, no [outside-delta]
-run_tag 3
-assert_has "$out" "[codex-2]: imp on base code far from the change [pre-existing] [a.txt:8]" "T2 round 3 tags [pre-existing]"
+run_tag --increment
+assert_has "$out" "[codex-2]: imp on base code far from the change [pre-existing] [a.txt:8]" "T2 a full round after round 1 tags [pre-existing]"
 assert_lacks "$out" "[outside-delta]" "T2 without a delta there is nothing to be outside of"
 assert_has "$out" "- [codex-10]: imp on an unchanged context line of the delta hunk [a.txt:3]" "T2 a context line of the whole-PR diff is not tagged either"
 assert_has "$out" "- [codex-11]: imp on a context line beside a deletion-only hunk [b.txt:4]" "T2 a deletion-only hunk's neighbour is not tagged either"
@@ -132,20 +126,20 @@ assert_has "$out" "- [codex-11]: imp on a context line beside a deletion-only hu
 # --- the repository's own diff.context: the panel's plain git diff reads it, so the tagger must too.
 # With diff.context=10 the delta hunk of a.txt shows lines 1..11, so base line 8 was shown.
 git -C "$repo" config diff.context 10
-run_tag 2 --from "$p1"
+run_tag --increment --from "$p1"
 git -C "$repo" config diff.context 3
 assert_has "$out" "- [codex-2]: imp on base code far from the change [a.txt:8]" "T2b a line shown through the repository's diff.context is NOT tagged"
 assert_eq "$amends" "" "T2b a line shown through diff.context earns no amend"
 
-# --- rounds 1 and 4 never tag, never amend (S3) ------------------------------
-for r in 1 4 5; do
-    run_tag "$r" --from "$p1"
-    assert_eq "$out" "$findings" "T3 round $r passes the findings through unchanged (S3)"
-    assert_eq "$amends" "" "T3 round $r writes no amend (S3)"
-done
+run_tag --from "$p1"
+assert_eq "$out" "$findings" "T3 without --increment the findings pass through unchanged (S3)"
+assert_eq "$amends" "" "T3 without --increment no amend is written (S3)"
+run_tag --increment --from "$p1"
+assert_has "$out" "[codex-2]: imp on base code far from the change [pre-existing] [a.txt:8]" "10578 tag-on-increment-flag: --increment tags whatever the round"
+assert_has "$amends" "--id codex-2 --set pre_existing=true" "10578 tag-on-increment-flag: --increment writes the amend"
 
 # --- a failed amend leaves the finding untagged (it keeps blocking) -----------
-FAKE_AMEND_RC=1 run_tag 2 --from "$p1"
+FAKE_AMEND_RC=1 run_tag --increment --from "$p1"
 assert_has "$out" "- [codex-2]: imp on base code far from the change [a.txt:8]" "T4 a refused amend leaves the finding untagged"
 assert_lacks "$out" "[pre-existing]" "T4 no tag without the ledger field"
 assert_has "$err" "codex-2" "T4 the refusal names the finding on stderr"
@@ -157,14 +151,14 @@ cp "$HERE/ledger-append.sh" "$HERE/anchor-handoff.sh" "$HERE/known-findings.json
 led="$tmp/real-ledger.jsonl"
 CR_LEDGER="$led" bash "$real/ledger-append.sh" finding --branch feature --head "$p2" --model codex --id codex-2 --severity imp --file a.txt --line 8 --verdict "" >/dev/null 2>&1
 rm -f "$AMEND_LOG"
-out="$( (cd "$repo" && printf '%s\n' "$findings" | CR_LEDGER="$led" python3 -I "$TAG" --round 2 --head "$p2" --db-sha "$db_sha" \
+out="$( (cd "$repo" && printf '%s\n' "$findings" | CR_LEDGER="$led" python3 -I "$TAG" --increment --head "$p2" --db-sha "$db_sha" \
     --branch feature --from "$p1" --ledger-append "$real/ledger-append.sh") 2>"$tmp/err" )"; rc=$?
 assert_eq "$rc" "0" "T5 the real writer: exit 0 ($(cat "$tmp/err"))"
 assert_has "$out" "[codex-2]: imp on base code far from the change [pre-existing] [a.txt:8]" "T5 the real writer: tagged"
 assert_has "$(cat "$led")" '"pre_existing":true' "T5 the real writer: the amend row carries pre_existing true"
 
 # --- usage ---------------------------------------------------------------------
-python3 -I "$TAG" --round 2 </dev/null >/dev/null 2>&1
+python3 -I "$TAG" --increment </dev/null >/dev/null 2>&1
 assert_eq "$?" "2" "T6 missing --head/--db-sha/--branch is a usage error"
 
 if [ "$fail" -eq 0 ]; then echo "PASS test-critic-pre-existing-tag"; else echo "FAILURES in test-critic-pre-existing-tag"; exit 1; fi

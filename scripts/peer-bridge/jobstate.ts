@@ -61,7 +61,7 @@ const startOfLocalDay = (nowS: number): number => { const d = new Date(nowS * 10
 export function remaining(records: JobRecord[], budgets: Budgets, now: number): { jobs: number; vmMinutes: number } {
   const day = startOfLocalDay(now);
   const mine = records.filter(r => r.dir === "in");
-  const jobs = mine.filter(r => (r.resolved_at ?? -1) >= day).length;
+  const jobs = mine.filter(r => (r.resolved_at ?? (r.state === "RECEIVED" ? r.created : -1)) >= day).length;
   const today = (r: JobRecord): number => r.running_at === undefined ? 0 : Math.max(0, Math.min(r.ended_at ?? now, now) - Math.max(r.running_at, day));
   const used = mine.reduce((n, r) => n + Math.ceil(today(r) / 60), 0);
   return { jobs: Math.max(0, budgets.jobsPerDay - jobs), vmMinutes: Math.max(0, budgets.vmMinutesPerDay - used) };

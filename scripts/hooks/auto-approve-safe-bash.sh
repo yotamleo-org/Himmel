@@ -1793,6 +1793,64 @@ cmd_is_shell_unit_runner() {
     impacted_suites_is_anchored "$root" scripts/quiet-run.sh scripts/ci/run-shell-tests.sh
 }
 
+PJ_SUITE_RE='^scripts\/[a-z0-9_/.-]{1,120}\.sh$'
+PJ_PEER_RE='^[a-z0-9][a-z0-9-]{0,31}$'
+PJ_SHA_RE='^[0-9a-f]{40}$'
+PJ_JOB_RE='^J[0-9]{1,9}$'
+PJ_PATH_RE='^/[A-Za-z0-9._/+-]+$'
+segment_is_peer_jobs() {
+    local LC_ALL=C c="$1" n i want cwd repo f
+    case "$c" in *[![:print:]]*|' '*|*' '|*'  '*) return 1 ;; esac
+    local -a a
+    read -r -a a <<<"$c"
+    n=${#a[@]}
+    [ "$n" -ge 3 ] || return 1
+    case "${a[2]}" in
+        request)
+            [ "$n" -ge 9 ] && [ "$n" -le 27 ] && [ $(((n - 7) % 2)) -eq 0 ] || return 1
+            [[ "${a[3]}" =~ $PJ_PEER_RE ]] && [ "${a[4]}" = run-suite ] && [ "${a[5]}" = --sha ] && [[ "${a[6]}" =~ $PJ_SHA_RE ]] || return 1
+            i=7
+            while [ "$i" -lt "$n" ]; do
+                [ "${a[$i]}" = --suite ] && [[ "${a[$((i + 1))]}" =~ $PJ_SUITE_RE ]] || return 1
+                case "${a[$((i + 1))]}" in *..*) return 1 ;; esac
+                i=$((i + 2))
+            done ;;
+        capacity|halt) [ "$n" -eq 4 ] && [[ "${a[3]}" =~ $PJ_PEER_RE ]] || return 1 ;;
+        cancel|show) [ "$n" -eq 4 ] && [[ "${a[3]}" =~ $PJ_JOB_RE ]] || return 1 ;;
+        list) [ "$n" -eq 3 ] || { [ "$n" -eq 5 ] && [ "${a[3]}" = --peer ] && [[ "${a[4]}" =~ $PJ_PEER_RE ]]; } || return 1 ;;
+        *) return 1 ;;
+    esac
+    [[ "${a[0]}" =~ $PJ_PATH_RE ]] && [[ "${a[1]}" =~ $PJ_PATH_RE ]] || return 1
+    case "${a[0]}/" in */bun/) ;; *) return 1 ;; esac
+    for f in "${a[0]}/" "${a[1]}/"; do
+        case "$f" in *//*|*/./*|*/../*) return 1 ;; esac
+    done
+    want=$(command -v bun) || return 1
+    [ -f "${a[0]}" ] && [ -x "${a[0]}" ] && [ "${a[0]}" -ef "$want" ] || return 1
+    repo="${HIMMEL_REPO:-}"; repo="${repo%/}"
+    case "$repo" in /*) ;; *) return 1 ;; esac
+    [ "${a[1]}" = "$repo/scripts/peer-bridge/jobs.ts" ] || return 1
+    cwd=$(jq -r '.cwd // ""' <<<"$input") || return 1
+    case "$cwd" in /*) ;; *) return 1 ;; esac
+    [ -d "$cwd" ] || return 1
+    for f in "$cwd"/.env*; do
+        [ -e "$f" ] || [ -L "$f" ] && return 1
+    done
+    if [ -e "$cwd/bunfig.toml" ] || [ -L "$cwd/bunfig.toml" ]; then
+        [ -f "$cwd/bunfig.toml" ] && [ ! -L "$cwd/bunfig.toml" ] && [ -f "$repo/bunfig.toml" ] && [ ! -L "$repo/bunfig.toml" ] || return 1
+        cmp -s "$cwd/bunfig.toml" "$repo/bunfig.toml" || return 1
+    fi
+    (
+        unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_REPLACE_REF_BASE
+        g() { git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache=false -C "$repo" "$@" 2>/dev/null; }
+        [ "$(g rev-parse --show-toplevel)" -ef "$repo" ] || exit 1
+        [ "$(g symbolic-ref -q HEAD)" = refs/heads/main ] || exit 1
+        g diff --quiet refs/heads/main || exit 1
+        others=$(g ls-files --others -- scripts/peer-bridge scripts/telegram) || exit 1
+        [ -z "$others" ]
+    )
+}
+
 emit_allow() {
     local reason
     # `jq -n --arg r "<text>" '$r'` JSON-encodes the exact string
@@ -2102,6 +2160,10 @@ esac
 case "$cmd" in
     "bash scripts/quiet-run.sh shell-unit -- "*)
         [ "$abstain" = 0 ] && cmd_is_shell_unit_runner "${result#*$'\n'}" && emit_allow "shell-unit runner literal: $cmd" ;;
+esac
+case "$cmd" in
+    /*"/bun /"*"/scripts/peer-bridge/jobs.ts "*)
+        [ "$abstain" = 0 ] && segment_is_peer_jobs "${result#*$'\n'}" && emit_allow "peer jobs CLI literal: $cmd" ;;
 esac
 
 # Quote-aware structural scan: produces SCAN_SEGS (split only at

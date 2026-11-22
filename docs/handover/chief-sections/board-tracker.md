@@ -51,7 +51,12 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     - The worker list, under the key `board.mjs` writes for it: each worker's
       stage, state, PR, ticket and brief links, and a timeline of its marker
       bullets.
-    - `ci`, `bank`, and `milestones` (Jira fixVersion done/total).
+    - `ci`, `bank`, and `milestones` (Jira fixVersion: `open` is the version's
+      size and `residual` the open tickets labelled residual, both equal to the
+      tick's `open=` and residual fields; `done` and `total` stay for older
+      readers). The board panel and the tracker's version row show `open N`
+      and `residual M`; `version-counts-check.sh --board-json <f>
+      --tracker-html <f>` fails when either differs from the tick's.
     - `red_main`: `{ days: 30, merges }`, the `red-main:` count of
       `scripts/insights/self-review.sh` over the last 30 days (`merges` is null
       when the script fails; the key is null in a checkout without it). The

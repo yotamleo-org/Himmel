@@ -969,6 +969,107 @@ IS_OUT=$(j_bash_cwd "$IS_W" "$IS_REL $IS_R" | HIMMEL_REPO="$IS_W" bash "$HOOK" 2
 assert "ctl: is HIMMEL_REPO = own worktree"  PASS "$(grepq "$IS_OUT" '"permissionDecision":"allow"' && echo ALLOW || echo PASS)"
 rm -rf "$IS_TMP"
 
+PJ_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+PJ_TMP="$(mktemp -d "${TMPDIR:-/tmp}/pj-anchor.XXXXXX")" || { echo "FAIL mktemp for the peer jobs anchor fixture"; exit 1; }
+PJ_A="$PJ_TMP/anchor"; PJ_W="$PJ_TMP/wt"; PJ_BIN="$PJ_TMP/bin"; PJ_CWD="$PJ_TMP/cwd"
+mkdir -p "$PJ_A/scripts/peer-bridge" "$PJ_A/scripts/telegram" "$PJ_BIN" "$PJ_CWD" "$PJ_TMP/other"
+printf 'export {};\n' > "$PJ_A/scripts/peer-bridge/jobs.ts"
+printf 'export {};\n' > "$PJ_A/scripts/telegram/bus.ts"
+printf '[test]\n' > "$PJ_A/bunfig.toml"
+printf '#!/bin/sh\nexit 0\n' > "$PJ_BIN/bun"; chmod +x "$PJ_BIN/bun"
+cp "$PJ_BIN/bun" "$PJ_TMP/other/bun"
+isg init -q -b main "$PJ_A"; isg -C "$PJ_A" add -A; isg -C "$PJ_A" commit -qm base
+isg -C "$PJ_A" worktree add -q -b feat "$PJ_W"
+pj_dec() {
+    local out
+    out=$(j_bash_cwd "$1" "$2" | HIMMEL_REPO="$PJ_A" PATH="$PJ_BIN:$PATH" bash "$HOOK" 2>/dev/null)
+    if grepq "$out" '"permissionDecision":"allow"'; then echo ALLOW; else echo PASS; fi
+}
+PJ_J="$PJ_A/scripts/peer-bridge/jobs.ts"
+PJ="$PJ_BIN/bun $PJ_J"
+PJ_SHA="0123456789abcdef0123456789abcdef01234567"
+PJ_S1="scripts/hooks/test-x.sh"; PJ_S2="scripts/lib/test_y.v2.sh"
+PJ_REQ="$PJ request goomal run-suite --sha $PJ_SHA --suite $PJ_S1"
+PJ_TEN=""; for _i in 1 2 3 4 5 6 7 8 9 10; do PJ_TEN="$PJ_TEN --suite $PJ_S1"; done
+assert "precondition: peer jobs anchor fixture built" ALLOW "$([ -f "$PJ_W/scripts/peer-bridge/jobs.ts" ] && echo ALLOW || echo PASS)"
+PJ_TS_RE=$(sed -n 's|^export const SUITE_PATH_RE = /\(.*\)/;$|\1|p' "$PJ_ROOT/scripts/peer-bridge/envelope.ts")
+PJ_SH_RE=$(sed -n "s|^PJ_SUITE_RE='\\(.*\\)'\$|\\1|p" "$HOOK")
+assert "SUITE_PATH_RE: the hook's copy equals envelope.ts" ALLOW "$([ -n "$PJ_TS_RE" ] && [ "$PJ_SH_RE" = "$PJ_TS_RE" ] && echo ALLOW || echo "PASS:[$PJ_SH_RE] vs [$PJ_TS_RE]")"
+assert "peer jobs request, one suite"        ALLOW "$(pj_dec "$PJ_CWD" "$PJ_REQ")"
+assert "peer jobs request, two suites"       ALLOW "$(pj_dec "$PJ_CWD" "$PJ_REQ --suite $PJ_S2")"
+assert "peer jobs request, ten suites"       ALLOW "$(pj_dec "$PJ_CWD" "$PJ request goomal run-suite --sha $PJ_SHA$PJ_TEN")"
+assert "peer jobs capacity"                  ALLOW "$(pj_dec "$PJ_CWD" "$PJ capacity goomal")"
+assert "peer jobs halt"                      ALLOW "$(pj_dec "$PJ_CWD" "$PJ halt peer-2")"
+assert "peer jobs cancel"                    ALLOW "$(pj_dec "$PJ_CWD" "$PJ cancel J7")"
+assert "peer jobs show"                      ALLOW "$(pj_dec "$PJ_CWD" "$PJ show J123456789")"
+assert "peer jobs list"                      ALLOW "$(pj_dec "$PJ_CWD" "$PJ list")"
+assert "peer jobs list --peer"               ALLOW "$(pj_dec "$PJ_CWD" "$PJ list --peer goomal")"
+assert "peer jobs list, cwd = anchor root"   ALLOW "$(pj_dec "$PJ_A" "$PJ list")"
+assert "ctl: pj approve"                     PASS "$(pj_dec "$PJ_CWD" "$PJ approve J7")"
+assert "ctl: pj unknown subcommand"          PASS "$(pj_dec "$PJ_CWD" "$PJ serve goomal")"
+assert "ctl: pj no subcommand"               PASS "$(pj_dec "$PJ_CWD" "$PJ")"
+assert "ctl: pj PATH-resolved bun"           PASS "$(pj_dec "$PJ_CWD" "bun $PJ_J list")"
+assert "ctl: pj relative bun"                PASS "$(pj_dec "$PJ_TMP" "bin/bun $PJ_J list")"
+assert "ctl: pj another absolute bun"        PASS "$(pj_dec "$PJ_CWD" "$PJ_TMP/other/bun $PJ_J list")"
+assert "ctl: pj relative jobs.ts"            PASS "$(pj_dec "$PJ_A" "$PJ_BIN/bun scripts/peer-bridge/jobs.ts list")"
+assert "ctl: pj worktree jobs.ts"            PASS "$(pj_dec "$PJ_CWD" "$PJ_BIN/bun $PJ_W/scripts/peer-bridge/jobs.ts list")"
+assert "ctl: pj dot-dot jobs.ts path"        PASS "$(pj_dec "$PJ_CWD" "$PJ_BIN/bun $PJ_A/scripts/../scripts/peer-bridge/jobs.ts list")"
+assert "ctl: pj extra argument (list)"       PASS "$(pj_dec "$PJ_CWD" "$PJ list extra")"
+assert "ctl: pj extra argument (show)"       PASS "$(pj_dec "$PJ_CWD" "$PJ show J7 J8")"
+assert "ctl: pj extra argument (capacity)"   PASS "$(pj_dec "$PJ_CWD" "$PJ capacity goomal goomal")"
+assert "ctl: pj extra argument (request)"    PASS "$(pj_dec "$PJ_CWD" "$PJ_REQ extra")"
+assert "ctl: pj eleven suites"               PASS "$(pj_dec "$PJ_CWD" "$PJ request goomal run-suite --sha $PJ_SHA$PJ_TEN --suite $PJ_S1")"
+assert "ctl: pj request without --sha"       PASS "$(pj_dec "$PJ_CWD" "$PJ request goomal run-suite $PJ_SHA --suite $PJ_S1")"
+assert "ctl: pj request, no suite"           PASS "$(pj_dec "$PJ_CWD" "$PJ request goomal run-suite --sha $PJ_SHA")"
+assert "ctl: pj peer name upper-case"        PASS "$(pj_dec "$PJ_CWD" "$PJ capacity Goomal")"
+assert "ctl: pj peer name too long"          PASS "$(pj_dec "$PJ_CWD" "$PJ capacity a23456789012345678901234567890123")"
+assert "ctl: pj sha 39 hex"                  PASS "$(pj_dec "$PJ_CWD" "$PJ request goomal run-suite --sha ${PJ_SHA%?} --suite $PJ_S1")"
+assert "ctl: pj sha upper-case"              PASS "$(pj_dec "$PJ_CWD" "$PJ request goomal run-suite --sha 0123456789ABCDEF0123456789abcdef01234567 --suite $PJ_S1")"
+assert "ctl: pj suite outside scripts/"      PASS "$(pj_dec "$PJ_CWD" "$PJ request goomal run-suite --sha $PJ_SHA --suite lib/x.sh")"
+assert "ctl: pj suite with dot-dot"          PASS "$(pj_dec "$PJ_CWD" "$PJ request goomal run-suite --sha $PJ_SHA --suite scripts/../x.sh")"
+assert "ctl: pj job without J"               PASS "$(pj_dec "$PJ_CWD" "$PJ cancel 7")"
+assert "ctl: pj job ten digits"              PASS "$(pj_dec "$PJ_CWD" "$PJ cancel J1234567890")"
+printf '[test]\npreload = ["./x.ts"]\n' > "$PJ_CWD/bunfig.toml"
+assert "ctl: pj cwd bunfig.toml differs"     PASS "$(pj_dec "$PJ_CWD" "$PJ list")"
+rm "$PJ_CWD/bunfig.toml"; ln -s "$PJ_A/bunfig.toml" "$PJ_CWD/bunfig.toml"
+assert "ctl: pj cwd bunfig.toml symlink"     PASS "$(pj_dec "$PJ_CWD" "$PJ list")"
+rm "$PJ_CWD/bunfig.toml"; : > "$PJ_CWD/.env.local"
+assert "ctl: pj cwd .env file"               PASS "$(pj_dec "$PJ_CWD" "$PJ list")"
+rm "$PJ_CWD/.env.local"
+assert "peer jobs list, cwd restored"        ALLOW "$(pj_dec "$PJ_CWD" "$PJ list")"
+assert "ctl: pj relative payload cwd"        PASS "$(pj_dec "cwd" "$PJ list")"
+printf 'export {}; // edited\n' > "$PJ_A/scripts/peer-bridge/jobs.ts"
+assert "ctl: pj anchor jobs.ts off main"     PASS "$(pj_dec "$PJ_CWD" "$PJ list")"
+isg -C "$PJ_A" checkout -q -- scripts/peer-bridge/jobs.ts
+printf 'export {}; // edited\n' > "$PJ_A/scripts/telegram/bus.ts"
+assert "ctl: pj anchor module off main"      PASS "$(pj_dec "$PJ_CWD" "$PJ list")"
+isg -C "$PJ_A" checkout -q -- scripts/telegram/bus.ts
+printf '[test]\n# edited\n' > "$PJ_A/bunfig.toml"
+assert "ctl: pj anchor bunfig.toml off main" PASS "$(pj_dec "$PJ_CWD" "$PJ list")"
+isg -C "$PJ_A" checkout -q -- bunfig.toml
+: > "$PJ_A/scripts/peer-bridge/chain.tsx"
+assert "ctl: pj untracked module file"       PASS "$(pj_dec "$PJ_CWD" "$PJ list")"
+rm "$PJ_A/scripts/peer-bridge/chain.tsx"
+isg -C "$PJ_A" checkout -q --detach
+assert "ctl: pj anchor HEAD detached"        PASS "$(pj_dec "$PJ_CWD" "$PJ list")"
+isg -C "$PJ_A" checkout -q main
+PJ_OUT=$(j_bash_cwd "$PJ_CWD" "$PJ list" | env -u HIMMEL_REPO PATH="$PJ_BIN:$PATH" bash "$HOOK" 2>/dev/null)
+assert "ctl: pj HIMMEL_REPO unset"           PASS "$(grepq "$PJ_OUT" '"permissionDecision":"allow"' && echo ALLOW || echo PASS)"
+PJ_OUT=$(j_bash_cwd "$PJ_CWD" "$PJ_BIN/bun $PJ_W/scripts/peer-bridge/jobs.ts list" | HIMMEL_REPO="$PJ_W" PATH="$PJ_BIN:$PATH" bash "$HOOK" 2>/dev/null)
+assert "ctl: pj HIMMEL_REPO = a worktree"    PASS "$(grepq "$PJ_OUT" '"permissionDecision":"allow"' && echo ALLOW || echo PASS)"
+assert "peer jobs list, anchor back on main" ALLOW "$(pj_dec "$PJ_CWD" "$PJ list")"
+printf 'pj\tallow\t%s\n' "$PJ_REQ --suite $PJ_S2" "$PJ halt goomal" "$PJ show J7" "$PJ list --peer goomal" > "$PJ_TMP/seeds.txt"
+python3 "$PJ_ROOT/scripts/eval/guard-corpus/gen" --seeds-file "$PJ_TMP/seeds.txt" -o "$PJ_TMP/corpus.jsonl"
+PJ_GEN_N=0
+while IFS=$'\t' read -r _t _c; do
+    PJ_GEN_N=$((PJ_GEN_N + 1))
+    _c=$(printf '%s' "$_c" | jq -r '.')
+    if [ "$_t" = identity ]; then _e=ALLOW; else _e=PASS; fi
+    assert "gen $_t: ${_c%% *} … ${_c##* }" "$_e" "$(pj_dec "$PJ_CWD" "$_c")"
+done < <(jq -r 'select(.family == "pj") | [.transform, (.tool_input.command | tojson)] | @tsv' "$PJ_TMP/corpus.jsonl")
+assert "precondition: gen wrote 4 seeds x 19 transforms" ALLOW "$([ "$PJ_GEN_N" -eq 76 ] && echo ALLOW || echo "PASS:$PJ_GEN_N")"
+rm -rf "$PJ_TMP"
+
 # --- auto-approve must not cook brace/parameter expansion literally ---
 # The shell EXPANDS these before the command runs, but a literal-word match
 # sees one un-exploded token and misses the write/delete/exec flag hiding

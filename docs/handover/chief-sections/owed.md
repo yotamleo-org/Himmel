@@ -13,10 +13,14 @@ at a handover; the ledger is carried by the tick, the HANDOFF and the queue fold
   without a key is refused. The file is append-only: a close adds a row, nothing is rewritten.
   `owe.sh list --bucket <dir>` prints the open rows (`--all` adds the closed ones).
 - **The tick ages it.** `owed=<n>:<oldest-age>` counts the open rows (hidden at 0; `?` when
-  the ledger cannot be read). A `ticket` row with no key after 4 hours (`OWED_STALE_SECS`) adds
-  `ACTION owed-stale=<n>:<ids>`: file the ticket, then close the row with its key. The waiter
-  wakes you once (`WAKE tick changed=owed`) when that stale count rises; closing the row with a key
-  ends it, and the age or an open row that is not stale never wakes.
+  the ledger cannot be read). A `ticket` row with no key after 4 hours (`OWED_STALE_SECS`), and a
+  keyed `step` past its due date, add `ACTION owed-stale=<n>:<ids>`, then one clause per kind naming
+  its own ids. A ticket row: file the ticket, then close the row with its key. A step row: do the
+  step and close the row with its evidence (a commit sha or a decision id), or re-date it with a new
+  `owe.sh add` row and close this one with the decision id. A step stays in the stale count until
+  its `step-due` wake is delivered (one wake per due date; a re-dated step gets a new one), and stays
+  in `owed=` while it is open. The waiter wakes you once (`WAKE tick changed=owed`) when that stale
+  count rises; closing the row ends it, and the age or an open row that is not stale never wakes.
 - **The handover keeps it.** `chief.sh next` refuses (exit 9) while a `ticket` row has no key
   after one shift (`OWED_SHIFT_SECS`, default 21600 = 6 h, the queue lock's TTL), naming each row.
   File the ticket and close the row, then retry. The HANDOFF gets an `## Owed` section listing

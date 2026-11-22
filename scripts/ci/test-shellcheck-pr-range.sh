@@ -686,6 +686,15 @@ else
   ok "script-absent-at-base: git show fails, workflow takes --all-files"
 fi
 
+stages="sweep_plan sweep_pack sweep_verify sweep_lint sweep_dedup"
+miss=""
+for s in $stages; do grep -q "^$s() {" "$SPR" || miss="$miss $s"; done
+[ -z "$miss" ] && ok "sweep_stages: every stage function is defined" || bad "sweep_stages: not defined:$miss"
+drv=$(awk '/^sweep_all\(\) \{/ { on = 1; next } on && /^}/ { exit } on' "$SPR")
+order=$(printf '%s\n' "$drv" | grep -o -E "\\<sweep_(plan|pack|verify|lint|dedup)\\>" | tr '\n' ' ')
+[ "$order" = "sweep_plan sweep_pack sweep_verify sweep_lint sweep_dedup " ] && ok "sweep_stages: the driver calls the stages in order" || bad "sweep_stages: driver order was: $order"
+[ "$(printf '%s\n' "$drv" | grep -c .)" -le 30 ] && ok "sweep_stages: the driver is short" || bad "sweep_stages: the driver holds $(printf '%s\n' "$drv" | grep -c .) lines"
+
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed" >&2
 exit 1
