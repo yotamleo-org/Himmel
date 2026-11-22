@@ -44,7 +44,7 @@ def spool_lock(fd):
     except ValueError:
         wait = 10.0
     deadline = time.monotonic() + max(wait, 0.0)
-    while True:
+    while True:  # t13b-ok: bounded by the OWE_SPOOL_LOCK_WAIT deadline
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             return
@@ -55,7 +55,7 @@ def spool_lock(fd):
 
 
 def spool_lock_current(path, flags):
-    while True:
+    while True:  # t13b-ok: returns once the lock is held on the current inode
         fd = os.open(path, flags, 0o600)
         try:
             spool_lock(fd)
@@ -75,7 +75,7 @@ def spool_lock_current(path, flags):
 def spool_read(fd):
     os.lseek(fd, 0, os.SEEK_SET)
     chunks = []
-    while True:
+    while True:  # t13b-ok: a file read that ends at EOF
         chunk = os.read(fd, 1 << 16)
         if not chunk:
             return b''.join(chunks)

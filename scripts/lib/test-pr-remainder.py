@@ -15,27 +15,28 @@ class Remainders(unittest.TestCase):
     def test_merge_writer_retains_actual_owners_replay_and_failed_partial_write(self):
         root = HERE.parents[1]
         text = (root / 'scripts/handover/merge-on-green.sh').read_text()
-        start = text.index('_merge_owe_rows() {')
+        start = text.index('_merge_owe_spool() {')
         function = text[start:text.index('\n}\n', start) + 3]
         with tempfile.TemporaryDirectory() as directory:
-            bucket = Path(directory)
-            doc = bucket / 'chief.md'
-            doc.write_text('# chief\n')
+            state = Path(directory)
             body = '## Ticket coverage\n- run proof: owed -> proof by 2026-11-20\n- rotate token: owed -> operator by 2026-11-21\n'
-            command = '. "$1/scripts/lib/ticket-status.sh"\n' + function + '\nhimmel_repo=$1\npartial_body=$2\n_merge_owe_rows HIMMEL-10220 77\n'
-            env = {**os.environ, 'HIMMEL_CONSOLE_DOC': str(doc), 'HIMMEL_CONSOLE_NAME': 'actual-chief'}
+            command = ('. "$1/scripts/lib/ticket-status.sh"\n' + function
+                       + '\nhimmel_repo=$1\npartial_body=$2\n_merge_owe_spool HIMMEL-10220 77 o/r\necho "OWE_RESULT=$OWE_RESULT"\n')
+            env = {**os.environ, 'TICKET_STATUS_STATE_DIR': str(state)}
             for _ in range(2):
                 result = subprocess.run(['bash', '-c', command, '_', str(root), body], env=env, text=True, capture_output=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
-            ledger = bucket / 'owed.jsonl'
-            rows = [json.loads(r) for r in ledger.read_text().splitlines()]
-            self.assertEqual([(r['actor'], r['due']) for r in rows], [('proof', '2026-11-20'), ('operator', '2026-11-21')])
-            self.assertEqual(len(rows), 2)
-            ledger.unlink()
-            ledger.mkdir()
+                self.assertIn('OWE_RESULT=spooled:2', result.stdout)
+            spool = state / 'owe-spool.jsonl'
+            rows = [json.loads(r) for r in spool.read_text().splitlines()]
+            self.assertEqual([(r['who'], r['due']) for r in rows], [('proof', '2026-11-20'), ('operator', '2026-11-21')] * 2)
+            self.assertEqual({r['metadata']['actor'] for r in rows}, {'proof', 'operator'})
+            self.assertEqual(len({r['identity'] for r in rows}), 2)
+            spool.unlink()
+            spool.mkdir()
             result = subprocess.run(['bash', '-c', command, '_', str(root), body], env=env, text=True, capture_output=True)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn('0 of 2 owed line(s)', result.stderr)
+            self.assertIn('OWE_RESULT=miss:2:write', result.stdout)
+            self.assertIn('the owed lines of HIMMEL-10220 PR #77 were not spooled', result.stderr)
 
     def test_proof_owner_and_mixed_units(self):
         body = '## Ticket coverage\n- run the live proof: owed -> proof by 2026-11-20\n'
