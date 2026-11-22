@@ -28,7 +28,10 @@
 #       its state could not be recorded and it was stopped;
 #       2 usage, a pass script that is not executable, or no launcher;
 #       3 start refused because a pass is already running or another start is
-#       in progress.
+#       in progress. The detached supervisor (internal "supervise", never run by
+#       hand) exits 0 promoted, 4 exhausted (MAX_PASSES capped passes), 143
+#       stopped, else the failing pass's own code; its exit is read from status,
+#       never by a caller.
 #
 # Seams (the suite points both at a stub and a temp dir):
 #   GRAPH_PASS_SCRIPT     the pass; default ~/.claude/graphmap-cadence/graphmap-himmel.sh
