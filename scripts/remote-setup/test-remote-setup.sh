@@ -21,6 +21,7 @@ HERE=$(cd "$(dirname "$0")" && pwd -P)
 REPO=$(cd "$HERE/../.." && pwd -P)
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/rs-test.XXXXXX") || exit 1
 trap 'rm -rf "$WORK"' EXIT
+WORK=$(cd "$WORK" && pwd -P) || exit 1
 PATH_BASE=$PATH
 REAL_BUN=$(command -v bun || echo /nonexistent-bun)
 
@@ -57,6 +58,7 @@ new_case() {
     T=$WORK/$1
     mkdir -p "$T/home" "$T/tmp dir" "$T/bin" "$T/tg" "$T/units" "$T/root"
     cp "$HERE"/tests/shims/* "$T/bin/"
+    echo Linux > "$T/uname"
     # a clock the sleep shim moves: a ten-minute wait ends in a few reads (see the date shim)
     date +%s > "$T/clock"
     echo 60 > "$T/clock.step"
@@ -141,6 +143,9 @@ expect_json_contract() {
 
 RUN_SCRIPT=remote-setup.sh
 RUN_ENV=""
+RUN_CAP=20
+STALL_MAX=3
+STALLS=0
 
 run_sut() {
     local inj="" tty=1 root=0 contract=1 json=0 cwd=$ROOT without="" pbase=$PATH_BASE
@@ -185,9 +190,11 @@ run_sut() {
     : > "$T/err"
     if [ "$tty" = 1 ]; then
         if [ "$(uname)" = Darwin ]; then
-            (cd "$cwd" && script -q /dev/null "${envs[@]}" < "$stdin" > "$T/out.raw" 2> "$T/err") # read-sink-ok: the suite's own stdin file
+            rm -f "$T/noecho"
+            (cd "$cwd" && { i=0; while [ ! -e "$T/noecho" ] && [ "$i" -lt $((RUN_CAP * 100)) ]; do /bin/sleep 0.01; i=$((i + 1)); done; cat "$stdin"; } \
+                | perl -e 'alarm shift; exec @ARGV or exit 127' "$RUN_CAP" script -q /dev/null /bin/sh -c 'stty -echo && : > "$0" && exec "$@"' "$T/noecho" "${envs[@]}" > "$T/out.raw" 2> "$T/err") # read-sink-ok: the suite's own stdin file
         else
-            (cd "$cwd" && script -qec "$(printf '%q ' "${envs[@]}")" /dev/null -E never < "$stdin" > "$T/out.raw" 2> "$T/err") # read-sink-ok: the suite's own stdin file
+            (cd "$cwd" && perl -e 'alarm shift; exec @ARGV or exit 127' "$RUN_CAP" script -qec "$(printf '%q ' "${envs[@]}")" /dev/null -E never < "$stdin" > "$T/out.raw" 2> "$T/err") # read-sink-ok: the suite's own stdin file
         fi
     else
         (cd "$cwd" && "${envs[@]}" < "$stdin" > "$T/out.raw" 2> "$T/err") # read-sink-ok: the suite's own stdin file
@@ -198,6 +205,14 @@ run_sut() {
     cat "$T/out" "$T/err" >> "$T/allout.log"
     LAST=$(last_line "$T/out")
     ERR=$(cat "$T/err")
+    if [ "$tty" = 1 ] && [ "$RC" = 142 ]; then
+        STALLS=$((STALLS + 1))
+        check "the tty run ($*) ended within ${RUN_CAP}s" false
+        if [ "$STALLS" -ge "$STALL_MAX" ]; then
+            printf 'FAIL: %s tty runs did not end within %ss: stopping the suite\n' "$STALLS" "$RUN_CAP" >&2
+            exit 1
+        fi
+    fi
     if [ "$contract" = 1 ]; then
         if [ "$json" = 1 ]; then expect_json_contract; else expect_contract; fi
     fi
