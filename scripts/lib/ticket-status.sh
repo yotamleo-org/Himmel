@@ -233,15 +233,16 @@ ts_required_set() {
 }
 
 _ts_repo_key() {
-    local u="${GH_REPO:-}" r o h rest
+    local u="${GH_REPO:-}" r o h rest scp=1
     [ -n "$u" ] || u=$(git remote get-url origin 2>/dev/null) || return 1
-    u="${u%/}"; u="${u%.git}"; u="${u#*://}"
+    u="${u%/}"; u="${u%.git}"
+    case "$u" in *://*) u="${u#*://}"; scp=0 ;; esac
     case "${u%%/*}" in *@*) u="${u#*@}" ;; esac
-    u="${u/:/\/}"
+    [ "$scp" -eq 0 ] || u="${u/:/\/}"
     r="${u##*/}"; rest="${u%/*}"
     [ "$rest" != "$u" ] || return 1
     o="${rest##*/}"
-    if [ "$o" != "$rest" ]; then h="${rest%/*}"; h="${h##*/}"; else h="${GH_HOST:-github.com}"; fi
+    if [ "$o" != "$rest" ]; then h="${rest%/*}"; h="${h##*/}"; h="${h%%:*}"; else h="${GH_HOST:-github.com}"; fi
     [ -n "$h" ] && [ -n "$o" ] && [ -n "$r" ] || return 1
     printf '%s@%s@%s' "$h" "$o" "$r"
 }

@@ -1009,6 +1009,9 @@ check "required set: the first repository still reads its own kept set" "$out" "
 fresh_snapshot; GH_REPO=github.com/own/gamma REQ_SET=com-check TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main >/dev/null
 fresh_snapshot; out=$(GH_REPO=ghe.example.com/own/gamma REQ_SET=ghe-check TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main)
 check "required set: the same owner and repository on another host reads its own set" "$out" "$(printf 'ghe-check\t')"
+fresh_snapshot; GH_REPO=ssh://git@host-a:2222/own/delta REQ_SET=a-check TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main >/dev/null
+fresh_snapshot; out=$(GH_REPO=ssh://git@host-b:2222/own/delta REQ_SET=b-check TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main)
+check "required set: two hosts behind the same ssh port read their own sets" "$out" "$(printf 'b-check\t')"
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-ticket-status.sh"
