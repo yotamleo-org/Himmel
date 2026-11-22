@@ -356,32 +356,6 @@ def named_session_alive(name, doc, deadline):
     return False
 
 
-def doc_session_alive(doc, deadline):
-    """True unless a full readable /proc pass finds no live claude process whose WORKER_SESSION_DOC is this doc."""
-    wanted = {os.fsencode(doc), os.fsencode(str(Path(doc).resolve()))}
-    try:
-        paths = list(Path('/proc').iterdir())
-    except OSError:
-        return True
-    for path in paths:
-        if time.monotonic() >= deadline:
-            return True
-        if not path.name.isdigit():
-            continue
-        try:
-            if (path / 'comm').read_text().strip() != 'claude':
-                continue
-            if path.joinpath('stat').read_text().rsplit(')', 1)[1].split()[0] in ('Z', 'X'):
-                continue
-            env = dict(pair.split(b'=', 1) for pair in (path / 'environ').read_bytes().split(b'\0') if b'=' in pair)
-            if env.get(b'WORKER_SESSION_DOC') in wanted:
-                return True
-        except (OSError, ValueError, IndexError):
-            if path.exists():
-                return True  # an unreadable candidate cannot prove absence
-    return False
-
-
 def protected(doc):
     anchor = Path(doc).resolve().parent / 'fleet-control.json'
     if not anchor.exists():
@@ -795,8 +769,6 @@ def run(args):
         return has_reservation(record, args.pid)
     if args.op == 'protected':
         return protected(args.doc)
-    if args.op == 'session':
-        return doc_session_alive(args.doc, time.monotonic() + 2)
     if args.op == 'owners':
         return owned_rows(args.manifest)
     if args.op == 'release':
@@ -985,7 +957,7 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('op', choices=['resolve', 'admit', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'session', 'disposition', 'owners', 'reservation', 'settle'])
+    parser.add_argument('op', choices=['resolve', 'admit', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'disposition', 'owners', 'reservation', 'settle'])
     parser.add_argument('--doc', default='')
     parser.add_argument('--manifest', default='')
     parser.add_argument('--name', default='')

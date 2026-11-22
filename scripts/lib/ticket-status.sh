@@ -439,6 +439,23 @@ ts_worker_ownership() {
     if [ "$TS_ABANDONED" = yes ]; then echo abandoned; else echo "$TS_WORKER_STATE"; fi
 }
 
+_ts_no_live_session_on() {
+    local dir resolved p comm st kv
+    [ -d /proc/self ] || return 1
+    dir=$(cd -P -- "$(dirname -- "$1")" 2>/dev/null && pwd -P) && resolved="$dir/${1##*/}" || resolved=$1
+    for p in /proc/[0-9]*; do
+        IFS= read -r comm < "$p/comm" 2>/dev/null || { [ ! -d "$p" ] || return 1; continue; }
+        [ "$comm" = claude ] || continue
+        IFS= read -r st < "$p/stat" 2>/dev/null || { [ ! -d "$p" ] || return 1; continue; }
+        st=${st##*) }
+        case "${st%% *}" in Z|X) continue ;; esac
+        { while IFS= read -r -d '' kv; do
+            case "$kv" in "WORKER_SESSION_DOC=$1"|"WORKER_SESSION_DOC=$resolved") return 1 ;; esac
+        done; } 2>/dev/null < "$p/environ" || { [ ! -d "$p" ] || return 1; }
+    done
+    return 0
+}
+
 # _ts_worker_state <doc> [<disposition>] — ts_worker_state without the subshell: sets
 # TS_WORKER_STATE and TS_LOCK_HELD (yes | no | "" when the lock was not read) and TS_LOCK_DEAD
 # (yes: the lock answered rc 12 with status STALE-DEAD; no: rc 12 with any other status; "" otherwise).
@@ -480,8 +497,7 @@ _ts_worker_state() {
     if [ -n "$terminal" ] && [ "$TS_LOCK_HELD" = no ] && [ -z "$marker" ] && [ -z "$marker_unread" ]; then TS_WORKER_STATE=wrapped; return 0; fi
     if status_marker_is_parked "$marker"; then TS_WORKER_STATE=parked; return 0; fi
     if [ "$TS_LOCK_HELD" = no ]; then
-        if [ -n "$marker" ] && [ "$attempt_protected" != '"launched"' ] \
-            && [ "$(python3 -I "$_TS_LIB_DIR/fleet_runtime.py" session --doc="$1" 2>/dev/null)" = false ]; then
+        if [ -n "$marker" ] && [ "$attempt_protected" != '"launched"' ] && _ts_no_live_session_on "$1"; then
             TS_OPEN_EVIDENCE="" TS_ABANDONED=yes
         fi
         TS_WORKER_STATE=unknown; return 0
