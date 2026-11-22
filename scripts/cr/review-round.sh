@@ -298,6 +298,12 @@ increment_of() {
             printf 'review-round: %s sets attributes, so no trusted increment base exists\n' "$_io_info" >&2
             return 1
         fi
+        _io_drv="$(git config --get-regexp '^merge\..*\.driver$' 2>&1)"
+        case "$?" in
+            1) ;;
+            0) printf 'review-round: a merge driver is configured, so no trusted increment base exists\n' >&2; return 1 ;;
+            *) printf 'review-round: reading merge drivers failed: %s\n' "$_io_drv" >&2; return 1 ;;
+        esac
         inc_mt_out="$(GIT_ATTR_NOSYSTEM=1 git -c core.attributesFile=/dev/null -c merge.conflictStyle=merge -c merge.default=text --attr-source="$_io_empty" \
             merge-tree --write-tree --name-only --no-messages "$1" "$inc_b" 2>/dev/null)"
         inc_mt_rc=$?
