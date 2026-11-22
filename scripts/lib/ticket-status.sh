@@ -233,13 +233,17 @@ ts_required_set() {
 }
 
 _ts_repo_key() {
-    local u="${GH_REPO:-}" r o
+    local u="${GH_REPO:-}" r o h rest
     [ -n "$u" ] || u=$(git remote get-url origin 2>/dev/null) || return 1
-    u="${u%/}"; u="${u%.git}"
-    case "$u" in */*) ;; *) return 1 ;; esac
-    r="${u##*/}"; o="${u%/*}"; o="${o##*[/:]}"
-    [ -n "$o" ] && [ -n "$r" ] || return 1
-    printf '%s@%s' "$o" "$r"
+    u="${u%/}"; u="${u%.git}"; u="${u#*://}"
+    case "${u%%/*}" in *@*) u="${u#*@}" ;; esac
+    u="${u/:/\/}"
+    r="${u##*/}"; rest="${u%/*}"
+    [ "$rest" != "$u" ] || return 1
+    o="${rest##*/}"
+    if [ "$o" != "$rest" ]; then h="${rest%/*}"; h="${h##*/}"; else h="${GH_HOST:-github.com}"; fi
+    [ -n "$h" ] && [ -n "$o" ] && [ -n "$r" ] || return 1
+    printf '%s@%s@%s' "$h" "$o" "$r"
 }
 
 # _ts_snap_required_set <base> — ts_required_set, read once per base per snapshot.

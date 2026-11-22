@@ -984,7 +984,7 @@ chmod 755 "$tmp/u8-locked"
 reqcount() { grep -c . "$tmp/req-calls" 2>/dev/null || echo 0; }
 ts_required_set() { echo "$1" >> "$tmp/req-calls"; [ -z "${REQ_FAIL:-}" ] || return 1; printf '%s\t\n' "${REQ_SET:-ci-quick}"; }
 export TICKET_STATUS_STATE_DIR="$tmp/state-req"
-export GH_REPO=own/alpha
+export GH_REPO=own/alpha GH_HOST=github.com
 fresh_snapshot() { rm -rf "$tmp/snap-req"; mkdir -p "$tmp/snap-req"; TS_SNAPSHOT_DIR="$tmp/snap-req"; }
 : > "$tmp/req-calls"
 fresh_snapshot; TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main >/dev/null
@@ -997,7 +997,7 @@ check "required set: TTL 0 reads GitHub again" "$(reqcount)" 2
 fresh_snapshot; REQ_FAIL=1 TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main >/dev/null
 fresh_snapshot; TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main >/dev/null
 check "required set: an unreadable answer is never kept" "$(reqcount)" 2
-printf '1\nstale\n' > "$tmp/state-req/required-set/own@alpha@main"
+printf '1\nstale\n' > "$tmp/state-req/required-set/github.com@own@alpha@main"
 fresh_snapshot; out=$(TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main)
 check "required set: an entry older than the TTL is read again" "$out" "$(printf 'ci-quick\t')"
 rm -rf "$tmp/state-req"
@@ -1006,6 +1006,9 @@ fresh_snapshot; out=$(GH_REPO=own/beta REQ_SET=beta-check TICKET_STATUS_REQSET_T
 check "required set: a second repository with the same base inside the TTL reads its own set" "$out" "$(printf 'beta-check\t')"
 fresh_snapshot; out=$(GH_REPO=own/alpha REQ_SET=other TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main)
 check "required set: the first repository still reads its own kept set" "$out" "$(printf 'alpha-check\t')"
+fresh_snapshot; GH_REPO=github.com/own/gamma REQ_SET=com-check TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main >/dev/null
+fresh_snapshot; out=$(GH_REPO=ghe.example.com/own/gamma REQ_SET=ghe-check TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main)
+check "required set: the same owner and repository on another host reads its own set" "$out" "$(printf 'ghe-check\t')"
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-ticket-status.sh"
