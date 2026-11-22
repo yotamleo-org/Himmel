@@ -35,7 +35,7 @@ def is_parked(word):
     return word in ("PARKED-BANK", "PARKED-USAGE")
 
 
-_FENCE = re.compile(r" {0,3}(```|~~~)")
+_FENCE = re.compile(r" {0,3}(`{3,}|~{3,})(.*)", re.DOTALL)
 _RESULTS = re.compile(r"## Results(?:[ \t]|\Z)")
 _RULINGS = re.compile(r"## (?:Chief|Console) Rulings(?:[ \t]|\Z)")  # old-term-ok
 _ACTIONABLE = re.compile(
@@ -57,7 +57,8 @@ def _scope_lines(path):
         if m:
             if not fence:
                 fence = m.group(1)
-            elif fence == m.group(1):
+            elif (m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence)
+                  and m.group(2).strip(" \t\r") == ""):
                 fence = ""
             continue
         if fence:
