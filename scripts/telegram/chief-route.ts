@@ -641,7 +641,7 @@ export function parseFindings(returnText: string, kind: Kind, round: number): { 
   for (const line of returnText.split("\n")) {
     const m = FINDING_LINE.exec(line);
     if (!m) continue;
-    const [severity, ...tags] = m[2].split(";").map(s => s.trim());
+    const [severity, ...tags] = m[2].replace(/`[^`]*(`|$)/g, "").split(";").map(s => s.trim());
     if (severity !== "major" && severity !== "medium" && severity !== "minor") continue;
     const f: Finding = { id: m[1], severity };
     for (const tag of tags) {

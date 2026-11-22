@@ -232,11 +232,26 @@ ts_required_set() {
     printf '%s\n%s\n' "$rules" "$classic" | sed '/^$/d' | sort -u | _required_normalize
 }
 
+_ts_repo_key() {
+    local u="${GH_REPO:-}" r o h rest scp=1
+    [ -n "$u" ] || u=$(git remote get-url origin 2>/dev/null) || return 1
+    u="${u%/}"; u="${u%.git}"
+    case "$u" in *://*) u="${u#*://}"; scp=0 ;; esac
+    case "${u%%/*}" in *@*) u="${u#*@}" ;; esac
+    [ "$scp" -eq 0 ] || u="${u/:/\/}"
+    r="${u##*/}"; rest="${u%/*}"
+    [ "$rest" != "$u" ] || return 1
+    o="${rest##*/}"
+    if [ "$o" != "$rest" ]; then h="${rest%/*}"; h="${h##*/}"; h="${h%%:*}"; else h="${GH_HOST:-github.com}"; fi
+    [ -n "$h" ] && [ -n "$o" ] && [ -n "$r" ] || return 1
+    printf '%s@%s@%s' "$h" "$o" "$r"
+}
+
 # _ts_snap_required_set <base> — ts_required_set, read once per base per snapshot.
 _ts_snap_required_set() {
-    local f="$TS_SNAPSHOT_DIR/req-${1//\//_}" ttl="${TICKET_STATUS_REQSET_TTL:-300}" kept at now
+    local f="$TS_SNAPSHOT_DIR/req-${1//\//_}" ttl="${TICKET_STATUS_REQSET_TTL:-300}" kept at now repo
     case "$ttl" in ''|*[!0-9]*) ttl=300 ;; esac
-    kept="$(ts_state_dir)/required-set/${1//\//_}"
+    if repo=$(_ts_repo_key); then kept="$(ts_state_dir)/required-set/$repo@${1//\//_}"; else kept=""; ttl=0; fi
     now=$(date +%s)
     if [ ! -e "$f" ] && [ ! -e "$f.fail" ]; then
         at=""
@@ -840,6 +855,11 @@ _ts_derive_d6() {
     fi
 }
 
+_ts_other_worker_keeps_ownership() {
+    [ "$TS_WORKER_STATE" != wrapped ] || return 1
+    [ "$TS_LOCK_HELD" != no ] || [ "$TS_OPEN_EVIDENCE" = yes ]
+}
+
 ts_derive() {
     local key="$1" num head base rd class latch threads s rule best=9 r doc rc other owner=""
     TS_DERIVED=""; TS_RULE=""; TS_RESULT=""; TS_STAGE=""; TS_PR_STATE=""; TS_HEADS=""; TS_WORKER_STATE=none; TS_MERGED_PR=""; TS_D5D_OWNER=""
@@ -863,14 +883,11 @@ ts_derive() {
             [ "$TS_GONE" -lt 2 ] || TS_WORKER_STATE=wrapped
         fi
     fi
-    # A second worker on the key keeps the ticket owned unless it reads wrapped, or its lock was read free and nothing
-    # else says its doc may be worked.
     if [ "$TS_WORKER_STATE" = wrapped ]; then
         while IFS= read -r other; do
             [ -n "$other" ] && [ "$other" != "$doc" ] || continue
             _ts_worker_state "$other"
-            [ "$TS_WORKER_STATE" != wrapped ] || continue
-            [ "$TS_LOCK_HELD" != no ] || [ "$TS_OPEN_EVIDENCE" = yes ] || continue
+            _ts_other_worker_keeps_ownership || continue
             owner=$TS_WORKER_STATE; TS_OWNER_DOC=$other; break
         done <<<"$(jq -r '(.docs // [])[]' <<<"$TS_REC")"
         TS_WORKER_STATE=${owner:-wrapped}

@@ -334,12 +334,15 @@ const searchTtlMs = () => {
   const s = process.env.CLOUD_ROUTE_SEARCH_TTL;
   return /^\d+$/.test(s ?? '') ? Number(s) * 1000 : 3600e3;
 };
-const searchCacheFile = (key) => join(process.env.CLOUD_ROUTE_CACHE_DIR || join(homedir(), '.himmel', 'state', 'cloud-route-search'), `${REPO_SLUG.replace('/', '_')}__${key}.json`);
+const PLAIN_KEY = /^[A-Za-z][A-Za-z0-9]*-\d+$/;
+const searchCacheFile = (key) => !PLAIN_KEY.test(key) ? null : join(process.env.CLOUD_ROUTE_CACHE_DIR || join(homedir(), '.himmel', 'state', 'cloud-route-search'), `${REPO_SLUG.replace('/', '_')}__${key}.json`);
 function readSearchCache(key) {
   const ttl = searchTtlMs();
   if (ttl <= 0) return null;
   try {
-    const e = JSON.parse(readFileSync(searchCacheFile(key), 'utf8'));
+    const file = searchCacheFile(key);
+    if (!file) return null;
+    const e = JSON.parse(readFileSync(file, 'utf8'));
     return Array.isArray(e.hits) && Number.isFinite(e.at) && Date.now() - e.at >= 0 && Date.now() - e.at < ttl ? e.hits : null;
   } catch { return null; }
 }
@@ -347,6 +350,7 @@ function writeSearchCache(key, hits) {
   if (searchTtlMs() <= 0) return;
   try {
     const f = searchCacheFile(key);
+    if (!f) return;
     mkdirSync(dirname(f), { recursive: true });
     const tmp = `${f}.${process.pid}.tmp`;
     writeFileSync(tmp, JSON.stringify({ at: Date.now(), hits }));
