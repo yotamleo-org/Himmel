@@ -67,6 +67,14 @@ put bare.md 'done in about 10 minutes'
 run "$T/bare.md"
 if [ "$RC" -eq 1 ] && has "bare.md:1"; then pass "bare estimate beside the carve-out -> 1"; else fail "bare estimate exit $RC: $OUT"; fi
 
+put ticket-ok.md "$(printf '%s\n\n%s\n%s' 'The bridge stops sending estimates to the operator.' '## Agent detail' 'The rerun will take a while on the station.')"
+run --ticket "$T/ticket-ok.md"
+if [ "$RC" -eq 0 ]; then pass "ticket: an estimate in an agent section -> 0"; else fail "ticket agent section exit $RC: $OUT"; fi
+
+put ticket-top.md "$(printf '%s\n\n%s\n%s' 'The rerun will take a while on the station.' '## Agent detail' 'Nothing here.')"
+run --ticket "$T/ticket-top.md"
+if [ "$RC" -eq 1 ] && has "ticket-top.md:1"; then pass "ticket: the same estimate in the top line -> 1"; else fail "ticket top line exit $RC: $OUT"; fi
+
 put comment.ts '// ~16h wedge seen once; the watchdog restarts it
 const GAP_MS = 3000;'
 run "$T/comment.ts"

@@ -9,7 +9,10 @@
 # decision 1238). A line naming "time estimate" states the rule and is skipped.
 #
 # Usage:
-#   check-operator-voice.sh [<file>...]
+#   check-operator-voice.sh [--ticket] [<file>...]
+#     --ticket   each file is a ticket draft: only its plain top line (the first line
+#                that is not blank and not a heading) is scanned; the agent sections
+#                keep their full detail (decision 1235).
 #     no files   the operator-bound set: the chief reply style, the voice-line section,
 #                the ticket standard and the Telegram reply kinds (whole files), and the
 #                Telegram bridge sources (only lines that send: reply(, notifyChat(,
@@ -22,10 +25,12 @@ set -uo pipefail
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 FILES=()
+TICKET=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        -*) echo "usage: check-operator-voice.sh [<file>...]" >&2; exit 2 ;;
+        --ticket) TICKET=1; shift ;;
+        -*) echo "usage: check-operator-voice.sh [--ticket] [<file>...]" >&2; exit 2 ;;
         *) FILES+=("$1"); shift ;;
     esac
 done
@@ -47,7 +52,11 @@ fail=0
 for f in "${FILES[@]}"; do
     sendonly=0
     case "$f" in *.ts) sendonly=1 ;; esac
-    out="$(LC_ALL=C awk -v file="$f" -v sendonly="$sendonly" '
+    out="$(LC_ALL=C awk -v file="$f" -v sendonly="$sendonly" -v ticket="$TICKET" '
+        ticket == 1 {
+            if (seen || $0 ~ /^[[:space:]]*(#|$)/) next
+            seen = 1
+        }
         sendonly == 1 {
             if (depth <= 0 && $0 !~ /(reply|notifyChat|replyViaOutbox|sendMessage)\(/) next
             s = $0; gsub(/"([^"\\]|\\.)*"|'\''([^'\''\\]|\\.)*'\''|`[^`]*`/, "", s)

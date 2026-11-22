@@ -35,8 +35,10 @@ The chief carries these rules as its reply style (`docs/handover/chief-adhd-brie
    system enforces (a code or request that expires) stays, stated plainly: "expires
    in 6 h". Operator: "stop the giving time estimations [...] they are wasting tokens
    are are 99% wrong", and on deadlines, "keep deadlines" (decision 1238).
-   `scripts/lint/check-operator-voice.sh` fails when an operator-bound prompt, reply
-   kind or bridge reply carries an estimate.
+   In a ticket the rule binds the plain top line; the agent sections keep their full
+   detail (decision 1235). `scripts/lint/check-operator-voice.sh` fails when an
+   operator-bound prompt, reply kind or bridge reply carries an estimate, and with
+   `--ticket` when a ticket draft's top line does.
 9. **Never write "nothing needed from you".** Operator: "tell me when it is needed and
    never in ticket".
 10. **A ticket opens with one plain line for him; the rest stays agent-facing in
