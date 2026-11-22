@@ -711,13 +711,14 @@ describe('jira release rm-run', () => {
 
 const FROZEN_DESC = 'frozen: 2026-10-20\nfrozen-keys: K-1';
 
-function writeMirror(...issues: Array<{ key: string; fixVersions: string[]; status?: string }>): string {
+function writeMirror(...issues: Array<{ key: string; fixVersions: string[]; status?: string; resolved?: string }>): string {
   const dir = join(root, 'mirror');
   mkdirSync(dir);
   writeFileSync(join(dir, '.cursor.json'), JSON.stringify({ lastSync: '2026-10-23T00:00:00Z' }));
   for (const i of issues) {
     writeFileSync(join(dir, `${i.key}.md`), `---\nkey: ${JSON.stringify(i.key)}\nstatus: ${JSON.stringify(i.status ?? 'In Progress')}\n` +
-      `type: "Task"\npriority: "Medium"\nfixVersions: ${JSON.stringify(i.fixVersions)}\n---\n`);
+      `type: "Task"\npriority: "Medium"\nfixVersions: ${JSON.stringify(i.fixVersions)}\n` +
+      `${i.resolved ? `resolved: ${JSON.stringify(i.resolved)}\n` : ''}---\n`);
   }
   return dir;
 }
@@ -833,6 +834,85 @@ describe('jira release state admissions budget', () => {
     expect(admissionBudget('admission-budget:x')).toBeUndefined();
     expect(admissionBudget('see admission-budget: 3 here')).toBeUndefined();
     expect(admissionBudget(undefined)).toBeUndefined();
+  });
+});
+
+describe('jira release state prints the version lines', () => {
+  const base = {
+    release: 'R1', status: 'OK', mode: 'observe', inputs: {}, admissions_today: {},
+    leaks: { unauthorized: [], ruled_in_non_member: [] }, requests: { open: [], claimed: [] }, integrity: [],
+  };
+  const dayOf = (n: number, came: number, done: number, left = 0, extra: Record<string, unknown> = {}) => ({
+    day: `2026-10-${String(n).padStart(2, '0')}`, came_in: came, done, left, open: came - done - left,
+    closed_undelivered: 0, arrived: {}, arrived_serious: 0, ...extra,
+  });
+  const lines = (days: unknown[], extra: Record<string, unknown> = {}) => ({
+    status: 'OK', as_of: (days.at(-1) as { day: string }).day, days, left: [], done_undated: 0,
+    open_by_priority: {}, oldest_untouched: null, unrecorded: { open: [], closed: [] }, ...extra,
+  });
+
+  it('prints every line kind, with the seven-day rise and the as-of day', () => {
+    const days = [
+      dayOf(1, 2, 0, 0, { arrived: { baseline: 2 } }), dayOf(2, 3, 0, 0, { arrived: { regression: 1 } }),
+      dayOf(3, 4, 1, 0, { arrived: { fold: 1 } }), dayOf(4, 4, 1, 0), dayOf(5, 5, 1, 0, { arrived: { regression: 1 }, arrived_serious: 1 }),
+      dayOf(6, 6, 2, 1, { arrived: { 'door:repair': 1 } }), dayOf(7, 6, 2, 1), dayOf(8, 7, 3, 1, { arrived: { regression: 1 } }),
+      dayOf(9, 7, 4, 1, { closed_undelivered: 1 }),
+    ];
+    const text = renderState({ ...base, burndown: {}, version_lines: { v1: lines(days, {
+      left: [{ key: 'K-6', day: '2026-10-06', authority: 'rm' }], done_undated: 1,
+      open_by_priority: { none: 1, High: 1 }, oldest_untouched: { key: 'K-3', since: '2026-10-02', days: 7 },
+      unrecorded: { open: ['K-9'], closed: [] },
+    }) } } as never);
+    expect(text.split('\n').filter((l) => l.startsWith('v1 '))).toEqual([
+      'v1 as of 2026-10-09: came in 7 (+4 in 7 days), done 4 (+4; 1 closed without delivery), left 1 (1 not by the operator), open 2 (came in, not done, not left)',
+      'v1 arrived in 7 days: regression 2, door:repair 1, fold 1',
+      'v1 arrived serious in 7 days: 1',
+      'v1 open by priority: High 1, none 1',
+      'v1 oldest untouched: K-3, waiting 7 days since 2026-10-02',
+      'v1 in Jira with no ledger record: 1 open, 0 closed (keys in --json)',
+      'v1 done with no date: 1',
+    ]);
+  });
+
+  it('a three-day series prints its real span', () => {
+    const text = renderState({ ...base, burndown: {}, version_lines: { v1: lines([dayOf(1, 1, 0), dayOf(2, 2, 0), dayOf(3, 3, 1)]) } } as never);
+    expect(text).toContain('v1 as of 2026-10-03: came in 3 (+3 in 3 days), done 1 (+1;');
+    expect(text).toContain('v1 arrived in 3 days: none');
+    expect(text).toContain('v1 oldest untouched: none');
+    expect(text).not.toContain('in 7 days');
+  });
+
+  it('prints the burn-down\'s admitted open and the lines\' open each with its label', () => {
+    const burndown = { v1: { baseline: 1, baseline_open: 0, admitted_open: 0, emergency_open: 0, deferred_out: 0 } };
+    const text = renderState({ ...base, burndown, version_lines: { v1: lines([dayOf(1, 1, 0), dayOf(2, 2, 1)]) } } as never);
+    expect(text).toContain('v1: baseline 1 (open 0), admitted open 0,');
+    expect(text).toContain('open 1 (came in, not done, not left)');
+  });
+
+  it('prints an unknown version as UNKNOWN with its reason and no number', () => {
+    const text = renderState({ ...base, burndown: {}, version_lines: { v1: { status: 'UNKNOWN', reason: 'the Jira mirror is unknown' } } } as never);
+    expect(text.split('\n').filter((l) => l.startsWith('v1 '))).toEqual(['v1 lines: UNKNOWN (the Jira mirror is unknown)']);
+  });
+
+  it('renderState prints the state\'s figures, never a recount', () => {
+    const records = ['K-1', 'K-2', 'K-3'].map((key) => ({ key, version: 'v1', placement: 'in', actual_member: true }));
+    const burndown = { v1: { baseline: 3, baseline_open: 3, admitted_open: 1, emergency_open: 0, deferred_out: 0 } };
+    const text = renderState({ ...base, records, burndown, version_lines: { v1: lines([dayOf(1, 7, 2)]) } } as never);
+    expect(text).toContain('came in 7');
+    expect(text).toContain('open 5 (came in, not done, not left)');
+    expect(text).not.toContain('came in 3');
+  });
+
+  it.each(['2026-10-22T08:00:00.000+0000', ''])('the state command exits 0 with a resolved date of %j', async (resolved) => {
+    const vf = join(root, 'verbatim.txt');
+    await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '106', '--verbatim-file', vf);
+    await run('operator', 'freeze', 'R1', '--version', 'v1', '--keys', 'K-1', '--decision', '104', '--verbatim-file', vf);
+    const mir = writeMirror({ key: 'K-1', fixVersions: ['v1'], status: 'Done', resolved });
+    process.exitCode = undefined;
+    out = [];
+    await run('state', 'R1', '--mirror-root', mir);
+    expect(process.exitCode).toBeUndefined();
+    expect(out.join('\n')).toMatch(/v1 as of \d{4}-\d\d-\d\d: came in 1 .*, done 1 /);
   });
 });
 

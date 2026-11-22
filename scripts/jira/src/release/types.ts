@@ -167,4 +167,5 @@ export interface IssueSnap {
   blockedBy?: string[];
   parent?: string | null;
   labels?: string[];
+  resolved?: string | null;
 }
