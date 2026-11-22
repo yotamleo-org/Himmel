@@ -64,7 +64,7 @@ proc_has() {
         *) return 1 ;;
     esac
 }
-pass_running() { proc_has "$1" graph-pass-detached; }
+pass_running() { proc_has "$1" graph-pass-detached || proc_has "$1" "$PASS"; }
 
 CLAIM="$STATE_DIR/graph-pass.claim"
 # ln is atomic and refuses an existing name, and the claim never shows up empty.
@@ -197,7 +197,7 @@ cmd_start() {
     sleep 0.2
     # pid 0 is the caller's own process group, which kill -0 reports alive.
     case "$pid" in ''|*[!0-9]*|0) pid=0 ;; esac
-    if [ "$pid" -le 0 ] || { ! kill -0 "$pid" 2>/dev/null && [ ! -f "$SERIES" ]; }; then
+    if [ "$pid" -le 0 ] || { ! kill -0 "$pid" 2>/dev/null && { [ ! -f "$SERIES" ] || [ "$(series_val series)" = failed ]; }; }; then
         echo "graph-pass-detached: the pass exited at once; see $log" >&2
         return 1
     fi

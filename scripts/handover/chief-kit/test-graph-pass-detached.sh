@@ -269,11 +269,12 @@ if [ "$code" = hold ]; then
     while [ -d "$SEQ_DIR" ] && [ "$i" -lt 60 ]; do sleep 1; i=$((i+1)); done
     exit 0
 fi
+[ ! -f "$SEQ_DIR/delay" ] || sleep "$(cat "$SEQ_DIR/delay")"
 exit "$code"
 EOF
 chmod +x "$seqstub"
 sstart() {
-    sd="$tmp/s-$1"; mkdir -p "$sd"; printf '%s\n' "$2" | tr ' ' '\n' > "$sd/codes"; rm -f "$sd/n"
+    sd="$tmp/s-$1"; mkdir -p "$sd"; printf '%s\n' "$2" | tr ' ' '\n' > "$sd/codes"; rm -f "$sd/n"; [ -z "${3:-}" ] || echo "$3" > "$sd/delay"
     SEQ_DIR="$sd" GRAPH_PASS_STATE_DIR="$sd/state" GRAPH_PASS_SCRIPT="$seqstub" bash "$SCRIPT" start >/dev/null 2>&1
 }
 sstatus() { GRAPH_PASS_STATE_DIR="$tmp/s-$1/state" bash "$SCRIPT" status 2>&1; }
@@ -292,7 +293,7 @@ check "17: the series file records last_exit 0" "$(state_val "$tmp/s-17/state/gr
 check "17: the series file records promoted" "$(state_val "$tmp/s-17/state/graph-pass.series" series)" promoted
 contains "17: the launcher log records each pass" "$(cat "$tmp/s-17/state"/graph-pass-*.log)" "pass 3 exit rc=0"
 
-sstart 18 "4 5"; swait 18 "finished"; out18="$(sstatus 18)"
+sstart 18 "4 5" 0.5; swait 18 "finished"; out18="$(sstatus 18)"
 contains "18: a non-4 exit stops the series as finished failed rc=5" "$out18" "finished failed rc=5"
 check "18: the series stopped after two passes" "$(cat "$tmp/s-18/n")" 2
 
@@ -309,6 +310,8 @@ GRAPH_PASS_STATE_DIR="$tmp/s-20/state" bash "$SCRIPT" start >/dev/null 2>&1; rc=
 check "21: a second start mid-series is refused rc 3" "$rc" 3
 pid20="$(state_val "$tmp/s-20/state/graph-pass.state" pid)"
 [ -n "$pid20" ] && { kill "$pid20" 2>/dev/null; wait_dead "$pid20"; }
+
+sstart 22 "5"; check "22: a pass that fails at once makes start exit 1" "$?" 1
 
 echo
 [ "$fails" -eq 0 ] && { echo "PASS: all rows ok"; exit 0; } || { echo "FAIL: $fails row(s)"; exit 1; }
