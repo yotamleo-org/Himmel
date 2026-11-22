@@ -2578,7 +2578,7 @@ else
         # shellcheck disable=SC2016  # the sed scripts are literal; the $ is a regex anchor
         g1_head="$(g1_render "$SCRIPT" head | sed -e "s#$g1_tree#ROOT#g" -e "s#$g1_repo#ROOT#g" -e "s#$TMP_ROOT/g1run-head#DIR#g" -e "s#graph-publish-[A-Za-z0-9._-]*#graph-publish-SLUG#g" -e '/^# himmel-cadence-runner-format:/d' -e '/^exit "$_rc"$/d')"
         # shellcheck disable=SC2016  # the sed scripts are literal; the $ is a regex anchor
-        g1_base_out="$(g1_render "$g1_tree/scripts/luna/graphmap-cadence.sh" base | sed -e "s#$g1_tree#ROOT#g" -e "s#$g1_repo#ROOT#g" -e "s#$TMP_ROOT/g1run-base#DIR#g" -e "s#graph-publish-[A-Za-z0-9._-]*#graph-publish-SLUG#g" -e '/claude-bin:\$PATH$/d' -e '/^# cron cannot read the macOS/,/^fi$/d' -e '/^# himmel-cadence-runner-format:/d')"
+        g1_base_out="$(g1_render "$g1_tree/scripts/luna/graphmap-cadence.sh" base | sed -e "s#$g1_tree#ROOT#g" -e "s#$g1_repo#ROOT#g" -e "s#$TMP_ROOT/g1run-base#DIR#g" -e "s#graph-publish-[A-Za-z0-9._-]*#graph-publish-SLUG#g" -e '/claude-bin:\$PATH$/d' -e '/^# cron cannot read the macOS/,/^fi$/d' -e '/^# himmel-cadence-runner-format:/d' -e '/^exit "$_rc"$/d')"
         if [ -n "$g1_head" ] && grepq "$g1_head" -F 'graphmap-publish-himmel.sh' && [ "$g1_head" = "$g1_base_out" ]; then
             pass "G1 the publisher render of HEAD equals the merge base's render"
         else
