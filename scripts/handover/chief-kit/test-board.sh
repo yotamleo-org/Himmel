@@ -625,7 +625,7 @@ contains 'the versions fingerprint is stored in the board JSON' "$(cat "$W/v-boa
 same 'one Jira call per version' "$(printf '%s\n' "$jargv" | grep -c .)" '2'
 contains 'the CLI is asked by fixVersion JQL' "$jargv" 'fixVersion = "v1.0.0"'
 contains 'the CLI is asked for labels' "$jargv" '--labels'
-contains 'the CLI is asked for a high limit' "$jargv" '--limit 1000'
+contains 'the CLI is asked for a high limit' "$jargv" '--limit 5000'
 contains 'JIRA_PROJECT_KEY comes from the environment' "$jargv" 'project=HIMMEL'
 
 # A failing CLI reads unavailable per version and never fails the render.
@@ -634,6 +634,10 @@ vfail="$(cat "$W/v-fail-board.html" 2>/dev/null)"
 contains 'a failing Jira CLI still renders the board (rc 0)' "rc=$rc" 'rc=0'
 contains 'a failing Jira CLI reads unavailable' "$vfail" 'data-release="v1.0.0" data-unavailable="1"'
 lacks 'a failing Jira CLI fabricates no counts' "$vfail" 'data-open='
+for n in $(seq 9201 14200); do printf 'HIMMEL-%s%sTask%sTo Do%sbulk%s\n' "$n" "$T" "$T" "$T" "$T"; done > "$JD/v1.0.0.tsv"
+runv --out "$W/v-cap-board.html" >/dev/null
+contains 'a Jira answer that reaches the row limit reads unavailable, not a short count' "$(cat "$W/v-cap-board.html")" 'data-release="v1.0.0" data-unavailable="1"'
+write_v100 3
 # A missing CLI (nothing at the seam path) reads unavailable too.
 BOARD_JIRA="$W/bin/no-such-jira" runv --out "$W/v-missing-board.html" >/dev/null; rc=$?
 contains 'a missing Jira CLI still renders the board (rc 0)' "rc=$rc" 'rc=0'

@@ -378,8 +378,9 @@ const DONE_STATUS = /^(done|resolved|in public)$/i;
 // Closed and won't do are out of every count, as the tracker has it.
 const OUT_STATUS = /^(closed|won['’]?t do|won['’]?t fix)$/i;
 const RESIDUAL_LABEL = /(^|-)residual(-|$)/;
+const RELEASE_LIMIT = 5000;
 const releaseOf = (version) => {
-    const a = ['list', '--jql', `project = HIMMEL AND fixVersion = "${version}"`, '--labels', '--limit', '1000'];
+    const a = ['list', '--jql', `project = HIMMEL AND fixVersion = "${version}"`, '--labels', '--limit', String(RELEASE_LIMIT)]; // env-literal-ok: the board's own project key, as before
     let out;
     try {
         out = execFileSync(...(JIRA_CLI.endsWith('.js') ? ['node', [JIRA_CLI, ...a]] : [JIRA_CLI, a]),
@@ -390,7 +391,7 @@ const releaseOf = (version) => {
     const lines = out.split('\n').filter((l) => l.trim()).map((l) => l.split('\t'));
     const rows = lines.filter((f) => f.length >= 5 && /^[A-Z][A-Z0-9]*-\d+$/.test(f[0]))
         .map((f) => ({ key: f[0], status: f[2].trim(), title: f[3], labels: (f[4] || '').split(',').map((x) => x.trim()) }));
-    if (rows.length !== lines.length) return { version, unavailable: true };
+    if (rows.length !== lines.length || rows.length >= RELEASE_LIMIT) return { version, unavailable: true };
     const counted = rows.filter((r) => !OUT_STATUS.test(r.status));
     const open = counted.filter((r) => !DONE_STATUS.test(r.status));
     const byStatus = Object.fromEntries(WORKER_SESSION_STATUSES.map((st) => [st, rows.filter((r) => r.status === st).length]));
