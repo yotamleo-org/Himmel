@@ -1010,6 +1010,8 @@ def flag_on(name):
 
 CORE_VERBS = ('CORE', 'NOT-CORE', 'BYPASS', 'BYPASS-NEEDS-SPEC', 'UNKNOWN')
 CORE_FIELDS = {'CORE': 3, 'BYPASS': 4, 'BYPASS-NEEDS-SPEC': 4}  # tokens a core-check line needs: CORE <K> <match>, BYPASS <K> <kind> <reason...>, BYPASS-NEEDS-SPEC <K> <kind> <missing...>
+SPEC_VERBS = ('SPEC-STALE', 'NO-SPEC', 'SPEC-NEEDS-OPERATOR', 'SPEC-SIGNER-UNKNOWN')
+SPEC_FIELDS = {'SPEC-NEEDS-OPERATOR': 5, 'SPEC-SIGNER-UNKNOWN': 4}
 
 
 def jira_cli():
@@ -1040,7 +1042,7 @@ def per_key_lines(out, keys, spec=False):
         t = line.split()
         if spec and t[:2] == ['SPEC', 'ok'] and len(t) >= 4:
             got[t[2]] = line
-        elif t and (t[0] in ('SPEC-STALE', 'NO-SPEC') if spec else t[0] in CORE_VERBS) and len(t) >= CORE_FIELDS.get(t[0], 2):
+        elif t and (t[0] in SPEC_VERBS if spec else t[0] in CORE_VERBS) and len(t) >= (SPEC_FIELDS if spec else CORE_FIELDS).get(t[0], 2):
             got[t[1]] = line  # a line shorter than its verb needs is no answer: a truncated BYPASS must never read as a bypass
     return {k: got[k] for k in keys if k in got}
 
@@ -1156,6 +1158,16 @@ def core_worker_gate(l, ctx):
             lines.append('> **Spec:** %s %s (%s)' % (k, ' '.join(t[3:-1]), t[-1]))
             signed.append((k, ' '.join(t[3:-1])))
             row(k, 'spec', matched=core[k], line=spec[k])
+        elif t[0] == 'SPEC-NEEDS-OPERATOR':
+            row(k, 'refused', matched=core[k], line=spec[k])
+            refusals.append("%s is core (%s) and needs the operator's own signature (%s): the chief's signature %s does not count; "
+                            'see jira release signer-check %s, then the operator signs it (jira release operator spec <release> ... --signer operator --supersedes %s)'
+                            % (k, core[k], t[-1], t[-2], k, t[-2]))
+        elif t[0] == 'SPEC-SIGNER-UNKNOWN':
+            u = spec[k].split(None, 3)
+            row(k, 'refused', matched=core[k], line=spec[k])
+            refusals.append('%s is core (%s) and its chief signature %s cannot be checked: signer records unreadable: %s; repair the release named, then re-run'
+                            % (k, core[k], u[2], u[3]))
         else:
             row(k, 'refused', matched=core[k], line=spec[k])
             refusals.append('%s is core (%s) and has no signed minerva spec: %s; run minerva, then jira release operator spec' % (k, core[k], spec[k]))

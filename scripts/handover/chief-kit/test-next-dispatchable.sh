@@ -2225,6 +2225,48 @@ lacks "(9564) ... the key is not also a dispatch row" "$cgn" "LOCAL${TAB}HIMMEL-
 lacks "(9564) ... no CORE-CHECK-FAILED header" "$cgn" "CORE-CHECK-FAILED"
 rm -f "$CGM/HIMMEL-9640.md" "$CG/core/HIMMEL-9640"
 
+mk HIMMEL-908 "To Do" High '[]' '["v1.0.1"]' '[]' "cg 908" "Edit scripts/lib/cg908.sh please."
+mk HIMMEL-909 "To Do" High '[]' '["v1.0.1"]' '[]' "cg 909" "Edit scripts/lib/cg909.sh please."
+printf 'CORE HIMMEL-908 label core\n' > "$CG/core/HIMMEL-908"; printf 'SPEC-NEEDS-OPERATOR HIMMEL-908 /state/specs/HIMMEL-908-spec.md C-R1-908 O-M1-908\n' > "$CG/spec/HIMMEL-908"
+printf 'CORE HIMMEL-909 label core\n' > "$CG/core/HIMMEL-909"; printf 'SPEC-SIGNER-UNKNOWN HIMMEL-909 C-R1-909 release v1.1.3 chain unreadable\n' > "$CG/spec/HIMMEL-909"
+cgs="$(ND_WHY=1 runcg "$CGM" --why)"
+has "a SPEC-NEEDS-OPERATOR key prints the # drop line naming the governing record" "$cgs" "# drop HIMMEL-908 spec-needs-operator O-M1-908"
+lacks "a SPEC-NEEDS-OPERATOR key prints no DESIGN, LOCAL, LOCAL?, CLOUD, RESUME or SERIES row" "$cgs" "HIMMEL-908${TAB}"
+has "a SPEC-SIGNER-UNKNOWN key prints the # drop line naming the why" "$cgs" "# drop HIMMEL-909 spec-signer-unknown release v1.1.3 chain unreadable"
+lacks "a SPEC-SIGNER-UNKNOWN key prints no row of any kind" "$cgs" "HIMMEL-909${TAB}"
+lacks "the new spec-check verbs are no CORE-CHECK-FAILED" "$cgs" "CORE-CHECK-FAILED"
+has "the other To Do rows still print beside the dropped keys" "$cgs" "LOCAL${TAB}HIMMEL-903${TAB}"
+cgst="$(runcg "$CGM" --top 2)"
+[ "$(printf '%s\n' "$cgst" | grep -c "^DESIGN")" = 2 ] && pass "a dropped SPEC-NEEDS-OPERATOR or SPEC-SIGNER-UNKNOWN key takes no --top slot" || fail "--top 2 should print the two DESIGN rows: $cgst"
+for sk in 908 909; do
+    case "$sk" in
+        908) what="naming the governing record"; exp="needs the operator's own signature (O-M1-908)" ;;
+        *) what="with signer records unreadable and the why"; exp='signer records unreadable: release v1.1.3 chain unreadable' ;;
+    esac
+    has "--why-ticket on the $sk key prints GATE core-no-spec $what" "$(runcg "$CGM" --why-ticket "HIMMEL-$sk")" "GATE HIMMEL-$sk core-no-spec: $exp"
+done
+rm -f "$CGM/HIMMEL-908.md" "$CGM/HIMMEL-909.md" "$CG/core/HIMMEL-908" "$CG/core/HIMMEL-909" "$CG/spec/HIMMEL-908" "$CG/spec/HIMMEL-909"
+
+mk HIMMEL-9477 "To Do" High '[]' '["v1.0.1"]' '[]' "cg 9477" "Edit scripts/lib/cg9477.sh please."
+printf 'CORE HIMMEL-9477 label core\n' > "$CG/core/HIMMEL-9477"
+n=0
+while IFS=$'\t' read -r want line; do
+    n=$((n + 1)); printf '%s\n' "$line" > "$CG/spec/HIMMEL-9477"
+    o="$(ND_WHY=1 runcg "$CGM" --why)"
+    case "$want" in
+        none) exp='# WARN CORE-CHECK-FAILED spec-check printed no parseable line for HIMMEL-9477' ;;
+        'SPEC ok '*) exp="LOCAL${TAB}HIMMEL-9477${TAB}" ;;
+        SPEC-STALE\ *|NO-SPEC\ *) exp="DESIGN${TAB}HIMMEL-9477${TAB}${want%% *}${TAB}" ;;
+        SPEC-NEEDS-OPERATOR\ *) exp="# drop HIMMEL-9477 spec-needs-operator ${want#* governing=}" ;;
+        SPEC-SIGNER-UNKNOWN\ *) exp="# drop HIMMEL-9477 spec-signer-unknown ${want#* why=}" ;;
+        *) exp="no such answer: $want" ;;
+    esac
+    has "fixture line $n parses to its answer: $want" "$o" "$exp"
+done < "$HERE/fixtures/spec-check-lines.txt"
+[ "$n" -ge 11 ] && pass "every line of fixtures/spec-check-lines.txt parses to its expected answer, the spaced path included; a cut line is no answer ($n lines)" \
+    || fail "the fixture held $n lines, want at least 11"
+rm -f "$CGM/HIMMEL-9477.md" "$CG/core/HIMMEL-9477" "$CG/spec/HIMMEL-9477"
+
 # fail closed: a CLI that cannot run lists no To Do row and prints one CORE-CHECK-FAILED header
 for how in missing exit3 junk spec3; do
     : > "$CG/calls.log"; rm -f "$CG/mode"
