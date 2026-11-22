@@ -647,10 +647,9 @@ def staging_of(i):
         except OSError:
             unread.append('mirror file absent')
         answers = list(i.get('parts', ()))
-        shown = {a.get('pr') for a in answers}  # an unread PR among the answers is named by needs itself
+        shown = {a.get('pr') for a in answers}
         unread += ['PR #%s body could not be read' % pr for pr in partials.get(k, []) if pr in unread_prs and pr not in shown]
         if i.get('owed_next'):
-            # the next step is one more input, beside the PR answers: a proof step never erases a PR's staging need
             answers.append(dict(kind='remaining', handed=[], text='; '.join(r['text'] for r in i['owed_next']), nowrite=i.get('nowrite', False),
                                 chief_owed=[], chief_invalid=[], owed_lines=[]))
         _staged[k] = needs(txt, answers, unread, os.environ['ND_TICKET_POLICY_CLI'])
@@ -1394,24 +1393,21 @@ reader = os.environ.get('NEXT_DISPATCH_READER') or os.path.join(repo, 'scripts',
 # NEXT_DISPATCH_BODY_TTL seconds (default 3600) after it was read, then read again; only a remainder that SAID something
 # (`remaining`, `handed-off`, `owed`) is stored, so the body a chief edits to clear a NEEDS-CHIEF-NOTE row (kind none) and a body gh could not read
 # are asked again on the next run. A chief who edits a body that already holds a remainder is seen within the TTL. NEXT_DISPATCH_BODY_CACHE
-# names the file (`off` disables the cache); a corrupt or unwritable file reads as no cache. An entry written now is
-# {"schema": 1, "at": <time>, "ans": <the complete answer>}; an older entry holds a five-value "ans" array. The predicate
-# (--why-ticket) reads both; the listing uses only a complete schema-1 entry and reads the body again for an older one,
-# replacing that one entry only.
+# names the file (`off` disables the cache); a corrupt or unwritable file reads as no cache.
 body_cache_path = os.environ.get('NEXT_DISPATCH_BODY_CACHE') or os.path.join(os.environ.get('HOME') or os.path.expanduser('~'), '.himmel', 'state', 'next-dispatchable', 'merged-pr-remainders.json')
 try:
     body_ttl = max(0, int(os.environ.get('NEXT_DISPATCH_BODY_TTL', '3600')))
 except ValueError:
     body_ttl = 3600
 
-FULL_MAX = 1 << 20  # bytes of one encoded answer; a bigger one is unknown, never cut to a prefix
+FULL_MAX = 1 << 20
 
-class _Dup(dict):
-    pass  # a JSON object that repeated a key: full_answer refuses it
+class DuplicateKeyDict(dict):
+    pass
 
 def _pairs(pairs):
     d = dict(pairs)
-    return _Dup(d) if len(d) != len(pairs) else d
+    return DuplicateKeyDict(d) if len(d) != len(pairs) else d
 
 def _no_constant(c):
     raise ValueError('non-finite number %s' % c)
@@ -1420,7 +1416,6 @@ def _strs(v):
     return type(v) is list and all(type(x) is str for x in v)
 
 def valid_answer(a):
-    # the one structural check of a complete answer, fresh or cached; the vocabulary is the parser's own
     if type(a) is not dict or tuple(sorted(a)) != tuple(sorted(_reader.FULL_FIELDS)):
         raise ValueError('answer fields')
     kind, handed, rows = a['kind'], a['handed'], a['owed_lines']
@@ -1450,7 +1445,6 @@ def valid_answer(a):
     return a
 
 def full_answer(raw):
-    # the reader's --full-units output: exactly {"schema": 1, "answer": {...}}
     if len(raw) > 2 * FULL_MAX:
         raise ValueError('answer over %d bytes' % FULL_MAX)
     env = json.loads(raw.decode('utf-8'), object_pairs_hook=_pairs, parse_constant=_no_constant)
@@ -1475,7 +1469,6 @@ def _fresh(e):
         return False
 
 def cached_full(pr, key):
-    # a complete schema-1 entry, or None: an older entry is a miss for the listing
     e = body_cache_load().get('%s:%s' % (pr, key))
     try:
         if type(e) is dict and sorted(e) == ['ans', 'at', 'schema'] and type(e['schema']) is int and e['schema'] == 1 and _fresh(e):
