@@ -450,6 +450,139 @@ wait_for "$Q/daemon.log" "start pid="
 assert_eq "R14 the fsmonitor command never ran" "no" "$([ -e "$D/fsm.ran" ] && echo ran || echo no)"
 stop
 
+CH=HIMMEL-nextleg-2026-11-13A-roadmap-chief
+blob() { g -C "$R" rev-parse "HEAD:$1" | cut -c1-12; }
+commit_tiers() { printf '# %s\n' "$1" >> "$R/$TIER_REL"; g -C "$R" commit -q -am "$1"; }
+n_lines() { grep -cF -- "$1" "$2" 2>/dev/null || true; }
+has_hold() { [ -e "$Q/.hold" ] && echo yes || echo no; }
+
+echo "== HIMMEL-10717 DoD 1, 2: a stale daemon holds a request only the new code accepts, and tells =="
+setup_repo stale
+start
+wait_for "$Q/daemon.log" "start pid="
+self_a=$(blob "$DAEMON_REL")
+assert_contains "RED 10717: the start line names the daemon's own blob" "self=$self_a " "$(start_line)"
+sed -i.bak 's/-\[A-Z\]\[0-9\]+\[a-z\]?-/-[A-Z]{1,2}[0-9]+[a-z]?-/' "$R/$DAEMON_REL"; rm -f "$R/$DAEMON_REL.bak"
+assert_contains "control: commit B widens the brief-name pattern" '-[A-Z]{1,2}[0-9]+[a-z]?-' "$(cat "$R/$DAEMON_REL")"
+g -C "$R" commit -q -am "B widens brief names"
+self_b=$(blob "$DAEMON_REL")
+NN="$B/HIMMEL-3-NN3-slug.md"
+printf -- '---\ndescription: "a two-letter series brief"\n---\n' > "$NN"
+printf '%s\n' "brief=$NN" model=claude-sonnet-5-5 "chief=$CH" > "$Q/r.req"
+wait_for "$Q/daemon.log" "STALE hold"
+wait_for "$D/sent" "bypass request r.req waits"
+sleep 1
+assert_absent "RED 10717 DoD1: the stale daemon refuses nothing" "REFUSED" "$(cat "$Q/daemon.log")"
+assert_absent "RED 10717 DoD1: the stale daemon asks nothing" "ASK " "$(cat "$Q/daemon.log")"
+assert_eq "RED 10717 DoD1: the request is still queued" "r.req" "$(cd "$Q" && ls r.req* 2>/dev/null)"
+assert_eq "RED 10717 DoD1: one STALE hold line over many passes" "1" "$(n_lines 'STALE hold' "$Q/daemon.log")"
+assert_contains "RED 10717 DoD1: the hold names the changed file" "(bypass-launchd.sh changed)" "$(grep 'STALE hold' "$Q/daemon.log")"
+assert_eq "RED 10717 DoD1: the hold writes .hold" "yes" "$(has_hold)"
+CAUSE_CARD="bypass-failed|bypass-launchd runs older code than its checkout (bypass-launchd.sh changed). It reads no request until you restart it: touch $Q/stop, wait for \`stop file\` in daemon.log, remove stop, start it again."
+assert_eq "RED 10717 DoD2: one card names the cause and the restart steps" "1" "$(n_lines "$CAUSE_CARD" "$D/kinds")"
+assert_eq "RED 10717 DoD2: one card names the held request" "1" "$(n_lines 'bypass-failed|bypass request r.req waits: the daemon needs a restart' "$D/kinds")"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" > "$Q/s.req"
+wait_for "$D/sent" "bypass request s.req waits"
+sleep 1
+assert_eq "RED 10717 DoD2: a request queued during the hold gets one card" "1" "$(n_lines 'bypass-failed|bypass request s.req waits: the daemon needs a restart' "$D/kinds")"
+assert_eq "RED 10717 DoD2: no card repeats across passes" "1 1" \
+    "$(n_lines "$CAUSE_CARD" "$D/kinds") $(n_lines 'bypass request r.req waits' "$D/kinds")"
+out=$(CLAUDECODE=1 bash "$DAEMON" --check --bucket "$B" 2>&1)
+assert_contains "RED 10717 DoD4: --check reports the holding daemon" \
+    "daemon: live pid=$(readlink "$Q/.lock.pid"), holding (bypass-launchd.sh changed)" "$out"
+stop; rm -f "$Q/stop"
+start
+for _ in $(seq 100); do [ "$(grep -c 'start pid=' "$Q/daemon.log")" -ge 2 ] && break; sleep 0.1; done
+assert_contains "RED 10717 DoD1: the restarted daemon's start line carries B's self=" "self=$self_b " "$(grep 'start pid=' "$Q/daemon.log" | sed -n 2p)"
+wait_for "$Q/daemon.log" "ASK HIMMEL-3-NN3-slug"
+assert_contains "RED 10717 DoD1: after the restart the held request is asked" "ASK HIMMEL-3-NN3-slug" "$(cat "$Q/daemon.log")"
+assert_eq "RED 10717 DoD1: the restart removes .hold" "no" "$(has_hold)"
+stop
+
+echo "== HIMMEL-10717 DoD 1: a tier-file change holds with its own cause =="
+setup_repo stale-tiers
+start
+wait_for "$Q/daemon.log" "start pid="
+commit_tiers "B changes the tiers"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" > "$Q/r.req"
+wait_for "$Q/daemon.log" "STALE hold"
+sleep 0.5
+assert_contains "RED 10717 DoD1: a tier change holds, naming the tier file" "(bypass-flag-tiers.tsv changed)" "$(grep 'STALE hold' "$Q/daemon.log")"
+assert_absent "RED 10717 DoD1: nothing is asked on old tiers" "ASK " "$(cat "$Q/daemon.log")"
+assert_eq "RED 10717 DoD1: the request stays queued" "r.req" "$(cd "$Q" && ls r.req* 2>/dev/null)"
+stop
+
+echo "== HIMMEL-10717 G6: the hold latches until a restart =="
+setup_repo stale-latch
+start
+wait_for "$Q/daemon.log" "start pid="
+tiers_a=$(blob "$TIER_REL")
+commit_tiers "B changes the tiers"
+wait_for "$Q/daemon.log" "STALE hold"
+g -C "$R" checkout -q HEAD~1 -- "$TIER_REL"; g -C "$R" commit -q -m "C restores A's tiers"
+assert_eq "control: commit C restores A's tier blob" "$tiers_a" "$(blob "$TIER_REL")"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" > "$Q/r.req"
+sleep 1
+assert_absent "RED 10717 G6: after A's ids return nothing is asked" "ASK " "$(cat "$Q/daemon.log")"
+assert_eq "RED 10717 G6: the request stays queued" "r.req" "$(cd "$Q" && ls r.req* 2>/dev/null)"
+assert_eq "RED 10717 G6: .hold stays" "yes" "$(has_hold)"
+assert_eq "RED 10717 G6: still one STALE hold line" "1" "$(n_lines 'STALE hold' "$Q/daemon.log")"
+stop
+
+echo "== HIMMEL-10717 DoD 3: a change during the wait does not launch on old rules =="
+setup_repo stale-go
+start
+CODE=$(ask_code r)
+commit_tiers "B changes the tiers during the wait"
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "STALE after go"
+wait_for "$D/sent" "bypass request r.req waits"
+assert_eq "RED 10717 DoD3: the stub launcher never runs" "no" "$([ -e "$D/launch.args" ] && echo yes || echo no)"
+assert_contains "RED 10717 DoD3: the log says the go was not used" "STALE after go $(basename "$BRIEF" .md): go not used, re-queued" "$(cat "$Q/daemon.log")"
+assert_eq "RED 10717 DoD3: one bypass-result card says the go was not used" "1" "$(n_lines "bypass-result|bypass launch $(basename "$BRIEF" .md): your go was not used" "$D/kinds")"
+assert_eq "RED 10717 DoD3: the request is queued again" "r.req" "$(cd "$Q" && ls r.req* 2>/dev/null)"
+assert_eq "RED 10717 DoD3: the daemon then holds" "yes" "$(has_hold)"
+assert_absent "RED 10717 DoD3: no GRANT line" "GRANT" "$(cat "$Q/daemon.log")"
+stop
+
+echo "== HIMMEL-10717 DoD 4: --check and blocks= =="
+setup_repo check
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" > "$D/ok.req"
+printf '%s\n' "brief=$BRIEF" model=claude-opus-4-1 "chief=$CH" > "$D/bad.req"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" "blocks=#5700 #5699" > "$D/blocks.req"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" "blocks=5700" > "$D/badblocks.req"
+out=$(env -u CLAUDECODE bash "$DAEMON" --check --bucket "$B" --request "$D/ok.req" 2>&1); rc=$?
+assert_eq "RED 10717 DoD4: --check on a valid request exits 0" "0" "$rc"
+assert_contains "RED 10717 DoD4: --check prints accepted" "accepted" "$out"
+assert_contains "RED 10717 DoD4: with no daemon, daemon: none" "daemon: none" "$out"
+out=$(env -u CLAUDECODE bash "$DAEMON" --check --bucket "$B" --request "$D/bad.req" 2>&1); rc=$?
+assert_eq "RED 10717 DoD4: a bad model exits 1" "1" "$rc"
+assert_contains "RED 10717 DoD4: a bad model is refused by name" "refused: malformed: model" "$out"
+out=$(env -u CLAUDECODE bash "$DAEMON" --check --bucket "$B" --request "$D/blocks.req" 2>&1); rc=$?
+assert_eq "RED 10717 DoD4: blocks=#5700 #5699 is accepted" "0 accepted" "$rc $(head -n 1 <<<"$out")"
+out=$(env -u CLAUDECODE bash "$DAEMON" --check --bucket "$B" --request "$D/badblocks.req" 2>&1); rc=$?
+assert_eq "RED 10717 DoD4: blocks=5700 is refused malformed: blocks" "1 refused: malformed: blocks" "$rc $(head -n 1 <<<"$out")"
+out=$(CLAUDECODE=1 bash "$DAEMON" --check --bucket "$B" --request "$D/ok.req" 2>&1); rc=$?
+assert_eq "RED 10717 DoD4: --check runs under CLAUDECODE=1" "0 accepted" "$rc $(head -n 1 <<<"$out")"
+assert_eq "RED 10717 DoD4: --check under CLAUDECODE=1 takes no lock, logs nothing and sends nothing" "none" \
+    "$( { [ -e "$Q/.lock.pid" ] || [ -L "$Q/.lock.pid" ]; } && echo lock; [ -e "$Q/daemon.log" ] && echo log; [ -e "$D/sent" ] && echo sent; [ -e "$Q/.hold" ] && echo hold; echo none)"
+assert_absent "RED 10717 DoD4: --check leaves no daemon running" "bypass-launchd.sh --bucket $B" "$(ps -eo args= 2>/dev/null)"
+printf '\n# dirty\n' >> "$R/$TIER_REL"
+out=$(env -u CLAUDECODE bash "$DAEMON" --check --bucket "$B" --request "$D/ok.req" 2>&1); rc=$?
+assert_eq "RED 10717 DoD4: a dirty tier file fails the start check, exit 2" "2" "$rc"
+g -C "$R" reset -q --hard
+start
+wait_for "$Q/daemon.log" "start pid="
+out=$(env -u CLAUDECODE bash "$DAEMON" --check --bucket "$B" 2>&1)
+assert_contains "RED 10717 DoD4: with the daemon running, daemon: live pid=<p>" "daemon: live pid=$(readlink "$Q/.lock.pid")" "$out"
+assert_absent "RED 10717 DoD4: a fresh daemon is not holding" "holding" "$out"
+cp "$D/badblocks.req" "$Q/m.req"
+wait_for "$Q/daemon.log" "REFUSED malformed: blocks $Q/m.req"
+assert_contains "RED 10717 DoD4: the daemon refuses blocks=5700" "REFUSED malformed: blocks $Q/m.req" "$(cat "$Q/daemon.log")"
+CODE=$(ask_code r "blocks=#5700 #5699")
+assert_contains "RED 10717 DoD4: the ask names the blocked PRs" "Blocks PRs: #5700 #5699." "$(cat "$D/sent" 2>/dev/null)"
+stop
+
 if [ "$(uname -s)" = Darwin ]; then
     echo "SKIP: the BSD-like shim section simulates macOS on a GNU host"
     echo
