@@ -1435,6 +1435,9 @@ c70_row_at "$(c70_ago 72)" ""
 out="$(c70_run)"
 if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F 'SEMANTIC' && grepq "$out" -F 'last semantic merge 3d ago' && ! grepq "$out" -F 'bash ~/.claude/graphmap-cadence/graphmap-himmel.sh'; then pass "C70 semantic layer 3 days old on a fresh AST graph -> WARN naming the age and the semantic pass"; else fail "C70 semantic 3d old -> $(printf '%s' "$out" | head -3)"; fi
 if grepq "$out" -F 'bash scripts/handover/chief-kit/graph-pass-detached.sh start' && grepq "$out" -F 'bash scripts/handover/chief-kit/graph-pass-detached.sh status' && ! grepq "$(printf '%s\n' "$out" | grep -F '→')" -F 'graphmap-himmel.sh'; then pass "C70 SEMANTIC-STALE remedy names the detached wrapper start and status, not a by-hand pass"; else fail "C70 stale remedy -> $(printf '%s' "$out" | head -4)"; fi
+c70_rem="$(printf '%s\n' "$out" | grep -F '→' | grep -F 'graph-pass-detached.sh' | head -1)"
+c70_pre="${c70_rem%%graph-pass-detached.sh start*}"
+if grepq "$c70_pre" -F 'graph-pass-detached.sh status' && grepq "$c70_rem" -F 'resumable, continuing' && grepq "$c70_rem" -F 'no second start'; then pass "C70 stale remedy reads status before start and says a resumable, continuing series needs no second start"; else fail "C70 status-first remedy -> $c70_rem"; fi
 c70_row_at "$(c70_ago 1)" ""
 out="$(c70_run)"
 if grepq "$out" -F 'OK   C70-graph-semantic'; then pass "C70 semantic layer 1h old -> OK"; else fail "C70 semantic fresh -> $(printf '%s' "$out" | head -3)"; fi

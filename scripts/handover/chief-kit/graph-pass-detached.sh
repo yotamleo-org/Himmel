@@ -9,10 +9,20 @@
 # refuses a second start while one runs, so the next chief reads the state
 # instead of re-running the pass.
 #
-#   graph-pass-detached.sh start    launch the pass; rc 3 while one is running
+# A full pass needs more chunks than one run's cap allows, so a pass that stops
+# at the cap (exit 4, resumable, finished chunks kept) is not a failure: start
+# launches a SERIES, a supervisor that runs the pass again until it exits 0
+# (promoted), ends with any other code (failed) or has run MAX_PASSES passes
+# (exhausted). The supervisor outlives the chief like the pass did.
+#
+#   graph-pass-detached.sh start    launch the series; rc 3 while one is running
 #   graph-pass-detached.sh status   running|finished|none, with pid=, log= (the
-#                                   launcher's log) and pass_log= (the log the
-#                                   pass itself writes: read that one for the promote)
+#                                   launcher's log, one start/exit line per pass)
+#                                   and pass_log= (the log the pass itself writes:
+#                                   read that one for the promote); a series
+#                                   adds pass=, last_exit= and a verdict:
+#                                   "resumable, continuing" after a capped pass,
+#                                   "promoted", "failed rc=<n>" or "exhausted"
 #
 # Exit: 0 started (start) or any answer (status); 1 the pass exited at once, or
 #       its state could not be recorded and it was stopped;
@@ -30,8 +40,16 @@ PASS="${GRAPH_PASS_SCRIPT:-$HOME/.claude/graphmap-cadence/graphmap-himmel.sh}"
 PASS_LOG="${GRAPH_PASS_LOG:-$HOME/.claude/graphmap-cadence/graphmap-himmel.log}"
 STATE_DIR="${GRAPH_PASS_STATE_DIR:-$HOME/.claude/graphmap-cadence/detached}"
 STATE="$STATE_DIR/graph-pass.state"
+SERIES="$STATE_DIR/graph-pass.series"
+MAX_PASSES=5
+case "$0" in
+    /*) SELF="$0" ;;
+    */*) SELF="$(cd "${0%/*}" && pwd)/${0##*/}" ;;
+    *) SELF="$PWD/$0" ;;
+esac
 
 state_val() { sed -n "s/^$1=//p" "$STATE" 2>/dev/null | head -n 1; }
+series_val() { sed -n "s/^$1=//p" "$SERIES" 2>/dev/null | head -n 1; }
 
 # A recorded pid names a process only while it is alive AND its command line
 # still carries <needle>: a file that outlives a reboot can name a reused pid.
@@ -43,7 +61,7 @@ proc_has() {
         *) return 1 ;;
     esac
 }
-pass_running() { proc_has "$1" "$PASS"; }
+pass_running() { proc_has "$1" graph-pass-detached; }
 
 CLAIM="$STATE_DIR/graph-pass.claim"
 # ln is atomic and refuses an existing name, and the claim never shows up empty.
@@ -85,7 +103,49 @@ cmd_status() {
     if [ ! -f "$STATE" ]; then echo none; return 0; fi
     pid="$(state_val pid)"; log="$(state_val log)"
     if pass_running "$pid"; then verdict=running; else verdict=finished; fi
-    echo "$verdict pid=$pid log=$log pass_log=$PASS_LOG"
+    extra=""
+    if [ -f "$SERIES" ]; then
+        n="$(series_val pass)"; last="$(series_val last_exit)"; ser="$(series_val series)"
+        if [ "$verdict" = running ]; then
+            if [ "$last" = 4 ]; then extra=" resumable, continuing pass=$n last_exit=4"; else extra=" pass=$n"; fi
+        else
+            case "$ser" in
+                promoted) extra=" promoted pass=$n last_exit=$last" ;;
+                exhausted) extra=" exhausted pass=$n last_exit=$last" ;;
+                *) extra=" failed rc=${last:-unknown} pass=$n last_exit=${last:-none}" ;;
+            esac
+        fi
+    fi
+    echo "$verdict$extra pid=$pid log=$log pass_log=$PASS_LOG"
+}
+
+series_write() {
+    { printf 'pass=%s\n' "$2"; [ -z "$3" ] || printf 'last_exit=%s\n' "$3"; printf 'series=%s\n' "$1"; } > "$SERIES.tmp" \
+        && mv -f "$SERIES.tmp" "$SERIES"
+}
+
+cmd_supervise() {
+    n=0; last=""; child=""
+    trap 'kill "$child" 2>/dev/null; series_write failed "$n" 143; exit 143' TERM INT HUP  # swallow-ok: the child may already be gone
+    while [ "$n" -lt "$MAX_PASSES" ]; do
+        n=$((n+1))
+        series_write resuming "$n" "$last"
+        echo "[pass $n start $(date '+%Y-%m-%d %H:%M:%S')]"
+        "$PASS" < /dev/null &
+        child=$!
+        wait "$child"
+        rc=$?
+        last="$rc"
+        echo "[pass $n exit rc=$rc $(date '+%Y-%m-%d %H:%M:%S')]"
+        case "$rc" in
+            0) series_write promoted "$n" "$rc"; return 0 ;;
+            4) series_write resuming "$n" "$rc" ;;
+            *) series_write failed "$n" "$rc"; return "$rc" ;;
+        esac
+    done
+    series_write exhausted "$n" "$last"
+    echo "[series exhausted after $n passes, last exit $last]"
+    return 4
 }
 
 cmd_start() {
@@ -104,17 +164,18 @@ cmd_start() {
     fi
     [ -x "$PASS" ] || { echo "graph-pass-detached: the pass script is not executable: $PASS" >&2; return 2; }
     stamp="$(date +%Y%m%dT%H%M%S)"
+    rm -f "$SERIES"
     log="$STATE_DIR/graph-pass-$stamp.log"
 
     if command -v setsid >/dev/null 2>&1; then
         launcher=setsid
         echo "[graph-pass-detached launcher=setsid $(date '+%Y-%m-%d %H:%M:%S')]" > "$log"
-        setsid nohup "$PASS" >> "$log" 2>&1 < /dev/null &  # t13b-ok: one bounded graph pass started on request, not a service; it exits when the pass ends
+        setsid nohup bash "$SELF" supervise >> "$log" 2>&1 < /dev/null &  # t13b-ok: one bounded graph pass series started on request, not a service; it exits when the series ends
         pid=$!
     elif command -v python3 >/dev/null 2>&1; then
         launcher=python-setsid
         echo "[graph-pass-detached launcher=python-setsid $(date '+%Y-%m-%d %H:%M:%S')]" > "$log"
-        python3 -c 'import os,sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])' nohup "$PASS" >> "$log" 2>&1 < /dev/null &  # t13b-ok: one bounded graph pass started on request, not a service; it exits when the pass ends
+        python3 -c 'import os,sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])' nohup bash "$SELF" supervise >> "$log" 2>&1 < /dev/null &  # t13b-ok: one bounded graph pass series started on request, not a service; it exits when the series ends
         pid=$!
     elif command -v systemd-run >/dev/null 2>&1; then
         launcher=systemd-run
@@ -122,7 +183,8 @@ cmd_start() {
         echo "[graph-pass-detached launcher=systemd-run unit=$unit $(date '+%Y-%m-%d %H:%M:%S')]" > "$log"
         systemd-run --user --quiet --unit="$unit" --collect \
             --property="StandardOutput=append:$log" --property="StandardError=append:$log" \
-            "$PASS" || return 2
+            --setenv="GRAPH_PASS_SCRIPT=$PASS" --setenv="GRAPH_PASS_STATE_DIR=$STATE_DIR" --setenv="GRAPH_PASS_LOG=$PASS_LOG" \
+            bash "$SELF" supervise || return 2
         pid="$(systemctl --user show -p MainPID --value "$unit" 2>/dev/null)"  # swallow-ok: an empty pid is caught by the liveness check below
     else
         echo "graph-pass-detached: neither setsid nor systemd-run is available" >&2
@@ -132,7 +194,7 @@ cmd_start() {
     sleep 0.2
     # pid 0 is the caller's own process group, which kill -0 reports alive.
     case "$pid" in ''|*[!0-9]*|0) pid=0 ;; esac
-    if [ "$pid" -le 0 ] || ! kill -0 "$pid" 2>/dev/null; then
+    if [ "$pid" -le 0 ] || { ! kill -0 "$pid" 2>/dev/null && [ ! -f "$SERIES" ]; }; then
         echo "graph-pass-detached: the pass exited at once; see $log" >&2
         return 1
     fi
@@ -148,5 +210,6 @@ cmd_start() {
 case "${1:-}" in
     start) cmd_start ;;
     status) cmd_status ;;
+    supervise) cmd_supervise ;;
     *) echo "usage: graph-pass-detached.sh start|status" >&2; exit 2 ;;
 esac
