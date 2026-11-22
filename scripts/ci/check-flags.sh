@@ -21,6 +21,7 @@
 # Exit: 0 clean; 1 findings (one `FAIL <class>: ...` line each); 2 usage or unreadable registry.
 # Platform guard: POSIX bash 3.2+, git or find, grep, awk, xargs.
 set -uo pipefail
+export LC_ALL=C
 
 usage() { echo "usage: check-flags.sh [--root DIR] [--today YYYY-MM-DD]" >&2; exit 2; }
 

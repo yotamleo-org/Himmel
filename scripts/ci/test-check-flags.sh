@@ -60,12 +60,21 @@ else
     fail "a tracked non-ASCII file name is scanned under its real name (fixture git setup failed)"
 fi
 
+t="$(tree latin1)"
+latin1="scripts/handover/chief-kit/$(printf '\374').sh"
+printf '#!/usr/bin/env bash\nhimmel_flag alpha\nhimmel_flag beta\n' > "$t/$latin1"
+if git -C "$t" init -q && git -C "$t" add "$latin1"; then
+    LC_ALL=C.UTF-8 expect_rc "a tracked name that is not valid UTF-8 is scanned under a UTF-8 locale" "$t" 1 "unregistered: beta"
+else
+    fail "a tracked name that is not valid UTF-8 is scanned under a UTF-8 locale (fixture git setup failed)"
+fi
+
 t="$(tree newline)"
 printf '#!/usr/bin/env bash\nhimmel_flag alpha\n' > "$t/scripts/handover/chief-kit/a
 b.sh"
 if git -C "$t" init -q && git -C "$t" add "scripts/handover/chief-kit/a
 b.sh"; then
-    expect_rc "a tracked file name with a newline fails the scan closed" "$t" 2 "fail-closed"
+    expect_rc "a tracked file name with a newline fails the scan closed" "$t" 2 "holds a newline"
 else
     fail "a tracked file name with a newline fails the scan closed (fixture git setup failed)"
 fi
