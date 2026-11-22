@@ -510,11 +510,11 @@ STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_S
 eq "run: the eval's floor critic refuses without --allow-claude-api, before any panel call" "$rc:$(cat "$TMP/stublog/tiers")" "2:"
 printf '%s\n' '{"claude_floor":null}' > "$TMP/local-floor-off.json"
 CRITICS_LOCAL_JSON="$TMP/local-floor-off.json" STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
-  bash "$RUN" --out "$TMP/run-floor-off" --fixtures "$FIX" --key "$KEY" --no-ledger --allow-claude-api --critics codex,claude --only case-01 >/dev/null 2>&1
-eq "run: an overlay claude_floor null leaves no floor critic in the roster" "$(slugs "$TMP/run-floor-off/critics.run.json")" "codex"
+  bash "$RUN" --out "$TMP/run-floor-off" --fixtures "$FIX" --key "$KEY" --no-ledger --allow-claude-api --critics codex,claude --only case-01 >/dev/null 2>&1; rc=$?
+eq "run: an overlay claude_floor null: the sweep runs and leaves no floor critic in the roster" "$rc:$(slugs "$TMP/run-floor-off/critics.run.json")" "0:codex"
 CRITICS_LOCAL_JSON="$TMP/local-drop-claude.json" STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
-  bash "$RUN" --out "$TMP/run-floor-default" --fixtures "$FIX" --key "$KEY" --no-ledger --only case-01 >/dev/null 2>&1
-eq "run: --critics unset: the roster is the live panel's paid rows, no floor critic" "$(slugs "$TMP/run-floor-default/critics.run.json")" "codex"
+  bash "$RUN" --out "$TMP/run-floor-default" --fixtures "$FIX" --key "$KEY" --no-ledger --only case-01 >/dev/null 2>&1; rc=$?
+eq "run: --critics unset: the sweep runs and the roster is the live panel's paid rows, no floor critic" "$rc:$(slugs "$TMP/run-floor-default/critics.run.json")" "0:codex"
 eq "live panel: the shipped registry under an overlay drop is codex and coderabbit only" \
   "$(CRITICS_LOCAL_JSON="$TMP/local-drop-claude.json" bash -c '. "$1" && critics_config_resolve "$2"' _ "$HERE/../../lib/critics-config.sh" "$HERE/../../cr" | python3 -c 'import json,sys; print(",".join(r["slug"] for r in json.load(sys.stdin)["panel"]))' 2>&1)" "codex,coderabbit"
 : > "$TMP/stublog/tiers"

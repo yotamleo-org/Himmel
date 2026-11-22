@@ -2229,8 +2229,8 @@ printf '%s' "$DIFF" | CRITICS_JSON="$PLAIN_JSON" CRITIC_FIRST_PASS="$CAPTURE_STU
 check "P2: row without perspective omits flag" "$(grep -c -- '--perspective-file' "$CAPTURE_FILE")" "0"
 
 check "P5: the shipped claude_floor names the floor-reviewer perspective" "$(node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).claude_floor.perspective))' "$HERE/critics.json" 2>&1)" "perspectives/floor-reviewer.md"
-pp_floor="$(printf '%s' "$DIFF" | bash "$HERE/critic-first-pass.sh" --model claude-opus-5-5 --slug claude --provider claude-api --perspective-file "$HERE/perspectives/floor-reviewer.md" --print-prompt 2>/dev/null)"
-check "P7: claude --print-prompt carries the floor-reviewer perspective" "$(grepq "$pp_floor" -F 'Verify-before-critical' && echo yes || echo no)" "yes"
+pp_floor="$(printf '%s' "$DIFF" | bash "$HERE/critic-first-pass.sh" --model claude-opus-5-5 --slug claude --provider claude-api --perspective-file "$HERE/perspectives/floor-reviewer.md" --print-prompt 2>/dev/null)"; pp_rc=$?
+check "P7: claude --print-prompt exits 0 and carries the floor-reviewer perspective" "$pp_rc:$(grepq "$pp_floor" -F 'Verify-before-critical' && echo yes || echo no)" "0:yes"
 
 # Test PV: OPT-IN route_provider threaded to first-pass as --provider
 # so model ids newer than hermes' catalog can't fall to its
