@@ -549,8 +549,10 @@ whose ticket is not In Progress, with the oldest one's age (a d row on an In Pro
 rows-stale= counts stale rows whose stamp changed or whose c blocker closed; a row whose ticket file is gone prints no-ticket and is not counted.
 The tick carries blocked=<n> chief-sign=<n>[:<age>] rows-stale=<n> after chief-owed=, printed at 0 whenever the record was read, `?` when it was not.
 owed=<n>:<oldest-age> counts the open rows of the owed ledger beside --doc (owed.jsonl, owe.sh; <m>m under an hour, else <h>h),
-hidden at 0, `?` when unreadable. A ticket-kind row with no key past OWED_STALE_SECS (default 14400) adds
-`ACTION owed-stale=<n>:<ids>`; closing the row with a key ends it. chief-wait.sh wakes on that stale count (changed=owed).
+hidden at 0, `?` when unreadable. A ticket-kind row with no key past OWED_STALE_SECS (default 14400), and a keyed
+step past its due date until its step-due wake is delivered (one wake per due date), add `ACTION owed-stale=<n>:<ids>`,
+then one clause per kind naming its own ids: a ticket row is filed and closed with its key; a step is done and closed
+with its evidence, or re-dated. chief-wait.sh wakes on that stale count (changed=owed).
 A key whose line the file reads changed (pool-changed=, same line-hash and sole-reason rules) is unresolved as
 class `changed`: `<target> merged <oldest sha since the anchor> since the line was written: re-read and stamp
 (<LL> <MM-DD> <HH:MM>Z)`, the bracket printed as written, never filled in.
@@ -3904,33 +3906,24 @@ fi
 owed_summary=""
 owed_stale_n=0
 owed_stale_ids=""
+owed_stale_ticket_ids=""
+owed_stale_step_ids=""
 owed_event_actions=""
-if [ -n "$console_doc" ] && [ -s "${console_doc%/*}/owed.jsonl" ]; then
-    if owed_rows="$(bash "$HERE/owe.sh" list --bucket "${console_doc%/*}" 2>/dev/null)"; then  # swallow-ok: the else branch prints owed=?
-        owed_stale_secs="${OWED_STALE_SECS:-14400}"
-        case "$owed_stale_secs" in ''|*[!0-9]*) owed_stale_secs=14400 ;; esac
-        owed_stale_secs=$((10#$owed_stale_secs))
-        tick_now_s
-        owed_calc="$(printf '%s\n' "$owed_rows" | awk -F'\t' -v now="$tick_now" -v lim="$owed_stale_secs" '
-            NF { n++; if (min == "" || $3 + 0 < min + 0) min = $3
-                 if ($2 == "ticket" && $4 == "" && now - $3 > lim) { s++; ids = ids (ids == "" ? "" : ",") $1 } }
-            END { if (n) { a = int((now - min) / 60); print n ":" (a >= 60 ? int(a / 60) "h" : a "m") "\t" s + 0 "\t" ids } }')"
-        IFS=$'\t' read -r owed_summary owed_stale_n owed_stale_ids <<< "$owed_calc"
-        [ -n "$owed_stale_n" ] || owed_stale_n=0
-    else
-        owed_summary='?'
-    fi
-fi
+owed_stale_secs="${OWED_STALE_SECS:-14400}"
+case "$owed_stale_secs" in ''|*[!0-9]*) owed_stale_secs=14400 ;; esac
+owed_stale_secs=$((10#$owed_stale_secs))
 
 # Both clocks use the existing owed identity/ack contract. A reminder grants no
 # hold and is independent of the pool's dispatchability calculation above.
 if [ -n "$console_doc" ] && { [ -s "${console_doc%/*}/owed.jsonl" ] || [[ "${pd_summary:-}" == *'# readiness-clock '* ]]; }; then
     tick_now_s
     if owed_events=$(printf '%s\n' "${pd_summary:-}" | sed -n 's/^# readiness-clock //p' | jq -s . | \
-        python3 -I "$HERE/owed-events.py" --bucket "${console_doc%/*}" --now "$tick_now" --stale-seconds "${owed_stale_secs:-14400}"); then
+        python3 -I "$HERE/owed-events.py" --bucket "${console_doc%/*}" --now "$tick_now" --stale-seconds "$owed_stale_secs"); then
         owed_summary=$(printf '%s' "$owed_events" | jq -r '.summary')
         owed_stale_n=$(printf '%s' "$owed_events" | jq '.stale_ids | length')
         owed_stale_ids=$(printf '%s' "$owed_events" | jq -r '.stale_ids | join(",")')
+        owed_stale_ticket_ids=$(printf '%s' "$owed_events" | jq -r '.stale_ticket_ids | join(",")')
+        owed_stale_step_ids=$(printf '%s' "$owed_events" | jq -r '.stale_step_ids | join(",")')
         owed_event_actions=$(printf '%s' "$owed_events" | jq -r '
             (if (.pending | length) > 0 then "ACTION owed-notify=" + (.pending | join(",")) else empty end),
             (if (.invalid_ids | length) > 0 then "ACTION owed-invalid=" + (.invalid_ids | join(",")) else empty end),
@@ -5170,8 +5163,21 @@ else
             "$wto_summary" "${wtc_summary:+ wt-ceiling=$wtc_summary}" "$REPO/scripts/worktree.sh" "$REPO/scripts/worktree.sh"
     fi
     if [ "$owed_stale_n" -gt 0 ]; then
-        printf 'ACTION owed-stale=%s:%s: a ticket you owe has no key after %sh: file it, then bash %q close --bucket %q --id <id> --key <KEY> (chief-sections/owed.md)\n' \
-            "$owed_stale_n" "$owed_stale_ids" "$((owed_stale_secs / 3600))" "$HERE/owe.sh" "${console_doc%/*}"
+        printf -v owed_stale_line 'ACTION owed-stale=%s:%s: ' "$owed_stale_n" "$owed_stale_ids"
+        owed_stale_sep=''
+        if [ -n "$owed_stale_ticket_ids" ]; then
+            printf -v owed_stale_clause 'a ticket you owe has no key after %sh (%s): file it, then bash %q close --bucket %q --id <id> --key <KEY> (chief-sections/owed.md)' \
+                "$((owed_stale_secs / 3600))" "$owed_stale_ticket_ids" "$HERE/owe.sh" "${console_doc%/*}"
+            owed_stale_line+="$owed_stale_clause"
+            owed_stale_sep='; '
+        fi
+        if [ -n "$owed_stale_step_ids" ]; then
+            printf -v owed_stale_clause 'an owed step is past its due date (%s): do it and close the row with its evidence (bash %q close --bucket %q --id <id> --key <commit sha or decision id>), or re-date it (bash %q add --bucket %q --chief <you> --kind step --key <KEY> --text "<KEY>: <step> by YYYY-MM-DD" --metadata %s, then close this row with the decision id)' \
+                "$owed_stale_step_ids" "$HERE/owe.sh" "${console_doc%/*}" "$HERE/owe.sh" "${console_doc%/*}" \
+                "'{\"actor\":\"<who>\",\"due\":\"YYYY-MM-DD\",\"action\":\"next-step\"}'"
+            owed_stale_line+="$owed_stale_sep$owed_stale_clause"
+        fi
+        printf '%s\n' "$owed_stale_line"
     fi
     [ -z "$owed_event_actions" ] || printf '%s\n' "$owed_event_actions"
     decisions_file="${console_doc%/*}/specs/decisions/chief-decisions-$(date +%F).md"
