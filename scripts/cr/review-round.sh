@@ -378,7 +378,59 @@ EOF
 
 free_cap=5
 free_size_cap=80
-# increment_class <R> <H>: sets inc_class to carried, tests, merge-resolution or
+# finding_heads <R>: R, then every head a chain of .free lines (<from> <to> <class>,
+# <from> being the reviewed head R, never the printed L) leads back to from R,
+# one per line, so a free round between a finding and its fix hides nothing.
+finding_heads() {
+    printf '%s\n' "$1"
+    { [ -f "$free_state" ] && [ ! -L "$free_state" ]; } || return 0
+    _fh_cur="$1" _fh_n=0
+    while [ "$_fh_n" -lt "$free_cap" ]; do
+        _fh_prev="$(awk -v c="$_fh_cur" '$2 == c { p = $1 } END { if (p != "") print p }' "$free_state")" || return 0
+        { [ -n "$_fh_prev" ] && [ "$_fh_prev" != "$_fh_cur" ]; } || return 0
+        printf '%s\n' "$_fh_prev"
+        _fh_cur="$_fh_prev"
+        _fh_n=$((_fh_n + 1))
+    done
+}
+# free_reaches <R> <D> succeeds when D is R or is reached from R through .free lines only.
+free_reaches() {
+    _fr_hit="$(finding_heads "$1" | awk -v d="$2" '$0 == d { print "y"; exit }')" || return 1
+    [ "$_fr_hit" = y ]
+}
+# fix_increment <R> <H> succeeds when a critic finding still asking for a fix sits at a
+# finding head and every non-test path of the increment is the file of one of them.
+fix_increment() {
+    _fx_files=""
+    while IFS= read -r _fx_h; do
+        [ -n "$_fx_h" ] || continue
+        _fx_f="$(ledger_query findfiles "$_fx_h")" || return 1
+        [ -z "$_fx_f" ] || _fx_files="$_fx_files
+$_fx_f"
+    done <<EOF
+$(finding_heads "$1")
+EOF
+    [ -n "$_fx_files" ] || return 1
+    _fx_paths="$(git -c core.quotepath=off diff --no-renames --name-only "$inc_l" "$2")" || return 1
+    [ -n "$_fx_paths" ] || return 1
+    _fx_cited=0
+    while IFS= read -r _fx_p; do
+        [ -n "$_fx_p" ] || continue
+        if test_path_p "$_fx_p"; then continue; fi
+        case "
+$_fx_files
+" in
+            *"
+$_fx_p
+"*) _fx_cited=1 ;;
+            *) return 1 ;;
+        esac
+    done <<EOF
+$_fx_paths
+EOF
+    [ "$_fx_cited" -eq 1 ]
+}
+# increment_class <R> <H>: sets inc_class to carried, tests, comments, merge-resolution, fix or
 # work; a free class needs a non-empty increment of known size at most
 # free_size_cap and fewer than free_cap free rounds (free_count).
 increment_class() {
@@ -391,9 +443,13 @@ increment_class() {
         && [ "${free_count:-$free_cap}" -lt "$free_cap" ] || return 0
     if tests_only_paths "$inc_l" "$2"; then
         inc_class=tests
+    elif comment_only_diff "$inc_l" "$2"; then
+        inc_class=comments
     elif [ "$inc_merge" -eq 1 ] && merge_forward_shape "$1" "$2" \
         && { inc_resolution_only "$2" || version_only_merge "$1" "$inc_b" "$2" "$inc_mt_out" "$inc_mt_rc"; }; then
         inc_class=merge-resolution
+    elif fix_increment "$1" "$2"; then
+        inc_class=fix
     fi
     return 0
 }
@@ -574,7 +630,7 @@ read_round() {
     return 0
 }
 
-# ledger_query <avail|finding|row> <full sha> reads only critic-panel
+# ledger_query <avail|finding|findfiles|row> <full sha> reads only critic-panel
 # rows on this branch at that sha (full or >=7-char prefix); claude,
 # claude-floor and codex-adv rows are the session's own and never count (the
 # clear-cr-marker gate 3b exclusion). "avail" prints "ok" when a critic
@@ -591,7 +647,7 @@ try { lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean); } c
 const at = (h) => { h = String(h || "").toLowerCase(); return h.length >= 7 && e.FROM.startsWith(h); };
 const critic = (m) => m !== "claude" && m !== "claude-floor" && m !== "codex-adv";
 let reviewed = false, rowed = false, seen = false;
-const verdicts = new Map(), settled = new Set();
+const verdicts = new Map(), settled = new Set(), files = new Map();
 // One finding is id + artifact + perspective, as the defer
 // analysis and clear-cr-marker key it; a bare id merges distinct findings.
 const keyOf = (o) => [String(o.finding_id), o.artifact || "diff", o.perspective || "off"].join("\u001f");
@@ -606,7 +662,7 @@ for (const line of require(e.AMEND_AUTH).filterLines(lines)) {
   if (!o || (e.MATCH_ANY_BRANCH !== "1" && o.branch !== e.BRANCH)) continue;
   if ((o.kind === "avail" || o.kind === "finding") && at(o.head)) seen = true;
   if (o.kind === "avail" && o.status === "ok" && critic(o.model) && at(o.head)) reviewed = true;
-  if (o.kind === "finding" && critic(o.model) && at(o.head)) { rowed = true; note(keyOf(o), String(o.verdict || "")); }
+  if (o.kind === "finding" && critic(o.model) && at(o.head)) { rowed = true; note(keyOf(o), String(o.verdict || "")); files.set(keyOf(o), String(o.file || "")); }
   if (o.kind === "amend" && at(o.target_head) && verdicts.has(keyOf(o))
       && o.set && typeof o.set.verdict === "string") note(keyOf(o), o.set.verdict);
 }
@@ -614,6 +670,7 @@ if (e.MODE === "avail") { if (reviewed) process.stdout.write("ok"); }
 else if (e.MODE === "row") { if (rowed) process.stdout.write("row"); }
 else if (e.MODE === "seen") { if (seen) process.stdout.write("seen"); }
 else if (e.MODE === "allfixed") { if (rowed && [...verdicts.values()].every((v) => v === "fixed")) process.stdout.write("allfixed"); }
+else if (e.MODE === "findfiles") { const out = new Set(); for (const [id, v] of verdicts) if (!settled.has(id) && (v === "" || v === "agreed" || v === "fixed") && files.get(id)) out.add(files.get(id)); if (out.size) process.stdout.write([...out].join("\n")); }
 else if ([...verdicts].some(([id, v]) => !settled.has(id) && (v === "" || v === "agreed" || v === "fixed"))) process.stdout.write("finding");
 '
 }
@@ -1520,7 +1577,7 @@ EOF
     increment_class "$delta_from" "$delta_to"
     delta_class="$inc_class"
     case "$delta_class" in
-        carried|tests|merge-resolution) delta_verdict=""; return 0 ;;
+        carried|tests|comments|merge-resolution|fix) delta_verdict=""; return 0 ;;
     esac
     if [ "$inc_empty" -eq 1 ]; then
         delta_refuse "review-round: the increment $delta_from..$delta_to changes nothing - no delta round to run"
@@ -1554,9 +1611,10 @@ EOF
         read -r used_from used_to used_trigger <<EOF
 $delta_used
 EOF
-        if [ -n "$used_from" ] && [ "$used_to" = "$delta_from" ] && [ "${used_trigger:-}" != "postcap-fixed" ] \
+        if [ -n "$used_from" ] && [ -n "$used_to" ] && free_reaches "$delta_from" "$used_to" \
+            && [ "${used_trigger:-}" != "postcap-fixed" ] \
             && [ "${used_trigger:-}" != "postcap-ci-red" ] \
-            && [ "$(ledger_query allfixed "$delta_from")" = "allfixed" ]; then
+            && [ "$(ledger_query allfixed "$used_to")" = "allfixed" ]; then
             delta_trigger="postcap-fixed"
             delta_verdict=""
             return 0
@@ -1586,7 +1644,7 @@ EOF
         delta_trigger="postcap-ci-red"
         return 0
     fi
-    delta_refuse "review-round: $delta_to neither answers a round-3 finding nor only merges the base into $delta_from, and no judge NO-GO for $delta_from is recorded (chief-kit/write-verdict.sh) - $full_note; new work after the cap goes to the chief"
+    delta_refuse "review-round: new product work after three rounds: split the PR or narrow the change; or ask the chief for a judge NO-GO or a grant. $delta_to neither answers a round-3 finding nor only merges the base into $delta_from, and no judge NO-GO for $delta_from is recorded (chief-kit/write-verdict.sh) - $full_note; new work after the cap goes to the chief"
     return 8
 }
 
@@ -2086,7 +2144,7 @@ if [ "$verb" = "start" ]; then
         fi
     fi
     counted=1
-    case "$start_class" in tests|merge-resolution) counted=0 ;; esac
+    case "$start_class" in tests|comments|merge-resolution|fix) counted=0 ;; esac
     # A reused pending delta round keeps the counter it already took.
     [ "${delta_reuse:-0}" -eq 1 ] || [ "$counted" -eq 0 ] || round=$((round + 1))
     # The first round opens a new loop, which never reuses the last loop's

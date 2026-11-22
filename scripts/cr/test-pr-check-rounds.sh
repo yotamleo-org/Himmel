@@ -1261,7 +1261,7 @@ git -C "$repo" commit -q -am feature-5
 head5="$(git -C "$repo" rev-parse feature)"
 git -C "$repo" push -q origin feature
 CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" finding \
-    --branch feature --head "$head3" --model stub --id stub-r3 --severity sug --file f.txt --line 1 \
+    --branch feature --head "$head3" --model stub --id stub-r3 --severity sug --file r3-only.txt --line 1 \
     --verdict "" >/dev/null 2>"$tmp/feature-r3-finding.err" || fail "feature round-3 finding setup"
 write_real_marker feature "$head5"
 out5="$(cd "$repo" && PANEL_MODE=suggestion-on PANEL_DIFF_LAST="$tmp/delta-diff" bash "$SCRIPT" --head "$head5" --branch feature 2>"$tmp/err5")"; rc5=$?
@@ -1881,7 +1881,7 @@ plugin_case() {
     three_rounds "$1" clean "$3"
     if [ -n "${6:-}" ]; then
         CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" finding \
-            --branch "$1" --head "$cap_r3_head" --model stub --id plugin-fix --severity sug --file "$1.txt" --line 1 \
+            --branch "$1" --head "$cap_r3_head" --model stub --id plugin-fix --severity sug --file f.txt --line 1 \
             --verdict agreed >/dev/null 2>"$tmp/$1-finding.err" || fail "$1 finding setup"
         fix_commit "$1"
         (cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$cap_fix_head" --branch "$1" >/dev/null 2>"$tmp/$1-delta.err") \
@@ -4786,6 +4786,111 @@ assert_eq "$(( $(panel_calls) - atw_calls ))" "1" "10578 attr-info-below-cap: th
 assert_eq "$atw_cmf" "1" "10578 attr-info-carry: clean-merge-forward refuses a clean merge while info/attributes is set"
 atw_cmf=0; (cd "$repo" && bash "$RR" clean-merge-forward "$(git rev-parse main)" "$sn_h2" "$(git rev-parse HEAD~1)") >/dev/null 2>&1 || atw_cmf=$?
 assert_eq "$atw_cmf" "0" "10578 attr-info-carry: the same merge is carried once info/attributes is empty"
+
+# Incremental review rounds, S3: the comments and fix free classes, the finding heads, the rethink text.
+s3_seed() { printf '%s %s postcap-fixed\n' "$cap_r3_head" "$cap_r3_head" > "$git_dir/cr-review-rounds/$1.delta"; }
+s3_f20() { for s3_i in $(seq 1 20); do printf 'fixline %s\n' "$s3_i"; done >> "$repo/f.txt"; git -C "$repo" commit -q -am "s3 fix f.txt $1"; git -C "$repo" rev-parse "$1"; }
+
+three_rounds pcf suggestion
+s3_seed pcf
+s3_h="$(s3_f20 pcf)"
+s3_out="$(start_round "$s3_h" clean pcf)"; s3_rc=$?
+assert_eq "$s3_rc" "0" "10578 postcap-fix-free: a 20-line fix in a file an open finding cites is admitted with the delta slot used ($s3_out)"
+assert_has "$s3_out" "pr-check: delta round 3 on pcf (from $cap_r3_head)" "10578 postcap-fix-free: it runs as a round past the cap"
+assert_eq "$(rr_file pcf free)" "$cap_r3_head $s3_h fix" "10578 postcap-fix-free: one .free line names R, H and the class fix"
+assert_eq "$(rr_file pcf round)" "3" "10578 postcap-fix-free: .round stays 3"
+
+three_rounds pcc clean
+s3_seed pcc
+printf '# a note\n# another note\n' >> "$repo/pcc.txt"; git -C "$repo" commit -q -am "pcc comment"
+s3_h="$(git -C "$repo" rev-parse pcc)"
+s3_out="$(start_round "$s3_h" clean pcc)"; s3_rc=$?
+assert_eq "$s3_rc" "0" "10578 postcap-comments-free: a comment-only head past the cap is admitted ($s3_out)"
+assert_eq "$(rr_file pcc free)" "$cap_r3_head $s3_h comments" "10578 postcap-comments-free: .free records the class comments"
+main_commit pcc-main.txt "main moves"
+git -C "$repo" merge -q --no-edit main
+printf '# after the merge\n' >> "$repo/pcc.txt"; git -C "$repo" commit -q -am "pcc comment after merge"
+s3_h2="$(git -C "$repo" rev-parse pcc)"
+s3_out="$(start_round "$s3_h2" clean pcc)"; s3_rc=$?
+assert_eq "$s3_rc" "0" "10578 postcap-comments-free: a merge of main then a comment-only commit is admitted too ($s3_out)"
+assert_eq "$(rr_file pcc free | tail -n 1)" "$s3_h $s3_h2 comments" "10578 postcap-comments-free: the second .free line is a comments round"
+
+main_commit heredoc.sh "$(printf 'cat <<EOF\nbody\nEOF')"
+three_rounds pch clean
+s3_seed pch
+awk 'NR == 2 { print "# injected" } { print }' "$repo/heredoc.sh" > "$tmp/heredoc.tmp" && mv "$tmp/heredoc.tmp" "$repo/heredoc.sh"
+git -C "$repo" commit -q -am "pch heredoc line"
+s3_h="$(git -C "$repo" rev-parse pch)"
+s3_calls="$(panel_calls)"
+s3_out="$(start_round "$s3_h" critical pch)"; s3_rc=$?
+assert_eq "$s3_rc" "0" "10578 comments-heredoc-bounded: a # line inside a heredoc body is a comments round ($s3_out)"
+assert_eq "$(rr_file pch free)" "$cap_r3_head $s3_h comments" "10578 comments-heredoc-bounded: it is recorded as comments"
+assert_eq "$(rr_file pch scope)" "$s3_h comments 1" "10578 comments-heredoc-bounded: .scope marks it past the cap, so defer blocks on Critical or escape-class"
+assert_eq "$(( $(panel_calls) - s3_calls ))" "1" "10578 comments-heredoc-bounded: the panel runs on the increment"
+
+three_rounds ftf suggestion
+mkdir -p "$repo/tests"
+printf 'echo t\n' > "$repo/tests/s3-ftf.sh"
+git -C "$repo" add tests/s3-ftf.sh; git -C "$repo" commit -q -m "ftf free tests round"
+s3_e="$(git -C "$repo" rev-parse ftf)"
+s3_out="$(start_round "$s3_e" clean ftf)"; s3_rc=$?
+assert_eq "$s3_rc" "0" "10578 fix-through-free: the free round between a finding and its fix runs ($s3_out)"
+s3_f="$(s3_f20 ftf)"
+s3_out="$(start_round "$s3_f" clean ftf)"; s3_rc=$?
+assert_eq "$s3_rc" "0" "10578 fix-through-free: the fix after the free round is admitted ($s3_out)"
+assert_eq "$(rr_file ftf free | tail -n 1)" "$s3_e $s3_f fix" "10578 fix-through-free: it is a fix round from the free round's head"
+assert_eq "$(rr_file ftf delta)" "absent" "10578 fix-through-free: the delta slot is untouched"
+
+postcap_setup pft clean
+postcap_amend pft "$postcap_d_head" stub-2 fixed
+mkdir -p "$repo/tests"
+printf 'echo t\n' > "$repo/tests/s3-pft.sh"; git -C "$repo" add tests/s3-pft.sh; git -C "$repo" commit -q -m "pft free tests round"
+s3_e="$(git -C "$repo" rev-parse pft)"
+s3_out="$(start_round "$s3_e" clean pft)"; s3_rc=$?
+assert_eq "$s3_rc" "0" "10578 postcap-fixed-through-free: the free round after the delta round runs ($s3_out)"
+postcap_fix pft
+s3_out="$(postcap_start pft)"; s3_rc=$?
+assert_eq "$s3_rc" "0" "10578 postcap-fixed-through-free: a fix after the free round is admitted as postcap-fixed ($s3_out)"
+assert_has "$(rr_file pft delta)" " postcap-fixed" "10578 postcap-fixed-through-free: .delta records the postcap-fixed trigger"
+
+three_rounds fup suggestion
+s3_seed fup
+printf 'one more\n' > "$repo/fup-extra.txt"; git -C "$repo" add fup-extra.txt
+s3_h="$(s3_f20 fup)"
+s3_out="$(start_round "$s3_h" clean fup)"; s3_rc=$?
+assert_eq "$s3_rc" "8" "10578 fix-uncited-path: the same fix plus one line in an uncited file is work, refused ($s3_out)"
+assert_eq "$(rr_file fup free)" "absent" "10578 fix-uncited-path: no free round recorded"
+
+three_rounds fdo suggestion
+postcap_amend fdo "$cap_r3_head" stub-1 disproved
+s3_seed fdo
+s3_h="$(s3_f20 fdo)"
+s3_out="$(start_round "$s3_h" clean fdo)"; s3_rc=$?
+assert_eq "$s3_rc" "8" "10578 fix-disproved-only: a file cited only by a disproved finding makes no fix ($s3_out)"
+
+three_rounds whc suggestion
+printf 'w1\n' >> "$repo/whc.txt"; git -C "$repo" commit -q -am "whc work 1"
+s3_h="$(git -C "$repo" rev-parse whc)"
+s3_out="$(start_round "$s3_h" clean whc)"; s3_rc=$?
+assert_eq "$s3_rc" "0" "10578 work-hits-cap: the first work increment past the cap is admitted by the delta round ($s3_out)"
+printf 'w2\n' >> "$repo/whc.txt"; git -C "$repo" commit -q -am "whc work 2"
+s3_h="$(git -C "$repo" rev-parse whc)"
+s3_out="$(start_round "$s3_h" clean whc)"; s3_rc=$?
+assert_eq "$s3_rc" "8" "10578 work-hits-cap: the next work increment is refused ($s3_out)"
+assert_has "$s3_out" "split the PR or narrow the change" "10578 refusal-names-rethink: the refusal names the rethink"
+assert_has "$s3_out" "neither answers a round-3 finding nor only merges" "10578 refusal-names-rethink: today's text stays as the tail"
+assert_has "$s3_out" "or a grant. $s3_h neither answers" "10578 refusal-names-rethink: the rethink comes first and today's text follows it"
+
+sn_branch h8
+git -C "$repo" checkout -q -B h8 main
+printf 'redone\n' > "$repo/h8b.txt"; git -C "$repo" add h8b.txt; git -C "$repo" commit -q -m "h8 force-pushed"
+s3_h="$(git -C "$repo" rev-parse h8)"
+s3_out="$(start_round "$s3_h" clean h8)"; s3_rc=$?
+assert_eq "$s3_rc" "0" "10578 h8-full-round-scope: a head that does not descend from R runs ($s3_out)"
+assert_has "$s3_out" "pr-check: round 2 of 3 on h8" "10578 h8-full-round-scope: it is a counted round 2"
+assert_lacks "$s3_out" "increment from" "10578 h8-full-round-scope: it is a full round, not an increment"
+assert_eq "$(rr_file h8 scope)" "$s3_h full 0" "10578 h8-full-round-scope: .scope says full, so the tagger and pre_ok still treat it as round 2"
+
 
 if [ "$fails" -gt 0 ]; then
     printf 'FAIL test-pr-check-rounds (%s failures)\n' "$fails" >&2
