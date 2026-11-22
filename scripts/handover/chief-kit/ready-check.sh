@@ -813,10 +813,7 @@ fi  # ONLY7 == 0: checks 1-6
 # cited ticket, each marked `done` or `deferred → <KEY>` (`->` also accepted).
 # Whether a line's "done" is TRUE stays the chief's diff read; this check
 # makes an unaccounted ask structurally visible and a deferral real: every
-# deferred key must exist and still be open, the deferral keys must cover the CR
-# ledger's deferred_to rows for the PR head (or for the reviewed head a same-branch
-# trivial-descendant row names), and a body key with no such row must be linked from
-# the PR's ticket. A Jira error reads UNKNOWN and fails — never a PASS. JIRA_CMD overrides the CLI (tests), like GH_CMD.
+# deferred key must exist and still be open.
 jira_run() {
     if [ -n "${JIRA_CMD:-}" ]; then
         "$JIRA_CMD" "$@" 2>&1
@@ -1083,7 +1080,6 @@ $cov_wans
 EOF
         fi
     fi
-    # Every ledger deferral at the PR head needs a body deferral line; a body key with no ledger row must be linked from the PR's ticket.
     cov_head="$SHA"
     if [ "$ONLY7" -eq 1 ]; then
         cov_head=$("$GH" pr view "$PR" --repo "$nwo" --json headRefOid --jq '.headRefOid' 2>/dev/null | tr -d '\r') || cov_head="" # swallow-ok: an unreadable head is reported below
