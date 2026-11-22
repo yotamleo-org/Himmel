@@ -41,13 +41,29 @@ the flag in a worker's launch script. Both shapes are now refused. Instead:
    effort=high
    decision=<operator decision number>
    api_account=<A, B, C, D or auto>   # optional; launches with the API lane on for that account
+   recommend=go                       # required: go, no, or no:<reason of at most 60 characters>
    ```
 
-3. The daemon sends the operator an ask on Telegram. It names every granted
-   flag with its registry description (`DESTRUCTIVE_OK=1 (Lets destructive
-   shell commands (rm -rf and similar) through.)`), the decision (`PAID RUN
-   (decision N)` for the billed flag, `OPERATOR DECISION N` for the other
-   decision flags), the brief's description and sha, and a one-time code.
+3. The daemon sends the operator a short ask on Telegram, the code first:
+
+   ```
+   go IQF5ED → launch · no IQF5ED → refuse
+   <ticket> <worker> on opus-5-5 high
+   flag HIMMEL_HOOK_INTEGRITY_BYPASS_OK (skips block-worker-write-fence)
+   Chief: GO
+   Expires 6 h · brief sha d7a113226fde
+   ```
+
+   Line 1 is the code and the reply to send. Line 2 is the ticket, the worker,
+   the model and the effort. Line 3 names every granted flag, and the hook it
+   skips when the registry names one. The hook names are dropped when the line
+   would pass 200 characters. Decision, paid and API grants add one line before
+   the chief's word, such as `DECISION 921 · PAID RUN · API account A`. The
+   chief's word is `Chief: GO`, or `Chief: NO — <reason>` when the chief thinks
+   the operator should refuse. The brief's description is not in the ask.
+   The request therefore needs a `recommend=` line: `recommend=go`, `recommend=no`, or
+   `recommend=no:<reason of at most 60 characters>`. A request without one is refused as
+   `malformed: recommend`.
 4. The operator replies `go <code>` and the daemon launches the worker with
    `headed-arm-worker.sh`. A reply of `no <code>` launches nothing, and so do
    6 h with no reply.
