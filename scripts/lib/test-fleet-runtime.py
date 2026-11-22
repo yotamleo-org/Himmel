@@ -765,6 +765,88 @@ exit 1''')
         p = self.rt('begin', aid='third', ok=False)
         self.assertIn('unknown legacy family ownership', p.stderr)
 
+    def live_worker(self):
+        self.active()
+        self.rt('begin', aid='first')
+        self.rt('commit', aid='first')
+
+    def api_call(self, join, doc=None):
+        """fleet-launch.sh's prepare as claude-api.sh calls it, then the exit-path steps that call runs."""
+        script = ('. "$1/scripts/lib/fleet-launch.sh"; fleet_launch_prepare "$2" api-managed "$3" "" "" "$4" || exit $?; '
+                  'echo "managed=$FLEET_LAUNCH_MANAGED"; fleet_launch_finish; fleet_launch_outcome complete; fleet_launch_release')
+        command = ['bash', '-c', script, 'api-call', str(ENTRYPOINTS), str(doc or self.doc), str(self.m), join]
+        result = subprocess.run(command, env=self.env, capture_output=True, text=True, timeout=35)
+        self.record(command, result)
+        return result
+
+    def attempts(self):
+        return json.loads((self.bucket / 'fleet-control.json').read_text()).get('attempts', {})
+
+    def test_api_call_inside_live_worker_joins_its_own_attempt(self):
+        self.live_worker()
+        p = self.api_call('first')
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn('managed=false', p.stdout)
+        self.assertEqual(list(self.attempts()), ['first'])
+        files = lambda: {p.name: p.read_bytes() for p in self.bucket.glob('*.json')}
+        before = files()
+        p = self.call('runtime', 'admit', '--doc', self.doc, '--manifest', self.m, '--name', 'api-managed', '--join-attempt', 'first')
+        self.assertEqual(json.loads(p.stdout)['joined'], 'first')
+        self.assertEqual(files(), before)
+
+    def test_joined_api_call_exit_leaves_the_worker_attempt_live(self):
+        self.live_worker()
+        before = self.attempts()['first']
+        p = self.api_call('first')
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(self.attempts()['first'], before)
+        self.assertEqual(before['phase'], 'committed')
+        self.assertTrue((Path(before['reservation']['path']) / 'managed.json').is_file())
+        outcomes = [json.loads(line).get('outcome') for line in (self.bucket / '.himmel/launch-refusals.jsonl').read_text().splitlines()]
+        self.assertNotIn('complete', outcomes)
+        self.assertNotIn('refused', outcomes)
+
+    def test_api_call_naming_another_docs_attempt_or_outside_its_tree_is_refused(self):
+        self.live_worker()
+        doc2 = self.bucket / 'TEST-2-N2-worker.md'
+        doc2.write_text('# second\n')
+        self.call('add', self.m, doc2, '--lane', 'native', '--pending')
+        self.rt('begin', aid='two', doc=doc2)
+        self.rt('commit', aid='two', doc=doc2)
+        p = self.api_call('first', doc=doc2)
+        self.assertEqual(p.returncode, 10, p.stdout)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        stranger = subprocess.Popen(['sleep', '30'])
+        self.addCleanup(stranger.wait)
+        self.addCleanup(stranger.kill)
+        control = json.loads((self.bucket / 'fleet-control.json').read_text())
+        stat = Path('/proc', str(stranger.pid), 'stat').read_text().rsplit(')', 1)[1].split()
+        control['attempts']['first']['owner'] = dict(control['attempts']['first']['owner'], pid=stranger.pid, start=stat[19])
+        (self.bucket / 'fleet-control.json').write_text(json.dumps(control))
+        p = self.call('runtime', 'admit', '--doc', self.doc, '--manifest', self.m, '--name', 'api-managed', '--join-attempt', 'first', ok=False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+
+    def test_api_call_with_no_inherited_attempt_is_refused_as_today(self):
+        self.live_worker()
+        p = self.api_call('')
+        self.assertEqual(p.returncode, 10, p.stdout)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.assertEqual(list(self.attempts()), ['first'])
+
+    def test_api_call_from_a_worker_whose_attempt_is_no_longer_live_is_refused(self):
+        self.live_worker()
+        gone = subprocess.Popen(['sleep', '30'])
+        stat = Path('/proc', str(gone.pid), 'stat').read_text().rsplit(')', 1)[1].split()
+        gone.kill()
+        gone.wait()
+        control = json.loads((self.bucket / 'fleet-control.json').read_text())
+        control['attempts']['first']['owner'] = dict(control['attempts']['first']['owner'], pid=gone.pid, start=stat[19])
+        (self.bucket / 'fleet-control.json').write_text(json.dumps(control))
+        p = self.api_call('first')
+        self.assertEqual(p.returncode, 10, p.stdout)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.assertEqual(self.attempts()['first']['phase'], 'unknown')
+
     def test_administrative_docs_still_obey_native_hard_cap(self):
         for number in range(4):
             doc = self.bucket / ('HIMMEL-%d-N%d-worker.md' % (number + 10, number + 10))
