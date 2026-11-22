@@ -376,3 +376,12 @@ test("a deadline on a RUNNING job marks every suite error and sends the result",
   expect(r.send?.body).toMatchObject({ state: "done", results: ["error"] });
   expect(r.record.results).toEqual(["error"]);
 });
+
+test("a job still RECEIVED today counts toward jobsPerDay once, and the same job counts once more only if it resolves", () => {
+  const received = serverAt("RECEIVED");
+  expect(remaining([received], DEFAULT_BUDGETS, NOW_S).jobs).toBe(DEFAULT_BUDGETS.jobsPerDay - 1);
+  const resolved = step(received, EV.resolveOk, NOW_S + 5).record;
+  expect(remaining([resolved], DEFAULT_BUDGETS, NOW_S + 5).jobs).toBe(DEFAULT_BUDGETS.jobsPerDay - 1);
+  const stale = inJob({ jobNo: 9, state: "RECEIVED", created: NOW_S - 36 * H });
+  expect(remaining([stale], DEFAULT_BUDGETS, NOW_S).jobs).toBe(DEFAULT_BUDGETS.jobsPerDay);
+});

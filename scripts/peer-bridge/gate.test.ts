@@ -297,3 +297,13 @@ test.skipIf(!!process.env.PEER_RED_COPY)("RED control: removing the empty-allowF
   expect(mutated.status).not.toBe(0);
   expect(failedTests(mutated.stdout + mutated.stderr)).toEqual(["rule 4: empty allowFrom admits nobody"]);
 }, 60_000);
+
+test("an id taken back out of the envelope window is no longer a duplicate, and only that id", () => {
+  const w = new EnvelopeWindow();
+  w.add(CHAT, 1, "00000001", 2000);
+  w.add(CHAT, 1, "00000002", 2000);
+  w.delete(CHAT, 1, "00000001");
+  expect(w.has(CHAT, 1, "00000001")).toBe(false);
+  expect(w.has(CHAT, 1, "00000002")).toBe(true);
+  expect(w.size).toBe(1);
+});
