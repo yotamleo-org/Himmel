@@ -328,8 +328,18 @@ check "criterion 4: the docs/ standalone pages were listed" test -n "$standalone
 pw="$repo/scripts/config-ui/tests/e2e/node_modules/.bin/playwright"
 check "criterion 4: the playwright binary is present" test -x "$pw"
 # the file filter is a regex: pass the bare name, a worktree path holds '+' (fix+himmel-…)
-render() { NODE_PATH="$repo/scripts/config-ui/tests/e2e/node_modules" "$pw" test -c "$repo/scripts/docs-site/e2e/j1.config.ts" render.e2e.ts; }
-check "criterion 4: every built page and standalone docs/ page renders headless (render.e2e.ts)" render
+render() { NODE_PATH="$repo/scripts/config-ui/tests/e2e/node_modules" "$pw" test -c "$repo/scripts/docs-site/e2e/j1.config.ts" render.e2e.ts 2>&1; }
+failing_pages() {
+  awk '/^ +[0-9]+\) / { n = $0; sub(/^.* › /, "", n); sub(/ +$/, "", n); want = 1; next }
+       want && /^ +Error: / { r = $0; sub(/^ +Error: /, "", r); reason = r; next }
+       want && /^ +Received: / { r = $0; sub(/^ +Received: /, "", r); reason = reason ", got " r }
+       want && /^ +[0-9]+ \|/ { printf "%s%s (%s)", (c++ ? "; " : ""), n, reason; want = 0; reason = "" }'
+}
+fixture_out=$(printf '%s\n' '  1) e2e/render.e2e.ts:54:5 › render: every built page › guide/x.html ' '' '    Error: /Himmel/guide/x.html' '' '    Expected: 200' '    Received: 404' '' '      62 |       expect(res)')
+check "control: the render FAIL line names the failing page and why" is "$(failing_pages <<<"$fixture_out")" "guide/x.html (/Himmel/guide/x.html, got 404)"
+render_out=$(render)
+render_rc=$?
+if [ "$render_rc" -eq 0 ]; then ok "criterion 4: every built page and standalone docs/ page renders headless (render.e2e.ts)"; else ko "criterion 4: every built page and standalone docs/ page renders headless (render.e2e.ts): $(failing_pages <<<"$render_out")"; fi
 
 groups=$(node --input-type=module -e "
 import fs from 'node:fs';
