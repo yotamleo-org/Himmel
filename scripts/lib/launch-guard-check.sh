@@ -3,6 +3,11 @@
 # load himmel's guard hooks? Read-only: writes nothing, runs no code from <dir>.
 #
 # Usage: launch-guard-check.sh <dir>
+#        launch-guard-check.sh --state-repo <dir>
+#
+# --state-repo is a query mode: is <dir>'s primary checkout (<dir> itself outside git)
+# a state repo, by the Layer U test below? Exit 0 yes, 1 no, 2 unresolvable dir;
+# prints nothing on stdout.
 #
 # Layer P (himmel tree: <toplevel>/scripts/hooks/wire-hook-bash.mjs exists): the
 # folder's .claude/settings.json must carry the full chain (launch-guard-p.mjs), or be
@@ -33,10 +38,22 @@ git_env_scrub
 # shellcheck source=claude-config-dir.sh
 . "$HERE/claude-config-dir.sh"
 
-[ "$#" -eq 1 ] && [ -n "$1" ] || { echo "usage: launch-guard-check.sh <dir>" >&2; exit 2; }
+mode=check
+if [ "${1:-}" = "--state-repo" ]; then mode=state-repo; shift; fi
+[ "$#" -eq 1 ] && [ -n "$1" ] || { echo "usage: launch-guard-check.sh [--state-repo] <dir>" >&2; exit 2; }
 dir="$(cd -P -- "$1" 2>/dev/null && pwd)" || { echo "launch-guard-check: cannot resolve: $1" >&2; exit 2; }
 
 refuse() { printf '%s\n' "$1"; exit 1; }
+
+is_state_repo() {
+  local p="$1" hroot
+  [ -e "$p/.single-writer" ] || return 1
+  { [ -e "$p/.vault-template.json" ] || [ -d "$p/.obsidian" ]; } && return 0
+  [ -n "${HANDOVER_DIR:-}" ] || return 1
+  hroot="$(cd -P -- "$HANDOVER_DIR" 2>/dev/null && pwd)" || return 0
+  case "$hroot/" in "$p"/*) return 0 ;; esac
+  return 1
+}
 
 # Trust anchor (A20): HIMMEL_REPO, else the primary checkout of this script's tree.
 anchor="${HIMMEL_REPO:-}"
@@ -47,12 +64,21 @@ if [ -z "$anchor" ]; then
 fi
 export HIMMEL_REPO="$anchor"
 
-command -v node >/dev/null 2>&1 || refuse "node not on PATH"
+[ "$mode" = state-repo ] || command -v node >/dev/null 2>&1 || refuse "node not on PATH"
 
 lib="$anchor/scripts/guardrails/lib.sh"
-[ -r "$lib" ] || refuse "anchor lib unreadable: $lib"
+if [ ! -r "$lib" ]; then
+  [ "$mode" = state-repo ] && { echo "launch-guard-check: anchor lib unreadable: $lib" >&2; exit 2; }
+  refuse "anchor lib unreadable: $lib"
+fi
 # shellcheck disable=SC1090
 . "$lib"
+
+if [ "$mode" = state-repo ]; then
+  primary="$(primary_checkout_root "$dir" 2>/dev/null)" || primary=""
+  is_state_repo "${primary:-$dir}"
+  exit $?
+fi
 
 top="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" || top=""
 
@@ -127,13 +153,7 @@ case "$_reg_rc" in
   2) refuse "handover registry unreadable" ;;
   *) refuse "repo not registered" ;;
 esac
-if [ -e "$primary/.single-writer" ]; then
-  { [ ! -e "$primary/.vault-template.json" ] && [ ! -d "$primary/.obsidian" ]; } || refuse "single-writer state repo"
-  if [ -n "${HANDOVER_DIR:-}" ]; then
-    hroot="$(cd -P -- "$HANDOVER_DIR" 2>/dev/null && pwd)" || refuse "single-writer state repo"
-    case "$hroot/" in "$primary"/*) refuse "single-writer state repo" ;; esac
-  fi
-fi
+is_state_repo "$primary" && refuse "single-writer state repo"
 
 status="$(HIMMEL_REPO="$anchor" CLAUDE_USER_SETTINGS="$(claude_config_dir)/settings.json" \
   node "$anchor/scripts/hooks/guardrail-block.mjs" status --json 2>/dev/null)" || status=""
