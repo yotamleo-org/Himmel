@@ -275,7 +275,7 @@ EOF
 chmod +x "$seqstub"
 sstart() {
     sd="$tmp/s-$1"; mkdir -p "$sd"; printf '%s\n' "$2" | tr ' ' '\n' > "$sd/codes"; rm -f "$sd/n"; [ -z "${3:-}" ] || echo "$3" > "$sd/delay"
-    SEQ_DIR="$sd" GRAPH_PASS_STATE_DIR="$sd/state" GRAPH_PASS_SCRIPT="$seqstub" bash "$SCRIPT" start >/dev/null 2>&1
+    SEQ_DIR="$sd" GRAPH_PASS_STATE_DIR="$sd/state" GRAPH_PASS_SCRIPT="${STUB:-$seqstub}" bash "$SCRIPT" start >/dev/null 2>&1
 }
 sstatus() { GRAPH_PASS_STATE_DIR="$tmp/s-$1/state" bash "$SCRIPT" status 2>&1; }
 swait() {
@@ -312,6 +312,24 @@ pid20="$(state_val "$tmp/s-20/state/graph-pass.state" pid)"
 [ -n "$pid20" ] && { kill "$pid20" 2>/dev/null; wait_dead "$pid20"; }
 
 sstart 22 "5"; check "22: a pass that fails at once makes start exit 1" "$?" 1
+
+runstub="$tmp/stub-runner.sh"
+cat > "$runstub" <<EOF
+#!/bin/sh
+{
+    _rc=0; "$seqstub" || _rc=\$?
+    echo "[exit rc=\$_rc]"
+} >> "\$SEQ_DIR/pass.log" 2>&1
+exit "\$_rc"
+EOF
+chmod +x "$runstub"
+STUB="$runstub" sstart 23 "4 4 0"; swait 23 "finished"; out23="$(sstatus 23)"
+contains "23: a runner-shaped pass resumes on exit 4 and promotes" "$out23" "finished promoted"
+check "23: the runner-shaped series ran three passes" "$(cat "$tmp/s-23/n")" 3
+STUB="$runstub" sstart 24 "4 5" 0.5; swait 24 "finished"; out24="$(sstatus 24)"
+contains "24: a runner-shaped pass that exits 5 ends failed rc=5" "$out24" "finished failed rc=5"
+STUB="$runstub" sstart 25 "2" 0.5; swait 25 "finished"; out25="$(sstatus 25)"
+contains "25: a runner-shaped pass that exits 2 ends failed rc=2" "$out25" "finished failed rc=2"
 
 echo
 [ "$fails" -eq 0 ] && { echo "PASS: all rows ok"; exit 0; } || { echo "FAIL: $fails row(s)"; exit 1; }
