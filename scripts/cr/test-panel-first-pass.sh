@@ -144,6 +144,11 @@ SCRIPT="$fx/scripts/cr/panel-first-pass.sh"
 mkdir -p "$tmp/ghbin"
 cat > "$tmp/ghbin/gh" <<'GHEOF'
 #!/usr/bin/env bash
+if [ "${1:-}" = api ] && [ "${2:-}" = --paginate ]; then
+    case "${3:-}" in
+        repos/*/commits/*/check-runs) [ -z "${GH_CHECKRUNS_FILE:-}" ] || cat "$GH_CHECKRUNS_FILE"; exit 0 ;;
+    esac
+fi
 if [ "${1:-}" = api ]; then
     case "${2:-}" in
         repos/*/compare/*)
@@ -313,7 +318,7 @@ out="$( (cd "$repo" && FAKE_RC=6 FAKE_ERR='critic-panel.sh: could not record cer
 err="$(cat "$tmp/err")"
 if [ "$rc" -eq 7 ]; then ok "T6c unrecorded refusal aborts at exit 7"; else bad "T6c unrecorded refusal exit (got $rc, want 7)"; fi
 assert_has "$err" "could not be recorded" "T6c abort names the unrecorded refusal"
-if [ "$(cat "$repo/.git/cr-review-rounds/feature.round" 2>/dev/null)" = "0" ]; then ok "T6c the unrecorded refusal gives the round back"; else bad "T6c round after the unrecorded refusal (got $(cat "$repo/.git/cr-review-rounds/feature.round" 2>/dev/null), want 0)"; fi
+if [ ! -e "$repo/.git/cr-review-rounds/feature.round" ]; then ok "T6c the unrecorded refusal gives the round back (no .round, as before the start)"; else bad "T6c round after the unrecorded refusal (got $(cat "$repo/.git/cr-review-rounds/feature.round" 2>/dev/null), want no .round)"; fi
 if [ ! -e "$repo/.git/cr-review-rounds/feature.head" ]; then ok "T6c the unrecorded refusal leaves no unreviewed .head"; else bad "T6c .head after the unrecorded refusal still names $(cat "$repo/.git/cr-review-rounds/feature.head")"; fi
 rm -rf "$repo/.git/cr-review-rounds"
 
@@ -869,6 +874,7 @@ assert_has "$r5_err" "round 2 reviews" "T26 round 2 says which range it reviewed
 r5b="$tmp/repo5b"; r5_new "$r5b"
 r5b_h1="$(git -C "$r5b" rev-parse HEAD)"
 r5_round "$r5b" "$r5b_h1"
+( cd "$r5b" && CR_LEDGER="$r5b/.git/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" avail --branch feature --head "$r5b_h1" --model codex --status unavailable --reason timeout >/dev/null ) || bad "T26 fallback B: unavailable row"
 r5b_h2="$(r5_commit "$r5b" g.txt second)"
 r5_round "$r5b" "$r5b_h2"
 assert_has "$r5_out" "round 2 of 3" "T26 fallback B: round 2 ran"
@@ -916,6 +922,21 @@ r5_round "$r5e" "$r5e_h3"
 assert_has "$r5_out" "round 3 of 3" "T26 fallback E: round 3 ran"
 assert_has "$r5_stdin" "+change" "T26 fallback E: a merge of the default branch in range reviews the full diff"
 assert_lacks "$r5_args" "--context-file /" "T26 fallback E: no context file with the full diff"
+
+rg="$tmp/repo10578"; r5_new "$rg"
+rg_h1="$(git -C "$rg" rev-parse HEAD)"
+mkdir -p "$rg/.git/cr-review-rounds"
+printf '3\n' > "$rg/.git/cr-review-rounds/feature.round"
+printf '%s\n' "$rg_h1" > "$rg/.git/cr-review-rounds/feature.head"
+r5_avail "$rg" "$rg_h1"
+rg_h2="$(r5_commit "$rg" g.txt fix)"
+printf 'completed\tfailure\tshell-unit\n' > "$tmp/checkruns.tsv"
+(cd "$rg" && GH_CHECKRUNS_FILE="$tmp/checkruns.tsv" FAKE_RC=7 bash "$SCRIPT" --head "$rg_h2" --branch feature >"$tmp/out" 2>"$tmp/err"); rg_rc=$?
+if [ "$rg_rc" -eq 7 ]; then ok "10578 give-back-in-process: the panel exit 7 aborts at 7"; else bad "10578 give-back-in-process exit (got $rg_rc; err: $(cat "$tmp/err"))"; fi
+assert_has "$(cat "$tmp/out")" "delta round 4" "10578 give-back-in-process: the round was the CI-red delta round"
+assert_has "$(cat "$tmp/err")" "the aborted round was given back" "10578 give-back-in-process: give_back says so"
+if [ "$(cat "$rg/.git/cr-review-rounds/feature.round" 2>/dev/null)" = 3 ]; then ok "10578 give-back-in-process: .round is 3 again"; else bad "10578 give-back-in-process: .round (got $(cat "$rg/.git/cr-review-rounds/feature.round" 2>/dev/null), want 3)"; fi
+if [ ! -e "$rg/.git/cr-review-rounds/feature.cired" ]; then ok "10578 give-back-in-process: the CI-red unlock is given back"; else bad "10578 give-back-in-process: .cired is still present"; fi
 
 # T27: rounds 2 and 3 tag an Important finding on code older than the PR and
 # set the ledger field `review-round.sh defer` reads; the first round tags nothing.

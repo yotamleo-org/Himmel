@@ -37,8 +37,13 @@
 # or an unreadable answer therefore refuses every --base-sha round (exit 8).
 # A start at the head the last counted round ran on, below the cap, reuses that
 # round; bookkeeping-only heads get their ledger row from the `evidence` verb.
-# A round whose panel aborted after start reviewed nothing and spends nothing:
-# `abort` puts .head back on the last critic-reviewed head and uncounts it.
+# A start with --head first writes <branch>.start.bak, a snapshot of every round
+# file before and after it. A round whose panel aborted after start reviewed
+# nothing and spends nothing: `abort` restores the snapshot, so the count, the
+# delta slot, the CI-red unlock and a consumed judge record all come back. A
+# round a dead session left with no panel row is continued by a start at its
+# head, or given back by a start at another head two hours after it began;
+# `settle` keeps such a round counted and drops its snapshot.
 # defer exits 6 when automatic residual filing cannot resolve the parent from
 # the open PR title (or, before round four, the branch's commit subjects) or
 # cannot create a ticket; supply --defer-to to recover
@@ -98,6 +103,7 @@ usage() {
     echo "       review-round.sh judge-go --branch <name> --head <sha> [--open-threads-ok <reason>]   (after the cap: a signed judge GO at <sha> stands in for the review; refused while the PR has an unresolved review thread unless the chief names the override)" >&2
     echo "       review-round.sh evidence --branch <name> --head <sha>   (ledger ok row for a tests-only head after a reviewed head; spends no round)" >&2
     echo "       review-round.sh abort --branch <name> --head <sha>   (give back the round started at <sha> when its panel reviewed nothing)" >&2
+    echo "       review-round.sh settle --branch <name> --head <sha>   (the round started at <sha> stays counted; its snapshot is dropped, so no later start waits on it)" >&2
     echo "       review-round.sh from --branch <name>   (the reviewed head this round 2 or 3 started from; nothing at other rounds)" >&2
     echo "       review-round.sh trivial-descendant [--tests-only] <from-sha> <to-sha>   (exit 0 yes, 1 no)" >&2
     echo "       review-round.sh clean-merge-forward <base-sha> <from-sha> <to-sha>   (exit 0 when <to> only merges the base into <from>, conflict-free; 1 no)" >&2
@@ -340,6 +346,7 @@ case "$verb" in
     judge-go) [ -n "$head_sha" ] || usage ;;
     evidence) [ -n "$head_sha" ] || usage ;;
     abort) [ -n "$head_sha" ] || usage ;;
+    settle) [ -n "$head_sha" ] && [ -z "$base_sha" ] || usage ;;
     from) [ -z "$head_sha" ] && [ -z "$base_sha" ] || usage ;;
     *) usage ;;
 esac
@@ -429,6 +436,8 @@ from_state="$git_dir/cr-review-rounds/$branch.from"
 # Clean and version-only merge-forwards are admitted free of the delta round
 # only below this round count.
 free_round_cap=8
+snap_state="$git_dir/cr-review-rounds/$branch.start.bak"
+snap_wait=7200
 state_dir="$(dirname "$state")"
 mkdir -p "$state_dir" || {
     echo "review-round: cannot create state directory $state_dir" >&2
@@ -556,6 +565,134 @@ counter_lock() {
         return 5
     fi
     return 0
+}
+
+snap_list=(round "$state" head "$head_state" prev "$prev_state" from "$from_state" delta "$delta_state" cired "$cired_state" verdicts "$verdict_state")
+snap_node() {
+    node -e '
+const fs = require("fs");
+const [mode, ...a] = process.argv.slice(1);
+const enc = (p) => { try { return "=" + fs.readFileSync(p).toString("base64"); } catch (err) { if (err.code === "ENOENT") return "absent"; throw err; } };
+const parse = (p) => {
+  const lines = fs.readFileSync(p, "utf8").split("\n");
+  if (lines[0] !== "start-snapshot 1") throw new Error("not a snapshot");
+  const s = { head: "", pid: "", time: "", continued: "0", answer: null, files: [] };
+  for (const l of lines.slice(1)) {
+    if (!l) continue;
+    const sp = l.indexOf(" ");
+    const k = sp < 0 ? l : l.slice(0, sp), v = sp < 0 ? "" : l.slice(sp + 1);
+    if (k === "file") {
+      const [n, b, af] = v.split(" ");
+      if (!n || !b || !af) throw new Error("bad file line");
+      s.files.push({ n, b, af });
+    } else if (k in s && k !== "files") s[k] = v;
+    else throw new Error("bad key");
+  }
+  if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(s.head) || !/^[0-9]+$/.test(s.time) || !/^[01]$/.test(s.continued) || !s.files.length) throw new Error("bad snapshot");
+  return s;
+};
+const dump = (s) => ["start-snapshot 1", "head " + s.head, "pid " + s.pid, "time " + s.time, "continued " + s.continued]
+  .concat(s.answer === null ? [] : ["answer " + s.answer])
+  .concat(s.files.map((f) => ["file", f.n, f.b, f.af].join(" "))).join("\n") + "\n";
+const list = (rest) => { const m = new Map(); for (let i = 0; i + 1 < rest.length; i += 2) m.set(rest[i], rest[i + 1]); return m; };
+const at = (m, n) => { if (!m.has(n)) throw new Error("unknown file " + n); return m.get(n); };
+try {
+  if (mode === "before") {
+    const [out, head, pid, time, ...rest] = a;
+    const s = { head, pid, time, continued: "0", answer: null, files: [] };
+    for (const [n, p] of list(rest)) s.files.push({ n, b: enc(p), af: "-" });
+    fs.writeFileSync(out, dump(s), { flag: "wx" });
+  } else if (mode === "after") {
+    const [snap, out, answer, ...rest] = a;
+    const s = parse(snap), m = list(rest);
+    for (const f of s.files) f.af = enc(at(m, f.n));
+    s.answer = answer;
+    fs.writeFileSync(out, dump(s), { flag: "wx" });
+  } else if (mode === "continue") {
+    const [snap, out, pid] = a;
+    const s = parse(snap);
+    s.pid = pid; s.continued = "1";
+    fs.writeFileSync(out, dump(s), { flag: "wx" });
+  } else if (mode === "read") {
+    const s = parse(a[0]);
+    process.stdout.write([s.head, s.pid, s.time, s.continued, s.answer === null ? "0" : "1", s.answer || ""].join("\n") + "\n");
+  } else if (mode === "check") {
+    const [snap, ...rest] = a;
+    const s = parse(snap), m = list(rest);
+    let after = true, allowed = true;
+    for (const f of s.files) {
+      const c = enc(at(m, f.n));
+      if (c !== f.af) after = false;
+      if (c !== f.af && c !== f.b) allowed = false;
+    }
+    process.stdout.write(after ? "after" : allowed ? "allowed" : "moved");
+  } else if (mode === "restore") {
+    const [snap, ...rest] = a;
+    const s = parse(snap), m = list(rest);
+    for (const f of s.files) {
+      const p = at(m, f.n);
+      if (enc(p) === f.b) continue;
+      if (f.b === "absent") { fs.rmSync(p, { force: true }); continue; }
+      const tmp = p + ".tmp." + process.pid;
+      fs.writeFileSync(tmp, Buffer.from(f.b.slice(1), "base64"));
+      fs.renameSync(tmp, p);
+    }
+  } else process.exit(2);
+} catch (err) { process.exit(3); }
+' "$@"
+}
+
+snap_load() {
+    { [ -e "$snap_state" ] || [ -L "$snap_state" ]; } || return 1
+    { [ -f "$snap_state" ] && [ ! -L "$snap_state" ]; } || return 5
+    _sl="$(snap_node read "$snap_state")" || return 5
+    { read -r snap_head; read -r snap_pid; read -r snap_time; read -r snap_continued; read -r snap_complete; read -r snap_answer; } <<EOF
+$_sl
+EOF
+    case "$snap_pid" in *[!0-9]*) snap_pid="" ;; esac
+    return 0
+}
+
+snap_starter() {
+    if [ -z "$snap_pid" ]; then echo unknown
+    elif [ "$snap_pid" = "$PPID" ]; then echo caller
+    elif kill -0 "$snap_pid" 2>/dev/null; then echo alive
+    else echo ended
+    fi
+}
+
+snap_young() {
+    _sy_age=$(( $(date +%s) - snap_time ))
+    [ "$_sy_age" -lt "$snap_wait" ] || return 1
+    snap_left=$(( (snap_wait - _sy_age + 59) / 60 ))
+}
+
+snap_write() {
+    _sw_tmp="$snap_state.tmp.$$"
+    rm -f "$_sw_tmp"
+    _sw_mode="$1"
+    shift
+    case "$_sw_mode" in
+        before) snap_node before "$_sw_tmp" "$@" ;;
+        *) snap_node "$_sw_mode" "$snap_state" "$_sw_tmp" "$@" ;;
+    esac && mv "$_sw_tmp" "$snap_state" && return 0  # prim-ok: tmp-then-mv under the counter lock; fixture copies of this script have no scripts/lib
+    rm -f "$_sw_tmp"
+    return 5
+}
+
+restore_snapshot() {
+    _rs="$(snap_node check "$snap_state" "${snap_list[@]}")" || return 5
+    case "$_rs" in
+        after|allowed)
+            snap_node restore "$snap_state" "${snap_list[@]}" || return 5
+            rm -f "$snap_state" || return 5
+            return 0 ;;
+        moved)
+            echo "review-round: a round file on $branch changed after the round at $snap_head started (a grant), so that round stays counted and its snapshot is dropped" >&2
+            rm -f "$snap_state" || return 5
+            return 1 ;;
+    esac
+    return 5
 }
 
 # plugin-version-bump-required makes a plugin PR bump its
@@ -1523,16 +1660,35 @@ if [ "$verb" = "from" ]; then
     exit "$from_rc"
 fi
 
-# abort: a round whose panel aborted after start (panel-first-pass exit 7, or
-# a delta diff it could not read) reviewed nothing, so it spends nothing. When
-# --head is the head on .head and no avail or finding row of any model sits
-# there, .head goes back to the last critic-reviewed head (reviewed_head), or
-# is removed when there is none, and the round is uncounted - unless it is the
-# pending delta round, which restarts at the same head on the count it took.
-# Exit 0 = given back (prints "<round> <head .head names, or none>");
-# 1 = --head is not on .head; 8 = refused (rows at --head or an unreadable
-# ledger, or the start's caller is still running or unrecorded); 5 = state or
-# lock error.
+if [ "$verb" = "settle" ]; then
+    # swallow-ok: an unresolvable head is refused on the next line (exit 2)
+    if ! st_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$st_head" ]; then
+        echo "review-round: --head $head_sha does not resolve to a commit" >&2
+        exit 2
+    fi
+    counter_lock || exit 5
+    st_rc=0
+    snap_load || st_rc=$?
+    case "$st_rc" in
+        0) if [ "$snap_head" = "$st_head" ] && ! rm -f "$snap_state"; then st_rc=5; fi ;;
+        1) st_rc=0 ;;
+        *) echo "review-round: cannot read the round snapshot $snap_state" >&2; st_rc=5 ;;
+    esac
+    SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
+        bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
+    exit "$st_rc"
+fi
+
+# abort: a round whose panel aborted after start reviewed nothing, so it spends
+# nothing. With no avail or finding row at --head (on .head) and a starter that
+# is the caller or has ended, the start's snapshot is restored: every round file,
+# so a delta round also gets back its slot, CI-red unlock and judge record. A
+# starter not the caller, or a continued round, waits two hours from the start.
+# No snapshot: .head goes back to the last reviewed head, the round is uncounted
+# (a pending delta round keeps its count).
+# Exit 0 = given back (prints "<round> <head .head names, or none>"); 1 = --head
+# is not on .head; 8 = refused (rows, unreadable ledger or snapshot, a running or
+# unrecorded starter, under two hours, a file another writer changed); 5 = error.
 if [ "$verb" = "abort" ]; then
     # swallow-ok: an unresolvable head is refused on the next line (exit 2)
     if ! ab_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$ab_head" ]; then
@@ -1544,8 +1700,16 @@ if [ "$verb" = "abort" ]; then
     read_round || ab_rc=5
     # swallow-ok: a missing or unreadable .head is "not --head" (exit 1)
     ab_cur="$(state_sha "$head_state")" || ab_cur=""
+    ab_snap=0
+    snap_rc=0
+    snap_load || snap_rc=$?
+    [ "$snap_rc" -ne 0 ] || [ "$snap_head" != "$ab_head" ] || ab_snap=1
     run_pid=""
-    [ ! -f "$delta_run" ] || read -r run_pid < "$delta_run" || run_pid=""
+    if [ "$ab_snap" -eq 1 ]; then
+        run_pid="$snap_pid"
+    else
+        [ ! -f "$delta_run" ] || read -r run_pid < "$delta_run" || run_pid=""
+    fi
     case "$run_pid" in ''|*[!0-9]*) run_pid="" ;; esac
     run_alive=""
     if [ -n "$pr" ] && [ -f "$delta_run" ]; then
@@ -1565,12 +1729,31 @@ if [ "$verb" = "abort" ]; then
     elif [ "$ab_seen" = "seen" ]; then
         echo "review-round: the round on $ab_head has panel rows, so it reviewed something - it is not given back" >&2
         ab_rc=8
+    elif [ "$snap_rc" -eq 5 ]; then
+        echo "review-round: cannot read the round snapshot $snap_state, so the round's starter and bytes are unknown - it is not given back" >&2
+        ab_rc=8
     elif [ -z "$run_pid" ]; then
         echo "review-round: no start caller is recorded for the round on $ab_head, so it cannot be shown to have ended - it is not given back" >&2
         ab_rc=8
     elif [ -n "$run_alive" ] || { [ "$run_pid" != "$PPID" ] && kill -0 "$run_pid" 2>/dev/null; }; then
         echo "review-round: the round on $ab_head is still running (start by pid ${run_alive:-$run_pid}) - it is not given back" >&2
         ab_rc=8
+    elif [ "$ab_snap" -eq 1 ] && [ "$snap_complete" = 1 ] \
+        && { [ "$run_pid" != "$PPID" ] || [ "$snap_continued" = 1 ]; } && snap_young; then
+        echo "review-round: a dead round at $ab_head is younger than two hours ($snap_left min left) - it is not given back" >&2
+        ab_rc=8
+    elif [ "$ab_snap" -eq 1 ]; then
+        restore_snapshot
+        case $? in
+            0) ;;
+            1) ab_rc=8 ;;
+            *) echo "review-round: cannot give back the round on $ab_head for $branch from its snapshot" >&2; ab_rc=5 ;;
+        esac
+        # swallow-ok: a missing counter file after the restore reads as zero
+        ab_round="$(cat "$state" 2>/dev/null)" || ab_round=""
+        ab_round="${ab_round:-0}"
+        # swallow-ok: no .head after the restore prints none
+        ab_back="$(state_sha "$head_state")" || ab_back=""
     else
         # swallow-ok: no critic-reviewed head in the start records removes .head below
         ab_back="$(reviewed_head)" || ab_back=""
@@ -1677,10 +1860,70 @@ fi
 
 if [ "$verb" = "start" ]; then
     counter_lock || exit 5
-    if ! read_round; then
+    start_unlock() {
         SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
             bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
+    }
+    if ! read_round; then
+        start_unlock
         exit 5
+    fi
+    start_head=""
+    if [ -n "$head_sha" ]; then
+        # swallow-ok: an unresolvable head takes today's path and writes no snapshot
+        start_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || start_head=""
+    fi
+    snap_wrote=0
+    snap_rc=1
+    [ -z "$start_head" ] || { snap_rc=0; snap_load || snap_rc=$?; }
+    if [ "$snap_rc" -eq 5 ]; then
+        start_unlock
+        echo "review-round: cannot read the round snapshot $snap_state - refusing (cr-reset.sh moves it aside)" >&2
+        exit 5
+    fi
+    if [ "$snap_rc" -eq 0 ]; then
+        if ! snap_seen="$(ledger_query seen "$snap_head")"; then
+            start_unlock
+            echo "review-round: cannot read the panel ledger for $snap_head, the head of the last round's snapshot - refusing" >&2
+            exit 8
+        fi
+        snap_who="$(snap_starter)"
+        # swallow-ok: an unreadable round file reads as moved, which never restores
+        snap_files="$(snap_node check "$snap_state" "${snap_list[@]}")" || snap_files=moved
+        snap_rc=0
+        if [ "$snap_seen" = "seen" ]; then
+            rm -f "$snap_state" || snap_rc=5
+        elif [ "$snap_who" = alive ]; then
+            start_unlock
+            echo "review-round: the round on $branch at $snap_head is already running (start by pid $snap_pid) - wait for it" >&2
+            exit 8
+        elif [ "$snap_files" = moved ]; then
+            restore_snapshot || [ $? -eq 1 ] || snap_rc=5
+        elif [ "$snap_files" = allowed ]; then
+            restore_snapshot || snap_rc=5
+        elif [ "$snap_head" = "$start_head" ] && [ "$snap_complete" = 1 ] \
+            && { [ "$snap_who" = caller ] || [ "$snap_who" = ended ]; }; then
+            if ! snap_write continue "$PPID"; then
+                start_unlock
+                echo "review-round: cannot record the restart in the round snapshot $snap_state" >&2
+                exit 5
+            fi
+            printf '%s\n' "$PPID" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
+            start_unlock
+            printf '%s\n' "$snap_answer"
+            exit 0
+        elif [ "$snap_complete" = 1 ] && snap_young; then
+            start_unlock
+            echo "review-round: a dead round at $snap_head is younger than two hours ($snap_left min left) - a start at another head waits, a restart at $snap_head continues it" >&2
+            exit 8
+        else
+            restore_snapshot || snap_rc=5
+        fi
+        if [ "$snap_rc" -ne 0 ] || ! read_round; then
+            start_unlock
+            echo "review-round: cannot give back the round in the snapshot $snap_state" >&2
+            exit 5
+        fi
     fi
     # A start at the head the counted round already ran on is bookkeeping, not
     # a new round: reuse it. From the cap on, the same head stays refused below.
@@ -1699,9 +1942,23 @@ if [ "$verb" = "start" ]; then
     delta_from=""
     delta_reuse=0
     delta_free=0
+    snap_start() {
+        [ -n "$start_head" ] || return 0
+        if ! snap_write before "$start_head" "$PPID" "$(date +%s)" "${snap_list[@]}"; then
+            echo "review-round: cannot write the round snapshot $snap_state - no round is started" >&2
+            return 5
+        fi
+        snap_wrote=1
+    }
+    snap_drop() { [ "$snap_wrote" -eq 0 ] || rm -f "$snap_state"; }
+    if [ "$round" -lt 3 ] && ! snap_start; then
+        start_unlock
+        exit 5
+    fi
     if [ "$round" -ge 3 ]; then
         delta_check
         delta_rc=$?
+        [ "$delta_rc" -ne 0 ] || snap_start || delta_rc=5
         if [ "$delta_rc" -eq 0 ] && [ "${delta_reuse:-0}" -eq 0 ] && [ "${delta_free:-0}" -eq 0 ]; then
             # The delta round is recorded first and the judge
             # record consumed after it; a failed consume restores the prior
@@ -1756,8 +2013,8 @@ if [ "$verb" = "start" ]; then
             rm -f "$bak_delta" "$cired_tmp"
         fi
         if [ "$delta_rc" -ne 0 ]; then
-            SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
-                bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
+            snap_drop
+            start_unlock
             exit "$delta_rc"
         fi
     fi
@@ -1766,8 +2023,8 @@ if [ "$verb" = "start" ]; then
     # The first round opens a new loop, which never reuses the last loop's
     # batch residual.
     if [ "$round" -eq 1 ] && ! rm -f "$deferred_to_state" "$from_state"; then
-        SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
-            bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
+        snap_drop
+        start_unlock
         echo "review-round: cannot remove $deferred_to_state or $from_state for a new round 1" >&2
         exit 5
     fi
@@ -1778,8 +2035,8 @@ if [ "$verb" = "start" ]; then
         || ! printf '%s\n' "$round" > "$tmp_state" \
         || ! mv "$tmp_state" "$state"; then  # prim-ok: tmp-then-mv under the counter lock; fixture copies of this script have no scripts/lib
         rm -f "$tmp_state"
-        SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
-            bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
+        snap_drop
+        start_unlock
         echo "review-round: cannot persist round $round for $branch under the counter lock" >&2
         exit 5
     fi
@@ -1816,16 +2073,24 @@ if [ "$verb" = "start" ]; then
     # abort and this claim cannot interleave between two starts.
     # Best effort - a failed write only loses the guard.
     printf '%s\n' "$PPID" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
+    if [ -n "$delta_from" ]; then
+        start_answer="$round delta $delta_from"
+    else
+        start_answer="$round"
+    fi
+    if [ "$snap_wrote" -eq 1 ] && ! snap_write after "$start_answer" "${snap_list[@]}"; then
+        snap_drop
+        start_unlock
+        echo "review-round: persisted round $round for $branch but could not complete its snapshot - the round stays counted" >&2
+        exit 5
+    fi
     if ! SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
         bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1; then
+        snap_drop
         echo "review-round: persisted round $round for $branch but could not release its counter lock" >&2
         exit 5
     fi
-    if [ -n "$delta_from" ]; then
-        printf '%s delta %s\n' "$round" "$delta_from"
-    else
-        printf '%s\n' "$round"
-    fi
+    printf '%s\n' "$start_answer"
     exit 0
 fi
 
