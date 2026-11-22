@@ -244,6 +244,12 @@ run_vc --board-json "$CASE/board-unavail.json"
 check "an unavailable board milestone: exit 2" "$RC" "2"
 run_vc --board-json "$CASE/missing.json"
 check "an unreadable board json: exit 2" "$RC" "2"
+printf '{"milestones":[null]}\n' > "$CASE/board-null.json"
+printf '{"milestones":[{"version":"v1.1.4","open":3.5,"residual":2}]}\n' > "$CASE/board-frac.json"
+run_vc --board-json "$CASE/board-null.json"
+check "a null board milestone: exit 2" "$RC" "2"
+run_vc --board-json "$CASE/board-frac.json"
+check "a fractional board count: exit 2" "$RC" "2"
 run_vc --tracker-html "$CASE/tracker-same.html" v1.1.9
 check "a tracker that shows none of the versions: exit 2" "$RC" "2"
 

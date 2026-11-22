@@ -137,9 +137,14 @@ if os.environ["VC_BOARD"]:
         ms = json.load(open(os.environ["VC_BOARD"], encoding="utf-8"))["milestones"]
         board = {}
         for m in ms:
+            if not isinstance(m, dict):
+                raise TypeError("milestone is not an object")
             if m.get("unavailable"):
                 die("board milestone " + str(m.get("version")) + " is unavailable")
-            board[m["version"]] = (int(m["open"]), int(m["residual"]))
+            counts = (m["open"], m["residual"])
+            if any(type(c) is not int or c < 0 for c in counts):
+                raise ValueError("count is not a nonnegative integer")
+            board[m["version"]] = counts
     except (OSError, ValueError, KeyError, TypeError):
         die("board json not readable: " + os.environ["VC_BOARD"])
 if os.environ["VC_TRACKER"]:

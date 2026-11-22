@@ -635,7 +635,8 @@ contains 'a failing Jira CLI still renders the board (rc 0)' "rc=$rc" 'rc=0'
 contains 'a failing Jira CLI reads unavailable' "$vfail" 'data-release="v1.0.0" data-unavailable="1"'
 lacks 'a failing Jira CLI fabricates no counts' "$vfail" 'data-open='
 for n in $(seq 9201 14200); do printf 'HIMMEL-%s%sTask%sTo Do%sbulk%s\n' "$n" "$T" "$T" "$T" "$T"; done > "$JD/v1.0.0.tsv"
-runv --out "$W/v-cap-board.html" >/dev/null
+runv --out "$W/v-cap-board.html" >/dev/null; rc=$?
+contains 'the capped render still exits 0' "rc=$rc" 'rc=0'
 contains 'a Jira answer that reaches the row limit reads unavailable, not a short count' "$(cat "$W/v-cap-board.html")" 'data-release="v1.0.0" data-unavailable="1"'
 write_v100 3
 # A missing CLI (nothing at the seam path) reads unavailable too.
