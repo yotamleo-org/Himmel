@@ -78,9 +78,7 @@
 #      set). FAIL on a missing/empty section, an unmarked line, a
 #      deferred key that does not exist or is already Done/Closed/Resolved/
 #      Won't Do, or is neither residual-labelled, older than the PR's own
-#      ticket, nor linked (either direction, any type) from it. The deferral
-#      keys must also equal the CR ledger's deferred_to rows for the PR head
-#      (or for the reviewed head a same-branch trivial-descendant row names).
+#      ticket, nor linked (either direction, any type) from it.
 #      A Jira error reads UNKNOWN and fails — never a PASS.
 #   9. A PR that changes a plugin bumps that plugin's version (same
 #      rule as check-plugin-drift.sh --bump-required): the manifest version must
