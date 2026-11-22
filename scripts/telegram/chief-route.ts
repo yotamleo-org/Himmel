@@ -2013,7 +2013,7 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
     }
     queued = parts.length;
   }
-  if (unresolved.length) await reportUnresolved(root, chatId, unresolved, replyViaOutbox);
+  if (unresolved.length) await reportUnresolved(root, chatId, unresolved, o.consoleName, replyViaOutbox);
   if (o.receiptOnly) return { cls, parts: queued, requests };
   const dest = cls === "escalate" ? o.dest : cls === "monitor" ? "monitor" : "none";
   try {
@@ -2023,10 +2023,10 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
   return { cls, parts: queued, requests };
 }
 
-async function reportUnresolved(root: string, chatId: number, unresolved: string[], replyViaOutbox: (root: string, chat: number, text: string) => Promise<unknown>): Promise<void> {
+async function reportUnresolved(root: string, chatId: number, unresolved: string[], consoleName: string | undefined, replyViaOutbox: (root: string, chat: number, text: string, consoleName?: string) => Promise<unknown>): Promise<void> {
   const text = `A Telegram line went out with ticket ${unresolved.length > 1 ? "keys" : "key"} ${unresolved.join(", ")} and no title: the title could not be read from the Jira mirror or the Jira CLI on the station, so the line was sent with the bare ${unresolved.length > 1 ? "keys" : "key"}. Blocks: nothing. Do: check the Jira mirror sync and the Jira CLI login on the station`;
   try {
-    if (/salus/i.test(text)) { await replyViaOutbox(root, chatId, text); return; }
+    if (/salus/i.test(text)) { await replyViaOutbox(root, chatId, text, consoleName); return; }
     await spoolMonitor(root, text, "title-unresolved");
   } catch (e) {
     console.error(`[chief-route] title-unresolved report not sent: ${e instanceof Error ? e.message : e}`);

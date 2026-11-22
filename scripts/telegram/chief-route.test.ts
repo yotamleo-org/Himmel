@@ -963,6 +963,16 @@ test("HIMMEL-10583 controls: resolved keys report nothing, two unresolved keys m
   expect(routeLog(r).some((l) => / title-unresolved report-failed /.test(l))).toBe(true);
 });
 
+test("HIMMEL-10583 a report that names a salus key goes to the operator chat, never the monitoring group", async () => {
+  const x = await route(["operator", "SALUS-1 is stuck"], { env: { HIMMEL_JIRA_CLI: DEAD_CLI, JIRA_PROJECT_KEY: "SALUS" } });
+  expect(x.code).toBe(0);
+  expect(spool(x.r)).toEqual([]);
+  const sent = operatorOutbox(x.r).map((m) => m.text);
+  expect(sent[0]).toBe("SALUS-1 is stuck");
+  expect(sent).toHaveLength(2);
+  expect(sent[1]).toContain("SALUS-1");
+});
+
 // Every malformed reserved fleet shape is a terminal refusal.
 const malformed = ["/go foo..bar", "/go ../escape", "/push a..b", "/halt a/b", "/go a\\b", `/go ${"a".repeat(65)}`, "/push a\u0000b", "/halt a\nb", "/go", "/push", "/go a b", "/halt a b", "/fleet now", "/workers x", "/go  foo", "/push foo‮"];
 
