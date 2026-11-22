@@ -314,8 +314,7 @@ def owned_rows(manifest):
 
 
 def reads_ended(doc):
-    """True when the doc's newest marker is absent or an end marker, the only doc a terminal receipt releases.
-    A SUCCESSION note after an end marker leaves the doc ended, as ts_marker_newest reads it."""
+    """True when the doc's newest marker is absent or an end marker, the only doc a terminal receipt releases."""
     newest = marker(doc)
     if re.match(r'- \d{1,2}:\d{2} SUCCESSION\b', newest):
         newest = marker(doc, skip=r'- \d{1,2}:\d{2} SUCCESSION\b') or newest
@@ -389,10 +388,10 @@ def disposition(doc):
     return 'unknown' if protected(doc) else 'legacy'
 
 
-def worker_state(doc, timeout=10, disposition=None, reading='ts_worker_state'):
-    """The one ownership reading of a doc (ticket-status.sh ts_worker_state, or ts_worker_ownership, which also answers
-    abandoned). A caller that already holds the doc's disposition, as WorkerStates does, passes it so the shell does not
-    read every manifest again for it."""
+def worker_state(doc, timeout=10, disposition=None, ownership=False):
+    """The one ownership reading of a doc (ticket-status.sh ts_worker_state). A caller that already holds the doc's
+    disposition, as WorkerStates does, passes it so the shell does not read every manifest again for it."""
+    reading = 'ts_worker_ownership' if ownership else 'ts_worker_state'
     script, argv = '. "$1/ticket-status.sh"; %s "$2"' % reading, ['fleet-runtime', str(LIB), doc]
     if disposition is not None:
         script, argv = script + ' "$3"', argv + [json.dumps(disposition)]
@@ -740,7 +739,7 @@ def ownership_check(attempts, manifest, doc, name, keys):
         for row in listed.get('workers', []) + listed.get('legs', []):
             if row.get('registration') != 'pending' and (row.get('doc') == doc or set(worker_keys(row['doc'])) & set(keys)):
                 if time.monotonic() >= legacy_deadline or worker_state(row['doc'], max(.01, legacy_deadline - time.monotonic()),
-                                                                       reading='ts_worker_ownership') not in ('wrapped', 'abandoned'):
+                                                                       ownership=True) not in ('wrapped', 'abandoned'):
                     raise Refused('unknown legacy family ownership')
 
 
