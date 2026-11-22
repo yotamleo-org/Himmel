@@ -4,8 +4,9 @@
 # Cases:
 #   1. the chief reply style asking for "about 15 min"            -> exit 1, file:line named
 #   2. a bridge reply "back in a moment"                         -> exit 1
-#   3. ETA, "will take", "shortly", "in a few minutes"           -> exit 1 each
-#   4. a measured past duration "took 50 min", "waited 30 min"   -> exit 0 (positive control)
+#   2b. a send call split over lines carries the string           -> exit 1
+#   3. ETA, "will take", "shortly", "in 15 minutes"               -> exit 1 each
+#   4. a measured past duration or a deadline ("expires in 6 h")  -> exit 0 (positive control)
 #   5. a .ts comment carrying "~16h" is not a send line           -> exit 0
 #   6. a line stating the rule ("no time estimate: ...")          -> exit 0
 #   7. a missing file                                             -> exit 2
@@ -44,7 +45,14 @@ put poller.ts '    await reply("bouncing the poller, back in a moment");'
 run "$T/poller.ts"
 if [ "$RC" -eq 1 ] && has "poller.ts:1"; then pass "back in a moment -> 1"; else fail "back in a moment exit $RC: $OUT"; fi
 
-for phrase in "ETA for the fix: tonight" "the rerun will take a while" "I hand over shortly" "answer in a few minutes" "relaunch all 9, about 10 min" "Token, about 2 min: open the page"; do
+put multi.ts '    await reply(
+      "bouncing the poller, back in a moment",
+    );
+    const after = "back in a moment";'
+run "$T/multi.ts"
+if [ "$RC" -eq 1 ] && has "multi.ts:2" && ! has "multi.ts:4"; then pass "multiline send call -> 1, later line not scanned"; else fail "multiline exit $RC: $OUT"; fi
+
+for phrase in "ready in 15 minutes" "ETA for the fix: tonight" "the rerun will take a while" "I hand over shortly" "answer in a few minutes" "relaunch all 9, about 10 min" "Token, about 2 min: open the page"; do
     put one.md "$phrase"
     run "$T/one.md"
     if [ "$RC" -eq 1 ]; then pass "estimate -> 1: $phrase"; else fail "estimate not caught ($RC): $phrase"; fi
@@ -52,7 +60,8 @@ done
 
 put measured.md 'The run took 50 min.
 A file ask waited 30 min: a worker wants a file.
-The suite ran for about 6 min on the station.'
+The suite ran for about 6 min on the station.
+The ask expires in 6 h; send the code within 5 minutes.'
 run "$T/measured.md"
 if [ "$RC" -eq 0 ]; then pass "measured past duration -> 0"; else fail "measured exit $RC: $OUT"; fi
 
