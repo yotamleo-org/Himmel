@@ -1469,7 +1469,10 @@ def body_cache_load():
 
 def _fresh(e):
     at = e.get('at')
-    return type(at) in (int, float) and math.isfinite(at) and 0 <= time.time() - at < body_ttl
+    try:
+        return type(at) in (int, float) and math.isfinite(at) and 0 <= time.time() - at < body_ttl
+    except OverflowError:
+        return False
 
 def cached_full(pr, key):
     # a complete schema-1 entry, or None: an older entry is a miss for the listing
@@ -1494,7 +1497,7 @@ def cached_remainder(pr, key):
         if 0 <= age < body_ttl and kind in ('remaining', 'handed-off', 'owed') and isinstance(handed, list) and isinstance(text, str) \
                 and isinstance(nowrite, bool) and isinstance(chief_owed, list):
             return dict(kind=kind, handed=[str(h) for h in handed], text=text, nowrite=nowrite, chief_owed=[str(t) for t in chief_owed])
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError, OverflowError):
         pass  # swallow-ok: an entry that cannot be read is no entry
     return None
 
@@ -1504,7 +1507,7 @@ def store_remainder(pr, key, ans):
     try:
         d = body_cache_load()
         now = time.time()
-        d = {k: v for k, v in d.items() if isinstance(v, dict) and isinstance(v.get('at'), (int, float)) and 0 <= now - v['at'] < body_ttl}
+        d = {k: v for k, v in d.items() if isinstance(v, dict) and _fresh(v)}
         d['%s:%s' % (pr, key)] = {'schema': 1, 'at': now, 'ans': {f: ans[f] for f in _reader.FULL_FIELDS}}
         os.makedirs(os.path.dirname(body_cache_path), exist_ok=True)
         tmp = '%s.%d' % (body_cache_path, os.getpid())

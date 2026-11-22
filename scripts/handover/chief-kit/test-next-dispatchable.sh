@@ -4640,7 +4640,7 @@ for name, fresh, cache in rows:
     open('%s/%s.fresh' % (out, name), 'wb').write(fresh)
     open('%s/%s.cache' % (out, name), 'wb').write(cache)
     print(name, 'both')
-for name, at in (('V17-no-at', None), ('V17-text-at', '"x"'), ('V17-nan-at', 'NaN'), ('V17-future', repr(now + 1000)), ('V17-expired', repr(now - 7200))):
+for name, at in (('V17-no-at', None), ('V17-text-at', '"x"'), ('V17-nan-at', 'NaN'), ('V17-future', repr(now + 1000)), ('V17-expired', repr(now - 7200)), ('V17-huge-at', '1' + '0' * 400)):
     text = entry(valid, at=at) if at else ('{"%s": {"schema": 1, "ans": %s}}' % (ck, valid)).encode()
     open('%s/%s.cache' % (out, name), 'wb').write(text)
     print(name, 'cache')
@@ -4663,7 +4663,7 @@ test_full_units_rejection_matrix() {
         [ "$(fu_views 7001)" = 1 ] && pass "$id $row cache: a rejected entry is a miss, the body is read" || fail "$id $row cache views=$(fu_views 7001)"
         has "$id $row cache: the real body's answer lists" "$P_OUT" "OWED $FU_KEY: merged PR #7001 owes chief by 2026-11-30"
     done < "$MX/rows"
-    [ "$(grep -c . "$MX/rows")" = 25 ] && pass "$id all 25 matrix rows ran" || fail "$id matrix rows: $(cat "$MX/rows")"
+    [ "$(grep -c . "$MX/rows")" = 26 ] && pass "$id all 26 matrix rows ran" || fail "$id matrix rows: $(cat "$MX/rows")"
     fu_fixture; printf '## Ticket coverage\n- a\tb: owed -> chief by 2026-11-30\n' > "$P_BODIES/7001"
     p_list
     has "POS1 $id fresh: a TAB unit is accepted by owner and date" "$P_OUT" "OWED $FU_KEY: merged PR #7001 owes chief by 2026-11-30"
