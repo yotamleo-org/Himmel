@@ -2,7 +2,7 @@
 # Platform guard: any POSIX bash 3.2+.
 #
 # check-operator-voice.sh — no operator-bound template or prompt produces or asks for
-# a time estimate (docs/internals/operator-voice.md, rule 6). A time estimate is a
+# a time estimate (docs/internals/operator-voice.md, rule 8). A time estimate is a
 # future duration or arrival: "in about 15 min", "about 2 min", "ETA", "will take",
 # "shortly", "in a moment". A measured past duration ("took 50 min", "waited 30 min")
 # is a fact and passes. A line naming "time estimate" states the rule and is skipped.
@@ -49,7 +49,8 @@ for f in "${FILES[@]}"; do
     out="$(LC_ALL=C awk -v file="$f" -v sendonly="$sendonly" '
         sendonly == 1 {
             if (depth <= 0 && $0 !~ /(reply|notifyChat|replyViaOutbox|sendMessage)\(/) next
-            o = gsub(/\(/, "(", $0); c = gsub(/\)/, ")", $0)
+            s = $0; gsub(/"([^"\\]|\\.)*"|'\''([^'\''\\]|\\.)*'\''|`[^`]*`/, "", s)
+            o = gsub(/\(/, "(", s); c = gsub(/\)/, ")", s)
             depth = (depth > 0 ? depth : 0) + o - c
         }
         tolower($0) ~ /time estimate/ { next }
@@ -58,11 +59,11 @@ for f in "${FILES[@]}"; do
             l = tolower($0)
             n = "[0-9]+([.,-][0-9]+)?"
             u = "(s|secs?|seconds?|m|mins?|minutes?|h|hrs?|hours?|days?)([^a-z0-9_]|$)"
-            gsub("(took|waited|lasted|spent|ran for|ran|after|for the last|been|over) (about |around |roughly |~ ?)?" n " ?" u, " ", l)
+            gsub("(took|waited|lasted|spent|ran for|ran|after|for the last|been|over|expires?) (in |about |around |roughly |~ ?)?" n " ?" u, " ", l)
             hit = ""
             if (raw ~ /(^|[^A-Za-z])ETAs?([^A-Za-z]|$)/) hit = "ETA"
             else if (l ~ ("(^|[^a-z0-9_])(about|around|roughly|approx\\.?|approximately|~) ?" n " ?" u)) hit = "about N"
-            else if (l ~ ("(^|[^a-z0-9_])in " n " ?" u) && l !~ ("expires? in " n)) hit = "in N"
+            else if (l ~ ("(^|[^a-z0-9_])in " n " ?" u)) hit = "in N"
             else if (l ~ /(^|[^a-z])about (half an|an|a few|a couple of) (hour|minute|second|day)/) hit = "about N"
             else if (l ~ /(^|[^a-z])(will|should|would|might|may|could) take([^a-z]|$)/) hit = "will take"
             else if (l ~ /(^|[^a-z])takes? about([^a-z]|$)/) hit = "takes about"

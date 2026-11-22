@@ -40,7 +40,14 @@ put multi.ts '    await reply(
 run "$T/multi.ts"
 if [ "$RC" -eq 1 ] && has "multi.ts:2" && ! has "multi.ts:4"; then pass "multiline send call -> 1, later line not scanned"; else fail "multiline exit $RC: $OUT"; fi
 
-for phrase in "ready in 15 minutes" "ETA for the fix: tonight" "the rerun will take a while" "I hand over shortly" "answer in a few minutes" "relaunch all 9, about 10 min" "Token, about 2 min: open the page"; do
+put paren.ts '    await reply(
+      "done :)",
+      "back in a moment",
+    );'
+run "$T/paren.ts"
+if [ "$RC" -eq 1 ] && has "paren.ts:3"; then pass "a ) inside a string does not end the send call"; else fail "paren in string exit $RC: $OUT"; fi
+
+for phrase in "The ask expires in 6 h; ready in 15 minutes" "ready in 15 minutes" "ETA for the fix: tonight" "the rerun will take a while" "I hand over shortly" "answer in a few minutes" "relaunch all 9, about 10 min" "Token, about 2 min: open the page"; do
     put one.md "$phrase"
     run "$T/one.md"
     if [ "$RC" -eq 1 ]; then pass "estimate -> 1: $phrase"; else fail "estimate not caught ($RC): $phrase"; fi
