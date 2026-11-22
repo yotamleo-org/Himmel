@@ -43,8 +43,8 @@ watchdog() {
         }
         END { walk(root, 0) }')
     printf 'FAIL: watchdog: the suite ran %ss, stopping it in case %s. Process tree:\n%s\n' "$WATCHDOG_SECS" "$(cat "$WORK/current-case" 2> /dev/null)" "$tree" >&2
-    kill -TERM "$SUITE_PID" 2> /dev/null
     printf '%s\n' "$tree" | awk -v root="$SUITE_PID" '$1 != root { print $1 }' | while read -r p; do kill -KILL "$p" 2> /dev/null; done
+    kill -TERM "$SUITE_PID" 2> /dev/null
     exit 0
 }
 SUITE_PID=$$
