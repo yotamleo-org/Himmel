@@ -49,8 +49,8 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   | Round of a kind | Sealed when |
   |---|---|
   | 1 to 3 | always, as a full round |
-  | 4 | round 3 of either kind left a blocking finding (major, unrated, `reopens` or `regression`), or a `round-critical` record opens it; it is a closure check, built with `closure-pack <KEY> <spec\|plan> --specs <bucket>/specs` |
-  | 5 and on | the chief's one `round-override`, or a `round-critical` record, opens that writer round |
+  | 4 | round 3 of either kind left a blocking finding (major, unrated, `reopens` or `regression`), or a `round-critical` record without `--restores` opens it; it is a closure check, built with `closure-pack <KEY> <spec\|plan> --specs <bucket>/specs` |
+  | 5 and on | the chief's one `round-override`, or a `round-critical` record without `--restores`, opens that writer round |
 
   The three records run only from the chief's console (`HIMMEL_CONSOLE=1`), each with `--specs <bucket>/specs` like
   `closure-pack` and `round-status`, and each is checked again on every read: `round-override <KEY> --findings <id,...> --why "<line>" --chief <session>`, once per ticket, ever, naming
@@ -58,7 +58,10 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   operator's ruling on an operator-critical finding, which closes it and, without `--no-round`, also opens one
   further writer round; and `round-reset <KEY> --decision <d> --quote "<operator words>"`, the operator's order to
   start over, once per ticket. The decision file `specs/decisions/verbatim-decision-<d>-*.txt` must name the ticket
-  and hold the quote. A `<spec>.operator-round-r<n>.md` file no longer counts. A judge round is neither counted nor
+  and hold the quote. A `round-critical ... --restores` record, for a reverses-ruling finding whose fix restores a
+  ruling on record, needs neither the key in the decision file nor a fresh file: the finding must say it reverses
+  that decision, the quote must be in the file byte for byte, and the finding's kind's next round, which opens by
+  itself, checks it. A `<spec>.operator-round-r<n>.md` file no longer counts. A judge round is neither counted nor
   limited. **Adopter stations:** after `himmel-update` brings the round ledger, run
   `bun scripts/telegram/chief-route.ts round-seed --all <bucket>/specs` once for every bucket on that station, and
   add `*.jsonl.lock` (that pattern only, never the ledger) to each bucket's ignore list. Until a bucket is seeded,
