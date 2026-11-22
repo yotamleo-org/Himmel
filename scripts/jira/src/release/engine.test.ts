@@ -3145,7 +3145,7 @@ const decision = join(f.specsRoot, 'decisions', 'verbatim-decision-990-fixture.t
 mkdirSync(dirname(decision));
 const quote = 'start this ticket over from scratch';
 writeFileSync(decision, 'HIMMEL-10205 '+quote+'\\n');
-const seconds = Math.floor(Date.now()/1000)+2.123046875;
+const seconds = Math.floor(Date.now()/1000)+2.140625;
 utimesSync(decision, seconds, seconds);
 process.env.HIMMEL_CONSOLE='1';
 await roundReset(f.specsRoot, 'HIMMEL-10205', { decision:'990', quote });
@@ -4122,7 +4122,10 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{if(a[1]?.[1]==='capped-fo
     }, 60000);
 
     it.each(['bytes', 'selection', 'mtime', 'file-alias', 'directory-alias'])('capped carry v2 group decision selection, mtime and alias fault is the only cause of the stale read: %s (E3)', fault => {
-      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const row = v2Sign(f);
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!;
+      const decisionTime = Math.floor(Date.now() / 1000) + 2.140625;
+      utimesSync(f.decision!, decisionTime, decisionTime);
+      const row = v2Sign(f);
       const proof = row.capped_carry!; const mtime = statSync(f.decision!).mtimeMs;
       expect(proof.pins.find(p => p.role === 'decision')).toMatchObject({ path: f.decision, mtime_ms: mtime });
       expect(proof.pins.some(p => p.role === 'decision-selection')).toBe(true);
