@@ -314,8 +314,11 @@ def owned_rows(manifest):
 
 
 def reads_ended(doc):
-    """True when the doc's newest marker is absent or an end marker, the only doc a terminal receipt releases."""
+    """True when the doc's newest marker is absent or an end marker, the only doc a terminal receipt releases.
+    A SUCCESSION note after an end marker leaves the doc ended, as ts_marker_newest reads it."""
     newest = marker(doc)
+    if re.match(r'- \d{1,2}:\d{2} SUCCESSION\b', newest):
+        newest = marker(doc, skip=r'- \d{1,2}:\d{2} SUCCESSION\b') or newest
     return not newest or re.match(r'- \d{1,2}:\d{2} (?:WRAPPED|HALTED)\b', newest) is not None
 
 
@@ -348,6 +351,32 @@ def named_session_alive(name, doc, deadline):
             if env.get(b'WORKER_SESSION_DOC') == doc.encode():
                 return True
         except (OSError, ValueError, UnicodeError):
+            if path.exists():
+                return True  # an unreadable candidate cannot prove absence
+    return False
+
+
+def doc_session_alive(doc, deadline):
+    """True unless a full readable /proc pass finds no live claude process whose WORKER_SESSION_DOC is this doc."""
+    wanted = {os.fsencode(doc), os.fsencode(str(Path(doc).resolve()))}
+    try:
+        paths = list(Path('/proc').iterdir())
+    except OSError:
+        return True
+    for path in paths:
+        if time.monotonic() >= deadline:
+            return True
+        if not path.name.isdigit():
+            continue
+        try:
+            if (path / 'comm').read_text().strip() != 'claude':
+                continue
+            if path.joinpath('stat').read_text().rsplit(')', 1)[1].split()[0] in ('Z', 'X'):
+                continue
+            env = dict(pair.split(b'=', 1) for pair in (path / 'environ').read_bytes().split(b'\0') if b'=' in pair)
+            if env.get(b'WORKER_SESSION_DOC') in wanted:
+                return True
+        except (OSError, ValueError, IndexError):
             if path.exists():
                 return True  # an unreadable candidate cannot prove absence
     return False
@@ -386,10 +415,11 @@ def disposition(doc):
     return 'unknown' if protected(doc) else 'legacy'
 
 
-def worker_state(doc, timeout=10, disposition=None):
-    """The one ownership reading of a doc (ticket-status.sh ts_worker_state). A caller that already holds the doc's
-    disposition, as WorkerStates does, passes it so the shell does not read every manifest again for it."""
-    script, argv = '. "$1/ticket-status.sh"; ts_worker_state "$2"', ['fleet-runtime', str(LIB), doc]
+def worker_state(doc, timeout=10, disposition=None, reading='ts_worker_state'):
+    """The one ownership reading of a doc (ticket-status.sh ts_worker_state, or ts_worker_ownership, which also answers
+    abandoned). A caller that already holds the doc's disposition, as WorkerStates does, passes it so the shell does not
+    read every manifest again for it."""
+    script, argv = '. "$1/ticket-status.sh"; %s "$2"' % reading, ['fleet-runtime', str(LIB), doc]
     if disposition is not None:
         script, argv = script + ' "$3"', argv + [json.dumps(disposition)]
     try:
@@ -497,10 +527,10 @@ class WorkerStates:
         return 'unknown' if any(r.get('doc') == doc and r.get('phase') in ('pending', 'committed', 'unknown') for r in attempts) else 'legacy'
 
 
-def marker(doc):
+def marker(doc, skip=None):
     try:
         lines = Path(doc).read_text().splitlines()
-        return next((line for line in reversed(lines) if re.match(r'^- \d{1,2}:\d{2} [A-Z]', line)), '')
+        return next((line for line in reversed(lines) if re.match(r'^- \d{1,2}:\d{2} [A-Z]', line) and not (skip and re.match(skip, line))), '')
     except OSError:
         return ''
 
@@ -735,7 +765,8 @@ def ownership_check(attempts, manifest, doc, name, keys):
         listed = read(sibling)
         for row in listed.get('workers', []) + listed.get('legs', []):
             if row.get('registration') != 'pending' and (row.get('doc') == doc or set(worker_keys(row['doc'])) & set(keys)):
-                if time.monotonic() >= legacy_deadline or worker_state(row['doc'], max(.01, legacy_deadline - time.monotonic())) != 'wrapped':
+                if time.monotonic() >= legacy_deadline or worker_state(row['doc'], max(.01, legacy_deadline - time.monotonic()),
+                                                                       reading='ts_worker_ownership') not in ('wrapped', 'abandoned'):
                     raise Refused('unknown legacy family ownership')
 
 
@@ -764,6 +795,8 @@ def run(args):
         return has_reservation(record, args.pid)
     if args.op == 'protected':
         return protected(args.doc)
+    if args.op == 'session':
+        return doc_session_alive(args.doc, time.monotonic() + 2)
     if args.op == 'owners':
         return owned_rows(args.manifest)
     if args.op == 'release':
@@ -952,7 +985,7 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('op', choices=['resolve', 'admit', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'disposition', 'owners', 'reservation', 'settle'])
+    parser.add_argument('op', choices=['resolve', 'admit', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'session', 'disposition', 'owners', 'reservation', 'settle'])
     parser.add_argument('--doc', default='')
     parser.add_argument('--manifest', default='')
     parser.add_argument('--name', default='')
