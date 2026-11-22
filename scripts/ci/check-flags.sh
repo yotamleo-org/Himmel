@@ -94,11 +94,17 @@ done < "$REG"
 # --- code reads ---
 FILES="$SCRATCH/files"
 if git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
-  git -C "$ROOT" ls-files -co --exclude-standard
+  git -C "$ROOT" ls-files -z -co --exclude-standard
 else
-  (cd "$ROOT" && find . -type f -not -path './.git/*' | sed 's|^\./||')
-fi | grep -Ev '^scripts/lib/flags\.(sh|py|mjs|tsv)$|^scripts/ci/(check-flags|test-check-flags)\.sh$|^scripts/lib/test-flags\.sh$|\.md$|(^|/)test-[^/]*$|\.test\.[a-z]+$|(^|/)(fixtures|tests|test|node_modules)/' \
-  | while IFS= read -r f; do [ -d "$ROOT/$f" ] || printf '%s\n' "$f"; done > "$FILES"
+  (cd "$ROOT" && find . -type f -not -path './.git/*' -print0)
+fi | while IFS= read -r -d '' f; do
+    f="${f#./}"
+    case "$f" in *"
+"*) : > "$SCRATCH/newline-name"; continue ;; esac
+    [ -d "$ROOT/$f" ] || printf '%s\n' "$f"
+  done \
+  | grep -Ev '^scripts/lib/flags\.(sh|py|mjs|tsv)$|^scripts/ci/(check-flags|test-check-flags)\.sh$|^scripts/lib/test-flags\.sh$|\.md$|(^|/)test-[^/]*$|\.test\.[a-z]+$|(^|/)(fixtures|tests|test|node_modules)/' > "$FILES"
+[ ! -e "$SCRATCH/newline-name" ] || { echo "check-flags: a file name holds a newline and cannot be scanned (fail-closed)" >&2; exit 2; }
 
 READS="$SCRATCH/reads"; : > "$READS"   # <name>\t<file>
 if [ -s "$FILES" ]; then

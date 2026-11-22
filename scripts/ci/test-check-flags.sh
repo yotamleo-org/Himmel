@@ -52,9 +52,22 @@ fi
 t="$(tree quoted)"
 printf '#!/usr/bin/env bash\nhimmel_flag alpha\nhimmel_flag beta\n' > "$t/scripts/handover/chief-kit/ü.sh"
 if git -C "$t" init -q && git -C "$t" add scripts/handover/chief-kit/ü.sh; then
-    expect_rc "a tracked non-ASCII file name does not slip past the scan" "$t" 2 "fail-closed"
+    expect_rc "a tracked non-ASCII file name is scanned under its real name" "$t" 1 "unregistered: beta"
+    git -C "$t" config core.quotePath true
+    mkdir -p "$t/\"scripts/handover/chief-kit/\\303\\274.sh\""
+    expect_rc "a directory named like the git-quoted file name does not hide the file" "$t" 1 "unregistered: beta"
 else
-    fail "a tracked non-ASCII file name does not slip past the scan (fixture git setup failed)"
+    fail "a tracked non-ASCII file name is scanned under its real name (fixture git setup failed)"
+fi
+
+t="$(tree newline)"
+printf '#!/usr/bin/env bash\nhimmel_flag alpha\n' > "$t/scripts/handover/chief-kit/a
+b.sh"
+if git -C "$t" init -q && git -C "$t" add "scripts/handover/chief-kit/a
+b.sh"; then
+    expect_rc "a tracked file name with a newline fails the scan closed" "$t" 2 "fail-closed"
+else
+    fail "a tracked file name with a newline fails the scan closed (fixture git setup failed)"
 fi
 
 t="$(tree expired)"
