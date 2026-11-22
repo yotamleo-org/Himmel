@@ -931,7 +931,7 @@ else
 fi
 sp_state="$sp_root/state two"; sp_spool="$sp_state/owe-spool.jsonl"
 sp_owed "$sp_spool" ACME-5
-sp_line1="$(cat "$sp_spool")" # read-sink-ok: the suite's own temp spool
+IFS= read -r sp_line1 < "$sp_spool"
 printf '%s' '{"kind":"owed","schema":1,"ts":"2026-' >> "$sp_spool"
 sp_sum="$(cksum < "$sp_spool")"
 sp_act="$(sp_tick | grep '^ACTION owed-spool-bad=')"
@@ -942,23 +942,21 @@ esac
 sp_check="$(sed -n 's/^ACTION owed-spool-bad=[^:]*: \(.*\) lists them; rebuild a lost row with .*/\1/p' <<<"$sp_act")"
 sp_rebuild="$(sed -n 's/.* rebuild a lost row with \(.*\), then drop the bad line with .*/\1/p' <<<"$sp_act")"
 sp_drop="$(sed -n 's/.*, then drop the bad line with \(.*\) (chief-sections\/owed\.md)$/\1/p' <<<"$sp_act")"
-# read-sink-ok: the suite's own temp spool
 [ "$(bash -c "$sp_check" 2>&1)" = 2 ] && [ "$(cksum < "$sp_spool")" = "$sp_sum" ] \
     && pass '(10194) the printed --check runs verbatim, lists the torn line and leaves the spool unchanged' \
     || fail "(10194) the printed --check runs verbatim, lists the torn line and leaves the spool unchanged: $sp_check"
 bash -c "${sp_drop//<line>/2}" 2>/dev/null
 printf '%s\n' "$sp_line1" | cmp -s - "$sp_spool" \
     && pass '(10194) the printed --drop removes only the torn line, byte for byte' \
-    || fail "(10194) the printed --drop removes only the torn line, byte for byte: $sp_drop: $(cat "$sp_spool")" # read-sink-ok: the suite's own temp spool
+    || fail "(10194) the printed --drop removes only the torn line, byte for byte: $sp_drop"
 sp_rebuild="${sp_rebuild//<n>/91}"; sp_rebuild="${sp_rebuild//<owner\/name>/acme/repo}"
 PATH="$sp_root/bin:$PATH" bash -c "${sp_rebuild//<KEY>/$sp_key}" 2>/dev/null
 sp_owed "$sp_root/expect.jsonl" "$sp_key"
-# read-sink-ok: the suite's own temp spool
 if [ "$(head -n 1 "$sp_spool")" = "$sp_line1" ] && [ "$(wc -l < "$sp_spool")" -eq 2 ] \
     && [ "$(sed -n 2p "$sp_spool" | jq -c 'del(.ts)')" = "$(jq -c 'del(.ts)' "$sp_root/expect.jsonl")" ]; then
     pass '(10194) the printed rebuild pipeline appends the row the spool verb computes for that PR body'
 else
-    fail "(10194) the printed rebuild pipeline appends the row the spool verb computes for that PR body: $sp_rebuild: $(cat "$sp_spool")" # read-sink-ok: the suite's own temp spool
+    fail "(10194) the printed rebuild pipeline appends the row the spool verb computes for that PR body: $sp_rebuild"
 fi
 rm -rf "$sp_root"
 

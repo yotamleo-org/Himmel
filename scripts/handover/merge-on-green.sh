@@ -123,12 +123,6 @@
 # `LEAK ... Not stopped.` line on stderr, write one `bucket-leak` row to status-events.jsonl and send one line to the owning
 # chief's inbox (HIMMEL_CONSOLE_NAME); unread (no usable answer) writes a row with verdict=unread and sends no inbox line.
 #
-# After a confirmed merge that does not complete its ticket, the PR body's owed lines go to the station spool
-# (<state dir>/owe-spool.jsonl, owed-events.py spool), which the chief's tick drains into its own owed ledger. The
-# outcome rides the MERGED audit line as `owe=<none|spooled:N|unread|miss:N:write>` (unread = the lines could not be
-# read, so one row asks the chief to read the body; miss:?:write when even that failed) and NEVER changes the exit code.
-# A miss prints the lines on stderr and writes one `owe-miss` row to status-events.jsonl.
-#
 # Exit codes:
 #   0   merged (including a confirmed remote merge where gh itself exited
 #       non-zero afterwards, and regardless of the post-merge prune outcome),
