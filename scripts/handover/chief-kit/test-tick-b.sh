@@ -869,10 +869,35 @@ bash "$HERE/owe.sh" add --bucket "$W/ow-dir" --chief OW --kind step --key HIMMEL
 ow_out="$(ow_tick)"
 contains '(10210) a past-due keyed step raises owed-stale' "$ow_out" 'ACTION owed-stale=1:o6:'
 contains '(10210) the accepted due action is a durable notification input' "$ow_out" 'ACTION owed-notify=o7'
+ow_stale="$(grep '^ACTION owed-stale=' <<<"$ow_out" || true)"
+case "$ow_stale" in
+    *'file it'*) fail "(10194) a past-due step's owed-stale line gives the step advice, not \"file it\": $ow_stale" ;;
+    'ACTION owed-stale=1:o6: an owed step is past its due date (o6): do it and close the row with its evidence (bash '*'owe.sh close --bucket '*'owe.sh add --bucket '*)
+        pass "(10194) a past-due step's owed-stale line gives the step advice, not \"file it\"" ;;
+    *) fail "(10194) a past-due step's owed-stale line gives the step advice, not \"file it\": $ow_stale" ;;
+esac
 bash "$HERE/owe.sh" close --bucket "$W/ow-dir" --id o7 --key wake-delivered >/dev/null
 not_contains '(10210) acknowledged due action does not notify on every tick' "$(ow_tick)" 'ACTION owed-notify='
 bash "$HERE/owe.sh" add --bucket "$W/ow-dir" --chief OW --kind step --key HIMMEL-10210 --text 'date evidence missing' >/dev/null
 contains '(10210) missing due evidence is explicit reconciliation' "$(ow_tick)" 'ACTION owed-invalid=o8'
+ow_t="$(OWE_NOW_EPOCH="$(( $(date +%s) - 18000 ))" bash "$HERE/owe.sh" add --bucket "$W/ow-dir" --chief OW --kind ticket --text 'file the second lost ticket')"
+ow_s="$(bash "$HERE/owe.sh" add --bucket "$W/ow-dir" --chief OW --kind step --key drain-proof --text "run the drain proof by $ow_yesterday")"
+ow_out="$(ow_tick)"
+ow_stale="$(grep '^ACTION owed-stale=' <<<"$ow_out" || true)"
+case "$ow_stale" in
+    "ACTION owed-stale=2:$ow_t,$ow_s: a ticket you owe has no key after 4h ($ow_t): file it, then bash "*" (chief-sections/owed.md); an owed step is past its due date ($ow_s): do it and close "*)
+        pass '(10194) a stale ticket row and a past-due step row print count 2, the ticket clause first, each clause naming only its own id in brackets' ;;
+    *) fail "(10194) a stale ticket row and a past-due step row print count 2, the ticket clause first, each clause naming only its own id in brackets: $ow_stale" ;;
+esac
+ow_note="$(bash "$HERE/owe.sh" list --bucket "$W/ow-dir" --json | jq -r --arg s "$ow_s" '.[] | select(.event == "step-due" and .source_id == $s) | .id')"
+bash "$HERE/owe.sh" close --bucket "$W/ow-dir" --id "$ow_note" --key wake-delivered >/dev/null
+ow_out="$(ow_tick)"
+ow_n="$(bash "$HERE/owe.sh" list --bucket "$W/ow-dir" --json | jq -r --arg s "$ow_s" 'if any(.[]; .id == $s) then length else "step-closed" end')"
+if [[ "$ow_out" != *'an owed step is past its due date'* && "$ow_out" == *" owed=$ow_n:"* ]]; then
+    pass '(10194) after the step-due wake is delivered, the next tick has no step clause and owed= still counts the step'
+else
+    fail "(10194) after the step-due wake is delivered, the next tick has no step clause and owed= still counts the step (open rows $ow_n): $ow_out"
+fi
 printf '%s\n' 'not json' >> "$W/ow-dir/owed.jsonl"
 contains '(10006) an unreadable ledger prints owed=?' "$(ow_tick)" ' owed=?'
 rm -rf "$W/ow-tmp" "$W/ow-mirror" "$W/ow-dir"

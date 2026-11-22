@@ -744,7 +744,17 @@ def ownership_check(attempts, manifest, doc, name, keys):
                     raise Refused('unknown legacy family ownership')
 
 
-def admit_read_only(manifest, doc, name):
+def joined_attempt(attempts, doc, attempt_id):
+    record = attempts.get(attempt_id) if attempt_id else None
+    if not record or record['doc'] != doc or record['phase'] not in ('committed', 'launched'):
+        return None
+    chain = ancestors()
+    if any(isinstance(holder, dict) and holder.get('pid') in chain and live(holder) for holder in (record['owner'], record.get('session'))):
+        return record
+    return None
+
+
+def admit_read_only(manifest, doc, name, join=''):
     """The admission a real launch's begin and check make, with no lock, no write and no receipt."""
     value = snapshot(manifest)
     if value['mode'] != 'active':
@@ -752,8 +762,10 @@ def admit_read_only(manifest, doc, name):
     attempts = read(manifest.parent / 'fleet-control.json').get('attempts', {})
     reconcile(attempts, read(manifest).get('workers', []), receipts(set(attempts)), time.monotonic() + 5, effects=False)
     doc = str(Path(doc).resolve())
-    ownership_check(attempts, manifest, doc, name, worker_keys(doc))
-    return value
+    joined = joined_attempt(attempts, doc, join)
+    if not joined:
+        ownership_check(attempts, manifest, doc, name, worker_keys(doc))
+    return dict(value, joined=joined['attempt_id'] if joined else None)
 
 
 def run(args):
@@ -797,7 +809,7 @@ def run(args):
         return {'managed': False, 'administrative': bool(args.doc and (Path(args.doc).resolve().parent / 'fleet-control.json').exists())}
     anchor = manifest.parent / 'fleet-control.json'
     if args.op in ('resolve', 'admit'):
-        value = admit_read_only(manifest, args.doc, args.name) if args.op == 'admit' else snapshot(manifest)
+        value = admit_read_only(manifest, args.doc, args.name, args.join_attempt) if args.op == 'admit' else snapshot(manifest)
         return dict(value, managed=True, manifest=str(manifest), slots=str(slots_root()))
     with lock(manifest), lock(anchor):
         value = snapshot(manifest)
@@ -858,6 +870,9 @@ def run(args):
             if args.attempt_id in history:
                 raise Refused('attempt already has receipt history')
             keys = worker_keys(doc)
+            joined = joined_attempt(attempts, doc, args.join_attempt)
+            if joined:
+                return {'joined': joined['attempt_id'], 'phase': joined['phase']}
             ownership_check(attempts, manifest, doc, args.name, keys)
             matches = [w for w in rows if w.get('doc') == doc]
             if not matches:
@@ -962,6 +977,7 @@ def main():
     parser.add_argument('--manifest', default='')
     parser.add_argument('--name', default='')
     parser.add_argument('--attempt-id', default='')
+    parser.add_argument('--join-attempt', default='')
     parser.add_argument('--pid', type=int, default=os.getppid())
     parser.add_argument('--phase', choices=['refused', 'unknown', 'launched', 'complete'])
     parser.add_argument('--slot', default='')
