@@ -3193,7 +3193,6 @@ test("round override nonblocking hint preserves refusal and names the normal ver
   expect(held.err).not.toContain("verified carry");
 }, S1B);
 
-// A closure return may put the quoted changed line inside the parenthesis: `(major; regression `quote`)`.
 const QUOTE_OLD = "# A\n\nthe realpath of the primary checkout is read by cd and pwd\n";
 const QUOTE_NEW = "# A\n\nthe realpath of the primary checkout, resolved by realpath -e\n";
 const QUOTED = "the realpath of the primary checkout, resolved by";
