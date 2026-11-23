@@ -2688,7 +2688,7 @@ c98_doc() {
     printf '%s\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE x\n- 09:30 %s x\n' "$2" "$3" > "$c98_b/$1.md"
     touch -d "$4" "$c98_b/$1.md"
 }
-c98_run() { HANDOVER_DIR="$c98_t/root" HIMMEL_BUCKET_DIR="$c98_b" HOME="$c98_t/home" CLAUDE_DIR="$c98_t/claude" \
+c98_run() { HIMMEL_DOCTOR_WRAPPED_MIN=15 HANDOVER_DIR="$c98_t/root" HIMMEL_BUCKET_DIR="$c98_b" HOME="$c98_t/home" CLAUDE_DIR="$c98_t/claude" \
     CLAUDE_SESSIONS_PROC="$c98_t/proc" CLAUDE_SESSIONS_PGREP="$c98_t/pgrep" bash "$DOC" --root "$REPO_ROOT" --no-color --only C98 2>&1; }
 echo "== C98: a wrapped, lock-free worker and chief still open 20 min later -> WARN naming each =="
 c98_doc W1 '# T-1 — a wrapped worker — worker W1' WRAPPED '20 minutes ago'

@@ -718,6 +718,7 @@ sw_doc() {
     touch -d "${5:-10 minutes ago}" "$WORK/$1/$2.md"
 }
 SWPROC="$WORK/sw-proc"
+export CHIEF_WAIT_SWEEP_MIN=5 CHIEF_WAIT_SWEEP_MAX=4
 reset_stub; rm -f "$STUB"/rc.*
 CD="$(pc_console sw1 0)"; I="$(new_inbox sw1)"
 sw_doc sw1 AS '# AS — CHIEF — successor to AR.md (fill signal 45 %)' WRAPPED
@@ -757,7 +758,19 @@ CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT
     timeout 4 bash "$WAIT" "$I" --doc "$WORK/sw2/AT.md" --workers "N1.md" > "$WORK/sw2b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 rm -f "$STUB/close.msg"
 check "(cs2) it wakes once: the re-arm is quiet and asks it no more" "|1" "$(cat "$WORK/sw2b.out")|$(wc -l < "$STUB/close.calls" | tr -d ' ')"
-unset CHIEF_WAIT_CLOSE
+reset_stub; rm -f "$STUB"/rc.*
+mkdir -p "$WORK/sw3"; printf '# AT — CHIEF — successor to none — first console of the chain\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE AT\n' > "$WORK/sw3/AT.md"
+sw_doc sw3 H1 '# HIMMEL-2 — worker H1' WRAPPED
+sw_doc sw3 H2 '# HIMMEL-3 — worker H2' WRAPPED
+sw_doc sw3 W1 '# HIMMEL-1 — worker W1' WRAPPED
+: > "$STUB/close.calls"; echo 3 > "$STUB/rc.H1"; echo 6 > "$STUB/rc.H2"
+rm -rf "$SWPROC"; sw_session 301 H1; sw_session 302 H2; sw_session 303 W1
+I="$(new_inbox sw3)"
+CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-doc.sh" CHIEF_WAIT_SWEEP_MAX=1 \
+    timeout 8 bash "$WAIT" "$I" --doc "$WORK/sw3/AT.md" --workers "N1.md" > "$WORK/sw3.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(cs3) refusals ahead in the census never starve a later candidate past CHIEF_WAIT_SWEEP_MAX" "yes" "$(grep -qxF -- "$WORK/sw3/W1.md" "$STUB/close.calls" && echo yes)"
+check "(cs3) and the refused ones are still retried" "yes|yes" "$(grep -qxF -- "$WORK/sw3/H1.md" "$STUB/close.calls" && echo yes)|$(grep -qxF -- "$WORK/sw3/H2.md" "$STUB/close.calls" && echo yes)"
+unset CHIEF_WAIT_CLOSE CHIEF_WAIT_SWEEP_MIN CHIEF_WAIT_SWEEP_MAX
 
 # --- (su) --succession: the successor's one wake -----------------------------
 # The tracker is stubbed (CHIEF_WAIT_TRACKER): it prints $STUB/su.out. The waiter

@@ -1950,11 +1950,12 @@ focus_rebuild() {
 # each, the predecessor the chief doc's first line names (`successor to <doc>.md`) and every live
 # `claude -n <name>` session (a -r<N> dropped) whose <bucket>/<name>.md is WRAPPED and unchanged for
 # CHIEF_WAIT_SWEEP_MIN min (default 5): --chief when its first line says `— CHIEF —`, else the worker
-# path. Per sample: one census, one stat, one awk, at most CHIEF_WAIT_SWEEP_MAX (4) sweep closes.
+# path. Per sample: one census, one stat, one awk, at most CHIEF_WAIT_SWEEP_MAX (4) closes from `.wait.sweep-turn` on.
 # Only close-wrapped-worker.sh's rc is read: 0 closed (a Results bullet); 3/4/6/7 retried next
 # sample; 5 "0 live session" gone; any other wakes once. The marker `<inbox>.wait.predecessor`
 # (one `<state>:<doc>` line per doc) outlives the waiter, so a done doc is never asked twice.
 pred_file="$inbox.wait.predecessor"
+sweep_turn_file="$inbox.wait.sweep-turn"
 close_cmd="${CHIEF_WAIT_CLOSE:-$HERE/close-wrapped-worker.sh}"
 pred_hangs=0
 pred_hang_list=""; pred_hang_old=""
@@ -2033,22 +2034,30 @@ sweep_candidates() { # <bucket dir> <named predecessor doc or ''>: prints `<chie
         END { if (f != "") emit() }' "${docs[@]}" 2>/dev/null  # swallow-ok: an unreadable doc is no candidate
 }
 predecessor_close() { # prints the WAKE block and returns 0 only for an unexpected refusal
-    local pred pdoc="" dir cands kind doc n=0
+    local pred pdoc="" dir l lines=() total start i kind doc
     pred_hang_old="$pred_hang_list"; pred_hang_list=""; pred_hangs=0
     [ -n "$console_doc" ] && [ -f "$console_doc" ] || return 1
     dir="$(dirname "$console_doc")"
     pred="$(sed -n '1s/.* successor to \([^ ]*\.md\).*/\1/p' "$console_doc")"
     [ -z "$pred" ] || [ ! -f "$dir/$pred" ] || pdoc="$dir/$pred"
-    if [ -n "$pdoc" ] && ! sed 's/^[a-z]*://' "$pred_file" 2>/dev/null | grep -qxF -- "$pdoc"; then  # swallow-ok: no marker file means not asked yet
+    l=$'\n'"$(sed 's/^[a-z]*://' "$pred_file" 2>/dev/null)"$'\n'  # swallow-ok: no marker file means not asked yet
+    if [ -n "$pdoc" ] && case "$l" in *$'\n'"$pdoc"$'\n'*) false ;; *) true ;; esac; then
         close_one "$pdoc" --chief "LIVE — predecessor console ${pred%.md} was WRAPPED and lock-free; the waiter closed its window" && return 0
     fi
-    cands="$(sweep_candidates "$dir" "$pdoc")"
-    while IFS=$'\t' read -r kind doc; do
-        [ -n "$doc" ] || continue
-        [ "$n" -lt "$sweep_close_max" ] || break
-        n=$((n + 1))
+    while IFS= read -r l; do [ -z "$l" ] || lines+=("$l"); done <<< "$(sweep_candidates "$dir" "$pdoc")"
+    total="${#lines[@]}"
+    [ "$total" -gt 0 ] || return 1
+    start=0
+    if [ "$total" -gt "$sweep_close_max" ]; then
+        start="$(cat "$sweep_turn_file" 2>/dev/null)"  # swallow-ok: no turn file starts at the first candidate
+        case "$start" in ''|*[!0-9]*) start=0 ;; esac
+        start=$(( 10#$start % total ))
+        printf '%s\n' "$(( start + sweep_close_max ))" | atomic_write "$sweep_turn_file"
+    fi
+    for (( i = 0; i < total && i < sweep_close_max; i++ )); do
+        l="${lines[$(( (start + i) % total ))]}"; kind="${l%%$'\t'*}"; doc="${l#*$'\t'}"
         close_one "$doc" "--$kind" "LIVE — wrapped $kind $(basename "$doc" .md) was WRAPPED and lock-free; the waiter closed its window" && return 0
-    done <<< "$cands"
+    done
     return 1
 }
 
