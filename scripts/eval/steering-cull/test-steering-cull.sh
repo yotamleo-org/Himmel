@@ -34,6 +34,10 @@ eq "live cull: the git-workflow rule requires at least one approval" \
     "$(grep -c -x -F -- '- Land changes via PR with ≥1 approval, never a direct push. [enforced: no-push-to-main]' "$LIVE")" "1"
 kept_missing() { python3 -c 'import json,sys
 rows={r["id"]: r for r in json.load(open(sys.argv[1]))["rows"]}
+rows["r5-invariants"]["old"]=rows["r5-invariants"]["old"].replace(
+    "work routes to Claude tiers + Codex lanes only (never GLM), while salus PHI\negress is governed by ",
+    "work routes to Claude tiers + Codex lanes + antigravity-t3, the Google trusted\nroute, only; never GLM. Salus PHI egress is governed by\n"
+)
 t=open(sys.argv[2]).read()
 print(" ".join(i for i in sys.argv[3:] if rows[i]["old"] not in t) or "none")' "$HERE/rows.json" "$1" \
     r4-billing r5-invariants l65-specs-location 2>&1; }

@@ -1,4 +1,4 @@
-# AGENTS.md — himmel rules for any coding agent (Codex / GPT / Cursor / Copilot / …)
+# AGENTS.md — himmel rules for any coding agent (Codex / GPT / Gemini / Cursor / Copilot / …)
 
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Source of truth: CLAUDE.md. Regenerate: node scripts/agents-md/generate.mjs --write -->
@@ -107,8 +107,9 @@ call; work above your tier is returned.
 Invariants: spawn depth and concurrency are capped by
 `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` / `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`;
 haiku does NOT spawn; single-writer (many readers, ONE writer); salus dev/impl
-work routes to Claude tiers + Codex lanes only (never GLM), while salus PHI
-egress is governed by `scripts/guardrails/egress-matrix.json`. Every dispatch
+work routes to Claude tiers + Codex lanes + antigravity-t3, the Google trusted
+route, only; never GLM. Salus PHI egress is governed by
+`scripts/guardrails/egress-matrix.json`. Every dispatch
 carries a RETASK block with a fresh nonce; a revision arrives only as a direct
 message quoting it (a narrowing or halt needs no token), never widens
 permissions. Tiers, cost, live inventory:

@@ -304,6 +304,33 @@ astra_has "the approval carve-out survives beside that permission" \
 astra_has "testing calibration reaches AGENTS.md" \
   "broaden or repeat only when new changes justify it"
 
+gemini_repo="$TMP/gemini-repo"
+mkdir -p "$gemini_repo/scripts/agents-md"
+cp "$GEN" "$gemini_repo/scripts/agents-md/generate.mjs"
+git -C "$gemini_repo" init -q
+SAVED_GEN="$GEN"; GEN="$gemini_repo/scripts/agents-md/generate.mjs"
+run 0 "Gemini clean fixture write succeeds" -- --write
+run 0 "Gemini clean fixture check succeeds" -- --check
+printf '# Duplicate instructions\n' > "$gemini_repo/GEMINI.md"
+run 0 "untracked root GEMINI.md does not block check" -- --check
+git -C "$gemini_repo" add GEMINI.md
+run 2 "tracked root GEMINI.md refuses check" -- --check
+if grep -q 'GEMINI.md' "$TMP/err"; then ok "duplicate gate identifies GEMINI.md"
+else bad "duplicate gate identifies GEMINI.md"; fi
+mkdir -p "$TMP/failed-git"
+printf '#!/bin/sh\nexit 128\n' > "$TMP/failed-git/git"
+chmod +x "$TMP/failed-git/git"
+PATH="$TMP/failed-git:$PATH" run 2 "check refuses when tracked-root inventory cannot be read" -- --check
+GEN="$SAVED_GEN"
+
+printf '' > "$TMP/empty-preamble.md"
+head -c 23999 /dev/zero | tr '\0' 'x' > "$TMP/decimal-budget.md"
+AGENTS_MD_SOURCE="$TMP/decimal-budget.md" AGENTS_MD_TARGET="$TMP/decimal-agents.md" \
+  AGENTS_MD_PREAMBLE="$TMP/empty-preamble.md" AGENTS_MD_DEBRAND="$DEBRAND" \
+  node "$GEN" --write >"$TMP/out" 2>"$TMP/err"
+if grep -q '24000 budget' "$TMP/err"; then ok "24002-byte output warns at the 24000-byte budget"
+else bad "24002-byte output warns at the 24000-byte budget"; fi
+
 # ---- summary --------------------------------------------------------------
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

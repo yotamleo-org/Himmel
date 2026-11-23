@@ -35,6 +35,12 @@ to **other coding harnesses** — Codex first — so an operator can decide what
 
 ## Frame matrix
 
+- **Gemini via Antigravity T3:** use generated `AGENTS.md` and the concise
+  `.agents/rules/himmel-lane.md` adaptation (`trigger: always_on` YAML required).
+  A tracked root `GEMINI.md` is refused by `generate.mjs --check` to prevent
+  duplicate injection. The warning budget is 24000 bytes; regenerate after
+  changing `CLAUDE.md` or the preamble.
+
 | Surface | Claude Code | Codex | Antigravity (T3 Code) | Cursor | Copilot CLI |
 |---|---|---|---|---|---|
 | **PreToolUse guardrail hooks** | native | ✅ Claude-compatible engine (`ClaudeHooksEngine`); same stdin schema, but blocks via JSON `permissionDecision:"deny"` **not exit 2** — himmel bridges via `.codex/run-hook.sh`→`codex-hook-adapter.sh` | ✅ `.agents/hooks.json` (single named spec, camelCase protojson stdin); **fails CLOSED** on error/timeout/`{}`; clean pass = empty stdout + exit 0, deny = `{"decision":"deny","reason":"..."}` + exit 0 — bridged via `scripts/hooks/antigravity-hook-adapter.sh` (primary-resolved, `*_OK` stripped) | ✅ `.cursor/hooks.json`; events **camelCase** (`preToolUse`, `beforeShellExecution`); **fails OPEN** unless `failClosed:true` | ✅ `.github/hooks/*.json`; camel/Pascal; **fails CLOSED**; ⚠️ headless `-p` disables repo hooks unless `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=true` |
