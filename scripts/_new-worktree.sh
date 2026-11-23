@@ -269,16 +269,17 @@ if [ "$RESUME" -eq 1 ]; then
     else
         resume_refuse diverged "local $L and origin $O have diverged; nothing created - reconcile by hand (git -C $PRIMARY_WORKTREE log --oneline --graph $L $O)"
     fi
-    if [ "$STALE" -eq 1 ]; then
-        git -C "$PRIMARY_WORKTREE" worktree remove --force "$_reg_path" || resume_refuse stale-registration "could not remove the stale registration of '$BRANCH' at $_reg_path"
-        echo "removed the stale registration of $BRANCH ($_reg_path)"
-    fi
     if command -v flock >/dev/null 2>&1; then
         exec 9>"$COMMON_DIR_ABS/himmel-worktree-create.lock"
         # prim-ok: the wait is bounded (HIMMEL_WORKTREE_LOCK_TIMEOUT, default 120 s) and the lock spans the rest of the script; with_lock waits unbounded and scopes to one command
         if ! flock -w "${HIMMEL_WORKTREE_LOCK_TIMEOUT:-120}" 9; then
             resume_refuse lock "timed out waiting for the worktree creation lock - refusing"
         fi
+    fi
+    if [ "$STALE" -eq 1 ]; then
+        [ -e "$_reg_path" ] && resume_refuse checked-out "branch '$BRANCH' is checked out at $_reg_path again; nothing removed"
+        git -C "$PRIMARY_WORKTREE" worktree remove --force "$_reg_path" || resume_refuse stale-registration "could not remove the stale registration of '$BRANCH' at $_reg_path"
+        echo "removed the stale registration of $BRANCH ($_reg_path)"
     fi
     wt_ceiling_check
     _add_ok=1

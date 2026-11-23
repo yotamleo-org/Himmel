@@ -1956,7 +1956,10 @@ def main():
                             mk += ' (origin could not be reached to check the branch; resume fetches it and refuses if it cannot)'
                 die('--no-worktree but %s is not an existing git worktree; no brief written for %s or the workers after it. Create it from %s first: %s' % (l['wt'], l['label'], a.repo, mk))
             if resumes(l):
-                l['resumed'] = (subprocess.run(['git', '-C', l['wt'], 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip(), 'existing worktree')
+                hd = subprocess.run(['git', '-C', l['wt'], 'rev-parse', 'HEAD'], capture_output=True, text=True)
+                if hd.returncode != 0 or not hd.stdout.strip():
+                    die('--no-worktree but %s has no readable HEAD; no brief written for %s or the workers after it' % (l['wt'], l['label']))
+                l['resumed'] = (hd.stdout.strip(), 'existing worktree')
 
     wt_cmd = os.environ.get('GEN_BRIEFS_WORKTREE_CMD')
     for l in workers:
