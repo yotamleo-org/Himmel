@@ -559,6 +559,9 @@ hidden at 0, `?` when unreadable. A ticket-kind row with no key past OWED_STALE_
 step past its due date until its step-due wake is delivered (one wake per due date), add `ACTION owed-stale=<n>:<ids>`,
 then one clause per kind naming its own ids: a ticket row is filed and closed with its key; a step is done and closed
 with its evidence, or re-dated. chief-wait.sh wakes on that stale count (changed=owed).
+A --doc inside the handover root first drains its project's rows of the station spool (<state dir>/owe-spool.jsonl,
+the owed lines of partial merges) into that ledger; a spool line it cannot read or add, or a spool it cannot read or
+lock, adds `ACTION owed-spool-bad=<lines|file>` with the check, rebuild and drop commands.
 A key whose line the file reads changed (pool-changed=, same line-hash and sole-reason rules) is unresolved as
 class `changed`: `<target> merged <oldest sha since the anchor> since the line was written: re-read and stamp
 (<LL> <MM-DD> <HH:MM>Z)`, the bracket printed as written, never filled in.
@@ -3947,16 +3950,24 @@ owed_stale_ids=""
 owed_stale_ticket_ids=""
 owed_stale_step_ids=""
 owed_event_actions=""
+owed_spool_bad=""
 owed_stale_secs="${OWED_STALE_SECS:-14400}"
 case "$owed_stale_secs" in ''|*[!0-9]*) owed_stale_secs=14400 ;; esac
 owed_stale_secs=$((10#$owed_stale_secs))
+owed_state="${TICKET_STATUS_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
+owed_spool="$owed_state/owe-spool.jsonl"
 
 # Both clocks use the existing owed identity/ack contract. A reminder grants no
 # hold and is independent of the pool's dispatchability calculation above.
-if [ -n "$console_doc" ] && { [ -s "${console_doc%/*}/owed.jsonl" ] || [[ "${pd_summary:-}" == *'# readiness-clock '* ]]; }; then
+if [ -n "$console_doc" ] && { [ -s "${console_doc%/*}/owed.jsonl" ] || [ -s "$owed_spool" ] || [[ "${pd_summary:-}" == *'# readiness-clock '* ]]; }; then
     tick_now_s
+    owed_root=$(handover_root 2>/dev/null) || owed_root=""  # swallow-ok: no handover root means no spool drain, the ledger still projects
+    owed_chief=${console_doc##*/}
+    owed_chief=${owed_chief%.md}
     if owed_events=$(printf '%s\n' "${pd_summary:-}" | sed -n 's/^# readiness-clock //p' | jq -s . | \
-        python3 -I "$HERE/owed-events.py" --bucket "${console_doc%/*}" --now "$tick_now" --stale-seconds "$owed_stale_secs"); then
+        python3 -I "$HERE/owed-events.py" --bucket "${console_doc%/*}" --now "$tick_now" --stale-seconds "$owed_stale_secs" \
+            --spool "$owed_spool" --project "$tick_project_key" --chief "$owed_chief" --handover-root "$owed_root"); then
+        owed_spool_bad=$(printf '%s' "$owed_events" | jq -r '.spool_bad | map(tostring) | join(",")')
         owed_summary=$(printf '%s' "$owed_events" | jq -r '.summary')
         owed_stale_n=$(printf '%s' "$owed_events" | jq '.stale_ids | length')
         owed_stale_ids=$(printf '%s' "$owed_events" | jq -r '.stale_ids | join(",")')
@@ -5220,6 +5231,14 @@ else
         printf '%s\n' "$owed_stale_line"
     fi
     [ -z "$owed_event_actions" ] || printf '%s\n' "$owed_event_actions"
+    case "$owed_spool_bad" in
+        '') ;;
+        file) printf 'ACTION owed-spool-bad=file: the owed spool could not be read or locked: python3 -I %q spool --check --spool %q\n' \
+            "$HERE/owed-events.py" "$owed_spool" ;;
+        *) printf 'ACTION owed-spool-bad=%s: python3 -I %q spool --check --spool %q lists them; rebuild a lost row with gh pr view <n> --repo <owner/name> --json body -q .body | python3 -I %q --owed-lines | python3 -I %q spool --key <KEY> --pr <n> --repo <owner/name> --spool %q, then drop the bad line with python3 -I %q spool --drop <line> --spool %q (chief-sections/owed.md)\n' \
+            "$owed_spool_bad" "$HERE/owed-events.py" "$owed_spool" "${HERE%/scripts/handover/chief-kit}/scripts/lib/pr_remainder.py" \
+            "$HERE/owed-events.py" "$owed_spool" "$HERE/owed-events.py" "$owed_spool" ;;
+    esac
     decisions_file="${console_doc%/*}/specs/decisions/chief-decisions-$(date +%F).md"
     if [ "$handoff_bytes" -gt "$handoff_budget" ]; then
         printf 'ACTION handoff-over-budget=%s/%s: trim %q: move superseded rulings verbatim to %q, then tighten the Live state (chief-sections/live-state.md)\n' "$handoff_bytes" "$handoff_budget" "$handoff_file" "$decisions_file"
