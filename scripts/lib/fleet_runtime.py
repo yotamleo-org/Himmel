@@ -102,9 +102,7 @@ OWNER_FIELDS = {'host': str, 'boot': str, 'pid': int, 'start': str}
 _PAST_BOOTS = []
 
 
-def past_local_boot(boot):
-    """True when boot (a dashed boot id) is an earlier boot of this machine, per the journal's boot list; any failure is False.
-    The caller has already matched the host name, which a foreign machine can share."""
+def past_boot_of_matched_host(boot):
     if not _PAST_BOOTS:
         found = set()
         try:
@@ -131,7 +129,7 @@ def process_state(owner):
         if owner['host'] != local['host']:
             return 'unknown'
         if owner['boot'] != local['boot']:
-            return 'dead' if past_local_boot(owner['boot']) else 'unknown'
+            return 'dead' if past_boot_of_matched_host(owner['boot']) else 'unknown'
         try:
             found = identity(owner['pid'])
             state = Path('/proc', str(owner['pid']), 'stat').read_text().rsplit(')', 1)[1].split()[0]
@@ -561,7 +559,7 @@ def session_scan(record, deadline):
     if record['owner']['host'] != local['host']:
         return None, False
     if record['owner']['boot'] != local['boot']:
-        return (None, True) if past_local_boot(record['owner']['boot']) else (None, False)
+        return (None, True) if past_boot_of_matched_host(record['owner']['boot']) else (None, False)
     absent = True
     for path in Path('/proc').iterdir():
         if time.monotonic() >= deadline:
