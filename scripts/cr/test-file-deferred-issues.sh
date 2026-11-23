@@ -345,7 +345,7 @@ SAVED_INPUT="$INPUT"
 prio_of() {
     local f="$TMP_ROOT/prio-input.txt"; : >"$f"
     local l; for l in "$@"; do printf '%s\n' "$l" >>"$f"; done
-    INPUT="$f"; run_mode jira github >/dev/null
+    INPUT="$f"; run_mode jira github >/dev/null || return 0
     grep '^create' "$JLOG" | sed -n 's/.*--priority \([A-Za-z]*\).*/\1/p'
 }
 assert_eq "LOW batch → Medium" "Medium" "$(prio_of 'a.md:1: LOW: x. fix.')"
