@@ -2430,7 +2430,7 @@ export function startMonitoringCheck(d: { check: () => ReturnType<typeof checkMo
 export function startFlushTimers(d: { root: string; send: SendFn; sendDoc?: SendDocFn; flushMs: number; monitorMs: number; monitor: () => MonitorCfg | null; now?: () => number; peerFlush?: () => Promise<void> }): () => void {
   const outboxTick = guarded(() => flushOutboxes(d.root, d.send, d.sendDoc));
   const peerTick = d.peerFlush ? guarded(d.peerFlush) : null;
-  const flushTimer = setInterval(() => { outboxTick(); peerTick?.(); }, d.flushMs); // t13b-ok: the existing outbox flush timer, moved here so its wiring is testable
+  const flushTimer = setInterval(() => { outboxTick(); peerTick?.(); }, d.flushMs); // t13b-ok: the outbox and peer notify flush timer in the existing poller process, no new service
   const monitorTimer = setInterval(guarded(async () => { const m = d.monitor(); if (m) await flushMonitor(d.root, m.send, (d.now ?? Date.now)(), m); }), d.monitorMs); // t13b-ok: the monitoring flush's own timer in the existing poller process, no new service
   for (const t of [flushTimer, monitorTimer]) if (typeof t.unref === "function") t.unref();
   return () => { clearInterval(flushTimer); clearInterval(monitorTimer); };

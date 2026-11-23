@@ -174,7 +174,7 @@ export async function sendMessage(token: string, chat_id: number, text: string,
     }
     if (r.code === 429) { if (attempt < 4) await sleep((r.retryAfter ?? 1) * 1000); continue; }
     if (html !== null && r.code === 400 && /can't parse entities/i.test(String(r.description ?? ""))) { html = null; continue; }
-    if (r.kind === "permanent") {           // permanent client error → log + drop (never loop)
+    if (r.kind === "permanent") {
       console.error(`[telegram] sendMessage ${r.code} chat=${redactChatId(chat_id)}: ${r.description ?? ""}`);
       return false;
     }
