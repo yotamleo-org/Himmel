@@ -1738,6 +1738,47 @@ print("\n".join(lines))
 ' "${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/rm-refused-$stem.tsv" "$refused_file" "$(date -u +%Y-%m-%d)" 2>/dev/null
 }
 
+lists_file="$inbox.wait.lists"
+lists_wake() {
+    local stem
+    [ -n "$console_doc" ] || return 1
+    stem="${console_doc##*/}"
+    stem="${stem%.md}"
+    python3 -I -c '
+import os, re, sys
+tsv, marker = sys.argv[1:3]
+try:
+    rows = [l.rstrip("\n").split("\t") for l in open(tsv) if l.strip()]
+except OSError:
+    sys.exit(1)
+rows = [r for r in rows if len(r) == 6 and r[0] in ("chief", "apart")]
+cl = lambda s: " ".join(re.sub(r"[\x00-\x1f\x7f]", " ", s).split())
+ident = lambda r: "chief@%s" % r[2] if r[0] == "chief" else "apart@%s@%s@%s@%s" % (r[1], r[3], r[4], r[5])
+try:
+    seen = set(l.strip() for l in open(marker))
+except OSError:
+    seen = set()
+lines, cur = [], []
+for r in rows:
+    i = ident(r)
+    if i in cur:
+        continue
+    cur.append(i)
+    if i in seen:
+        continue
+    if r[0] == "chief":
+        lines.append("WAKE chief-placed %s %s" % (r[1], cl(r[3])[:200]))
+    else:
+        lines.append("WAKE ask-apart %s %s parent %s %s" % (r[1], r[3], r[4], r[5]))
+with open(marker + ".tmp", "w") as f:
+    f.write("".join(i + "\n" for i in cur))
+os.replace(marker + ".tmp", marker)
+if not lines:
+    sys.exit(1)
+print("\n".join(lines))
+' "${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/rm-lists-$stem.tsv" "$lists_file" 2>/dev/null
+}
+
 doctor_file="$inbox.wait.doctor"
 # doctor_wake: <doctor= ids, comma-joined> — a doctor WARN/FAIL id the marker does not hold. Prints
 # the new ids (comma-joined) and succeeds; the marker then holds the whole current set. No re-wake
@@ -3246,6 +3287,10 @@ while :; do
             if [ -n "$(field rm-refused "$tick_line")" ] && refused_out="$(refused_wake)"; then
                 printf '%s\n%s\n' "$refused_out" "$tick_line"
                 exit_reason='wake-rm-refused'; exit 0
+            fi
+            if { [ -n "$(field chief-placed "$tick_line")" ] || [ -n "$(field ask-apart "$tick_line")" ]; } && lists_out="$(lists_wake)"; then
+                printf '%s\n%s\n' "$lists_out" "$tick_line"
+                exit_reason='wake-rm-lists'; exit 0
             fi
             if tracker_stale_wake "$(field tracker "$tick_line")"; then
                 printf 'WAKE tracker-stale tracker=%s\n%s\n' "$(field tracker "$tick_line")" "$tick_line"

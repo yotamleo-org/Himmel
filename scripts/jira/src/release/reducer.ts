@@ -155,7 +155,7 @@ function partition(inp: ReduceInput, integrity: string[]): Partition {
   };
 }
 
-const changesMembership = (e: EventRow): boolean => e.kind !== 'ack';
+const changesMembership = (e: EventRow): boolean => e.kind !== 'ack' && e.kind !== 'reviewed';
 
 // The mirror is UNKNOWN without a sync, STALE when an event postdates it (those keys read unknown).
 function mirrorOf(inp: ReduceInput): { mirror: InputState; staleKeys: Set<string> } {

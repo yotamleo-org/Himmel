@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  ack, apply, bucketCheck, operatorWords, poolCurrent, claim, coreBypass, declare, decisionWords, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, operatorFence, recordRequestDecision, request, requestWithWords, rule, state, takeover, withdraw,
+  ack, apply, bucketCheck, operatorWords, poolCurrent, claim, coreBypass, declare, decisionWords, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, operatorFence, recordRequestDecision, request, requestWithWords, reviewed, rule, state, takeover, withdraw,
   JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readMirrorFilesUnverified, readOperatorRecords, rmRun, rmRunSummary, pinnedSha, signSpec, specCheck, specReview, standing,
   type Ctx, type Decision, type DoorJiraPort, type JiraPort, type Judge, type JudgeInput, type RuledDecision,
 } from './engine.js';
@@ -1394,7 +1394,7 @@ describe('rm-run: the on-demand release manager', () => {
     expect(jira.fv.get('K-2')).toEqual(['v1']);
     const s = state(ctx());
     expect(s.lease).toMatchObject({ epoch: 1, released: true });
-    expect(s.requests).toEqual({ open: [], claimed: [], oldest_open: null });
+    expect(s.requests).toEqual({ open: [], claimed: [], oldest_open: null, pending_keys: [] });
   });
 
   it('rm-run hands the judge only the operator rows its batch can use', async () => {
@@ -1589,7 +1589,7 @@ describe('rm-run: the on-demand release manager', () => {
       req: q.req, outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: '', ground: 'regression', reason: 'x',
     })));
     expect(lines).toEqual([expect.stringMatching(/^REFUSED Q-R1-0001: release rule: a ruling without a sector/)]);
-    expect(state(ctx()).requests).toEqual({ open: [], claimed: [], oldest_open: null });
+    expect(state(ctx()).requests).toEqual({ open: [], claimed: [], oldest_open: null, pending_keys: [] });
     expect(ask('K-2').req).toBe('Q-R1-0002');
   });
 
@@ -1751,7 +1751,7 @@ describe('release withdraw', () => {
     const q = ask('K-2', 'INTAKE', null, 'v1');
     expect(withdraw(ctx(), { req: q.req, reason: 'junk from a test run' }).state).toBe('withdrawn:console');
     expect(claim(ctx(rmEnv))).toEqual([]);
-    expect(state(ctx()).requests).toEqual({ open: [], claimed: [], oldest_open: null });
+    expect(state(ctx()).requests).toEqual({ open: [], claimed: [], oldest_open: null, pending_keys: [] });
   });
 
   it('a withdrawn request does not swallow a fresh one for the same move', async () => {
@@ -1891,7 +1891,7 @@ describe('a blocker of a current-version ticket is pulled into the current versi
     expect(lines).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 INTAKE K-2 move v2→v1 ADMIT current sector=Ship loop — blocker-pull: /));
     expect(jira.fv.get('K-2')).toEqual(['v1']);
     expect(rulingRows().at(-1)?.authority).toEqual({ kind: 'operator', ref: 'O-R1-blocker-pull', blocks: ['K-1'] });
-    expect(state(ctx()).requests).toEqual({ open: [], claimed: [], oldest_open: null });
+    expect(state(ctx()).requests).toEqual({ open: [], claimed: [], oldest_open: null, pending_keys: [] });
   });
 
   it('a blocker in the backlog is added, not moved', async () => {
@@ -1966,7 +1966,7 @@ describe('a blocker of a current-version ticket is pulled into the current versi
     const lines = await rmRun(ctx(), noJudge);
     expect(lines).toEqual([expect.stringMatching(/^NOOP Q-R1-0001: K-2 is already in v1/)]);
     expect(rulingRows()).toEqual([]);
-    expect(state(ctx()).requests).toEqual({ open: [], claimed: [], oldest_open: null });
+    expect(state(ctx()).requests).toEqual({ open: [], claimed: [], oldest_open: null, pending_keys: [] });
   });
 
   it('refuses when a blocked ticket no longer waits on the blocker, and does not re-file it', async () => {
@@ -2117,7 +2117,7 @@ describe('a delivered ticket in a later version follows its merge (decision 929)
     expect(lines).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 INTAKE K-1 move v2→v1 ADMIT current sector=Ship loop — delivered-follows-merge: .*decision 929/));
     expect(jira.fv.get('K-1')).toEqual(['v1']);
     expect(rulingRows().at(-1)?.authority).toMatchObject({ kind: 'operator', ref: id, delivered: expect.stringContaining('5') });
-    expect(state(ctx()).requests).toEqual({ open: [], claimed: [], oldest_open: null });
+    expect(state(ctx()).requests).toEqual({ open: [], claimed: [], oldest_open: null, pending_keys: [] });
   });
 
   it('the merged PR the caller looks up counts as evidence when the request carries none', async () => {
@@ -4277,7 +4277,7 @@ describe('T8 U7: request, ruling, apply and readback converge once from every fa
     expect(jira.posted).toBe(1);
     const s = state(ctx());
     expect(s.unfinished_rulings).toEqual([]);
-    expect(s.requests).toEqual({ open: [], claimed: [], oldest_open: null });
+    expect(s.requests).toEqual({ open: [], claimed: [], oldest_open: null, pending_keys: [] });
     const before = { writes: jira.writes, posted: jira.posted, rows: rows().length, events: chain<EventRow>('events.jsonl').length, rulings: chain<RulingRow>('rulings.jsonl').length };
     expect(await rmRun(ctx(), noJudge)).toEqual(['RM-RUN R1: nothing pending']);
     expect({ writes: jira.writes, posted: jira.posted, rows: rows().length, events: chain<EventRow>('events.jsonl').length, rulings: chain<RulingRow>('rulings.jsonl').length }).toEqual(before);
@@ -4453,7 +4453,7 @@ describe('T8 U7: seed from the 2026-11-16 correction audit', () => {
     // 1. Before correction: 20 actual members with no matching effective placement; nothing queued, nothing stale.
     const before = state(ctx());
     expect(byKey(before.leaks.unauthorized)).toEqual(byKey(originals.map((k) => `${k}@v1`)));
-    expect(before.requests).toEqual({ open: [], claimed: [], oldest_open: null });
+    expect(before.requests).toEqual({ open: [], claimed: [], oldest_open: null, pending_keys: [] });
     expect(before.inputs.mirror).not.toBe('UNKNOWN');
     expect(before.unfinished_rulings).toEqual([]);
 
@@ -4484,7 +4484,7 @@ describe('T8 U7: seed from the 2026-11-16 correction audit', () => {
     const after = state(ctx());
     expect(after.leaks).toEqual({ unauthorized: [], ruled_in_non_member: [] });
     expect(after.unfinished_rulings).toEqual([]);
-    expect(after.requests).toEqual({ open: [], claimed: [], oldest_open: null });
+    expect(after.requests).toEqual({ open: [], claimed: [], oldest_open: null, pending_keys: [] });
     expect(after.remainder_conflicts).toEqual([]);
     expect(after.refused_asks).toEqual([]);
     for (const k of [...originals, ...seed.recovery_keys]) expect(jira.fv.get(k)).toEqual(['v1']);
@@ -4708,5 +4708,135 @@ describe('rmRun with the door', () => {
     const lines = await rmRun(ctx(), door);
     expect(lines).toContainEqual(expect.stringMatching(/^RULING .* INTAKE K-2 add backlog→v1 ADMIT current sector=Visibility — door:operator-ask: /));
     expect(lines).toContainEqual(expect.stringMatching(/^RULING .* INTAKE K-3 add backlog→v1 ADMIT current sector=Visibility — door:started: /));
+  });
+});
+
+describe('the chief\'s lists: priority review, chief placements and asks apart (S1b)', () => {
+  const declared2 = () => declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
+  const ask = (key: string, o: Partial<RequestRow> = {}) =>
+    request(ctx(), { verb: 'INTAKE', key, from_v: null, to_v: 'v1', why: 'found work', evidence: {}, from: 'console', ...o });
+  const at = (iso: string): Ctx => ({ ...ctx(), now: () => new Date(iso) });
+  const receipted = (key: string): RulingRow[] => {
+    const p = join(ctx().dir, 'rulings.jsonl');
+    return readChain<RulingRow>(p, loadKey(ctx().keyPath)).verified.filter((r) => r.key === key && r.phase === 'receipted');
+  };
+  const stub = (grounds: Record<string, string>): Judge => async (input) => input.requests.map((q) => ({
+    req: q.req, outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 'Planning & tracking', ground: grounds[q.key], reason: `placed by ${grounds[q.key]}`,
+  }));
+  const LISTED = ['door:serious:High', 'door:mild', 'door:mild-no-next', 'door:rest-of:K-1', 'door:operator-ask', 'door:operator-ask:v1', 'door:started', 'door:operator-undeclared:v9'];
+  const UNLISTED = ['door:operator:O-R1-0001', 'door:done', 'door:chief', 'door:operator-ask-apart:K-1@v2', 'door:operator-apart:K-1@v2', 'door:repair', 'door:repair-keeps', 'door:operator-standing:R-R1-0001', 'door:stays:v1'];
+  const keyed = (grounds: string[], from: number) => Object.fromEntries(grounds.map((g, i) => [`K-${from + i}`, g]));
+
+  it('a receipted door:chief ruling is in chief_placements until a reviewed row covers it, read from a ledger row that carries no list field', async () => {
+    declared2();
+    mirror([{ key: 'K-5', fixVersions: [], sector: 'Planning & tracking' }]);
+    vi.stubEnv('HIMMEL_CONSOLE', '1');
+    ask('K-5', { evidence: { chief_placement: { reason: 'the release needs it', ts: '2026-10-21T10:00:00.000Z' } } });
+    await rmRun(ctx(), doorJudge);
+    const [r] = receipted('K-5');
+    expect(r.ground).toBe('door:chief');
+    expect(Object.keys(r)).not.toContain('chief_placements');
+    expect(state(ctx()).chief_placements).toEqual([{ key: 'K-5', ruling: r.id, reason: 'the release needs it' }]);
+    reviewed(ctx(), { ruling: r.id, reason: 'relayed to the operator' });
+    expect(state(ctx()).chief_placements).toEqual([]);
+  });
+
+  it('priority_review holds one entry per ruling of each self-settable ground and none for the others (P7, X11)', async () => {
+    declared2();
+    const grounds = { ...keyed(LISTED, 10), ...keyed(UNLISTED, 30) };
+    mirror(Object.keys(grounds).map((key) => ({ key, fixVersions: [], sector: 'Planning & tracking' })));
+    for (const key of Object.keys(grounds)) ask(key);
+    await rmRun(ctx(), stub(grounds));
+    const s = state(ctx());
+    expect(s.priority_review.map((e) => e.ground)).toEqual(LISTED);
+    expect(s.priority_review.map((e) => e.key)).toEqual(Object.keys(keyed(LISTED, 10)));
+    expect(s.priority_review[3]).toEqual({ key: 'K-13', ruling: receipted('K-13')[0].id, ground: 'door:rest-of:K-1' });
+    expect(s.priority_review.some((e) => e.ground === 'door:repair-keeps')).toBe(false);
+    expect(s.chief_placements.map((e) => e.key)).toEqual(['K-32']);
+    expect(s.asks_apart.map((e) => e.key)).toEqual(['K-33', 'K-34']);
+    expect(s.asks_apart[1]).toEqual({ key: 'K-34', ruling: receipted('K-34')[0].id, version: 'v1', parent: 'K-1', parent_version: 'v2' });
+  });
+
+  it('reviewed --ruling clears one entry, --through clears every listed entry of that list up to the named ruling', async () => {
+    declared2();
+    const grounds = { ...keyed(LISTED, 10), 'K-40': 'door:chief' };
+    mirror(Object.keys(grounds).map((key) => ({ key, fixVersions: [], sector: 'Planning & tracking' })));
+    for (const key of Object.keys(grounds)) ask(key);
+    await rmRun(ctx(), stub(grounds));
+    const id = (k: string) => receipted(k)[0].id;
+    reviewed(ctx(), { ruling: id('K-11'), reason: 'the priority is right' });
+    expect(state(ctx()).priority_review.map((e) => e.key)).toEqual(['K-10', 'K-12', 'K-13', 'K-14', 'K-15', 'K-16', 'K-17']);
+    const row = reviewed(ctx(), { through: id('K-14'), reason: 'checked in bulk' });
+    expect(row).toMatchObject({ kind: 'reviewed', key: 'K-14', from: null, to: null, ruling: id('K-14'), through: id('K-14'), reason: 'checked in bulk' });
+    const s = state(ctx());
+    expect(s.priority_review.map((e) => e.key)).toEqual(['K-15', 'K-16', 'K-17']);
+    expect(s.chief_placements.map((e) => e.key)).toEqual(['K-40']);
+    expect(s.integrity).toEqual([]);
+    expect(() => reviewed(ctx(), { ruling: id('K-11'), reason: 'again' })).toThrow(/no listed entry/);
+    expect(() => reviewed(ctx(), { ruling: id('K-15'), reason: ' ' })).toThrow(/--reason/);
+  });
+
+  it('asks_apart holds one entry per tuple from its newest ruling; a reviewed tuple stays off, a moved parent is listed fresh, a remainder: false ask is not apart (A1)', async () => {
+    declared2();
+    const parentIn = (fixVersions: string[], child: string[]) => mirror([
+      { key: 'K-1', fixVersions, sector: 'Planning & tracking' },
+      { key: 'K-3', fixVersions: child, sector: 'Planning & tracking', labels: ['operator-directed'] },
+    ]);
+    const rest = { evidence: { follow_up_of: 'K-1', remainder: true } };
+    parentIn(['v2'], []);
+    ask('K-3', rest);
+    await rmRun(ctx(), doorJudge);
+    expect(receipted('K-3')[0].ground).toBe('door:operator-ask-apart:K-1@v2');
+    parentIn(['v2'], ['v1']);
+    ask('K-3', rest);
+    await rmRun(ctx(), doorJudge);
+    const [first, second] = receipted('K-3');
+    expect(second.ground).toBe(first.ground);
+    let s = state(ctx());
+    expect(s.asks_apart).toEqual([{ key: 'K-3', ruling: second.id, version: 'v1', parent: 'K-1', parent_version: 'v2' }]);
+    expect(s.priority_review).toEqual([]);
+    reviewed(ctx(), { ruling: first.id, reason: 'relayed: the ask and its parent sit apart' });
+    expect(state(ctx()).asks_apart).toEqual([]);
+    ask('K-3', rest);
+    await rmRun(ctx(), doorJudge);
+    expect(receipted('K-3')).toHaveLength(3);
+    expect(state(ctx()).asks_apart).toEqual([]);
+    parentIn([], ['v1']);
+    ask('K-3', rest);
+    await rmRun(ctx(), doorJudge);
+    s = state(ctx());
+    expect(s.asks_apart).toEqual([{ key: 'K-3', ruling: receipted('K-3')[3].id, version: 'v1', parent: 'K-1', parent_version: 'none' }]);
+    ask('K-3', { evidence: { follow_up_of: 'K-1', remainder: false } });
+    await rmRun(ctx(), doorJudge);
+    expect(receipted('K-3')[4].ground).not.toMatch(/apart/);
+    expect(state(ctx()).asks_apart).toEqual(s.asks_apart);
+  });
+
+  it('state carries the declaration\'s current and versions, and the key of each open and claimed request (U8)', async () => {
+    await setup();
+    ask('K-2');
+    ask('K-3');
+    claim(ctx(rmEnv));
+    ask('K-4');
+    const s = state(ctx());
+    expect(s.current).toBe('v1');
+    expect(s.versions).toEqual(['v1', 'v2']);
+    expect(s.requests.claimed).toHaveLength(2);
+    expect(s.requests.pending_keys).toEqual(['K-2', 'K-3', 'K-4']);
+  });
+
+  it('a reviewed row written after the mirror sync leaves the mirror FRESH and the key\'s membership as it was (T2)', async () => {
+    declared2();
+    mirror([{ key: 'K-10', fixVersions: [], sector: 'Planning & tracking' }]);
+    ask('K-10');
+    await rmRun(ctx(), stub({ 'K-10': 'door:mild' }));
+    mirror([{ key: 'K-10', fixVersions: ['v1'], sector: 'Planning & tracking' }], '2026-10-21T10:00:00.000Z');
+    const before = state(ctx());
+    expect(before.inputs.mirror).toBe('FRESH');
+    reviewed(at('2026-10-21T10:05:00.000Z'), { ruling: before.priority_review[0].ruling, reason: 'the priority is right' });
+    const after = state(ctx());
+    expect(after.inputs.mirror).toBe('FRESH');
+    expect(after.records.find((r) => r.key === 'K-10')?.actual_member).toBe(before.records.find((r) => r.key === 'K-10')?.actual_member);
+    expect(after.priority_review).toEqual([]);
   });
 });
