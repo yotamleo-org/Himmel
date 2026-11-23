@@ -557,8 +557,7 @@ go_noop_carry() {
 #     branch's tip (its own repo) or origin's HEAD (another repo). The github
 #     body below is untouched.
 # Core list: <anchor>/scripts/ci/ci-trust-paths-core.txt, read from the anchor,
-#     never the PR's repo. In an adopted repo (its default branch's
-#     .claude/settings.json sets env.HIMMEL_REPO) the list may add to the core
+#     never the PR's repo. In an adopted repo (see adopted() below) the list may add to the core
 #     but never shrink it: a changed file matching a core line the list lacks
 #     refuses `list core-missing <pattern>`, and a missing list refuses instead
 #     of `not-adopted`. A list holding every core line is already the union.
@@ -589,20 +588,31 @@ trust_path_check() (
         [ "$(printf '%s' "$url" | LC_ALL=C tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$tp_nwo" | LC_ALL=C tr '[:upper:]' '[:lower:]')" ]
     }
     core="$anchor/scripts/ci/ci-trust-paths-core.txt"
-    # settings_adopted <settings.json text> — rc 0 when it sets env.HIMMEL_REPO;
-    # unparseable settings refuse.
+    # settings_adopted <settings.json text> — rc 0 on a PreToolUse hook of the hook-set
+    # list (any scripts/hooks/*.sh if unreadable) or env.HIMMEL_REPO; unparseable refuses.
     settings_adopted() {
-        local v
-        v=$(printf '%s' "$1" | jq -r 'if (.env.HIMMEL_REPO // "") == "" then "no" else "yes" end' 2>/dev/null) || v=
+        local v names pat='scripts/hooks/[A-Za-z0-9._-]+[.]sh'
+        names=$(bash "$anchor/scripts/lib/wire-pretooluse-hooks.sh" --print-hook-set 2>/dev/null \
+            | jq -r '[.[] | .name, .aliases[]] | join("|")' 2>/dev/null) || names=
+        [ -n "$names" ] && pat="scripts/hooks/($names)[.]sh"
+        v=$(printf '%s' "$1" | jq -r --arg pat "$pat" '
+            if (.env.HIMMEL_REPO // "") != "" then "yes"
+            elif [(.hooks.PreToolUse? // empty) | .. | .command? | strings] | any(test($pat)) then "yes"
+            else "no" end' 2>/dev/null) || v=
         case "$v" in
             yes) return 0 ;;
             no) return 1 ;;
             *) refuse list "cannot parse .claude/settings.json on $tp_branch" ;;
         esac
     }
-    # adopted — rc 0 when the PR's repo is adopted, judged from its default branch.
+    # adopted — rc 0 when himmel-adopted.json names the PR's repo or its default
+    # branch's settings read as adopted.
     adopted() {
-        local s r=0
+        local s r=0 allow="$anchor/scripts/guardrails/himmel-adopted.json"
+        if [ -r "$allow" ] && jq -e --arg n "$tp_nwo" \
+            'any(.[]?; ((.nwo? // "") | ascii_downcase) == ($n | ascii_downcase))' "$allow" >/dev/null 2>&1; then
+            return 0
+        fi
         case "$tp_pr" in
             br-*)
                 lg_git cat-file -e "$lg_base:.claude/settings.json" 2>/dev/null || return 1
@@ -657,7 +667,7 @@ EOF
                 # an unresolvable anchor is not proof, so it refuses (fail closed).
                 if [ -n "$lg_anchor" ] && [ "$lg_anchor" != "$lg_dir" ]; then
                     adopted \
-                        && refuse list "scripts/ci/ci-trust-paths.txt is missing on $tp_branch in $lg_dir, an adopted repo (its .claude/settings.json sets env.HIMMEL_REPO)"
+                        && refuse list "scripts/ci/ci-trust-paths.txt is missing on $tp_branch in $lg_dir, an adopted repo (listed in himmel-adopted.json, or its .claude/settings.json wires the himmel chain or sets env.HIMMEL_REPO)"
                     printf 'not-adopted\n'
                     exit 0
                 fi
@@ -708,7 +718,7 @@ EOF
             *"HTTP 404"*)
                 other_repo || refuse list "scripts/ci/ci-trust-paths.txt is missing on $tp_nwo@$tp_branch, and the harness anchor's origin does not prove it is another repo"
                 adopted \
-                    && refuse list "scripts/ci/ci-trust-paths.txt is missing on $tp_nwo@$tp_branch, an adopted repo (its .claude/settings.json sets env.HIMMEL_REPO)"
+                    && refuse list "scripts/ci/ci-trust-paths.txt is missing on $tp_nwo@$tp_branch, an adopted repo (listed in himmel-adopted.json, or its .claude/settings.json wires the himmel chain or sets env.HIMMEL_REPO)"
                 printf 'not-adopted\n'
                 exit 0 ;;
             *) refuse list "cannot read scripts/ci/ci-trust-paths.txt from $tp_nwo@$tp_branch (gh exit $rc)" ;;
