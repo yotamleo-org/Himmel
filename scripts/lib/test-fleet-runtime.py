@@ -1917,7 +1917,6 @@ exit 1''')
         self.assertEqual(list(self.anchor_attempts()), ['first'])
 
     def dispatcher_title_expression(self, runtime):
-        """The dispatcher's own title_keys, executed from its source text over the runtime's title_keys it imports."""
         import re
         source = (ENTRYPOINTS / 'scripts/handover/chief-kit/next-dispatchable.sh').read_text()
         self.assertTrue(re.search(r'(?m)^from fleet_runtime import .*\btitle_keys as fr_title_keys\b', source),

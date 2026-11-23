@@ -477,15 +477,13 @@ def title_keys(lines):
 WRITES_LEAD = '> **Writes:**'
 OWN_LINE_RE = re.compile(r'^\W*Tickets?\b|^description:')  # the lines of a doc that name the tickets it carries
 DOC_NAME_RE = re.compile(r'[\w.+@-]+\.md')
-SIDECARS = ('.worker-preface.md', '.worker-contract.md')  # a launch's sidecars carry the doc's name; they are not family (holds.py SIDECARS)
-FILE_KEY_RE = re.compile(r'[A-Z]+-\d+(?!\d|-\d{2}-\d{2})')  # the launch gate's file-name keys: a RESUME-2026 date token is none
+SIDECARS = ('.worker-preface.md', '.worker-contract.md')
+FILE_KEY_RE = re.compile(r'[A-Z]+-\d+(?!\d|-\d{2}-\d{2})')
 
 def above_results(lines):
     return lines[:next((i for i, l in enumerate(lines) if l.startswith('## Results')), len(lines))]
 
 def scope_less(lines, paths, parse_ok, sibling):
-    # One scope test (R1): a sibling row (its scope is never parsed), a failed parse, no Writes line, or Writes lines that yield
-    # no path and none reading exactly `none named` (what gen-briefs writes for a worker that writes nothing).
     if sibling or not parse_ok:
         return True
     writes = [l for l in lines if l.startswith(WRITES_LEAD)]
@@ -495,8 +493,6 @@ _folder_index = {}
 _title_of = {}
 
 def folder_index(folder):
-    # each folder's .md names (sidecars excluded) indexed by the keys they carry, listed once per run (R4); a prefilter
-    # only. None: the folder cannot be listed.
     if folder not in _folder_index:
         try:
             listed = sorted(os.listdir(folder))
@@ -511,7 +507,6 @@ def folder_index(folder):
     return _folder_index[folder]
 
 def title_of(path):
-    # a family doc's title keys, read once per run (R4); None: the doc cannot be opened
     if path not in _title_of:
         try:
             with open(path, encoding='utf-8', errors='replace') as f:
@@ -521,9 +516,6 @@ def title_of(path):
     return _title_of[path]
 
 def family_keys(doc, lines, seeds, who):
-    # R3, one hop: the title keys of each family doc of a scope-less worker. (a) each .md name its text writes above Results
-    # that exists in its own folder; (b) each .md in its own folder whose name carries a seed that is a mirror ticket, by the
-    # key match of holds.py Judge.scan. Its own doc and the sidecars are not family.
     folder, own = os.path.dirname(doc), os.path.basename(doc)
     names = []
     for l in above_results(lines):
@@ -531,7 +523,7 @@ def family_keys(doc, lines, seeds, who):
             if name != own and not name.endswith(SIDECARS) and name not in names and os.path.lexists(os.path.join(folder, name)):
                 names.append(name)
     index = folder_index(folder)
-    if index is None:  # R5: no key is guessed
+    if index is None:
         owner_unknown(who, 'family folder %s unreadable' % folder, REMEDY_DOC, keys=FILE_KEY_RE.findall(own))
         index = {}
     for seed in dict.fromkeys(seeds):
@@ -542,22 +534,19 @@ def family_keys(doc, lines, seeds, who):
     keys = []
     for name in names:
         got = title_of(os.path.join(folder, name))
-        if got is None:  # a dangling link, a folder or an unreadable file (R5)
+        if got is None:
             owner_unknown(who, 'family doc %s unreadable' % name, REMEDY_DOC, keys=FILE_KEY_RE.findall(name))
         else:
             keys += got
     return keys
 
 def owned_keys(doc, lines, who, scopeless):
-    # the tickets a live worker's doc claims. A scope-less worker's doc says all it owns: its gate keys, the full keys on its
-    # Ticket and description lines, and the title keys of its family docs count too. Over-holding a parent or prior-art key
-    # costs liveness while the worker lives, never safety.
     keys = title_keys(lines)
     if not scopeless:
         return keys
     try:
-        gkeys = gate_keys(doc)  # the keys the launch gate reads in this doc (R2)
-    except Exception:  # a doc that is not UTF-8: fleet_runtime.worker_keys catches only OSError
+        gkeys = gate_keys(doc)
+    except UnicodeDecodeError:
         gkeys = []
         owner_unknown(who, 'doc %s unreadable' % os.path.basename(doc), REMEDY_DOC, keys=FILE_KEY_RE.findall(os.path.basename(doc)))
     own_line = lambda ls: [k for l in ls if OWN_LINE_RE.match(l) for k in re.findall(r'[A-Z]+-\d+', l)]
@@ -654,7 +643,7 @@ def issue_from_match(m, txt):
 issues = {}
 try:
     names = sorted(n for n in os.listdir(mirror) if re.match(r'^[A-Z]+-\d+\.md$', n))
-    mirror_keys = {n[:-3] for n in names}  # only a seed that names a mirror ticket seeds a family (R3 b)
+    mirror_keys = {n[:-3] for n in names}
 except OSError as e:
     load_failure('mirror missing or unreadable (%s)' % e)  # an error, never an empty pool
 try:
@@ -1308,7 +1297,7 @@ REMEDY_FLEET = 'restore or pass a readable --workers-from manifest'
 REMEDY_OWN_MANIFEST = 'repair the manifest file by hand (fleet-manifest.sh refuses an invalid one) or pass a readable --workers-from manifest'
 OWNER_UNKNOWN_DROP = 'owner unknown: a named worker source could not be fully read (see the # owner unknown line)'
 OWNER_UNKNOWN_DROP_NONE = 'owner unknown: no worker source named (see the # owner unknown line)'
-sourceless = False  # a pool pass that names no worker source (R6): no manifest is read, so no other producer fires
+sourceless = False
 owner_unknown_lines = set()
 
 def printable(text):
@@ -1348,7 +1337,6 @@ def sibling_shape_refused(parsed):
     return any(k in parsed and not isinstance(parsed[k], list) for k in ('workers', 'legs'))
 
 def own_rows_refused(rows):
-    # every own row an object whose doc is absent or a string (R7)
     return not isinstance(rows, list) or any(not isinstance(r, dict) or ('doc' in r and not isinstance(r['doc'], str)) for r in rows)
 
 if workers_from and not os.path.isfile(workers_from):
@@ -1358,7 +1346,7 @@ if workers_from and os.path.isfile(workers_from):
         own_manifest = json.load(open(workers_from))
         own_rows = None
         if not sibling_shape_refused(own_manifest):
-            manifest_workers(own_manifest)  # validate legacy-array policy before shared ownership
+            manifest_workers(own_manifest)
             try:
                 own_rows = owned_rows(workers_from)
             except (OSError, ValueError):
