@@ -424,7 +424,7 @@ class TartJobBackend:
         return r.returncode, r.stdout.decode(errors="replace"), r.stderr.decode(errors="replace")
 
     def _refuse_foreign_running(self):
-        out = self._ok("list", "--source", "local", "--format", "json")
+        out = self._ok("list", "--format", "json")
         try:
             running = [v["Name"] for v in json.loads(out) if v.get("Running") and not v["Name"].startswith(self.PREFIX)]
         except (ValueError, KeyError, TypeError):

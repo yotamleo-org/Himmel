@@ -332,8 +332,9 @@ on the host. Each job VM is a clone of the local image `sequoia-base` named
 guest by SSH at the address `tart ip` reports. A timeout kills the job's guest
 session through a small perl wrapper, because the macOS guest has no `setsid`.
 `vm-sweep` deletes only `himmel-peerjob-` VMs; `sequoia-base` and `himmel-proof`
-are never deleted. `vm-clone` refuses while any other VM on the host is running,
-because a job guest could reach it over the host-only network.
+are never deleted. `vm-clone` refuses while any other Tart VM is running, local
+or pulled from an OCI registry, because a job guest could reach it over the
+host-only network.
 
 What the peer's operator sets up once:
 
@@ -365,7 +366,10 @@ What the peer's operator sets up once:
 Residual: `--net-host` is Tart's "host-only network". The guest has no route to
 the internet, but it can reach any service on the host that listens on the
 host-only bridge, and any other VM on that network (which is why a foreign
-running VM refuses the clone). The live check for a new peer: in a job guest,
+running Tart VM refuses the clone). The check sees only the Tart VMs of the
+runner's user and `TART_HOME`: a VM run by another hypervisor, another user or
+another `TART_HOME` on that bridge is not checked, so the peer keeps none running
+while it serves jobs. The live check for a new peer: in a job guest,
 `curl -m 10 https://github.com` must fail. It belongs to the first live round
 trip with a macOS peer, not to the suite rows, which use a fake `tart` and `ssh`.
 

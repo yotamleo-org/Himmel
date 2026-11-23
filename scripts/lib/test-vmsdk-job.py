@@ -298,15 +298,33 @@ case "$1" in
   run) exit 0 ;;
   ip) echo 198.51.100.7; exit 0 ;;
   list)
-    if [ "$*" = "list --source local --format json" ]; then
+    shift; src=''; fmt=text
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --source) src="$2"; shift 2 ;;
+        --format) fmt="$2"; shift 2 ;;
+        -q|--quiet) shift ;;
+        *) exit 98 ;;
+      esac
+    done
+    local_vms="sequoia-base himmel-proof $(ls "$s")"
+    oci=ghcr.io/cirruslabs/macos-sequoia-base:latest
+    if [ "$fmt" = json ]; then
       sep=''; printf '['
-      for n in sequoia-base himmel-proof $(ls "$s"); do
-        r=false; [ "$n" = "${FAKE_TART_RUNNING:-}" ] && r=true
-        printf '%s{"Source":"local","Name":"%s","Running":%s,"State":"stopped"}' "$sep" "$n" "$r"; sep=','
-      done
+      if [ "$src" != oci ]; then
+        for n in $local_vms; do
+          r=false; [ "$n" = "${FAKE_TART_RUNNING:-}" ] && r=true
+          printf '%s{"Source":"local","Name":"%s","Running":%s,"State":"stopped"}' "$sep" "$n" "$r"; sep=','
+        done
+      fi
+      if [ "$src" != local ]; then
+        r=false; [ "$oci" = "${FAKE_TART_RUNNING:-}" ] && r=true
+        printf '%s{"Source":"OCI","Name":"%s","Running":%s,"State":"stopped"}' "$sep" "$oci" "$r"
+      fi
       printf ']\n'
     else
-      printf 'sequoia-base\nhimmel-proof\n'; ls "$s"
+      [ "$src" != oci ] && printf '%s\n' $local_vms
+      [ "$src" != local ] && printf '%s\n' "$oci"
     fi
     exit 0 ;;
   stop) exit 0 ;;
@@ -395,6 +413,13 @@ class TestTartArgv(unittest.TestCase):
         r = self.cli("vm-clone", "goomal-j1", extra={"FAKE_TART_RUNNING": "himmel-proof"})
         self.assertEqual(r.returncode, 2, r.stderr)
         self.assertIn("himmel-proof", r.stderr)
+        self.assertFalse(any(l.startswith("clone") for l in self.tart()))
+
+    def test_a_running_vm_from_the_oci_cache_refuses_the_clone(self):
+        oci = "ghcr.io/cirruslabs/macos-sequoia-base:latest"
+        r = self.cli("vm-clone", "goomal-j1", extra={"FAKE_TART_RUNNING": oci})
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertIn(oci, r.stderr)
         self.assertFalse(any(l.startswith("clone") for l in self.tart()))
 
     def test_a_failed_step_after_clone_deletes_the_clone(self):
@@ -496,6 +521,14 @@ class TestTartArgv(unittest.TestCase):
                 self.assertEqual(self.cli("vm-sweep").returncode, 2)
                 f.write_text(text)
                 f.chmod(0o600)
+        self.assertFalse(any(l.startswith("clone") for l in self.tart()))
+
+    def test_a_symlinked_credential_is_refused(self):
+        f = self.cdir / "tart.guest"
+        real = self.tmp / "real.guest"
+        f.rename(real)
+        f.symlink_to(real)
+        self.assertEqual(self.cli("vm-clone", "goomal-j1").returncode, 2)
         self.assertFalse(any(l.startswith("clone") for l in self.tart()))
 
     def test_sweep_still_deletes_leftovers_when_the_credential_is_missing(self):
