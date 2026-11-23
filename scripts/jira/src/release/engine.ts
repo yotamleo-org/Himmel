@@ -1097,7 +1097,6 @@ const holdsBoth = (r: RulingRow, cur: string[]): boolean => r.op.from_v !== null
 
 const leaveOf = (r: RulingRow): Leave | undefined => (r.authority.kind === 'operator' && r.authority.ref ? { by: r.authority.ref, op: r.op } : undefined);
 
-// Attribution: the half-done move's first write is this ruling's own, and nobody has changed the key's Fix Versions since.
 async function ownedHalf(ctx: Ctx, r: RulingRow, cur: string[]): Promise<boolean> {
   const row = holdsBoth(r, cur) ? boundAdd(ctx.env, r, cur) : boundRemoval(ctx.env, r, cur);
   if (!row || typeof ctx.jira.newestFixVersionEntry !== 'function') return false;
@@ -1165,8 +1164,6 @@ function phaseRow(ctx: Ctx, r: RulingRow, phase: RulingRow['phase'], extra: Part
   return { ...rest, ...extra, phase, ts: ts(ctx) };
 }
 
-// The key sits in neither end state. Only a journalled RM write that is still the key's newest Fix Version entry proves it
-// is this ruling's own interrupted first write; then the one write left is the other end. Anything else is a hand fix.
 async function finishHalf(ctx: Ctx, l: Loaded, epoch: number, last: RulingRow, cur: string[], event: (readback: 'ok' | 'mismatch') => void)
   : Promise<RulingRow | { phase: 'void'; line: string }> {
   const id = last.id;
