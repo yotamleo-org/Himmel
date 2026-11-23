@@ -19,8 +19,10 @@ Pieces per handover (turns/cost):
   az     S's turns up to P's last turn (successor ACTION ZERO + wait)
   worker    per non-chief session that received a SUCCESSION message naming P at or after P's last
          `chief.sh next` (no upper bound: a relay drained after P wrapped is the normal case),
-         as a user message, a queued_command attachment or a himmel-bus record (a hook_additional_context
-         attachment), never a compaction summary or a tool result: the turns after the delivery up to and
+         as a row scripts/lib/transcript_deliveries.py counts as a delivery from P or S (an operator
+         message, a queued_command, a trusted himmel-bus record, a fetched bus body, or a cross-session
+         message whose sender is P or S), never an isMeta row, a compaction summary, shell output, the
+         bus wake line, another hook's context or a tool result: the turns after the delivery up to and
          including the one that says `SUCCESSION accepted`, at most 4. --workers-after drops workers whose first record is
          earlier than the cutoff (count only workers launched after the fast path merged).
 
@@ -49,6 +51,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 from burn_weights import cache_read_weight
+import transcript_deliveries as td
 
 W_IN = float(os.environ.get("WORKER_SESSION_BURN_W_INPUT", "1"))
 W_CC = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_CREATE", "1.25"))
@@ -98,11 +101,11 @@ def turn_text(msg):
 
 
 def load(path):
-    """-> dict(name, first, turns=[(ts, cost, mech, nxt, accepted, marker)], deliveries=[ts])"""
+    """-> dict(name, first, turns=[(ts, cost, mech, nxt, accepted, marker)], deliveries=[(ts, item)])"""
     name = first = None
     turns = {}
-    deliveries = []
-    for line in open(path, encoding="utf-8", errors="replace"):
+    rows, row_ts = [], {}
+    for n, line in enumerate(open(path, encoding="utf-8", errors="replace"), 1):
         try:
             d = json.loads(line)
             ts = parse_ts(d["timestamp"]) if d.get("timestamp") else None
@@ -113,19 +116,11 @@ def load(path):
         if ts and not first:
             first = ts
         t = d.get("type")
+        if ts and not d.get("isSidechain"):
+            rows.append((n, d))
+            row_ts[n] = ts
         if t == "agent-name":
             name = d.get("agentName") or name
-        elif ts and (t == "user" or (t == "attachment" and (d.get("attachment") or {}).get("type")
-                                                  in ("queued_command", "hook_additional_context"))):
-            att = d.get("attachment") or {}
-            content = (d.get("message") or {}).get("content") if t == "user" else None
-            # a compaction summary or a tool result can quote a relay; neither delivers one
-            if d.get("isCompactSummary") or (isinstance(content, list) and any(
-                    isinstance(b, dict) and b.get("type") == "tool_result" for b in content)):
-                continue
-            body = json.dumps(d.get("message", "") if t == "user" else (att.get("prompt") or att.get("content", "")))
-            if "SUCCESSION" in body:
-                deliveries.append((ts, body))
         elif t == "assistant" and ts and not d.get("isSidechain"):
             msg = d.get("message") or {}
             u = msg.get("usage")
@@ -143,6 +138,8 @@ def load(path):
                                 prev[3] or bool(NEXT_RE.search(text)),
                                 prev[4] or "SUCCESSION accepted" in text,
                                 prev[5] or called)
+    deliveries = [(row_ts[it.row], it) for it in td.classify_rows(rows)[0]
+                  if it.kind != "assistant" and "SUCCESSION" in it.text]
     return {"name": name, "first": first, "turns": sorted(turns.values(), key=lambda x: x[0]),
             "deliveries": sorted(deliveries, key=lambda x: x[0])}
 
@@ -164,7 +161,8 @@ def handover(p, s, workers, workers_after):
     }
     worker_turns, nworkers, skipped = [], 0, 0
     for lg in workers:
-        got = [x[0] for x in lg["deliveries"] if nxt <= x[0] and p["name"] in x[1]]
+        got = [x[0] for x in lg["deliveries"]
+               if nxt <= x[0] and x[1].delivery({p["name"], s["name"]}) and p["name"] in x[1].text]
         if not got:
             continue
         if workers_after and (not lg["first"] or lg["first"] < workers_after):

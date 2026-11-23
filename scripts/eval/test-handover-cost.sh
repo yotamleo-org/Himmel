@@ -127,6 +127,55 @@ WORKER_SESSION_BURN_W_INPUT=1 WORKER_SESSION_BURN_W_CACHE_READ=0.1 WORKER_SESSIO
 check "the false-delivery run exits 0" '[ "$fprc" = 0 ]'
 check "neither a compaction summary nor a tool result is a worker (workers=1, worker=2/500)" 'row "$TMP/fp.out" | grep -q " worker=2/500 workers=1 "'
 
+echo "3i. meta-not-delivery: a wake line, an isMeta row and a shell-output row before the real relay"
+plant() {
+    python3 - "$@" <<'PYEOF'
+import json, sys
+d, kinds = sys.argv[1], sys.argv[2:]
+P, S = "HIMMEL-nextleg-2026-10-19A-roadmap-console", "HIMMEL-nextleg-2026-10-19B-roadmap-console"
+def cs(sender, body):
+    return {"type": "user", "isMeta": True, "origin": {"kind": "peer"}, "message": {"role": "user", "content":
+            '<cross-session-message from="uds:/run/x.sock" from-name="%s">\n%s\n</cross-session-message>' % (sender, body)}}
+ROWS = {
+    "wake": {"type": "user", "message": {"role": "user", "content": "You have unread himmel messages: call mcp__himmel-bus__read now."}},
+    "meta": {"type": "user", "isMeta": True, "message": {"role": "user", "content": "Caveat: SUCCESSION from " + P}},
+    "shell": {"type": "user", "message": {"role": "user", "content": "<bash-stdout>SUCCESSION from %s</bash-stdout><bash-stderr></bash-stderr>" % P}},
+    "peer": cs("HIMMEL-9-N9-worker-peer", "SUCCESSION from " + P),
+}
+rows = [json.loads(l) for l in open(d + "/leg-new.jsonl")]
+planted = []
+for i, k in enumerate(kinds):
+    if k == "from-s":
+        continue
+    r = dict(ROWS[k], timestamp="2026-10-19T10:12:%02dZ" % (i * 5))
+    planted.append(r)
+if planted:
+    planted.append({"type": "assistant", "timestamp": "2026-10-19T10:13:00Z", "message": {"id": "mt1", "usage": {"input_tokens": 100, "cache_read_input_tokens": 1000, "output_tokens": 10}, "content": [{"type": "text", "text": "work"}]}})
+out = []
+for r in rows:
+    if r.get("type") == "user" and r.get("timestamp") == "2026-10-19T10:14:30Z":
+        out.extend(planted)
+        if "from-s" in kinds:
+            r = dict(cs(S, "SUCCESSION from " + P), timestamp=r["timestamp"])
+    out.append(r)
+open(d + "/leg-new.jsonl", "w").write("".join(json.dumps(r) + "\n" for r in out))
+PYEOF
+}
+fields() { row "$1" | grep -o " worker=[0-9]*/[0-9]* workers=[0-9]* "; }
+hcd() { WORKER_SESSION_BURN_W_INPUT=1 WORKER_SESSION_BURN_W_CACHE_READ=0.1 WORKER_SESSION_BURN_W_CACHE_CREATE=1.25 WORKER_SESSION_BURN_W_OUTPUT=5 python3 "$HC" --dir "$1" --workers-after 2026-10-19T09:30:00Z >"$1.out" 2>&1; }
+for case in mt:wake,meta,shell pe:wake,meta,shell,peer fs:from-s; do
+    dir="$TMP/${case%%:*}"
+    if ! { mkdir "$dir" && cp "$FX"/*.jsonl "$dir/"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
+    # shellcheck disable=SC2046
+    plant "$dir" $(printf '%s' "${case#*:}" | tr ',' ' ') || { echo "test-handover-cost: fixture modification failed" >&2; exit 1; }
+    hcd "$dir"
+done
+check "the three planted rows leave worker= and workers= as the fixture without them" '[ -n "$(fields "$TMP/a.out")" ] && [ "$(fields "$TMP/mt.out")" = "$(fields "$TMP/a.out")" ]'
+
+echo "3j. peer-not-delivery: a cross-session message from a third session naming the predecessor"
+check "the planted peer row leaves worker= and workers= as the fixture without it" '[ "$(fields "$TMP/pe.out")" = "$(fields "$TMP/a.out")" ]'
+check "a relay that is a cross-session message from S counts the worker" 'row "$TMP/fs.out" | grep -q " worker=2/500 workers=1 "'
+
 echo "3d. mechanical columns"
 if ! { mkdir "$TMP/m" && cp "$FX"/*.jsonl "$TMP/m/" && sed -e 's/bash action-zero.sh --acquire/bash append-results.sh d x/' -e 's/ListAgents check/will run append-results.sh later/' "$FX/console-s.jsonl" >"$TMP/m/console-s.jsonl"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
 WORKER_SESSION_BURN_W_INPUT=1 WORKER_SESSION_BURN_W_CACHE_READ=0.1 WORKER_SESSION_BURN_W_CACHE_CREATE=1.25 WORKER_SESSION_BURN_W_OUTPUT=5 python3 "$HC" --dir "$TMP/m" >"$TMP/m2.out" 2>&1; mrc2=$?
