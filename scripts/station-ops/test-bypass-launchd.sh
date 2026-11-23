@@ -306,7 +306,7 @@ reply "$OPERATOR" "$OPERATOR" "go $CODE"
 wait_for "$Q/daemon.log" "LAUNCH-FAILED"
 assert_contains "LAUNCH-FAILED names the launcher's rc" "LAUNCH-FAILED HIMMEL-1-N1-sweep-pr1 rc=3" "$(cat "$Q/daemon.log")"
 wait_for "$D/sent" "FAILED (rc 3)"
-assert_contains "RED 10558: the ask goes out as bypass-ask" "bypass-ask|Bypass worker launch asked by" "$(cat "$D/kinds" 2>/dev/null)"
+assert_contains "RED 10558: the ask goes out as bypass-ask" "bypass-ask|go " "$(cat "$D/kinds" 2>/dev/null)"
 assert_contains "RED 10558: the failed launch goes out as bypass-failed" "bypass-failed|bypass launch HIMMEL-1-N1-sweep-pr1: FAILED (rc 3)" "$(cat "$D/kinds" 2>/dev/null)"
 assert_eq "RED 10558: a failed launch sends exactly the ask then bypass-failed" "bypass-ask bypass-failed" "$(kind_seq)"
 stop
@@ -469,7 +469,7 @@ g -C "$R" commit -q -am "B widens brief names"
 self_b=$(blob "$DAEMON_REL")
 NN="$B/HIMMEL-3-NN3-slug.md"
 printf -- '---\ndescription: "a two-letter series brief"\n---\n' > "$NN"
-printf '%s\n' "brief=$NN" model=claude-sonnet-5-5 "chief=$CH" > "$Q/r.req"
+printf '%s\n' "brief=$NN" model=claude-sonnet-5-5 "chief=$CH" recommend=go > "$Q/r.req"
 wait_for "$Q/daemon.log" "STALE hold"
 wait_for "$D/sent" "bypass request r.req waits"
 sleep 1
@@ -482,7 +482,7 @@ assert_eq "RED 10717 DoD1: the hold writes .hold" "yes" "$(has_hold)"
 CAUSE_CARD="bypass-failed|bypass-launchd runs older code than its checkout (bypass-launchd.sh changed). It reads no request until you restart it: touch $Q/stop, wait for \`stop file\` in daemon.log, remove stop, start it again."
 assert_eq "RED 10717 DoD2: one card names the cause and the restart steps" "1" "$(n_lines "$CAUSE_CARD" "$D/kinds")"
 assert_eq "RED 10717 DoD2: one card names the held request" "1" "$(n_lines 'bypass-failed|bypass request r.req waits: the daemon needs a restart' "$D/kinds")"
-printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" > "$Q/s.req"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" recommend=go > "$Q/s.req"
 wait_for "$D/sent" "bypass request s.req waits"
 sleep 1
 assert_eq "RED 10717 DoD2: a request queued during the hold gets one card" "1" "$(n_lines 'bypass-failed|bypass request s.req waits: the daemon needs a restart' "$D/kinds")"
@@ -505,7 +505,7 @@ setup_repo stale-tiers
 start
 wait_for "$Q/daemon.log" "start pid="
 commit_tiers "B changes the tiers"
-printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" > "$Q/r.req"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" recommend=go > "$Q/r.req"
 wait_for "$Q/daemon.log" "STALE hold"
 sleep 0.5
 assert_contains "RED 10717 DoD1: a tier change holds, naming the tier file" "(bypass-flag-tiers.tsv changed)" "$(grep 'STALE hold' "$Q/daemon.log")"
@@ -522,7 +522,7 @@ commit_tiers "B changes the tiers"
 wait_for "$Q/daemon.log" "STALE hold"
 g -C "$R" checkout -q HEAD~1 -- "$TIER_REL"; g -C "$R" commit -q -m "C restores A's tiers"
 assert_eq "control: commit C restores A's tier blob" "$tiers_a" "$(blob "$TIER_REL")"
-printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" > "$Q/r.req"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" recommend=go > "$Q/r.req"
 sleep 1
 assert_absent "RED 10717 G6: after A's ids return nothing is asked" "ASK " "$(cat "$Q/daemon.log")"
 assert_eq "RED 10717 G6: the request stays queued" "r.req" "$(cd "$Q" && ls r.req* 2>/dev/null)"
@@ -548,11 +548,11 @@ stop
 
 echo "== HIMMEL-10717 DoD 1: a change during one ask holds the next request of the same pass =="
 setup_repo stale-pass
-printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" > "$Q/a.req"
-printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" > "$Q/b.req"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" recommend=go > "$Q/a.req"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" recommend=go > "$Q/b.req"
 start
-wait_for "$D/sent" "Reply: go "
-CODE=$(sed -n 's/.*Reply: go \([A-Z2-9]\{6\}\) to launch.*/\1/p' "$D/sent" | tail -n 1)
+wait_for "$D/sent" " → launch · no "
+CODE=$(sed -n 's/^go \([A-Z2-9]\{6\}\) → launch.*/\1/p' "$D/sent" | tail -n 1)
 commit_tiers "B changes the tiers during the first ask"
 reply "$OPERATOR" "$OPERATOR" "no $CODE"
 wait_for "$Q/daemon.log" "STALE hold"
@@ -568,7 +568,7 @@ setup_repo stale-gone
 start
 wait_for "$Q/daemon.log" "start pid="
 g -C "$R" rm -q "$REG_REL"; g -C "$R" commit -q -m "B deletes the flag registry"
-printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" > "$Q/r.req"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" recommend=go > "$Q/r.req"
 wait_for "$Q/daemon.log" "STALE hold"
 sleep 0.5
 assert_contains "RED 10717 DoD1: an unreadable file holds with cannot read HEAD" "(cannot read HEAD)" "$(grep 'STALE hold' "$Q/daemon.log")"
@@ -578,10 +578,10 @@ stop
 
 echo "== HIMMEL-10717 DoD 4: --check and blocks= =="
 setup_repo check
-printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" > "$D/ok.req"
-printf '%s\n' "brief=$BRIEF" model=claude-opus-4-1 "chief=$CH" > "$D/bad.req"
-printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" "blocks=#5700 #5699" > "$D/blocks.req"
-printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" "blocks=5700" > "$D/badblocks.req"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" recommend=go > "$D/ok.req"
+printf '%s\n' "brief=$BRIEF" model=claude-opus-4-1 "chief=$CH" recommend=go > "$D/bad.req"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" "blocks=#5700 #5699" recommend=go > "$D/blocks.req"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" "blocks=5700" recommend=go > "$D/badblocks.req"
 out=$(env -u CLAUDECODE bash "$DAEMON" --check --bucket "$B" --request "$D/ok.req" 2>&1); rc=$?
 assert_eq "RED 10717 DoD4: --check on a valid request exits 0" "0" "$rc"
 assert_contains "RED 10717 DoD4: --check prints accepted" "accepted" "$out"
@@ -611,7 +611,7 @@ cp "$D/badblocks.req" "$Q/m.req"
 wait_for "$Q/daemon.log" "REFUSED malformed: blocks $Q/m.req"
 assert_contains "RED 10717 DoD4: the daemon refuses blocks=5700" "REFUSED malformed: blocks $Q/m.req" "$(cat "$Q/daemon.log")"
 CODE=$(ask_code r "blocks=#5700 #5699")
-assert_contains "RED 10717 DoD4: the ask names the blocked PRs" "Blocks PRs: #5700 #5699." "$(cat "$D/sent" 2>/dev/null)"
+assert_contains "RED 10717 DoD4: the ask names the blocked PRs" "Blocks PRs: #5700 #5699" "$(cat "$D/sent" 2>/dev/null)"
 stop
 
 if [ "$(uname -s)" = Darwin ]; then
