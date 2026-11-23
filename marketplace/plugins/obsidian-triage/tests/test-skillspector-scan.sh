@@ -232,10 +232,10 @@ offline_body() {
 offline_body "$osv_ex,$ref_ex" 1 "$degraded" > "$tmpdir/osv-ok.json"
 out="$(run "$tmpdir/n4.json" SKILLSPECTOR_PROVIDER=ollama STUB_REPLAY="$tmpdir/osv-ok.json")"; rc=$?
 assert "a report whose only gap is the denied OSV lookup is stored (rc 0)" 0 "$rc"
-printf '%s' "$out" | grep -qF 'deps=offline-fallback' && r=ok || r=missing
+[[ $out == *deps=offline-fallback* ]] && r=ok || r=missing
 assert "the summary says the dependency lookup used the offline fallback" ok "$r"
 out="$(run "$tmpdir/n4b.json" SKILLSPECTOR_PROVIDER=ollama)"
-printf '%s' "$out" | grep -qF 'deps=offline-fallback' && r=present || r=absent
+[[ $out == *deps=offline-fallback* ]] && r=present || r=absent
 assert "a complete report carries no offline-fallback note" absent "$r"
 
 n=0
