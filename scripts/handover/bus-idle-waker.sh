@@ -48,7 +48,12 @@
 # ${XDG_STATE_HOME:-~/.local/state}/himmel/bus-waker.
 #
 # Seams: BUS_WAKER_QDBUS (default qdbus6), BUS_WAKER_BUS (default the himmel-bus CLI),
-# BUS_WAKER_PROC (default /proc; <pid>/cmdline and <pid>/task/*/children are read).
+# BUS_WAKER_PROC (default /proc; <pid>/cmdline and <pid>/task/*/children are read),
+# BUS_WAKER_BUS_ROOT (default ${XDG_STATE_HOME:-~/.local/state}/himmel/bus, the CLI's root).
+# Node starts per poll cost 0.15 CPU-s each, so `bus unread` runs only when a shell
+# stat (size, mtime, names) of the live log, the cursor and the closed segments differs from
+# the stamp of the last numeric answer; that answer is reused while the stamp holds. A
+# missing root or a failed stat means changed: node runs every poll, as before.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -59,6 +64,7 @@ if . "$HERE/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>
 QDBUS="${BUS_WAKER_QDBUS:-qdbus6}"
 BUS="${BUS_WAKER_BUS:-$HERE/../../marketplace/plugins/himmel-bus/bin/bus}"
 PROC="${BUS_WAKER_PROC:-/proc}"
+BUS_ROOT="${BUS_WAKER_BUS_ROOT:-${XDG_STATE_HOME:-${HOME:-/nonexistent}/.local/state}/himmel/bus}"
 NAME="" SERVICE="" SESSION="" PID="" POLL=2 GRACE=20 REWAKE=120 MAX=0 MAX_WAKES=5
 while [ $# -gt 0 ]; do
     [ $# -ge 2 ] || { echo "bus-idle-waker: $1 needs a value" >&2; exit 64; }
@@ -100,11 +106,26 @@ clear_capped() { # a read or a new message ends the capped set; an rc3/rc4 end s
 num() { case "$1" in ''|*[!0-9]*) return 1 ;; esac; }
 [ -z "$PID" ] || { num "$PID" && [ "$PID" -gt 0 ]; } || { echo "bus-idle-waker: --pid takes a process id" >&2; exit 64; }
 
-unread() { # prints the unread total, or nothing when a count is unreadable
-    local b i=0 root off size
+bus_stamp() {
+    local f files=()
+    [ -d "$BUS_ROOT/log" ] && [ -d "$BUS_ROOT/cur" ] || return 1
+    for f in "$BUS_ROOT/log/$NAME.jsonl" "$BUS_ROOT/log/$NAME".*.jsonl* "$BUS_ROOT/cur/$NAME"; do
+        [ -e "$f" ] && files+=("$f")
+    done
+    [ "${#files[@]}" -gt 0 ] || { printf 'none\n'; return 0; }
+    stat -c '%n %s %y' -- "${files[@]}" 2>/dev/null || stat -f '%N %z %Fm' -- "${files[@]}" 2>/dev/null
+}
+
+unread() {
+    local b i=0 root off size stamp
     # An unreadable count means no wake: sending nothing is the safe side.
-    b="$("$BUS" unread "$NAME" 2>/dev/null)" # swallow-ok: unreadable count = 0, never wake on a guess
-    num "$b" || b=0
+    if stamp="$(bus_stamp)" && [ -n "$stamp" ] && [ "$stamp" = "$last_stamp" ] && [ -n "$last_b" ]; then
+        b="$last_b"
+    else
+        b="$("$BUS" unread "$NAME" 2>/dev/null)" # swallow-ok: unreadable count = 0, never wake on a guess
+        if num "$b" && [ -n "$stamp" ]; then last_stamp="$stamp" last_b="$b"; else last_stamp="" last_b=""; fi
+        num "$b" || b=0
+    fi
     root="$(handover_root 2>/dev/null)" || root="" # swallow-ok: no handover root = no inbox to count
     if [ -n "$root" ] && [ -f "$root/inbox/$NAME.md" ]; then
         off="$(cat "$root/inbox/.cursor/$NAME" 2>/dev/null)" # swallow-ok: no cursor yet = offset 0 (num below)
@@ -112,8 +133,9 @@ unread() { # prints the unread total, or nothing when a count is unreadable
         size="$(wc -c < "$root/inbox/$NAME.md" | tr -d ' ')"
         [ "$size" -gt "$((10#$off))" ] && i="$(tail -c +"$((10#$off + 1))" "$root/inbox/$NAME.md" | wc -l | tr -d ' ')"
     fi
-    echo $((b + i))
+    UNREAD_N=$((b + i))
 }
+last_stamp="" last_b="" UNREAD_N=0
 
 konsole() { # konsole <method> [args]: one Session call into $out; a failure ends the waker
     if ! out="$("$QDBUS" "$SERVICE" "$SESSION" "org.kde.konsole.Session.$1" "${@:2}" 2>&1)"; then
@@ -190,7 +212,8 @@ while :; do
         echo "bus-idle-waker: konsole pid $PID gone, stopping: $NAME" >&2
         exit 0
     fi
-    n="$(unread)"
+    unread
+    n="$UNREAD_N"
     now="$(date +%s.%N)"
     if [ "${n:-0}" -gt 0 ]; then
         if [ "$n" != "$prev_n" ]; then wakes=0; clear_capped; fi
