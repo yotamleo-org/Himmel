@@ -1966,17 +1966,20 @@ pred_mark() {
     { PRED_DOC="$2" awk '{ s = $0; sub(/^[a-z]*:/, "", s) } s != ENVIRON["PRED_DOC"]' "$pred_file" 2>/dev/null; printf '%s:%s\n' "$1" "$2"; } | atomic_write "$pred_file"  # swallow-ok: no marker file yet reads empty
 }
 close_doc_woke() {
-    local doc="$1" errf rc n
+    local doc="$1" errf rc n out
     pred_tried="$pred_tried$doc"$'\n'
+    heartbeat sampling
     errf="$(mktemp "$pred_file.XXXXXX" 2>/dev/null)" || return 1
     if [ "$2" = --chief ]; then
-        timeout -k 5 "${CHIEF_WAIT_CLOSE_TIMEOUT:-60}" bash "$close_cmd" --chief "$doc" </dev/null >/dev/null 2>"$errf" 9>&-; rc=$?  # gnu-ok: Linux-only kit
+        out="$(timeout -k 5 "${CHIEF_WAIT_CLOSE_TIMEOUT:-60}" bash "$close_cmd" --chief "$doc" </dev/null 2>"$errf" 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
     else
-        timeout -k 5 "${CHIEF_WAIT_CLOSE_TIMEOUT:-60}" bash "$close_cmd" "$doc" </dev/null >/dev/null 2>"$errf" 9>&-; rc=$?  # gnu-ok: Linux-only kit
+        out="$(timeout -k 5 "${CHIEF_WAIT_CLOSE_TIMEOUT:-60}" bash "$close_cmd" "$doc" </dev/null 2>"$errf" 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
     fi
     case "$rc" in
-        0) pred_mark closed "$doc"
-           bash "$HERE/append-results.sh" "$console_doc" "$3" </dev/null >/dev/null 2>&1 || true ;;
+        0) if [[ $out == *CLOSED-ALREADY* ]]; then pred_mark gone "$doc"
+           else pred_mark closed "$doc"
+               bash "$HERE/append-results.sh" "$console_doc" "$3" </dev/null >/dev/null 2>&1 || true
+           fi ;;
         3|4|6|7) ;;
         124|137)
            n="$(printf '%s\n' "$pred_hang_old" | PRED_DOC="$doc" awk -F'\t' '$2 == ENVIRON["PRED_DOC"] { print $1 }')"
@@ -1994,7 +1997,7 @@ close_doc_woke() {
     return 1
 }
 sweep_candidates() {
-    local dir="$1" skip="$2" rows name pid marked docs=() doc now mt stats
+    local dir="$1" skip="$2" rows name pid marked docs=() dated=() g doc now mt stats
     rows="$(claude_sessions 2>/dev/null)"  # swallow-ok: a census that fails or is partial sweeps only the rows it read
     marked=$'\n'"$(sed 's/^[a-z]*://' "$pred_file" 2>/dev/null)"$'\n'  # swallow-ok: no marker file means no doc is done yet
     while IFS=$'\t' read -r pid name _; do
@@ -2002,6 +2005,11 @@ sweep_candidates() {
         [[ $name =~ ^(.+)-r[0-9]+$ ]] && name="${BASH_REMATCH[1]}"
         case "$name" in ''|.*|*[!A-Za-z0-9._#+-]*) continue ;; esac
         doc="$dir/$name.md"
+        if [ ! -f "$doc" ]; then
+            dated=()
+            for g in "$dir/$name"-[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md; do [ ! -f "$g" ] || dated+=("$g"); done
+            [ "${#dated[@]}" -ne 1 ] || doc="${dated[0]}"
+        fi
         [ "$doc" != "$console_doc" ] && [ "$doc" != "$skip" ] && [ -f "$doc" ] && [ ! -L "$doc" ] || continue
         case "$marked" in *$'\n'"$doc"$'\n'*) continue ;; esac
         case " ${docs[*]-} " in *" $doc "*) continue ;; esac

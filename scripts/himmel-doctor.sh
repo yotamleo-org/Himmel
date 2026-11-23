@@ -2510,7 +2510,7 @@ check_c97_codex_mcp_literal_key() {
 }
 
 check_c98_wrapped_window() {
-    local min bucket root slug common repo rows rc pid name doc docs=() stats now mt kind lingering=""
+    local min bucket root slug common repo rows rc pid name doc docs=() dated=() aged=() g now mt kind lingering="" unread=""
     min="${HIMMEL_DOCTOR_WRAPPED_MIN:-15}"
     case "$min" in ''|*[!0-9]*) min=15 ;; esac
     min=$((10#$min))
@@ -2533,28 +2533,35 @@ check_c98_wrapped_window() {
     # shellcheck disable=SC1091
     . "$SELF_DIR/lanes/lib/claude-sessions.sh" || { emit INFO C98-wrapped-window "cannot load claude-sessions.sh -- wrapped windows not checked"; return 0; }
     rows="$(claude_sessions 2>/dev/null)"; rc=$?
-    if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then
+    if [ "$rc" -ne 0 ] && { [ "$rc" -ne 3 ] || [ -z "$rows" ]; }; then
         emit INFO C98-wrapped-window "the live session census failed (rc $rc) -- wrapped windows not checked"
         return 0
     fi
+    [ "$rc" -eq 0 ] || unread="the census could not read every live session"
     while IFS=$'\t' read -r pid name _; do
         case "$pid" in ''|'#'*) continue ;; esac
         [[ $name =~ ^(.+)-r[0-9]+$ ]] && name="${BASH_REMATCH[1]}"
         case "$name" in ''|.*|*[!A-Za-z0-9._#+-]*) continue ;; esac
         doc="$bucket/$name.md"
+        if [ ! -f "$doc" ]; then
+            dated=()
+            for g in "$bucket/$name"-[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md; do [ ! -f "$g" ] || dated+=("$g"); done
+            [ "${#dated[@]}" -ne 1 ] || doc="${dated[0]}"
+        fi
         [ -f "$doc" ] && [ ! -L "$doc" ] || continue
         case " ${docs[*]-} " in *" $doc "*) continue ;; esac
         docs+=("$doc")
     done <<< "$rows"
-    if [ "${#docs[@]}" -gt 0 ]; then
-        now="$(date +%s)"
-        stats="$(stat --printf '%Y\t%n\n' -- "${docs[@]}" 2>/dev/null)"  # gnu-ok: the census reads /proc, Linux only
-        docs=()
-        while IFS=$'\t' read -r mt doc; do
-            case "$mt" in ''|*[!0-9]*) continue ;; esac
-            [ $(( now - mt )) -lt $(( min * 60 )) ] || docs+=("$doc")
-        done <<< "$stats"
-    fi
+    now="$(date +%s)"
+    aged=()
+    for doc in ${docs[@]+"${docs[@]}"}; do
+        mt="$(stat -c %Y "$doc" 2>/dev/null || stat -f %m "$doc" 2>/dev/null)" || mt=""  # gnu-ok: the BSD stat -f is the fallback on this line
+        case "$mt" in
+            ''|*[!0-9]*) unread="${unread:+$unread; }cannot read the age of $doc" ;;
+            *) [ $(( now - mt )) -lt $(( min * 60 )) ] || aged+=("$doc") ;;
+        esac
+    done
+    docs=(${aged[@]+"${aged[@]}"})
     if [ "${#docs[@]}" -gt 0 ]; then
         while IFS=$'\t' read -r kind doc; do
             [ -n "$doc" ] || continue
@@ -2569,6 +2576,10 @@ check_c98_wrapped_window() {
             /^## / { r = seen && ($0 ~ /^## (Chief|Console) Rulings([ \t]|$)/); next }
             r && /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/ { l = $0 }
             END { if (f != "") emit() }' "${docs[@]}" 2>/dev/null)"
+    fi
+    if [ -z "$lingering" ] && [ -n "$unread" ]; then
+        emit INFO C98-wrapped-window "no wrapped, lock-free window found past $min min, but not every session was read ($unread) -- not judged clean"
+        return 0
     fi
     if [ -z "$lingering" ]; then
         emit OK C98-wrapped-window "no wrapped, lock-free chief or worker window in $bucket has stayed open past $min min"
