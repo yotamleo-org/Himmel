@@ -2,10 +2,6 @@ export { pinnedSha, type Pinned } from './pinned.js';
 export { operatorFence, readMirror, readMirrorFilesUnverified, readOperatorRecords, type Ctx, type JiraPort, type ReleaseRecord } from './engine-core.js';
 export { signSpec, specCheck, specReview, type SpecAnswer } from './spec-sign.js';
 
-// The release engine's I/O (design §5), one file per area; this file passes their names on. The
-// authority files under release/<R>/ are written from engine-core.ts, spec-sign.ts, operator-acts.ts,
-// request-queue.ts, rule-apply.ts, release-state.ts and rm-run.ts. Every caller reads `jira release state --json`.
-
 export { declare, standing, freeze, decisionWords, operatorDecision, placementOf, withdraw, withdrawHeldRepair, takeover, OUT_OF_VERSION_MS, outOfVersionApproval, poolCurrent, type DeclaredRelease, releaseForProject, type BucketOptions, bucketCheck, operatorWords, coreBypass, coreSnapshot, PLACEHOLDER, type ApprovalAlert, outOfVersion, type FoldItem, type FoldSkip, type FoldOut, fold, reopen } from './operator-acts.js';
 export { request, requiredParentOf, recordRequestDecision, requestWithWords, chainFault, coveringRecord, requestOnRecord, PULL_MAX, type PullRow, type PullOut, pull, type RunLease, ownerGone, leaseAcquire, leaseRelease, type RefusedAsk } from './request-queue.js';
 export { clearProposedLabels, claim, type RuleOptions, keyNewestDecision, rule, rulingLine, apply, type DoorJiraPort } from './rule-apply.js';
