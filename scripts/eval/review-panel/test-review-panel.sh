@@ -691,7 +691,6 @@ has "cbs-paths: a new tracked critic-x.sh joins" "$(python3 "$SCORE" cbs-paths H
 
 gstamp() { local o="$1"; shift; python3 "$SCORE" stamp "$o" --repo "$G" --fixtures "$G/scripts/eval/review-panel/fixtures" \
     --key "$G/scripts/eval/review-panel/key/seeds.json" "$@" 2>&1; }
-# out1's canned reviews are codex's alone: its roster is codex, as run.sh records it, so no rostered critic is silent.
 python3 -c 'import json,sys; reg=json.load(open(sys.argv[1])); reg["panel"]=[r for r in reg["panel"] if r["slug"]=="codex"]; json.dump(reg, open(sys.argv[2], "w"))' "$G/scripts/cr/critics.json" "$O/critics.run.json"
 out=$(python3 "$GSCORE" export-row "$O" --repo "$G" --results "$TMP/results.jsonl" 2>&1); rc=$?
 eq "export-row: outputs run.sh never stamped are refused" "$rc" "2"; has "export-row: names the missing stamp" "$out" "not a run.sh sweep"
