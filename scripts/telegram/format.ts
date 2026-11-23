@@ -11,7 +11,14 @@ function code(s: string): string {
 }
 
 function inline(line: string): string {
-  return line.split(/(\*\*(?:[^*\n`]|`[^`\n]*`)+\*\*)/).map((seg, i) => i % 2 === 1 ? `<b>${code(seg.slice(2, -2))}</b>` : code(seg)).join("");
+  let out = "";
+  let last = 0;
+  for (const m of line.matchAll(/`[^`\n]+`|\*\*(?:[^*\n`]|`[^`\n]*`)+\*\*/g)) {
+    const t = m[0];
+    out += esc(line.slice(last, m.index)) + (t[0] === "`" ? `<code>${esc(t.slice(1, -1))}</code>` : `<b>${code(t.slice(2, -2))}</b>`);
+    last = m.index + t.length;
+  }
+  return out + esc(line.slice(last));
 }
 
 export function toTelegramHtml(text: string): string {

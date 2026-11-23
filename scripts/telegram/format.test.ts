@@ -33,6 +33,10 @@ test("a bold span that contains inline code renders both", () => {
   expect(toTelegramHtml("Please **run `cmd` now** today")).toBe("Please <b>run <code>cmd</code> now</b> today");
 });
 
+test("bold marks inside a code span stay literal", () => {
+  expect(toTelegramHtml("Run `**x**` now")).toBe("Run <code>**x**</code> now");
+});
+
 test("a lone * or _ inside prose is left as typed", () => {
   expect(toTelegramHtml("see go AB_C*D for the code, then wait")).toBe("see go AB_C*D for the code, then wait");
 });
