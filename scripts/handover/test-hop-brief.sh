@@ -347,6 +347,9 @@ check "the Prior art field brief-lint reads is the real one, never the fake one"
 cp -R "$T/wt" "$T/wt2"; : >"$T/wt2/READY-notes.md"; : >"$T/wt2/WRAPPED.txt"
 hb write --transcript "$T/main.jsonl" --doc "$DOC" --worktree "$T/wt2" --out "$T/out/wt2.md" >/dev/null 2>&1
 check "with untracked READY-notes.md and WRAPPED.txt, worker_tail_status still prints nothing" '[ -s "$T/out/wt2.md" ] && grep -q "WRAPPED.txt" "$T/out/wt2.md" && [ -z "$(tail_of "$T/out/wt2.md")" ]'
+cp -R "$T/wt" "$T/wt5"; printf 'c\n' >"$T/wt5/c"; g "$T/wt5" add c; g "$T/wt5" commit -qm "carry RETASK token P-N88-9a8b7c6d"
+hb write --transcript "$T/main.jsonl" --doc "$DOC" --worktree "$T/wt5" --out "$T/out/wt5.md" >/dev/null 2>&1
+check "a token in a commit subject is scrubbed from the git facts and the brief verifies" '[ -s "$T/out/wt5.md" ] && ! grep -q "P-N88-9a8b7c6d" "$T/out/wt5.md" && hb verify --brief "$T/out/wt5.md" --transcript "$T/main.jsonl" | grep -qx "hop-brief: ok"'
 
 echo "whole-items"
 check "every selected item equals the scrubbed transcript text" 'probe whole "$OUT" "$T/main.jsonl" | grep -q "bad=none$"'

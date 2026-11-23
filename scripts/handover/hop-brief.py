@@ -223,7 +223,10 @@ def cmd_write(a):
     if late:
         raise Stop(3, "hop-brief: cross-session message %s has no readable sender and is newer than the newest delivery" % late[-1].id)
     clock.check()
-    facts = git_facts(a.doc, a.worktree)
+    try:
+        facts = handover_tokens.scrub(git_facts(a.doc, a.worktree))
+    except handover_tokens.TokenError as e:
+        raise Stop(3, "hop-brief: %s" % e)
     head = git(a.worktree, "rev-parse", "HEAD")
     clock.check()
 
