@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # desk.sh <peer> - start the peer desk: a fresh interactive claude session in an
 # empty directory, with PEER_DESK set, no MCP server, no plugin and only the Bash
-# tool. Its only commands are the two shapes the taint gate allows (read.ts,
+# tool, and no user or project CLAUDE.md (nor its @-imports) and no auto-memory:
+# CLAUDE_CODE_DISABLE_CLAUDE_MDS=1 and CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 are set
+# on the launch (not --bare, which would drop OAuth auth). Its only commands are the two shapes the taint gate allows (read.ts,
 # send.ts); every other tool is denied.
 # Exit 2 usage, 3 refused (not set up, peers.json names no himmelRoot, the desk
 # dir cannot be made 0700, the desk dir carries project config, himmelRoot is not
@@ -74,4 +76,4 @@ fi
 
 cd "$desk" || exit 3
 # launch-profile-ok: the desk takes no plugin; its taint gate comes from its own settings file; launch-guard-ok: the operator starts the desk by hand in its own terminal, one per peer
-exec env PEER_DESK="$peer" claude --strict-mcp-config --mcp-config "$mcpf" --setting-sources project --settings "$setf" --tools Bash --permission-mode default --disable-slash-commands --append-system-prompt "$prompt"
+exec env PEER_DESK="$peer" CLAUDE_CODE_DISABLE_CLAUDE_MDS=1 CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude --strict-mcp-config --mcp-config "$mcpf" --setting-sources project --settings "$setf" --tools Bash --permission-mode default --disable-slash-commands --append-system-prompt "$prompt"
