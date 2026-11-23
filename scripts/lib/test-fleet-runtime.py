@@ -1145,6 +1145,43 @@ exit 1''')
         self.assertEqual(self.state(), 'unknown')
         self.rt('begin', aid='second', ok=False)
 
+    PAST_BOOT = '11111111-2222-3333-4444-555555555555'
+
+    def journal_env(self, body):
+        return dict(self.env, FLEET_JOURNAL_BOOTS_CMD=self.stub('list-boots', body))
+
+    def prior_boot_wrapped_attempt(self):
+        self.active()
+        self.rt('begin')
+        self.rt('commit')
+        self.rt('outcome', extra=('--phase', 'launched'))
+        self.wrote('- 12:00 WRAPPED done')
+        self.forge(boot=self.PAST_BOOT)
+
+    def admit_same_doc(self, env, ok):
+        return self.call('runtime', 'admit', '--doc', self.doc, '--manifest', self.m, '--name', self.doc.stem, ok=ok, env=env)
+
+    def test_launched_attempt_from_a_past_local_boot_is_settled_and_the_doc_admits_again(self):
+        self.prior_boot_wrapped_attempt()
+        listing = ' -1 %s Sun 2026-11-22 16:43:26 CET Mon 2026-11-23 14:10:41 CET\n  0 d188f74120ee4795befadc4e452e6397 Mon x Mon y\n'
+        env = self.journal_env("cat <<'EOF'\nIDX BOOT ID\n" + listing % self.PAST_BOOT.replace('-', '') + 'EOF')
+        self.admit_same_doc(env, True)
+        self.env = env
+        self.rt('begin', aid='second')
+
+    def test_launched_attempt_from_an_unlisted_boot_stays_refused(self):
+        self.prior_boot_wrapped_attempt()
+        env = self.journal_env("echo '  0 d188f74120ee4795befadc4e452e6397 Mon x Mon y'")
+        p = self.admit_same_doc(env, False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+
+    def test_launched_attempt_stays_refused_when_the_journal_is_unavailable(self):
+        self.prior_boot_wrapped_attempt()
+        p = self.admit_same_doc(self.journal_env('exit 1'), False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        p = self.admit_same_doc(dict(self.env, FLEET_JOURNAL_BOOTS_CMD=str(self.bucket / 'absent')), False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+
     # A terminal receipt ends ownership only when nothing newer or stronger contradicts it.
     def test_refused_receipt_does_not_hide_a_live_named_session(self):
         self.active()
