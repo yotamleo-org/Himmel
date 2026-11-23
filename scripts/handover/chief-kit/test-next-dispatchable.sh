@@ -5098,6 +5098,10 @@ EOF
 chmod +x "$PD/jira"; export PD_JIRA_LOG="$PD/jira.log"; : > "$PD_JIRA_LOG"
 pd_run() { HIMMEL_RELEASE_STATE_DIR="$PD/rel" NEXT_DISPATCH_GIT_DIR="$PDG" NEXT_DISPATCH_JIRA_CMD="$PD/jira" NEXT_DISPATCH_MIRROR="$PDM" NEXT_DISPATCH_GH_CMD="$WORK/gh" \
     bash "$SUT" --resume-only --top 40 --doc "$PDB/chief.md" --workers-from "$PDB/fleet.json" 2>/dev/null; }
+pd0="$(pd_run)"
+has "10257: an owed proof on a ticket with nothing on main stays RESUME" "$pd0" "RESUME${TAB}$KP-9701${TAB}"
+git -C "$PDG" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m "fix(x): [$KP-9701] the code slice" \
+    || fail "10257: could not land the owed ticket's slice"
 pd1="$(pd_run)"
 has "10257: the true remainder is RESUME" "$pd1" "RESUME${TAB}$KP-9704${TAB}"
 lacks "10257: an owed-proof-only ticket fills no RESUME slot" "$pd1" "RESUME${TAB}$KP-9701${TAB}"

@@ -54,7 +54,7 @@
 # with no PR at all it is a RESUME row. An unreadable merged-PR search prints a
 # `merged PRs unknown` header and no IN CI row.
 #
-# In Progress / In Review tickets nobody holds whose only remaining work is an open `owe.sh` proof row, a chief or operator
+# In Progress / In Review tickets nobody holds whose only remaining work is an open `owe.sh` proof row (with a slice on main), a chief or operator
 # gate (a `pool-disposition: KEY question|close|hold|park` line in --doc's `## Live state`, or a live c or d readiness row),
 # or nothing (a commit on main cites the key and no partial slice is recorded) print `# pool-owed <KEY> <row>`,
 # `# pool-gated <KEY> <gate>` or `# pool-done-candidate <KEY> ...` in rank order instead of a RESUME row; when the source
@@ -2090,7 +2090,7 @@ owed_rows = []  # (key, pr, who, date) of in-work tickets whose newest clear par
 pool_named = []  # (issue, (class, detail)) of in-work tickets whose only remaining work is not a worker's: named beside the pool, no slot
 
 # An In Progress or In Review ticket nobody holds is not RESUME work when all that remains is an open owed proof in the chief's
-# owed ledger, a chief or operator gate (a `pool-disposition: KEY question|close|hold|park ...` line of the chief doc's
+# owed ledger after a slice of it reached main, a chief or operator gate (a `pool-disposition: KEY question|close|hold|park ...` line of the chief doc's
 # `## Live state`, or a live c or d row of the version's readiness record), or nothing (a commit on main cites it and no
 # partial slice is recorded). It is printed as `# pool-owed`, `# pool-gated` or `# pool-done-candidate` in the pool's rank
 # order and is RESUME again, at the same rank, once its source clears. No Jira status is written.
@@ -2141,7 +2141,7 @@ def pool_class(i, parts):
     if any(p['kind'] == 'remaining' or (p['kind'] == 'owed' and p['handed'][0] == 'proof') for p in parts):
         return None
     k = i['key']
-    if k in open_proofs:
+    if k in open_proofs and (k in partials or cited_on_main(k, subject_only=True)):
         return ('pool-owed', 'open owed proof %s: %s' % (open_proofs[k].get('id', '?'), open_proofs[k].get('text', '')))
     gate = disposition_gates.get(k) or readiness_gates().get(k)
     if gate:
