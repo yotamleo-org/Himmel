@@ -476,7 +476,7 @@ def title_keys(lines):
     return fr_title_keys(next((l for l in lines if l.startswith('# ')), ''))
 WRITES_LEAD = '> **Writes:**'
 OWN_LINE_RE = re.compile(r'^\W*Tickets?\b|^description:')  # the lines of a doc that name the tickets it carries
-DOC_NAME_RE = re.compile(r'[\w.+@-]+\.md')
+DOC_NAME_RE = re.compile(r'[\w./~+@-]+\.md')
 SIDECARS = ('.worker-preface.md', '.worker-contract.md')
 FILE_KEY_RE = re.compile(r'[A-Z]+-\d+(?!\d|-\d{2}-\d{2})')
 
@@ -518,8 +518,12 @@ def title_of(path):
 def family_keys(doc, lines, seeds, who):
     folder, own = os.path.dirname(doc), os.path.basename(doc)
     names = []
+    here = os.path.realpath(folder)
     for l in above_results(lines):
-        for name in DOC_NAME_RE.findall(l):
+        for ref in DOC_NAME_RE.findall(l):
+            where, name = os.path.split(os.path.expanduser(ref))
+            if where and os.path.realpath(os.path.join(folder, where)) != here:
+                continue
             if name != own and not name.endswith(SIDECARS) and name not in names and os.path.lexists(os.path.join(folder, name)):
                 names.append(name)
     index = folder_index(folder)
@@ -1301,6 +1305,7 @@ sourceless = False
 owner_unknown_lines = set()
 
 def printable(text):
+    text = '%s' % (text,)
     if text.isascii() and text.isprintable():
         return text
     enc = sys.stdout.encoding or 'utf-8'
@@ -1337,7 +1342,7 @@ def sibling_shape_refused(parsed):
     return any(k in parsed and not isinstance(parsed[k], list) for k in ('workers', 'legs'))
 
 def own_rows_refused(rows):
-    return not isinstance(rows, list) or any(not isinstance(r, dict) or ('doc' in r and not isinstance(r['doc'], str)) for r in rows)
+    return not isinstance(rows, list) or any(not isinstance(r, dict) or ('doc' in r and not isinstance(r['doc'], str)) or isinstance(r.get('label'), (list, dict)) for r in rows)
 
 if workers_from and not os.path.isfile(workers_from):
     owner_unknown('the fleet', 'manifest %s missing' % os.path.basename(workers_from), REMEDY_FLEET)
@@ -1926,7 +1931,7 @@ for label, doc, lines, wkeys, mine, parse_ok, parse_err in live_workers:
         note_unknown('live worker %s' % printable(label))
         print('next-dispatchable: live worker %s: holds.py parse of %s failed (%s): its files are unknown' % (printable(label), printable(os.path.basename(doc)), parse_err), file=sys.stderr)
         continue
-    held += [(f, 'live worker %s' % label, True) for f in mine]
+    held += [(f, 'live worker %s' % printable(label), True) for f in mine]
     if os.environ.get('ND_WHY') == '1':
         for f in dict.fromkeys(mine):
             if not concrete(f):
@@ -2003,7 +2008,7 @@ if stacked and workers_from:
                     states = branch_states(it['publish_branch'])
                     if states and all(s in ('MERGED', 'CLOSED') for s in states):
                         continue
-                held += [(w, 'series %s' % sid, True) for w in (it.get('writes') or []) if isinstance(w, str) and w]
+                held += [(w, 'series %s' % printable(sid), True) for w in (it.get('writes') or []) if isinstance(w, str) and w]
             writer = led['writer']
             if time.time() - last_activity(led, path) > SERIES_ORPHAN_S and not has_live_bullet(writer) and os.path.realpath(writer) not in manifest_docs:
                 series_orphans.append((sid, writer))

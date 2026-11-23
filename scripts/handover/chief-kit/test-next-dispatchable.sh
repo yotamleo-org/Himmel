@@ -4026,6 +4026,8 @@ has "10557 S1: the e8 shape prints POOL-EMPTY" "$ow_x6e_out" "POOL-EMPTY"
 lacks "10557 S1: the e8 shape lists no next-tier candidate" "$ow_x6e_out" "NEXT-TIER${TAB}"
 lacks "10557 S1: the e8 shape lists no To Do row" "$ow_x6e_out" "HIMMEL-160${TAB}"
 lacks "10557 S1: the e8 shape lists no DESIGN row" "$ow_x6e_out" "DESIGN${TAB}"
+has "10557 S1.ctl: a core ticket with no signed spec lists DESIGN when a worker source is named" "$(runcg "$CGM" --priority-pool-only --owners "$KP-999")" "DESIGN${TAB}HIMMEL-901${TAB}NO-SPEC"
+lacks "10557 S1: with no worker source the same core ticket lists no DESIGN row" "$(runcg "$CGM" --priority-pool-only)" "DESIGN${TAB}"
 ow_x6t_out="$(ow_run --priority-pool-only --top 8)"; ow_x6t_err="$(ow_err --priority-pool-only --top 8)"
 has "10557 S1: the e10 shape says on stderr that it has no worker source" "$ow_x6t_err" "no worker source"
 check "10557 S1: the e10 shape prints one owner-unknown line for the fleet" "1" "$(ow_n "$ow_x6t_out" "$S1_LINE")"
@@ -4150,6 +4152,8 @@ m1_case b '{"schema":1,"workers":[{"doc":7,"label":"N1"}]}'
 m1_case c '{"schema":1,"workers":null,"legs":[{"doc":"/x/HIMMEL-63-N1-a.md","label":"N1"}]}'
 m1_case d '[{"doc":"/x/HIMMEL-63-N1-a.md","label":"N1"}]'
 m1_case e '{"schema":1,"workers":[{"doc":null,"label":"N1"}]}'
+m1_case f '{"schema":1,"workers":[{"doc":"/x/HIMMEL-63-N1-a.md","label":["N1"]}]}'
+m1_case g '{"schema":1,"workers":[{"doc":"/x/HIMMEL-63-N1-a.md","label":{"n":1}}]}'
 printf '# worker\n> **Writes:** scripts/lib/s3.sh\n\n## Results\n- 10:00 LIVE - started\n' > "$OW/m1/HIMMEL-63-N1-ctl.md"
 mkfleet "$OW/m1/m1ctl.fleet.json" "N1:$OW/m1/HIMMEL-63-N1-ctl.md"
 ow_go2 --resume-only --workers-from "$OW/m1/m1ctl.fleet.json"
@@ -4169,6 +4173,15 @@ ow_go --workers-from "$P1D/p1nl.fleet.json"
 check "10557 P1.nl: a newline in an own label: ND exits 0" "0" "$OW_RC"
 check "10557 P1.nl: no stdout line is a RESUME row split out of the label" "0" "$(ow_n "$OW_OUT" "^RESUME${TAB}HIMMEL-5(${TAB}|\$)")"
 has "10557 P1.nl: the overlap note shows the label escaped" "$OW_OUT" '# overlap unknown for live worker N1\nRESUME\tHIMMEL-5'
+printf '# worker\n> **Writes:** scripts/lib/x.sh\n\n## Results\n- 10:00 LIVE - started\n' > "$P1D/HIMMEL-63-N1-p1w.md"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1\\nRESUME\\tHIMMEL-5"}]}\n' "$P1D/HIMMEL-63-N1-p1w.md" > "$P1D/p1ov.fleet.json"
+ow_go --workers-from "$P1D/p1ov.fleet.json"
+check "10557 P1.ov: a newline label in an overlap line splits out no RESUME row" "0" "$(ow_n "$OW_OUT" "^RESUME${TAB}HIMMEL-5(${TAB}|\$)")"
+has "10557 P1.ov: the overlap line shows the label escaped" "$OW_OUT" '# overlap HIMMEL-90 scripts/lib/x.sh with live worker N1\nRESUME\tHIMMEL-5'
+printf '{"schema":1,"workers":[{"doc":"%s","label":7}]}\n' "$P1D/HIMMEL-63-N1-p1w.md" > "$P1D/p1num.fleet.json"
+ow_go --workers-from "$P1D/p1num.fleet.json"
+check "10557 P1.num: a numeric label on a scoped worker: ND exits 0" "0" "$OW_RC"
+has "10557 P1.num: the overlap line shows the number" "$OW_OUT" "# overlap HIMMEL-90 scripts/lib/x.sh with live worker 7"
 OW_LINE_TAIL="withheld: RESUME, IN CI, STACKABLE, SERIES FAMILY, To Do, DESIGN, NEXT-TIER; reconcile: restore the doc, record the worker's end, or fleet-manifest.sh remove"
 
 # U1: an own row whose doc cannot be opened holds the keys in its file name and withholds RESUME, with one line
@@ -4991,6 +5004,16 @@ has "10557 Z3.lim: a seed doc only in a subfolder is not family" "$(z_run --work
 mv "$Z_DIR/old/HIMMEL-86-N23-z3-2026-11-21.md" "$Z_DIR/"
 rm -f "$Z_M/HIMMEL-86.md"
 has "10557 Z3.nomirror: a seed missing from the mirror seeds no family" "$(z_run --workers-from "$Z_DIR/fleet.json")" "RESUME${TAB}HIMMEL-87"
+z_mirror z9 "$KP-71:In Progress" "$KP-72:In Progress" "$KP-73:In Progress"
+Z9D="$Z_DIR/HIMMEL-71-N29-z9-2026-11-23.md"
+printf '# HIMMEL-72 elsewhere\n' > "$Z_DIR/README.md"
+printf '# HIMMEL-73 prior\n' > "$Z_DIR/HIMMEL-70-N9-z9.md"
+printf '# N29 — HIMMEL-71\n\nSee docs/README.md and %s/HIMMEL-70-N9-z9.md.\n' "$Z_DIR" > "$Z9D"
+mkfleet "$Z_DIR/fleet.json" "N29:$Z9D"
+z9="$(z_run --workers-from "$Z_DIR/fleet.json")"
+has "10557 Z9: a doc named by a path into another folder is not family" "$z9" "RESUME${TAB}HIMMEL-72"
+lacks "10557 Z9: a doc named by a path into its own folder is family" "$z9" "RESUME${TAB}HIMMEL-73"
+z_orphan Z9 "$z9"
 z_mirror z2neg "$KP-84:In Progress" "$KP-85:In Progress" "$KP-99:In Progress"
 Z2ND="$Z_DIR/HIMMEL-85-N22b-z2-RESUME-2026-11-22.md"
 printf '# RESUME — HIMMEL-85 — worker N22b\n\nno doc named here\n' > "$Z2ND"
