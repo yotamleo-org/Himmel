@@ -1349,9 +1349,7 @@ if workers_from and os.path.isfile(workers_from):
             manifest_workers(own_manifest)
             try:
                 own_rows = owned_rows(workers_from)
-            except (OSError, ValueError):
-                raise
-            except Exception:  # swallow-ok: a row of the wrong shape is the named refusal below, never a traceback
+            except (TypeError, AttributeError, KeyError):
                 own_rows = None
         if own_rows is None or own_rows_refused(own_rows):
             owner_unknown('the fleet', 'manifest %s malformed' % os.path.basename(workers_from), REMEDY_OWN_MANIFEST)
