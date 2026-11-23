@@ -259,6 +259,7 @@ if [ -n "$ARTIFACT_DIR" ]; then
     esac
     unset _ar
 fi
+export HIMMEL_ANTIGRAVITY_ARTIFACT_DIR="$ARTIFACT_REAL"
 
 is_under_dir() {
     local target="$1" root="$2"
@@ -390,7 +391,9 @@ case "$RAW_TOOL" in
             guard-merge-compound.sh \
             block-jira-compound-write.sh \
             block-tail-pipe-on-gates.sh \
+            block-antigravity-read-fence.sh \
             block-read-secrets.sh \
+            block-graphify-egress.sh \
             read-clamp.sh \
             block-destructive-commands.sh \
             block-git-stash.sh \
@@ -423,6 +426,7 @@ case "$RAW_TOOL" in
         esac
         PAYLOAD="$(build_claude_payload Read file)" || emit_deny "antigravity-hook-adapter: failed to translate read_file payload"
         run_chain_with_payload gate "$PAYLOAD" \
+            block-antigravity-read-fence.sh \
             block-read-secrets.sh \
             read-clamp.sh \
             peer-taint-gate.sh
@@ -461,7 +465,14 @@ case "$RAW_TOOL" in
         run_chain_with_payload gate "$PAYLOAD" peer-taint-gate.sh
         exit 0
         ;;
-    search_web|send_message|ask_question|list_resources|read_resource)
+    list_resources|read_resource)
+        PAYLOAD="$(build_claude_payload "$RAW_TOOL" raw)" || emit_deny "antigravity-hook-adapter: failed to translate $RAW_TOOL payload"
+        run_chain_with_payload gate "$PAYLOAD" \
+            block-antigravity-read-fence.sh \
+            peer-taint-gate.sh
+        exit 0
+        ;;
+    search_web|send_message|ask_question)
         PAYLOAD="$(build_claude_payload "$RAW_TOOL" raw)" || emit_deny "antigravity-hook-adapter: failed to translate $RAW_TOOL payload"
         run_chain_with_payload gate "$PAYLOAD" peer-taint-gate.sh
         exit 0
@@ -506,6 +517,18 @@ case "$RAW_TOOL" in
                     guard-t3-thread-tools.sh \
                     peer-taint-gate.sh
             fi
+            case "$MCP_TOOL" in
+                t3_environment_read|t3_project_list|t3_project_read|t3_theme_read|\
+                t3_worktree_status|t3_worktree_list|t3_preview_list|\
+                orchestrator_capabilities|task_status|list_scheduled_tasks|device_list|\
+                pull_request_read|pull_request_list|read_pull_request_guide|list_thread_pull_requests|\
+                ci_logs|list_issues|read_issue|list_thread_issues|\
+                send_to_user|html_preview|html_render)
+                    ;;
+                *)
+                    emit_deny "antigravity-hook-adapter: mcp_t3-code_$MCP_TOOL is not on the Antigravity read-only/self-scoped T3 MCP allowlist"
+                    ;;
+            esac
         else
             run_chain_with_payload gate "$PAYLOAD" \
                 mcp-policy.sh \
