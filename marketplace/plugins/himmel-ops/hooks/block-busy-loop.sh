@@ -76,7 +76,7 @@ JS_WHILE_RE='(^|[^[:alnum:]_])while[[:space:]]*\([[:space:]]*(true|1)[[:space:]]
 JS_FOR_RE='(^|[^[:alnum:]_])for[[:space:]]*\([[:space:]]*;[[:space:]]*;[[:space:]]*\)[[:space:]]*(\{[[:space:]]*\}|;)'
 CMD_POS="(^|[;&|(\`{${NL}])[[:space:]]*((sudo|env|nice|nohup|exec|command|time|timeout|do|then|else|elif|if|while|until|!|-[^[:space:]]+|[0-9]+[smhd]?|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*)[[:space:]]+)*([^[:space:];&|]*/)?"
 TOOL_RE="${CMD_POS}(taskset|numactl|stress-ng|stress)([[:space:];&|)]|\$)"
-ARGV_RE="([[,][[:space:]]*['\"](taskset|numactl|stress-ng|stress)['\"]|['\"](taskset|numactl|stress-ng|stress)[[:space:]]+-)"
+ARGV_RE="([[,][[:space:]]*['\"](taskset|numactl|stress-ng|stress)['\"]|[(=][[:space:]]*['\"](taskset|numactl|stress-ng|stress)[[:space:]]+-)"
 SHELL_C_RE='(^|[^[:alnum:]_./-])(ba|z|da|k)?sh[[:space:]]+(-[[:alnum:]]+[[:space:]]+)*-[[:alnum:]]*c[[:space:]]*$'
 YES_RE="${CMD_POS}yes([[:space:]][^;&|]*)?>[[:space:]]*/dev/null"
 DD_RE="${CMD_POS}dd[[:space:]][^;&|]*(if=/dev/(zero|u?random)[^;&|]*of=/dev/null|of=/dev/null[^;&|]*if=/dev/(zero|u?random))"
@@ -167,8 +167,17 @@ if ! match_shapes "$cmd" "$semi_blanked" "$emptied$shell_code"; then
     set -f
     at_start=1
     interp=0
-    run_words=${run_text//[<>]/ }
-    for tok in ${run_words//[;&|(){\}\`$NL]/ ; }; do
+    skip=0
+    outer_base=$base
+    run_words=${run_text//</ }
+    run_words=${run_words//>/ > }
+    run_words=${run_words//\(/ ( }
+    run_words=${run_words//\)/ ) }
+    for tok in ${run_words//[;&|{\}\`$NL]/ ; }; do
+        if [ "$skip" = 1 ]; then
+            [ "$tok" = ">" ] || skip=0
+            continue
+        fi
         if [ "$prev" = "cd" ]; then
             case $tok in /*) next=$tok ;; *) next=$base/$tok ;; esac
             [ -d "$next" ] && base=$next
@@ -176,8 +185,24 @@ if ! match_shapes "$cmd" "$semi_blanked" "$emptied$shell_code"; then
         prev=$tok
         run_pos=$((at_start + interp))
         case $tok in
+            ">") skip=1
+                continue ;;
+            "(") outer_base=$base at_start=1 interp=0 prev=""
+                continue ;;
+            ")") base=$outer_base at_start=1 interp=0 prev=""
+                continue ;;
             ";") at_start=1 interp=0 prev=""
                 continue ;;
+            -c)
+                if [ "$interp" = 1 ]; then
+                    at_start=1 interp=0
+                    continue
+                fi ;;
+            -m|-e)
+                if [ "$interp" = 1 ]; then
+                    interp=0
+                    continue
+                fi ;;
             sudo|env|nice|nohup|exec|command|time|timeout|do|then|else|elif|if|while|until|"!"|[0-9]*|[A-Za-z_]*=*)
                 { [ "$at_start" = 1 ] || [ "$interp" = 1 ]; } && continue ;;
             *.sh|*.bash|*.py|*.js|*.mjs|*.cjs) ;;
