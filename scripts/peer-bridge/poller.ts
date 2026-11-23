@@ -13,14 +13,14 @@ import { checkEnvelopeOutbound, checkOutbound, refusalRecord, type OutCtx, type 
 import { OUTCOMES, buildEnvelope, encodeCanonical, type Envelope } from "./envelope";
 import { admit, admitEnvelope, appendUnknownChat, createGateState, looksLikeEnvelope, matchEnvelope, noteAdmitted, noteRate, rebuildFromInbox, type GateState, type PeerEnvRec, type PeerMsgRec } from "./gate";
 import { mintId } from "./grammar";
-import { botIdFromToken, configDir, peersFile, stateDir } from "./ids";
+import { botIdFromToken, configDir, peersFile, stateDir, utcDay } from "./ids";
 import { dueJobs, isTerminal, newInJob, newOutJob, queueDepth, remaining, step, type JobEvent, type SendSpec } from "./jobstate";
 import { ReaderLedger, runReader, type Digest, type ModelRoute, type ReaderKind } from "./reader";
 import { resolveCapacity, resolveReq, resolveRes, type JobRecord } from "./resolve";
 import { currentSigningKey, sign } from "./sign";
 import { PeerTelegram, RetryAfter, TelegramError } from "./telegram";
 import { MAX_AUTO_PER_HOUR, Threads, effectiveRoute, templateLine, type Action, type Route, type ThreadRec, type Transition, type WakeEvent, type WakeLabel } from "./threads";
-import { notifyFile } from "./notify";
+import { appendNotify, notifyFile, type DailyNotify, type NotifyRec } from "./notify";
 import { Tripwire, Waker } from "./wake";
 
 export type TgLike = Pick<PeerTelegram, "getUpdates" | "sendMessage" | "getChatMember">;
@@ -44,6 +44,7 @@ type Pending = IntentRec & { n: number };
 type Item = { peer: string; msgKind: string; isRoot: boolean; isTemplate: boolean; replyTo: number | null; text: string; id?: string; spool?: string; resend?: boolean; allowShape?: string; checkUsage: boolean };
 
 const TRIPWIRE_COUNT = 3;
+const DAILY_DAYS = 7;
 const READ_TAGS = new Set(["ask:question", "status", "info", "answer", "untagged"]);
 type ReadJob = { rec: PeerMsgRec; kind: ReaderKind; transition: Transition; held: WakeEvent };
 const kindLine = (k: string) => (k === "question" ? "ask:question" : k);
@@ -61,6 +62,7 @@ export class Poller {
   private capAsks = new Map<string, boolean>();
   private match = matchEnvelope({ jobs: () => [...this.jobs.values()], asks: () => this.capAsks });
   private tripwire = new Tripwire();
+  private dailyChecked = new Map<string, string>();
   private answers = new Map<string, number[]>();
   private rootIntents = new Map<string, Pending>();
   private spoolDone = new Map<string, number>();
@@ -247,6 +249,34 @@ export class Poller {
       const effect: Omit<EffectRec, "n" | "h"> = { kind: "effect", peer, message_id: job.message_id, outcome: route === "ack" ? "acked" : "dropped", ts: this.ts() };
       await this.chain.append(digestFile(this.dir(peer)), effect);
     }
+  }
+
+  private async writeDailies(peer: string): Promise<void> {
+    const file = notifyFile(this.deps.stateDir);
+    const now = this.now(), today = utcDay(now);
+    if (this.dailyChecked.get(peer) === today) return;
+    const marker = (readChain(file) as unknown as NotifyRec[]).filter(r => r.kind === "notify" && r.type === "daily" && r.peer === peer).at(-1) as DailyNotify | undefined;
+    const days: string[] = [];
+    for (let i = DAILY_DAYS; i >= 1; i--) { const d = utcDay(now - i * 86_400_000); if (d < today && (!marker || d > marker.day)) days.push(d); }
+    if (!days.length) { this.dailyChecked.set(peer, today); return; }
+    const recs = readChain(digestFile(this.dir(peer)));
+    const outcome = new Map(recs.filter(r => r.kind === "effect").map(r => [r.message_id as number, r.outcome as string]));
+    for (const day of days) {
+      const routed = recs.filter(r => r.kind === "digest" && typeof r.route === "string" && utcDay(r.ts * 1000) === day);
+      if (!routed.length) continue;
+      const esc = routed.filter(r => r.route === "escalate");
+      const skipped: Record<string, number> = {};
+      for (const r of esc) if (r.summary === null && typeof r.reason === "string") skipped[r.reason] = (skipped[r.reason] ?? 0) + 1;
+      await appendNotify(this.chain, file, {
+        kind: "notify", type: "daily", peer, day, ts: now, skipped,
+        escalated: esc.length,
+        digests: esc.filter(r => outcome.get(r.message_id) === "escalated").length,
+        wakes: esc.filter(r => outcome.get(r.message_id) === "fallback-wake").length,
+        acked: routed.filter(r => r.route === "ack").length,
+        dropped: routed.filter(r => r.route === "drop").length,
+      });
+    }
+    this.dailyChecked.set(peer, today);
   }
 
   private heldFor(peer: string, job: JobRec, thread: ThreadRec): WakeEvent {
@@ -563,6 +593,7 @@ export class Poller {
       await this.fireDeadlines();
       await this.flush();
       for (const peer of Object.keys(this.cfg.peers)) sweepResults(this.dir(peer), 86_400_000, this.now());
+      for (const peer of Object.keys(this.cfg.peers)) await this.writeDailies(peer);
     });
   }
 

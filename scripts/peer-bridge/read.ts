@@ -41,7 +41,8 @@ function stampFresh(S: string, sid: string): boolean {
 }
 
 function header(rec: DigestRec): string {
-  return `peer ${rec.peer} · T${rec.root_id} · ${sanitize(rec.tag, 24)} · ${new Date(rec.ts * 1000).toISOString()}`;
+  const route = rec.route === "escalate" || rec.route === "ack" || rec.route === "drop" ? ` · route ${rec.route}` : "";
+  return `peer ${rec.peer} · T${rec.root_id} · ${sanitize(rec.tag, 24)} · ${new Date(rec.ts * 1000).toISOString()}${route}`;
 }
 
 function renderRecord(key: Buffer, rec: DigestRec): string {

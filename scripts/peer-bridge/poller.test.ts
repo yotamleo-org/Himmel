@@ -1138,3 +1138,42 @@ test("a pre-upgrade inbox message never replays", async () => {
   expect(digestKinds(e)).toEqual(["digest"]);
   expect(notifies(e)).toEqual([]);
 });
+
+const DAY_MS = 86_400_000;
+async function seedDay(e: Env, dayMs: number, rows: [string, string | null, string | null][]) {
+  const ch = new Chain();
+  let m = Math.floor(dayMs / 1000) % 100000 * 10;
+  for (const [route, reason, outcome] of rows) {
+    const message_id = ++m;
+    await ch.append(digestFile(e.peerDir), { kind: "digest", peer: "example", message_id, root_id: message_id, tag: "status", from_id: PEER_ID, ts: Math.floor(dayMs / 1000) + 60, summary: reason ? null : "s", asks: [], ...(reason ? { reason } : {}), ...(route ? { route, model_route: null } : {}) });
+    if (outcome) await ch.append(digestFile(e.peerDir), { kind: "effect", peer: "example", message_id, outcome, ts: Math.floor(dayMs / 1000) + 61 });
+  }
+}
+const dailies = (e: Env) => notifies(e).filter(r => r.type === "daily");
+
+test("daily: one line per peer per completed day across a three-day stop", async () => {
+  const e = await setup({ peerOver: wide });
+  const d0 = Date.UTC(2026, 10, 9);
+  await seedDay(e, d0, [["escalate", null, "escalated"], ["escalate", null, "escalated"], ["escalate", "daily-cap", "fallback-wake"], ["ack", null, "acked"], ["drop", null, "dropped"], ["drop", null, "dropped"], ["drop", null, "dropped"], ["", null, null]]);
+  await seedDay(e, d0 + DAY_MS, [["drop", null, "dropped"]]);
+  e.c.t = d0 + 3 * DAY_MS + 3_600_000;
+  await e.poller.tick();
+  expect(dailies(e).map(r => renderNotify(r as any, e.cfg.himmelRoot).text)).toEqual([
+    "peer example · 2026-11-09 · triage: 3 escalated (2 as digests, 1 as wakes; 1 skipped: daily-cap) · 1 acked · 3 dropped",
+    "peer example · 2026-11-10 · triage: 0 escalated (0 as digests, 0 as wakes) · 0 acked · 1 dropped",
+  ]);
+  await e.poller.tick();
+  e.c.t += 3_600_000;
+  await e.poller.tick();
+  expect(dailies(e)).toHaveLength(2);
+  expect(notifies(e).filter(r => r.type === "budget")).toEqual([]);
+});
+
+test("daily: a ten-day stop writes exactly the last 7 days", async () => {
+  const e = await setup({ peerOver: wide });
+  const d0 = Date.UTC(2026, 10, 1);
+  for (let i = 0; i < 10; i++) await seedDay(e, d0 + i * DAY_MS, [["drop", null, "dropped"]]);
+  e.c.t = d0 + 10 * DAY_MS + 60_000;
+  await e.poller.tick();
+  expect(dailies(e).map(r => r.day)).toEqual(["2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09", "2026-11-10"]);
+});
