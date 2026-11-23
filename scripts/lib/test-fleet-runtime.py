@@ -811,6 +811,15 @@ exit 1''')
         p = self.rt('begin', aid='sib', ok=False)
         self.assertIn('unknown legacy family ownership: %s row %s' % (sibling, self.doc.resolve()), p.stderr)
 
+    def test_a_sibling_manifest_refusal_offers_the_remove_command(self):
+        self.active()
+        sibling = self.bucket / 'earlier-chief.fleet.json'
+        sibling.write_text(json.dumps({'schema': 1, 'control': json.loads(self.m.read_text())['control'],
+                                       'workers': [{'doc': str(self.doc.resolve()), 'label': 'N1', 'lane': 'native'}]}))
+        p = self.rt('begin', aid='sib2', ok=False)
+        remove = 'bash %s remove %s %s' % (ROOT / 'scripts/handover/chief-kit/fleet-manifest.sh', sibling, self.doc.resolve())
+        self.assertIn(remove, p.stderr)
+
     def live_worker(self):
         self.active()
         self.rt('begin', aid='first')

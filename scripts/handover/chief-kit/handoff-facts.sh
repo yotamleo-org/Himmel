@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # handoff-facts.sh — The mechanical half of a chief HANDOFF.
 #
-#   handoff-facts.sh <field> <chief doc> [--repo <path>]
+#   handoff-facts.sh <field> <chief doc> [--repo <path>] [--root <handover root>]
+#
+# --root (workers only) also lists each worker holding a queue lock under <root>/.locks/queue in the chief
+# doc's own directory that no manifest row names, marked `[lock only, on no manifest row]`.
 #
 # `chief.sh next` calls this once per field to pre-fill the predecessor's
 # HANDOFF, so the outgoing chief writes only its judgement notes (one Edit)
@@ -34,18 +37,22 @@ GH_READ_BIN="$HERE/../../lib/gh-read.sh"
 [ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 # shellcheck source=../../lib/worker-tail-status.sh
 . "$HERE/../../lib/worker-tail-status.sh"
+# shellcheck source=../../lib/worker-identity.sh
+. "$HERE/../../lib/worker-identity.sh"
 # the manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`, read only while legacy names are on
 # shellcheck source=../../lib/legacy-names.sh
 . "$HERE/../../lib/legacy-names.sh"
 if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 
-usage() { echo "usage: handoff-facts.sh <head|bank|workers|prs|summary|queue|lastgo> <chief doc> [--repo <path>]" >&2; exit 2; }
+usage() { echo "usage: handoff-facts.sh <head|bank|workers|prs|summary|queue|lastgo> <chief doc> [--repo <path>] [--root <handover root>]" >&2; exit 2; }
 [ "$#" -ge 2 ] || usage
 field="$1"; doc="$2"; shift 2
 repo="$REPO_DEFAULT"
+root=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --repo) [ "$#" -ge 2 ] || usage; repo="$2"; shift 2 ;;
+        --root) [ "$#" -ge 2 ] || usage; root="$2"; shift 2 ;;
         *) usage ;;
     esac
 done
@@ -83,14 +90,32 @@ case "$field" in
         ;;
     workers|legs)
         manifest="${doc%.md}.fleet.json"
-        if [ ! -f "$manifest" ]; then echo "none — no fleet manifest"; exit 0; fi
-        if ! rows="$(jq -r "$JQ_W"'W[] | "\(.label)\t\(.doc)"' "$manifest" 2>/dev/null)"; then
-            echo "unavailable — manifest unreadable (jq missing or malformed): $manifest"; exit 0
+        rows=""
+        if [ -f "$manifest" ]; then
+            if ! rows="$(jq -r "$JQ_W"'W[] | "\(.label)\t\(.doc)"' "$manifest" 2>/dev/null)"; then
+                echo "unavailable — manifest unreadable (jq missing or malformed): $manifest"; exit 0
+            fi
+        elif [ -z "$root" ]; then echo "none — no fleet manifest"; exit 0; fi
+        if [ -n "$root" ]; then
+            for lockdir in "$root"/.locks/queue/*.lock; do
+                [ -f "$lockdir/owner.json" ] || continue
+                ldoc="$(jq -r '.handover // empty' "$lockdir/owner.json" 2>/dev/null)" || ldoc=""  # swallow-ok: an unreadable owner file lists no worker, the manifest rows still print
+                [ -n "$ldoc" ] && [ -f "$ldoc" ] && [ "$(dirname "$ldoc")" = "$(dirname "$doc")" ] || continue
+                case "${ldoc##*/}" in *-nextleg-*|*-HANDOFF.md) continue ;; esac
+                case "
+$rows
+" in *"	$ldoc
+"*) continue ;; esac
+                rows="$rows
+LOCKONLY	$ldoc"
+            done
         fi
         n=0
         while IFS="$(printf '\t')" read -r label ldoc; do
             [ -n "$ldoc" ] || continue
             n=$((n + 1))
+            tag=""
+            if [ "$label" = LOCKONLY ]; then label="$(worker_label "$ldoc")"; tag=" [lock only, on no manifest row]"; fi
             marker="$(worker_tail_status "$ldoc")"
             last="$(sed -nE '/^- /p' "$ldoc" 2>/dev/null | tail -n 1 | sed 's/`[^`]*`/`…`/g' | cut -c1-200)"
             # a READY or BLOCKED a later LIVE / SUCCESSION bullet buries stays in the list
@@ -99,7 +124,7 @@ case "$field" in
             if [ -n "$act" ] && [ "$act" != "$last" ]; then
                 note=" [actionable: $(printf '%s' "$act" | sed -E 's/^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?//')]"
             fi
-            printf -- '- %s: %s — %s%s (%s)\n' "$label" "${marker:-no marker}" "$last" "$note" "$(basename "$ldoc")"
+            printf -- '- %s: %s — %s%s%s (%s)\n' "$label" "${marker:-no marker}" "$last" "$note" "$tag" "$(basename "$ldoc")"
         done <<EOF_ROWS
 $rows
 EOF_ROWS
