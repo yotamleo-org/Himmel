@@ -8,6 +8,7 @@ import { appendNotify, notifyFile, type NotifyRec } from "../peer-bridge/notify"
 import { readNewLines } from "./bus";
 import { holdingProc, LOCKED_LINE, macProcsFrom, makePeerNotifyFlusher, makePeerReplyRoute, pluginStateDir, PR1_REPLY_LINE, procFromEnv, readBotPids, readCursor, readProcs, readSent, sentDir, type ProcInfo } from "./peer-notify-route";
 import { handleInbound, inboundToDelivered, ingestUpdates, type AutoGate } from "./poller";
+import { BASH_BIN } from "./run";
 import type { SendOpts, SendResult } from "./telegram-api";
 
 const REPO = join(import.meta.dir, "..", "..");
@@ -190,7 +191,7 @@ function pluginFixture(root: string): string {
 }
 
 async function launch(root: string, env: Record<string, string>): Promise<void> {
-  const c = spawn("bash", [join(root, "run-bun.sh"), "run", "--cwd", root, "--shell=bun", "--silent", "start"], { cwd: tmpdir(), env: { PATH: process.env.PATH!, HOME: tmp("peer-notify-home-"), ...env }, detached: true, stdio: "ignore" });
+  const c = spawn(BASH_BIN, [join(root, "run-bun.sh"), "run", "--cwd", root, "--shell=bun", "--silent", "start"], { cwd: tmpdir(), env: { PATH: process.env.PATH!, HOME: tmp("peer-notify-home-"), ...env }, detached: true, stdio: "ignore" });
   children.push(c);
   await waitFor(() => readProcs().some(p => isUnder(p.pid, root)));
 }
