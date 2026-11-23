@@ -609,6 +609,16 @@ check "missing-ticket: exit 1" "$rc" "1"
 contains "missing-ticket: check 6 fails" "$out" "[FAIL] 6."
 contains "missing-ticket: names the offending subject" "$out" "tweak with no ticket"
 
+reset_stubs
+STUB_COMMITS='[{"messageHeadline":"feat(x): add a long subject that runs past the seventy character mark…","messageBody":"… and ends with (HIMMEL-1)\n\nPlatforms tested: linux\nSecurity reviewed: manual"}]'
+rc=0; out="$(run)" || rc=$?
+contains "truncated-subject: ticket in body remainder passes check 6" "$out" "[PASS] 6."
+
+STUB_COMMITS='[{"messageHeadline":"feat(x): add a long subject that runs past the seventy character mark…","messageBody":"… and ends with no id at all\n\nPlatforms tested: linux\nSecurity reviewed: manual"}]'
+rc=0; out="$(run)" || rc=$?
+contains "truncated-subject: no ticket anywhere fails check 6" "$out" "[FAIL] 6."
+contains "truncated-subject: FAIL names the rebuilt subject" "$out" "mark and ends with no id at all"
+
 # --- 6b. a merge commit (>1 parent) is exempt from check 6,
 # even though its subject carries no ticket ID -------------------------
 reset_stubs

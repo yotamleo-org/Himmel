@@ -775,7 +775,10 @@ else
     missing=$(printf '%s' "$commits_json" | jq -r --arg merges "$merge_oids" '
         ($merges | split("\n") | map(select(length > 0))) as $m
         | .[] | select((.oid // "") as $o | ($m | index($o)) == null)
-        | .messageHeadline
+        | .messageHeadline as $h
+        | if ($h | endswith("…"))
+          then ($h | .[0:-1]) + (((.messageBody // "") | split("\n")[0]) | ltrimstr("…"))
+          else $h end
     ' 2>/dev/null | grep -vE "$TICKET_PATTERN" || true)
     if [ -z "$missing" ]; then
         echo "[PASS] 6. every commit subject carries a ticket ID"
