@@ -18,6 +18,7 @@
 #   api_account=<A, B, C, D or auto>               (optional, absent by default; launches with WORKER_SESSION_API_LANE=on and
 #                                                   WORKER_SESSION_API_ACCOUNT=<name>, named in the ask and the GRANT log line)
 #   blocks=<#n tokens, single spaces>              (optional; the pull requests the work blocks, named in the ask)
+#   recommend=<go | no | no:<reason, at most 60 characters>>   (required; the chief's word, shown in the ask)
 # Which flag a go code may grant: the registry scripts/himmelctl/lib/bypass-flags.json is the list of hook flags and
 # scripts/station-ops/bypass-flag-tiers.tsv gives each a tier: grant, decision (needs decision=), floor (never granted;
 # launch it from your own shell) or none (not a switch). Both are read once at start from HEAD of this checkout with the
@@ -25,7 +26,7 @@
 # registry has uncommitted changes, so a new flag needs a commit, an update and a restart. Every git call in it ignores
 # refs/replace and a configured fsmonitor, so neither can change what is read or run.
 # A launch clears every name the registry or the tier file holds and every inherited *_OK or *_BYPASS* name, then sets only
-# the granted flags. The ask names each granted flag with its registry text.
+# the granted flags. The ask names each granted flag and the hook its registry text says it skips.
 # The operator id is allowFrom[0] of the bridge access.json (TELEGRAM_ACCESS_PATH); the inbound journal is
 # BRIDGE_ROOT/inbound.jsonl. Test seams: BYPASSD_SEND (a program given the message), BYPASSD_LAUNCHER (run in
 # place of headed-arm-worker.sh with its arguments), BYPASSD_POLL, BYPASSD_SETTLE.
@@ -109,7 +110,7 @@ send() {
     bun "$REPO/scripts/telegram/chief-route.ts" reply --kind "$1" operator "$2" >/dev/null 2>&1 || log "send failed"
 }
 field() { sed -n "s/^$1=//p" "$2" | head -n 1; }
-refuse() { log "REFUSED $2 $1"; mv "$1" "$1.refused"; send bypass-result "bypass-launchd refused $(basename "$1"): $2"; }
+refuse() { mv "$1" "$1.refused"; log "REFUSED $2 $1"; send bypass-result "bypass-launchd refused $(basename "$1"): $2"; }
 live() { [ ! -e "$Q/stop" ] && [ "$(date +%s)" -lt "$EXPIRES" ]; }
 
 check_request() {
@@ -117,7 +118,7 @@ check_request() {
     REASON=""
     brief=$(field brief "$1"); model=$(field model "$1"); chief=$(field chief "$1")
     flags=$(field flags "$1"); effort=$(field effort "$1"); decision=$(field decision "$1")
-    api_account=$(field api_account "$1"); blocks=$(field blocks "$1")
+    api_account=$(field api_account "$1"); blocks=$(field blocks "$1"); recommend=$(field recommend "$1")
     [ -n "$flags" ] || flags=HIMMEL_HOOK_INTEGRITY_BYPASS_OK
     base=$(basename "$brief" .md)
     [[ "$brief" == "$BUCKET/$base.md" && ! -L "$brief" && -f "$brief" ]] || why+="${why:+, }brief-path"
@@ -127,8 +128,9 @@ check_request() {
     [[ -z "$effort" || "$effort" =~ ^(low|medium|high|xhigh)$ ]] || why+="${why:+, }effort"
     [[ -z "$api_account" || "$api_account" =~ ^([ABCD]|auto)$ ]] || why+="${why:+, }api_account"
     [[ -z "$blocks" || "$blocks" =~ ^#[0-9]+([ ]#[0-9]+)*$ ]] || why+="${why:+, }blocks"
+    [[ "$recommend" =~ ^(go|no)$ || "$recommend" =~ ^no:[[:print:]]{1,60}$ ]] || why+="${why:+, }recommend"
     if [ -n "$why" ]; then REASON="malformed: $why"; return 1; fi
-    envs=(); bad=""; grant_text=""; paid=""; others=""; undecided=""
+    envs=(); bad=""; names=""; skips=""; paid=""; undecided=""
     IFS=, read -ra fl <<<"$flags"
     [ "${#fl[@]}" -le 5 ] || bad="more than 5 flags"
     for f in "${fl[@]}"; do
@@ -145,22 +147,27 @@ check_request() {
         elif [ "$tier" = none ]; then bad="flag $f is not a switch"
         elif [ "$tier" = floor ]; then bad="flag $f is floor: launch it from your own shell"
         else
-            envs+=("$f=1"); grant_text+="${grant_text:+, }$f=1${text:+ ($text)}"
+            envs+=("$f=1"); names+="${names:+, }$f"; skips+="${skips:+, }$f"
+            [[ "$text" =~ hooks/([A-Za-z0-9_-]+)\.sh ]] && skips+=" (skips ${BASH_REMATCH[1]})"
             if [ "$tier" = decision ]; then
                 [ -n "$undecided" ] || undecided=$f
-                if [ "$f" = HIMMEL_BILLED_OK ]; then paid=1; else others=1; fi
+                [ "$f" != HIMMEL_BILLED_OK ] || paid=1
             fi
         fi
     done
     [ -z "$bad" ] || { REASON=$bad; return 1; }
-    billed=""
+    tags=""
     if [ -n "$undecided" ]; then
         [[ "$decision" =~ ^[0-9]+$ ]] || { REASON="$undecided needs decision=<operator decision number>"; return 1; }
-        [ -z "$paid" ] || billed=" PAID RUN (decision $decision)."
-        [ -z "$others" ] || billed+=" OPERATOR DECISION $decision."
+        tags="DECISION $decision"
+        [ -z "$paid" ] || tags+=" · PAID RUN"
     fi
     [ -z "$effort" ] || envs+=("WORKER_SESSION_EFFORT=$effort")
-    [ -z "$api_account" ] || { envs+=("WORKER_SESSION_API_LANE=on" "WORKER_SESSION_API_ACCOUNT=$api_account"); billed+=" API LANE ON, account $api_account."; }
+    [ -z "$api_account" ] || { envs+=("WORKER_SESSION_API_LANE=on" "WORKER_SESSION_API_ACCOUNT=$api_account"); tags+="${tags:+ · }API account $api_account"; }
+    [ -z "$blocks" ] || tags+="${tags:+ · }Blocks PRs: $blocks"
+    flag_line="flag"; [ "${#fl[@]}" -eq 1 ] || flag_line="flags"
+    if [ "${#skips}" -le $(( 199 - ${#flag_line} )) ]; then flag_line+=" $skips"; else flag_line+=" $names"; fi
+    case $recommend in go) word="Chief: GO" ;; no) word="Chief: NO" ;; *) word="Chief: NO — ${recommend#no:}" ;; esac
     return 0
 }
 
@@ -258,11 +265,16 @@ while :; do
         check_request "$req" || { refuse "$req" "$REASON"; continue; }
         code=$(LC_ALL=C tr -dc 'A-Z2-9' </dev/urandom | head -c 6)
         off=$(wc -c 2>/dev/null <"$INBOUND") || off=0; off=${off//[[:space:]]/}
-        desc=$(sed -n 's/^description: *//p' "$brief" | head -n 1)
         sha=$(sha256_of "$brief"); [ ${#sha} -eq 64 ] || { refuse "$req" "brief unreadable"; continue; }
         mv "$req" "$req.pending"
         log "ASK $base model=$model chief=$chief flags=$flags effort=${effort:-default} decision=${decision:-none} sha=${sha:0:12}"
-        send bypass-ask "Bypass worker launch asked by $chief: $base on $model, effort ${effort:-default}, grants $grant_text.$billed What it does: $desc (brief sha ${sha:0:12}).${blocks:+ Blocks PRs: $blocks.} Reply: go $code to launch, or no $code to refuse. Expires in 6 h."
+        IFS=- read -r k1 k2 worker _ <<<"$base"
+        send bypass-ask "go $code → launch · no $code → refuse
+$k1-$k2 $worker on ${model#claude-}${effort:+ $effort}
+$flag_line
+${tags:+$tags
+}$word
+Expires 6 h · brief sha ${sha:0:12}"
         t0=$(date +%s); verdict=expired
         while [ $(( $(date +%s) - t0 )) -lt "$TTL" ] && live; do
             hit=$(tail -c +"$((off + 1))" "$INBOUND" 2>/dev/null | jq -r --argjson op "$OP" --arg c "$code" \
@@ -272,14 +284,14 @@ while :; do
             sleep "$POLL"
         done
         if [ "$verdict" != go ]; then
-            log "$verdict $base"; mv "$req.pending" "$req.$verdict"; send bypass-result "bypass launch $base: $verdict, nothing ran."; continue
+            mv "$req.pending" "$req.$verdict"; log "$verdict $base"; send bypass-result "bypass launch $base: $verdict, nothing ran."; continue
         fi
         if ! live || [ -L "$brief" ] || [ "$(sha256_of "$brief")" != "$sha" ]; then
-            log "REFUSED after go $base (stop, expiry, or brief changed since the ask)"; mv "$req.pending" "$req.refused"
+            mv "$req.pending" "$req.refused"; log "REFUSED after go $base (stop, expiry, or brief changed since the ask)"
             send bypass-result "bypass launch $base: refused after your go, the brief changed or the queue stopped. Nothing ran."; continue
         fi
         if stale_now; then
-            log "STALE after go $base: go not used, re-queued"; mv "$req.pending" "$req"
+            mv "$req.pending" "$req"; log "STALE after go $base: go not used, re-queued"
             send bypass-result "bypass launch $base: your go was not used, the daemon runs older code than its checkout ($STALE_CAUSE). Nothing ran; the request waits for a restart and will be asked again." # t13b-ok: operator-facing text naming the existing bypass daemon, no process is started
             hold; break
         fi
@@ -297,11 +309,11 @@ while :; do
         if ! kill -0 "$lp" 2>/dev/null; then
             wait "$lp"; lrc=$?
             if [ "$lrc" -ne 0 ]; then
-                log "LAUNCH-FAILED $base rc=$lrc"; mv "$req.pending" "$req.failed"
+                mv "$req.pending" "$req.failed"; log "LAUNCH-FAILED $base rc=$lrc"
                 send bypass-failed "bypass launch $base: FAILED (rc $lrc), see $W/$base.launch.out"; continue
             fi
         fi
-        log "LAUNCHED $base"; mv "$req.pending" "$req.done"
+        mv "$req.pending" "$req.done"; log "LAUNCHED $base"
         send bypass-result "bypass launch $base: launched with ${envs[*]} (approved by your go code). Launch log $W/$base.launch.out"
     done
     sleep "$POLL"

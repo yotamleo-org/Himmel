@@ -5,6 +5,34 @@ description: "Rule version intake, reversion, discharge; status, burn-down, READ
 
 # release-manager — every placement into a release is a reasoned ruling
 
+> **Parked.** The model judge is parked. `jira release rm-run <R>`
+> places every request by the door's fixed rules (`scripts/jira/src/release/door.ts`),
+> with no model call. `release claim` and `release rule` refuse. The ruling
+> procedure below is the parked judge's: only `HIMMEL_RM_JUDGE=model` reaches it,
+> and nothing sets that by default. STATUS, BURN-DOWN and READY are unchanged.
+>
+> An INTAKE is placed by the first rule that matches:
+>
+> | Rule | When | Placement (ground) |
+> |---|---|---|
+> | R | a version-repair request from the repair run | the version Jira shows (`door:repair`) |
+> | O | the key's newest operator decision is newer than its newest ruling | what the record says (`door:operator:<O-id>`) |
+> | Ch | the chief placed it (`request --chief-reason`) | the asked version (`door:chief`) |
+> | F | closed with a merged PR | the asked version (`door:done`) |
+> | A | labelled `operator-directed`, or a bridge ask | the version it names, else current (`door:operator-ask`) |
+> | S | the required remainder of a parent | the parent's version (`door:rest-of:<P>`) |
+> | W | In Progress | current (`door:started`) |
+> | H | High or Highest | current (`door:serious:<prio>`) |
+> | M | anything else | the next version (`door:mild`), else the backlog (`door:mild-no-next`) |
+>
+> A key never leaves a version it holds: only rules Ch to W move it nearer
+> current, and anything else keeps it where it is (`door:stays:<W>`). Rules R and
+> O are not clamped. A REVERSION toward current moves only when rules Ch to W
+> place the key in that version or nearer current; any other REVERSION keeps the
+> key. Only the operator moves a key out. A DISCHARGE is
+> accepted for a resolved ticket. A ruling made on the operator's authority
+> stands until a newer operator record (`door:operator-standing:<R-id>`).
+
 For the release manager only (`HIMMEL_RELEASE_MANAGER=1`). Requests are ruled
 by the on-demand batch `jira release rm-run <R>`, which reads this skill as its
 judge's instructions; STATUS, BURN-DOWN and READY run in an on-demand session

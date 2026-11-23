@@ -7,9 +7,10 @@ import { fileURLToPath } from 'node:url';
 import {
   ack, apply, bucketCheck, operatorWords, poolCurrent, claim, coreBypass, declare, decisionWords, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, operatorFence, recordRequestDecision, request, requestWithWords, rule, state, takeover, withdraw,
   JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readMirrorFilesUnverified, readOperatorRecords, rmRun, rmRunSummary, pinnedSha, signSpec, specCheck, specReview, standing,
-  type Ctx, type JiraPort, type Judge, type JudgeInput,
+  type Ctx, type Decision, type DoorJiraPort, type JiraPort, type Judge, type JudgeInput, type RuledDecision,
 } from './engine.js';
 import { judgeOperatorRows } from './judge-input.js';
+import { doorJudge } from './door.js';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { Command } from 'commander';
 import * as pinned from './pinned.js';
@@ -36,10 +37,17 @@ vi.mock('node:fs', async (orig) => {
 const cappedCalls = vi.hoisted(() => [] as string[][]);
 // The capped carry v2 hook: every capped-fold spawn attempt is recorded before the real call; armed, a `--keys` spawn is answered by `fn` instead of a child.
 const cappedSpawn = vi.hoisted(() => ({ fn: null as null | ((args: string[], options: unknown) => string), options: [] as unknown[], attempts: [] as string[][] }));
+const judgeChild = vi.hoisted(() => ({ on: false, reply: '[]', spawns: [] as string[] }));
 vi.mock('node:child_process', async (orig) => {
   const m = await orig<typeof import('node:child_process')>();
   const execFileSync = ((...a: Parameters<typeof m.execFileSync>) => {
     const args = a[1] as string[] | undefined;
+    const script = String(args?.[0] ?? '');
+    if (judgeChild.on && /(usage-preflight|profile-settings|launch-record|claude-api)\.sh$/.test(script)) {
+      judgeChild.spawns.push(basename(script));
+      if (script.endsWith('claude-api.sh')) throw Object.assign(new Error('claude-api: refused in a test'), { status: 2 });
+      return (script.endsWith('usage-preflight.sh') ? 'PROCEED\n' : script.endsWith('profile-settings.sh') ? '/dev/null\n' : '') as never;
+    }
     if (sourceFixture.primary && a[0] === 'git' && args?.[0] === '-C'
       && args[1] === dirname(fileURLToPath(import.meta.url)) && args.at(-1) === '--git-common-dir') {
       return m.execFileSync('git', ['-C', sourceFixture.primary, ...args.slice(2)], a[2]);
@@ -51,7 +59,21 @@ vi.mock('node:child_process', async (orig) => {
     if (String((a[1] as string[] | undefined)?.[0] ?? '').endsWith('minerva-trace-lint.sh')) afterMinerva.fn?.();
     return r;
   }) as typeof m.execFileSync;
-  return { ...m, execFileSync };
+  const execFile = ((...a: unknown[]) => {
+    if (!judgeChild.on || a[0] !== 'claude') return (m.execFile as (...x: unknown[]) => unknown)(...a);
+    judgeChild.spawns.push('claude');
+    const done = a[3] as (err: Error | null, out: string, errOut: string) => void;
+    setImmediate(() => done(null, JSON.stringify({ is_error: false, result: judgeChild.reply }), ''));
+    return { stdin: { on: () => undefined, end: () => undefined } };
+  }) as typeof m.execFile;
+  const spawnSync = ((...a: Parameters<typeof m.spawnSync>) => {
+    if (judgeChild.on && String((a[1] as string[] | undefined)?.[0] ?? '').endsWith('api-roles.mjs')) {
+      judgeChild.spawns.push('api-roles.mjs');
+      return { status: 1, stdout: '', stderr: '', signal: null, pid: 0, output: [] } as never;
+    }
+    return m.spawnSync(...a);
+  }) as typeof m.spawnSync;
+  return { ...m, execFileSync, execFile, spawnSync };
 });
 import type { EventRow, IssueSnap, OperatorRow, RequestRow, RulingRow } from './types.js';
 import type { Getter } from './version-writes.js';
@@ -1660,14 +1682,43 @@ describe('rm-run: the on-demand release manager', () => {
     }
   });
 
-  it('a mirror row with a sector is not re-read from Jira', async () => {
+  it('every claimed key is read live, and a non-empty live field wins over the mirror (Live facts)', async () => {
     declared();
     mirror([{ key: 'K-2', fixVersions: [], sector: 'Visibility' }]);
     ask('K-2');
-    jira.live.set('K-2', { key: 'K-2', status: 'To Do', type: 'Task', priority: 'Medium', fixVersions: [], resolution: null, sector: 'Ship loop' });
+    jira.live.set('K-2', { key: 'K-2', status: 'In Progress', type: 'Task', priority: 'High', fixVersions: [], resolution: null, sector: 'Ship loop' });
     let seen: unknown;
     await rmRun(ctx(), async (input) => { seen = input.issues; return admitAll(input); });
+    expect(seen).toEqual([expect.objectContaining({ key: 'K-2', sector: 'Ship loop', priority: 'High', status: 'In Progress' })]);
+  });
+
+  it('a live read that fails falls back to the mirror, and a refusal on those facts says so (Live facts)', async () => {
+    declared();
+    mirror([{ key: 'K-2', fixVersions: [], sector: 'Visibility' }]);
+    ask('K-2');
+    jira.issue = async () => { throw new Error('jira down'); };
+    let seen: unknown;
+    const refuseAll: Judge = async (input) => { seen = input.issues; return input.requests.map((q) => ({ req: q.req, outcome: 'REFUSE' as const, ground: 'door:closed', reason: 'K-2 is closed' })); };
+    expect(await rmRun(ctx(), refuseAll)).toEqual(['REFUSED Q-R1-0001: door:closed: K-2 is closed (mirror facts)']);
     expect(seen).toEqual([expect.objectContaining({ key: 'K-2', sector: 'Visibility' })]);
+  });
+
+  it('live reads run at most eight at a time and every key is read once', async () => {
+    declared();
+    for (let i = 1; i <= 12; i++) ask(`K-${100 + i}`);
+    let open = 0;
+    let most = 0;
+    const read: string[] = [];
+    jira.issue = async (key: string) => {
+      read.push(key);
+      most = Math.max(most, ++open);
+      await new Promise((r) => setTimeout(r, 5));
+      open--;
+      return null;
+    };
+    await rmRun(ctx(), admitAll);
+    expect(most).toBe(8);
+    expect([...read].sort()).toEqual(Array.from({ length: 12 }, (_, i) => `K-${101 + i}`).sort());
   });
 
   it('a ruling Jira did not take is PENDING, and the next run applies it', async () => {
@@ -1763,11 +1814,7 @@ describe('release withdraw', () => {
   });
 });
 
-describe('rm-run bulk guard', () => {
-  const overrideRows = () => {
-    const p = process.env.HIMMEL_ADMISSIONS_LEDGER as string;
-    return existsSync(p) ? readFileSync(p, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as Record<string, string>).filter((r) => r.kind === 'override') : [];
-  };
+describe('rm-run has no count cap (I15)', () => {
   const askMany = (n: number) => {
     declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
     for (let i = 1; i <= n; i++) request(ctx(), { verb: 'INTAKE', key: `K-${100 + i}`, from_v: null, to_v: 'v1', why: 'found work', evidence: {}, from: 'console' });
@@ -1777,75 +1824,29 @@ describe('rm-run bulk guard', () => {
   }));
   const rulings = (lines: string[]) => lines.filter((l) => l.startsWith('RULING '));
 
-  it('refuses the 21st open move into the current version, unclaimed and pending for the next run', async () => {
+  it('21 new High tickets into the current version are all ruled in one run, with no override row', async () => {
+    vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', join(root, 'admissions-ledger.jsonl'));
     askMany(21);
+    mirror(Array.from({ length: 21 }, (_, i) => ({ key: `K-${101 + i}`, fixVersions: [], priority: 'High' })));
     const lines = await rmRun(ctx(), admitAll);
-    expect(rulings(lines)).toHaveLength(20);
-    expect(lines).toContainEqual(expect.stringMatching(/^PENDING Q-R1-0021: bulk guard/));
-    expect(jira.fv.get('K-121')).toBeUndefined();
-    expect(state(ctx()).requests).toMatchObject({ open: ['Q-R1-0021'], claimed: [] });
-    expect(overrideRows()).toEqual([]);
-  });
-
-  it('a run of exactly 20 passes unchanged', async () => {
-    askMany(20);
-    const lines = await rmRun(ctx(), admitAll);
-    expect(rulings(lines)).toHaveLength(20);
-    expect(lines.some((l) => /bulk guard/.test(l))).toBe(false);
+    expect(rulings(lines)).toHaveLength(21);
+    expect(lines.filter((l) => /bulk|PENDING/.test(l))).toEqual([]);
+    expect(jira.fv.get('K-121')).toEqual(['v1']);
     expect(state(ctx()).requests).toMatchObject({ open: [], claimed: [] });
+    const ledger = join(root, 'admissions-ledger.jsonl');
+    expect(existsSync(ledger) ? readFileSync(ledger, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l).kind).filter((k) => k === 'override') : []).toEqual([]);
   });
 
-  it('closed tickets do not count toward the 20', async () => {
-    askMany(21);
-    mirror([{ key: 'K-121', fixVersions: [], status: 'Done', category: 'Done', resolution: 'Done' }]);
-    expect(rulings(await rmRun(ctx(), admitAll))).toHaveLength(21);
-  });
-
-  it('--ruling passes the 21st and records the ref in the run output and in one ledger row', async () => {
-    askMany(21);
-    const lines = await rmRun(ctx(), admitAll, { ruling: '98' });
-    expect(rulings(lines)).toHaveLength(21);
-    expect(lines).toContain('bulk 21 lifted by ruling 98');
-    expect(overrideRows()).toEqual([expect.objectContaining({ version: 'v1', key: 'rm-run:R1', ruling: '98', reason: expect.stringMatching(/21 .*lifted by ruling 98/) })]);
-  });
-
-  it('--ruling on a run of 20 lifts nothing, so it records nothing', async () => {
-    askMany(20);
-    const lines = await rmRun(ctx(), admitAll, { ruling: '98' });
-    expect(rulings(lines)).toHaveLength(20);
-    expect(lines.some((l) => /lifted by ruling/.test(l))).toBe(false);
-    expect(overrideRows()).toEqual([]);
-  });
-
-  it('a chief override with the marker and a reason passes and writes one override row with the count', async () => {
-    vi.stubEnv('HIMMEL_CONSOLE', '1');
-    askMany(21);
-    const lines = await rmRun(ctx(), admitAll, { chiefOverride: 'operator ordered the reshuffle' });
-    expect(rulings(lines)).toHaveLength(21);
-    expect(overrideRows()).toEqual([expect.objectContaining({ version: 'v1', kind: 'override', reason: expect.stringMatching(/21 .*operator ordered the reshuffle/) })]);
-  });
-
-  it('a chief override without a reason or without the marker refuses before anything is claimed', async () => {
-    askMany(21);
-    await expect(rmRun(ctx(), admitAll, { chiefOverride: 'because' })).rejects.toThrow(/HIMMEL_CONSOLE=1/);
-    vi.stubEnv('HIMMEL_CONSOLE', '1');
-    await expect(rmRun(ctx(), admitAll, { chiefOverride: '  ' })).rejects.toThrow(/needs a reason/);
-    expect(state(ctx()).requests).toMatchObject({ claimed: [] });
-    expect(overrideRows()).toEqual([]);
-  });
-
-  it('a replay of older unfinished rulings is not a move: the voided requests are counted once, when re-ruled', async () => {
+  it('a replay of 21 unfinished rulings voids them and re-rules all 21 in the next run', async () => {
     askMany(21);
     const set = jira.setFixVersion;
     jira.setFixVersion = async () => { throw new Error('jira down'); };
-    await rmRun(ctx(), admitAll, { ruling: '98' });
+    await rmRun(ctx(), admitAll);
     jira.setFixVersion = set;
     const lines = await rmRun(ctx(), admitAll);
     expect(lines.filter((l) => l.startsWith('VOID '))).toHaveLength(21);
-    expect(rulings(lines)).toHaveLength(20);
-    expect(lines).toContainEqual(expect.stringMatching(/^PENDING Q-R1-00\d\d: bulk guard/));
+    expect(rulings(lines)).toHaveLength(21);
     expect(state(ctx()).requests).toMatchObject({ claimed: [] });
-    expect(overrideRows()).toHaveLength(1);
   });
 
   it('an unreadable mirror aborts the run without leaving the lease held', async () => {
@@ -1855,14 +1856,6 @@ describe('rm-run bulk guard', () => {
     await expect(rmRun(ctx(), admitAll)).rejects.toThrow();
     rmSync(join(root, 'mirror', 'bad.md'), { recursive: true });
     expect(rulings(await rmRun(ctx(), admitAll))).toHaveLength(2);
-  });
-
-  it('operator-authority rulings with a ref are covered and do not count', async () => {
-    askMany(21);
-    const keys = Array.from({ length: 21 }, (_, i) => `K-${101 + i}`);
-    const o = operatorDecision(ctx(), { decision: '243', keys, op: 'add', from_v: null, to_v: 'v1', verbatim: 'x' });
-    const viaOperator: Judge = async (input) => (await admitAll(input)).map((d) => ({ ...d, authority: 'operator' as const, ref: o.id }));
-    expect(rulings(await rmRun(ctx(), viaOperator))).toHaveLength(21);
   });
 });
 
@@ -4527,5 +4520,193 @@ describe('the release state carries the version lines', () => {
 
   it('a release that does not verify carries no lines', () => {
     expect(state(ctx()).version_lines).toEqual({});
+  });
+});
+
+describe('the door rules every request; no model is asked', () => {
+  beforeEach(() => {
+    vi.stubEnv('HIMMEL_API_CREDIT_STATE', join(mkdtempSync(join(tmpdir(), 'door-credit-')), 'credit.json'));
+    judgeChild.on = true;
+    judgeChild.spawns = [];
+    judgeChild.reply = JSON.stringify([{ req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', from: null, to: 'v1.1.3', sector: 'Planning & tracking', ground: 'model', reason: 'a model ruled', supersedes: [] }]);
+  });
+  afterEach(() => { judgeChild.on = false; });
+
+  it('judgeFor places a Medium INTAKE in the next version and an operator ask in current, with zero model spawns', async () => {
+    declare(ctx(), { project: 'HIMMEL', versions: ['v1.1.3', 'v1.1.4'], decision: '106', verbatim: 'R = v1.1.3 + v1.1.4', mode: 'observe' });
+    mirror([
+      { key: 'K-2', fixVersions: [], priority: 'Medium', sector: 'Planning & tracking' },
+      { key: 'K-3', fixVersions: [], priority: 'Medium', sector: 'Planning & tracking', labels: ['operator-directed'] },
+    ]);
+    request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1.1.3', why: 'found work', evidence: {}, from: 'console' });
+    request(ctx(), { verb: 'INTAKE', key: 'K-3', from_v: null, to_v: 'v1.1.3', why: 'the operator asked', evidence: {}, from: 'console' });
+    const { judgeFor } = await import('../commands/release.js');
+    const lines = await rmRun(ctx(), judgeFor(ctx()));
+    expect(lines).toContainEqual(expect.stringMatching(/^RULING R-R1-\d+ Q-R1-0001 INTAKE K-2 add backlog→v1\.1\.4 ADMIT next sector=Planning & tracking — door:mild: /));
+    expect(lines).toContainEqual(expect.stringMatching(/^RULING R-R1-\d+ Q-R1-0002 INTAKE K-3 add backlog→v1\.1\.3 ADMIT current sector=Planning & tracking — door:operator-ask: /));
+    expect(judgeChild.spawns.filter((s) => s === 'claude' || s === 'claude-api.sh')).toEqual([]);
+  });
+});
+
+describe('rmRun with the door', () => {
+  const declared2 = () => declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
+  const ask = (key: string, o: Partial<RequestRow> = {}) =>
+    request(ctx(), { verb: 'INTAKE', key, from_v: null, to_v: 'v1', why: 'found work', evidence: {}, from: 'console', ...o });
+  const rows = <T>(file: string): T[] => {
+    const p = join(ctx().dir, `${file}.jsonl`);
+    return existsSync(p) ? readChain<T>(p, loadKey(ctx().keyPath)).verified : [];
+  };
+  const kind = (v: unknown): string => (v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v);
+  const shape = (r: Record<string, unknown>): Record<string, string> => Object.fromEntries(Object.keys(r).sort().map((k) => [k, kind(r[k])]));
+  const seen: Decision[] = [];
+  const door: Judge = async (input) => { const d = await doorJudge(input); seen.push(...d); return d; };
+  beforeEach(() => { seen.length = 0; });
+
+  it('writes rows of the shape the base writer wrote, and the tick parses its receipt (I10)', async () => {
+    const golden = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'engine.i10-baseline.a070e4432.jsonl'), 'utf8').trim().split('\n')
+      .map((l) => JSON.parse(l) as { file: string; row: Record<string, unknown> });
+    declared2();
+    mirror([
+      { key: 'K-2', fixVersions: [], priority: 'Medium', sector: 'Planning & tracking' },
+      { key: 'K-3', fixVersions: [], priority: 'High', sector: 'Planning & tracking' },
+      { key: 'K-4', fixVersions: ['v2'], status: 'In Progress', category: 'In Progress', sector: 'Planning & tracking' },
+    ]);
+    jira.fv.set('K-4', ['v2']);
+    ask('K-2');
+    ask('K-3');
+    ask('K-4', { verb: 'REVERSION', from_v: 'v2', to_v: 'v1', why: 'started' });
+    vi.stubEnv('HIMMEL_CONSOLE', '1');
+    ask('K-5', { evidence: {} });
+    ask('K-5', { evidence: { chief_placement: { reason: 'the release needs it', ts: '2026-10-21T10:00:00.000Z' } } });
+    const lines = await rmRun(ctx(), door);
+    expect(lines.filter((l) => l.startsWith('RULING '))).toHaveLength(4);
+    const fresh = [
+      ...['requests', 'rulings', 'events'].flatMap((file) => rows<Record<string, unknown>>(file).map((row) => ({ file, row }))),
+      ...readFileSync(process.env.HIMMEL_ADMISSIONS_LEDGER!, 'utf8').split('\n').filter(Boolean).map((l) => ({ file: 'admissions', row: JSON.parse(l) as Record<string, unknown> })),
+    ];
+    const kindOf = (x: { file: string; row: Record<string, unknown> }) =>
+      `${x.file}:${String(x.row.state ?? x.row.phase ?? x.row.kind ?? '').replace(/:.*/, '')}`;
+    const goldenShapes = new Map<string, Record<string, string[]>>();
+    for (const g of golden) {
+      const acc = goldenShapes.get(kindOf(g)) ?? {};
+      for (const [f, t] of Object.entries(shape(g.row))) acc[f] = [...new Set([...(acc[f] ?? []), t])];
+      goldenShapes.set(kindOf(g), acc);
+    }
+    expect([...goldenShapes.keys()].sort()).toEqual(['admissions:rm-admit', 'admissions:rm-remove', 'events:ruled', 'requests:claimed', 'requests:open', 'requests:ruled', 'rulings:applied', 'rulings:intent', 'rulings:receipted']);
+    for (const [k, want] of goldenShapes) {
+      const mine = fresh.filter((x) => kindOf(x) === k);
+      expect(mine.length, k).toBeGreaterThan(0);
+      for (const x of mine) {
+        const got = shape(x.row);
+        for (const [f, t] of Object.entries(got)) expect(want[f], `${k}.${f}`).toContain(t);
+      }
+      expect(Object.keys(shape(mine[0].row)).sort(), k).toEqual(Object.keys(shape(golden.find((g) => kindOf(g) === k)!.row)).sort());
+    }
+    const tick = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'handover', 'chief-kit', 'tick.sh'), 'utf8');
+    const parse = /rm = (re\.match\(r"\\\[release-ruling .*?", rl\[-1\]\))/.exec(tick)?.[1];
+    expect(parse).toBeDefined();
+    const receipt = jira.comments.get('K-2')![0].body.split('\n')[0];
+    const py = spawnSync('python3', ['-c', `import re,sys\nrl=[sys.argv[1]]\nrm=${parse}\nprint(rm[1], rm[2], rm[3])`, receipt], { encoding: 'utf8' });
+    expect(py.stdout.trim(), py.stderr).toBe('K-2 v2 ADMIT');
+  });
+
+  it('a door REFUSE closes the request as refused, with no ruling and no HELD line, and files the request its rule O row queues (T1)', async () => {
+    declared2();
+    mirror([{ key: 'K-2', fixVersions: ['v1'] }]);
+    jira.fv.set('K-2', ['v1']);
+    const o = operatorDecision(ctx(), { decision: '243', keys: ['K-2'], op: 'discharge', from_v: 'v1', to_v: 'v1', verbatim: 'x' });
+    const q = ask('K-2', { verb: 'REVERSION', from_v: 'v1', to_v: 'v2', why: 'later' });
+    const lines = await rmRun(ctx(), door);
+    expect(lines).toEqual([
+      expect.stringMatching(new RegExp(`^REFUSED ${q.req}: door:operator:${o.id}: `)),
+      expect.stringMatching(new RegExp(`^QUEUED Q-R1-0002: DISCHARGE K-2 for ${o.id}$`)),
+    ]);
+    expect(rows<RulingRow>('rulings')).toEqual([]);
+    const reqs = rows<RequestRow>('requests');
+    const queued = reqs.filter((r) => r.req === 'Q-R1-0002');
+    expect(queued.at(-1)).toMatchObject({ verb: 'DISCHARGE', key: 'K-2', from: 'rm', evidence: { operator_record: o.id }, state: 'open' });
+    expect(Object.keys(queued[0]).sort()).toEqual(Object.keys(reqs[0]).sort());
+    expect(reqs.filter((r) => r.req === q.req).at(-1)?.state).toMatch(/^refused/);
+  });
+
+  it('a key with two waiting requests is ruled once per run; the later request waits for the next', async () => {
+    declared2();
+    mirror([{ key: 'K-2', fixVersions: [] }]);
+    const a = ask('K-2');
+    const b = ask('K-2', { to_v: 'v2', why: 'found more work' });
+    const lines = await rmRun(ctx(), door);
+    expect(lines.filter((l) => l.startsWith('RULING '))).toEqual([expect.stringContaining(` ${a.req} INTAKE K-2 `)]);
+    expect(state(ctx()).requests).toMatchObject({ open: [b.req], claimed: [] });
+  });
+
+  it('a door ruling that leaves no version puts the backlog label on, an ADMIT takes it off, and a port that cannot add labels is PENDING (I6)', async () => {
+    declare(ctx(), { project: 'HIMMEL', versions: ['v1'], decision: '106', verbatim: 'R = v1', mode: 'observe' });
+    mirror([{ key: 'K-2', fixVersions: [] }, { key: 'K-3', fixVersions: [], priority: 'High' }]);
+    jira.lbl.set('K-3', ['backlog']);
+    ask('K-2');
+    ask('K-3');
+    const added: Array<[string, string[]]> = [];
+    (jira as unknown as DoorJiraPort).addLabels = async (key, labels) => { added.push([key, labels]); };
+    const lines = await rmRun(ctx(), door);
+    expect(lines).toContainEqual(expect.stringMatching(/^RULING R-R1-\d+ Q-R1-0001 INTAKE K-2 none backlog→backlog BACKLOG .* door:mild-no-next: /));
+    expect(added).toEqual([['K-2', ['backlog']]]);
+    expect(jira.labelPuts).toContainEqual({ key: 'K-3', labels: ['backlog'] });
+    delete (jira as unknown as DoorJiraPort).addLabels;
+    mirror([{ key: 'K-4', fixVersions: [] }]);
+    ask('K-4');
+    expect(await rmRun(ctx(), door)).toContainEqual(expect.stringMatching(/^PENDING R-R1-\d+: the backlog label on K-4: this Jira port cannot add labels$/));
+  });
+
+  it('a rule O remove sends the key to the backlog with the label (I6)', async () => {
+    declared2();
+    mirror([{ key: 'K-2', fixVersions: ['v1'] }]);
+    jira.fv.set('K-2', ['v1']);
+    ask('K-2', { to_v: 'v2' });
+    operatorDecision(ctx(), { decision: '243', keys: ['K-2'], op: 'remove', from_v: 'v1', to_v: null, verbatim: 'x' });
+    const added: string[] = [];
+    (jira as unknown as DoorJiraPort).addLabels = async (key) => { added.push(key); };
+    expect(await rmRun(ctx(), door)).toContainEqual(expect.stringMatching(/^RULING .* INTAKE K-2 remove v1→backlog BACKLOG /));
+    expect(jira.fv.get('K-2')).toEqual([]);
+    expect(added).toEqual(['K-2']);
+  });
+
+  it('rule() writes the door\'s op, outcome, authority and supersedes, but for the named exception (I14)', async () => {
+    declared2();
+    mirror([{ key: 'K-2', fixVersions: [] }, { key: 'K-3', fixVersions: [] }]);
+    const intentOf = (req: string) => rows<RulingRow>('rulings').find((r) => r.req === req && r.phase === 'intent')!;
+    const same = (req: string) => {
+      const d = seen.find((x) => x.req === req) as RuledDecision;
+      const r = intentOf(req);
+      expect({ op: r.op.kind, outcome: r.outcome, authority: r.authority.kind, supersedes: r.supersedes })
+        .toEqual({ op: d.op, outcome: d.outcome, authority: d.authority ?? 'rm', supersedes: d.supersedes ?? [] });
+    };
+    const placedBy = operatorDecision(ctx(), { decision: '243', keys: ['K-2'], op: 'add', from_v: null, to_v: 'v2', verbatim: 'x' });
+    const first = ask('K-2', { to_v: 'v2' });
+    await rmRun(ctx(), door);
+    same(first.req);
+    expect(intentOf(first.req).authority).toEqual({ kind: 'operator', ref: placedBy.id });
+    mirror([{ key: 'K-2', fixVersions: ['v2'], priority: 'High' }, { key: 'K-3', fixVersions: [] }]);
+    const again = ask('K-2');
+    const lines = await rmRun(ctx(), door);
+    expect(lines).toContainEqual(expect.stringMatching(new RegExp(`^RULING R-R1-\\d+ ${again.req} INTAKE K-2 none .* AD-HOC .* door:operator-standing:`)));
+    same(again.req);
+    const o3 = operatorDecision(ctx(), { decision: '244', keys: ['K-3'], op: 'add', from_v: null, to_v: 'v1', verbatim: 'x' });
+    const rev = ask('K-3', { verb: 'REVERSION', from_v: null, to_v: 'v1', why: 'the operator placed it' });
+    await rmRun(ctx(), door);
+    expect(seen.find((x) => x.req === rev.req)).toMatchObject({ outcome: 'MOVE', op: 'move', from: null, to: 'v1', ref: o3.id });
+    expect(intentOf(rev.req)).toMatchObject({ op: { kind: 'add', from_v: null, to_v: 'v1' }, authority: { kind: 'operator', ref: o3.id } });
+  });
+
+  it('the live read wins field by field: labels place rule A, In Progress places rule W, a null sector keeps the mirror\'s (Live facts)', async () => {
+    declared2();
+    mirror([{ key: 'K-2', fixVersions: [], sector: 'Visibility' }, { key: 'K-3', fixVersions: [], sector: 'Visibility' }]);
+    const live = (key: string, o: Partial<IssueSnap>): IssueSnap => ({ key, status: 'To Do', statusCategory: 'To Do', type: 'Task', priority: '', fixVersions: [], resolution: null, sector: null, labels: [], ...o });
+    jira.live.set('K-2', live('K-2', { labels: ['operator-directed'] }));
+    jira.live.set('K-3', live('K-3', { status: 'In Progress', statusCategory: 'In Progress' }));
+    ask('K-2', { to_v: 'v1' });
+    ask('K-3', { to_v: 'v2' });
+    const lines = await rmRun(ctx(), door);
+    expect(lines).toContainEqual(expect.stringMatching(/^RULING .* INTAKE K-2 add backlog→v1 ADMIT current sector=Visibility — door:operator-ask: /));
+    expect(lines).toContainEqual(expect.stringMatching(/^RULING .* INTAKE K-3 add backlog→v1 ADMIT current sector=Visibility — door:started: /));
   });
 });

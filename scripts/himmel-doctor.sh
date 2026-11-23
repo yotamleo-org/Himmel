@@ -2509,6 +2509,87 @@ check_c97_codex_mcp_literal_key() {
         "write each value to a 0600 file ~/.config/himmel/mcp-secrets/<server>/<VAR> (e.g. .../$first_srv/$first_var), set the server's command to node with args [$REPO_ROOT/scripts/mcp/secret-launch.mjs, <server>, <the real command>, <its args>], keep only non-secret variables in the env table of $cfg_q, restart Codex, then rotate the key — the doctor does not edit codex config"
 }
 
+check_c98_wrapped_window() {
+    local min bucket root slug common repo rows rc pid name doc docs=() dated=() aged=() g now mt kind lingering="" unread=""
+    min="${HIMMEL_DOCTOR_WRAPPED_MIN:-15}"
+    case "$min" in ''|*[!0-9]*) min=15 ;; esac
+    min=$((10#$min))
+    bucket="${HIMMEL_BUCKET_DIR:-}"
+    if [ -z "$bucket" ]; then
+        load_dotenv --root "$REPO_ROOT" HANDOVER_DIR USER_SLUG >/dev/null 2>&1 || true
+        root="$(doctor_handover_root 2>/dev/null)" || root=""
+        # shellcheck source=lib/user-slug.sh
+        # shellcheck disable=SC1091
+        slug="$(cd "$REPO_ROOT" 2>/dev/null && . "$SELF_DIR/lib/user-slug.sh" && user_slug 2>/dev/null)" || slug=""
+        common="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common=""
+        if [ -n "$common" ]; then repo="$(basename "$(dirname "$common")")"; else repo="$(basename "$REPO_ROOT")"; fi
+        [ -z "$root" ] || [ -z "$slug" ] || bucket="$root/$slug/$repo"
+    fi
+    if [ -z "$bucket" ] || [ ! -d "$bucket" ]; then
+        emit INFO C98-wrapped-window "no handover bucket resolved${bucket:+ ($bucket is not a directory)} -- wrapped windows not checked"
+        return 0
+    fi
+    # shellcheck source=lanes/lib/claude-sessions.sh
+    # shellcheck disable=SC1091
+    . "$SELF_DIR/lanes/lib/claude-sessions.sh" || { emit INFO C98-wrapped-window "cannot load claude-sessions.sh -- wrapped windows not checked"; return 0; }
+    rows="$(claude_sessions 2>/dev/null)"; rc=$?
+    if [ "$rc" -ne 0 ] && { [ "$rc" -ne 3 ] || [ -z "$rows" ]; }; then
+        emit INFO C98-wrapped-window "the live session census failed (rc $rc) -- wrapped windows not checked"
+        return 0
+    fi
+    [ "$rc" -eq 0 ] || unread="the census could not read every live session"
+    while IFS=$'\t' read -r pid name _; do
+        case "$pid" in ''|'#'*) continue ;; esac
+        [[ $name =~ ^(.+)-r[0-9]+$ ]] && name="${BASH_REMATCH[1]}"
+        case "$name" in ''|.*|*[!A-Za-z0-9._#+-]*) continue ;; esac
+        doc="$bucket/$name.md"
+        if [ ! -f "$doc" ]; then
+            dated=()
+            for g in "$bucket/$name"-[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md; do [ ! -f "$g" ] || dated+=("$g"); done
+            [ "${#dated[@]}" -ne 1 ] || doc="${dated[0]}"
+        fi
+        [ -f "$doc" ] && [ ! -L "$doc" ] || continue
+        case " ${docs[*]-} " in *" $doc "*) continue ;; esac
+        docs+=("$doc")
+    done <<< "$rows"
+    now="$(date +%s)"
+    aged=()
+    for doc in ${docs[@]+"${docs[@]}"}; do
+        [ -r "$doc" ] || { unread="${unread:+$unread; }cannot read $doc"; continue; }
+        mt="$(stat -c %Y "$doc" 2>/dev/null || stat -f %m "$doc" 2>/dev/null)" || mt=""
+        case "$mt" in
+            ''|*[!0-9]*) unread="${unread:+$unread; }cannot read the age of $doc" ;;
+            *) [ $(( now - mt )) -lt $(( min * 60 )) ] || aged+=("$doc") ;;
+        esac
+    done
+    docs=(${aged[@]+"${aged[@]}"})
+    if [ "${#docs[@]}" -gt 0 ]; then
+        while IFS=$'\t' read -r kind doc; do
+            [ -n "$doc" ] || continue
+            bash "$SELF_DIR/handover/queue-lock.sh" status "$doc" </dev/null >/dev/null 2>&1 || continue
+            lingering="${lingering:+$lingering, }$(basename "$doc" .md) ($kind)"
+        done <<< "$(awk '
+            function emit() { if (l ~ /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?WRAPPED([^A-Za-z0-9_]|$)/) print kind "\t" f }
+            FNR == 1 { if (f != "") emit(); f = FILENAME; kind = ($0 ~ / — CHIEF — /) ? "chief" : "worker"; r = 0; seen = 0; fence = ""; l = "" }
+            /^ {0,3}(```|~~~)/ { d = $0; sub(/^ */, "", d); d = substr(d, 1, 3); if (fence == "") fence = d; else if (d == fence) fence = ""; next }
+            fence != "" { next }
+            /^## Results([ \t]|$)/ { r = 1; seen = 1; next }
+            /^## / { r = seen && ($0 ~ /^## (Chief|Console) Rulings([ \t]|$)/); next }
+            r && /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/ { l = $0 }
+            END { if (f != "") emit() }' "${docs[@]}" 2>/dev/null)"
+    fi
+    if [ -z "$lingering" ] && [ -n "$unread" ]; then
+        emit INFO C98-wrapped-window "no wrapped, lock-free window found past $min min, but not every session was read ($unread) -- not judged clean"
+        return 0
+    fi
+    if [ -z "$lingering" ]; then
+        emit OK C98-wrapped-window "no wrapped, lock-free chief or worker window in $bucket has stayed open past $min min"
+        return 0
+    fi
+    emit WARN C98-wrapped-window "wrapped, lock-free window(s) still open past $min min: $lingering -- each idle window still draws the subscription budget" \
+        "for each: bash $REPO_ROOT/scripts/handover/chief-kit/close-wrapped-worker.sh --check [--chief for a chief] $bucket/<name>.md, then the same without --check; a chief's waiter closes these on its own each sample, so check that one is armed"
+}
+
 # --- C35: VM after-report runner reachable -------------------
 # Advisory only — scripts/vm/after-report.sh has its own loud fallback to the
 # host invocation when the VM runner is unavailable, so nothing here is ever
@@ -6089,6 +6170,7 @@ run_check C94 check_c94_graph_config
 run_heavy C95 check_c95_barrier_off C95-barrier-off
 run_check C96 check_c96_jira_test_project
 run_check C97 check_c97_codex_mcp_literal_key
+run_check C98 check_c98_wrapped_window
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
