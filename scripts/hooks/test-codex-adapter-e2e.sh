@@ -1,16 +1,4 @@
 #!/usr/bin/env bash
-# Through-adapter e2e for the codex-direct lane. Drives
-# .codex/codex-hook-adapter.sh END-TO-END with CLAUDE_PROJECT_DIR pointed at
-# THIS checkout so the adapter runs the real guardrails under scripts/hooks/.
-# Asserts exit-2 blocks translate to Codex JSON `permissionDecision:"deny"` and
-# benign inputs pass through for:
-#   (a) secret-read via block-read-secrets.sh,
-#   (b)/(b') external-write + benign allow via block-terminal-write-fence.sh,
-#   (c) destructive command via block-destructive-commands.sh,
-#   (d) T3 thread tools via guard-t3-thread-tools.sh,
-#   (e) T3 open-PR unwatch via block-t3code-unwatch-open-pr.sh, and
-#   (f) the wired .codex/hooks.json mcp__.* chain (deny + benign allow).
-# Companion to scripts/hooks/test-codex-run-hook.sh; hermetic (stubbed gh).
 set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"
