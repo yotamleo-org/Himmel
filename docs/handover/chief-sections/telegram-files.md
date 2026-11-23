@@ -34,7 +34,13 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   seals the page must also be clean, or the send is refused naming it; a plan in `plans/` that has a same-named spec in a
   `design`/`designs`/`spec` folder with spec critic files is governed by that spec. A `<stem>.html`
   sign page beside a `<stem>.md` is governed by the `.md`'s critics first: it goes only when the `.md`'s
-  latest spec critic is clean and also sealed that `.html`. A folder that cannot be listed refuses the
+  latest spec critic is clean and also sealed that `.html`. A companion page `<stem>.<suffix>.html` (an
+  executive brief or another summary) beside a `<stem>.md` and with no critic file of its own is governed by
+  the `.md`'s seal, clean or capped as above, and needs one more record: its latest page critic
+  `<page>.critic-page-r<n>.md` beside it ends `PAGE CLEAN` and seals the page's exact bytes. Seal it with
+  `critic-seal.sh <page>.critic-page-r<n>.md <page> <sha256 the critic quoted>`; a page seal adds no
+  ledger row. The refusal names which record is missing, the parent's seal or the page critic, and the
+  caption adds `PAGE CLEAN r<n>`. A folder that cannot be listed refuses the
   send, naming the folder. The latest critic file of each kind, clean or not, must also pass
   `bun scripts/telegram/chief-route.ts ledger-verify <verdict file>`: its return is a sealed round of its ticket in
   the round ledger (`specs/ledgers/spec-rounds/<KEY>.jsonl`), it is that kind's latest round, and each

@@ -1787,6 +1787,84 @@ test("critic-seal.sh seals each distinct file a critic read, and refuses only th
   expect(lines.at(-2)).toBe("SPEC CLEAN");
 });
 
+// A companion page (`<spec stem>.<suffix>.html` beside the spec) is governed by its parent spec's seal and its own page critic.
+const BRIEF = "<!doctype html><html><head><title>brief</title></head><body>\n<p>the executive brief</p>\n</body></html>\n";
+const companion = (dir: string, text = BRIEF, verdict = "PAGE CLEAN") => {
+  const page = join(dir, "HIMMEL-1-design.exec-brief.html"); writeFileSync(page, text);
+  writeFileSync(`${page}.critic-page-r1.md`, `page critic return, read ${sha(text)}\nCONTENT-SHA256 ${sha(text)} HIMMEL-1-design.exec-brief.html\n${verdict}\n`);
+  return page;
+};
+
+test("send-file sends a companion page of a sealed spec once a page critic passed its bytes, with both verdicts in the caption", async () => {
+  const r = root(); const b = bundle(r); const page = companion(b.dir);
+  const res = await sendFile(r, "1", page);
+  expect(res.err).toBe("");
+  expect(res.code).toBe(0);
+  expect(res.lines[0].caption).toBe("SPEC CLEAN r1 | PLAN CLEAN r1 | PAGE CLEAN r1");
+  expect(readFileSync(res.lines[0].document_path as string, "utf8")).toBe(BRIEF);
+});
+
+test("send-file refuses a companion page of a sealed spec that has no page critic, naming the page critic file and the command that seals it", async () => {
+  const r = root(); const b = bundle(r);
+  const page = join(b.dir, "HIMMEL-1-design.exec-brief.html"); writeFileSync(page, BRIEF);
+  const res = await sendFile(r, "1", page);
+  expect(res.code).not.toBe(0);
+  expect(res.lines).toEqual([]);
+  expect(res.err).toContain("companion page of HIMMEL-1-design.md and has no page critic file (");
+  expect(res.err).toContain("HIMMEL-1-design.exec-brief.html.critic-page-r<n>.md");
+  expect(res.err).toContain("bash scripts/handover/chief-kit/critic-seal.sh");
+  expect(res.err).not.toContain("spec critic file");
+});
+
+test("send-file refuses a companion page whose parent spec has no sealed critic, naming the parent's critic file even when the page critic passed", async () => {
+  const r = root(); const dir = join(r, "specs", "designs"); mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "HIMMEL-1-design.md"), "# Design\n\nthe spec\n");
+  const page = companion(dir);
+  const res = await sendFile(r, "1", page);
+  expect(res.code).not.toBe(0);
+  expect(res.lines).toEqual([]);
+  expect(res.err).toContain("companion page of HIMMEL-1-design.md, and its parent seal is missing");
+  expect(res.err).toContain("HIMMEL-1-design.md.critic-spec-r<n>.md");
+});
+
+test("send-file refuses a companion page edited after its page critic read it, and one whose page critic did not end PAGE CLEAN", async () => {
+  const r = root(); const b = bundle(r); const page = companion(b.dir);
+  writeFileSync(page, BRIEF.replace("executive brief", "executive brief, edited"));
+  const edited = await sendFile(r, "1", page);
+  expect(edited.code).not.toBe(0);
+  expect(edited.err).toContain("HIMMEL-1-design.exec-brief.html changed since the page critic read it");
+  companion(b.dir, BRIEF, "PAGE FINDINGS 1");
+  const findings = await sendFile(r, "1", page);
+  expect(findings.code).not.toBe(0);
+  expect(findings.err).toContain("critic-page-r1.md: the latest page critic ended 'PAGE FINDINGS 1', not 'PAGE CLEAN'");
+  expect(existsSync(join(r, "outgoing"))).toBe(false);
+});
+
+test("critic-seal.sh seals a PAGE CLEAN page critic return and never moves the parent spec's round ledger, and refuses a page critic file that ends in a spec verdict", async () => {
+  const r = root(); const { dir, spec } = await sealSpec(r);
+  const v = `${spec}.critic-spec-r1.md`; writeFileSync(v, `read ${sha(D_FM)}\nSPEC CLEAN\n`);
+  expect((await seal(v, spec, sha(D_FM))).code).toBe(0);
+  const { readdirSync } = await import("node:fs");
+  const ledgerRoot = join(r, "specs", "ledgers");
+  const ledger = () => (readdirSync(ledgerRoot, { recursive: true }) as string[]).sort().filter((n) => statSync(join(ledgerRoot, n)).isFile()).map((n) => [n, readFileSync(join(ledgerRoot, n), "utf8")]);
+  const before = { status: (await routeCli("round-status", "HIMMEL-1", "--specs", join(r, "specs"))).out, ledger: ledger() };
+  expect(before.status).not.toBe("");
+  const page = join(dir, "HIMMEL-1-d.exec-brief.html"); writeFileSync(page, BRIEF);
+  const pv = `${page}.critic-page-r1.md`; writeFileSync(pv, `page critic return, read ${sha(BRIEF)}\nPAGE CLEAN\n`);
+  const ok = await seal(pv, page, sha(BRIEF));
+  expect(ok.err).toBe("");
+  expect(ok.code).toBe(0);
+  expect(readFileSync(pv, "utf8")).toBe(`page critic return, read ${sha(BRIEF)}\nCONTENT-SHA256 ${sha(BRIEF)} HIMMEL-1-d.exec-brief.html\nPAGE CLEAN\n`);
+  const pv2 = `${page}.critic-page-r2.md`; writeFileSync(pv2, `page critic return, read ${sha(BRIEF)}\nSPEC CLEAN\n`);
+  const wrong = await seal(pv2, page, sha(BRIEF));
+  expect(wrong.code).not.toBe(0);
+  expect(wrong.err).toContain("not PAGE CLEAN or PAGE FINDINGS <n>");
+  const sv = `${spec}.critic-spec-r2.md`; writeFileSync(sv, `read ${sha(D_FM)}\nPAGE CLEAN\n`);
+  expect((await seal(sv, spec, sha(D_FM))).code).not.toBe(0);
+  rmSync(sv);
+  expect({ status: (await routeCli("round-status", "HIMMEL-1", "--specs", join(r, "specs"))).out, ledger: ledger() }).toEqual(before);
+});
+
 // A spec critic that read several files seals each one.
 const criticSeals = (spec: string, kind: "spec" | "plan", round: number, verdict: string, sealed: { text: string; file: string }[]) =>
   writeFileSync(`${spec}.critic-${kind}-r${round}.md`, `critic return, round ${round}\n${sealed.map((s) => `CONTENT-SHA256 ${sha(s.text)} ${s.file}\n`).join("")}${verdict}\n`);

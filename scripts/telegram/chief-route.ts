@@ -610,7 +610,7 @@ function criticDirs(page: string): string[] {
 
 // How a page relates to the spec whose critic files govern it: the spec itself, a rendering of it
 // (`<stem>.html` beside `<stem>.md`), or its plan (the same-named file in a plans folder, or sealed by some plan critic round of that spec).
-type Role = "spec" | "render" | "plan";
+type Role = "spec" | "render" | "plan" | "companion";
 const siblingMd = (page: string) => (/\.html?$/i.test(page) ? page.replace(/\.html?$/i, ".md") : null);
 const isFile = (p: string) => stat(p).then(s => s.isFile(), () => false);
 
@@ -1909,7 +1909,31 @@ async function markedSource(page: string): Promise<string | null> {
   return real;
 }
 
-export type VerdictLine = { kind: "spec" | "plan"; round: number; file: string; verdict: string };
+export type VerdictLine = { kind: "spec" | "plan" | "page"; round: number; file: string; verdict: string };
+
+const companionParent = async (page: string) => {
+  const m = /^(.+)\.[^./]+\.html?$/i.exec(page);
+  return m && await isFile(`${m[1]}.md`) ? `${m[1]}.md` : null;
+};
+
+const PAGE_CLEAN = "PAGE CLEAN";
+async function pageCriticOf(page: string, spec: string, bytes: Buffer): Promise<VerdictLine> {
+  const base = basename(page); let latest: { path: string; round: number } | null = null;
+  for (const n of await listDir(dirname(page))) {
+    const m = n.startsWith(base + ".") ? /^\.critic-page-r(\d+)\.md$/.exec(n.slice(base.length)) : null;
+    if (m && (!latest || Number(m[1]) > latest.round)) latest = { path: join(dirname(page), n), round: Number(m[1]) };
+  }
+  const q = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
+  const sealCmd = (v: string) => `bash scripts/handover/chief-kit/critic-seal.sh ${q(v)} ${q(page)} <sha256 the critic quoted>`;
+  if (!latest) throw new Error(`${base} is a companion page of ${basename(spec)} and has no page critic file (${page}.critic-page-r<n>.md); run a page critic on these bytes, save its return there ending '${PAGE_CLEAN}', then seal it: ${sealCmd(`${page}.critic-page-r1.md`)}; the page is not sent`);
+  const text = await readCritic(latest.path); const last = lastLine(text);
+  if (last !== PAGE_CLEAN) throw new Error(`${latest.path}: the latest page critic ended '${last}', not '${PAGE_CLEAN}'; the page is not sent`);
+  const seals = [];
+  for (const s of sealsOf(text)) if (await realpath(resolve(dirname(latest.path), s.rel)).catch(() => "") === page) seals.push(s);
+  if (!seals.length) throw new Error(`${latest.path} has no CONTENT-SHA256 line naming ${base}, so it does not record the bytes it read; seal it: ${sealCmd(latest.path)}; the page is not sent`);
+  if (!seals.every(s => s.sha === sha256(bytes))) throw new Error(`${latest.path}: ${base} changed since the page critic read it; re-run the page critic; the page is not sent`);
+  return { kind: "page", round: latest.round, file: basename(latest.path), verdict: last };
+}
 
 // null = not a signature page (sends as before); throws, naming the verdict file, when the page may not be sent.
 // `bytes` are the page's bytes as read once here: the caller sends THOSE, so an edit after the check cannot slip through.
@@ -1922,15 +1946,17 @@ export async function checkSignaturePage(abs: string): Promise<{ verdicts: Verdi
   let g = source ? { spec: source, role: "render" as Role } : await governingSpec(page);
   if (!g) {
     if (![abs, page].some(underSignaturePath)) return null;
-    const md = siblingMd(page);
-    g = md && await isFile(md) ? { spec: md, role: "render" } : { spec: page, role: "spec" };
+    const md = siblingMd(page); const parent = await companionParent(page);
+    g = md && await isFile(md) ? { spec: md, role: "render" } : parent ? { spec: parent, role: "companion" } : { spec: page, role: "spec" };
   }
   const { spec, role } = g;
   const specReal = await realpath(spec).catch(() => spec);
   const bytes = await readFile(page);
   if (new RegExp(NOT_FOR_SIGNATURE, "i").test(bytes.toString("utf8"))) throw new Error(`${basename(page)} still says "Not for signature"; a page a critic passed must not, and the critic must read the final bytes; the page is not sent`);
   const critics = await latestCritics(spec);
-  for (const kind of KINDS) if (!critics[kind]) throw new Error(`${basename(page)} is a spec or plan page and has no ${kind} critic file (${spec}.critic-${kind}-r<n>.md); run the ${kind} critic first`);
+  for (const kind of KINDS) if (!critics[kind]) throw new Error(role === "companion"
+    ? `${basename(page)} is a companion page of ${basename(spec)}, and its parent seal is missing: ${basename(spec)} has no ${kind} critic file (${spec}.critic-${kind}-r<n>.md); run the ${kind} critic on ${basename(spec)}, then seal its return: bash scripts/handover/chief-kit/critic-seal.sh <that file> <file the critic read> <sha256 the critic quoted>; the page is not sent`
+    : `${basename(page)} is a spec or plan page and has no ${kind} critic file (${spec}.critic-${kind}-r<n>.md); run the ${kind} critic first`);
   const key = keyOf(specReal); const specs = specsRootOf(specReal);
   if (!key || !specs) throw new Error(`${spec}: has no ticket key under a specs folder, so its rounds cannot be read from a ledger; name the spec <KEY>-<slug>.md or put it in specs/<KEY>/; the page is not sent`);
   const state = await roundState(specs, key);
@@ -1967,6 +1993,7 @@ export async function checkSignaturePage(abs: string): Promise<{ verdicts: Verdi
     if (kind === "plan" && role === "plan" && !sealed.has(page)) throw new Error(`${governing.path} does not seal ${basename(page)}`);
     verdicts.push({ kind, round: governing.lv.round, file: basename(governing.path), verdict: last });
   }
+  if (role === "companion") verdicts.push(await pageCriticOf(page, spec, bytes));
   return { verdicts, bytes, lead: open.size || state.critical_open.length ? await openFindingsBlock(open, state, verified, state.critical_open) : "" };
 }
 
