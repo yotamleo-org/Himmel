@@ -2509,12 +2509,6 @@ check_c97_codex_mcp_literal_key() {
         "write each value to a 0600 file ~/.config/himmel/mcp-secrets/<server>/<VAR> (e.g. .../$first_srv/$first_var), set the server's command to node with args [$REPO_ROOT/scripts/mcp/secret-launch.mjs, <server>, <the real command>, <its args>], keep only non-secret variables in the env table of $cfg_q, restart Codex, then rotate the key — the doctor does not edit codex config"
 }
 
-# --- C98-wrapped-window: a wrapped, lock-free chief or worker window still open ---
-# A live `claude -n <name>` session (a relaunch -r<N> dropped) whose bucket doc <name>.md has a
-# WRAPPED newest marker bullet, a free queue lock and no change for HIMMEL_DOCTOR_WRAPPED_MIN
-# minutes (default 15) is a finished window still drawing budget: a chief's waiter closes
-# these each sample, so one that lingers means no waiter is sweeping or the close refused.
-# The bucket is HIMMEL_BUCKET_DIR, else <handover root>/<user slug>/<repo>. Read only.
 check_c98_wrapped_window() {
     local min bucket root slug common repo rows rc pid name doc docs=() stats now mt kind lingering=""
     min="${HIMMEL_DOCTOR_WRAPPED_MIN:-15}"

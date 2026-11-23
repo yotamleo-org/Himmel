@@ -2681,7 +2681,7 @@ rm -rf "$c97_t"
 c98_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c98.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
 c98_b="$c98_t/root/u/himmel"
 mkdir -p "$c98_b" "$c98_t/home" "$c98_t/claude" "$c98_t/proc"
-# shellcheck disable=SC2016  # the stub body expands when the stub runs
+# shellcheck disable=SC2016
 printf '#!/usr/bin/env bash\nls "$CLAUDE_SESSIONS_PROC"\n' > "$c98_t/pgrep"; chmod +x "$c98_t/pgrep"
 c98_session() { mkdir -p "$c98_t/proc/$1"; printf 'claude\0-n\0%s\0' "$2" > "$c98_t/proc/$1/cmdline"; }
 c98_doc() {
