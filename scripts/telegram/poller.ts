@@ -10,7 +10,7 @@ import { routeToConsole, routeFleetCommand, routeApprove, staleConsoleCommand, c
 import { dispatchAutoAction, describeEnabledOps, KNOWN_OPS, CONFIRM_OPS, BREAK_GLASS_OPS, appendAuditLine, type RunScriptFn, type AuditFields } from "./auto-action";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getUpdates, getMe, sendMessage, sendMessageResult, sendDocument, sendChatAction, answerCallbackQuery, getFile, downloadFile, redactChatId, TelegramApiError } from "./telegram-api";
-import { startPeerNotify } from "./peer-notify-route";
+import { makePeerReplyRoute, startPeerNotify } from "./peer-notify-route";
 import { installTimestampedLogging } from "./log-timestamp";
 import { lockdownEnabled } from "./lockdown";
 import { cwdForChat, isAllowed, isGroupAllowed, isOperatorIdentity, loadAccess, operatorChatId, requireMentionForChat, vaultForChat, type Access } from "./gate";
@@ -446,11 +446,13 @@ export type OperatorFn = (fromId: number, chatId: number, senderChatId?: number)
 export type AutoFire = (msg: DeliveredMsg, route: Extract<Route, { kind: "auto" }>) => void;
 // afkSudo: the AFK sudo approve/deny route (afk-sudo-route.ts); true = consumed.
 // configRestore: the /config backups|restore route (config-restore-route.ts); true = consumed.
-export type AutoGate = { enabledOps: Set<string>; authorize: (from: number, chat_id: number) => boolean; fire: AutoFire; afkSudo?: (msg: DeliveredMsg) => boolean; configRestore?: (msg: DeliveredMsg) => boolean };
+export type AutoGate = { enabledOps: Set<string>; authorize: (from: number, chat_id: number) => boolean; fire: AutoFire; afkSudo?: (msg: DeliveredMsg) => boolean; configRestore?: (msg: DeliveredMsg) => boolean; peerReply?: (msg: DeliveredMsg) => Promise<boolean> };
 // Under lockdown the line is not consumed: it falls through to the lockdown policy, which drops it.
 // The MFA routes (afk sudo, config restore) run first; true = consumed.
 const mfaRouteConsumed = (root: string, auto: AutoGate | undefined, msg: DeliveredMsg): boolean =>
   !lockdownEnabled(root) && (auto?.afkSudo?.(msg) === true || auto?.configRestore?.(msg) === true);
+const takenBeforeRouting = async (root: string, auto: AutoGate | undefined, msg: DeliveredMsg): Promise<boolean> =>
+  mfaRouteConsumed(root, auto, msg) || (await auto?.peerReply?.(msg)) === true;
 
 // Single-threaded dispatch: the poller calls handleInbound serially, so the
 // "status === running" in-flight check needs no atomic CAS.
@@ -620,7 +622,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   // `model:`-prefixed message from a member is answered, just not re-modelled).
   // An afk-sudo approve/deny line is consumed before anything else can queue it,
   // so its TOTP code never reaches an inbox or a run.
-  if (mfaRouteConsumed(root, auto, msg)) return;
+  if (await takenBeforeRouting(root, auto, msg)) return;
   const fromOperator = isOperator(msg.from, msg.chat_id, msg.sender_chat);
   const NO_TAG = { model: null as ModelOverride | null, rest: msg.text, unknown: false };
   const tag = fromOperator ? parseModelTag(msg.text) : NO_TAG;
@@ -2690,7 +2692,8 @@ export async function main(): Promise<void> {
     answer: (id, text) => answerCallbackQuery(token, id, text),
   }, afkPrompts);
   const configRestore = makeConfigRestoreGate({ access: () => access, enrolled: configRestoreEnrolled, run: spawnConfigRestore, reply: (chat: number, text: string) => replyViaOutbox(root, chat, text), log: logRedacted });
-  const autoGate: AutoGate = { enabledOps, authorize: (from, chat_id) => isAllowed(access, from) && allow(from, chat_id), fire: autoFire, afkSudo, configRestore };
+  const peerReply = makePeerReplyRoute({ root, access: () => access, reply: (chat, text) => sendMessage(token, chat, text).then(() => undefined) });
+  const autoGate: AutoGate = { enabledOps, authorize: (from, chat_id) => isAllowed(access, from) && allow(from, chat_id), fire: autoFire, afkSudo, configRestore, peerReply };
   // Operator -> chief routing. Same authorize as /arm, global
   // allowFrom sender AND an allowed chat, so the gate is unchanged; the ack rides
   // the per-chat outbox like every other bridge reply.

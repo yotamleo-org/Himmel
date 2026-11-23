@@ -5,7 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Chain } from "../peer-bridge/chain";
 import { appendNotify, notifyFile, type NotifyRec } from "../peer-bridge/notify";
-import { holdingProc, macProcsFrom, makePeerNotifyFlusher, pluginStateDir, procFromEnv, readBotPids, readCursor, readProcs, readSent, sentDir, type ProcInfo } from "./peer-notify-route";
+import { readNewLines } from "./bus";
+import { holdingProc, LOCKED_LINE, macProcsFrom, makePeerNotifyFlusher, makePeerReplyRoute, pluginStateDir, PR1_REPLY_LINE, procFromEnv, readBotPids, readCursor, readProcs, readSent, sentDir, type ProcInfo } from "./peer-notify-route";
+import { handleInbound, inboundToDelivered, ingestUpdates, type AutoGate } from "./poller";
 import type { SendOpts, SendResult } from "./telegram-api";
 
 const REPO = join(import.meta.dir, "..", "..");
@@ -325,4 +327,69 @@ test("flusher writes only cursor and sent map, and logs no text", async () => {
   expect(w.logs.join("\n")).not.toContain(CANARY);
   expect(after.filter(x => x.startsWith("/notify/sent/") || x.startsWith("/notify/cursor")).join("\n")).not.toContain(CANARY);
   expect(w.sent[0].text).toContain(CANARY);
+});
+
+const NOTIFY_LINE1 = "peer example · #3 new question · 12:00Z";
+const NOW_S = () => Math.floor(Date.now() / 1000);
+const quoted = (message_id: number, text: string) => ({ message_id, from: { id: Number(OP_BOT), is_bot: true }, text });
+const textUpdate = (text: string, reply: object) => ({ update_id: 1, message: { message_id: 90, date: NOW_S(), chat: { id: OP_CHAT, type: "private" }, from: { id: OP_CHAT }, text, reply_to_message: reply } });
+
+function bridge() {
+  const r = tmp("peer-reply-root-"), S = tmp("peer-reply-S-");
+  fs.mkdirSync(sentDir(S), { recursive: true });
+  fs.writeFileSync(join(sentDir(S), "701"), JSON.stringify({ n: 1, type: "escalate", peer: "example", root: 3, dir: "in", ts: Date.now() }));
+  const peerReplies: string[] = [], ran: string[] = [], consoleAsked: number[] = [];
+  const access = { allowFrom: [String(OP_CHAT)] };
+  const auto: AutoGate = { enabledOps: new Set(), authorize: () => true, fire: () => {}, peerReply: makePeerReplyRoute({ stateDir: S, root: r, access: () => access, reply: async (_c, t) => { peerReplies.push(t); } }) };
+  const consoleGate = { authorize: (from: number) => { consoleAsked.push(from); return true; }, reply: async () => {} };
+  async function deliver(update: object, fetchImage?: (id: string, uid: number) => Promise<string | null>) {
+    await ingestUpdates(r, [update], () => true, fetchImage);
+    const [rec] = await readNewLines(join(r, "inbound.jsonl"), join(r, "inbound.jsonl.cursor"));
+    const before = snapshot(r);
+    await handleInbound(r, inboundToDelivered(rec), async (s: string) => { ran.push(s); }, auto, async () => "spawn-low", () => true, async () => {}, () => false, null, consoleGate);
+    return { rec, before, after: snapshot(r) };
+  }
+  return { r, S, peerReplies, ran, consoleAsked, deliver };
+}
+
+test("text reply to a notify message never reaches handleInbound's routing", async () => {
+  for (const [name, reply] of [["sent map", quoted(701, "a bot line that is not line 1")], ["line 1", quoted(555, NOTIFY_LINE1)]] as const) {
+    const b = bridge();
+    const { before, after } = await b.deliver(textUpdate(`please answer ${name}`, reply));
+    expect(b.peerReplies).toEqual([PR1_REPLY_LINE]);
+    expect(b.ran).toEqual([]);
+    expect(b.consoleAsked).toEqual([]);
+    expect(after).toEqual(before);
+    expect(fs.existsSync(join(b.r, "sessions"))).toBe(false);
+  }
+  const b = bridge();
+  fs.writeFileSync(join(b.r, "lockdown"), "locked\n");
+  await b.deliver(textUpdate("answer while locked", quoted(701, "x")));
+  expect(b.peerReplies).toEqual([LOCKED_LINE]);
+  expect(b.ran).toEqual([]);
+});
+
+test("a /lockdown reply to an escalation reaches lockdown", async () => {
+  const b = bridge();
+  await b.deliver(textUpdate("/lockdown", quoted(701, NOTIFY_LINE1)));
+  expect(b.peerReplies).toEqual([]);
+  expect(fs.existsSync(join(b.r, "lockdown"))).toBe(true);
+});
+
+test("media reply to an escalation reaches handleInbound unchanged and carries no reply_to_text", async () => {
+  const b = bridge();
+  const update = { update_id: 2, message: { message_id: 91, date: NOW_S(), chat: { id: OP_CHAT, type: "private" }, from: { id: OP_CHAT }, caption: "see this", photo: [{ file_id: "p1", width: 1, height: 1 }], reply_to_message: quoted(701, NOTIFY_LINE1) } };
+  const { rec } = await b.deliver(update, async () => "/tmp/att/91.jpg");
+  expect(rec.reply_to_text).toBeUndefined();
+  expect(rec.reply_to_message_id).toBeUndefined();
+  expect(rec.text).toBe("see this");
+  expect(b.peerReplies).toEqual([]);
+  expect(b.ran).toEqual(["__chat__"]);
+});
+
+test("a reply to a non-notify bot message routes as today", async () => {
+  const b = bridge();
+  await b.deliver(textUpdate("thanks", quoted(555, "build finished")));
+  expect(b.peerReplies).toEqual([]);
+  expect(b.ran).toEqual(["__chat__"]);
 });

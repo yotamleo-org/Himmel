@@ -4,9 +4,10 @@ import { join } from "node:path";
 import { readChain, verifyChain } from "../peer-bridge/chain";
 import { readPeersFile } from "../peer-bridge/config";
 import { peersFile, stateDir } from "../peer-bridge/ids";
-import { notifyFile, renderChainAlert, renderFallback, renderHeld, renderNotify, type NotifyRec } from "../peer-bridge/notify";
+import { NOTIFY_LINE1_RE, notifyFile, renderChainAlert, renderFallback, renderHeld, renderNotify, type NotifyRec } from "../peer-bridge/notify";
 import { atomicWrite } from "./bus";
 import { operatorChatId, type Access } from "./gate";
+import { lockdownEnabled } from "./lockdown";
 import type { SendOpts, SendResult } from "./telegram-api";
 
 export const POLL_FRESH_MS = 60_000;
@@ -149,6 +150,23 @@ export function startPeerNotify(d: { token: string; access(): Access | null; sen
     himmelRoot = c.himmelRoot;
   } catch (e) { d.log(`peer-notify: ${(e as Error).message}`); }
   return makePeerNotifyFlusher({ stateDir: stateDir(), himmelRoot, token: d.token, access: d.access, peersCfg: () => cfg, send: d.send, procs: readProcs, botPids: () => readBotPids(), clock: Date.now, log: d.log });
+}
+
+export const PR1_REPLY_LINE = "drafts arrive with the next update; nothing was sent";
+export const LOCKED_LINE = "locked, reset at the station";
+type ReplyMsg = { from: number; chat_id: number; text: string; caption?: boolean; reply_to_bot?: boolean; reply_to_message_id?: number; reply_to_text?: string };
+
+export function makePeerReplyRoute(d: { stateDir?: string; root: string; access(): Access | null; reply(chat: number, text: string): Promise<void> }) {
+  const S = d.stateDir ?? stateDir();
+  return async (msg: ReplyMsg): Promise<boolean> => {
+    if (msg.reply_to_bot !== true || msg.caption === true || msg.text.trimStart().startsWith("/")) return false;
+    const chat = operatorChatId(d.access());
+    if (chat === null || msg.chat_id !== chat || msg.from !== chat) return false;
+    const onRecord = msg.reply_to_message_id !== undefined && readSent(S, msg.reply_to_message_id) !== null;
+    if (!onRecord && !(msg.reply_to_text !== undefined && NOTIFY_LINE1_RE.test(msg.reply_to_text))) return false;
+    await d.reply(chat, lockdownEnabled(d.root) ? LOCKED_LINE : PR1_REPLY_LINE);
+    return true;
+  };
 }
 
 const PLUGIN_NAME = "telegram-himmel";
