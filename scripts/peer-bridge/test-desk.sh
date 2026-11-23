@@ -80,7 +80,7 @@ if [ -n "$setf" ] && [ -f "$setf" ] \
 else
     fail "the desk settings carry the taint gate and the read-secrets guard and no plugin" "$setf"
 fi
-if jq -e --arg c "bash '$REPO_ROOT/scripts/hooks/peer-taint-gate.sh'" '[.hooks.PreToolUse[].hooks[].command] | index($c) != null' "$setf" >/dev/null 2>&1; then pass "the hook script paths in the desk settings are shell-quoted"; else fail "the hook script paths in the desk settings are shell-quoted" "$setf"; fi
+if jq -e --arg c "$(jq -rn --arg p "$REPO_ROOT/scripts/hooks/peer-taint-gate.sh" '"bash " + ($p | @sh)')" '[.hooks.PreToolUse[].hooks[].command] | index($c) != null' "$setf" >/dev/null 2>&1; then pass "the hook script paths in the desk settings are shell-quoted"; else fail "the hook script paths in the desk settings are shell-quoted" "$setf"; fi
 new_home
 mkdir -p "$H/.claude"
 printf '%s' '{"mcpServers":{"stray":{"command":"/bin/true"}}}' > "$H/.claude.json"
