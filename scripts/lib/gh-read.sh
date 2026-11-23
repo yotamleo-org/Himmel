@@ -30,7 +30,7 @@
 #                             "<main|read> <graphql|core>" (a retry on main is a second
 #                             row, appended by perl, ending " <why> <what>": why is rl,
 #                             auth, notfound or http<code>, what the masked gh argv
-#                             without filter or field values, at most 120 chars); an
+#                             without filter, field or query values, max 120 chars); an
 #                             absent file is never created
 #   GH_READ_NO_MAIN_FALLBACK  1 = a rate-limited read is not retried on main (scans);
 #                             a bad, missing or 404 token still falls back
@@ -179,7 +179,7 @@ _ghr_summary() {
         esac
     done
     out="${out# }"
-    out=$(printf '%s' "$out" | tr '\n\t' '  ' | sed -E 's/(gh[opsur]_|github_pat_)[A-Za-z0-9_]+/<redacted>/g')
+    out=$(printf '%s' "$out" | tr '\n\t' '  ' | sed -E 's/\?[^ ]*//g; s/(gh[opsur]_|github_pat_)[A-Za-z0-9_]+/<redacted>/g')
     printf '%s' "${out:0:120}"
 }
 

@@ -319,10 +319,13 @@ for g6 in "auth|auth" "notfound|http404" "resolve|notfound" "scope|auth"; do
         "read graphql|main graphql ${g6#*|} pr view 5765 -R yotamleo-org/Himmel" "$(tr '\n' '|' < "$W/used" | sed 's/|$//')"
 done
 : > "$W/used"
-GH_STUB_READFAIL=notfound GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" api "repos/o/r/actions/runs?access_token=ghp_SECRETDUMMY0123456789&per_page=100" --jq '.x' >/dev/null 2>&1
-check "G6b an api read names its path, the token-shaped string masked" \
-    "main core http404 api repos/o/r/actions/runs?access_token=<redacted>&per_page=100" "$(sed -n 2p "$W/used")"
-lacks "G6c no row carries the argv secret" "ghp_SECRETDUMMY" "$(cat "$W/used")"
+GH_STUB_READFAIL=notfound GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" api "repos/o/r/actions/runs?access_token=0123456789abcdef0123456789abcdef01234567&per_page=100" --jq '.x' >/dev/null 2>&1
+check "G6b an api read names its path without its query string" \
+    "main core http404 api repos/o/r/actions/runs" "$(sed -n 2p "$W/used")"
+lacks "G6c no row carries a 40-hex token from the query" "0123456789abcdef0123456789abcdef01234567" "$(cat "$W/used")"
+: > "$W/used"
+GH_STUB_READFAIL=notfound GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" api "repos/o/r/contents/ghp_SECRETDUMMY0123456789" >/dev/null 2>&1
+check "G6g a prefixed token in the path is masked" "main core http404 api repos/o/r/contents/<redacted>" "$(sed -n 2p "$W/used")"
 : > "$W/used"
 GH_STUB_READFAIL=notfound GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" api "repos/o/r/contents/$(printf 'a%.0s' $(seq 1 200))" >/dev/null 2>&1
 check "G6d the summary is cut at 120 characters" "120" "$(sed -n 2p "$W/used" | cut -d' ' -f4- | tr -d '\n' | wc -c | tr -d ' ')"

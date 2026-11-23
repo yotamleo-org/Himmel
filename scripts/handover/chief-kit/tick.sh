@@ -292,7 +292,7 @@ read attempts through gh-read.sh (its scripts' reads included), per token and bu
 retried on main counts on both. Absent when perl is missing or the count file cannot be made. Advisory: not in
 chief-wait's action key. The verbose view prints it as "reads:", then one
 "reads retried on main: <why> <what>" line per read the read token refused (why: rl,
-auth, notfound or http<code>; what: the masked gh call, no filter or field values).
+auth, notfound or http<code>; what: the masked gh call, no filter, field or query values).
 
 orphans=<owner>:<count>/<oldest>m is the last field: shell-tool
 wrappers older than TICK_ORPHAN_MIN minutes (default 30), per owning session
