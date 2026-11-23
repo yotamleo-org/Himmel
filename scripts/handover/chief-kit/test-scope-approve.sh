@@ -199,6 +199,10 @@ fresh; tkt SCOPE-720; tkt SCOPE-721; row SCOPE-720 '["scripts/lib/a.sh"]'; row S
 run; has 'A15 a refused post is FAILED post' "$OUT" 'FAILED SCOPE-720 post'; check 'A15 exit 1' 1 "$RC"
 lacks 'A15 no sidecar line for the failed key' "$(sidecar)" 'SCOPE-720'; has 'A15 the next row still posts' "$(sidecar)" 'SCOPE-721 '
 
+fresh; tkt SCOPE-725; row SCOPE-725 '["scripts/lib/a.sh"]'; chmod a-w "$B"
+run; chmod u+w "$B"
+if [ "$(id -u)" = 0 ]; then pass 'A20 skipped as root, which writes anywhere'; else check 'A20 an unwritable sidecar is exit 2' 2 "$RC"; check 'A20 no post' 0 "$(posts)"; fi
+
 fresh; tkt SCOPE-722; row SCOPE-722 '["scripts/lib/a.sh"]'; printf 'timeout' > "$ST/mode.SCOPE-722"
 run; has 'A17 a post that times out is UNKNOWN' "$OUT" 'UNKNOWN SCOPE-722'; check 'A17 exit 1' 1 "$RC"
 has 'A17 the sidecar line is marked unconfirmed' "$(sidecar)" 'SCOPE-722 '; has 'A17 unconfirmed' "$(sidecar)" 'unconfirmed'

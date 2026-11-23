@@ -81,6 +81,10 @@ T="$(mktemp -d "${TMPDIR:-/tmp}/scope-approve.XXXXXX")" || exit 2  # prim-ok: th
 trap 'rm -rf "$T"' EXIT
 bd="$(cd "$(dirname "$bf")" && pwd -P)"
 sidecar="$bf.posted"
+if [ "$mode" = post ]; then
+    if [ -e "$sidecar" ]; then sidecar_dir_ok=0; [ -w "$sidecar" ] && sidecar_dir_ok=1; else sidecar_dir_ok=0; [ -w "$bd" ] && sidecar_dir_ok=1; fi
+    [ "$sidecar_dir_ok" = 1 ] || { echo "scope-approve: cannot write $sidecar, so a post could not be recorded: refusing before any post" >&2; exit 2; }
+fi
 first_batch="$(jq -sr '.[0] | try .batch catch ""' "$bf")"
 dup_keys="$(jq -sr '[.[] | try .key catch null] | map(select(. != null)) | group_by(.) | map(select(length > 1) | .[0]) | .[]' "$bf")"
 ID_RE='^[0-9]{8}T[0-9]{4}-[A-Z][A-Z0-9_]*-[0-9]+$'
