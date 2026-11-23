@@ -189,6 +189,7 @@ success|shell-unit (ubuntu-latest)}" \
     'api repos/'*'/pulls/'*) printf '%s\n' "${STUB_HEAD:-}" ;;
     *'p77:pullRequest'*)
         [ -z "${STUB_SNAPSHOT_FAIL:-}" ] || exit 1
+        [ -z "${STUB_OR_SNAP_SLEEP:-}" ] || sleep "$STUB_OR_SNAP_SLEEP"
         if [ -n "${STUB_HOLD_MARK:-}" ] && [ ! -e "$STUB_HOLD_MARK" ]; then
             ( STUB_HOLD_MARK='' STUB_GH_STALL=600 "$STUB_HOLD_TIMEOUT" -k 2 "${STUB_HOLD_LIFE:-40}" bash "$STUB_HOLD_LIB" "${STUB_NWO:-acme/repo}" 0 77 < /dev/null > /dev/null 2>&1 &
               echo "$!" > "$STUB_HOLD_MARK" )

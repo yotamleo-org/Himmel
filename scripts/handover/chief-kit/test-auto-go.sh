@@ -885,6 +885,7 @@ check    "8691 main REST core spent: the commit list read logs tok=read" "$(ttse
 ttrun "$tmp/ttroot" GH_STUB_MAINFAIL=rate
 check    "8691 main spent in every bucket, read token alive: exit 0" "$RC" "0"
 check    "8691 main spent in every bucket, read token alive: exactly WOULD-GO <pr> <head>" "$OUT" "WOULD-GO 77 $SHA"
+check    "8691 main spent in every bucket: the classic-protection read is the one main call, once" "$(grep -cF 'tok=main argv=api repos/{owner}/{repo}/branches/main/protection/required_status_checks' "$TTLOG")" "1"
 check    "8691 main spent in every bucket: cr-disposition's branch read logs tok=read" "$(ttseen '^tok=read argv=pr view 77 --json headRefName -q .headRefName')" "yes"
 check    "8691 main spent in every bucket: no read rides the main token" "$(grep '^tok=main ' "$TTLOG" | grep -vc 'argv=api repos/{owner}/{repo}/branches/main/protection/required_status_checks')" "0"
 ttrun "$tmp/emptyroot"

@@ -278,6 +278,7 @@ ttrun "$tmp/ttroot" GH_STUB_MAINFAIL=rate
 check    "8691 main spent: ready-go exits 0" "$RC" "0"
 check    "8691 main spent: the TRUST line equals the healthy-main run" "$(trust_line)" "$HEALTHY_TRUST"
 check    "8691 main spent: no call rides the main token" "$(grep '^tok=main ' "$TTLOG" | grep -vc 'argv=api repos/{owner}/{repo}/branches/main/protection/required_status_checks')" "0"
+check    "8691 main spent: the classic-protection read is the one main call, once" "$(grep -cF 'tok=main argv=api repos/{owner}/{repo}/branches/main/protection/required_status_checks' "$TTLOG")" "1"
 check    "8691 main spent: the repo name read logs tok=read" "$(ttseen '^tok=read argv=repo view --json nameWithOwner')" "yes"
 check    "8691 main spent: the default branch read logs tok=read" "$(ttseen '^tok=read argv=repo view --json defaultBranchRef')" "yes"
 check    "8691 main spent: the title read logs tok=read" "$(ttseen '^tok=read argv=pr view 77 --json title')" "yes"

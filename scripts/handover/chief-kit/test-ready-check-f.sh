@@ -855,7 +855,7 @@ process.exit(1);
 GATE
 or_reset() {
     unset STUB_OR_RD STUB_OR_PERM STUB_OR_AUTHOR STUB_OR_AUTHOR_TYPE STUB_OR_REVIEWS STUB_OR_FILES STUB_OR_CODEOWNERS STUB_OR_NOGATE
-    unset STUB_OR_RULES_FAIL STUB_OR_RATELIMIT STUB_OR_BASE_FAIL STUB_OR_GATE_FAIL STUB_OR_MOVE_HEAD STUB_OR_MOVE_BASE STUB_OR_HANG STUB_OR_GQL STUB_OR_GQL_RATE STUB_OR_BAD_PR OR_ARGS
+    unset STUB_OR_RULES_FAIL STUB_OR_RATELIMIT STUB_OR_BASE_FAIL STUB_OR_GATE_FAIL STUB_OR_MOVE_HEAD STUB_OR_MOVE_BASE STUB_OR_HANG STUB_OR_SNAP_SLEEP STUB_OR_GQL STUB_OR_GQL_RATE STUB_OR_BAD_PR OR_ARGS
     export STUB_OR_GATE_FILE="$OR_GATE" READY_CHECK_GATE_SCRIPT="$OR_GATE"
     rm -f "$STUB_OR_DIR"/*.count "$STUB_OR_DIR"/*.log "$tmp/quota/quota.tsv"
     reset_stubs
@@ -950,6 +950,10 @@ or_reset; export STUB_OR_HANG=1; OR_ARGS="--deadline 3 77"
 t0=$(date +%s); or_go; t1=$(date +%s)
 or_is "OR5d --deadline 3 over a hung base read" 2 "owner-review: unknown (gate: deadline)"
 check "OR5d: it ends inside 8 s" "$([ $((t1 - t0)) -le 8 ] && echo yes)" "yes"
+or_reset; export STUB_OR_SNAP_SLEEP=4; OR_ARGS="--deadline 3 77"
+t0=$(date +%s); or_go; t1=$(date +%s)
+or_is "OR5e --deadline 3 over a snapshot read that outlasts it" 2 "owner-review: unknown (gate: deadline)"
+check "OR5e: it ends inside 10 s" "$([ $((t1 - t0)) -le 10 ] && echo yes)" "yes"
 
 or_reset; export STUB_OR_BASE_FAIL=1
 rc=0; out="$(run 2>/dev/null)" || rc=$?
