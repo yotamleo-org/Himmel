@@ -431,8 +431,11 @@ or the backlog, and one that lands with no version is held to the same rule as a
 (earliest unreleased) version: the follow-up's INTAKE asks for that version, its why states only facts (parent,
 status, version) and its evidence carries them; it does not claim a remainder. `--remainder`, which needs
 `--follow-up-of`, is for a ticket that holds a deferred DoD row of the parent: the why then says the parent cannot
-close without this ticket and that it holds the parent's remainder. A Done or closed parent: no version, the
-request is the backlog one and the why says the parent is closed. A parent in a frozen current version: the
+close without this ticket and that it holds the parent's remainder. A Done or closed parent in the current, unfrozen version: the follow-up is filed into that
+version at the parent's priority (the caller's `--priority` wins) and linked to it with `relates`, so a chain's
+leftovers stay in the chain's version and no INTAKE is queued. A closed parent that is not in the current version,
+whose version is frozen, or that cannot be read: no version, the request is the backlog one and the why says the
+parent is closed. A parent in a frozen current version: the
 request still asks for that version and the why says it is frozen; the release manager rules on the frozen intake,
 and the filing never routes around it (operator decisions 383, 489 and 512). The ticket's own fixVersion is not written. An open
 parent with no current version, or a parent that cannot be read (a warning on stderr), leaves the request as before:

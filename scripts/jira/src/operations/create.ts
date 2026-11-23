@@ -26,6 +26,7 @@ import {
   checkPlacementFlags,
   createWriterOf,
   followUpIntake,
+  closedParentPlacement,
   intakeOwed,
   markCore,
   placeAtFiling,
@@ -218,7 +219,9 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
     if (residual.affectsVersion) fields['versions'] = [{ name: residual.affectsVersion }];
     console.error(`jira: residual routed to ${inherited ?? residual.fixVersion ?? 'the backlog'}`);
   }
-  const versionOptions = { ...options, fixVersion: inherited ?? options.fixVersion };
+  const closedParent = inherited === undefined && residual === undefined ? await closedParentPlacement(options) : undefined;
+  if (closedParent?.priority !== undefined && options.priority === undefined) fields['priority'] = { name: closedParent.priority };
+  const versionOptions = { ...options, fixVersion: inherited ?? closedParent?.fixVersion ?? options.fixVersion };
   await applyVersions(project, versionOptions, fields, { bugDefault });
   const admission = testProject ? undefined : await checkIntakeGate(project, fields['fixVersions'], { gate: options.gate, override: overrideReason !== undefined });
   await checkExistingBlocker(project, fields['fixVersions'], options);

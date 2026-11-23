@@ -560,6 +560,29 @@ export async function followUpIntake<T extends IntakeOptions & { followUpOf?: st
   return { ...o, proposedVersion: target, why, evidence };
 }
 
+/**
+ * A follow-up of a CLOSED parent that sits in the current, unfrozen version and
+ * gives no version, backlog choice or why of its own files into that version at
+ * the parent's priority (the relates link is made for every follow-up). Anything
+ * else, or a parent that cannot be read, returns nothing and the filing is as before.
+ */
+export async function closedParentPlacement(
+  o: { followUpOf?: string; fixVersion?: string; backlog?: boolean; proposedVersion?: string; why?: string },
+): Promise<{ fixVersion: string; priority?: string } | undefined> {
+  if (o.followUpOf === undefined || o.fixVersion !== undefined || o.backlog || o.proposedVersion !== undefined || o.why?.trim()) return undefined;
+  try {
+    const parent = (await request<ParentState & { fields: { priority?: { name?: string } } }>('GET', `/issue/${o.followUpOf}?fields=project,status,fixVersions,priority`)).fields;
+    if (parent.status?.statusCategory?.key !== 'done') return undefined;
+    const versions = await fetchVersions(parent.project.key);
+    const current = earliestUnreleased(versions);
+    if (current === undefined || parent.fixVersions?.some((v) => v.name === current) !== true) return undefined;
+    if (frozenDate(versions.find((v) => v.name === current)?.description) !== undefined) return undefined;
+    return { fixVersion: current, ...(parent.priority?.name ? { priority: parent.priority.name } : {}) };
+  } catch {
+    return undefined;
+  }
+}
+
 export function queueIntakeIfUnversioned(key: string, fields: Record<string, unknown>, title: string, o: IntakeOptions, testProject = false): void {
   if (!intakeOwed(o.type, fields, testProject)) return;
   try {
