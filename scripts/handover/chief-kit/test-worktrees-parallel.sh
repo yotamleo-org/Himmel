@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# test-worktrees-parallel.sh: worktrees-parallel.sh creates N worktrees in one
-# call with a bounded fan-out, one result line per item, and refuses the whole
-# call before creating any when one branch has a type worktree.sh rejects.
-# Scratch origin + scratch HOME; a stub npm sleeps so timing rows are
-# deterministic, not load-sensitive.
-#
-# Bash 3.2-safe; shellcheck-clean.
-
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,7 +13,6 @@ _fail() { printf 'FAIL  %s\n  -> %s\n' "$1" "$2"; FAIL=$(( FAIL + 1 )); }
 TMPBASE="${TMPDIR:-/tmp}/test-wtpar-$$"
 mkdir -p "$TMPBASE"
 TMPBASE="$(cd "$TMPBASE" && pwd -P)"
-# shellcheck disable=SC2064
 trap 'rm -rf "$TMPBASE"' EXIT
 
 export HOME="$TMPBASE/home"

@@ -4,14 +4,6 @@
 # Usage:
 #   worktrees-parallel.sh [--fan-out N] [--no-prune] [--no-install] <branch>...
 #
-# Every branch name is checked first by `_new-worktree.sh --check-name` (the one
-# place the accepted types live); one bad name refuses the whole call and no
-# worktree is created. Then, unless --no-prune, `worktree.sh prune` runs once,
-# origin's default branch is fetched once, and each item runs
-# `worktree.sh new <branch> --no-prune --no-fetch` with at most N (default 4)
-# running together. The per-item ceiling check and its creation lock still
-# apply to every item.
-#
 # Output: one line per item, in input order:
 #   OK <branch> <worktree path>
 #   FAIL <branch> <reason>
