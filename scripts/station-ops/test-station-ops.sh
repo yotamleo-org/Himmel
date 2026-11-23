@@ -1261,8 +1261,10 @@ case "$1" in
     is-active) [ -e "$HIMMEL_OPS_ROOT/probe-fail" ] && { echo "Failed to connect to bus" >&2; exit 1; }
         if [ -e "$HIMMEL_OPS_ROOT/units/$2" ]; then echo active; else echo inactive; exit 3; fi ;;
     start) [ -e "$HIMMEL_OPS_ROOT/start-fail" ] && { echo "Failed to start $2: Unit not found." >&2; exit 5; }
+        [ -e "$HIMMEL_OPS_ROOT/start-noop" ] && [ "$2" = docker.service ] && exit 0
         : > "$HIMMEL_OPS_ROOT/units/$2" ;;
-    stop) rm -f "$HIMMEL_OPS_ROOT/units/$2" ;;
+    stop) [ -e "$HIMMEL_OPS_ROOT/stop-sticky" ] && [ "$2" = docker.service ] && exit 0
+        rm -f "$HIMMEL_OPS_ROOT/units/$2" ;;
     *) echo "unexpected systemctl $*" >&2; exit 64 ;;
 esac
 FAKESYSTEMCTL
@@ -1315,6 +1317,17 @@ rm -f "$R/start-fail"
 touch "$R/probe-fail"
 assert_contains "RED: a failing state probe is result=failed, not unchanged" "result=failed detail=cannot read the state of docker.socket" "$(op docker --action stop)"
 rm -f "$R/probe-fail"
+: > "$R/units/containerd.service"; : > "$R/units/docker.socket"; : > "$R/units/docker.service"
+touch "$R/stop-sticky"
+out=$(op docker --action stop)
+assert_contains "RED: a stop that leaves docker.service active is result=failed" "result=failed" "$out"
+assert_contains "RED: the stuck stop names the unit and its state" "docker.service is active after the stop, not inactive" "$out"
+rm -f "$R/stop-sticky" "$R/units/"*
+touch "$R/start-noop"
+out=$(op docker --action start)
+assert_contains "RED: a start that never activates docker.service is result=failed" "result=failed" "$out"
+assert_contains "RED: the no-op start names the unit and its state" "docker.service is inactive after the start, not active" "$out"
+rm -f "$R/start-noop" "$R/units/"*
 op docker --action start >/dev/null; op docker --action stop >/dev/null
 assert_absent "RED: no systemctl call was ever an enable" "enable" "$(dk_calls)"
 assert_absent "RED: no systemctl call was ever a disable" "disable" "$(dk_calls)"
