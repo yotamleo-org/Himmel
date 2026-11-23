@@ -835,6 +835,11 @@ case "${QSTUB_MODE:-}" in
         fi ;;
     pr-hang)
         if [ "${1:-}" = pr ] && [ "${2:-}" = list ]; then exec sleep 600; fi ;;
+    pr-resolve-read)
+        if [ "${1:-}" = pr ] && [ "${2:-}" = list ] && [ "${GH_TOKEN:-}" = "${QSTUB_READ_TOKEN:-none}" ]; then
+            echo "GraphQL: Could not resolve to a Repository with the name 'o/r'. (repository)" >&2
+            exit 1
+        fi ;;
     pr-limit-read)
         if [ "${1:-}" = pr ] && [ "${2:-}" = list ] && [ "${GH_TOKEN:-}" = "${QSTUB_READ_TOKEN:-none}" ]; then
             echo 'GraphQL: API rate limit already exceeded for user ID 1. (HTTP 403)' >&2
@@ -878,6 +883,17 @@ mkdir -p "$W/qenv" && printf 'himmel_github_token_vm2=readfixture0123\n' > "$W/q
 q_reads="$(reads_of "$(q_tick "$W/q-rd" GH_READ_ENV_ROOT="$W/qenv" GH_READ_USED_FILE="$W/outer-used")")"
 if grep -qE '^main:core0\+gql0,read:core[0-9]+\+gql[1-9][0-9]*$' <<< "$q_reads"; then pass 'the tick prints its own per-token read count (read token: on read)'; else fail "reads= with a read token (got '$q_reads')"; fi
 same "a caller's own GH_READ_USED_FILE gets none of the tick's rows" "$(cat "$W/outer-used" 2>/dev/null)" ''
+q_rt_default="$(q_tick "$W/q-rt" GH_READ_ENV_ROOT="$W/qenv" QSTUB_MODE=pr-resolve-read QSTUB_READ_TOKEN=readfixture0123)"
+q_rt_reads="$(reads_of "$q_rt_default")"
+if grep -qE '^main:core0\+gql1,read:core[0-9]+\+gql[1-9][0-9]*$' <<< "$q_rt_reads"; then pass 'a read retried on main counts once on main in reads='; else fail "reads= with one retried read (got '$q_rt_reads')"; fi
+not_contains 'the default line names no retried read' "$q_rt_default" 'retried'
+q_rt_verbose="$(env W_GH="$W/bin/gh" PATH="$W/qbin:$PATH" GH_READ_ENV_ROOT="$W/qenv" HIMMEL_QUOTA_DIR="$W/q-rt" QSTUB_LOG="$W/qstub.log" QSTUB_MODE=pr-resolve-read QSTUB_READ_TOKEN=readfixture0123 \
+    timeout 100 bash "$SUT" --workers 'HIMMEL-333-legN70' --verbose 2>/dev/null)"  # gnu-ok: chief kit is Linux-only (PLATFORM GUARD)
+contains 'verbose prints each read retried on main with its reason and what it read' "$q_rt_verbose" 'reads retried on main: notfound pr list --limit 200'
+contains 'verbose prints the per-token read count' "$q_rt_verbose" 'reads: main:core0+gql1,read:core'
+q_ok_verbose="$(env W_GH="$W/bin/gh" PATH="$W/qbin:$PATH" GH_READ_ENV_ROOT="$W/qenv" HIMMEL_QUOTA_DIR="$W/q-rt" QSTUB_LOG="$W/qstub.log" \
+    timeout 100 bash "$SUT" --workers 'HIMMEL-333-legN70' --verbose 2>/dev/null)"  # gnu-ok: chief kit is Linux-only (PLATFORM GUARD)
+not_contains 'RED control: a tick with no retried read prints no retried line' "$q_ok_verbose" 'reads retried on main:'
 : > "$W/qstub.log"
 q_t0=$SECONDS
 q_hung="$(q_tick "$W/q-hung" QSTUB_MODE=hung GHQ_PROBE_TIMEOUT=2)"

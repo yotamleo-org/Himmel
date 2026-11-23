@@ -290,7 +290,9 @@ read token is configured; the verbose view prints them as "rest main:" and
 reads=main:core<n>+gql<n>,read:core<n>+gql<n>, right after rest-read: this tick's own
 read attempts through gh-read.sh (its scripts' reads included), per token and bucket; a read
 retried on main counts on both. Absent when perl is missing or the count file cannot be made. Advisory: not in
-chief-wait's action key.
+chief-wait's action key. The verbose view prints it as "reads:", then one
+"reads retried on main: <why> <what>" line per read the read token refused (why: rl,
+auth, notfound or http<code>; what: the masked gh call, no filter, field or query values).
 
 orphans=<owner>:<count>/<oldest>m is the last field: shell-tool
 wrappers older than TICK_ORPHAN_MIN minutes (default 30), per owning session
@@ -5007,8 +5009,10 @@ deadline_over=""
 [ "$SECONDS" -lt "$tick_deadline" ] || deadline_over="$((SECONDS - tick_deadline))s"
 
 reads_summary=""
+reads_retried=""
 if [ -n "$tick_reads_file" ]; then
     reads_summary="$(awk '{ n[$1 "." $2]++ } END { printf "main:core%d+gql%d,read:core%d+gql%d", n["main.core"], n["main.graphql"], n["read.core"], n["read.graphql"] }' "$tick_reads_file" 2>/dev/null)" || reads_summary=""  # swallow-ok: an unreadable count file leaves reads= absent
+    reads_retried="$(awk '$1 == "main" && NF > 2 { $1 = ""; $2 = ""; sub(/^ +/, ""); print }' "$tick_reads_file" 2>/dev/null)" || reads_retried=""  # swallow-ok: an unreadable count file prints no retried line
     rm -f "$tick_reads_file"
 fi
 
@@ -5051,6 +5055,8 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$quota_items" ] || printf 'quota: %s\n' "$quota_items"
     case "$rest_main_line" in ''|'?'*) ;; *) printf 'rest main: %s\n' "$rest_main_line" ;; esac
     case "$rest_read_line" in ''|'?'*) ;; *) printf 'rest read: %s\n' "$rest_read_line" ;; esac
+    [ -z "$reads_summary" ] || printf 'reads: %s\n' "$reads_summary"
+    [ -z "$reads_retried" ] || printf '%s\n' "$reads_retried" | sed 's/^/reads retried on main: /'
     printf 'orphans: %s\n' "$orphans"
     printf 'nonces: %s\n' "$nonces_summary"
     printf 'worker-session set: %s\n' "$legset_summary"
