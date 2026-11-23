@@ -1916,23 +1916,27 @@ exit 1''')
         self.assertIn('family already owns worker or ticket', p.stderr)
         self.assertEqual(list(self.anchor_attempts()), ['first'])
 
-    def dispatcher_title_expression(self):
-        """The dispatcher's own TITLE_KEY_RE and title_keys, executed from its source text."""
+    def dispatcher_title_expression(self, runtime):
+        """The dispatcher's own title_keys, executed from its source text over the runtime's title_keys it imports."""
         import re
-        lines = (ENTRYPOINTS / 'scripts/handover/chief-kit/next-dispatchable.sh').read_text().splitlines()
-        start = next(number for number, line in enumerate(lines) if line.startswith('TITLE_KEY_RE = re.compile('))
+        source = (ENTRYPOINTS / 'scripts/handover/chief-kit/next-dispatchable.sh').read_text()
+        self.assertTrue(re.search(r'(?m)^from fleet_runtime import .*\btitle_keys as fr_title_keys\b', source),
+                        'next-dispatchable.sh does not import title_keys from fleet_runtime')
+        self.assertFalse('TITLE_KEY_RE' in source, 'next-dispatchable.sh keeps its own TITLE_KEY_RE')
+        lines = source.splitlines()
+        start = next(number for number, line in enumerate(lines) if line.startswith('def title_keys('))
         block = [lines[start]]
         for line in lines[start + 1:]:
-            if line and not line[0].isspace() and not line.startswith('def title_keys('):
+            if line and not line[0].isspace():
                 break
             block.append(line)
-        namespace = {'re': re}
+        namespace = {'fr_title_keys': runtime.title_keys}
         exec('\n'.join(block), namespace)
         return namespace
 
     def test_the_runtime_reads_a_doc_title_as_the_dispatcher_does(self):
-        dispatcher = self.dispatcher_title_expression()
         runtime = self.runtime_module()
+        dispatcher = self.dispatcher_title_expression(runtime)
         titles = ['HIMMEL-101 / 102 — bundle', 'HIMMEL-101 + 102', 'HIMMEL-101 (+102, +103)', 'HIMMEL-101, 102 & 103',
                   'HIMMEL-101 / HIMMEL-102', 'HIMMEL-101 — worker', 'HIMMEL-101 worker 7', 'worker 7 — HIMMEL-101 / 2']
         self.assertIn('HIMMEL-103', dispatcher['title_keys'](['# ' + titles[2]]))
@@ -1941,7 +1945,6 @@ exit 1''')
             doc.write_text('# ' + title + '\n')
             expected = sorted({'HIMMEL-900', *dispatcher['title_keys'](['# ' + title])})
             self.assertEqual(runtime.worker_keys(doc), expected, title)
-        self.assertEqual(runtime.TITLE_KEY_RE.pattern, dispatcher['TITLE_KEY_RE'].pattern)
 
     def test_a_brief_file_name_year_tail_is_not_a_ticket_key(self):
         runtime = self.runtime_module()
