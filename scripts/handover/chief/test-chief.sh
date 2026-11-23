@@ -2604,6 +2604,20 @@ check "77 manifest is copied to the successor's stem" "$(cat "$man77B" 2>/dev/nu
 check "77 the predecessor's manifest is left in place (copy, not rename)" "$([ -f "$man77A" ] && echo yes)" "yes"
 check "77 successor step 10 names the carried manifest path (arm command and Your manifest line)" "$(manifest_lines77 "$man77B" "$doc77B")" "1/1/2"
 check "77 no unrendered {{FLEET_MANIFEST}} left in the successor doc" "$(grep -Fc '{{FLEET_MANIFEST' "$doc77B" 2>/dev/null)" "0"
+w77="$tmp/w77"; mkdir -p "$w77"
+orig77="$w77/HIMMEL-10257-BL1a-owed-2026-11-23.md"; res77="${orig77%.md}-RESUME.md"
+own77="$w77/HIMMEL-10464-N5-own-2026-11-23.md"; ownres77="${own77%.md}-RESUME.md"
+printf '# RESUME brief\n' > "$res77"; printf '# brief\n\n## Results\n- 10:00 LIVE — started\n' > "$own77"
+touch -d '1 hour ago' "$res77" "$own77"  # gnu-ok: Linux-only kit
+printf '# brief\n\n## Results\n- 10:00 LIVE — started\n- 19:31 READY 5793 %s GREEN\n' "$(printf 'a%.0s' $(seq 40))" > "$orig77"
+printf '# RESUME brief\n\n## Results\n- 11:00 LIVE — resumed\n' > "$ownres77"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"HIMMEL-10257-BL1a-owed-2026-11-23-RESUME","lane":"native"},{"doc":"%s","label":"N5","lane":"native"}]}\n' "$res77" "$ownres77" > "$man77A"
+doc77D="$root/tester/fleet77dst3/DEMO-nextleg-${today}B-chief.md"
+chief next --bucket fleet77dst3 --doc "$doc77A" >/dev/null 2>&1
+check "77 (10901) a markerless RESUME row is carried naming the original doc the worker writes" \
+    "$(jq -r '.workers[0] | "\(.doc) \(.label) \(.lane)"' "${doc77D%.md}.fleet.json" 2>/dev/null)" "$orig77 HIMMEL-10257-BL1a-owed-2026-11-23 native"
+check "77 (10901) a RESUME row whose doc carries its own marker is carried unchanged" \
+    "$(jq -r '.workers[1].doc' "${doc77D%.md}.fleet.json" 2>/dev/null)" "$ownres77"
 HANDOVER_DIR="$root" bash "$QL" release "$doc77A" "$token77" >/dev/null 2>&1
 
 # --- 78: a name without the -chief suffix is refused, nothing armed

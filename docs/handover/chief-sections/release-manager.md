@@ -20,23 +20,12 @@ release is declared (`jira release state <R>` prints a status other than
   one line per request, then `RM-RUN <R> summary: N refused` when any request
   was refused. An empty queue prints `RM-RUN <R>: nothing pending`
   and writes nothing.
-- **A request for operator work carries the operator's words.** An INTAKE or
-  REVERSION into a version, for an open ticket labelled `operator-directed` or of
-  priority High or Highest, is refused before it is filed unless it names the
-  decision and the operator's exact words in it, or a record already on file covers
-  it (next paragraph):
-  ```text
-  release request: <KEY> is operator-directed and High; a request that places it needs a record of the operator's words: cite one on file that already names <KEY> and exactly this placement (a words record newer than the key's last ruling is cited with no --decision), or record them.
-    jira release request <R> --verb INTAKE --key <KEY> --from backlog --to <v> --why "<why>" --decision <n> --words "<the operator's exact words>"
-    (<n>: specs/decisions/verbatim-decision-<n>-*.txt)
-  ```
-  A gated request files without words only when one words-checked operator decision
-  already on record names that key and that exact placement; it must be the newest
-  decision on the key among those for the request's versions, for no version, or
-  keeping the key in the backlog (two at the same instant refuse), newer than every
-  ruling on the key, and the operator and rulings chains must verify to their end.
-  Otherwise the words are required as before, and a work permission never counts.
-  `--decision <n>` must match exactly one `verbatim-decision-<n>-*.txt` in the
+- **A request needs no words from you.** An INTAKE or REVERSION files for every
+  filer with no `--decision`, an `operator-directed` or High ticket included, and
+  the door rules it: an operator ask lands in the current version
+  (`door:operator-ask`), and the newest operator record on the key is read by the
+  door itself, so the request cites none. `--decision <n> --words "<the operator's
+  exact words>"` still records the words when you have them. `--decision <n>` must match exactly one `verbatim-decision-<n>-*.txt` in the
   bucket's `specs/decisions`. `--words` must occur byte for byte in one paragraph
   of that file, never in a paragraph that opens with a gloss word (`Read`,
   `Reading`, `Chief`, `Asked`, `Answering`, `Note`, `Ruling`, `Relayed`, `Facts`
@@ -49,15 +38,10 @@ release is declared (`jira release state <R>` prints a status other than
   duplicate that already cites an `O-` record is returned as it is, so its `REQ`
   may cite an older record than the `OPERATOR` line names; to file the request on
   the new words, `jira release withdraw <R> --req <id> --reason "<why>"` it first,
-  then run the request again. The
-  gate reads the ticket from the mirror, else from one live read; a ticket neither
-  can read is refused, unless a record covers it as above, with both fixes (`jira mirror`, or `--decision`). `jira
+  then run the request again. `jira
   create`, `jira move` and the MCP `create` tool take the same `--decision` and
-  `--words` and check them before anything is filed. A backlog target, a closed
-  ticket, a request filed inside a worker you spawned, the close-time Done fold,
-  the version repair and the blocker pull (`jira release pull`, which files its
-  INTAKE under the standing `O-<R>-blocker-pull` record) are not gated; a worker's
-  request that the RM refuses comes back to you as a refusal.
+  `--words` and check them before anything is filed. A worker's request that the
+  RM refuses comes back to you as a refusal.
 - **A ruled-away ask wakes you once.** A refused ask is a key whose latest
   receipted ruling, on a request from the backlog into a version, left it outside
   that version (`BACKLOG`, or `KEEP` on such a REVERSION); a demotion is never one.
@@ -177,7 +161,7 @@ release is declared (`jira release state <R>` prints a status other than
   The next `rm-run` records its class and sector.
 - **Open requests are ruled without you.** The waiter's tick shows
   `rm-queue=<n>,<oldest age>m[,claimed=<n>][,replay=<n>][,run]` and, when the oldest open request is older than
-  `TICK_RMRUN_MIN` minutes (default 30), the lease is free and no run started in
+  `TICK_RMRUN_MIN` minutes (default 2), the lease is free and no run started in
   the last `TICK_RMRUN_MIN_SECS` seconds (default 600), it launches one detached
   `jira release rm-run <R>` for the `release:` line of the chief's doc
   (`,run` on the field marks the launch; the log is `tick-rm-run.log` in the

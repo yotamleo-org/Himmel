@@ -102,7 +102,7 @@ merge_block_alert() {
         return 0
     fi
     local send_rc=0
-    _mba_send "$chat" "MERGE-BLOCKED ${repo}#${pr} @${short}: ${rule}" || send_rc=$?
+    _mba_send "$chat" "MERGE-BLOCKED ${repo}#${pr} @${short}: ${rule}" merge-blocked || send_rc=$?
     if [ "$send_rc" != 0 ]; then
         rm -f "$dir/$key" 2>/dev/null
         echo "merge-block-alert: DM delivery failed — exit code unchanged" >&2

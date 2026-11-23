@@ -65,6 +65,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # the manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`, read only while legacy names are on
 # shellcheck source=../../lib/legacy-names.sh
 . "$HERE/../../lib/legacy-names.sh"
+# shellcheck source=../../lib/worker-identity.sh
+. "$HERE/../../lib/worker-identity.sh"
 if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 
 # The launch line below is PASTED by an operator, and the terminal
@@ -648,6 +650,27 @@ EOF_META
         n=$((n + 1))
     done
     [ "$n" -gt 0 ] || echo "JUDGE-OWED: none"
+}
+
+repoint_resume_rows() {
+    local m="$1" doc sib cur docs moved=""
+    cur="$(cat "$m")" || return 0
+    docs="$(jq -r "$JQ_W"'W[]? | objects | .doc // empty' "$m" 2>/dev/null)" || return 0  # swallow-ok: an unreadable manifest has no row to re-point; the copy stays as it was
+    while IFS= read -r doc; do
+        case "$doc" in *-RESUME.md) ;; *) continue ;; esac
+        sib="${doc%-RESUME.md}.md"
+        [ -f "$doc" ] && [ -f "$sib" ] && [ "$sib" -nt "$doc" ] || continue
+        [ -z "$(worker_tail_status "$doc")" ] && [ -n "$(worker_tail_status "$sib")" ] || continue
+        cur="$(printf '%s\n' "$cur" | jq --arg d "$doc" --arg s "$sib" --arg l "$(worker_label "$sib")" \
+            '(if has("workers") then "workers" else "legs" end) as $k
+             | .[$k] |= map(if (type == "object") and .doc == $d then .doc = $s | .label = $l else . end)')" \
+            || { err "warning: could not re-point $doc to $sib in $m"; return 0; }
+        moved=1
+    done <<EOF
+$docs
+EOF
+    [ -n "$moved" ] || return 0
+    { printf '%s\n' "$cur" > "$m.tmp" && mv -f "$m.tmp" "$m"; } || err "warning: could not rewrite $m"
 }
 
 # The HANDOFF's "Wrapped with open PR" section: every fleet-manifest worker
@@ -2673,6 +2696,7 @@ cmd_next() {
     manifest_note="none carried (the predecessor had no manifest); create it with fleet-manifest.sh add"
     if [ -f "$predecessor_manifest" ]; then
         cp "$predecessor_manifest" "$successor_manifest" || { err "could not copy fleet manifest $predecessor_manifest to $successor_manifest"; exit 1; }
+        repoint_resume_rows "$successor_manifest"
         manifest_note="carried from the predecessor, already in place: start the waiter with --workers-from on it"
     fi
     # One Read: the tracker line keeps its pinned head (decision 286) and the Current
