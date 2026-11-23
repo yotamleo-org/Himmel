@@ -83,8 +83,15 @@ release is declared (`jira release state <R>` prints a status other than
   `asks_apart` (an operator ask placed apart from its parent, one entry per key, version,
   parent and parent version; a second ruling of the same tuple adds none). The tick prints
   `prio-review=<n>:<oldest KEY>`, `chief-placed=<n>:<KEY>,...` and `ask-apart=<n>:<KEY>,...`,
-  each absent at zero and outside the waiter's action key. Check or relay an entry, then
-  clear it with `jira release reviewed <R> --ruling <R-id> --reason "<what you checked>"`,
+  each absent at zero and outside the waiter's action key. The waiter wakes you once per new
+  chief placement (`WAKE chief-placed <KEY> <reason>`) and once per new ask apart
+  (`WAKE ask-apart <KEY> <version> parent <P> <parent version>`); a priority entry wakes
+  nothing and waits for your next tick. What each list asks of you: for a priority entry,
+  check the ground fits the ticket and relay it to the operator only when it does not; for
+  a chief placement, tell the operator the key and your reason; for an ask apart, tell the
+  operator the ask and its version, the parent and its version, and the two choices: move
+  the parent with `jira release operator decision`, or leave the parts split. Check or relay
+  an entry, then clear it with `jira release reviewed <R> --ruling <R-id> --reason "<what you checked>"`,
   or clear a list up to one entry with `--through <R-id>`: it clears only that entry's own
   list, so a priority sweep never closes a chief placement or an ask apart. The verb is
   refused inside a worker you spawned. The `reviewed` row changes no placement.
