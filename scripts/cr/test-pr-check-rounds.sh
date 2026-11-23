@@ -3,6 +3,18 @@
 # Bash 3.2-safe; no network or paid critic calls.
 # Platform guard: requires POSIX Bash 3.2+; on Windows, run under Git Bash.
 set -uo pipefail
+# The suite runs in three parts so each fits a CI shard: this file alone is
+# part a, and test-pr-check-rounds-b.sh / -c.sh run it with --part b / c. The
+# fixture and the helpers the later parts use stay outside the part gates.
+rounds_part=a
+if [ "${1:-}" = --part ]; then
+    case "${2:-}" in
+        a|b|c) rounds_part="$2" ;;
+        *) echo "test-pr-check-rounds.sh: --part takes a, b or c" >&2; exit 2 ;;
+    esac
+    shift 2
+fi
+_rounds_part() { [ "$rounds_part" = "$1" ]; }
 _TK='HIMMEL-'
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -237,6 +249,7 @@ write_real_marker() {
         "$marker_sha" "$marker_branch" "$tmp/origin.git" "$marker_base" \
         > "$git_dir/cr-pending/$marker_branch"
 }
+if _rounds_part a; then
 
 # Removing residual creation, choosing the wrong parent/class, or clearing the
 # marker after a failed create must fail these recovery checks.
@@ -1101,6 +1114,7 @@ if [ "${1:-}" = --residual-recovery-only ]; then
     [ "$fails" -eq 0 ]
     exit $?
 fi
+fi
 cp "$HERE/clear-review-marker.sh" "$fx/scripts/cr/clear-review-marker.sh"
 chmod +x "$fx/scripts/cr/clear-review-marker.sh"
 
@@ -1123,6 +1137,7 @@ mkdir -p "$repo"
     git commit -q -am feature-1
     git push -q -u origin feature
 ) || { printf 'FAIL - fixture setup\n' >&2; exit 1; }
+if _rounds_part a; then
 
 head1="$(git -C "$repo" rev-parse feature)"
 out1="$(cd "$repo" && bash "$SCRIPT" --head "$head1" --branch feature 2>"$tmp/err1")"; rc1=$?
@@ -1158,8 +1173,10 @@ out4="$(cd "$repo" && bash "$SCRIPT" --head "$other_head" --branch other 2>"$tmp
 assert_eq "$rc4" "0" "new-branch run succeeds"
 assert_has "$out4" "pr-check: round 1 of 3 on other" "different branch starts at round 1"
 
+fi
 git -C "$repo" checkout -q feature
 git_dir="$(cd "$repo" && cd "$(git rev-parse --git-common-dir)" && pwd)"
+if _rounds_part a; then
 
 # Concurrent starts on one branch must serialize the read/increment/write. The
 # cat shim snapshots the old value before waiting, so an unlocked implementation
@@ -1321,6 +1338,7 @@ assert_has "$delta2_out" "delta round was already used" "second-delta refusal na
 assert_eq "$(wc -l < "$PANEL_CALLS" | tr -d ' ')" "$before_delta2_calls" "a refused second delta round never runs the panel"
 assert_eq "$(cat "$git_dir/cr-review-rounds/feature.round")" "4" "a refused second delta round leaves the counter at 4"
 
+fi
 # three_rounds <branch> <round-3 panel mode>: a fresh branch off main with
 # three full rounds at one head (cap_r3_head); fix_commit adds the commit
 # that answers a round-3 finding (cap_fix_head).
@@ -1360,6 +1378,7 @@ snap_set() {
 snap_dead() { reaped_pid; snap_set "$1" pid "$sn_reaped"; }
 snap_age() { snap_set "$1" time "$(( $(date +%s) - $2 ))"; }
 rr_settle() { (cd "$repo" && bash "$RR" settle --branch "$1" --head "$2" >/dev/null 2>&1) || fail "settle $1 at $2"; }
+if _rounds_part a; then
 git -C "$repo" checkout -q -b idem main
 printf 'idem\n' > "$repo/idem.txt"
 git -C "$repo" add idem.txt
@@ -1472,6 +1491,7 @@ replace_rc=0
 assert_eq "$replace_rc" 1 "trivial-descendant ignores replacement objects"
 git -C "$repo" replace -d "$replace_tip" >/dev/null
 
+fi
 # 7266: a hook-forced plugin version bump beside test files keeps a delta
 # tests-only; any other plugin.json change, a non-test file, or a bump alone
 # does not.
@@ -1487,6 +1507,7 @@ write_plugin() {
     fi
     git -C "$repo" add "marketplace/plugins/$1/.claude-plugin/plugin.json"
 }
+if _rounds_part a; then
 three_rounds tvb clean 0.1.0
 tvb_from="$cap_r3_head"
 tvb_commit() { # tvb_commit <branch> <plugin version> <description> [file...]
@@ -1574,7 +1595,10 @@ assert_has "$fixpath_out" "pr-check: delta round 4 on fixpath (from $cap_r3_head
 (cd "$repo" && bash "$fx/scripts/cr/clear-review-marker.sh" fixpath >"$tmp/fixpath-clear2.out" 2>&1); fixpath_clear2_rc=$?
 assert_eq "$fixpath_clear2_rc" "0" "the fix head clears after the one delta round"
 if [ -e "$git_dir/cr-pending/fixpath" ]; then fail "the delta round's rows clear the marker"; else pass "the delta round's rows clear the marker"; fi
+# The fix trigger records itself as fix (part b adds the scope triggers beside it).
+assert_has "$(cat "$git_dir/cr-review-rounds/fixpath.delta")" " fix" "the fix trigger still records fix"
 
+fi
 # The delta round itself raised findings and the worker fixed them.
 # postcap_setup <branch> <delta panel mode>: the third round raised a finding that was
 # fixed at the fix commit, the one delta round ran there in <mode> (stub-1, plus
@@ -1605,6 +1629,7 @@ postcap_fix() {
 postcap_start() {
     (cd "$repo" && PANEL_MODE="${PC_MODE:-clean}" bash "$SCRIPT" --head "$postcap_f_head" --branch "$1" 2>&1)
 }
+if _rounds_part a; then
 
 # a review round whose only leftover is a polish Suggestion finishes through the REAL marker
 # gates with no ticket: nothing is filed, so nothing can be refused and nothing loops.
@@ -2474,6 +2499,7 @@ assert_eq "$promote_rc3" "1" "a malformed ledger row makes promote exit 1"
 assert_has "$(cat "$tmp/promote3.err")" "malformed CR ledger row" "malformed-ledger refusal names the reason"
 assert_eq "$promote_lines_after" "$((promote_lines_before + 1))" "malformed-ledger run appends nothing beyond the injected garbage line"
 
+fi
 # A judge NO-GO on the last reviewed head, as the chief-kit
 # verdict writer records it, buys exactly one delta round. The records are
 # written by the real writer from the fixture anchor, so the scope the writer
@@ -2516,6 +2542,7 @@ judge() {
 start_round() {
     (cd "$repo" && PANEL_MODE="${2:-clean}" bash "$SCRIPT" --head "$1" --branch "$3" 2>&1)
 }
+if _rounds_part a; then
 
 # RED: a judge NO-GO on the round-3 head enables the delta round for its fix.
 three_rounds judgenogo clean
@@ -2661,6 +2688,8 @@ for pb_case in pv-bound pv-gh-fails pv-no-pr-line pv-other-pr pv-other-branch; d
     assert_eq "$(cat "$git_dir/cr-review-rounds/$pb_case.round")" "3" "$pb_case leaves counter unchanged"
 done
 
+fi
+if _rounds_part b; then
 # Real writer records on two reviewed heads must not buy
 # repeated rounds for the same class. Without the class stop this reaches 5.
 three_rounds classrepeat clean
@@ -2997,6 +3026,7 @@ assert_eq "$jh_rc" "8" "an unreadable per-head .verdicts refuses the judge recor
 assert_has "$jh_out" "cannot read" "the unreadable per-head .verdicts is named"
 assert_eq "$(cat "$git_dir/cr-review-rounds/jhscan.round")" "3" "the refused per-head scan-failure round leaves the counter at 3"
 
+fi
 # A judge-signed record admits ONE post-cap delta round for a
 # test- or lint-only delta. The record is a GO written by the real writer for
 # the delta's NEW head, carrying `delta-scope:` and `delta-from:` evidence lines.
@@ -3014,6 +3044,7 @@ scope_judge() {
     printf 'delta-scope: %s\ndelta-from: %s\n\nthe delta changes no production path\n' "$3" "$4" > "$jev/judge-evidence.md"
     judge "$1" GO "$2"
 }
+if _rounds_part b; then
 
 # RED: without a record a clean test-only commit after the cap gets no round.
 three_rounds scopeok clean
@@ -3180,9 +3211,8 @@ sl_rc=0; start_round "$sl_head" clean scopelint >/dev/null || sl_rc=$?
 assert_eq "$sl_rc" "0" "a judge-signed lint-only delta is admitted after the cap"
 assert_has "$(cat "$git_dir/cr-review-rounds/scopelint.delta")" "scope:sl-1" "the lint-only delta state names the scope record"
 
-# The existing fix trigger is unchanged and still records itself as fix.
-assert_has "$(cat "$git_dir/cr-review-rounds/fixpath.delta")" " fix" "the fix trigger still records fix"
 
+fi
 # A CLEAN merge of main past the cap is admitted without spending
 # the one delta round; a merge that changes the PR's own diff or resolves a
 # conflict is not, unless a judge-signed merge-resolution record binds it.
@@ -3196,6 +3226,7 @@ main_commit() {
     git -C "$repo" push -q origin main
     git -C "$repo" checkout -q "$mm_back"
 }
+if _rounds_part b; then
 
 three_rounds cmok clean
 cm_r3="$cap_r3_head"
@@ -3459,6 +3490,8 @@ t3b_out="$(start_round "$cap_fix_head" clean t3conc)"; t3b_rc=$?
 assert_eq "$t3b_rc" "0" "a pending delta round restarts once the earlier start's caller is gone"
 assert_has "$t3b_out" "delta round 4 on t3conc" "the restarted pair is still the delta round"
 
+fi
+if _rounds_part c; then
 # A judge NO-GO on a test- or comment-only descendant of the last
 # reviewed head is bound to that head and buys the one round; a descendant
 # that changes code does not. A layer-decision without its keyword is named.
@@ -3556,6 +3589,7 @@ sd2_out="$(start_round "$sd_fix3" clean stranded)"; sd2_rc=$?
 assert_eq "$sd2_rc" "8" "the fallback buys no second round on the consumed record"
 assert_has "$sd2_out" "no judge NO-GO for $sd_fix2 is recorded" "the refusal names the check against the reviewed delta head"
 
+fi
 # A CI-red last reviewed head buys one bounded post-cap round.
 # cired_case <branch> <rows>: the delta round ran and left a finding open (so
 # the post-cap-fixed trigger stays closed), the head it reviewed is
@@ -3571,6 +3605,7 @@ cired_case() {
     postcap_fix "$1"
 }
 RED='completed\tsuccess\tlint\ncompleted\tfailure\tshell-unit (2)\n'
+if _rounds_part c; then
 cired_case cired "$RED"
 cired_out="$(postcap_start cired)"; cired_rc=$?
 assert_eq "$cired_rc" "0" "a failed check-run at the reviewed head buys one post-cap round"
@@ -3640,6 +3675,8 @@ cired_out="$(postcap_start ciredapi)"; cired_rc=$?
 unset GH_CHECKRUNS_RC
 assert_eq "$cired_rc" "8" "an unreadable check-run list refuses the CI-red round"
 
+fi
+if _rounds_part c; then
 # The base side of a merge-forward is not the PR's own change: a 60-line file
 # that main added does not count against the cap (panel-first-pass hands
 # review-round the captured base).
@@ -4890,6 +4927,7 @@ assert_has "$s3_out" "pr-check: round 2 of 3 on h8" "10578 h8-full-round-scope: 
 assert_lacks "$s3_out" "increment from" "10578 h8-full-round-scope: it is a full round, not an increment"
 assert_eq "$(rr_file h8 scope)" "$s3_h full 0" "10578 h8-full-round-scope: .scope says full, so the tagger and pre_ok still treat it as round 2"
 
+fi
 
 if [ "$fails" -gt 0 ]; then
     printf 'FAIL test-pr-check-rounds (%s failures)\n' "$fails" >&2

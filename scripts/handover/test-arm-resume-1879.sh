@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# scripts/handover/test-arm-resume-1879.sh — the one section of
-# test-arm-resume.sh that a 600s per-suite cap genuinely cannot fit,
-# dispatched via the `--only` seam.
+# scripts/handover/test-arm-resume-1879.sh — part 1 of the 1879 family of
+# test-arm-resume.sh, dispatched via the `--only` seam. Part 2 (section
+# "1879-lapse", the last three target-lapse scenarios) is
+# test-arm-resume-1879-b.sh, so each part fits a CI shard.
 #
 # Section "1879" (idempotency against an arm that already
 # FIRED, and the create-said-yes-but-registered-nothing verify) covers its

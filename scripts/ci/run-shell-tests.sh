@@ -356,7 +356,7 @@ _suite_timeout_for() {
         # the 600s default (x2 = 1200s, 1.4x headroom). 1800s is the slower
         # figure x2 (the loaded-budget rule).
         printf '1800'; return 0 ;;
-      scripts/cr/test-pr-check-rounds.sh|*/scripts/cr/test-pr-check-rounds.sh)
+      scripts/cr/test-pr-check-rounds.sh|scripts/cr/test-pr-check-rounds-[bc].sh|*/scripts/cr/test-pr-check-rounds.sh|*/scripts/cr/test-pr-check-rounds-[bc].sh)
         # Same run: PASS at 1700s against the 1200s Linux cap (x2 = 2400s, 1.4x
         # headroom). 3400s is that x2 (the loaded-budget rule).
         printf '3400'; return 0 ;;
@@ -437,7 +437,7 @@ _suite_timeout_for() {
       # truncation floor, so 1200s is that x2 (the loaded-budget rule);
       # SUITE_RUN_BUDGET stays the runaway backstop.
       printf '1200' ;;
-    scripts/cr/test-pr-check-rounds.sh|*/scripts/cr/test-pr-check-rounds.sh)
+    scripts/cr/test-pr-check-rounds.sh|scripts/cr/test-pr-check-rounds-[bc].sh|*/scripts/cr/test-pr-check-rounds.sh|*/scripts/cr/test-pr-check-rounds-[bc].sh)
       # PR 2400 shard 6: every assertion passing, killed at 603s
       # against the 600s default (CAP EXCEEDED); 373s idle on Linux locally
       # after the CI-red unlock rows landed. 603s is a truncation floor, so
@@ -580,7 +580,7 @@ _suite_timeout_for() {
       # observed loaded 1192s here. Rule: loaded x2 -- 1192 * 2 = 2384,
       # rounded up to 2400.
       printf '2400' ;;
-    scripts/handover/test-arm-resume-1879.sh|*/scripts/handover/test-arm-resume-1879.sh)
+    scripts/handover/test-arm-resume-1879.sh|scripts/handover/test-arm-resume-1879-b.sh|*/scripts/handover/test-arm-resume-1879.sh|*/scripts/handover/test-arm-resume-1879-b.sh)
       # Nightly #843 (run 35375554792): no dedicated entry existed
       # -- the generic 600s default killed it CAP EXCEEDED on ubuntu (603s),
       # macOS (604s) and Windows (603s). Measured 843s idle (tier
@@ -839,7 +839,7 @@ scripts/test-himmel-update-hermes.sh  # needs the hermes runtime
 scripts/hermes/test-invoke.sh        # needs the hermes runtime
 scripts/cr/test-hermes-critic.sh     # integration: needs the hermes runtime (no keys on CI) — VM e2e covers it
 scripts/handover/test-hop.sh         # integration: needs a live 'claude' (--print relaunch) — VM e2e covers it
-scripts/handover/test-arm-resume.sh  # superseded by its two --only wrappers below, not a VM-coverage gap — per-section timing (2026-09-18) found the 2775s runtime (637/0/1) concentrated almost entirely in one section (real wall-clock wait loops); the other 91 sections (~200s) run per-PR via test-arm-resume-fast.sh and the slow section runs nightly via test-arm-resume-1879.sh (SUITE_TIER_DEFAULT extended below). This monolith stays skipped only so a bare run doesn't duplicate both wrappers' coverage; runnable individually
+scripts/handover/test-arm-resume.sh  # superseded by its three --only wrappers below, not a VM-coverage gap — per-section timing (2026-09-18) found the 2775s runtime (637/0/1) concentrated almost entirely in one section (real wall-clock wait loops); the other 91 sections (~200s) run per-PR via test-arm-resume-fast.sh and the slow family runs nightly via test-arm-resume-1879.sh and test-arm-resume-1879-b.sh (SUITE_TIER_DEFAULT extended below). This monolith stays skipped only so a bare run doesn't duplicate both wrappers' coverage; runnable individually
 scripts/luna/test-pipeline-cadence.sh  # integration: drives a live 'claude' (--settings fragment) — VM e2e covers it
 scripts/statusline/test-usage-fetch-scheduled.sh  # needs network + OAuth credential; GATE probe run manually
 scripts/testing/test-fakekey-claude-startup.sh  # needs the pinned claude CLI and unshare -rn; the claude-startup job in ci.yml runs it
@@ -849,7 +849,6 @@ scripts/testing/test-mock-hook-smoke.sh  # needs the pinned claude CLI and unsha
 scripts/testing/test-mock-hook-live-turn.sh  # needs the pinned claude CLI and unshare -rn; the claude-startup job in ci.yml runs it
 scripts/test-plugin-test.sh          # integration: self-bootstraps a plugin's deps over npm/network — VM e2e covers it
 scripts/test-adopt.sh                # quarantined, 1203-1204 s against the 1200 s cap on Linux CI shard 2 (PRs 3687 3670 3692 3685), every reached case passing; lifted when it, or each suite it is split into, runs under 900 s on the Linux CI shard at the PR head and on 3 consecutive main runs
-scripts/cr/test-pr-check-rounds.sh   # quarantined, 1203 s against the 1200 s cap on Linux main shard 2 (run 40226871918, 3 attempts), every reached case passing; lifted when the split parts each run under 300 s on 3 consecutive main runs
 scripts/hooks/test-block-write-into-main-checkout-forms.sh   # quarantined, 603 s against the 600 s cap on Linux main shard 2 (run 40226871918, 3 attempts), every reached case passing; lifted when the split parts each run under 300 s on 3 consecutive main runs
 "
 
@@ -941,6 +940,7 @@ SUITE_TIER_DEFAULT="
 scripts/test-check-ci.sh  extended  # measured 559s idle 2026-08-27 (>300s rule)
 scripts/handover/test-arm-resume-identity.sh  extended  # measured 814s idle 2026-08-27, 802s repro (>300s rule)
 scripts/handover/test-arm-resume-1879.sh  extended  # measured 843s idle 2026-09-18, real wall-clock wait loops with no shortcut (>300s rule)
+scripts/handover/test-arm-resume-1879-b.sh  extended  # part 2 of the 1879 family above, same real wall-clock wait loops
 "
 SUITE_TIER="${SUITE_TIER:-$SUITE_TIER_DEFAULT}"
 tier_repo_root=$(pwd -P)

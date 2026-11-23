@@ -259,7 +259,9 @@ scripts/cr/test-pr-check-context.sh	pr	trust-path
 scripts/cr/test-pr-check-env.sh	pr	trust-path
 scripts/cr/test-pr-check-outside.sh	pr	trust-path
 scripts/cr/test-pr-check-pair.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/cr/test-pr-check-rounds.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/cr/test-pr-check-rounds-b.sh	quarantine	part b of the split rounds suite; lifted after 3 green main runs at about 300 s or less each
+scripts/cr/test-pr-check-rounds-c.sh	quarantine	part c of the split rounds suite; lifted after 3 green main runs at about 300 s or less each
+scripts/cr/test-pr-check-rounds.sh	quarantine	part a of the split rounds suite; lifted after 3 green main runs at about 300 s or less each
 scripts/cr/test-pr-check-run.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-pr-check-step0.sh	pr	trust-path
 scripts/cr/test-residue-scan.sh	pr	trust-path
@@ -489,6 +491,7 @@ scripts/handover/chief/test-chief.sh	local	behaviour suite, 0 catches in the 400
 scripts/handover/test-append-cr-bugs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-append-cr-findings.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-arm-resume-1879.sh	local	new since the audit, behaviour suite
+scripts/handover/test-arm-resume-1879-b.sh	local	part 2 of test-arm-resume-1879.sh, same behaviour suite
 scripts/handover/test-arm-resume-at-pty.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-arm-resume-bank-refresh.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-arm-resume-base.sh	local	behaviour suite, 0 catches in the 400-PR audit window

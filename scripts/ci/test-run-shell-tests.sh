@@ -1237,6 +1237,8 @@ else
   # records 843s idle.
   check_timeout_2267 "scripts/handover/test-arm-resume-1879.sh" "1700"
   check_timeout_2267 "/repo/scripts/handover/test-arm-resume-1879.sh" "1700"
+  check_timeout_2267 "scripts/handover/test-arm-resume-1879-b.sh" "1700"
+  check_timeout_2267 "/repo/scripts/handover/test-arm-resume-1879-b.sh" "1700"
 
   # The write-fence suite hit the 600s default twice on
   # ubuntu CI (603s, CAP EXCEEDED, assertions passing).
@@ -1302,6 +1304,10 @@ else
   check_os_timeout_2267 Darwin "/repo/scripts/ci/test-tier-replay.sh" "1800"
   check_os_timeout_2267 Darwin "scripts/cr/test-pr-check-rounds.sh" "3400"
   check_os_timeout_2267 Darwin "/repo/scripts/cr/test-pr-check-rounds.sh" "3400"
+  check_os_timeout_2267 Linux "scripts/cr/test-pr-check-rounds-b.sh" "1200"
+  check_os_timeout_2267 Linux "/repo/scripts/cr/test-pr-check-rounds-c.sh" "1200"
+  check_os_timeout_2267 Darwin "scripts/cr/test-pr-check-rounds-b.sh" "3400"
+  check_os_timeout_2267 Darwin "/repo/scripts/cr/test-pr-check-rounds-c.sh" "3400"
   # The core file of the split family: every assertion green but killed at 603s
   # on both attempts of macOS run 40408566333 (129s on the Linux ledger, so the
   # last case was still pending). Its five siblings measured under the cap there
