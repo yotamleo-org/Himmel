@@ -6,9 +6,6 @@
 #
 #   sudo -n /usr/local/libexec/himmel/afk-sudo grant-request --session=S --cwd=D --why=R --desc=T
 #
-# T is the Bash call's own description, its first line only (the agent's claim; empty when the
-# call has none). The bridge card gets T and the command's first line as --desc / --cmd.
-#
 # Root then binds every file the command names, runs the never-remote floor (a secret read
 # is refused before any notice), freezes the record and sends the operator the full command
 # through the root-only notice bot. Nothing here reads or forwards the classifier-denial log

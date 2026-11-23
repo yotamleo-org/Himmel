@@ -48,8 +48,7 @@ bridge_send() {
             --data-urlencode "text=${text}" "$@"
 }
 
-# one_line TEXT MAX: the first line of TEXT without control characters, cut at a word boundary (…) past MAX.
-one_line() {
+truncate_first_line() {
     local s c
     s=$(printf '%s' "$1" | head -n 1 | tr -d '\000-\037')
     if [ "${#s}" -le "$2" ]; then printf '%s' "$s"; return; fi
@@ -66,11 +65,9 @@ send_card() {
     who=$(label "$session")
     chief=$(label "${HIMMEL_CONSOLE_NAME:-}")
     if [ "$kind" = grant ]; then
-        # The bridge bot is same-uid, so the claim and the command here are the agent's words, marked as such;
-        # root's notice holds the verified copy and the nonce.
         text="AFK grant $id: approve $id <nonce> <code> → run once · deny $id <nonce> → refuse"
-        d=$(one_line "${card_desc:-}" 80)
-        c=$(one_line "${card_cmd:-}" 100)
+        d=$(truncate_first_line "${card_desc:-}" 80)
+        c=$(truncate_first_line "${card_cmd:-}" 100)
         [ -n "$d" ] && text+=$'\n'"The agent says: $d"
         [ -n "$c" ] && text+=$'\n'"Command (unverified): \$ $c"
         who=${who:-unknown}; chief=${chief:-none}
