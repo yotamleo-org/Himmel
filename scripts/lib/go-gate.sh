@@ -588,8 +588,6 @@ trust_path_check() (
         [ "$(printf '%s' "$url" | LC_ALL=C tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$tp_nwo" | LC_ALL=C tr '[:upper:]' '[:lower:]')" ]
     }
     core="$anchor/scripts/ci/ci-trust-paths-core.txt"
-    # settings_adopted <settings.json text> — rc 0 on a PreToolUse hook of the hook-set
-    # list (any scripts/hooks/*.sh if unreadable) or env.HIMMEL_REPO; unparseable refuses.
     settings_adopted() {
         local v names pat='scripts/hooks/[A-Za-z0-9._-]+[.]sh'
         names=$(bash "$anchor/scripts/lib/wire-pretooluse-hooks.sh" --print-hook-set 2>/dev/null \
@@ -605,8 +603,6 @@ trust_path_check() (
             *) refuse list "cannot parse .claude/settings.json on $tp_branch" ;;
         esac
     }
-    # adopted — rc 0 when himmel-adopted.json names the PR's repo or its default
-    # branch's settings read as adopted.
     adopted() {
         local s r=0 allow="$anchor/scripts/guardrails/himmel-adopted.json"
         if [ -e "$allow" ]; then
