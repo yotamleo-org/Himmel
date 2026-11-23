@@ -154,7 +154,7 @@ new_case c7b
     MERGE_BLOCK_ALERT_DIR="$CASE/sentinels" TELEGRAM_ACCESS_PATH="$ACCESS" \
     merge_block_alert octo/demo 42 aaaaaaaaaaaa "rule" 2>>"$CASE/err"
 )
-if grep -q 'chief-route.ts reply --kind merge-blocked 555 MERGE-BLOCKED octo/demo#42' "$CASE/bun.log"; then pass; else fail "7: control — with a sandbox BRIDGE_ROOT the default sender runs bun chief-route.ts reply --kind merge-blocked <chat> (got: $(cat "$CASE/bun.log"))"; fi
+if grep -q 'chief-route.ts reply --kind merge-blocked 555 MERGE-BLOCKED octo/demo#42 @aaaaaaaaaaaa' "$CASE/bun.log"; then pass; else fail "7: control — with a sandbox BRIDGE_ROOT the default sender runs bun chief-route.ts reply --kind merge-blocked <chat> (got: $(cat "$CASE/bun.log"))"; fi
 
 # --- 7c. a hung MERGE_BLOCK_ALERT_CMD is bounded ---------------
 # The seam runs under the same bound as the bun send, so a sender that never
