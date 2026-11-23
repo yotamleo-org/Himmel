@@ -4065,6 +4065,17 @@ sr_out="$(chief new --bucket seedrules 2>&1)"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/seedrules/DEMO-nextleg-${today}B-chief.md" "$(token_of "$sr_out")" >/dev/null 2>&1
 check "standing rules: a second chief start leaves a hand-edited file byte-identical" \
     "$(cksum < "$sr_file" 2>/dev/null)" "$sr_before"
+sr_fail_file="$root/tester/seedfail/specs/standing-rules.md"
+chmod 000 "$sr_template"
+sr_out="$(chief new --bucket seedfail 2>&1)"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/seedfail/DEMO-nextleg-${today}A-chief.md" "$(token_of "$sr_out")" >/dev/null 2>&1
+chmod 644 "$sr_template"
+check "standing rules: a failed seed leaves no partial file behind" \
+    "$([ -e "$sr_fail_file" ] && echo partial || echo absent)" "absent"
+sr_out="$(chief new --bucket seedfail 2>&1)"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/seedfail/DEMO-nextleg-${today}B-chief.md" "$(token_of "$sr_out")" >/dev/null 2>&1
+check "standing rules: the next chief start after a failed seed seeds the full file" \
+    "$(cmp -s "$sr_template" "$sr_fail_file" && echo seeded)" "seeded"
 station_private_hits() {
     [ -f "$1" ] || { echo missing; return; }
     { grep -iE '/home/|/Users/|\baccounts? [A-D]\b|\b[A-Z][A-Z0-9]+-[0-9]+\b' "$1"; leak_scan "$1"; } | grep -c .

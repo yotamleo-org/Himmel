@@ -1493,14 +1493,19 @@ kit="$repo/scripts/handover/chief-kit"
 standing_rules_template="$template_dir/standing-rules-template.md"
 
 seed_standing_rules() {
-    local f="$state_dir/specs/standing-rules.md"
+    local f="$state_dir/specs/standing-rules.md" tmp
     { [ -e "$f" ] || [ -L "$f" ]; } && return 0
     [ -f "$standing_rules_template" ] || { err "WARNING missing $standing_rules_template, $f not seeded"; return 0; }
-    if mkdir -p "$state_dir/specs" && (set -C; cat "$standing_rules_template" > "$f") 2>/dev/null; then
+    if ! { mkdir -p "$state_dir/specs" && tmp=$(mktemp "$state_dir/specs/.standing-rules.XXXXXX"); }; then
+        err "WARNING could not seed $f"
+        return 0
+    fi
+    if cp "$standing_rules_template" "$tmp" && chmod 644 "$tmp" && ln "$tmp" "$f"; then
         echo "standing-rules: seeded $f"
-    else
+    elif ! [ -e "$f" ]; then
         err "WARNING could not seed $f"
     fi
+    rm -f "$tmp"
 }
 
 # --- new --------------------------------------------------------------
