@@ -53,7 +53,7 @@ for phrase in "The ask expires in 6 h; ready in 15 minutes" "ready in 15 minutes
     if [ "$RC" -eq 1 ]; then pass "estimate -> 1: $phrase"; else fail "estimate not caught ($RC): $phrase"; fi
 done
 
-for phrase in "done by tonight" "I will be done in an hour" "ready by 6 pm" "back by 14:30" "the fix lands in half an hour" "answer in a minute"; do
+for phrase in "done by tonight" "I will be done in an hour" "ready by 6 pm" "back by 14:30" "the fix lands in half an hour" "answer in a minute" "ready in two hours" "done in one hour"; do
     put one.md "$phrase"
     run "$T/one.md"
     if [ "$RC" -eq 1 ]; then pass "estimate in words or a target time -> 1: $phrase"; else fail "estimate not caught ($RC): $phrase"; fi

@@ -69,7 +69,7 @@ for f in "${FILES[@]}"; do
             l = tolower($0)
             n = "[0-9]+([.,-][0-9]+)?"
             u = "(s|secs?|seconds?|m|mins?|minutes?|h|hrs?|hours?|days?)([^a-z0-9_]|$)"
-            w = "(a|an|half an) (sec|second|min|minute|hour|hr|day|week)s?([^a-z]|$)"
+            w = "(a|an|half an|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen|twenty|thirty|forty|fifty|sixty) (sec|second|min|minute|hour|hr|day|week)s?([^a-z]|$)"
             past = "(took|waited|lasted|spent|ran for|ran|after|for the last|been|over|expires?) "
             gsub(past "(in |about |around |roughly |~ ?)?" n " ?" u, " ", l)
             gsub(past "(in )?" w, " ", l)
