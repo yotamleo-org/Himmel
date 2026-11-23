@@ -113,6 +113,12 @@ describe('namesKey', () => {
     expect(namesKey('dev 10477', K, bare)).toBe(true);
   });
 
+  it('namesKey in bare mode refuses /pull/10477, PR: 10477, PRs 10477, 10477abc and 10477-other for HIMMEL-10477 and v1.1.3 for HIMMEL-3, and accepts 10477, 10477. and HIMMEL-10477', () => {
+    for (const w of ['see /pull/10477 here', 'PR: 10477', 'PRs 10477 and 10478', 'ship 10477abc', 'ship 10477-other']) expect(namesKey(w, K, bare), w).toBe(false);
+    expect(namesKey('ship v1.1.3 now', 'HIMMEL-3', bare)).toBe(false);
+    for (const w of ['ship 10477', 'ship 10477.', 'ship HIMMEL-10477']) expect(namesKey(w, K, bare), w).toBe(true);
+  });
+
   it('the key parts are escaped', () => {
     expect(namesKey('ship AXB-1', 'A.B-1', bare)).toBe(false);
     expect(namesKey('ship A.B-1', 'A.B-1', bare)).toBe(true);

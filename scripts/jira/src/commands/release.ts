@@ -26,6 +26,7 @@ import {
   ack, apply, bucketCheck, chainFault, clearProposedLabels, coreBypass, coreSnapshot, coveringRecord, declare, decisionWords, fold, freeze, operatorFence, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, releaseForProject, reopen, request as releaseRequest, requestOnRecord, requestWithWords, reviewed, rmRun, rmRunSummary, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
   type ApprovalAlert, type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type RunRecord, type StateOut,
 } from '../release/engine.js';
+import { signerCheck, specSigner, type SignerAlert } from '../release/spec-sign.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
 import { releaseDir, releaseKeyPath, releaseRoot } from '../release/paths.js';
 import { terminalOf } from '../release/reducer.js';
@@ -315,6 +316,27 @@ export function sendApprovalAlert(a: ApprovalAlert): number {
     writeFileSync(words, a.words);
     const r = spawnSync('bash', [join(repoRoot, 'scripts', 'handover', 'chief-kit', 'version-approval-alert.sh'), a.key, a.version, a.decision, String(a.open), words],
       { stdio: ['ignore', 'inherit', 'inherit'], timeout: 60_000 });
+    return r.status ?? 1;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+export const SIGNER_ALERT_TIMEOUT_MS = 30_000;
+
+export function sendSignerAlert(a: SignerAlert, timeoutMs = SIGNER_ALERT_TIMEOUT_MS): number {
+  const seam = ['MERGE_BLOCK_ALERT_CMD', 'TELEGRAM_ACCESS_PATH', 'BRIDGE_ROOT'].find((v) => process.env[v]);
+  if (seam && process.env.HIMMEL_TEST_FIXTURE !== '1') {
+    console.error(`release: ${seam} is set outside a test fixture (HIMMEL_TEST_FIXTURE is not 1); the operator alert is not sent`);
+    return 1;
+  }
+  const dir = mkdtempSync(join(tmpdir(), 'spec-signer-'));
+  try {
+    const words = join(dir, 'words.txt');
+    writeFileSync(words, a.words);
+    const note = a.kind === 'record' ? a.notes.join('; ') : a.chiefSigned.join(', ');
+    const r = spawnSync('bash', [join(repoRoot, 'scripts', 'handover', 'chief-kit', 'spec-signer-alert.sh'), a.kind, a.scope, a.signer, a.decision, words, ...(note ? [note] : [])],
+      { stdio: ['ignore', 'inherit', 'inherit'], timeout: timeoutMs });
     return r.status ?? 1;
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -715,7 +737,7 @@ async function admissionBudgets(versions: string[]): Promise<Record<string, numb
   return out;
 }
 
-const READ_ONLY_VERBS = new Set(['state', 'leaks', 'spec-check', 'core-check', 'core-check-batch', 'bucket-check']);
+const READ_ONLY_VERBS = new Set(['state', 'leaks', 'spec-check', 'signer-check', 'core-check', 'core-check-batch', 'bucket-check']);
 
 /** Each repair read carries its own deadline: the fetch has none, so a hung read must end the run, not hang it. */
 export const REPAIR_READ_DEADLINE_MS = 5000;
@@ -826,6 +848,16 @@ export function registerRelease(program: Command): void {
       for (const l of r.lines) console.log(l);
       for (const warning of r.warnings) console.error(`WARN ${warning}`);
       if (!r.ok) process.exitCode = 1;
+    });
+
+  rel.command('signer-check <keys...>')
+    .description('Per key: SIGNER <K> chief|operator <governing id|default>, SIGNER <K> operator <id> via <V>, or UNKNOWN <K> <why>; who must sign its spec now. Read-only; exit 0')
+    .option('--spec <file>', 'A spec file: a ticket its header names at operator voids the chief for every key')
+    .option('--mirror <dir>', 'Jira mirror directory, for a sub-task\'s parent (default: the JIRA_PROJECT_KEY mirror)')
+    .action((keys: string[], o: { spec?: string; mirror?: string }) => {
+      const mirror = o.mirror ?? (process.env.JIRA_PROJECT_KEY ? defaultRoot(process.env.JIRA_PROJECT_KEY) : null);
+      const specText = o.spec === undefined ? undefined : readFileSync(o.spec, 'utf8');
+      for (const l of signerCheck(process.env, keys, mirror, { specText })) console.log(l);
     });
 
   rel.command('bucket-check <keys...>')
@@ -1186,21 +1218,49 @@ export function registerRelease(program: Command): void {
         : `${r.id} recorded; \`jira release rm-run ${release}\` admits a delivered ticket in a later version under it`);
     });
   operator.command('spec <release>')
-    .description('Sign a minerva spec for its keys after the operator approves it')
+    .description('Sign a minerva spec for its keys: the chief by default, the operator where he marked it')
     .requiredOption('--keys <list>', 'Comma-separated keys the spec covers')
     .requiredOption('--spec <path>', 'The spec file (by convention under the state repo specs/designs/ bucket; any path signs)')
     .option('--plan <path>', 'The spec\'s plan file (the trace lint reads the invariants\' tests from it); default: the spec')
     .option('--source-root <path>', 'Citation root: primary or a registered live linked worktree of this repository (default: primary)')
     .requiredOption('--verdict <path>', 'A critic verdict file; give the spec critic\'s and the plan critic\'s', (v: string, all: string[]) => [...all, v], [] as string[])
-    .requiredOption('--decision <n>', 'Operator decision number')
-    .requiredOption('--verbatim-file <path>', 'The operator\'s words, verbatim')
+    .option('--decision <n>', 'Operator decision number')
+    .option('--signer <who>', 'chief (default) or operator: the operator signs the keys his --words name', 'chief')
+    .option('--words <text>', 'With --signer operator: the operator\'s exact words, checked against the --decision verbatim file')
+    .option('--verbatim-file <path>', 'With --signer chief: the operator\'s words, verbatim')
     .option('--supersedes <O-id>', 'The spec record this re-sign replaces')
-    .action((release: string, o: { keys: string; spec: string; plan?: string; sourceRoot?: string; verdict: string[]; decision: string; verbatimFile: string; supersedes?: string }) => {
+    .action((release: string, o: { keys: string; spec: string; plan?: string; sourceRoot?: string; verdict: string[]; decision?: string; signer: string; words?: string; verbatimFile?: string; supersedes?: string }) => {
+      if (o.signer !== 'chief' && o.signer !== 'operator') throw new Error(`release operator spec: --signer is chief or operator, not '${o.signer}'`);
+      if (o.decision === undefined) throw new Error('release operator spec: a signature needs --decision');
+      if (o.signer === 'operator' && (o.verbatimFile !== undefined || o.words === undefined)) {
+        throw new Error('release operator spec: --signer operator takes --words, the operator\'s exact words, not --verbatim-file');
+      }
+      if (o.signer === 'chief' && (o.verbatimFile === undefined || o.words !== undefined)) {
+        throw new Error('release operator spec: a chief signature needs --decision and --verbatim-file, not --words');
+      }
       const r = signSpec(ctxFor(release), {
-        keys: list(o.keys), spec: o.spec, plan: o.plan, sourceRoot: o.sourceRoot, verdicts: o.verdict, decision: o.decision,
-        verbatim: readBodyFile(o.verbatimFile, '--verbatim-file').trim(), supersedes: o.supersedes,
+        keys: list(o.keys), spec: o.spec, plan: o.plan, sourceRoot: o.sourceRoot, verdicts: o.verdict, decision: o.decision, supersedes: o.supersedes,
+        ...(o.signer === 'operator'
+          ? { signer: 'operator' as const, words: o.words, alert: (a: SignerAlert) => sendSignerAlert(a) }
+          : { signer: 'chief' as const, verbatim: readBodyFile(o.verbatimFile as string, '--verbatim-file').trim() }),
       });
-      console.log(`${r.id} spec ${r.spec_path} signed for ${(r.keys ?? []).join(', ')}`);
+      console.log(`${r.id} spec ${r.spec_path} signed for ${(r.keys ?? []).join(', ')}${r.signer === 'operator' ? ` (the operator signs ${(r.operator_keys ?? []).join(', ') || 'none'})` : ''}`);
+    });
+  operator.command('spec-signer <release>')
+    .description('Record who signs specs: with --keys a mark (operator) or a lift (chief) per key, without it the station default')
+    .requiredOption('--signer <who>', 'chief or operator')
+    .option('--keys <list>', 'Comma-separated keys the operator\'s words name; omit for the station default')
+    .requiredOption('--decision <n>', 'Operator decision number')
+    .requiredOption('--words <text>', 'The operator\'s exact words, checked against the --decision verbatim file')
+    .option('--mirror-root <dir>', 'Jira mirror directory, for a sub-task\'s parent and a mark\'s bypass note (default: the JIRA_PROJECT_KEY mirror)')
+    .action((release: string, o: { signer: string; keys?: string; decision: string; words: string; mirrorRoot?: string }) => {
+      if (o.signer !== 'chief' && o.signer !== 'operator') throw new Error(`release operator spec-signer: --signer is chief or operator, not '${o.signer}'`);
+      const r = specSigner(ctxFor(release, o.mirrorRoot), {
+        signer: o.signer, keys: o.keys === undefined ? undefined : list(o.keys), decision: o.decision, words: o.words, alert: (a) => sendSignerAlert(a),
+      });
+      console.log(`${r.row.id} spec-signer ${r.row.keys?.length ? r.row.keys.join(', ') : 'the station default'} signed by ${r.row.signer}`);
+      for (const n of r.notes) console.log(n);
+      if (r.warn) console.error(r.warn);
     });
   operator.command('spec-review <release>')
     .description('Record a spec, its plan and one passing or folded critic round for its keys; no operator signature')
