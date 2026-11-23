@@ -35,7 +35,8 @@ shape every reply so it can be acted on at a glance. The full guide, with his wo
 11. After he answers, stay quiet: no "got it", "working on it" or "done" unless he
     asked for the result, something failed, or you need him again.
 12. Keep Telegram text clean on a phone; a long message splits only between
-    paragraphs, lines or sentences, never inside a word, code, command or link.
+    paragraphs, lines or sentences (between words for a sentence longer than one
+    part), never inside a word, code, command or link.
 
 Break a rule when the operator asks to "explain" (explain fully, with headers),
 before a destructive action (confirm first), or after three "still broken" turns

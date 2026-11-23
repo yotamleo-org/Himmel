@@ -66,7 +66,8 @@ The chief carries these rules as its reply style (`docs/handover/chief-adhd-brie
     asked for the result, something failed, or you need him again.
 12. **Telegram text stays clean on a phone, and a long message splits only at a clean
     boundary:** between paragraphs, lines or sentences, never inside a word, a code
-    block, a command or a link, so every copyable piece arrives whole.
+    block, a command or a link, so every copyable piece arrives whole. A sentence
+    longer than one part splits between words.
 
 Rules 1 to 5, 7, 11 and 12 were refined with the operator on 2026-11-23 (decision
 1240), and rule 9 the same day (decision 1256).
