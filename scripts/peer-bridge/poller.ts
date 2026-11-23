@@ -8,18 +8,18 @@ import { join } from "node:path";
 import { atomicWrite } from "../telegram/bus";
 import { Chain, PidLockError, acquirePidLock, drainSpool, readChain, sweepResults, writeResult, type IntentRec, type SpoolRec } from "./chain";
 import { ConfigError, DEFAULT_BUDGETS, EXIT_CONFIG, clampToSchema, loadAllowlist, loadConfig, type AllowEntry, type Config } from "./config";
-import { digestFile, parseAck, writeCursor, type DigestRec } from "./digests";
+import { digestFile, parseAck, writeCursor, type DigestRec, type EffectRec, type JobRec } from "./digests";
 import { checkEnvelopeOutbound, checkOutbound, refusalRecord, type OutCtx, type Outcome, type Refusal } from "./egress";
 import { OUTCOMES, buildEnvelope, encodeCanonical, type Envelope } from "./envelope";
 import { admit, admitEnvelope, appendUnknownChat, createGateState, looksLikeEnvelope, matchEnvelope, noteAdmitted, noteRate, rebuildFromInbox, type GateState, type PeerEnvRec, type PeerMsgRec } from "./gate";
 import { mintId } from "./grammar";
 import { botIdFromToken, configDir, peersFile, stateDir } from "./ids";
 import { dueJobs, isTerminal, newInJob, newOutJob, queueDepth, remaining, step, type JobEvent, type SendSpec } from "./jobstate";
-import { ReaderLedger, runReader, type ReaderKind } from "./reader";
+import { ReaderLedger, runReader, type Digest, type ModelRoute, type ReaderKind } from "./reader";
 import { resolveCapacity, resolveReq, resolveRes, type JobRecord } from "./resolve";
 import { currentSigningKey, sign } from "./sign";
 import { PeerTelegram, RetryAfter, TelegramError } from "./telegram";
-import { MAX_AUTO_PER_HOUR, Threads, templateLine, type Action, type ThreadRec } from "./threads";
+import { MAX_AUTO_PER_HOUR, Threads, effectiveRoute, templateLine, type Action, type Route, type ThreadRec, type Transition, type WakeEvent } from "./threads";
 import { notifyFile } from "./notify";
 import { Tripwire, Waker } from "./wake";
 
@@ -44,6 +44,8 @@ type Pending = IntentRec & { n: number };
 type Item = { peer: string; msgKind: string; isRoot: boolean; isTemplate: boolean; replyTo: number | null; text: string; id?: string; spool?: string; resend?: boolean; allowShape?: string; checkUsage: boolean };
 
 const TRIPWIRE_COUNT = 3;
+const READ_TAGS = new Set(["ask:question", "status", "info", "answer", "untagged"]);
+type ReadJob = { rec: PeerMsgRec; kind: ReaderKind; transition: Transition; held: WakeEvent };
 const kindLine = (k: string) => (k === "question" ? "ask:question" : k);
 const PERMANENT = [400, 403, 404];
 
@@ -221,7 +223,7 @@ export class Poller {
   // One batch of updates. The offset moves only after every record of the batch
   // is on disk, so a failed append replays the batch.
   async processBatch(updates: any[]): Promise<void> {
-    const jobs: PeerMsgRec[] = [];
+    const jobs: ReadJob[] = [];
     await this.serial(async () => {
       let max = this.offset - 1;
       this.refreshKilled();
@@ -241,11 +243,15 @@ export class Poller {
         }
         await this.chain.append(this.file(r.peer, "inbox.jsonl"), r.rec);
         noteAdmitted(this.gate, r.rec);
-        const actions = this.threads.onInbound(r.rec).actions;
-        await this.apply(actions);
-        const opened = actions.some(a => "state" in a && a.state.dir === "in" && a.state.root === r.rec.message_id);
-        const answered = r.rec.tag === "answer" && this.threads.get(r.peer, r.rec.root_id) !== undefined;
-        if (opened || answered) jobs.push(r.rec);
+        const { actions, transition } = this.threads.onInbound(r.rec);
+        const thread = this.threads.get(r.peer, r.rec.root_id);
+        if (!READ_TAGS.has(r.rec.tag) || !thread || (r.rec.root_id === r.rec.message_id && transition !== "opened")) { await this.apply(actions); continue; }
+        const kind: ReaderKind = transition === "opened" ? thread.msgKind as ReaderKind : transition === "answered-now" ? "answer" : "other";
+        const job: Omit<JobRec, "n" | "h"> = { kind: "job", peer: r.peer, message_id: r.rec.message_id, root: r.rec.root_id, dir: thread.dir, transition, ts: this.ts() };
+        await this.chain.append(digestFile(this.dir(r.peer)), job);
+        const held = actions.flatMap(a => ("wake" in a && a.wake.label !== "cap hit" ? [a.wake] : []));
+        await this.apply(actions.filter(a => !("wake" in a) || a.wake.label === "cap hit"));
+        jobs.push({ rec: r.rec, kind, transition, held: held[0] ?? { peer: r.peer, root: r.rec.root_id, dir: thread.dir, label: thread.deadline === null ? "message on a closed thread" : "peer message" } });
       }
       if (max >= this.offset) {
         await this.commitOffset(max + 1);
@@ -477,15 +483,35 @@ export class Poller {
     };
   }
 
-  private async readAndDigest(rec: PeerMsgRec): Promise<void> {
+  private async readAndDigest(job: ReadJob): Promise<void> {
+    const { rec, kind, transition, held } = job;
     const peer = this.cfg.peers[rec.peer];
     if (!peer) return;
     const ledger = new ReaderLedger(this.file(rec.peer, "reader-ledger.json"), peer, this.now);
     const run = this.deps.readerRun ?? runReader;
-    const kind = (rec.tag === "answer" ? "answer" : rec.tag.replace("ask:", "")) as ReaderKind;
     const d = await run(rec.text, kind, { himmelRoot: this.cfg.himmelRoot, ledger, timeoutMs: this.deps.readerTimeoutMs });
-    const out: Omit<DigestRec, "n" | "h"> = { kind: "digest", peer: rec.peer, message_id: rec.message_id, root_id: rec.root_id, tag: rec.tag, from_id: rec.from_id, ts: this.ts(), summary: d.summary, asks: d.asks, ...(rec.id ? { id: rec.id } : {}), ...(d.reason ? { reason: d.reason } : {}) };
-    await this.chain.append(digestFile(this.dir(rec.peer)), out);
+    const model: ModelRoute = d.route === "escalate" || d.route === "ack" || d.route === "drop" ? d.route : null;
+    const route = effectiveRoute(kind, transition, model);
+    await this.serial(async () => {
+      const out: Omit<DigestRec, "n" | "h"> = { kind: "digest", peer: rec.peer, message_id: rec.message_id, root_id: rec.root_id, tag: rec.tag, from_id: rec.from_id, ts: this.ts(), summary: d.summary, asks: d.asks, ...(rec.id ? { id: rec.id } : {}), ...(d.reason ? { reason: d.reason } : {}), route, model_route: model };
+      await this.chain.append(digestFile(this.dir(rec.peer)), out);
+      await this.applyRoute(rec, route, transition, held, { ...d, route: model });
+      await this.flush();
+    });
+  }
+
+  private async applyRoute(rec: PeerMsgRec, route: Route, transition: Transition, held: WakeEvent, d: Digest): Promise<void> {
+    let outcome: EffectRec["outcome"];
+    if (route === "escalate") outcome = await this.waker.escalate({ ...held, message_id: rec.message_id, digest: d });
+    else if (transition !== "opened") outcome = "dropped";
+    else {
+      const acts = route === "ack" ? this.threads.ack(rec.peer, rec.root_id) : this.threads.drop(rec.peer, rec.root_id);
+      if (!acts.length) return;
+      await this.apply(acts);
+      outcome = route === "ack" ? "acked" : "dropped";
+    }
+    const effect: Omit<EffectRec, "n" | "h"> = { kind: "effect", peer: rec.peer, message_id: rec.message_id, outcome, ts: this.ts() };
+    await this.chain.append(digestFile(this.dir(rec.peer)), effect);
   }
 
   async tick(): Promise<void> {

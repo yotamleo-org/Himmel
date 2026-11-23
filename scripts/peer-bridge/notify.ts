@@ -29,7 +29,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 export const stamp = (ms: number) => { const d = new Date(ms); return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const hhmm = (ms: number) => { const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 
-const REASON_RE = /^[a-z0-9:-]{1,40}$/;
+const REASON_RE = /^[A-Za-z0-9:_-]{1,40}$/;
 const DRAFT_RE = /^[0-9a-f]{8}$/;
 const DAY_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
 const count = (n: unknown) => Number.isSafeInteger(n) && (n as number) >= 0;

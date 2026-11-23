@@ -48,8 +48,9 @@ export type Action =
 export type Transition = "opened" | "answered-now" | "other";
 export type Route = "escalate" | "ack" | "drop";
 
-export function effectiveRoute(kind: string, transition: Transition, model: ModelRoute): Route {
-  if (model === null || model === "escalate") return "escalate";
+export function effectiveRoute(kind: string, transition: Transition, proposed: ModelRoute): Route {
+  const model = proposed === "ack" || proposed === "drop" ? proposed : null;
+  if (model === null) return "escalate";
   if (transition === "opened") {
     if (kind === "question") return model === "drop" ? "drop" : "escalate";
     if (kind === "status" || kind === "info") return model;
