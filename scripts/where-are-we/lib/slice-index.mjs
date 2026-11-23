@@ -1,6 +1,3 @@
-// scripts/where-are-we/lib/slice-index.mjs — an incremental per-key index for
-// `provision.mjs slice --index <file>`, so a slice reads only the ledger bytes
-// appended since the last run instead of the whole ledger.
 import {
   openSync, closeSync, fstatSync, lstatSync, readSync, readFileSync, writeFileSync, renameSync, unlinkSync,
 } from 'node:fs';
