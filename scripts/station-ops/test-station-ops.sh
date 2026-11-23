@@ -480,7 +480,6 @@ chmod +x "$R/ubin/systemctl"
 cp "$tmp/fakecurl/curl" "$R/ubin/curl"
 cat > "$R/ubin/bun" <<'FAKEBUN'
 #!/bin/sh
-# the bridge route: records its arguments; $RECOVER_FAKE_DIR/bun-fail makes it fail
 [ -e "$RECOVER_FAKE_DIR/bun-fail" ] && exit 1
 echo "$*" >> "$RECOVER_FAKE_DIR/bun.log"
 FAKEBUN
