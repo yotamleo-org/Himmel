@@ -747,19 +747,27 @@ _alert() { merge_watch_alert "${owner:-?}/${repo:-?}" "${num:-?}" "${head0:-}" "
 # checks) and classic branch protection. A failed read returns 1: the caller
 # fails CLOSED — an unreadable set must never be mistaken for an empty one. Only
 # a 404 on the classic endpoint ("Branch not protected" / "Required status
-# checks not enabled") means "no classic rule". A classic read that fails as rate
-# limited returns 3 (not 1) so the pre-watch gate can defer it; it is still unread.
+# checks not enabled") means "no classic rule". A transient failure (rate limit, 5xx,
+# network) returns 3, not 1: the gate defers or retries it; a real one (permission) is 1.
 #
+_req_transient() {
+    ghb_is_rate_limited "${1:-}" && return 0
+    printf '%s' "${1:-}" | grep -i -E 'HTTP 5[0-9][0-9]|timed? ?out|connection (reset|refused)|no such host|could not resolve|unexpected EOF|TLS handshake|network is unreachable' >/dev/null 2>&1
+}
+
 required_set() {
     local base rules classic
     base=$(pr_view --json baseRefName --jq .baseRefName 2>/dev/null) || return 1
     [ -n "$base" ] || return 1
     # these two captures merge stderr into the data, so the helper's fallback warning stays off them
-    rules=$(GH_READ_QUIET=1 gh_read api "repos/$owner/$repo/rules/branches/$base" \
-        --jq '.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? | "\(.context)\t\(.integration_id // "")"' 2>&1) || return 1
+    if ! rules=$(GH_READ_QUIET=1 gh_read api "repos/$owner/$repo/rules/branches/$base" \
+        --jq '.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? | "\(.context)\t\(.integration_id // "")"' 2>&1); then
+        _req_transient "$rules" && return 3
+        return 1
+    fi
     if ! classic=$(GH_READ_QUIET=1 gh_read api "repos/$owner/$repo/branches/$base/protection/required_status_checks" \
         --jq '((.contexts // [])[] | "\(.)\t"), ((.checks // [])[]? | "\(.context)\t\(.app_id // "")")' 2>&1); then
-        case "$classic" in *"(HTTP 404)"*) classic="" ;; *) ghb_is_rate_limited "$classic" && return 3; return 1 ;; esac
+        case "$classic" in *"(HTTP 404)"*) classic="" ;; *) _req_transient "$classic" && return 3; return 1 ;; esac
     fi
     printf '%s\n%s\n' "$rules" "$classic" | sed '/^$/d' | sort -u | _required_normalize | awk -F'\t' -v x="$EXCEPT_CTX" 'x == "" || $1 != x'
 }
@@ -853,14 +861,25 @@ required_gate() {
     # Backstop beside the SECONDS bound: a no-op sleep seam (CHECK_CI_SLEEP_CMD=:)
     # or a POLL of 0 must not turn the bounded wait into a spin.
     max_tries=$(( GRACE / (POLL > 0 ? POLL : 1) + 1 ))
-    local rs_rc=0
+    local rs_rc=0 rt_start rt_tries=0
     reqs=$(required_set) || rs_rc=$?
     if [ "$rs_rc" -eq 3 ] && [ "$wait_ok" -eq 1 ]; then
-        # The classic protection read is admin-only: the read token is refused and the router retries it on
-        # the main token, which is rate limited. Not a verdict: leave it to the post-settle call (wait 0),
-        # which re-reads and stays fail-closed.
-        echo "check-ci: the branch-protection read was rate limited; deferring the required-check gate until after the watch (it refuses then if still unreadable)" >&2
+        # A transient read failure (rate limit, 5xx, network) is not a verdict: leave it to the
+        # post-settle call (wait 0), which re-reads, retries within --grace and stays fail-closed.
+        echo "check-ci: the required-check list read failed transiently (rate limit, 5xx or network); deferring the required-check gate until after the watch (it retries then and refuses if still unreadable)" >&2
         return 0
+    fi
+    rt_start=$SECONDS
+    while [ "$rs_rc" -eq 3 ] && [ $((SECONDS - rt_start)) -lt "$GRACE" ] && [ "$rt_tries" -lt "$max_tries" ]; do
+        rt_tries=$((rt_tries + 1))
+        _rl_recover || "$CHECK_CI_SLEEP_CMD" "$POLL"
+        rs_rc=0
+        reqs=$(required_set) || rs_rc=$?
+    done
+    if [ "$rs_rc" -eq 3 ]; then
+        echo "check-ci: BLOCKED — required-set unreadable (transient): the read of the checks GitHub requires on this PR's base branch kept failing with a rate limit, 5xx or network error for ${GRACE}s. Refusing rather than treating it as an empty set; no operator alert, re-run once GitHub answers (exit 5)" >&2
+        _threads_at_exit 5
+        exit 5
     fi
     if [ "$rs_rc" -ne 0 ]; then
         echo "check-ci: BLOCKED — required-set unreadable: could not list the checks GitHub requires on this PR's base branch (rules/branches or branch-protection read failed). Refusing rather than treating it as an empty set; re-run once gh/API access recovers (exit 5)" >&2

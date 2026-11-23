@@ -242,6 +242,14 @@ if [ "$cmd" = "api" ]; then
                 # (one required context per line), not the raw ruleset JSON.
                 none) : ;;
                 fail) echo "HTTP 500: rules boom" >&2; exit 1 ;;
+                denied) echo "gh: Resource not accessible by integration (HTTP 403)" >&2; exit 1 ;;
+                ratelimit) echo "gh: API rate limit exceeded for user ID 1. (HTTP 403)" >&2; exit 1 ;;
+                ratelimit-n:*)
+                    _rl=${GH_STUB_RULES#ratelimit-n:}
+                    _rn=$(wc -l < "$(dirname "$0")/rules-reads" | tr -d ' ')
+                    echo x >> "$(dirname "$0")/rules-reads"
+                    if [ "$_rn" -lt "${_rl%%:*}" ]; then echo "gh: API rate limit exceeded for user ID 1. (HTTP 403)" >&2; exit 1; fi
+                    printf '%s\n' "${_rl#*:}" | tr ',' '\n' ;;
                 req:*) printf '%s\n' "${GH_STUB_RULES#req:}" | tr ',' '\n' ;;
                 # a RAW ruleset payload run through the --jq expression
                 # check-ci.sh actually passed, so a producer id the script's own
@@ -1049,6 +1057,7 @@ run() {
     : > "$STUBDIR/claims"
     : > "$STUBDIR/reqrows-count"
     : > "$STUBDIR/msc"
+    : > "$STUBDIR/rules-reads"
     rm -f "$STUBDIR/watch-started" "$STUBDIR/watch-ran"
     # alert state resets per run unless a case sets KEEP_ALERT_STATE=1
     # (the dedupe case runs the SAME head twice and must see ONE alert).
@@ -2698,11 +2707,17 @@ assert_rc 5 "3381-c a classic-protection-only required check is read (union) and
 assert_err_has "legacy-required" "3381-c the refusal names the classic-protection check"
 
 # 3381-d — an unreadable ruleset endpoint FAILS CLOSED (never an empty set).
-RULES_OVERRIDE=fail
+RULES_OVERRIDE=denied
 run cr-completed --grace 0
 assert_rc 5 "3381-d an unreadable ruleset read fails closed with exit 5"
 assert_err_has "required-set unreadable" "3381-d the refusal says the required set is unreadable"
-if [ "$(alert_count)" = 1 ]; then pass "3381-d one alert for an unreadable set"; else fail "3381-d one alert for an unreadable set" "count=$(alert_count)"; fi
+if [ "$(alert_count)" = 1 ]; then pass "3381-d one alert for a permission-denied set"; else fail "3381-d one alert for a permission-denied set" "count=$(alert_count)"; fi
+
+RULES_OVERRIDE=fail
+run cr-completed --grace 0
+assert_rc 5 "3381-d a 5xx ruleset read still fails closed with exit 5"
+assert_err_has "transient" "3381-d a 5xx is named transient"
+if [ "$(alert_count)" = 0 ]; then pass "3381-d no alert for a transient (5xx) unreadable set"; else fail "3381-d no alert for a transient (5xx) unreadable set" "count=$(alert_count)"; fi
 
 # 3381-e — an unreadable classic endpoint (403) fails closed too; only a 404
 # "Branch not protected" means "no classic rule".
@@ -2710,6 +2725,26 @@ CLASSIC_OVERRIDE=fail
 run cr-completed --grace 0
 assert_rc 5 "3381-e a 403 on classic protection fails closed (only 404 means none)"
 assert_err_has "required-set unreadable" "3381-e names the unreadable set"
+if [ "$(alert_count)" = 1 ]; then pass "3381-e a permission-denied read still sends exactly one alert"; else fail "3381-e a permission-denied read still sends exactly one alert" "count=$(alert_count)"; fi
+
+RULES_OVERRIDE=ratelimit
+run cr-completed --grace 5
+assert_rc 5 "3381-g a rate-limited required-set read still refuses the merge (exit 5)"
+assert_err_has "transient" "3381-g the refusal names the read failure transient"
+if [ "$(alert_count)" = 0 ]; then pass "3381-g a rate-limited required-set read sends no alert"; else fail "3381-g a rate-limited required-set read sends no alert" "count=$(alert_count)"; fi
+_g_reads=$(grep -c 'rules/branches/main' "$STUBDIR/args.log")
+if [ "$_g_reads" -ge 3 ] && [ "$_g_reads" -le 8 ]; then pass "3381-g the read is retried within the --grace bound"; else fail "3381-g the read is retried within the --grace bound" "reads=$_g_reads"; fi
+
+RULES_OVERRIDE="ratelimit-n:2:unit-tests"
+run cr-completed --grace 5
+assert_rc 0 "3381-h a rate limit that recovers on the retry reaches the real verdict (exit 0)"
+if [ "$(alert_count)" = 0 ]; then pass "3381-h a recovered read sends no alert"; else fail "3381-h a recovered read sends no alert" "count=$(alert_count)"; fi
+
+RULES_OVERRIDE="ratelimit-n:2:codeowner-review-gate"
+run cr-completed --grace 5
+assert_rc 5 "3381-i after a recovered read a missing required check still exits 5"
+assert_err_has "never reported" "3381-i the refusal names the missing check, not the read"
+if [ "$(alert_count)" = 1 ]; then pass "3381-i the missing required check sends its one alert"; else fail "3381-i the missing required check sends its one alert" "count=$(alert_count)"; fi
 
 # 3381-f — a required check FAILED before the watch: exit 1 at once (no watch, no
 # sleep), naming the check, one alert.
@@ -3450,5 +3485,5 @@ if [ "$RC" -ne 0 ]; then pass "T3.23-d even with --fail-fast kept, a pending con
 
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 261 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 261"; exit 1; fi
+if [ "$COUNT" -ne 265 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 265"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1
