@@ -1,5 +1,3 @@
-// `release core-check` and `release core-check-batch` share one input load and one per-group
-// compute, so a batch group prints exactly the lines a single call of that group prints.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
