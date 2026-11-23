@@ -1159,6 +1159,7 @@ describe('liveJira.newestFixVersionEntry', () => {
 // (roster, snapshot, key files, a fake claude, an alert recorder) and a recording fallback: no row reaches the real
 // liveJudge, a real claude or the real alert sender, and no row reads the station's role map.
 describe('routedJudge', () => {
+  const FAKE_START_BOUND_MS = 60_000;
   const INPUT = { release: 'R1', current: 'v1', versions: ['v1'], requests: [], records: [], operator: [], rulings: [], issues: [] } as unknown as JudgeInput;
   const decision = (reason: string) => ({ req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 's', ground: 'g', reason });
   const envelope = (reason: string) => JSON.stringify({ is_error: false, result: JSON.stringify([decision(reason)]) });
@@ -1192,6 +1193,7 @@ describe('routedJudge', () => {
       HIMMEL_FLEET_SLOTS: join(dir, 'slots'), PATH: pathWithEmptyPs(dir),
       CADENCE_USAGE_LEDGER: join(dir, 'bank-ledger'), CADENCE_USAGE_SKIP_REFRESH: '1', CADENCE_USAGE_CACHE: join(dir, 'native-cache.json'),
       ANTHROPIC_API_KEY: '', HIMMEL_API_KEY_ID: '',
+      WORKER_SESSION_DOC: '', FLEET_LAUNCH_DOC: '', FLEET_LAUNCH_MANIFEST: '', FLEET_LAUNCH_ATTEMPT: '', WORKER_SESSION_ATTEMPT_ID: '',
     };
     for (const [k, v] of Object.entries(set)) vi.stubEnv(k, v);
     const fallbackCalls: JudgeInput[] = [];
@@ -1245,6 +1247,16 @@ describe('routedJudge', () => {
     expect(existsSync(join(cwd, '.git'))).toBe(false);
   });
 
+  it('mapped inside a worker session: the managed-launch variables are blank, so the launcher runs against the test fleet and the fake answers', async () => {
+    const managed = ['WORKER_SESSION_DOC', 'FLEET_LAUNCH_DOC', 'FLEET_LAUNCH_MANIFEST', 'FLEET_LAUNCH_ATTEMPT', 'WORKER_SESSION_ATTEMPT_ID'];
+    for (const k of managed) vi.stubEnv(k, join(root, 'handovers', 'HIMMEL-10843-N10843-routed-judge-release-tests-2026-11-23.md'));
+    const w = world({ judge: ['B'] });
+    for (const k of managed) expect(process.env[k], k).toBe('');
+    const got = await makeRoutedJudge(w.fallback)(INPUT);
+    expect(got[0]).toMatchObject({ reason: 'from-fake' });
+    expect(w.fallbackCalls).toHaveLength(0);
+  });
+
   it('judgeApiEnv carries exactly the pass-through names plus the pins and no other HIMMEL_API_ name', () => {
     const wide: NodeJS.ProcessEnv = { HIMMEL_API_FOO: '1', HIMMEL_API_ACCOUNT: 'A', HIMMEL_API_KIND: 'eval', ANTHROPIC_API_KEY: 'k', PATH: '/bin' };
     for (const k of JUDGE_API_PASS_ENV) wide[k] = `v-${k}`;
@@ -1273,25 +1285,27 @@ describe('routedJudge', () => {
     throw new Error(`no ${name} above pid ${pid}`);
   };
   const fakePid = (w: ReturnType<typeof world>) => Number(/^pid=(\d+)$/m.exec(w.read('fake.log'))?.[1]);
+  // The fake's start is an event, not a duration: the bound only ends a run whose launcher never reached it.
+  const fakeStarted = (w: ReturnType<typeof world>) => vi.waitFor(() => expect(fakePid(w)).toBeGreaterThan(0), { timeout: FAKE_START_BOUND_MS, interval: 25 });
 
   it('mapped, the run stopped mid-call: the call is killed and no fallback runs', async () => {
     const w = world({ judge: ['B'] }, { sleep: 30 });
     const stop = new AbortController();
     const got = makeRoutedJudge(w.fallback)(INPUT, { signal: stop.signal });
-    await vi.waitFor(() => expect(fakePid(w)).toBeGreaterThan(0), { timeout: 10_000 });
+    await fakeStarted(w);
     stop.abort(new Error('rm-run: stopped by SIGTERM; nothing more ruled'));
     await expect(got).rejects.toThrow();
     expect(w.fallbackCalls).toHaveLength(0);
-  }, 20_000);
+  }, FAKE_START_BOUND_MS + 20_000);
 
   it.skipIf(process.platform !== 'linux')('mapped, TERM to the launcher alone: it exits 143 and no fallback runs', async () => {
     const w = world({ judge: ['B'] }, { sleep: 30 });
     const got = makeRoutedJudge(w.fallback)(INPUT);
-    await vi.waitFor(() => expect(fakePid(w)).toBeGreaterThan(0), { timeout: 10_000 });
+    await fakeStarted(w);
     process.kill(ancestor(fakePid(w), 'claude-api.sh'), 'SIGTERM');
     await expect(got).rejects.toMatchObject({ status: 143 });
     expect(w.fallbackCalls).toHaveLength(0);
-  }, 20_000);
+  }, FAKE_START_BOUND_MS + 20_000);
 
   it('mapped, the launcher times out its own call: the run fails and no fallback runs', async () => {
     const w = world({ judge: ['B'] }, { sleep: 30 });
