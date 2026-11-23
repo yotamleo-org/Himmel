@@ -731,7 +731,7 @@ sw_doc cs1 Y1 '# HIMMEL-4 — a worker that wrapped a moment ago — worker Y1' 
 echo 3 > "$STUB/rc.H1"
 rm -rf "$SWPROC"; sw_session 101 AT; sw_session 102 AR; sw_session 103 W1-r2; sw_session 104 H1; sw_session 105 L1; sw_session 106 Y1
 CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-doc.sh" \
-    timeout 4 bash "$WAIT" "$I" --doc "$CD" --workers "N1.md" > "$WORK/cs1.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+    timeout 4 bash "$WAIT" "$I" --doc "$CD" --workers "N1.md" > "$WORK/cs1.out" 2>/dev/null; rc=$?
 check "(cs1) the grand-predecessor chief (two links back) is closed through --chief, once" "1" "$(grep -cxF -- "--chief $WORK/cs1/AR.md" "$STUB/close.calls")"
 check "(cs1) a WRAPPED worker not in the manifest is closed through the worker path" "yes" "$(grep -qxF -- "$WORK/cs1/W1.md" "$STUB/close.calls" && echo yes)"
 check "(cs1) the named predecessor is still closed through --chief" "yes" "$(grep -qxF -- "--chief $WORK/cs1/AS.md" "$STUB/close.calls" && echo yes)"
@@ -756,7 +756,7 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 check "(cs2) an unexpected refusal on a swept doc wakes the chief (rc 0)" "0" "$rc"
 check "(cs2) the wake is WAKE predecessor-open" "WAKE predecessor-open rc=5" "$(head -n1 "$WORK/cs2.out")"
 CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-doc.sh" \
-    timeout 4 bash "$WAIT" "$I" --doc "$WORK/cs2/AT.md" --workers "N1.md" > "$WORK/cs2b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+    timeout 4 bash "$WAIT" "$I" --doc "$WORK/cs2/AT.md" --workers "N1.md" > "$WORK/cs2b.out" 2>/dev/null; rc=$?
 rm -f "$STUB/close.msg"
 check "(cs2) it wakes once: the re-arm is quiet and asks it no more" "|1" "$(cat "$WORK/cs2b.out")|$(wc -l < "$STUB/close.calls" | tr -d ' ')"
 reset_stub; rm -f "$STUB"/rc.*
@@ -768,7 +768,7 @@ sw_doc cs3 W1 '# HIMMEL-1 — worker W1' WRAPPED
 rm -rf "$SWPROC"; sw_session 301 H1; sw_session 302 H2; sw_session 303 W1
 I="$(new_inbox cs3)"
 CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-doc.sh" CHIEF_WAIT_SWEEP_MAX=1 \
-    timeout 8 bash "$WAIT" "$I" --doc "$WORK/cs3/AT.md" --workers "N1.md" > "$WORK/cs3.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+    timeout 8 bash "$WAIT" "$I" --doc "$WORK/cs3/AT.md" --workers "N1.md" > "$WORK/cs3.out" 2>/dev/null; rc=$?
 check "(cs3) refusals ahead in the census never starve a later candidate past CHIEF_WAIT_SWEEP_MAX" "yes" "$(grep -qxF -- "$WORK/cs3/W1.md" "$STUB/close.calls" && echo yes)"
 check "(cs3) and the refused ones are still retried, more than once each" "yes|yes" "$([ "$(grep -cxF -- "$WORK/cs3/H1.md" "$STUB/close.calls")" -ge 2 ] && echo yes)|$([ "$(grep -cxF -- "$WORK/cs3/H2.md" "$STUB/close.calls")" -ge 2 ] && echo yes)"
 reset_stub; rm -f "$STUB"/rc.* "$STUB"/sleep.*
@@ -793,7 +793,7 @@ sw_doc cs5 W1 '# HIMMEL-1 — worker W1' WRAPPED
 rm -rf "$SWPROC"; sw_session 501 AT; sw_session 502 W1
 I="$(new_inbox cs5)"
 CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-doc.sh" \
-    timeout 4 bash "$WAIT" "$I" --doc "$WORK/cs5/AT.md" --workers "N1.md" > "$WORK/cs5.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
+    timeout 4 bash "$WAIT" "$I" --doc "$WORK/cs5/AT.md" --workers "N1.md" > "$WORK/cs5.out" 2>/dev/null
 check "(cs5) the waiter's own doc, WRAPPED and old with a live session of its name, is never asked; its neighbour W1 is" "0|yes" "$(grep -c 'AT.md' "$STUB/close.calls")|$(grep -qxF -- "$WORK/cs5/W1.md" "$STUB/close.calls" && echo yes)"
 reset_stub; rm -f "$STUB"/rc.*
 cat > "$STUB/close-tick.sh" <<'EOF'
@@ -809,7 +809,7 @@ sw_doc cs6 H2 '# HIMMEL-2 — worker H2' WRAPPED
 rm -rf "$SWPROC"; sw_session 601 H1; sw_session 602 H2
 I="$(new_inbox cs6)"
 CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-tick.sh" CHIEF_WAIT_SWEEP_MAX=1 \
-    timeout 5 bash "$WAIT" "$I" --doc "$WORK/cs6/AT.md" --workers "N1.md" > "$WORK/cs6.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
+    timeout 5 bash "$WAIT" "$I" --doc "$WORK/cs6/AT.md" --workers "N1.md" > "$WORK/cs6.out" 2>/dev/null
 check "(cs6) CHIEF_WAIT_SWEEP_MAX=1 asks one doc per sample over several samples" "yes|" "$([ "$(wc -l < "$STUB/close.calls" | tr -d ' ')" -ge 2 ] && echo yes)|$(awk '{ print $1 }' "$STUB/close.calls" | sort | uniq -d)"
 reset_stub; rm -f "$STUB"/rc.*
 cat > "$STUB/close-hb.sh" <<'EOF'
@@ -826,7 +826,7 @@ sw_doc cs7 H2 '# HIMMEL-2 — worker H2' WRAPPED
 rm -rf "$SWPROC"; sw_session 701 H1; sw_session 702 H2
 I="$(new_inbox cs7)"
 CS_HB="$I.wait" CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-hb.sh" \
-    timeout 9 bash "$WAIT" "$I" --doc "$WORK/cs7/AT.md" --workers "N1.md" > "$WORK/cs7.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
+    timeout 9 bash "$WAIT" "$I" --doc "$WORK/cs7/AT.md" --workers "N1.md" > "$WORK/cs7.out" 2>/dev/null
 check "(cs7) the heartbeat is fresh before every close, also after a slow one in the same sample" "yes|0" "$([ "$(wc -l < "$STUB/hb.ages" | tr -d ' ')" -ge 2 ] && echo yes)|$(awk '$1 > 1' "$STUB/hb.ages" | wc -l | tr -d ' ')"
 reset_stub; rm -f "$STUB"/rc.*
 printf '#!/usr/bin/env bash\necho "CLOSED-ALREADY: W1 has no live session under [W1]; nothing to signal"\n' > "$STUB/close-gone.sh"
@@ -835,7 +835,7 @@ sw_doc cs8 W1 '# HIMMEL-1 — worker W1' WRAPPED
 rm -rf "$SWPROC"; sw_session 801 W1
 I="$(new_inbox cs8)"
 CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-gone.sh" \
-    timeout 4 bash "$WAIT" "$I" --doc "$WORK/cs8/AT.md" --workers "N1.md" > "$WORK/cs8.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
+    timeout 4 bash "$WAIT" "$I" --doc "$WORK/cs8/AT.md" --workers "N1.md" > "$WORK/cs8.out" 2>/dev/null
 check "(cs8) a CLOSED-ALREADY answer is marked gone and logs no 'closed its window' bullet" "gone:$WORK/cs8/W1.md|0" "$(cat "$I.wait.predecessor" 2>/dev/null)|$(grep -c 'closed its window' "$WORK/cs8/AT.md")"
 reset_stub; rm -f "$STUB"/rc.*
 mkdir -p "$WORK/cs9"; printf '# AT — CHIEF — successor to none — first console of the chain\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE AT\n' > "$WORK/cs9/AT.md"
@@ -844,7 +844,7 @@ sw_doc cs9 T-9-N9-task-2026-11-20 '# T-9 — a dated doc run under its undated s
 rm -rf "$SWPROC"; sw_session 901 T-9-N9-task
 I="$(new_inbox cs9)"
 CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-doc.sh" \
-    timeout 4 bash "$WAIT" "$I" --doc "$WORK/cs9/AT.md" --workers "N1.md" > "$WORK/cs9.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
+    timeout 4 bash "$WAIT" "$I" --doc "$WORK/cs9/AT.md" --workers "N1.md" > "$WORK/cs9.out" 2>/dev/null
 check "(cs9) a dated doc under its undated session name is found and closed" "$WORK/cs9/T-9-N9-task-2026-11-20.md" "$(cat "$STUB/close.calls")"
 unset CHIEF_WAIT_CLOSE CHIEF_WAIT_SWEEP_MIN CHIEF_WAIT_SWEEP_MAX
 

@@ -1971,9 +1971,9 @@ close_doc_woke() {
     heartbeat sampling
     errf="$(mktemp "$pred_file.XXXXXX" 2>/dev/null)" || return 1
     if [ "$2" = --chief ]; then
-        out="$(timeout -k 5 "${CHIEF_WAIT_CLOSE_TIMEOUT:-60}" bash "$close_cmd" --chief "$doc" </dev/null 2>"$errf" 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
+        out="$(timeout -k 5 "${CHIEF_WAIT_CLOSE_TIMEOUT:-60}" bash "$close_cmd" --chief "$doc" </dev/null 2>"$errf" 9>&-)"; rc=$?
     else
-        out="$(timeout -k 5 "${CHIEF_WAIT_CLOSE_TIMEOUT:-60}" bash "$close_cmd" "$doc" </dev/null 2>"$errf" 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
+        out="$(timeout -k 5 "${CHIEF_WAIT_CLOSE_TIMEOUT:-60}" bash "$close_cmd" "$doc" </dev/null 2>"$errf" 9>&-)"; rc=$?
     fi
     case "$rc" in
         0) if [[ $out == *CLOSED-ALREADY* ]]; then pred_mark gone "$doc"
@@ -2017,7 +2017,7 @@ sweep_candidates() {
     done <<< "$rows"
     [ "${#docs[@]}" -gt 0 ] || return 0
     now="$(date +%s)"
-    stats="$(stat --printf '%Y\t%n\n' -- "${docs[@]}" 2>/dev/null)"  # gnu-ok: Linux-only kit; swallow-ok: a doc gone since the census prints no line
+    stats="$(stat --printf '%Y\t%n\n' -- "${docs[@]}" 2>/dev/null)"  # swallow-ok: a doc gone since the census prints no line
     docs=()
     while IFS=$'\t' read -r mt doc; do
         case "$mt" in ''|*[!0-9]*) continue ;; esac

@@ -2555,7 +2555,7 @@ check_c98_wrapped_window() {
     now="$(date +%s)"
     aged=()
     for doc in ${docs[@]+"${docs[@]}"}; do
-        mt="$(stat -c %Y "$doc" 2>/dev/null || stat -f %m "$doc" 2>/dev/null)" || mt=""  # gnu-ok: the BSD stat -f is the fallback on this line
+        mt="$(stat -c %Y "$doc" 2>/dev/null || stat -f %m "$doc" 2>/dev/null)" || mt=""
         case "$mt" in
             ''|*[!0-9]*) unread="${unread:+$unread; }cannot read the age of $doc" ;;
             *) [ $(( now - mt )) -lt $(( min * 60 )) ] || aged+=("$doc") ;;
