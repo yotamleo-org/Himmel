@@ -10,7 +10,7 @@
 # With no marker, a marker for another user, or an arming already recovered: prints why and does nothing (exit 0).
 # Exit 0 normally; 1 when the marker is unreadable or a step the marker asked for failed (the status still goes out).
 # Env (test seams, all optional): HIMMEL_RECOVER_ROOT (path prefix for /var/lib/himmel and /etc/himmel),
-# HIMMEL_RECOVER_STATE (state dir), HIMMEL_RECOVER_BRIDGE_TIMEOUT (seconds, default 30), TELEGRAM_ENV, AFK_TELEGRAM_API.
+# HIMMEL_RECOVER_STATE (state dir), TELEGRAM_ENV, AFK_TELEGRAM_API.
 set -u
 RR=${HIMMEL_RECOVER_ROOT:-}
 marker="$RR/var/lib/himmel/reboot-recover.json"
