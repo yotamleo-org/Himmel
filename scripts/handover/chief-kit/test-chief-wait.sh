@@ -683,5 +683,97 @@ if [ "${1:-}" = --worktree-ceiling-only ]; then
     [ "$fails" -eq 0 ]; exit $?
 fi
 
+mw_tick() { # <tails> [extra fields]
+    tick_line "N1:FRESH" "ok"
+    sed -i "s/ tails=N1:LIVE/ tails=$1/; s/\$/${2:+ $2}/" "$STUB/tick.line"  # gnu-ok: Linux-only kit
+}
+cat > "$STUB/mw-dispatch.sh" <<'EOF'
+#!/usr/bin/env bash
+case " $* " in
+    *" --priority-pool-only "*)
+        printf '# pool=0/7,LOW\nPOOL-EMPTY\n'
+        case " $* " in *" --dispositions "*) [ ! -f "$STUB/mw-dispositions" ] || cat "$STUB/mw-dispositions" ;; esac ;;
+esac
+EOF
+printf '#!/usr/bin/env bash\ncat > /dev/null\nexit 0\n' > "$STUB/mw-we.sh"
+export CHIEF_WAIT_WORKER_EVENT="$STUB/mw-we.sh"
+reset_stub
+mkdir -p "$WORK/mw"
+MB="$WORK/mw/HIMMEL-10747-BN3a-t3-lanes-2026-11-23.md"
+printf '# worker\n\n## Results\n- 19:00 FINDING — merge message shape\n- 19:05 RESOLVED — ruling received\n' > "$MB"
+MLB=HIMMEL-10747-BN3a-t3-lanes-2026-11-23
+MM="$WORK/mw/chief.fleet.json"; printf '{"schema":1,"workers":[{"doc":"%s","label":"%s"}]}\n' "$MB" "$MLB" > "$MM"
+I="$(new_inbox mw)"
+rm -f "$STUB/mw-dispositions"
+mw_tick "$MLB:RESOLVED"
+CHIEF_WAIT_DISPATCH="$STUB/mw-dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=0 start "$I" "$WORK/mw1.out" --workers-from "$MM"
+wait_hb "$I" || fail "(10901-1) no baseline heartbeat"
+printf -- '- 19:16 BLOCKED merge-message-shape — the gate refuses the merge message\n' >> "$MB"
+printf '# disposition HIMMEL-16 classification BLOCKED: needs slicing\n' > "$STUB/mw-dispositions"
+mw_tick "$MLB:BLOCKED"
+wait_exit "$WPID"
+check "(10901-1) a BLOCKED on the same sample as a pool-unresolved change: the block names both" \
+    "0|1|1" "$rc|$(grep -c '^WAKE pool-unresolved' "$WORK/mw1.out")|$(grep -cx "WAKE worker-blocked $MLB" "$WORK/mw1.out")"
+check "(10901-1) and records the BLOCKED as named" "1" "$(grep -c "^$MLB BLOCKED " "$I.wait.markerwoke" 2>/dev/null)"
+[ "$rc" = running ] && stop_waiter "$WPID"
+rm -f "$STUB/mw-dispositions"
+I="$(new_inbox mw2)"
+mw_tick "$MLB:BLOCKED"
+start "$I" "$WORK/mw2.out" --workers-from "$MM"
+wait_exit "$WPID"
+check "(10901-2) setup: a baseline arm names the BLOCKED and saves it in the key" "0|1" "$rc|$(grep -cx "WAKE worker-blocked $MLB" "$WORK/mw2.out")"
+[ "$rc" = running ] && stop_waiter "$WPID"
+rm -f "$I.wait.markerwoke"
+mw_tick "$MLB:BLOCKED" "doctor=C53"
+start "$I" "$WORK/mw3.out" --workers-from "$MM"
+wait_exit "$WPID"
+check "(10901-2) a re-arm with the BLOCKED in the saved key and never named: the doctor wake names it" \
+    "0|1|1" "$rc|$(grep -c '^WAKE doctor' "$WORK/mw3.out")|$(grep -cx "WAKE worker-blocked $MLB" "$WORK/mw3.out")"
+[ "$rc" = running ] && stop_waiter "$WPID"
+mw_tick "$MLB:BLOCKED" "doctor=C53,C54"
+start "$I" "$WORK/mw4.out" --workers-from "$MM"
+wait_exit "$WPID"
+check "(10901-2) once named, the next wake carries no worker-blocked line" \
+    "0|1|0" "$rc|$(grep -c '^WAKE doctor' "$WORK/mw4.out")|$(grep -c '^WAKE worker-blocked' "$WORK/mw4.out")"
+[ "$rc" = running ] && stop_waiter "$WPID"
+start "$I" "$WORK/mw5.out" --workers-from "$MM"
+wait_exit "$WPID"
+check "(10901-2) and a quiet re-arm wakes nothing" "running|" "$rc|$(cat "$WORK/mw5.out")"
+[ "$rc" = running ] && stop_waiter "$WPID"
+MO="$WORK/mw/HIMMEL-10257-BL1a-owed-2026-11-23.md"; MR="${MO%.md}-RESUME.md"
+MX="$WORK/mw/HIMMEL-10464-BH4a-gone-2026-11-23-RESUME.md"
+printf '# RESUME brief\n' > "$MR"; touch -d '1 hour ago' "$MR"  # gnu-ok: Linux-only kit
+printf '# worker\n\n## Results\n- 18:40 LIVE — judge round\n- 19:31 READY 5793 %s GREEN\n' "$(printf 'b%.0s' $(seq 40))" > "$MO"
+MRL=HIMMEL-10257-BL1a-owed-2026-11-23-RESUME; MXL=HIMMEL-10464-BH4a-gone-2026-11-23-RESUME
+printf '{"schema":1,"workers":[{"doc":"%s","label":"%s"},{"doc":"%s","label":"%s"},{"doc":"%s","label":"%s"}]}\n' \
+    "$MB" "$MLB" "$MR" "$MRL" "$MX" "$MXL" > "$MM"
+mw_tick "$MLB:BLOCKED,$MRL:?,$MXL:?"
+start "$I" "$WORK/mw6.out" --workers-from "$MM"
+wait_exit "$WPID"
+check "(10901-3) a row naming a missing doc wakes worker-doc-missing" "0|1" "$rc|$(grep -cx "WAKE worker-doc-missing $MXL $MX" "$WORK/mw6.out")"
+check "(10901-3) a markerless RESUME row whose original holds a newer marker names the doc it writes" \
+    "1" "$(grep -cx "WAKE worker-doc-missing $MRL $MR writes=$MO" "$WORK/mw6.out")"
+[ "$rc" = running ] && stop_waiter "$WPID"
+start "$I" "$WORK/mw7.out" --workers-from "$MM"
+wait_exit "$WPID"
+check "(10901-3) each path wakes once" "running|" "$rc|$(cat "$WORK/mw7.out")"
+[ "$rc" = running ] && stop_waiter "$WPID"
+MQ="$WORK/mw/HIMMEL-10747-BN3b-t3-lanes-2026-11-23.md"; MQL=HIMMEL-10747-BN3b-t3-lanes-2026-11-23
+printf '# worker\n\n## Results\n- 19:30 LIVE — merge forward done\n' > "$MQ"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"%s"}]}\n' "$MQ" "$MQL" > "$MM"
+I="$(new_inbox mwq)"
+mw_tick "$MQL:LIVE"
+start "$I" "$WORK/mw8.out" --workers-from "$MM"
+wait_hb "$I" || fail "(10901-4) no baseline heartbeat"
+printf -- '- 19:40 LIVE PUSH-REQUEST BP :: push the lanes branch\n' >> "$MQ"
+wait_exit "$WPID"
+check "(10901-4) a LIVE bullet carrying PUSH-REQUEST wakes worker-request" "0|WAKE worker-request $MQL" "$rc|$(grep '^WAKE ' "$WORK/mw8.out")"
+[ "$rc" = running ] && stop_waiter "$WPID"
+start "$I" "$WORK/mw9.out" --workers-from "$MM"
+wait_exit "$WPID"
+check "(10901-4) once per bullet" "running|" "$rc|$(cat "$WORK/mw9.out")"
+[ "$rc" = running ] && stop_waiter "$WPID"
+unset CHIEF_WAIT_WORKER_EVENT
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
