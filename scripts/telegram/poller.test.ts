@@ -2723,7 +2723,7 @@ test("/restart acks and audits BEFORE firing — the fire kills the transport", 
     restart: async (rung) => { order.push(`fire:${rung}`); return { rc: 0, message: "" }; },
   });
   expect(order[0]).toContain("reply:");
-  expect(order[0]).toContain("bouncing the poller");
+  expect(order[0]).toContain("restarting the Telegram bridge");
   expect(order[1]).toBe("audit:restarting");
   expect(order[2]).toBe("fire:poller");
   expect(order).not.toContain("script");   // never shelled to auto-action.sh

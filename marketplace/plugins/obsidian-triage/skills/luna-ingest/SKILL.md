@@ -47,7 +47,7 @@ Parse:
 - `--components-dir <rel>` — vault-relative Components library root.
   Default `30-Resources/Components`. Only meaningful with `--deep`.
 - `--max-components <N>` — per-repo component cap (tail-skip beyond). Default 60.
-- `--skill-scan` — run SkillSpector Stage 1 (static, `--no-llm`, no egress) over each skill directory in the source repo (Phase 3.7) and store the JSON reports beside the note. Advisory only, never gates. Off by default.
+- `--skill-scan` — run SkillSpector Stage 1 (static, `--no-llm`; its one network call checks lockfile dependencies against api.osv.dev for CVEs) over each skill directory in the source repo (Phase 3.7) and store the JSON reports beside the note. Advisory only, never gates. Off by default.
 - `--research` — after classification, web-research the SOURCE repo
   (maturity/adoption, notable alternatives, known limitations, community
   sentiment, recency) using Claude's own WebSearch/WebFetch tools and inject a
