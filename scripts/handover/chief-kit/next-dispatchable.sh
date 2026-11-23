@@ -312,7 +312,7 @@ export ND_FLAGS="$nd_flags"
 nd_left=$((nd_deadline - SECONDS))
 [ "$nd_left" -gt 0 ] || nd_left=1
 ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 "$nd_left"} python3 -I - > "$nd_out" <<'PY' &
-import datetime, json, math, os, re, subprocess, sys, tempfile, time
+import datetime, functools, json, math, os, re, subprocess, sys, tempfile, time
 sys.stdout.reconfigure(errors='backslashreplace')
 sys.stderr.reconfigure(errors='backslashreplace')
 
@@ -2087,13 +2087,8 @@ needs_note = []  # (key, partial PR numbers that record no remainder) of in-work
 scope_questions = []  # keys of tickets nothing says the write scope of: a chief question, never silently free
 handed_off = []  # (key, tickets) of in-work tickets whose every partial PR hands its remainder to other tickets
 owed_rows = []  # (key, pr, who, date) of in-work tickets whose newest clear partial PR records a step owed to the chief or operator by a date
-pool_named = []  # (issue, (class, detail)) of in-work tickets whose only remaining work is not a worker's: named beside the pool, no slot
+pool_named = []
 
-# An In Progress or In Review ticket nobody holds is not RESUME work when all that remains is an open owed proof in the chief's
-# owed ledger after a slice of it reached main, a chief or operator gate (a `pool-disposition: KEY question|close|hold|park ...` line of the chief doc's
-# `## Live state`, or a live c or d row of the version's readiness record), or nothing (a commit on main cites it and no
-# partial slice is recorded). It is printed as `# pool-owed`, `# pool-gated` or `# pool-done-candidate` in the pool's rank
-# order and is RESUME again, at the same rank, once its source clears. No Jira status is written.
 GATE_VERBS = ('question', 'close', 'hold', 'park')
 open_proofs = {}
 for a in owed_actions:
@@ -2116,24 +2111,20 @@ def read_disposition_gates(path):
     return gates
 
 disposition_gates = read_disposition_gates(os.environ.get('ND_DOC', ''))
-readiness_memo = []
-
+@functools.lru_cache(maxsize=None)
 def readiness_gates():
-    # the live c and d rows of the earliest open version's readiness record, read once; a failed read gates nothing
-    if not readiness_memo:
-        gates = {}
-        if os.environ.get('ND_DOC') and first_ver:
-            try:
-                r = subprocess.run(['bash', os.environ['ND_READINESS'], 'read', first_ver, '--mirror', os.path.abspath(mirror)],
-                                   stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=20)
-                for line in r.stdout.splitlines() if r.returncode == 0 else ():
-                    row = json.loads(line)
-                    if row.get('state') == 'live' and row.get('decision') in ('c', 'd'):
-                        gates[str(row['key']).upper()] = 'readiness %s blocker=%s' % (row['decision'], row.get('blocker') or '-')
-            except (OSError, ValueError, AttributeError, KeyError, subprocess.SubprocessError):
-                gates = {}
-        readiness_memo.append(gates)
-    return readiness_memo[0]
+    gates = {}
+    if os.environ.get('ND_DOC') and first_ver:
+        try:
+            r = subprocess.run(['bash', os.environ['ND_READINESS'], 'read', first_ver, '--mirror', os.path.abspath(mirror)],
+                               stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=20)
+            for line in r.stdout.splitlines() if r.returncode == 0 else ():
+                row = json.loads(line)
+                if row.get('state') == 'live' and row.get('decision') in ('c', 'd'):
+                    gates[str(row['key']).upper()] = 'readiness %s blocker=%s' % (row['decision'], row.get('blocker') or '-')
+        except (OSError, ValueError, AttributeError, KeyError, subprocess.SubprocessError):
+            gates = {}
+    return gates
 
 def pool_class(i, parts):
     if i['status'] not in ('In Progress', 'In Review') or i.get('owed_next'):
