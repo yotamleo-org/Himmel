@@ -498,8 +498,8 @@ run "a shard still red on the dispatch latest run: REFUSE (not proven fixed)" 1 
 printf 'shell-unit-shard (ubuntu-latest, 1)\tsuccess\nshell-unit-shard (ubuntu-latest, 7)\tsuccess\nshell-unit (dispatch verify) (ubuntu-latest)\tfailure\n' > "$tmp/latest"
 run "the dispatch aggregator is red on latest: REFUSE (not proven fixed)" 1 'REFUSE.*shell-unit .*not proven fixed'
 printf 'shell-unit-shard (ubuntu-latest, 1)\tsuccess\nshell-unit-shard (ubuntu-latest, 7)\tsuccess\nshell-unit (dispatch verify) (ubuntu-latest)\tsuccess\n' > "$tmp/latest"
-printf '%s\tX\n' "$SHP" > "$tmp/pr-cases"
-run "a PR job with no failing case recorded still REFUSEs under the renamed jobs" 1 'REFUSE.*shell-unit.*no failing case'
+: > "$tmp/pr-cases"
+run "a PR shard with no failing case recorded still REFUSEs under the renamed jobs" 1 'REFUSE.*shell-unit-shard.*no failing case'
 
 # --- the chain-s2 reason: a green PR merges main forward after its S2 predecessor has merged.
 # The checker derives its own evidence: it binds <pr> to HEAD's PR, reads the predecessor from gh (MERGED, merge sha
@@ -655,6 +655,19 @@ out=$(cd "$tmp/cs" && csenv bash "$MF" --chain-s2 11 --pr "$tmp/cs-pr" --pr-sha 
 if [ "$rc" -eq 2 ]; then ok "chain-s2: missing --predecessor: usage error"; else bad "chain-s2 missing --predecessor exits 2 (rc=$rc)" "$out"; fi
 set3 'shell-tests\tfailure\n' 'shell-tests\tsuccess\n' 'shell-tests\tsuccess\n'
 run "chain-s2 present in the file does not loosen the inherited-red rule (own red still REFUSEs)" 1 'REFUSE.*shell-tests.*not inherited'
+
+setr() { printf '%b' "$1" > "$tmp/pr"; printf '%b' "$2" > "$tmp/base"; printf '%b' "$3" > "$tmp/latest"; printf '%b' "$4" > "$tmp/pr-cases"; printf '%b' "$5" > "$tmp/base-cases"; }
+SH='shell-unit-shard (ubuntu-latest, 1)'; RU='shell-unit (ubuntu-latest)'
+setr "$SH\tfailure\n$RU\tfailure\n" "$SH\tfailure\n$RU\tfailure\n" "$SH\tsuccess\n$RU\tsuccess\n" 'shell-unit-shard (ubuntu-latest)\tcaseA\n' 'shell-unit-shard (ubuntu-latest)\tcaseA\n'
+run "rollup red on the PR and base, its shard inherited with the same case: ALLOW" 0 'ALLOW.*shell-unit \(ubuntu-latest\)'
+setr "$SH\tfailure\n$RU\tfailure\n" "$SH\tfailure\n$RU\tfailure\n" "$SH\tsuccess\n$RU\tsuccess\n" 'shell-unit-shard (ubuntu-latest)\tcaseA\n' 'shell-unit-shard (ubuntu-latest)\tother\n'
+run "rollup red, its shard case is not among the base cases: REFUSE" 1 'REFUSE.*shell-unit-shard.*failing case not failing at the base'
+setr "$SH\tfailure\n$RU\tfailure\n" "$SH\tfailure\n$RU\tsuccess\n" "$SH\tsuccess\n$RU\tsuccess\n" 'shell-unit-shard (ubuntu-latest)\tcaseA\n' 'shell-unit-shard (ubuntu-latest)\tcaseA\n'
+run "rollup red on the PR, green at the base: REFUSE" 1 'REFUSE.*shell-unit \(ubuntu-latest\).*not inherited'
+setr "$RU\tfailure\n" "$RU\tfailure\n" "$RU\tsuccess\n" '' ''
+run "rollup red with no red shard on the PR run: REFUSE" 1 'REFUSE.*shell-unit \(ubuntu-latest\).*no shell-unit-shard'
+setr "$SH\tfailure\n$RU\tfailure\n" "$SH\tfailure\n$RU\tfailure\n" "$SH\tsuccess\n$RU\tfailure\n" 'shell-unit-shard (ubuntu-latest)\tcaseA\n' 'shell-unit-shard (ubuntu-latest)\tcaseA\n'
+run "rollup red on the PR and base, its shard green on latest, the rollup itself red on latest: REFUSE" 1 'REFUSE.*shell-unit \(ubuntu-latest\).*not proven fixed'
 
 bash "$MF" --pr "$tmp/pr" --main "$tmp/pr" >/dev/null 2>&1
 rc=$?
