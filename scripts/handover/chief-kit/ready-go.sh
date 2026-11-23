@@ -96,9 +96,13 @@ printf 'COVERAGE: %s\n' "$(printf '%s\n' "$READY_OUT" | grep -E '^\[[A-Z]+\] 7\.
 
 # 2. trust path: the same question merge-on-green asks, on the default branch's list
 TRUST_RC=0
+# shellcheck source=scripts/lib/gate-repo-resolver.sh
+# shellcheck disable=SC1091
+. "$HERE/../../lib/gate-repo-resolver.sh" || { echo "ready-go: cannot load scripts/lib/gate-repo-resolver.sh; nothing was judged" >&2; exit 5; }
+GATE_DIR=$(gate_repo_dir ready-go "; nothing was judged" "; nothing was judged") || exit 5
 RG_ERR=$(mktemp "${TMPDIR:-/tmp}/ready-go-err.XXXXXX" 2>/dev/null) || RG_ERR=/dev/null  # swallow-ok: no capture only loses the rate-limit wording
-NWO=$("$GH_BIN" repo view --json nameWithOwner --jq .nameWithOwner 2>"$RG_ERR") || NWO=""
-DEFAULT_BRANCH=$("$GH_BIN" repo view --json defaultBranchRef --jq '.defaultBranchRef.name // ""' 2>>"$RG_ERR") || DEFAULT_BRANCH=""
+NWO=$(cd "$GATE_DIR" && "$GH_BIN" repo view --json nameWithOwner --jq .nameWithOwner 2>"$RG_ERR") || NWO=""
+DEFAULT_BRANCH=$(cd "$GATE_DIR" && "$GH_BIN" repo view --json defaultBranchRef --jq '.defaultBranchRef.name // ""' 2>>"$RG_ERR") || DEFAULT_BRANCH=""
 RG_ERR_TXT=$(cat "$RG_ERR" 2>/dev/null) || RG_ERR_TXT=""  # read-sink-ok: our own mktemp buffer; swallow-ok: an unreadable buffer only loses the rate-limit wording
 [ "$RG_ERR" = /dev/null ] || rm -f "$RG_ERR"
 TRUST_OUT=""
@@ -128,7 +132,7 @@ fi
 printf 'TRUST: %s\n' "$TRUST_OUT"
 
 # 3. the ticket: first key of the PR title and its Jira status
-TITLE=$("$GH_BIN" pr view "$PR" --json title --jq .title 2>/dev/null) || TITLE=""
+TITLE=$(cd "$GATE_DIR" && "$GH_BIN" pr view "$PR" --json title --jq .title 2>/dev/null) || TITLE=""  # swallow-ok: an unreadable title prints TICKET: none
 KEY=$(printf '%s' "$TITLE" | grep -oE '[A-Z][A-Z0-9]*-[0-9]+' | head -n 1)
 if [ -z "$KEY" ]; then
     echo "TICKET: none (no key in the PR title)"
