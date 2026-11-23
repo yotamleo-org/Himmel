@@ -1159,7 +1159,6 @@ describe('liveJira.newestFixVersionEntry', () => {
 // (roster, snapshot, key files, a fake claude, an alert recorder) and a recording fallback: no row reaches the real
 // liveJudge, a real claude or the real alert sender, and no row reads the station's role map.
 describe('routedJudge', () => {
-  const FAKE_START_BOUND_MS = 60_000;
   const INPUT = { release: 'R1', current: 'v1', versions: ['v1'], requests: [], records: [], operator: [], rulings: [], issues: [] } as unknown as JudgeInput;
   const decision = (reason: string) => ({ req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 's', ground: 'g', reason });
   const envelope = (reason: string) => JSON.stringify({ is_error: false, result: JSON.stringify([decision(reason)]) });
@@ -1181,6 +1180,8 @@ describe('routedJudge', () => {
     writeFileSync(join(dir, 'snapshot.json'), JSON.stringify(snapshot));
     for (const a of ['A', 'B']) writeFileSync(join(dir, `key-${a}.env`), `ANTHROPIC_API_KEY=sk-ant-dummy-${a}-0000\n`, { mode: 0o600 });
     if (roles !== undefined) writeFileSync(join(dir, 'roles.json'), JSON.stringify({ version: 1, roles }));
+    const hostTmp = tmpdir();
+    const ownTmp = mkdtempSync(join(hostTmp, 'release-tmp-'));
     const script = (name: string, body: string) => { writeFileSync(join(dir, name), `#!/bin/bash\n${body}\n`); chmodSync(join(dir, name), 0o700); };
     script('claude-fake', `{ echo "cwd=$PWD"; echo "acct=\${HIMMEL_API_ACCOUNT:-}"; printf 'arg=%s\\n' "$@"; echo --; } >> '${join(dir, 'fake.log')}'\n${fake.sleep ? `echo "pid=$$" >> '${join(dir, 'fake.log')}'\nsleep ${fake.sleep}\n` : ''}printf '%s' '${fake.out ?? envelope('from-fake')}'\nexit ${fake.rc ?? 0}`);
     script('alert-stub', `echo "alert $TG_MESSAGE" >> '${join(dir, 'alert.log')}'`);
@@ -1193,13 +1194,14 @@ describe('routedJudge', () => {
       HIMMEL_FLEET_SLOTS: join(dir, 'slots'), PATH: pathWithEmptyPs(dir),
       CADENCE_USAGE_LEDGER: join(dir, 'bank-ledger'), CADENCE_USAGE_SKIP_REFRESH: '1', CADENCE_USAGE_CACHE: join(dir, 'native-cache.json'),
       ANTHROPIC_API_KEY: '', HIMMEL_API_KEY_ID: '',
-      WORKER_SESSION_DOC: '', FLEET_LAUNCH_DOC: '', FLEET_LAUNCH_MANIFEST: '', FLEET_LAUNCH_ATTEMPT: '', WORKER_SESSION_ATTEMPT_ID: '',
+      WORKER_SESSION_DOC: '', FLEET_LAUNCH_DOC: '', FLEET_LAUNCH_MANIFEST: '', FLEET_LAUNCH_ATTEMPT: '', WORKER_SESSION_ATTEMPT_ID: '', WORKER_SESSION_PROFILE: '', FLEET_LAUNCH_WORKER_INTENT: '',
+      TMPDIR: ownTmp,
     };
     for (const [k, v] of Object.entries(set)) vi.stubEnv(k, v);
     const fallbackCalls: JudgeInput[] = [];
     const fallback: Judge = async (i) => { fallbackCalls.push(i); return [decision('from-fallback')] as never; };
     const read = (f: string) => (existsSync(join(dir, f)) ? readFileSync(join(dir, f), 'utf8') : '');
-    return { fallback, fallbackCalls, read };
+    return { fallback, fallbackCalls, read, hostTmp };
   }
 
   it('the outer spawn timeout outlasts the launcher call timeout plus its five-second kill grace', () => {
@@ -1247,9 +1249,14 @@ describe('routedJudge', () => {
     expect(existsSync(join(cwd, '.git'))).toBe(false);
   });
 
-  it('mapped inside a worker session: the managed-launch variables are blank, so the launcher runs against the test fleet and the fake answers', async () => {
-    const managed = ['WORKER_SESSION_DOC', 'FLEET_LAUNCH_DOC', 'FLEET_LAUNCH_MANIFEST', 'FLEET_LAUNCH_ATTEMPT', 'WORKER_SESSION_ATTEMPT_ID'];
-    for (const k of managed) vi.stubEnv(k, join(root, 'handovers', 'HIMMEL-10843-N10843-routed-judge-release-tests-2026-11-23.md'));
+  it('mapped inside a registered worker session: the managed-launch variables are blank, so the launcher runs against the test fleet and the fake answers', async () => {
+    const bucket = join(root, 'handovers');
+    mkdirSync(bucket);
+    writeFileSync(join(bucket, 'fleet-control.json'), JSON.stringify({ schema: 1, family: '00000000-0000-4000-8000-000000000000', mode: 'active', generation: 1, target: 30, attempts: {} }));
+    const doc = join(bucket, 'HIMMEL-10843-N10843-routed-judge-release-tests-2026-11-23.md');
+    writeFileSync(doc, '# HIMMEL-10843 - the routed-judge release tests - worker N10843 (claude-sonnet-5-5, native), 2026-11-23\n');
+    const managed = ['WORKER_SESSION_DOC', 'FLEET_LAUNCH_DOC', 'FLEET_LAUNCH_MANIFEST', 'FLEET_LAUNCH_ATTEMPT', 'WORKER_SESSION_ATTEMPT_ID', 'WORKER_SESSION_PROFILE', 'FLEET_LAUNCH_WORKER_INTENT'];
+    for (const k of managed) vi.stubEnv(k, k === 'FLEET_LAUNCH_WORKER_INTENT' ? '1' : k === 'WORKER_SESSION_PROFILE' ? 'worker-impl' : doc);
     const w = world({ judge: ['B'] });
     for (const k of managed) expect(process.env[k], k).toBe('');
     const got = await makeRoutedJudge(w.fallback)(INPUT);
@@ -1285,26 +1292,25 @@ describe('routedJudge', () => {
     throw new Error(`no ${name} above pid ${pid}`);
   };
   const fakePid = (w: ReturnType<typeof world>) => Number(/^pid=(\d+)$/m.exec(w.read('fake.log'))?.[1]);
-  const fakeStarted = (w: ReturnType<typeof world>) => vi.waitFor(() => expect(fakePid(w)).toBeGreaterThan(0), { timeout: FAKE_START_BOUND_MS, interval: 25 });
 
   it('mapped, the run stopped mid-call: the call is killed and no fallback runs', async () => {
     const w = world({ judge: ['B'] }, { sleep: 30 });
     const stop = new AbortController();
     const got = makeRoutedJudge(w.fallback)(INPUT, { signal: stop.signal });
-    await fakeStarted(w);
+    await vi.waitFor(() => expect(fakePid(w)).toBeGreaterThan(0), { timeout: 10_000 });
     stop.abort(new Error('rm-run: stopped by SIGTERM; nothing more ruled'));
     await expect(got).rejects.toThrow();
     expect(w.fallbackCalls).toHaveLength(0);
-  }, FAKE_START_BOUND_MS + 20_000);
+  }, 20_000);
 
   it.skipIf(process.platform !== 'linux')('mapped, TERM to the launcher alone: it exits 143 and no fallback runs', async () => {
     const w = world({ judge: ['B'] }, { sleep: 30 });
     const got = makeRoutedJudge(w.fallback)(INPUT);
-    await fakeStarted(w);
+    await vi.waitFor(() => expect(fakePid(w)).toBeGreaterThan(0), { timeout: 10_000 });
     process.kill(ancestor(fakePid(w), 'claude-api.sh'), 'SIGTERM');
     await expect(got).rejects.toMatchObject({ status: 143 });
     expect(w.fallbackCalls).toHaveLength(0);
-  }, FAKE_START_BOUND_MS + 20_000);
+  }, 20_000);
 
   it('mapped, the launcher times out its own call: the run fails and no fallback runs', async () => {
     const w = world({ judge: ['B'] }, { sleep: 30 });
@@ -1335,6 +1341,7 @@ describe('routedJudge', () => {
 
   it('judgeFor: the door places every mirror by default (I3); only HIMMEL_RM_JUDGE=model reaches the parked judges', () => {
     const w = world({ judge: ['B'] });
+    vi.stubEnv('TMPDIR', w.hostTmp);
     for (const m of [defaultRoot('HIMMEL'), defaultRoot('SALUS'), join(root, 'no-mirror')]) expect(judgeFor(ctxFor('R1', m))).toBe(doorJudge);
     vi.stubEnv('HIMMEL_RM_JUDGE', 'model');
     expect(judgeFor(ctxFor('R1', defaultRoot('HIMMEL')))).toBe(routedJudge);
