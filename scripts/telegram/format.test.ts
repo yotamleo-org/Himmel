@@ -23,6 +23,10 @@ test("a one-line fenced command keeps its text, as one pre block", () => {
   expect(toTelegramHtml("Run this:\n\n```go AB_C*D```\n\nthen wait")).toBe("<b>Run this:</b>\n\n<pre>go AB_C*D</pre>\n\nthen wait");
 });
 
+test("a lone language word after the fence is a label, not part of the code", () => {
+  expect(toTelegramHtml("Run:\n\n```bash\nls -la\n```")).toBe("<b>Run:</b>\n\n<pre>ls -la</pre>");
+});
+
 test("the rest of a fence opening line is kept, byte-exact", () => {
   expect(toTelegramHtml("Run:\n\n```ls *_a <b>\nmore\n```")).toBe("<b>Run:</b>\n\n<pre>ls *_a &lt;b&gt;\nmore</pre>");
 });
