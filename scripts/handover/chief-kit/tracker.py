@@ -1514,7 +1514,6 @@ def operator_critical(spec, critic, critical_re, unread):
 
 
 def owed_ledger_items(handover_dir, unread):
-    """The open owed.jsonl rows a chief marked as the operator's (top-level actor "operator"), as board.ts ledgerItems reads them."""
     try:
         lines = open(os.path.join(handover_dir, 'owed.jsonl'), encoding='utf-8').read().splitlines()
     except FileNotFoundError:
