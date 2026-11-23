@@ -838,11 +838,23 @@ describe('version-write journal hook', () => {
       rmSync(away, { recursive: true, force: true });
     });
 
-    it.each([['set', 'someone'], ['unset', '']])('with the state keys %s', async (_label, slug) => {
-      vi.stubEnv('USER_SLUG', slug);
+    it('with the state keys set', async () => {
+      vi.stubEnv('USER_SLUG', 'someone');
       const f = fakeJira({ key: 'HIMMEL-9', set: ['v1.1.3'], entries: [fv('600', null, 'v1.1.3')] });
       await expect(request('PUT', '/issue/HIMMEL-9', { fields: { fixVersions: [{ name: 'v1.1.4' }] } }, 'merge-stamp')).resolves.toEqual({});
-      expect(f.calls.map((c) => c.method)).toEqual(slug ? ['GET', 'GET', 'PUT', 'GET'] : ['PUT']);
+      expect(f.calls.map((c) => c.method)).toEqual(['GET', 'GET', 'PUT', 'GET']);
+      const asked = gitCalls().filter((c) => (c[1] as string[]).includes('--git-common-dir'));
+      expect(asked.length).toBeGreaterThan(0);
+      for (const c of asked) expect((c[2] as { stdio: unknown[] }).stdio[2]).toBe('ignore');
+    });
+
+    it('with the state keys unset, a removal is refused before its PUT and an add still writes', async () => {
+      vi.stubEnv('USER_SLUG', '');
+      const f = fakeJira({ key: 'HIMMEL-9', set: ['v1.1.3'], entries: [fv('600', null, 'v1.1.3')] });
+      await expect(request('PUT', '/issue/HIMMEL-9', { fields: { fixVersions: [{ name: 'v1.1.4' }] } }, 'merge-stamp')).rejects.toThrow(/USER_SLUG/);
+      expect(f.calls.map((c) => c.method)).toEqual(['GET']);
+      await expect(request('PUT', '/issue/HIMMEL-9', { update: { fixVersions: [{ add: { name: 'v1.1.4' } }] } }, 'merge-stamp')).resolves.toEqual({});
+      expect(f.calls.map((c) => c.method)).toEqual(['GET', 'GET', 'PUT']);
       const asked = gitCalls().filter((c) => (c[1] as string[]).includes('--git-common-dir'));
       expect(asked.length).toBeGreaterThan(0);
       for (const c of asked) expect((c[2] as { stdio: unknown[] }).stdio[2]).toBe('ignore');

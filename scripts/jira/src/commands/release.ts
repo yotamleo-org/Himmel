@@ -43,8 +43,8 @@ export const liveJira: JiraPort & { addLabels(key: string, labels: string[]): Pr
     return (got.fields?.fixVersions ?? []).map((v) => v.name ?? '');
   },
   newestFixVersionEntry: (key) => newestFixVersionEntry(<T>(path: string) => request<T>('GET', path), key),
-  async setFixVersion(key, op, version) {
-    await setFixVersion(key, op, version, 'rm-apply');
+  async setFixVersion(key, op, version, leave) {
+    await setFixVersion(key, op, version, 'rm-apply', leave);
     writeJiraBreadcrumb(key);
   },
   async findComment(key, marker) {

@@ -5,11 +5,12 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  ack, apply, bucketCheck, operatorWords, poolCurrent, claim, coreBypass, declare, decisionWords, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, operatorFence, recordRequestDecision, request, requestWithWords, reviewed, rule, state, takeover, withdraw,
+  ack, apply, bucketCheck, operatorWords, poolCurrent, claim, coreBypass, declare, decisionWords, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, operatorFence, recordRequestDecision, releaseForProject, request, requestWithWords, reviewed, rule, state, takeover, withdraw,
   JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readMirrorFilesUnverified, readOperatorRecords, rmRun, rmRunSummary, pinnedSha, signSpec, specCheck, specReview, standing,
   type Ctx, type Decision, type DoorJiraPort, type JiraPort, type Judge, type JudgeInput, type RuledDecision,
 } from './engine.js';
 import { judgeOperatorRows } from './judge-input.js';
+import { declsFor, leaveGate, type Leave } from './leave.js';
 import { doorJudge } from './door.js';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { Command } from 'commander';
@@ -437,7 +438,10 @@ describe('release engine', () => {
         ...(cited ? { authority: { kind: 'operator' as const, ref: cited.id } } : {}) });
       const write = jira.setFixVersion.bind(jira);
       jira.setFixVersion = async (k, op, v) => {
-        if (op === 'add') throw new Error('crash before the destination add');
+        if (op === 'add') {
+          await write(k, 'remove', source);
+          throw new Error('crash before the destination add');
+        }
         await write(k, op, v);
       };
       await expect(apply(ctx(rmEnv), r.id)).rejects.toThrow('crash before the destination add');
@@ -457,15 +461,14 @@ describe('release engine', () => {
         owner: 'chief', next: unfinished.next }]);
     });
 
-    it('suggests removing the other membership when an interrupted move holds both versions', async () => {
+    it('a door ruling whose key holds both versions names the one --chief-reason request, never a hand --remove or rm-run (P1)', async () => {
       const { r } = await interrupted();
       jira.fv.set('K-2', ['v1', 'v2']);
       mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: ['v1', 'v2'] }]);
       const unfinished = state(ctx()).unfinished_rulings[0];
       expect(unfinished).toMatchObject({ ruling: r.id, status: 'blocked', owner: 'chief' });
-      expect(unfinished.next).toContain('jira fix-version K-2 --remove v1');
-      expect(unfinished.next).toContain('jira fix-version K-2 --remove v2');
-      expect(unfinished.next).not.toMatch(/--add v[12]/);
+      expect(unfinished.next).toBe(`jira release request R1 --verb REVERSION --key K-2 --from v1 --to v2 --why "finish ${r.id}: K-2 holds both v1 and v2" --chief-reason "repair of ${r.id}, interrupted between its add and its remove"`);
+      expect(unfinished.next).not.toMatch(/--remove|rm-run/);
     });
 
     it.skipIf(RUNS_AS_ROOT)('checks admissions writability before completing an attributable new-epoch move', async () => {
@@ -552,7 +555,7 @@ describe('release engine', () => {
       expect(state(ctx()).unfinished_rulings).toEqual([]);
     };
 
-    it('an operator record newer than the ruling that takes the key out of the destination stops the new-epoch replay: nothing is written and the record is named', async () => {
+    it('an operator record newer than the ruling that takes the key out of the destination voids the replay: nothing is written, the record is named and no line is owed (X1)', async () => {
       const { r } = await interrupted({ operator: true });
       const newer = decide('2026-10-21T10:00:05.000Z', ['K-2'], 'remove', 'v2', null);
       jira.entries.set('K-2', '5001');
@@ -561,18 +564,16 @@ describe('release engine', () => {
       const lines = await rmRun(withJournal(ctx()), noJudge);
       expect(jira.writes).toBe(writes);
       expect(jira.fv.get('K-2')).toEqual([]);
-      expect(lines.join('\n')).toMatch(new RegExp(`PENDING ${r.id}: .*${newer.id}`));
+      expect(lines.join('\n')).toMatch(new RegExp(`VOID ${r.id} .*${newer.id}`));
+      expect(lines.join('\n')).not.toMatch(/--remove/);
       expect(rows().filter((x) => x.key === 'K-2')).toEqual([]);
       expect(jira.posted).toBe(0);
-      const mismatches = () => readChain<EventRow>(join(ctx().dir, 'events.jsonl'), loadKey(ctx().keyPath)).verified.filter((e) => e.kind === 'ruled' && e.ruling === r.id && e.readback === 'mismatch');
-      expect(mismatches()).toHaveLength(1);
-      for (let i = 0; i < 3; i += 1) expect(await rmRun(withJournal(ctx()), noJudge)).toEqual(expect.arrayContaining([expect.stringContaining(`PENDING ${r.id}`)]));
-      expect(mismatches()).toHaveLength(1);
+      expect(state(withJournal(ctx())).unfinished_rulings).toEqual([]);
+      expect((await rmRun(withJournal(ctx()), noJudge)).join('\n')).not.toContain('K-2');
       expect(jira.writes).toBe(writes);
-      expect(jira.fv.get('K-2')).toEqual([]);
     });
 
-    it('state reads that replay as blocked to the chief with the newer record named, before a run refuses it and after', async () => {
+    it('state reads that replay as blocked to the chief with the newer record named before the run voids it', async () => {
       const { r } = await interrupted({ operator: true });
       const newer = decide('2026-10-21T10:00:05.000Z', ['K-2'], 'remove', 'v2', null);
       jira.entries.set('K-2', '5001');
@@ -580,31 +581,42 @@ describe('release engine', () => {
       const unfinished = () => state(withJournal(ctx())).unfinished_rulings;
       expect(unfinished()).toMatchObject([{ ruling: r.id, key: 'K-2', phase: 'intent', status: 'blocked', owner: 'chief', observed: 'K-2 is in no version (mirror); the move wants v1 -> v2' }]);
       expect(unfinished()[0].next).toContain(newer.id);
-      expect(unfinished()[0].next).toContain('jira fix-version K-2 --add v1');
-      expect(unfinished()[0].next).toContain('jira release rm-run R1');
+      expect(unfinished()[0].next).not.toMatch(/--remove|--add/);
       await rmRun(withJournal(ctx()), noJudge);
-      expect(unfinished()).toMatchObject([{ ruling: r.id, status: 'blocked', owner: 'chief' }]);
-      expect(unfinished()[0].next).toContain(newer.id);
+      expect(unfinished()).toEqual([]);
     });
 
     it.each([
-      ['puts it in a third version', 'add', null, 'v3'],
-      ['moves it out of the destination into a third version', 'move', 'v2', 'v3'],
-      ['keeps it in the source', 'keep', 'v1', 'v1'],
-      ['takes it out of the source', 'remove', 'v1', null],
-    ] as Array<[string, string, string | null, string | null]>)('an operator record newer than the ruling that %s also stops the replay and writes nothing', async (_name, op, from, to) => {
+      ['puts it in a third version', 'add', null, 'v3', 'v3'],
+      ['moves it out of the destination into a third version', 'move', 'v2', 'v3', 'v3'],
+      ['keeps it in the source', 'keep', 'v1', 'v1', 'v1'],
+      ['takes it out of the source', 'remove', 'v1', null, null],
+    ] as Array<[string, string, string | null, string | null, string | null]>)('an operator record newer than the ruling that %s voids the replay, writes nothing and prints at most its one add line (X1, X2)', async (_name, op, from, to, lands) => {
       const { r } = await interrupted({ operator: true });
       const newer = decide('2026-10-21T10:00:05.000Z', ['K-2'], op, from, to);
       jira.entries.set('K-2', '5001');
       journal(rmWrite());
       const writes = jira.writes;
-      const lines = await rmRun(withJournal(ctx()), noJudge);
+      const lines = (await rmRun(withJournal(ctx()), noJudge)).join('\n');
       expect(jira.writes).toBe(writes);
       expect(jira.fv.get('K-2')).toEqual([]);
-      expect(lines.join('\n')).toMatch(new RegExp(`PENDING ${r.id}: .*${newer.id}`));
+      expect(lines).toMatch(new RegExp(`VOID ${r.id} .*${newer.id}`));
+      expect(lines).not.toMatch(/--remove/);
       expect(rows().filter((x) => x.key === 'K-2')).toEqual([]);
       expect(jira.posted).toBe(0);
-      expect(state(withJournal(ctx())).unfinished_rulings[0]).toMatchObject({ ruling: r.id, status: 'blocked', owner: 'chief' });
+      if (lands === null) {
+        expect(lines).not.toMatch(/--add/);
+        expect(state(withJournal(ctx())).unfinished_rulings).toEqual([]);
+        return;
+      }
+      const line = `jira fix-version K-2 --add ${lands} --by ${newer.id}`;
+      expect(lines).toContain(line);
+      expect(state(withJournal(ctx())).unfinished_rulings).toMatchObject([{ ruling: r.id, status: 'blocked', owner: 'chief', next: line }]);
+      await jira.setFixVersion('K-2', 'add', lands, { by: newer.id });
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: [lands] }]);
+      expect(jira.fv.get('K-2')).toEqual([lands]);
+      expect(state(withJournal(ctx())).unfinished_rulings).toEqual([]);
+      expect((await rmRun(withJournal(ctx()), noJudge)).join('\n')).not.toContain('K-2');
     });
 
     it.each([
@@ -4838,5 +4850,227 @@ describe('the chief\'s lists: priority review, chief placements and asks apart (
     expect(after.inputs.mirror).toBe('FRESH');
     expect(after.records.find((r) => r.key === 'K-10')?.actual_member).toBe(before.records.find((r) => r.key === 'K-10')?.actual_member);
     expect(after.priority_review).toEqual([]);
+  });
+});
+
+describe('nothing leaves a version (S2)', () => {
+  class CheckedJira extends FakeJira {
+    order: string[] = [];
+    refusals: string[] = [];
+    own = new Set<string>();
+    async setFixVersion(key: string, op: 'add' | 'remove', v: string, leave?: Leave) {
+      const before = [...(this.fv.get(key) ?? [])];
+      const after = op === 'add' ? [...new Set([...before, v])] : before.filter((x) => x !== v);
+      const env = leaveEnv();
+      const verdict = leaveGate({ key, before, after, mechanism: 'rm-apply', leave, ownAdds: this.own }, declsFor(key, env), env);
+      if (!verdict.ok) {
+        this.refusals.push(verdict.reason);
+        throw new Error(verdict.reason);
+      }
+      this.order.push(`${op} ${v}`);
+      await super.setFixVersion(key, op, v);
+    }
+  }
+  const leaveEnv = () => ({ HIMMEL_RELEASE_STATE_DIR: join(root, 'release'), HIMMEL_RELEASE_KEY_DIR: join(root, 'keys') });
+  const noJudge: Judge = async (input) => { throw new Error(`no request is claimed, so the judge is never asked: ${JSON.stringify(input.requests)}`); };
+  const journalFile = () => join(root, 'version-writes.jsonl');
+  const withJournal = (c: Ctx): Ctx => ({ ...c, env: { ...c.env, HIMMEL_VERSION_WRITES: journalFile() } });
+  const journal = (row: Record<string, unknown>) => writeFileSync(journalFile(), `${JSON.stringify(row)}\n`, { flag: 'a' });
+  let checked: CheckedJira;
+
+  beforeEach(() => {
+    checked = new CheckedJira();
+    jira = checked;
+    vi.stubEnv('HOME', join(root, 'home'));
+    mkdirSync(join(root, 'home', '.himmel', 'state', 'jira-mirror'), { recursive: true });
+    writeFileSync(join(root, 'home', '.himmel', 'state', 'jira-mirror', 'K.versions.tsv'), 'v0\ttrue\t\tfalse\nv1\tfalse\t\tfalse\nv2\tfalse\t\tfalse\nv3\tfalse\t\tfalse\n');
+    declare(ctx(), { project: 'K', versions: ['v1', 'v2', 'v3'], decision: '106', verbatim: 'R = v1 + v2 + v3', mode: 'observe' });
+    leaseAcquire(ctx(rmEnv), { expectEpoch: 0, doc: DOC, session: 'rm-1' });
+  });
+
+  const decide = (at: string, key: string, op: string, from_v: string | null, to_v: string | null) =>
+    operatorDecision({ ...ctx(), now: () => new Date(at) }, { decision: '151', keys: [key], op, from_v, to_v, verbatim: 'x' });
+
+  async function ruled(key: string, from: string, to: string | null, o: { operator?: boolean; crashOnRemove?: boolean } = {}) {
+    checked.fv.set(key, [from]);
+    mirror([{ key, fixVersions: [from] }]);
+    const cited = o.operator ? decide('2026-10-21T09:00:00.000Z', key, 'move', from, to) : undefined;
+    const q = request(ctx(), { verb: 'REVERSION', key, from_v: from, to_v: to, why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r = rule(ctx(rmEnv), {
+      req: q.req, outcome: 'MOVE', op: { kind: 'move', from_v: from, to_v: to }, sector: 'Planning & tracking', ground: 'g', reason: 'r', supersedes: [],
+      authority: cited ? { kind: 'operator', ref: cited.id } : { kind: 'rm', ref: null },
+    });
+    if (o.crashOnRemove) {
+      const write = checked.setFixVersion.bind(checked);
+      checked.setFixVersion = async (k, op, v, leave) => {
+        if (op === 'remove') throw new Error('crash before the source remove');
+        await write(k, op, v, leave);
+      };
+      await expect(apply(ctx(rmEnv), r.id)).rejects.toThrow('crash before the source remove');
+      checked.setFixVersion = write;
+      leaseRelease(ctx(rmEnv));
+      mirror([{ key, fixVersions: [...(checked.fv.get(key) ?? [])].sort() }]);
+    }
+    return { q, r, cited };
+  }
+
+  it('a door move v2→v1 writes the add, then the remove, and passes under rule (1)', async () => {
+    const { r } = await ruled('K-4', 'v2', 'v1');
+    await apply(ctx(rmEnv), r.id);
+    expect(checked.order).toEqual(['add v1', 'remove v2']);
+    expect(checked.fv.get('K-4')).toEqual(['v1']);
+    expect(checked.refusals).toEqual([]);
+  });
+
+  it('a rule O move v1→v2 writes add-first and passes on the ruling\'s op', async () => {
+    const { r } = await ruled('K-6', 'v1', 'v2', { operator: true });
+    await apply(ctx(rmEnv), r.id);
+    expect(checked.order).toEqual(['add v2', 'remove v1']);
+    expect(checked.fv.get('K-6')).toEqual(['v2']);
+  });
+
+  it('a rule O move v1→null is one remove and passes on the ruling\'s op', async () => {
+    const { r } = await ruled('K-7', 'v1', null, { operator: true });
+    await apply(ctx(rmEnv), r.id);
+    expect(checked.order).toEqual(['remove v1']);
+    expect(checked.fv.get('K-7')).toEqual([]);
+  });
+
+  it('both operator moves are refused without the ruling\'s record', async () => {
+    checked.fv.set('K-6', ['v1', 'v2']);
+    await expect(checked.setFixVersion('K-6', 'remove', 'v1')).rejects.toThrow(/K-6: .*open version v1 with no operator record/);
+    checked.fv.set('K-7', ['v1']);
+    await expect(checked.setFixVersion('K-7', 'remove', 'v1')).rejects.toThrow(/K-7: .*open version v1/);
+    expect(checked.fv.get('K-6')).toEqual(['v1', 'v2']);
+    expect(checked.fv.get('K-7')).toEqual(['v1']);
+  });
+
+  it('an intent interrupted after the add reads as replay for the release manager, and the replay finishes with the remove (P2)', async () => {
+    const { r } = await ruled('K-4', 'v2', 'v1', { crashOnRemove: true });
+    expect([...(checked.fv.get('K-4') ?? [])].sort()).toEqual(['v1', 'v2']);
+    journal({ ts: '2026-10-21T10:00:01.000Z', key: 'K-4', from: ['v2'], to: ['v1', 'v2'], mechanism: 'rm-apply', entry: '5002' });
+    checked.entries.set('K-4', '5002');
+    expect(state(withJournal(ctx())).unfinished_rulings).toMatchObject([{ ruling: r.id, status: 'replay', owner: 'release-manager', next: 'jira release rm-run R1' }]);
+    expect(state(withJournal(ctx())).unfinished_rulings.filter((u) => u.status === 'blocked')).toEqual([]);
+    await rmRun(withJournal(ctx()), noJudge);
+    expect(checked.fv.get('K-4')).toEqual(['v1']);
+    expect(checked.order.at(-1)).toBe('remove v2');
+    mirror([{ key: 'K-4', fixVersions: ['v1'] }]);
+    expect(state(withJournal(ctx())).unfinished_rulings).toEqual([]);
+  });
+
+  it('the repair route of a door ruling holding both ends: VOID and the one --chief-reason request, which the door then finishes add-first (P1, X2, T5)', async () => {
+    const { r, q } = await ruled('K-4', 'v2', 'v1', { crashOnRemove: true });
+    const line = `jira release request R1 --verb REVERSION --key K-4 --from v2 --to v1 --why "finish ${r.id}: K-4 holds both v2 and v1" --chief-reason "repair of ${r.id}, interrupted between its add and its remove"`;
+    expect(state(ctx()).unfinished_rulings).toMatchObject([{ ruling: r.id, status: 'blocked', owner: 'chief', next: line }]);
+    const out = (await rmRun(ctx(), noJudge)).join('\n');
+    expect(out).toContain(`VOID ${r.id}`);
+    expect(out).toContain(line);
+    expect(out).not.toMatch(/rm-run|--remove/);
+    expect([...(checked.fv.get('K-4') ?? [])].sort()).toEqual(['v1', 'v2']);
+    expect(state(ctx()).unfinished_rulings).toMatchObject([{ ruling: r.id, phase: 'void', status: 'blocked', owner: 'chief', next: line }]);
+    expect(readChain<RequestRow>(join(ctx().dir, 'requests.jsonl'), loadKey(ctx().keyPath)).verified.filter((x) => x.req === q.req).at(-1)?.state).toBe('withdrawn:repair');
+    vi.stubEnv('HIMMEL_CONSOLE', '1');
+    request(ctx(), { verb: 'REVERSION', key: 'K-4', from_v: 'v2', to_v: 'v1', why: `finish ${r.id}: K-4 holds both v2 and v1`,
+      evidence: { chief_placement: { reason: `repair of ${r.id}, interrupted between its add and its remove`, ts: '2026-10-21T10:00:00.000Z' } }, from: 'console' });
+    await rmRun(ctx(), doorJudge);
+    expect(checked.fv.get('K-4')).toEqual(['v1']);
+    expect(checked.refusals).toEqual([]);
+    mirror([{ key: 'K-4', fixVersions: ['v1'] }]);
+    expect(state(ctx()).unfinished_rulings).toEqual([]);
+    expect((await rmRun(ctx(), doorJudge)).join('\n')).not.toContain('K-4');
+  });
+
+  it('the repair route of an operator ruling holding both ends: the printed --remove --by line passes the check and rm-run replays once (P1, T5)', async () => {
+    const { r, cited } = await ruled('K-6', 'v1', 'v2', { operator: true, crashOnRemove: true });
+    const out = (await rmRun(ctx(), noJudge)).join('\n');
+    const printed = `jira fix-version K-6 --remove v1 --by ${cited?.id}`;
+    expect(out).toContain(`PENDING ${r.id}`);
+    expect(out).toContain(printed);
+    expect(out).not.toMatch(/--remove v2/);
+    await checked.setFixVersion('K-6', 'remove', 'v1', { by: cited?.id as string });
+    mirror([{ key: 'K-6', fixVersions: ['v2'] }]);
+    const replay = (await rmRun(ctx(), noJudge)).filter((l) => l.includes(r.id));
+    expect(replay.filter((l) => l.startsWith('RULING '))).toHaveLength(1);
+    expect(checked.fv.get('K-6')).toEqual(['v2']);
+    expect(state(ctx()).unfinished_rulings).toEqual([]);
+    expect(checked.posted).toBe(1);
+  });
+
+  it('a newer operator record placing the key elsewhere voids a door ruling and prints only its add line (X1)', async () => {
+    const { r } = await ruled('K-4', 'v2', 'v1', { crashOnRemove: true });
+    checked.fv.set('K-4', []);
+    mirror([{ key: 'K-4', fixVersions: [] }]);
+    const newer = decide('2026-10-21T10:00:05.000Z', 'K-4', 'add', null, 'v3');
+    const out = (await rmRun(ctx(), noJudge)).join('\n');
+    expect(out).toContain(`VOID ${r.id}`);
+    expect(out).toContain(`jira fix-version K-4 --add v3 --by ${newer.id}`);
+    expect(out).not.toMatch(/--remove/);
+    await checked.setFixVersion('K-4', 'add', 'v3', { by: newer.id });
+    mirror([{ key: 'K-4', fixVersions: ['v3'] }]);
+    expect(checked.fv.get('K-4')).toEqual(['v3']);
+    expect(state(ctx()).unfinished_rulings).toEqual([]);
+    expect((await rmRun(ctx(), noJudge)).join('\n')).not.toContain('K-4');
+  });
+
+  it('a newer operator remove prints its --remove --by line only while the key holds that version alone, and the line passes rule (2) (X1, X2)', async () => {
+    const { r } = await ruled('K-4', 'v2', 'v1', { crashOnRemove: true });
+    checked.fv.set('K-4', ['v3']);
+    mirror([{ key: 'K-4', fixVersions: ['v3'] }]);
+    const newer = decide('2026-10-21T10:00:05.000Z', 'K-4', 'remove', 'v3', null);
+    const out = (await rmRun(ctx(), async () => [])).join('\n');
+    const line = `jira fix-version K-4 --remove v3 --by ${newer.id}`;
+    expect(out).toContain(`VOID ${r.id}`);
+    expect(out).toContain(line);
+    expect(state(ctx()).unfinished_rulings).toMatchObject([{ ruling: r.id, status: 'blocked', owner: 'chief', next: line }]);
+    await checked.setFixVersion('K-4', 'remove', 'v3', { by: newer.id });
+    mirror([{ key: 'K-4', fixVersions: [] }]);
+    expect(checked.refusals).toEqual([]);
+    expect(state(ctx()).unfinished_rulings).toEqual([]);
+  });
+
+  it('a newer operator remove while the key holds another declared version prints no line and stays blocked for the chief (X2)', async () => {
+    const { r } = await ruled('K-4', 'v2', 'v1', { crashOnRemove: true });
+    checked.fv.set('K-4', ['v1', 'v2', 'v3']);
+    mirror([{ key: 'K-4', fixVersions: ['v1', 'v2', 'v3'] }]);
+    decide('2026-10-21T10:00:05.000Z', 'K-4', 'remove', 'v3', null);
+    const out = (await rmRun(ctx(), async () => [])).join('\n');
+    expect(out).toContain(`PENDING ${r.id}`);
+    expect(out).not.toMatch(/--remove|--add/);
+    expect(state(ctx()).unfinished_rulings).toMatchObject([{ ruling: r.id, phase: 'intent', status: 'blocked', owner: 'chief' }]);
+    expect(checked.fv.get('K-4')).toEqual(['v1', 'v2', 'v3']);
+  });
+
+  describe('releaseForProject on fixture roots (T4)', () => {
+    const env = () => leaveEnv();
+    const releaseJson = () => join(root, 'release', 'R1', 'release.json');
+
+    it('names the verified declaration of the project, with its versions', () => {
+      expect(releaseForProject(env(), 'K')).toEqual([{ release: 'R1', project: 'K', current: 'v1', versions: ['v1', 'v2', 'v3'] }]);
+      expect(releaseForProject(env(), 'SALUS')).toEqual([]);
+    });
+
+    it('a release.json whose mac does not verify reads unreadable', () => {
+      const d = JSON.parse(readFileSync(releaseJson(), 'utf8')) as Record<string, unknown>;
+      writeFileSync(releaseJson(), JSON.stringify({ ...d, current: 'v2' }));
+      expect(releaseForProject(env(), 'K')).toBe('unreadable');
+    });
+
+    it('a release.json that is not JSON reads unreadable for every project', () => {
+      writeFileSync(releaseJson(), 'not json');
+      expect(releaseForProject(env(), 'K')).toBe('unreadable');
+      expect(releaseForProject(env(), 'SALUS')).toBe('unreadable');
+    });
+
+    it('two declarations naming the project are both returned', () => {
+      declare({ ...ctx(), release: 'R2', dir: join(root, 'release', 'R2'), keyPath: join(root, 'keys', 'R2.key') },
+        { project: 'K', versions: ['v4'], decision: '107', verbatim: 'R2 = v4', mode: 'observe' });
+      expect((releaseForProject(env(), 'K') as Array<{ release: string }>).map((d) => d.release)).toEqual(['R1', 'R2']);
+    });
+
+    it('a missing root reads as no declaration', () => {
+      expect(releaseForProject({ ...env(), HIMMEL_RELEASE_STATE_DIR: join(root, 'absent') }, 'K')).toEqual([]);
+    });
   });
 });
