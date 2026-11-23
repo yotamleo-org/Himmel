@@ -144,6 +144,11 @@ describe('the narrow rule S (decision 1170)', () => {
     const parent = snap('K-1', { fixVersions: [N], status: 'Done', statusCategory: 'Done', resolution: 'Done' });
     expect(decide(input({ issues: [snap('K-2'), parent], required_parent }), rest).ground).toBe('door:rest-of:K-1');
   });
+
+  it('a withdrawn remainder request no longer requires its parent', () => {
+    const rest = req('K-2', { evidence: { follow_up_of: 'K-1', remainder: true } });
+    expect(requiredParentOf([rest, { ...rest, state: 'withdrawn:console' }])).toEqual({});
+  });
 });
 
 describe('the clamp, one case per row', () => {

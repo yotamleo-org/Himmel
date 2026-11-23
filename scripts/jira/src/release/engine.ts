@@ -504,6 +504,9 @@ export function reopen(ctx: Ctx, o: { key: string; from: string }): EventRow {
 
 // --- the request queue (the chief writes, the RM claims) ---------------------
 
+const sameMove = (a: Pick<RequestRow, 'verb' | 'from_v' | 'to_v'>, b: Pick<RequestRow, 'verb' | 'from_v' | 'to_v'>): boolean =>
+  a.verb === b.verb && a.from_v === b.from_v && a.to_v === b.to_v;
+
 export function request(ctx: Ctx, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): RequestRow {
   if (ctx.env.HIMMEL_RELEASE_MANAGER === '1') throw new Error('release request: the chief writes requests; the RM claims them');
   return locked(ctx, (l) => {
@@ -513,6 +516,9 @@ export function request(ctx: Ctx, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): 
       const waiting = [...latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k)).values()]
         .find((r) => r.key === o.key && (r.state === 'open' || r.state.startsWith('claimed:')));
       if (waiting?.state.startsWith('claimed:')) throw new Error(`release request: ${waiting.req} on ${o.key} is claimed; ask again after the run`);
+      if (waiting && !sameMove(waiting, o)) {
+        throw new Error(`release request: ${waiting.req} on ${o.key} waits for ${waiting.verb} ${waiting.from_v ?? 'backlog'} to ${waiting.to_v ?? 'backlog'}; withdraw it to place the key elsewhere`);
+      }
       if (waiting) {
         const { prev: _p, mac: _m, ...rest } = waiting;
         return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...rest, evidence: { ...((waiting.evidence ?? {}) as Record<string, unknown>), chief_placement: placement } });
@@ -565,8 +571,10 @@ function withRelation(ctx: Ctx, k: Buffer, dup: RequestRow, o: Omit<RequestRow, 
 
 /** Each key's required parent: the newest non-withdrawn request of the key that states a relation; `remainder: false` clears it. */
 export function requiredParentOf(history: RequestRow[]): Record<string, string> {
+  const latest = new Map<string, RequestRow>();
+  for (const r of history) latest.set(r.req, r);
   const out: Record<string, string> = {};
-  for (const r of history) {
+  for (const r of latest.values()) {
     if (r.state.startsWith('withdrawn')) continue;
     if (relationOf(r) === '{}') continue;
     const e = r.evidence as { follow_up_of?: unknown; remainder?: unknown };

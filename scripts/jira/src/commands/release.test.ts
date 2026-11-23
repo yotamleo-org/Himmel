@@ -2292,12 +2292,14 @@ describe('the door at the request entry point', () => {
     expect(requests()).toEqual([]);
   });
 
-  it('--chief-reason joins a waiting request as the same request, and refuses a claimed one (P11)', async () => {
+  it('--chief-reason joins a waiting request as the same request, and refuses a claimed one or another move (P11)', async () => {
     await declared();
     const m = doorMirror({ key: 'K-2' }, { key: 'K-3' });
     await ask(m, ...intake('K-2', 'v1.1.4'));
     vi.stubEnv('HIMMEL_CONSOLE', '1');
-    await ask(m, ...intake('K-2'), '--chief-reason', 'the release needs it');
+    expect(await refusal(ask(m, ...intake('K-2'), '--chief-reason', 'the release needs it')))
+      .toMatch(/Q-v1\.1\.3-0001 on K-2 waits for INTAKE backlog to v1\.1\.4; withdraw it to place the key elsewhere/);
+    await ask(m, ...intake('K-2', 'v1.1.4'), '--chief-reason', 'the release needs it');
     const rows = requests();
     expect(rows.map((r) => r.req)).toEqual(['Q-v1.1.3-0001', 'Q-v1.1.3-0001']);
     expect(Object.keys(rows[1]).sort()).toEqual(Object.keys(rows[0]).sort());
