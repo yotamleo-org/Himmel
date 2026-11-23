@@ -8,7 +8,8 @@ import { contentSha, readChain } from './ledger.js';
 import { namesKey } from './verbatim.js';
 import { KEY_IN } from './judge-input.js';
 import type { IssueSnap, OperatorKind, OperatorRow } from './types.js';
-import { type Ctx, f, operatorFence, lockedAcross, readMirror, appendOperator, type ReleaseRecord, readOperatorRecords } from './engine-core.js';
+import { type Ctx, f, operatorFence, lockedAcross, readMirror, appendOperator, type ReleaseRecord, readOperatorRecords, readSignerState } from './engine-core.js';
+import { effectiveSigner, parentOf, signerOf, voidingTicket, type SignerState } from './signer.js';
 
 const fileSha = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
 
@@ -478,8 +479,30 @@ function staleReason(r: ReleaseRecord): string | null {
   return null;
 }
 
+export const SPEC_CHECK_VERBS = ['SPEC ok', 'SPEC-STALE', 'NO-SPEC', 'SPEC-NEEDS-OPERATOR', 'SPEC-SIGNER-UNKNOWN'] as const;
+
+export function headerTickets(specText: string): string[] {
+  const lines = specText.split('\n');
+  const named: string[] = [];
+  let i = 0;
+  if (lines[0]?.trim() === '---') {
+    for (i = 1; i < lines.length && lines[i].trim() !== '---'; i++) {
+      if (/^tickets\s*:/i.test(lines[i])) named.push(lines[i]);
+    }
+    i++;
+  }
+  for (; i < lines.length && !lines[i].startsWith('## '); i++) {
+    if (/^\s*-\s*tickets?\s*:/i.test(lines[i]) || /^\s*(?:-\s*)?keys?\s*:/i.test(lines[i])) named.push(lines[i]);
+  }
+  const out: string[] = [];
+  for (const line of named) {
+    for (const k of line.match(KEY_IN) ?? []) if (namesKey(line, k, { bare: false }) && !out.includes(k)) out.push(k);
+  }
+  return out;
+}
+
 export function specCheck(env: Record<string, string | undefined>, keys: string[], mirrorRoot: string | null, opts: {
-  kinds?: OperatorKind[]; issues?: Map<string, IssueSnap> | null; records?: ReleaseRecord[];
+  kinds?: OperatorKind[]; issues?: Map<string, IssueSnap> | null; records?: ReleaseRecord[]; signer?: SignerState;
 } = {}): { lines: string[]; ok: boolean; warnings: string[]; answer: Map<string, SpecAnswer> } {
   const kinds = opts.kinds ?? ['spec'];
   const records = (opts.records ?? readOperatorRecords(kinds, env)).filter((r) => kinds.includes(r.kind));
@@ -493,10 +516,39 @@ export function specCheck(env: Record<string, string | undefined>, keys: string[
   const issues = opts.issues !== undefined ? opts.issues : (mirrorRoot ? readMirror(mirrorRoot).issues : null);
   const warnings: string[] = [];
   const answer = new Map<string, SpecAnswer>();
+  let signerState = opts.signer;
+  const specNewest = newestOf[kinds.indexOf('spec')];
+  const signerRefusal = (k: string, r: ReleaseRecord, parent: string | null): { line: string; missing: string } | null => {
+    const signingKey = r.keys?.includes(k) || !parent ? k : parent;
+    if (signerOf(r, signingKey) === 'operator') return null;
+    const s = (signerState ??= readSignerState(env, mirrorRoot));
+    if (!s.records.length && !s.unreadable) return null;
+    const pin = r.spec_path ? pinnedSha(r.spec_path) : null;
+    const text = pin && 'bytes' in pin && pin.sha256 === r.spec_sha256 ? pin.bytes.toString('utf8') : null;
+    const covered = [...new Set([...(r.keys ?? []), ...(text === null ? [] : headerTickets(text))])];
+    const signedForSpec = (v: string) => {
+      if (r.keys?.includes(v) || !specNewest) return false;
+      const own = specNewest(v);
+      return !!own && own.kind === 'spec' && staleReason(own) === null && signerOf(own, v) === 'operator' && own.spec_sha256 === r.spec_sha256;
+    };
+    const mine = effectiveSigner(k, r.ts, s);
+    const voided = text === null ? { unreadable: `${r.spec_path}: the spec bytes changed after the check` } : voidingTicket(r, covered, r.ts, s, signedForSpec);
+    const why = 'unreadable' in mine ? mine.unreadable : voided && 'unreadable' in voided ? voided.unreadable : null;
+    if (why !== null) return { line: `SPEC-SIGNER-UNKNOWN ${k} ${r.id} ${why}`, missing: `signer records unreadable: ${why}` };
+    const gov = (g: OperatorRow | 'default') => (typeof g === 'string' ? g : g.id);
+    const needs = `SPEC-NEEDS-OPERATOR ${k} ${r.spec_path} ${r.id}`;
+    if (!('unreadable' in mine) && mine.signer === 'operator') {
+      return { line: `${needs} ${gov(mine.governing)}`, missing: `${k} needs the operator's own signature (${gov(mine.governing)}); the chief's signature ${r.id} does not count` };
+    }
+    if (voided && 'ticket' in voided) {
+      const g = gov(voided.governing);
+      return { line: `${needs} ${g}`, missing: `${k} needs the operator's own signature: ${voided.ticket} is marked (${g}) and ${r.id} covers it; the chief's signature ${r.id} does not count` };
+    }
+    return null;
+  };
   const lines = keys.map((k) => {
     try {
-      const snap = issues?.get(k);
-      const parent = snap && /^sub-?task$/i.test(snap.type) ? snap.parent : null;
+      const parent = parentOf(issues?.get(k));
       const candidates = newestOf.map((newest) => newest(k) ?? (parent ? newest(parent) : undefined))
         .filter((r): r is ReleaseRecord => !!r?.spec_path);
       if (!candidates.length) {
@@ -511,6 +563,11 @@ export function specCheck(env: Record<string, string | undefined>, keys: string[
       const judged = candidates.map((r) => ({ r, why: staleReason(r) }));
       const fresh = judged.find((j) => j.why === null);
       if (fresh) {
+        const refused = fresh.r.kind === 'spec' ? signerRefusal(k, fresh.r, parent) : null;
+        if (refused) {
+          answer.set(k, { missing: refused.missing });
+          return refused.line;
+        }
         answer.set(k, { ok: true });
         return `SPEC ok ${k} ${fresh.r.spec_path} ${fresh.r.id}`;
       }

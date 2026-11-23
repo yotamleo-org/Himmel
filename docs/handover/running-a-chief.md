@@ -342,9 +342,16 @@ effort guidance, including the chief's own wake-up budget, is in
 - **What core means.** The operator's definition: the ship loop, the chain a
   ticket travels from filing to merge. That is the chief, how versions are
   kept, how work is split, and the workers. Core is not "everything
-  important". The files are listed in `scripts/ci/core-paths.txt` (minerva is
-  on it). A ticket is core when its brief's Writes match that list, or when it
-  carries the Jira label `core`.
+  important". The files are listed in `scripts/ci/core-paths.txt`: the dispatch
+  and launch gates (`gen-briefs`, `next-dispatchable`, `headed-arm-worker`,
+  `brief-lint`), merge and GO (`merge-on-green.sh`, `go`, `auto-go`,
+  `ready-check`, `verdict-go`, the `pr-check-*` and `review-round` scripts), the
+  release engine under `scripts/jira/src/release/` with `core-paths.txt` itself,
+  the bus plugin and the handover libraries (`handover-path`, `flags`), the hook
+  library and `.claude/settings.json`, `queue-lock.sh`, and minerva (its skill,
+  command, spec-gate and trace-lint scripts and critic hook). A ticket is core
+  when its brief's Writes match that list, or when it carries the Jira label
+  `core`.
 - **Renames and bulk changes.** A rename or bulk-mechanical change that
   touches a core path is neither core nor not-core by default. It reads
   `REVIEW`, and you or a judge rule it case by case, per slice.
@@ -385,7 +392,9 @@ effort guidance, including the chief's own wake-up budget, is in
   shipped verifier refuses, is the separate v2 route: see "Ledger-bound capped carry (proof v2)" below, and do not use
   it for a real signing yet.
 - **The two checks.** `jira release spec-check <KEY…>` prints `SPEC ok`,
-  `SPEC-STALE` (the file changed since signing) or `NO-SPEC` per key. `jira
+  `SPEC-STALE` (the file changed since signing), `NO-SPEC`,
+  `SPEC-NEEDS-OPERATOR <K> <spec> <row> <record>` or
+  `SPEC-SIGNER-UNKNOWN <K> <row> <why>` per key. `jira
   release core-check --paths <p,…> --key <K…> [--change-class rename|bulk]
   [--docs-only] [--mirror <dir>]` prints one line per key: `CORE`, `REVIEW`,
   `BYPASS <K> <kind> <reason>`, `UNKNOWN` (no mirror file for the key) or
@@ -402,7 +411,35 @@ effort guidance, including the chief's own wake-up budget, is in
   --decision <n> --verbatim-file <f>`), and a key in the in-flight snapshot
   (`jira release operator core-snapshot <R> --keys-file <f>`, written once,
   when the gate became permanent). Both records are read from every declared
-  release. There is no free-text bypass.
+  release. There is no free-text bypass. An operator `core-bypass` does not
+  count for a key whose signer was the operator at the time of the bypass record (see
+  "Who signs a spec" below), and none counts while the signer records cannot be
+  read. The newest bypass that is left counts. The emergency, Bug and snapshot
+  bypasses hold whoever signs.
+- **Who signs a spec.** `spec-signer` records in every declared release say
+  whether the chief's signature counts. A record with keys marks those keys as
+  the operator's (`signer: operator`) or lifts the mark (`signer: chief`). A
+  record without keys sets the station default from its time on. For a key, its
+  own newest record decides. A sub-task with no record of its own takes its
+  parent's mark from the Jira mirror. Otherwise the station default in force when
+  the row was signed decides, and with none the chief signs. A mark also counts
+  for rows signed before it. With no `spec-signer` record, every answer is as
+  before.
+  - **`SPEC-NEEDS-OPERATOR`.** A fresh `spec` row the operator did not sign
+    reads this line when the key's signer is the operator. A row found through
+    a sub-task's parent is judged by the parent's signature. The last field is
+    the governing record.
+  - **The covered-tickets rule.** A row covers its own keys and the tickets
+    its spec's header names: the front matter's `tickets:` line, and the
+    `- Ticket(s):` and `Key(s):` lines before the first `## ` heading. When a
+    covered ticket is marked, the chief's row reads `SPEC-NEEDS-OPERATOR` for
+    every key it signs. It still counts if that ticket's own newest fresh row
+    is the operator's signature over the same spec bytes.
+  - **`SPEC-SIGNER-UNKNOWN`.** A chief row reads this when the records cannot
+    be read. That happens when a declared release's key does not load, when its
+    `operator.jsonl` does not verify, or when a parent step is needed for a key
+    missing from the mirror. A `spec-review` row is never checked for a
+    signer.
 - **The gate is enforced, with no flag.** `gen-briefs.py` refuses a core
   worker with no `SPEC ok`, `next-dispatchable.sh` lists such a ticket as a
   `DESIGN` row, and `brief-lint.sh` (run at every launch, even one that skips

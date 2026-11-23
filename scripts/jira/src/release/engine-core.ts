@@ -5,6 +5,7 @@ import { appendChain, contentSha, loadKey, readChain, readSigned, withLock, type
 import { FENCE_MARKERS, walk } from './fence-ancestry.js';
 import { readAdmissions, type Admission } from '../commands/admissions-ledger.js';
 import { reduce, type ReleaseState } from './reducer.js';
+import type { SignerState } from './signer.js';
 import type { Baseline, Declaration, EventRow, IssueSnap, Lease, Op, OperatorKind, OperatorRow, RequestRow, RulingRow } from './types.js';
 
 export interface JiraPort {
@@ -208,6 +209,29 @@ export function readOperatorRecords(kind: OperatorKind | OperatorKind[], env: Re
     out.push(...chain.verified.filter((o) => kinds.has(o.kind)).map((o) => ({ ...o, release })));
   }
   return out;
+}
+
+export function readSignerState(env: Record<string, string | undefined>, mirrorRoot: string | null): SignerState {
+  const root = releaseRoot(env);
+  const rows: Array<{ r: OperatorRow; release: string; i: number }> = [];
+  let unreadable: string | null = null;
+  for (const release of existsSync(root) ? readdirSync(root).sort() : []) {
+    if (!existsSync(join(root, release, 'release.json'))) continue;
+    let k: Buffer;
+    try {
+      k = loadKey(releaseKeyPath(release, env));
+    } catch (e) {
+      unreadable ??= `release ${release}: its key does not load (${(e as Error).message})`;
+      continue;
+    }
+    const chain = readChain<OperatorRow>(join(root, release, 'operator.jsonl'), k);
+    if (chain.bad.length) unreadable ??= `release ${release}: operator.jsonl does not verify (${chain.bad[0]})`;
+    chain.verified.forEach((r, i) => { if (r.kind === 'spec-signer') rows.push({ r, release, i }); });
+  }
+  rows.sort((a, b) => a.r.ts.localeCompare(b.r.ts) || a.release.localeCompare(b.release) || a.i - b.i);
+  const records = rows.map(({ r }) => r);
+  const issues = records.some((r) => r.keys?.length) ? readMirrorFilesUnverified(mirrorRoot).issues : null;
+  return { records, unreadable, issues };
 }
 
 export { f, ts, seq, key, load, loadOrThrow, locked, lockedAcross, appendOperator, type Loaded };
