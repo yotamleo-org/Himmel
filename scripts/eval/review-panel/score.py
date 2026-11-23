@@ -14,11 +14,10 @@ row per sweep into the eval-runs ledger (scripts/eval/lib/eval_runs.py).
   score.py confighash <rev> [--repo R]     the eval config at <rev>: fixture set, key, paid roster, window
   score.py stamp <outputs-dir> [--fixtures D] [--key F] [--panel CMD] [--tiers T] [--only IDS] [--repo R]   record the
                                            swept tree (run.sh does it)
-  score.py export-row <outputs-dir> [--repo R] [--results FILE]   append one gate row (HEAD's hashes; refuses
+  score.py export-row <outputs-dir> [--repo R] [--results FILE]   append one results row (HEAD's hashes; refuses
                                            outputs whose swept.json is unclean or names other hashes)
   score.py verify-row <row-json> <outputs-dir> [--tree REV] [--repo R] [--validation FILE]   exit 1 unless the
                                            row re-scores so
-  score.py gate <base> <head> [--target-class C]... [--repo R]   keep | no-loss | loss | unmeasured | mismatch
   score.py scorer-identity [--json]        the running scorer's identity (read-only; rows carry it)
 
 Inputs. fixtures/case-NN.patch are the frozen synthetic diffs the panel reviews,
@@ -29,10 +28,9 @@ twin pair, kind (seeded | clean), split (open | sealed) and defects
 ({id, class, file, line}). <outputs>/<id>.md is the panel's stdout for that
 case, <outputs>/<id>.err its stderr (optional).
 
-Merge gate. A <rev> is a git tree-ish of --repo (default this
+Revs. A <rev> is a git tree-ish of --repo (default this
 checkout); files are read from the tree, never the work tree. results.jsonl
-holds one row per sweep; gate reads the head tree's rows and prints
-eval_feedback.gate_verdict: exit 0 keep / no-loss, 1 loss / unmeasured / mismatch, 2 error.
+holds one row per sweep.
 
 Split (README "Open and sealed seeds"). Every metric is also reported per half
 as open.<metric> and sealed.<metric>, each with its own interval. Tuning
@@ -1244,94 +1242,6 @@ def execution_fields(outputs):
             "provenance_status": status, "bundle_sha256_v2": bundle_sha256_v2(outputs)}
 
 
-def panel_mismatch(rows, base_hash, head_hash, confighash):
-    """A reason string when the counted rows did not run the same critics, else "". A row's
-    `responded` is {scored: cases scored, critics: {critic: cases it answered}}; its roster gives each critic one
-    of three states: answered every scored case, answered some, answered none. Counted rows at either hash with
-    more than one roster make a win-or-loss comparison unequal (the panel drops an unavailable critic per case),
-    and so do rows that record a roster beside rows that do not: no verdict, and the rows are named. Like
-    gate_verdict it keeps the first row of a run_id.
-    When every counted row has no `responded` the normal verdict stands.
-    The counted rows are gate_verdict's: both call eval_feedback.gate_side."""
-    def side(h, skip_ids=(), skip_bundles=()):
-        counted, ids, bundles = eval_feedback.gate_side(rows, h, confighash, skip_ids, skip_bundles)
-        out = {}
-        for r in counted:
-            resp = r.get("responded")
-            out[eval_feedback._hashable(r.get("run_id"))] = resp if isinstance(resp, dict) and isinstance(resp.get("critics"), dict) else None
-        return out, ids, bundles
-    base, base_ids, base_bundles = side(base_hash)
-    sides = {"baseline": base,
-             "head": (side(head_hash) if head_hash == base_hash else side(head_hash, base_ids, base_bundles))[0]}
-
-    def state(resp, n):
-        return "all" if n == resp.get("scored") else ("none" if not n else "some")
-
-    def roster(resp):
-        return tuple(sorted((c, state(resp, n)) for c, n in resp["critics"].items()))
-
-    def say(side, keep):
-        out = []
-        for rid, resp in sorted(sides.get(side, {}).items()):
-            if keep(resp):
-                out.append(rid if resp is None else "%s [%s]" % (rid, ", ".join(
-                    "%s %s/%s" % (c, n, resp.get("scored")) for c, n in sorted(resp["critics"].items()))))
-        return "; ".join(out) or "none"
-    counted = [resp for runs in sides.values() for resp in runs.values()]
-    if any(resp is None for resp in counted) and any(resp is not None for resp in counted):
-        return ("panel mismatch: some counted rows record which critics answered and others do not, no win or "
-                "loss read. without a roster: baseline %s | head %s. with a roster: baseline %s | head %s"
-                % (say("baseline", lambda r: r is None), say("head", lambda r: r is None),
-                   say("baseline", lambda r: r is not None), say("head", lambda r: r is not None)))
-    if len({roster(resp) for resp in counted if resp is not None}) < 2:
-        return ""
-    return ("panel mismatch: the rows ran different critics, no win or loss read: baseline %s | head %s"
-            % (say("baseline", lambda r: True), say("head", lambda r: True)))
-
-
-def gate(repo, base, head, target_classes=()):
-    b, h, c = cbs_hash(repo, base), cbs_hash(repo, head), confighash(repo, head)
-    where = {"baseline_cbs_hash": b, "head_cbs_hash": h, "confighash": c}
-    ident = running_scorer_identity()
-    if not known_identity(ident):
-        return "unmeasured", dict(where, scorer_sha256=None, reason="the running scorer has no clean identity (%s): "
-                                  "no eval row can be matched to it" % (ident["reason"] or "no valid digest"))
-    want = ident["scorer_sha256"]
-    raw = tree_blob(repo, head, RESULTS) or b""
-    rows = []
-    for ln in raw.decode(errors="replace").splitlines():
-        try:
-            r = json.loads(ln)
-        except ValueError:
-            continue
-        if isinstance(r, dict):
-            rows.append(r)
-    mine, diag = eval_feedback.select_review_runs(rows, scorer=want, eligible_only=True)
-    legacy = sum(1 for r in rows if not r.get("scorer_sha256"))
-    excluded = {"without_scorer_sha256": legacy,
-                "other_scorer": sum(1 for r in rows if r.get("scorer_sha256") and r["scorer_sha256"] != want)}
-    where.update(scorer_sha256=want, scorer_excluded=excluded)
-    skipped = {}
-    for d in diag:
-        if d["reason"] not in ("other-scorer", "without-scorer-sha256"):
-            skipped[d["reason"]] = skipped.get(d["reason"], 0) + 1
-    if skipped:
-        where["selection_excluded"] = skipped
-    said = "%d without scorer_sha256, %d of another scorer" % (legacy, excluded["other_scorer"])
-    if skipped:
-        said += ", " + ", ".join("%d %s" % (n, why) for why, n in sorted(skipped.items()))
-    if not mine:
-        return "unmeasured", dict(where, reason="no eval rows scored by the running scorer %s (excluded: %s)"
-                                  % (want[:12], said))
-    mismatch = panel_mismatch(mine, b, h, c)
-    if mismatch:
-        return "mismatch", dict(where, reason=mismatch)
-    verdict, info = eval_feedback.gate_verdict(mine, b, h, c, target_classes)
-    if verdict == "unmeasured" and len(mine) < len(rows):
-        info = dict(info, reason="%s (rows excluded: %s)" % (info["reason"], said))
-    return verdict, dict(info, **where)
-
-
 def _arm(runs, name):
     """{case id: [per-execution values]} of one arm's score objects, one execution counted once; the value of a
     seeded case is its share of defects found, of a clean case 1 when it drew a blocking finding. A rescore of
@@ -1500,11 +1410,7 @@ def main(argv=None):
     pv.add_argument("--tree", default="HEAD")
     pv.add_argument("--validation", help="the sidecar a claimed gold_revision is checked against (default the "
                                          "running scorer checkout's key/validation.json)")
-    pg = sub.add_parser("gate")
-    pg.add_argument("base")
-    pg.add_argument("head")
-    pg.add_argument("--target-class", action="append", default=[], choices=CLASSES)
-    for p in list(tree_cmds.values()) + [pst, pe, pv, pg]:
+    for p in list(tree_cmds.values()) + [pst, pe, pv]:
         p.add_argument("--repo", help="the git repo the revs name (default this checkout)")
     pid = sub.add_parser("scorer-identity")
     pid.add_argument("--json", action="store_true")
@@ -1552,7 +1458,7 @@ def main(argv=None):
             return 2
         print(json.dumps(res, sort_keys=True))
         return 0 if res["eligible"] else 1
-    if a.cmd in tree_cmds or a.cmd in ("stamp", "export-row", "verify-row", "gate"):
+    if a.cmd in tree_cmds or a.cmd in ("stamp", "export-row", "verify-row"):
         try:
             return tree_main(a)
         except (OSError, ValueError, KeyError) as e:
@@ -1666,11 +1572,6 @@ def tree_main(a):
                                                                     json.dumps(got[f], sort_keys=True)))
         print("verify-row: %s" % ("MISMATCH " + ",".join(bad) if bad else "the row matches its outputs"))
         return 1 if bad else 0
-    else:
-        verdict, info = gate(repo, a.base, a.head, a.target_class)
-        print("critic-eval gate: %s - %s" % (verdict, info.pop("reason")))
-        print(json.dumps(info, sort_keys=True))
-        return 0 if verdict in ("keep", "no-loss") else 1
     return 0
 
 
