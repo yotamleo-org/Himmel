@@ -9,7 +9,7 @@ export const LINE1_MAX = 200;
 export const NOTIFY_LINE1_RE = /^peer [a-z0-9][a-z0-9-]{0,31} · /;
 
 type Base = { kind: "notify"; peer: string; ts: number };
-export type WakeNotify = Base & { type: "wake"; root: number; dir: Dir; label: WakeLabel; replyBy?: number };
+export type WakeNotify = Base & { type: "wake"; root: number; dir: Dir; label: WakeLabel; replyBy?: number; message_id?: number };
 export type EscalateNotify = Base & { type: "escalate"; root: number; dir: Dir; message_id: number; label: WakeLabel; replyBy?: number; summary: string | null; asks: string[]; reason?: string };
 export type DraftNotify = Base & { type: "draft"; root: number; draft: string; source: "telegram" | "send.ts"; deadline: number; text: string };
 export type ResultNotify = Base & { type: "result"; root: number; draft: string; state: "SENT" | "FAILED" | "REJECTED" | "EXPIRED" | "REFUSED"; message_id?: number; rule?: string };

@@ -1069,3 +1069,72 @@ test("escalation across midnight is charged to the processing day", async () => 
   expect(new Date(esc[20].ts).toISOString().slice(0, 10)).toBe("2026-11-10");
   expect(notifies(e).filter(r => r.type === "budget")).toEqual([]);
 });
+
+const dropLast = (file: string, k: number) => { const l = readFileSync(file, "utf8").split("\n").filter(Boolean); writeFileSync(file, l.slice(0, l.length - k).map(x => x + "\n").join("")); };
+async function restart(e: Env, readerRun?: PollerDeps["readerRun"]) {
+  const p = await Poller.create({ ...e.deps, ...(readerRun ? { readerRun } : {}) });
+  await p.recover();
+  return p;
+}
+
+test("recovery replays each missing effect once", async () => {
+  const boom = (async () => { throw new Error("reader crashed"); }) as any;
+  const a = await setup({ readerRun: boom, peerOver: wide });
+  await a.poller.processBatch([askRoot()]).catch(() => {});
+  expect(digestKinds(a)).toEqual(["job"]);
+  const ran: string[] = [];
+  await restart(a, (async () => { ran.push("x"); return { route: "drop", summary: "s", asks: [] }; }) as any);
+  expect(ran).toEqual([]);
+  expect(readChain(digestFile(a.peerDir)).map(r => [r.kind, r.reason ?? r.outcome ?? null])).toEqual([["job", null], ["digest", "restart"], ["effect", "escalated"]]);
+  expect(notifies(a).filter(r => r.type === "escalate")).toMatchObject([{ summary: null, reason: "restart" }]);
+
+  const b = await setup({ readerRun: routed("escalate") as any, peerOver: wide });
+  writeFileSync(join(b.stateDir, "notify"), "x");
+  await b.poller.processBatch([askRoot()]).catch(() => {});
+  rmSync(join(b.stateDir, "notify"));
+  await restart(b);
+  expect(digestKinds(b)).toEqual(["job", "digest", "effect"]);
+  expect(notifies(b).filter(r => r.type === "escalate")).toHaveLength(1);
+
+  const c = await setup({ readerRun: routed("escalate") as any, peerOver: wide });
+  await c.poller.processBatch([askRoot()]);
+  dropLast(digestFile(c.peerDir), 1);
+  await restart(c);
+  expect(digestKinds(c)).toEqual(["job", "digest", "effect"]);
+  expect(notifies(c).filter(r => r.type === "escalate")).toHaveLength(1);
+
+  const d = await setup({ readerRun: routed("ack") as any, peerOver: wide });
+  await d.poller.processBatch([kindRoot("status")]);
+  dropLast(join(d.peerDir, "outbox.jsonl"), 2);
+  dropLast(digestFile(d.peerDir), 1);
+  await restart(d);
+  expect(outbox(d).filter(r => r.kind === "intent" && r.msgKind === "closing")).toHaveLength(1);
+  expect(digestKinds(d)).toEqual(["job", "digest", "effect"]);
+
+  const f = await setup({ readerRun: routed("escalate") as any, peerOver: wide });
+  await f.poller.processBatch([askRoot()]);
+  const before = readFileSync(digestFile(f.peerDir), "utf8") + readFileSync(notifyFile(f.stateDir), "utf8");
+  await restart(f);
+  expect(readFileSync(digestFile(f.peerDir), "utf8") + readFileSync(notifyFile(f.stateDir), "utf8")).toBe(before);
+
+  const g = await setup({ readerRun: routed("escalate") as any, peerOver: wide });
+  writeFileSync(join(g.stateDir, "notify"), "x");
+  await g.poller.processBatch([askRoot()]).catch(() => {});
+  rmSync(join(g.stateDir, "notify"));
+  chmodSync(digestFile(g.peerDir), 0o400);
+  await restart(g).catch(() => {});
+  chmodSync(digestFile(g.peerDir), 0o600);
+  expect(notifies(g).filter(r => r.type === "escalate")).toHaveLength(1);
+  await restart(g);
+  expect(notifies(g).filter(r => r.type === "escalate")).toHaveLength(1);
+  expect(digestKinds(g)).toEqual(["job", "digest", "effect"]);
+});
+
+test("a pre-upgrade inbox message never replays", async () => {
+  const e = await setup({ readerRun: routed("escalate") as any, peerOver: wide });
+  await new Chain().append(join(e.peerDir, "inbox.jsonl"), { kind: "peer-msg", untrusted: true, peer: "example", from_id: PEER_ID, from_is_bot: true, chat_id: CHAT, message_id: 4000, root_id: 4000, tag: "ask:question", ts: 1, text: "old" });
+  await new Chain().append(digestFile(e.peerDir), { kind: "digest", peer: "example", message_id: 4000, root_id: 4000, tag: "ask:question", from_id: PEER_ID, ts: 1, summary: "old", asks: [] });
+  await restart(e);
+  expect(digestKinds(e)).toEqual(["digest"]);
+  expect(notifies(e)).toEqual([]);
+});

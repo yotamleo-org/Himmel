@@ -19,7 +19,7 @@ import { ReaderLedger, runReader, type Digest, type ModelRoute, type ReaderKind 
 import { resolveCapacity, resolveReq, resolveRes, type JobRecord } from "./resolve";
 import { currentSigningKey, sign } from "./sign";
 import { PeerTelegram, RetryAfter, TelegramError } from "./telegram";
-import { MAX_AUTO_PER_HOUR, Threads, effectiveRoute, templateLine, type Action, type Route, type ThreadRec, type Transition, type WakeEvent } from "./threads";
+import { MAX_AUTO_PER_HOUR, Threads, effectiveRoute, templateLine, type Action, type Route, type ThreadRec, type Transition, type WakeEvent, type WakeLabel } from "./threads";
 import { notifyFile } from "./notify";
 import { Tripwire, Waker } from "./wake";
 
@@ -211,8 +211,47 @@ export class Poller {
         this.pending.delete(`${i.peer}:${i.n}`);
         if (i.spool) writeResult(this.dir(i.peer), i.spool, { ok: false, rule: res.rule, ...(res.shape ? { shape: res.shape } : {}) });
       }
+      for (const peer of Object.keys(this.cfg.peers)) await this.replayEffects(peer);
       await this.flush();
     });
+  }
+
+  private async replayEffects(peer: string): Promise<void> {
+    const recs = readChain(digestFile(this.dir(peer)));
+    const by = (kind: string) => new Map(recs.filter(r => r.kind === kind).map(r => [r.message_id as number, r]));
+    const digests = by("digest"), effects = by("effect");
+    const inbox = new Map(readChain(this.file(peer, "inbox.jsonl")).filter(r => r.kind === "peer-msg").map(r => [r.message_id as number, r as unknown as PeerMsgRec]));
+    for (const job of recs.filter(r => r.kind === "job") as unknown as JobRec[]) {
+      if (effects.has(job.message_id)) continue;
+      const thread = this.threads.get(peer, job.root);
+      const rec = inbox.get(job.message_id);
+      if (!thread || !rec) continue;
+      const held = this.heldFor(peer, job, thread);
+      const digest = digests.get(job.message_id);
+      if (!digest) {
+        const kind: ReaderKind = job.transition === "opened" ? thread.msgKind as ReaderKind : job.transition === "answered-now" ? "answer" : "other";
+        const route = effectiveRoute(kind, job.transition, null);
+        const out: Omit<DigestRec, "n" | "h"> = { kind: "digest", peer, message_id: rec.message_id, root_id: rec.root_id, tag: rec.tag, from_id: rec.from_id, ts: this.ts(), summary: null, asks: [], ...(rec.id ? { id: rec.id } : {}), reason: "restart", route, model_route: null };
+        await this.chain.append(digestFile(this.dir(peer)), out);
+        await this.applyRoute(rec, route, job.transition, held, { route: null, summary: null, asks: [], reason: "restart" });
+        continue;
+      }
+      const route = digest.route as Route | undefined;
+      if (!route) continue;
+      const d: Digest = { route: digest.model_route ?? null, summary: digest.summary, asks: digest.asks, ...(digest.reason ? { reason: digest.reason } : {}) };
+      const settled = route === "ack" ? thread.state === "ACKED" : route === "drop" && job.transition === "opened" ? thread.state === "DROPPED" : false;
+      if (!settled) { await this.applyRoute(rec, route, job.transition, held, d); continue; }
+      if (route === "ack" && !readChain(this.file(peer, "outbox.jsonl")).some(r => r.kind === "intent" && r.tpl && r.msgKind === "closing" && r.root === job.root)) {
+        await this.apply([{ send: { peer, tpl: "closing", root: job.root } }]);
+      }
+      const effect: Omit<EffectRec, "n" | "h"> = { kind: "effect", peer, message_id: job.message_id, outcome: route === "ack" ? "acked" : "dropped", ts: this.ts() };
+      await this.chain.append(digestFile(this.dir(peer)), effect);
+    }
+  }
+
+  private heldFor(peer: string, job: JobRec, thread: ThreadRec): WakeEvent {
+    const label: WakeLabel = job.transition === "opened" ? `new ${thread.msgKind}` as WakeLabel : job.transition === "answered-now" ? "answer" : thread.deadline === null ? "message on a closed thread" : "peer message";
+    return { peer, root: job.root, dir: job.dir, label, ...(job.transition === "opened" && thread.deadline ? { replyBy: thread.deadline } : {}) };
   }
 
   private commitOffset(next: number): Promise<void> {
