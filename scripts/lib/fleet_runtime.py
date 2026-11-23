@@ -109,13 +109,15 @@ def past_local_boot(boot):
         found = set()
         try:
             command = shlex.split(os.environ.get('FLEET_JOURNAL_BOOTS_CMD') or 'journalctl --list-boots')
-            out = subprocess.run(command, capture_output=True, text=True, timeout=5).stdout
-            found = {m for m in re.findall(r'(?m)^\s*-?\d+\s+([0-9a-f]{32})\b', out)}
+            run = subprocess.run(command, capture_output=True, text=True, timeout=5)
+            if run.returncode == 0:
+                found = set(re.findall(r'(?m)^\s*-?\d+\s+([0-9a-f]{32})\b', run.stdout))
         except (OSError, subprocess.SubprocessError, ValueError):
             pass
         _PAST_BOOTS.append(found)
     try:
-        return boot.replace('-', '') in _PAST_BOOTS[0] and boot != identity(os.getpid())['boot']
+        plain = boot.replace('-', '')
+        return plain in _PAST_BOOTS[0] and plain != identity(os.getpid())['boot'].replace('-', '')
     except (OSError, ValueError, AttributeError):
         return False
 
