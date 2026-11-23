@@ -2706,6 +2706,13 @@ c98_doc AR '# AR — CHIEF — successor to AQ.md (fill signal 45 %)' WRAPPED 5
 c98_doc Z1 '# T-3 — a wrapped worker whose window is gone — worker Z1' WRAPPED 20
 out="$(c98_run)"
 if grepq "$out" -F 'OK   C98-wrapped-window' && ! grepq "$out" -E '(WARN|INFO) C98'; then pass "C98 OK with no lingering wrapped window"; else fail "C98 control -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C98: an aged doc of a live session that cannot be read is INFO, never OK =="
+c98_doc U1 '# T-6 — an unreadable wrapped worker — worker U1' WRAPPED 20
+c98_session 304 U1; chmod 000 "$c98_b/U1.md"
+out="$(c98_run)"
+chmod 644 "$c98_b/U1.md"; rm -rf "$c98_t/proc/304"
+if [ "$(id -u)" = 0 ]; then pass "C98 unreadable doc -> skipped as root (chmod does not block root)"
+elif grepq "$out" -F 'INFO C98-wrapped-window' && grepq "$out" -F 'U1' && ! grepq "$out" -E '(OK  |WARN) C98'; then pass "C98 INFO names an unreadable doc"; else fail "C98 unreadable doc -> $(printf '%s' "$out" | head -4)"; fi
 echo "== C98: a census that exits 3 with no rows is INFO, never OK =="
 printf '#!/usr/bin/env bash\nexit 3\n' > "$c98_t/pgrep3"; chmod +x "$c98_t/pgrep3"
 out="$(HIMMEL_DOCTOR_WRAPPED_MIN=15 HANDOVER_DIR="$c98_t/root" HIMMEL_BUCKET_DIR="$c98_b" HOME="$c98_t/home" CLAUDE_DIR="$c98_t/claude" \

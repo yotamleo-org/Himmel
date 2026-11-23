@@ -2010,7 +2010,7 @@ sweep_candidates() {
             for g in "$dir/$name"-[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md; do [ ! -f "$g" ] || dated+=("$g"); done
             [ "${#dated[@]}" -ne 1 ] || doc="${dated[0]}"
         fi
-        [ "$doc" != "$console_doc" ] && [ "$doc" != "$skip" ] && [ -f "$doc" ] && [ ! -L "$doc" ] || continue
+        ! [ "$doc" -ef "$console_doc" ] && ! [ "$doc" -ef "$skip" ] && [ -f "$doc" ] && [ ! -L "$doc" ] || continue
         case "$marked" in *$'\n'"$doc"$'\n'*) continue ;; esac
         case " ${docs[*]-} " in *" $doc "*) continue ;; esac
         docs+=("$doc")

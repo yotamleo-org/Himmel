@@ -795,6 +795,11 @@ I="$(new_inbox cs5)"
 CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-doc.sh" \
     timeout 4 bash "$WAIT" "$I" --doc "$WORK/cs5/AT.md" --workers "N1.md" > "$WORK/cs5.out" 2>/dev/null
 check "(cs5) the waiter's own doc, WRAPPED and old with a live session of its name, is never asked; its neighbour W1 is" "0|yes" "$(grep -c 'AT.md' "$STUB/close.calls")|$(grep -qxF -- "$WORK/cs5/W1.md" "$STUB/close.calls" && echo yes)"
+: > "$STUB/close.calls"; sw_doc cs5 AT '# AT — CHIEF — successor to none — first console of the chain' WRAPPED
+I="$(new_inbox cs5b)"
+(cd "$WORK/cs5" && CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-doc.sh" \
+    timeout 4 bash "$WAIT" "$I" --doc AT.md --workers "N1.md" > "$WORK/cs5b.out" 2>/dev/null)
+check "(cs5b) a relative --doc still excludes the waiter's own doc; its neighbour W1 is asked" "0|yes" "$(grep -c 'AT.md' "$STUB/close.calls")|$(grep -q 'W1.md$' "$STUB/close.calls" && echo yes)"
 reset_stub; rm -f "$STUB"/rc.*
 cat > "$STUB/close-tick.sh" <<'EOF'
 #!/usr/bin/env bash

@@ -2555,6 +2555,7 @@ check_c98_wrapped_window() {
     now="$(date +%s)"
     aged=()
     for doc in ${docs[@]+"${docs[@]}"}; do
+        [ -r "$doc" ] || { unread="${unread:+$unread; }cannot read $doc"; continue; }
         mt="$(stat -c %Y "$doc" 2>/dev/null || stat -f %m "$doc" 2>/dev/null)" || mt=""
         case "$mt" in
             ''|*[!0-9]*) unread="${unread:+$unread; }cannot read the age of $doc" ;;
