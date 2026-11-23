@@ -495,10 +495,11 @@ function markNotes(ctx: Ctx, marked: string[], s: SignerState, now: string): str
     if (by) notes.push(`${k} bypassed (${by}): the mark does not bind while it is`);
   }
   const { live, newest } = liveOf(readOperatorRecords('spec', ctx.env));
-  const withMark: SignerState = { ...s, records: [...s.records, { id: 'this mark', kind: 'spec-signer', ts: now, decision: null, keys: marked, signer: 'operator' }] };
+  const withMark: SignerState = { ...s, issues: s.issues ?? snaps ?? null, records: [...s.records, { id: 'this mark', kind: 'spec-signer', ts: now, decision: null, keys: marked, signer: 'operator' }] };
   for (const m of marked) {
-    const voids = live.filter((r) => staleReason(r) === null && coveredBy(r)?.includes(m)).flatMap((r) => {
-      const v = voidingTicket(r, [m], r.ts, withMark, (t) => operatorSignedFor(r, t, newest));
+    const voids = live.filter((r) => staleReason(r) === null).flatMap((r) => {
+      const hit = (coveredBy(r) ?? []).filter((t) => t === m || parentOf(snaps?.get(t)) === m);
+      const v = hit.length ? voidingTicket(r, hit, r.ts, withMark, (t) => operatorSignedFor(r, t, newest)) : null;
       return v && 'ticket' in v ? [`${m} mark voids ${r.id} for ${(r.keys ?? []).filter((k) => signerOf(r, k) === 'chief').join(', ')}`] : [];
     });
     notes.push(...(voids.length ? voids : [`${m} mark voids no signature`]));

@@ -2918,6 +2918,14 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{if(a[1]?.[1]==='capped-fo
         expect(() => sign(at(LATER), ['K-1'], spec())).toThrow(`release operator spec: the station default (${station.id}, decision 1171) is the operator's own signature; a chief signature is refused. The operator signs it: jira release operator spec R1 --keys K-1 ... --signer operator --decision <n> --words "<his words naming K-1>" [--supersedes <live spec row>]; or he sets the default back: jira release operator spec-signer R1 --signer chief --decision <n> --words "<his words>"`);
       });
 
+      it('a mark on a parent names the chief-signed row of its sub-task that the mark voids', () => {
+        declared();
+        const c = withMirror(mirror([['K-1', 'Task'], ['K-2', 'Subtask', 'K-1']]));
+        const r = sign(c, ['K-2'], spec());
+        decide('1170', MARK_K1);
+        expect(record(c, { keys: ['K-1'], decision: '1170', words: MARK_K1 }).notes).toEqual([`K-1 mark voids ${r.id} for K-2`]);
+      });
+
       it('a marked parent: signSpec with signer chief for its sub-task throws naming the parent\'s mark (I2)', () => {
         declared();
         const c = withMirror(mirror([['K-1', 'Task'], ['K-2', 'Subtask', 'K-1']]));
