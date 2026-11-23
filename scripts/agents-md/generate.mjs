@@ -19,6 +19,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(SCRIPT_DIR, '..', '..'); // scripts/agents-md -> repo root
@@ -28,13 +29,17 @@ const TARGET   = process.env.AGENTS_MD_TARGET   || join(REPO_ROOT, 'AGENTS.md');
 const PREAMBLE = process.env.AGENTS_MD_PREAMBLE || join(SCRIPT_DIR, 'preamble.md');
 const DEBRAND  = process.env.AGENTS_MD_DEBRAND  || join(SCRIPT_DIR, 'debrand.json');
 
-const WARN_BYTES = 24576; // 24 KiB — local-file budget (headroom for global ~/.codex/AGENTS.md)
+const WARN_BYTES = 24000; // local-file budget (headroom for global ~/.codex/AGENTS.md)
 const HARD_BYTES = 32768; // 32 KiB — Codex project_doc_max_bytes; never emit over this
 
 const lf = (s) => s.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 const die = (code, msg) => { process.stderr.write(msg + '\n'); process.exit(code); };
 
 function build() {
+  const gemini = spawnSync('git', ['-C', REPO_ROOT, 'ls-files', '--error-unmatch', '--', 'GEMINI.md'], { encoding: 'utf8' });
+  if (gemini.status === 0) {
+    die(2, 'agents-md: tracked root GEMINI.md duplicates AGENTS.md in Antigravity. Remove it from the index; keep CLAUDE.md as the source of truth.');
+  }
   for (const [label, p] of [['source CLAUDE.md', SOURCE], ['preamble', PREAMBLE], ['debrand table', DEBRAND]]) {
     if (!existsSync(p)) die(2, `agents-md: cannot evaluate — missing ${label}: ${p}`);
   }
