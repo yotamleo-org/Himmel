@@ -6672,5 +6672,9 @@ shared object store's `origin/main`, then re-run the check with `--no-fetch`; or
 worker, which runs the default path. The default invocation still fetches. `--chain-s2` mode always
 fetches and does not accept `--no-fetch`.
 
+A rollup job (`shell-unit (ubuntu-latest)` and the fail-fast twins, listed once as `ROLLUPS` at the top of the script)
+needs no case row: it has no suite case of its own, so it passes when it is red on the base too, green on latest main,
+and every red job it summarises is itself proven inherited. It still refuses when no summarised job is red on the PR.
+
 Rows: `scripts/handover/test-merge-forward-check.sh` (a `PATH` git stub logs every git call, proving no
 fetch runs under `--no-fetch` and that the default path still runs one).
