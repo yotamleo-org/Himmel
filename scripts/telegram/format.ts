@@ -1,0 +1,36 @@
+const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+function isCodeAlone(s: string): boolean {
+  if (/\n/.test(s) || /[.!?]$/.test(s)) return false;
+  if (!/\s/.test(s)) return /\d/.test(s);
+  return /^[a-z.\/~$]/.test(s) && s.split(/\s+/).length <= 8 && !/,\s/.test(s) && !/\*\*[^*]+\*\*/.test(s) && /[*_`$|&;<>=\\]/.test(s);
+}
+
+function inline(line: string): string {
+  return line.split(/(`[^`\n]+`)/).map((seg, i) =>
+    i % 2 === 1 ? `<code>${esc(seg.slice(1, -1))}</code>` : esc(seg).replace(/\*\*([^*\n]+?)\*\*/g, "<b>$1</b>")).join("");
+}
+
+export function toTelegramHtml(text: string): string {
+  const trimmed = text.trim();
+  if (isCodeAlone(trimmed)) return `<code>${esc(trimmed)}</code>`;
+  const lines = text.split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (/^```/.test(lines[i])) {
+      const body: string[] = [];
+      let j = i + 1;
+      while (j < lines.length && !/^```\s*$/.test(lines[j])) body.push(lines[j++]);
+      out.push(`<pre>${esc(body.join("\n"))}</pre>`);
+      i = j;
+      continue;
+    }
+    const bullet = /^(\s*)[-*] (.*)$/.exec(lines[i]);
+    out.push(bullet ? `${bullet[1]}• ${inline(bullet[2])}` : inline(lines[i]));
+  }
+  const first = lines[0];
+  const next = lines[1];
+  if (lines.length > 1 && first.trim() && first.length <= 100 && !/\*\*|`|^\s*[-*] /.test(first)
+      && (next.trim() === "" || /^\s*([-*]|\d+\.) /.test(next))) out[0] = `<b>${out[0]}</b>`;
+  return out.join("\n");
+}

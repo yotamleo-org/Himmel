@@ -1,5 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { basename } from "node:path";
+import { toTelegramHtml } from "./format";
 
 const API = (t: string, m: string) => `https://api.telegram.org/bot${t}/${m}`;
 type F = typeof fetch;
@@ -80,12 +81,13 @@ export const redactChatId = (chat_id: number): string => {
 // know delivery happened (e.g. luna-sync-alert's cooldown state) can gate on it.
 
 export async function sendMessage(token: string, chat_id: number, text: string,
-    f: F = fetch, sleep: (ms:number)=>Promise<void> = (ms)=>Bun.sleep(ms), receipt?: (messageId: number) => void, replyToMessageId?: number, replyMarkup?: object): Promise<boolean> {
+    f: F = fetch, sleep: (ms:number)=>Promise<void> = (ms)=>Bun.sleep(ms), receipt?: (messageId: number) => void, replyToMessageId?: number, replyMarkup?: object, format?: boolean): Promise<boolean> {
+  let html = format ? toTelegramHtml(text) : null;
   for (let attempt = 0; attempt < 5; attempt++) {
     let res: Response;
     try {
       res = await f(API(token, "sendMessage"), { method: "POST",
-        headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id, text, ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_parameters: { message_id: replyToMessageId, allow_sending_without_reply: true } } : {}), ...(replyMarkup ? { reply_markup: replyMarkup } : {}) }) });
+        headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id, text: html ?? text, ...(html !== null ? { parse_mode: "HTML" } : {}), ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_parameters: { message_id: replyToMessageId, allow_sending_without_reply: true } } : {}), ...(replyMarkup ? { reply_markup: replyMarkup } : {}) }) });
     } catch {
       // A lost response is indistinguishable from a failed send; retrying can duplicate alerts.
       console.error(`[telegram] sendMessage transport failure chat=${redactChatId(chat_id)}`);
@@ -97,6 +99,7 @@ export async function sendMessage(token: string, chat_id: number, text: string,
       return true;
     }
     if (res.status === 429) { if (attempt < 4) await sleep((j?.parameters?.retry_after ?? 1) * 1000); continue; }
+    if (html !== null && res.status === 400 && /can't parse entities/i.test(String(j?.description ?? ""))) { html = null; continue; }
     if (res.status >= 400 && res.status < 500) {           // permanent client error → log + drop (never loop)
       console.error(`[telegram] sendMessage ${res.status} chat=${redactChatId(chat_id)}: ${j?.description ?? ""}`);
       return false;

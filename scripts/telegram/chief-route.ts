@@ -2108,7 +2108,7 @@ function partEnd(s: string, budget: number): number {
   return /[\uD800-\uDBFF]/.test(head[budget - 1]) ? budget - 1 : budget;
 }
 
-function splitParts(text: string, limit = TELEGRAM_PART_LIMIT): string[] {
+export function splitParts(text: string, limit = TELEGRAM_PART_LIMIT): string[] {
   if (text.length <= limit) return [text];
   for (let digits = 1; ; digits++) {
     const budget = limit - (2 * digits + 4);
@@ -2166,7 +2166,7 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
     }
     if (parts.length > 1) capState = "split";
     if (!(o.owedIdentity && o.consoleName)) {
-      for (const part of parts) await replyViaOutbox(root, chatId, part, o.consoleName);
+      for (const part of parts) await replyViaOutbox(root, chatId, part, o.consoleName, undefined, undefined, undefined, undefined, true);
     }
     queued = parts.length;
   }
@@ -2273,7 +2273,7 @@ function queueOwedRequest(root: string, chat: number, name: string, base: string
         const row = queued.find(row => row?.request_id === requestId);
         if (row && row.request_hash !== requestHash) throw new Error("owed content changed; reconcile its original request");
         if (!row && await owedSendReceipt(root, chat, requestId, requestHash, () => (snapshot ??= owedReceiptSnapshot(root, chat))) === null) {
-          await replyViaOutbox(root, chat, text, name, undefined, undefined, requestId, requestHash);
+          await replyViaOutbox(root, chat, text, name, undefined, undefined, requestId, requestHash, true);
         }
       }
       return plan.parts;

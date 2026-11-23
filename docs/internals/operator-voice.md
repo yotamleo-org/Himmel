@@ -74,7 +74,12 @@ The chief carries these rules as its reply style (`docs/handover/chief-adhd-brie
 12. **Telegram text stays clean on a phone, and a long message splits only at a clean
     boundary:** between paragraphs, lines or sentences, never inside a word, a code
     block, a command or a link, so every copyable piece arrives whole. A sentence
-    longer than one part splits between words.
+    longer than one part splits between words. The sender renders chief replies with
+    `scripts/telegram/format.ts`: `**bold**`, `` `code` ``, fenced blocks and `- `
+    bullets become Telegram HTML, a multi-line message gets a bold first line, and a
+    code or command alone is sent whole in monospace, byte-exact. Every other
+    character is escaped, and if Telegram refuses the entities the plain text is
+    resent once. Only chief replies are converted; every other send is unchanged.
 
 Rules 1 to 5, 7, 11 and 12 were refined with the operator on 2026-11-23 (decision
 1240), and rule 9 the same day (decision 1256).

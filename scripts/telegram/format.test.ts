@@ -1,0 +1,39 @@
+import { expect, test } from "bun:test";
+import { toTelegramHtml } from "./format";
+
+test("markdown marks render as entities: bold, inline code, bullet lists", () => {
+  expect(toTelegramHtml("Needs you: **approve** the sign-in\n\n- first `a b`\n- second\n1. one\n2. two"))
+    .toBe("Needs you: <b>approve</b> the sign-in\n\n• first <code>a b</code>\n• second\n1. one\n2. two");
+});
+
+test("a multi-line message with a plain first line gets a bold lead", () => {
+  expect(toTelegramHtml("Workers stopped\n\n- one\n- two")).toBe("<b>Workers stopped</b>\n\n• one\n• two");
+});
+
+test("< & > are escaped everywhere, including inside code", () => {
+  expect(toTelegramHtml("Use a < b & c > d, then run `x<y>&z`")).toBe("Use a &lt; b &amp; c &gt; d, then run <code>x&lt;y&gt;&amp;z</code>");
+});
+
+test("a fenced block becomes pre, escaped, byte-exact inside", () => {
+  expect(toTelegramHtml("Run:\n\n```\nls *_a <b>\n```\ndone")).toBe("<b>Run:</b>\n\n<pre>ls *_a &lt;b&gt;</pre>\ndone");
+});
+
+test("a code or command alone in a message is wrapped in code and never converted", () => {
+  expect(toTelegramHtml("go AB_C*D")).toBe("<code>go AB_C*D</code>");
+  expect(toTelegramHtml("6631-AA13")).toBe("<code>6631-AA13</code>");
+  expect(toTelegramHtml("echo `date` *x* _y_ | wc")).toBe("<code>echo `date` *x* _y_ | wc</code>");
+  expect(toTelegramHtml("tail -f a<b>&c")).toBe("<code>tail -f a&lt;b&gt;&amp;c</code>");
+});
+
+test("a lone * or _ inside prose is left as typed", () => {
+  expect(toTelegramHtml("see go AB_C*D for the code, then wait")).toBe("see go AB_C*D for the code, then wait");
+});
+
+test("a short capitalised line with a bold mark is prose, not code", () => {
+  expect(toTelegramHtml("Done: **PR 12** merged")).toBe("Done: <b>PR 12</b> merged");
+});
+
+test("a plain short sentence alone is not turned into code", () => {
+  expect(toTelegramHtml("Done.")).toBe("Done.");
+  expect(toTelegramHtml("Nothing lost; restarting them.")).toBe("Nothing lost; restarting them.");
+});
