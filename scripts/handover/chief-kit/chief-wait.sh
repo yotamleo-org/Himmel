@@ -765,11 +765,8 @@ bank_word() {
     esac
 }
 
-# usage_recovered: saves this good sample's verdict word to <inbox>.wait.usage; true (setting
-# recovered_from) when it is PROCEED and the saved word was a refusing one. No saved word (a
-# first sample) is no flip; a failed read never reaches here, so it keeps the saved word.
 usage_file="$inbox.wait.usage"
-usage_recovered() {
+record_usage_word_and_detect_recovery() {
     local now="${key##*usage=}" was
     was="$(sed -n 1p "$usage_file" 2>/dev/null)"  # swallow-ok: no file is no saved word
     [ "$now" != "$was" ] || return 1
@@ -3194,7 +3191,7 @@ while :; do
         if [ -n "$key" ]; then
             fail_streak=0
             fail_woke && save_key "${saved:-$key}"
-            if usage_recovered; then
+            if record_usage_word_and_detect_recovery; then
                 printf 'WAKE budget-recovered from=%s usage=PROCEED\n' "$recovered_from"
                 [ -z "$legs_from" ] || timeout -k 5 60 bash "${CHIEF_WAIT_NUDGE:-$HERE/budget-nudge.sh}" "$legs_from" 2>&1 9>&- || true  # gnu-ok: Linux-only kit (timeout); swallow-ok: a failed or hung nudge never suppresses the wake
                 printf '%s\n' "$tick_line"
