@@ -120,7 +120,7 @@
 #       check the base branch REQUIRES (rulesets via rules/branches, unioned
 #       with classic protection contexts) never reported within --grace, or the
 #       required set itself could not be read ("required-set unreadable" — read
-#       failure fails CLOSED, never as an empty set). A required entry carrying a
+#       failure fails CLOSED, never as an empty set; a transient one: rate limit/5xx/network, retried within --grace, no DM). A required entry carrying a
 #       producer id (ruleset integration_id / classic app_id) is met
 #       only by a check run from THAT app — a same-named check from another app
 #       reads as never reported — and an unreadable check-runs read ("producers
@@ -223,7 +223,8 @@ exit codes: 0 = checks green + all review threads resolved
                 disposition never carries to a new head),
             4 = retired — no longer emitted,
             5 = GitHub will block this merge: a required check never reported within --grace, or the
-                required-check set could not be read (fails closed). One MERGE-BLOCKED line + one operator DM.
+                required-check set could not be read (fails closed). One MERGE-BLOCKED line + one operator DM,
+                except a transient read failure (rate limit, 5xx, network) past --grace: stderr only, no DM.
             6 = every gate passed but GitHub's mergeStateStatus refuses the merge (BLOCKED/BEHIND/DIRTY/DRAFT
                 through --grace). CLEAN/HAS_HOOKS/UNSTABLE pass; UNKNOWN or unreadable = 2.
             7 = only under CHECK_CI_DISTINCT_DEADLINE=1: checks still pending at the --max-wait
