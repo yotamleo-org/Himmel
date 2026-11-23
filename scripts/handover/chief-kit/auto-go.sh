@@ -239,8 +239,14 @@ LEG=$(jq -r --arg w "$WORKER" "$JQ_W"'[W[]? | select(.label == $w)] | if length 
 [ "$LEG" != missing ] || fail 1 "worker $WORKER is not exactly once in the fleet manifest"
 LANE="${LEG%%$'\t'*}"; WORKER_DOC="${LEG#*$'\t'}"
 [ "$LANE" = native ] || fail 1 "worker $WORKER is lane $LANE, not native: the chief merges for it"
-NWO=$("$GH_BIN" repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null) || NWO=""  # swallow-ok: an empty name escalates at check 1 on the next line
-[ -n "$NWO" ] || fail 1 "cannot read this repo's name (gh repo view failed)"
+GH_ERR=$(mktemp "${TMPDIR:-/tmp}/auto-go-gh.XXXXXX") || fail 1 "cannot make a file for gh's error output"
+trap 'rm -f "$GH_ERR"' EXIT
+gh_err_tail() {
+    grep -v '^gh-read: ' "$GH_ERR" 2>/dev/null | tail -n 2 | tr '\r\n\t' '   ' \
+        | sed -E 's#(https?://[^ ?]*)\?[^ )]*#\1#g; s/(gh[opsur]_|github_pat_)[A-Za-z0-9_]+/<redacted>/g; s/ +$//' | cut -c1-200
+}
+NWO=$(cd "$ANCHOR" && "$GH_BIN" repo view --json nameWithOwner --jq .nameWithOwner 2>"$GH_ERR") || NWO=""  # swallow-ok: an empty name escalates at check 1 on the next line
+[ -n "$NWO" ] || fail 1 "cannot read this repo's name (gh: $(gh_err_tail))"
 for list in himmel-adapters.json himmel-adopted.json; do
     [ -f "$ANCHOR/scripts/guardrails/$list" ] || fail 1 "scripts/guardrails/$list is missing: whether $NWO is an adapter or adopted repo cannot be shown"
     listed=$(jq -r --arg n "$NWO" 'if type == "array" then ([.[] | select(type == "object" and ((.nwo // "") | ascii_downcase) == ($n | ascii_downcase))] | length | tostring) else "bad" end' \
@@ -254,12 +260,13 @@ done
 add_check 1 pass
 
 # --- 2. live head ------------------------------------------------------------------------------------
-DEFAULT_BRANCH=$("$GH_BIN" repo view --json defaultBranchRef --jq '.defaultBranchRef.name // ""' 2>/dev/null) || DEFAULT_BRANCH=""  # swallow-ok: an empty value escalates at check 2 below
-VIEW=$("$GH_BIN" pr view "$PR" --json state,headRefOid,baseRefName 2>/dev/null) || VIEW=""  # swallow-ok: an empty value escalates at check 2 below
+: > "$GH_ERR"
+DEFAULT_BRANCH=$("$GH_BIN" repo view "$NWO" --json defaultBranchRef --jq '.defaultBranchRef.name // ""' 2>>"$GH_ERR") || DEFAULT_BRANCH=""  # swallow-ok: an empty value escalates at check 2 below
+VIEW=$("$GH_BIN" pr view "$PR" -R "$NWO" --json state,headRefOid,baseRefName 2>>"$GH_ERR") || VIEW=""  # swallow-ok: an empty value escalates at check 2 below
 FIELDS=$(jq -r '[.state, .headRefOid, .baseRefName] | @tsv' <<< "$VIEW" 2>/dev/null) || FIELDS=""  # swallow-ok: an empty value escalates at check 2 below
 IFS=$'\t' read -r PR_STATE PR_HEAD PR_BASE <<< "$FIELDS"
 if [ -z "$DEFAULT_BRANCH" ] || [ -z "${PR_STATE:-}" ] || [ -z "${PR_HEAD:-}" ] || [ -z "${PR_BASE:-}" ]; then
-    fail 2 "cannot read the PR or the default branch (gh)"
+    fail 2 "cannot read the PR or the default branch of $NWO (gh: $(gh_err_tail))"
 fi
 [ "$PR_STATE" = OPEN ] || fail 2 "PR $PR is $PR_STATE, not OPEN"
 [ "$PR_HEAD" = "$SHA" ] || fail 2 "PR $PR's head is now $PR_HEAD, not $SHA"

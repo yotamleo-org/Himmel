@@ -79,11 +79,28 @@ VDIR="$HANDOVER_DIR/u/$VBUCKET/verdicts"
 mkdir -p "$tmp/bin"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash
+# STUB_CWD_GH=1: gh as it is outside a clone of o/r - a call naming no repo reads the cwd's clone
+# (the anchor is o/r, any other clone is some/other, no clone fails), and o/r's PR 77 exists only there
+stub_cwd_nwo() {
+    if [ "$(pwd -P)" = "$(cd "$AUTO_GO_ANCHOR" && pwd -P)" ]; then printf 'o/r\n'
+    elif git rev-parse --git-dir >/dev/null 2>&1; then printf 'some/other\n'
+    else echo "failed to run git: fatal: not a git repository (or any parent up to mount point /)" >&2; exit 1; fi
+}
+if [ "${STUB_CWD_GH:-0}" = 1 ]; then
+    case "$*" in
+        "repo view --json nameWithOwner"*|"repo view --json defaultBranchRef"*) stub_cwd_nwo >/dev/null ;;
+        "repo view o/r --json defaultBranchRef"*) ;;
+        "pr view 77 -R o/r "*) ;;
+        "pr view "*"--json state,headRefOid,baseRefName"*)
+            echo "GraphQL: Could not resolve to a PullRequest with the number of 77. (repository.pullRequest)" >&2; exit 1 ;;
+    esac
+    case "$*" in "repo view --json nameWithOwner"*) stub_cwd_nwo; exit 0 ;; esac
+fi
 case "$*" in
-    "repo view --json nameWithOwner"*) [ "${STUB_NWO_FAIL:-0}" = 1 ] && exit 1; printf '%s\n' "${STUB_NWO:-o/r}"; exit 0 ;;
-    "repo view --json defaultBranchRef"*) printf 'main\n'; exit 0 ;;
+    "repo view --json nameWithOwner"*) [ "${STUB_NWO_FAIL:-0}" = 1 ] && { printf '%s\n' "${STUB_GH_ERR:-}" >&2; exit 1; }; printf '%s\n' "${STUB_NWO:-o/r}"; exit 0 ;;
+    "repo view "*"--json defaultBranchRef"*) printf 'main\n'; exit 0 ;;
     "pr view "*"--json state,headRefOid,baseRefName"*)
-        [ "${STUB_VIEW_FAIL:-0}" = 1 ] && exit 1
+        [ "${STUB_VIEW_FAIL:-0}" = 1 ] && { printf '%s\n' "${STUB_GH_ERR:-}" >&2; exit 1; }
         printf '{"state":"%s","headRefOid":"%s","baseRefName":"%s"}\n' \
             "${STUB_PR_STATE:-OPEN}" "${STUB_PR_HEAD:-$READY_STUB_HEAD}" "${STUB_PR_BASE:-main}"; exit 0 ;;
     "pr view "*"--json headRefOid,state"*) cat "$STUB_GC/head-$3.json" 2>/dev/null || exit 1; exit 0 ;;  # read-sink-ok: the stub reads its own fixture dir
@@ -406,6 +423,26 @@ STUB_PR_STATE=CLOSED run --dry-run 77 "$SHA";  esc "check 2 PR not open" 2
 reset; STUB_PR_HEAD=$SHA2 run --dry-run 77 "$SHA";  esc "check 2 head moved" 2
 reset; STUB_PR_BASE=feat/parent run --dry-run 77 "$SHA";  esc "check 2 base is not the default branch" 2
 reset; STUB_VIEW_FAIL=1 run --dry-run 77 "$SHA";  esc "check 2 unreadable gh" 2
+reset
+
+mkdir -p "$tmp/nogit" "$tmp/otherclone"; git init -q "$tmp/otherclone"
+cd "$tmp/nogit" || exit 1
+STUB_CWD_GH=1 run --dry-run 77 "$SHA"
+check    "10828 a non-git cwd: checks 1 and 2 pass" "$(last_row | jq -r '[.checks[] | select(.n <= 2) | "\(.n)=\(.result)"] | join(",")')" "1=pass,2=pass"
+cd "$tmp/otherclone" || exit 1
+STUB_CWD_GH=1 run --dry-run 77 "$SHA"
+check    "10828 a cwd in another repo's clone: checks 1 and 2 pass" "$(last_row | jq -r '[.checks[] | select(.n <= 2) | "\(.n)=\(.result)"] | join(",")')" "1=pass,2=pass"
+cd "$READY_REPO" || exit 1
+reset; STUB_VIEW_FAIL=1 STUB_GH_ERR="GraphQL: Could not resolve to a PullRequest with the number of 77. (repository.pullRequest)" run --dry-run 77 "$SHA"
+esc      "10828 a failed PR read" 2
+contains "10828 a failed PR read: the ESCALATE line carries gh's error" "$OUT" "ESCALATE auto-go 2 cannot read the PR or the default branch of o/r (gh: GraphQL: Could not resolve to a PullRequest with the number of 77."
+reset; STUB_VIEW_FAIL=1 STUB_GH_ERR="HTTP 403: API rate limit exceeded (https://api.github.com/graphql?access_token=ghp_SECRET0123456789abcdef)" run --dry-run 77 "$SHA"
+contains "10828 a failed PR read: the 403 reason is kept" "$OUT" "HTTP 403: API rate limit exceeded (https://api.github.com/graphql"
+lacks    "10828 a failed PR read: no URL query is kept" "$OUT" "access_token"
+lacks    "10828 a failed PR read: no token is kept" "$OUT" "ghp_SECRET"
+reset; STUB_NWO_FAIL=1 STUB_GH_ERR="failed to run git: fatal: not a git repository" run --dry-run 77 "$SHA"
+esc      "10828 a failed repo-name read" 1
+contains "10828 a failed repo-name read: the ESCALATE line carries gh's error" "$OUT" "(gh: failed to run git: fatal: not a git repository)"
 reset
 
 # --- 4/3. check 3: ready-check through ready-go ---------------------------------------------------
@@ -841,7 +878,8 @@ check    "8691 main REST core spent: exit 0" "$RC" "0"
 check    "8691 main REST core spent: exactly WOULD-GO <pr> <head>" "$OUT" "WOULD-GO 77 $SHA"
 check    "8691 main REST core spent: no read rides the main token but cr-disposition's branch read, its ready-go child's reads included" "$(tt_main_reads_besides_the_crd_branch_read)" "0"
 check    "8691 main REST core spent: the repo name read logs tok=read" "$(ttseen '^tok=read argv=repo view --json nameWithOwner')" "yes"
-check    "8691 main REST core spent: the PR state read logs tok=read" "$(ttseen '^tok=read argv=pr view 77 --json state,headRefOid,baseRefName')" "yes"
+check    "8691 main REST core spent: the PR state read logs tok=read" "$(ttseen '^tok=read argv=pr view 77 -R o/r --json state,headRefOid,baseRefName')" "yes"
+check    "10828 the default-branch read names the repo and logs tok=read" "$(ttseen '^tok=read argv=repo view o/r --json defaultBranchRef')" "yes"
 check    "8691 main REST core spent: the title read logs tok=read" "$(ttseen '^tok=read argv=pr view 77 --json title')" "yes"
 check    "8691 main REST core spent: the file listing read logs tok=read" "$(ttseen '^tok=read argv=api repos/o/r/pulls/77/files')" "yes"
 check    "8691 main REST core spent: the commit list read logs tok=read" "$(ttseen '^tok=read argv=api repos/o/r/pulls/77/commits')" "yes"
