@@ -192,3 +192,44 @@ test("answerCallbackQuery posts the id and text, and never throws", async () => 
   expect(body).toEqual({ callback_query_id: "cb9", text: "Not authorized." });
   await answerCallbackQuery("T", "cb9", "x", (async () => { throw new Error("down"); }) as any);
 });
+
+const capture = (statuses: Array<{ status: number; body: object }>) => {
+  const bodies: any[] = [];
+  const f = async (_u: string, init: any) => {
+    bodies.push(JSON.parse(init.body));
+    const r = statuses.shift() ?? { status: 200, body: { ok: true, result: { message_id: 1 } } };
+    return Response.json(r.body, { status: r.status });
+  };
+  return { bodies, f: f as any };
+};
+
+test("a flagged send posts Telegram HTML with parse_mode; a command alone stays byte-exact in code", async () => {
+  const c = capture([]);
+  expect(await sendMessage("T", 1, "go AB_C*D", c.f, async () => {}, undefined, undefined, undefined, true)).toBe(true);
+  expect(c.bodies[0].parse_mode).toBe("HTML");
+  expect(c.bodies[0].text).toBe("<code>go AB_C*D</code>");
+  const d = capture([]);
+  await sendMessage("T", 1, "echo `date` *x* _y_ | wc", d.f, async () => {}, undefined, undefined, undefined, true);
+  expect(d.bodies[0].text).toBe("<code>echo `date` *x* _y_ | wc</code>");
+});
+
+test("an unflagged send is unchanged: no parse_mode, the exact text", async () => {
+  const c = capture([]);
+  const text = "**not bold** <b>raw</b> & `x` go AB_C*D";
+  await sendMessage("T", 1, text, c.f, async () => {});
+  expect(c.bodies[0]).toEqual({ chat_id: 1, text });
+});
+
+test("a refused entity resends the plain text once, without parse_mode", async () => {
+  const c = capture([{ status: 400, body: { ok: false, description: "Bad Request: can't parse entities: Unsupported start tag" } }]);
+  expect(await sendMessage("T", 1, "Hello **x**", c.f, async () => {}, undefined, undefined, undefined, true)).toBe(true);
+  expect(c.bodies.length).toBe(2);
+  expect(c.bodies[0].parse_mode).toBe("HTML");
+  expect(c.bodies[1]).toEqual({ chat_id: 1, text: "Hello **x**" });
+});
+
+test("a 400 that is not an entity refusal is not resent", async () => {
+  const c = capture([{ status: 400, body: { ok: false, description: "Bad Request: chat not found" } }]);
+  expect(await sendMessage("T", 1, "Hello **x**", c.f, async () => {}, undefined, undefined, undefined, true)).toBe(false);
+  expect(c.bodies.length).toBe(1);
+});

@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join, basename, resolve } from "node:path";
 import { classify } from "./router";
 import { BASH_BIN, buildPrompt } from "./run";
-import { sendMessage } from "./telegram-api";
+import { sendMessage, toTelegramHtml } from "./telegram-api";
 import { appendLine, ensureSession, writeMeta, sessionDir } from "./bus";
 import { handleInbound, replyViaOutbox, flushOutboxes, ingestUpdates, makeRunFn } from "./poller";
-import { consoleInboxPath, foldLine, renderMarkdownHtml, type ConsoleRouteGate } from "./chief-route";
+import { consoleInboxPath, foldLine, renderMarkdownHtml, splitParts, type ConsoleRouteGate } from "./chief-route";
 
 // Every test runs against a scratch bridge root and a fake reply
 // seam, never the real ~/.claude/handover/bridge, never Telegram.
@@ -497,7 +497,7 @@ test("reply CLI tags a running console's answer using the established session-na
   await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
   expect(await p.exited).toBe(0);
   const out = readFileSync(join(r, "sessions", "__chat__", "outbox.jsonl"), "utf8").trim();
-  expect(JSON.parse(out)).toEqual({ text: "answer", console: NAME });
+  expect(JSON.parse(out)).toEqual({ text: "answer", console: NAME, format: true });
 });
 
 test("reply CLI appends one line to the chat's outbox under a scratch BRIDGE_ROOT", async () => {
@@ -505,7 +505,7 @@ test("reply CLI appends one line to the chat's outbox under a scratch BRIDGE_ROO
   const p = Bun.spawn(["bun", join(import.meta.dir, "chief-route.ts"), "reply", "1", "done", "with", "PR 12"], { env: { ...process.env, BRIDGE_ROOT: r }, stdout: "pipe", stderr: "pipe" });
   expect(await p.exited).toBe(0);
   const out = readFileSync(join(r, "sessions", "__chat__", "outbox.jsonl"), "utf8").split("\n").filter(Boolean);
-  expect(out.map((l) => JSON.parse(l))).toEqual([{ text: "done with PR 12" }]);
+  expect(out.map((l) => JSON.parse(l))).toEqual([{ text: "done with PR 12", format: true }]);
   const meta = JSON.parse(readFileSync(join(r, "sessions", "__chat__", "meta.json"), "utf8"));
   expect(meta.chat_id).toBe(1);
 });
@@ -524,7 +524,7 @@ test("reply CLI: the old --console is refused even with HIMMEL_LEGACY_NAMES=1; o
   const fresh = await reply("--chief", { HIMMEL_LEGACY_NAMES: "1" });
   const old = await reply("--console", { HIMMEL_LEGACY_NAMES: "1" });
   expect(fresh.code).toBe(0);
-  expect(JSON.parse(fresh.line!)).toEqual({ text: "answer", console: NAME });
+  expect(JSON.parse(fresh.line!)).toEqual({ text: "answer", console: NAME, format: true });
   expect(old.code).toBe(1);
   expect(old.line).toBeNull();
   expect(old.err).toContain("usage: bun chief-route.ts reply");
@@ -948,7 +948,7 @@ test("R1.9 a monitor kind whose text names salus lands in the operator outbox an
 test("R1.10 --chief X --kind Y and --kind Y --satellite Z both parse; operator resolves through the fixture access.json; no operator exits 1", async () => {
   const a = await route(["--chief", NAME, "--kind", "merge-blocked", "operator", "Merge refused. Blocks: x. Do: y"]);
   expect(a.code).toBe(0);
-  expect(operatorOutbox(a.r)).toEqual([{ text: "Merge refused. Blocks: x. Do: y", console: NAME }]);
+  expect(operatorOutbox(a.r)).toEqual([{ text: "Merge refused. Blocks: x. Do: y", console: NAME, format: true }]);
   const b = await route(["--kind", "merge-blocked", "--satellite", "assist_satellite.kitchen", "operator", "Merge refused. Blocks: x. Do: y"], { env: { HA_URL: "", HA_TOKEN: "" } });
   expect(b.err).not.toContain("usage:");
   expect(b.err).toContain("could not speak");
@@ -1183,7 +1183,7 @@ const replyToSatellite = async (args: string[], env: Record<string, string> = {}
 test("reply --satellite: the answer goes to Telegram AND is announced on the asking satellite", async () => {
   const { code, seen, line } = await replyToSatellite(["--satellite", SAT, "1", "two", "PRs", "open"]);
   expect(code).toBe(0);
-  expect(JSON.parse(line!)).toEqual({ text: "two PRs open" });
+  expect(JSON.parse(line!)).toEqual({ text: "two PRs open", format: true });
   expect(seen).toEqual([{ url: "/api/services/assist_satellite/announce", auth: "Bearer t0k", body: { entity_id: SAT, message: "two PRs open" } }]);
 });
 
@@ -1200,7 +1200,7 @@ test("reply --satellite: no HA token is an error after the Telegram reply is que
   expect(code).not.toBe(0);
   expect(err).toContain("HA_TOKEN");
   expect(seen).toEqual([]);
-  expect(JSON.parse(line!)).toEqual({ text: "hi" });
+  expect(JSON.parse(line!)).toEqual({ text: "hi", format: true });
 });
 
 test("reply without --satellite never calls Home Assistant", async () => {
@@ -7979,4 +7979,25 @@ test("T-C1: FINDING_LINE is the one imported grammar with the base source", asyn
   const { FINDING_LINE } = await import("../jira/src/release/pinned.ts");
   expect(FINDING_LINE.source).toBe(String.raw`^[-*] \*\*([A-Za-z][\w.-]*)\*\* \(([^)]*)\)`);
   expect(readFileSync(P1_ROUTE, "utf8")).not.toMatch(/^const FINDING_LINE\b/m);
+});
+
+test("a split never lands inside a code span, and every part renders with balanced tags", () => {
+  const para = (n: number) => `Paragraph ${n} with **bold ${n}** and \`code ${n} a b\` and a < b.`;
+  const text = Array.from({ length: 12 }, (_, i) => para(i)).join("\n\n");
+  const parts = splitParts(text, 200);
+  expect(parts.length).toBeGreaterThan(2);
+  for (const p of parts) {
+    const html = toTelegramHtml(p);
+    for (const tag of ["b", "code"]) expect(html.split(`<${tag}>`).length).toBe(html.split(`</${tag}>`).length);
+    expect((p.match(/`/g) ?? []).length % 2).toBe(0);
+  }
+});
+
+test("the flush hands the format flag on for a flagged reply row only", async () => {
+  const r = root(); await ensureSession(r, "__chat__");
+  await replyViaOutbox(r, 1, "flagged", undefined, undefined, undefined, undefined, undefined, true);
+  await replyViaOutbox(r, 1, "plain");
+  const seen: Array<[string, boolean | undefined]> = [];
+  await flushOutboxes(r, async (_chat, text, _reply, _markup, format) => { seen.push([text, format]); return 5; });
+  expect(seen).toEqual([["flagged", true], ["plain", false]]);
 });
