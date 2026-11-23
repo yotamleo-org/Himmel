@@ -356,7 +356,7 @@ _suite_timeout_for() {
         # the 600s default (x2 = 1200s, 1.4x headroom). 1800s is the slower
         # figure x2 (the loaded-budget rule).
         printf '1800'; return 0 ;;
-      scripts/cr/test-pr-check-rounds.sh|*/scripts/cr/test-pr-check-rounds.sh)
+      scripts/cr/test-pr-check-rounds.sh|scripts/cr/test-pr-check-rounds-[bc].sh|*/scripts/cr/test-pr-check-rounds.sh|*/scripts/cr/test-pr-check-rounds-[bc].sh)
         # Same run: PASS at 1700s against the 1200s Linux cap (x2 = 2400s, 1.4x
         # headroom). 3400s is that x2 (the loaded-budget rule).
         printf '3400'; return 0 ;;
@@ -387,9 +387,7 @@ _suite_timeout_for() {
       # idle box, 1206s killed at the 600s default under CI load (PR 4733, 1.63x). 2700s is the loaded figure
       # (802 x 1.63 = 1307) x2 (the loaded-budget rule).
       printf '2700' ;;
-    scripts/handover/chief-kit/test-chief-wait.sh|*/scripts/handover/chief-kit/test-chief-wait.sh)
-      printf '1200' ;;
-    scripts/handover/chief-kit/test-chief-wait-b.sh|*/scripts/handover/chief-kit/test-chief-wait-b.sh)
+    scripts/handover/chief-kit/test-chief-wait.sh|scripts/handover/chief-kit/test-chief-wait-[b-e].sh|*/scripts/handover/chief-kit/test-chief-wait.sh|*/scripts/handover/chief-kit/test-chief-wait-[b-e].sh)
       printf '1200' ;;
     scripts/eval/review-panel/test-review-panel.sh|*/scripts/eval/review-panel/test-review-panel.sh)
       # 60 real case repos: 291s local, killed at 2 x 600s on Linux CI (PR 4477
@@ -437,7 +435,7 @@ _suite_timeout_for() {
       # truncation floor, so 1200s is that x2 (the loaded-budget rule);
       # SUITE_RUN_BUDGET stays the runaway backstop.
       printf '1200' ;;
-    scripts/cr/test-pr-check-rounds.sh|*/scripts/cr/test-pr-check-rounds.sh)
+    scripts/cr/test-pr-check-rounds.sh|scripts/cr/test-pr-check-rounds-[bc].sh|*/scripts/cr/test-pr-check-rounds.sh|*/scripts/cr/test-pr-check-rounds-[bc].sh)
       # PR 2400 shard 6: every assertion passing, killed at 603s
       # against the 600s default (CAP EXCEEDED); 373s idle on Linux locally
       # after the CI-red unlock rows landed. 603s is a truncation floor, so
@@ -580,7 +578,7 @@ _suite_timeout_for() {
       # observed loaded 1192s here. Rule: loaded x2 -- 1192 * 2 = 2384,
       # rounded up to 2400.
       printf '2400' ;;
-    scripts/handover/test-arm-resume-1879.sh|*/scripts/handover/test-arm-resume-1879.sh)
+    scripts/handover/test-arm-resume-1879.sh|scripts/handover/test-arm-resume-1879-b.sh|*/scripts/handover/test-arm-resume-1879.sh|*/scripts/handover/test-arm-resume-1879-b.sh)
       # Nightly #843 (run 35375554792): no dedicated entry existed
       # -- the generic 600s default killed it CAP EXCEEDED on ubuntu (603s),
       # macOS (604s) and Windows (603s). Measured 843s idle (tier
@@ -849,7 +847,6 @@ scripts/testing/test-mock-hook-smoke.sh  # needs the pinned claude CLI and unsha
 scripts/testing/test-mock-hook-live-turn.sh  # needs the pinned claude CLI and unshare -rn; the claude-startup job in ci.yml runs it
 scripts/test-plugin-test.sh          # integration: self-bootstraps a plugin's deps over npm/network — VM e2e covers it
 scripts/test-adopt.sh                # quarantined, 1203-1204 s against the 1200 s cap on Linux CI shard 2 (PRs 3687 3670 3692 3685), every reached case passing; lifted when it, or each suite it is split into, runs under 900 s on the Linux CI shard at the PR head and on 3 consecutive main runs
-scripts/cr/test-pr-check-rounds.sh   # quarantined, 1203 s against the 1200 s cap on Linux main shard 2 (run 40226871918, 3 attempts), every reached case passing; lifted when the split parts each run under 300 s on 3 consecutive main runs
 scripts/hooks/test-block-write-into-main-checkout-forms.sh   # quarantined, 603 s against the 600 s cap on Linux main shard 2 (run 40226871918, 3 attempts), every reached case passing; lifted when the split parts each run under 300 s on 3 consecutive main runs
 "
 
@@ -862,7 +859,7 @@ scripts/vm/test-provenance-roundtrip-dry.sh  # skipped off-Linux only — same f
 scripts/upstreams/test-apply-drift-bump.sh   # skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); same reason as the other off-Linux skips in this list
 scripts/release/test-tarball-vs-clone.sh     # skipped off-Linux only — converge-check.sh's hook-diff walk (scripts/release/converge-check.sh:154) uses GNU find's -printf (absent from BSD/macOS find), documented there as \`# gnu-ok: only ever runs on the Linux guest\` — the tarball converge check is Linux-guest-only by design
 scripts/handover/chief-kit/test-chief-wait.sh    # skipped off-Linux only — chief-wait.sh's own \`# PLATFORM GUARD: the chief kit is Linux-only\` (chief-wait.sh:79), and this suite's bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\` throughout — the chief kit is Linux-only by design; same reason as the other off-Linux skips in this list
-scripts/handover/chief-kit/test-chief-wait-b.sh  # skipped off-Linux only — second half of test-chief-wait.sh above, same chief-kit Linux-only-by-design PLATFORM GUARD (chief-wait.sh:79); its bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\`; same reason as the other off-Linux skips in this list
+scripts/handover/chief-kit/test-chief-wait-b.sh  # skipped off-Linux only — part of test-chief-wait.sh above, same chief-kit Linux-only-by-design PLATFORM GUARD (chief-wait.sh:79); its bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\`; same reason as the other off-Linux skips in this list
 scripts/handover/chief-kit/test-board.sh           # skipped off-Linux only — same chief-kit Linux-only-by-design PLATFORM GUARD as test-chief-wait.sh above (board.mjs:21: \"tick.sh reads pgrep, atq and the konsole launch logs\"); same reason as the other off-Linux skips in this list
 scripts/handover/chief-kit/test-tick.sh            # skipped off-Linux only — same chief-kit Linux-only-by-design PLATFORM GUARD as test-chief-wait.sh above (tick.sh:12-14: \"pgrep, atq, /tmp suite locks, and claudex/konsole\"); same reason as the other off-Linux skips in this list
 scripts/handover/chief-kit/test-tick-fields.sh     # skipped off-Linux only — second half of test-tick.sh above (split at the fails= section so neither half nears the 600 s cap), same chief-kit Linux-only-by-design PLATFORM GUARD and the same tick.sh; both halves source tick-test-fixture.sh, a helper that is not a suite; same reason as the other off-Linux skips in this list
@@ -941,6 +938,7 @@ SUITE_TIER_DEFAULT="
 scripts/test-check-ci.sh  extended  # measured 559s idle 2026-08-27 (>300s rule)
 scripts/handover/test-arm-resume-identity.sh  extended  # measured 814s idle 2026-08-27, 802s repro (>300s rule)
 scripts/handover/test-arm-resume-1879.sh  extended  # measured 843s idle 2026-09-18, real wall-clock wait loops with no shortcut (>300s rule)
+scripts/handover/test-arm-resume-1879-b.sh  extended  # part 2 of the 1879 family above, same real wall-clock wait loops
 "
 SUITE_TIER="${SUITE_TIER:-$SUITE_TIER_DEFAULT}"
 tier_repo_root=$(pwd -P)

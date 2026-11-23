@@ -691,6 +691,7 @@ has "cbs-paths: a new tracked critic-x.sh joins" "$(python3 "$SCORE" cbs-paths H
 
 gstamp() { local o="$1"; shift; python3 "$SCORE" stamp "$o" --repo "$G" --fixtures "$G/scripts/eval/review-panel/fixtures" \
     --key "$G/scripts/eval/review-panel/key/seeds.json" "$@" 2>&1; }
+python3 -c 'import json,sys; reg=json.load(open(sys.argv[1])); reg["panel"]=[r for r in reg["panel"] if r["slug"]=="codex"]; json.dump(reg, open(sys.argv[2], "w"))' "$G/scripts/cr/critics.json" "$O/critics.run.json"
 out=$(python3 "$GSCORE" export-row "$O" --repo "$G" --results "$TMP/results.jsonl" 2>&1); rc=$?
 eq "export-row: outputs run.sh never stamped are refused" "$rc" "2"; has "export-row: names the missing stamp" "$out" "not a run.sh sweep"
 gstamp "$O" >/dev/null
@@ -773,9 +774,23 @@ eq "verify-row: the codex-only row matches its outputs" "$rc" "0"
 eq "confighash: a codex-only sweep keeps the tree's confighash" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readlines()[-1])["confighash"])' "$TMP/results-cx.jsonl")" "$(python3 "$SCORE" confighash HEAD --repo "$G")"
 OF="$TMP/out-full"; cp -r "$O" "$OF"; rcrit "$OF/critics.run.json" codex,claude
 gstamp "$OF" >/dev/null; gstamp "$OF" --recheck >/dev/null
-python3 "$GSCORE" export-row "$OF" --repo "$G" --results "$TMP/results-full.jsonl" >/dev/null 2>&1
-eq "header_total_differs_from_roster: a full-roster sweep whose 1/1 headers carry codex findings records no phantom claude answer" "$(rresp "$TMP/results-full.jsonl")" '{"claude": 0, "codex": 4}'
-eq "header_total_differs_from_roster: a sweep with no critics.run.json reads the tree's paid roster, no phantom answer either" "$(rresp "$TMP/results.jsonl")" '{"claude": 0, "codex": 4}'
+out=$(python3 "$GSCORE" export-row "$OF" --repo "$G" --results "$TMP/results-full.jsonl" 2>&1); rc=$?
+eq "silent_critic: a sweep whose rostered claude answered 0 of 5 scored cases is refused" "$rc" "2"
+has "silent_critic: the refusal names the silent critic" "$out" "rostered critic claude answered no case of 5 scored"
+eq "silent_critic: and writes no row" "$([ -s "$TMP/results-full.jsonl" ] && echo row || echo none)" "none"
+eq "silent_critic: score() names it as an ineligibility reason" "$(pyscore 'print([r for r in score.score_row(sys.argv[3], "HEAD", sys.argv[4])[0]["ineligibility_reasons"] if r.startswith("critic-silent:")])' "$G" "$OF" | tail -1)" "['critic-silent:claude']"
+OT="$TMP/out-tree"; cp -r "$O" "$OT"; rm -f "$OT/critics.run.json"
+gstamp "$OT" >/dev/null; gstamp "$OT" --recheck >/dev/null
+out=$(python3 "$GSCORE" export-row "$OT" --repo "$G" --results "$TMP/results-tree.jsonl" 2>&1); rc=$?
+eq "header_total_differs_from_roster: a sweep with no critics.run.json reads the tree's paid roster, no phantom claude answer: it is refused as silent" "$rc:$(grep -c 'rostered critic claude answered no case' <<<"$out")" "2:1"
+OB="$TMP/out-both"; cp -r "$OF" "$OB"
+python3 -c 'import os,sys
+for n in os.listdir(sys.argv[1]):
+    if n.endswith(".md"):
+        p = os.path.join(sys.argv[1], n); t = open(p).read(); open(p, "w").write(t.replace("(1/1 critics responded)", "(2/2 critics responded)"))' "$OB"
+gstamp "$OB" >/dev/null; gstamp "$OB" --recheck >/dev/null
+python3 "$GSCORE" export-row "$OB" --repo "$G" --results "$TMP/results-both.jsonl" >/dev/null 2>&1; rc=$?
+eq "silent_critic control: the same sweep with both rostered critics answering exports its row (partial: the fixture sweeps a subset)" "$rc:$(python3 -c 'import json,sys; r=json.loads(open(sys.argv[1]).readlines()[-1]); print(r["status"], json.dumps(r["responded"]["critics"], sort_keys=True), [x for x in r["ineligibility_reasons"] if x.startswith("critic-silent")])' "$TMP/results-both.jsonl" 2>&1)" '0:partial {"claude": 5, "codex": 5} []'
 
 eq "scorer_identity_independent_of_gate_repo: the gate repo holds no scorer" "$([ -e "$G/scripts/eval/review-panel/score.py" ] && echo has || echo none)" "none"
 eq "scorer_identity_independent_of_gate_repo: the exported row names the running scorer checkout's identity" "$(rget scorer_sha256)" "$SID"

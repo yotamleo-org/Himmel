@@ -150,6 +150,7 @@ if [ "${STUB_PASS:-0}" = 1 ]; then
     exit 0
 fi
 export STUB_PASS=1
+export HIMMEL_CORE_CHECK_BATCH=off
 if [ -x "${STUB_NEXT_GH:-/nonexistent}" ]; then exec "$STUB_NEXT_GH" "$@"; fi
 IFS=:
 for d in $PATH; do

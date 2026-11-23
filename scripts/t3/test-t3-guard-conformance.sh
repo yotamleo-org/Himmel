@@ -43,6 +43,56 @@ run_claude() {
     fi
 }
 
+run_codex() {
+    local tool="$1" args="$2" expect="$3" label="$4"
+    local full_tool="mcp__t3-code__$tool"
+    local cmds="" cmd="" payload="" out="" rc=0 dec="" denied=0
+    local -a parts=()
+    cmds="$(TOOL_NAME="$full_tool" HOOKS_FILE="$REPO/.codex/hooks.json" node -e '
+const fs = require("fs");
+const h = JSON.parse(fs.readFileSync(process.env.HOOKS_FILE, "utf8")).hooks || {};
+const t = process.env.TOOL_NAME;
+for (const b of h.PreToolUse || []) {
+  const m = String(b.matcher || "");
+  if (!m || m === ".*" || m === "*") continue;
+  if (new RegExp("^(?:" + m + ")$").test(t)) {
+    for (const e of b.hooks || []) if (e.command) console.log(e.command);
+  }
+}
+')" || { bad "codex: $label (failed to parse .codex/hooks.json)"; return; }
+    if [ -z "$cmds" ]; then
+        if [ "$expect" = "deny" ]; then bad "codex: $label (no matching PreToolUse hook)"; else ok "codex: $label"; fi
+        return
+    fi
+    payload="$(jq -cn --arg t "$full_tool" --argjson a "$args" \
+        '{hook_event_name:"PreToolUse",tool_name:$t,tool_input:$a,cwd:"/tmp"}')"
+    while IFS= read -r cmd; do
+        [ -n "$cmd" ] || continue
+        read -r -a parts <<< "$cmd"
+        [ "${#parts[@]}" -gt 0 ] || continue
+        out="$(printf '%s' "$payload" | CLAUDE_PROJECT_DIR="$REPO" bash "$REPO/${parts[0]}" "${parts[@]:1}" 2>"$TMP/codex.err")"; rc=$?
+        if [ "$rc" -ne 0 ]; then
+            bad "codex: $label (rc=$rc out=$out err=$(cat "$TMP/codex.err"))"
+            return
+        fi
+        if [ -n "$out" ]; then
+            if ! dec="$(printf '%s' "$out" | jq -r 'if type == "object" then (.hookSpecificOutput.permissionDecision // "") else error("expected object") end' 2>/dev/null)"; then
+                bad "codex: $label (malformed adapter JSON: out=$out err=$(cat "$TMP/codex.err"))"
+                return
+            fi
+            if [ "$dec" = "deny" ]; then
+                denied=1
+                break
+            fi
+        fi
+    done <<< "$cmds"
+    if [ "$expect" = "deny" ]; then
+        if [ "$denied" -eq 1 ]; then ok "codex: $label"; else bad "codex: $label (expected deny; rc=$rc out=$out err=$(cat "$TMP/codex.err"))"; fi
+    else
+        if [ "$denied" -eq 0 ]; then ok "codex: $label"; else bad "codex: $label (unexpected deny; out=$out)"; fi
+    fi
+}
+
 run_antigravity() {
     local tool="$1" args="$2" expect="$3" label="$4"
     local payload out rc dec
@@ -71,6 +121,12 @@ run_claude guard-t3-thread-tools.sh t3_thread_launch "$ARGS_OFF_ALLOW" deny "off
 run_claude guard-t3-thread-tools.sh t3_thread_update "$ARGS_CHIEF_TITLE" deny "-chief title denied"
 run_claude block-t3code-unwatch-open-pr.sh unwatch_pull_request "$ARGS_UNWATCH_OPEN" deny "unwatch OPEN PR denied"
 run_claude guard-t3-thread-tools.sh t3_environment_read "$ARGS_BENIGN" allow "benign T3 read allowed"
+
+echo "== T3 guard conformance: codex =="
+run_codex t3_thread_launch "$ARGS_OFF_ALLOW" deny "off-allowlist instance denied"
+run_codex t3_thread_update "$ARGS_CHIEF_TITLE" deny "-chief title denied"
+run_codex unwatch_pull_request "$ARGS_UNWATCH_OPEN" deny "unwatch OPEN PR denied"
+run_codex t3_environment_read "$ARGS_BENIGN" allow "benign T3 read allowed"
 
 echo "== T3 guard conformance: antigravity =="
 run_antigravity t3_thread_launch "$ARGS_OFF_ALLOW" deny "off-allowlist instance denied"

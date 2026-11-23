@@ -14,17 +14,27 @@
 #                 stanza ONLY if its hooks[] becomes empty -- never delete a
 #                 sibling like check-update-available.sh, SC12)
 #
+# `--chain` widens the PreToolUse removal from the trio to the whole hook-set
+# list of wire-pretooluse-hooks.sh (aliases and the merge gate included); it is
+# for dropping a project's adopted chain, never for a duplicate.
+#
 # Usage:
-#   bash unwire-pretooluse-hooks.sh <settings-json-path> [<dry_run>]
-#   bash unwire-pretooluse-hooks.sh --scope project --target <repo> [--dry-run]
+#   bash unwire-pretooluse-hooks.sh <settings-json-path> [<dry_run>] [--chain]
+#   bash unwire-pretooluse-hooks.sh --scope project --target <repo> [--dry-run] [--chain]
 #
 # Idempotent (absent -> no-op), atomic (temp file + mv), refuses invalid JSON,
 # preserves siblings. Requires jq. Source it to call unwire_pretooluse_hooks
 # directly, or invoke via bash.
 set -euo pipefail
 
-# Regexes (extended) matching the UNIVERSAL hook commands by basename path.
-_UNWIRE_PRE_PAT='scripts/hooks/(auto-approve-safe-bash|block-edit-on-main|block-read-secrets)[.]sh'
+_unwire_list_pat() {
+  bash "$(dirname "${BASH_SOURCE[0]}")/wire-pretooluse-hooks.sh" --print-hook-set \
+    | jq -r --arg which "$1" '
+        (if $which == "trio" then map(select(.name != "block-unresolved-cr-merge")) else . end)
+        | "scripts/hooks/(" + ([.[] | .name, .aliases[]] | join("|")) + ")[.]sh"'
+}
+_UNWIRE_PRE_PAT="$(_unwire_list_pat trio 2>/dev/null || true)"
+_UNWIRE_CHAIN_PAT="$(_unwire_list_pat chain 2>/dev/null || true)"
 _UNWIRE_SS_PAT='scripts/hooks/inject-initiative[.]sh'
 # The session-end hook is NOT in the trio helper: detect-hook-dup.sh and
 # install-engine.js call unwire_pretooluse_hooks to drop a duplicate, which must
@@ -32,8 +42,10 @@ _UNWIRE_SS_PAT='scripts/hooks/inject-initiative[.]sh'
 _UNWIRE_SE_PAT='scripts/hooks/end-session-wiki[.]sh'
 
 unwire_pretooluse_hooks() {
-  local settings="$1" dry_run="${2:-0}"
+  local settings="$1" dry_run="${2:-0}" pre_pat="$_UNWIRE_PRE_PAT" what="PreToolUse trio"
+  if [ "${3:-}" = "--chain" ]; then pre_pat="$_UNWIRE_CHAIN_PAT"; what="PreToolUse chain"; fi
   command -v jq >/dev/null 2>&1 || { echo "unwire-pretooluse-hooks: jq required" >&2; return 1; }
+  [ -n "$pre_pat" ] || { echo "unwire-pretooluse-hooks: no hook-set list from wire-pretooluse-hooks.sh" >&2; return 1; }
   if [ ! -f "$settings" ]; then
     [ "$dry_run" -eq 1 ] && echo "DRY: $settings absent -> no-op"
     return 0
@@ -49,11 +61,11 @@ unwire_pretooluse_hooks() {
     return 1
   fi
   if [ "$dry_run" -eq 1 ]; then
-    echo "DRY: remove UNIVERSAL himmel hooks (PreToolUse trio + SessionStart inject-initiative) from $settings"
+    echo "DRY: remove UNIVERSAL himmel hooks ($what + SessionStart inject-initiative) from $settings"
     return 0
   fi
   # A `hooks` that is not an object is left as it is: `has` on it is a jq error, and a failed jq must not read as success.
-  if printf '%s' "$base" | jq --arg pre "$_UNWIRE_PRE_PAT" --arg ss "$_UNWIRE_SS_PAT" '
+  if printf '%s' "$base" | jq --arg pre "$pre_pat" --arg ss "$_UNWIRE_SS_PAT" '
     if (type == "object") and ((.hooks | type) == "object") then
       if (.hooks | has("PreToolUse")) then
         .hooks.PreToolUse = ((.hooks.PreToolUse)
@@ -124,13 +136,14 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
     unwire_sessionend_hook "$2" "${3:-0}"
     exit $?
   fi
-  _settings=""; _scope=""; _target=""; _dry=0
+  _settings=""; _scope=""; _target=""; _dry=0; _chain=""
   while [ $# -gt 0 ]; do
     case "$1" in
+      --chain)   _chain=--chain; shift ;;
       --scope)   _scope="$2"; shift 2 ;;
       --target)  _target="$2"; shift 2 ;;
       --dry-run) _dry=1; shift ;;
-      -h|--help) echo "usage: unwire-pretooluse-hooks.sh <settings> [<dry_run>] | --scope project --target <repo> [--dry-run]" >&2; exit 0 ;;
+      -h|--help) echo "usage: unwire-pretooluse-hooks.sh <settings> [<dry_run>] [--chain] | --scope project --target <repo> [--dry-run] [--chain]" >&2; exit 0 ;;
       *)         if [ -z "$_settings" ]; then _settings="$1"; else _dry="$1"; fi; shift ;;
     esac
   done
@@ -138,6 +151,6 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
     [ -n "$_target" ] || { echo "unwire-pretooluse-hooks: --scope project requires --target <repo>" >&2; exit 2; }
     _settings="$_target/.claude/settings.json"
   fi
-  [ -n "$_settings" ] || { echo "usage: unwire-pretooluse-hooks.sh <settings> [<dry_run>] | --scope project --target <repo> [--dry-run]" >&2; exit 2; }
-  unwire_pretooluse_hooks "$_settings" "$_dry"
+  [ -n "$_settings" ] || { echo "usage: unwire-pretooluse-hooks.sh <settings> [<dry_run>] [--chain] | --scope project --target <repo> [--dry-run] [--chain]" >&2; exit 2; }
+  unwire_pretooluse_hooks "$_settings" "$_dry" "$_chain"
 fi

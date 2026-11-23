@@ -202,10 +202,10 @@ fi
 # Codex keeps its PreToolUse matchers disjoint (test-codex-hook-parity.sh), so
 # there the tracker and the Atlassian redirect share ONE mcp__.* chain:
 # mcp-policy.sh first, so a redirect deny still leaves an audit line.
-if jq -e '[.hooks.PreToolUse[] | select(.matcher=="mcp__.*") | .hooks[].command | select(test("--sandbox mcp-policy\\.sh\\+block-backend-tier\\.sh\\z"))] | length == 1' "$REPO_ROOT/.codex/hooks.json" >/dev/null; then
+if jq -e '[.hooks.PreToolUse[] | select(.matcher=="mcp__.*") | .hooks[].command | select(test("--sandbox mcp-policy\\.sh\\+block-backend-tier\\.sh(\\+[^ ]+)?\\z"))] | length == 1' "$REPO_ROOT/.codex/hooks.json" >/dev/null; then
     ok ".codex/hooks.json chains mcp-policy.sh then block-backend-tier.sh on mcp__.*"
 else
-    bad ".codex/hooks.json lacks the mcp__.* chain (mcp-policy.sh+block-backend-tier.sh)"
+    bad ".codex/hooks.json lacks the mcp__.* chain starting with mcp-policy.sh+block-backend-tier.sh"
 fi
 for name in mcp__plugin_atlassian_atlassian__lookupJiraAccountId \
             mcp__claude_ai_Atlassian_MCP__lookupJiraAccountId mcp__qmd__query; do
@@ -226,7 +226,11 @@ done
 # Runs .codex/run-hook.sh exactly as .codex/hooks.json wires it, so the
 # adapter, the tracker and block-backend-tier all run.
 CHAIN_CMD="$REPO_ROOT/.codex/run-hook.sh"
-CHAIN_ARG="mcp-policy.sh+block-backend-tier.sh"
+CHAIN_ARG=$(jq -r '[.hooks.PreToolUse[] | select(.matcher=="mcp__.*") | .hooks[].command | capture("--sandbox (?<chain>[^ ]+)\\z").chain][0] // empty' "$REPO_ROOT/.codex/hooks.json")
+if [ -z "$CHAIN_ARG" ]; then
+    bad ".codex/hooks.json mcp__.* chain could not be extracted"
+    CHAIN_ARG="mcp-policy.sh+block-backend-tier.sh"
+fi
 for t in mcp__qmd__query mcp__nosuch__thing mcp__claude_ai_Gmail__send_message; do
     : > "$MCP_POLICY_AUDIT_LOG"
     out=$(call "$t" | bash "$CHAIN_CMD" --sandbox "$CHAIN_ARG" 2>&1)

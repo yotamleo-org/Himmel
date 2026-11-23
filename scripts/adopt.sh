@@ -57,6 +57,10 @@
 #                       every later commit on main), so worktrees cut from main
 #                       carry scripts/. Without the flag an interactive run is
 #                       asked; a non-interactive run prints the command instead.
+#   --repair-matchers   Only widen the matcher of each himmel PreToolUse hook in
+#                       the target's settings.json and settings.local.json to
+#                       cover every tool it guards; nothing else is installed
+#                       and adopter entries are left as they are.
 #   --handover-mode <inline|external>
 #                       Gate for wire_handover_dir_luna's env.HANDOVER_DIR
 #                       write. external (the default, today's
@@ -128,6 +132,7 @@ WITH_GRAPHIFY=0
 SKIP_HOOKS=0
 ONLY_HOOKS=0
 COMMIT_INSTALL=0
+REPAIR_MATCHERS=0
 HANDOVER_MODE="external"
 
 # ── Parse args ───────────────────────────────────────────────────────────────
@@ -143,6 +148,7 @@ while [[ $# -gt 0 ]]; do
     --skip-hooks)     SKIP_HOOKS=1; shift ;;
     --only-hooks)     ONLY_HOOKS=1; shift ;;
     --commit-install) COMMIT_INSTALL=1; shift ;;
+    --repair-matchers) REPAIR_MATCHERS=1; shift ;;
     --handover-mode)  HANDOVER_MODE="$2"; shift 2 ;;
     -h|--help)        sed -n '2,/^set -e/p' "$0" | sed 's/^# \{0,1\}//' | sed '$d'; exit 0 ;;
     *) echo "ERROR: unknown flag: $1" >&2; exit 2 ;;
@@ -296,9 +302,7 @@ wire_merge_gate() {
   base="$(cat "$settings")"
   # Project-scope only: keep the prefix literal for hook-fire-time expansion.
   # shellcheck disable=SC2016
-  specs=$(jq -n '{cmd: "if [ -r \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-unresolved-cr-merge.sh\" ]; then bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-unresolved-cr-merge.sh\"; else echo \"himmel: merge gate missing -- re-run adopt.sh\" >&2; exit 2; fi"} |
-    [{pat: "scripts/hooks/block-unresolved-cr-merge[.]sh", cmd: .cmd,
-      stanza: {matcher: "Bash", hooks: [{type: "command", command: .cmd, timeout: 120}]}}]')
+  specs=$(wire_chain_specs '$CLAUDE_PROJECT_DIR' | jq -c --arg gate "$WIRE_MERGE_GATE_NAME" 'map(select(.name == $gate))')
   printf '%s' "$base" | jq --argjson specs "$specs" "$WIRE_PRETOOLUSE_MERGE_JQ" \
     > "$settings.mergegate.tmp"
   mv "$settings.mergegate.tmp" "$settings"
@@ -487,6 +491,50 @@ copy_portable() {
   done
 }
 
+wire_local_trio() {
+  [[ "$TARGET" -ef "$HIMMEL_ROOT" ]] && return 0
+  local node_p bash_p
+  node_p="$(command -v node || true)"; bash_p="$(command -v bash || true)"
+  if [[ "${NODE_AVAILABLE:-1}" -eq 0 || -z "$node_p" ]]; then
+    echo "  WARNING: node not found -- the anchor guard trio is not in $TARGET/.claude/settings.local.json; re-run adopt once node is installed" >&2
+    return 0
+  fi
+  wire_anchor_trio "$TARGET/.claude/settings.local.json" "$HIMMEL_ROOT" "$node_p" "$bash_p" "$DRY_RUN"
+}
+
+ensure_worktreeinclude() {
+  [[ -e "$TARGET/.git" ]] || return 0
+  [[ "$TARGET" -ef "$HIMMEL_ROOT" ]] && return 0
+  local f="$TARGET/.worktreeinclude" line=".claude/settings.local.json" op=create before=""
+  local -a pre=(--pre-absent)
+  [[ -f "$f" ]] && grep -qxF "$line" "$f" && return 0
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "DRY: append $line to $f"
+    return 0
+  fi
+  if [[ -f "$f" ]]; then
+    before="$(mktemp "${TMPDIR:-/tmp}/adopt-wtinclude.XXXXXX")" || return 1
+    cp -p "$f" "$before" || { rm -f "$before"; return 1; }
+    op=replace; pre=(--pre-file "$before" --backup)
+    [[ -s "$f" && -n "$(tail -c1 "$f")" ]] && echo >> "$f"
+  fi
+  printf '%s\n' "$line" >> "$f"
+  prov_record "$op" file "$f" --scope project --class code --row adopter-scripts \
+    --writer adopt.sh "${pre[@]}" --post-file "$f" \
+    || echo "  warning: provenance record failed for $f (uninstall will keep it)" >&2
+  [[ -n "$before" ]] && rm -f "$before"
+  echo "  .worktreeinclude: added $line"
+}
+
+repair_matchers() {
+  local shared="$TARGET/.claude/settings.json" local_f="$TARGET/.claude/settings.local.json" specs
+  # shellcheck disable=SC2016
+  specs=$(wire_chain_specs '$CLAUDE_PROJECT_DIR') || return 1
+  repair_pretooluse_matchers "$shared" "$specs" "$DRY_RUN" || return 1
+  specs=$(wire_trio_specs "$HIMMEL_ROOT" node bash) || return 1
+  repair_pretooluse_matchers "$local_f" "$specs" "$DRY_RUN"
+}
+
 # Keep worktrees out of `git add -A` (they would stage as embedded repos).
 ensure_worktrees_ignored() {
   [[ -e "$TARGET/.git" ]] || return 0
@@ -499,6 +547,9 @@ ensure_worktrees_ignored() {
   fi
   if ! { [[ -f "$TARGET/.gitignore" ]] && grep -qx -e '/\{0,1\}\.env' "$TARGET/.gitignore"; }; then
     missing+=(".env")
+  fi
+  if ! { [[ -f "$TARGET/.gitignore" ]] && grep -qx -e '/\{0,1\}\.claude/settings\.local\.json' "$TARGET/.gitignore"; }; then
+    missing+=(".claude/settings.local.json")
   fi
   [[ ${#missing[@]} -gt 0 ]] || return 0
   if [[ $DRY_RUN -eq 1 ]]; then
@@ -575,7 +626,7 @@ commit_install() {
     return 0
   fi
   local -a paths=()
-  for f in "${PORTABLE_FILES[@]}" .claude/settings.json .gitignore scripts/ci/ci-trust-paths.txt; do
+  for f in "${PORTABLE_FILES[@]}" .claude/settings.json .gitignore .worktreeinclude scripts/ci/ci-trust-paths.txt; do
     [[ -e "$TARGET/$f" ]] && paths+=("$f")
   done
   if [[ -z "$(git -C "$TARGET" status --porcelain -- "${paths[@]}")" ]]; then
@@ -1590,6 +1641,7 @@ do_core() {
     wire_pretooluse_hooks "$TARGET/.claude/settings.json" '$CLAUDE_PROJECT_DIR' "$DRY_RUN"
     GIVEN_ITEMS+=(wiring-pretooluse)
     wire_merge_gate "$merge_container_created"
+    wire_local_trio
     # The initiative SessionStart hook is not a portable file: it reads THIS
     # clone's .env, which is where `himmelctl config set initiative.*` writes, so
     # it is referenced by the clone's path (like the statusline), not copied.
@@ -1637,6 +1689,7 @@ do_core() {
   if [[ $FILL_ENV -eq 1 ]]; then fill_env_core; fi
   if [[ "$SCOPE" == "project" ]]; then
     ensure_worktrees_ignored
+    ensure_worktreeinclude
     commit_install
     given_items_from_files
     record_given_project
@@ -1688,6 +1741,11 @@ do_luna() {
 
 _dry_note=""; [[ $DRY_RUN -eq 1 ]] && _dry_note=" (dry-run)"
 echo "==> himmel adopt — profile=$PROFILE scope=$SCOPE${_dry_note}"
+if [[ $REPAIR_MATCHERS -eq 1 ]]; then
+  repair_matchers || exit 1
+  echo "──── Done ────"
+  exit 0
+fi
 if [[ $ONLY_HOOKS -eq 1 ]]; then
   install_precommit_hooks || exit $?
   copy_refused_exit

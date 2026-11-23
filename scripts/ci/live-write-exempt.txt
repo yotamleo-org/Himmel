@@ -19,6 +19,7 @@
 */scripts/handover/chief/test-chief-handoff-roundtrip.sh HIMMEL-9723 writes cadence-ledger.jsonl and launch-profiles under HOME
 */scripts/handover/chief/test-chief.sh HIMMEL-9723 writes launch-profiles under HOME
 */scripts/handover/test-arm-resume-1879.sh HIMMEL-9723 writes cadence-ledger.jsonl, launch-profiles and launch-logs under HOME
+*/scripts/handover/test-arm-resume-1879-b.sh HIMMEL-9723 writes cadence-ledger.jsonl, launch-profiles and launch-logs under HOME
 */scripts/handover/test-arm-resume-at-pty.sh HIMMEL-9723 writes launch-profiles under HOME
 */scripts/handover/test-arm-resume-bank-refresh.sh HIMMEL-9723 writes launch-profiles under HOME
 */scripts/handover/test-arm-resume-base.sh HIMMEL-9723 writes launch-profiles under HOME

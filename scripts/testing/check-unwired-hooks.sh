@@ -26,6 +26,7 @@ WIRING=(
   marketplace/plugins/qmd/hooks/hooks.json
   .codex/hooks.json
   .agents/hooks.json
+  scripts/hooks/antigravity-hook-adapter.sh
   .pre-commit-config.yaml
   .pre-commit-hooks.yaml
   docs/setup/settings-template.json

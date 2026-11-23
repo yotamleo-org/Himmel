@@ -180,7 +180,7 @@ export async function buildGroupFixture(scratchRoot: string, opts: GroupOptions 
     return { ...f, keys, anchor, members: keys.slice(1), earlier: [], decision };
   }
   const run = fiveReturnRun(specOf(`${anchor} group fixture`));
-  const documents = { specStem: `${anchor}-fixture-epoch1`, specText: specOf(`${anchor} group fixture epoch 1`)(SPEC_LINE), planText: plan };
+  const documents = { specStem: `${anchor}-group-epoch1`, specText: specOf(`${anchor} group fixture epoch 1`)(SPEC_LINE), planText: plan };
   const f = await buildRoundFixture({ ...base, returns: [...run.returns, ...current],
     steps: [...run.steps, { after: 4, step: 'reset', decision: '990', quote: RESET_QUOTE, documents }] });
   return { ...f, keys, anchor, members: keys.slice(1), earlier: f.verdicts.slice(0, 5), decision };

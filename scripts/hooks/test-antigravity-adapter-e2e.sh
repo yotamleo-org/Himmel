@@ -293,5 +293,35 @@ if [ "$rc_post" -eq 0 ] && [ "$out_post" = "{}" ]; then ok "PostToolUse exits 0 
 run_adapter "$(cat "$FIX/stop.json")" >"$TMP/last.out"; rc_stop=$?
 if [ "$rc_stop" -eq 0 ] && [ ! -s "$TMP/last.out" ]; then ok "Stop exits 0 cleanly"; else bad "Stop (rc=$rc_stop out=<$(cat "$TMP/last.out")>)"; fi
 
+echo "== 7. S2b read fence, graphify-fence, and strict T3 MCP allowlist =="
+assert_deny "read_file on T3 provider config/hooks.json denied by read fence" "provider home" \
+    "$(make_pre read_file "$(jq -cn --arg p "$T3CODE_HOME/userdata/providers/antigravity/hash1/config/hooks.json" '{Path:$p}')")"
+assert_deny "read_file on ~/.gemini/config/hooks.json denied by read fence" ".gemini" \
+    "$(make_pre read_file "$(jq -cn --arg p "$HOME/.gemini/config/hooks.json" '{Path:$p}')")"
+assert_deny "read_resource on antigravity-oauth-token denied by read fence" "oauth-token" \
+    "$(make_pre read_resource "$(jq -cn --arg u "file://$T3CODE_HOME/userdata/providers/antigravity/hash1/antigravity-oauth-token" '{ServerName:"t3-code",Uri:$u}')")"
+assert_pass "read_file inside session artifactDirectoryPath allowed" \
+    "$(make_pre read_file "$(jq -cn --arg p "$ARTIFACT_DIR/plan.md" '{Path:$p}')")"
+
+SALUS_FX="$TMP/salus-fx"
+mkdir -p "$SALUS_FX"
+touch "$SALUS_FX/.salus"
+assert_deny "block-graphify-egress denies cloud graphify on salus" "salus" \
+    "$(make_pre run_command "$(jq -cn --arg c "graphify update $SALUS_FX --backend deepseek" '{CommandLine:$c}')")" \
+    CLAUDE_GLM_CONFIG_DIR="$TMP/empty-glm"
+
+for denied_t3 in preview_open preview_act schedule_task pull_request_merge pull_request_create \
+                 t3_thread_search t3_thread_list t3_thread_read t3_thread_send t3_thread_transfer \
+                 create_threads delegate_task request_secret ci_rerun create_issue future_unknown_tool; do
+    assert_deny "strict T3 allowlist denies mcp_t3-code_$denied_t3" "allowlist" \
+        "$(make_pre "mcp_t3-code_$denied_t3" '{}')"
+done
+assert_deny "strict T3 allowlist denies t3_thread_launch even with allowlisted claudeAgent" "allowlist" \
+    "$(make_pre mcp_t3-code_t3_thread_launch '{"title":"Work","modelSelection":{"instanceId":"claudeAgent","model":"claude-sonnet-5-5"}}')"
+for allowed_t3 in t3_environment_read pull_request_read ci_logs read_issue send_to_user html_preview html_render; do
+    assert_pass "strict T3 allowlist allows mcp_t3-code_$allowed_t3" \
+        "$(make_pre "mcp_t3-code_$allowed_t3" '{}')"
+done
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

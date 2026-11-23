@@ -3639,6 +3639,11 @@ _c84_release_state() {
 
 check_c84_release_queue() {
     local roots="" root hroot f cdir doc rel declared bad="" any=0 none=0 sep="" st note unread=0
+    if [ -z "${HIMMEL_RELEASE_STATE_DIR:-}" ]; then
+        load_dotenv --root "$REPO_ROOT" USER_SLUG >/dev/null 2>&1 || true
+        [ -n "${USER_SLUG:-}" ] || emit INFO C84-release-queue "neither USER_SLUG nor HIMMEL_RELEASE_STATE_DIR is set, so the release root cannot be resolved and the Jira CLI refuses every removal of a Fix Version" \
+            "set USER_SLUG (as the launcher does) or HIMMEL_RELEASE_STATE_DIR"
+    fi
     if [ -n "${HIMMEL_RELEASE_STATE_DIR:-}" ]; then
         roots="$HIMMEL_RELEASE_STATE_DIR"
     else

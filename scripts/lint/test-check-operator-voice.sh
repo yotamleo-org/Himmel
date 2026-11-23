@@ -53,6 +53,25 @@ for phrase in "The ask expires in 6 h; ready in 15 minutes" "ready in 15 minutes
     if [ "$RC" -eq 1 ]; then pass "estimate -> 1: $phrase"; else fail "estimate not caught ($RC): $phrase"; fi
 done
 
+for phrase in "done by tonight" "I will be done in an hour" "ready by 6 pm" "back by 14:30" "the fix lands in half an hour" "answer in a minute" "ready in two hours" "done in one hour" "back in a second."; do
+    put one.md "$phrase"
+    run "$T/one.md"
+    if [ "$RC" -eq 1 ]; then pass "estimate in words or a target time -> 1: $phrase"; else fail "estimate not caught ($RC): $phrase"; fi
+done
+
+put words-ok.md 'The code expires in 6 h.
+The code expires in an hour.
+the run took an hour
+The PR was reviewed by the chief in a worktree.
+Merged by the chief; ready by design.
+The rest ships in a second PR.
+Retry in a second pass.
+The nightly job runs twice in a day.
+The timer fires once in an hour.
+The run finished by 14:30 yesterday.'
+run "$T/words-ok.md"
+if [ "$RC" -eq 0 ]; then pass "deadline, past duration, by the chief, in a worktree -> 0"; else fail "word controls exit $RC: $OUT"; fi
+
 put measured.md 'The run took 50 min.
 A file ask waited 30 min: a worker wants a file.
 The suite ran for about 6 min on the station.'
@@ -83,6 +102,22 @@ if [ "$RC" -eq 0 ]; then pass "non-send .ts line -> 0"; else fail "comment exit 
 put rule.md '8. No time estimates: no "in about 15 min", no ETA, no "shortly".'
 run "$T/rule.md"
 if [ "$RC" -eq 0 ]; then pass "rule statement -> 0"; else fail "rule line exit $RC: $OUT"; fi
+
+put none.md 'Status: 3 PRs merged. Your action: none.'
+run "$T/none.md"
+if [ "$RC" -eq 1 ] && has "none.md:1: empty operator inbox"; then pass "Your action: none -> 1"; else fail "Your action: none exit $RC: $OUT"; fi
+
+put none-rule.md '9. No status line reads "Your action: none" while an item waits. Your action: sign the spec.'
+run "$T/none-rule.md"
+if [ "$RC" -eq 0 ]; then pass "quoted rule and a real action -> 0"; else fail "Your action control exit $RC: $OUT"; fi
+
+put none.json '{ "status": { "template": "Merged. Your action: none." } }'
+run "$T/none.json"
+if [ "$RC" -eq 1 ] && has "none.json:1: empty operator inbox"; then pass "JSON template Your action: none -> 1"; else fail "JSON Your action: none exit $RC: $OUT"; fi
+
+put none-reply.ts '    await reply("Merged. Your action: none.");'
+run "$T/none-reply.ts"
+if [ "$RC" -eq 1 ] && has "none-reply.ts:1: empty operator inbox"; then pass "double-quoted TS reply Your action: none -> 1"; else fail "TS Your action: none exit $RC: $OUT"; fi
 
 run "$T/absent.md"
 if [ "$RC" -eq 2 ]; then pass "missing file -> 2"; else fail "missing file exit $RC: $OUT"; fi

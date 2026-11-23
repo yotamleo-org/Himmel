@@ -80,6 +80,7 @@ const READ_ONLY = [
   'scripts/handover/chief-kit/chain-add.sh',
   'scripts/handover/chief-kit/chain-render.py',
   'scripts/handover/chief-kit/chain-state.mjs',
+  'scripts/handover/chief-kit/core-check-batch-cases/suite.sh',
   'scripts/handover/chief-kit/intake-backfill.sh',
   'scripts/handover/chief-kit/next-dispatchable.sh',
   'scripts/handover/chief-kit/priority-prune.sh',

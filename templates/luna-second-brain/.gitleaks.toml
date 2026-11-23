@@ -47,6 +47,7 @@ regexes = [
   # filled with a real secret, so each known false positive gets its own line.
   '''^launch_markers=0$''',
   '''^-fixture-epoch1$''',
+  '''^-fixture-epoch1\.md$''',
   # owed.jsonl close rows: `"key":"decision-1064"`. The field name `key` plus a
   # hyphenated id trips generic-api-key on entropy. Digits-only shape, anchored.
   '''^decision-[0-9]+$''',

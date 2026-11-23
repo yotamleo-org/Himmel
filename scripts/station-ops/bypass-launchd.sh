@@ -299,7 +299,7 @@ Expires 6 h · brief sha ${sha:0:12}"
         log "GRANT $base env=${envs[*]} decision=${decision:-none} go=$code"
         mkdir -p "$W"
         fleet=()
-        [ -f "$BUCKET/$chief.fleet.json" ] && bash "$KIT/fleet-manifest.sh" add "$BUCKET/$chief.fleet.json" "$brief" --lane native >>"$LOG" 2>&1 \
+        [ -f "$BUCKET/$chief.fleet.json" ] && bash "$KIT/fleet-manifest.sh" add "$BUCKET/$chief.fleet.json" "$brief" --lane native --pending >>"$LOG" 2>&1 \
             && fleet=(--fleet "$BUCKET/$chief.fleet.json")
         env "${strip[@]}" -u WORKER_SESSION_EFFORT -u CLAUDE_CODE_EFFORT_LEVEL -u WORKER_SESSION_API_LANE -u WORKER_SESSION_API_ACCOUNT \
             -u HEADED_ARM_LAUNCHER_ENV -u HEADED_ARM_LAUNCHER_ENV_LINES "${envs[@]}" "${DETACH[@]}" bash "$LAUNCHER" \
