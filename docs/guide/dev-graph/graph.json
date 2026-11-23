@@ -3591,6 +3591,7 @@
         "tick": "generic action-key change: shown as the tick node",
         "tick-fail": "monitor health: operational",
         "tick-usage": "the status check refused a flag the arm line carries: the chief fixes the arm line and re-arms, operational",
+        "budget-recovered": "the usage verdict came back to PROCEED and every live worker was nudged: the chief confirms they resumed, operational",
         "tracker-stale": "tracker housekeeping: operational",
         "board-stale": "board housekeeping: operational, immediate in zero-batching mode",
         "housekeeping": "due digest of buffered board, status-sweep and informational marker changes: operational",
