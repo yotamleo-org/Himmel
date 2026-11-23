@@ -1784,7 +1784,6 @@ describe('a request for operator work carries the operator\'s words', () => {
     });
   });
 
-  // S3 (decisions 1096, 1159): the request cites no record; the door reads the newest operator record for the key when it rules.
   describe('a words record on file is not cited at the request: the ask files plain', () => {
     const record = (key: string, kind: string, from: string, to: string, words = WORDS) =>
       run('operator', 'decision', 'v1.1.3', '--decision', '9', '--keys', key, '--op', kind, '--from', from, '--to', to, '--words', words);
