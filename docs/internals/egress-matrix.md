@@ -56,7 +56,7 @@ Semantics.)*
   - `luna-personal × zai-glm × inference` stayed **deny** — extraction only,
     and it still denies by *default* (the GLM de-listing added explicit deny rows only
     for the four cells that were open, it did not invent new rows).
-  - `salus × * × *` stays **deny, hard** — no override can flip it. The one carve-out is the explicit `salus × openai-codex × inference` allow row ahead of it (operator ruling 2026-10-08).
+  - `salus × * × *` stays **deny, hard** — no override can flip it. The two interactive inference carve-outs ahead of it are `salus × openai-codex × inference` (operator ruling 2026-10-08) and `salus × google-antigravity × inference` (operator ruling 2026-11-23, Decision 1259; interactive Antigravity/agy via Google trusted route, distinct from hard-denied API-key `google-gemini`).
   - **Not a default.** `refresh-graph-map.sh` keeps `BACKEND=claude-cli`
     (the claude-only adopter story). GLM is a per-run opt-in for an
     operator who has a Coding Plan; an adopter without one is never expected to
@@ -360,7 +360,11 @@ review, not a code edit.
   no recordable override, except `salus × openai-codex × inference` (an
   explicit allow row ahead of the wildcard, operator ruling
   2026-10-08, which also allows `luna-personal` and `luna-clippings` for
-  codex inference only); google-gemini is denied everywhere (keys stay
+  codex inference only) and `salus × google-antigravity × inference` (operator
+  ruling 2026-11-23, Decisions 1246 & 1259, which allows interactive
+  Antigravity/agy inference on `himmel-code`, `handover-state`,
+  `luna-personal`, `luna-clippings`, and `salus`, while denying `voice-audio`
+  and all non-inference purposes); API-key/hermes `google-gemini` stays hard-denied everywhere (keys stay
   unset); there are now **zero `pending-operator` cells** (the five
   Alibaba embedding/rerank cells were demoted to explicit `deny`); **DeepSeek +
   Alibaba are de-listed** for vault/handover egress (explicit `deny`), and stay

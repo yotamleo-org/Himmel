@@ -521,6 +521,26 @@ update_codex() {
     return 0
 }
 
+update_antigravity_backstop() {
+    local mode="$1"
+    local t3_home="${T3CODE_HOME:-$HOME/.t3}"
+    local installer="$ROOT/scripts/antigravity/install-antigravity-backstop.sh"
+    [ -f "$installer" ] || return 0
+    if [ ! -d "$t3_home/userdata/providers/antigravity" ] && [ ! -d "$HOME/.gemini" ] && ! command -v agy >/dev/null 2>&1; then
+        return 0
+    fi
+    echo ""
+    echo "==> antigravity user-scope hook backstop"
+    if [ "$mode" = "check" ]; then
+        bash "$installer" --check || true
+        return 0
+    fi
+    if ! bash "$installer"; then
+        echo "    warn: antigravity backstop install failed (non-fatal) — run bash scripts/antigravity/install-antigravity-backstop.sh yourself." >&2
+    fi
+    return 0
+}
+
 # ─── codex / claude CLI versions ───────────────────────────────
 # `himmelctl update` is meant to leave the whole station current, but the two
 # agent CLIs were never touched: the operator updated codex by hand and nothing
@@ -3977,6 +3997,7 @@ if [ "${1:-}" = "--check" ] || [ "${1:-}" = "--dry-run" ]; then
     update_qmd_fork check || true
     run_hermes_step check || true
     update_codex check || true
+    update_antigravity_backstop check || true
     sync_agent_clis check || true
     update_luna_template check || true
     # both are read-only in check mode (a version-stamp
@@ -4185,6 +4206,7 @@ ensure_bus_state_dirs() {
 # of always running regardless of the pull/marketplace/jira/qmd/luna outcome,
 # including the update_codex plugin re-sync.
 update_codex apply
+update_antigravity_backstop apply
 sync_agent_clis apply || true
 rewire_statusline
 wire_self_heartbeat

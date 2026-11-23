@@ -99,6 +99,10 @@ for (const p of providers) {
       assert(effective === "allow" && rule && rule.corpus === "salus" && rule.provider === "openai-codex" &&
         rule.purpose === "inference" && rule.hard === undefined,
         `salus x ${p} x ${u} must be allow via its OWN openai-codex row (HIMMEL-5002 ruling), got ${effective}`);
+    } else if (p === "google-antigravity" && u === "inference") {
+      assert(effective === "allow" && rule && rule.corpus === "salus" && rule.provider === "google-antigravity" &&
+        rule.purpose === "inference" && rule.hard === undefined,
+        `salus x ${p} x ${u} must be allow via its OWN google-antigravity row (Decision 1259), got ${effective}`);
     } else if (p === "openrouter") {
       assert(effective === "deny", `salus x ${p} x ${u} must stay deny by default (configurable ≠ open), got ${effective}`);
       // embedding, rerank and query-expansion are HARD (pinned in blocks 6e and 6f); every other purpose stays configurable.
@@ -588,6 +592,35 @@ assert(corpora.includes("adopter-repo"), "corpus adopter-repo must be declared")
   for (const p of providers) for (const u of purposes) {
     if (p === "anthropic" && u === "extraction") continue;
     assert(evaluate("adopter-repo", p, u).effective === "deny", `adopter-repo x ${p} x ${u} must deny`);
+  }
+}
+
+assert(providers.includes("google-antigravity"), "google-antigravity provider must be declared");
+{
+  const agyAllowed = ["himmel-code", "handover-state", "luna-personal", "luna-clippings", "salus"];
+  for (const c of agyAllowed) {
+    const { effective, rule } = evaluate(c, "google-antigravity", "inference");
+    assert(effective === "allow" && rule && rule.corpus === c && rule.provider === "google-antigravity" &&
+      rule.purpose === "inference" && rule.hard === undefined,
+      `${c} x google-antigravity x inference must be allow via its OWN row, got ${effective}`);
+    for (const u of purposes.filter(x => x !== "inference")) {
+      const res = evaluate(c, "google-antigravity", u);
+      assert(res.effective === "deny", `${c} x google-antigravity x ${u} must deny (inference-only)`);
+      if (c === "salus") {
+        assert(res.rule && res.rule.hard === true, `salus x google-antigravity x ${u} must be HARD deny`);
+      }
+    }
+  }
+  for (const u of purposes) {
+    const res = evaluate("voice-audio", "google-antigravity", u);
+    assert(res.effective === "deny" && res.rule && res.rule.hard === true,
+      `voice-audio x google-antigravity x ${u} must be HARD deny`);
+  }
+  for (const c of corpora.filter(x => !agyAllowed.includes(x))) {
+    for (const u of purposes) {
+      assert(evaluate(c, "google-antigravity", u).effective === "deny",
+        `${c} x google-antigravity x ${u} must deny`);
+    }
   }
 }
 
