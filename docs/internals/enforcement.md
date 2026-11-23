@@ -1411,7 +1411,7 @@ critic round (decisions 804 to 806).
   `spec` and `spec-review` records answers that the key has a reviewed spec.
   Otherwise it prints:
 
-  ```
+  ```text
   BYPASS-NEEDS-SPEC <K> <kind> <missing> (bypass: <reason>)
   ```
 
