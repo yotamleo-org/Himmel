@@ -481,10 +481,6 @@ function staleReason(r: ReleaseRecord): string | null {
 
 export const SPEC_CHECK_VERBS = ['SPEC ok', 'SPEC-STALE', 'NO-SPEC', 'SPEC-NEEDS-OPERATOR', 'SPEC-SIGNER-UNKNOWN'] as const;
 
-/**
- * The tickets a spec's header names: the front matter's tickets: line, and the - Ticket(s): and
- * Key(s): lines before the first ## heading.
- */
 export function headerTickets(specText: string): string[] {
   const lines = specText.split('\n');
   const named: string[] = [];

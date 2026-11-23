@@ -97,9 +97,6 @@ export interface CoreCtx {
   issues?: Map<string, IssueSnap> | null;
   // The verified core-bypass and core-snapshot records of every declared release.
   records?: OperatorRow[];
-  /**
-   * Who signs each key: an operator core-bypass on a key the operator signs does not count. Required with records.
-   */
   signer?: SignerState;
 }
 
@@ -118,9 +115,6 @@ function emergencyOrBug(snap: IssueSnap): string | null {
   return null;
 }
 
-/**
- * The bypass answers that hold whoever signs the key: an emergency, a Bug, a core-snapshot.
- */
 export function pathIndependentBypass(key: string, snap: IssueSnap, records: OperatorRow[]): string | null {
   const answer = emergencyOrBug(snap);
   if (answer) return answer;

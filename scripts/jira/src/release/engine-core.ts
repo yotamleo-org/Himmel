@@ -211,11 +211,6 @@ export function readOperatorRecords(kind: OperatorKind | OperatorKind[], env: Re
   return out;
 }
 
-/**
- * Every spec-signer record of every declared release, read in full: a key that does not load or a
- * chain that does not verify anywhere makes the whole state unreadable. The mirror is read only
- * while a key record exists, for the parent step.
- */
 export function readSignerState(env: Record<string, string | undefined>, mirrorRoot: string | null): SignerState {
   const root = releaseRoot(env);
   const rows: Array<{ r: OperatorRow; release: string; i: number }> = [];
