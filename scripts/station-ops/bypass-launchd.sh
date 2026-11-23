@@ -110,7 +110,7 @@ send() {
     bun "$REPO/scripts/telegram/chief-route.ts" reply --kind "$1" operator "$2" >/dev/null 2>&1 || log "send failed"
 }
 field() { sed -n "s/^$1=//p" "$2" | head -n 1; }
-refuse() { log "REFUSED $2 $1"; mv "$1" "$1.refused"; send bypass-result "bypass-launchd refused $(basename "$1"): $2"; }
+refuse() { mv "$1" "$1.refused"; log "REFUSED $2 $1"; send bypass-result "bypass-launchd refused $(basename "$1"): $2"; }
 live() { [ ! -e "$Q/stop" ] && [ "$(date +%s)" -lt "$EXPIRES" ]; }
 
 check_request() {
@@ -284,14 +284,14 @@ Expires 6 h · brief sha ${sha:0:12}"
             sleep "$POLL"
         done
         if [ "$verdict" != go ]; then
-            log "$verdict $base"; mv "$req.pending" "$req.$verdict"; send bypass-result "bypass launch $base: $verdict, nothing ran."; continue
+            mv "$req.pending" "$req.$verdict"; log "$verdict $base"; send bypass-result "bypass launch $base: $verdict, nothing ran."; continue
         fi
         if ! live || [ -L "$brief" ] || [ "$(sha256_of "$brief")" != "$sha" ]; then
-            log "REFUSED after go $base (stop, expiry, or brief changed since the ask)"; mv "$req.pending" "$req.refused"
+            mv "$req.pending" "$req.refused"; log "REFUSED after go $base (stop, expiry, or brief changed since the ask)"
             send bypass-result "bypass launch $base: refused after your go, the brief changed or the queue stopped. Nothing ran."; continue
         fi
         if stale_now; then
-            log "STALE after go $base: go not used, re-queued"; mv "$req.pending" "$req"
+            mv "$req.pending" "$req"; log "STALE after go $base: go not used, re-queued"
             send bypass-result "bypass launch $base: your go was not used, the daemon runs older code than its checkout ($STALE_CAUSE). Nothing ran; the request waits for a restart and will be asked again." # t13b-ok: operator-facing text naming the existing bypass daemon, no process is started
             hold; break
         fi
@@ -309,11 +309,11 @@ Expires 6 h · brief sha ${sha:0:12}"
         if ! kill -0 "$lp" 2>/dev/null; then
             wait "$lp"; lrc=$?
             if [ "$lrc" -ne 0 ]; then
-                log "LAUNCH-FAILED $base rc=$lrc"; mv "$req.pending" "$req.failed"
+                mv "$req.pending" "$req.failed"; log "LAUNCH-FAILED $base rc=$lrc"
                 send bypass-failed "bypass launch $base: FAILED (rc $lrc), see $W/$base.launch.out"; continue
             fi
         fi
-        log "LAUNCHED $base"; mv "$req.pending" "$req.done"
+        mv "$req.pending" "$req.done"; log "LAUNCHED $base"
         send bypass-result "bypass launch $base: launched with ${envs[*]} (approved by your go code). Launch log $W/$base.launch.out"
     done
     sleep "$POLL"
