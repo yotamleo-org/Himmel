@@ -190,7 +190,7 @@ function receiver() {
       if (!r.ok) return r;
       noteAdmitted(state, r.rec);
       inbox.push(r.rec);
-      for (const a of threads.onInbound(r.rec)) if ("state" in a) state.roots.add(`${a.state.chat}:${a.state.root}`);
+      for (const a of threads.onInbound(r.rec).actions) if ("state" in a) state.roots.add(`${a.state.chat}:${a.state.root}`);
       return r;
     },
     state,

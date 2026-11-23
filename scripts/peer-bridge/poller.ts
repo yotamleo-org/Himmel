@@ -240,7 +240,7 @@ export class Poller {
         }
         await this.chain.append(this.file(r.peer, "inbox.jsonl"), r.rec);
         noteAdmitted(this.gate, r.rec);
-        const actions = this.threads.onInbound(r.rec);
+        const actions = this.threads.onInbound(r.rec).actions;
         await this.apply(actions);
         const opened = actions.some(a => "state" in a && a.state.dir === "in" && a.state.root === r.rec.message_id);
         const answered = r.rec.tag === "answer" && this.threads.get(r.peer, r.rec.root_id) !== undefined;

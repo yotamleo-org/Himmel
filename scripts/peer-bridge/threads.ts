@@ -6,6 +6,7 @@
 import type { Peer } from "./config";
 import { byStamp, type Tpl } from "./grammar";
 import type { PeerMsgRec } from "./gate";
+import type { ModelRoute } from "./reader";
 
 const MIN = 60_000, H = 3_600_000;
 export const ACK_BY = 30 * MIN;
@@ -43,6 +44,20 @@ export type Action =
   | { resend: { peer: string; root: number } }
   | { wake: WakeEvent }
   | { state: ThreadRec };
+
+export type Transition = "opened" | "answered-now" | "other";
+export type Route = "escalate" | "ack" | "drop";
+
+export function effectiveRoute(kind: string, transition: Transition, model: ModelRoute): Route {
+  if (model === null || model === "escalate") return "escalate";
+  if (transition === "opened") {
+    if (kind === "question") return model === "drop" ? "drop" : "escalate";
+    if (kind === "status" || kind === "info") return model;
+    return "escalate";
+  }
+  if (transition === "answered-now") return "escalate";
+  return "drop";
+}
 
 export function templateLine(name: Tpl, root: number, id: string, by?: Date): string {
   return `#tpl:${name} #${root} id=${id}${by ? ` by=${byStamp(by)}` : ""}`;
@@ -151,12 +166,39 @@ export class Threads {
     return actions;
   }
 
-  onInbound(msg: PeerMsgRec): Action[] {
+  onInbound(msg: PeerMsgRec): { actions: Action[]; transition: Transition } {
     const now = this.now(), actions: Action[] = [];
-    if (msg.root_id === msg.message_id) return this.onInboundRoot(msg, now, actions);
+    if (msg.root_id === msg.message_id) {
+      const known = this.get(msg.peer, msg.message_id);
+      this.onInboundRoot(msg, now, actions);
+      return { actions, transition: !known && this.get(msg.peer, msg.message_id) ? "opened" : "other" };
+    }
     const rec = this.get(msg.peer, msg.root_id);
-    if (!rec) return actions;
-    return rec.dir === "out" ? this.outInbound(rec, msg, now, actions) : this.inInbound(rec, msg, now, actions);
+    if (!rec) return { actions, transition: "other" };
+    if (rec.dir === "in") return { actions: this.inInbound(rec, msg, now, actions), transition: "other" };
+    const before = rec.state;
+    this.outInbound(rec, msg, now, actions);
+    const after = this.get(msg.peer, msg.root_id)!.state;
+    return { actions, transition: before !== "ANSWERED" && after === "ANSWERED" ? "answered-now" : "other" };
+  }
+
+  ack(peer: string, root: number): Action[] {
+    const now = this.now(), actions: Action[] = [];
+    const rec = this.get(peer, root);
+    if (!rec || rec.deadline === null) return actions;
+    const sends: Action[] = [];
+    const patch = this.template(sends, rec, "closing", now);
+    this.commit(actions, rec, { ...patch, state: "ACKED", deadline: null, remindAt: null }, now);
+    actions.push(...sends);
+    return actions;
+  }
+
+  drop(peer: string, root: number): Action[] {
+    const now = this.now(), actions: Action[] = [];
+    const rec = this.get(peer, root);
+    if (!rec || rec.deadline === null) return actions;
+    this.commit(actions, rec, { state: "DROPPED", deadline: null, remindAt: null }, now);
+    return actions;
   }
 
   private onInboundRoot(msg: PeerMsgRec, now: number, actions: Action[]): Action[] {
