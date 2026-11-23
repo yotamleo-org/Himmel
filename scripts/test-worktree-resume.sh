@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2016  # SC2015: A && _pass || _fail is the row idiom (_pass always succeeds); SC2016: the hook body is literal text
-# test-worktree-resume.sh: `worktree.sh resume <branch>` fetches an existing
-# branch and recreates its worktree at a tip it can account for. Real bare origin, scratch HOME, fake forge, no network.
-# Bash 3.2-safe.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,7 +11,6 @@ _fail() { printf 'FAIL  %s\n  -> %s\n' "$1" "$2"; FAIL=$(( FAIL + 1 )); }
 
 TMPBASE="${TMPDIR:-/tmp}/test-wtresume-$$"
 mkdir -p "$TMPBASE"
-# shellcheck disable=SC2064
 trap 'rm -rf "$TMPBASE"' EXIT
 
 export HOME="$TMPBASE/home"
