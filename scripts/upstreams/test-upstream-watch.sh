@@ -212,6 +212,10 @@ run_watch() {
     UPSTREAM_WATCH_HIMMEL_ROOT="$state/empty-root" \
     HANDOVER_DIR="$state/handover" \
     HANDOVER_REGISTRY="$state/registry.json" \
+    HOME="$state/home" \
+    HIMMEL_CONFIG_DIR="$state/home/.himmel" \
+    CREDENTIALS_DIRECTORY="" \
+    PATH="$state/stubbin:$PATH" \
     bash "$WATCH" "$@"
 }
 
@@ -232,7 +236,10 @@ new_scratch() {
   local state
   state=$(mktemp -d "${TMPDIR:-/tmp}/upstream-watch-test.XXXXXX")
   make_fake_gh "$state" >/dev/null
-  mkdir -p "$state/empty-root" "$state/handover"
+  mkdir -p "$state/empty-root" "$state/handover" "$state/home/.himmel" "$state/stubbin"
+  printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s/curl.log"\nexit 0\n' "$state" > "$state/stubbin/curl"
+  printf '#!/bin/sh\nexit 1\n' > "$state/stubbin/secret-tool"
+  chmod +x "$state/stubbin/curl" "$state/stubbin/secret-tool"
   jq -n --arg path "$state/empty-root" \
     '{repos: {himmel: {path: $path, user: "testuser", bucket_name: "himmel"}}}' \
     > "$state/registry.json"
@@ -659,6 +666,25 @@ assert_eq 2 "$rc" "null field: exit code"
 assert_has "$out" "required field" "null field: error names the required-field guard"
 if [ -f "$state/himmel-state/last_seen.json" ]; then fail "null field: state file should not exist"; else pass "null field: no state file written"; fi
 assert_not_has "$out" "(null)" "null field: never renders a literal (null) row"
+
+echo "== test: own-org items are excluded, outside items kept (HIMMEL-10814) =="
+state=$(new_scratch)
+own_prs=$(jq -n '[range(1;5)] | map({repository:{nameWithOwner:"yotamleo-org/Himmel"}, number:., title:"own pr", url:("https://github.com/yotamleo-org/Himmel/pull/"+(.|tostring)), updatedAt:"2026-08-01T00:00:00Z", state:"open"})')
+base_world | jq --argjson own "$own_prs" '.prs = $own | .issues = [{repository:{nameWithOwner:"ggml-org/llama.cpp"}, number:99, title:"gpu bug", url:"https://github.com/ggml-org/llama.cpp/issues/99", updatedAt:"2026-08-01T00:00:00Z", state:"open"}] | .issue_views = {"ggml-org/llama.cpp#99": {comments:[], state:"OPEN", updatedAt:"2026-08-01T00:00:00Z", closedAt:null, title:"gpu bug", url:"https://github.com/ggml-org/llama.cpp/issues/99"}}' > "$state/world.json"
+out=$(run_watch "$state" 2>&1); rc=$?
+assert_eq 10 "$rc" "own-org: delta exit code"
+assert_eq 1 "$(jq '.items | length' "$state/himmel-state/last_seen.json")" "own-org: only the one outside item is tracked"
+report="$(report_path "$state")"
+assert_has "$(cat "$report" 2>/dev/null)" "ggml-org/llama.cpp#99" "own-org: outside item is reported (control, not a blanket drop)"
+assert_not_has "$(cat "$report" 2>/dev/null)" "yotamleo-org/Himmel" "own-org: no own-org item in the report"
+assert_eq 0 "$(cat "$state/curl.log" 2>/dev/null | grep -c 'api.telegram.org')" "delta run: zero Telegram calls reach curl"
+
+echo "== test: the stub curl catches a configured send (control, HIMMEL-10859) =="
+state=$(new_scratch)
+base_world > "$state/world.json"
+out=$(TELEGRAM_BOT_TOKEN=tok TELEGRAM_CHAT_ID=1 run_watch "$state" 2>&1); rc=$?
+assert_eq 10 "$rc" "stub control: delta exit code"
+assert_eq 1 "$(grep -c 'api.telegram.org' "$state/curl.log" 2>/dev/null || true)" "stub control: a configured send is caught by the stub curl (the guard is live)"
 
 echo
 if [ "$fails" -eq 0 ]; then
