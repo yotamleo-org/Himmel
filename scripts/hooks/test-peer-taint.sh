@@ -97,6 +97,10 @@ now=$(date +%s); st=$(cat "$S/hooked/sD" 2>/dev/null || echo 0)
 if [ $((now - st)) -le 5 ]; then pass "desk: the read shape leaves a fresh stamp"; else fail "desk: the read shape leaves a fresh stamp" "stamp=$st now=$now"; fi
 run_hook "$GATE" "$(jb sD Bash "$(send_cmd "$ABS" 'done')")" PEER_DESK=goomal; expect "desk: the send shape runs and prints no allow" 0 ""
 run_hook "$GATE" "$(jf sD Read file_path x)" PEER_DESK=goomal; expect "desk: Read x with no taint file is denied" 2
+run_hook "$GATE" "$(jf sD Read file_path "$H/.env")" PEER_DESK=goomal; expect "desk: Read of a secret-shaped path is denied" 2
+run_hook "$GATE" "$(jb sD mcp__plugin_x_y__do_thing '{}')" PEER_DESK=goomal; expect "desk: an MCP-shaped tool name is denied" 2
+run_hook "$GATE" "$(jb sD SomeFutureTool x)" PEER_DESK=goomal; expect "desk: an unknown tool name is denied" 2
+run_hook "$GATE" "$(jb sD Monitor "$(read_cmd "$ABS")")" PEER_DESK=goomal; expect "desk: Monitor running the read shape is denied, only Bash runs it" 2
 
 echo "== denied in a tainted session =="
 new_home
@@ -176,8 +180,11 @@ mutant floor '/# guard:floor$/d'
 run_hook "$MUT" "$(jf sU Read file_path "$S/goomal/inbox.jsonl")"
 if [ "$RC" = 0 ]; then pass "no path floor: the inbox Read row turns red"; else fail "no path floor: the inbox Read row turns red" "rc=$RC"; fi
 mutant desk '/# guard:desk$/d'
-run_hook "$MUT" "$(jf sD Read file_path x)" PEER_DESK=goomal
-if [ "$RC" = 0 ]; then pass "no desk restriction: the desk Read x row turns red"; else fail "no desk restriction: the desk Read x row turns red" "rc=$RC"; fi
+run_hook "$MUT" "$(jb sD Bash 'ls /')" PEER_DESK=goomal
+if [ "$RC" = 0 ]; then pass "no desk restriction: the desk non-shape Bash row turns red"; else fail "no desk restriction: the desk non-shape Bash row turns red" "rc=$RC"; fi
+mutant desktool '/PEER_DESK:-}" ] && .* != Bash \]; then$/,+2d'
+run_hook "$MUT" "$(jb sD Monitor "$(read_cmd "$ABS")")" PEER_DESK=goomal
+if [ "$RC" = 0 ]; then pass "no desk tool check: the desk Monitor row turns red"; else fail "no desk tool check: the desk Monitor row turns red" "rc=$RC"; fi
 mutant failclosed 's/|| deny "unparsable hook input" # guard:failclosed$/|| exit 0/'
 run_hook "$MUT" "$(jb sU Bash 'git status')" PATH="$tmp/stubjq:$PATH"
 if [ "$RC" = 0 ]; then pass "fail-open default: the stub-jq row turns red"; else fail "fail-open default: the stub-jq row turns red" "rc=$RC"; fi

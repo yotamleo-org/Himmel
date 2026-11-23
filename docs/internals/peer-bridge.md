@@ -410,6 +410,15 @@ It starts a fresh interactive `claude` session in an empty 0700 dir
 (`S/desk/<peer>/`) with `PEER_DESK=<peer>` set and no CLAUDE.md. It refuses if
 the dir holds `.claude`, `CLAUDE.md`, `CLAUDE.local.md` or `.mcp.json`.
 
+The desk starts with no MCP server, plugin, skill or user hook. `desk.sh` passes
+`--strict-mcp-config` with an empty `--mcp-config`, `--setting-sources project`
+(so the user settings never load), `--tools Bash`, `--permission-mode default`
+and `--disable-slash-commands`. It writes `S/desk/<peer>.mcp.json` and
+`S/desk/<peer>.settings.json` (mode 0600, beside the desk dir, never in it) at
+each launch; the settings file wires only the taint gate and the read-secrets
+guard, from the himmel root's tracked scripts. The gate also denies any tool but
+Bash when `PEER_DESK` is set, so a tool the flags missed is still refused.
+
 In the desk the taint gate allows only two Bash command shapes, each a single
 line with no control byte:
 
