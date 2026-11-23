@@ -1,16 +1,17 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { basename, dirname, isAbsolute, join } from 'node:path';
-import { releaseRoot } from './paths.js';
+import { releaseKeyPath, releaseRoot } from './paths.js';
 export { pinnedSha, type Pinned } from './pinned.js';
 import { journalPath, readVersionWrites, type Getter, type VersionWriteRow } from './version-writes.js';
-import { appendChain, contentSha, mintKey, readChain, readSigned, withLock, withLockAsync, writeSigned, type Chain } from './ledger.js';
+import { appendChain, contentSha, loadKey, mintKey, readChain, readSigned, withLock, withLockAsync, writeSigned, type Chain } from './ledger.js';
 import { SECTOR_OPT_OUT, sectorField } from '../commands/sector.js';
 import { appendAdmission, assertAdmissionsWritable, readAdmissions, readAdmissionsTolerant, type Admission } from '../commands/admissions-ledger.js';
 import { baselineId, effectOn, reduce, recordOf, scopeOk, terminalOf, unknownState, type ReleaseState } from './reducer.js';
 import { checkWords, decisionsDirFor, resolveDecision } from './verbatim.js';
 import { asksOperator, type TicketFacts } from './operator-work.js';
 import { judgeOperatorRows } from './judge-input.js';
+import type { Leave } from './leave.js';
 import type { Authority, Baseline, Declaration, EventRow, IssueSnap, Lease, Op, OperatorRow, OutOfVersionRow, PlacementClass, RequestRow, RulingRow, Verb } from './types.js';
 import { type JiraPort, type Ctx, f, ts, seq, operatorFence, type Loaded, load, loadOrThrow, locked, lockedAcross, readMirror, appendOperator, type ReleaseRecord, readOperatorRecords } from './engine-core.js';
 export { operatorFence, readMirror, readMirrorFilesUnverified, readOperatorRecords, type Ctx, type JiraPort, type ReleaseRecord } from './engine-core.js';
@@ -282,6 +283,38 @@ function declaredReleases(env: Record<string, string | undefined>): Declared[] {
     const d = got as Record<string, unknown>;
     return [{ path, parsed: true, project: d.project, current: d.current, ts: d.ts }];
   });
+}
+
+export interface DeclaredRelease { release: string; project: string; current: string; versions: string[] }
+
+export function releaseForProject(env: Record<string, string | undefined>, project: string): DeclaredRelease[] | 'unreadable' {
+  let root: string;
+  try {
+    root = releaseRoot(env);
+  } catch {
+    return 'unreadable';
+  }
+  if (!existsSync(root)) {
+    process.stderr.write(`release: no release root at ${root}; no declaration names ${project}\n`);
+    return [];
+  }
+  const out: DeclaredRelease[] = [];
+  for (const d of declaredReleases(env)) {
+    if (!unparsedOrNamesProject(d, project)) continue;
+    if (!d.parsed) return 'unreadable';
+    const release = basename(dirname(d.path));
+    let k: Buffer;
+    try {
+      k = loadKey(releaseKeyPath(release, env));
+    } catch {
+      return 'unreadable';
+    }
+    const signed = readSigned<Declaration>(d.path, k);
+    const v = signed.value;
+    if (!signed.ok || !v || v.release !== release || !Array.isArray(v.versions) || typeof v.current !== 'string') return 'unreadable';
+    out.push({ release, project, current: v.current, versions: [...v.versions] });
+  }
+  return out;
 }
 
 function withinDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
@@ -898,7 +931,7 @@ function checkDelivered(ctx: Ctx, p: {
 }
 
 // The operator's newest decision naming the key, whatever version it touches: the key's latest word.
-const keyNewestDecision = (rows: OperatorRow[], key: string): OperatorRow | undefined =>
+export const keyNewestDecision = (rows: OperatorRow[], key: string): OperatorRow | undefined =>
   rows.filter((x) => x.kind === 'decision' && (x.keys ?? []).includes(key)).sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts)).pop();
 
 // A REVERSION can only rule a move, but an operator `add` into a version places the key there too: the restore
@@ -1046,9 +1079,26 @@ function boundRemoval(env: Record<string, string | undefined>, r: RulingRow, cur
   }
 }
 
-// Attribution: the source removal is this ruling's own write, and nobody has changed the key's Fix Versions since.
-async function ownedRemoval(ctx: Ctx, r: RulingRow, cur: string[]): Promise<boolean> {
-  const row = boundRemoval(ctx.env, r, cur);
+function boundAdd(env: Record<string, string | undefined>, r: RulingRow, cur: string[]): VersionWriteRow | null {
+  const from = r.op.from_v;
+  const to = r.op.to_v;
+  if (r.op.kind !== 'move' || !from || !to) return null;
+  try {
+    const path = journalPath(env);
+    if (!path) return null;
+    return readVersionWrites(path).filter((w) => w.key === r.key && w.mechanism === 'rm-apply' && !w.from.includes(to) && w.to.includes(to)
+      && w.from.includes(from) && w.to.includes(from) && w.ts >= r.ts && sameSet(w.to, cur)).sort((a, b) => a.ts.localeCompare(b.ts)).at(-1) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+const holdsBoth = (r: RulingRow, cur: string[]): boolean => r.op.from_v !== null && r.op.to_v !== null && cur.includes(r.op.from_v) && cur.includes(r.op.to_v);
+
+const leaveOf = (r: RulingRow): Leave | undefined => (r.authority.kind === 'operator' && r.authority.ref ? { by: r.authority.ref, op: r.op } : undefined);
+
+async function ownedHalf(ctx: Ctx, r: RulingRow, cur: string[]): Promise<boolean> {
+  const row = holdsBoth(r, cur) ? boundAdd(ctx.env, r, cur) : boundRemoval(ctx.env, r, cur);
   if (!row || typeof ctx.jira.newestFixVersionEntry !== 'function') return false;
   try {
     return (await ctx.jira.newestFixVersionEntry(r.key)).id === row.entry;
@@ -1072,16 +1122,75 @@ const observedOf = (r: RulingRow, cur: string[], source: 'Jira' | 'mirror'): str
 
 // The chief's two safe ends for a move that sits in neither state, each followed by the replay that writes the row and receipt once.
 function repairOf(release: string, r: RulingRow, live: boolean, cur: string[]): string {
-  const both = r.op.from_v !== null && r.op.to_v !== null && cur.includes(r.op.from_v) && cur.includes(r.op.to_v);
-  const finish = `jira fix-version ${r.key} ${both ? '--remove ' + r.op.from_v : '--add ' + vName(r.op.to_v)}`;
-  const restore = `jira fix-version ${r.key} ${both ? '--remove ' + r.op.to_v : '--add ' + vName(r.op.from_v)}`;
-  const gate = both ? '' : ` (add --gate <reason> when ${vName(r.op.to_v)} is frozen)`;
-  return `${live ? '' : 'run `jira mirror` and read this again; if it still holds, '}the chief completes it with \`${finish}\`${gate} or restores the source with \`${restore}\`, then \`jira release rm-run ${release}\` replays the row and receipt once`;
+  const first = live ? '' : 'run `jira mirror` and read this again; if it still holds, ';
+  if (holdsBoth(r, cur)) {
+    return `${first}the chief completes it with \`jira fix-version ${r.key} --remove ${r.op.from_v} --by ${r.authority.ref}\`, then \`jira release rm-run ${release}\` replays the row and receipt once`;
+  }
+  const finish = `jira fix-version ${r.key} --add ${vName(r.op.to_v)}`;
+  const restore = `jira fix-version ${r.key} --add ${vName(r.op.from_v)}`;
+  return `${first}the chief completes it with \`${finish}\` (add --gate <reason> when ${vName(r.op.to_v)} is frozen) or restores the source with \`${restore}\`, then \`jira release rm-run ${release}\` replays the row and receipt once`;
 }
+
+type Repair = { line: string; holds: string[]; lacks: string[]; basis?: string | null };
+type VoidRow = RulingRow & { repair?: Repair };
+
+type Route = { void: true; repair: Repair | null; why: string } | { void: false; why: string };
+
+function routeOf(release: string, r: RulingRow, cur: string[], newer: OperatorRow | undefined, declared: string[]): Route | null {
+  if (newer) {
+    const to = placementOf(newer);
+    const against = againstOf(newer, r);
+    if (to) {
+      return { void: true, why: against, repair: cur.includes(to) ? null : { line: `jira fix-version ${r.key} --add ${to} --by ${newer.id}`, holds: [to], lacks: [] } };
+    }
+    const from = newer.from_v ?? null;
+    if (from === null || !cur.includes(from)) return { void: true, why: against, repair: null };
+    if (cur.some((v) => v !== from && declared.includes(v))) {
+      return { void: false, why: `${against}, and ${r.key} also holds ${cur.filter((v) => v !== from && declared.includes(v)).join(', ')}, so no line ${newer.id} covers can end it: the chief places ${r.key} by hand` };
+    }
+    return { void: true, why: against, repair: { line: `jira fix-version ${r.key} --remove ${from} --by ${newer.id}`, holds: [], lacks: [from] } };
+  }
+  if (!holdsBoth(r, cur) || r.authority.kind === 'operator') return null;
+  const why = `${r.key} holds both ${r.op.from_v} and ${r.op.to_v} and nothing proves the add was this ruling's own`;
+  const line = `jira release request ${release} --verb REVERSION --key ${r.key} --from ${r.op.from_v} --to ${r.op.to_v}`
+    + ` --why "finish ${r.id}: ${r.key} holds both ${r.op.from_v} and ${r.op.to_v}" --chief-reason "repair of ${r.id}, interrupted between its add and its remove"`;
+  return { void: true, why, repair: { line, holds: [r.op.to_v as string], lacks: [r.op.from_v as string] } };
+}
+
+const reached = (p: Repair, cur: string[]): boolean => p.holds.every((v) => cur.includes(v)) && p.lacks.every((v) => !cur.includes(v));
 
 function phaseRow(ctx: Ctx, r: RulingRow, phase: RulingRow['phase'], extra: Partial<RulingRow>): Omit<RulingRow, 'prev' | 'mac'> {
   const { prev: _p, mac: _m, ...rest } = r;
   return { ...rest, ...extra, phase, ts: ts(ctx) };
+}
+
+async function finishHalf(ctx: Ctx, l: Loaded, epoch: number, last: RulingRow, cur: string[], event: (readback: 'ok' | 'mismatch') => void)
+  : Promise<RulingRow | { phase: 'void'; line: string }> {
+  const id = last.id;
+  const rulingsPath = f(ctx, 'rulings.jsonl');
+  const newer = newerElsewhere(l.operator.verified, last);
+  const owned = !newer && await ownedHalf(ctx, last, cur);
+  const route = owned ? null : routeOf(ctx.release, last, cur, newer, l.decl.versions);
+  if (route?.void) {
+    const req = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k)).get(last.req);
+    appendChain<VoidRow>(rulingsPath, l.k, phaseRow(ctx, last, 'void', { epoch, ...(route.repair ? { repair: { ...route.repair, basis: keyNewestDecision(l.operator.verified, last.key)?.id ?? null } } : {}) } as Partial<VoidRow>));
+    if (req) appendWithdrawal(ctx, l.k, req, 'repair', route.why);
+    return { phase: 'void', line: `VOID ${id} (${route.why}; ${last.req} withdrawn${route.repair ? `; next: ${route.repair.line}` : ''})` };
+  }
+  if (!owned) {
+    event('mismatch');
+    throw new Error(route
+      ? `release apply: ${id} is partly applied in Jira and ${route.why}, so nothing was written: ${observedOf(last, cur, 'Jira')}`
+      : `release apply: ${id} is partly applied in Jira and nothing proves its first write was this ruling's own, so nothing was written: ${observedOf(last, cur, 'Jira')}; ${repairOf(ctx.release, last, true, cur)}`);
+  }
+  assertAdmissionsWritable();
+  if (holdsBoth(last, cur)) await ctx.jira.setFixVersion(last.key, 'remove', last.op.from_v as string, leaveOf(last));
+  else await ctx.jira.setFixVersion(last.key, 'add', last.op.to_v as string);
+  if (!landed(last.op, await ctx.jira.fixVersions(last.key))) {
+    event('mismatch');
+    throw new Error(`release apply: ${id} readback does not match ${last.op.kind} ${vName(last.op.from_v)}→${vName(last.op.to_v)}`);
+  }
+  return appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'applied', { epoch, readback: 'ok' }));
 }
 
 // Runs a ruling from its newest phase to receipted. Idempotent: the comment id
@@ -1114,24 +1223,9 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
       // An older epoch's intent: resolve by readback, never by re-writing Jira.
       const cur = await ctx.jira.fixVersions(last.key);
       if (!landed(last.op, cur) && !untouched(last.op, cur)) {
-        // The key sits in neither end state. Only a journalled RM removal that is still the key's newest Fix Version entry proves it
-        // is this ruling's own interrupted write; then the one write left is the destination add. Anything else is a hand fix.
-        if (!(await ownedRemoval(ctx, last, cur))) {
-          event('mismatch');
-          throw new Error(`release apply: ${id} is partly applied in Jira and nothing proves the removal was this ruling's own, so nothing was written: ${observedOf(last, cur, 'Jira')}; ${repairOf(ctx.release, last, true, cur)}`);
-        }
-        const newer = newerElsewhere(l.operator.verified, last);
-        if (newer) {
-          event('mismatch');
-          throw new Error(`release apply: ${id} is partly applied in Jira and ${againstOf(newer, last)}, so nothing was written: ${observedOf(last, cur, 'Jira')}; ${repairOf(ctx.release, last, true, cur)}`);
-        }
-        assertAdmissionsWritable();
-        await ctx.jira.setFixVersion(last.key, 'add', last.op.to_v as string);
-        if (!landed(last.op, await ctx.jira.fixVersions(last.key))) {
-          event('mismatch');
-          throw new Error(`release apply: ${id} readback does not match ${last.op.kind} ${vName(last.op.from_v)}→${vName(last.op.to_v)}`);
-        }
-        last = appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'applied', { epoch: lease.epoch, readback: 'ok' }));
+        const half = await finishHalf(ctx, l, lease.epoch, last, cur, event);
+        if ('line' in half) return half;
+        last = half;
       } else if (!landed(last.op, cur)) {
         const req = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k)).get(last.req);
         appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'void', { epoch: lease.epoch }));
@@ -1166,8 +1260,8 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
           return { phase: 'void', line: `VOID ${id} (${k} Fix Version entry moved since ${last.req} was filed; ${last.req} withdrawn)` };
         }
       }
-      if ((op.kind === 'remove' || op.kind === 'move') && op.from_v && cur.includes(op.from_v)) await ctx.jira.setFixVersion(k, 'remove', op.from_v);
       if ((op.kind === 'add' || op.kind === 'move') && op.to_v && !cur.includes(op.to_v)) await ctx.jira.setFixVersion(k, 'add', op.to_v);
+      if ((op.kind === 'remove' || op.kind === 'move') && op.from_v && cur.includes(op.from_v)) await ctx.jira.setFixVersion(k, 'remove', op.from_v, leaveOf(last));
       if (!landed(op, await ctx.jira.fixVersions(k))) {
         event('mismatch');
         throw new Error(`release apply: ${id} readback does not match ${op.kind} ${vName(op.from_v)}→${vName(op.to_v)}`);
@@ -1258,7 +1352,7 @@ export interface ChiefPlacement { key: string; ruling: string; reason: string }
 export interface AskApart { key: string; ruling: string; version: string; parent: string; parent_version: string }
 
 export interface UnfinishedRuling {
-  ruling: string; req: string; key: string; phase: 'intent' | 'applied'; op: string;
+  ruling: string; req: string; key: string; phase: 'intent' | 'applied' | 'void'; op: string;
   /** replay: a normal rm-run finishes it. blocked: a move the key's mirror shows in neither end state with no journalled proof it is this ruling's own, or with an operator record newer than the ruling that puts the key elsewhere; the chief repairs it by hand. */
   status: 'replay' | 'blocked'; owner: 'release-manager' | 'chief'; next: string;
   /** What the mirror shows of a blocked move; null otherwise. */
@@ -1467,7 +1561,7 @@ export function state(ctx: Ctx): StateOut {
   }
   const { listed: _listed, ...lists } = reviewLists(l);
   const { mac: _m, ...leaseOut } = lease ?? ({} as Lease);
-  const unfinished = unfinishedOf(l.rulings, l.events.verified, l.operator.verified, ctx, mirror.issues, lease);
+  const unfinished = unfinishedOf(l.rulings, l.events.verified, l.operator.verified, ctx, mirror.issues, lease, l.decl.versions);
   return {
     ...s,
     status: lease ? s.status : 'UNKNOWN',
@@ -1539,22 +1633,31 @@ function conflictRemedy(release: string, q: RequestRow, parent: string, asksOper
   return `new facts: ${base} --why "<what changed>" --evidence '{"<changed requirement>":"<value>"}'; or, if ${parent} can close without ${q.key}, file the ask again without --required-by`;
 }
 
-function unfinishedOf(rulings: Chain<RulingRow>, events: EventRow[], operator: OperatorRow[], ctx: Ctx, issues: Map<string, IssueSnap> | null, lease: Lease | null): UnfinishedRuling[] {
-  const last = new Map<string, RulingRow>();
+function unfinishedOf(rulings: Chain<RulingRow>, events: EventRow[], operator: OperatorRow[], ctx: Ctx, issues: Map<string, IssueSnap> | null, lease: Lease | null, declared: string[]): UnfinishedRuling[] {
+  const last = new Map<string, VoidRow>();
   for (const r of rulings.verified) last.set(r.id, r);
-  return [...last.values()].filter((r) => r.phase === 'intent' || r.phase === 'applied').map((r) => {
-    const base = { ruling: r.id, req: r.req, key: r.key, phase: r.phase as 'intent' | 'applied', op: `${r.op.kind} ${vName(r.op.from_v)}→${vName(r.op.to_v)}` };
-    const replay: UnfinishedRuling = { ...base, status: 'replay', owner: 'release-manager', next: `jira release rm-run ${ctx.release}`, observed: null };
+  const superseded = (r: VoidRow): boolean => (keyNewestDecision(operator, r.key)?.id ?? null) !== (r.repair?.basis ?? null);
+  const snapOf = (key: string): string[] | undefined => issues?.get(key)?.fixVersions;
+  const listed = (r: VoidRow): boolean => r.phase === 'intent' || r.phase === 'applied'
+    || (r.phase === 'void' && !!r.repair && !superseded(r) && !(snapOf(r.key) && reached(r.repair, snapOf(r.key) as string[])));
+  return [...last.values()].filter(listed).map((r) => {
+    const base = { ruling: r.id, req: r.req, key: r.key, phase: r.phase as UnfinishedRuling['phase'], op: `${r.op.kind} ${vName(r.op.from_v)}→${vName(r.op.to_v)}` };
     const snap = issues?.get(r.key);
+    if (r.phase === 'void' && r.repair) {
+      return { ...base, status: 'blocked', owner: 'chief', next: r.repair.line, observed: snap ? observedOf(r, snap.fixVersions, 'mirror') : null };
+    }
+    const replay: UnfinishedRuling = { ...base, status: 'replay', owner: 'release-manager', next: `jira release rm-run ${ctx.release}`, observed: null };
     // The writing run still holds its lease: it is between its two writes, not interrupted.
     if (r.phase !== 'intent' || !snap || (lease && !lease.released && lease.epoch === r.epoch)) return replay;
     if (landed(r.op, snap.fixVersions) || untouched(r.op, snap.fixVersions)) return replay;
     // A replay that already refused this ruling left a `ruled` mismatch event: the journal binding it has was checked live and failed.
     const refused = events.some((e) => e.kind === 'ruled' && e.ruling === r.id && e.readback === 'mismatch');
     const newer = newerElsewhere(operator, r);
-    if (!refused && !newer && boundRemoval(ctx.env, r, snap.fixVersions)) return replay;
-    const repair = repairOf(ctx.release, r, false, snap.fixVersions);
-    return { ...base, status: 'blocked', owner: 'chief', next: newer ? `${againstOf(newer, r)}, so the replay writes nothing; ${repair}` : repair, observed: observedOf(r, snap.fixVersions, 'mirror') };
+    const both = holdsBoth(r, snap.fixVersions);
+    if (!refused && !newer && (both ? boundAdd : boundRemoval)(ctx.env, r, snap.fixVersions)) return replay;
+    const route = routeOf(ctx.release, r, snap.fixVersions, newer, declared);
+    const next = route?.void ? (route.repair?.line ?? `${route.why}; the replay voids it and writes nothing`) : route ? route.why : repairOf(ctx.release, r, false, snap.fixVersions);
+    return { ...base, status: 'blocked', owner: 'chief', next, observed: observedOf(r, snap.fixVersions, 'mirror') };
   });
 }
 

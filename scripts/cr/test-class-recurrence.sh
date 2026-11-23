@@ -181,7 +181,7 @@ assert_eq "dry-run creates nothing" "0" "$(count '^create' "$JLOG")"
 assert_eq "dry-run makes no Jira write" "0" "$(count '^\(create\|edit\|comment\|link\|fix-version\) ' "$JLOG")"
 assert_contains "dry-run names the plan" "$out" "dry-run"
 
-echo "TEST: open residuals of the class are folded (link, label, backlog)"
+echo "TEST: open residuals of the class are folded (link, label), each keeping its version"
 reset
 printf 'TST-201\tTask\tTo Do\tpatch one\tresidual,class-hook-fail-direction\n' >"$JSTATE/residuals"
 printf 'TST-202\tTask\tTo Do\tpatch two\tresidual,class-hook-fail-direction\n' >>"$JSTATE/residuals"
@@ -192,9 +192,9 @@ log=$(cat "$JLOG")
 assert_contains "link residual 1" "$log" "link TST-201 TST-100"
 assert_contains "link residual 2" "$log" "link TST-202 TST-100"
 assert_contains "label residual 1" "$log" "edit TST-201 --add-labels folded-into-TST-100"
-assert_contains "backlog residual 1 (fixVersion removed)" "$log" "fix-version TST-201 --remove v1.1.3"
-assert_contains "backlog residual 2 (fixVersion removed)" "$log" "fix-version TST-202 --remove v1.1.3"
-assert_eq "each fixVersion removal names class-recurrence" "class-recurrence class-recurrence" "$(tr '\n' ' ' <"$JSTATE/fixver-writer" | sed 's/ $//')"
+assert_contains "label residual 2" "$log" "edit TST-202 --add-labels folded-into-TST-100"
+assert_eq "no fixVersion is removed: each residual keeps its version" "0" "$(count '^fix-version ' "$JLOG")"
+assert_eq "no fixVersion writer runs" "0" "$( (cat "$JSTATE/fixver-writer" 2>/dev/null || true) | wc -l | tr -d ' ')"
 assert_not_contains "already-folded residual untouched" "$log" "TST-203 TST-100"
 body=$(cat "$JSTATE/body-TST-100" 2>/dev/null || true)
 assert_contains "RED row for residual 1 in the body" "$body" "RED: TST-201"
@@ -247,12 +247,12 @@ assert_contains "member gets the class label" "$log" "edit TST-5061 --add-labels
 assert_not_contains "no ticket for the member's class" "$(grep '^create' "$JLOG")" "eval-tokenizer-split"
 assert_contains "output names the member" "$out" "member TST-5061"
 
-echo "TEST: a residual is labelled folded only after its backlog step succeeded"
+echo "TEST: a fold never reaches a Fix Version write, so a failing one cannot stop it"
 reset
 printf 'TST-401\tTask\tTo Do\tp1\tresidual,class-hook-fail-direction\n' >"$JSTATE/residuals"
 out=$(JIRA_FIXVER_FAIL=1 run --merged-file "$MERGED"); rc=$?
-assert_eq "backlog failure exits 3" "3" "$rc"
-assert_not_contains "no folded label after a failed backlog step" "$(cat "$JLOG")" "edit TST-401 --add-labels"
+assert_eq "the fold exits 0" "0" "$rc"
+assert_contains "the residual is labelled folded" "$(cat "$JLOG")" "edit TST-401 --add-labels folded-into-TST-100"
 
 echo "TEST: a failed evidence comment folds nothing, so a retry still sees the residuals"
 reset

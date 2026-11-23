@@ -122,7 +122,8 @@ T-awkfail|T-awkfail
 1640|1640 HIMMEL-1640
 1719|1719 HIMMEL-1719
 1674|1674 HIMMEL-1674
-1879|1879 HIMMEL-1879 1999 HIMMEL-1999
+1879|1879 HIMMEL-1879
+1879-lapse|1879-lapse 1999 HIMMEL-1999
 1879-1365|1879-1365 1998 HIMMEL-1998
 812|812 HIMMEL-812
 2973|2973 HIMMEL-2973
@@ -4537,16 +4538,110 @@ fi
 # its assertions) with case c; the elapsed-aware floor in a/b is what actually
 # prevents it.
 # ---------------------------------------------------------------------------
-if _sec_selected "1879" "HIMMEL-1879" "1999" "HIMMEL-1999"; then
+if _sec_selected "1879" "HIMMEL-1879" "1879-lapse" "1999" "HIMMEL-1999"; then
+S1879="$TMP/s1879-stub-bin"
+make_stateful_sched "$S1879"
+DB_1879="$TMP/s1879.tasks"; DBD_1879="$TMP/s1879.atdir"
+mkdir -p "$DBD_1879"
+FR_LIB="$(dirname "$ARM")/../lib/flow-run-ledger.sh"
+# A create can outlive its explicit target. Use the stateful at backend, with
+# the real clock crossing the target while at -t is blocked (no fake date).
+make_lapse_stub() { # <dir> <deadline> [<fire-delay>] [keep-snapshot]
+    local dir="$1" deadline="$2" delay="${3:-}" keep="${4:-0}"
+    make_stateful_sched "$dir"
+    mv "$dir/at" "$dir/at-stateful"
+    cat > "$dir/at" <<EOF
+#!/usr/bin/env bash
+bash "$dir/at-stateful" "\$@" || exit
+[ "\${1:-}" = -t ] || exit 0
+while [ "\$(date +%s)" -le $deadline ]; do sleep 1; done
+[ "$keep" = 1 ] || rm -f "\$SCHED_DB_DIR"/job-*
+if [ -n "$delay" ]; then
+    # The runner self-deletes first; its ledger write can lag behind at's return.
+    ( sleep "${delay:-0}"; HIMMEL_FLOW_RUNS_LEDGER="\$HIMMEL_FLOW_RUNS_LEDGER" \\
+        bash "$FR_LIB" --append-start armed-resume '' testhost claude '' \\
+        "$TASK_1879F" '' 4247 >/dev/null 2>&1 ) </dev/null >/dev/null 2>&1 &
+fi
+exit 0
+EOF
+    chmod +x "$dir/at"
+}
+lapse_hhmm() {
+    python3 -c 'import datetime; n=datetime.datetime.now(); print((n+datetime.timedelta(minutes=1 if n.second < 45 else 2)).strftime("%H:%M"))'
+}
+lapse_epoch() {
+    python3 -c 'import datetime,sys; h,m=map(int,sys.argv[1].split(":")); n=datetime.datetime.now().astimezone(); t=n.replace(hour=h,minute=m,second=0,microsecond=0); print(int((t if t>n else t+datetime.timedelta(days=1)).timestamp()))' "$1"
+}
+lapse_scenarios() {
+if [ -z "${TASK_1879F:-}" ]; then
+: > "$DB_1879"; rm -f "$DBD_1879"/job-*
+HO_1879F="$(make_handover "$WORK_REPO")"
+out=$(TMPDIR="$TMP" HIMMEL_FLOW_RUNS_LEDGER="$TMP/1879f-seed.jsonl" \
+    SCHED_DB="$DB_1879" SCHED_DB_DIR="$DBD_1879" posix_env "$S1879" \
+    bash "$ARM" --time "$(future_time)" --handover "$HO_1879F" 2>&1)
+rc=$?
+assert_rc "1879f seed arm succeeds" 0 "$rc"
+TASK_1879F=$(printf '%s\n' "$out" | sed -n 's/^ *Task name: //p' | head -1 | tr -d '\r')
+assert_contains "1879f seed reports a real task identity" "HIMMEL-Resume-" "$TASK_1879F"
+LEDGER_1879F="$TMP/1879f.jsonl"
+fi
+
+for scenario in "$@"; do
+    : > "$DB_1879"; rm -f "$DBD_1879"/job-*; : > "$LEDGER_1879F"
+    LAPSE_HHMM=$(lapse_hhmm); LAPSE_EPOCH=$(lapse_epoch "$LAPSE_HHMM")
+    delay=""; keep=0
+    case "$scenario" in
+        1879f-fired|1879j) delay=0 ;;
+        1999a) delay=1 ;;
+    esac
+    [ "$scenario" != 1879j ] || keep=1
+    case "$scenario" in
+        1879h|1999b)
+            stamp=2020-01-01T00:00:00Z
+            if [ "$scenario" = 1999b ]; then
+                stamp=$(python3 -c 'import datetime,sys; print(datetime.datetime.fromtimestamp(int(sys.argv[1]),datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))' "$LAPSE_EPOCH")
+            fi
+            prior=$(HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_1879F" bash "$FR_LIB" \
+                --append-start armed-resume "$stamp" testhost claude '' "$TASK_1879F" '' 4245)
+            HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_1879F" bash "$FR_LIB" \
+                --append-end armed-resume "$prior" '' 0 complete '' 'prior run finished' >/dev/null ;;
+    esac
+    LAPSE_STUB="$TMP/$scenario-stub"
+    make_lapse_stub "$LAPSE_STUB" "$((LAPSE_EPOCH + 3))" "$delay" "$keep"
+    find "$TMP" -name arms.jsonl -delete 2>/dev/null || true
+    out=$(TMPDIR="$TMP" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_1879F" \
+        SCHED_DB="$DB_1879" SCHED_DB_DIR="$DBD_1879" posix_env "$LAPSE_STUB" \
+        bash "$ARM" --time "$LAPSE_HHMM" --handover "$HO_1879F" 2>&1)
+    rc=$?
+    case "$scenario" in
+        1879f-empty|1879h|1999b)
+            assert_rc "$scenario no evidence of this arm's fire refuses" 2 "$rc"
+            assert_contains "$scenario names the failed create" "REGISTERED NOTHING" "$out"
+            assert_not_contains "$scenario never claims consumed" "RESUME CONSUMED" "$out" ;;
+        *)
+            assert_rc "$scenario this arm's own start row proves consumption" 0 "$rc"
+            assert_contains "$scenario reports consumed" "RESUME CONSUMED" "$out"
+            assert_not_contains "$scenario never calls a fired arm a failed create" "REGISTERED NOTHING" "$out"
+            REG_1879F=$(find "$TMP" -name arms.jsonl -exec grep -lF "$TASK_1879F" {} + 2>/dev/null || true)
+            if [ -z "$REG_1879F" ]; then rc=0; else rc=1; fi
+            assert_rc "$scenario consumed arm publishes no arms-registry record" 0 "$rc" ;;
+    esac
+    assert_not_contains "$scenario never claims armed" "RESUME ARMED" "$out"
+    if [ "$scenario" = 1879j ]; then
+        if [ -f "$DBD_1879/job-$(cat "$DBD_1879/.counter")" ]; then rc=0; else rc=1; fi
+        assert_rc "1879j consumed snapshot is not reaped" 0 "$rc"
+    fi
+done
+}
+fi
+
+if _sec_selected "1879" "HIMMEL-1879"; then
 echo "--- 1879 ---"
 
 # --- 1879a/b: elapsed-aware lead floor on a SENTINEL slot -------------------
 # The bank-free fixture resolves --time smart to ASAP = now + 4 min (240s).
 # ARM_MIN_LEAD_SEC=900 > 240 forces the bump deterministically without having to
 # make the arm genuinely slow; =60 < 240 proves a comfortable lead is untouched.
-S1879="$TMP/s1879-stub-bin"
-make_stateful_sched "$S1879"
-DB_1879="$TMP/s1879.tasks"; DBD_1879="$TMP/s1879.atdir"
 SLOT_FREE_1879="$TMP/usage-free-1879.json"
 printf '{"five_hour":{"utilization":0.0,"resets_at":"%s"},"seven_day":{"utilization":5.0,"resets_at":"%s"},"account":"%s"}' \
     "$(python3 -c 'import datetime; print((datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(hours=2)).isoformat())')" \
@@ -4695,7 +4790,6 @@ rc=$?
 assert_rc "1879d seed: first arm of the completed-run fixture (rc=0)" 0 "$rc"
 TASK_1879B=$(printf '%s\n' "$out" | sed -n 's/^ *Task name: //p' | head -1 | tr -d '\r')
 : > "$DB_1879"; rm -f "$DBD_1879"/job-*
-FR_LIB="$(dirname "$ARM")/../lib/flow-run-ledger.sh"
 RUN_1879B=$(HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_1879B" bash "$FR_LIB" \
     --append-start "armed-resume" "" "testhost" "claude" "" "$TASK_1879B" "" 4243)
 HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_1879B" bash "$FR_LIB" \
@@ -4901,91 +4995,12 @@ rc=$?
 assert_rc "1879e an at queue that swallowed the job -> FAILURE (rc=2)" 2 "$rc"
 assert_contains "1879e the POSIX ERR names the missing entry" "post-arm verify found NO scheduler entry" "$out"
 
-# A create can outlive its explicit target. Use the stateful at backend, with
-# the real clock crossing the target while at -t is blocked (no fake date).
-make_lapse_stub() { # <dir> <deadline> [<fire-delay>] [keep-snapshot]
-    local dir="$1" deadline="$2" delay="${3:-}" keep="${4:-0}"
-    make_stateful_sched "$dir"
-    mv "$dir/at" "$dir/at-stateful"
-    cat > "$dir/at" <<EOF
-#!/usr/bin/env bash
-bash "$dir/at-stateful" "\$@" || exit
-[ "\${1:-}" = -t ] || exit 0
-while [ "\$(date +%s)" -le $deadline ]; do sleep 1; done
-[ "$keep" = 1 ] || rm -f "\$SCHED_DB_DIR"/job-*
-if [ -n "$delay" ]; then
-    # The runner self-deletes first; its ledger write can lag behind at's return.
-    ( sleep "${delay:-0}"; HIMMEL_FLOW_RUNS_LEDGER="\$HIMMEL_FLOW_RUNS_LEDGER" \\
-        bash "$FR_LIB" --append-start armed-resume '' testhost claude '' \\
-        "$TASK_1879F" '' 4247 >/dev/null 2>&1 ) </dev/null >/dev/null 2>&1 &
+lapse_scenarios 1879f-empty 1879f-fired 1879h
 fi
-exit 0
-EOF
-    chmod +x "$dir/at"
-}
-lapse_hhmm() {
-    python3 -c 'import datetime; n=datetime.datetime.now(); print((n+datetime.timedelta(minutes=1 if n.second < 45 else 2)).strftime("%H:%M"))'
-}
-lapse_epoch() {
-    python3 -c 'import datetime,sys; h,m=map(int,sys.argv[1].split(":")); n=datetime.datetime.now().astimezone(); t=n.replace(hour=h,minute=m,second=0,microsecond=0); print(int((t if t>n else t+datetime.timedelta(days=1)).timestamp()))' "$1"
-}
-: > "$DB_1879"; rm -f "$DBD_1879"/job-*
-HO_1879F="$(make_handover "$WORK_REPO")"
-out=$(TMPDIR="$TMP" HIMMEL_FLOW_RUNS_LEDGER="$TMP/1879f-seed.jsonl" \
-    SCHED_DB="$DB_1879" SCHED_DB_DIR="$DBD_1879" posix_env "$S1879" \
-    bash "$ARM" --time "$(future_time)" --handover "$HO_1879F" 2>&1)
-rc=$?
-assert_rc "1879f seed arm succeeds" 0 "$rc"
-TASK_1879F=$(printf '%s\n' "$out" | sed -n 's/^ *Task name: //p' | head -1 | tr -d '\r')
-assert_contains "1879f seed reports a real task identity" "HIMMEL-Resume-" "$TASK_1879F"
-LEDGER_1879F="$TMP/1879f.jsonl"
 
-for scenario in 1879f-empty 1879f-fired 1879h 1879j 1999a 1999b; do
-    : > "$DB_1879"; rm -f "$DBD_1879"/job-*; : > "$LEDGER_1879F"
-    LAPSE_HHMM=$(lapse_hhmm); LAPSE_EPOCH=$(lapse_epoch "$LAPSE_HHMM")
-    delay=""; keep=0
-    case "$scenario" in
-        1879f-fired|1879j) delay=0 ;;
-        1999a) delay=1 ;;
-    esac
-    [ "$scenario" != 1879j ] || keep=1
-    case "$scenario" in
-        1879h|1999b)
-            stamp=2020-01-01T00:00:00Z
-            if [ "$scenario" = 1999b ]; then
-                stamp=$(python3 -c 'import datetime,sys; print(datetime.datetime.fromtimestamp(int(sys.argv[1]),datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))' "$LAPSE_EPOCH")
-            fi
-            prior=$(HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_1879F" bash "$FR_LIB" \
-                --append-start armed-resume "$stamp" testhost claude '' "$TASK_1879F" '' 4245)
-            HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_1879F" bash "$FR_LIB" \
-                --append-end armed-resume "$prior" '' 0 complete '' 'prior run finished' >/dev/null ;;
-    esac
-    LAPSE_STUB="$TMP/$scenario-stub"
-    make_lapse_stub "$LAPSE_STUB" "$((LAPSE_EPOCH + 3))" "$delay" "$keep"
-    find "$TMP" -name arms.jsonl -delete 2>/dev/null || true
-    out=$(TMPDIR="$TMP" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_1879F" \
-        SCHED_DB="$DB_1879" SCHED_DB_DIR="$DBD_1879" posix_env "$LAPSE_STUB" \
-        bash "$ARM" --time "$LAPSE_HHMM" --handover "$HO_1879F" 2>&1)
-    rc=$?
-    case "$scenario" in
-        1879f-empty|1879h|1999b)
-            assert_rc "$scenario no evidence of this arm's fire refuses" 2 "$rc"
-            assert_contains "$scenario names the failed create" "REGISTERED NOTHING" "$out"
-            assert_not_contains "$scenario never claims consumed" "RESUME CONSUMED" "$out" ;;
-        *)
-            assert_rc "$scenario this arm's own start row proves consumption" 0 "$rc"
-            assert_contains "$scenario reports consumed" "RESUME CONSUMED" "$out"
-            assert_not_contains "$scenario never calls a fired arm a failed create" "REGISTERED NOTHING" "$out"
-            REG_1879F=$(find "$TMP" -name arms.jsonl -exec grep -lF "$TASK_1879F" {} + 2>/dev/null || true)
-            if [ -z "$REG_1879F" ]; then rc=0; else rc=1; fi
-            assert_rc "$scenario consumed arm publishes no arms-registry record" 0 "$rc" ;;
-    esac
-    assert_not_contains "$scenario never claims armed" "RESUME ARMED" "$out"
-    if [ "$scenario" = 1879j ]; then
-        if [ -f "$DBD_1879/job-$(cat "$DBD_1879/.counter")" ]; then rc=0; else rc=1; fi
-        assert_rc "1879j consumed snapshot is not reaped" 0 "$rc"
-    fi
-done
+if _sec_selected "1879-lapse" "1999" "HIMMEL-1999"; then
+echo "--- 1879-lapse ---"
+lapse_scenarios 1879j 1999a 1999b
 fi
 
 # ---------------------------------------------------------------------------

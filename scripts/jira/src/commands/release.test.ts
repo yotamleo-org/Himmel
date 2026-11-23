@@ -1350,6 +1350,16 @@ describe('RM apply names its writer', () => {
     const put = vi.mocked(request).mock.calls.find((c) => c[0] === 'PUT');
     expect(put?.[3]).toBe('rm-apply');
   });
+
+  it('RM apply passes the ruling\'s record on to the client', async () => {
+    vi.mocked(request).mockImplementation((async (method: string) =>
+      method === 'GET' ? { fields: { fixVersions: [] } } : {}) as never);
+    const op = { kind: 'move' as const, from_v: 'v1', to_v: null };
+    await liveJira.setFixVersion('HIMMEL-1', 'remove', 'v1', { by: 'O-R-0001', op });
+    const put = vi.mocked(request).mock.calls.find((c) => c[0] === 'PUT');
+    expect(put?.[3]).toBe('rm-apply');
+    expect(put?.[4]).toEqual({ leave: { by: 'O-R-0001', op } });
+  });
 });
 
 describe('jira release bucket-check', () => {
@@ -2316,6 +2326,40 @@ describe('the door at the request entry point', () => {
     engineMod.claim(rm);
     vi.stubEnv('HIMMEL_CONSOLE', '1');
     expect(await refusal(ask(m, ...intake('K-3'), '--chief-reason', 'the release needs it'))).toMatch(/Q-v1\.1\.3-0002 on K-3 is claimed; ask again after the run/);
+  });
+
+  it('the repair line apply prints for a door ruling holding both ends runs as written and files the chief placement (P1, T5)', async () => {
+    await declared();
+    vi.stubEnv('HOME', join(root, 'home'));
+    vi.stubEnv('JIRA_PROJECT_KEY', 'HIMMEL');
+    const mir = join(root, 'home', '.himmel', 'state', 'jira-mirror', 'HIMMEL');
+    mkdirSync(mir, { recursive: true });
+    writeFileSync(join(mir, '.cursor.json'), JSON.stringify({ lastSync: '2026-11-22T00:00:00Z' }));
+    writeFileSync(join(mir, 'HIMMEL-4.md'), '---\nkey: "HIMMEL-4"\nstatus: "To Do"\nstatusCategory: "To Do"\ntype: "Task"\npriority: "Medium"\nlabels: []\nfixVersions: ["v1.1.3","v1.1.4"]\n---\n');
+    vi.stubEnv('HIMMEL_CONSOLE', '1');
+    const line = 'jira release request v1.1.3 --verb REVERSION --key HIMMEL-4 --from v1.1.4 --to v1.1.3 --why "finish R-v1.1.3-0001: HIMMEL-4 holds both v1.1.4 and v1.1.3"'
+      + ' --chief-reason "repair of R-v1.1.3-0001, interrupted between its add and its remove"';
+    const argv = [...line.matchAll(/"([^"]*)"|(\S+)/g)].map((x) => x[1] ?? x[2]);
+    expect(argv.slice(0, 2)).toEqual(['jira', 'release']);
+    await run(...argv.slice(2));
+    expect(requests()).toMatchObject([{ verb: 'REVERSION', key: 'HIMMEL-4', from_v: 'v1.1.4', to_v: 'v1.1.3', state: 'open',
+      evidence: { chief_placement: { reason: 'repair of R-v1.1.3-0001, interrupted between its add and its remove' } } }]);
+  });
+});
+
+describe('jira release for-project', () => {
+  it('prints the declared release and its current for HIMMEL, and [] for SALUS (T10)', async () => {
+    await run('operator', 'declare', 'v1.1.3', '--versions', 'v1.1.3,v1.1.4', '--decision', '106', '--verbatim-file', join(root, 'verbatim.txt'));
+    await run('for-project', 'HIMMEL', '--json');
+    expect(JSON.parse(out.at(-1) as string)).toEqual([{ release: 'v1.1.3', current: 'v1.1.3', versions: ['v1.1.3', 'v1.1.4'] }]);
+    await run('for-project', 'SALUS', '--json');
+    expect(JSON.parse(out.at(-1) as string)).toEqual([]);
+  });
+
+  it('fails when a declaration that could name the project does not parse', async () => {
+    mkdirSync(join(root, 'state', 'R9'), { recursive: true });
+    writeFileSync(join(root, 'state', 'R9', 'release.json'), 'not json');
+    await expect(run('for-project', 'HIMMEL', '--json')).rejects.toThrow(/cannot be read/);
   });
 });
 
