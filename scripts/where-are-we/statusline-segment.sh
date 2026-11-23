@@ -125,11 +125,6 @@ if command -v timeout >/dev/null 2>&1; then seg_to="timeout"
 elif command -v gtimeout >/dev/null 2>&1; then seg_to="gtimeout"; fi
 node_to="${HIMMEL_WHERE_ARE_WE_NODE_TIMEOUT:-3}"
 case "$node_to" in ''|*[!0-9]*) node_to=3 ;; esac
-# Per-key slice cache: first line "<ledger>|<inode> <size>", the rest the slice. An
-# append that ends in a newline and never names "<KEY>" keeps the entry; a new inode
-# (a compaction) never matches. A missing, foreign-owned, symlinked or unmatched entry
-# is a miss, never an error. On a node timeout an entry written or confirmed under an
-# hour ago is served; the next finished slice replaces it.
 cachedir="${HIMMEL_WHERE_ARE_WE_ROLLUP_DIR:-/tmp/claude}"
 if [ -n "$node_bin" ] && [ -f "$ledger" ] && [ -n "$seg_to" ]; then
     slice_cache="$cachedir/where-are-we-slice-$key.txt"

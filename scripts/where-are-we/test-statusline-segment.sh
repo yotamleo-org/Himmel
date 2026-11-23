@@ -287,7 +287,7 @@ fi
 
 # --- Cases 18-21: the ledger-slice cache -------------------------------------
 # A stub node that counts its calls then runs the real node, so a cache hit is
-# observable as "no new call". The cache key is the ledger path + inode + size.
+# observable as "no new call".
 REALNODE="$(command -v node 2>/dev/null || true)"
 COUNTER="$TMP/node-calls"
 COUNTNODE="$TMP/countnode.sh"
@@ -310,7 +310,6 @@ if [ -n "$REALNODE" ] && { command -v timeout >/dev/null 2>&1 || command -v gtim
         fail "unchanged ledger -> calls after 1st=$n1 after 2nd=$n2 o1='$o1' o2='$o2'"
     fi
 
-    # 19: an appended entry for this key is a miss, and the new entry shows.
     printf '%s\n' '{"ts":"2026-01-02T00:00:00Z","source":"jira","key":"HIMMEL-538","kind":"ticket","status":"in-review"}' >> "$CLEDGER"
     o3="$(crun "$CDIR" "$CLEDGER")"; n3="$(calls)"
     if [ "$n3" = 2 ] && grepq "$o3" -F 'in-review' && ! grepq "$o3" -F 'in-progress'; then

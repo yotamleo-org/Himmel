@@ -1,7 +1,3 @@
-// scripts/where-are-we/tests/slice-index.test.mjs — the incremental slice index
-// (lib/slice-index.mjs) must print exactly what the full read prints
-// (renderSlice(fold(readRecords(ledger)), key)) on every path: cold build,
-// append, out-of-order ts, resume after a kill, and every fallback.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {

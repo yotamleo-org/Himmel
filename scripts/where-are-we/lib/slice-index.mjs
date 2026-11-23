@@ -1,19 +1,6 @@
 // scripts/where-are-we/lib/slice-index.mjs — an incremental per-key index for
 // `provision.mjs slice --index <file>`, so a slice reads only the ledger bytes
 // appended since the last run instead of the whole ledger.
-//
-// A slice for KEY depends only on KEY's own records (item fields and its lock), so
-// the index keeps, per key, compactRecords() of that key's records in file order.
-// fold() re-sorts them by ts, which keeps an older-ts record appended late correct.
-//
-// File: a header line, then one line per key: JSON(key) TAB JSON(records).
-// The header names the ledger (path, dev, ino), the byte offset consumed (always
-// just after a newline) and a hash of the bytes before it. A new inode (a
-// compaction's rename), a shrunk file or a changed prefix rebuilds from byte 0.
-//
-// sliceFromIndex returns { out, bytesRead }, or null when the caller must do the
-// full read itself (a record that is not an object with a string ts, whose fold
-// order the index cannot reproduce; a symlinked or foreign-owned index or dir).
 import {
   openSync, closeSync, fstatSync, lstatSync, readSync, readFileSync, writeFileSync, renameSync, unlinkSync,
 } from 'node:fs';
