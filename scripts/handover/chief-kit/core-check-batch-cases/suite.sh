@@ -69,6 +69,7 @@ if batch and mode == 'reject':
     put('0.000000')
     sys.exit(1)
 if batch and mode.startswith('sleep:'):
+    put('0.000000')
     time.sleep(float(mode[6:]))
 p = subprocess.Popen(['node', os.environ['CCB_DIST']] + a, cwd=os.environ['CCB_CWD'], stdout=subprocess.PIPE)
 out = p.stdout.read()
@@ -77,7 +78,8 @@ if batch and mode == 'drop2':
     out = b''.join(l for l in out.splitlines(True) if l.strip() != b'== 2')
 sys.stdout.buffer.write(out)
 sys.stdout.buffer.flush()
-put('%.6f' % (ru.ru_utime + ru.ru_stime))
+if not (batch and mode.startswith('sleep:')):
+    put('%.6f' % (ru.ru_utime + ru.ru_stime))
 sys.exit(os.waitstatus_to_exitcode(status))
 EOF
 export CCB_WRAPPER="$tmp/wrap/wrapper.py" CCB_DIST="$DIST" CCB_CWD="$DIST_ROOT" CCB_LOG="$tmp/calls.log"
