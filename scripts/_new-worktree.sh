@@ -6,7 +6,12 @@
 # after `/clean_garden` superseded the standalone `/new-worktree` command.)
 #
 # Usage (internal):
-#   ./scripts/_new-worktree.sh <branch-name> [--no-install] [--verbose]
+#   ./scripts/_new-worktree.sh <branch-name> [--no-install] [--no-fetch] [--verbose]
+#     --no-fetch: branch from the origin/<default> ref already fetched (a caller
+#     creating many worktrees fetches once; concurrent fetches race on its lock)
+#   ./scripts/_new-worktree.sh --check-name <branch-name>
+#     validate the branch name only (the type list below and git's ref rules),
+#     create nothing; exit 0 when worktree.sh would accept it.
 #
 # Branch naming: type/slug (feat/foo, chore/bar, fix/baz, docs/qux).
 # Worktree path is derived by replacing `/` with `+`:
@@ -44,7 +49,7 @@ fi
 . "$SCRIPT_DIR/lib/branch-shipped.sh"
 
 usage() {
-    echo "Usage: $0 <branch-name> [--no-install] [--verbose]" >&2
+    echo "Usage: $0 <branch-name> [--no-install] [--no-fetch] [--verbose]" >&2
     echo "  branch-name format: type/slug  (feat/foo, chore/bar, fix/baz, docs/qux)" >&2
     exit 2
 }
@@ -54,10 +59,14 @@ usage() {
 BRANCH=""
 NPM_INSTALL=1
 VERBOSE=0
+CHECK_NAME=0
+NO_FETCH=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --no-install) NPM_INSTALL=0; shift ;;
         --verbose|-v) VERBOSE=1; shift ;;
+        --check-name) CHECK_NAME=1; shift ;;
+        --no-fetch) NO_FETCH=1; shift ;;
         -h|--help) usage ;;
         -*) echo "Unknown flag: $1" >&2; usage ;;
         *) BRANCH="$1"; shift ;;
@@ -66,8 +75,11 @@ done
 
 [ -z "$BRANCH" ] && usage
 
-if ! [[ "$BRANCH" =~ ^(feat|fix|chore|docs|refactor|test)/[a-zA-Z0-9._+-]+$ ]]; then
-    echo "ERR new-worktree: branch '$BRANCH' invalid — must be type/slug where type ∈ feat|fix|chore|docs|refactor|test" >&2
+BRANCH_RE='^(feat|fix|chore|docs|refactor|test)/[a-zA-Z0-9._+-]+$'
+BRANCH_TYPES=${BRANCH_RE#^(}
+BRANCH_TYPES=${BRANCH_TYPES%%)*}
+if ! [[ "$BRANCH" =~ $BRANCH_RE ]]; then
+    echo "ERR new-worktree: branch '$BRANCH' invalid — must be type/slug where type ∈ $BRANCH_TYPES; fix: rename it to one of those types (e.g. docs/${BRANCH#*/})" >&2
     exit 1
 fi
 # Authoritative validation: git's own rules (rejects e.g. .lock suffix, leading
@@ -77,6 +89,7 @@ if ! git check-ref-format "refs/heads/$BRANCH" 2>/dev/null; then
     echo "ERR new-worktree: branch '$BRANCH' rejected by git check-ref-format (reserved suffix, leading dot, consecutive dots, etc.)" >&2
     exit 1
 fi
+[ "$CHECK_NAME" -eq 1 ] && exit 0
 
 COMMON_DIR=$(git rev-parse --git-common-dir 2>/dev/null) || { echo "ERR new-worktree: not in a git repo" >&2; exit 1; }
 # `git rev-parse --git-common-dir` may return relative path on Windows Git Bash;
@@ -170,7 +183,7 @@ else
     echo "WARN new-worktree: no 'origin' remote - branching from local '$DEFAULT_BRANCH'" >&2
 fi
 
-if [ "$HAS_ORIGIN" -eq 1 ] && ! run git -C "$PRIMARY_WORKTREE" fetch origin "$DEFAULT_BRANCH" --quiet; then
+if [ "$HAS_ORIGIN" -eq 1 ] && [ "$NO_FETCH" -eq 0 ] && ! run git -C "$PRIMARY_WORKTREE" fetch origin "$DEFAULT_BRANCH" --quiet; then
     # Common unattended-run failure (e.g. arm-resume relaunch): git's stored
     # credential (Windows Git Credential Manager, or an expired PAT git uses) is
     # stale while `gh` holds a SEPARATE valid token. `gh auth setup-git` wires git

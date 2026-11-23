@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 import { request, projectKey } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
+import type { Leave } from '../release/leave.js';
 import { appendAdmission } from './admissions-ledger.js';
 import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, chiefOverrideOf, INTAKE_GATES } from './intake-gate.js';
 
@@ -275,9 +276,12 @@ export async function setFixVersion(
   op: 'add' | 'remove',
   name: string,
   writer?: string,
+  leave?: Leave,
 ): Promise<string> {
   // A caller that names no writer is hand: it passes no argument at all.
-  await request('PUT', `/issue/${key}`, buildFixVersionBody(op, name), ...(writer === undefined ? [] : [writer]));
+  const body = buildFixVersionBody(op, name);
+  if (leave) await request('PUT', `/issue/${key}`, body, writer, { leave });
+  else await request('PUT', `/issue/${key}`, body, ...(writer === undefined ? [] : [writer]));
   await verifyVersionField(key, 'fixVersions', 'Fix-version', op, name);
   return `${key} fixVersion ${op === 'add' ? '+' : '-'}${name}`;
 }
@@ -430,7 +434,8 @@ export function registerVersions(program: Command): void {
       '--chief-override <reason>',
       'With --add, console session only (HIMMEL_CONSOLE=1): admit into a frozen version without a gate; the reason is recorded in the admissions ledger',
     )
-    .action(async (key: string, options: { add?: string; remove?: string; gate?: string; chiefOverride?: string }) => {
+    .option('--by <O-id>', 'The operator record the write carries out; a --remove out of an open declared version needs it (the key\'s newest decision, covering the removal)')
+    .action(async (key: string, options: { add?: string; remove?: string; gate?: string; chiefOverride?: string; by?: string }) => {
       if ((options.add === undefined) === (options.remove === undefined)) {
         throw new Error('fix-version needs exactly one of --add <name> or --remove <name>');
       }
@@ -440,7 +445,7 @@ export function registerVersions(program: Command): void {
       console.log(
         options.add !== undefined
           ? await addFixVersionGated(key, options.add, options)
-          : await setFixVersion(key, 'remove', options.remove as string),
+          : await setFixVersion(key, 'remove', options.remove as string, undefined, options.by === undefined ? undefined : { by: options.by }),
       );
       writeJiraBreadcrumb(key);
     });

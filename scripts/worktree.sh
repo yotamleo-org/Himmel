@@ -35,6 +35,8 @@
 # Flags:
 #   --no-prune           (new) Skip the prune phase; just create.
 #   --no-install         Forwarded to _new-worktree.sh.
+#   --no-fetch           (new) Forwarded to _new-worktree.sh: branch from the
+#                        origin ref already fetched.
 #   --dry-run            Show what would happen, do nothing.
 #   --only <path|branch> (prune) Prune exactly one worktree.
 #   --pr-cache <file>    (prune --only) Read the PR list from <file> instead of
@@ -107,6 +109,8 @@ Flags:
                         another branch.
   --no-prune            Skip prune; only create.
   --no-install         Forward to _new-worktree.sh (skip jira install).
+  --no-fetch            Forward to _new-worktree.sh (branch from the origin ref
+                        already fetched; a many-worktree caller fetches once).
   --dry-run             Show plan; do nothing.
   --health              Read-only: print only alarm lines (LOST-COMMITS, STUCK,
                         SWEEP-ERROR); empty output = healthy. Exit 1 on any
@@ -122,6 +126,9 @@ Flags:
                         other flag; never prunes.
   --verbose, -v         Stream subprocess output.
   -h, --help            This message.
+
+Many worktrees at once: scripts/handover/chief-kit/worktrees-parallel.sh checks
+every branch name first, prunes and fetches once, then creates them in parallel.
 
 Note: this command never uses `git worktree remove --force`. For force
 removal (e.g., orphaned admin record, stuck lock), run
@@ -148,6 +155,7 @@ PR_CACHE_SCOPE_BRANCH=""
 ONLY_ALLOW_UNMERGED=0
 NO_PRUNE=0
 NO_INSTALL=0
+NO_FETCH=0
 DRY_RUN=0
 VERBOSE=0
 HEALTH=0
@@ -170,6 +178,7 @@ while [ $# -gt 0 ]; do
             PR_CACHE_FILE="$2"; shift 2 ;;
         --no-prune)   NO_PRUNE=1; shift ;;
         --no-install) NO_INSTALL=1; shift ;;
+        --no-fetch)   NO_FETCH=1; shift ;;
         --dry-run)           DRY_RUN=1; shift ;;
         --health)            HEALTH=1; shift ;;
         --orphans)           ORPHANS=1; shift ;;
@@ -495,7 +504,7 @@ load_pr_cache_file() {
 
 if [ -n "$PR_CACHE_FILE" ]; then
     load_pr_cache_file
-elif [ "$HAVE_FORGE" -eq 1 ] && [ "$FORGE_KIND" = "github" ]; then
+elif [ "$NO_PRUNE" -eq 0 ] && [ "$HAVE_FORGE" -eq 1 ] && [ "$FORGE_KIND" = "github" ]; then
     if [ -n "$ORIGIN_NWO" ]; then
         if ORIGIN_PR_CACHE=$(fetch_github_pr_cache "$ORIGIN_NWO" 2>/dev/null); then
             ORIGIN_PR_CACHE_OK=1
@@ -2419,6 +2428,7 @@ fi
 # Create phase — delegate to _new-worktree.sh.
 NW_ARGS=("$BRANCH")
 [ "$NO_INSTALL" -eq 1 ] && NW_ARGS+=("--no-install")
+[ "$NO_FETCH" -eq 1 ] && NW_ARGS+=("--no-fetch")
 [ "$VERBOSE" -eq 1 ] && NW_ARGS+=("--verbose")
 
 # Dry-run is intentionally NOT forwarded — _new-worktree.sh has no --dry-run

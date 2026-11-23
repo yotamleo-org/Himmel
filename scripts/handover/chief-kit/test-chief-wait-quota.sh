@@ -86,6 +86,7 @@ SHA=$(ready_pass_repo "$GATE_REPO") || { echo "fixture: no head" >&2; exit 1; }
 SHA2=$(ready_pass_repo "$GATE_REPO" second) || { echo "fixture: no second head" >&2; exit 1; }
 ready_pass_ledger "$GATE_REPO" "$SHA" "$SHA2" || { echo "fixture: no ledger rows" >&2; exit 1; }
 export READY_STUB_HEAD="$SHA" HIMMEL_REPO="$GATE_REPO"
+check "ready-check's owner-review line over the ready-pass fixture" "$READY_PASS_OWNER_LINE" "$(PATH="$READY_BIN:$PATH" ready_pass_owner_review)"
 
 Q="$WORK/quota"; mkdir -p "$Q"
 STUB_LOG="$WORK/stub.log"; : > "$STUB_LOG"

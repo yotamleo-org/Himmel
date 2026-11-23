@@ -894,6 +894,14 @@ printf '\nMerge-compound guard\n'
 check guard-merge-compound Bash 2 "$D_MERGE" "deny a cd compound before merge-on-green"
 check guard-merge-compound Bash 0 "$A_MERGE" "allow the bare relative spelling"
 
+printf '\nAntigravity read fence\n'
+D_AGY_FENCE_GEMINI="ca""t ~/.gem""ini/con""fig/hooks.json"
+D_AGY_FENCE_CD="c""d ~/.gem""ini"
+check block-antigravity-read-fence Bash 2 "$D_AGY_FENCE_GEMINI" "deny ~/.gemini/config read"
+check block-antigravity-read-fence Bash 2 "$D_AGY_FENCE_CD" "deny cd into ~/.gemini"
+check block-antigravity-read-fence Bash 2 "$(printf 'echo hello\n%s' "$D_AGY_FENCE_CD")" "deny cd into ~/.gemini on second line"
+check block-antigravity-read-fence Bash 0 "$A_OK" "allow git status"
+
 # ── Completeness guard ──────────────────────────────────────────────────────
 # The audit's real deliverable. Enumerate the command-text hooks FROM THE
 # SOURCE — this directory's listing, never a list typed from memory — and

@@ -3,12 +3,14 @@ import { join } from 'node:path';
 import { releaseKeyPath, releaseRoot } from './paths.js';
 import { appendChain, contentSha, loadKey, readChain, readSigned, withLock, type Chain } from './ledger.js';
 import { FENCE_MARKERS, walk } from './fence-ancestry.js';
-import type { Baseline, Declaration, EventRow, IssueSnap, OperatorKind, OperatorRow, RequestRow, RulingRow } from './types.js';
+import { readAdmissions, type Admission } from '../commands/admissions-ledger.js';
+import { reduce, type ReleaseState } from './reducer.js';
+import type { Baseline, Declaration, EventRow, IssueSnap, Lease, Op, OperatorKind, OperatorRow, RequestRow, RulingRow } from './types.js';
 
 export interface JiraPort {
   fixVersions(key: string): Promise<string[]>;
   newestFixVersionEntry(key: string): Promise<{ id: string; ts: string }>;
-  setFixVersion(key: string, op: 'add' | 'remove', version: string): Promise<void>;
+  setFixVersion(key: string, op: 'add' | 'remove', version: string, leave?: { by: string; op?: Op }): Promise<void>;
   findComment(key: string, marker: string): Promise<string | null>;
   addComment(key: string, markdown: string): Promise<string>;
   labels(key: string): Promise<string[]>;
@@ -209,3 +211,37 @@ export function readOperatorRecords(kind: OperatorKind | OperatorKind[], env: Re
 }
 
 export { f, ts, seq, key, load, loadOrThrow, locked, lockedAcross, appendOperator, type Loaded };
+
+export function reduceLoaded(l: Loaded, mirror: ReturnType<typeof readMirror>): ReleaseState {
+  return reduce({
+    decl: l.decl, baselines: l.baselines, base_history: l.base_history, rulings: l.rulings, operator: l.operator, events: l.events,
+    issues: mirror.issues, mirrorSync: mirror.sync, admissions: admissionsOrNull(),
+  });
+}
+
+export function admissionsOrNull(): Admission[] | null {
+  try {
+    return readAdmissions();
+  } catch {
+    return null;
+  }
+}
+
+export function readLease(ctx: Ctx, k: Buffer): Lease {
+  const p = f(ctx, 'lease.json');
+  if (!existsSync(p)) {
+    return { release: ctx.release, epoch: 0, owner_session: null, owner_doc: null, acquired: null, released: true, prev_epoch: null };
+  }
+  const l = readSigned<Lease>(p, k);
+  if (!l.ok || !l.value) throw new Error(`release ${ctx.release} is UNKNOWN: lease.json does not verify`);
+  return l.value;
+}
+
+export function latestRequests(requests: Chain<RequestRow>): Map<string, RequestRow> {
+  if (requests.bad.length) throw new Error(`release: requests.jsonl does not verify (${requests.bad[0]})`);
+  const m = new Map<string, RequestRow>();
+  for (const r of requests.verified) m.set(r.req, r);
+  return m;
+}
+
+export const vName = (v: string | null) => v ?? 'backlog';

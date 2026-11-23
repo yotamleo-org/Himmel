@@ -150,6 +150,7 @@ if [ "${STUB_PASS:-0}" = 1 ]; then
     exit 0
 fi
 export STUB_PASS=1
+export HIMMEL_CORE_CHECK_BATCH=off
 if [ -x "${STUB_NEXT_GH:-/nonexistent}" ]; then exec "$STUB_NEXT_GH" "$@"; fi
 IFS=:
 for d in $PATH; do
@@ -365,7 +366,12 @@ drive_go() {
     for m in $(modes_for); do
         rm -rf "$cdir/root/.locks"
         EXTRA_ENV="HANDOVER_DIR=$cdir/root"$'\n'"HIMMEL_REPO=$GATE_REPO"
-        run_mode go.sh "$m" 14 11 bash "$script" 77 "$SHA"
+        local rbound=14
+        if [ "$m" = main-hung ] && [ "$FULL" != 1 ]; then
+            EXTRA_ENV="$EXTRA_ENV"$'\n'"GO_DEADLINE=${GO_MAIN_HUNG_DEADLINE:-40}"
+            rbound=$(( ${GO_MAIN_HUNG_DEADLINE:-40} + 4 ))
+        fi
+        run_mode go.sh "$m" "$rbound" 11 bash "$script" 77 "$SHA"
         if [ "$(affect_go "$m")" = no ]; then
             emit "PASS go.sh $m no-go-written n/a"
         elif [ -e "$cdir/root/.locks/go/77.$SHA" ]; then
@@ -374,6 +380,20 @@ drive_go() {
             emit "PASS go.sh $m no-go-written"
         fi
     done
+    if [ -z "$MODE_ONLY" ] || [ "$MODE_ONLY" = main-hung ]; then
+        local cenv=() cl
+        ROW_DIR="$cdir/rows/main-hung-cut"; mkdir -p "$ROW_DIR"
+        rm -rf "$cdir/root/.locks"
+        while IFS= read -r cl; do cenv+=("$cl"); done < <(base_env "$cdir" main-hung 1
+            printf '%s\n' "HANDOVER_DIR=$cdir/root" "HIMMEL_REPO=$GATE_REPO" "GO_DEADLINE=1")
+        exec_row 14 env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY -u CHIEF_SESSION_NAME \
+            -u himmel_github_token_vm2 -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GITHUB_ENTERPRISE_TOKEN "${cenv[@]}" bash "$script" 77 "$SHA"
+        if [ "$ROW_RC" = 11 ] && [ "$ROW_SECS" -le 14 ]; then
+            emit "PASS go.sh main-hung-cut deadline-fires rc=11 ${ROW_SECS}s<=14s"
+        else
+            emit "FAIL go.sh main-hung-cut deadline-fires rc=$ROW_RC ${ROW_SECS}s want rc=11 within 14s"
+        fi
+    fi
     EXTRA_ENV=""
 }
 

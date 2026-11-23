@@ -73,6 +73,7 @@ scripts/handover/chief-kit/test-ready-check-f.sh
 scripts/handover/chief-kit/test-ready-check.sh
 scripts/handover/chief-kit/test-shepherd.sh
 scripts/handover/test-arm-resume-1879.sh
+scripts/handover/test-arm-resume-1879-b.sh
 scripts/handover/test-arm-resume-base.sh
 scripts/handover/test-arm-resume-wrapper-coverage.sh
 scripts/handover/test-handover-root-dotenv.sh

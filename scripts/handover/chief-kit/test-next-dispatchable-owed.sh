@@ -26,6 +26,7 @@ GN="$WORK/git-none"; mkdir -p "$GN"
 git -C "$GN" init -q -b main && git -C "$GN" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m "init" \
     || { echo "FAIL: could not build the fixture main"; exit 1; }
 export NEXT_DISPATCH_GIT_DIR="$GN" NEXT_DISPATCH_MAIN_REF=main
+export HIMMEL_CORE_CHECK_BATCH=off
 M="$WORK/jira-mirror/HIMMEL"; mkdir -p "$M"
 mkdir -p "$WORK/notcore-stub"
 cat > "$WORK/notcore-stub/index.js" <<'NCEOF'

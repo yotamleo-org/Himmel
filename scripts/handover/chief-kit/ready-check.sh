@@ -15,6 +15,11 @@
 #   --only 7 runs check 7 — a worker's own pre-READY lint of its PR body, the
 #   same code the chief runs — plus the warn-only check 14 and check 20 on
 #   check 7's head. Prints COVERAGE-LINT PASS|FAIL.
+#        ready-check.sh --owner-review [--deadline <s>] <pr-number>...
+#   --owner-review prints, per PR, owner-review: required (owed|satisfied|changes-requested|blocked: why),
+#   not-required (rule-a|no-rule: why) or unknown (snapshot|required-set|gate|gate-mismatch: why): whether a
+#   GitHub code-owner approval is owed. Exit 2 when any line is unknown (--deadline <s>, default 120, bounds the run).
+#   The full run prints the same line (bounded at 20 s) after the three-dot-diff line; it never moves the verdict.
 #   --contract yes|no names the merge contract for check 17: yes when the merge
 #   completes the ticket (merge-on-green.sh --jira-transition), no for a partial
 #   merge. A keyed title with no --contract FAILs by default. --observe opts
@@ -335,6 +340,7 @@ usage() {
     echo "usage: ready-check.sh [--contract yes|no] [--observe] [--require-contract] <pr-number> <full-40-hex-head-sha>" >&2
     echo "       ready-check.sh --only 7 <pr-number>   (ticket-coverage lint plus the conflicts-resolved check 20, for a worker before READY)" >&2
     echo "       ready-check.sh --outside <pr-number>  (prints outside-pr: yes|no, the item 16 predicate)" >&2
+    echo "       ready-check.sh --owner-review [--deadline <s>] <pr-number>...  (prints owner-review: required|not-required|unknown (...), one line per PR; exit 2 when any is unknown)" >&2
     echo "it gates HIMMEL_REPO, else the primary checkout of this script's own tree (check 12 reads the primary checkout as its anchor, pulled to origin's tip), from any directory: bash '$rc_primary/scripts/handover/chief-kit/ready-check.sh' <pr-number> <full-40-hex-head-sha>" >&2
 }
 
@@ -357,6 +363,9 @@ done
 
 ONLY7=0
 OUTSIDE_MODE=0
+OWNER_MODE=0
+OR_PRS=""
+OR_DEADLINE=120
 if [ "${1:-}" = "--only" ]; then
     if [ "$#" -ne 3 ] || [ "$2" != "7" ]; then
         usage
@@ -373,6 +382,23 @@ elif [ "${1:-}" = "--outside" ]; then
     fi
     OUTSIDE_MODE=1
     PR="$2"; SHA=""
+elif [ "${1:-}" = "--owner-review" ]; then
+    shift
+    if [ "${1:-}" = "--deadline" ]; then
+        case "${2:-}" in
+            ''|0*|*[!0123456789]*) usage; echo "ready-check: --deadline takes whole seconds, at least 1 (got '${2:-}')" >&2; exit 2 ;;
+        esac
+        OR_DEADLINE="$2"; shift 2
+    fi
+    [ "$#" -ge 1 ] || { usage; echo "ready-check: --owner-review takes at least one <pr-number>" >&2; exit 2; }
+    for a in "$@"; do
+        case "$a" in
+            ''|0*|*[!0123456789]*) usage; echo "ready-check: pr-number must be digits without a leading zero (got '$a')" >&2; exit 2 ;;
+        esac
+        OR_PRS="$OR_PRS $a"
+    done
+    OWNER_MODE=1
+    PR="$1"; SHA=""
 elif [ "$#" -ne 2 ]; then
     usage
     exit 2
@@ -390,7 +416,7 @@ case "$SHA" in
     *[!0123456789abcdef]*) SHA_OK=0 ;;
     *) SHA_OK=1 ;;
 esac
-if [ "$ONLY7" -eq 0 ] && [ "$OUTSIDE_MODE" -eq 0 ] && { [ "$SHA_OK" -ne 1 ] || [ "${#SHA}" -ne 40 ]; }; then
+if [ "$ONLY7" -eq 0 ] && [ "$OUTSIDE_MODE" -eq 0 ] && [ "$OWNER_MODE" -eq 0 ] && { [ "$SHA_OK" -ne 1 ] || [ "${#SHA}" -ne 40 ]; }; then
     usage
     echo "ready-check: head sha must be the full 40-char lowercase hex sha (got '$SHA')" >&2
     exit 2
@@ -475,7 +501,7 @@ refresh_snapshot_or_keep_last() {
     fi
     [ -z "$err_file" ] || rm -f "$err_file"
 }
-if [ "$ONLY7" -eq 0 ]; then
+if [ "$ONLY7" -eq 0 ] && [ "$OWNER_MODE" -eq 0 ]; then
     refresh_snapshot_or_keep_last
 fi
 
@@ -538,6 +564,166 @@ ROLLUP_LATEST_DEFS='
         | group_by(.key)
         | map(max_by(.sort_key));
 '
+
+OR_GATE_CHECK=codeowner-review-gate
+or_hex40() { [ "${#1}" -eq 40 ] && case "$1" in *[!0-9a-f]*) return 1 ;; esac; }
+or_core() {
+    local pr="$1" snap="$2" rb="$3" row rd base_ref base_sha head_sha snap_head rset rs_err rs_why d script out first reason author_part conc to node_bin gate_in
+    row=$(printf '%s' "$snap" | jq -c --argjson n "$pr" 'if type == "array" then (map(select(.number == $n)) | first // empty) else empty end' 2>/dev/null) || row=""  # swallow-ok: a failed read becomes unknown below, never not-required
+    [ -n "$row" ] || { echo "unknown (snapshot: unreadable)"; return 0; }
+    IFS=$'\t' read -r base_ref base_sha head_sha <<EOF
+$rb
+EOF
+    if [ -z "$base_ref" ] || ! or_hex40 "${base_sha:-}" || ! or_hex40 "${head_sha:-}"; then
+        echo "unknown (snapshot: unreadable)"; return 0
+    fi
+    snap_head=$(printf '%s' "$row" | jq -r '.headRefOid // ""' 2>/dev/null) || snap_head=""  # swallow-ok: a failed read becomes unknown below, never not-required
+    if [ "$snap_head" != "$head_sha" ]; then
+        echo "unknown (snapshot: head or base moved during the read)"; return 0
+    fi
+    rd=$(printf '%s' "$row" | jq -r '.reviewDecision // ""' 2>/dev/null) || rd=""  # swallow-ok: a failed read becomes unknown below, never not-required
+    case "$rd" in
+        REVIEW_REQUIRED) echo "required (owed: GitHub reviewDecision REVIEW_REQUIRED)"; return 0 ;;
+        CHANGES_REQUESTED) echo "required (changes-requested: GitHub reviewDecision CHANGES_REQUESTED)"; return 0 ;;
+    esac
+    conc=$(printf '%s' "$row" | jq -r "$ROLLUP_LATEST_DEFS"'
+        (.statusCheckRollup // []) | rollup_rows | latest_per_check
+        | map(select(.name == "'"$OR_GATE_CHECK"'")) | first | if . == null then "none" else (.detail | sub("^[^/]*/"; "")) end' 2>/dev/null) || conc="none"
+    rs_err=$(mktemp "${TMPDIR:-/tmp}/ready-check-owner-rs.XXXXXX" 2>/dev/null) || { echo "unknown (required-set: no scratch file)"; return 0; }  # swallow-ok: a failed read becomes unknown below, never not-required
+    if ! rset=$( ( . "$SELF_DIR/../../lib/ticket-status.sh" >/dev/null 2>&1 || exit 3; ts_required_set "$base_ref" ) 2>"$rs_err" ); then
+        rs_why=$(head -n 1 "$rs_err" | tr -cd '[:print:]' | cut -c1-120)
+        rm -f "$rs_err"
+        echo "unknown (required-set: ${rs_why:-the required checks of $base_ref are unreadable})"; return 0
+    fi
+    rm -f "$rs_err"
+    if ! printf '%s\n' "$rset" | awk -F'\t' -v g="$OR_GATE_CHECK" '$1 == g { f = 1 } END { exit !f }'; then
+        echo "not-required (no-rule: $base_ref does not require $OR_GATE_CHECK)"; return 0
+    fi
+    _TIMEOUT_BIN=""
+    # shellcheck source=../../lib/timeout-bin.sh
+    . "$SELF_DIR/../../lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: no timeout binary is reported as unknown below
+    to="$_TIMEOUT_BIN"
+    node_bin=$(command -v node 2>/dev/null) || node_bin=""  # swallow-ok: a failed read becomes unknown below, never not-required
+    [ -n "$to" ] && [ -n "$node_bin" ] || { echo "unknown (gate: no timeout or node binary to run the gate script)"; return 0; }
+    d=$(mktemp -d "${TMPDIR:-/tmp}/ready-check-owner.XXXXXX" 2>/dev/null) || { echo "unknown (gate: no scratch dir)"; return 0; }  # swallow-ok: a failed read becomes unknown below, never not-required  # prim-ok: ready-check sources no prim.sh
+    script="$d/codeowner-review-gate.mjs"
+    if [ -n "${READY_CHECK_GATE_SCRIPT:-}" ]; then
+        cp "$READY_CHECK_GATE_SCRIPT" "$script" 2>/dev/null || : > "$script"
+    else
+        "$GH" api -H "Accept: application/vnd.github.raw" "repos/$nwo/contents/scripts/ci/codeowner-review-gate.mjs?ref=$base_sha" > "$script" 2>/dev/null || : > "$script"
+    fi
+    if [ ! -s "$script" ]; then
+        rm -rf "$d"; echo "unknown (gate: script unreadable at ${base_sha:0:7})"; return 0
+    fi
+    mkdir "$d/bin"
+    printf '#!/usr/bin/env bash\nPATH=%q exec bash %q "$@"\n' "$PATH" "$GH_READ_LIB" > "$d/bin/gh"
+    chmod +x "$d/bin/gh"
+    out=$(cd "$d" && PATH="$d/bin:$PATH" GH_REPO="$nwo" "$to" -k 5 30 "$node_bin" "$script" --repo "$nwo" --pr-number "$pr" --base-sha "$base_sha" 2>/dev/null)  # swallow-ok: a failed read becomes unknown below, never not-required
+    gate_in=$?
+    rm -rf "$d"
+    if [ "$gate_in" -eq 124 ] || [ "$gate_in" -eq 137 ]; then
+        echo "unknown (gate: timeout after 30 s)"; return 0
+    fi
+    first=$(printf '%s\n' "$out" | head -n 1 | tr -cd '[:print:]—' | cut -c1-200)
+    case "$first" in
+        "codeowner-review-gate: PASS — "*" — not an outside PR")
+            reason="${first#codeowner-review-gate: PASS — }"; reason="${reason% — not an outside PR}"
+            case "$conc" in
+                FAILURE|ERROR|TIMED_OUT) echo "unknown (gate-mismatch: the gate script passes $pr as not an outside PR but its check at the head is $conc)"; return 0 ;;
+            esac
+            author_part="$reason"
+            if [ "$rd" = APPROVED ]; then echo "required (satisfied: GitHub reviewDecision APPROVED)"; return 0; fi
+            echo "not-required (rule-a: $author_part; check at head: $conc)" ;;
+        "codeowner-review-gate: PASS — every required code owner"*)
+            echo "required (satisfied: ${first#codeowner-review-gate: PASS — })" ;;
+        "codeowner-review-gate: FAIL — "*)
+            case "$conc" in
+                SUCCESS|SKIPPED) echo "unknown (gate-mismatch: the gate script fails $pr but its check at the head is $conc)"; return 0 ;;
+            esac
+            reason="${first#codeowner-review-gate: FAIL — }"
+            case "$reason" in
+                *"code-owner approval at the current head is required from:"*) echo "required (owed: $reason)" ;;
+                *) echo "required (blocked: $reason)" ;;
+            esac ;;
+        *) echo "unknown (gate: ${first:-no output from the gate script})" ;;
+    esac
+}
+owner_review_of() {
+    local res rb rb2
+    unset GH_READ_REFUSED_FILE
+    rb=$("$GH" api "repos/$nwo/pulls/$1" --jq '[.base.ref,.base.sha,.head.sha]|@tsv' 2>/dev/null) || rb=""  # swallow-ok: a failed read becomes unknown below, never not-required
+    res=$(or_core "$1" "$2" "$rb") || res="unknown (gate: derivation failed)"
+    case "$res" in
+        unknown\ \(snapshot*) ;;
+        *)
+            rb2=$("$GH" api "repos/$nwo/pulls/$1" --jq '[.base.ref,.base.sha,.head.sha]|@tsv' 2>/dev/null) || rb2=""  # swallow-ok: a failed read becomes unknown below, never not-required
+            [ "$rb" = "$rb2" ] || res="unknown (snapshot: head or base moved during the read)" ;;
+    esac
+    printf '%s\n' "$res"
+}
+
+or_bounded() {
+    local secs="$1" pr="$2" snap="$3" f pid end kids p res
+    f=$(mktemp "${TMPDIR:-/tmp}/ready-check-owner-out.XXXXXX" 2>/dev/null) || { echo "unknown (gate: no scratch file)"; return 0; }  # swallow-ok: a failed read becomes unknown below, never not-required
+    ( owner_review_of "$pr" "$snap" > "$f" 2>/dev/null ) &
+    pid=$!
+    end=$(( $(date +%s) + secs ))
+    while kill -0 "$pid" 2>/dev/null; do
+        if [ "$(date +%s)" -ge "$end" ]; then
+            kids=$(_rcd_descendants "$pid")
+            kill -TERM "$pid" 2>/dev/null
+            for p in $kids; do kill -TERM "$p" 2>/dev/null; done
+            { wait "$pid"; } 2>/dev/null
+            rm -f "$f"
+            echo "unknown (gate: deadline)"; return 0
+        fi
+        sleep 0.2
+    done
+    { wait "$pid"; } 2>/dev/null
+    res=$(head -n 1 "$f")
+    rm -f "$f"
+    printf '%s\n' "${res:-unknown (gate: no result)}"
+}
+
+or_snapshots() {
+    local dir="$1" chunk n p out
+    shift
+    while [ "$#" -gt 0 ]; do
+        chunk=""; n=0
+        while [ "$#" -gt 0 ] && [ "$n" -lt 10 ]; do chunk="$chunk $1"; shift; n=$((n + 1)); done
+        # shellcheck disable=SC2086  # chunk is a list of validated PR numbers
+        if out=$(env -u GH_READ_REFUSED_FILE GH_CMD="$GH" GH_PR_SNAPSHOT_LOCK_WAIT=5 bash "$SNAPSHOT_SCRIPT" "$nwo" 0 $chunk 2>/dev/null); then  # swallow-ok: a failed read becomes unknown below, never not-required
+            for p in $chunk; do printf '%s' "$out" > "$dir/$p.json"; done
+        else
+            for p in $chunk; do
+                if out=$(env -u GH_READ_REFUSED_FILE GH_CMD="$GH" GH_PR_SNAPSHOT_LOCK_WAIT=5 bash "$SNAPSHOT_SCRIPT" "$nwo" 0 "$p" 2>/dev/null); then  # swallow-ok: a failed read becomes unknown below, never not-required
+                    printf '%s' "$out" > "$dir/$p.json"
+                fi
+            done
+        fi
+    done
+}
+
+owner_review_mode() {
+    local dir p line any=0 multi=0 end left
+    # shellcheck disable=SC2086  # OR_PRS is a list of validated PR numbers
+    set -- $OR_PRS
+    [ "$#" -le 1 ] || multi=1
+    dir=$(mktemp -d "${TMPDIR:-/tmp}/ready-check-owner-snap.XXXXXX" 2>/dev/null) || { echo "ready-check: no scratch dir; nothing was judged" >&2; exit 2; }  # swallow-ok: a failed read becomes unknown below, never not-required  # prim-ok: ready-check sources no prim.sh
+    end=$(( $(date +%s) + OR_DEADLINE ))
+    or_snapshots "$dir" "$@"
+    for p in "$@"; do
+        left=$(( end - $(date +%s) ))
+        if [ "$left" -le 0 ]; then line="unknown (gate: deadline)"
+        else line=$(or_bounded "$left" "$p" "$(cat "$dir/$p.json" 2>/dev/null)"); fi  # swallow-ok: a failed read becomes unknown below, never not-required
+        case "$line" in unknown*) any=1 ;; esac
+        if [ "$multi" -eq 1 ]; then printf '#%s owner-review: %s\n' "$p" "$line"; else printf 'owner-review: %s\n' "$line"; fi
+    done
+    rm -rf "$dir"
+    [ "$any" -eq 0 ] || exit 2
+    exit 0
+}
+if [ "$OWNER_MODE" -eq 1 ]; then owner_review_mode; fi
 
 if [ "$ONLY7" -eq 0 ]; then
 
@@ -2624,6 +2810,7 @@ fi
 
 echo "---"
 echo "The three-dot diff read (git diff origin/main...HEAD) stays the chief's own judgement — this script does not read it."
+printf 'owner-review: %s\n' "$(or_bounded 20 "$PR" "$snapshot")"
 [ -z "$TRUST_PATH" ] || echo "TRUST-PATH: $TRUST_PATH"
 if [ "$RESULT" -eq 0 ]; then
     echo "READY-CHECK PASS"

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # scripts/handover/test-arm-resume-wrapper-coverage.sh — drift guard:
 # asserts every section test-arm-resume.sh --list reports is
-# selected by at least one of its two per-PR/nightly --only dispatcher
-# wrappers (test-arm-resume-fast.sh, test-arm-resume-1879.sh).
+# selected by at least one of its per-PR/nightly --only dispatcher
+# wrappers (test-arm-resume-fast.sh, test-arm-resume-1879.sh,
+# test-arm-resume-1879-b.sh).
 #
 # test-arm-resume.sh itself stays SKIP_LISTed (its own runtime exceeds the
 # 600s per-suite cap), so a section added there and forgotten in BOTH
@@ -25,7 +26,7 @@ all_sections=$(bash test-arm-resume.sh --list) || {
     exit 1
 }
 
-covered=$(sed -n 's/.*--only "\([^"]*\)".*/\1/p' test-arm-resume-fast.sh test-arm-resume-1879.sh)
+covered=$(sed -n 's/.*--only "\([^"]*\)".*/\1/p' test-arm-resume-fast.sh test-arm-resume-1879.sh test-arm-resume-1879-b.sh)
 
 fail=0
 pass=0
@@ -34,7 +35,7 @@ while IFS= read -r section; do
     if grep -qxF "$section" <<< "$covered"; then
         pass=$((pass + 1))
     else
-        echo "FAIL wrapper-coverage: section '$section' is in test-arm-resume.sh --list but is not selected by either test-arm-resume-fast.sh or test-arm-resume-1879.sh" >&2
+        echo "FAIL wrapper-coverage: section '$section' is in test-arm-resume.sh --list but is not selected by test-arm-resume-fast.sh, test-arm-resume-1879.sh or test-arm-resume-1879-b.sh" >&2
         fail=$((fail + 1))
     fi
 done <<EOF

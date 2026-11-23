@@ -41,6 +41,7 @@
     "openrouter": { "region": "US", "note": "OpenRouter metered aggregation (scripts/claude-openrouter — Claude 1M tier on the metered path). Declared as its OWN provider, same capability slot as the other cloud engines but a DIFFERENT provider and trust boundary: content transits OpenRouter before the model vendor, so reaching a Claude model through it is NOT covered by the anthropic cell. The launcher consults this matrix as a HARD gate (no --force bypass) and requires an EXPLICIT provider:\"openrouter\" rule — a wildcard allow does not authorize the lane" },
     "alibaba": { "region": "CN-account, ap-southeast-1 endpoint", "note": "DE-LISTED 2026-07-22: not pursuing the Alibaba pilot — bad results. Vault/handover cells demoted to explicit deny; himmel-code wildcard unaffected (public code)." },
     "google-gemini": { "region": "US", "note": "DE-LISTED; keys deliberately unset" },
+    "google-antigravity": { "region": "US", "note": "Interactive Antigravity / agy via Google trusted route (T3 Code and CLI). Distinct from API-key/hermes google-gemini, which stays de-listed and hard-denied (Decisions 1246 & 1259)" },
     "firecrawl": { "region": "US", "note": "Web scrape/search API (api.firecrawl.dev, or a self-hosted FIRECRAWL_BASE_URL). Receives the URL (scrape) or the search query. Metered free plan; every call is ledgered in ~/.himmel/state/firecrawl-ledger.jsonl" },
     "jina-reader": { "region": "US", "note": "Keyless Jina Reader scrape (r.jina.ai/<url>). Receives the URL being fetched; no key, no metering" },
     "jina": { "region": "EU (Berlin)", "note": "Operator ruling 2026-10-14: Jina AI (owned by Elastic since 2025-10) as the remote qmd embedding and rerank backend. Full content leaves the machine (embedding documents, rerank query plus candidates). Jina legal 10.4: \"Jina AI does not use Customer request data, inputs, prompts, or uploaded content to train its models\". Distinct from jina-reader (US, keyless URL scrape). This matrix only permits; the live use stays off until the qmd fork backend is installed" },
@@ -103,6 +104,11 @@
       "corpus": "salus", "provider": "openai-codex", "purpose": "inference",
       "verdict": "allow",
       "why": "Operator ruling 2026-10-08 (interactive): codex (claudex lane, provider openai-codex) is supported for luna and salus, inference only. Every other provider and purpose keeps its existing deny (the hard salus wildcard below still governs them)"
+    },
+    {
+      "corpus": "salus", "provider": "google-antigravity", "purpose": "inference",
+      "verdict": "allow",
+      "why": "Operator ruling 2026-11-23 (Decision 1259, interactive): Antigravity/agy (Google trusted route, provider google-antigravity) is supported for luna and salus, inference only (matching openai-codex). Every other purpose stays on the hard salus wildcard below; API-key/hermes google-gemini remains hard-denied"
     },
     {
       "corpus": "salus", "provider": "*", "purpose": "*",
@@ -353,6 +359,16 @@
       "why": "Operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the skill-index corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
     },
     {
+      "corpus": "himmel-code", "provider": "google-antigravity", "purpose": "inference",
+      "verdict": "allow",
+      "why": "Operator ruling 2026-11-23 (Decisions 1246 & 1259): interactive Antigravity/agy inference on himmel-code. Explicit row ahead of the google-antigravity non-inference deny below"
+    },
+    {
+      "corpus": "himmel-code", "provider": "google-antigravity", "purpose": "*",
+      "verdict": "deny",
+      "why": "Operator ruling 2026-11-23 (Decisions 1246 & 1259): google-antigravity is scoped to interactive inference only. Placed ahead of the himmel-code wildcard allow below so non-inference purposes default-deny"
+    },
+    {
       "corpus": "himmel-code", "provider": "*", "purpose": "*",
       "verdict": "allow",
       "why": "public-propagated code/docs; impl lanes (codex/GLM/alibaba) are ratified consumers. Caveat rides the lane guards: debrand content-not-name; secrets are excluded by block-read-secrets, not by this matrix"
@@ -364,6 +380,11 @@
     {
       "corpus": "handover-state", "provider": "anthropic", "purpose": "*",
       "verdict": "allow", "why": "operating substrate (sessions read/write handovers natively)"
+    },
+    {
+      "corpus": "handover-state", "provider": "google-antigravity", "purpose": "inference",
+      "verdict": "allow",
+      "why": "Operator ruling 2026-11-23 (Decisions 1246 & 1259): interactive Antigravity/agy sessions may read/write handover-state (inference only)"
     },
     {
       "corpus": "handover-state", "provider": "openrouter", "purpose": "inference",
@@ -408,6 +429,11 @@
       "corpus": "luna-clippings", "provider": "openai-codex", "purpose": "inference",
       "verdict": "allow",
       "why": "Operator ruling 2026-10-08 (interactive): codex (claudex lane, provider openai-codex) is supported for luna and salus, inference only. Every other provider and purpose keeps its existing deny"
+    },
+    {
+      "corpus": "luna-clippings", "provider": "google-antigravity", "purpose": "inference",
+      "verdict": "allow",
+      "why": "Operator ruling 2026-11-23 (Decisions 1246 & 1259): interactive Antigravity/agy (Google trusted route) is supported for luna-clippings, inference only"
     },
     {
       "corpus": "luna-clippings", "provider": "firecrawl", "purpose": "enrichment",
@@ -467,6 +493,11 @@
       "corpus": "luna-personal", "provider": "openai-codex", "purpose": "inference",
       "verdict": "allow",
       "why": "Operator ruling 2026-10-08 (interactive): codex (claudex lane, provider openai-codex) is supported for luna and salus, inference only. Every other provider and purpose keeps its existing deny"
+    },
+    {
+      "corpus": "luna-personal", "provider": "google-antigravity", "purpose": "inference",
+      "verdict": "allow",
+      "why": "Operator ruling 2026-11-23 (Decisions 1246 & 1259): interactive Antigravity/agy (Google trusted route) is supported for luna-personal, inference only"
     },
     {
       "corpus": "luna-personal", "provider": "deepseek", "purpose": "extraction",

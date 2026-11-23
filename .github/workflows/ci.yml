@@ -1575,6 +1575,8 @@ jobs:
       # the same way; a missing build fails it by name (PREREQUISITE-ABSENT), and the shell-unit shards, which lack the build, never run it.
       - if: ${{ matrix.pkg == 'jira' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/readiness-adapter -- bash scripts/handover/chief-kit/readiness-adapter-suite.sh
+      - if: ${{ matrix.pkg == 'jira' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/core-check-batch -- bash scripts/handover/chief-kit/core-check-batch-cases/suite.sh
 
   # Nothing built or ran the jira dist CLI end to end; the unit suite
   # mocks `request`, so a broken tsc build or a dist that crashes at startup merged
@@ -2318,8 +2320,8 @@ jobs:
       - name: Put pinned uv on PATH (Linux — requirements-resolve suite)
         if: runner.os == 'Linux' && runner.environment == 'github-hosted' && !job.container.id
         run: |
-          ver=0.13.8
-          sha=5acfd9177cfecf0bf87578f059728215ccc884388988f55f7a65041b57387d91
+          ver=0.13.9
+          sha=a7fbaff2b9a271d85c1bdb540941090fd1ce011797b4abeb48e4dcd39c2471d5
           curl -sSfL "https://github.com/astral-sh/uv/releases/download/${ver}/uv-x86_64-unknown-linux-gnu.tar.gz" -o "$RUNNER_TEMP/uv.tgz"
           echo "${sha}  $RUNNER_TEMP/uv.tgz" | sha256sum -c -
           mkdir -p "$RUNNER_TEMP/uv-bin"

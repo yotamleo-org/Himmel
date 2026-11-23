@@ -34,7 +34,7 @@ import { readReviewers } from "./reviewers";
 import { eligibleFromInventory, readToolInventory } from "./tool-inventory";
 import { findDoc, readBoardFile, readSectionsFile, scrub, validName } from "./agui/board";
 import { readOrCreateToken } from "./token-file";
-import { DRIFT_REFRESH_MS, driftCheck, driftFile, readBoardExtras, refreshDrift, type DriftRefresh } from "./board";
+import { DRIFT_REFRESH_MS, driftCheck, driftFile, readBoardExtras, readOwed, refreshDrift, type DriftRefresh } from "./board";
 import { legSync, readRoadmap } from "./roadmap";
 import { ISSUE_LIMIT, jiraMirrorDir, mergedSettings, readGithubIssues, settingsEnv, trackerSetting, trackerSources } from "./tracker-sources";
 import { readVm, writeVm } from "./vm-config";
@@ -746,7 +746,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const from = win ? Date.parse(win.opened) : snap.state.open?.opened ?? (rows.length ? Date.parse(rows[rows.length - 1].opened) : at - 86_400_000);
         const merged = await mergedIn(from, win ? Date.parse(win.closed) : at + 60_000);
         const live = id === null ? await shiftBoards(handover)(snap.locks, snap.spans) : { boards: [], missing: [], error: [] };
-        return json(redactShift(viewOf({ now: at, rows, snap, id, merged, boards: live.boards, boardMissing: live.missing, boardError: live.error, opts }), redactOut));
+        return json(redactShift(viewOf({ now: at, rows, snap, id, merged, boards: live.boards, boardMissing: live.missing, boardError: live.error, opts, owed: id === null ? readOwed(env) : undefined }), redactOut));
       }
       // the Morning report page: the dated report files under the handover root (the generator writes them, nothing here does),
       // one report parsed to blocks, and the "so far" view of today's closed shifts. The day is a validated date, never a path.

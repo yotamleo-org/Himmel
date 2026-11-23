@@ -305,13 +305,13 @@ export async function versionReady(
 // The target goes on before the source comes off, so a refused target leaves
 // the ticket where it was. A source that stays on takes the target off again;
 // a source that cannot be read back leaves both and says so.
-export async function deferTicket(key: string, version: string, reason: string | undefined, to?: string): Promise<string> {
+export async function deferTicket(key: string, version: string, reason: string | undefined, to?: string, by?: string): Promise<string> {
   if (!hasConsoleMarker()) throw new Error('version-defer needs the chief marker: only the chief defers a frozen ticket');
   if (!reason?.trim()) throw new Error('version-defer: --reason is mandatory');
   if (to === version) throw new Error(`version-defer: --to ${to} is the version the ticket is deferred from`);
   if (to) await addFixVersionGated(key, to, {});
   try {
-    await setFixVersion(key, 'remove', version);
+    await setFixVersion(key, 'remove', version, undefined, by === undefined ? undefined : { by });
   } catch (e) {
     if (!to) throw e;
     const msg = (e as Error).message;
@@ -381,7 +381,8 @@ export function registerVersionFreeze(program: Command): void {
     .requiredOption('--version <name>', 'The frozen version the ticket is deferred from')
     .option('--to <name>', 'Also add this fixVersion (a frozen target is refused)')
     .option('--reason <text>', 'Why (mandatory)')
-    .action(async (key: string, options: { version: string; to?: string; reason?: string }) => {
-      console.log(await deferTicket(key, options.version, options.reason, options.to));
+    .option('--by <O-id>', 'The operator record that takes the ticket out of the version (a move to --to, or a remove)')
+    .action(async (key: string, options: { version: string; to?: string; reason?: string; by?: string }) => {
+      console.log(await deferTicket(key, options.version, options.reason, options.to, options.by));
     });
 }

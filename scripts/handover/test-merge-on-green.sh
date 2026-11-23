@@ -870,6 +870,12 @@ case "\$1" in
             [ -z "\${STUB_BUCKET_SLEEP_AFTER:-}" ] || sleep "\$STUB_BUCKET_SLEEP_AFTER"
             exit "\${STUB_BUCKET_RC:-0}"
         fi
+        if [ "\$2" = "release" ] && [ "\$3" = "for-project" ]; then
+            [ "\${STUB_JIRA_FOR_PROJECT_FAIL:-0}" = "1" ] && { echo "release for-project: cannot be read" >&2; exit 1; }
+            fp_default='[{"release":"v1.1.3","current":"v1.1.3","versions":["v1.1.3","v1.1.4"]}]'
+            printf '%s\n' "\${STUB_JIRA_FOR_PROJECT:-\$fp_default}"
+            exit 0
+        fi
         if [ "\$2" = "release" ] && [ "\$3" = "request" ]; then
             [ "\${STUB_JIRA_REQUEST_FAIL:-0}" = "1" ] && { echo "release request: refused" >&2; exit 1; }
             req_verb="" req_key="" req_why=""
@@ -1199,6 +1205,7 @@ STUB
     GO_OLD=$(ready_pass_repo "$GO_READY_REPO" old) || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
     ready_pass_bin "$GO_READY_REPO/.bin"
     ready_pass_ledger "$GO_READY_REPO" "$GO_SHA" "$GO_OLD"
+    if [ "$(PATH="$GO_READY_REPO/.bin:$PATH" READY_STUB_HEAD="$GO_SHA" ready_pass_owner_review)" = "$READY_PASS_OWNER_LINE" ]; then pass; else fail "ready-check's owner-review line over the ready-pass fixture"; fi
 }
 
 # Sourced with MOG_LIB_ONLY=1, this file stops here: the helpers above (run_mog,
@@ -4319,6 +4326,30 @@ STUB_PR_BODY=$'Remaining: slice 2\n' ob_merge g 0 "10194b control: a partial mer
 assert_audit_has "10194b control: a Remaining:-only merge is owe=none" "owe=none"
 if [ -e "$(ob_spool g)" ]; then fail "10194b control: a Remaining:-only merge wrote the spool ($(cat "$(ob_spool g)"))"; else pass; fi
 rm -rf "$ob_tmp"
+
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "S2: the merge stamp folds a Done ticket from v1.1.4" -- --jira-transition
+assert_jira_log_has "S2: the stamp replaces the later version with the current one" "edit HIMMEL-374 --fix-version v1.1.3"
+assert_jira_log_has "S2: the stamp names merge-stamp" "edit-writer: merge-stamp"
+assert_audit_has "S2: the fold is recorded" "fixversion=v1.1.3"
+
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_JIRA_FIX_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+STUB_JIRA_FOR_PROJECT='[{"release":"R9","current":"v1.1.3","versions":["v1.1.3","v1.1.4"]}]' \
+    run_mog 0 "S2: a stamp the leave check refuses ends fixversion=failed and files the fold to the declared release" -- --jira-transition
+assert_audit_has "S2: the refused stamp is failed and its fold request rides the audit line" "fixversion=failed fold-request=Q-v1.1.3-0099"
+assert_jira_log_has "S2: the fold reads the declared release" "release for-project HIMMEL --json"
+assert_jira_log_has "S2: the INTAKE goes to the declared release, --to its declared current" "release request R9 --verb INTAKE --key HIMMEL-374 --to v1.1.3"
+assert_jira_log_has "S2: the PR is in the evidence" '--evidence {"pr":'
+
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_JIRA_FIX_FAIL=1 STUB_JIRA_FOR_PROJECT='[]' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "S2: no declared release names the project: no fold request" -- --jira-transition
+assert_audit_has "S2: no declaration reads fold-request=none" "fixversion=failed fold-request=none"
+assert_jira_log_lacks "S2: no declaration files no request" "release request"
+
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_JIRA_FIX_FAIL=1 STUB_JIRA_FOR_PROJECT_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "S2: an unreadable declaration files no fold request and still merges" -- --jira-transition
+assert_audit_has "S2: an unreadable declaration reads fold-request=failed" "fixversion=failed fold-request=failed"
+assert_jira_log_lacks "S2: an unreadable declaration files no request" "release request"
 
 echo
 echo "merge-on-green: $PASS passed, $FAIL failed"
