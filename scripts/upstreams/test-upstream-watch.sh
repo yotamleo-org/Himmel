@@ -660,6 +660,17 @@ assert_has "$out" "required field" "null field: error names the required-field g
 if [ -f "$state/himmel-state/last_seen.json" ]; then fail "null field: state file should not exist"; else pass "null field: no state file written"; fi
 assert_not_has "$out" "(null)" "null field: never renders a literal (null) row"
 
+echo "== test: own-org items are excluded, outside items kept (HIMMEL-10814) =="
+state=$(new_scratch)
+own_prs=$(jq -n '[range(1;5)] | map({repository:{nameWithOwner:"yotamleo-org/Himmel"}, number:., title:"own pr", url:("https://github.com/yotamleo-org/Himmel/pull/"+(.|tostring)), updatedAt:"2026-08-01T00:00:00Z", state:"open"})')
+base_world | jq --argjson own "$own_prs" '.prs = $own | .issues = [{repository:{nameWithOwner:"ggml-org/llama.cpp"}, number:99, title:"gpu bug", url:"https://github.com/ggml-org/llama.cpp/issues/99", updatedAt:"2026-08-01T00:00:00Z", state:"open"}] | .issue_views = {"ggml-org/llama.cpp#99": {comments:[], state:"OPEN", updatedAt:"2026-08-01T00:00:00Z", closedAt:null, title:"gpu bug", url:"https://github.com/ggml-org/llama.cpp/issues/99"}}' > "$state/world.json"
+out=$(run_watch "$state" 2>&1); rc=$?
+assert_eq 10 "$rc" "own-org: delta exit code"
+assert_eq 1 "$(jq '.items | length' "$state/himmel-state/last_seen.json")" "own-org: only the one outside item is tracked"
+report="$(report_path "$state")"
+assert_has "$(cat "$report" 2>/dev/null)" "ggml-org/llama.cpp#99" "own-org: outside item is reported (control, not a blanket drop)"
+assert_not_has "$(cat "$report" 2>/dev/null)" "yotamleo-org/Himmel" "own-org: no own-org item in the report"
+
 echo
 if [ "$fails" -eq 0 ]; then
   echo "SUMMARY: all tests passed"
