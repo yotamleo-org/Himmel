@@ -841,6 +841,159 @@ contains "anchor: the not-a-directory refusal is the exact line" "$out" "ready-c
 unset STUB_NWO_BY_CWD
 reset_stubs
 
+OR_GATE="$REPO_ROOT/scripts/ci/codeowner-review-gate.mjs"
+OR_BASE_SHA=0123456789abcdef0123456789abcdef01234567
+OR_MOVED=fedcba9876543210fedcba9876543210fedcba98
+or_rollup() { printf '[{"name":"codeowner-review-gate","workflowName":"codeowner-review-gate","status":"COMPLETED","conclusion":"%s"}]' "$1"; }
+cat > "$tmp/gate-error.mjs" <<'GATE'
+console.log('codeowner-review-gate: ERROR — boom');
+process.exit(2);
+GATE
+cat > "$tmp/gate-fail.mjs" <<'GATE'
+console.log('codeowner-review-gate: FAIL — o is an outside contributor; code-owner approval at the current head is required from: @alice (no review)');
+process.exit(1);
+GATE
+or_reset() {
+    unset STUB_OR_RD STUB_OR_PERM STUB_OR_AUTHOR STUB_OR_AUTHOR_TYPE STUB_OR_REVIEWS STUB_OR_FILES STUB_OR_CODEOWNERS STUB_OR_NOGATE
+    unset STUB_OR_RULES_FAIL STUB_OR_RATELIMIT STUB_OR_BASE_FAIL STUB_OR_GATE_FAIL STUB_OR_MOVE_HEAD STUB_OR_MOVE_BASE STUB_OR_HANG STUB_OR_GQL STUB_OR_GQL_RATE STUB_OR_BAD_PR OR_ARGS
+    export STUB_OR_GATE_FILE="$OR_GATE" READY_CHECK_GATE_SCRIPT="$OR_GATE"
+    rm -f "$STUB_OR_DIR"/*.count "$STUB_OR_DIR"/*.log "$tmp/quota/quota.tsv"
+    reset_stubs
+}
+or_go() { rc=0; out="$(RUN_MODE=owner run 2>/dev/null)" || rc=$?; }
+or_is() { check "$1: exit" "$rc" "$2"; contains "$1: the line" "$out" "$3"; }
+or_outside() { STUB_OR_PERM=read STUB_OR_AUTHOR=outsider; export STUB_OR_PERM STUB_OR_AUTHOR; }
+
+or_reset
+STUB_ROLLUP="$(or_rollup SKIPPED)" or_go
+or_is "OR1 an owner PR with the gate required" 0 "owner-review: not-required (rule-a: yotamleo has admin permission; check at head: SKIPPED)"
+
+or_reset; STUB_ROLLUP="$(or_rollup FAILURE)" or_go
+or_is "OR1n a rule-a PASS whose head check is FAILURE" 2 "owner-review: unknown (gate-mismatch:"
+or_reset; STUB_OR_RULES_FAIL=1 or_go
+or_is "OR1r the required-set read fails" 2 "owner-review: unknown (required-set:"
+or_reset
+mkdir -p "$tmp/quota"
+printf 'main\tcore\t10\t5000\t%s\t%s\tok\n' "$(( $(date +%s) + 3000 ))" "$(date +%s)" > "$tmp/quota/quota.tsv"
+or_go
+or_is "OR1q the fixture quota paused" 2 "owner-review: unknown (required-set: QUOTA-PAUSE"
+or_reset; STUB_SNAPSHOT_FAIL=1 or_go
+or_is "OR1s the snapshot fails" 2 "owner-review: unknown (snapshot:"
+or_reset; READY_CHECK_GATE_SCRIPT="$tmp/gate-error.mjs" STUB_ROLLUP="$(or_rollup SKIPPED)" or_go
+or_is "OR1g the gate script prints ERROR" 2 "owner-review: unknown (gate: codeowner-review-gate: ERROR"
+or_reset; READY_CHECK_GATE_SCRIPT="$tmp/gate-fail.mjs" STUB_ROLLUP="$(or_rollup SKIPPED)" or_go
+or_is "OR1x the gate script FAILs an owner whose head check is SKIPPED" 2 "owner-review: unknown (gate-mismatch:"
+or_reset; STUB_OR_MOVE_HEAD="$OR_MOVED" or_go
+or_is "OR1v the head moves between the snapshot and the re-read" 2 "owner-review: unknown (snapshot:"
+or_reset; unset READY_CHECK_GATE_SCRIPT; STUB_ROLLUP="$(or_rollup SKIPPED)" or_go
+or_is "OR1f no seam: the script is fetched through the contents API" 0 "owner-review: not-required (rule-a:"
+contains "OR1f: the fetch is pinned at base.sha" "$(cat "$STUB_OR_DIR/gate-fetch.log")" "?ref=$OR_BASE_SHA"
+or_reset; unset READY_CHECK_GATE_SCRIPT; STUB_OR_GATE_FAIL=1 or_go
+or_is "OR1fn the contents read fails" 2 "owner-review: unknown (gate: script unreadable"
+or_reset; STUB_OR_BASE_FAIL=1 or_go
+or_is "OR1b the pulls/<n> base read fails" 2 "owner-review: unknown (snapshot:"
+or_reset; STUB_OR_MOVE_BASE="$OR_MOVED" or_go
+or_is "OR1vb the base moves between the base read and the re-read" 2 "owner-review: unknown (snapshot:"
+
+or_reset; or_outside; STUB_ROLLUP="$(or_rollup FAILURE)" or_go
+or_is "OR2 an outside author with no approval" 0 "owner-review: required (owed: outsider is an outside contributor; code-owner approval at the current head is required from: @alice (no review))"
+or_reset; or_outside; STUB_OR_NOGATE=1 or_go
+or_is "OR2n the same author, gate not required" 0 "owner-review: not-required (no-rule:"
+or_reset; STUB_OR_AUTHOR='dependabot[bot]' STUB_OR_AUTHOR_TYPE=Bot STUB_AUTHOR=app/dependabot STUB_ROLLUP="$(or_rollup FAILURE)"
+export STUB_OR_AUTHOR STUB_OR_AUTHOR_TYPE
+or_go
+or_is "OR2b a Bot author" 0 "owner-review: required (owed:"
+rc=0; out="$(RUN_MODE=outside run 2>/dev/null)" || rc=$?
+contains "OR2b: --outside on the same stubs says outside-pr: no" "$out" "outside-pr: no"
+unset STUB_AUTHOR STUB_OR_AUTHOR STUB_OR_AUTHOR_TYPE
+or_reset; or_outside; STUB_OR_CODEOWNERS='docs/ @alice\n' STUB_ROLLUP="$(or_rollup FAILURE)" or_go
+or_is "OR2x no covering owner" 0 "owner-review: required (blocked:"
+
+or_reset; STUB_OR_RD=REVIEW_REQUIRED STUB_ROLLUP="$(or_rollup SKIPPED)" or_go
+or_is "OR3 REVIEW_REQUIRED" 0 "owner-review: required (owed: GitHub reviewDecision REVIEW_REQUIRED)"
+or_reset; STUB_OR_RD=CHANGES_REQUESTED or_go
+or_is "OR3c CHANGES_REQUESTED" 0 "owner-review: required (changes-requested:"
+or_reset; or_outside; STUB_OR_RD=APPROVED STUB_ROLLUP="$(or_rollup FAILURE)" or_go
+or_is "OR3a APPROVED, an outside author missing approvals" 0 "owner-review: required (owed:"
+or_reset; STUB_OR_RD=APPROVED STUB_ROLLUP="$(or_rollup SKIPPED)" or_go
+or_is "OR3a APPROVED on an owner" 0 "owner-review: required (satisfied: GitHub reviewDecision APPROVED)"
+or_reset; STUB_ROLLUP="$(or_rollup SKIPPED)" or_go
+notcontains "OR3n an empty reviewDecision is not required" "$out" "owner-review: required"
+
+or_reset; export STUB_OR_GQL=1; OR_ARGS="77 78" STUB_ROLLUP="$(or_rollup SKIPPED)" or_go
+or_is "OR4 two PRs" 0 "#77 owner-review: not-required (rule-a:"
+contains "OR4: the second PR has its own prefixed line" "$out" "#78 owner-review: not-required (rule-a:"
+check "OR4: one GraphQL snapshot query" "$(wc -l < "$STUB_OR_DIR/gql.count" | tr -d ' ')" "1"
+or_reset; export STUB_OR_GQL=1; OR_ARGS="101 102 103 104 105 106 107 108 109 110 111 112" or_go
+check "OR4c: twelve PRs, twelve lines" "$(grep -c '^#1[01][0-9] owner-review: ' <<< "$out")" "12"
+check "OR4c: two GraphQL snapshot queries (chunks of 10)" "$(wc -l < "$STUB_OR_DIR/gql.count" | tr -d ' ')" "2"
+or_reset; export STUB_OR_GQL=1 STUB_OR_BAD_PR=79; OR_ARGS="77 78 79" or_go
+or_is "OR4r the batch fails: the PR that fails alone is unknown" 2 "#79 owner-review: unknown (snapshot:"
+contains "OR4r: the others are retried alone and answer" "$out" "#77 owner-review: not-required"
+contains "OR4r: the second other too" "$out" "#78 owner-review: not-required"
+
+or_reset; STUB_OR_RATELIMIT=1 or_go
+or_is "OR5r the rules read answers a rate limit" 2 "owner-review: unknown (required-set:"
+notcontains "OR5r: no quota line replaces it" "$out" "QUOTA"
+or_reset; export STUB_OR_GQL=1 STUB_OR_GQL_RATE=1 OR_ARGS="77 78"; : > "$tmp/or5s-refused"
+GH_READ_REFUSED_FILE="$tmp/or5s-refused" or_go
+or_is "OR5s a rate-limited snapshot read" 2 "#77 owner-review: unknown (snapshot:"
+check "OR5s: the caller's refused-read file stays empty" "$(wc -c < "$tmp/or5s-refused" | tr -d ' ')" "0"
+cat > "$tmp/gate-hang.mjs" <<'GATE'
+setInterval(() => {}, 1000);
+GATE
+or_reset; READY_CHECK_GATE_SCRIPT="$tmp/gate-hang.mjs"; export READY_CHECK_GATE_SCRIPT
+t0=$(date +%s); or_go; t1=$(date +%s)
+or_is "OR5t a gate script that never ends" 2 "owner-review: unknown (gate: timeout after 30 s)"
+check "OR5t: it ends inside 45 s" "$([ $((t1 - t0)) -le 45 ] && echo yes)" "yes"
+or_reset; export STUB_OR_HANG=1; OR_ARGS="--deadline 3 77"
+t0=$(date +%s); or_go; t1=$(date +%s)
+or_is "OR5d --deadline 3 over a hung base read" 2 "owner-review: unknown (gate: deadline)"
+check "OR5d: it ends inside 8 s" "$([ $((t1 - t0)) -le 8 ] && echo yes)" "yes"
+
+or_reset; export STUB_OR_BASE_FAIL=1
+rc=0; out="$(run 2>/dev/null)" || rc=$?
+check "OR6 the full run exits 0 with an unknown line" "$rc" "0"
+contains "OR6: the line is printed" "$out" "owner-review: unknown (snapshot:"
+or_pos=$(grep -n '^owner-review:' <<< "$out" | cut -d: -f1)
+dd_pos=$(grep -n '^The three-dot diff read' <<< "$out" | cut -d: -f1)
+tp_pos=$(grep -n '^TRUST-PATH:' <<< "$out" | cut -d: -f1)
+vd_pos=$(grep -n '^READY-CHECK ' <<< "$out" | cut -d: -f1)
+check "OR6: after the three-dot-diff line, before TRUST-PATH and the verdict" "$((dd_pos < or_pos && or_pos < tp_pos && tp_pos < vd_pos))" "1"
+or_reset; export STUB_OR_BASE_FAIL=1; STUB_FILES="scripts/lib/fixtures/anything.txt"
+rc=0; out="$(run 2>/dev/null)" || rc=$?
+check "OR6: with TRUST-PATH yes the full run still exits 0" "$rc" "0"
+or_pos=$(grep -n '^owner-review:' <<< "$out" | cut -d: -f1)
+tp_pos=$(grep -n '^TRUST-PATH: yes' <<< "$out" | cut -d: -f1)
+check "OR6: the line sits before TRUST-PATH: yes" "$((or_pos < tp_pos))" "1"
+or_reset; export STUB_OR_BASE_FAIL=1; STUB_MSS=BLOCKED
+rc=0; out="$(run 2>/dev/null)" || rc=$?
+check "OR6n another item fails: exit 1" "$rc" "1"
+contains "OR6n: the line is unchanged" "$out" "owner-review: unknown (snapshot:"
+or_reset; export STUB_OR_RATELIMIT=1; STUB_MSS=BLOCKED
+rc=0; out="$(run 2>/dev/null)" || rc=$?
+check "OR6r another item fails and the rules read is rate limited: exit 1, not 2" "$rc" "1"
+contains "OR6r: the line is unknown (required-set:" "$out" "owner-review: unknown (required-set:"
+check "OR6r: no blocked mark in the fixture quota dir" "$(find "$tmp/quota" -type f ! -name quota.tsv 2>/dev/null | wc -l | tr -d ' ')" "0"
+
+or_reset
+t0=$(date +%s); rc=0; out="$(run 2>/dev/null)" || rc=$?; t1=$(date +%s)
+or_base_rc=$rc; or_base_s=$((t1 - t0))
+or_reset; export STUB_OR_HANG=1
+t0=$(date +%s); rc=0; out="$(run 2>/dev/null)" || rc=$?; t1=$(date +%s)
+contains "OR6t the hung owner-review reads print the deadline line" "$out" "owner-review: unknown (gate: deadline)"
+check "OR6t: the exit code equals the baseline's" "$rc" "$or_base_rc"
+check "OR6t: the run ends within baseline + 22 s" "$([ $((t1 - t0)) -le $((or_base_s + 22)) ] && echo yes)" "yes"
+
+OR7_ROOT="$tmp/or7-root"; mkdir -p "$OR7_ROOT"
+printf 'himmel_github_token_vm2=or7dummytok\n' > "$OR7_ROOT/.env"
+or_reset
+t0=$(date +%s); rc=0; out="$(GH_READ_ENV_ROOT="$OR7_ROOT" STUB_ROLLUP="$(or_rollup SKIPPED)" RUN_MODE=owner run 2>/dev/null)" || rc=$?; t1=$(date +%s)
+or_is "OR7 the real shim and gate" 0 "owner-review: not-required (rule-a:"
+check "OR7: under 5 s" "$([ $((t1 - t0)) -lt 5 ] && echo yes)" "yes"
+check "OR7: each gate call reaches the stub once" "$(wc -l < "$STUB_OR_DIR/gate-calls.log" | tr -d ' ')" "2"
+check "OR7: every gate call carries the read token" "$(grep -c '^GH_TOKEN=or7dummytok ' "$STUB_OR_DIR/gate-calls.log")" "2"
+or_reset
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

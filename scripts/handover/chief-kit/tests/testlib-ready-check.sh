@@ -40,6 +40,8 @@ gh_log() { cat "$GH_LOG"; }
 ledger_cksum() { cksum < "$LEDGER"; }
 ledger_lines() { wc -l < "$LEDGER"; }
 export GH_PR_SNAPSHOT_CACHE_DIR="$tmp/snapshot-cache"
+export STUB_OR_DIR="$tmp/or" GH_READ_ENV_ROOT="$tmp/envroot"
+mkdir -p "$STUB_OR_DIR" "$GH_READ_ENV_ROOT"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 echo "$*" >> "$GH_LOG"
@@ -49,6 +51,76 @@ case "${STUB_GH_RL:-}" in
     1) echo "GraphQL: API rate limit already exceeded for user ID 1. (RATE_LIMIT)" >&2; exit 1 ;;
     late) case "$args" in "repo view"*) ;; *) echo "GraphQL: API rate limit already exceeded for user ID 1. (RATE_LIMIT)" >&2; exit 1 ;; esac ;;
 esac
+# owner-review reads (ready-check --owner-review): rows steer them with exported STUB_OR_* vars; STUB_OR_DIR holds the call counters
+or_hang() { [ -z "${STUB_OR_HANG:-}" ] || exec sleep 600; }
+case "$args" in
+    "api repos/"*"/pulls/"*" --jq [.base.ref,.base.sha,.head.sha]|@tsv")
+        or_hang
+        [ -z "${STUB_OR_BASE_FAIL:-}" ] || { echo "gh: boom (HTTP 500)" >&2; exit 1; }
+        n="${args#api repos/*/pulls/}"; n="${n%% *}"
+        c="$STUB_OR_DIR/base.$n.count"; k=$(( $(cat "$c" 2>/dev/null || echo 0) + 1 )); echo "$k" > "$c"  # swallow-ok: an absent counter starts at zero
+        h="${STUB_HEAD:-}"; b="${STUB_OR_BASE_SHA:-0123456789abcdef0123456789abcdef01234567}"
+        if [ "$k" -ge 2 ]; then
+            [ -z "${STUB_OR_MOVE_HEAD:-}" ] || h="$STUB_OR_MOVE_HEAD"
+            [ -z "${STUB_OR_MOVE_BASE:-}" ] || b="$STUB_OR_MOVE_BASE"
+        fi
+        printf '%s\t%s\t%s\n' "${STUB_OR_BASE:-main}" "$b" "$h"; exit 0 ;;
+    "api repos/{owner}/{repo}/rules/branches/"*)
+        or_hang
+        [ -z "${STUB_OR_RATELIMIT:-}" ] || { echo "gh: API rate limit exceeded for user ID 1. (HTTP 403)" >&2; exit 1; }
+        [ -z "${STUB_OR_RULES_FAIL:-}" ] || { echo "gh: boom (HTTP 500)" >&2; exit 1; }
+        if [ -n "${STUB_OR_NOGATE:-}" ]; then printf '[]'
+        else printf '%s' '[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"codeowner-review-gate","integration_id":15368}]}}]'; fi
+        exit 0 ;;
+    "api repos/{owner}/{repo}/branches/"*"/protection/required_status_checks")
+        or_hang
+        echo "gh: Branch not protected (HTTP 404)" >&2; exit 1 ;;
+    "api -H Accept: application/vnd.github.raw repos/"*"/contents/scripts/ci/codeowner-review-gate.mjs?ref="*)
+        or_hang
+        echo "$args" >> "$STUB_OR_DIR/gate-fetch.log"
+        [ -z "${STUB_OR_GATE_FAIL:-}" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
+        cat "${STUB_OR_GATE_FILE:-/nonexistent}"; exit $? ;;
+    "api -H Accept: application/vnd.github.raw repos/"*"/contents/.github/CODEOWNERS?ref="*)
+        printf '%b' "${STUB_OR_CODEOWNERS:-* @alice\n}"; exit 0 ;;
+    "api repos/"*"/collaborators/"*"/permission")
+        echo "GH_TOKEN=${GH_TOKEN:-} $args" >> "$STUB_OR_DIR/gate-calls.log"
+        p="${STUB_OR_PERM:-admin}"
+        [ "$p" != none ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
+        printf '{"permission":"%s","role_name":"%s"}' "$p" "$p"; exit 0 ;;
+    "api --paginate repos/"*"/reviews?per_page=100 --jq .[]")
+        echo "GH_TOKEN=${GH_TOKEN:-} $args" >> "$STUB_OR_DIR/gate-calls.log"
+        printf '%b' "${STUB_OR_REVIEWS:-}"; exit 0 ;;
+    "api --paginate repos/"*"/files?per_page=100 --jq "*"@json")
+        echo "GH_TOKEN=${GH_TOKEN:-} $args" >> "$STUB_OR_DIR/gate-calls.log"
+        printf '%s\n' "${STUB_OR_FILES:-scripts/x.sh}" | while IFS= read -r f; do [ -z "$f" ] || jq -n --arg f "$f" '$f'; done; exit 0 ;;
+    "api repos/"*"/pulls/"*)
+        n="${args##*/pulls/}"
+        case "$n" in
+            ''|*[!0-9]*) ;;
+            *)
+                echo "GH_TOKEN=${GH_TOKEN:-} $args" >> "$STUB_OR_DIR/gate-calls.log"
+                jq -n --arg a "${STUB_OR_AUTHOR:-yotamleo}" --arg t "${STUB_OR_AUTHOR_TYPE:-User}" --arg h "${STUB_HEAD:-}" \
+                    '{user:{login:$a,type:$t},head:{sha:$h},changed_files:1}'; exit 0 ;;
+        esac ;;
+esac
+# several PRs in one GraphQL call (STUB_OR_GQL=1): one snapshot row per alias; STUB_OR_BAD_PR makes that PR's head read fail
+if [ -n "${STUB_OR_GQL:-}" ]; then
+    case "$args" in
+        "api repos/"*"/pulls/"*" --jq .head.sha")
+            [ "${args#*/pulls/}" != "${STUB_OR_BAD_PR:-0} --jq .head.sha" ] || exit 1
+            printf '%s\n' "${STUB_HEAD:-}"; exit 0 ;;
+        *':pullRequest(number:'*)
+            echo x >> "$STUB_OR_DIR/gql.count"
+            [ -z "${STUB_OR_GQL_RATE:-}" ] || { echo "gh: API rate limit exceeded for user ID 1. (HTTP 403)" >&2; exit 1; }
+            printf '%s' "$args" | grep -o 'p[0-9]*:pullRequest' | sed 's/^p//; s/:pullRequest$//' | jq -R -s --arg h "${STUB_HEAD:-}" '
+                split("\n") | map(select(length > 0)) | map({key:("p"+.), value:{number:(.|tonumber),headRefOid:$h,headRefName:"b",title:"t",mergeStateStatus:"CLEAN",reviewDecision:null,isCrossRepository:false,
+                author:{__typename:"User",login:"yotamleo",id:"U_stub"},body:"",
+                commits:{nodes:[{commit:{oid:$h,messageHeadline:"feat(x): [HIMMEL-1] t",messageBody:"",parents:{totalCount:1}}}],pageInfo:{hasNextPage:false,endCursor:null}},
+                reviewThreads:{nodes:[],pageInfo:{hasNextPage:false,endCursor:null}},
+                statusCheckRollup:{contexts:{nodes:[{__typename:"CheckRun",name:"codeowner-review-gate",status:"COMPLETED",conclusion:"SKIPPED"}],pageInfo:{hasNextPage:false,endCursor:null}}}}}) | from_entries | {data:{repository:.}}'
+            exit 0 ;;
+    esac
+fi
 case "$args" in
     "repo view --json owner,name"*)
         if [ -n "${STUB_NWO_BY_CWD:-}" ]; then
@@ -134,7 +206,7 @@ success|shell-unit (ubuntu-latest)}" \
                     + (if (env.STUB_AUTHOR_ID // "") != "" then {id:env.STUB_AUTHOR_ID} else {} end) end) as $author
             # STUB_RESOLVED_BY: comma list, one resolved thread per entry, `null` = no resolver
             | ($resolved | split(",") | map(select(length > 0)) | map({isResolved:true,resolvedBy:(if . == "null" then null else {login:.} end)})) as $res
-            | {data:{repository:{p77:{number:77,headRefOid:$h,headRefName:env.STUB_PR_BRANCH,title:$title,mergeStateStatus:$m,reviewDecision:null,body:(if (env.STUB_BODY_NULL // "") != "" then null else $body end),
+            | {data:{repository:{p77:{number:77,headRefOid:$h,headRefName:env.STUB_PR_BRANCH,title:$title,mergeStateStatus:$m,reviewDecision:(if (env.STUB_OR_RD // "") == "" then null else env.STUB_OR_RD end),body:(if (env.STUB_BODY_NULL // "") != "" then null else $body end),
                 author:$author,isCrossRepository:$fork,
                 commits:{nodes:[$commits[] | . as $commit | {commit:(. + {oid:(.oid // $h),parents:{totalCount:(if (($merges|split("\n")) | index($commit.oid // "")) != null then 2 else 1 end)}})}],pageInfo:{hasNextPage:false,endCursor:null}},
                 reviewThreads:{nodes:([range($u)|{isResolved:false,resolvedBy:null}] + $res),pageInfo:{hasNextPage:false,endCursor:null}},
@@ -304,6 +376,7 @@ run() {
     # shellcheck disable=SC2086  # RUN_FLAGS is a fixed word list the suite sets
     case "${RUN_MODE:-}" in
         outside) set -- --outside "$PR" ;;
+        owner) set -- --owner-review ${OR_ARGS:-$PR} ;;
         only7) set -- --only 7 "$PR" ;;
         wrapper) set -- "$PR" ;;
         none) set -- ;;

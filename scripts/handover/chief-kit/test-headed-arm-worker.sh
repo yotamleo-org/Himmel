@@ -2685,6 +2685,7 @@ ready_pass_bin "$tmp/ready26"
 # check 19 fetches origin/main and reads origin/main..<head>: a real head
 sha26=$(ready_pass_repo "$primary26") || sha26=""
 ready_pass_ledger "$primary26" "$sha26"
+check "ready-check's owner-review line over the ready-pass fixture" "$(PATH="$tmp/ready26:$PATH" READY_STUB_HEAD="$sha26" ready_pass_owner_review)" "$READY_PASS_OWNER_LINE"
 go_root26="$(cd "$primary26" && HANDOVER_DIR="$primary26/handovers" bash -c '. "$1/../../lib/handover-path.sh" && . "$1/../../lib/go-gate.sh" && go_resolve_root "$1/../../.."' _ "$HERE" 2>/dev/null)" || go_root26=""
 case "$go_root26" in
   "$tmp"/?*) echo "ok - HANDOVER_DIR e2e: resolved GO root [$go_root26] is inside the suite's temp dir"; go_root26_ok=1 ;;

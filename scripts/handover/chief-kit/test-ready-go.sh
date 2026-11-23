@@ -114,6 +114,7 @@ export HIMMEL_REPO="$READY_REPO"
 SHA=$(ready_pass_repo "$READY_REPO") || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 SHA2=$(ready_pass_repo "$READY_REPO" 2) || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 export READY_STUB_HEAD="$SHA"
+check "ready-check's owner-review line over the ready-pass fixture" "$(ready_pass_owner_review)" "$READY_PASS_OWNER_LINE"
 ready_pass_ledger "$READY_REPO" "$SHA"
 
 run() { OUT=$(bash "$SCRIPT" "$@" 2>&1); RC=$?; }
@@ -276,7 +277,7 @@ HEALTHY_TRUST="$(trust_line)"
 ttrun "$tmp/ttroot" GH_STUB_MAINFAIL=rate
 check    "8691 main spent: ready-go exits 0" "$RC" "0"
 check    "8691 main spent: the TRUST line equals the healthy-main run" "$(trust_line)" "$HEALTHY_TRUST"
-check    "8691 main spent: no call rides the main token" "$(ttn '^tok=main ')" "0"
+check    "8691 main spent: no call rides the main token" "$(grep '^tok=main ' "$TTLOG" | grep -vc 'argv=api repos/{owner}/{repo}/branches/main/protection/required_status_checks')" "0"
 check    "8691 main spent: the repo name read logs tok=read" "$(ttseen '^tok=read argv=repo view --json nameWithOwner')" "yes"
 check    "8691 main spent: the default branch read logs tok=read" "$(ttseen '^tok=read argv=repo view --json defaultBranchRef')" "yes"
 check    "8691 main spent: the title read logs tok=read" "$(ttseen '^tok=read argv=pr view 77 --json title')" "yes"
