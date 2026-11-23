@@ -5,6 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildEditFields } from './edit.js';
 import { request } from '../client.js';
+import { leaveCheck, type Leave } from '../release/leave.js';
+import { mechanismOf, requestedSet } from '../release/version-writes.js';
+import type { OperatorRow } from '../release/types.js';
 
 vi.mock('../client.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../client.js')>();
@@ -304,6 +307,25 @@ describe('edit --fix-version / --add-fix-version', () => {
     register(p);
     return p;
   }
+
+  it('a full replace that drops an open version is refused by the leave check without --by and passes with a covering one', async () => {
+    let held = ['v1.0.0'];
+    const O1: OperatorRow = { id: 'O-1', kind: 'decision', ts: '2026-11-01T00:00:00Z', decision: '1', keys: ['HIMMEL-1'], op: 'move', from_v: 'v1.0.0', to_v: 'v1.0.1' };
+    mockRequest.mockImplementation(async (method: string, path: string, body?: unknown, writer?: string, opts?: { leave?: Leave }) => {
+      if (method === 'GET') return path.endsWith('/versions') ? KNOWN_VERSIONS : { fields: { fixVersions: held.map((name) => ({ name })) } };
+      const after = requestedSet(held, body);
+      const verdict = leaveCheck({ key: 'HIMMEL-1', before: held, after, mechanism: mechanismOf(writer), leave: opts?.leave, ownAdds: new Set(),
+        decls: [{ release: 'R', project: 'HIMMEL', current: 'v1.0.0', versions: ['v1.0.0', 'v1.0.1'] }], ops: new Map([['R', new Map([['O-1', O1]])]]), released: new Set() });
+      if (!verdict.ok) throw new Error(verdict.reason);
+      held = after ?? held;
+      return {};
+    });
+    const { registerEdit } = await import('./edit.js');
+    await expect(freshProgram(registerEdit).parseAsync(['node', 'jira', 'edit', 'HIMMEL-1', '--fix-version', 'v1.0.1'])).rejects.toThrow(/open version v1\.0\.0/);
+    expect(held).toEqual(['v1.0.0']);
+    await freshProgram(registerEdit).parseAsync(['node', 'jira', 'edit', 'HIMMEL-1', '--fix-version', 'v1.0.1', '--by', 'O-1']);
+    expect(held).toEqual(['v1.0.1']);
+  });
 
   it('validates against the project versions then sends a full-replace fields.fixVersions', async () => {
     const { registerEdit } = await import('./edit.js');
@@ -785,6 +807,23 @@ describe('edit --residual-of', () => {
     const [put] = puts();
     expect(put.body.update?.['labels']).toEqual([{ add: 'residual-depth-2' }]);
     expect(put.body.update?.['fixVersions']).toEqual([{ remove: { name: 'v1.1.3' } }]);
+  });
+
+  it('at depth 2 the drop of an open declared version meets the leave check: refused, and the ticket keeps its version', async () => {
+    issues['HIMMEL-900'] = { labels: ['residual-depth-1'], fixVersions: [] };
+    issues['HIMMEL-901'] = { labels: ['residual-depth-2'], fixVersions: [{ name: 'v1.1.3' }] };
+    const base = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (method: string, path: string, body?: unknown, writer?: string, opts?: { leave?: Leave }) => {
+      if (method === 'PUT' && path === '/issue/HIMMEL-901') {
+        const before = (issues['HIMMEL-901'].fixVersions ?? []).map((v) => v.name);
+        const verdict = leaveCheck({ key: 'HIMMEL-901', before, after: requestedSet(before, body), mechanism: mechanismOf(writer), leave: opts?.leave, ownAdds: new Set(),
+          decls: [{ release: 'R', project: 'HIMMEL', current: 'v1.1.3', versions: ['v1.1.3', 'v1.1.4'] }], ops: new Map(), released: new Set() });
+        if (!verdict.ok) throw new Error(verdict.reason);
+      }
+      return base(method, path, body as never);
+    });
+    await expect(run('HIMMEL-901', '--residual-of', 'HIMMEL-900')).rejects.toThrow(/open version v1\.1\.3/);
+    expect(issues['HIMMEL-901'].fixVersions).toEqual([{ name: 'v1.1.3' }]);
   });
 
   it('a depth-2 parent stamps residual-depth-3 and removes the fixVersions', async () => {

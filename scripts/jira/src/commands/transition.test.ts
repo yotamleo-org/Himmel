@@ -20,6 +20,8 @@ vi.mock('node:child_process', async (orig) => {
 import { findTransition, registerTransition, transitionIssue } from './transition.js';
 import { request } from '../client.js';
 import type { JiraTransition } from '../types.js';
+import { declsFor, leaveGate, type Leave } from '../release/leave.js';
+import { mechanismOf, requestedSet } from '../release/version-writes.js';
 
 const transitions: JiraTransition[] = [
   { id: '11', name: 'To Do' },
@@ -633,6 +635,52 @@ describe('a Done close folds a ticket held in a later unreleased version into th
     expect(held).toEqual(['v1.1.4']);
     expect(mockRequest.mock.calls.some((c) => c[0] === 'POST' && String(c[1]).endsWith('/transitions'))).toBe(true);
     expect(errs.join('\n')).toMatch(/^WARN HIMMEL-1 .*v1\.1\.4.*edit rejected/m);
+  });
+
+  describe('with the leave check on a release declaring v1.1.3 and v1.1.4', () => {
+    const own = new Set<string>();
+    beforeEach(async () => {
+      own.clear();
+      vi.stubEnv('HOME', join(dir, 'home'));
+      mkdirSync(join(dir, 'home', '.himmel', 'state', 'jira-mirror'), { recursive: true });
+      writeFileSync(join(dir, 'home', '.himmel', 'state', 'jira-mirror', 'HIMMEL.versions.tsv'), 'v1.1.2\ttrue\t\tfalse\nv1.1.3\tfalse\t\tfalse\nv1.1.4\tfalse\t\tfalse\nv1.1.5\tfalse\t\tfalse\n');
+      const { registerRelease } = await import('./release.js');
+      const p = new Command();
+      p.exitOverride();
+      registerRelease(p);
+      await p.parseAsync(['node', 'jira', 'release', 'operator', 'declare', 'R2', '--versions', 'v1.1.3,v1.1.4', '--decision', '215', '--verbatim-file', join(dir, 'verbatim.txt')]);
+    });
+
+    function checked(start: string[], versions: unknown[]) {
+      wireFold(start, versions);
+      const base = mockRequest.getMockImplementation()!;
+      mockRequest.mockImplementation(async (method: string, path: string, body?: unknown, writer?: string, opts?: { leave?: Leave }) => {
+        if (method === 'PUT') {
+          const after = requestedSet(held, body);
+          const verdict = leaveGate({ key: 'HIMMEL-1', before: held, after, mechanism: mechanismOf(writer), leave: opts?.leave, ownAdds: own }, declsFor('HIMMEL-1'));
+          if (!verdict.ok) throw new Error(verdict.reason);
+          for (const v of after ?? []) if (!held.includes(v)) own.add(v);
+        }
+        return base(method, path, body);
+      });
+    }
+
+    it('the Done-close fold v1.1.4 to v1.1.3 passes the check under rule (1)', async () => {
+      checked(['v1.1.4'], OPEN);
+      await run('HIMMEL-1', 'Done');
+      expect(held).toEqual(['v1.1.3']);
+      expect(process.exitCode ?? 0).toBe(0);
+    });
+
+    it('with a Jira current that is not the declared current, the close prints the refusal, keeps v1.1.4, closes and exits 0', async () => {
+      const disagreeing = [...OPEN, { id: '5', name: 'v1.1.5', released: false, releaseDate: '2026-11-10' }];
+      checked(['v1.1.4'], disagreeing);
+      await run('HIMMEL-1', 'Done');
+      expect(held).toContain('v1.1.4');
+      expect(errs.join('\n')).toMatch(/^WARN HIMMEL-1 fold from v1\.1\.4 to v1\.1\.5 did not finish \(HIMMEL-1: the Fix Version write is refused/m);
+      expect(mockRequest.mock.calls.some((c) => c[0] === 'POST' && String(c[1]).endsWith('/transitions'))).toBe(true);
+      expect(process.exitCode ?? 0).toBe(0);
+    });
   });
 });
 
