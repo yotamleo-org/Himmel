@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".codex/run-hook.sh --sandbox mcp-policy.sh+block-backend-tier.sh",
+            "command": ".codex/run-hook.sh --sandbox mcp-policy.sh+block-backend-tier.sh+guard-t3-thread-tools.sh+block-t3code-unwatch-open-pr.sh",
             "timeout": 60
           }
         ]
