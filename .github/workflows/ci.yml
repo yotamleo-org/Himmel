@@ -1575,8 +1575,6 @@ jobs:
       # the same way; a missing build fails it by name (PREREQUISITE-ABSENT), and the shell-unit shards, which lack the build, never run it.
       - if: ${{ matrix.pkg == 'jira' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/readiness-adapter -- bash scripts/handover/chief-kit/readiness-adapter-suite.sh
-      # scope-approve-suite.sh drives the real `release core-check` and the real ADF renderer of the built jira CLI; a missing
-      # build fails it by name (PREREQUISITE-ABSENT), and the shell-unit shards, which lack the build, never run it.
       - if: ${{ matrix.pkg == 'jira' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/scope-approve -- bash scripts/handover/chief-kit/scope-approve-suite.sh
       - if: ${{ matrix.pkg == 'jira' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
