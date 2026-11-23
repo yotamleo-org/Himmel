@@ -50,7 +50,7 @@ export async function checkIntakeGate(
     const date = frozenDate(known.find((v) => v.name === version)?.description);
     if (date === undefined || o.override) continue;
     if (o.gate === undefined) {
-      throw new Error(`${version} is frozen (${date}): pass --gate ${INTAKE_GATES} to file into it, or file into a later version`);
+      throw new Error(`${version} is frozen (${date}): file with --proposed-version <v>, the version the operator named, or ${version} when the operator named none; the door places it (--gate ${INTAKE_GATES} still files into ${version} directly)`);
     }
     assertAdmissionsWritable();
     return { version, gate: o.gate };

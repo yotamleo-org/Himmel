@@ -110,8 +110,8 @@ exists, pasted, then green. **Impacted suites = every suite that references a
 file you touched**: `bash scripts/cr/impacted-suites.sh`, each run as one literal
 `bash scripts/quiet-run.sh suite -- bash <test-*.sh>` (nothing appended), named
 with counts; local or `= CI`: `scripts/cr/pr-check-ref/33-step3-impacted.md`.
-Restore-to-HEAD, sandbox and corpus-replay rules (destructive
-commands are VM-only): `worker-sections/shell-and-tests.md`.
+Restore-to-HEAD, sandbox and corpus-replay rules (destructive or load
+commands: VM only): `worker-sections/shell-and-tests.md`.
 
 ## Shipping
 

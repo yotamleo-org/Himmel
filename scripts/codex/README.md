@@ -22,7 +22,7 @@ line endings). It is **idempotent** and **non-destructive**:
 1. Registers the `himmel` marketplace (`<repo>/marketplace`) if not already
    registered.
 2. Enables the himmel plugin set if not already `installed, enabled`. Default
-   set (all `@himmel`): `himmel-ops handover obsidian-triage telegram-himmel`.
+   set (all `@himmel`): `himmel-ops handover obsidian-triage`.
    `himmel-ops` is the one that delivers the minerva / stuck-playbook / vm /
    himmel-doctor / himmel-update skills + the himmel-ops hooks to Codex.
 
@@ -43,6 +43,13 @@ codex. Installs pinned below it can run the manual sanitizer (see Usage).
 For himmel plugin enablement it only ever *adds* — it never removes or disables a
 himmel plugin (the one removal is upstream's `qmd@qmd`, step 3), and a re-run on a
 provisioned machine is a no-op.
+
+Codex passes the Telegram plugin's `${CLAUDE_PLUGIN_ROOT}` launcher path
+literally, which makes the MCP server fail at startup. To stop attempts on a
+machine that already has the plugin enabled, set `enabled = false` under
+`[plugins."telegram-himmel@himmel"]` in `~/.codex/config.toml` and restart
+Codex. Himmel updates preserve that setting. The standalone Telegram bridge
+uses its own service.
 
 ## Usage
 

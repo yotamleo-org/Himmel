@@ -1052,7 +1052,7 @@ export async function runAndSettle(root: string, session: string, run: Runner, n
   return res;
 }
 
-export type SendFn = (chat_id: number, text: string, replyToMessageId?: number, markup?: object) => Promise<void | number>;
+export type SendFn = (chat_id: number, text: string, replyToMessageId?: number, markup?: object, format?: boolean) => Promise<void | number>;
 
 // Send-then-commit: send each complete outbox line, advance the byte-cursor only
 // AFTER the send resolves (at-least-once on crash). Per-chat throttle is the caller's job.
@@ -1075,7 +1075,7 @@ const untaggedPageRefusal = (path: string): string | null => PAGE_TYPE.test(path
   ? `⚠️ ${basename(path)} was not sent: a spec or plan page reaches the operator only through the chief's send-file, which checks its critics first. A bridge report goes as .txt, .pdf, .png, .csv or .json, or as plain text.`
   : null;
 
-type OwedOut = { console: string; request_id: string; text: string; request_hash: string; reply_to_message_id?: number; markup?: object };
+type OwedOut = { console: string; request_id: string; text: string; request_hash: string; reply_to_message_id?: number; markup?: object; format?: boolean };
 async function sendOwedPart(root: string, chat: number, out: OwedOut, retryPath: string,
   receipt: (id: string, hash: string) => Promise<number | null>, receivedThisPass: Set<string>, send: SendFn): Promise<boolean> {
   try {
@@ -1092,7 +1092,7 @@ async function sendOwedPart(root: string, chat: number, out: OwedOut, retryPath:
         const attempts = Math.min(7, (retry.attempts ?? 0) + 1);
         await atomicWrite(retryPath, JSON.stringify({ attempts, next: Date.now() + Math.min(1800000, 30000 * 2 ** (attempts - 1)) }));
         try {
-          const id = await send(chat, out.text, out.reply_to_message_id, out.markup);
+          const id = await send(chat, out.text, out.reply_to_message_id, out.markup, out.format === true);
           if (typeof id === "number" && Number.isSafeInteger(id) && id > 0) {
             await rememberConsoleReply(root, chat, id, out.console, out.request_id, out.request_hash);
             received = id;
@@ -1141,7 +1141,7 @@ export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDo
         const bytes = Buffer.byteLength(ln + "\n", "utf8");
         const rowStart = pos;
         if (ln.trim()) {
-          let out: { text?: string; console?: string; request_id?: string; request_hash?: string; reply_to_message_id?: number; markup?: object; document_path?: string; caption?: string; via?: unknown; sha256?: unknown } | null = null;
+          let out: { text?: string; console?: string; request_id?: string; request_hash?: string; reply_to_message_id?: number; markup?: object; format?: boolean; document_path?: string; caption?: string; via?: unknown; sha256?: unknown } | null = null;
           try { out = JSON.parse(ln); } catch {}
           if (out && (out.request_id !== undefined || out.request_hash !== undefined)) {
             if (!(typeof out.console === "string" && consoleInboxPath(root, out.console) && typeof out.request_id === "string" && /^[a-f0-9]{64}-[0-9]+$/.test(out.request_id)
@@ -1180,7 +1180,7 @@ export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDo
               if (!ok) await send(meta.chat_id, `⚠️ couldn't send the file ${basename(out.document_path)} — it may be outside the send folder, missing, over 50 MB, changed since send-file queued it, sent from a group, or refused by Telegram.`);
             }
           } else if (out) {
-            const messageId = await send(meta.chat_id, out.text ?? "", out.reply_to_message_id, out.markup); // send BEFORE committing
+            const messageId = await send(meta.chat_id, out.text ?? "", out.reply_to_message_id, out.markup, out.format === true); // send BEFORE committing
             if (out.console && typeof messageId === "number") await rememberConsoleReply(root, meta.chat_id, messageId, out.console);
           }
           if (blocked) await atomicWrite(sentPath, sentHash);
@@ -2313,8 +2313,8 @@ async function sessionsList(root: string): Promise<string[]> {
   try { return await readdir(join(root, "sessions")); } catch { return []; }
 }
 
-export async function replyViaOutbox(root: string, chat_id: number, text: string, consoleName?: string, replyToMessageId?: number, markup?: object, requestId?: string, requestHash?: string): Promise<void> {
-  await appendOutboxLine(root, chat_id, { text, ...(consoleName ? { console: consoleName } : {}), ...(requestId ? { request_id: requestId, request_hash: requestHash } : {}), ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_to_message_id: replyToMessageId } : {}), ...(markup ? { markup } : {}) });
+export async function replyViaOutbox(root: string, chat_id: number, text: string, consoleName?: string, replyToMessageId?: number, markup?: object, requestId?: string, requestHash?: string, format?: boolean): Promise<void> {
+  await appendOutboxLine(root, chat_id, { text, ...(format ? { format: true } : {}),...(consoleName ? { console: consoleName } : {}), ...(requestId ? { request_id: requestId, request_hash: requestHash } : {}), ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_to_message_id: replyToMessageId } : {}), ...(markup ? { markup } : {}) });
 }
 
 export type MonitorSendFn = (text: string) => Promise<boolean>;
@@ -2612,9 +2612,9 @@ export async function main(): Promise<void> {
   const notifyDocFail: NotifyDocFailFn = async (chatId, name) => {
     await sendMessage(token, chatId, `⚠️ couldn't download "${name}" (it may exceed Telegram's ~20MB limit) — I forwarded your caption only.`);
   };
-  const send: SendFn = async (chat, text, replyTo, markup) => {
+  const send: SendFn = async (chat, text, replyTo, markup, format) => {
     let messageId: number | undefined;
-    await sendMessage(token, chat, text, undefined, undefined, id => { messageId = id; }, replyTo, markup);
+    await sendMessage(token, chat, text, undefined, undefined, id => { messageId = id; }, replyTo, markup, format);
     return messageId;
   };
   // inbound.jsonl's cursor is ROOT-scoped, not chat-scoped, so a

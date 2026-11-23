@@ -257,6 +257,8 @@ reg_case() {
 }
 reg_case regall all
 check_rc 0 "$rc" "fully registered set -> exit 0"
+reg_case regnotelegram skip telegram-himmel
+check_rc 0 "$rc" "Telegram absent -> exit 0"
 
 # 8a. no config.toml at all -> the registration cannot be shown -> fail closed
 H="$(make_home regnocfg "$NEW_TID" "$SMALL_WAW")"
@@ -291,9 +293,9 @@ want_line 'GUARDRAILS MAY BE OFF' "$out" "himmel-ops missing escalates (it carri
 if grepq "$out" "handover@$MARKET"; then fail "a plugin that IS enabled must not be named missing (out: $out)"; else pass "only the missing plugin is named (per-plugin, not all-or-nothing)"; fi
 
 # 8e. PARTIAL: a non-guardrail plugin absent -> named, but no guardrails alarm
-reg_case regpartial skip telegram-himmel
-check_rc 1 "$rc" "telegram-himmel absent -> exit 1"
-want_line "telegram-himmel@$MARKET" "$out" "absent telegram-himmel is named"
+reg_case regpartial skip handover
+check_rc 1 "$rc" "handover absent -> exit 1"
+want_line "handover@$MARKET" "$out" "absent handover is named"
 if grepq "$out" 'GUARDRAILS MAY BE OFF'; then fail "a lost non-guardrail plugin must not claim guardrails are off (out: $out)"; else pass "non-guardrail loss does not cry GUARDRAILS MAY BE OFF"; fi
 
 # 8f. same plugin name under ANOTHER marketplace does not count
