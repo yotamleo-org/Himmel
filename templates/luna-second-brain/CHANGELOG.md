@@ -8,6 +8,11 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.115] — 2026-11-23
+
+### Changed
+- `.gitleaks.toml` allows the quoted fixture file name `-fixture-epoch1.md`, which a session note produced and the vault sync read as `key =` plus a value. One exact literal beside the existing stem row; no pattern opened.
+
 ## [0.4.114] — 2026-11-20
 
 ### Changed
