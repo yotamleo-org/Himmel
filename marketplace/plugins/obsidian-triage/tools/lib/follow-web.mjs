@@ -68,8 +68,8 @@ export const QMD_DEFAULT_BUDGET = 40;
 export const QMD_DEFAULT_MIN_SCORE = 0.5;
 const QMD_TIMEOUT_MS = 20000;
 
-// External-CLI rung (generalized prompt-in/JSON-out adapter — e.g. Google
-// Antigravity's `agy`). Configured entirely via ENV so any similar CLI plugs
+// External-CLI rung (generalized prompt-in/JSON-out adapter).
+// Configured entirely via ENV so any similar CLI plugs
 // in without per-tool code. Budget-capped like firecrawl.
 export const CLI_DEFAULT_BUDGET = 20;
 const CLI_DEFAULT_TIMEOUT_MS = 30000;
@@ -676,10 +676,11 @@ function parseWebFactStdout(stdout) {
 
 /**
  * Build a generalized external-CLI-backed `webFn(query) -> {found,url,title,
- * snippet}`. This is the Antigravity rung: the operator sets FOLLOW_WEB_CLI to
- * the command (e.g. `agy` or an absolute path) and FOLLOW_WEB_CLI_ARGS to
+ * snippet}`. The operator sets FOLLOW_WEB_CLI to
+ * the command (bare name or absolute path) and FOLLOW_WEB_CLI_ARGS to
  * whatever flags run one headless prompt; the prompt is passed as the LAST arg.
- * Returns null unless FOLLOW_WEB_CLI is set (default OFF). Budget-capped: after
+ * Returns null unless FOLLOW_WEB_CLI is set (default OFF); agy is refused
+ * because Antigravity work requires the guarded T3 thread lane. Budget-capped: after
  * `budget` calls it returns `{found:false}` without spawning. Any spawn error /
  * nonzero status / non-JSON reply resolves to `{found:false}` (never throws).
  * verifyWebClaims still requires a claim-specific token in the returned evidence.
@@ -687,6 +688,7 @@ function parseWebFactStdout(stdout) {
 export function makeCliWebFn(env = process.env) {
   const cmd = (env.FOLLOW_WEB_CLI || "").trim();
   if (!cmd) return null;
+  if (/^agy(?:\.exe|\.cmd)?$/i.test(cmd.replace(/\\/g, "/").split("/").pop())) return null;
   const extra = (env.FOLLOW_WEB_CLI_ARGS || "").trim();
   const preArgs = extra ? extra.split(/\s+/) : [];
   let remaining = parseInt(env.FOLLOW_WEB_CLI_BUDGET || "", 10) || CLI_DEFAULT_BUDGET;

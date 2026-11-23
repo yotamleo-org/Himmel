@@ -317,6 +317,10 @@ git -C "$gemini_repo" add GEMINI.md
 run 2 "tracked root GEMINI.md refuses check" -- --check
 if grep -q 'GEMINI.md' "$TMP/err"; then ok "duplicate gate identifies GEMINI.md"
 else bad "duplicate gate identifies GEMINI.md"; fi
+mkdir -p "$TMP/failed-git"
+printf '#!/bin/sh\nexit 128\n' > "$TMP/failed-git/git"
+chmod +x "$TMP/failed-git/git"
+PATH="$TMP/failed-git:$PATH" run 2 "check refuses when tracked-root inventory cannot be read" -- --check
 GEN="$SAVED_GEN"
 
 printf '' > "$TMP/empty-preamble.md"

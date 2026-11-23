@@ -36,8 +36,9 @@ const lf = (s) => s.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 const die = (code, msg) => { process.stderr.write(msg + '\n'); process.exit(code); };
 
 function build() {
-  const gemini = spawnSync('git', ['-C', REPO_ROOT, 'ls-files', '--error-unmatch', '--', 'GEMINI.md'], { encoding: 'utf8' });
-  if (gemini.status === 0) {
+  const gemini = spawnSync('git', ['-C', REPO_ROOT, 'ls-files', '--', 'GEMINI.md'], { encoding: 'utf8' });
+  if (gemini.status !== 0) die(2, 'agents-md: cannot evaluate tracked root GEMINI.md inventory (git ls-files failed).');
+  if (gemini.stdout.trim()) {
     die(2, 'agents-md: tracked root GEMINI.md duplicates AGENTS.md in Antigravity. Remove it from the index; keep CLAUDE.md as the source of truth.');
   }
   for (const [label, p] of [['source CLAUDE.md', SOURCE], ['preamble', PREAMBLE], ['debrand table', DEBRAND]]) {
