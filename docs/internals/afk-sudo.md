@@ -89,11 +89,17 @@ The bridge bot sends only the id and the Approve / Deny buttons: `afk-sudo-reque
 messages sit in a different Telegram chat from the bridge chat where the chief's messages
 and the Approve prompts are, even though both use `operator_id` as the chat id. An ask
 whose only message comes from the notice bot cannot be approved from the chief's chat. `afk-sudo-request --card ID --operator OP --session S` sends that bridge card
-for a request root has already filed: `AFK grant <id>: read the notice-bot message, then
-approve · session <S> · chief <HIMMEL_CONSOLE_NAME or none>` with the buttons. It exits 0
-once the card is sent, 5 when there is no bridge token or the send fails, and 2 for an id
-that is not 8 base32 characters. The sudo kind's card carries the same session and chief
-words. An Approve tap asks for the nonce and the
+for a request root has already filed, with the buttons. The grant card is up to four lines:
+`AFK grant <id>: approve <id> <nonce> <code> → run once · deny <id> <nonce> → refuse`, then
+`The agent says: <description>` (the Bash call's own description, one line, cut at a word
+boundary at 80 characters), then `Command (unverified): $ <first command line>` (cut at a
+word boundary at 100), then `session <S> · chief <HIMMEL_CONSOLE_NAME or none> · nonce:
+notice-bot chat`. `--desc` and `--cmd` carry the two agent-supplied lines; without them
+the card has line 1 and the session line only. The bridge bot is same-uid, so both lines
+are the agent's words, marked so; root's notice holds the verified command and the nonce.
+It exits 0 once the card is sent, 5 when there is no bridge token or the send fails, and 2
+for an id that is not 8 base32 characters. The sudo kind's card keeps `read the
+notice-bot message, then approve` with the same session and chief words. An Approve tap asks for the nonce and the
 code; a typed or replied `NONCE CODE` pair is held like a bare code, never forwarded to a
 session (a session can call the helper's `approve` itself).
 
@@ -321,7 +327,13 @@ approval, and the worker's retry passes the classifier for that one call.
 
 1. The classifier refuses a Bash call. `scripts/hooks/approval-grant-request.sh`
    (`PermissionDenied`, matcher `Bash`) pipes the command's exact bytes to
-   `sudo -n afk-sudo grant-request --session S --cwd D --why <reason>`. It prints nothing
+   `sudo -n afk-sudo grant-request --session S --cwd D --why <reason> --desc <description>`,
+   where the description is the Bash call's own `description` field, first line only, at
+   most 200 characters, with every control (Cc), format and bidi (Cf) character and U+2028
+   and U+2029 dropped, so no line separator can draw a forged line on the card (empty when
+   the call has none, or when `perl` is missing). An empty reply from the helper, as an
+   older helper that does not know `--desc` gives, makes the hook ask once more without
+   `--desc`, so a grant never fails closed on version skew. It prints nothing
    and exits 0 on every path. It files only a reason with a bracketed classifier category
    (`[Unauthorized Persistence]`): a no-verdict denial, "Classifier unavailable" or a
    credential, secret, token or exfiltration category files nothing.
@@ -345,9 +357,18 @@ approval, and the worker's retry passes the classifier for that one call.
      refusal.
 2. Root refuses a secret read or another never-remote shape before any notice is sent.
    Otherwise it binds every file the command names (sha256 and dev/inode, as in the run
-   kind), freezes the record and sends the operator the full command, the cwd, the bound
-   files and the classifier's reason, labelled as a claim. The notice is built from root's
-   record, never from the classifier-denial log.
+   kind), freezes the record and sends the operator a notice built from root's record,
+   never from the classifier-denial log. Its head is five lines (six when the command has
+   more than one line), at most 400 characters:
+   `approve <id> <nonce> <code> → run once · deny <id> <nonce> → refuse`; `The agent says:
+   <description>` (the agent's claim, cut at a word boundary at 75); `The classifier says:
+   <classifier category> — <reason>` (cut at 56); `Command (unverified): $ <first
+   line>` (cut at a word boundary at 85, then `…(+n lines)` on its own line); `Chief: no view`
+   (the permission hook files the ask, so no chief has a view). A cut ask adds
+   `TRUNCATED, full request attached` under the head, never above it. Below the head: the
+   session, ticket and expiry, the cwd, the full command (up to ten lines, each cut at a
+   word boundary at 300) and each bound file's path and sha256. A file's text is never on
+   the notice; the attached request holds it.
 3. The operator replies `NONCE CODE`. Root writes the grant
    `/var/lib/himmel/afk-sudo/grants/<id>.json` (root, 0600), with an expiry of now plus
    `grant.ttl_s`, and an empty marker `/var/lib/himmel/afk-grants/<sha256>.<id>` (root,
