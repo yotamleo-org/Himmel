@@ -1,7 +1,10 @@
 // scripts/where-are-we/provision.mjs — L3 orchestrator-seam CLI.
 // Two verbs, the two directions of the push-side seam:
-//   slice --ledger <p> --for <KEY>            READ  → prints the KEY's slice
-//                                                    (empty on miss/contentless)
+//   slice --ledger <p> --for <KEY> [--index <f>]
+//                                             READ  → prints the KEY's slice
+//                                                    (empty on miss/contentless);
+//                                                    --index reads only the bytes
+//                                                    appended since the last run
 //   emit  --ledger <p> --key <KEY> [fields]   WRITE → appends ONE structured
 //                                                    record via appendRecords
 //   compact --ledger <p>                      WRITE → drops the records fold() no
@@ -16,6 +19,7 @@ import { readRecords } from './lib/ledger.mjs';
 import { appendRecords, compactLedger } from './lib/append.mjs';
 import { fold } from './lib/fold.mjs';
 import { renderSlice, buildEmitRecord } from './lib/provision.mjs';
+import { sliceFromIndex } from './lib/slice-index.mjs';
 import { UsageError } from './lib/errors.mjs';
 
 // Split a ';'-separated list into a trimmed, empty-dropped array.
@@ -25,7 +29,7 @@ function parseList(s) {
 
 export function parseArgs(argv) {
   const a = {
-    verb: argv[0], ledger: null, key: null, now: null,
+    verb: argv[0], ledger: null, key: null, now: null, index: null,
     next_action: null, blockers: null, awaiting_operator: null,
     clearNext: false, clearBlockers: false, clearAwaiting: false,
   };
@@ -34,6 +38,7 @@ export function parseArgs(argv) {
     if (t === '--ledger') a.ledger = argv[++i];
     else if (t === '--for' || t === '--key') a.key = argv[++i];
     else if (t === '--now') a.now = argv[++i];
+    else if (t === '--index') a.index = argv[++i];
     else if (t === '--next-action') a.next_action = argv[++i];
     else if (t === '--blockers') a.blockers = parseList(argv[++i]);
     else if (t === '--awaiting') a.awaiting_operator = parseList(argv[++i]);
@@ -57,6 +62,12 @@ export function main(argv, deps = { readRecords, appendRecords, compactLedger })
   if (a.verb === 'slice') {
     if (!a.key) throw new UsageError('slice: --for <KEY> is required');
     if (!a.ledger) throw new UsageError('slice: --ledger <path> is required');
+    if (a.index) {
+      try {
+        const r = sliceFromIndex(a.ledger, a.index, a.key);
+        if (r) return r.out;
+      } catch { }
+    }
     let records;
     // Fail-open: a corrupt/half-written ledger must not break plan generation.
     try { records = read(a.ledger); }
