@@ -719,7 +719,7 @@ MSG_CAP = 3500
 EL_CAP, EL_KEEP = 120, 100
 ARGS_SHOWN = 10
 SCRIPT_LINES, LINE_KEEP = 10, 100
-HEAD_DESC, HEAD_REASON, HEAD_CMD = 80, 60, 90
+HEAD_DESC, HEAD_REASON, HEAD_CMD = 75, 60, 85
 
 
 def notice_token():
@@ -963,9 +963,10 @@ def plain_reason(why):
 
 def grant_facts(rec, nonce, ttl, digest):
     """The grant notice (HTML, at most MSG_CAP) and whether anything was cut (the full request is then attached).
-    Built from root's frozen record only, never from the classifier-denial log. Lines 1-5 are the head: the exact
-    reply, what the agent says the command does (its claim), the refusal reason in plain words, the first line of the
-    raw command (unverified: the agent's text), and the chief's view. A file the command runs shows its path and
+    Built from root's frozen record only, never from the classifier-denial log. The head is five lines, six when the
+    command has more than one: the exact reply, what the agent says the command does (its claim), the refusal reason
+    in plain words, the first line of the raw command (unverified: the agent's text), `…(+n lines)` for the rest of
+    it, and the chief's view. A file the command runs shows its path and
     sha256 only, never its text."""
     rid, cmd = rec["id"], rec["cmd"]
     left = max(1, round((rec["expires"] - now()) / 60))
@@ -974,7 +975,7 @@ def grant_facts(rec, nonce, ttl, digest):
     desc, dcut = word_cut(rec.get("desc") or "", HEAD_DESC)
     first, fcut = word_cut(lines[0], HEAD_CMD)
     reason = plain_reason(rec.get("blocked_by"))
-    head = [f"approve {rid} <b>{nonce}</b> &lt;code&gt; → run once · deny {rid} → refuse",
+    head = [f"approve {rid} <b>{nonce}</b> &lt;code&gt; → run once · deny {rid} {nonce} → refuse",
             "The agent says: " + (esc(desc)[0] + ("…" if dcut else "") if desc else "(no description given)"),
             "Refused because: " + (reason or "(no reason given)"),
             f"Command (unverified): $ {esc(first)[0]}" + ("…" if fcut else "")]

@@ -90,7 +90,7 @@ messages sit in a different Telegram chat from the bridge chat where the chief's
 and the Approve prompts are, even though both use `operator_id` as the chat id. An ask
 whose only message comes from the notice bot cannot be approved from the chief's chat. `afk-sudo-request --card ID --operator OP --session S` sends that bridge card
 for a request root has already filed, with the buttons. The grant card is up to four lines:
-`AFK grant <id>: approve <id> <nonce> <code> → run once · deny <id> → refuse`, then
+`AFK grant <id>: approve <id> <nonce> <code> → run once · deny <id> <nonce> → refuse`, then
 `The agent says: <description>` (the Bash call's own description, one line, cut at a word
 boundary at 80 characters), then `Command (unverified): $ <first command line>` (cut at a
 word boundary at 100), then `session <S> · chief <HIMMEL_CONSOLE_NAME or none> · nonce:
@@ -354,11 +354,12 @@ approval, and the worker's retry passes the classifier for that one call.
 2. Root refuses a secret read or another never-remote shape before any notice is sent.
    Otherwise it binds every file the command names (sha256 and dev/inode, as in the run
    kind), freezes the record and sends the operator a notice built from root's record,
-   never from the classifier-denial log. Its head is five lines, at most 400 characters:
-   `approve <id> <nonce> <code> → run once · deny <id> → refuse`; `The agent says:
-   <description>` (the agent's claim, cut at a word boundary at 80); `Refused because:
+   never from the classifier-denial log. Its head is five lines (six when the command has
+   more than one line), at most 400 characters:
+   `approve <id> <nonce> <code> → run once · deny <id> <nonce> → refuse`; `The agent says:
+   <description>` (the agent's claim, cut at a word boundary at 75); `Refused because:
    <classifier category> — <reason>` (cut at 60); `Command (unverified): $ <first
-   line>` (cut at a word boundary at 90, `…(+n lines)` after it); `Chief: no view`
+   line>` (cut at a word boundary at 85, then `…(+n lines)` on its own line); `Chief: no view`
    (the permission hook files the ask, so no chief has a view). A cut ask adds
    `TRUNCATED, full request attached` under the head, never above it. Below the head: the
    session, ticket and expiry, the cwd, the full command (up to ten lines, each cut at a

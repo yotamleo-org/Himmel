@@ -83,7 +83,7 @@ check "root gets the exact command bytes on stdin" "$(printf '%s' "$CMD" | sha25
 quiet "a pending grant"
 check "a pending grant: one bridge send" "1" "$(printf '%s\n' "$SENT" | grep -c 'chat_id=4242')"
 has "a pending grant: the card goes to the helper's operator chat" "chat_id=4242" "$SENT"
-has "RED HIMMEL-10735: a pending grant: the card's line 1 is the exact reply" "text=AFK grant abcdefgh: approve abcdefgh <nonce> <code> → run once · deny abcdefgh → refuse" "$SENT"
+has "RED HIMMEL-10735: a pending grant: the card's line 1 is the exact reply" "text=AFK grant abcdefgh: approve abcdefgh <nonce> <code> → run once · deny abcdefgh <nonce> → refuse" "$SENT"
 has "a pending grant: the card names the session and chief" "session S1 · chief chief-A" "$SENT"
 has "RED HIMMEL-10735: a pending grant: the card shows the command, marked unverified" "Command (unverified): \$ $CMD" "$SENT"
 has "a pending grant: the card carries the Approve button" "afk:approve:abcdefgh" "$SENT"
@@ -104,6 +104,12 @@ lacks "RED HIMMEL-10735: its second line never reaches the card" "SECONDLINE" "$
 GDESC=''
 run Bash $'echo one\necho TWOLINE'
 lacks "RED HIMMEL-10735: only the command's first line goes on the card" "TWOLINE" "$SENT"
+GDESC="a$(printf 'é%.0s' $(seq 1 150))"
+LC_ALL=C run Bash "a$(printf 'é%.0s' $(seq 1 200))"
+check "RED HIMMEL-10735: a description cut in the C locale stays valid UTF-8 on the helper's argv" 0 "$(iconv -f UTF-8 -t UTF-8 < "$TMP/argv" > /dev/null 2>&1; echo $?)"
+check "RED HIMMEL-10735: the card stays valid UTF-8 when its lines are cut in the C locale" 0 "$(iconv -f UTF-8 -t UTF-8 < "$TMP/curl" > /dev/null 2>&1; echo $?)"
+GDESC=''
+run Bash $'echo one\necho TWOLINE'
 check "RED HIMMEL-10735: root still gets every command byte on stdin" "$(printf '%s' $'echo one\necho TWOLINE' | sha256sum)" "$(sha256sum < "$TMP/stdin")"
 
 NO_VERDICT="The server-side auto mode classifier gave no verdict for Bash: another call in this response was changed by a hook after auto mode reviewed it, or could not be confirmed unchanged, so this call's review no longer applies. This is not a judgment that the action is unsafe."

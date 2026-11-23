@@ -55,6 +55,7 @@ one_line() {
     if [ "${#s}" -le "$2" ]; then printf '%s' "$s"; return; fi
     c=${s:0:$2}
     case "$c" in *" "*) c=${c% *} ;; esac
+    c=$(printf '%s' "$c" | iconv -c -f UTF-8 -t UTF-8 2>/dev/null)
     c=${c%"${c##*[![:space:]]}"}
     printf '%s…' "$c"
 }
@@ -67,7 +68,7 @@ send_card() {
     if [ "$kind" = grant ]; then
         # The bridge bot is same-uid, so the claim and the command here are the agent's words, marked as such;
         # root's notice holds the verified copy and the nonce.
-        text="AFK grant $id: approve $id <nonce> <code> → run once · deny $id → refuse"
+        text="AFK grant $id: approve $id <nonce> <code> → run once · deny $id <nonce> → refuse"
         d=$(one_line "${card_desc:-}" 80)
         c=$(one_line "${card_cmd:-}" 100)
         [ -n "$d" ] && text+=$'\n'"The agent says: $d"

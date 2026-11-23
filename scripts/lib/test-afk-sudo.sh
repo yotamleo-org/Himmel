@@ -530,7 +530,7 @@ card_out=$(card --card abcdefgh --operator 4242 --session S1); card_rc=$?
 args=$(cat "$tmp/curl.args" 2>/dev/null)
 assert_eq "--card exits 0 once the card is sent" 0 "$card_rc"
 assert_contains "the grant card goes to the operator's bridge chat" "chat_id=4242" "$args"
-assert_contains "RED HIMMEL-10735: the grant card's line 1 is the exact reply" "text=AFK grant abcdefgh: approve abcdefgh <nonce> <code> → run once · deny abcdefgh → refuse" "$args"
+assert_contains "RED HIMMEL-10735: the grant card's line 1 is the exact reply" "text=AFK grant abcdefgh: approve abcdefgh <nonce> <code> → run once · deny abcdefgh <nonce> → refuse" "$args"
 assert_contains "the grant card names the asking session" "session S1" "$args"
 assert_contains "the grant card names the asking worker's chief" "chief AO-roadmap-chief" "$args"
 assert_contains "the grant card carries the Approve button" "afk:approve:abcdefgh" "$args"
@@ -552,7 +552,7 @@ LONGCMD='node /srv/app/scripts/jira/dist/index.js record-decision --keys 6395,63
 card_out=$(card --card abcdefgh --operator 4242 --session S1 --desc 'Moves 72 tickets out of v1.1.3 $(whoami) `id` <b>x</b> & more' --cmd "$LONGCMD"); card_rc=$?
 text=$(card_text)
 assert_eq "RED HIMMEL-10735: --desc and --cmd are accepted" 0 "$card_rc"
-assert_eq "RED HIMMEL-10735: card line 1 carries the reply shape" "AFK grant abcdefgh: approve abcdefgh <nonce> <code> → run once · deny abcdefgh → refuse" "$(printf '%s\n' "$text" | head -1)"
+assert_eq "RED HIMMEL-10735: card line 1 carries the reply shape" "AFK grant abcdefgh: approve abcdefgh <nonce> <code> → run once · deny abcdefgh <nonce> → refuse" "$(printf '%s\n' "$text" | head -1)"
 # shellcheck disable=SC2016 # literal text with shell metacharacters, nothing to expand
 assert_eq "RED HIMMEL-10735: card line 2 is the agent's claim, shown literally" 'The agent says: Moves 72 tickets out of v1.1.3 $(whoami) `id` <b>x</b> & more' "$(printf '%s\n' "$text" | sed -n 2p)"
 cmdline=$(printf '%s\n' "$text" | sed -n 3p)
@@ -1652,7 +1652,7 @@ gpl() { printf '%s' "$2" | AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + $1)) python3 
 new_root gplain; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
 out=$(gpl 0 "$GCMD" 'Fetches a demo package and prints a cow' '[Code from External] fetches a package from the web'); id=$(rid "$out")
 text=$(tg notice sendMessage text); n=$(state_nonce "$id")
-assert_eq "RED HIMMEL-10735: line 1 is the reply, with the nonce and the code slot" "approve $id <b>$n</b> &lt;code&gt; → run once · deny $id → refuse" "$(printf '%s\n' "$text" | sed -n 1p)"
+assert_eq "RED HIMMEL-10735: line 1 is the reply, with the nonce and the code slot" "approve $id <b>$n</b> &lt;code&gt; → run once · deny $id $n → refuse" "$(printf '%s\n' "$text" | sed -n 1p)"
 assert_eq "RED HIMMEL-10735: line 2 is the agent's own description, marked as its claim" "The agent says: Fetches a demo package and prints a cow" "$(printf '%s\n' "$text" | sed -n 2p)"
 assert_eq "RED HIMMEL-10735: line 3 is the refusal reason in plain words" "Refused because: Code from External — fetches a package from the web" "$(printf '%s\n' "$text" | sed -n 3p)"
 assert_eq "RED HIMMEL-10735: line 4 is the raw command, marked unverified" "Command (unverified): \$ $GCMD" "$(printf '%s\n' "$text" | sed -n 4p)"
