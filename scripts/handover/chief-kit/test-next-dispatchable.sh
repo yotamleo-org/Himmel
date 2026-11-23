@@ -5085,8 +5085,10 @@ printf 'v1.0.1\tfalse\t\n' > "$PD/m/HIMMEL.versions.tsv"
 )
 printf '# chief\n\n## Live state\n\npool-disposition: %s question decision 977\n' "$KP-9702" > "$PDB/chief.md"
 mkfleet "$PDB/fleet.json"
-bash "$HERE/owe.sh" add --bucket "$PDB" --chief fixture --kind proof --key "$KP-9701" --text 'run the 11-16 replay' >/dev/null
-bash "$HERE/owe.sh" add --bucket "$PDB" --chief fixture --kind proof --key "$KP-9707" --text 'run the reader replay' >/dev/null
+bash "$HERE/owe.sh" add --bucket "$PDB" --chief fixture --kind proof --key "$KP-9701" --text 'run the 11-16 replay' >/dev/null \
+    || fail "10257: could not seed the owed proof of 9701"
+bash "$HERE/owe.sh" add --bucket "$PDB" --chief fixture --kind proof --key "$KP-9707" --text 'run the reader replay' >/dev/null \
+    || fail "10257: could not seed the owed proof of 9707"
 mkdir -p "$PD/st/workers" "$PD/state"
 printf '{"ts":"t","event":"merge","key":"%s","pr":"5707","contract":"no","result":"noop"}\n' "$KP-9707" > "$PD/st/status-events.jsonl"
 printf 'Slice one.\n\nRemaining: the reader half\n' > "$PR_BODY_DIR/5707"
@@ -5172,7 +5174,8 @@ sed 's/^statusCategory: "x"/statusCategory: "Done"/' "$PDM/$KP-9706.md" > "$PDM/
 pd3="$(pd_run)"
 has "10257: a hold whose blocker is Done gates nothing" "$pd3" "RESUME${TAB}$KP-9702${TAB}"
 has "10257: a readiness c row whose blocker is Done is stale and gates nothing" "$pd3" "RESUME${TAB}$KP-9705${TAB}"
-bash "$HERE/owe.sh" close --bucket "$PDB" --id o1 --key fixture-closed >/dev/null
+bash "$HERE/owe.sh" close --bucket "$PDB" --id o1 --key fixture-closed >/dev/null \
+    || fail "10257: could not close the owed proof of 9701"
 pd4="$(pd_run)"
 lacks "10257: a closed owed proof no longer names the ticket # pool-owed" "$pd4" "# pool-owed $KP-9701 "
 check "10257: with its proof closed and its slice on main the ticket is a # pool-done-candidate" "1" "$(printf '%s\n' "$pd4" | grep -c "^# pool-done-candidate $KP-9701 ")"
