@@ -247,6 +247,16 @@ describe('through the client on fixture roots (T4)', () => {
     expect(t.set).toEqual(['v1.1.3']);
   });
 
+  it('an own add is retired once removed: a version another writer re-adds is not this process\'s to remove', async () => {
+    himmel();
+    const t = transport(['v1.1.3']);
+    await setFixVersion('HIMMEL-5', 'add', 'v1.1.4');
+    await setFixVersion('HIMMEL-5', 'remove', 'v1.1.4');
+    t.set = ['v1.1.3', 'v1.1.4'];
+    await expect(setFixVersion('HIMMEL-5', 'remove', 'v1.1.4')).rejects.toThrow(/open version v1\.1\.4/);
+    expect(t.set).toEqual(['v1.1.3', 'v1.1.4']);
+  });
+
   it('a SALUS key under only a HIMMEL declaration is skipped, and its journal row is written', async () => {
     himmel();
     const journal = join(root, 'version-writes.jsonl');

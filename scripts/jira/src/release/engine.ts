@@ -1132,7 +1132,7 @@ function repairOf(release: string, r: RulingRow, live: boolean, cur: string[]): 
   return `${first}the chief completes it with \`${finish}\` (add --gate <reason> when ${vName(r.op.to_v)} is frozen) or restores the source with \`${restore}\`, then \`jira release rm-run ${release}\` replays the row and receipt once`;
 }
 
-type Repair = { line: string; holds: string[]; lacks: string[] };
+type Repair = { line: string; holds: string[]; lacks: string[]; basis?: string | null };
 type VoidRow = RulingRow & { repair?: Repair };
 
 type Route = { void: true; repair: Repair | null; why: string } | { void: false; why: string };
@@ -1176,7 +1176,7 @@ async function finishHalf(ctx: Ctx, l: Loaded, epoch: number, last: RulingRow, c
   const route = owned ? null : routeOf(ctx.release, last, cur, newer, l.decl.versions);
   if (route?.void) {
     const req = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k)).get(last.req);
-    appendChain<VoidRow>(rulingsPath, l.k, phaseRow(ctx, last, 'void', { epoch, ...(route.repair ? { repair: route.repair } : {}) } as Partial<VoidRow>));
+    appendChain<VoidRow>(rulingsPath, l.k, phaseRow(ctx, last, 'void', { epoch, ...(route.repair ? { repair: { ...route.repair, basis: keyNewestDecision(l.operator.verified, last.key)?.id ?? null } } : {}) } as Partial<VoidRow>));
     if (req) appendWithdrawal(ctx, l.k, req, 'repair', route.why);
     return { phase: 'void', line: `VOID ${id} (${route.why}; ${last.req} withdrawn${route.repair ? `; next: ${route.repair.line}` : ''})` };
   }
@@ -1639,8 +1639,10 @@ function conflictRemedy(release: string, q: RequestRow, parent: string, asksOper
 function unfinishedOf(rulings: Chain<RulingRow>, events: EventRow[], operator: OperatorRow[], ctx: Ctx, issues: Map<string, IssueSnap> | null, lease: Lease | null, declared: string[]): UnfinishedRuling[] {
   const last = new Map<string, VoidRow>();
   for (const r of rulings.verified) last.set(r.id, r);
+  const superseded = (r: VoidRow): boolean => (keyNewestDecision(operator, r.key)?.id ?? null) !== (r.repair?.basis ?? null);
+  const snapOf = (key: string): string[] | undefined => issues?.get(key)?.fixVersions;
   const listed = (r: VoidRow): boolean => r.phase === 'intent' || r.phase === 'applied'
-    || (r.phase === 'void' && !!r.repair && !reached(r.repair, issues?.get(r.key)?.fixVersions ?? []));
+    || (r.phase === 'void' && !!r.repair && !superseded(r) && !(snapOf(r.key) && reached(r.repair, snapOf(r.key) as string[])));
   return [...last.values()].filter(listed).map((r) => {
     const base = { ruling: r.id, req: r.req, key: r.key, phase: r.phase as UnfinishedRuling['phase'], op: `${r.op.kind} ${vName(r.op.from_v)}→${vName(r.op.to_v)}` };
     const snap = issues?.get(r.key);

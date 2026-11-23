@@ -326,10 +326,10 @@ async function leaveGuard(key: string, body: unknown, auth: string, writer: stri
 
 function noteOwnAdds(key: string, before: string[] | undefined, body: unknown): void {
   if (!before) return;
-  const added = (requestedSet(before, body) ?? []).filter((v) => !before.includes(v));
-  if (!added.length) return;
+  const after = requestedSet(before, body) ?? [];
   const mine = ownAdds.get(key) ?? new Set<string>();
-  for (const v of added) mine.add(v);
+  for (const v of before) if (!after.includes(v)) mine.delete(v);
+  for (const v of after) if (!before.includes(v)) mine.add(v);
   ownAdds.set(key, mine);
 }
 

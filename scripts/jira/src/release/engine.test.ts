@@ -5030,6 +5030,24 @@ describe('nothing leaves a version (S2)', () => {
     expect(state(ctx()).unfinished_rulings).toEqual([]);
   });
 
+  it('a voided ruling\'s line leaves the list once a later operator decision on the key replaces it', async () => {
+    const { r } = await ruled('K-4', 'v2', 'v1', { crashOnRemove: true });
+    await rmRun(ctx(), noJudge);
+    expect(state(ctx()).unfinished_rulings).toMatchObject([{ ruling: r.id, phase: 'void', status: 'blocked' }]);
+    decide('2026-10-21T10:00:30.000Z', 'K-4', 'move', 'v2', 'v3');
+    expect(state(ctx()).unfinished_rulings).toEqual([]);
+  });
+
+  it('a removal-only line stays listed while the mirror does not show the key', async () => {
+    const { r } = await ruled('K-4', 'v2', 'v1', { crashOnRemove: true });
+    checked.fv.set('K-4', ['v3']);
+    mirror([{ key: 'K-4', fixVersions: ['v3'] }]);
+    decide('2026-10-21T10:00:05.000Z', 'K-4', 'remove', 'v3', null);
+    await rmRun(ctx(), async () => []);
+    rmSync(join(root, 'mirror', 'K-4.md'));
+    expect(state(ctx()).unfinished_rulings).toMatchObject([{ ruling: r.id, phase: 'void', status: 'blocked' }]);
+  });
+
   it('a newer operator remove while the key holds another declared version prints no line and stays blocked for the chief (X2)', async () => {
     const { r } = await ruled('K-4', 'v2', 'v1', { crashOnRemove: true });
     checked.fv.set('K-4', ['v1', 'v2', 'v3']);
