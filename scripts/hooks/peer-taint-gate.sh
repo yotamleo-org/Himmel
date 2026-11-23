@@ -7,9 +7,10 @@
 # text. Every other tool call is denied. Any session, tainted or not, is denied a
 # file tool or command that names the bridge state dir or key dir.
 #
-# Delivered by the himmel-ops PLUGIN lane so it also runs in a desk, whose cwd is
-# an empty dir outside every checkout. scripts/hooks/peer-taint-gate.sh is a
-# byte-identical copy for the Codex lane. Self-contained: sources nothing.
+# Delivered by the himmel-ops PLUGIN lane; a desk loads it from its own settings
+# file (desk.sh), whose cwd is an empty dir outside every checkout.
+# scripts/hooks/peer-taint-gate.sh is a byte-identical copy for the Codex lane.
+# Self-contained: sources nothing.
 #
 # Decision order:
 #   1. Neither ~/.himmel/peer-bridge nor ~/.config/himmel/peer-bridge exists:
@@ -22,6 +23,7 @@
 #      command that names either dir, are denied.
 #   4. Restricted = taint/<sid> exists, or any taint/<sid>.pending.* exists, or
 #      PEER_DESK is set. A taint dir that exists but cannot be listed denies.
+#   4b. A desk (PEER_DESK set) running any tool but Bash: deny.
 #   5. Restricted: allow only Bash or Monitor whose command has no control byte
 #      and wholly matches one of the two shapes, under the himmelRoot that
 #      peers.json records (never CLAUDE_PROJECT_DIR):
@@ -185,6 +187,9 @@ main() {
     fi
     if [ -n "${PEER_DESK:-}" ]; then restricted=1; fi # guard:desk
 
+    if [ -n "${PEER_DESK:-}" ] && [ "$tool" != Bash ]; then
+        deny "a peer desk runs only Bash (read.ts and one-line send.ts); tool $tool is denied"
+    fi
     if [ "$restricted" = 1 ]; then
         case "$kind" in
             read)
