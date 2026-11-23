@@ -512,7 +512,6 @@ export function request(ctx: Ctx, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): 
   return locked(ctx, (l) => {
     const placement = ((o.evidence ?? {}) as Record<string, unknown>).chief_placement;
     if (placement !== undefined) {
-      // The chief's placement joins a request already waiting on the key (P11): the same row again, its state kept.
       const waiting = [...latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k)).values()]
         .find((r) => r.key === o.key && (r.state === 'open' || r.state.startsWith('claimed:')));
       if (waiting?.state.startsWith('claimed:')) throw new Error(`release request: ${waiting.req} on ${o.key} is claimed; ask again after the run`);
@@ -553,7 +552,6 @@ const relationOf = (r: { evidence?: unknown }): string => canon(Object.fromEntri
 
 const pointerOf = (r: { evidence?: unknown }): unknown => ((r.evidence ?? {}) as Record<string, unknown>).operator_record;
 
-// The merge also carries the door's `operator_record` pointer, so a request rule O queues onto a waiting one keeps it.
 function withRelation(ctx: Ctx, k: Buffer, dup: RequestRow, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): RequestRow {
   const want = relationOf(o);
   const relation = want !== '{}' && want !== relationOf(dup);
@@ -569,7 +567,6 @@ function withRelation(ctx: Ctx, k: Buffer, dup: RequestRow, o: Omit<RequestRow, 
   return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), k, { ...rest, evidence });
 }
 
-/** Each key's required parent: the newest non-withdrawn request of the key that states a relation; `remainder: false` clears it. */
 export function requiredParentOf(history: RequestRow[]): Record<string, string> {
   const latest = new Map<string, RequestRow>();
   for (const r of history) latest.set(r.req, r);
@@ -1215,7 +1212,6 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
   });
 }
 
-/** The port the door's run uses: the label write and a live read the run can abort. */
 export type DoorJiraPort = JiraPort & {
   addLabels?(key: string, labels: string[]): Promise<void>;
   issue?(key: string, opts?: { signal?: AbortSignal }): Promise<IssueSnap | null>;
@@ -1530,7 +1526,6 @@ export interface RuledDecision {
   ref?: string | null;
   blocks?: string[];
   delivered?: string;
-  /** A request of another verb the door's rule O table queues under the operator's record; rmRun files it. */
   queue?: QueuedRequest;
 }
 
@@ -1628,9 +1623,7 @@ export interface JudgeInput {
   operator: OperatorRow[];
   rulings: RulingRow[];
   issues: IssueSnap[];
-  /** Ruling id to its first (intent) ts, for every listed ruling. */
   ruled_at?: Record<string, string>;
-  /** Asked key to the parent its requests require (requiredParentOf). */
   required_parent?: Record<string, string>;
 }
 
@@ -1693,7 +1686,6 @@ async function liveIssues(ctx: Ctx, keys: string[], mirrored: Map<string, IssueS
     if (!(await slot())) { fallback.add(key); return m; }
     const stop = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
-    // The slot frees when the read settles, whether or not it heeds the abort.
     const read = Promise.resolve().then(() => jira.issue!(key, { signal: stop.signal })).finally(() => { open--; waiters.shift()?.(); });
     try {
       const live = await Promise.race([read, new Promise<undefined>((resolve) => { timer = setTimeout(() => { stop.abort(); resolve(undefined); }, LIVE_LOOKUP_MS); })]);
@@ -1871,8 +1863,6 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
   };
   try {
     halt();
-    // A replayed intent is from an older epoch: apply settles it by readback or voids and reopens its request,
-    // so it writes no fixVersion here.
     for (const id of unfinishedRulings(loadOrThrow(ctx).rulings)) {
       halt();
       try {
@@ -1883,7 +1873,6 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
         lines.push(`PENDING ${id}: ${(e as Error).message}`);
       }
     }
-    // One request per key per run: the first claimed request of a key is ruled; the rest wait, unclaimed, for the next run.
     const seen = new Set<string>();
     const claimed: RequestRow[] = [];
     for (const q of claim(rctx)) {

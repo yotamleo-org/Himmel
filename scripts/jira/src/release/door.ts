@@ -15,7 +15,6 @@ const idx = (decl: Decl, v: string | null): number => {
   return i < 0 ? Number.POSITIVE_INFINITY : i;
 };
 
-/** True when `a` comes before `b` in the declared order; the backlog and an undeclared version come last. */
 export function earlierThan(decl: Pick<Decl, 'versions'>, a: string | null, b: string | null): boolean {
   return idx(decl as Decl, a) < idx(decl as Decl, b);
 }
@@ -26,7 +25,6 @@ const snapOf = (input: JudgeInput, key: string): IssueSnap | undefined => input.
 const heldOf = (input: JudgeInput, snap: IssueSnap | undefined): string[] =>
   input.versions.filter((v) => snap?.fixVersions.includes(v));
 
-/** The earliest declared version the parent holds, or null when it holds none or its snapshot is missing. */
 export function parentVersion(input: JudgeInput, parent: string): string | null {
   return heldOf(input, snapOf(input, parent))[0] ?? null;
 }
@@ -169,7 +167,6 @@ function operatorStanding(b: Base, d: DoorResult): string | null {
   return null;
 }
 
-/** For a rule A or rule O placement that changes something: the parent it leaves the key apart from, else null. */
 export function apartFrom(input: JudgeInput, q: RequestRow, d: RuledDecision): { parent: string; parent_version: string } | null {
   const parent = input.required_parent?.[q.key];
   if (!parent || d.op === 'none') return null;
