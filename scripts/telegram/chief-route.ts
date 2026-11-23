@@ -1918,11 +1918,15 @@ const companionParent = async (page: string) => {
 
 const PAGE_CLEAN = "PAGE CLEAN";
 async function pageCriticOf(page: string, spec: string, bytes: Buffer): Promise<VerdictLine> {
-  const base = basename(page); let latest: { path: string; round: number } | null = null;
+  const base = basename(page); const rounds = new Map<number, { path: string; digits: string }[]>();
   for (const n of await listDir(dirname(page))) {
     const m = n.startsWith(base + ".") ? /^\.critic-page-r(\d+)\.md$/.exec(n.slice(base.length)) : null;
-    if (m && (!latest || Number(m[1]) > latest.round)) latest = { path: join(dirname(page), n), round: Number(m[1]) };
+    if (m) rounds.set(Number(m[1]), [...(rounds.get(Number(m[1])) ?? []), { path: join(dirname(page), n), digits: m[1] }]);
   }
+  for (const [round, files] of rounds) if (files.length > 1) throw new Error(`${base} has ${files.length} page critic files of round ${round} (${files.map(f => basename(f.path)).join(", ")}); keep one; the page is not sent`);
+  for (const [{ path, digits }] of rounds.values()) if (!/^[1-9]\d*$/.test(digits)) throw new Error(`${path}: is not a page critic name send-file reads (<page>.critic-page-r<n>.md, n from 1 with no leading zero); rename or remove it; the page is not sent`);
+  const top = Math.max(-1, ...rounds.keys());
+  const latest = top < 0 ? null : { path: rounds.get(top)![0].path, round: top };
   const q = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
   const sealCmd = (v: string) => `bash scripts/handover/chief-kit/critic-seal.sh ${q(v)} ${q(page)} <sha256 the critic quoted>`;
   if (!latest) throw new Error(`${base} is a companion page of ${basename(spec)} and has no page critic file (${page}.critic-page-r<n>.md); run a page critic on these bytes, save its return there ending '${PAGE_CLEAN}', then seal it: ${sealCmd(`${page}.critic-page-r1.md`)}; the page is not sent`);

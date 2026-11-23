@@ -1839,6 +1839,52 @@ test("send-file refuses a companion page edited after its page critic read it, a
   expect(existsSync(join(r, "outgoing"))).toBe(false);
 });
 
+const pageCritic = (page: string, round: string, verdict: string, sealed = [{ text: BRIEF, file: basename(page) }]) =>
+  writeFileSync(`${page}.critic-page-${round}.md`, `page critic return\n${sealed.map((s) => `CONTENT-SHA256 ${sha(s.text)} ${s.file}\n`).join("")}${verdict}\n`);
+
+test("send-file refuses a companion page whose PAGE CLEAN page critic seals another file, or seals nothing", async () => {
+  const r = root(); const b = bundle(r); const page = companion(b.dir);
+  pageCritic(page, "r1", "PAGE CLEAN", [{ text: "# Design\n\nthe spec\n", file: "HIMMEL-1-design.md" }]);
+  const other = await sendFile(r, "1", page);
+  expect(other.code).not.toBe(0);
+  expect(other.err).toContain("critic-page-r1.md has no CONTENT-SHA256 line naming HIMMEL-1-design.exec-brief.html");
+  pageCritic(page, "r1", "PAGE CLEAN", []);
+  const none = await sendFile(r, "1", page);
+  expect(none.code).not.toBe(0);
+  expect(none.err).toContain("critic-page-r1.md has no CONTENT-SHA256 line naming HIMMEL-1-design.exec-brief.html");
+  expect(existsSync(join(r, "outgoing"))).toBe(false);
+});
+
+test("send-file reads the highest page critic round: an r2 PAGE FINDINGS beats a clean r1", async () => {
+  const r = root(); const b = bundle(r); const page = companion(b.dir);
+  pageCritic(page, "r2", "PAGE FINDINGS 1");
+  const res = await sendFile(r, "1", page);
+  expect(res.code).not.toBe(0);
+  expect(res.err).toContain("critic-page-r2.md: the latest page critic ended 'PAGE FINDINGS 1', not 'PAGE CLEAN'");
+  expect(existsSync(join(r, "outgoing"))).toBe(false);
+});
+
+test("send-file refuses two page critic files of one round", async () => {
+  const r = root(); const b = bundle(r); const page = companion(b.dir);
+  pageCritic(page, "r01", "PAGE CLEAN");
+  const res = await sendFile(r, "1", page);
+  expect(res.code).not.toBe(0);
+  const name = basename(page);
+  expect(res.err).toContain(`${name} has 2 page critic files of round 1 (${name}.critic-page-r01.md, ${name}.critic-page-r1.md)`);
+});
+
+for (const round of ["r0", "r01", "r02"]) {
+  test(`send-file refuses a page critic file named ${round}, a round name the canonical-verdict-names fixture refuses`, async () => {
+    const r = root(); const b = bundle(r); const page = companion(b.dir);
+    rmSync(`${page}.critic-page-r1.md`);
+    pageCritic(page, round, "PAGE CLEAN");
+    const res = await sendFile(r, "1", page);
+    expect(res.code).not.toBe(0);
+    expect(res.err).toContain(`critic-page-${round}.md: is not a page critic name send-file reads`);
+    expect(existsSync(join(r, "outgoing"))).toBe(false);
+  });
+}
+
 test("critic-seal.sh seals a PAGE CLEAN page critic return and never moves the parent spec's round ledger, and refuses a page critic file that ends in a spec verdict", async () => {
   const r = root(); const { dir, spec } = await sealSpec(r);
   const v = `${spec}.critic-spec-r1.md`; writeFileSync(v, `read ${sha(D_FM)}\nSPEC CLEAN\n`);
