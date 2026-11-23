@@ -1,6 +1,6 @@
 # Optional: enables the `local-headless` scrape backend in harvest-clip-body-batch.py
 # Without it the slot is skipped and the chain falls through to jina.
-# Direct pins: scrapling[fetchers]==0.5.1, markdownify==1.2.3 (the rest is the hashed closure).
+# Direct pins: scrapling[fetchers]==0.5.1, markdownify==1.2.4 (the rest is the hashed closure).
 # Regenerate: uv pip compile <a .in with those two pins> --universal --generate-hashes -o requirements-scrapling.txt
 #   python3 -m venv ~/.himmel/scrapling-venv
 #   ~/.himmel/scrapling-venv/bin/pip install --require-hashes -r requirements-scrapling.txt
@@ -458,9 +458,9 @@ lxml==6.1.3 \
     --hash=sha256:febd35ef45f603c2d74b74655efdbf45e14f55fc0aef4ac82b663ca829b283e0 \
     --hash=sha256:ff88a92cafde90888511242d1c54afcc1a8adbb6dc0a88fa7f87e29e92400d4a
     # via scrapling
-markdownify==1.2.3 \
-    --hash=sha256:1a176f05522c8a2cb1dd3ab9d307dcdadbed5c26ae717855bfc42b3b6d38d937 \
-    --hash=sha256:a189a0bedfd14009030fde5f85bb6f77c56897cb839b5c25315dd7d4e3e290ba
+markdownify==1.2.4 \
+    --hash=sha256:3837f5eb4caa627473451f9ebb91e00d0f12120fc64d64246bea23934244bd01 \
+    --hash=sha256:e0375484fdd2bb007e86779fe34c59673d0011b14f8299953aaf0bf092269220
     # via -r requirements-scrapling.in
 msgspec==0.22.0 \
     --hash=sha256:0067057df265795f742658b15dbe53f3b6f21d19dcfa53676db11088cfa41e0a \
@@ -617,16 +617,16 @@ patchright==1.64.4 \
     --hash=sha256:a580aee16e89ef2552c67e8f388bbaf1b7d31b4b51211a1d4b584302b9feb69f \
     --hash=sha256:e8656d523df868304ca25b77c2a94f17fe9e582085d46a1e2c2d25469d66f7a9
     # via scrapling
-playwright==1.65.1 \
-    --hash=sha256:0178cec62bfcc9c202f7d2c2c79c14ebac620c672f36ba31f0d7f0ee5ce87032 \
-    --hash=sha256:43541b89fa293819eb98383feea837368ee681e67cc105b19f3dd58f1409f1d6 \
-    --hash=sha256:4ffb9e62ee226130ec9333a062a3a30d6a12ee5e4d164a9076c2b54cd15cc14e \
-    --hash=sha256:5660e0b050a5bd5672bf8e366ed2580288a3d3640ff9444436ed2d890d3dc442 \
-    --hash=sha256:5f9542db4d3bff9943510297c1de4252bf8ee62c47fd5f5af3213645035ba6d7 \
-    --hash=sha256:a6c0db1447bcbe0493dcd23c84faf8e993fa7f8c1573b146a5c786df262f90b5 \
-    --hash=sha256:cd0eabebdadd45bd897a5465b358c26546cf0d7298492d66f609eec012a68de1 \
-    --hash=sha256:d50ad4dd217d4ee9e4672efd7ec4ab0523b5e73f64f6e0c5eae258961fa73a49 \
-    --hash=sha256:f9ea4f4b4f70ecc27ef0bd46a1b929798f1a8bf68b3e771261fc098bc98e1a0b
+playwright==1.65.2 \
+    --hash=sha256:2e03da7fd7cd6ea92d22524be147e5803649ab0ae9b362b9a78efa869c2f57c7 \
+    --hash=sha256:33a224fba3fb72c5fa7eda49535b265c292f1fb87949c769754f9fcd0f5be2de \
+    --hash=sha256:3bb758e12b963bf32f7fba5c4b86994f060126feb32d47f236589f53fe09746f \
+    --hash=sha256:4476703bcdd1a2db06f5db5136af7c02552b1bb519d5fa4b94a8eead2a6a41ba \
+    --hash=sha256:58932d35f56767ab7ebcdd3d4a733bfb3e62a1a5bc43c08e28b9fa9b3e61cf33 \
+    --hash=sha256:8b031f81de9cdbe8550d8fe8b58dba47d96239e53177ee4cd47dab0fff07a87e \
+    --hash=sha256:99dd0de21173375cded45f4e26a9e19b862d748b06cbb11376313758cedc220e \
+    --hash=sha256:d0aec9e1c97b6f497f3d9f2ad6e1b7f299968e61239d71f100298b0690f3c776 \
+    --hash=sha256:dd3e54b6a926fc6510f272797eec0707dc34ae04d564e74a7056c4a813e53270
     # via scrapling
 protego==0.7.0 \
     --hash=sha256:2c032d9736a1f4f0c4318f3558353ae34da5cd038f1a5e064ded7548df315e5a \
@@ -652,9 +652,9 @@ six==1.17.0 \
     --hash=sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274 \
     --hash=sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81
     # via markdownify
-soupsieve==4.1.1 \
-    --hash=sha256:8ff3422dab0b720fb667ee79864d80531a0e57994a13eb701697719ffcb751f6 \
-    --hash=sha256:b296bd2d2f65b1a78149f3d7bf6736a147d2c9e2dfbde0e4404639d748a02e03
+soupsieve==4.1.2 \
+    --hash=sha256:96b4115212a3abee1f572d62da706cca090b088cb5effa278db5702122e63a2c \
+    --hash=sha256:c6539a2638f26991463527337e39d630e3cbb86d024f52282a510535b8a7e09f
     # via beautifulsoup4
 tld==0.13.2 \
     --hash=sha256:9b8fdbdb880e7ba65b216a4937f2c94c49a7226723783d5838fc958ac76f4e0c \
