@@ -200,14 +200,14 @@ assert_pass "run_command reading .agents/skills/x/SKILL.md allowed" \
 echo "== 6. Child invoke_subagent payload and lifecycle events =="
 assert_deny "child invoke_subagent reading .env denied" "secret" "$(cat "$FIX/child-pre-read-file-secret.json")"
 
-out_ss="$(run_adapter "$(jq --arg c "$WT_REPO" '.cwd = $c' "$FIX/session-start.json")")"; rc_ss=$?
-if [ "$rc_ss" -eq 0 ] && [ -z "$out_ss" ]; then ok "SessionStart exits 0 cleanly"; else bad "SessionStart (rc=$rc_ss out=<$out_ss>)"; fi
+run_adapter "$(jq --arg c "$WT_REPO" '.cwd = $c' "$FIX/session-start.json")" >"$TMP/last.out"; rc_ss=$?
+if [ "$rc_ss" -eq 0 ] && [ ! -s "$TMP/last.out" ]; then ok "SessionStart exits 0 cleanly"; else bad "SessionStart (rc=$rc_ss out=<$(cat "$TMP/last.out")>)"; fi
 
 out_post="$(run_adapter "$(jq --arg c "$WT_REPO" '.cwd = $c' "$FIX/post-run-command.json")")"; rc_post=$?
 if [ "$rc_post" -eq 0 ] && [ "$out_post" = "{}" ]; then ok "PostToolUse exits 0 with {}"; else bad "PostToolUse (rc=$rc_post out=<$out_post>)"; fi
 
-out_stop="$(run_adapter "$(cat "$FIX/stop.json")")"; rc_stop=$?
-if [ "$rc_stop" -eq 0 ] && [ -z "$out_stop" ]; then ok "Stop exits 0 cleanly"; else bad "Stop (rc=$rc_stop out=<$out_stop>)"; fi
+run_adapter "$(cat "$FIX/stop.json")" >"$TMP/last.out"; rc_stop=$?
+if [ "$rc_stop" -eq 0 ] && [ ! -s "$TMP/last.out" ]; then ok "Stop exits 0 cleanly"; else bad "Stop (rc=$rc_stop out=<$(cat "$TMP/last.out")>)"; fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
