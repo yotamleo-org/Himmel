@@ -18,6 +18,15 @@ test("a fenced block becomes pre, escaped, byte-exact inside", () => {
   expect(toTelegramHtml("Run:\n\n```\nls *_a <b>\n```\ndone")).toBe("<b>Run:</b>\n\n<pre>ls *_a &lt;b&gt;</pre>\ndone");
 });
 
+test("a one-line fenced command keeps its text, as one pre block", () => {
+  expect(toTelegramHtml("```go AB_C*D```")).toBe("<pre>go AB_C*D</pre>");
+  expect(toTelegramHtml("Run this:\n\n```go AB_C*D```\n\nthen wait")).toBe("<b>Run this:</b>\n\n<pre>go AB_C*D</pre>\n\nthen wait");
+});
+
+test("the rest of a fence opening line is kept, byte-exact", () => {
+  expect(toTelegramHtml("Run:\n\n```ls *_a <b>\nmore\n```")).toBe("<b>Run:</b>\n\n<pre>ls *_a &lt;b&gt;\nmore</pre>");
+});
+
 test("a code or command alone in a message is wrapped in code and never converted", () => {
   expect(toTelegramHtml("go AB_C*D")).toBe("<code>go AB_C*D</code>");
   expect(toTelegramHtml("6631-AA13")).toBe("<code>6631-AA13</code>");

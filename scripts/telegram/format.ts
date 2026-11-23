@@ -27,8 +27,14 @@ export function toTelegramHtml(text: string): string {
   const lines = text.split("\n");
   const out: string[] = [];
   for (let i = 0; i < lines.length; i++) {
+    const oneLine = /^```(.+?)```\s*$/.exec(lines[i]);
+    if (oneLine) {
+      out.push(`<pre>${esc(oneLine[1])}</pre>`);
+      continue;
+    }
     if (/^```/.test(lines[i])) {
-      const body: string[] = [];
+      const rest = lines[i].slice(3);
+      const body: string[] = rest ? [rest] : [];
       let j = i + 1;
       while (j < lines.length && !/^```\s*$/.test(lines[j])) body.push(lines[j++]);
       out.push(`<pre>${esc(body.join("\n"))}</pre>`);
