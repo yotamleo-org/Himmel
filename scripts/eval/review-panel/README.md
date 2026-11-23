@@ -19,7 +19,7 @@ not measured here.
 | `score.py` | `lint` (fixture/key integrity + leak lint) and `score` (matcher, metrics, eval-runs row) |
 | `run.sh` | one sweep: lint, panel per fixture, score, one ledger row |
 | `test-review-panel.sh`, `test-review-panel-b.sh`, `test_review_panel_lib.sh` | the suite in two parts and their shared setup: canned critic outputs and a stub panel, no model call |
-| `cbs.txt`, `results.jsonl` | the critic behaviour set and the sweep rows the merge gate reads |
+| `cbs.txt`, `results.jsonl` | the critic behaviour set and the sweep rows |
 | `harvest.py` | candidate review escapes from merged-PR history |
 
 Classes, two seeded cases each: `logic`, `quoting`, `fail-open`, `toctou`,
@@ -153,8 +153,8 @@ responding_model}` under `case_evidence[<case>].critics[<critic>]` of the
 
 The panel metrics count every completed case; a critic counts only the cases
 it answered. `coverage` counts each category per critic. `decision_eligible`
-and `ineligibility_reasons` follow the execution provenance rules under "The
-eval gate". n is small (12 defects, 2 per class): a per-class
+and `ineligibility_reasons` follow the execution provenance rules under "Sweep
+rows". n is small (12 defects, 2 per class): a per-class
 number is a direction, not a measurement.
 
 ## Open and sealed seeds
@@ -377,7 +377,7 @@ sweep rows run on the 24 synthetic cases only.
 The two baseline sweeps over the grown corpus are the chief's; their
 `results.jsonl` rows (runs `2026-11-01-8427-mw1` and `-mw2`) are committed with the
 remainder PR. Both are `status=partial`: delta-06 is unscored in each because the
-citation guard drops its finding, and the gate ignores partial rows. The baseline
+citation guard drops its finding, and a partial row is not comparable. The baseline
 rows are `8429-head-b` and `8429-head-e` at `status=ok`: the partial bundles of those
 runs, re-scored after the scorer was changed to count that finding. A sweep can
 still go partial on a nonzero panel exit.
@@ -412,7 +412,7 @@ the canary, the key path or a hint word. The twin rule reads the deltas.
 and `--context-file context.patch` (the round-1 diff then the delta) in the
 critic's scratch dir; the critic sees nothing else. Any sweep does this for the
 key's delta cases; `run.sh --delta` sweeps only them (a subset sweep like
-`--only`, exclusive with it, not gate-eligible).
+`--only`, exclusive with it, not comparable with a full sweep).
 
 The shipped 10 are 5 pairs, split by hand (3 open, 2 sealed): `logic` (the delta
 inverts `is_stale`, the unchanged caller keeps the old sense), `fail-open` (an
@@ -422,12 +422,12 @@ compares a call with itself) and `quoting` (an unquoted exclude argument). The
 pairs add to the 22 + 22 above; adding them changed `config.fixture_set`, so
 they start a new eval-compare series and need the base re-baseline sweeps.
 
-## The eval gate
+## Sweep rows
 
-The critic-eval merge gate was removed (operator decisions 1251 and 1252,
-2026-11-23): CI no longer runs it, no PR waits on a sweep, and the bypass rows
-are gone. Its redesign is a separate core spec. The harness stays: `score.py gate`
-still gives the verdict for a base and a head pair of sweeps, described below.
+The critic-eval merge gate and its verdict command were removed (operator
+decisions 1251, 1252 and 1256, 2026-11-23): no CI check and no PR waits on a
+sweep. Its redesign is a separate core spec. What stays is how a sweep is
+recorded and checked, described below.
 
 `cbs.txt` lists the critic behaviour set: every path whose change can move what
 the panel reports (a `dir/` prefix or a glob at the same `/` depth).
@@ -439,35 +439,21 @@ the panel reports (a `dir/` prefix or a glob at the same `/` depth).
    the `scorer_sha256` of the scorer that ran (below).
    `run.sh` stamps the swept tree into `<outputs-dir>/swept.json`; export-row
    refuses outputs with no stamp, a stamp of other hashes, or a sweep run from a
-   working tree that differed from its HEAD on a gate input (a CBS path,
+   working tree that differed from its HEAD on a sweep input (a CBS path,
    `critics.json`, or any file here but `results.jsonl`), through a
    `REVIEW_PANEL_CMD` other than the tree's `critic-panel.sh`, or with
    `--tiers` other than `paid`, or over an `--only` subset. `run.sh` re-stamps
-   after the panel loop (`stamp --recheck`), so a gate input edited during the
+   after the panel loop (`stamp --recheck`), so a sweep input edited during the
    sweep, or a moved HEAD, also leaves it unclean, and a sweep interrupted before
    that re-stamp is refused. An `inconclusive` sweep is
-   refused, and the gate ignores any row whose status is not `ok`: a `partial`
-   sweep scores fewer cases, so its rates are not comparable.
+   refused. A `partial` sweep scores fewer cases, so its rates are not
+   comparable with an `ok` sweep's.
 2. `score.py verify-row '<row-json>' <outputs-dir>` re-derives a row from its
    outputs (exit 1 on any mismatch), so a committed row can be checked against
    the bundle it claims. A legacy row with no `scorer_sha256` is compared on
    the fields and metrics it claims and printed `scorer identity unverified`; a
    value a scoring repair moved still differs. A row naming a scorer must name
    the running one.
-3. `score.py gate` reads the head tree's `results.jsonl` and prints one
-   verdict:
-   - **unmeasured** (fail): the running scorer has no clean identity, no row
-     carries its `scorer_sha256`, or fewer than 2 distinct rows (by `run_id`
-     and bundle) of it at the base or the head `cbs_hash` for the head tree's
-     `confighash`.
-   - **loss** (fail): `panel.recall_gating` fell, or `panel.fp_rate` rose, by
-     more than the noise: the larger of the baseline rows' spread (max minus
-     min) and 2 cases over the metric's case count (`defects`,
-     `panel.clean_scored`). A loss is read only when the base and the head have
-     equal row counts: on unequal counts a loss is unmeasured instead, while a
-     within-noise result stays no-loss.
-   - **no-loss** / **keep** (pass): within noise; `keep` when every
-     `--target-class` recall also beats the baseline maximum.
 
 **Execution provenance.** `run.sh`'s first `stamp` also writes
 `<outputs>/run-manifest.json` (v1): a stable `execution_id`, `started_at`, the
@@ -502,22 +488,21 @@ its execution is a recorded, finished one with a recorded roster and no
 anomaly, its status is `ok`, every critic's participation is consistent and
 known, and its scorer identity is clean. `sweep_roster` reads only the rows in
 the swept tiers; a missing, malformed or empty `critics.run.json` falls back to
-the tree's roster with a warning that it is reconstructed. Eligibility is not
-yet a gate condition: the shared selector comes with M3.
+the tree's roster with a warning that it is reconstructed.
 
 **Scorer identity.** A row names the scorer that produced it,
-never one in the gate's `--repo` or `--tree`: `score.py scorer-identity --json`
+never one in the `--repo` or `--tree` it reads: `score.py scorer-identity --json`
 is `score.py`'s own checkout, its HEAD and the `score.py`,
 `scripts/eval/lib/wilson.py` and `adjudication.py` actually loaded, each checked
 byte for byte against that HEAD before and after scoring
 (`scorer_digest(repo, rev)` hashes those three blobs). An edited, untracked or foreign scorer file gives
-`scorer_sha256` null and a diagnostic-only row. The gate drops every row of
-another or no scorer (named in its output) before the roster check and
-before the first-row-wins selection, so a re-score of a retained sweep by the
-running scorer replaces its older row, and a null identity matches nothing.
+`scorer_sha256` null and a diagnostic-only row. `eval_feedback.select_review_runs`
+given a scorer drops every row of another or no scorer before its
+first-row-wins selection, so a re-score of a retained sweep by the running
+scorer replaces its older row, and a null identity matches nothing.
 `scorer_sha256` is kept apart from `confighash` and `swept.json`, so a stamp
 from before it still exports. Old rows carry no `scorer_sha256`: until rows of
-the current scorer are promoted, every critic-behaviour PR is unmeasured.
+the current scorer are promoted, a selection by the running scorer finds none.
 
 `cbs.txt` marks each path the sweep never executes with a comment line
 `# unexecuted: <path>`: `run.sh` feeds `critic-panel.sh` directly, so a change
