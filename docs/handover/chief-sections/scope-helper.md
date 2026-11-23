@@ -1,6 +1,6 @@
 # Chief section — the scope helper (no-scope tickets, batched)
 
-Read on demand from `chief-template.md`. A To Do ticket that names no file it writes prints
+Read on demand when the chief clears a no-scope batch. A To Do ticket that names no file it writes prints
 `NEEDS-CHIEF-NOTE <KEY>: no readable scope` and is not listed. This section clears a batch of them with
 one helper and one approving call instead of one chief note per ticket. It does not touch tickets that
 are also partial-merge rows (`NEEDS-CHIEF-NOTE … merged PR`): those stay hand work.

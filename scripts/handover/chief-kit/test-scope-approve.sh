@@ -63,7 +63,7 @@ if (a[0] === 'release' && a[1] === 'core-check') {
   const mode = fs.existsSync(mf) ? fs.readFileSync(mf, 'utf8').trim() : (fs.existsSync(st + '/mode') ? fs.readFileSync(st + '/mode', 'utf8').trim() : 'ok');
   const render = (ls) => fs.appendFileSync(mir + '/' + key + '.md', '\n### chief — 2026-11-23T00:00:00Z\n' + ls.join('\n') + '\n');
   if (mode === 'refuse') { console.error('HTTP 400: {"errors":{"comment":"refused"}}'); process.exit(1); }
-  if (mode === 'timeout') { setTimeout(() => process.exit(0), 5000); return; }
+  if (mode === 'timeout') { setTimeout(() => { render(lines); console.log('10001'); process.exit(0); }, 3000); return; }
   if (mode === 'other') render([lines[0], 'Writes: scripts/lib/other.sh']);
   else if (mode !== 'nomirror') render(lines);
   if (mode === 'ok-nd3') fs.writeFileSync(st + '/nd.exit3', '');
