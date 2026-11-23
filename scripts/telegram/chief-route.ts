@@ -1916,6 +1916,7 @@ const companionParent = async (page: string) => {
   return m && await isFile(`${m[1]}.md`) ? `${m[1]}.md` : null;
 };
 
+const sealCommand = (verdict: string, read: string) => `bash scripts/handover/chief-kit/critic-seal.sh ${verdict} ${read} <sha256 the critic quoted>`;
 const PAGE_CLEAN = "PAGE CLEAN";
 async function pageCriticOf(page: string, spec: string, bytes: Buffer): Promise<VerdictLine> {
   const base = basename(page); const rounds = new Map<number, { path: string; digits: string }[]>();
@@ -1928,7 +1929,7 @@ async function pageCriticOf(page: string, spec: string, bytes: Buffer): Promise<
   const top = Math.max(-1, ...rounds.keys());
   const latest = top < 0 ? null : { path: rounds.get(top)![0].path, round: top };
   const q = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
-  const sealCmd = (v: string) => `bash scripts/handover/chief-kit/critic-seal.sh ${q(v)} ${q(page)} <sha256 the critic quoted>`;
+  const sealCmd = (v: string) => sealCommand(q(v), q(page));
   if (!latest) throw new Error(`${base} is a companion page of ${basename(spec)} and has no page critic file (${page}.critic-page-r<n>.md); run a page critic on these bytes, save its return there ending '${PAGE_CLEAN}', then seal it: ${sealCmd(`${page}.critic-page-r1.md`)}; the page is not sent`);
   const text = await readCritic(latest.path); const last = lastLine(text);
   if (last !== PAGE_CLEAN) throw new Error(`${latest.path}: the latest page critic ended '${last}', not '${PAGE_CLEAN}'; the page is not sent`);
@@ -1959,7 +1960,7 @@ export async function checkSignaturePage(abs: string): Promise<{ verdicts: Verdi
   if (new RegExp(NOT_FOR_SIGNATURE, "i").test(bytes.toString("utf8"))) throw new Error(`${basename(page)} still says "Not for signature"; a page a critic passed must not, and the critic must read the final bytes; the page is not sent`);
   const critics = await latestCritics(spec);
   for (const kind of KINDS) if (!critics[kind]) throw new Error(role === "companion"
-    ? `${basename(page)} is a companion page of ${basename(spec)}, and its parent seal is missing: ${basename(spec)} has no ${kind} critic file (${spec}.critic-${kind}-r<n>.md); run the ${kind} critic on ${basename(spec)}, then seal its return: bash scripts/handover/chief-kit/critic-seal.sh <that file> <file the critic read> <sha256 the critic quoted>; the page is not sent`
+    ? `${basename(page)} is a companion page of ${basename(spec)}, and its parent seal is missing: ${basename(spec)} has no ${kind} critic file (${spec}.critic-${kind}-r<n>.md); run the ${kind} critic on ${basename(spec)}, then seal its return: ${sealCommand("<that file>", "<file the critic read>")}; the page is not sent`
     : `${basename(page)} is a spec or plan page and has no ${kind} critic file (${spec}.critic-${kind}-r<n>.md); run the ${kind} critic first`);
   const key = keyOf(specReal); const specs = specsRootOf(specReal);
   if (!key || !specs) throw new Error(`${spec}: has no ticket key under a specs folder, so its rounds cannot be read from a ledger; name the spec <KEY>-<slug>.md or put it in specs/<KEY>/; the page is not sent`);
