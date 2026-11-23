@@ -5,12 +5,14 @@
       "kind": "merge-blocked",
       "class": "escalate",
       "sender": "scripts/lib/merge-block-alert.sh",
+      "pin": "@${short}: ${rule}\" merge-blocked",
       "sample": "Merge refused: PR 4882 in octo/demo. Blocks: the merge after GO. Do: ask a reviewer for the one approval GitHub still wants"
     },
     {
       "kind": "token-in-output",
       "class": "escalate",
       "sender": "scripts/hooks/detect-token-in-output.sh",
+      "pin": "_mba_send \"$chat\" \"$msg\" token-in-output",
       "sample": "A credential leaked: a GitHub token appeared in session 81843b5d. Blocks: nothing yet, it is in the transcript. Do: rotate the GitHub token"
     },
     {
