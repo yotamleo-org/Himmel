@@ -530,7 +530,7 @@ card_out=$(card --card abcdefgh --operator 4242 --session S1); card_rc=$?
 args=$(cat "$tmp/curl.args" 2>/dev/null)
 assert_eq "--card exits 0 once the card is sent" 0 "$card_rc"
 assert_contains "the grant card goes to the operator's bridge chat" "chat_id=4242" "$args"
-assert_contains "the grant card names the request" "text=AFK grant abcdefgh: read the notice-bot message, then approve" "$args"
+assert_contains "RED HIMMEL-10735: the grant card's line 1 is the exact reply" "text=AFK grant abcdefgh: approve abcdefgh <nonce> <code> → run once · deny abcdefgh → refuse" "$args"
 assert_contains "the grant card names the asking session" "session S1" "$args"
 assert_contains "the grant card names the asking worker's chief" "chief AO-roadmap-chief" "$args"
 assert_contains "the grant card carries the Approve button" "afk:approve:abcdefgh" "$args"
@@ -543,6 +543,32 @@ assert_eq "a malformed id sends nothing" "" "$(cat "$tmp/curl.args")"
 card_out=$(CARD_ENV="$tmp/no-such.env" card --card abcdefgh --operator 4242 --session S1); card_rc=$?
 assert_eq "no bridge token: --card exits 5" 5 "$card_rc"
 assert_contains "no bridge token: --card says the card was not sent" "card for abcdefgh not sent" "$card_out"
+
+echo "== HIMMEL-10735: the grant card says in plain words what it grants =="
+card_text() { awk '/^text=/{f=1; sub(/^text=/, "")} /^--data-urlencode$/{f=0} f' "$tmp/curl.args"; }
+LONGCMD='node /srv/app/scripts/jira/dist/index.js record-decision --keys 6395,6396,6397,6398 --move-out v1.1.3 --reason batch'
+: > "$tmp/curl.args"
+# shellcheck disable=SC2016 # literal text with shell metacharacters, nothing to expand
+card_out=$(card --card abcdefgh --operator 4242 --session S1 --desc 'Moves 72 tickets out of v1.1.3 $(whoami) `id` <b>x</b> & more' --cmd "$LONGCMD"); card_rc=$?
+text=$(card_text)
+assert_eq "RED HIMMEL-10735: --desc and --cmd are accepted" 0 "$card_rc"
+assert_eq "RED HIMMEL-10735: card line 1 carries the reply shape" "AFK grant abcdefgh: approve abcdefgh <nonce> <code> → run once · deny abcdefgh → refuse" "$(printf '%s\n' "$text" | head -1)"
+# shellcheck disable=SC2016 # literal text with shell metacharacters, nothing to expand
+assert_eq "RED HIMMEL-10735: card line 2 is the agent's claim, shown literally" 'The agent says: Moves 72 tickets out of v1.1.3 $(whoami) `id` <b>x</b> & more' "$(printf '%s\n' "$text" | sed -n 2p)"
+cmdline=$(printf '%s\n' "$text" | sed -n 3p)
+assert_contains "RED HIMMEL-10735: card line 3 marks the command unverified" "Command (unverified): \$ node /srv/app" "$cmdline"
+shown=${cmdline#'Command (unverified): $ '}; shown=${shown%…}
+if [ "$shown" != "$cmdline" ] && [ "${cmdline%…}" != "$cmdline" ] && [[ $LONGCMD == "$shown "* ]]; then pass "RED HIMMEL-10735: a cut command ends at a word boundary"; else fail "RED HIMMEL-10735: a cut command ends at a word boundary" "$cmdline"; fi
+if [ "${#text}" -le 420 ]; then pass "RED HIMMEL-10735: the card is at most 420 characters (${#text})"; else fail "RED HIMMEL-10735: the card is at most 420 characters" "${#text}"; fi
+: > "$tmp/curl.args"
+card_out=$(card --card abcdefgh --operator 4242 --session S1 --desc $'first line\nsecond line SECONDLINE' --cmd $'echo one\necho TWOLINE'); card_rc=$?
+text=$(card_text)
+assert_contains "RED HIMMEL-10735: a multi-line description is cut to its first line" "The agent says: first line" "$text"
+assert_absent "RED HIMMEL-10735: its second line is not on the card" "SECONDLINE" "$text"
+assert_absent "RED HIMMEL-10735: a multi-line command shows its first line only" "TWOLINE" "$text"
+: > "$tmp/curl.args"
+card_out=$(card --card abcdefgh --operator 4242 --session S1); card_rc=$?
+assert_absent "an older hook's card, with no description, adds no claim line" "The agent says" "$(card_text)"
 card_out=$(CURL_HTTP_ERR=1 card --card abcdefgh --operator 4242 --session S1); card_rc=$?
 assert_eq "Telegram refuses the card (HTTP 400): --card exits 5" 5 "$card_rc"
 card_out=$(CURL_HTTP_ERR=1 card --notify 'one line' --operator 4242); card_rc=$?
@@ -1566,8 +1592,8 @@ out=$(greq 0 "$GCMD"); id=$(rid "$out")
 assert_contains "a classifier-refused command files a grant request" "result=pending id=" "$out"
 text=$(tg notice sendMessage text)
 assert_contains "the notice shows the full command" "$GCMD" "$text"
-assert_contains "the notice shows the classifier's reason as a claim" "Refused by (claim): [Code from External]" "$text"
-assert_contains "the notice carries the nonce" "nonce <b>$(state_nonce "$id")</b>" "$text"
+assert_contains "the notice shows the classifier's reason in plain words" "Refused because: Code from External" "$text"
+assert_contains "the notice carries the nonce" "<b>$(state_nonce "$id")</b>" "$text"
 assert_contains "the notice says guards still run" "Guards still run" "$text"
 assert_absent "the ledger never holds the command text" "cowsay" "$(ledger)"
 assert_contains "the ledger holds the command hash" "$(gsha "$GCMD")" "$(ledger)"
@@ -1621,6 +1647,56 @@ out=$(greq 0 'cat ~/.ssh/id_rsa')
 assert_contains "the floor refuses a secret read before any notice" "result=never-remote rule=secret-read" "$out"
 assert_eq "no notice was sent for it" "" "$(tg notice sendMessage text)"
 
+echo "== HIMMEL-10735: the grant notice leads with the reply, the plain claim, the reason, the command =="
+gpl() { printf '%s' "$2" | AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + $1)) python3 -I "$HELPER" grant-request --session=S1 --ticket=HIMMEL-10735 --cwd="$GW" --why="$4" --desc="$3" 2>&1; }
+new_root gplain; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
+out=$(gpl 0 "$GCMD" 'Fetches a demo package and prints a cow' '[Code from External] fetches a package from the web'); id=$(rid "$out")
+text=$(tg notice sendMessage text); n=$(state_nonce "$id")
+assert_eq "RED HIMMEL-10735: line 1 is the reply, with the nonce and the code slot" "approve $id <b>$n</b> &lt;code&gt; → run once · deny $id → refuse" "$(printf '%s\n' "$text" | sed -n 1p)"
+assert_eq "RED HIMMEL-10735: line 2 is the agent's own description, marked as its claim" "The agent says: Fetches a demo package and prints a cow" "$(printf '%s\n' "$text" | sed -n 2p)"
+assert_eq "RED HIMMEL-10735: line 3 is the refusal reason in plain words" "Refused because: Code from External — fetches a package from the web" "$(printf '%s\n' "$text" | sed -n 3p)"
+assert_eq "RED HIMMEL-10735: line 4 is the raw command, marked unverified" "Command (unverified): \$ $GCMD" "$(printf '%s\n' "$text" | sed -n 4p)"
+assert_eq "RED HIMMEL-10735: line 5 says there is no chief view" "Chief: no view" "$(printf '%s\n' "$text" | sed -n 5p)"
+headlen=$(printf '%s\n' "$text" | sed -n '1,/^Session:/p' | sed '$d' | python3 -I -c 'import sys; print(len(sys.stdin.read()))')
+if [ "$headlen" -gt 0 ] && [ "$headlen" -le 400 ]; then pass "RED HIMMEL-10735: the head above Session is at most 400 characters ($headlen)"; else fail "RED HIMMEL-10735: the head above Session is at most 400 characters" "$headlen"; fi
+assert_absent "RED HIMMEL-10735: TRUNCATED never leads a short ask" "TRUNCATED" "$text"
+approve 3 "$id" "$(code 3)" >/dev/null
+
+new_root gmeta; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
+out=$(gpl 0 "$GCMD" $'Prints $(whoami) `id` <b>x</b> & "q"\nSECONDLINE' '[Code from External]'); id=$(rid "$out")
+text=$(tg notice sendMessage text)
+# shellcheck disable=SC2016 # literal text with shell metacharacters, nothing to expand
+assert_eq "RED HIMMEL-10735: shell metacharacters and markup in the description show literally, cut to one line" 'The agent says: Prints $(whoami) `id` &lt;b&gt;x&lt;/b&gt; &amp; "q"' "$(printf '%s\n' "$text" | sed -n 2p)"
+assert_absent "RED HIMMEL-10735: the description's second line is not shown" "SECONDLINE" "$text"
+new_root gnodesc; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
+out=$(greq 0 "$GCMD"); id=$(rid "$out")
+assert_eq "RED HIMMEL-10735: no description reads as none given, not a blank" "The agent says: (no description given)" "$(tg notice sendMessage text | sed -n 2p)"
+
+new_root glong; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
+LC1="S=/tmp/x; K=\$(grep -vxE '6395|6396' list.txt | paste -sd,); node dist/index.js record-decision --keys \$K --reason $(printf 'word%.0s ' $(seq 1 60))"
+LC=$(printf '%s\nsecond line\nthird line\n' "$LC1")
+out=$(gpl 0 "$LC" "Records a decision that moves 72 tickets out of v1.1.3 and never ends, past the cut of eighty chars" '[Undermining Oversight] a long reason that goes on well past sixty characters to be cut at a word'); id=$(rid "$out")
+text=$(tg notice sendMessage text)
+assert_absent "RED HIMMEL-10735: TRUNCATED is not on line 1" "TRUNCATED" "$(printf '%s\n' "$text" | head -1)"
+cmdline=$(printf '%s\n' "$text" | sed -n 4p)
+shown=${cmdline#'Command (unverified): $ '}; shown=${shown%…}
+if [ "${cmdline%…}" != "$cmdline" ] && [[ $LC1 == "$shown "* ]]; then pass "RED HIMMEL-10735: a long command line is cut at a word boundary"; else fail "RED HIMMEL-10735: a long command line is cut at a word boundary" "$cmdline"; fi
+assert_contains "RED HIMMEL-10735: the cut says how many lines follow" "…(+2 lines)" "$(printf '%s\n' "$text" | sed -n 5p)"
+headlen=$(printf '%s\n' "$text" | sed -n '1,/^Session:/p' | sed '$d' | grep -v '^TRUNCATED' | python3 -I -c 'import sys; print(len(sys.stdin.read()))')
+if [ "$headlen" -gt 0 ] && [ "$headlen" -le 400 ]; then pass "RED HIMMEL-10735: the worst-case head, every line cut, is at most 400 characters ($headlen)"; else fail "RED HIMMEL-10735: the worst-case head is at most 400 characters" "$headlen"; fi
+reasonline=$(printf '%s\n' "$text" | sed -n 3p)
+if [ "${reasonline%…}" != "$reasonline" ] && [ "${#reasonline}" -le 80 ]; then pass "RED HIMMEL-10735: a long reason is cut to one short line"; else fail "RED HIMMEL-10735: a long reason is cut to one short line" "$reasonline"; fi
+assert_contains "RED HIMMEL-10735: a cut ask says the full request is attached" "TRUNCATED, full request attached" "$text"
+assert_contains "RED HIMMEL-10735: the full request is attached" "$LC1" "$(tg notice sendDocument document | python3 -I -c 'import json, sys; d=json.loads(sys.stdin.read()); print(d["record"]["cmd"])' 2>/dev/null)"
+
+new_root gexcerpt; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
+printf 'import os\n# EXCERPTMARK secret-looking script body\necho hi\n' > "$GW/s.sh"
+out=$(gpl 0 "sh s.sh" 'Runs the local script' '[Code from External]'); id=$(rid "$out")
+text=$(tg notice sendMessage text)
+assert_absent "RED HIMMEL-10735: no excerpt of a file the command runs is on the card" "EXCERPTMARK" "$text"
+assert_contains "RED HIMMEL-10735: the file's path stays" "file ⟦$GW/s.sh⟧ sha256 " "$text"
+printf 'echo hi\n' > "$GW/s.sh"
+
 echo "== HIMMEL-7686: the two hooks reach the helper through sudo -n, end to end =="
 # A fake sudo on PATH takes the hooks' exact `sudo -n <installed helper> ...` and runs the repo helper in the sandbox.
 mkdir -p "$tmp/fakesudo"
@@ -1642,7 +1718,7 @@ new_root ghooks; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
 assert_eq "the PermissionDenied hook prints nothing" "" "$(ghook 0 approval-grant-request.sh "$GCMD")"
 id=$(pending_id)
 assert_contains "the PermissionDenied hook filed the command with root" "$GCMD" "$(tg notice sendMessage text)"
-assert_contains "the hook passed the classifier's reason as the claim" "Refused by (claim): [Code from External]" "$(tg notice sendMessage text)"
+assert_contains "the hook passed the classifier's reason, shown in plain words" "Refused because: Code from External — fetches a package" "$(tg notice sendMessage text)"
 assert_eq "RED HIMMEL-7686: before the code the check gives no allow" "" "$(ghook 2 approval-grant-check.sh "$GCMD")"
 approve 3 "$id" "$(code 3)" >/dev/null
 assert_eq "RED HIMMEL-7686: a granted hash does not allow other bytes" "" "$(ghook 5 approval-grant-check.sh "$GCMD ")"

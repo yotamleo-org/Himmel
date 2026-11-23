@@ -3,7 +3,7 @@
 # command.
 #
 #   afk-sudo-request --session S --ticket T -- ARGV...
-#   afk-sudo-request --card ID --operator OP --session S
+#   afk-sudo-request --card ID --operator OP --session S [--desc TEXT] [--cmd TEXT]
 #   afk-sudo-request --notify TEXT --operator OP
 #   afk-sudo-request --watch ID --expires EPOCH --operator OP --session S
 #
@@ -29,7 +29,7 @@ set -uo pipefail
 
 HELPER=/usr/local/libexec/himmel/afk-sudo
 
-usage() { echo "usage: afk-sudo-request --session S --ticket T -- ARGV... | --card ID --operator OP --session S | --notify TEXT --operator OP | --watch ID --expires EPOCH --operator OP --session S" >&2; exit 2; }
+usage() { echo "usage: afk-sudo-request --session S --ticket T -- ARGV... | --card ID --operator OP --session S [--desc TEXT] [--cmd TEXT] | --notify TEXT --operator OP | --watch ID --expires EPOCH --operator OP --session S" >&2; exit 2; }
 
 label() { printf '%s' "$1" | tr -cd 'A-Za-z0-9._-' | cut -c1-80; }
 
@@ -48,19 +48,42 @@ bridge_send() {
             --data-urlencode "text=${text}" "$@"
 }
 
+# one_line TEXT MAX: the first line of TEXT without control characters, cut at a word boundary (…) past MAX.
+one_line() {
+    local s c
+    s=$(printf '%s' "$1" | head -n 1 | tr -d '\000-\037')
+    if [ "${#s}" -le "$2" ]; then printf '%s' "$s"; return; fi
+    c=${s:0:$2}
+    case "$c" in *" "*) c=${c% *} ;; esac
+    c=${c%"${c##*[![:space:]]}"}
+    printf '%s…' "$c"
+}
+
 send_card() {
-    local kind=$1 id=$2 op=$3 who chief text
+    local kind=$1 id=$2 op=$3 who chief text d c
     local markup=()
     who=$(label "$session")
     chief=$(label "${HIMMEL_CONSOLE_NAME:-}")
-    text="AFK $kind $id: read the notice-bot message, then approve · session ${who:-unknown} · chief ${chief:-none}"
+    if [ "$kind" = grant ]; then
+        # The bridge bot is same-uid, so the claim and the command here are the agent's words, marked as such;
+        # root's notice holds the verified copy and the nonce.
+        text="AFK grant $id: approve $id <nonce> <code> → run once · deny $id → refuse"
+        d=$(one_line "${card_desc:-}" 80)
+        c=$(one_line "${card_cmd:-}" 100)
+        [ -n "$d" ] && text+=$'\n'"The agent says: $d"
+        [ -n "$c" ] && text+=$'\n'"Command (unverified): \$ $c"
+        who=${who:-unknown}; chief=${chief:-none}
+        text+=$'\n'"session ${who:0:30} · chief ${chief:0:30} · nonce: notice-bot chat"
+    else
+        text="AFK $kind $id: read the notice-bot message, then approve · session ${who:-unknown} · chief ${chief:-none}"
+    fi
     if [[ $id =~ ^[a-z2-7]{8}$ ]]; then
         markup=(--data-urlencode "reply_markup={\"inline_keyboard\":[[{\"text\":\"✅ Approve\",\"callback_data\":\"afk:approve:${id}\"},{\"text\":\"❌ Deny\",\"callback_data\":\"afk:deny:${id}\"}]]}")
     fi
     bridge_send "$op" "$text" ${markup[@]+"${markup[@]}"}
 }
 
-session="" ticket="" card="" operator="" notify="" watch="" expires=""
+session="" ticket="" card="" operator="" notify="" watch="" expires="" card_desc="" card_cmd=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --session) [ $# -ge 2 ] || usage; session=$2; shift 2 ;;
@@ -70,6 +93,8 @@ while [ $# -gt 0 ]; do
         --notify) [ $# -ge 2 ] || usage; notify=$2; shift 2 ;;
         --watch) [ $# -ge 2 ] || usage; watch=$2; shift 2 ;;
         --expires) [ $# -ge 2 ] || usage; expires=$2; shift 2 ;;
+        --desc) [ $# -ge 2 ] || usage; card_desc=$2; shift 2 ;;
+        --cmd) [ $# -ge 2 ] || usage; card_cmd=$2; shift 2 ;;
         --) shift; break ;;
         *) usage ;;
     esac

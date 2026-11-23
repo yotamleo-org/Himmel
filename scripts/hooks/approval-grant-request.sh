@@ -4,7 +4,10 @@
 #
 # It pipes the refused command's exact bytes (jq -j of tool_input.command) to
 #
-#   sudo -n /usr/local/libexec/himmel/afk-sudo grant-request --session=S --cwd=D --why=R
+#   sudo -n /usr/local/libexec/himmel/afk-sudo grant-request --session=S --cwd=D --why=R --desc=T
+#
+# T is the Bash call's own description, its first line only (the agent's claim; empty when the
+# call has none). The bridge card gets T and the command's first line as --desc / --cmd.
 #
 # Root then binds every file the command names, runs the never-remote floor (a secret read
 # is refused before any notice), freezes the record and sends the operator the full command
@@ -91,14 +94,17 @@ if [ -z "$chief" ]; then
 fi
 export HIMMEL_CONSOLE_NAME="$chief"
 
+desc=$(jq -r '.tool_input.description // "" | tostring' <<<"$input" 2>/dev/null | head -n 1 | tr -d '\000-\037' | cut -c1-200)  # swallow-ok: a missing description reads as empty and the card omits the line
+cmd1=$(jq -r '.tool_input.command' <<<"$input" 2>/dev/null | head -n 1 | tr -d '\000-\037' | cut -c1-300)  # swallow-ok: a missing command line reads as empty and the card omits the line
+
 reply=$(jq -j '.tool_input.command' <<<"$input" 2>/dev/null |
-    sudo -n "$HELPER" grant-request --session="$session" --cwd="$cwd" --why="$reason" 2>/dev/null)
+    sudo -n "$HELPER" grant-request --session="$session" --cwd="$cwd" --why="$reason" --desc="$desc" 2>/dev/null)
 result=$(printf '%s\n' "$reply" | sed -n 's/^result=\([a-z0-9:-]*\).*/\1/p' | head -1)
 field() { printf '%s\n' "$reply" | sed -n "s/^result=pending.* $1=\([^ ]*\).*/\1/p" | head -1; }
 case "$result" in
     pending)
         id=$(field id) expires=$(field expires) op=$(field operator)
-        detach_run bash "$REQ" --card "$id" --operator "$op" --session "$who"
+        detach_run bash "$REQ" --card "$id" --operator "$op" --session "$who" --desc "$desc" --cmd "$cmd1"
         detach_run bash "$REQ" --watch "$id" --expires "$expires" --operator "$op" --session "$who"
         ;;
     grant-disabled | disabled) ;;
