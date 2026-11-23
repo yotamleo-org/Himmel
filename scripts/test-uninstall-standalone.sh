@@ -5,7 +5,7 @@
 # place, where REPO_ROOT == the clone and scripts/telegram always exists —
 # none of them exercise the bundle branches this suite targets.
 #
-# The bundle is built by copying the 18-file POSIX closure (design doc
+# The bundle is built by copying the POSIX closure (design doc
 # standalone-undo.md §3.2) from THIS checkout into a scratch dir,
 # mirroring the real relative layout, so the bundle's own uninstall.sh can
 # source its own scripts/lib/*.sh exactly as it does in the real clone.
@@ -65,7 +65,6 @@ case "$REAL_HOME" in
     *) echo "PASS the operator's real \$HOME is not under this suite's \$TMP" ;;
 esac
 
-# --- Build the bundle: the 18-file POSIX closure, mirrored relative layout --
 BUNDLE="$TMP/prov/uninstall"
 
 build_bundle() {
