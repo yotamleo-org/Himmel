@@ -434,6 +434,13 @@ mkdraft "$td/p5.md"; printf 'Labels: ci\n' >>"$td/p5.md"
 run Task "$td/p5.md" "$q" --sector X --labels ''; check "an explicitly empty --labels is the empty set: a mismatch, never the draft line's ci" "$rc" 1
 hasnt "an empty --labels does not ask for the draft line's Metric" "$out" "Metric"
 
+q="$td/q-voice"
+mkdraft "$td/v0.md"; { printf 'The fix is ready in 15 minutes.\n\n'; cat "$td/v0.md"; } >"$td/v1.md"
+run Task "$td/v1.md" "$q" --sector X; check "a top line saying ready in 15 minutes is refused" "$rc" 1
+has "the refusal names the time estimate" "$out" "time estimate"
+{ printf 'The checker refuses a draft whose top line gives a time estimate.\n\n'; cat "$td/v0.md"; } >"$td/v2.md"
+run Task "$td/v2.md" "$q" --sector X; check "a clean top line passes the voice check" "$rc" 0
+
 pcli="$here/ticket-policy-cli.mjs"
 printf 'Impact\nx\nDoD\n- the DoD line\nProof\nthe proof line\nAgent detail\nthe detail line\n' >"$td/t1.md"
 out="$(node "$pcli" --sections DoD,Proof --draft "$td/t1.md" 2>&1)"; rc=$?

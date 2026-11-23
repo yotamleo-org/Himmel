@@ -20,8 +20,9 @@ wiring. It wakes once per down streak and clears only after recovery.
   outlives any one session.
 <!-- mem:7a7399f97076 -->
 - Tell the chief to end every milestone report with a "Blocked on you" list:
-  one clickable PR URL or absolute path per line plus the one action wanted, or
-  "Nothing blocked on you". "Held for your review" with no link is not enough.
+  one clickable PR URL or absolute path per line plus the one action wanted.
+  When nothing is blocked on you, the report leaves the list out entirely.
+  "Held for your review" with no link is not enough.
 
 The chief writes no code itself. Today the chief always runs from the himmel
 clone, whichever repo its workers change.

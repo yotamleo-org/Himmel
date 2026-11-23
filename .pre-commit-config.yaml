@@ -179,6 +179,14 @@ repos:
         files: (package\.json|package-lock\.json|npm-shrinkwrap\.json|bun\.lock|yarn\.lock|pnpm-lock\.yaml|\.(ts|tsx|js|jsx|mjs|cjs|mts|cts))$
         pass_filenames: false
 
+      - id: operator-voice
+        name: no time estimate in an operator-bound template or message source
+        entry: bash scripts/lint/check-operator-voice.sh
+        language: system
+        files: ^(docs/handover/chief-adhd-brief\.md|docs/handover/chief-sections/voice-lines\.md|marketplace/plugins/himmel-ops/skills/ticket-standard/SKILL\.md|scripts/telegram/message-classes\.json|scripts/telegram/[^/]*\.ts)$
+        exclude: \.test\.ts$
+        pass_filenames: false
+
       - id: no-history-comments
         name: no new ticket key in tracked text; no history comment in code
         entry: bash scripts/lint/check-history-comments.sh --staged
