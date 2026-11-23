@@ -99,14 +99,38 @@ def live(owner):
 OWNER_FIELDS = {'host': str, 'boot': str, 'pid': int, 'start': str}
 
 
+_PAST_BOOTS = []
+
+
+def past_boot_of_matched_host(boot):
+    if not _PAST_BOOTS:
+        found = set()
+        try:
+            seam = os.environ.get('FLEET_JOURNAL_BOOTS_CMD') if os.environ.get('HIMMEL_POLICY_FOLLOWS_HOME') == '1' else None
+            command = shlex.split(seam or 'journalctl --list-boots')
+            run = subprocess.run(command, capture_output=True, text=True, timeout=5)
+            if run.returncode == 0:
+                found = set(re.findall(r'(?m)^\s*-?\d+\s+([0-9a-f]{32})\b', run.stdout))
+        except (OSError, subprocess.SubprocessError, ValueError):
+            pass
+        _PAST_BOOTS.append(found)
+    try:
+        plain = boot.replace('-', '')
+        return plain in _PAST_BOOTS[0] and plain != identity(os.getpid())['boot'].replace('-', '')
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def process_state(owner):
-    """Absence is proof only for an exact local host/boot/start identity; an owner that is not exactly those fields is unknown."""
+    """Absence is proof only for an exact local host/boot/start identity, or a past boot of this machine; an owner that is not exactly those fields is unknown."""
     if not isinstance(owner, dict) or set(owner) != set(OWNER_FIELDS) or any(type(owner[key]) is not kind for key, kind in OWNER_FIELDS.items()):
         return 'unknown'
     try:
         local = identity(os.getpid())
-        if any(owner[key] != local[key] for key in ('host', 'boot')):
+        if owner['host'] != local['host']:
             return 'unknown'
+        if owner['boot'] != local['boot']:
+            return 'dead' if past_boot_of_matched_host(owner['boot']) else 'unknown'
         try:
             found = identity(owner['pid'])
             state = Path('/proc', str(owner['pid']), 'stat').read_text().rsplit(')', 1)[1].split()[0]
@@ -533,8 +557,10 @@ def worker_keys(doc):
 
 def session_scan(record, deadline):
     local = identity(os.getpid())
-    if any(record['owner'][key] != local[key] for key in ('host', 'boot')):
+    if record['owner']['host'] != local['host']:
         return None, False
+    if record['owner']['boot'] != local['boot']:
+        return (None, True) if past_boot_of_matched_host(record['owner']['boot']) else (None, False)
     absent = True
     for path in Path('/proc').iterdir():
         if time.monotonic() >= deadline:
