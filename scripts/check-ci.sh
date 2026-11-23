@@ -748,8 +748,7 @@ _alert() { merge_watch_alert "${owner:-?}/${repo:-?}" "${num:-?}" "${head0:-}" "
 # checks) and classic branch protection. A failed read returns 1: the caller
 # fails CLOSED — an unreadable set must never be mistaken for an empty one. Only
 # a 404 on the classic endpoint ("Branch not protected" / "Required status
-# checks not enabled") means "no classic rule". A transient failure (rate limit, 5xx,
-# network) returns 3, not 1: the gate defers or retries it; a real one (permission) is 1.
+# checks not enabled") means "no classic rule".
 #
 _req_transient() {
     ghb_is_rate_limited "${1:-}" && return 0
@@ -862,18 +861,18 @@ required_gate() {
     # Backstop beside the SECONDS bound: a no-op sleep seam (CHECK_CI_SLEEP_CMD=:)
     # or a POLL of 0 must not turn the bounded wait into a spin.
     max_tries=$(( GRACE / (POLL > 0 ? POLL : 1) + 1 ))
-    local rs_rc=0 rt_start rt_tries=0
+    local rs_rc=0 rt_start rt_tries=0 rt_nap
     reqs=$(required_set) || rs_rc=$?
     if [ "$rs_rc" -eq 3 ] && [ "$wait_ok" -eq 1 ]; then
-        # A transient read failure (rate limit, 5xx, network) is not a verdict: leave it to the
-        # post-settle call (wait 0), which re-reads, retries within --grace and stays fail-closed.
         echo "check-ci: the required-check list read failed transiently (rate limit, 5xx or network); deferring the required-check gate until after the watch (it retries then and refuses if still unreadable)" >&2
         return 0
     fi
     rt_start=$SECONDS
     while [ "$rs_rc" -eq 3 ] && [ $((SECONDS - rt_start)) -lt "$GRACE" ] && [ "$rt_tries" -lt "$max_tries" ]; do
         rt_tries=$((rt_tries + 1))
-        _rl_recover || "$CHECK_CI_SLEEP_CMD" "$POLL"
+        rt_nap=$((GRACE - (SECONDS - rt_start)))
+        [ "$rt_nap" -le "$POLL" ] || rt_nap=$POLL
+        _rl_recover || "$CHECK_CI_SLEEP_CMD" "$rt_nap"
         rs_rc=0
         reqs=$(required_set) || rs_rc=$?
     done
