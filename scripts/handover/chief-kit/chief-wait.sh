@@ -3196,8 +3196,7 @@ while :; do
             fail_woke && save_key "${saved:-$key}"
             if usage_recovered; then
                 printf 'WAKE budget-recovered from=%s usage=PROCEED\n' "$recovered_from"
-                # gnu-ok: Linux-only kit (timeout). A nudge that fails or hangs never suppresses the wake.
-                [ -z "$legs_from" ] || timeout -k 5 60 bash "${CHIEF_WAIT_NUDGE:-$HERE/budget-nudge.sh}" "$legs_from" 2>&1 9>&- || true  # swallow-ok: the wake stands; the chief reads the nudge lines
+                [ -z "$legs_from" ] || timeout -k 5 60 bash "${CHIEF_WAIT_NUDGE:-$HERE/budget-nudge.sh}" "$legs_from" 2>&1 9>&- || true  # gnu-ok: Linux-only kit (timeout); swallow-ok: a failed or hung nudge never suppresses the wake
                 printf '%s\n' "$tick_line"
                 [ -z "$saved" ] || { saved="${saved%usage=*}usage=PROCEED"; save_key "$saved"; }
                 exit_reason='wake-budget-recovered'; exit 0
