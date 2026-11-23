@@ -9,7 +9,7 @@
 No model writes the brief. It carries whole items of the transcript's main chain within a budget (a token
 counted as four bytes): first the must-carry items (the newest delivery, and the newest delivery whose
 sender is known when the newest is a fetched bus body), then the worker's last message, then newest to
-oldest. Every carried text goes through handover_tokens.scrub and every line the writer did not author
+oldest. Every carried text goes through scrub of scripts/lib/handover_tokens.py and every line the writer did not author
 starts with `> | `, so no carried line reads as a marker bullet or a header field. It launches nothing.
 
 Exit (write): 0 path on stdout; 2 a must-carry item does not fit whole; 3 a missing input, a doc with no
