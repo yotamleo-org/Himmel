@@ -62,8 +62,10 @@ test('T3 thread lanes resolve without headless dispatch recipes', () => {
   assert.ok(!REG.lanes.some((l) => l.id === 'antigravity-cli'));
   const gemini = REG.lanes.find((l) => l.id === 'antigravity-t3');
   const models = Object.fromEntries(gemini.models.map((m) => [m.id, m]));
-  assert.equal(models['gemini-4-neon'].tier, 'opus');
-  for (const id of ['gemini-4-argon', 'gemini-4-hydrogen', 'gemini-3.8-flash']) {
+  assert.equal(models['gemini-4-neon'].tier, 'sonnet');
+  assert.equal(models['gemini-4-carbon'].tier, 'opus');
+  assert.equal(models['gemini-4-hydrogen'].tier, 'haiku');
+  for (const id of ['gemini-4-argon', 'gemini-3.8-flash']) {
     assert.equal(models[id].tier, null, `${id} remains unranked`);
   }
   assert.notEqual(models['gemini-4-neon'].quota.bank, models['gemini-4-argon'].quota.bank);
