@@ -4,9 +4,9 @@
 # check-operator-voice.sh — no operator-bound template or prompt produces or asks for
 # a time estimate (docs/internals/operator-voice.md, rule 8). A time estimate is a
 # future duration or arrival: "in about 15 min", "about 2 min", "ETA", "will take",
-# "shortly", "in a moment". A measured past duration ("took 50 min", "waited 30 min")
-# is a fact and passes, and so does a deadline the system enforces ("expires in 6 h",
-# decision 1238). A line naming "time estimate" states the rule and is skipped.
+# "shortly", "in a moment", "in an hour", "done by tonight", "ready by 6 pm". A measured
+# past duration ("took 50 min", "took an hour") is a fact and passes, and so does a
+# deadline the system enforces ("expires in 6 h", decision 1238). A line naming "time estimate" states the rule and is skipped.
 #
 # Usage:
 #   check-operator-voice.sh [--ticket] [<file>...]
@@ -69,7 +69,15 @@ for f in "${FILES[@]}"; do
             l = tolower($0)
             n = "[0-9]+([.,-][0-9]+)?"
             u = "(s|secs?|seconds?|m|mins?|minutes?|h|hrs?|hours?|days?)([^a-z0-9_]|$)"
-            gsub("(took|waited|lasted|spent|ran for|ran|after|for the last|been|over|expires?) (in |about |around |roughly |~ ?)?" n " ?" u, " ", l)
+            w = "(a|an|half an|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen|twenty|thirty|forty|fifty|sixty) (sec|second|min|minute|hour|hr|day|week)s?([^a-z]|$)"
+            past = "(took|waited|lasted|spent|ran for|ran|after|for the last|been|over|expires?) "
+            gsub(past "(in |about |around |roughly |~ ?)?" n " ?" u, " ", l)
+            gsub(past "(in )?" w, " ", l)
+            gsub("(once|twice|thrice|times) in " w, " ", l)
+            gsub("in an? second [a-z]", " ", l)
+            clock = "[0-9][0-9]?(:[0-9][0-9] ?(am|pm|h)?| ?(am|pm|h)([^a-z]|$))"
+            target = "(tonight|tomorrow|today|noon|midnight|lunch|eod|end of (the )?(day|week)|this (morning|afternoon|evening|week)|(mon|tues|wednes|thurs|fri|satur|sun)day)"
+            gsub("(done|ready|back|finished) by (" target "|" clock ") ?(yesterday|last [a-z]+)", " ", l)
             hit = ""
             if (raw ~ /(^|[^A-Za-z])ETAs?([^A-Za-z]|$)/) hit = "ETA"
             else if (l ~ ("(^|[^a-z0-9_])(about|around|roughly|approx\\.?|approximately|~) ?" n " ?" u)) hit = "about N"
@@ -80,6 +88,8 @@ for f in "${FILES[@]}"; do
             else if (l ~ /(^|[^a-z])shortly([^a-z]|$)/) hit = "shortly"
             else if (l ~ /in a (few|couple of) (seconds|minutes|hours|days)/) hit = "in a few"
             else if (l ~ /(^|[^a-z])(in a moment|back in a)([^a-z]|$)/) hit = "in a moment"
+            else if (l ~ ("(^|[^a-z])(done|ready|back|finished) by (" target "([^a-z]|$)|" clock ")")) hit = "by <time>"
+            else if (l ~ ("(^|[^a-z0-9_])in " w)) hit = "in a <unit>"
             if (hit != "") {
                 t = raw; sub(/^[[:space:]]+/, "", t)
                 printf "%s:%d: time estimate (%s): %s\n", file, NR, hit, substr(t, 1, 160)
