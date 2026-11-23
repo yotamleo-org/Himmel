@@ -198,25 +198,65 @@ check_read_path() {
     esac
 }
 
+NORM_TEXT=""
+normalize_cmd_paths() {
+    local s="$1" prev="" guard=0
+    local dotdot_mid='([^/[:space:];|&<>()=.][^/[:space:];|&<>()=]*|\.[^./[:space:];|&<>()=][^/[:space:];|&<>()=]*|\.\.[^/[:space:];|&<>()=]+)/\.\./'
+    local dotdot_end='([^/[:space:];|&<>()=.][^/[:space:];|&<>()=]*|\.[^./[:space:];|&<>()=][^/[:space:];|&<>()=]*|\.\.[^/[:space:];|&<>()=]+)/\.\.([[:space:];|&<>()]|$)'
+    while [ "$guard" -lt 32 ]; do
+        prev="$s"
+        while [[ "$s" == *"//"* ]]; do
+            s="${s//\/\//\/}"
+        done
+        while [[ "$s" == *"/./"* ]]; do
+            s="${s//\/.\//\/}"
+        done
+        if [[ "$s" =~ $dotdot_mid ]]; then
+            s="${s/"${BASH_REMATCH[0]}"/}"
+        elif [[ "$s" =~ $dotdot_end ]]; then
+            s="${s/"${BASH_REMATCH[0]}"/"${BASH_REMATCH[2]}"}"
+        fi
+        [ "$s" = "$prev" ] && break
+        guard=$((guard + 1))
+    done
+    if [ "$guard" -ge 32 ]; then
+        deny "excessive path normalization depth — fail closed"
+    fi
+    NORM_TEXT="$s"
+}
+
 check_read_text() {
-    local raw_text="$1" stripped="" lc=""
+    local raw_text="$1" stripped="" lc="" norm=""
     stripped="${raw_text//[\"\'\\]/}"
     lc="$(lower_str "$stripped")"
+    normalize_cmd_paths "$lc"
+    norm="$NORM_TEXT"
 
-    case "$lc" in
+    local cd_gemini_re='(^|[[:space:];|&])cd[[:space:]]+[^;|&]*\.gemini([/[:space:];|&]|$)'
+    if [[ "$norm" =~ $cd_gemini_re ]]; then
+        deny "denies accessing ~/.gemini/config"
+    fi
+
+    case "$norm" in
         *antigravity-oauth-token*)
             deny "denies accessing antigravity-oauth-token"
             ;;
         *.gemini/config*|*.gemini/settings.json*)
             deny "denies accessing ~/.gemini/config"
             ;;
-        *userdata/providers/antigravity*)
+        *providers/antigravity*)
             if [ -n "$ARTIFACT_REAL" ]; then
-                local art_lc rest
+                local art_lc rest sep
                 art_lc="$(lower_str "$ARTIFACT_REAL")"
-                rest="${lc//"$art_lc"/__artifact_dir__}"
+                rest="${norm//"$art_lc/"/__artifact_dir__/}"
+                for sep in ' ' $'\t' ';' '|' '&' '<' '>' '(' ')'; do
+                    rest="${rest//"$art_lc$sep"/__artifact_dir__$sep}"
+                done
                 case "$rest" in
-                    *userdata/providers/antigravity*)
+                    *"$art_lc") rest="${rest%"$art_lc"}__artifact_dir__" ;;
+                esac
+                case "$rest" in
+                    *providers/antigravity*)
                         deny "denies accessing T3 Antigravity provider home outside artifactDirectoryPath"
                         ;;
                 esac

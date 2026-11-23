@@ -114,8 +114,24 @@ assert_deny "run_command denies reading antigravity-oauth-token" "oauth-token" \
     "$(mk_bash "cat $T3CODE_HOME/userdata/providers/antigravity/hash1/antigravity-oauth-token")"
 assert_deny "run_command denies reading ~/.gemini/config/hooks.json" ".gemini" \
     "$(mk_bash "cat ~/.gemini/config/hooks.json")"
+assert_deny "run_command denies ~/.gemini/./config/hooks.json" ".gemini" \
+    "$(mk_bash "cat ~/.gemini/./config/hooks.json")"
+assert_deny "run_command denies ~/.gemini/x/../config/hooks.json" ".gemini" \
+    "$(mk_bash "cat ~/.gemini/x/../config/hooks.json")"
+assert_deny "run_command denies \$HOME/.gemini//config/hooks.json" ".gemini" \
+    "$(mk_bash "cat \$HOME/.gemini//config/hooks.json")"
+assert_deny "run_command denies cd ~/.gemini && cat config/hooks.json" ".gemini" \
+    "$(mk_bash "cd ~/.gemini && cat config/hooks.json")"
 assert_deny "run_command denies reading T3 provider home outside artifact dir" "provider home" \
     "$(mk_bash "ls $T3CODE_HOME/userdata/providers/antigravity/hash1/config")"
+assert_deny "run_command denies userdata/./providers/antigravity traversal" "provider home" \
+    "$(mk_bash "cat $T3CODE_HOME/userdata/./providers/antigravity/hash1/config/hooks.json")"
+assert_deny "run_command denies userdata/x/../providers/antigravity traversal" "provider home" \
+    "$(mk_bash "cat $T3CODE_HOME/userdata/x/../providers/antigravity/hash1/config/hooks.json")"
+assert_deny "run_command denies artifact dir ../ escape to provider config" "provider home" \
+    "$(mk_bash "cat $ARTIFACT_DIR/../../../config/hooks.json")"
+assert_deny "run_command denies sibling artifact dir prefix collision" "provider home" \
+    "$(mk_bash "cat ${ARTIFACT_DIR}0/secret.md")"
 assert_deny "run_command from forbidden ~/.gemini/config cwd denied" ".gemini" \
     "$(mk_bash "cat hooks.json" "$HOME/.gemini/config")"
 assert_deny "read_resource denies file:// to antigravity-oauth-token" "oauth-token" \
