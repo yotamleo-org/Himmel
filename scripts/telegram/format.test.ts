@@ -25,6 +25,14 @@ test("a code or command alone in a message is wrapped in code and never converte
   expect(toTelegramHtml("tail -f a<b>&c")).toBe("<code>tail -f a&lt;b&gt;&amp;c</code>");
 });
 
+test("a long command alone keeps its backticks, byte-exact", () => {
+  expect(toTelegramHtml("echo `date` a b c d e f g h")).toBe("<code>echo `date` a b c d e f g h</code>");
+});
+
+test("a bold span that contains inline code renders both", () => {
+  expect(toTelegramHtml("Please **run `cmd` now** today")).toBe("Please <b>run <code>cmd</code> now</b> today");
+});
+
 test("a lone * or _ inside prose is left as typed", () => {
   expect(toTelegramHtml("see go AB_C*D for the code, then wait")).toBe("see go AB_C*D for the code, then wait");
 });

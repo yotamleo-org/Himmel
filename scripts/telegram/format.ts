@@ -3,12 +3,15 @@ const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;"
 function isCodeAlone(s: string): boolean {
   if (/\n/.test(s) || /[.!?]$/.test(s)) return false;
   if (!/\s/.test(s)) return /\d/.test(s);
-  return /^[a-z.\/~$]/.test(s) && s.split(/\s+/).length <= 8 && !/,\s/.test(s) && !/\*\*[^*]+\*\*/.test(s) && /[*_`$|&;<>=\\]/.test(s);
+  return /^[a-z.\/~$]/.test(s) && !/,\s/.test(s) && !/\*\*[^*]+\*\*/.test(s) && /[*_`$|&;<>=\\]/.test(s);
+}
+
+function code(s: string): string {
+  return s.split(/(`[^`\n]+`)/).map((seg, i) => i % 2 === 1 ? `<code>${esc(seg.slice(1, -1))}</code>` : esc(seg)).join("");
 }
 
 function inline(line: string): string {
-  return line.split(/(`[^`\n]+`)/).map((seg, i) =>
-    i % 2 === 1 ? `<code>${esc(seg.slice(1, -1))}</code>` : esc(seg).replace(/\*\*([^*\n]+?)\*\*/g, "<b>$1</b>")).join("");
+  return line.split(/(\*\*(?:[^*\n`]|`[^`\n]*`)+\*\*)/).map((seg, i) => i % 2 === 1 ? `<b>${code(seg.slice(2, -2))}</b>` : code(seg)).join("");
 }
 
 export function toTelegramHtml(text: string): string {
