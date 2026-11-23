@@ -2098,13 +2098,21 @@ for a in owed_actions:
 def tick_verdicts(doc):
     stale, holds = set(), {}
     state = os.environ.get('TICK_STATE_DIR') or os.path.join(os.environ.get('HOME') or '/tmp', '.himmel', 'state')
-    for path in glob.glob(os.path.join(state, 'tick-pool-stale-*.out')):
+    try:
+        crc = subprocess.run(['cksum'], input=('%s\n%s' % (os.path.realpath(doc), os.path.realpath(mirror))).encode(),
+                             capture_output=True, check=True, timeout=10).stdout.split()[0].decode()
+        own = [os.path.join(state, 'tick-pool-stale-%s.out' % crc)]
+    except (OSError, IndexError, subprocess.SubprocessError):
+        own = []
+    others = sorted(glob.glob(os.path.join(state, 'tick-pool-stale-*.out')), key=lambda f: (os.path.getmtime(f), f), reverse=True)
+    for n, path in enumerate(own + others):
         try:
             lines = open(path, encoding='utf-8', errors='replace').read().splitlines()
         except OSError:
             continue
-        if lines[:1] == ['# mirror=' + os.path.realpath(mirror)]:
+        if n < len(own) or lines[:1] == ['# mirror=' + os.path.realpath(mirror)]:
             stale.update(re.findall(r'^STALE-DISPOSITION ([A-Z]+-\d+) line=([0-9a-f]{12}) ', '\n'.join(lines), re.M))
+            break
     hpath = os.path.join(state, 'pool-holds-%s.json' % re.sub(r'\.md$', '', os.path.basename(doc)))
     try:
         if time.time() - os.path.getmtime(hpath) <= 1800:
