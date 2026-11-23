@@ -235,6 +235,36 @@ finally:
 check("the budget goes to the never-tried clip first", rec.seen == ["https://example.com/never"]
       and fm(never).get("harvest_defer_last") == "2026-10-06", f"{rec.seen}\n{never.read_text()}")
 
+def budget_run(name, last_tried_old):
+    vq = tmp / name
+    evq = vq / "Clippings" / "_evidence"
+    evq.mkdir(parents=True)
+    for i in range(25):
+        (evq / f"n{i:02d}-never.md").write_text(
+            f"---\ntype: article\nsource: https://example.com/never{i}\nharvest_status: partial\n"
+            "harvest_flag: thin-body\n---\nshort.\n", encoding="utf-8")
+    (evq / "z-old.md").write_text(
+        "---\ntype: article\nsource: https://example.com/old\nharvest_status: partial\nharvest_flag: thin-body\n"
+        f"harvest_defer_count: 1\nharvest_defer_last: {last_tried_old}\n---\nshort.\n", encoding="utf-8")
+    recq = RecordingChain(20)
+    keep, mod.build_scrape_chain = mod.build_scrape_chain, lambda *a, **k: recq
+    keep_argv, sys.argv = sys.argv, [tool, str(vq), "--date", "2026-10-06", "--fetch-budget", "20"]
+    try:
+        mod.main()
+    except SystemExit:
+        pass
+    finally:
+        mod.build_scrape_chain, sys.argv = keep, keep_argv
+    return recq.seen
+
+
+seen = budget_run("vault5", "2026-09-26")
+check("a clip last tried 10 days ago is fetched ahead of 25 never-tried clips (budget 20)",
+      "https://example.com/old" in seen, str(seen))
+seen = budget_run("vault6", "2026-10-05")
+check("a clip tried within the max age does not jump the queue",
+      "https://example.com/old" not in seen, str(seen))
+
 sys.exit(1 if fails else 0)
 PY
 python3 "$tmp/t.py" "$tool" "$tmp"

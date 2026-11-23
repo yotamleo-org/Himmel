@@ -11,7 +11,7 @@
 # recurring jobs with the OS scheduler, following the
 # scripts/handover/arm-resume.sh precedent:
 #
-#   HIMMEL-Pipeline-FetchHealth daily  (default 01:30, no LLM)
+#   HIMMEL-Pipeline-FetchHealth daily  (default 03:30, after the harvest, no LLM)
 #       python fetch-health.py
 #   HIMMEL-Pipeline-Harvest     daily   (default 02:00, model: claude-sonnet-5-5)
 #       claude --model claude-sonnet-5-5 "/harvest-clips ... then /triage-clips ... then /ig-media-enrich ..." < /dev/null
@@ -183,7 +183,7 @@ CADENCE_PERMISSION_MODE="acceptEdits"
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/macos-fda-warning.sh"
 
 # Operator-decision defaults.
-FETCH_HEALTH_TIME="01:30"
+FETCH_HEALTH_TIME="03:30"
 HARVEST_TIME="02:00"
 IG_LIMIT="10"
 SYNTH_TIME="03:00"
@@ -258,7 +258,7 @@ Subcommands:
   disarm   Remove all tasks (idempotent; rc=0 if nothing was armed).
 
 Flags (arm only, except --dry-run):
-  --fetch-health-time <HH:MM> Daily no-LLM fetch-health time (default 01:30)
+  --fetch-health-time <HH:MM> Daily no-LLM fetch-health time (default 03:30)
   --harvest-time <HH:MM> Daily harvest+triage+ig-media-enrich time,
                          24h local (default 02:00)
   --ig-limit <N>         Daily /ig-media-enrich --limit N (default 10;

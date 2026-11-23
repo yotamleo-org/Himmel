@@ -29,8 +29,9 @@ Usage:
         _evidence/ is retried there too (article and YouTube hosts), up to the
         defer count of 5, when the run would reprocess it; a YouTube clip whose
         transcript was unavailable is listed in the pending report only.
-        Clips run least recently tried first (harvest_defer_last), so the
-        budget rotates. HARVEST_SCRAPE_DENY=all turns the fetch off.
+        Clips last tried more than ARTICLE_RETRY_MAX_AGE_DAYS ago run first
+        (oldest first), then never-tried clips, then the rest oldest first
+        (harvest_defer_last), so the budget rotates and no clip starves. HARVEST_SCRAPE_DENY=all turns the fetch off.
     python harvest-clip-body-batch.py <vault-path> --firecrawl-thin [--firecrawl-budget N] [--dry-run]
         Opt-in escalation: the same, plus the paid firecrawl rung after the
         free ones, via firecrawl's /v2/scrape API. Needs FIRECRAWL_API_KEY (and
@@ -1601,12 +1602,26 @@ def reharvest_due(fm_raw: str, fm: dict, body: str) -> bool:
             or junk_fetch_section(fm, body) is not None or stamped_youtube_partial(fm))
 
 
+ARTICLE_RETRY_MAX_AGE_DAYS = 2
+
+
 def last_tried(path: Path) -> str:
     try:
         fm = parse_frontmatter(path.read_text(encoding="utf-8"))[0]
     except Exception:
         return ""
     return (fm or {}).get("harvest_defer_last", "")
+
+
+def retry_order(path: Path) -> tuple:
+    import datetime
+    tried = last_tried(path)
+    try:
+        age = (datetime.date.fromisoformat(TODAY or datetime.date.today().isoformat())
+               - datetime.date.fromisoformat(tried)).days
+    except ValueError:
+        return (1, "")
+    return (0 if age > ARTICLE_RETRY_MAX_AGE_DAYS else 2, tried)
 
 
 def insert_fm_lines(fm_raw: str, new_lines: list) -> str:
@@ -2361,7 +2376,7 @@ def main():
     ev_retry, ev_partials = evidence_clips(clippings)
     in_scan = set(clips)
     clips = clips + [p for p in ev_retry if p not in in_scan]
-    clips = sorted(clips, key=last_tried)
+    clips = sorted(clips, key=retry_order)
     scanned = set(clips)
     report_extra = [p for p in ev_partials if p not in scanned]
 

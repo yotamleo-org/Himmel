@@ -36,8 +36,8 @@ from earlier setups are no longer read; delete them by hand if present.
 `scripts/luna/fetch-health.py` runs one cheap known-good probe for every live
 external fetch integration. It is a plain Python script: no Claude invocation,
 no clip mutation, and no fetched response content is written to the Luna vault.
-The existing `pipeline-cadence` scheduler arms it daily at **01:30** as
-`HIMMEL-Pipeline-FetchHealth`, before harvest.
+The existing `pipeline-cadence` scheduler arms it daily at **03:30** as
+`HIMMEL-Pipeline-FetchHealth`, after the harvest, so it reads the night's state.
 
 | Source integration | Real authentication artifact | Daily probe |
 |---|---|---|
@@ -52,7 +52,7 @@ The existing `pipeline-cadence` scheduler arms it daily at **01:30** as
 | Firecrawl article enrichment | `FIRECRAWL_API_KEY` (process env or the primary checkout's `.env`; `FIRECRAWL_BASE_URL` optional) | `POST /v2/scrape` for `https://example.com/` |
 
 Every probe reads the primary checkout's `.env` (keys living only there once read as missing) — the merge
-happens once, at the registry boundary, so the 01:30 cadence run sees the same
+happens once, at the registry boundary, so the 03:30 cadence run sees the same
 config as a manual run even though its wrapper sources nothing. A live
 non-empty process value still wins; a set-but-empty one does not. The
 duplicate-key and empty-placeholder rules are in

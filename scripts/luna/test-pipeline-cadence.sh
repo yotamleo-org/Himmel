@@ -2,7 +2,7 @@
 # Smoke test for scripts/luna/pipeline-cadence.sh (cron path,
 # daily harvest+triage worker, no-LLM fetch-health worker).
 #
-# Four cadence tasks are armed: HIMMEL-Pipeline-FetchHealth (daily 01:30 ->
+# Four cadence tasks are armed: HIMMEL-Pipeline-FetchHealth (daily 03:30 ->
 # direct fetch-health.py), HIMMEL-Pipeline-Harvest (daily 02:00 ->
 # /harvest-clips + /triage-clips), HIMMEL-Pipeline-Synthesize (daily 03:00
 # -> /synthesize-clips + /archive-clips), and HIMMEL-Pipeline-Health (daily
@@ -21,7 +21,7 @@
 # Cron suite covers (C*):
 #   C1.  status with empty crontab ("no crontab for user") -> not armed.
 #   C2.  arm --dry-run prints runner bodies + all four entries, touches nothing.
-#   C3.  arm installs the marker-tagged entries (all daily: 30 01 and
+#   C3.  arm installs the marker-tagged entries (all daily: 30 03 and
 #        00 02/03/04 * * *) + executable runner .sh files; pre-existing
 #        unrelated crontab lines survive.
 #   C4.  Runner .sh is interactive-claude shaped: bounded `< /dev/null`,
@@ -395,7 +395,7 @@ assert_rc "cron missing vault dir -> rc 1" 1 "$rc"
 
 echo "TEST: cron arm --dry-run prints plan, installs nothing"
 out=$(run_cron arm --vault "$VAULT" --dry-run)
-assert_contains "dry-run daily fetch-health entry" "30 01 * * *" "$out"
+assert_contains "dry-run daily fetch-health entry" "30 03 * * *" "$out"
 assert_contains "dry-run fetch-health marker" "# HIMMEL-Pipeline-FetchHealth" "$out"
 assert_contains "dry-run fetch-health runner is no-LLM" "fetch-health.py" "$out"
 assert_contains "dry-run daily harvest entry" "00 02 * * *" "$out"
@@ -428,7 +428,14 @@ if command -v node >/dev/null 2>&1; then
     assert_contains "cron arm pre-trusts vault in config" "true" "$trust"
 fi
 tab=$(cat "$CSTATE/crontab" 2>/dev/null || echo MISSING)
-assert_contains "daily fetch-health entry 01:30" "30 01 * * *" "$tab"
+assert_contains "daily fetch-health entry 03:30, after the harvest" "30 03 * * *" "$tab"
+fh_time=$(awk '/# HIMMEL-Pipeline-FetchHealth/{printf "%02d%02d", $2, $1}' "$CSTATE/crontab")
+hv_time=$(awk '/# HIMMEL-Pipeline-Harvest/{printf "%02d%02d", $2, $1}' "$CSTATE/crontab")
+if [ -n "$fh_time" ] && [ -n "$hv_time" ] && [ "$fh_time" -gt "$hv_time" ]; then
+    pass "fetch-health is scheduled after the harvest"
+else
+    fail "fetch-health ($fh_time) is not after the harvest ($hv_time)" "$tab"
+fi
 assert_contains "fetch-health entry marker-tagged" "# HIMMEL-Pipeline-FetchHealth" "$tab"
 assert_contains "fetch-health entry fires the runner" "pipeline-fetch-health.sh" "$tab"
 assert_contains "daily harvest entry 02:00"  "00 02 * * *" "$tab"
