@@ -30,9 +30,9 @@ scripts/jira/src/commands/release.ts
 scripts/lib/llm-backend.sh
         && { llm_backend_api_account_ok "${HIMMEL_API_ACCOUNT:-}" || [ "${HIMMEL_API_ACCOUNT:-}" = "auto" ]; }
 docs/internals/api-lane.md
-Auto routing is off for every call except the himmel semantic graph pass. `HIMMEL_API_ACCOUNT=auto` is accepted
+Auto routing is for the himmel repo only. `HIMMEL_API_ACCOUNT=auto` is accepted for any kind (the role map or the
 docs/internals/api-lane.md
-API account (`HIMMEL_API_ACCOUNT=A|B|C|D|auto`; auto only for the himmel graph pass, or a kind the role map maps) instead of the subscription. It is
+API account (`HIMMEL_API_ACCOUNT=A|B|C|D|auto`; auto only from the himmel repo; any kind, by the role map or the default order) instead of the subscription. It is
 docs/internals/graph-cadence.md
 When `HIMMEL_API_ACCOUNT=auto`, a credit-exhausted submit moves on to the next account of the pick list, each account
 scripts/handover/chief-kit/headed-arm-worker.sh
@@ -94,7 +94,7 @@ run_checks() {
         [ -r "$root/$f" ] || echo "check5 $f: not readable" >>"$out"
     done
     f="$root/docs/internals/api-lane.md"
-    for s in 'Auto routing is off for every call except' 'auto only for the himmel graph pass'; do
+    for s in 'Auto routing is for the himmel repo only' 'auto only from the himmel repo'; do
         line="$(allowed_line docs/internals/api-lane.md "$s")"
         grep -q -x -F -- "$line" "$f" 2>/dev/null \
             || echo "check5 docs/internals/api-lane.md: the limit line holding '$s' is not present whole" >>"$out"
@@ -203,9 +203,9 @@ fresh; echo '`jira release rm-run` always takes the API lane.' >>"$T/docs/intern
 expect_hit "a docs line saying rm-run always takes the API lane fails" "check4 docs/internals/api-lane.md:"
 
 echo "TEST: check 5 rows"
-fresh; lit_replace "$T/docs/internals/api-lane.md" 'Auto routing is off for every call except' 'Auto routing is off for most calls except'
-expect_hit "the first limit line changed fails" "check5 docs/internals/api-lane.md: the limit line holding 'Auto routing is off"
-fresh; lit_replace "$T/docs/internals/api-lane.md" 'auto only for the himmel graph pass' 'auto for the himmel graph pass'
+fresh; lit_replace "$T/docs/internals/api-lane.md" 'Auto routing is for the himmel repo only' 'Auto routing is for most repos only'
+expect_hit "the first limit line changed fails" "check5 docs/internals/api-lane.md: the limit line holding 'Auto routing is for"
+fresh; lit_replace "$T/docs/internals/api-lane.md" 'auto only from the himmel repo' 'auto from the himmel repo'
 expect_hit "the second limit line changed fails" "check5 docs/internals/api-lane.md: the limit line holding 'auto only"
 fresh; lit_replace "$T/docs/internals/graph-cadence.md" '--api-account' '--account'
 expect_hit "the --with-luna-semantic sentence without --api-account fails" "check5 docs/internals/graph-cadence.md:"
