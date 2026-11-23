@@ -80,10 +80,11 @@ YES_RE="${CMD_POS}yes([[:space:]][^;&|]*)?>[[:space:]]*/dev/null"
 DD_RE="${CMD_POS}dd[[:space:]][^;&|]*(if=/dev/(zero|u?random)[^;&|]*of=/dev/null|of=/dev/null[^;&|]*if=/dev/(zero|u?random))"
 
 CMD_END_RE="${CMD_POS}\$"
+INTERP_END_RE="${CMD_POS}((ba|z|da|k)?sh|python[0-9.]*|node|bun|deno|source|\\.)([[:space:]]+-[^[:space:]]*)*[[:space:]]+\$"
 
 scan_quotes() {
     local rest=$1 pre span inner
-    q_semi="" q_empty="" q_shell=""
+    q_semi="" q_empty="" q_shell="" q_run=""
     while [[ $rest =~ $QUOTED_RE ]]; do
         pre=${BASH_REMATCH[1]}
         span=${BASH_REMATCH[2]}
@@ -95,15 +96,22 @@ scan_quotes() {
         else
             q_empty+="$pre''"
         fi
+        if [[ $q_run$pre =~ $CMD_END_RE || $q_run$pre =~ $INTERP_END_RE ]]; then
+            q_run+=$pre$inner
+        else
+            q_run+="$pre''"
+        fi
         [[ $pre =~ $SHELL_C_RE ]] && q_shell+=$NL$inner
     done
     q_semi+=$rest
     q_empty+=$rest
+    q_run+=$rest
 }
 
 scan_quotes "$cmd"
 semi_blanked=$q_semi
 emptied=$q_empty
+run_text=$q_run
 scan_quotes "$q_shell"
 shell_code=$q_empty
 
@@ -155,7 +163,7 @@ if ! match_shapes "$cmd" "$semi_blanked" "$emptied$shell_code"; then
     prev=""
     read_count=0
     set -f
-    for tok in ${cmd//[;&|()<>\"\']/ }; do
+    for tok in ${run_text//[;&|()<>]/ }; do
         if [ "$prev" = "cd" ]; then
             case $tok in /*) next=$tok ;; *) next=$base/$tok ;; esac
             [ -d "$next" ] && base=$next
