@@ -8,6 +8,8 @@ import { coreBypass, declare, fold, request, state, coreSnapshot, readOperatorRe
 import { execFileSync, spawnSync } from 'node:child_process';
 import { Command } from 'commander';
 import * as pinned from './pinned.js';
+import { RESIDUAL_ROWS } from './test-residual-fixtures.js';
+import { checkResiduals, checkRoundResiduals } from './spec-sign.js';
 import * as ledger from './ledger.js';
 import type { IssueSnap, OperatorRow } from './types.js';
 import { appendChain, loadKey, readChain } from './ledger.js';
@@ -819,11 +821,12 @@ describe('signed minerva specs', () => {
   const bunLookup = spawnSync('which', ['bun'], { encoding: 'utf8' });
   const realBun = bunLookup.status === 0 ? bunLookup.stdout.trim() : '';
   type CappedFixture = { spec: string; plan: string; verdicts: string[]; ledgerPath: string; specsRoot: string };
-  function cappedFixture(cleanKind?: 'spec' | 'plan', invalidLint = false, rounds = 3, citation?: string): CappedFixture {
+  function cappedFixture(cleanKind?: 'spec' | 'plan', invalidLint = false, rounds = 3, citation?: string, criticLine?: string): CappedFixture {
     if (!realBun) throw new Error('capped fixture requires Bun on PATH; install the pinned .bun-version');
     const scratchRoot = mkdtempSync(join(root, 'capped-'));
     const specText = '---\ntickets: HIMMEL-10205\n---\n# HIMMEL-10205 fixture\n\nKey: HIMMEL-10205\n\nEstimate record: estimate.json\n\n## Alternatives considered\n\n- None better.\n\n## Definition of done\n\n- Fixture verifies.\n\n## Invariants\n\nnone\n'
-      + (citation ? `\n## Fact ownership\n\n| Fact | Existing surfaces | Owner after | Non-owners |\n|---|---|---|---|\n| source | \`${citation}\` | source | n/a |\n` : '');
+      + (citation ? `\n## Fact ownership\n\n| Fact | Existing surfaces | Owner after | Non-owners |\n|---|---|---|---|\n| source | \`${citation}\` | source | n/a |\n` : '')
+      + (criticLine ? `\n## Critic rounds\n\n${criticLine}\n` : '');
     const request = { scratchRoot, key: 'HIMMEL-10205', specText: invalidLint ? specText.replace('Estimate record: estimate.json', '') : specText,
       planText: '---\ntickets: HIMMEL-10205\n---\n# HIMMEL-10205 plan\n\n- Ticket: HIMMEL-10205\n\n- Task 1: build the fixture.\n',
       returns: [1, 2, 3].slice(0, rounds).flatMap(round => (['spec', 'plan'] as const).map(kind => ({ kind, round,
@@ -1404,6 +1407,25 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{if(a[1]?.[1]==='capped-fo
     noCappedRows();
   });
 
+  it('T-R12: signSpec refuses an id-list line on the capped route through lintSpec with the gate line', () => {
+    declared();
+    vi.stubEnv('HIMMEL_REPO', candidateRoot);
+    const scripts = 'marketplace/plugins/himmel-ops/scripts';
+    const signerRoot = mkdtempSync(join(root, 'signer-root-'));
+    execFileSync('git', ['init', '-q', signerRoot]);
+    mkdirSync(join(signerRoot, scripts), { recursive: true });
+    for (const name of ['minerva-spec-gate.sh', 'minerva-trace-lint.sh']) copyFileSync(join(candidateRoot, scripts, name), join(signerRoot, scripts, name));
+    sourceFixture.primary = signerRoot;
+    try {
+      const f = cappedFixture(undefined, false, 3, undefined, '- R1: F1, F2 fixed');
+      expect(() => cappedSign('spec', f)).toThrow(/minerva-spec-gate\.sh refused the spec:[\s\S]*SIGN-SHAPE REFUSED: .*R1: F1, F2 fixed/);
+      noCappedRows();
+      const clean = cappedFixture(undefined, false, 3, undefined, '- R1-F1: fixed');
+      expect(spawnSync('bash', [join(signerRoot, scripts, 'minerva-spec-gate.sh'), clean.spec], { cwd: dirname(clean.spec), encoding: 'utf8' }).status,
+        'control: the gate passes the qualified line').toBe(0);
+    } finally { sourceFixture.primary = null; }
+  });
+
   it.each(['spec', 'spec-review'] as const)('capped carry requires normal declared authority: %s', api => {
     const f = cappedFixture();
     expect(() => cappedSign(api, f)).toThrow(/release R1 is UNKNOWN/);
@@ -1418,7 +1440,7 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{if(a[1]?.[1]==='capped-fo
       for (const changed of [original.replace(/^Reviewed:.*\n/m, ''), original.replace(/Reviewed: spec [0-9a-f]{64}/, `Reviewed: spec ${'a'.repeat(64)}`),
         original.replace('Key: HIMMEL-10205', 'Key: HIMMEL-10206')]) {
         writeFileSync(path, changed);
-        expect(() => cappedSign(api, f)).toThrow(/Reviewed|review|latest|Key:|names|header/);
+        expect(() => cappedSign(api, f)).toThrow(/Reviewed|review|latest|Key:|names|header|return must declare/);
         noCappedRows();
       }
       writeFileSync(path, original);
@@ -2548,4 +2570,92 @@ it('spec-sign.ts and engine-core.ts never import engine.ts, and engine-core.ts n
   reads('spec-sign.ts', [join(dir, 'engine')]);
   reads('engine-core.ts', [join(dir, 'engine'), join(dir, 'spec-sign')]);
   expect(wrong, 'see HIMMEL-10654 R8: new code a moved function calls goes in spec-sign.ts or engine-core.ts; a declaration that stays in engine.ts and is now needed by moved code moves to engine-core.ts').toEqual([]);
+});
+
+describe('residual lines: one grammar', () => {
+  const classOf = (rows: string[], line: string): string => {
+    const parsed = pinned.parseResidualLines([...rows, line]);
+    if (parsed.qualified.some(q => q.line === line && !rows.includes(line))) return 'qualified';
+    if (parsed.idList.includes(line)) return 'idList';
+    if (parsed.nearMiss.includes(line)) return 'nearMiss';
+    return parsed.legacy.size > pinned.parseResidualLines(rows).legacy.size ? 'legacy' : 'prose';
+  };
+
+  it('T-R7a: parseResidualLines classifies the shared table', () => {
+    expect(RESIDUAL_ROWS.map(r => [r.line, classOf(r.context, r.line)])).toEqual(RESIDUAL_ROWS.map(r => [r.line, r.cls]));
+    const q = pinned.parseResidualLines(['  - R3-F27: deferred → HIMMEL-1', '- P3-P17: fixed']).qualified;
+    expect(q.map(({ kind, round, id }) => [kind, round, id])).toEqual([['spec', 3, 'F27'], ['plan', 3, 'P17']]);
+  });
+
+  it('T-R11: findingIds refuses a duplicate id and reads no id from a non-finding heading', () => {
+    expect(() => pinned.findingIds('- **F1** (minor) one\n- **F1** (minor) two\n')).toThrow(/duplicate F1/);
+    expect(pinned.findingIds('- **X1** (note) not a finding\n- **F2** (major; regression) one\n')).toEqual(['F2']);
+  });
+});
+
+describe('the signer matches qualified residual lines (R2)', () => {
+  const sec = (...l: string[]) => ['# S', '', '## Critic rounds', '', ...l, '', '## Next'].join('\n');
+  const ret = (name: string, ...body: string[]) => ({ path: `/b/specs/designs/${name}`, text: ['Reviewed: spec 0', '', ...body].join('\n') });
+  const specR3 = ret('S.md.critic-spec-r3.md', '- **F2** (minor) one', '', 'SPEC FINDINGS 1');
+  const planClean = ret('S.md.critic-plan-r1.md', 'PLAN CLEAN');
+  const r1 = ['- Round 3 (spec critic)', '  - R3-F2: fixed'];
+  const sign = (text: string, n: number, returns: { path: string; text: string }[]) => () => checkResiduals(text, n, returns);
+
+  it('T-R1: a nested R3-F2 line answers F2 of the round-3 spec return', () => {
+    expect(sign(sec(...r1), 1, [specR3, planClean])).not.toThrow();
+  });
+  it('T-R3: a line for another id leaves F2 undisposed', () => {
+    expect(sign(sec('- Round 3', '  - R3-F7: fixed'), 1, [specR3, planClean])).toThrow(/F2/);
+  });
+  it('T-R2: a round-3 line naming an id the return lacks refuses', () => {
+    expect(sign(sec(...r1, '- R3-F9: fixed'), 1, [specR3, planClean])).toThrow(/F9/);
+  });
+  it('T-R4: a plan finding needs a P<round> line, not an R line', () => {
+    const plan2 = ret('S.md.critic-plan-r2.md', '- **P1** (minor) one', '', 'PLAN FINDINGS 1');
+    const spec = ret('S.md.critic-spec-r1.md', 'SPEC CLEAN');
+    expect(sign(sec('- R2-P1: fixed'), 1, [spec, plan2])).toThrow(/P1/);
+    expect(sign(sec('- P2-P1: fixed'), 1, [spec, plan2])).not.toThrow();
+  });
+  it('T-R9: a return whose FINDINGS count differs from its headings refuses', () => {
+    const bad = ret('S.md.critic-spec-r3.md', '- **F2** (minor) one', '', 'SPEC FINDINGS 2');
+    expect(sign(sec(...r1), 2, [bad, planClean])).toThrow(/return ids do not parse/);
+  });
+  it('T-R10: a qualified line later than the given round refuses', () => {
+    expect(sign(sec(...r1, '- R4-F2: fixed'), 1, [specR3, planClean])).toThrow(/R4-F2/);
+  });
+  it('T-R5: legacy lines against SPEC FINDINGS 2 still pass (control)', () => {
+    expect(sign(sec('- R1: fixed', '- R2: ceiling'), 2, [])).not.toThrow();
+  });
+  it('T-R6: one legacy line short refuses (control)', () => {
+    expect(sign(sec('- R1: fixed'), 2, [])).toThrow(/2 residual findings/);
+  });
+  it('T-R8: the bucket prose bullets keep the base verdict (control)', () => {
+    const prose = ['- R4: superseded by round 2 R6', '- R1: spec critic, SPEC CLEAN', '  - R1: accepted for the build', '- R1-1: fixed'];
+    expect(sign(sec('- R1: fixed', '- R2: ceiling', ...prose), 2, [])).not.toThrow();
+    expect(sign(sec('- R1: fixed', ...prose), 2, [])).toThrow(/2 residual findings/);
+  });
+  it('T-R7: spec-review matches inside the block naming the verdict file', () => {
+    const names = ['S.md.critic-spec-r3.md'];
+    const review = (l: string[]) => () => checkRoundResiduals(sec(`- Round 3: ${names[0]}`, ...l), names, 1, 'spec-review', [specR3]);
+    expect(review(['  - R3-F2: fixed'])).not.toThrow();
+    expect(review(['  - R3-F7: fixed'])).toThrow(/F2/);
+  });
+  it('T-R13: a return outside CRITIC_FILE, or whose name kind disagrees with its verdict, refuses naming it', () => {
+    expect(sign(sec(...r1), 1, [ret('x.critic-r3.md', '- **F2** (minor) one', '', 'SPEC FINDINGS 1'), planClean])).toThrow(/x\.critic-r3\.md/);
+    expect(sign(sec(...r1), 1, [ret('S.md.critic-spec-r3.md', '- **F2** (minor) one', '', 'PLAN FINDINGS 1')])).toThrow(/S\.md\.critic-spec-r3\.md/);
+  });
+  it('T-R14: prose and a near-miss below the highest qualified round are history', () => {
+    expect(sign(sec(...r1, '- R1 F6: reopened in R2', '- R2-F9: deferred → the chief files'), 1, [specR3, planClean])).not.toThrow();
+  });
+  it('T-R15: an id-list line refuses on the normal route, even at 0 residuals', () => {
+    expect(sign(sec('- R1: F1, F2 fixed'), 2, [])).toThrow(/R1: F1, F2 fixed/);
+    expect(sign(sec('- R1: F1, F2 fixed'), 0, [])).toThrow(/R1: F1, F2 fixed/);
+  });
+  it('T-R16: a near-miss at the highest qualified round refuses', () => {
+    expect(sign(sec(...r1, '- R3-F2x: deferred → later'), 1, [specR3, planClean])).toThrow(/R3-F2x/);
+  });
+  it('T-R17: a duplicate finding id is a refusal, not a crash', () => {
+    const dup = ret('S.md.critic-spec-r3.md', '- **F2** (minor) one', '- **F2** (minor) two', '', 'SPEC FINDINGS 2');
+    expect(sign(sec(...r1), 2, [dup, planClean])).toThrow(/return ids do not parse: duplicate F2/);
+  });
 });

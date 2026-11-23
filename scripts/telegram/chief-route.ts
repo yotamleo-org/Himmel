@@ -1,6 +1,7 @@
 import { selectDecisionNames, pinnedRead, boundedDirectoryNames, reviewedSpecHashes, optionalReturnAgreement, validateCappedFoldProofShape, PINNED_READ_VERSION, returnSha,
   SIGNATURE_DIRS, KEY_FOLDER, CRITIC_FILE, CRITIC_NAME, specsRootOf, keyOf, canonicalDirectoryNames, returnDirectories, checkLatestReturns,
   ledgerDirOf, ledgerEntryNames, ledgerKeyOfFile, parseManifest, memberLedgerState, declaredTickets, validateCappedLedgerProofShape, LEDGER_READ_VERSION,
+  FINDING_LINE, FINDING_SEVERITIES, findingTags, criticRounds, parseResidualLines,
   type CappedFoldProof, type CappedLedgerProof, type EvidencePin, type EvidenceFilePin, type HistoryPin, type MemberAbsencePin, type ReturnPin } from "../jira/src/release/pinned.ts";
 import { join, dirname, basename, resolve, isAbsolute } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
@@ -632,7 +633,6 @@ type Finding = { id: string; severity: "major" | "medium" | "minor"; critical?: 
 type SeededReturn = { return_sha: string; verdict_path: string; seals: { read_path: string; read_sha: string }[]; findings: Finding[]; unrated_ids: string[]; verdict: string };
 type LedgerRow = { row: string; [field: string]: any };
 
-const FINDING_LINE = /^[-*] \*\*([A-Za-z][\w.-]*)\*\* \(([^)]*)\)/;
 const ANSWER_LINE = /^RESTORE-(HOLDS|BREAKS) ([A-Za-z][\w.-]*) decision (\d+) ([0-9a-f]{12})$/;
 
 export { returnSha, keyOf } from "../jira/src/release/pinned.ts";
@@ -643,9 +643,9 @@ export function parseFindings(returnText: string, kind: Kind, round: number): Pa
   for (const line of returnText.split("\n")) {
     const m = FINDING_LINE.exec(line);
     if (!m) continue;
-    const [severity, ...tags] = m[2].replace(/`[^`]*(`|$)/g, "").split(";").map(s => s.trim());
-    if (severity !== "major" && severity !== "medium" && severity !== "minor") continue;
-    const f: Finding = { id: m[1], severity };
+    const [severity, ...tags] = findingTags(m[2]);
+    if (!(FINDING_SEVERITIES as readonly string[]).includes(severity)) continue;
+    const f: Finding = { id: m[1], severity: severity as Finding["severity"] };
     for (const tag of tags) {
       const cls = /^operator-critical:\s*(.*)$/.exec(tag)?.[1];
       if (cls !== undefined) { if ((OPERATOR_CRITICAL_CLASSES as readonly string[]).includes(cls)) f.critical = cls; else f.critical_refused = cls; }
@@ -1249,14 +1249,14 @@ export function cappedReader(specs: string, key: string) {
 }
 
 function cappedDeclaredKey(text: string, key: string, frontmatter: boolean): void {
-  const single = (lines: RegExpMatchArray[]) => lines.length === 1 && new RegExp(`^(?:${key}|\\[\\s*${key}\\s*\\])$`).test(lines[0][1].trim());
-  const head = frontmatter ? text.split(/^## /m)[0] : text;
-  const declaration = frontmatter ? /^(?:Keys?|- Tickets?):[ \t]*(.+)$/gm : /^Keys?:\s*(.+)$/gm;
-  if (!single([...head.matchAll(declaration)])) throw new Error(`capped-fold: header must declare only ${key}`);
   if (frontmatter) {
-    const front = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(text)?.[1] ?? "";
-    if (!single([...front.matchAll(/^tickets:[ \t]*(.+)$/gm)])) throw new Error(`capped-fold: tickets must declare only ${key}`);
+    cappedHeadDeclared(text, [key], true);
+    const declared = declaredTickets(text);
+    if (declared?.length !== 1 || declared[0] !== key) throw new Error(`capped-fold: header must declare only ${key}`);
+    return;
   }
+  const lines = [...text.matchAll(/^Keys?:\s*(.+)$/gm)];
+  if (lines.length !== 1 || !new RegExp(`^(?:${key}|\\[\\s*${key}\\s*\\])$`).test(lines[0][1].trim())) throw new Error(`capped-fold: return must declare only ${key}`);
 }
 
 // The v2 counterpart of cappedDeclaredKey for the spec head and the plan, where both declarations are optional: no line passes, one line naming exactly
@@ -1271,6 +1271,25 @@ export function cappedHeadDeclared(text: string, keys: readonly string[], frontm
   if (!frontmatter || !/^tickets:/m.test(/^---\n([\s\S]*?)\n---(?:\n|$)/.exec(text)?.[1] ?? "")) return;
   const declared = declaredTickets(text);
   if (!declared || declared.length !== keys.length || !keys.every(key => declared.includes(key))) throw new Error(`capped-fold: tickets must declare only ${wanted}`);
+}
+
+export function signShapeProblems(path: string, text: string, spec: boolean): string[] {
+  const name = basename(path); const problems: string[] = [];
+  if (/^tickets:/m.test(/^---\n([\s\S]*?)\n---(?:\n|$)/.exec(text)?.[1] ?? "")) {
+    const declared = declaredTickets(text);
+    if (!declared) problems.push(`${name}: the tickets line does not parse (one key per item; an annotation in parentheses names no key)`);
+    else {
+      try { cappedHeadDeclared(text, declared, true); } catch (e) { problems.push(`${name}: ${(e as Error).message.replace(/^capped-fold: /, "")}`); }
+      const key = keyOf(path);
+      if (key && !declared.includes(key)) problems.push(`${name}: the file names ${key}, which its tickets line does not declare`);
+    }
+  }
+  if (spec) {
+    const lines = parseResidualLines(criticRounds(text));
+    for (const l of lines.idList) problems.push(`${name}: a residual line names several findings; write one 'R<round>-<id>: <disposition>' line each: ${l.trim()}`);
+    for (const l of lines.nearMiss) problems.push(`${name}: a residual line at the highest round does not parse as '<R|P><round>-<id>: <disposition>': ${l.trim()}`);
+  }
+  return problems;
 }
 
 const cappedPathKeys = (path: string) => [KEY_FOLDER.test(basename(dirname(path))) ? basename(dirname(path)) : null,
@@ -2365,6 +2384,17 @@ if (import.meta.main) {
       console.log(JSON.stringify(await cappedFold({ key: parsed.opts["--key"], spec: parsed.opts["--spec"], plan: parsed.opts["--plan"],
         specReturn: parsed.opts["--spec-return"], planReturn: parsed.opts["--plan-return"] })));
     } catch (e) { console.error(`capped-fold: ${e instanceof Error ? e.message : e}`); process.exit(1); }
+  } else if (verb === "sign-shape") {
+    const a = verbArgs(args, ["--plan"], [], 1);
+    if (!a || (a.opts["--plan"] !== undefined && a.opts["--plan"].startsWith("--"))) { console.error("usage: bun chief-route.ts sign-shape <spec> [--plan <plan>]"); process.exit(2); }
+    let problems: string[];
+    try {
+      problems = signShapeProblems(a.pos[0], await readFile(a.pos[0], "utf8"), true);
+      if (a.opts["--plan"] !== undefined) problems.push(...signShapeProblems(a.opts["--plan"], await readFile(a.opts["--plan"], "utf8"), false));
+    } catch (e) { console.error(`sign-shape: ${e instanceof Error ? e.message : e}`); process.exit(2); }
+    for (const p of problems) console.log(`SIGN-SHAPE REFUSED: ${p}`);
+    if (problems.length) process.exit(3);
+    console.log("SIGN-SHAPE OK");
   } else if (verb === "register" && args.length === 3) {
     await registerConsole(args[0], args[1], args[2]);
   } else if (verb === "announce" && args.length === 1) {
@@ -2442,7 +2472,7 @@ if (import.meta.main) {
         catch (e) { console.error(`[chief-route] queued the Telegram reply but could not speak on ${satellite}: ${e instanceof Error ? e.message : e}`); process.exit(1); }
       }
     } else {
-      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] [--kind <kind>] [--owed <key> --doc <absolute chief doc>] <chat_id | operator> <text> | send-file [--by-request <the operator's request>] <chat_id> <path> [caption] | critic-round-check <verdict-file> <file-the-critic-read> | round-seed --all <specs root> | ledger-verify <verdict-file> [--spec <spec>] [--sign] | closure-pack <KEY> <spec|plan> [--specs <root>] | round-override <KEY> --findings <id,...> --why <line> --chief <session> [--specs <root>] | round-critical <KEY> --finding <id[,id...]> --decision <d> --quote <words> [--restores] [--round <kind>:<n>] [--no-round] [--specs <root>] | round-reset <KEY> --decision <d> --quote <words> [--specs <root>] | round-extension <KEY> --findings <id,...> --decision <d> --quote <words> --why <line> --chief <session> [--specs <root>] | fold-list --spec <spec> [--specs <root>] | round-status <KEY> [--specs <root>] [--json] | round-status --all --specs <root> --json | register <inbox> <bucket> <project> | announce <inbox>");
+      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] [--kind <kind>] [--owed <key> --doc <absolute chief doc>] <chat_id | operator> <text> | send-file [--by-request <the operator's request>] <chat_id> <path> [caption] | critic-round-check <verdict-file> <file-the-critic-read> | round-seed --all <specs root> | ledger-verify <verdict-file> [--spec <spec>] [--sign] | closure-pack <KEY> <spec|plan> [--specs <root>] | round-override <KEY> --findings <id,...> --why <line> --chief <session> [--specs <root>] | round-critical <KEY> --finding <id[,id...]> --decision <d> --quote <words> [--restores] [--round <kind>:<n>] [--no-round] [--specs <root>] | round-reset <KEY> --decision <d> --quote <words> [--specs <root>] | round-extension <KEY> --findings <id,...> --decision <d> --quote <words> --why <line> --chief <session> [--specs <root>] | fold-list --spec <spec> [--specs <root>] | sign-shape <spec> [--plan <plan>] | round-status <KEY> [--specs <root>] [--json] | round-status --all --specs <root> --json | register <inbox> <bucket> <project> | announce <inbox>");
       process.exit(1);
     }
   }
