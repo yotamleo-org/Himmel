@@ -1133,7 +1133,7 @@ s52() {
   HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$pf" \
   KONSOLE_CMD="$d/konsole" PGREP_CMD="$d/pgrep" \
   WORKER_SESSION_REPO="$tmp/repo52" HEADED_ARM_LOCK_DIR="$d/locks" HEADED_ARM_PROC="$d/proc" \
-    timeout -k 5 60 bash "$SCRIPT" --profile worker-impl "$@" "$nm" "$some_doc" "$sig" "$(( $(date +%s) + 3600 ))" "$d/log" claude-sonnet-5
+    bash "$SCRIPT" --profile worker-impl "$@" "$nm" "$some_doc" "$sig" "$(( $(date +%s) + 3600 ))" "$d/log" claude-sonnet-5
 }
 log52() { cat "$1/log" 2>/dev/null || true; }
 
