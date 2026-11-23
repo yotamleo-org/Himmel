@@ -619,6 +619,14 @@ rc=0; out="$(run)" || rc=$?
 contains "truncated-subject: no ticket anywhere fails check 6" "$out" "[FAIL] 6."
 contains "truncated-subject: FAIL names the rebuilt subject" "$out" "mark and ends with no id at all"
 
+STUB_COMMITS='[{"messageHeadline":"feat(x): add a long subject that runs past the seventy character mark…","messageBody":""}]'
+rc=0; out="$(run)" || rc=$?
+contains "truncated-subject: empty body still fails check 6, never a silent pass" "$out" "[FAIL] 6."
+
+STUB_COMMITS='[{"messageHeadline":"feat(x): a genuine subject that really ends in an ellipsis…","messageBody":"see (HIMMEL-1) in the body\n\nPlatforms tested: linux\nSecurity reviewed: manual"}]'
+rc=0; out="$(run)" || rc=$?
+contains "truncated-subject: a body without the continuation marker is not joined" "$out" "[FAIL] 6."
+
 # --- 6b. a merge commit (>1 parent) is exempt from check 6,
 # even though its subject carries no ticket ID -------------------------
 reset_stubs
