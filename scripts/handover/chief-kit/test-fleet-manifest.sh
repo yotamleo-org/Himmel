@@ -410,6 +410,22 @@ check 'lost control still permits identity-matched unknown settlement' 0 "$rc"
 bash "$SCRIPT" attempt bind "$am" "$bd" --attempt-id B4 >/dev/null 2>&1; rc=$?
 check 'lost control refuses new bind' 1 "$rc"
 
+m10="$tmp/m10/chief.fleet.json"; mkdir -p "$tmp/m10"
+free="$tmp/m10/queue-lock-free"; printf '#!/bin/bash\nexit 0\n' > "$free"; chmod +x "$free"
+fresh="$tmp/m10/HIMMEL-10-N80-fresh.md"; printf '# worker\n\n## Results\n' > "$fresh"
+started="$tmp/m10/HIMMEL-11-N81-started.md"; printf '# worker\n\n## Results\n\n- 10:00 LIVE — started\n' > "$started"
+TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" add "$m10" --lane native "$fresh" "$started" >/dev/null 2>&1; rc=$?
+check '10. a plain add of a fresh and a started doc succeeds' 0 "$rc"
+check '10. the doc with no session is written as a pending row' pending "$(jq -r --arg d "$fresh" '.workers[] | select(.doc == $d) | .registration // "live"' "$m10")"
+check '10. the doc with a LIVE bullet is written as a live row' live "$(jq -r --arg d "$started" '.workers[] | select(.doc == $d) | .registration // "live"' "$m10")"
+onit="$tmp/m10/HIMMEL-12-N82-onit.md"; printf '# worker\n\n## Results\n' > "$onit"
+WORKER_SESSION_DOC="$onit" python3 -c 'import ctypes,time; ctypes.CDLL(None).prctl(15,b"claude",0,0,0); time.sleep(30)' & live=$!
+sleep .2
+TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" add "$m10" --lane native "$onit" >/dev/null 2>&1; rc=$?
+kill "$live" 2>/dev/null; wait "$live" 2>/dev/null
+check '10. a plain add of a doc a claude session is on succeeds' 0 "$rc"
+check '10. the doc a claude session is on is written as a live row' live "$(jq -r --arg d "$onit" '.workers[] | select(.doc == $d) | .registration // "live"' "$m10")"
+
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-fleet-manifest.sh"
     exit 0

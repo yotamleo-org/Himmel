@@ -259,7 +259,7 @@ echo "  ok" >&2
 # 8b. Exhausted bank → the claude route refuses BEFORE launching claude, and
 #     fails open at exit 3 so the caller falls back to another reviewer.
 echo "test: claude route refuses an exhausted bank" >&2
-printf '{"account":"%s","five_hour":{"utilization":99},"seven_day":{"utilization":99},"primaries_refreshed_at":%s}' "$ACCT" "$(date +%s)" > "$work/bank-full.json"
+printf '{"account":"%s","five_hour":{"utilization":100},"seven_day":{"utilization":100},"primaries_refreshed_at":%s}' "$ACCT" "$(date +%s)" > "$work/bank-full.json"
 : > "$work/claude-argv"
 CADENCE_USAGE_CACHE="$work/bank-full.json" CLAUDE_ARGV_CAPTURE="$work/claude-argv" PATH="$bindir:$PATH" \
     bash "$CRITIC" --repo "$repo" --base "$base" --goal "test goal" --route claude >/dev/null 2>"$work/err8b"

@@ -3,6 +3,7 @@ import ast
 import json
 import os
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -137,9 +138,10 @@ class TestRefusals(StubCase):
         self.assertEqual(r.returncode, 2)
         self.assertIn("no backend", r.stderr)
 
-    def test_tart_backend_is_interface_only(self):
-        r = run(["vm-sweep"], env={"HOME": str(self.home), "PEER_JOB_BACKEND": "tart"})
+    def test_tart_backend_refuses_without_a_tart_binary(self):
+        r = run(["vm-sweep"], env={"HOME": str(self.home), "PEER_JOB_BACKEND": "tart", "PATH": "/usr/bin:/bin"})
         self.assertEqual(r.returncode, 2)
+        self.assertIn("tart not found", r.stderr)
 
     def test_every_backend_self_call_names_a_method_of_its_class(self):
         tree = ast.parse(CLI.read_text())
@@ -284,6 +286,270 @@ class TestVBoxArgv(unittest.TestCase):
     def test_loose_credential_mode_refused(self):
         (self.home / ".config/himmel/peer-bridge/golden.guest").chmod(0o644)
         self.assertEqual(self.cli("vm-exec", "goomal-j1", "--timeout", "5", "--", "true").returncode, 2)
+
+
+FAKE_TART = r'''#!/usr/bin/env bash
+. "$(dirname "$0")/fake.env"
+printf '%s\n' "$*" >>"$FAKE_TART_LOG"
+s="$FAKE_TART_STATE"
+case "$1" in
+  clone) touch "$s/$3"; exit 0 ;;
+  set) exit "${FAKE_TART_SET_RC:-0}" ;;
+  run) exit 0 ;;
+  ip) echo 198.51.100.7; exit 0 ;;
+  list)
+    shift; src=''; fmt=text
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --source) src="$2"; shift 2 ;;
+        --format) fmt="$2"; shift 2 ;;
+        -q|--quiet) shift ;;
+        *) exit 98 ;;
+      esac
+    done
+    local_vms="sequoia-base himmel-proof $(ls "$s")"
+    oci=ghcr.io/cirruslabs/macos-sequoia-base:latest
+    if [ "$fmt" = json ]; then
+      sep=''; printf '['
+      if [ "$src" != oci ]; then
+        for n in $local_vms; do
+          r=false; [ "$n" = "${FAKE_TART_RUNNING:-}" ] && r=true
+          printf '%s{"Source":"local","Name":"%s","Running":%s,"State":"stopped"}' "$sep" "$n" "$r"; sep=','
+        done
+      fi
+      if [ "$src" != local ]; then
+        r=false; [ "$oci" = "${FAKE_TART_RUNNING:-}" ] && r=true
+        printf '%s{"Source":"OCI","Name":"%s","Running":%s,"State":"stopped"}' "$sep" "$oci" "$r"
+      fi
+      printf ']\n'
+    else
+      [ "$src" != oci ] && printf '%s\n' $local_vms
+      [ "$src" != local ] && printf '%s\n' "$oci"
+    fi
+    exit 0 ;;
+  stop) exit 0 ;;
+  delete) rm -f "$s/$2"; exit 0 ;;
+esac
+exit 99
+'''
+
+FAKE_SSH = r'''#!/usr/bin/env bash
+. "$(dirname "$0")/fake.env"
+printf '%s\n' "$*" >>"$FAKE_SSH_LOG"
+env | sort >>"$FAKE_SSH_ENV"
+cmd="${@: -1}"
+case "$cmd" in
+  true) exit "${FAKE_SSH_BOOT_RC:-0}" ;;
+  "mkdir "*) mkdir -p "$FAKE_GUEST"; exit 0 ;;
+  "cat >"*) name="${cmd##*/}"; cat >"$FAKE_GUEST/$name"; exit 0 ;;
+  "/usr/bin/perl "*) [ -n "${FAKE_SSH_HANG:-}" ] && exec sleep 30; exit "${FAKE_SSH_RC:-0}" ;;
+  "/bin/bash -c "*pkill*) exit "${FAKE_SSH_KILL_RC:-0}" ;;
+  "head -c "*) [ -n "${FAKE_SSH_FLOOD:-}" ] && exec yes; printf 'hello world\n'; exit 0 ;;
+esac
+exit 99
+'''
+
+
+class TestTartArgv(unittest.TestCase):
+    SECRETS = ("bot-token-not-real", "signing-key-not-real", "bridge-key-not-real")
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="vmsdk-job-tart."))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.home = self.tmp / "home"
+        self.cdir = self.home / ".config/himmel/peer-bridge"
+        self.cdir.mkdir(parents=True)
+        for name, text in (("tart.guest", "guest-key-not-real\n"), ("tart.known_hosts", "himmel-peerjob-guest ssh-ed25519 AAAA\n"),
+                           ("signing.key", self.SECRETS[1] + "\n"), ("bridge.key", self.SECRETS[2] + "\n")):
+            (self.cdir / name).write_text(text)
+            (self.cdir / name).chmod(0o600)
+        bin_dir = self.tmp / "bin"
+        bin_dir.mkdir()
+        for name, text in (("tart", FAKE_TART), ("ssh", FAKE_SSH)):
+            (bin_dir / name).write_text(text)
+            (bin_dir / name).chmod(0o755)
+        self.state = self.tmp / "state"
+        self.state.mkdir()
+        self.guest = self.tmp / "guest"
+        self.tart_home = self.tmp / "tart-home"
+        golden = self.tart_home / "vms" / "sequoia-base"
+        golden.mkdir(parents=True)
+        for name in ("config.json", "disk.img", "nvram.bin"):
+            (golden / name).write_bytes(name.encode())
+        self.tart_log, self.ssh_log, self.ssh_env = self.tmp / "tart.log", self.tmp / "ssh.log", self.tmp / "ssh.env"
+        self.env = {"PEER_JOB_BACKEND": "tart", "PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(self.home),
+                    "TART_HOME": str(self.tart_home), "PEER_JOB_BOOT_TIMEOUT": "3",
+                    "FAKE_TART_LOG": str(self.tart_log), "FAKE_TART_STATE": str(self.state),
+                    "FAKE_SSH_LOG": str(self.ssh_log), "FAKE_SSH_ENV": str(self.ssh_env), "FAKE_GUEST": str(self.guest),
+                    "TELEGRAM_BOT_TOKEN": self.SECRETS[0]}
+
+    def cli(self, *args, extra=None):
+        env = {**self.env, **(extra or {})}
+        knobs = "".join(f"{k}={shlex.quote(v)}\n" for k, v in env.items() if k.startswith("FAKE_"))
+        (self.tmp / "bin" / "fake.env").write_text(knobs)
+        return run(list(args), env=env)
+
+    def tart(self):
+        return self.tart_log.read_text().splitlines() if self.tart_log.exists() else []
+
+    def ssh(self):
+        return self.ssh_log.read_text().splitlines() if self.ssh_log.exists() else []
+
+    def test_clone_runs_a_fresh_headless_host_only_clone(self):
+        r = self.cli("vm-clone", "goomal-j1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        t = self.tart()
+        self.assertIn("clone sequoia-base himmel-peerjob-goomal-j1", t)
+        self.assertIn("set himmel-peerjob-goomal-j1 --cpu 4 --memory 8192 --random-mac", t)
+        run_line = next(l for l in t if l.startswith("run "))
+        self.assertEqual(run_line, "run himmel-peerjob-goomal-j1 --no-graphics --no-audio --no-clipboard --net-host")
+        self.assertLess(t.index("set himmel-peerjob-goomal-j1 --cpu 4 --memory 8192 --random-mac"), t.index(run_line))
+        self.assertTrue(any(l.startswith("ip himmel-peerjob-goomal-j1 --wait") for l in t))
+        s = self.ssh()
+        self.assertTrue(s[0].endswith("admin@198.51.100.7 true"), s[0])
+        self.assertTrue(any(l.endswith("admin@198.51.100.7 mkdir -p -m 700 /tmp/job") for l in s), s)
+
+    def test_a_running_vm_that_is_not_ours_refuses_the_clone(self):
+        r = self.cli("vm-clone", "goomal-j1", extra={"FAKE_TART_RUNNING": "himmel-proof"})
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertIn("himmel-proof", r.stderr)
+        self.assertFalse(any(l.startswith("clone") for l in self.tart()))
+
+    def test_a_running_vm_from_the_oci_cache_refuses_the_clone(self):
+        oci = "ghcr.io/cirruslabs/macos-sequoia-base:latest"
+        r = self.cli("vm-clone", "goomal-j1", extra={"FAKE_TART_RUNNING": oci})
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertIn(oci, r.stderr)
+        self.assertFalse(any(l.startswith("clone") for l in self.tart()))
+
+    def test_a_failed_step_after_clone_deletes_the_clone(self):
+        r = self.cli("vm-clone", "goomal-j1", extra={"FAKE_TART_SET_RC": "1"})
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertIn("delete himmel-peerjob-goomal-j1", self.tart())
+        self.assertFalse(any(l.startswith("run ") for l in self.tart()))
+
+    def test_a_guest_that_never_answers_ssh_is_deleted(self):
+        r = self.cli("vm-clone", "goomal-j1", extra={"FAKE_SSH_BOOT_RC": "255"})
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertIn("delete himmel-peerjob-goomal-j1", self.tart())
+
+    def test_destroy_stops_and_deletes_and_is_a_noop_for_an_unknown_name(self):
+        self.cli("vm-clone", "goomal-j1")
+        self.assertEqual(self.cli("vm-destroy", "goomal-j1").returncode, 0)
+        t = self.tart()
+        self.assertLess(t.index("stop himmel-peerjob-goomal-j1 --timeout 30"), t.index("delete himmel-peerjob-goomal-j1"))
+        self.tart_log.unlink()
+        self.assertEqual(self.cli("vm-destroy", "never-made").returncode, 0)
+        self.assertFalse(any(l.startswith(("stop", "delete")) for l in self.tart()))
+
+    def test_sweep_deletes_only_our_clones(self):
+        for n in ("himmel-peerjob-a-j1", "himmel-peerjob-b-j2", "other-vm"):
+            (self.state / n).touch()
+        self.assertEqual(self.cli("vm-sweep").returncode, 0)
+        deleted = [l for l in self.tart() if l.startswith("delete")]
+        self.assertEqual(deleted, ["delete himmel-peerjob-a-j1", "delete himmel-peerjob-b-j2"])
+
+    def test_push_exec_pull(self):
+        self.cli("vm-clone", "goomal-j1")
+        for name in ("src.tar", "job-entry.sh", "suites.txt"):
+            f = self.tmp / name
+            f.write_text(f"{name} bytes")
+            self.assertEqual(self.cli("vm-push", "goomal-j1", str(f)).returncode, 0)
+        self.assertEqual(sorted(p.name for p in self.guest.iterdir()), ["job-entry.sh", "src.tar", "suites.txt"])
+        self.assertEqual((self.guest / "src.tar").read_text(), "src.tar bytes")
+        r = self.cli("vm-exec", "goomal-j1", "--timeout", "5", "--", "bash", "/tmp/job/job-entry.sh", "/tmp/job/suites.txt", "1800")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        exec_line = next(l for l in self.ssh() if "/usr/bin/perl" in l)
+        self.assertIn("setsid", exec_line)
+        self.assertTrue(exec_line.endswith("bash /tmp/job/job-entry.sh /tmp/job/suites.txt 1800"), exec_line)
+        self.assertEqual(self.cli("vm-exec", "goomal-j1", "--timeout", "5", "--", "true", extra={"FAKE_SSH_RC": "3"}).returncode, 3)
+        out = self.tmp / "out.json"
+        self.assertEqual(self.cli("vm-pull", "goomal-j1", "/tmp/job/.job-result.json", str(out), "--max-bytes", "11").returncode, 2)
+        self.assertFalse(out.exists())
+        self.assertEqual(self.cli("vm-pull", "goomal-j1", "/tmp/job/.job-result.json", str(out), "--max-bytes", "16384").returncode, 0)
+        self.assertEqual(out.read_text(), "hello world\n")
+        self.assertEqual(stat.S_IMODE(out.stat().st_mode), 0o600)
+        self.assertTrue(any(l.endswith("head -c 16385 -- /tmp/job/.job-result.json") for l in self.ssh()))
+
+    def test_pull_of_a_file_that_keeps_growing_stops_at_the_bound(self):
+        out = self.tmp / "out.log"
+        r = self.cli("vm-pull", "goomal-j1", "/tmp/job/job.log", str(out), "--max-bytes", "4096", extra={"FAKE_SSH_FLOOD": "1"})
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertFalse(out.exists())
+
+    def test_exec_timeout_kills_the_guest_session_and_exits_124(self):
+        r = self.cli("vm-exec", "goomal-j1", "--timeout", "1", "--", "bash", "-c", "sleep 600", extra={"FAKE_SSH_HANG": "1"})
+        self.assertEqual(r.returncode, 124, r.stderr)
+        kill = [l for l in self.ssh() if "pkill" in l]
+        self.assertEqual(len(kill), 1)
+        self.assertIn("pkill -KILL -s", kill[0])
+        self.assertIn("! pgrep -s", kill[0])
+
+    def test_an_unconfirmed_timeout_kill_is_a_backend_error(self):
+        r = self.cli("vm-exec", "goomal-j1", "--timeout", "1", "--", "true", extra={"FAKE_SSH_HANG": "1", "FAKE_SSH_KILL_RC": "1"})
+        self.assertEqual(r.returncode, 1, r.stderr)
+
+    def test_nothing_secret_reaches_the_guest(self):
+        self.cli("vm-clone", "goomal-j1")
+        for name in ("src.tar", "job-entry.sh", "suites.txt"):
+            (self.tmp / name).write_text("x")
+            self.cli("vm-push", "goomal-j1", str(self.tmp / name))
+        self.cli("vm-exec", "goomal-j1", "--timeout", "5", "--", "true")
+        self.cli("vm-pull", "goomal-j1", "/tmp/job/.job-result.json", str(self.tmp / "o"), "--max-bytes", "100")
+        seen = self.ssh_log.read_text() + self.ssh_env.read_text() + self.tart_log.read_text()
+        seen += "".join(p.read_text() for p in self.guest.iterdir())
+        for s in (*self.SECRETS, "guest-key-not-real"):
+            self.assertNotIn(s, seen)
+        self.assertNotIn("TELEGRAM_BOT_TOKEN", self.ssh_env.read_text())
+        cfg_paths = set(re.findall(re.escape(str(self.cdir)) + r"/[^\s=]+", self.ssh_log.read_text()))
+        self.assertEqual(cfg_paths, {str(self.cdir / "tart.guest"), str(self.cdir / "tart.known_hosts")})
+        for l in self.ssh():
+            for opt in ("-F /dev/null", "IdentitiesOnly=yes", "IdentityAgent=none", "StrictHostKeyChecking=yes", "ForwardAgent=no"):
+                self.assertIn(opt, l)
+        self.assertFalse(any("--dir" in l or "--disk" in l for l in self.tart()))
+        self.assertEqual(sorted(p.name for p in self.guest.iterdir()), ["job-entry.sh", "src.tar", "suites.txt"])
+
+    def test_missing_or_loose_credential_refused(self):
+        for name in ("tart.guest", "tart.known_hosts"):
+            with self.subTest(name=name):
+                f = self.cdir / name
+                f.chmod(0o644)
+                self.assertEqual(self.cli("vm-exec", "goomal-j1", "--timeout", "5", "--", "true").returncode, 2)
+                self.assertEqual(self.cli("vm-clone", "goomal-j1").returncode, 2)
+                text = f.read_text()
+                f.unlink()
+                self.assertEqual(self.cli("vm-sweep").returncode, 2)
+                f.write_text(text)
+                f.chmod(0o600)
+        self.assertFalse(any(l.startswith("clone") for l in self.tart()))
+
+    def test_a_symlinked_credential_is_refused(self):
+        f = self.cdir / "tart.guest"
+        real = self.tmp / "real.guest"
+        f.rename(real)
+        f.symlink_to(real)
+        self.assertEqual(self.cli("vm-clone", "goomal-j1").returncode, 2)
+        self.assertFalse(any(l.startswith("clone") for l in self.tart()))
+
+    def test_sweep_still_deletes_leftovers_when_the_credential_is_missing(self):
+        (self.state / "himmel-peerjob-a-j1").touch()
+        (self.cdir / "tart.guest").unlink()
+        self.assertEqual(self.cli("vm-sweep").returncode, 2)
+        self.assertIn("delete himmel-peerjob-a-j1", self.tart())
+
+    def test_golden_record_hashes_the_tart_image_files(self):
+        r = self.cli("golden-record", "--print")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertRegex(r.stdout.strip(), r"^[0-9a-f]{64}$")
+        (self.tart_home / "vms/sequoia-base/disk.img").write_bytes(b"changed")
+        self.assertNotEqual(self.cli("golden-record", "--print").stdout, r.stdout)
+
+    def test_darwin_runner_unit_selects_the_tart_backend(self):
+        plist = (HERE.parent / "peer-bridge" / "units" / "com.himmel.peer-runner.plist").read_text()
+        self.assertRegex(plist, r"<key>PEER_JOB_BACKEND</key>\s*<string>tart</string>")
+        self.assertRegex(plist, r"<key>PATH</key>\s*<string>[^<]*/opt/homebrew/bin")
+        self.assertEqual(self.cli("vm-sweep").returncode, 0)
+        self.assertIn("list --source local -q", self.tart())
 
 
 @unittest.skipUnless(VM_TEST, "real VirtualBox rows run only in a test VM (PEER_BRIDGE_VM_TEST=1)")

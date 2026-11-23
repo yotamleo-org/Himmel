@@ -320,6 +320,59 @@ deletes job logs older than 14 days. Every 30 s it then:
    SHA-256 and byte count go into `vm-done`, with the golden image's digest and
    the VM minutes. The VM is destroyed and the work dir deleted on every path.
 
+#### A macOS peer: the Tart backend
+
+On macOS the runner unit (`units/com.himmel.peer-runner.plist`) sets
+`PEER_JOB_BACKEND=tart` and puts `/opt/homebrew/bin` on `PATH`, so `vmsdk-job.py`
+drives [Tart](https://tart.run) and runs every job in a throwaway macOS VM, never
+on the host. Each job VM is a clone of the local image `sequoia-base` named
+`himmel-peerjob-<job>`, set to 4 CPUs and 8 GB with a fresh MAC, and started with
+`tart run --no-graphics --no-audio --no-clipboard --net-host`. No `--dir` or
+`--disk` is ever passed, so the guest has no shared folder. The host reaches the
+guest by SSH at the address `tart ip` reports. A timeout kills the job's guest
+session through a small perl wrapper, because the macOS guest has no `setsid`.
+`vm-sweep` deletes only `himmel-peerjob-` VMs; `sequoia-base` and `himmel-proof`
+are never deleted. `vm-clone` refuses while any other Tart VM is running, local
+or pulled from an OCI registry, because a job guest could reach it over the
+host-only network.
+
+What the peer's operator sets up once:
+
+1. **Tart and the image.** Install Tart at `/opt/homebrew/bin/tart` and keep a
+   local macOS image named `sequoia-base` with Remote Login on and the
+   user `admin`. `job-entry.sh` runs under the guest's stock `/bin/bash` 3.2 and
+   needs `git`, `tar` and `jq` there. The suites need what `macos-cadence.yml`
+   installs (bun, shfmt, the pre-commit venv). The guest has no internet route
+   while a job runs, so everything must already be in the image.
+2. **The guest key.** Create an SSH key only for this purpose; it is never the
+   bridge key. Put its private half at `~/.config/himmel/peer-bridge/tart.guest`
+   (mode 600) and its public half in the `admin` user's `~/.ssh/authorized_keys`
+   inside the image. Boot the image once and record its host key
+   under the alias `himmel-peerjob-guest` in
+   `~/.config/himmel/peer-bridge/tart.known_hosts` (mode 600), for example
+   `ssh-keyscan <ip> | sed 's/^[^ ]*/himmel-peerjob-guest/'`. Every clone shares
+   that host key, so SSH checks it strictly. A missing file, or one not mode 600,
+   makes every job verb refuse (exit 2), so the unit does not restart. Three
+   verbs skip the check: `vm-destroy` and `golden-record` never use it, and
+   `vm-sweep` deletes leftover job VMs first and refuses only after that.
+3. **Serve and allow.** Add `run-suite` to that peer's `serves`, list the suites
+   with `setup.ts allow-suite`, and leave `approve["run-suite"]` at `tty`, so each
+   job waits for a typed `yes` from `jobs.ts approve`, unless you choose `auto`.
+   Then run `setup.ts runner` to install and start the runner unit.
+4. **Record the image.** Run `vmsdk-job.py golden-record` (with
+   `PEER_JOB_BACKEND=tart`), which hashes the image's `config.json`, `disk.img`
+   and `nvram.bin` under `~/.tart/vms/sequoia-base/` into `C/golden.digest`.
+
+Residual: `--net-host` is Tart's "host-only network". The guest has no route to
+the internet, but it can reach any service on the host that listens on the
+host-only bridge, and any other VM on that network (which is why a foreign
+running Tart VM refuses the clone). The check sees only the Tart VMs of the
+runner's user and `TART_HOME`: a VM run by another hypervisor, another user or
+another `TART_HOME` on that bridge is not checked, so the peer keeps none running
+while it serves jobs. The live check for a new peer: in a job guest,
+`curl -m 10 https://github.com` must fail. It belongs to the first live round
+trip with a macOS peer, not to the suite rows, which use a fake `tart` and `ssh`.
+
 Every `git` call runs with `core.hooksPath=/dev/null`, `GIT_CONFIG_GLOBAL=/dev/null`
 and `GIT_CONFIG_NOSYSTEM=1`, so no hook, filter (LFS included) or user config
 runs. The runner's closed list of git verbs is `init --bare`, `fetch --prune` of
@@ -333,6 +386,8 @@ Testing the runner and the VM verbs:
   against the stub backend, on any host.
 - `python3 scripts/lib/test-vmsdk-job.py` runs the verbs on the stub backend;
   with `PEER_BRIDGE_VM_TEST=1` inside a test VM it also runs the VirtualBox rows.
+  Its Tart rows run on any host against a fake `tart` and a fake `ssh` that log
+  every call.
 - `scripts/peer-bridge/e2e-linux.sh` is the end-to-end run, only inside a test VM
   that already holds the golden fixture (`vmsdk-job.py golden-build-linux`). It
   needs `PEER_BRIDGE_VM_TEST=1`, `E2E_BOTS_FILE` (a 0600 file with the two test

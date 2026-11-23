@@ -18,6 +18,7 @@ Run these, in order, and write the result as the first bullet under
 1. **One batch, one turn** — all of these as parallel tool calls:
    - **`ListAgents`**: who is alive; a worker absent here is gone, never relay it as live.
    - **`ToolSearch`** `select:SendMessage` (deferred).
+   - **`Read`** `{{STATE_DIR}}/specs/standing-rules.md`: this station's rules, all in force.
    - **`Read`** each `specs/decisions/chief-decisions-<date>.md` `decisions:` names.
    - **`Read`** every direction companion file that the line of `## Current direction`
      beginning `Full original text` names (under `{{STATE_DIR}}`) while an OPERATOR or CHIEF
@@ -236,6 +237,12 @@ bare `clean.sh` sweep for a worker. long-running.txt: `run_in_background` (a sho
   manager**, never a direct fixVersions write: `chief-sections/release-manager.md`. [prose]
 - **Weekly standards duty** (cadence stale): `chief-sections/weekly-duty.md`. [prose]
 - **Owed** items are `owe.sh` rows: `chief-sections/owed.md`. [prose]
+
+## The station's standing-rules file
+
+The file step 1 reads holds this station's own rules; the list above is himmel's, the same
+everywhere. `chief.sh` seeds it once from `docs/handover/standing-rules-template.md` and never
+overwrites it. The chief edits it; the operator corrects it. It stays out of `CLAUDE.md`.
 
 ## Handing over
 

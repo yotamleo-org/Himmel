@@ -2415,3 +2415,45 @@ describe('liveJira.issue reads the labels and takes the run\'s signal (R3-F1, F4
     expect(vi.mocked(request).mock.calls[0]).toEqual(['PUT', '/issue/HIMMEL-7', { update: { labels: [{ add: 'backlog' }] } }]);
   });
 });
+
+describe('release core-check reads who signs (I13)', () => {
+  const CORE_PATH = 'scripts/handover/chief-kit/tick.sh';
+  let mirror: string;
+  let corePaths: string;
+
+  beforeEach(async () => {
+    mirror = join(root, 'mirror');
+    mkdirSync(mirror);
+    writeFileSync(join(mirror, '.cursor.json'), JSON.stringify({ lastSync: '2026-11-23T00:00:00Z' }));
+    for (const k of ['K-5', 'K-6']) writeFileSync(join(mirror, `${k}.md`), `---\nkey: "${k}"\nstatus: "To Do"\ntype: "Task"\npriority: "Medium"\nfixVersions: []\n---\n`);
+    corePaths = join(root, 'core-paths.txt');
+    writeFileSync(corePaths, '^scripts/handover/chief-kit/tick\\.sh$\n');
+    const vf = join(root, 'verbatim.txt');
+    for (const r of ['R1', 'R2']) await run('operator', 'declare', r, '--versions', r === 'R1' ? 'v1' : 'v2', '--decision', '1', '--verbatim-file', vf);
+    await run('operator', 'core-bypass', 'R1', '--keys', 'K-5', '--decision', '412', '--verbatim-file', vf);
+    await run('operator', 'core-bypass', 'R1', '--keys', 'K-6', '--decision', '413', '--verbatim-file', vf);
+    out = [];
+  });
+  const check = async (...keys: string[]) => {
+    out = [];
+    await run('core-check', '--paths', CORE_PATH, '--key', ...keys, '--mirror', mirror, '--core-paths', corePaths);
+    return out;
+  };
+
+  it('release core-check on a fixture root holding a mark and an operator core-bypass for the same key, both appended as chain rows, prints no BYPASS for it', async () => {
+    expect(await check('K-5', 'K-6')).toEqual([expect.stringMatching(/^BYPASS K-5 operator O-R1-\d+ decision 412$/), expect.stringMatching(/^BYPASS K-6 operator O-R1-\d+ decision 413$/)]);
+    const path = join(root, 'state', 'R1', 'operator.jsonl');
+    const key = loadKey(join(root, 'keys', 'R1.key'));
+    appendChain<OperatorRow>(path, key, {
+      id: `O-R1-${String(readChain<OperatorRow>(path, key).rows.length + 1).padStart(4, '0')}`,
+      kind: 'spec-signer', ts: new Date().toISOString(), decision: '1170', keys: ['K-5'], signer: 'operator', verbatim: 'K-5 is mine to sign',
+    });
+    expect(await check('K-5', 'K-6')).toEqual([`CORE K-5 ${CORE_PATH}`, expect.stringMatching(/^BYPASS K-6 operator O-R1-\d+ decision 413$/)]);
+  });
+
+  it('with the operator core-bypass in a healthy declared release and a chain break in another, release core-check prints no BYPASS for it', async () => {
+    const broken = join(root, 'state', 'R2', 'operator.jsonl');
+    writeFileSync(broken, `${readFileSync(broken, 'utf8')}not json\n`);
+    expect(await check('K-5', 'K-6')).toEqual([`CORE K-5 ${CORE_PATH}`, `CORE K-6 ${CORE_PATH}`]);
+  });
+});

@@ -62,7 +62,7 @@ export interface RulingRow {
   mac?: string;
 }
 
-export type OperatorKind = 'declare' | 'freeze' | 'decision' | 'takeover' | 'emergency' | 'blocker-pull' | 'delivered-follows-merge' | 'spec' | 'spec-review' | 'core-bypass' | 'core-snapshot' | 'out-of-version';
+export type OperatorKind = 'declare' | 'freeze' | 'decision' | 'takeover' | 'emergency' | 'blocker-pull' | 'delivered-follows-merge' | 'spec' | 'spec-review' | 'core-bypass' | 'core-snapshot' | 'out-of-version' | 'spec-signer';
 
 export type { CappedFoldProof, CappedLedgerProof } from './pinned.js';
 import type { CappedFoldProof, CappedLedgerProof } from './pinned.js';
@@ -98,6 +98,12 @@ export interface OperatorRow {
   supersedes?: string | null;
   residuals?: number;
   capped_carry?: CappedFoldProof | CappedLedgerProof;
+  /**
+   * kind 'spec-signer': who signs (a record with keys marks or lifts them, one without sets the station default);
+   * kind 'spec': the operator signed this row for operator_keys.
+   */
+  signer?: 'chief' | 'operator';
+  operator_keys?: string[];
   prev?: string;
   mac?: string;
 }

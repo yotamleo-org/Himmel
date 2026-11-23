@@ -10,6 +10,8 @@ vi.mock('../client.js', () => ({
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { registerRelease } from './release.js';
+import { appendChain, loadKey, readChain } from '../release/ledger.js';
+import type { OperatorRow } from '../release/types.js';
 
 const CORE_PATH = 'scripts/handover/chief-kit/tick.sh';
 
@@ -169,5 +171,23 @@ describe('release core-check-batch gives no partial answer (P6)', () => {
   it('control: the same batch with the fault removed prints == 1 to == 2', async () => {
     const b = await batch([good, { paths: 'README.md', keys: ['K-1'] }]);
     expect(b.filter((l) => /^== \d+$/.test(l))).toEqual(['== 1', '== 2']);
+  });
+});
+
+describe('release core-check-batch reads who signs (I13)', () => {
+  it('release core-check-batch on the fixture root of the I13 core-check row, one group naming the marked key and one naming an unmarked bypassed key, prints no BYPASS for the marked key and BYPASS for the other, matching release core-check line for line', async () => {
+    const vf = join(root, 'verbatim.txt');
+    await run('operator', 'core-bypass', 'R1', '--keys', 'K-1', '--decision', '3', '--verbatim-file', vf);
+    const path = join(root, 'state', 'R1', 'operator.jsonl');
+    const key = loadKey(join(root, 'keys', 'R1.key'));
+    appendChain<OperatorRow>(path, key, {
+      id: `O-R1-${String(readChain<OperatorRow>(path, key).rows.length + 1).padStart(4, '0')}`,
+      kind: 'spec-signer', ts: new Date().toISOString(), decision: '1170', keys: ['K-1'], signer: 'operator', verbatim: 'K-1 is mine to sign',
+    });
+    const groups = [{ paths: CORE_PATH, keys: ['K-1'] }, { paths: CORE_PATH, keys: ['K-6'] }];
+    const b = await batch(groups);
+    expect(groupOf(b, 1)).toEqual([`CORE K-1 ${CORE_PATH}`]);
+    expect(groupOf(b, 2)).toEqual([expect.stringMatching(/^BYPASS K-6 operator O-R1-\d+ decision 2$/)]);
+    for (const [i, g] of groups.entries()) expect(groupOf(b, i + 1)).toEqual(await single(g.paths, g.keys));
   });
 });

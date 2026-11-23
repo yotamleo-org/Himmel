@@ -447,23 +447,40 @@ OUT16G="$(SKILL_LINT_FAIL_BYTES=abc bash "$LINT" "$SZDIR/big-skill/SKILL.md" 2>&
 if [ "$EC16G" -eq 2 ]; then pass "non-integer threshold is a usage error"; else fail "expected exit 2, got $EC16G" "$OUT16G"; fi
 
 # ---------------------------------------------------------------------------
-# Case 17: two-level default thresholds (warn 20000, hard fail 60000)
+# Case 17: default thresholds (warn 16000, hard fail above 20000)
 # ---------------------------------------------------------------------------
-printf '\nCase 17: default thresholds warn at 20000 and hard-fail at 60000\n'
+printf '\nCase 17: default thresholds warn at 16000 and hard-fail above 20000\n'
 
 TL="$TMP_ROOT/twolevel"
-mkdir -p "$TL/mid-skill" "$TL/huge-skill"
-{ printf -- '---\nname: mid-skill\ndescription: mid\n---\n'; head -c 45000 /dev/zero | tr '\0' 'x'; printf '\n'; } > "$TL/mid-skill/SKILL.md"
-{ printf -- '---\nname: huge-skill\ndescription: huge\n---\n'; head -c 65000 /dev/zero | tr '\0' 'x'; printf '\n'; } > "$TL/huge-skill/SKILL.md"
+mkdir -p "$TL/mid-skill" "$TL/at-skill" "$TL/over-skill"
+_mkbody() {
+    local _hdr; _hdr="$(printf -- '---\nname: %s\ndescription: d\n---\n' "$(basename "$1")")"
+    { printf '%s\n' "$_hdr"; head -c $(( $2 - ${#_hdr} - 1 )) /dev/zero | tr '\0' 'x'; } > "$1/SKILL.md"
+}
+_mkbody "$TL/mid-skill" 18000
+_mkbody "$TL/at-skill" 20000
+_mkbody "$TL/over-skill" 20001
 
 OUT17A="$(env -u SKILL_LINT_WARN_BYTES -u SKILL_LINT_FAIL_BYTES bash "$LINT" "$TL/mid-skill/SKILL.md" 2>&1)"; EC17A=$?
-if [ "$EC17A" -eq 0 ]; then pass "45000-byte body warns but exits 0 by default"; else fail "expected exit 0, got $EC17A" "$OUT17A"; fi
-assert_contains "45000-byte body carries [size-warn]" "[size-warn]" "$OUT17A"
-assert_not_contains "45000-byte body has no [size-fail]" "[size-fail]" "$OUT17A"
+if [ "$EC17A" -eq 0 ]; then pass "18000-byte body warns but exits 0 by default"; else fail "expected exit 0, got $EC17A" "$OUT17A"; fi
+assert_contains "18000-byte body carries [size-warn]" "[size-warn]" "$OUT17A"
+assert_not_contains "18000-byte body has no [size-fail]" "[size-fail]" "$OUT17A"
 
-OUT17B="$(env -u SKILL_LINT_WARN_BYTES -u SKILL_LINT_FAIL_BYTES bash "$LINT" "$TL/huge-skill/SKILL.md" 2>&1)"; EC17B=$?
-if [ "$EC17B" -eq 1 ]; then pass "65000-byte outlier exits 1 by default"; else fail "expected exit 1, got $EC17B" "$OUT17B"; fi
-assert_contains "65000-byte outlier carries [size-fail]" "[size-fail]" "$OUT17B"
+OUT17B="$(env -u SKILL_LINT_WARN_BYTES -u SKILL_LINT_FAIL_BYTES bash "$LINT" "$TL/over-skill/SKILL.md" 2>&1)"; EC17B=$?
+if [ "$EC17B" -eq 1 ]; then pass "20001-byte body exits 1 by default"; else fail "expected exit 1, got $EC17B" "$OUT17B"; fi
+assert_contains "20001-byte body carries [size-fail]" "[size-fail]" "$OUT17B"
+
+OUT17C="$(env -u SKILL_LINT_WARN_BYTES -u SKILL_LINT_FAIL_BYTES bash "$LINT" "$TL/at-skill/SKILL.md" 2>&1)"; EC17C=$?
+if [ "$EC17C" -eq 0 ]; then pass "20000-byte body exits 0 by default"; else fail "expected exit 0, got $EC17C" "$OUT17C"; fi
+assert_not_contains "20000-byte body has no [size-fail]" "[size-fail]" "$OUT17C"
+
+AL17="$TMP_ROOT/al17"
+mkdir -p "$AL17/.claude/skills/over-skill"
+cp "$TL/over-skill/SKILL.md" "$AL17/.claude/skills/over-skill/SKILL.md"
+printf '.claude/skills/over-skill/SKILL.md\tsplit tracked elsewhere\n' > "$AL17/allow.txt"
+(cd "$AL17" && git init -q)
+OUT17D="$(cd "$AL17" && env -u SKILL_LINT_WARN_BYTES -u SKILL_LINT_FAIL_BYTES SKILL_LINT_SIZE_ALLOWLIST="$AL17/allow.txt" bash "$LINT" 2>&1)"; EC17D=$?
+if [ "$EC17D" -eq 0 ]; then pass "allowlisted 20001-byte body exits 0"; else fail "expected exit 0, got $EC17D" "$OUT17D"; fi
 
 # ---------------------------------------------------------------------------
 # Case 18: --changed <range> lints only the in-scope files that range touched

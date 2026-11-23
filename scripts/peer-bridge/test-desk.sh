@@ -32,6 +32,8 @@ pwd -P > "$rec/cwd"
 ls -A > "$rec/listing"
 { stat -c %a . 2>/dev/null || stat -f %Lp .; } > "$rec/mode"
 printf '%s' "${PEER_DESK:-}" > "$rec/peer_desk"
+printf '%s' "${CLAUDE_CODE_DISABLE_CLAUDE_MDS:-}" > "$rec/no_claude_mds"
+printf '%s' "${CLAUDE_CODE_DISABLE_AUTO_MEMORY:-}" > "$rec/no_auto_memory"
 printf '%s\n' "$@" > "$rec/args"
 STUB
 chmod +x "$BIN/claude"
@@ -70,6 +72,8 @@ grep -qx -- "--strict-mcp-config" "$REC/args" && pass "the desk launches with --
 mcpf="$(arg_after --mcp-config)"
 if [ -n "$mcpf" ] && [ -f "$mcpf" ] && [ "$(jq -c '.mcpServers' "$mcpf" 2>/dev/null)" = '{}' ]; then pass "the desk's --mcp-config names no server"; else fail "the desk's --mcp-config names no server" "$mcpf"; fi
 [ "$(arg_after --tools)" = Bash ] && pass "the desk's only tool is Bash" || fail "the desk's only tool is Bash" "$(arg_after --tools)"
+if [ "$(cat "$REC/no_claude_mds")" = 1 ] && [ "$(cat "$REC/no_auto_memory")" = 1 ]; then pass "the desk launches with user CLAUDE.md and auto-memory loading disabled"; else fail "the desk launches with user CLAUDE.md and auto-memory loading disabled" "mds=$(cat "$REC/no_claude_mds") mem=$(cat "$REC/no_auto_memory")"; fi
+! grep -qx -- "--bare" "$REC/args" && pass "the desk never uses --bare, which would drop OAuth auth" || fail "the desk never uses --bare, which would drop OAuth auth"
 [ "$(arg_after --permission-mode)" = default ] && pass "the desk sets --permission-mode default" || fail "the desk sets --permission-mode default" "$(arg_after --permission-mode)"
 [ "$(arg_after --setting-sources)" = project ] && pass "the desk drops the user settings source" || fail "the desk drops the user settings source" "$(arg_after --setting-sources)"
 setf="$(arg_after --settings)"

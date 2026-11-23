@@ -9,7 +9,8 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { Command } from 'commander';
 import * as pinned from './pinned.js';
 import { RESIDUAL_ROWS } from './test-residual-fixtures.js';
-import { checkResiduals, checkRoundResiduals } from './spec-sign.js';
+import { checkResiduals, checkRoundResiduals, headerTickets, SPEC_CHECK_VERBS } from './spec-sign.js';
+import { readSignerState } from './engine-core.js';
 import * as ledger from './ledger.js';
 import type { IssueSnap, OperatorRow } from './types.js';
 import { appendChain, loadKey, readChain } from './ledger.js';
@@ -2548,6 +2549,254 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{if(a[1]?.[1]==='capped-fo
       expect(locked, 'the signing lock was never taken').toBe(false);
       expect(attemptFlags()).toEqual(['--keys']);
       noCappedRows();
+    });
+  });
+
+  describe('who signs each spec: the read side', () => {
+    const LATER = '2026-10-22T10:00:00.000Z';
+    const at = (iso: string, c: Ctx = sctx()): Ctx => ({ ...c, now: () => new Date(iso) });
+    function put(row: Omit<OperatorRow, 'id'>, c: Ctx = sctx()): OperatorRow {
+      const k = loadKey(c.keyPath);
+      const path = join(c.dir, 'operator.jsonl');
+      const n = readChain<OperatorRow>(path, k).rows.length + 1;
+      return appendChain<OperatorRow>(path, k, { id: `O-${c.release}-${String(n).padStart(4, '0')}`, ...row });
+    }
+    const signer = (keys: string[] | undefined, who: 'chief' | 'operator', decision: string, ts = LATER, c: Ctx = sctx()) => put({
+      kind: 'spec-signer', ts, decision, signer: who, ...(keys ? { keys } : {}), verbatim: `the operator's words, decision ${decision}`,
+    }, c);
+    const pinsOf = (r: OperatorRow) => {
+      const { id: _i, prev: _p, mac: _m, ...rest } = r as OperatorRow & { release?: string };
+      return rest;
+    };
+    const opSign = (from: OperatorRow, keys: string[], operatorKeys: string[], o: Partial<OperatorRow> = {}) => put({
+      ...pinsOf(from), ts: LATER, keys, signer: 'operator', operator_keys: operatorKeys, decision: '1300', supersedes: from.id, ...o,
+    });
+    let mirrors = 0;
+    function mirror(entries: Array<[string, string, string?]>, cursor?: object): string {
+      const m = join(root, `mirror-${++mirrors}`);
+      mkdirSync(m, { recursive: true });
+      writeFileSync(join(m, '.cursor.json'), JSON.stringify(cursor ?? { lastSync: '2026-10-21T09:00:00.000Z' }));
+      for (const [key, type, parent] of entries) {
+        writeFileSync(join(m, `${key}.md`), ['---', `key: "${key}"`, `type: "${type}"`, ...(parent ? [`parent: "${parent}"`] : []), '---', ''].join('\n'));
+      }
+      return m;
+    }
+    const headed = (name: string, ticket: string | null, dir = join(root, 'specs')) => spec(name, dir,
+      [`# ${ticket ?? 'K-4'}: a sliced design${ticket ? `\n\n- Ticket: ${ticket}` : ''}`]);
+
+    it('R2 read half: a chief row and a later mark on K: spec-check prints SPEC-NEEDS-OPERATOR K with the chief row\'s id and the mark\'s id (I1)', () => {
+      declared();
+      const p = spec();
+      const r = sign(sctx(), ['K-1'], p);
+      expect(check(['K-1'])).toEqual([`SPEC ok K-1 ${p} ${r.id}`]);
+      const m = signer(['K-1'], 'operator', '1170');
+      const out = specCheck(specEnv(), ['K-1'], null);
+      expect(out.lines).toEqual([`SPEC-NEEDS-OPERATOR K-1 ${p} ${r.id} ${m.id}`]);
+      expect(out.ok).toBe(false);
+      expect(out.answer.get('K-1')).toEqual({ missing: `K-1 needs the operator's own signature (${m.id}); the chief's signature ${r.id} does not count` });
+    });
+
+    it('a chief-signed parent row read by its sub-task, with a mark on the parent: the sub-task reads SPEC-NEEDS-OPERATOR naming that mark (I1)', () => {
+      declared();
+      const p = spec();
+      const r = sign(sctx(), ['K-1'], p);
+      const m = mirror([['K-1', 'Task'], ['K-2', 'Subtask', 'K-1']]);
+      expect(check(['K-2'], m)).toEqual([`SPEC ok K-2 ${p} ${r.id}`]);
+      const mark = signer(['K-1'], 'operator', '1170');
+      expect(check(['K-1', 'K-2'], m)).toEqual([
+        `SPEC-NEEDS-OPERATOR K-1 ${p} ${r.id} ${mark.id}`, `SPEC-NEEDS-OPERATOR K-2 ${p} ${r.id} ${mark.id}`,
+      ]);
+    });
+
+    it('a chief-signed parent row read by its sub-task, with a mark on the sub-task only: the sub-task reads SPEC-NEEDS-OPERATOR naming that mark (I1)', () => {
+      declared();
+      const p = spec();
+      const r = sign(sctx(), ['K-1'], p);
+      const m = mirror([['K-1', 'Task'], ['K-2', 'Subtask', 'K-1']]);
+      const mark = signer(['K-2'], 'operator', '1170');
+      expect(check(['K-1', 'K-2'], m)).toEqual([`SPEC ok K-1 ${p} ${r.id}`, `SPEC-NEEDS-OPERATOR K-2 ${p} ${r.id} ${mark.id}`]);
+    });
+
+    function sliced() {
+      declared();
+      const p = headed('V-1-sliced.md', 'V-1');
+      const q = headed('K-4-other.md', null, join(root, 'specs-other'));
+      const r1 = sign(sctx(), ['V-1', 'K-1', 'K-2'], p);
+      const r2 = sign(sctx(), ['K-3'], p);
+      const r3 = sign(sctx(), ['K-4'], q);
+      const m = mirror(['V-1', 'K-1', 'K-2', 'K-3', 'K-4'].map((k) => [k, 'Task'] as [string, string]));
+      const mark = signer(['V-1'], 'operator', '1170');
+      return { p, q, r1, r2, r3, m, mark };
+    }
+
+    it('R5 read half: chief rows for V, K1, K2 and for K3 alone on a spec whose header names V, then a mark on V: all four read SPEC-NEEDS-OPERATOR naming the mark; a spec whose header does not name V keeps SPEC ok (I18 b)', () => {
+      const { p, q, r1, r2, r3, m, mark } = sliced();
+      const out = specCheck(specEnv(), ['V-1', 'K-1', 'K-2', 'K-3', 'K-4'], m);
+      expect(out.lines).toEqual([
+        `SPEC-NEEDS-OPERATOR V-1 ${p} ${r1.id} ${mark.id}`,
+        `SPEC-NEEDS-OPERATOR K-1 ${p} ${r1.id} ${mark.id}`,
+        `SPEC-NEEDS-OPERATOR K-2 ${p} ${r1.id} ${mark.id}`,
+        `SPEC-NEEDS-OPERATOR K-3 ${p} ${r2.id} ${mark.id}`,
+        `SPEC ok K-4 ${q} ${r3.id}`,
+      ]);
+      expect(out.answer.get('K-3')).toEqual({
+        missing: `K-3 needs the operator's own signature: V-1 is marked (${mark.id}) and ${r2.id} covers it; the chief's signature ${r2.id} does not count`,
+      });
+    });
+
+    it('R6 read half: an operator row for V, K1, K2 superseding the first row, operator_keys [V], reads SPEC ok for V, K1, K2, and for K3 because it signs V on the same spec bytes (I18 b)', () => {
+      const { p, r1, r2, m } = sliced();
+      const op = opSign(r1, ['V-1', 'K-1', 'K-2'], ['V-1']);
+      expect(check(['V-1', 'K-1', 'K-2', 'K-3'], m)).toEqual([
+        `SPEC ok V-1 ${p} ${op.id}`, `SPEC ok K-1 ${p} ${op.id}`, `SPEC ok K-2 ${p} ${op.id}`, `SPEC ok K-3 ${p} ${r2.id}`,
+      ]);
+    });
+
+    it('R6 read half: with the operator row on different spec bytes, K3 reads SPEC-NEEDS-OPERATOR (I18 b)', () => {
+      const { r1, r2, p, m, mark } = sliced();
+      const other = spec('V-1-resliced.md', join(root, 'specs-re'), ['# V-1: a resliced design\n\n- Ticket: V-1']);
+      const op = opSign(r1, ['V-1', 'K-1', 'K-2'], ['V-1'], { spec_path: other, spec_sha256: pinnedSha(other).sha256 });
+      expect(check(['V-1', 'K-3'], m)).toEqual([`SPEC ok V-1 ${other} ${op.id}`, `SPEC-NEEDS-OPERATOR K-3 ${p} ${r2.id} ${mark.id}`]);
+    });
+
+    it('headerTickets reads the front matter tickets line and the - Ticket: and Key: lines before the first ## heading, and no line after it (I18)', () => {
+      const text = [
+        '---', 'tickets: HIMMEL-10477, HIMMEL-10478', 'date: 2026-11-21', '---', '# HIMMEL-10641: a slice', '',
+        '- Ticket: HIMMEL-10641', '- Tickets: HIMMEL-1 and PR 5749', 'Key: SALUS-3', 'Keys: HIMMEL-2', 'tickets: HIMMEL-77',
+        'See HIMMEL-55 in passing.', '', '## Section', '- Ticket: HIMMEL-99', 'Key: HIMMEL-98', '',
+      ].join('\n');
+      expect(headerTickets(text)).toEqual(['HIMMEL-10477', 'HIMMEL-10478', 'HIMMEL-10641', 'HIMMEL-1', 'SALUS-3', 'HIMMEL-2']);
+      expect(headerTickets('# no header\n\n## Body\n- Ticket: HIMMEL-9\n')).toEqual([]);
+    });
+
+    it('station flip on real chain rows: a chief row, then a station operator record, reads SPEC ok; a chief row written after it reads SPEC-NEEDS-OPERATOR naming the station record (I11)', () => {
+      declared();
+      const a = spec('K-1-a.md');
+      const b = spec('K-2-b.md', join(root, 'specs-b'));
+      const r1 = sign(sctx(), ['K-1'], a);
+      const station = signer(undefined, 'operator', '1171');
+      const r2 = sign(at('2026-10-23T10:00:00.000Z'), ['K-2'], b);
+      expect(check(['K-1', 'K-2'])).toEqual([`SPEC ok K-1 ${a} ${r1.id}`, `SPEC-NEEDS-OPERATOR K-2 ${b} ${r2.id} ${station.id}`]);
+    });
+
+    it('a marked parent signed by the operator gives SPEC ok for its sub-task that reads the parent\'s row (I17)', () => {
+      declared();
+      const p = spec();
+      const r = sign(sctx(), ['K-1'], p);
+      const m = mirror([['K-1', 'Task'], ['K-2', 'Subtask', 'K-1']]);
+      signer(['K-1'], 'operator', '1170');
+      const op = opSign(r, ['K-1'], ['K-1']);
+      expect(check(['K-1', 'K-2'], m)).toEqual([`SPEC ok K-1 ${p} ${op.id}`, `SPEC ok K-2 ${p} ${op.id}`]);
+      signer(['K-2'], 'operator', '1171');
+      expect(check(['K-2'], m)).toEqual([`SPEC ok K-2 ${p} ${op.id}`]);
+    });
+
+    it('a broken chain or an unloadable key in any declared release: a chief row reads SPEC-SIGNER-UNKNOWN naming why; an operator row still reads SPEC ok (I1, I15)', () => {
+      declared();
+      declared(r2());
+      const p = spec();
+      const r = sign(sctx(), ['K-1'], p);
+      const q = spec('K-2-op.md', join(root, 'specs-op'));
+      const chief2 = sign(sctx(), ['K-2'], q);
+      const op = opSign(chief2, ['K-2'], ['K-2']);
+      const chain = join(root, 'release', 'R2', 'operator.jsonl');
+      const good = readFileSync(chain, 'utf8');
+      writeFileSync(chain, `${good}not json\n`);
+      const out = specCheck(specEnv(), ['K-1', 'K-2'], null);
+      expect(out.lines).toEqual([
+        expect.stringMatching(new RegExp(`^SPEC-SIGNER-UNKNOWN K-1 ${r.id} release R2: operator\\.jsonl does not verify \\(line \\d+: unparseable\\)$`)),
+        `SPEC ok K-2 ${q} ${op.id}`,
+      ]);
+      expect(out.answer.get('K-1')).toEqual({ missing: expect.stringMatching(/^signer records unreadable: release R2: /) });
+      writeFileSync(chain, good);
+      expect(check(['K-1'])).toEqual([`SPEC ok K-1 ${p} ${r.id}`]);
+      rmSync(join(root, 'keys', 'R2.key'));
+      expect(check(['K-1', 'K-2'])).toEqual([
+        expect.stringMatching(new RegExp(`^SPEC-SIGNER-UNKNOWN K-1 ${r.id} release R2: its key does not load`)),
+        `SPEC ok K-2 ${q} ${op.id}`,
+      ]);
+    });
+
+    it('a mirror whose cursor reads complete false changes no answer with no record, a station-only record or a key with its own record; with a parent mark only a key missing from the mirror and holding no record of its own reads SPEC-SIGNER-UNKNOWN (I15, P2)', () => {
+      declared();
+      const a = spec('K-1-a.md');
+      const b = spec('K-5-b.md', join(root, 'specs-b'));
+      const c = spec('K-6-c.md', join(root, 'specs-c'));
+      const r1 = sign(sctx(), ['K-1'], a);
+      const r5 = sign(sctx(), ['K-5'], b);
+      const r6 = sign(sctx(), ['K-6'], c);
+      const m = mirror([['K-1', 'Task'], ['P-9', 'Task']], { lastSync: '2026-10-21T09:00:00.000Z', complete: false });
+      const kept = [`SPEC ok K-1 ${a} ${r1.id}`, `SPEC ok K-5 ${b} ${r5.id}`, `SPEC ok K-6 ${c} ${r6.id}`];
+      expect(check(['K-1', 'K-5', 'K-6'], m)).toEqual(kept);
+      signer(undefined, 'chief', '1160', '2026-10-01T00:00:00.000Z');
+      expect(check(['K-1', 'K-5', 'K-6'], m)).toEqual(kept);
+      expect(check(['K-1', 'K-5', 'K-6'], null)).toEqual(kept);
+      signer(['K-5'], 'chief', '1161');
+      expect(check(['K-5'], m)).toEqual([kept[1]]);
+      signer(['P-9'], 'operator', '1170');
+      expect(check(['K-1', 'K-5', 'K-6'], m)).toEqual([
+        kept[0], kept[1], expect.stringMatching(new RegExp(`^SPEC-SIGNER-UNKNOWN K-6 ${r6.id} K-6 is not in the Jira mirror`)),
+      ]);
+    });
+
+    it('with --kinds spec-review, a marked key\'s fresh spec-review row reads SPEC ok (P5)', () => {
+      declared();
+      const p = spec();
+      const rv = put({ kind: 'spec-review', ts: LATER, decision: null, keys: ['K-1'], spec_path: p, spec_sha256: pinnedSha(p).sha256, verdicts: [] });
+      signer(['K-1'], 'operator', '1170');
+      expect(specCheck(specEnv(), ['K-1'], null, { kinds: ['spec-review'] }).lines).toEqual([`SPEC ok K-1 ${p} ${rv.id}`]);
+    });
+
+    it('with no spec-signer record, every fixture spec row keeps its spec-check line, legacy rows with no signer included (I9)', () => {
+      declared();
+      declared(r2());
+      const a = spec('K-1-a.md');
+      const b = spec('K-2-b.md', join(root, 'specs-b'));
+      const c = spec('K-3-c.md', join(root, 'specs-c'));
+      const legacy = sign(sctx(), ['K-1'], a);
+      const stale = sign(r2(), ['K-2'], b);
+      writeFileSync(b, `${readFileSync(b, 'utf8')}\nedited\n`);
+      const chief = put({ ...pinsOf(sign(sctx(), ['K-3'], c)), ts: LATER, keys: ['K-3'], signer: 'chief', supersedes: 'O-R1-0003' });
+      const m = mirror([['K-1', 'Task'], ['K-4', 'Subtask', 'K-1']]);
+      const want = [`SPEC ok K-1 ${a} ${legacy.id}`, `SPEC-STALE K-2 ${b} ${stale.id}`, `SPEC ok K-3 ${c} ${chief.id}`, `SPEC ok K-4 ${a} ${legacy.id}`, 'NO-SPEC K-9'];
+      expect(check(['K-1', 'K-2', 'K-3', 'K-4', 'K-9'], m)).toEqual(want);
+      expect(specCheck(specEnv(), ['K-1', 'K-2', 'K-3', 'K-4', 'K-9'], m, { signer: readSignerState(specEnv(), m) }).lines).toEqual(want);
+      expect(readSignerState(specEnv(), m)).toEqual({ records: [], unreadable: null, issues: null });
+    });
+
+    it('printer shape: specCheck driven into each verb prints a line that matches the fixture\'s full line for that verb field for field, ids normalised, a voided key\'s line included; the fixture holds every verb of SPEC_CHECK_VERBS (I14)', () => {
+      const fixture = readFileSync(join(fileURLToPath(new URL('../../../../', import.meta.url)), 'scripts/handover/chief-kit/fixtures/spec-check-lines.txt'), 'utf8')
+        .split('\n').filter(Boolean).map((l) => l.split('\t'));
+      const verbOf = (line: string) => [...SPEC_CHECK_VERBS].sort((x, y) => y.length - x.length).find((v) => line === v || line.startsWith(`${v} `));
+      const shape = (line: string, path: string | null) => {
+        const verb = verbOf(line) as string;
+        const t = (path ? line.slice(verb.length).replace(path, '<path>') : line.slice(verb.length)).trim().split(' ');
+        if (verb === 'SPEC-SIGNER-UNKNOWN') return [verb, '<K>', '<id>', '<why>'];
+        return [verb, '<K>', ...t.slice(1).map((x) => (x === '<path>' ? x : '<id>'))];
+      };
+      const fullLine = (verb: string) => fixture.find(([want, line]) => want !== 'none' && verbOf(line) === verb)?.[1];
+      for (const v of SPEC_CHECK_VERBS) expect(fullLine(v), `fixture line for ${v}`).toBeDefined();
+      const { p, r1 } = sliced();
+      const s = spec('K-7-stale.md', join(root, 'specs-stale'));
+      sign(sctx(), ['K-7'], s);
+      writeFileSync(s, `${readFileSync(s, 'utf8')}\nedited\n`);
+      const ok = spec('K-8-ok.md', join(root, 'specs-ok'));
+      sign(sctx(), ['K-8'], ok);
+      const m2 = mirror(['V-1', 'K-1', 'K-7', 'K-8', 'K-9'].map((k) => [k, 'Task'] as [string, string]));
+      const got = specCheck(specEnv(), ['K-8', 'K-7', 'K-9', 'V-1', 'K-1'], m2).lines;
+      const paths = [ok, s, null, p, p];
+      expect(got.map(verbOf)).toEqual(['SPEC ok', 'SPEC-STALE', 'NO-SPEC', 'SPEC-NEEDS-OPERATOR', 'SPEC-NEEDS-OPERATOR']);
+      expect(got[4]).toContain(r1.id);
+      const fixturePath = (line: string) => /\/state\/specs\/\S+/.exec(line)?.[0] ?? null;
+      got.forEach((line, i) => {
+        const want = fullLine(verbOf(line) as string) as string;
+        expect(shape(line, paths[i])).toEqual(shape(want, fixturePath(want)));
+      });
+      writeFileSync(join(root, 'release', 'R1', 'operator.jsonl'), `${readFileSync(join(root, 'release', 'R1', 'operator.jsonl'), 'utf8')}not json\n`);
+      const [unknown] = specCheck(specEnv(), ['K-8'], m2).lines;
+      expect(verbOf(unknown)).toBe('SPEC-SIGNER-UNKNOWN');
+      const want = fullLine('SPEC-SIGNER-UNKNOWN') as string;
+      expect(shape(unknown, null)).toEqual(shape(want, null));
     });
   });
 });
