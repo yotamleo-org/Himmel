@@ -26,7 +26,7 @@ session, and it is set only on the operator's own reply.
 
 ## What it replaces
 
-Earlier, the chief ran the critic-eval sweep itself
+Earlier, the chief ran the reviewer eval sweep itself
 (`HIMMEL_BILLED_OK=1 bash scripts/eval/review-panel/run.sh ...`), or exported
 the flag in a worker's launch script. Both shapes are now refused. Instead:
 
@@ -42,25 +42,39 @@ the flag in a worker's launch script. Both shapes are now refused. Instead:
    decision=<operator decision number>
    api_account=<A, B, C, D or auto>   # optional; launches with the API lane on for that account
    blocks=#5700 #5699                 # optional; the pull requests the work blocks, "#<n>" tokens, single spaces
+   recommend=go                       # required: go, no, or no:<reason of at most 60 characters>
    ```
 
-3. The daemon sends the operator an ask on Telegram. It names every granted
-   flag with its registry description (`DESTRUCTIVE_OK=1 (Lets destructive
-   shell commands (rm -rf and similar) through.)`), the decision (`PAID RUN
-   (decision N)` for the billed flag, `OPERATOR DECISION N` for the other
-   decision flags), the brief's description and sha, `Blocks PRs: <blocks>.`
-   when the request carries `blocks=`, and a one-time code. A `blocks=` that
-   is not `#<n>` tokens separated by single spaces is refused
-   `malformed: blocks`.
+3. The daemon sends the operator a short ask on Telegram, the code first:
+
+   ```text
+   go IQF5ED → launch · no IQF5ED → refuse
+   <ticket> <worker> on opus-5-5 high
+   flag HIMMEL_HOOK_INTEGRITY_BYPASS_OK (skips block-worker-write-fence)
+   Chief: GO
+   Expires 6 h · brief sha d7a113226fde
+   ```
+
+   Line 1 is the code and the reply to send. Line 2 is the ticket, the worker,
+   the model and the effort. Line 3 names every granted flag, and the hook it
+   skips when the registry names one. The hook names are dropped when the line
+   would pass 200 characters. Decision, paid and API grants and `blocks=` add one
+   line before the chief's word, such as
+   `DECISION 921 · PAID RUN · API account A · Blocks PRs: #5700 #5699`. The
+   chief's word is `Chief: GO`, or `Chief: NO — <reason>` when the chief thinks
+   the operator should refuse. The brief's description is not in the ask.
+   The request therefore needs a `recommend=` line: `recommend=go`, `recommend=no`, or
+   `recommend=no:<reason of at most 60 characters>`. A request without one is refused as
+   `malformed: recommend`. A `blocks=` that is not `#<n>` tokens separated by
+   single spaces is refused `malformed: blocks`.
 4. The operator replies `go <code>` and the daemon launches the worker with
    `headed-arm-worker.sh`. A reply of `no <code>` launches nothing, and so do
    6 h with no reply.
 
-For a critic change, the paid eval is the default route
-(`scripts/eval/review-panel/README.md`, "The merge gate"). The chief launches
-the sweep without asking whether to spend. The go code authorises the flag for
-that one launch; it is not a decision about whether to run the eval. Only
-skipping the eval needs an operator decision, as a `gate-bypass.tsv` row.
+No CI check requires a reviewer eval sweep: the critic-eval merge gate was
+removed (decisions 1251 and 1252, `scripts/eval/review-panel/README.md`). A
+paid sweep runs only on an operator decision, and its go code authorises the
+flag for that one launch.
 
 ## How the flag list is built
 

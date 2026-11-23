@@ -36,6 +36,8 @@
 # <outcome>`; every non-zero exit, the seam guard's exit 96 included, appends one `LAUNCH-REFUSED <session> <reason>`
 # line there and in the owning chief's console inbox (--chief, else HIMMEL_CONSOLE_NAME) when that inbox exists.
 # chief-kit/launch-confirm.sh --since <epoch> reads the lines after that attempt's LAUNCH-START to confirm it started.
+# Once a launch passes its checks the launcher writes <signal-file> itself, so the chief never touches it; a launch that
+# cannot write it is refused (`cannot write the start signal`, exit 2).
 #
 # --dry-run: prints the argv this would hand to headed-arm.sh (name, doc,
 # signal, deadline, log, model, resolved context) plus the worker env this
@@ -319,7 +321,7 @@ _lr_phase() {
         brief-lint|denial-unacked|handover-root|unguarded-checkout|worktree-missing) echo brief-validation ;;
         bank-exhausted|fleet-cap|fleet-duplicate|fleet-paused) echo usage-preflight ;;
         bus-register|bus-name-too-long) echo bus-registration ;;
-        headed-arm|dedup-indeterminate|konsole-up-claude-unseen|signal) echo handoff ;;
+        headed-arm|dedup-indeterminate|konsole-up-claude-unseen|signal|start-signal) echo handoff ;;
         manifest) echo manifest ;;
         *) echo unknown ;;
     esac
@@ -3611,6 +3613,13 @@ _ha_forward() { if [ -z "$_ha_child" ]; then _ha_sig_early=1; else _LAUNCH_REFUS
 trap _ha_forward TERM HUP INT
 _LAUNCH_OUTCOME_FILE="$(mktemp "${TMPDIR:-/tmp}/headed-arm-outcome.XXXXXX" 2>/dev/null)" || _LAUNCH_OUTCOME_FILE=''  # swallow-ok: no temp file means no child word, read as indeterminate
 if [ -n "$_LAUNCH_OUTCOME_FILE" ]; then export HEADED_ARM_OUTCOME_FILE="$_LAUNCH_OUTCOME_FILE"; else unset HEADED_ARM_OUTCOME_FILE; fi
+[ -e "$SIGNAL" ] || { : >> "$SIGNAL"; } 2>/dev/null
+if [ ! -e "$SIGNAL" ]; then
+    echo "headed-arm-worker: refusing to launch $NAME - cannot write the start signal $SIGNAL" >&2
+    _launch_refusal_note start-signal "cannot write the start signal $SIGNAL"
+    _release_fleet_reservation
+    exit 2
+fi
 # Keep headed-arm.sh's profile/context handoff paired to its own exec PID.
 if [ "${FLEET_LAUNCH_MANAGED:-false}" = true ]; then
     fleet_launch_op handoff >/dev/null || { _launch_refusal_note fleet-paused; exit 10; }

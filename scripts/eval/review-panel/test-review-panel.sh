@@ -666,7 +666,7 @@ SID="$(sid "$GSCORE")"
 eq "temporary_scorer_fixture: the committed copy has a clean 64-hex identity" "$([[ "$SID" =~ ^[0-9a-f]{64}$ ]] && echo 1 || echo 0)" "1"
 eq "clean_fixture_uses_worktree_bytes: the copy runs this working tree's score.py" "$(cmp -s "$SCORE" "$GSCORE" && echo same)" "same"
 
-# --- the merge gate: cbs.txt, cbs-hash, export-row, verify-row, gate -------------------------
+# --- cbs.txt, cbs-hash, export-row, verify-row -------------------------------------------
 G="$TMP/gate-repo"
 gg() { git -C "$G" -c user.name=t -c user.email=t@example.invalid -c core.hooksPath=/dev/null -c commit.gpgsign=false "$@"; }
 mkdir -p "$G/scripts/eval/review-panel/key" "$G/scripts/cr/perspectives"
@@ -854,132 +854,6 @@ git -C "$SCP" -c user.name=t -c user.email=t@example.invalid -c core.hooksPath=/
 python3 "$SCP/scripts/eval/review-panel/score.py" export-row "$OP" --repo "$G" --results "$TMP/results-parser.jsonl" >/dev/null 2>&1
 eq "parser_edit_changes_scorer_identity_only: a scorer edit moves scorer_sha256 and no execution identity" \
   "$(python3 -c 'import json,sys; a=json.loads(sys.argv[1]); b=json.loads(open(sys.argv[2]).readline()); print([k for k in ("cbs_hash","confighash","outputs_sha256","bundle_sha256_v2","execution_id","code_under_test_sha") if a[k] != b[k]], a["scorer_sha256"] != b["scorer_sha256"])' "$prow" "$TMP/results-parser.jsonl" 2>&1)" "[] True"
-
-B=$(python3 "$SCORE" cbs-hash "$GB" --repo "$G"); H=$(python3 "$SCORE" cbs-hash HEAD --repo "$G"); C=$(python3 "$SCORE" confighash HEAD --repo "$G")
-grows() { python3 -c 'import json,sys
-f, b, h, c, sid = sys.argv[1:6]
-with open(f, "w") as fh:
-    for spec in sys.argv[6:]:
-        p = spec.split(":")
-        rid, rec, fp, lg = p[:4]
-        st, sc = (p[4] if len(p) > 4 else "ok"), (p[5] if len(p) > 5 else "cur")
-        row = {"run_id": rid, "cbs_hash": b if rid[0] == "b" else h, "confighash": c, "outputs_sha256": rid, "status": st,
-               "metrics": {"panel.recall_gating": float(rec), "panel.fp_rate": float(fp)},
-               "class_recall": {"logic": float(lg)}}
-        if sc != "none":
-            row["scorer_sha256"] = {"cur": sid, "null": None}.get(sc, sc)
-        fh.write(json.dumps(row) + "\n")' "$G/scripts/eval/review-panel/results.jsonl" "$B" "$H" "$C" "$SID" "$@"
-  gg add -A; gg commit -qm rows; }
-ggate() { out=$(python3 "$GSCORE" gate "$GB" HEAD --repo "$G" "$@" 2>&1); rc=$?; }
-grows b1:0.5:0.1:0.5 b2:0.6:0.1:0.5 h1:0.55:0.1:0.5 h2:0.5:0.1:0.5; ggate
-eq "gate: two against two within noise exits 0" "$rc" "0"; has "gate: no-loss" "$out" "gate: no-loss"
-grows b1:0.5:0.1:0.5 b2:0.6:0.1:0.5 h1:0.3:0.1:0.5 h2:0.3:0.1:0.5; ggate
-eq "gate: a recall drop beyond noise exits 1" "$rc" "1"; has "gate: loss" "$out" "gate: loss"
-grows b1:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; ggate
-eq "gate: one baseline row exits 1" "$rc" "1"; has "gate: unmeasured" "$out" "gate: unmeasured"
-grows b1:0.5:0.1:0.5 b2:0.6:0.1:0.5 h1:0.55:0.1:0.5 h2:0.5:0.1:0.5:inconclusive; ggate
-eq "gate: an inconclusive head row does not count" "$rc" "1"; has "gate: inconclusive is unmeasured" "$out" "gate: unmeasured"
-grows b1:0.5:0.1:0.5 b2:0.6:0.1:0.5 h1:0.55:0.1:0.5 h2:0.5:0.1:0.5:partial; ggate
-eq "gate: a partial head row does not count" "$rc" "1"; has "gate: partial is unmeasured" "$out" "gate: unmeasured"
-grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.6 h1:0.5:0.1:0.8 h2:0.5:0.1:0.7; ggate --target-class logic
-eq "gate: a target class above the baseline max is keep" "$rc" "0"; has "gate: keep" "$out" "gate: keep"
-grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.8 h1:0.5:0.1:0.8 h2:0.5:0.1:0.7; ggate --target-class logic
-has "gate: a target class not above the baseline max is no-loss" "$out" "gate: no-loss"
-
-# Rows record the cases each critic answered; a verdict never reads across unequal panels.
-# groster <rid-prefix> <scored;critic:cases,...> - stamps `responded` on the rows whose run_id starts with the prefix.
-groster() { python3 -c 'import json,sys
-f, pre, spec = sys.argv[1:4]
-scored, crit = spec.split(";")
-rows = [json.loads(l) for l in open(f)]
-for r in rows:
-    if r["run_id"].startswith(pre):
-        r["responded"] = {"scored": int(scored), "critics": {c.split(":")[0]: int(c.split(":")[1]) for c in crit.split(",")}}
-open(f, "w").write("".join(json.dumps(r) + "\n" for r in rows))' "$G/scripts/eval/review-panel/results.jsonl" "$1" "$2"
-  gg add -A; gg commit -qm roster; }
-# base: the claude critic answered 12 of 24 cases (skipped, api lane off), head: both answered all; head worse on
-# fp_rate, which the old gate called a loss
-grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.6:0.5 h2:0.5:0.6:0.5; groster b "24;claude:12,codex:24"; groster h "24;claude:24,codex:24"; ggate
-eq "gate: unequal panels exit 1" "$rc" "1"
-has "gate: unequal panels name the mismatch" "$out" "panel mismatch"
-has "gate: unequal panels name the critic that skipped cases" "$out" "claude 12/24"
-case "$out" in *"gate: loss"*) fail "gate: unequal panels give no loss";; *) pass "gate: unequal panels give no loss";; esac
-# a head that looks like a win across unequal panels is refused too
-grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.9 h2:0.5:0.1:0.9; groster b "24;codex:24"; groster h "24;claude:24,codex:24"; ggate --target-class logic
-has "gate: a win across unequal panels is a mismatch" "$out" "panel mismatch"
-case "$out" in *"gate: keep"*) fail "gate: unequal panels give no keep";; *) pass "gate: unequal panels give no keep";; esac
-# like-for-like keeps its normal verdicts
-grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.6:0.5 h2:0.5:0.6:0.5; groster b "24;claude:24,codex:24"; groster h "24;claude:24,codex:24"; ggate
-has "gate: equal panels still lose beyond noise" "$out" "gate: loss"
-grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.6 h1:0.5:0.1:0.8 h2:0.5:0.1:0.7; groster b "24;codex:24"; groster h "24;codex:24"; ggate --target-class logic
-has "gate: equal panels still keep a target-class win" "$out" "gate: keep"
-# a critic that answered none of a side's cases against one that answered some is a different panel
-grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b "24;claude:0,codex:24"; groster h "24;claude:23,codex:24"; ggate
-has "gate: a critic absent on one side and nearly complete on the other is a mismatch" "$out" "panel mismatch"
-# a critic absent on both sides, or partial on both, is like-for-like
-nroster() { grep -c '"responded"' "$G/scripts/eval/review-panel/results.jsonl"; }
-grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b "24;claude:0,codex:24"; groster h "24;claude:0,codex:24"; ggate
-eq "fixture: every row of the absent-on-both-sides pair carries a roster" "$(nroster)" "4"
-has "gate: a critic that answered nothing on both sides is no mismatch" "$out" "gate: no-loss"
-grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b "24;claude:12,codex:24"; groster h "24;claude:20,codex:24"; ggate
-eq "fixture: every row of the partial-on-both-sides pair carries a roster" "$(nroster)" "4"
-has "gate: a critic partial on both sides is no mismatch" "$out" "gate: no-loss"
-# a row the verdict does not count (an inconclusive sweep) does not make a roster mismatch either
-grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5 h3:0.5:0.1:0.5:inconclusive; groster b "24;claude:24,codex:24"; groster h1 "24;claude:24,codex:24"; groster h2 "24;claude:24,codex:24"; groster h3 "24;codex:24"; ggate
-eq "fixture: all five rows carry a roster" "$(nroster)" "5"
-has "gate: an uncounted inconclusive row with another roster is no mismatch" "$out" "gate: no-loss"
-# rows with no roster beside rows with one are not like-for-like: named, no verdict
-grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.6:0.5 h2:0.5:0.6:0.5; groster h "24;claude:24,codex:24"; ggate
-has "gate: baseline rows with no roster against head rows with one are a mismatch" "$out" "panel mismatch"
-has "gate: the rows with no roster are named" "$out" "without a roster: baseline b1; b2"
-case "$out" in *"gate: loss"*) fail "gate: rows with no roster give no loss";; *) pass "gate: rows with no roster give no loss";; esac
-grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b1 "24;codex:24"; groster b2 "24;codex:24"; groster h1 "24;codex:24"; ggate
-has "gate: one counted row with no roster beside rows with one is a mismatch" "$out" "without a roster: baseline none | head h2"
-# every counted row without a roster keeps the normal verdict
-grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.6:0.5 h2:0.5:0.6:0.5; ggate
-has "gate: no roster on any counted row keeps the normal verdict" "$out" "gate: loss"
-# The roster check counts the rows the verdict counts: a row the verdict drops carries another roster (codex alone,
-# against the claude+codex pair below) and must not make a mismatch. Each row is dropped by one clause only, with its
-# own run_id and bundle, so deleting that clause alone turns its row into a mismatch.
-# gextra <run_id> <b|h|x|c> <bundle> <fp_rate|null> - appends one codex-only row: at the base hash (b), the head hash
-# (h), another cbs_hash (x) or another confighash (c).
-gextra() { python3 -c 'import json,sys
-f, b, h, c, rid, side, bundle, fp, sid = sys.argv[1:10]
-row = {"run_id": rid, "cbs_hash": b if side == "b" else ("0" * 64 if side == "x" else h),
-       "confighash": "other" if side == "c" else c, "outputs_sha256": bundle, "status": "ok",
-       "metrics": {"panel.recall_gating": 0.5, "panel.fp_rate": None if fp == "null" else float(fp)},
-       "class_recall": {"logic": 0.5}, "responded": {"scored": 24, "critics": {"codex": 24}}, "scorer_sha256": sid}
-open(f, "a").write(json.dumps(row) + "\n")' "$G/scripts/eval/review-panel/results.jsonl" "$B" "$H" "$C" "$@" "$SID"
-  gg add -A; gg commit -qm extra; }
-# gdrop <label> <run_id> <side> <bundle> <fp_rate|null> - the extra row must leave the verdict a no-loss
-gdrop() {
-  grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b "24;claude:24,codex:24"; groster h "24;claude:24,codex:24"
-  gextra "$2" "$3" "$4" "$5"; ggate
-  has "gate: $1 is not counted by the roster check" "$out" "gate: no-loss"
-}
-gdrop "a repeated run_id" h1 h dup-of-h1-id 0.1
-gdrop "a repeated outputs bundle" h3 h h1 0.1
-gdrop "a head row repeating a baseline run_id" b1 h dup-of-b1-id 0.1
-gdrop "a head row repeating a baseline outputs bundle" h4 h b1 0.1
-gdrop "a counted-status row with a null gate metric" h5 h null-metric null
-gdrop "a row at another cbs_hash" h6 x other-hash 0.1
-gdrop "a row at another confighash" h7 c other-config 0.1
-
-OLDSID="$(printf 'a%.0s' $(seq 64))"
-grows b1:0.5:0.1:0.5:ok:none b2:0.5:0.1:0.5:ok:none h1:0.5:0.1:0.5:ok:none h2:0.5:0.1:0.5:ok:none; ggate
-eq "legacy_rows_without_scorer_unmeasured: rows with no scorer_sha256 exit 1" "$rc" "1"
-has "legacy_rows_without_scorer_unmeasured: unmeasured" "$out" "gate: unmeasured"
-has "legacy_rows_without_scorer_unmeasured: the excluded rows are named" "$out" "4 without scorer_sha256"
-grows b1:0.5:0.1:0.5:ok:"$OLDSID" b2:0.5:0.1:0.5:ok:"$OLDSID" h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; ggate
-eq "mixed_scorer_rows_unmeasured: an original-scorer baseline against repaired-scorer head rows exits 1" "$rc" "1"
-has "mixed_scorer_rows_unmeasured: unmeasured" "$out" "gate: unmeasured"
-grows b1:0.5:0.0:0.5:ok:"$OLDSID" b1:0.5:0.5:0.5 b2:0.5:0.0:0.5 h1:0.5:0.5:0.5 h2:0.5:0.5:0.5; ggate
-has "rescore_selected_before_dedup: the running scorer's re-score of a run replaces its older-scorer row" "$out" "gate: no-loss"
-SCD="$TMP/scorer-dirty"; cp -r "$SC" "$SCD"; printf '# dirty\n' >> "$SCD/scripts/eval/review-panel/score.py"
-grows b1:0.5:0.1:0.5:ok:null b2:0.5:0.1:0.5:ok:none h1:0.5:0.1:0.5:ok:null h2:0.5:0.1:0.5:ok:none
-out=$(python3 "$SCD/scripts/eval/review-panel/score.py" gate "$GB" HEAD --repo "$G" 2>&1); rc=$?
-eq "null_running_identity_matches_no_rows: a dirty scorer over null and absent row hashes exits 1" "$rc" "1"
-has "null_running_identity_matches_no_rows: unmeasured, naming the missing identity" "$out" "no clean identity"
 
 # --- real cases: multi-file, context_seed, base, fix ---------------------------------------
 S="$TMP/src"; RL="$TMP/real"; RK="$TMP/real-key.json"

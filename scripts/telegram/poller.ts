@@ -946,7 +946,7 @@ export async function handleAutoCommand(root: string, msg: DeliveredMsg, route: 
       await reply(refused.message);
       return;
     }
-    await reply("♻️ bouncing the poller — back in a moment");
+    await reply("♻️ restarting the Telegram bridge");
     await deps.audit({ chat_id: msg.chat_id, user: msg.from, forwarded: false, op: route.op, arg: route.arg, time: route.time, rc: 0, result: auditResult(route.op, 0) });
     const out = await deps.restart(route.arg);
     // Only reached when the fire FAILED (a successful rung 1 never returns).

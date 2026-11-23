@@ -71,6 +71,7 @@ describe('repair fixtures', () => {
 const READ_ONLY = [
   'scripts/hooks/block-backend-tier.sh',
   'scripts/jira/src/commands/move.ts',
+  'scripts/jira/src/release/door.ts',
   'scripts/jira/src/release/lines.ts',
   'scripts/jira/src/mcp.ts',
   // Joined so the CI plan audit's closure does not read this list as a suite that executes the file.

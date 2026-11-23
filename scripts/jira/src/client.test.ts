@@ -1450,6 +1450,37 @@ describe('every Jira request has a deadline and a read is retried on a busy Jira
     }, 8000);
   });
 
+  describe('a caller\'s signal stops the read', () => {
+    it('an abort mid-request rejects at once and sends nothing more', async () => {
+      script = ['hang'];
+      const stop = new AbortController();
+      setTimeout(() => stop.abort(), 50);
+      const r = await timed(() => request('GET', '/issue/HTEST-1', undefined, undefined, { signal: stop.signal }));
+      expect(failure(r.error)).toMatch(/aborted by its caller/);
+      expect(r.ms).toBeLessThan(250);
+      expect(hits).toHaveLength(1);
+    });
+
+    it('an abort during the busy wait makes no further attempt', async () => {
+      script = [{ status: 429, headers: { 'Retry-After': '1' } }, { status: 200, body: '{"ok":true}' }];
+      const stop = new AbortController();
+      setTimeout(() => stop.abort(), 200);
+      const r = await timed(() => request('GET', '/issue/HTEST-1', undefined, undefined, { signal: stop.signal }));
+      expect(failure(r.error)).toMatch(/aborted by its caller/);
+      expect(r.ms).toBeLessThan(800);
+      await new Promise((ok) => setTimeout(ok, 1200));
+      expect(hits).toHaveLength(1);
+    });
+
+    it('a signal already aborted sends nothing', async () => {
+      const stop = new AbortController();
+      stop.abort();
+      const r = await timed(() => request('GET', '/issue/HTEST-1', undefined, undefined, { signal: stop.signal }));
+      expect(failure(r.error)).toMatch(/aborted by its caller/);
+      expect(hits).toHaveLength(0);
+    });
+  });
+
   describe('a write is never retried', () => {
     it.each([
       ['a comment POST gets 503', 'POST', '/issue/HTEST-1/comment', 503, {}],

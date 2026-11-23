@@ -206,7 +206,8 @@ def per_key(out, ks, spec=False):
         t = line.split()
         if spec and t[:2] == ['SPEC', 'ok'] and len(t) >= 4:
             got[t[2]] = line
-        elif t and (t[0] in ('SPEC-STALE', 'NO-SPEC') if spec else t[0] in ('CORE', 'NOT-CORE', 'BYPASS', 'BYPASS-NEEDS-SPEC', 'UNKNOWN')) and len(t) >= {'CORE': 3, 'BYPASS': 4, 'BYPASS-NEEDS-SPEC': 4}.get(t[0], 2):
+        elif t and (t[0] in ('SPEC-STALE', 'NO-SPEC', 'SPEC-NEEDS-OPERATOR', 'SPEC-SIGNER-UNKNOWN') if spec else t[0] in ('CORE', 'NOT-CORE', 'BYPASS', 'BYPASS-NEEDS-SPEC', 'UNKNOWN')) \
+                and len(t) >= {'CORE': 3, 'BYPASS': 4, 'BYPASS-NEEDS-SPEC': 4, 'SPEC-NEEDS-OPERATOR': 5, 'SPEC-SIGNER-UNKNOWN': 4}.get(t[0], 2):
             got[t[1]] = line  # a line shorter than its verb needs is no answer: a truncated BYPASS must never read as a bypass
     return {k: got[k] for k in ks if k in got}
 
@@ -256,6 +257,15 @@ for k in keys:
         refusals.append('core brief %s is core and its %s bypass waives the signature, never the spec: %s; run minerva to one critic round (a docs-only design leg may write it), then jira release operator spec-review' % (k, t[2], ' '.join(t[3:])))
     if t[0] == 'UNKNOWN':
         refusals.append('core brief %s is not in the Jira mirror, so neither core nor a bypass can be proven; refresh the mirror, then re-run' % k)
+    elif t[0] == 'CORE' and spec[k].split()[0] == 'SPEC-NEEDS-OPERATOR':
+        s = spec[k].split()
+        refusals.append("core brief %s is core (%s) and needs the operator's own signature (%s): the chief's signature %s does not count; "
+                        'see jira release signer-check %s, then the operator signs it (jira release operator spec <release> ... --signer operator --supersedes %s)'
+                        % (k, ' '.join(t[2:]), s[-1], s[-2], k, s[-2]))
+    elif t[0] == 'CORE' and spec[k].split()[0] == 'SPEC-SIGNER-UNKNOWN':
+        s = spec[k].split(None, 3)
+        refusals.append('core brief %s is core (%s) and its chief signature %s cannot be checked: signer records unreadable: %s; repair the release named, then re-run'
+                        % (k, ' '.join(t[2:]), s[2], s[3]))
     elif t[0] == 'CORE' and not spec[k].startswith('SPEC ok'):
         refusals.append('core brief %s is core (%s) and has no signed minerva spec: %s; run minerva, then jira release operator spec' % (k, ' '.join(t[2:]), spec[k]))
 if refusals:

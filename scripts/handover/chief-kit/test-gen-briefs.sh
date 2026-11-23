@@ -87,6 +87,7 @@ if (a[0] === 'release' && a[1] === 'core-check') {
   let missing = 0;
   for (const k of a.slice(a.indexOf('--mirror') + 2)) {
     let r = '';
+    if (process.env.CG_STUB_SPECLINE && fs.existsSync(process.env.CG_STUB_SPECLINE + '/' + k)) { console.log(fs.readFileSync(process.env.CG_STUB_SPECLINE + '/' + k, 'utf8').trim()); continue; }
     try { r = fs.readFileSync(process.env.CG_STUB_SIGNED + '/' + k, 'utf8').trim(); } catch (e) { missing = 1; }
     console.log(r ? 'SPEC ok ' + k + ' ' + r : 'NO-SPEC ' + k);
   }
@@ -1764,6 +1765,56 @@ rm -f "$CG_SPECS_DIR/"*
 cgo_without="$(cgrun needs)"; rc_without=$?
 [ "$rc_with" = "$rc_without" ] && [ "$cgo_with" = "$cgo_without" ] && [ "$rc_with" = 1 ] && pass "gen-briefs decides nothing from spec files: the same answer with the fixture specs removed" || fail "specs changed the answer: rc $rc_with vs $rc_without: [$cgo_with] vs [$cgo_without]"
 rm -f "$CG_STUB_NEEDS/HIMMEL-9640"
+
+export CG_STUB_SPECLINE="$WORK/cg-specline"; mkdir -p "$CG_STUB_SPECLINE"
+SK=HIMMEL-9477
+SL_CORE="worker N941: $SK is core ($CORE_WRITES)"
+cg_mirror "$SK" Task Medium '[]'
+sl_gen() {
+    printf '%s\n' "$2" > "$CG_STUB_SPECLINE/$SK"
+    cg_workers "$1" "$SK" "$CORE_WRITES" ''
+    cgo="$(cgrun "$1")"; rc=$?
+}
+sl_gen sno 'SPEC-NEEDS-OPERATOR HIMMEL-9477 /state/specs/HIMMEL-9477-spec.md C-R1-9477 O-M1-9477'
+{ [ "$rc" = 1 ] && [ -z "$(cg_brief sno)" ]; } && has "SPEC-NEEDS-OPERATOR from the stub CLI refuses the worker and names the governing record and the chief signature" "$cgo" \
+    "$SL_CORE and needs the operator's own signature (O-M1-9477): the chief's signature C-R1-9477 does not count; see jira release signer-check $SK, then the operator signs it (jira release operator spec <release> ... --signer operator --supersedes C-R1-9477)" \
+    || fail "SPEC-NEEDS-OPERATOR refusal (rc=$rc): $cgo"
+lacks "the SPEC-NEEDS-OPERATOR refusal is not a CORE-CHECK-FAILED" "$cgo" "CORE-CHECK-FAILED"
+[ "$(cg_rows sno $SK)" = 1 ] && [ "$(cg_field sno $SK outcome)" = refused ] && [ "$(cg_field sno $SK spec_check)" = "$(cat "$CG_STUB_SPECLINE/$SK")" ] \
+    && pass "the SPEC-NEEDS-OPERATOR refusal appends one refused row carrying the line" || fail "sno row: $(cat "$(cg_log sno)" 2>/dev/null)"
+sl_gen ssu 'SPEC-SIGNER-UNKNOWN HIMMEL-9477 C-R1-9477 release v1.1.3 chain unreadable'
+{ [ "$rc" = 1 ] && [ -z "$(cg_brief ssu)" ]; } && has "SPEC-SIGNER-UNKNOWN refuses naming the why" "$cgo" \
+    "$SL_CORE and its chief signature C-R1-9477 cannot be checked: signer records unreadable: release v1.1.3 chain unreadable; repair the release named, then re-run" \
+    || fail "SPEC-SIGNER-UNKNOWN refusal (rc=$rc): $cgo"
+lacks "the SPEC-SIGNER-UNKNOWN refusal never says run minerva" "$cgo" "minerva"
+[ "$(cg_field ssu $SK outcome)" = refused ] && pass "the SPEC-SIGNER-UNKNOWN refusal appends a refused row" || fail "ssu row: $(cat "$(cg_log ssu)" 2>/dev/null)"
+mkdir -p "$CG/specs/sl"; printf '# %s: a fixture design\n' "$SK" > "$CG/specs/sl/spec.md"
+sl_gen sokc "SPEC ok $SK $CG/specs/sl/spec.md C-R1-9477"
+[ "$rc" = 0 ] && [ -n "$(cg_brief sokc)" ] && pass "R1 twin: a chief-signed SPEC ok generates" || fail "chief-signed SPEC ok rc=$rc: $cgo"
+sl_gen soko "SPEC ok $SK $CG/specs/sl/spec.md O-R1-9477"
+[ "$rc" = 0 ] && [ -n "$(cg_brief soko)" ] && pass "R3 twin: an operator-signed SPEC ok generates" || fail "operator-signed SPEC ok rc=$rc: $cgo"
+n=0
+while IFS=$'\t' read -r want line; do
+    n=$((n + 1)); sl_gen "fx$n" "$line"; erc=1
+    case "$want" in
+        none) exp='CORE-CHECK-FAILED spec-check printed no parseable line for HIMMEL-9477' ;;
+        'SPEC ok '*) exp="$SL_CORE"; erc=0 ;;
+        SPEC-STALE\ *|NO-SPEC\ *) exp="$SL_CORE and has no signed minerva spec: $line;" ;;
+        SPEC-NEEDS-OPERATOR\ *) sig="${want#* sig=}"; sig="${sig%% *}"
+            exp="$SL_CORE and needs the operator's own signature (${want#* governing=}): the chief's signature $sig does not count;" ;;
+        SPEC-SIGNER-UNKNOWN\ *) sig="${want#* sig=}"; sig="${sig%% *}"
+            exp="$SL_CORE and its chief signature $sig cannot be checked: signer records unreadable: ${want#* why=};" ;;
+        *) exp="no such answer: $want" ;;
+    esac
+    if [ "$erc" = 0 ]; then
+        { [ "$rc" = 0 ] && [ -n "$(cg_brief "fx$n")" ]; } && pass "fixture line $n parses to its answer: $want" || fail "fixture [$line] want [$want] (rc=$rc want 0): $cgo"
+    else
+        { [ "$rc" = 1 ] && case "$cgo" in *"$exp"*) true ;; *) false ;; esac; } && pass "fixture line $n parses to its answer: $want" || fail "fixture [$line] want [$want] (rc=$rc want 1, missing '$exp'): $cgo"
+    fi
+done < "$HERE/fixtures/spec-check-lines.txt"
+[ "$n" -ge 11 ] && pass "every line of fixtures/spec-check-lines.txt parses to its expected answer, the spaced path included; a cut line is no answer ($n lines)" \
+    || fail "the fixture held $n lines, want at least 11"
+rm -f "$CG_STUB_SPECLINE/$SK"
 
 # an absolute Writes path under the handover root is a relative non-core stand-in, never a --paths argument (the CLI refuses absolute ones)
 cg_mirror HIMMEL-9440 Task Medium '["core"]'
