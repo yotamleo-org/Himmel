@@ -186,7 +186,7 @@ case "$(cat "$REC/cwd" 2>/dev/null)" in "$REPO"|"$REPO"/*) bad "4 cwd must not b
 has "4 the prompt reaches claude on stdin" "<diff>" "$REC/stdin"
 
 # --- 5. subscription provider: bank exhausted skips, never launches --------
-fresh_rec 5; bank 99
+fresh_rec 5; bank 100
 run_cfp claude-subscription
 check "5 SKIPPED-BANK exits 5" 5 "$RC"
 check "5 claude is not launched" "no" "$([ -e "$REC/argv" ] && echo yes || echo no)"
