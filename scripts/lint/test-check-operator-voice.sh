@@ -53,7 +53,7 @@ for phrase in "The ask expires in 6 h; ready in 15 minutes" "ready in 15 minutes
     if [ "$RC" -eq 1 ]; then pass "estimate -> 1: $phrase"; else fail "estimate not caught ($RC): $phrase"; fi
 done
 
-for phrase in "done by tonight" "I will be done in an hour" "ready by 6 pm" "back by 14:30" "the fix lands in half an hour" "answer in a minute" "ready in two hours" "done in one hour"; do
+for phrase in "done by tonight" "I will be done in an hour" "ready by 6 pm" "back by 14:30" "the fix lands in half an hour" "answer in a minute" "ready in two hours" "done in one hour" "back in a second."; do
     put one.md "$phrase"
     run "$T/one.md"
     if [ "$RC" -eq 1 ]; then pass "estimate in words or a target time -> 1: $phrase"; else fail "estimate not caught ($RC): $phrase"; fi
@@ -63,7 +63,12 @@ put words-ok.md 'The code expires in 6 h.
 The code expires in an hour.
 the run took an hour
 The PR was reviewed by the chief in a worktree.
-Merged by the chief; ready by design.'
+Merged by the chief; ready by design.
+The rest ships in a second PR.
+Retry in a second pass.
+The nightly job runs twice in a day.
+The timer fires once in an hour.
+The run finished by 14:30 yesterday.'
 run "$T/words-ok.md"
 if [ "$RC" -eq 0 ]; then pass "deadline, past duration, by the chief, in a worktree -> 0"; else fail "word controls exit $RC: $OUT"; fi
 

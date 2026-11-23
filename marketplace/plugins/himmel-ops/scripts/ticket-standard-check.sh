@@ -59,9 +59,13 @@ missing="$(node "$here/ticket-policy-cli.mjs" "${policy_args[@]}")" || parsefail
 
 voice_sh="$(cd "$here/../../../.." 2>/dev/null && pwd)/scripts/lint/check-operator-voice.sh"
 [ -f "$voice_sh" ] || voice_sh="${HIMMEL_REPO:-}/scripts/lint/check-operator-voice.sh"
-[ -f "$voice_sh" ] || { echo "ticket-standard-check: check-operator-voice.sh not found (set HIMMEL_REPO); draft not checked" >&2; exit 2; }
-voice="$(bash "$voice_sh" --ticket "$draft")"; vrc=$?
-case "$vrc" in 0|1) ;; *) echo "ticket-standard-check: the operator-voice check could not run on '$draft'; draft not checked" >&2; exit 2;; esac
+voice=""
+if [ -f "$voice_sh" ]; then
+  voice="$(bash "$voice_sh" --ticket "$draft")"; vrc=$?
+  case "$vrc" in 0|1) ;; *) echo "ticket-standard-check: the operator-voice check could not run on '$draft'; draft not checked" >&2; exit 2;; esac
+else
+  echo "ticket-standard-check: check-operator-voice.sh not found (set HIMMEL_REPO); top-line voice not checked" >&2
+fi
 
 warns=()
 grep -Eiq '^[[:space:]]*Sector:[[:space:]]*[^[:space:]]' "$draft" && sector="${sector:-from-draft}"

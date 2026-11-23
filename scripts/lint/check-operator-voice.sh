@@ -73,8 +73,11 @@ for f in "${FILES[@]}"; do
             past = "(took|waited|lasted|spent|ran for|ran|after|for the last|been|over|expires?) "
             gsub(past "(in |about |around |roughly |~ ?)?" n " ?" u, " ", l)
             gsub(past "(in )?" w, " ", l)
+            gsub("(once|twice|thrice|times) in " w, " ", l)
+            gsub("in an? second [a-z]", " ", l)
             clock = "[0-9][0-9]?(:[0-9][0-9] ?(am|pm|h)?| ?(am|pm|h)([^a-z]|$))"
             target = "(tonight|tomorrow|today|noon|midnight|lunch|eod|end of (the )?(day|week)|this (morning|afternoon|evening|week)|(mon|tues|wednes|thurs|fri|satur|sun)day)"
+            gsub("(done|ready|back|finished) by (" target "|" clock ") ?(yesterday|last [a-z]+)", " ", l)
             hit = ""
             if (raw ~ /(^|[^A-Za-z])ETAs?([^A-Za-z]|$)/) hit = "ETA"
             else if (l ~ ("(^|[^a-z0-9_])(about|around|roughly|approx\\.?|approximately|~) ?" n " ?" u)) hit = "about N"

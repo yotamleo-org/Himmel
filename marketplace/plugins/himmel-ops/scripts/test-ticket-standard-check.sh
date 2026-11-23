@@ -440,6 +440,14 @@ run Task "$td/v1.md" "$q" --sector X; check "a top line saying ready in 15 minut
 has "the refusal names the time estimate" "$out" "time estimate"
 { printf 'The checker refuses a draft whose top line gives a time estimate.\n\n'; cat "$td/v0.md"; } >"$td/v2.md"
 run Task "$td/v2.md" "$q" --sector X; check "a clean top line passes the voice check" "$rc" 0
+vt="$td/vtree"; mkdir -p "$vt/marketplace/plugins/himmel-ops"; cp -R "$here" "$vt/marketplace/plugins/himmel-ops/scripts"
+out="$(cd "$td" && env -u HIMMEL_REPO TICKET_STANDARD_QUEUE_DIR="$q" bash "$vt/marketplace/plugins/himmel-ops/scripts/ticket-standard-check.sh" --type Task --draft "$td/v1.md" --sector X 2>&1)"; rc=$?
+check "a copied tree with no voice linter and no HIMMEL_REPO still checks the rest of the draft" "$rc" 0
+has "a missing voice linter is named, not silent" "$out" "voice not checked"
+mkdir -p "$vt/scripts/lint"; printf 'exit 3\n' >"$vt/scripts/lint/check-operator-voice.sh"
+out="$(cd "$td" && env -u HIMMEL_REPO TICKET_STANDARD_QUEUE_DIR="$q" bash "$vt/marketplace/plugins/himmel-ops/scripts/ticket-standard-check.sh" --type Task --draft "$td/v2.md" --sector X 2>&1)"; rc=$?
+check "a voice linter that fails to run makes the draft unchecked (exit 2)" "$rc" 2
+has "the failed voice run is named" "$out" "operator-voice check could not run"
 
 pcli="$here/ticket-policy-cli.mjs"
 printf 'Impact\nx\nDoD\n- the DoD line\nProof\nthe proof line\nAgent detail\nthe detail line\n' >"$td/t1.md"
