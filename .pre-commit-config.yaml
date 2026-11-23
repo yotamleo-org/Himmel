@@ -304,7 +304,7 @@ repos:
         # an absolute C:/Users/<me>/...graphify.EXE command every time it runs,
         # so this gate is what catches the re-add on the next commit that
         # stages either file.
-        files: '(^|/)(\.claude/settings(\.local)?\.json|\.codex/hooks\.json)$'
+        files: '(^|/)(\.claude/settings(\.local)?\.json|\.(codex|agents)/hooks\.json)$'
         stages: [pre-commit]
 
       - id: gh-json-fields

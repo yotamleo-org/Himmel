@@ -112,6 +112,16 @@ wired_scripts() {
       if (m) for (const n of m[1].split("+")) out.add("scripts/hooks/" + n);
       found(".codex/hooks.json", c, m ? 1 : 0);
     }
+    if (fs.existsSync(path.join(root, ".agents/hooks.json"))) {
+      for (const c of cmds(".agents/hooks.json")) {
+        let n = 0;
+        for (const m of c.matchAll(/scripts\/hooks\/([A-Za-z0-9_.-]+\.(?:sh|js))/g)) {
+          out.add("scripts/hooks/" + m[1]);
+          n++;
+        }
+        found(".agents/hooks.json", c, n);
+      }
+    }
     // Plugin hooks.json commands. CLAUDE_PLUGIN_ROOT is the plugin dir,
     // marketplace/plugins/<name>, in this tree; CLAUDE_PROJECT_DIR is the project root.
     const pdir = path.join(root, "marketplace/plugins");

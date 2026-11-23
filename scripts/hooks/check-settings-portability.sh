@@ -113,7 +113,7 @@ fi
 # `settings-portability` hook in .pre-commit-config.yaml.
 is_scanned() {
     case "$1" in
-        *.claude/settings.json|*.claude/settings.local.json|*.codex/hooks.json) return 0 ;;
+        *.claude/settings.json|*.claude/settings.local.json|*.codex/hooks.json|*.agents/hooks.json) return 0 ;;
         *) return 1 ;;
     esac
 }

@@ -1,0 +1,42 @@
+{
+  "himmel-antigravity": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "sh -c 'g=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_PREFIX -u GIT_IMPLICIT_WORK_TREE -u GIT_GRAFT_FILE -u GIT_REPLACE_REF_BASE -u GIT_SHALLOW_FILE -u GIT_CONFIG -u GIT_CONFIG_PARAMETERS -u GIT_CONFIG_COUNT git -C .. rev-parse --path-format=absolute --git-common-dir 2>/dev/null); r=$([ -n \"$g\" ] && [ -d \"$g\" ] && dirname \"$g\" || (cd .. && pwd -P)); [ -f \"$r/scripts/hooks/antigravity-hook-adapter.sh\" ] || r=$(cd .. && pwd -P); exec bash \"$r/scripts/hooks/antigravity-hook-adapter.sh\" --event SessionStart'",
+        "timeout": 60
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'g=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_PREFIX -u GIT_IMPLICIT_WORK_TREE -u GIT_GRAFT_FILE -u GIT_REPLACE_REF_BASE -u GIT_SHALLOW_FILE -u GIT_CONFIG -u GIT_CONFIG_PARAMETERS -u GIT_CONFIG_COUNT git -C .. rev-parse --path-format=absolute --git-common-dir 2>/dev/null); r=$([ -n \"$g\" ] && [ -d \"$g\" ] && dirname \"$g\" || (cd .. && pwd -P)); [ -f \"$r/scripts/hooks/antigravity-hook-adapter.sh\" ] || r=$(cd .. && pwd -P); exec bash \"$r/scripts/hooks/antigravity-hook-adapter.sh\" --event PreToolUse'",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'g=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_PREFIX -u GIT_IMPLICIT_WORK_TREE -u GIT_GRAFT_FILE -u GIT_REPLACE_REF_BASE -u GIT_SHALLOW_FILE -u GIT_CONFIG -u GIT_CONFIG_PARAMETERS -u GIT_CONFIG_COUNT git -C .. rev-parse --path-format=absolute --git-common-dir 2>/dev/null); r=$([ -n \"$g\" ] && [ -d \"$g\" ] && dirname \"$g\" || (cd .. && pwd -P)); [ -f \"$r/scripts/hooks/antigravity-hook-adapter.sh\" ] || r=$(cd .. && pwd -P); exec bash \"$r/scripts/hooks/antigravity-hook-adapter.sh\" --event PostToolUse'",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "sh -c 'g=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_PREFIX -u GIT_IMPLICIT_WORK_TREE -u GIT_GRAFT_FILE -u GIT_REPLACE_REF_BASE -u GIT_SHALLOW_FILE -u GIT_CONFIG -u GIT_CONFIG_PARAMETERS -u GIT_CONFIG_COUNT git -C .. rev-parse --path-format=absolute --git-common-dir 2>/dev/null); r=$([ -n \"$g\" ] && [ -d \"$g\" ] && dirname \"$g\" || (cd .. && pwd -P)); [ -f \"$r/scripts/hooks/antigravity-hook-adapter.sh\" ] || r=$(cd .. && pwd -P); exec bash \"$r/scripts/hooks/antigravity-hook-adapter.sh\" --event Stop'",
+        "timeout": 15
+      }
+    ]
+  }
+}
