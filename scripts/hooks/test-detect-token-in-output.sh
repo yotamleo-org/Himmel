@@ -187,8 +187,10 @@ if [ "$(uname -s)" = Linux ]; then
     if [ "$(sent_count)" = "$((before + 1))" ]; then pass "control: the next run with a working sender pages"; else fail "next run did not page (count=$(sent_count), before=$before)"; fi
 fi
 
-# shellcheck disable=SC2016  # the stub body expands at its own run time
-printf '#!/usr/bin/env bash\nprintf "%%s|%%s\\n" "$#" "${3-}" >>"$KIND_LOG"\n' >"$TMP/kind-send.sh"
+cat >"$TMP/kind-send.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s|%s\n' "$#" "${3-}" >>"$KIND_LOG"
+EOF
 chmod +x "$TMP/kind-send.sh"
 j_post Bash s-kind "T=$TOK_GHP" | env HIMMEL_TEST_FIXTURE=1 TOKEN_ALERT_DIR="$TMP/kind-alerts" MERGE_BLOCK_ALERT_CMD="$TMP/kind-send.sh" \
     TELEGRAM_ACCESS_PATH="$TMP/access.json" KIND_LOG="$TMP/kind.log" bash "$HOOK" >"$TMP/out" 2>"$TMP/err"
