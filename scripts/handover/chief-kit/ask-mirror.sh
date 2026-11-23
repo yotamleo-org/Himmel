@@ -1,29 +1,7 @@
 #!/usr/bin/env bash
-# scripts/handover/chief-kit/ask-mirror.sh - post each `Needs you:` block of a chief's
-# console reply to the operator's Telegram as well, once (docs/internals/operator-voice.md rule 6).
-#
 # Usage: ask-mirror.sh < <Stop hook payload JSON>
-#   Reads session_id, last_assistant_message, or transcript_path when that field is absent.
-#
-# Only a chief session posts: one whose queue-lock token file (queue-lock.sh, keyed on
-# sha256("<session_id>|<doc>")) exists for a held *-chief or *-console lock, the check
-# stop-chief-idle-guard.sh makes. A worker, judge or any other session posts nothing.
-#
-# Each block is posted with `chief-route.ts reply --chief <name> --owed ask-<key16> --doc
-# <chief doc> --kind chief-reply operator`: an owed send, which the poller retries until
-# Telegram returns a message id and which chief-route records as a DELIVERED line in the
-# chief doc. A fenced code block inside the block, or right after it, is left out of the
-# ask and posted alone as the next message (rule 5). A block is sent once: its key, sha256
-# of chief name, ask and code, goes to <handover root>/.ask-mirror/<chief>.sent once both
-# posts are delivered, so a repeated ask is skipped and a changed one is sent again. A post
-# with no delivery receipt is an owe.sh step row in the chief's bucket; the next reply
-# carrying the block asks again, and the owed send queues nothing twice.
-#
-# Always exits 0 with no stdout: it never blocks the stop.
 # Test seams: ASK_MIRROR_ROUTE replaces `bun <repo>/scripts/telegram/chief-route.ts`;
 # ASK_MIRROR_OWE replaces owe.sh.
-#
-# Platform guard: bash, jq, python3.
 set -u
 
 KIT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

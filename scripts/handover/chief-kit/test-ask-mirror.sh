@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# Suite for scripts/handover/chief-kit/ask-mirror.sh: a chief's console reply
-# with a `Needs you:` block is also posted to the operator's Telegram, once.
-#
-# The route command is a stub (ASK_MIRROR_ROUTE) that records each call, so no
-# Telegram message is sent. Chief detection uses fabricated lock dirs and the
-# queue-lock token files the real hook reads.
-#
-# bash 3.2-safe.
 set -uo pipefail
 
 KIT="$(cd "$(dirname "$0")" && pwd)"
@@ -42,7 +34,6 @@ CALLS="$TMP/calls.log"
 STUB="$TMP/route-stub.sh"
 cat > "$STUB" <<'EOF'
 #!/usr/bin/env bash
-# records: one line per call, args joined by |, newlines in the text as \n
 out=""; for a in "$@"; do out="$out|$(printf '%s' "$a" | awk 'BEGIN{ORS="\\n"} {print}' | sed 's/\\n$//')"; done
 printf '%s\n' "${out#|}" | sed -E 's/\|ask-[0-9a-f]{16}/|ask-K/' >> "$ASK_MIRROR_TEST_CALLS"
 [ "${ASK_MIRROR_TEST_FAIL:-0}" = 1 ] && { echo "stub: send failed" >&2; exit 1; }
