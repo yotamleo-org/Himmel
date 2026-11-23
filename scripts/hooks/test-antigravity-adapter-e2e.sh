@@ -199,6 +199,10 @@ assert_deny "read_file on antigravity-oauth-token denied" "oauth-token" \
     "$(make_pre read_file "$(jq -cn --arg p "$T3CODE_HOME/userdata/providers/antigravity/hash1/antigravity-oauth-token" '{Path:$p}')" )"
 assert_deny "run_command writing .agents/hooks.json denied" "self-protect" \
     "$(make_pre run_command '{"CommandLine":"echo {} > .agents/hooks.json"}')"
+assert_deny "run_command writing .agents/skills/x/SKILL.md denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"echo x > .agents/skills/x/SKILL.md"}')"
+assert_pass "run_command reading .agents/skills/x/SKILL.md allowed" \
+    "$(make_pre run_command '{"CommandLine":"cat .agents/skills/x/SKILL.md"}')"
 
 echo "== 6. Child invoke_subagent payload and lifecycle events =="
 assert_deny "child invoke_subagent reading .env denied" "secret" "$(cat "$FIX/child-pre-read-file-secret.json")"

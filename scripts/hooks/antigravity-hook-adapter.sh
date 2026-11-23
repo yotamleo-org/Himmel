@@ -360,7 +360,7 @@ check_self_protect_cmd() {
 
     local mentions_protected=0
     case "$c" in
-        *.agents/hooks.json*|*.agents/skills.json*|*.agents/rules*|*.gemini/config*|*.gemini/settings.json*)
+        *.agents/*|*.agents|*.gemini/config*|*.gemini/settings.json*)
             mentions_protected=1
             ;;
         *userdata/providers/antigravity*)
