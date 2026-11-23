@@ -80,7 +80,7 @@ stop_waiter() {
     wait "$1" 2>/dev/null
 }
 count() { grep -c -- "$1" "$2" 2>/dev/null || true; }
-quiet() { timeout -k 5 4 bash "$WAIT" "$1" --workers-from "$MANIFEST" > "$2" 2>/dev/null; }  # gnu-ok: Linux-only kit
+quiet() { timeout -k 5 4 bash "$WAIT" "$1" --workers-from "$MANIFEST" > "$2" 2>/dev/null; check "$3: the waiter runs until its timeout" "124" "$?"; }  # gnu-ok: Linux-only kit
 
 : > "$STUB/nudge.calls"
 bank SKIPPED-BANK
@@ -96,14 +96,14 @@ check "(r1) exactly one budget-recovered wake in the run" "1" "$(count '^WAKE bu
 check "(r1) the flip is one wake, not a second generic usage wake" "1" "$(count '^WAKE ' "$WORK/r1.out")"
 check "(r1) the nudge runs once, on the fleet manifest" "$MANIFEST" "$(cat "$STUB/nudge.calls")"
 check "(r1) the nudge's per-worker lines are printed under the wake" "BUS-NUDGE N1 ok" "$(sed -n 2p "$WORK/r1.out")"
-quiet "$I" "$WORK/r1b.out"
+quiet "$I" "$WORK/r1b.out" "(r1b)"
 check "(r1) a second poll at PROCEED wakes nothing" "" "$(cat "$WORK/r1b.out")"
 check "(r1) the second poll runs no nudge" "1" "$(grep -c . "$STUB/nudge.calls")"
 
 : > "$STUB/nudge.calls"
 bank PROCEED
 I="$(new_inbox r2)"
-quiet "$I" "$WORK/r2.out"
+quiet "$I" "$WORK/r2.out" "(r2)"
 check "(r2) a first sample at PROCEED wakes nothing" "" "$(cat "$WORK/r2.out")"
 check "(r2) the word is remembered" "PROCEED" "$(cat "$I.wait.usage" 2>/dev/null)"
 
@@ -142,8 +142,8 @@ done
 
 bank SKIPPED-BANK
 I="$(new_inbox r6)"
-quiet "$I" "$WORK/r6.out"
-quiet "$I" "$WORK/r6b.out"
+quiet "$I" "$WORK/r6.out" "(r6)"
+quiet "$I" "$WORK/r6b.out" "(r6b)"
 check "(r6) SKIPPED-BANK held across two runs wakes nothing" "" "$(cat "$WORK/r6.out" "$WORK/r6b.out")"
 
 printf '\n%d failure(s)\n' "$fails"
