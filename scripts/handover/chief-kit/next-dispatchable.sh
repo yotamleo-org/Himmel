@@ -312,7 +312,7 @@ export ND_FLAGS="$nd_flags"
 nd_left=$((nd_deadline - SECONDS))
 [ "$nd_left" -gt 0 ] || nd_left=1
 ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 "$nd_left"} python3 -I - > "$nd_out" <<'PY' &
-import datetime, functools, json, math, os, re, subprocess, sys, tempfile, time
+import datetime, functools, glob, hashlib, json, math, os, re, subprocess, sys, tempfile, time
 sys.stdout.reconfigure(errors='backslashreplace')
 sys.stderr.reconfigure(errors='backslashreplace')
 
@@ -2095,8 +2095,26 @@ for a in owed_actions:
     if not a.get('closed') and a.get('kind') == 'proof' and a.get('key'):
         open_proofs.setdefault(str(a['key']).upper(), a)
 
+def tick_verdicts(doc):
+    stale, holds = set(), {}
+    state = os.environ.get('TICK_STATE_DIR') or os.path.join(os.environ.get('HOME') or '/tmp', '.himmel', 'state')
+    for path in glob.glob(os.path.join(state, 'tick-pool-stale-*.out')):
+        try:
+            lines = open(path, encoding='utf-8', errors='replace').read().splitlines()
+        except OSError:
+            continue
+        if lines[:1] == ['# mirror=' + os.path.realpath(mirror)]:
+            stale.update(re.findall(r'^STALE-DISPOSITION ([A-Z]+-\d+) line=([0-9a-f]{12}) ', '\n'.join(lines), re.M))
+    hpath = os.path.join(state, 'pool-holds-%s.json' % re.sub(r'\.md$', '', os.path.basename(doc)))
+    try:
+        if time.time() - os.path.getmtime(hpath) <= 1800:
+            holds = {(r['key'], r['line']): r.get('class') for r in json.load(open(hpath, encoding='utf-8')).get('rows') or []}
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        holds = {}
+    return stale, holds
+
 def read_disposition_gates(path):
-    gates = {}
+    gates, newest = {}, {}
     try:
         lines = open(path, encoding='utf-8', errors='replace').read().splitlines() if path else []
     except OSError:
@@ -2105,9 +2123,20 @@ def read_disposition_gates(path):
     for line in lines:
         if line.startswith('## '):
             in_state = line.strip() == '## Live state'
-        m = re.match(r'^\s*(?:[-*]\s+)?pool-disposition:\s*(?:HIMMEL-)?(\d{3,6})\s+(\w+)\s*(.*)$', line) if in_state else None
-        if m and m.group(2) in GATE_VERBS:
-            gates.setdefault('HIMMEL-' + m.group(1), 'pool-disposition %s %s' % (m.group(2), m.group(3).strip()))
+        m = re.fullmatch(r'([A-Z]+-\d+) (slice|close|question|hold|park) (\S.*)', line.split(':', 1)[1].strip()) \
+            if in_state and line.startswith('pool-disposition:') else None
+        if m:
+            newest[m[1]] = m
+    stale, holds = tick_verdicts(path) if newest else (set(), {})
+    for key, m in newest.items():
+        lh = hashlib.sha256(m[0].encode()).hexdigest()[:12]
+        if m[2] not in GATE_VERBS or (key, lh) in stale:
+            continue
+        cls = holds.get((key, lh))
+        ref = re.match(r'(?:(?:operator|waits on|blocked by|after)\s+)?(?:([A-Z]+-\d+)\b|PRs?\s*#?\d+\b|[Dd]ecisions?\s*#?\d+\b)', m[3])
+        owned_open = bool(ref) and (ref[1] is None or (ref[1] != key and ref[1].split('-')[0] == key.split('-')[0] and not done_key(ref[1])))
+        if cls in ('authority', 'wake') or (cls is None and owned_open):
+            gates[key] = 'pool-disposition %s %s' % (m[2], m[3])
     return gates
 
 disposition_gates = read_disposition_gates(os.environ.get('ND_DOC', ''))
