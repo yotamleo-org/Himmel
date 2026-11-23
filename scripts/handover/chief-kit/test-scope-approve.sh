@@ -12,6 +12,8 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd -P)"
 SUT="${SCOPE_APPROVE_SCRIPT:-$HERE/scope-approve.sh}"
+# shellcheck source=../../lib/timeout-bin.sh
+. "$HERE/../../lib/timeout-bin.sh"
 ND="$HERE/next-dispatchable.sh"
 BRIEF="$HERE/../../../docs/handover/chief-sections/scope-helper.md"
 
@@ -203,10 +205,14 @@ fresh; tkt SCOPE-725; row SCOPE-725 '["scripts/lib/a.sh"]'; chmod a-w "$B"
 run; chmod u+w "$B"
 if [ "$(id -u)" = 0 ]; then pass 'A20 skipped as root, which writes anywhere'; else check 'A20 an unwritable sidecar is exit 2' 2 "$RC"; check 'A20 no post' 0 "$(posts)"; fi
 
-fresh; tkt SCOPE-722; row SCOPE-722 '["scripts/lib/a.sh"]'; printf 'timeout' > "$ST/mode.SCOPE-722"
-run; has 'A17 a post that times out is UNKNOWN' "$OUT" 'UNKNOWN SCOPE-722'; check 'A17 exit 1' 1 "$RC"
-has 'A17 the sidecar line is marked unconfirmed' "$(sidecar)" 'SCOPE-722 '; has 'A17 unconfirmed' "$(sidecar)" 'unconfirmed'
-run; has 'A17 a re-run is SKIPPED posted' "$OUT" 'SKIPPED SCOPE-722 posted'; check 'A17 one post in the log' 1 "$(posts)"
+if [ -n "$_TIMEOUT_BIN" ]; then
+    fresh; tkt SCOPE-722; row SCOPE-722 '["scripts/lib/a.sh"]'; printf 'timeout' > "$ST/mode.SCOPE-722"
+    run; has 'A17 a post that times out is UNKNOWN' "$OUT" 'UNKNOWN SCOPE-722'; check 'A17 exit 1' 1 "$RC"
+    has 'A17 the sidecar line is marked unconfirmed' "$(sidecar)" 'SCOPE-722 '; has 'A17 unconfirmed' "$(sidecar)" 'unconfirmed'
+    run; has 'A17 a re-run is SKIPPED posted' "$OUT" 'SKIPPED SCOPE-722 posted'; check 'A17 one post in the log' 1 "$(posts)"
+else
+    pass 'A17 skipped: no GNU timeout on this host, the post runs unbounded'
+fi
 
 fresh; tkt SCOPE-705; row SCOPE-705 '["scripts/lib/a.sh"]'
 run; has 'A5.ctl the real ND clears: CLEARED' "$OUT" 'CLEARED SCOPE-705'; check 'A5.ctl exit 0' 0 "$RC"
