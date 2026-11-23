@@ -1568,7 +1568,6 @@ def release_check(verb, keys, extra=()):
 
 
 def operator_owed(handover_dir, chief_doc, version, opn, mir):
-    """(operator items, source read, unread critic files, chief-owed items)."""
     items, chief_owes, readable, unread = [], [], False, []
     if handover_dir:
         signed, signed_ticket_numbers = set(), set()
