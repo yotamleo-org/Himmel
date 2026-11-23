@@ -26,8 +26,8 @@ trap cleanup EXIT
 cat > "$tmp/send" <<'STUB'
 #!/usr/bin/env bash
 printf '%s|%s\n' "$2" "${1%%$'\n'*}" >> "$BYPASSD_TEST_DIR/kinds"
-printf '%s\n' "$1" >> "$BYPASSD_TEST_DIR/sent"
 [ "$2" != bypass-ask ] || printf '%s' "$1" > "$BYPASSD_TEST_DIR/ask"
+printf '%s\n' "$1" >> "$BYPASSD_TEST_DIR/sent"
 STUB
 cat > "$tmp/launcher" <<'STUB'
 #!/usr/bin/env bash
