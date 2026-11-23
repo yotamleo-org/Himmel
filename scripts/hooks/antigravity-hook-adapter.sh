@@ -318,7 +318,9 @@ check_self_protect_path() {
 }
 
 git_readonly_subcmd() {
+    case "$1" in *'$'*|*'*'*|*'?'*|*'['*|*'{'*) return 1 ;; esac
     (
+        IFS=$' \t\n'
         set -f
         # shellcheck disable=SC2086
         set -- $1
@@ -330,7 +332,7 @@ git_readonly_subcmd() {
                     [ $# -ge 2 ] || exit 1
                     shift 2
                     ;;
-                --no-pager|-p|--paginate|--no-optional-locks|--literal-pathspecs)
+                --no-pager|--no-optional-locks|--literal-pathspecs)
                     shift
                     ;;
                 -*)
@@ -344,14 +346,36 @@ git_readonly_subcmd() {
         [ $# -ge 1 ] || exit 1
         sub_lc="$(lower_str "$1")"
         case "$sub_lc" in
-            status|diff|log|show) ;;
+            status|log|show) ;;
             *) exit 1 ;;
         esac
         shift
         while [ $# -gt 0 ]; do
             opt_lc="$(lower_str "$1")"
             case "$opt_lc" in
-                --output|--output=*|-o|-o*|--ext-diff|--textconv) exit 1 ;;
+                --out*|-o*|--ext*|--textc*|--filt*|--open*) exit 1 ;;
+            esac
+            shift
+        done
+        exit 0
+    )
+}
+
+rg_readonly_cmd() {
+    case "$1" in *'$'*|*'*'*|*'?'*|*'['*|*'{'*) return 1 ;; esac
+    (
+        IFS=$' \t\n'
+        set -f
+        # shellcheck disable=SC2086
+        set -- $1
+        [ $# -ge 2 ] || exit 1
+        shift
+        while [ $# -gt 0 ]; do
+            opt_lc="$(lower_str "$1")"
+            case "$opt_lc" in
+                --pre|--pre=*|--pre-glob|--pre-glob=*|--hostname-bin|--hostname-bin=*|--search-zip|--search-zip=*)
+                    exit 1
+                    ;;
             esac
             shift
         done
@@ -364,7 +388,7 @@ is_simple_readonly_cmd() {
     c_lc="$(lower_str "$raw_c")"
     # shellcheck disable=SC2016
     case "$c_lc" in
-        *'>'*|*';'*|*'&'*|*'|'*|*'$('*|*'`'*|*$'\n'*|*' -i '*|*' -i'|*'--in-place'*|*'<('*|*'--output'*)
+        *'>'*|*'<'*|*';'*|*'&'*|*'|'*|*'$('*|*'`'*|*$'\n'*|*' -i '*|*' -i'|*'--in-place'*|*'--output'*)
             return 1
             ;;
     esac
@@ -372,7 +396,11 @@ is_simple_readonly_cmd() {
     first="${first%%[[:space:]]*}"
     first_lc="$(lower_str "$first")"
     case "$first_lc" in
-        cat|head|tail|ls|stat|wc|grep|rg|jq|diff) return 0 ;;
+        cat|head|tail|ls|stat|wc|grep|jq|diff) return 0 ;;
+        rg)
+            rg_readonly_cmd "$raw_c"
+            return $?
+            ;;
         git)
             git_readonly_subcmd "$raw_c"
             return $?

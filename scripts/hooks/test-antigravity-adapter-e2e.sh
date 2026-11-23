@@ -220,8 +220,37 @@ assert_deny "run_command git rm .agents/skills.json denied" "self-protect" \
     "$(make_pre run_command '{"CommandLine":"git rm .agents/skills.json"}')"
 assert_deny "run_command git diff --output=.agents/hooks.json denied" "self-protect" \
     "$(make_pre run_command '{"CommandLine":"git diff --output=.agents/hooks.json"}')"
+assert_deny "run_command git diff -- .agents/hooks.json denied (diff.external)" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"git diff -- .agents/hooks.json"}')"
 assert_deny "run_command git -c diff.external=sh diff .agents/hooks.json denied" "self-protect" \
     "$(make_pre run_command '{"CommandLine":"git -c diff.external=sh diff .agents/hooks.json"}')"
+assert_deny "run_command git -p status .agents/hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"git -p status .agents/hooks.json"}')"
+assert_deny "run_command git log --out=.agents/hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"git log --out=.agents/hooks.json"}')"
+assert_deny "run_command rg --pre rm x .agents/hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"rg --pre rm x .agents/hooks.json"}')"
+assert_deny "run_command rg --pre=rm x .agents/hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"rg --pre=rm x .agents/hooks.json"}')"
+assert_deny "run_command rg quoted --pre rm x .agents/hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"rg '\''--pre'\'' rm x .agents/hooks.json"}')"
+assert_deny "run_command rg backslash-split --pre=rm x .agents/hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"rg --p\\re=rm x .agents/hooks.json"}')"
+assert_deny "run_command rg --pre-glob x .agents/hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"rg --pre-glob hooks.json x .agents/hooks.json"}')"
+assert_deny "run_command rg --pre-glob=hooks.json x .agents/hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"rg --pre-glob=hooks.json x .agents/hooks.json"}')"
+assert_deny "run_command rg --hostname-bin rm x .agents/hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"rg --hostname-bin rm x .agents/hooks.json"}')"
+assert_deny "run_command rg --hostname-bin=rm x .agents/hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"rg --hostname-bin=rm x .agents/hooks.json"}')"
+# shellcheck disable=SC2016
+assert_deny "run_command rg ANSI-C --pre=rm x .agents/hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"rg $'\''--pre=rm'\'' x .agents/hooks.json"}')"
+assert_deny "run_command rg brace-expanded --pre=rm x .agents/hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"rg --{pre,x}=rm x .agents/hooks.json"}')"
+assert_pass "run_command benign rg PreToolUse .agents/hooks.json allowed" \
+    "$(make_pre run_command '{"CommandLine":"rg PreToolUse .agents/hooks.json"}')"
 assert_pass "run_command git show HEAD:.agents/hooks.json allowed" \
     "$(make_pre run_command '{"CommandLine":"git show HEAD:.agents/hooks.json"}')"
 assert_pass "run_command git -C wt status .agents/hooks.json allowed" \
