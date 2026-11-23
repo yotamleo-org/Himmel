@@ -37,6 +37,13 @@ The chief carries these rules as its reply style (`docs/handover/chief-adhd-brie
 6. **Every ask goes to Telegram and the console.** Operator: "everything that needs
    the user should be through telegram as well as in cli as we can never know if the
    user is where. and as long as this duplication is short sentences its ok".
+   `scripts/handover/chief-kit/ask-mirror.sh` is built to do the Telegram half, but no
+   hook runs it yet: until a Stop hook does, a chief still posts each ask to Telegram
+   itself. Once wired, a chief writes the ask once, in its console reply: the script
+   reads each finished chief reply and posts every `Needs you:` block to the operator
+   as an owed `chief-route.ts reply --kind chief-reply` send, once per distinct block,
+   with a fenced code or command sent alone right after it. Worker and judge replies post nothing. A post with no Telegram
+   delivery receipt becomes an `owe.sh` step row in the chief's bucket, so the tick shows it.
 7. **A mistake names its cause and its follow-up,** the fix or a ticket in the current
    version at High priority. Operator: "we need mistakes to be diagnosed and always
    have a followup so we do self evolve" and "always to current version as high".
