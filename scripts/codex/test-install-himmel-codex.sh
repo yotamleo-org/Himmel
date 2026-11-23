@@ -119,7 +119,7 @@ run() {  # state-dir, then installer args
   CODEX_BIN="$STUB" CODEX_STUB_STATE="$s" CODEX_HOME="$TMP/codex-home" bash "$INSTALLER" "$@"
 }
 
-DEFAULT_SET="himmel-ops handover obsidian-triage telegram-himmel"
+DEFAULT_SET="himmel-ops handover obsidian-triage"
 
 echo "== scenario A: fresh machine (no himmel marketplace, no plugins) =="
 S="$TMP/A"; mk_state "$S"
@@ -128,24 +128,25 @@ printf 'openai-bundled\n' > "$S/marketplaces.txt"
 printf 'browser@openai-bundled\tinstalled, enabled\n' > "$S/plugins.txt"
 run "$S" >/dev/null
 assert_log_has  "$S/calls.log" "marketplace add"           "registers himmel marketplace when absent"
-assert_count    "$S/calls.log" "plugin add"              "4" "adds all 4 default plugins"
+assert_count    "$S/calls.log" "plugin add"              "3" "adds all 3 default plugins"
 for p in $DEFAULT_SET; do assert_log_has "$S/calls.log" "plugin add $p@himmel" "adds $p"; done
+assert_log_lacks "$S/calls.log" "plugin add telegram-himmel@himmel" "fresh install skips Telegram"
 
 echo "== scenario B: idempotent (marketplace present, all targets installed+enabled) =="
 S="$TMP/B"; mk_state "$S"
 printf 'openai-bundled\nhimmel\n' > "$S/marketplaces.txt"
 { for p in $DEFAULT_SET; do printf '%s@himmel\tinstalled, enabled\n' "$p"; done; } > "$S/plugins.txt"
+printf 'telegram-himmel@himmel\tinstalled, disabled\n' >> "$S/plugins.txt"
 run "$S" >/dev/null
 assert_log_lacks "$S/calls.log" "marketplace add" "no re-register when himmel marketplace present"
-assert_log_lacks "$S/calls.log" "plugin add"      "no re-add when all targets enabled (idempotent)"
+assert_log_lacks "$S/calls.log" "plugin add"      "re-provision leaves Telegram disabled"
 
 echo "== scenario C: one target not installed (others enabled) =="
 S="$TMP/C"; mk_state "$S"
 printf 'himmel\n' > "$S/marketplaces.txt"
 { printf 'himmel-ops@himmel\tnot installed\n';
   printf 'handover@himmel\tinstalled, enabled\n';
-  printf 'obsidian-triage@himmel\tinstalled, enabled\n';
-  printf 'telegram-himmel@himmel\tinstalled, enabled\n'; } > "$S/plugins.txt"
+  printf 'obsidian-triage@himmel\tinstalled, enabled\n'; } > "$S/plugins.txt"
 run "$S" >/dev/null
 assert_count    "$S/calls.log" "plugin add" "1" "adds exactly the one missing plugin"
 assert_log_has  "$S/calls.log" "plugin add himmel-ops@himmel" "adds the not-installed himmel-ops"
