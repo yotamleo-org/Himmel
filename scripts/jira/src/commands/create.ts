@@ -525,15 +525,14 @@ interface ParentState {
  * A follow-up of an open parent in the current version asks for that version;
  * the why states only facts (parent, status, version), plus the parent's
  * remainder when the caller declares it with --remainder. A Done or closed
- * parent in the current version never reaches here (closedParentPlacement files it
- * into that version); one that is elsewhere asks for none and the why says so. Parent, status and version go in
+ * parent asks for none and the why says so. Parent, status and version go in
  * the request's evidence. Explicit wins: a version, --backlog, --proposed-version or --why
  * keeps its meaning. A parent with no current version, or one that cannot be
  * read, leaves the request as it was (the ticket is filed either way).
  */
 export async function followUpIntake<T extends IntakeOptions & { followUpOf?: string; remainder?: boolean; backlog?: boolean; fixVersion?: string }>(o: T): Promise<T> {
-  if (o.followUpOf === undefined || o.fixVersion !== undefined || o.backlog || o.proposedVersion !== undefined || o.why?.trim()) return o;
-  const parentKey = o.followUpOf;
+  if (hasOwnPlacement(o)) return o;
+  const parentKey = o.followUpOf!;
   let parent: ParentState['fields'];
   let versions: Awaited<ReturnType<typeof fetchVersions>>;
   try {
@@ -561,16 +560,11 @@ export async function followUpIntake<T extends IntakeOptions & { followUpOf?: st
   return { ...o, proposedVersion: target, why, evidence };
 }
 
-/**
- * A follow-up of a CLOSED parent that sits in the current, unfrozen version and
- * gives no version, backlog choice or why of its own files into that version at
- * the parent's priority (the relates link is made for every follow-up). Anything
- * else, or a parent that cannot be read, returns nothing and the filing is as before.
- */
-export async function closedParentPlacement(
-  o: { followUpOf?: string; fixVersion?: string; backlog?: boolean; proposedVersion?: string; why?: string },
-): Promise<{ fixVersion: string; priority?: string } | undefined> {
-  if (o.followUpOf === undefined || o.fixVersion !== undefined || o.backlog || o.proposedVersion !== undefined || o.why?.trim()) return undefined;
+type PlacementChoice = { followUpOf?: string; fixVersion?: string; backlog?: boolean; proposedVersion?: string; why?: string };
+const hasOwnPlacement = (o: PlacementChoice): boolean => o.followUpOf === undefined || o.fixVersion !== undefined || !!o.backlog || o.proposedVersion !== undefined || !!o.why?.trim();
+
+export async function closedParentPlacement(o: PlacementChoice): Promise<{ fixVersion: string; priority?: string } | undefined> {
+  if (hasOwnPlacement(o)) return undefined;
   try {
     const parent = (await request<ParentState & { fields: { priority?: { name?: string } } }>('GET', `/issue/${o.followUpOf}?fields=project,status,fixVersions,priority`)).fields;
     if (parent.status?.statusCategory?.key !== 'done') return undefined;
