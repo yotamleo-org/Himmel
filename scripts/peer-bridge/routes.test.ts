@@ -72,6 +72,8 @@ const FENCE = [
   "scripts/telegram/peer-notify-route.test.ts -> ../peer-bridge/chain",
   "scripts/telegram/peer-notify-route.test.ts -> ../peer-bridge/notify",
   "scripts/telegram/peer-notify-route.ts -> ../peer-bridge/chain",
+  "scripts/telegram/peer-notify-route.ts -> ../peer-bridge/config",
+  "scripts/telegram/peer-notify-route.ts -> ../peer-bridge/ids",
   "scripts/telegram/peer-notify-route.ts -> ../peer-bridge/notify",
 ];
 const fencePairs = (root: string): string[] => walk(join(root, "scripts"))
@@ -79,7 +81,7 @@ const fencePairs = (root: string): string[] => walk(join(root, "scripts"))
   .flatMap(f => [...fs.readFileSync(f, "utf8").matchAll(/from\s+["']([^"']*peer-bridge\/[^"']*)["']/g)].map(m => `${relative(root, f)} -> ${m[1]}`))
   .sort();
 
-test("only the peer notify flusher, outside scripts/peer-bridge, imports a peer-bridge module, and only chain and notify", () => {
+test("only the peer notify flusher, outside scripts/peer-bridge, imports a peer-bridge module, and only chain, config, ids and notify", () => {
   expect(fencePairs(REPO)).toEqual(FENCE);
 });
 
@@ -87,7 +89,7 @@ test("RED control: a planted importer outside scripts/peer-bridge fails the fenc
   const root = fs.mkdtempSync(join(tmpdir(), "peer-routes-fence-"));
   try {
     fs.mkdirSync(join(root, "scripts/telegram"), { recursive: true });
-    fs.writeFileSync(join(root, "scripts/telegram/peer-notify-route.ts"), 'import { verifyChain } from "../peer-bridge/chain";\nimport { renderNotify } from "../peer-bridge/notify";\n');
+    fs.writeFileSync(join(root, "scripts/telegram/peer-notify-route.ts"), 'import { verifyChain } from "../peer-bridge/chain";\nimport { readPeersFile } from "../peer-bridge/config";\nimport { peersFile } from "../peer-bridge/ids";\nimport { renderNotify } from "../peer-bridge/notify";\n');
     fs.writeFileSync(join(root, "scripts/telegram/peer-notify-route.test.ts"), 'import { Chain } from "../peer-bridge/chain";\nimport { notifyFile } from "../peer-bridge/notify";\n');
     expect(fencePairs(root)).toEqual(FENCE);
     fs.writeFileSync(join(root, "scripts/telegram/chief-route.ts"), 'import { readChain } from "../peer-bridge/chain";\n');

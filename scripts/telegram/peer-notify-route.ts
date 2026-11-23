@@ -2,6 +2,8 @@ import fs from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readChain, verifyChain } from "../peer-bridge/chain";
+import { readPeersFile } from "../peer-bridge/config";
+import { peersFile, stateDir } from "../peer-bridge/ids";
 import { notifyFile, renderChainAlert, renderFallback, renderHeld, renderNotify, type NotifyRec } from "../peer-bridge/notify";
 import { atomicWrite } from "./bus";
 import { operatorChatId, type Access } from "./gate";
@@ -135,6 +137,18 @@ export function makePeerNotifyFlusher(deps: FlusherDeps) {
   }
 
   return { flush, notePoll, holdReason };
+}
+
+export function startPeerNotify(d: { token: string; access(): Access | null; send: Send; log(line: string): void }): ReturnType<typeof makePeerNotifyFlusher> | null {
+  const file = peersFile();
+  if (!fs.existsSync(file)) return null;
+  let cfg: PeersCfg | null = null, himmelRoot = "";
+  try {
+    const c = readPeersFile(file);
+    cfg = { operatorChatId: c.operatorChatId, operatorBotId: c.operatorBotId };
+    himmelRoot = c.himmelRoot;
+  } catch (e) { d.log(`peer-notify: ${(e as Error).message}`); }
+  return makePeerNotifyFlusher({ stateDir: stateDir(), himmelRoot, token: d.token, access: d.access, peersCfg: () => cfg, send: d.send, procs: readProcs, botPids: () => readBotPids(), clock: Date.now, log: d.log });
 }
 
 const PLUGIN_NAME = "telegram-himmel";

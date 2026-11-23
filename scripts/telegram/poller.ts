@@ -1,5 +1,5 @@
 import { readFile, writeFile, rename, mkdir, readdir, unlink, stat, realpath, readlink, mkdtemp, copyFile, rm, open } from "node:fs/promises";
-import { existsSync, readFileSync, lstatSync, constants } from "node:fs";
+import { existsSync, readFileSync, constants } from "node:fs";
 import { basename, dirname, isAbsolute, join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { homedir, tmpdir } from "node:os";
@@ -9,8 +9,10 @@ import { classify, isTicketKey, type Route } from "./router";
 import { routeToConsole, routeFleetCommand, routeApprove, staleConsoleCommand, consoleReplyTarget, consoleInboxPath, rememberConsoleReply, owedSendReceipt, owedReceiptSnapshot, withOwedOutboxLock, makeChiefTap, type OwedReceipt, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
 import { dispatchAutoAction, describeEnabledOps, KNOWN_OPS, CONFIRM_OPS, BREAK_GLASS_OPS, appendAuditLine, type RunScriptFn, type AuditFields } from "./auto-action";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { getUpdates, getMe, sendMessage, sendDocument, sendChatAction, answerCallbackQuery, getFile, downloadFile, redactChatId } from "./telegram-api";
+import { getUpdates, getMe, sendMessage, sendMessageResult, sendDocument, sendChatAction, answerCallbackQuery, getFile, downloadFile, redactChatId, TelegramApiError } from "./telegram-api";
+import { startPeerNotify } from "./peer-notify-route";
 import { installTimestampedLogging } from "./log-timestamp";
+import { lockdownEnabled } from "./lockdown";
 import { cwdForChat, isAllowed, isGroupAllowed, isOperatorIdentity, loadAccess, operatorChatId, requireMentionForChat, vaultForChat, type Access } from "./gate";
 import { runSession, buildPrompt, isLegacyBridgeChat, BASH_BIN, REPO_ROOT, type BridgeSpawn, type BusPaths, type PermissionMode } from "./run";
 import { classifyForSpawn, type TriageVerdict, type TriageModelOverride, type ModelOverride } from "./triage";
@@ -500,11 +502,6 @@ export function mentionsBot(text: string, botUsername: string): boolean {
   const bare = new RegExp(`(?<![A-Za-z0-9_])@${escaped}(?![A-Za-z0-9_])`, "i");
   const cmd = new RegExp(`(?<![A-Za-z0-9_])/[A-Za-z0-9_]+@${escaped}(?![A-Za-z0-9_])`, "i");
   return bare.test(text) || cmd.test(text);
-}
-
-function lockdownEnabled(root: string): boolean {
-  try { lstatSync(join(root, "lockdown")); return true; }
-  catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return false; throw e; }
 }
 
 // The journal record as handleInbound takes it; main() delivers every record through this.
@@ -2428,8 +2425,10 @@ export function startMonitoringCheck(d: { check: () => ReturnType<typeof checkMo
   run();
 }
 
-export function startFlushTimers(d: { root: string; send: SendFn; sendDoc?: SendDocFn; flushMs: number; monitorMs: number; monitor: () => MonitorCfg | null; now?: () => number }): () => void {
-  const flushTimer = setInterval(guarded(() => flushOutboxes(d.root, d.send, d.sendDoc)), d.flushMs); // t13b-ok: the existing outbox flush timer, moved here so its wiring is testable
+export function startFlushTimers(d: { root: string; send: SendFn; sendDoc?: SendDocFn; flushMs: number; monitorMs: number; monitor: () => MonitorCfg | null; now?: () => number; peerFlush?: () => Promise<void> }): () => void {
+  const outboxTick = guarded(() => flushOutboxes(d.root, d.send, d.sendDoc));
+  const peerTick = d.peerFlush ? guarded(d.peerFlush) : null;
+  const flushTimer = setInterval(() => { outboxTick(); peerTick?.(); }, d.flushMs); // t13b-ok: the existing outbox flush timer, moved here so its wiring is testable
   const monitorTimer = setInterval(guarded(async () => { const m = d.monitor(); if (m) await flushMonitor(d.root, m.send, (d.now ?? Date.now)(), m); }), d.monitorMs); // t13b-ok: the monitoring flush's own timer in the existing poller process, no new service
   for (const t of [flushTimer, monitorTimer]) if (typeof t.unref === "function") t.unref();
   return () => { clearInterval(flushTimer); clearInterval(monitorTimer); };
@@ -2734,7 +2733,8 @@ export async function main(): Promise<void> {
   const FLUSH_MS = intervalEnvMs(process.env.TELEGRAM_FLUSH_MS, 1000);
   const MONITOR_FLUSH_MS = 3000;
   let monitorCfg: MonitorCfg | null = null;
-  startFlushTimers({ root, send, sendDoc: makeSendDoc(token, root, operatorChat), flushMs: FLUSH_MS, monitorMs: MONITOR_FLUSH_MS, monitor: () => monitorCfg });
+  const peerNotify = startPeerNotify({ token, access: () => access, send: sendMessageResult, log: logRedacted });
+  startFlushTimers({ root, send, sendDoc: makeSendDoc(token, root, operatorChat), flushMs: FLUSH_MS, monitorMs: MONITOR_FLUSH_MS, monitor: () => monitorCfg, peerFlush: peerNotify?.flush });
   startMonitoringCheck({ check: () => checkMonitoring(bridgeEnv), apply: (m) => { monitorCfg = { send: m.send, reason: m.reason, operatorChat }; } });
   // Stale chief-waiter heartbeat alert. chief-wait.sh
   // rewrites consoles/<name>.md.wait on every poll; a gap past
@@ -2767,6 +2767,7 @@ export async function main(): Promise<void> {
     let updates: any[] = [];
     try {
       updates = await getUpdates(token, offset, 30);
+      peerNotify?.notePoll(true);
       if (outageStartedAt !== null) {
         const downSec = Math.round((Date.now() - outageStartedAt) / 1000);
         console.error(`[poller] getUpdates recovered after ${pollFails} consecutive failure(s) — outage ran ~${downSec}s (started ${new Date(outageStartedAt).toISOString()})`);
@@ -2781,6 +2782,7 @@ export async function main(): Promise<void> {
       console.error(`[poller] heartbeat: getUpdates ok (offset=${offset}, updates=${updates.length})`);
       pollFails = 0; outageStartedAt = null; lastOutageAlertAt = null;
     } catch (e) {
+      peerNotify?.notePoll(false, e instanceof TelegramApiError ? e.code : undefined);
       pollFails++;
       if (outageStartedAt === null) outageStartedAt = Date.now();
       const backoffMs = getUpdatesBackoffMs(pollFails);
