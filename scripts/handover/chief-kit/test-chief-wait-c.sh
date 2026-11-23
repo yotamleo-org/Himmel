@@ -102,6 +102,13 @@ start() {
     bash "$WAIT" "$inbox" "$@" > "$out" 2>"$out.err" &
     WPID=$!
 }
+stop_waiter() {
+    kill "$1" 2>/dev/null
+    local n=0
+    while kill -0 "$1" 2>/dev/null && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+    kill -KILL "$1" 2>/dev/null
+    wait "$1" 2>/dev/null
+}
 
 cat > "$STUB/ql.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -121,12 +128,12 @@ pk_n() { if [ -f "$STUB/pagek" ]; then grep -c . "$STUB/pagek" || true; else ech
 
 reset_stub
 I="$(new_inbox a)"
-timeout 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/a.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/a.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(a) an idle window with no event emits nothing" "" "$(cat "$WORK/a.out")"
 check "(a) an idle waiter is still waiting when the window closes (rc 124)" "124" "$rc"
 check "(a) the idle waiter wrote a heartbeat" "yes" "$(grep -q '^hb=[0-9]* pid=[0-9]* ' "$I.wait" && echo yes)"
 
-timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/a2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/a2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(a2) a re-arm with nothing changed emits nothing" "" "$(cat "$WORK/a2.out")"
 check "(a2) and is still waiting when the window closes (rc 124)" "124" "$rc"
 
@@ -141,7 +148,7 @@ check "(b) the wake names the changed field" "WAKE tick changed=workers usage=PR
 check "(b) the wake carries the tick line" "yes" "$(sed -n 2p "$WORK/b.out" | grep -q '^TICK .*workers=N1:FREE' && echo yes)"  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(b) exactly one wake block (2 lines)" "2" "$(wc -l < "$WORK/b.out" | tr -d ' ')"
 check "(b) the exit reason is logged" "yes" "$(grep -q 'exit=wake-tick' "$I.wait" && echo yes)"
-timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/b2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/b2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(b) the re-arm after the wake does not wake again for the same change" "" "$(cat "$WORK/b2.out")"
 check "(b) the re-arm is still waiting when the window closes (rc 124)" "124" "$rc"
 
@@ -226,17 +233,17 @@ denials_expiry() {
 }
 denials_expiry b3724x1 'N1:1:SHIP-STEP' none
 check "(b3724x) a denial aging out to none does not wake" "running" "$rc"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 denials_expiry b3724x2 'N1:2:REPEAT' 'N1:1'
 check "(b3724x) a count falling as one row expires does not wake" "running" "$rc"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 denials_expiry b3724x3 'N1:1' 'N1:2:REPEAT'
 check "(b3724x) a count rising still wakes" "0" "$rc"
 check "(b3724x) and names denials" "WAKE tick changed=denials usage=PROCEED" "$(head -n1 "$WORK/b3724x3.out")"
-[ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
+[ "$rc" = running ] && { stop_waiter "$WPID"; }
 denials_expiry b3724x4 'N1:1' 'N1:1,N2:1'
 check "(b3724x) a second worker's denial wakes" "0" "$rc"
-[ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
+[ "$rc" = running ] && { stop_waiter "$WPID"; }
 reset_stub
 sed -i 's/denials=none/denials=N1:1/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 I="$(new_inbox b3724x5)"
@@ -248,7 +255,7 @@ check "(b3724x) the waiter is still waiting after the expiry" "yes" "$(kill -0 "
 sed -i 's/denials=none/denials=N1:1/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 wait_exit "$WPID"
 check "(b3724x) a fresh denial after an expiry wakes again" "0" "$rc"
-[ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
+[ "$rc" = running ] && { stop_waiter "$WPID"; }
 
 reset_stub
 tick_line "N1:FRESH" "STALE:5m" "1m" '#10' '7.50:key-limit_remaining'
@@ -258,7 +265,7 @@ wait_hb "$I" || fail "(c) no baseline heartbeat"
 tick_line "N1:FRESH" "STALE:9m" "7m" '#10' '0.00:key-limit_remaining'
 wait_exit "$WPID"
 check "(c) heartbeat, board age or exhausted OpenRouter credit does not wake" "running" "$rc"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 check "(c) a TERM is logged as the exit reason" "yes" "$(grep -q 'exit=signal-TERM' "$I.wait" && echo yes)"
 
 reset_stub
@@ -268,7 +275,7 @@ wait_hb "$I" || fail "(c4670) no baseline heartbeat"
 tick_line "N1:FRESH" "ok" "1m" '#10' 'skip' '3/2@denied/guard-a*2!1'
 wait_exit "$WPID"
 check "(c4670) a fails= change does not wake" "running" "$rc"
-[ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
+[ "$rc" = running ] && { stop_waiter "$WPID"; }
 
 reset_stub
 I="$(new_inbox d)"
@@ -277,7 +284,7 @@ wait_hb "$I" || fail "(d) no baseline heartbeat"
 sed 's/prs=#10/prs=none/' "$STUB/tick.line" > "$STUB/tick.blip"
 wait_exit "$WPID"
 check "(d) a change seen on one sample only does not wake" "running" "$rc"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 reset_stub
 I="$(new_inbox d2)"
@@ -287,7 +294,7 @@ printf '0\n' > "$STUB/tick.churn"
 wait_exit "$WPID"
 check "(d2) a key that differs from the saved one on every sample wakes" "0" "$rc"
 check "(d2) the wake names prs" "WAKE tick changed=prs usage=PROCEED" "$(head -n1 "$WORK/d2.out")"
-[ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
+[ "$rc" = running ] && { stop_waiter "$WPID"; }
 
 reset_stub
 I="$(new_inbox e)"
@@ -306,7 +313,7 @@ printf '1\n' > "$STUB/tick.rc"
 wait_exit "$WPID"
 check "(f) a failing tick.sh does not wake" "running" "$rc"
 check "(f) the heartbeat records the failed tick" "yes" "$(grep -q 'tick=fail' "$I.wait" && echo yes)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 reset_stub
 I="$(new_inbox f2)"
@@ -316,7 +323,7 @@ wait_hb "$I" || fail "(f2) no baseline heartbeat"
 wait_exit "$WPID"
 check "(f2) an empty bank read does not wake" "running" "$rc"
 check "(f2) the heartbeat records the failed sample" "yes" "$(grep -q 'tick=fail' "$I.wait" && echo yes)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 reset_stub
 I="$(new_inbox f3)"
@@ -325,7 +332,7 @@ wait_hb "$I" || fail "(f3) no baseline heartbeat"
 printf 'Traceback: boom\n' > "$STUB/bank"
 wait_exit "$WPID"
 check "(f3) a non-token bank line does not wake" "running" "$rc"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 reset_stub
 I="$(new_inbox f4)"
@@ -334,15 +341,15 @@ wait_hb "$I" || fail "(f4) no baseline heartbeat"
 printf '1\n' > "$STUB/tick.rc"
 wait_exit "$WPID"
 check "(f4) a streak of failed samples ends the wait" "0" "$rc"
-[ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
+[ "$rc" = running ] && { stop_waiter "$WPID"; }
 check "(f4) the wake names the failure streak and the failing step" "WAKE tick-fail samples=3 step=tick-exit:1" "$(head -n1 "$WORK/f4.out")"
-HOUSEKEEPING_DIGEST_SECS=0 CHIEF_WAIT_FAIL_WAKE=3 timeout 6 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/f4b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+HOUSEKEEPING_DIGEST_SECS=0 CHIEF_WAIT_FAIL_WAKE=3 timeout -k 5 6 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/f4b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(f4) the re-arm during the same streak runs silent" "124" "$rc"
 check "(f4) the re-arm during the same streak prints nothing" "" "$(cat "$WORK/f4b.out")"
 rm -f "$STUB/tick.rc"
-HOUSEKEEPING_DIGEST_SECS=0 CHIEF_WAIT_FAIL_WAKE=3 timeout 3 bash "$WAIT" "$I" --workers "N1.md" >/dev/null 2>&1  # gnu-ok: Linux-only kit; pipefail-ok: none set
+HOUSEKEEPING_DIGEST_SECS=0 CHIEF_WAIT_FAIL_WAKE=3 timeout -k 5 3 bash "$WAIT" "$I" --workers "N1.md" >/dev/null 2>&1  # gnu-ok: Linux-only kit; pipefail-ok: none set
 printf '1\n' > "$STUB/tick.rc"
-HOUSEKEEPING_DIGEST_SECS=0 CHIEF_WAIT_FAIL_WAKE=3 timeout 8 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/f4c.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
+HOUSEKEEPING_DIGEST_SECS=0 CHIEF_WAIT_FAIL_WAKE=3 timeout -k 5 8 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/f4c.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(f4) a new streak after a success wakes again" "WAKE tick-fail samples=3 step=tick-exit:1" "$(head -n1 "$WORK/f4c.out")"
 
 reset_stub
@@ -351,25 +358,25 @@ CHIEF_WAIT_FAIL_WAKE=2 start "$I" "$WORK/d1.out" --workers "N1.md"
 wait_hb "$I" || fail "(8934) no baseline heartbeat"
 printf '1\n' > "$STUB/tick.rc"
 sleep 4
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 check "(8934) a tick-fail streak does not wake, it joins the digest" "0:1" "$(grep -c '^WAKE ' "$WORK/d1.out"):$(grep -c '^tick-fail samples=2 step=tick-exit:1' "$I.wait.housekeeping" 2>/dev/null)"
 
 reset_stub
 sed -i 's/ bank=/ unowned-prs=#2575:12m bank=/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 I="$(new_inbox d2)"
-timeout 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/d2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+timeout -k 5 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/d2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
 check "(8934) the first sight of a young unowned PR does not wake, it joins the digest" "124:0:1" "$rc:$(grep -c '^WAKE ' "$WORK/d2.out"):$(grep -c '^unowned-prs #2575:12m' "$I.wait.housekeeping" 2>/dev/null)"
 
 reset_stub
 sed -i 's/ bank=/ unowned-prs=#4946:70m,#4891:957m,#4999:5m bank=/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 I="$(new_inbox u1)"
-timeout 6 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u1.out" 2>/dev/null; rc=$?
+timeout -k 5 6 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u1.out" 2>/dev/null; rc=$?
 check "(9599) an unowned PR older than 30 m wakes, exit 0" "0" "$rc"
 check "(9599) the wake names each aged PR and not the young one" "WAKE unowned-pr 4946,4891" "$(head -n1 "$WORK/u1.out")"
-timeout 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u2.out" 2>/dev/null; rc=$?
+timeout -k 5 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u2.out" 2>/dev/null; rc=$?
 check "(9599) the same aged set does not re-wake inside the window" "124:0" "$rc:$(grep -c '^WAKE unowned-pr' "$WORK/u2.out")"
 sed -i 's/unowned-prs=[^ ]* bank=/unowned-prs=#4999:5m bank=/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
-timeout 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u3.out" 2>/dev/null
+timeout -k 5 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u3.out" 2>/dev/null
 check "(9599) a sample with no aged PR clears the aged marker" "no" "$([ -e "$I.wait.unowned-aged" ] && echo yes || echo no)"
 
 reset_stub
@@ -378,7 +385,7 @@ start "$I" "$WORK/d3.out" --workers "N1.md"
 wait_hb "$I" || fail "(8934) no baseline heartbeat"
 sed -i 's/prs=#10/prs=#10,#11/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 sleep 4
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 check "(8934) a prs-only tick change does not wake, it joins the digest" "0:1" "$(grep -c '^WAKE ' "$WORK/d3.out"):$(grep -c '^tick changed=prs ' "$I.wait.housekeeping" 2>/dev/null)"
 
 reset_stub
@@ -434,11 +441,11 @@ printf -- '- 03:10 [telegram from=1 chat=2] hello\n' >> "$I"
 wait_exit "$WPID"
 check "(g) an inbox line ends the wait with rc 0" "0" "$rc"
 check "(g) the wake is a telegram block with the line" "$(printf 'WAKE telegram\n- 03:10 [telegram from=1 chat=2] hello')" "$(cat "$WORK/g.out")"
-timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/g2.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/g2.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(g) a re-arm does not replay a delivered line" "" "$(cat "$WORK/g2.out")"
 
 printf -- '- 03:20 [telegram from=1 chat=2] queued\n' >> "$I"
-timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/h.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/h.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(h) a line queued between arms is delivered by the next arm" "$(printf 'WAKE telegram\n- 03:20 [telegram from=1 chat=2] queued')" "$(cat "$WORK/h.out")"
 check "(h) and the arm exits 0" "0" "$rc"
 
@@ -449,15 +456,15 @@ wait_hb "$I" || fail "(i) no baseline heartbeat"
 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/i2.out" 2>&1; rc=$?
 check "(i) a second waiter on a live one is refused with rc 3" "3" "$rc"
 check "(i) the refusal names the live pid" "yes" "$(grep -q "pid $WPID" "$WORK/i2.out" && echo yes)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 reset_stub
 I="$(new_inbox j)"
-timeout 2 bash "$WAIT" "$I" --workers "N1.md" >/dev/null 2>&1; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 2 bash "$WAIT" "$I" --workers "N1.md" >/dev/null 2>&1; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(j) the first arm ran until the timeout" "124" "$rc"
 base1="$(cat "$I.wait.state" 2>/dev/null)"
 tick_line "N1:FRESH,N2:FRESH" "ok"
-timeout 3 bash "$WAIT" "$I" --workers "N1.md N2.md" > "$WORK/j.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 3 bash "$WAIT" "$I" --workers "N1.md N2.md" > "$WORK/j.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(j) the re-arm ran until the timeout" "124" "$rc"
 check "(j) a re-arm with a new worker set re-baselines instead of waking" "" "$(cat "$WORK/j.out")"
 base2="$(cat "$I.wait.state" 2>/dev/null)"
@@ -471,7 +478,7 @@ tick_line "N1:FREE" "ok"; : > "$STUB/tick.failafter"
 sleep 3.5
 check "(l) a failing tick's TICK line does not wake" "" "$(cat "$WORK/l.out")"
 check "(l) the failing tick is recorded as tick=fail" "yes" "$(grep -q 'tick=fail' "$I.wait" && echo yes)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 reset_stub
 printf '3\n' > "$STUB/tick.sleep"
@@ -481,7 +488,7 @@ sleep 1
 check "(m) a waiter mid-sample already shows state=sampling" "yes" "$(grep -q 'state=sampling' "$I.wait" 2>/dev/null && echo yes)"
 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/m2.out" 2>&1; rc=$?
 check "(m) a second waiter during the first sample is refused (rc 3)" "3" "$rc"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 reset_stub
 I="$(new_inbox n)"
@@ -503,7 +510,7 @@ printf -- '- 03:40 [telegram from=1 chat=2] hello\n' >> "$I"
 n=0
 while [ "$n" -lt 150 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
 check "(o) the line is delivered within 15 s despite a TERM-ignoring tick" "WAKE telegram" "$(head -n1 "$WORK/o.out")"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 reset_stub
 I="$(new_inbox p)"
@@ -516,14 +523,14 @@ alive=0
 kill -0 "$P1" 2>/dev/null && alive=$((alive + 1))
 kill -0 "$P2" 2>/dev/null && alive=$((alive + 1))
 check "(p) exactly one of two simultaneous waiters is still running" "1" "$alive"
-kill "$P1" "$P2" 2>/dev/null; wait "$P1" "$P2" 2>/dev/null
+stop_waiter "$P1"; stop_waiter "$P2"
 
 reset_stub
 I="$WORK/q/consoles/c.md"
 start "$I" "$WORK/q.out" --workers "N1.md"
 wait_hb "$I" || fail "(q) no baseline heartbeat when consoles/ was absent"
 check "(q) the waiter created the inbox" "yes" "$([ -f "$I" ] && echo yes)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 reset_stub
 I="$(new_inbox r)"
@@ -533,7 +540,7 @@ sed 's/ tails=N1:LIVE//' "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/
 wait_exit "$WPID"
 check "(r) a streak of malformed samples ends the wait" "0" "$rc"
 check "(r) the wake is tick-fail, never a changed key from an empty field, naming the field" "WAKE tick-fail samples=2 step=missing-field:tails" "$(head -n1 "$WORK/r.out")"
-[ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
+[ "$rc" = running ] && { stop_waiter "$WPID"; }
 
 # shellcheck disable=SC2016 # literal grep pattern, not a shell expansion
 check "(s) no in-place '> \"\$key_file\"' write remains (must go through .tmp + mv)" "0" \
@@ -548,7 +555,7 @@ tick_line "N1:FRESH" "ok"
 wait_exit "$WPID"
 check "(t) a board move to ok alone does not wake" "running" "$rc"
 check "(t) the saved key still moved to board=ok" "yes" "$(grep -q 'board=ok' "$I.wait.state" && echo yes)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 reset_stub
 I="$(new_inbox u)"
@@ -605,7 +612,7 @@ check "(p5) but does not page again" "0" "$(pages_n)"
 
 denials_rise p5b 'N1:1:SHIP-STEP' none
 check "(p5b) a denial expiring out is neither wake nor page" "0" "$(pages_n)"
-[ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
+[ "$rc" = running ] && { stop_waiter "$WPID"; }
 
 denials_rise p5c 'N1:1' 'N1:1,N2:1:SHIP-STEP'
 check "(p5c) a second worker's SHIP-STEP pages under its own label" "DENIAL-PAGE N2 SHIP-STEP x1 - a classifier denial parked this worker. Review it, then: ack-denial.sh N2" "$(head -n1 "$STUB/pages" 2>/dev/null)"
@@ -636,7 +643,7 @@ if [ "$(id -u)" != 0 ]; then
 fi
 
 denials_rise p5d none 'N1:1:SHIP-STEP'
-timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/p5d2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/p5d2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(p5d) the re-arm keeps waiting until the timeout cuts it off (124)" "124" "$rc"
 check "(p5d) the re-arm after a paged wake is silent" "" "$(cat "$WORK/p5d2.out")"
 check "(p5d) and does not page the same rise again" "1" "$(pages_n)"

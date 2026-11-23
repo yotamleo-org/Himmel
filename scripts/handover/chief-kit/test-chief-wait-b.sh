@@ -132,6 +132,13 @@ start() { # <inbox> <outfile> [tick args...]
     bash "$WAIT" "$inbox" "$@" > "$out" 2>"$out.err" &
     WPID=$!
 }
+stop_waiter() {
+    kill "$1" 2>/dev/null
+    local n=0
+    while kill -0 "$1" 2>/dev/null && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+    kill -KILL "$1" 2>/dev/null
+    wait "$1" 2>/dev/null
+}
 
 reset_stub
 I="$(new_inbox wx)"
@@ -142,7 +149,7 @@ wait_exit "$WPID"
 wx1=$(wc -c < "$STUB/ticks")
 check "(wx) a waiter with nothing to wake for is still running" "running" "$rc"
 check "(wx) and the quiet window took 4 to 5 samples" "yes" "$([ $((wx1 - wx0)) -ge 4 ] && [ $((wx1 - wx0)) -le 5 ] && echo yes || echo "no: $((wx1 - wx0))")"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 # tracker_line is shared with the (w) block in test-chief-wait-d.sh.
 tracker_line() { sed "s/ denials=none/ tracker=$1 denials=none/" "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"; }
@@ -174,7 +181,7 @@ tick_line "N1:FRESH" "ok"
 vmrun_line ok:1/2,busy=0
 wait_exit "$WPID"
 check "(vm2) a vmrun move back to ok alone does not wake" "running" "$rc"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 reset_stub
 vmrun_line ok:2/2,busy=0
@@ -186,7 +193,7 @@ vmrun_line DISAGREE:2/2,online=0
 wait_exit "$WPID"
 check "(vm3) a vmrun move to DISAGREE ends the wait" "0" "$rc"
 check "(vm3) the DISAGREE wake names vmrun" "WAKE tick changed=vmrun usage=PROCEED" "$(head -n1 "$WORK/vm3.out")"
-[ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
+[ "$rc" = running ] && { stop_waiter "$WPID"; }
 
 reset_stub
 vmrun_line ok:2/2,busy=0
@@ -198,7 +205,7 @@ vmrun_line DISAGREE:2/2,online=1
 wait_exit "$WPID"
 check "(vm3b) a vmrun move to a partial-outage DISAGREE ends the wait" "0" "$rc"
 check "(vm3b) the partial-outage DISAGREE wake names vmrun" "WAKE tick changed=vmrun usage=PROCEED" "$(head -n1 "$WORK/vm3b.out")"
-[ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
+[ "$rc" = running ] && { stop_waiter "$WPID"; }
 
 for recovery in ok:2/2,busy=0 off FAILING; do
     reset_stub
@@ -211,7 +218,7 @@ for recovery in ok:2/2,busy=0 off FAILING; do
     wait_exit "$WPID"
     check "(vm-recover) DISAGREE to $recovery alone does not wake" "running" "$rc"
     check "(vm-recover) DISAGREE to $recovery emits nothing" "" "$(cat "$WORK/vm-recover.out")"
-    kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+    stop_waiter "$WPID"
 done
 
 # --- (pk) parked= wakes when a worker joins the parked set; the growing age alone
@@ -226,7 +233,7 @@ tick_line "N1:FRESH" "ok"
 parked_line N1:9m
 wait_exit "$WPID"
 check "(pk) the age growing alone does not wake" "running" "$rc"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 reset_stub
 I="$(new_inbox pk2)"
@@ -248,7 +255,7 @@ tick_line "N1:FRESH" "ok"
 parked_line N2:7m,N1:6m
 wait_exit "$WPID"
 check "(pk4) a reordered parked set does not wake" "running" "$rc"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 # a worker LEAVING the parked set (the field disappears) wakes too
 reset_stub
@@ -296,7 +303,7 @@ tick_line "N2:FREE,N1:FRESH" "ok"
 wait_exit "$WPID"
 check "(m3748) a real change on the new worker set still wakes (rc 0)" "0" "$rc"
 check "(m3748) naming workers" "WAKE tick changed=workers usage=PROCEED" "$(head -n1 "$WORK/m3748.out")"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 # --- (m1a) the same manifest dispatch with a `workers` array reads like the old `legs` one;
 # with HIMMEL_LEGACY_NAMES=0 an old `legs` manifest yields no worker list, so the dispatch wakes.
@@ -316,7 +323,7 @@ tick_line "N2:FREE,N1:FRESH" "ok"
 wait_exit "$WPID"
 check "(m1a) a real change on a workers manifest still wakes (rc 0)" "0" "$rc"
 check "(m1a) and names workers" "WAKE tick changed=workers usage=PROCEED" "$(head -n1 "$WORK/m1aw.out")"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 reset_stub
 I="$(new_inbox m1aoff)"
 M="$WORK/m1aoff/console.fleet.json"
@@ -327,7 +334,7 @@ tick_line "N1:FRESH,N2:FRESH" "ok"
 printf '{"schema":1,"legs":[{"doc":"/x/HIMMEL-1-N1-a.md","label":"N1"},{"doc":"/x/HIMMEL-2-N2-b.md","label":"N2"}]}\n' > "$M"
 wait_exit "$WPID"
 check "(m1a) with HIMMEL_LEGACY_NAMES=0 an old legs manifest is not read, so the dispatch wakes (rc 0)" "0" "$rc"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 # --- (l4568) a READY tail turning READY!stale (30 min, no GO file) is a wake
 reset_stub
@@ -372,11 +379,11 @@ wait_exit "$WPID"
 check "(u4959) a sustained UNDERFILLED capacity wakes the console (rc 0)" "0" "$rc"
 check "(u4959) the wake names the slack" "WAKE underfilled capacity=UNDERFILLED:12 pool=?" "$(head -n1 "$WORK/u4959.out")"
 check "(u4959) the wake carries the dispatchable list" "yes" "$(grep -q "^LOCAL $KP-9001" "$WORK/u4959.out" && echo yes)"
-timeout 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u4959b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u4959b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(u4959) the re-arm in the same streak does not wake again" "" "$(cat "$WORK/u4959b.out")"
 check "(u4959) and is still waiting (rc 124)" "124" "$rc"
 under_line "ok"
-timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u4959c.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u4959c.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
 under_line "UNDERFILLED:5"
 start "$I" "$WORK/u4959d.out" --workers "N1.md"
 wait_exit "$WPID"
@@ -384,7 +391,7 @@ check "(u4959) a new streak after capacity returned to ok wakes again" "WAKE und
 reset_stub
 I="$(new_inbox u4959u)"
 under_line "unknown"
-timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u4959e.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u4959e.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(u4959) capacity=unknown (failed census) never wakes" "" "$(cat "$WORK/u4959e.out")"
 
 # the manifest reaches the dispatch command, so live workers' files join the collision check
@@ -487,7 +494,7 @@ start "$I" "$WORK/y7b.out" --workers "N1.md"
 wait_hb "$I" || fail "(u5542-7) no second baseline heartbeat"
 sleep 1
 check "(u5542-7) unowned-prs=? neither clears the marker nor wakes" "present" "$([ -e "$I.wait.unowned" ] && echo present)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 reset_stub
 I="$(new_inbox y5)"
@@ -495,7 +502,7 @@ start "$I" "$WORK/y5.out" --workers "N1.md"
 wait_hb "$I" || fail "(u5542-5) no baseline heartbeat"
 wait_exit "$WPID"
 check "(u5542-5) a tick line with no unowned-prs= field is still a valid sample" "running" "$rc"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 unset HOUSEKEEPING_DIGEST_SECS
 
 # --- (7811) procs=...,unwatched=: a live worker the manifest does not list wakes the
@@ -533,7 +540,7 @@ wait_hb "$I" || fail "(7811-5) no baseline heartbeat"
 n=0
 while [ "$n" -lt 50 ] && [ -e "$I.wait.unwatched" ]; do sleep 0.1; n=$((n + 1)); done
 check "(7811-5) a tick line that drops unwatched= clears the marker" "" "$([ -e "$I.wait.unwatched" ] && echo present)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 # a failed census (procs=unknown) carries no unwatched= and must not clear the marker
 unwatched_line "1,unwatched=N302+N303"
@@ -547,7 +554,7 @@ n=0
 while [ "$n" -lt 30 ] && [ ! -e "$I.wait.unwatched" ]; do sleep 0.1; n=$((n + 1)); done
 sleep 3
 check "(7811-6) procs=unknown keeps the unwatched marker" "present" "$([ -e "$I.wait.unwatched" ] && echo present)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 reset_stub
 I="$(new_inbox w7811c)"
@@ -555,7 +562,7 @@ start "$I" "$WORK/w7811c.out" --workers "N1.md"
 wait_hb "$I" || fail "(7811-3) no baseline heartbeat"
 wait_exit "$WPID"
 check "(7811-3) a tick line with no unwatched= is no wake" "running" "$rc"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 # --- (ts): a tracker that STAYS stale re-wakes once per streak ---
 # tracker= class changes wake once (w); after the first STALE the class never moves
@@ -569,16 +576,16 @@ start "$I" "$WORK/ts1.out" --workers "N1.md"
 wait_exit "$WPID"
 check "(ts1) a tracker STALE for 40 min wakes (rc 0)" "0" "$rc"
 check "(ts1) the wake names tracker-stale" "WAKE tracker-stale tracker=STALE:3h" "$(head -n1 "$WORK/ts1.out")"
-timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/ts1b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/ts1b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(ts2) the re-arm inside the same streak stays quiet" "" "$(cat "$WORK/ts1b.out")"
 check "(ts2) and is still waiting (rc 124)" "124" "$rc"
 reset_stub; tracker_line STALE:5m
 I="$(new_inbox ts3)"
-timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/ts3.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/ts3.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(ts3) a tracker first seen STALE does not re-wake yet" "" "$(cat "$WORK/ts3.out")"
 check "(ts3) but the streak is recorded" "present" "$([ -e "$I.wait.trackerstale" ] && echo present)"
 reset_stub; tracker_line ok
-timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/ts4.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/ts4.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(ts4) tracker back to ok clears the streak marker" "absent" "$([ -e "$I.wait.trackerstale" ] && echo present || echo absent)"
 
 reset_stub; tracker_line STALE:3h
@@ -598,16 +605,16 @@ HOUSEKEEPING_DIGEST_SECS=0 start "$I" "$WORK/bs1.out" --workers "N1.md"
 wait_exit "$WPID"
 check "(bs1) a board STALE for 15 min wakes (rc 0)" "0" "$rc"
 check "(bs1) the wake names board-stale" "WAKE board-stale board=STALE:2h" "$(head -n1 "$WORK/bs1.out")"
-timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/bs1b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/bs1b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(bs2) the re-arm inside the same streak stays quiet" "" "$(cat "$WORK/bs1b.out")"
 check "(bs2) and is still waiting (rc 124)" "124" "$rc"
 reset_stub; tick_line "N1:FRESH" "STALE:1m"
 I="$(new_inbox bs3)"
-timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/bs3.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/bs3.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(bs3) a board first seen STALE does not re-wake yet" "" "$(cat "$WORK/bs3.out")"
 check "(bs3) but the streak is recorded" "present" "$([ -e "$I.wait.boardstale" ] && echo present)"
 reset_stub
-timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/bs4.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/bs4.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(bs4) board back to ok clears the streak marker" "absent" "$([ -e "$I.wait.boardstale" ] && echo present || echo absent)"
 
 # --- (pc): the waiter closes a wrapped predecessor chief -------
@@ -633,13 +640,13 @@ pc_console() { # <dir name>: fixture console doc naming predecessor AS.md; print
 }
 reset_stub
 CD="$(pc_console pc1 0)"; I="$(new_inbox pc1)"
-timeout 4 bash "$WAIT" "$I" --doc "$CD" --workers "N1.md" > "$WORK/pc1.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 4 bash "$WAIT" "$I" --doc "$CD" --workers "N1.md" > "$WORK/pc1.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(pc1) a wrapped predecessor is closed through close-wrapped-worker --chief, once" "--chief $WORK/pc1/AS.md" "$(cat "$STUB/close.calls")"
 check "(pc1) the close logs a Results bullet in the console doc" "1" "$(tail -n +4 "$CD" | grep -c 'predecessor.*AS.*closed')"
 check "(pc1) a closed predecessor is not a wake (still waiting, rc 124)" "124" "$rc"
 reset_stub
 CD="$(pc_console pc2 6)"; I="$(new_inbox pc2)"; printf '6\n0\n' > "$STUB/close.rcs"
-timeout 6 bash "$WAIT" "$I" --doc "$CD" --workers "N1.md" > "$WORK/pc2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 6 bash "$WAIT" "$I" --doc "$CD" --workers "N1.md" > "$WORK/pc2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(pc2) exit 6 (live subtree) retries on the next sample, then closes" "2" "$(wc -l < "$STUB/close.calls" | tr -d ' ')"
 check "(pc2) a retryable refusal wakes nothing" "" "$(cat "$WORK/pc2.out")"
 reset_stub
@@ -648,18 +655,18 @@ start "$I" "$WORK/pc3.out" --doc "$CD" --workers "N1.md"
 wait_exit "$WPID"
 check "(pc3) any other refusal wakes the console (rc 0)" "0" "$rc"
 check "(pc3) the wake is WAKE predecessor-open" "WAKE predecessor-open rc=5" "$(head -n1 "$WORK/pc3.out")"
-timeout 4 bash "$WAIT" "$I" --doc "$CD" --workers "N1.md" > "$WORK/pc3b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 4 bash "$WAIT" "$I" --doc "$CD" --workers "N1.md" > "$WORK/pc3b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(pc3) it wakes once: the re-arm is quiet" "" "$(cat "$WORK/pc3b.out")"
 reset_stub
 CD="$(pc_console pc4 3)"; I="$(new_inbox pc4)"; printf '3\n4\n' > "$STUB/close.rcs"
-timeout 6 bash "$WAIT" "$I" --doc "$CD" --workers "N1.md" > "$WORK/pc4.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 6 bash "$WAIT" "$I" --doc "$CD" --workers "N1.md" > "$WORK/pc4.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(pc4) a held-lock or not-WRAPPED predecessor is asked, then left alone: no wake" "" "$(cat "$WORK/pc4.out")"
 check "(pc4) and nothing is logged" "0" "$(tail -n +4 "$CD" | grep -c 'predecessor')"
 check "(pc4) and it is retried (the predecessor may wrap later)" "yes" "$([ "$(wc -l < "$STUB/close.calls" | tr -d ' ')" -ge 2 ] && echo yes)"
 reset_stub
 mkdir -p "$WORK/pc5"; printf '# AT — CHIEF — successor to none — first console of the chain\n\n## Results (newest at the bottom)\n' > "$WORK/pc5/AT.md"
 : > "$STUB/close.calls"; I="$(new_inbox pc5)"
-timeout 3 bash "$WAIT" "$I" --doc "$WORK/pc5/AT.md" --workers "N1.md" > "$WORK/pc5.out" 2>/dev/null
+timeout -k 5 3 bash "$WAIT" "$I" --doc "$WORK/pc5/AT.md" --workers "N1.md" > "$WORK/pc5.out" 2>/dev/null
 check "(pc5) a console with no predecessor doc closes nothing" "0" "$(wc -l < "$STUB/close.calls" | tr -d ' ')"
 reset_stub
 CD="$(pc_console pc6 5)"; I="$(new_inbox pc6)"
@@ -677,7 +684,7 @@ printf -- '- 03:45 [telegram from=1 chat=2] hello\n' >> "$I"
 n=0
 while [ "$n" -lt 100 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
 check "(pc7) a hung close is killed at CHIEF_WAIT_CLOSE_TIMEOUT: the Telegram line still wakes within 10 s" "WAKE telegram" "$(head -n1 "$WORK/pc7.out")"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 reset_stub
 CD="$(pc_console pc8 0)"; I="$(new_inbox pc8)"
 CHIEF_WAIT_CLOSE="$STUB/close.sleep.sh" CHIEF_WAIT_CLOSE_TIMEOUT=1 CHIEF_WAIT_CLOSE_HANGS=2 start "$I" "$WORK/pc8.out" --doc "$CD" --workers "N1.md"
@@ -685,13 +692,13 @@ n=0
 while [ "$n" -lt 300 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
 check "(pc8) a close that hangs every sample wakes after CHIEF_WAIT_CLOSE_HANGS in a row" "WAKE predecessor-open rc=124" "$(head -n1 "$WORK/pc8.out")"
 check "(pc8) and it is marked woke, so it wakes once" "woke:$WORK/pc8/AS.md" "$(cat "$I.wait.predecessor" 2>/dev/null)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 reset_stub; tick_line "N1:FRESH" "STALE:2h"
 CD="$(pc_console pc9 0)"; I="$(new_inbox pc9)"
 printf '%s\n' "$(( $(date +%s) - 900 ))" > "$I.wait.boardstale"
 HOUSEKEEPING_DIGEST_SECS=0 start "$I" "$WORK/pc9.out" --doc "$CD" --workers "N1.md"
 wait_exit "$WPID"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 check "(pc9) a board-stale wake and a closable predecessor in one sample: the predecessor is closed" "--chief $WORK/pc9/AS.md" "$(cat "$STUB/close.calls")"
 check "(pc9) and the board-stale wake still fires in that sample" "WAKE board-stale board=STALE:2h" "$(head -n1 "$WORK/pc9.out")"
 check "(pc9) and the close is logged" "1" "$(tail -n +4 "$CD" | grep -c 'predecessor.*AS.*closed')"
@@ -730,7 +737,7 @@ sw_doc cs1 Y1 '# HIMMEL-4 — a worker that wrapped a moment ago — worker Y1' 
 echo 3 > "$STUB/rc.H1"
 rm -rf "$SWPROC"; sw_session 101 AT; sw_session 102 AR; sw_session 103 W1-r2; sw_session 104 H1; sw_session 105 L1; sw_session 106 Y1
 CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-doc.sh" \
-    timeout 4 bash "$WAIT" "$I" --doc "$CD" --workers "N1.md" > "$WORK/cs1.out" 2>/dev/null; rc=$?
+    timeout -k 5 4 bash "$WAIT" "$I" --doc "$CD" --workers "N1.md" > "$WORK/cs1.out" 2>/dev/null; rc=$?
 check "(cs1) the grand-predecessor chief (two links back) is closed through --chief, once" "1" "$(grep -cxF -- "--chief $WORK/cs1/AR.md" "$STUB/close.calls")"
 check "(cs1) a WRAPPED worker not in the manifest is closed through the worker path" "yes" "$(grep -qxF -- "$WORK/cs1/W1.md" "$STUB/close.calls" && echo yes)"
 check "(cs1) the named predecessor is still closed through --chief" "yes" "$(grep -qxF -- "--chief $WORK/cs1/AS.md" "$STUB/close.calls" && echo yes)"
@@ -751,11 +758,11 @@ I="$(new_inbox cs2)"
 CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-doc.sh" \
     start "$I" "$WORK/cs2.out" --doc "$WORK/cs2/AT.md" --workers "N1.md"
 wait_exit "$WPID"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 check "(cs2) an unexpected refusal on a swept doc wakes the chief (rc 0)" "0" "$rc"
 check "(cs2) the wake is WAKE predecessor-open" "WAKE predecessor-open rc=5" "$(head -n1 "$WORK/cs2.out")"
 CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-doc.sh" \
-    timeout 4 bash "$WAIT" "$I" --doc "$WORK/cs2/AT.md" --workers "N1.md" > "$WORK/cs2b.out" 2>/dev/null; rc=$?
+    timeout -k 5 4 bash "$WAIT" "$I" --doc "$WORK/cs2/AT.md" --workers "N1.md" > "$WORK/cs2b.out" 2>/dev/null; rc=$?
 rm -f "$STUB/close.msg"
 check "(cs2) it wakes once: the re-arm is quiet and asks it no more" "|1" "$(cat "$WORK/cs2b.out")|$(wc -l < "$STUB/close.calls" | tr -d ' ')"
 reset_stub; rm -f "$STUB"/rc.*
@@ -767,7 +774,7 @@ sw_doc cs3 W1 '# HIMMEL-1 — worker W1' WRAPPED
 rm -rf "$SWPROC"; sw_session 301 H1; sw_session 302 H2; sw_session 303 W1
 I="$(new_inbox cs3)"
 CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-doc.sh" CHIEF_WAIT_SWEEP_MAX=1 \
-    timeout 8 bash "$WAIT" "$I" --doc "$WORK/cs3/AT.md" --workers "N1.md" > "$WORK/cs3.out" 2>/dev/null; rc=$?
+    timeout -k 5 8 bash "$WAIT" "$I" --doc "$WORK/cs3/AT.md" --workers "N1.md" > "$WORK/cs3.out" 2>/dev/null; rc=$?
 check "(cs3) refusals ahead in the census never starve a later candidate past CHIEF_WAIT_SWEEP_MAX" "yes" "$(grep -qxF -- "$WORK/cs3/W1.md" "$STUB/close.calls" && echo yes)"
 check "(cs3) and the refused ones are still retried, more than once each" "yes|yes" "$([ "$(grep -cxF -- "$WORK/cs3/H1.md" "$STUB/close.calls")" -ge 2 ] && echo yes)|$([ "$(grep -cxF -- "$WORK/cs3/H2.md" "$STUB/close.calls")" -ge 2 ] && echo yes)"
 reset_stub; rm -f "$STUB"/rc.* "$STUB"/sleep.*
@@ -781,7 +788,7 @@ CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT
     start "$I" "$WORK/cs4.out" --doc "$WORK/cs4/AT.md" --workers "N1.md"
 n=0
 while [ "$n" -lt 300 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 rm -f "$STUB"/sleep.*
 check "(cs4) a hung close the rotation skips for a sample keeps its streak: two hangs in a row on it still wake" "WAKE predecessor-open rc=124" "$(head -n1 "$WORK/cs4.out")"
 reset_stub; rm -f "$STUB"/rc.*
@@ -792,12 +799,12 @@ sw_doc cs5 W1 '# HIMMEL-1 — worker W1' WRAPPED
 rm -rf "$SWPROC"; sw_session 501 AT; sw_session 502 W1
 I="$(new_inbox cs5)"
 CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-doc.sh" \
-    timeout 4 bash "$WAIT" "$I" --doc "$WORK/cs5/AT.md" --workers "N1.md" > "$WORK/cs5.out" 2>/dev/null
+    timeout -k 5 4 bash "$WAIT" "$I" --doc "$WORK/cs5/AT.md" --workers "N1.md" > "$WORK/cs5.out" 2>/dev/null
 check "(cs5) the waiter's own doc, WRAPPED and old with a live session of its name, is never asked; its neighbour W1 is" "0|yes" "$(grep -c 'AT.md' "$STUB/close.calls")|$(grep -qxF -- "$WORK/cs5/W1.md" "$STUB/close.calls" && echo yes)"
 : > "$STUB/close.calls"; sw_doc cs5 AT '# AT — CHIEF — successor to none — first console of the chain' WRAPPED
 I="$(new_inbox cs5b)"
 (cd "$WORK/cs5" && CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-doc.sh" \
-    timeout 4 bash "$WAIT" "$I" --doc AT.md --workers "N1.md" > "$WORK/cs5b.out" 2>/dev/null)
+    timeout -k 5 4 bash "$WAIT" "$I" --doc AT.md --workers "N1.md" > "$WORK/cs5b.out" 2>/dev/null)
 check "(cs5b) a relative --doc still excludes the waiter's own doc; its neighbour W1 is asked" "0|yes" "$(grep -c 'AT.md' "$STUB/close.calls")|$(grep -q 'W1.md$' "$STUB/close.calls" && echo yes)"
 reset_stub; rm -f "$STUB"/rc.*
 cat > "$STUB/close-tick.sh" <<'EOF'
@@ -813,7 +820,7 @@ sw_doc cs6 H2 '# HIMMEL-2 — worker H2' WRAPPED
 rm -rf "$SWPROC"; sw_session 601 H1; sw_session 602 H2
 I="$(new_inbox cs6)"
 CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-tick.sh" CHIEF_WAIT_SWEEP_MAX=1 \
-    timeout 5 bash "$WAIT" "$I" --doc "$WORK/cs6/AT.md" --workers "N1.md" > "$WORK/cs6.out" 2>/dev/null
+    timeout -k 5 5 bash "$WAIT" "$I" --doc "$WORK/cs6/AT.md" --workers "N1.md" > "$WORK/cs6.out" 2>/dev/null
 check "(cs6) CHIEF_WAIT_SWEEP_MAX=1 asks one doc per sample over several samples" "yes|" "$([ "$(wc -l < "$STUB/close.calls" | tr -d ' ')" -ge 2 ] && echo yes)|$(awk '{ print $1 }' "$STUB/close.calls" | sort | uniq -d)"
 reset_stub; rm -f "$STUB"/rc.*
 cat > "$STUB/close-hb.sh" <<'EOF'
@@ -830,7 +837,7 @@ sw_doc cs7 H2 '# HIMMEL-2 — worker H2' WRAPPED
 rm -rf "$SWPROC"; sw_session 701 H1; sw_session 702 H2
 I="$(new_inbox cs7)"
 CS_HB="$I.wait" CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-hb.sh" \
-    timeout 9 bash "$WAIT" "$I" --doc "$WORK/cs7/AT.md" --workers "N1.md" > "$WORK/cs7.out" 2>/dev/null
+    timeout -k 5 9 bash "$WAIT" "$I" --doc "$WORK/cs7/AT.md" --workers "N1.md" > "$WORK/cs7.out" 2>/dev/null
 check "(cs7) the heartbeat is fresh before every close, also after a slow one in the same sample" "yes|0" "$([ "$(wc -l < "$STUB/hb.ages" | tr -d ' ')" -ge 2 ] && echo yes)|$(awk '$1 > 1' "$STUB/hb.ages" | wc -l | tr -d ' ')"
 reset_stub; rm -f "$STUB"/rc.*
 printf '#!/usr/bin/env bash\necho "CLOSED-ALREADY: W1 has no live session under [W1]; nothing to signal"\n' > "$STUB/close-gone.sh"
@@ -839,7 +846,7 @@ sw_doc cs8 W1 '# HIMMEL-1 — worker W1' WRAPPED
 rm -rf "$SWPROC"; sw_session 801 W1
 I="$(new_inbox cs8)"
 CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-gone.sh" \
-    timeout 4 bash "$WAIT" "$I" --doc "$WORK/cs8/AT.md" --workers "N1.md" > "$WORK/cs8.out" 2>/dev/null
+    timeout -k 5 4 bash "$WAIT" "$I" --doc "$WORK/cs8/AT.md" --workers "N1.md" > "$WORK/cs8.out" 2>/dev/null
 check "(cs8) a CLOSED-ALREADY answer is marked gone and logs no 'closed its window' bullet" "gone:$WORK/cs8/W1.md|0" "$(cat "$I.wait.predecessor" 2>/dev/null)|$(grep -c 'closed its window' "$WORK/cs8/AT.md")"
 reset_stub; rm -f "$STUB"/rc.*
 mkdir -p "$WORK/cs9"; printf '# AT — CHIEF — successor to none — first console of the chain\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE AT\n' > "$WORK/cs9/AT.md"
@@ -848,7 +855,7 @@ sw_doc cs9 T-9-N9-task-2026-11-20 '# T-9 — a dated doc run under its undated s
 rm -rf "$SWPROC"; sw_session 901 T-9-N9-task
 I="$(new_inbox cs9)"
 CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-doc.sh" \
-    timeout 4 bash "$WAIT" "$I" --doc "$WORK/cs9/AT.md" --workers "N1.md" > "$WORK/cs9.out" 2>/dev/null
+    timeout -k 5 4 bash "$WAIT" "$I" --doc "$WORK/cs9/AT.md" --workers "N1.md" > "$WORK/cs9.out" 2>/dev/null
 check "(cs9) a dated doc under its undated session name is found and closed" "$WORK/cs9/T-9-N9-task-2026-11-20.md" "$(cat "$STUB/close.calls")"
 unset CHIEF_WAIT_CLOSE CHIEF_WAIT_SWEEP_MIN CHIEF_WAIT_SWEEP_MAX
 

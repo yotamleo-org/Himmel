@@ -102,6 +102,13 @@ start() {
     bash "$WAIT" "$inbox" "$@" > "$out" 2>"$out.err" &
     WPID=$!
 }
+stop_waiter() {
+    kill "$1" 2>/dev/null
+    local n=0
+    while kill -0 "$1" 2>/dev/null && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+    kill -KILL "$1" 2>/dev/null
+    wait "$1" 2>/dev/null
+}
 
 cat > "$STUB/ql.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -134,7 +141,7 @@ tracker_line ok
 wait_exit "$WPID"
 check "(w2) a tracker move to ok alone does not wake" "running" "$rc"
 check "(w2) the saved key still moved to tracker=ok" "yes" "$(grep -q 'tracker=ok' "$I.wait.state" && echo yes)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 reset_stub
 I="$(new_inbox w3)"
@@ -142,7 +149,7 @@ start "$I" "$WORK/w3.out" --workers "N1.md"
 wait_hb "$I" || fail "(w3) no baseline heartbeat"
 wait_exit "$WPID"
 check "(w3) a tick line with no tracker= field is still a valid sample" "running" "$rc"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 orph_line() { sed "s/ denials=none/ orphans-wip=$1 denials=none/" "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"; }
 reset_stub
@@ -184,7 +191,7 @@ vault_line ok
 wait_exit "$WPID"
 check "(x2) a vault move back to ok alone does not wake" "running" "$rc"
 check "(x2) the saved key still moved to vault=ok" "yes" "$(grep -q 'vault=ok' "$I.wait.state" && echo yes)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 reset_stub
 vault_line ok
@@ -205,7 +212,7 @@ tick_line "N1:FRESH" "ok"
 vault_line unknown
 wait_exit "$WPID"
 check "(x4) a vault move to unknown does not wake" "running" "$rc"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 reset_stub
 I="$(new_inbox x5)"
@@ -213,7 +220,7 @@ start "$I" "$WORK/x5.out" --workers "N1.md"
 wait_hb "$I" || fail "(x5) no baseline heartbeat"
 wait_exit "$WPID"
 check "(x5) a tick line with no vault= field is still a valid sample" "running" "$rc"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 cloud_line() { sed "s#  *denials=none# cloud=$1 denials=none#" "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"; }
 reset_stub
@@ -242,7 +249,7 @@ cloud_line ok
 wait_exit "$WPID"
 check "(y2) a cloud move back to ok alone does not wake" "running" "$rc"
 check "(y2) the saved key still moved to cloud=ok" "yes" "$(grep -q 'cloud=ok' "$I.wait.state" && echo yes)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 reset_stub
 cloud_line ok
@@ -253,7 +260,7 @@ tick_line "N1:FRESH" "ok"
 cloud_line skip
 wait_exit "$WPID"
 check "(y3) a cloud move to skip does not wake" "running" "$rc"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 reset_stub
 I="$(new_inbox y4)"
@@ -261,16 +268,16 @@ start "$I" "$WORK/y4.out" --workers "N1.md"
 wait_hb "$I" || fail "(y4) no baseline heartbeat"
 wait_exit "$WPID"
 check "(y4) a tick line with no cloud= field is still a valid sample" "running" "$rc"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 reset_stub
 mkdir -p "$WORK/sec/.himmel" "$WORK/sec/consoles"
 printf 'SECRET-HMAC-KEY\n' > "$WORK/sec/.himmel/go-hmac.key"
-timeout 5 bash "$WAIT" "$WORK/sec/.himmel/go-hmac.key" --workers "N1.md" > "$WORK/sec.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+timeout -k 5 5 bash "$WAIT" "$WORK/sec/.himmel/go-hmac.key" --workers "N1.md" > "$WORK/sec.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
 check "(sec) a secret-shaped inbox path is refused" "2" "$rc"
 check "(sec) the refused secret is never printed" "0" "$(grep -c SECRET "$WORK/sec.out")"
 ln -s "$WORK/sec/.himmel/go-hmac.key" "$WORK/sec/consoles/c.md"
-timeout 5 bash "$WAIT" "$WORK/sec/consoles/c.md" --workers "N1.md" > "$WORK/sec-ln.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+timeout -k 5 5 bash "$WAIT" "$WORK/sec/consoles/c.md" --workers "N1.md" > "$WORK/sec-ln.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
 check "(sec) a consoles/ symlink onto a secret is refused" "2" "$rc"
 check "(sec) the symlinked secret is never printed" "0" "$(grep -c SECRET "$WORK/sec-ln.out")"
 I="$(new_inbox sec-swap)"
@@ -280,7 +287,7 @@ rm -f "$I"; ln -s "$WORK/sec/.himmel/go-hmac.key" "$I"
 wait_exit "$WPID"
 check "(sec) an inbox swapped for a secret link mid-wait ends the wait" "1" "$rc"
 check "(sec) the swapped-in secret is never printed" "0" "$(grep -c SECRET "$WORK/sec-swap.out")"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 cat > "$STUB/ready-check.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -391,7 +398,7 @@ wait_exit "$WPID"
 # shellcheck disable=SC2016  # the backticks are literal bullet text
 check "(rdy-txt) the out file carries the READY bullet" "1" "$(grep -cF -- 'rows `suite-tiers.tsv` added' "$I2.wait.ready-2577" 2>/dev/null)"
 check "(rdy-txt) waiter.md names the bullet in the out file" "1" "$(grep -c 'holds the READY bullet' "$HERE/../../../docs/handover/chief-sections/waiter.md")"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 ready_stubs_pass
 rm -f "$STUB/rc.cwd" "$STUB/disp.cwd" "$STUB/gh.calls"
 GATED="$WORK/gated"; DECOY="$WORK/decoy"
@@ -426,7 +433,7 @@ check "(rdy-cwd) ready-check ran in HIMMEL_REPO" "$GATED" "$(cat "$STUB/rc.cwd" 
 check "(rdy-cwd) cr-disposition ran in HIMMEL_REPO" "$GATED" "$(cat "$STUB/disp.cwd" 2>/dev/null)"
 check "(rdy-cwd) the CI read names HIMMEL_REPO's repo, from HIMMEL_REPO" "1" "$(grep -c "^$GATED|pr checks 2588 -R o/x " "$STUB/gh.calls" 2>/dev/null)"
 export CHIEF_WAIT_CI="$STUB/ci.sh"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 unset CHIEF_WAIT_READY_CHECK CHIEF_WAIT_CI CHIEF_WAIT_DISPOSITION CHIEF_WAIT_WORKER_EVENT
 export PATH="$SAVED_PATH"
 
@@ -456,7 +463,7 @@ wr_tick() {
     sed -i "s/ tails=N1:LIVE/ tails=$1 acts=$2/" "$STUB/tick.line"  # gnu-ok: Linux-only kit
     [ -z "${3:-}" ] || sed -i "s| or=| ready-mismatch=$3 or=|" "$STUB/tick.line"  # gnu-ok: Linux-only kit
 }
-wr_stop() { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
+wr_stop() { stop_waiter "$WPID"; }
 reset_stub
 rm -f "$STUB/we.calls"
 wr_fleet wr
@@ -493,7 +500,7 @@ wr_tick "$WL3:LIVE,$WL1:READY,$WL2:READY" "$WL1:READY#3,$WL2:READY#1"
 wait_exit "$WPID"
 check "(wr6) a repeat READY of a woken head wakes nothing" "running|" "$rc|$(grep '^WAKE ' "$WORK/wr6.out")"
 check "(wr6) and is still handed to worker-event once" "$(printf 'READY 5666 %s GREEN %s' "$WH1" "$WL1")" "$(cat "$STUB/we.calls" 2>/dev/null)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 mkdir -p "$WORK/wrb"
 WD="$WORK/wrb/chief.md"; printf '# chief\n\n## Results\n' > "$WD"
 WB="$WORK/wrb/HIMMEL-10570-F10570a-cr-learnings-2026-11-21.md"
@@ -519,7 +526,7 @@ wr_stop
 start "$I" "$WORK/wr10.out" --doc "$WD" --workers-from "$WM"
 wait_exit "$WPID"
 check "(wr10) and a re-arm does not wake for it again" "running|" "$rc|$(cat "$WORK/wr10.out")"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 cat > "$STUB/we-refuse.sh" <<'EOF'
 #!/usr/bin/env bash
 cat >> "$STUB/we.calls"
@@ -629,7 +636,7 @@ check "(cd6) cadence=? wakes nothing and the waiter survives" "running" "$(cd_al
 cd_tick 'ci:success:3h:102,fork-drift:success:40h:501:MISSED'
 wait_exit "$WPID"
 check "(cd7) a missed schedule wakes" "WAKE cadence fork-drift run=501 MISSED" "$(head -n1 "$WORK/cd5.out" | cut -d' ' -f1-5)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 reset_stub
 cd_tick 'ci:success:3h:101,pages:running:1m:601'
 I="$(new_inbox cd8)"
@@ -638,7 +645,7 @@ wait_hb "$I" || fail "(cd8) no baseline heartbeat"
 cd_tick 'ci:success:3h:101,pages:failure:5m:601:RED'
 wait_exit "$WPID"
 check "(cd8) a run in flight at the baseline that concludes red wakes" "WAKE cadence pages run=601 RED" "$(head -n1 "$WORK/cd8.out" | cut -d' ' -f1-5)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 unset CHIEF_WAIT_CADENCE
 
 rv_tick() {
@@ -682,7 +689,7 @@ wait_hb "$I" || fail "(rv7) no baseline heartbeat"
 check "(rv7) a re-armed waiter wakes nothing for the same stale date" "running" "$(cd_alive)"
 rv_tick 'none'
 check "(rv8) review=none wakes nothing and the waiter survives" "running" "$(cd_alive)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 
 GRC=0; GRO="$(HIMMEL_REPO=rel bash "$WAIT" 2>&1)" || GRC=$?
 check "(gr1) a relative HIMMEL_REPO is refused rc 2 with the exact refusal" "2|chief-wait: HIMMEL_REPO (rel) is not an absolute path - refusing to let it pick the gated checkout" "$GRC|$GRO"

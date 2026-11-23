@@ -119,6 +119,13 @@ start() { # <inbox> <outfile> [tick args...]
     bash "$WAIT" "$inbox" "$@" > "$out" 2>"$out.err" &
     WPID=$!
 }
+stop_waiter() {
+    kill "$1" 2>/dev/null
+    local n=0
+    while kill -0 "$1" 2>/dev/null && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+    kill -KILL "$1" 2>/dev/null
+    wait "$1" 2>/dev/null
+}
 
 # --- (ws) a silent worker wakes the chief once and the operator is alerted ---
 # A held worker is silent when its bus waker is capped (wakerstate=<w>:capped: the same unread
@@ -148,7 +155,7 @@ tl_line() {
     local inbox="$1" n=0; shift
     start "$inbox" "$WORK/tl.out" "$@"
     while [ "$n" -lt 80 ] && ! grep -q . "$inbox.wait.ticklog" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
-    kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+    stop_waiter "$WPID"
     head -n 1 "$inbox.wait.ticklog" 2>/dev/null || true  # swallow-ok: no log file is the RED reading, shown by the row's check
 }
 TL_RE='^start=[0-9]+ wall=[0-9]+\.[0-9]+ cpu=[0-9]+\.[0-9]+ rc=%s timedout=%s$'
@@ -206,9 +213,9 @@ check "(ws1) the operator alert went out once" "1" "$(ws_pages)"
 check "(ws1) and names the worker and the signal" "1" "$(grep -c 'WORKER-SILENT N1 signal=capped-waker' "$STUB/pages" 2>/dev/null)"
 check "(ws1) the chief doc got one bullet naming the action" "1" "$(ws_bullets)"
 check "(ws1) the exit reason is logged" "yes" "$(grep -q 'exit=wake-worker-silent' "$I.wait" && echo yes)"
-if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
 # the state is unchanged: a re-arm repeats neither the wake, the page nor the bullet
-CHIEF_WAIT_WORKER_SILENT_MIN=30 timeout 3 bash "$WAIT" "$I" --doc "$WD" --workers-from "$WM" > "$WORK/ws2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+CHIEF_WAIT_WORKER_SILENT_MIN=30 timeout -k 5 3 bash "$WAIT" "$I" --doc "$WD" --workers-from "$WM" > "$WORK/ws2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(ws2) a re-arm on an unchanged silent worker keeps waiting" "124" "$rc"
 check "(ws2) and prints no worker-silent line" "0" "$(grep -c 'worker-silent' "$WORK/ws2.out")"
 check "(ws2) and pages nothing more" "1" "$(ws_pages)"
@@ -219,13 +226,13 @@ CHIEF_WAIT_WORKER_SILENT_MIN=30 start "$I" "$WORK/ws2b.out" --doc "$WD" --worker
 wait_exit "$WPID"
 check "(ws2b) a worker that wrote and went quiet again wakes again" "WAKE worker-silent N1 signal=capped-waker" "$(head -n1 "$WORK/ws2b.out" | cut -d' ' -f1-4)"
 check "(ws2b) with a second alert" "2" "$(ws_pages)"
-if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
 
 # negative: a Results bullet inside the bound keeps the worker out of the silent set
 reset_stub
 ws_fleet ws3 "1 minute ago"
 ws_tick "N1:capped"
-CHIEF_WAIT_WORKER_SILENT_MIN=30 timeout 3 bash "$WAIT" "$I" --doc "$WD" --workers-from "$WM" > "$WORK/ws3.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+CHIEF_WAIT_WORKER_SILENT_MIN=30 timeout -k 5 3 bash "$WAIT" "$I" --doc "$WD" --workers-from "$WM" > "$WORK/ws3.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(ws3) a fresh bullet inside the bound keeps waiting" "124" "$rc"
 check "(ws3) and prints no worker-silent wake" "0" "$(grep -c 'worker-silent' "$WORK/ws3.out")"
 check "(ws3) and sends no alert" "0" "$(ws_pages)"
@@ -233,19 +240,19 @@ check "(ws3) and sends no alert" "0" "$(ws_pages)"
 reset_stub
 ws_fleet ws4 "2 hours ago"
 ws_tick
-CHIEF_WAIT_WORKER_SILENT_MIN=30 timeout 3 bash "$WAIT" "$I" --doc "$WD" --workers-from "$WM" > "$WORK/ws4.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+CHIEF_WAIT_WORKER_SILENT_MIN=30 timeout -k 5 3 bash "$WAIT" "$I" --doc "$WD" --workers-from "$WM" > "$WORK/ws4.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(ws4) a quiet doc with no capped waker keeps waiting" "124" "$rc"
 check "(ws4) and prints no worker-silent wake" "0" "$(grep -c 'worker-silent' "$WORK/ws4.out")"
 # the bound is a named, overridable value: 20 quiet minutes sit inside the default and outside a 10-minute bound
 reset_stub
 ws_fleet ws5 "20 minutes ago"
 ws_tick "N1:capped"
-timeout 3 bash "$WAIT" "$I" --doc "$WD" --workers-from "$WM" > "$WORK/ws5a.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+timeout -k 5 3 bash "$WAIT" "$I" --doc "$WD" --workers-from "$WM" > "$WORK/ws5a.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(ws5) 20 quiet minutes are inside the default bound" "0" "$(grep -c 'worker-silent' "$WORK/ws5a.out")"
 CHIEF_WAIT_WORKER_SILENT_MIN=10 start "$I" "$WORK/ws5b.out" --doc "$WD" --workers-from "$WM"
 wait_exit "$WPID"
 check "(ws5) CHIEF_WAIT_WORKER_SILENT_MIN=10 makes them a silent worker" "WAKE worker-silent N1 signal=capped-waker" "$(head -n1 "$WORK/ws5b.out" | cut -d' ' -f1-4)"
-if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
 # a succession partial that names the worker is the second signal, with no waker or age needed
 reset_stub
 ws_fleet ws6 "1 minute ago"
@@ -259,7 +266,7 @@ wait_exit "$WPID"
 check "(ws6) the partial wake still comes first" "WAKE succession partial 0/1 silent 0 min" "$(head -n1 "$WORK/ws6.out")"
 check "(ws6) the worker it names gets one worker-silent line" "1" "$(grep -c '^WAKE worker-silent N1 signal=succession-partial' "$WORK/ws6.out")"
 check "(ws6) and one operator alert" "1" "$(ws_pages)"
-if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
 rm -f "$STUB/pages"
 
 # --- (sp) a succession partial pages only a worker that is live ---
@@ -295,7 +302,7 @@ sp_run() {
     rm -f "$STUB/pages"
     CHIEF_WAIT_TRACKER="$STUB/sp-tracker.sh" CHIEF_WAIT_LOCK_STATUS="$STUB/sp-lock.sh" CHIEF_WAIT_SUCCESSION_SEC=1 start "$I" "$WORK/$c.out" --doc "$WD" --succession S2 --silent-min 0 --workers-from "$WM"
     wait_exit "$WPID"
-    if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+    if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
 }
 sp_silent_lines() { grep -c '^WAKE worker-silent' "$WORK/$1.out" || true; }  # pipefail-ok: none set
 sp_bullets() { grep -c '^- [0-9:]* WORKER-SILENT' "$WD" || true; }  # pipefail-ok: none set
@@ -349,8 +356,8 @@ sed -i 's/ denials=none/ wt-ceiling=72\/100 denials=none/' "$STUB/tick.line"  # 
 wait_exit "$WPID"
 check "(wt-ceiling) reaching the alarm ends the wait" "0" "$rc"
 check "(wt-ceiling) the wake names the ceiling" "WAKE tick changed=wt-ceiling usage=PROCEED" "$(head -n1 "$WORK/wt-ceiling.out")"
-if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
-timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/wt-ceiling-rearm.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
+timeout -k 5 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/wt-ceiling-rearm.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
 check "(wt-ceiling) an unchanged alarm keeps waiting" "124" "$rc"
 check "(wt-ceiling) an unchanged alarm does not re-wake" "" "$(cat "$WORK/wt-ceiling-rearm.out")"
 # residual-cap=<version>:<n> (a version past the residual soft cap) is in the key whole: it appearing
@@ -363,8 +370,8 @@ sed -i 's/ denials=none/ residual-cap=v1.1.3:16 denials=none/' "$STUB/tick.line"
 wait_exit "$WPID"
 check "(cap) a version crossing the soft cap ends the wait" "0" "$rc"
 check "(cap) the wake names the cap field" "WAKE tick changed=residual-cap usage=PROCEED" "$(head -n1 "$WORK/cap-field.out")"
-if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
-timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/cap-field-rearm.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
+timeout -k 5 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/cap-field-rearm.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
 check "(cap) an unchanged cap keeps waiting" "124" "$rc"
 check "(cap) an unchanged cap does not re-wake" "" "$(cat "$WORK/cap-field-rearm.out")"
 start "$I" "$WORK/cap-field-move.out" --workers "N1.md"
@@ -373,13 +380,13 @@ sed -i 's/ residual-cap=v1.1.3:16/ residual-cap=v1.1.3:17/' "$STUB/tick.line"  #
 wait_exit "$WPID"
 check "(cap) a moved cap count ends the wait" "0" "$rc"
 check "(cap) the moved count wakes as cap" "WAKE tick changed=residual-cap usage=PROCEED" "$(head -n1 "$WORK/cap-field-move.out")"
-if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
 start "$I" "$WORK/cap-field-gone.out" --workers "N1.md"
 wait_hb "$I" || fail "(cap) no cleared heartbeat"
 sed -i 's/ residual-cap=v1.1.3:17//' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 wait_exit "$WPID"
 check "(cap) a cap that goes away keeps waiting" "running" "$rc"
-if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
 reset_stub
 sed -i 's/ denials=none/ residual-cap=v1.1.3:16 denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 I="$(new_inbox cap-cut)"
@@ -391,7 +398,7 @@ check "(cap) residual-cap=? (a cut read) keeps the saved cap and wakes nothing" 
 sed -i 's/ residual-cap=?/ residual-cap=v1.1.3:17/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 wait_exit "$WPID"
 check "(cap) a moved cap after residual-cap=? wakes as cap" "WAKE tick changed=residual-cap usage=PROCEED" "$(head -n1 "$WORK/cap-cut.out")"
-if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
 # a wake key carrying both residual-cap= and open=: each is in the key whole, a
 # moved open count wakes as open, open=? keeps the saved value, and a key saved under the old
 # cap= name reads as residual-cap=, so the rename is no wake. RED control (chief-wait.sh before the rename):
@@ -404,22 +411,22 @@ wait_hb "$I" || fail "(open) no baseline heartbeat"
 sed -i 's/ open=v1.1.3:40/ open=v1.1.3:41/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 wait_exit "$WPID"
 check "(open) a moved open count alone wakes as open" "WAKE tick changed=open usage=PROCEED" "$(head -n1 "$WORK/cap-open.out")"
-if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
 sed -i 's/ residual-cap=v1.1.3:16 open=v1.1.3:41/ residual-cap=v1.1.3:17 open=v1.1.3:42/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 start "$I" "$WORK/cap-open-both.out" --workers "N1.md"
 wait_exit "$WPID"
 check "(open) both fields moving at once wake as both" "WAKE tick changed=residual-cap,open usage=PROCEED" "$(head -n1 "$WORK/cap-open-both.out")"
-if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
 sed -i 's/ open=v1.1.3:42/ open=?/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 start "$I" "$WORK/cap-open-cut.out" --workers "N1.md"
 wait_exit "$WPID"
 check "(open) open=? (a cut read) keeps the saved count and wakes nothing" "running" "$rc"
-if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
 sed -i 's/ residual-cap=v1.1.3:17 open=?/ residual-cap=v1.1.3:17 open=v1.1.3:42/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
-timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/cap-open-same.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+timeout -k 5 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/cap-open-same.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
 check "(open) the saved count returning is no change" "124" "$rc"
 sed -i 's/residual-cap=/cap=/' "$I.wait.state"  # gnu-ok: Linux-only kit
-timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/cap-open-migrate.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+timeout -k 5 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/cap-open-migrate.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
 check "(open) a key saved under the old cap= name is no change under residual-cap=" "124" "$rc"
 check "(open) and prints no wake" "" "$(cat "$WORK/cap-open-migrate.out")"
 # hreg=<live-no-rows>/<stale>/<asks> is in the key whole: a moved value wakes once, an unchanged one
@@ -433,8 +440,8 @@ sed -i 's/ denials=none/ hreg=1\/0\/0 denials=none/' "$STUB/tick.line"  # gnu-ok
 wait_exit "$WPID"
 check "(hreg) a new hreg value ends the wait" "0" "$rc"
 check "(hreg) the wake names hreg" "WAKE tick changed=hreg usage=PROCEED" "$(head -n1 "$WORK/hreg.out")"
-if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
-timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/hreg-rearm.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
+timeout -k 5 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/hreg-rearm.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
 check "(hreg) two identical ticks (the same value on a re-arm) keep waiting" "124" "$rc"
 check "(hreg) ... and wake nothing" "" "$(cat "$WORK/hreg-rearm.out")"
 start "$I" "$WORK/hreg-move.out" --workers "N1.md"
@@ -445,7 +452,7 @@ check "(hreg) hreg=? (a failed read) keeps the saved value and wakes nothing" "r
 sed -i 's/ hreg=?/ hreg=1\/2\/0/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 wait_exit "$WPID"
 check "(hreg) a moved value wakes as hreg" "WAKE tick changed=hreg usage=PROCEED" "$(head -n1 "$WORK/hreg-move.out")"
-if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
 
 cat > "$STUB/ql.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -471,12 +478,12 @@ check "(hask) one WAKE hold-ask line with the key, path, holder and the full pas
 check "(hask) the tick line follows" "1" "$(grep -c '^TICK ' "$WORK/hask.out")"
 check "(hask) the wake pages nobody" "0" "$(ha_pages)"
 check "(hask) the exit reason is logged" "yes" "$(grep -q 'exit=wake-hold-ask' "$I.wait" && echo yes)"
-if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
 HOME="$HA_HOME" start "$I" "$WORK/hask2.out" --workers "N1.md"
 wait_hb "$I" || fail "(hask) no re-armed heartbeat"
 sleep 3
 check "(hask) a re-armed waiter neither wakes nor pages again for the same ask" "running|0" "$(kill -0 "$WPID" 2>/dev/null && echo running)|$(ha_pages)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter "$WPID"
 rm -f "$STUB/pages"
 
 cat > "$STUB/pagek.sh" <<'EOF'
@@ -496,7 +503,7 @@ stuck_run() {
     if ! wait_hb "$I" && kill -0 "$WPID" 2>/dev/null; then fail "($c) no baseline heartbeat"; fi
     n=0; while [ ! -s "$STUB/pagek" ] && [ "$n" -lt 40 ]; do sleep 0.1; n=$((n + 1)); done
     sleep 1.5
-    kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+    stop_waiter "$WPID"
 }
 hask_wake() { grep '^WAKE ' "$WORK/$1.out" 2>/dev/null | cut -d' ' -f1-3 | paste -sd, -; }
 hask_home() {
@@ -669,13 +676,13 @@ sed -i 's/ vmismatch=0/ vmismatch=2/' "$STUB/tick.line"  # gnu-ok: Linux-only ki
 wait_exit "$WPID"
 check "(vmismatch) a positive count ends the wait" "0" "$rc"
 check "(vmismatch) the wake names vmismatch" "WAKE tick changed=vmismatch usage=PROCEED" "$(head -n1 "$WORK/vmismatch-quiet.out")"
-if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
 start "$I" "$WORK/vmismatch-blip.out" --workers "N1.md"
 wait_hb "$I" || fail "(vmismatch) no re-armed heartbeat"
 sed -i 's/ vmismatch=2/ vmismatch=?/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 wait_exit "$WPID"
 check "(vmismatch) a failed read after a positive count keeps waiting" "running" "$rc"
-if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
 if [ "${1:-}" = --worktree-ceiling-only ]; then
     printf '\n%d failure(s)\n' "$fails"
     [ "$fails" -eq 0 ]; exit $?
