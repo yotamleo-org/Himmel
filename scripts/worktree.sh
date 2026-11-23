@@ -127,6 +127,9 @@ Flags:
   --verbose, -v         Stream subprocess output.
   -h, --help            This message.
 
+Many worktrees at once: scripts/handover/chief-kit/worktrees-parallel.sh checks
+every branch name first, prunes and fetches once, then creates them in parallel.
+
 Note: this command never uses `git worktree remove --force`. For force
 removal (e.g., orphaned admin record, stuck lock), run
 `git worktree remove --force <path>` manually.'
