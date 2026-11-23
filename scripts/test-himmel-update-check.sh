@@ -1308,6 +1308,34 @@ rm -f "$TMP/qmd-argvlog"
 qserving "export QSTUB_ARGVLOG=$TMP/qmd-argvlog QMD_MCP_URL=http://127.0.0.1:8181/mcp QMD_HTTP_AUTH_FILE=$TMP/qmd-token-good;" >/dev/null
 assert_contains "33h: the token-bearing probe never goes through a proxy" "noproxy [*] -K" "$(cat "$TMP/qmd-argvlog" 2>/dev/null)"
 
+echo "Test 34: update_antigravity_backstop check/apply and skip-when-absent"
+AGY_HOME="$TMP/agy-home"
+AGY_T3="$TMP/agy-t3"
+mkdir -p "$AGY_HOME" "$AGY_T3/userdata/providers/antigravity/h1/config"
+agy_chk="$(HOME="$AGY_HOME" T3CODE_HOME="$AGY_T3" HIMMEL_PRIMARY_ROOT="$REAL_ROOT" bash -c 'HIMMEL_UPDATE_LIB=1 . "$1"; ROOT="$2"; update_antigravity_backstop check' _ "$SCRIPT" "$REAL_ROOT" 2>&1)"
+assert_contains "34a: check mode prints WOULD UPDATE without writing" "WOULD UPDATE" "$agy_chk"
+if [ ! -e "$AGY_T3/userdata/providers/antigravity/h1/config/hooks.json" ]; then
+    assert_pass "34b: check mode does not mutate T3 hooks.json"
+else
+    assert_fail "34b: check mode unexpectedly wrote T3 hooks.json"
+fi
+agy_app="$(HOME="$AGY_HOME" T3CODE_HOME="$AGY_T3" HIMMEL_PRIMARY_ROOT="$REAL_ROOT" bash -c 'HIMMEL_UPDATE_LIB=1 . "$1"; ROOT="$2"; update_antigravity_backstop apply' _ "$SCRIPT" "$REAL_ROOT" 2>&1)"
+assert_contains "34c: apply mode installs backstop hooks.json" "CHANGED" "$agy_app"
+if [ -f "$AGY_T3/userdata/providers/antigravity/h1/config/hooks.json" ] && [ -f "$AGY_HOME/.gemini/config/hooks.json" ]; then
+    assert_pass "34d: apply mode wrote both T3 and ~/.gemini hooks.json"
+else
+    assert_fail "34d: apply mode missing expected hooks.json files"
+fi
+AGY_EMPTY_HOME="$TMP/agy-empty-home"
+AGY_EMPTY_T3="$TMP/agy-empty-t3"
+mkdir -p "$AGY_EMPTY_HOME" "$AGY_EMPTY_T3"
+agy_skip="$(HOME="$AGY_EMPTY_HOME" T3CODE_HOME="$AGY_EMPTY_T3" PATH="/usr/bin:/bin" bash -c 'HIMMEL_UPDATE_LIB=1 . "$1"; ROOT="$2"; update_antigravity_backstop apply' _ "$SCRIPT" "$REAL_ROOT" 2>&1)"
+if [ -z "$agy_skip" ] && [ ! -e "$AGY_EMPTY_HOME/.gemini/config/hooks.json" ]; then
+    assert_pass "34e: skips cleanly when no T3 antigravity dir, ~/.gemini, or agy is present"
+else
+    assert_fail "34e: expected clean skip when antigravity is absent (out=$agy_skip)"
+fi
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo
 echo "RESULTS: $pass passed, $fail failed"
