@@ -176,7 +176,7 @@ export const addOnly = (body: unknown): boolean => {
 
 const same = (a: string[], b: string[]): boolean => a.length === b.length && a.every((x, i) => x === b[i]);
 
-/** Reads the key's newest entry and set before the write (the set from `before` when the caller already read it). Null when the hook does not act or the path cannot be resolved. */
+/** Reads the key's newest entry and set before the write. Null when the hook does not act or the path cannot be resolved. */
 export async function preRead(request: WriteRequest, env: Record<string, string | undefined> = process.env, before?: string[]): Promise<PreRead | null> {
   const scope = versionWriteScope(request.apiBase, request.method, request.path, request.body);
   if (!scope) return null;

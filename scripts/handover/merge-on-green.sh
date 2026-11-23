@@ -2698,7 +2698,6 @@ record_conflicts() {
 # check-commit-msg) and the target status from reconcile-config.json, so
 # this and `reconcile-backlog.mjs` share one source of truth for "what
 # status does a closed ticket move to" per project.
-# _jira_fold_request <repo_root> <key> <jira current> <pr> <sha> <what failed>
 _jira_fold_request() {
     local repo_root="$1" key="$2" jcur="$3" pr_num="$4" pr_sha="$5" what="$6" out rc=0 req decls rel cur
     decls=$(cd "$repo_root" && node scripts/jira/dist/index.js release for-project "${key%%-*}" --json 2>/dev/null) || rc=$?  # swallow-ok: rc is read below
