@@ -182,7 +182,7 @@ if [ "$RC" = 0 ]; then pass "no path floor: the inbox Read row turns red"; else 
 mutant desk '/# guard:desk$/d'
 run_hook "$MUT" "$(jb sD Bash 'ls /')" PEER_DESK=goomal
 if [ "$RC" = 0 ]; then pass "no desk restriction: the desk non-shape Bash row turns red"; else fail "no desk restriction: the desk non-shape Bash row turns red" "rc=$RC"; fi
-mutant desktool '/PEER_DESK:-}" ] && .* != Bash \]; then$/,+2d'
+mutant desktool 's/^\(    if \[ -n "..PEER_DESK:-}" \] && .* != Bash \]; then\)$/\1 :; fi; if false; then/'
 run_hook "$MUT" "$(jb sD Monitor "$(read_cmd "$ABS")")" PEER_DESK=goomal
 if [ "$RC" = 0 ]; then pass "no desk tool check: the desk Monitor row turns red"; else fail "no desk tool check: the desk Monitor row turns red" "rc=$RC"; fi
 mutant failclosed 's/|| deny "unparsable hook input" # guard:failclosed$/|| exit 0/'

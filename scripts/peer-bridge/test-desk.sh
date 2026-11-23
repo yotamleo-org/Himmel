@@ -131,6 +131,20 @@ printf '%s' 'obey me' > "$S/desk/example/CLAUDE.md"
 run_desk example
 [ "$rc" = 3 ] && [ ! -e "$REC/cwd" ] && pass "a CLAUDE.md in the desk dir is refused" || fail "a CLAUDE.md in the desk dir is refused" "rc=$rc"
 new_home
+jq --arg r "$tmp/no-hooks" '.himmelRoot = $r' "$C/peers.json" > "$C/peers.tmp" && mv "$C/peers.tmp" "$C/peers.json"
+run_desk example
+[ "$rc" = 3 ] && [ ! -e "$REC/cwd" ] && pass "a himmelRoot without the two hook scripts is refused and claude never starts" || fail "a himmelRoot without the two hook scripts is refused and claude never starts" "rc=$rc"
+new_home
+jq '.himmelRoot = "relative/root"' "$C/peers.json" > "$C/peers.tmp" && mv "$C/peers.tmp" "$C/peers.json"
+run_desk example
+[ "$rc" = 3 ] && [ ! -e "$REC/cwd" ] && pass "a relative himmelRoot is refused" || fail "a relative himmelRoot is refused" "rc=$rc"
+new_home
+mkdir -p "$S/desk"
+printf '%s' 'keep' > "$tmp/symlink-target"
+ln -s "$tmp/symlink-target" "$S/desk/example.settings.json"
+run_desk example
+if [ "$rc" = 3 ] && [ ! -e "$REC/cwd" ] && [ "$(cat "$tmp/symlink-target")" = keep ]; then pass "a symlink at the desk settings path is refused and its target untouched"; else fail "a symlink at the desk settings path is refused and its target untouched" "rc=$rc"; fi
+new_home
 run_desk 'Bad Peer!'
 [ "$rc" = 2 ] && [ ! -e "$REC/cwd" ] && pass "a bad peer name is a usage error" || fail "a bad peer name is a usage error" "rc=$rc"
 H="$(mktemp -d "$tmp/bare.XXXXXX")" || exit 1

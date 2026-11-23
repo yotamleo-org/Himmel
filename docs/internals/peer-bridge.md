@@ -459,8 +459,8 @@ removes the taint files and appends who cleared it and when to
 ### Why `/clear` does not weaken the gate
 
 - A tainted session cannot run `/clear` itself: the gate denies every tool except
-  Bash and Monitor, and only the two command shapes pass. A `/clear` in a tainted
-  session is the operator typing it.
+  Bash and Monitor (a desk denies Monitor too: only Bash), and only the two
+  command shapes pass. A `/clear` in a tainted session is the operator typing it.
 - `/clear` wipes the context. While tainted, the session could write no files and
   could start only the two command shapes, so nothing the peer said has been
   carried anywhere that outlives the context.
@@ -501,8 +501,9 @@ claim.
   after the Telegram call resends with the same id and the peer dedups it.
 - **The taint gate.** A tainted session or a desk may run only the two command
   shapes. The gate is a PreToolUse hook on every tool in the plugin lane, with a
-  byte-identical copy for Codex. It fails closed once a bridge dir exists, and is
-  a no-op on a station with no bridge.
+  byte-identical copy for Codex; a desk loads the tracked copy from its own
+  settings file, not through the plugin. It fails closed once a bridge dir
+  exists, and is a no-op on a station with no bridge.
 - **The fence.** Digests print inside a per-record fence whose marker carries an
   HMAC over a nonce. Only a marker whose HMAC verifies taints a session, so a
   copy of the marker in a doc, a CI log or an issue taints nothing.

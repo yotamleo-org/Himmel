@@ -23,6 +23,7 @@
 #      command that names either dir, are denied.
 #   4. Restricted = taint/<sid> exists, or any taint/<sid>.pending.* exists, or
 #      PEER_DESK is set. A taint dir that exists but cannot be listed denies.
+#   4b. A desk (PEER_DESK set) running any tool but Bash: deny.
 #   5. Restricted: allow only Bash or Monitor whose command has no control byte
 #      and wholly matches one of the two shapes, under the himmelRoot that
 #      peers.json records (never CLAUDE_PROJECT_DIR):
