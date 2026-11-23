@@ -3282,7 +3282,8 @@ in five shapes:
 - `loop`: a `while`/`until ...; do :; done` (or `do true`) loop with no
   `sleep`, which spins a core at 100 % CPU (split out of
   `require-quiet-run.sh`), also inside a quoted `bash -c` or python string;
-- `lang-loop`: a python `while True: pass`, a node `while (true) {}` or
+- `lang-loop`: a python loop on a constant true condition (`True` or `1`)
+  whose body is only `pass` or `...`, a node `while (true) {}` or
   `for (;;) {}`;
 - `load-tool`: `taskset`, `numactl`, `stress` or `stress-ng` at command
   position (after `do`, `then`, `else`, `elif`, `if`, `while`, `until` or

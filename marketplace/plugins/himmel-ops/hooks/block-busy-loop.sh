@@ -10,8 +10,9 @@
 #               done`) shell loop, also inside a quoted `bash -c '...'` or a
 #               python or node string; the deny also names `sleep N` and a pid
 #               wait.
-#   lang-loop   a python `while True: pass` (or `while 1:`, or `...`), a node
-#               `while (true) {}` or `for (;;) {}`.
+#   lang-loop   a python loop on a constant true condition (`True` or `1`)
+#               whose body is only `pass` or `...`, a node `while (true) {}`
+#               or `for (;;) {}`.
 #   load-tool   taskset, numactl, stress or stress-ng at command position (the
 #               start, after ; & | ( ` { or a newline, behind do, then, else,
 #               elif, if, while, until, !, sudo, env, nice, nohup, exec,
