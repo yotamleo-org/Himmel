@@ -43,7 +43,7 @@ chmod +x "$STUB"
 export ASK_MIRROR_ROUTE="$STUB" ASK_MIRROR_TEST_CALLS="$CALLS"
 
 payload() { jq -cn --arg s "$1" --arg m "$2" '{session_id:$s, hook_event_name:"Stop", stop_hook_active:false, last_assistant_message:$m}'; }
-run() { : > "$CALLS"; payload "$1" "$2" | bash "$SCRIPT"; echo "rc=$?" > "$TMP/rc"; }
+run() { : > "$CALLS"; payload "$1" "$2" | bash "$SCRIPT" > "$TMP/out"; echo "rc=$?" > "$TMP/rc"; }
 ncalls() { if [ -s "$CALLS" ]; then wc -l < "$CALLS" | tr -d ' '; else echo 0; fi; }
 
 ASK='Status: two PRs merged.
@@ -56,6 +56,7 @@ Done for now.'
 echo "R1: a chief reply with a Needs you: block posts it"
 run chief-sid "$ASK"
 check "R1 rc 0" "$(cat "$TMP/rc")" "rc=0"
+check "R1 stdout stays empty" "$(cat "$TMP/out")" ""
 check "R1 one post" "$(ncalls)" "1"
 check "R1 posted the block as written, kind chief-reply, to operator" "$(cat "$CALLS")" \
     "reply|--chief|FIX-nextleg-chief|--owed|ask-K|--doc|$CHIEF_DOC|--kind|chief-reply|operator|Needs you: approve the bypass for the station restart. Blocks: the bridge fix.\nReply yes to run it."
