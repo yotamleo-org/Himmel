@@ -67,6 +67,12 @@ check "below threshold -> PROCEED" PROCEED \
  "$(verdict "$(fx 10 20 "$NOW" "")")"
 check "at threshold -> SKIPPED-BANK" SKIPPED-BANK \
  "$(verdict "$(fx 85 20 "$NOW" "")")"
+check "no override: default ceiling 100 permits five_hour=99" PROCEED \
+ "$(CADENCE_USAGE_MAX_PCT='' verdict "$(fx 99 20 "$NOW" "")")"
+check "no override: default ceiling 100 refuses five_hour=100" 'bank-preflight: at/over 100% — skipping worker=testleg' \
+ "$(CADENCE_USAGE_MAX_PCT='' verdict "$(fx 100 20 "$NOW" "")" >/dev/null; grep -o 'bank-preflight: at/over .*' "$W/err.log")"
+check "explicit override 90 is honoured at five_hour=90" SKIPPED-BANK \
+ "$(CADENCE_USAGE_MAX_PCT=90 verdict "$(fx 90 20 "$NOW" "")")"
 check "mixed, seven_day over -> SKIPPED-BANK" SKIPPED-BANK \
  "$(verdict "$(fx 10 93 "$NOW" "")")"
 check "extra_usage high, primaries low -> PROCEED" PROCEED \
@@ -997,7 +1003,7 @@ check "window lift on another account -> INVALID: account" 'usage-lift: INVALID:
 check "window lift on another account, seven_day=90 -> SKIPPED-BANK" SKIPPED-BANK "$(fverdict 10 90)"
 follow_lift "$HA" true '"not-the-operator"'; fcache "$HB" 90 90
 check "standing lift set by another user -> INVALID: set_by" 'usage-lift: INVALID: set_by' "$(fshow | tail -1)"
-check "standing lift set by another user -> SKIPPED-BANK" SKIPPED-BANK "$(CADENCE_USAGE_MAX_PCT='' fverdict 90 90)"
+check "standing lift set by another user -> SKIPPED-BANK" SKIPPED-BANK "$(fverdict 10 90)"
 follow_lift "$HA" true '"unknown"'; fcache "$HB" 90 90
 check "standing lift set_by unknown -> INVALID: set_by" 'usage-lift: INVALID: set_by' "$(fshow | tail -1)"
 follow_lift "$HA" true "$(jq -cn --arg me "$ME" '$me+"\nx"')"; fcache "$HB" 90 90

@@ -6092,7 +6092,8 @@ https://support.claude.com/en/articles/17154008,
 https://code.claude.com/docs/en/headless.md.
 
 **Rule for scripts in this repo:** scheduled or unattended sites route
-through `scripts/lib/usage-preflight.sh` before spending. Headless calls parse
+through `scripts/lib/usage-preflight.sh` before spending; it refuses when either
+window is at or over `CADENCE_USAGE_MAX_PCT` (default 100). Headless calls parse
 the result with `--output-format json` rather than sniffing prose and declare
 an explicit `--permission-mode` (never `bypassPermissions`). These are
 review-enforced conventions, not structural guarantees.

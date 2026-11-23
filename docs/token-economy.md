@@ -26,7 +26,7 @@ can still draw on extra usage if your plan has it turned on.
 
 - **Before it launches.** Every scheduled or armed run, and every worker the
   chief starts, first runs `scripts/lib/usage-preflight.sh`. It refuses to start
-  when either window is at or over the ceiling (`CADENCE_USAGE_MAX_PCT`, 85 % by
+  when either window is at or over the ceiling (`CADENCE_USAGE_MAX_PCT`, 100 % by
   default). Armed runs and workers the chief starts are also refused when
   `HIMMEL_FLEET_CAP` sessions are already running; other scheduled runs check
   only usage. When it cannot read fresh figures it lets the run go ahead and
