@@ -9,10 +9,7 @@
 # HANDOVER_DIR, the report BUCKET resolves via a scratch registry.json
 # (HANDOVER_REGISTRY), and UPSTREAM_WATCH_HIMMEL_ROOT points at an empty dir
 # so send_telegram's .env lookup can never reach the real one (it also doubles
-# as the checkout path matched against the registry). run_watch also scopes
-# HOME and HIMMEL_CONFIG_DIR to the scratch dir and puts a logging curl and a
-# failing secret-tool first on PATH, so no keyring or config-file secret layer
-# can serve a real Telegram token and no message can leave the machine.
+# as the checkout path matched against the registry).
 #
 # bash 3.2-safe: no mapfile, no associative arrays.
 set -uo pipefail
