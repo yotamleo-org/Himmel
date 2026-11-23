@@ -25,8 +25,8 @@ check() { if "${@:2}"; then ok "$1"; else bad "$1"; fi; }
 work=$(mktemp -d "${TMPDIR:-/tmp}/installer-pins.XXXXXX") || exit 1; trap 'rm -rf "$work"' EXIT
 
 # ── Upstream fixtures (real) ────────────────────────────────────────────────
-FIXTURE_BUN_SHASUMS='bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c  bun-linux-x64.zip'
-FIXTURE_UV_SHA256='5acfd9177cfecf0bf87578f059728215ccc884388988f55f7a65041b57387d91  uv-x86_64-unknown-linux-gnu.tar.gz'
+FIXTURE_BUN_SHASUMS='94559b3b528995a49452f9f2404cec74f2efd7d06e0a000a8cd214b02c3666eb  bun-linux-x64.zip'
+FIXTURE_UV_SHA256='a7fbaff2b9a271d85c1bdb540941090fd1ce011797b4abeb48e4dcd39c2471d5  uv-x86_64-unknown-linux-gnu.tar.gz'
 FIXTURE_RTK_CHECKSUMS='0a56f0481565a23922662a8f05a354cc6ae7d0b16b8f7e12a39faf71e8e1694a  rtk_1.2.1-1_amd64.deb'
 FIXTURE_NODE_TARBALL='5c063e46bab0fbc1c17cc445d7ff129cbdcd0471be6ed83b6ab864f8143bc864  node-v26.13.1-linux-x64.tar.xz'
 FIXTURE_NODE_BIN='d931c649850ffa7155b8ceffb400dc916ef325866e509cc52ae36e33e8fbb9a9  node-v26.13.1-linux-x64/bin/node'
@@ -59,8 +59,8 @@ if [ -f "$pins" ]; then
   # shellcheck disable=SC1090
   . "$pins"
   check "uv sha256"            test "${UV_SHA256:-}  uv-x86_64-unknown-linux-gnu.tar.gz" = "$FIXTURE_UV_SHA256"
-  check "uv version 0.13.8"    test "${UV_VERSION:-}" = "0.13.8"
-  check "bun sha256 (1.4.4)"   test "$(bun_sha256 1.4.4 2>/dev/null):  bun-linux-x64.zip" = "${FIXTURE_BUN_SHASUMS%%  *}:  bun-linux-x64.zip"
+  check "uv version 0.13.9"    test "${UV_VERSION:-}" = "0.13.9"
+  check "bun sha256 (1.4.5)"   test "$(bun_sha256 1.4.5 2>/dev/null):  bun-linux-x64.zip" = "${FIXTURE_BUN_SHASUMS%%  *}:  bun-linux-x64.zip"
   check "rtk deb sha256"       test "${RTK_DEB_SHA256:-}  rtk_${RTK_VERSION:-}-1_amd64.deb" = "$FIXTURE_RTK_CHECKSUMS"
   check "node tarball sha256"  test "${NODE_TARBALL_SHA256:-}  node-v${NODE_VERSION:-}-linux-x64.tar.xz" = "$FIXTURE_NODE_TARBALL"
   check "node binary sha256"   test "${NODE_BIN_SHA256:-}  node-v${NODE_VERSION:-}-linux-x64/bin/node" = "$FIXTURE_NODE_BIN"

@@ -23,8 +23,8 @@ NODE_TARBALL_SHA256="5c063e46bab0fbc1c17cc445d7ff129cbdcd0471be6ed83b6ab864f8143
 NODE_BIN_SHA256="d931c649850ffa7155b8ceffb400dc916ef325866e509cc52ae36e33e8fbb9a9"
 
 # uv — GHSA-hq85-5cpj-mr62 is fixed from 0.13.4.
-UV_VERSION="0.13.8"
-UV_SHA256="5acfd9177cfecf0bf87578f059728215ccc884388988f55f7a65041b57387d91"
+UV_VERSION="0.13.9"
+UV_SHA256="a7fbaff2b9a271d85c1bdb540941090fd1ce011797b4abeb48e4dcd39c2471d5"
 
 # Claude Code — the native binary, checksum from the release manifest.
 CLAUDE_VERSION="2.1.330"
@@ -44,6 +44,7 @@ TLA2TOOLS_SHA256="936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e
 bun_sha256() {
   case "$1" in
     1.4.4) echo "bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c" ;;
+    1.4.5) echo "94559b3b528995a49452f9f2404cec74f2efd7d06e0a000a8cd214b02c3666eb" ;;
     *) echo "ERROR: no pinned sha256 for bun $1 — add it to installer-pins.sh after verifying the release on a VM" >&2; return 1 ;;
   esac
 }
