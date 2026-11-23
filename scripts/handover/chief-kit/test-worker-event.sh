@@ -691,7 +691,7 @@ cat > "$W/gh19" <<'EOF19'
 #!/usr/bin/env bash
 case "$*" in
     "repo view --json nameWithOwner"*) echo o/r ;;
-    "repo view --json defaultBranchRef"*) echo main ;;
+    "repo view "*"--json defaultBranchRef"*) echo main ;;
     "pr view "*"--json state,headRefOid,baseRefName"*) printf '{"state":"OPEN","headRefOid":"%s","baseRefName":"main"}\n' "$LE_HEAD19" ;;
     "pr view "*"--json title"*) echo "fix(x): [HIMMEL-1] t (#1)" ;;
     "api repos/"*"/files"*) printf 'scripts/ci/x.sh\t\n' ;;
