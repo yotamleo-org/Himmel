@@ -495,8 +495,8 @@ inbox: it needs a TTY and no `CLAUDECODE`.
 A digest is made by the reader: `claude -p --safe-mode --strict-mcp-config`
 with an empty MCP config, no tools, `--model haiku`, one turn, a 60 s timeout
 that kills the process group, and a 4 kB output cap. It runs only when
-`usage-preflight.sh` returns `PROCEED`, and within 50 runs a day (30 questions,
-10 status, 10 info, and 15 follow-ups). When it is skipped or fails, the digest
+`usage-preflight.sh` returns `PROCEED`, and within 50 runs a day in total, of
+which at most 30 questions, 10 status, 10 info and 15 follow-ups. When it is skipped or fails, the digest
 says so and the message escalates with that reason instead of a summary.
 
 ### Triage and the notify chain

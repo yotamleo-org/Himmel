@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Chain, readChain } from "./chain";
@@ -151,4 +151,13 @@ test("no write calls appendOutboxLine", async () => {
   expect(existsSync(join(S, "sessions"))).toBe(false);
   const src = await Bun.file(join(import.meta.dir, "wake.ts")).text();
   expect(src).not.toContain("appendOutboxLine");
+});
+
+test("an escalation whose append failed is not charged, so a retry on the same Waker appends it", async () => {
+  const { w, recs, S } = setup();
+  writeFileSync(join(S, "notify"), "not a dir");
+  await expect(w.escalate(esc(7))).rejects.toThrow();
+  rmSync(join(S, "notify"));
+  expect(await w.escalate(esc(7))).toBe("escalated");
+  expect(recs().filter(r => r.type === "escalate").map(r => r.message_id)).toEqual([7]);
 });

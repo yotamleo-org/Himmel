@@ -1,9 +1,9 @@
-import { afterAll, expect, test } from "bun:test";
+import { afterAll, expect, spyOn, test } from "bun:test";
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Chain } from "../peer-bridge/chain";
+import * as chainMod from "../peer-bridge/chain";
 import { appendNotify, notifyFile, type NotifyRec } from "../peer-bridge/notify";
 import { readNewLines } from "./bus";
 import { holdingProc, LOCKED_LINE, macProcsFrom, makePeerNotifyFlusher, makePeerReplyRoute, pluginStateDir, PR1_REPLY_LINE, procFromEnv, readBotPids, readCursor, readProcs, readSent, sentDir, type ProcInfo } from "./peer-notify-route";
@@ -40,7 +40,7 @@ function world(over: { procs?: ProcInfo[]; botPids?: number[]; peersChat?: numbe
     access: () => ({ allowFrom: [String(OP_CHAT)] }), peersCfg: () => ({ operatorChatId: over.peersChat ?? OP_CHAT, operatorBotId: over.peersBot ?? OP_BOT }),
     send, procs: () => procs.list, botPids: () => over.botPids ?? [], clock: () => c.t, log: l => logs.push(l),
   });
-  const chain = new Chain();
+  const chain = new chainMod.Chain();
   const add = (rec: NotifyRec) => appendNotify(chain, notifyFile(S), rec);
   const fresh = () => f.notePoll(true);
   return { S, c, f, sent, logs, add, fresh, procs, setScript: (s: (SendResult | "throw")[]) => { script = s; } };
@@ -309,6 +309,21 @@ test("sent-map entries older than 7 days are pruned", async () => {
   w.fresh();
   await w.f.flush();
   expect(fs.readdirSync(sentDir(w.S))).toEqual(["702"]);
+});
+
+test("a record the peer poller appends after verification waits for the next flush", async () => {
+  const w = world();
+  await w.add(wake(1));
+  w.fresh();
+  const real = chainMod.verifyChain;
+  const spy = spyOn(chainMod, "verifyChain").mockImplementation((file, from) => {
+    const r = real(file, from);
+    fs.appendFileSync(file, JSON.stringify({ kind: "notify", type: "wake", peer: "example", root: 2, dir: "in", label: "new question", ts: 1, n: r.n + 1, h: "0".repeat(64) }) + "\n");
+    return r;
+  });
+  try { await w.f.flush(); } finally { spy.mockRestore(); }
+  expect(w.sent).toHaveLength(1);
+  expect(readCursor(w.S).n).toBe(1);
 });
 
 test("flusher writes only cursor and sent map, and logs no text", async () => {

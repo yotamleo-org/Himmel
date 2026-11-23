@@ -120,7 +120,7 @@ export function makePeerNotifyFlusher(deps: FlusherDeps) {
       await deps.send(deps.token, chat, renderChainAlert(check.n + 1), { noPreview: true });
       return;
     }
-    for (const rec of readChain(file).slice(cursor.n) as unknown as (NotifyRec & { n: number; h: string })[]) {
+    for (const rec of readChain(file).slice(cursor.n, check.n) as unknown as (NotifyRec & { n: number; h: string })[]) {
       let rendered: ReturnType<typeof renderNotify> | null = null;
       try { rendered = renderNotify(rec, deps.himmelRoot); } catch { deps.log(`peer-notify: #${rec.n} does not render; skipped`); }
       if (rendered) {

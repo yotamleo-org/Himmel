@@ -90,10 +90,10 @@ export class Waker {
     const now = this.clock();
     const b = this.budget(ev.peer, now);
     if (b.escalated < ESCALATIONS_PER_DAY) {
-      b.escalated += 1;
-      this.charged.set(`${ev.peer}:${ev.message_id}`, "escalated");
       const d = ev.digest;
       await this.append({ kind: "notify", type: "escalate", peer: ev.peer, root: ev.root, dir: ev.dir, message_id: ev.message_id, label: ev.label, ...(ev.replyBy ? { replyBy: ev.replyBy } : {}), summary: d.summary, asks: d.asks, ...(d.reason ? { reason: d.reason } : {}), ts: now });
+      b.escalated += 1;
+      this.charged.set(`${ev.peer}:${ev.message_id}`, "escalated");
       return "escalated";
     }
     if (!b.escWarned) {
