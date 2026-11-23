@@ -61,6 +61,7 @@ if [ "${GH_TOKEN:-}" = "ghp_READTOKEN0123456789" ] && [ -n "${GH_STUB_READFAIL:-
         scope) echo "gh: Resource not accessible by personal access token" >&2 ;;
         auth) echo "gh: HTTP 401: Bad credentials" >&2 ;;
         notfound) echo "gh: HTTP 404: Not Found" >&2 ;;
+        resolve) echo "GraphQL: Could not resolve to a Repository with the name 'o/r'. (repository)" >&2 ;;
         *) echo "gh: HTTP 403: API rate limit exceeded for user" >&2 ;;
     esac
     exit 1
@@ -310,7 +311,25 @@ GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/emptyroot" bash "$HELPER" run v
 check "G1b no read token: the read is counted on main in its REST bucket" "main core" "$(cat "$W/used")"
 : > "$W/used"
 GH_STUB_READFAIL=1 GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" pr view 12 >/dev/null 2>&1
-check "G2 a read retried on main counts both attempts" "read graphql|main graphql" "$(tr '\n' '|' < "$W/used" | sed 's/|$//')"
+check "G2 a read retried on main counts both attempts" "read graphql|main graphql rl pr view 12" "$(tr '\n' '|' < "$W/used" | sed 's/|$//')"
+for g6 in "auth|auth" "notfound|http404" "resolve|notfound" "scope|auth"; do
+    : > "$W/used"
+    GH_STUB_READFAIL="${g6%%|*}" GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" pr view 5765 -R yotamleo-org/Himmel --json headRefOid --jq .headRefOid >/dev/null 2>&1
+    check "G6 a read refused on the read token (${g6%%|*}) is retried on main with its reason and what it read" \
+        "read graphql|main graphql ${g6#*|} pr view 5765 -R yotamleo-org/Himmel" "$(tr '\n' '|' < "$W/used" | sed 's/|$//')"
+done
+: > "$W/used"
+GH_STUB_READFAIL=notfound GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" api "repos/o/r/actions/runs?access_token=ghp_SECRETDUMMY0123456789&per_page=100" --jq '.x' >/dev/null 2>&1
+check "G6b an api read names its path, the token-shaped string masked" \
+    "main core http404 api repos/o/r/actions/runs?access_token=<redacted>&per_page=100" "$(sed -n 2p "$W/used")"
+lacks "G6c no row carries the argv secret" "ghp_SECRETDUMMY" "$(cat "$W/used")"
+: > "$W/used"
+GH_STUB_READFAIL=notfound GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" api "repos/o/r/contents/$(printf 'a%.0s' $(seq 1 200))" >/dev/null 2>&1
+check "G6d the summary is cut at 120 characters" "120" "$(sed -n 2p "$W/used" | cut -d' ' -f4- | tr -d '\n' | wc -c | tr -d ' ')"
+: > "$W/used"
+GH_STUB_READFAIL=notfound GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" api graphql -f query='query { viewer { login } }' >/dev/null 2>&1
+check "G6e a graphql read names only api graphql, never its query" "main graphql http404 api graphql" "$(sed -n 2p "$W/used")"
+check "G6f the read token's own row stays two columns" "read graphql" "$(sed -n 1p "$W/used")"
 : > "$W/used"
 GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" pr comment 12 --body x >/dev/null 2>&1
 GH_READ_OFF=1 GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" pr view 12 >/dev/null 2>&1
