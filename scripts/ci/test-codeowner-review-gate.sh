@@ -241,6 +241,22 @@ expect "no arguments -> ERROR rc 2" error
 OUT=$(node "$GATE" --pr-file "$TMP/does-not-exist.json" --permission-file "$TMP/x" --reviews-file "$TMP/x" --files-file "$TMP/x" --codeowners-file "$TMP/x" 2>&1); RC=$?
 expect "unreadable fixture -> ERROR rc 2 (fail closed, not pass)" error
 
+ownreason() {
+  local first="${OUT%%$'\n'*}"
+  if grepq "$first" -F -- "$2" && { [ -z "${3:-}" ] || [[ "$first" != *"$3" ]]; }; then pass "$1"; else fail "$1 -> first line: $first"; fi
+}
+reset_fx; FX_AUTHOR=yotamleo; FX_PERM='{"permission":"admin","role_name":"admin"}'
+run_gate
+if [ "${OUT%%$'\n'*}" = "codeowner-review-gate: PASS — yotamleo has admin permission — not an outside PR" ]; then pass "OWNREASON-a admin author: the whole first line"; else fail "OWNREASON-a first line: ${OUT%%$'\n'*}"; fi
+reset_fx; FX_REVIEWS="[$(rv yotamleo APPROVED head111)]"
+run_gate; ownreason "OWNREASON-b every owner approved" "codeowner-review-gate: PASS — every required code owner" ""
+reset_fx
+run_gate; ownreason "OWNREASON-owed approvals missing" "code-owner approval at the current head is required from:" ""
+reset_fx; FX_AUTHOR='dependabot[bot]'; FX_TYPE=Bot; FX_PERM='{"permission":"write","role_name":"write"}'
+run_gate
+first="${OUT%%$'\n'*}"
+if [[ "$first" != *"— not an outside PR" ]] && grepq "$first" -F "codeowner-review-gate: FAIL"; then pass "OWNREASON-bot a Bot author never reads as an owner PR"; else fail "OWNREASON-bot first line: $first"; fi
+
 # ---------------------------------------------------------------- part 2
 echo "== part 2: live mode (stub gh) =="
 
