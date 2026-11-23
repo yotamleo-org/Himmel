@@ -251,6 +251,8 @@ Every message the harness sends to Telegram carries a kind, and `scripts/telegra
 
 A message with no kind is an `unclassified` escalate and goes to the operator chat. That is deliberate in one place: `chief-wait.sh` sends a denial page with no kind when it could not write the page record, so a page that could not be remembered is never made quiet. `bypass-launchd.sh` names a kind on every line it sends: `bypass-ask` for the go-or-no ask, `bypass-failed` for a failed launch, and `bypass-result` for every verdict and refusal.
 
+Every `monitor` row also carries an `on-alert` field that says what should happen when a line of that kind arrives. It is one of three entries: `{"do":"repair","verb":…}` runs a repair that already exists, and the verb comes from a two-entry allow-list (`doctor-fix`, `rerun:rollup`) with no free command; `{"do":"escalate","to":"chief"|"operator","reason":…}` hands the line to its owner with the reason no automatic repair is safe; `{"do":"info","why":…}` marks a success or report line that needs no action. A kind whose lines differ carries an ordered list instead: each entry has a `match` regex tried in order, and the last entry has no `match` and is the fallback, so no line of the kind is left unmapped. For `cadence:himmel-doctor` the list is applied to each finding id the line names; for every other kind it is applied to the line text. `test-message-classes.sh` fails a `monitor` row with no valid `on-alert`. Nothing reads the field yet: the alerts watcher that acts on it arrives in a later change.
+
 
 ## Ops runbook
 
