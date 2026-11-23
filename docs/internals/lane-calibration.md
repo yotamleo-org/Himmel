@@ -513,8 +513,9 @@ list none of these models yet. A ⚑ marks a figure that goes against the tier.
 
 The Orchestrator entries (`gemini-pro-orchestrator*`) are Antigravity pairs of a
 planner (Neon by default, or Carbon or Argon) and an executor (Hydrogen). Their
-effort is fixed and cannot be set. Treat one as an Opus-planner and
-Sonnet-executor team, never as a single tier.
+effort is fixed and cannot be set. Treat one as a team, never as a single tier.
+With Carbon or Neon planning it is an Opus planner over a Sonnet executor. The
+Argon-planner variant is unranked, like Argon.
 
 **Picking a model.** Pick the Gemini model the way you would pick the Claude
 tier it maps to. Use Carbon for the one hard call. Google's escalation is to
