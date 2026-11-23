@@ -28,7 +28,7 @@ set -uo pipefail
 # Left side: require `gemini` to be at the start of a word (not part
 # of an identifier like `mygemini`). Match command-position patterns
 # only: `\bgemini\b` followed by space-then-flag.
-PATTERN='(^|[^A-Za-z0-9_-])(gemini|agy)[[:space:]]+(-p|--prompt|--bg)($|[^A-Za-z0-9_-])'
+PATTERN='(^|[^A-Za-z0-9_-])(gemini|agy)(\.exe|\.cmd)?[[:space:]]+(-p|--prompt|--bg)($|[^A-Za-z0-9_-])'
 
 # argv-array spawns keep the flags in a separate array
 # (`spawnSync('gemini', args)`), so PATTERN cannot see `-p`. Parity with the

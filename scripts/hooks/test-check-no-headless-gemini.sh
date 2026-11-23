@@ -269,13 +269,13 @@ case "$msg" in
 esac
 assert_rc "T34 deny message does not name retired no-headless-claude gate" 0 "$rc"
 
-for invocation in 'agy -p "summarize"' 'agy --prompt "summarize"' 'spawn("agy", ["-p", prompt]);' 'spawnSync("agy", ["-p", prompt]);'; do
+for invocation in 'agy -p "summarize"' 'agy --prompt "summarize"' 'spawn("agy", ["-p", prompt]);' 'spawnSync("agy", ["-p", prompt]);' 'agy.exe -p "summarize"' 'agy.cmd --prompt "summarize"' 'gemini.exe -p "summarize"' 'gemini.cmd --prompt "summarize"'; do
     printf '%s\n' "$invocation" > "$TMP/agy.js"
     rc=$(run_hook "agy.js")
-    assert_rc "agy unmarked: $invocation" 1 "$rc"
+    assert_rc "headless unmarked: $invocation" 1 "$rc"
     printf '%s\n' '// headless-gemini-ok: intentional batch fixture' "$invocation" > "$TMP/agy.js"
     rc=$(run_hook "agy.js")
-    assert_rc "agy marked: $invocation" 0 "$rc"
+    assert_rc "headless marked: $invocation" 0 "$rc"
 done
 
 if [ "$FAILED" -gt 0 ]; then
