@@ -55,7 +55,8 @@ template_version: 1
 > acquire`; apply every older-epoch intent the state lists; send the chief
 > `LIVE <doc>`; then run the verb the chief armed you for (STATUS,
 > BURN-DOWN or READY) and send its line. Requests are ruled by `jira release
-> rm-run`, never by you. Then hand off and wrap: there is no standby hold.
+> rm-run`, never by you: `release claim` and `release rule` are parked and
+> refuse. Then hand off and wrap: there is no standby hold.
 
 > **Hand-off:** after the verb, at 45 % context or on HALT, per the skill's hand-off steps.
 > Your handoff file is `<doc stem>-RM-HANDOFF.md`.

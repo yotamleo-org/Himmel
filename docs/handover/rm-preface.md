@@ -34,12 +34,12 @@ missed one. Never poll, never sleep, never wait on a background job.
 
 ## The protocol
 
-- **Requests.** The chief writes each request with `jira release request`
-  first, then sends you `REQ <req-id>`. Claim every open request with
-  `jira release claim`, rule each, and never act on a request you cannot find
-  in the queue.
-- **Rulings.** `jira release rule` writes the signed `intent` row;
-  `jira release apply` runs the validator, reads back and writes `applied`;
+- **Requests.** The chief writes each request with `jira release request`.
+  `jira release rm-run` rules every request by the door's rules.
+  `jira release claim` is parked and refuses, and you never
+  act on a request you cannot find in the queue.
+- **Rulings.** `rm-run` writes the signed `intent` row; `jira release rule`
+  is parked and refuses. `jira release apply` runs the validator, reads back and writes `applied`;
   then the comment, then `receipted`. Every ruling names its verb, outcome,
   class (`current`, `next` or `backlog`), the ticket's sector and its ground.
   A ruling without a sector refuses: ask the chief to set the sector first.
