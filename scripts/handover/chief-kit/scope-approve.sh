@@ -28,6 +28,8 @@ HERE="$(cd "$(dirname "$0")" && pwd -P)"
 # shellcheck source=../../lib/git-clean.sh
 . "$HERE/../../lib/git-clean.sh"
 git_env_scrub
+# shellcheck source=../../lib/timeout-bin.sh
+. "$HERE/../../lib/timeout-bin.sh"
 common="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"  # swallow-ok: an unreadable common dir falls back to the checkout this script sits in
 PRIMARY="${common%/.git}"
 [ -n "$PRIMARY" ] && [ "$PRIMARY" != "$common" ] || PRIMARY="$(cd "$HERE/../../.." && pwd -P)"
@@ -99,7 +101,7 @@ nd_run() {
     ND_OUT="$(bash "$ND" --no-classify --mirror "$MIRROR" --why-ticket "$1" 2>/dev/null)"; ND_RC=$?  # swallow-ok: the exit code is read next: only 0 or 1 is ever read as an answer
 }
 scope_line_of() { printf '%s\n' "$ND_OUT" | grep -m1 -- "^# scope $1 " || true; }  # swallow-ok: no scope line is the empty answer
-has_gate() { printf '%s\n' "$ND_OUT" | grep -q -- "^GATE $1 no-scope:"; }
+has_gate() { grep -q -- "^GATE $1 no-scope:" <<< "$ND_OUT"; }
 sorted_set() { tr ',' '\n' | sed '/^$/d' | LC_ALL=C sort -u | tr '\n' ','; }
 
 row_json() { jq -sc ".[$1]" "$bf"; }
@@ -119,14 +121,14 @@ path_ok() {
     t="$(git -C "$REPO" cat-file -t "origin/main:$p" 2>/dev/null || true)"  # swallow-ok: a missing object is the empty type, which path_ok reads as absent
     [ "$t" != blob ] || return 0
     [ -z "$t" ] || return 1
-    printf '%s\n' "$newl" | grep -qxF -- "$p" || return 1
+    grep -qxF -- "$p" <<< "$newl" || return 1
     parent="$(dirname "$p")"
     if [ "$parent" = . ]; then t="$(git -C "$REPO" cat-file -t "origin/main^{tree}" 2>/dev/null || true)"  # swallow-ok: a failed read leaves the type empty, which is not tree: the path is refused
     else t="$(git -C "$REPO" cat-file -t "origin/main:$parent" 2>/dev/null || true)"; fi  # swallow-ok: a failed read leaves the type empty, which is not tree: the path is refused
     [ "$t" = tree ]
 }
 
-sidecar_has() { cat "$bd"/*.posted 2>/dev/null | grep -q -- "^$1 "; }
+sidecar_has() { grep -qs -- "^$1 " "$bd"/*.posted; }
 marker_in_mirror() { grep -q -- "^readiness: scope-batch $2 approved by" "$MIRROR/$1.md" 2>/dev/null; }
 
 post_check() {
@@ -149,7 +151,7 @@ writes_of_row() { printf '%s' "$1" | jq -r '.writes[]'; }
 if [ "$mode" = verify ]; then
     [ -s "$sidecar" ] || { echo "scope-approve: no $sidecar, nothing to verify" >&2; exit 2; }
     id="$first_batch"
-    if ! timeout 300 node "$CLI" mirror --root "$MIRROR" > "$T/mirror.out" 2>&1; then refresh_failed=1; else refresh_failed=0; fi
+    if ! ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 300} node "$CLI" mirror --root "$MIRROR" > "$T/mirror.out" 2>&1; then refresh_failed=1; else refresh_failed=0; fi
     while IFS= read -r skey; do
         [ -n "$skey" ] || continue
         i=0; found=""
@@ -167,7 +169,7 @@ else
     while [ "$i" -lt "$nrows" ]; do
         rj="$(row_json "$i")"; i=$((i + 1))
         key="$(printf '%s' "$rj" | jq -r 'try (.key | tostring) catch "?"')"
-        if ! shape_ok "$rj" || printf '%s\n' "$dup_keys" | grep -qxF -- "$key"; then word REFUSED "$key" shape; continue; fi
+        if ! shape_ok "$rj" || grep -qxF -- "$key" <<< "$dup_keys"; then word REFUSED "$key" shape; continue; fi
         id="$(printf '%s' "$rj" | jq -r '.batch')"
         approve="$(printf '%s' "$rj" | jq -r '(.approve // "") | tostring')"
         writes="$(writes_of_row "$rj")"
@@ -192,7 +194,7 @@ else
             say "WOULD-POST $key"; sed 's/^/  | /' "$T/lines.$key"; n_wouldpost=$((n_wouldpost + 1)); continue
         fi
         jq -Rn '{type: "doc", version: 1, content: [inputs | {type: "paragraph", content: [{type: "text", text: .}]}]}' < "$T/lines.$key" > "$T/adf.$key.json"
-        post_out="$(timeout -k 2 "$POST_TIMEOUT" node "$CLI" comment "$key" --adf-file "$T/adf.$key.json" --print-id 2> "$T/post.err")"; post_rc=$?
+        post_out="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$POST_TIMEOUT"} node "$CLI" comment "$key" --adf-file "$T/adf.$key.json" --print-id 2> "$T/post.err")"; post_rc=$?
         now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         if [ "$post_rc" = 0 ] && [ -n "${post_out//[[:space:]]/}" ]; then
             printf '%s %s\n' "$key" "$now" >> "$sidecar"
@@ -210,7 +212,7 @@ else
         exit 0
     fi
     if [ -s "$T/posted.keys" ]; then
-        if timeout 300 node "$CLI" mirror --root "$MIRROR" > "$T/mirror.out" 2>&1; then refresh_failed=0; else refresh_failed=1; fi
+        if ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 300} node "$CLI" mirror --root "$MIRROR" > "$T/mirror.out" 2>&1; then refresh_failed=0; else refresh_failed=1; fi
         while IFS= read -r pkey; do
             if [ "$refresh_failed" = 1 ]; then word UNKNOWN "$pkey" "(mirror refresh failed)"; continue; fi
             post_check "$pkey" "$(cat "$T/id.$pkey")" "$(cat "$T/writes.$pkey")"
