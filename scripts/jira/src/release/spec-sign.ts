@@ -484,7 +484,6 @@ export function specSigner(ctx: Ctx, o: { signer: 'chief' | 'operator'; keys?: s
   });
 }
 
-/** What a mark tells the operator: each marked key's path-independent bypass, and every live, fresh spec row the mark voids. */
 function markNotes(ctx: Ctx, marked: string[], s: SignerState, now: string): string[] {
   const snaps = readMirrorFilesUnverified(ctx.mirrorRoot).issues;
   const snapshots = readOperatorRecords('core-snapshot', ctx.env);
@@ -584,14 +583,12 @@ function liveOf(rows: ReleaseRecord[]): { live: ReleaseRecord[]; newest: (k: str
   return { live, newest: (k: string) => live.filter((r) => r.keys?.includes(k)).at(-1) };
 }
 
-/** The tickets a spec row covers, its keys and its spec's header tickets; null when the spec bytes changed after the row. */
 function coveredBy(r: OperatorRow): string[] | null {
   const pin = r.spec_path ? pinnedSha(r.spec_path) : null;
   if (!pin || !('bytes' in pin) || pin.sha256 !== r.spec_sha256) return null;
   return [...new Set([...(r.keys ?? []), ...headerTickets(pin.bytes.toString('utf8'))])];
 }
 
-/** Whether v's own newest live, fresh spec row is the operator's signature of v on the same spec bytes as r. */
 function operatorSignedFor(r: OperatorRow, v: string, newest: ((k: string) => ReleaseRecord | undefined) | undefined): boolean {
   if (r.keys?.includes(v) || !newest) return false;
   const own = newest(v);
