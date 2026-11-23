@@ -476,22 +476,40 @@ Google also links a
 on prompting and multi-agent patterns. It renders only in a browser, so it is
 not folded in yet.
 
-**Claude tiers (Decision 1325): Carbon = Opus, Neon = Sonnet, Hydrogen = Haiku.**
-Argon and 3.8 Flash have no ruling. Most benchmark figures below are Google's
-own model-card numbers. Artificial Analysis (Neon) and Vals (Argon) are the
-independent runs. The mapping says which Claude tier's work a
+**Claude tiers (Decision 1328): Carbon = Opus, Neon = Opus, Hydrogen = Sonnet.**
+Argon and 3.8 Flash stay unranked. The mapping says which Claude tier's work a
 Gemini model fits. It does not make Gemini an implementation lane: ruling 34
 keeps implementation on Claude tiers until the operator rules otherwise.
-The evidence column records where the sources disagree with the ruling. The
-ruling still binds.
 
-| Model | Claude tier | Evidence for the tier | `thought_level` (default) |
+| Model | Claude tier | Benchmark verdict (vs the same-tier Claude 5.5 model) | `thought_level` (default) |
 |---|---|---|---|
-| [`gemini-4-carbon`](https://aistudio.google.com/docs/whats-new-gemini-4-carbon) | Opus | Agrees. Google calls it its "strongest reasoning model". Antigravity offers it as a planner beside Opus 5.5. It scores level with Opus 5.5 on the [Artificial Analysis](https://artificialanalysis.ai/) index | low, **medium**, high |
-| [`gemini-4-neon`](https://aistudio.google.com/docs/whats-new-gemini-4-neon) | Sonnet | **Disagrees on capability.** Price ($3/$15) and Google's "between Hydrogen and Carbon" fit Sonnet. But its [model card](https://deepmind.google/models/model-cards/gemini-4-neon/) reports it ahead of Opus 5.5 on 11 of 13 benchmarks, Artificial Analysis also ranks it level with Opus, and Antigravity makes it the default planner, the slot Opus 5.5 can take | low, medium, **high**, xhigh |
-| [`gemini-4-argon`](https://aistudio.google.com/docs/whats-new-gemini-4-argon) | unranked | **Evidence says Sonnet.** On [Vals](https://www.vals.ai/) it is close to Sonnet 5.5 on knowledge work and behind it on coding (Terminal-Bench 4.0 57.6 vs 64.1). Its [model card](https://deepmind.google/models/model-cards/gemini-4-argon/) puts it below Opus 5.5. It costs the same per token as Carbon and thinks less per turn | low, **medium**, high |
-| [`gemini-4-hydrogen`](https://aistudio.google.com/docs/whats-new-gemini-4-hydrogen) | Haiku | **Disagrees on role.** It is the cheapest of the four. But its [model card](https://deepmind.google/models/model-cards/gemini-4-hydrogen/) compares it with Sonnet 5.5, not Haiku: it wins 7 of 10 rows but trails on coding (Terminal-Bench 4.1 57.0 vs 63.9). Antigravity makes it the default executor, the slot Sonnet 5.5 can take | low, medium, **high**, xhigh |
-| [`gemini-3.8-flash`](https://aistudio.google.com/docs/whats-new-gemini-3.8) | unranked | **Evidence weakly says Haiku.** Its [model card](https://deepmind.google/models/model-cards/gemini-3-8-flash/) compares it only with the previous Claude generation, never the 5.5 models. Google names Hydrogen as its upgrade, so it sits below a model that already trails Sonnet 5.5 | low, **medium**, high |
+| [`gemini-4-carbon`](https://aistudio.google.com/docs/whats-new-gemini-4-carbon) | Opus | Holds. Level with or ahead of Opus 5.5 on 4 of 6. Behind on FrontierCode and Arena WebDev | low, **medium**, high |
+| [`gemini-4-neon`](https://aistudio.google.com/docs/whats-new-gemini-4-neon) | Opus | Holds overall. Level with or ahead of Opus 5.5 on 4 of 6. Behind on Arena WebDev, where it also trails Sonnet 5.5, and slightly behind on FrontierCode | low, medium, **high**, xhigh |
+| [`gemini-4-hydrogen`](https://aistudio.google.com/docs/whats-new-gemini-4-hydrogen) | Sonnet | Holds overall (AA index 54 vs 55). Ten points behind Sonnet 5.5 on Terminal-Bench, so keep agentic coding on Sonnet-or-better | low, medium, **high**, xhigh |
+| [`gemini-4-argon`](https://aistudio.google.com/docs/whats-new-gemini-4-argon) | unranked | Lands at Sonnet overall (Vals index within 1.5 points), and below Sonnet on coding. If it is ever ranked, rank it Sonnet, not Opus | low, **medium**, high |
+| [`gemini-3.8-flash`](https://aistudio.google.com/docs/whats-new-gemini-3.8) | unranked | Not enough data. The only same-generation figure is Arena Text, nothing against Sonnet 5.5 | low, **medium**, high |
+
+**Benchmarks behind the tiers.** These come from independent runs only:
+- [Artificial Analysis](https://artificialanalysis.ai/models) (AA): Intelligence Index v5.0.1, each model at its top effort.
+- [Vals](https://www.vals.ai/).
+- [Arena](https://arena.ai/leaderboard).
+
+Vendor model-card numbers and price are left out. AA and Vals show no run date,
+so their figures are as retrieved on 2026-11-23. The Arena snapshots are dated
+2026-11-22 (Text) and 2026-11-23 (WebDev). SWE-bench, GPQA Diamond and ARC-AGI
+list none of these models yet. A ⚑ marks a figure that goes against the tier.
+
+| Benchmark | Carbon / Opus 5.5 | Neon / Opus 5.5 | Hydrogen / Sonnet 5.5 | Argon / Sonnet 5.5 / Opus 5.5 |
+|---|---|---|---|---|
+| AA Intelligence Index | 60 / 59 | 61 / 59 | 54 / 55 | 50 / 55 / 59 |
+| Terminal-Bench 4.0 (AA) | 65.2 / 59.6 | 63.6 / 59.6 | 53.5 / 63.6 ⚑ | 57.1 / 63.6 / 59.6 |
+| FrontierCode-AA 2.0 | 40.6 / 46.4 ⚑ | 44.4 / 46.4 ⚑ | 39.0 / 41.7 | |
+| HLE-Diamond (AA) | 69.1 / 67.9 | | 58.8 / 53.3 | |
+| AutomationBench-AA | | 79.3 / 69.5 | 76.1 / 71.8 | |
+| Vals Index | | | | 69.4 / 70.9 / 70.1 |
+| Code Migration v1.1 (Vals) | | | | 70.8 / 86.9 / 81.0 |
+| Arena WebDev | 1769 / 1820 ⚑ | 1765 / 1820 ⚑ | 1701 / 1715 | |
+| Arena Text | 1527 / 1507 | 1512 / 1507 | | 1520 / — / 1507 |
 
 The Orchestrator entries (`gemini-pro-orchestrator*`) are Antigravity pairs of a
 planner (Neon by default, or Carbon or Argon) and an executor (Hydrogen). Their
