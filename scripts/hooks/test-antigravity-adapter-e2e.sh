@@ -70,12 +70,12 @@ run_adapter() {
 assert_pass() {
     local label="$1" json="$2"
     shift 2
-    local out rc
-    out="$(run_adapter "$json" "$@")"; rc=$?
-    if [ "$rc" -eq 0 ] && [ -z "$out" ]; then
+    local rc
+    run_adapter "$json" "$@" >"$TMP/last.out"; rc=$?
+    if [ "$rc" -eq 0 ] && [ ! -s "$TMP/last.out" ]; then
         ok "$label"
     else
-        bad "$label (rc=$rc stdout=<$out> stderr=<$(cat "$TMP/last.err")>)"
+        bad "$label (rc=$rc stdout=<$(cat "$TMP/last.out")> stderr=<$(cat "$TMP/last.err")>)"
     fi
 }
 
