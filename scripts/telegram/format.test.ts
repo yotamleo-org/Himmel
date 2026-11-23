@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { toTelegramHtml } from "./format";
+import { toTelegramHtml } from "./telegram-api";
 
 test("markdown marks render as entities: bold, inline code, bullet lists", () => {
   expect(toTelegramHtml("Needs you: **approve** the sign-in\n\n- first `a b`\n- second\n1. one\n2. two"))

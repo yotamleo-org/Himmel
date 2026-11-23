@@ -4,11 +4,10 @@ import { tmpdir } from "node:os";
 import { join, basename, resolve } from "node:path";
 import { classify } from "./router";
 import { BASH_BIN, buildPrompt } from "./run";
-import { sendMessage } from "./telegram-api";
+import { sendMessage, toTelegramHtml } from "./telegram-api";
 import { appendLine, ensureSession, writeMeta, sessionDir } from "./bus";
 import { handleInbound, replyViaOutbox, flushOutboxes, ingestUpdates, makeRunFn } from "./poller";
 import { consoleInboxPath, foldLine, renderMarkdownHtml, splitParts, type ConsoleRouteGate } from "./chief-route";
-import { toTelegramHtml } from "./format";
 
 // Every test runs against a scratch bridge root and a fake reply
 // seam, never the real ~/.claude/handover/bridge, never Telegram.
