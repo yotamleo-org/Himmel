@@ -374,9 +374,17 @@ if [ -n "$REALNODE" ] && { command -v timeout >/dev/null 2>&1 || command -v gtim
         fail "appended record for another key -> calls=$n10 o9='$o9' o10='$o10'"
     fi
 
+    printf '%s\n' '{"ts":"2026-01-03T12:00:00Z","source":"jira","key":"HIMMEL-\u0035\u0033\u0038","kind":"ticket","status":"done"}' >> "$ALEDGER"
+    o10b="$(crun "$ADIR" "$ALEDGER")"; n10b="$(calls)"
+    if [ "$n10b" = 2 ] && grepq "$o10b" -F 'done'; then
+        pass "appended record naming this key through a \\u escape -> cache miss, new status shown"
+    else
+        fail "appended record naming this key through a \\u escape -> calls=$n10b o10b='$o10b'"
+    fi
+
     printf '%s' '{"ts":"2026-01-04T00:00:00Z","source":"jira","key":"HIMMEL-998"' >> "$ALEDGER"
     crun "$ADIR" "$ALEDGER" >/dev/null; n11="$(calls)"
-    if [ "$n11" = 2 ]; then
+    if [ "$n11" = 3 ]; then
         pass "torn appended tail -> cache miss, node runs"
     else
         fail "torn appended tail -> calls=$n11"

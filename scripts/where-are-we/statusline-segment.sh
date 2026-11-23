@@ -149,6 +149,7 @@ if [ -n "$node_bin" ] && [ -f "$ledger" ] && [ -n "$seg_to" ]; then
                 added="$(tail -c +"$(( osize + 1 ))" "$ledger" 2>/dev/null | head -c "$(( lsize - osize ))"; printf x)"
                 added="${added%x}"
                 if [ "${#added}" -gt 0 ] && [ "${added: -1}" = $'\n' ] && [[ "$added" != *"\"$key\""* ]] \
+                   && [[ "$added" != *'\u'* ]] \
                    && . "$ROOT/scripts/lib/prim.sh" 2>/dev/null; then
                     hit=1
                     printf '%s\n%s\n' "$stamp" "$old" | atomic_write "$slice_cache" 2>/dev/null || true
