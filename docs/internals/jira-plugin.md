@@ -437,7 +437,7 @@ leftovers stay in the chain's version and no INTAKE is queued. A closed parent t
 whose version is frozen, or that cannot be read: no version, the request is the backlog one and the why says the
 parent is closed. A parent in a frozen current version: the
 request still asks for that version and the why says it is frozen; the release manager rules on the frozen intake,
-and the filing never routes around it (operator decisions 383, 489 and 512). The ticket's own fixVersion is not written. An open
+and the filing never routes around it (operator decisions 383, 489 and 512). An INTAKE-only follow-up writes no fixVersion of its own (the closed-parent case above does). An open
 parent with no current version, or a parent that cannot be read (a warning on stderr), leaves the request as before:
 no version, filed to the backlog. A caller's own `--fix-version`, `--backlog`, `--proposed-version` or `--why` wins
 and skips the read, and `--blocks`/`--split-from` place the ticket in the target's version, so no request is queued.
