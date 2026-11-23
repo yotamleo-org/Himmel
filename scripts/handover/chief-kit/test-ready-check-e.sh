@@ -99,6 +99,9 @@ path_without() {
     printf '%s' "$d"
 }
 
+printf "console.log('codeowner-review-gate: PASS — yotamleo has admin permission — not an outside PR');\n" > "$tmp/or-gate-owner.mjs"
+export STUB_OR_GATE_FILE="$tmp/or-gate-owner.mjs"
+
 # T1.3/T1.3b: the base ready-check's output on this fixture, captured before item 16 existed
 GOLD_MEMBER="[PASS] 1. head=$SHA matches, mergeStateStatus=CLEAN
 [PASS] 2. statusCheckRollup: 2/2 checks completed SUCCESS/SKIPPED/NEUTRAL
@@ -119,6 +122,7 @@ GOLD_MEMBER="[PASS] 1. head=$SHA matches, mergeStateStatus=CLEAN
 [PASS] 20. conflicts resolved: no hand-resolved merge conflict in origin/main..${SHA:0:7}
 ---
 The three-dot diff read (git diff origin/main...HEAD) stays the chief's own judgement — this script does not read it.
+owner-review: not-required (rule-a: yotamleo has admin permission; check at head: none)
 TRUST-PATH: no
 READY-CHECK PASS
 rc=0"

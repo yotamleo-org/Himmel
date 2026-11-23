@@ -84,6 +84,7 @@ FHEAD=1080d424a81d7cb754e1abd312fa3d87467863b7
 SHA=$(ready_pass_repo "$REPO") || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 SHA2=$(ready_pass_repo "$REPO" 2) || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 export READY_STUB_HEAD="$SHA" READY_STUB_BRANCH="$BR"
+check "ready-check's owner-review line over the ready-pass fixture" "$(ready_pass_owner_review)" "$READY_PASS_OWNER_LINE"
 # ready-check reads the branch from the GraphQL snapshot; a branch other than the fixture's keeps the earlier-head
 # fixture deferral out of its items 7 and 18, so this suite exercises only cr-disposition.sh's own gate
 export READY_STUB_GQL_BRANCH=gql-other

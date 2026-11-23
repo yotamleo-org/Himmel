@@ -205,6 +205,7 @@ ready_pass_origin "$READY_REPO" "$JUDGED"
 SHA=$(ready_pass_repo "$READY_REPO") || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 SHA2=$(ready_pass_repo "$READY_REPO" 2) || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 export READY_STUB_HEAD="$SHA" READY_STUB_BRANCH=b
+check "ready-check's owner-review line over the ready-pass fixture" "$(ready_pass_owner_review)" "$READY_PASS_OWNER_LINE"
 printf 'more\n' >> "$READY_REPO/docs/c.md"; rgit add -A && rgit commit -qm docs
 NDOC=$(rgit rev-parse HEAD)
 rgit checkout -q -b trust "$JUDGED"
@@ -870,7 +871,7 @@ ttrun() {
         GH_STUB_DELEGATE="$tmp/ttdelegate" GH_STUB_READ_TOKEN="$TTREAD" GHLOG="$TTLOG" \
         bash "${AG_SCRIPT:-$SCRIPT}" --doc "$CHIEF" --fleet "$FLEET" --worker N1 --dry-run 77 "$SHA" 2>&1); RC=$?
 }
-tt_main_reads_besides_the_crd_branch_read() { grep '^tok=main ' "$TTLOG" | grep -vc 'argv=pr view 77 --json headRefName -q .headRefName'; }
+tt_main_reads_besides_the_crd_branch_read() { grep '^tok=main ' "$TTLOG" | grep -vc -e 'argv=pr view 77 --json headRefName -q .headRefName' -e 'argv=api repos/{owner}/{repo}/branches/main/protection/required_status_checks'; }
 ttrun "$tmp/ttroot" GH_STUB_MAINFAIL=rate GH_STUB_MAINFAIL_BUCKET=core
 check    "8691 main REST core spent: exit 0" "$RC" "0"
 check    "8691 main REST core spent: exactly WOULD-GO <pr> <head>" "$OUT" "WOULD-GO 77 $SHA"
@@ -884,8 +885,9 @@ check    "8691 main REST core spent: the commit list read logs tok=read" "$(ttse
 ttrun "$tmp/ttroot" GH_STUB_MAINFAIL=rate
 check    "8691 main spent in every bucket, read token alive: exit 0" "$RC" "0"
 check    "8691 main spent in every bucket, read token alive: exactly WOULD-GO <pr> <head>" "$OUT" "WOULD-GO 77 $SHA"
+check    "8691 main spent in every bucket: the classic-protection read is the one main call, once" "$(grep -cF 'tok=main argv=api repos/{owner}/{repo}/branches/main/protection/required_status_checks' "$TTLOG")" "1"
 check    "8691 main spent in every bucket: cr-disposition's branch read logs tok=read" "$(ttseen '^tok=read argv=pr view 77 --json headRefName -q .headRefName')" "yes"
-check    "8691 main spent in every bucket: no read rides the main token" "$(grep -c '^tok=main ' "$TTLOG")" "0"
+check    "8691 main spent in every bucket: no read rides the main token" "$(grep '^tok=main ' "$TTLOG" | grep -vc 'argv=api repos/{owner}/{repo}/branches/main/protection/required_status_checks')" "0"
 ttrun "$tmp/emptyroot"
 check    "8691 control, no read token: exit 0" "$RC" "0"
 check    "8691 control, no read token: exactly WOULD-GO <pr> <head>" "$OUT" "WOULD-GO 77 $SHA"
