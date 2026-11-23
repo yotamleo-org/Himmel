@@ -5071,6 +5071,115 @@ z8="$(z_run --workers-from "$Z_DIR/HIMMEL-nextleg-2026-11-22ZA-own-chief.fleet.j
 has "10557 Z8.lim: another chain's scope-less worker does not hold its Ticket-line key here" "$z8" "RESUME${TAB}HIMMEL-96"
 z_orphan Z8.lim "$z8"
 
+PD="$WORK/nd10257"; PDM="$PD/m/HIMMEL"; PDB="$PD/b"; mkdir -p "$PDM" "$PDB" "$PD/rel"
+printf 'v1.0.1\tfalse\t\n' > "$PD/m/HIMMEL.versions.tsv"
+(
+    M="$PDM"
+    mk "$KP-9701" "In Progress" Highest '[]' '["v1.0.1"]' '[]' "owed proof only" "Edit scripts/lib/pd-9701.sh."
+    mk "$KP-9702" "In Progress" Highest '[]' '["v1.0.1"]' '[]' "gated on a chief question" "Edit scripts/lib/pd-9702.sh."
+    mk "$KP-9703" "In Progress" High '[]' '["v1.0.1"]' '[]' "done on main" "Edit scripts/lib/pd-9703.sh."
+    mk "$KP-9704" "In Progress" High '[]' '["v1.0.1"]' '[]' "true remainder" "Edit scripts/lib/pd-9704.sh."
+    mk "$KP-9705" "In Progress" Medium '[]' '["v1.0.1"]' '[]' "gated by a readiness c row" "Edit scripts/lib/pd-9705.sh."
+    mk "$KP-9706" "To Do" Medium '[]' '["v1.0.1"]' '[]' "the open blocker of 9705" "Edit scripts/lib/pd-9706.sh."
+    mk "$KP-9707" "In Progress" Low '[]' '["v1.0.1"]' '[]' "owed proof plus a remainder" "Edit scripts/lib/pd-9707.sh."
+)
+printf '# chief\n\n## Live state\n\npool-disposition: %s question decision 977\n' "$KP-9702" > "$PDB/chief.md"
+mkfleet "$PDB/fleet.json"
+bash "$HERE/owe.sh" add --bucket "$PDB" --chief fixture --kind proof --key "$KP-9701" --text 'run the 11-16 replay' >/dev/null \
+    || fail "10257: could not seed the owed proof of 9701"
+bash "$HERE/owe.sh" add --bucket "$PDB" --chief fixture --kind proof --key "$KP-9707" --text 'run the reader replay' >/dev/null \
+    || fail "10257: could not seed the owed proof of 9707"
+mkdir -p "$PD/st/workers" "$PD/state"
+printf '{"ts":"t","event":"merge","key":"%s","pr":"5707","contract":"no","result":"noop"}\n' "$KP-9707" > "$PD/st/status-events.jsonl"
+printf 'Slice one.\n\nRemaining: the reader half\n' > "$PR_BODY_DIR/5707"
+HIMMEL_RELEASE_STATE_DIR="$PD/rel" bash "$HERE/readiness.sh" append v1.0.1 "$KP-9705" c --evidence fixture --blocker "$KP-9706" --by fixture --mirror "$PDM" >/dev/null 2>&1 \
+    || fail "10257: could not seed the readiness c row"
+PDG="$PD/git"; mkdir -p "$PDG"
+git -C "$PDG" init -q -b main && git -C "$PDG" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m "fix(x): [$KP-9703] the last slice" \
+    || fail "10257: could not build the fixture main"
+cat > "$PD/jira" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$PD_JIRA_LOG"
+[ "$1" = get ] && printf '%s\tTask\tTo Do\tstub\n' "$2"
+EOF
+chmod +x "$PD/jira"; export PD_JIRA_LOG="$PD/jira.log"; : > "$PD_JIRA_LOG"
+pd_run() { HIMMEL_RELEASE_STATE_DIR="${PD_REL:-$PD/rel}" TICK_STATE_DIR="$PD/state" NEXT_DISPATCH_GIT_DIR="$PDG" NEXT_DISPATCH_JIRA_CMD="$PD/jira" NEXT_DISPATCH_MIRROR="$PDM" NEXT_DISPATCH_GH_CMD="$WORK/gh" \
+    bash "$SUT" --resume-only --top 40 --doc "$PDB/chief.md" --workers-from "$PDB/fleet.json" --workers-dir "$PD/st/workers" 2>/dev/null; }
+pd_hash() { python3 -I -c 'import hashlib, sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest()[:12])' "$1"; }
+pd_live() { printf '# chief\n\n## Live state\n\n' > "$PDB/chief.md"; printf 'pool-disposition: %s\n' "$@" >> "$PDB/chief.md"; }
+pd0="$(pd_run)"
+has "10257: an owed proof on a ticket with nothing on main stays RESUME" "$pd0" "RESUME${TAB}$KP-9701${TAB}"
+git -C "$PDG" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m "fix(x): [$KP-9701] the code slice" \
+    || fail "10257: could not land the owed ticket's slice"
+pd1="$(pd_run)"
+has "10257: the true remainder is RESUME" "$pd1" "RESUME${TAB}$KP-9704${TAB}"
+has "10257: an owed proof on a ticket with a recorded remainder stays RESUME" "$pd1" "RESUME${TAB}$KP-9707${TAB}"
+lacks "10257: an owed-proof-only ticket fills no RESUME slot" "$pd1" "RESUME${TAB}$KP-9701${TAB}"
+lacks "10257: a ticket gated on a chief question fills no RESUME slot" "$pd1" "RESUME${TAB}$KP-9702${TAB}"
+lacks "10257: a done-on-main ticket fills no RESUME slot" "$pd1" "RESUME${TAB}$KP-9703${TAB}"
+lacks "10257: a ticket a live readiness c row gates fills no RESUME slot" "$pd1" "RESUME${TAB}$KP-9705${TAB}"
+check "10257: the owed-proof ticket prints as # pool-owed" "1" "$(printf '%s\n' "$pd1" | grep -c "^# pool-owed $KP-9701 open owed proof o1: run the 11-16 replay\$")"
+check "10257: the chief question prints as # pool-gated with its gate named" "1" "$(printf '%s\n' "$pd1" | grep -c "^# pool-gated $KP-9702 pool-disposition question decision 977\$")"
+check "10257: the readiness c row prints as # pool-gated with its blocker named" "1" "$(printf '%s\n' "$pd1" | grep -c "^# pool-gated $KP-9705 readiness c blocker=$KP-9706\$")"
+check "10257: the done-on-main ticket prints as # pool-done-candidate" "1" "$(printf '%s\n' "$pd1" | grep -c "^# pool-done-candidate $KP-9703 ")"
+lacks "10257: the dispatcher writes no Jira status" "$(cat "$PD/jira.log")" "transition"
+printf '# chief\n\n## Live state\n\nlegs: none\n' > "$PDB/chief.md"
+pd2="$(pd_run)"
+lacks "10257: a cleared gate leaves no # pool-gated line" "$pd2" "# pool-gated $KP-9702"
+check "10257: a cleared gate returns the ticket to RESUME at its old rank, ahead of the lower-priority remainder" \
+    "$KP-9702 $KP-9704 $KP-9707" "$(printf '%s\n' "$pd2" | awk -F'\t' '$1 == "RESUME" {printf "%s%s", s, $2; s=" "}')"
+pd_live "$KP-9702 question decision 977" "$KP-9702 slice PR 5800"
+has "10257: the newest pool-disposition line of a key replaces its older gate" "$(pd_run)" "RESUME${TAB}$KP-9702${TAB}"
+pd_live "$KP-9702 hold until the release settles"
+has "10257: a hold line naming no ticket, PR or decision gates nothing" "$(pd_run)" "RESUME${TAB}$KP-9702${TAB}"
+printf '{"rows":[{"key":"%s","line":"%s","class":"authority"}]}\n' "$KP-9702" "$(pd_hash "$KP-9702 hold until the release settles")" > "$PD/state/pool-holds-chief.json"
+check "10257: a hold line the tick's holds run grants authority gates the ticket" "1" \
+    "$(pd_run | grep -c "^# pool-gated $KP-9702 pool-disposition hold until the release settles\$")"
+printf '{"rows":[{"key":"%s","line":"%s","class":"no-authority"}]}\n' "$KP-9702" "$(pd_hash "$KP-9702 hold until the release settles")" > "$PD/state/pool-holds-chief.json"
+has "10257: a hold line the tick's holds run finds without authority gates nothing" "$(pd_run)" "RESUME${TAB}$KP-9702${TAB}"
+printf 'not json\n' > "$PD/state/pool-holds-chief.json"
+has "10257: an unreadable holds file grants no authority" "$(pd_run)" "RESUME${TAB}$KP-9702${TAB}"
+rm -f "$PD/state/pool-holds-chief.json"
+pd_live "$KP-9702 hold waits on PR 5801"
+check "10257: a hold on an open PR gates the ticket" "1" "$(pd_run | grep -c "^# pool-gated $KP-9702 pool-disposition hold waits on PR 5801\$")"
+printf '{"rows":[{"key":"%s","line":"%s","class":"no-authority"}]}\n' "$KP-9702" "$(pd_hash "$KP-9702 hold waits on PR 5801")" > "$PD/state/pool-holds-chief.json"
+has "10257: a hold on an open PR the tick's holds run finds without authority gates nothing" "$(pd_run)" "RESUME${TAB}$KP-9702${TAB}"
+rm -f "$PD/state/pool-holds-chief.json"
+pd_live "$KP-9702 question decision 977"
+printf 'CLOSE-OR-DISPATCH %s fixture drift\n' "$KP-9702" > "$PDB/focus-drift.txt"
+has "10257: a sole question decision on a key with a CLOSE-OR-DISPATCH drift row gates nothing" "$(pd_run)" "RESUME${TAB}$KP-9702${TAB}"
+rm -f "$PDB/focus-drift.txt"
+mkdir -p "$PD/rel-dec"
+HIMMEL_RELEASE_STATE_DIR="$PD/rel-dec" bash "$HERE/readiness.sh" append v1.0.1 "$KP-9705" c --evidence fixture --blocker 977 --by fixture --mirror "$PDM" >/dev/null 2>&1 \
+    || fail "10257: could not seed the decision-blocker readiness row"
+check "10257: a readiness c row naming a bare decision gates the ticket" "1" "$(PD_REL="$PD/rel-dec" pd_run | grep -c "^# pool-gated $KP-9705 readiness c blocker=977\$")"
+printf 'CLOSE-OR-DISPATCH %s fixture drift\n' "$KP-9705" > "$PDB/focus-drift.txt"
+has "10257: a readiness row naming a bare decision on a key with a CLOSE-OR-DISPATCH drift row gates nothing" "$(PD_REL="$PD/rel-dec" pd_run)" "RESUME${TAB}$KP-9705${TAB}"
+rm -f "$PDB/focus-drift.txt"
+pd_live "$KP-9702 hold waits on PR 5801"
+printf '# mirror=%s\nSTALE-DISPOSITION %s line=%s PR5801=merged\n' "$(cd "$PDM" && pwd -P)" "$KP-9702" "$(pd_hash "$KP-9702 hold waits on PR 5801")" > "$PD/state/tick-pool-stale-1.out"
+has "10257: a hold the tick reads stale (its PR merged) gates nothing" "$(pd_run)" "RESUME${TAB}$KP-9702${TAB}"
+printf '# mirror=%s/other\nSTALE-DISPOSITION %s line=%s PR5801=merged\n' "$PD" "$KP-9702" "$(pd_hash "$KP-9702 hold waits on PR 5801")" > "$PD/state/tick-pool-stale-1.out"
+check "10257: a stale file of another mirror lifts no gate" "1" "$(pd_run | grep -c "^# pool-gated $KP-9702 ")"
+pd_own="$PD/state/tick-pool-stale-$(printf '%s\n%s' "$(cd "$PDB" && pwd -P)/chief.md" "$(cd "$PDM" && pwd -P)" | cksum | cut -d' ' -f1).out"
+printf '# mirror=%s\n' "$(cd "$PDM" && pwd -P)" > "$pd_own"
+printf '# mirror=%s\nSTALE-DISPOSITION %s line=%s PR5801=merged\n' "$(cd "$PDM" && pwd -P)" "$KP-9702" "$(pd_hash "$KP-9702 hold waits on PR 5801")" > "$PD/state/tick-pool-stale-1.out"
+check "10257: the doc's own stale file wins over a newer stale file of the same mirror" "1" "$(pd_run | grep -c "^# pool-gated $KP-9702 ")"
+rm -f "$PD/state/tick-pool-stale-1.out" "$pd_own"
+pd_live "$KP-9702 hold blocked by $KP-9706"
+check "10257: a hold blocked by an open ticket gates the ticket" "1" "$(pd_run | grep -c "^# pool-gated $KP-9702 pool-disposition hold blocked by $KP-9706\$")"
+has "10257: a failed readiness read gates nothing" "$(PD_REL="$PD/no-release" pd_run)" "RESUME${TAB}$KP-9705${TAB}"
+( M="$PDM"; mk "$KP-9706" "Done" Medium '[]' '["v1.0.1"]' '[]' "the closed blocker of 9705" "Edit scripts/lib/pd-9706.sh." )
+sed 's/^statusCategory: "x"/statusCategory: "Done"/' "$PDM/$KP-9706.md" > "$PDM/$KP-9706.md.tmp" && mv "$PDM/$KP-9706.md.tmp" "$PDM/$KP-9706.md"
+pd3="$(pd_run)"
+has "10257: a hold whose blocker is Done gates nothing" "$pd3" "RESUME${TAB}$KP-9702${TAB}"
+has "10257: a readiness c row whose blocker is Done is stale and gates nothing" "$pd3" "RESUME${TAB}$KP-9705${TAB}"
+bash "$HERE/owe.sh" close --bucket "$PDB" --id o1 --key fixture-closed >/dev/null \
+    || fail "10257: could not close the owed proof of 9701"
+pd4="$(pd_run)"
+lacks "10257: a closed owed proof no longer names the ticket # pool-owed" "$pd4" "# pool-owed $KP-9701 "
+check "10257: with its proof closed and its slice on main the ticket is a # pool-done-candidate" "1" "$(printf '%s\n' "$pd4" | grep -c "^# pool-done-candidate $KP-9701 ")"
+
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
 real_hits="$(grep -rlF "$WORK" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"

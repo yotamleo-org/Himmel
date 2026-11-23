@@ -439,6 +439,10 @@ applicable standing decision, the normal signing call is:
 node <himmel>/scripts/jira/dist/index.js release operator spec <release> --keys <KEY> --spec <canonical-spec> --plan <canonical-plan> --verdict <latest-spec-return> --verdict <latest-plan-return> --decision <approved-decision> --verbatim-file <operator-words-file>
 ```
 
+The chief signs by default. For a spec the operator marked as his, he signs it
+with `--signer operator --words "<his exact words>"` in place of
+`--verbatim-file`; `jira release signer-check <KEY…>` says who signs.
+
 Each findings-bearing kind must have reached its refused cap; an under-cap
 findings return cannot qualify even if the other kind is capped. The paired
 returns must carry the required genuine artifact seals, with only minor/medium

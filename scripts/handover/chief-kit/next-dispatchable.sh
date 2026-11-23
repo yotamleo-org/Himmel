@@ -54,6 +54,12 @@
 # with no PR at all it is a RESUME row. An unreadable merged-PR search prints a
 # `merged PRs unknown` header and no IN CI row.
 #
+# In Progress / In Review tickets nobody holds whose only remaining work is an open `owe.sh` proof row (with a slice on main), a chief or operator
+# gate (a `pool-disposition: KEY question|close|hold|park` line in --doc's `## Live state`, or a live c or d readiness row),
+# or nothing (a commit on main cites the key and no partial slice is recorded) print `# pool-owed <KEY> <row>`,
+# `# pool-gated <KEY> <gate>` or `# pool-done-candidate <KEY> ...` in rank order instead of a RESUME row; when the source
+# clears the ticket is a RESUME row at the same rank. Nothing is closed or moved in Jira.
+#
 # Partial-merge rows: a ticket with a merged contract=no PR reads that PR's remainder, a `Remaining:` line or the
 # `deferred -> <KEY>` lines under `## Ticket coverage` (scripts/lib/pr_remainder.py, the one reader merge-on-green.sh and
 # the brief generator share). A remainder kept on the ticket is a RESUME row (`partial=PR #n merged, Remaining: <text>`); one
@@ -240,7 +246,7 @@ export ND_STACKED="$stacked"
 export ND_GIT_DIR="${NEXT_DISPATCH_GIT_DIR:-$REPO}" ND_MAIN_REF="${NEXT_DISPATCH_MAIN_REF:-origin/main}"
 export ND_TOP="$top" ND_MIRROR="$mirror" ND_WORKERS_FROM="$workers_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_DISPO="$dispo" ND_LEDGER="$ledger" ND_HOLDS="${ND_HOLDS:-$HERE/holds.py}"
 export ND_STAGING="${ND_STAGING:-$HERE/proof_staging.py}" ND_TICKET_POLICY_CLI="${ND_TICKET_POLICY_CLI:-$REPO/marketplace/plugins/himmel-ops/scripts/ticket-policy-cli.mjs}"
-export ND_OWE="$HERE/owe.sh"
+export ND_OWE="$HERE/owe.sh" ND_READINESS="$HERE/readiness.sh"
 
 # shellcheck source=scripts/lib/gh-quota.sh
 . "$REPO/scripts/lib/gh-quota.sh"
@@ -306,7 +312,7 @@ export ND_FLAGS="$nd_flags"
 nd_left=$((nd_deadline - SECONDS))
 [ "$nd_left" -gt 0 ] || nd_left=1
 ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 "$nd_left"} python3 -I - > "$nd_out" <<'PY' &
-import datetime, json, math, os, re, subprocess, sys, tempfile, time
+import datetime, functools, glob, hashlib, json, math, os, re, subprocess, sys, tempfile, time
 sys.stdout.reconfigure(errors='backslashreplace')
 sys.stderr.reconfigure(errors='backslashreplace')
 
@@ -1949,9 +1955,10 @@ for i in issues.values() if not pr_unknown else ():
 # A KEEP replacement becomes executable only after its validation action closed.
 # Read the existing ledger once; metadata supplies routing, never permission.
 owed_bucket = os.path.dirname(os.environ.get('ND_DOC') or os.environ.get('ND_WORKERS_FROM') or '')
+owed_actions = []
 if owed_bucket and os.path.lexists(os.path.join(owed_bucket, 'owed.jsonl')):
     try:
-        actions = read_owed_actions()
+        actions = owed_actions = read_owed_actions()
         apply_owed_scope(issues, actions, worker_keys, pr_keys)
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
         print('# next-dispatchable: owed next-step state unreadable: ' + str(exc), file=sys.stderr)
@@ -2080,6 +2087,110 @@ needs_note = []  # (key, partial PR numbers that record no remainder) of in-work
 scope_questions = []  # keys of tickets nothing says the write scope of: a chief question, never silently free
 handed_off = []  # (key, tickets) of in-work tickets whose every partial PR hands its remainder to other tickets
 owed_rows = []  # (key, pr, who, date) of in-work tickets whose newest clear partial PR records a step owed to the chief or operator by a date
+pool_named = []
+
+GATE_VERBS = ('question', 'close', 'hold', 'park')
+open_proofs = {}
+for a in owed_actions:
+    if not a.get('closed') and a.get('kind') == 'proof' and a.get('key'):
+        open_proofs.setdefault(str(a['key']).upper(), a)
+
+def tick_verdicts(doc):
+    stale, holds = set(), {}
+    state = os.environ.get('TICK_STATE_DIR') or os.path.join(os.environ.get('HOME') or '/tmp', '.himmel', 'state')
+    try:
+        crc = subprocess.run(['cksum'], input=('%s\n%s' % (os.path.realpath(doc), os.path.realpath(mirror))).encode(),
+                             capture_output=True, check=True, timeout=10).stdout.split()[0].decode()
+        own = [os.path.join(state, 'tick-pool-stale-%s.out' % crc)]
+    except (OSError, IndexError, subprocess.SubprocessError):
+        own = []
+    others = sorted(glob.glob(os.path.join(state, 'tick-pool-stale-*.out')), key=lambda f: (os.path.getmtime(f), f), reverse=True)
+    for n, path in enumerate(own + others):
+        try:
+            lines = open(path, encoding='utf-8', errors='replace').read().splitlines()
+        except OSError:
+            continue
+        if n < len(own) or lines[:1] == ['# mirror=' + os.path.realpath(mirror)]:
+            stale.update(re.findall(r'^STALE-DISPOSITION ([A-Z]+-\d+) line=([0-9a-f]{12}) ', '\n'.join(lines), re.M))
+            break
+    hpath = os.path.join(state, 'pool-holds-%s.json' % re.sub(r'\.md$', '', os.path.basename(doc)))
+    try:
+        if time.time() - os.path.getmtime(hpath) <= 1800:
+            holds = {(r['key'], r['line']): r.get('class') for r in json.load(open(hpath, encoding='utf-8')).get('rows') or []}
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        holds = {}
+    return stale, holds
+
+def drift_closing(doc):
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(doc)), 'focus-drift.txt'), encoding='utf-8', errors='replace') as f:
+            return set(re.findall(r'^CLOSE-OR-DISPATCH ([A-Z]+-\d+) ', f.read(), re.M))
+    except OSError:
+        return set()
+
+def read_disposition_gates(path):
+    gates, newest = {}, {}
+    try:
+        lines = open(path, encoding='utf-8', errors='replace').read().splitlines() if path else []
+    except OSError:
+        return gates
+    in_state = False
+    for line in lines:
+        if line.startswith('## '):
+            in_state = line.strip() == '## Live state'
+        m = re.fullmatch(r'([A-Z]+-\d+) (slice|close|question|hold|park) (\S.*)', line.split(':', 1)[1].strip()) \
+            if in_state and line.startswith('pool-disposition:') else None
+        if m:
+            newest[m[1]] = m
+    stale, holds = tick_verdicts(path) if newest else (set(), {})
+    closing = drift_closing(path) if newest else set()
+    for key, m in newest.items():
+        lh = hashlib.sha256(m[0].encode()).hexdigest()[:12]
+        if m[2] not in GATE_VERBS or (key, lh) in stale:
+            continue
+        if key in closing and re.match(r'[A-Z]+-\d+ question [Dd]ecisions?\s*#?\d+\b', m[0]):
+            continue
+        cls = holds.get((key, lh))
+        ref = re.match(r'(?:(?:operator|waits on|blocked by|after)\s+)?(?:([A-Z]+-\d+)\b|PRs?\s*#?\d+\b|[Dd]ecisions?\s*#?\d+\b)', m[3])
+        owned_open = bool(ref) and (ref[1] is None or (ref[1] != key and ref[1].split('-')[0] == key.split('-')[0] and not done_key(ref[1])))
+        if cls in ('authority', 'wake') or (cls is None and owned_open):
+            gates[key] = 'pool-disposition %s %s' % (m[2], m[3])
+    return gates
+
+disposition_gates = read_disposition_gates(os.environ.get('ND_DOC', ''))
+@functools.lru_cache(maxsize=None)
+def readiness_gates():
+    gates = {}
+    if os.environ.get('ND_DOC') and first_ver:
+        try:
+            r = subprocess.run(['bash', os.environ['ND_READINESS'], 'read', first_ver, '--mirror', os.path.abspath(mirror)],
+                               stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=20)
+            closing = drift_closing(os.environ['ND_DOC'])
+            for line in r.stdout.splitlines() if r.returncode == 0 else ():
+                row = json.loads(line)
+                if str(row.get('key')).upper() in closing and re.fullmatch(r'[0-9]+', str(row.get('blocker') or '')):
+                    continue
+                if row.get('state') == 'live' and row.get('decision') in ('c', 'd'):
+                    gates[str(row['key']).upper()] = 'readiness %s blocker=%s' % (row['decision'], row.get('blocker') or '-')
+        except (OSError, ValueError, AttributeError, KeyError, subprocess.SubprocessError):
+            gates = {}
+    return gates
+
+def pool_class(i, parts):
+    if i['status'] not in ('In Progress', 'In Review') or i.get('owed_next'):
+        return None
+    if any(p['kind'] == 'remaining' or (p['kind'] == 'owed' and p['handed'][0] == 'proof') for p in parts):
+        return None
+    k = i['key']
+    if k in open_proofs and (k in partials or cited_on_main(k, subject_only=True)):
+        return ('pool-owed', 'open owed proof %s: %s' % (open_proofs[k].get('id', '?'), open_proofs[k].get('text', '')))
+    gate = disposition_gates.get(k) or readiness_gates().get(k)
+    if gate:
+        return ('pool-gated', gate)
+    if k not in partials and cited_on_main(k, subject_only=True):
+        return ('pool-done-candidate', 'a commit on main cites [%s] and no partial slice is recorded: the chief closes it or names what remains' % k)
+    return None
+
 resume = []
 for i in issues.values():
     if i.get('owed_wait'):
@@ -2112,6 +2223,10 @@ for i in issues.values():
         continue
     if parts and all(p['kind'] == 'handed-off' for p in parts):  # nothing left on this ticket: the chief closes it or keeps it as an umbrella
         handed_off.append((i['key'], [k for p in parts for k in p['handed']]))
+        continue
+    pool_kind = pool_class(i, parts)
+    if pool_kind:
+        pool_named.append((i, pool_kind))
         continue
     if i['no_scope'] and i['key'] not in briefs and not resume_only:  # a wrapped worker's brief carries its own Writes line; --resume-only counts orphans, dispatching nothing
         scope_questions.append(i['key'])
@@ -2214,6 +2329,8 @@ for k, pr, who, due in owed_rows:
     print('OWED %s: %s owes %s by %s%s' % (k, source, who, due, (' proof-staging=' + ','.join(x[0] for x in named)) if named else ''))
     if named and os.environ.get('ND_WHY') == '1':
         staging_why(issues[k])
+for i, (cls_name, detail) in sorted(pool_named, key=lambda t: (ranked if pool_only else rank)(t[0])):
+    print('# %s %s %s' % (cls_name, i['key'], detail))
 for sid, wdoc in series_orphans:
     print('SERIES-ORPHAN %s %s' % (sid, printable(wdoc)))
 

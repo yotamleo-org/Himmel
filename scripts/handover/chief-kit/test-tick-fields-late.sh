@@ -56,7 +56,7 @@ owd="$(ow_of "$(NEXT_DISPATCH_MIRROR="$W/no-such-mirror" bash "$SUT" 2>/dev/null
 for n in 905 906 907 908; do mk_ow "$n" "In Progress" Task; done
 owe="$(ow_of "$(ow_tick)")"
 [ "$owe" = "6" ] && pass 'orphans-wip= names no keys above five' || fail "orphans-wip= with six is '$owe'"
-contains '--verbose labels orphans-wip' "$(NEXT_DISPATCH_MIRROR="$OW" NEXT_DISPATCH_GH_CMD="$W/ow-gh" bash "$SUT" --verbose 2>/dev/null)" 'orphans-wip: 6'
+contains '--verbose labels orphans-wip' "$(NEXT_DISPATCH_MIRROR="$OW" NEXT_DISPATCH_GH_CMD="$W/ow-gh" NEXT_DISPATCH_GIT_DIR="$W/ow-main" NEXT_DISPATCH_MAIN_REF=main bash "$SUT" --verbose 2>/dev/null)" 'orphans-wip: 6'
 
 # IN CI tickets count too: one a merged PR cites (merged-not-closed) and one with no PR at all.
 OW_SAVE="$OW"; OW="$W/ow-inci-mirror/HIMMEL"; mkdir -p "$OW"
@@ -80,7 +80,7 @@ STUB
 chmod +x "$W/ow-gh-hung"
 # A scan still running would write into the next row's fixture, so each row waits it out.
 owc_fresh() { for l in "$W"/owc/tick-resume-*.lock; do [ ! -e "$l" ] || flock "$l" true; done; rm -rf "$W/owc"; mkdir -p "$W/owc"; }
-owc_tick() { TICK_POOL_WAIT=0 TICK_STATE_DIR="$W/owc" NEXT_DISPATCH_MIRROR="$OW" NEXT_DISPATCH_GH_CMD="$W/ow-gh" bash "$SUT" 2>/dev/null; }
+owc_tick() { TICK_POOL_WAIT=0 TICK_STATE_DIR="$W/owc" NEXT_DISPATCH_MIRROR="$OW" NEXT_DISPATCH_GH_CMD="$W/ow-gh" NEXT_DISPATCH_GIT_DIR="$W/ow-main" NEXT_DISPATCH_MAIN_REF=main bash "$SUT" 2>/dev/null; }
 owc_age() { printf '%s\n' "$1" | tr ' ' '\n' | sed -n 's/^orphans-wip-age=//p'; }
 if [ -n "$_TIMEOUT_BIN" ]; then
     owc_fresh
@@ -366,7 +366,7 @@ wt_dir="$W/wt-stale"; mkdir -p "$wt_dir/consoles" "$wt_dir/stub"
 : > "$wt_dir/consoles/c.md"; wt_inbox="$wt_dir/consoles/c.md"
 # the stub logs one line per COMPLETED tick, so a quiet arm can prove it saw whole samples
 # shellcheck disable=SC2016  # $? must reach the generated stub literally, not expand here
-printf '#!/usr/bin/env bash\nenv NEXT_DISPATCH_MIRROR=%q NEXT_DISPATCH_GH_CMD=%q TOKEN= bash %q --doc %q\nrc=$?\necho x >> %q\nexit $rc\n' "$OW" "$W/ow-gh" "$SUT" "$pc_doc" "$wt_dir/ticks" > "$wt_dir/stub/tick.sh"
+printf '#!/usr/bin/env bash\nenv NEXT_DISPATCH_MIRROR=%q NEXT_DISPATCH_GH_CMD=%q NEXT_DISPATCH_GIT_DIR=%q NEXT_DISPATCH_MAIN_REF=main TOKEN= bash %q --doc %q\nrc=$?\necho x >> %q\nexit $rc\n' "$OW" "$W/ow-gh" "$W/ow-main" "$SUT" "$pc_doc" "$wt_dir/ticks" > "$wt_dir/stub/tick.sh"
 printf '#!/usr/bin/env bash\nprintf "PROCEED\\n"\n' > "$wt_dir/stub/bank.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$wt_dir/stub/off.sh"
 printf '#!/usr/bin/env bash\nexit 2\n' > "$wt_dir/stub/budget-off.sh"
