@@ -1256,7 +1256,6 @@ new_root dk
 mkdir -p "$R/units"
 cat > "$R/bin/systemctl" <<'FAKESYSTEMCTL'
 #!/bin/sh
-# usage: systemctl is-active UNIT | start UNIT | stop UNIT; units are files in $HIMMEL_OPS_ROOT/units
 echo "$@" >> "$HIMMEL_OPS_ROOT/systemctl.calls"
 case "$1" in
     is-active) [ -e "$HIMMEL_OPS_ROOT/probe-fail" ] && { echo "Failed to connect to bus" >&2; exit 1; }

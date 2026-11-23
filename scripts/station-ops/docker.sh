@@ -1,18 +1,8 @@
 #!/bin/bash
-# docker v1: start or stop Docker on the station for the current boot only.
-# Run by the afk-sudo helper as root after a Telegram approval, from the root-owned copy in
-# /usr/local/libexec/himmel/ops/.
 #
 #   docker.sh [--check] --id ID --operator-user U --action start|stop
 #
-# Acts on three fixed units and nothing else: containerd.service, docker.socket, docker.service. Start order is
-# containerd, socket, service; stop order is socket, service, containerd (socket first, so a client cannot re-activate
-# the service while it stops). A probe that fails or a state other than active, inactive or failed is result=failed, and
-# every unit is re-read after the run, so a unit not in the target state is failed, never changed. It runs
-# only `systemctl start`, `stop` and `is-active`: it never enables or disables a unit, so a Docker that is off at boot
-# stays off at boot and the operator's boot configuration is untouched.
-# Idempotent: with every unit already in the target state the run reports result=unchanged. --check reports
-# result=would-change naming the units it would start or stop, and changes nothing.
+# Stop takes docker.socket first: systemd socket activation would otherwise restart docker.service while it stops.
 # Last stdout line: op=docker id=ID result=changed|unchanged|would-change|bad-param|failed [name=action] detail=...
 # Exit 0 ok, 3 bad-param, 1 failed.
 # Test seam: HIMMEL_OPS_ROOT (a path prefix) and HIMMEL_OPS_BIN (a PATH prefix) are honoured only when euid != 0.
