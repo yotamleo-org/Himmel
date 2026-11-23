@@ -169,7 +169,9 @@ else
     while [ "$i" -lt "$nrows" ]; do
         rj="$(row_json "$i")"; i=$((i + 1))
         key="$(printf '%s' "$rj" | jq -r 'try (.key | tostring) catch "?"')"
-        if ! shape_ok "$rj" || grep -qxF -- "$key" <<< "$dup_keys"; then word REFUSED "$key" shape; continue; fi
+        dup=0
+        if grep -qxF -- "$key" <<< "$dup_keys"; then dup=1; fi
+        if [ "$dup" = 1 ] || ! shape_ok "$rj"; then word REFUSED "$key" shape; continue; fi
         id="$(printf '%s' "$rj" | jq -r '.batch')"
         approve="$(printf '%s' "$rj" | jq -r '(.approve // "") | tostring')"
         writes="$(writes_of_row "$rj")"
