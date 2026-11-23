@@ -167,7 +167,8 @@ if ! match_shapes "$cmd" "$semi_blanked" "$emptied$shell_code"; then
     set -f
     at_start=1
     interp=0
-    for tok in ${run_text//[;&|()<>{\}\`$NL]/ ; }; do
+    run_words=${run_text//[<>]/ }
+    for tok in ${run_words//[;&|(){\}\`$NL]/ ; }; do
         if [ "$prev" = "cd" ]; then
             case $tok in /*) next=$tok ;; *) next=$base/$tok ;; esac
             [ -d "$next" ] && base=$next
@@ -178,13 +179,15 @@ if ! match_shapes "$cmd" "$semi_blanked" "$emptied$shell_code"; then
             ";") at_start=1 interp=0 prev=""
                 continue ;;
             sudo|env|nice|nohup|exec|command|time|timeout|do|then|else|elif|if|while|until|"!"|[0-9]*|[A-Za-z_]*=*)
-                [ "$at_start" = 1 ] && continue ;;
+                { [ "$at_start" = 1 ] || [ "$interp" = 1 ]; } && continue ;;
+            *.sh|*.bash|*.py|*.js|*.mjs|*.cjs) ;;
             -*) { [ "$at_start" = 1 ] || [ "$interp" = 1 ]; } && continue ;;
             sh|bash|zsh|dash|ksh|python|python[0-9]*|node|bun|deno|source|.|*/sh|*/bash|*/zsh|*/python*|*/node)
                 if [ "$at_start" = 1 ]; then
                     at_start=0 interp=1
                     continue
                 fi ;;
+            *) [ "$interp" = 1 ] && continue ;;
         esac
         at_start=0 interp=0
         [ "$run_pos" -gt 0 ] || continue
