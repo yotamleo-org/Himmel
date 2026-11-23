@@ -1740,7 +1740,7 @@ def resumes(l):
     return (l.get('inherited') or {}).get('mode') == 'resume'
 
 
-RESUMED_RE = re.compile(r'RESUMED (\S+) (\S+) ([0-9a-f]{40}) (\S+)')
+RESUMED_RE = re.compile(r'RESUMED (.+) (\S+) ([0-9a-f]{40}) (\S+)')
 CHECK_WORDS = ('local', 'origin', 'both', 'none', 'unknown')
 
 
