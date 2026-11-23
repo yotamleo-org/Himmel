@@ -1714,7 +1714,6 @@ spec=''; keys=''
 while [ \$# -gt 0 ]; do
     case "\$1" in --spec) spec="\$2"; shift 2 ;; --mirror) shift 2 ;; *) keys="\$keys \$1"; shift ;; esac
 done
-[ "\$mode" = exit2 ] && exit 2
 for k in \$keys; do
     [ "\$mode" = noline ] && { [ "\$k" = HIMMEL-457 ] || [ "\$k" = HIMMEL-461 ]; } && continue
     if [ "\$verb" = signer-check ]; then
@@ -1732,6 +1731,7 @@ for k in \$keys; do
         esac
     fi
 done
+[ "\$mode" = exit2 ] && exit 2
 [ "\$verb" = spec-check ] && exit 1
 exit 0
 S5JIRA
