@@ -142,6 +142,19 @@ assert_deny "block-terminal-write-fence denies git push" "external-write" \
     "$(make_pre run_command '{"CommandLine":"git push origin feat/test"}')"
 assert_deny "block-git-stash denies git stash push" "stash" \
     "$(make_pre run_command '{"CommandLine":"git stash push -m x"}')"
+assert_deny "block-rogue-codex-exec denies raw codex exec" "codex" \
+    "$(make_pre run_command '{"CommandLine":"codex exec hi"}')"
+assert_deny "require-quiet-run denies bare shell test suite" "quiet-run" \
+    "$(make_pre run_command '{"CommandLine":"bash scripts/hooks/test-block-git-stash.sh"}')"
+assert_deny "block-tail-pipe-on-gates denies piping gate to tail" "tail" \
+    "$(make_pre run_command '{"CommandLine":"bash scripts/ci/run-shell-tests.sh | tail -n 5"}')"
+assert_deny "block-write-into-main-checkout denies writing main from worktree" "main" \
+    "$(make_pre run_command "$(jq -cn --arg c "echo x > $MAIN_REPO/work.txt" '{CommandLine:$c}')")"
+assert_deny "block-chokepoint-env-prefix denies env-prefixed chokepoint" "chokepoint" \
+    "$(make_pre run_command '{"CommandLine":"CODEX_BIN=/tmp/x bash scripts/codex/dispatch-codex-exec.sh"}')"
+# shellcheck disable=SC2016
+assert_deny "block-jira-compound-write denies compound jira create" "desc-file" \
+    "$(make_pre run_command '{"CommandLine":"JIRA_PROJECT_KEY=HIMMEL node /tmp/himmel/scripts/jira/dist/index.js create --type Task --title a --desc \"$(cat /tmp/a.md)\" ; node /tmp/himmel/scripts/jira/dist/index.js create --type Task --title b --desc \"$(cat /tmp/b.md)\""}')"
 assert_deny "guard-t3-thread-tools denies off-allowlist instance" "antigravity" \
     "$(make_pre mcp_t3-code_t3_thread_launch '{"title":"Work","modelSelection":{"instanceId":"antigravity","model":"gemini-4-neon"}}')"
 assert_deny "guard-t3-thread-tools denies -chief title" "chief" \
@@ -192,10 +205,28 @@ assert_deny "read_file on antigravity-oauth-token denied" "oauth-token" \
     "$(make_pre read_file "$(jq -cn --arg p "$T3CODE_HOME/userdata/providers/antigravity/hash1/antigravity-oauth-token" '{Path:$p}')" )"
 assert_deny "run_command writing .agents/hooks.json denied" "self-protect" \
     "$(make_pre run_command '{"CommandLine":"echo {} > .agents/hooks.json"}')"
+assert_deny "run_command git restore -s show .agents/hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"git restore -s show .agents/hooks.json"}')"
+assert_deny "run_command git checkout log -- .agents/hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"git checkout log -- .agents/hooks.json"}')"
+assert_deny "run_command git mv .agents/hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"git mv .agents/hooks.json /tmp/x"}')"
+assert_deny "run_command git rm .agents/skills.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"git rm .agents/skills.json"}')"
+assert_deny "run_command git diff --output=.agents/hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"git diff --output=.agents/hooks.json"}')"
+assert_deny "run_command git -c diff.external=sh diff .agents/hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"git -c diff.external=sh diff .agents/hooks.json"}')"
+assert_pass "run_command git show HEAD:.agents/hooks.json allowed" \
+    "$(make_pre run_command '{"CommandLine":"git show HEAD:.agents/hooks.json"}')"
+assert_pass "run_command git -C wt status .agents/hooks.json allowed" \
+    "$(make_pre run_command "$(jq -cn --arg c "git -C $WT_REPO status .agents/hooks.json" '{CommandLine:$c}')")"
 assert_deny "run_command writing .agents/skills/x/SKILL.md denied" "self-protect" \
     "$(make_pre run_command '{"CommandLine":"echo x > .agents/skills/x/SKILL.md"}')"
 assert_pass "run_command reading .agents/skills/x/SKILL.md allowed" \
     "$(make_pre run_command '{"CommandLine":"cat .agents/skills/x/SKILL.md"}')"
+assert_deny "read_file with empty Path denied" "empty" \
+    "$(make_pre read_file '{"Path":""}')"
 
 echo "== 6. Child invoke_subagent payload and lifecycle events =="
 assert_deny "child invoke_subagent reading .env denied" "secret" "$(cat "$FIX/child-pre-read-file-secret.json")"

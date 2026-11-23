@@ -58,7 +58,7 @@ assert_empty() {
 }
 
 ANTIGRAVITY_ONLY="block-terminal-write-fence.sh"
-ANTIGRAVITY_REQUIRED="block-edit-on-main.sh block-read-secrets.sh block-backend-tier.sh block-docker-privesc.sh block-rogue-claude-schedule.sh block-merged-pr-commit.sh block-terminal-write-fence.sh block-edit-live-settings.sh guard-t3-thread-tools.sh block-t3code-unwatch-open-pr.sh mcp-policy.sh peer-taint-gate.sh peer-taint-resume.sh record-primary-baseline.sh detect-dirty-primary.sh record-hook-integrity.sh"
+ANTIGRAVITY_REQUIRED="block-edit-on-main.sh block-read-secrets.sh block-backend-tier.sh block-docker-privesc.sh block-rogue-claude-schedule.sh block-merged-pr-commit.sh block-terminal-write-fence.sh block-edit-live-settings.sh block-chokepoint-env-prefix.sh block-rogue-codex-exec.sh require-quiet-run.sh block-tail-pipe-on-gates.sh block-jira-compound-write.sh block-write-into-main-checkout.sh guard-t3-thread-tools.sh block-t3code-unwatch-open-pr.sh mcp-policy.sh peer-taint-gate.sh peer-taint-resume.sh record-primary-baseline.sh detect-dirty-primary.sh record-hook-integrity.sh"
 ANTIGRAVITY_POST_EXEMPT="detect-token-in-output.sh peer-taint-mark.sh"
 
 echo "== antigravity hook inventory parity =="
@@ -69,6 +69,28 @@ const fs = require("fs"), path = require("path");
 const allow = new Set(process.env.ANTIGRAVITY_ONLY.split(/\s+/).filter(Boolean));
 const required = new Set(process.env.ANTIGRAVITY_REQUIRED.split(/\s+/).filter(Boolean));
 const postExempt = new Set(process.env.ANTIGRAVITY_POST_EXEMPT.split(/\s+/).filter(Boolean));
+const claudeBashExempt = {
+  "auto-approve-safe-bash.sh": "Claude permission auto-approver; Antigravity forbids emitting allow",
+  "allow-thread-resolve.sh": "Claude permission auto-approver; Antigravity forbids emitting allow",
+  "approval-grant-check.sh": "Claude permission-grant helper, not a deny guard",
+  "auto-arm-on-cap.sh": "Claude subscription usage-cap auto-arm (Claude-only)",
+  "check-cr-marker-on-pr-create.sh": "Subsumed by block-terminal-write-fence.sh (denies gh pr create)",
+  "block-fork-sync-pr.sh": "Subsumed by block-terminal-write-fence.sh (denies gh pr mutations)",
+  "block-unresolved-cr-merge.sh": "Subsumed by block-terminal-write-fence.sh (denies gh pr merge)",
+  "guard-worker-context-handoff.sh": "Worker role only; Antigravity lane is attended-only (decision 1249)",
+  "block-worker-write-fence.sh": "Worker role only; Antigravity lane is attended-only (decision 1249)",
+  "guard-chief-foreground.sh": "Chief role only; Antigravity lane is attended-only (decision 1249)",
+  "guard-relay-writes.sh": "Chief relay role only; Antigravity lane is attended-only (decision 1249)",
+  "guard-judge-writes.sh": "Judge role only (plugin-local); Antigravity lane is attended-only (decision 1249)",
+  "guard-rm-writes.sh": "Release-manager role only (plugin-local); Antigravity lane is attended-only (decision 1249)",
+  "guard-readiness-tools.sh": "Native Claude readiness role only",
+  "block-subagent-release-operator.sh": "Relies on Claude agent_id payload field omitted by Antigravity (C-1215)",
+  "block-subagent-park.sh": "Relies on Claude agent_id and Monitor/run_in_background fields omitted by Antigravity (C-1215)",
+  "block-graphify-egress.sh": "Deferred to S2b read/egress fence slice",
+  "block-agent-native-egress.sh": "Plugin-local guard; Antigravity MCP allowlist denies agent-native-dispatch",
+  "block-busy-loop.sh": "Plugin-local guard outside scripts/hooks/",
+  "block-vault-sweep.sh": "Plugin-local guard outside scripts/hooks/"
+};
 const read = (p) => JSON.parse(fs.readFileSync(p, "utf8"));
 
 const lines = [];
@@ -105,9 +127,19 @@ for (const m of adapterSrc.matchAll(/\b([a-z][a-z0-9-]*\.sh)\b/g)) {
   if (s === "antigravity-hook-adapter.sh" || s === "run-node.sh") continue;
   agyGuards.add(s);
 }
+const runCmdBlock = adapterSrc.match(/^\s*run_command\)([\s\S]*?)^\s*;;/m);
+const agyBashGuards = new Set();
+if (runCmdBlock) {
+  for (const m of runCmdBlock[1].matchAll(/\b([a-z][a-z0-9-]*\.sh)\b/g)) {
+    const s = m[1];
+    if (s === "antigravity-hook-adapter.sh" || s === "run-node.sh") continue;
+    agyBashGuards.add(s);
+  }
+}
 lines.push("COUNT " + agyGuards.size);
 
 const claude = new Set();
+const claudeBash = new Set();
 const sources = [".claude/settings.json"];
 const pdir = "marketplace/plugins";
 for (const p of fs.existsSync(pdir) ? fs.readdirSync(pdir) : []) {
@@ -122,9 +154,20 @@ const walkCmds = (obj, out) => {
   }
 };
 for (const src of sources) {
+  const parsed = read(src);
   const cmds = [];
-  walkCmds(read(src).hooks || {}, cmds);
+  walkCmds(parsed.hooks || {}, cmds);
   for (const c of cmds) for (const m of c.matchAll(/([\w.-]+\.sh)/g)) claude.add(m[1]);
+  for (const g of (parsed.hooks && parsed.hooks.PreToolUse) || []) {
+    const matcher = String(g.matcher || "*");
+    if (!/(^|\|)Bash(\||$)|^\*$/.test(matcher)) continue;
+    for (const h of g.hooks || []) {
+      for (const m of String(h.command || "").matchAll(/([\w.-]+\.sh)/g)) {
+        if (m[1] === "run-node.sh") continue;
+        claudeBash.add(m[1]);
+      }
+    }
+  }
 }
 
 for (const s of [...agyGuards].sort()) {
@@ -134,6 +177,16 @@ for (const s of [...agyGuards].sort()) {
 for (const s of [...allow].sort()) if (!agyGuards.has(s)) lines.push("STALE-ALLOW " + s);
 for (const s of [...required].sort()) if (!agyGuards.has(s)) lines.push("UNPORTED " + s);
 for (const s of [...postExempt].sort()) if (agyGuards.has(s)) lines.push("STALE-EXEMPT " + s);
+for (const s of [...claudeBash].sort()) {
+  if (!agyBashGuards.has(s) && !Object.prototype.hasOwnProperty.call(claudeBashExempt, s)) {
+    lines.push("CLAUDE-BASH-MISSING " + s);
+  }
+}
+for (const s of Object.keys(claudeBashExempt).sort()) {
+  if (!String(claudeBashExempt[s] || "").trim() || !claudeBash.has(s) || agyBashGuards.has(s)) {
+    lines.push("STALE-CLAUDE-BASH-EXEMPT " + s);
+  }
+}
 
 const skillsJson = read(".agents/skills.json");
 if (!Array.isArray(skillsJson.exclude) || !skillsJson.exclude.includes("pr-check")) {
@@ -164,6 +217,8 @@ assert_empty "no Antigravity-only guardrail outside allowlist" "$(field ORPHAN)"
 assert_empty "no stale ANTIGRAVITY_ONLY allowlist entry" "$(field STALE-ALLOW)"
 assert_empty "every required invariant guardrail is wired on Antigravity" "$(field UNPORTED)"
 assert_empty "PostToolUse output-body-dependent guards stay explicitly exempt" "$(field STALE-EXEMPT)"
+assert_empty "every Claude PreToolUse Bash guard is wired or explicitly exempted" "$(field CLAUDE-BASH-MISSING)"
+assert_empty "no stale Claude PreToolUse Bash exemption entry" "$(field STALE-CLAUDE-BASH-EXEMPT)"
 assert_empty ".agents/skills.json excludes pr-check" "$(field PRCHECK-NOT-EXCLUDED)"
 
 if [ "$fails" -eq 0 ]; then echo "OK: all cases passed"; exit 0; fi

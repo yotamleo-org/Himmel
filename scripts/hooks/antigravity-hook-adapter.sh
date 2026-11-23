@@ -317,32 +317,74 @@ check_self_protect_path() {
     return 0
 }
 
+git_readonly_subcmd() {
+    (
+        set -f
+        # shellcheck disable=SC2086
+        set -- $1
+        [ $# -ge 2 ] || exit 1
+        shift
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                -C)
+                    [ $# -ge 2 ] || exit 1
+                    shift 2
+                    ;;
+                --no-pager|-p|--paginate|--no-optional-locks|--literal-pathspecs)
+                    shift
+                    ;;
+                -*)
+                    exit 1
+                    ;;
+                *)
+                    break
+                    ;;
+            esac
+        done
+        [ $# -ge 1 ] || exit 1
+        sub_lc="$(lower_str "$1")"
+        case "$sub_lc" in
+            status|diff|log|show) ;;
+            *) exit 1 ;;
+        esac
+        shift
+        while [ $# -gt 0 ]; do
+            opt_lc="$(lower_str "$1")"
+            case "$opt_lc" in
+                --output|--output=*|-o|-o*|--ext-diff|--textconv) exit 1 ;;
+            esac
+            shift
+        done
+        exit 0
+    )
+}
+
 is_simple_readonly_cmd() {
-    local c="$1" first=""
+    local raw_c="$1" c_lc="" first="" first_lc=""
+    c_lc="$(lower_str "$raw_c")"
     # shellcheck disable=SC2016
-    case "$c" in
-        *'>'*|*';'*|*'&'*|*'|'*|*'$('*|*'`'*|*$'\n'*|*' -i '*|*' -i'|*'--in-place'*)
+    case "$c_lc" in
+        *'>'*|*';'*|*'&'*|*'|'*|*'$('*|*'`'*|*$'\n'*|*' -i '*|*' -i'|*'--in-place'*|*'<('*|*'--output'*)
             return 1
             ;;
     esac
-    first="${c#"${c%%[![:space:]]*}"}"
+    first="${raw_c#"${raw_c%%[![:space:]]*}"}"
     first="${first%%[[:space:]]*}"
-    case "$first" in
+    first_lc="$(lower_str "$first")"
+    case "$first_lc" in
         cat|head|tail|ls|stat|wc|grep|rg|jq|diff) return 0 ;;
         git)
-            case "$c" in
-                *' status'*|*' diff'*|*' log'*|*' show'*|*' commit '*) return 0 ;;
-                *) return 1 ;;
-            esac
+            git_readonly_subcmd "$raw_c"
+            return $?
             ;;
         *) return 1 ;;
     esac
 }
 
 check_self_protect_cmd() {
-    local cmd="$1" c=""
-    c="$(lower_str "$cmd")"
-    c="${c//[\"\'\\]/}"
+    local cmd="$1" c="" raw_c=""
+    raw_c="${cmd//[\"\'\\]/}"
+    c="$(lower_str "$raw_c")"
 
     case "$c" in
         *antigravity-oauth-token*)
@@ -370,7 +412,7 @@ check_self_protect_cmd() {
     esac
 
     if [ "$mentions_protected" -eq 1 ]; then
-        if ! is_simple_readonly_cmd "$c"; then
+        if ! is_simple_readonly_cmd "$raw_c"; then
             emit_deny "antigravity-hook-adapter: self-protect denies mutating .agents/**, ~/.gemini/config, or T3 Antigravity home via run_command"
         fi
     fi
@@ -416,26 +458,35 @@ case "$RAW_TOOL" in
         PAYLOAD="$(build_claude_payload Bash bash)" || emit_deny "antigravity-hook-adapter: failed to translate run_command payload"
         run_chain_with_payload gate "$PAYLOAD" \
             guard-identical-denied-retry.sh \
+            guard-merge-compound.sh \
+            block-jira-compound-write.sh \
+            block-tail-pipe-on-gates.sh \
             block-read-secrets.sh \
             read-clamp.sh \
             block-destructive-commands.sh \
             block-git-stash.sh \
             block-bare-qmd-query.sh \
             block-rogue-claude-schedule.sh \
+            block-chokepoint-env-prefix.sh \
+            require-quiet-run.sh \
             block-edit-live-settings.sh \
+            block-write-into-main-checkout.sh \
             block-docker-privesc.sh \
             block-infra-destroy.sh \
             block-merged-pr-commit.sh \
+            block-rogue-codex-exec.sh \
             block-terminal-write-fence.sh \
             block-lesson-enforcement-writes.sh \
             block-bank-lift-writes.sh \
             block-himmel-config-writes.sh \
+            guard-bus-store.sh \
             guard-pr-check-literal.sh \
             peer-taint-gate.sh
         exit 0
         ;;
     read_file)
         READ_PATH="$(printf '%s' "$INPUT" | jq -r '.toolCall.args.Path // empty')" || emit_deny "antigravity-hook-adapter: failed to parse read_file Path — fail closed"
+        [ -n "$READ_PATH" ] || emit_deny "antigravity-hook-adapter: empty read_file Path — fail closed"
         case "$(lower_str "$READ_PATH")" in
             *antigravity-oauth-token*)
                 emit_deny "antigravity-hook-adapter: self-protect denies reading antigravity-oauth-token"
@@ -458,6 +509,7 @@ case "$RAW_TOOL" in
             block-lesson-enforcement-writes.sh \
             block-bank-lift-writes.sh \
             block-himmel-config-writes.sh \
+            guard-bus-store.sh \
             peer-taint-gate.sh
         exit 0
         ;;
@@ -471,6 +523,7 @@ case "$RAW_TOOL" in
             block-lesson-enforcement-writes.sh \
             block-bank-lift-writes.sh \
             block-himmel-config-writes.sh \
+            guard-bus-store.sh \
             peer-taint-gate.sh
         exit 0
         ;;
