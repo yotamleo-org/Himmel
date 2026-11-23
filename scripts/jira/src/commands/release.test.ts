@@ -38,7 +38,6 @@ vi.mock('node:child_process', async (orig) => {
   return { ...m, execFileSync, execFile };
 });
 const rmRunSeen = vi.hoisted(() => ({ opts: null as { judgeTimeoutMs?: number } | null }));
-// While set, the CLI's operator fence walks this fake process tree instead of the real one.
 const fenceTree = vi.hoisted(() => ({ at: null as { procRoot: string; hostNsPath: string } | null }));
 vi.mock('../release/engine.js', async (orig) => {
   const m = await orig<typeof import('../release/engine.js')>();
@@ -258,7 +257,6 @@ describe('jira release rm-run', () => {
     vi.stubEnv('HIMMEL_PROFILE_SETTINGS_DIR', join(root, 'profiles'));
     // the judge run appends its launch row beside this path, never under the real HOME
     vi.stubEnv('HIMMEL_API_CREDIT_STATE', join(root, 'credit', 'ledger.json'));
-    // These cases test the parked model judge, which only the explicit opt-in reaches.
     vi.stubEnv('HIMMEL_RM_JUDGE', 'model');
   });
 
@@ -2188,7 +2186,6 @@ describe('a request for operator work carries the operator\'s words', () => {
   });
 });
 
-// The chief's door and the evidence fence on `request`, the door's alerts, and the live read's labels.
 describe('the door at the request entry point', () => {
   const vf = () => join(root, 'verbatim.txt');
   const declared = () => run('operator', 'declare', 'v1.1.3', '--versions', 'v1.1.3,v1.1.4', '--decision', '106', '--verbatim-file', vf());
@@ -2217,7 +2214,6 @@ describe('the door at the request entry point', () => {
     const path = join(root, 'state', 'v1.1.3', 'requests.jsonl');
     return existsSync(path) ? readChain<Record<string, unknown>>(path, loadKey(join(root, 'keys', 'v1.1.3.key'))).verified : [];
   };
-  // A process tree with no fence marker, or with one on the parent.
   const tree = (marker: Record<string, string> = {}) => {
     const procRoot = mkdtempSync(join(root, 'proc-'));
     for (const [pid, ppid, uid, env] of [[300, 200, 1000, {}], [200, 100, 1000, marker], [100, 1, 1000, {}], [1, 0, 0, null]] as const) {

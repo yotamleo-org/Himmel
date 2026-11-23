@@ -37,8 +37,6 @@ vi.mock('node:fs', async (orig) => {
 const cappedCalls = vi.hoisted(() => [] as string[][]);
 // The capped carry v2 hook: every capped-fold spawn attempt is recorded before the real call; armed, a `--keys` spawn is answered by `fn` instead of a child.
 const cappedSpawn = vi.hoisted(() => ({ fn: null as null | ((args: string[], options: unknown) => string), options: [] as unknown[], attempts: [] as string[][] }));
-// Armed, every child a model judge would start is answered here and recorded: the preflight, the profile settings,
-// the launch record, the API launcher (refused) and the subscription `claude` call (the armed reply). No test reaches a model.
 const judgeChild = vi.hoisted(() => ({ on: false, reply: '[]', spawns: [] as string[] }));
 vi.mock('node:child_process', async (orig) => {
   const m = await orig<typeof import('node:child_process')>();
@@ -4550,7 +4548,6 @@ describe('the door rules every request; no model is asked', () => {
   });
 });
 
-// rmRun with the door, on hand-built fixtures and the fake Jira only.
 describe('rmRun with the door', () => {
   const declared2 = () => declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
   const ask = (key: string, o: Partial<RequestRow> = {}) =>
@@ -4568,7 +4565,6 @@ describe('rmRun with the door', () => {
   it('writes rows of the shape the base writer wrote, and the tick parses its receipt (I10)', async () => {
     const golden = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'engine.i10-baseline.a070e4432.jsonl'), 'utf8').trim().split('\n')
       .map((l) => JSON.parse(l) as { file: string; row: Record<string, unknown> });
-    // The base fixture: a Medium INTAKE, a High INTAKE and an In Progress REVERSION v2→v1.
     declared2();
     mirror([
       { key: 'K-2', fixVersions: [], priority: 'Medium', sector: 'Planning & tracking' },
@@ -4588,10 +4584,8 @@ describe('rmRun with the door', () => {
       ...['requests', 'rulings', 'events'].flatMap((file) => rows<Record<string, unknown>>(file).map((row) => ({ file, row }))),
       ...readFileSync(process.env.HIMMEL_ADMISSIONS_LEDGER!, 'utf8').split('\n').filter(Boolean).map((l) => ({ file: 'admissions', row: JSON.parse(l) as Record<string, unknown> })),
     ];
-    // A row kind is its file and, inside one, what tells its rows apart: the request state, the ruling phase, the event or admission kind.
     const kindOf = (x: { file: string; row: Record<string, unknown> }) =>
       `${x.file}:${String(x.row.state ?? x.row.phase ?? x.row.kind ?? '').replace(/:.*/, '')}`;
-    // Per row kind, every type the base wrote for each field (a nullable field has both).
     const goldenShapes = new Map<string, Record<string, string[]>>();
     for (const g of golden) {
       const acc = goldenShapes.get(kindOf(g)) ?? {};
@@ -4604,7 +4598,6 @@ describe('rmRun with the door', () => {
       expect(mine.length, k).toBeGreaterThan(0);
       for (const x of mine) {
         const got = shape(x.row);
-        // A field the base wrote only on some rows of a kind (readback, comment_id) may be absent; none may be new or change type.
         for (const [f, t] of Object.entries(got)) expect(want[f], `${k}.${f}`).toContain(t);
       }
       expect(Object.keys(shape(mine[0].row)).sort(), k).toEqual(Object.keys(shape(golden.find((g) => kindOf(g) === k)!.row)).sort());
@@ -4687,19 +4680,16 @@ describe('rmRun with the door', () => {
       expect({ op: r.op.kind, outcome: r.outcome, authority: r.authority.kind, supersedes: r.supersedes })
         .toEqual({ op: d.op, outcome: d.outcome, authority: d.authority ?? 'rm', supersedes: d.supersedes ?? [] });
     };
-    // An operator add places K-2 in v2; the door follows it under rule O.
     const placedBy = operatorDecision(ctx(), { decision: '243', keys: ['K-2'], op: 'add', from_v: null, to_v: 'v2', verbatim: 'x' });
     const first = ask('K-2', { to_v: 'v2' });
     await rmRun(ctx(), door);
     same(first.req);
     expect(intentOf(first.req).authority).toEqual({ kind: 'operator', ref: placedBy.id });
-    // A High re-request to v1 on the operator-ruled key is no change, and passes rule().
     mirror([{ key: 'K-2', fixVersions: ['v2'], priority: 'High' }, { key: 'K-3', fixVersions: [] }]);
     const again = ask('K-2');
     const lines = await rmRun(ctx(), door);
     expect(lines).toContainEqual(expect.stringMatching(new RegExp(`^RULING R-R1-\\d+ ${again.req} INTAKE K-2 none .* AD-HOC .* door:operator-standing:`)));
     same(again.req);
-    // A rule O REVERSION add with no prior operator ruling: the door says move from nothing, restoreAsAdd writes add.
     const o3 = operatorDecision(ctx(), { decision: '244', keys: ['K-3'], op: 'add', from_v: null, to_v: 'v1', verbatim: 'x' });
     const rev = ask('K-3', { verb: 'REVERSION', from_v: null, to_v: 'v1', why: 'the operator placed it' });
     await rmRun(ctx(), door);

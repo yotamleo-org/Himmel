@@ -1536,7 +1536,6 @@ export interface RuledDecision {
 
 export interface QueuedRequest { verb: Verb; from_v: string | null; to_v: string | null; operator_record: string }
 
-// The door closes the request as refused, with no ruling: rmRun calls refuse(), never rule().
 export interface RefuseDecision {
   req: string;
   outcome: 'REFUSE';
@@ -1838,7 +1837,6 @@ export function rmRunSummary(release: string, lines: string[]): string | null {
   return n ? `RM-RUN ${release} summary: ${n} refused` : null;
 }
 
-// Rule O's follow-up: the request the operator's record still owes, filed by the RM under that record's pointer.
 function queueRequest(ctx: Ctx, q: RequestRow, queue: QueuedRequest): string {
   return locked(ctx, (l) => {
     rmFence(ctx, l);
@@ -1894,7 +1892,6 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
     }
     if (claimed.length) {
       const now = loadOrThrow(ctx);
-      // A standing blocker pull is ruled mechanically; only the other requests go to the door.
       const mirror = readMirror(ctx.mirrorRoot);
       const delivered = deliveredDecisions(now, mirror, claimed, ctx.deliveredPr);
       const asked = claimed.filter((q) => !isPullRequest(q) && !delivered.has(q.req));
@@ -1967,7 +1964,6 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
           }).id;
         } catch (e) {
           lines.push(`REFUSED ${q.req}: ${(e as Error).message}`);
-          // A request the door never answered stays claimed for the next run.
           if (d || pulled) refuse(rctx, q.req, (e as Error).message);
           continue;
         }
