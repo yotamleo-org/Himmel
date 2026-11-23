@@ -198,12 +198,14 @@ if ! match_shapes "$cmd" "$semi_blanked" "$emptied$shell_code"; then
                 if [ "$interp" = 1 ]; then
                     at_start=1 interp=0
                     continue
-                fi ;;
+                fi
+                [ "$at_start" = 1 ] && continue ;;
             -m|-e)
                 if [ "$interp" = 1 ]; then
                     [ "$ishell" = 1 ] || interp=0
                     continue
-                fi ;;
+                fi
+                [ "$at_start" = 1 ] && continue ;;
             sudo|env|nice|nohup|exec|command|time|timeout|do|then|else|elif|if|while|until|"!"|[0-9]*|[A-Za-z_]*=*)
                 { [ "$at_start" = 1 ] || [ "$interp" = 1 ]; } && continue ;;
             *.sh|*.bash|*.py|*.js|*.mjs|*.cjs) ;;
