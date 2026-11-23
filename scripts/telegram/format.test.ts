@@ -27,6 +27,11 @@ test("a lone language word after the fence is a label, not part of the code", ()
   expect(toTelegramHtml("Run:\n\n```bash\nls -la\n```")).toBe("<b>Run:</b>\n\n<pre>ls -la</pre>");
 });
 
+test("language labels such as c# and f# are labels too", () => {
+  expect(toTelegramHtml("Run:\n\n```c#\nvar x = 1;\n```")).toBe("<b>Run:</b>\n\n<pre>var x = 1;</pre>");
+  expect(toTelegramHtml("Run:\n\n```f#\nlet x = 1\n```")).toBe("<b>Run:</b>\n\n<pre>let x = 1</pre>");
+});
+
 test("the rest of a fence opening line is kept, byte-exact", () => {
   expect(toTelegramHtml("Run:\n\n```ls *_a <b>\nmore\n```")).toBe("<b>Run:</b>\n\n<pre>ls *_a &lt;b&gt;\nmore</pre>");
 });

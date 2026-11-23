@@ -36,7 +36,7 @@ export function toTelegramHtml(text: string): string {
       const rest = lines[i].slice(3);
       let j = i + 1;
       const closeAt = lines.findIndex((l, k) => k > i && /^```\s*$/.test(l));
-      const body: string[] = rest && !(closeAt > 0 && /^[A-Za-z0-9_+-]+$/.test(rest)) ? [rest] : [];
+      const body: string[] = rest && !(closeAt > 0 && /^[A-Za-z0-9_+#.-]+$/.test(rest)) ? [rest] : [];
       while (j < lines.length && !/^```\s*$/.test(lines[j])) body.push(lines[j++]);
       out.push(`<pre>${esc(body.join("\n"))}</pre>`);
       i = j;
