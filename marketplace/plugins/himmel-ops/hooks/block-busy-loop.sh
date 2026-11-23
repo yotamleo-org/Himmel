@@ -35,7 +35,9 @@
 # A `;` inside a quoted span is blanked before the loop match, so a loop head
 # such as `while [ "$x" != ";" ]` is still read as one head. The command
 # position match runs on the text with every quoted span emptied, so a tool
-# name inside a commit message or a grep pattern is not a command.
+# name inside a commit message or a grep pattern is not a command; a quoted
+# span in command position keeps its text, and the text of a `sh -c` string
+# is matched the same way.
 #
 # Hook I/O: the tool-call JSON on stdin. Exit 0 allows; exit 2 denies, and
 # stderr is shown to Claude. Each deny appends one JSONL row (ts, session_id,
@@ -77,20 +79,33 @@ SHELL_C_RE='(^|[^[:alnum:]_./-])(ba|z|da|k)?sh[[:space:]]+(-[[:alnum:]]+[[:space
 YES_RE="${CMD_POS}yes([[:space:]][^;&|]*)?>[[:space:]]*/dev/null"
 DD_RE="${CMD_POS}dd[[:space:]][^;&|]*(if=/dev/(zero|u?random)[^;&|]*of=/dev/null|of=/dev/null[^;&|]*if=/dev/(zero|u?random))"
 
-semi_blanked=""
-emptied=""
-shell_code=""
-rest=$cmd
-while [[ $rest =~ $QUOTED_RE ]]; do
-    pre=${BASH_REMATCH[1]}
-    span=${BASH_REMATCH[2]}
-    rest=${BASH_REMATCH[4]}
-    semi_blanked+=$pre${span//;/ }
-    emptied+="$pre''"
-    [[ $pre =~ $SHELL_C_RE ]] && shell_code+=$NL${span:1:${#span}-2}
-done
-semi_blanked+=$rest
-emptied+=$rest
+CMD_END_RE="${CMD_POS}\$"
+
+scan_quotes() {
+    local rest=$1 pre span inner
+    q_semi="" q_empty="" q_shell=""
+    while [[ $rest =~ $QUOTED_RE ]]; do
+        pre=${BASH_REMATCH[1]}
+        span=${BASH_REMATCH[2]}
+        rest=${BASH_REMATCH[4]}
+        inner=${span:1:${#span}-2}
+        q_semi+=$pre${span//;/ }
+        if [[ $q_empty$pre =~ $CMD_END_RE ]]; then
+            q_empty+=$pre$inner
+        else
+            q_empty+="$pre''"
+        fi
+        [[ $pre =~ $SHELL_C_RE ]] && q_shell+=$NL$inner
+    done
+    q_semi+=$rest
+    q_empty+=$rest
+}
+
+scan_quotes "$cmd"
+semi_blanked=$q_semi
+emptied=$q_empty
+scan_quotes "$q_shell"
+shell_code=$q_empty
 
 shape=""
 detail=""
@@ -140,7 +155,7 @@ if ! match_shapes "$cmd" "$semi_blanked" "$emptied$shell_code"; then
     prev=""
     read_count=0
     set -f
-    for tok in ${emptied//[;&|()<>]/ }; do
+    for tok in ${cmd//[;&|()<>\"\']/ }; do
         if [ "$prev" = "cd" ]; then
             case $tok in /*) next=$tok ;; *) next=$base/$tok ;; esac
             [ -d "$next" ] && base=$next
