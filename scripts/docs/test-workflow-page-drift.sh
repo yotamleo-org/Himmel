@@ -150,7 +150,7 @@ if case == "order":
 # the page row and update the fact with it.
 FACTS = [
     ("hooks run side by side in an install", "scripts/lib/wire-pretooluse-hooks.sh",
-     ["each as its own matcher stanza", "stanza: { matcher: $matcher"],
+     ["each as its own matcher stanza", "stanza: { matcher: $e.matcher"],
      ["Each hook that matches the tool sees the call; any one that says no stops it"],
      ["run in order", "the first one that says no", "Every hook sees the call", "Every hook checks the call"]),
     ("worktree: ceiling, then merged PR", "scripts/_new-worktree.sh",

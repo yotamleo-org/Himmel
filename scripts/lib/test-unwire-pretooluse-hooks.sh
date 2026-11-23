@@ -187,5 +187,27 @@ check "trio_jq_failure_not_success: no success row" "$(printf '%s' "$out" | grep
 check "trio_jq_failure_not_success: file untouched" "$(cmp -s "$tf" "$tf.before" && echo same || echo changed)" "same"
 check "trio_jq_failure_not_success: no temp left" "$([ -e "$tf.unwirehooks.tmp" ] && echo yes || echo no)" "no"
 
+mkc() {
+  # shellcheck disable=SC2016  # literal $CLAUDE_PROJECT_DIR, as adopt writes it
+  printf '%s' '{"hooks":{"PreToolUse":[
+    {"matcher":"Bash","hooks":[
+      {"type":"command","command":"bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/auto-approve-safe-bash.sh"},
+      {"type":"command","command":"bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/block-unresolved-cr-merge.sh","timeout":120},
+      {"type":"command","command":"bash /opt/rtk-hook-guard.sh"}]},
+    {"matcher":"Edit|Write|MultiEdit|NotebookEdit","hooks":[{"type":"command","command":"bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/block-edit-on-main.sh"}]},
+    {"matcher":"Bash|PowerShell|Read|Grep","hooks":[{"type":"command","command":"bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/block-read-secrets.sh"}]}
+  ]}}' > "$1"
+}
+cmds() { jq -r '[.hooks.PreToolUse[].hooks[].command | capture("hooks/(?<n>[a-z-]+)[.]sh|(?<o>rtk-hook-guard)") | (.n // .o)] | sort | join(",")' "$1"; }
+sc="$td/chain.json"; mkc "$sc"
+bash "$unwire" "$sc" >/dev/null
+check "chain_default_removes_only_trio" "$(cmds "$sc")" "block-unresolved-cr-merge,rtk-hook-guard"
+sc2="$td/chain2.json"; mkc "$sc2"
+bash "$unwire" "$sc2" 0 --chain >/dev/null
+check "chain_flag_removes_all" "$(cmds "$sc2")" "rtk-hook-guard"
+sc3="$td/chain3.json"; mkc "$sc3"; mkdir -p "$td/cproj/.claude"; cp "$sc3" "$td/cproj/.claude/settings.json"
+bash "$unwire" --scope project --target "$td/cproj" --chain >/dev/null
+check "chain_flag_project_scope" "$(cmds "$td/cproj/.claude/settings.json")" "rtk-hook-guard"
+
 rm -rf "$td"
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

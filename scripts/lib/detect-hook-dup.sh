@@ -12,8 +12,8 @@
 # Usage:
 #   bash detect-hook-dup.sh <user-settings> <project-settings> <himmel-root>
 #
-# Prints the remediation (`unwire-pretooluse-hooks --scope project --target`) the
-# operator runs IF they accept the advice. Requires jq (no-ops without it).
+# It advises no unwire: launch-guard's adopted mode requires the project chain.
+# Requires jq (no-ops without it).
 set -uo pipefail
 
 _DHD_UNIVERSAL="auto-approve-safe-bash block-edit-on-main block-read-secrets inject-initiative"
@@ -52,8 +52,7 @@ detect_hook_dup() {
   if [ -n "$dups" ]; then
     echo "  NOTE: these himmel UNIVERSAL hooks are wired at BOTH user and project scope (they fire twice):" >&2
     for b in $dups; do echo "    - $b" >&2; done
-    echo "  The double-fire is benign + idempotent. To remove the redundant project copy, run:" >&2
-    echo "    bash $himmel/scripts/lib/unwire-pretooluse-hooks.sh --scope project --target $(dirname "$(dirname "$project")")" >&2
+    echo "  The double-fire is benign + idempotent. Keep the project copy: launch-guard requires it." >&2
   fi
   return 0
 }
