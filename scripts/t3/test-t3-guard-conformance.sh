@@ -47,6 +47,7 @@ run_codex() {
     local tool="$1" args="$2" expect="$3" label="$4"
     local full_tool="mcp__t3-code__$tool"
     local cmds="" cmd="" payload="" out="" rc=0 dec="" denied=0
+    local -a parts=()
     cmds="$(TOOL_NAME="$full_tool" HOOKS_FILE="$REPO/.codex/hooks.json" node -e '
 const fs = require("fs");
 const h = JSON.parse(fs.readFileSync(process.env.HOOKS_FILE, "utf8")).hooks || {};
@@ -67,22 +68,22 @@ for (const b of h.PreToolUse || []) {
         '{hook_event_name:"PreToolUse",tool_name:$t,tool_input:$a,cwd:"/tmp"}')"
     while IFS= read -r cmd; do
         [ -n "$cmd" ] || continue
-        out="$(
-            set -f
-            # shellcheck disable=SC2086
-            set -- $cmd
-            s="$1"
-            shift
-            printf '%s' "$payload" | CLAUDE_PROJECT_DIR="$REPO" bash "$REPO/$s" "$@" 2>"$TMP/codex.err"
-        )"; rc=$?
+        read -r -a parts <<< "$cmd"
+        [ "${#parts[@]}" -gt 0 ] || continue
+        out="$(printf '%s' "$payload" | CLAUDE_PROJECT_DIR="$REPO" bash "$REPO/${parts[0]}" "${parts[@]:1}" 2>"$TMP/codex.err")"; rc=$?
         if [ "$rc" -ne 0 ]; then
             bad "codex: $label (rc=$rc out=$out err=$(cat "$TMP/codex.err"))"
             return
         fi
-        dec="$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null || true)"
-        if [ "$dec" = "deny" ]; then
-            denied=1
-            break
+        if [ -n "$out" ]; then
+            if ! dec="$(printf '%s' "$out" | jq -r 'if type == "object" then (.hookSpecificOutput.permissionDecision // "") else error("expected object") end' 2>/dev/null)"; then
+                bad "codex: $label (malformed adapter JSON: out=$out err=$(cat "$TMP/codex.err"))"
+                return
+            fi
+            if [ "$dec" = "deny" ]; then
+                denied=1
+                break
+            fi
         fi
     done <<< "$cmds"
     if [ "$expect" = "deny" ]; then
