@@ -60,7 +60,7 @@ vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { projectKey, request } from '../client.js';
 import { admissionBudget } from '../release/leaks.js';
-import { backlogAlerts, ctxFor, JUDGE_API_BUDGET_USD, JUDGE_API_PASS_ENV, JUDGE_CACHE, JUDGE_SELECTION_NOTE, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePrompt, judgeSkill, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, liveJudgeArgs, liveJudgeEnv, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge, routedJudgeArgs } from './release.js';
+import { backlogAlerts, ctxFor, JUDGE_API_BUDGET_USD, JUDGE_API_PASS_ENV, JUDGE_CACHE, JUDGE_SELECTION_NOTE, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePrompt, judgeSkill, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, liveJudgeArgs, liveJudgeEnv, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge, routedJudgeArgs, sendSignerAlert } from './release.js';
 import type { Judge, JudgeInput } from '../release/engine.js';
 import * as engineMod from '../release/engine.js';
 import { defaultRoot } from './mirror.js';
@@ -2455,5 +2455,155 @@ describe('release core-check reads who signs (I13)', () => {
     const broken = join(root, 'state', 'R2', 'operator.jsonl');
     writeFileSync(broken, `${readFileSync(broken, 'utf8')}not json\n`);
     expect(await check('K-5', 'K-6')).toEqual([`CORE K-5 ${CORE_PATH}`, `CORE K-6 ${CORE_PATH}`]);
+  });
+});
+
+describe('the spec signer: operator spec-signer, operator spec --signer and signer-check', () => {
+  const opPath = () => join(root, 'state', 'R1', 'operator.jsonl');
+  const rowsOf = (kind: string) => readChain<OperatorRow>(opPath(), loadKey(join(root, 'keys', 'R1.key'))).verified.filter((r) => r.kind === kind);
+  let mir: string;
+  let sent: string;
+  const sender = (body: string) => {
+    writeFileSync(join(root, 'sender.sh'), `#!/usr/bin/env bash\n${body}\n`);
+    chmodSync(join(root, 'sender.sh'), 0o755);
+  };
+  const decide = (n: string, words: string) => {
+    mkdirSync(join(root, 'specs', 'decisions'), { recursive: true });
+    writeFileSync(join(root, 'specs', 'decisions', `verbatim-decision-${n}-operator-11-23.txt`), `Decision ${n}, operator, 2026-11-23.\n\n${words}\n`);
+  };
+  function specFile(name: string, ticket: string | null): string {
+    const dir = join(root, 'specs', name.replace(/\.md$/, ''));
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'est.json'), JSON.stringify({ median_seq: 1, sigma: 0.1, dod: { passed: true } }));
+    const p = join(dir, name);
+    writeFileSync(p, [`# ${ticket ?? 'K-1'}: a fixture design${ticket ? `\n\n- Ticket: ${ticket}` : ''}`, '', 'Estimate record: est.json', '',
+      '## Alternatives considered', '', '- none better.', '', '## Definition of done', '', '- the fixture signs.', '', '## Invariants', '', 'none', ''].join('\n'));
+    writeFileSync(`${p}.critic-spec-r1.md`, 'the critic\'s return\n\nSPEC CLEAN\n');
+    writeFileSync(`${p}.critic-plan-r1.md`, 'the critic\'s return\n\nPLAN CLEAN\n');
+    return p;
+  }
+  const signArgs = (keys: string, p: string) => ['operator', 'spec', 'R1', '--keys', keys, '--spec', p, '--verdict', `${p}.critic-spec-r1.md`, '--verdict', `${p}.critic-plan-r1.md`];
+  const chiefSign = (keys: string, p: string) => run(...signArgs(keys, p), '--decision', '387', '--verbatim-file', join(root, 'verbatim.txt'));
+  const put = (keys: string[] | undefined, signer: 'chief' | 'operator', decision: string) => {
+    const k = loadKey(join(root, 'keys', 'R1.key'));
+    return appendChain<OperatorRow>(opPath(), k, {
+      id: `O-R1-${String(readChain<OperatorRow>(opPath(), k).rows.length + 1).padStart(4, '0')}`,
+      kind: 'spec-signer', ts: new Date().toISOString(), decision, signer, ...(keys ? { keys } : {}), verbatim: `the operator's words, decision ${decision}`,
+    });
+  };
+  const signerCheck = async (...args: string[]) => {
+    out = [];
+    await run('signer-check', '--mirror', mir, ...args);
+    return out;
+  };
+  const STATION_CHIEF = 'the chief signs every spec again from now on';
+  const OP_K1 = 'the operator signs K-1 himself, spec and plan';
+
+  beforeEach(async () => {
+    vi.stubEnv('JIRA_PROJECT_KEY', '');
+    await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '106', '--verbatim-file', join(root, 'verbatim.txt'));
+    mir = join(root, 'jira-mirror', 'HIMMEL');
+    mkdirSync(mir, { recursive: true });
+    writeFileSync(join(mir, '.cursor.json'), JSON.stringify({ lastSync: '2026-11-23T00:00:00Z', complete: false }));
+    for (const [k, type, parent] of [['V-1', 'Task'], ['K-1', 'Task'], ['K-2', 'Task'], ['K-9', 'Task'], ['K-4', 'Subtask', 'V-1']]) {
+      writeFileSync(join(mir, `${k}.md`), `---\nkey: "${k}"\nstatus: "x"\nstatusCategory: "To Do"\ntype: "${type}"\npriority: "Medium"\n${parent ? `parent: "${parent}"\n` : ''}---\n`);
+    }
+    sent = join(root, 'sent.txt');
+    sender(`printf '%s\\n' "$2" >> ${JSON.stringify(sent)}`);
+    writeFileSync(join(root, 'access.json'), '{"allowFrom":["4242"]}\n');
+    vi.stubEnv('TELEGRAM_ACCESS_PATH', join(root, 'access.json'));
+    vi.stubEnv('MERGE_BLOCK_ALERT_CMD', join(root, 'sender.sh'));
+    vi.stubEnv('HIMMEL_TEST_FIXTURE', '1');
+    vi.stubEnv('BRIDGE_ROOT', '');
+    decide('1201', STATION_CHIEF);
+    decide('1202', OP_K1);
+    out = [];
+  });
+
+  it('with HIMMEL_TEST_FIXTURE=1 and TELEGRAM_ACCESS_PATH at a no-chat file, operator spec --signer operator writes no row, and operator spec-signer --signer chief writes no row; with the stub sender, each writes its row and the sender captured one line of its kind (I6)', async () => {
+    const p = specFile('K-1-own.md', null);
+    const opSign = () => run(...signArgs('K-1', p), '--signer', 'operator', '--decision', '1202', '--words', OP_K1);
+    const station = () => run('operator', 'spec-signer', 'R1', '--signer', 'chief', '--decision', '1201', '--words', STATION_CHIEF);
+    vi.stubEnv('TELEGRAM_ACCESS_PATH', join(root, 'absent.json'));
+    await expect(opSign()).rejects.toThrow('release operator spec: the operator alert exited 1; no record written');
+    await expect(station()).rejects.toThrow('release operator spec-signer: the operator alert exited 1; no record written');
+    expect(rowsOf('spec')).toEqual([]);
+    expect(rowsOf('spec-signer')).toEqual([]);
+    expect(existsSync(sent)).toBe(false);
+    vi.stubEnv('TELEGRAM_ACCESS_PATH', join(root, 'access.json'));
+    await opSign();
+    await station();
+    const [sig] = rowsOf('spec');
+    const [rec] = rowsOf('spec-signer');
+    expect(sig).toMatchObject({ signer: 'operator', operator_keys: ['K-1'], decision: '1202', verbatim: OP_K1 });
+    expect(rec).toMatchObject({ signer: 'chief', decision: '1201', verbatim: STATION_CHIEF });
+    expect(out).toContain(`${rec.id} spec-signer the station default signed by chief`);
+    const lines = readFileSync(sent, 'utf8').trim().split('\n');
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain(`"${OP_K1}" — operator signature recorded for K-1, decision 1202`);
+    expect(lines[1]).toContain(`"${STATION_CHIEF}" — spec signer: the station default now signed by chief, decision 1201`);
+  });
+
+  it.each(['MERGE_BLOCK_ALERT_CMD', 'TELEGRAM_ACCESS_PATH', 'BRIDGE_ROOT'])('sendSignerAlert with %s set and HIMMEL_TEST_FIXTURE unset returns non-zero naming the variable and runs no sender; operator spec-signer --signer chief under the same environment writes no row (I6)', async (v) => {
+    vi.stubEnv('MERGE_BLOCK_ALERT_CMD', '');
+    vi.stubEnv('TELEGRAM_ACCESS_PATH', '');
+    vi.stubEnv(v, join(root, 'sender.sh'));
+    vi.stubEnv('HIMMEL_TEST_FIXTURE', '');
+    const errs: string[] = [];
+    vi.spyOn(console, 'error').mockImplementation((s: string) => { errs.push(s); });
+    const a = { kind: 'record' as const, scope: 'the station default', signer: 'chief' as const, decision: '1201', words: STATION_CHIEF, notes: [], chiefSigned: [] };
+    expect(sendSignerAlert(a)).not.toBe(0);
+    expect(errs.join('\n')).toContain(v);
+    await expect(run('operator', 'spec-signer', 'R1', '--signer', 'chief', '--decision', '1201', '--words', STATION_CHIEF)).rejects.toThrow(/the operator alert exited 1; no record written/);
+    expect(rowsOf('spec-signer')).toEqual([]);
+    expect(existsSync(sent)).toBe(false);
+  });
+
+  it('sendSignerAlert with timeoutMs 200, HIMMEL_TEST_FIXTURE=1 and MERGE_BLOCK_ALERT_CMD set to a sender that sleeps 2 s returns non-zero (I6)', () => {
+    sender('sleep 2');
+    const t = Date.now();
+    expect(sendSignerAlert({ kind: 'record', scope: 'K-1', signer: 'operator', decision: '1202', words: OP_K1, notes: [], chiefSigned: [] }, 200)).not.toBe(0);
+    expect(Date.now() - t).toBeLessThan(1800);
+  });
+
+  it('signer-check prints default chief with no record, the mark\'s id for a marked key, the station id under a station record, UNKNOWN on a broken chain, UNKNOWN for a sub-task missing from an incomplete mirror under a parent mark, and its answer, never UNKNOWN, for a key absent from the mirror under a station-only record or holding its own record; it runs under a test fixture root (I15)', async () => {
+    expect(await signerCheck('K-1', 'K-77')).toEqual(['SIGNER K-1 chief default', 'SIGNER K-77 chief default']);
+    const station = put(undefined, 'operator', '1180');
+    expect(await signerCheck('K-2', 'K-77')).toEqual([`SIGNER K-2 operator ${station.id}`, `SIGNER K-77 operator ${station.id}`]);
+    put(['K-88'], 'chief', '1181');
+    const mark = put(['V-1'], 'operator', '1182');
+    expect(await signerCheck('V-1', 'K-4', 'K-5', 'K-88')).toEqual([
+      `SIGNER V-1 operator ${mark.id}`, `SIGNER K-4 operator ${mark.id}`,
+      'UNKNOWN K-5 K-5 is not in the Jira mirror, so its parent\'s mark cannot be read', `SIGNER K-88 operator ${station.id}`,
+    ]);
+    vi.stubEnv('HIMMEL_REAL_STATE_ASSUME_STATION', '1');
+    vi.stubEnv('HIMMEL_REAL_STATE_EXTRA_ROOTS', root);
+    expect(await signerCheck('V-1')).toEqual([`SIGNER V-1 operator ${mark.id}`]);
+    writeFileSync(opPath(), `${readFileSync(opPath(), 'utf8')}not json\n`);
+    const [broken] = await signerCheck('K-1');
+    expect(broken).toMatch(/^UNKNOWN K-1 release R1: operator\.jsonl/);
+  });
+
+  it('signer-check K-1 prints SIGNER K-1 operator <mark id> via V-1; signer-check --spec <a spec naming V-1> K-9 prints the same via line for an unsigned key; signer-check K-1 prints SIGNER K-1 chief default once the mark is lifted (R5, I18 c)', async () => {
+    const p = specFile('V-1-sliced.md', 'V-1');
+    await chiefSign('V-1,K-1,K-2', p);
+    expect(await signerCheck('K-1')).toEqual(['SIGNER K-1 chief default']);
+    const mark = put(['V-1'], 'operator', '1170');
+    expect(await signerCheck('K-1', 'K-2')).toEqual([`SIGNER K-1 operator ${mark.id} via V-1`, `SIGNER K-2 operator ${mark.id} via V-1`]);
+    expect(await signerCheck('K-9')).toEqual(['SIGNER K-9 chief default']);
+    expect(await signerCheck('--spec', p, 'K-9')).toEqual([`SIGNER K-9 operator ${mark.id} via V-1`]);
+    put(['V-1'], 'chief', '1171');
+    expect(await signerCheck('K-1')).toEqual(['SIGNER K-1 chief default']);
+  });
+
+  it('operator spec with --signer operator and --verbatim-file is refused naming --words; the old flag set signs as chief; a chief signature without --decision is refused; a chief signature without --verbatim-file is refused', async () => {
+    const p = specFile('K-1-flags.md', null);
+    const vf = join(root, 'verbatim.txt');
+    await expect(run(...signArgs('K-1', p), '--signer', 'operator', '--decision', '1202', '--verbatim-file', vf)).rejects.toThrow(/--signer operator takes --words/);
+    await expect(run(...signArgs('K-1', p), '--verbatim-file', vf)).rejects.toThrow('release operator spec: a signature needs --decision');
+    await expect(run(...signArgs('K-1', p), '--decision', '387')).rejects.toThrow('release operator spec: a chief signature needs --decision and --verbatim-file');
+    expect(rowsOf('spec')).toEqual([]);
+    await chiefSign('K-1', p);
+    expect(rowsOf('spec')).toEqual([expect.objectContaining({ signer: 'chief', keys: ['K-1'], decision: '387' })]);
   });
 });

@@ -9,7 +9,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { Command } from 'commander';
 import * as pinned from './pinned.js';
 import { RESIDUAL_ROWS } from './test-residual-fixtures.js';
-import { checkResiduals, checkRoundResiduals, headerTickets, SPEC_CHECK_VERBS } from './spec-sign.js';
+import { checkResiduals, checkRoundResiduals, headerTickets, SPEC_CHECK_VERBS, specSigner, type SignerAlert } from './spec-sign.js';
 import { readSignerState } from './engine-core.js';
 import * as ledger from './ledger.js';
 import type { IssueSnap, OperatorRow } from './types.js';
@@ -2674,8 +2674,8 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{if(a[1]?.[1]==='capped-fo
       const a = spec('K-1-a.md');
       const b = spec('K-2-b.md', join(root, 'specs-b'));
       const r1 = sign(sctx(), ['K-1'], a);
-      const station = signer(undefined, 'operator', '1171');
       const r2 = sign(at('2026-10-23T10:00:00.000Z'), ['K-2'], b);
+      const station = signer(undefined, 'operator', '1171');
       expect(check(['K-1', 'K-2'])).toEqual([`SPEC ok K-1 ${a} ${r1.id}`, `SPEC-NEEDS-OPERATOR K-2 ${b} ${r2.id} ${station.id}`]);
     });
 
@@ -2777,12 +2777,12 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{if(a[1]?.[1]==='capped-fo
       const fullLine = (verb: string) => fixture.find(([want, line]) => want !== 'none' && verbOf(line) === verb)?.[1];
       for (const v of SPEC_CHECK_VERBS) expect(fullLine(v), `fixture line for ${v}`).toBeDefined();
       const { p, r1 } = sliced();
+      const m2 = mirror(['V-1', 'K-1', 'K-7', 'K-8', 'K-9'].map((k) => [k, 'Task'] as [string, string]));
       const s = spec('K-7-stale.md', join(root, 'specs-stale'));
-      sign(sctx(), ['K-7'], s);
+      sign({ ...sctx(), mirrorRoot: m2 }, ['K-7'], s);
       writeFileSync(s, `${readFileSync(s, 'utf8')}\nedited\n`);
       const ok = spec('K-8-ok.md', join(root, 'specs-ok'));
-      sign(sctx(), ['K-8'], ok);
-      const m2 = mirror(['V-1', 'K-1', 'K-7', 'K-8', 'K-9'].map((k) => [k, 'Task'] as [string, string]));
+      sign({ ...sctx(), mirrorRoot: m2 }, ['K-8'], ok);
       const got = specCheck(specEnv(), ['K-8', 'K-7', 'K-9', 'V-1', 'K-1'], m2).lines;
       const paths = [ok, s, null, p, p];
       expect(got.map(verbOf)).toEqual(['SPEC ok', 'SPEC-STALE', 'NO-SPEC', 'SPEC-NEEDS-OPERATOR', 'SPEC-NEEDS-OPERATOR']);
@@ -2797,6 +2797,256 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{if(a[1]?.[1]==='capped-fo
       expect(verbOf(unknown)).toBe('SPEC-SIGNER-UNKNOWN');
       const want = fullLine('SPEC-SIGNER-UNKNOWN') as string;
       expect(shape(unknown, null)).toEqual(shape(want, null));
+    });
+
+    describe('the write side: the record, --signer and the alert', () => {
+      let alerts: SignerAlert[];
+      beforeEach(() => { alerts = []; });
+      const ok = (a: SignerAlert) => { alerts.push(a); return 0; };
+      const exits = (rc: number) => (a: SignerAlert) => { alerts.push(a); return rc; };
+      function decide(n: string, ...paras: string[]) {
+        const d = join(root, 'specs', 'decisions');
+        mkdirSync(d, { recursive: true });
+        writeFileSync(join(d, `verbatim-decision-${n}-operator-10-21.txt`), [`Decision ${n}, operator, 2026-10-21.`, ...paras].join('\n\n') + '\n');
+      }
+      const rowsOf = (kind: string, c: Ctx = sctx()) => readChain<OperatorRow>(join(c.dir, 'operator.jsonl'), loadKey(c.keyPath)).verified.filter((r) => r.kind === kind);
+      const withMirror = (m: string, c: Ctx = sctx()): Ctx => ({ ...c, mirrorRoot: m });
+      const record = (c: Ctx, o: Partial<Parameters<typeof specSigner>[1]> & { decision: string; words: string }) => specSigner(c, { signer: 'operator', alert: ok, ...o });
+      const opSignSpec = (c: Ctx, keys: string[], p: string, decision: string, words: string, extra: Partial<Parameters<typeof signSpec>[1]> = {}) =>
+        sign(c, keys, p, { signer: 'operator', decision, words, verbatim: undefined, alert: ok, ...extra });
+      const MARK_K1 = 'K-1 is the operator\'s own to sign, every spec of it';
+      const markK1 = (c: Ctx = sctx()) => { decide('1170', MARK_K1); return record(c, { keys: ['K-1'], decision: '1170', words: MARK_K1 }).row; };
+
+      it('R1 chief-signed passes: no spec-signer record, signer chief, spec-check SPEC ok, the row stores signer chief', () => {
+        declared();
+        const p = spec();
+        const r = sign(sctx(), ['K-1'], p);
+        expect(r.signer).toBe('chief');
+        expect(check(['K-1'])).toEqual([`SPEC ok K-1 ${p} ${r.id}`]);
+      });
+
+      it('R2 write half: a mark on K: signSpec with signer chief throws the mark text naming the mark (I2)', () => {
+        declared();
+        const mark = markK1();
+        expect(mark).toMatchObject({ kind: 'spec-signer', keys: ['K-1'], signer: 'operator', decision: '1170', verbatim: MARK_K1, words: 1 });
+        expect(() => sign(sctx(), ['K-1'], spec())).toThrow(`release operator spec: K-1 is marked for the operator's own signature (${mark.id}, decision 1170); a chief signature is refused. The operator signs it: jira release operator spec R1 --keys K-1 ... --signer operator --decision <n> --words "<his words naming K-1>" [--supersedes <live spec row>]; or he lifts the mark: jira release operator spec-signer R1 --signer chief --keys K-1 --decision <n> --words "<his words>"`);
+        expect(rowsOf('spec')).toEqual([]);
+      });
+
+      it('R3 operator-marked passes his own signature: superseding the chief row, words name the key from a newer decision, alert queued, operator_keys holds the key, SPEC ok (I7)', () => {
+        declared();
+        const p = spec();
+        const r = sign(sctx(), ['K-1'], p);
+        markK1();
+        const words = 'the operator signs K-1 himself, spec and plan';
+        decide('1180', words);
+        alerts = [];
+        const op = opSignSpec(withMirror(mirror([['K-1', 'Task']])), ['K-1'], p, '1180', words, { supersedes: r.id });
+        expect(op).toMatchObject({ signer: 'operator', operator_keys: ['K-1'], decision: '1180', verbatim: words, words: 1, supersedes: r.id });
+        expect(alerts).toEqual([{ kind: 'signature', scope: 'K-1', signer: 'operator', decision: '1180', words, notes: [], chiefSigned: [] }]);
+        expect(check(['K-1'])).toEqual([`SPEC ok K-1 ${p} ${op.id}`]);
+      });
+
+      it('R4 slice-only signing refused: a mark on V; signSpec with signer chief and --keys K1,K2 on a spec whose header names V throws the header text naming V and the mark, writes no row and calls no alert; the same spec signed while V is unmarked writes its row (I18 a)', () => {
+        declared();
+        const p = headed('V-1-sliced.md', 'V-1');
+        const before = sign(sctx(), ['K-1', 'K-2'], p);
+        expect(before.keys).toEqual(['K-1', 'K-2']);
+        const words = 'V-1 is the operator\'s to sign, slices and all';
+        decide('1170', words);
+        const m = mirror(['V-1', 'K-1', 'K-2', 'K-3'].map((k) => [k, 'Task'] as [string, string]));
+        const mark = record(withMirror(m), { keys: ['V-1'], decision: '1170', words }).row;
+        alerts = [];
+        expect(() => sign(withMirror(m), ['K-3'], p)).toThrow(`release operator spec: the spec names V-1 in its header, and V-1 is marked for the operator's own signature (${mark.id}, decision 1170); a chief signature for K-3 on this spec is refused. The operator signs it with V-1 among the keys: jira release operator spec R1 --keys V-1,K-3 ... --signer operator --decision <n> --words "<his words naming V-1>" [--supersedes <live spec row of V-1>]; or he lifts the mark: jira release operator spec-signer R1 --signer chief --keys V-1 --decision <n> --words "<his words>"`);
+        expect(rowsOf('spec').map((r) => r.id)).toEqual([before.id]);
+        expect(alerts).toEqual([]);
+      });
+
+      function slicedRows() {
+        declared();
+        const p = headed('V-1-sliced.md', 'V-1');
+        const q = headed('K-4-other.md', null, join(root, 'specs-other'));
+        const r1 = sign(sctx(), ['V-1', 'K-1', 'K-2'], p);
+        const r2 = sign(sctx(), ['K-3'], p);
+        const r3 = sign(sctx(), ['K-4'], q);
+        const m = mirror(['V-1', 'K-1', 'K-2', 'K-3', 'K-4', 'K-5', 'K-9'].map((k) => [k, 'Task'] as [string, string]));
+        return { p, q, r1, r2, r3, m, c: withMirror(m) };
+      }
+      const MARK_V1 = 'V-1 is the operator\'s to sign, slices and all';
+
+      it('R5 write half: a mark on V after the R5 rows: the alert argument and stdout name both rows with the keys the chief signed in each; a mark on a ticket no row covers says voids no signature (I18 c)', () => {
+        const { r1, r2, c } = slicedRows();
+        decide('1170', MARK_V1);
+        const out = record(c, { keys: ['V-1'], decision: '1170', words: MARK_V1 });
+        const voids = [`V-1 mark voids ${r1.id} for V-1, K-1, K-2`, `V-1 mark voids ${r2.id} for K-3`];
+        expect(out.notes).toEqual(voids);
+        expect(alerts).toEqual([{ kind: 'record', scope: 'V-1', signer: 'operator', decision: '1170', words: MARK_V1, notes: voids, chiefSigned: [] }]);
+        const nine = 'K-9 is the operator\'s to sign from now on';
+        decide('1171', nine);
+        expect(record(c, { keys: ['K-9'], decision: '1171', words: nine }).notes).toEqual(['K-9 mark voids no signature']);
+      });
+
+      it('R6 write half: the operator signs --keys V,K1,K2 --supersedes R with words naming V only; an operator row leaving a key to the chief while the header names V outside operator_keys is refused; one signing every key himself is written (I7, I18 a, b)', () => {
+        const { p, r1, r2, c } = slicedRows();
+        decide('1170', MARK_V1);
+        const mark = record(c, { keys: ['V-1'], decision: '1170', words: MARK_V1 }).row;
+        const words = 'the operator signs V-1 on this spec himself';
+        const half = 'the operator signs K-3 on this spec himself';
+        const both = 'the operator signs K-3 and K-5 on this spec himself';
+        decide('1180', words, half, both);
+        alerts = [];
+        const op = opSignSpec(c, ['V-1', 'K-1', 'K-2'], p, '1180', words, { supersedes: r1.id });
+        expect(op.operator_keys).toEqual(['V-1']);
+        expect(alerts).toEqual([{ kind: 'signature', scope: 'V-1', signer: 'operator', decision: '1180', words, notes: [], chiefSigned: ['K-1', 'K-2'] }]);
+        expect(specCheck(specEnv(), ['V-1', 'K-1', 'K-2', 'K-3'], c.mirrorRoot).lines).toEqual([
+          `SPEC ok V-1 ${p} ${op.id}`, `SPEC ok K-1 ${p} ${op.id}`, `SPEC ok K-2 ${p} ${op.id}`, `SPEC ok K-3 ${p} ${r2.id}`,
+        ]);
+        alerts = [];
+        expect(() => opSignSpec(c, ['K-3', 'K-5'], p, '1180', half, { supersedes: r2.id }))
+          .toThrow(`release operator spec: the spec names V-1 in its header, and V-1 is marked for the operator's own signature (${mark.id}, decision 1170); a chief signature for K-5 on this spec is refused.`);
+        expect(alerts).toEqual([]);
+        const all = opSignSpec(c, ['K-3', 'K-5'], p, '1180', both, { supersedes: r2.id });
+        expect(all.operator_keys).toEqual(['K-3', 'K-5']);
+      });
+
+      it('a station operator default: signSpec with signer chief throws the station text naming the station record (I2)', () => {
+        declared();
+        const words = 'the operator signs every core spec himself from now on';
+        decide('1171', words);
+        const station = record(sctx(), { decision: '1171', words }).row;
+        expect(station.keys).toBeUndefined();
+        expect(() => sign(at(LATER), ['K-1'], spec())).toThrow(`release operator spec: the station default (${station.id}, decision 1171) is the operator's own signature; a chief signature is refused. The operator signs it: jira release operator spec R1 --keys K-1 ... --signer operator --decision <n> --words "<his words naming K-1>" [--supersedes <live spec row>]; or he sets the default back: jira release operator spec-signer R1 --signer chief --decision <n> --words "<his words>"`);
+      });
+
+      it('a marked parent: signSpec with signer chief for its sub-task throws naming the parent\'s mark (I2)', () => {
+        declared();
+        const c = withMirror(mirror([['K-1', 'Task'], ['K-2', 'Subtask', 'K-1']]));
+        const mark = markK1(c);
+        expect(() => sign(c, ['K-2'], spec())).toThrow(`release operator spec: K-2 is marked for the operator's own signature (${mark.id}, decision 1170)`);
+      });
+
+      it('a spec-signer record from a chief-spawned worker is refused by the fence and writes no row (I3)', () => {
+        declared();
+        decide('1170', MARK_K1);
+        expect(() => record(sctx({ ...specEnv(), HIMMEL_CONSOLE_LEG: '1' }), { keys: ['K-1'], decision: '1170', words: MARK_K1 })).toThrow(/chief-spawned worker/);
+        expect(rowsOf('spec-signer')).toEqual([]);
+        expect(alerts).toEqual([]);
+      });
+
+      it('spec-signer words not in the decision file, in a chief gloss, or not naming a key are refused; station chief words without chief and sign are refused (I4)', () => {
+        declared();
+        decide('1170', MARK_K1, 'Reading: K-1 is the operator\'s own to sign now', 'the operator lets go of this whole station rule', 'the chief signs every spec again, as before');
+        const refused = (o: { keys?: string[]; signer?: 'chief' | 'operator'; words: string }, want: RegExp) =>
+          expect(() => record(sctx(), { decision: '1170', ...o })).toThrow(want);
+        refused({ keys: ['K-1'], words: 'K-1 is mine, the operator said so' }, /is not in the decision file/);
+        refused({ keys: ['K-1'], words: 'Reading: K-1 is the operator\'s own to sign now' }, /the chief's gloss/);
+        refused({ keys: ['K-1', 'K-2'], words: MARK_K1 }, /release operator spec-signer: the words do not name K-2/);
+        refused({ signer: 'chief', words: 'the operator lets go of this whole station rule' }, /a station default of chief needs words holding both "chief" and "sign"/);
+        expect(rowsOf('spec-signer')).toEqual([]);
+        expect(alerts).toEqual([]);
+        expect(record(sctx(), { signer: 'chief', decision: '1170', words: 'the chief signs every spec again, as before' }).row.signer).toBe('chief');
+      });
+
+      it('I5: a lift that does not outrank K\'s own and parent\'s key records is refused; a station chief record that does not outrank the newest station record is refused; a mark older than the station record is written and binds; an exact repeat returns the existing row, runs no outranks and calls no second alert', () => {
+        declared();
+        const c = withMirror(mirror([['K-1', 'Task'], ['K-2', 'Subtask', 'K-1']]));
+        markK1(c);
+        decide('1160', 'K-2 goes back to the chief to sign', 'the chief signs every spec at this station');
+        decide('1171', 'the operator signs every core spec himself from now on');
+        decide('1150', 'K-2 is the operator\'s own to sign as well');
+        expect(() => record(c, { signer: 'chief', keys: ['K-2'], decision: '1160', words: 'K-2 goes back to the chief to sign' }))
+          .toThrow(/release operator spec-signer: decision 1160 does not outrank the signer records of K-2/);
+        record(c, { decision: '1171', words: 'the operator signs every core spec himself from now on' });
+        expect(() => record(c, { signer: 'chief', decision: '1160', words: 'the chief signs every spec at this station' }))
+          .toThrow(/release operator spec-signer: decision 1160 does not outrank the station records/);
+        const old = record(c, { keys: ['K-2'], decision: '1150', words: 'K-2 is the operator\'s own to sign as well' }).row;
+        expect(() => sign(at(LATER, c), ['K-2'], spec())).toThrow(`K-2 is marked for the operator's own signature (${old.id}, decision 1150)`);
+        decide('1190', 'K-2 goes back to the chief, the operator said');
+        const lift = record(c, { signer: 'chief', keys: ['K-2'], decision: '1190', words: 'K-2 goes back to the chief, the operator said' });
+        const n = alerts.length;
+        const again = record(c, { signer: 'chief', keys: ['K-2'], decision: '1190', words: 'K-2 goes back to the chief, the operator said' });
+        expect(again.row.id).toBe(lift.row.id);
+        expect(alerts).toHaveLength(n);
+        expect(rowsOf('spec-signer')).toHaveLength(4);
+      });
+
+      it('I6: a failing alert writes no chief record and no operator signature; no callback, a held key or a changed verdict refuses before any alert; a failing mark alert still writes with a WARN; an emergency key carries the bypass note', () => {
+        declared();
+        const m = mirror([['K-1', 'Task'], ['K-7', 'Task'], ['K-8', 'Task']]);
+        writeFileSync(join(m, 'K-8.md'), '---\nkey: "K-8"\ntype: "Bug"\npriority: "Highest"\n---\n');
+        const c = withMirror(m);
+        decide('1160', 'the chief signs every spec at this station');
+        for (const rc of [1, 77]) {
+          expect(() => record(c, { signer: 'chief', decision: '1160', words: 'the chief signs every spec at this station', alert: exits(rc) }))
+            .toThrow(`release operator spec-signer: the operator alert exited ${rc}${rc === 77 ? ' (the send was refused)' : ''}; no record written`);
+        }
+        expect(rowsOf('spec-signer')).toEqual([]);
+        const p = spec();
+        const r = sign(c, ['K-1'], p);
+        const mark = markK1(c);
+        const words = 'the operator signs K-1 himself, spec and plan';
+        decide('1180', words);
+        alerts = [];
+        expect(() => opSignSpec(c, ['K-1'], p, '1180', words, { supersedes: r.id, alert: exits(1) })).toThrow('release operator spec: the operator alert exited 1; no record written');
+        expect(() => opSignSpec(c, ['K-1'], p, '1180', words, { supersedes: r.id, alert: undefined })).toThrow(/--signer operator needs the operator alert/);
+        expect(alerts).toHaveLength(1);
+        expect(() => opSignSpec(c, ['K-1'], p, '1180', words)).toThrow(`K-1 is already signed in ${r.id}`);
+        const v = [verdict(p, 'spec', 'SPEC CLEAN'), verdict(p, 'plan', 'PLAN CLEAN')];
+        signingLock.fn = () => writeFileSync(v[0], 'the critic\'s return\n\nSPEC CLEAN\nedited\n');
+        expect(() => opSignSpec(c, ['K-1'], p, '1180', words, { supersedes: r.id, verdicts: v })).toThrow(/changed while it was checked/);
+        expect(alerts).toHaveLength(1);
+        expect(rowsOf('spec').map((x) => x.id)).toEqual([r.id]);
+        const seven = 'K-7 is the operator\'s own to sign now';
+        const eight = 'K-8 is the operator\'s own to sign now';
+        decide('1181', seven, eight);
+        const warned = record(c, { keys: ['K-7'], decision: '1181', words: seven, alert: exits(1) });
+        expect(warned.warn).toBe('WARN release operator spec-signer: the operator alert exited 1; the mark is written anyway');
+        expect(rowsOf('spec-signer').map((x) => x.id)).toEqual([mark.id, warned.row.id]);
+        alerts = [];
+        const bug = record(c, { keys: ['K-8'], decision: '1181', words: eight });
+        expect(bug.notes).toEqual(['K-8 bypassed (emergency Bug at Highest): the mark does not bind while it is', 'K-8 mark voids no signature']);
+        expect(alerts[0].notes).toEqual(bug.notes);
+      });
+
+      it('I7: operator words from the mark\'s own decision or an older one are refused; words not naming a marked key are refused; an unmarked key the words do not name is signed as chief and voided by a later mark', () => {
+        declared();
+        const c = withMirror(mirror([['K-1', 'Task'], ['K-6', 'Task']]));
+        const p = spec();
+        const r = sign(c, ['K-1', 'K-6'], p);
+        const mark = markK1(c);
+        decide('1100', 'the operator signs K-1 himself, an old word');
+        expect(() => opSignSpec(c, ['K-1', 'K-6'], p, '1170', MARK_K1, { supersedes: r.id })).toThrow(/decision 1170 does not outrank the signer records of K-1/);
+        expect(() => opSignSpec(c, ['K-1', 'K-6'], p, '1100', 'the operator signs K-1 himself, an old word', { supersedes: r.id })).toThrow(/decision 1100 does not outrank/);
+        decide('1180', 'the operator signs K-6 himself, not the other', 'the operator signs K-1 himself, spec and plan');
+        expect(() => opSignSpec(c, ['K-1', 'K-6'], p, '1180', 'the operator signs K-6 himself, not the other', { supersedes: r.id }))
+          .toThrow(`release operator spec: K-1 is marked for the operator's own signature (${mark.id}, decision 1170); a chief signature is refused.`);
+        expect(alerts).toHaveLength(1);
+        const op = opSignSpec(c, ['K-1', 'K-6'], p, '1180', 'the operator signs K-1 himself, spec and plan', { supersedes: r.id });
+        expect(op.operator_keys).toEqual(['K-1']);
+        expect(specCheck(specEnv(), ['K-1', 'K-6'], c.mirrorRoot).lines).toEqual([`SPEC ok K-1 ${p} ${op.id}`, `SPEC ok K-6 ${p} ${op.id}`]);
+        decide('1190', 'K-6 is the operator\'s own to sign now');
+        const six = record(c, { keys: ['K-6'], decision: '1190', words: 'K-6 is the operator\'s own to sign now' });
+        expect(six.notes).toEqual([`K-6 mark voids ${op.id} for K-6`]);
+        expect(specCheck(specEnv(), ['K-6'], c.mirrorRoot).lines).toEqual([`SPEC-NEEDS-OPERATOR K-6 ${p} ${op.id} ${six.row.id}`]);
+      });
+
+      it('while the state is unreadable, signSpec refuses every signature and the spec-signer verb refuses a mark and a lift, and no alert callback is called (I2, I15)', () => {
+        declared();
+        declared(r2());
+        const p = spec();
+        const r = sign(sctx(), ['K-1'], p);
+        decide('1170', MARK_K1, 'K-1 goes back to the chief to sign');
+        decide('1180', 'the operator signs K-1 himself, spec and plan');
+        const chain = join(root, 'release', 'R2', 'operator.jsonl');
+        writeFileSync(chain, `${readFileSync(chain, 'utf8')}not json\n`);
+        const unreadable = /the signer records are unreadable \(release R2: operator\.jsonl does not verify/;
+        expect(() => sign(sctx(), ['K-2'], spec('K-2-b.md', join(root, 'specs-b')))).toThrow(unreadable);
+        expect(() => opSignSpec(sctx(), ['K-1'], p, '1180', 'the operator signs K-1 himself, spec and plan', { supersedes: r.id })).toThrow(unreadable);
+        expect(() => record(sctx(), { keys: ['K-1'], decision: '1170', words: MARK_K1 })).toThrow(unreadable);
+        expect(() => record(sctx(), { signer: 'chief', keys: ['K-1'], decision: '1170', words: 'K-1 goes back to the chief to sign' })).toThrow(unreadable);
+        expect(alerts).toEqual([]);
+        expect(rowsOf('spec-signer')).toEqual([]);
+      });
     });
   });
 });
