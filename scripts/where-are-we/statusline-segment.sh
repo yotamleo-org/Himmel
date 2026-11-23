@@ -125,35 +125,56 @@ if command -v timeout >/dev/null 2>&1; then seg_to="timeout"
 elif command -v gtimeout >/dev/null 2>&1; then seg_to="gtimeout"; fi
 node_to="${HIMMEL_WHERE_ARE_WE_NODE_TIMEOUT:-3}"
 case "$node_to" in ''|*[!0-9]*) node_to=3 ;; esac
-# The slice is cached per key on the ledger's path, size, mtime and inode:
-# a slice re-reads the whole ledger and the ledger changes rarely, so an unchanged
-# ledger starts NO node. An entry's first line is that stamp, the rest the slice.
-# A missing, foreign-owned, symlinked or unmatched entry is a miss, never an error.
+# Per-key slice cache: first line "<ledger>|<inode> <size>", the rest the slice. An
+# append that ends in a newline and never names "<KEY>" keeps the entry; a new inode
+# (a compaction) never matches. A missing, foreign-owned, symlinked or unmatched entry
+# is a miss, never an error. On a node timeout an entry written or confirmed under an
+# hour ago is served; the next finished slice replaces it.
 cachedir="${HIMMEL_WHERE_ARE_WE_ROLLUP_DIR:-/tmp/claude}"
 if [ -n "$node_bin" ] && [ -f "$ledger" ] && [ -n "$seg_to" ]; then
     slice_cache="$cachedir/where-are-we-slice-$key.txt"
-    stamp=""
-    # size, mtime seconds and inode: a compaction replaces the file, so it never matches an old stamp.
-    lst="$(stat -c '%s %Y %i' "$ledger" 2>/dev/null || stat -f '%z %m %i' "$ledger" 2>/dev/null || true)"
-    [ -n "$lst" ] && stamp="$ledger|$lst"
-    hit=0
-    slice=""
+    stamp="" lsize=""
+    lst="$(stat -c '%i %s' "$ledger" 2>/dev/null || stat -f '%i %z' "$ledger" 2>/dev/null || true)"
+    if [ -n "$lst" ]; then stamp="$ledger|$lst"; lsize="${lst#* }"; fi
+    hit=0 have=0 slice="" old=""
     if [ -n "$stamp" ] && [ -f "$slice_cache" ] && [ ! -L "$slice_cache" ] && [ -O "$slice_cache" ]; then
         raw="$(<"$slice_cache")" 2>/dev/null || raw=""
-        if [ "${raw%%$'\n'*}" = "$stamp" ]; then
+        ostamp="${raw%%$'\n'*}"
+        case "$ostamp" in
+            "$ledger|"*) have=1; [ "$raw" != "$ostamp" ] && old="${raw#*$'\n'}" ;;
+        esac
+        if [ "$ostamp" = "$stamp" ]; then
             hit=1
-            [ "$raw" != "$stamp" ] && slice="${raw#*$'\n'}"
+        elif [ "$have" -eq 1 ]; then
+            oino_size="${ostamp#"$ledger|"}"
+            oino="${oino_size%% *}" osize="${oino_size#* }"
+            case "$osize" in ''|*[!0-9]*) osize="" ;; esac
+            if [ -n "$osize" ] && [ "$oino" = "${lst%% *}" ] && [ "$lsize" -gt "$osize" ] \
+               && [ "$(( lsize - osize ))" -le 1048576 ]; then
+                added="$(tail -c +"$(( osize + 1 ))" "$ledger" 2>/dev/null | head -c "$(( lsize - osize ))"; printf x)"
+                added="${added%x}"
+                if [ "${#added}" -gt 0 ] && [ "${added: -1}" = $'\n' ] && [[ "$added" != *"\"$key\""* ]] \
+                   && . "$ROOT/scripts/lib/prim.sh" 2>/dev/null; then
+                    hit=1
+                    printf '%s\n%s\n' "$stamp" "$old" | atomic_write "$slice_cache" 2>/dev/null || true
+                fi
+            fi
         fi
+        [ "$hit" -eq 1 ] && slice="$old"
     fi
     if [ "$hit" -eq 0 ]; then
-        slice="$("$seg_to" "$node_to" "$node_bin" "$ROOT/scripts/where-are-we/provision.mjs" slice --ledger "$ledger" --for "$key" 2>/dev/null)"
+        mkdir -p "$cachedir" 2>/dev/null || true
+        slice="$("$seg_to" "$node_to" "$node_bin" "$ROOT/scripts/where-are-we/provision.mjs" slice --ledger "$ledger" --for "$key" --index "$cachedir/where-are-we-slice-index.ndjson" 2>/dev/null)"
         slice_rc=$?
         # Cache only a finished slice (a timeout or crash is not an answer).
         # atomic_write publishes a private temp file by rename: a reader never
         # sees half an entry and a planted symlink at the target is replaced.
-        if [ "$slice_rc" -eq 0 ] && [ -n "$stamp" ] && mkdir -p "$cachedir" 2>/dev/null \
+        if [ "$slice_rc" -eq 0 ] && [ -n "$stamp" ] && [ -d "$cachedir" ] \
            && . "$ROOT/scripts/lib/prim.sh" 2>/dev/null; then
             printf '%s\n%s\n' "$stamp" "$slice" | atomic_write "$slice_cache" 2>/dev/null || true
+        elif [ "$slice_rc" -ne 0 ] && [ "$have" -eq 1 ] \
+             && [ -n "$(find "$slice_cache" -mmin -60 2>/dev/null)" ]; then
+            slice="$old"
         fi
     fi
     if [ -n "$slice" ]; then
