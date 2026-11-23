@@ -836,6 +836,24 @@ rf_line '26:'
 rf_arm "$I" "$WORK/rfd2.out" 4
 check "(9853) a second run the same day sends no digest (rc 124)" 124 "$rc"
 check "(9853) the held-back pair stays out of the marker for the next day's digest" 0 "$(grep -c '^ABC-126@' "$I.wait.refused" 2>/dev/null)"
+rl_tsv="$TICK_STATE_DIR/rm-lists-chief-rf.tsv"
+rl_line() { sed "s/capacity=UNDERFILLED:7/capacity=ok $1/" "$STUB/tick.line.orig" > "$STUB/tick.line"; }
+I="$(new_inbox rl)"
+printf 'chief\tK-5\tR-5\tthe chief placed it for the demo\t\t\napart\tK-7\tR-7\tv2\tP-1\tv1\napart\tK-7\tR-9\tv2\tP-1\tv1\n' > "$rl_tsv"
+rl_line 'chief-placed=1:K-5 ask-apart=2:K-7,K-7'
+rf_arm "$I" "$WORK/rl1.out" 15
+check "S1b: a new chief placement and a new apart tuple each wake once, the tuple once for its two rulings" \
+    "WAKE chief-placed K-5 the chief placed it for the demo|WAKE ask-apart K-7 v2 parent P-1 v1" "$(rf_wakes "$WORK/rl1.out")"
+rf_arm "$I" "$WORK/rl2.out" 4
+check "S1b: the same lists again wake nothing (rc 124)" 124 "$rc"
+printf 'apart\tK-7\tR-11\tv2\tP-1\tv3\n' >> "$rl_tsv"
+rl_line 'chief-placed=1:K-5 ask-apart=3:K-7,K-7,K-7'
+rf_arm "$I" "$WORK/rl3.out" 15
+check "S1b: a parent that moved is a new tuple and wakes once" "WAKE ask-apart K-7 v2 parent P-1 v3" "$(rf_wakes "$WORK/rl3.out")"
+printf 'chief\tK-6\tR-12\tanother\t\t\n' >> "$rl_tsv"
+rl_line ''
+rf_arm "$I" "$WORK/rl4.out" 4
+check "S1b: a tick line without chief-placed= or ask-apart= reads no tsv (rc 124)" 124 "$rc"
 unset TICK_STATE_DIR
 cp "$STUB/tick.line.orig" "$STUB/tick.line"
 

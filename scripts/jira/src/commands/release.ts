@@ -23,7 +23,7 @@ import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import { coreCheckBatch, coreGroupLines, loadCoreInputs } from './core-check.js';
 import {
-  ack, apply, bucketCheck, chainFault, clearProposedLabels, coreBypass, coreSnapshot, coveringRecord, declare, decisionWords, fold, freeze, operatorFence, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, reopen, request as releaseRequest, requestOnRecord, requestWithWords, rmRun, rmRunSummary, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
+  ack, apply, bucketCheck, chainFault, clearProposedLabels, coreBypass, coreSnapshot, coveringRecord, declare, decisionWords, fold, freeze, operatorFence, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, reopen, request as releaseRequest, requestOnRecord, requestWithWords, reviewed, rmRun, rmRunSummary, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
   type ApprovalAlert, type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type RunRecord, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
@@ -994,6 +994,17 @@ export function registerRelease(program: Command): void {
     .action((release: string, o: { ruling: string; reason: string; mirrorRoot?: string }) => {
       const e = ack(ctxFor(release, o.mirrorRoot), { ruling: o.ruling, reason: o.reason });
       console.log(`ACK ${e.key}@${e.ruling}: ${e.reason}`);
+    });
+
+  rel.command('reviewed <release>')
+    .description('Clear an entry of the priority review, chief placements or asks apart: one signed events row (the chief)')
+    .option('--ruling <id>', 'The listed ruling (R-<R>-NNNN) to clear')
+    .option('--through <id>', 'Clear every entry of that ruling\'s own list up to and including it')
+    .requiredOption('--reason <text>', 'What you checked or relayed')
+    .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
+    .action((release: string, o: { ruling?: string; through?: string; reason: string; mirrorRoot?: string }) => {
+      const e = reviewed(ctxFor(release, o.mirrorRoot), { ruling: o.ruling, through: o.through, reason: o.reason });
+      console.log(`REVIEWED ${e.key}@${e.ruling}${e.through === undefined ? '' : ' (through)'}: ${e.reason}`);
     });
 
   rel.command('rm-run <release>')

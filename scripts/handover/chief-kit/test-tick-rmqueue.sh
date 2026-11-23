@@ -551,11 +551,15 @@ rc1=0; out="$(tick)" || rc1=$?
 check 'S1b: prio-review= counts the priority review and names its oldest key' '2:K-2' "$(field prio-review "$out")"
 check 'S1b: chief-placed= counts the chief placements and names each key' '1:K-5' "$(field chief-placed "$out")"
 check 'S1b: ask-apart= counts the asks apart and names each key' '2:K-7,K-8' "$(field ask-apart "$out")"
+check 'S1b: rm-lists-<stem>.tsv holds a row per chief placement and ask apart for the waiter' \
+    "$(printf 'chief\tK-5\tR-R1-0005\tthe chief placed it\t\t\napart\tK-7\tR-R1-0007\tv1.1.4\tP-1\tv1.1.3\napart\tK-8\tR-R1-0008\tbacklog\tP-2\tv1.1.3')" \
+    "$(cat "$W/state/rm-lists-chief.tsv" 2>/dev/null)"
 check 'S1b: listed entries never change the tick exit code' "$rc0" "$rc1"
 check 'S1b: none of the three fields is a row of the wake table (outside the action key)' '' "$(cut -f1 "$HERE/wake-rules.tsv" | grep -xE 'prio-review|chief-placed|ask-apart' || true)"
-reset; statel '[{"key":"K-2","ruling":"R-R1-0002","ground":"door:mild"}]' '[{"key":"K-5","ruling":"R-R1-0005","reason":"r"}]' '[]' DEGRADED
+statel '[{"key":"K-2","ruling":"R-R1-0002","ground":"door:mild"}]' '[{"key":"K-5","ruling":"R-R1-0005","reason":"r"}]' '[]' DEGRADED
 out="$(tick)"
 check 'S1b: a state that is not OK prints none of the three fields' '||' "$(field prio-review "$out")|$(field chief-placed "$out")|$(field ask-apart "$out")"
+check 'S1b: and leaves no rm-lists tsv' 'gone' "$([ -e "$W/state/rm-lists-chief.tsv" ] || echo gone)"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
