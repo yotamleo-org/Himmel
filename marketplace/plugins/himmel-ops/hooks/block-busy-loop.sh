@@ -80,7 +80,7 @@ YES_RE="${CMD_POS}yes([[:space:]][^;&|]*)?>[[:space:]]*/dev/null"
 DD_RE="${CMD_POS}dd[[:space:]][^;&|]*(if=/dev/(zero|u?random)[^;&|]*of=/dev/null|of=/dev/null[^;&|]*if=/dev/(zero|u?random))"
 
 CMD_END_RE="${CMD_POS}\$"
-INTERP_END_RE="${CMD_POS}((ba|z|da|k)?sh|python[0-9.]*|node|bun|deno|source|\\.)([[:space:]]+-[^[:space:]]*)*[[:space:]]+\$"
+INTERP_END_RE="${CMD_POS}((ba|z|da|k)?sh|python[0-9.]*|node|bun|deno|source|cd|\\.)([[:space:]]+-[^[:space:]]*)*[[:space:]]+\$"
 
 scan_quotes() {
     local rest=$1 pre span inner
