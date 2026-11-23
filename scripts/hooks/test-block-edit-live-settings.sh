@@ -4090,6 +4090,29 @@ assert_rc "9982 an in-place sed on T3's settings file denies" 2 \
 assert_rc "9983 jq into T3's settings file denies" 2 \
     "$(bash_rc_of "$WT2" "jq . $WT2/data/settings.json > $T3S" HOME="$T3H")"
 
+AGY_GEM_CFG="$T3H/.gemini/config"
+AGY_T3_CFG="$T3H/.t3/userdata/providers/antigravity/h1/config"
+AGY_T3_ART="$T3H/.t3/userdata/providers/antigravity/h1/antigravity-acp/brain/conv-1"
+mkdir -p "$AGY_GEM_CFG" "$AGY_T3_CFG" "$AGY_T3_ART" "$PRIMARY/.agents" "$WT2/.agents"
+assert_rc "9990 Edit on ~/.gemini/config/hooks.json denies" 2 \
+    "$(rc_of "$AGY_GEM_CFG/hooks.json" Edit file_path HOME="$T3H")"
+assert_rc "9991 Write on T3 antigravity config/hooks.json denies" 2 \
+    "$(rc_of "$AGY_T3_CFG/hooks.json" Write file_path HOME="$T3H")"
+assert_rc "9992 Write inside T3 antigravity artifact brain dir allows" 0 \
+    "$(rc_of "$AGY_T3_ART/plan.md" Write file_path HOME="$T3H")"
+assert_rc "9993 Edit on primary .agents/hooks.json denies" 2 \
+    "$(rc_of "$PRIMARY/.agents/hooks.json" Edit file_path HOME="$T3H")"
+assert_rc "9994 Edit on primary .agents/skills.json denies" 2 \
+    "$(rc_of "$PRIMARY/.agents/skills.json" Edit file_path HOME="$T3H")"
+assert_rc "9995 Edit on worktree .agents/hooks.json allows for Claude/Codex workers" 0 \
+    "$(rc_of "$WT2/.agents/hooks.json" Edit file_path HOME="$T3H")"
+assert_rc "9996 Bash redirect onto ~/.gemini/config/hooks.json denies" 2 \
+    "$(bash_rc_of "$WT2" "echo {} > $AGY_GEM_CFG/hooks.json" HOME="$T3H")"
+assert_rc "9997 Bash redirect onto T3 antigravity config/hooks.json denies" 2 \
+    "$(bash_rc_of "$WT2" "echo {} > $AGY_T3_CFG/hooks.json" HOME="$T3H")"
+assert_rc "9998 Bash read of ~/.gemini/config/hooks.json allows" 0 \
+    "$(bash_rc_of "$WT2" "cat $AGY_GEM_CFG/hooks.json" HOME="$T3H")"
+
 # Clean up worktree registrations before removing the sandbox (avoids
 # dangling `git worktree` admin records under SANDBOX/primary).
 git -C "$SANDBOX/primary" worktree remove --force "$SANDBOX/primary/.claude/worktrees/feat+x" 2>/dev/null || true

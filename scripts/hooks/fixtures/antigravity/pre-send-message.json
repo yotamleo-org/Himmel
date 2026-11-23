@@ -1,0 +1,20 @@
+{
+  "artifactDirectoryPath": "/home/testuser/.t3/userdata/providers/antigravity/fixturehash0000000000000000000000000000000000000000000000000000/antigravity-acp/brain/83dceb0a-bf9a-4269-8c40-b7e0deea5417",
+  "conversationId": "83dceb0a-bf9a-4269-8c40-b7e0deea5417",
+  "cwd": "/tmp/himmel-agy-fixture",
+  "hookEventName": "PreToolUse",
+  "modelName": "gemini-4-hydrogen-tiered-high",
+  "stepIdx": 4,
+  "toolCall": {
+    "args": {
+      "Message": "CANARY_TOKEN_10745",
+      "Recipient": "17e2b6ee-20ff-45f8-878e-7917b1f1261c"
+    },
+    "id": "call_8683834010534680731",
+    "name": "send_message"
+  },
+  "transcriptPath": "/home/testuser/.t3/userdata/providers/antigravity/fixturehash0000000000000000000000000000000000000000000000000000/antigravity-acp/brain/83dceb0a-bf9a-4269-8c40-b7e0deea5417/.system_generated/logs/transcript_full.jsonl",
+  "workspacePaths": [
+    "/tmp/himmel-agy-fixture"
+  ]
+}

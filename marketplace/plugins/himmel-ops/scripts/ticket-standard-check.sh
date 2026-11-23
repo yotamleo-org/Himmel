@@ -6,7 +6,8 @@
 # A draft needs Impact, What, Why, Plan, DoD, Proof and Agent detail as "## " headings,
 # each with a non-placeholder line; Plan and DoD each need a real bullet or numbered
 # line. A ci/guard/guardrail/stability/flake label needs a "Metric:" line; a Plan naming
-# two or more ticket keys needs an "Edges:" line (or "Edges: none"). The rules are
+# two or more ticket keys needs an "Edges:" line (or "Edges: none"). The top line must
+# give no time estimate (scripts/lint/check-operator-voice.sh --ticket). The rules are
 # ticket-policy.mjs, the same policy jira create, edit, move and the MCP bridge apply.
 # --labels names the labels the ticket will carry; a draft's "Labels:" line is only the
 # offline fallback, and the two disagreeing is a finding.
@@ -56,18 +57,30 @@ policy_args=(--type "$type" --draft "$draft")
 [ "$labels_given" -eq 1 ] && policy_args+=(--labels "$labels")
 missing="$(node "$here/ticket-policy-cli.mjs" "${policy_args[@]}")" || parsefail
 
+voice_sh="$(cd "$here/../../../.." 2>/dev/null && pwd)/scripts/lint/check-operator-voice.sh"
+[ -f "$voice_sh" ] || voice_sh="${HIMMEL_REPO:-}/scripts/lint/check-operator-voice.sh"
+voice=""
+if [ -f "$voice_sh" ]; then
+  voice="$(bash "$voice_sh" --ticket "$draft")"; vrc=$?
+  case "$vrc" in 0|1) ;; *) echo "ticket-standard-check: the operator-voice check could not run on '$draft'; draft not checked" >&2; exit 2;; esac
+else
+  echo "ticket-standard-check: check-operator-voice.sh not found (set HIMMEL_REPO); top-line voice not checked" >&2
+fi
+
 warns=()
 grep -Eiq '^[[:space:]]*Sector:[[:space:]]*[^[:space:]]' "$draft" && sector="${sector:-from-draft}"
 [ -n "$sector" ] || warns+=("Sector is missing (pass --sector or add a 'Sector: <name>' line)")
 
-if [ -n "$missing" ]; then
+if [ -n "$missing" ] || [ -n "$voice" ]; then
   case "$type" in
     Epic|Subtask)
-      echo "warn: $type draft is missing or has an empty: $missing"
+      [ -n "$missing" ] && echo "warn: $type draft is missing or has an empty: $missing"
+      [ -n "$voice" ] && printf 'warn: %s\n' "$voice"
       for w in "${warns[@]+"${warns[@]}"}"; do echo "warn: $w"; done
       exit 0;;
   esac
-  echo "REFUSED $type draft: missing or empty: $missing"
+  [ -n "$missing" ] && echo "REFUSED $type draft: missing or empty: $missing"
+  [ -n "$voice" ] && { echo "REFUSED $type draft: the top line gives the operator a time estimate:"; printf '%s\n' "$voice"; }
   for w in "${warns[@]+"${warns[@]}"}"; do echo "warn: $w"; done
   q="${TICKET_STANDARD_QUEUE_DIR:-}"
   if [ -z "$q" ]; then

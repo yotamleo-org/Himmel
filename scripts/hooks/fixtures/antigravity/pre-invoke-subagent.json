@@ -1,0 +1,22 @@
+{
+  "artifactDirectoryPath": "/home/testuser/.t3/userdata/providers/antigravity/fixturehash0000000000000000000000000000000000000000000000000000/antigravity-acp/brain/17e2b6ee-20ff-45f8-878e-7917b1f1261c",
+  "conversationId": "17e2b6ee-20ff-45f8-878e-7917b1f1261c",
+  "cwd": "/tmp/himmel-agy-fixture",
+  "hookEventName": "PreToolUse",
+  "modelName": "gemini-3.8-flash-low",
+  "stepIdx": 35,
+  "toolCall": {
+    "args": {
+      "Model": "flash",
+      "Prompt": "Call read_file on /tmp/himmel-agy-fixture/canary.txt and reply with its exact contents.",
+      "Role": "POC Subagent",
+      "TypeName": "research"
+    },
+    "id": "call_13896353604605523397",
+    "name": "invoke_subagent"
+  },
+  "transcriptPath": "/home/testuser/.t3/userdata/providers/antigravity/fixturehash0000000000000000000000000000000000000000000000000000/antigravity-acp/brain/17e2b6ee-20ff-45f8-878e-7917b1f1261c/.system_generated/logs/transcript_full.jsonl",
+  "workspacePaths": [
+    "/tmp/himmel-agy-fixture"
+  ]
+}

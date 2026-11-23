@@ -85,6 +85,7 @@ dimension row so every write-fence cell sits in a real row (no home-less cell).
 |---|---|
 | main-claude | auto-mode classifier |
 | codex-direct | `tested:scripts/hooks/test-block-terminal-write-fence.sh` -- the terminal write/push/network fence (codex-lane classifier substitute), e2e-proved through the adapter (`scripts/hooks/test-codex-adapter-e2e.sh`). The Edit/Write patch path is fenced by `block-edit-on-main.sh` via the adapter. |
+| antigravity-t3 | `tested:scripts/hooks/test-block-terminal-write-fence.sh` `tested:scripts/hooks/test-antigravity-adapter-e2e.sh` -- terminal write/push/network fence enforced with all `*_OK` overrides stripped; `edit_file`/`write_file` fenced by `block-edit-on-main.sh` plus both-home and `.agents/**` self-protect through `scripts/hooks/antigravity-hook-adapter.sh`. |
 | hermes-main (DEFAULT; engine gpt-6.1-sol; GLM removed) | `parity_guard` push/PR fence -- `tested:scripts/hermes/test-parity-guard.sh` (write-fence; the CC hook does NOT fire under hermes, parity_guard is the sole fence). The other deny-guards are enforced by parity_guard too (all `present`). |
 | copilot / cursor | `deferred` |
 
@@ -121,6 +122,7 @@ sub-table below is `tested:<path>` -- no `GAP`, no `pending:`.
 |---|---|---|---|---|---|
 | main-claude | `native` (CLAUDE.md) | `native` (hooks + classifier) | `native` | `native` | `native` (baseline) |
 | codex-direct | `tested:scripts/agents-md/generate.mjs` (AGENTS.md gen + gated) | `tested:scripts/hooks/test-codex-run-hook.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
+| antigravity-t3 | `tested:scripts/agents-md/generate.mjs` (AGENTS.md gen + gated) | `tested:scripts/hooks/test-antigravity-adapter-e2e.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
 | hermes-main (DEFAULT; engine gpt-6.1-sol; GLM removed) | `AGENTS.md (loaded)` (`tested:scripts/hermes/test-agents-reach.sh`) | `tested:scripts/hermes/test-parity-guard.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
 | copilot / cursor | `deferred` | `deferred` | `deferred` | `deferred` | `deferred` |
 
@@ -157,15 +159,15 @@ hermes, so the hermes-main column is `tested`-green.
 
 <!-- BEGIN guard-lane-conformance -->
 
-| deny-guard | codex-direct | hermes-main (gpt-6.1-sol) |
-|---|---|---|
-| block-edit-on-main | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-edit-on-main.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-| block-read-secrets | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-read-secrets.sh` `tested:scripts/hooks/test-codex-adapter-e2e.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-| block-backend-tier | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-backend-tier.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-| block-docker-privesc | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-docker-privesc.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-| block-rogue-claude-schedule | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-rogue-claude-schedule.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-| block-merged-pr-commit | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-merged-pr-commit.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-| write-authority / external-write-fence (cross-lane dimension, NOT a CC PreToolUse hook) | `tested:scripts/hooks/test-block-terminal-write-fence.sh` `tested:scripts/hooks/test-codex-adapter-e2e.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+| deny-guard | codex-direct | antigravity-t3 | hermes-main (gpt-6.1-sol) |
+|---|---|---|---|
+| block-edit-on-main | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-edit-on-main.sh` | `tested:scripts/hooks/test-antigravity-adapter-e2e.sh` `tested:scripts/hooks/test-block-edit-on-main.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+| block-read-secrets | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-read-secrets.sh` `tested:scripts/hooks/test-codex-adapter-e2e.sh` | `tested:scripts/hooks/test-antigravity-adapter-e2e.sh` `tested:scripts/hooks/test-block-read-secrets.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+| block-backend-tier | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-backend-tier.sh` | `tested:scripts/hooks/test-antigravity-adapter-e2e.sh` `tested:scripts/hooks/test-block-backend-tier.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+| block-docker-privesc | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-docker-privesc.sh` | `tested:scripts/hooks/test-antigravity-adapter-e2e.sh` `tested:scripts/hooks/test-block-docker-privesc.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+| block-rogue-claude-schedule | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-rogue-claude-schedule.sh` | `tested:scripts/hooks/test-antigravity-adapter-e2e.sh` `tested:scripts/hooks/test-block-rogue-claude-schedule.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+| block-merged-pr-commit | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-merged-pr-commit.sh` | `tested:scripts/hooks/test-antigravity-adapter-e2e.sh` `tested:scripts/hooks/test-block-merged-pr-commit.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+| write-authority / external-write-fence (cross-lane dimension, NOT a CC PreToolUse hook) | `tested:scripts/hooks/test-block-terminal-write-fence.sh` `tested:scripts/hooks/test-codex-adapter-e2e.sh` | `tested:scripts/hooks/test-block-terminal-write-fence.sh` `tested:scripts/hooks/test-antigravity-adapter-e2e.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
 
 <!-- END guard-lane-conformance -->
 

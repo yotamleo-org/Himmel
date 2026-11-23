@@ -54,6 +54,16 @@ check "appending the refusal prints no DOWNGRADE note" "$(grep -c 'DOWNGRADE' "$
 CR_LEDGER="$AVR" bash "$LA" avail --branch b --head SH9 --model glm --status unavailable --reason certify-refused 2>/dev/null
 check "an identical certify-refused repeat is still a quiet no-op" "$(grep -c '"reason":"certify-refused"' "$AVR")" "1"
 
+AVF="$tmp/avail-recordfailed.jsonl"
+CR_LEDGER="$AVF" bash "$LA" avail --branch b --head SF1 --model glm --status ok
+CR_LEDGER="$AVF" bash "$LA" avail --branch b --head SF1 --model glm --status unavailable --reason record-failed 2>"$tmp/rf.err"
+check "ok->unavailable record-failed row is APPENDED, not dropped" "$(grep -c '"reason":"record-failed"' "$AVF")" "1"
+check "the record-failed row is the effective (last) record" "$(L="$AVF" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).filter(r=>r.kind==="avail"&&r.head==="SF1");const l=rs[rs.length-1];console.log(l.status+","+l.reason)')" "unavailable,record-failed"
+check "appending record-failed prints no DOWNGRADE note" "$(grep -c 'DOWNGRADE' "$tmp/rf.err")" "0"
+CR_LEDGER="$AVF" bash "$LA" avail --branch b --head SF2 --model glm --status ok
+CR_LEDGER="$AVF" bash "$LA" avail --branch b --head SF2 --model codex --status unavailable --reason record-failed
+check "record-failed at another model leaves the ok row alone" "$(grep -c '"head":"SF2".*"status":"ok"' "$AVF")" "1"
+
 # An identical repeat is still a quiet no-op (idempotent /pr-check re-runs).
 CR_LEDGER="$AV" bash "$LA" avail --branch b --head SH1 --model glm --status ok
 check "avail identical repeat after supersede still dedups" "$(grep -c '"kind":"avail".*"head":"SH1"' "$AV")" "2"

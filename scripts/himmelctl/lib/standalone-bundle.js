@@ -38,6 +38,8 @@ const BUNDLE_FILES_POSIX = [
   'scripts/lib/unwire-luna-vault.sh',
   'scripts/lib/unwire-handover-dir.sh',
   'scripts/lib/unwire-pretooluse-hooks.sh',
+  'scripts/lib/wire-pretooluse-hooks.sh',
+  'scripts/lib/claude-config-dir.sh',
   'scripts/lib/unwire-hud-config.sh',
   'scripts/lib/unwire-user-claude-md.sh',
   'scripts/machine-setup/uninstall-plugins.sh',
