@@ -14,8 +14,10 @@
 #               `while (true) {}` or `for (;;) {}`.
 #   load-tool   taskset, numactl, stress or stress-ng at command position (the
 #               start, after ; & | ( ` { or a newline, behind sudo, env, nice,
-#               nohup, exec, command, time, timeout N, a flag or VAR=x), or as
-#               a quoted argv element followed by a closing quote or a flag.
+#               nohup, exec, command, time, timeout N, a flag or VAR=x), also
+#               inside the quoted string of a `sh -c`/`bash -c`, or as a quoted
+#               element of an argv list (`["taskset", ...]`), or as a quoted
+#               name followed by a flag (`"stress-ng --cpu 4"`).
 #   null-sink   `yes` redirected to /dev/null; `dd` reading /dev/zero or
 #               /dev/random into /dev/null.
 #   script-file an unquoted token ending .sh .bash .py .js .mjs .cjs that names
@@ -70,18 +72,22 @@ JS_WHILE_RE='(^|[^[:alnum:]_])while[[:space:]]*\([[:space:]]*(true|1)[[:space:]]
 JS_FOR_RE='(^|[^[:alnum:]_])for[[:space:]]*\([[:space:]]*;[[:space:]]*;[[:space:]]*\)[[:space:]]*(\{[[:space:]]*\}|;)'
 CMD_POS="(^|[;&|(\`{${NL}])[[:space:]]*((sudo|env|nice|nohup|exec|command|time|timeout|-[^[:space:]]+|[0-9]+[smhd]?|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*)[[:space:]]+)*([^[:space:];&|]*/)?"
 TOOL_RE="${CMD_POS}(taskset|numactl|stress-ng|stress)([[:space:];&|)]|\$)"
-ARGV_RE="['\"](taskset|numactl|stress-ng|stress)(['\"]|[[:space:]]+-)"
+ARGV_RE="([[,][[:space:]]*['\"](taskset|numactl|stress-ng|stress)['\"]|['\"](taskset|numactl|stress-ng|stress)[[:space:]]+-)"
+SHELL_C_RE='(^|[^[:alnum:]_./-])(ba|z|da|k)?sh[[:space:]]+(-[[:alnum:]]+[[:space:]]+)*-[[:alnum:]]*c[[:space:]]*$'
 YES_RE="${CMD_POS}yes([[:space:]][^;&|]*)?>[[:space:]]*/dev/null"
 DD_RE="${CMD_POS}dd[[:space:]][^;&|]*(if=/dev/(zero|u?random)[^;&|]*of=/dev/null|of=/dev/null[^;&|]*if=/dev/(zero|u?random))"
 
 semi_blanked=""
 emptied=""
+shell_code=""
 rest=$cmd
 while [[ $rest =~ $QUOTED_RE ]]; do
+    pre=${BASH_REMATCH[1]}
     span=${BASH_REMATCH[2]}
-    semi_blanked+=${BASH_REMATCH[1]}${span//;/ }
-    emptied+="${BASH_REMATCH[1]}''"
     rest=${BASH_REMATCH[4]}
+    semi_blanked+=$pre${span//;/ }
+    emptied+="$pre''"
+    [[ $pre =~ $SHELL_C_RE ]] && shell_code+=$NL${span:1:${#span}-2}
 done
 semi_blanked+=$rest
 emptied+=$rest
@@ -99,7 +105,7 @@ match_shapes() {
     elif [[ $3 =~ $TOOL_RE ]]; then
         shape=load-tool detail=${BASH_REMATCH[5]}
     elif [[ $1 =~ $ARGV_RE ]]; then
-        shape=load-tool detail=${BASH_REMATCH[1]}
+        shape=load-tool detail=${BASH_REMATCH[2]}${BASH_REMATCH[3]}
     elif [[ $3 =~ $YES_RE ]]; then
         shape=null-sink detail="yes to /dev/null"
     elif [[ $3 =~ $DD_RE ]]; then
@@ -129,7 +135,7 @@ readable_script() {
     script_path=$p
 }
 
-if ! match_shapes "$cmd" "$semi_blanked" "$emptied"; then
+if ! match_shapes "$cmd" "$semi_blanked" "$emptied$shell_code"; then
     base=$call_cwd
     prev=""
     read_count=0
