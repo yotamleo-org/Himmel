@@ -1285,7 +1285,6 @@ describe('routedJudge', () => {
     throw new Error(`no ${name} above pid ${pid}`);
   };
   const fakePid = (w: ReturnType<typeof world>) => Number(/^pid=(\d+)$/m.exec(w.read('fake.log'))?.[1]);
-  // The fake's start is an event, not a duration: the bound only ends a run whose launcher never reached it.
   const fakeStarted = (w: ReturnType<typeof world>) => vi.waitFor(() => expect(fakePid(w)).toBeGreaterThan(0), { timeout: FAKE_START_BOUND_MS, interval: 25 });
 
   it('mapped, the run stopped mid-call: the call is killed and no fallback runs', async () => {
