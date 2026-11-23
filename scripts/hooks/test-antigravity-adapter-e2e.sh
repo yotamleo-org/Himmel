@@ -16,7 +16,12 @@ command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
 . "$HOOKS/../lib/override-env.sh"
 scrub_override_env
 
-TMP="$(mktemp -d "${TMPDIR:-/tmp}/agy-adapter-e2e.XXXXXX")" || exit 1
+# shellcheck source=lib-fixture-root.sh
+# shellcheck disable=SC1091
+. "$HOOKS/lib-fixture-root.sh"
+_FROOT="$(fixture_root)" || exit 1
+# prim-ok: the fixture must sit outside every temp path or the main-checkout fence exempts it
+TMP="$(mktemp -d "$_FROOT/.himmel-agy-adapter-e2e-XXXXXX")" || exit 1
 trap 'rm -rf "$TMP"' EXIT
 
 export HOME="$TMP/home"
