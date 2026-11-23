@@ -167,6 +167,7 @@ if ! match_shapes "$cmd" "$semi_blanked" "$emptied$shell_code"; then
     set -f
     at_start=1
     interp=0
+    ishell=0
     skip=0
     outer_base=$base
     run_words=${run_text//</ }
@@ -200,7 +201,7 @@ if ! match_shapes "$cmd" "$semi_blanked" "$emptied$shell_code"; then
                 fi ;;
             -m|-e)
                 if [ "$interp" = 1 ]; then
-                    interp=0
+                    [ "$ishell" = 1 ] || interp=0
                     continue
                 fi ;;
             sudo|env|nice|nohup|exec|command|time|timeout|do|then|else|elif|if|while|until|"!"|[0-9]*|[A-Za-z_]*=*)
@@ -209,6 +210,7 @@ if ! match_shapes "$cmd" "$semi_blanked" "$emptied$shell_code"; then
             -*) { [ "$at_start" = 1 ] || [ "$interp" = 1 ]; } && continue ;;
             sh|bash|zsh|dash|ksh|python|python[0-9]*|node|bun|deno|source|.|*/sh|*/bash|*/zsh|*/python*|*/node)
                 if [ "$at_start" = 1 ]; then
+                    case $tok in sh|bash|zsh|dash|ksh|*/sh|*/bash|*/zsh) ishell=1 ;; *) ishell=0 ;; esac
                     at_start=0 interp=1
                     continue
                 fi ;;
