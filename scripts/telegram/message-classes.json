@@ -17,6 +17,7 @@
       "kind": "config-audit",
       "class": "escalate",
       "sender": "scripts/lib/config-audit.sh",
+      "pin": "reply --kind config-audit \"$chat\" \"$text\"",
       "sample": "A session changed .env: JIRA_API_TOKEN. Blocks: nothing. Do: check it was you, else restore the file from its backup"
     },
     {

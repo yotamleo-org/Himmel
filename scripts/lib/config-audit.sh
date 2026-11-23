@@ -618,7 +618,7 @@ _ca_alert() {
     command -v timeout >/dev/null 2>&1 && tmo="timeout -k 5 30"
     if chat="$(_ca_operator_chat)" && command -v bun >/dev/null 2>&1 && _ca_sender_door; then
         # shellcheck disable=SC2086 # $tmo is "" or "timeout ..."
-        $tmo bun "$_CA_DIR/../telegram/chief-route.ts" reply "$chat" "$text" >/dev/null 2>&1 && ok=0
+        $tmo bun "$_CA_DIR/../telegram/chief-route.ts" reply --kind config-audit "$chat" "$text" >/dev/null 2>&1 && ok=0
     fi
     return "$ok"
 }
