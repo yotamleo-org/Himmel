@@ -1,14 +1,7 @@
 #!/usr/bin/env bash
 # Through-adapter end-to-end suite for the Antigravity lane.
 # Drives scripts/hooks/antigravity-hook-adapter.sh with frozen camelCase
-# Antigravity payloads against real himmel guardrails and asserts:
-#   - Clean pass emits exact 0-byte stdout + exit 0 (never {} or "allow")
-#   - Policy denials emit {"decision":"deny","reason":...} + exit 0
-#   - All *_OK bypass env vars are stripped before guard evaluation
-#   - Both-home and .agents/** self-protect blocks writes while allowing
-#     the session's own artifactDirectoryPath
-#   - Child invoke_subagent payloads are fenced identically
-#   - SessionStart, PostToolUse, and Stop lifecycle events exit 0 cleanly
+# Antigravity payloads against real himmel guardrails.
 set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"

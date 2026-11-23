@@ -5,14 +5,6 @@
 # deny envelope (`{"decision":"deny","reason":"..."}` + exit 0).
 # Clean PreToolUse pass MUST emit zero bytes on stdout + exit 0 (emitting `{}`
 # fails closed as a deny in Antigravity's Go hook runner).
-# Enforces:
-#   - GIT_* env scrub before any git call
-#   - Unconditional stripping of all *_OK bypass environment variables
-#   - Primary-checkout resolution via --git-common-dir
-#   - Frozen 16 built-in tool inventory + allowlisted underscore-free MCP servers
-#   - Self-protect on .agents/**, ~/.gemini/config/**, and T3 Antigravity home
-#     outside the session's own artifactDirectoryPath
-#   - Child guard execution through run-hook-with-bash.js (hook-integrity pinned)
 # Bash 3.2-safe (no mapfile, no associative arrays).
 set -u
 

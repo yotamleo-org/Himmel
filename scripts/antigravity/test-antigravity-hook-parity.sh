@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # Inventory parity drift gate for the Antigravity lane (.agents/hooks.json +
 # scripts/hooks/antigravity-hook-adapter.sh + .agents/skills.json).
-# Mirrors scripts/codex/test-codex-hook-parity.sh including the public-mirror
-# untracked-.claude/settings.json skip contract.
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.." || exit 1

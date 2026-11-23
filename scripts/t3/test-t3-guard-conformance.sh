@@ -1,12 +1,5 @@
 #!/usr/bin/env bash
 # Shared multi-harness T3 Code guard conformance runner.
-# Exercises the same canonical T3 fixtures across every wired T3 harness row:
-#   1. off-allowlist providerInstanceId -> DENY
-#   2. -chief thread title -> DENY
-#   3. unwatch_pull_request on an OPEN PR -> DENY
-#   4. benign T3 read tool -> ALLOW
-# Currently covers Claude and Antigravity rows (Codex row added when Codex T3
-# guards are wired).
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
