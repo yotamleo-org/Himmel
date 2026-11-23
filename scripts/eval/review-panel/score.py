@@ -603,6 +603,8 @@ def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW
     reasons = provenance_reasons(outputs)
     if status != "ok":
         reasons.append("status-" + status)
+    if per_case:
+        reasons.extend("critic-silent:" + who for who in roster if not responded["critics"][who])
     for cat, why in (("inconsistent", "participation-inconsistent"), ("unknown", "participation-unknown")):
         if any(c[cat] for c in coverage["critics"].values()):
             reasons.append(why)
@@ -1542,6 +1544,10 @@ def tree_main(a):
         row = gate_row(repo, "HEAD", a.outputs)
         if row["status"] == "inconclusive":
             raise ValueError("%s is inconclusive (a leak, or no case scored): no row" % a.outputs)
+        silent = [r.split(":", 1)[1] for r in row["ineligibility_reasons"] if r.startswith("critic-silent:")]
+        if silent:
+            raise ValueError("%s: rostered critic %s answered no case of %d scored: no row"
+                             % (a.outputs, ",".join(silent), row["responded"]["scored"]))
         with open(a.results, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(row, sort_keys=True) + "\n")
         print("export-row: %s cbs_hash=%s confighash=%s recall_gating=%s fp_rate=%s scorer=%s -> %s"
