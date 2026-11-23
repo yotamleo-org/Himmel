@@ -234,7 +234,7 @@ run_test "(4a) producer(Branch B) -> bank-preflight: PROCEED below threshold" '
 run_test "(4b) producer(Branch B) -> bank-preflight: SKIPPED-BANK above threshold" '
   W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-contract-4b.XXXXXX"); export HOME="$W/home"; mkdir -p "$HOME";
   printf "%s" "{\"oauthAccount\":{\"accountUuid\":\"uuid-contract-test\"}}" > "$HOME/.claude.json";
-  produce_cache_oauth "$W" 95 20;
+  produce_cache_oauth "$W" 100 20;
   mk_empty_fleet_stub "$W";
   v=$(CADENCE_USAGE_CACHE="$W/cache.json" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_LEDGER="$W/l.jsonl" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" HIMMEL_FLEET_SLOTS="$W/slots" HIMMEL_POLICY_FOLLOWS_HOME=1 bash "$PREFLIGHT" </dev/null 2>"$W/pf.err");
   [ "$v" = "SKIPPED-BANK" ] || exit 1;
