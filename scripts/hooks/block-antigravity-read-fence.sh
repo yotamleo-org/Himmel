@@ -225,19 +225,14 @@ normalize_cmd_paths() {
     NORM_TEXT="$s"
 }
 
-check_read_text() {
-    local raw_text="$1" stripped="" lc="" norm=""
-    stripped="${raw_text//[\"\'\\]/}"
-    lc="$(lower_str "$stripped")"
-    normalize_cmd_paths "$lc"
-    norm="$NORM_TEXT"
-
+check_read_text_one() {
+    local text="$1"
     local cd_gemini_re='(^|[[:space:];|&])cd[[:space:]]+[^;|&]*\.gemini([/[:space:];|&]|$)'
-    if [[ "$norm" =~ $cd_gemini_re ]]; then
+    if [[ "$text" =~ $cd_gemini_re ]]; then
         deny "denies accessing ~/.gemini/config"
     fi
 
-    case "$norm" in
+    case "$text" in
         *antigravity-oauth-token*)
             deny "denies accessing antigravity-oauth-token"
             ;;
@@ -248,7 +243,7 @@ check_read_text() {
             if [ -n "$ARTIFACT_REAL" ]; then
                 local art_lc rest sep
                 art_lc="$(lower_str "$ARTIFACT_REAL")"
-                rest="${norm//"$art_lc/"/__artifact_dir__/}"
+                rest="${text//"$art_lc/"/__artifact_dir__/}"
                 for sep in ' ' $'\t' ';' '|' '&' '<' '>' '(' ')'; do
                     rest="${rest//"$art_lc$sep"/__artifact_dir__$sep}"
                 done
@@ -265,6 +260,18 @@ check_read_text() {
             fi
             ;;
     esac
+    return 0
+}
+
+check_read_text() {
+    local raw_text="$1" stripped="" lc=""
+    stripped="${raw_text//[\"\'\\]/}"
+    lc="$(lower_str "$stripped")"
+    check_read_text_one "$lc"
+    normalize_cmd_paths "$lc"
+    if [ "$NORM_TEXT" != "$lc" ]; then
+        check_read_text_one "$NORM_TEXT"
+    fi
     return 0
 }
 
