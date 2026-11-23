@@ -1643,9 +1643,6 @@ function unfinishedRulings(rulings: Chain<RulingRow>): string[] {
   return [...last.values()].filter((r) => r.phase === 'intent' || r.phase === 'applied').map((r) => r.id);
 }
 
-// Every asked key (and every required parent) is read live and laid over its mirror row field by field; an empty
-// live field keeps the mirror's. At most LIVE_READS reads are open at once, each aborted at LIVE_LOOKUP_MS; once
-// LIVE_POOL_MS has passed since the first read, no further read opens. A key with no live answer keeps its mirror row.
 export const LIVE_LOOKUP_MS = 15_000;
 export const LIVE_POOL_MS = 60_000;
 export const LIVE_READS = 8;
