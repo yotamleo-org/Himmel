@@ -609,9 +609,10 @@ trust_path_check() (
     # branch's settings read as adopted.
     adopted() {
         local s r=0 allow="$anchor/scripts/guardrails/himmel-adopted.json"
-        if [ -r "$allow" ] && jq -e --arg n "$tp_nwo" \
-            'any(.[]?; ((.nwo? // "") | ascii_downcase) == ($n | ascii_downcase))' "$allow" >/dev/null 2>&1; then
-            return 0
+        if [ -e "$allow" ]; then
+            jq -e 'type == "array"' "$allow" >/dev/null 2>&1 || refuse list "cannot parse scripts/guardrails/himmel-adopted.json in $anchor"
+            jq -e --arg n "$tp_nwo" \
+                'any(.[]; ((.nwo? // "") | ascii_downcase) == ($n | ascii_downcase))' "$allow" >/dev/null 2>&1 && return 0
         fi
         case "$tp_pr" in
             br-*)

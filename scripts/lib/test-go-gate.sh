@@ -560,6 +560,9 @@ mkdir -p "$CA/scripts/guardrails"; printf '[{"nwo":"Acme/Widget","merge_allowed"
 aw_main '{"env":{}}' -
 got=$(GH="$ROOT/ghaw" tpc acme/widget 7 "$(aw_pr .claude/settings.json)" "$CA")
 case "$got" in "2:list scripts/ci/ci-trust-paths.txt is missing on acme/widget@main"*adopted*) ;; *) fail "9k: a repo listed in himmel-adopted.json with no hook was not refused: $got" ;; esac
+printf 'not json\n' > "$CA/scripts/guardrails/himmel-adopted.json"
+got=$(GH="$ROOT/ghaw" tpc acme/widget 7 "$(aw_pr .claude/settings.json)" "$CA")
+[ "$got" = "2:list cannot parse scripts/guardrails/himmel-adopted.json in $CA" ] || fail "9k: a malformed himmel-adopted.json was not refused: $got"
 rm -rf "$CA/scripts/guardrails"
 # A blank settings.json is unparseable, never read as not adopted.
 aw_main ' ' -
