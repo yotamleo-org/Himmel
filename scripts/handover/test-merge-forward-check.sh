@@ -666,6 +666,8 @@ setr "$SH\tfailure\n$RU\tfailure\n" "$SH\tfailure\n$RU\tsuccess\n" "$SH\tsuccess
 run "rollup red on the PR, green at the base: REFUSE" 1 'REFUSE.*shell-unit \(ubuntu-latest\).*not inherited'
 setr "$RU\tfailure\n" "$RU\tfailure\n" "$RU\tsuccess\n" '' ''
 run "rollup red with no red shard on the PR run: REFUSE" 1 'REFUSE.*shell-unit \(ubuntu-latest\).*no shell-unit-shard'
+setr "$SH\tfailure\n$RU\tfailure\n" "$SH\tfailure\n$RU\tfailure\n" "$SH\tsuccess\n$RU\tfailure\n" 'shell-unit-shard (ubuntu-latest)\tcaseA\n' 'shell-unit-shard (ubuntu-latest)\tcaseA\n'
+run "rollup red on the PR and base, its shard green on latest, the rollup itself red on latest: REFUSE" 1 'REFUSE.*shell-unit \(ubuntu-latest\).*not proven fixed'
 
 bash "$MF" --pr "$tmp/pr" --main "$tmp/pr" >/dev/null 2>&1
 rc=$?
