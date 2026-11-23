@@ -50,7 +50,7 @@ scripts/security/test-security-audit-cadence.sh	6
 #   Estimated rows, no CI timing yet: the split parts of scripts/cr/test-pr-check-rounds.sh (a, -b, -c) and
 #   scripts/handover/test-arm-resume-1879.sh (-b). The rounds parts are their local sequential seconds (230, 253, 250;
 #   the three sum to 733, the old 732 row); the 1879 -b part is its share of the old 387 row by local seconds
-#   (166 of 393). test-arm-resume-1879.sh keeps 387: it is a Case 22w fixture suite at 388, so its row follows that
+#   (166 of the original suite's 405). test-arm-resume-1879.sh keeps 387: it is a Case 22w fixture suite at 388, so its row follows that
 #   fixture. The next refresh replaces them with CI seconds.
 # The quarantined suites (SKIP_LIST) have no measured row.
 #
