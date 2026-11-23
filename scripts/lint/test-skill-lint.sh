@@ -447,7 +447,7 @@ OUT16G="$(SKILL_LINT_FAIL_BYTES=abc bash "$LINT" "$SZDIR/big-skill/SKILL.md" 2>&
 if [ "$EC16G" -eq 2 ]; then pass "non-integer threshold is a usage error"; else fail "expected exit 2, got $EC16G" "$OUT16G"; fi
 
 # ---------------------------------------------------------------------------
-# Case 17: two-level default thresholds (warn 20000, hard fail 60000)
+# Case 17: default thresholds (warn 16000, hard fail above 20000)
 # ---------------------------------------------------------------------------
 printf '\nCase 17: default thresholds warn at 16000 and hard-fail above 20000\n'
 
