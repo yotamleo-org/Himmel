@@ -1185,6 +1185,30 @@ exit 1''')
         p = self.admit_same_doc(dict(self.env, FLEET_JOURNAL_BOOTS_CMD=str(self.bucket / 'absent')), False)
         self.assertIn('family already owns worker or ticket', p.stderr)
 
+    def listing_env(self, boot, gate=True):
+        env = self.journal_env("echo ' -1 %s Sun x Mon y'" % boot.replace('-', ''))
+        if not gate:
+            del env['HIMMEL_POLICY_FOLLOWS_HOME']
+        return env
+
+    def test_journal_seam_is_ignored_without_the_policy_gate(self):
+        self.prior_boot_wrapped_attempt()
+        p = self.admit_same_doc(self.listing_env(self.PAST_BOOT, gate=False), False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+
+    def test_launched_attempt_from_a_foreign_host_with_a_listed_boot_stays_refused(self):
+        self.prior_boot_wrapped_attempt()
+        self.forge(host='another-host')
+        p = self.admit_same_doc(self.listing_env(self.PAST_BOOT), False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+
+    def test_current_boot_without_dashes_is_never_a_past_boot(self):
+        self.prior_boot_wrapped_attempt()
+        current = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+        self.forge(boot=current.replace('-', ''))
+        p = self.admit_same_doc(self.listing_env(current), False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+
     # A terminal receipt ends ownership only when nothing newer or stronger contradicts it.
     def test_refused_receipt_does_not_hide_a_live_named_session(self):
         self.active()

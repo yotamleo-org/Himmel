@@ -106,7 +106,8 @@ def past_boot_of_matched_host(boot):
     if not _PAST_BOOTS:
         found = set()
         try:
-            command = shlex.split(os.environ.get('FLEET_JOURNAL_BOOTS_CMD') or 'journalctl --list-boots')
+            seam = os.environ.get('FLEET_JOURNAL_BOOTS_CMD') if os.environ.get('HIMMEL_POLICY_FOLLOWS_HOME') == '1' else None
+            command = shlex.split(seam or 'journalctl --list-boots')
             run = subprocess.run(command, capture_output=True, text=True, timeout=5)
             if run.returncode == 0:
                 found = set(re.findall(r'(?m)^\s*-?\d+\s+([0-9a-f]{32})\b', run.stdout))
