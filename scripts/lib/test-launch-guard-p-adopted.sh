@@ -129,8 +129,8 @@ jset "$SH" '.hooks.PreToolUse += [{"matcher":"Edit","hooks":[{"type":"command","
   | (.hooks.PreToolUse[] | select(any(.hooks[]; .command | contains("block-edit-on-main.sh"))) | .matcher) = "Edit"'
 lgp "$S"; expect "short_matcher_refuses" 1 "matcher for block-edit-on-main does not cover Write: re-run adopt --repair-matchers"
 cp "$SH" "$work/short.json"
-( cd "$S" && bash "$adopt" --repair-matchers --dry-run --target "$S" ) > "$work/repair-dry.log" 2>&1
-cmp -s "$SH" "$work/short.json" && pass "repair_matchers_dry_run_writes_nothing" \
+( cd "$S" && bash "$adopt" --repair-matchers --dry-run --target "$S" ) > "$work/repair-dry.log" 2>&1; dry_rc=$?
+[ "$dry_rc" -eq 0 ] && cmp -s "$SH" "$work/short.json" && pass "repair_matchers_dry_run_writes_nothing" \
   || fail "repair_matchers_dry_run_writes_nothing" "$(cat "$work/repair-dry.log")"
 others() { jq -c '[.hooks.PreToolUse[] | .matcher as $m | .hooks[] | select(.command | test("scripts/hooks/") | not) | {m: $m, h: .}], del(.hooks.PreToolUse)' "$1"; }
 before=$(others "$SH")
