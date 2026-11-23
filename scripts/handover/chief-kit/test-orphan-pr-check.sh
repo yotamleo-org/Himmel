@@ -312,7 +312,7 @@ srun
 check "10777 Q2.neg an OPEN PR, no #<n>, an open key, and a later open hold each keep their record" "0:$D0" "$rc:$(body)"
 sdoc "MERGED under AV: #4410, PR 4412 still open | MERGED under AV: #4410 (HIMMEL-901-F901a follow-up) | MERGED under AV: #4410 329422b3f"
 srun
-check "10777 Q2.amb a bare number or a glued key in a merged record keeps it; the sha record still goes" "0:$(dq 'MERGED under AV: #4410 329422b3f')
+check "10777 Q2.amb a bare number or a glued key in a merged record keeps it; the sha record still goes" "0:$(dq ' MERGED under AV: #4410 329422b3f')
 dead-queue=1
 done-pool=0" "$rc:$(body)"
 
