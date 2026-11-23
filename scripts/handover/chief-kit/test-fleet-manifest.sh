@@ -410,6 +410,15 @@ check 'lost control still permits identity-matched unknown settlement' 0 "$rc"
 bash "$SCRIPT" attempt bind "$am" "$bd" --attempt-id B4 >/dev/null 2>&1; rc=$?
 check 'lost control refuses new bind' 1 "$rc"
 
+m10="$tmp/m10/chief.fleet.json"; mkdir -p "$tmp/m10"
+free="$tmp/m10/queue-lock-free"; printf '#!/bin/bash\nexit 0\n' > "$free"; chmod +x "$free"
+fresh="$tmp/m10/HIMMEL-10-N80-fresh.md"; printf '# worker\n\n## Results\n' > "$fresh"
+started="$tmp/m10/HIMMEL-11-N81-started.md"; printf '# worker\n\n## Results\n\n- 10:00 LIVE — started\n' > "$started"
+TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" add "$m10" --lane native "$fresh" "$started" >/dev/null 2>&1; rc=$?
+check '10. a plain add of a fresh and a started doc succeeds' 0 "$rc"
+check '10. the doc with no session is written as a pending row' pending "$(jq -r --arg d "$fresh" '.workers[] | select(.doc == $d) | .registration // "live"' "$m10")"
+check '10. the doc with a LIVE bullet is written as a live row' live "$(jq -r --arg d "$started" '.workers[] | select(.doc == $d) | .registration // "live"' "$m10")"
+
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-fleet-manifest.sh"
     exit 0

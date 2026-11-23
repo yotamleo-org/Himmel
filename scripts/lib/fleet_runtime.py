@@ -729,18 +729,35 @@ def reconcile(attempts, rows, history, deadline, effects=True):
             row['attempt'] = attempts[aid].copy()
 
 
+def unlaunched(doc, timeout=10):
+    """No session ever ran on the doc: no marker bullet, a free queue lock and no claude process naming it."""
+    script = ('. "$1/ticket-status.sh"; m=$(ts_marker_newest "$2"); rc=$?; [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || exit 1; '
+              '[ -z "$m" ] || exit 1; if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then "$TICKET_STATUS_QUEUE_LOCK" status "$2"; '
+              'else bash "$1/../handover/queue-lock.sh" status "$2"; fi >/dev/null 2>&1 || exit 1; _ts_no_live_session_on "$2"')
+    try:
+        return subprocess.run(['bash', '-c', script, 'fleet-runtime', str(LIB), doc], capture_output=True, timeout=timeout).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def ownership_check(attempts, manifest, doc, name, keys):
-    """begin's family ownership refusals, shared with the read-only admit a dry run uses."""
+    """begin's family ownership refusals, shared with the read-only admit a dry run uses. The launching manifest's own
+    row for the doc being launched is no owner while no session ever ran on the doc; True when that row was passed."""
     if any(r['doc'] == doc or r['name'] == name or set(r['keys']) & set(keys) for r in attempts.values()):
         raise Refused('family already owns worker or ticket')
     legacy_deadline = time.monotonic() + 5
+    own_row = False
     for sibling in manifest.parent.glob('*.fleet.json'):
         listed = read(sibling)
         for row in listed.get('workers', []) + listed.get('legs', []):
             if row.get('registration') != 'pending' and (row.get('doc') == doc or set(worker_keys(row['doc'])) & set(keys)):
+                if sibling.resolve() == manifest.resolve() and row.get('doc') == doc and not row.get('attempt') and unlaunched(doc):
+                    own_row = True
+                    continue
                 if time.monotonic() >= legacy_deadline or worker_state(row['doc'], max(.01, legacy_deadline - time.monotonic()),
                                                                        ownership=True) not in ('wrapped', 'abandoned'):
-                    raise Refused('unknown legacy family ownership')
+                    raise Refused('unknown legacy family ownership: %s row %s' % (sibling, row.get('doc')))
+    return own_row
 
 
 def joined_attempt(attempts, doc, attempt_id):
@@ -780,6 +797,8 @@ def run(args):
         return has_reservation(record, args.pid)
     if args.op == 'protected':
         return protected(args.doc)
+    if args.op == 'unlaunched':
+        return unlaunched(args.doc)
     if args.op == 'owners':
         return owned_rows(args.manifest)
     if args.op == 'release':
@@ -872,8 +891,10 @@ def run(args):
             joined = joined_attempt(attempts, doc, args.join_attempt)
             if joined:
                 return {'joined': joined['attempt_id'], 'phase': joined['phase']}
-            ownership_check(attempts, manifest, doc, args.name, keys)
+            own_row = ownership_check(attempts, manifest, doc, args.name, keys)
             matches = [w for w in rows if w.get('doc') == doc]
+            if own_row and len(matches) == 1 and not matches[0].get('attempt'):
+                matches[0]['registration'] = 'pending'
             if not matches:
                 result = subprocess.run(['bash', '-c', '. "$1/worker-identity.sh"; worker_label "$2"',
                                          'fleet-runtime', str(LIB), doc], capture_output=True, text=True, timeout=5, check=True)
@@ -971,7 +992,7 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('op', choices=['resolve', 'admit', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'disposition', 'owners', 'reservation', 'settle'])
+    parser.add_argument('op', choices=['resolve', 'admit', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'disposition', 'owners', 'reservation', 'settle', 'unlaunched'])
     parser.add_argument('--doc', default='')
     parser.add_argument('--manifest', default='')
     parser.add_argument('--name', default='')
