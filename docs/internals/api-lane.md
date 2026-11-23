@@ -245,9 +245,8 @@ secret, only role names and account letters:
   fallback), and a critic call never takes the subscription fallback.
 - **Four states.** `absent` (no file): the default. `valid`: the map. `partial` (the file parses but an entry has an
   error): the live entries apply, each ignored role falls back to the default. `invalid` (not JSON, `version` is not 1
-  or `roles` is not an object): the whole file is ignored and the default applies, with `invalid-role-map:<reason>`.
-  For every kind but the graph walk a broken map only takes away widening; it never refuses what the default allows
-  and never touches `config.json`. The graph walk refuses instead, see below.
+  or `roles` is not an object): the whole file is ignored and every auto call refuses (`walk <kind>` exit 3, `invalid-role-map:<reason>`); fix or
+  remove the file. A broken map never touches `config.json`; the graph walk's refusal is described below.
 - **Dropped letters.** An unknown role (`unknown-role:<name>`) is ignored. An unknown letter in a list
   (`unknown-account:<role>:<letter>`) is dropped and the entry stays live with the rest: `judge: ["B", "E"]` routes
   to B. An empty or non-array list (`empty-role:<role>`) is ignored. A duplicate letter is deduped silently. A known
