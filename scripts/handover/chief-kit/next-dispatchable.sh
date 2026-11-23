@@ -2121,6 +2121,13 @@ def tick_verdicts(doc):
         holds = {}
     return stale, holds
 
+def drift_closing(doc):
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(doc)), 'focus-drift.txt'), encoding='utf-8', errors='replace') as f:
+            return set(re.findall(r'^CLOSE-OR-DISPATCH ([A-Z]+-\d+) ', f.read(), re.M))
+    except OSError:
+        return set()
+
 def read_disposition_gates(path):
     gates, newest = {}, {}
     try:
@@ -2136,9 +2143,12 @@ def read_disposition_gates(path):
         if m:
             newest[m[1]] = m
     stale, holds = tick_verdicts(path) if newest else (set(), {})
+    closing = drift_closing(path) if newest else set()
     for key, m in newest.items():
         lh = hashlib.sha256(m[0].encode()).hexdigest()[:12]
         if m[2] not in GATE_VERBS or (key, lh) in stale:
+            continue
+        if key in closing and re.match(r'[A-Z]+-\d+ question [Dd]ecisions?\s*#?\d+\b', m[0]):
             continue
         cls = holds.get((key, lh))
         ref = re.match(r'(?:(?:operator|waits on|blocked by|after)\s+)?(?:([A-Z]+-\d+)\b|PRs?\s*#?\d+\b|[Dd]ecisions?\s*#?\d+\b)', m[3])
@@ -2155,8 +2165,11 @@ def readiness_gates():
         try:
             r = subprocess.run(['bash', os.environ['ND_READINESS'], 'read', first_ver, '--mirror', os.path.abspath(mirror)],
                                stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=20)
+            closing = drift_closing(os.environ['ND_DOC'])
             for line in r.stdout.splitlines() if r.returncode == 0 else ():
                 row = json.loads(line)
+                if str(row.get('key')).upper() in closing and re.fullmatch(r'[0-9]+', str(row.get('blocker') or '')):
+                    continue
                 if row.get('state') == 'live' and row.get('decision') in ('c', 'd'):
                     gates[str(row['key']).upper()] = 'readiness %s blocker=%s' % (row['decision'], row.get('blocker') or '-')
         except (OSError, ValueError, AttributeError, KeyError, subprocess.SubprocessError):
