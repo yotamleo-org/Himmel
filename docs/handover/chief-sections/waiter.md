@@ -535,12 +535,15 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     carry a 40-hex head, still wakes as `WAKE tick changed=tails,acts`. Workers
     write READY as a bullet only, never a message.
 
-    **A READY, BLOCKED or FINDING no wake named yet wakes you once.** With
+    **A READY, BLOCKED, FINDING or request no wake named yet wakes you once.** With
     `--workers-from`, a worker whose newest marker bullet is a `READY <pr> <head40>`
-    (auto_go on; off, `WAKE ready` above owns it), a `BLOCKED` (not `BLOCKED resolve`)
-    or a `FINDING`, and that no wake of this inbox has named, wakes you with one line
-    each, `WAKE worker-ready <label> pr=<pr> head=<head40>`, `WAKE worker-blocked <label>`
-    or `WAKE worker-finding <label>`, plus the tick line. It catches what the other
+    (auto_go on; off, `WAKE ready` above owns it), a `BLOCKED` (not `BLOCKED resolve`),
+    a `FINDING`, or any other marker bullet carrying a `REQUEST` word (`PUSH-REQUEST`,
+    `JUDGE-REQUEST`) or `QUESTION`, and that no wake of this inbox has named, wakes you with one line
+    each, `WAKE worker-ready <label> pr=<pr> head=<head40>`, `WAKE worker-blocked <label>`,
+    `WAKE worker-finding <label>` or `WAKE worker-request <label>`, plus the tick line.
+    When another wake fires on the same sample, its block ends with these lines too, so
+    no other wake folds one away. It catches what the other
     wakes miss: a READY carried across a succession (the relay starts a worker it meets
     first after its existing READYs), one already in the doc at the first sample (a
     silent baseline), and one another wake folded into its saved key; the tick's tails=
@@ -548,8 +551,15 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     the relay has not yet handed on (past its `.wait.ready` cursor) is left to the relay. A `WAKE tick` on
     that worker's tails= or acts=, a READY the relay handed to worker-event, and the
     earlier wake itself count as named (`<inbox>.wait.markerwoke`): the same head or
-    bullet never wakes twice, and a successor's new inbox wakes once more. Read the
-    worker's doc and act as on its message.
+    bullet never wakes twice, and a successor's new inbox wakes once more (a tails= move
+    never names a request). Read the worker's doc and act as on its message.
+
+    **A manifest row that reads no doc wakes you once per path.** A row whose doc does
+    not exist wakes `WAKE worker-doc-missing <label> <path>`; a row naming a `-RESUME`
+    brief with no marker bullet, while the original doc beside it holds a newer one, wakes
+    `WAKE worker-doc-missing <label> <path> writes=<original>`: that worker writes the
+    original, so its markers never reach the tick. `fleet-manifest.sh remove` the row and
+    `add` the doc the worker writes; `chief.sh next` re-points such a row when it carries the manifest.
 
     **A ready-mismatch ALERT wakes you.** The tick's `ready-mismatch=<flagged>/<ready>,nogo=<k>/<judged>,ALERT`
     wakes `WAKE ready-mismatch <value>` plus the tick line when ALERT appears and again

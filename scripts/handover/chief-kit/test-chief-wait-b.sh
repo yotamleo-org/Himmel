@@ -273,16 +273,19 @@ check "(pk3) the wake names parked" "WAKE tick changed=parked usage=PROCEED" "$(
 # still wakes. RED control (chief-wait.sh before this change): the dispatch
 # below woke with changed=workers.
 reset_stub
+MX="$WORK/mx"; mkdir -p "$MX"
+printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$MX/HIMMEL-1-N1-a.md"
+printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$MX/HIMMEL-2-N2-b.md"
 I="$(new_inbox m3748)"
 M="$WORK/m3748/console.fleet.json"
-printf '{"schema":1,"workers":[{"doc":"/x/HIMMEL-1-N1-a.md","label":"N1"}]}\n' > "$M"
+printf '{"schema":1,"workers":[{"doc":"%s/HIMMEL-1-N1-a.md","label":"N1"}]}\n' "$MX" > "$M"
 start "$I" "$WORK/m3748.out" --workers-from "$M"
 wait_hb "$I" || fail "(m3748) no baseline heartbeat"
 # The stub tick ignores the manifest, so its line moves first: a sample
 # between the two writes sees a changed key under the OLD worker set (pending,
 # not yet a wake), and the next one sees the new worker set and re-baselines.
 tick_line "N1:FRESH,N2:FRESH" "ok"
-printf '{"schema":1,"workers":[{"doc":"/x/HIMMEL-1-N1-a.md","label":"N1"},{"doc":"/x/HIMMEL-2-N2-b.md","label":"N2"}]}\n' > "$M"
+printf '{"schema":1,"workers":[{"doc":"%s/HIMMEL-1-N1-a.md","label":"N1"},{"doc":"%s/HIMMEL-2-N2-b.md","label":"N2"}]}\n' "$MX" "$MX" > "$M"
 sleep 2
 wait_exit "$WPID"
 check "(m3748) a dispatch through the manifest does not wake the console" "running" "$rc"
@@ -290,7 +293,7 @@ check "(m3748) and prints nothing" "" "$(cat "$WORK/m3748.out")"
 # A remove + re-add reorders the manifest, and tick prints workers in manifest
 # order: the same set in a new order is the chief's own act too.
 tick_line "N2:FRESH,N1:FRESH" "ok"
-printf '{"schema":1,"workers":[{"doc":"/x/HIMMEL-2-N2-b.md","label":"N2"},{"doc":"/x/HIMMEL-1-N1-a.md","label":"N1"}]}\n' > "$M"
+printf '{"schema":1,"workers":[{"doc":"%s/HIMMEL-2-N2-b.md","label":"N2"},{"doc":"%s/HIMMEL-1-N1-a.md","label":"N1"}]}\n' "$MX" "$MX" > "$M"
 sleep 2
 wait_exit "$WPID"
 check "(m3748) a reorder through the manifest does not wake the console" "running" "$rc"
@@ -306,11 +309,11 @@ stop_waiter "$WPID"
 reset_stub
 I="$(new_inbox m1aw)"
 M="$WORK/m1aw/console.fleet.json"
-printf '{"schema":1,"workers":[{"doc":"/x/HIMMEL-1-N1-a.md","label":"N1"}]}\n' > "$M"
+printf '{"schema":1,"workers":[{"doc":"%s/HIMMEL-1-N1-a.md","label":"N1"}]}\n' "$MX" > "$M"
 start "$I" "$WORK/m1aw.out" --workers-from "$M"
 wait_hb "$I" || fail "(m1a) no baseline heartbeat on a workers manifest"
 tick_line "N1:FRESH,N2:FRESH" "ok"
-printf '{"schema":1,"workers":[{"doc":"/x/HIMMEL-1-N1-a.md","label":"N1"},{"doc":"/x/HIMMEL-2-N2-b.md","label":"N2"}]}\n' > "$M"
+printf '{"schema":1,"workers":[{"doc":"%s/HIMMEL-1-N1-a.md","label":"N1"},{"doc":"%s/HIMMEL-2-N2-b.md","label":"N2"}]}\n' "$MX" "$MX" > "$M"
 sleep 2
 wait_exit "$WPID"
 check "(m1a) a dispatch through a workers manifest does not wake the console" "running" "$rc"
@@ -323,11 +326,11 @@ stop_waiter "$WPID"
 reset_stub
 I="$(new_inbox m1aoff)"
 M="$WORK/m1aoff/console.fleet.json"
-printf '{"schema":1,"legs":[{"doc":"/x/HIMMEL-1-N1-a.md","label":"N1"}]}\n' > "$M"
+printf '{"schema":1,"legs":[{"doc":"%s/HIMMEL-1-N1-a.md","label":"N1"}]}\n' "$MX" > "$M"
 HIMMEL_LEGACY_NAMES=0 start "$I" "$WORK/m1aoff.out" --workers-from "$M"
 wait_hb "$I" || fail "(m1a) no baseline heartbeat with the switch off"
 tick_line "N1:FRESH,N2:FRESH" "ok"
-printf '{"schema":1,"legs":[{"doc":"/x/HIMMEL-1-N1-a.md","label":"N1"},{"doc":"/x/HIMMEL-2-N2-b.md","label":"N2"}]}\n' > "$M"
+printf '{"schema":1,"legs":[{"doc":"%s/HIMMEL-1-N1-a.md","label":"N1"},{"doc":"%s/HIMMEL-2-N2-b.md","label":"N2"}]}\n' "$MX" "$MX" > "$M"
 wait_exit "$WPID"
 check "(m1a) with HIMMEL_LEGACY_NAMES=0 an old legs manifest is not read, so the dispatch wakes (rc 0)" "0" "$rc"
 stop_waiter "$WPID"
