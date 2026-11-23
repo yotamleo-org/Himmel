@@ -294,9 +294,10 @@ since=$(date +%s)
 setsid nohup bash scripts/handover/chief-kit/headed-arm-worker.sh --profile worker-impl \
   --fleet <chief doc stem>.fleet.json <session-name> <brief> <signal-file> <deadline-epoch> <log> <model> \
   >>"<log>.launcher.out" 2>&1 &
-touch <signal-file>
 bash scripts/handover/chief-kit/launch-confirm.sh --since "$since" <session-name> <log>
 ```
+
+The launcher writes the signal file itself once the launch passes its checks; a launch that cannot write it is refused with a `LAUNCH-REFUSED` line.
 
 `--fleet` names the chief's own manifest. Without it, a managed worker is
 refused as `managed worker has no manifest reference`, or, when several

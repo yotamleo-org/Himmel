@@ -3,7 +3,7 @@
 #
 # usage: launch-confirm.sh --since <epoch> [--chief <name>] [--secs <n>] <session-name> <log>
 #
-# Run by the chief after it launches a worker (headed-arm-worker.sh, detached) and touches its signal file, with
+# Run by the chief after it launches a worker (headed-arm-worker.sh, detached), with
 # --since the epoch it took just before that launch. Polls once a second, up to --secs (default 60, or
 # LAUNCH_CONFIRM_SECS), on that launch attempt only: the lines <log> holds after its newest
 # `LAUNCH-START <session> epoch=<s>` line with <s> at or after --since, so an earlier attempt's lines and an earlier
