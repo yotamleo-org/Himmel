@@ -1623,6 +1623,55 @@ contains 'a bucket whose round status cannot be read names its critic files unre
 contains 'a bucket whose round status cannot be read names the round ledger unread' "$(grep -F 'data-section="waiting"' "$v9611out")" 'round ledger'
 not_contains 'a bucket whose round status cannot be read lists no unsigned spec' "$(grep -F -e 'data-section="waiting"' -e 'data-section="chief-owes"' "$v9611out")" 'latest critic round'
 
+for t in 455 456; do
+    printf '%s\n' '---' "key: \"HIMMEL-$t\"" 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'type: "Task"' \
+        '---' "# HIMMEL-$t: restore ticket $t" > "$vp/HIMMEL-$t.md"
+done
+SEAL="$HERE/critic-seal.sh"
+r10628quote='the park rm keeps its simple placement under the park root'
+r10628finding='- **r1** (major; operator-critical: reverses-ruling) the spec moves the park rm. That reverses decision 1096 rule 1.'
+r10628tree() {
+    mkdir -p "$1/release/v1.1.3" "$1/specs/designs" "$1/specs/decisions"
+    : > "$1/release/v1.1.3/operator.jsonl"
+    seed "$1"
+    printf '%s\n' '---' "tickets: HIMMEL-$2" '---' '# rev' > "$1/specs/designs/HIMMEL-$2-rev.md"
+    printf '%s\n' "Operator, on HIMMEL-$2: $r10628quote, rule 1." > "$1/specs/decisions/verbatim-decision-1096-park.txt"
+}
+r10628seal() {
+    local sp="$1/specs/designs/HIMMEL-$2-rev.md" k="$2" n="$3" verdict="$4" sum o
+    shift 4
+    sum="$(sha256sum "$sp" | cut -d' ' -f1)"
+    { printf 'critic return r%s read %s\n' "$n" "$sum"; for l in "$@"; do printf '%s\n' "$l"; done; printf '%s\n' "$verdict"; } > "$sp.critic-spec-r$n.md"
+    o="$(bash "$SEAL" "$sp.critic-spec-r$n.md" "$sp" "$sum" 2>&1)" || fail "R10628-tracker: spec round $n of HIMMEL-$k did not seal: $o"
+}
+r10628waiting() { grep -F 'data-section="waiting"' "$v9611out"; }
+kc=456
+kr=455
+bkc="$W/bk10628c"
+r10628tree "$bkc" "$kc"
+r10628seal "$bkc" "$kc" 1 'SPEC CLEAN'
+r10628seal "$bkc" "$kc" 2 'SPEC FINDINGS 1' "$r10628finding"
+r2sha="$(jq -r 'select(.row == "round" and .round == 2) | .return_sha' "$bkc/specs/ledgers/spec-rounds/HIMMEL-$kc.jsonl")"
+[ -n "$r2sha" ] || fail "R10628-tracker: control: spec round 2 of HIMMEL-$kc has no sealed return_sha"
+printf '{"v":1,"ts":1,"key":"HIMMEL-%s","row":"critical","restore":true,"critic":"spec","epoch":0,"opens":3,"id":"r1","class":"reverses-ruling","decision":"1096","quote":"%s","decision_path":"%s","decision_sha":"%s","return_sha":"%s"}\n' \
+    "$kc" "$r10628quote" "$bkc/specs/decisions/verbatim-decision-1096-park.txt" "0000000000000000000000000000000000000000000000000000000000000000" "$r2sha" >> "$bkc/specs/ledgers/spec-rounds/HIMMEL-$kc.jsonl"
+v9611render --owed-dir "$bkc"
+contains 'R10628-tracker: control: a hand-appended restore row that replays invalid leaves the finding under Waiting on you' "$(r10628waiting)" 'r1 (reverses-ruling)'
+bkr="$W/bk10628"
+r10628tree "$bkr" "$kr"
+r10628seal "$bkr" "$kr" 1 'SPEC CLEAN'
+r10628seal "$bkr" "$kr" 2 'SPEC FINDINGS 1' "$r10628finding"
+v9611render --owed-dir "$bkr"
+contains 'R10628-tracker: control: the open reverses-ruling finding is under Waiting on you' "$(r10628waiting)" 'r1 (reverses-ruling)'
+o="$(HIMMEL_CONSOLE=1 bun "$ROUTE" round-critical HIMMEL-$kr --finding r1 --decision 1096 --quote "$r10628quote" --restores --specs "$bkr/specs" 2>&1)" \
+    || fail "R10628-tracker: the restore was refused: $o"
+v9611render --owed-dir "$bkr"
+not_contains 'R10628-tracker: a finding whose restore check is owed is not under Waiting on you' "$(r10628waiting)" 'r1 (reverses-ruling)'
+tok="$(bun "$ROUTE" round-status HIMMEL-$kr --specs "$bkr/specs" | sed -n 's/^RESTORE-CHECK .* token \([0-9a-f]*\)$/\1/p')"
+r10628seal "$bkr" "$kr" 3 'SPEC CLEAN' "RESTORE-BREAKS r1 decision 1096 $tok"
+v9611render --owed-dir "$bkr"
+contains 'R10628-tracker: after RESTORE-BREAKS the finding is back under Waiting on you' "$(r10628waiting)" 'r1 (reverses-ruling)'
+
 s4="$W/s4"
 mkdir -p "$s4/mirror" "$s4/wk"
 s4mk() {

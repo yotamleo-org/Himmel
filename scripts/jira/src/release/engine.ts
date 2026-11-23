@@ -43,7 +43,7 @@ function lockedAsync<T>(ctx: Ctx, fn: (l: Loaded) => Promise<T>): Promise<T> {
 
 function reduceLoaded(l: Loaded, mirror: ReturnType<typeof readMirror>): ReleaseState {
   return reduce({
-    decl: l.decl, baselines: l.baselines, rulings: l.rulings, operator: l.operator, events: l.events,
+    decl: l.decl, baselines: l.baselines, base_history: l.base_history, rulings: l.rulings, operator: l.operator, events: l.events,
     issues: mirror.issues, mirrorSync: mirror.sync, admissions: admissionsOrNull(),
   });
 }

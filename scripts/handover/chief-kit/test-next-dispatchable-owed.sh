@@ -358,4 +358,58 @@ out_operator="$(READER_OVERRIDE="$REAL_READER" run)"
 has "a real operator-only KEEP remains explicitly operator-owned" "$out_operator" 'owes operator by 2026-11-20'
 lacks "a proof worker cannot consume an operator-only KEEP action" "$out_operator" $'RESUME\tHIMMEL-325'
 
+test_cross_pr_mixed_plus_pure_proof_staging() {
+    local id=test_cross_pr_mixed_plus_pure_proof_staging X="$WORK/mixed" o row first second cache sign proof m_save="$M"
+    sign='- sign the spec: owed -> chief by 2026-11-20'; proof='- run proof with a guest credential: owed -> proof by 2026-11-18'
+    xset() {
+        rm -rf "$X"; mkdir -p "$X/m/HIMMEL" "$X/body" "$X/state/workers"
+        printf 'v1.0.1\tfalse\t\n' > "$X/m/HIMMEL.versions.tsv"
+        M="$X/m/HIMMEL"; mk HIMMEL-303 "In Progress" "mixed owner $1" "Edit scripts/lib/mixed.sh."; M="$m_save"
+        printf '## Ticket coverage\n%s\n' "$2" > "$X/body/6001"
+        first=6001; second=""
+        if [ -n "${3:-}" ]; then printf '## Ticket coverage\n%s\n' "$3" > "$X/body/6002"; second=6002; [ "$4" = ba ] && { first=6002; second=6001; }; fi
+        for pr in $first $second; do printf '{"ts":"t","event":"merge","key":"HIMMEL-303","pr":"%s","contract":"no","result":"noop"}\n' "$pr" >> "$X/state/status-events.jsonl"; done
+    }
+    xrun() { PR_BODY_DIR="$X/body" NEXT_DISPATCH_BODY_CACHE="$1" NEXT_DISPATCH_READER="$REAL_READER" NEXT_DISPATCH_MIRROR="$X/m/HIMMEL" NEXT_DISPATCH_GH_CMD="$WORK/gh" \
+        NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --workers-dir "$X/state/workers" --workers-from "$WORK/fleet.json" 2>/dev/null; }
+    for lines in "$sign
+$proof" "$proof
+$sign"; do
+        for order in ab ba; do
+            xset "A+B $order" "$lines" '- run sibling proof: owed -> proof by 2026-11-25' "$order"
+            for cache in off "$X/cache.json"; do
+                o="$(xrun "$cache")"
+                row="$(printf '%s\n' "$o" | grep $'^RESUME\tHIMMEL-303' || true)"
+                [ "$(printf '%s' "$row" | awk -F'\t' '{print $NF}')" = proof-staging=guest-credential ] && pass "$id $order cache=${cache##*/} proof row ends in proof-staging=guest-credential" \
+                    || fail "$id $order cache=${cache##*/} proof row '$row' (out: $o)"
+            done
+            : > "$GH_ARGS"; o="$(xrun "$X/cache.json")"
+            row="$(printf '%s\n' "$o" | grep $'^RESUME\tHIMMEL-303' || true)"
+            [ "$(printf '%s' "$row" | awk -F'\t' '{print $NF}')" = proof-staging=guest-credential ] && pass "$id $order complete-cache hit keeps the staging need" || fail "$id $order cache hit row '$row'"
+            if grep -q 'pr view 600' "$GH_ARGS"; then fail "$id $order the complete-cache hit read a body again"; else pass "$id $order the complete-cache hit reads no body"; fi
+        done
+        xset "A alone" "$lines"
+        o="$(xrun off)"
+        printf '%s\n' "$o" | grep -qx 'OWED HIMMEL-303: merged PR #6001 owes chief by 2026-11-20 proof-staging=guest-credential' \
+            && pass "$id A alone prints the exact chief OWED line" || fail "$id A alone chief OWED line (out: $o)"
+        lacks "$id A alone lists no proof row" "$o" $'RESUME\tHIMMEL-303'
+    done
+    for lines in '- rotate the token: owed -> operator by 2026-11-20
+'"$proof" "$proof"'
+- rotate the token: owed -> operator by 2026-11-20'; do
+        xset "operator" "$lines"; o="$(xrun off)"
+        printf '%s\n' "$o" | grep -qx 'OWED HIMMEL-303: merged PR #6001 owes operator by 2026-11-20' \
+            && pass "$id the operator variant prints the exact OWED line with no suffix" || fail "$id operator OWED line (out: $o)"
+        lacks "$id the operator variant lists no proof row" "$o" $'RESUME\tHIMMEL-303'
+    done
+    xset "pure credential" "$proof"; o="$(xrun off)"
+    [ "$(printf '%s\n' "$o" | grep $'^RESUME\tHIMMEL-303' | awk -F'\t' '{print $NF}')" = proof-staging=guest-credential ] && pass "$id a pure-proof credential still holds" || fail "$id pure credential (out: $o)"
+    xset "plain proof" '- run sibling proof: owed -> proof by 2026-11-25'; o="$(xrun off)"
+    [ "$(printf '%s\n' "$o" | grep $'^RESUME\tHIMMEL-303' | awk -F'\t' '{print $NF}')" = proof ] && pass "$id plain proof stays plain proof" || fail "$id plain proof (out: $o)"
+    xset "chief discharged" "- sign the spec: done
+$proof" '- run sibling proof: owed -> proof by 2026-11-25' ab; o="$(xrun off)"
+    [ "$(printf '%s\n' "$o" | grep $'^RESUME\tHIMMEL-303' | awk -F'\t' '{print $NF}')" = proof-staging=guest-credential ] && pass "$id after the chief step is done the proof row still holds" || fail "$id after discharge (out: $o)"
+}
+test_cross_pr_mixed_plus_pure_proof_staging
+
 if [ "$fails" -eq 0 ]; then echo "next-dispatchable-owed: all rows passed"; else echo "next-dispatchable-owed: $fails row(s) failed"; exit 1; fi

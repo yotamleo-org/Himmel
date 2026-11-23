@@ -504,6 +504,53 @@ printf '%s\t%s\t%s\t%s\n' "$(date +%Y-%m-%dT%H:%M:%S)" HIMMEL-999 session_x 'cla
 cloud_own_out="$(STUB_PR_ROWS="$rows_5542" bash "$SUT" --doc "$W/cloudbucket/chief.md")"
 not_contains 'a PR whose ticket has a live cloud session is not unowned' "$cloud_own_out" '#3002:'
 
+mkdir -p "$W/heldbucket" "$W/held-mirror"
+held_doc() {
+    printf '# chief\n\n## Live state\n\nqueue: %s\nlast GO: none\n' "$1" > "$W/heldbucket/chief.md"
+}
+held_tick() { HIMMEL_JIRA_MIRROR="$W/held-mirror" bash "$SUT" --doc "$W/heldbucket/chief.md"; }
+held_doc "#3002 HELD waits on 3001"
+held_out="$(STUB_PR_ROWS="$rows_5542" held_tick)"
+contains '10716 a HELD entry with no trigger reads as unowned in tick.sh' "$held_out" 'unowned-prs=#3002:125m'
+not_contains '10716 a HELD entry with no trigger prints no relaunch=' "$held_out" ' relaunch='
+held_doc "#3002 HELD wake=pr:3001"
+held_out="$(STUB_PR_ROWS="$rows_5542" held_tick)"
+contains '10716 a HELD entry with a trigger and no resume doc reads as unowned in tick.sh' "$held_out" 'unowned-prs=#3002:125m'
+held_doc "#3001 HELD waits on 3002 wake=pr:3002 resume=/h/r.md"
+contains '10716 a blocker PR named in an armed entry prose stays unowned in tick.sh' "$(STUB_PR_ROWS="$rows_5542" held_tick)" 'unowned-prs=#3002:125m'
+held_doc "#3002 HELD wake=pr:3001 resume=/h/HIMMEL-999-N1-RESUME.md"
+held_out="$(STUB_PR_ROWS="$rows_5542" held_tick)"
+not_contains '10716 a HELD entry with a trigger and a resume doc is not unowned' "$held_out" '#3002:125m'
+contains '10716 a trigger PR still open has not fired: relaunch=none' "$held_out" ' relaunch=none '
+held_doc "#3002 HELD wake=pr:2999 resume=/h/HIMMEL-999-N1-RESUME.md"
+held_out="$(STUB_PR_ROWS="$rows_5542" held_tick)"
+contains '10716 a trigger PR no longer open fires: relaunch names the PR and its resume doc' "$held_out" ' relaunch=#3002:/h/HIMMEL-999-N1-RESUME.md '
+not_contains '10716 a fired entry is still not unowned' "$held_out" '#3002:125m'
+contains '10716 a failed PR read is relaunch=?, never a fired trigger' "$(STUB_PR_FAIL=1 held_tick)" ' relaunch=? '
+held_doc "#3002 HELD wake=done:HIMMEL-50 resume=/h/r.md"
+printf -- '---\nstatusCategory: "In Progress"\n---\n' > "$W/held-mirror/HIMMEL-50.md"
+contains '10716 a trigger ticket not Done has not fired' "$(STUB_PR_ROWS="$rows_5542" held_tick)" ' relaunch=none '
+printf -- '---\nstatusCategory: "Done"\n---\n' > "$W/held-mirror/HIMMEL-50.md"
+contains '10716 a trigger ticket Done in the mirror fires' "$(STUB_PR_ROWS="$rows_5542" held_tick)" ' relaunch=#3002:/h/r.md '
+rm -f "$W/held-mirror/HIMMEL-50.md"
+contains '10716 a trigger ticket the mirror cannot read is relaunch=?' "$(STUB_PR_ROWS="$rows_5542" held_tick)" ' relaunch=? '
+held_doc "#3002 HELD wake=pr:2999 resume=/h/r.md | #3006 HELD wake=done:HIMMEL-51 resume=/h/s.md"
+contains '10716 an unreadable trigger keeps the fired entries and adds ?' "$(STUB_PR_ROWS="$rows_5542" held_tick)" ' relaunch=#3002:/h/r.md,? '
+held_doc "#3002 HELD wake=file:$W/heldbucket/decision.txt resume=/h/r.md"
+contains '10716 a decision file not yet present has not fired' "$(STUB_PR_ROWS="$rows_5542" held_tick)" ' relaunch=none '
+: > "$W/heldbucket/decision.txt"
+contains '10716 a decision file present fires' "$(STUB_PR_ROWS="$rows_5542" held_tick)" ' relaunch=#3002:/h/r.md '
+held_doc "#3002 HELD wake=pr:3001 resume=/h/a.md | #3006 HELD waits on 3001"
+printf '[{"number":3002,"headRefName":"feat/himmel-999-orphan"},{"number":3006,"headRefName":"feat/himmel-222-ready-worker"}]\n' > "$W/held-prs.json"
+mkdir -p "$W/held-state"
+opc_unowned="$(ORPHAN_PR_CHECK_PRS="$W/held-prs.json" TICKET_STATUS_STATE_DIR="$W/held-state" bash "$HERE/orphan-pr-check.sh" --doc "$W/heldbucket/chief.md" | awk '{ print $2 }' | paste -sd, -)"
+tick_unowned="$(STUB_PR_ROWS="$rows_5542" held_tick | grep -oE 'unowned-prs=[^ ]*' | tr ',' '\n' | grep -oE '#(3002|3006):' | tr -d '#:' | paste -sd, -)"
+if [ "$opc_unowned" = 3006 ] && [ "$tick_unowned" = "$opc_unowned" ]; then
+    pass '10716 orphan-pr-check.sh and tick.sh read the same HELD entries as unowned'
+else
+    fail "10716 orphan-pr-check.sh and tick.sh disagree on HELD entries (orphan-pr-check=$opc_unowned tick=$tick_unowned)"
+fi
+
 # --- a comma-separated --workers is equivalent to space-separated -
 # `for worker in $WORKERS` word-splits on IFS whitespace only, so a comma-joined
 # value used to be one iteration over one nonexistent path -- the label was

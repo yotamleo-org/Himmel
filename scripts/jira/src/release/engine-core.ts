@@ -61,6 +61,7 @@ interface Loaded {
   k: Buffer;
   decl: Declaration;
   baselines: Baseline[];
+  base_history: Baseline[];
   rulings: Chain<RulingRow>;
   operator: Chain<OperatorRow>;
   events: Chain<EventRow>;
@@ -81,15 +82,17 @@ function load(ctx: Ctx): Loaded | { unknown: string } {
     return { unknown: `release.json for ${ctx.release} is missing or does not verify` };
   }
   const baselines: Baseline[] = [];
+  const base_history: Baseline[] = [];
   for (const o of operator.verified.filter((x) => x.kind === 'freeze')) {
     const b = readSigned<Baseline>(f(ctx, o.file ?? ''), k);
     if (!b.ok || !b.value || o.sha !== contentSha(b.value)) return { unknown: `${o.file} does not verify against ${o.id}` };
+    base_history.push(b.value);
     const prior = baselines.findIndex((x) => x.version === b.value?.version);
     if (prior >= 0) baselines.splice(prior, 1);
     baselines.push(b.value);
   }
   return {
-    k, decl: decl.value, baselines, operator,
+    k, decl: decl.value, baselines, base_history, operator,
     rulings: readChain<RulingRow>(f(ctx, 'rulings.jsonl'), k),
     events: readChain<EventRow>(f(ctx, 'events.jsonl'), k),
     requests: readChain<RequestRow>(f(ctx, 'requests.jsonl'), k),
@@ -166,6 +169,7 @@ export function readMirrorFilesUnverified(root: string | null): { issues: Map<st
       sector: typeof fm.sector === 'string' && fm.sector ? fm.sector : null,
       ...(typeof fm.parent === 'string' && fm.parent ? { parent: fm.parent } : {}),
       ...(Array.isArray(fm.labels) && fm.labels.length ? { labels: fm.labels.map(String) } : {}),
+      resolved: typeof fm.resolved === 'string' ? fm.resolved : null,
     });
   }
   if (issues.size === 0 && sync === null) return { issues: null, sync: null, complete: false };

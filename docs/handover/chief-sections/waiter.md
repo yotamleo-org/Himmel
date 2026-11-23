@@ -171,7 +171,7 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     `ACTION dispatch-stall <run> <worker> (<branch>): <reasons>` line per run; look with
     `gh run view <run>`, cancel it or tell the worker. Elapsed time, job counts and `stale-head` never
     wake, and a run leaving the set does not), `owed=` (the `ACTION owed-stale=<n>:<ids>` count of keyless
-    ticket rows of the owed ledger past 4 h: the wake is `WAKE tick changed=owed` when that count rises;
+    ticket rows of the owed ledger past 4 h and keyed steps past their due date until the step-due wake is delivered: the wake is `WAKE tick changed=owed` when that count rises;
     the age, an open row that is not stale and a row closed with a key never wake, and `owed=?` keeps
     the saved count; see `owed.md`), `board=` (its class — the STALE age alone does not wake, and a
     move TO `ok` never wakes on its own either, since that's just the chief's
@@ -222,6 +222,13 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     `<inbox>.wait.refused` holds the pairs already reported and keeps only those the tsv still lists;
     `<inbox>.wait.refused.day` holds the digest's UTC day. A line without the field reads nothing.
     Act on it as release-manager.md says: ask again with the operator's words, or ack a right refusal.
+
+    **`WAKE relaunch-owed <PR> <resume doc>`** (one line per entry, then the tick line): a HELD `queue:`
+    entry's trigger fired (`live-state.md`: `wake=pr:<n>` merged or closed, `wake=done:<KEY>` Done,
+    `wake=file:<path>` present), read from the tick's `relaunch=`. Relaunch the worker from the resume doc,
+    then take the entry off the `queue:` line. It wakes once per entry under `<inbox>.wait.relaunch`
+    (again after `CHIEF_WAIT_RELAUNCH_REWAKE_MIN`, default 60, while the entry stays); `relaunch=?`
+    (a failed read) keeps the marker, and `relaunch=none` or no field clears it.
 
     **`WAKE pool-stale <KEYS>`**: the tick re-checks every Live-state
     `pool-disposition: KEY slice|close|question|hold|park <target>` line whose target names a

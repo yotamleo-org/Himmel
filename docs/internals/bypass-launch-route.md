@@ -26,7 +26,7 @@ session, and it is set only on the operator's own reply.
 
 ## What it replaces
 
-Earlier, the chief ran the critic-eval sweep itself
+Earlier, the chief ran the reviewer eval sweep itself
 (`HIMMEL_BILLED_OK=1 bash scripts/eval/review-panel/run.sh ...`), or exported
 the flag in a worker's launch script. Both shapes are now refused. Instead:
 
@@ -41,6 +41,7 @@ the flag in a worker's launch script. Both shapes are now refused. Instead:
    effort=high
    decision=<operator decision number>
    api_account=<A, B, C, D or auto>   # optional; launches with the API lane on for that account
+   blocks=#5700 #5699                 # optional; the pull requests the work blocks, "#<n>" tokens, single spaces
    recommend=go                       # required: go, no, or no:<reason of at most 60 characters>
    ```
 
@@ -57,22 +58,23 @@ the flag in a worker's launch script. Both shapes are now refused. Instead:
    Line 1 is the code and the reply to send. Line 2 is the ticket, the worker,
    the model and the effort. Line 3 names every granted flag, and the hook it
    skips when the registry names one. The hook names are dropped when the line
-   would pass 200 characters. Decision, paid and API grants add one line before
-   the chief's word, such as `DECISION 921 · PAID RUN · API account A`. The
+   would pass 200 characters. Decision, paid and API grants and `blocks=` add one
+   line before the chief's word, such as
+   `DECISION 921 · PAID RUN · API account A · Blocks PRs: #5700 #5699`. The
    chief's word is `Chief: GO`, or `Chief: NO — <reason>` when the chief thinks
    the operator should refuse. The brief's description is not in the ask.
    The request therefore needs a `recommend=` line: `recommend=go`, `recommend=no`, or
    `recommend=no:<reason of at most 60 characters>`. A request without one is refused as
-   `malformed: recommend`.
+   `malformed: recommend`. A `blocks=` that is not `#<n>` tokens separated by
+   single spaces is refused `malformed: blocks`.
 4. The operator replies `go <code>` and the daemon launches the worker with
    `headed-arm-worker.sh`. A reply of `no <code>` launches nothing, and so do
    6 h with no reply.
 
-For a critic change, the paid eval is the default route
-(`scripts/eval/review-panel/README.md`, "The merge gate"). The chief launches
-the sweep without asking whether to spend. The go code authorises the flag for
-that one launch; it is not a decision about whether to run the eval. Only
-skipping the eval needs an operator decision, as a `gate-bypass.tsv` row.
+No CI check requires a reviewer eval sweep: the critic-eval merge gate was
+removed (decisions 1251 and 1252, `scripts/eval/review-panel/README.md`). A
+paid sweep runs only on an operator decision, and its go code authorises the
+flag for that one launch.
 
 ## How the flag list is built
 
@@ -169,6 +171,23 @@ does, the command waits for the operator.
   do not pass through either) and any inherited effort, then sets only the
   granted flags. A station opt-in such as `HIMMEL_DEEPSEEK_INFERENCE_OK`
   therefore does not reach a worker launched this way.
+- **It never reads or launches a request on code older than its checkout; it
+  holds and tells the operator instead.** At start it records the blob ids of
+  its own script, the tier file and the flag registry from the commit it read
+  (the `start` line prints them as `self=`, `tiers=` and `registry=`). Before
+  it reads a request, and again after the operator's go, it compares them with
+  HEAD. When one differs, or HEAD cannot be read, it logs
+  `STALE hold loaded=<ids> checkout=<ids> (<cause>)`, writes
+  `bypass-queue/.hold`, reads no request and launches nothing until it is
+  restarted, even if HEAD later returns to the loaded ids. It sends one
+  `bypass-failed` card naming the cause and the restart steps, and one more for
+  each waiting request (`bypass request <name> waits: the daemon needs a
+  restart`), once per request. A go given while the code moved is not used:
+  the log says `STALE after go <brief>: go not used, re-queued`, a
+  `bypass-result` card says so, and the request goes back to `<name>.req`, to
+  be asked again after the restart. The daemon does one thing at a time, so a
+  change that lands while it waits on a go is found when that wait ends: the
+  hold and its cards can come up to one ask wait (6 h) after the change.
 - **Failures are reported.** A launcher that exits non-zero within the settle
   window logs `LAUNCH-FAILED <brief> rc=<n>`, and the request ends `.failed`.
 - **It is bounded.** `--until <YYYY-MM-DD>` is required and may be at most 7
@@ -192,6 +211,24 @@ To replace a running instance, `touch <bucket>/bypass-queue/stop`, wait for
 `stop file` in `daemon.log`, remove the stop file, then start it again. bash
 holds the loop it parsed, and the daemon holds the registry and tiers it read at
 start, so a new flag or tier reaches a running instance only after a restart.
+
+A merged change to the daemon script, the tier file or the flag registry puts a
+running daemon on hold. Telegram tells you at once with a `bypass-failed` card:
+"bypass-launchd runs older code than its checkout (<cause>). It reads no request
+until you restart it: touch <queue>/stop, wait for `stop file` in daemon.log,
+remove stop, start it again." Each waiting request gets one more card. Until you
+restart it, no queued request is read or launched; the new instance removes
+`.hold` at start and asks each waiting request. A hold that begins while the
+daemon waits on a go is written and told when that wait ends, at most 6 h later.
+
+`bypass-launchd.sh --check --bucket <bucket> [--request <file>]` reports without
+starting anything. It runs the start checks (not the Claude-session refusal, the
+lock, `--until` or the operator id) and, with `--request`, the same request check
+the loop runs. It prints `accepted` or `refused: <reason>`, then `daemon: none`,
+`daemon: live pid=<p>` or `daemon: live pid=<p>, holding (<cause>)`, and exits 0
+(accepted), 1 (refused) or 2 (a start check failed). It takes no lock, reads no
+operator id, sends nothing and exits before the loop, so it may run inside a
+Claude session: it cannot start, stop or steer the daemon.
 
 ## Limits
 

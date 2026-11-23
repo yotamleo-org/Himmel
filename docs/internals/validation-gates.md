@@ -193,7 +193,7 @@ joins any panel until the operator enables per-token billing.
 ## 4. Human checkpoints (first-class, bounded)
 
 - **Merge needs the chief's GO on the operator's authority** (§1). The lane-gate verdict feeds it, never replaces it.
-  `--admin`/gate-bypass remain HARD-vetoed.
+  `--admin` and any gate bypass remain HARD-vetoed.
 - **`/code-review ultra`** stays the operator-triggered top escalation, recorded
   as a one-action operator step.
 - **Batching bound:** the review surface batches into the consolidated morning
@@ -392,6 +392,25 @@ The ledger never changes a verdict.
 Lane-rubric verdict persistence remains behavioral (validating-session
 discipline); structural `cheap-codex` provenance enforcement waits on a hermes
 task→branch record. See §1 enforcement-honesty.
+
+## Review rounds
+
+`/pr-check` counts a review round only when a panel reviewed new work. The first round reviews the whole PR. Every
+later round reviews only the increment since the head the last counted round ran on (`review-round.sh start` prints
+it; the whole PR rides along as context). The increment's class decides what the round costs:
+
+- **carried**: a clean merge of the base into the reviewed head. No panel, nothing counted.
+- **free** (`tests`, `comments`, `merge-resolution`, `fix`): the panel runs, nothing is counted. A free increment is
+  at most 80 diff lines, a PR gets at most five, and past the cap the round blocks only on Critical or escape-class
+  findings. `tests` is test paths only; `comments` is comment or blank lines only (a `#` line inside a heredoc counts
+  too, which is why the panel still runs); `merge-resolution` is a merge whose own lines only resolve its conflicts;
+  `fix` touches only files that an open critic finding cites, at the reviewed head or at a head a free round followed.
+- **work**: anything else. It spends a round. After round 3 it runs only as the one delta round (a finding still open
+  at the reviewed head, or a judge NO-GO), as `postcap-fixed` (also reached through free rounds), after a red CI, or
+  on a judge or chief grant.
+
+A round whose panel wrote no row is given back. A refusal past the cap (exit 8) names the rethink first: split the
+PR or narrow the change, then ask the chief for a judge NO-GO or a grant. Detail: `scripts/cr/pr-check-ref/30-step3-panel.md`.
 
 ## Defaults you can change
 

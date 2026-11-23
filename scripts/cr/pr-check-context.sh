@@ -889,7 +889,7 @@ scripts/lanes/plugin-profiles.mjs scripts/lanes/plugin-profiles.json scripts/lan
 scripts/handover/chief-kit/worker-jira-status.sh scripts/handover/chief-kit/holds.py
 scripts/handover/chief-kit/chain-push-check.sh
 marketplace/plugins/himmel-ops/scripts/humanizer-facts.py
-scripts/handover/chief-kit/append-results.sh scripts/handover/chief-kit/worker-doc-lock.sh scripts/handover/chief-kit/owe.sh
+scripts/handover/chief-kit/append-results.sh scripts/handover/chief-kit/worker-doc-lock.sh scripts/handover/chief-kit/owe.sh scripts/handover/chief-kit/owed-events.py
 scripts/handover/chief-kit/bucket-gitleaks.sh scripts/handover/chief-kit/vault-status.sh
 scripts/handover/suite-coverage.sh
 scripts/luna/cadence-alert.sh scripts/luna/vault-stall-alert.sh scripts/luna/qmd-embed-model.sh scripts/luna/qmd-reindex.sh
@@ -932,7 +932,7 @@ cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/'
     ':(top)scripts/handover/chief-kit/worker-jira-status.sh' ':(top)scripts/handover/chief-kit/holds.py'
     ':(top)scripts/handover/chief-kit/chain-push-check.sh'
     ':(top)marketplace/plugins/himmel-ops/scripts/humanizer-facts.py'
-    ':(top)scripts/handover/chief-kit/append-results.sh' ':(top)scripts/handover/chief-kit/worker-doc-lock.sh' ':(top)scripts/handover/chief-kit/owe.sh'
+    ':(top)scripts/handover/chief-kit/append-results.sh' ':(top)scripts/handover/chief-kit/worker-doc-lock.sh' ':(top)scripts/handover/chief-kit/owe.sh' ':(top)scripts/handover/chief-kit/owed-events.py'
     ':(top)scripts/handover/chief-kit/bucket-gitleaks.sh' ':(top)scripts/handover/chief-kit/vault-status.sh'
     ':(top)scripts/handover/suite-coverage.sh'
     ':(top)scripts/luna/cadence-alert.sh' ':(top)scripts/luna/vault-stall-alert.sh' ':(top)scripts/luna/qmd-embed-model.sh' ':(top)scripts/luna/qmd-reindex.sh'

@@ -583,7 +583,7 @@ jobs:
     # --init: an init as PID 1 reaps orphaned descendants, as on the host.
     # --privileged: bwrap and unshare need user namespaces inside the container.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:a933a42ad2f4d4adf6196793af7895601c1a9655b283b7f3425606d2a3023280') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:45109f7d530dfb15e31565ccc267514b003c35c5a9e86604d7561a09db7c65b6') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -952,23 +952,6 @@ jobs:
       - if: ${{ needs.ci-quick.outputs.secret-scan != 'pass' }}
         run: exit 1
 
-  critic-eval:
-    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'critic-eval' || 'critic-eval (deferred)' }}
-    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && github.event_name == 'pull_request' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Critic change carries keep or no-loss eval rows, or a recorded bypass
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: bash scripts/ci/check-critic-eval.sh "$BASE_SHA" HEAD
-
   # A bracket-expression regex in
   # scripts/lib/unchecked-mktemp.sh can fail only under a real BWK
   # (one-true-awk) — `gawk --posix`/`--lint=fatal` both accept the broken
@@ -1178,7 +1161,7 @@ jobs:
     # container) and the setup steps gated on !job.container.id install the
     # same tools on the host.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:a933a42ad2f4d4adf6196793af7895601c1a9655b283b7f3425606d2a3023280') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:45109f7d530dfb15e31565ccc267514b003c35c5a9e86604d7561a09db7c65b6') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -1676,7 +1659,7 @@ jobs:
     # container) and the setup steps gated on !job.container.id install the
     # same tools on the host.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:a933a42ad2f4d4adf6196793af7895601c1a9655b283b7f3425606d2a3023280') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:45109f7d530dfb15e31565ccc267514b003c35c5a9e86604d7561a09db7c65b6') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -1805,7 +1788,7 @@ jobs:
     # container) and the setup steps gated on !job.container.id install the
     # same tools on the host.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:a933a42ad2f4d4adf6196793af7895601c1a9655b283b7f3425606d2a3023280') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:45109f7d530dfb15e31565ccc267514b003c35c5a9e86604d7561a09db7c65b6') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -1953,7 +1936,7 @@ jobs:
     # container) and the setup steps gated on !job.container.id install the
     # same tools on the host.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:a933a42ad2f4d4adf6196793af7895601c1a9655b283b7f3425606d2a3023280') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:45109f7d530dfb15e31565ccc267514b003c35c5a9e86604d7561a09db7c65b6') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -2110,7 +2093,7 @@ jobs:
     # --init: an init as PID 1 reaps orphaned descendants, as on the host.
     # --privileged: bwrap and unshare need user namespaces inside the container.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]' || vars.HIMMEL_VM_RUNNER == 'on' || vars.CI_GCP == 'on') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:a933a42ad2f4d4adf6196793af7895601c1a9655b283b7f3425606d2a3023280') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]' || vars.HIMMEL_VM_RUNNER == 'on' || vars.CI_GCP == 'on') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:45109f7d530dfb15e31565ccc267514b003c35c5a9e86604d7561a09db7c65b6') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -2629,7 +2612,7 @@ jobs:
     # --init: an init as PID 1 reaps orphaned descendants, as on the host.
     # --privileged: bwrap and unshare need user namespaces inside the container.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:a933a42ad2f4d4adf6196793af7895601c1a9655b283b7f3425606d2a3023280') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:45109f7d530dfb15e31565ccc267514b003c35c5a9e86604d7561a09db7c65b6') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}

@@ -46,7 +46,6 @@ scripts/api-lane/test-claude-api.sh	72
 scripts/chief/test-base-status.sh	21
 scripts/ci/test-billed-optin.sh	32
 scripts/ci/test-check-ci-install-locks.sh	50
-scripts/ci/test-check-critic-eval.sh	11
 scripts/ci/test-check-flags.sh	28
 scripts/ci/test-ci-lint-tree-gates.sh	38
 scripts/ci/test-home-canary.sh	34

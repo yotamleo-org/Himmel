@@ -65,7 +65,7 @@
 # A newer hand-off or owed PR also supersedes an older `remaining` PR.
 #
 # Scope: a ticket waits only on the files its next step writes. That is the latest `Remaining:` text when it names a write path or
-# the reader (`--units`) answers that it writes nothing: every slice of each `Remaining:` line (cut at a `, S<n>` or `; S<n>` label
+# the reader answers that it writes nothing: every slice of each `Remaining:` line (cut at a `, S<n>` or `; S<n>` label
 # outside parentheses), every deferred line kept on the ticket and every malformed owed line says so (no code, no repo write,
 # chief-run, state repo). Else a `Writes:` or `Files:` line of the description, else the description's paths, comments left out.
 # A path a text only runs (`run`, `bash <path>`) holds nothing, unless a line naming it edits it or reports it broken. A ticket with no path and no such statement prints `NEEDS-CHIEF-NOTE <KEY>: no readable scope` and
@@ -173,8 +173,9 @@
 # NEXT_DISPATCH_CLASSIFY_CMD (replaces cloud-route.mjs; called with the keys),
 # NEXT_DISPATCH_JIRA_CMD (replaces the jira CLI for the live blocker read; called `get KEY`),
 # NEXT_DISPATCH_EXCLUDE_LABELS (comma list, replaces the default),
-# NEXT_DISPATCH_READER (replaces scripts/lib/pr_remainder.py, run as `python3 -I <file> --units <KEY>`; NO_WRITE_RE and the
-# supersede rule are always loaded from the real scripts/lib/pr_remainder.py).
+# NEXT_DISPATCH_READER (replaces scripts/lib/pr_remainder.py, run as `python3 -I <file> --full-units <KEY>` by the listing and
+# `--units <KEY>` by --why-ticket on a breadcrumb; NO_WRITE_RE, the supersede rule and the answer vocabulary are always loaded
+# from the real scripts/lib/pr_remainder.py).
 #
 # Exit: 0 printed (possibly nothing); 2 usage; 3 the mirror directory is missing or unreadable, or scripts/lib/pr_remainder.py
 # cannot be loaded.
@@ -305,7 +306,7 @@ export ND_FLAGS="$nd_flags"
 nd_left=$((nd_deadline - SECONDS))
 [ "$nd_left" -gt 0 ] || nd_left=1
 ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 "$nd_left"} python3 -I - > "$nd_out" <<'PY' &
-import datetime, json, os, re, subprocess, sys, tempfile, time
+import datetime, json, math, os, re, subprocess, sys, tempfile, time
 
 why_key = os.environ.get('ND_WHY_TICKET', '')
 
@@ -645,9 +646,12 @@ def staging_of(i):
             txt = open(os.path.join(mirror, k + '.md'), encoding='utf-8', errors='replace').read()
         except OSError:
             unread.append('mirror file absent')
-        answers = i.get('parts', ())
+        answers = list(i.get('parts', ()))
+        shown = {a.get('pr') for a in answers}
+        unread += ['PR #%s body could not be read' % pr for pr in partials.get(k, []) if pr in unread_prs and pr not in shown]
         if i.get('owed_next'):
-            answers = [dict(kind='remaining', text='; '.join(r['text'] for r in i['owed_next']), nowrite=i.get('nowrite', False))]
+            answers.append(dict(kind='remaining', handed=[], text='; '.join(r['text'] for r in i['owed_next']), nowrite=i.get('nowrite', False),
+                                chief_owed=[], chief_invalid=[], owed_lines=[]))
         _staged[k] = needs(txt, answers, unread, os.environ['ND_TICKET_POLICY_CLI'])
     return _staged[k]
 
@@ -1150,7 +1154,8 @@ def core_lines(out, keys, spec=False):
         t = line.split()
         if spec and t[:2] == ['SPEC', 'ok'] and len(t) >= 4:
             got[t[2]] = line
-        elif t and (t[0] in ('SPEC-STALE', 'NO-SPEC') if spec else t[0] in CORE_VERBS) and len(t) >= CORE_FIELDS.get(t[0], 2):
+        elif t and (t[0] in ('SPEC-STALE', 'NO-SPEC', 'SPEC-NEEDS-OPERATOR', 'SPEC-SIGNER-UNKNOWN') if spec else t[0] in CORE_VERBS) \
+                and len(t) >= ({'SPEC-NEEDS-OPERATOR': 5, 'SPEC-SIGNER-UNKNOWN': 4} if spec else CORE_FIELDS).get(t[0], 2):
             got[t[1]] = line  # a line shorter than its verb needs is no answer: a truncated BYPASS must never read as a bypass
     return {k: got[k] for k in keys if k in got}
 
@@ -1203,9 +1208,22 @@ def core_spec_pass(cs):
         got = core_lines(out, core, spec=True)
         if len(got) != len(core):
             return fail('spec-check printed no parseable line for %s' % ', '.join(k for k in core if k not in got))
+        withheld = {}
         for k in core:
-            if not got[k].startswith('SPEC ok'):
-                design[k] = got[k].split()[0]
+            t = got[k].split()
+            if t[0] == 'SPEC-NEEDS-OPERATOR':
+                withheld[k] = ('spec-needs-operator ' + t[-1], "needs the operator's own signature (%s)" % t[-1])
+            elif t[0] == 'SPEC-SIGNER-UNKNOWN':
+                u = ' '.join(t[3:])
+                withheld[k] = ('spec-signer-unknown ' + u, 'signer records unreadable: ' + u)
+            elif t[:2] != ['SPEC', 'ok']:
+                design[k] = t[0]
+        for i in keep:
+            if i['key'] in withheld:
+                if why_key:
+                    core_problem[i['key']] = withheld[i['key']][1]
+                drop(i, withheld[i['key']][0])
+        keep = [i for i in keep if i['key'] not in withheld]
     return keep
 
 if not why_key and cands and os.environ.get('ND_RESUME_ONLY') != '1':  # --resume-only lists no To Do row
@@ -1377,8 +1395,9 @@ if hf and os.path.isfile(hf):
     held += [(l.strip(), 'held list', True) for l in open(hf) if l.strip()]
 # The remainder of a merged partial PR's body, read by the ONE reader every partial-merge site shares
 # (scripts/lib/pr_remainder.py): a `Remaining:` line, or the `deferred -> <KEY>` lines under `## Ticket coverage`.
-# A body gh cannot read, or a reader that fails or answers without the two --units fields, is recorded in unread_prs and
-# returns kind none, so the ticket is never dispatched blind.
+# The listing asks the reader for --full-units: one JSON answer carrying every owed unit, checked by full_answer below. A body
+# gh cannot read, or a reader that fails or prints anything but a complete answer, is recorded in unread_prs and returns kind
+# none, so the ticket is never dispatched blind.
 remainder_cache = {}
 unread_prs = set()
 reader = os.environ.get('NEXT_DISPATCH_READER') or os.path.join(repo, 'scripts', 'lib', 'pr_remainder.py')  # NEXT_DISPATCH_READER: the test seam for the reader
@@ -1395,24 +1414,97 @@ try:
 except ValueError:
     body_ttl = 3600
 
+FULL_MAX = 1 << 20
+
+class DuplicateKeyDict(dict):
+    pass
+
+def _pairs(pairs):
+    d = dict(pairs)
+    return DuplicateKeyDict(d) if len(d) != len(pairs) else d
+
+def _no_constant(c):
+    raise ValueError('non-finite number %s' % c)
+
+def _strs(v):
+    return type(v) is list and all(type(x) is str for x in v)
+
+def valid_answer(a):
+    if type(a) is not dict or tuple(sorted(a)) != tuple(sorted(_reader.FULL_FIELDS)):
+        raise ValueError('answer fields')
+    kind, handed, rows = a['kind'], a['handed'], a['owed_lines']
+    if kind not in _reader.ANSWER_KINDS or not _strs(handed) or type(a['text']) is not str or type(a['nowrite']) is not bool \
+            or not _strs(a['chief_owed']) or not _strs(a['chief_invalid']) or type(rows) is not list:
+        raise ValueError('answer field types')
+    for r in rows:
+        if type(r) is not dict or tuple(sorted(r)) != tuple(sorted(_reader.OWED_FIELDS)) or not all(type(v) is str for v in r.values()) \
+                or r['who'] not in _reader.OWED_ACTORS:
+            raise ValueError('owed row')
+    if kind in ('none', 'remaining') and handed:
+        raise ValueError('%s answer names a handed value' % kind)
+    if kind == 'handed-off' and not handed:
+        raise ValueError('hand-off names no ticket')
+    if kind == 'owed':
+        if len(handed) != 2 or handed[0] not in _reader.OWED_ACTORS:
+            raise ValueError('owed answer shape')
+        try:
+            if datetime.date.fromisoformat(handed[1]).isoformat() != handed[1]:
+                raise ValueError('noncanonical date')
+        except ValueError:
+            raise ValueError('owed date %r' % handed[1])
+        if not any(r['who'] == handed[0] and r['due'] == handed[1] for r in rows):
+            raise ValueError('owed answer names no owed row')
+    if len(json.dumps(a, ensure_ascii=False).encode('utf-8')) > FULL_MAX:
+        raise ValueError('answer over %d bytes' % FULL_MAX)
+    return a
+
+def full_answer(raw):
+    if len(raw) > 2 * FULL_MAX:
+        raise ValueError('answer over %d bytes' % FULL_MAX)
+    env = json.loads(raw.decode('utf-8'), object_pairs_hook=_pairs, parse_constant=_no_constant)
+    if type(env) is not dict or sorted(env) != ['answer', 'schema'] or type(env['schema']) is not int or env['schema'] != 1:
+        raise ValueError('answer envelope')
+    return valid_answer(env['answer'])
+
 def body_cache_load():
     if body_cache_path == 'off':
         return {}
     try:
-        d = json.load(open(body_cache_path, encoding='utf-8'))
+        d = json.load(open(body_cache_path, encoding='utf-8'), object_pairs_hook=_pairs)
     except (OSError, ValueError):
         return {}
     return d if isinstance(d, dict) else {}
 
+def _fresh(e):
+    at = e.get('at')
+    try:
+        return type(at) in (int, float) and math.isfinite(at) and 0 <= time.time() - at < body_ttl
+    except OverflowError:
+        return False
+
+def cached_full(pr, key):
+    e = body_cache_load().get('%s:%s' % (pr, key))
+    try:
+        if type(e) is dict and sorted(e) == ['ans', 'at', 'schema'] and type(e['schema']) is int and e['schema'] == 1 and _fresh(e):
+            a = valid_answer(e['ans'])
+            if a['kind'] != 'none':
+                return a
+    except ValueError:
+        pass  # swallow-ok: an entry that fails the check is no entry, and the body is read again
+    return None
+
 def cached_remainder(pr, key):
     e = body_cache_load().get('%s:%s' % (pr, key))
+    if isinstance(e, dict) and 'schema' in e:
+        a = cached_full(pr, key)
+        return None if a is None else {f: a[f] for f in ('kind', 'handed', 'text', 'nowrite', 'chief_owed')}
     try:
         age = time.time() - float(e['at'])
         kind, handed, text, nowrite, chief_owed = e['ans']
         if 0 <= age < body_ttl and kind in ('remaining', 'handed-off', 'owed') and isinstance(handed, list) and isinstance(text, str) \
                 and isinstance(nowrite, bool) and isinstance(chief_owed, list):
             return dict(kind=kind, handed=[str(h) for h in handed], text=text, nowrite=nowrite, chief_owed=[str(t) for t in chief_owed])
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError, OverflowError):
         pass  # swallow-ok: an entry that cannot be read is no entry
     return None
 
@@ -1422,8 +1514,8 @@ def store_remainder(pr, key, ans):
     try:
         d = body_cache_load()
         now = time.time()
-        d = {k: v for k, v in d.items() if isinstance(v, dict) and isinstance(v.get('at'), (int, float)) and 0 <= now - v['at'] < body_ttl}
-        d['%s:%s' % (pr, key)] = {'at': now, 'ans': [ans['kind'], list(ans['handed']), ans['text'], ans['nowrite'], list(ans['chief_owed'])]}
+        d = {k: v for k, v in d.items() if isinstance(v, dict) and _fresh(v)}
+        d['%s:%s' % (pr, key)] = {'schema': 1, 'at': now, 'ans': {f: ans[f] for f in _reader.FULL_FIELDS}}
         os.makedirs(os.path.dirname(body_cache_path), exist_ok=True)
         tmp = '%s.%d' % (body_cache_path, os.getpid())
         with open(tmp, 'w', encoding='utf-8') as f:
@@ -1435,24 +1527,16 @@ def store_remainder(pr, key, ans):
 def remainder_of(pr, key):
     if (pr, key) not in remainder_cache:
         ans = dict(kind='none', handed=[], text='', nowrite=False, chief_owed=[])
-        hit = cached_remainder(pr, key)
+        hit = cached_full(pr, key)
         if hit is not None:
             remainder_cache[(pr, key)] = hit
             return hit
         try:
             body = ghrun([gh, 'pr', 'view', pr, '--repo', gh_repo, '--json', 'body', '--jq', '.body'], capture_output=True, timeout=gh_t(60), check=True).stdout.decode('utf-8', 'replace')
-            out = subprocess.run([sys.executable, '-I', reader, '--units', key], input=body.encode('utf-8'), capture_output=True, timeout=60, check=True).stdout.decode('utf-8', 'replace').rstrip('\n').split('\t')
-            out, nowrite, chief_owed = out[:-2], out[-2:-1], out[-1:]
-            if nowrite not in (['nowrite=0'], ['nowrite=1']) or not chief_owed or not chief_owed[0].startswith('chief-owed='):
-                raise subprocess.SubprocessError('unrecognised reader answer')
-            units = dict(nowrite=nowrite == ['nowrite=1'], chief_owed=[t for t in chief_owed[0][len('chief-owed='):].split('¦') if t])
-            if out[:1] == ['remaining'] and len(out) == 2:
-                ans = dict(kind='remaining', handed=[], text=out[1], **units)
-            elif out[:1] == ['handed-off'] and len(out) == 3:
-                ans = dict(kind='handed-off', handed=out[1].split(', '), text=out[2], **units)
-            elif out[:1] == ['owed'] and len(out) == 4:
-                ans = dict(kind='owed', handed=[out[1], out[2]], text=out[3], **units)
-            elif out != ['none']:
+            out = subprocess.run([sys.executable, '-I', reader, '--full-units', key], input=body.encode('utf-8'), capture_output=True, timeout=60, check=True).stdout
+            try:
+                ans = full_answer(out)
+            except ValueError:
                 raise subprocess.SubprocessError('unrecognised reader answer')
             if ans['kind'] != 'none':
                 store_remainder(pr, key, ans)
