@@ -10,7 +10,7 @@
 # With no marker, a marker for another user, or an arming already recovered: prints why and does nothing (exit 0).
 # Exit 0 normally; 1 when the marker is unreadable or a step the marker asked for failed (the status still goes out).
 # Env (test seams, all optional): HIMMEL_RECOVER_ROOT (path prefix for /var/lib/himmel and /etc/himmel),
-# HIMMEL_RECOVER_STATE (state dir), TELEGRAM_ENV, AFK_TELEGRAM_API.
+# HIMMEL_RECOVER_STATE (state dir), HIMMEL_RECOVER_BRIDGE_TIMEOUT (seconds, default 30), TELEGRAM_ENV, AFK_TELEGRAM_API.
 set -u
 RR=${HIMMEL_RECOVER_ROOT:-}
 marker="$RR/var/lib/himmel/reboot-recover.json"
@@ -60,8 +60,9 @@ print(int(json.load(open(sys.argv[1])).get("operator_id") or 0) or "")' "$RR/etc
 token=$(sed -n 's/^TELEGRAM_BOT_TOKEN[[:space:]]*=[[:space:]]*//p' "$env_file" 2>/dev/null | tr -d '"'"'"' \r' | grep -m1 .)
 if [ "$rc" -ne 0 ]; then kind=recover-failed; else kind=recover-ok; fi
 sent=0
+[ -d "$HOME/.bun/bin" ] && case ":$PATH:" in *":$HOME/.bun/bin:"*) ;; *) PATH="$PATH:$HOME/.bun/bin" ;; esac
 if [ -n "$chat" ] && [ "$bridge" = up ] && command -v bun >/dev/null 2>&1 \
-    && timeout -k 5 30 bun "$m_repo/scripts/telegram/chief-route.ts" reply --kind "$kind" "$chat" "$status" >/dev/null 2>&1; then # gnu-ok: Linux only # prim-ok: a user-side Linux unit, sources no libs
+    && timeout -k 5 "${HIMMEL_RECOVER_BRIDGE_TIMEOUT:-30}" bun "$m_repo/scripts/telegram/chief-route.ts" reply --kind "$kind" "$chat" "$status" >/dev/null 2>&1; then # gnu-ok: Linux only # prim-ok: a user-side Linux unit, sources no libs
     sent=1
 fi
 if [ "$sent" = 1 ]; then :

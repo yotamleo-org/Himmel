@@ -480,6 +480,7 @@ chmod +x "$R/ubin/systemctl"
 cp "$tmp/fakecurl/curl" "$R/ubin/curl"
 cat > "$R/ubin/bun" <<'FAKEBUN'
 #!/bin/sh
+[ -e "$RECOVER_FAKE_DIR/bun-hang" ] && exec sleep 30
 [ -e "$RECOVER_FAKE_DIR/bun-fail" ] && exit 1
 echo "$*" >> "$RECOVER_FAKE_DIR/bun.log"
 FAKEBUN
@@ -552,6 +553,22 @@ out=$(rec_in "$R/bunfail-state")
 rm -f "$R/bun-fail"
 assert_eq "RED: a bridge route that fails falls back to the direct send" "$((tg_before + 1))" "$(find "$TG" -type f | wc -l | tr -d ' ')"
 assert_contains "the fallback run still exits 0" "rc=0" "$out"
+tg_before=$(find "$TG" -type f | wc -l | tr -d ' ')
+bun_before=$(wc -l < "$R/bun.log" | tr -d ' ')
+: > "$R/bun-hang"
+out=$(HIMMEL_RECOVER_BRIDGE_TIMEOUT=1 rec_in "$R/hang-state")
+rm -f "$R/bun-hang"
+assert_eq "RED: a bridge route that hangs is cut off by the timeout and the direct send goes out" "$((tg_before + 1))" "$(find "$TG" -type f | wc -l | tr -d ' ')"
+assert_eq "the hung bridge route recorded nothing" "$bun_before" "$(wc -l < "$R/bun.log" | tr -d ' ')"
+assert_contains "the hung-route run still exits 0" "rc=0" "$out"
+mkdir -p "$R/barebin" "$R/fakehome/.bun/bin"
+for t in bash sh python3 sed tr grep date hostname flock id cat mkdir basename sleep timeout; do ln -sf "$(command -v "$t")" "$R/barebin/$t"; done
+cp "$R/ubin/systemctl" "$R/ubin/curl" "$R/barebin/"
+cp "$R/ubin/bun" "$R/fakehome/.bun/bin/bun"
+bun_before=$(wc -l < "$R/bun.log" | tr -d ' ')
+out=$(HOME="$R/fakehome" HIMMEL_RECOVER_STATE="$R/bare-state" PATH="$R/barebin" RECOVER_FAKE_DIR="$R" HIMMEL_RECOVER_ROOT="$R" HIMMEL_RECOVER_SERVICES="telegram-bridge.service" TELEGRAM_ENV="$R/tg.env" "$R/barebin/bash" "$OPS/recover.sh" 2>&1; echo "rc=$?")
+assert_eq "RED: a bare unit PATH with bun only under HOME/.bun/bin still sends through the bridge route" "$((bun_before + 1))" "$(wc -l < "$R/bun.log" | tr -d ' ')"
+assert_contains "RED: the bare-PATH run names its kind" "reply --kind recover-ok" "$(tail -n 1 "$R/bun.log")"
 
 echo "== size-approval (R5): --check writes nothing, a run writes the approval, a re-run renews it =="
 new_root sa
