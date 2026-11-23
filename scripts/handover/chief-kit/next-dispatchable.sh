@@ -1187,8 +1187,6 @@ CORE_VERBS = ('CORE', 'NOT-CORE', 'BYPASS', 'BYPASS-NEEDS-SPEC', 'UNKNOWN')
 CORE_FIELDS = {'CORE': 3, 'BYPASS': 4, 'BYPASS-NEEDS-SPEC': 4}  # tokens a core-check line needs: CORE <K> <match>, BYPASS <K> <kind> <reason...>, BYPASS-NEEDS-SPEC <K> <kind> <missing...>
 
 def core_run(args, ok_rc, project):
-    # (stdout, '', 'ok') for a run whose exit code is in ok_rc, else (None, why, kind) with kind exit | timeout | absent.
-    # A missing CLI, node or a timeout is never an answer. NEXT_DISPATCH_CORE_TIMEOUT (a whole number of seconds, 1 to 120) shortens the wait.
     t = os.environ.get('NEXT_DISPATCH_CORE_TIMEOUT', '')
     timeout = int(t) if t.isascii() and t.isdigit() and 1 <= int(t) <= 120 else 120
     try:
@@ -1241,7 +1239,6 @@ def core_spec_pass(cs):
     items = list(groups.items())
     texts = None  # one core-check answer per group, in order
     if os.environ.get('HIMMEL_CORE_CHECK_BATCH') != 'off':
-        # ONE `release core-check-batch` process answers every group (the per-group path below costs one process each)
         import json, tempfile
         fd, bpath = tempfile.mkstemp(prefix='nd-core-batch.', suffix='.json')
         try:

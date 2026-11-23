@@ -1,15 +1,5 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is the check() shape of the sibling suites
-# core-check-batch-cases/suite.sh - the proof that next-dispatchable.sh asks the jira CLI for every group's core verdict in ONE process
-# (`release core-check-batch`) and what that saves, on the real BUILT CLI.
-#
-#   bash scripts/handover/chief-kit/core-check-batch-cases/suite.sh
-#
-# Every row drives the built primary Jira CLI (scripts/jira/dist; CORE_CHECK_BATCH_DIST names another build) through a counting
-# wrapper that logs each call's argv and the CPU its one child used. The release root, the operator chain, the mirror and the
-# signed-spec file are written by a small node generator that imports the dist's own appendChain; no record verb is called.
-# A checkout without the build has no stand-in client and no skip: the run fails by name (PREREQUISITE-ABSENT). So this is not a
-# test-*.sh suite, which the shell runner would also run on checkouts that have no build; CI runs it in the node-suites (jira) job.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd -P)"
