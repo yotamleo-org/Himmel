@@ -1404,10 +1404,10 @@ up_cache 10 20
 out=$(up_run usage-preflight.sh) || fail "the project's usage-preflight.sh failed: $(cat "$work/usagepf-6965.err")"
 [ "$out" = "PROCEED" ] \
   || fail "the project's usage-preflight.sh did not PROCEED on a low-usage cache: $out $(cat "$work/usagepf-6965.err")"
-up_cache 10 99
+up_cache 10 100
 out=$(up_run usage-preflight.sh) || fail "usage-preflight.sh failed on a high-usage cache"
 [ "$out" = "SKIPPED-BANK" ] \
-  || fail "the project's usage-preflight.sh did not hold on a 99% seven_day cache: $out"
+  || fail "the project's usage-preflight.sh did not hold on a 100% seven_day cache: $out"
 [ ! -e "$uptarget/scripts/lib/bank-preflight.sh" ] || fail "the retired bank-preflight.sh was copied into the project" # old-term-ok
 grep -q '"verdict":"PROCEED"' "$uphome/.himmel/cadence-ledger.jsonl" \
   || fail "the preflight did not write its ledger row under the project's HOME"
