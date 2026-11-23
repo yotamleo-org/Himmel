@@ -740,9 +740,9 @@ verdict=$(JG_FIXED_OK="$jg_fixed_ok" IMPL_FAMILY="$impl_family" LEDGER="$ledger"
   // CR_FLOOR_FALLBACK=claude-only eligibility tracking. claudeOk
   // is a PRESENT-model check, mirroring the nonClaudeResponders normalisation
   // just below (trim+lowercase, model must actually equal "claude") - it is
-  // MONOTONIC ("Claude was ever ok at this head"), never cleared by a later
-  // row, consistent with how responders/nonClaudeResponders are counted, not
-  // reset, elsewhere in this same pass. availByModel holds the LAST avail row
+  // monotonic ("Claude was ever ok at this head"), cleared only by a later
+  // record-failed row for that model, which also subtracts that model from
+  // responders/nonClaudeResponders, elsewhere in this same pass. availByModel holds the LAST avail row
   // seen per non-claude model, ANY status - not just ok - so an exhausted
   // (unavailable) lane is visible even when it never recovered. Plain
   // last-write-wins (each line just overwrites the Map entry, in file order)
@@ -763,6 +763,7 @@ verdict=$(JG_FIXED_OK="$jg_fixed_ok" IMPL_FAMILY="$impl_family" LEDGER="$ledger"
   // "claude" self-review row no longer does.
   let claudeOk = false, floorOk = false, certifyRefused = false;
   const availByModel = new Map();
+  const okTally = new Map();
   // ANY finding at this head with no EFFECTIVE verdict (null,
   // undefined or empty string, after amends are applied) — not just
   // crit|imp. Gate 4 below only ever blocks on crit|imp, so a sug-severity
@@ -919,6 +920,16 @@ verdict=$(JG_FIXED_OK="$jg_fixed_ok" IMPL_FAMILY="$impl_family" LEDGER="$ledger"
           // one at this head wins - not just the "ok" rows gate 3 counts -
           // so a lane that stayed unavailable is visible to the floor-fallback
           // eligibility check below.
+          if (o.status === "unavailable" && typeof o.reason === "string" &&
+              o.reason.trim().toLowerCase() === "record-failed") {
+              const t = okTally.get(model);
+              if (t) {
+                  responders -= t.n; nonClaudeResponders -= t.nc; otherFamilyResponders -= t.of;
+                  okTally.delete(model);
+                  if (model === "claude") claudeOk = false;
+                  if (model === "claude-floor") floorOk = false;
+              }
+          }
           if (model && model !== "claude" && model !== "claude-floor" && model !== "codex-adv") {
               availByModel.set(model, {
                   status: (typeof o.status === "string" ? o.status : "").trim().toLowerCase(),
@@ -927,6 +938,8 @@ verdict=$(JG_FIXED_OK="$jg_fixed_ok" IMPL_FAMILY="$impl_family" LEDGER="$ledger"
           }
           if (o.status === "ok") {
               responders++;
+              const tally = okTally.get(model) || { n: 0, nc: 0, of: 0 };
+              tally.n++; okTally.set(model, tally);
               // The Claude self-review floor writes model
               // "claude"; every external critic (codex/glm/coderabbit/...) is
               // non-claude. Gate 3b uses this to enforce cross-model coverage
@@ -936,9 +949,9 @@ verdict=$(JG_FIXED_OK="$jg_fixed_ok" IMPL_FAMILY="$impl_family" LEDGER="$ledger"
               // "codex-adv" is a RETIRED lane (the adversarial pass
               // was removed); a legacy row of that name is not cross-model
               // evidence and not an exhaustion-tracked lane.
-              if (model && model !== "claude" && model !== "claude-floor" && model !== "codex-adv") nonClaudeResponders++;
+              if (model && model !== "claude" && model !== "claude-floor" && model !== "codex-adv") { nonClaudeResponders++; tally.nc++; }
               // Family = first token of the model slug (claude-floor is claude).
-              if (e.IMPL_FAMILY && model && model !== "codex-adv" && model.split(/[-:\/]/)[0] !== e.IMPL_FAMILY) otherFamilyResponders++;
+              if (e.IMPL_FAMILY && model && model !== "codex-adv" && model.split(/[-:\/]/)[0] !== e.IMPL_FAMILY) { otherFamilyResponders++; tally.of++; }
               if (model === "claude") claudeOk = true;
               if (model === "claude-floor") floorOk = true;
           }

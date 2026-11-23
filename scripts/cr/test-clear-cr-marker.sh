@@ -4259,6 +4259,28 @@ stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "10c certify-refused row at ANOTHER head does not hold this SHA -> exit 0"
 rm -rf "$tmp"
 
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(avail_ok "${sha:0:8}")" "$(avail_reason "${sha:0:8}" codex unavailable record-failed)"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "10e ok then record-failed for the same model at the same SHA -> exit 14"
+if marker_exists "$tmp"; then pass; else fail "10e: marker must REMAIN"; fi
+rm -rf "$tmp"
+
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(avail_ok "${sha:0:8}")" "$(avail_reason "${sha:0:8}" glm unavailable record-failed)"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 0 "10f record-failed for ANOTHER model does not void this model's ok -> exit 0"
+rm -rf "$tmp"
+
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(avail_reason deadbeef codex unavailable record-failed)" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 0 "10g record-failed at ANOTHER head does not void the ok -> exit 0"
+rm -rf "$tmp"
+
 # 10d. the certify-refused extraction fails CLOSED. A node
 # failure in that one step used to leave the flag empty, and `${…:-0}` read it
 # as "no refusal". Shim node: the extraction (and only it) dies; the rest of the
