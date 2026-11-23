@@ -11,9 +11,14 @@ does not depend on you remembering the rules.
 
 ## The draft shape (seven sections)
 
-Write in plain user language. The first section says who notices and what
-changes; jargon-only tickets are refused by a human at review even when the
-script passes them.
+Write in plain user language. The first section opens with one plain line the
+operator can read alone (what changes for him and why it matters; no keys, no
+"nothing needed from you"), then says who notices and what changes; jargon-only
+tickets are refused by a human at review even when the script passes them. The
+sections after it are for the agent and stay in full
+(`docs/internals/operator-voice.md`). Run
+`bash scripts/lint/check-operator-voice.sh --ticket <draft>` before filing: it fails
+when the plain top line carries a time estimate.
 
 1. **Impact** - who notices, what changes for them.
 2. **What** - the change, one short paragraph.

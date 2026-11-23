@@ -222,9 +222,14 @@ without knowing the code, a Plan, a DoD, a Proof, and one section for the agent
 doing the work (the lint checks that all seven are present and non-empty, and that
 Plan and DoD each hold a real list line, not their order):
 
+The operator rarely reads a ticket, so its first line is the one he would: plain
+words, no keys, no "nothing needed from you". Every section after it is for the agent
+and stays in full; one sentence is enough only when it is clear on its own
+(`docs/internals/operator-voice.md`, rule 10).
+
 ```markdown
 ## Impact
-<who notices, and what they see today — plain words, no file paths>
+<one plain line: what changes for him, and why it matters; then who notices, and what they see today: no file paths>
 
 ## What
 <what we change, in one or two sentences>
