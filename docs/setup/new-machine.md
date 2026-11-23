@@ -1072,7 +1072,7 @@ still refused:
 | `version` | exactly `1` | `1` |
 | `luna.vaultPath` | string | `~/Documents/luna` |
 | `luna.cadence.enabled` | boolean | `false` |
-| `luna.cadence.schedules.fetchHealth.time` | `HH:MM` | `01:30` |
+| `luna.cadence.schedules.fetchHealth.time` | `HH:MM` | `03:30` |
 | `luna.cadence.schedules.harvest.time` | `HH:MM` | `02:00` |
 | `luna.cadence.schedules.synthesize.time` | `HH:MM` | `03:00` |
 | `luna.cadence.schedules.health.time` / `.day` | `HH:MM` / weekday (optional) | `04:00` / `SUN` |

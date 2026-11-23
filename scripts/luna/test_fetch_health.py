@@ -117,6 +117,11 @@ class FetchHealthTests(unittest.TestCase):
             self.assertNotIn("TEST_ANTHROPIC_API_KEY", loaded)
             self.assertNotIn("UNRELATED_API_KEY", loaded)
 
+    def test_probe_and_harvest_share_one_article_retry_max_age(self):
+        tool = fetch_health._harvest_tool()
+        self.assertIsNotNone(tool)
+        self.assertEqual(fetch_health.ARTICLE_RETRY_MAX_AGE_DAYS, tool.ARTICLE_RETRY_MAX_AGE_DAYS)
+
     def test_http_classifier_covers_exact_status_taxonomy(self):
         valid = lambda body: body == b"ok"
         self.assertEqual(fetch_health.classify_http(fetch_health.HttpResult(200, b"ok"), auth_required=True, valid_body=valid).status, "ok")
