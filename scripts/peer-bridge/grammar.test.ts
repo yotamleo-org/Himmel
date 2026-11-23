@@ -70,3 +70,20 @@ test("SIG_LINE_RE wants sig= and exactly 86 base64url characters", () => {
   expect(SIG_LINE_RE.test(`sig=${s}`)).toBe(true);
   for (const t of [`sig=${s}A`, `sig=${s.slice(1)}`, `sig=${s.slice(1)}+`, `sig=${s} `, `SIG=${s}`, `sig=${s}\n`]) expect(SIG_LINE_RE.test(t)).toBe(false);
 });
+
+import { utcDay } from "./ids";
+import { C0_C1_TEST, INVISIBLE_TEST } from "./sanitize";
+
+test("utcDay at 23:59:59Z and 00:00:00Z", () => {
+  expect(utcDay(Date.parse("2026-11-23T23:59:59.999Z"))).toBe("2026-11-23");
+  expect(utcDay(Date.parse("2026-11-24T00:00:00.000Z"))).toBe("2026-11-24");
+});
+
+test("C0_C1_TEST.test is stable across two calls and lets \\n pass", () => {
+  expect(C0_C1_TEST.test("a\u0007b")).toBe(true);
+  expect(C0_C1_TEST.test("a\u0007b")).toBe(true);
+  expect(C0_C1_TEST.test("line one\nline two")).toBe(false);
+  expect(INVISIBLE_TEST.test("a\u200bb")).toBe(true);
+  expect(INVISIBLE_TEST.test("a\u200bb")).toBe(true);
+  expect(INVISIBLE_TEST.test("plain")).toBe(false);
+});

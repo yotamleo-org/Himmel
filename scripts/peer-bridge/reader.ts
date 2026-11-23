@@ -9,6 +9,7 @@ import fs from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { atomicWrite } from "../telegram/bus";
+import { utcDay } from "./ids";
 import { procHooks, runProc } from "./proc";
 
 export type Digest = { summary: string | null; asks: string[]; reason?: string };
@@ -21,17 +22,16 @@ export type ReaderDeps = {
 };
 
 const OUTPUT_CAP = 4096;
-const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
 // Runs per UTC day, in total and per kind, kept in one 0600 file.
 export class ReaderLedger {
   private state: { day: string; total: number; kinds: Record<string, number> };
   constructor(private file: string, private caps: ReaderCaps, private clock: () => number = Date.now) {
-    this.state = { day: day(this.clock()), total: 0, kinds: {} };
+    this.state = { day: utcDay(this.clock()), total: 0, kinds: {} };
     try { this.state = JSON.parse(fs.readFileSync(file, "utf8")); } catch {}
   }
   private current() {
-    if (this.state.day !== day(this.clock())) this.state = { day: day(this.clock()), total: 0, kinds: {} };
+    if (this.state.day !== utcDay(this.clock())) this.state = { day: utcDay(this.clock()), total: 0, kinds: {} };
     return this.state;
   }
   check(kind: string): "daily-cap" | "kind-cap" | null {

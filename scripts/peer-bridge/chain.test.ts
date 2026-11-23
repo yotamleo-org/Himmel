@@ -9,6 +9,7 @@ import { writeSpoolEvent } from "./spool-events";
 const tmp = (p = "peer-chain-") => mkdtempSync(join(tmpdir(), p));
 const peerDirWithSpool = () => { const d = tmp(); mkdirSync(join(d, "spool"), { mode: 0o700 }); return d; };
 const mode = (p: string) => statSync(p).mode & 0o777;
+const lastH = (file: string) => readChain(file).at(-1)?.h ?? "";
 
 test("200 concurrent appends produce one verifying chain at 0600", async () => {
   const dir = tmp();
@@ -16,7 +17,7 @@ test("200 concurrent appends produce one verifying chain at 0600", async () => {
   const chain = new Chain();
   const out = await Promise.all(Array.from({ length: 200 }, (_, i) => chain.append(file, { kind: "peer-msg", i })));
   expect(new Set(out.map(r => r.n)).size).toBe(200);
-  expect(verifyChain(file)).toEqual({ ok: true, n: 200 });
+  expect(verifyChain(file)).toEqual({ ok: true, n: 200, h: lastH(file) });
   expect(mode(file)).toBe(0o600);
   expect(readChain(file)).toHaveLength(200);
 });
@@ -44,7 +45,7 @@ test("a torn trailing line from a crash is cut off, not fatal", async () => {
   writeFileSync(file, readFileSync(file, "utf8") + '{"half":', { mode: 0o600 });
   const r = await new Chain().append(file, { a: 2 });
   expect(r.n).toBe(2);
-  expect(verifyChain(file)).toEqual({ ok: true, n: 2 });
+  expect(verifyChain(file)).toEqual({ ok: true, n: 2, h: lastH(file) });
 });
 
 test("readChain ignores a torn trailing line and a later append still verifies", async () => {
@@ -54,7 +55,7 @@ test("readChain ignores a torn trailing line and a later append still verifies",
   expect(readChain(file)).toHaveLength(1);
   await new Chain().append(file, { a: 2 });
   expect(readChain(file)).toHaveLength(2);
-  expect(verifyChain(file)).toEqual({ ok: true, n: 2 });
+  expect(verifyChain(file)).toEqual({ ok: true, n: 2, h: lastH(file) });
   writeFileSync(file, '{"bad":\n' + readFileSync(file, "utf8"));
   expect(() => readChain(file)).toThrow();
 });
@@ -68,11 +69,11 @@ test("an append failure leaves the offset uncommitted and the chain intact", asy
   const batch = [{ file, rec: { i: 1 } }, { file, rec: { i: 2 } }, { file, rec: { i: 3 } }];
   await expect(chain.appendThenCommit(batch, async () => { committed++; })).rejects.toThrow("EIO");
   expect(committed).toBe(0);
-  expect(verifyChain(file)).toEqual({ ok: true, n: 1 });
+  expect(verifyChain(file)).toEqual({ ok: true, n: 1, h: lastH(file) });
   // the failed batch can be replayed in full, and only then does the commit run
   await chain.appendThenCommit(batch.slice(1), async () => { committed++; });
   expect(committed).toBe(1);
-  expect(verifyChain(file)).toEqual({ ok: true, n: 3 });
+  expect(verifyChain(file)).toEqual({ ok: true, n: 3, h: lastH(file) });
 });
 
 function holder(): Promise<{ pid: number; kill: () => Promise<void> }> {
@@ -218,4 +219,30 @@ test("sweepResults removes only results older than the age", () => {
   require("node:fs").utimesSync(join(dir, "spool", "results", a), old, old);
   sweepResults(dir, 86400_000);
   expect(readdirSync(join(dir, "spool", "results"))).toEqual([b]);
+});
+
+test("verifyChain from a seed checks only later records and returns the last hash", async () => {
+  const file = join(tmp(), "c.jsonl");
+  const c = new Chain();
+  for (let i = 0; i < 5; i++) await c.append(file, { i });
+  const recs = readChain(file);
+  const seed = { n: recs[2].n, h: recs[2].h };
+  const lines = readFileSync(file, "utf8").split("\n");
+  lines[0] = JSON.stringify({ ...recs[0], i: 99 });
+  writeFileSync(file, lines.join("\n"));
+  expect(verifyChain(file).ok).toBe(false);
+  expect(verifyChain(file, seed)).toEqual({ ok: true, n: 5, h: recs[4].h });
+  expect(verifyChain(file, { n: 5, h: recs[4].h })).toEqual({ ok: true, n: 5, h: recs[4].h });
+});
+
+test("a bad record after the seed fails with its number", async () => {
+  const file = join(tmp(), "c.jsonl");
+  const c = new Chain();
+  for (let i = 0; i < 5; i++) await c.append(file, { i });
+  const recs = readChain(file);
+  const lines = readFileSync(file, "utf8").split("\n");
+  lines[3] = JSON.stringify({ ...recs[3], i: 99 });
+  writeFileSync(file, lines.join("\n"));
+  expect(verifyChain(file, { n: recs[1].n, h: recs[1].h })).toEqual({ ok: false, n: 3, h: recs[2].h });
+  expect(verifyChain(file, { n: recs[1].n, h: "0".repeat(64) }).ok).toBe(false);
 });

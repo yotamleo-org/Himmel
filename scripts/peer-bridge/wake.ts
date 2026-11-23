@@ -1,11 +1,10 @@
 import { appendOutboxLine } from "../telegram/bus";
 import type { Config } from "./config";
-import { PEER_NAME_RE } from "./ids";
+import { PEER_NAME_RE, utcDay } from "./ids";
 import { WAKE_LABELS, type WakeEvent } from "./threads";
 
 const COALESCE_MS = 10 * 60_000;
 const pad = (n: number) => String(n).padStart(2, "0");
-const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const stamp = (ms: number) => { const d = new Date(ms); return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 
 type WakeCfg = Pick<Config, "bridgeRoot" | "operatorChatId" | "himmelRoot"> & { peers: Record<string, { maxWakesPerDay: number }> };
@@ -43,7 +42,7 @@ export class Waker {
 
     const cap = this.cfg.peers[ev.peer]?.maxWakesPerDay ?? 0;
     let budget = this.perDay.get(ev.peer);
-    if (!budget || budget.day !== day(now)) { budget = { day: day(now), sent: 0, warned: false }; this.perDay.set(ev.peer, budget); }
+    if (!budget || budget.day !== utcDay(now)) { budget = { day: utcDay(now), sent: 0, warned: false }; this.perDay.set(ev.peer, budget); }
     if (budget.sent >= cap) {
       if (budget.warned) return;
       budget.warned = true;
@@ -61,7 +60,7 @@ export class Waker {
     const now = this.clock();
     const cap = this.cfg.peers[peer]?.maxWakesPerDay ?? 0;
     let budget = this.perDay.get(peer);
-    if (!budget || budget.day !== day(now)) { budget = { day: day(now), sent: 0, warned: false }; this.perDay.set(peer, budget); }
+    if (!budget || budget.day !== utcDay(now)) { budget = { day: utcDay(now), sent: 0, warned: false }; this.perDay.set(peer, budget); }
     if (budget.sent >= cap) {
       if (budget.warned) return;
       budget.warned = true;
