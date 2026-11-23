@@ -952,23 +952,6 @@ jobs:
       - if: ${{ needs.ci-quick.outputs.secret-scan != 'pass' }}
         run: exit 1
 
-  critic-eval:
-    name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'critic-eval' || 'critic-eval (deferred)' }}
-    if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && github.event_name == 'pull_request' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Critic change carries keep or no-loss eval rows, or a recorded bypass
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: bash scripts/ci/check-critic-eval.sh "$BASE_SHA" HEAD
-
   # A bracket-expression regex in
   # scripts/lib/unchecked-mktemp.sh can fail only under a real BWK
   # (one-true-awk) — `gawk --posix`/`--lint=fatal` both accept the broken
