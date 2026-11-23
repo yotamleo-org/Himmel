@@ -1889,10 +1889,12 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
     wait = [k for k in sorted(opn, key=order.get) if set(OPERATOR_LABELS) & set(opn[k].get('labels', []))]
     owed, owed_read, owed_unread, chief_owes, holds_unread = operator_owed(bucket_dir, chief_doc, version, opn, mir)
     nwait = len(wait) + len(owed)
-    waithtml = '<section data-section="waiting" data-count="%d" data-actor="operator"><h2 class="sh">Waiting on you <span class="n">%d</span>%s%s%s</h2>%s</section>' % (
+    critic_unread = [u for u in owed_unread if u != 'owed.jsonl']
+    waithtml = '<section data-section="waiting" data-count="%d" data-actor="operator"><h2 class="sh">Waiting on you <span class="n">%d</span>%s%s%s%s</h2>%s</section>' % (
         nwait, nwait, '' if owed_read else ' <span class="n">no operator-owed source read</span>',
         ' <span class="n">%d critic file%s unread, skipped: %s</span>' % (
-            len(owed_unread), '' if len(owed_unread) == 1 else 's', esc(', '.join(owed_unread))) if owed_unread else '',
+            len(critic_unread), '' if len(critic_unread) == 1 else 's', esc(', '.join(critic_unread))) if critic_unread else '',
+        ' <span class="n">owed ledger unread</span>' if 'owed.jsonl' in owed_unread else '',
         ' <span class="n">pool holds unread: %s</span>' % esc(', '.join(holds_unread)) if holds_unread else '',
         '<ol class="needs-you">%s</ol>' % (''.join('<li><b>Needs you:</b> %s %s <span class="own">Jira %s · %s</span></li>' % (
             key_html(k), esc(clip(opn[k]['title'], 100)), esc(jcol[k]), esc(', '.join(sorted(set(OPERATOR_LABELS) & set(opn[k]['labels']))))) for k in wait)

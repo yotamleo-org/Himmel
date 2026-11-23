@@ -548,7 +548,7 @@ const consoleName = basename(docPath, '.md');
 // The operator board, its archive and its json are not touched.
 if (opt.view === 'user') {
     const owedRun = spawnSync(process.env.BOARD_BUN || 'bun', ['-e', `const { readOwed } = await import(${JSON.stringify(join(HERE, '..', '..', 'config-ui', 'board.ts'))}); console.log(JSON.stringify(readOwed(process.env)));`],
-        { encoding: 'utf8', timeout: 30000, env: { ...process.env, HIMMEL_BUCKET_DIR: bucket } });
+        { encoding: 'utf8', timeout: 30000, env: { ...process.env, HIMMEL_BUCKET_DIR: bucket, HIMMEL_CHIEF_DOC: docPath } });
     let owed;
     try {
         const o = JSON.parse(owedRun.stdout);

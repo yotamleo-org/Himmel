@@ -420,6 +420,12 @@ assert_absent "10764: a chief-owed ledger row is not the operator's" "chief vali
 assert_absent "10764: no empty-inbox line while items are open" "Nothing waiting on you" "$file"
 out=$(BRIEFING_BUN=/bin/false run_script --since "$MARKER" --out "$TMP_ROOT/owed-unread.md")
 assert_contains "10764: an unread owed source is said" "What you owe could not be read" "$(cat "$TMP_ROOT/owed-unread.md")"
+out=$(HIMMEL_BUCKET_DIR="$OW_BK" HIMMEL_JIRA_MIRROR="$TMP_ROOT/no-mirror" CLAUDE_CMD="$FAKE_CLAUDE" run_script --since "$MARKER" --out "$TMP_ROOT/owed-llm.md" --llm)
+file=$(cat "$TMP_ROOT/owed-llm.md")
+assert_contains "10764: --llm keeps the Needs you items" "Needs you: HIMMEL-9 sign the v1.1.3 release spec" "$file"
+assert_contains "10764: --llm still splices its order" "LLM-suggested first" "$file"
+out=$(BRIEFING_BUN=/bin/false CLAUDE_CMD="$FAKE_CLAUDE" run_script --since "$MARKER" --out "$TMP_ROOT/owed-llm-unread.md" --llm)
+assert_contains "10764: --llm keeps the unread note" "What you owe could not be read" "$(cat "$TMP_ROOT/owed-llm-unread.md")"
 rm -f "$OW_BK/owed.jsonl"; mkdir "$OW_BK/owed.jsonl"
 out=$(HIMMEL_BUCKET_DIR="$OW_BK" HIMMEL_JIRA_MIRROR="$TMP_ROOT/no-mirror" run_script --since "$MARKER" --out "$TMP_ROOT/owed-partial.md")
 assert_contains "10764: one owed source unread while others read is still said" "owed ledger" "$(grep -o 'What you owe could not be read ([^)]*' "$TMP_ROOT/owed-partial.md")"

@@ -1557,6 +1557,12 @@ contains '10764: an operator-marked owed proof is listed' "$w10764" 'run the VM 
 not_contains '10764: the empty state is not printed while an operator item is open' "$w10764" 'nothing is waiting on you'
 not_contains '10764: a chief-owed or closed ledger row is not the operator item' "$w10764" 'chief validates a proof'
 not_contains '10764: a closed operator row is not listed' "$w10764" 'a closed operator step'
+mv "$W/bk9611-empty/owed.jsonl" "$W/bk9611-empty/owed.keep"; mkdir "$W/bk9611-empty/owed.jsonl"
+v9611render --owed-dir "$W/bk9611-empty"
+w10764u="$(grep -F 'data-section="waiting"' "$v9611out")"
+contains '10764: an unreadable owed ledger is named as the owed ledger' "$w10764u" 'owed ledger unread'
+not_contains '10764: an unreadable owed ledger is not called a critic file' "$w10764u" 'critic file'
+rmdir "$W/bk9611-empty/owed.jsonl"; mv "$W/bk9611-empty/owed.keep" "$W/bk9611-empty/owed.jsonl"
 
 for t in 442 443 444 445 446 447 448 449 450; do
     cat='To Do'; st='To Do'; res='Done'

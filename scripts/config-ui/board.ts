@@ -158,7 +158,7 @@ export async function refreshDrift(env: Env, cwd: string, timeoutMs = DRIFT_REFR
 export type OwedActor = "chief" | "operator" | "worker" | "external" | "unknown";
 export type OwedItem = { actor: OwedActor; source: "unsigned spec" | "operator-critical finding" | "chief doc" | "handoff" | "owed undelivered" | "unclosed worker" | "pool hold" | "owed ledger"; key: string | null; title: string; ctx: string; act: string; label?: string; since?: number };
 export type Owed = { state: "ok"; items: OwedItem[]; unread: string[]; skipped?: string[] } | Absent;
-const OWED_SOURCES = ["unsigned specs", "handoff items", "chief doc lines"];
+const OWED_SOURCES = ["unsigned specs", "handoff items", "chief doc lines", "owed ledger"];
 type RoundKey = { spec?: unknown; critical_open?: { id: string; class: string; kind: string; round: number; verdict_path: string }[]; error?: string };
 type RoundStatus = { cap: number; classes: string[]; keys: Record<string, RoundKey> };
 const ROUTE = resolve(import.meta.dir, "../telegram/chief-route.ts"), ROUND_LEDGER = "round ledger", POOL_HOLDS = "pool holds";
@@ -440,7 +440,7 @@ export function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Owed
   const tryRead = (what: string, f: () => OwedItem[] | undefined, none: string) => {
     try { const got = f(); if (got) items.push(...got); else miss(what, none); } catch (e) { miss(what, (e as Error).message); }
   };
-  if (!bucket) { miss("unsigned specs", "no bucket: no chief doc under the handover root, and HIMMEL_BUCKET_DIR is not set"); miss("handoff items", "no bucket"); }
+  if (!bucket) { miss("unsigned specs", "no bucket: no chief doc under the handover root, and HIMMEL_BUCKET_DIR is not set"); miss("handoff items", "no bucket"); miss("owed ledger", "no bucket"); }
   else {
     if (!running) miss("unsigned specs", "no running version");
     else tryRead("unsigned specs", () => specItems(bucket, running!, open, unknownKeys, skipped, unread, env), "none");
