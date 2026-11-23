@@ -411,7 +411,6 @@ KIND="${HIMMEL_API_KIND:-other}"
 case "$KIND" in ""|*[!A-Za-z0-9._-]*) refuse "HIMMEL_API_KIND has characters outside [A-Za-z0-9._-]" ;; esac
 ROLE_ACCTS=""
 if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
-  # one walk for every kind: the role's accounts, else the default order (every configured account)
   _walk_rc=0
   ROLE_ACCTS="$(node "$REPO/scripts/lib/api-roles.mjs" walk "$KIND")" || _walk_rc=$?
   _walk_what="$KIND"; [ "$KIND" != graphify ] || _walk_what="graph"
