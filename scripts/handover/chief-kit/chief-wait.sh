@@ -1744,7 +1744,6 @@ lists_wake() {
     [ -n "$console_doc" ] || return 1
     stem="${console_doc##*/}"
     stem="${stem%.md}"
-    # shellcheck disable=SC2016  # the python program is single-quoted on purpose
     python3 -I -c '
 import os, re, sys
 tsv, marker = sys.argv[1:3]

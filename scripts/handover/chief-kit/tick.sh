@@ -3525,7 +3525,6 @@ fi
 
 prio_review="" chief_placed="" ask_apart=""
 if [ -n "$rm_rel" ] && [ "${rm_status:-}" = OK ] && [ -n "$rf_stem" ]; then
-    # shellcheck disable=SC2016  # the python program is single-quoted on purpose
     read -r prio_review chief_placed ask_apart < <(printf '%s' "$rm_json" | python3 -I -c '
 import json, os, re, sys, tempfile
 d = json.load(sys.stdin)
