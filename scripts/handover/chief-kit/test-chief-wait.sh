@@ -774,6 +774,17 @@ start "$I" "$WORK/mw9.out" --workers-from "$MM"
 wait_exit "$WPID"
 check "(10901-4) once per bullet" "running|" "$rc|$(cat "$WORK/mw9.out")"
 [ "$rc" = running ] && stop_waiter "$WPID"
+printf '# worker\n\n## Results\n- 19:30 FINDING — lanes question\n- 19:35 RESOLVED — ruling received\n' > "$MQ"
+I="$(new_inbox mwq2)"
+mw_tick "$MQL:RESOLVED"
+HOUSEKEEPING_DIGEST_SECS=0 start "$I" "$WORK/mw10.out" --workers-from "$MM"
+wait_hb "$I" || fail "(10901-5) no baseline heartbeat"
+printf -- '- 19:40 LIVE PUSH-REQUEST BP :: push the lanes branch\n' >> "$MQ"
+mw_tick "$MQL:LIVE"
+wait_exit "$WPID"
+check "(10901-5) a request that arrives with a tails move wakes the tick change and worker-request" \
+    "0|1|1" "$rc|$(grep -c '^WAKE tick changed=tails' "$WORK/mw10.out")|$(grep -cx "WAKE worker-request $MQL" "$WORK/mw10.out")"
+[ "$rc" = running ] && stop_waiter "$WPID"
 unset CHIEF_WAIT_WORKER_EVENT
 
 printf '\n%d failure(s)\n' "$fails"
