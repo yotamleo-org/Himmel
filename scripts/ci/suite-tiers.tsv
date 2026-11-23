@@ -402,10 +402,13 @@ scripts/handover/chief-kit/test-close-wrapped-worker.sh	pr	trust-path
 scripts/handover/chief-kit/test-compacted-check.sh	pr	trust-path
 scripts/handover/chief-kit/test-chief-budget.sh	pr	static-gate
 scripts/handover/chief-kit/test-chief-kit-e2e.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/handover/chief-kit/test-chief-wait-b.sh	local	behaviour suite, second half of test-chief-wait.sh; one attempt is 374-509 s on CI and one ran past the 600 s default cap, so its own cap row in run-shell-tests.sh is 1200 s (2x that overrun)
+scripts/handover/chief-kit/test-chief-wait-b.sh	local	part of test-chief-wait.sh, same behaviour suite; about 215 s local, under the parts' shared 1200 s cap row in run-shell-tests.sh
+scripts/handover/chief-kit/test-chief-wait-c.sh	local	part of test-chief-wait.sh, same behaviour suite; about 235 s local, under the parts' shared 1200 s cap row in run-shell-tests.sh
+scripts/handover/chief-kit/test-chief-wait-d.sh	local	part of test-chief-wait.sh, same behaviour suite; about 210 s local, under the parts' shared 1200 s cap row in run-shell-tests.sh
+scripts/handover/chief-kit/test-chief-wait-e.sh	local	part of test-chief-wait.sh, same behaviour suite; about 225 s local, under the parts' shared 1200 s cap row in run-shell-tests.sh
 scripts/handover/chief-kit/test-chief-wait-pool.sh	local	behaviour suite, the underfilled re-wake on a pool change in chief-wait.sh
 scripts/handover/chief-kit/test-chief-wait-r0.sh	local	behaviour suite, the script relay (R0) of chief-wait.sh; stays local: it runs 162 s of real-time waits, the same cost class as the other chief-wait suites, so it is not moved into the PR gate
-scripts/handover/chief-kit/test-chief-wait.sh	local	behaviour suite, the chief waiter's wake rows; one attempt is 575-595 s on CI, under its own 1200 s cap row in run-shell-tests.sh
+scripts/handover/chief-kit/test-chief-wait.sh	local	behaviour suite, the chief waiter's wake rows, first of five parts (-b to -e); about 300 s local, under the parts' shared 1200 s cap row in run-shell-tests.sh
 scripts/handover/chief-kit/test-cr-disposition.sh	pr	trust-path
 scripts/handover/chief-kit/test-cut-tag.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-delta-class.sh	pr	trust-path

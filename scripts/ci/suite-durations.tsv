@@ -52,6 +52,10 @@ scripts/security/test-security-audit-cadence.sh	6
 #   the three sum to 733, the old 732 row); the 1879 -b part is its share of the old 387 row by local seconds
 #   (166 of the original suite's 405). test-arm-resume-1879.sh keeps 387: it is a Case 22w fixture suite at 388, so its row follows that
 #   fixture. The next refresh replaces them with CI seconds.
+#   Estimated rows, no CI timing yet: scripts/handover/chief-kit/test-chief-wait.sh and its parts -b to -e, the five
+#   parts the two chief-wait suites are split into. Each is its part's local seconds (296, 213, 232, 210, 226); the
+#   unsplit suites ran 776 and 447 s locally against 769-813 and 428-452 s on CI, about 1:1. The next refresh replaces
+#   them with CI seconds.
 # The quarantined suites (SKIP_LIST) have no measured row.
 #
 # Read by scripts/ci/run-shell-tests.sh to assign --shard <i>/<n> by a greedy
@@ -450,10 +454,13 @@ scripts/handover/chief-kit/test-close-wrapped-worker.sh	52
 scripts/handover/chief-kit/test-compacted-check.sh	0
 scripts/handover/chief-kit/test-chief-budget.sh	4
 scripts/handover/chief-kit/test-chief-kit-e2e.sh	45
-scripts/handover/chief-kit/test-chief-wait-b.sh	386
+scripts/handover/chief-kit/test-chief-wait-b.sh	213
+scripts/handover/chief-kit/test-chief-wait-c.sh	232
+scripts/handover/chief-kit/test-chief-wait-d.sh	210
+scripts/handover/chief-kit/test-chief-wait-e.sh	226
 scripts/handover/chief-kit/test-chief-wait-pool.sh	173
 scripts/handover/chief-kit/test-chief-wait-r0.sh	202
-scripts/handover/chief-kit/test-chief-wait.sh	587
+scripts/handover/chief-kit/test-chief-wait.sh	296
 scripts/handover/chief-kit/test-cut-tag.sh	2
 scripts/handover/chief-kit/test-delta-class.sh	7
 scripts/handover/chief-kit/test-fleet-manifest.sh	2
