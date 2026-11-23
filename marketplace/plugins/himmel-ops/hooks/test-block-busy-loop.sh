@@ -91,8 +91,7 @@ printf 'import subprocess\nfor _ in range(3):\n    subprocess.Popen(["bash", "-c
 printf 'while True:\n    pass\n' >"$SCR/spin.py"
 printf 'import subprocess\nsubprocess.run(["taskset", "-c", "0", "bash", "suite.sh"])\n' >"$SCR/pin.py"
 printf 'import time\nfor i in range(3):\n    time.sleep(1)\nprint("stress test notes")\n' >"$SCR/ok.py"
-# shellcheck disable=SC2016  # the file body is literal shell text, not expanded here
-printf '#!/usr/bin/env bash\nwhile kill -0 "$1"; do sleep 1; done\n' >"$SCR/wait.sh"
+printf "#!/usr/bin/env bash\nwhile kill -0 \"\$1\"; do sleep 1; done\n" >"$SCR/wait.sh"
 
 run_case "$(j_bash "bash $SCR/spin.sh")" "$TMP/repo"
 assert_eq "deny: a bash file holding a sleepless loop" 2 "$RC"

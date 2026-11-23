@@ -84,36 +84,36 @@ INTERP_END_RE="${CMD_POS}((ba|z|da|k)?sh|python[0-9.]*|node|bun|deno|source|cd|\
 
 scan_quotes() {
     local rest=$1 pre span inner
-    q_semi="" q_empty="" q_shell="" q_run=""
+    q_semis_blanked="" q_quotes_emptied="" q_shell_c_code="" q_run_operands=""
     while [[ $rest =~ $QUOTED_RE ]]; do
         pre=${BASH_REMATCH[1]}
         span=${BASH_REMATCH[2]}
         rest=${BASH_REMATCH[4]}
         inner=${span:1:${#span}-2}
-        q_semi+=$pre${span//;/ }
-        if [[ $q_empty$pre =~ $CMD_END_RE ]]; then
-            q_empty+=$pre$inner
+        q_semis_blanked+=$pre${span//;/ }
+        if [[ $q_quotes_emptied$pre =~ $CMD_END_RE ]]; then
+            q_quotes_emptied+=$pre$inner
         else
-            q_empty+="$pre''"
+            q_quotes_emptied+="$pre''"
         fi
-        if [[ $q_run$pre =~ $CMD_END_RE || $q_run$pre =~ $INTERP_END_RE ]]; then
-            q_run+=$pre$inner
+        if [[ $q_run_operands$pre =~ $CMD_END_RE || $q_run_operands$pre =~ $INTERP_END_RE ]]; then
+            q_run_operands+=$pre$inner
         else
-            q_run+="$pre''"
+            q_run_operands+="$pre''"
         fi
-        [[ $pre =~ $SHELL_C_RE ]] && q_shell+=$NL$inner
+        [[ $pre =~ $SHELL_C_RE ]] && q_shell_c_code+=$NL$inner
     done
-    q_semi+=$rest
-    q_empty+=$rest
-    q_run+=$rest
+    q_semis_blanked+=$rest
+    q_quotes_emptied+=$rest
+    q_run_operands+=$rest
 }
 
 scan_quotes "$cmd"
-semi_blanked=$q_semi
-emptied=$q_empty
-run_text=$q_run
-scan_quotes "$q_shell"
-shell_code=$q_empty
+semi_blanked=$q_semis_blanked
+emptied=$q_quotes_emptied
+run_text=$q_run_operands
+scan_quotes "$q_shell_c_code"
+shell_code=$q_quotes_emptied
 
 shape=""
 detail=""
