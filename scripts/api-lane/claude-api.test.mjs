@@ -1857,7 +1857,7 @@ test('auto with the graphify kind from another repo is refused before any spawn'
   const r = spawnSync('bash', [LAUNCH, '-p', 'say hi', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10'],
     { env: { ...keyFiles(f), HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify' }, encoding: 'utf8', cwd: OTHER_REPO });
   assert.equal(r.status, 2, r.stderr);
-  assert.match(r.stderr, /auto routing is for the himmel graph pass only/);
+  assert.match(r.stderr, /auto routing is for the himmel repo only/);
   assert.equal(f.called(), false);
 });
 
@@ -1876,7 +1876,7 @@ test('the graph shim runs the lane from a scratch directory: the repo it judged 
   f = fixture();
   const other = shim(f, commonDir(OTHER_REPO));
   assert.equal(other.status, 2, other.stderr);
-  assert.match(other.stderr, /auto routing is for the himmel graph pass only/);
+  assert.match(other.stderr, /auto routing is for the himmel repo only/);
   assert.equal(f.called(), false);
 });
 
@@ -1886,7 +1886,7 @@ test('a decision-525 policy refusal sends no alert, writes no stamp, runs no fal
     { env: { ...keyFiles(f), ...FB_ON, STUB_FB_OUT: FB_OK, HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'judge', HIMMEL_API_JOB_ID: 'job-p1',
       HIMMEL_API_BRANCH: 'fix/x', HIMMEL_API_HEAD: 'abc1234' }, encoding: 'utf8', cwd: mkdtempSync(join(T, 'scratch-')) });
   assert.equal(r.status, 2, r.stderr);
-  assert.match(r.stderr, /refused: auto routing is for the himmel graph pass only \(kind judge, repo none\)/);
+  assert.match(r.stderr, /refused: auto routing is for the himmel repo only \(kind judge, repo none\)/);
   const alertDir = f.env.HIMMEL_API_ALERT_DIR;
   assert.deepEqual(alerts(f), []);
   assert.deepEqual(readdirSync(alertDir), ['policy-refusals.jsonl']);
@@ -2145,7 +2145,7 @@ test('a mapped judge from another repo is refused-policy: the map never widens t
   putRoles(f, { judge: ['B'] });
   const r = autoKind(f, 'judge', { HIMMEL_API_AUTO_REPO_DIR: commonDirOf(OTHER_REPO) });
   assert.equal(r.status, 2, r.stderr);
-  assert.match(r.stderr, /auto routing is for the himmel graph pass only/);
+  assert.match(r.stderr, /auto routing is for the himmel repo only/);
   assert.equal(f.called(), false);
   assert.equal(policyLines(f).length, 1);
 });

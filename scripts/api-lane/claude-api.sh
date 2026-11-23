@@ -428,7 +428,7 @@ if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
   _auto_here="${HIMMEL_API_AUTO_REPO_DIR:-$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)}"
   _auto_own="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
   [ -n "$_auto_own" ] && [ "$_auto_here" = "$_auto_own" ] ||
-    { POLICY_REPO="${_auto_here:-none}"; refuse_policy "auto routing is for the himmel graph pass only (kind $KIND, repo ${_auto_here:-none}); name HIMMEL_API_ACCOUNT=$LLM_API_ACCOUNTS_TEXT"; }
+    { POLICY_REPO="${_auto_here:-none}"; refuse_policy "auto routing is for the himmel repo only (kind $KIND, repo ${_auto_here:-none}); name HIMMEL_API_ACCOUNT=$LLM_API_ACCOUNTS_TEXT"; }
 fi
 CACHE_TTL="${HIMMEL_API_CACHE_TTL:-5m}"
 case "$CACHE_TTL" in 5m|1h) ;; *) refuse "HIMMEL_API_CACHE_TTL must be 5m or 1h" ;; esac
