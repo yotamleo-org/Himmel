@@ -75,8 +75,10 @@ done
 
 [ -z "$BRANCH" ] && usage
 
-BRANCH_TYPES="feat|fix|chore|docs|refactor|test"
-if ! [[ "$BRANCH" =~ ^($BRANCH_TYPES)/[a-zA-Z0-9._+-]+$ ]]; then
+BRANCH_RE='^(feat|fix|chore|docs|refactor|test)/[a-zA-Z0-9._+-]+$'
+BRANCH_TYPES=${BRANCH_RE#^(}
+BRANCH_TYPES=${BRANCH_TYPES%%)*}
+if ! [[ "$BRANCH" =~ $BRANCH_RE ]]; then
     echo "ERR new-worktree: branch '$BRANCH' invalid — must be type/slug where type ∈ $BRANCH_TYPES; fix: rename it to one of those types (e.g. docs/${BRANCH#*/})" >&2
     exit 1
 fi
