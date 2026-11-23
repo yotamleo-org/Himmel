@@ -66,6 +66,12 @@ META="$(printf '%s' "$INPUT" | jq -r '
 
 TOOL_NAME="" AGENT_CWD="" PAYLOAD_ART="" FILE_PATH="" CMD_LINE="" RES_URI=""
 eval "$META"
+TOOL_NAME="${TOOL_NAME//$'\r'/}"
+AGENT_CWD="${AGENT_CWD//$'\r'/}"
+PAYLOAD_ART="${PAYLOAD_ART//$'\r'/}"
+FILE_PATH="${FILE_PATH//$'\r'/}"
+CMD_LINE="${CMD_LINE//$'\r'/}"
+RES_URI="${RES_URI//$'\r'/}"
 
 HOME_REAL=""
 if [ -n "${HOME:-}" ]; then
