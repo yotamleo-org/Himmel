@@ -186,7 +186,7 @@ to replay, no declaration, explicit none or unreadable docs elide it; off = unus
 deadline cut the state read (unknown, read again next tick). replay=<n> counts the state's unfinished_rulings with status
 replay (a ruling interrupted after its Jira write, which no open request shows); a blocked move is the chief's repair and is
 not counted. An oldest open
-request past TICK_RMRUN_MIN minutes (default 30), or any ruling to replay, with the lease free launches one detached `jira release
+request past TICK_RMRUN_MIN minutes (default 2), or any ruling to replay, with the lease free launches one detached `jira release
 rm-run <R>` (at most one per TICK_RMRUN_MIN_SECS, default 600, so an unchanged ruling is retried at that pace, never every tick) and appends `,run`.
 A held lease reads as free only when the state says lease.owner_gone is true: the CLI proved the owner pid absent on this host (a
 hard-killed rm-run), the same proof rm-run's own reclaim uses; the tick judges no pid itself, and a pid that answers (a live owner, or
@@ -3342,7 +3342,7 @@ fi
 
 # rm-queue=<n>,<oldest age>m[,run]: open placement requests of the chief doc's `release:` release,
 # from one `jira release state <R> --json` read; the age is the oldest open request's. When the oldest is
-# TICK_RMRUN_MIN minutes old (default 30), the lease is free and no run was launched inside TICK_RMRUN_MIN_SECS
+# TICK_RMRUN_MIN minutes old (default 2), the lease is free and no run was launched inside TICK_RMRUN_MIN_SECS
 # (default 600), the tick launches ONE detached `jira release rm-run <R>` (it runs a model call, far past this
 # tick's budget; its lines go to $TICK_STATE_DIR/tick-rm-run.log) and appends `,run`. rm-run takes the lease itself,
 # so a run in flight blocks a second one. 0 = nothing open, off = unusable wiring/state,
@@ -3456,8 +3456,8 @@ print(n, age, lease, d.get("status") or "UNKNOWN", len(r.get("claimed", [])), re
             rm_queue="$rm_n,${rm_age}m"
             [ "$rm_claimed" -eq 0 ] || rm_queue="$rm_queue,claimed=$rm_claimed"
             [ "$rm_replay" -eq 0 ] || rm_queue="$rm_queue,replay=$rm_replay"
-            rm_min="${TICK_RMRUN_MIN:-30}"
-            case "$rm_min" in '' | *[!0-9]*) rm_min=30 ;; esac
+            rm_min="${TICK_RMRUN_MIN:-2}"
+            case "$rm_min" in '' | *[!0-9]*) rm_min=2 ;; esac
             if [ "$rm_age" -ge "$rm_min" ] || [ "$rm_replay" -gt 0 ]; then rm_launch_run; fi
             ;;
     esac

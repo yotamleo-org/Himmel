@@ -1784,3 +1784,20 @@ describe('nothing leaves a version (S2)', () => {
     });
   });
 });
+
+describe('the gate relax (S3, I7)', () => {
+  beforeEach(() => {
+    vi.stubEnv('HOME', join(root, 'home'));
+    mkdirSync(join(root, 'home', '.himmel', 'state', 'jira-mirror'), { recursive: true });
+    writeFileSync(join(root, 'home', '.himmel', 'state', 'jira-mirror', 'K.versions.tsv'), 'v1\tfalse\t\tfalse\nv2\tfalse\t\tfalse\n');
+    declare(ctx(), { project: 'K', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
+  });
+
+  it('an operator-directed INTAKE filed with no words is ruled ADMIT into the current version by the door, door:operator-ask', async () => {
+    mirror([{ key: 'K-7', fixVersions: [], labels: ['operator-directed'] }]);
+    const q = request(ctx(), { verb: 'INTAKE', key: 'K-7', from_v: null, to_v: 'v1', why: 'the operator asked for it', evidence: {}, from: 'console' });
+    await rmRun(ctx(), doorJudge);
+    const ruling = readChain<RulingRow>(join(ctx().dir, 'rulings.jsonl'), loadKey(ctx().keyPath)).verified.filter((r) => r.req === q.req).at(-1);
+    expect(ruling).toMatchObject({ key: 'K-7', outcome: 'ADMIT', op: { kind: 'add', from_v: null, to_v: 'v1' }, ground: 'door:operator-ask' });
+  });
+});
