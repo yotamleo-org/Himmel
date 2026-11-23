@@ -157,7 +157,7 @@ if [ -f "$FIX/codex-unchecked" ]; then echo "WARN plugin-presence-unchecked: can
 if [ -f "$FIX/codex-degraded" ]; then echo "WARN hook-failure: ignoring hooks"; exit 1; fi
 if [ -f "$FIX/codex-registered" ]; then exit 0; fi
 if [ -f "$FIX/codex-broken" ]; then echo "boom"; exit 3; fi
-echo "WARN plugin-unregistered: telegram-himmel@himmel missing"; exit 1
+echo "WARN plugin-unregistered: handover@himmel missing"; exit 1
 STUB
 cat > "$CLONE/scripts/codex/install-himmel-codex.sh" <<'STUB'
 #!/usr/bin/env bash
