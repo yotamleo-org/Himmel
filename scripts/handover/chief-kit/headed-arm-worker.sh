@@ -1422,11 +1422,17 @@ case "$_worker_rcwd" in
         _worker_wt_repo="${_worker_rcwd%%/.claude/worktrees/*}"
         if [ -f "$_worker_wt_repo/scripts/worktree.sh" ]; then
             _worker_resume_cmd="bash scripts/worktree.sh resume $_worker_wt_branch"
-            _worker_wt_word="$(cd "$_worker_wt_repo" && bash scripts/worktree.sh resume --check "$_worker_wt_branch" 2>/dev/null)" || _worker_wt_word=unknown  # swallow-ok: a failed check is the word unknown, which the hint says out loud
         else
             _worker_resume_cmd="bash $HERE/../../_new-worktree.sh $_worker_wt_branch --resume --no-install"
+        fi
+        _worker_wt_word=none
+        _worker_wt_common="$(git_clean -C "$_worker_wt_repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _worker_wt_common="" # swallow-ok: empty is an unverified repo, which gets the old hint
+        _worker_wt_self="$(git_clean -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _worker_wt_self="" # swallow-ok: empty leaves the registry check alone to vouch for the repo
+        if [ -n "$_worker_wt_common" ] && { [ "$_worker_wt_common" = "$_worker_wt_self" ] \
+            || bash "$HERE/../register-state.sh" --check --repo-path "${_worker_wt_common%/.git}" >/dev/null 2>&1; }; then
             _worker_wt_word="$(cd "$_worker_wt_repo" && bash "$HERE/../../_new-worktree.sh" "$_worker_wt_branch" --resume --check 2>/dev/null)" || _worker_wt_word=unknown  # swallow-ok: a failed check is the word unknown, which the hint says out loud
         fi
+        unset -v _worker_wt_common _worker_wt_self
         case "$_worker_wt_word" in
         local|origin|both) _worker_wt_fix="Resume it first, from the repo's primary checkout: $_worker_resume_cmd" ;;
         none) _worker_wt_fix="Create it first, from the repo's primary checkout: bash scripts/worktree.sh new $_worker_wt_branch --no-prune" ;;

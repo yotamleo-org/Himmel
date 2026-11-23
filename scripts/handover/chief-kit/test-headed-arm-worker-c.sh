@@ -81,19 +81,27 @@ mkdir -p "$repoH/scripts"; cp -R "$HERE/../../." "$repoH/scripts/"
 git -C "$repoH" branch -q -M main
 git -C "$repoH" push -q origin main
 git -C "$repoH" branch -q feat/h-only-origin; git -C "$repoH" push -q origin feat/h-only-origin; git -C "$repoH" branch -q -D feat/h-only-origin
-dry42 "$repoH/.claude/worktrees/feat+h-only-origin"
+repoA="$tmp/repoA"; mkdir -p "$repoA/.claude/worktrees"; git -C "$repoA" init -q
+repoU="$tmp/repoU"; mkdir -p "$repoU/scripts" "$repoU/.claude/worktrees"; git -C "$repoU" init -q
+h_marker="$tmp/h-marker"
+printf '#!/usr/bin/env bash\n: > "%s"\necho origin\n' "$h_marker" > "$repoU/scripts/worktree.sh"
+reg_h="$tmp/reg-h.json"; printf '{"repos":{"repoH":{"path":"%s"},"repoA":{"path":"%s"}}}\n' "$repoH" "$repoA" > "$reg_h"
+HANDOVER_REGISTRY="$reg_h" dry42 "$repoH/.claude/worktrees/feat+h-only-origin"
 check "H1 a branch only on origin: refused (rc 2)" "$rc42" "2"
 contains "H1 the hint names worktree.sh resume" "$out42" "bash scripts/worktree.sh resume feat/h-only-origin"
-dry42 "$repoH/.claude/worktrees/feat+h-nowhere"
+HANDOVER_REGISTRY="$reg_h" dry42 "$repoH/.claude/worktrees/feat+h-nowhere"
 contains "H1.none a branch nowhere: the hint still names new" "$out42" "bash scripts/worktree.sh new feat/h-nowhere --no-prune"
+HANDOVER_REGISTRY="$reg_h" dry42 "$repoU/.claude/worktrees/feat+h-unreg"
+check "H1.unreg an unregistered repo: refused (rc 2)" "$rc42" "2"
+contains "H1.unreg the hint is the old one" "$out42" "bash scripts/worktree.sh new feat/h-unreg --no-prune"
+check "H1.unreg the repo's own scripts/worktree.sh was never run" "$([ -e "$h_marker" ] && echo ran || echo not-run)" "not-run"
 git -C "$repoH" remote set-url origin "$tmp/h-no-such-origin.git"
-dry42 "$repoH/.claude/worktrees/feat+h-only-origin"
+HANDOVER_REGISTRY="$reg_h" dry42 "$repoH/.claude/worktrees/feat+h-only-origin"
 contains "H1.unk origin unreachable: the hint names resume" "$out42" "bash scripts/worktree.sh resume feat/h-only-origin"
 contains "H1.unk and says origin could not be reached" "$out42" "origin could not be reached"
-repoA="$tmp/repoA"; mkdir -p "$repoA/.claude/worktrees"; git -C "$repoA" init -q
 git -C "$repoA" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 git -C "$repoA" branch -q feat/h-adopt
-dry42 "$repoA/.claude/worktrees/feat+h-adopt"
+HANDOVER_REGISTRY="$reg_h" dry42 "$repoA/.claude/worktrees/feat+h-adopt"
 contains "H1.adopt an adopter repo: the hint names _new-worktree.sh --resume" "$out42" "_new-worktree.sh feat/h-adopt --resume --no-install"
 printf -- '---\nresume_cwd: %s\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' "$repo42/.claude/worktrees/feat+missing-42" > "$tmp/c42-doc.md"
 d42="$tmp/c42"; mk_launch_stubs "$d42" "PROJ-42-real"
