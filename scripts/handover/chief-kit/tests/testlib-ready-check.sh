@@ -79,7 +79,7 @@ case "$args" in
         or_hang
         echo "$args" >> "$STUB_OR_DIR/gate-fetch.log"
         [ -z "${STUB_OR_GATE_FAIL:-}" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
-        cat "${STUB_OR_GATE_FILE:-/nonexistent}"; exit $? ;;
+        cat "${STUB_OR_GATE_FILE:-/nonexistent}"; exit $? ;;  # read-sink-ok: a test stub serving the fixture gate script a row names
     "api -H Accept: application/vnd.github.raw repos/"*"/contents/.github/CODEOWNERS?ref="*)
         printf '%b' "${STUB_OR_CODEOWNERS:-* @alice\n}"; exit 0 ;;
     "api repos/"*"/collaborators/"*"/permission")
