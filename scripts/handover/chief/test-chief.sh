@@ -4120,5 +4120,11 @@ tok10906b="$(token_of "$out10906b")"
 chief next --bucket same10906 >/dev/null 2>&1
 check "10906 a same-name next still writes the B doc under the same name" "$([ -f "$root/tester/same10906/DEMO-nextleg-${today}B-chief.md" ] && echo yes || echo no)" "yes"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/same10906/DEMO-nextleg-${today}A-chief.md" "$tok10906b" >/dev/null 2>&1
+out10906c="$(chief new --bucket pfx10906 --name night-chief)"
+tok10906c="$(token_of "$out10906c")"
+chief next --bucket pfx10906 --prefix OTH69 --doc "$root/tester/pfx10906/DEMO-nextleg-${today}A-night-chief.md" >/dev/null 2>&1
+check "10906 no --name and a --doc under another prefix keeps the doc's chain name" "$([ -f "$root/tester/pfx10906/OTH69-nextleg-${today}B-night-chief.md" ] && echo yes || echo no)" "yes"
+check "10906 no --name and a --doc under another prefix never mints a bare chief successor" "$([ -f "$root/tester/pfx10906/OTH69-nextleg-${today}B-chief.md" ] && echo yes || echo no)" "no"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/pfx10906/DEMO-nextleg-${today}A-night-chief.md" "$tok10906c" >/dev/null 2>&1
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

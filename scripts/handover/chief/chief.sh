@@ -1100,7 +1100,7 @@ if [ "$CMD" = next ] && [ "$NAME_GIVEN" -ne 1 ]; then
     if [ -n "$_doc_for_name" ]; then
         _stem_for_name="$(basename "$_doc_for_name")"
         _stem_for_name="${_stem_for_name%.md}"
-        if [[ "$_stem_for_name" =~ ^"$prefix"-nextleg-[0-9]{4}-[0-9]{2}-[0-9]{2}[A-Z]{1,2}-(.+)$ ]]; then
+        if [[ "$_stem_for_name" =~ ^[A-Z0-9]+-nextleg-[0-9]{4}-[0-9]{2}-[0-9]{2}[A-Z]{1,2}-(.+)$ ]]; then
             NAME="${BASH_REMATCH[1]}"
         fi
     fi
@@ -2568,7 +2568,7 @@ cmd_next() {
     predecessor_base="$(basename "$predecessor_doc")"
     predecessor_stem="${predecessor_base%.md}"
     CHIEF_BUS_PREDECESSOR="$predecessor_stem"
-    if [[ "$predecessor_stem" =~ ^.*-nextleg-[0-9]{4}-[0-9]{2}-[0-9]{2}([A-Z]{1,2})-.+$ ]]; then
+    if [[ "$predecessor_stem" =~ ^[A-Z0-9]+-nextleg-[0-9]{4}-[0-9]{2}-[0-9]{2}([A-Z]{1,2})-.+$ ]]; then
         predecessor_letter="${BASH_REMATCH[1]}"
     else
         err "cannot parse predecessor doc name '$predecessor_base' (expected <prefix>-nextleg-<date><letter>-<name>.md)"
