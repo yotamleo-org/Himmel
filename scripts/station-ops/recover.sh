@@ -5,7 +5,8 @@
 #   1. checks the services (default telegram-bridge.service; HIMMEL_RECOVER_SERVICES overrides), starting one that is down
 #   2. verifies the Telegram bridge (<repo>/scripts/telegram/restart-bridge.sh status)
 #   3. re-arms the chief from the marker's handover doc (<repo>/scripts/handover/arm-resume.sh --handover DOC --force --time now+2min)
-#   4. sends a one-message status through the bridge bot (token and operator id as afk-run reads them), if both exist
+#   4. sends a one-message status: through chief-route.ts reply --kind (recover-failed when the exit code will be
+#      non-zero, else recover-ok) when the bridge is up; else straight to the bot API (token and operator id as afk-run reads them)
 # With no marker, a marker for another user, or an arming already recovered: prints why and does nothing (exit 0).
 # Exit 0 normally; 1 when the marker is unreadable or a step the marker asked for failed (the status still goes out).
 # Env (test seams, all optional): HIMMEL_RECOVER_ROOT (path prefix for /var/lib/himmel and /etc/himmel),
@@ -57,7 +58,14 @@ env_file=${TELEGRAM_ENV:-$HOME/.claude/channels/telegram/.env}
 chat=$(python3 -I -c 'import json, sys
 print(int(json.load(open(sys.argv[1])).get("operator_id") or 0) or "")' "$RR/etc/himmel/afk-sudo.json" 2>/dev/null)
 token=$(sed -n 's/^TELEGRAM_BOT_TOKEN[[:space:]]*=[[:space:]]*//p' "$env_file" 2>/dev/null | tr -d '"'"'"' \r' | grep -m1 .)
-if [ -n "$chat" ] && [ -n "$token" ]; then
+if [ "$rc" -ne 0 ]; then kind=recover-failed; else kind=recover-ok; fi
+sent=0
+if [ -n "$chat" ] && [ "$bridge" = up ] && command -v bun >/dev/null 2>&1 \
+    && timeout -k 5 30 bun "$m_repo/scripts/telegram/chief-route.ts" reply --kind "$kind" "$chat" "$status" >/dev/null 2>&1; then # gnu-ok: Linux only # prim-ok: a user-side Linux unit, sources no libs
+    sent=1
+fi
+if [ "$sent" = 1 ]; then :
+elif [ -n "$chat" ] && [ -n "$token" ]; then
     printf 'url = "%s/bot%s/sendMessage"\n' "${AFK_TELEGRAM_API:-https://api.telegram.org}" "$token" \
         | curl -sS -m 10 -o /dev/null -K - --data-urlencode "chat_id=$chat" --data-urlencode "text=$status" >/dev/null \
         || echo "recover: the Telegram status could not be sent" >&2

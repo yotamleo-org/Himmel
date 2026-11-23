@@ -478,6 +478,13 @@ esac
 FAKESYSTEMCTL
 chmod +x "$R/ubin/systemctl"
 cp "$tmp/fakecurl/curl" "$R/ubin/curl"
+cat > "$R/ubin/bun" <<'FAKEBUN'
+#!/bin/sh
+# the bridge route: records its arguments; $RECOVER_FAKE_DIR/bun-fail makes it fail
+[ -e "$RECOVER_FAKE_DIR/bun-fail" ] && exit 1
+echo "$*" >> "$RECOVER_FAKE_DIR/bun.log"
+FAKEBUN
+chmod +x "$R/ubin/bun"
 printf 'TELEGRAM_BOT_TOKEN=%s\n' "$NTOK" > "$R/tg.env"
 rec() { PATH="$R/ubin:$PATH" RECOVER_FAKE_DIR="$R" HIMMEL_RECOVER_ROOT="$R" HIMMEL_RECOVER_STATE="$R/state" HIMMEL_RECOVER_SERVICES="telegram-bridge.service" \
     TELEGRAM_ENV="$R/tg.env" bash "$OPS/recover.sh" 2>&1; echo "rc=$?"; }
@@ -492,7 +499,9 @@ assert_contains "arm-resume got the handover doc" "--handover $rdoc --force --ti
 assert_contains "the status reports the services" "telegram-bridge.service=up" "$out"
 assert_contains "the status reports the bridge" "bridge up" "$out"
 assert_contains "recover exits 0 when all is well" "rc=0" "$out"
-assert_eq "one Telegram status was sent" "1" "$(find "$TG" -type f | wc -l | tr -d ' ')"
+assert_eq "RED: with the bridge up the status goes through the bridge route once" "1" "$(wc -l < "$R/bun.log" 2>/dev/null | tr -d ' ')"
+assert_contains "RED: a clean recovery sends the recover-ok kind" "chief-route.ts reply --kind recover-ok $OPERATOR reboot recovery on" "$(cat "$R/bun.log" 2>/dev/null)"
+assert_eq "with the bridge up no direct send goes out" "0" "$(find "$TG" -type f | wc -l | tr -d ' ')"
 out=$(rec)
 assert_contains "RED: the same arming is not recovered twice" "already recovered" "$out"
 assert_eq "no second re-arm" "1" "$(wc -l < "$R/arm.log" | tr -d ' ')"
@@ -503,6 +512,7 @@ out=$(rec)
 assert_contains "a new arming recovers again" "re-armed from other.md" "$out"
 assert_contains "a service that stays down is reported DOWN" "telegram-bridge.service=DOWN" "$out"
 assert_contains "a down service makes recover exit 1" "rc=1" "$out"
+assert_contains "RED: a failed recovery sends the recover-failed kind" "chief-route.ts reply --kind recover-failed $OPERATOR reboot recovery on" "$(tail -n 1 "$R/bun.log" 2>/dev/null)"
 rm -f "$R/down.telegram-bridge.service"
 python3 -I -c 'import json, sys
 p = sys.argv[1]
@@ -528,6 +538,21 @@ out=$(HIMMEL_RECOVER_STATE="$R/stamp-state" PATH="$R/ubin:$PATH" RECOVER_FAKE_DI
 assert_contains "RED: a stamp write that fails after the recovery steps names the stamp path" "cannot record completion in $R/stamp-state/recover-done" "$out"
 assert_contains "the failed stamp write makes recover exit 1" "rc=1" "$out"
 assert_contains "RED: a failed stamp write still sends the status report" "recover: reboot recovery on" "$out"
+rec_in() { HIMMEL_RECOVER_STATE="$1" PATH="$R/ubin:$PATH" RECOVER_FAKE_DIR="$R" HIMMEL_RECOVER_ROOT="$R" HIMMEL_RECOVER_SERVICES="telegram-bridge.service" TELEGRAM_ENV="$R/tg.env" bash "$OPS/recover.sh" 2>&1; echo "rc=$?"; }
+tg_before=$(find "$TG" -type f | wc -l | tr -d ' ')
+bun_before=$(wc -l < "$R/bun.log" | tr -d ' ')
+printf '#!/bin/sh\nexit 1\n' > "$R/repo/scripts/telegram/restart-bridge.sh"
+out=$(rec_in "$R/down-state")
+assert_contains "the bridge-down run reports the bridge DOWN" "bridge DOWN" "$out"
+assert_eq "RED: with the bridge down the status still goes out by the direct send" "$((tg_before + 1))" "$(find "$TG" -type f | wc -l | tr -d ' ')"
+assert_eq "with the bridge down the bridge route is not tried" "$bun_before" "$(wc -l < "$R/bun.log" | tr -d ' ')"
+printf '#!/bin/sh\nexit 0\n' > "$R/repo/scripts/telegram/restart-bridge.sh"
+tg_before=$(find "$TG" -type f | wc -l | tr -d ' ')
+: > "$R/bun-fail"
+out=$(rec_in "$R/bunfail-state")
+rm -f "$R/bun-fail"
+assert_eq "RED: a bridge route that fails falls back to the direct send" "$((tg_before + 1))" "$(find "$TG" -type f | wc -l | tr -d ' ')"
+assert_contains "the fallback run still exits 0" "rc=0" "$out"
 
 echo "== size-approval (R5): --check writes nothing, a run writes the approval, a re-run renews it =="
 new_root sa
