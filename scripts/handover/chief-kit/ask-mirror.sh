@@ -45,6 +45,8 @@ EOF
 if . "$REPO/scripts/lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
 # shellcheck source=../../lib/handover-path.sh
 . "$REPO/scripts/lib/handover-path.sh" 2>/dev/null || exit 0
+# shellcheck source=../../lib/timeout-bin.sh
+. "$REPO/scripts/lib/timeout-bin.sh"
 root="$(handover_root 2>/dev/null)" || exit 0  # swallow-ok: no handover root, no chief to mirror for
 [ -n "$root" ] && [ -d "$root/.locks/queue" ] || exit 0
 
@@ -122,10 +124,8 @@ mkdir -p "$state_dir" 2>/dev/null || exit 0
 post() {
     if [ -n "${ASK_MIRROR_ROUTE:-}" ]; then
         "$ASK_MIRROR_ROUTE" reply --chief "$chief" --owed "$1" --doc "$chief_doc" --kind chief-reply operator "$2" >/dev/null
-    elif command -v timeout >/dev/null 2>&1; then
-        timeout 90 bun "$REPO/scripts/telegram/chief-route.ts" reply --chief "$chief" --owed "$1" --doc "$chief_doc" --kind chief-reply operator "$2" >/dev/null
     else
-        bun "$REPO/scripts/telegram/chief-route.ts" reply --chief "$chief" --owed "$1" --doc "$chief_doc" --kind chief-reply operator "$2" >/dev/null
+        ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 90} bun "$REPO/scripts/telegram/chief-route.ts" reply --chief "$chief" --owed "$1" --doc "$chief_doc" --kind chief-reply operator "$2" >/dev/null
     fi
 }
 
