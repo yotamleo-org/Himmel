@@ -2076,12 +2076,14 @@ const PART_BREAKS = [/\n[ \t]*\n/g, /\n/g, /[.!?]["')\]]*[ \t]+/g, /\s+/g];
 
 function partEnd(s: string, budget: number): number {
   const head = s.slice(0, budget);
-  const spans = protectedRanges(s);
+  const spans = [...protectedRanges(s), ...[...s.matchAll(/https?:\/\/\S+/g)].map((m): [number, number] => [m.index, m.index + m[0].length])];
   const ends = (re: RegExp) => [...head.matchAll(re)].map((m) => m.index + m[0].length);
   for (const re of PART_BREAKS) {
     const free = ends(re).filter((e) => !spans.some(([a, b]) => e > a && e < b));
     if (free.length) return free[free.length - 1];
   }
+  const crossing = spans.filter(([a, b]) => a > 0 && a < budget && b > budget).map(([a]) => a);
+  if (crossing.length) return Math.min(...crossing);
   const any = ends(/\s+/g);
   if (any.length) return any[any.length - 1];
   return /[\uD800-\uDBFF]/.test(head[budget - 1]) ? budget - 1 : budget;
