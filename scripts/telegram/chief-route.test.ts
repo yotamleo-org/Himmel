@@ -1787,7 +1787,6 @@ test("critic-seal.sh seals each distinct file a critic read, and refuses only th
   expect(lines.at(-2)).toBe("SPEC CLEAN");
 });
 
-// A companion page (`<spec stem>.<suffix>.html` beside the spec) is governed by its parent spec's seal and its own page critic.
 const BRIEF = "<!doctype html><html><head><title>brief</title></head><body>\n<p>the executive brief</p>\n</body></html>\n";
 const companion = (dir: string, text = BRIEF, verdict = "PAGE CLEAN") => {
   const page = join(dir, "HIMMEL-1-design.exec-brief.html"); writeFileSync(page, text);
