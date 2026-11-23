@@ -19,7 +19,7 @@ import json, os, re, subprocess, sys, tempfile
 
 CONTROL = ["merge-blocked", "token-in-output", "hold-ask-operator", "hold-ask-stuck", "denial-stuck", "config-audit",
            "monitor-chat-down", "chief-reply", "recover-failed", "cadence:security-audit", "cadence:snyk-scan"]
-PIN_PENDING = ["merge-blocked", "token-in-output", "recover-failed"]
+PIN_PENDING = ["merge-blocked", "token-in-output", "config-audit", "recover-failed"]
 NAMED = {"bypass-ask": ("escalate", "scripts/station-ops/bypass-launchd.sh"),
          "bypass-failed": ("escalate", "scripts/station-ops/bypass-launchd.sh"),
          "bypass-result": ("monitor", "scripts/station-ops/bypass-launchd.sh"),
