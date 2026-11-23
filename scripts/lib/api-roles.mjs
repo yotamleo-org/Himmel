@@ -105,19 +105,21 @@ function noteFor(map, kind) {
   return '';
 }
 
-export function walkGraphify(env = process.env) {
+export function walkKind(env, kind) {
   const map = roleMap(env);
   if (map.state === 'invalid') return { refuse: map.errors[0] };
-  if (map.errors.includes('empty-role:graphify')) return { refuse: 'empty-role:graphify' };
-  const live = accountsFor(map, 'graphify');
-  if (live.length) return { letters: live, note: noteFor(map, 'graphify') };
-  try { return { letters: configuredLetters(env), note: noteFor(map, 'graphify') }; } catch { return { letters: ACCOUNTS, note: noteFor(map, 'graphify') }; }
+  if (kind === 'graphify' && map.errors.includes('empty-role:graphify')) return { refuse: 'empty-role:graphify' };
+  const live = accountsFor(map, kind);
+  if (live.length) return { letters: live, note: noteFor(map, kind) };
+  try { return { letters: configuredLetters(env), note: noteFor(map, kind) }; } catch { return { letters: ACCOUNTS, note: noteFor(map, kind) }; }
 }
+
+export const walkGraphify = (env = process.env) => walkKind(env, 'graphify');
 
 function main() {
   const [command, ...args] = process.argv.slice(2);
-  if (command === 'walk' && args[0] === 'graphify' && args.length === 1) {
-    const walk = walkGraphify(process.env);
+  if (command === 'walk' && args.length === 1 && /^[A-Za-z0-9._-]+$/.test(args[0])) {
+    const walk = walkKind(process.env, args[0]);
     if (walk.refuse) { console.log(`refuse ${walk.refuse}`); process.exitCode = 3; return; }
     if (walk.note) console.error(walk.note);
     console.log(walk.letters.join(','));
@@ -154,7 +156,7 @@ function main() {
     if (!result.ok) process.exitCode = 3;
     return;
   }
-  console.error('usage: api-roles.mjs accounts <kind> | walk graphify | check | write');
+  console.error('usage: api-roles.mjs accounts <kind> | walk <kind> | check | write');
   process.exitCode = 2;
 }
 const isEntry = () => { try { return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]); } catch { return false; } };
