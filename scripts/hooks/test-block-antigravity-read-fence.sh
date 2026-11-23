@@ -11,7 +11,11 @@ command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
 . "$HOOKS/../lib/override-env.sh"
 scrub_override_env
 
-TMP="$(mktemp -d "${TMPDIR:-/tmp}/block-agy-read-fence.XXXXXX")" || exit 1
+FIXTURE_PARENT="/var/tmp"
+if [ ! -d "$FIXTURE_PARENT" ] || [ ! -w "$FIXTURE_PARENT" ]; then
+    FIXTURE_PARENT="$REPO"
+fi
+TMP="$(mktemp -d "$FIXTURE_PARENT/block-agy-read-fence.XXXXXX")" || exit 1
 trap 'rm -rf "$TMP"' EXIT
 
 export HOME="$TMP/home"
