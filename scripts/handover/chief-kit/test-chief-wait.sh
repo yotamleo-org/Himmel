@@ -683,9 +683,10 @@ if [ "${1:-}" = --worktree-ceiling-only ]; then
     [ "$fails" -eq 0 ]; exit $?
 fi
 
-mw_tick() { # <tails> [extra fields]
+mw_tick() {
+    local tails="$1" extra="${2:-}"
     tick_line "N1:FRESH" "ok"
-    sed -i "s/ tails=N1:LIVE/ tails=$1/; s/\$/${2:+ $2}/" "$STUB/tick.line"  # gnu-ok: Linux-only kit
+    sed -i "s/ tails=N1:LIVE/ tails=$tails/; s/\$/${extra:+ $extra}/" "$STUB/tick.line"  # gnu-ok: Linux-only kit
 }
 cat > "$STUB/mw-dispatch.sh" <<'EOF'
 #!/usr/bin/env bash
