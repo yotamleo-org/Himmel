@@ -4775,7 +4775,7 @@ test("B1 group reset new-stem: a real reset, five preserved earlier returns, a r
   const specText = readFileSync(f.spec, "utf8"); const planText = readFileSync(f.plan, "utf8");
   expect(specText).toContain(`tickets: [${f.keys.join(", ")}]`); expect(specText).not.toMatch(/^Keys?:|^- Tickets?:/m);
   expect(planText.startsWith("---")).toBe(false); expect(planText).not.toMatch(/^Keys?:/m);
-  expect(f.spec.endsWith("-fixture-epoch1.md")).toBe(true); expect(f.plan.endsWith("-fixture-epoch1.md")).toBe(true);
+  expect(f.spec.endsWith("-group-epoch1.md")).toBe(true); expect(f.plan.endsWith("-group-epoch1.md")).toBe(true);
   const ledgerDir = dirname(f.ledgerPath);
   for (const m of f.members) {
     expect(existsSync(join(ledgerDir, `${m}.jsonl`)), `${m} ledger`).toBe(false); expect(existsSync(join(ledgerDir, m)), `${m} snapshot folder`).toBe(false);
@@ -4989,7 +4989,7 @@ test("B1 generic options: declarations, specStem, quote shapes, real closure wit
   const again = realpathSync(root()); await lib.buildRoundFixture({ scratchRoot: again, key: KEY, specText: specOf(LINE), planText: "# p\n", returns: [ret("spec", 1, "SPEC CLEAN\n")] });
   await expect(lib.buildRoundFixture({ scratchRoot: again, key: KEY, specText: specOf(LINE), planText: "# p\n", returns: [ret("spec", 1, "SPEC CLEAN\n")] })).rejects.toThrow("already holds");
   // reset step: the decision recipe, a real reset, new-stem documents, counters restarting at 1, earlier files untouched
-  const decision = "start this ticket over from scratch"; const stem1 = `${KEY}-fixture-epoch1`;
+  const decision = "start this ticket over from scratch"; const stem1 = `${KEY}-group-epoch1`;
   const reset = await run({ steps: [{ after: 2, step: "reset", decision: "990", quote: decision, documents: { specStem: stem1, specText: specOf("The reset contract names every member."), planText: "# reset plan\n\n- Task 1: build it.\n" } }] },
     [full(1), full(2), full(3), ret("spec", 1, "SPEC CLEAN\n"), ret("plan", 1, "PLAN CLEAN\n")]);
   const rr = b1Rows(reset);
