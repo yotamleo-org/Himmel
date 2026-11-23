@@ -2611,4 +2611,12 @@ else
 fi
 rm -rf "$t"
 
+echo "== C84: a station with neither USER_SLUG nor HIMMEL_RELEASE_STATE_DIR gets one note =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c84root.XXXXXX")" || { echo "FAIL: mktemp -d failed"; exit 1; }; write_settings "$t/claude" "$WRAPPER"; mkdir -p "$t/repo" "$t/home"
+out="$(USER_SLUG='' HIMMEL_RELEASE_STATE_DIR='' HANDOVER_DIR="$t/handover" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color --only C84 --root "$t/repo" 2>&1)"
+if [ "$(grep -c 'INFO C84-release-queue: neither USER_SLUG nor HIMMEL_RELEASE_STATE_DIR' <<< "$out")" = 1 ]; then pass "C84 -> one note line naming USER_SLUG when neither variable is set"; else fail "C84 neither -> $(printf '%s' "$out" | grep C84)"; fi
+out="$(USER_SLUG=someone HIMMEL_RELEASE_STATE_DIR='' HANDOVER_DIR="$t/handover" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color --only C84 --root "$t/repo" 2>&1)"
+if ! grepq "$out" 'neither USER_SLUG nor HIMMEL_RELEASE_STATE_DIR'; then pass "C84 -> no note when USER_SLUG is set"; else fail "C84 USER_SLUG set -> $(printf '%s' "$out" | grep C84)"; fi
+rm -rf "$t"
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

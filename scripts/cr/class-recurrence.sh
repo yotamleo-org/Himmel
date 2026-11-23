@@ -18,8 +18,8 @@
 #   2. the class has a member of the structural-fix epic (--members) -> label the member, comment;
 #   3. else file one ticket in the epic (at most 2 new per rolling week).
 # Then every open residual of the class is folded into that ticket: a Relates
-# link, the folded-into-<KEY> label, its fixVersion removed (backlog, freeing the
-# budget slot) and a RED row in the ticket's Proof. A folded residual stays open.
+# link, the folded-into-<KEY> label and a RED row in the ticket's Proof. A folded
+# residual stays open and keeps its version.
 #
 # Env: JIRA_PROJECT_KEY (required); JIRA_CMD (Jira CLI override, word-split);
 #      GH_CMD (default gh); CR_LEDGER (default <git-common-dir>/cr-critic-scores.jsonl).
@@ -216,16 +216,8 @@ write_ticket_body() {  # <class> <file>
 }
 
 fold_residual() {  # <residual key> <restructure key>
-    local r="$1" t="$2" v
+    local r="$1" t="$2"
     if ! jira_run link "$r" "$t" >/dev/null 2>"$W/err"; then echo "  FAILED link $r $t: $(cat "$W/err")" >&2; failed=$((failed+1)); return; fi
-    if ! jira_run get "$r" >"$W/get.txt" 2>"$W/err"; then echo "  FAILED read $r: $(cat "$W/err")" >&2; failed=$((failed+1)); return; fi
-    sed -n 's/^Fix versions: //p' "$W/get.txt" | tr ',' '\n' | sed 's/^ *//;s/ *$//' >"$W/versions.txt"
-    while IFS= read -r v; do
-        [ -n "$v" ] || continue
-        if ! HIMMEL_VERSION_WRITER=class-recurrence jira_run fix-version "$r" --remove "$v" >/dev/null 2>"$W/err"; then
-            echo "  FAILED backlog $r (fix-version --remove $v): $(cat "$W/err")" >&2; failed=$((failed+1)); return
-        fi
-    done <"$W/versions.txt"
     if ! jira_run edit "$r" --add-labels "folded-into-${t}" >/dev/null 2>"$W/err"; then echo "  FAILED label $r: $(cat "$W/err")" >&2; failed=$((failed+1)); return; fi
     folded=$((folded+1))
     echo "  folded $r into $t"

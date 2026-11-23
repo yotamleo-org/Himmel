@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
-import { uploadAttachment, uploadMultipart, downloadTo, normalizeEnv, baseUrl, loadEnvFile, request, requestAt, agileRequest, confluenceV2, requestDeadlineMs } from './client.js';
+import { uploadAttachment, uploadMultipart, downloadTo, normalizeEnv, baseUrl, loadEnvFile, request, requestAt, agileRequest, confluenceV2, requestDeadlineMs, fixVersionLockDir, FIX_VERSION_LOCK_WAIT_MS } from './client.js';
 import { registerMove } from './commands/move.js';
 import { readVersionWrites } from './release/version-writes.js';
 import { sameJiraBase, stationJiraBaseUrl } from './env-file.js';
@@ -1155,6 +1155,81 @@ describe('the live-test guard at requestAt and uploadMultipart', () => {
     const j = liveJira();
     await request('POST', '/issue', { fields: { project: { key: 'HIMMEL' } } });
     expect(j.calls.map((c) => c.method)).toEqual(['POST']);
+  });
+});
+
+describe('one CLI writer per key: the Fix Version lock', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'fixversion-lock-'));
+    vi.stubEnv('JIRA_BASE_URL', 'https://example.atlassian.net');
+    vi.stubEnv('JIRA_EMAIL', 'u@example.com');
+    vi.stubEnv('JIRA_API_TOKEN', 'not-a-real-token');
+    vi.stubEnv('HIMMEL_VERSION_WRITES', '');
+    vi.stubEnv('HOME', join(dir, 'home'));
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function gated(start: string[]) {
+    const t = { set: [...start], calls: [] as string[], open: (): void => undefined };
+    const gate = new Promise<void>((ok) => { t.open = ok; });
+    const reply = (status: number, body: unknown) => ({ ok: status < 400, status, text: async () => (body === undefined ? '' : JSON.stringify(body)) });
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit = {}) => {
+      const method = init.method ?? 'GET';
+      if (method === 'GET') { t.calls.push('GET'); return reply(200, { fields: { fixVersions: t.set.map((name) => ({ name })) } }); }
+      const body = JSON.parse(String(init.body)) as { fields?: { fixVersions: Array<{ name: string }> }; update?: { fixVersions: Array<{ add: { name: string } }> } };
+      if (body.fields) {
+        t.calls.push('PUT replace');
+        await gate;
+        t.set = body.fields.fixVersions.map((v) => v.name);
+      } else {
+        t.calls.push('PUT add');
+        for (const op of body.update?.fixVersions ?? []) if (!t.set.includes(op.add.name)) t.set.push(op.add.name);
+      }
+      return reply(204, undefined);
+    }));
+    return t;
+  }
+
+  it('a full replacement that read {next} and an add of current on the same key end {next, current}', async () => {
+    const t = gated(['next']);
+    const a = request('PUT', '/issue/HIMMEL-9', { fields: { fixVersions: [{ name: 'next' }] } }, 'merge-stamp');
+    await vi.waitFor(() => expect(t.calls).toContain('PUT replace'));
+    const b = request('PUT', '/issue/HIMMEL-9', { update: { fixVersions: [{ add: { name: 'current' } }] } }, 'transition-stamp');
+    await new Promise((ok) => setTimeout(ok, 200));
+    expect(t.calls).not.toContain('PUT add');
+    t.open();
+    await Promise.all([a, b]);
+    expect(t.calls).toEqual(['PUT replace', 'PUT add']);
+    expect(t.set).toEqual(['next', 'current']);
+  });
+
+  it('a lock held past 10 seconds refuses the write before its GET', async () => {
+    const t = gated(['v1.1.3']);
+    mkdirSync(fixVersionLockDir('HIMMEL-9'), { recursive: true });
+    writeFileSync(join(fixVersionLockDir('HIMMEL-9'), '.lock'), '');
+    const started = Date.now();
+    let clock = started;
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => (clock += 1000));
+    try {
+      await expect(request('PUT', '/issue/HIMMEL-9', { update: { fixVersions: [{ add: { name: 'v1.1.4' } }] } })).rejects.toThrow(/: another Fix Version write is running; retry$/);
+    } finally {
+      now.mockRestore();
+    }
+    expect(clock - started).toBeGreaterThanOrEqual(FIX_VERSION_LOCK_WAIT_MS);
+    expect(t.calls).toEqual([]);
+  });
+
+  it('two writers with different TMPDIR values take the same lock, under the home directory', () => {
+    vi.stubEnv('TMPDIR', join(dir, 'a'));
+    const first = fixVersionLockDir('HIMMEL-9');
+    vi.stubEnv('TMPDIR', join(dir, 'b'));
+    expect(fixVersionLockDir('HIMMEL-9')).toBe(first);
+    expect(first).toBe(join(dir, 'home', '.himmel', 'locks', 'fixversion', 'HIMMEL-9'));
   });
 });
 

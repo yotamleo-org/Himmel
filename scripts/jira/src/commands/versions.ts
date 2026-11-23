@@ -434,12 +434,11 @@ export function registerVersions(program: Command): void {
       '--chief-override <reason>',
       'With --add, console session only (HIMMEL_CONSOLE=1): admit into a frozen version without a gate; the reason is recorded in the admissions ledger',
     )
-    .option('--by <O-id>', 'With --remove: the operator record that takes the ticket out of an open declared version (its newest decision on the key)')
+    .option('--by <O-id>', 'The operator record the write carries out; a --remove out of an open declared version needs it (the key\'s newest decision, covering the removal)')
     .action(async (key: string, options: { add?: string; remove?: string; gate?: string; chiefOverride?: string; by?: string }) => {
       if ((options.add === undefined) === (options.remove === undefined)) {
         throw new Error('fix-version needs exactly one of --add <name> or --remove <name>');
       }
-      if (options.by !== undefined && options.remove === undefined) throw new Error('--by goes with --remove');
       if (options.add === undefined && (options.gate !== undefined || chiefOverrideOf(options) !== undefined)) {
         throw new Error('--gate and --chief-override go with --add');
       }

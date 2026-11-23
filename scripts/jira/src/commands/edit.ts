@@ -430,7 +430,8 @@ export function registerEdit(program: Command): void {
       '--chief-override <reason>',
       'Chief session only (HIMMEL_CONSOLE=1): admit into a frozen version without a gate; the reason is recorded in the admissions ledger',
     )
-    .action(async (key: string, options: EditOptions & { desc?: string; descFile?: string; gate?: string; chiefOverride?: string; residualOf?: string }) => {
+    .option('--by <O-id>', 'The operator record a version change carries out; an edit that takes the ticket out of an open declared version needs it')
+    .action(async (key: string, options: EditOptions & { desc?: string; descFile?: string; gate?: string; chiefOverride?: string; residualOf?: string; by?: string }) => {
       const phaseRefusal = phaseUsage(options);
       if (phaseRefusal !== undefined) {
         console.error(phaseRefusal);
@@ -492,7 +493,10 @@ export function registerEdit(program: Command): void {
         if (labelOps.length > 0) update['labels'] = labelOps;
       }
       if (Object.keys(update).length > 0) body.update = update;
-      if (body.fields !== undefined || body.update !== undefined) await request('PUT', `/issue/${key}`, body);
+      if (body.fields !== undefined || body.update !== undefined) {
+        if (options.by !== undefined) await request('PUT', `/issue/${key}`, body, undefined, { leave: { by: options.by } });
+        else await request('PUT', `/issue/${key}`, body);
+      }
       // A 2xx PUT does not prove the field changed (Jira can drop a
       // field its edit screen or scheme does not take), so read the priority
       // back and fail loud instead of reporting a silent no-op as "edited".
