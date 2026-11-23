@@ -15,7 +15,7 @@ import { admit, admitEnvelope, appendUnknownChat, createGateState, looksLikeEnve
 import { mintId } from "./grammar";
 import { botIdFromToken, configDir, peersFile, stateDir } from "./ids";
 import { dueJobs, isTerminal, newInJob, newOutJob, queueDepth, remaining, step, type JobEvent, type SendSpec } from "./jobstate";
-import { ReaderLedger, runReader } from "./reader";
+import { ReaderLedger, runReader, type ReaderKind } from "./reader";
 import { resolveCapacity, resolveReq, resolveRes, type JobRecord } from "./resolve";
 import { currentSigningKey, sign } from "./sign";
 import { PeerTelegram, RetryAfter, TelegramError } from "./telegram";
@@ -481,7 +481,7 @@ export class Poller {
     if (!peer) return;
     const ledger = new ReaderLedger(this.file(rec.peer, "reader-ledger.json"), peer, this.now);
     const run = this.deps.readerRun ?? runReader;
-    const kind = rec.tag === "answer" ? "answer" : rec.tag.replace("ask:", "");
+    const kind = (rec.tag === "answer" ? "answer" : rec.tag.replace("ask:", "")) as ReaderKind;
     const d = await run(rec.text, kind, { himmelRoot: this.cfg.himmelRoot, ledger, timeoutMs: this.deps.readerTimeoutMs });
     const out: Omit<DigestRec, "n" | "h"> = { kind: "digest", peer: rec.peer, message_id: rec.message_id, root_id: rec.root_id, tag: rec.tag, from_id: rec.from_id, ts: this.ts(), summary: d.summary, asks: d.asks, ...(rec.id ? { id: rec.id } : {}), ...(d.reason ? { reason: d.reason } : {}) };
     await this.chain.append(digestFile(this.dir(rec.peer)), out);
