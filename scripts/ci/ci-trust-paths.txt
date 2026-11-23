@@ -99,6 +99,9 @@
 ^scripts/telegram/fixtures/
 # The core match the ticket spec gate asks; the list it reads is under ^scripts/ci/ above.
 ^scripts/jira/src/release/core\.ts$
+# Who signs each spec: decides whether a chief signature or an operator core-bypass counts.
+^scripts/jira/src/release/signer\.ts$
+^scripts/jira/src/release/signer\.test\.ts$
 # The operator fence's ancestry walk: a marked ancestor or a bad stop refuses every operator verb.
 ^scripts/jira/src/release/fence-ancestry\.ts$
 # The bridge envelope: the permission mode, allow and deny lists and Bash sandbox of every bridge spawn.
